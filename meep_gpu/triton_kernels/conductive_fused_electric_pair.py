@@ -35,13 +35,14 @@ came from:
   :func:`.kernels.pml_curl_step`'s body character for character, because
   conductivity enters ``_apply_curl`` only AFTER the curl is formed
   (stepping.py:508-534);
-* the recurrence -- :func:`.conductivity._conductive_component`, called through
+* the record's membership lines and the per-chunk forms --
+  :func:`.conductivity._conductive_component`, called through
   :func:`_conductive_component_registers` below, which is that function with ONE
   statement moved and nothing else;
 * the wall clear and the constitutive half --
   :func:`.kernels.fused_curl_constitutive_D`, whose six ``zero_metal_D`` rows and
-  three-line ``update_E`` accumulation transcribe stepping.py:2206-2247 and
-  :1010-1022.
+  record-keyed ``update_E`` forms (``forms.constitutive_form``) transcribe
+  ``stepping.zero_metal_D`` and ``stepping._apply_constitutive_regions``.
 
 A reader can diff this body against those three and see that nothing moved. If you
 find yourself deriving here, you have taken a wrong turn.
@@ -118,8 +119,9 @@ WHAT THIS MODULE IS NOT
 It is NOT the no-PML conductive weld. :mod:`.complex_conductive_fused_pair` serves
 ``(complex conductive no-PML curl, complex no-PML stored E)`` and carries
 ``_apply_conductive_update`` -- case D alone, no ``f_cond``, no ``fu``. This one
-carries the PML SPLIT-FIELD path, which is four cases selected by two exact float
-comparisons, and refuses a run without an active layer by name. The two are
+carries the PML SPLIT-FIELD path, whose conductive forms are selected per structure
+chunk (the chunk record's dsig and dsigu lines and the component's conductive-chunk
+volume), and refuses a run without an active layer by name. The two are
 different recurrences and neither body may be read for the other.
 
 DEVICE STATUS: see :data:`DEVICE_STATUS`. A weld licenses a claim, not a dispatch.
@@ -248,6 +250,10 @@ __all__ = [
 
 if triton is not None:
 
+    from .forms import (axis_present, constitutive_form, curl_form,  # noqa: E402
+                        curl_stencil, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
+
     # The same constexpr codes as ``kernels``' own, restated for the reason every
     # sibling restates them -- importing a ``tl.constexpr`` wrapper and re-wrapping
     # it is not the same object, and the comparison in the kernel body is against a
@@ -256,50 +262,55 @@ if triton is not None:
     METALLIC = tl.constexpr(1)
 
     @triton.jit
-    def _conductive_component_registers(f_ptr, u_ptr, c_ptr, cf_ptr, ci_ptr,
-                                        idx, live, curl, km1, si1, km2, si2,
-                                        COND: tl.constexpr):
+    def _conductive_component_registers(f_ptr, u_ptr, c_ptr, cf_ptr, ci_ptr, m_ptr,
+                                        idx, live, curl, km1, si1, km2, si2, ds, du,
+                                        COND: tl.constexpr, CMASK: tl.constexpr):
         """:func:`.conductivity._conductive_component`, returning ``v`` instead of
         storing it.
 
         ONE STATEMENT MOVED. Both constexpr branches are that function's, character
         for character, minus ``tl.store(f_ptr + idx, v, mask=live)``; the ``u_ptr``
-        and ``c_ptr`` stores keep their masks, which are the "unchanged" column of
-        the four-case table and not this weld's to touch. ``f_ptr`` is still taken
-        because the ``f`` LOAD stays here -- only the write moved.
+        and ``c_ptr`` stores keep their masks, which are the auxiliary contract and
+        not this weld's to touch. ``f_ptr`` is still taken because the ``f`` LOAD
+        stays here -- only the write moved.
 
         The gate's transcription leg parses both bodies and asserts the statement
         lists are equal after removing exactly that store, so an edit to either one
         turns it red.
         """
         f = tl.load(f_ptr + idx, mask=live, other=0.0)
-        u = tl.load(u_ptr + idx, mask=live, other=0.0)
+        u = tl.load(u_ptr + idx, mask=live & du, other=0.0)
         if COND == 0:
-            # stepping._apply_pml_update (:1905), verbatim from kernels.pml_curl_step.
-            n = ((u * km1) - curl) * si1
-            v = (((f * km2) + n) - u) * si2
-            tl.store(u_ptr + idx, n, mask=live)
+            v, n = curl_form(f, u, curl, km1, si1, km2, si2, du)
+            tl.store(u_ptr + idx, n, mask=live & du)
         else:
-            c = tl.load(c_ptr + idx, mask=live, other=0.0)
+            if CMASK == 0:
+                kept = live
+            else:
+                kept = tl.load(m_ptr + idx, mask=live, other=0) != 0
+            c = tl.load(c_ptr + idx, mask=live & ds & kept, other=0.0)
             cf = tl.load(cf_ptr + idx, mask=live, other=0.0)
             ci = tl.load(ci_ptr + idx, mask=live, other=0.0)
 
-            # stepping.py:2055-2058 -- an EXACT float comparison, not a tolerance.
-            dsig = (km1 != 1.0) | (si1 != 1.0)
-            dsigu = (km2 != 1.0) | (si2 != 1.0)
+            # The conductive forms. DO NOT REGROUP THESE PARENTHESES: the increment
+            # (c_new - c) is formed before it is added (MEEP's grouping).
+            c_new = ((c * cf) - curl) * ci                     # dsig cells
+            increment = c_new - c
+            u_split = ((u * km1) + increment) * si1            # dsig and dsigu
+            u_cond = ((u * cf) - curl) * ci                    # dsigu only
+            u_new = tl.where(ds, u_split, u_cond)
+            f_split = (((f * km2) + u_new) - u) * si2          # dsigu cells
+            f_first = ((f * km1) + increment) * si1            # dsig only
+            f_direct = ((f * cf) - curl) * ci                  # neither
+            v = tl.where(du, f_split, tl.where(ds, f_first, f_direct))
+            if CMASK != 0:
+                # A chunk that keeps no conductivity steps the lossless pair.
+                v_plain, n_plain = curl_form(f, u, curl, km1, si1, km2, si2, du)
+                v = tl.where(kept, v, v_plain)
+                u_new = tl.where(kept, u_new, n_plain)
 
-            # The five branch expressions. DO NOT FLATTEN THESE PARENTHESES.
-            c_new = ((c * cf) - curl) * ci                     # cases A and C
-            u_cond = ((u * cf) - curl) * ci                    # case B
-            u_split = (((u * km1) + c_new) - c) * si1          # case A
-            u_new = tl.where(dsig, u_split, u_cond)
-            f_split = (((f * km2) + u_new) - u) * si2          # cases A and B
-            f_first = (((f * km1) + c_new) - c) * si1          # case C
-            f_direct = ((f * cf) - curl) * ci                  # case D
-            v = tl.where(dsigu, f_split, tl.where(dsig, f_first, f_direct))
-
-            tl.store(u_ptr + idx, u_new, mask=live & dsigu)
-            tl.store(c_ptr + idx, c_new, mask=live & dsig)
+            tl.store(u_ptr + idx, u_new, mask=live & du)
+            tl.store(c_ptr + idx, c_new, mask=live & ds & kept)
         return v
 
     @triton.jit
@@ -309,24 +320,27 @@ if triton is not None:
         c0, c1, c2,                       # f_cond_D*  (a placeholder where COND == 0)
         cf0, cf1, cf2,                    # condfac    (a placeholder where COND == 0)
         ci0, ci1, ci2,                    # condinv    (a placeholder where COND == 0)
+        m0, m1, m2,                       # conductive chunks (a placeholder where CMASK == 0)
         g0, g1, g2,                       # curl sources: Hx,Hy,Hz
         kmx, sinvx, kmy, sinvy, kmz, sinvz,   # curl kms/sinv, INTEGER lattice
         e0, e1, e2,                       # constitutive targets: Ex,Ey,Ez
         w0, w1, w2,                       # constitutive aux: f_w_Ex,f_w_Ey,f_w_Ez
         ie0, ie1, ie2,                    # diagonal inverse epsilon volumes
         kp0, km0, kp1, km1, kp2, km2,     # constitutive kps/kms, HALF-INTEGER
+        cb,                               # chunk record: the forms' membership and presence
         nx, ny, nz, n_elem, dtdx,
         BACKWARD: tl.constexpr,           # bound to 1 by every builder; see below
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         ZM_X: tl.constexpr, ZM_Y: tl.constexpr, ZM_Z: tl.constexpr,
         COND0: tl.constexpr, COND1: tl.constexpr, COND2: tl.constexpr,
+        CMASK0: tl.constexpr, CMASK1: tl.constexpr, CMASK2: tl.constexpr,
         BLOCK: tl.constexpr,
     ):
         """Conductive ``step_D`` + ``zero_metal_D`` + ``update_E``, one launch.
 
         :func:`.conductivity.conductive_pml_curl_step`'s body down to and including
-        the six coefficient loads, then the three recurrences through
-        :func:`_conductive_component_registers`, then
+        the six coefficient loads and the record's membership lines, then the three
+        component forms through :func:`_conductive_component_registers`, then
         :func:`.kernels.fused_curl_constitutive_D`'s wall clear, D store and
         constitutive half. Nothing else is here.
 
@@ -343,7 +357,9 @@ if triton is not None:
         :func:`.kernels.fused_curl_constitutive_D`'s own. They are carried rather
         than hard-coded so the gate has a certified-kernel arm: at
         ``COND0 = COND1 = COND2 = 0`` this body must reproduce that kernel bit for
-        bit, which is a leg rather than an argument.
+        bit, which is a leg rather than an argument. ``CMASK0..2`` are the curl
+        plan's: 1 where a conductive component's chunks do not all keep its
+        conductivity and the kernel reads the component's conductive-chunk volume.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -353,9 +369,9 @@ if triton is not None:
         j = plane % ny
         i = plane // ny
 
-        # --- the ghost rule, per axis (stepping._shift_up / _shift_down) --------
-        # PERIODIC wraps; METALLIC serves an exact 0.0 past the wall, which
-        # `tl.load`'s `other=` delivers without dereferencing anything.
+        # --- the ghost rule, per axis (stepping._shift_up / _shift_down) ------------
+        # PERIODIC wraps; METALLIC serves an exact 0.0 past the wall, which `tl.load`'s
+        # `other=` delivers without dereferencing anything.
         if BACKWARD:
             si, sj, sk = i - 1, j - 1, k - 1
         else:
@@ -388,12 +404,16 @@ if triton is not None:
         c_x = tl.load(g2 + ox, mask=vx, other=0.0)
         c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
-        # --- the curl (stepping._curl_from_operands): DO NOT flatten these ------
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
-        # --- ownership mask (stepping._mask_non_owned_cells) -------------------
+        # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
         at_x, at_y, at_z = i == 0, j == 0, k == 0
         if BACKWARD:
             if BCY == METALLIC:
@@ -416,7 +436,7 @@ if triton is not None:
             if BCZ == METALLIC:
                 curl2 = tl.where(at_z, 0.0, curl2)
 
-        # --- the recurrence, per component -------------------------------------
+        # --- the forms, per component ----------------------------------------------
         # dsig/dsigu follow vec.hpp's cycle_direction and are the same triple on
         # both sides: target 0 takes (y, z), target 1 (z, x), target 2 (x, y).
         km_x = tl.load(kmx + i, mask=live, other=0.0)
@@ -426,12 +446,26 @@ if triton is not None:
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        v0 = _conductive_component_registers(f0, u0, c0, cf0, ci0, idx, live, curl0,
-                                             km_y, si_y, km_z, si_z, COND0)
-        v1 = _conductive_component_registers(f1, u1, c1, cf1, ci1, idx, live, curl1,
-                                             km_z, si_z, km_x, si_x, COND1)
-        v2 = _conductive_component_registers(f2, u2, c2, cf2, ci2, idx, live, curl2,
-                                             km_x, si_x, km_y, si_y, COND2)
+        # The component's dsig and dsigu chunk memberships, on its own sub-lattice
+        # (half-integer for every B target, integer for every D one): each record line
+        # is a compile-time word index, chunk_map.record_index(half_integer, axis, 0).
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        ds0 = record_in(cb, lattice + 4, j)
+        du0 = record_in(cb, lattice + 8, k)
+        ds1 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        ds2 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
+
+        v0 = _conductive_component_registers(f0, u0, c0, cf0, ci0, m0, idx, live, curl0,
+                                             km_y, si_y, km_z, si_z, ds0, du0, COND0, CMASK0)
+        v1 = _conductive_component_registers(f1, u1, c1, cf1, ci1, m1, idx, live, curl1,
+                                             km_z, si_z, km_x, si_x, ds1, du1, COND1, CMASK1)
+        v2 = _conductive_component_registers(f2, u2, c2, cf2, ci2, m2, idx, live, curl2,
+                                             km_x, si_x, km_y, si_y, ds2, du2, COND2, CMASK2)
 
         # zero_metal_D: each axis clears the two tangential D components.
         if ZM_X:
@@ -453,14 +487,15 @@ if triton is not None:
         tl.store(f1 + idx, v1, mask=live)
         tl.store(f2 + idx, v2, mask=live)
 
-        # ==================== the constitutive half ===========================
+        # ==================== the constitutive half ================================
         # Verbatim from kernels.fused_curl_constitutive_D, which is itself
         # constitutive_step's SCALE=1 arm with `tl.load(g + idx)` replaced by the
         # register the curl half computed. Component 0 takes its coefficient from
-        # axis x, 1 from y, 2 from z (stepping.E_CONSTITUTIVE_TERMS :227) -- the
-        # component's OWN axis. D IS ON THE LEFT of the inverse-epsilon multiply
-        # because the array path writes `source * inverse_epsilon_for(component)`
-        # (stepping.py:1011-1013).
+        # axis x, 1 from y, 2 from z (stepping.E_CONSTITUTIVE_TERMS) -- the
+        # component's OWN axis, and its own (dsigw) record line on the half-integer
+        # sub-lattice picks the form (forms.constitutive_form). D IS ON THE LEFT of the
+        # inverse-epsilon multiply because the array path writes
+        # `source * inverse_epsilon_for(component)`.
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
         km_0 = tl.load(km0 + i, mask=live, other=0.0)
         kp_1 = tl.load(kp1 + j, mask=live, other=0.0)
@@ -468,28 +503,32 @@ if triton is not None:
         kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
-        prev0 = tl.load(w0 + idx, mask=live, other=0.0)
+        # Which cells take the accumulation: the component's own (dsigw) layer on the
+        # component's own sub-lattice. The own axis is x for target 0, y for 1, z for 2
+        # (the constitutive term tables), so each target's record line is again a
+        # compile-time word index, chunk_map.record_index(half_integer, axis, 0).
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)   # E: the half-integer sub-lattice
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
+        prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)
         src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)
-        tl.store(w0 + idx, src0, mask=live)
-        a0 = tl.load(e0 + idx, mask=live, other=0.0)
-        a0 = a0 + kp_0 * src0
-        a0 = a0 - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=live & dw0)
+        a0 = constitutive_form(tl.load(e0 + idx, mask=live & dw0, other=0.0),
+                                 prev0, src0, kp_0, km_0, dw0)
         tl.store(e0 + idx, a0, mask=live)
 
-        prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+        prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
         src1 = v1 * tl.load(ie1 + idx, mask=live, other=0.0)
-        tl.store(w1 + idx, src1, mask=live)
-        a1 = tl.load(e1 + idx, mask=live, other=0.0)
-        a1 = a1 + kp_1 * src1
-        a1 = a1 - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=live & dw1)
+        a1 = constitutive_form(tl.load(e1 + idx, mask=live & dw1, other=0.0),
+                                 prev1, src1, kp_1, km_1, dw1)
         tl.store(e1 + idx, a1, mask=live)
 
-        prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+        prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
         src2 = v2 * tl.load(ie2 + idx, mask=live, other=0.0)
-        tl.store(w2 + idx, src2, mask=live)
-        a2 = tl.load(e2 + idx, mask=live, other=0.0)
-        a2 = a2 + kp_2 * src2
-        a2 = a2 - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=live & dw2)
+        a2 = constitutive_form(tl.load(e2 + idx, mask=live & dw2, other=0.0),
+                                 prev2, src2, kp_2, km_2, dw2)
         tl.store(e2 + idx, a2, mask=live)
 
 else:  # pragma: no cover - laptop path
@@ -677,24 +716,27 @@ def conductive_fused_electric_pair_coverage(fields: Any, pml: Any,
 class ConductiveFusedElectricPairPlan:
     """One allocation-free launch for five of the driver's electric call sites.
 
-    :class:`.launch.FusedPairPlan`'s ``pair='D'`` bindings plus the nine conductive
-    pointers and three ``COND`` constexprs :class:`.conductivity.
-    ConductivePmlCurlPlan` carries over :class:`.launch.PmlCurlPlan`. The
-    inverse-epsilon volumes are the E side's and are bound here.
+    :class:`.launch.FusedPairPlan`'s ``pair='D'`` bindings plus the twelve conductive
+    pointers and six ``COND`` / ``CMASK`` constexprs :class:`.conductivity.
+    ConductivePmlCurlPlan` carries over :class:`.launch.PmlCurlPlan`, and the chunk
+    record (``chunk_bounds``, required, ``launch.bind_chunk_bounds``) whose lines key
+    both halves' forms. The inverse-epsilon volumes are the E side's and are bound
+    here.
 
     A LOSSLESS COMPONENT BINDS ITS OWN TARGET AS THE PLACEHOLDER for the three
-    conductive slots, never a null -- the same rule and the same reason as the curl
-    plan: the loads sit behind a ``tl.constexpr`` branch and compile away, but a
-    pointer argument still has to type, and ``None`` makes the launcher's failure a
+    conductive slots, and a component without a conductive-chunk volume for the
+    fourth, never a null -- the same rule and the same reason as the curl plan: the
+    loads sit behind a ``tl.constexpr`` branch and compile away, but a pointer
+    argument still has to type, and ``None`` makes the launcher's failure a
     ``TypeError`` far from its cause.
     """
 
-    __slots__ = ("shape", "n_elem", "dtdx", "cond", "backward", "bc", "zero_metal",
-                 "block", "num_warps",
-                 "_targets", "_aux", "_history", "_condfac", "_condinv",
+    __slots__ = ("shape", "n_elem", "dtdx", "cond", "cmask", "backward", "bc",
+                 "zero_metal", "block", "num_warps", "chunk_bounds",
+                 "_targets", "_aux", "_history", "_condfac", "_condinv", "_chunks",
                  "_sources", "_curl_coefficients",
                  "_e_targets", "_e_aux", "_inverse_epsilon", "_e_coefficients",
-                 "_grid", "_kernel")
+                 "_cb", "_grid", "_kernel")
 
     #: The five driver call sites one launch performs. Declared, so a composition can
     #: be inspected rather than inferred from the curl slot's name.
@@ -704,11 +746,15 @@ class ConductiveFusedElectricPairPlan:
                  targets, auxiliaries, history, condfac, condinv, sources,
                  curl_coefficients, e_targets, e_aux, inverse_epsilon,
                  e_coefficients, kernel: Any = None,
-                 num_warps: Optional[int] = 1) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 num_warps: Optional[int] = 1, *, chunk_bounds: Any,
+                 conductive_chunks: Any = (None, None, None)) -> None:
+        from .conductivity import _chunk_volume  # noqa: PLC0415
+        from .launch import CupyPointer, _flat, bind_chunk_bounds  # noqa: PLC0415
 
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "ConductiveFusedElectricPairPlan")
         # float(): the array path multiplies a float32 volume by a Python float,
         # which NumPy/CuPy cast to float32 before the multiply. Triton types a
         # Python float argument as fp32, so the two scalars are the same bits.
@@ -717,6 +763,11 @@ class ConductiveFusedElectricPairPlan:
         self.bc = tuple(int(code) for code in bc)
         self.zero_metal = tuple(1 if flag else 0 for flag in zero_metal)
         self.cond = tuple(1 if flag else 0 for flag in cond)
+        chunks = tuple(conductive_chunks)
+        if len(chunks) != 3:
+            raise ValueError("conductive_chunks names one volume (or None) per target")
+        self.cmask = tuple(1 if (flag and volume is not None) else 0
+                           for flag, volume in zip(self.cond, chunks))
         self.block = int(block)
         # ONE WARP, the measured default for a fused pair
         # (launch.FUSED_DEFAULT_NUM_WARPS). Explicit None remains "take Triton's
@@ -732,6 +783,9 @@ class ConductiveFusedElectricPairPlan:
                               for a, b in zip(condfac, targets))
         self._condinv = tuple(CupyPointer(a if a is not None else b)
                               for a, b in zip(condinv, targets))
+        self._chunks = tuple(
+            CupyPointer(_chunk_volume(volume, self.shape, target) if mask else target)
+            for mask, volume, target in zip(self.cmask, chunks, targets))
         self._sources = tuple(CupyPointer(a) for a in sources)
         self._curl_coefficients = tuple(
             CupyPointer(_flat(a)) for a in curl_coefficients)
@@ -759,15 +813,16 @@ class ConductiveFusedElectricPairPlan:
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
         kernel[self._grid](
             *self._targets, *self._aux, *self._history, *self._condfac,
-            *self._condinv, *self._sources, *self._curl_coefficients,
+            *self._condinv, *self._chunks, *self._sources, *self._curl_coefficients,
             *self._e_targets, *self._e_aux, *self._inverse_epsilon,
-            *self._e_coefficients,
+            *self._e_coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
             BACKWARD=self.backward,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
             ZM_X=self.zero_metal[0], ZM_Y=self.zero_metal[1],
             ZM_Z=self.zero_metal[2],
             COND0=self.cond[0], COND1=self.cond[1], COND2=self.cond[2],
+            CMASK0=self.cmask[0], CMASK1=self.cmask[1], CMASK2=self.cmask[2],
             BLOCK=self.block,
             enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
             **extra,
@@ -776,24 +831,31 @@ class ConductiveFusedElectricPairPlan:
     def __repr__(self) -> str:
         return (f"ConductiveFusedElectricPairPlan(shape={self.shape}, bc={self.bc}, "
                 f"zero_metal={self.zero_metal}, cond={self.cond}, "
-                f"block={self.block}, num_warps={self.num_warps})")
+                f"cmask={self.cmask}, block={self.block}, num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_conductive_fused_electric_pair(
         fields: Any, pml: Any, sources: Any = None,
         block: Optional[int] = None, num_warps: Optional[int] = 1,
-        kernel: Any = None) -> Optional[ConductiveFusedElectricPairPlan]:
+        kernel: Any = None, chunk_layout: Any = None
+        ) -> Optional[ConductiveFusedElectricPairPlan]:
     """Build the plan from the engine's own objects, or ``None`` when refused.
 
     ``None`` is the only refusal: a configuration this kernel does not carry must
     fall back to the array path, never raise into a caller that would otherwise have
     stepped correctly.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default;
+    the plan binds its record (``launch.chunk_bounds_for``) and the curl half's
+    conductive-chunk volumes (``conductivity.conductive_chunk_volumes``).
     """
     if not conductive_fused_electric_pair_coverage(fields, pml, sources).covered:
         return None
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
+    from .conductivity import conductive_chunk_volumes  # noqa: PLC0415
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
-    from .launch import SUB_STEPS  # noqa: PLC0415
+    from .launch import SUB_STEPS, chunk_bounds_for  # noqa: PLC0415
 
     curl_spec = SUB_STEPS[CURL_SUB_STEP]
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
@@ -825,6 +887,9 @@ def plan_conductive_fused_electric_pair(
                       f"{'_h' if side_spec['half_integer'] else ''}")
          for axis in "xyz" for stem in ("kps", "kms")],
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        conductive_chunks=conductive_chunk_volumes(fields, CURL_SUB_STEP,
+                                                   chunk_layout, pml),
     )
 
 
@@ -832,15 +897,19 @@ def plan_conductive_fused_electric_pair_from_arrays(
         arrays: Dict[str, Any], curl_flat: Dict[str, Any],
         constitutive_flat: Dict[str, Any], codes, zero_metal, cond,
         dtdx: float, block: Optional[int] = None, kernel: Any = None,
-        num_warps: Optional[int] = 1) -> ConductiveFusedElectricPairPlan:
+        num_warps: Optional[int] = 1, *,
+        chunk_bounds: Any) -> ConductiveFusedElectricPairPlan:
     """Build from bare device arrays -- the gate's route.
 
     No coverage predicate runs: the caller is a harness that constructed the
     configuration deliberately, including the deliberately wrong ones. ``arrays``
     additionally carries ``f_cond_Dx``..., ``condfac_Dx``..., ``condinv_Dx``... and
-    ``inv_eps_Ex``...; ``kernel=`` carries the mutation override and
-    ``cond=(0, 0, 0)`` the identity leg's certified-kernel arm, which must reproduce
-    ``kernels.fused_curl_constitutive_D`` bit for bit.
+    ``inv_eps_Ex``..., and ``conductive_chunks_Dx``... for a conductive target whose
+    chunks do not all keep its conductivity; ``kernel=`` carries the mutation
+    override and ``cond=(0, 0, 0)`` the identity leg's certified-kernel arm, which
+    must reproduce ``kernels.fused_curl_constitutive_D`` bit for bit.
+    ``chunk_bounds`` is REQUIRED and has no default (``launch.plan_from_arrays``'s
+    rule).
     """
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
     from .launch import SUB_STEPS  # noqa: PLC0415
@@ -865,4 +934,7 @@ def plan_conductive_fused_electric_pair_from_arrays(
         [constitutive_flat[f"{stem}_{axis}"]
          for axis in "xyz" for stem in ("kps", "kms")],
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds,
+        conductive_chunks=tuple(arrays.get("conductive_chunks_" + name)
+                                for name in targets),
     )

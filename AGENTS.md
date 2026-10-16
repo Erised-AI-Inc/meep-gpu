@@ -92,12 +92,12 @@ message.
   that a table certified for the device and toolchain runs alone in place of one
   that is only supported; an identity outside the supported range is refused by
   name to the array path, which is correct and slower, unless
-  `MEEP_GPU_ALLOW_UNCERTIFIED=1`. Every Apple GPU is supported (M1 through M5 and later; the record's
+  `MEEP_GPU_HARDWARE=any`. Every Apple GPU is supported (M1 through M5 and later; the record's
   `environment.device_supported`), and supported is not certified: on a Mac the
   Metal kernels also run outside the certified environment (another Apple GPU,
   PyTorch or macOS build), the status line marks an Apple GPU that is not the
   certified one `supported, UNCERTIFIED`, the record says `certified: False`, and
-  one `meep_gpu: NOTE` line says so. `MEEP_GPU_ALLOW_UNCERTIFIED=0` restricts
+  one `meep_gpu: NOTE` line says so. `MEEP_GPU_HARDWARE=certified` restricts
   every table to its certified identities: anything else, including a fact that
   could not be judged, is refused by name to the array path (on a Mac, the host
   CPU). Neither set
@@ -119,12 +119,14 @@ message.
 - set `KMP_DUPLICATE_LIB_OK` in a user's shell, script or environment; fix the
   environment instead
   ([One OpenMP runtime](INSTALL.md#one-openmp-runtime-on-an-apple-silicon-mac));
-- write `MEEP_GPU_DISPATCH`, `MEEP_GPU_FUSED` or `MEEP_GPU_ALLOW_UNCERTIFIED` as
-  `true`, `false` or `off`: only `0` and `1` are read, and anything else is
-  refused by name and sends the run to the array path;
+- write `MEEP_GPU_DISPATCH` or `MEEP_GPU_FUSED` as `true`, `false` or `off` (only
+  `0` and `1` are read), or `MEEP_GPU_HARDWARE` as anything but `certified`,
+  `supported` or `any`: values are matched exactly, and anything else is refused by
+  name and sends the run to the array path; or export the retired
+  `MEEP_GPU_ALLOW_UNCERTIFIED` at all: it is refused by name, whatever its value;
 - rely on a run whose record says `certified: False` (any run outside the
   certified identity: by default on a supported NVIDIA GPU or Apple environment,
-  and under `MEEP_GPU_ALLOW_UNCERTIFIED=1`) without comparing it with a `prefer_gpu=False` run of the
+  and under `MEEP_GPU_HARDWARE=any`) without comparing it with a `prefer_gpu=False` run of the
   same simulation, and without telling the user that it carries no certification;
 - edit, regenerate or delete a ledger (`meep_gpu/*_kernels/*.json`) to unlock a
   device or to turn a red test green: dispatch reads them at run time. That
@@ -143,10 +145,10 @@ script that builds the simulation ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 | Path | What it holds |
 |---|---|
-| `meep_gpu/` | The package, tests beside the code: `driver.py` (the engine), `stepping.py` (the array path), `from_meep.py` (the lift), `fastpath.py` (the dispatch planner) |
+| `meep_gpu/` | The package, tests beside the code: `driver.py` (the engine), `stepping.py` (the array path), `part_products.py` (every product on complex storage, formed part by part as MEEP forms it), `chunk_map.py` (MEEP's chunk division: which cells each PML form owns, which chunks keep each component's conductivity and each off-diagonal `chi1inv` array, and the region plan the array path's PML forms dispatch on), `readback.py` (MEEP's `get_array` and `get_field_point`, word for word), `sources.py` (source placement and MEEP's double-precision deposit, through `host_writes.subtract_double`), `from_meep.py` (the lift), `fastpath.py` (the dispatch planner), `capsule.py` (lifted-state capsules: a lift saved and loaded back without MEEP, [Lifted-state capsules](docs/development/testing.md#lifted-state-capsules)), `meep_identity.py` (the MEEP-identity digest schema and the Tier A replay of `parity/meep_gpu/fixtures/meep_identity/`, [MEEP identity](docs/development/testing.md#meep-identity)) |
 | `meep_gpu/triton_kernels/`, `cuda_kernels/`, `metal_kernels/` | The three kernel tables, each with its certification ledger (`*.json`) |
 | `parity/meep_gpu/` | The certification and benchmark harness; not installed; [its README](parity/meep_gpu/README.md) |
-| `tools/` | `check_install.py`, `compare_reference_environment.py` (this environment against the certification reference lock), `rename_distribution.py`, and `ci/`: `check_failures.py` (failure arbiter), `check_wheel.py` (what the wheel carries), `pending_certification.txt`, `declared_resources.txt` |
+| `tools/` | `check_install.py`, `compare_reference_environment.py` (this environment against the certification reference lock), `fma_census.py` (the fused multiply-add census an identity reference MEEP is judged by), `rename_distribution.py`, and `ci/`: `check_failures.py` (failure arbiter), `check_wheel.py` (what the wheel carries), `check_hygiene.py` and `hygiene_rules.json` (the hygiene guard, rule 10), `pending_certification.txt`, `declared_resources.txt` |
 | `examples/`, `environments/`, `docs/` | Example scripts with recorded output; the three conda environments, and under `environments/locks/` the certification reference locks the reference build scripts install; the MkDocs manual |
 | `conftest.py` | The skip policy and the `certification` marker |
 
@@ -162,10 +164,11 @@ Commands, fastest first. Sizes and durations are in
 | `python -m pytest meep_gpu/test_<module>.py -q` | The loop while editing. Metal and Triton tests are `meep_gpu/test_metal_*.py` and `meep_gpu/test_triton_*.py`; the CUDA table keeps its tests beside the code, `meep_gpu/cuda_kernels/test_*.py` |
 | `python -m pytest parity/meep_gpu -q` | The harness suite |
 | `python -m pytest meep_gpu -q` | The package suite; long: run it in the background, one suite at a time |
-| `python -m pytest meep_gpu parity/meep_gpu -m certification` | Shows the two pending timing-record failures listed in `tools/ci/pending_certification.txt`, and no other; do not "fix" them |
+| `python -m pytest meep_gpu parity/meep_gpu -m certification` | Fails only on the tests `tools/ci/pending_certification.txt` lists, each block naming what it waits on; do not "fix" them |
 | The three suites with `--junitxml`, then `python tools/ci/check_failures.py <reports>` | As CI runs them ([Running them as CI does](docs/development/testing.md#running-them-as-ci-does)); passes when every failure is listed in `tools/ci/pending_certification.txt` |
 | `python examples/run_examples.py --check` | Must pass on the host |
 | `python tools/check_install.py` | Must end `OK:` |
+| `python tools/ci/check_hygiene.py --legs tracked,subject` | Must end `CLEAN` (rule 10); `--patch <diff>` judges only the lines a change adds |
 | `python -m mkdocs build --strict --site-dir <a directory outside the repository>` | The manual, after `python -m pip install -r docs/requirements.txt` |
 
 A test skips only by a declared resource (`@pytest.mark.requires_resource`,
@@ -189,10 +192,12 @@ your own records
 
 Compiled kernels are held to bit identity, not to a tolerance. Each kernel table
 must return the same bits as the package's own array path on the same device,
-under the subnormal policy that table declares. An NVIDIA kernel dispatches on a
+under the subnormal policy that table declares (an NVIDIA table installs `keep` and
+also keeps a caller-installed `flush` for arms whose gate released under it on that
+compute capability: [Floating point](docs/design/floating-point.md)). An NVIDIA kernel dispatches on a
 supported device and toolchain identity (compute capability 7.0 to 9.0, Triton 3.1),
-unless `MEEP_GPU_ALLOW_UNCERTIFIED=0` restricts it to a certified one, and outside
-that range only under `MEEP_GPU_ALLOW_UNCERTIFIED=1`; a Metal kernel dispatches on
+unless `MEEP_GPU_HARDWARE=certified` restricts it to a certified one, and outside
+that range only under `MEEP_GPU_HARDWARE=any`; a Metal kernel dispatches on
 any Apple GPU environment, since every Apple GPU is supported. Either way the
 record says whether the identity is the certified one. Agreement with MEEP
 is a separate, measured tolerance. The harness under `parity/meep_gpu` produces
@@ -201,10 +206,35 @@ null control for each that must be seen to fail.
 
 The ledgers (`meep_gpu/*_kernels/*.json`) bind each verdict to the sha256
 digests of the source files that produced it; dispatch reads them at run time.
+Each also records `array_path_oracle`, the fingerprint of the words a fixed fixture
+set produces when the array path steps it (`meep_gpu/array_path_oracle.py`): an
+arithmetic change to the array path fails the three weld contracts by name, and a
+comment edit does not. Only `parity/meep_gpu/record_array_path_oracle.py` writes it.
 Editing a pinned file, comments included, puts every entry that pins it in drift
 and the ledger-contract tests fail, by design. The remedy is to re-run the
 affected gates on the named hardware and rebind the ledger with the harness's
 tools. In a pull request, that last step is a maintainer's (below).
+
+A gate's artifact also records every repository module its process imported, and
+the rebind tools, the re-cuts and the boards check that whole record, so an edit to
+any file in it voids the gate. The package root binds its names on first use to keep
+a kernel gate's record to its own kernel, array path and harness: never add an eager
+import to `meep_gpu/__init__.py`, and never make a kernel module import the driver,
+a dispatch planner or `from_meep.py` at module level
+(`parity/meep_gpu/test_gate_import_closure.py` fails either). Before editing, list
+the gates whose records the edit moves:
+`python parity/meep_gpu/import_closure.py bill meep_gpu/<file>.py`. A curated ledger pin
+that a gate no longer imports leaves only by a generated row of the rebind tool's
+`RETIRED_UNIMPORTED_PINS` (`import_closure.py unimported-pins <table>`, held to the tool by
+`parity/meep_gpu/test_rebind_unimported_pins.py`), never by editing a ledger.
+
+A gate that arms a defect spelled in the shared probe does so through its own
+needle table (`parity/meep_gpu/gate_needles.py`), and
+`parity/meep_gpu/gate_needle_anchors.json` records the device text each needle
+hands the compiler. An edit to a kernel a gate mutates, or to a needle, moves that
+record; re-mint it with `python parity/meep_gpu/record_gate_needle_anchors.py --write`
+in the same change, so its diff names the gates whose mutation legs now compile
+different bytes.
 
 ## Rules
 
@@ -241,6 +271,15 @@ tools. In a pull request, that last step is a maintainer's (below).
    authoring tool.
 9. Never commit anything under `parity/meep_gpu/results/`. Records are archived
    separately; a document points at a record instead of copying its numbers.
+10. No host names, account names, local paths or personal e-mail addresses in any
+    tracked file, ledger or record: say "the GPU host" or "this machine", write a
+    staged path as `<staging-root>/...`, and cite evidence by a neutral name (copy
+    a file whose name is a machine's to a neutral name and cite the copy). The bind
+    and record tools write the neutral labels (`parity/meep_gpu/neutral_labels.py`),
+    and the hygiene guard, `python tools/ci/check_hygiene.py`, enforces the rule on
+    every tracked file, the four ledgers and the coverage board's subject; CI runs
+    it. A name the guard should know goes into `tools/ci/hygiene_rules.json` as a
+    digest (`check_hygiene.py digest`), never as text.
 
 ## Style and pull requests
 

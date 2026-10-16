@@ -39,6 +39,25 @@ MODULE = "meep_gpu.triton_kernels.fused_hd_pair"
 FAMILY = "fused_hd_pair"
 
 
+def _every_cell_record(shape):
+    """The harness's every-cell chunk record for ``shape`` (``gate_chunk_records``).
+
+    These builds take their record from the harness rather than from a layer: the
+    arrays are bare, and every test here asserts something other than the division.
+    """
+    parity = str(pathlib.Path(__file__).parent.parent / "parity" / "meep_gpu")
+    if parity not in sys.path:
+        sys.path.insert(0, parity)
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
+    return every_cell_record(shape)
+
+
+def _chunk_record(arrays):
+    """:func:`_every_cell_record`, sized from the first three-axis volume of ``arrays``."""
+    shape = next(tuple(a.shape) for a in arrays.values() if getattr(a, "ndim", 0) == 3)
+    return _every_cell_record(shape)
+
+
 @pytest.fixture(scope="module")
 def product():
     return importlib.import_module(MODULE)
@@ -98,12 +117,15 @@ def _reasons(verdict):
     return [reason for reason in verdict.reasons if "not cupy" not in reason]
 
 
-class _Electric:
-    """A source with a standing INTEGRATED electric withdraw."""
+class _ForeignElectric:
+    """A source class from outside this package that brings an integrated electric
+    ``withdraw`` of its own. No engine source stands one any more (an integrated source
+    enters through ``f_minus_p``; ``withdraw_hoist``), and the predicate still refuses a
+    class that does, because nothing measured a fused launch beside its body."""
 
-    from . import sources as _sources_module
+    def withdraw(self, fields):  # never called: a predicate reads a source, it does not run it
+        raise AssertionError("a coverage predicate called a source's withdraw")
 
-    withdraw = _sources_module.VolumeSource.withdraw
     field_type = "D"
     component = "Ez"
     is_integrated = True
@@ -111,11 +133,11 @@ class _Electric:
     _applied_dipole = 0j
 
 
-class _NonIntegratedElectric(_Electric):
+class _NonIntegratedElectric(_ForeignElectric):
     is_integrated = False
 
 
-class _Magnetic(_Electric):
+class _Magnetic(_ForeignElectric):
     field_type = "B"
     component = "Hz"
 
@@ -151,7 +173,7 @@ def test_replaces_is_the_drivers_own_two_adjacent_consults(product):
     assert order[first:first + 2] == list(product.REPLACES)
 
 
-def test_the_only_statement_in_the_seam_is_the_electric_withdraw(product):
+def test_the_only_statement_in_the_seam_is_the_magnetic_f_minus_p_restore(product):
     """Nothing is INJECTED between the two consults, so the deposit repair is a fact.
 
     ``CARRIES_DEPOSIT_REPAIR = False`` is a claim about the DRIVER, not a choice, and
@@ -165,8 +187,10 @@ def test_the_only_statement_in_the_seam_is_the_electric_withdraw(product):
     statements = [line.strip() for line in between.splitlines()
                   if line.strip() and not line.strip().startswith("#")
                   and "update_H(self.fields" not in line]
-    assert any("withdraw" in line for line in statements), statements
-    assert not any("inject" in line for line in statements), statements
+    # The magnetic f_minus_p restore (sources.f_minus_p_end), which writes B alone and
+    # which step_D does not read; no withdraw stands here any more (withdraw_hoist).
+    assert any("f_minus_p_end" in line for line in statements), statements
+    assert not any("inject" in line or "withdraw" in line for line in statements), statements
     assert product.CARRIES_DEPOSIT_REPAIR is False
     assert product.REPAIR_PATHS == ()
 
@@ -356,12 +380,31 @@ def test_an_undeclared_source_list_is_refused_by_name(product):
     assert any("was not declared" in reason for reason in reasons), reasons
 
 
-def test_a_standing_integrated_electric_withdraw_is_refused_by_name(product):
-    """The two rows of the cell this predicate does not reach, and why."""
+def test_a_foreign_standing_withdraw_is_refused_by_name(product):
+    """A source class that brings its own ``withdraw`` is refused, naming the flag.
+
+    The board's two cell rows this predicate once refused were the engine's integrated
+    electric sources; those now stand nothing in the seam (the test below)."""
     fields, pml = build()
-    reasons = _reasons(product.fused_hd_pair_coverage(fields, pml, (_Electric(),)))
+    reasons = _reasons(product.fused_hd_pair_coverage(fields, pml, (_ForeignElectric(),)))
     assert any("standing integrated" in reason for reason in reasons), reasons
     assert any("HOISTS_THE_WITHDRAW = False" in reason for reason in reasons), reasons
+
+
+def test_an_integrated_electric_source_stands_no_withdraw_in_the_seam(product):
+    """An engine integrated source enters at the constitutive update through
+    ``f_minus_p`` (``sources.f_minus_p_begin``), so nothing stands between the two
+    consults this product spans and the predicate has no withdraw to refuse."""
+    from .sources import ContinuousEnvelope, VolumeSource
+
+    fields, pml = build()
+    source = VolumeSource(grid=fields.grid, component="Ez", center=(0.0, 0.0, 0.0),
+                          size=(0.0, 0.0, 0.0),
+                          envelope=ContinuousEnvelope(frequency=1.0, is_integrated=True))
+    assert source.is_integrated and not hasattr(source, "withdraw")
+    reasons = _reasons(product.fused_hd_pair_coverage(fields, pml, (source,)))
+    assert not any("standing integrated" in reason or "withdraw" in reason
+                   for reason in reasons), reasons
 
 
 def test_a_non_integrated_electric_source_is_not_this_seams_business(product):
@@ -371,8 +414,9 @@ def test_a_non_integrated_electric_source_is_not_this_seams_business(product):
     assert not any("withdraw" in reason for reason in reasons), reasons
 
 
-def test_a_magnetic_source_is_withdrawn_one_seam_earlier(product):
-    """``driver.py:3289-3290``: the magnetic withdraw is over ``step_B``."""
+def test_a_magnetic_source_is_not_this_seams_business(product):
+    """``withdraw_hoist.standing_withdraws`` lists electric sources only: the magnetic
+    family's one pass in the seam is the ``f_minus_p`` restore, which writes B alone."""
     fields, pml = build()
     reasons = _reasons(product.fused_hd_pair_coverage(fields, pml, (_Magnetic(),)))
     assert not any("withdraw" in reason for reason in reasons), reasons
@@ -559,12 +603,14 @@ def test_an_aliased_scratch_pair_is_refused_rather_than_launched(product):
     for name in product.ROTATED:
         setattr(holder, name, arrays[name])
     # The healthy build succeeds.
-    product.plan_fused_hd_pair_from_arrays(arrays, flat, 0.35, (1, 1, 0), holder)
+    product.plan_fused_hd_pair_from_arrays(arrays, flat, 0.35, (1, 1, 0), holder,
+    chunk_bounds=_chunk_record(arrays))
     # The aliased one is refused BEFORE any launch.
     arrays["scratch_Hx"] = arrays["Hx"]
     with pytest.raises((ValueError, RuntimeError)):
         plan = product.plan_fused_hd_pair_from_arrays(arrays, flat, 0.35, (1, 1, 0),
-                                                      holder)
+                                                      holder,
+                                                      chunk_bounds=_chunk_record(arrays))
         plan._resolve()
 
 
@@ -588,7 +634,8 @@ def test_an_input_that_aliases_an_output_is_refused(product):
     # B bound to the same allocation as D: the launch would read a volume it writes.
     arrays["Bx"] = arrays["Dx"]
     with pytest.raises(ValueError):
-        product.plan_fused_hd_pair_from_arrays(arrays, flat, 0.35, (1, 1, 0), holder)
+        product.plan_fused_hd_pair_from_arrays(arrays, flat, 0.35, (1, 1, 0), holder,
+        chunk_bounds=_chunk_record(arrays))
 
 
 def test_the_module_is_importable_without_triton(product):
@@ -735,7 +782,8 @@ def test_every_exclusion_from_the_lift_is_a_measurement_not_a_list(gate):
         one captured seed, measured by a two-run control, so no cross-arrangement byte
         claim is defined;
       * ``refused`` -- the product's predicate refused the row BY NAME, and the leg
-        cross-checks the refused set against the seam record's own withdraw flag.
+        cross-checks the refused set against the rows whose own recorded sources carry
+        a working withdraw (``hd_seam_restore.lift_withdraw_accounting``).
     """
     import inspect as _inspect
 
@@ -755,7 +803,7 @@ def test_every_exclusion_from_the_lift_is_a_measurement_not_a_list(gate):
     leg = _inspect.getsource(gate.leg_lift)
     assert "rows_refused_as_non_deterministic" in leg
     assert "rows_unliftable_on_this_host" in leg
-    assert "refused_expected_from_the_seam_record" in leg
+    assert "refused_expected_from_the_row_sources" in leg
     # The denominator is stated, not implied.
     assert "the_denominator" in leg
     # AND THE VERDICT RECONCILES THE THREE EXCLUSIONS WITH THE CELL, as SET equalities
@@ -789,6 +837,7 @@ def test_the_gate_binds_the_driver_and_the_composer(gate):
     """A driver or composer move must withhold this credit, not be invisible."""
     for name in ("meep_gpu/driver.py", "meep_gpu/triton_kernels/launch.py",
                  "meep_gpu/triton_kernels/kernels.py",
+                 "meep_gpu/triton_kernels/forms.py",
                  "meep_gpu/withdraw_hoist.py",
                  "meep_gpu/triton_kernels/fused_hd_pair.py"):
         assert name in gate.SOURCES

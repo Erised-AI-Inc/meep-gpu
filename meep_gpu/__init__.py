@@ -47,70 +47,102 @@ reference, which never consults a kernel table.
 
 from __future__ import annotations
 
-from .absorber import AbsorberLayer  # One mp.Absorber face, for FdtdDriver.set_absorber.
-from .backends import available_gpu, cupy_available, missing_dependencies, resolve_backend, to_numpy
-from .driver import (
-    FdtdCancelled,
-    FdtdDivergence,
-    FdtdDriver,
-    FdtdNonlinearityOutOfRange,
-)
-# The MEEP entry point: lift a constructed mp.Simulation onto the stepper. MEEP is
-# imported lazily INSIDE these functions, so this line stays importable on a machine
-# that has never had MEEP installed — which every other module here also assumes.
-from .from_meep import (
-    GpuCompatibility,
-    GpuRunResult,
-    MeepSimulationNotLiftable,
-    # The type of ``GpuRunResult.monitors`` and ``driver.migrated_monitors``.
-    # Exported because it is not a plain dict and the difference is the point: it
-    # OWNS the MEEP monitor objects, which is what stops a later run's monitor from
-    # resolving against a collected earlier one's recycled address.
-    MigratedMonitors,
-    # Which of the three per-point susceptibility-sigma routes a structured
-    # dispersive lift took, and what it measured. Exported because the routes are
-    # not interchangeable — the reader is exact, the declared-geometry lookup is
-    # exact to MEEP's float32 storage and carries a per-point check, the chi1inv
-    # inversion is 4-6 significant digits — and a caller comparing two lifts has no
-    # other way to see which one ran.
-    StructuredSigmaLift,
+# THE PUBLIC NAMES ARE BOUND ON FIRST USE (PEP 562), NOT AT IMPORT. ``import meep_gpu``
+# loads this file and nothing else from the package; ``meep_gpu.FdtdDriver``, ``from
+# meep_gpu import lift_simulation`` and ``from meep_gpu import *`` import the defining
+# module then, exactly as an eager import would have, and bind the name here so the
+# lookup happens once.
+#
+# Why: importing a kernel module (``meep_gpu.cuda_kernels.<family>``, the array-path
+# modules, ``meep_gpu.code_identity``) imports this package first. Eager imports here put
+# the driver, the dispatch planners and the MEEP lift into every process that touches
+# the package, so every gate's import record held them and an edit to the dispatch layer
+# moved the evidence of every kernel. Lazy names keep a kernel gate's import record to
+# the modules it actually uses (``parity/meep_gpu/test_gate_import_closure.py``).
+#
+# No module of the package reads the environment, installs a subnormal policy or probes
+# a backend at import (each is done by a call), so binding a name later changes no
+# decision; ``meep_gpu/test_lazy_package.py`` holds both halves of that.
+#
+# name -> (defining submodule, attribute). One line per exported name.
+_LAZY = {
+    "AbsorberLayer": ("absorber", "AbsorberLayer"),  # One mp.Absorber face, for FdtdDriver.set_absorber.
+    "available_gpu": ("backends", "available_gpu"),
+    "cupy_available": ("backends", "cupy_available"),
+    "missing_dependencies": ("backends", "missing_dependencies"),
+    "resolve_backend": ("backends", "resolve_backend"),
+    "to_numpy": ("backends", "to_numpy"),
+    "FdtdCancelled": ("driver", "FdtdCancelled"),
+    "FdtdDivergence": ("driver", "FdtdDivergence"),
+    "FdtdDriver": ("driver", "FdtdDriver"),
+    "FdtdNonlinearityOutOfRange": ("driver", "FdtdNonlinearityOutOfRange"),
+    # The MEEP entry point: lift a constructed mp.Simulation onto the stepper. MEEP is
+    # imported lazily INSIDE these functions, so these names stay importable on a machine
+    # that has never had MEEP installed -- which every other module here also assumes.
+    "GpuCompatibility": ("from_meep", "GpuCompatibility"),
+    "GpuRunResult": ("from_meep", "GpuRunResult"),
+    "MeepSimulationNotLiftable": ("from_meep", "MeepSimulationNotLiftable"),
+    # The type of ``GpuRunResult.monitors`` and ``driver.migrated_monitors``. Exported
+    # because it is not a plain dict and the difference is the point: it OWNS the MEEP
+    # monitor objects, which is what stops a later run's monitor from resolving against a
+    # collected earlier one's recycled address.
+    "MigratedMonitors": ("from_meep", "MigratedMonitors"),
+    # Which of the two per-point susceptibility-sigma routes a structured dispersive
+    # lift took, and what it measured. Exported because the routes are not
+    # interchangeable -- the declared-geometry lookup is exact to MEEP's float32 storage
+    # and carries a per-point check, the chi1inv inversion is 4-6 significant digits --
+    # and a caller comparing two lifts has no other way to see which one ran.
+    "StructuredSigmaLift": ("from_meep", "StructuredSigmaLift"),
     # Raised when a MEEP step function hosted by ``run_on_gpu`` asks the simulation
-    # facade for something the driver has no counterpart for. Exported because it is
-    # a refusal a caller can act on — host the step function on CPU MEEP, or drop it
-    # — and because catching it must not mean catching AttributeError.
-    StepFunctionNotHosted,
-    gpu_compatibility,
-    lift_simulation,
-    run_on_gpu,
-)
-# Only the capitalized names and ``do_harminv`` are re-exported. Binding the
-# lowercase ``harminv`` FUNCTION here would shadow the ``meep_gpu.harminv``
-# MODULE on the package, so ``import meep_gpu.harminv as hv`` would hand back a
-# function. MEEP's own surface is ``mp.Harminv`` and ``mp.py_do_harminv``; the
-# convenience call stays reachable as ``meep_gpu.harminv.harminv``.
-from .grid import Mirror  # MEEP's mp.Mirror(direction, phase): the symmetry argument's element.
-from .harminv import Harminv, Mode, do_harminv
-# The float32 subnormal policy: one flag, obeyed by the host FPU, CuPy and Triton
-# alike. ``get_subnormal_policy`` and not ``subnormal_policy`` for the same reason
-# spelled out for ``harminv`` above — the latter name would shadow the MODULE.
-# Importing this costs nothing: the module imports only the standard library and
-# ``backends``, never cupy, triton or meep.
-from .subnormal_policy import (
-    FLUSH,
-    KEEP,
-    MATCH_MEEP,
-    SubnormalPolicyLocked,
-    SubnormalPolicyUnattainable,
-    default_policy,
-    get_subnormal_policy,
-    install_subnormal_policy,
-    policy_stamp,
-    resolve_match_meep,
-    set_subnormal_policy,
-)
+    # facade for something the driver has no counterpart for. Exported because it is a
+    # refusal a caller can act on -- host the step function on CPU MEEP, or drop it --
+    # and because catching it must not mean catching AttributeError.
+    "StepFunctionNotHosted": ("from_meep", "StepFunctionNotHosted"),
+    "gpu_compatibility": ("from_meep", "gpu_compatibility"),
+    "lift_simulation": ("from_meep", "lift_simulation"),
+    "run_on_gpu": ("from_meep", "run_on_gpu"),
+    "Mirror": ("grid", "Mirror"),  # MEEP's mp.Mirror(direction, phase): the symmetry argument's element.
+    # Only the capitalized names and ``do_harminv`` are exported. Binding the lowercase
+    # ``harminv`` FUNCTION here would shadow the ``meep_gpu.harminv`` MODULE on the
+    # package, so ``import meep_gpu.harminv as hv`` would hand back a function. MEEP's own
+    # surface is ``mp.Harminv`` and ``mp.py_do_harminv``; the convenience call stays
+    # reachable as ``meep_gpu.harminv.harminv``.
+    "Harminv": ("harminv", "Harminv"),
+    "Mode": ("harminv", "Mode"),
+    "do_harminv": ("harminv", "do_harminv"),
+    # The float32 subnormal policy: one flag, obeyed by the host FPU, CuPy and Triton
+    # alike. ``get_subnormal_policy`` and not ``subnormal_policy`` for the same reason
+    # spelled out for ``harminv`` above: the latter name would shadow the MODULE. The
+    # module imports only the standard library and ``backends``, never cupy, triton or
+    # meep.
+    "FLUSH": ("subnormal_policy", "FLUSH"),
+    "KEEP": ("subnormal_policy", "KEEP"),
+    "MATCH_MEEP": ("subnormal_policy", "MATCH_MEEP"),
+    "SubnormalPolicyLocked": ("subnormal_policy", "SubnormalPolicyLocked"),
+    "SubnormalPolicyUnattainable": ("subnormal_policy", "SubnormalPolicyUnattainable"),
+    "default_policy": ("subnormal_policy", "default_policy"),
+    "get_subnormal_policy": ("subnormal_policy", "get_subnormal_policy"),
+    "install_subnormal_policy": ("subnormal_policy", "install_subnormal_policy"),
+    "policy_stamp": ("subnormal_policy", "policy_stamp"),
+    "resolve_match_meep": ("subnormal_policy", "resolve_match_meep"),
+    "set_subnormal_policy": ("subnormal_policy", "set_subnormal_policy"),
+}
+
+#: The submodules an eager ``import meep_gpu`` used to leave bound on the package, so
+#: ``import meep_gpu; meep_gpu.stepping`` keeps working without importing the submodule
+#: first. Imported on first attribute access; any other submodule stays an
+#: AttributeError until imported, as it always was.
+_SUBMODULES = frozenset((
+    "absorber", "amp_interpolation", "backends", "chunk_map", "dft", "dispersion",
+    "driver", "fastpath", "fields", "from_meep", "gaussian_beam", "grid", "harminv",
+    "host_writes", "part_products", "pml", "readback", "sigma_lookup", "sigma_recovery",
+    "smoothing", "sources", "stepping", "subnormal_policy",
+))
 
 
 def is_available() -> bool:  # Live GPU capability: prefer_gpu=True resolves on this host.
+    from .backends import available_gpu  # noqa: PLC0415 - bound on use, see _LAZY
+
     return available_gpu() is not None
 
 
@@ -166,7 +198,25 @@ def __getattr__(name: str):
         value = _read_version()
         globals()["__version__"] = value
         return value
+    target = _LAZY.get(name)
+    if target is not None:
+        from importlib import import_module  # noqa: PLC0415
+
+        value = getattr(import_module(f"{__name__}.{target[0]}"), target[1])
+        globals()[name] = value
+        return value
+    if name in _SUBMODULES:
+        from importlib import import_module  # noqa: PLC0415
+
+        # The import binds the submodule on the package itself.
+        return import_module(f"{__name__}.{name}")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    # What an eager import listed: this module's own names, every exported name and the
+    # submodules it bound.
+    return sorted(set(globals()) | set(__all__) | _SUBMODULES)
 
 
 __all__ = [

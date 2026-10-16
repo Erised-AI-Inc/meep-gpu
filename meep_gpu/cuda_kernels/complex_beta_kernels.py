@@ -37,71 +37,39 @@ unfolded grid. Building beta first and folding second would have produced two
 kernels that each served part of one row set and a composition nobody had
 measured.
 
-THE INSERT, TRANSCRIBED
+THE PASS, TRANSCRIBED (``stepping._special_kz_beta_term``, ``_apply_folded_increment``)
 =============================================================================
 
-* CALL SITES -- ``step_B`` (stepping.py:384-391): Bx adds the Ey-CENTRE term at
-  sign +1 (:389), By the Ex-CENTRE term at sign -1 (:391), Bz nothing; ``step_D``
-  (:438-445): Dx <- Hy at +1 (:443), Dy <- Hx at -1 (:445), Dz nothing. ``cc``
-  runs over ``d_c`` in {X, Y} only, which is why the third component gets none.
-* COEFFICIENT (stepping.py:797-799) -- ``sign * 2*pi * grid.beta * grid.dt`` in
-  float64, then multiplied by ``+1j`` on the MAGNETIC side and ``-1j`` on the
-  electric one THROUGH PYTHON'S OWN COMPLEX ARITHMETIC. NO ``dtdx``: this is an
-  analytic derivative, not a finite difference.
-* ROUNDING (stepping.py:811) -- ``partner_values.dtype.type(coefficient)``, ONE
-  rounding to complex64 on the host, then ``return -(c * partner)``.
-* POSITION -- added to ``curl`` AFTER ``_curl_from_operands`` (:342 / :429) and
-  BEFORE ``_mask_non_owned_cells`` (:369 / :450). Under a fold that mask has TWO
-  arms and both of them reach a beta target, so an insert below the masks leaves a
-  live increment on the mirror plane and on the far-ghost plane -- invisible in the
-  interior. That is the gate's ``beta_after_mask`` needle.
-* PARTNER -- the SAME-CELL component snapshot (:293 electric, :408 magnetic), which
-  in every one of the six curl terms is a CENTRE operand the stencil already
-  loaded: target 0 takes ``f_2`` and target 1 takes ``f_1``. No new pointer, no
-  ghost rule, no fold parity, no wrap ever touches it.
-
-THE SIGNED ZERO IN THE REAL WORD IS MEASURED, NOT SYNTHESISED
-=============================================================================
-
-``coefficient * 1j`` in Python is ``complex(coefficient, 0.0) * complex(0.0, 1.0)``
-= ``(coefficient*0.0 - 0.0*1.0, coefficient*1.0 + 0.0*0.0)``, so the REAL word is
-``coefficient * 0.0 - 0.0`` -- which is ``-0.0`` exactly when ``coefficient`` is
-negative and the ``+1j`` (magnetic) branch is taken, and ``+0.0`` in every other
-combination. MEASURED on this interpreter over the five corpus betas at two
-courants (2026-08-20, ``numpy`` 2.x): of the 40 (sign, side) combinations, the ten
-with ``coefficient < 0`` on the magnetic side carry ``0x80000000`` in the real
-word and the other thirty carry ``0x00000000``. That asymmetry is why
-:func:`beta_curl_coefficients` returns the word Python produced instead of
-writing ``0.0f`` into the kernel: with the field's other word exactly zero the
-cross term ``c_re * z`` carries the zero's SIGN into an addend, and
-``fma(x, y, -0.0f)`` differs from ``fma(x, y, +0.0f)`` wherever ``x*y`` is exactly
-zero -- which a thin absorber's deepest ``kms`` reaches from all-zero state. The
-Triton sibling ``special_kz.beta_curl_coefficients`` passes the word through for
-the same reason and a gate mutation builds it in-kernel as a literal.
-
-THE PRODUCT IS COEFFICIENT-LEFT, AND THAT IS A NAME RATHER THAN AN ARITHMETIC
-=============================================================================
-
-``stepping.py:811`` spells ``partner_values.dtype.type(coefficient) *
-partner_values`` -- the SCALAR on the left, so NumPy's and CuPy's inner loop takes
-the coefficient as ``in1``. Under ``FMA_V1`` that decides which product is fused
-and which is separately rounded, so the orientation is normative. This family
-therefore emits ``mul_imag_coefficient_left`` as a one-line call into
-``complex_emitter``'s own ``rotate_field_left``, whose body already fuses the FIRST
-operand's product: "left" means "first operand" in every one of this family's
-orientations, so the two are the same arithmetic and a second body would be a
-second spelling of one rule -- with two arms to keep in step by hand.
-``test_complex_beta.py`` pins the emitted helper to that one line so a future edit
-cannot quietly grow a body.
-
-THE TWO ARMS GO BLIND ON THIS PRODUCT, AND THAT IS A MEASUREMENT TOO. With the
-coefficient's real word exactly ``+-0.0`` the fused and the separately-rounded
-expansions agree bit for bit (``fma(+-0, z, p)`` rounds ``p`` once and adds a
-signed zero, which is what the naive form computes), so the arm cannot be
-discriminated HERE. It is still bound, because every OTHER multiply in the kernel
--- the phase rotation, the ``dtdx`` scalar product, the four PML products -- is the
-certified complex family's and does discriminate. The predicate below inherits that
-licence check rather than relaxing it.
+* CALL SITES -- after EVERY component's curl (step_db.cpp:161-175; ``stepping.step_B``
+  and ``step_D``'s beta loop): Bx <- Ey at sign +1, By <- Ex at sign -1, Bz nothing;
+  Dx <- Hy at +1, Dy <- Hx at -1, Dz nothing. ``cc`` runs over ``d_c`` in {X, Y}
+  only, which is why the third component gets none.
+* COEFFICIENT -- ``sign * 2*pi * grid.beta * grid.dt`` in float64, negated on the
+  electric side (``coefficient if magnetic else -coefficient``), then ONE rounding to
+  float32 (``part_products._realnum``). NO complex coefficient is formed anywhere: the
+  ``+-1j`` of the complex branch is a QUARTER TURN of the partner's parts,
+  ``i*c*(x + iy) = -(c*y) + i*(c*x)`` (``part_products.quarter_turn``) -- two real
+  products and a sign flip -- and the increment is its negation, in curl sign
+  convention. NO ``dtdx``: this is an analytic derivative, not a finite difference.
+* POSITION -- a PASS OF ITS OWN after the component's curl, through MEEP's additive
+  ladder keyed on the same chunk flags as the curl (step_generic.cpp:255-333):
+  ``f -= sinv*inc`` outside the component's dsigu chunks, ``fu -= (df = sinv*inc);
+  f -= sinv_u*df`` inside them, with MEEP's unowned cells at ``(+0, +0)`` and every
+  stage SUBTRACTING, so a cell MEEP's loop never visits keeps its word, ``-0``
+  included. Each kernel is the FOLDED complex curl with that pass inserted after the
+  ``pml_apply`` call of targets 0 and 1 (``folded_pass.complex_beta_insert``), on the
+  word pair ``pml_apply`` just stored. Until 0.10 the increment was a complex product
+  added to the curl before the masks, riding the curl's own recurrence; on the
+  complex lane's ``bf`` case the old folding differs in 120,035 of 278,318 words
+  (bit_parity_0_10 KERNELS.md section 6).
+* PARTNER -- the SAME-CELL component snapshot, the partner's stored word pair at the
+  cell. In both beta terms it is the CENTRE operand the stencil already loaded --
+  target 0's ``f_2`` (the second source) and target 1's ``f_1`` (the first) -- and
+  both of those registers are windowed along z (``cwindow(g, idx, k, ph_z, pz)``),
+  the invariant axis of every beta grid, where ``k_point`` keeps a hard zero
+  (``Grid._resolve_beta``): no phase, so the register IS the stored word pair, and
+  :func:`beta_source` refuses by name if either register's load line is anything
+  else. No new pointer, no ghost rule, no fold parity, no wrap ever touches it.
 
 WHAT IS NOT HERE. ``update_H`` / ``update_E`` read nothing beta-dependent: beta
 enters the step loop at stepping.py:384-391 and :467-474 and nowhere else. So
@@ -123,6 +91,7 @@ from typing import Any, Dict, Sequence, Tuple
 from . import complex_emitter
 from . import complex_folded_kernels as _folded
 from . import coverage as _coverage
+from . import folded_pass as _folded_pass
 
 __all__ = (
     "BETA_COMPLEX_ADMISSION",
@@ -180,197 +149,157 @@ CURL_SUB_STEPS: Tuple[str, ...] = ("step_B", "step_D")
 #: and ``step_D`` with ``magnetic=False`` (:472, :474).
 MAGNETIC: Dict[str, bool] = {"step_B": True, "step_D": False}
 
-#: Which stencil register each beta target's partner already sits in. Target 0
-#: (Bx / Dx) takes the SECOND source's centre -- Ey on the B side, Hy on the D side
-#: -- which the emitted template names ``f_2``; target 1 (By / Dy) takes the FIRST
-#: source's centre, ``f_1``. Target 2 takes none. Transcribed from
-#: ``stepping.B_CURL_TERMS`` / ``D_CURL_TERMS`` (stepping.py:214-223) against the
-#: call sites (:389/:391, :472/:474), and pinned against them by
-#: ``test_complex_beta.py``.
-#:
-#: THE REGISTER MUST BE THE UNSHIFTED CENTRE, never an ``sf``/``ss`` shifted
-#: operand: ``_special_kz_beta_term`` takes the component SNAPSHOT (:293, :408) and
-#: no shift helper is anywhere near it.
+#: Which register each beta target's partner sits in: target 0 (Bx / Dx) takes the
+#: SECOND source's centre -- Ey on the B side, Hy on the D side -- which the emitted
+#: template names ``f_2``; target 1 (By / Dy) takes the FIRST source's centre, ``f_1``.
+#: Target 2 takes none. Transcribed from ``stepping.B_CURL_TERMS`` / ``D_CURL_TERMS``
+#: against step_B's and step_D's beta loops, and pinned against them by
+#: ``test_complex_beta.py``. THE REGISTER MUST BE THE UNSHIFTED CENTRE, never an
+#: ``sf``/``ss`` shifted operand, and its load must be the window along z
+#: (:data:`BETA_PARTNER_LOADS`): the beta pass reads the stored word pair at the cell.
 BETA_PARTNER: Dict[int, Tuple[str, str]] = {
     0: ("f_2", "bp"),
     1: ("f_1", "bm"),
 }
 
+#: Each partner register's load line in the folded source, by ``(sub_step, target)``:
+#: the window along z of the source the beta term pairs (g1 for target 0, g0 for
+#: target 1). On a beta grid z is invariant with no phase, so the window is a plain
+#: load of the stored word pair.
+BETA_PARTNER_LOADS: Dict[int, str] = {
+    0: "        cf f_2 = cwindow(g1, idx, k, ph_z, pz);",
+    1: "        cf f_1 = cwindow(g0, idx, k, ph_z, pz);",
+}
 
-def beta_curl_coefficients(beta: float, dt: float, magnetic: bool):
-    """``((plus_re, plus_im), (minus_re, minus_im))`` -- stepping.py:797-811, twice.
 
-    Transcribed line for line, with the ``+-1j`` branch TAKEN because this family
-    is complex storage only::
+def beta_curl_coefficients(beta: float, dt: float, magnetic: bool) -> Tuple[float, float]:
+    """``(target 0, target 1)`` -- ``stepping._special_kz_beta_term``'s real coefficient.
 
-        coefficient = sign * 2.0 * math.pi * grid.beta * grid.dt   # :770, float64
-        coefficient = coefficient * (1j if magnetic else -1j)      # :771-772
-        partner_values.dtype.type(coefficient)                     # :784, ONE round
+    Transcribed line for line, complex storage::
 
-    TWO COEFFICIENTS, ONE PER SIGN, rather than one negated in the kernel. Complex
-    negation is exact, so the two spellings cannot differ in value -- but binding
-    both keeps the transcription literal per call site instead of resting on that
-    identity, and it is what the gate's ``swap_beta_signs`` host mutation corrupts.
+        coefficient = sign * 2.0 * math.pi * grid.beta * grid.dt          # float64
+        part_products.quarter_turn(coefficient if magnetic else -coefficient, g)
+        # _realnum: ONE round of the (negated) double to the part dtype, float32
 
-    THE REAL WORD IS WHATEVER PYTHON PRODUCED and is passed through: see the module
-    docstring for the measurement. ``float()`` of a ``numpy.float32`` preserves the
-    zero's sign, so the words the kernel receives are the array path's bits.
+    so the B side (``+1j``) passes ``+coefficient`` and the D side (``-1j``)
+    ``-coefficient``, negated in double before the one rounding. TWO WORDS, ONE PER
+    CALL SITE (sign +1 for target 0, -1 for target 1), rather than one negated in the
+    kernel: the negation and the rounding commute exactly, but binding both keeps the
+    transcription literal per call site, and it is what the gate's
+    ``beta_coefficients_exchanged`` host mutation corrupts. NO COMPLEX COEFFICIENT is formed anywhere: the quarter turn
+    is a part swap with real products (bit_parity_0_10 DESIGN.md D16).
 
-    ``numpy`` is imported in the BODY so this module stays stdlib-only at import
-    and can be read on the census host; the rounding is spelled with the same
-    object ``stepping`` uses (``dtype.type``, i.e. ``numpy.complex64``) rather than
-    with ``struct``, so the two cannot round differently.
+    ``numpy`` is imported in the BODY so this module stays stdlib-only at import; the
+    rounding is ``numpy.float32``, the same object ``part_products._realnum`` uses.
     """
     import numpy  # noqa: PLC0415
 
     out = []
     for sign in (1.0, -1.0):
-        coefficient = sign * 2.0 * math.pi * float(beta) * float(dt)  # :770
-        coefficient = coefficient * (1j if magnetic else -1j)         # :771-772
-        rounded = numpy.complex64(coefficient)                        # :784
-        out.append((float(numpy.float32(rounded.real)),
-                    float(numpy.float32(rounded.imag))))
-    return tuple(out)
-
-
-#: The coefficient-left complex product, as a NAME over ``complex_emitter``'s own
-#: arm-dependent body. See the module docstring: "left" is "first operand" in every
-#: one of this family's orientations, so this is not a second arithmetic and it has
-#: no arm branch of its own.
-_MUL_IMAG_HELPER = '''
-// (c_re + i*c_im) * z with the COEFFICIENT on the LEFT -- stepping.py:784's
-// partner_values.dtype.type(coefficient) * partner_values, whose left operand is
-// the scalar. THIS IS rotate_field_left WITH THE COEFFICIENT AS THE FIRST
-// OPERAND, which is the whole of it: that helper fuses the first operand's
-// product under FMA_V1 and rounds both separately under NAIVE, and "left" means
-// "first operand" in every orientation this family carries. A second body here
-// would be a second spelling of one rule, with two arms to keep in step by hand.
-__device__ __forceinline__ cf mul_imag_coefficient_left(cf c, cf z) {
-    return rotate_field_left(c, z);
-}
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 784->811
-
-
-def _beta_line(register: str, coefficient: str) -> str:
-    """The one statement the beta insert adds to one target."""
-    return (
-        f"        // beta (stepping.py:770-784) at this term's own sign, added to\n"  # stepping.py live lines for the frozen device-text citation(s) in this string: 770-784->797-811
-        f"        // the curl BEFORE the masks -- the array path's order (:361/:363\n"  # stepping.py live lines for the frozen device-text citation(s) in this string: 361->389, 363->391
-        f"        // after :342 and before :369; :443/:445 after :429, before :450).\n"
-        f"        // curl + (-(c * partner)) IS curl - (c * partner): IEEE defines\n"
-        f"        // subtraction as addition of the negation, complex negation\n"
-        f"        // negates both words and complex add is plane-wise, so the single\n"
-        f"        // subtract is the same bits on every input, signed zeros included.\n"
-        f"        curl = cf_sub(curl, mul_imag_coefficient_left({coefficient}, {register}));\n")
-
-
-def _deltas_for(sub_step: str) -> Tuple[Tuple[str, str, str, int], ...]:
-    """Every text delta this family applies to the FOLDED complex source, in order.
-
-    ``(label, old, new, expected sites)``. A SITE COUNT IS A WELD: if a sibling
-    moves an anchor the transform must FAIL rather than emit a kernel with one beta
-    term missing, which compiles, runs, and is wrong on one component.
-
-    NO COMMENT GOES INSIDE THE PARAMETER LIST, and that is a hard constraint rather
-    than a style choice: ``gate_cuda_complex.parse_signature`` reads the signature
-    with ``[^)]*``, so a ``)`` anywhere between the kernel's parentheses -- in a
-    source citation, say -- truncates the parsed parameter list and the
-    host-compiled backend builds a driver with the wrong arity. Measured
-    2026-08-20: a four-line citation in the signature cost one parameter, 34 of 35,
-    and the host leg failed to link. The explanation lives in the body instead.
-    """
-    backward = complex_emitter.KERNELS[sub_step][1]
-    out = [
-        (
-            "coefficient_left_helper",
-            "\n// stepping._shift_up (stepping.py:1725-1786), PERIODIC and METALLIC",  # stepping.py live lines for the frozen device-text citation(s) in this string: 1725-1786->1772-1833
-            _MUL_IMAG_HELPER
-            + "\n// stepping._shift_up (stepping.py:1725-1786), PERIODIC and METALLIC",  # stepping.py live lines for the frozen device-text citation(s) in this string: 1725-1786->1772-1833
-            1,
-        ),
-        (
-            "beta_coefficient_arguments",
-            "    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi\n) {",
-            "    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,\n"
-            "    float bp_re, float bp_im, float bm_re, float bm_im\n) {",
-            1,
-        ),
-        (
-            "beta_coefficient_registers",
-            "    cf pz; pz.re = pzr; pz.im = pzi;\n",
-            "    cf pz; pz.re = pzr; pz.im = pzi;\n"
-            "    // The two complex64-rounded beta coefficients, one per call-site\n"
-            "    // sign, host-rounded ONCE on the host at stepping.py:784. The real\n"  # stepping.py live lines for the frozen device-text citation(s) in this string: 784->811
-            "    // word is a SIGNED zero left there by Python's own complex\n"
-            "    // multiply and is passed through, never synthesised here.\n"
-            "    cf bp; bp.re = bp_re; bp.im = bp_im;\n"
-            "    cf bm; bm.re = bm_re; bm.im = bm_im;\n",
-            1,
-        ),
-    ]
-    for target, (register, coefficient) in sorted(BETA_PARTNER.items()):
-        mask = _folded.fold_mask_lines(
-            complex_emitter._MASK_AXES[backward][target], target)
-        out.append((f"beta_term_target_{target}",
-                    mask, _beta_line(register, coefficient) + mask, 1))
-    out.append((
-        "rename",
-        f'extern "C" __global__ void {_folded.FOLDED_KERNELS[sub_step]}(',
-        f'extern "C" __global__ void {BETA_KERNELS[sub_step]}(',
-        1,
-    ))
+        coefficient = sign * 2.0 * math.pi * float(beta) * float(dt)
+        out.append(float(numpy.float32(coefficient if magnetic else -coefficient)))
     return tuple(out)
 
 
 #: The delta labels, in application order -- what a reader checks a diff against.
-BETA_DELTAS: Tuple[str, ...] = tuple(
-    label for label, _o, _n, _s in _deltas_for("step_B"))
+BETA_DELTAS: Tuple[str, ...] = (
+    "fold_helpers",
+    "beta_coefficient_arguments",
+    "beta_pass_target_0",
+    "beta_pass_target_1",
+    "rename",
+)
 
 
-def beta_source(sub_step: str, expansion) -> str:
+def _replace_counted(source: str, label: str, old: str, new: str, sub_step: str) -> str:
+    found = source.count(old)
+    if found != 1:
+        raise RuntimeError(
+            f"the complex-beta delta {label!r} for {sub_step} matched {found} sites in the "
+            f"folded-complex source, not 1; a sibling has moved an anchor and this "
+            f"transform must not emit a kernel with a beta pass missing")
+    return source.replace(old, new, 1)
+
+
+def beta_source(sub_step: str, folded: str = "") -> str:
     """The device source for one complex-beta curl sub-step under one arm.
 
-    Derived from :func:`complex_folded_kernels.folded_source`, which is itself
-    derived from ``complex_emitter``: the fold branches ride along and are simply
-    dead on an unfolded grid, which is what lets ONE pair of kernels serve all four
-    beta corpus rows. ``expansion`` is REQUIRED and never defaulted.
+    Derived from :func:`complex_folded_kernels.folded_source`, which is itself derived
+    from ``complex_emitter``: the fold branches ride along and are simply dead on an
+    unfolded grid, which is what lets ONE pair of kernels serve all four beta corpus
+    rows. ``folded`` is the folded source to derive from (empty: the shipped one); a
+    gate passes a mutated sibling to see the mutation reach this family.
+
+    The deltas (:data:`BETA_DELTAS`), each refused by name on a moved anchor:
+    ``folded_pass.COMPLEX_FOLD_HELPERS`` appended to the prelude; the two coefficients
+    bound before the chunk record ``cb``, which stays last; after the ``pml_apply`` call
+    of target 0 and of target 1, MEEP's beta pass (``folded_pass.complex_beta_insert``):
+    the curl's own mask lines as MEEP's ownership flag, ``-quarter_turn(c, g)`` part by
+    part and the folded ladder on the words ``pml_apply`` just stored; the entry point
+    renamed.
+
+    THE ORDER IS MEEP'S. ``step_db`` runs the beta pass after EVERY component's curl and
+    a thread here runs it right after its own component's: the beta increment of a B (D)
+    component reads only E (H), which the sub-step never writes.
     """
     if sub_step not in BETA_KERNELS:
         raise ValueError(
             f"sub_step must be one of {sorted(BETA_KERNELS)}, got {sub_step!r}")
-    source = _folded.folded_source(sub_step, expansion)
-    for label, old, new, expected in _deltas_for(sub_step):
-        found = source.count(old)
-        if found != expected:
+    source = folded or _folded.folded_source(sub_step)
+    marker = 'extern "C" __global__ void '
+    if source.count(marker) != 1:
+        raise RuntimeError(
+            f"the folded-complex source for {sub_step} carries {source.count(marker)} entry "
+            f"points, not 1; the complex-beta delta 'fold_helpers' has no anchor")
+    prelude, kernel = source.split(marker, 1)
+    source = (prelude.rstrip("\n") + "\n" + _folded_pass.COMPLEX_FOLD_HELPERS + "\n"
+              + marker + kernel)
+    source = _replace_counted(
+        source, "beta_coefficient_arguments",
+        "    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,\n"
+        "    const int* __restrict__ cb\n) {",
+        "    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,\n"
+        "    float bp, float bm,\n"
+        "    const int* __restrict__ cb\n) {", sub_step)
+    for target in _folded_pass.BETA_TARGETS:
+        partner, coefficient = BETA_PARTNER[target]
+        prefix = f"        pml_apply(f{target}, u{target}, idx, "
+        what = f"the complex-beta delta 'beta_pass_target_{target}' for {sub_step}"
+        block = source[source.index(f"    // Target {target}:"):source.index(prefix)]
+        if block.count(BETA_PARTNER_LOADS[target] + "\n") != 1:
             raise RuntimeError(
-                f"the complex-beta delta {label!r} for {sub_step} matched {found} "
-                f"sites in the folded-complex source, not {expected}; a sibling has "
-                f"moved an anchor and this transform must not emit a kernel with a "
-                f"beta term missing")
-        source = source.replace(old, new)
-    return source
+                f"{what}: the partner register {partner} is not loaded by "
+                f"{BETA_PARTNER_LOADS[target].strip()!r} in that target's block; the beta "
+                f"pass reads the partner's stored word at the cell, and only the window "
+                f"along the invariant z axis is that word")
+        source = _folded_pass.insert_after_call(
+            source, prefix,
+            _folded_pass.complex_beta_insert(source, prefix, partner, coefficient, what),
+            what)
+    return _replace_counted(
+        source, "rename",
+        f'extern "C" __global__ void {_folded.FOLDED_KERNELS[sub_step]}(',
+        f'extern "C" __global__ void {BETA_KERNELS[sub_step]}(', sub_step)
 
 
-#: The mutable copy the launcher compiles, keyed by (sub-step, arm). The gate
+#: The mutable copy the launcher compiles, keyed by sub-step. The gate
 #: mutates through :func:`set_kernel_source`; ONE seam, no second copy to forget.
-_SOURCES: Dict[Tuple[str, int], str] = {}
+_SOURCES: Dict[str, str] = {}
 
 
-def kernel_source(sub_step: str, expansion) -> str:
-    """The device text this family would compile for one sub-step and arm."""
-    arm = complex_emitter.normalized_expansion(expansion)
-    key = (sub_step, arm)
-    if key not in _SOURCES:
-        _SOURCES[key] = beta_source(sub_step, arm)
-    return _SOURCES[key]
+def kernel_source(sub_step: str) -> str:
+    """The device text this family would compile for one sub-step."""
+    if sub_step not in _SOURCES:
+        _SOURCES[sub_step] = beta_source(sub_step)
+    return _SOURCES[sub_step]
 
 
-def set_kernel_source(sub_step: str, expansion, source: str) -> None:
+def set_kernel_source(sub_step: str, source: str) -> None:
     """Replace one kernel's device text -- the gate's mutation seam, and only that."""
     if sub_step not in BETA_KERNELS:
         raise ValueError(
             f"sub_step must be one of {sorted(BETA_KERNELS)}, got {sub_step!r}")
-    _SOURCES[(sub_step, complex_emitter.normalized_expansion(expansion))] = source
+    _SOURCES[sub_step] = source
 
 
 def reset_kernel_sources() -> int:
@@ -386,9 +315,8 @@ def corpus_digest() -> str:
 
     digest = hashlib.sha256()
     for sub_step in sorted(BETA_KERNELS):
-        for name in sorted(complex_emitter.EXPANSIONS):
-            digest.update(f"{sub_step}|{name}".encode("ascii"))
-            digest.update(beta_source(sub_step, name).encode("utf-8"))
+        digest.update(sub_step.encode("ascii"))
+        digest.update(beta_source(sub_step).encode("utf-8"))
     return digest.hexdigest()
 
 
@@ -651,9 +579,7 @@ def _proxy_for(grid: Any) -> Any:
     return _BetaFreeFoldedGrid(grid) if folded else _BetaFreeGrid(grid)
 
 
-def covers_complex_beta_curl(fields: Any, pml: Any, grid: Any, sub_step: str,
-                             license: Any = None,
-                             subnormal_policy: Any = None) -> tuple:
+def covers_complex_beta_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tuple:
     """Whether ``step_{B,D}_pml_complex_beta`` may serve this run.
 
     ``sub_step`` is ``"step_B"`` or ``"step_D"``. Returns ``(covered, reason)``.
@@ -663,8 +589,8 @@ def covers_complex_beta_curl(fields: Any, pml: Any, grid: Any, sub_step: str,
     beta reads zero and -- when the grid is folded -- which also reports no fold, so
     this family cannot drift to a weaker standard than the one it borrows its
     arithmetic and its masks from. The conductivity split, the halved int32 bound,
-    the volume and coefficient-vector tail and the EXPANSION licence are all
-    inherited rather than restated.
+    and the volume and coefficient-vector tail are all inherited rather than
+    restated.
 
     THE SUB-STEP ARGUMENT IS REQUIRED and carries more here than elsewhere: as well
     as the per-term conductivity split (``stepping._apply_curl`` reads
@@ -684,19 +610,15 @@ def covers_complex_beta_curl(fields: Any, pml: Any, grid: Any, sub_step: str,
              _coverage.covers_real_pml_complex_curl),
             ("complex_folded_kernels.covers_complex_folded_curl",
              _folded.covers_complex_folded_curl)):
-        served, _ = predicate(fields, pml, grid, sub_step, license=license,
-                              subnormal_policy=subnormal_policy)
+        served, _ = predicate(fields, pml, grid, sub_step)
         taken = _folded._already_served(served, name)
         if taken is not None:
             return False, taken
     return _coverage.covers_real_pml_complex_curl(
-        fields, pml, _proxy_for(grid), sub_step,
-        license=license, subnormal_policy=subnormal_policy)
+        fields, pml, _proxy_for(grid), sub_step)
 
 
-def covers_complex_beta_constitutive(fields: Any, pml: Any, grid: Any, side: str,
-                                     license: Any = None,
-                                     subnormal_policy: Any = None) -> tuple:
+def covers_complex_beta_constitutive(fields: Any, pml: Any, grid: Any, side: str) -> tuple:
     """Whether the CERTIFIED complex constitutive pair may serve a BETA run.
 
     ``side`` is ``"H"`` or ``"E"``; returns ``(covered, reason)``.
@@ -725,14 +647,12 @@ def covers_complex_beta_constitutive(fields: Any, pml: Any, grid: Any, side: str
              _coverage.covers_real_pml_complex_constitutive),
             ("complex_folded_kernels.covers_complex_folded_constitutive",
              _folded.covers_complex_folded_constitutive)):
-        served, _ = predicate(fields, pml, grid, side, license=license,
-                              subnormal_policy=subnormal_policy)
+        served, _ = predicate(fields, pml, grid, side)
         taken = _folded._already_served(served, name)
         if taken is not None:
             return False, taken
     return _coverage.covers_real_pml_complex_constitutive(
-        fields, pml, _proxy_for(grid), side,
-        license=license, subnormal_policy=subnormal_policy)
+        fields, pml, _proxy_for(grid), side)
 
 
 # ---------------------------------------------------------------------------
@@ -751,8 +671,8 @@ _COMPILE_OPTIONS: Tuple[str, ...] = ('--fmad=false',)
 _COMPLEX_THREADS = 256
 
 
-def _get_kernel(sub_step: str, expansion):
-    """Compile one sub-step under one arm, memoized on (name, options, policy, source).
+def _get_kernel(sub_step: str):
+    """Compile one sub-step, memoized on (name, options, policy, source).
 
     The source is read through :func:`kernel_source` PER CALL so a body rewritten
     through :func:`set_kernel_source` is a memo MISS and reaches NVRTC.
@@ -761,10 +681,9 @@ def _get_kernel(sub_step: str, expansion):
 
     from .compile_cache import get_or_compile, kernel_cache_key  # noqa: PLC0415
 
-    arm = complex_emitter.normalized_expansion(expansion)
     name = BETA_KERNELS[sub_step]
-    code = kernel_source(sub_step, arm)
-    key = kernel_cache_key(f"{name}_arm{arm}", True, _COMPILE_OPTIONS, code)
+    code = kernel_source(sub_step)
+    key = kernel_cache_key(name, True, _COMPILE_OPTIONS, code)
     return get_or_compile(
         key, lambda: cp.RawKernel(code, name, options=_COMPILE_OPTIONS))
 
@@ -776,28 +695,32 @@ def _clear_kernel_cache() -> int:
     return clear_kernel_cache()
 
 
-def step_complex_beta(sub_step: str, fields: Any, expansion,
+def step_complex_beta(sub_step: str, fields: Any,
                       grid: Any = None, pml: Any = None, *,
                       dtdx: float = None,
                       tables: Dict[str, Any] = None,
                       boundary_codes: Sequence[Any] = None,
                       phase_flags: Sequence[Any] = None,
                       phase_values: Sequence[Any] = None,
-                      beta_coefficients=None) -> None:
+                      beta_coefficients=None,
+                      chunk_bounds: Any) -> None:
     """One complex-beta curl sub-step, in place, in one launch.
 
     The argument list is ``complex_folded_kernels.step_folded_complex``'s with the
-    four beta words APPENDED, which is what lets a reader diff the two launches.
-    ``beta_coefficients`` is :func:`beta_curl_coefficients`' ``((plus_re, plus_im),
-    (minus_re, minus_im))``; supplied explicitly it is the gate's door, and derived
+    two beta coefficients bound before the chunk record, which is what lets a reader
+    diff the two launches. ``beta_coefficients`` is :func:`beta_curl_coefficients`'
+    ``(target 0, target 1)``; supplied explicitly it is the gate's door, and derived
     from ``grid`` it comes from that grid's own ``beta`` and ``dt`` with the
-    sub-step's own ``magnetic`` flag.
+    sub-step's own ``magnetic`` flag. ``chunk_bounds`` is the run's chunk record on the
+    device, required (``complex_pml_kernels.chunk_record_argument``).
     """
     import numpy as np  # noqa: PLC0415
 
     from .complex_pml_kernels import (bloch_phase_arguments,  # noqa: PLC0415
-                                      complex_curl_tables, word_view)
+                                      chunk_record_argument, complex_curl_tables,
+                                      word_view)
 
+    cb = chunk_record_argument(chunk_bounds)
     if sub_step not in BETA_KERNELS:
         raise ValueError(
             f"sub_step must be one of {sorted(BETA_KERNELS)}, got {sub_step!r}")
@@ -848,10 +771,9 @@ def step_complex_beta(sub_step: str, fields: Any, expansion,
     arguments += [np.int32(code) for code in boundary_codes]
     arguments += [np.int32(flag) for flag in phase_flags]
     arguments += [np.float32(value) for value in phase_values]
-    (plus_re, plus_im), (minus_re, minus_im) = beta_coefficients
-    arguments += [np.float32(plus_re), np.float32(plus_im),
-                  np.float32(minus_re), np.float32(minus_im)]
+    target_0, target_1 = beta_coefficients
+    arguments += [np.float32(target_0), np.float32(target_1), cb]
     cells = int(shape[0]) * int(shape[1]) * int(shape[2])
     blocks = (cells + _COMPLEX_THREADS - 1) // _COMPLEX_THREADS
-    _get_kernel(sub_step, expansion)(
+    _get_kernel(sub_step)(
         (blocks,), (_COMPLEX_THREADS,), tuple(arguments))

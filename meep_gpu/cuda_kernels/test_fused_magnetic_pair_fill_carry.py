@@ -53,6 +53,7 @@ import numpy
 import pytest
 
 from .. import stepping
+from ..chunk_map import ChunkLayout, RegionPlan, chunk_bounds_record, region_backend
 from ..fields import Fields, mirror_parity
 from ..grid import Grid, Mirror
 from ..pml import PML
@@ -62,10 +63,18 @@ from . import in_seam_coverage
 B_NAMES = ("Bx", "By", "Bz")
 
 #: Every array the fused kernel writes, in the order the signature binds them.
-#: The write enumeration requires EVERY cell of EVERY one of these to be written
-#: exactly once, which is what makes it a coverage floor and not only a race check.
+#: The write enumeration requires every cell of B and H, and exactly the membership
+#: run's cells of each auxiliary, to be written once, which is what makes it a coverage
+#: floor and not only a race check.
 WRITTEN_ARRAYS = ("Bx", "By", "Bz", "fu_Bx", "fu_By", "fu_Bz",
                   "Hx", "Hy", "Hz", "f_w_Hx", "f_w_Hy", "f_w_Hz")
+
+#: Each auxiliary, the sub-step and component whose membership run it is stepped on
+#: (the auxiliary contract, bit_parity_0_10 KERNELS.md section 1 C2): fu_B* on the B
+#: curl's dsigu run, f_w_H* on update_H's dsigw run. Nowhere else does the kernel touch it.
+AUXILIARY_RUNS = {"fu_Bx": ("curl", "Bx"), "fu_By": ("curl", "By"), "fu_Bz": ("curl", "Bz"),
+                  "f_w_Hx": ("constitutive", "Hx"), "f_w_Hy": ("constitutive", "Hy"),
+                  "f_w_Hz": ("constitutive", "Hz")}
 
 
 # ---------------------------------------------------------------------------
@@ -325,16 +334,25 @@ _IF_BLOCK = re.compile(r"^\s*if\s*\((.+)\)\s*\{$")
 _IF_INLINE = re.compile(r"^\s*if\s*\((.+?)\)\s*\{(.+)\}$")
 _IF_STATEMENT = re.compile(r"^\s*if\s*\((.+?)\)\s+([^{}]+;)$")
 _STORE = re.compile(r"^\s*(\w+)\[([^\]]+)\]\s*=\s*[^;]+;$")
+#: The own-cell curl call: ``register = pml_apply_reg_pre(field, aux, index, curl,
+#: <four coefficients>, dsigu, owned, pre_fu, pre_b);``. The auxiliary is written under
+#: the dsigu flag (the recurrence's cells only) and the field under ``owned``.
 _PML_APPLY = re.compile(
     r"^\s*(\w+)\s*=\s*pml_apply_reg_pre\((\w+),\s*(\w+),\s*(\w+),.*,\s*(\w+),"
-    r"\s*pre_fu_\w+,\s*pre_b_\w+\);$")
+    r"\s*(\w+),\s*pre_fu_\w+,\s*pre_b_\w+\);$")
+#: A constitutive call, owned or carried: the field is written, the auxiliary under the
+#: call's last argument, its dsigw membership flag.
 _CONSTITUTIVE = re.compile(
-    r"^\s*constitutive_apply(?:_pre)?\((\w+),\s*(\w+),\s*(\w+),.*\);$")
-#: THE OWN-CELL HOIST: one guarded (or, for fu, unguarded) load of this thread's own
-#: word into a pre_* register. It writes no memory, and its register is never read by
-#: a guard or an index, so it contributes nothing to the write set.
+    r"^\s*constitutive_apply(?:_pre)?\((\w+),\s*(\w+),\s*(\w+),.*,\s*(\w+)\);$")
+#: THE OWN-CELL HOIST: one guarded load of this thread's own word into a pre_*
+#: register (fu behind its dsigu flag, B behind own_*, f_w_H and H behind own_* and
+#: then the dsigw flag). It writes no memory, and its register is never read by a guard
+#: or an index, so it contributes nothing to the write set.
 _HOISTED_LOAD = re.compile(
-    r"^\s*float\s+pre_\w+\s*=\s*(?:own_[xyz]\s*\?\s*)?\w+\[idx\](?:\s*:\s*0\.0f)?;$")
+    r"^\s*float\s+pre_\w+\s*=\s*(?:\w+\s*\?\s*)?(?:\(\s*\w+\s*\?\s*)?\w+\[idx\]"
+    r"(?:\s*:\s*0\.0f\s*\))?(?:\s*:\s*0\.0f)?;$")
+#: The chunk record's decode: several declarators on one line, each a read of ``cb``.
+_MULTI_DECLARATION = re.compile(r"^\s*const\s+int\s+(\w+\s*=\s*[^,;]+(?:,\s*\w+\s*=\s*[^,;]+)+);$")
 _DECLARATION = re.compile(r"^\s*(?:const\s+)?(?:int|float)\s+(\w+)\s*=\s*(.+);$")
 _ASSIGNMENT = re.compile(r"^\s*(\w+)\s*=\s*([^;]+);$")
 
@@ -369,16 +387,20 @@ def _scan(line, guards):
         return []
     match = _PML_APPLY.match(line)
     if match:
-        register, field, auxiliary, index, owned = match.groups()
+        register, field, auxiliary, index, dsigu, owned = match.groups()
         return [(guards, "clear", register),
-                (guards, "write", (auxiliary, index)),
+                (guards + [dsigu], "write", (auxiliary, index)),
                 (guards + [owned], "write", (field, index)),
                 (guards + [owned], "let", (register, "1.0"))]
     match = _CONSTITUTIVE.match(line)
     if match:
-        field, auxiliary, index = match.groups()
+        field, auxiliary, index, dsigw = match.groups()
         return [(guards, "write", (field, index)),
-                (guards, "write", (auxiliary, index))]
+                (guards + [dsigw], "write", (auxiliary, index))]
+    match = _MULTI_DECLARATION.match(line)
+    if match:
+        return [(guards, "let", tuple(part.strip() for part in item.split("=", 1)))
+                for item in match.group(1).split(",")]
     match = _STORE.match(line)
     if match:
         return [(guards, "write", (match.group(1), match.group(2)))]
@@ -443,14 +465,20 @@ def program(source: str):
         for guards, kind, payload in out)
 
 
-def write_map(source, shape, near, reflect, walls, codes, phases):
-    """``(array, flat cell) -> [thread ids]`` for one whole launch."""
+def write_map(source, shape, near, reflect, walls, codes, phases, record):
+    """``(array, flat cell) -> [thread ids]`` for one whole launch.
+
+    ``record`` is the chunk record the launch binds as ``cb`` (the kernel reads every
+    membership flag from it), so the auxiliary writes land exactly where the record puts
+    the membership runs.
+    """
     nx, ny, nz = shape
     statements = program(source)
     writes = {}
+    cb = [int(word) for word in record]
     for idx in range(nx * ny * nz):
         env = {
-            "idx": idx, "nx": nx, "ny": ny, "nz": nz,
+            "idx": idx, "nx": nx, "ny": ny, "nz": nz, "cb": cb,
             "sx": ny * nz, "sy": nz, "sz": 1,
             "k": idx % nz, "j": (idx // nz) % ny, "i": idx // (ny * nz),
             "near_x": near[0], "near_y": near[1], "near_z": near[2],
@@ -513,15 +541,22 @@ def test_the_enumerations_decode_is_the_kernels_own(emitted):
         assert (env["sx"], env["sy"], env["sz"]) == (ny * nz, nz, 1)
 
 
-def _launch_arguments(grid):
-    """The runtime plan the launcher would build, plus the curl's boundary codes."""
+def _plan(grid, pml):
+    """The one-rank division the driver installs by default, as the array path plans it."""
+    return RegionPlan(ChunkLayout.one_rank(grid, pml), grid, pml,
+                      backend=region_backend(numpy))
+
+
+def _launch_arguments(grid, pml):
+    """The runtime plan the launcher would build, the curl's boundary codes, and the
+    chunk record (the one-rank division's, which a driver built without MEEP binds)."""
     fills = family.fused_magnetic_pair_fills(grid)
     codes = tuple(
         2 if in_seam_coverage.stored_past_owned(grid)[axis]
         else 1 if (grid.is_metallic(axis) or grid.is_mirrored(axis))
         else 0
         for axis in range(3))
-    return fills, codes
+    return fills, codes, chunk_bounds_record(ChunkLayout.one_rank(grid, pml))
 
 
 @pytest.mark.parametrize("label,kwargs", FOLDS, ids=[row[0] for row in FOLDS])
@@ -532,12 +567,12 @@ def test_no_cell_is_written_by_two_threads(label, kwargs, emitted):
     torn value the gate would catch as a divergence -- it is an UNDEFINED one that
     can be right on the machine it was measured on and wrong on the next.
     """
-    _fields, grid, _pml = build(**kwargs)
-    fills, codes = _launch_arguments(grid)
+    _fields, grid, pml = build(**kwargs)
+    fills, codes, record = _launch_arguments(grid, pml)
     shape = tuple(int(n) for n in grid.shape)
     writes = write_map(emitted, shape, fills["near"], fills["reflect"],
                        in_seam_coverage.zero_metal_axes(grid), codes,
-                       fills["phase"])
+                       fills["phase"], record)
     contended = {key: sorted(set(threads)) for key, threads in writes.items()
                  if len(set(threads)) > 1}
     assert not contended, (
@@ -550,26 +585,40 @@ def test_every_cell_of_every_written_array_is_written_exactly_once(label, kwargs
                                                                    emitted):
     """The other direction, and it is what stops the race check being vacuous.
 
-    A kernel that wrote nothing would have no contended word at all. Every one of
-    the twelve arrays the signature binds writable must come out fully covered:
-    the destination threads stop after ``fu``, so their ``B``, ``H`` and ``f_w_H``
-    are owed by their source threads, and a carry that forgot one destination
-    subset shows up here as a hole rather than as a wrong number.
+    A kernel that wrote nothing would have no contended word at all. B and H must come
+    out fully covered: the destination threads stop after ``fu``, so their ``B``,
+    ``H`` and ``f_w_H`` are owed by their source threads, and a carry that forgot one
+    destination subset shows up here as a hole rather than as a wrong number. Each
+    auxiliary must be written on EXACTLY its membership run (the array path's own
+    region plan): a write off the run breaks the auxiliary contract, and a missing
+    write on it is a hole.
     """
-    _fields, grid, _pml = build(**kwargs)
-    fills, codes = _launch_arguments(grid)
+    _fields, grid, pml = build(**kwargs)
+    fills, codes, record = _launch_arguments(grid, pml)
     shape = tuple(int(n) for n in grid.shape)
     cells = shape[0] * shape[1] * shape[2]
     writes = write_map(emitted, shape, fills["near"], fills["reflect"],
                        in_seam_coverage.zero_metal_axes(grid), codes,
-                       fills["phase"])
-    covered = {name: 0 for name in WRITTEN_ARRAYS}
-    for array, _cell in writes:
-        assert array in covered, f"{label}: the kernel writes {array}, which is " \
+                       fills["phase"], record)
+    written = {name: set() for name in WRITTEN_ARRAYS}
+    for array, cell in writes:
+        assert array in written, f"{label}: the kernel writes {array}, which is " \
                                  f"not in WRITTEN_ARRAYS"
-        covered[array] += 1
-    holes = {name: cells - count for name, count in covered.items() if count != cells}
-    assert not holes, f"{label}: arrays with unwritten cells {holes} of {cells}"
+        written[array].add(cell)
+    plan = _plan(grid, pml)
+    expected = {}
+    for name in WRITTEN_ARRAYS:
+        if name in AUXILIARY_RUNS:
+            mask = numpy.broadcast_to(plan.mask(*AUXILIARY_RUNS[name], numpy), shape)
+            expected[name] = {int(cell) for cell in numpy.flatnonzero(mask.reshape(-1))}
+        else:
+            expected[name] = set(range(cells))
+    wrong = {name: (len(expected[name] - written[name]), len(written[name] - expected[name]))
+             for name in WRITTEN_ARRAYS if written[name] != expected[name]}
+    assert not wrong, f"{label}: (holes, writes off the run) per array {wrong} of {cells}"
+    # Not vacuous: the layer leaves cells on and off every auxiliary's run here.
+    partial = [name for name in AUXILIARY_RUNS if 0 < len(expected[name]) < cells]
+    assert partial, f"{label}: no auxiliary has cells both on and off its run"
 
 
 @pytest.mark.parametrize("label,kwargs", FOLDS, ids=[row[0] for row in FOLDS])
@@ -583,8 +632,8 @@ def test_the_carry_moves_exactly_the_cells_the_two_fills_write(label, kwargs,
     emitter: a boolean map of the cells the array path's fills write, per component,
     built by running them on a marked field.
     """
-    fields, grid, _pml = build(**kwargs)
-    fills, codes = _launch_arguments(grid)
+    fields, grid, pml = build(**kwargs)
+    fills, codes, record = _launch_arguments(grid, pml)
     shape = tuple(int(n) for n in grid.shape)
     nx, ny, nz = shape
 
@@ -606,7 +655,7 @@ def test_the_carry_moves_exactly_the_cells_the_two_fills_write(label, kwargs,
 
     writes = write_map(emitted, shape, fills["near"], fills["reflect"],
                        in_seam_coverage.zero_metal_axes(grid), codes,
-                       fills["phase"])
+                       fills["phase"], record)
     for target, name in enumerate(B_NAMES):
         # SET comparison, not list: a walled cell is stored twice by the SAME
         # thread (the curl's store, then zero_metal_B's), which is a repeat and
@@ -637,14 +686,14 @@ def test_the_ghost_writer_is_never_itself_a_destination(emitted):
     would write is already owned by the fully back-substituted thread, so the
     symptom is a contended word rather than a missing one.
     """
-    _fields, grid, _pml = build(axes="XY", phases=(1, -1))
-    fills, codes = _launch_arguments(grid)
+    _fields, grid, pml = build(axes="XY", phases=(1, -1))
+    fills, codes, record = _launch_arguments(grid, pml)
     shape = tuple(int(n) for n in grid.shape)
     nx, ny, nz = shape
     assert fills["near"][0] and fills["reflect"][1] >= 0, fills
     writes = write_map(emitted, shape, fills["near"], fills["reflect"],
                        in_seam_coverage.zero_metal_axes(grid), codes,
-                       fills["phase"])
+                       fills["phase"], record)
     # Bx is near-imaged on x (i == 0) and far-imaged on y (j == ny - 1). The thread
     # at (i == 2, j == ny - 1) stands on a Bx DESTINATION while sitting on the near
     # fill's SOURCE row, so an unnested carry would have it write the corner ghost
@@ -652,7 +701,10 @@ def test_the_ghost_writer_is_never_itself_a_destination(emitted):
     trap = 2 * (ny * nz) + (ny - 1) * nz
     wrote = sorted(array for (array, _cell), threads in writes.items()
                    if trap in threads)
-    assert "fu_Bx" in wrote, "the split-field auxiliary is owed at every cell"
+    on_run = bool(numpy.broadcast_to(_plan(grid, pml).mask("curl", "Bx", numpy),
+                                     shape).reshape(-1)[trap])
+    assert ("fu_Bx" in wrote) == on_run, (
+        "the split-field auxiliary is owed at every cell of its run, whoever owns B there")
     assert not {"Bx", "Hx", "f_w_Hx"} & set(wrote), (
         f"the thread at (2, ny-1, 0) wrote {sorted({'Bx', 'Hx', 'f_w_Hx'} & set(wrote))}; "
         f"it is a DESTINATION of the far y fill for Bx and owes no Bx word at all")
@@ -672,14 +724,14 @@ def test_the_write_enumeration_would_catch_a_dropped_ownership_guard(emitted):
     The mutation is applied to the EMITTED TEXT, so it is the shipped kernel's own
     bytes with one guard removed rather than a hand-written strawman.
     """
-    _fields, grid, _pml = build(axes="XY", phases=(1, -1))
-    fills, codes = _launch_arguments(grid)
+    _fields, grid, pml = build(axes="XY", phases=(1, -1))
+    fills, codes, record = _launch_arguments(grid, pml)
     shape = tuple(int(n) for n in grid.shape)
     broken = emitted.replace("    if (own_x) {\n", "    if (1) {\n", 1)
     assert broken != emitted, "the ownership guard anchor no longer matches"
     writes = write_map(broken, shape, fills["near"], fills["reflect"],
                        in_seam_coverage.zero_metal_axes(grid), codes,
-                       fills["phase"])
+                       fills["phase"], record)
     contended = [key for key, threads in writes.items() if len(set(threads)) > 1]
     assert contended, (
         "dropping own_x from the constitutive block left every word with one "
@@ -747,6 +799,11 @@ def test_the_near_ghost_takes_the_destinations_coefficient_pair(emitted):
         if "constitutive_apply(" not in line or "_i, g" not in line:
             continue
         tag = line.split("constitutive_apply(")[1].split(",")[0][-1]
+        # The last argument is the ghost's own membership flag (<tag>_w); the pair
+        # sits before it.
+        head, flag = line.rstrip()[:-len(");")].rsplit(",", 1)
+        assert flag.strip().startswith("g") and flag.strip().endswith("_w"), line
+        line = head + ");"
         if line.rstrip().endswith(f"kps_{tag}[0], kms_int_{tag}[0]);"):
             assert "n_i, g" in line, f"a pair at index 0 on a FAR ghost: {line!r}"
             near_ghosts += 1
@@ -760,20 +817,22 @@ def test_the_near_ghost_takes_the_destinations_coefficient_pair(emitted):
     assert (near_ghosts, far_ghosts) == (12, 9), (near_ghosts, far_ghosts)
 
 
-def test_the_split_field_auxiliary_is_written_at_every_cell(emitted):
+def test_the_split_field_auxiliary_stage_sits_above_the_ownership_guard(emitted):
     """``fu`` stays ABOVE the ownership guard, and the array path is why.
 
-    ``step_B`` writes ``fu`` at every cell and neither fill touches it
-    (stepping.py:1451 writes ``field``, never ``fu_field``). Masking it would damp
-    the recurrence on every destination plane -- a smooth, converged, wrong
-    absorber, one timestep later.
+    ``step_B`` steps ``fu`` on every cell of its dsigu run and neither fill touches it
+    (the fills write ``field``, never ``fu_field``). Masking it on ownership would damp
+    the recurrence on every destination plane -- a smooth, converged, wrong absorber,
+    one timestep later. Its store is guarded on the membership flag alone.
     """
     prelude = emitted.split("extern \"C\"")[0]
-    guard = prelude.index("if (!owned) return 0.0f;")
-    assert prelude.index("fu[idx] = fu_new;") < guard, (
+    helper = prelude[prelude.index("__device__ __forceinline__ float pml_apply_reg_pre("):]
+    helper = helper[:helper.index("\n}\n")]
+    guard = helper.index("if (!owned) return 0.0f;")
+    assert helper.index("    if (dsigu) fu[idx] = fu_new;") < guard, (
         "the fu store moved below the ownership guard; a destination thread would "
         "leave the split-field auxiliary un-stepped")
-    assert prelude.index("f[idx] = value;") > guard
+    assert helper.index("f[idx] = value;") > guard
 
 
 def test_replaces_is_the_five_passes_the_driver_runs_in_this_seam():

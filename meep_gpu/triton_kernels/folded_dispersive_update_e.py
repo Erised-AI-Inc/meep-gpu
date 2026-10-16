@@ -255,7 +255,8 @@ def folded_dispersive_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_folded_dispersive_constitutive(fields: Any, pml: Any,
-                                        block: Optional[int] = None) -> Any:
+                                        block: Optional[int] = None,
+                                        chunk_layout: Any = None) -> Any:
     """A CERTIFIED dispersive ``update_E`` plan for a folded run, or None.
 
     The kernel, the plan class and the LIVE pole binding are
@@ -269,6 +270,10 @@ def plan_folded_dispersive_constitutive(fields: Any, pml: Any,
     None is the only refusal: a configuration this admission does not carry must
     fall back to the array path, never raise into a caller that would otherwise
     have stepped correctly.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default;
+    the plan binds its record (``launch.chunk_bounds_for``), the one binding this
+    module adds to the certified plan it composes.
     """
     if not folded_dispersive_constitutive_coverage(fields, pml).covered:
         return None
@@ -279,6 +284,7 @@ def plan_folded_dispersive_constitutive(fields: Any, pml: Any,
         poles_per_component,
     )
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
+    from .launch import chunk_bounds_for  # noqa: PLC0415
 
     order = poles_per_component(fields)
     targets = tuple(term[0] for term in E_TERMS)
@@ -291,6 +297,7 @@ def plan_folded_dispersive_constitutive(fields: Any, pml: Any,
         [getattr(pml, f"{stem}_{axis}_h")
          for axis in "xyz" for stem in ("kps", "kms")],
         LivePoleBinding(fields, order),
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 

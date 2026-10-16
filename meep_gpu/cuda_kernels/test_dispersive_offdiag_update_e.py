@@ -45,16 +45,19 @@ import re
 import numpy
 import pytest
 
-from .. import stepping
+from .. import part_products, stepping
+from ..chunk_map import membership_from_record
 from ..dispersion import PolarizationState, Susceptibility
+from ..fields import IYEE_SHIFTS
 from ..grid import Mirror
 from . import (coverage, dispersive_kernels, dispersive_offdiag_update_e as fam,
-               folded_offdiag_kernels as folded, offdiag_emitter)
+               folded_offdiag_kernels as folded, offdiag_emitter, offdiag_presence)
 from .test_folded_offdiag import (_as_python, _f32, _ghost_rules,
                                   evaluate_folded_source)
 from .test_offdiag_constitutive_pml_real import (
-    _advance_sources, _bits, _device_arrays, _tables_for, build, install_rows,
-    seed_state, evaluate_emitted_source)
+    _ROW_ADD, _ROW_START, _SRC_ROW, _TAIL, PRESENCE_CELL, _advance_sources, _bits,
+    _device_arrays, _tables_for, build, chunk_arguments, execute_row_statements,
+    install_rows, seed_state, evaluate_emitted_source)
 
 HERE = pathlib.Path(__file__).parent
 MODULE = HERE / "dispersive_offdiag_update_e.py"
@@ -133,15 +136,16 @@ _TERM_CALL = re.compile(
     r"flat\((?P<up>[^)]*), nyz, nz\),\s*"
     r"flat\((?P<corner>[^)]*), nyz, nz\),\s*"
     r"(?P<lane>mg_[xyz]), (?P<weight>gw_[xyz])\);")
-_TOTAL_FIRST = re.compile(r"float total_(?P<name>\w+) = term_(?P<tag>\w+);")
-_TOTAL_ADD = re.compile(
-    r"total_(?P<name>\w+) = total_(?P=name) \+ term_(?P<tag>\w+);")
-#: The metallic wall-coupling select. BOTH ARMS OF THE TERNARY ARE PARSED rather
-#: than the pristine ``? 0.0f : total`` being anchored, so a leg that INVERTS the
-#: select is executed and caught by arithmetic instead of being silently skipped
-#: as an unmatched line -- which is what the first laptop run reported it as.
-_MASK = re.compile(r"total_(?P<name>\w+) = \((?P<wall>wm_[xyz]) && "
+#: The metallic wall-coupling select on one term's float32 sum. BOTH ARMS OF THE
+#: TERNARY ARE PARSED rather than the pristine ``? 0.0f : term`` being anchored, so a
+#: leg that INVERTS the select is executed and caught by arithmetic instead of being
+#: silently skipped as an unmatched line.
+_MASK = re.compile(r"term_(?P<tag>\w+) = \((?P<wall>wm_[xyz]) && "
                    r"(?P<face>at_[xyz])\) \? (?P<hit>[^:;]+) : (?P<miss>[^;]+);")
+#: The same select applied to a SOURCE: the shape a leg plants when the mask runs
+#: after the row sum. Executed, never an emitter arm.
+_SRC_MASK = re.compile(r"src_(?P<name>\w+) = \((?P<wall>wm_[xyz]) && "
+                       r"(?P<face>at_[xyz])\) \? 0\.0f : src_(?P=name);")
 _LANE = re.compile(r"int (?P<lane>mg_[xyz]) = (?P<expr>[^;]+);")
 #: The diagonal source. THE PLAIN-LOAD ALTERNATIVE IS IN THE GRAMMAR ON PURPOSE:
 #: it is the shape ``folded_offdiag_kernels`` emits, so a leg that plants it here
@@ -152,13 +156,7 @@ _GS = re.compile(
     r"(?P<volume>\w+)(?P<poles>(?:, P_\w+)*), idx\)"
     r"|(?P<raw>\w+)\[idx\]);")
 _US = re.compile(r"float us_(?P<name>\w+) = (?P<volume>\w+)\[idx\];")
-_SRC_COUPLED = re.compile(
-    r"float src_(?P<name>\w+) = \(gs_(?P=name) \* us_(?P=name)\)"
-    r" \+ total_(?P=name);")
 _SRC_PLAIN = re.compile(r"float src_(?P<name>\w+) = gs_(?P=name) \* us_(?P=name);")
-_TAIL = re.compile(
-    r"constitutive_apply\((?P<field>\w+), (?P<aux>f_w_\w+), idx, src_(?P<name>\w+),"
-    r" (?P<kps>kps_[xyz])\[(?P<index>[ijk])\], (?P<kms>kms_[xyz])\[(?P=index)\]\);")
 
 #: The three device helper bodies this family owns, matched by SHAPE so the
 #: evaluator EXECUTES whatever the emitter wrote. Anchoring the expressions would
@@ -209,6 +207,13 @@ _SCAFFOLDING = (
     "int nyz = ny * nz;", "int k = idx % nz;", "int j = (idx / nz) % ny;",
     "int i = idx / (ny * nz);", "int di = coord_dn", "int dj = coord_dn",
     "int dk = coord_dn", "int at_x = (i == 0)", ") {", "}", "{",
+    # The record block, the chunk labels and the presence words: the off-diagonal
+    # family's own constants, PINNED by exact text below and read as data by the
+    # evaluator (membership_from_record, offdiag_presence.cell_chunk_codes).
+    "const int* __restrict__ cb", "int kept_", "const int cbi_", "const int cbh_",
+    "const int in_i_", "const int in_h_", "const int wi = chunk_row",
+    "const int wj = chunk_row", "const int wk = chunk_row", "const int chunk_E",
+    "+ 3 * chunk_label", "+ 9 * chunk_label",
 )
 
 
@@ -349,12 +354,15 @@ def device_helpers(source, ghosted):
 
 
 def evaluate_dispersive_offdiag_source(source, arrays, tables, codes, walls,
-                                       weights, shape):
-    """Run one launch of the emitted kernel over the whole grid, in float32.
+                                       weights, shape, record, kept):
+    """Run one launch of the emitted kernel over the whole grid, in float32 (the row
+    in double).
 
     ``arrays`` maps device parameter names to (nx, ny, nz) float32 arrays --
     including the ``P_<component>_<index>`` pole volumes -- and is MUTATED in
-    place, exactly as the kernel mutates its outputs.
+    place, exactly as the kernel mutates its outputs. ``record`` and ``kept`` are the
+    chunk record and the six presence words, read as the off-diagonal family's own
+    evaluator reads them.
     """
     nx, ny, nz = shape
     i, j, k = numpy.indices(shape)
@@ -371,6 +379,18 @@ def evaluate_dispersive_offdiag_source(source, arrays, tables, codes, walls,
                      "gw_y": numpy.float32(weights[1]),
                      "gw_z": numpy.float32(weights[2])}
     faces = {"at_x": i == 0, "at_y": j == 0, "at_z": k == 0}
+
+    flags = {}
+    for axis, letter in enumerate("xyz"):
+        for half, lattice in ((False, "i"), (True, "h")):
+            view = [1, 1, 1]
+            view[axis] = shape[axis]
+            flags[f"in_{lattice}_{letter}"] = membership_from_record(
+                record, half, axis, shape[axis]).reshape(view)
+    chunk_codes = {name: offdiag_presence.cell_chunk_codes(record, IYEE_SHIFTS[name],
+                                                           shape, codes)
+                   for name in ("Ex", "Ey", "Ez")}
+    kept_words = dict(zip(offdiag_emitter.KEPT_PARAMETERS, kept))
 
     body = source[source.index("int at_x"):]
 
@@ -418,7 +438,7 @@ def evaluate_dispersive_offdiag_source(source, arrays, tables, codes, walls,
     for match in _US.finditer(body):
         scalars[f"us_{match['name']}"] = _f32(numpy.asarray(arrays[match["volume"]]))
 
-    terms, totals, sources = {}, {}, {}
+    terms, rows, sources = {}, {}, {}
     for match in _TERM_CALL.finditer(body):
         # POSITIONAL, exactly as the call site binds: the arrays in call order,
         # then the coefficient, then the four indices, the lane and the weight.
@@ -430,32 +450,33 @@ def evaluate_dispersive_offdiag_source(source, arrays, tables, codes, walls,
                           ghost_weights[match["weight"]]])
         terms[match["tag"]] = helpers[
             f"folded_dispersive_offdiag_term_{match['partner']}"](*arguments)
-    for match in _TOTAL_FIRST.finditer(body):
-        totals[match["name"]] = terms[match["tag"]].copy()
-    for match in _TOTAL_ADD.finditer(body):
-        totals[match["name"]] = _f32(totals[match["name"]] + terms[match["tag"]])
     for match in _MASK.finditer(body):
         # THE SELECT IS ALWAYS EVALUATED, never skipped when ``wm`` is 0. Skipping
         # it encodes the PRISTINE semantics -- "a dead wall flag changes nothing"
         # -- which is false of an INVERTED select, where a dead flag zeroes the
-        # coupling everywhere. The first laptop run scored that defect PARTIAL for
-        # exactly that reason.
+        # coupling everywhere.
         scope = {"numpy": numpy, "_gather": _gather,
-                 f"total_{match['name']}": totals[match["name"]]}
+                 f"term_{match['tag']}": terms[match["tag"]]}
         arms = [_f32(numpy.asarray(eval(  # noqa: S307 - this module's own text
             _c_expression(match[key]), {"numpy": numpy}, scope),
             dtype=numpy.float32)) for key in ("hit", "miss")]
         condition = numpy.logical_and(bool(wall_flags[match["wall"]]),
                                       faces[match["face"]])
-        totals[match["name"]] = _f32(numpy.where(
+        terms[match["tag"]] = _f32(numpy.where(
             condition, arms[0], arms[1]).astype(numpy.float32))
-    for match in _SRC_COUPLED.finditer(body):
+    execute_row_statements(body, scalars, terms, rows, kept_words, chunk_codes)
+    for match in _SRC_ROW.finditer(body):
         name = match["name"]
-        sources[name] = _f32(_f32(scalars[f"gs_{name}"] * scalars[f"us_{name}"])
-                             + totals[name])
+        sources[name] = _f32(rows[name].astype(numpy.float32))
     for match in _SRC_PLAIN.finditer(body):
         name = match["name"]
         sources[name] = _f32(scalars[f"gs_{name}"] * scalars[f"us_{name}"])
+    for match in _SRC_MASK.finditer(body):
+        name = match["name"]
+        condition = numpy.logical_and(bool(wall_flags[match["wall"]]),
+                                      faces[match["face"]])
+        sources[name] = _f32(numpy.where(condition, numpy.float32(0.0),
+                                         sources[name]).astype(numpy.float32))
     for match in _TAIL.finditer(body):
         axis = "ijk".index(match["index"])
         broadcast = [1, 1, 1]
@@ -464,14 +485,16 @@ def evaluate_dispersive_offdiag_source(source, arrays, tables, codes, walls,
         kms = _f32(numpy.asarray(tables[match["kms"]]).reshape(broadcast))
         field = arrays[match["field"]]
         aux = arrays[match["aux"]]
-        # constitutive_apply (PINNED by exact string, and welded to both certified
-        # siblings'): prev is read BEFORE fw is written, then two separate
-        # accumulations left to right.
+        flagged = numpy.broadcast_to(flags[match["flag"]], tuple(shape))
+        # constitutive_apply (the certified family's extracted bytes, welded to the
+        # root constitutive pair's): on a flagged cell prev is read BEFORE fw is
+        # written and f + ((kps*src) - (kms*prev)); elsewhere f = src, fw untouched.
         previous = numpy.asarray(aux).copy()
         source_values = sources[match["name"]]
-        aux[...] = source_values
-        accumulated = _f32(numpy.asarray(field) + _f32(kps * source_values))
-        field[...] = _f32(accumulated - _f32(kms * previous))
+        difference = _f32(_f32(kps * source_values) - _f32(kms * previous))
+        accumulated = _f32(numpy.asarray(field) + difference)
+        aux[...] = numpy.where(flagged, source_values, previous)
+        field[...] = numpy.where(flagged, accumulated, source_values)
 
 
 # --------------------------------------------------------------------------
@@ -530,7 +553,8 @@ def pole_arrays(fields):
 def run_both_paths(mask, arity, symmetry=(), phase=1, termination="periodic",
                    steps=2, source=None, seed=20260820, boundaries=None,
                    codes_override=None, weights_override=None,
-                   emitter="dispersive_offdiag"):
+                   emitter="dispersive_offdiag", block=False, negative_zero=False,
+                   cell=None, kept_edit=None):
     """``stepping.update_E`` and the emitted source from ONE frozen state.
 
     Returns ``(oracle_bits, produced_bits, floors)``. ``floors`` carries the
@@ -558,10 +582,10 @@ def run_both_paths(mask, arity, symmetry=(), phase=1, termination="periodic",
         boundaries = tuple(termination if "xyz"[axis] in symmetry else "periodic"
                            for axis in range(3))
     fields, layer, grid = build(numpy, boundaries=boundaries, symmetry=planes,
-                                cell=_fold_cell(symmetry))
-    rows = install_rows(fields, grid, mask, seed=seed)
+                                cell=_fold_cell(symmetry) if cell is None else cell)
+    rows = install_rows(fields, grid, mask, seed=seed, block=block)
     register_poles(fields, grid, arity, seed=seed)
-    seed_state(fields, grid, seed=seed % 1000)
+    seed_state(fields, grid, seed=seed % 1000, negative_zero=negative_zero)
     poles = pole_arrays(fields)
     frozen = {name: numpy.asarray(getattr(fields, name)).copy()
               for name in ("Dx", "Dy", "Dz", "Ex", "Ey", "Ez",
@@ -580,14 +604,20 @@ def run_both_paths(mask, arity, symmetry=(), phase=1, termination="periodic",
     # function on the frozen state and over EVERY component -- not from Ex alone.
     # A mask whose only live slot is (Ey, Ez) leaves Ex's coupling identically
     # zero, and a floor that read Ex would refuse a case that is perfectly able
-    # to discriminate.
+    # to discriminate. That function returns the whole row in double, ``gs*us``
+    # included (one float64 volume per stored part), so the contribution is the
+    # row less the widened ``gs*us`` product.
     coupling = 0.0
     for component in ("Ex", "Ey", "Ez"):
-        term = stepping._offdiagonal_terms(fields, component, displacement)
-        if term is None:
+        row = stepping._offdiagonal_terms(fields, component, displacement)
+        if row is None:
             continue
-        coupling = max(coupling,
-                       float(numpy.abs(numpy.asarray(term)).max()))
+        diagonal = part_products.parts(part_products.scale(
+            numpy.asarray(fields.inverse_epsilon_for(component)),
+            numpy.asarray(volumes[component])))
+        for part, low in zip(row, diagonal):
+            coupling = max(coupling, float(numpy.abs(
+                numpy.asarray(part) - low.astype(numpy.float64)).max()))
 
     ghost = None
     for axis in range(3):
@@ -646,6 +676,10 @@ def run_both_paths(mask, arity, symmetry=(), phase=1, termination="periodic",
         text = (fam.dispersive_offdiag_source(mask, arity) if source is None
                 else source)
 
+    record, kept = chunk_arguments(fields, layer, codes)
+    if kept_edit is not None:
+        kept = tuple(kept_edit(kept))
+
     def arrays_now():
         arrays = _device_arrays(fields, rows)
         arrays.update(poles)
@@ -655,21 +689,21 @@ def run_both_paths(mask, arity, symmetry=(), phase=1, termination="periodic",
         arrays = arrays_now()
         if emitter == "certified":
             evaluate_emitted_source(text, arrays, _tables_for(layer), codes,
-                                    walls, grid.shape)
+                                    walls, grid.shape, record, kept)
         elif emitter == "folded":
             evaluate_folded_source(text, arrays, _tables_for(layer), codes,
-                                   walls, weights, grid.shape)
+                                   walls, weights, grid.shape, record, kept)
         else:
             evaluate_dispersive_offdiag_source(
                 text, arrays, _tables_for(layer), codes, walls, weights,
-                grid.shape)
+                grid.shape, record, kept)
         _advance_sources(fields)
     floors = {"oracle_moved": moved, "coupling_max_abs": coupling,
               "pole_moved": pole_moved,
               "folded_axis_deviation": deviation, "mirror_ghost_min_abs": ghost,
               "shape": tuple(grid.shape), "codes": codes, "walls": walls,
               "weights": weights, "fields": fields, "layer": layer,
-              "grid": grid, "rows": rows}
+              "grid": grid, "rows": rows, "record": record, "kept": kept}
     return oracle, _bits(fields), floors
 
 
@@ -885,7 +919,8 @@ def test_the_corpus_digest_moves_with_any_emitted_character(monkeypatch):
     assert before == fam.corpus_digest()
     original = fam.TERM_RETURN_LINE
     monkeypatch.setattr(fam, "TERM_RETURN_LINE",
-                        original.replace("0.25f", "0.250f"))
+                        original.replace("(near_pair * u[home])",
+                                         "(u[home] * near_pair)"))
     assert fam.corpus_digest() != before
 
 
@@ -1027,6 +1062,11 @@ def _mutate(mask, arity, needle, replacement, count=None):
     assert needle in source, needle
     if count is not None:
         assert source.count(needle) == count, (needle, source.count(needle))
+    return source.replace(needle, replacement)
+
+
+def _mutate_text(source, needle, replacement):
+    assert source.count(needle) == 1, (needle, source.count(needle))
     return source.replace(needle, replacement)
 
 
@@ -1182,12 +1222,16 @@ def test_flipping_the_launched_ghost_weight_is_caught_on_an_even_plane():
 def test_the_wall_mask_running_after_the_row_sum_is_caught():
     """stepping.py:1252 precedes :1006-1007: the mask zeroes the COUPLING, not the
     whole source. Moved after the sum it would zero the diagonal term too."""
-    mutated = _mutate(
-        (1, 1, 1, 1, 1, 1), CORPUS_ARITY,
-        "    total_Ex = (wm_y && at_y) ? 0.0f : total_Ex;\n"
-        "    total_Ex = (wm_z && at_z) ? 0.0f : total_Ex;\n"
-        "    float src_Ex = (gs_Ex * us_Ex) + total_Ex;",
-        "    float src_Ex = (gs_Ex * us_Ex) + total_Ex;\n"
+    source = fam.dispersive_offdiag_source((1, 1, 1, 1, 1, 1), CORPUS_ARITY)
+    masks = re.findall(r"    term_Ex_\d = \(wm_[xyz] && at_[xyz]\) \? 0\.0f : "
+                       r"term_Ex_\d;\n", source)
+    assert len(masks) == 4, masks
+    mutated = source
+    for line in masks:
+        mutated = mutated.replace(line, "", 1)
+    mutated = _mutate_text(
+        mutated, "    float src_Ex = (float)row_Ex;",
+        "    float src_Ex = (float)row_Ex;\n"
         "    src_Ex = (wm_y && at_y) ? 0.0f : src_Ex;\n"
         "    src_Ex = (wm_z && at_z) ? 0.0f : src_Ex;")
     oracle, produced, floors = run_both_paths(
@@ -1203,7 +1247,7 @@ def test_hoisting_the_coefficient_out_of_the_pair_is_caught():
     registers the entry at the component's Yee site minus half a cell along its
     own axis."""
     mutated = _mutate(CORPUS_ROW_MASK, CORPUS_ARITY, fam.TERM_RETURN_LINE,
-                      "    return 0.25f * ((near_pair + far_pair) * u[home]);")
+                      "    return (near_pair + far_pair) * u[home];")
     oracle, produced, floors = run_both_paths(
         CORPUS_ROW_MASK, CORPUS_ARITY, symmetry=("y",), source=mutated)
     _assert_floors(floors)
@@ -1238,12 +1282,123 @@ def test_pre_accumulating_the_pole_sum_is_a_NULL_at_one_pole():
 
 
 # ==========================================================================
+# THE 0.10 FORMS: the row in double, per-chunk presence, the per-chunk tail
+# ==========================================================================
+
+def test_the_source_carries_the_certified_record_block_and_chunk_lines():
+    """The record decode and the chunk labels are the off-diagonal family's own
+    constants, byte for byte: the scaffolding the evaluator reads as data."""
+    for mask in ROW_MASKS:
+        source = fam.dispersive_offdiag_source(mask, CORPUS_ARITY)
+        assert offdiag_emitter.RECORD_BLOCK in source
+        assert offdiag_emitter.CHUNK_LINES in source
+        assert "    const int* __restrict__ cb\n) {" in source
+        for slot, flag in enumerate(mask):
+            assert (f"int {offdiag_emitter.KEPT_PARAMETERS[slot]}," in source) == bool(flag)
+
+
+def test_the_row_is_the_folded_familys_row_with_the_chains_routed_in():
+    """The component block's row lines are ``folded_offdiag_kernels``' own, with only
+    the diagonal operand and the term calls routed through the poles."""
+    mine = fam.dispersive_offdiag_source((1, 1, 1, 1, 1, 1), CORPUS_ARITY)
+    theirs = folded.folded_offdiag_source((1, 1, 1, 1, 1, 1))
+    for line in theirs.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("double row_", "if (chunk_keeps(", "float src_",
+                                "constitutive_apply(")) or re.match(
+                                    r"term_E[xyz]_\d = \(wm_", stripped):
+            assert line in mine.splitlines(), line
+
+
+def test_presence_cases_reproduce_the_array_path_with_planted_negative_zeros():
+    """One layer chunk per axis deletes the rows (``block=True``), so a term is added
+    on some cells and dropped on others, and ``-0`` is planted on plain cells (the
+    unit-coefficient constitutive mutation's discriminator)."""
+    for arity in ((0, 0, 0), CORPUS_ARITY):
+        oracle, produced, floors = run_both_paths(
+            CORPUS_ROW_MASK, arity, symmetry=(), block=True, negative_zero=True,
+            cell=PRESENCE_CELL)
+        _assert_floors(floors, folded_expected=False, poles_expected=max(arity) > 0)
+        assert produced == oracle, arity
+    assert any(word != offdiag_emitter.ALL_CHUNKS_KEPT
+               for word, flag in zip(floors["kept"], CORPUS_ROW_MASK) if flag), (
+        floors["kept"])
+    assert produced == oracle
+
+
+#: The section 7.2 battery on this body, plus the inverted 0.9.2 row forms.
+#: ``name -> (needle, replacement, run options)``; every row must change a word. The
+#: tail helper's own rows (the 0.9.2 accumulation grouping, the unit-coefficient
+#: plain form) live with the helper: it is the off-diagonal family's extracted bytes,
+#: pinned equal to its owner above and executed against the array path by
+#: ``test_dispersive_chunk_forms.py`` through the dispersive arm's identical copy.
+BATTERY = {
+    # Two live terms: a one-term row is ONE rounding of an exact double sum, so the
+    # float32 row is a null there (the off-diagonal gate arms it the same way).
+    "row_in_float32": (
+        "    double row_Ex = (double)(gs_Ex * us_Ex);",
+        "    float row_Ex = (double)(gs_Ex * us_Ex);",
+        dict(symmetry=("y",), mask=(1, 1, 1, 1, 1, 1))),
+    # A dropped chunk's array is zero over its samples, so the term there is a sum
+    # of zeros: adding it changes a word only where the row is -0 (planted). The
+    # chain must keep the planted -0, so the poles drive nothing here (arity 0:
+    # the chain is the bare D the array path aliases).
+    "presence_ignored": (
+        "    if (chunk_keeps(kept_Ex_Ey, chunk_Ex)) row_Ex",
+        "    row_Ex",
+        dict(symmetry=(), block=True, cell=PRESENCE_CELL, negative_zero=True,
+             arity=(0, 0, 0))),
+    "flag_on_another_axis": (
+        "kps_x[i], kms_x[i], in_h_x);", "kps_x[i], kms_x[i], in_h_y);",
+        dict(symmetry=("y",))),
+}
+
+
+@pytest.mark.parametrize("name", sorted(BATTERY))
+def test_each_battery_defect_is_caught(name):
+    needle, replacement, options = BATTERY[name]
+    options = dict(options)
+    mask = options.pop("mask", CORPUS_ROW_MASK)
+    arity = options.pop("arity", CORPUS_ARITY)
+    source = fam.dispersive_offdiag_source(mask, arity)
+    assert needle in source, needle
+    mutated = source.replace(needle, replacement)
+    oracle, produced, floors = run_both_paths(mask, arity, source=mutated, **options)
+    assert produced != oracle, name
+
+
+def test_the_presence_word_is_load_bearing_on_the_block_case():
+    """Every bit set (the term added on every chunk) changes words where a chunk
+    deleted the array and the row is -0: the launcher's presence argument, not the
+    source."""
+    oracle, produced, _floors = run_both_paths(
+        CORPUS_ROW_MASK, (0, 0, 0), symmetry=(), block=True, cell=PRESENCE_CELL,
+        negative_zero=True,
+        kept_edit=lambda kept: tuple(offdiag_emitter.ALL_CHUNKS_KEPT for _ in kept))
+    assert produced != oracle
+
+
+def test_the_quarter_scale_in_float32_is_a_declared_null():
+    """``0.25f * t`` is exact in float32 (a power of two) away from the subnormal
+    floor, so it equals ``0.25 * (double)t`` widened: a declared NULL, kept so the
+    comparator is shown insensitive to a spelling that moves no word."""
+    mask = (1, 1, 1, 1, 1, 1)
+    source = fam.dispersive_offdiag_source(mask, CORPUS_ARITY)
+    needle = "row_Ex = row_Ex + (0.25 * (double)term_Ex_0);"
+    assert needle in source
+    mutated = source.replace(needle, "row_Ex = row_Ex + (double)(0.25f * term_Ex_0);")
+    oracle, produced, _floors = run_both_paths(mask, CORPUS_ARITY, symmetry=("y",),
+                                               source=mutated)
+    assert produced == oracle
+
+
+# ==========================================================================
 # THE GRAMMAR: the tests cover the shipped text
 # ==========================================================================
 
 def _grammar_patterns():
-    return (_TERM_CALL, _TOTAL_FIRST, _TOTAL_ADD, _MASK, _LANE, _GS, _US,
-            _SRC_COUPLED, _SRC_PLAIN, _TAIL)
+    return (_TERM_CALL, _MASK, _LANE, _GS, _US, _ROW_START, _ROW_ADD, _SRC_ROW,
+            _SRC_PLAIN, _SRC_MASK, _TAIL)
 
 
 @pytest.mark.parametrize("mask", ROW_MASKS)

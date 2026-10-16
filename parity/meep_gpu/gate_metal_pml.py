@@ -28,7 +28,18 @@ the curl, ``f_w_*`` for the constitutive. The auxiliaries are STATE, so a kernel
 that is right for one launch and wrong forever after only diverges in the
 multi-step leg; omitting them is how that defect hides.
 
-THE EIGHT LEGS:
+THE PML FORM IS CHOSEN PER STRUCTURE CHUNK, as MEEP chooses it and as the array
+path steps it (``stepping._apply_curl_regions`` / ``_apply_constitutive_regions``):
+the split-field recurrence on a cell whose chunk carries the target's dsigu layer
+and the dsig-only form elsewhere; the accumulation on a cell whose chunk carries
+the component's own (dsigw) layer and ``f = src`` elsewhere. Every plan binds the
+chunk record (``chunk_map.chunk_bounds_record``) its reference steps with — the
+one-rank division of each case's layer (``gate_chunk_records.layer_record``), the
+division the array path steps a driverless ``Fields`` with, and a two-run record
+with random coefficients on the synthetic leg (``two_run_record``) — and the
+in-gate transcription reads the same lines.
+
+THE TWELVE LEGS:
 
   0  transcription  the in-gate NumPy reference vs ``stepping.py``, full cycles
   1  reference      the Metal kernels vs ``stepping.py``, real engine objects
@@ -37,8 +48,18 @@ THE EIGHT LEGS:
   4  multi_step     B -> H -> D -> E cycles from one state, auxiliaries included
   5  signed_zero    zero-init + a negative-coefficient absorber, census-floored
   6  precondition   the subnormal census, and the control that makes it fire
-  7  mutations      armed, launch-counted, three-valued must_catch
+  7  mutations      armed, launch-counted, three-valued must_catch: the
+                    inverted grouping mutations and the per-chunk form battery
   8  engine         plans from the engine's own objects + the disjointness sweep
+  9  forms          the form-coverage census: every (component x form) class,
+                    in-run and out-of-run cells on each axis and lattice
+ 10  planted_zero   the two signed-zero cases only a planted -0 reaches: the
+                    plain curl spelled through the recurrence with p := 0, and
+                    the plain constitutive spelled as the accumulation
+ 11  first_update_h the run's FIRST update_H (h_separated False) through
+                    plan_step + wrap_for_residency: MEEP's start of H, carried
+                    around the slot, against the array path; the same
+                    composition with the start stripped must differ
 
 CASE DISCIPLINE, inherited and non-negotiable: uint32 compares never allclose;
 a non-power-of-two Courant FIRST; every leg proves the step MOVED STATE (a no-op
@@ -90,8 +111,14 @@ if API_ROOT not in sys.path:
 # are indistinguishable, which is exactly what leg 6 measures.
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 
+from gate_chunk_records import layer_record, two_run_record  # noqa: E402
 from meep_gpu import stepping  # noqa: E402
-from meep_gpu.fields import Fields  # noqa: E402
+from meep_gpu.chunk_map import (  # noqa: E402
+    RECORD_PRESENCE_WORD,
+    membership_from_record,
+    record_index,
+)
+from meep_gpu.fields import IYEE_SHIFTS, Fields  # noqa: E402
 from meep_gpu.grid import Grid  # noqa: E402
 from meep_gpu.metal_kernels import coverage as metal_coverage  # noqa: E402
 from meep_gpu.metal_kernels import launch as metal_launch  # noqa: E402
@@ -132,6 +159,9 @@ def provenance(out_dir: str) -> Dict[str, str]:
                                                 "launch.py"),
         "metal_kernels/subnormal.py": os.path.join(API_ROOT, "meep_gpu", "metal_kernels",
                                                    "subnormal.py"),
+        "metal_kernels/chunk_bounds.py": os.path.join(API_ROOT, "meep_gpu",
+                                                      "metal_kernels", "chunk_bounds.py"),
+        "chunk_map.py": os.path.join(API_ROOT, "meep_gpu", "chunk_map.py"),
         "gate_metal_pml.py": os.path.abspath(__file__),
     }
     record = {}
@@ -228,6 +258,10 @@ def build(cell, boundaries, courant: float, seed: int, scale: float = 1.0,
             host.reshape(-1)[::17] = np.float32(-0.0)
             host.reshape(-1)[7::23] = np.float32(0.0)
         array[...] = host
+    # A SEEDED STATE IS A MID-RUN ONE: MEEP's start of H from B
+    # (stepping.separate_h_from_b) is long past, so the array path's first update_H
+    # must not run it again — the kernels never do.
+    fields.h_separated = True
     return grid, fields, pml
 
 
@@ -269,21 +303,54 @@ def _shifted(array: Any, axis: int, backward: bool, code: int) -> Any:
     return out
 
 
+def _line(record: Any, half: bool, axis: int, n: int) -> Any:
+    """One membership line of the record, shaped to broadcast along ``axis``."""
+    shape = [1, 1, 1]
+    shape[axis] = n
+    return membership_from_record(record, half, axis, n).reshape(shape)
+
+
+def _present(record: Any, axis: int) -> bool:
+    """The record's partner-presence bit: a curl partner differenced along ``axis``."""
+    return bool(int(record[RECORD_PRESENCE_WORD]) >> axis & 1)
+
+
+#: Per target, MEEP's (g1 source, g1 axis, g2 source, g2 axis), the source being an
+#: index into the sub-step's three source volumes — ``stepping.B_CURL_TERMS`` /
+#: ``D_CURL_TERMS``, which leg 0 measures this against.
+CURL_OPERANDS: Tuple[Tuple[int, int, int, int], ...] = ((2, 1, 1, 2), (0, 2, 2, 0),
+                                                       (1, 0, 0, 1))
+CURL_CYCLE: Tuple[Tuple[str, str], ...] = (("y", "z"), ("z", "x"), ("x", "y"))
+
+
 def reference_curl(targets: Sequence[Any], aux: Sequence[Any],
                    sources: Sequence[Any], coefficients: Dict[str, Any],
-                   codes: Sequence[int], backward: bool, dtdx: float) -> None:
-    """``stepping.step_B`` / ``step_D``, transcribed elementwise, in place."""
-    a, b, c = sources
-    a_y = _shifted(a, 1, backward, codes[1])
-    a_z = _shifted(a, 2, backward, codes[2])
-    b_x = _shifted(b, 0, backward, codes[0])
-    b_z = _shifted(b, 2, backward, codes[2])
-    c_x = _shifted(c, 0, backward, codes[0])
-    c_y = _shifted(c, 1, backward, codes[1])
+                   codes: Sequence[int], backward: bool, dtdx: float,
+                   record: Any) -> None:
+    """``stepping.step_B`` / ``step_D``, transcribed elementwise, in place.
 
-    curls = [dtdx * ((c_y - c) + (b - b_z)),
-             dtdx * ((a_z - a) + (c - c_x)),
-             dtdx * ((b_x - b) + (a - a_y))]
+    The curl is ``stepping._curl_from_operands``: MEEP's ``((g1s - g1) + g2) - g2s``
+    with both partners, ``dtdx * (g1s - g1)`` without g2 and ``(-dtdx) * (g2s - g2)``
+    without g1, on the record's presence bits. The two forms are
+    ``stepping._apply_curl_regions``: on the record's dsigu line for the target's
+    own lattice, the split-field recurrence, and ``fu`` takes its first stage;
+    everywhere else ``((kms * f) - curl) * sinv`` and ``fu`` keeps its word.
+    """
+    names = SUB_STEPS["step_D" if backward else "step_B"]["targets"]
+    curls = []
+    for first, first_axis, second, second_axis in CURL_OPERANDS:
+        g1, g2 = sources[first], sources[second]
+        g1s = _shifted(g1, first_axis, backward, codes[first_axis])
+        g2s = _shifted(g2, second_axis, backward, codes[second_axis])
+        has1, has2 = _present(record, first_axis), _present(record, second_axis)
+        if has1 and has2:
+            curls.append(dtdx * (((g1s - g1) + g2) - g2s))
+        elif has1:
+            curls.append(dtdx * (g1s - g1))
+        elif has2:
+            curls.append((-dtdx) * (g2s - g2))
+        else:
+            curls.append(np.zeros_like(g1))
 
     # stepping._mask_non_owned_cells: cell 0 of a metallic axis, per target.
     pairs = (((0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1)) if backward
@@ -294,35 +361,44 @@ def reference_curl(targets: Sequence[Any], aux: Sequence[Any],
             index[axis] = 0
             curls[target][tuple(index)] = np.float32(0.0)
 
-    # stepping._apply_pml_update, term by term. Target 0 takes (y, z), 1 (z, x),
-    # 2 (x, y) — vec.hpp's cycle_direction, the same triple on both sides.
-    cycle = (("y", "z"), ("z", "x"), ("x", "y"))
-    for target, (first, second) in enumerate(cycle):
+    # Target 0 takes (dsig, dsigu) = (y, z), 1 (z, x), 2 (x, y) — vec.hpp's
+    # cycle_direction, the same triple on both sides.
+    for target, (first, second) in enumerate(CURL_CYCLE):
         kms, sinv = coefficients["kms_" + first], coefficients["sinv_" + first]
         kms_u, sinv_u = coefficients["kms_" + second], coefficients["sinv_" + second]
+        axis = "xyz".index(second)
+        half = IYEE_SHIFTS[names[target]][axis] == 1
+        inside = _line(record, half, axis, targets[target].shape[axis])
         previous = aux[target].copy()
-        aux[target] *= kms
-        aux[target] -= curls[target]
-        aux[target] *= sinv
-        targets[target] *= kms_u
-        targets[target] += aux[target]
-        targets[target] -= previous
-        targets[target] *= sinv_u
+        stage = ((previous * kms) - curls[target]) * sinv
+        recurrence = (((targets[target] * kms_u) + stage) - previous) * sinv_u
+        dsig_only = ((targets[target] * kms) - curls[target]) * sinv
+        targets[target][...] = np.where(inside, recurrence, dsig_only)
+        aux[target][...] = np.where(inside, stage, previous)
 
 
 def reference_constitutive(targets: Sequence[Any], aux: Sequence[Any],
                            sources: Sequence[Any],
                            inverse_epsilon: Optional[Sequence[Any]],
-                           coefficients: Dict[str, Any]) -> None:
-    """``stepping._apply_constitutive_pml`` on the component's OWN axis, in place."""
-    for target, axis in enumerate("xyz"):
-        kps, kms = coefficients["kps_" + axis], coefficients["kms_" + axis]
+                           coefficients: Dict[str, Any], record: Any,
+                           side: str) -> None:
+    """``stepping._apply_constitutive_regions`` on the component's OWN axis, in place.
+
+    On the record's dsigw line for the component's own lattice, MEEP's
+    ``f + ((kps * src) - (kms * prev))`` with ``f_w`` taking ``src``; everywhere else
+    ``f = src`` and ``f_w`` keeps its word.
+    """
+    names = SIDES[side]["targets"]
+    for target, axis_name in enumerate("xyz"):
+        kps, kms = coefficients["kps_" + axis_name], coefficients["kms_" + axis_name]
         product = (sources[target] if inverse_epsilon is None
                    else sources[target] * inverse_epsilon[target])
+        half = IYEE_SHIFTS[names[target]][target] == 1
+        inside = _line(record, half, target, targets[target].shape[target])
         previous = aux[target].copy()
-        aux[target][...] = product
-        targets[target] += kps * aux[target]
-        targets[target] -= kms * previous
+        accumulated = targets[target] + ((kps * product) - (kms * previous))
+        targets[target][...] = np.where(inside, accumulated, product)
+        aux[target][...] = np.where(inside, product, previous)
 
 
 def curl_coefficients(pml, suffix: str) -> Dict[str, Any]:
@@ -361,11 +437,14 @@ class Counter:
 def run_curl_on_device(state: Dict[str, Any], grid, pml, sub_step: str,
                        codes, dtdx: float, source: Optional[str] = None,
                        contract: str = shaders.CONTRACT_OFF,
-                       counter: Optional[List[Counter]] = None) -> Dict[str, Any]:
+                       counter: Optional[List[Counter]] = None,
+                       record: Any = None) -> Dict[str, Any]:
     """One curl launch through the SHIPPED plan object, returning the host results.
 
     Everything goes through ``plan_from_arrays`` -> ``PmlCurlPlan.run`` so the
     bytes this gate certifies are the bytes the engine route would launch.
+    ``record`` is the chunk record bound; ``None`` is the one-rank division of the
+    case's own layer (``layer_record``), the one the array path steps it with.
     """
     spec = SUB_STEPS[sub_step]
     arrays = {name: np.array(state[name], copy=True)
@@ -384,8 +463,9 @@ def run_curl_on_device(state: Dict[str, Any], grid, pml, sub_step: str,
             function = Counter(function)
             counter.append(function)
         functions = {shaders.CONTRACT_OFF: function}
-    plan = metal_launch.plan_from_arrays(sub_step, arrays, flat, codes, dtdx,
-                                         residency, functions=functions)
+    plan = metal_launch.plan_from_arrays(
+        sub_step, arrays, flat, codes, dtdx, residency, functions=functions,
+        chunk_bounds=layer_record(grid, pml) if record is None else record)
     plan.run()
     residency.sync_out()
     return arrays
@@ -397,7 +477,9 @@ def run_constitutive_on_device(state: Dict[str, Any], pml, side: str,
                                contract: str = shaders.CONTRACT_OFF,
                                suffix: Optional[str] = None,
                                counter: Optional[List[Counter]] = None,
-                               ) -> Dict[str, Any]:
+                               record: Any = None) -> Dict[str, Any]:
+    """One constitutive launch through the SHIPPED plan; ``record`` as
+    :func:`run_curl_on_device` takes it, ``None`` being the layer's one-rank record."""
     spec = SIDES[side]
     names = tuple(spec["targets"]) + tuple(spec["aux"]) + tuple(spec["sources"])
     arrays = {name: np.array(state[name], copy=True) for name in names}
@@ -416,8 +498,9 @@ def run_constitutive_on_device(state: Dict[str, Any], pml, side: str,
             function = Counter(function)
             counter.append(function)
         functions = {shaders.CONTRACT_OFF: function}
-    plan = metal_launch.plan_constitutive_from_arrays(side, arrays, flat, residency,
-                                                      functions=functions)
+    plan = metal_launch.plan_constitutive_from_arrays(
+        side, arrays, flat, residency, functions=functions,
+        chunk_bounds=layer_record(pml.grid, pml) if record is None else record)
     plan.run()
     residency.sync_out()
     return arrays
@@ -452,24 +535,26 @@ def leg_transcription(payload: Dict[str, Any], out: str, cycles: int = 3) -> Non
 
             work = {key: np.array(value, copy=True) for key, value in initial.items()}
             inverse = {n: fields.inverse_epsilon_for(n) for n in ("Ex", "Ey", "Ez")}
+            record = layer_record(grid, pml)
             for _ in range(cycles):
                 reference_curl([work[n] for n in ("Bx", "By", "Bz")],
                                [work["fu_" + n] for n in ("Bx", "By", "Bz")],
                                [work[n] for n in ("Ex", "Ey", "Ez")],
-                               curl_coefficients(pml, "_h"), codes, False, dtdx)
+                               curl_coefficients(pml, "_h"), codes, False, dtdx, record)
                 reference_constitutive([work[n] for n in ("Hx", "Hy", "Hz")],
                                        [work["f_w_" + n] for n in ("Hx", "Hy", "Hz")],
                                        [work[n] for n in ("Bx", "By", "Bz")],
-                                       None, constitutive_coefficients(pml, ""))
+                                       None, constitutive_coefficients(pml, ""), record,
+                                       "H")
                 reference_curl([work[n] for n in ("Dx", "Dy", "Dz")],
                                [work["fu_" + n] for n in ("Dx", "Dy", "Dz")],
                                [work[n] for n in ("Hx", "Hy", "Hz")],
-                               curl_coefficients(pml, ""), codes, True, dtdx)
+                               curl_coefficients(pml, ""), codes, True, dtdx, record)
                 reference_constitutive([work[n] for n in ("Ex", "Ey", "Ez")],
                                        [work["f_w_" + n] for n in ("Ex", "Ey", "Ez")],
                                        [work[n] for n in ("Dx", "Dy", "Dz")],
                                        [inverse[n] for n in ("Ex", "Ey", "Ez")],
-                                       constitutive_coefficients(pml, "_h"))
+                                       constitutive_coefficients(pml, "_h"), record, "E")
 
             bad = {n: differing(work[n], oracle[n]) for n in oracle}
             moved = sum(differing(oracle[n], initial[n]) for n in oracle)
@@ -486,6 +571,14 @@ def leg_transcription(payload: Dict[str, Any], out: str, cycles: int = 3) -> Non
             assert moved > 0, f"VACUOUS: {name} moved no state over {cycles} cycles"
             assert not row["differing"], (
                 f"the in-gate transcription is not stepping.py: {row['differing']}")
+    # The operand table the hand reference reads is the array path's own term table.
+    for terms, sources in ((stepping.B_CURL_TERMS, ("Ex", "Ey", "Ez")),
+                           (stepping.D_CURL_TERMS, ("Hx", "Hy", "Hz"))):
+        for (first, first_axis, second, second_axis), (dsig, dsigu), term in zip(
+                CURL_OPERANDS, CURL_CYCLE, terms):
+            assert (sources[first], first_axis, sources[second], second_axis) == (
+                term.first, term.first_axis, term.second, term.second_axis), term
+            assert (dsig, dsigu) == (term.dsig, term.dsigu), term
 
 
 # ---------------------------------------------------------------------------
@@ -602,13 +695,14 @@ def leg_synthetic(payload: Dict[str, Any], out: str) -> None:
                 for sub_step, spec in SUB_STEPS.items():
                     state = synthetic_state(shape, 424242)
                     coefficients = synthetic_coefficients(shape, 99)
+                    record = two_run_record(shape)
                     expect = {n: np.array(state[n], copy=True)
                               for n in tuple(spec["targets"])
                               + tuple("fu_" + n for n in spec["targets"])}
                     reference_curl([expect[n] for n in spec["targets"]],
                                    [expect["fu_" + n] for n in spec["targets"]],
                                    [state[n] for n in spec["sources"]],
-                                   coefficients, codes, spec["backward"], dtdx)
+                                   coefficients, codes, spec["backward"], dtdx, record)
                     flat = {k: np.asarray(v).reshape(-1)
                             for k, v in coefficients.items()}
                     arrays = {n: np.array(state[n], copy=True)
@@ -625,7 +719,8 @@ def leg_synthetic(payload: Dict[str, Any], out: str) -> None:
                                                 mode)).pml_curl_step
                         plan = metal_launch.plan_from_arrays(
                             sub_step, work, flat, codes, dtdx, residency,
-                            functions={shaders.CONTRACT_OFF: function})
+                            functions={shaders.CONTRACT_OFF: function},
+                            chunk_bounds=record)
                         plan.run()
                         residency.sync_out()
                         guarded[mode] = {n: differing(work[n], expect[n])
@@ -1005,19 +1100,50 @@ def _needle(source: str, old: str, new: str) -> str:
     return source.replace(old, new)
 
 
+def _flag_line(source: str, flag: str) -> str:
+    """The one ``const bool <flag>0 = ..., <flag>1 = ..., <flag>2 = ...;`` line."""
+    lines = [line for line in source.splitlines()
+             if line.strip().startswith(f"const bool {flag}0 = ")]
+    if len(lines) != 1:
+        raise LookupError(f"the {flag} flag line ({len(lines)} found)")
+    return lines[0]
+
+
+def _set_flags(source: str, flag: str, values: Sequence[str]) -> str:
+    """Replace the three membership flags of one body with three C expressions."""
+    return source.replace(_flag_line(source, flag),
+                          f"    const bool {flag}0 = {values[0]}, {flag}1 = {values[1]}, "
+                          f"{flag}2 = {values[2]};")
+
+
+def _lattice_tag(source: str, flag: str) -> str:
+    """``h`` or ``i``: the sub-lattice tag of the membership the flags read."""
+    return _flag_line(source, flag).split(" = in_", 1)[1][0]
+
+
+def _dsig_flags(source: str) -> str:
+    """The dsig/dsigu swap: each curl target keyed on its DSIG axis's membership."""
+    tag = _lattice_tag(source, "du")
+    return _set_flags(source, "du", [f"in_{tag}_{dsig}" for dsig, _ in CURL_CYCLE])
+
+
 #: ``must_catch``: True (must be caught) | None (record only) | False (must NOT be
-#: caught). Every entry here is True; the three-valued column is kept because the
-#: harness is the transferred one and a later family will need the other two.
+#: caught — a declared null, with its reason).
+#:
+#: THE GROUPING MUTATIONS ARE INVERTED (KERNELS.md §7.1). Before the alignment the
+#: shipped groupings were the package's and these mutations planted MEEP's; the
+#: shipped form now IS MEEP's, so each plants the PREVIOUS PACKAGE GROUPING and stays
+#: must-catch. The ``b*`` rows are the per-chunk form battery (KERNELS.md §7.2).
 CURL_MUTATIONS: Dict[str, Dict[str, Any]] = {
-    "m1_flatten_curl_parens": {
+    "m1_previous_curl_grouping": {
         "must_catch": True,
-        "why": "the ONE grouping the whole claim rests on; C would associate "
-               "`sf - f + s - ss` differently and it is a different float32 number",
+        "why": "the package's previous pairwise grouping (g1s - g1) + (g2 - g2s) "
+               "planted in place of MEEP's left-to-right ((g1s - g1) + g2) - g2s",
         "apply": lambda s: _needle(
-            _needle(_needle(s, "dtdx * ((c_y - c) + (b - b_z))",
-                            "dtdx * (c_y - c + b - b_z)"),
-                    "dtdx * ((a_z - a) + (c - c_x))", "dtdx * (a_z - a + c - c_x)"),
-            "dtdx * ((b_x - b) + (a - a_y))", "dtdx * (b_x - b + a - a_y)"),
+            _needle(_needle(s, "dtdx * (((c_y - c) + b) - b_z)",
+                            "dtdx * ((c_y - c) + (b - b_z))"),
+                    "dtdx * (((a_z - a) + c) - c_x)", "dtdx * ((a_z - a) + (c - c_x))"),
+            "dtdx * (((b_x - b) + a) - a_y)", "dtdx * ((b_x - b) + (a - a_y))"),
     },
     "m2_contract_on": {
         "must_catch": True,
@@ -1032,14 +1158,15 @@ CURL_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "apply": lambda s: _needle(
             _needle(s, "float n0 = ((p0 * km_y) - curl0) * si_y;",
                     "float n0 = ((p0 * km_z) - curl0) * si_z;"),
-            "float v0 = (((f0[ii] * km_z) + n0) - p0) * si_z;",
-            "float v0 = (((f0[ii] * km_y) + n0) - p0) * si_y;"),
+            "float v0 = du0 ? ((((f0[ii] * km_z) + n0) - p0) * si_z) : n0;",
+            "float v0 = du0 ? ((((f0[ii] * km_y) + n0) - p0) * si_y) : n0;"),
     },
     "m4_store_before_load": {
         "must_catch": True,
         "why": "the auxiliary's previous value read after its own store",
-        "apply": lambda s: _needle(s, "float p0 = u0[ii];",
-                                   "u0[ii] = 0.0f; float p0 = u0[ii];"),
+        "apply": lambda s: _needle(s, "float p0 = du0 ? u0[ii] : f0[ii];",
+                                   "if (du0) { u0[ii] = 0.0f; } "
+                                   "float p0 = du0 ? u0[ii] : f0[ii];"),
     },
     "m7_drop_ownership_mask_one_axis": {
         "must_catch": True,
@@ -1059,23 +1186,71 @@ CURL_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "codes": (METALLIC, METALLIC, PERIODIC),
         "sub_steps": ("step_B",),
     },
+    "b1_select_removed": {
+        "must_catch": True,
+        "why": "the whole-grid recurrence (the previous package form): every cell "
+               "steps the dsigu form and fu is written everywhere",
+        "apply": lambda s: _set_flags(s, "du", ("true", "true", "true")),
+    },
+    "b2_predicate_on_coefficient_identity": {
+        "must_catch": True,
+        "why": "the form keyed on kms != 1 instead of chunk membership: a sigma = 0 "
+               "row inside a layer chunk takes the other form",
+        "apply": lambda s: _set_flags(s, "du", ("(kmz[k] != 1.0f)", "(kmx[i] != 1.0f)",
+                                                "(kmy[j] != 1.0f)")),
+    },
+    "b5_dsig_dsigu_swapped": {
+        "must_catch": True,
+        "why": "each target's form keyed on its dsig axis's chunk instead of its "
+               "dsigu axis's: dsig-only cells and dsigu-only cells trade forms",
+        "apply": _dsig_flags,
+    },
+    "b6_auxiliary_stored_on_a_plain_cell": {
+        "must_catch": True,
+        "why": "fu written outside the recurrence's cells; the array path leaves "
+               "those words alone and the gate compares them",
+        "apply": lambda s: _needle(s, "if (du0) { u0[ii] = n0; }", "u0[ii] = n0;"),
+    },
+    "b7_auxiliary_load_unconditional": {
+        "must_catch": False,
+        "why": "DECLARED NULL: an fu load outside the guard with the store still "
+               "guarded changes no word (the plain form reads f); the guard is "
+               "traffic, pinned by test_metal_kernels' static needle instead",
+        "apply": lambda s: _needle(s, "float p0 = du0 ? u0[ii] : f0[ii];",
+                                   "float p0u = u0[ii]; "
+                                   "float p0 = du0 ? p0u : f0[ii];"),
+    },
+    "b8_plain_curl_through_the_recurrence": {
+        "must_catch": True,
+        "why": "the plain form spelled as the recurrence with p := 0. With unit "
+               "coefficients it differs only for f = -0, curl = +0 (leg 10 plants "
+               "that cell); this leg catches it on the dsig-only cells whose dsig "
+               "coefficients are not 1",
+        "apply": lambda s: _needle(
+            _needle(s, "float p0 = du0 ? u0[ii] : f0[ii];",
+                    "float p0 = du0 ? u0[ii] : 0.0f;"),
+            "float v0 = du0 ? ((((f0[ii] * km_z) + n0) - p0) * si_z) : n0;",
+            "float v0 = (((f0[ii] * km_z) + n0) - p0) * si_z;"),
+    },
 }
 
 CONSTITUTIVE_MUTATIONS: Dict[str, Dict[str, Any]] = {
-    "m11_flatten_accumulation": {
+    "m11_previous_accumulation_grouping": {
         "must_catch": True,
-        "why": "`((f + kps*src) - kms*prev)` flattened to `f + (kps*src - kms*prev)`",
+        "why": "the package's previous grouping ((f + kps*src) - kms*prev) planted "
+               "in place of MEEP's f + ((kps*src) - (kms*prev))",
         "apply": lambda s: _needle(
-            s, "    a0 = a0 + kp_0 * src0;\n    a0 = a0 - km_0 * prev0;",
-            "    a0 = a0 + (kp_0 * src0 - km_0 * prev0);"),
+            s, "if (dw0) { a0 = f0[ii] + ((kp_0 * src0) - (km_0 * prev0)); }",
+            "if (dw0) { a0 = (f0[ii] + (kp_0 * src0)) - (km_0 * prev0); }"),
     },
     "m12_constitutive_store_before_load": {
         "must_catch": True,
         "why": "`prev` read after `fw` is written — wrong only where kms != 0, "
                "i.e. INSIDE THE PML ONLY, so it looks like a worse absorber",
         "apply": lambda s: _needle(
-            s, "    float prev0 = w0[ii];\n    float src0 =",
-            "    w0[ii] = 0.0f;\n    float prev0 = w0[ii];\n    float src0 ="),
+            s, "    float prev0 = dw0 ? w0[ii] : 0.0f;\n    float src0 =",
+            "    if (dw0) { w0[ii] = 0.0f; }\n    float prev0 = dw0 ? w0[ii] : 0.0f;"
+            "\n    float src0 ="),
     },
     "m13_dsigw_to_dsig_cycle": {
         "must_catch": True,
@@ -1084,6 +1259,69 @@ CONSTITUTIVE_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "apply": lambda s: _needle(s, "float kp_0 = kp0[i], km_0 = km0[i];",
                                    "float kp_0 = kp0[j], km_0 = km0[j];"),
     },
+    "b9_constitutive_select_removed": {
+        "must_catch": True,
+        "why": "the whole-grid accumulation (the previous package form): every cell "
+               "accumulates and f_w is written everywhere",
+        "apply": lambda s: _set_flags(s, "dw", ("true", "true", "true")),
+    },
+    "b10_constitutive_predicate_on_coefficient_identity": {
+        "must_catch": True,
+        "why": "the form keyed on kps != 1 instead of chunk membership",
+        "apply": lambda s: _set_flags(s, "dw", ("(kp0[i] != 1.0f)", "(kp1[j] != 1.0f)",
+                                                "(kp2[k] != 1.0f)")),
+    },
+    "b11_f_w_stored_on_a_plain_cell": {
+        "must_catch": True,
+        "why": "f_w written outside the accumulation's cells",
+        "apply": lambda s: _needle(s, "if (dw0) { w0[ii] = src0; }", "w0[ii] = src0;"),
+    },
+    "b12_constitutive_load_unconditional": {
+        "must_catch": False,
+        "why": "DECLARED NULL: prev is read only on the accumulation's cells, so an "
+               "unguarded load changes no word; pinned statically in "
+               "test_metal_kernels instead",
+        "apply": lambda s: _needle(s, "float prev0 = dw0 ? w0[ii] : 0.0f;",
+                                   "float prev0 = w0[ii];"),
+    },
+    "b13_plain_constitutive_through_the_accumulation": {
+        "must_catch": True,
+        "why": "f = src spelled as the accumulation with kps = 1, kms = 0 on zeroed "
+               "inputs: wrong on every -0 source (the seeded +-0 lattice reaches it; "
+               "leg 10 plants one)",
+        "apply": lambda s: _needle(s, "float a0 = src0;",
+                                   "float a0 = 0.0f + ((1.0f * src0) - (0.0f * prev0));"),
+    },
+}
+
+
+#: The record mutations (KERNELS.md §7.2): the kernel is right and the record it is
+#: handed is not. Each is a function of the true record.
+def _bound_off_by_one(record: Any) -> Any:
+    """Every non-empty low run one row longer: the boundary plane changes form."""
+    out = np.array(record, copy=True)
+    for half in (False, True):
+        for axis in range(3):
+            a0, a1, b0 = (int(out[record_index(half, axis, w)]) for w in range(3))
+            if a1 > a0 and (b0 == 0 or a1 + 1 < b0):
+                out[record_index(half, axis, 1)] = a1 + 1
+    return out
+
+
+def _lattices_swapped(record: Any) -> Any:
+    """The integer and half-integer entries exchanged."""
+    out = np.array(record, copy=True)
+    for axis in range(3):
+        for word in range(4):
+            i, h = record_index(False, axis, word), record_index(True, axis, word)
+            out[i], out[h] = record[h], record[i]
+    return out
+
+
+RECORD_MUTATIONS: Dict[str, Tuple[Callable[[Any], Any], str]] = {
+    "b3_bound_off_by_one": (_bound_off_by_one, "a run end one row past the chunk"),
+    "b4_lattices_swapped": (_lattices_swapped,
+                            "the integer and half-integer records swapped"),
 }
 
 
@@ -1204,7 +1442,8 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         function = Counter(metal_launch.compile_curl(codes, spec["backward"]))
         plan = metal_launch.plan_from_arrays(
             sub_step, arrays, flat, codes, dtdx, residency,
-            functions={shaders.CONTRACT_OFF: function})
+            functions={shaders.CONTRACT_OFF: function},
+            chunk_bounds=layer_record(grid, pml))
         plan.run()
         residency.sync_out()
         compared = tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
@@ -1273,6 +1512,35 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
            "a host write between two device sub-steps that no sync carried; the "
            "residency clause refuses this composition and this measures that the "
            "refusal is load-bearing")
+
+    # b3/b4: THE RECORD IS WRONG, the kernel is the shipped one. Both sub-step
+    # families, against the oracle stepped on the true division.
+    truth = layer_record(grid, pml)
+    for label, (mutate, why) in RECORD_MUTATIONS.items():
+        wrong = mutate(truth)
+        assert not np.array_equal(wrong, truth), f"{label} changed no record word"
+        caught = ran = launches = 0
+        for sub_step, spec in SUB_STEPS.items():
+            counters: List[Counter] = []
+            got = run_curl_on_device(base, grid, pml, sub_step, codes, dtdx,
+                                     source=shaders.curl_source(codes, spec["backward"]),
+                                     counter=counters, record=wrong)
+            compared = tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
+            ran += 1
+            launches += sum(c.launches for c in counters)
+            caught += int(any(differing(got[n], oracle[sub_step][n]) for n in compared))
+        for side, spec in SIDES.items():
+            counters = []
+            got = run_constitutive_on_device(base, pml, side, inverse,
+                                             source=shaders.constitutive_source(side),
+                                             counter=counters, record=wrong)
+            compared = tuple(spec["targets"]) + tuple(spec["aux"])
+            ran += 1
+            launches += sum(c.launches for c in counters)
+            caught += int(any(differing(got[n], oracle["update_" + side][n])
+                              for n in compared))
+        record(label, "DISARMED" if launches == 0 else f"CAUGHT {caught}/{ran}",
+               launches, caught, ran, True, why)
 
 
 # ---------------------------------------------------------------------------
@@ -1386,6 +1654,225 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# LEG 9 — the form-coverage census (DESIGN.md D13)
+# ---------------------------------------------------------------------------
+
+def _form_counts(record: Any, shape: Sequence[int]) -> Dict[str, Dict[str, int]]:
+    """Cells per (component, form) under one record, on each component's own line."""
+    counts: Dict[str, Dict[str, int]] = {}
+    total = int(np.prod(shape))
+    for backward in (False, True):
+        names = SUB_STEPS["step_D" if backward else "step_B"]["targets"]
+        for target, (_dsig, dsigu) in enumerate(CURL_CYCLE):
+            axis = "xyz".index(dsigu)
+            half = IYEE_SHIFTS[names[target]][axis] == 1
+            line = membership_from_record(record, half, axis, int(shape[axis]))
+            inside = int(line.sum()) * total // int(shape[axis])
+            counts[names[target]] = {"recurrence": inside, "dsig_only": total - inside}
+    for side, spec in SIDES.items():
+        for target, name in enumerate(spec["targets"]):
+            half = IYEE_SHIFTS[name][target] == 1
+            line = membership_from_record(record, half, target, int(shape[target]))
+            inside = int(line.sum()) * total // int(shape[target])
+            counts[name] = {"accumulate": inside, "plain": total - inside}
+    return counts
+
+
+def leg_forms(payload: Dict[str, Any], out: str) -> None:
+    """Every gate case's FORM COVERAGE, recorded and floored.
+
+    The rule (DESIGN.md D13): a nonzero count for every (component x form) class,
+    and in-run and out-of-run rows on each axis and on both Yee sub-lattices, with
+    at least one wrapping axis among the cases. A gate whose cases never stepped one
+    form certifies nothing about it — the per-chunk forms are exactly the place a
+    case drawn wholly inside or wholly outside a layer would hide a defect.
+    """
+    rows: List[Dict[str, Any]] = []
+    classes: Dict[Tuple[str, str], int] = {}
+    lines: Dict[Tuple[str, bool], Dict[str, int]] = {}
+    wrapping = 0
+    started = time.time()
+    for name, cell, boundaries in CONFIGS:
+        grid, _fields, pml = build(cell, boundaries, 0.35, 20260814)
+        record = layer_record(grid, pml)
+        counts = _form_counts(record, grid.shape)
+        for component, forms in counts.items():
+            for form, count in forms.items():
+                classes[(component, form)] = classes.get((component, form), 0) + count
+        for axis in range(3):
+            for half in (False, True):
+                line = membership_from_record(record, half, axis, int(grid.shape[axis]))
+                entry = lines.setdefault(("xyz"[axis], half), {"in": 0, "out": 0})
+                entry["in"] += int(line.sum())
+                entry["out"] += int((~line).sum())
+            wrapping += int(bool(grid.axis_wraps(axis)))
+        row = {"case": name, "shape": [int(v) for v in grid.shape],
+               "record": [int(v) for v in record], "forms": counts}
+        rows.append(row)
+        log(f"[leg9 forms] {name:<13} shape={tuple(grid.shape)} "
+            f"forms={{{', '.join(f'{c}: {f}' for c, f in sorted(counts.items()))}}} "
+            f"({time.time() - started:.1f}s)")
+    payload["legs"]["forms"] = {
+        "cases": rows,
+        "classes": {f"{c}/{f}": n for (c, f), n in sorted(classes.items())},
+        "lines": {f"{a}/{'half' if h else 'integer'}": v for (a, h), v in sorted(lines.items())},
+        "wrapping_axes": wrapping,
+    }
+    save(payload, out)
+    empty = sorted(f"{c}/{f}" for (c, f), n in classes.items() if n == 0)
+    assert not empty, f"VACUOUS form classes: {empty}"
+    assert len(classes) == 24, sorted(classes)
+    flat = sorted(f"{a}/{h}" for (a, h), v in lines.items() if not v["in"] or not v["out"])
+    assert not flat, f"lines with no in-run or no out-of-run row: {flat}"
+    assert wrapping > 0, "no case carries a wrapping axis"
+
+
+# ---------------------------------------------------------------------------
+# LEG 10 — the two signed-zero cases only a planted -0 reaches
+# ---------------------------------------------------------------------------
+
+NEGATIVE_ZERO = np.float32(-0.0)
+
+
+def _word(array: Any, index: Tuple[int, int, int]) -> int:
+    return int(np.asarray(array[index], dtype=np.float32).view(np.uint32))
+
+
+def leg_planted_zero(payload: Dict[str, Any], out: str) -> None:
+    """A plain cell whose f is ``-0`` and whose curl is exactly ``+0``; a plain cell
+    whose source is ``-0``.
+
+    MEEP's plain curl ``f - curl`` keeps ``-0 - +0 = -0`` and its plain constitutive
+    ``f = src`` keeps a ``-0`` source. Spelled through the recurrence with
+    ``p := 0`` (``b8``) or as the accumulation with ``kps = 1, kms = 0`` on zeroed
+    inputs (``b13``), both give ``+0`` — on unit coefficients, the ONLY cells where
+    the two spellings disagree, so random states do not reach them. The curl's
+    ``+0`` is built, not hoped for: each stencil partner is set equal at the cell and
+    at its neighbour, so ``((g1s - g1) + g2) - g2s = (+0 + g2) - g2 = +0``.
+    """
+    rows: List[Dict[str, Any]] = []
+    started = time.time()
+    name, cell, boundaries = CONFIGS[1]
+    grid, fields, pml = build(cell, boundaries, 0.35, 20260814)
+    record = layer_record(grid, pml)
+    codes = boundary_codes(grid, pml)
+    dtdx = float(grid.dt / grid.dx)
+    inverse = {n: fields.inverse_epsilon_for(n) for n in SIDES["E"]["targets"]}
+    seeded = snapshot(fields)
+    centre = tuple(int(n) // 2 for n in grid.shape)
+    i, j, k = centre
+
+    def plain(component: str, axis: int) -> bool:
+        half = IYEE_SHIFTS[component][axis] == 1
+        line = membership_from_record(record, half, axis, int(grid.shape[axis]))
+        return not bool(line[centre[axis]])
+
+    for sub_step, spec in SUB_STEPS.items():
+        target = spec["targets"][0]
+        assert plain(target, 2) and plain(target, 1), (
+            f"the centre is not a plain {target} cell, so this leg would plant "
+            f"nothing it measures")
+        state = {n: np.array(v, copy=True) for n, v in seeded.items()}
+        step = -1 if spec["backward"] else 1
+        state[target][centre] = NEGATIVE_ZERO
+        first, second = spec["sources"][2], spec["sources"][1]
+        state[first][i, j + step, k] = state[first][centre]
+        state[second][i, j, k + step] = state[second][centre]
+        restore(fields, state)
+        getattr(stepping, sub_step)(fields, pml)
+        oracle = snapshot(fields)
+        shipped = run_curl_on_device(state, grid, pml, sub_step, codes, dtdx,
+                                     record=record)
+        counters: List[Counter] = []
+        mutant_source = CURL_MUTATIONS["b8_plain_curl_through_the_recurrence"]["apply"](
+            shaders.curl_source(codes, spec["backward"]))
+        mutant = run_curl_on_device(state, grid, pml, sub_step, codes, dtdx,
+                                    source=mutant_source, counter=counters,
+                                    record=record)
+        compared = tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
+        row = {"case": name, "sub_step": sub_step, "cell": list(centre),
+               "oracle_word": f"{_word(oracle[target], centre):#010x}",
+               "shipped_differing": {n: differing(shipped[n], oracle[n])
+                                     for n in compared if differing(shipped[n], oracle[n])},
+               "mutant_word": f"{_word(mutant[target], centre):#010x}",
+               "mutant_launches": sum(c.launches for c in counters)}
+        rows.append(row)
+        log(f"[leg10 planted_zero] {sub_step} {target}{centre} oracle={row['oracle_word']} "
+            f"shipped={'IDENTICAL' if not row['shipped_differing'] else row['shipped_differing']} "
+            f"b8={row['mutant_word']} ({time.time() - started:.1f}s)")
+        payload["legs"]["planted_zero"] = rows
+        save(payload, out)
+        assert _word(oracle[target], centre) == 0x80000000, (
+            f"VACUOUS: the planted cell's array-path word is {row['oracle_word']}, "
+            f"not -0, so the case was not constructed")
+        assert not row["shipped_differing"], row
+        assert row["mutant_launches"] > 0, "b8 never launched"
+        assert _word(mutant[target], centre) != 0x80000000, (
+            f"b8 kept the planted -0 on {target}: the plain form's signed zero is not "
+            f"what this leg measures")
+
+    for side, spec in SIDES.items():
+        target, source_name = spec["targets"][0], spec["sources"][0]
+        assert plain(target, 0), f"the centre is not a plain {target} cell"
+        state = {n: np.array(v, copy=True) for n, v in seeded.items()}
+        state[source_name][centre] = NEGATIVE_ZERO
+        restore(fields, state)
+        getattr(stepping, spec["step"])(fields, pml)
+        oracle = snapshot(fields)
+        shipped = run_constitutive_on_device(state, pml, side, inverse, record=record)
+        counters = []
+        mutant_source = CONSTITUTIVE_MUTATIONS[
+            "b13_plain_constitutive_through_the_accumulation"]["apply"](
+            shaders.constitutive_source(side))
+        mutant = run_constitutive_on_device(state, pml, side, inverse,
+                                            source=mutant_source, counter=counters,
+                                            record=record)
+        compared = tuple(spec["targets"]) + tuple(spec["aux"])
+        row = {"case": name, "side": side, "cell": list(centre),
+               "oracle_word": f"{_word(oracle[target], centre):#010x}",
+               "shipped_differing": {n: differing(shipped[n], oracle[n])
+                                     for n in compared if differing(shipped[n], oracle[n])},
+               "mutant_word": f"{_word(mutant[target], centre):#010x}",
+               "mutant_launches": sum(c.launches for c in counters)}
+        rows.append(row)
+        log(f"[leg10 planted_zero] update_{side} {target}{centre} "
+            f"oracle={row['oracle_word']} "
+            f"shipped={'IDENTICAL' if not row['shipped_differing'] else row['shipped_differing']} "
+            f"b13={row['mutant_word']} ({time.time() - started:.1f}s)")
+        payload["legs"]["planted_zero"] = rows
+        save(payload, out)
+        assert _word(oracle[target], centre) == 0x80000000, (
+            f"VACUOUS: {target}{centre} is {row['oracle_word']}, not -0")
+        assert not row["shipped_differing"], row
+        assert row["mutant_launches"] > 0, "b13 never launched"
+        assert _word(mutant[target], centre) != 0x80000000, (
+            f"b13 kept the planted -0 on {target}")
+
+
+# ---------------------------------------------------------------------------
+# LEG 12 — the run's FIRST update_H, through the composition
+# ---------------------------------------------------------------------------
+
+def leg_first_update_h(payload: Dict[str, Any], out: str) -> None:
+    """MEEP's start of H on the run's first ``update_H``, carried by the composition.
+
+    Every leg above seeds a mid-run state, which has started H already, so none of
+    them reaches the start (``stepping.separate_h_from_b``). This one composes the
+    certified singles ("PML" + "ordinary") through ``launch.plan_step`` and
+    ``wrap_for_residency`` on a run frozen before its first step, on a layer whose
+    negative ``kms`` lands the first B on -0, and requires 0 differing words against
+    the array path -- and requires the same composition with the start stripped from
+    the ``update_H`` slot to differ. ``metal_first_update_h`` holds the case and
+    the score; ``gate_metal_fused_magnetic_pair`` runs the same leg on the pair.
+    """
+    import metal_first_update_h as first  # noqa: PLC0415 - sibling harness module
+
+    row = first.run_leg((), "ordinary", log=log)
+    payload["legs"]["first_update_h"] = row
+    save(payload, out)
+
+
+# ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
 
@@ -1399,6 +1886,9 @@ LEGS: Tuple[Tuple[str, Callable[[Dict[str, Any], str], None]], ...] = (
     ("precondition", leg_precondition),
     ("mutations", leg_mutations),
     ("engine", leg_engine),
+    ("forms", leg_forms),
+    ("planted_zero", leg_planted_zero),
+    ("first_update_h", leg_first_update_h),
 )
 
 
@@ -1451,8 +1941,9 @@ def main() -> int:
         "legs_run": [name for name, _ in LEGS if not wanted or name in wanted],
         "claim": ("byte-identity to stepping.py on this host, under a CHECKED "
                   "subnormal-free precondition (leg 6) — not a stated tolerance"),
-        "scope": ("real-field split-field PML curl (step_B/step_D) and the dsigw "
-                  "constitutive accumulation (update_H/update_E); periodic and "
+        "scope": ("real-field PML curl (step_B/step_D) and constitutive "
+                  "(update_H/update_E), both forms of each chosen per structure "
+                  "chunk from the bound chunk record; periodic and "
                   "metallic ghost rules; no fold, no cylindrical axis, no Bloch "
                   "phase, no beta, no BFAST, no chi2/chi3, no dispersion, no "
                   "off-diagonal row, real float32 storage only"),

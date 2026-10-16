@@ -7,15 +7,12 @@ anywhere and pin the things a byte gate cannot:
 1. **the predicate's clause list** — every refusal this family makes, by name, and
    the ADMISSIONS that are load-bearing (an absorber on a phased axis, off-diagonal
    epsilon on the curl);
-2. **the probe contract** — the arm binds from a measured artifact or the family
-   refuses, and every way a probe can fail to decide is a refusal rather than a
-   default;
-3. **source-text pins for the defects that are BYTE-INVISIBLE in float32** and are
+2. **source-text pins for the defects that are BYTE-INVISIBLE in float32** and are
    therefore recorded in the gate's ``predicted_nulls`` rather than mutated. A
    defect nobody can measure still has to be pinned somewhere, and source text is
    the honest place;
-4. **the plan builder's None-only refusal contract**;
-5. **the registration being ENUMERABLE BUT NOT WIRED**, which is what keeps this
+3. **the plan builder's None-only refusal contract**;
+4. **the registration being ENUMERABLE BUT NOT WIRED**, which is what keeps this
    tranche out of dispatch while still letting the composition probe sweep it.
 
 NO TORCH IS IMPORTED. Everything here is string and predicate work.
@@ -38,71 +35,83 @@ PACKAGE_DIR = os.path.dirname(os.path.abspath(cx.__file__))
 # 1. Source shape and the specialisation
 # ---------------------------------------------------------------------------
 
+
 def test_every_shipped_complex_source_carries_the_contraction_directive():
-    for arm in templates.EXPANSION_ARMS:
-        for label, source in cx.enumerate_complex_sources(arm).items():
-            assert shaders.contraction_pragma(shaders.CONTRACT_OFF) in source, label
+    for label, source in cx.enumerate_complex_sources().items():
+        assert shaders.contraction_pragma(shaders.CONTRACT_OFF) in source, label
 
 
 def test_the_specialisation_enumerates_only_REACHABLE_phase_triples():
-    """A metallic axis cannot carry a phase, so its flag is never enumerated.
+    """A metallic axis cannot carry a phase, so its connection kind is never enumerated.
 
     Fingerprinting a label that cannot be built would record a hash for a kernel no
     plan can emit, which is the quiet way a fingerprint file stops describing what
-    ships.
+    ships. A periodic axis takes each of MEEP's three connection spellings.
     """
-    labels = tuple(cx.enumerate_complex_sources("FMA_V1"))
+    labels = tuple(cx.enumerate_complex_sources())
     for label in labels:
         if not label.startswith("bloch_pml_curl_step/"):
             continue
-        _, _, codes, phased, _ = label.split("/")
+        _, _, codes, phased = label.split("/")
         for code, flag in zip(codes, phased[2:]):
-            assert not (code == "1" and flag == "1"), label
-    # All-periodic admits every triple; all-metallic admits only the unphased one.
-    assert sum(1 for lab in labels if "/000/" in lab) == 2 * 8
+            assert not (code == "1" and flag != "0"), label
+            assert flag in "012", label
+    # All-periodic admits every triple; all-metallic admits only the unconnected one.
+    assert sum(1 for lab in labels if "/000/" in lab) == 2 * 27
     assert sum(1 for lab in labels if "/111/" in lab) == 2 * 1
 
 
 def test_a_phase_on_a_metallic_axis_is_refused_at_source_time():
     with pytest.raises(ValueError, match="only a periodic wrap can carry a phase"):
-        cx.bloch_curl_source((templates.METALLIC, 0, 0), False, (1, 0, 0), "FMA_V1")
+        cx.bloch_curl_source((templates.METALLIC, 0, 0), False, (2, 0, 0))
+    with pytest.raises(ValueError, match="connection kind"):
+        cx.bloch_curl_source((0, 0, 0), False, (3, 0, 0))
 
 
-def test_an_unphased_axis_emits_a_SKIP_and_no_rotation():
-    """The k = 0 bit-identity is a SKIP, not a multiply by 1+0j (S:1768-1770)."""
-    source = cx.bloch_curl_source((0, 0, 0), False, (0, 0, 0), "FMA_V1")
-    assert source.count("SKIPPED") == 3
-    # The three c_mul spellings in the helper block are definitions, not call sites.
+def test_an_unconnected_axis_emits_no_line_and_no_product():
+    """An unphased axis (or a phase within 1e-13 of +1, MEEP's copy) reads the stored
+    word itself: no line, no multiply by 1+0j."""
+    source = cx.bloch_curl_source((0, 0, 0), False, (0, 0, 0))
+    assert source.count("no connection") == 3
+    # The helper block's own definition is the one occurrence.
     assert source.count("c_mul(") == 1
 
 
 def test_the_ownership_mask_writes_a_COMPLEX_zero_to_both_planes():
-    b_mask = cx.bloch_curl_source((templates.METALLIC,) * 3, False, (0, 0, 0),
-                                  "FMA_V1")
-    d_mask = cx.bloch_curl_source((templates.METALLIC,) * 3, True, (0, 0, 0),
-                                  "FMA_V1")
+    b_mask = cx.bloch_curl_source((templates.METALLIC,) * 3, False, (0, 0, 0))
+    d_mask = cx.bloch_curl_source((templates.METALLIC,) * 3, True, (0, 0, 0))
     assert b_mask.count("? float2(0.0f, 0.0f) : curl") == 3
     assert d_mask.count("? float2(0.0f, 0.0f) : curl") == 6
 
 
-def test_the_two_expansion_arms_really_differ():
-    """A selector that selected nothing would make the probe decorative."""
-    fused = cx.bloch_curl_source((0, 0, 0), False, (1, 0, 0), "FMA_V1")
-    naive = cx.bloch_curl_source((0, 0, 0), False, (1, 0, 0), "NAIVE")
-    assert fused != naive
-    assert "fma(" in fused
-    assert "fma(" not in templates.complex_helpers("NAIVE")
+def test_the_one_part_wise_body():
+    """One helper body, MEEP's.
+
+    A realnum coefficient times a field is one product per part (``part_products.scale``)
+    and the connection is the unfused ``complex<realnum>(p) * z``; no ``fma`` and no
+    zero cross term survives anywhere in the family's sources.
+    """
+    helpers = templates.complex_helpers()
+    assert "fma(" not in helpers and "0.0f *" not in helpers and "* 0.0f" not in helpers
+    assert "return float2(z.x * c, z.y * c);" in helpers
+    assert "return float2(c * z.x, c * z.y);" in helpers
+    assert "return float2((z.x * p.x) - (z.y * p.y),\n                  (z.x * p.y) + (z.y * p.x));" in helpers
+    for label, source in cx.enumerate_complex_sources().items():
+        assert "fma(" not in source, label
 
 
-def test_the_curl_binds_23_buffers_and_the_split_form_would_need_35():
-    """``float2`` is FORCED by the 31-binding ceiling, not preferred."""
+def test_the_curl_binds_24_buffers_and_the_split_form_would_need_36():
+    """``float2`` is FORCED by the 31-binding ceiling, not preferred. The chunk record
+    binds last (``CURL_RECORD_BUFFER``)."""
     from meep_gpu.metal_kernels.device import MAX_BUFFER_BINDINGS
 
-    source = cx.bloch_curl_source((0, 0, 0), False, (0, 0, 0), "FMA_V1")
+    source = cx.bloch_curl_source((0, 0, 0), False, (0, 0, 0))
     indices = [int(m) for m in re.findall(r"\[\[buffer\((\d+)\)\]\]", source)]
     assert indices == list(range(cx.CURL_BINDINGS))
+    assert cx.CURL_BINDINGS == 24 and cx.CURL_RECORD_BUFFER == 23
+    assert "constant ChunkBounds& cb [[buffer(23)]]" in source
     assert max(indices) < MAX_BUFFER_BINDINGS
-    assert cx.split_plane_binding_count() == 35
+    assert cx.split_plane_binding_count() == 36
     assert cx.split_plane_binding_count() > MAX_BUFFER_BINDINGS
     split = cx.split_plane_curl_signature()
     assert f"buffer({MAX_BUFFER_BINDINGS})" in split, (
@@ -110,21 +119,66 @@ def test_the_curl_binds_23_buffers_and_the_split_form_would_need_35():
         "compile-error leg would be measuring a kernel that fits")
 
 
-def test_the_constitutive_binds_22_buffers_on_both_sides():
+def test_the_constitutive_binds_23_buffers_on_both_sides():
     for side in ("H", "E"):
-        source = cx.bloch_constitutive_source(side, "FMA_V1")
+        source = cx.bloch_constitutive_source(side)
         indices = [int(m) for m in re.findall(r"\[\[buffer\((\d+)\)\]\]", source)]
-        assert indices == list(range(22)), side
+        assert indices == list(range(23)), side
+        assert "constant ChunkBounds& cb [[buffer(22)]]" in source, side
 
 
 def test_the_E_side_puts_D_on_the_LEFT():
-    """S:982-984 writes ``source * inverse_epsilon``. The gate measured the two
-    orientations EQUIVALENT for a real coefficient; the source still spells the
-    array path's, and this test is what keeps that true after the equivalence
-    stopped being enforced by a mutation."""
-    source = cx.bloch_constitutive_source("E", "FMA_V1")
+    """The array path writes ``part_products.scale(inverse_epsilon, source)``: one
+    product per part, so the orientation moves no bit; the source keeps one spelling."""
+    source = cx.bloch_constitutive_source("E")
     assert "c_mul_field_left(g0[ii], e0[ii])" in source
     assert "c_mul_coefficient_left(e0[ii]" not in source
+
+
+def test_the_forms_read_the_record_through_the_anchored_blocks():
+    """The curl keys each target's form on its dsigu membership, on the side's lattice;
+    the constitutive keys each component's on its own axis -- the real kernels' names."""
+    for backward in (False, True):
+        source = cx.bloch_curl_source((0, 0, 0), backward, (0, 0, 0))
+        assert shaders.curl_bounds_block(backward) in source
+        flags = shaders.curl_membership_flags(backward)
+        assert (f"const bool du0 = {flags[0]}, du1 = {flags[1]}, "
+                f"du2 = {flags[2]};") in source
+    for side in ("H", "E"):
+        source = cx.bloch_constitutive_source(side)
+        assert shaders.constitutive_bounds_block(side) in source
+        flags = shaders.constitutive_membership_flags(side)
+        assert (f"const bool dw0 = {flags[0]}, dw1 = {flags[1]}, "
+                f"dw2 = {flags[2]};") in source
+
+
+@pytest.mark.parametrize("target", [0, 1, 2])
+def test_the_curl_forms_are_the_array_paths(target):
+    """Recurrence on a dsigu cell, the dsig-only form elsewhere (``fu := f``), ``fu``
+    read and written only on the recurrence's cells (stepping._apply_curl_regions)."""
+    source = cx.bloch_curl_source((0, 0, 0), False, (0, 0, 0))
+    t = target
+    km1, si1, km2, si2 = {0: ("km_y", "si_y", "km_z", "si_z"),
+                          1: ("km_z", "si_z", "km_x", "si_x"),
+                          2: ("km_x", "si_x", "km_y", "si_y")}[t]
+    assert f"    float2 p{t} = du{t} ? u{t}[ii] : f{t}[ii];" in source
+    assert (f"    float2 n{t} = c_mul_field_left(c_mul_field_left(p{t}, {km1}) - "
+            f"curl{t}, {si1});") in source
+    assert (f"    float2 v{t} = du{t} ? c_mul_field_left((c_mul_field_left(f{t}[ii], "
+            f"{km2}) + n{t}) - p{t}, {si2}) : n{t};") in source
+    assert f"    if (du{t}) {{ u{t}[ii] = n{t}; }}" in source
+
+
+@pytest.mark.parametrize("side", ["H", "E"])
+def test_the_constitutive_is_a_select_and_the_accumulation_is_right_hand_side_first(side):
+    source = cx.bloch_constitutive_source(side)
+    for t in range(3):
+        assert f"    float2 prev{t} = dw{t} ? w{t}[ii] : float2(0.0f, 0.0f);" in source
+        assert f"    if (dw{t}) {{ w{t}[ii] = src{t}; }}" in source
+        assert f"    float2 a{t} = src{t};" in source
+        assert (f"    if (dw{t}) {{ a{t} = f{t}[ii] + (c_mul_coefficient_left(kp_{t}, "
+                f"src{t}) - c_mul_coefficient_left(km_{t}, prev{t})); }}") in source
+        assert f"    f{t}[ii] = a{t};" in source
 
 
 # ---------------------------------------------------------------------------
@@ -139,63 +193,64 @@ def test_complex_add_is_component_wise():
     """PREDICTED NULL: ``float2`` operators and two scalar ops emit the same rounds.
 
     MSL vector arithmetic is element-wise IEEE with no horizontal step, so no
-    mutation can distinguish the spellings. The pin is that the curl's three
-    differences stay ``float2`` expressions with their parens intact.
+    mutation can distinguish the spellings. The pin is that the curl's bracket stays
+    one ``float2`` expression per target in MEEP's left-to-right order.
     """
-    source = cx.bloch_curl_source((0, 0, 0), False, (0, 0, 0), "FMA_V1")
-    assert "float2 t0 = ((c_y - c) + (b - b_z));" in source
-    assert "float2 t1 = ((a_z - a) + (c - c_x));" in source
-    assert "float2 t2 = ((b_x - b) + (a - a_y));" in source
+    source = cx.bloch_curl_source((0, 0, 0), False, (0, 0, 0))
+    assert "c_mul_coefficient_left(dtdx, ((c_y - c_dy) + b_dz) - b_z)" in source
+    assert "c_mul_coefficient_left(dtdx, ((a_z - a_dz) + c_dx) - c_x)" in source
+    assert "c_mul_coefficient_left(dtdx, ((b_x - b_dx) + a_dy) - a_y)" in source
+    assert "c_mul_coefficient_left(-dtdx, b_z - b_dz)" in source
 
 
 def test_stores_are_one_float2_per_cell():
     """PREDICTED NULL: the planes do not alias, so store ORDER within a cell is
     unobservable. The pin is that there is one store per volume, not two."""
-    source = cx.bloch_curl_source((0, 0, 0), False, (0, 0, 0), "FMA_V1")
-    assert "u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;" in source
+    source = cx.bloch_curl_source((0, 0, 0), False, (0, 0, 0))
+    for t in range(3):
+        assert source.count(f"u{t}[ii] = ") == 1
     assert "f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;" in source
     assert ".x =" not in source and ".y =" not in source
 
 
-@pytest.mark.parametrize("axis,index,extent,phase,operands", [
-    ("x", "i", "nxi", "px", ("b_x", "c_x")),
-    ("y", "j", "nyi", "py", ("a_y", "c_y")),
-    ("z", "k", "nzi", "pz", ("a_z", "b_z")),
+@pytest.mark.parametrize("axis,index,phase,operands", [
+    ("x", "i", "px", (("c_dx", "c"), ("b_dx", "b"))),
+    ("y", "j", "py", (("c_dy", "c"), ("a_dy", "a"))),
+    ("z", "k", "pz", (("b_dz", "b"), ("a_dz", "a"))),
 ])
-def test_each_axis_rotates_ITS_OWN_operands_with_ITS_OWN_predicate(
-        axis, index, extent, phase, operands):
-    """Which operand crossed which face, per axis, pinned one axis at a time.
-
-    THE Y BLOCK WAS UNMEASURED UNTIL 2026-08-15. Every gate case carried ``k_y = 0``
-    and no synthetic phase set phased y, so ``_phase_block("y", ...)`` and the ``py``
-    binding were emitted, fingerprinted and never launched against the oracle — a
-    wrong index variable or a wrong operand pair there was invisible to the byte
-    gate. The gate now carries ``periodic_ky``/``periodic_kxyz``, a per-axis
-    synthetic single, a per-axis phase-coverage floor and mutations m6y/m7y/m14;
-    this is the source-text half of the same pin.
-    """
-    flags = tuple(1 if a == axis else 0 for a in "xyz")
-    source = cx.bloch_curl_source((0, 0, 0), False, flags, "FMA_V1")
-    assert f"bool w{axis} = ({index} == {extent} - 1);" in source
-    for operand in operands:
-        assert f"{operand} = w{axis} ? c_mul({operand}, {phase}) : {operand};" in source
-    # ... and no OTHER operand is rotated on this axis's predicate.
-    for other in ("a_y", "a_z", "b_x", "b_z", "c_x", "c_y"):
-        if other in operands:
-            continue
-        assert f"{other} = w{axis} ?" not in source
-    backward = cx.bloch_curl_source((0, 0, 0), True, flags, "FMA_V1")
-    assert f"bool w{axis} = ({index} == 0);" in backward
+@pytest.mark.parametrize("backward", [False, True])
+def test_each_axis_connects_ITS_OWN_unshifted_operands_on_plane_zero(
+        axis, index, phase, operands, backward):
+    """The reads that leave the stored window are the same-index reads on plane 0
+    (stepping._bloch_ghost_operand): per curl term, the UNSHIFTED partner differenced
+    along the phased axis. Both sides connect on plane 0; the host chose the factor."""
+    for kind, spelling in ((cx.CONNECT_PHASE, "c_mul({stored}, {phase})"),
+                           (cx.CONNECT_NEGATE, "-{stored}")):
+        flags = tuple(kind if a == axis else 0 for a in "xyz")
+        source = cx.bloch_curl_source((0, 0, 0), backward, flags)
+        assert f"    if ({index} == 0) {{" in source
+        for connected, stored in operands:
+            assert (f"        {connected} = "
+                    + spelling.format(stored=stored, phase=phase) + ";") in source
+        # ... and no OTHER connected register is assigned on this axis's plane.
+        for other in ("c_dx", "b_dx", "c_dy", "a_dy", "b_dz", "a_dz"):
+            if other in dict(operands):
+                continue
+            assert f"        {other} = " not in source
+        # The shifted reads wrap plainly: no phase ever touches a shifted operand.
+        for shifted in ("a_y", "a_z", "b_x", "b_z", "c_x", "c_y"):
+            assert f"{shifted} = c_mul" not in source and f"{shifted} = -" not in source
 
 
-def test_phase_block_rotates_both_operands():
-    """PREDICTED NULL: the two rotations are independent, so their ORDER is
-    unobservable. The pin is that BOTH operands that crossed the face are rotated —
-    dropping one is a real defect the gate's m6/m7 cover from another angle."""
-    source = cx.bloch_curl_source((0, 0, 0), False, (1, 1, 1), "FMA_V1")
-    for operand, phase in (("b_x", "px"), ("c_x", "px"), ("a_y", "py"),
-                           ("c_y", "py"), ("a_z", "pz"), ("b_z", "pz")):
-        assert f"{operand} = w" in source and f"c_mul({operand}, {phase})" in source
+def test_the_connection_connects_both_operands():
+    """PREDICTED NULL: the two connections are independent, so their ORDER is
+    unobservable. The pin is that BOTH unshifted operands differenced along the axis
+    are connected."""
+    source = cx.bloch_curl_source((0, 0, 0), False, (2, 2, 2))
+    for connected, stored, phase in (("c_dx", "c", "px"), ("b_dx", "b", "px"),
+                                     ("c_dy", "c", "py"), ("a_dy", "a", "py"),
+                                     ("b_dz", "b", "pz"), ("a_dz", "a", "pz")):
+        assert f"{connected} = c_mul({stored}, {phase});" in source
 
 
 #: Every ternary condition the two complex kernels are allowed to select on, with
@@ -204,10 +259,16 @@ _INTEGER_PREDICATES = {
     "vx": "bool vx = true, vy = true, vz = true;",
     "vy": "bool vx = true, vy = true, vz = true;",
     "vz": "bool vx = true, vy = true, vz = true;",
-    "wx": "bool wx = (i ==", "wy": "bool wy = (j ==", "wz": "bool wz = (k ==",
     "at_x": "bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);",
     "at_y": "bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);",
     "at_z": "bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);",
+    "has_x": "const bool has_x = (cb.cb_presence & 1u) != 0u;",
+    "has_y": "const bool has_y = (cb.cb_presence & 2u) != 0u;",
+    "has_z": "const bool has_z = (cb.cb_presence & 4u) != 0u;",
+    "du0": "const bool du0 = in_", "du1": "const bool du0 = in_",
+    "du2": "const bool du0 = in_",
+    "dw0": "const bool dw0 = in_", "dw1": "const bool dw0 = in_",
+    "dw2": "const bool dw0 = in_",
 }
 
 
@@ -224,15 +285,14 @@ def test_no_select_in_these_kernels_branches_on_a_FIELD_VALUE(codes, backward):
     branch still wrong, because the census bounds the ARITHMETIC and a taken branch
     is not arithmetic.
 
-    That note was written for tranche 1's two kernels and this family adds a third
-    select (the Bloch wrapped-lane rotation). The property is asserted rather than
-    inherited: every ``?`` in either emitted source selects on a name from
-    :data:`_INTEGER_PREDICATES`, and each of those is declared from an integer
-    comparison on a loop index.
+    The property is asserted rather than inherited: every ``?`` in either emitted
+    source selects on a name from :data:`_INTEGER_PREDICATES`, and each of those is
+    declared from an integer comparison on a loop index, a record bound or the
+    record's presence word -- never from a field value.
     """
-    sources = [cx.bloch_curl_source(codes, backward, [1 if c == 0 else 0
-                                                      for c in codes], "FMA_V1")]
-    sources += [cx.bloch_constitutive_source(side, "FMA_V1") for side in ("H", "E")]
+    sources = [cx.bloch_curl_source(codes, backward, [2 if c == 0 else 0
+                                                      for c in codes])]
+    sources += [cx.bloch_constitutive_source(side) for side in ("H", "E")]
     for source in sources:
         conditions = re.findall(r"([A-Za-z_][A-Za-z_0-9.]*)\s*\?", source)
         assert conditions or "constitutive" in source, source[:200]
@@ -245,55 +305,6 @@ def test_no_select_in_these_kernels_branches_on_a_FIELD_VALUE(codes, backward):
             assert _INTEGER_PREDICATES[condition] in source, (
                 f"{condition!r} is selected on but its integer declaration "
                 f"{_INTEGER_PREDICATES[condition]!r} is not in the source")
-
-
-# ---------------------------------------------------------------------------
-# 3. The probe contract
-# ---------------------------------------------------------------------------
-
-_GOOD = {
-    "backend": "numpy",
-    "patterns": {"c8_mul_c8": "FMA_V1",
-                 "c8_mul_c8_scalar_right": "FMA_V1",
-                 "c8_mul_f4_field_left": cx.AMBIGUOUS_BOTH,
-                 "f4_mul_c8_coefficient_left": cx.AMBIGUOUS_BOTH,
-                 "python_float_left": cx.AMBIGUOUS_BOTH},
-}
-
-
-def test_a_good_probe_binds_the_arm():
-    assert cx.expansion_from_probe(_GOOD) == "FMA_V1"
-
-
-@pytest.mark.parametrize("record,why", [
-    (None, "missing"),
-    ({}, "empty"),
-    ({"backend": "cupy", "patterns": _GOOD["patterns"]}, "the wrong backend"),
-    ({"backend": "numpy", "patterns": {}}, "no patterns"),
-    ({"backend": "numpy",
-      "patterns": {**_GOOD["patterns"], "c8_mul_c8": "NEITHER"}}, "NEITHER"),
-    ({"backend": "numpy",
-      "patterns": {**_GOOD["patterns"], "c8_mul_c8": "NAIVE"}}, "disagreeing"),
-    ({"backend": "numpy",
-      "patterns": {p: cx.AMBIGUOUS_BOTH for p in cx.PROBE_PATTERNS}},
-     "nothing discriminated"),
-])
-def test_a_probe_that_cannot_decide_refuses(record, why):
-    """Every failure mode returns None. A default here would be a guess wearing an
-    artifact's clothes."""
-    assert cx.expansion_from_probe(record) is None, why
-
-
-def test_the_probe_binds_to_the_backend_the_ENGINE_holds():
-    """numpy, not cupy — the inversion of the Triton track, and the whole reason the
-    probe measures the HOST rather than the device."""
-    assert cx.PROBE_BACKEND == "numpy"
-
-
-def test_an_unreadable_probe_is_treated_as_missing(tmp_path):
-    bad = tmp_path / "not.json"
-    bad.write_text("{ this is not json", encoding="utf-8")
-    assert cx.load_expansion_probe(str(bad)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -348,8 +359,7 @@ def _reasons(**kwargs):
     fields.condfac_for = kwargs.pop("condfac_for", lambda name: None)
     for key, value in kwargs.items():
         setattr(fields, key, value)
-    verdict = cx.complex_pml_curl_coverage(fields, None, "step_B", None,
-                                           probe=_GOOD)
+    verdict = cx.complex_pml_curl_coverage(fields, None, "step_B", None)
     return verdict.reasons
 
 
@@ -407,35 +417,8 @@ def test_an_unreadable_phase_is_NOT_an_unphased_one():
     fields.has_polarizations = False
     fields.polarizations = ()
     fields.condfac_for = lambda name: None
-    reasons = cx.complex_pml_curl_coverage(fields, None, "step_B", None,
-                                           probe=_GOOD).reasons
-    assert any("an unreadable phase is not an unphased one" in r for r in reasons)
-
-
-def test_no_probe_is_a_refusal_by_name(monkeypatch):
-    """MONKEYPATCH, not a bare pop: the variable is PROCESS-WIDE DISPATCH STATE.
-
-    This test popped ``$MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE`` and never put it
-    back, and the leak was not cosmetic — it is what the predicate binds its
-    multiply arm from, so every later test in the session saw the complex arms
-    refuse. Measured: with this file ahead of it, ``test_metal_planner_composition``
-    lost six tests (its own precondition check plus the five complex rows of the
-    composition matrix) and each read as a planner defect. ``monkeypatch.delenv``
-    restores at teardown, which is the only reason the deletion is safe here.
-    """
-    grid = _Grid()
-
-    class _Fields:
-        pass
-
-    fields = _Fields()
-    fields.grid = grid
-    fields.force_complex_fields = True
-    fields.stores_E = True
-    fields.condfac_for = lambda name: None
-    monkeypatch.delenv(cx.PROBE_PATH_ENVIRONMENT, raising=False)
     reasons = cx.complex_pml_curl_coverage(fields, None, "step_B", None).reasons
-    assert any("expansion probe artifact" in r for r in reasons)
+    assert any("an unreadable phase is not an unphased one" in r for r in reasons)
 
 
 def test_offdiagonal_epsilon_is_admitted_by_the_curl_and_refused_by_update_E():
@@ -451,8 +434,10 @@ def test_the_plan_builders_refuse_with_None_and_never_raise():
     fields = _Fields()
     fields.grid = _Grid()
     fields.force_complex_fields = False
-    assert cx.plan_complex_pml_curl(fields, None, "step_B", None) is None
-    assert cx.plan_complex_constitutive(fields, None, "H", None) is None
+    assert cx.plan_complex_pml_curl(fields, None, "step_B", None,
+                                    chunk_bounds=None) is None
+    assert cx.plan_complex_constitutive(fields, None, "H", None,
+                                        chunk_bounds=None) is None
 
 
 def test_an_unknown_sub_step_or_side_RAISES_rather_than_refusing():
@@ -467,41 +452,56 @@ def test_an_unknown_sub_step_or_side_RAISES_rather_than_refusing():
 # 5. The phase encoding
 # ---------------------------------------------------------------------------
 
-def test_the_backward_sub_step_gets_the_CONJUGATE():
-    """S:1818-1822. The classic sign error leaves every magnitude plausible."""
+def test_the_FORWARD_sub_step_gets_the_CONJUGATE():
+    """stepping._bloch_ghost_operand: B's forward differences read the word BELOW the
+    stored window, ``conj(eikna)`` times stored cell 0; D's backward differences the
+    word ABOVE it, ``eikna`` times it. The classic sign error leaves every magnitude
+    plausible and moves only the phase."""
     phase = complex(np.exp(2j * np.pi * 0.3))
     forward_flags, forward = cx.phase_arguments((phase, None, None), backward=False)
     backward_flags, backward = cx.phase_arguments((phase, None, None), backward=True)
-    assert forward_flags == backward_flags == (1, 0, 0)
+    assert forward_flags == backward_flags == (cx.CONNECT_PHASE, 0, 0)
     assert forward[0][0] == backward[0][0]
     assert forward[0][1] == -backward[0][1] != 0.0
+    assert np.float32(backward[0][1]) == np.float32(phase.imag)
+    assert np.float32(forward[0][1]) == np.float32(-phase.imag)
 
 
-def test_an_unphased_axis_encodes_1_0_under_flag_0():
+def test_an_unphased_axis_encodes_1_0_under_kind_none():
     flags, values = cx.phase_arguments((None, None, None), backward=False)
-    assert flags == (0, 0, 0)
+    assert flags == (cx.CONNECT_NONE,) * 3
     assert values == ((1.0, 0.0), (1.0, 0.0), (1.0, 0.0))
 
 
-def test_the_brillouin_edge_is_EXACTLY_minus_one():
+@pytest.mark.parametrize("backward", [False, True])
+def test_the_brillouin_edge_is_a_NEGATION_not_a_product(backward):
+    """MEEP's connect_phase: within 1e-13 of -1 a unary minus per part
+    (boundaries.cpp:359-366). A multiply by (-1, +-0) differs on signed zeros."""
     flags, values = cx.phase_arguments((complex(-1.0, 0.0), None, None),
-                                       backward=False)
-    assert values[0] == (-1.0, 0.0)
-    # And its conjugate is itself: the imaginary part is an exact zero, whose
-    # negation is -0.0 and whose product with anything is a signed zero. That is the
-    # one phase value at which a plane-wise collapse would be invisible on random
-    # data, which is why the gate pins the edge as a case rather than sampling it.
-    _, backward = cx.phase_arguments((complex(-1.0, 0.0), None, None), backward=True)
-    assert backward[0][0] == -1.0
-    assert np.signbit(np.float32(backward[0][1]))
+                                       backward=backward)
+    assert flags[0] == cx.CONNECT_NEGATE
+    assert values[0] == (1.0, 0.0)
 
 
-def test_the_phase_is_rounded_to_complex64_BEFORE_splitting():
+@pytest.mark.parametrize("backward", [False, True])
+def test_a_phase_within_tolerance_of_one_is_a_COPY(backward):
+    """k*L = 1 gives cos = 1, sin ~ -2.4e-16: MEEP copies the word."""
+    phase = complex(1.0, -2.4492935982947064e-16)
+    flags, _ = cx.phase_arguments((None, phase, None), backward=backward)
+    assert flags == (cx.CONNECT_NONE,) * 3
+
+
+def test_the_phase_is_formed_in_double_then_rounded_to_float32():
+    """``thephase = 1.0 * factor`` in double (readback.cmul), then the part dtype."""
+    from meep_gpu.readback import cmul
+
     phase = complex(np.exp(2j * np.pi * 0.123456789))
-    _, values = cx.phase_arguments((phase, None, None), backward=False)
-    rounded = np.complex64(phase)
-    assert values[0] == (float(np.float32(rounded.real)),
-                         float(np.float32(rounded.imag)))
+    for backward in (False, True):
+        _, values = cx.phase_arguments((phase, None, None), backward=backward)
+        factor = (phase.real, phase.imag) if backward else (phase.real, -phase.imag)
+        expected = cmul((1.0, 0.0), factor)
+        assert values[0] == (float(np.float32(expected[0])),
+                             float(np.float32(expected[1])))
 
 
 # ---------------------------------------------------------------------------
@@ -560,11 +560,11 @@ def test_the_beta_clause_is_what_keeps_this_family_off_a_beta_run(monkeypatch):
     fields.enable_pml_storage()
     pml = PML(grid=grid, thickness=((2, 2), (2, 2), (0, 0)))
     for probe_slot in ("step_B", "step_D"):
-        verdict = cx.complex_pml_curl_coverage(fields, pml, probe_slot, None, None)
+        verdict = cx.complex_pml_curl_coverage(fields, pml, probe_slot, None)
         assert not verdict.covered
         assert any("beta" in reason for reason in verdict.reasons), verdict.reasons
     for side in ("H", "E"):
-        verdict = cx.complex_constitutive_coverage(fields, pml, side, None, None)
+        verdict = cx.complex_constitutive_coverage(fields, pml, side, None)
         assert not verdict.covered
         assert any("beta" in reason for reason in verdict.reasons), verdict.reasons
 
@@ -621,11 +621,9 @@ def _engine_case(boundaries="periodic", k=(0.3, 0.0, 0.0), cell=(1.2, 1.0, 0.9),
 def _engine_reasons(fields, pml, slot):
     residency = type("_R", (), {"mirror": lambda *a, **k: None})()
     if slot in ("step_B", "step_D"):
-        return cx.complex_pml_curl_coverage(fields, pml, slot, residency,
-                                            probe=_GOOD)
+        return cx.complex_pml_curl_coverage(fields, pml, slot, residency)
     side = "H" if slot == "update_H" else "E"
-    return cx.complex_constitutive_coverage(fields, pml, side, residency,
-                                            probe=_GOOD)
+    return cx.complex_constitutive_coverage(fields, pml, side, residency)
 
 
 def test_the_engine_baseline_is_ADMITTED_on_all_four_slots():
@@ -767,13 +765,12 @@ def test_the_diagnostic_arms_are_the_SHIPPED_helper_and_the_check_FIRES():
     while it measured the previous spelling.
     """
     gate = _gate_module()
-    gate.EXPANSION = "FMA_V1"
     checked = gate._assert_diagnostic_arms_are_the_shipped_spelling()
     assert set(checked) == {"field_left_re", "field_left_im", "full_product_re",
-                            "full_product_im"}
+                            "full_product_im", "negate"}
 
     original = gate._FULL_PRODUCT_ARMS["shipped"]
-    gate._FULL_PRODUCT_ARMS["shipped"] = ("fma(z.x, p.x, -(z.y * p.y) )",
+    gate._FULL_PRODUCT_ARMS["shipped"] = ("(z.x * p.x) - (z.y * p.y )",
                                           original[1], original[2])
     try:
         with pytest.raises(AssertionError, match="HAND COPY"):

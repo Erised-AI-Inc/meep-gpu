@@ -1,18 +1,13 @@
-"""Host tests for the CUDA complex Dcyl H->D two-launch product.
+"""Host tests for the CUDA complex Dcyl H->D product (three launches).
 
-Everything here runs without a device: ``complex_emitter`` and this family's emitter are
-CuPy-free, so the whole lift is testable at the merge bar -- the four declared edits
-INVERT to the certified prelude exactly, the certified body survives the capture, the
-increment's multiply IS the FMA_V1 ``mul_field_left`` lifted from the arm block, the
-divide IS the measured scaled algorithm, and both arms emit distinct ASCII sources with
-one kernel each. The predicate is exercised on a NumPy-wearing-CuPy shim with a licence
-of the shape the arbiter returns.
-
-THE HOST IS NOT THE ORACLE FOR THE COMPLEX DIVIDE, and one test says so in numbers:
-NumPy's ``complex64 / float32`` is ``a * (float32(1)/d)`` and the family's spelling is
-CuPy's scaled algorithm, which differs from NumPy on the host -- that inversion is the
-reason the family carries the CuPy spelling (0 of 14,387,104 words on device) and the
-reason its gate arms NumPy's as a mutation.
+Everything here runs without a device: ``complex_emitter``, ``complex_fused_hd_pair``'s
+pure helpers and this family's emitter are CuPy-free, so launch 1's text is testable at
+the merge bar -- it is the imported pure prelude, argument pack and cell function plus
+the scratch stores, ASCII, one kernel, one body under both arm names. The predicate is
+exercised on a NumPy-wearing-CuPy shim with a licence of the shape the arbiter returns.
+The word-for-word sequence (launch 1, the scan over the scratch Hp per stored part, the
+rotation, launch 3) runs in a host interpreter in
+``cuda_kernels/test_cylindrical_chunk_forms.py``.
 
 Device identity is ``parity/meep_gpu/gate_cuda_cylindrical_fused_hd_pair.py``'s.
 """
@@ -31,9 +26,9 @@ import numpy as np
 import pytest
 
 from meep_gpu import withdraw_hoist
-from meep_gpu.cuda_kernels import complex_emitter, cylindrical_prefix
+from meep_gpu.cuda_kernels import cylindrical_prefix
 from meep_gpu.cuda_kernels import cylindrical_fused_hd_pair as family
-from meep_gpu.cuda_kernels import fused_hd_pair
+from meep_gpu.cuda_kernels import complex_fused_hd_pair, fused_hd_pair
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
 from meep_gpu.pml import PML
@@ -43,9 +38,6 @@ _BOARD = (_API_ROOT / "parity" / "meep_gpu" / "results" / "fusion_matrix_cuda_20
           / "fusion_matrix_cuda.json")
 _CELL = ("cuda_complex/complex", "cuda_cyl_complex/cylindrical complex")
 
-#: A licence of the shape ``complex_fields.expansion_license`` returns, cut under keep.
-_LICENCE = {"arm": "FMA_V1", "expansion": 1, "refusals": [], "basis": "measured",
-            "policy": "ieee_keep_ftz_stripped", "policy_resolved": "keep"}
 
 
 class _NumpyWearingCupysName:
@@ -77,15 +69,20 @@ def test_the_seam_span_slot_and_launch_count_are_the_real_siblings():
     assert family.CARRIES_DEPOSIT_REPAIR is False
     assert family.HOISTS_THE_WITHDRAW is False
     assert family.INSTALLABLE is False
-    assert "+2 launches" in family.INSTALLABLE_REASON
+    for phrase in ("no launch saved", "three launches", "owner's design ruling",
+                   "predicate admission"):
+        assert phrase in family.INSTALLABLE_REASON, phrase
     assert family.PREFIX_SOURCE == cylindrical_prefix.PREFIX_COMPONENT["step_D"]
-    assert family.PREFIX_IR0_VALUE == cylindrical_prefix.PREFIX_IR0["step_D"]
     assert family.SCRATCH_VOLUMES is fused_hd_pair.SCRATCH_VOLUMES
 
 
 def test_the_kernel_is_in_exactly_one_set_and_launch_2_is_the_certified_complex_curl():
-    assert family.KERNEL_NAME in family.CERTIFIED_KERNELS
-    assert not family.UNCERTIFIED_KERNELS
+    # NEW with the per-chunk radial sum: UNCERTIFIED, by name and gate, until the
+    # certification round re-cuts its predecessor's block.
+    assert family.KERNEL_NAME in family.UNCERTIFIED_KERNELS
+    assert family.KERNEL_NAME not in family.CERTIFIED_KERNELS
+    assert "gate_cuda_cylindrical_fused_hd_pair.py" in family.UNCERTIFIED_KERNELS[
+        family.KERNEL_NAME]
     tree = ast.parse((Path(family.__file__).parent / "cylindrical_complex_kernels.py")
                      .read_text(encoding="utf-8"))
     certified = next(ast.literal_eval(node.value) for node in tree.body
@@ -98,112 +95,36 @@ def test_the_kernel_is_in_exactly_one_set_and_launch_2_is_the_certified_complex_
 
 
 # ---------------------------------------------------------------------------
-# The lift: the declared edits invert to the certified text
+# Launch 1's text: imported, never retyped
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("arm_name", sorted(complex_emitter.EXPANSIONS))
-def test_the_four_prelude_edits_invert_to_the_certified_prelude(arm_name):
-    arm = complex_emitter.EXPANSIONS[arm_name]
-    certified = (complex_emitter._HEAD + complex_emitter._ARM_SOURCE[arm]  # noqa: SLF001
-                 + complex_emitter._TAIL)  # noqa: SLF001
-    emitted = family.constitutive_prelude(arm)
-    assert emitted != certified
-    inverted = emitted
-    for pure, original in ((family._APPLY_F_STORE_PURE, family._APPLY_F_STORE),  # noqa: SLF001
-                           (family._APPLY_FW_STORE_PURE, family._APPLY_FW_STORE),  # noqa: SLF001
-                           (family._APPLY_PARAMETERS_PURE, family._APPLY_PARAMETERS),  # noqa: SLF001
-                           (family._APPLY_SIGNATURE_PURE, family._APPLY_SIGNATURE)):  # noqa: SLF001
-        assert inverted.count(pure) == 1
-        inverted = inverted.replace(pure, original, 1)
-    assert inverted == certified
-    for entry in family.CONSTITUTIVE_LIFT_EDITS:
-        assert set(entry) == {"line", "became", "why"} and entry["why"].strip()
+def test_launch_1_is_the_pure_complex_cell_function_plus_the_scratch_stores():
+    """The pure prelude, the argument pack and the cell function are
+    :mod:`.complex_fused_hd_pair`'s, imported; this family adds the signature and the
+    six scratch stores, at the thread's OWN cell only."""
+    source = family.kernel_source()
+    composed = (complex_fused_hd_pair.constitutive_prelude("plain")
+                + complex_fused_hd_pair.weld_args_struct()
+                + complex_fused_hd_pair.raw_update_H_cell_source()
+                + family.signature())
+    assert source.startswith(composed)
+    assert source.endswith("    cf_store(f_w_Hz_out, idx, own_w[2]);\n}\n")
+    assert source.count("raw_update_H_cell(idx") == 1
+    assert "idx - nyz" not in source
 
 
-@pytest.mark.parametrize("arm_name", sorted(complex_emitter.EXPANSIONS))
-def test_the_certified_body_survives_the_capture_with_the_decode_kept(arm_name):
-    arm = complex_emitter.EXPANSIONS[arm_name]
-    prelude = (complex_emitter._HEAD + complex_emitter._ARM_SOURCE[arm]  # noqa: SLF001
-               + complex_emitter._TAIL)  # noqa: SLF001
-    body = complex_emitter.complex_source("update_H", arm)[len(prelude):]
-    body = body.split("\n) {\n", 1)[1][: -len("}\n")]
-    lifted = family.raw_update_H_cell_source(arm)
-    assert "blockIdx.x" not in lifted
-    assert "    int k = idx % nz;\n    int j = (idx / nz) % ny;\n    int i = idx / (ny * nz);\n" in lifted
-    assert lifted.count("constitutive_apply_pure(") == 3
-    assert "constitutive_apply(" not in lifted.replace("constitutive_apply_pure(", "")
-    for line in body.splitlines():
-        if line.strip() and "blockIdx" not in line and "return;" not in line \
-                and "constitutive_apply(" not in line:
-            assert line in lifted, line
-
-
-def test_the_increment_multiply_is_the_fma_v1_mul_field_left_lifted_and_renamed():
-    block = complex_emitter._ARM_SOURCE[complex_emitter.EXPANSIONS["FMA_V1"]]  # noqa: SLF001
-    head = "__device__ __forceinline__ cf mul_field_left(cf z, float c) {\n"
-    start = block.index(head)
-    certified = block[start: block.index("}\n", start) + 2]
-    lifted = family.mul_field_left_increment_source()
-    assert certified.replace("mul_field_left(", "mul_field_left_increment(", 1) in lifted
-    assert "__fmaf_rn(z.re, c, (z.im * 0.0f) * -1.0f)" in lifted
-    assert family.INCREMENT_MULTIPLY_SOURCE_ARM == "FMA_V1"
-
-
-def test_the_divide_is_the_measured_scaled_algorithm_with_every_zero_term_kept():
-    divide = family.div_coefficient_source()
-    for line in ("    float s = fabsf(d) + fabsf(0.0f);", "    float oos = 1.0f / s;",
-                 "    float ars = z.re * oos;", "    float ais = z.im * oos;",
-                 "    float brs = d * oos;", "    float bis = 0.0f * oos;",
-                 "    s = (brs * brs) + (bis * bis);", "    oos = 1.0f / s;",
-                 "    q.re = ((ars * brs) + (ais * bis)) * oos;",
-                 "    q.im = ((ais * brs) - (ars * bis)) * oos;"):
-        assert divide.count(line) == 1, line
-    assert "z.re / d" not in divide and "z.re * r" not in divide
-
-
-def test_the_host_is_not_the_oracle_for_the_complex_divide():
-    """NumPy's ``complex64 / float32`` IS ``a * (float32(1)/d)``; the family's scaled
-    spelling differs from NumPy on the host. The family carries CuPy's spelling because
-    its oracle is CuPy (0 of 14,387,104 words on device), and its gate arms NumPy's."""
-    rng = np.random.default_rng(3)
-    rows, cols = 163, 175
-    z = np.empty((rows, cols), dtype=np.complex64)
-    z.real = rng.standard_normal((rows, cols)).astype(np.float32)
-    z.imag = rng.standard_normal((rows, cols)).astype(np.float32)
-    d = (np.arange(rows, dtype=np.float64) + 1.0).astype(np.float32).reshape(-1, 1)
-    numpy_oracle = z / d
-    reciprocal = z * (np.float32(1) / d)
-    assert int(np.count_nonzero(reciprocal.view(np.uint32) != numpy_oracle.view(np.uint32))) == 0
-    with np.errstate(all="ignore"):
-        f32 = np.float32
-        s = np.abs(d) + f32(0.0)
-        oos = f32(1.0) / s
-        ars, ais = z.real * oos, z.imag * oos
-        brs, bis = d * oos, f32(0.0) * oos
-        s2 = (brs * brs) + (bis * bis)
-        oos2 = f32(1.0) / s2
-        scaled = np.empty_like(z)
-        scaled.real = ((ars * brs) + (ais * bis)) * oos2
-        scaled.imag = ((ais * brs) - (ars * bis)) * oos2
-    moved = int(np.count_nonzero(scaled.view(np.uint32) != numpy_oracle.view(np.uint32)))
-    assert moved > 0, "the scaled spelling agreed with NumPy; the inversion would be gone"
-
-
-def test_every_declared_increment_line_is_emitted_once_under_both_arms():
-    for arm_name in sorted(complex_emitter.EXPANSIONS):
-        source = family.kernel_source(arm_name)
-        for entry in family.INCREMENT_SPELLING:
-            assert set(entry) == {"line", "transcribes", "control"}
-            assert source.count(entry["line"]) == 1, (arm_name, entry["line"])
-        assert source.isascii()
-        assert source.count("{") == source.count("}")
-        assert source.count(f"void {family.KERNEL_NAME}(") == 1
-        below = source.split("raw_update_H_cell(idx, weld, own_h, own_w);", 1)[1]
-        for name in family.H_TARGETS:
-            assert f"weld.{name}" not in below
-        assert " / divisor" not in below and "1.0f / divisor" not in source
-    assert family.kernel_source("NAIVE") != family.kernel_source("FMA_V1")
-    assert sorted(family.device_sources()) == sorted(complex_emitter.EXPANSIONS)
+def test_launch_1_is_ascii_and_one_kernel():
+    """Pure ASCII is an NVRTC requirement, and no H target is read below the own-cell
+    store."""
+    source = family.kernel_source()
+    assert source.isascii()
+    assert source.count("{") == source.count("}")
+    assert source.count(f"void {family.KERNEL_NAME}(") == 1
+    below = source.split("raw_update_H_cell(idx, weld, own_h, own_w);", 1)[1]
+    for target in family.H_TARGETS:
+        assert f"weld.{target}" not in below, target
+    assert "divisor[" not in source and "cumsum(" not in source
+    assert sorted(family.device_sources()) == [family.KERNEL_NAME]
 
 
 # ---------------------------------------------------------------------------
@@ -214,22 +135,17 @@ def test_every_declared_increment_line_is_emitted_once_under_both_arms():
 def test_the_predicate_admits_every_m_class_under_a_policy_matched_licence(m):
     fields, pml, grid = _dcyl(m=m)
     assert family.covers_cylindrical_fused_hd_pair(
-        fields, pml, grid, (), _LICENCE, "keep") == (True, "covered")
+        fields, pml, grid, ()) == (True, "covered")
 
 
 def test_the_predicate_refuses_by_name():
     fields, pml, grid = _dcyl()
-    for licence, policy, needle in ((None, "keep", "no expansion licence"),
-                                    (_LICENCE, "flush", "cut under")):
-        covered, reason = family.covers_cylindrical_fused_hd_pair(
-            fields, pml, grid, (), licence, policy)
-        assert not covered and needle in reason, reason
     covered, reason = family.covers_cylindrical_fused_hd_pair(
-        fields, pml, grid, None, _LICENCE, "keep")
+        fields, pml, grid, None)
     assert not covered and "was not declared" in reason
     fields, pml, grid = _dcyl(m=0, complex_storage=False)
     covered, reason = family.covers_cylindrical_fused_hd_pair(
-        fields, pml, grid, (), _LICENCE, "keep")
+        fields, pml, grid, ())
     assert not covered and "real float32" in reason
     grid = Grid(resolution=1.0, cell_size=(8.0, 8.0, 8.0), courant=0.5,
                 boundaries=("periodic", "periodic", "periodic"), xp=_NumpyWearingCupysName())
@@ -237,7 +153,7 @@ def test_the_predicate_refuses_by_name():
     fields.enable_field_storage()
     fields.enable_pml_storage()
     covered, reason = family.covers_cylindrical_fused_hd_pair(
-        fields, PML(grid=grid, thickness=2), grid, (), _LICENCE, "keep")
+        fields, PML(grid=grid, thickness=2), grid, ())
     assert not covered and "cylindrical" in reason
 
 

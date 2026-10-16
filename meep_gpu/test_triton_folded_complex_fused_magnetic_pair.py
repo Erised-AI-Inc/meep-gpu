@@ -13,14 +13,13 @@ certification.
 WHAT IS PINNED HERE, and the one thing that is genuinely new on this board:
 
 * **THE PARITY CHAIN.** The real-storage folded pair composes a destination's
-  parities into ONE compile-time sign and states the result is order-independent.
-  Under complex storage that is FALSE — the parity is a full complex multiply by
-  ``(±1.0, +0.0)``, and complex float multiplication is not associative. So this
-  kernel applies one ``_mul_imag_coefficient_left`` PER PASS in the driver's own
-  order, and these tests read that order OFF THE SHIPPED KERNEL SOURCE and compare
-  it against :func:`~.folded_complex_fused_magnetic_pair.parity_chain` — which is
-  not a re-implementation of the arithmetic, it is a statement about which
-  coefficient argument each call takes and in what sequence;
+  parities into ONE compile-time sign. This kernel applies one host-rounded
+  ``+-1.0`` word PER PASS, per stored part, in the driver's own order (the fills'
+  ``part_products.scale``), and these tests read that order OFF THE SHIPPED KERNEL
+  SOURCE and compare it against
+  :func:`~.folded_complex_fused_magnetic_pair.parity_chain` — which is not a
+  re-implementation of the arithmetic, it is a statement about which parity word
+  each application takes and in what sequence;
 * the ownership enumeration: every emitted block's guard, destination offset, mask
   and coefficient index, against :func:`carried_destinations`;
 * the geometry that makes this the B family and not the D one, read off
@@ -52,12 +51,6 @@ from meep_gpu.pml import PML
 from meep_gpu.triton_kernels import folded_complex
 from meep_gpu.triton_kernels import folded_complex_fused_magnetic_pair as product
 from meep_gpu.triton_kernels.coverage import zero_metal_axes
-from meep_gpu.test_triton_complex_fields import stamp_probe_record
-
-# Every probe record this module builds is stamped 'keep'; the complex families'
-# policy clause fails closed when the run policy can be neither read nor declared,
-# so the premise is declared rather than left implicit.
-pytestmark = pytest.mark.usefixtures("run_policy_declared_keep")
 
 MODULE_PATH = pathlib.Path(product.__file__)
 PACKAGE_DIR = MODULE_PATH.parent
@@ -79,13 +72,6 @@ COEFFICIENT_ARGUMENTS = {
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-def _probe(value: str = "FMA_V1", backend: str = "cupy",
-           patterns=None):
-    """A probe artifact carrying this product's EXTENDED pattern set."""
-    names = product.PRODUCT_PROBE_PATTERNS if patterns is None else patterns
-    return stamp_probe_record(
-        {"backend": backend, "patterns": {name: value for name in names}})
 
 
 def fold(axis: str = "Y", extent: float = 2.0, phase: int = 1,
@@ -165,13 +151,25 @@ def kernel_source_no_docstring() -> str:
                      if segment)
 
 
+def _chain_of(expression):
+    """``(chain, operand)``: the ``(axis, pass)`` applications a ghost expression
+    makes, innermost first, and the operand they are applied to."""
+    if (isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Mult)
+            and isinstance(expression.left, ast.Name)
+            and expression.left.id in COEFFICIENT_ARGUMENTS):
+        chain, operand = _chain_of(expression.right)
+        return chain + [COEFFICIENT_ARGUMENTS[expression.left.id]], operand
+    return [], ast.unparse(expression)
+
+
 def carry_blocks():
     """Every emitted carry block, read off the shipped body.
 
-    Returns ``(guard, target, destination, coefficient, mask, chain)`` per block,
-    where ``chain`` is the ORDERED ``(axis, pass)`` list taken from the
-    ``_mul_imag_coefficient_left`` calls' first argument — the kernel's own
-    sequence, parsed. Nothing here computes a parity or a ghost value; a test that
+    Per block: the guard, the target, the destination offset, the coefficient and
+    membership the destination takes, the mask, and ``chain`` — the ORDERED
+    ``(axis, pass)`` list read off the ghost expression's product chain
+    (``d1r * (n0r * v0_re)`` is near-0 then far-1), the kernel's own sequence,
+    parsed. Nothing here computes a parity or a ghost value; a test that
     re-implemented the kernel would mirror its defects instead of executing them.
     """
     out = []
@@ -184,22 +182,19 @@ def carry_blocks():
         if not calls:
             continue
         assert len(calls) == 1, ast.unparse(statement.test)
-        chain = []
-        for inner in statement.body:
-            if not isinstance(inner, ast.Assign):
-                continue
-            value = inner.value
-            if (isinstance(value, ast.Call)
-                    and getattr(value.func, "id", "") == "_mul_imag_coefficient_left"):
-                chain.append(COEFFICIENT_ARGUMENTS[value.args[0].id])
         call = calls[0]
+        chain, operand = _chain_of(call.args[4])
+        chain_im, operand_im = _chain_of(call.args[5])
         out.append({
             "guard": ast.unparse(statement.test),
             "target": call.args[0].id,
             "destination": ast.unparse(call.args[3]),
             "coefficient": ast.unparse(call.args[6]),
-            "mask": ast.unparse(call.args[8]),
+            "membership": ast.unparse(call.args[8]),
+            "mask": ast.unparse(call.args[10]),
             "chain": tuple(chain),
+            "chain_im": tuple(chain_im),
+            "operands": (operand, operand_im),
         })
     return out
 
@@ -258,9 +253,9 @@ def test_the_parity_coefficient_words_imaginary_half_is_bitwise_zero():
     """Both words come from ``numpy.complex64`` and the imaginary one is ``+0.0``.
 
     Not merely equal to zero: the exact pattern a literal ``+0.0`` produces. The
-    gate's ``synthesize_zero_imag`` source mutation is VACUOUS BY CONSTRUCTION
-    because of this, and is recorded there as a structural null — a fact that stops
-    being true the moment this does.
+    kernel launches the real word alone, as a real scale per part, and that is the
+    fill only because the imaginary word is ``+0``: a nonzero one would make the
+    parity a rotation the per-part scale cannot represent.
     """
     for phase in (1, -1):
         for words in folded_complex.mirror_parity_coefficients(phase):
@@ -297,16 +292,19 @@ def test_every_carry_block_applies_its_parities_in_the_drivers_own_order():
 
 
 def test_no_carry_block_folds_its_chain_into_one_coefficient():
-    """The refuted spelling, asserted ABSENT from the shipped body.
+    """The folded spelling, asserted ABSENT from the shipped body.
 
-    The real-storage twin writes ``PHX * PHY * v0`` — one compile-time sign. Under
-    complex storage that folds two complex multiplies into one and moves bytes (the
-    Metal twin measured up to 23 of 128 uint32 words). Every block must therefore
-    carry exactly ``len(chain)`` multiply calls and no arithmetic between the
-    coefficient words.
+    The real-storage twin writes ``PHX * PHY * v0`` — one compile-time sign. Per
+    part ``+-1.0`` words fold exactly (the gate's ``m2_parity_chain_folded`` is a
+    declared null, measured at the word layer), but the kernel transcribes the
+    driver's applications one at a time and no arithmetic between the parity words
+    belongs in it.
     """
     for block in carry_blocks():
         assert len(block["chain"]) >= 1, block
+        assert block["chain_im"] == block["chain"], block
+        component = block["target"][1]
+        assert block["operands"] == (f"v{component}_re", f"v{component}_im"), block
     source = kernel_source_no_docstring()
     for left in COEFFICIENT_ARGUMENTS:
         for right in COEFFICIENT_ARGUMENTS:
@@ -315,7 +313,7 @@ def test_no_carry_block_folds_its_chain_into_one_coefficient():
 
 
 def test_the_chain_length_matches_the_number_of_passes_the_destination_carries():
-    """One multiply per pass — never more, never fewer."""
+    """One parity application per pass — never more, never fewer."""
     for block in carry_blocks():
         guard = block["guard"]
         passes = guard.replace("(", "").replace(")", "").split(" and ")
@@ -333,35 +331,26 @@ def test_the_near_application_is_innermost_in_every_mixed_chain():
         assert far_axes == sorted(far_axes), block
 
 
-def test_the_parity_multiply_is_the_fills_own_device_function_and_nothing_else():
+def test_the_parity_product_is_the_fills_per_part_scale_and_nothing_else():
     """One spelling of the parity product in this package, not two.
 
-    ``_mul_imag_coefficient_left`` is what
-    :func:`.folded_complex.folded_mirror_ghost_fill_complex` calls; a second
-    spelling here would be a second place for the coefficient-left orientation to be
-    subtly wrong, and it would need its own probe pattern.
+    :func:`.folded_complex.folded_mirror_ghost_fill_complex` multiplies each stored
+    part by the real parity word (``part_products.scale``); the carries spell the
+    same product, ``word * part``, and call no multiply helper. The only helper the
+    body calls is the Bloch connection of an unfolded axis.
     """
     source = kernel_source_no_docstring()
     called = {node.func.id for node in ast.walk(kernel_node())
               if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
     multiplies = {name for name in called if name.startswith("_mul")
-                  or name.startswith("_rotate")}
-    assert multiplies <= set(product.LICENSED_MULTIPLY_HELPERS), multiplies
-    assert "_mul_imag_coefficient_left" in multiplies
-    assert "_mul_imag_coefficient_left" in source
-
-
-def test_the_products_pattern_set_is_the_extended_one_because_of_that_call():
-    """The parity orientation is a NEW probe pattern and this product launches it."""
-    assert (product.PRODUCT_PROBE_PATTERNS
-            == tuple(folded_complex.PARITY_PROBE_PATTERNS))
-    assert folded_complex.PARITY_PROBE_PATTERN in product.PRODUCT_PROBE_PATTERNS
-    # And it is strictly bigger than the unfolded complex pair's, which does not
-    # launch the parity orientation at all.
-    complex_pair = importlib.import_module(
-        "meep_gpu.triton_kernels.complex_fused_magnetic_pair")
-    assert set(complex_pair.PRODUCT_PROBE_PATTERNS) < set(
-        product.PRODUCT_PROBE_PATTERNS)
+                  or name.startswith("_rotate") or name == "_connect"}
+    assert multiplies <= set(product.MULTIPLY_HELPERS), multiplies
+    assert product.MULTIPLY_HELPERS == ("_connect",)
+    assert not any(name.startswith("_mul") for name in called), called
+    for spelling in ("n0r * v0_re,", "n0r * v0_im,", "d1r * (n0r * v0_re),"):
+        assert spelling in source, spelling
+    fill = certified_source("folded_complex.py", "folded_mirror_ghost_fill_complex")
+    assert "_mul" not in fill, fill
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +392,9 @@ def test_the_near_destination_takes_the_moved_coefficient_and_the_far_one_does_n
         carries_near = any(kind == "near" for _axis, kind in block["chain"])
         expected = f"kp_d{component}" if carries_near else f"kp_{component}"
         assert block["coefficient"] == expected, block
+        # The membership moves with the pair: the destination's chunk at row 0.
+        membership = f"dw_d{component}" if carries_near else f"dw{component}"
+        assert block["membership"] == membership, block
 
 
 def test_the_kernels_literal_near_source_index_is_the_named_constant():
@@ -454,7 +446,8 @@ def test_REPLACES_names_every_pass_the_kernel_actually_carries():
     assert product.REPLACES == ("step_B", "fill_B", "zero_metal_B",
                                 "fill_folded_far_ghosts_B", "update_H")
     # step_B: the curl and the split-field recurrence.
-    assert "curl0_re, curl0_im = _mul_coefficient_left(dtdx" in source
+    assert "curl0_re = curl_stencil(" in source
+    assert "curl_form(tl.load(f0 + 2 * idx" in source
     # fill_B: the NEAR carry, on every component.
     assert all(f"if NEAR_{axis}:" in source for axis in "XYZ")
     # zero_metal_B: the register clear, both planes.
@@ -463,7 +456,7 @@ def test_REPLACES_names_every_pass_the_kernel_actually_carries():
     assert all(f"if FAR_{axis}:" in source for axis in "XYZ")
     # update_H: the constitutive accumulation at the owned cell AND at each ghost.
     assert "_carry_ghost_complex" in source
-    assert source.count("_mul_coefficient_left(kp_") == 3
+    assert source.count("constitutive_form(a_re, prev_re, v") == 3
 
 
 def test_the_far_carry_brings_the_top_plane_mask_with_it():
@@ -520,14 +513,14 @@ def certified_source(module_file: str, name: str) -> str:
 
 
 CURL_LINES = (
-    "t0_re = ((c_y_re - c_re) + (b_re - b_z_re))",
-    "t1_re = ((a_z_re - a_re) + (c_re - c_x_re))",
-    "t2_re = ((b_x_re - b_re) + (a_re - a_y_re))",
-    "curl0_re, curl0_im = _mul_coefficient_left(dtdx, t0_re, t0_im, EXPANSION)",
-    "q_re, q_im = _mul_field_left(p0_re, p0_im, km_y, EXPANSION)",
-    "n0_re, n0_im = _mul_field_left(q_re, q_im, si_y, EXPANSION)",
-    "v0_re, v0_im = _mul_field_left(r_re, r_im, si_z, EXPANSION)",
-    "r_re = (r_re + n0_re) - p0_re",
+    "r_re, r_im = _connect(c_re, c_im, cxr, cxi, CNX)",
+    "presence = tl.load(cb + RECORD_PRESENCE)",
+    "curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)",
+    "curl1_im = curl_stencil(a_z_im, a1_im, c1_im, c_x_im, dtdx, pz, px)",
+    "curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)",
+    "du0 = record_in(cb, lattice + 8, k)",
+    "p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)",
+    "tl.store(u0 + 2 * idx, n0_re, mask=live & du0)",
 )
 
 
@@ -553,31 +546,44 @@ def test_the_only_curl_edit_is_the_ownership_mask_on_the_B_load():
     certified = certified_source("folded_complex.py", "folded_bloch_pml_curl_step")
     ours = kernel_source_no_docstring()
     for component, own in ((0, "own0"), (1, "own1"), (2, "own2")):
-        assert f"e_re = tl.load(f{component} + 2 * idx, mask=live, other=0.0)" \
-            in certified
-        assert f"e_re = tl.load(f{component} + 2 * idx, mask={own}, other=0.0)" \
-            in ours
-        assert f"e_re = tl.load(f{component} + 2 * idx, mask=live, other=0.0)" \
-            not in ours
+        for word in ("", " + 1"):
+            live = f"curl_form(tl.load(f{component} + 2 * idx{word}, mask=live, other=0.0)"
+            owned = (f"curl_form(tl.load(f{component} + 2 * idx{word}, mask={own}, "
+                     f"other=0.0)")
+            assert live in certified, live
+            assert owned in ours, owned
+            assert live not in ours, live
 
 
 def test_the_constitutive_half_is_the_certified_complex_pairs_own_body():
     """Read against :mod:`.complex_fused_magnetic_pair`, which is itself the
-    certified ``bloch_constitutive_step`` ``SCALE = 0`` arm with ``src`` bound to a
-    register. The only edit here is the mask.
+    certified ``bloch_constitutive_step`` H arm per part with ``src`` bound to the
+    curl half's register. Here the register is passed itself, so each certified
+    line is read with ``src`` as the component's ``v?``; the other edit is the mask.
     """
     certified = certified_source("complex_fused_magnetic_pair.py",
                                  "complex_fused_curl_constitutive_B")
     ours = kernel_source_no_docstring()
-    for line in ("t_re, t_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)",
-                 "t_re, t_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)"):
+    for component in range(3):
+        for line in (
+                f"constitutive_form(a_re, prev_re, src_re, kp_{component}, "
+                f"km_{component}, dw{component})",
+                f"constitutive_form(a_im, prev_im, src_im, kp_{component}, "
+                f"km_{component}, dw{component})"):
+            assert line in certified, line
+            bound = (line.replace("src_re", f"v{component}_re")
+                     .replace("src_im", f"v{component}_im"))
+            assert bound in ours, bound
+    for line in ("prev_re = tl.where(start, src_re, prev_re)",
+                 "a_re = tl.where(start, src_re, a_re)"):
         assert line in certified, line
-        assert line in ours, line
+        for component in range(3):
+            assert line.replace("src_re", f"v{component}_re") in ours, line
     # `prev` is read BEFORE the `w` store — the one ordering the constitutive
     # cannot survive being wrong about.
     for component in range(3):
         prev = ours.index(f"prev_re = tl.load(w{component} + 2 * idx")
-        store = ours.index(f"tl.store(w{component} + 2 * idx, src_re")
+        store = ours.index(f"tl.store(w{component} + 2 * idx, v{component}_re")
         assert prev < store, component
 
 
@@ -591,12 +597,13 @@ def test_the_ghost_constitutive_repeats_the_same_statements_in_the_same_order():
     helper = certified_source("folded_complex_fused_magnetic_pair.py",
                               "_carry_ghost_complex")
     order = [
-        "prev_re = tl.load(w + 2 * dst",
-        "tl.store(w + 2 * dst, ghost_re",
-        "acc_re = tl.load(h + 2 * dst",
-        "_mul_coefficient_left(kp_d, ghost_re, ghost_im, EXPANSION)",
-        "_mul_coefficient_left(km_d, prev_re, prev_im, EXPANSION)",
-        "tl.store(h + 2 * dst, acc_re",
+        "prev_re = tl.load(w + 2 * dst, mask=mask & dw_d",
+        "tl.store(w + 2 * dst, ghost_re, mask=mask & dw_d",
+        "acc_re = tl.load(h + 2 * dst, mask=mask & dw_d",
+        "prev_re = tl.where(start, ghost_re, prev_re)",
+        "acc_re = tl.where(start, ghost_re, acc_re)",
+        "constitutive_form(acc_re, prev_re, ghost_re, kp_d, km_d, dw_d)",
+        "constitutive_form(acc_im, prev_im, ghost_im, kp_d, km_d, dw_d)",
         "tl.store(f + 2 * dst, ghost_re",
     ]
     positions = []
@@ -614,7 +621,7 @@ def test_the_wall_clear_is_applied_to_the_registers_before_every_consumer():
     ours = kernel_source_no_docstring()
     clear = ours.index("if ZM_X:")
     store = ours.index("tl.store(f0 + 2 * idx, v0_re")
-    constitutive = ours.index("src_re = v0_re")
+    constitutive = ours.index("tl.store(w0 + 2 * idx, v0_re")
     carry = ours.index("_carry_ghost_complex(f0, w0, h0, idx + df_y")
     assert clear < store < constitutive < carry, (clear, store, constitutive, carry)
 
@@ -626,7 +633,7 @@ def test_the_wall_clear_is_applied_to_the_registers_before_every_consumer():
 def test_a_folded_periodic_complex_grid_is_admitted_modulo_the_numpy_host():
     fields, pml = fold()
     verdict = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(), probe=_probe())
+        fields, pml, sources=())
     assert residual(verdict) == [], residual(verdict)
 
 
@@ -635,7 +642,7 @@ def test_a_folded_metallic_complex_grid_is_admitted_too():
     mask is not emitted. Both codes are admitted."""
     fields, pml = fold(boundaries="metallic")
     verdict = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(), probe=_probe())
+        fields, pml, sources=())
     assert residual(verdict) == [], residual(verdict)
 
 
@@ -652,7 +659,7 @@ def test_a_magnetic_deposit_is_carried_and_an_index_less_one_is_refused_by_name(
     """
     fields, pml = fold()
     electric = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(Source("D"),), probe=_probe())
+        fields, pml, sources=(Source("D"),))
     assert residual(electric) == [], residual(electric)
 
     class _Indexed:
@@ -660,10 +667,10 @@ def test_a_magnetic_deposit_is_carried_and_an_index_less_one_is_refused_by_name(
         _point_ix, _point_iy, _point_iz = 2, 2, 0
 
     carried = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(_Indexed(),), probe=_probe())
+        fields, pml, sources=(_Indexed(),))
     assert residual(carried) == [], residual(carried)
     index_less = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(Source("B"),), probe=_probe())
+        fields, pml, sources=(Source("B"),))
     assert any("does not publish the index" in reason
                for reason in index_less.reasons), index_less.reasons
 
@@ -681,7 +688,7 @@ def test_the_flag_at_False_would_cost_the_whole_cell(monkeypatch):
     assert product.CARRIES_DEPOSIT_REPAIR is True
     monkeypatch.setattr(product, "CARRIES_DEPOSIT_REPAIR", False)
     refused = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(_Indexed(),), probe=_probe())
+        fields, pml, sources=(_Indexed(),))
     assert any("is magnetic" in reason for reason in refused.reasons), (
         refused.reasons)
 
@@ -689,14 +696,14 @@ def test_the_flag_at_False_would_cost_the_whole_cell(monkeypatch):
 def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set():
     fields, pml = fold()
     verdict = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=None, probe=_probe())
+        fields, pml, sources=None)
     assert any("cannot infer an empty" in reason for reason in verdict.reasons)
 
 
 def test_real_storage_is_refused_because_the_real_folded_pair_owns_it():
     fields, pml = fold(complex_storage=False)
     verdict = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(), probe=_probe())
+        fields, pml, sources=())
     assert any("storage is real float32" in reason for reason in verdict.reasons)
 
 
@@ -706,26 +713,14 @@ def test_an_unfolded_grid_is_refused_because_this_is_a_composition_product():
     fields = Fields(grid=grid, force_complex_fields=True)
     fields.enable_pml_storage()
     verdict = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, PML(grid=grid, thickness=0.2), sources=(), probe=_probe())
+        fields, PML(grid=grid, thickness=0.2), sources=())
     assert any("no mirror plane is active" in reason for reason in verdict.reasons)
-
-
-def test_a_probe_without_the_parity_pattern_refuses_this_product():
-    """The base four license the two curl/constitutive halves and NOT the fill, and
-    the carry calls the fill's own multiply — so a base-only record must refuse."""
-    base_only = _probe(patterns=folded_complex.PROBE_PATTERNS)
-    fields, pml = fold()
-    verdict = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(), probe=base_only)
-    assert not verdict.covered
-    assert any(folded_complex.PARITY_PROBE_PATTERN in reason
-               for reason in verdict.reasons), verdict.reasons
 
 
 def test_the_predicate_reports_every_halfs_reasons_with_its_side_named():
     fields, pml = fold(complex_storage=False)
     verdict = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(), probe=_probe())
+        fields, pml, sources=())
     prefixes = {reason.split(":")[0] for reason in verdict.reasons}
     assert "folded complex curl half" in prefixes
     assert "folded complex constitutive half" in prefixes
@@ -735,7 +730,7 @@ def test_the_predicate_reports_every_halfs_reasons_with_its_side_named():
 def test_no_active_pml_is_refused_because_this_is_the_split_field_product():
     fields, pml = fold(pml=0.0)
     verdict = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(), probe=_probe())
+        fields, pml, sources=())
     assert any("no active PML" in reason for reason in verdict.reasons)
 
 
@@ -745,15 +740,28 @@ def test_the_builder_returns_None_for_every_configuration_the_predicate_refuses(
     for kwargs in ({"complex_storage": False}, {"pml": 0.0}):
         fields, pml = fold(**kwargs)
         assert product.plan_folded_complex_fused_magnetic_pair(
-            fields, pml, sources=(), probe=_probe()) is None
+            fields, pml, sources=()) is None
     fields, pml = fold()
     assert product.plan_folded_complex_fused_magnetic_pair(
-        fields, pml, sources=(Source("B"),), probe=_probe()) is None
+        fields, pml, sources=(Source("B"),)) is None
 
 
 # ---------------------------------------------------------------------------
 # The plan's own refusals
 # ---------------------------------------------------------------------------
+
+def _every_cell(shape):
+    """Every cell of every resolved axis inside a layer chunk, both lattices."""
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, RECORD_WORDS, record_index
+
+    record = np.zeros(RECORD_WORDS, dtype=np.int32)
+    for axis, n in enumerate(shape):
+        if n > 1:
+            record[RECORD_PRESENCE_WORD] |= 1 << axis
+            for half in (False, True):
+                record[record_index(half, axis, 1)] = n
+    return record
+
 
 def _plan_kwargs(shape=(8, 8, 1), codes=(0, 3, 0),
                  zero_metal=(False, False, False),
@@ -772,7 +780,7 @@ def _plan_kwargs(shape=(8, 8, 1), codes=(0, 3, 0),
                   (-1.0, 0.0), (-1.0, 0.0), (-1.0, 0.0))
     return dict(arrays=arrays, curl_flat=flat, constitutive_flat=flat, codes=codes,
                 zero_metal=zero_metal, phases=phases, parity=parity, dtdx=0.35,
-                expansion=1, reflect=reflect)
+                reflect=reflect, chunk_bounds=_every_cell(shape))
 
 
 def test_the_plan_refuses_a_reflect_row_it_cannot_own():
@@ -858,11 +866,11 @@ class _NamedCupy:
 def test_the_engine_route_and_the_arrays_route_agree_on_the_parity_table():
     fields, pml = fold()
     assert product.plan_folded_complex_fused_magnetic_pair(
-        fields, pml, sources=(), probe=_probe()) is None, \
+        fields, pml, sources=()) is None, \
         "a NumPy host must be refused; the engine route is device-only"
     object.__setattr__(fields.grid, "xp", _NamedCupy())
     plan = product.plan_folded_complex_fused_magnetic_pair(
-        fields, pml, sources=(), probe=_probe())
+        fields, pml, sources=())
     assert plan is not None
     assert plan.parity == product.parity_coefficient_words(fields.grid)
     assert plan.replaces == product.REPLACES
@@ -974,7 +982,7 @@ def test_the_module_imports_and_answers_coverage_with_triton_absent(monkeypatch)
         reloaded.folded_complex_fused_curl_constitutive_B_kernel()
     fields, pml = fold()
     verdict = reloaded.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(), probe=_probe())
+        fields, pml, sources=())
     assert isinstance(verdict.covered, bool)
 
 
@@ -1066,12 +1074,13 @@ def load_gate():
 
 
 def test_the_gates_no_device_legs_all_pass_here():
-    """Seven legs, on this machine, with no CuPy and no Triton.
+    """Every leg of the gate's ``NO_DEVICE_LEGS``, on this machine, with no CuPy and
+    no Triton.
 
     They are the design's own checks — the transcription, the parity chain, its
-    reachability, the seam binding, the expansion licence, the predicate battery and
-    branch reachability — and running them at the merge bar is what stops a kernel
-    edit from waiting for a device to be refused.
+    reachability and associativity, the mutation vocabulary, the seam binding, the
+    predicate battery and branch reachability — and running them at the merge bar
+    is what stops a kernel edit from waiting for a device to be refused.
     """
     gate = load_gate()
     failures = {}
@@ -1185,35 +1194,31 @@ def _strip_docstrings(tree):
     return tree
 
 
-def test_the_ordering_mutations_are_scored_under_a_class_that_can_SEPARATE_them():
-    """A mutation scored on operands that cannot show it reports a NULL saying
-    nothing — and here the class is decided by a MEASUREMENT, not by argument.
+def test_the_ordering_nulls_are_measured_under_a_class_that_carries_signed_zeros():
+    """A null scored on operands that could not show the defect says nothing, so
+    the class is the one where a defect of that kind would live.
 
-    ``parity_chain_associativity_leg`` sweeps the shipped parity multiply's two arms
-    and counts 32 of 2048 words moved by a re-order and 34 by a fold. Reading which
-    words move settles the class: with ``c_im`` bitwise ``+0.0`` the addend
-    ``(c_im * z_im) * -1.0`` is a SIGNED ZERO whose sign follows ``z_im``, and
-    ``fma(c_re, z_re, that)`` canonicalizes ``-0 + +0`` to ``+0``. On every normal
-    operand the multiply is an exact sign flip and the composition commutes to the
-    bit. So the defect lives at signed zeros, and the class these mutations are
-    scored under must carry them.
+    The previous whole-complex parity product moved words only at signed zeros
+    (its zero cross terms canonicalised ``-0 + +0``). Per part each application is
+    ``+-1.0`` times the word, exact everywhere, so the two ordering mutations are
+    declared nulls: the class they are scored under must still carry negative
+    zeros, and the word-layer sweep must count none moved.
     """
     gate = load_gate()
     rng = np.random.default_rng(gate.case_seed("class-check", "x"))
     shape = (6, 6, 2)
+    table = {name: expectation for name, _why, expectation, _r in gate.mutation_table()}
     for name in ("m1_parity_chain_reordered", "m2_parity_chain_folded"):
+        assert table[name] == "null", (name, table[name])
         value_class = gate.MUTATION_VALUE_CLASS.get(
             name, gate.DEFAULT_MUTATION_VALUE_CLASS)
         census = gate.operand_census(
             gate.value_class_hosts(("a",), shape, rng, value_class))
         assert census["negative_zeros"] > 0, (name, value_class, census)
-    # And the sweep itself: the defect must be REAL at the word layer, or the
-    # mutations could not be caught anywhere and "caught" would be the wrong
-    # declaration.
     leg = gate.parity_chain_associativity_leg()
     assert leg["passed"], leg["findings"]
-    assert all(row["reorder_differing_words"] > 0 for row in leg["rows"]), leg["rows"]
-    assert all(row["fold_differing_words"] > 0 for row in leg["rows"]), leg["rows"]
+    assert all(row["reorder_differing_words"] == 0 for row in leg["rows"]), leg["rows"]
+    assert all(row["fold_differing_words"] == 0 for row in leg["rows"]), leg["rows"]
 
 
 def test_the_gate_binds_the_seam_passes_the_driver_actually_calls():
@@ -1282,14 +1287,14 @@ def test_an_offdiagonal_chi1inv_row_is_admitted_through_the_second_arm_label():
     fields, pml = fold()
     _offdiagonal(fields, fields.grid)
     plain = folded_complex.folded_complex_composition_curl_coverage(
-        fields, pml, "step_B", probe=_probe())
+        fields, pml, "step_B")
     assert any("off-diagonal chi1inv row is installed" in reason
                for reason in plain.reasons), plain.reasons
     offdiag = folded_complex.folded_complex_offdiag_pml_curl_coverage(
-        fields, pml, "step_B", probe=_probe())
+        fields, pml, "step_B")
     assert residual(offdiag) == [], residual(offdiag)
     verdict = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(), probe=_probe())
+        fields, pml, sources=())
     assert residual(verdict) == [], residual(verdict)
 
 
@@ -1301,9 +1306,9 @@ def test_the_two_admissions_are_disjoint_so_the_pair_is_never_mixed():
         if offdiagonal:
             _offdiagonal(fields, fields.grid)
         plain = folded_complex.folded_complex_composition_curl_coverage(
-            fields, pml, "step_B", probe=_probe())
+            fields, pml, "step_B")
         other = folded_complex.folded_complex_offdiag_pml_curl_coverage(
-            fields, pml, "step_B", probe=_probe())
+            fields, pml, "step_B")
         assert bool(residual(plain)) != bool(residual(other)), offdiagonal
 
 
@@ -1334,7 +1339,7 @@ def test_the_offdiagonal_admission_rests_on_update_H_reading_no_inverse_epsilon(
         "f0", "f1", "f2", "u0", "u1", "u2", "g0", "g1", "g2",
         "kmx", "sinvx", "kmy", "sinvy", "kmz", "sinvz",
         "h0", "h1", "h2", "w0", "w1", "w2",
-        "kp0", "km0", "kp1", "km1", "kp2", "km2",
+        "kp0", "km0", "kp1", "km1", "kp2", "km2", "cb",
     ], pointers
     # And the constitutive half's coefficient arguments are the INTEGER-lattice
     # kps/kms alone: no fourth volume rides in beside them.
@@ -1347,7 +1352,7 @@ def test_the_predicate_reports_the_admission_that_got_furthest():
     'no off-diagonal row is installed'."""
     fields, pml = fold(complex_storage=False)      # refused by BOTH admissions
     verdict = product.folded_complex_fused_magnetic_pair_coverage(
-        fields, pml, sources=(), probe=_probe())
+        fields, pml, sources=())
     assert any("storage is real float32" in reason for reason in verdict.reasons)
     assert not any("must not overlap them" in reason for reason in verdict.reasons), \
         verdict.reasons

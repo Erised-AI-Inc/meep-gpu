@@ -95,14 +95,6 @@ def test_no_metal_gate_escapes_discovery_by_being_named_off_pattern():
         f"never checked: {missed}")
 
 
-def test_every_standalone_expansion_probe_is_an_explicit_measurement_target():
-    assert [path.name for path in runner.discover_probes()] == [
-        "probe_metal_beta_expansion.py",
-        "probe_metal_folded_complex_expansion.py",
-        "probe_metal_cylindrical_complex.py",
-    ]
-
-
 def test_runtime_digests_follow_module_file_after_import_not_the_cwd(tmp_path: Path):
     root = tmp_path / "api"
     gate = _source(root / "parity" / "gate.py")
@@ -229,25 +221,3 @@ def test_explicit_campaign_manifest_is_shared_by_independent_gate_outputs(
     assert shared_manifest.is_file()
 
 
-def test_related_artifact_inherits_only_a_released_and_current_parent_weld(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    root = tmp_path / "api"
-    gate = _source(root / "parity" / "gate.py")
-    module_path = _source(root / "meep_gpu" / "family.py")
-    module = ModuleType("family")
-    module.__file__ = str(module_path)
-    parent = tmp_path / "gate.json"
-    parent.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(runner, "API_ROOT", root)
-    runner.finalize_artifact(artifact_path=parent, gate_path=gate, exit_code=0,
-                             modules=(module,), root=root)
-    companion = tmp_path / "probe.json"
-    companion.write_text(json.dumps({"backend": "numpy", "patterns": {}}),
-                         encoding="utf-8")
-
-    payload = runner.finalize_related_artifact(
-        artifact_path=companion, parent_artifact=parent)
-
-    assert payload["release"]["released"] is True
-    assert payload["parent_artifact"] == str(parent.resolve())
-    assert payload["source_sha256"] == json.loads(parent.read_text())["source_sha256"]

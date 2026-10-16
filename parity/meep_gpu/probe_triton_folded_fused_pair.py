@@ -291,6 +291,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/folded_fused_magnetic_pair.py",
         "meep_gpu/triton_kernels/symmetry.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/dispersive_fused_pair.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
@@ -396,15 +397,28 @@ def _rewrite_block(source: str, before: Sequence[str],
 # ---------------------------------------------------------------------------
 
 #: The arithmetic lines the fused body must reproduce VERBATIM from the folded
-#: curl. Each is a line whose grouping decides float32 bits; a reformat is a
-#: different number, not a style change.
+#: curl: the three stencil calls (``forms.curl_stencil``, MEEP's left-to-right
+#: grouping with the partner presence), the record lines that key each target's
+#: form on its dsigu layer, the masked auxiliary loads, the forms' coefficient
+#: arguments (``forms.curl_form``) and the region-masked auxiliary stores. Each
+#: decides float32 bits or which cells take which form; a reformat is a different
+#: number, not a style change.
 CURL_LINES = (
-    "curl0 = dtdx * ((c_y - c) + (b - b_z))",
-    "curl1 = dtdx * ((a_z - a) + (c - c_x))",
-    "curl2 = dtdx * ((b_x - b) + (a - a_y))",
-    "n0 = ((p0 * km_y) - curl0) * si_y",
-    "n1 = ((p1 * km_z) - curl1) * si_z",
-    "n2 = ((p2 * km_x) - curl2) * si_x",
+    "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)",
+    "curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)",
+    "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)",
+    "du0 = record_in(cb, lattice + 8, k)",
+    "du1 = record_in(cb, lattice + 0, i)",
+    "du2 = record_in(cb, lattice + 4, j)",
+    "p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)",
+    "p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)",
+    "p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)",
+    "km_y, si_y, km_z, si_z, du0)",
+    "km_z, si_z, km_x, si_x, du1)",
+    "km_x, si_x, km_y, si_y, du2)",
+    "tl.store(u0 + idx, n0, mask=live & du0)",
+    "tl.store(u1 + idx, n1, mask=live & du1)",
+    "tl.store(u2 + idx, n2, mask=live & du2)",
 )
 
 #: The D-family wall clear, byte-copied from ``dispersive_fused_pair``'s ZM block —
@@ -418,16 +432,20 @@ ZERO_METAL_LINES = (
     "v1 = tl.where(at_z, 0.0, v1)",
 )
 
-#: The constitutive accumulation on the cell the lane owns. Two separate
-#: accumulations, left to right; flattening them is a different float32 number and
-#: neither multiply may contract into an FMA.
+#: The constitutive forms on the cell the lane owns (``forms.constitutive_form``:
+#: MEEP's ``f + ((kps*src) - (kms*prev))`` on the component's dsigw cells, ``src``
+#: elsewhere), the record lines that key them on the component's own axis on the
+#: half-integer lattice, and the ``f_w`` traffic masked to those cells.
 CONSTITUTIVE_LINES = (
-    "a0v = a0v + kp_0 * src0",
-    "a0v = a0v - km_0 * prev0",
-    "a1v = a1v + kp_1 * src1",
-    "a1v = a1v - km_1 * prev1",
-    "a2v = a2v + kp_2 * src2",
-    "a2v = a2v - km_2 * prev2",
+    "dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)",
+    "dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)",
+    "dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)",
+    "a0v = constitutive_form(a0v, prev0, src0, kp_0, km_0, dw0)",
+    "a1v = constitutive_form(a1v, prev1, src1, kp_1, km_1, dw1)",
+    "a2v = constitutive_form(a2v, prev2, src2, kp_2, km_2, dw2)",
+    "prev0 = tl.load(w0 + idx, mask=own0 & dw0, other=0.0)",
+    "tl.store(w0 + idx, src0, mask=own0 & dw0)",
+    "a0v = tl.load(e0 + idx, mask=own0 & dw0, other=0.0)",
 )
 
 
@@ -442,18 +460,18 @@ TOP_PLANE_LINES = (
     "curl2 = tl.where(last_z, 0.0, curl2)",
 )
 
-#: ``_carry_ghost_E``'s eight statements — the displacement store followed by
-#: ``constitutive_step``'s ``SCALE=1`` arm with ``src`` bound to the carried value.
-#: Checked as a body of its own so a drift inside the device function is caught
-#: even though every call site below reads identically.
+#: ``_carry_ghost_E``'s seven statements — the displacement store followed by
+#: ``constitutive_step``'s ``SCALE=1`` arm with ``src`` bound to the carried value,
+#: its form keyed on the DESTINATION's membership ``dw_d``. Checked as a body of
+#: its own so a drift inside the device function is caught even though every call
+#: site below reads identically.
 CARRY_GHOST_LINES = (
     "tl.store(f + dst, ghost, mask=mask)",
-    "prev = tl.load(w + dst, mask=mask, other=0.0)",
+    "prev = tl.load(w + dst, mask=mask & dw_d, other=0.0)",
     "src = ghost * tl.load(ie + dst, mask=mask, other=0.0)",
-    "tl.store(w + dst, src, mask=mask)",
-    "acc = tl.load(e + dst, mask=mask, other=0.0)",
-    "acc = acc + kp_d * src",
-    "acc = acc - km_d * prev",
+    "tl.store(w + dst, src, mask=mask & dw_d)",
+    "acc = tl.load(e + dst, mask=mask & dw_d, other=0.0)",
+    "acc = constitutive_form(acc, prev, src, kp_d, km_d, dw_d)",
     "tl.store(e + dst, acc, mask=mask)",
 )
 
@@ -486,12 +504,13 @@ def transcription_leg() -> Dict[str, Any]:
         if line not in fused:
             findings.append(f"the fused body does not contain {line!r}")
     # The constitutive half is `constitutive_step`'s shape with its own register
-    # names; what must survive verbatim is the grouping.
-    for line in ("a0 = a0 + kp_0 * src0", "a0 = a0 - km_0 * prev0"):
+    # names; what must survive verbatim is the form's call and its record line.
+    for line in ("a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)",
+                 "dw0 = record_in(cb, lattice + 0, i)"):
         if line not in constitutive:
             findings.append(
                 f"kernels.constitutive_step no longer contains {line!r}; the "
-                f"constitutive grouping's source has moved")
+                f"constitutive form's source has moved")
     # D ON THE LEFT of the inverse-epsilon multiply, at the owned cell and at every
     # imaged ghost. stepping.py:1011-1013 writes `source * inverse_epsilon`, and
     # bitwise commutativity is not a licence to transcribe it backwards.
@@ -541,6 +560,10 @@ def transcription_leg() -> Dict[str, Any]:
     for line in CARRY_GHOST_LINES:
         if line not in carry_ghost:
             findings.append(f"_carry_ghost_E does not contain {line!r}")
+    if len(carry_ghost) != len(CARRY_GHOST_LINES) + 1:
+        findings.append(
+            f"_carry_ghost_E has {len(carry_ghost) - 1} statements, not "
+            f"{len(CARRY_GHOST_LINES)}; a statement was added or dropped")
     # Every ghost goes through it: no carry may open-code the eight statements
     # again, which is the drift the device function exists to prevent.
     if any(line.startswith("tl.store(f0 + dst") or line.startswith("tl.store(f1 + dst")
@@ -610,6 +633,13 @@ NEAR_COEFFICIENTS: Tuple[Tuple[str, str], ...] = (
     ("kp_0", "km_0"), ("kp_1", "km_1"), ("kp_2", "km_2"))
 FAR_COEFFICIENTS: Tuple[Tuple[str, str], ...] = (
     ("kp_f0", "km_f0"), ("kp_f1", "km_f1"), ("kp_f2", "km_f2"))
+
+#: The membership flag a destination's form is keyed on, by the same rule: a
+#: NEAR-only ghost keeps the source lane's coordinate on the component's own axis
+#: and so its flag; anything with the FAR half in it sits at the top row of that
+#: axis and takes the flag read there.
+NEAR_MEMBERSHIP: Tuple[str, ...] = ("dw0", "dw1", "dw2")
+FAR_MEMBERSHIP: Tuple[str, ...] = ("dw_f0", "dw_f1", "dw_f2")
 
 
 def _guarded_statements(node: Any) -> List[Tuple[Tuple[str, ...], Any]]:
@@ -713,10 +743,10 @@ def parse_carry_table() -> List[Dict[str, Any]]:
                 and call.func.id == "_carry_ghost_E"):
             continue
         args = [ast.unparse(argument) for argument in call.args]
-        if len(args) != 9:
-            raise AssertionError(f"_carry_ghost_E takes 9 arguments, got {args}")
+        if len(args) != 10:
+            raise AssertionError(f"_carry_ghost_E takes 10 arguments, got {args}")
         field, workspace, accumulator, material, destination = args[:5]
-        value, kp_name, km_name, mask = args[5:]
+        value, kp_name, km_name, membership, mask = args[5:]
         try:
             target = _CARRY_ARGS.index((field, workspace, accumulator, material))
         except ValueError:
@@ -740,6 +770,7 @@ def parse_carry_table() -> List[Dict[str, Any]]:
             "value": value,
             "value_base": base.split("*")[-1].strip(),
             "coefficients": (kp_name, km_name),
+            "membership": membership,
             "guards": tuple(guards),
             "mask": mask,
             "imaged": imaged,
@@ -881,6 +912,14 @@ def carry_table_leg() -> Dict[str, Any]:
                 f"{want_pair} — update_E indexes component {target} on axis "
                 f"{'xyz'[target]}, which the FAR fill images along and the NEAR "
                 f"fill never does")
+        # (d') THE MEMBERSHIP FLAG, by the same rule: the destination's form is
+        #      keyed where the destination is.
+        want_flag = (FAR_MEMBERSHIP[target] if record["far_axes"]
+                     else NEAR_MEMBERSHIP[target])
+        if record["membership"] != want_flag:
+            findings.append(
+                f"{tag}: keys its form on {record['membership']!r}, expected "
+                f"{want_flag!r} — the select is evaluated where the ghost cell is")
         # (e) THE VALUE IS CHAINED. A far-over-near cell must be the far parity
         #     applied to the ALREADY-CLAMPED near ghost register, not to `v`.
         if record["far_axes"] and record["near_axes"]:
@@ -1112,6 +1151,24 @@ NOT_SCOREABLE_WITHOUT_A_DEVICE: Dict[str, str] = {
         "the CURL's top-plane ownership mask; this leg is handed the owned value "
         "and never forms a curl, so the defect is invisible in D and shows up in "
         "fu_D on the NEXT timestep — the device gate's to measure",
+    "b1_whole_grid_recurrence":
+        "which curl form a cell takes; this leg is handed the owned value and "
+        "never forms a curl",
+    "b2_coefficient_predicate":
+        "which curl form a cell takes; this leg never forms a curl",
+    "b3_membership_one_row_off":
+        "which constitutive form a cell takes; this leg checks the value that "
+        "reaches update_E, not the update",
+    "b4_constitutive_lattice_swapped":
+        "which constitutive form a cell takes; this leg does not perform the update",
+    "b5_dsig_dsigu_swapped":
+        "the curl forms' coefficients; this leg never forms a curl",
+    "b6_fu_store_unmasked":
+        "auxiliary traffic; this leg has no workspace",
+    "b7_fw_store_unmasked":
+        "auxiliary traffic; this leg has no workspace",
+    "b9_fu_load_unmasked":
+        "a declared null on auxiliary traffic; this leg has no workspace",
 }
 
 #: Mutations this leg catches STRUCTURALLY — the parse fails or the table stops
@@ -1122,6 +1179,9 @@ CAUGHT_STRUCTURALLY: Dict[str, str] = {
     "m10_inverse_epsilon_at_the_source":
         "the call no longer names one component's (f, w, e, ie) quadruple, so the "
         "parser refuses it before any volume is compared",
+    "b8_carry_keyed_at_the_source":
+        "the call keys the far ghost's form on the source lane's flag, which the "
+        "table's membership check (d') refuses; on the device it is a declared null",
 }
 
 
@@ -1675,6 +1735,41 @@ def first_divergence(left: Dict[str, np.ndarray],
     return {"array": "<inventory>", "reason": "asymmetric", "names": only} if only else None
 
 
+#: Each auxiliary's record line, ``(half-integer lattice, axis)``: a curl auxiliary on its
+#: component's dsigu axis (half-integer for the B targets, integer for the D ones), a
+#: constitutive one on its component's own axis (integer for H, half-integer for E) --
+#: the lines the kernels and the array path key the forms on.
+AUXILIARY_LINES: Dict[str, Tuple[bool, int]] = {
+    "fu_Bx": (True, 2), "fu_By": (True, 0), "fu_Bz": (True, 1),
+    "fu_Dx": (False, 2), "fu_Dy": (False, 0), "fu_Dz": (False, 1),
+    "f_w_Hx": (False, 0), "f_w_Hy": (False, 1), "f_w_Hz": (False, 2),
+    "f_w_Ex": (True, 0), "f_w_Ey": (True, 1), "f_w_Ez": (True, 2),
+}
+
+
+def outside_every_layer(driver, names) -> List[str]:
+    """The auxiliaries whose record line holds no row of the run's division.
+
+    THE AUXILIARY CONTRACT LEAVES THEM UNTOUCHED: an auxiliary word outside its form's
+    region is never read or written, so on a division that gives a component's layer no
+    cell at all (an invariant axis carries no run) the auxiliary keeps its first word
+    for the whole run, on the array path and in the kernel alike. Such an array is not a
+    vacuous leg; it is the contract, and it is checked as one: it must NOT move.
+    """
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+
+    record = driver.chunk_bounds_record()
+    shape = tuple(int(n) for n in driver.fields.grid.shape)
+    out = []
+    for name in names:
+        if name not in AUXILIARY_LINES:
+            continue
+        half, axis = AUXILIARY_LINES[name]
+        if not membership_from_record(record, half, axis, shape[axis]).any():
+            out.append(name)
+    return sorted(out)
+
+
 def moved(before: Dict[str, np.ndarray], after: Dict[str, np.ndarray]) -> List[str]:
     return [name for name in sorted(set(before) & set(after))
             if not np.array_equal(before[name], after[name])]
@@ -1864,7 +1959,8 @@ def harness_plan_for(driver, product, kernel):
         zero_metal_axes(fields.grid), product.mirror_phases(fields.grid),
         fields.grid.dt / fields.grid.dx,
         kernel=kernel, num_warps=1,
-        reflect=_symmetry._far_reflect_rows(fields.grid) or (None, None, None))
+        reflect=_symmetry._far_reflect_rows(fields.grid) or (None, None, None),
+        chunk_bounds=driver.chunk_bounds_record())
 
 
 def fused_route(plan):
@@ -1982,8 +2078,11 @@ def run_leg(cp, name: str, cell, boundaries, mirrors, steps: int, product,
         row["arrays_total"] = len(final)
         row["arrays_compared"] = sorted(final)
         row["arrays_ever_moved"] = len(ever_moved)
+        outside = outside_every_layer(fused, final)
+        row["arrays_outside_every_layer"] = outside
+        row["auxiliary_contract_violations"] = sorted(set(outside) & set(ever_moved))
         row["arrays_never_moved"] = sorted(
-            set(final) - set(ever_moved) - set(material))
+            set(final) - set(ever_moved) - set(material) - set(outside))
         row["material_changed"] = sorted(key for key in material if key in ever_moved)
         row["inventory_asymmetry_vs_array"] = sorted(
             set(final).symmetric_difference(snapshot(cp, reference)))
@@ -2020,6 +2119,10 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
             f"expected {require_launches}: the fused path is not what executed")
     if require_moved and (row.get("arrays_never_moved") or []):
         failures.append(f"VACUOUS: these arrays never moved: {row['arrays_never_moved']}")
+    if row.get("auxiliary_contract_violations"):
+        failures.append(
+            f"an auxiliary outside every layer of the division moved (the auxiliary "
+            f"contract): {row['auxiliary_contract_violations']}")
     if row.get("material_changed"):
         failures.append(f"a material input changed: {row['material_changed']}")
     fell_back = {key: value for key, value in (row.get("launches") or {}).items()
@@ -2061,12 +2164,22 @@ def compile_mutant(source: str, kernel_name: str, product: Any = None) -> Any:
     the shipped kernel, and the first mutation died at compile time. Deriving them
     means a constant the kernel starts using cannot go missing.
     """
+    from meep_gpu.triton_kernels import kernels as _kernels  # noqa: PLC0415
     from meep_gpu.triton_kernels import symmetry as _symmetry  # noqa: PLC0415
 
     constants = "".join(
         f"{name} = tl.constexpr({getattr(_symmetry, 'CODE_' + name)})\n"
         for name in ("PERIODIC", "METALLIC", "MIRROR_METALLIC", "MIRROR_PERIODIC"))
-    header = "import triton\nimport triton.language as tl\n" + constants + "\n"
+    # The record's two word offsets, read from kernels.py, and the shared forms
+    # the body calls by their imported names (forms.py), exactly as the shipped
+    # module binds them.
+    for name in ("RECORD_HALF_INTEGER", "RECORD_PRESENCE"):
+        value = getattr(_kernels, name)
+        constants += f"{name} = tl.constexpr({int(getattr(value, 'value', value))})\n"
+    header = ("import triton\nimport triton.language as tl\n"
+              "from meep_gpu.triton_kernels.forms import (axis_present, "
+              "constitutive_form, curl_form, curl_stencil, record_in)\n"
+              + constants + "\n")
     body = source
     if product is not None:
         # THE DEVICE FUNCTION IS RENAMED WITH THE KERNEL. Two mutants that shared a
@@ -2168,22 +2281,27 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             ["near_j = live & (j == 1)", "near_k = live & (k == 1)"])
 
     def m6_constitutive_association(source: str) -> Tuple[str, int]:
-        """Right-associated accumulation: same algebra, different float32 rounding."""
+        """The previous package grouping put back: two accumulations, left to right.
+
+        INVERTED with the alignment. The shipped form is MEEP's ``f + ((kps*src) -
+        (kms*prev))`` (``forms.constitutive_form``); the mutant is the grouping the
+        kernel carried before it, ``(f + kps*src) - kms*prev``, on the same
+        accumulation cells. Same algebra, different float32 rounding."""
         return _rewrite_block(
             source,
-            ["a0v = a0v + kp_0 * src0", "a0v = a0v - km_0 * prev0"],
-            ["a0v = a0v + (kp_0 * src0 - km_0 * prev0)"])
+            ["a0v = constitutive_form(a0v, prev0, src0, kp_0, km_0, dw0)"],
+            ["a0v = tl.where(dw0, (a0v + kp_0 * src0) - km_0 * prev0, src0)"])
 
     def m7_history_read_after_write(source: str) -> Tuple[str, int]:
         """f_w read AFTER it is written: wrong only where kms != 0, i.e. in the PML."""
         return _rewrite_block(
             source,
-            ["prev0 = tl.load(w0 + idx, mask=own0, other=0.0)",
+            ["prev0 = tl.load(w0 + idx, mask=own0 & dw0, other=0.0)",
              "src0 = v0 * tl.load(ie0 + idx, mask=own0, other=0.0)",
-             "tl.store(w0 + idx, src0, mask=own0)"],
+             "tl.store(w0 + idx, src0, mask=own0 & dw0)"],
             ["src0 = v0 * tl.load(ie0 + idx, mask=own0, other=0.0)",
-             "tl.store(w0 + idx, src0, mask=own0)",
-             "prev0 = tl.load(w0 + idx, mask=own0, other=0.0)"])
+             "tl.store(w0 + idx, src0, mask=own0 & dw0)",
+             "prev0 = tl.load(w0 + idx, mask=own0 & dw0, other=0.0)"])
 
     def m8_zero_metal_dropped(source: str) -> Tuple[str, int]:
         """The wall clear not carried: MEEP's step_boundaries(D_stuff), undone.
@@ -2267,8 +2385,8 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         twin carries for its near half, and it is invisible outside the absorber
         profile's gradient."""
         hits = 0
-        for needle, replacement in (("kp_f0, km_f0, own0 & far_i)",
-                                     "kp_0, km_0, own0 & far_i)"),):
+        for needle, replacement in (("kp_f0, km_f0, dw_f0, own0 & far_i)",
+                                     "kp_0, km_0, dw_f0, own0 & far_i)"),):
             hits += source.count(needle)
             source = source.replace(needle, replacement)
         return source, hits
@@ -2345,9 +2463,95 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source, hits
 
     def m11_commuted_multiply(source: str) -> Tuple[str, int]:
-        """PREDICTED NULL: IEEE multiplication commutes; only the PTX may move."""
-        needle = "kp_0 * src0"
-        return source.replace(needle, "src0 * kp_0"), source.count(needle)
+        """PREDICTED NULL: IEEE multiplication commutes; only the PTX may move.
+
+        The accumulation's products now sit inside ``forms.constitutive_form``, so
+        the commuted product is the owned cell's ``D * inv_eps``, written with the
+        material on the left."""
+        needle = "src0 = v0 * tl.load(ie0 + idx, mask=own0, other=0.0)"
+        return (source.replace(needle,
+                               "src0 = tl.load(ie0 + idx, mask=own0, other=0.0) * v0"),
+                source.count(needle))
+
+    # ------------------------------------------------------------------
+    # THE CHUNK-FORM BATTERY (KERNELS.md 7.2), on both halves. Each rewrite is a
+    # way to choose the wrong form for some cells while every word of arithmetic
+    # stays the shipped one.
+    # ------------------------------------------------------------------
+
+    def b1_whole_grid_recurrence(source: str) -> Tuple[str, int]:
+        """The select removed: the recurrence, and its fu traffic, on every cell."""
+        hits = 0
+        for target, base, coordinate in (("du0", "lattice + 8", "k"),
+                                         ("du1", "lattice + 0", "i"),
+                                         ("du2", "lattice + 4", "j")):
+            needle = f"{target} = record_in(cb, {base}, {coordinate})"
+            hits += source.count(needle)
+            source = source.replace(needle, f"{target} = live")
+        return source, hits
+
+    def b2_coefficient_predicate(source: str) -> Tuple[str, int]:
+        """The form keyed on coefficient identity (``kms != 1``), not membership."""
+        # Target 2 (Dz), whose dsigu axis y carries a layer on every case here; z
+        # is invariant on the 2-D cases, where target 0's rewrite would be a null.
+        needle = "du2 = record_in(cb, lattice + 4, j)"
+        return (source.replace(
+            needle, "du2 = tl.load(kmy + j, mask=live, other=1.0) != 1.0"),
+            source.count(needle))
+
+    def b3_membership_one_row_off(source: str) -> Tuple[str, int]:
+        """The constitutive half's record line read one row off on its own axis."""
+        needle = "dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)"
+        return (source.replace(needle,
+                               "dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j + 1)"),
+                source.count(needle))
+
+    def b4_constitutive_lattice_swapped(source: str) -> Tuple[str, int]:
+        """The E half keyed on the INTEGER lattice's lines instead of the half's."""
+        hits = 0
+        for word, coordinate, target in (("0", "i", "dw0"), ("4", "j", "dw1"),
+                                         ("8", "k", "dw2")):
+            needle = f"{target} = record_in(cb, RECORD_HALF_INTEGER + {word}, {coordinate})"
+            hits += source.count(needle)
+            source = source.replace(needle,
+                                    f"{target} = record_in(cb, {word}, {coordinate})")
+        return source, hits
+
+    def b5_dsig_dsigu_swapped(source: str) -> Tuple[str, int]:
+        """Target 0's forms read dsigu's coefficients where dsig's belong."""
+        needle = "km_y, si_y, km_z, si_z, du0)"
+        return (source.replace(needle, "km_z, si_z, km_y, si_y, du0)"),
+                source.count(needle))
+
+    def b6_fu_store_unmasked(source: str) -> Tuple[str, int]:
+        """fu written on a cell outside its dsigu layer (the auxiliary contract)."""
+        needle = "tl.store(u0 + idx, n0, mask=live & du0)"
+        return (source.replace(needle, "tl.store(u0 + idx, n0, mask=live)"),
+                source.count(needle))
+
+    def b7_fw_store_unmasked(source: str) -> Tuple[str, int]:
+        """f_w_E written on an owned cell outside its dsigw layer."""
+        needle = "tl.store(w0 + idx, src0, mask=own0 & dw0)"
+        return (source.replace(needle, "tl.store(w0 + idx, src0, mask=own0)"),
+                source.count(needle))
+
+    def b8_carry_keyed_at_the_source(source: str) -> Tuple[str, int]:
+        """DECLARED NULL: the far ghost's form keyed on its SOURCE lane's row.
+
+        A ghost row reads its image row's membership line (the record is
+        ghost-adjusted, ``chunk_map.ChunkLayout.membership``), so on every admitted
+        configuration the destination's and the image's flags agree and the rewrite
+        changes no word. The carry-table leg catches it structurally (the call no
+        longer names the destination's flag)."""
+        needle = "kp_f0, km_f0, dw_f0, own0 & far_i)"
+        return (source.replace(needle, "kp_f0, km_f0, dw0, own0 & far_i)"),
+                source.count(needle))
+
+    def b9_fu_load_unmasked(source: str) -> Tuple[str, int]:
+        """DECLARED NULL: the auxiliary read on every cell feeds only the discarded form."""
+        needle = "p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)"
+        return (source.replace(needle, "p0 = tl.load(u0 + idx, mask=live, other=0.0)"),
+                source.count(needle))
 
     return (
         ("m1_parity_dropped", "the mirror parity", "caught", m1_parity_dropped),
@@ -2381,7 +2585,25 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
          m16_top_plane_mask_dropped),
         ("m17_far_reflect_row_is_n_minus_two", "the ODD full count", "caught",
          m17_far_reflect_row_is_n_minus_two),
+        ("b1_whole_grid_recurrence", "the curl forms' select", "caught",
+         b1_whole_grid_recurrence),
+        ("b2_coefficient_predicate", "membership, not kms != 1", "caught",
+         b2_coefficient_predicate),
+        ("b3_membership_one_row_off", "the record's bounds", "caught",
+         b3_membership_one_row_off),
+        ("b4_constitutive_lattice_swapped", "the E half's sub-lattice", "caught",
+         b4_constitutive_lattice_swapped),
+        ("b5_dsig_dsigu_swapped", "dsig against dsigu", "caught",
+         b5_dsig_dsigu_swapped),
+        ("b6_fu_store_unmasked", "the auxiliary contract on fu", "caught",
+         b6_fu_store_unmasked),
+        ("b7_fw_store_unmasked", "the auxiliary contract on f_w", "caught",
+         b7_fw_store_unmasked),
         ("m11_commuted_multiply", "commuted multiply", "null", m11_commuted_multiply),
+        ("b8_carry_keyed_at_the_source", "the ghost-adjusted record", "null",
+         b8_carry_keyed_at_the_source),
+        ("b9_fu_load_unmasked", "a load feeding the discarded form", "null",
+         b9_fu_load_unmasked),
     )
 
 
@@ -2438,6 +2660,9 @@ MUTATION_CASE: Dict[str, int] = {
     # ODD-count case can score it; scoring it on an even one would report a real
     # defect as uncaught while measuring a coincidence.
     "m17_far_reflect_row_is_n_minus_two": 6,
+    # b8 rewrites the far-only x block's membership flag: needs x folded PERIODIC,
+    # and the odd count, where the reflect row and the top row are two rows apart.
+    "b8_carry_keyed_at_the_source": 6,
 }
 
 #: The default leg for a mutation that does not name one.
@@ -2460,6 +2685,7 @@ MUTATION_REQUIRES_FOLD: Dict[str, Tuple[str, ...]] = {
     "m15_far_parity_sign": ("X",),
     "m16_top_plane_mask_dropped": ("X", "Y"),
     "m17_far_reflect_row_is_n_minus_two": ("X",),
+    "b8_carry_keyed_at_the_source": ("X",),
 }
 
 #: Per mutation: the axes whose fold must be PERIODIC, not merely folded.
@@ -2476,6 +2702,7 @@ MUTATION_REQUIRES_PERIODIC_FOLD: Dict[str, Tuple[str, ...]] = {
     "m15_far_parity_sign": ("X",),
     "m16_top_plane_mask_dropped": ("X", "Y"),
     "m17_far_reflect_row_is_n_minus_two": ("X",),
+    "b8_carry_keyed_at_the_source": ("X",),
 }
 
 #: Per mutation: axes that must carry a WALL. ``m9`` and ``m12`` both rewrite a

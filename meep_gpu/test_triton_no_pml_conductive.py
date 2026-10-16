@@ -107,6 +107,20 @@ def build(*, poles=0, conductive=True, cell=(0.8, 0.8, 0.8), dimensions=3,
     return fields, PML(grid=grid, thickness=pml_thickness)
 
 
+def no_layer_record(shape, invariant=()):
+    """The chunk record of a run with no absorber: no membership run, presence only.
+
+    An axis named in ``invariant`` has its presence bit cleared (it must store one
+    cell); every other axis takes both curl partners.
+    """
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, RECORD_WORDS  # noqa: PLC0415
+
+    record = numpy.zeros(RECORD_WORDS, dtype=numpy.int32)
+    record[RECORD_PRESENCE_WORD] = sum(1 << axis for axis in range(3)
+                                       if axis not in invariant)
+    return record
+
+
 def reasons(npc, fields, pml, sub_step="step_B"):
     """The refusal list with the ONE clause a NumPy host can never satisfy removed."""
     return [r for r in npc.conductive_plain_curl_coverage(fields, pml, sub_step).reasons
@@ -162,7 +176,7 @@ def test_the_module_file_is_readable_as_utf8_without_a_locale():
 # ---------------------------------------------------------------------------
 
 def reference_curl_step(fields, sub_step, *, cond=None, tail="conductive",
-                        group="paired", mask=True, derive=None):
+                        group="meep", mask=True, derive=None):
     """The kernel body, in NumPy, from the same lines the Triton body cites.
 
     Written here rather than imported so the test has something to MUTATE: a
@@ -170,13 +184,14 @@ def reference_curl_step(fields, sub_step, *, cond=None, tail="conductive",
     nothing. Every keyword below is a mutation lever and each one is driven.
 
     Transcribed from:
-      * term table        stepping.B_CURL_TERMS (:213) / D_CURL_TERMS (:218)
-      * ghost rule        stepping._shift_up (:1723) / _shift_down (:1787)
-      * curl grouping     stepping._curl_from_operands (:1601)
-      * ownership mask    stepping._mask_non_owned_cells (:1865)
-      * E derivation      stepping._read_component (:2383-2396)
-      * lossless tail     stepping._apply_curl (:509-510)
-      * lossy tail        stepping._apply_conductive_update (:1938-1951)
+      * term table        stepping.B_CURL_TERMS (:237) / D_CURL_TERMS (:242)
+      * ghost rule        stepping._shift_up (:2093) / _shift_down (:2155)
+      * curl grouping     stepping._curl_from_operands (:1935), every presence arm
+      * partner presence  stepping.curl_presence (:1842): Grid.is_invariant
+      * ownership mask    stepping._mask_non_owned_cells (:2259)
+      * E derivation      stepping._read_component (:2990-3003)
+      * lossless tail     stepping._apply_curl (:586-587)
+      * lossy tail        stepping._apply_conductive_update (:2498-2511)
     """
     grid = fields.grid
     nx, ny, nz = grid.shape
@@ -216,14 +231,32 @@ def reference_curl_step(fields, sub_step, *, cond=None, tail="conductive",
     b_x, b_z = shifted(b, 0), shifted(b, 2)
     c_x, c_y = shifted(c, 0), shifted(c, 1)
 
-    if group == "paired":  # stepping._curl_from_operands, DO NOT FLATTEN
-        curls = [dtdx * ((c_y - c) + (b - b_z)),
-                 dtdx * ((a_z - a) + (c - c_x)),
-                 dtdx * ((b_x - b) + (a - a_y))]
-    elif group == "flat":  # THE MUTATION
-        curls = [dtdx * (c_y - c + b - b_z),
-                 dtdx * (a_z - a + c - c_x),
-                 dtdx * (b_x - b + a - a_y)]
+    # Partner presence (stepping.curl_presence): a partner is absent where its
+    # derivative axis is invariant. Target 0 differences c along y and b along z,
+    # target 1 a along z and c along x, target 2 b along x and a along y.
+    present = tuple(not grid.is_invariant(axis) for axis in range(3))
+    stencils = (((c_y, c, b, b_z), (1, 2)),
+                ((a_z, a, c, c_x), (2, 0)),
+                ((b_x, b, a, a_y), (0, 1)))
+
+    def meep(g1s, g1, g2, g2s, first, second):
+        """stepping._curl_from_operands: C's left-to-right, by partner presence."""
+        if first and second:
+            return dtdx * (((g1s - g1) + g2) - g2s)
+        if first:
+            return dtdx * (g1s - g1)
+        if second:
+            return (-dtdx) * (g2s - g2)
+        return numpy.zeros_like(g1)
+
+    if group == "meep":  # stepping._curl_from_operands, DO NOT REGROUP
+        curls = [meep(*operands_, present[axes[0]], present[axes[1]])
+                 for operands_, axes in stencils]
+    elif group == "pairwise":  # THE MUTATION: the package grouping before alignment
+        curls = [dtdx * ((g1s - g1) + (g2 - g2s))
+                 for (g1s, g1, g2, g2s), _axes in stencils]
+    elif group == "full_bracket":  # THE MUTATION: presence ignored
+        curls = [meep(*operands_, True, True) for operands_, _axes in stencils]
     else:
         raise ValueError(group)
 
@@ -304,18 +337,24 @@ def test_the_reference_body_is_byte_identical_to_the_array_path(case, sub_step):
 
 #: mutation -> (reference kwargs, the fixture it can actually bite on).
 #:
-#: TWO OF THESE ARE SHAPE-DEPENDENT AND SAY SO, because a battery run only on the
+#: THREE OF THESE ARE SHAPE-DEPENDENT AND SAY SO, because a battery run only on the
 #: shape being unblocked certifies a mutated body:
 #:
 #: * ``drop_ownership_mask`` edits cells the mask zeroes, and the mask only fires
 #:   on a METALLIC axis. On the all-periodic fixture it was measured UNCAUGHT
 #:   (0 of 1536 words), which is why it carries its own metallic fixture;
-#: * ``flatten_grouping`` reassociates ``dtdx * ((c_y - c) + (b - b_z))``. On a
-#:   one-cell axis ``(c_y - c)`` is an EXACT zero and the reassociation is exact —
-#:   the same 0/18-on-(64,1,64) result ``no_pml.py`` records — so it runs on the
-#:   3-D shape and never on the 1-D corpus shape.
+#: * ``pairwise_grouping`` plants ``dtdx * ((c_y - c) + (b - b_z))``, the package's
+#:   grouping before MEEP's left-to-right one. It can differ only where both partners
+#:   are present, so it runs on the 3-D shape and never on the 1-D corpus shape;
+#: * ``full_bracket_over_an_absent_partner`` ignores partner presence. It differs only
+#:   where a component's SECOND partner is absent — ``(a + g2) - g2`` rounds where the
+#:   one-partner form returns ``a`` — so it runs on the 2-D shape, whose invariant z
+#:   axis is Bx's second partner axis.
 MUTATIONS = {
-    "flatten_grouping": (dict(group="flat"), dict(poles=2)),
+    "pairwise_grouping": (dict(group="pairwise"), dict(poles=2)),
+    "full_bracket_over_an_absent_partner": (
+        dict(group="full_bracket"),
+        dict(poles=0, cell=(2.0, 2.0, 0.0), dimensions=2)),
     "drop_ownership_mask": (dict(mask=False),
                             dict(poles=2, cell=(0.8, 0.8, 0.8), dimensions=3,
                                  boundaries=("metallic", "metallic", "metallic"))),
@@ -493,7 +532,8 @@ def test_a_plan_with_no_conductive_target_builds_the_owned_lossless_slot(npc):
         "step_B", volume.shape, 0.5, (0, 0, 0), (0, 0, 0), 64,
         [volume.copy() for _ in range(3)],
         [volume.copy() for _ in range(3)],
-        [None, None, None], [None, None, None])
+        [None, None, None], [None, None, None],
+        chunk_bounds=no_layer_record(volume.shape))
     assert plan.cond == (0, 0, 0)
 
 
@@ -684,3 +724,75 @@ def test_the_curl_half_is_byte_identical_to_the_lossless_no_pml_kernels(npc):
         "the conductive curl's stencil half has drifted from no_pml.plain_curl_step's; "
         "conductivity enters _apply_curl only AFTER the curl is formed "
         "(stepping.py:508, :536), so the two must stay identical above the tail")
+
+
+# ---------------------------------------------------------------------------
+# 8. The chunk record: the curl's partner presence is the run's, not the extent's
+# ---------------------------------------------------------------------------
+
+def _kernel_segment():
+    source = MODULE_PATH.read_text(encoding="utf-8")
+    head = source.index("    def conductive_plain_curl_step(")
+    return source[head:source.index("else:  # pragma: no cover - the laptop path", head)]
+
+
+def test_the_kernel_reads_its_curl_through_the_shared_forms_by_the_records_presence():
+    """MEEP's stencil per partner presence, read from the record's presence word.
+
+    Read off the source so it holds with no Triton. The pairwise grouping the
+    module carried before is gone; the gate's ``regroup_stencil`` mutation plants it.
+    """
+    segment = _kernel_segment()
+    assert "cb,                               # chunk record" in segment
+    assert segment.index("        cb,") < segment.index("        nx, ny, nz, n_elem, dtdx,")
+    assert "presence = tl.load(cb + RECORD_PRESENCE)" in segment
+    for axis, name in enumerate("xyz"):
+        assert f"p{name} = axis_present(presence, {axis})" in segment
+    assert "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)" in segment
+    assert "curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)" in segment
+    assert "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)" in segment
+    assert "dtdx * ((" not in segment
+    source = MODULE_PATH.read_text(encoding="utf-8")
+    assert "    from .forms import axis_present, curl_stencil\n" in source
+
+
+def test_the_record_presence_constant_is_chunk_maps_own_word():
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD  # noqa: PLC0415
+
+    source = MODULE_PATH.read_text(encoding="utf-8")
+    assert f"    RECORD_PRESENCE = tl.constexpr({RECORD_PRESENCE_WORD})\n" in source
+
+
+@pytest.fixture
+def stub_kernels(monkeypatch):
+    """A stand-in for ``triton_kernels.kernels``: the builder reads its block constant."""
+    import sys  # noqa: PLC0415
+    import types  # noqa: PLC0415
+
+    module = types.ModuleType("meep_gpu.triton_kernels.kernels")
+    module.ENABLE_FP_FUSION = False
+    module.DEFAULT_BLOCK = 256
+    monkeypatch.setitem(sys.modules, "meep_gpu.triton_kernels.kernels", module)
+    return module
+
+
+def test_the_harness_route_has_no_default_record(npc, stub_kernels):
+    from meep_gpu.chunk_map import ChunkLayoutRefusal  # noqa: PLC0415
+
+    shape = (3, 2, 4)
+    arrays = {name: numpy.zeros(shape, numpy.float32)
+              for name in ("Bx", "By", "Bz", "Ex", "Ey", "Ez", "condfac_Bx",
+                           "condfac_By", "condfac_Bz", "condinv_Bx", "condinv_By",
+                           "condinv_Bz")}
+    # Through a local name: the parse-tree rule of test_triton_chunk_bounds flags any
+    # construction without the record, and these two are refusals on purpose.
+    builder = npc.plan_conductive_plain_curl_from_arrays
+    with pytest.raises(TypeError, match="chunk_bounds"):
+        builder("step_B", arrays, (0, 0, 0), 0.35)
+    with pytest.raises(ChunkLayoutRefusal,
+                       match="ConductivePlainCurlPlan was given no chunk record"):
+        builder("step_B", arrays, (0, 0, 0), 0.35, chunk_bounds=None)
+    plan = npc.plan_conductive_plain_curl_from_arrays(
+        "step_B", arrays, (0, 0, 0), 0.35, chunk_bounds=no_layer_record(shape))
+    assert plan.chunk_bounds.tolist() == no_layer_record(shape).tolist()
+    assert plan._cb.array is plan.chunk_bounds  # noqa: SLF001

@@ -370,6 +370,35 @@ def test_the_record_for_one_table_and_one_capability_has_one_spelling(tmp_path):
         assert refusal.value.code == "unreadable_capability", spelling
 
 
+def test_the_metal_record_is_named_for_its_apple_gpu_family(tmp_path):
+    """The Metal table's architecture is the Apple GPU family its rows stamp in the
+    capability field (``applegpu_g13s``). Its record takes that name, is read, and is
+    applied to that family alone; the other spelling is refused on either side."""
+    assert dp.record_path("metal", "applegpu_g13s", root=str(tmp_path)) == os.path.join(
+        str(tmp_path), "metal_kernels", "timing_applegpu_g13s.json")
+    for table, spelling in (("metal", CAPABILITY), ("triton", "applegpu_g13s"),
+                            ("metal", "applegpu-g13s"), ("metal", "")):
+        with pytest.raises(dp.ConsultRefused) as refusal:
+            dp.record_path(table, spelling)
+        assert refusal.value.code == "unreadable_capability", (table, spelling)
+    apple = dict(HOST, device="Apple M1 Max", compute_capability="applegpu_g13s")
+    record = _record([_entry(**SLOW_PAIR)], table="metal", host=[apple])
+    dp.validate(record, expect_table="metal")
+    verdict = _ask(record, "fused pair D", bracketed=True, table="metal",
+                   capability="applegpu_g13s")
+    assert verdict.outcome == "vetoed", verdict.as_dict()
+    assert _ask(record, "fused pair D", bracketed=True, table="metal",
+                capability="applegpu_g15s").outcome == "no_record"
+    # a Metal record stamped with a compute capability, or an NVIDIA one stamped with
+    # an Apple family, names no architecture its table can have
+    for table, host in (("metal", dict(HOST)), ("triton", apple)):
+        with pytest.raises(dp.RecordRefused) as refusal:
+            dp.validate(_record([_entry(**SLOW_PAIR)], table=table, host=[host]))
+        assert refusal.value.code == "host_names_no_single_capability", table
+    from meep_gpu import metal_runs  # noqa: PLC0415 - one spelling, held equal
+    assert dp.APPLE_FAMILY.pattern == metal_runs.ARCHITECTURE_KEY.pattern
+
+
 def test_a_record_cut_on_another_repair_route_is_never_applied():
     record = _record([_entry(**SLOW_PAIR)])
     verdict = _ask(record, "fused pair D", bracketed=True, route=OTHER_ROUTE)

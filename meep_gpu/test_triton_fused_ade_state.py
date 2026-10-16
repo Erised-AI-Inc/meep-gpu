@@ -82,7 +82,8 @@ def test_predicate_refuses_an_empty_or_reordered_component_inventory():
     assert any("canonical" in reason for reason in non_backend_reasons(fields, state))
 
 
-def test_kernel_keeps_each_ADE_recurrence_left_associated():
+def test_kernel_spells_each_ADE_recurrence_as_meeps_update():
+    """Each arm is ``kernels.ade_update_p``'s expression on MEEP's four words."""
     source = pathlib.Path(module.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
     code = ast.unparse(tree)
@@ -90,10 +91,12 @@ def test_kernel_keeps_each_ADE_recurrence_left_associated():
     assert code.count("enable_fp_fusion=") == 1
     for axis in range(3):
         expression = (
-            f"((p{axis} * c_now) + (c_prev * q{axis})) + "
-            f"(c_drive * (s{axis} * d{axis}))"
+            f"gamma1inv * (((p{axis} * two_minus_od) - (gamma1 * q{axis})) + "
+            f"(omega0dtsqr * (s{axis} * d{axis})))"
         )
         assert "".join(expression.split()) in "".join(source.split())
+    for retired in ("c_now", "c_prev", "c_drive"):
+        assert retired not in source
 
 
 class _FakeKernel:
@@ -115,7 +118,7 @@ def test_plan_resolves_the_shared_scratch_chain_then_rotates_only_after_launch(
     state = SimpleNamespace(
         P=dict(old_p), P_prev=dict(old_q), _scratch=old_scratch,
         sigma={"Ex": 0.2, "Ey": 0.3, "Ez": 0.4},
-        _coefficients=(1.1, -0.2, 0.05),
+        constants=(1.875, 0.9375, 0.125, 1.0625),
     )
     kernel = _FakeKernel()
     plan = module.FusedAdeStatePlan(
@@ -136,6 +139,8 @@ def test_plan_resolves_the_shared_scratch_chain_then_rotates_only_after_launch(
     assert (args[2], args[7], args[12]) == (
         old_q["Ex"], old_q["Ey"], old_q["Ez"])
     assert kwargs["DRIVEN0"] == kwargs["DRIVEN1"] == kwargs["DRIVEN2"] == 1
+    # MEEP's four words follow the fifteen arm arguments, in RealnumConstants order.
+    assert args[15:19] == (1.875, 0.9375, 0.125, 1.0625)
     assert state.P == {
         "Ex": old_scratch, "Ey": old_q["Ex"], "Ez": old_q["Ey"]}
     assert state.P_prev == old_p

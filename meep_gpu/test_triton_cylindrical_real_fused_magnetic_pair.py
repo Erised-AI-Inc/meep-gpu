@@ -265,9 +265,10 @@ def test_the_backward_constexpr_is_step_Bs_and_only_step_Bs():
 
 def test_the_plan_refuses_a_grid_that_stores_more_than_one_phi_cell():
     """A Dcyl grid stores one phi cell; the plan is the last gate before a compile."""
-    kwargs = dict(dtdx=0.5, zero_metal=(False, False, True), block=256,
+    kwargs = dict(dtdx=0.5, courant=0.5, zero_metal=(False, False, True), block=256,
                   targets=[], auxiliaries=[], sources=[], curl_coefficients=[],
-                  h_targets=[], h_aux=[], h_coefficients=[], xp=None)
+                  h_targets=[], h_aux=[], h_coefficients=[], xp=None,
+                  chunk_bounds=None, scan_starts=None)
     with pytest.raises(ValueError, match="one phi cell"):
         product.CylindricalRealFusedMagneticPairPlan(shape=(8, 4, 8), **kwargs)
 
@@ -392,7 +393,8 @@ def test_the_gate_exists_names_the_product_and_reports_the_run_it_took():
     source = GATE.read_text(encoding="utf-8")
     assert "plan_cylindrical_real_fused_magnetic_pair" in source
     assert "cyl_real_fused_curl_constitutive_B" in source
-    assert "RELEASED 2026-08-20" in source
+    header = source.split('"""')[1]
+    assert "DEVICE STATUS" in header and "results/" in header
 
 
 def test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it():
@@ -410,7 +412,7 @@ def test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it():
         (PACKAGE_DIR / "fingerprints.json").read_text(encoding="utf-8"))
     weld = record["triton_cylindrical_real_fused_magnetic_pair_device_gate"]
     assert weld["status"] == "PASS"
-    assert "RELEASED 2026-08-20" in source
+    assert "DEVICE STATUS" in source
 
     named = {name: digest for name, digest in weld["source_sha256"].items()
              if name.endswith("triton_kernels/cylindrical_real_fused_magnetic_pair.py")}
@@ -420,8 +422,6 @@ def test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it():
         assert live == digest, (
             f"{name} has changed since the gate ran; the identity claim in its "
             f"docstring no longer describes the bytes that were measured")
-    assert "NOT WIRED" in source, (
-        "a released gate is not a wiring; the module must still say so")
 
 
 def test_the_released_artifact_is_in_the_tree_and_says_it_released():
@@ -446,24 +446,25 @@ def test_the_released_artifact_is_in_the_tree_and_says_it_released():
 def test_the_gates_transcription_leg_traces_every_arithmetic_line_to_its_source():
     row = load_gate().transcription_leg()
     assert row["findings"] == [], row["findings"]
-    assert row["curl_lines_checked"] >= 13
+    assert row["curl_lines_checked"] >= 12
     assert row["zero_metal_lines_checked"] == 3
 
 
 def test_the_curls_ownership_mask_is_observable_in_the_gates_own_fixture():
     """A mask whose value is already present measures nothing when it is dropped.
 
-    Measured on the first device run of this gate: with the ELECTRIC constitutive
-    history left at zero, ``Ep`` is exactly ``+0.0`` on both masked planes forever and
-    ``m5_ownership_mask_dropped`` came back UNCAUGHT. The fixture now seeds it, and
-    this contract is what stops a future harness from quietly un-seeding it.
+    Under the aligned forms ``Ep`` is exactly ``+0`` on both masked planes after any
+    ``update_E`` (``E = D * inv_eps`` off E's own layer, ``Dp[0] = 0``, ``Dy`` cleared on
+    the wall), so the mask is visible only to the first ``step_B`` of a fixture that
+    seeds ``E`` itself. The gate's fixture seeds it, and this contract is what stops a
+    future harness from quietly un-seeding it.
     """
     row = load_gate().mask_observability_leg()
     assert row["findings"] == [], row["findings"]
     seeded = [entry for entry in row["rows"]
-              if entry["arm"] == "electric_history_seeded"]
+              if entry["arm"] == "electric_field_seeded"]
     control = [entry for entry in row["rows"]
-               if entry["arm"] == "electric_history_zero"]
+               if entry["arm"] == "electric_field_zero"]
     assert seeded and control
     for entry in seeded:
         assert entry["nonzero_words_on_the_r0_row"] > 0, entry

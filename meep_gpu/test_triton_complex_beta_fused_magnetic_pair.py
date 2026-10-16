@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import ast
 import importlib
-import json
 import pathlib
 import sys
 from typing import List
@@ -23,7 +22,6 @@ from typing import List
 import numpy
 import pytest
 
-from meep_gpu.expansion_refusal import declaring_run_policy
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
 from meep_gpu.pml import PML
@@ -36,34 +34,9 @@ DRIVER_PATH = API_ROOT / "meep_gpu" / "driver.py"
 #: TestSpecialKz.test_special_kz's own beta (census ``configuration.beta``).
 BETA_CORPUS = -0.39073112848927377
 
-#: The statements the beta term adds, and the ONLY thing that may separate this
-#: kernel from ``complex_fused_curl_constitutive_B`` — K2's own delta over
-#: ``bloch_pml_curl_step``, derived below from the shipped sources as well.
-BETA_INSERT = (
-    "if HAS_BETA:",
-    "t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)",
-    "curl0_re = curl0_re - t_re",
-    "curl0_im = curl0_im - t_im",
-    "t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)",
-    "curl1_re = curl1_re - t_re",
-    "curl1_im = curl1_im - t_im",
-)
-
-#: The extended probe artifact this suite reads — the 2026-09-01 keep cut whose
-#: base-four table is character-identical to the standing 2026-08-16 one.
-PROBE_PATH = (API_ROOT / "parity" / "meep_gpu" / "results" /
-              "complex_expansion_beta_extension_2026-09-01" / "probe_keep" /
-              "probe.json")
-
-
 @pytest.fixture(scope="module")
 def product():
     return importlib.import_module(MODULE_NAME)
-
-
-@pytest.fixture(scope="module")
-def probe():
-    return json.loads(PROBE_PATH.read_text(encoding="utf-8"))
 
 
 class _Magnetic:
@@ -146,10 +119,9 @@ def _build(cell_size=(2.0, 0.4, 0.0), boundaries=None, complex_storage=True,
     return fields, PML(grid=grid, thickness=thickness)
 
 
-def _reasons(product, fields, pml, sources=(), probe=None):
-    with declaring_run_policy("keep"):
-        verdict = product.complex_beta_fused_magnetic_pair_coverage(
-            fields, pml, sources, probe=probe)
+def _reasons(product, fields, pml, sources=()):
+    verdict = product.complex_beta_fused_magnetic_pair_coverage(
+        fields, pml, sources)
     return [r for r in verdict.reasons if "array module" not in r]
 
 
@@ -158,14 +130,37 @@ def _reasons(product, fields, pml, sources=(), probe=None):
 # ---------------------------------------------------------------------------
 
 def test_removing_the_beta_insert_reproduces_the_shipped_complex_fused_pair(bodies):
-    """``this kernel`` minus the insert IS ``complex_fused_curl_constitutive_B``,
-    statement for statement, in order."""
-    without_beta = [line for line in bodies["fused"] if line not in BETA_INSERT]
-    assert without_beta == bodies["twin_fused"], (
-        "the complex beta fused pair is not complex_fused_curl_constitutive_B "
-        "plus the beta insert; first difference at index "
-        + str(next((i for i, (a, b) in enumerate(
-            zip(without_beta, bodies["twin_fused"])) if a != b), "length")))
+    """``this kernel`` minus its ``if HAS_BETA:`` pass IS ``complex_fused_curl_constitutive_B``.
+
+    An EXACT statement-list equality, in order, against the shipped body read from the
+    file (``test_triton_special_kz.kernel_body_and_insert``). If any statement of the
+    root moved, this fails and names the first difference.
+    """
+    from meep_gpu.test_triton_special_kz import kernel_body_and_insert
+
+    body, insert = kernel_body_and_insert(PACKAGE_DIR / "complex_beta_fused_magnetic_pair.py", "complex_beta_fused_curl_constitutive_B")
+    root, root_insert = kernel_body_and_insert(PACKAGE_DIR / "complex_fused_magnetic_pair.py",
+                                               "complex_fused_curl_constitutive_B")
+    assert insert and not root_insert, "the beta pass is missing, or the root has one"
+    assert body == root, (
+        "first difference at index "
+        + str(next((i for i, (a, b) in enumerate(zip(body, root)) if a != b),
+                   "length")))
+
+
+def test_the_beta_insert_is_exactly_the_shipped_curls_delta(bodies):
+    """The pass is ``beta_bloch_pml_curl_step``'s own, statement for statement, and that curl is
+    ``bloch_pml_curl_step`` plus exactly that pass: the lifter adds nothing of its own
+    to the beta pass (the increment, its ownership mask and the ladder)."""
+    from meep_gpu.test_triton_special_kz import kernel_body_and_insert
+
+    _body, insert = kernel_body_and_insert(PACKAGE_DIR / "complex_beta_fused_magnetic_pair.py", "complex_beta_fused_curl_constitutive_B")
+    curl_body, curl_insert = kernel_body_and_insert(PACKAGE_DIR / "special_kz.py",
+                                                    "beta_bloch_pml_curl_step")
+    root_curl, _ = kernel_body_and_insert(PACKAGE_DIR / "complex_fields.py",
+                                          "bloch_pml_curl_step")
+    assert curl_insert and insert == curl_insert, (insert[:3], curl_insert[:3])
+    assert curl_body == root_curl
 
 
 def test_removing_the_weld_reproduces_the_shipped_beta_bloch_curl(bodies):
@@ -185,14 +180,6 @@ def test_removing_the_weld_reproduces_the_shipped_beta_bloch_curl(bodies):
         "beta_bloch_pml_curl_step; first difference at index "
         + str(next((i for i, (a, b) in enumerate(
             zip(without_weld, bodies["beta_curl"])) if a != b), "length")))
-
-
-def test_the_beta_insert_is_exactly_the_shipped_curls_delta(bodies):
-    """The insert is ``beta_bloch_pml_curl_step``'s own delta over
-    ``bloch_pml_curl_step`` — this file's constant cannot drift from K2."""
-    delta = [line for line in bodies["beta_curl"]
-             if line not in bodies["bloch_curl"]]
-    assert delta == list(BETA_INSERT), delta
 
 
 def test_every_statement_comes_from_a_shipped_body(bodies):
@@ -234,16 +221,10 @@ def test_replaces_is_the_drivers_own_call_order(product):
     assert positions == sorted(positions), product.REPLACES
 
 
-def test_the_probe_pattern_claim_is_the_extended_set(product):
-    from meep_gpu.triton_kernels import special_kz  # noqa: PLC0415
-
-    assert product.PRODUCT_PROBE_PATTERNS == special_kz.BETA_PROBE_PATTERNS
-    assert special_kz.BETA_PROBE_PATTERN in product.PRODUCT_PROBE_PATTERNS
-
-
-def test_the_kernel_body_calls_only_the_four_licensed_multiply_helpers(product):
-    """The fourth is the beta insert's orientation; a fifth would need its own
-    probe pattern before it could be licensed."""
+def test_the_kernel_body_calls_only_the_licensed_connection_helper(product):
+    """The only complex helper the kernel calls is the Bloch connection; every other
+    product, the beta pass's quarter turn included, has a real operand and is formed
+    part by part inline."""
     text = (PACKAGE_DIR / "complex_beta_fused_magnetic_pair.py").read_text(
         encoding="utf-8")
     tree = ast.parse(text)
@@ -251,75 +232,67 @@ def test_the_kernel_body_calls_only_the_four_licensed_multiply_helpers(product):
                   if isinstance(node, ast.FunctionDef)
                   and node.name == "complex_beta_fused_curl_constitutive_B")
     called = {node.func.id for node in ast.walk(kernel)
-              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-              and node.func.id.startswith("_mul") or
-              (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-               and node.func.id.startswith("_rotate"))}
-    helpers = {name for name in called if name.startswith(("_mul", "_rotate"))}
-    assert helpers == set(product.LICENSED_MULTIPLY_HELPERS), helpers
+              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    helpers = {name for name in called if name.startswith(("_mul", "_rotate", "_connect"))}
+    assert helpers == set(product.MULTIPLY_HELPERS) == {"_connect"}, helpers
 
 
 def test_the_beta_words_are_rounded_exactly_as_the_array_path_rounds_them(product):
     """The plan binds ``beta_curl_coefficients(..., magnetic=True,
-    complex_storage=True)`` — the +1j pair with the signed-zero real word."""
+    complex_storage=True)``: one real word per sign, the coefficient itself (the B
+    side's quarter turn by +1j), rounded once -- no complex coefficient."""
     from meep_gpu.triton_kernels import special_kz  # noqa: PLC0415
 
     words = special_kz.beta_curl_coefficients(BETA_CORPUS, 0.035, True, True)
-    expected = []
-    for sign in (1.0, -1.0):
-        value = numpy.complex64(
-            (sign * 2.0 * numpy.pi * BETA_CORPUS * 0.035) * 1j)
-        expected.append((float(numpy.float32(value.real)),
-                         float(numpy.float32(value.imag))))
-    assert [tuple(pair) for pair in words] == expected
-    # the real words are SIGNED zeros, passed through
-    assert all(pair[0] == 0.0 for pair in words)
+    expected = tuple(float(numpy.float32(sign * 2.0 * numpy.pi * BETA_CORPUS * 0.035))
+                     for sign in (1.0, -1.0))
+    assert tuple(words) == expected
 
 
 # ---------------------------------------------------------------------------
 # Admission and refusals
 # ---------------------------------------------------------------------------
 
-def test_the_corpus_family_is_admitted(product, probe):
+def test_the_corpus_family_is_admitted(product):
     """2-D Cartesian, nonzero beta, in-plane kx, complex storage, active PML,
     unfolded, electric source only — test_special_kz's own configuration."""
     fields, pml = _build()
-    assert _reasons(product, fields, pml, (_Electric(),), probe) == []
+    assert _reasons(product, fields, pml, (_Electric(),)) == []
 
 
-def test_a_walled_run_is_admitted(product, probe):
+def test_a_walled_run_is_admitted(product):
     """The wall clear is carried inline, so a walled complex beta run must stay
     covered. Metallic axes carry k = 0 (the phase-consistency clause)."""
     fields, pml = _build(boundaries={"x": "metallic", "y": "metallic",
                                      "z": "periodic"}, k_point=(0.0, 0.0, 0.0))
-    assert _reasons(product, fields, pml, (), probe) == []
+    assert _reasons(product, fields, pml, ()) == []
 
 
-def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set(product, probe):
+def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set(product):
     fields, pml = _build()
-    reasons = _reasons(product, fields, pml, None, probe)
+    reasons = _reasons(product, fields, pml, None)
     assert any("was not declared" in reason for reason in reasons), reasons
 
 
-def test_a_magnetic_source_without_an_index_is_refused_by_name(product, probe):
+def test_a_magnetic_source_without_an_index_is_refused_by_name(product):
     fields, pml = _build()
-    reasons = _reasons(product, fields, pml, (_Magnetic(),), probe)
+    reasons = _reasons(product, fields, pml, (_Magnetic(),))
     assert any("does not publish the index" in reason for reason in reasons), reasons
 
 
-def test_a_zero_beta_run_is_refused_by_name(product, probe):
+def test_a_zero_beta_run_is_refused_by_name(product):
     fields, pml = _build(beta=0.0)
-    reasons = _reasons(product, fields, pml, (), probe)
+    reasons = _reasons(product, fields, pml, ())
     assert any("beta is zero" in reason for reason in reasons), reasons
 
 
-def test_real_storage_is_refused_this_is_the_complex_arm(product, probe):
+def test_real_storage_is_refused_this_is_the_complex_arm(product):
     fields, pml = _build(complex_storage=False, k_point=(0.0, 0.0, 0.0))
-    reasons = _reasons(product, fields, pml, (), probe)
+    reasons = _reasons(product, fields, pml, ())
     assert any("storage is real float32" in reason for reason in reasons), reasons
 
 
-def test_a_fold_is_refused_by_this_products_own_clause(product, probe):
+def test_a_fold_is_refused_by_this_products_own_clause(product):
     """The folded complex beta cell belongs to the folded product; this weld's
     own seam clause names the two symmetry passes, over and above the halves'."""
     from meep_gpu.grid import Mirror  # noqa: PLC0415
@@ -329,42 +302,21 @@ def test_a_fold_is_refused_by_this_products_own_clause(product, probe):
     fields, pml = _build(symmetry=(Mirror("Y", 1),), k_point=(0.0, 0.0, 0.0),
                          cell_size=(2.0, 1.0, 0.0),
                          thickness=((2, 2), (0, 0), (0, 0)))
-    reasons = _reasons(product, fields, pml, (), probe)
+    reasons = _reasons(product, fields, pml, ())
     assert any("mirror plane is active" in reason for reason in reasons), reasons
     assert any("this weld carries neither" in reason for reason in reasons)
 
 
-def test_the_base_four_probe_is_refused_on_the_extended_clause(product):
-    """The standing 2026-08-16 artifact classifies only the base four; the
-    predicate must refuse it by the extended-pattern clause — the exact refusal
-    the 2026-09-01 extension artifact discharges."""
-    old = json.loads((API_ROOT / "parity" / "meep_gpu" / "results" /
-                      "complex_expansion_convention_2026-08-16" / "results" /
-                      "probe_keep" / "probe.json").read_text(encoding="utf-8"))
-    fields, pml = _build()
-    reasons = _reasons(product, fields, pml, (), old)
-    assert any("EXTENDED pattern set" in reason for reason in reasons), reasons
-
-
-def test_a_missing_expansion_probe_is_a_refusal_not_a_guessed_arm(product):
-    fields, pml = _build()
-    with declaring_run_policy("keep"):
-        verdict = product.complex_beta_fused_magnetic_pair_coverage(
-            fields, pml, (), probe=None)
-    assert not verdict.covered
-    assert any("expansion probe artifact" in reason for reason in verdict.reasons)
-
-
-def test_the_predicate_reports_both_halves_reasons_with_their_side_named(product, probe):
+def test_the_predicate_reports_both_halves_reasons_with_their_side_named(product):
     fields, pml = _build(beta=0.0)
-    reasons = _reasons(product, fields, pml, (), probe)
+    reasons = _reasons(product, fields, pml, ())
     assert any(reason.startswith("complex beta curl half: ")
                for reason in reasons), reasons
     assert any(reason.startswith("complex beta constitutive half: ")
                for reason in reasons), reasons
 
 
-def test_the_builder_refuses_every_configuration_the_predicate_refuses(product, probe):
+def test_the_builder_refuses_every_configuration_the_predicate_refuses(product):
     """None is the only refusal; the builder may not out-admit the predicate."""
     cases = (
         {"beta": 0.0},
@@ -372,11 +324,10 @@ def test_the_builder_refuses_every_configuration_the_predicate_refuses(product, 
     )
     for keywords in cases:
         fields, pml = _build(**keywords)
-        with declaring_run_policy("keep"):
-            covered = product.complex_beta_fused_magnetic_pair_coverage(
-                fields, pml, (), probe=probe).covered
-            plan = product.plan_complex_beta_fused_magnetic_pair(
-                fields, pml, (), probe=probe)
+        covered = product.complex_beta_fused_magnetic_pair_coverage(
+            fields, pml, ()).covered
+        plan = product.plan_complex_beta_fused_magnetic_pair(
+            fields, pml, ())
         assert not covered
         assert plan is None, keywords
 
@@ -385,8 +336,8 @@ def test_the_plan_refuses_a_cell_count_whose_word_index_overflows_int32(product)
     with pytest.raises(ValueError, match="int32"):
         product.ComplexBetaFusedMagneticPairPlan(
             (2048, 1024, 1024), 0.5, (0, 0, 0), (False, False, False),
-            (0, 0, 0), (0.0,) * 6, ((0.0, 0.1), (-0.0, -0.1)), 1, 256,
-            [], [], [], [], [], [], [])
+            (0, 0, 0), (0.0,) * 6, (0.1, -0.1), 256,
+            [], [], [], [], [], [], [], chunk_bounds=None)
 
 
 def test_the_from_arrays_route_carries_the_identity_arm(product):

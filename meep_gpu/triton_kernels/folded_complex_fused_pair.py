@@ -160,24 +160,24 @@ THE ONE THING THIS FAMILY MAY NOT INHERIT FROM THE REAL FOLDED PAIR
 :func:`.folded_fused_pair.folded_fused_curl_constitutive_D` applies its parity as a
 compile-time ``PHY * v0`` sign and composes a corner as ``PHZ * (PHY * v0)``.
 
-**UNDER COMPLEX STORAGE THAT IS A DIFFERENT ARITHMETIC, AND IT IS MEASURED
-DIFFERENT.** The parity is not a sign flip there: the array path spells
-``phase * plane`` with a Python int and NumPy/CuPy carry only ``'FF->F'`` complex
-loops, so on complex64 it is the FULL multiply by ``(+-1.0, +0.0)`` including its zero
-cross terms (:func:`.folded_complex.folded_mirror_ghost_fill_complex`'s own
-measurement: a plane-wise ``+-1 * word`` diverges in 8/128 engineered words at BOTH
-parities and in 40 words on a live folded complex state). Complex float multiplication
-is not associative, so re-ordering a two-parity chain moves bytes and folding it into
-one coefficient moves more — the Metal twin measured 8 of 128 uint32 words for a
-re-order and up to 23 of 128 for a fold
-(``results/complex_parity_chain_order_2026-08-21/parity_chain_order.json``).
+THE PARITY IS A REAL SCALE PER STORED PART. MEEP's connection multiplies each
+``realnum`` part (a ``-1`` connection is a unary minus per part,
+boundaries.cpp:359-366), and the array path's fills form ``parity * plane`` through
+``part_products.scale``: the host-rounded ``+-1.0`` word times each part, exact on
+every word, signed zeros and subnormals included. The previous whole-complex product
+(a ``(+-1, +0)`` coefficient with its zero cross terms) diverged from it at signed
+zeros, which is what once made the order of a parity chain observable; per part the
+applications commute and fold exactly, and the gate records the re-order and the
+fold as declared nulls, measured at the word layer.
 
-So this kernel applies ONE :func:`.special_kz._mul_imag_coefficient_left` PER PASS, in
-the driver's own order, and never a folded coefficient. THE PARITY COEFFICIENT WORDS
-ARE HOST-ROUNDED AND PASSED, never synthesised in-kernel —
-:func:`.folded_complex.mirror_parity_coefficients`' rule, which is ``special_kz``'s
-rule (special_kz.py:255-264). That is also why this kernel needs no mirror-phase
-constexpr at all: the phase rides in the words.
+The kernel still applies ONE word PER PASS, in the driver's own order, and never a
+folded word, because that is what the array path does:
+the near applications innermost and ascending, then the far one, with the wall
+clear between them (the D family's clear rows ARE the near fill's axes). THE PARITY
+WORDS ARE HOST-ROUNDED AND PASSED, never synthesised in-kernel —
+:func:`.folded_complex.mirror_parity_coefficients`' rule; the plan keeps each axis's
+``(re, im)`` pair and launches the real word. That is also why this kernel needs no
+mirror-phase constexpr at all: the phase rides in the words.
 
 ===========================================================================
 WHY THERE IS NO STENCIL PROBLEM HERE, and why that is not general
@@ -201,22 +201,6 @@ off-diagonal split is an E-side distinction. On THIS seam it is not a label: the
 off-diagonal ``update_E`` is the stencil above, it has its own product
 (``complex folded off-diagonal``), and a weld may not claim it. One admission, and the
 row is refused by name.
-
-===========================================================================
-THE EXPANSION ARM
-===========================================================================
-
-This product launches FIVE operand orientations: the four the unfolded complex
-electric pair launches (``c8_mul_c8`` field-left phase rotation,
-``python_float_left`` for ``dtdx``, ``c8_mul_f4_field_left`` in the PML ladder and on
-the ``inv_eps`` multiply, ``f4_mul_c8_coefficient_left`` on the constitutive
-accumulation) plus the PARITY orientation
-(:data:`.folded_complex.PARITY_PROBE_PATTERN`,
-``c8_mul_c8_parity_coefficient_left``) that the fills add. So the pattern set is
-:data:`.folded_complex.PARITY_PROBE_PATTERNS` — the base four plus the parity one —
-and the ``EXPANSION`` constexpr is bound through
-:func:`.folded_complex.parity_expansion_from_probe`, never re-implemented here. The
-licence is POLICY-CONDITIONAL and this module does not soften either policy question.
 
 NOT WIRED, and not an arm. ``launch.plan_step`` assigns at most one plan per
 ``STEP_ORDER`` slot and this product spans FIVE driver call sites; there is no slot it
@@ -242,12 +226,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .complex_fields import (
     DEFAULT_BLOCK,
-    _mul_coefficient_left,
-    _mul_field_left,
-    _phase_arguments,
-    _rotate_field_left,
     _word_view,
     bloch_phase_table,
+    connection_arguments,
 )
 from .coverage import (
     CONSTITUTIVE_SIDES,
@@ -260,7 +241,6 @@ from .folded_complex import (
     CODE_MIRROR_PERIODIC,
     CODE_PERIODIC,
     MIRROR_SOURCE_INDEX,
-    PARITY_PROBE_PATTERNS,
     TARGET_IYEE,
     _far_reflect_rows,
     _stored_past_owned_reader,
@@ -269,10 +249,8 @@ from .folded_complex import (
     folded_complex_constitutive_coverage,
     folded_mirror_ghost_fill_complex_coverage,
     mirror_parity_coefficients,
-    parity_expansion_from_probe,
 )
 from .launch import SUB_STEPS, CupyPointer, _flat
-from .special_kz import _mul_imag_coefficient_left
 from .. import deposit_repair as _deposit_repair
 
 #: Does this product bracket its fused launch with the deposit repair? TRUE, and on
@@ -359,17 +337,11 @@ FAR_FILL_AXES: Tuple[Tuple[int, ...], ...] = tuple(
 #: rather than reading the order out of the same body it is checking.
 CLEAR_AFTER_NEAR: bool = True
 
-#: The probe patterns this product's operand orientations require: the base four the
-#: unfolded complex ELECTRIC pair binds PLUS the parity one the fills add. Named
-#: rather than passed implicitly so the claim is inspectable and testable.
-PRODUCT_PROBE_PATTERNS: Tuple[str, ...] = tuple(PARITY_PROBE_PATTERNS)
-
 #: The complex-multiply device functions this kernel is allowed to call, and the only
-#: ones. A fifth would be a fifth operand orientation, which would need its own probe
-#: pattern before it could be licensed; the test scans for exactly this.
-LICENSED_MULTIPLY_HELPERS: Tuple[str, ...] = (
-    "_rotate_field_left", "_mul_field_left", "_mul_coefficient_left",
-    "_mul_imag_coefficient_left")
+#: ones: the partner connection. Every other product has a real operand (a PML
+#: coefficient, ``dtdx``, ``inv_eps`` or a +-1 parity word) and is formed part by
+#: part, inline; the test scans the shipped body for any other helper.
+MULTIPLY_HELPERS: Tuple[str, ...] = ("_connect",)
 
 #: What has and has not been executed on a device. Edited only by a released gate.
 DEVICE_STATUS: str = (
@@ -427,8 +399,8 @@ DEVICE_STATUS: str = (
 __all__ = [
     "BACKWARD", "CARRIES_DEPOSIT_REPAIR", "CLEAR_AFTER_NEAR", "CONSTITUTIVE_SIDE",
     "CURL_SUB_STEP", "DEVICE_STATUS", "FAR_FILL_AXES", "FILL_FAMILY",
-    "LICENSED_MULTIPLY_HELPERS", "MIRROR_CODES", "NEAR_FILL_AXES",
-    "PRODUCT_PROBE_PATTERNS", "REPLACES",
+    "MULTIPLY_HELPERS", "MIRROR_CODES", "NEAR_FILL_AXES",
+    "REPLACES",
     "FoldedComplexFusedPairPlan",
     "carried_destinations",
     "folded_complex_fused_curl_constitutive_D",
@@ -570,129 +542,75 @@ if triton is not None:
     MIRROR_METALLIC = tl.constexpr(CODE_MIRROR_METALLIC)
     MIRROR_PERIODIC = tl.constexpr(CODE_MIRROR_PERIODIC)
 
+    # The forms, the record layout and the connection, read by the kernel below:
+    # its curl half is folded_complex.folded_bloch_pml_curl_step's body and its
+    # constitutive half complex_fields.bloch_constitutive_step's, per part.
+    from .complex_fields import _connect  # noqa: E402
+    from .forms import (axis_present, constitutive_form, curl_form,  # noqa: E402
+                        curl_stencil, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
+
     @triton.jit
-    def _carry_ghost_complex_E(f, w, e, ie, dst, ghost_re, ghost_im,
-                               kp_d, km_d, mask, EXPANSION: tl.constexpr):
-        """Write ONE imaged ghost cell of ``D`` and run complex ``update_E`` there.
+    def _carry_ghost_complex_E(f, w, e, ie, dst, ghost_re, ghost_im, kp_d, km_d, dw_d,
+                               mask):
+        """Write ONE imaged ghost cell of ``D``, both parts, and run ``update_E`` there.
 
-        THE STATEMENTS ARE THE CERTIFIED ONES, MOVED AND NOT REWRITTEN: they are the
-        displacement store followed by
-        :func:`.complex_fields.bloch_constitutive_step`'s ``SCALE = 1`` arm — reached
-        through :mod:`.complex_fused_electric_pair`'s transcription of it — with
-        ``src`` bound to the carried word pair instead of a load, which is exactly
-        what the owned cell above does. They are a device function because a D
-        component can be the source of up to SEVEN ghost cells and seven inlined
-        copies of the same eleven statements are seven places for one of them to
-        drift; the real twin's :func:`.folded_fused_pair._carry_ghost_E` made the same
-        move for the same reason.
-
-        ``ghost`` is ALREADY the composed value — every parity applied, and the wall
-        clear applied or not according to which fill wrote it. This function decides
-        nothing about either; it stores what it is handed.
-
-        The ORDER is the array path's: the displacement store, then the workspace
-        read, the ``inv_eps`` multiply, the workspace write, and the ``E``
-        accumulation. ``prev`` is read BEFORE the write, which is the one ordering the
-        constitutive cannot survive being wrong about (S:2083-2085). The inv_eps
-        multiply happens BETWEEN the source read and that store
-        (complex_fields.py:783-786), so ``f_w_E*`` holds ``D * inv_eps`` and not
-        ``D``. The two accumulations stay separate and left-to-right, each a
-        coefficient-LEFT zero-imaginary complex product (S:2086-2087, S:2093-2095).
-
-        ``inv_eps`` is a float32 volume at the COMPLEX cell index — ``ie + dst``, not
-        ``ie + 2 * dst``. D IS ON THE LEFT of that multiply because the array path
-        writes ``source * fields.inverse_epsilon_for(component)``
-        (stepping.py:1011-1013).
+        :func:`.folded_fused_pair._carry_ghost_E`'s statements once per stored part, at
+        the cell's two word offsets, with ``src = ghost * inv_eps`` where ``inv_eps``
+        is one float32 word per COMPLEX cell (``+ dst``, never word-doubled): the
+        displacement store, then the workspace read, the workspace write and the
+        ``E`` accumulate, ``prev`` read BEFORE the write. ``dw_d`` is the
+        destination's membership.
         """
+        us = tl.load(ie + dst, mask=mask, other=0.0)
         tl.store(f + 2 * dst, ghost_re, mask=mask)
         tl.store(f + 2 * dst + 1, ghost_im, mask=mask)
-        prev_re = tl.load(w + 2 * dst, mask=mask, other=0.0)
-        prev_im = tl.load(w + 2 * dst + 1, mask=mask, other=0.0)
-        src_re, src_im = _mul_field_left(
-            ghost_re, ghost_im, tl.load(ie + dst, mask=mask, other=0.0), EXPANSION)
-        tl.store(w + 2 * dst, src_re, mask=mask)
-        tl.store(w + 2 * dst + 1, src_im, mask=mask)
-        acc_re = tl.load(e + 2 * dst, mask=mask, other=0.0)
-        acc_im = tl.load(e + 2 * dst + 1, mask=mask, other=0.0)
-        t_re, t_im = _mul_coefficient_left(kp_d, src_re, src_im, EXPANSION)
-        acc_re = acc_re + t_re
-        acc_im = acc_im + t_im
-        t_re, t_im = _mul_coefficient_left(km_d, prev_re, prev_im, EXPANSION)
-        acc_re = acc_re - t_re
-        acc_im = acc_im - t_im
-        tl.store(e + 2 * dst, acc_re, mask=mask)
-        tl.store(e + 2 * dst + 1, acc_im, mask=mask)
+        prev_re = tl.load(w + 2 * dst, mask=mask & dw_d, other=0.0)
+        prev_im = tl.load(w + 2 * dst + 1, mask=mask & dw_d, other=0.0)
+        src_re = ghost_re * us
+        src_im = ghost_im * us
+        tl.store(w + 2 * dst, src_re, mask=mask & dw_d)
+        tl.store(w + 2 * dst + 1, src_im, mask=mask & dw_d)
+        acc_re = tl.load(e + 2 * dst, mask=mask & dw_d, other=0.0)
+        acc_im = tl.load(e + 2 * dst + 1, mask=mask & dw_d, other=0.0)
+        tl.store(e + 2 * dst, constitutive_form(acc_re, prev_re, src_re, kp_d, km_d, dw_d),
+                 mask=mask)
+        tl.store(e + 2 * dst + 1,
+                 constitutive_form(acc_im, prev_im, src_im, kp_d, km_d, dw_d), mask=mask)
 
     @triton.jit
     def folded_complex_fused_curl_constitutive_D(
-        f0, f1, f2,                       # curl targets: Dx,Dy,Dz (complex64 words)
+        f0, f1, f2,                       # curl targets: Dx,Dy,Dz (complex64 as words)
         u0, u1, u2,                       # curl auxiliaries: fu_Dx,fu_Dy,fu_Dz
         g0, g1, g2,                       # curl sources: Hx,Hy,Hz
         kmx, sinvx, kmy, sinvy, kmz, sinvz,   # curl kms/sinv, INTEGER lattice
-        h0, h1, h2,                       # constitutive targets: Ex,Ey,Ez
+        e0, e1, e2,                       # constitutive targets: Ex,Ey,Ez
         w0, w1, w2,                       # constitutive aux: f_w_Ex,f_w_Ey,f_w_Ez
         ie0, ie1, ie2,                    # inverse epsilon, float32 VOLUMES
-        kp0, km0, kp1, km1, kp2, km2,     # constitutive kps/kms, HALF-INTEGER
+        kp0, km0, kp1, km1, kp2, km2,     # constitutive kps/kms, HALF-INTEGER lattice
+        cb,                               # chunk record: both halves' forms
         nx, ny, nz, n_elem, dtdx,         # n_elem = COMPLEX cells; dtdx pre-rounded
-        pxr, pxi, pyr, pyi, pzr, pzi,     # per-axis complex64-rounded Bloch phase
+        cxr, cxi, cyr, cyi, czr, czi,     # per-axis connection factor, float32 parts
         rx, ry, rz,                       # RUNTIME: stepping._far_reflect_rows
-        n0r, n0i, n1r, n1i, n2r, n2i,     # NEAR parity words, per axis (+phase)
-        d0r, d0i, d1r, d1i, d2r, d2i,     # FAR parity words, per axis (-phase)
-        BACKWARD: tl.constexpr,           # bound to 1 by every builder; see below
+        n0r, n1r, n2r,                    # NEAR parity words, per axis (+phase)
+        d0r, d1r, d2r,                    # FAR parity words, per axis (-phase)
+        BACKWARD: tl.constexpr,           # bound to 1 by every builder
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         NEAR_X: tl.constexpr, NEAR_Y: tl.constexpr, NEAR_Z: tl.constexpr,
         FAR_X: tl.constexpr, FAR_Y: tl.constexpr, FAR_Z: tl.constexpr,
         ZM_X: tl.constexpr, ZM_Y: tl.constexpr, ZM_Z: tl.constexpr,
-        PHX: tl.constexpr, PHY: tl.constexpr, PHZ: tl.constexpr,
-        EXPANSION: tl.constexpr,
+        CNX: tl.constexpr, CNY: tl.constexpr, CNZ: tl.constexpr,
         BLOCK: tl.constexpr,
     ):
         """Folded complex ``step_D`` + both fills + ``zero_metal_D`` + ``update_E``.
 
-        ``BACKWARD`` IS CARRIED AND MUST BE 1. It keeps the curl half a verbatim copy
-        of :func:`.folded_complex.folded_bloch_pml_curl_step` rather than a
-        hand-specialised one, which is the whole reason the transcription risk here is
-        low. It cannot be 0: the B family's Yee shifts swap the two fills' roles
-        exactly, its wall clear is three rows and never meets a fill, its constitutive
-        half reads no ``inv_eps``, and its census funnel is a different number.
-
-        ``BCX``/``BCY``/``BCZ`` take all four of :mod:`.folded_complex`'s codes,
-        ``MIRROR_PERIODIC`` included: this kernel carries
-        ``fill_folded_far_ghosts_D`` (driver.py:3302), and the folded curl's top-plane
-        mask comes with it.
-
-        ``NEAR_a`` / ``FAR_a`` say which fill runs on axis ``a``: NEAR on either
-        mirror code (``stepping._fill_symmetry_ghost_cells`` gates on the mirror
-        phases alone) and FAR only on ``MIRROR_PERIODIC``
-        (``stepping._stored_past_owned``:1454-1469). They are DERIVED FROM ``bc`` by
-        the plan and are not independent inputs, so they cannot disagree with the
-        codes the curl half branches on.
-
-        ``rx``/``ry``/``rz`` are ``stepping._far_reflect_rows``' answer per axis,
-        RUNTIME as they are in
-        :func:`.folded_complex.folded_mirror_ghost_fill_complex` and for its reason:
-        the row is ``n_full - stored + 2``, which is ``stored - 2`` at an even full
-        count and ``stored - 3`` at an odd one, so baking ``n - 2`` reflects about the
-        window top instead of about the second mirror and is a whole cell wrong on
-        every odd-count run. ``-1`` on an axis with no far ghost, where no lane reads
-        it.
-
-        ``n?r``/``n?i``/``d?r``/``d?i`` are the folded axes' PARITY COEFFICIENT WORDS,
-        host-rounded through ``numpy.complex64`` by
-        :func:`.folded_complex.mirror_parity_coefficients` and PASSED, never
-        synthesised in-kernel (special_kz.py:255-264's rule). ``(+0.0, +0.0)`` on an
-        unfolded axis, where no block that reads them is emitted: if a carry block
-        ever fired on an axis the host did not classify as folded it would write an
-        exact zero plane — loud — rather than a plausible field.
-
-        ``PHX``/``PHY``/``PHZ`` are the BLOCH phase flags, not the mirror phases: the
-        mirror phase rides entirely in the words above. A folded axis may carry no
-        Bloch phase at all and the predicate refuses one that does.
-
-        ``ZM_X``/``ZM_Y``/``ZM_Z`` are ``coverage.zero_metal_axes``, the question
-        ``stepping._zero_metal`` asks — the grid's own declaration, NOT the resolved
-        ghost rule, which an invariant axis softens to periodic while the wall clear
-        still fires there.
+        :func:`.folded_fused_pair.folded_fused_curl_constitutive_D` run once per stored
+        part, its curl half :func:`.folded_complex.folded_bloch_pml_curl_step` (the
+        Bloch connection of an unfolded phased axis included). ``BACKWARD`` is carried
+        and must be 1. ``NEAR_a`` / ``FAR_a`` are derived from ``bc`` by the plan;
+        ``rx``/``ry``/``rz`` are ``stepping._far_reflect_rows``' rows; ``n*r`` /
+        ``d*r`` the near (+phase) and far (-phase) parity words, host-rounded. ``cb``
+        serves both halves.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -702,14 +620,11 @@ if triton is not None:
         j = plane % ny
         i = plane // ny
 
-        # ======================= the curl half ================================
-        # Verbatim from folded_complex.folded_bloch_pml_curl_step; the only edits
-        # below its stores are the ownership masks the two carries need.
-
-        # --- the ghost rule, per axis (stepping._shift_up / _shift_down) -------
-        # PERIODIC wraps; EVERY other rule here serves an exact 0.0 past the face,
-        # which `tl.load`'s `other=` delivers on BOTH words without dereferencing
-        # anything. On a folded axis that zero stands in for a value nothing reads.
+        # --- DELTA 1: the ghost rule, per axis (stepping._shift_up / _shift_down) ---
+        # PERIODIC wraps (a plain roll, phased or not); EVERY other rule here serves an
+        # exact (+0.0, +0.0) past the face, which `tl.load`'s `other=` delivers on both
+        # words. On a folded axis that zero stands in for a value nothing reads (the two
+        # masks below zero every cell that reads it).
         if BACKWARD:
             si, sj, sk = i - 1, j - 1, k - 1
         else:
@@ -732,13 +647,7 @@ if triton is not None:
         oy = i * nyz + sj * nz + k
         oz = i * nyz + j * nz + sk
 
-        # --- wrapped-lane predicates, one plane per axis ------------------------
-        if BACKWARD:
-            wx, wy, wz = i == 0, j == 0, k == 0
-        else:
-            wx, wy, wz = i == nx - 1, j == ny - 1, k == nz - 1
-
-        # --- loads: two words per operand --------------------------------------
+        # --- loads: two words per operand ------------------------------------------
         a_re = tl.load(g0 + 2 * idx, mask=live, other=0.0)
         a_im = tl.load(g0 + 2 * idx + 1, mask=live, other=0.0)
         b_re = tl.load(g1 + 2 * idx, mask=live, other=0.0)
@@ -758,48 +667,59 @@ if triton is not None:
         c_y_re = tl.load(g2 + 2 * oy, mask=vy, other=0.0)
         c_y_im = tl.load(g2 + 2 * oy + 1, mask=vy, other=0.0)
 
-        # --- Bloch phase on the wrapped lane, BEFORE the difference -------------
-        # SHIFTED operands only; PH* is 0 on every folded axis by the predicate.
-        # Field LEFT (S:1862); `tl.where` is a bitwise select, so unwrapped lanes
-        # keep the loaded words untouched.
-        if PHX:
-            rot_re, rot_im = _rotate_field_left(b_x_re, b_x_im, pxr, pxi, EXPANSION)
-            b_x_re = tl.where(wx, rot_re, b_x_re)
-            b_x_im = tl.where(wx, rot_im, b_x_im)
-            rot_re, rot_im = _rotate_field_left(c_x_re, c_x_im, pxr, pxi, EXPANSION)
-            c_x_re = tl.where(wx, rot_re, c_x_re)
-            c_x_im = tl.where(wx, rot_im, c_x_im)
-        if PHY:
-            rot_re, rot_im = _rotate_field_left(a_y_re, a_y_im, pyr, pyi, EXPANSION)
-            a_y_re = tl.where(wy, rot_re, a_y_re)
-            a_y_im = tl.where(wy, rot_im, a_y_im)
-            rot_re, rot_im = _rotate_field_left(c_y_re, c_y_im, pyr, pyi, EXPANSION)
-            c_y_re = tl.where(wy, rot_re, c_y_re)
-            c_y_im = tl.where(wy, rot_im, c_y_im)
-        if PHZ:
-            rot_re, rot_im = _rotate_field_left(a_z_re, a_z_im, pzr, pzi, EXPANSION)
-            a_z_re = tl.where(wz, rot_re, a_z_re)
-            a_z_im = tl.where(wz, rot_im, a_z_im)
-            rot_re, rot_im = _rotate_field_left(b_z_re, b_z_im, pzr, pzi, EXPANSION)
-            b_z_re = tl.where(wz, rot_re, b_z_re)
-            b_z_im = tl.where(wz, rot_im, b_z_im)
-
-        # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens
-        t0_re = ((c_y_re - c_re) + (b_re - b_z_re))
-        t0_im = ((c_y_im - c_im) + (b_im - b_z_im))
-        t1_re = ((a_z_re - a_re) + (c_re - c_x_re))
-        t1_im = ((a_z_im - a_im) + (c_im - c_x_im))
-        t2_re = ((b_x_re - b_re) + (a_re - a_y_re))
-        t2_im = ((b_x_im - b_im) + (a_im - a_y_im))
-        curl0_re, curl0_im = _mul_coefficient_left(dtdx, t0_re, t0_im, EXPANSION)
-        curl1_re, curl1_im = _mul_coefficient_left(dtdx, t1_re, t1_im, EXPANSION)
-        curl2_re, curl2_im = _mul_coefficient_left(dtdx, t2_re, t2_im, EXPANSION)
-
-        # --- ownership mask, cell 0 (stepping._mask_non_owned_cells) -----------
-        # `!= PERIODIC` rather than `== METALLIC`: _mask_non_owned_cells asks
-        # `is_mirrored or is_metallic or is_axis`. Writes +0.0 to BOTH planes
-        # (S:1896, S:1902).
+        # --- the connection on the UNSHIFTED partners, plane 0 of each partner's axis
+        # Target 0 reads c along y and b along z, target 1 a along z and c along x,
+        # target 2 b along x and a along y (stepping's term table). `tl.where` is a
+        # bitwise select, so every cell off plane 0 keeps its loaded words.
         at_x, at_y, at_z = i == 0, j == 0, k == 0
+        c0_re, c0_im = c_re, c_im          # target 0's g1, connected on y
+        b0_re, b0_im = b_re, b_im          # target 0's g2, connected on z
+        a1_re, a1_im = a_re, a_im          # target 1's g1, connected on z
+        c1_re, c1_im = c_re, c_im          # target 1's g2, connected on x
+        b2_re, b2_im = b_re, b_im          # target 2's g1, connected on x
+        a2_re, a2_im = a_re, a_im          # target 2's g2, connected on y
+        if CNX:
+            r_re, r_im = _connect(c_re, c_im, cxr, cxi, CNX)
+            c1_re = tl.where(at_x, r_re, c_re)
+            c1_im = tl.where(at_x, r_im, c_im)
+            r_re, r_im = _connect(b_re, b_im, cxr, cxi, CNX)
+            b2_re = tl.where(at_x, r_re, b_re)
+            b2_im = tl.where(at_x, r_im, b_im)
+        if CNY:
+            r_re, r_im = _connect(c_re, c_im, cyr, cyi, CNY)
+            c0_re = tl.where(at_y, r_re, c_re)
+            c0_im = tl.where(at_y, r_im, c_im)
+            r_re, r_im = _connect(a_re, a_im, cyr, cyi, CNY)
+            a2_re = tl.where(at_y, r_re, a_re)
+            a2_im = tl.where(at_y, r_im, a_im)
+        if CNZ:
+            r_re, r_im = _connect(b_re, b_im, czr, czi, CNZ)
+            b0_re = tl.where(at_z, r_re, b_re)
+            b0_im = tl.where(at_z, r_im, b_im)
+            r_re, r_im = _connect(a_re, a_im, czr, czi, CNZ)
+            a1_re = tl.where(at_z, r_re, a_re)
+            a1_im = tl.where(at_z, r_im, a_im)
+
+        # --- the curl (stepping._curl_from_operands), per part ---------------------
+        # kernels.pml_curl_step's three calls on each part: MEEP's left-to-right
+        # association with both partners, the one-partner form where the record says the
+        # other partner's derivative axis is invariant, an exact +0 with neither. The
+        # dtdx scale is the real scalar times each part (part_products.scale).
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)
+        curl0_im = curl_stencil(c_y_im, c0_im, b0_im, b_z_im, dtdx, py, pz)
+        curl1_re = curl_stencil(a_z_re, a1_re, c1_re, c_x_re, dtdx, pz, px)
+        curl1_im = curl_stencil(a_z_im, a1_im, c1_im, c_x_im, dtdx, pz, px)
+        curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)
+        curl2_im = curl_stencil(b_x_im, b2_im, a2_im, a_y_im, dtdx, px, py)
+
+        # --- DELTA 2: ownership mask, cell 0 (stepping._mask_non_owned_cells) -------
+        # Every target whose Yee shift is 0 on a non-periodic axis (``is_mirrored or
+        # is_metallic``): the unfolded body's ``== METALLIC`` widened to ``!= PERIODIC``.
+        # Writes +0.0 to BOTH parts -- the array path assigns complex zero.
         if BACKWARD:
             if BCY != PERIODIC:
                 curl0_re = tl.where(at_y, 0.0, curl0_re)
@@ -830,13 +750,13 @@ if triton is not None:
                 curl2_re = tl.where(at_z, 0.0, curl2_re)
                 curl2_im = tl.where(at_z, 0.0, curl2_im)
 
-        # --- ownership mask, the TOP plane of a folded PERIODIC axis -----------
-        # folded_bloch_pml_curl_step's DELTA 3, byte-copied from its BACKWARD == 1
-        # arm. Dx:(1,0,0) Dy:(0,1,0) Dz:(0,0,1) — shift 1 on its OWN axis only,
-        # which is exactly the set the far carry writes, and THREE lines against the
-        # B arm's six.
+        # --- DELTA 3: ownership mask, the TOP plane of a folded PERIODIC axis --------
+        # Every target whose Yee shift is 1 there: that slot sits past MEEP's owned
+        # window and the far fill, not the curl, writes it (symmetry.py's block, both
+        # parts).
         last_x, last_y, last_z = i == nx - 1, j == ny - 1, k == nz - 1
         if BACKWARD:
+            # Dx:(1,0,0)  Dy:(0,1,0)  Dz:(0,0,1) -- shift 1 on its OWN axis only.
             if BCX == MIRROR_PERIODIC:
                 curl0_re = tl.where(last_x, 0.0, curl0_re)
                 curl0_im = tl.where(last_x, 0.0, curl0_im)
@@ -847,6 +767,7 @@ if triton is not None:
                 curl2_re = tl.where(last_z, 0.0, curl2_re)
                 curl2_im = tl.where(last_z, 0.0, curl2_im)
         else:
+            # Bx:(0,1,1)  By:(1,0,1)  Bz:(1,1,0) -- shift 1 on the two OTHER axes.
             if BCY == MIRROR_PERIODIC:
                 curl0_re = tl.where(last_y, 0.0, curl0_re)
                 curl0_im = tl.where(last_y, 0.0, curl0_im)
@@ -866,14 +787,11 @@ if triton is not None:
                 curl2_re = tl.where(last_y, 0.0, curl2_re)
                 curl2_im = tl.where(last_y, 0.0, curl2_im)
 
-        # --- ownership of the fill destinations --------------------------------
-        # Component m is a NEAR destination at stored cell 0 of every folded axis
-        # that is NOT its own, and a FAR destination at the top plane of its own axis
-        # when that axis is folded PERIODIC (IYEE_SHIFTS: Dx (1,0,0), Dy (0,1,0),
-        # Dz (0,0,1)). Those lanes do NOT load or store D, E or f_w_E: the source
-        # lane writes all three for them. The masks are what make the carry race-free
-        # — a lane that merely discarded the value would still have READ a word
-        # another lane writes.
+        # --- ownership of the fill destinations (folded_fused_pair's) --------------
+        # Component m is a NEAR destination at stored cell 0 of each OTHER folded axis and
+        # a FAR destination at the top plane of its OWN folded periodic axis (Dx (1,0,0),
+        # Dy (0,1,0), Dz (0,0,1)). Those lanes do NOT load or store D, E or f_w_E, either
+        # part: the source lane writes all three for them.
         own0, own1, own2 = live, live, live
         if NEAR_Y:
             own0 = own0 & (j != 0)
@@ -891,11 +809,10 @@ if triton is not None:
         if FAR_Z:
             own2 = own2 & (k != nz - 1)
 
-        # --- split-field recurrence (stepping._apply_pml_update) ---------------
-        # Byte-copied from folded_bloch_pml_curl_step. The PML coefficient vectors
-        # are built at the STORED extent on a folded axis, so the per-axis indexing
-        # needs no fold-aware change. The only edit is the `f?` load's mask: a
-        # destination lane never reads D.
+        # --- the PML forms (stepping._apply_curl_regions), per part ----------------
+        # dsig/dsigu cycle: target 0 -> (y, z), 1 -> (z, x), 2 -> (x, y). One record
+        # select per target serves both parts; fu is read and written on the
+        # recurrence's cells only (the auxiliary contract), both words.
         km_x = tl.load(kmx + i, mask=live, other=0.0)
         si_x = tl.load(sinvx + i, mask=live, other=0.0)
         km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -903,57 +820,37 @@ if triton is not None:
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0_re = tl.load(u0 + 2 * idx, mask=live, other=0.0)
-        p0_im = tl.load(u0 + 2 * idx + 1, mask=live, other=0.0)
-        q_re, q_im = _mul_field_left(p0_re, p0_im, km_y, EXPANSION)
-        q_re = q_re - curl0_re
-        q_im = q_im - curl0_im
-        n0_re, n0_im = _mul_field_left(q_re, q_im, si_y, EXPANSION)
-        e_re = tl.load(f0 + 2 * idx, mask=own0, other=0.0)
-        e_im = tl.load(f0 + 2 * idx + 1, mask=own0, other=0.0)
-        r_re, r_im = _mul_field_left(e_re, e_im, km_z, EXPANSION)
-        r_re = (r_re + n0_re) - p0_re
-        r_im = (r_im + n0_im) - p0_im
-        v0_re, v0_im = _mul_field_left(r_re, r_im, si_z, EXPANSION)
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1_re = tl.load(u1 + 2 * idx, mask=live, other=0.0)
-        p1_im = tl.load(u1 + 2 * idx + 1, mask=live, other=0.0)
-        q_re, q_im = _mul_field_left(p1_re, p1_im, km_z, EXPANSION)
-        q_re = q_re - curl1_re
-        q_im = q_im - curl1_im
-        n1_re, n1_im = _mul_field_left(q_re, q_im, si_z, EXPANSION)
-        e_re = tl.load(f1 + 2 * idx, mask=own1, other=0.0)
-        e_im = tl.load(f1 + 2 * idx + 1, mask=own1, other=0.0)
-        r_re, r_im = _mul_field_left(e_re, e_im, km_x, EXPANSION)
-        r_re = (r_re + n1_re) - p1_re
-        r_im = (r_im + n1_im) - p1_im
-        v1_re, v1_im = _mul_field_left(r_re, r_im, si_x, EXPANSION)
+        p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)
+        p_im = tl.load(u0 + 2 * idx + 1, mask=live & du0, other=0.0)
+        v0_re, n0_re = curl_form(tl.load(f0 + 2 * idx, mask=own0, other=0.0), p_re, curl0_re,
+                                 km_y, si_y, km_z, si_z, du0)
+        v0_im, n0_im = curl_form(tl.load(f0 + 2 * idx + 1, mask=own0, other=0.0), p_im,
+                                 curl0_im, km_y, si_y, km_z, si_z, du0)
 
-        p2_re = tl.load(u2 + 2 * idx, mask=live, other=0.0)
-        p2_im = tl.load(u2 + 2 * idx + 1, mask=live, other=0.0)
-        q_re, q_im = _mul_field_left(p2_re, p2_im, km_x, EXPANSION)
-        q_re = q_re - curl2_re
-        q_im = q_im - curl2_im
-        n2_re, n2_im = _mul_field_left(q_re, q_im, si_x, EXPANSION)
-        e_re = tl.load(f2 + 2 * idx, mask=own2, other=0.0)
-        e_im = tl.load(f2 + 2 * idx + 1, mask=own2, other=0.0)
-        r_re, r_im = _mul_field_left(e_re, e_im, km_y, EXPANSION)
-        r_re = (r_re + n2_re) - p2_re
-        r_im = (r_im + n2_im) - p2_im
-        v2_re, v2_im = _mul_field_left(r_re, r_im, si_y, EXPANSION)
+        p_re = tl.load(u1 + 2 * idx, mask=live & du1, other=0.0)
+        p_im = tl.load(u1 + 2 * idx + 1, mask=live & du1, other=0.0)
+        v1_re, n1_re = curl_form(tl.load(f1 + 2 * idx, mask=own1, other=0.0), p_re, curl1_re,
+                                 km_z, si_z, km_x, si_x, du1)
+        v1_im, n1_im = curl_form(tl.load(f1 + 2 * idx + 1, mask=own1, other=0.0), p_im,
+                                 curl1_im, km_z, si_z, km_x, si_x, du1)
 
-        # --- the seam: stepping.zero_metal_D (driver.py:3301) ------------------
-        # THE SIX ROWS `_zero_metal` writes for the D family (Dy/Dz on an x wall,
-        # Dx/Dz on y, Dx/Dy on z), against the magnetic twin's three. Applied to the
-        # REGISTERS, before the store, before the constitutive read and before every
-        # carry, so each consumer sees the one value the array path leaves in D.
-        # BOTH planes: `array[_face(axis, 0)] = 0` on a complex64 volume writes
-        # complex zero (stepping._zero_metal :2246). A walled axis is never a folded
-        # axis (:2237-2239), so these lines cannot touch a fill destination; the
-        # predicate CHECKS that rather than leaning on it. It does NOT follow that
-        # the clear and the near fill are unrelated on this family — a component
-        # folded on y is still cleared on a z wall — and that is why each near-ghost
-        # block below RE-APPLIES these lines after its parity, in the driver's order.
+        p_re = tl.load(u2 + 2 * idx, mask=live & du2, other=0.0)
+        p_im = tl.load(u2 + 2 * idx + 1, mask=live & du2, other=0.0)
+        v2_re, n2_re = curl_form(tl.load(f2 + 2 * idx, mask=own2, other=0.0), p_re, curl2_re,
+                                 km_x, si_x, km_y, si_y, du2)
+        v2_im, n2_im = curl_form(tl.load(f2 + 2 * idx + 1, mask=own2, other=0.0), p_im,
+                                 curl2_im, km_x, si_x, km_y, si_y, du2)
+
+        # --- the seam: stepping.zero_metal_D, on the registers -----------------------
+        # The TANGENTIAL two components per walled axis (the electric twin's map).
         if ZM_X:
             v1_re = tl.where(at_x, 0.0, v1_re)
             v1_im = tl.where(at_x, 0.0, v1_im)
@@ -970,16 +867,13 @@ if triton is not None:
             v1_re = tl.where(at_z, 0.0, v1_re)
             v1_im = tl.where(at_z, 0.0, v1_im)
 
-        # --- stores: u then f (kernels.py:193-198 order), both planes ----------
-        # `fu` is written at EVERY cell, destinations included: the array path's
-        # step_D writes it everywhere and neither fill touches it
-        # (stepping.py:1497-1498 writes `field`, never `fu_field`).
-        tl.store(u0 + 2 * idx, n0_re, mask=live)
-        tl.store(u0 + 2 * idx + 1, n0_im, mask=live)
-        tl.store(u1 + 2 * idx, n1_re, mask=live)
-        tl.store(u1 + 2 * idx + 1, n1_im, mask=live)
-        tl.store(u2 + 2 * idx, n2_re, mask=live)
-        tl.store(u2 + 2 * idx + 1, n2_im, mask=live)
+        # --- stores: fu on the recurrence's cells, the fields on owned cells -------
+        tl.store(u0 + 2 * idx, n0_re, mask=live & du0)
+        tl.store(u0 + 2 * idx + 1, n0_im, mask=live & du0)
+        tl.store(u1 + 2 * idx, n1_re, mask=live & du1)
+        tl.store(u1 + 2 * idx + 1, n1_im, mask=live & du1)
+        tl.store(u2 + 2 * idx, n2_re, mask=live & du2)
+        tl.store(u2 + 2 * idx + 1, n2_im, mask=live & du2)
         tl.store(f0 + 2 * idx, v0_re, mask=own0)
         tl.store(f0 + 2 * idx + 1, v0_im, mask=own0)
         tl.store(f1 + 2 * idx, v1_re, mask=own1)
@@ -987,103 +881,73 @@ if triton is not None:
         tl.store(f2 + 2 * idx, v2_re, mask=own2)
         tl.store(f2 + 2 * idx + 1, v2_im, mask=own2)
 
-        # ==================== the constitutive half ===========================
-        # Verbatim from complex_fields.bloch_constitutive_step's SCALE=1 arm, through
-        # complex_fused_electric_pair's transcription of it, with
-        # `src = tl.load(g + 2*idx)` replaced by the register pair the curl half just
-        # produced. Component 0 takes its coefficient from axis x, 1 from y, 2 from z
-        # (stepping.E_CONSTITUTIVE_TERMS :227) — the component's OWN axis, which is
-        # exactly the axis the NEAR fill never images along and exactly the one the
-        # FAR fill does.
+        # ==================== the constitutive half (update_E) ======================
+        # bloch_constitutive_step's E arm per part, `src` the register pair times inv_eps
+        # (one float32 word per COMPLEX cell) and `live` the component's ownership; dsigw
+        # lines on the half-integer lattice.
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
         km_0 = tl.load(km0 + i, mask=live, other=0.0)
         kp_1 = tl.load(kp1 + j, mask=live, other=0.0)
         km_1 = tl.load(km1 + j, mask=live, other=0.0)
         kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
 
-        # --- component 0 -------------------------------------------------------
-        prev_re = tl.load(w0 + 2 * idx, mask=own0, other=0.0)   # BEFORE the store.
-        prev_im = tl.load(w0 + 2 * idx + 1, mask=own0, other=0.0)
-        # inv_eps is a float32 volume at the COMPLEX cell index — `+ idx`, not
-        # `+ 2 * idx`. D LEFT (S:982-984).
-        src_re, src_im = _mul_field_left(
-            v0_re, v0_im, tl.load(ie0 + idx, mask=own0, other=0.0), EXPANSION)
-        tl.store(w0 + 2 * idx, src_re, mask=own0)
-        tl.store(w0 + 2 * idx + 1, src_im, mask=own0)
-        a_re = tl.load(h0 + 2 * idx, mask=own0, other=0.0)
-        a_im = tl.load(h0 + 2 * idx + 1, mask=own0, other=0.0)
-        t_re, t_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)
-        a_re = a_re + t_re
-        a_im = a_im + t_im
-        t_re, t_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)
-        a_re = a_re - t_re
-        a_im = a_im - t_im
-        tl.store(h0 + 2 * idx, a_re, mask=own0)
-        tl.store(h0 + 2 * idx + 1, a_im, mask=own0)
+        # --- component 0 ---------------------------------------------------------
+        prev_re = tl.load(w0 + 2 * idx, mask=own0 & dw0, other=0.0)   # BEFORE the store.
+        prev_im = tl.load(w0 + 2 * idx + 1, mask=own0 & dw0, other=0.0)
+        us = tl.load(ie0 + idx, mask=own0, other=0.0)
+        src_re = v0_re * us
+        src_im = v0_im * us
+        tl.store(w0 + 2 * idx, src_re, mask=own0 & dw0)
+        tl.store(w0 + 2 * idx + 1, src_im, mask=own0 & dw0)
+        a_re = tl.load(e0 + 2 * idx, mask=own0 & dw0, other=0.0)
+        a_im = tl.load(e0 + 2 * idx + 1, mask=own0 & dw0, other=0.0)
+        tl.store(e0 + 2 * idx, constitutive_form(a_re, prev_re, src_re, kp_0, km_0, dw0),
+                 mask=own0)
+        tl.store(e0 + 2 * idx + 1,
+                 constitutive_form(a_im, prev_im, src_im, kp_0, km_0, dw0), mask=own0)
 
-        # --- component 1 -------------------------------------------------------
-        prev_re = tl.load(w1 + 2 * idx, mask=own1, other=0.0)
-        prev_im = tl.load(w1 + 2 * idx + 1, mask=own1, other=0.0)
-        src_re, src_im = _mul_field_left(
-            v1_re, v1_im, tl.load(ie1 + idx, mask=own1, other=0.0), EXPANSION)
-        tl.store(w1 + 2 * idx, src_re, mask=own1)
-        tl.store(w1 + 2 * idx + 1, src_im, mask=own1)
-        a_re = tl.load(h1 + 2 * idx, mask=own1, other=0.0)
-        a_im = tl.load(h1 + 2 * idx + 1, mask=own1, other=0.0)
-        t_re, t_im = _mul_coefficient_left(kp_1, src_re, src_im, EXPANSION)
-        a_re = a_re + t_re
-        a_im = a_im + t_im
-        t_re, t_im = _mul_coefficient_left(km_1, prev_re, prev_im, EXPANSION)
-        a_re = a_re - t_re
-        a_im = a_im - t_im
-        tl.store(h1 + 2 * idx, a_re, mask=own1)
-        tl.store(h1 + 2 * idx + 1, a_im, mask=own1)
+        # --- component 1 ---------------------------------------------------------
+        prev_re = tl.load(w1 + 2 * idx, mask=own1 & dw1, other=0.0)   # BEFORE the store.
+        prev_im = tl.load(w1 + 2 * idx + 1, mask=own1 & dw1, other=0.0)
+        us = tl.load(ie1 + idx, mask=own1, other=0.0)
+        src_re = v1_re * us
+        src_im = v1_im * us
+        tl.store(w1 + 2 * idx, src_re, mask=own1 & dw1)
+        tl.store(w1 + 2 * idx + 1, src_im, mask=own1 & dw1)
+        a_re = tl.load(e1 + 2 * idx, mask=own1 & dw1, other=0.0)
+        a_im = tl.load(e1 + 2 * idx + 1, mask=own1 & dw1, other=0.0)
+        tl.store(e1 + 2 * idx, constitutive_form(a_re, prev_re, src_re, kp_1, km_1, dw1),
+                 mask=own1)
+        tl.store(e1 + 2 * idx + 1,
+                 constitutive_form(a_im, prev_im, src_im, kp_1, km_1, dw1), mask=own1)
 
-        # --- component 2 -------------------------------------------------------
-        prev_re = tl.load(w2 + 2 * idx, mask=own2, other=0.0)
-        prev_im = tl.load(w2 + 2 * idx + 1, mask=own2, other=0.0)
-        src_re, src_im = _mul_field_left(
-            v2_re, v2_im, tl.load(ie2 + idx, mask=own2, other=0.0), EXPANSION)
-        tl.store(w2 + 2 * idx, src_re, mask=own2)
-        tl.store(w2 + 2 * idx + 1, src_im, mask=own2)
-        a_re = tl.load(h2 + 2 * idx, mask=own2, other=0.0)
-        a_im = tl.load(h2 + 2 * idx + 1, mask=own2, other=0.0)
-        t_re, t_im = _mul_coefficient_left(kp_2, src_re, src_im, EXPANSION)
-        a_re = a_re + t_re
-        a_im = a_im + t_im
-        t_re, t_im = _mul_coefficient_left(km_2, prev_re, prev_im, EXPANSION)
-        a_re = a_re - t_re
-        a_im = a_im - t_im
-        tl.store(h2 + 2 * idx, a_re, mask=own2)
-        tl.store(h2 + 2 * idx + 1, a_im, mask=own2)
+        # --- component 2 ---------------------------------------------------------
+        prev_re = tl.load(w2 + 2 * idx, mask=own2 & dw2, other=0.0)   # BEFORE the store.
+        prev_im = tl.load(w2 + 2 * idx + 1, mask=own2 & dw2, other=0.0)
+        us = tl.load(ie2 + idx, mask=own2, other=0.0)
+        src_re = v2_re * us
+        src_im = v2_im * us
+        tl.store(w2 + 2 * idx, src_re, mask=own2 & dw2)
+        tl.store(w2 + 2 * idx + 1, src_im, mask=own2 & dw2)
+        a_re = tl.load(e2 + 2 * idx, mask=own2 & dw2, other=0.0)
+        a_im = tl.load(e2 + 2 * idx + 1, mask=own2 & dw2, other=0.0)
+        tl.store(e2 + 2 * idx, constitutive_form(a_re, prev_re, src_re, kp_2, km_2, dw2),
+                 mask=own2)
+        tl.store(e2 + 2 * idx + 1,
+                 constitutive_form(a_im, prev_im, src_im, kp_2, km_2, dw2), mask=own2)
 
-        # ========= the mirror fills, carried by the SOURCE lane ================
-        # stepping._write_mirror_ghost (:1451):     D[..0..]  = (+phase) (x) D[..2..]
-        # stepping._fill_folded_far_ghosts (:1529): D[..-1..] = (-phase) (x) D[..r..]
-        # and every COMPOSITION of the two, applied ONE
-        # `_mul_imag_coefficient_left` PER PASS in the DRIVER'S OWN ORDER (near axes
-        # ascending, then the WALL CLEAR, then the far axis) — see parity_chain,
-        # CLEAR_AFTER_NEAR and the module docstring. NOT folded into one coefficient
-        # and NOT re-ordered: under complex storage both moves change bytes, measured.
-        #
-        # THE COEFFICIENT INDEX MOVES ONLY FOR THE FAR HALF. update_E indexes
-        # component m on axis m (stepping.E_CONSTITUTIVE_TERMS :227); the near fill
-        # images along an axis that is NOT m, so its destination sits at the SAME
-        # coefficient index as the lane that owns it and reuses that lane's pair — a
-        # reload there would reload the identical word. The far fill images along
-        # exactly axis m, so its destination reads kps/kms at the TOP row rather than
-        # reusing the source lane's at the reflect row.
-        #
-        # THE NEAR SOURCE INDEX IS THE LITERAL 2, as it is in
-        # folded_complex.folded_mirror_ghost_fill_complex (`base + 2 * stride`),
-        # rather than the named MIRROR_SOURCE_INDEX: a jit body that closes over a
-        # module-level Python int is a Triton-version question this file has no way to
-        # measure without a device. The literal is pinned to the name by test.
-        #
-        # A scalar `nx - 1` would not broadcast against a masked vector load, so the
-        # far destination's coefficient row is built as a per-lane tensor the same way
-        # the real twin builds its `top_x`.
+        # ========= the mirror fills, carried by the SOURCE lane =====================
+        # folded_fused_pair's carries, per part, with the fills' parity words (host-rounded
+        # +-1.0, near ``n*r`` = +phase, far ``d*r`` = -phase): a NEAR ghost (written before
+        # the wall clear) takes the clear, a FAR ghost (written after it) does not, and
+        # each fill is a real scale per part (part_products.scale), exact, applied in the
+        # driver's order (near x, y, z, then far). A far destination reads its coefficient
+        # pair and membership at the TOP row of the component's own axis; a near-only one
+        # keeps the source lane's.
         top_x = idx * 0 + (nx - 1)
         top_y = idx * 0 + (ny - 1)
         top_z = idx * 0 + (nz - 1)
@@ -1093,13 +957,9 @@ if triton is not None:
         km_f1 = tl.load(km1 + top_y, mask=live, other=0.0)
         kp_f2 = tl.load(kp2 + top_z, mask=live, other=0.0)
         km_f2 = tl.load(km2 + top_z, mask=live, other=0.0)
-
-        # The per-axis source lane and destination offset, once. EVERY CARRY MASK IS
-        # ANDED WITH THE COMPONENT'S OWN OWNERSHIP MASK — a DEFECT THE REAL BOARD'S
-        # DEVICE GATE FOUND rather than a precaution (results/run_farcarry2/,
-        # 2026-08-20): with two fills a lane can be the source of one and the
-        # DESTINATION of the other, and it would then write the composite cell from a
-        # `v` built on a load its own ownership mask zeroed.
+        dw_f0 = record_in(cb, RECORD_HALF_INTEGER + 0, top_x)
+        dw_f1 = record_in(cb, RECORD_HALF_INTEGER + 4, top_y)
+        dw_f2 = record_in(cb, RECORD_HALF_INTEGER + 8, top_z)
         near_i = live & (i == 2)
         near_j = live & (j == 2)
         near_k = live & (k == 2)
@@ -1113,312 +973,150 @@ if triton is not None:
         df_y = (ny - 1 - ry) * nz
         df_z = (nz - 1 - rz)
 
-        # THE THREE-TERM GUARDS ARE PARENTHESISED, AND THAT IS A MEASURED PLATFORM
-        # FACT rather than a style choice: Triton 3.1.0's frontend refuses a chained
-        # boolean outright — "chained boolean operators (A or B or C) are not
-        # supported; use parentheses to split the chain" — and it refuses at COMPILE
-        # time on the device, so `if NEAR_Y and NEAR_Z and FAR_X:` is a kernel that
-        # does not build rather than one that builds wrong.
-
-        # --- component 0 (Dx): near on y and z, far on x -----------------------
-        # EVERY BLOCK IS SELF-CONTAINED: the chain is recomposed from `v0` inside the
-        # block rather than reusing a register a sibling constexpr branch defined.
-        # That is the complex magnetic twin's convention and it is deliberate — the
-        # value is the same word either way, and a block that carries its whole chain
-        # can be PARSED, which is what lets the suite and the gate read the emitted
-        # order off the shipped body instead of re-deriving it. The ZM lines inside
-        # each near chain are zero_metal_D's rows for THIS component (Dx clears on a y
-        # wall and on a z wall), applied AFTER the near parities and BEFORE any far
-        # one — the driver's order (:3300 near, :3301 clear, :3302 far).
-        if FAR_X:
-            gc_re, gc_im = _mul_imag_coefficient_left(d0r, d0i, v0_re, v0_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f0, w0, h0, ie0,
-                                   idx + df_x,
-                                   gc_re, gc_im, kp_f0, km_f0,
-                                   own0 & far_i, EXPANSION)
+        # --- component 0 (Dx): near on y and z, far on x ---
         if NEAR_Y:
-            gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, v0_re, v0_im,
-                                                      EXPANSION)
+            gv_0y_re = n1r * v0_re
+            gv_0y_im = n1r * v0_im
             if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
+                gv_0y_re = tl.where(at_y, 0.0, gv_0y_re)
+                gv_0y_im = tl.where(at_y, 0.0, gv_0y_im)
             if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            _carry_ghost_complex_E(f0, w0, h0, ie0,
-                                   idx + dn_y,
-                                   gc_re, gc_im, kp_0, km_0,
-                                   own0 & near_j, EXPANSION)
+                gv_0y_re = tl.where(at_z, 0.0, gv_0y_re)
+                gv_0y_im = tl.where(at_z, 0.0, gv_0y_im)
+            _carry_ghost_complex_E(f0, w0, e0, ie0, idx + dn_y, gv_0y_re, gv_0y_im,
+                                   kp_0, km_0, dw0, own0 & near_j)
         if NEAR_Z:
-            gc_re, gc_im = _mul_imag_coefficient_left(n2r, n2i, v0_re, v0_im,
-                                                      EXPANSION)
+            gv_0z_re = n2r * v0_re
+            gv_0z_im = n2r * v0_im
             if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
+                gv_0z_re = tl.where(at_y, 0.0, gv_0z_re)
+                gv_0z_im = tl.where(at_y, 0.0, gv_0z_im)
             if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            _carry_ghost_complex_E(f0, w0, h0, ie0,
-                                   idx + dn_z,
-                                   gc_re, gc_im, kp_0, km_0,
-                                   own0 & near_k, EXPANSION)
-        if NEAR_Y and FAR_X:
-            gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, v0_re, v0_im,
-                                                      EXPANSION)
-            if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
-            if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            gc_re, gc_im = _mul_imag_coefficient_left(d0r, d0i, gc_re, gc_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f0, w0, h0, ie0,
-                                   idx + df_x + dn_y,
-                                   gc_re, gc_im, kp_f0, km_f0,
-                                   own0 & far_i & near_j, EXPANSION)
+                gv_0z_re = tl.where(at_z, 0.0, gv_0z_re)
+                gv_0z_im = tl.where(at_z, 0.0, gv_0z_im)
+            _carry_ghost_complex_E(f0, w0, e0, ie0, idx + dn_z, gv_0z_re, gv_0z_im,
+                                   kp_0, km_0, dw0, own0 & near_k)
         if NEAR_Y and NEAR_Z:
-            gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, v0_re, v0_im,
-                                                      EXPANSION)
-            gc_re, gc_im = _mul_imag_coefficient_left(n2r, n2i, gc_re, gc_im,
-                                                      EXPANSION)
+            gv_0yz_re = n2r * (n1r * v0_re)
+            gv_0yz_im = n2r * (n1r * v0_im)
             if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
+                gv_0yz_re = tl.where(at_y, 0.0, gv_0yz_re)
+                gv_0yz_im = tl.where(at_y, 0.0, gv_0yz_im)
             if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            _carry_ghost_complex_E(f0, w0, h0, ie0,
-                                   idx + dn_y + dn_z,
-                                   gc_re, gc_im, kp_0, km_0,
-                                   own0 & near_j & near_k, EXPANSION)
-        if NEAR_Z and FAR_X:
-            gc_re, gc_im = _mul_imag_coefficient_left(n2r, n2i, v0_re, v0_im,
-                                                      EXPANSION)
-            if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
-            if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            gc_re, gc_im = _mul_imag_coefficient_left(d0r, d0i, gc_re, gc_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f0, w0, h0, ie0,
-                                   idx + df_x + dn_z,
-                                   gc_re, gc_im, kp_f0, km_f0,
-                                   own0 & far_i & near_k, EXPANSION)
-        if NEAR_Y and (NEAR_Z and FAR_X):
-            gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, v0_re, v0_im,
-                                                      EXPANSION)
-            gc_re, gc_im = _mul_imag_coefficient_left(n2r, n2i, gc_re, gc_im,
-                                                      EXPANSION)
-            if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
-            if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            gc_re, gc_im = _mul_imag_coefficient_left(d0r, d0i, gc_re, gc_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f0, w0, h0, ie0,
-                                   idx + df_x + dn_y + dn_z,
-                                   gc_re, gc_im, kp_f0, km_f0,
-                                   own0 & far_i & near_j & near_k, EXPANSION)
+                gv_0yz_re = tl.where(at_z, 0.0, gv_0yz_re)
+                gv_0yz_im = tl.where(at_z, 0.0, gv_0yz_im)
+            _carry_ghost_complex_E(f0, w0, e0, ie0, idx + dn_y + dn_z,
+                                   gv_0yz_re, gv_0yz_im, kp_0, km_0, dw0,
+                                   own0 & near_j & near_k)
+        if FAR_X:
+            _carry_ghost_complex_E(f0, w0, e0, ie0, idx + df_x, d0r * v0_re, d0r * v0_im,
+                                   kp_f0, km_f0, dw_f0, own0 & far_i)
+        if FAR_X and NEAR_Y:
+            _carry_ghost_complex_E(f0, w0, e0, ie0, idx + df_x + dn_y, d0r * gv_0y_re, d0r * gv_0y_im,
+                                   kp_f0, km_f0, dw_f0, own0 & far_i & near_j)
+        if FAR_X and NEAR_Z:
+            _carry_ghost_complex_E(f0, w0, e0, ie0, idx + df_x + dn_z, d0r * gv_0z_re, d0r * gv_0z_im,
+                                   kp_f0, km_f0, dw_f0, own0 & far_i & near_k)
+        if FAR_X and (NEAR_Y and NEAR_Z):
+            _carry_ghost_complex_E(f0, w0, e0, ie0, idx + df_x + dn_y + dn_z, d0r * gv_0yz_re, d0r * gv_0yz_im,
+                                   kp_f0, km_f0, dw_f0, own0 & far_i & near_j & near_k)
 
-        # --- component 1 (Dy): near on x and z, far on y -----------------------
-        if FAR_Y:
-            gc_re, gc_im = _mul_imag_coefficient_left(d1r, d1i, v1_re, v1_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f1, w1, h1, ie1,
-                                   idx + df_y,
-                                   gc_re, gc_im, kp_f1, km_f1,
-                                   own1 & far_j, EXPANSION)
+        # --- component 1 (Dy): near on x and z, far on y ---
         if NEAR_X:
-            gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, v1_re, v1_im,
-                                                      EXPANSION)
+            gv_1x_re = n0r * v1_re
+            gv_1x_im = n0r * v1_im
             if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
+                gv_1x_re = tl.where(at_x, 0.0, gv_1x_re)
+                gv_1x_im = tl.where(at_x, 0.0, gv_1x_im)
             if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            _carry_ghost_complex_E(f1, w1, h1, ie1,
-                                   idx + dn_x,
-                                   gc_re, gc_im, kp_1, km_1,
-                                   own1 & near_i, EXPANSION)
+                gv_1x_re = tl.where(at_z, 0.0, gv_1x_re)
+                gv_1x_im = tl.where(at_z, 0.0, gv_1x_im)
+            _carry_ghost_complex_E(f1, w1, e1, ie1, idx + dn_x, gv_1x_re, gv_1x_im,
+                                   kp_1, km_1, dw1, own1 & near_i)
         if NEAR_Z:
-            gc_re, gc_im = _mul_imag_coefficient_left(n2r, n2i, v1_re, v1_im,
-                                                      EXPANSION)
+            gv_1z_re = n2r * v1_re
+            gv_1z_im = n2r * v1_im
             if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
+                gv_1z_re = tl.where(at_x, 0.0, gv_1z_re)
+                gv_1z_im = tl.where(at_x, 0.0, gv_1z_im)
             if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            _carry_ghost_complex_E(f1, w1, h1, ie1,
-                                   idx + dn_z,
-                                   gc_re, gc_im, kp_1, km_1,
-                                   own1 & near_k, EXPANSION)
-        if NEAR_X and FAR_Y:
-            gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, v1_re, v1_im,
-                                                      EXPANSION)
-            if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
-            if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            gc_re, gc_im = _mul_imag_coefficient_left(d1r, d1i, gc_re, gc_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f1, w1, h1, ie1,
-                                   idx + df_y + dn_x,
-                                   gc_re, gc_im, kp_f1, km_f1,
-                                   own1 & far_j & near_i, EXPANSION)
+                gv_1z_re = tl.where(at_z, 0.0, gv_1z_re)
+                gv_1z_im = tl.where(at_z, 0.0, gv_1z_im)
+            _carry_ghost_complex_E(f1, w1, e1, ie1, idx + dn_z, gv_1z_re, gv_1z_im,
+                                   kp_1, km_1, dw1, own1 & near_k)
         if NEAR_X and NEAR_Z:
-            gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, v1_re, v1_im,
-                                                      EXPANSION)
-            gc_re, gc_im = _mul_imag_coefficient_left(n2r, n2i, gc_re, gc_im,
-                                                      EXPANSION)
+            gv_1xz_re = n2r * (n0r * v1_re)
+            gv_1xz_im = n2r * (n0r * v1_im)
             if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
+                gv_1xz_re = tl.where(at_x, 0.0, gv_1xz_re)
+                gv_1xz_im = tl.where(at_x, 0.0, gv_1xz_im)
             if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            _carry_ghost_complex_E(f1, w1, h1, ie1,
-                                   idx + dn_x + dn_z,
-                                   gc_re, gc_im, kp_1, km_1,
-                                   own1 & near_i & near_k, EXPANSION)
-        if NEAR_Z and FAR_Y:
-            gc_re, gc_im = _mul_imag_coefficient_left(n2r, n2i, v1_re, v1_im,
-                                                      EXPANSION)
-            if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
-            if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            gc_re, gc_im = _mul_imag_coefficient_left(d1r, d1i, gc_re, gc_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f1, w1, h1, ie1,
-                                   idx + df_y + dn_z,
-                                   gc_re, gc_im, kp_f1, km_f1,
-                                   own1 & far_j & near_k, EXPANSION)
-        if NEAR_X and (NEAR_Z and FAR_Y):
-            gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, v1_re, v1_im,
-                                                      EXPANSION)
-            gc_re, gc_im = _mul_imag_coefficient_left(n2r, n2i, gc_re, gc_im,
-                                                      EXPANSION)
-            if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
-            if ZM_Z:
-                gc_re = tl.where(at_z, 0.0, gc_re)
-                gc_im = tl.where(at_z, 0.0, gc_im)
-            gc_re, gc_im = _mul_imag_coefficient_left(d1r, d1i, gc_re, gc_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f1, w1, h1, ie1,
-                                   idx + df_y + dn_x + dn_z,
-                                   gc_re, gc_im, kp_f1, km_f1,
-                                   own1 & far_j & near_i & near_k, EXPANSION)
+                gv_1xz_re = tl.where(at_z, 0.0, gv_1xz_re)
+                gv_1xz_im = tl.where(at_z, 0.0, gv_1xz_im)
+            _carry_ghost_complex_E(f1, w1, e1, ie1, idx + dn_x + dn_z,
+                                   gv_1xz_re, gv_1xz_im, kp_1, km_1, dw1,
+                                   own1 & near_i & near_k)
+        if FAR_Y:
+            _carry_ghost_complex_E(f1, w1, e1, ie1, idx + df_y, d1r * v1_re, d1r * v1_im,
+                                   kp_f1, km_f1, dw_f1, own1 & far_j)
+        if FAR_Y and NEAR_X:
+            _carry_ghost_complex_E(f1, w1, e1, ie1, idx + df_y + dn_x, d1r * gv_1x_re, d1r * gv_1x_im,
+                                   kp_f1, km_f1, dw_f1, own1 & far_j & near_i)
+        if FAR_Y and NEAR_Z:
+            _carry_ghost_complex_E(f1, w1, e1, ie1, idx + df_y + dn_z, d1r * gv_1z_re, d1r * gv_1z_im,
+                                   kp_f1, km_f1, dw_f1, own1 & far_j & near_k)
+        if FAR_Y and (NEAR_X and NEAR_Z):
+            _carry_ghost_complex_E(f1, w1, e1, ie1, idx + df_y + dn_x + dn_z, d1r * gv_1xz_re, d1r * gv_1xz_im,
+                                   kp_f1, km_f1, dw_f1, own1 & far_j & near_i & near_k)
 
-        # --- component 2 (Dz): near on x and y, far on z -----------------------
-        if FAR_Z:
-            gc_re, gc_im = _mul_imag_coefficient_left(d2r, d2i, v2_re, v2_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f2, w2, h2, ie2,
-                                   idx + df_z,
-                                   gc_re, gc_im, kp_f2, km_f2,
-                                   own2 & far_k, EXPANSION)
+        # --- component 2 (Dz): near on x and y, far on z ---
         if NEAR_X:
-            gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, v2_re, v2_im,
-                                                      EXPANSION)
+            gv_2x_re = n0r * v2_re
+            gv_2x_im = n0r * v2_im
             if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
+                gv_2x_re = tl.where(at_x, 0.0, gv_2x_re)
+                gv_2x_im = tl.where(at_x, 0.0, gv_2x_im)
             if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
-            _carry_ghost_complex_E(f2, w2, h2, ie2,
-                                   idx + dn_x,
-                                   gc_re, gc_im, kp_2, km_2,
-                                   own2 & near_i, EXPANSION)
+                gv_2x_re = tl.where(at_y, 0.0, gv_2x_re)
+                gv_2x_im = tl.where(at_y, 0.0, gv_2x_im)
+            _carry_ghost_complex_E(f2, w2, e2, ie2, idx + dn_x, gv_2x_re, gv_2x_im,
+                                   kp_2, km_2, dw2, own2 & near_i)
         if NEAR_Y:
-            gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, v2_re, v2_im,
-                                                      EXPANSION)
+            gv_2y_re = n1r * v2_re
+            gv_2y_im = n1r * v2_im
             if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
+                gv_2y_re = tl.where(at_x, 0.0, gv_2y_re)
+                gv_2y_im = tl.where(at_x, 0.0, gv_2y_im)
             if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
-            _carry_ghost_complex_E(f2, w2, h2, ie2,
-                                   idx + dn_y,
-                                   gc_re, gc_im, kp_2, km_2,
-                                   own2 & near_j, EXPANSION)
-        if NEAR_X and FAR_Z:
-            gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, v2_re, v2_im,
-                                                      EXPANSION)
-            if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
-            if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
-            gc_re, gc_im = _mul_imag_coefficient_left(d2r, d2i, gc_re, gc_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f2, w2, h2, ie2,
-                                   idx + df_z + dn_x,
-                                   gc_re, gc_im, kp_f2, km_f2,
-                                   own2 & far_k & near_i, EXPANSION)
+                gv_2y_re = tl.where(at_y, 0.0, gv_2y_re)
+                gv_2y_im = tl.where(at_y, 0.0, gv_2y_im)
+            _carry_ghost_complex_E(f2, w2, e2, ie2, idx + dn_y, gv_2y_re, gv_2y_im,
+                                   kp_2, km_2, dw2, own2 & near_j)
         if NEAR_X and NEAR_Y:
-            gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, v2_re, v2_im,
-                                                      EXPANSION)
-            gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, gc_re, gc_im,
-                                                      EXPANSION)
+            gv_2xy_re = n1r * (n0r * v2_re)
+            gv_2xy_im = n1r * (n0r * v2_im)
             if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
+                gv_2xy_re = tl.where(at_x, 0.0, gv_2xy_re)
+                gv_2xy_im = tl.where(at_x, 0.0, gv_2xy_im)
             if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
-            _carry_ghost_complex_E(f2, w2, h2, ie2,
-                                   idx + dn_x + dn_y,
-                                   gc_re, gc_im, kp_2, km_2,
-                                   own2 & near_i & near_j, EXPANSION)
-        if NEAR_Y and FAR_Z:
-            gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, v2_re, v2_im,
-                                                      EXPANSION)
-            if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
-            if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
-            gc_re, gc_im = _mul_imag_coefficient_left(d2r, d2i, gc_re, gc_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f2, w2, h2, ie2,
-                                   idx + df_z + dn_y,
-                                   gc_re, gc_im, kp_f2, km_f2,
-                                   own2 & far_k & near_j, EXPANSION)
-        if NEAR_X and (NEAR_Y and FAR_Z):
-            gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, v2_re, v2_im,
-                                                      EXPANSION)
-            gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, gc_re, gc_im,
-                                                      EXPANSION)
-            if ZM_X:
-                gc_re = tl.where(at_x, 0.0, gc_re)
-                gc_im = tl.where(at_x, 0.0, gc_im)
-            if ZM_Y:
-                gc_re = tl.where(at_y, 0.0, gc_re)
-                gc_im = tl.where(at_y, 0.0, gc_im)
-            gc_re, gc_im = _mul_imag_coefficient_left(d2r, d2i, gc_re, gc_im,
-                                                      EXPANSION)
-            _carry_ghost_complex_E(f2, w2, h2, ie2,
-                                   idx + df_z + dn_x + dn_y,
-                                   gc_re, gc_im, kp_f2, km_f2,
-                                   own2 & far_k & near_i & near_j, EXPANSION)
+                gv_2xy_re = tl.where(at_y, 0.0, gv_2xy_re)
+                gv_2xy_im = tl.where(at_y, 0.0, gv_2xy_im)
+            _carry_ghost_complex_E(f2, w2, e2, ie2, idx + dn_x + dn_y,
+                                   gv_2xy_re, gv_2xy_im, kp_2, km_2, dw2,
+                                   own2 & near_i & near_j)
+        if FAR_Z:
+            _carry_ghost_complex_E(f2, w2, e2, ie2, idx + df_z, d2r * v2_re, d2r * v2_im,
+                                   kp_f2, km_f2, dw_f2, own2 & far_k)
+        if FAR_Z and NEAR_X:
+            _carry_ghost_complex_E(f2, w2, e2, ie2, idx + df_z + dn_x, d2r * gv_2x_re, d2r * gv_2x_im,
+                                   kp_f2, km_f2, dw_f2, own2 & far_k & near_i)
+        if FAR_Z and NEAR_Y:
+            _carry_ghost_complex_E(f2, w2, e2, ie2, idx + df_z + dn_y, d2r * gv_2y_re, d2r * gv_2y_im,
+                                   kp_f2, km_f2, dw_f2, own2 & far_k & near_j)
+        if FAR_Z and (NEAR_X and NEAR_Y):
+            _carry_ghost_complex_E(f2, w2, e2, ie2, idx + df_z + dn_x + dn_y, d2r * gv_2xy_re, d2r * gv_2xy_im,
+                                   kp_f2, km_f2, dw_f2, own2 & far_k & near_i & near_j)
+
 else:  # pragma: no cover - laptop path
     folded_complex_fused_curl_constitutive_D = None  # type: ignore[assignment]
 
@@ -1438,8 +1136,7 @@ def folded_complex_fused_curl_constitutive_D_kernel() -> Any:
 # ---------------------------------------------------------------------------
 
 def folded_complex_fused_pair_coverage(fields: Any, pml: Any,
-                                       sources: Any = None,
-                                       probe: Any = None) -> Coverage:
+                                       sources: Any = None) -> Coverage:
     """May ONE launch span folded complex ``step_D`` -> both fills -> ``update_E``?
 
     A conjunction of the THREE halves' own certified predicates plus the seam
@@ -1449,13 +1146,6 @@ def folded_complex_fused_pair_coverage(fields: Any, pml: Any,
     :func:`.folded_complex_fused_magnetic_pair.folded_complex_fused_magnetic_pair_coverage`
     and :func:`.folded_fused_pair.folded_fused_pair_coverage` use.
 
-    THE FILL PREDICATE IS ONE OF THE THREE, and that is what binds the EXTENDED
-    pattern set: :func:`.folded_complex.folded_mirror_ghost_fill_complex_coverage`
-    carries ``_parity_expansion_reasons``, so a probe artifact that licenses the base
-    four but not :data:`.folded_complex.PARITY_PROBE_PATTERN` refuses this product —
-    which is correct, because both carries call
-    :func:`.special_kz._mul_imag_coefficient_left`.
-
     ONE ADMISSION ONLY, unlike the magnetic twin. That family admits the off-diagonal
     label as well, because on B->H the two arms are the same kernel; on THIS seam the
     off-diagonal ``update_E`` is a stencil over the D volumes ``step_D`` writes in
@@ -1464,17 +1154,16 @@ def folded_complex_fused_pair_coverage(fields: Any, pml: Any,
     reasons: List[str] = []
 
     curl = folded_complex_composition_curl_coverage(
-        fields, pml, CURL_SUB_STEP, probe=probe)
+        fields, pml, CURL_SUB_STEP)
     if not curl.covered:
         reasons.extend(f"folded complex curl half: {reason}"
                        for reason in curl.reasons)
     constitutive = folded_complex_constitutive_coverage(
-        fields, pml, CONSTITUTIVE_SIDE, probe=probe)
+        fields, pml, CONSTITUTIVE_SIDE)
     if not constitutive.covered:
         reasons.extend(f"folded complex constitutive half: {reason}"
                        for reason in constitutive.reasons)
-    fill = folded_mirror_ghost_fill_complex_coverage(fields, FILL_FAMILY,
-                                                     probe=probe)
+    fill = folded_mirror_ghost_fill_complex_coverage(fields, FILL_FAMILY)
     if not fill.covered:
         reasons.extend(f"folded complex fill half: {reason}"
                        for reason in fill.reasons)
@@ -1655,8 +1344,9 @@ class FoldedComplexFusedPairPlan:
     """
 
     __slots__ = (
-        "shape", "n_elem", "dtdx", "backward", "bc", "zero_metal", "phased",
-        "phase_values", "parity", "reflect", "near", "far", "expansion",
+        "shape", "n_elem", "dtdx", "backward", "bc", "zero_metal", "connections",
+        "connection_values", "parity", "reflect", "near", "far",
+        "chunk_bounds", "_cb",
         "block", "num_warps", "_targets", "_aux", "_sources", "_curl_coefficients",
         "_e_targets", "_e_aux", "_inverse_epsilon", "_e_coefficients",
         "_grid", "_kernel",
@@ -1666,12 +1356,13 @@ class FoldedComplexFusedPairPlan:
     #: be inspected rather than inferred from the curl slot's name.
     replaces = REPLACES
 
-    def __init__(self, shape, dtdx: float, bc, zero_metal, phased, phase_values,
-                 parity, expansion: int, block: int,
+    def __init__(self, shape, dtdx: float, bc, zero_metal, connections,
+                 connection_values, parity, block: int,
                  targets, auxiliaries, sources, curl_coefficients,
                  e_targets, e_aux, inverse_epsilon, e_coefficients,
                  reflect: Any = (None, None, None),
-                 kernel: Any = None, num_warps: Optional[int] = 1) -> None:
+                 kernel: Any = None, num_warps: Optional[int] = 1, *,
+                 chunk_bounds: Any) -> None:
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
         # float(): the array path consumes the Python scalar at complex64 precision
@@ -1681,8 +1372,8 @@ class FoldedComplexFusedPairPlan:
         self.backward = BACKWARD
         self.bc = tuple(int(code) for code in bc)
         self.zero_metal = tuple(bool(value) for value in zero_metal)
-        self.phased = tuple(int(flag) for flag in phased)
-        self.phase_values = tuple(float(value) for value in phase_values)
+        self.connections = tuple(int(kind) for kind in connections)
+        self.connection_values = tuple(float(value) for value in connection_values)
         # SIX word pairs, near x/y/z then far x/y/z, host-rounded once.
         self.parity = tuple((float(pair[0]), float(pair[1])) for pair in parity)
         if len(self.parity) != 6:
@@ -1701,7 +1392,6 @@ class FoldedComplexFusedPairPlan:
         # index is loud where imaging row 0 would be plausible and wrong.
         self.reflect = tuple(-1 if value is None else int(value)
                              for value in reflect)
-        self.expansion = int(expansion)
         for axis, code in enumerate(self.bc):
             folded = code in MIRROR_CODES
             if folded and self.parity[axis] == (0.0, 0.0):
@@ -1712,7 +1402,7 @@ class FoldedComplexFusedPairPlan:
                 raise ValueError(
                     f"axis {axis} is folded but its FAR parity words are "
                     f"(0.0, 0.0); the carry would image an exact zero plane")
-            if folded and self.phased[axis]:
+            if folded and self.connections[axis]:
                 raise ValueError(
                     f"axis {axis} carries both a fold and a Bloch phase; "
                     f"driver._require_bloch_is_representable refuses that "
@@ -1760,6 +1450,10 @@ class FoldedComplexFusedPairPlan:
             raise ValueError(
                 f"{self.n_elem} complex cells needs {2 * self.n_elem} int32 word "
                 f"indices, which overflows the kernel's 2 * idx addressing")
+        from .launch import bind_chunk_bounds  # noqa: PLC0415
+
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "FoldedComplexFusedPairPlan")
         self._grid = ((self.n_elem + self.block - 1) // self.block,)
         # An override for exactly one caller: the gate's mutation legs, which compile
         # deliberately broken copies of this kernel. Dropping it is not a slowdown,
@@ -1775,13 +1469,15 @@ class FoldedComplexFusedPairPlan:
                   else folded_complex_fused_curl_constitutive_D_kernel())
         nx, ny, nz = self.shape
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
-        parity_words = tuple(word for pair in self.parity for word in pair)
+        # The parity is a real scale per part: each pair's real word (+-1.0); the
+        # imaginary word is +0 and is not read.
+        parity_words = tuple(pair[0] for pair in self.parity)
         kernel[self._grid](
             *self._targets, *self._aux, *self._sources, *self._curl_coefficients,
             *self._e_targets, *self._e_aux, *self._inverse_epsilon,
-            *self._e_coefficients,
+            *self._e_coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
-            *self.phase_values,
+            *self.connection_values,
             self.reflect[0], self.reflect[1], self.reflect[2],
             *parity_words,
             BACKWARD=self.backward,
@@ -1790,8 +1486,8 @@ class FoldedComplexFusedPairPlan:
             FAR_X=self.far[0], FAR_Y=self.far[1], FAR_Z=self.far[2],
             ZM_X=self.zero_metal[0], ZM_Y=self.zero_metal[1],
             ZM_Z=self.zero_metal[2],
-            PHX=self.phased[0], PHY=self.phased[1], PHZ=self.phased[2],
-            EXPANSION=self.expansion,
+            CNX=self.connections[0], CNY=self.connections[1],
+            CNZ=self.connections[2],
             BLOCK=self.block,
             enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
             **extra,
@@ -1800,36 +1496,29 @@ class FoldedComplexFusedPairPlan:
     def __repr__(self) -> str:
         return (f"FoldedComplexFusedPairPlan(shape={self.shape}, "
                 f"bc={self.bc}, zero_metal={self.zero_metal}, "
-                f"phased={self.phased}, near={self.near}, far={self.far}, "
-                f"reflect={self.reflect}, parity={self.parity}, "
-                f"expansion={self.expansion}, block={self.block}, "
-                f"num_warps={self.num_warps})")
+                f"connections={self.connections}, near={self.near}, far={self.far}, "
+                f"reflect={self.reflect}, parity={self.parity}, block={self.block}, "
+                f"num_warps={self.num_warps}, chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_folded_complex_fused_pair(
         fields: Any, pml: Any, sources: Any = None,
         block: Optional[int] = None, num_warps: Optional[int] = 1,
-        kernel: Any = None, probe: Any = None,
+        kernel: Any = None, chunk_layout: Any = None,
 ) -> Optional[FoldedComplexFusedPairPlan]:
     """Build the plan from the engine's own objects, or ``None`` when refused.
 
     ``None`` is the only refusal: a configuration this kernel does not carry must
     fall back to the array path, never raise into a caller that would otherwise have
     stepped correctly.
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default
+    (``launch.chunk_bounds_for``).
     """
-    if not folded_complex_fused_pair_coverage(fields, pml, sources,
-                                              probe=probe).covered:
+    if not folded_complex_fused_pair_coverage(fields, pml, sources).covered:
         return None
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
+    from .launch import chunk_bounds_for  # noqa: PLC0415
 
-    record = probe
-    if record is None:
-        from .folded_complex import load_expansion_probe  # noqa: PLC0415
-
-        record = load_expansion_probe()
-    expansion = parity_expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
-        return None
     codes, _ = folded_axis_kinds(fields.grid, pml)
     if codes is None:  # pragma: no cover - the predicate already refused
         return None
@@ -1838,11 +1527,11 @@ def plan_folded_complex_fused_pair(
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
     grid = fields.grid
     kinds = resolve(grid, pml)
-    phased, values = _phase_arguments(bloch_phase_table(grid, kinds),
-                                      backward=bool(curl_spec["backward"]))
+    connections, values = connection_arguments(bloch_phase_table(grid, kinds),
+                                               backward=bool(curl_spec["backward"]))
     return FoldedComplexFusedPairPlan(
         grid.shape, grid.dt / grid.dx, codes, zero_metal_axes(grid),
-        phased, values, parity_coefficient_words(grid), expansion,
+        connections, values, parity_coefficient_words(grid),
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in curl_spec["targets"]],
         [getattr(fields, "fu_" + name) for name in curl_spec["targets"]],
@@ -1864,16 +1553,17 @@ def plan_folded_complex_fused_pair(
         # `stored - 3` at an odd one (stepping._far_reflect_rows:1661).
         reflect=_far_reflect_rows(grid) or (None, None, None),
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
 def plan_folded_complex_fused_pair_from_arrays(
         arrays: Dict[str, Any], curl_flat: Dict[str, Any],
         constitutive_flat: Dict[str, Any], codes, zero_metal,
-        phases: Sequence[Optional[complex]], parity, dtdx: float, expansion: int,
+        phases: Sequence[Optional[complex]], parity, dtdx: float,
         block: Optional[int] = None, kernel: Any = None,
         num_warps: Optional[int] = 1,
-        reflect: Any = (None, None, None)) -> FoldedComplexFusedPairPlan:
+        reflect: Any = (None, None, None), *, chunk_bounds: Any) -> FoldedComplexFusedPairPlan:
     """Build from bare device arrays — the gate's route.
 
     No coverage predicate runs: the caller is a harness that constructed the
@@ -1887,10 +1577,10 @@ def plan_folded_complex_fused_pair_from_arrays(
     curl_spec = SUB_STEPS[CURL_SUB_STEP]
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
     shape = tuple(int(n) for n in arrays[curl_spec["targets"][0]].shape)
-    phased, values = _phase_arguments(tuple(phases),
-                                      backward=bool(curl_spec["backward"]))
+    connections, values = connection_arguments(tuple(phases),
+                                               backward=bool(curl_spec["backward"]))
     return FoldedComplexFusedPairPlan(
-        shape, dtdx, codes, zero_metal, phased, values, parity, int(expansion),
+        shape, dtdx, codes, zero_metal, connections, values, parity,
         DEFAULT_BLOCK if block is None else block,
         [arrays[name] for name in curl_spec["targets"]],
         [arrays["fu_" + name] for name in curl_spec["targets"]],
@@ -1901,5 +1591,5 @@ def plan_folded_complex_fused_pair_from_arrays(
         [arrays["inv_eps_" + name] for name in side_spec["targets"]],
         [constitutive_flat[f"{stem}_{axis}"]
          for axis in "xyz" for stem in ("kps", "kms")],
-        reflect=reflect, kernel=kernel, num_warps=num_warps,
+        reflect=reflect, kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )

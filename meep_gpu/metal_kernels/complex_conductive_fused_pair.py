@@ -13,14 +13,18 @@ chunk_layout_sim}_3d`` — and ``reach 4 (of 4 rows)``.
 EVERYTHING HERE IS TRANSCRIBED, and every arithmetic line carries the file:line it
 came from:
 
-* the complex conductive D curl — :data:`.complex_no_pml_conductive._TEMPLATE`
-  (complex_no_pml_conductive.py:73-145) with its ghost gather
-  (:func:`.templates.ghost`), its Bloch wrap plane (:func:`.complex_fields.
-  _phase_block`), its ownership mask (:func:`.templates.ownership_mask`) and its
-  per-target conductive tail (:func:`.complex_no_pml_conductive._tail`);
+* the complex conductive D curl — LIFTED from the certified emitter's own output
+  (:func:`_certified_curl_span`: :func:`.complex_no_pml_conductive.
+  complex_conductive_no_pml_curl_source` at this specialisation, from its decode
+  prologue to its wall flags): the presence-only bounds block that reads the chunk
+  record, the ghost gather (:func:`.templates.ghost`), the Bloch connection of the
+  unshifted partners on plane 0 (:func:`.complex_fields._phase_block`) and MEEP's
+  stencil with its absent-partner forms; then the ownership mask
+  (:func:`.templates.ownership_mask`) and the per-target conductive tail
+  (:func:`.complex_no_pml_conductive._tail`);
 * the constitutive half — :func:`.complex_no_pml_stored_e.complex_stored_e_source`
   (complex_no_pml_stored_e.py:78-80), transcribing ``stepping.update_E``:981-984
-  through the probe-licensed ``float2`` expansion.
+  through the part-wise ``float2`` helpers.
 
 ===========================================================================
 WHAT IT IS WORTH: +4 SEAM-INSTANCES OF 387, RECOMPUTED
@@ -110,7 +114,7 @@ is buildable at all.
 WHAT MOVES, AND IT IS AT MOST ONE LINE PER COMPONENT
 ===========================================================================
 
-The certified conductive tail (complex_no_pml_conductive.py:148-156) ALREADY names
+The certified conductive tail (:func:`.complex_no_pml_conductive._tail`) ALREADY names
 the stepped displacement::
 
     float2 value0 = f0[ii];
@@ -143,24 +147,26 @@ the curl half just wrote, and that shared binding is the fusion's whole footprin
 
 **THE SCALARS.** :data:`.device.MAX_BUFFER_BINDINGS` is 31. The certified curl
 binds EIGHT scalars separately (``nx``, ``ny``, ``nz``, ``n_elem``, ``dtdx`` and
-the three ``float2`` Bloch phases, complex_no_pml_conductive.py:85-92); with the
-constitutive half's six volumes on top, a one-pole configuration would need
-``12 + 6 + 3 + 8 = 29`` and a TWO-pole one 32, a compile error. Packing every
+the three ``float2`` Bloch phases) and the chunk record as a ninth binding; with
+the constitutive half's six volumes on top, a one-pole configuration would need
+``12 + 6 + 3 + 9 = 30`` and a TWO-pole one 33, a compile error. Packing every
 scalar into ONE ``constant Params&`` — the shape :mod:`.fused_dispersive_pair`
 measured to compile — brings the same two-pole configuration to 25 and moves the
-ceiling from one pole per component to TWELVE poles in total. :func:`binding_count`
-is evaluated BY THE PREDICATE, so a configuration over the ceiling is a REFUSAL BY
-NAME rather than a compile error at plan time.
+ceiling from one pole per component to TWELVE poles in total. The chunk record
+rides in the same ``Params`` (``ChunkBounds cb``, last), so it costs no binding.
+:func:`binding_count` is evaluated BY THE PREDICATE, so a configuration over the
+ceiling is a REFUSAL BY NAME rather than a compile error at plan time.
 
 The eight-line prologue that copies ``prm.nx`` / ``prm.ny`` / ``prm.nz`` /
 ``prm.n_elem`` / ``prm.dtdx`` and rebuilds ``px`` / ``py`` / ``pz`` back into
-locals exists so :data:`.templates.GUARD`, :data:`.templates.DECODE_IJK`,
-:func:`.templates.ghost`, :func:`.complex_fields._phase_block`,
-:func:`.templates.ownership_mask` and the tails below are emitted from the
-CERTIFIED emitters unchanged. The phases are packed as SIX floats rather than three
-``float2`` members so the blob stays a flat 4-byte word sequence with no alignment
-to reason about, and are rebuilt with ``float2(re, im)`` — a construction, not an
-arithmetic operation, so no rounding is introduced.
+locals, and the alias ``constant ChunkBounds& cb = prm.cb;``, exist so
+:data:`.templates.GUARD`, :data:`.templates.DECODE_IJK`, the lifted curl span,
+:func:`.templates.ownership_mask` and the tails below are the CERTIFIED emitters'
+text unchanged. The phases are packed as SIX floats rather than three ``float2``
+members, and the record's 25 members are all 4-byte ints, so the blob stays a flat
+4-byte word sequence with no alignment to reason about; the phases are rebuilt with
+``float2(re, im)`` — a construction, not an arithmetic operation, so no rounding is
+introduced.
 
 THE POLE SLOTS ARE NOT PADDED TO EIGHT. ``complex_no_pml_stored_e`` declares
 ``p0..p7`` always and binds the displacement into the unused slots
@@ -198,20 +204,19 @@ import numpy as np
 
 from ..triton_kernels.coverage import Coverage, _boundary_kinds, _call
 from ..triton_kernels.no_pml_conductive import conductive_no_pml_targets
+from . import chunk_bounds as _chunk_bounds
 from . import shaders, templates
 from .ade_update_p import _physical_name
 from .complex_fields import (
     _complex_mirror,
-    _phase_block,
     bloch_phase_table,
-    expansion_from_probe,
-    load_expansion_probe,
     phase_arguments,
 )
 from .complex_no_pml_conductive import (
     SUB_STEPS,
     _source_binding,
     _tail,
+    complex_conductive_no_pml_curl_source,
     metal_complex_conductive_no_pml_curl_coverage,
 )
 from .complex_no_pml_stored_e import (
@@ -242,7 +247,8 @@ REPLACES: Tuple[str, ...] = ("step_D", "update_E")
 ELECTRIC_FIELD_TYPE = "D"
 
 #: The curl half's own pointers: three D targets, three H sources, three
-#: ``condfac`` and three ``condinv`` volumes (complex_no_pml_conductive.py:76-87).
+#: ``condfac`` and three ``condinv`` volumes (buffers 0-11 of
+#: :data:`.complex_no_pml_conductive._TEMPLATE`).
 CURL_POINTERS = 12
 
 #: The constitutive half's fixed pointers: three E targets and three inverse
@@ -276,6 +282,8 @@ using namespace metal;
 __CONTRACT__
 __HELPERS__
 
+__RECORD_STRUCT__
+
 struct Params {
     float dtdx;
     float px_re;
@@ -288,6 +296,7 @@ struct Params {
     uint  ny;
     uint  nz;
     uint  n_elem;
+__RECORD_MEMBER__
 };
 
 kernel void complex_conductive_fused_pair_step(
@@ -296,9 +305,9 @@ __SIGNATURE__
 {
     // The scalars live in ONE binding (see the module docstring's binding
     // arithmetic); copying them back into the names the certified emitters use is
-    // what lets GUARD, DECODE_IJK, ghost(), _phase_block(), ownership_mask() and
-    // the tails below be those emitters' own text. float2(re, im) is a
-    // construction, not an arithmetic operation: no rounding is introduced.
+    // what lets GUARD, DECODE_IJK, the lifted curl span, ownership_mask() and the
+    // tails below be those emitters' own text. float2(re, im) is a construction,
+    // not an arithmetic operation: no rounding is introduced.
     uint nx = prm.nx;
     uint ny = prm.ny;
     uint nz = prm.nz;
@@ -307,42 +316,12 @@ __SIGNATURE__
     float2 px = float2(prm.px_re, prm.px_im);
     float2 py = float2(prm.py_re, prm.py_im);
     float2 pz = float2(prm.pz_re, prm.pz_im);
+__RECORD_ALIAS__
 __GUARD__
 __DECODE__
     int nxi = int(nx);
     int nyz = nyi * nzi;
-
-    int si = i __SHIFT__, sj = j __SHIFT__, sk = k __SHIFT__;
-    bool vx = true, vy = true, vz = true;
-__GHOST_X__
-__GHOST_Y__
-__GHOST_Z__
-
-    int ox = si * nyz + j * nzi + k;
-    int oy = i * nyz + sj * nzi + k;
-    int oz = i * nyz + j * nzi + sk;
-
-    float2 a   = g0[ii];
-    float2 b   = g1[ii];
-    float2 c   = g2[ii];
-    float2 a_y = vy ? g0[oy] : float2(0.0f, 0.0f);
-    float2 a_z = vz ? g0[oz] : float2(0.0f, 0.0f);
-    float2 b_x = vx ? g1[ox] : float2(0.0f, 0.0f);
-    float2 b_z = vz ? g1[oz] : float2(0.0f, 0.0f);
-    float2 c_x = vx ? g2[ox] : float2(0.0f, 0.0f);
-    float2 c_y = vy ? g2[oy] : float2(0.0f, 0.0f);
-
-__PHASE_X__
-__PHASE_Y__
-__PHASE_Z__
-
-    float2 t0 = ((c_y - c) + (b - b_z));
-    float2 t1 = ((a_z - a) + (c - c_x));
-    float2 t2 = ((b_x - b) + (a - a_y));
-    float2 curl0 = c_mul_coefficient_left(dtdx, t0);
-    float2 curl1 = c_mul_coefficient_left(dtdx, t1);
-    float2 curl2 = c_mul_coefficient_left(dtdx, t2);
-
+__CURL_SPAN__
     bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);
 __MASK__
 
@@ -356,6 +335,33 @@ __TAIL2__
 __CONSTITUTIVE__
 }
 """
+
+
+#: The certified curl source's anchors the lift cuts at: the end of its decode
+#: prologue and the line that opens its ownership mask. Everything between them --
+#: the bounds block, the ghost gather, the loads, the Bloch connection and the curl
+#: -- is the certified text, lifted unchanged.
+CURL_DECODE_END = "    int nyz = nyi * nzi;\n"
+CURL_SPAN_END = "    bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);\n"
+
+
+def _certified_curl_span(codes: Sequence[int], phased: Sequence[int], contract: str) -> str:
+    """The certified complex conductive ``step_D`` curl between its two anchors.
+
+    Cut from :func:`.complex_no_pml_conductive.complex_conductive_no_pml_curl_source`
+    at this specialisation (the tails are below the span, so the conductivity
+    flags do not reach it), each anchor required exactly once: a family that lifts
+    a body cannot also re-spell it.
+    """
+    source = complex_conductive_no_pml_curl_source(
+        codes, bool(SUB_STEPS["step_D"]["backward"]), phased, (False, False, False), contract)
+    for anchor in (CURL_DECODE_END, CURL_SPAN_END):
+        if source.count(anchor) != 1:
+            raise AssertionError(
+                f"the certified complex conductive curl carries the anchor "
+                f"{anchor.strip()!r} {source.count(anchor)} times; the lift needs it "
+                f"exactly once")
+    return source.split(CURL_DECODE_END, 1)[1].split(CURL_SPAN_END, 1)[0]
 
 
 def binding_count(pole_counts: Sequence[int]) -> int:
@@ -375,26 +381,34 @@ def binding_count(pole_counts: Sequence[int]) -> int:
     return (CURL_POINTERS + CONSTITUTIVE_POINTERS + sum(counts)) + 1
 
 
+#: The scalar words ahead of the chunk record: ``dtdx``, six phase floats and the
+#: four uints.
+SCALAR_WORDS = 11
+
+
 def params_words() -> int:
-    """Length of the ``Params`` blob in 4-byte words.
+    """Length of the ``Params`` blob in 4-byte words: 11 scalars and the 25-word record.
 
     Every member is a 4-byte scalar, so the struct's layout is a flat word sequence
     with no padding to reason about — which is why the three Bloch phases are six
-    floats rather than three ``float2`` members.
+    floats rather than three ``float2`` members, and why the record
+    (:data:`.chunk_bounds.MEMBERS`, all ``int``/``uint``) can follow at word 11.
     """
-    return 11
+    return SCALAR_WORDS + len(_chunk_bounds.MEMBERS)
 
 
 def pack_params(dtdx: float, phase_values: Sequence[Tuple[float, float]],
-                nx: int, ny: int, nz: int, n_elem: int) -> np.ndarray:
-    """The ``Params`` blob as float32 words, uints carried as their bit patterns.
+                nx: int, ny: int, nz: int, n_elem: int, chunk_words: Any) -> np.ndarray:
+    """The ``Params`` blob as float32 words, ints carried as their bit patterns.
 
     ``float()`` on ``dtdx`` for the reason :mod:`.fused_dispersive_pair` gives its
     own: the array path multiplies a float32 volume by a Python float and Metal
     binds a Python float into a ``float`` member the same way, so the two scalars
     are the same bits. The phases arrive ALREADY rounded to complex64 and, for this
     BACKWARD sub-step, already conjugated — :func:`.complex_fields.phase_arguments`
-    does both (complex_fields.py:1055-1060), and this packer does neither.
+    does both (:func:`.complex_fields.phase_arguments`), and this packer does
+    neither. ``chunk_words`` is the record of the division the run steps with
+    (:func:`.chunk_bounds.words`), copied word for word after the scalars.
     """
     if len(phase_values) != 3:
         raise ValueError(f"phase_values must be a triple, got {phase_values!r}")
@@ -403,9 +417,11 @@ def pack_params(dtdx: float, phase_values: Sequence[Tuple[float, float]],
     for axis, (real, imaginary) in enumerate(phase_values):
         blob[1 + 2 * axis] = np.float32(float(real))
         blob[2 + 2 * axis] = np.float32(float(imaginary))
-    blob[7:11] = np.frombuffer(
+    blob[7:SCALAR_WORDS] = np.frombuffer(
         np.array([int(nx), int(ny), int(nz), int(n_elem)],
                  dtype=np.uint32).tobytes(), dtype=np.float32)
+    blob[SCALAR_WORDS:] = np.frombuffer(
+        _chunk_bounds.words(chunk_words).tobytes(), dtype=np.float32)
     return blob
 
 
@@ -465,9 +481,9 @@ def _constitutive(index: int, pole_count: int) -> List[str]:
 
 def complex_conductive_fused_pair_source(
         codes: Sequence[int], phased: Sequence[int], conductive: Sequence[bool],
-        pole_counts: Sequence[int], expansion: str,
+        pole_counts: Sequence[int],
         contract: str = shaders.CONTRACT_OFF) -> str:
-    """One specialised fused source: (boundaries, phases, conductivity, poles, arm, mode).
+    """One specialised fused source: (boundaries, phases, conductivity, poles, mode).
 
     ``backward`` is not a parameter: this family exists at ONE seam and ``step_D``
     is always the backward sub-step (SUB_STEPS['step_D']['backward']), so passing
@@ -495,7 +511,7 @@ def complex_conductive_fused_pair_source(
     for index in range(3):
         if flags[index]:
             # THE CONDUCTIVE TAIL ALREADY NAMES THE VALUE. Nothing moves: the
-            # certified emitter's own text, unchanged (complex_no_pml_conductive.py:151-155).
+            # certified emitter's own text, unchanged (complex_no_pml_conductive._tail).
             tails[f"__TAIL{index}__"] = _tail(index, True)
         else:
             # The non-conductive tail is ONE line; the fusion splits it in two so
@@ -514,17 +530,14 @@ def complex_conductive_fused_pair_source(
 
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__SIGNATURE__": _signature(counts),
         "__GUARD__": templates.GUARD,
         "__DECODE__": templates.DECODE_IJK,
-        "__SHIFT__": "- 1" if backward else "+ 1",
-        "__GHOST_X__": templates.ghost("x", codes[0], backward),
-        "__GHOST_Y__": templates.ghost("y", codes[1], backward),
-        "__GHOST_Z__": templates.ghost("z", codes[2], backward),
-        "__PHASE_X__": _phase_block("x", bool(phased[0]), backward),
-        "__PHASE_Y__": _phase_block("y", bool(phased[1]), backward),
-        "__PHASE_Z__": _phase_block("z", bool(phased[2]), backward),
+        "__CURL_SPAN__": _certified_curl_span(codes, phased, contract),
         "__MASK__": templates.ownership_mask(
             codes, backward, zero=templates.COMPLEX_ZERO),
         "__CONSTITUTIVE__": "\n".join(constitutive),
@@ -534,11 +547,11 @@ def complex_conductive_fused_pair_source(
 
 def compile_complex_conductive_fused_pair(
         codes: Sequence[int], phased: Sequence[int], conductive: Sequence[bool],
-        pole_counts: Sequence[int], expansion: str,
+        pole_counts: Sequence[int],
         contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised entry point for one whole configuration."""
     return compile_source(complex_conductive_fused_pair_source(
-        codes, phased, conductive, pole_counts, expansion,
+        codes, phased, conductive, pole_counts,
         contract)).complex_conductive_fused_pair_step
 
 
@@ -547,8 +560,7 @@ def compile_complex_conductive_fused_pair(
 # ---------------------------------------------------------------------------
 
 def complex_conductive_fused_pair_coverage(
-        fields: Any, pml: Any, sources: Any = None, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, sources: Any = None, residency: Any = None) -> Coverage:
     """May ONE dispatch span complex conductive ``step_D`` -> ``update_E``?
 
     A conjunction of the two halves' OWN certified predicates plus the seam
@@ -560,10 +572,10 @@ def complex_conductive_fused_pair_coverage(
     reasons: List[str] = []
 
     curl = metal_complex_conductive_no_pml_curl_coverage(
-        fields, pml, "step_D", residency, probe)
+        fields, pml, "step_D", residency)
     if not curl.covered:
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
-    electric = metal_complex_stored_e_coverage(fields, pml, residency, probe)
+    electric = metal_complex_stored_e_coverage(fields, pml, residency)
     if not electric.covered:
         reasons.extend(f"E half: {reason}" for reason in electric.reasons)
 
@@ -685,12 +697,12 @@ class MetalComplexConductiveFusedPairPlan:
     replaces_sub_steps = REPLACES
     launches_per_run = 1
 
-    __slots__ = ("entries", "residency", "volumes", "expansion", "shape",
+    __slots__ = ("entries", "residency", "volumes", "shape",
                  "pole_counts", "conductive", "bc", "phased", "_functions",
                  "_tensors", "_fixed", "launches", "runs")
 
     def __init__(self, entries: Sequence[_Entry], residency: Residency,
-                 volumes: Sequence[str], expansion: str, shape: Sequence[int],
+                 volumes: Sequence[str], shape: Sequence[int],
                  pole_counts: Sequence[int], conductive: Sequence[bool],
                  codes: Sequence[int], phased: Sequence[int],
                  functions: Mapping[str, Any], tensors: Mapping[int, Any],
@@ -698,7 +710,6 @@ class MetalComplexConductiveFusedPairPlan:
         self.entries = tuple(entries)
         self.residency = residency
         self.volumes = tuple(dict.fromkeys(volumes))
-        self.expansion = str(expansion)
         self.shape = tuple(int(n) for n in shape)
         self.pole_counts = tuple(int(count) for count in pole_counts)
         self.conductive = tuple(bool(flag) for flag in conductive)
@@ -739,26 +750,29 @@ class MetalComplexConductiveFusedPairPlan:
         return (f"MetalComplexConductiveFusedPairPlan(shape={self.shape}, "
                 f"bc={self.bc}, phased={self.phased}, "
                 f"conductive={self.conductive}, poles={self.pole_counts}, "
-                f"expansion={self.expansion!r}, variants={self.variants!r})")
+                f"variants={self.variants!r})")
 
 
 def plan_metal_complex_conductive_fused_pair(
         fields: Any, pml: Any, sources: Any = None,
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        probe: Any = None,
-        functions: Optional[Mapping[str, Any]] = None,
+        functions: Optional[Mapping[str, Any]] = None, *, chunk_bounds: Any,
         ) -> Optional[MetalComplexConductiveFusedPairPlan]:
-    """Build the fused D->E plan, or return ``None`` on any refusal."""
+    """Build the fused D->E plan, or return ``None`` on any refusal.
+
+    ``chunk_bounds`` is the record of the division the run steps with; it rides in
+    ``Params`` (its presence word decides the curl half's stencil form) and has no
+    default. A missing or malformed record is refused by name
+    (:func:`.chunk_bounds.plan_words`) before anything is mirrored or compiled.
+    """
     if not complex_conductive_fused_pair_coverage(
-            fields, pml, sources, residency, probe).covered:
+            fields, pml, sources, residency).covered:
         return None
     assert residency is not None
-    expansion = expansion_from_probe(
-        probe if probe is not None else load_expansion_probe())
-    if expansion is None:
-        return None
     grid = fields.grid
+    chunk_words = _chunk_bounds.plan_words(
+        chunk_bounds, grid.shape, "plan_metal_complex_conductive_fused_pair")
     spec = SUB_STEPS["step_D"]
     kinds = _boundary_kinds(grid, None)
     codes = tuple(1 if kind == "metallic" else 0 for kind in kinds)
@@ -771,7 +785,7 @@ def plan_metal_complex_conductive_fused_pair(
 
     # --- the curl half's twelve, bound EXACTLY as the certified plan binds them,
     #     under the SAME residency names, so a composition holding both binds one
-    #     tensor rather than two (complex_no_pml_conductive.py:378-397).
+    #     tensor rather than two (plan_metal_complex_conductive_no_pml_curl).
     targets = [_complex_mirror(residency, name, getattr(fields, name))
                for name in spec["targets"]]
     source_bindings = [_source_binding(fields, "step_D", name)
@@ -827,7 +841,7 @@ def plan_metal_complex_conductive_fused_pair(
 
     params = pack_params(grid.dt / grid.dx, phase_values, grid.shape[0],
                          grid.shape[1], grid.shape[2],
-                         int(np.prod(grid.shape)))
+                         int(np.prod(grid.shape)), chunk_words)
     params_name = "complex_conductive_fused_pair:params"
     tensors["params"] = residency.mirror(params_name, params, constant=True)
     volumes.append(params_name)
@@ -836,11 +850,11 @@ def plan_metal_complex_conductive_fused_pair(
     for mode in contract_variants:
         if mode not in selected:
             selected[mode] = compile_complex_conductive_fused_pair(
-                codes, phased, conductive, pole_counts, expansion, mode)
+                codes, phased, conductive, pole_counts, mode)
     fixed = tuple(targets) + tuple(curl_sources) + tuple(condfac) + tuple(condinv) \
         + tuple(e_targets) + tuple(inverses)
     return MetalComplexConductiveFusedPairPlan(
-        entries, residency, volumes, expansion, grid.shape, pole_counts,
+        entries, residency, volumes, grid.shape, pole_counts,
         conductive, codes, phased, selected, tensors, fixed)
 
 
@@ -853,8 +867,7 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
         return Coverage(
             False, (f"the complex conductive fused pair cannot fill slot {slot!r}",))
     return complex_conductive_fused_pair_coverage(
-        context.fields, context.pml, context.sources, context.residency,
-        context.extra.get("probe"))
+        context.fields, context.pml, context.sources, context.residency)
 
 
 def _arm_plan(context: Any, slot: str
@@ -863,7 +876,8 @@ def _arm_plan(context: Any, slot: str
         return None
     return plan_metal_complex_conductive_fused_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants, context.extra.get("probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

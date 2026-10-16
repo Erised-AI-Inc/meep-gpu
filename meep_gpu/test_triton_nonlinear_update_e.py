@@ -20,6 +20,13 @@ import numpy
 import pytest
 
 from meep_gpu import stepping
+from meep_gpu.chunk_map import (
+    ChunkLayout,
+    ChunkLayoutRefusal,
+    chunk_bounds_record,
+    membership_from_record,
+    record_index,
+)
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
 from meep_gpu.pml import PML
@@ -520,19 +527,40 @@ def _shift_up(field, axis, boundary):
 
 
 def _transverse_sums(volumes, own_axis, boundaries):
-    """stepping._nonlinear_transverse_sums (:1121-1164): the pair association."""
+    """stepping._nonlinear_transverse_sums: MEEP's left-to-right four-corner sum.
+
+    ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]`` (step_generic.cpp:646-648), one
+    float32 rounding per addition: ``s`` up this component's own axis, ``s1`` down the
+    partner's.
+    """
     names = ("Ex", "Ey", "Ez")
     sums = []
     for offset in (1, 2):
         partner_axis = (own_axis + offset) % 3
         values = volumes[names[partner_axis]]
-        pair = values + _shift_down(values, partner_axis, boundaries[partner_axis])
-        sums.append(pair + _shift_up(pair, own_axis, boundaries[own_axis]))
+        down = _shift_down(values, partner_axis, boundaries[partner_axis])
+        up = _shift_up(values, own_axis, boundaries[own_axis])
+        corner = _shift_up(down, own_axis, boundaries[own_axis])
+        sums.append(((values + up) + down) + corner)
     return sums
 
 
-def _reference_update_e(state, coefficients, chi_pairs, inv_eps, boundaries):
-    """The gate reference's twin: the whole nonlinear sub-step on plain dicts."""
+def _dsqr(gs, first, second):
+    """stepping._nonlinear_dsqr: the two float32 terms widened, scaled and added in
+    double (``0.0625`` is a double literal in MEEP's C), rounded once."""
+    square = gs * gs
+    transverse = first * first + second * second
+    return (square.astype(numpy.float64)
+            + 0.0625 * transverse.astype(numpy.float64)).astype(numpy.float32)
+
+
+def _reference_update_e(state, coefficients, chi_pairs, inv_eps, boundaries, inside):
+    """The gate reference's twin: the whole nonlinear sub-step on plain dicts.
+
+    ``inside[target]`` is the component's dsigw membership, broadcast to the volume:
+    there MEEP's accumulation ``E + ((kps*src) - (kms*prev))`` with ``f_w = src``;
+    everywhere else ``E = src`` and ``f_w`` keeps its word.
+    """
     volumes = {"Ex": state["Dx"], "Ey": state["Dy"], "Ez": state["Dz"]}
     for own_axis, (target, source, _axis) in enumerate(
             (("Ex", "Dx", 0), ("Ey", "Dy", 1), ("Ez", "Dz", 2))):
@@ -544,16 +572,35 @@ def _reference_update_e(state, coefficients, chi_pairs, inv_eps, boundaries):
         else:
             chi2, chi3 = pair
             first, second = _transverse_sums(volumes, own_axis, boundaries)
-            dsqr = gs * gs + 0.0625 * (first * first + second * second)
+            dsqr = _dsqr(gs, first, second)
             row = gs * us
             constitutive = row * stepping.calc_nonlinear_u(dsqr, gs, us, chi2, chi3)
         kps, kms = coefficients[target]
         fw = state["f_w_" + target]
         field = state[target]
-        fw_previous = fw.copy()
-        fw[...] = constitutive
-        field += kps * fw
-        field -= kms * fw_previous
+        member = numpy.broadcast_to(inside[target], field.shape)
+        accumulated = field + ((kps * constitutive) - (kms * fw))
+        field[...] = numpy.where(member, accumulated, constitutive)
+        fw[...] = numpy.where(member, constitutive, fw)
+
+
+def _dsigw_membership(grid, pml):
+    """Each E component's dsigw line on the one-rank division, broadcast along its own axis.
+
+    An E component is half-integer along its own axis, so its accumulation's cells
+    are that sub-lattice's record line for the own axis
+    (``chunk_map.chunk_bounds_record``, ``membership_from_record``).
+    """
+    record = chunk_bounds_record(ChunkLayout.one_rank(grid, pml))
+    shape = tuple(grid.shape)
+    inside = {}
+    for target, _source, axis_name in stepping.E_CONSTITUTIVE_TERMS:
+        axis = "xyz".index(axis_name)
+        line = membership_from_record(record, True, axis, shape[axis])
+        view = [1, 1, 1]
+        view[axis] = shape[axis]
+        inside[target] = numpy.asarray(line, dtype=bool).reshape(view)
+    return inside
 
 
 def _state_of(fields):
@@ -564,6 +611,11 @@ def _state_of(fields):
 
 def _pin_against_stepping(nl, fields, pml, boundaries, steps=3):
     state = _state_of(fields)
+    inside = _dsigw_membership(fields.grid, pml)
+    assert any(not numpy.all(line) for line in inside.values()), (
+        "every cell carries every layer: the plain form is not exercised")
+    assert any(numpy.any(line) for line in inside.values()), (
+        "no cell carries a layer: the accumulation is not exercised")
     coefficients = {
         target: (getattr(pml, f"kps_{axis}_h"), getattr(pml, f"kms_{axis}_h"))
         for target, _source, axis in stepping.E_CONSTITUTIVE_TERMS}
@@ -573,7 +625,7 @@ def _pin_against_stepping(nl, fields, pml, boundaries, steps=3):
                for name in ("Ex", "Ey", "Ez")}
     for step in range(steps):
         stepping.update_E(fields, pml)
-        _reference_update_e(state, coefficients, chi_pairs, inv_eps, boundaries)
+        _reference_update_e(state, coefficients, chi_pairs, inv_eps, boundaries, inside)
         for name in ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez"):
             ours = state[name]
             theirs = getattr(fields, name)
@@ -616,10 +668,11 @@ def test_the_reference_matches_stepping_on_a_1d_grid(nl):
     _pin_against_stepping(nl, fields, pml, boundaries)
 
 
-def test_the_four_corner_association_is_the_pair_one_not_meep_cs(nl):
-    """(c + d) + (u + ud) — not MEEP C's ((c + u) + d) + ud left-to-right sum
-    (step_generic.cpp:646-648). The two differ in bytes, which is what makes
-    the gate's association mutation a real leg."""
+def test_the_four_corner_association_is_meeps_left_to_right_one_not_the_pair(nl):
+    """((c + u) + d) + ud, MEEP C's left-to-right sum (step_generic.cpp:646-648) —
+    not the pair association (c + d) + (u + ud) the array path and this kernel carried
+    before. The two differ in bytes, which is what makes the gate's pair-association
+    mutation a real leg."""
     fields, pml = _build()
     displacement = stepping._nonlinear_displacement(fields, pml)
     theirs = stepping._nonlinear_transverse_sums(fields, "Ez", displacement)
@@ -628,13 +681,33 @@ def test_the_four_corner_association_is_the_pair_one_not_meep_cs(nl):
     for a, b in zip(ours, theirs):
         assert a.tobytes() == b.tobytes()
     g = volumes["Ex"]  # Ez's first partner is Dx (down x, up z)
-    down = _shift_down(g, 0, "periodic")
-    up = _shift_up(g, 2, "periodic")
-    corner = _shift_up(down, 2, "periodic")
-    meep_c_order = ((g + up) + down) + corner
-    assert meep_c_order.tobytes() != theirs[0].tobytes(), (
+    pair = g + _shift_down(g, 0, "periodic")
+    pair_order = pair + _shift_up(pair, 2, "periodic")
+    assert pair_order.tobytes() != theirs[0].tobytes(), (
         "the two associations coincide on this seed — the association is not "
         "byte-visible here and the gate mutation would be vacuous")
+
+
+def test_the_reference_dsqr_is_steppings_double_form_in_and_out_of_the_band(nl):
+    """The in-test ``_dsqr`` (the kernel's ``_dsqr`` transcribed) against stepping.
+
+    Operands whose exact ``0.0625*t`` lies below float32's normal range separate the
+    double form from the all-float32 one; field-scale operands give the same word
+    either way. Both bands must reproduce ``stepping._nonlinear_dsqr`` exactly, and the
+    low band must differ from the float32 form somewhere (or the check is blind).
+    """
+    rng = numpy.random.default_rng(20261008)
+    for low, high, must_differ in ((-66, -58, True), (-8, 4, False)):
+        gs, g1s, g2s = (numpy.ldexp(rng.random((3, 6000)) + 1.0,
+                                    rng.integers(low, high, (3, 6000)))
+                        * numpy.where(rng.random((3, 6000)) < 0.5, -1.0, 1.0)
+                        ).astype(numpy.float32)
+        theirs = numpy.asarray(stepping._nonlinear_dsqr(gs, (g1s, g2s), stepping._WHOLE))
+        ours = _dsqr(gs, g1s, g2s)
+        single = gs * gs + numpy.float32(0.0625) * (g1s * g1s + g2s * g2s)
+        assert ours.tobytes() == theirs.tobytes()
+        differ = bool(numpy.any(ours.view(numpy.uint32) != single.view(numpy.uint32)))
+        assert differ is must_differ, (low, high)
 
 
 def test_the_opposite_shift_directions_are_load_bearing(nl):
@@ -688,13 +761,28 @@ def _plan_arrays(shape=(4, 3, 5), scalar_epsilon=False, seed=9):
     return arrays, flat
 
 
+def _every_cell_record(shape):
+    """Every stored cell of every resolved axis inside a layer chunk, on both lattices
+    (``parity/meep_gpu/gate_chunk_records.every_cell_record``, restated)."""
+    record = numpy.zeros(25, dtype=numpy.int32)
+    for axis, n in enumerate(shape):
+        if n > 1:
+            record[24] |= 1 << axis
+            for half in (False, True):
+                record[record_index(half, axis, 1)] = n
+    return record
+
+
+RECORD = _every_cell_record((4, 3, 5))
+
+
 def test_the_from_arrays_plan_reports_its_shape(nl):
     arrays, flat = _plan_arrays()
     plan = nl.plan_nonlinear_constitutive_from_arrays(
         arrays, flat,
         {"Ex": None, "Ey": None, "Ez": CHI2_TEST},
         {"Ex": None, "Ey": None, "Ez": CHI3_CORPUS},
-        (0, 1, 0))
+        (0, 1, 0), chunk_bounds=RECORD)
     assert plan.nonlinear == (0, 0, 1)
     assert plan.boundary_codes == (0, 1, 0)
     assert plan.epsilon_is_volume == (1, 1, 1)
@@ -706,7 +794,7 @@ def test_the_from_arrays_plan_reports_its_shape(nl):
 def test_the_scalar_epsilon_plan_ships_the_double_power_arm(nl):
     arrays, flat = _plan_arrays(scalar_epsilon=True)
     plan = nl.plan_nonlinear_constitutive_from_arrays(
-        arrays, flat, {"Ez": CHI2_TEST}, {"Ez": CHI3_CORPUS}, (0, 0, 0))
+        arrays, flat, {"Ez": CHI2_TEST}, {"Ez": CHI3_CORPUS}, (0, 0, 0), chunk_bounds=RECORD)
     assert plan.epsilon_is_volume == (0, 0, 0)
     assert plan.epsilon_scalars[0] == nl.scalar_inverse_epsilon_arm(US_DISCRIMINATOR)
 
@@ -715,14 +803,14 @@ def test_a_chi_pair_split_between_the_two_maps_is_refused(nl):
     arrays, flat = _plan_arrays()
     with pytest.raises(ValueError, match="both or neither"):
         nl.plan_nonlinear_constitutive_from_arrays(
-            arrays, flat, {"Ez": CHI2_TEST}, {"Ez": None}, (0, 0, 0))
+            arrays, flat, {"Ez": CHI2_TEST}, {"Ez": None}, (0, 0, 0), chunk_bounds=RECORD)
 
 
 def test_an_all_linear_plan_is_refused_toward_the_certified_kernel(nl):
     arrays, flat = _plan_arrays()
     with pytest.raises(ValueError, match="certified plain constitutive"):
         nl.plan_nonlinear_constitutive_from_arrays(
-            arrays, flat, {}, {}, (0, 0, 0))
+            arrays, flat, {}, {}, (0, 0, 0), chunk_bounds=RECORD)
 
 
 def test_an_output_aliasing_an_input_is_refused(nl):
@@ -730,7 +818,7 @@ def test_an_output_aliasing_an_input_is_refused(nl):
     arrays["Ex"] = arrays["Dx"]  # the schedule-dependent wrong answer
     with pytest.raises(ValueError, match="alias"):
         nl.plan_nonlinear_constitutive_from_arrays(
-            arrays, flat, {"Ez": CHI2_TEST}, {"Ez": CHI3_CORPUS}, (0, 0, 0))
+            arrays, flat, {"Ez": CHI2_TEST}, {"Ez": CHI3_CORPUS}, (0, 0, 0), chunk_bounds=RECORD)
 
 
 def test_a_coefficient_vector_aliasing_an_output_is_refused(nl):
@@ -742,14 +830,14 @@ def test_a_coefficient_vector_aliasing_an_output_is_refused(nl):
     flat["kps_x"] = arrays["Ex"].ravel()[:shape[0]]  # view, same base address
     with pytest.raises(ValueError, match="alias"):
         nl.plan_nonlinear_constitutive_from_arrays(
-            arrays, flat, {"Ez": CHI2_TEST}, {"Ez": CHI3_CORPUS}, (0, 0, 0))
+            arrays, flat, {"Ez": CHI2_TEST}, {"Ez": CHI3_CORPUS}, (0, 0, 0), chunk_bounds=RECORD)
 
 
 def test_bad_boundary_codes_are_refused(nl):
     arrays, flat = _plan_arrays()
     with pytest.raises(ValueError, match="boundary codes"):
         nl.plan_nonlinear_constitutive_from_arrays(
-            arrays, flat, {"Ez": CHI2_TEST}, {"Ez": CHI3_CORPUS}, (0, 2, 0))
+            arrays, flat, {"Ez": CHI2_TEST}, {"Ez": CHI3_CORPUS}, (0, 2, 0), chunk_bounds=RECORD)
 
 
 def test_planning_a_refused_configuration_returns_none_without_triton(nl):
@@ -757,6 +845,201 @@ def test_planning_a_refused_configuration_returns_none_without_triton(nl):
     assert nl.plan_nonlinear_constitutive(fields, pml) is None, (
         "this laptop's NumPy backend must refuse, and the builder must answer "
         "None without needing the optional dependency")
+
+
+# ---------------------------------------------------------------------------
+# The chunk record: required on the harness route, the run's on the engine route
+# ---------------------------------------------------------------------------
+
+def test_the_harness_route_has_no_default_record(nl):
+    """A plan built from bare arrays states its division, or is refused by name.
+
+    The call that omits the record altogether (a TypeError naming it) is in
+    ``test_triton_chunk_bounds.py``, the one file the every-construction rule exempts.
+    """
+    arrays, flat = _plan_arrays()
+    with pytest.raises(ChunkLayoutRefusal,
+                       match="NonlinearConstitutivePlan was given no chunk record"):
+        nl.plan_nonlinear_constitutive_from_arrays(
+            arrays, flat, {"Ez": CHI2_TEST}, {"Ez": CHI3_CORPUS}, (0, 0, 0),
+            chunk_bounds=None)
+    plan = nl.plan_nonlinear_constitutive_from_arrays(
+        arrays, flat, {"Ez": CHI2_TEST}, {"Ez": CHI3_CORPUS}, (0, 0, 0),
+        chunk_bounds=RECORD)
+    assert plan.chunk_bounds.tolist() == RECORD.tolist()
+
+
+@pytest.fixture
+def recording_kernels(monkeypatch):
+    """A stand-in for ``triton_kernels.kernels`` (it imports Triton): the plans' runs
+    read ``ENABLE_FP_FUSION`` from it, and launch nothing on this laptop."""
+    import types
+
+    module = types.ModuleType("meep_gpu.triton_kernels.kernels")
+    module.ENABLE_FP_FUSION = False
+    module.DEFAULT_BLOCK = 256
+    monkeypatch.setitem(sys.modules, "meep_gpu.triton_kernels.kernels", module)
+
+
+class _Recording:
+    def __init__(self):
+        self.calls = []
+
+    def __getitem__(self, grid):
+        def launch(*args, **kwargs):
+            self.calls.append(SimpleNamespace(grid=grid, args=args, kwargs=kwargs))
+        return launch
+
+
+#: The kernel's pointer arguments ahead of ``cb``: targets, auxiliaries, sources,
+#: inverse epsilon, chi2, chi3 (three each) and the six coefficient vectors.
+POINTERS_BEFORE_CB = 24
+
+
+def _kernel_parameters():
+    import ast
+
+    tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
+    node = next(found for found in ast.walk(tree) if isinstance(found, ast.FunctionDef)
+                and found.name == "nonlinear_constitutive_step")
+    return [argument.arg for argument in node.args.args]
+
+
+def test_the_kernel_declares_cb_where_the_plan_passes_it(nl, recording_kernels):
+    parameters = _kernel_parameters()
+    assert parameters.index("cb") == POINTERS_BEFORE_CB
+    assert parameters[POINTERS_BEFORE_CB - 6:POINTERS_BEFORE_CB] == [
+        "kp0", "km0", "kp1", "km1", "kp2", "km2"]
+    arrays, flat = _plan_arrays()
+    kernel = _Recording()
+    plan = nl.plan_nonlinear_constitutive_from_arrays(
+        arrays, flat, {"Ez": CHI2_TEST}, {"Ez": CHI3_CORPUS}, (0, 1, 0),
+        kernel=kernel, chunk_bounds=RECORD)
+    plan.run()
+    (call,) = kernel.calls
+    assert call.args[POINTERS_BEFORE_CB] is plan._cb  # noqa: SLF001
+    assert len(call.args) == len(parameters) - sum(
+        1 for name in parameters if name.isupper())
+
+
+def _kernel_code(name):
+    """The source of one of the module's ``@triton.jit`` functions, docstring removed."""
+    import ast
+
+    text = MODULE_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(text)
+    node = next(found for found in ast.walk(tree) if isinstance(found, ast.FunctionDef)
+                and found.name == name)
+    body = node.body[1:] if (isinstance(node.body[0], ast.Expr)
+                             and isinstance(node.body[0].value, ast.Constant)) else node.body
+    lines = text.splitlines()
+    return "\n".join(line.strip() for statement in body
+                     for line in lines[statement.lineno - 1:statement.end_lineno])
+
+
+def test_the_record_word_is_chunk_maps_half_integer_line(nl):
+    assert nl.RECORD_HALF_INTEGER_WORD == record_index(True, 0, 0)
+    code = _kernel_code("nonlinear_constitutive_step")
+    for t, (axis, index) in enumerate((("0", "i"), ("4", "j"), ("8", "k"))):
+        assert f"dw{t} = record_in(cb, RECORD_HALF_INTEGER + {axis}, {index})" in code
+
+
+def test_the_kernel_carries_the_certified_constitutive_forms(nl):
+    """The tail of every component is ``kernels.constitutive_step``'s, read from text.
+
+    The auxiliary is read and written on the dsigw cells only (the auxiliary
+    contract), the old field likewise, and the field takes
+    ``forms.constitutive_form``: MEEP's one-add accumulation inside, ``src`` outside.
+    """
+    code = _kernel_code("nonlinear_constitutive_step")
+    for t in "012":
+        assert f"prev{t} = tl.load(w{t} + idx, mask=live & dw{t}, other=0.0)" in code
+        assert f"tl.store(w{t} + idx, src{t}, mask=live & dw{t})" in code
+        assert f"a{t} = tl.load(f{t} + idx, mask=live & dw{t}, other=0.0)" in code
+        assert (f"a{t} = constitutive_form(a{t}, prev{t}, src{t}, kp_{t}, km_{t}, dw{t})"
+                in code)
+        assert f"tl.store(f{t} + idx, a{t}, mask=live)" in code
+        assert f"a{t} = a{t} + kp_{t}" not in code
+        assert code.index(f"prev{t} = tl.load(w{t}") < code.index(f"tl.store(w{t} + idx")
+        assert f"dsqr{t} = _dsqr(gs{t}, g1s, g2s)" in code
+
+
+def test_the_four_point_sum_is_left_to_right_and_dsqr_is_double(nl):
+    assert _kernel_code("_four_point_sum").splitlines()[-1] == (
+        "return ((center + up) + down) + corner")
+    assert _kernel_code("_dsqr").splitlines() == [
+        "square = gs * gs",
+        "transverse = g1s * g1s + g2s * g2s",
+        "widened = tl.cast(square, tl.float64) + 0.0625 * tl.cast(transverse, tl.float64)",
+        "return tl.cast(widened, tl.float32)",
+    ]
+
+
+def _admit_host(nl, monkeypatch):
+    """Drop only the array-module clause of the two restated grid predicates."""
+    for name in ("_nonlinear_grid_reasons", "_nonlinear_run_grid_reasons"):
+        original = getattr(nl, name)
+        monkeypatch.setattr(nl, name, lambda *args, _o=original: [
+            reason for reason in _o(*args) if not reason.startswith("array module is")])
+
+
+def _deepened(grid, pml):
+    """The one-rank division with the x layer's chunks two cells deeper."""
+    from meep_gpu.chunk_map import grid_frames
+
+    base = ChunkLayout.one_rank(grid, pml)
+    xs = sorted({lo[0] for lo, _ in base.boxes} | {hi[0] for _, hi in base.boxes})
+    remap = {xs[1]: xs[1] + 4, xs[2]: xs[2] - 4}
+    boxes = [((remap.get(lo[0], lo[0]), lo[1], lo[2]),
+              (remap.get(hi[0], hi[0]), hi[1], hi[2])) for lo, hi in base.boxes]
+    return ChunkLayout(boxes, base.pml_flags, grid_frames(grid), faces=base.faces,
+                       source="record")
+
+
+def test_the_engine_builders_bind_the_runs_division(nl, monkeypatch):
+    """``update_E`` and both spine arms bind the division they are handed, else the
+    one-rank record; ``update_H`` binds the fields it starts H on."""
+    _admit_host(nl, monkeypatch)
+    fields, pml = _build(cell_size=(1.6, 0.8, 0.8))
+    layout = _deepened(fields.grid, pml)
+    deep = chunk_bounds_record(layout).tolist()
+    one_rank = chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml)).tolist()
+    assert deep != one_rank
+    for chunk_layout, expected in ((None, one_rank), (layout, deep)):
+        built = (nl.plan_nonlinear_constitutive(fields, pml, chunk_layout=chunk_layout),
+                 nl.plan_nonlinear_run_pml_curl(fields, pml, "step_B",
+                                                chunk_layout=chunk_layout),
+                 nl.plan_nonlinear_run_constitutive(fields, pml, "H",
+                                                    chunk_layout=chunk_layout))
+        for plan in built:
+            assert plan is not None, "the host-admitted builder refused"
+            assert plan.chunk_bounds.tolist() == expected
+    assert built[2]._h_state is fields  # noqa: SLF001 - MEEP's start of H
+
+
+def test_plan_step_hands_the_division_to_every_nonlinear_arm(nl, monkeypatch):
+    from meep_gpu.triton_kernels import launch
+
+    seen = []
+
+    def recorder(label):
+        def builder(*args, chunk_layout="<not passed>", **kwargs):
+            seen.append((label, chunk_layout))
+            return f"{label}-plan"
+        return builder
+
+    _admit_host(nl, monkeypatch)
+    fields, pml = _build(cell_size=(1.6, 0.8, 0.8))
+    layout = _deepened(fields.grid, pml)
+    for name in ("plan_nonlinear_constitutive", "plan_nonlinear_run_pml_curl",
+                 "plan_nonlinear_run_constitutive"):
+        monkeypatch.setattr(launch, name, recorder(name))
+    plan = launch.plan_step(fields, pml, chunk_layout=layout)
+    assert sorted(label for label, _ in seen) == [
+        "plan_nonlinear_constitutive", "plan_nonlinear_run_constitutive",
+        "plan_nonlinear_run_pml_curl", "plan_nonlinear_run_pml_curl"]
+    assert all(given is layout for _, given in seen)
+    assert plan.plans["update_E"] == "plan_nonlinear_constitutive-plan"
 
 
 # ---------------------------------------------------------------------------

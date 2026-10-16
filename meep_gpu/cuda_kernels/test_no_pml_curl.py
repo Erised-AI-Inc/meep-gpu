@@ -52,9 +52,11 @@ import numpy
 import pytest
 
 from .. import stepping
+from ..chunk_map import ChunkLayout, chunk_bounds_record
 from ..fields import Fields
 from ..grid import Grid, Mirror
 from ..pml import PML
+from . import bounds_block
 from . import coverage
 from . import no_pml_curl
 from .no_pml_curl import covers_no_pml_curl as covers
@@ -142,14 +144,28 @@ def _shift(field, axis, boundary, up):
 
 
 def _hand_curl_step(fields, grid, boundaries, terms, operands, targets, backward):
-    """The kernels' arithmetic, by hand, in float32: ``target -= dtdx*((sf-f1)+(f2-ss))``."""
+    """The kernels' arithmetic, by hand, in float32: ``target -= curl_stencil(...)``.
+
+    MEEP's stencil as C associates it, ``dtdx * (((sf - f1) + f2) - ss)``, and its
+    one-partner forms where a partner's derivative axis is invariant
+    (``Grid.is_invariant``; step_generic.cpp:72-76, :104-108).
+    """
     dtdx = numpy.float32(grid.dt / grid.dx)
     out = {}
     for target, first, first_axis, second, second_axis in terms:
         f1, f2 = operands[first], operands[second]
         sf = _shift(f1, first_axis, boundaries[first_axis], not backward)
         ss = _shift(f2, second_axis, boundaries[second_axis], not backward)
-        curl = (dtdx * ((sf - f1) + (f2 - ss))).astype(numpy.float32)
+        first_present = not grid.is_invariant(first_axis)
+        second_present = not grid.is_invariant(second_axis)
+        if first_present and second_present:
+            curl = (dtdx * (((sf - f1) + f2) - ss)).astype(numpy.float32)
+        elif first_present:
+            curl = (dtdx * (sf - f1)).astype(numpy.float32)
+        elif second_present:
+            curl = ((-dtdx) * (ss - f2)).astype(numpy.float32)
+        else:
+            curl = numpy.zeros_like(f1, dtype=numpy.float32)
         from ..fields import IYEE_SHIFTS
         for axis in range(3):
             if IYEE_SHIFTS[target][axis] == 0 and boundaries[axis] == "metallic":
@@ -163,9 +179,9 @@ def _hand_curl_step(fields, grid, boundaries, terms, operands, targets, backward
 def test_without_stored_E_step_B_differences_D_times_inverse_epsilon(xp):
     """``stepping.step_B`` derives its operands; ``fields.Ex`` does not even exist.
 
-    THIS IS WHY THE DERIVED KERNEL EXISTS. ``_read_component`` (stepping.py:2438)
+    THIS IS WHY THE DERIVED KERNEL EXISTS. ``_read_component`` (stepping.py:2892)
     routes E through ``get_E``'s un-stored branch, ``D * inv_eps``
-    (fields.py:1035), whenever ``fields.stores_E`` is False -- which, with no
+    (fields.py:1047), whenever ``fields.stores_E`` is False -- which, with no
     absorber and no susceptibility, is the normal case. A kernel binding
     Ex/Ey/Ez cannot serve it: the pointers are None.
     """
@@ -294,14 +310,18 @@ def test_the_prelude_is_the_siblings_own_bytes():
 ])
 def test_the_verbatim_kernels_differ_from_the_certified_pair_only_in_the_tail(
         sub_step, mine, theirs):
-    """Line for line, the ONLY changes are the signature and the three tails.
+    """Line for line, the ONLY changes are the signature, the record's form words and the tails.
 
     THE WHOLE SAFETY ARGUMENT OF THIS FAMILY is that the curl -- the term table,
-    the ghost rule, the grouping and the six wall-mask lines -- is the certified
-    pair's, unedited. That is a property of the bytes, so it is measured on the
-    bytes: every changed line must be a ``pml_apply``/``fu``/coefficient line
-    (removed) or a ``target = target - curl`` line (added). A changed mask line,
-    or a re-grouped curl, fails here.
+    the ghost rule, MEEP's stencil with its partner-presence forms and the six
+    wall-mask lines -- is the certified pair's, unedited. That is a property of the
+    bytes, so it is measured on the bytes: every changed line must be a
+    ``pml_apply``/``fu``/coefficient line or one of the chunk record's
+    membership-run words and flags, which choose the PML form a run with no
+    absorber does not have (removed), or a ``target = target - curl`` line (added).
+    The presence-word decode and the ``cb`` parameter are the pair's own lines and
+    must not change. A changed mask line, a re-grouped curl or a stencil call with
+    other presence bits fails here.
     """
     sibling = SIBLING_PATH.read_text(encoding="utf-8")
     start = sibling.index(f'extern "C" __global__ void {theirs}')
@@ -318,6 +338,8 @@ def test_the_verbatim_kernels_differ_from_the_certified_pair_only_in_the_tail(
         r"|.*float\* __restrict__ fu_.*"       # the auxiliary parameters
         r"|.*const float\* __restrict__ (?:kms|sinv)_.*"  # the coefficient parameters
         r"|.*pml_apply\(.*"                    # the recurrence call
+        r"|\s*const int cb[hi]_[xyz]_a0 = .*"    # the membership-run words
+        r"|\s*const int in_[hi]_[xyz] = .*"      # the membership flag
         r"|\s*[BD][xyz]\[idx\] = [BD][xyz]\[idx\] - curl;"  # the new tail
         r")\s*$")
     unexplained = [line for line in changed if not allowed.match(line)]
@@ -365,6 +387,27 @@ def test_the_derived_kernel_is_the_stored_one_with_the_derive_substituted():
         "the derived kernel is not the stored kernel with the derive substituted:\n"
         + "\n".join(difflib.unified_diff(normalise(rebuilt), normalise(derived),
                                          lineterm="", n=1)))
+
+
+@pytest.mark.parametrize("name", no_pml_curl.NO_PML_KERNELS)
+def test_each_kernel_decodes_the_presence_word_with_the_emitters_block(name):
+    """The record decode is ``bounds_block``'s spelling, and it reads the presence word alone.
+
+    ``bounds_block`` is the table's one spelling of the chunk-record decode, and a
+    kernel's literal must equal its output byte for byte, directly after the index
+    decode. With no absorber no chunk carries a layer, so these kernels name no
+    membership entry: the block is the presence word and its three bits, and the
+    record is read exactly once.
+    """
+    text = no_pml_curl.kernel_source(name)
+    marker = f'extern "C" __global__ void {name}('
+    assert text.count(marker) == 1
+    tail = text.split(marker, 1)[1]
+    assert tail.count(bounds_block.DECODE_END) == 1
+    after = tail.split(bounds_block.DECODE_END, 1)[1]
+    assert after.startswith("\n" + bounds_block.bounds_block((), (0, 1, 2))), name
+    assert "const int* __restrict__ cb\n) {" in tail, name
+    assert len(re.findall(r"\bcb\[", tail)) == 1, name
 
 
 @pytest.mark.parametrize("name", no_pml_curl.NO_PML_KERNELS)
@@ -536,9 +579,25 @@ def test_the_launcher_raises_on_the_one_configuration_get_H_would_lie_about(xp):
     assert fields.get_H("Hx") is fields.Hx is not fields.Bx
     covered, reason = covers(fields, None, grid, "step_D")
     assert covered is False and reason.startswith("fu_Dx is allocated")
+    record = chunk_bounds_record(ChunkLayout.one_rank(grid, None))
     with pytest.raises(ValueError, match="PML storage mode"):
-        no_pml_curl.step_no_pml_curl(fields, "step_D", (0, 0, 0), 0.5,
+        no_pml_curl.step_no_pml_curl(fields, "step_D", (0, 0, 0), 0.5, record,
                                      arm="magnetic")
+
+
+@pytest.mark.parametrize("sub_step", SUB_STEPS)
+def test_the_launcher_refuses_a_launch_without_the_runs_chunk_record(sub_step, xp):
+    """The kernels read the record's partner-presence word; there is no default.
+
+    A kernel handed no record would read whatever the argument slot holds, and one
+    handed another grid's record would step the stencil of a grid with other
+    invariant axes. So a missing record raises by name, on the host, before
+    anything compiles -- the same rule the certified pair's launcher keeps
+    (``step_curl_kernels.chunk_record_argument``).
+    """
+    fields, grid = make(xp, stored=True)
+    with pytest.raises(ValueError, match="chunk record"):
+        no_pml_curl.step_no_pml_curl(fields, sub_step, (0, 0, 0), 0.5, None)
 
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
@@ -848,7 +907,11 @@ def test_the_folded_far_ghost_leg_is_a_null_and_the_metallic_one_is_not(gate):
             ("derived_wrap_uses_own_inv_eps",
              "derived_wrap_uses_own_inv_eps_on_an_invariant_axis", "1d_metallic"),
             ("fortran_order_index_decomposition",
-             "fortran_order_index_decomposition_on_a_flat_grid", "1d_metallic")):
+             "fortran_order_index_decomposition_on_a_flat_grid", "1d_metallic"),
+            ("full_bracket_over_an_absent_partner",
+             "full_bracket_over_an_absent_partner_on_a_resolved_grid", "3d_mixed"),
+            ("regroup_stencil",
+             "regroup_stencil_where_no_component_has_both_partners", "1d_metallic")):
         caught = gate.SOURCE_MUTATION_LEG_FILTER[base]
         null = gate.SOURCE_MUTATION_LEG_FILTER[twin]
         assert gate.SOURCE_MUTATIONS_ALL[base] is gate.SOURCE_MUTATIONS_ALL[twin], (
@@ -871,6 +934,30 @@ def test_the_folded_far_ghost_leg_is_a_null_and_the_metallic_one_is_not(gate):
         assert null(gate.spec_boundary_codes(spec), gate.spec_shape(spec)), (
             f"{witness} is the grid the device leg measured {base} inert on; it "
             f"must be scored under {twin}")
+
+
+def test_every_spec_one_cell_axis_is_an_invariant_one(gate):
+    """The presence filters read the shape; on these specs that is the invariance.
+
+    ``full_bracket_over_an_absent_partner`` and ``regroup_stencil`` are scored by
+    which curl partners are present, which the kernels read off the record's
+    presence word (``Grid.is_invariant``). The filters take ``(codes, shape)``, so
+    they count one-cell axes -- exactly right only while every one-cell axis of a
+    spec is an invariant one. A 3-D spec with a one-cell axis that is not invariant
+    would land on the wrong side of both filters; this is what refuses one.
+    """
+    for spec in gate.SPECS:
+        planes = tuple(Mirror(name, spec["phase"]) for name in spec["axes"])
+        grid = Grid(resolution=1.0, cell_size=tuple(spec["cell"]),
+                    boundaries=tuple(spec["boundaries"]), symmetry=planes,
+                    dimensions=spec.get("dimensions", 3), xp=numpy, courant=0.5)
+        shape = gate.spec_shape(spec)
+        for axis in range(3):
+            assert (int(shape[axis]) == 1) == bool(grid.is_invariant(axis)), (
+                spec["label"], axis, shape)
+        record = gate.case_record(grid, None)
+        assert gate.record_presence(record) == tuple(
+            not grid.is_invariant(axis) for axis in range(3)), spec["label"]
 
 
 @pytest.mark.parametrize("name", ["drop_fu_store", "read_fprev_after_store",
@@ -1057,10 +1144,10 @@ def test_every_cited_stepping_line_is_read_back_out_of_stepping():
     """A citation that has drifted into fiction is what the validate-against-the-reference rule forbids."""
     stepping_source = STEPPING_PATH.read_text(encoding="utf-8").splitlines()
     module_source = MODULE_PATH.read_text(encoding="utf-8")
-    for line_number, needle in ((539, "target -= curl"),
-                                (537, "_apply_conductive_update(target, curl"),
-                                (2440, "fields.stores_E or fields.scratch is None"),
-                                (2450, "multiply(displacement, inverse, out=target)")):
+    for line_number, needle in ((582, "target -= curl"),
+                                (580, "_apply_conductive_update(target, curl"),
+                                (2894, "fields.stores_E or fields.scratch is None"),
+                                (2904, "scale(inverse, displacement, out=target)")):
         assert f"stepping.py:{line_number}" in module_source or str(line_number) in module_source
         assert needle in stepping_source[line_number - 1], (
             f"stepping.py:{line_number} no longer reads {needle!r}; the citation "

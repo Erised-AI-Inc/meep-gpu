@@ -29,114 +29,42 @@ WHAT COMPOSES, AND IT IS MOST OF THE FAMILY:
 * the ownership masks, the ghost rule, the Bloch phase block, the plane-index decode
   and the fold's own axis-entry table, all IMPORTED from the two parents.
 
-WHAT DOES NOT COMPOSE, and it is exactly one thing:
+WHAT CHANGES UNDER COMPLEX STORAGE, and it is exactly one thing: the ghost fill is
+ARITHMETIC. The array path writes a mirror ghost as ``part_products.scale(parity,
+plane)`` (``stepping._write_mirror_ghost`` / ``_fill_folded_far_ghosts`` through
+``host_writes.copy_face``): the parity ``+/-1`` rounded to the part dtype, times each
+part, one float32 product per word. So the fill gets its own body here,
+``c_mul_coefficient_left(c, plane)`` with the parity passed as one host-rounded float
+(:func:`mirror_parity_coefficients`). A product by exactly ``+/-1.0f`` is the copy or
+the sign flip on every normal word and zero, and on a subnormal word it flushes as
+any arithmetic does on this backend; the array path's NumPy product flushes the same
+words under the flush host policy, which is the policy these kernels run under.
 
-    THE GHOST FILL'S PARITY MULTIPLY. Under real storage the parity is a SIGN-BIT
-    OPERATION and ``symmetry.mirror_ghost_fill`` spells it ``-x`` (odd) or a plain
-    copy (even) — measured exact on this host over signed zeros, the whole subnormal
-    band, normals and +/-FLT_MAX. Under complex64 the array path's
-    ``phase * plane`` (stepping.py:1450-1451, :1529-1532) is a PYTHON INT times a
-    complex64 array, and numpy carries only ``'FF->F'`` complex loops, so it is the
-    FULL complex multiply by ``(+/-1.0, +0.0)`` WITH ITS ZERO CROSS TERMS. That is
-    not the identity and it is not a sign flip.
+THE FILL'S SUBNORMAL REACH IS THE CURL'S. The real fold's fill copies words and is
+band-safe where its curl is not; this one multiplies, so it rides the same
+subnormal-free precondition (or flush policy) as the curl. The fold is also the
+configuration most likely to reach the band -- a folded run puts a deep-PML plane on
+the far face, and the two fill passes read and write exactly those planes -- so any
+census this family takes reports the WINDOW (first step, last step), not a count.
 
-MEASURED HERE, 2026-08-16, this host (torch 2.10.0 MPS / numpy 2.4.3 / macOS 26.2
-arm64), on a 256-cell engineered table (512 words) over ``{+/-0.0, +/-1e-45,
-+/-7e-45, +/-2.5e-44, +/-1.5e-38, +/-1.5, +/-1.0, +/-3.4e38}`` in both planes:
-
-    the real fold's sign-bit spelling vs the array path    16/512 at phase +1
-                                                           16/512 at phase -1
-
-and every one of those 16 is a signed zero the complex product CANONICALIZES and the
-sign-bit copy preserves — ``(-0-0j) * (+1)`` has real ``+0.0``, not ``-0.0``, because
-the cross term contributes ``-(+0.0 * -0.0) = +0.0`` and ``-0.0 + 0.0 = +0.0``. THE
-EVEN MIRROR IS NOT THE IDENTITY UNDER COMPLEX STORAGE, and the even mirror is what
-most of the corpus drives. So the fill gets its OWN body here, the parity enters ONLY
-as host-rounded passed coefficient words, and the refuted spellings are gate
-mutations rather than comments.
-
-===========================================================================
-THE SUBNORMAL REACH GOES BACKWARDS, AND THAT IS THE COMPOSITION'S DOING
-===========================================================================
-
-``symmetry.py`` records, as a MEASUREMENT, that the real fold's FILL is band-safe
-where its CURL is not: the fill performs no arithmetic at all, a subnormal can live
-in a Metal buffer, and only arithmetic flushes. That claim DOES NOT SURVIVE the
-composition, because the composition is what turns the parity into arithmetic.
-
-Measured on this host, same round, ``c_mul(coefficient, plane)`` against numpy's
-``complex64(+/-1) * plane``:
-
-    band-free table (signed zeros + normals, 0 subnormal words)   0/512  BOTH parities
-    512-cell random plane scaled to 1e-30 (0 subnormal words)     0/1024 both parities
-    512-cell random plane scaled to 1e-38 (756 subnormal words)   756/1024
-    512-cell random plane scaled to 1e-40 (1024 subnormal words)  1024/1024
-
-The divergence count EQUALS the subnormal operand word count, exactly, at every
-scale. So: this family's fill rides the checked subnormal-free precondition where the
-real family's fill did not, and that is a regression in REACH caused by composing the
-two, not by porting either. It is stated here rather than inherited, because
-inheriting ``symmetry.py``'s sentence would ship a false one.
-
-The fold is also the configuration most likely to REACH the band — a folded run puts
-a deep-PML plane on the far face, and the two fill passes read and write exactly
-those planes (stored rows 0, 2, ``reflect_row`` and the last). The precondition is
-therefore load-bearing here in a way it is not for an interior kernel, and any census
-this family takes must report the WINDOW (first step, last step) rather than a count.
-
-===========================================================================
-WHAT ELSE WAS MEASURED RATHER THAN INHERITED
-===========================================================================
-
-THE ORIENTATION IS A MEASURED NULL FOR THIS COEFFICIENT. The array path spells
-``phase * plane`` — COEFFICIENT ON THE LEFT — and the transcription keeps that
-because it is the array path's. Measured on the same 512-word table:
-``c_mul(coefficient, plane)`` and ``c_mul(plane, coefficient)`` differ in 0/512 words
-at both parities. With ``c_im`` exactly ``+0.0`` the two fma addends are the same
-exact zero and float addition is sign-commutative, so the swap is an EQUIVALENCE
-here — named as one, with a ``must_catch=False`` mutation, rather than left as an
-untested belief. It is NOT an equivalence for a general complex coefficient, which is
-why ``complex_fields``' Bloch-rotation orientation mutation stays must-catch.
-
-THE X, Y, Z FILL ORDER IS LOAD-BEARING HERE, AND THAT IS MEASURED RATHER THAN
-ARGUED. ``symmetry.py`` fuses its two passes and records ``reverse_axis_order`` as a
-MEASURED NULL under real storage, on the argument that every fill there is a multiply
-by exactly +/-1. Complex multiplication is not associative, so a corner unowned on
-two folded axes sees ``c_y (x) (c_x (x) z)`` against ``c_x (x) (c_y (x) z)`` and the
-argument does not transfer. Measured on this host, on the two-axis folded complex
-grids, reversing the axis order:
-
-    MIXED phase (+1, -1)     B  0 words     D  1 word (``Dz``)
-    MATCHED phase (+1, +1)   B  0 words     D  0 words
-
-``Dz`` has Yee shift 0 on BOTH folded axes, so the NEAR pass writes its
-doubly-unowned corner twice; with ``c_x == c_y`` the composition commutes
-bit-exactly, which is why a matched-phase grid makes the question vanish rather than
-answer it. The order is therefore preserved, and the leg that says so asserts BOTH
-directions.
-
-THE TWO PASSES MAY NOT BE FUSED PER AXIS, and here the reason is the DRIVER'S CALL
-ORDER rather than a measurement. The array path runs ``fill_symmetry_bc_*`` over
-every folded axis and THEN ``fill_folded_far_ghosts_*`` over every folded PERIODIC
-axis, with ``zero_metal_*`` BETWEEN them (driver.py:3282-3287 magnetic, :3293-3302
-electric), and the far pass reads a whole plane the wall clear can touch. The
-Triton twin also has a second, arithmetic reason — a component unowned on two axes
-with DIFFERENT Yee shifts sees near-then-far where a fused launch gives it
-far-then-near, worth 5 words on its own engineered states. THAT SECOND REASON IS A
-MEASURED NULL HERE: 0 words in every (phase, family) cell of the matrix's two-axis
-grids, with random-uniform volumes AND with all four signed-zero sign combinations
-planted on the rows the fill reads. Stated as a null rather than borrowed as a
-justification. :class:`FoldedComplexFillPlan` holds the passes separately anyway,
-exactly as :class:`.symmetry.MirrorGhostFillPlan` does, and inherits that family's
+THE X, Y, Z FILL ORDER IS KEPT. With the parity a product by +/-1 per part the
+composition at a doubly-unowned corner commutes exactly, so the order is the array
+path's by transcription rather than by necessity; the plan applies the axes in X, Y,
+Z order and holds the two passes separately, because the driver runs
+``fill_symmetry_bc_*`` over every folded axis, then ``zero_metal_*``, then
+``fill_folded_far_ghosts_*``, and the far pass reads a plane the wall clear can
+touch. :class:`FoldedComplexFillPlan` inherits :class:`.symmetry.MirrorGhostFillPlan`'s
 refusal of the one configuration where the fused ``run()`` would differ (a live far
 pass on a grid with a live ``zero_metal`` axis).
 
+THE CURL AND THE CONSTITUTIVE ARE THE COMPLEX FAMILY'S. :func:`folded_bloch_curl_source`
+is ``complex_fields``' template with the top-plane mask inserted, so it carries the
+chunk record, the per-chunk PML forms, the presence-keyed stencil and the plane-0
+Bloch connection of the unfolded kernel unchanged; a folded axis carries no phase.
+
 THERE IS NO GENERATED-CODE AUDIT ON THIS BACKEND. ``torch.mps.compile_shader``
-exposes no disassembly, so this family cannot refuse a compile whose emitted code
-violates the policy and cannot establish that the contraction guard was obeyed. The
-byte legs and the mutation legs are the only arbiters and they are BEHAVIOURAL: they
-catch a wrong answer, not a wrong instruction. That is this certification's one
-weakness against the Triton twin's, and it is stated rather than buried.
+exposes no disassembly, so the byte legs and the mutation legs are the only arbiters
+and they are BEHAVIOURAL: they catch a wrong answer, not a wrong instruction.
 
 ===========================================================================
 THE INVERTED CLAUSES — four families to stay disjoint from, not one
@@ -231,19 +159,10 @@ complex constitutive re-admitted on ``update_H``/``update_E``, and the folded co
 fill on ``fill_B``/``fill_D``. ``fastpath.plan_fast_path`` still returns ``None`` on
 every branch, which is the separate decision this port does not make.
 
-CERTIFIED BY ``parity/meep_gpu/gate_metal_folded_complex.py``, artifact
-``parity/meep_gpu/results/metal_folded_complex_2026-08-16/``: 6,948,864 word
-comparisons and 0 differing over ten cases and eight legs — sub-step curl, both fill
-passes, the constitutive pair, a six-step whole-step walk through the driver's five
-passes per half, the ``parity`` leg that REQUIRES the real fold's spelling to be
-measurably wrong here, and the ``band`` leg that records the reach regression; 5
-mutations, 4 must-catch all caught and 1 declared equivalence null. This module's own
-sources carry no row in ``fingerprints.json`` for the same reason ``complex_fields``'
-do not — they are a function of the PROBE-BOUND arm, so a checked-in hash would
-record a choice rather than a measurement. The gate hashes all 262 of them into its
-own provenance block beside the artifact that bound the arm. This module's BYTES are
-hashed, under ``host_sha256``, because ``launch._host_modules()`` enumerates the
-package.
+GATED BY ``parity/meep_gpu/gate_metal_folded_complex.py``. This module's own sources
+carry no row in ``fingerprints.json``, as ``complex_fields``' do not; the gate hashes
+the ones it launches into its own provenance block. This module's BYTES are hashed, under
+``host_sha256``, because ``launch._host_modules()`` enumerates the package.
 
 Import contract: importable WITHOUT torch. The predicates and the plan builders (to
 ``None``) must answer on a host with no GPU, which is the merge bar.
@@ -265,6 +184,7 @@ from ..triton_kernels.coverage import (
     _susceptibility_reasons,
 )
 from ..triton_kernels.launch import SUB_STEPS
+from . import chunk_bounds as _chunk_bounds
 from . import complex_fields, shaders, templates
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import Residency, compile_source
@@ -301,33 +221,6 @@ from .symmetry import (  # noqa: F401 - re-exported deliberately
 #: registry row and an artifact column cannot drift apart.
 FAMILY = "folded_complex"
 
-#: The probe artifact's environment override. SEPARATE from the two that already
-#: exist (``MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE`` for the unfolded complex family,
-#: ``MEEP_GPU_METAL_EXPANSION_PROBE`` for the beta one) because this family requires
-#: a pattern NEITHER of those artifacts carries, and silently reading one of theirs
-#: would licence an arm from a record that never measured this orientation.
-PROBE_PATH_ENVIRONMENT = "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE"
-
-#: THE PATTERN THIS FAMILY ADDS. ``stepping._write_mirror_ghost`` (:1450-1451) and
-#: ``_fill_folded_far_ghosts`` (:1529-1532) spell ``phase * plane`` where ``phase``
-#: is a PYTHON INT and ``plane`` is a complex64 array view — a complex COEFFICIENT on
-#: the LEFT whose imaginary word is bitwise zero and whose real word is exactly
-#: +/-1.0. None of ``complex_fields``' four base orientations is that call: they
-#: cover a general complex product (field left), a real coefficient in each
-#: orientation, and a Python float on the left. ``special_kz`` established the
-#: precedent that a new operand ORIENTATION earns its own pattern rather than
-#: inheriting a verdict, and this follows it.
-PARITY_PROBE_PATTERN = "c8_mul_c8_parity_coefficient_left"
-
-#: What a probe artifact must classify — and classify CONSISTENTLY — before this
-#: family may bind an ``EXPANSION``. The base four are ``complex_fields``' own call
-#: sites, restated through that module so there is one home for them.
-PARITY_PROBE_PATTERNS: Tuple[str, ...] = (
-    complex_fields.PROBE_PATTERNS + (PARITY_PROBE_PATTERN,))
-
-#: The array module the probe must have measured. The ENGINE holds NumPy on this
-#: host and the kernel must reproduce the ENGINE's bytes.
-PROBE_BACKEND = complex_fields.PROBE_BACKEND
 
 #: The two fill slots this family claims, and which ghost-fill family each names.
 _FILL_SLOT_FAMILIES: Dict[str, str] = {"fill_B": "B", "fill_D": "D"}
@@ -338,16 +231,11 @@ _CONSTITUTIVE_SLOT_SIDES: Dict[str, str] = {"update_H": "H", "update_E": "E"}
 __all__ = [
     "ARMS",
     "FAMILY",
-    "PARITY_PROBE_PATTERN",
-    "PARITY_PROBE_PATTERNS",
-    "PROBE_BACKEND",
-    "PROBE_PATH_ENVIRONMENT",
     "FoldedComplexFillPlan",
     "FoldedComplexPmlCurlPlan",
     "compile_folded_bloch_curl",
     "compile_folded_mirror_fill_complex",
     "enumerate_folded_complex_sources",
-    "expansion_from_probe",
     "fill_axis_entries",
     "folded_bloch_curl_source",
     "folded_complex_composition_curl_coverage",
@@ -356,7 +244,6 @@ __all__ = [
     "folded_complex_pml_curl_coverage",
     "folded_curl_template",
     "folded_mirror_fill_complex_source",
-    "load_expansion_probe",
     "mirror_parity_coefficients",
     "plan_folded_complex_constitutive",
     "plan_folded_complex_fill",
@@ -422,7 +309,7 @@ def folded_curl_template() -> str:
 
 
 def folded_bloch_curl_source(codes: Sequence[int], backward: bool,
-                             phased: Sequence[int], expansion: str,
+                             phased: Sequence[int],
                              contract: str = shaders.CONTRACT_OFF) -> str:
     """The specialised folded ``bloch_pml_curl_step`` source for one configuration.
 
@@ -430,8 +317,7 @@ def folded_bloch_curl_source(codes: Sequence[int], backward: bool,
     MIRROR_PERIODIC quadruple :func:`.symmetry.folded_axis_kinds` resolves — NEVER a
     hand-built triple, because the MIRROR_METALLIC / MIRROR_PERIODIC split is the
     fold's single point of failure and backwards on one axis is a plane of wrong
-    values. ``phased`` is the per-axis Bloch flag; ``expansion`` is the
-    PROBE-MEASURED complex-multiply arm.
+    values. ``phased`` is the per-axis Bloch flag.
 
     THE THREE FOLD DELTAS OVER THE CERTIFIED COMPLEX CURL, and all three are
     expressed as calls rather than as copied text: (1) both mirror codes take the
@@ -446,6 +332,7 @@ def folded_bloch_curl_source(codes: Sequence[int], backward: bool,
     A PHASED AXIS MUST BE PLAIN PERIODIC. A mirror code carrying a Bloch flag is
     refused HERE as well as by the predicate, because a mis-baked flag is a plane of
     wrong values rather than a crash and this is the last place it can be seen.
+    ``phased`` is the per-axis connection kind (``complex_fields.CONNECT_KINDS``).
     """
     codes = tuple(int(code) for code in codes)
     phased = tuple(int(flag) for flag in phased)
@@ -453,6 +340,9 @@ def folded_bloch_curl_source(codes: Sequence[int], backward: bool,
         raise ValueError(f"codes and phased must be per-axis triples, got "
                          f"{codes!r} / {phased!r}")
     for axis, (code, flag) in enumerate(zip(codes, phased)):
+        if flag not in complex_fields.CONNECT_KINDS:
+            raise ValueError(f"axis {axis} connection kind {flag!r} is not one of "
+                             f"{complex_fields.CONNECT_KINDS}")
         if not flag:
             continue
         if code in MIRROR_CODES:
@@ -466,31 +356,38 @@ def folded_bloch_curl_source(codes: Sequence[int], backward: bool,
                 f"axis {axis} carries a Bloch phase but its ghost rule is METALLIC; "
                 f"only a periodic wrap can carry a phase (S:2346-2360)")
     reduced = _reduced_codes(codes)
+    flags = shaders.curl_membership_flags(backward)
     return templates.substitute(folded_curl_template(), {
         "__CONTRACT__": shaders.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(complex_fields.CURL_RECORD_BUFFER),
         "__GUARD__": templates.GUARD,
         "__DECODE__": templates.DECODE_IJK,
+        "__BOUNDS__": shaders.curl_bounds_block(backward),
         "__SHIFT__": "- 1" if backward else "+ 1",
         "__GHOST_X__": templates.ghost("x", reduced[0], backward),
         "__GHOST_Y__": templates.ghost("y", reduced[1], backward),
         "__GHOST_Z__": templates.ghost("z", reduced[2], backward),
-        "__PHASE_X__": complex_fields._phase_block("x", bool(phased[0]), backward),
-        "__PHASE_Y__": complex_fields._phase_block("y", bool(phased[1]), backward),
-        "__PHASE_Z__": complex_fields._phase_block("z", bool(phased[2]), backward),
+        "__PHASE_X__": complex_fields._phase_block("x", phased[0]),
+        "__PHASE_Y__": complex_fields._phase_block("y", phased[1]),
+        "__PHASE_Z__": complex_fields._phase_block("z", phased[2]),
         "__MASK__": templates.ownership_mask(reduced, backward,
                                              zero=templates.COMPLEX_ZERO),
         "__TOP_MASK__": folded_top_plane_mask(codes, backward,
                                               zero=templates.COMPLEX_ZERO),
+        "__DU0__": flags[0],
+        "__DU1__": flags[1],
+        "__DU2__": flags[2],
     })
 
 
 def compile_folded_bloch_curl(codes: Sequence[int], backward: bool,
-                              phased: Sequence[int], expansion: str,
+                              phased: Sequence[int],
                               contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised folded complex curl entry point for one configuration."""
     return compile_source(folded_bloch_curl_source(
-        codes, backward, phased, expansion, contract)).bloch_pml_curl_step
+        codes, backward, phased, contract)).bloch_pml_curl_step
 
 
 # ---------------------------------------------------------------------------
@@ -500,19 +397,10 @@ def compile_folded_bloch_curl(codes: Sequence[int], backward: bool,
 #: ONE family's ghost plane on ONE axis for ONE pass, in one launch.
 #:
 #: NINE BINDINGS: three ``float2`` volume pointers, four uints, the runtime reflect
-#: row, and ONE ``float2`` coefficient. The reflect row STAYS RUNTIME (it is per-axis
-#: and a single 3-D grid can carry both terminations with different rows), and so
-#: does the PARITY — which is the exact OPPOSITE of the real fold's Metal port, where
-#: the parity had to become a source specialisation because a runtime float multiply
-#: flushes subnormals on this backend. Here the parity is already inside an
-#: arithmetic expression that flushes anyway, so making it compile-time would buy
-#: nothing and would lose the property that matters: THE COEFFICIENT WORDS ARE
-#: HOST-ROUNDED AND PASSED, never synthesised in-kernel, which is what makes
-#: ``PHASE * word`` and "``phase == +1`` is a plain copy" refutable mutations rather
-#: than unreachable ones.
-#:
-#: NO ``PHASE`` CONSTEXPR, deliberately: the parity enters ONLY as those words, so a
-#: constexpr in the signature would be dead weight a reader has to discount.
+#: row, and ONE ``float`` parity. The reflect row STAYS RUNTIME (it is per-axis and a
+#: single 3-D grid can carry both terminations with different rows), and so does the
+#: PARITY: it is a host-rounded word the array path multiplies each part by
+#: (``part_products.scale``), so it is passed rather than synthesised in-kernel.
 _FILL_TEMPLATE = r"""
 #include <metal_stdlib>
 using namespace metal;
@@ -530,7 +418,7 @@ kernel void folded_mirror_fill_complex(
     constant uint&      nz          [[buffer(5)]],
     constant uint&      n_plane     [[buffer(6)]],
     constant int&       reflect_row [[buffer(7)]],
-    constant float2&    c           [[buffer(8)]],
+    constant float&     c           [[buffer(8)]],
     uint idx [[thread_position_in_grid]])
 {
     // One thread per IN-PLANE position, and ONE PASS per launch. Every read and
@@ -557,41 +445,29 @@ __BODY__
 """
 
 
-def mirror_parity_coefficients(phase: int) -> Tuple[Tuple[float, float],
-                                                    Tuple[float, float]]:
-    """The ((near_re, near_im), (far_re, far_im)) word pairs for one folded axis.
+def mirror_parity_coefficients(phase: int) -> Tuple[float, float]:
+    """The ``(near, far)`` parity words for one folded axis.
 
-    ``fields.mirror_parity(component, axis, phase) == phase * (1 - 2*iyee[c][axis])``
-    (fields.py:180-182), so the near fill's shift-0 components take ``+phase`` and
-    the far fill's shift-1 components take ``-phase`` — two coefficients per folded
-    axis and nothing else is parity input. Each is rounded through
-    ``numpy.complex64`` HERE, on the host, exactly once, and PASSED — never
-    synthesised in-kernel, which is the rule ``special_kz`` follows for its
-    signed-zero beta word and the rule that makes the fill's headline mutations
-    reachable.
-
-    ONE PROPERTY IS LOAD-BEARING AND IS PINNED BY A SIBLING TEST: ``complex64(+/-1)``
-    has an imaginary word of BITWISE ``0x00000000`` — not merely equal to zero, but
-    the pattern a literal ``+0.0`` produces — and a real word of exactly ``+/-1.0``,
-    at both phases and for the near and far coefficient alike. Everything this family
-    says about the two expansion arms agreeing on the parity product rests on it.
+    ``fields.mirror_parity(component, axis, phase) == phase * (1 - 2*iyee[c][axis])``,
+    so the near fill's shift-0 components take ``+phase`` and the far fill's shift-1
+    components take ``-phase`` -- two words per folded axis and nothing else is
+    parity input. Each is the array path's ``part_products.scale`` coefficient: the
+    Python int rounded to the part dtype, here ``numpy.float32``, exactly once and
+    PASSED.
     """
     import numpy  # noqa: PLC0415
 
     if int(phase) not in (1, -1):
         raise ValueError(f"a mirror plane's declared phase is +1 or -1, got {phase!r}")
-    out: List[Tuple[float, float]] = []
-    for value in (int(phase), -int(phase)):
-        rounded = numpy.complex64(value)
-        out.append((float(numpy.float32(rounded.real)),
-                    float(numpy.float32(rounded.imag))))
-    return out[0], out[1]
+    near = float(numpy.float32(int(phase)))
+    far = float(numpy.float32(-int(phase)))
+    return near, far
 
 
 def folded_mirror_fill_complex_source(axis: int, pass_name: str,
-                                      shifts: Sequence[int], expansion: str,
+                                      shifts: Sequence[int],
                                       contract: str = shaders.CONTRACT_OFF) -> str:
-    """One (axis, pass, Yee-shift triple, expansion) specialisation of the fill.
+    """One (axis, pass, Yee-shift triple) specialisation of the fill.
 
     ``shifts`` is the three targets' Yee shift ON THIS AXIS, in kernel argument order
     — ``TARGET_IYEE[name][axis]`` for the family's three components. It is not free:
@@ -605,14 +481,10 @@ def folded_mirror_fill_complex_source(axis: int, pass_name: str,
     PASS writes the last stored slot from ``reflect_row`` for every component whose
     shift here is ONE, and runs only on a folded PERIODIC axis.
 
-    THE MULTIPLY IS ``c_mul(c, plane)`` — THE COEFFICIENT ON THE LEFT — because the
-    array path spells ``phase * plane``. Measured on this host over a 512-word
-    engineered table, the swapped orientation moves 0 words at both parities (with
-    ``c_im`` an exact ``+0.0`` the two fma addends are the same exact zero and float
-    addition is sign-commutative), so the orientation is an EQUIVALENCE here and is
-    kept because it is the array path's rather than because it is forced. That is
-    named as an equivalence, with a non-must-catch mutation, rather than left as an
-    untested belief inherited from the Triton twin.
+    THE MULTIPLY IS ``c_mul_coefficient_left(c, plane)``: the array path's
+    ``part_products.scale(parity, plane)``, one float32 product per part. The operand
+    order is the array path's spelling and moves no bit (IEEE multiplication is
+    commutative).
 
     An empty body is REFUSED rather than emitted: a fill launch that writes nothing
     is a no-op that a before/after comparison reports as a pass.
@@ -627,22 +499,23 @@ def folded_mirror_fill_complex_source(axis: int, pass_name: str,
 
     lines: List[str] = []
     if pass_name == "near":
-        lines.append("    // near face (stepping._write_mirror_ghost:1450): "
-                     "cell 0 = (+phase) (x) cell 2, a FULL complex product")
+        lines.append("    // near face (stepping._write_mirror_ghost): "
+                     "cell 0 = (+phase) * cell 2, per part")
         want = 0
     else:
-        lines.append("    // far face (stepping._fill_folded_far_ghosts:1529): "
-                     "last = (-phase) (x) cell reflect_row, folded PERIODIC only")
+        lines.append("    // far face (stepping._fill_folded_far_ghosts): "
+                     "last = (-phase) * cell reflect_row, per part, folded PERIODIC only")
         want = 1
     for slot, shift in enumerate(shifts):
         if shift != want:
             continue
         if want == 0:
             operand = f"f{slot}[base + {MIRROR_SOURCE_INDEX} * stride]"
-            lines.append(f"    f{slot}[base] = c_mul(c, {operand});")
+            lines.append(f"    f{slot}[base] = c_mul_coefficient_left(c, {operand});")
         else:
             operand = f"f{slot}[base + reflect_row * stride]"
-            lines.append(f"    f{slot}[base + last * stride] = c_mul(c, {operand});")
+            lines.append(f"    f{slot}[base + last * stride] = "
+                         f"c_mul_coefficient_left(c, {operand});")
     if len(lines) == 1:
         raise ValueError(
             f"the {pass_name!r} pass on axis {axis} would write nothing for shifts "
@@ -653,22 +526,21 @@ def folded_mirror_fill_complex_source(axis: int, pass_name: str,
 
     return templates.substitute(_FILL_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
         "__PLANE__": _PLANE_INDEX[int(axis)],
         "__BODY__": "\n".join(lines),
     })
 
 
 def compile_folded_mirror_fill_complex(axis: int, pass_name: str,
-                                       shifts: Sequence[int], expansion: str,
+                                       shifts: Sequence[int],
                                        contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised folded complex fill entry point for one configuration."""
     return compile_source(folded_mirror_fill_complex_source(
-        axis, pass_name, shifts, expansion, contract)).folded_mirror_fill_complex
+        axis, pass_name, shifts, contract)).folded_mirror_fill_complex
 
 
-def enumerate_folded_complex_sources(expansion: str,
-                                     contract: str = shaders.CONTRACT_OFF,
+def enumerate_folded_complex_sources(contract: str = shaders.CONTRACT_OFF,
                                      ) -> Dict[str, str]:
     """Every shipped folded complex specialisation, keyed by a stable label.
 
@@ -687,18 +559,18 @@ def enumerate_folded_complex_sources(expansion: str,
                     quad = (cx, cy, cz)
                     for phased in _reachable_phase_flags(quad):
                         label = (f"folded_bloch_pml_curl_step/{name}/{cx}{cy}{cz}/"
-                                 f"ph{phased[0]}{phased[1]}{phased[2]}/{expansion}")
+                                 f"ph{phased[0]}{phased[1]}{phased[2]}")
                         out[label] = folded_bloch_curl_source(
-                            quad, backward, phased, expansion, contract)
+                            quad, backward, phased, contract)
     for family, spec in GHOST_FILL_FAMILIES.items():
         targets = tuple(spec["targets"])
         for axis in range(3):
             shifts = tuple(TARGET_IYEE[n][axis] for n in targets)
             for pass_name in FILL_PASSES:
                 label = (f"folded_mirror_fill_complex/{family}/axis{axis}/"
-                         f"{pass_name}/{expansion}")
+                         f"{pass_name}")
                 out[label] = folded_mirror_fill_complex_source(
-                    axis, pass_name, shifts, expansion, contract)
+                    axis, pass_name, shifts, contract)
     return out
 
 
@@ -710,87 +582,9 @@ def _reachable_phase_flags(codes: Sequence[int]) -> Tuple[Tuple[int, int, int], 
     ``complex_fields._reachable_phase_flags``, which never sees a mirror code, and
     the narrowing is this family's clause 9 expressed as an enumeration.
     """
-    options = [(0, 1) if int(code) == CODE_PERIODIC else (0,) for code in codes]
+    options = [complex_fields.CONNECT_KINDS if int(code) == CODE_PERIODIC
+               else (complex_fields.CONNECT_NONE,) for code in codes]
     return tuple((x, y, z) for x in options[0] for y in options[1] for z in options[2])
-
-
-# ---------------------------------------------------------------------------
-# The expansion probe — how the arm is bound
-# ---------------------------------------------------------------------------
-
-def load_expansion_probe(path: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Read this family's probe artifact JSON, or None when absent or unreadable.
-
-    Unreadable is treated exactly like missing: both are refusals downstream, never a
-    silent default arm. The environment variable is this family's OWN
-    (:data:`PROBE_PATH_ENVIRONMENT`) rather than the unfolded complex family's,
-    because an artifact cut before this tranche does not carry
-    :data:`PARITY_PROBE_PATTERN` and licensing from it would be reading a verdict
-    about four orientations as a verdict about five.
-    """
-    import json  # noqa: PLC0415
-    import os  # noqa: PLC0415
-
-    candidate = path if path is not None else os.environ.get(PROBE_PATH_ENVIRONMENT)
-    if not candidate:
-        return None
-    try:
-        with open(candidate, "r", encoding="utf-8") as handle:
-            record = json.load(handle)
-    except Exception:  # noqa: BLE001 - unreadable probe == missing probe
-        return None
-    return record if isinstance(record, dict) else None
-
-
-def expansion_from_probe(record: Any) -> Optional[str]:
-    """The single expansion arm a probe record licenses for this family, or None.
-
-    ``complex_fields.expansion_from_probe``'s contract over the SUPERSET pattern
-    list: the record must name the backend the engine holds, classify every pattern
-    of :data:`PARITY_PROBE_PATTERNS`, and leave exactly one arm standing once the
-    ``AMBIGUOUS_BOTH`` ones are removed.
-
-    THE PARITY PATTERN IS EXPECTED TO BE AMBIGUOUS AND THAT IS NOT A LOOPHOLE. With
-    ``c_re`` exactly ``+/-1.0`` and ``c_im`` exactly ``+0.0`` the fused arm's extra
-    product is EXACT, so both arms produce identical bytes and the pattern cannot
-    prefer one. It is required present anyway, because what it still gates is
-    ``NEITHER``: a platform whose bytes NO transcription reproduces must refuse by
-    name rather than inherit a verdict measured on a different orientation.
-    """
-    if not isinstance(record, dict) or record.get("backend") != PROBE_BACKEND:
-        return None
-    patterns = record.get("patterns")
-    if not isinstance(patterns, dict):
-        return None
-    decided: List[str] = []
-    for name in PARITY_PROBE_PATTERNS:
-        value = patterns.get(name)
-        if value == complex_fields.AMBIGUOUS_BOTH:
-            continue
-        if value not in templates.EXPANSIONS:
-            return None
-        decided.append(value)
-    if len(set(decided)) != 1:
-        return None
-    return decided[0]
-
-
-def _expansion_reasons(probe: Any = None) -> List[str]:
-    """The clause that makes the arm binding a MEASUREMENT rather than a choice."""
-    record = probe if probe is not None else load_expansion_probe()
-    if record is None:
-        return [f"no folded-complex expansion probe artifact is available (set "
-                f"{PROBE_PATH_ENVIRONMENT} or pass probe=); this family needs the "
-                f"{PARITY_PROBE_PATTERN!r} orientation, which no earlier artifact "
-                f"carries, and which arm the {PROBE_BACKEND} reference takes there "
-                f"is a measured platform fact"]
-    if expansion_from_probe(record) is None:
-        return [f"the folded-complex expansion probe artifact is missing, ambiguous, "
-                f"disagreeing, or not for the {PROBE_BACKEND} backend (it needs "
-                f"backend={PROBE_BACKEND!r}, every pattern of "
-                f"{PARITY_PROBE_PATTERNS} classified, and exactly one arm standing "
-                f"among the discriminating ones)"]
-    return []
 
 
 # ---------------------------------------------------------------------------
@@ -900,7 +694,6 @@ def _folded_phase_reasons(grid: Any, kinds: Optional[Sequence[str]],
 
 
 def _folded_complex_grid_reasons(fields: Any, pml: Any, grid: Any, residency: Any,
-                                 probe: Any = None,
                                  ) -> Tuple[List[str],
                                             Optional[Tuple[int, int, int]]]:
     """The clauses every predicate in this family shares, plus the resolved codes."""
@@ -999,9 +792,6 @@ def _folded_complex_grid_reasons(fields: Any, pml: Any, grid: Any, residency: An
     if not getattr(fields, "stores_E", False):
         reasons.append("E is recomputed from D rather than stored")
 
-    # 10. The expansion arm must come from a measured artifact.
-    reasons.extend(_expansion_reasons(probe))
-
     return reasons, codes
 
 
@@ -1024,8 +814,7 @@ def _stored_extent_reasons(codes: Optional[Sequence[int]],
 
 
 def folded_complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                     residency: Any = None,
-                                     probe: Any = None) -> Coverage:
+                                     residency: Any = None) -> Coverage:
     """May the folded complex curl step this (fields, pml, sub_step)? THE WIDE VERDICT.
 
     ZERO FOLDED AXES IS ADMITTED HERE, and that is not an oversight: with every axis
@@ -1047,7 +836,7 @@ def folded_complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
 
-    reasons, codes = _folded_complex_grid_reasons(fields, pml, grid, residency, probe)
+    reasons, codes = _folded_complex_grid_reasons(fields, pml, grid, residency)
 
     spec = SUB_STEPS[sub_step]
     names = (tuple(spec["targets"])
@@ -1071,8 +860,7 @@ def folded_complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
 
 
 def folded_complex_composition_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                             residency: Any = None,
-                                             probe: Any = None) -> Coverage:
+                                             residency: Any = None) -> Coverage:
     """THE ROUTING VERDICT — the wide one with a fold MANDATORY.
 
     The one clause that separates this family from ``complex_fields`` on the two curl
@@ -1086,7 +874,7 @@ def folded_complex_composition_curl_coverage(fields: Any, pml: Any, sub_step: st
     grid = getattr(fields, "grid", None)
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
-    base = folded_complex_pml_curl_coverage(fields, pml, sub_step, residency, probe)
+    base = folded_complex_pml_curl_coverage(fields, pml, sub_step, residency)
     codes, _ = _folded_complex_axis_reasons(grid, pml)
     reasons = list(base.reasons)
     reasons.extend(_requires_a_fold(
@@ -1097,8 +885,7 @@ def folded_complex_composition_curl_coverage(fields: Any, pml: Any, sub_step: st
 
 
 def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                         residency: Any = None,
-                                         probe: Any = None) -> Coverage:
+                                         residency: Any = None) -> Coverage:
     """May the CERTIFIED complex constitutive kernel step a FOLDED complex run?
 
     No new kernel and no new arithmetic: only the ADMISSION is this family's.
@@ -1128,7 +915,7 @@ def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
         return Coverage(False, ("fields carries no grid",))
 
     spec = CONSTITUTIVE_SIDES[side]
-    reasons, codes = _folded_complex_grid_reasons(fields, pml, grid, residency, probe)
+    reasons, codes = _folded_complex_grid_reasons(fields, pml, grid, residency)
     reasons.extend(_requires_a_fold(
         grid, codes,
         "the folded complex constitutive product has no array-path work to "
@@ -1159,8 +946,7 @@ def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
     return Coverage(not reasons, tuple(reasons))
 
 
-def folded_complex_fill_coverage(fields: Any, family: str, residency: Any = None,
-                                 probe: Any = None) -> Coverage:
+def folded_complex_fill_coverage(fields: Any, family: str, residency: Any = None) -> Coverage:
     """May the folded complex fill write this family's ghost planes?
 
     NARROWER THAN THE CURL'S PREDICATE AND INDEPENDENT OF IT: this pass reads no
@@ -1172,7 +958,7 @@ def folded_complex_fill_coverage(fields: Any, family: str, residency: Any = None
 
     What it DOES need: complex64 storage, a real fold, a readable phase, no phase or
     k on the folded axis, a stored extent that can hold both planes, a reflect row on
-    every folded PERIODIC axis, and a probe artifact carrying the parity pattern.
+    every folded PERIODIC axis.
 
     THE WALL SEAM IS REFUSED BY NAME, through the REAL family's own helper. The
     reason is identical and the helper is imported rather than restated:
@@ -1264,7 +1050,6 @@ def folded_complex_fill_coverage(fields: Any, family: str, residency: Any = None
         if getattr(fields, name, None) is None:
             reasons.append(f"{name} is not allocated")
     reasons.extend(complex_fields._complex_layout_reasons(fields, shape, names))
-    reasons.extend(_expansion_reasons(probe))
     return Coverage(not reasons, tuple(reasons))
 
 
@@ -1289,16 +1074,16 @@ class FoldedComplexPmlCurlPlan(KernelPlan):
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc", "phased",
-                 "phase_values", "expansion", "residency", "volumes")
+                 "phase_values", "residency", "volumes", "chunk_bounds")
 
     family = "folded complex PML curl"
 
-    REPR_FIELDS = ("sub_step", "shape", "bc", "phased", "expansion")
+    REPR_FIELDS = ("sub_step", "shape", "bc", "phased")
 
-    def __init__(self, sub_step: str, shape, dtdx: float, bc, phased, phase_values,
-                 expansion: str, residency: Any, targets, auxiliaries, sources,
+    def __init__(self, sub_step: str, shape, dtdx: float, bc, phased, phase_values, residency: Any,
+                 targets, auxiliaries, sources,
                  coefficients, functions: Dict[str, Any],
-                 volumes: Sequence[str]) -> None:
+                 volumes: Sequence[str], *, chunk_bounds: Any) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(
                 f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
@@ -1310,26 +1095,28 @@ class FoldedComplexPmlCurlPlan(KernelPlan):
         self.bc = tuple(int(code) for code in bc)
         self.phased = tuple(int(flag) for flag in phased)
         self.phase_values = tuple((float(re), float(im)) for re, im in phase_values)
-        self.expansion = str(expansion)
         self.residency = residency
         self.volumes = tuple(volumes)
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, f"FoldedComplexPmlCurlPlan({sub_step})")
         super().__init__(functions, (
             tuple(targets) + tuple(auxiliaries) + tuple(sources) + tuple(coefficients)
             + (self.shape[0], self.shape[1], self.shape[2], self.n_elem, self.dtdx)
-            + self.phase_values))
+            + self.phase_values
+            + (_chunk_bounds.tensor(self.chunk_bounds,
+                                    str(getattr(residency, "device", "mps"))),)))
 
 
-def _curl_functions(codes, backward: bool, phased, expansion: str,
+def _curl_functions(codes, backward: bool, phased,
                     contract_variants: Sequence[str]) -> Dict[str, Any]:
-    return {mode: compile_folded_bloch_curl(codes, backward, phased, expansion, mode)
+    return {mode: compile_folded_bloch_curl(codes, backward, phased, mode)
             for mode in contract_variants}
 
 
 def plan_folded_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
                                  residency: Optional[Residency] = None,
                                  contract_variants: Sequence[str] = (
-                                     shaders.CONTRACT_OFF,),
-                                 probe: Any = None,
+                                     shaders.CONTRACT_OFF,), *, chunk_bounds: Any,
                                  ) -> Optional[FoldedComplexPmlCurlPlan]:
     """Build a folded complex curl plan from the engine's objects, or None.
 
@@ -1345,11 +1132,7 @@ def plan_folded_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, "
                          f"got {sub_step!r}")
     if not folded_complex_composition_curl_coverage(
-            fields, pml, sub_step, residency, probe).covered:
-        return None
-    expansion = expansion_from_probe(
-        probe if probe is not None else load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
+            fields, pml, sub_step, residency).covered:
         return None
     grid = fields.grid
     codes, _ = folded_axis_kinds(grid, pml)
@@ -1374,23 +1157,24 @@ def plan_folded_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
     volumes = (tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
                + tuple(spec["sources"]))
     return FoldedComplexPmlCurlPlan(
-        sub_step, grid.shape, grid.dt / grid.dx, codes, flags, values, expansion,
+        sub_step, grid.shape, grid.dt / grid.dx, codes, flags, values,
         residency, targets, auxiliaries, sources, coefficients,
-        _curl_functions(codes, spec["backward"], flags, expansion, contract_variants),
-        volumes)
+        _curl_functions(codes, spec["backward"], flags, contract_variants),
+        volumes, chunk_bounds=chunk_bounds)
 
 
 def plan_folded_complex_pml_curl_from_arrays(
         sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any], codes,
-        phases: Sequence[Optional[complex]], dtdx: float, expansion: str,
+        phases: Sequence[Optional[complex]], dtdx: float,
         residency: Residency, functions: Optional[Dict[str, Any]] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        ) -> FoldedComplexPmlCurlPlan:
+        *, chunk_bounds: Any) -> FoldedComplexPmlCurlPlan:
     """Build a folded complex curl plan from bare host arrays — a gate's route.
 
     ``codes`` is the FOUR-valued per-axis quadruple and ``phases`` the per-axis
-    ``Optional[complex]`` table; the ``step_D`` conjugation is applied HERE, per
-    sub-step, exactly as the engine route applies it. No predicate runs: the caller
+    ``Optional[complex]`` table of ``eikna``; the side's connection is chosen HERE,
+    per sub-step, exactly as the engine route chooses it. ``chunk_bounds`` is the
+    record of the division the harness's reference steps with. No predicate runs: the caller
     is a harness that constructed the configuration deliberately, including the
     deliberately wrong ones. ``functions`` is the MUTATION SEAM — dropping it is not
     a silent slowdown but a silent DISARMING, since every mutation leg would then
@@ -1411,12 +1195,12 @@ def plan_folded_complex_pml_curl_from_arrays(
     volumes = (tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
                + tuple(spec["sources"]))
     return FoldedComplexPmlCurlPlan(
-        sub_step, shape, dtdx, codes, flags, values, expansion, residency,
+        sub_step, shape, dtdx, codes, flags, values, residency,
         targets, auxiliaries, sources, coefficients,
         functions if functions is not None
-        else _curl_functions(codes, spec["backward"], flags, expansion,
+        else _curl_functions(codes, spec["backward"], flags,
                              contract_variants),
-        volumes)
+        volumes, chunk_bounds=chunk_bounds)
 
 
 class FoldedComplexFillPlan:
@@ -1428,13 +1212,9 @@ class FoldedComplexFillPlan:
     cannot honour it — the array path applies the axes in X, Y, Z ORDER and ordering
     inside one dispatch is not something a grid of threads can promise.
 
-    AND HERE THE ORDER IS LOAD-BEARING RATHER THAN MERELY MATCHED. Under real storage
-    every fill is a multiply by exactly +/-1, so ``symmetry.py`` records the reversed
-    order as a MEASURED NULL. Complex multiplication is not associative, so a corner
-    unowned on two axes sees ``c_y (x) (c_x (x) z)`` against ``c_x (x) (c_y (x) z)``
-    and the two orders can differ — which is why this plan keeps the order and why
-    the question is re-asked on a MIXED-PHASE grid, the only shape where it exists at
-    all (with ``c_x == c_y`` the composition commutes bit-exactly).
+    THE ORDER IS THE ARRAY PATH'S. Every fill is a product by exactly +/-1 per part,
+    so a corner unowned on two axes carries the product of both parities in either
+    order; the plan keeps the X, Y, Z order by transcription.
 
     THE TWO PASSES ARE SEPARATE ATTRIBUTES, NOT ONE LIST, for two reasons that stack:
     ``zero_metal_*`` runs between them in the driver (driver.py:3286 / :3301), and a
@@ -1449,13 +1229,13 @@ class FoldedComplexFillPlan:
     device, which is a residency fact no slot name carries.
     """
 
-    __slots__ = ("family", "slot", "shape", "expansion", "residency", "volumes",
+    __slots__ = ("family", "slot", "shape", "residency", "volumes",
                  "near", "far", "replaces_sub_steps", "launches", "_functions")
 
     #: This plan launches kernels; the composer's planned/null split reads it.
     performs_device_work = True
 
-    def __init__(self, family: str, slot: str, shape, expansion: str,
+    def __init__(self, family: str, slot: str, shape,
                  residency: Residency, near: Sequence[Dict[str, Any]],
                  far: Sequence[Dict[str, Any]],
                  functions: Dict[str, Dict[str, Any]],
@@ -1466,7 +1246,6 @@ class FoldedComplexFillPlan:
         self.family = family
         self.slot = slot
         self.shape = tuple(int(n) for n in shape)
-        self.expansion = str(expansion)
         self.residency = residency
         self.volumes = tuple(volumes)
         self.near = tuple(dict(entry) for entry in near)
@@ -1517,7 +1296,7 @@ class FoldedComplexFillPlan:
         return (f"FoldedComplexFillPlan({self.family}, shape={self.shape}, "
                 f"near={[e['axis'] for e in self.near]}, "
                 f"far={[e['axis'] for e in self.far]}, "
-                f"expansion={self.expansion}, variants={self.variants})")
+                f"variants={self.variants})")
 
     def __repr__(self) -> str:
         return self.describe()
@@ -1531,20 +1310,20 @@ def fill_axis_entries(grid: Any, family: str,
     — the folded axes in X, Y, Z order, the declared phase, the reflect row from
     ``stepping._far_reflect_rows`` and the three targets' Yee shifts — so it is
     called rather than restated. What this family adds is the one thing the real fill
-    does not carry: the ``(re, im)`` coefficient the multiply consumes, host-rounded
-    once through :func:`mirror_parity_coefficients`.
+    does not carry: the parity word the per-part multiply consumes, host-rounded once
+    through :func:`mirror_parity_coefficients`.
     """
     entries = ghost_fill_axis_entries(grid, family, pass_name)
     out: List[Dict[str, Any]] = []
     for entry in entries:
-        near_words, far_words = mirror_parity_coefficients(int(entry["phase"]))
+        near_word, far_word = mirror_parity_coefficients(int(entry["phase"]))
         item = dict(entry)
-        item["coefficient"] = near_words if pass_name == "near" else far_words
+        item["coefficient"] = near_word if pass_name == "near" else far_word
         out.append(item)
     return tuple(out)
 
 
-def _fill_functions(entries: Sequence[Dict[str, Any]], expansion: str,
+def _fill_functions(entries: Sequence[Dict[str, Any]],
                     contract_variants: Sequence[str]) -> Dict[str, Dict[str, Any]]:
     """Compile one entry point per distinct (axis, pass, shifts) key.
 
@@ -1558,7 +1337,7 @@ def _fill_functions(entries: Sequence[Dict[str, Any]], expansion: str,
         for mode in contract_variants:
             if key not in table[mode]:
                 table[mode][key] = compile_folded_mirror_fill_complex(
-                    entry["axis"], entry["pass"], entry["shifts"], expansion, mode)
+                    entry["axis"], entry["pass"], entry["shifts"], mode)
     return table
 
 
@@ -1578,14 +1357,9 @@ def _keyed(entries: Sequence[Dict[str, Any]],
 def plan_folded_complex_fill(fields: Any, family: str, slot: str,
                              residency: Optional[Residency] = None,
                              contract_variants: Sequence[str] = (
-                                 shaders.CONTRACT_OFF,),
-                             probe: Any = None) -> Optional[FoldedComplexFillPlan]:
+                                 shaders.CONTRACT_OFF,)) -> Optional[FoldedComplexFillPlan]:
     """Build one family's folded complex ghost-fill plan, or None when refused."""
-    if not folded_complex_fill_coverage(fields, family, residency, probe).covered:
-        return None
-    expansion = expansion_from_probe(
-        probe if probe is not None else load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not folded_complex_fill_coverage(fields, family, residency).covered:
         return None
     grid = fields.grid
     names = tuple(GHOST_FILL_FAMILIES[family]["targets"])
@@ -1596,15 +1370,14 @@ def plan_folded_complex_fill(fields: Any, family: str, slot: str,
     if not near:  # pragma: no cover - the predicate already refused
         return None
     return FoldedComplexFillPlan(
-        family, slot, grid.shape, expansion, residency, near, far,
-        _fill_functions(tuple(near) + tuple(far), expansion, contract_variants),
+        family, slot, grid.shape, residency, near, far,
+        _fill_functions(tuple(near) + tuple(far), contract_variants),
         names)
 
 
 def plan_folded_complex_fill_from_arrays(
         family: str, slot: str, arrays: Dict[str, Any],
-        near: Sequence[Dict[str, Any]], far: Sequence[Dict[str, Any]],
-        expansion: str, residency: Residency,
+        near: Sequence[Dict[str, Any]], far: Sequence[Dict[str, Any]], residency: Residency,
         functions: Optional[Dict[str, Dict[str, Any]]] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         ) -> FoldedComplexFillPlan:
@@ -1621,17 +1394,16 @@ def plan_folded_complex_fill_from_arrays(
     near = _keyed(near, targets)
     far = _keyed(far, targets)
     return FoldedComplexFillPlan(
-        family, slot, shape, expansion, residency, near, far,
+        family, slot, shape, residency, near, far,
         functions if functions is not None
-        else _fill_functions(tuple(near) + tuple(far), expansion, contract_variants),
+        else _fill_functions(tuple(near) + tuple(far), contract_variants),
         names)
 
 
 def plan_folded_complex_constitutive(fields: Any, pml: Any, side: str,
                                      residency: Any = None,
                                      contract_variants: Sequence[str] = (
-                                         shaders.CONTRACT_OFF,),
-                                     probe: Any = None) -> Any:
+                                         shaders.CONTRACT_OFF,), *, chunk_bounds: Any) -> Any:
     """A CERTIFIED complex constitutive plan for a folded run, or None.
 
     The arithmetic, the source and the plan class are ``complex_fields``' own; only
@@ -1645,11 +1417,7 @@ def plan_folded_complex_constitutive(fields: Any, pml: Any, side: str,
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, "
                          f"got {side!r}")
     if not folded_complex_constitutive_coverage(
-            fields, pml, side, residency, probe).covered:
-        return None
-    expansion = expansion_from_probe(
-        probe if probe is not None else load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
+            fields, pml, side, residency).covered:
         return None
 
     spec = CONSTITUTIVE_SIDES[side]
@@ -1668,10 +1436,10 @@ def plan_folded_complex_constitutive(fields: Any, pml: Any, side: str,
         for axis in "xyz" for stem in ("kps", "kms")]
     volumes = tuple(spec["targets"]) + tuple(spec["aux"]) + tuple(spec["sources"])
     return complex_fields.ComplexConstitutivePlan(
-        side, fields.grid.shape, expansion, residency, targets, auxiliaries, sources,
+        side, fields.grid.shape, residency, targets, auxiliaries, sources,
         inverse_epsilon, coefficients,
-        complex_fields._constitutive_functions(side, expansion, contract_variants),
-        volumes)
+        complex_fields._constitutive_functions(side, contract_variants),
+        volumes, chunk_bounds=chunk_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -1727,39 +1495,37 @@ def _has_complex_fold(context: Any) -> bool:
 
 def _curl_arm_coverage(context: Any, slot: str) -> Coverage:
     return folded_complex_composition_curl_coverage(
-        context.fields, context.pml, slot, context.residency,
-        context.extra.get("folded_complex_probe"))
+        context.fields, context.pml, slot, context.residency)
 
 
 def _curl_arm_plan(context: Any, slot: str) -> Any:
     return plan_folded_complex_pml_curl(
         context.fields, context.pml, slot, context.residency,
-        context.contract_variants, context.extra.get("folded_complex_probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def _constitutive_arm_coverage(context: Any, slot: str) -> Coverage:
     return folded_complex_constitutive_coverage(
         context.fields, context.pml, _CONSTITUTIVE_SLOT_SIDES[slot],
-        context.residency, context.extra.get("folded_complex_probe"))
+        context.residency)
 
 
 def _constitutive_arm_plan(context: Any, slot: str) -> Any:
     return plan_folded_complex_constitutive(
         context.fields, context.pml, _CONSTITUTIVE_SLOT_SIDES[slot],
-        context.residency, context.contract_variants,
-        context.extra.get("folded_complex_probe"))
+        context.residency, context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def _fill_arm_coverage(context: Any, slot: str) -> Coverage:
     return folded_complex_fill_coverage(
-        context.fields, _FILL_SLOT_FAMILIES[slot], context.residency,
-        context.extra.get("folded_complex_probe"))
+        context.fields, _FILL_SLOT_FAMILIES[slot], context.residency)
 
 
 def _fill_arm_plan(context: Any, slot: str) -> Optional[FoldedComplexFillPlan]:
     return plan_folded_complex_fill(
         context.fields, _FILL_SLOT_FAMILIES[slot], slot, context.residency,
-        context.contract_variants, context.extra.get("folded_complex_probe"))
+        context.contract_variants)
 
 
 def register_arms() -> Tuple[Any, ...]:

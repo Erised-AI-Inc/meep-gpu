@@ -555,17 +555,25 @@ def test_gather_box_reads_the_device_under_a_hold():
         host_writes.unregister(residency)
 
 
-def test_the_subtract_door_forms_the_difference_word_for_word_on_both_sides():
-    """``host_writes.subtract`` == NumPy ``a[idx] -= v`` on every word, float32 and complex64.
+def _double_difference(words, real64, imag64=None):
+    """``float32(float64(f) - x)`` per word (complex64 per part): MEEP's deposit statement."""
+    if words.dtype == np.complex64:
+        parts = words.view(np.float32).reshape(-1, 2).astype(np.float64)
+        parts[:, 0] -= real64
+        parts[:, 1] -= imag64
+        return parts.astype(np.float32).reshape(-1).view(np.complex64)
+    return (words.astype(np.float64) - real64).astype(np.float32)
+
+
+def test_the_double_deposit_door_forms_the_difference_word_for_word_on_both_sides():
+    """``host_writes.subtract_double`` == MEEP's ``f -= real(A)`` on every word, both widths.
 
     Three states: DEVICE_OWNED (the device alone changes; a gather reads the
     difference back), CLEAN_BOTH (both sides move and stay equal), and nothing held
-    (plain NumPy). Signed zeros are in the data (``0 - 0``, ``-0 - 0``). SUBNORMAL
-    differences are deliberately NOT: the device flushes them to zero exactly as
-    every family kernel does (Metal fast math, no lever -- ``subnormal.py``), and the
-    engine reconciles that at the composition level by driving the host FPU
-    (``subnormal_policy._drive_host_fpu``); ``test_the_subtract_door_flushes_a_subnormal_
-    difference_like_the_kernels`` pins that behaviour by name.
+    (plain NumPy). Under a hold the residency's own door (``subtract_double_index``)
+    forms the difference ON THE DEVICE in software binary64 -- no gather, one
+    ``door_scatter_sub`` launch -- and every state stores the same words. Signed zeros
+    are in the data (``0 - 0``, ``-0 - 0``, ``-0 - (-0)``).
     """
     from meep_gpu import host_writes
     rng = np.random.default_rng(11)
@@ -574,24 +582,31 @@ def test_the_subtract_door_forms_the_difference_word_for_word_on_both_sides():
         if dtype is np.complex64:
             host = (host + 1j * rng.standard_normal(64).astype(np.float32)).astype(np.complex64)
         host[4] = dtype(1.25); host[9] = dtype(0.0); host[10] = dtype(-0.0)
-        reference = host.copy()
         idx = np.array([2, 4, 9, 10, 17], dtype=np.int64)
-        values = np.array([0.5, 0.75, 0.0, 0.0, -2.25], dtype=np.float32).astype(dtype)
+        real64 = np.array([0.5, 0.75, 0.0, -0.0, -2.25]) + 1e-12
+        real64[2:4] = (0.0, -0.0)
+        imag64 = np.array([0.125, -1.0, 0.0, -0.0, 3.0]) if dtype is np.complex64 else None
+        reference = host.copy()
         # nothing held: plain NumPy
-        plain = host.copy(); plain_ref = plain.copy()
-        host_writes.subtract(plain, idx, values); plain_ref[idx] -= values
-        np.testing.assert_array_equal(plain.view(np.uint32), plain_ref.view(np.uint32))
+        plain = host.copy()
+        host_writes.subtract_double(plain, idx, real64, imag64)
+        expected = reference.copy(); expected[idx] = _double_difference(reference[idx], real64, imag64)
+        np.testing.assert_array_equal(plain.view(np.uint32), expected.view(np.uint32))
         residency = Residency()
         residency.mirror("m", host, dtype=dtype)
         host_writes.register(residency)
         try:
             # CLEAN_BOTH: both sides move
-            host_writes.subtract(host, idx, values); reference[idx] -= values
+            host_writes.subtract_double(host, idx, real64, imag64)
+            reference[idx] = _double_difference(reference[idx], real64, imag64)
             np.testing.assert_array_equal(host.view(np.uint32), reference.view(np.uint32))
             assert residency.verify() == {}
             # DEVICE_OWNED: the device alone
             residency.arm_hold(["m"]); residency.sync_out(["m"])
-            host_writes.subtract(host, idx, values); reference[idx] -= values
+            gathers, launched = residency.sparse_gathers, residency.double_subtracts
+            host_writes.subtract_double(host, idx, real64, imag64)
+            reference[idx] = _double_difference(reference[idx], real64, imag64)
+            assert (residency.sparse_gathers, residency.double_subtracts) == (gathers, launched + 1)
             got = host_writes.gather(host, idx)
             np.testing.assert_array_equal(got.view(np.uint32), reference[idx].view(np.uint32))
             residency.flush(["m"])
@@ -600,26 +615,46 @@ def test_the_subtract_door_forms_the_difference_word_for_word_on_both_sides():
             host_writes.unregister(residency)
 
 
-def test_the_subtract_door_flushes_a_subnormal_difference_like_the_kernels():
-    """A subnormal difference reads +0 from the device door -- the family kernels' semantics.
+def test_the_double_deposit_under_a_hold_follows_the_host_fpu_mode():
+    """Under a hold the deposit's door reads the host's mode, so the host's mode decides.
 
-    Metal compiles with fast math and flushes denormals with no lever (``subnormal.py``);
-    the door is compiled the same way, so under a hold the deposit cells behave as the
-    kernels around them do, and the subnormal policy drives the host to match. This
-    test states that fact rather than hiding it: if the toolchain ever keeps denormals,
-    it fails and the policy module must be re-read.
+    For each host mode the held deposit stores exactly the word the array path stores
+    under that mode, from the same subnormal word and the same ``real(A)``: keeping, a
+    subnormal difference survives; flushing (FTZ and DAZ, as the subnormal policy drives
+    the host when a Metal composition holds the fields), the subnormal operand reads as
+    zero and the result is a zero (here ``-0``: ``0 - x`` for a positive ``x``). The
+    software binary64 door measures the mode at every call; the float32 device door it
+    replaced flushed whatever the host did.
     """
-    from meep_gpu import host_writes
-    host = np.zeros(16, np.float32); host[4] = np.float32(1e-38)
-    residency = Residency(); residency.mirror("m", host, dtype=np.float32)
-    residency.arm_hold(["m"]); residency.sync_out(["m"])
-    host_writes.register(residency)
-    try:
-        host_writes.subtract(host, np.array([4], dtype=np.int64), np.array([9.5e-39], dtype=np.float32))
-        got = host_writes.gather(host, np.array([4], dtype=np.int64))
-        assert got.view(np.uint32)[0] == 0, got  # flushed, as the kernels flush
-    finally:
-        host_writes.unregister(residency)
+    from meep_gpu import backends, host_writes, subnormal_policy
+    linear = np.array([4], dtype=np.int64)
+    x = np.array([float(np.float32(9.5e-39))])
+    results = {}
+    for flush in (False, True):
+        host = np.zeros(16, np.float32); host[4] = np.float32(1e-38)  # a subnormal word
+        plain = host.copy()
+        residency = Residency(); residency.mirror("m", host, dtype=np.float32)
+        residency.arm_hold(["m"]); residency.sync_out(["m"])
+        host_writes.register(residency)
+        flushing_before = backends.subnormals_flushed()
+        try:
+            if flush != flushing_before:
+                subnormal_policy._drive_host_fpu(flush)  # noqa: SLF001
+                if backends.subnormals_flushed() != flush:
+                    pytest.skip("this host's FPU mode cannot be driven")
+            host_writes.subtract_double(host, linear, x)
+            held = int(host_writes.gather(host, linear).view(np.uint32)[0])  # the device's word
+            host_writes.subtract_double(plain, linear, x)  # the array path, same mode
+            results[flush] = (held, int(plain.view(np.uint32)[4]))
+        finally:
+            if backends.subnormals_flushed() != flushing_before:
+                subnormal_policy._drive_host_fpu(flushing_before)  # noqa: SLF001
+            host_writes.unregister(residency)
+    for flush, (held, array_path) in results.items():
+        assert held == array_path, (flush, results)
+    keep = (np.float64(np.float32(1e-38)) - x[0]).astype(np.float32).view(np.uint32)
+    assert results[False][0] == int(keep) and results[False][0] & 0x7FFFFFFF != 0, results
+    assert results[True][0] & 0x7FFFFFFF == 0, results
 
 
 def test_sparse_doors_move_complex64_through_the_real_view():

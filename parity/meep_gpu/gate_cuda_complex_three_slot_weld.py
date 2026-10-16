@@ -59,8 +59,10 @@ Device text, through the launcher's ``kernel`` door: the two seam NULLS (D reloa
 from global instead of the register; E reloaded from global instead of the register
 -- a float32 word pair stored and reloaded is the identity on the bits, so both MUST
 be inert), the wrong drive (D fed to the recurrence instead of E: MUST diverge), the
-store landing on P^n, a bank lane swapped, the conductive tail reassociated, the
-mask dropped. Host: an unconjugated Bloch table, the plain tail on a conductive run,
+store landing on P^n, a bank lane swapped, the curl stencil regrouped to the previous
+package order (inverted, bit_parity_0_10 KERNELS.md section 7.1), the conductive tail
+reassociated, the mask dropped. Host: the B curl's connection table (conj(eikna), the
+word below the window) in place of the D curl's, the plain tail on a conductive run,
 and the three rotation defects of the certified launcher's loop beside a local copy
 with no defect (required inert).
 
@@ -258,7 +260,7 @@ class _CountingKernels:
         return False
 
 
-def without_the_recurrences(_arm, _conductive, _component, _count, _kinds,
+def without_the_recurrences(_conductive, _component, _count, _kinds,
                             code: str) -> str:
     """The emitted kernel with its ADE lines CUT and NOTHING ELSE TOUCHED.
 
@@ -278,7 +280,31 @@ def without_the_recurrences(_arm, _conductive, _component, _count, _kinds,
     return code[:code.index(marker)] + "}\n"
 
 
-def curl_and_constitutive_only(fields, grid, arm) -> Dict[str, Any]:
+#: The device copy of each distinct record, uploaded once (see :func:`device_record`).
+_DEVICE_RECORDS: Dict[Tuple[int, ...], Any] = {}
+
+
+def device_record(grid) -> Any:
+    """The chunk record a no-absorber launch binds as ``cb``, on the device.
+
+    The one-rank division of the unlayered grid (``gate_chunk_records.layer_record``
+    with no absorber): every lifted curl block reads its partner-presence word, which
+    picks MEEP's stencil form on an invariant axis, and no membership row exists
+    without a layer. The record is derived on the host from the grid at every call, so
+    no leg can bind another grid's; its DEVICE copy is uploaded once per distinct
+    record and reused, because the launch-structure leg steps every composition under a
+    CUDA graph capture, which forbids the allocation an upload makes (its warm pass,
+    run first on the same spec, uploads every record a capture binds).
+    """
+    from gate_chunk_records import layer_record  # noqa: PLC0415
+
+    words = tuple(int(word) for word in layer_record(grid, None))
+    if words not in _DEVICE_RECORDS:
+        _DEVICE_RECORDS[words] = cp.asarray(words, dtype=cp.int32)
+    return _DEVICE_RECORDS[words]
+
+
+def curl_and_constitutive_only(fields, grid) -> Dict[str, Any]:
     """The weld's three launches with the recurrences cut out of the device text.
 
     THE HOST ROTATION IS NOT PERFORMED EITHER, and driving the per-component launches
@@ -293,6 +319,7 @@ def curl_and_constitutive_only(fields, grid, arm) -> Dict[str, Any]:
     codes = complex_boundary_codes(grid)
     flags, values = bloch_phase_arguments(grid, True)
     dtdx = float(grid.dt / grid.dx)
+    record = device_record(grid)
     previous = weld.SOURCE_TRANSFORM
     weld.SOURCE_TRANSFORM = without_the_recurrences
     launches = 0
@@ -300,7 +327,8 @@ def curl_and_constitutive_only(fields, grid, arm) -> Dict[str, Any]:
         for target, _displacement, _stem, _count in weld._COMPONENTS:  # noqa: SLF001
             states = weld.component_specs(fields)[target]["states"]
             weld.launch_three_slot_component(
-                fields, arm, curl_arm, target, states, codes, flags, values, dtdx)
+                fields, curl_arm, target, states, codes, flags, values, dtdx,
+                chunk_bounds=record)
             launches += 1
     finally:
         weld.SOURCE_TRANSFORM = previous
@@ -308,7 +336,7 @@ def curl_and_constitutive_only(fields, grid, arm) -> Dict[str, Any]:
             "recurrences_in_the_launch": 0}
 
 
-def weld_step(fields, grid, arm, kernel=None, curl_arm=None,
+def weld_step(fields, grid, kernel=None, curl_arm=None,
               polarization: Optional[Callable[..., Any]] = None,
               phase_flags=None, phase_values=None) -> Dict[str, Any]:
     """ONE complete driver step with the weld at the ``step_D`` consult.
@@ -323,11 +351,12 @@ def weld_step(fields, grid, arm, kernel=None, curl_arm=None,
     report: Dict[str, Any] = {}
     for name in DRIVER_ORDER:
         if name == "step_D":
-            report = (curl_and_constitutive_only(fields, grid, arm)
+            report = (curl_and_constitutive_only(fields, grid)
                       if polarization is not None else
                       weld.run_three_slot_no_pml_complex(
-                          fields, grid, arm, curl_arm=curl_arm, kernel=kernel,
-                          phase_flags=phase_flags, phase_values=phase_values))
+                          fields, grid, curl_arm=curl_arm, kernel=kernel,
+                          phase_flags=phase_flags, phase_values=phase_values,
+                          chunk_bounds=device_record(grid)))
         elif name == "update_P" and polarization is not None:
             polarization(fields)
         elif name not in weld.REPLACES:
@@ -335,33 +364,35 @@ def weld_step(fields, grid, arm, kernel=None, curl_arm=None,
     return report
 
 
-def certified_singles_step(fields, grid, arm) -> Dict[str, Any]:
+def certified_singles_step(fields, grid) -> Dict[str, Any]:
     """The composition with no weld: the three certified singles."""
     launches = 0
     for name in DRIVER_ORDER:
         if name == "step_D":
-            certified.step_complex_no_pml_curl(fields, "step_D", arm, grid=grid)
+            certified.step_complex_no_pml_curl(fields, "step_D", grid=grid,
+                                               chunk_bounds=device_record(grid))
             launches += 1
         elif name == "update_E":
-            certified.update_E_complex_no_pml_stored(fields, arm)
+            certified.update_E_complex_no_pml_stored(fields)
             launches += 1
         elif name == "update_P":
-            launches += int(certified.update_P_complex_no_pml(fields, arm))
+            launches += int(certified.update_P_complex_no_pml(fields))
         else:
             run_pass(name, fields, None)
     return {"launches": launches}
 
 
-def step_d_plus_e_to_p_weld(fields, grid, arm) -> Dict[str, Any]:
+def step_d_plus_e_to_p_weld(fields, grid) -> Dict[str, Any]:
     """What the composer installed on these rows until this product landed."""
     launches = 0
     for name in DRIVER_ORDER:
         if name == "step_D":
-            certified.step_complex_no_pml_curl(fields, "step_D", arm, grid=grid)
+            certified.step_complex_no_pml_curl(fields, "step_D", grid=grid,
+                                               chunk_bounds=device_record(grid))
             launches += 1
         elif name == "update_E":
             launches += int(ep.run_complex_no_pml_fused_polarization_pair(
-                fields, None, arm)["launches"])
+                fields, None)["launches"])
         elif name == "update_P":
             continue
         else:
@@ -369,21 +400,21 @@ def step_d_plus_e_to_p_weld(fields, grid, arm) -> Dict[str, Any]:
     return {"launches": launches}
 
 
-def d_to_e_weld_plus_ade(fields, grid, arm) -> Dict[str, Any]:
+def d_to_e_weld_plus_ade(fields, grid) -> Dict[str, Any]:
     """The other two-slot arrangement: the D->E weld, then the certified ADE."""
     launches = 0
     for name in DRIVER_ORDER:
         if name == "step_D":
             report = de.run_no_pml_complex_fused_electric_pair(
-                fields, grid, None, float(grid.dt / grid.dx), arm, sources=(),
-                license=LICENCE["verdict"], subnormal_policy=POLICY["name"])
+                fields, grid, None, float(grid.dt / grid.dx), sources=(),
+                chunk_bounds=device_record(grid))
             if not report.get("launched"):
                 raise RuntimeError(f"the D->E weld refused: {report.get('reason')}")
             launches += 1
         elif name == "update_E":
             continue
         elif name == "update_P":
-            launches += int(certified.update_P_complex_no_pml(fields, arm))
+            launches += int(certified.update_P_complex_no_pml(fields))
         else:
             run_pass(name, fields, None)
     return {"launches": launches}
@@ -413,17 +444,17 @@ def leg_driver_order() -> Dict[str, Any]:
                 "so both fills and the wall clear return at their first line")}
 
 
-def leg_lift(arm) -> Dict[str, Any]:
+def leg_lift() -> Dict[str, Any]:
     """The emitted text against the certified bodies, re-asked on the device host."""
     sources = weld.device_sources()
     checks: List[Dict[str, Any]] = []
     for conductive in (False, True):
         for component in range(3):
-            header, block = weld.certified_curl_block(arm, conductive, component)
-            body = de.certified_curl_body(arm, conductive)
-            source = weld.three_slot_no_pml_complex_source(arm, conductive, component,
+            header, block = weld.certified_curl_block(conductive, component)
+            body = de.certified_curl_body(conductive)
+            source = weld.three_slot_no_pml_complex_source(conductive, component,
                                                            2, (True, False))
-            twin = ep.fused_polarization_pair_no_pml_complex_source(arm, component, 2,
+            twin = ep.fused_polarization_pair_no_pml_complex_source(component, 2,
                                                                    (True, False))
             checks.append({
                 "conductive": conductive, "component": component,
@@ -449,11 +480,9 @@ def leg_lift(arm) -> Dict[str, Any]:
             "lift_edits": [row["line"] for row in weld.LIFT_EDITS]}
 
 
-def leg_refusal(arm) -> Dict[str, Any]:
+def leg_refusal() -> Dict[str, Any]:
     """What the weld refuses BY NAME, the admitted control, and who takes the slots."""
     from meep_gpu.cuda_kernels import arms  # noqa: PLC0415
-    from meep_gpu.cuda_kernels.registry import (LICENSE_COMPLEX,  # noqa: PLC0415
-                                                LICENSE_COMPLEX_NO_PML)
     from meep_gpu.fields import Fields  # noqa: PLC0415
     from meep_gpu.grid import Grid  # noqa: PLC0415
     from meep_gpu.pml import PML  # noqa: PLC0415
@@ -462,7 +491,7 @@ def leg_refusal(arm) -> Dict[str, Any]:
 
     def record(name, expectation, fields, pml, grid, sources=()):
         covered, reason = weld.covers_three_slot_complex_no_pml_dispersive_weld(
-            fields, pml, grid, sources, LICENCE["verdict"], POLICY["name"])
+            fields, pml, grid, sources)
         checks.append({"case": name, "expected": expectation,
                        "covered": bool(covered), "reason": str(reason),
                        "passed": (not covered) if expectation == "refused"
@@ -506,10 +535,7 @@ def leg_refusal(arm) -> Dict[str, Any]:
            PML(grid=layered_grid, thickness=2), layered_grid, ())
 
     # THE ARBITRATION, THROUGH THE SHIPPED COMPOSER.
-    plan = arms.plan_step(live, None, live_grid,
-                          licenses={LICENSE_COMPLEX_NO_PML: LICENCE["verdict"],
-                                    LICENSE_COMPLEX: LICENCE["verdict"]},
-                          subnormal_policy=POLICY["name"], sources=(), fuse=True)
+    plan = arms.plan_step(live, None, live_grid, sources=(), fuse=True)
     arbitration = {
         "selected": {slot: plan.selected.get(slot)
                      for slot in ("step_D", "update_E", "update_P")},
@@ -534,7 +560,7 @@ def leg_refusal(arm) -> Dict[str, Any]:
                 c["expected"] == "covered" and c["passed"] for c in checks)}
 
 
-def run_case(spec: Dict[str, Any], value_class: str, steps: int, arm,
+def run_case(spec: Dict[str, Any], value_class: str, steps: int,
              kernel=None, curl_arm=None, polarization=None, phase_override=None,
              label_suffix: str = "", references: Sequence[str] = ("array",)
              ) -> Dict[str, Any]:
@@ -554,7 +580,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, arm,
                            "operand_census": operand_census(seeded),
                            "references": list(references)}
     covered, reason = weld.covers_three_slot_complex_no_pml_dispersive_weld(
-        actual, None, grid, (), LICENCE["verdict"], POLICY["name"])
+        actual, None, grid, ())
     out["predicate"] = {"covered": bool(covered), "reason": str(reason)}
     if not covered:
         out.update({"passed": False,
@@ -574,13 +600,13 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, arm,
         array_step(reference)
         for name, (engine, engine_grid) in others.items():
             if name == "certified_singles":
-                certified_singles_step(engine, engine_grid, arm)
+                certified_singles_step(engine, engine_grid)
             elif name == "step_d_plus_e_to_p_weld":
-                step_d_plus_e_to_p_weld(engine, engine_grid, arm)
+                step_d_plus_e_to_p_weld(engine, engine_grid)
             elif name == "d_to_e_weld_plus_ade":
-                d_to_e_weld_plus_ade(engine, engine_grid, arm)
+                d_to_e_weld_plus_ade(engine, engine_grid)
         with _CountingKernels(weld) as counter:
-            report = weld_step(actual, grid, arm, kernel=kernel, curl_arm=curl_arm,
+            report = weld_step(actual, grid, kernel=kernel, curl_arm=curl_arm,
                                polarization=polarization, phase_flags=phase_flags,
                                phase_values=phase_values)
         weld_launches.append(int(report.get("launches", -1)))
@@ -626,7 +652,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, arm,
     return out
 
 
-def leg_launch_structure(spec: Dict[str, Any], steps: int, arm) -> Dict[str, Any]:
+def leg_launch_structure(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     """FIVE compositions from one seed, all identical, counted by two instruments."""
     from gate_cuda_three_slot_weld import GraphNodeCounter  # noqa: PLC0415
 
@@ -636,10 +662,10 @@ def leg_launch_structure(spec: Dict[str, Any], steps: int, arm) -> Dict[str, Any
         "d_to_e_weld_plus_ade", "three_slot_weld")}
     steppers = {
         "array_path": lambda f, g: array_step(f),
-        "certified_singles": lambda f, g: certified_singles_step(f, g, arm),
-        "step_d_plus_e_to_p_weld": lambda f, g: step_d_plus_e_to_p_weld(f, g, arm),
-        "d_to_e_weld_plus_ade": lambda f, g: d_to_e_weld_plus_ade(f, g, arm),
-        "three_slot_weld": lambda f, g: weld_step(f, g, arm),
+        "certified_singles": certified_singles_step,
+        "step_d_plus_e_to_p_weld": step_d_plus_e_to_p_weld,
+        "d_to_e_weld_plus_ade": d_to_e_weld_plus_ade,
+        "three_slot_weld": weld_step,
     }
     # WARM every composition on a throwaway engine first: capture forbids allocation.
     for name, stepper in steppers.items():
@@ -690,7 +716,7 @@ def leg_launch_structure(spec: Dict[str, Any], steps: int, arm) -> Dict[str, Any
                         f"reduces the whole step against {reduces}")}
 
 
-def leg_seam_order(spec: Dict[str, Any], steps: int, arm) -> Dict[str, Any]:
+def leg_seam_order(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     """The seam order measured from BOTH sides (module docstring)."""
     rows: List[Dict[str, Any]] = []
 
@@ -700,8 +726,8 @@ def leg_seam_order(spec: Dict[str, Any], steps: int, arm) -> Dict[str, Any]:
     #     is not performed; the certified ADE singles then advance P and rotate at the
     #     update_P consult. Cutting at the ``component_specs`` seam instead would drop
     #     the poles out of the constitutive and measure nothing about the seam order.
-    case = run_case(spec, "uniform", steps, arm,
-                    polarization=lambda f: certified.update_P_complex_no_pml(f, arm),
+    case = run_case(spec, "uniform", steps,
+                    polarization=lambda f: certified.update_P_complex_no_pml(f),
                     label_suffix="|p_at_update_P_consult")
     rows.append({"mode": "p_at_update_P_consult", "must_diverge": False,
                  "bit_identical": case["bit_identical"]["array"],
@@ -723,7 +749,7 @@ def leg_seam_order(spec: Dict[str, Any], steps: int, arm) -> Dict[str, Any]:
     class _Electric:
         field_type = "D"
     refused = not weld.covers_three_slot_complex_no_pml_dispersive_weld(
-        actual, None, grid, (_Electric(),), LICENCE["verdict"], POLICY["name"])[0]
+        actual, None, grid, (_Electric(),))[0]
     diverged_at = None
     for step in range(1, min(steps, 12) + 1):
         for name in DRIVER_ORDER:
@@ -732,7 +758,8 @@ def leg_seam_order(spec: Dict[str, Any], steps: int, arm) -> Dict[str, Any]:
                 inject(reference)
         for name in DRIVER_ORDER:
             if name == "step_D":
-                weld.run_three_slot_no_pml_complex(actual, grid, arm)
+                weld.run_three_slot_no_pml_complex(actual, grid,
+                                                   chunk_bounds=device_record(grid))
                 inject(actual)  # the driver's injection point, now AFTER the launch
             elif name not in weld.REPLACES:
                 run_pass(name, actual, None)
@@ -780,6 +807,15 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "new": "cf_load({s}0, idx), cf_load(p_prev_1, idx)",
      "expect": "caught", "min_poles": 2,
      "why": "pole 1's recurrence reads pole 0's P^n."},
+    {"name": "curl_stencil_regrouped_to_the_old_package_order",
+     "old": "cf_sub(cf_add(cf_sub(sf, f1), f2), ss)",
+     "new": "cf_add(cf_sub(sf, f1), cf_sub(f2, ss))",
+     "expect": "caught",
+     "why": "INVERTED (bit_parity_0_10 KERNELS.md section 7.1): the lifted curl "
+            "stencil takes the previous package grouping (g1s - g1) + (g2 - g2s) where "
+            "MEEP brackets ((g1s - g1) + g2) - g2s. Every mutation fixture is "
+            "three-dimensional, so every component has both partners and the "
+            "bracket is live on each launch."},
     {"name": "conductive_tail_reassociated",
      "old": "    cf t = mul_field_left(cf_load(f, idx), condfac);\n    t = cf_sub(t, curl);\n",
      "new": "    cf t = cf_sub(cf_load(f, idx), curl);\n    t = mul_field_left(t, condfac);\n",
@@ -797,7 +833,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
 )
 
 
-def leg_mutations(spec: Dict[str, Any], steps: int, arm) -> List[Dict[str, Any]]:
+def leg_mutations(spec: Dict[str, Any], steps: int) -> List[Dict[str, Any]]:
     legs: List[Dict[str, Any]] = []
     probe_fields, probe_grid, _ = build(spec, "uniform", case_seed("mut|" + spec["label"]))
     curl_arm = de.no_pml_complex_curl_arm(probe_fields, "step_D")
@@ -821,7 +857,7 @@ def leg_mutations(spec: Dict[str, Any], steps: int, arm) -> List[Dict[str, Any]]
                 needle = needle[component]
             old = needle.format(c=component, s=stem)
             new = mutation["new"].format(c=component, s=stem)
-            source = weld.three_slot_no_pml_complex_source(arm, conductive, component,
+            source = weld.three_slot_no_pml_complex_source(conductive, component,
                                                            count, kinds_c)
             hits = source.count(old)
             if hits == 0 and not (mutation["name"] in ("bank_lane_swapped",
@@ -845,15 +881,15 @@ def leg_mutations(spec: Dict[str, Any], steps: int, arm) -> List[Dict[str, Any]]
             continue
         original = weld._get_kernel  # noqa: SLF001
 
-        def patched(arm_value, conductive_value, component_index, count, kinds_value,
+        def patched(conductive_value, component_index, count, kinds_value,
                     _table=compiled):
             kernel = _table.get((component_index, count, tuple(kinds_value)))
             return kernel if kernel is not None else original(
-                arm_value, conductive_value, component_index, count, kinds_value)
+                conductive_value, component_index, count, kinds_value)
 
         weld._get_kernel = patched  # noqa: SLF001
         try:
-            case = run_case(spec, "uniform", steps, arm,
+            case = run_case(spec, "uniform", steps,
                             label_suffix=f"|{mutation['name']}")
         finally:
             weld._get_kernel = original  # noqa: SLF001
@@ -870,23 +906,25 @@ def leg_mutations(spec: Dict[str, Any], steps: int, arm) -> List[Dict[str, Any]]
     return legs
 
 
-def _phase_forward(grid):
+def _b_curl_connection(grid):
+    """The B curl's connection table, conj(eikna): the D curl reads eikna above the
+    stored window, so this is a wrong phase on every phased row and a copy elsewhere."""
     from meep_gpu.cuda_kernels.complex_pml_kernels import bloch_phase_arguments  # noqa: PLC0415
 
     return bloch_phase_arguments(grid, False)
 
 
-def leg_host_mutations(spec: Dict[str, Any], steps: int, arm) -> List[Dict[str, Any]]:
+def leg_host_mutations(spec: Dict[str, Any], steps: int) -> List[Dict[str, Any]]:
     legs: List[Dict[str, Any]] = []
     fields, _grid, _ = build(spec, "uniform", case_seed("host|" + spec["label"]))
     conductive = de.no_pml_complex_curl_arm(fields, "step_D") == "conductive"
     phased = any(float(k) != 0.0 for k in spec["k_point"])
-    rows = [("unconjugated_phase_table", dict(phase_override=_phase_forward),
+    rows = [("b_curl_connection_table", dict(phase_override=_b_curl_connection),
              "caught" if phased else "inert")]
     if conductive:
         rows.append(("plain_tail_on_a_conductive_run", dict(curl_arm="plain"), "caught"))
     for name, kwargs, expect in rows:
-        case = run_case(spec, "uniform", steps, arm, label_suffix=f"|{name}", **kwargs)
+        case = run_case(spec, "uniform", steps, label_suffix=f"|{name}", **kwargs)
         diverged = not case.get("bit_identical", {}).get("array", False)
         passed = diverged if expect == "caught" else (
             not diverged and case.get("steps_run") == steps)
@@ -900,7 +938,7 @@ def leg_host_mutations(spec: Dict[str, Any], steps: int, arm) -> List[Dict[str, 
 def _loop_copy(defect: Optional[str]):
     """A LOCAL copy of the shipped component loop with one named rotation defect."""
 
-    def run(fields, grid, arm):
+    def run(fields, grid):
         from meep_gpu.cuda_kernels.complex_pml_kernels import (  # noqa: PLC0415
             bloch_phase_arguments, complex_boundary_codes)
 
@@ -908,6 +946,7 @@ def _loop_copy(defect: Optional[str]):
         codes = complex_boundary_codes(grid)
         flags, values = bloch_phase_arguments(grid, True)
         dtdx = float(grid.dt / grid.dx)
+        record = device_record(grid)
         launches = 0
         pending: List[Tuple[str, Any]] = []
         for order, (target, _d, _s, _c) in enumerate(weld._COMPONENTS):  # noqa: SLF001
@@ -916,8 +955,9 @@ def _loop_copy(defect: Optional[str]):
                 for state in states:
                     p, p_prev, scratch = state.P[target], state.P_prev[target], state._scratch  # noqa: SLF001
                     state.P[target], state.P_prev[target], state._scratch = scratch, p, p_prev  # noqa: SLF001
-            weld.launch_three_slot_component(fields, arm, curl_arm, target, states,
-                                             codes, flags, values, dtdx)
+            weld.launch_three_slot_component(fields, curl_arm, target, states,
+                                             codes, flags, values, dtdx,
+                                             chunk_bounds=record)
             launches += 1
             if defect == "rotate_before_launch":
                 continue
@@ -945,17 +985,17 @@ ROTATION_LEGS: Tuple[Tuple[str, Optional[str], str], ...] = (
 )
 
 
-def leg_rotation(spec: Dict[str, Any], steps: int, arm) -> List[Dict[str, Any]]:
+def leg_rotation(spec: Dict[str, Any], steps: int) -> List[Dict[str, Any]]:
     legs: List[Dict[str, Any]] = []
     original = weld.run_three_slot_no_pml_complex
     for name, defect, expect in ROTATION_LEGS:
         copy = _loop_copy(defect)
 
-        def substitute(fields, grid, expansion, _copy=copy, **_kwargs):
-            return _copy(fields, grid, expansion)
+        def substitute(fields, grid, _copy=copy, **_kwargs):
+            return _copy(fields, grid)
         weld.run_three_slot_no_pml_complex = substitute
         try:
-            case = run_case(spec, "uniform", steps, arm, label_suffix=f"|{name}")
+            case = run_case(spec, "uniform", steps, label_suffix=f"|{name}")
         finally:
             weld.run_three_slot_no_pml_complex = original
         diverged = not case.get("bit_identical", {}).get("array", False)
@@ -972,7 +1012,6 @@ def leg_rotation(spec: Dict[str, Any], steps: int, arm) -> List[Dict[str, Any]]:
 # Driving
 # ---------------------------------------------------------------------------
 
-LICENCE: Dict[str, Any] = {"verdict": None}
 POLICY: Dict[str, Any] = {"name": None}
 
 #: The files this gate BINDS a verdict to.
@@ -1058,7 +1097,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--steps", type=int, default=STEPS)
     parser.add_argument("--subnormal-policy", choices=("keep", "flush"), required=True)
     parser.add_argument("--import-meep-for-host-policy", action="store_true")
-    parser.add_argument("--expansion-probe", default=None)
     parser.add_argument("--skip-mutations", action="store_true")
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
@@ -1102,18 +1140,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         results["environment"] = probe.device_info()
     results["subnormal_policy_stamp"] = probe.subnormal_policy_stamp(_REPO_API)
 
-    licence = ep_gate.sibling.load_licence(args.subnormal_policy, args.expansion_probe)
-    results["licence"] = {key: licence.get(key) for key in
-                          ("arm", "record", "record_sha256", "policy_reasons",
-                           "refusals", "basis")}
-    LICENCE["verdict"] = licence
-    usable = bool(licence.get("arm") and not licence.get("refusals")
-                  and not licence.get("policy_reasons"))
-    arm = licence.get("arm") or "NAIVE"
-
     results["driver_order"] = leg_driver_order()
     log(f"driver order: {'PASS' if results['driver_order']['passed'] else 'FAIL'}")
-    results["lift"] = leg_lift(arm)
+    results["lift"] = leg_lift()
     log(f"lift: {'PASS' if results['lift']['passed'] else 'FAIL'} "
         f"specializations={results['lift']['specializations']}")
     save(results, args.out)
@@ -1122,14 +1151,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                               "why": "CuPy is absent; only the source legs ran"}
         save(results, args.out)
         return 1
-    if not usable:
-        results["verdict"] = {"released": False,
-                              "why": f"the expansion licence is unusable: "
-                                     f"{licence.get('policy_reasons') or licence.get('refusals')}"}
-        save(results, args.out)
-        return 1
 
-    results["refusal"] = leg_refusal(arm)
+    results["refusal"] = leg_refusal()
     log(f"refusal: {'PASS' if results['refusal']['passed'] else 'FAIL'} "
         f"arbitration={results['refusal']['arbitration']['selected']}")
     save(results, args.out)
@@ -1142,7 +1165,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["cases"] = cases
     for spec in specs:
         for value_class in VALUE_CLASSES:
-            case = run_case(spec, value_class, args.steps, arm, references=references)
+            case = run_case(spec, value_class, args.steps, references=references)
             cases.append(case)
             log(f"  case {case['label']}: {'PASS' if case.get('passed') else 'FAIL'} "
                 f"steps={case.get('steps_run')} identical={case.get('bit_identical')} "
@@ -1153,7 +1176,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     structure: List[Dict[str, Any]] = []
     results["launch_structure"] = structure
     for spec in [s for s in specs if s["label"] in LAUNCH_STRUCTURE_LABELS]:
-        leg = leg_launch_structure(spec, min(args.steps, 20), arm)
+        leg = leg_launch_structure(spec, min(args.steps, 20))
         structure.append(leg)
         log(f"  launches {spec['label']}: {'PASS' if leg['passed'] else 'FAIL'} "
             f"{leg['cuda_graph_kernel_launches_whole_step']}")
@@ -1162,7 +1185,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     order: List[Dict[str, Any]] = []
     results["seam_order"] = order
     for spec in [s for s in specs if s["label"] in REDUCED_LABELS]:
-        leg = leg_seam_order(spec, min(args.steps, 20), arm)
+        leg = leg_seam_order(spec, min(args.steps, 20))
         order.append(leg)
         log(f"  seam order {spec['label']}: {'PASS' if leg['passed'] else 'FAIL'} "
             f"{[(r['mode'], r['passed']) for r in leg['rows']]}")
@@ -1172,12 +1195,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         mutations: List[Dict[str, Any]] = []
         host: List[Dict[str, Any]] = []
         for spec in [s for s in specs if s["label"] in MUTATION_LABELS]:
-            mutations.extend(leg_mutations(spec, min(args.steps, 12), arm))
-            host.extend(leg_host_mutations(spec, min(args.steps, 12), arm))
+            mutations.extend(leg_mutations(spec, min(args.steps, 12)))
+            host.extend(leg_host_mutations(spec, min(args.steps, 12)))
             results["mutations"] = mutations
             results["host_mutations"] = host
             save(results, args.out)
-        results["rotation"] = leg_rotation(SPECS[1], min(args.steps, 12), arm)
+        results["rotation"] = leg_rotation(SPECS[1], min(args.steps, 12))
         save(results, args.out)
     else:
         results["mutations"] = []

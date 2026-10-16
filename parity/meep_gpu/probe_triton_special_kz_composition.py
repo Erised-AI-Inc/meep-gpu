@@ -51,10 +51,7 @@ launched exactly once per complete step.
 SUBNORMAL POLICY. This probe runs UNDER THE STRIPPED IEEE-KEEP POLICY — the
 ship configuration — installed via ``gate_triton_complex.install_ftz_strip``
 BEFORE ``guard_kernel_compilation`` so the guard wraps the strip and both
-apply. A probe artifact handed in with ``--probe-artifact`` must certify that
-same policy and carry the EXTENDED pattern set (it feeds
-``special_kz.beta_expansion_from_probe``); every claim states the policy it
-was cut under.
+apply; every claim states the policy it was cut under.
 
 Usage (the GPU host, one clear device; the cache dir must carry the policy token)::
 
@@ -71,7 +68,6 @@ says in so many words that the Triton legs were skipped.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import time
@@ -87,7 +83,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 # The policy machinery, atomic writer and seeding live in the complex gate;
-# the beta expansion measurement and provenance live in the beta gate.
+# the provenance and the beta seeding live in the beta gate.
 import gate_triton_complex as gate  # noqa: E402
 import gate_triton_special_kz as beta_gate  # noqa: E402
 
@@ -197,7 +193,7 @@ def compare(cp, left, right) -> Dict[str, Any]:
             "total_floats": int(a.size)}
 
 
-def build_plans(driver, record, complex_storage: bool,
+def build_plans(driver, complex_storage: bool,
                 lorentz_pole: bool) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """The four sub-step plans (or three for the dispersion case), plus the
     expected refusals recorded rather than patched around."""
@@ -207,13 +203,13 @@ def build_plans(driver, record, complex_storage: bool,
     if complex_storage:
         plans = {
             "step_B": special_kz.plan_beta_bloch_pml_curl(
-                driver.fields, driver.pml, "step_B", probe=record),
+                driver.fields, driver.pml, "step_B"),
             "update_H": special_kz.plan_beta_run_complex_constitutive(
-                driver.fields, driver.pml, "H", probe=record),
+                driver.fields, driver.pml, "H"),
             "step_D": special_kz.plan_beta_bloch_pml_curl(
-                driver.fields, driver.pml, "step_D", probe=record),
+                driver.fields, driver.pml, "step_D"),
             "update_E": special_kz.plan_beta_run_complex_constitutive(
-                driver.fields, driver.pml, "E", probe=record),
+                driver.fields, driver.pml, "E"),
         }
     else:
         plans = {
@@ -275,7 +271,7 @@ def install(driver_module, plans: Dict[str, Any], owner):
                     for name, function in originals.items()]
 
 
-def run_case(cp, record, name, cell, resolution, boundaries, k_point, beta,
+def run_case(cp, name, cell, resolution, boundaries, k_point, beta,
              courant, pml_spec, source_specs, steps, complex_storage,
              lorentz_pole, _marquee, steps_override=None) -> Dict[str, Any]:
     from meep_gpu import driver as driver_module  # noqa: PLC0415
@@ -290,7 +286,7 @@ def run_case(cp, record, name, cell, resolution, boundaries, k_point, beta,
     control = build(()) if source_specs else None
     undo = lambda: None  # noqa: E731
     try:
-        plans, expected_refusals = build_plans(candidate, record,
+        plans, expected_refusals = build_plans(candidate,
                                                complex_storage, lorentz_pole)
         missing = REQUIRED_STATE - set(state(candidate))
         if missing:
@@ -380,7 +376,7 @@ def run_case(cp, record, name, cell, resolution, boundaries, k_point, beta,
         cp.get_default_memory_pool().free_all_blocks()
 
 
-def run_armed_mutation(cp, record) -> Dict[str, Any]:
+def run_armed_mutation(cp) -> Dict[str, Any]:
     """c2 with the step_D beta coefficient built for the WRONG side (the ±i
     swap) — MUST diverge within the budget, launches counted."""
     from meep_gpu import driver as driver_module  # noqa: PLC0415
@@ -397,16 +393,15 @@ def run_armed_mutation(cp, record) -> Dict[str, Any]:
     candidate = build()
     undo = lambda: None  # noqa: E731
     try:
-        plans, _refusals = build_plans(candidate, record, complex_storage,
+        plans, _refusals = build_plans(candidate, complex_storage,
                                        lorentz_pole)
         grid = candidate.fields.grid
-        # The wrong side's words: magnetic=True on the D sub-step (+1j where
-        # the transcription demands -1j) — stepping.py:798-799 inverted.
+        # The wrong side's words: magnetic=True on the D sub-step (the +i quarter
+        # turn's words where the transcription demands the -i turn's negated ones).
         wrong_words = special_kz.beta_curl_coefficients(
             grid.beta, grid.dt, magnetic=True, complex_storage=True)
         mutated = plans["step_D"]
-        mutated.beta_words = tuple(tuple(float(w) for w in pair)
-                                   for pair in wrong_words)
+        mutated.beta_words = tuple(float(word) for word in wrong_words)
         counters = {slot: PlanCounter(plan) for slot, plan in plans.items()}
         counter = counters["step_D"]  # the armed slot
         undo = install(driver_module, counters, candidate.fields)
@@ -551,9 +546,6 @@ def environment(cp) -> Dict[str, Any]:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--probe-artifact", default=None,
-                        help="an existing EXTENDED expansion probe JSON; "
-                             "measured in-process when absent")
     parser.add_argument("--self-check", action="store_true",
                         help="laptop mode: build the cases on NumPy, no CUDA")
     args = parser.parse_args(argv)
@@ -571,7 +563,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 75
 
     from meep_gpu import backends  # noqa: PLC0415
-    from meep_gpu.triton_kernels import special_kz  # noqa: PLC0415
 
     # Strip FIRST, guard second (the demonstrated composition order).
     gate.install_ftz_strip()
@@ -580,18 +571,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     os.makedirs(out_dir, exist_ok=True)
     beta_gate.write_provenance(out_dir)
 
-    if args.probe_artifact:
-        with open(args.probe_artifact, "r", encoding="utf-8") as handle:
-            record = json.load(handle)
-        policy_problems = gate.probe_record_policy_reasons(record)
-    else:
-        record = beta_gate.measure_beta_expansion_record(cp, "cupy")
-        save(record, os.path.join(out_dir, "probe.json"))
-        policy_problems = gate.ftz_strip_license_reasons()
+    policy_problems = gate.ftz_strip_license_reasons()
     if policy_problems:
         payload = {"environment": environment(cp),
                    "subnormal_policy": gate.policy_stamp("cupy"),
-                   "expansion_probe": record,
                    "summary": {"status": "REFUSED",
                                "certified_under_subnormal_policy": None,
                                "reason": "subnormal policy: "
@@ -599,37 +582,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         save(payload, args.out)
         log(f"SUBNORMAL POLICY REFUSAL: {policy_problems}")
         return 1
-    # THE VERDICT, not the boolean. 'measured' against 'environment_default' is
-    # the difference between this run having discriminated the arm and having
-    # inherited it, and ``non_discriminating`` names the patterns whose MEASURED
-    # blindness took them out of the agreement test — what a reader needs to see
-    # what did and did not contribute. Written on both paths, refusal included,
-    # so a refusal carries its own reasons rather than one paraphrase of three.
-    expansion_verdict = special_kz.beta_expansion_license(record)
-    if expansion_verdict["expansion"] is None:
-        payload = {"environment": environment(cp),
-                   "subnormal_policy": gate.policy_stamp("cupy"),
-                   "expansion_probe": record,
-                   "expansion_license": expansion_verdict,
-                   "summary": {"status": "REFUSED",
-                               "reason": "the extended expansion probe "
-                                         "licenses no single constexpr; the "
-                                         "complex beta kernel may not launch — "
-                                         + "; ".join(
-                                             expansion_verdict["refusals"])}}
-        save(payload, args.out)
-        log(f"EXPANSION REFUSAL: {record.get('patterns')} "
-            f"-> {expansion_verdict['refusals']}")
-        return 1
-    log(f"[expansion] arm={expansion_verdict['arm']} "
-        f"basis={expansion_verdict['basis']} discriminating="
-        f"{sorted(expansion_verdict['discriminating'])} non_discriminating="
-        f"{expansion_verdict['non_discriminating']}")
-
     payload: Dict[str, Any] = {
         "environment": environment(cp),
-        "expansion_patterns": record["patterns"],
-        "expansion_license": expansion_verdict,
         "subnormal_policy": gate.policy_stamp("cupy"),  # refreshed at the end
         "step_budget": {case[0]: case[9] for case in CASES},
         "core_step_budget": CORE_BUDGET,
@@ -643,17 +597,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     for case in CASES:
         log(f"starting {case[0]}: beta={case[5]!r} k={case[4]} pml={case[7]} "
             f"sources={[d['component'] for d in case[8]]}")
-        payload["cases"].append(run_case(cp, record, *case))
+        payload["cases"].append(run_case(cp, *case))
         save(payload, args.out)
     for case in CASES:
         if not case[12]:
             continue
         log(f"starting MARQUEE long leg {case[0]}: {MARQUEE_STEPS} steps")
-        row = run_case(cp, record, *case, steps_override=MARQUEE_STEPS)
+        row = run_case(cp, *case, steps_override=MARQUEE_STEPS)
         row["case"] = row["case"] + "_long"
         payload["cases"].append(row)
         save(payload, args.out)
-    payload["armed_mutation"] = run_armed_mutation(cp, record)
+    payload["armed_mutation"] = run_armed_mutation(cp)
     save(payload, args.out)
 
     payload["subnormal_policy"] = gate.policy_stamp("cupy")

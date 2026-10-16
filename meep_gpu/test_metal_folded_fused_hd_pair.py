@@ -706,10 +706,43 @@ def test_a_keep_policy_run_is_refused_by_name_rather_than_run(monkeypatch):
     assert any("keep" in reason for reason in verdict.reasons), verdict.reasons
 
 
+class _ForeignStandingWithdraw:
+    """A source class from outside this package that brings an integrated electric
+    ``withdraw`` of its own. No engine source stands one any more (an integrated
+    source enters through ``f_minus_p``; ``withdraw_hoist``), and the predicate still
+    refuses a class that does."""
+
+    field_type = "D"
+    component = "Ez"
+    is_integrated = True
+    _n_source_points = 3
+    _applied_dipole = 0j
+
+    def withdraw(self, fields):  # never called: a predicate reads a source, it does not run it
+        raise AssertionError("a coverage predicate called a source's withdraw")
+
+
 @needs_mps
-def test_a_standing_electric_withdraw_is_refused_by_name_while_the_flag_is_false(
+def test_a_foreign_standing_withdraw_is_refused_by_name_while_the_flag_is_false(
         flush_policy):
-    """3 of the cell's 78 rows, and the refusal names the flag that would lift it."""
+    """A source class that brings its own ``withdraw`` is refused, naming the flag.
+
+    The cell's 3 rows this predicate once refused carried the engine's integrated
+    electric sources; those now stand nothing in the seam (the test below)."""
+    fields, pml = _covered_case()
+    verdict = folded.metal_folded_fused_hd_pair_coverage(
+        fields, pml, (_ForeignStandingWithdraw(),), _Residency())
+    assert not verdict.covered
+    assert any("standing integrated" in reason for reason in verdict.reasons), verdict.reasons
+    assert any("HOISTS_THE_WITHDRAW = False" in reason
+               for reason in verdict.reasons), verdict.reasons
+
+
+@needs_mps
+def test_an_integrated_electric_source_stands_no_withdraw_in_the_seam(flush_policy):
+    """An engine integrated source enters at the constitutive update through
+    ``f_minus_p`` (``sources.f_minus_p_begin``), so nothing stands between the two
+    consults this product spans and the predicate has no withdraw to refuse."""
     from meep_gpu.sources import GaussianEnvelope, VolumeSource  # noqa: PLC0415
 
     fields, pml = _covered_case()
@@ -717,11 +750,12 @@ def test_a_standing_electric_withdraw_is_refused_by_name_while_the_flag_is_false
                           center=(0.15, 0.1, 0.05), size=(0.0, 0.0, 0.0),
                           envelope=GaussianEnvelope(frequency=1.0, fwidth=0.5,
                                                     is_integrated=True))
+    assert source.is_integrated and not hasattr(source, "withdraw")
     verdict = folded.metal_folded_fused_hd_pair_coverage(fields, pml, (source,),
                                                           _Residency())
-    assert not verdict.covered
-    assert any("HOISTS_THE_WITHDRAW = False" in reason
-               for reason in verdict.reasons), verdict.reasons
+    assert not any("standing integrated" in reason or "withdraw" in reason
+                   for reason in verdict.reasons), verdict.reasons
+    assert verdict.covered, verdict.reasons
 
 
 @needs_mps
@@ -729,10 +763,12 @@ def test_a_standing_electric_withdraw_is_refused_by_name_while_the_flag_is_false
 def test_a_source_without_a_standing_withdraw_is_not_this_seams_business(
         component, flush_policy):
     """A magnetic source is injected one seam earlier and a non-integrated electric
-    one has the no-op withdraw; neither is refused."""
+    one has the no-op withdraw; neither is refused -- once H has been started from B
+    (a mid-run state). The run's first update_H is the next test's."""
     from meep_gpu.sources import GaussianEnvelope, VolumeSource  # noqa: PLC0415
 
     fields, pml = _covered_case()
+    fields.h_separated = True
     integrated = component == "Hy"
     source = VolumeSource(grid=fields.grid, component=component,
                           center=(0.15, 0.1, 0.05), size=(0.0, 0.0, 0.0),
@@ -741,6 +777,29 @@ def test_a_source_without_a_standing_withdraw_is_not_this_seams_business(
     verdict = folded.metal_folded_fused_hd_pair_coverage(fields, pml, (source,),
                                                           _Residency())
     assert verdict.covered, verdict.reasons
+
+
+def test_the_runs_first_update_H_is_refused_on_the_plain_products_rule():
+    """The array path starts H and f_w from B on the dsigw cells at the run's first
+    update_H and the folded weld does not, so a magnetic source at that update is
+    refused by name, on ``launch.h_start_reasons``' rule, from the constitutive half."""
+    from meep_gpu.sources import GaussianEnvelope, VolumeSource  # noqa: PLC0415
+
+    fields, pml = _covered_case()
+    source = VolumeSource(grid=fields.grid, component="Hy",
+                          center=(0.15, 0.1, 0.05), size=(0.0, 0.0, 0.0),
+                          envelope=GaussianEnvelope(frequency=1.0, fwidth=0.5,
+                                                    is_integrated=True))
+    verdict = folded.metal_folded_fused_hd_pair_coverage(fields, pml, (source,),
+                                                          _Residency())
+    assert not verdict.covered
+    assert any(reason.startswith("folded constitutive half:")
+               and "separate_h_from_b" in reason for reason in verdict.reasons), \
+        verdict.reasons
+    fields.h_separated = True
+    verdict = folded.metal_folded_fused_hd_pair_coverage(fields, pml, (source,),
+                                                          _Residency())
+    assert not any("separate_h_from_b" in reason for reason in verdict.reasons)
 
 
 def test_the_withdraw_clause_is_the_shared_modules_and_not_a_second_copy():

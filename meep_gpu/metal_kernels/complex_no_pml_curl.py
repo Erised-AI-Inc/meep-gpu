@@ -14,6 +14,12 @@ The family is wired into the experimental Metal composer. Its native MPS gate
 establishes the B/D sub-step bytes and the canonical derived-H mirror binding;
 the whole-step gate separately establishes the complete driver-residency path.
 Production dispatch and performance remain separate obligations.
+
+The stencil, the Bloch connection and the partner-presence read are the shared
+body's (:mod:`.complex_no_pml_conductive`: MEEP's left-to-right bracket and its
+absent-partner forms, the connection on plane 0 of the unshifted partner, presence
+from the chunk record bound last), so this family's plan builder takes the record
+with no default exactly as its sibling's does.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -25,13 +31,12 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..triton_kernels.coverage import CURL_TARGETS, Coverage, _boundary_kinds
+from . import chunk_bounds as _chunk_bounds
 from . import shaders
 from .complex_fields import (
     _complex_mirror,
     _complex_volume_reasons,
     bloch_phase_table,
-    expansion_from_probe,
-    load_expansion_probe,
     phase_arguments,
 )
 from .complex_no_pml_conductive import (
@@ -63,31 +68,30 @@ class MetalComplexNoPmlCurlPlan(MetalComplexConductiveNoPmlCurlPlan):
 
 
 def complex_no_pml_curl_source(
-        codes: Sequence[int], backward: bool, phased: Sequence[int], expansion: str,
+        codes: Sequence[int], backward: bool, phased: Sequence[int],
         contract: str = shaders.CONTRACT_OFF) -> str:
     """Emit the complex curl with all three conductivity tails compiled out."""
     return complex_conductive_no_pml_curl_source(
-        codes, backward, phased, (False, False, False), expansion, contract)
+        codes, backward, phased, (False, False, False), contract)
 
 
 def compile_complex_no_pml_curl(
-        codes: Sequence[int], backward: bool, phased: Sequence[int], expansion: str,
+        codes: Sequence[int], backward: bool, phased: Sequence[int],
         contract: str = shaders.CONTRACT_OFF) -> Any:
     """Compile the all-lossless specialization of the shared complex stencil."""
     return compile_complex_conductive_no_pml_curl(
-        codes, backward, phased, (False, False, False), expansion, contract)
+        codes, backward, phased, (False, False, False), contract)
 
 
 def metal_complex_no_pml_curl_coverage(
-        fields: Any, pml: Any, sub_step: str, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, sub_step: str, residency: Any = None) -> Coverage:
     """Whether one complex/Bloch lossless curl sub-step is covered."""
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
     grid = getattr(fields, "grid", None)
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
-    reasons: List[str] = _base_reasons(fields, pml, grid, residency, probe)
+    reasons: List[str] = _base_reasons(fields, pml, grid, residency)
     spec = SUB_STEPS[sub_step]
     shape = tuple(getattr(grid, "shape", ()))
     for name in spec["targets"]:
@@ -127,25 +131,29 @@ def metal_complex_no_pml_curl_coverage(
 
 
 def _functions(codes: Sequence[int], backward: bool, phased: Sequence[int],
-               expansion: str, variants: Sequence[str]) -> Dict[str, Any]:
+               variants: Sequence[str]) -> Dict[str, Any]:
     return {mode: compile_complex_no_pml_curl(
-        codes, backward, phased, expansion, mode) for mode in variants}
+        codes, backward, phased, mode) for mode in variants}
 
 
 def plan_metal_complex_no_pml_curl(
         fields: Any, pml: Any, sub_step: str, residency: Optional[Residency] = None,
-        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,), probe: Any = None,
-        functions: Optional[Dict[str, Any]] = None,
+        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
+        functions: Optional[Dict[str, Any]] = None, *, chunk_bounds: Any,
         ) -> Optional[MetalComplexNoPmlCurlPlan]:
-    """Build a covered lossless complex curl plan, otherwise return ``None``."""
+    """Build a covered lossless complex curl plan, otherwise return ``None``.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``) and has no default; a missing or malformed record
+    is refused by name before anything is mirrored or compiled.
+    """
     if not metal_complex_no_pml_curl_coverage(
-            fields, pml, sub_step, residency, probe).covered:
+            fields, pml, sub_step, residency).covered:
         return None
     assert residency is not None
-    expansion = expansion_from_probe(probe if probe is not None else load_expansion_probe())
-    if expansion is None:
-        return None
     grid = fields.grid
+    _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                             f"plan_metal_complex_no_pml_curl({sub_step})")
     spec = SUB_STEPS[sub_step]
     kinds = _boundary_kinds(grid, None)
     codes = tuple(1 if kind == "metallic" else 0 for kind in kinds)
@@ -160,25 +168,26 @@ def plan_metal_complex_no_pml_curl(
     # placeholders keeps one stable, gateable ABI with its conductive sibling.
     dead_coefficients = tuple(targets)
     selected = functions if functions is not None else _functions(
-        codes, bool(spec["backward"]), phased, expansion, contract_variants)
+        codes, bool(spec["backward"]), phased, contract_variants)
     return MetalComplexNoPmlCurlPlan(
         sub_step, grid.shape, grid.dt / grid.dx, codes, phased, phase_values,
-        (False, False, False), expansion, residency, targets, sources,
+        (False, False, False), residency, targets, sources,
         dead_coefficients, dead_coefficients, selected,
         tuple(spec["targets"]) + tuple(name for name, _ in source_bindings),
+        chunk_bounds=chunk_bounds,
     )
 
 
 def _arm_coverage(context: Any, slot: str) -> Coverage:
     return metal_complex_no_pml_curl_coverage(
-        context.fields, context.pml, slot, context.residency,
-        context.extra.get("probe"))
+        context.fields, context.pml, slot, context.residency)
 
 
 def _arm_plan(context: Any, slot: str) -> Optional[MetalComplexNoPmlCurlPlan]:
     return plan_metal_complex_no_pml_curl(
         context.fields, context.pml, slot, context.residency,
-        context.contract_variants, context.extra.get("probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def _arm_gate(context: Any) -> bool:

@@ -64,6 +64,7 @@ import metal_composition_matrix as matrix  # noqa: E402
 
 from meep_gpu import fields as fields_module  # noqa: E402
 from meep_gpu import stepping  # noqa: E402
+from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record  # noqa: E402
 from meep_gpu.metal_kernels import device, launch, shaders, symmetry  # noqa: E402
 from meep_gpu.metal_kernels import coverage as metal_coverage  # noqa: E402
 from meep_gpu.triton_kernels import symmetry as triton_symmetry  # noqa: E402
@@ -101,6 +102,21 @@ requires_mps = pytest.mark.skipif(not _mps_available(),
 
 def _source(codes=PERIODIC_FOLD, backward: bool = False) -> str:
     return symmetry.folded_curl_source(codes, backward)
+
+
+def _record(fields, pml):
+    """The one-rank division ``stepping`` steps these ``Fields`` with (no driver)."""
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
+
+
+def _code_lines(source: str):
+    """The source's code lines: comments and blank lines removed."""
+    lines = []
+    for line in source.splitlines():
+        code = line.split("//", 1)[0].rstrip()
+        if code.strip():
+            lines.append(code)
+    return lines
 
 
 def _differing(a, b) -> int:
@@ -199,12 +215,32 @@ def test_the_folded_curl_binds_exactly_what_the_certified_curl_binds():
     """The fold adds NO kernel argument: the stored extent is what carries it.
 
     Also the 31-binding ceiling, asserted rather than left for a later edit to
-    discover at compile time.
+    discover at compile time. The twenty-first binding is the chunk record, last.
     """
     folded = _source().count("[[buffer(")
     certified = shaders.curl_source((0, 0, 0), False).count("[[buffer(")
-    assert folded == certified == 20
+    assert folded == certified == 21
     assert folded <= device.MAX_BUFFER_BINDINGS
+    assert "constant ChunkBounds& cb [[buffer(20)]]," in _source()
+
+
+@pytest.mark.parametrize("backward", (False, True))
+@pytest.mark.parametrize("codes", (PERIODIC_FOLD, METALLIC_FOLD))
+def test_the_folded_curl_is_the_certified_curl_plus_the_top_plane_mask(codes, backward):
+    """Comments aside, the folded source is the certified one emitted for the reduced
+    codes — record, bounds block, curl, absent-partner forms, per-chunk form select
+    and stores — with the kernel renamed and the top-plane block added. So the forms
+    a fold steps are the certified ones, keyed on the same ghost-adjusted record."""
+    folded = _code_lines(symmetry.folded_curl_source(codes, backward))
+    certified = _code_lines(shaders.curl_source(symmetry._reduced_codes(codes),
+                                                backward))
+    top = [line for line in _code_lines(symmetry.folded_top_plane_mask(codes, backward))]
+    certified = [line.replace("kernel void pml_curl_step(",
+                              "kernel void folded_pml_curl_step(") for line in certified]
+    extra = [line for line in folded if line not in certified]
+    assert extra == ["    bool last_x = (i == nxi - 1), last_y = (j == nyi - 1), "
+                     "last_z = (k == nzi - 1);"] + top, extra
+    assert [line for line in folded if line in certified] == certified
 
 
 def test_the_fill_binds_the_reflect_row_at_runtime_and_bakes_no_row_literal():
@@ -709,7 +745,8 @@ def test_the_folded_curl_reproduces_stepping_bit_for_bit(label, kwargs, sub_step
 
     _restore(fields, before)
     residency = device.Residency()
-    plan = symmetry.plan_folded_pml_curl(fields, pml, sub_step, residency)
+    plan = symmetry.plan_folded_pml_curl(fields, pml, sub_step, residency,
+                                         chunk_bounds=_record(fields, pml))
     assert plan is not None, symmetry.folded_composition_curl_coverage(
         fields, pml, sub_step, residency).reasons
     residency.sync_in()
@@ -789,13 +826,18 @@ def test_a_complete_step_agrees_and_the_first_divergent_step_is_reported(label,
     reference_fields, reference_pml = matrix.folded(**kwargs)
 
     residency = device.Residency()
+    record = _record(fields, pml)
     plans = {
-        "step_B": symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency),
+        "step_B": symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency,
+                                                chunk_bounds=record),
         "fill_B": symmetry.plan_mirror_ghost_fill(fields, "B", "fill_B", residency),
-        "update_H": symmetry.plan_folded_constitutive(fields, pml, "H", residency),
-        "step_D": symmetry.plan_folded_pml_curl(fields, pml, "step_D", residency),
+        "update_H": symmetry.plan_folded_constitutive(fields, pml, "H", residency,
+                                                      chunk_bounds=record),
+        "step_D": symmetry.plan_folded_pml_curl(fields, pml, "step_D", residency,
+                                                chunk_bounds=record),
         "fill_D": symmetry.plan_mirror_ghost_fill(fields, "D", "fill_D", residency),
-        "update_E": symmetry.plan_folded_constitutive(fields, pml, "E", residency),
+        "update_E": symmetry.plan_folded_constitutive(fields, pml, "E", residency,
+                                                      chunk_bounds=record),
     }
     assert all(plan is not None for plan in plans.values()), {
         name: plan for name, plan in plans.items() if plan is None}
@@ -875,7 +917,8 @@ def test_the_top_plane_mask_is_measurably_load_bearing():
         assert (mutant != source) is expect_caught or not expect_caught
 
         residency = device.Residency()
-        plan = symmetry.plan_folded_pml_curl(fields, pml, "step_D", residency)
+        plan = symmetry.plan_folded_pml_curl(fields, pml, "step_D", residency,
+                                             chunk_bounds=_record(fields, pml))
         assert plan is not None
         plan._functions = {
             shaders.CONTRACT_OFF: compile_source(mutant).folded_pml_curl_step}
@@ -1025,7 +1068,9 @@ def test_the_folded_curl_reduces_to_the_certified_curl_on_an_unfolded_grid():
     before = _snapshot(fields)
 
     residency = device.Residency()
-    certified = launch.plan_pml_curl(fields, pml, "step_B", residency)
+    record = _record(fields, pml)
+    certified = launch.plan_pml_curl(fields, pml, "step_B", residency,
+                                     chunk_bounds=record)
     assert certified is not None
     residency.sync_in()
     certified.run()
@@ -1040,7 +1085,7 @@ def test_the_folded_curl_reduces_to_the_certified_curl_on_an_unfolded_grid():
          if getattr(fields, name, None) is not None},
         {f"{stem}_{axis}": getattr(pml, f"{stem}_{axis}_h")
          for axis in "xyz" for stem in ("kms", "sinv")},
-        codes, float(fields.grid.dt / fields.grid.dx), residency)
+        codes, float(fields.grid.dt / fields.grid.dx), residency, chunk_bounds=record)
     residency.sync_in()
     folded.run()
     residency.sync_out()
@@ -1133,7 +1178,8 @@ def test_the_curl_does_need_the_precondition():
         getattr(fields, name)[...] = before[name]
 
     residency = device.Residency()
-    plan = symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency)
+    plan = symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency,
+                                         chunk_bounds=_record(fields, pml))
     assert plan is not None
     residency.sync_in()
     plan.run()

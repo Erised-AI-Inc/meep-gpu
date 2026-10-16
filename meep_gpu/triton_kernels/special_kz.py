@@ -41,31 +41,38 @@ sub-steps and changes nothing else in the step loop:
 * rounding (:784): the coefficient is rounded ONCE on the host via
   ``partner_values.dtype.type(coefficient)``, then ``return -(c * partner)`` —
   the negation is of the PRODUCT (curl sign convention; the caller subtracts);
-* position: added to ``curl`` AFTER ``_curl_from_operands`` (:342/:429), BEFORE
-  ``_mask_non_owned_cells`` (:369/:450) and ``_apply_curl`` (:374/:455), so the
-  increment rides the SAME split-field kms/sinv ladder and the same condinv
-  branch as the finite-difference curl, exactly and linearly (:762-767);
+* position: MEEP runs the term as a pass of its own after every component's curl
+  (step_db.cpp:161-175), and so does the array path: the curl forms first, then
+  ``_special_kz_beta_term`` forms the increment, masked to an exact ``+0`` on every
+  cell the curl's ownership mask drops, and ``_apply_folded_increment`` subtracts it
+  through the pass's own additive ladder (:func:`.forms.fold_ladder`): ``f - (sinv *
+  q)`` outside the component's dsigu chunk, ``fu - (sinv * q)`` and ``f - (sinv_u *
+  (sinv * q))`` inside it;
 * partners: the SAME-CELL component snapshots (:293 electric, :408 magnetic).
   Per ``B_CURL_TERMS``/``D_CURL_TERMS`` (:213-223) every beta partner is a
   CENTER operand the certified curl kernels already load — Bx: the second
   source Ey center; By: the first source Ex center; Dx: second Hy; Dy: first Hx
   — so the term costs no new pointer and no extra memory traffic, and the load
   reused must be the UNSHIFTED center one, never an ox/oy/oz shifted operand.
-  In the complex family the Bloch wrap rotation applies only to shifted
+  In the complex family the Bloch connection applies only to shifted
   operands, so reusing the center registers keeps the beta partner UNROTATED by
-  construction (a gate mutation plants the rotation and must be caught);
+  construction;
 * no new state array (contrast BFAST's per-component IIR state, :889-893), no
   ghost rule, no fold parity, no wrap; ``update_H``/``update_E``
   (``_apply_constitutive_pml``, :2065-2096) read nothing beta-dependent.
 
 TWO KERNELS, one per storage family:
 
-* :func:`beta_pml_curl_step` — ``kernels.pml_curl_step``'s body (certified) plus
-  the constexpr-gated beta term: one f32 multiply-and-subtract per affected
-  target, reusing the loaded center operand;
+* :func:`beta_pml_curl_step` — ``kernels.pml_curl_step``'s body plus the
+  constexpr-gated beta pass after the forms: per affected target one f32 product
+  of the host-rounded word and the loaded center operand, negated by ``* -1.0``,
+  masked, and subtracted through the ladder;
 * :func:`beta_bloch_pml_curl_step` — ``complex_fields.bloch_pml_curl_step``'s
-  body (certified) plus the ±i coefficient product on word pairs,
-  through the module-local :func:`_mul_imag_coefficient_left` helper.
+  body plus the same pass on word pairs, the increment a quarter turn of the
+  center partner's parts by one real word (``part_products.quarter_turn``):
+  ``q_re = c * g_im``, ``q_im = (c * g_re) * -1.0``. No complex product is
+  formed; :func:`_mul_imag_coefficient_left` stays defined for the sibling H->D
+  weld alone.
 
 GROUPING CHOICES the gate must hold (stepping.py forces none of these):
 
@@ -74,25 +81,15 @@ GROUPING CHOICES the gate must hold (stepping.py forces none of these):
    call site and rounds each once (:770/:784); f64 negation and f32 rounding
    commute exactly, but binding both keeps the transcription literal per call
    site rather than resting on that identity.
-2. ``curl - (c * g)`` carries ``curl + (-(c * g))``. The array path negates the
-   product and adds; IEEE-754 defines subtraction AS addition of the negation,
-   so the single subtract is the same bits on every input including signed
-   zeros — and it never leans on how Triton lowers unary minus.
-3. The complex product is the FULL multiply with the coefficient on the LEFT
-   (:784 ``c * partner_values``): ``re = c_re*z_re - c_im*z_im``,
-   ``im = c_re*z_im + c_im*z_re`` with ``c_re`` a SIGNED zero produced by
-   Python's complex multiply and passed through as an argument, never
-   synthesized as ``+0.0``. Its ``EXPANSION`` arm binds to a measured probe
-   artifact carrying the NEW pattern :data:`BETA_PROBE_PATTERN` — the base
-   four patterns of the complex tranche do not cover a general-coefficient
-   scalar-left product, so :func:`beta_expansion_license` requires the
-   EXTENDED set (:data:`BETA_PROBE_PATTERNS`) present, and the patterns that
-   CAN discriminate must agree; a missing artifact, or one no arm reproduces,
-   is a refusal by name. The licence is
-   :func:`complex_fields.expansion_license` over that superset — the same
-   arbiter the base family uses, called with a longer list, so the
-   non-discriminating clause reaches every pattern here rather than only the
-   one this tranche adds.
+2. The real increment is ``(c * g) * -1.0``, the array path's ``-(c * g)``, and
+   the ladder SUBTRACTS it, the array path's spelling (``x - (-y)`` is ``x + y``
+   in IEEE-754, signed zeros included). The negation is a multiply by ``-1.0``,
+   exact on every input, so it never leans on how Triton lowers unary minus.
+3. Complex storage forms NO complex product: the array path turns the
+   partner's parts a quarter by one real word (``part_products.quarter_turn``,
+   the word negated on the D side), so the pass is ``q_re = c * g_im`` and
+   ``q_im = (c * g_re) * -1.0`` per target, one rounding per product, and nothing
+   can contract it into a fused multiply-add.
 4. ``HAS_BETA`` is a constexpr: the term is compiled only when beta != 0. The
    engine-route plans always bind 1 (the predicate requires beta nonzero; a
    beta = 0 run belongs to the certified plain kernels, and the array path
@@ -103,9 +100,7 @@ GROUPING CHOICES the gate must hold (stepping.py forces none of these):
    :func:`beta_run_complex_constitutive_coverage`) drop only the beta clause
    and delegate arithmetic to the certified ``kernels.constitutive_step`` /
    ``complex_fields.bloch_constitutive_step`` through the existing plan
-   classes. The complex constitutive binds the BASE probe patterns (the kernel
-   launched is the certified one, whose contract is the base set); only the
-   beta CURL binds the extended set.
+   classes.
 6. Phase A refuses the fold in BOTH storage families, by name. Phase B lifts
    the real-family fold through the folded family's own predicate; the complex
    fold is inherited from the complex tranche's composition gap and stays in
@@ -169,19 +164,12 @@ except ImportError as _exc:  # pragma: no cover - exercised by the absence test
     tl = _MissingLanguage()  # type: ignore[assignment]
 
 from .complex_fields import (  # noqa: E402 - this package's own module, restate-don't-edit base
-    PROBE_PATTERNS,
     ComplexConstitutivePlan,
     _complex_layout_reasons,
-    _expansion_reasons,
-    _mul_coefficient_left,
-    _mul_field_left,
-    _phase_arguments,
-    _rotate_field_left,
+    _connect,
     _word_view,
     bloch_phase_table,
-    expansion_from_probe,
-    expansion_license,
-    load_expansion_probe,
+    connection_arguments,
 )
 from .coverage import (  # READ-ONLY imports; nothing here mutates coverage.py
     CONSTITUTIVE_SIDES,
@@ -196,17 +184,22 @@ from .coverage import (  # READ-ONLY imports; nothing here mutates coverage.py
     _layout_reasons,
     _susceptibility_reasons,
 )
-from .launch import SUB_STEPS, ConstitutivePlan, CupyPointer, _flat
+from .launch import SUB_STEPS, ConstitutivePlan, CupyPointer, _flat, chunk_bounds_for
 
-# Same constexpr codes as ``kernels.PERIODIC``/``kernels.METALLIC`` and the
-# complex tranche's expansion arms. Restated (not imported from kernels.py)
-# because importing kernels.py would import Triton unconditionally and defeat
-# this module's host-only coverage route; the laptop tests pin all four against
-# their originators so the restatements cannot drift.
+# Same constexpr codes as ``kernels.PERIODIC``/``kernels.METALLIC``. Restated (not
+# imported from kernels.py) because importing kernels.py would import Triton
+# unconditionally and defeat this module's host-only coverage route; the laptop
+# tests pin both against their originators so the restatements cannot drift.
 PERIODIC = tl.constexpr(0)
 METALLIC = tl.constexpr(1)
-NAIVE = tl.constexpr(0)
-FMA_V1 = tl.constexpr(1)
+
+# The forms, the fold ladder and the chunk record's word offsets, read by the kernels
+# below. Imported only when Triton is (both modules import it at module scope), so
+# the predicates and the plan builders still answer on a host without it.
+if _TRITON_IMPORT_ERROR is None:
+    from .forms import (axis_present, curl_form, curl_stencil,  # noqa: E402
+                        fold_ladder, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
 
 #: Elements per program — real cells for the real kernel, complex CELLS for the
 #: complex one. Restated from ``kernels.DEFAULT_BLOCK`` for the same import
@@ -214,28 +207,12 @@ FMA_V1 = tl.constexpr(1)
 #: kernels.py:56-59).
 DEFAULT_BLOCK = 256
 
-#: The NEW probe pattern this tranche adds: the beta coefficient product,
-#: ``complex64 scalar (signed-zero real, +-imag) * complex64 array`` with the
-#: COEFFICIENT on the left (stepping.py:811). The base four patterns cover only
-#: zero-imaginary and field-left/general-c8 orientations; a general scalar-left
-#: coefficient is a distinct compiled-dispatch case and is measured, not
-#: assumed.
-BETA_PROBE_PATTERN = "c8_mul_c8_imaginary_coefficient_left"
-
-#: The pattern set a probe artifact must classify — and classify identically —
-#: before the complex beta CURL may bind an ``EXPANSION`` constexpr.
-BETA_PROBE_PATTERNS: Tuple[str, ...] = PROBE_PATTERNS + (BETA_PROBE_PATTERN,)
-
 __all__ = [
-    "BETA_PROBE_PATTERN",
-    "BETA_PROBE_PATTERNS",
     "BetaBlochPmlCurlPlan",
     "BetaPmlCurlPlan",
     "beta_bloch_pml_curl_coverage",
     "beta_bloch_pml_curl_step",
     "beta_curl_coefficients",
-    "beta_expansion_from_probe",
-    "beta_expansion_license",
     "beta_pml_curl_coverage",
     "beta_pml_curl_step",
     "beta_run_complex_constitutive_coverage",
@@ -250,38 +227,35 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
-# The host coefficient — stepping.py:797-811, transcribed
+# The host coefficient — stepping._special_kz_beta_term, transcribed
 # ---------------------------------------------------------------------------
 
 def beta_curl_coefficients(beta: float, dt: float, magnetic: bool,
-                           complex_storage: bool):
-    """The (plus-sign, minus-sign) beta coefficients, host-computed and rounded
-    EXACTLY as ``stepping._special_kz_beta_term`` computes and rounds them.
+                           complex_storage: bool) -> Tuple[float, float]:
+    """The (plus-sign, minus-sign) beta words, host-computed and rounded EXACTLY as
+    ``stepping._special_kz_beta_term`` computes and rounds them.
 
-    Per sign: ``coefficient = sign * 2*pi * beta * dt`` in f64 (:770); complex
-    storage multiplies by ``+1j`` (magnetic) / ``-1j`` (electric) THROUGH
-    Python's own complex arithmetic (:771-772) — which is what puts the SIGNED
-    zero in the real word, and why the real word is passed through rather than
-    synthesized — then one rounding to the storage dtype (:784).
+    Per sign: ``coefficient = sign * 2*pi * beta * dt`` in float64, in that order.
+    Real storage rounds it once to float32 (``partner.dtype.type(coefficient)``), the
+    same word on both sub-steps (MEEP's implicit-i trick). Complex storage forms the
+    increment as a quarter turn of the partner's parts by ONE real word
+    (``part_products.quarter_turn(coefficient if magnetic else -coefficient, ...)``):
+    the B side's ``+i`` takes the coefficient, the D side's ``-i`` its negation, each
+    rounded once to the parts' ``realnum``. No complex coefficient exists on either
+    storage: the array path forms no complex product.
 
-    Returns two f32 floats (real storage) or two ``(re, im)`` float pairs
-    (complex storage). ``float()`` of a numpy.float32 preserves the zero's
-    sign, and Triton types a Python float argument as fp32, so the words the
-    kernel receives are the array path's bits.
+    Returns two floats. ``float()`` of a numpy.float32 keeps the bits, and Triton types a
+    Python float argument as fp32, so the words the kernel receives are the array path's.
     """
     import numpy  # noqa: PLC0415
 
-    out: List[Any] = []
+    out: List[float] = []
     for sign in (1.0, -1.0):
-        coefficient: Any = sign * 2.0 * math.pi * float(beta) * float(dt)  # :770
-        if complex_storage:
-            coefficient = coefficient * (1j if magnetic else -1j)  # :771-772
-            rounded = numpy.complex64(coefficient)  # :784 — dtype.type, once
-            out.append((float(numpy.float32(rounded.real)),
-                        float(numpy.float32(rounded.imag))))
-        else:
-            out.append(float(numpy.float32(coefficient)))  # :784 — once
-    return tuple(out)
+        coefficient = sign * 2.0 * math.pi * float(beta) * float(dt)
+        if complex_storage and not magnetic:
+            coefficient = -coefficient  # the D side's quarter turn is by -i
+        out.append(float(numpy.float32(coefficient)))  # one rounding to realnum
+    return out[0], out[1]
 
 
 # ---------------------------------------------------------------------------
@@ -289,48 +263,18 @@ def beta_curl_coefficients(beta: float, dt: float, magnetic: bool,
 # ---------------------------------------------------------------------------
 
 @triton.jit
-def _mul_imag_coefficient_left(c_re, c_im, z_re, z_im, EXPANSION: tl.constexpr):
-    """(c_re + i*c_im) * (z) with the COEFFICIENT on the left — the S:784
-    orientation ``partner.dtype.type(coefficient) * partner_values`` for the
-    beta coefficient, whose real word is a SIGNED zero from Python's complex
-    multiply (S:771-772) and whose imaginary word carries ±2*pi*beta*dt.
+def _mul_imag_coefficient_left(c_re, c_im, z_re, z_im):
+    """``(c_re + i*c_im) * (z_re + i*z_im)``, every product and sum rounded on its own.
 
-    The full multiply: ``re = c_re*z_re - c_im*z_im``, ``im = c_re*z_im +
-    c_im*z_re``. FMA_V1 fuses the FIRST operand's product exactly as
-    :func:`complex_fields._rotate_field_left` does for the field-left phase
-    rotation — here the first operand is the coefficient, which is why this is
-    a NEW probe pattern (:data:`BETA_PROBE_PATTERN`) and not a reuse of the
-    field-left classification.
-
-    NEGATION IS ``* -1.0``, NEVER unary ``-``: Triton lowers ``-x`` as
-    ``0.0 - x`` (triton 3.1.0, language/semantic.py:386-391), and under
-    round-to-nearest ``0.0 - (+0.0)`` is ``+0.0`` — the addend's zero SIGN is
-    lost — while the licensed FMA_V1 transcription negates the cross product
-    sign-exactly (S:784 is a NumPy/CuPy negation, a sign flip). ``* -1.0`` is
-    the IEEE-exact negation (LLVM folds it to fneg). Measured: the gate's m9
-    leg found the unary-minus spelling of this addend byte-identical to the
-    FOLDED mutant on the engineered signed-zero state — the platform
-    lowering, not the fold, was deciding the bytes.
-
-    The ``c_re`` products are the signed-zero cross terms; folding them away
-    is the gate's m9 mutation — caught at the PRODUCT layer (a wrapper kernel
-    stores this helper's output words directly). Until 2026-08-12 the inlined
-    complex_fields helpers' addends were spelled with unary ``-`` and
-    canonicalized every ±0 to ``+0`` under the same lowering before any store
-    (measured, the m9 leg's predicted-4-got-0), which made the fold byte-blind
-    at the STORED layer. The complex tranche now carries the ``* -1.0``
-    spelling too (fixed after the zero-init composition reachability analysis,
-    probe_triton_complex_composition.py), so the fold's flip once again
-    propagates sign-exactly downstream and the stored layer reverts to the
-    original IEEE-negation prediction — the gate's stored leg pins that count
-    and the device recut arbitrates.
+    NONE OF THIS MODULE'S KERNELS CALLS IT. The beta pass forms no complex product: it
+    is a quarter turn of the partner's parts by one real word
+    (``part_products.quarter_turn``), which :func:`beta_bloch_pml_curl_step` spells
+    inline. The helper keeps its name and signature for the sibling H->D weld
+    (``beta_complex_fused_hd_pair``), which still transcribes the previous full product
+    until its own lane re-lifts it.
     """
-    if EXPANSION == FMA_V1:
-        out_re = tl.math.fma(c_re, z_re, (c_im * z_im) * -1.0)
-        out_im = tl.math.fma(c_re, z_im, c_im * z_re)
-    else:
-        out_re = (c_re * z_re) - (c_im * z_im)
-        out_im = (c_re * z_im) + (c_im * z_re)
+    out_re = (c_re * z_re) - (c_im * z_im)
+    out_im = (c_re * z_im) + (c_im * z_re)
     return out_re, out_im
 
 
@@ -340,27 +284,30 @@ def beta_pml_curl_step(
     u0, u1, u2,                       # auxiliaries: fu_B*  or  fu_D*
     g0, g1, g2,                       # sources: Ex,Ey,Ez  or  Hx,Hy,Hz
     kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, one Yee sub-lattice
+    cb,                               # chunk record: the forms' membership and presence
     nx, ny, nz, n_elem, dtdx,
-    beta_plus, beta_minus,            # f32(sign*2*pi*beta*dt), host-rounded once (S:770/:784)
+    beta_plus, beta_minus,            # f32(sign*2*pi*beta*dt), host-rounded once
     BACKWARD: tl.constexpr,           # 0 = B (forward differences), 1 = D
     BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
     HAS_BETA: tl.constexpr,           # compiled-in only for beta != 0 runs
     BLOCK: tl.constexpr,
 ):
-    """One REAL curl sub-step of all three components, PML recurrence included,
-    with the special_kz beta term — ``kernels.pml_curl_step``'s certified body
-    plus the constexpr-gated insert between the curl and the ownership mask,
-    which is exactly where the array path adds it (S:356-363 after :342, before
-    :369; S:438-445 after :429, before :450).
+    """One REAL curl sub-step of all three components with MEEP's special-kz beta pass.
 
-    The beta partners are the CENTER loads the curl already made: target 0
-    takes the second source's center ``b`` at sign +1 (Bx <- Ey / Dx <- Hy)
-    and target 1 the first source's center ``a`` at sign -1 (By <- Ex /
-    Dy <- Hx); target 2 gets nothing (step_db.cpp:148-176 runs ``cc`` over d_c
-    in {X, Y} only). ``curl - (c * g)`` is ``curl + (-(c * g))`` by IEEE-754's
-    definition of subtraction — the array path's negate-then-add, without
-    relying on unary-minus lowering. Real storage is MEEP's implicit-i trick:
-    the SAME sign for both sub-steps (the ±i lives only in complex storage).
+    ``kernels.pml_curl_step``'s body, character for character, plus ONE constexpr-gated
+    insert after the three curl forms and before the stores: the beta pass
+    (``stepping._special_kz_beta_term`` then ``stepping._apply_folded_increment``),
+    which MEEP runs as a pass of its own after every component's curl
+    (step_db.cpp:161-175) and which reaches only targets 0 and 1. Real storage is
+    MEEP's implicit-i trick: the same signed word on both sub-steps.
+
+    The pass follows the forms in register. Its increment is ``-(c * g)`` on the CENTER
+    partner the curl already loaded, with ``c`` the host-rounded word of its sign, an
+    exact ``+0`` on the cells the curl's ownership mask drops, and the beta ladder
+    (:func:`.forms.fold_ladder`) subtracts it: ``f - (sinv * q)`` outside the
+    component's dsigu chunk, ``fu - (sinv * q)`` and ``f - (sinv_u * (sinv * q))``
+    inside it. ``HAS_BETA = 0`` builds ``kernels.pml_curl_step`` exactly (the gate's
+    identity arm).
     """
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     live = idx < n_elem
@@ -371,6 +318,8 @@ def beta_pml_curl_step(
     i = plane // ny
 
     # --- the ghost rule, per axis (stepping._shift_up / _shift_down) ------------
+    # PERIODIC wraps; METALLIC serves an exact 0.0 past the wall, which `tl.load`'s
+    # `other=` delivers without dereferencing anything.
     if BACKWARD:
         si, sj, sk = i - 1, j - 1, k - 1
     else:
@@ -404,19 +353,22 @@ def beta_pml_curl_step(
     c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
     # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-    curl0 = dtdx * ((c_y - c) + (b - b_z))
-    curl1 = dtdx * ((a_z - a) + (c - c_x))
-    curl2 = dtdx * ((b_x - b) + (a - a_y))
-
-    # --- the beta term (stepping._special_kz_beta_term), CENTER partners only ---
-    # AFTER the dtdx curl, BEFORE the ownership mask — the array path's order.
-    # No dtdx on the term (analytic derivative, S:733-735); the subtraction IS
-    # the array path's `curl + (-(c*g))` (module docstring, grouping choice 2).
-    if HAS_BETA:
-        curl0 = curl0 - (beta_plus * b)
-        curl1 = curl1 - (beta_minus * a)
+    # One call per target: MEEP's left-to-right association with both partners, the
+    # one-partner form where the record says the other partner's derivative axis is
+    # invariant, and an exact +0 with neither. The presence word is the record's
+    # (stepping.curl_presence, MEEP's have_plus_deriv / have_minus_deriv).
+    presence = tl.load(cb + RECORD_PRESENCE)
+    px = axis_present(presence, 0)
+    py = axis_present(presence, 1)
+    pz = axis_present(presence, 2)
+    curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+    curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+    curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
     # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
+    # Cell 0 of a metallic axis, for every target whose Yee shift there is 0. The
+    # B targets have a single zero shift each (Bx:x, By:y, Bz:z); the D targets
+    # have two (Dx:y,z  Dy:x,z  Dz:x,y). Masked, then the recurrence runs on zero.
     at_x, at_y, at_z = i == 0, j == 0, k == 0
     if BACKWARD:
         if BCY == METALLIC:
@@ -440,6 +392,8 @@ def beta_pml_curl_step(
             curl2 = tl.where(at_z, 0.0, curl2)
 
     # --- split-field recurrence (stepping._apply_pml_update) -------------------
+    # dsig/dsigu follow vec.hpp's cycle_direction and are the same triple on both
+    # sides: target 0 takes (y, z), target 1 (z, x), target 2 (x, y).
     km_x = tl.load(kmx + i, mask=live, other=0.0)
     si_x = tl.load(sinvx + i, mask=live, other=0.0)
     km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -447,21 +401,65 @@ def beta_pml_curl_step(
     km_z = tl.load(kmz + k, mask=live, other=0.0)
     si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-    p0 = tl.load(u0 + idx, mask=live, other=0.0)
-    n0 = ((p0 * km_y) - curl0) * si_y
-    v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+    # Which cells take the recurrence: the component's dsigu layer, on the component's
+    # own sub-lattice. The dsigu axis is z for target 0, x for 1 and y for 2 (vec.hpp
+    # cycle_direction); the sub-lattice is half-integer for every B target and integer
+    # for every D one (the iyee table), so each target's record line is a compile-time
+    # word index, chunk_map.record_index(half_integer, axis, 0).
+    if BACKWARD:
+        lattice = 0
+    else:
+        lattice = RECORD_HALF_INTEGER
+    du0 = record_in(cb, lattice + 8, k)
+    du1 = record_in(cb, lattice + 0, i)
+    du2 = record_in(cb, lattice + 4, j)
 
-    p1 = tl.load(u1 + idx, mask=live, other=0.0)
-    n1 = ((p1 * km_z) - curl1) * si_z
-    v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+    p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+    v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                       km_y, si_y, km_z, si_z, du0)
 
-    p2 = tl.load(u2 + idx, mask=live, other=0.0)
-    n2 = ((p2 * km_x) - curl2) * si_x
-    v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+    p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+    v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                       km_z, si_z, km_x, si_x, du1)
 
-    tl.store(u0 + idx, n0, mask=live)
-    tl.store(u1 + idx, n1, mask=live)
-    tl.store(u2 + idx, n2, mask=live)
+    p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+    v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                       km_x, si_x, km_y, si_y, du2)
+
+    # --- the special-kz beta pass (stepping._special_kz_beta_term, then
+    # stepping._apply_folded_increment) ----------------------------------------
+    # MEEP's pass of its own after every component's curl (step_db.cpp:161-175),
+    # applied to the registers the forms returned. The partners are the CENTER
+    # loads: target 0 takes the second source at sign +1 (Bx <- Ey, Dx <- Hy),
+    # target 1 the first at sign -1 (By <- Ex, Dy <- Hx); target 2 gets nothing.
+    # The increment is the NEGATED product (no dtdx: an analytic derivative),
+    # masked to +0 on the cells the curl's own mask drops, and the beta ladder
+    # subtracts it (forms.fold_ladder).
+    if HAS_BETA:
+        q0 = (beta_plus * b) * -1.0
+        q1 = (beta_minus * a) * -1.0
+        if BACKWARD:
+            if BCY == METALLIC:
+                q0 = tl.where(at_y, 0.0, q0)
+            if BCZ == METALLIC:
+                q0 = tl.where(at_z, 0.0, q0)
+            if BCX == METALLIC:
+                q1 = tl.where(at_x, 0.0, q1)
+            if BCZ == METALLIC:
+                q1 = tl.where(at_z, 0.0, q1)
+        else:
+            if BCX == METALLIC:
+                q0 = tl.where(at_x, 0.0, q0)
+            if BCY == METALLIC:
+                q1 = tl.where(at_y, 0.0, q1)
+        v0, n0 = fold_ladder(v0, n0, q0, si_y, si_z, du0)
+        v1, n1 = fold_ladder(v1, n1, q1, si_z, si_x, du1)
+
+    # fu is written on the recurrence's cells ONLY: outside them the dsig-only form
+    # reads and writes the field alone and fu keeps its word (the auxiliary contract).
+    tl.store(u0 + idx, n0, mask=live & du0)
+    tl.store(u1 + idx, n1, mask=live & du1)
+    tl.store(u2 + idx, n2, mask=live & du2)
     tl.store(f0 + idx, v0, mask=live)
     tl.store(f1 + idx, v1, mask=live)
     tl.store(f2 + idx, v2, mask=live)
@@ -473,31 +471,29 @@ def beta_bloch_pml_curl_step(
     u0, u1, u2,                       # auxiliaries: fu_B* or fu_D* (complex64 as words)
     g0, g1, g2,                       # sources: Ex,Ey,Ez or Hx,Hy,Hz (complex64 as words)
     kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, float32, one Yee sub-lattice
+    cb,                               # chunk record: the forms' membership and presence
     nx, ny, nz, n_elem, dtdx,         # n_elem = COMPLEX cells; dtdx pre-rounded to f32
-    pxr, pxi, pyr, pyi, pzr, pzi,     # per-axis complex64-rounded phase (conj for BACKWARD)
-    bp_re, bp_im, bm_re, bm_im,       # complex64-rounded ±sign beta coefficients (S:770-784)
+    cxr, cxi, cyr, cyi, czr, czi,     # per-axis connection factor, float32 parts
+    beta_plus, beta_minus,            # f32 quarter-turn words per sign (B: +c, D: -c)
     BACKWARD: tl.constexpr,           # 0 = B (forward differences), 1 = D
     BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
-    PHX: tl.constexpr, PHY: tl.constexpr, PHZ: tl.constexpr,
+    CNX: tl.constexpr, CNY: tl.constexpr, CNZ: tl.constexpr,   # connection kind per axis
     HAS_BETA: tl.constexpr,           # compiled-in only for beta != 0 runs
-    EXPANSION: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """One COMPLEX curl sub-step with the special_kz beta term —
-    ``complex_fields.bloch_pml_curl_step``'s certified body plus the
-    ±i coefficient product on word pairs, inserted between the curl and the
-    ownership mask exactly as the array path inserts it.
+    """One COMPLEX curl sub-step with MEEP's special-kz beta pass, each part on its own.
 
-    The beta partners are the CENTER word pairs ``(b_re, b_im)`` (target 0,
-    sign +1) and ``(a_re, a_im)`` (target 1, sign -1), loaded before the phase
-    section and never touched by it — the Bloch wrap rotates SHIFTED operands
-    only, so the partner is unrotated by construction (the gate's m5 mutation
-    plants the rotation and must be caught). The ±i lives in the host-bound
-    coefficient words: ``+1j`` for the B side, ``-1j`` for D (S:771-772),
-    rounded once through numpy.complex64 with the signed-zero real word passed
-    through. Plane-wise subtraction of the product IS complex ``curl +
-    (-(c*g))``: complex negation negates both words and complex add is
-    component-wise.
+    ``complex_fields.bloch_pml_curl_step``'s body, character for character, plus ONE
+    constexpr-gated insert after the six part forms and before the stores. The beta
+    increment on complex storage is a QUARTER TURN of the partner's parts by one real
+    word (``part_products.quarter_turn``): ``i*c*(x + iy) = (-(c*y), c*x)``, so the
+    negated increment is ``(c*y, -(c*x))``, with ``c = +2*pi*beta*dt*sign`` on the B
+    side and its negation on the D side (``beta_curl_coefficients``). No complex
+    product is formed. The partners are the CENTER words as loaded: the Bloch
+    connection replaces plane 0 of the curl's connected copies only, never these.
+    Each part takes the beta ladder (:func:`.forms.fold_ladder`), masked to ``(+0,
+    +0)`` on the cells the curl's ownership mask drops. ``HAS_BETA = 0`` builds
+    ``complex_fields.bloch_pml_curl_step`` exactly.
     """
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     live = idx < n_elem
@@ -508,6 +504,8 @@ def beta_bloch_pml_curl_step(
     i = plane // ny
 
     # --- the ghost rule, per axis (stepping._shift_up / _shift_down) ------------
+    # PERIODIC wraps (a plain roll, phased or not); METALLIC serves an exact 0.0 past
+    # the wall -- a (+0.0, +0.0) word pair from `other=` IS the complex metallic ghost.
     if BACKWARD:
         si, sj, sk = i - 1, j - 1, k - 1
     else:
@@ -530,12 +528,6 @@ def beta_bloch_pml_curl_step(
     oy = i * nyz + sj * nz + k
     oz = i * nyz + j * nz + sk
 
-    # --- wrapped-lane predicates, one plane per axis ----------------------------
-    if BACKWARD:
-        wx, wy, wz = i == 0, j == 0, k == 0
-    else:
-        wx, wy, wz = i == nx - 1, j == ny - 1, k == nz - 1
-
     # --- loads: two words per operand ------------------------------------------
     a_re = tl.load(g0 + 2 * idx, mask=live, other=0.0)
     a_im = tl.load(g0 + 2 * idx + 1, mask=live, other=0.0)
@@ -556,54 +548,57 @@ def beta_bloch_pml_curl_step(
     c_y_re = tl.load(g2 + 2 * oy, mask=vy, other=0.0)
     c_y_im = tl.load(g2 + 2 * oy + 1, mask=vy, other=0.0)
 
-    # --- Bloch phase on the wrapped lane, BEFORE the difference -----------------
-    # SHIFTED operands only; the beta partners (a, b centers) are never rotated.
-    if PHX:
-        rot_re, rot_im = _rotate_field_left(b_x_re, b_x_im, pxr, pxi, EXPANSION)
-        b_x_re = tl.where(wx, rot_re, b_x_re)
-        b_x_im = tl.where(wx, rot_im, b_x_im)
-        rot_re, rot_im = _rotate_field_left(c_x_re, c_x_im, pxr, pxi, EXPANSION)
-        c_x_re = tl.where(wx, rot_re, c_x_re)
-        c_x_im = tl.where(wx, rot_im, c_x_im)
-    if PHY:
-        rot_re, rot_im = _rotate_field_left(a_y_re, a_y_im, pyr, pyi, EXPANSION)
-        a_y_re = tl.where(wy, rot_re, a_y_re)
-        a_y_im = tl.where(wy, rot_im, a_y_im)
-        rot_re, rot_im = _rotate_field_left(c_y_re, c_y_im, pyr, pyi, EXPANSION)
-        c_y_re = tl.where(wy, rot_re, c_y_re)
-        c_y_im = tl.where(wy, rot_im, c_y_im)
-    if PHZ:
-        rot_re, rot_im = _rotate_field_left(a_z_re, a_z_im, pzr, pzi, EXPANSION)
-        a_z_re = tl.where(wz, rot_re, a_z_re)
-        a_z_im = tl.where(wz, rot_im, a_z_im)
-        rot_re, rot_im = _rotate_field_left(b_z_re, b_z_im, pzr, pzi, EXPANSION)
-        b_z_re = tl.where(wz, rot_re, b_z_re)
-        b_z_im = tl.where(wz, rot_im, b_z_im)
+    # --- the connection on the UNSHIFTED partners, plane 0 of each partner's axis
+    # Target 0 reads c along y and b along z, target 1 a along z and c along x,
+    # target 2 b along x and a along y (stepping's term table). `tl.where` is a
+    # bitwise select, so every cell off plane 0 keeps its loaded words.
+    at_x, at_y, at_z = i == 0, j == 0, k == 0
+    c0_re, c0_im = c_re, c_im          # target 0's g1, connected on y
+    b0_re, b0_im = b_re, b_im          # target 0's g2, connected on z
+    a1_re, a1_im = a_re, a_im          # target 1's g1, connected on z
+    c1_re, c1_im = c_re, c_im          # target 1's g2, connected on x
+    b2_re, b2_im = b_re, b_im          # target 2's g1, connected on x
+    a2_re, a2_im = a_re, a_im          # target 2's g2, connected on y
+    if CNX:
+        r_re, r_im = _connect(c_re, c_im, cxr, cxi, CNX)
+        c1_re = tl.where(at_x, r_re, c_re)
+        c1_im = tl.where(at_x, r_im, c_im)
+        r_re, r_im = _connect(b_re, b_im, cxr, cxi, CNX)
+        b2_re = tl.where(at_x, r_re, b_re)
+        b2_im = tl.where(at_x, r_im, b_im)
+    if CNY:
+        r_re, r_im = _connect(c_re, c_im, cyr, cyi, CNY)
+        c0_re = tl.where(at_y, r_re, c_re)
+        c0_im = tl.where(at_y, r_im, c_im)
+        r_re, r_im = _connect(a_re, a_im, cyr, cyi, CNY)
+        a2_re = tl.where(at_y, r_re, a_re)
+        a2_im = tl.where(at_y, r_im, a_im)
+    if CNZ:
+        r_re, r_im = _connect(b_re, b_im, czr, czi, CNZ)
+        b0_re = tl.where(at_z, r_re, b_re)
+        b0_im = tl.where(at_z, r_im, b_im)
+        r_re, r_im = _connect(a_re, a_im, czr, czi, CNZ)
+        a1_re = tl.where(at_z, r_re, a_re)
+        a1_im = tl.where(at_z, r_im, a_im)
 
-    # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-    t0_re = ((c_y_re - c_re) + (b_re - b_z_re))
-    t0_im = ((c_y_im - c_im) + (b_im - b_z_im))
-    t1_re = ((a_z_re - a_re) + (c_re - c_x_re))
-    t1_im = ((a_z_im - a_im) + (c_im - c_x_im))
-    t2_re = ((b_x_re - b_re) + (a_re - a_y_re))
-    t2_im = ((b_x_im - b_im) + (a_im - a_y_im))
-    curl0_re, curl0_im = _mul_coefficient_left(dtdx, t0_re, t0_im, EXPANSION)
-    curl1_re, curl1_im = _mul_coefficient_left(dtdx, t1_re, t1_im, EXPANSION)
-    curl2_re, curl2_im = _mul_coefficient_left(dtdx, t2_re, t2_im, EXPANSION)
-
-    # --- the beta term (stepping._special_kz_beta_term), CENTER partners only ---
-    # AFTER the dtdx curl, BEFORE the ownership mask — the array path's order
-    # (S:356-363 / S:438-445 against S:369/S:450). Coefficient LEFT (S:784).
-    if HAS_BETA:
-        t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)
-        curl0_re = curl0_re - t_re
-        curl0_im = curl0_im - t_im
-        t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)
-        curl1_re = curl1_re - t_re
-        curl1_im = curl1_im - t_im
+    # --- the curl (stepping._curl_from_operands), per part ---------------------
+    # kernels.pml_curl_step's three calls on each part: MEEP's left-to-right
+    # association with both partners, the one-partner form where the record says the
+    # other partner's derivative axis is invariant, an exact +0 with neither. The
+    # dtdx scale is the real scalar times each part (part_products.scale).
+    presence = tl.load(cb + RECORD_PRESENCE)
+    px = axis_present(presence, 0)
+    py = axis_present(presence, 1)
+    pz = axis_present(presence, 2)
+    curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)
+    curl0_im = curl_stencil(c_y_im, c0_im, b0_im, b_z_im, dtdx, py, pz)
+    curl1_re = curl_stencil(a_z_re, a1_re, c1_re, c_x_re, dtdx, pz, px)
+    curl1_im = curl_stencil(a_z_im, a1_im, c1_im, c_x_im, dtdx, pz, px)
+    curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)
+    curl2_im = curl_stencil(b_x_im, b2_im, a2_im, a_y_im, dtdx, px, py)
 
     # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
-    at_x, at_y, at_z = i == 0, j == 0, k == 0
+    # Writes +0.0 to BOTH parts -- the array path assigns complex zero.
     if BACKWARD:
         if BCY == METALLIC:
             curl0_re = tl.where(at_y, 0.0, curl0_re)
@@ -634,7 +629,10 @@ def beta_bloch_pml_curl_step(
             curl2_re = tl.where(at_z, 0.0, curl2_re)
             curl2_im = tl.where(at_z, 0.0, curl2_im)
 
-    # --- split-field recurrence (stepping._apply_pml_update) -------------------
+    # --- the PML forms (stepping._apply_curl_regions), per part ----------------
+    # dsig/dsigu cycle: target 0 -> (y, z), 1 -> (z, x), 2 -> (x, y). One record
+    # select per target serves both parts; fu is read and written on the
+    # recurrence's cells only (the auxiliary contract), both words.
     km_x = tl.load(kmx + i, mask=live, other=0.0)
     si_x = tl.load(sinvx + i, mask=live, other=0.0)
     km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -642,174 +640,89 @@ def beta_bloch_pml_curl_step(
     km_z = tl.load(kmz + k, mask=live, other=0.0)
     si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-    p0_re = tl.load(u0 + 2 * idx, mask=live, other=0.0)
-    p0_im = tl.load(u0 + 2 * idx + 1, mask=live, other=0.0)
-    q_re, q_im = _mul_field_left(p0_re, p0_im, km_y, EXPANSION)
-    q_re = q_re - curl0_re
-    q_im = q_im - curl0_im
-    n0_re, n0_im = _mul_field_left(q_re, q_im, si_y, EXPANSION)
-    e_re = tl.load(f0 + 2 * idx, mask=live, other=0.0)
-    e_im = tl.load(f0 + 2 * idx + 1, mask=live, other=0.0)
-    r_re, r_im = _mul_field_left(e_re, e_im, km_z, EXPANSION)
-    r_re = (r_re + n0_re) - p0_re
-    r_im = (r_im + n0_im) - p0_im
-    v0_re, v0_im = _mul_field_left(r_re, r_im, si_z, EXPANSION)
+    if BACKWARD:
+        lattice = 0
+    else:
+        lattice = RECORD_HALF_INTEGER
+    du0 = record_in(cb, lattice + 8, k)
+    du1 = record_in(cb, lattice + 0, i)
+    du2 = record_in(cb, lattice + 4, j)
 
-    p1_re = tl.load(u1 + 2 * idx, mask=live, other=0.0)
-    p1_im = tl.load(u1 + 2 * idx + 1, mask=live, other=0.0)
-    q_re, q_im = _mul_field_left(p1_re, p1_im, km_z, EXPANSION)
-    q_re = q_re - curl1_re
-    q_im = q_im - curl1_im
-    n1_re, n1_im = _mul_field_left(q_re, q_im, si_z, EXPANSION)
-    e_re = tl.load(f1 + 2 * idx, mask=live, other=0.0)
-    e_im = tl.load(f1 + 2 * idx + 1, mask=live, other=0.0)
-    r_re, r_im = _mul_field_left(e_re, e_im, km_x, EXPANSION)
-    r_re = (r_re + n1_re) - p1_re
-    r_im = (r_im + n1_im) - p1_im
-    v1_re, v1_im = _mul_field_left(r_re, r_im, si_x, EXPANSION)
+    p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)
+    p_im = tl.load(u0 + 2 * idx + 1, mask=live & du0, other=0.0)
+    v0_re, n0_re = curl_form(tl.load(f0 + 2 * idx, mask=live, other=0.0), p_re, curl0_re,
+                             km_y, si_y, km_z, si_z, du0)
+    v0_im, n0_im = curl_form(tl.load(f0 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                             curl0_im, km_y, si_y, km_z, si_z, du0)
 
-    p2_re = tl.load(u2 + 2 * idx, mask=live, other=0.0)
-    p2_im = tl.load(u2 + 2 * idx + 1, mask=live, other=0.0)
-    q_re, q_im = _mul_field_left(p2_re, p2_im, km_x, EXPANSION)
-    q_re = q_re - curl2_re
-    q_im = q_im - curl2_im
-    n2_re, n2_im = _mul_field_left(q_re, q_im, si_x, EXPANSION)
-    e_re = tl.load(f2 + 2 * idx, mask=live, other=0.0)
-    e_im = tl.load(f2 + 2 * idx + 1, mask=live, other=0.0)
-    r_re, r_im = _mul_field_left(e_re, e_im, km_y, EXPANSION)
-    r_re = (r_re + n2_re) - p2_re
-    r_im = (r_im + n2_im) - p2_im
-    v2_re, v2_im = _mul_field_left(r_re, r_im, si_y, EXPANSION)
+    p_re = tl.load(u1 + 2 * idx, mask=live & du1, other=0.0)
+    p_im = tl.load(u1 + 2 * idx + 1, mask=live & du1, other=0.0)
+    v1_re, n1_re = curl_form(tl.load(f1 + 2 * idx, mask=live, other=0.0), p_re, curl1_re,
+                             km_z, si_z, km_x, si_x, du1)
+    v1_im, n1_im = curl_form(tl.load(f1 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                             curl1_im, km_z, si_z, km_x, si_x, du1)
 
-    # --- stores: u then f (kernels.py:193-198 order), both planes ---------------
-    tl.store(u0 + 2 * idx, n0_re, mask=live)
-    tl.store(u0 + 2 * idx + 1, n0_im, mask=live)
-    tl.store(u1 + 2 * idx, n1_re, mask=live)
-    tl.store(u1 + 2 * idx + 1, n1_im, mask=live)
-    tl.store(u2 + 2 * idx, n2_re, mask=live)
-    tl.store(u2 + 2 * idx + 1, n2_im, mask=live)
+    p_re = tl.load(u2 + 2 * idx, mask=live & du2, other=0.0)
+    p_im = tl.load(u2 + 2 * idx + 1, mask=live & du2, other=0.0)
+    v2_re, n2_re = curl_form(tl.load(f2 + 2 * idx, mask=live, other=0.0), p_re, curl2_re,
+                             km_x, si_x, km_y, si_y, du2)
+    v2_im, n2_im = curl_form(tl.load(f2 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                             curl2_im, km_x, si_x, km_y, si_y, du2)
+
+    # --- the special-kz beta pass (stepping._special_kz_beta_term, then
+    # stepping._apply_folded_increment), per part ------------------------------
+    # MEEP's pass of its own after every component's curl (step_db.cpp:161-175),
+    # applied to the registers the forms returned. The partners are the CENTER
+    # words as loaded, never connected: target 0 takes the second source at sign
+    # +1, target 1 the first at sign -1; target 2 gets nothing. The increment is
+    # the negated quarter turn (part_products.quarter_turn): i*c*(x + iy) is
+    # (-(c*y), c*x), so its negation is (c*y, -(c*x)), the two negations of the
+    # real part cancelling exactly. The words beta_plus/beta_minus already carry
+    # the side's i or -i (special_kz.beta_curl_coefficients). Masked to (+0, +0)
+    # on the cells the curl's own mask drops; each part takes the beta ladder.
+    if HAS_BETA:
+        q0_re = beta_plus * b_im
+        q0_im = (beta_plus * b_re) * -1.0
+        q1_re = beta_minus * a_im
+        q1_im = (beta_minus * a_re) * -1.0
+        if BACKWARD:
+            if BCY == METALLIC:
+                q0_re = tl.where(at_y, 0.0, q0_re)
+                q0_im = tl.where(at_y, 0.0, q0_im)
+            if BCZ == METALLIC:
+                q0_re = tl.where(at_z, 0.0, q0_re)
+                q0_im = tl.where(at_z, 0.0, q0_im)
+            if BCX == METALLIC:
+                q1_re = tl.where(at_x, 0.0, q1_re)
+                q1_im = tl.where(at_x, 0.0, q1_im)
+            if BCZ == METALLIC:
+                q1_re = tl.where(at_z, 0.0, q1_re)
+                q1_im = tl.where(at_z, 0.0, q1_im)
+        else:
+            if BCX == METALLIC:
+                q0_re = tl.where(at_x, 0.0, q0_re)
+                q0_im = tl.where(at_x, 0.0, q0_im)
+            if BCY == METALLIC:
+                q1_re = tl.where(at_y, 0.0, q1_re)
+                q1_im = tl.where(at_y, 0.0, q1_im)
+        v0_re, n0_re = fold_ladder(v0_re, n0_re, q0_re, si_y, si_z, du0)
+        v0_im, n0_im = fold_ladder(v0_im, n0_im, q0_im, si_y, si_z, du0)
+        v1_re, n1_re = fold_ladder(v1_re, n1_re, q1_re, si_z, si_x, du1)
+        v1_im, n1_im = fold_ladder(v1_im, n1_im, q1_im, si_z, si_x, du1)
+
+    # --- stores: fu (recurrence cells only), then the fields, both parts --------
+    tl.store(u0 + 2 * idx, n0_re, mask=live & du0)
+    tl.store(u0 + 2 * idx + 1, n0_im, mask=live & du0)
+    tl.store(u1 + 2 * idx, n1_re, mask=live & du1)
+    tl.store(u1 + 2 * idx + 1, n1_im, mask=live & du1)
+    tl.store(u2 + 2 * idx, n2_re, mask=live & du2)
+    tl.store(u2 + 2 * idx + 1, n2_im, mask=live & du2)
     tl.store(f0 + 2 * idx, v0_re, mask=live)
     tl.store(f0 + 2 * idx + 1, v0_im, mask=live)
     tl.store(f1 + 2 * idx, v1_re, mask=live)
     tl.store(f1 + 2 * idx + 1, v1_im, mask=live)
     tl.store(f2 + 2 * idx, v2_re, mask=live)
     tl.store(f2 + 2 * idx + 1, v2_im, mask=live)
-
-
-# ---------------------------------------------------------------------------
-# The extended probe contract
-# ---------------------------------------------------------------------------
-
-def beta_expansion_license(record: Any) -> Dict[str, Any]:
-    """The full licensing verdict for the beta tranche — arm, basis, refusals.
-
-    :func:`complex_fields.expansion_license` over the EXTENDED pattern set: the
-    record must name the CuPy backend, classify every pattern of
-    :data:`BETA_PROBE_PATTERNS` — the base four PLUS the imaginary-coefficient-
-    left product — and the patterns that CAN discriminate must agree. A record
-    cut before this tranche (no :data:`BETA_PROBE_PATTERN` key) refuses here even
-    though it licenses the base complex kernels; §4(k) of the transcription spec.
-
-    THE NON-DISCRIMINATING CLAUSE APPLIES TO EVERY PATTERN HERE, base four
-    included, and that is the 2026-08-15 correction. This function used to carry
-    its own loop that accepted ``AMBIGUOUS_BOTH`` for :data:`BETA_PROBE_PATTERN`
-    and for nothing else, so a base pattern that could not tell the arms apart
-    VETOED the licence. The justification for the special case was arithmetic —
-    the engine's beta coefficients carry a SIGNED-ZERO real word, so with
-    ``c_re`` exactly ±0 the fused arm's extra product is exact and the two arms
-    are bit-identical (measured AMBIGUOUS_BOTH on the reference NumPy, all 16
-    corpus coefficients, 2026-08-15) — but that argument is about WHY a pattern
-    goes blind, not about WHICH pattern may. Under the flush policy the same
-    thing happens to base patterns for a different reason, and vetoing there
-    refuses a platform that has answered the question on the patterns that can
-    answer it. The base family fixed this first; this is the same clause, not a
-    second copy of it.
-
-    WHAT DOES NOT SOFTEN. :data:`complex_fields.NEITHER` still refuses by name, a
-    disagreement across coefficients still refuses by name, and a pattern that
-    claims ambiguity while its own detail block measures the licensable arms some
-    words APART is a self-contradicting record and refuses — excluded and
-    disagreeing are opposite situations, and only the first is ever dropped from
-    the agreement test.
-    """
-    return expansion_license(record, BETA_PROBE_PATTERNS)
-
-
-def beta_expansion_from_probe(record: Any) -> Optional[int]:
-    """The single ``EXPANSION`` constexpr the complex beta CURL may bind, or None.
-
-    The narrow answer :func:`beta_expansion_license` computes; see there for the
-    rule. Kept as the callers' entry point because a plan builder wants the
-    constexpr or a refusal, not a verdict document.
-    """
-    return beta_expansion_license(record)["expansion"]
-
-
-def _beta_expansion_reasons(probe: Any = None) -> List[str]:
-    """Clause 13, extended: the beta curl's EXPANSION binding needs the probe
-    artifact to carry the NEW pattern too — refusal by name when it does not.
-
-    AND CUT UNDER THE POLICY THIS RUN USES, which this clause used not to check
-    at all (2026-08-16). ``complex_fields._expansion_reasons`` ends in
-    :func:`~complex_fields.expansion_policy_reasons`; this function and
-    ``folded_complex._parity_expansion_reasons`` did not, so K3a/K3b licensed a
-    flush-cut record that the base seam refused on the same input with the same
-    policy readable. Extending the PATTERN SET never shrinks the question asked
-    about the artifact.
-
-    ``probe`` is three-valued — a record, ``None`` for "nothing offered", or a
-    :class:`~meep_gpu.expansion_refusal.RefusedExpansionProbe` for "offered and
-    refused", which never falls back to the environment.
-    """
-    # Imported in the BODY so ``_policy_in_force`` resolves through
-    # ``complex_fields``' namespace at call time rather than being frozen here.
-    from ..expansion_refusal import RefusedExpansionProbe  # noqa: PLC0415
-    from .complex_fields import (  # noqa: PLC0415
-        _policy_in_force, expansion_certification_reasons,
-        expansion_policy_reasons)
-
-    record = probe if probe is not None else load_expansion_probe()
-    if isinstance(record, RefusedExpansionProbe):
-        return [f"the expansion probe artifact offered through {record.key} was "
-                f"REFUSED by this dispatch and may not license an arm at any "
-                f"later rung: " + "; ".join(record.reasons)]
-    if record is None:
-        return [
-            "no complex-multiply expansion probe artifact is available for this "
-            "backend; the EXPANSION constexpr is a measured platform fact and "
-            "may not be guessed (the beta tranche additionally requires the "
-            f"{BETA_PROBE_PATTERN!r} pattern)"]
-    verdict = beta_expansion_license(record)
-    if verdict["expansion"] is None:
-        # The verdict's OWN refusals, verbatim, not a summary of them: which
-        # pattern failed and how is the whole value of a refusal by name, and a
-        # one-line paraphrase ("missing, ambiguous, or lacks the pattern") sends
-        # the reader back to the artifact to find out which of the three it was.
-        return [
-            f"the expansion probe artifact does not license an EXPANSION over "
-            f"the EXTENDED pattern set {BETA_PROBE_PATTERNS} this tranche binds "
-            f"(the base four plus {BETA_PROBE_PATTERN!r})"
-        ] + list(verdict["refusals"])
-    # BOTH policy questions — artifact-vs-run and kernel-vs-run. K3a/K3b's beta
-    # curl was certified under the same policy as the base four, so the second
-    # clause is the same constant asked at this tranche's seam.
-    policy = _policy_in_force()
-    return (list(expansion_policy_reasons(record, policy))
-            + list(expansion_certification_reasons(policy)))
-
-
-# ---------------------------------------------------------------------------
-# Coverage — positive refusal enumeration
-# ---------------------------------------------------------------------------
-#
-# The clause numbering mirrors ``coverage._grid_reasons`` (real family) and
-# ``complex_fields._complex_grid_reasons`` (complex family) so each pair can be
-# diffed. In BOTH families clause 12 (beta) is INVERTED: this product REQUIRES
-# beta != 0, where every shipped kernel requires 0 — the exact mirror of the
-# complex tranche's clause-2 inversion, and the reason no admitted-overlap
-# ambiguity can arise while dispatch stays disabled. Everything else is KEPT,
-# restated rather than imported, because the shipped reason lists are built
-# inside functions whose beta clause cannot be subtracted from outside.
 
 
 def _beta_real_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
@@ -996,15 +909,8 @@ def beta_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     return Coverage(not reasons, tuple(reasons))
 
 
-def _beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any,
-                               probe: Any = None,
-                               curl_probe_contract: bool = True) -> List[str]:
-    """The clauses every COMPLEX-family beta predicate shares.
-
-    ``curl_probe_contract`` selects clause 13's pattern set: the beta CURL
-    binds the EXTENDED set (:data:`BETA_PROBE_PATTERNS`, §4(k)); the certified
-    constitutive kernel binds its own BASE set (grouping choice 5).
-    """
+def _beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
+    """The clauses every COMPLEX-family beta predicate shares."""
     reasons: List[str] = []
 
     # 1. CuPy backend.
@@ -1140,24 +1046,14 @@ def _beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any,
     if not getattr(fields, "stores_E", False):
         reasons.append("E is recomputed from D rather than stored")
 
-    # 13. EXPANSION binding requires a measured probe artifact — the EXTENDED
-    #     set for the beta curl (§4(k)), the base set for the certified
-    #     constitutive kernel (its own contract).
-    if curl_probe_contract:
-        reasons.extend(_beta_expansion_reasons(probe))
-    else:
-        reasons.extend(_expansion_reasons(probe))
-
     return reasons
 
 
-def beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                 probe: Any = None) -> Coverage:
+def beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """May the COMPLEX special_kz curl kernel step this (fields, pml, sub_step)?
 
     ``complex_fields.complex_pml_curl_coverage``'s clause set with clause 8's
-    beta refusal INVERTED and the probe clause extended to
-    :data:`BETA_PROBE_PATTERNS`. Off-diagonal epsilon is ADMITTED here exactly
+    beta refusal INVERTED. Off-diagonal epsilon is ADMITTED here exactly
     as the certified complex curl admits it (constitutive-only under complex
     storage; the real-storage hazard is the REAL family's 12b clause).
     """
@@ -1168,7 +1064,7 @@ def beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
 
-    reasons = _beta_complex_grid_reasons(fields, pml, grid, probe)
+    reasons = _beta_complex_grid_reasons(fields, pml, grid)
 
     spec = SUB_STEPS[sub_step]
     names = (tuple(spec["targets"])
@@ -1235,15 +1131,12 @@ def beta_run_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage
     return Coverage(not reasons, tuple(reasons))
 
 
-def beta_run_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                           probe: Any = None) -> Coverage:
+def beta_run_complex_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """May the CERTIFIED complex constitutive kernel step this side on a BETA run?
 
     ``complex_fields.complex_constitutive_coverage`` with the beta clause
-    INVERTED. The kernel launched is the certified
-    ``bloch_constitutive_step`` unchanged, so the probe clause here is the
-    BASE pattern set (that kernel's own contract), not the extended one —
-    grouping choice 5 in the module docstring.
+    INVERTED. The kernel launched is the certified ``bloch_constitutive_step``
+    unchanged (grouping choice 5 in the module docstring).
     """
     if side not in CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, got {side!r}")
@@ -1252,8 +1145,7 @@ def beta_run_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
         return Coverage(False, ("fields carries no grid",))
 
     spec = CONSTITUTIVE_SIDES[side]
-    reasons = _beta_complex_grid_reasons(fields, pml, grid, probe,
-                                         curl_probe_contract=False)
+    reasons = _beta_complex_grid_reasons(fields, pml, grid)
 
     if side == "E" and getattr(fields, "has_offdiagonal_epsilon", False):
         reasons.append("an off-diagonal chi1inv row is installed (the row "
@@ -1282,27 +1174,34 @@ def beta_run_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
 class BetaPmlCurlPlan:
     """A launchable, allocation-free REAL beta PML curl sub-step.
 
-    ``launch.PmlCurlPlan`` plus the two host-rounded beta scalars and the
-    ``HAS_BETA`` constexpr. Same two construction routes and one launch route:
+    ``launch.PmlCurlPlan`` plus the two host-rounded beta words and the ``HAS_BETA``
+    constexpr. Same two construction routes and one launch route:
     :func:`plan_beta_pml_curl` from the engine's objects through the predicate,
     :func:`plan_beta_pml_curl_from_arrays` from bare device arrays for the gate
     (including the deliberately wrong ones), both launched through :meth:`run`.
+    ``chunk_bounds`` is the chunk record, required and bound as ``launch.PmlCurlPlan``
+    binds it (``launch.bind_chunk_bounds``).
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "beta_plus",
                  "beta_minus", "has_beta", "backward", "bc", "block",
-                 "num_warps", "_targets", "_aux", "_sources", "_coefficients",
-                 "_grid", "_kernel")
+                 "num_warps", "chunk_bounds", "_targets", "_aux", "_sources",
+                 "_coefficients", "_cb", "_grid", "_kernel")
 
     def __init__(self, sub_step: str, shape, dtdx: float, bc,
                  beta_plus: float, beta_minus: float, block: int,
                  targets, auxiliaries, sources, coefficients, kernel=None,
-                 num_warps: Optional[int] = None, has_beta: int = 1) -> None:
+                 num_warps: Optional[int] = None, has_beta: int = 1, *,
+                 chunk_bounds: Any) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
+        from .launch import bind_chunk_bounds  # noqa: PLC0415
+
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "BetaPmlCurlPlan")
         self.dtdx = float(dtdx)
         # Already f32-rounded by the host (beta_curl_coefficients); float()
         # keeps the bits, and Triton types a Python float argument as fp32.
@@ -1329,7 +1228,7 @@ class BetaPmlCurlPlan:
         kernel = self._kernel if self._kernel is not None else beta_pml_curl_step
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
         kernel[self._grid](
-            *self._targets, *self._aux, *self._sources, *self._coefficients,
+            *self._targets, *self._aux, *self._sources, *self._coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
             self.beta_plus, self.beta_minus,
             BACKWARD=self.backward,
@@ -1344,18 +1243,21 @@ class BetaPmlCurlPlan:
         return (f"BetaPmlCurlPlan({self.sub_step}, shape={self.shape}, "
                 f"bc={self.bc}, beta_plus={self.beta_plus!r}, "
                 f"has_beta={self.has_beta}, block={self.block}, "
-                f"num_warps={self.num_warps})")
+                f"num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_beta_pml_curl(fields: Any, pml: Any, sub_step: str,
                        block: Optional[int] = None,
-                       num_warps: Optional[int] = None
+                       num_warps: Optional[int] = None,
+                       chunk_layout: Any = None
                        ) -> Optional[BetaPmlCurlPlan]:
     """Build a REAL beta curl plan from the engine's objects, or None.
 
-    None is the only refusal (Y-style). The coefficients come from
-    :func:`beta_curl_coefficients` with ``magnetic`` from the sub-step —
-    identical arithmetic to the array path's per-call-site computation.
+    None is the only refusal (Y-style). The words come from
+    :func:`beta_curl_coefficients` -- the array path's own per-call-site arithmetic.
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default
+    (``launch.chunk_bounds_for``).
     """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
@@ -1380,6 +1282,7 @@ def plan_beta_pml_curl(fields: Any, pml: Any, sub_step: str,
         [getattr(pml, f"{stem}_{axis}{spec['suffix']}")
          for axis in "xyz" for stem in ("kms", "sinv")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
@@ -1389,13 +1292,16 @@ def plan_beta_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
                                    block: Optional[int] = None,
                                    kernel: Any = None,
                                    num_warps: Optional[int] = None,
-                                   has_beta: int = 1) -> BetaPmlCurlPlan:
+                                   has_beta: int = 1, *,
+                                   chunk_bounds: Any) -> BetaPmlCurlPlan:
     """Build a REAL beta curl plan from bare device arrays — the gate's route.
 
-    No predicate runs: the caller is a harness that constructed the
-    configuration deliberately, including the deliberately wrong ones;
-    ``kernel=`` carries the mutation override and ``has_beta=0`` the identity
-    leg's certified-kernel arm.
+    No predicate runs: the caller is a harness that constructed the configuration
+    deliberately, including the deliberately wrong ones; ``kernel=`` carries the
+    mutation override and ``has_beta=0`` the identity leg's root-kernel arm.
+    ``chunk_bounds`` has NO default: a harness plan built without a record is refused
+    by name (``launch.bind_chunk_bounds``), because a mutation leg that fell back to
+    some default division would stop measuring the forms it exists to measure.
     """
     spec = SUB_STEPS[sub_step]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
@@ -1407,48 +1313,70 @@ def plan_beta_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
         [arrays[name] for name in spec["sources"]],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
         kernel=kernel, num_warps=num_warps, has_beta=has_beta,
+        chunk_bounds=chunk_bounds,
     )
 
 
 class BetaBlochPmlCurlPlan:
     """A launchable, allocation-free COMPLEX beta PML curl sub-step.
 
-    ``complex_fields.ComplexPmlCurlPlan`` plus the four beta coefficient words
-    and ``HAS_BETA``. The complex volumes are bound as float32 WORD VIEWS at
-    plan time; ``n_elem`` stays the COMPLEX cell count.
+    ``complex_fields.ComplexPmlCurlPlan`` plus the two quarter-turn words and
+    ``HAS_BETA``. The complex volumes are bound as float32 WORD VIEWS at plan time;
+    ``n_elem`` stays the COMPLEX cell count. ``connections`` /
+    ``connection_values`` are ``complex_fields.connection_arguments``' kinds and
+    float32 parts for this sub-step's direction; ``chunk_bounds`` is the chunk record,
+    required.
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc",
-                 "phased", "phase_values", "beta_words", "has_beta",
-                 "expansion", "block", "num_warps", "_targets", "_aux",
-                 "_sources", "_coefficients", "_grid", "_kernel")
+                 "connections", "connection_values", "beta_words", "has_beta",
+                 "block", "num_warps", "chunk_bounds", "_targets",
+                 "_aux", "_sources", "_coefficients", "_cb", "_grid", "_kernel")
 
-    def __init__(self, sub_step: str, shape, dtdx: float, bc, phased,
-                 phase_values, beta_words, expansion: int, block: int,
+    def __init__(self, sub_step: str, shape, dtdx: float, bc, connections,
+                 connection_values, beta_words, block: int,
                  targets, auxiliaries, sources, coefficients, kernel=None,
-                 num_warps: Optional[int] = None, has_beta: int = 1) -> None:
+                 num_warps: Optional[int] = None, has_beta: int = 1, *,
+                 chunk_bounds: Any) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
+        from .complex_fields import CONNECTION_KINDS  # noqa: PLC0415
+        from .launch import bind_chunk_bounds  # noqa: PLC0415
+
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
         self.dtdx = float(dtdx)
         self.backward = int(SUB_STEPS[sub_step]["backward"])
         self.bc = tuple(int(code) for code in bc)
-        self.phased = tuple(int(flag) for flag in phased)
-        self.phase_values = tuple(float(value) for value in phase_values)
-        # ((bp_re, bp_im), (bm_re, bm_im)) — already complex64-rounded words
-        # with the signed-zero real parts passed through (float() keeps them).
-        self.beta_words = tuple(tuple(float(word) for word in pair)
-                                for pair in beta_words)
+        self.connections = tuple(int(kind) for kind in connections)
+        if len(self.connections) != 3 or any(
+                kind not in CONNECTION_KINDS.values() for kind in self.connections):
+            raise ValueError(f"connections must be three kinds in "
+                             f"{sorted(CONNECTION_KINDS.values())}, got {connections!r}")
+        for axis, (kind, code) in enumerate(zip(self.connections, self.bc)):
+            # A connection exists only on a wrapping axis, as in ComplexPmlCurlPlan.
+            if kind and code != getattr(PERIODIC, "value", PERIODIC):
+                raise ValueError(f"axis {axis} carries a connection but its boundary "
+                                 f"code {code} does not wrap")
+        self.connection_values = tuple(float(value) for value in connection_values)
+        # (plus, minus): one float32-rounded real word per sign, the side's i or -i
+        # already applied (beta_curl_coefficients); float() keeps every bit.
+        words = tuple(beta_words)
+        if len(words) != 2 or any(isinstance(word, (tuple, list)) for word in words):
+            raise ValueError(f"beta_words must be the two real quarter-turn words of "
+                             f"beta_curl_coefficients(..., complex_storage=True), got "
+                             f"{beta_words!r}")
+        self.beta_words = tuple(float(word) for word in words)
         self.has_beta = int(has_beta)
-        self.expansion = int(expansion)
         self.block = int(block)
         self.num_warps = None if num_warps is None else int(num_warps)
         self._targets = tuple(CupyPointer(_word_view(a)) for a in targets)
         self._aux = tuple(CupyPointer(_word_view(a)) for a in auxiliaries)
         self._sources = tuple(CupyPointer(_word_view(a)) for a in sources)
         self._coefficients = tuple(CupyPointer(_flat(a)) for a in coefficients)
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "BetaBlochPmlCurlPlan")
         self._grid = ((self.n_elem + self.block - 1) // self.block,)
         self._kernel = kernel
 
@@ -1460,17 +1388,15 @@ class BetaBlochPmlCurlPlan:
         kernel = (self._kernel if self._kernel is not None
                   else beta_bloch_pml_curl_step)
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
-        (bp_re, bp_im), (bm_re, bm_im) = self.beta_words
         kernel[self._grid](
-            *self._targets, *self._aux, *self._sources, *self._coefficients,
+            *self._targets, *self._aux, *self._sources, *self._coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
-            *self.phase_values,
-            bp_re, bp_im, bm_re, bm_im,
+            *self.connection_values,
+            *self.beta_words,
             BACKWARD=self.backward,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
-            PHX=self.phased[0], PHY=self.phased[1], PHZ=self.phased[2],
+            CNX=self.connections[0], CNY=self.connections[1], CNZ=self.connections[2],
             HAS_BETA=self.has_beta,
-            EXPANSION=self.expansion,
             BLOCK=self.block,
             enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
             **extra,
@@ -1478,25 +1404,24 @@ class BetaBlochPmlCurlPlan:
 
     def __repr__(self) -> str:
         return (f"BetaBlochPmlCurlPlan({self.sub_step}, shape={self.shape}, "
-                f"bc={self.bc}, phased={self.phased}, "
+                f"bc={self.bc}, connections={self.connections}, "
                 f"beta_words={self.beta_words!r}, has_beta={self.has_beta}, "
-                f"expansion={self.expansion}, block={self.block}, "
-                f"num_warps={self.num_warps})")
+                f"block={self.block}, num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
                              block: Optional[int] = None,
                              num_warps: Optional[int] = None,
-                             probe: Any = None
+                             chunk_layout: Any = None
                              ) -> Optional[BetaBlochPmlCurlPlan]:
-    """Build a COMPLEX beta curl plan from the engine's objects, or None."""
+    """Build a COMPLEX beta curl plan from the engine's objects, or None.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
-    if not beta_bloch_pml_curl_coverage(fields, pml, sub_step, probe=probe).covered:
-        return None
-    record = probe if probe is not None else load_expansion_probe()
-    expansion = beta_expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not beta_bloch_pml_curl_coverage(fields, pml, sub_step).covered:
         return None
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
 
@@ -1504,14 +1429,14 @@ def plan_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
     grid = fields.grid
     kinds = resolve(grid, pml)
     phases = bloch_phase_table(grid, kinds)
-    phased, values = _phase_arguments(phases, backward=bool(spec["backward"]))
+    connections, values = connection_arguments(phases, backward=bool(spec["backward"]))
     beta_words = beta_curl_coefficients(grid.beta, grid.dt,
                                         magnetic=(sub_step == "step_B"),
                                         complex_storage=True)
     return BetaBlochPmlCurlPlan(
         sub_step, grid.shape, grid.dt / grid.dx,
         [1 if kind == "metallic" else 0 for kind in kinds],
-        phased, values, beta_words, expansion,
+        connections, values, beta_words,
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in spec["targets"]],
         [getattr(fields, "fu_" + name) for name in spec["targets"]],
@@ -1519,51 +1444,57 @@ def plan_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
         [getattr(pml, f"{stem}_{axis}{spec['suffix']}")
          for axis in "xyz" for stem in ("kms", "sinv")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
 def plan_beta_bloch_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
                                          flat: Dict[str, Any], codes,
                                          phases: Sequence[Optional[complex]],
-                                         dtdx: float, expansion: int,
+                                         dtdx: float,
                                          beta_words,
                                          block: Optional[int] = None,
                                          kernel: Any = None,
                                          num_warps: Optional[int] = None,
-                                         has_beta: int = 1
+                                         has_beta: int = 1, *,
+                                         chunk_bounds: Any
                                          ) -> BetaBlochPmlCurlPlan:
     """Build a COMPLEX beta curl plan from bare device arrays — the gate's route.
 
-    ``beta_words`` is ``((bp_re, bp_im), (bm_re, bm_im))`` — normally
-    :func:`beta_curl_coefficients`'s output, or a deliberately wrong pair on a
-    mutation leg. The step_D phase conjugation is applied HERE per sub-step,
-    exactly as the complex tranche's from-arrays builder applies it.
+    ``beta_words`` is ``(plus, minus)`` — normally :func:`beta_curl_coefficients`'s
+    output, or a deliberately wrong pair on a mutation leg. The direction's connection
+    factor is formed HERE, per sub-step, exactly as the engine route forms it
+    (``complex_fields.connection_arguments``). ``chunk_bounds`` has no default (see
+    :func:`plan_beta_pml_curl_from_arrays`).
     """
     spec = SUB_STEPS[sub_step]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
-    phased, values = _phase_arguments(tuple(phases), backward=bool(spec["backward"]))
+    connections, values = connection_arguments(tuple(phases),
+                                               backward=bool(spec["backward"]))
     return BetaBlochPmlCurlPlan(
-        sub_step, shape, dtdx, codes, phased, values, beta_words,
-        int(expansion),
+        sub_step, shape, dtdx, codes, connections, values, beta_words,
         DEFAULT_BLOCK if block is None else block,
         [arrays[name] for name in spec["targets"]],
         [arrays["fu_" + name] for name in spec["targets"]],
         [arrays[name] for name in spec["sources"]],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
         kernel=kernel, num_warps=num_warps, has_beta=has_beta,
+        chunk_bounds=chunk_bounds,
     )
 
 
 def plan_beta_run_constitutive(fields: Any, pml: Any, side: str,
                                block: Optional[int] = None,
-                               num_warps: Optional[int] = None
+                               num_warps: Optional[int] = None,
+                               chunk_layout: Any = None
                                ) -> Optional[ConstitutivePlan]:
-    """A CERTIFIED real constitutive plan for a beta run, or None.
+    """A root real constitutive plan for a beta run, or None.
 
-    The arithmetic and the plan class are ``launch.ConstitutivePlan``'s,
-    untouched; only the ADMISSION is this module's
-    (:func:`beta_run_constitutive_coverage`, the shipped predicate minus the
-    beta clause). The binding below restates ``launch.plan_constitutive``'s.
+    The arithmetic and the plan class are ``launch.ConstitutivePlan``'s, untouched; only
+    the ADMISSION is this module's (:func:`beta_run_constitutive_coverage`, the root
+    predicate minus the beta clause). The binding restates ``launch.plan_constitutive``'s:
+    the run's chunk record (``chunk_layout``, ``None`` for the one-rank default), and on
+    the H side MEEP's start of H from ``fields``.
     """
     if side not in CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, got {side!r}")
@@ -1581,33 +1512,30 @@ def plan_beta_run_constitutive(fields: Any, pml: Any, side: str,
         [getattr(pml, f"{stem}_{axis}{suffix}")
          for axis in "xyz" for stem in ("kps", "kms")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        h_state=fields,
     )
 
 
 def plan_beta_run_complex_constitutive(fields: Any, pml: Any, side: str,
                                        block: Optional[int] = None,
                                        num_warps: Optional[int] = None,
-                                       probe: Any = None
+                                       chunk_layout: Any = None
                                        ) -> Optional[ComplexConstitutivePlan]:
-    """A CERTIFIED complex constitutive plan for a beta run, or None.
+    """A root complex constitutive plan for a beta run, or None.
 
-    The kernel and plan class are ``complex_fields``' (certified), untouched;
-    the EXPANSION binds through the BASE pattern set because that is the
-    certified kernel's own contract (module docstring, grouping choice 5).
+    The kernel and plan class are ``complex_fields``', untouched (module docstring,
+    grouping choice 5). The run's chunk record and, on the H side, MEEP's start of H
+    from ``fields``, as ``complex_fields.plan_complex_constitutive`` binds them.
     """
     if side not in CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, got {side!r}")
-    if not beta_run_complex_constitutive_coverage(fields, pml, side,
-                                                  probe=probe).covered:
-        return None
-    record = probe if probe is not None else load_expansion_probe()
-    expansion = expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not beta_run_complex_constitutive_coverage(fields, pml, side).covered:
         return None
     spec = CONSTITUTIVE_SIDES[side]
     suffix = "_h" if spec["half_integer"] else ""
     return ComplexConstitutivePlan(
-        side, fields.grid.shape, expansion,
+        side, fields.grid.shape,
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in spec["targets"]],
         [getattr(fields, name) for name in spec["aux"]],
@@ -1617,6 +1545,8 @@ def plan_beta_run_complex_constitutive(fields: Any, pml: Any, side: str,
         [getattr(pml, f"{stem}_{axis}{suffix}")
          for axis in "xyz" for stem in ("kps", "kms")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        h_state=fields,
     )
 
 

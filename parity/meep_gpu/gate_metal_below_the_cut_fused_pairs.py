@@ -107,6 +107,8 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
     Residency, compile_source, metal_frontend_version,
 )
 from meep_gpu.triton_kernels.coverage import zero_metal_axes  # noqa: E402
+from gate_chunk_records import every_cell_record, layer_record  # noqa: E402
+from meep_gpu.metal_kernels import chunk_bounds as _chunk_bounds  # noqa: E402
 
 #: The budget every case runs, matching the shipped weld's and for its reason: the
 #: classes this gate exists for COMPOUND. ``fu_B`` and ``f_w_H`` are state carried
@@ -197,7 +199,7 @@ class Product:
     __slots__ = ("key", "module", "fixture", "folded_fixture", "cases",
                  "mutation_case", "refusal_case", "curl_plan", "constitutive_plan",
                  "certified_curl", "curl_emitter", "entry_point", "extra_mutations",
-                 "notes")
+                 "notes", "planar")
 
     def __init__(self, key: str, module: Any, fixture: Callable[..., Any],
                  folded_fixture: Callable[[], Tuple[Any, Any]],
@@ -209,7 +211,7 @@ class Product:
                  curl_emitter: Callable[..., str],
                  entry_point: str,
                  extra_mutations: Callable[[str], Dict[str, str]],
-                 notes: str) -> None:
+                 notes: str, planar: bool = False) -> None:
         self.key = key
         self.module = module
         self.fixture = fixture
@@ -224,6 +226,10 @@ class Product:
         self.entry_point = entry_point
         self.extra_mutations = extra_mutations
         self.notes = notes
+        # PLANAR: every case of the product is 2-D (MEEP defines special-kz beta in 2-D
+        # only), so z carries no layer: target 0's dsigu branch is never taken and its
+        # two-partner curl is never formed (the shared needles' target choice below).
+        self.planar = bool(planar)
 
     # -- the module's four public entry points, by name -------------------
     def source(self, codes: Sequence[int], walls: Sequence[bool],
@@ -239,69 +245,92 @@ class Product:
 
     def plan(self, fields: Any, pml: Any, sources: Any, residency: Any,
              functions: Optional[Mapping[str, Any]] = None) -> Any:
-        return getattr(
-            self.module, f"plan_metal_{self.key}_fused_magnetic_pair")(
-            fields, pml, sources, residency, (shaders.CONTRACT_OFF,), functions)
+        """The product's own builder, handed the case's chunk record when it takes one.
+
+        A builder that binds the record (``chunk_bounds``, keyword-only, no default)
+        gets the one-rank record of the case; one that does not yet bind it is called
+        as before.
+        """
+        import inspect  # noqa: PLC0415
+
+        builder = getattr(self.module, f"plan_metal_{self.key}_fused_magnetic_pair")
+        keywords: Dict[str, Any] = {}
+        if "chunk_bounds" in inspect.signature(builder).parameters:
+            keywords["chunk_bounds"] = layer_record(fields.grid, pml)
+        return builder(fields, pml, sources, residency, (shaders.CONTRACT_OFF,),
+                       functions, **keywords)
 
     def compile_mutant(self, source: str) -> Any:
         return getattr(compile_source(source), self.entry_point)
 
 
 def _beta_mutations(base: str) -> Dict[str, str]:
-    """The two statements that make this weld a BETA weld (special_kz.py:392-393)."""
+    """The pass that makes this weld a BETA weld (special_kz.beta_pass), armed."""
     return {
-        # DROP THE BETA TERM ENTIRELY: the weld becomes the ordinary one, which is
-        # the single most consequential silent defect this family can have.
+        # DROP THE PASS'S INCREMENT ON TARGET 0: the weld becomes the ordinary one
+        # there, the single most consequential silent defect this family can have.
         "beta_term_dropped_on_target_0":
-            needle(base, "    curl0 = curl0 - (beta_plus * b);\n", ""),
-        # THE PARTNERS ARE CROSS-ASSIGNED (step_db.cpp:148-176): target 0 takes the
+            needle(base, "    float bi0 = -(beta_plus * b);\n",
+                   "    float bi0 = 0.0f;\n"),
+        # THE PARTNERS ARE CROSS-ASSIGNED (step_db.cpp:161-175): target 0 takes the
         # SECOND source's centre load `b`, target 1 the FIRST source's `a`.
         "beta_partners_swapped":
-            needle(base, "curl0 = curl0 - (beta_plus * b);",
-                   "curl0 = curl0 - (beta_plus * a);"),
-        # THE SIGN. `curl - (c*g)` IS the array path's `curl + (-(c*g))`; flipping it
-        # is a converged, smooth, wrong field.
+            needle(base, "float bi0 = -(beta_plus * b);",
+                   "float bi0 = -(beta_plus * a);"),
+        # THE SIGN. The increment is the NEGATED product and the ladder subtracts it;
+        # flipping it is a converged, smooth, wrong field.
         "beta_sign_flipped_on_target_1":
-            needle(base, "curl1 = curl1 - (beta_minus * a);",
-                   "curl1 = curl1 + (beta_minus * a);"),
-        # THE TERM CARRIES NO dtdx: it is an analytic derivative (stepping.py:758-762).
+            needle(base, "float bi1 = -(beta_minus * a);",
+                   "float bi1 = (beta_minus * a);"),
+        # THE PASS CARRIES NO dtdx: it is an analytic derivative.
         "beta_term_scaled_by_dtdx":
-            needle(base, "curl0 = curl0 - (beta_plus * b);",
-                   "curl0 = curl0 - (dtdx * beta_plus * b);"),
+            needle(base, "float bi0 = -(beta_plus * b);",
+                   "float bi0 = -(dtdx * beta_plus * b);"),
         # THE COEFFICIENTS ARE SIGN PARTNERS, not one value used twice.
         "beta_minus_replaced_by_beta_plus":
-            needle(base, "curl1 = curl1 - (beta_minus * a);",
-                   "curl1 = curl1 - (beta_plus * a);"),
+            needle(base, "float bi1 = -(beta_minus * a);",
+                   "float bi1 = -(beta_plus * a);"),
+        # THE LADDER'S dsigu BRANCH: MEEP's dsigu chunk takes f -= sinv_dsigu * df
+        # (stepping._apply_folded_increment); dropped on target 1, whose dsigu axis is
+        # x, so a 2-D case reaches it.
+        "beta_ladder_ignores_dsigu":
+            needle(base, "    v1 = du1 ? (v1 - (si_x * bd1)) : (v1 - bd1);\n",
+                   "    v1 = v1 - bd1;\n"),
     }
 
 
 def _bfast_mutations(base: str) -> Dict[str, str]:
-    """The Tustin tail (stepping._bfast_term:896-904), as armed defects."""
+    """The BFAST pass (stepping._bfast_term, bfast_curl.bfast_pass), armed."""
     return {
-        # DROP THE TAIL'S EFFECT: the weld becomes the ordinary one.
+        # DROP THE PASS'S INCREMENT: the weld becomes the ordinary one on target 0.
         "bfast_curl_correction_dropped":
-            needle(base, "    curl0 = curl0 - adv0;\n", ""),
+            needle(base, "    float fi0 = (has_y || has_z) ? (-(F0 - fp0)) : 0.0f;\n",
+                   "    float fi0 = 0.0f;\n"),
         # THE STATE UPDATE, dropped. A different defect from the one above and on the
-        # same component: the curl is right this step and wrong forever after.
+        # same component: the field is right this step and wrong forever after.
         "bfast_state_store_dropped":
-            needle(base, "    s0[ii] = st0 + adv0;", "    // stale bfast state"),
+            needle(base, "    if (own0 && (has_y || has_z)) { s0[ii] = F0; }",
+                   "    // stale bfast state"),
         # k1 IS INDEXED BY THE SECOND TERM AND k2 BY THE FIRST, cross-assigned
-        # (bfast_curl.py:26-28, vec.hpp:445). Swapping them is the port's likeliest slip.
+        # (step_db.cpp:129-136). Swapping them is the port's likeliest slip.
         "bfast_k_pair_swapped_on_target_0":
-            needle(base, "float total0 = (k1_0 * (c_y + c)) - (k2_0 * (b_z + b));",
-                   "float total0 = (k2_0 * (c_y + c)) - (k1_0 * (b_z + b));"),
-        # THE TAIL SUMS, THE CURL DIFFERENCES. `(c_y + c)` is not `(c_y - c)`.
+            needle(needle(base, "float sp0 = k1_0 * (c_y + c);",
+                          "float sp0 = k2_0 * (c_y + c);"),
+                   "float sm0 = k2_0 * (b_z + b);", "float sm0 = k1_0 * (b_z + b);"),
+        # THE PASS SUMS, THE CURL DIFFERENCES. `(a_z + a)` is not `(a_z - a)`.
         "bfast_sum_becomes_a_difference":
-            needle(base, "float total1 = (k1_1 * (a_z + a)) - (k2_1 * (c_x + c));",
-                   "float total1 = (k1_1 * (a_z - a)) - (k2_1 * (c_x + c));"),
-        # THE ADVANCE IS `total - 2*state` — the Tustin recurrence, not `total`.
-        "bfast_advance_drops_the_state_term":
-            needle(base, "float adv2 = total2 - (2.0f * st2);",
-                   "float adv2 = total2;"),
-        # THE CURL CORRECTION IS SUBTRACTED (the caller-subtracts convention,
-        # :904 returns -advance and :364-368 adds it).
+            needle(base, "float sp1 = k1_1 * (a_z + a);",
+                   "float sp1 = k1_1 * (a_z - a);"),
+        # THE STATE'S TWO ROUNDINGS (F = S - F_prev, then raw = F - F_prev): the
+        # previous package form total - 2*state in one rounding.
+        "bfast_state_formed_in_one_rounding":
+            needle(base, "    float fi2 = (has_x || has_y) ? (-(F2 - fp2)) : 0.0f;",
+                   "    float fi2 = (has_x || has_y) ? (-((sp2 - sm2) - (2.0f * fp2)))"
+                   " : 0.0f;"),
+        # THE INCREMENT IS NEGATED and the ladder subtracts it.
         "bfast_correction_sign_flipped":
-            needle(base, "curl1 = curl1 - adv1;", "curl1 = curl1 + adv1;"),
+            needle(base, "    float fi1 = (has_z || has_x) ? (-(F1 - fp1)) : 0.0f;",
+                   "    float fi1 = (has_z || has_x) ? (F1 - fp1) : 0.0f;"),
     }
 
 
@@ -336,9 +365,10 @@ PRODUCTS: Tuple[Product, ...] = (
                 dict(boundaries={"x": "metallic", "y": "metallic"}, pml=1))),
         mutation_case="wall_xyz_3d", refusal_case=dict(boundaries={"z": "metallic"}),
         curl_plan=lambda f, p, r: nonlinear_update_e.plan_nonlinear_run_pml_curl(
-            f, p, "step_B", r),
+            f, p, "step_B", r, chunk_bounds=layer_record(f.grid, p)),
         constitutive_plan=lambda f, p, r:
-            nonlinear_update_e.plan_nonlinear_run_constitutive(f, p, "H", r),
+            nonlinear_update_e.plan_nonlinear_run_constitutive(
+                f, p, "H", r, chunk_bounds=layer_record(f.grid, p)),
         certified_curl=lambda codes, contract: shipped.certified_curl_body(
             codes, contract),
         curl_emitter=lambda codes, contract: shaders.curl_source(codes, False,
@@ -361,16 +391,19 @@ PRODUCTS: Tuple[Product, ...] = (
                ("beta_thin_pml_2d", dict(beta=-0.2, pml_cells=1))),
         mutation_case="beta_wall_xy_2d",
         refusal_case=dict(beta=0.33, boundaries={"x": "metallic"}),
-        curl_plan=lambda f, p, r: special_kz.plan_beta_pml_curl(f, p, "step_B", r),
+        curl_plan=lambda f, p, r: special_kz.plan_beta_pml_curl(
+            f, p, "step_B", r, chunk_bounds=layer_record(f.grid, p)),
         constitutive_plan=lambda f, p, r: special_kz.plan_beta_run_constitutive(
-            f, p, "H", r),
+            f, p, "H", r,
+            chunk_bounds=layer_record(f.grid, p)),
         certified_curl=lambda codes, contract:
             beta_fused_magnetic_pair.certified_beta_curl_body(codes, contract),
         curl_emitter=lambda codes, contract: special_kz.beta_curl_source(
             codes, False, True, contract),
         entry_point="beta_fused_magnetic_pair_step",
         extra_mutations=_beta_mutations,
-        notes="one emitter swapped; +2 struct fields, same 27 pointers"),
+        notes="one emitter swapped; +2 struct fields, same 27 pointers",
+        planar=True),
     Product(
         key="bfast", module=bfast_fused_magnetic_pair, fixture=_bfast_fixture,
         folded_fixture=lambda: matrix.folded(boundaries={"y": "metallic"},
@@ -392,9 +425,10 @@ PRODUCTS: Tuple[Product, ...] = (
         refusal_case=dict(bfast_scaled_k=(0.2, 0.0, 0.0),
                           boundaries={"x": "metallic"}),
         curl_plan=lambda f, p, r: bfast_family.plan_bfast_pml_curl(
-            f, p, "step_B", r),
+            f, p, "step_B", r, chunk_bounds=layer_record(f.grid, p)),
         constitutive_plan=lambda f, p, r: bfast_family.plan_bfast_run_constitutive(
-            f, p, "H", r),
+            f, p, "H", r,
+            chunk_bounds=layer_record(f.grid, p)),
         certified_curl=lambda codes, contract:
             bfast_fused_magnetic_pair.certified_bfast_curl_body(codes, contract),
         curl_emitter=lambda codes, contract: bfast_curl_source(codes, contract),
@@ -549,6 +583,7 @@ def run_case(product: Product, keywords: Mapping[str, Any], seed: int, steps: in
     live = live_passes(actual, actual_pml)
     assert live == live_passes(reference, reference_pml)
     before = frozen(actual)
+    reference_before = frozen(reference)
     residency.sync_in()
 
     per_step: List[Dict[str, Any]] = []
@@ -561,6 +596,7 @@ def run_case(product: Product, keywords: Mapping[str, Any], seed: int, steps: in
     # volume, would have been a false ALL-CLEAR. The running maximum below is the
     # question the floor actually means: did this word ever differ from its seed?
     moved: Dict[str, int] = {name: 0 for name in before}
+    reference_moved: Dict[str, int] = {name: 0 for name in reference_before}
     for step in range(1, steps + 1):
         array_step(reference, reference_pml, live)
         metal_step(actual, actual_pml, {plan.replaces_sub_steps[0]: plan},
@@ -573,6 +609,10 @@ def run_case(product: Product, keywords: Mapping[str, Any], seed: int, steps: in
         for name in moved:
             moved[name] = max(moved[name], differing(before[name],
                                                      live_state[name]))
+        reference_state = state_of(reference)
+        for name in reference_moved:
+            reference_moved[name] = max(reference_moved[name], differing(
+                reference_before[name], reference_state[name]))
         per_step.append({"step": step,
                          "differing_words": sum(difference.values()),
                          "differing_arrays": dict(sorted(difference.items())),
@@ -580,7 +620,13 @@ def run_case(product: Product, keywords: Mapping[str, Any], seed: int, steps: in
         if difference or census:
             break
 
-    still = sorted(name for name, count in moved.items() if count == 0)
+    # AN AUXILIARY THE ARRAY PATH NEVER MOVES IS THE CONTRACT, NOT A DEAD PASS: under
+    # the per-chunk forms an ``fu``/``f_w`` volume whose layer no chunk carries (a 2-D
+    # case's z) moves on no path. It is still compared word for word.
+    untouched = sorted(name for name, count in reference_moved.items()
+                       if count == 0 and name.startswith(("fu_", "f_w_")))
+    still = sorted(name for name, count in moved.items()
+                   if count == 0 and name not in untouched)
     identical = (len(per_step) == steps
                  and all(row["differing_words"] == 0 for row in per_step))
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
@@ -601,7 +647,8 @@ def run_case(product: Product, keywords: Mapping[str, Any], seed: int, steps: in
     must_move = [name for name in ("Bx", "By", "Bz", "Hx", "Hy", "Hz",
                                    "f_w_Hx", "f_w_Hy", "f_w_Hz")
                  if name in before]
-    dead = sorted(name for name in must_move if moved[name] == 0)
+    dead = sorted(name for name in must_move
+                  if moved[name] == 0 and name not in untouched)
     return {
         "passed": bool(identical and clean and launches_ok and not dead
                        and (not still or not require_every_volume_moved)),
@@ -616,6 +663,7 @@ def run_case(product: Product, keywords: Mapping[str, Any], seed: int, steps: in
         "reference_subnormals": per_step[-1]["reference_subnormals"],
         "arrays_compared": len(before),
         "arrays_that_never_moved": still,
+        "auxiliaries_the_array_path_leaves_untouched": untouched,
         "seam_volumes_that_never_moved": dead,
         "moved_words": int(sum(moved.values())),
         "runs": plan.runs, "launches": plan.launches,
@@ -736,6 +784,14 @@ def shared_mutations(product: Product, codes: Sequence[int],
     """The defects EVERY one of these three welds can carry, since all three splice
     the same wall clear, the same three-line seam and the same constitutive lift.
 
+    THE NEEDLES ARE THE ALIGNED BODIES' (KERNELS.md §7.1, §7.2). The constitutive
+    half every product lifts is the certified one, which selects its form per chunk
+    and accumulates in MEEP's grouping; the curl-side needles are the aligned base
+    curl's -- the nonlinear weld's own -- which the beta and BFAST curls carry with
+    their passes inserted after the per-chunk forms. The two grouping mutations are
+    INVERTED: each
+    plants the package's previous grouping and stays must-catch.
+
     THE WALL ROWS ARE ARMED ONLY WHERE THE SPECIALISATION EMITS THEM. ``zero_metal_mask``
     writes one line per WALLED axis, so on the beta family's 2-D mutation case (x and
     y walled, z of zero extent) the ``at_z`` row does not exist. Arming it there would
@@ -751,6 +807,18 @@ def shared_mutations(product: Product, codes: Sequence[int],
     other = next((axis for axis in range(3) if axis != first), first)
     flag = ("at_x", "at_y", "at_z")[first]
     other_flag = ("at_x", "at_y", "at_z")[other]
+    # THE AUXILIARY AND CURL ROWS TAKE A TARGET WHOSE FORMS A CASE REACHES. Under the
+    # per-chunk forms ``fu`` is written only on its target's dsigu cells; on a PLANAR
+    # product z carries no layer, so target 0 (dsigu z) never writes ``fu`` and its
+    # two-partner curl (y and z) is never formed. There the rows take target 1
+    # (dsigu x, its wall and ownership row on y) and target 2's two-partner curl.
+    aux = 1 if product.planar else 0
+    aux_flag = ("at_x", "at_y", "at_z")[aux] if product.planar else flag
+    aux_mask = (f"    curl{aux} = {aux_flag} ? 0.0f : curl{aux};\n" if product.planar
+                else f"    curl{first} = {flag} ? 0.0f : curl{first};\n")
+    grouping = (("dtdx * (((b_x - b) + a) - a_y)", "dtdx * ((b_x - b) + (a - a_y))")
+                if product.planar else
+                ("dtdx * (((c_y - c) + b) - b_z)", "dtdx * ((c_y - c) + (b - b_z))"))
 
     edits: Dict[str, str] = {
         # THE SEAM ITSELF: take the curl instead of the recurrence's output.
@@ -769,41 +837,43 @@ def shared_mutations(product: Product, codes: Sequence[int],
                    f"    v{first} = {other_flag} ? 0.0f : v{first};"),
         # THE AUXILIARY IS NOT CLEARED: `zero_metal_B` passes B_COMPONENTS only.
         "zero_metal_also_masks_the_auxiliary":
-            needle(base, "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;",
-                   f"    u0[ii] = {flag} ? 0.0f : n0; u1[ii] = n1; u2[ii] = n2;"),
+            needle(base, f"    if (du{aux}) {{ u{aux}[ii] = n{aux}; }}",
+                   f"    if (du{aux}) {{ u{aux}[ii] = {aux_flag} ? 0.0f : n{aux}; }}"),
         # THE OWNERSHIP MASK, dropped. A different pass from the wall clear, on the
         # same component and axis — which is exactly why both are armed.
         "ownership_mask_dropped":
-            needle(base, f"    curl{first} = {flag} ? 0.0f : curl{first};\n", ""),
+            needle(base, aux_mask, ""),
         # STEP_B IS FORWARD. step_D's negated strides are a different product.
         "curl_direction_reversed":
             needle(base, "int si = i + 1, sj = j + 1, sk = k + 1;",
                    "int si = i - 1, sj = j - 1, sk = k - 1;"),
-        # shaders.py rule 2: flattening these parens is a different float32 number.
-        "curl_parens_flattened":
-            needle(base, "dtdx * ((c_y - c) + (b - b_z))",
-                   "dtdx * (c_y - c + b - b_z)"),
+        # INVERTED: the shipped curl IS MEEP's left-to-right bracket; this plants the
+        # package's previous pairwise grouping.
+        "curl_previous_grouping":
+            needle(base, grouping[0], grouping[1]),
         # THE RECURRENCE PAIRS are vec.hpp's cycle_direction: target 0 takes (y, z).
         "recurrence_axis_pair_swapped":
             needle(base, "float n0 = ((p0 * km_y) - curl0) * si_y;",
                    "float n0 = ((p0 * km_z) - curl0) * si_z;"),
         "fu_store_dropped":
-            needle(base, "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;",
-                   "    u1[ii] = n1; u2[ii] = n2;"),
+            needle(base, f"    if (du{aux}) {{ u{aux}[ii] = n{aux}; }}\n", ""),
         "flux_store_dropped":
             needle(base, "    f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;",
                    "    f1[ii] = v1; f2[ii] = v2;"),
         "fw_store_dropped":
-            needle(base, "    w0[ii] = src0;", "    // stale f_w_Hx"),
+            needle(base, "    if (dw0) { w0[ii] = src0; }", "    // stale f_w_Hx"),
         # The dsigw index is the component's OWN axis (stepping.py:227-228).
         "constitutive_coefficient_index_moved":
             needle(base, "float kp_0 = kp0[i], km_0 = km0[i];",
                    "float kp_0 = kp0[j], km_0 = km0[j];"),
+        # The two products of the accumulation trade operands: kps*prev - kms*src.
         "constitutive_accumulations_reversed":
-            needle(base, "    a0 = a0 + kp_0 * src0;\n"
-                         "    a0 = a0 - km_0 * prev0;",
-                   "    a0 = a0 - km_0 * src0;\n"
-                   "    a0 = a0 + kp_0 * prev0;"),
+            needle(base, "a0 = h0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
+                   "a0 = h0[ii] + ((kp_0 * prev0) - (km_0 * src0));"),
+        # INVERTED: the package's previous accumulation grouping.
+        "constitutive_previous_grouping":
+            needle(base, "a0 = h0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
+                   "a0 = (h0[ii] + (kp_0 * src0)) - (km_0 * prev0);"),
     }
     return edits
 
@@ -932,14 +1002,17 @@ def leg_binding_ceiling(product: Product) -> Dict[str, Any]:
     pointers_needed = packed - 1
     pointers = "\n".join(f"    device float*       b{n:<6}[[buffer({n})]],"
                          for n in range(pointers_needed))
-    # THE STRUCT IS READ OFF THE TEMPLATE THAT ACTUALLY EMITS THIS WELD, which for
-    # the nonlinear family is the SHIPPED weld's — that family owns no template and
-    # a fallback that quietly built a five-field struct for an eleven-field kernel
-    # would make this leg measure a different signature from the shipped one.
-    template = getattr(module, "_TEMPLATE", None) or shipped._TEMPLATE
-    struct = template.split("struct Params", 1)[1].split(";\n\nkernel", 1)[0]
+    # THE STRUCT IS READ OFF THE SOURCE THAT ACTUALLY EMITS THIS WELD, which for the
+    # nonlinear family is the SHIPPED weld's — that family owns no template and a
+    # fallback that quietly built a five-field struct for an eleven-field kernel
+    # would make this leg measure a different signature from the shipped one. It is
+    # read off the EMITTED text rather than the template, so a struct that embeds the
+    # chunk record comes with its member filled and its ``ChunkBounds`` declared.
+    emitted = product.source((shaders.PERIODIC,) * 3, (False, False, False))
+    struct = emitted.split("struct Params", 1)[1].split(";\n\nkernel", 1)[0]
+    record_struct = (_chunk_bounds.struct_source() if "ChunkBounds" in struct else "")
     source = "\n".join((
-        "#include <metal_stdlib>", "using namespace metal;", "",
+        "#include <metal_stdlib>", "using namespace metal;", "", record_struct, "",
         f"struct Params{struct};", "",
         "kernel void packed_probe(", pointers,
         f"    constant Params&    prm     [[buffer({pointers_needed})]],",
@@ -983,12 +1056,14 @@ def leg_binding_ceiling(product: Product) -> Dict[str, Any]:
 def _params_for(product: Product, shape: Sequence[int], dtdx: float) -> Any:
     """The product's OWN packer, called with its own extra scalars."""
     if product.key == "nonlinear":
-        return shipped._params_tensor(shape, dtdx, "mps")
+        return shipped._params_tensor(shape, dtdx, "mps",
+                                      chunk_bounds=every_cell_record(shape))
     if product.key == "beta":
-        return beta_fused_magnetic_pair._params_tensor(shape, dtdx, 0.25, -0.25,
-                                                        "mps")
+        return beta_fused_magnetic_pair._params_tensor(
+            shape, dtdx, 0.25, -0.25, "mps", chunk_bounds=every_cell_record(shape))
     return bfast_fused_magnetic_pair._params_tensor(
-        shape, dtdx, (0.1, 0.2, 0.3, 0.4, 0.5, 0.6), "mps")
+        shape, dtdx, (0.1, 0.2, 0.3, 0.4, 0.5, 0.6), "mps",
+        chunk_bounds=every_cell_record(shape))
 
 
 def leg_transcription(product: Product, codes: Sequence[int],

@@ -1,0 +1,109 @@
+# kernels.constitutive_step
+def constitutive_step(
+    f0, f1, f2,                       # targets: Hx,Hy,Hz  or  Ex,Ey,Ez
+    w0, w1, w2,                       # auxiliaries: f_w_H*  or  f_w_E*
+    g0, g1, g2,                       # sources: Bx,By,Bz  or  Dx,Dy,Dz
+    e0, e1, e2,                       # inverse epsilon, E side only (see SCALE)
+    kp0, km0, kp1, km1, kp2, km2,     # kps/kms on each component's OWN axis
+    nx, ny, nz, n_elem,
+    SCALE: tl.constexpr,              # 0 = H (source is B), 1 = E (source is D*inv_eps)
+    BLOCK: tl.constexpr,
+):
+    """One constitutive PML sub-step of all three components (``dsigw`` accumulation).
+
+    ``stepping._apply_constitutive_pml`` (stepping.py:2065), which is MEEP's
+    ``step_update_EDHB`` with ``dsigw`` active::
+
+        realnum fwprev = fw[i], kapwkw = kapw[kw], sigwkw = sigw[kw];
+        fw[i] = g[i] * u[i];                   // B for H, D*inv_eps for E
+        f[i] += (kapwkw + sigwkw) * fw[i] - (kapwkw - sigwkw) * fwprev;
+
+    ONE body serves both sides, as ``pml_curl_step`` does for B/D. ``SCALE`` picks
+    ``source`` — the H side reads B directly (mu = 1 is baked into the array path
+    too: ``stepping.update_H`` passes ``fields.Bx`` as the source), the E side reads
+    ``D * inv_eps`` with **D on the left**, because the array path writes
+    ``source * fields.inverse_epsilon_for(component)`` (stepping.py:982-984) and
+    float multiplication is bitwise commutative but the transcription is not a place
+    to rely on that. ``HALF``-integer coefficient selection is NOT a constexpr here:
+    the host binds ``kps_a``/``kms_a`` for H and ``kps_a_h``/``kms_a_h`` for E
+    (stepping.py:920 vs :986), so the kernel never chooses and cannot choose wrong —
+    but the host can, which is why the gate carries a swap mutation for it.
+
+    THREE THINGS DECIDE BIT-IDENTITY HERE.
+
+    1. **The grouping.** ``field += kps * fw`` then ``field -= kms * fw_previous`` is
+       two separate accumulations, left to right: ``((f + kps*src) - kms*prev)``.
+       Flattening it to ``f + (kps*src - kms*prev)`` is a different float32 number,
+       and neither multiply may contract into an FMA — ``ENABLE_FP_FUSION`` is what
+       stops the second. The PML coefficients are the same family of
+       non-representable multiplicands §12.2 measured on the curl, so the guard
+       matters at every Courant number, not only at a non-power-of-two one.
+    2. **The coefficient index is on the component's OWN axis.** ``kps_x``/``kms_x``
+       for target 0, ``_y`` for 1, ``_z`` for 2 (``H_CONSTITUTIVE_TERMS`` /
+       ``E_CONSTITUTIVE_TERMS``, stepping.py:226-227) — that is MEEP's ``dsigw``,
+       the absorption a component accumulates along the direction it points in. It
+       is NOT the ``dsig``/``dsigu`` cycle the curl recurrence uses.
+    3. **``prev`` is read before ``fw`` is written.** The array path copies ``fw``
+       first (``fw_previous = fw.copy()``) for exactly this reason. Writing the store
+       before the load produces a wrong answer only where ``kms != 0`` — i.e. INSIDE
+       THE PML ONLY — which looks like a slightly worse absorber, not like a bug.
+
+    The sub-step reads no neighbour, so it needs no ghost rule, no ownership mask and
+    no boundary constexpr. That does not make it boundary-agnostic: a folded or
+    cylindrical axis changes the stored extent and therefore ``n_a``, and the
+    coverage predicate refuses both.
+    """
+    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    live = idx < n_elem
+    nyz = ny * nz
+    k = idx % nz
+    plane = idx // nz
+    j = plane % ny
+    i = plane // ny
+
+    # Component 0 takes its coefficient from axis x, 1 from y, 2 from z.
+    kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
+    km_0 = tl.load(km0 + i, mask=live, other=0.0)
+    kp_1 = tl.load(kp1 + j, mask=live, other=0.0)
+    km_1 = tl.load(km1 + j, mask=live, other=0.0)
+    kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
+    km_2 = tl.load(km2 + k, mask=live, other=0.0)
+
+    # --- component 0 -----------------------------------------------------------
+    prev0 = tl.load(w0 + idx, mask=live, other=0.0)   # BEFORE the store; note 3.
+    if SCALE:
+        src0 = tl.load(g0 + idx, mask=live, other=0.0) * tl.load(e0 + idx, mask=live,
+                                                                 other=0.0)
+    else:
+        src0 = tl.load(g0 + idx, mask=live, other=0.0)
+    tl.store(w0 + idx, src0, mask=live)
+    a0 = tl.load(f0 + idx, mask=live, other=0.0)
+    a0 = a0 + kp_0 * src0
+    a0 = a0 - km_0 * prev0
+    tl.store(f0 + idx, a0, mask=live)
+
+    # --- component 1 -----------------------------------------------------------
+    prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+    if SCALE:
+        src1 = tl.load(g1 + idx, mask=live, other=0.0) * tl.load(e1 + idx, mask=live,
+                                                                 other=0.0)
+    else:
+        src1 = tl.load(g1 + idx, mask=live, other=0.0)
+    tl.store(w1 + idx, src1, mask=live)
+    a1 = tl.load(f1 + idx, mask=live, other=0.0)
+    a1 = a1 + kp_1 * src1
+    a1 = a1 - km_1 * prev1
+    tl.store(f1 + idx, a1, mask=live)
+
+    # --- component 2 -----------------------------------------------------------
+    prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+    if SCALE:
+        src2 = tl.load(g2 + idx, mask=live, other=0.0) * tl.load(e2 + idx, mask=live,
+                                                                 other=0.0)
+    else:
+        src2 = tl.load(g2 + idx, mask=live, other=0.0)
+    tl.store(w2 + idx, src2, mask=live)
+    a2 = tl.load(f2 + idx, mask=live, other=0.0)
+    a2 = a2 + kp_2 * src2
+    a2 = a2 - km_2 * prev2
+    tl.store(f2 + idx, a2, mask=live)

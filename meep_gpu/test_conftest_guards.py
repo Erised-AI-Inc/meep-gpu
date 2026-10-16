@@ -78,7 +78,8 @@ def _run(tmp_path: pathlib.Path, body: str,
     env = dict(os.environ, KMP_DUPLICATE_LIB_OK="TRUE")
     return subprocess.run(
         [sys.executable, "-m", "pytest", str(tmp_path), "-q", "-p", "no:cacheprovider"],
-        capture_output=True, text=True, env=env, cwd=str(tmp_path))
+        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        cwd=str(tmp_path))
 
 
 def _summary(result: subprocess.CompletedProcess) -> str:
@@ -243,7 +244,8 @@ def _run_pin(tmp_path: pathlib.Path, caller: str | None,
         env[_DISPATCH] = caller
     return subprocess.run(
         [sys.executable, "-m", "pytest", str(tmp_path), "-q", "-p", "no:cacheprovider"],
-        capture_output=True, text=True, env=env, cwd=str(tmp_path))
+        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        cwd=str(tmp_path))
 
 
 def test_the_dispatch_pin_reaches_module_fixtures_and_tests_and_yields_to_an_opt_in(

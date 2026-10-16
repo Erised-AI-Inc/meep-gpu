@@ -6,9 +6,9 @@ twin of :mod:`.complex_beta_fused_magnetic_pair`. Both halves are already
 certified and neither is re-derived here:
 
 * the curl half is :func:`.special_kz.beta_bloch_pml_curl_step` (K2) on
-  ``step_D`` — the certified complex curl body plus the constexpr-gated ±i
-  coefficient insert, with the ``-1j`` coefficient words this electric side
-  binds (S:771-772);
+  ``step_D`` — the complex curl body plus the constexpr-gated beta pass after the
+  forms, the quarter turn by ``-i`` this electric side binds (the D side's word is
+  the negated one, :func:`.special_kz.beta_curl_coefficients`);
 * the constitutive half is :func:`.complex_fields.bloch_constitutive_step`'s
   ``SCALE = 1`` arm, admitted on a beta run by the shipped
   :func:`.special_kz.beta_run_complex_constitutive_coverage`;
@@ -18,19 +18,12 @@ certified and neither is re-derived here:
 
 SO THIS KERNEL IS ``complex_fused_curl_constitutive_D``, CHARACTER FOR CHARACTER,
 PLUS THE SAME STATEMENTS ``beta_bloch_pml_curl_step`` ADDS TO
-``bloch_pml_curl_step`` — four scalar word arguments, ``HAS_BETA``, and the
-seven-statement insert between the ``dtdx`` curl and the ownership mask (the
-array path's order, S:438-445 after :429, before :450). The gate's transcription
+``bloch_pml_curl_step`` — two scalar word arguments, ``HAS_BETA``, and the beta
+pass after the curl forms and before the stores (MEEP's order: the pass runs after
+every component's curl, step_db.cpp:161-175). The gate's transcription
 leg asserts exactly that, statement by statement, against both shipped sources.
 
-THE FOURTH OPERAND ORIENTATION AND ITS LICENCE are the magnetic twin's, stated
-once there (module docstring §"THE INSERT"): :data:`PRODUCT_PROBE_PATTERNS` is
-:data:`.special_kz.BETA_PROBE_PATTERNS`, the fifth pattern is measured
-AMBIGUOUS_BOTH with valid evidence in
-``results/complex_expansion_beta_extension_2026-09-01/probe_keep/probe.json``
-(keep policy, base-four table character-identical to the standing
-``complex_expansion_convention_2026-08-16`` artifact), and
-``beta_expansion_license`` grants FMA_V1 with basis ``measured``.
+THE PASS is the magnetic twin's, stated once there (module docstring §"THE PASS").
 
 ===========================================================================
 WHAT THE CORPUS SAYS THIS IS WORTH — measured, not argued
@@ -42,8 +35,7 @@ at the D->E cell (``complex beta PML``, ``complex beta run``):
     tests:TestSpecialKz.test_special_kz   shape (500, 1, 1)   beta = -0.3907...
 
 The board scored the instance "reachable; a slot has NO admitting arm (array
-path)" with ``curl_admitters: []`` — the same unmeasured-fifth-pattern refusal
-the probe extension discharges. The row declares ONE electric source
+path)" with ``curl_admitters: []``. The row declares ONE electric source
 (``source_field_types == ['D']``), injected in THIS seam (``in_seam_source:
 true``, ``live_in_seam_passes: ['fill_D']``), so :data:`CARRIES_DEPOSIT_REPAIR`
 is the whole reason this product serves anything: with the flag False the source
@@ -102,12 +94,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .complex_fields import (
     DEFAULT_BLOCK,
-    _mul_coefficient_left,
-    _mul_field_left,
-    _phase_arguments,
-    _rotate_field_left,
     _word_view,
     bloch_phase_table,
+    connection_arguments,
 )
 from .coverage import (
     CONSTITUTIVE_SIDES,
@@ -117,11 +106,8 @@ from .coverage import (
 )
 from .launch import SUB_STEPS, CupyPointer, _flat
 from .special_kz import (
-    BETA_PROBE_PATTERNS,
-    _mul_imag_coefficient_left,
     beta_bloch_pml_curl_coverage,
     beta_curl_coefficients,
-    beta_expansion_from_probe,
     beta_run_complex_constitutive_coverage,
 )
 from .. import deposit_repair as _deposit_repair
@@ -179,19 +165,15 @@ SCALE = 1
 #: reason for.
 WALL_CLEARED_COMPONENTS: Tuple[Tuple[int, ...], ...] = ((1, 2), (0, 2), (0, 1))
 
-#: The probe patterns this product's operand orientations require — the EXTENDED
-#: set (the beta insert's imaginary-coefficient-left product; module docstring).
-PRODUCT_PROBE_PATTERNS: Tuple[str, ...] = tuple(BETA_PROBE_PATTERNS)
-
 #: The complex-multiply device functions this kernel is allowed to call, and the
-#: only ones — FOUR names, the twin's three plus the beta insert's.
-LICENSED_MULTIPLY_HELPERS: Tuple[str, ...] = (
-    "_rotate_field_left", "_mul_field_left", "_mul_coefficient_left",
-    "_mul_imag_coefficient_left")
+#: only one: the partner connection. The beta pass's quarter turn has a real
+#: operand and is formed part by part, inline; the test scans the shipped body for
+#: any other helper.
+MULTIPLY_HELPERS: Tuple[str, ...] = ("_connect",)
 
 __all__ = [
     "BACKWARD", "CARRIES_DEPOSIT_REPAIR", "CONSTITUTIVE_SIDE", "CURL_SUB_STEP",
-    "CURL_TARGETS", "LICENSED_MULTIPLY_HELPERS", "PRODUCT_PROBE_PATTERNS",
+    "CURL_TARGETS", "MULTIPLY_HELPERS",
     "REPLACES", "SCALE", "WALL_CLEARED_COMPONENTS",
     "ComplexBetaFusedElectricPairPlan",
     "complex_beta_fused_curl_constitutive_D",
@@ -210,6 +192,13 @@ if triton is not None:
     # as the else.
     METALLIC = tl.constexpr(1)
 
+    # The forms, the fold ladder, the record layout and the connection, read by
+    # the kernel below under the names the complex pair binds them.
+    from .complex_fields import _connect  # noqa: E402
+    from .forms import (axis_present, constitutive_form, curl_form,  # noqa: E402
+                        curl_stencil, fold_ladder, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
+
     @triton.jit
     def complex_beta_fused_curl_constitutive_D(
         f0, f1, f2,                       # curl targets: Dx,Dy,Dz (complex64 as words)
@@ -220,31 +209,28 @@ if triton is not None:
         w0, w1, w2,                       # constitutive aux: f_w_Ex,f_w_Ey,f_w_Ez
         e0, e1, e2,                       # inverse epsilon, float32 VOLUMES
         kp0, km0, kp1, km1, kp2, km2,     # constitutive kps/kms, HALF-INTEGER lattice
+        cb,                               # chunk record: the forms' membership and presence
         nx, ny, nz, n_elem, dtdx,         # n_elem = COMPLEX cells; dtdx pre-rounded
-        pxr, pxi, pyr, pyi, pzr, pzi,     # per-axis complex64-rounded phase (conj: BACKWARD)
-        bp_re, bp_im, bm_re, bm_im,       # complex64-rounded ±sign beta coefficients (S:770-784)
-        BACKWARD: tl.constexpr,           # bound to 1 by every builder; see the twin
-        SCALE: tl.constexpr,              # bound to 1 by every builder; see the twin
+        cxr, cxi, cyr, cyi, czr, czi,     # per-axis connection factor, float32 parts
+        beta_plus, beta_minus,            # f32 quarter-turn words per sign (B: +c, D: -c)
+        BACKWARD: tl.constexpr,           # bound to 1 by every builder; see below
+        SCALE: tl.constexpr,              # bound to 1 by every builder; see below
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         ZM_X: tl.constexpr, ZM_Y: tl.constexpr, ZM_Z: tl.constexpr,
-        PHX: tl.constexpr, PHY: tl.constexpr, PHZ: tl.constexpr,
-        HAS_BETA: tl.constexpr,           # compiled-in only for beta != 0 runs
-        EXPANSION: tl.constexpr,
+        CNX: tl.constexpr, CNY: tl.constexpr, CNZ: tl.constexpr,
+        HAS_BETA: tl.constexpr,           # 1 on every admitted configuration
         BLOCK: tl.constexpr,
     ):
         """Complex beta ``step_D`` + ``zero_metal_D`` + complex ``update_E``, one launch.
 
-        ``complex_fused_electric_pair.complex_fused_curl_constitutive_D``'s body
-        with EXACTLY the additions ``special_kz.beta_bloch_pml_curl_step`` makes
-        to ``complex_fields.bloch_pml_curl_step``: the four beta words,
-        ``HAS_BETA``, and the insert between the curl and the ownership mask.
-        ``HAS_BETA = 0`` must build byte-identical to the plain complex fused
-        electric pair — the gate's identity leg pins that.
-
-        The beta partners are the CENTER word pairs, loaded before the phase
-        section and never touched by it; the ``-1j`` of this electric side lives
-        in the host-bound coefficient words (S:771-772), rounded once through
-        numpy.complex64 with the signed-zero real word passed through.
+        ``complex_fused_electric_pair.complex_fused_curl_constitutive_D``'s body, character for character, plus
+        ``special_kz.beta_bloch_pml_curl_step``'s beta pass after the six part forms and
+        before the wall clear -- the array path's order (the curl, its beta pass, then the
+        seam, then update_E). The pass is a quarter turn of the CENTER partner's parts by
+        the side's real word, negated, masked to (+0, +0) on the cells the curl's mask
+        drops, through the beta ladder per part; no complex product is formed. The
+        registers it leaves are the words both the store and the constitutive half read.
+        ``HAS_BETA = 0`` builds ``complex_fused_curl_constitutive_D`` exactly.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -255,11 +241,11 @@ if triton is not None:
         i = plane // ny
 
         # ======================= the curl half ================================
-        # Verbatim from special_kz.beta_bloch_pml_curl_step (itself
-        # complex_fields.bloch_pml_curl_step plus the beta insert); the only edit
-        # below its stores is the wall clear applied to the v registers.
-
-        # --- the ghost rule, per axis (stepping._shift_up / _shift_down) -------
+        # complex_fields.bloch_pml_curl_step's body, statement for statement; the
+        # only edit below its last form is the wall clear on the v registers.
+        # --- the ghost rule, per axis (stepping._shift_up / _shift_down) ------------
+        # PERIODIC wraps (a plain roll, phased or not); METALLIC serves an exact 0.0 past
+        # the wall -- a (+0.0, +0.0) word pair from `other=` IS the complex metallic ghost.
         if BACKWARD:
             si, sj, sk = i - 1, j - 1, k - 1
         else:
@@ -282,13 +268,7 @@ if triton is not None:
         oy = i * nyz + sj * nz + k
         oz = i * nyz + j * nz + sk
 
-        # --- wrapped-lane predicates, one plane per axis ------------------------
-        if BACKWARD:
-            wx, wy, wz = i == 0, j == 0, k == 0
-        else:
-            wx, wy, wz = i == nx - 1, j == ny - 1, k == nz - 1
-
-        # --- loads: two words per operand --------------------------------------
+        # --- loads: two words per operand ------------------------------------------
         a_re = tl.load(g0 + 2 * idx, mask=live, other=0.0)
         a_im = tl.load(g0 + 2 * idx + 1, mask=live, other=0.0)
         b_re = tl.load(g1 + 2 * idx, mask=live, other=0.0)
@@ -308,58 +288,57 @@ if triton is not None:
         c_y_re = tl.load(g2 + 2 * oy, mask=vy, other=0.0)
         c_y_im = tl.load(g2 + 2 * oy + 1, mask=vy, other=0.0)
 
-        # --- Bloch phase on the wrapped lane, BEFORE the difference -------------
-        # SHIFTED operands only; the beta partners (a, b centers) are never
-        # rotated. The host passed the CONJUGATE for this BACKWARD sub-step
-        # (S:1818-1822).
-        if PHX:
-            rot_re, rot_im = _rotate_field_left(b_x_re, b_x_im, pxr, pxi, EXPANSION)
-            b_x_re = tl.where(wx, rot_re, b_x_re)
-            b_x_im = tl.where(wx, rot_im, b_x_im)
-            rot_re, rot_im = _rotate_field_left(c_x_re, c_x_im, pxr, pxi, EXPANSION)
-            c_x_re = tl.where(wx, rot_re, c_x_re)
-            c_x_im = tl.where(wx, rot_im, c_x_im)
-        if PHY:
-            rot_re, rot_im = _rotate_field_left(a_y_re, a_y_im, pyr, pyi, EXPANSION)
-            a_y_re = tl.where(wy, rot_re, a_y_re)
-            a_y_im = tl.where(wy, rot_im, a_y_im)
-            rot_re, rot_im = _rotate_field_left(c_y_re, c_y_im, pyr, pyi, EXPANSION)
-            c_y_re = tl.where(wy, rot_re, c_y_re)
-            c_y_im = tl.where(wy, rot_im, c_y_im)
-        if PHZ:
-            rot_re, rot_im = _rotate_field_left(a_z_re, a_z_im, pzr, pzi, EXPANSION)
-            a_z_re = tl.where(wz, rot_re, a_z_re)
-            a_z_im = tl.where(wz, rot_im, a_z_im)
-            rot_re, rot_im = _rotate_field_left(b_z_re, b_z_im, pzr, pzi, EXPANSION)
-            b_z_re = tl.where(wz, rot_re, b_z_re)
-            b_z_im = tl.where(wz, rot_im, b_z_im)
-
-        # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens
-        t0_re = ((c_y_re - c_re) + (b_re - b_z_re))
-        t0_im = ((c_y_im - c_im) + (b_im - b_z_im))
-        t1_re = ((a_z_re - a_re) + (c_re - c_x_re))
-        t1_im = ((a_z_im - a_im) + (c_im - c_x_im))
-        t2_re = ((b_x_re - b_re) + (a_re - a_y_re))
-        t2_im = ((b_x_im - b_im) + (a_im - a_y_im))
-        curl0_re, curl0_im = _mul_coefficient_left(dtdx, t0_re, t0_im, EXPANSION)
-        curl1_re, curl1_im = _mul_coefficient_left(dtdx, t1_re, t1_im, EXPANSION)
-        curl2_re, curl2_im = _mul_coefficient_left(dtdx, t2_re, t2_im, EXPANSION)
-
-        # --- the beta term (stepping._special_kz_beta_term), CENTER partners only ---
-        # AFTER the dtdx curl, BEFORE the ownership mask — the array path's order
-        # (S:438-445 against S:450). Coefficient LEFT (S:784).
-        if HAS_BETA:
-            t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)
-            curl0_re = curl0_re - t_re
-            curl0_im = curl0_im - t_im
-            t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)
-            curl1_re = curl1_re - t_re
-            curl1_im = curl1_im - t_im
-
-        # --- ownership mask (stepping._mask_non_owned_cells) -------------------
-        # ON THIS SUB-STEP THE BACKWARD ARM IS THE LIVE ONE, masking TWO
-        # components per metallic axis.
+        # --- the connection on the UNSHIFTED partners, plane 0 of each partner's axis
+        # Target 0 reads c along y and b along z, target 1 a along z and c along x,
+        # target 2 b along x and a along y (stepping's term table). `tl.where` is a
+        # bitwise select, so every cell off plane 0 keeps its loaded words.
         at_x, at_y, at_z = i == 0, j == 0, k == 0
+        c0_re, c0_im = c_re, c_im          # target 0's g1, connected on y
+        b0_re, b0_im = b_re, b_im          # target 0's g2, connected on z
+        a1_re, a1_im = a_re, a_im          # target 1's g1, connected on z
+        c1_re, c1_im = c_re, c_im          # target 1's g2, connected on x
+        b2_re, b2_im = b_re, b_im          # target 2's g1, connected on x
+        a2_re, a2_im = a_re, a_im          # target 2's g2, connected on y
+        if CNX:
+            r_re, r_im = _connect(c_re, c_im, cxr, cxi, CNX)
+            c1_re = tl.where(at_x, r_re, c_re)
+            c1_im = tl.where(at_x, r_im, c_im)
+            r_re, r_im = _connect(b_re, b_im, cxr, cxi, CNX)
+            b2_re = tl.where(at_x, r_re, b_re)
+            b2_im = tl.where(at_x, r_im, b_im)
+        if CNY:
+            r_re, r_im = _connect(c_re, c_im, cyr, cyi, CNY)
+            c0_re = tl.where(at_y, r_re, c_re)
+            c0_im = tl.where(at_y, r_im, c_im)
+            r_re, r_im = _connect(a_re, a_im, cyr, cyi, CNY)
+            a2_re = tl.where(at_y, r_re, a_re)
+            a2_im = tl.where(at_y, r_im, a_im)
+        if CNZ:
+            r_re, r_im = _connect(b_re, b_im, czr, czi, CNZ)
+            b0_re = tl.where(at_z, r_re, b_re)
+            b0_im = tl.where(at_z, r_im, b_im)
+            r_re, r_im = _connect(a_re, a_im, czr, czi, CNZ)
+            a1_re = tl.where(at_z, r_re, a_re)
+            a1_im = tl.where(at_z, r_im, a_im)
+
+        # --- the curl (stepping._curl_from_operands), per part ---------------------
+        # kernels.pml_curl_step's three calls on each part: MEEP's left-to-right
+        # association with both partners, the one-partner form where the record says the
+        # other partner's derivative axis is invariant, an exact +0 with neither. The
+        # dtdx scale is the real scalar times each part (part_products.scale).
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)
+        curl0_im = curl_stencil(c_y_im, c0_im, b0_im, b_z_im, dtdx, py, pz)
+        curl1_re = curl_stencil(a_z_re, a1_re, c1_re, c_x_re, dtdx, pz, px)
+        curl1_im = curl_stencil(a_z_im, a1_im, c1_im, c_x_im, dtdx, pz, px)
+        curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)
+        curl2_im = curl_stencil(b_x_im, b2_im, a2_im, a_y_im, dtdx, px, py)
+
+        # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
+        # Writes +0.0 to BOTH parts -- the array path assigns complex zero.
         if BACKWARD:
             if BCY == METALLIC:
                 curl0_re = tl.where(at_y, 0.0, curl0_re)
@@ -390,7 +369,10 @@ if triton is not None:
                 curl2_re = tl.where(at_z, 0.0, curl2_re)
                 curl2_im = tl.where(at_z, 0.0, curl2_im)
 
-        # --- split-field recurrence (stepping._apply_pml_update) ---------------
+        # --- the PML forms (stepping._apply_curl_regions), per part ----------------
+        # dsig/dsigu cycle: target 0 -> (y, z), 1 -> (z, x), 2 -> (x, y). One record
+        # select per target serves both parts; fu is read and written on the
+        # recurrence's cells only (the auxiliary contract), both words.
         km_x = tl.load(kmx + i, mask=live, other=0.0)
         si_x = tl.load(sinvx + i, mask=live, other=0.0)
         km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -398,52 +380,84 @@ if triton is not None:
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0_re = tl.load(u0 + 2 * idx, mask=live, other=0.0)
-        p0_im = tl.load(u0 + 2 * idx + 1, mask=live, other=0.0)
-        q_re, q_im = _mul_field_left(p0_re, p0_im, km_y, EXPANSION)
-        q_re = q_re - curl0_re
-        q_im = q_im - curl0_im
-        n0_re, n0_im = _mul_field_left(q_re, q_im, si_y, EXPANSION)
-        e_re = tl.load(f0 + 2 * idx, mask=live, other=0.0)
-        e_im = tl.load(f0 + 2 * idx + 1, mask=live, other=0.0)
-        r_re, r_im = _mul_field_left(e_re, e_im, km_z, EXPANSION)
-        r_re = (r_re + n0_re) - p0_re
-        r_im = (r_im + n0_im) - p0_im
-        v0_re, v0_im = _mul_field_left(r_re, r_im, si_z, EXPANSION)
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1_re = tl.load(u1 + 2 * idx, mask=live, other=0.0)
-        p1_im = tl.load(u1 + 2 * idx + 1, mask=live, other=0.0)
-        q_re, q_im = _mul_field_left(p1_re, p1_im, km_z, EXPANSION)
-        q_re = q_re - curl1_re
-        q_im = q_im - curl1_im
-        n1_re, n1_im = _mul_field_left(q_re, q_im, si_z, EXPANSION)
-        e_re = tl.load(f1 + 2 * idx, mask=live, other=0.0)
-        e_im = tl.load(f1 + 2 * idx + 1, mask=live, other=0.0)
-        r_re, r_im = _mul_field_left(e_re, e_im, km_x, EXPANSION)
-        r_re = (r_re + n1_re) - p1_re
-        r_im = (r_im + n1_im) - p1_im
-        v1_re, v1_im = _mul_field_left(r_re, r_im, si_x, EXPANSION)
+        p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)
+        p_im = tl.load(u0 + 2 * idx + 1, mask=live & du0, other=0.0)
+        v0_re, n0_re = curl_form(tl.load(f0 + 2 * idx, mask=live, other=0.0), p_re, curl0_re,
+                                 km_y, si_y, km_z, si_z, du0)
+        v0_im, n0_im = curl_form(tl.load(f0 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                                 curl0_im, km_y, si_y, km_z, si_z, du0)
 
-        p2_re = tl.load(u2 + 2 * idx, mask=live, other=0.0)
-        p2_im = tl.load(u2 + 2 * idx + 1, mask=live, other=0.0)
-        q_re, q_im = _mul_field_left(p2_re, p2_im, km_x, EXPANSION)
-        q_re = q_re - curl2_re
-        q_im = q_im - curl2_im
-        n2_re, n2_im = _mul_field_left(q_re, q_im, si_x, EXPANSION)
-        e_re = tl.load(f2 + 2 * idx, mask=live, other=0.0)
-        e_im = tl.load(f2 + 2 * idx + 1, mask=live, other=0.0)
-        r_re, r_im = _mul_field_left(e_re, e_im, km_y, EXPANSION)
-        r_re = (r_re + n2_re) - p2_re
-        r_im = (r_im + n2_im) - p2_im
-        v2_re, v2_im = _mul_field_left(r_re, r_im, si_y, EXPANSION)
+        p_re = tl.load(u1 + 2 * idx, mask=live & du1, other=0.0)
+        p_im = tl.load(u1 + 2 * idx + 1, mask=live & du1, other=0.0)
+        v1_re, n1_re = curl_form(tl.load(f1 + 2 * idx, mask=live, other=0.0), p_re, curl1_re,
+                                 km_z, si_z, km_x, si_x, du1)
+        v1_im, n1_im = curl_form(tl.load(f1 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                                 curl1_im, km_z, si_z, km_x, si_x, du1)
 
-        # --- the seam: stepping.zero_metal_D (driver.py:3301) ------------------
-        # Applied to the REGISTERS, before both the store and the constitutive
-        # read. BOTH planes; THE COMPONENT MAP IS THE D SIDE'S — the two
-        # TANGENTIAL components per walled axis (WALL_CLEARED_COMPONENTS), the
-        # exact complement of the magnetic twin's, measured wrong-in-both-
-        # directions when the twin's map was carried here by the beta-less
-        # product's first device run.
+        p_re = tl.load(u2 + 2 * idx, mask=live & du2, other=0.0)
+        p_im = tl.load(u2 + 2 * idx + 1, mask=live & du2, other=0.0)
+        v2_re, n2_re = curl_form(tl.load(f2 + 2 * idx, mask=live, other=0.0), p_re, curl2_re,
+                                 km_x, si_x, km_y, si_y, du2)
+        v2_im, n2_im = curl_form(tl.load(f2 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                                 curl2_im, km_x, si_x, km_y, si_y, du2)
+
+        # --- the special-kz beta pass (stepping._special_kz_beta_term, then
+        # stepping._apply_folded_increment), per part ------------------------------
+        # MEEP's pass of its own after every component's curl (step_db.cpp:161-175),
+        # applied to the registers the forms returned. The partners are the CENTER
+        # words as loaded, never connected: target 0 takes the second source at sign
+        # +1, target 1 the first at sign -1; target 2 gets nothing. The increment is
+        # the negated quarter turn (part_products.quarter_turn): i*c*(x + iy) is
+        # (-(c*y), c*x), so its negation is (c*y, -(c*x)), the two negations of the
+        # real part cancelling exactly. The words beta_plus/beta_minus already carry
+        # the side's i or -i (special_kz.beta_curl_coefficients). Masked to (+0, +0)
+        # on the cells the curl's own mask drops; each part takes the beta ladder.
+        if HAS_BETA:
+            q0_re = beta_plus * b_im
+            q0_im = (beta_plus * b_re) * -1.0
+            q1_re = beta_minus * a_im
+            q1_im = (beta_minus * a_re) * -1.0
+            if BACKWARD:
+                if BCY == METALLIC:
+                    q0_re = tl.where(at_y, 0.0, q0_re)
+                    q0_im = tl.where(at_y, 0.0, q0_im)
+                if BCZ == METALLIC:
+                    q0_re = tl.where(at_z, 0.0, q0_re)
+                    q0_im = tl.where(at_z, 0.0, q0_im)
+                if BCX == METALLIC:
+                    q1_re = tl.where(at_x, 0.0, q1_re)
+                    q1_im = tl.where(at_x, 0.0, q1_im)
+                if BCZ == METALLIC:
+                    q1_re = tl.where(at_z, 0.0, q1_re)
+                    q1_im = tl.where(at_z, 0.0, q1_im)
+            else:
+                if BCX == METALLIC:
+                    q0_re = tl.where(at_x, 0.0, q0_re)
+                    q0_im = tl.where(at_x, 0.0, q0_im)
+                if BCY == METALLIC:
+                    q1_re = tl.where(at_y, 0.0, q1_re)
+                    q1_im = tl.where(at_y, 0.0, q1_im)
+            v0_re, n0_re = fold_ladder(v0_re, n0_re, q0_re, si_y, si_z, du0)
+            v0_im, n0_im = fold_ladder(v0_im, n0_im, q0_im, si_y, si_z, du0)
+            v1_re, n1_re = fold_ladder(v1_re, n1_re, q1_re, si_z, si_x, du1)
+            v1_im, n1_im = fold_ladder(v1_im, n1_im, q1_im, si_z, si_x, du1)
+
+        # --- the seam: stepping.zero_metal_D, between the two sub-steps ---------
+        # Applied to the REGISTERS, before both the store and the constitutive read,
+        # so the two consumers see the one value the array path leaves in D. BOTH
+        # parts. THE COMPONENT MAP IS THE COMPLEMENT OF THE MAGNETIC TWIN'S:
+        # `_zero_metal` clears every component whose Yee shift on the WALLED axis is
+        # ZERO, which on the D side is the two TANGENTIAL components
+        # (:data:`WALL_CLEARED_COMPONENTS`, re-derived from IYEE_SHIFTS by the
+        # predicate, which refuses on a disagreement).
         if ZM_X:
             v1_re = tl.where(at_x, 0.0, v1_re)
             v1_im = tl.where(at_x, 0.0, v1_im)
@@ -460,13 +474,13 @@ if triton is not None:
             v1_re = tl.where(at_z, 0.0, v1_re)
             v1_im = tl.where(at_z, 0.0, v1_im)
 
-        # --- stores: u then f (kernels.py:193-198 order), both planes ----------
-        tl.store(u0 + 2 * idx, n0_re, mask=live)
-        tl.store(u0 + 2 * idx + 1, n0_im, mask=live)
-        tl.store(u1 + 2 * idx, n1_re, mask=live)
-        tl.store(u1 + 2 * idx + 1, n1_im, mask=live)
-        tl.store(u2 + 2 * idx, n2_re, mask=live)
-        tl.store(u2 + 2 * idx + 1, n2_im, mask=live)
+        # --- stores: fu (recurrence cells only), then the fields, both parts ----
+        tl.store(u0 + 2 * idx, n0_re, mask=live & du0)
+        tl.store(u0 + 2 * idx + 1, n0_im, mask=live & du0)
+        tl.store(u1 + 2 * idx, n1_re, mask=live & du1)
+        tl.store(u1 + 2 * idx + 1, n1_im, mask=live & du1)
+        tl.store(u2 + 2 * idx, n2_re, mask=live & du2)
+        tl.store(u2 + 2 * idx + 1, n2_im, mask=live & du2)
         tl.store(f0 + 2 * idx, v0_re, mask=live)
         tl.store(f0 + 2 * idx + 1, v0_im, mask=live)
         tl.store(f1 + 2 * idx, v1_re, mask=live)
@@ -475,85 +489,78 @@ if triton is not None:
         tl.store(f2 + 2 * idx + 1, v2_im, mask=live)
 
         # ==================== the constitutive half ===========================
-        # Verbatim from complex_fields.bloch_constitutive_step's SCALE=1 arm, with
-        # `src = tl.load(g + 2*idx)` replaced by the register pair the curl half
-        # just produced. `prev` is read BEFORE the `w` store (S:2083-2085); the
-        # inv_eps multiply happens BETWEEN the source read and that store
-        # (complex_fields.py:783-786), so `f_w_E*` holds `D * inv_eps` and not
-        # `D`; the two accumulations stay separate and left-to-right, each a
-        # coefficient-LEFT zero-imaginary complex product (S:2086-2087,
-        # S:2093-2095).
+        # complex_fields.bloch_constitutive_step's SCALE=1 arm, per part, with
+        # `src = tl.load(g + 2*idx)` replaced by the register pair the curl half just
+        # produced -- the substitution kernels.fused_curl_constitutive_D
+        # makes on the real path. The record's dsigw line on the half-integer lattice
+        # picks the form; f_w is read and written on the accumulation's cells only,
+        # `prev` before the store.
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
         km_0 = tl.load(km0 + i, mask=live, other=0.0)
         kp_1 = tl.load(kp1 + j, mask=live, other=0.0)
         km_1 = tl.load(km1 + j, mask=live, other=0.0)
         kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
 
         # --- component 0 -------------------------------------------------------
-        prev_re = tl.load(w0 + 2 * idx, mask=live, other=0.0)   # BEFORE the store.
-        prev_im = tl.load(w0 + 2 * idx + 1, mask=live, other=0.0)
+        prev_re = tl.load(w0 + 2 * idx, mask=live & dw0, other=0.0)   # BEFORE the store.
+        prev_im = tl.load(w0 + 2 * idx + 1, mask=live & dw0, other=0.0)
         src_re = v0_re
         src_im = v0_im
         if SCALE:
-            # inv_eps is a float32 volume at the COMPLEX cell index — `+ idx`, not
-            # `+ 2 * idx`. D LEFT (S:982-984).
+            # inv_eps is a float32 volume at the COMPLEX cell index -- `+ idx`.
             ie = tl.load(e0 + idx, mask=live, other=0.0)
-            src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)
-        tl.store(w0 + 2 * idx, src_re, mask=live)
-        tl.store(w0 + 2 * idx + 1, src_im, mask=live)
-        a_re = tl.load(h0 + 2 * idx, mask=live, other=0.0)
-        a_im = tl.load(h0 + 2 * idx + 1, mask=live, other=0.0)
-        t_re, t_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)
-        a_re = a_re + t_re
-        a_im = a_im + t_im
-        t_re, t_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)
-        a_re = a_re - t_re
-        a_im = a_im - t_im
-        tl.store(h0 + 2 * idx, a_re, mask=live)
-        tl.store(h0 + 2 * idx + 1, a_im, mask=live)
+            src_re = src_re * ie
+            src_im = src_im * ie
+        tl.store(w0 + 2 * idx, src_re, mask=live & dw0)
+        tl.store(w0 + 2 * idx + 1, src_im, mask=live & dw0)
+        a_re = tl.load(h0 + 2 * idx, mask=live & dw0, other=0.0)
+        a_im = tl.load(h0 + 2 * idx + 1, mask=live & dw0, other=0.0)
+        tl.store(h0 + 2 * idx, constitutive_form(a_re, prev_re, src_re, kp_0, km_0, dw0),
+                 mask=live)
+        tl.store(h0 + 2 * idx + 1,
+                 constitutive_form(a_im, prev_im, src_im, kp_0, km_0, dw0), mask=live)
 
         # --- component 1 -------------------------------------------------------
-        prev_re = tl.load(w1 + 2 * idx, mask=live, other=0.0)
-        prev_im = tl.load(w1 + 2 * idx + 1, mask=live, other=0.0)
+        prev_re = tl.load(w1 + 2 * idx, mask=live & dw1, other=0.0)   # BEFORE the store.
+        prev_im = tl.load(w1 + 2 * idx + 1, mask=live & dw1, other=0.0)
         src_re = v1_re
         src_im = v1_im
         if SCALE:
+            # inv_eps is a float32 volume at the COMPLEX cell index -- `+ idx`.
             ie = tl.load(e1 + idx, mask=live, other=0.0)
-            src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)
-        tl.store(w1 + 2 * idx, src_re, mask=live)
-        tl.store(w1 + 2 * idx + 1, src_im, mask=live)
-        a_re = tl.load(h1 + 2 * idx, mask=live, other=0.0)
-        a_im = tl.load(h1 + 2 * idx + 1, mask=live, other=0.0)
-        t_re, t_im = _mul_coefficient_left(kp_1, src_re, src_im, EXPANSION)
-        a_re = a_re + t_re
-        a_im = a_im + t_im
-        t_re, t_im = _mul_coefficient_left(km_1, prev_re, prev_im, EXPANSION)
-        a_re = a_re - t_re
-        a_im = a_im - t_im
-        tl.store(h1 + 2 * idx, a_re, mask=live)
-        tl.store(h1 + 2 * idx + 1, a_im, mask=live)
+            src_re = src_re * ie
+            src_im = src_im * ie
+        tl.store(w1 + 2 * idx, src_re, mask=live & dw1)
+        tl.store(w1 + 2 * idx + 1, src_im, mask=live & dw1)
+        a_re = tl.load(h1 + 2 * idx, mask=live & dw1, other=0.0)
+        a_im = tl.load(h1 + 2 * idx + 1, mask=live & dw1, other=0.0)
+        tl.store(h1 + 2 * idx, constitutive_form(a_re, prev_re, src_re, kp_1, km_1, dw1),
+                 mask=live)
+        tl.store(h1 + 2 * idx + 1,
+                 constitutive_form(a_im, prev_im, src_im, kp_1, km_1, dw1), mask=live)
 
         # --- component 2 -------------------------------------------------------
-        prev_re = tl.load(w2 + 2 * idx, mask=live, other=0.0)
-        prev_im = tl.load(w2 + 2 * idx + 1, mask=live, other=0.0)
+        prev_re = tl.load(w2 + 2 * idx, mask=live & dw2, other=0.0)   # BEFORE the store.
+        prev_im = tl.load(w2 + 2 * idx + 1, mask=live & dw2, other=0.0)
         src_re = v2_re
         src_im = v2_im
         if SCALE:
+            # inv_eps is a float32 volume at the COMPLEX cell index -- `+ idx`.
             ie = tl.load(e2 + idx, mask=live, other=0.0)
-            src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)
-        tl.store(w2 + 2 * idx, src_re, mask=live)
-        tl.store(w2 + 2 * idx + 1, src_im, mask=live)
-        a_re = tl.load(h2 + 2 * idx, mask=live, other=0.0)
-        a_im = tl.load(h2 + 2 * idx + 1, mask=live, other=0.0)
-        t_re, t_im = _mul_coefficient_left(kp_2, src_re, src_im, EXPANSION)
-        a_re = a_re + t_re
-        a_im = a_im + t_im
-        t_re, t_im = _mul_coefficient_left(km_2, prev_re, prev_im, EXPANSION)
-        a_re = a_re - t_re
-        a_im = a_im - t_im
-        tl.store(h2 + 2 * idx, a_re, mask=live)
-        tl.store(h2 + 2 * idx + 1, a_im, mask=live)
+            src_re = src_re * ie
+            src_im = src_im * ie
+        tl.store(w2 + 2 * idx, src_re, mask=live & dw2)
+        tl.store(w2 + 2 * idx + 1, src_im, mask=live & dw2)
+        a_re = tl.load(h2 + 2 * idx, mask=live & dw2, other=0.0)
+        a_im = tl.load(h2 + 2 * idx + 1, mask=live & dw2, other=0.0)
+        tl.store(h2 + 2 * idx, constitutive_form(a_re, prev_re, src_re, kp_2, km_2, dw2),
+                 mask=live)
+        tl.store(h2 + 2 * idx + 1,
+                 constitutive_form(a_im, prev_im, src_im, kp_2, km_2, dw2), mask=live)
 
 else:  # pragma: no cover - laptop path
     complex_beta_fused_curl_constitutive_D = None  # type: ignore[assignment]
@@ -574,25 +581,23 @@ def complex_beta_fused_curl_constitutive_D_kernel() -> Any:
 # ---------------------------------------------------------------------------
 
 def complex_beta_fused_electric_pair_coverage(fields: Any, pml: Any,
-                                              sources: Any = None,
-                                              probe: Any = None) -> Coverage:
+                                              sources: Any = None) -> Coverage:
     """May ONE launch span complex beta ``step_D`` -> wall -> complex ``update_E``?
 
     A conjunction of the two halves' own SHIPPED predicates plus the seam
     clauses — the beta-less electric twin's construction with the halves swapped
-    to :func:`.special_kz.beta_bloch_pml_curl_coverage` (EXTENDED probe set) and
-    :func:`.special_kz.beta_run_complex_constitutive_coverage` (BASE set, its
-    certified kernel's own contract). Nothing is weakened; ``probe`` is
-    forwarded to both halves unchanged.
+    to :func:`.special_kz.beta_bloch_pml_curl_coverage` and
+    :func:`.special_kz.beta_run_complex_constitutive_coverage` (its certified
+    kernel's own contract). Nothing is weakened.
     """
     reasons: List[str] = []
 
-    curl = beta_bloch_pml_curl_coverage(fields, pml, CURL_SUB_STEP, probe=probe)
+    curl = beta_bloch_pml_curl_coverage(fields, pml, CURL_SUB_STEP)
     if not curl.covered:
         reasons.extend(f"complex beta curl half: {reason}"
                        for reason in curl.reasons)
     constitutive = beta_run_complex_constitutive_coverage(
-        fields, pml, CONSTITUTIVE_SIDE, probe=probe)
+        fields, pml, CONSTITUTIVE_SIDE)
     if not constitutive.covered:
         reasons.extend(f"complex beta constitutive half: {reason}"
                        for reason in constitutive.reasons)
@@ -682,48 +687,56 @@ def complex_beta_fused_electric_pair_coverage(fields: Any, pml: Any,
 class ComplexBetaFusedElectricPairPlan:
     """One allocation-free launch for five of the driver's electric call sites.
 
-    :class:`.complex_fused_electric_pair.ComplexFusedElectricPairPlan` plus the
-    four host-rounded beta coefficient words and ``HAS_BETA``. The complex
-    volumes are bound as float32 WORD VIEWS at plan time; the ``inv_eps``
-    volumes are bound RAW (one real coefficient per complex cell, indexed at
-    ``+ idx``).
+    The complex volumes are bound as float32 WORD VIEWS at plan time, once, and
+    ``n_elem`` stays the COMPLEX cell count — the same split
+    :class:`.complex_fields.ComplexPmlCurlPlan` makes, for the same reason. The
+    ``inv_eps`` volumes are the exception and are bound RAW: they are float32 with
+    one real coefficient per complex cell, and the kernel indexes them at ``+ idx``
+    (``fields.py:1203-1204``; the same binding
+    :class:`.complex_fields.ComplexConstitutivePlan` makes).
     """
 
     __slots__ = (
         "shape", "n_elem", "dtdx", "backward", "scale", "bc", "zero_metal",
-        "phased", "phase_values", "beta_words", "has_beta", "expansion",
-        "block", "num_warps",
+        "connections", "connection_values", "beta_words", "has_beta", "block", "num_warps",
+        "chunk_bounds",
         "_targets", "_aux", "_sources", "_curl_coefficients",
-        "_e_targets", "_e_aux", "_inv_eps", "_e_coefficients", "_grid", "_kernel",
+        "_e_targets", "_e_aux", "_inv_eps", "_e_coefficients", "_cb", "_grid",
+        "_kernel",
     )
 
     #: The five driver call sites one launch performs. Declared, so a composition
     #: can be inspected rather than inferred from the curl slot's name.
     replaces = REPLACES
 
-    def __init__(self, shape, dtdx: float, bc, zero_metal, phased, phase_values,
-                 beta_words, expansion: int, block: int,
+    def __init__(self, shape, dtdx: float, bc, zero_metal, connections,
+                 connection_values, beta_words, block: int,
                  targets, auxiliaries, sources, curl_coefficients,
                  e_targets, e_aux, inverse_epsilon, e_coefficients,
                  kernel: Any = None, num_warps: Optional[int] = 1,
-                 has_beta: int = 1) -> None:
+                 has_beta: int = 1, *,
+                 chunk_bounds: Any) -> None:
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
         # float(): the array path consumes the Python scalar at complex64
-        # precision, and Triton types a Python float argument as fp32.
+        # precision, and Triton types a Python float argument as fp32, so the two
+        # are the same bits (complex_fields.ComplexPmlCurlPlan's measured note).
         self.dtdx = float(dtdx)
         self.backward = BACKWARD
         self.scale = SCALE
         self.bc = tuple(int(code) for code in bc)
         self.zero_metal = tuple(bool(value) for value in zero_metal)
-        self.phased = tuple(int(flag) for flag in phased)
-        self.phase_values = tuple(float(value) for value in phase_values)
-        # ((bp_re, bp_im), (bm_re, bm_im)) — already complex64-rounded words
-        # with the signed-zero real parts passed through (float() keeps them).
-        self.beta_words = tuple(tuple(float(word) for word in pair)
-                                for pair in beta_words)
+        self.connections = tuple(int(kind) for kind in connections)
+        self.connection_values = tuple(float(value) for value in connection_values)
+        # (plus, minus): one float32-rounded real word per sign, the side's i or -i
+        # already applied (special_kz.beta_curl_coefficients); float() keeps the bits.
+        words = tuple(beta_words)
+        if len(words) != 2 or any(isinstance(word, (tuple, list)) for word in words):
+            raise ValueError(f"beta_words must be the two real quarter-turn words of "
+                             f"special_kz.beta_curl_coefficients(..., "
+                             f"complex_storage=True), got {beta_words!r}")
+        self.beta_words = tuple(float(word) for word in words)
         self.has_beta = int(has_beta)
-        self.expansion = int(expansion)
         self.block = int(block)
         self.num_warps = None if num_warps is None else int(num_warps)
         self._targets = tuple(CupyPointer(_word_view(a)) for a in targets)
@@ -733,8 +746,10 @@ class ComplexBetaFusedElectricPairPlan:
             CupyPointer(_flat(a)) for a in curl_coefficients)
         self._e_targets = tuple(CupyPointer(_word_view(a)) for a in e_targets)
         self._e_aux = tuple(CupyPointer(_word_view(a)) for a in e_aux)
-        # NOT word-viewed, and not optional: SCALE is 1 on every launch, so a
-        # placeholder binding here would be read as an epsilon.
+        # NOT word-viewed, and not optional. Unlike ComplexConstitutivePlan, which
+        # binds the source views as placeholders on the H side because its SCALE
+        # constexpr compiles the loads away, THIS product is E-only: SCALE is 1 on
+        # every launch, so a placeholder here would be read as an epsilon.
         if inverse_epsilon is None:
             raise ValueError(
                 "the E-side fused pair loads inv_eps on every launch (SCALE=1); "
@@ -742,14 +757,24 @@ class ComplexBetaFusedElectricPairPlan:
         self._inv_eps = tuple(CupyPointer(a) for a in inverse_epsilon)
         self._e_coefficients = tuple(
             CupyPointer(_flat(a)) for a in e_coefficients)
-        # THE INT32 WORD BOUND, refused here as well because the from-arrays
-        # route runs no predicate at all.
+        # THE INT32 WORD BOUND. The kernel addresses words as ``2 * idx`` in
+        # int32, so the complex cell count must leave room for the doubling —
+        # the same halving the complex predicates apply (module docstring of
+        # complex_fields, "Word addressing"). Refused here as well because the
+        # from-arrays route runs no predicate at all.
         if 2 * self.n_elem >= 2 ** 31:
             raise ValueError(
                 f"{self.n_elem} complex cells needs {2 * self.n_elem} int32 word "
                 f"indices, which overflows the kernel's 2 * idx addressing")
+        from .launch import bind_chunk_bounds  # noqa: PLC0415
+
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "ComplexBetaFusedElectricPairPlan")
         self._grid = ((self.n_elem + self.block - 1) // self.block,)
-        # An override for exactly one caller: the gate's mutation legs.
+        # An override for exactly one caller: the gate's mutation legs, which
+        # compile deliberately broken copies of this kernel. Dropping it is not a
+        # slowdown, it is a DISARMING — every mutation leg would then launch the
+        # shipped kernel and report the defect as uncaught.
         self._kernel = kernel
 
     def run(self, guard: Optional[bool] = None) -> None:
@@ -760,70 +785,64 @@ class ComplexBetaFusedElectricPairPlan:
                   else complex_beta_fused_curl_constitutive_D_kernel())
         nx, ny, nz = self.shape
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
-        (bp_re, bp_im), (bm_re, bm_im) = self.beta_words
         kernel[self._grid](
             *self._targets, *self._aux, *self._sources, *self._curl_coefficients,
             *self._e_targets, *self._e_aux, *self._inv_eps, *self._e_coefficients,
+            self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
-            *self.phase_values,
-            bp_re, bp_im, bm_re, bm_im,
+            *self.connection_values,
+            *self.beta_words,
             BACKWARD=self.backward,
             SCALE=self.scale,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
             ZM_X=self.zero_metal[0], ZM_Y=self.zero_metal[1],
             ZM_Z=self.zero_metal[2],
-            PHX=self.phased[0], PHY=self.phased[1], PHZ=self.phased[2],
+            CNX=self.connections[0], CNY=self.connections[1],
+            CNZ=self.connections[2],
             HAS_BETA=self.has_beta,
-            EXPANSION=self.expansion,
             BLOCK=self.block,
             enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
             **extra,
         )
 
     def __repr__(self) -> str:
-        return (f"ComplexBetaFusedElectricPairPlan(shape={self.shape}, "
-                f"bc={self.bc}, zero_metal={self.zero_metal}, "
-                f"phased={self.phased}, beta_words={self.beta_words!r}, "
-                f"has_beta={self.has_beta}, expansion={self.expansion}, "
-                f"block={self.block}, num_warps={self.num_warps})")
+        return (f"ComplexBetaFusedElectricPairPlan(shape={self.shape}, bc={self.bc}, "
+                f"zero_metal={self.zero_metal}, connections={self.connections}, "
+                f"beta_words={self.beta_words!r}, has_beta={self.has_beta}, "
+                f"block={self.block}, num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
-def plan_complex_beta_fused_electric_pair(fields: Any, pml: Any,
-                                          sources: Any = None,
-                                          block: Optional[int] = None,
-                                          num_warps: Optional[int] = 1,
-                                          kernel: Any = None,
-                                          probe: Any = None,
-                                          ) -> Optional[ComplexBetaFusedElectricPairPlan]:
+def plan_complex_beta_fused_electric_pair(fields: Any, pml: Any, sources: Any = None,
+                                     block: Optional[int] = None,
+                                     num_warps: Optional[int] = 1,
+                                     kernel: Any = None,
+                                     chunk_layout: Any = None,
+                                     ) -> Optional[ComplexBetaFusedElectricPairPlan]:
     """Build the plan from the engine's own objects, or ``None`` when refused.
 
-    ``None`` is the only refusal. The EXPANSION constexpr binds through
-    :func:`.special_kz.beta_expansion_from_probe` — the EXTENDED pattern set —
-    never through the base-four resolver.
+    ``None`` is the only refusal: a configuration this kernel does not carry must
+    fall back to the array path, never raise into a caller that would otherwise
+    have stepped correctly. ``chunk_layout`` is the run's chunk division, ``None`` for
+    the one-rank default (``launch.chunk_bounds_for``).
     """
-    if not complex_beta_fused_electric_pair_coverage(fields, pml, sources,
-                                                     probe=probe).covered:
-        return None
-    from .complex_fields import load_expansion_probe  # noqa: PLC0415
-
-    record = probe if probe is not None else load_expansion_probe()
-    expansion = beta_expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not complex_beta_fused_electric_pair_coverage(fields, pml, sources).covered:
         return None
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
+    from .launch import chunk_bounds_for  # noqa: PLC0415
 
     curl_spec = SUB_STEPS[CURL_SUB_STEP]
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
     grid = fields.grid
     kinds = resolve(grid, pml)
-    phased, values = _phase_arguments(bloch_phase_table(grid, kinds),
-                                      backward=bool(curl_spec["backward"]))
+    connections, values = connection_arguments(bloch_phase_table(grid, kinds),
+                                               backward=bool(curl_spec["backward"]))
     beta_words = beta_curl_coefficients(grid.beta, grid.dt,
                                         magnetic=False, complex_storage=True)
     return ComplexBetaFusedElectricPairPlan(
         grid.shape, grid.dt / grid.dx,
         [1 if kind == "metallic" else 0 for kind in kinds],
-        zero_metal_axes(grid), phased, values, beta_words, expansion,
+        zero_metal_axes(grid), connections, values, beta_words,
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in curl_spec["targets"]],
         [getattr(fields, "fu_" + name) for name in curl_spec["targets"]],
@@ -833,40 +852,49 @@ def plan_complex_beta_fused_electric_pair(fields: Any, pml: Any,
         [getattr(fields, name) for name in side_spec["targets"]],
         [getattr(fields, name) for name in side_spec["aux"]],
         [fields.inverse_epsilon_for(name) for name in side_spec["targets"]],
-        # THE MIRROR IMAGE OF THE MAGNETIC TWIN'S CHOICE: INTEGER lattice on the
-        # step_D curl, HALF-INTEGER on E; the gate carries a mutation for a swap.
+        # THE MIRROR IMAGE OF THE MAGNETIC TWIN'S CHOICE. The curl takes the
+        # INTEGER lattice on step_D (SUB_STEPS['step_D']['suffix'] == "") and the
+        # constitutive the HALF-INTEGER one on E (stepping.py:1015 against the D
+        # curl's half_integer=False). The kernel takes both and never asks which is
+        # which, so a swap here is a silent half-cell error in the absorber
+        # profile; the gate carries a mutation for exactly it.
         [getattr(pml, f"{stem}_{axis}_h") for axis in "xyz"
          for stem in ("kps", "kms")],
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
 def plan_complex_beta_fused_electric_pair_from_arrays(
         arrays: Dict[str, Any], curl_flat: Dict[str, Any],
         constitutive_flat: Dict[str, Any], codes, zero_metal,
-        phases: Sequence[Optional[complex]], dtdx: float, expansion: int,
+        phases: Sequence[Optional[complex]], dtdx: float,
         beta_words,
         block: Optional[int] = None, kernel: Any = None,
-        num_warps: Optional[int] = 1,
-        has_beta: int = 1) -> ComplexBetaFusedElectricPairPlan:
+        num_warps: Optional[int] = 1, has_beta: int = 1, *,
+        chunk_bounds: Any) -> ComplexBetaFusedElectricPairPlan:
     """Build from bare device arrays — the gate's route.
 
-    No coverage predicate runs. ``arrays`` is keyed by component name plus
-    ``fu_D*``, ``f_w_E*`` and ``inv_eps_Ex``... (float32); ``phases`` is the
-    per-axis ``Optional[complex]`` table and the conjugation for this backward
-    sub-step is applied HERE; ``beta_words`` is normally
-    :func:`.special_kz.beta_curl_coefficients`'s ``magnetic=False`` output, or a
-    deliberately wrong pair on a mutation leg; ``has_beta=0`` is the identity
-    leg's certified-kernel arm.
+    ``beta_words`` is ``(plus, minus)`` — normally
+    :func:`.special_kz.beta_curl_coefficients`'s output, or a deliberately wrong
+    pair on a mutation leg; ``has_beta=0`` is the identity leg's root-pair arm.
+
+    No coverage predicate runs: the caller is a harness that constructed the
+    configuration deliberately, including the deliberately wrong ones. ``arrays``
+    is keyed by component name plus ``fu_D*``, ``f_w_E*`` and ``inv_eps_Ex``...
+    (float32); ``phases`` is the per-axis ``Optional[complex]`` table (None =
+    unphased) and the conjugation for a backward sub-step is applied HERE, exactly
+    as the engine route applies it — this product is backward-only, so it always
+    is.
     """
     curl_spec = SUB_STEPS[CURL_SUB_STEP]
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
     shape = tuple(int(n) for n in arrays[curl_spec["targets"][0]].shape)
-    phased, values = _phase_arguments(tuple(phases),
-                                      backward=bool(curl_spec["backward"]))
+    connections, values = connection_arguments(tuple(phases),
+                                               backward=bool(curl_spec["backward"]))
     return ComplexBetaFusedElectricPairPlan(
-        shape, dtdx, codes, zero_metal, phased, values, beta_words,
-        int(expansion), DEFAULT_BLOCK if block is None else block,
+        shape, dtdx, codes, zero_metal, connections, values, beta_words,
+        DEFAULT_BLOCK if block is None else block,
         [arrays[name] for name in curl_spec["targets"]],
         [arrays["fu_" + name] for name in curl_spec["targets"]],
         [arrays[name] for name in curl_spec["sources"]],
@@ -877,4 +905,5 @@ def plan_complex_beta_fused_electric_pair_from_arrays(
         [constitutive_flat[f"{stem}_{axis}"]
          for axis in "xyz" for stem in ("kps", "kms")],
         kernel=kernel, num_warps=num_warps, has_beta=has_beta,
+        chunk_bounds=chunk_bounds,
     )

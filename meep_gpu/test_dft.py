@@ -52,6 +52,7 @@ import numpy as np
 import pytest
 
 from .grid import Grid, Mirror
+from .test_stepping import FOLD_ROUNDING_BOUND
 from .driver import FdtdDriver
 from .dft import (
     DFTMonitor,
@@ -2276,13 +2277,19 @@ def test_flux_plane_on_the_last_row_of_centres_averages_across_the_periodic_face
 
 
 def test_flux_wrap_carries_the_bloch_phase_of_the_lattice_vector_it_crossed():
-    """A cell sampled one lattice vector up must arrive multiplied by `bloch_phase`.
+    """A sample one lattice vector away from its stored cell arrives multiplied by its phase.
 
     MEEP loop_in_chunks.cpp multiplies each lattice-shifted copy by
     `pow(eikna[d], ishift)`; the same factor appears inside the Yee average that
     straddles the face. Flux is `Re(E conj(H))`, so a phase applied to a whole
     image cancels — it is exactly this average, where only one of the two terms
     carries the factor, that a dropped phase changes.
+
+    WHICH TERM. The engine stores MEEP's owned window on a phased axis
+    (``Grid.stored_window_low``): Ex has Yee shift 0 on z, so its stored cell 0 IS the
+    owned top point ``lc + 2N``. The last row of centres therefore averages with stored
+    cell 0 unphased, and the FIRST row averages with ``lc``, stored cell 0 one lattice
+    vector down: ``conj(bloch_phase)`` times it.
 
     Run on the real `Grid` rather than the stub, because the phase is `Grid`'s
     definition of the sign convention and the point is that the monitor uses that
@@ -2301,27 +2308,31 @@ def test_flux_wrap_carries_the_bloch_phase_of_the_lattice_vector_it_crossed():
     # mutation run found, where only the CPU-MEEP comparison caught it.
     profile = np.ones(grid.nz, dtype=np.complex128)
     profile[0] = 3.0 + 2.0j
-    last_centre = float(np.asarray(grid.z)[-1])
-
-    monitor = FluxMonitor(grid=grid, frequency=frequency, center=(0.0, 0.0, last_centre),
-                          size=plane_size)
-    assert monitor._wrapped[2]
-    runtime = _accumulate_z_profile_plane_wave(monitor, grid, profile, frequency, num_steps)
-    dft_magnitude = runtime / SQRT_TWO_PI
+    assert grid.stored_window_low(2, 0) == 1
+    centres = np.asarray(grid.z)
     area = plane_size[0] * plane_size[1]
-    # Hy is real and uniform, so the flux picks up the REAL part of the averaged Ex.
-    expected_average = 0.5 * (profile[grid.nz - 1] + phase * profile[0])
-    assert monitor.get_flux() == pytest.approx(
-        dft_magnitude**2 * area * expected_average.real, rel=1e-5
-    )
 
-    # Controls: dropping the phase, or taking its conjugate, are both measurably
+    def flux_at(centre):
+        monitor = FluxMonitor(grid=grid, frequency=frequency, center=(0.0, 0.0, centre),
+                              size=plane_size)
+        assert monitor._wrapped[2]
+        runtime = _accumulate_z_profile_plane_wave(monitor, grid, profile, frequency, num_steps)
+        return monitor.get_flux(), (runtime / SQRT_TWO_PI) ** 2 * area
+
+    # Hy is real and uniform, so the flux picks up the REAL part of the averaged Ex.
+    top, scale = flux_at(float(centres[-1]))
+    assert top == pytest.approx(scale * (0.5 * (profile[grid.nz - 1] + profile[0])).real, rel=1e-5)
+    bottom, scale = flux_at(float(centres[0]))
+    expected_average = 0.5 * (phase.conjugate() * profile[0] + profile[1])
+    assert bottom == pytest.approx(scale * expected_average.real, rel=1e-5)
+
+    # Controls: dropping the phase, or taking it the other way, are both measurably
     # different answers here — 0.3 is not at the zone edge, where the phase is its
     # own conjugate and neither mistake would show.
-    unphased = dft_magnitude**2 * area * 0.5 * (profile[grid.nz - 1] + profile[0])
-    conjugated = dft_magnitude**2 * area * 0.5 * (profile[grid.nz - 1] + phase.conjugate() * profile[0])
-    for label, wrong in (("unphased", unphased), ("conjugated", conjugated)):
-        assert abs(monitor.get_flux() - wrong) > 0.05 * abs(monitor.get_flux()), (
+    unphased = scale * (0.5 * (profile[0] + profile[1])).real
+    phased_up = scale * (0.5 * (phase * profile[0] + profile[1])).real
+    for label, wrong in (("unphased", unphased), ("phased up", phased_up)):
+        assert abs(bottom - wrong) > 0.05 * abs(bottom), (
             f"The {label} answer is within 5% of the measured flux; this test cannot see it."
         )
 
@@ -3131,13 +3142,18 @@ def test_a_folded_axis_gets_the_metallic_plane_its_cell_centre_average_needs(axi
         folded Y   plane withheld 6.55e-01     plane supplied 0.0
         folded Z   plane withheld 6.55e-01     plane supplied 0.0
 
-    exactly 0.0 on every axis, because with the plane supplied the folded quadrant is
-    the same arithmetic on the same values as the corresponding block of the unfolded
-    run. Both numbers come from THIS process: the pre-fix path is reached by
-    withholding the plane, so the cost is measured rather than recalled.
+    0.0 on every axis then, because with the plane supplied the folded quadrant was the
+    same arithmetic on the same values as the corresponding block of the unfolded run.
+    Since the curl takes MEEP's left-to-right bracket, which is not reflection-symmetric
+    in rounding (``test_stepping.FOLD_ROUNDING_BOUND``), the unfolded run's two halves
+    differ by rounding, so the supplied plane is held to :data:`FOLD_ROUNDING_BOUND`
+    units of 2**-24 of each component's peak (MEASURED 2026-10-06: 1.28, 1.28 and 1.31
+    units on X, Y and Z).
+    Both numbers come from THIS process: the pre-fix path is reached by withholding the
+    plane, so the cost is measured rather than recalled.
 
     The far plane of a folded axis is the metallic zero the fold terminates on, which
-    is what `fields.to_cell_center` has always used there, so the two readbacks now
+    is what the field readback (`readback._up`) uses there, so the two readbacks now
     agree instead of disagreeing silently.
 
     The control is the component whose Yee shift on the folded axis is 1: it needs no
@@ -3195,10 +3211,11 @@ def test_a_folded_axis_gets_the_metallic_plane_its_cell_centre_average_needs(axi
     assert unaffected, "every fold must leave one component needing no average on its axis"
 
     supplied, component = worst_against(reference, folded)
-    assert supplied == 0.0, (
-        f"{component} on a folded {name} axis differs from the unfolded run by {supplied:.3e}; "
-        f"with the metallic plane supplied the two are the same arithmetic and must agree "
-        f"exactly, so any residual means the folded axis is not cell-centred"
+    assert supplied <= FOLD_ROUNDING_BOUND * 2.0 ** -24, (
+        f"{component} on a folded {name} axis differs from the unfolded run by {supplied:.3e} "
+        f"({supplied / 2.0 ** -24:.2f} units of 2**-24); with the metallic plane supplied the "
+        f"two agree to rounding ({FOLD_ROUNDING_BOUND} units), so a larger residual means "
+        f"the folded axis is not cell-centred"
     )
 
     # Withhold the far plane — the pre-fix path — and the same comparison blows up.
@@ -3243,8 +3260,8 @@ def test_the_unfolding_shape_and_coordinates_generalize_to_every_plane(axis, pha
         unfolded = np.asarray(monitor.get_dft_full(component))
         # A whole-axis quadrant unfolds to exactly the FULL count: the stored
         # second-mirror plane cell (the extra row of a folded periodic even
-        # axis) has no full-domain cell centre and is dropped, as in
-        # fields._reconstruct_full_domain.
+        # axis) has no full-domain cell centre and is dropped, as in the
+        # field readback's unfolding (readback._unfold).
         expected = list(grid.shape)
         expected[axis] = grid.shape_full[axis]
         assert unfolded.shape == tuple(expected), (

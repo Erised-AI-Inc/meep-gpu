@@ -209,8 +209,8 @@ def _capture(script):
 
     record = {"script": os.path.basename(script)}
     # Which interpreter (and therefore which MEEP build) produced this row. The
-    # corpus is now surveyed from more than one env — the pristine reference MEEP
-    # 1.33.0 and the sigma-reader env that carries the optional packages — and a
+    # corpus has been surveyed from more than one env — the pristine reference MEEP
+    # 1.33.0 and a side env that carried the optional packages — and a
     # number that does not name its producer is not a record.
     record["python"] = sys.executable
     record["meep_version"] = str(getattr(mp, "__version__", None))

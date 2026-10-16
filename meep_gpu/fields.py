@@ -8,10 +8,11 @@ constitutive relation, and — only once PML is switched on — stored E/H plus 
 twelve PML auxiliaries whose update formulas accumulate field history. Inputs
 are a ``Grid`` (which supplies the array module, the stored shape, and the
 mirror-symmetry flags) and a complex-field flag; outputs are raw component
-arrays consumed by the step kernels, the sources, and the monitors, plus
-MEEP-shaped readback (``to_cell_center`` / ``to_meep_array``) that reproduces
-MEEP's ``get_array()`` geometry cell-for-cell so results can be diffed against
-CPU MEEP without realignment.
+arrays consumed by the step kernels, the sources, and the monitors, plus the
+readback entry points (``to_cell_center`` / ``to_meep_array``), which hand the
+arrays to :mod:`~.readback`: MEEP's ``get_array()`` word for word, its layout,
+its sum order and its connection rules, so results can be compared against CPU
+MEEP without realignment.
 
 Dispersive materials add a second reason to store E, independent of PML. Each
 ``PolarizationState`` in ``polarizations`` advances its own P at the END of the
@@ -93,9 +94,12 @@ import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from . import part_products
+
 if TYPE_CHECKING:  # Import-time independence: Grid is only needed for annotations.
     from .dispersion import PolarizationState
     from .grid import Grid
+    from .readback import HAliasRule
 
 
 AXIS_NAMES = ("x", "y", "z")  # Field-array axis order, matching Grid.
@@ -424,6 +428,11 @@ class Fields:
     grid: "Grid"
     force_complex_fields: bool = False
 
+    # The components MEEP allocated no array for (:meth:`set_absent_components`). A
+    # class attribute, not a dataclass field: the empty default is every Fields not
+    # built by a lift, and only a lift that found an absent component sets its own.
+    absent_components = ()
+
     # Primary D-field (meep.hpp: f[Dx], f[Dy], f[Dz])
     Dx: Any = field(default=None, repr=False)
     Dy: Any = field(default=None, repr=False)
@@ -513,8 +522,9 @@ class Fields:
     # is the special case where registration cannot matter, and `set_d_conductivity`
     # still installs one array object under all three D keys for it.
     #
-    # `condfac` = 1 - sigma*dt/2 and `condinv` = 1/(1 + sigma*dt/2)
-    # (structure.cpp:693-706); the SAME dt and the same expression on both sides —
+    # `condfac` = 1 - sigma*dt/2, MEEP's float32 `(1 - dt2 * cnd[i])` (step_generic.cpp:88),
+    # and `condinv` = 1/(1 + sigma*dt/2), formed in double and rounded once
+    # (structure.cpp:699); the SAME dt and the same expression on both sides —
     # step_generic.cpp's step_curl is one function for D and B alike, with no half-step
     # offset between them.
     _conductivity: Dict[str, Any] = field(default_factory=dict, repr=False)
@@ -536,6 +546,13 @@ class Fields:
 
     # True once PML storage is allocated and E/H are stored rather than derived.
     _pml_active: bool = field(default=False, repr=False)
+
+    # True once the run's first PML ``update_H`` has started H and ``f_w_H`` as copies
+    # of B on the cells whose chunk carries H's own layer, as MEEP's lazy allocation
+    # does (``stepping.separate_h_from_b``; update_eh.cpp:165-177). Until then MEEP's
+    # H is B's storage. A state seeded mid-run carries True; ``FdtdDriver.reset`` clears
+    # it with the fields (``Fields.reset`` zeroes arrays only).
+    h_separated: bool = field(default=False, repr=False)
 
     # True once E is stored rather than recomputed from D on demand. Implied by PML,
     # and independently by any susceptibility (MEEP update_eh.cpp:166-171).
@@ -762,7 +779,10 @@ class Fields:
             condfac = 1 - sigma_D*dt/2      condinv = 1/(1 + sigma_D*dt/2)
             D <- (condfac*D - dtdx*curl) * condinv
 
-        Both are float32 like every other material array. A conductivity that is
+        Both are stored float32 like every other material array, each formed as MEEP
+        forms it: ``condfac`` in float32 from ``dt2 = float32(dt) * 0.5``
+        (step_generic.cpp:88), ``condinv`` in double from the float32 sigma word and
+        the double dt, rounded once (structure.cpp:699). A conductivity that is
         identically zero is stored as ``None`` rather than as a volume of zeros, so
         the plain ``step_D`` path stays bit-identical rather than merely equal to
         within a multiply by 1.0.
@@ -807,7 +827,10 @@ class Fields:
                     )
             else:
                 supplied = {component: conductivity for component in components}
-            half_dt = self.grid.dt / 2.0
+            # step_generic.cpp:88 forms `realnum dt2 = dt * 0.5` from the realnum dt the
+            # step receives; halving is exact, so this is float32(dt) / 2.
+            dt2 = xp.float32(xp.float32(self.grid.dt) * xp.float32(0.5))
+            dt = float(self.grid.dt)
             for component, value in supplied.items():
                 if value is None:
                     continue
@@ -818,8 +841,14 @@ class Fields:
                         f"not match the grid shape {tuple(self.grid.shape)}."
                     )
                 self._conductivity[component] = values
-                self._condfac[component] = (1.0 - values * half_dt).astype(xp.float32)
-                self._condinv[component] = (1.0 / (1.0 + values * half_dt)).astype(xp.float32)
+                # condfac is MEEP's per-cell float32 `(1 - dt2 * cnd[i])` (step_generic.cpp:88-90).
+                self._condfac[component] = (xp.float32(1.0) - values * dt2).astype(xp.float32)
+                # condinv is formed in double and rounded once (structure.cpp:699):
+                # `1 / (1 + conductivity[i] * dt * 0.5)`, the float word promoted and dt
+                # the structure's double, left to right. The float32 spelling rounds
+                # twice and differs at sigma = 0.5, 0.3 and 0.25 with dt = 0.05.
+                wide = values.astype(xp.float64)
+                self._condinv[component] = (1.0 / (1.0 + (wide * dt) * 0.5)).astype(xp.float32)
         for component in components:
             if component not in self._conductivity:
                 setattr(self, "f_cond_" + component, None)
@@ -1033,7 +1062,48 @@ class Fields:
 
         D_name = 'D' + component[1]  # Ex -> Dx
         D = getattr(self, D_name)
-        return D * self.inverse_epsilon_for(component)
+        if component in self.absent_components:
+            # MEEP holds no array for it and reads it as 0.0 (monitor.cpp:160-164), so
+            # +0 everywhere: D * inv_eps would be -0 wherever inv_eps is negative.
+            return self.grid.xp.zeros(D.shape, dtype=D.dtype)
+        return part_products.scale(self.inverse_epsilon_for(component), D)  # Per part, as MEEP.
+
+    def set_absent_components(self, names: Any) -> None:  # MEEP's unallocated components.
+        """Record the components MEEP allocated no field array for.
+
+        MEEP allocates a field component only when something requires it:
+        ``fields::_require_component`` (fields.cpp:552-572) allocates every component
+        ``is_like`` the required one (fields.cpp:471-474), which in a 2-D cell is its
+        own polarization only (TM = Ez, Dz, Hx, Hy, Bx, By against TE, fields.cpp:458-469)
+        unless ``is_aniso2d`` couples the two, and ``gv.has_field`` keeps four
+        components in 1-D. A component nothing required has ``f[c] == NULL``: the
+        constitutive update skips it (``if (f[ec][cmp])``, update_eh.cpp:150), and the
+        reader answers 0.0 for it (``fields_chunk::get_field``, monitor.cpp:160-164).
+
+        Every array here is allocated and stepped regardless. With no source on them
+        and nothing coupling them in, those components only ever hold zeros, so the
+        difference is the sign of a zero. The curls and the absorber forms keep an
+        all-zero neighbourhood at +0 (every coefficient they multiply by is positive,
+        and ``+0 - (-0)`` is +0); the constitutive product with a negative inverse
+        permittivity does not (MEEP's perfect-conductor cells hold chi1inv = -1e-20,
+        and ``-1e-20 * (+0)`` is -0), and neither do the mirror fills on a folded grid,
+        which write a D plane as ``parity * image``, -0 with an odd parity.
+        ``update_E`` therefore leaves an absent E component untouched, at its initial
+        +0, and :meth:`get_E` serves zeros for it, as MEEP does. A dispatched kernel
+        that steps it anyway is cleared after its launch
+        (``fastpath.AbsentComponentClear``). ``names`` is any iterable of component names; an empty one
+        restores the default (every component stepped).
+        """
+        names = set(names)
+        chosen = tuple(name for name in FIELD_COMPONENTS if name in names)
+        unknown = sorted(names - set(FIELD_COMPONENTS))
+        if unknown:
+            raise ValueError(f"set_absent_components: {unknown} are not field components "
+                             f"(the twelve are {FIELD_COMPONENTS}).")
+        if chosen:
+            self.absent_components = chosen
+        else:
+            self.__dict__.pop("absent_components", None)
 
     def component_factors(self, name: str) -> Tuple[Any, ...]:
         """The one or two whole-grid arrays whose POINTWISE PRODUCT is this component.
@@ -1059,6 +1129,11 @@ class Fields:
         """
         if name in ("Ex", "Ey", "Ez") and not self._stored_E:
             displacement = getattr(self, "D" + name[1])
+            if name in self.absent_components:
+                # MEEP's 0.0 for a component it holds no array for (get_E), as a
+                # read-only view, so a caller indexing one plane allocates nothing.
+                xp = self.grid.xp
+                return (xp.broadcast_to(xp.zeros((), dtype=displacement.dtype), displacement.shape),)
             inverse = self.inverse_epsilon_for(name)
             if getattr(inverse, "shape", None) == displacement.shape:
                 return (displacement, inverse)
@@ -1154,12 +1229,104 @@ class Fields:
         no-PML case passes and only the PML case is wrong — smoothly, plausibly, and
         in the region a transmission spectrum is normalised against.
 
+        With PML the choice is MEEP's, PER CHUNK: ``f_w`` exists only in a chunk that
+        carries the component's own (dsigw) layer, so ``w`` is ``f_w`` on those cells
+        and the stored E everywhere else — which there IS the constitutive product,
+        because ``update_E`` writes ``E = (D - P) * chi1inv`` outside the layer's
+        chunks and leaves ``f_w`` untouched. The region plan ``update_E`` dispatched on
+        (:attr:`region_plan`) says which cells are which; a component split between
+        the two is composed into a pooled buffer, one per component, read before the
+        next is formed.
+
         Args:
             component: 'Ex', 'Ey', or 'Ez'
         """
-        if self._pml_active:
-            return getattr(self, 'f_w_' + component)
-        return getattr(self, component)
+        if not self._pml_active:
+            return getattr(self, component)
+        plan = self.region_plan
+        if plan is None:
+            raise RuntimeError(
+                f"drive_field({component!r}) under a PML needs the region plan the PML "
+                f"sub-steps dispatch on, and none is installed: MEEP's w is f_w only in "
+                f"the chunks that carry {component}'s own layer. The driver installs it "
+                f"with the layer; stepping Fields directly installs it at the first "
+                f"update_E.")
+        mode = plan.spec("constitutive", component).mode
+        stored = getattr(self, component)
+        if mode == "outside_only":
+            return stored
+        aux = getattr(self, 'f_w_' + component)
+        if mode == "inside_only":
+            return aux
+        xp = self.grid.xp
+        drive = (xp.empty_like(stored) if self.scratch is None
+                 else self.scratch.like("drive_" + component, stored))
+        xp.copyto(drive, stored)
+        xp.copyto(drive, aux, where=plan.mask("constitutive", component, xp))
+        return drive
+
+    @property
+    def region_plan(self) -> Any:
+        """The :class:`~.chunk_map.RegionPlan` the PML sub-steps dispatch on, or None.
+
+        Derived, not state: it is rebuilt from the chunk division and the layer
+        (``FdtdDriver`` installs it with the absorber; ``stepping`` installs the
+        one-rank plan for Fields stepped directly), so a capsule does not carry it.
+        """
+        return self.__dict__.get("_region_plan")
+
+    def install_region_plan(self, plan: Any) -> None:  # The driver's (or stepping's) plan.
+        self.__dict__["_region_plan"] = plan
+
+    @property
+    def chunk_layout(self) -> Any:
+        """The lifted :class:`~.chunk_map.ChunkLayout` the driver installed, or None.
+
+        Derived, not state, like :attr:`region_plan`: ``FdtdDriver`` installs the
+        division :meth:`~.driver.FdtdDriver.set_chunk_layout` gave it, with or without
+        an absorbing layer, and None while it steps the one-rank default. ``update_E``
+        reads off-diagonal presence from it (``stepping._chunk_layout``); with None it
+        falls back to the region plan's one-rank division under a layer, and to the
+        one chunk of an unlayered one-rank grid otherwise.
+        """
+        return self.__dict__.get("_installed_chunk_layout")
+
+    def install_chunk_layout(self, layout: Any) -> None:  # The driver's lifted division, or None.
+        self.__dict__["_installed_chunk_layout"] = layout
+
+    def offdiag_presence(self, component: str, partner: str, layout: Any) -> Any:
+        """Where MEEP adds row ``component``'s ``partner`` OFFDIAG term: None (everywhere) or a mask.
+
+        MEEP passes NULL for an off-diagonal ``chi1inv`` array in every chunk that
+        deleted it (:meth:`~.chunk_map.ChunkLayout.offdiag_kept`; update_eh.cpp:191-196),
+        and for every array on the ``r = 0`` row of a cylindrical grid, which
+        ``update_eh`` steps a second time with the off-diagonals NULL
+        (update_eh.cpp:197-208; vec.hpp:1100-1104 keeps that row out of the first
+        pass). Returns None when the term is added on every cell, otherwise a bool
+        volume on this grid's array module, broadcastable to the field. ``layout``
+        None is a one-chunk division, which keeps every array :attr:`has_offdiagonal_epsilon`
+        holds (an identically zero one is dropped at install). Cached per (row,
+        partner) on the layout's and the coefficient's identity; derived, not state.
+        """
+        import numpy  # noqa: PLC0415 - host masks; the field arrays stay on grid.xp
+
+        coefficient = self._chi1inv_offdiagonal[component][partner]
+        cache = self.__dict__.setdefault("_offdiag_presence", {})
+        hit = cache.get((component, partner))
+        if hit is not None and hit[0] is layout and hit[1] is coefficient:
+            return hit[2]
+        iyee = IYEE_SHIFTS[component]
+        host = None if layout is None else layout.offdiag_presence(coefficient, iyee)
+        grid = self.grid
+        if getattr(grid, "cylindrical", False) and iyee[0] == 0 and int(grid.origin_doubled(0)) == 0:
+            # Stored row 0 of a shift-0 component sits on the axis, r = 0.
+            if host is None:
+                host = numpy.ones(tuple(grid.shape), dtype=bool)
+            host = numpy.array(host, dtype=bool, copy=True)
+            host[0, :, :] = False
+        mask = None if host is None else grid.xp.asarray(numpy.ascontiguousarray(host))
+        cache[(component, partner)] = (layout, coefficient, mask)
+        return mask
 
     def get_H(self, component: str) -> Any:
         """
@@ -1376,8 +1543,7 @@ class Fields:
 
         The polarizations' P AND P_prev both go: the ADE is second order, so a re-run
         that kept a stale P_prev would start from a history it never lived through and
-        produce a wrong but entirely plausible field — the same defect class the
-        integrated-source reset documents.
+        produce a wrong but entirely plausible field.
         """
         for array in [self.Dx, self.Dy, self.Dz,
                       self.Bx, self.By, self.Bz]:
@@ -1428,289 +1594,47 @@ class Fields:
         valid_names = 'Bx, By, Bz, Dx, Dy, Dz, Ex, Ey, Ez, Hx, Hy, Hz'
         raise ValueError(f"Invalid component name '{name}'. Valid names: {valid_names}")
 
-    def to_cell_center(self, component: str) -> Any:
+    def to_cell_center(self, component: str, alias: Optional["HAliasRule"] = None) -> Any:
+        """The component at every stored cell centre, as MEEP's ``get_array`` forms each value.
+
+        Cell centre ``i`` on each axis sits at doubled ``origin + 2*i + 1``, the stored
+        layout (halved on a folded axis, no periodic duplicate). Each value is MEEP's
+        centred sum ``0.25 * (((a + b) + c) + d)`` over the component's chunk words
+        (array_slice.cpp:413-415), stored with weight 1 and phase ``(1, +0)``: the word
+        MEEP's ``get_array`` holds at that point. :mod:`~.readback` is the
+        transcription; a host NumPy array, float32 or complex64 as the storage is.
+
+        ``alias`` is the run's :class:`~.readback.HAliasRule`: a B component with H
+        stored needs it, because a not-owned B word in a chunk where MEEP holds H as B's
+        alias is the owner's H. ``FdtdDriver.get_field`` passes the driver's own.
+
+        Raises:
+            ValueError: an unknown component, or a B component read with H stored and
+                no ``alias``.
         """
-        Interpolate a field component from its Yee position to cell centers.
+        from .readback import cell_center  # noqa: PLC0415 - readback imports this module
 
-        This matches MEEP's get_array(), which returns cell-centered values
-        rather than raw Yee-grid values.
+        if component not in FIELD_COMPONENTS:
+            self.get_component(component)  # the named refusal
+        return cell_center(self, component, alias)
 
-        MEEP reference: fields::loop_in_chunks with interpolation
+    def to_meep_array(self, component: str, alias: Optional["HAliasRule"] = None,
+                      center: Any = None, size: Any = None) -> Any:
+        """MEEP's ``sim.get_array(component=c)`` (or with ``center``/``size``), word for word.
 
-        Yee positions (meep/vec.hpp iyee_shift, see IYEE_SHIFTS):
-            Ex/Dx: (1,0,0) -> cell center in X, integer in Y,Z -> interp Y,Z
-            Ey/Dy: (0,1,0) -> integer in X,Z, cell center in Y -> interp X,Z
-            Ez/Dz: (0,0,1) -> integer in X,Y, cell center in Z -> interp X,Y
-            Hx/Bx: (0,1,1) -> integer in X, cell center in Y,Z -> interp X
-            Hy/By: (1,0,1) -> cell center in X,Z, integer in Y -> interp Y
-            Hz/Bz: (1,1,0) -> cell center in X,Y, integer in Z -> interp Z
-
-        Interpolation = average with the next cell along each non-shifted axis.
-
-        Boundary handling for halved grids (a mirror plane on this axis):
-        - Near boundary (cell 0): periodic wrap would be fine — it brings in
-          cell n-1 — because the symmetry fold happens at negative coordinates.
-        - Far boundary (cell n-1): must NOT wrap to cell 0. For the metallic
-          boundary condition the field beyond the edge is zero, so the average
-          is 0.5 * (f[n-1] + 0). That is why the halved axes slice explicitly
-          instead of using roll.
-
-        The rule is per-axis and reads ``Grid.is_mirrored``, so a folded Z takes
-        the same metallic far edge a folded X does. Hardcoding the periodic branch
-        for Z — which this method did while Z could not be folded — would average
-        the last plane of a folded axis against its own cell 0, i.e. against a
-        sample half a cell on the other side of the mirror plane, and hand back a
-        smooth, plausible, quietly wrong far edge.
-
-        For full grids (no symmetry) periodic wrapping via roll is correct — and
-        under a nonzero ``k_point`` the wrapped plane is one lattice vector away, so
-        it arrives multiplied by ``grid.bloch_phase(axis)``. MEEP applies the same
-        factor when it fills an array from a shifted chunk (loop_in_chunks.cpp:
-        ``ph *= pow(eikna[d], ishift)``). The factor comes from ``Grid`` rather than
-        being recomputed here, so this readback cannot drift from the convention the
-        curl stencils step with. At k = 0 every phase is None and the multiply is
-        skipped entirely, which keeps the plain-periodic path bit-identical.
-
-        Args:
-            component: Field component name ('Ex', 'Hy', ...)
-
-        Returns:
-            Cell-center interpolated array matching get_array output
+        The whole cell by default: ``fields::total_volume()``, every centred point MEEP
+        visits, the full domain on a folded axis, the periodic duplicate plane where MEEP
+        has one (phased by ``pow(eikna, -1)`` on a Bloch axis), MEEP's own rank and axis
+        order (:meth:`meep_array_axes`). ``center``/``size`` select a volume as
+        ``mp.Volume`` does, with MEEP's interpolation weights and collapse on an empty
+        direction. :func:`~.readback.get_array` is the transcription; ``alias`` as for
+        :meth:`to_cell_center`. A host NumPy array.
         """
-        xp = self.grid.xp
-        arr = self.get_component(component)  # Also validates the name.
-        shifts = IYEE_SHIFTS[component]
+        from .readback import get_array  # noqa: PLC0415 - readback imports this module
 
-        # Every component has at least one zero shift, so the first branch taken
-        # below allocates a new array; the input is never returned aliased.
-        result = arr
-
-        for axis in range(3):
-            if shifts[axis] != 0:
-                continue  # Already at a cell centre on this axis.
-            if self.grid.is_mirrored(axis) or self.grid.is_axis(axis):
-                # Halved axis: interior cells average with the next cell, and the
-                # far boundary's missing neighbour depends on what terminates the
-                # axis. METALLIC (and the cylindrical r wall): zero — MEEP's own
-                # wall row is zero_metal-held, so the zero ghost is its value,
-                # not an approximation of it. PERIODIC: the second mirror at
-                # doubled n_full reflects, so the sample one past the stored top
-                # is `mirror_parity * result[reflect_row]` — the same
-                # `n_full - n_q + 2` image row the curl stencils read
-                # (stepping._far_reflect_rows). Leaving the zero there was worth
-                # 1.1e-01 on the folded axis's averaged component at an odd
-                # count with the face at 2.4e-01 of peak (probe, res 16, 256
-                # steps), against 4e-07 floors for the unaveraged components.
-                #
-                # The cylindrical r axis cannot take the periodic branch: the
-                # wrap is exact on a Cartesian METALLIC axis only by the
-                # accident that its wrapped row 0 is the zero-held low wall,
-                # while cylindrical row 0 is the LIVE axis row — wrapping it
-                # into the r_max average reads real field across a PEC wall.
-                # Measured on the m = 0 oracle's Ez (the r-averaged component):
-                # 1.27e-01 wrapped, the engine floor with the wall ghost.
-                shifted = xp.zeros_like(result)
-                interior = (slice(None),) * axis + (slice(None, -1),)
-                upper = (slice(None),) * axis + (slice(1, None),)
-                shifted[interior] = result[upper]  # Last plane: filled below, or 0.
-                if self.grid.is_mirrored(axis) and not self.grid.is_metallic(axis):
-                    n_full = self.grid.shape_full[axis]
-                    reflect_row = n_full - result.shape[axis] + 2
-                    phase = mirror_parity(component, axis, self.grid.mirror_phase(axis))
-                    shifted[(slice(None),) * axis + (-1,)] = (
-                        phase * result[(slice(None),) * axis + (reflect_row,)]
-                    )
-                result = 0.5 * (result + shifted)
-            else:
-                result = 0.5 * (result + self._wrapped_neighbour(result, axis))  # Periodic.
-
-        return result
-
-    def _wrapped_neighbour(self, array: Any, axis: int) -> Any:  # f[i+1] with the Bloch factor on the wrap.
-        """The next cell along one periodic axis, Bloch-phased on the plane that wrapped.
-
-        ``roll(f, -1)[i]`` is ``f[i+1]`` and its last plane is ``f[0]``, which sits
-        one lattice vector up: under Bloch boundaries that is
-        ``bloch_phase(axis) * f[0]``, the same factor and the same sign convention
-        ``stepping._shift_up`` applies to the curl stencils
-        (``Grid.bloch_phase``: ``f(x + L_d) = bloch_phase(d) * f(x)``).
-
-        Only the wrapped plane is multiplied — phasing the whole rolled array would
-        move every interior cell too, which no boundary condition asks for.
-        """
-        shifted = self.grid.xp.roll(array, -1, axis=axis)
-        reader = getattr(self.grid, "bloch_phase", None)
-        phase = reader(axis) if callable(reader) else None
-        if phase is None:
-            return shifted
-        if shifted.dtype.kind != "c":
-            raise ValueError(
-                f"Bloch boundaries need complex fields: axis {'xyz'[axis]} carries phase {phase!r} "
-                f"but the field storage is {shifted.dtype}. Build the Fields with "
-                f"force_complex_fields=True, or use k_point = 0 on this axis."
-            )
-        shifted[(slice(None),) * axis + (-1,)] *= shifted.dtype.type(phase)
-        return shifted
-
-    def to_meep_array(self, component: str) -> Any:
-        """
-        Get a field array matching MEEP's get_array() output exactly.
-
-        Three steps: cell-center via to_cell_center(), reconstruct the full
-        domain when symmetry is active, then add the boundary cells that make up
-        MEEP's (N+1)-per-dimension convention. The result can be compared
-        against MEEP's get_array() without slicing or realignment.
-
-        AN AXIS OF ONE POINT COMES BACK GONE, not as a singleton — see
-        :meth:`meep_array_axes` for MEEP's own ``n > 1`` filter and the three
-        configurations that reach it. Keeping a singleton axis here would make every
-        ``allclose`` against ``sim.get_array`` broadcast instead of compare, which
-        succeeds for the wrong reason on a pair of arrays that are not the same shape.
-        Going is a COLLAPSE and not a selection — MEEP sums the two centred samples
-        straddling the vanished direction at half weight each, which costs a factor
-        of ``(1 + conj(bloch_phase))/2`` on a Bloch axis and exactly 1 without one
-        (:meth:`_collapse_empty_direction`).
-
-        Args:
-            component: Field component name ('Ex', 'Hy', ...)
-
-        Returns:
-            Array matching MEEP's get_array() shape and values
-        """
-        arr = self.to_cell_center(component)
-
-        if self.grid.has_symmetry():
-            arr = self._reconstruct_full_domain(arr, component)
-
-        # A folded axis comes back at its FULL count and gains no boundary cell —
-        # MEEP returns (nx_full, ny_full, nz+1) for an X-Y folded run — while every
-        # unfolded axis gains the periodic duplicate that makes it n+1. The one
-        # exception, measured in `_add_boundary_cells`: an ODD folded PERIODIC axis
-        # gains the wrap image of its top plane and comes back n_full + 1.
-        return self._drop_invariant_axes(self._add_boundary_cells(arr))
-
-    def _reconstruct_full_domain(self, quadrant: Any, component: str) -> Any:
-        """
-        Reconstruct the full domain from the stored quadrant using mirror phases.
-
-        With a mirror plane on an axis only its positive half is stored, halved as
-        n_q = Grid.stored_cells (MEEP halve()'s owned count, plus the big_corner
-        plane and its ghost slot on a periodic axis, at either count parity).
-
-        Stored positions on one folded axis:
-        - Cell 0: x = -0.5*dx (straddles the symmetry plane, on the NEGATIVE side)
-        - Cell 1: x = +0.5*dx (first cell on the positive side)
-        - Cell n_q-1: x = (n_q-1.5)*dx (far positive edge — for an ODD n_full that
-          is exactly +L/2, the top of the odd count's half-cell-higher window)
-
-        Full-domain positions:
-        - Cell c-1: x = -0.5*dx (last cell on the negative side, = quadrant[0])
-        - Cell c: x = +0.5*dx (first cell on the positive side, = quadrant[1])
-        - Cell n_full-1: x = (n_q-1.5)*dx (far positive edge, = quadrant[n_q-1])
-
-        so, with c = n_full // 2 and phase = ``mirror_parity`` for this component
-        and this plane:
-
-        - full[c:]    = quadrant[1:]                (positive half, direct copy)
-        - full[c-1]   = quadrant[0]                 (no phase — it already sits
-                                                     on the negative side)
-        - full[:c-1]  = phase * quadrant[c:1:-1]    (mirrored interior)
-
-        The mirrored slice starts at c, NOT at n_q - 1. The two agree at even
-        n_full (c == n_q - 1) and differ by one at odd, where the top stored cell
-        — centre exactly at +L/2 — has no lower image inside MEEP's shifted
-        window [-(N-1)dx/2, (N+1)dx/2]: full lower cell i is the image of stored
-        cell c - i, so the mirrored range is stored [2, c] for both parities.
-
-        The axes are unfolded ONE AT A TIME, in X, Y, Z order, which is what lets
-        one rule serve one, two or three planes: after unfolding X the array is
-        full in X and still folded in Y, so unfolding Y multiplies the already
-        phased X-half by phase_y and the doubly mirrored corner ends up carrying
-        phase_x * phase_y, exactly as the hand-written four-quadrant version did.
-
-        Args:
-            quadrant: Stored field array, halved on each folded axis.
-            component: Field component name, for the parity lookup.
-
-        Returns:
-            Full domain array (nx_full, ny_full, nz_full)
-        """
-        xp = self.grid.xp
-        result = quadrant
-        for axis in range(3):
-            mirror_phase = self.grid.mirror_phase(axis)
-            if mirror_phase is None:
-                continue
-            phase = mirror_parity(component, axis, mirror_phase)
-            n_q = result.shape[axis]
-            n_full = (self.grid.nx_full, self.grid.ny_full, self.grid.nz_full)[axis]
-            centre = n_full // 2  # First cell on the positive side of the plane.
-            shape = list(result.shape)
-            shape[axis] = n_full
-            full = xp.zeros(tuple(shape), dtype=result.dtype)
-            # Stored row j lands on full cell centre + j - 1, so the direct copy
-            # consumes rows 1 .. n_full - centre. That is rows 1 .. n_q - 1 on
-            # every layout except a folded PERIODIC axis, whose extra stored
-            # cell — MEEP's big_corner plus the ghost slot above it — sits at
-            # and past the window top at either count parity and has no
-            # full-domain cell centre to land on (Grid.stored_cells vs
-            # Grid.owned_cells).
-            full[_slab(axis, slice(centre, None))] = (
-                result[_slab(axis, slice(1, 1 + n_full - centre))]
-            )
-            full[_slab(axis, centre - 1)] = result[_slab(axis, 0)]  # Boundary cell, no phase.
-            full[_slab(axis, slice(None, centre - 1))] = (
-                phase * result[_slab(axis, slice(centre, 1, -1))]
-            )
-            result = full
-        return result
-
-    def _add_boundary_cells(self, arr: Any) -> Any:
-        """
-        Add the boundary cells that match MEEP's get_array() convention.
-
-        MEEP's get_array() returns (N+1) points along every axis it treats as
-        periodic, the extra plane at index 0 being the duplicate of the last one.
-        A mirror-folded axis at an even count has no such duplicate and comes back
-        at exactly its full cell count, which is why an X-Y folded run is
-        (nx_full, ny_full, nz+1).
-
-        A folded axis at an ODD count is measured per boundary kind, because the
-        odd window sits half a cell above the requested cell: metallic stays at
-        the full count (the site at the requested -L/2 lies below the window and a
-        wall has no image to serve there — MEEP 1.33.0, y in [-0.95, +1.05] for
-        N=21), while PERIODIC gains one plane at -L/2 exactly (y in
-        [-1.05, +1.05], N+1 points), the lattice-wrap image of the TOP stored
-        plane — measured an exact duplicate of it (0.0 difference against
-        ``sim.get_array``, field peak 2.2). A folded axis refuses a nonzero Bloch
-        phase outright, so the wrap carries no phase factor here.
-
-        Args:
-            arr: Full-domain cell-centred array.
-
-        Returns:
-            Array with the periodic duplicate prepended on every unfolded axis,
-            and on every ODD folded axis whose outer boundary is periodic.
-        """
-        xp = self.grid.xp
-        for axis in range(3):
-            if self.grid.is_mirrored(axis):
-                if self.grid.shape_full[axis] % 2 == 0 or self.grid.is_metallic(axis):
-                    continue  # Even fold, or a wall below the odd window: no image plane.
-            elif self.grid.shape_full[axis] == 1 or self.grid.is_axis(axis):
-                # A ONE-CELL axis is one MEEP collapses rather than reports
-                # (`meep_array_axes`), so there is no plane to prepend to: its image
-                # arrives as the collapse factor in `_collapse_empty_direction`
-                # instead, which is where the Bloch phase between the two centred
-                # samples is applied. Prepending here as well would double it.
-                # The cylindrical r axis has no lattice vector at all: its low end is
-                # the axis and its high end the PEC wall, and MEEP's Dcyl get_array is
-                # measured at exactly nr points. Wrapping would prepend the LIVE outer
-                # row as a fake image of the axis.
-                continue
-            wrapped = arr[_slab(axis, slice(-1, None))]  # The last plane, kept 3-D.
-            arr = xp.concatenate((wrapped, arr), axis=axis)
-        return arr
+        if component not in FIELD_COMPONENTS:
+            self.get_component(component)  # the named refusal
+        return get_array(self, component, alias, center=center, size=size)
 
     def meep_array_axes(self) -> Tuple[int, ...]:
         """The axes ``sim.get_array`` reports, in x, y, z order — MEEP's ``n > 1`` filter.
@@ -1755,113 +1679,15 @@ class Fields:
     def _meep_array_points(self, axis: int) -> int:  # Points MEEP reports along one axis.
         """MEEP's ``n`` for one axis, before its ``n > 1`` filter.
 
-        The metallic case reports ``n_full`` in MEEP and ``n_full + 1`` here, because
-        ``_add_boundary_cells`` prepends on every unfolded axis and
-        ``GpuRunResult.get_array`` removes the duplicate again (see its docstring for
-        why that correction lives there). The difference cannot change this method's
-        answer — both exceed 1 for the same axes — and the one case where they agree
-        exactly, a single cell, is the case that matters here.
+        A folded axis reports its full count; an unfolded one its count plus the periodic
+        duplicate, ``n_full + 1`` (a metallic axis reports ``n_full``, which cannot change
+        the ``n > 1`` answer: both exceed 1 for the same axes). A one-cell axis reports 1,
+        whatever its boundary: MEEP collapses it (:func:`~.readback.get_array`).
         """
         count = self.grid.shape_full[axis]
         if count == 1:
             return 1
         return count if self.grid.is_mirrored(axis) else count + 1
-
-    def _drop_invariant_axes(self, arr: Any) -> Any:  # Reduce the array to MEEP's own rank.
-        """Index out every axis MEEP's ``get_array`` does not report — see :meth:`meep_array_axes`.
-
-        Indexed rather than squeezed, and against a predicted axis set rather than
-        against whatever happens to be length 1, so the two statements have to agree:
-        the assertion below is what fails if ``_add_boundary_cells`` and
-        :meth:`meep_array_axes` ever disagree about a boundary, instead of silently
-        handing back an array of a different rank than the caller compared against.
-
-        Dropping an axis is a COLLAPSE, not a selection: MEEP sums the two centred
-        samples that straddle the vanished direction, each at half weight. That factor
-        is 1 at ``k = 0`` and is applied by :meth:`_collapse_empty_direction`.
-        """
-        keep = self.meep_array_axes()
-        if len(keep) == 3:
-            return arr
-        index: list[Any] = [slice(None)] * 3
-        for axis in range(3):
-            if axis in keep:
-                continue
-            if arr.shape[axis] != 1:
-                raise RuntimeError(
-                    f"meep_array_axes drops the {'xyz'[axis]} axis but the assembled array has "
-                    f"{arr.shape[axis]} planes there; the boundary-cell rule and the array-rank "
-                    f"rule have gone out of step, and the result would be one arbitrary plane of "
-                    f"a volume that is not uniform."
-                )
-            index[axis] = 0
-        reduced = arr[tuple(index)]
-        for axis in range(3):
-            if axis not in keep:
-                reduced = self._collapse_empty_direction(reduced, axis)
-        if getattr(self.grid, "cylindrical", False):
-            # The index-out leaves x,y,z order — (r, z) here; MEEP's Dcyl array
-            # is (z, r) (see meep_array_axes), and every consumer maps positions
-            # through that tuple, so the transpose has to happen at the same seam.
-            return reduced.T
-        return reduced
-
-    def _collapse_empty_direction(self, arr: Any, axis: int) -> Any:  # MEEP's collapse of a vanished direction.
-        """The factor MEEP's ``get_array`` picks up when it collapses a ZERO-EXTENT direction.
-
-        MEEP does not SELECT a plane on a direction it drops, it SUMS the samples the
-        slice interpolates over, and on a one-cell axis there are two of them.
-        End to end, for ``sim.get_array(component=c)`` with no ``center``/``size``:
-
-        * the slice volume is ``fields::total_volume()`` = ``gv.interior()``, which runs
-          from ``little_corner`` to ``big_corner - 2`` (fields.cpp:717-724,
-          vec.cpp:289-291) — **zero extent on a one-cell axis**, at the coordinate of
-          that axis's origin, whatever ``cell_size`` declared for it;
-        * ``array_slice`` loops on the CENTERED grid (array_slice.cpp:675,
-          ``loop_in_chunks(..., where, Centered, true, snap)``), so the bounds straddle
-          the requested plane: ``is = -1``, ``ie = +1`` in doubled coordinates
-          (loop_in_chunks.cpp:352-356, ``vec2diel_floor``/``vec2diel_ceil``) — the
-          centred samples half a cell BELOW and half a cell ABOVE it;
-        * ``compute_boundary_weights``'s zero-extent branch (loop_in_chunks.cpp:275-287)
-          gives them ``s0 = w0`` and ``e0 = w1``, which for a plane exactly midway
-          between the two is ``0.5`` and ``0.5``;
-        * the chunkloop keeps exactly those weights, and only those
-          (array_slice.cpp:353-368, "we want to retain interpolation weights for empty
-          dimensions"), and ``collapse_array`` then ``+=``-sums along the direction
-          (array_slice.cpp:582-587).
-
-        So MEEP's collapsed value is ``(c_below + c_above) / 2``. The plane this engine
-        stores is ``c_above``; ``c_below`` is one lattice vector down, and therefore
-        ``conj(bloch_phase(axis)) * c_above`` (``Grid.bloch_phase``:
-        ``f(x + L_d) = bloch_phase(d) * f(x)``) — the same image plane
-        ``_add_boundary_cells`` prepends on every axis that survives. The factor is
-        therefore ``(1 + conj(bloch_phase)) / 2``.
-
-        **At k = 0 the two samples are equal and the factor is exactly 1**, which is why
-        taking one plane was measured correct on every non-Bloch run and why ``None`` is
-        returned unmultiplied here rather than scaling by ``1 + 0j``. With a Bloch phase
-        they differ, and taking one plane instead of their mean is off by
-        ``(1 + conj(eikna))/2``, i.e. by ``tan(pi*k*dx)`` in relative L2 — FIRST ORDER
-        IN dx, so it halves with resolution and never converges away. Measured against
-        CPU MEEP 1.33.0 on MEEP's own ``test_refl_angular`` case
-        ``test_reflectance_angular_1_20_6`` (k = (0.6157, 0, 1.638) with kx on the
-        zero-extent x axis): whole-volume complex relative L2 1.935e-02 / 9.672e-03 /
-        4.836e-03 at resolution 100 / 200 / 400 — exactly ``tan(pi*kx*dx)`` at each —
-        against 1.30e-06 for the same cell at theta = 0, where every k component sits on
-        the extended axis. The stepped fields were never wrong: the raw Yee storage
-        matches MEEP's to 3.0e-07 on the same run.
-        """
-        reader = getattr(self.grid, "bloch_phase", None)
-        phase = reader(axis) if callable(reader) else None
-        if phase is None:
-            return arr  # No lattice vector on this axis: the two samples are one sample.
-        if arr.dtype.kind != "c":
-            raise ValueError(
-                f"Bloch boundaries need complex fields: axis {'xyz'[axis]} carries phase "
-                f"{phase!r} but the field storage is {arr.dtype}. Build the Fields with "
-                f"force_complex_fields=True, or use k_point = 0 on this axis."
-            )
-        return arr * arr.dtype.type(0.5 * (1.0 + phase.conjugate()))
 
     def field_bytes_per_cell(self) -> int:
         """Per-cell cost of the DTYPE-CARRYING arrays alone — the part real mode halves.

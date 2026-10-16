@@ -54,6 +54,38 @@ cell's; that is a fact about the emitted code, not a premise this weld rests on.
 asserted in ``test_metal_fused_hd_pair`` rather than relied on here.)
 
 =============================================================================
+THE PML FORMS PER STRUCTURE CHUNK, AND WHERE EACH SELECT IS EVALUATED
+=============================================================================
+
+Both halves are the base kernels' per-chunk forms (:mod:`.shaders`), lifted with no
+arithmetic edit. The constitutive half accumulates ``f + ((kps*src) - (kms*prev))``
+with ``f_w = src`` on a cell whose chunk carries the component's own (dsigw) layer and
+is the output select ``f = src`` elsewhere; the curl half steps the split-field
+recurrence where the target's dsigu layer is carried and the dsig-only form elsewhere.
+
+* **The record rides in ``Params``.** The signature is 31 of 31 bindings, so the chunk
+  record cannot take a buffer of its own: ``Params`` embeds ``ChunkBounds cb`` and the
+  kernel aliases it (:func:`.chunk_bounds.params_alias`) before any lifted text, so
+  both lifted bounds blocks read ``cb.`` exactly as the base kernels do.
+* **Every select is evaluated where the cell is.** :func:`h_cell_function` takes the
+  record as a parameter and its bounds block evaluates membership at its own ``(i, j,
+  k)`` arguments, so a foreign recompute selects at the RECOMPUTED cell. On this seam
+  that coincides with the thread's own: an H component's membership is on its own
+  axis, and a curl never differences a component along its own axis, so every tap's
+  coordinate on that axis is the thread's. The coincidence is asserted in the tests and
+  carried by the gate as a predicted null; the construction does not rest on it.
+* **The f_w scratch is total.** The plan rotates ``f_w_H`` against a plan-owned twin
+  that starts at zero, so the kernel must write every cell of the scratch: the dsigw
+  cells take ``src`` and every other cell takes its PRE-LAUNCH word, unchanged. That is
+  the word the array path leaves untouched there (the auxiliary contract), carried
+  across the rotation as a copy rather than left behind in the other buffer.
+* **The run's first ``update_H``** starts H and ``f_w`` from B on the dsigw cells in
+  the array path (``stepping.separate_h_from_b``), and this weld does not. The
+  predicate therefore refuses, with :func:`.launch.h_start_reasons`' own words, every
+  run where that start could move a word -- the same rule the composer applies to the
+  base constitutive kernel on that slot.
+
+=============================================================================
 THE SIGNATURE -- 30 POINTERS PLUS ONE PACKED STRUCT, AND THE CEILING IS AN EQUALITY
 =============================================================================
 
@@ -284,9 +316,12 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from ..triton_kernels.coverage import CONSTITUTIVE_SIDES, Coverage
 from . import offdiag_weld_common as _weld
 from . import shaders
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as `chunk_bounds`, the
+# name the composer's StepContext carries.
+from . import chunk_bounds as _chunk_bounds
 from .coverage import constitutive_coverage, pml_curl_coverage
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
-from .launch import SUB_STEPS
+from .launch import SUB_STEPS, h_start_reasons
 from .. import withdraw_hoist as _withdraw_hoist
 
 FAMILY = "fused_hd_pair"
@@ -392,13 +427,14 @@ ONE_MORE_POINTER_BINDINGS = 32
 
 __all__ = [
     "CARRIES_DEPOSIT_REPAIR", "CONSTITUTIVE_LIFT_EDITS", "FAMILY",
-    "HALO_TAPS", "HOISTS_THE_WITHDRAW", "H_CELL_POINTERS", "INSTALLABLE",
-    "INSTALLABLE_REASON", "ONE_MORE_POINTER_BINDINGS", "OWN_LOAD_EDITS",
-    "PACKED_BINDINGS", "REPLACES", "ROTATED_NAMES", "SEAM",
+    "HALO_TAPS", "HOISTS_THE_WITHDRAW", "H_CELL_POINTERS", "H_CELL_RECORD",
+    "INSTALLABLE", "INSTALLABLE_REASON", "ONE_MORE_POINTER_BINDINGS",
+    "OWN_LOAD_EDITS", "PACKED_BINDINGS", "REPLACES", "ROTATED_NAMES", "SEAM",
     "SEPARATE_SCALAR_BINDINGS", "SLOT", "UNSHARED_KMS_BINDINGS", "WELD_OWED",
     "certified_constitutive_tail", "compile_fused_hd_pair", "fused_hd_pair_source",
     "h_cell_function", "metal_fused_hd_pair_coverage", "offset_coordinates",
-    "plan_metal_fused_hd_pair", "refuted_one_more_pointer_source",
+    "params_record_dtype", "params_words", "plan_metal_fused_hd_pair",
+    "record_substitutions", "refuted_one_more_pointer_source",
     "refuted_separate_scalar_source", "refuted_unshared_kms_source", "register_arms",
     "shipped_signature_bindings", "welded_curl_tail",
 ]
@@ -428,10 +464,18 @@ H_CELL_POINTERS: Tuple[Tuple[str, str], ...] = tuple(
     ("hi0", "hi1", "hi2", "wi0", "wi1", "wi2", "b0", "b1", "b2",
      "kp0", "kp1", "kp2", "kmx", "kmy", "kmz"))
 
-#: What one call site forwards after the three coordinates. Built from the table above
-#: so the declaration and every call cannot drift apart.
+#: ``h_cell``'s one non-pointer parameter: the chunk record, under the name the lifted
+#: bounds block reads (``cb.``). The certified body binds it as a buffer; here it is
+#: the kernel's alias of ``Params.cb``, passed by reference, so the select inside the
+#: function is evaluated at the function's own ``(i, j, k)`` -- the recomputed cell.
+H_CELL_RECORD: Tuple[Tuple[str, str], ...] = (
+    (f"constant {_chunk_bounds.STRUCT}&", "cb"),)
+
+#: What one call site forwards after the three coordinates. Built from the two tables
+#: above so the declaration and every call cannot drift apart.
 H_CELL_TAIL_ARGS = ", ".join(("nxi", "nyi", "nzi")
-                             + tuple(name for _kind, name in H_CELL_POINTERS))
+                             + tuple(name for _kind, name in H_CELL_POINTERS)
+                             + tuple(name for _kind, name in H_CELL_RECORD))
 
 #: Every line of certified CONSTITUTIVE text this weld does not lift verbatim, with the
 #: reason. DATA, not prose, so the host suite and the gate can assert the list and a
@@ -448,33 +492,39 @@ CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "and the constitutive's km0 ARE THE SAME VOLUME and the fused signature "
             "binds it once. Binding the half-integer set instead compiles and is a "
             "half-cell error in the absorber profile."},
-    {"line": "    float prevN = wN[ii];",
-     "became": "    float prevN = wiN[ii];",
+    {"line": "    float prevN = dwN ? wN[ii] : 0.0f;",
+     "became": "    float prevN = dwN ? wiN[ii] : 0.0f;",
      "why": "the split-field history is read from the PRE-LAUNCH buffer, which nothing "
-            "in this launch writes. On this side f_w_H_new[ii] == B[ii] exactly, so an "
-            "in-place write would hand a racing neighbour B where it needs B_prev."},
+            "in this launch writes, and still only on the accumulation's cells. On "
+            "those cells f_w_H_new[ii] == B[ii] exactly, so an in-place write would "
+            "hand a racing neighbour B where it needs B_prev."},
     {"line": "    float srcN = gN[ii];",
      "became": "    float srcN = bN[ii];",
      "why": "pointer spelling only: fused, `gN` in the curl half is the MAGNETIC field, "
             "so the constitutive source keeps its own name. The value is the same "
             "flux-density read the certified body makes."},
-    {"line": "    wN[ii] = srcN;",
-     "became": "(removed -- the caller stores own.srcN to the SCRATCH volume)",
-     "why": "the weld writes a scratch volume, so the helper must not store. The value "
-            "and the expression that produced it are untouched; only the destination "
-            "moves, and only for the thread's OWN cell (a foreign recompute stores "
-            "nothing at all)."},
-    {"line": "    float aN = fN[ii];",
-     "became": "    float aN = hiN[ii];",
-     "why": "the accumulator is read from the PRE-LAUNCH H, which is const for the "
-            "whole dispatch. This is what makes the foreign recompute a pure function "
-            "of unwritten memory."},
+    {"line": "    if (dwN) { wN[ii] = srcN; }",
+     "became": "    float wnextN = dwN ? srcN : wiN[ii];",
+     "why": "the weld writes a scratch volume, so the helper must not store: the "
+            "guarded store becomes the register the caller stores to the SCRATCH for "
+            "its OWN cell (a foreign recompute stores nothing at all). The plan "
+            "rotates f_w_H against a twin that starts at zero, so the scratch must be "
+            "TOTAL: on the accumulation's cells the register is src, as the certified "
+            "store writes; on every other cell it is the PRE-LAUNCH word, which is the "
+            "word the certified body leaves untouched there, copied rather than "
+            "recomputed. No arithmetic moves."},
+    {"line": "    if (dwN) { aN = fN[ii] + ((kp_N * srcN) - (km_N * prevN)); }",
+     "became": "    if (dwN) { aN = hiN[ii] + ((kp_N * srcN) - (km_N * prevN)); }",
+     "why": "the accumulator's field is read from the PRE-LAUNCH H, which is const for "
+            "the whole dispatch, and still only on the accumulation's cells. This is "
+            "what makes the foreign recompute a pure function of unwritten memory. "
+            "The right-hand side's operations, their order and their parens are "
+            "untouched; on every other cell the register is src, the output select."},
     {"line": "    fN[ii] = aN;",
      "became": "(removed -- the value is RETURNED in the struct)",
      "why": "same as the split-field store: the destination moves to the caller, which "
             "addresses the scratch for its own cell and consumes the register for the "
-            "curl half. The two accumulations, their order and their parens are "
-            "untouched."},
+            "curl half. The accumulation and the select are untouched."},
     {"line": "    int k   = ii % nzi; ... int i   = plane / nyi;",
      "became": "(removed -- i, j and k are parameters; ii is composed from them)",
      "why": "THE WHOLE POINT OF THE LIFT. The certified body becomes a function "
@@ -506,13 +556,14 @@ def certified_constitutive_tail(contract: str = shaders.CONTRACT_OFF) -> str:
     ]
     for target in range(3):
         edits.extend((
-            (f"    float prev{target} = w{target}[ii];\n",
-             f"    float prev{target} = wi{target}[ii];\n"),
+            (f"    float prev{target} = dw{target} ? w{target}[ii] : 0.0f;\n",
+             f"    float prev{target} = dw{target} ? wi{target}[ii] : 0.0f;\n"),
             (f"    float src{target} = g{target}[ii];\n",
              f"    float src{target} = b{target}[ii];\n"),
-            (f"    w{target}[ii] = src{target};\n", ""),
-            (f"    float a{target} = f{target}[ii];\n",
-             f"    float a{target} = hi{target}[ii];\n"),
+            (f"    if (dw{target}) {{ w{target}[ii] = src{target}; }}\n",
+             f"    float wnext{target} = dw{target} ? src{target} : wi{target}[ii];\n"),
+            (f"    if (dw{target}) {{ a{target} = f{target}[ii] + ",
+             f"    if (dw{target}) {{ a{target} = hi{target}[ii] + "),
             (f"    f{target}[ii] = a{target};\n", ""),
         ))
     tail = _weld.lift_curl_tail(source, store_edits=tuple(edits),
@@ -538,11 +589,16 @@ def h_cell_function(contract: str = shaders.CONTRACT_OFF) -> str:
     :func:`.offdiag_weld_common.step_cell_function` -- the same helper the four D->E
     scratch welds use -- so the index composition ``ii = i*nyz + j*nzi + k`` is written
     once for the whole package.
+
+    The chunk record is the function's last parameter (:data:`H_CELL_RECORD`), and the
+    lifted bounds block evaluates membership at the function's own coordinates, so the
+    form a recompute takes is the recomputed cell's. It returns the stepped field
+    (``a*``) and the TOTAL split-field word the scratch takes (``wnext*``).
     """
     return _weld.step_cell_function(
         "h_cell", certified_constitutive_tail(contract), value_type="float",
-        pointer_parameters=H_CELL_POINTERS, scalar_parameters=(),
-        returns=("a0", "a1", "a2", "src0", "src1", "src2"))
+        pointer_parameters=H_CELL_POINTERS, scalar_parameters=H_CELL_RECORD,
+        returns=("a0", "a1", "a2", "wnext0", "wnext1", "wnext2"))
 
 
 # ---------------------------------------------------------------------------
@@ -674,7 +730,9 @@ using namespace metal;
 
 __CONTRACT__
 
-struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx; };
+__RECORD_STRUCT__
+
+struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx; __RECORD_MEMBER__ };
 
 __H_CELL__
 
@@ -719,15 +777,19 @@ kernel void fused_hd_pair_step(
     // redirected magnetic reads.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
+    // The chunk record rides in Params (31 of 31 bindings leave it no buffer of its
+    // own); both lifted bounds blocks and every h_cell call read it as `cb`.
+__RECORD_ALIAS__
 __PROLOGUE__
     // --- THE WELD: update_H, computed into registers and stored to SCRATCH ------
     // Nothing written here is read by this launch. The curl half below takes its
     // OWN cell's magnetic field from these registers and recomputes every foreign
     // tap from PRE-LAUNCH state through the same `h_cell`, so no thread observes
-    // another thread's store; the launcher rotates H/f_w_H afterwards.
+    // another thread's store; the launcher rotates H/f_w_H afterwards. Every scratch
+    // word is written: off the dsigw cells `wnext` is the pre-launch f_w word.
     h_cell_result own = h_cell(i, j, k, __H_CELL_ARGS__);
     ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;
-    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;
+    wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;
 
     // --- step_D (stepping.step_D / _apply_pml_update:1905) ----------------------
     // D and fu_D update IN PLACE and that is safe by construction: the curl reads
@@ -760,11 +822,25 @@ def fused_hd_pair_source(codes: Sequence[int],
     prologue = curl.split(_BODY_ANCHOR, 1)[1].split(DECODE_END, 1)[0] + DECODE_END
     return shaders.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
+        **record_substitutions(),
         "__H_CELL__": h_cell_function(contract),
         "__PROLOGUE__": prologue,
         "__H_CELL_ARGS__": H_CELL_TAIL_ARGS,
         "__CURL__": welded_curl_tail(codes, contract),
     })
+
+
+def record_substitutions() -> Dict[str, str]:
+    """The template's three chunk-record slots: the struct, its ``Params`` member, the alias.
+
+    One home for the three, so the folded product -- which fills this module's
+    template over the folded curl -- binds the record the same way.
+    """
+    return {
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(indent=""),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
+    }
 
 
 def compile_fused_hd_pair(codes: Sequence[int],
@@ -933,6 +1009,13 @@ def metal_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = None,
                            for reason in magnetic.reasons)
             reasons.extend(f"constitutive half, nonlinear-run widening: {reason}"
                            for reason in spine.reasons)
+    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # cells there (stepping.separate_h_from_b) and this weld, like the base
+    # constitutive kernel it lifts, does not; the composer keeps that kernel off the
+    # slot where the start could move a word, and this predicate refuses on the same
+    # rule, in the same words.
+    reasons.extend(f"constitutive half: {reason}"
+                   for reason in h_start_reasons(fields, sources))
     curl = pml_curl_coverage(fields, pml, "step_D", residency)
     if not curl.covered:
         spine = _nonlinear.nonlinear_run_pml_curl_coverage(fields, pml, "step_D",
@@ -1001,22 +1084,51 @@ def metal_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = None,
 # The plan
 # ---------------------------------------------------------------------------
 
-def _params_tensor(shape: Sequence[int], dtdx: float, device: str) -> Any:
-    """The five scalars as one 20-byte device record.
+def params_record_dtype() -> Any:
+    """The packed ``Params`` record: the five scalars, then the chunk record.
+
+    Member for member the Metal struct :data:`_TEMPLATE` declares -- four ``uint``,
+    one ``float``, then ``ChunkBounds cb`` at byte 20 (every member is 4 bytes, so
+    there is no padding and the record is 120 bytes).
+    """
+    import numpy as np  # noqa: PLC0415
+
+    return np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"),
+                     ("n_elem", "<u4"), ("dtdx", "<f4")]
+                    + _chunk_bounds.record_dtype_fields("cb"))
+
+
+def params_words(shape: Sequence[int], dtdx: float, chunk_bounds: Any) -> Any:
+    """The packed ``Params`` record as host ``int32`` words, the record checked first.
+
+    ``chunk_bounds`` is checked against ``shape`` by :func:`.chunk_bounds.plan_words`,
+    which refuses by name a missing record or one that disagrees with the shape.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    shape = tuple(int(n) for n in shape)
+    checked = _chunk_bounds.plan_words(chunk_bounds, shape, f"{FAMILY} Params")
+    record = np.zeros(1, dtype=params_record_dtype())
+    nx, ny, nz = shape
+    record["nx"], record["ny"], record["nz"] = nx, ny, nz
+    record["n_elem"] = nx * ny * nz
+    record["dtdx"] = np.float32(dtdx)
+    record["cb"] = _chunk_bounds.pack(checked)
+    return np.frombuffer(record.tobytes(), dtype=np.int32).copy()
+
+
+def _params_tensor(shape: Sequence[int], dtdx: float, device: str,
+                   chunk_bounds: Any) -> Any:
+    """The five scalars and the chunk record as one 120-byte device record.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused pair's
     ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and complex64
     volumes and refuses anything else BY NAME, because a wider element silently
     reinterprets. This record is neither.
     """
-    import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
-    record = np.zeros(1, dtype=np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"),
-                                         ("n_elem", "<u4"), ("dtdx", "<f4")]))
-    nx, ny, nz = (int(n) for n in shape)
-    record[0] = (nx, ny, nz, nx * ny * nz, np.float32(dtdx))
-    words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
+    words = params_words(shape, dtdx, chunk_bounds)
     return torch.from_numpy(words).to(torch.device(device))
 
 
@@ -1025,12 +1137,19 @@ def plan_metal_fused_hd_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional["_weld.ScratchWeldPairPlan"]:
     """Build the fused H/D plan, or ``None`` when the seam is refused.
 
-    ``None`` is the only refusal, for the reason :func:`.launch.plan_pml_curl` gives: a
-    configuration this kernel does not carry must fall back to the array path, never
-    raise into a caller that would otherwise have stepped correctly.
+    ``None`` is the only refusal of a CONFIGURATION, for the reason
+    :func:`.launch.plan_pml_curl` gives: a configuration this kernel does not carry must
+    fall back to the array path, never raise into a caller that would otherwise have
+    stepped correctly.
+
+    ``chunk_bounds`` is the record of the division the run steps with -- the composer's
+    ``StepContext.chunk_bounds`` -- and has no default, as the base plans' has none: a
+    missing record, or one that disagrees with the grid, is refused by name
+    (:func:`.chunk_bounds.plan_words`).
 
     ``functions`` is the mutation seam. The gate compiles a deliberately broken copy of
     the shipped source and hands it here; dropping the argument is not a silent
@@ -1100,7 +1219,7 @@ def plan_metal_fused_hd_pair(
     dtdx = grid.dt / grid.dx
     static = (flux + displacement + auxiliary
               + curl_coefficients + constitutive_coefficients
-              + [_params_tensor(grid.shape, dtdx, residency.device)])
+              + [_params_tensor(grid.shape, dtdx, residency.device, chunk_bounds)])
     assert (2 * len(ROTATED_NAMES) + len(static)) == PACKED_BINDINGS, (
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     assert PACKED_BINDINGS == MAX_BUFFER_BINDINGS, (
@@ -1128,7 +1247,7 @@ def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
         return None
     return plan_metal_fused_hd_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

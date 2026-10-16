@@ -12,18 +12,22 @@ below rests on the split:
 
   * READ AND EXECUTED FROM THE EMITTED TEXT: every per-component statement — the
     three flat-index expressions of each term, which partner volume and which
-    coefficient each term takes, the accumulation order, the wall-mask lines, the
-    diagonal-first row sum, and which coefficient table and index the tail reads —
-    plus ``offdiag_term``'s three arithmetic lines, parsed and evaluated as
+    coefficient each term takes, the per-term wall-mask lines, the double row (its
+    diagonal start, each term's presence-guarded add in partner order and the one
+    rounding), and which coefficient table, index and membership flag the tail
+    reads — plus ``offdiag_term``'s three arithmetic lines, parsed and evaluated as
     expressions. A ``dj`` where ``dk`` belongs, a mispaired coefficient, a dropped
-    mask or a hoisted multiply is therefore caught by running the SHIPPED TEXT,
-    not by re-deriving what it ought to say.
-  * PINNED BY EXACT STRING and transcribed by hand: the four small helpers
-    (``coord_up``, ``coord_dn``, ``flat``, ``ghosted``) and the tail
-    ``constitutive_apply``. Those are pinned character-for-character — and
-    ``constitutive_apply`` is additionally welded to the CERTIFIED sibling's copy
-    of itself, whose expression tree the sibling file already measures against
-    ``stepping._apply_constitutive_pml`` over 60 consecutive sub-steps.
+    mask, a hoisted multiply, a float32 row or an ignored presence bit is therefore
+    caught by running the SHIPPED TEXT, not by re-deriving what it ought to say.
+  * PINNED BY EXACT STRING and transcribed by hand: the small helpers
+    (``coord_up``, ``coord_dn``, ``flat``, ``ghosted``, ``chunk_label``,
+    ``chunk_row``, ``chunk_keeps``), the chunk-record block and the chunk-label
+    lines (``offdiag_emitter.RECORD_BLOCK`` / ``CHUNK_LINES``, transcribed by
+    ``chunk_map.membership_from_record`` and ``offdiag_presence.cell_chunk_codes``),
+    and the tail ``constitutive_apply``. Those are pinned character-for-character —
+    and ``constitutive_apply`` is additionally welded to the CERTIFIED sibling's
+    copy of itself (``constitutive_kernels``), whose expression tree that file
+    measures against ``stepping._apply_constitutive_regions``.
 
 The two together cover the whole source: nothing in it is neither executed nor
 pinned, and :func:`test_every_line_of_the_device_source_is_executed_or_pinned`
@@ -60,11 +64,12 @@ except ImportError:  # pragma: no cover - exercised on any NumPy-only host
     cupy = None
 
 from .. import stepping
+from ..chunk_map import chunk_bounds_record, membership_from_record
 from ..device_identity import weld_survives_edit
 from ..fields import IYEE_SHIFTS, Fields
 from ..grid import Grid
 from ..pml import PML
-from . import coverage, offdiag_emitter
+from . import bounds_block, coverage, offdiag_emitter, offdiag_presence
 
 HERE = pathlib.Path(__file__).parent
 EMITTER_MODULE = HERE / "offdiag_emitter.py"
@@ -155,7 +160,7 @@ def build(xp, boundaries=("periodic", "periodic", "periodic"), symmetry=(),
     return fields, layer, grid
 
 
-def install_rows(fields, grid, mask, seed=20260816, uniform=False):
+def install_rows(fields, grid, mask, seed=20260816, uniform=False, block=False):
     """Install one row mask through the PUBLIC installer, plus a diagonal epsilon.
 
     The coefficients are SPATIALLY VARYING by default and drawn straddling zero,
@@ -163,6 +168,11 @@ def install_rows(fields, grid, mask, seed=20260816, uniform=False):
     than merely the rounding) invisible: ``u[i]`` and ``u[i+s]`` are then the same
     number and the four-point hoist becomes an algebraic identity. ``uniform=True``
     is the control that shows the difference.
+
+    ``block=True`` keeps each row only on an interior block (the middle third of
+    every axis longer than 2) and exactly zero elsewhere, so the chunks that carry a
+    layer delete every row's array and MEEP drops its term there: the case the
+    presence words exist for.
     """
     rng = numpy.random.default_rng(seed)
     xp = grid.xp
@@ -179,24 +189,37 @@ def install_rows(fields, grid, mask, seed=20260816, uniform=False):
         values = (numpy.full(grid.shape, 0.3125, dtype=numpy.float32) if uniform
                   else rng.uniform(-0.45, 0.45,
                                    size=grid.shape).astype(numpy.float32))
+        if block:
+            inside = tuple(slice(n // 3, n - n // 3) if n > 2 else slice(None)
+                           for n in grid.shape)
+            kept = numpy.zeros(grid.shape, dtype=numpy.float32)
+            kept[inside] = values[inside]
+            values = kept
         rows.setdefault(row, {})[partner] = xp.asarray(values)
     fields.set_epsilon_volumes(epsilon, inverse, chi1inv_offdiagonal=rows)
     return rows
 
 
-def seed_state(fields, grid, seed=7):
+def seed_state(fields, grid, seed=7, negative_zero=False):
     """Physical-band values in every array the sub-step reads or writes.
 
     A GATE THAT CANNOT FAIL CERTIFIES NOTHING, and zero-init is a FIXED POINT of
     this sub-step: with D, E and f_w all zero every tree agrees. Every leg below
     therefore asserts a vacuity floor on the oracle's own output as well.
+
+    ``negative_zero=True`` plants ``D = -0`` on every third cell of each D volume:
+    ``gs*us`` is then ``-0`` there (the inverse permittivity is positive), the row a
+    dropped term leaves alone, a plain cell's ``E = src``, and the signed zero a
+    ``+ 0`` turns into ``+0``. Random states never reach it.
     """
     rng = numpy.random.default_rng(seed)
     xp = grid.xp
     for name in ("Dx", "Dy", "Dz", "Ex", "Ey", "Ez",
                  "f_w_Ex", "f_w_Ey", "f_w_Ez"):
-        getattr(fields, name)[...] = xp.asarray(
-            rng.uniform(-1.0, 1.0, size=grid.shape).astype(numpy.float32))
+        values = rng.uniform(-1.0, 1.0, size=grid.shape).astype(numpy.float32)
+        if negative_zero and name.startswith("D"):
+            values.reshape(-1)[::3] = numpy.float32(-0.0)
+        getattr(fields, name)[...] = xp.asarray(values)
 
 
 # --------------------------------------------------------------------------
@@ -215,20 +238,28 @@ _TERM_CALL = re.compile(
     r"flat\((?P<down>[^)]*), nyz, nz\),\s*"
     r"flat\((?P<up>[^)]*), nyz, nz\),\s*"
     r"flat\((?P<corner>[^)]*), nyz, nz\)\);")
-_TOTAL_FIRST = re.compile(r"float total_(?P<name>\w+) = term_(?P<tag>\w+);")
-_TOTAL_ADD = re.compile(
-    r"total_(?P<name>\w+) = total_(?P=name) \+ term_(?P<tag>\w+);")
-_MASK = re.compile(r"total_(?P<name>\w+) = \((?P<wall>wm_[xyz]) && "
-                   r"(?P<face>at_[xyz])\) \? 0\.0f : total_(?P=name);")
+_MASK = re.compile(r"term_(?P<tag>\w+) = \((?P<wall>wm_[xyz]) && "
+                   r"(?P<face>at_[xyz])\) \? 0\.0f : term_(?P=tag);")
 _GS = re.compile(r"float gs_(?P<name>\w+) = (?P<volume>\w+)\[idx\];")
 _US = re.compile(r"float us_(?P<name>\w+) = (?P<volume>\w+)\[idx\];")
-_SRC_COUPLED = re.compile(
-    r"float src_(?P<name>\w+) = \(gs_(?P=name) \* us_(?P=name)\)"
-    r" \+ total_(?P=name);")
+#: The row. The emitter writes a ``double`` row and the double scale; the grammar also
+#: reads the float32 spellings a mutation plants (a ``float`` row, the scale in float32,
+#: the scale in float32 then widened) and an unguarded add, so a planted defect is
+#: EXECUTED rather than skipped.
+_ROW_START = re.compile(
+    r"(?P<type>double|float) row_(?P<name>\w+) = \(double\)\(gs_(?P=name) \* us_(?P=name)\);")
+_ROW_ADD = re.compile(
+    r"(?:if \(chunk_keeps\((?P<kept>kept_\w+), chunk_(?P<guard>\w+)\)\) )?"
+    r"row_(?P<name>\w+) = row_(?P=name) \+ "
+    r"(?:\(0\.25 \* \(double\)term_(?P<tag>\w+)\)"
+    r"|\(0\.25f \* term_(?P<ftag>\w+)\)"
+    r"|\(double\)\(0\.25f \* term_(?P<wtag>\w+)\));")
+_SRC_ROW = re.compile(r"float src_(?P<name>\w+) = \(float\)row_(?P=name);")
 _SRC_PLAIN = re.compile(r"float src_(?P<name>\w+) = gs_(?P=name) \* us_(?P=name);")
 _TAIL = re.compile(
     r"constitutive_apply\((?P<field>\w+), (?P<aux>f_w_\w+), idx, src_(?P<name>\w+),"
-    r" (?P<kps>kps_[xyz])\[(?P<index>[ijk])\], (?P<kms>kms_[xyz])\[(?P=index)\]\);")
+    r" (?P<kps>kps_[xyz])\[(?P<index>[ijk])\], (?P<kms>kms_[xyz])\[(?P=index)\],"
+    r" (?P<flag>in_[hi]_[xyz])\);")
 _TERM_BODY = re.compile(
     r"float near_pair = (?P<near>.+);\n"
     r"    float far_pair = (?P<far>.+);\n"
@@ -242,6 +273,12 @@ def _f32(values):
     return values
 
 
+def _f64(values):
+    """Assert float64 where the text computes in double (the row)."""
+    assert values.dtype == numpy.float64, values.dtype
+    return values
+
+
 def _coord_dn(a, n, bc):
     """``coord_dn`` (PINNED by exact string below), transcribed."""
     return numpy.where(a > 0, a - 1, -1 if bc == 1 else n - 1)
@@ -252,11 +289,56 @@ def _coord_up(a, n, bc):
     return numpy.where(a + 1 < n, a + 1, -1 if bc == 1 else 0)
 
 
-def evaluate_emitted_source(source, arrays, tables, codes, walls, shape):
-    """Run one launch of the emitted kernel over the whole grid, in float32.
+def execute_row_statements(body, scalars, terms, rows, kept_words, chunk_codes):
+    """The row lines of one emitted body, executed in the precision each spells.
+
+    ``(double)(gs * us)`` is one float32 product widened (rounded back to float32 when
+    the row is a ``float``); each add is the scale the line writes -- ``0.25 *
+    (double)t`` in double, ``0.25f * t`` in float32, ``(double)(0.25f * t)`` in
+    float32 then widened -- added in the row's precision (a float row takes a double
+    addend through a double add and one rounding, as C assigns it), and only where
+    ``chunk_keeps`` holds when the line is guarded (``chunk_keeps``, PINNED,
+    transcribed: bit ``code`` of the word).
+    """
+    for match in _ROW_START.finditer(body):
+        name = match["name"]
+        product = _f32(scalars[f"gs_{name}"] * scalars[f"us_{name}"])
+        rows[name] = product.astype(numpy.float64 if match["type"] == "double"
+                                    else numpy.float32)
+    for match in _ROW_ADD.finditer(body):
+        name = match["name"]
+        if match["tag"] is not None:
+            scaled = _f64(numpy.float64(0.25) * terms[match["tag"]].astype(numpy.float64))
+        elif match["ftag"] is not None:
+            scaled = _f32(numpy.float32(0.25) * terms[match["ftag"]])
+        else:
+            scaled = _f32(numpy.float32(0.25) * terms[match["wtag"]]).astype(numpy.float64)
+        row = rows[name]
+        if row.dtype == numpy.float32 and scaled.dtype == numpy.float32:
+            added = _f32(row + scaled)
+        else:
+            added = (row.astype(numpy.float64) + scaled.astype(numpy.float64)).astype(
+                row.dtype)
+        if match["kept"] is None:
+            rows[name] = added
+        else:
+            assert match["guard"] == name, (match["guard"], name)
+            keeps = ((int(kept_words[match["kept"]]) >> chunk_codes[name]) & 1).astype(bool)
+            rows[name] = numpy.where(keeps, added, row)
+
+
+def evaluate_emitted_source(source, arrays, tables, codes, walls, shape, record, kept):
+    """Run one launch of the emitted kernel over the whole grid, in float32 (the row in
+    double).
 
     ``arrays`` maps device parameter names to (nx, ny, nz) float32 arrays and is
-    MUTATED in place, exactly as the kernel mutates its outputs.
+    MUTATED in place, exactly as the kernel mutates its outputs. ``record`` is the
+    chunk record the launch binds (``cb``) and ``kept`` the six presence words in
+    slot order. The membership flags are the record's decode
+    (``chunk_map.membership_from_record``, the host twin of the pinned
+    ``RECORD_BLOCK``) and each component's chunk code the device rule's
+    (``offdiag_presence.cell_chunk_codes``, the host twin of the pinned
+    ``CHUNK_LINES``).
     """
     nx, ny, nz = shape
     i, j, k = numpy.indices(shape)
@@ -279,6 +361,18 @@ def evaluate_emitted_source(source, arrays, tables, codes, walls, shape):
         flat_volume = numpy.asarray(volume).reshape(-1)
         return _f32(numpy.where(index < 0, numpy.float32(0.0),
                                 flat_volume[numpy.maximum(index, 0)]))
+
+    flags = {}
+    for axis, letter in enumerate("xyz"):
+        for half, lattice in ((False, "i"), (True, "h")):
+            view = [1, 1, 1]
+            view[axis] = shape[axis]
+            flags[f"in_{lattice}_{letter}"] = membership_from_record(
+                record, half, axis, shape[axis]).reshape(view)
+    chunk_codes = {name: offdiag_presence.cell_chunk_codes(record, IYEE_SHIFTS[name],
+                                                           shape, codes)
+                   for name in ("Ex", "Ey", "Ez")}
+    kept_words = dict(zip(offdiag_emitter.KEPT_PARAMETERS, kept))
 
     body = source[source.index("int at_x"):]
     scalars = {}
@@ -304,24 +398,20 @@ def evaluate_emitted_source(source, arrays, tables, codes, walls, shape):
         environment["far_pair"] = evaluate(far_text)
         return evaluate(term_text)
 
-    terms, totals, sources = {}, {}, {}
+    terms, rows, sources = {}, {}, {}
     for match in _TERM_CALL.finditer(body):
         terms[match["tag"]] = offdiag_term(
             numpy.asarray(arrays[match["volume"]]),
             numpy.asarray(arrays[match["coefficient"]]),
             flat(match["down"]), flat(match["up"]), flat(match["corner"]))
-    for match in _TOTAL_FIRST.finditer(body):
-        totals[match["name"]] = terms[match["tag"]].copy()
-    for match in _TOTAL_ADD.finditer(body):
-        totals[match["name"]] = _f32(totals[match["name"]] + terms[match["tag"]])
     for match in _MASK.finditer(body):
         if wall_flags[match["wall"]]:
-            totals[match["name"]] = _f32(numpy.where(
-                faces[match["face"]], numpy.float32(0.0), totals[match["name"]]))
-    for match in _SRC_COUPLED.finditer(body):
+            terms[match["tag"]] = _f32(numpy.where(
+                faces[match["face"]], numpy.float32(0.0), terms[match["tag"]]))
+    execute_row_statements(body, scalars, terms, rows, kept_words, chunk_codes)
+    for match in _SRC_ROW.finditer(body):
         name = match["name"]
-        sources[name] = _f32(_f32(scalars[f"gs_{name}"] * scalars[f"us_{name}"])
-                             + totals[name])
+        sources[name] = _f32(rows[name].astype(numpy.float32))
     for match in _SRC_PLAIN.finditer(body):
         name = match["name"]
         sources[name] = _f32(scalars[f"gs_{name}"] * scalars[f"us_{name}"])
@@ -333,14 +423,19 @@ def evaluate_emitted_source(source, arrays, tables, codes, walls, shape):
         kms = _f32(numpy.asarray(tables[match["kms"]]).reshape(broadcast))
         field = arrays[match["field"]]
         aux = arrays[match["aux"]]
+        flagged = numpy.broadcast_to(flags[match["flag"]], tuple(shape)) \
+            if match["flag"] in flags else None
+        assert flagged is not None, match["flag"]
         # constitutive_apply (PINNED by exact string below, and welded to the
-        # certified sibling's), transcribed: prev is read BEFORE fw is written,
-        # then two separate accumulations left to right.
+        # certified sibling's), transcribed: on a flagged cell prev is read BEFORE
+        # fw is written and f + ((kps*src) - (kms*prev)); elsewhere f = src and fw
+        # is not touched.
         previous = numpy.asarray(aux).copy()
         source_values = sources[match["name"]]
-        aux[...] = source_values
-        accumulated = _f32(numpy.asarray(field) + _f32(kps * source_values))
-        field[...] = _f32(accumulated - _f32(kms * previous))
+        difference = _f32(_f32(kps * source_values) - _f32(kms * previous))
+        accumulated = _f32(numpy.asarray(field) + difference)
+        aux[...] = numpy.where(flagged, source_values, previous)
+        field[...] = numpy.where(flagged, accumulated, source_values)
 
 
 def _tables_for(layer):
@@ -376,8 +471,28 @@ def _advance_sources(fields):
                                       * numpy.float32(0.97))
 
 
+def chunk_arguments(fields, layer, codes):
+    """``(record, kept)`` for one ``Fields``: the launcher's own derivation.
+
+    The record of the division the array path steps with (``stepping._chunk_layout``)
+    and the six presence words built against it (``offdiag_presence.presence_words``),
+    which refuse by name where the record does not reproduce the array path's presence.
+    """
+    layout = stepping._chunk_layout(fields, layer)
+    record = [int(value) for value in chunk_bounds_record(layout)]
+    return record, offdiag_presence.presence_words(fields, record, codes, layout)
+
+
+#: The cell the presence legs build: 14 cells per axis, so the one-rank layer chunks
+#: (3 cells each) leave an interior chunk wider than the middle-third block
+#: ``install_rows(block=True)`` keeps the rows on, and every chunk that carries a layer
+#: deletes them.
+PRESENCE_CELL = (14.0, 14.0, 14.0)
+
+
 def run_both_paths(mask, boundaries, steps=8, source=None, rows_override=None,
-                   uniform=False, seed=20260816):
+                   uniform=False, seed=20260816, block=False, negative_zero=False,
+                   record_edit=None, kept_edit=None, cell=(8.0, 8.0, 8.0)):
     """The oracle and the emitted source, from one frozen state. Returns both bit sets.
 
     ONE fixture and one restore: two separately built configurations could differ
@@ -390,10 +505,15 @@ def run_both_paths(mask, boundaries, steps=8, source=None, rows_override=None,
     fixture belongs to the PREDICATE legs, where the backend name is the question.
     What is being measured here is a float32 expression tree, which is the same
     tree whatever allocated the arrays.
+
+    ``block`` installs the rows on an interior block only (the chunks that carry a
+    layer delete them), ``negative_zero`` plants ``D = -0`` cells, and
+    ``record_edit`` / ``kept_edit`` hand the evaluator a deliberately wrong record or
+    presence words (functions of the derived ones) -- the gate's mutation doors.
     """
-    fields, layer, grid = build(numpy, boundaries=boundaries)
-    rows = install_rows(fields, grid, mask, uniform=uniform)
-    seed_state(fields, grid, seed=seed % 1000)
+    fields, layer, grid = build(numpy, boundaries=boundaries, cell=cell)
+    rows = install_rows(fields, grid, mask, uniform=uniform, block=block)
+    seed_state(fields, grid, seed=seed % 1000, negative_zero=negative_zero)
     frozen = {name: numpy.asarray(getattr(fields, name)).copy()
               for name in ("Dx", "Dy", "Dz", "Ex", "Ey", "Ez",
                            "f_w_Ex", "f_w_Ey", "f_w_Ez")}
@@ -407,15 +527,19 @@ def run_both_paths(mask, boundaries, steps=8, source=None, rows_override=None,
 
     for name, values in frozen.items():
         getattr(fields, name)[...] = values
-    codes = coverage.offdiag_boundary_codes_for_test = tuple(
-        coverage.BC_CODES[kind]
-        for kind in coverage.real_pml_boundary_kinds(grid))
+    codes = tuple(coverage.BC_CODES[kind]
+                  for kind in coverage.real_pml_boundary_kinds(grid))
     walls = coverage.offdiag_wall_mask_flags(grid)
+    record, kept = chunk_arguments(fields, layer, codes)
+    if record_edit is not None:
+        record = record_edit(list(record))
+    if kept_edit is not None:
+        kept = kept_edit(tuple(kept))
     arrays = _device_arrays(fields, rows_override if rows_override else rows)
     text = offdiag_emitter.offdiag_source(mask) if source is None else source
     for _ in range(steps):
         evaluate_emitted_source(text, arrays, _tables_for(layer), codes, walls,
-                                grid.shape)
+                                grid.shape, record, kept)
         _advance_sources(fields)
         arrays = _device_arrays(fields, rows_override if rows_override else rows)
     return oracle, _bits(fields), magnitude
@@ -1046,7 +1170,63 @@ PINNED_HELPERS = {
     "ghosted": """__device__ __forceinline__ float ghosted(const float* g, int index) {
     return (index < 0) ? 0.0f : g[index];
 }""",
+    "chunk_label": """__device__ __forceinline__ int chunk_label(int r, int a0, int a1, int b0, int b1) {
+    if (r >= a0 && r < a1) return 0;
+    if (r >= b0 && r < b1) return 2;
+    return 1;
+}""",
+    "chunk_row": """__device__ __forceinline__ int chunk_row(int a, int wall) {
+    return (wall && a == 0) ? 1 : a;
+}""",
+    "chunk_keeps": """__device__ __forceinline__ int chunk_keeps(int kept, int c) {
+    return (kept >> c) & 1;
+}""",
 }
+
+#: The chunk-label lines, pinned: ``offdiag_presence.cell_chunk_codes`` transcribes
+#: them (each component's own sub-lattice per axis -- half-integer on its own axis,
+#: integer on the other two -- the integer wall row 0 of a metallic axis read at row 1,
+#: and the code ``lx + 3*ly + 9*lz``).
+PINNED_CHUNK_LINES = (
+    "    const int wi = chunk_row(i, bc_x == BC_METALLIC);\n"
+    "    const int wj = chunk_row(j, bc_y == BC_METALLIC);\n"
+    "    const int wk = chunk_row(k, bc_z == BC_METALLIC);\n"
+    "    const int chunk_Ex = chunk_label(i, cbh_x_a0, cbh_x_a1, cbh_x_b0, cbh_x_b1)\n"
+    "        + 3 * chunk_label(wj, cbi_y_a0, cbi_y_a1, cbi_y_b0, cbi_y_b1)\n"
+    "        + 9 * chunk_label(wk, cbi_z_a0, cbi_z_a1, cbi_z_b0, cbi_z_b1);\n"
+    "    const int chunk_Ey = chunk_label(wi, cbi_x_a0, cbi_x_a1, cbi_x_b0, cbi_x_b1)\n"
+    "        + 3 * chunk_label(j, cbh_y_a0, cbh_y_a1, cbh_y_b0, cbh_y_b1)\n"
+    "        + 9 * chunk_label(wk, cbi_z_a0, cbi_z_a1, cbi_z_b0, cbi_z_b1);\n"
+    "    const int chunk_Ez = chunk_label(wi, cbi_x_a0, cbi_x_a1, cbi_x_b0, cbi_x_b1)\n"
+    "        + 3 * chunk_label(wj, cbi_y_a0, cbi_y_a1, cbi_y_b0, cbi_y_b1)\n"
+    "        + 9 * chunk_label(k, cbh_z_a0, cbh_z_a1, cbh_z_b0, cbh_z_b1);\n")
+
+
+def test_the_record_block_is_the_bounds_block_emitters():
+    """The chunk-record decode has one spelling on this table (``bounds_block``):
+    the emitter writes it out because it imports nothing that pulls in NumPy, and
+    this pins the two equal, entries included, and checks it lands in every source
+    directly after the index decode."""
+    assert offdiag_emitter.RECORD_BLOCK == bounds_block.bounds_block(
+        list(offdiag_emitter.RECORD_ENTRIES))
+    assert sorted(offdiag_emitter.RECORD_ENTRIES) == sorted(
+        {(half, axis) for half in (False, True) for axis in range(3)})
+    assert set(bounds_block.constitutive_entries(("Ex", "Ey", "Ez"))) <= set(
+        offdiag_emitter.RECORD_ENTRIES)
+    for mask in offdiag_emitter.LIVE_ROW_MASKS:
+        text = offdiag_emitter.offdiag_source(mask)
+        assert text.count(bounds_block.DECODE_END + "\n" + offdiag_emitter.RECORD_BLOCK) == 1
+
+
+def test_the_chunk_lines_are_pinned_and_read_each_components_own_sub_lattice():
+    """The labels read each axis on the component's own Yee sub-lattice there, which
+    for an E component is half-integer on its own axis and integer on the others
+    (``fields.IYEE_SHIFTS``), and only the integer lattice's wall row is clamped."""
+    assert offdiag_emitter.CHUNK_LINES.endswith(PINNED_CHUNK_LINES)
+    for name, _source, own in offdiag_emitter.E_TERMS:
+        assert IYEE_SHIFTS[name] == tuple(int(axis == own) for axis in range(3))
+    for mask in CORPUS_ROW_MASKS:
+        assert offdiag_emitter.CHUNK_LINES in offdiag_emitter.offdiag_source(mask)
 
 
 @pytest.mark.parametrize("name", sorted(PINNED_HELPERS))
@@ -1187,13 +1367,15 @@ def test_every_line_of_the_device_source_is_executed_or_pinned():
     scaffolding = (
         "extern \"C\" __global__", "float* __restrict__", "const float*",
         "int nx, int ny, int nz,", "int bc_x", "int wm_x",
+        "const int* __restrict__ cb", "int kept_",
         "int idx = blockIdx.x", "if (idx >= nx * ny * nz) return;",
         "int nyz = ny * nz;", "int k = idx % nz;", "int j = (idx / nz) % ny;",
         "int i = idx / (ny * nz);", "int di = coord_dn", "int dj = coord_dn",
         "int dk = coord_dn", "int at_x = (i == 0)", ") {", "}", "{",
     )
-    grammar = (_TERM_CALL, _TOTAL_FIRST, _TOTAL_ADD, _MASK, _GS, _US,
-               _SRC_COUPLED, _SRC_PLAIN, _TAIL)
+    pinned_blocks = (offdiag_emitter.RECORD_BLOCK + offdiag_emitter.CHUNK_LINES).split("\n")
+    grammar = (_TERM_CALL, _MASK, _GS, _US, _ROW_START, _ROW_ADD, _SRC_ROW,
+               _SRC_PLAIN, _TAIL)
     for mask in offdiag_emitter.LIVE_ROW_MASKS:
         text = offdiag_emitter.offdiag_source(mask)
         body = text[text.index("extern \"C\""):]
@@ -1211,6 +1393,8 @@ def test_every_line_of_the_device_source_is_executed_or_pinned():
             if not stripped or stripped.startswith("//"):
                 continue
             if span & covered:
+                continue
+            if line in pinned_blocks:
                 continue
             assert any(token in line for token in scaffolding), (
                 f"{mask}: no leg in this file executes or pins {stripped!r}")
@@ -1237,7 +1421,7 @@ def test_every_line_of_the_prelude_is_executed_or_pinned():
             "__device__ __forceinline__ void constitutive_apply("):]
     scaffolding = ("#define ", "__device__ __forceinline__", "const float*",
                    "int a, int n, int bc", "int i, int j, int k, int nyz, int nz",
-                   "float kps, float kms", ") {", "{", "}")
+                   "float kps, float kms, int dsigw", ") {", "{", "}")
     for line in offdiag_emitter.PRELUDE.split("\n"):
         stripped = line.strip()
         if not stripped or stripped.startswith("//"):
@@ -1332,10 +1516,12 @@ def test_an_invariant_axis_doubles_the_partner_pair_rather_than_zeroing_it():
     codes = tuple(coverage.BC_CODES[kind]
                   for kind in coverage.real_pml_boundary_kinds(grid))
     walls = coverage.offdiag_wall_mask_flags(grid)
+    record, kept = chunk_arguments(fields, layer, codes)
     text = offdiag_emitter.offdiag_source((1, 1, 1, 1, 1, 1))
     for _ in range(6):
         evaluate_emitted_source(text, _device_arrays(fields, rows),
-                                _tables_for(layer), codes, walls, grid.shape)
+                                _tables_for(layer), codes, walls, grid.shape,
+                                record, kept)
         _advance_sources(fields)
     assert magnitude > 1e-3
     assert oracle == _bits(fields)
@@ -1366,12 +1552,11 @@ def _mutate(text, kind):
         # The four-point-average-times-u[i] hoist: the same ALGEBRA only for a
         # uniform coefficient, and a different float32 number even then.
         return text.replace(
-            "return 0.25f * ((near_pair * u[home])"
-            " + (far_pair * ghosted(u, up)));",
-            "return 0.25f * ((near_pair + far_pair) * u[home]);")
+            "return (near_pair * u[home]) + (far_pair * ghosted(u, up));",
+            "return (near_pair + far_pair) * u[home];")
     if kind == "drop_wall_mask":
-        return re.sub(r"\n *total_\w+ = \(wm_[xyz] && at_[xyz]\)"
-                      r" \? 0\.0f : total_\w+;", "", text)
+        return re.sub(r"\n *term_\w+ = \(wm_[xyz] && at_[xyz]\)"
+                      r" \? 0\.0f : term_\w+;", "", text)
     if kind == "over_apply_wall_mask":
         # The mask applied wherever the FACE is, whatever the grid declares.
         return re.sub(r"\(wm_([xyz]) && at_([xyz])\)", r"(at_\2 && at_\2)", text)
@@ -1379,22 +1564,33 @@ def _mutate(text, kind):
         # Every component reads the x table: MEEP's dsigw confused for one axis.
         return re.sub(r"kps_[xyz]\[[ijk]\], kms_[xyz]\[[ijk]\]",
                       "kps_x[i], kms_x[i]", text)
+    if kind == "row_in_float32":
+        # The row summed and scaled in float32: the package's arithmetic until 0.10.
+        return (text.replace("double row_", "float row_")
+                    .replace("(0.25 * (double)term_", "(0.25f * term_"))
+    if kind == "select_removed":
+        # The accumulation on every cell: the whole-grid recurrence until 0.10.
+        return re.sub(r", in_h_[xyz]\);", ", 1);", text)
+    if kind == "tail_flag_on_integer_lattice":
+        # The tail's membership read on the integer record: the two lattices swapped.
+        return re.sub(r", in_h_([xyz])\);", r", in_i_\1);", text)
+    if kind == "presence_ignored":
+        # Every term added whether or not the cell's chunk keeps the array.
+        return re.sub(r"if \(chunk_keeps\(kept_\w+, chunk_\w+\)\) ", "", text)
     if kind == "column_major_index":
         return text.replace("(i * nyz + j * nz + k)", "(k * nyz + j * nz + i)")
-    if kind == "flatten_tail":
+    if kind == "previous_tail_grouping":
+        # The constitutive grouping until 0.10, (f + kps*src) - kms*prev.
         return text.replace(
-            "    float a = f[idx] + kps * src;\n    f[idx] = a - kms * prev;",
-            "    f[idx] = f[idx] + (kps * src - kms * prev);")
+            "float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;",
+            "float value = dsigw ? ((f[idx] + (kps * src)) - (kms * prev)) : src;")
     if kind == "store_before_load":
         return text.replace(
-            "    float prev = fw[idx];\n    fw[idx] = src;",
-            "    fw[idx] = src;\n    float prev = fw[idx];")
-    if kind == "distribute_quarter":  # a predicted NULL, not a mutation
-        return text.replace(
-            "return 0.25f * ((near_pair * u[home])"
-            " + (far_pair * ghosted(u, up)));",
-            "return (0.25f * (near_pair * u[home]))"
-            " + (0.25f * (far_pair * ghosted(u, up)));")
+            "    float prev = dsigw ? fw[idx] : 0.0f;\n    if (dsigw) fw[idx] = src;",
+            "    if (dsigw) fw[idx] = src;\n    float prev = dsigw ? fw[idx] : 0.0f;")
+    if kind == "scale_in_float32":  # a predicted NULL, not a mutation
+        return re.sub(r"\(0\.25 \* \(double\)term_(\w+)\)",
+                      r"(double)(0.25f * term_\1)", text)
     raise AssertionError(kind)
 
 
@@ -1402,20 +1598,28 @@ def _mutate(text, kind):
 #: in: the per-component statements and ``offdiag_term``'s three arithmetic lines.
 CAUGHT_MUTATIONS = ("same_direction_shifts", "own_axis_shift_down",
                     "hoist_coefficient", "drop_wall_mask",
-                    "over_apply_wall_mask", "wrong_own_axis_table")
+                    "over_apply_wall_mask", "wrong_own_axis_table",
+                    "row_in_float32", "select_removed",
+                    "tail_flag_on_integer_lattice")
 
-#: Defects planted in the PINNED half of the source — the four small helpers and
-#: the welded tail, which the evaluator transcribes rather than executes. The
+#: Defects only a chunk that DELETES a row's array can show, and only on a ``-0``
+#: row: caught on the interior-block rows with planted negative zeros, and a null on
+#: rows every chunk keeps (the control that it is the presence being measured).
+PRESENCE_MUTATIONS = ("presence_ignored",)
+
+#: Defects planted in the PINNED half of the source — the small helpers and the
+#: welded tail, which the evaluator transcribes rather than executes. The
 #: arithmetic legs are BLIND to these by construction, and saying so is the point:
 #: what catches them is the exact-string pin, and
 #: :func:`test_the_pinned_half_is_guarded_by_its_pins_not_by_the_arithmetic_legs`
 #: measures BOTH halves of that claim — the pin fires, and the arithmetic leg does
 #: not. A defect that no leg at all could see would be invisible; these are not.
-PINNED_HALF_MUTATIONS = ("column_major_index", "flatten_tail", "store_before_load")
+PINNED_HALF_MUTATIONS = ("column_major_index", "previous_tail_grouping",
+                         "store_before_load")
 
 #: Mutations predicted to change NO bit, carried as controls rather than as
 #: catches. A null that turned into a catch is as much a finding as the reverse.
-NULL_MUTATIONS = ("distribute_quarter",)
+NULL_MUTATIONS = ("scale_in_float32",)
 
 
 @pytest.mark.parametrize("kind", CAUGHT_MUTATIONS)
@@ -1436,11 +1640,149 @@ def test_the_planted_defect_is_caught(kind):
         f"with respect to it")
 
 
+@pytest.mark.parametrize("kind", PRESENCE_MUTATIONS)
+def test_the_presence_defect_is_caught_where_a_chunk_deletes_the_array(kind):
+    """A dropped term and an added zero differ only on a ``-0`` row, so this is
+    measured on rows kept to an interior block (every chunk that carries a layer
+    deletes them) with planted ``D = -0`` cells, and the same defect is a null on rows
+    every chunk keeps."""
+    mask, boundaries = (1, 1, 1, 1, 1, 1), ("metallic", "metallic", "metallic")
+    mutated = _mutate(offdiag_emitter.offdiag_source(mask), kind)
+    assert mutated != offdiag_emitter.offdiag_source(mask)
+    oracle, mine, magnitude = run_both_paths(mask, boundaries, steps=2, source=mutated,
+                                             block=True, negative_zero=True,
+                                             cell=PRESENCE_CELL)
+    assert magnitude > 1e-3
+    assert oracle != mine, f"{kind} is invisible where chunks delete the array"
+    control = run_both_paths(mask, boundaries, steps=2, source=mutated,
+                             negative_zero=True, cell=PRESENCE_CELL)
+    assert control[0] == control[1], (
+        f"{kind} changed bits where every chunk keeps the array; something other than "
+        f"the presence is being measured")
+
+
+@pytest.mark.parametrize("edit", ("half_x_low_run_one_long", "lattices_swapped",
+                                  "interior_presence_cleared"))
+def test_a_wrong_record_or_presence_word_is_caught(edit):
+    """The launch's data doors, mutated: a record bound off by one, the two lattices'
+    records swapped, a presence word with the interior chunk's bit cleared."""
+    mask, boundaries = (1, 1, 1, 1, 1, 1), ("metallic", "metallic", "metallic")
+
+    def record_edit(record):
+        if edit == "half_x_low_run_one_long":
+            from ..chunk_map import record_index  # noqa: PLC0415
+            record[record_index(True, 0, 1)] += 1
+        elif edit == "lattices_swapped":
+            record = record[12:24] + record[0:12] + record[24:]
+        return record
+
+    def kept_edit(kept):
+        if edit != "interior_presence_cleared":
+            return kept
+        return tuple(word & ~(1 << 13) for word in kept)
+
+    oracle, mine, magnitude = run_both_paths(
+        mask, boundaries, steps=2, block=(edit == "interior_presence_cleared"),
+        record_edit=record_edit, kept_edit=kept_edit, cell=PRESENCE_CELL)
+    assert magnitude > 1e-3
+    assert oracle != mine, edit
+
+
+def test_the_presence_rows_reproduce_stepping_on_planted_negative_zeros():
+    """THE PRESENCE LEG: rows on an interior block, so every chunk that carries a layer
+    deletes them (26 of 27 one-rank chunks drop each row), with ``D = -0`` planted on
+    every third cell, eight sub-steps byte-compared, on a walled and on a periodic
+    grid."""
+    for boundaries in (("metallic", "metallic", "metallic"),
+                       ("periodic", "metallic", "metallic")):
+        fields, layer, grid = build(numpy, boundaries=boundaries, cell=PRESENCE_CELL)
+        install_rows(fields, grid, (1, 1, 1, 1, 1, 1), block=True)
+        layout = stepping._chunk_layout(fields, layer)
+        kept = [layout.offdiag_kept(fields.chi1inv_offdiagonal_for(row)[partner])
+                for row, partner in coverage.OFFDIAG_ROW_SLOTS]
+        assert len(layout.boxes) == 27
+        assert all(sum(chunks) == 1 for chunks in kept), kept
+        oracle, mine, magnitude = run_both_paths(
+            (1, 1, 1, 1, 1, 1), boundaries, steps=8, block=True, negative_zero=True,
+            cell=PRESENCE_CELL)
+        assert magnitude > 1e-3
+        assert oracle == mine, [name for name in oracle if oracle[name] != mine[name]]
+
+
+def test_the_presence_word_refuses_a_record_whose_labels_are_not_the_chunks():
+    """The builder groups the array path's own presence by the code the device rule
+    reads and refuses a code whose cells disagree: here a record whose low run on y
+    swallows the interior, so interior cells (which keep the array) read the same
+    label as the low chunk's (which delete it)."""
+    from ..chunk_map import record_index  # noqa: PLC0415
+
+    fields, layer, grid = build(numpy, boundaries=("metallic",) * 3, cell=PRESENCE_CELL)
+    install_rows(fields, grid, (1, 1, 1, 1, 1, 1), block=True)
+    codes = tuple(coverage.BC_CODES[kind]
+                  for kind in coverage.real_pml_boundary_kinds(grid))
+    layout = stepping._chunk_layout(fields, layer)
+    record = [int(value) for value in chunk_bounds_record(layout)]
+    assert offdiag_presence.presence_words(fields, record, codes, layout)
+    for half in (False, True):
+        record[record_index(half, 1, 1)] = record[record_index(half, 1, 2)]
+    with pytest.raises(offdiag_presence.PresenceRefusal, match="disagree"):
+        offdiag_presence.presence_words(fields, record, codes, layout)
+
+
+def test_the_wall_row_is_read_at_the_nearest_owned_row():
+    """Without the clamp the metallic wall row 0 reads the interior label while the
+    array path reads its chunk at row 1 (``ChunkLayout.owner_volume``), and the
+    builder refuses the walled block case by name."""
+    fields, layer, grid = build(numpy, boundaries=("metallic",) * 3, cell=PRESENCE_CELL)
+    install_rows(fields, grid, (1, 1, 1, 1, 1, 1), block=True)
+    layout = stepping._chunk_layout(fields, layer)
+    record = [int(value) for value in chunk_bounds_record(layout)]
+    assert offdiag_presence.presence_words(fields, record, (1, 1, 1), layout)
+    with pytest.raises(offdiag_presence.PresenceRefusal):
+        offdiag_presence.presence_words(fields, record, (0, 0, 0), layout)
+
+
+def test_an_auxiliary_word_off_the_membership_run_is_never_touched():
+    """The auxiliary contract: f_w_E is read and written only where the cell's chunk
+    carries the component's own layer. A NaN sentinel planted on every other cell
+    survives both paths, and every other word agrees."""
+    fields, layer, grid = build(numpy, boundaries=("metallic", "metallic", "periodic"))
+    rows = install_rows(fields, grid, (1, 1, 1, 1, 1, 1))
+    seed_state(fields, grid)
+    codes = tuple(coverage.BC_CODES[kind]
+                  for kind in coverage.real_pml_boundary_kinds(grid))
+    walls = coverage.offdiag_wall_mask_flags(grid)
+    record, kept = chunk_arguments(fields, layer, codes)
+    outside = {}
+    for name, _source, own in offdiag_emitter.E_TERMS:
+        view = [1, 1, 1]
+        view[own] = grid.shape[own]
+        inside = membership_from_record(record, True, own, grid.shape[own]).reshape(view)
+        outside[name] = ~numpy.broadcast_to(inside, grid.shape)
+        assert outside[name].any() and (~outside[name]).any()
+        getattr(fields, f"f_w_{name}")[outside[name]] = numpy.float32("nan")
+    frozen = {name: numpy.asarray(getattr(fields, name)).copy()
+              for name in ("Dx", "Dy", "Dz", "Ex", "Ey", "Ez",
+                           "f_w_Ex", "f_w_Ey", "f_w_Ez")}
+    stepping.update_E(fields, layer)
+    oracle = _bits(fields)
+    for name, values in frozen.items():
+        getattr(fields, name)[...] = values
+    evaluate_emitted_source(offdiag_emitter.offdiag_source((1, 1, 1, 1, 1, 1)),
+                            _device_arrays(fields, rows), _tables_for(layer), codes,
+                            walls, grid.shape, record, kept)
+    assert oracle == _bits(fields)
+    for name in ("Ex", "Ey", "Ez"):
+        aux = numpy.asarray(getattr(fields, f"f_w_{name}"))
+        assert numpy.isnan(aux[outside[name]]).all(), name
+
+
 @pytest.mark.parametrize("kind", NULL_MUTATIONS)
 def test_the_predicted_null_changes_no_bit(kind):
-    """0.25 is an exact power of two, so distributing it commutes with
-    round-to-nearest away from underflow. Recorded as a measurement so the
-    transcribed association is not mistaken for a grouping the gate must pin."""
+    """0.25 is an exact power of two, so scaling the float32 sum in float32 and
+    widening is the same double as widening and scaling in double, away from
+    underflow. Recorded as a measurement so the transcribed spelling is not mistaken
+    for a grouping the gate must pin."""
     mask, boundaries = (1, 1, 1, 1, 1, 1), ("metallic", "metallic", "periodic")
     mutated = _mutate(offdiag_emitter.offdiag_source(mask), kind)
     oracle, mine, magnitude = run_both_paths(mask, boundaries, steps=8,
@@ -1451,35 +1793,34 @@ def test_the_predicted_null_changes_no_bit(kind):
         f"association is then load-bearing and the gate owes it a mutation")
 
 
-def test_the_row_sum_is_diagonal_first_and_the_order_is_a_measured_null():
-    """``(D*inv_eps) + total`` (stepping.py:1007-1008), and the order is fidelity.
-
-    Float32 addition is bitwise commutative, so this cannot be measured by planting
-    the commuted spelling in the source — the evaluator's grammar is anchored on the
-    spelling the emitter actually writes, and a form it never emits has no business
-    being parseable. It is measured directly instead, on the operands a real run
-    produces: the emitted text is pinned diagonal-first, and the commutation is
-    shown to be a null at those operands.
+def test_the_row_is_diagonal_first_then_partner_order_in_double():
+    """MEEP's ``fw[i] = gs*us + OFFDIAG(u1, ...) + OFFDIAG(u2, ...)``, left to right in
+    double (``stepping._offdiagonal_terms``): the row starts at the widened diagonal
+    product and each term is added in ``cycle_direction`` order, then rounded once.
+    The order is pinned on the text, and the double row is shown to be a different
+    word from the float32 sum the package formed until 0.10 on the operands a real run
+    produces.
     """
     for mask in CORPUS_ROW_MASKS:
         text = offdiag_emitter.offdiag_source(mask)
-        for name, _source, _own in offdiag_emitter.E_TERMS:
-            coupled = f"float src_{name} = (gs_{name} * us_{name}) + total_{name};"
-            plain = f"float src_{name} = gs_{name} * us_{name};"
-            assert coupled in text or plain in text, name
+        for component, (name, _source, _own) in enumerate(offdiag_emitter.E_TERMS):
+            live = [offset for offset in (0, 1) if mask[2 * component + offset]]
+            if not live:
+                assert f"float src_{name} = gs_{name} * us_{name};" in text
+                continue
+            start = text.index(f"double row_{name} = (double)(gs_{name} * us_{name});")
+            positions = [text.index(f"(0.25 * (double)term_{name}_{offset})")
+                         for offset in live]
+            assert start < positions[0] and positions == sorted(positions), name
+            assert text.index(f"float src_{name} = (float)row_{name};") > positions[-1]
 
-    fields, layer, grid = build(numpy,
-                                boundaries=("metallic", "metallic", "periodic"))
-    install_rows(fields, grid, (1, 1, 1, 1, 1, 1))
-    seed_state(fields, grid)
-    stepping.update_E(fields, layer)
-    diagonal = numpy.asarray(fields.Dx) * numpy.asarray(
-        fields.inverse_epsilon_for("Ex"))
-    coupling = numpy.asarray(fields.f_w_Ex) - diagonal
-    assert float(numpy.abs(coupling).max()) > 1e-6, (
-        "the coupling is numerically absent, so commuting the row sum could not "
-        "be distinguished from anything and this control measures nothing")
-    assert (diagonal + coupling).tobytes() == (coupling + diagonal).tobytes()
+    oracle, _mine, _magnitude = run_both_paths(
+        (1, 1, 1, 1, 1, 1), ("metallic", "metallic", "periodic"), steps=1)
+    single = run_both_paths(
+        (1, 1, 1, 1, 1, 1), ("metallic", "metallic", "periodic"), steps=1,
+        source=_mutate(offdiag_emitter.offdiag_source((1, 1, 1, 1, 1, 1)),
+                       "row_in_float32"))[1]
+    assert oracle != single, "the float32 row is the same word on these operands"
 
 
 @pytest.mark.parametrize("kind", PINNED_HALF_MUTATIONS)
@@ -1506,8 +1847,9 @@ def test_the_pinned_half_is_guarded_by_its_pins_not_by_the_arithmetic_legs(kind)
 
     pinned = dict(PINNED_HELPERS)
     pinned["constitutive_apply"] = (
-        "    float prev = fw[idx];\n    fw[idx] = src;\n"
-        "    float a = f[idx] + kps * src;\n    f[idx] = a - kms * prev;")
+        "    float prev = dsigw ? fw[idx] : 0.0f;\n    if (dsigw) fw[idx] = src;\n"
+        "    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;\n"
+        "    f[idx] = value;")
     broken = [name for name, text in pinned.items() if text not in mutated]
     assert broken, (
         f"{kind} passed every exact-string pin, and the arithmetic legs cannot "
@@ -1611,10 +1953,10 @@ def test_the_arity_axis_folds_into_the_term_count_and_nothing_else(mask):
 
     For every one of the 63 live masks: the emitted source carries exactly
     ``popcount(mask)`` term calls; each is the right (partner volume, coefficient)
-    pair for its slot; a component with live rows accumulates exactly its own count
-    and a component with none emits no ``total`` at all and takes the certified
-    plain kernel's ``D * inv_eps`` body; and the wall-mask lines exist only for the
-    components that have a total to mask.
+    pair for its slot; a component with live rows forms a double row with exactly
+    its own count of presence-guarded adds, each reading its own slot's word, and a
+    component with none emits no row at all and takes the certified plain kernel's
+    ``D * inv_eps`` body; and the wall-mask lines exist only for live terms.
 
     That is the whole of what the axis does — which is why it is the one axis this
     family keeps at compile time, and why the boundary and wall axes, which change
@@ -1639,14 +1981,17 @@ def test_the_arity_axis_folds_into_the_term_count_and_nothing_else(mask):
 
     for component, (name, _source, _own) in enumerate(offdiag_emitter.E_TERMS):
         live = sum(mask[2 * component:2 * component + 2])
-        adds = [m for m in _TOTAL_ADD.finditer(text) if m["name"] == name]
-        firsts = [m for m in _TOTAL_FIRST.finditer(text) if m["name"] == name]
-        masks = [m for m in _MASK.finditer(text) if m["name"] == name]
-        assert len(firsts) == (1 if live else 0), (mask, name)
-        assert len(adds) == max(live - 1, 0), (mask, name)
-        assert len(masks) == (len(coverage.OFFDIAG_WALL_MASK_AXES[component])
-                              if live else 0), (mask, name)
-        coupled = f"float src_{name} = (gs_{name} * us_{name}) + total_{name};"
+        adds = [m for m in _ROW_ADD.finditer(text) if m["name"] == name]
+        starts = [m for m in _ROW_START.finditer(text) if m["name"] == name]
+        masks = [m for m in _MASK.finditer(text) if m["tag"].startswith(f"{name}_")]
+        assert len(starts) == (1 if live else 0), (mask, name)
+        assert len(adds) == live, (mask, name)
+        assert [m["kept"] for m in adds] == [
+            offdiag_emitter.KEPT_PARAMETERS[2 * component + offset]
+            for offset in (0, 1) if mask[2 * component + offset]], (mask, name)
+        assert len(masks) == live * len(coverage.OFFDIAG_WALL_MASK_AXES[component]), (
+            mask, name)
+        coupled = f"float src_{name} = (float)row_{name};"
         plain = f"float src_{name} = gs_{name} * us_{name};"
         assert (coupled in text) == bool(live), (mask, name)
         assert (plain in text) == (not live), (mask, name)
@@ -1823,7 +2168,7 @@ def test_the_launcher_refuses_both_a_layer_and_an_override():
         "the launcher must refuse both the pml-plus-override and the "
         "partial-override calls; a silent default is the half-cell error")
     arguments = [argument.arg for argument in launcher.args.kwonlyargs]
-    assert arguments == ["tables", "codes", "walls"], (
+    assert arguments == ["tables", "codes", "walls", "chunk_bounds", "kept"], (
         "the gate's overrides must be keyword-only: a positional table is how the "
         "certified sibling's sub-lattice pairing stayed one argument away from "
         "being wrong for a year")
@@ -1960,11 +2305,12 @@ def run_both_paths_folded(mask, symmetry, substitution, steps=2,
         coverage.BC_CODES[substitution if kind == "mirror" else kind]
         for kind in coverage.real_pml_boundary_kinds(grid))
     walls = coverage.offdiag_wall_mask_flags(grid)
+    record, kept = chunk_arguments(fields, layer, codes)
     text = offdiag_emitter.offdiag_source(mask)
     arrays = _device_arrays(fields, rows)
     for _ in range(steps):
         evaluate_emitted_source(text, arrays, _tables_for(layer), codes, walls,
-                                grid.shape)
+                                grid.shape, record, kept)
         _advance_sources(fields)
         arrays = _device_arrays(fields, rows)
     return oracle, _bits(fields), moved, deviation, ghost

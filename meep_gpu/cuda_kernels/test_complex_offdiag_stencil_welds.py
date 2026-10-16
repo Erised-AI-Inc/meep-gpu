@@ -40,7 +40,6 @@ from typing import Any, Dict, Tuple
 
 import pytest
 
-from . import complex_emitter
 from . import complex_offdiag_stencil_weld as weld
 from . import complex_offdiag_update_e as offdiag
 from . import complex_no_pml_offdiag_fused_electric_pair as no_pml_pair
@@ -54,7 +53,6 @@ FAMILIES: Tuple[Tuple[str, Any, str, str, int, int], ...] = (
     ("no_pml", no_pml_pair, "no_pml", "bc_", 3, 3),
 )
 
-_ARMS = tuple(sorted(complex_emitter.EXPANSIONS))
 _MASKS = ((1, 1, 1, 1, 1, 1), (1, 0, 0, 0, 0, 0), (0, 1, 1, 0, 1, 0),
           (0, 0, 0, 0, 0, 1))
 
@@ -71,9 +69,8 @@ def code_only(source: str) -> str:
     return "\n".join(line.split("//", 1)[0] for line in source.splitlines())
 
 
-def _sources(module: Any) -> Dict[Tuple[Tuple[int, ...], str], str]:
-    return {(mask, arm): module.kernel_source(mask, arm)
-            for mask in _MASKS for arm in _ARMS}
+def _sources(module: Any) -> Dict[Tuple[int, ...], str]:
+    return {mask: module.kernel_source(mask) for mask in _MASKS}
 
 
 # ---------------------------------------------------------------------------
@@ -116,15 +113,15 @@ def test_every_emitted_source_is_one_pure_ascii_kernel(label, module, arm, prefi
     non-interactive shell on the validation host gets. Two em-dashes killed a
     sibling kernel at its first launch on 2026-08-15.
     """
-    for (mask, expansion), source in _sources(module).items():
+    for mask, source in _sources(module).items():
         entries = re.findall(r'extern "C" __global__ void (\w+)\(', source)
-        assert entries == [module.KERNEL_NAME], (mask, expansion, entries)
+        assert entries == [module.KERNEL_NAME], (mask, entries)
         source.encode("ascii")
         stripped = source
         for token in ("__restrict__", "__global__", "__device__", "__forceinline__",
                       "__fmaf_rn"):
             stripped = stripped.replace(token, "")
-        assert "__" not in stripped, (mask, expansion)
+        assert "__" not in stripped, (mask,)
 
 
 @pytest.mark.parametrize("label,module,arm,prefix,scratch,replaces", FAMILIES)
@@ -138,19 +135,19 @@ def test_no_device_helper_or_define_is_emitted_twice(label, module, arm, prefix,
     definition does not compile and a duplicate ``#define`` is diagnosed only as a
     warning, so both are checked here where the failure is a named assertion.
     """
-    for (mask, expansion), source in _sources(module).items():
+    for mask, source in _sources(module).items():
         helpers = re.findall(r'__device__ __forceinline__ \w+ (\w+)\(', source)
         repeated = [name for name, count in collections.Counter(helpers).items()
                     if count > 1]
-        assert not repeated, (mask, expansion, repeated)
+        assert not repeated, (mask, repeated)
         defines = re.findall(r"#define (\w+)", source)
         repeated = [name for name, count in collections.Counter(defines).items()
                     if count > 1]
-        assert not repeated, (mask, expansion, repeated)
+        assert not repeated, (mask, repeated)
         # BC_MIRROR and MIRROR_ROW are the constitutive's alone and must survive;
         # the curl's two must appear exactly once between the two preludes.
         assert set(defines) >= {"BC_PERIODIC", "BC_METALLIC", "BC_MIRROR",
-                                "MIRROR_ROW", "NEAR_SOURCE_ROW"}, (mask, expansion)
+                                "MIRROR_ROW", "NEAR_SOURCE_ROW"}, (mask,)
 
 
 @pytest.mark.parametrize("label,module,arm,prefix,scratch,replaces", FAMILIES)
@@ -164,10 +161,10 @@ def test_the_splice_order_puts_every_definition_before_its_first_use(
     resolution would compile the first two backwards and fail at NVRTC on the
     validation host rather than here.
     """
-    for (mask, expansion), source in _sources(module).items():
+    for mask, source in _sources(module).items():
         def at(needle: str) -> int:
             index = source.find(needle)
-            assert index >= 0, (mask, expansion, needle)
+            assert index >= 0, (mask, needle)
             return index
 
         assert at("#define BC_MIRROR") < at(
@@ -187,7 +184,7 @@ def test_the_certified_samplers_are_carried_and_never_called(
         label, module, arm, prefix, scratch, replaces):
     """Dead certified code is EVIDENCE only while nothing calls it.
 
-    ``up_sample`` and ``down_sample`` are lifted whole from the certified
+    ``pair_window`` and ``down_sample`` are lifted whole from the certified
     constitutive prelude rather than dropped, on ``complex_offdiag_update_e``'s own
     precedent: forking a prelude to remove dead helpers is the silent divergence
     indirection exists to prevent. What makes carrying them safe is that the weld
@@ -195,16 +192,16 @@ def test_the_certified_samplers_are_carried_and_never_called(
     a mutation of each as a MUST-BE-UNCAUGHT null -- which is only a valid null while
     this holds.
     """
-    for (mask, expansion), source in _sources(module).items():
-        for name in ("up_sample", "down_sample"):
+    for mask, source in _sources(module).items():
+        for name in ("pair_window", "down_sample"):
             declaration = f"__device__ __forceinline__ cf {name}("
-            assert source.count(declaration) == 1, (mask, expansion, name)
+            assert source.count(declaration) == 1, (mask, name)
             calls = re.findall(rf"(?<![A-Za-z0-9_]){name}\(", code_only(source))
             # ONE occurrence: the declaration itself. Every other spelling in the
             # compiled text is `resolved_{name}(`, which the negative lookbehind on
             # `_` excludes; the certified comments that NAME the helper are stripped
             # by code_only, because the claim is about calls and not about prose.
-            assert len(calls) == 1, (mask, expansion, name, len(calls))
+            assert len(calls) == 1, (mask, name, len(calls))
 
 
 @pytest.mark.parametrize("label,module,arm,prefix,scratch,replaces", FAMILIES)
@@ -219,14 +216,13 @@ def test_the_constitutive_body_binds_no_volume_the_launch_does_not(
     best and a second binding of an unwritten volume at worst.
     """
     for mask in _MASKS:
-        for expansion in _ARMS:
-            body = weld.constitutive_body(module.ARM, mask, expansion,
-                                          boundary_prefix=prefix)
-            code = "\n".join(line.split("//", 1)[0] for line in body.splitlines())
-            assert not re.search(r"(?<![A-Za-z0-9_])D[xyz](?![A-Za-z0-9_])", code), (
-                mask, expansion)
-            assert re.search(r"(?<![A-Za-z0-9_])v_x(?![A-Za-z0-9_])", code)
-            assert "weld);" in body, (mask, expansion)
+        body = weld.constitutive_body(module.ARM, mask,
+                                      boundary_prefix=prefix)
+        code = "\n".join(line.split("//", 1)[0] for line in body.splitlines())
+        assert not re.search(r"(?<![A-Za-z0-9_])D[xyz](?![A-Za-z0-9_])", code), (
+            mask,)
+        assert re.search(r"(?<![A-Za-z0-9_])v_x(?![A-Za-z0-9_])", code)
+        assert "weld);" in body, (mask,)
 
 
 def test_the_folded_family_reads_its_own_boundary_triple():
@@ -239,19 +235,18 @@ def test_the_folded_family_reads_its_own_boundary_triple():
     comment exists to prevent.
     """
     for mask in _MASKS:
-        for expansion in _ARMS:
-            plain = weld.constitutive_body("pml", mask, expansion,
-                                           boundary_prefix="bc_")
-            renamed = weld.constitutive_body("pml", mask, expansion,
-                                             boundary_prefix="cbc_")
-            before = len(re.findall(r"(?<![A-Za-z0-9_])bc_[xyz](?![A-Za-z0-9_])",
-                                    plain))
-            after = len(re.findall(r"(?<![A-Za-z0-9_])cbc_[xyz](?![A-Za-z0-9_])",
-                                   renamed))
-            assert before > 0 and before == after, (mask, expansion, before, after)
-            assert not re.search(r"(?<![A-Za-z0-9_])bc_[xyz](?![A-Za-z0-9_])",
-                                 "\n".join(line.split("//", 1)[0]
-                                           for line in renamed.splitlines()))
+        plain = weld.constitutive_body("pml", mask,
+                                       boundary_prefix="bc_")
+        renamed = weld.constitutive_body("pml", mask,
+                                         boundary_prefix="cbc_")
+        before = len(re.findall(r"(?<![A-Za-z0-9_])bc_[xyz](?![A-Za-z0-9_])",
+                                plain))
+        after = len(re.findall(r"(?<![A-Za-z0-9_])cbc_[xyz](?![A-Za-z0-9_])",
+                               renamed))
+        assert before > 0 and before == after, (mask, before, after)
+        assert not re.search(r"(?<![A-Za-z0-9_])bc_[xyz](?![A-Za-z0-9_])",
+                             "\n".join(line.split("//", 1)[0]
+                                       for line in renamed.splitlines()))
 
 
 def test_the_pml_arm_renames_only_the_half_integer_kms():
@@ -261,15 +256,19 @@ def test_the_pml_arm_renames_only_the_half_integer_kms():
     ``update_E``. In one scope the bare name collides, and letting one shadow the
     other is half a cell in the absorber profile rather than a compile failure.
     """
-    body = weld.constitutive_body("pml", (1, 1, 1, 1, 1, 1), "NAIVE",
+    body = weld.constitutive_body("pml", (1, 1, 1, 1, 1, 1),
                                   boundary_prefix="cbc_")
-    assert body.count("kms_half_x[i]") == 1
-    assert body.count("kms_half_y[j]") == 1
-    assert body.count("kms_half_z[k]") == 1
+    assert body.count("kms_half_x[i], in_h_x);") == 1
+    assert body.count("kms_half_y[j], in_h_y);") == 1
+    assert body.count("kms_half_z[k], in_h_z);") == 1
     assert not re.search(r"(?<![A-Za-z0-9_])kms_[xyz]\[", body)
-    # The store arm has no tail coefficients at all, which is a predicate clause
-    # rather than an omission.
-    store = weld.constitutive_body("no_pml", (1, 1, 1, 1, 1, 1), "NAIVE")
+
+
+def test_the_store_arm_carries_no_tail_coefficients():
+    """The store arm has no tail coefficients at all, which is a predicate clause
+    rather than an omission -- asked of the no-absorber family's body once that arm
+    is derived onto the chunk-form row (it refuses at derivation until then)."""
+    store = weld.constitutive_body("no_pml", (1, 1, 1, 1, 1, 1))
     assert "constitutive_apply(" not in store
     assert not re.search(r"(?<![A-Za-z0-9_])k[mp]s_", store)
 
@@ -285,7 +284,7 @@ def test_the_scratch_group_is_a_separate_binding_group(label, module, arm, prefi
     already overwritten. ``assert_scratch_is_disjoint`` checks it at run time by base
     address; this checks that the SIGNATURE has somewhere to put a separate one.
     """
-    source = module.kernel_source((1, 1, 1, 1, 1, 1), "NAIVE")
+    source = module.kernel_source((1, 1, 1, 1, 1, 1))
     signature = code_only(
         source.split('extern "C" __global__ void ', 1)[1].split("\n) {\n")[0])
     outs = re.findall(r"float\* __restrict__ (\w+_out)", signature)
@@ -388,24 +387,29 @@ def test_the_shared_lift_refuses_a_moved_anchor_by_name():
 # The predicate
 # ---------------------------------------------------------------------------
 
-def _folded_complex_fixture():
-    """A folded complex grid with an off-diagonal row -- the folded cell's shape."""
+def _folded_complex_fixture(xp=None):
+    """A folded complex grid with an off-diagonal row -- the folded cell's shape.
+
+    On NumPy unless ``xp`` names another array module: the device-resourced test
+    builds it on CuPy, where the launch's volumes live.
+    """
     import numpy as np  # noqa: PLC0415 - fixture only
 
     from ..fields import Fields  # noqa: PLC0415
     from ..grid import Grid, Mirror  # noqa: PLC0415
     from ..pml import PML  # noqa: PLC0415
 
+    xp = np if xp is None else xp
     grid = Grid(resolution=10.0, cell_size=(1.6, 2.0, 0.0), dimensions=2,
-                courant=0.35, symmetry=(Mirror("Y", 1),), xp=np)
+                courant=0.35, symmetry=(Mirror("Y", 1),), xp=xp)
     fields = Fields(grid=grid, force_complex_fields=True)
     shape = tuple(grid.shape)
     names = ("Ex", "Ey", "Ez")
     fields.set_epsilon_volumes(
-        {n: np.full(shape, v, np.float32) for n, v in zip(names, (2.0, 2.5, 3.0))},
-        {n: np.full(shape, np.float32(1.0 / v), np.float32)
+        {n: xp.full(shape, v, np.float32) for n, v in zip(names, (2.0, 2.5, 3.0))},
+        {n: xp.full(shape, np.float32(1.0 / v), np.float32)
          for n, v in zip(names, (2.0, 2.5, 3.0))},
-        chi1inv_offdiagonal={"Ex": {"Ey": np.full(shape, np.float32(0.25))}})
+        chi1inv_offdiagonal={"Ex": {"Ey": xp.full(shape, np.float32(0.25))}})
     fields.enable_pml_storage()
     # PER AXIS, and per FACE. A two-cell layer does not fit on a zero-extent z, and
     # the folded Y's LOW face is the mirror plane -- a boundary condition, not an
@@ -415,47 +419,16 @@ def _folded_complex_fixture():
 
 
 @pytest.mark.parametrize("label,module,arm,prefix,scratch,replaces", FAMILIES)
-def test_the_predicate_refuses_a_missing_licence_by_name(
-        label, module, arm, prefix, scratch, replaces):
-    """No licence is a REFUSAL, not a default -- asked on a grid that gets that far.
-
-    The complex multiply's arm is a MEASURED PLATFORM FACT; a predicate that
-    defaulted one would license a binary nobody classified. Asked on a real folded
-    complex grid rather than a bare object, so the refusal that comes back is the
-    licence clause and not an earlier structural one -- which is what makes this a
-    statement about the licence rather than about the fixture.
-    """
-    from ..cuda_kernels.coverage import (  # noqa: PLC0415
-        complex_expansion_refusal,
-    )
-
-    refusal = complex_expansion_refusal(None, "keep")
-    assert refusal and ("licence" in refusal or "license" in refusal)
-    predicate = getattr(module, f"covers_{module.FAMILY[5:]}")
-    fields, pml = _folded_complex_fixture()
-    covered, reason = predicate(fields, pml, fields.grid, ())
-    assert covered is False
-    if label == "folded":
-        assert "licence" in reason or "license" in reason, reason
-    else:
-        # The no-absorber family refuses this fixture on its ACTIVE LAYER first,
-        # which is the earlier and more fundamental clause; its licence clause is
-        # the same shared one asserted above.
-        assert reason.startswith("curl half: "), reason
-
-
-@pytest.mark.parametrize("label,module,arm,prefix,scratch,replaces", FAMILIES)
 def test_the_predicate_is_a_conjunction_that_opens_on_its_curl_half(
         label, module, arm, prefix, scratch, replaces):
     """The first refusal is the CURL half's, prefixed, and nothing is weakened.
 
-    Asked with a licence-shaped object that is not a verdict, so the refusal comes
-    from the certified half rather than from this product's own clauses -- which is
-    what makes the prefix a proof that the half was asked at all.
+    Asked on objects that are not engine fields, so the refusal comes from the
+    certified half rather than from this product's own clauses -- which is what makes
+    the prefix a proof that the half was asked at all.
     """
     predicate = getattr(module, f"covers_{module.FAMILY[5:]}")
-    covered, reason = predicate(object(), None, object(), (), "not-a-verdict",
-                                "keep")
+    covered, reason = predicate(object(), None, object(), ())
     assert covered is False
     assert reason.startswith("curl half: "), reason
 
@@ -542,7 +515,7 @@ def test_neither_product_bids_at_a_slot():
 
 
 @pytest.mark.parametrize("label,module,arm,prefix,scratch,replaces", FAMILIES)
-def test_the_corpus_digest_is_stable_and_covers_both_expansion_arms(
+def test_the_corpus_digest_is_stable(
         label, module, arm, prefix, scratch, replaces):
     """One sha256 over every source this family can emit.
 
@@ -553,21 +526,18 @@ def test_the_corpus_digest_is_stable_and_covers_both_expansion_arms(
     first = module.corpus_digest()
     assert first == module.corpus_digest()
     assert len(first) == 64
-    naive = module.kernel_source((1, 1, 1, 1, 1, 1), "NAIVE")
-    fma = module.kernel_source((1, 1, 1, 1, 1, 1), "FMA_V1")
-    assert naive != fma, "the two expansion arms emit the same text"
 
 
 @pytest.mark.parametrize("label,module,arm,prefix,scratch,replaces", FAMILIES)
 def test_every_live_row_mask_emits(label, module, arm, prefix, scratch, replaces):
-    """All 63 masks, one arm, so a mask that lost its anchor is caught here.
+    """All 63 masks, so a mask that lost its anchor is caught here.
 
     The certified emitter binds only the LIVE coefficients, so each mask is a
     different signature and a different set of term call sites for the seam rewrite
     to find.
     """
     for mask in offdiag.LIVE_ROW_MASKS:
-        source = module.kernel_source(mask, "NAIVE")
+        source = module.kernel_source(mask)
         live = sum(1 for flag in mask if flag)
         bound = len(re.findall(r"const float\* chi1inv_E[xyz]_E[xyz],", source))
         assert bound == live, (mask, bound, live)
@@ -575,20 +545,18 @@ def test_every_live_row_mask_emits(label, module, arm, prefix, scratch, replaces
 
 
 @pytest.mark.parametrize("label,module,arm,prefix,scratch,replaces", FAMILIES)
-def test_an_unknown_row_mask_or_arm_is_refused_by_name(label, module, arm, prefix,
-                                                       scratch, replaces):
-    """A wrong arm is a wrong ANSWER rather than a crash, so it is never defaulted."""
+def test_an_unknown_row_mask_is_refused_by_name(label, module, arm, prefix,
+                                               scratch, replaces):
+    """A mask with no live row emits nothing, so it is refused rather than defaulted."""
     with pytest.raises(ValueError):
-        module.kernel_source((0, 0, 0, 0, 0, 0), "NAIVE")
-    with pytest.raises((ValueError, KeyError)):
-        module.kernel_source((1, 1, 1, 1, 1, 1), "NOT_AN_ARM")
+        module.kernel_source((0, 0, 0, 0, 0, 0))
 
 
 # ---------------------------------------------------------------------------
 # The bindings, on a grid each family's OWN predicate gets structurally past
 # ---------------------------------------------------------------------------
 
-def _no_pml_complex_fixture():
+def _no_pml_complex_fixture(xp=None):
     """A complex no-absorber grid with an off-diagonal row -- the no-PML cell's shape.
 
     NO ``enable_pml_storage``, and that is the family's own clause rather than a
@@ -603,16 +571,17 @@ def _no_pml_complex_fixture():
     from ..grid import Grid  # noqa: PLC0415
     from ..pml import PML  # noqa: PLC0415
 
+    xp = np if xp is None else xp
     grid = Grid(resolution=10.0, cell_size=(1.6, 1.6, 0.0), dimensions=2,
-                courant=0.35, xp=np, k_point=(0.3892, 0.1597, 0.0))
+                courant=0.35, xp=xp, k_point=(0.3892, 0.1597, 0.0))
     fields = Fields(grid=grid, force_complex_fields=True)
     shape = tuple(grid.shape)
     names = ("Ex", "Ey", "Ez")
     fields.set_epsilon_volumes(
-        {n: np.full(shape, v, np.float32) for n, v in zip(names, (2.0, 2.5, 3.0))},
-        {n: np.full(shape, np.float32(1.0 / v), np.float32)
+        {n: xp.full(shape, v, np.float32) for n, v in zip(names, (2.0, 2.5, 3.0))},
+        {n: xp.full(shape, np.float32(1.0 / v), np.float32)
          for n, v in zip(names, (2.0, 2.5, 3.0))},
-        chi1inv_offdiagonal={"Ex": {"Ey": np.full(shape, np.float32(0.25))}})
+        chi1inv_offdiagonal={"Ex": {"Ey": xp.full(shape, np.float32(0.25))}})
     fields.enable_field_storage()
     return fields, PML(grid=grid, thickness=0)
 
@@ -637,16 +606,15 @@ def test_every_bound_volume_is_allocated_on_a_grid_this_family_serves(
     crash, and this file is where it is cheap to see.
 
     Asked on a fixture the family's own predicate gets STRUCTURALLY past -- the only
-    refusal left is the expansion licence, which is a platform verdict this suite
-    has no device to cut -- so the storage under test is the storage a real launch
-    would meet.
+    refusal left is the CuPy backend, which this host-only suite does not have -- so
+    the storage under test is the storage a real launch would meet.
     """
     fields, pml = _ADMITTED[label]()
     predicate = getattr(module, f"covers_{module.FAMILY[5:]}")
     covered, reason = predicate(fields, pml, fields.grid, ())
-    assert covered is False and ("licence" in reason or "license" in reason), (
+    assert covered is False and "backend is not CuPy" in reason, (
         f"{label}: this fixture is meant to clear every structural clause and stop "
-        f"at the licence; it stopped at {reason!r}")
+        f"at the backend; it stopped at {reason!r}")
 
     shape = tuple(int(n) for n in fields.grid.shape)
     missing = [name for name in module._FIELD_BINDINGS  # noqa: SLF001
@@ -678,11 +646,13 @@ def test_a_fresh_scratch_is_disjoint_from_every_binding(label, module, arm, pref
     answer for. The BINDING test above needs no device and is where the storage
     question is settled on the laptop.
     """
-    pytest.importorskip("cupy",
-                        reason="[requires_resource][cupy] the scratch builder "
-                               "allocates on the device and the disjointness check "
-                               "compares device base addresses")
-    fields, pml = _ADMITTED[label]()
+    cupy = pytest.importorskip("cupy",
+                               reason="[requires_resource][cupy] the scratch builder "
+                                      "allocates on the device and the disjointness "
+                                      "check compares device base addresses")
+    # ON THE DEVICE, as a run holds them: the check compares the base address of
+    # every bound volume, and a host array has none to compare.
+    fields, pml = _ADMITTED[label](xp=cupy)
     fresh = getattr(module, f"{module.FAMILY[5:]}_scratch")(fields)
     assert sorted(fresh) == sorted(module.SCRATCH_VOLUMES)
     for name, volume in fresh.items():

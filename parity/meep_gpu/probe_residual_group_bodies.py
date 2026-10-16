@@ -68,8 +68,9 @@ import numpy as np
 
 _HERE = Path(__file__).resolve().parent
 _API = _HERE.parents[1]
-if str(_API) not in sys.path:
-    sys.path.insert(0, str(_API))
+for _path in (str(_API), str(_HERE)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.dispersion import PolarizationState, Susceptibility  # noqa: E402
@@ -656,13 +657,6 @@ def build_cases(xp) -> List[Dict[str, Any]]:
     from meep_gpu.triton_kernels import launch as launch_module
     from meep_gpu.triton_kernels import no_pml as nopml
 
-    # The complex families need the certified EXPANSION probe — a MEASURED device
-    # fact, not a guess. Loaded off disk and passed in explicitly, because
-    # ``load_expansion_probe`` looks under the repo's results tree and a staged
-    # source tree does not carry it; without it the builder returns None and the
-    # case reports a harness fault as a coverage verdict.
-    probe_record = _load_expansion_probe()
-
     cases: List[Dict[str, Any]] = []
 
     # ---- (A) chi2/chi3 on the curls and update_H ---------------------------
@@ -811,8 +805,7 @@ def build_cases(xp) -> List[Dict[str, Any]]:
             "kernel_plan": (lambda f, p, s=sub_step: _admit_plan(
                 [(fcx, "folded_complex_pml_curl_coverage"),
                  (fcx, "folded_complex_composition_curl_coverage")],
-                lambda: fcx.plan_folded_complex_pml_curl(f, p, s,
-                                                         probe=probe_record))),
+                lambda: fcx.plan_folded_complex_pml_curl(f, p, s))),
         })
     cases.append({
         "name": "D_complex_fold_offdiag_update_H", "group": "D",
@@ -822,8 +815,7 @@ def build_cases(xp) -> List[Dict[str, Any]]:
         "make": complex_fold_offdiag, "array_path": stepping.update_H,
         "kernel_plan": (lambda f, p: _admit_plan(
             [(fcx, "folded_complex_constitutive_coverage")],
-            lambda: fcx.plan_folded_complex_constitutive(f, p, "H",
-                                                         probe=probe_record))),
+            lambda: fcx.plan_folded_complex_constitutive(f, p, "H"))),
     })
     cases.append({
         "name": "D_complex_fold_offdiag_update_E", "group": "D",
@@ -833,8 +825,7 @@ def build_cases(xp) -> List[Dict[str, Any]]:
         "make": complex_fold_offdiag, "array_path": stepping.update_E,
         "kernel_plan": (lambda f, p: _admit_plan(
             [(fcx, "folded_complex_constitutive_coverage")],
-            lambda: fcx.plan_folded_complex_constitutive(f, p, "E",
-                                                         probe=probe_record))),
+            lambda: fcx.plan_folded_complex_constitutive(f, p, "E"))),
     })
 
     # ROWSHAPE for (D). The fixture above is a 3-D box with ONE fold and no phase;
@@ -868,8 +859,7 @@ def build_cases(xp) -> List[Dict[str, Any]]:
                 "kernel_plan": (lambda f, p, s=sub_step: _admit_plan(
                     [(fcx, "folded_complex_pml_curl_coverage"),
                      (fcx, "folded_complex_composition_curl_coverage")],
-                    lambda: fcx.plan_folded_complex_pml_curl(f, p, s,
-                                                             probe=probe_record))),
+                    lambda: fcx.plan_folded_complex_pml_curl(f, p, s))),
             })
         cases.append({
             "name": f"D_ROWSHAPE_{tag}_update_H", "group": "D",
@@ -879,8 +869,7 @@ def build_cases(xp) -> List[Dict[str, Any]]:
             "make": maker, "array_path": stepping.update_H,
             "kernel_plan": (lambda f, p: _admit_plan(
                 [(fcx, "folded_complex_constitutive_coverage")],
-                lambda: fcx.plan_folded_complex_constitutive(f, p, "H",
-                                                             probe=probe_record))),
+                lambda: fcx.plan_folded_complex_constitutive(f, p, "H"))),
         })
 
     # ---- (E) conductivity + no PML at the curls ----------------------------
@@ -941,110 +930,6 @@ def build_cases(xp) -> List[Dict[str, Any]]:
     return cases
 
 
-#: The certified complex-multiply EXPANSION probe, the same artifact the coverage
-#: battery loads (``predicate_coverage_.../measure_predicate_coverage.py:PROBE``).
-EXPANSION_PROBE = ("parity/meep_gpu/results/complex_signed_zero_2026-08-12/"
-                   "results/run_2345/probe.json")
-
-
-def _load_expansion_probe() -> Optional[Dict[str, Any]]:
-    for candidate in (_API / EXPANSION_PROBE, _HERE / "expansion_probe.json"):
-        if candidate.exists():
-            return _normalize_legacy_expansion_probe(
-                json.loads(candidate.read_text(encoding="utf-8")), candidate)
-    return None
-
-
-def _normalize_legacy_expansion_probe(record: Dict[str, Any],
-                                      source: Any) -> Dict[str, Any]:
-    """Bring a pre-2026-08-15 probe artifact up to the schema the licence reads.
-
-    THE ARTIFACT THIS BATTERY LOADS WAS CUT ON 2026-08-12 and predates
-    two fields the licence rule now requires, so as it stands it REFUSES:
-
-    * ``subnormal_policy.resolved`` — the artifact names its policy
-      (``ieee_keep_ftz_stripped``) but not what that resolved to. Derived here
-      from the name via the gate's own constant, which is a lookup rather than a
-      guess, and ASSERTED rather than assumed.
-    * ``detail[...].licensable_arms_disagreement_words`` behind each
-      AMBIGUOUS_BOTH — derived from the record's OWN numbers and only where they
-      determine it: if the recorded ``mismatch_words`` are 0 for both FMA_V1 and
-      NAIVE then each equals the platform on those vectors, hence they equal each
-      other, hence the arms are 0 words apart. That is entailment, not inference.
-
-    ``candidates.policy`` is the one thing the artifact does not record and this
-    function will NOT invent — it is set equal to the resolved policy and the
-    record is MARKED, because the candidate arms were built host-side and whether
-    that host was keeping subnormals is simply not in the file. The mark is the
-    point: this battery is a laptop predicate-coverage check that needs a
-    licensable probe as an INPUT (the licence rule itself is tested in
-    ``meep_gpu/test_triton_complex_fields.py``), and a normalized legacy artifact
-    must never be mistaken for a freshly cut one.
-
-    THE REAL FIX IS A RE-CUT ON A DEVICE. gate_triton_complex writes both fields
-    now, and also refuses to emit a record whose operand classes cannot tell the
-    arms apart under the policy in force — which this artifact was never checked
-    for.
-    """
-    record = dict(record)
-    stamp = dict(record.get("subnormal_policy") or {})
-    if stamp and not stamp.get("resolved"):
-        assert stamp.get("policy") == "ieee_keep_ftz_stripped", (
-            f"{source}: unrecognised legacy policy stamp {stamp.get('policy')!r}; "
-            f"this function may only normalize the keep-policy artifact it names")
-        stamp["resolved"] = "keep"
-        record["subnormal_policy"] = stamp
-    if record.get("candidates") is None and stamp.get("resolved"):
-        record["candidates"] = {
-            "policy": stamp["resolved"],
-            "SUPPLIED_BY_NORMALIZATION": (
-                f"NOT MEASURED. {source} predates the candidate-policy stamp and "
-                f"does not record which policy its candidate arms were built "
-                f"under; this value is the record's own resolved policy, "
-                f"supplied so a laptop predicate battery can run. It is not "
-                f"evidence, and this artifact needs re-cutting on a device."),
-        }
-    detail = record.get("detail")
-    if isinstance(detail, dict):
-        record["detail"] = {name: _normalize_legacy_detail(entry)
-                            for name, entry in detail.items()}
-    vectors = dict(record.get("vectors") or {})
-    for name, value in (record.get("patterns") or {}).items():
-        if name not in vectors:
-            entries = record.get("detail", {}).get(name)
-            entries = entries if isinstance(entries, list) else [entries]
-            sizes = [e.get("vectors") for e in entries
-                     if isinstance(e, dict) and isinstance(e.get("vectors"), int)]
-            if sizes:
-                vectors[name] = max(sizes)
-            elif value != "AMBIGUOUS_BOTH":
-                continue          # only an ambiguity needs a vector count
-            else:                 # the scalar leg: same operands as its siblings
-                vectors[name] = max(vectors.values()) if vectors else 0
-    record["vectors"] = vectors
-    return record
-
-
-def _normalize_legacy_detail(entry: Any) -> Any:
-    """Back-fill ``licensable_arms_disagreement_words`` where the record's own
-    ``mismatch_words`` ENTAIL it: both licensable arms at 0 mismatch against the
-    platform means both equal it, so they equal each other. Anything else is left
-    alone — a missing number stays missing and refuses."""
-    if isinstance(entry, list):
-        return [_normalize_legacy_detail(item) for item in entry]
-    if not isinstance(entry, dict) or "licensable_arms_disagreement_words" in entry:
-        return entry
-    mismatch = entry.get("mismatch_words")
-    if isinstance(mismatch, dict) and mismatch.get("FMA_V1") == 0 \
-            and mismatch.get("NAIVE") == 0:
-        entry = dict(entry)
-        entry["licensable_arms_disagreement_words"] = 0
-        entry["discriminates"] = False
-        entry["_derived"] = ("both licensable arms matched the platform at 0 "
-                            "mismatch words, so they match each other")
-    return entry
-
-
 def _admit_plan(targets, builder):
     with admitting(*targets):
         return builder()
@@ -1085,6 +970,7 @@ def _dispersive_unit_coefficient_plan(disp, fields, pml):
     """
     import cupy as _cp
 
+    from gate_chunk_records import every_cell_record
     from meep_gpu.triton_kernels.dispersive_update_e import (
         E_TERMS, DispersiveConstitutivePlan, LivePoleBinding, poles_per_component)
     from meep_gpu.triton_kernels.kernels import DEFAULT_BLOCK
@@ -1105,6 +991,8 @@ def _dispersive_unit_coefficient_plan(disp, fields, pml):
         [ones if stem == "kps" else zeros
          for _axis in "xyz" for stem in ("kps", "kms")],
         LivePoleBinding(fields, poles_per_component(fields)),
+        # The substitution runs the accumulation on every cell: every-cell record.
+        chunk_bounds=every_cell_record(shape),
     )
 
 

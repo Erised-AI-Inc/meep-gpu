@@ -79,22 +79,6 @@ class StepContext:
     filtering the clause out of a refusal string (``predicate_battery.py:372-389``).
     A composer that could not be given that proxy could not reproduce the census.
 
-    ``licenses`` IS THREE ENTRIES AND NOT ONE. The complex families bind DIFFERENT
-    expansion records, and the census establishes that this is a property of the
-    arithmetic rather than a convenience: the Cartesian/cylindrical/folded/beta
-    complex arms take the four-pattern record, the complex no-absorber arms need
-    the seven-pattern one because ``update_P``'s first term is a complex64 array
-    times a python float that the four-pattern table does not classify, and the
-    complex off-diagonal arms need the PARITY licence because the mirror ghost puts
-    a python int on the LEFT of a complex64 plane (``predicate_battery.py:475-495``
-    and :985-1005). A shared argument would let a record that classified four
-    orientations licence a kernel that performs seven.
-
-    ``None`` IS NOT A DEFAULT ARM. A family whose licence is absent asks its
-    predicate with ``license=None`` and gets that family's own named refusal, which
-    is the fail-closed answer: which arm this host's reference multiply takes is a
-    MEASURED platform fact and a composer may not assume it.
-
     ``sources`` IS ``None`` UNTIL A CALLER DECLARES IT, AND ``None`` IS NOT ``()``.
     No slot arm reads it -- the four sub-step predicates do not care what the driver
     injects between them -- but the FUSION BLOCK does, because a fused pair spans the
@@ -103,23 +87,221 @@ class StepContext:
     (``deposit_repair.seam_source_reasons``'s ``undeclared`` clause). Defaulting to
     ``()`` here would turn "nobody told me" into "there are none", which is the
     over-covering the clause exists to prevent.
+
+    ``chunk_layout`` IS THE RUN'S CHUNK DIVISION (``chunk_map.ChunkLayout``), the one
+    every kernel reads through the ``int32[25]`` record. ``None`` means the lifted
+    division the fields carry (``Fields.chunk_layout``) when a lift installed one, and
+    otherwise the one-rank division of this grid and PML (``ChunkLayout.one_rank``),
+    which is what a driver built without MEEP steps with (``FdtdDriver.chunk_layout``);
+    :meth:`chunk_facts` records which the composition read (``source``). Everything
+    derived from it is computed ONCE per
+    context, which is once per composition and so once per frozen configuration: the
+    facts the coverage clause judges (:meth:`chunk_facts`), the host record
+    (:meth:`chunk_bounds`) and its one device upload (:meth:`chunk_bounds_device`),
+    which every plan of the composition shares.
     """
 
-    __slots__ = ("fields", "pml", "grid", "licenses", "subnormal_policy", "sources")
+    __slots__ = ("fields", "pml", "grid", "sources", "chunk_layout", "_chunk")
 
-    def __init__(self, fields: Any, pml: Any, grid: Any = None,
-                 licenses: Optional[Dict[str, Any]] = None,
-                 subnormal_policy: Any = None, sources: Any = None) -> None:
+    def __init__(self, fields: Any, pml: Any, grid: Any = None, sources: Any = None,
+                 chunk_layout: Any = None) -> None:
         self.fields = fields
         self.pml = pml
         self.grid = getattr(fields, "grid", None) if grid is None else grid
-        self.licenses = dict(licenses or {})
-        self.subnormal_policy = subnormal_policy
         self.sources = sources
+        self.chunk_layout = chunk_layout
+        self._chunk: Dict[str, Any] = {}
 
-    def license_for(self, key: Optional[str]) -> Any:
-        """The expansion licence one family binds, or ``None`` when it has none."""
-        return None if key is None else self.licenses.get(key)
+    # --- the chunk division ------------------------------------------------------
+
+    def _layout(self) -> Any:
+        """The division this composition reads, and the name of where it came from.
+
+        The one handed over; else the lifted one the fields carry
+        (``Fields.chunk_layout``, the division ``stepping._chunk_layout`` reads the
+        off-diagonal presence through), so a composer handed none on a lifted run
+        judges the division the array path steps rather than another; else the
+        one-rank default of the grid and PML (:data:`ONE_RANK_DEFAULT_SOURCE`).
+        """
+        if "layout" not in self._chunk:
+            from ..chunk_map import ChunkLayout, grid_frames  # noqa: PLC0415 - NumPy only
+
+            given = self.chunk_layout
+            if given is None:
+                given = getattr(self.fields, "chunk_layout", None)
+            if given is not None:
+                # The driver refuses a layout for another grid at set_chunk_layout; a
+                # composer handed one directly refuses it here, by the same test.
+                frames = None if self.grid is None else grid_frames(self.grid)
+                if frames is not None and given.frames != frames:
+                    raise ValueError(
+                        f"the chunk layout was built for another grid: its axis frames are "
+                        f"{given.frames}, this grid's {frames}")
+                self._chunk["layout"] = given
+                self._chunk["source"] = str(getattr(given, "source", "given"))
+            elif self.grid is None:
+                raise ValueError("the composition context carries no grid to derive the "
+                                 "one-rank division from")
+            else:
+                self._chunk["layout"] = ChunkLayout.one_rank(self.grid, self.pml)
+                self._chunk["source"] = ONE_RANK_DEFAULT_SOURCE
+        return self._chunk["layout"]
+
+    def chunk_facts(self) -> Dict[str, Any]:
+        """What :func:`.chunk_coverage.chunk_division_refusal` judges, derived once.
+
+        ``source`` names the division read (``"meep"``, ``"record"`` or
+        :data:`ONE_RANK_DEFAULT_SOURCE`); ``problem`` is set when none could be
+        derived; ``record_refusal`` carries ``chunk_map.chunk_bounds_record``'s own
+        refusal, verbatim, when no record describes the division; ``record`` is the
+        record as 25 Python ints otherwise; ``product_problems[axis]`` is
+        :func:`.chunk_coverage.chunk_product_problem`'s answer on that axis (both
+        sub-lattices), ``None`` where the record's labels name its chunk intervals.
+
+        NEVER RAISES. ``plan_step`` never raises, and a context whose grid or layer
+        cannot be read is a named refusal of every arm, not an exception.
+        """
+        facts = self._chunk.get("facts")
+        if facts is not None:
+            return facts
+        facts = {"source": None, "problem": None, "record_refusal": None,
+                 "record": None, "product_problems": {}}
+        try:
+            layout = self._layout()
+            facts["source"] = self._chunk.get("source")
+            from ..chunk_map import ChunkLayoutRefusal, chunk_bounds_record  # noqa: PLC0415
+
+            try:
+                record = chunk_bounds_record(layout)
+            except ChunkLayoutRefusal as refusal:
+                facts["record_refusal"] = str(refusal)
+            else:
+                self._chunk["record"] = record
+                facts["record"] = [int(value) for value in record]
+                facts["product_problems"] = {
+                    axis: _chunk_product_problem(layout, facts["record"], axis)
+                    for axis in range(3)}
+        except Exception as exc:  # noqa: BLE001 - a refusal, never an escape
+            facts["problem"] = f"{type(exc).__name__}: {exc}"
+        self._chunk["facts"] = facts
+        return facts
+
+    def chunk_division_refusal(self, chunk_axes: Sequence[int] = ()) -> Optional[str]:
+        """:func:`.chunk_coverage.chunk_division_refusal` over this context's facts."""
+        from .chunk_coverage import chunk_division_refusal  # noqa: PLC0415
+
+        return chunk_division_refusal(self.chunk_facts(), chunk_axes)
+
+    def chunk_bounds(self) -> Any:
+        """The host ``int32[25]`` record (``chunk_map.chunk_bounds_record``).
+
+        RAISES BY NAME where :meth:`chunk_division_refusal` refuses the division: no
+        kernel may be handed a record of a division the record does not describe.
+        """
+        refusal = self.chunk_division_refusal()
+        if refusal is not None:
+            raise RuntimeError(f"no chunk record for this composition: {refusal}")
+        return self._chunk["record"]
+
+    def chunk_bounds_device(self) -> Any:
+        """The record as ONE ``int32`` device vector: the kernels' ``cb`` argument.
+
+        Uploaded with the grid's array module at the first call and held for the
+        context's life, so every plan of one composition binds the same vector and a
+        re-freeze (a new composition) uploads the record it was rebuilt from. CUDA
+        kernels take it as ``const int* __restrict__ cb``; every thread reads the same
+        few words. ``chunk_uploads`` counts the uploads, for the tests that pin "once".
+        """
+        device = self._chunk.get("device")
+        if device is None:
+            record = self.chunk_bounds()
+            xp = getattr(self.grid, "xp", None)
+            if xp is None:
+                raise RuntimeError("no chunk record upload: the composition's grid "
+                                   "carries no array module")
+            device = self._chunk["device"] = xp.asarray(record, dtype=xp.int32)
+            self._chunk["uploads"] = int(self._chunk.get("uploads", 0)) + 1
+        return device
+
+    @property
+    def chunk_uploads(self) -> int:
+        """How many times this context uploaded its chunk record (0 or 1)."""
+        return int(self._chunk.get("uploads", 0))
+
+    def chunk_layout_block(self) -> Dict[str, Any]:
+        """The division as the dispatch record carries it: JSON-ready, derived once."""
+        facts = self.chunk_facts()
+        refused = self.chunk_division_refusal()
+        return {
+            "source": facts["source"],
+            "record": facts["record"],
+            "refused_because": refused,
+            "not_a_chunk_product_along": sorted(
+                _AXIS_NAMES[axis] for axis, why in facts["product_problems"].items()
+                if why),
+        }
+
+
+#: ``chunk_facts()["source"]`` when the composer was handed no division, the fields
+#: carry none, and it read the one-rank default of its grid and PML.
+#: ``fastpath._decide`` passes the driver's own division (``FdtdDriver.chunk_layout``)
+#: into :func:`plan_step`'s ``chunk_layout``, so a dispatched composition reads that
+#: division's own ``source`` (``"meep"`` when lifted, ``"one_rank"`` for a driver built
+#: without MEEP); a caller that hands no division in (the census, a gate, a test) reads
+#: the lifted division the fields carry, ``"meep"``, and this one only on fields that
+#: carry none.
+ONE_RANK_DEFAULT_SOURCE = ("one_rank (default of the grid and PML; no division was "
+                           "handed in)")
+
+_AXIS_NAMES = ("x", "y", "z")
+
+
+def _chunk_interval_owners(layout: Any, axis: int, half_integer: bool
+                           ) -> Optional[List[Optional[int]]]:
+    """Per stored row, the index of the chunk interval along ``axis`` that owns it.
+
+    ``None`` overall when the chunk cuts along the axis are local (a box face that
+    does not span the cross-section, ``ChunkLayout.boundaries``), since then no index
+    along the axis alone names a chunk. Per row: the interval ``k`` with
+    ``cuts[k] < p <= cuts[k + 1]`` (MEEP's ``owns``, vec.cpp:445-462) for the row's
+    resolved doubled coordinate ``p``; a ghost row reads its image row's interval
+    (the rule the membership line follows, ``ChunkLayout._ghost_rows``); any other
+    row MEEP does not own (a wall) is ``None``, nothing being stepped there.
+    """
+    import numpy  # noqa: PLC0415
+
+    frame = layout.frames[axis]
+    if frame.invariant:
+        return [0] * int(frame.stored)
+    cuts = layout.boundaries(axis)
+    if cuts is None:
+        return None
+    # The layout's own resolution and ghost map, so this reads the cells exactly as
+    # the membership line does (chunk_map.ChunkLayout.membership).
+    points, owned = layout._resolve(axis, half_integer)  # noqa: SLF001
+    interval = numpy.searchsorted(numpy.asarray(cuts), points, side="left") - 1
+    owners: List[Optional[int]] = [int(interval[row]) if owned[row] else None
+                                   for row in range(int(frame.stored))]
+    for row, image in layout._ghost_rows(axis, half_integer).items():  # noqa: SLF001
+        if not owned[row]:
+            owners[row] = owners[image]
+    return owners
+
+
+def _chunk_product_problem(layout: Any, record: Sequence[int], axis: int) -> Optional[str]:
+    """:func:`.chunk_coverage.chunk_product_problem` on both sub-lattices of one axis."""
+    from .chunk_coverage import chunk_product_problem, chunk_record_words  # noqa: PLC0415
+
+    for half in (False, True):
+        lattice = "half-integer" if half else "integer"
+        owners = _chunk_interval_owners(layout, axis, half)
+        if owners is None:
+            return (f"the chunk cuts along {_AXIS_NAMES[axis]} are local (a chunk face "
+                    f"does not span the cross-section)")
+        problem = chunk_product_problem(chunk_record_words(record, half, axis), owners)
+        if problem is not None:
+            return f"{problem} ({lattice} lattice)"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -128,8 +310,8 @@ class StepContext:
 #
 # MEASURED 2026-08-28 by reading every shipped ``covers_*`` signature under
 # ``meep_gpu/cuda_kernels/``: the 22 census families call through exactly SIX
-# positional shapes. Anything a family needs beyond the slot name — a licence, a
-# policy — rides on the context, never on the slot.
+# positional shapes. Anything a family needs beyond the slot name rides on the
+# context, never on the slot.
 
 #: Curl slot -> the ``sub_step`` argument. IDENTITY, and spelled anyway: the two
 #: curl slots are named for the sub-steps, the two constitutive slots are not, and
@@ -162,55 +344,25 @@ SHAPES: Tuple[str, ...] = (
     "curl_by_sub_step",             # (fields, pml, grid, sub_step)
     "constitutive_by_side",         # (fields, pml, grid, side)
     "whole_slot",                   # (fields, pml, grid)
-    "licensed_curl_by_sub_step",    # (..., sub_step, license=, subnormal_policy=)
-    "licensed_constitutive_by_side",  # (..., side, license=, subnormal_policy=)
-    "licensed_whole_slot",          # (..., license=, subnormal_policy=)
     "fill_by_family",               # (fields, grid, family)
 )
 
 
-def _bind_curl(predicate: Any, context: StepContext, slot: str,
-               license_key: Optional[str]) -> Any:
+def _bind_curl(predicate: Any, context: StepContext, slot: str) -> Any:
     return predicate(context.fields, context.pml, context.grid,
                      CURL_SLOT_SUB_STEPS[slot])
 
 
-def _bind_constitutive(predicate: Any, context: StepContext, slot: str,
-                       license_key: Optional[str]) -> Any:
+def _bind_constitutive(predicate: Any, context: StepContext, slot: str) -> Any:
     return predicate(context.fields, context.pml, context.grid,
                      CONSTITUTIVE_SLOT_SIDES[slot])
 
 
-def _bind_whole_slot(predicate: Any, context: StepContext, slot: str,
-                     license_key: Optional[str]) -> Any:
+def _bind_whole_slot(predicate: Any, context: StepContext, slot: str) -> Any:
     return predicate(context.fields, context.pml, context.grid)
 
 
-def _bind_licensed_curl(predicate: Any, context: StepContext, slot: str,
-                        license_key: Optional[str]) -> Any:
-    return predicate(context.fields, context.pml, context.grid,
-                     CURL_SLOT_SUB_STEPS[slot],
-                     license=context.license_for(license_key),
-                     subnormal_policy=context.subnormal_policy)
-
-
-def _bind_licensed_constitutive(predicate: Any, context: StepContext, slot: str,
-                                license_key: Optional[str]) -> Any:
-    return predicate(context.fields, context.pml, context.grid,
-                     CONSTITUTIVE_SLOT_SIDES[slot],
-                     license=context.license_for(license_key),
-                     subnormal_policy=context.subnormal_policy)
-
-
-def _bind_licensed_whole_slot(predicate: Any, context: StepContext, slot: str,
-                              license_key: Optional[str]) -> Any:
-    return predicate(context.fields, context.pml, context.grid,
-                     license=context.license_for(license_key),
-                     subnormal_policy=context.subnormal_policy)
-
-
-def _bind_fill(predicate: Any, context: StepContext, slot: str,
-               license_key: Optional[str]) -> Any:
+def _bind_fill(predicate: Any, context: StepContext, slot: str) -> Any:
     # NO ``pml``: the in-seam passes read no absorber -- ``fill_symmetry_bc_*`` runs
     # whether or not a layer is installed -- and their predicates take the grid and
     # the family alone (``in_seam_coverage.covers_fill_symmetry``).
@@ -221,15 +373,12 @@ _SHAPE_BINDERS: Dict[str, Callable[..., Any]] = {
     "curl_by_sub_step": _bind_curl,
     "constitutive_by_side": _bind_constitutive,
     "whole_slot": _bind_whole_slot,
-    "licensed_curl_by_sub_step": _bind_licensed_curl,
-    "licensed_constitutive_by_side": _bind_licensed_constitutive,
-    "licensed_whole_slot": _bind_licensed_whole_slot,
     "fill_by_family": _bind_fill,
 }
 
 
 def coverage_adapter(predicate: Any, shape: str,
-                     license_key: Optional[str] = None) -> Callable[..., Coverage]:
+                     chunk_axes: Sequence[int] = ()) -> Callable[..., Coverage]:
     """The ONE place a ``(bool, str)`` CUDA predicate becomes a ``Coverage``.
 
     THE REASON IS WRAPPED IN A TUPLE, and that is not decoration. The shared
@@ -239,6 +388,14 @@ def coverage_adapter(predicate: Any, shape: str,
     Measured on this tree: ``"no PML"`` came back as six prefixed one-character
     "reasons". Every family goes through here so no family can get it wrong once.
 
+    THE CHUNK-DIVISION CLAUSE IS ASKED HERE TOO, AFTER THE FAMILY ADMITS. Every arm
+    refuses a division no chunk record describes, and an arm whose row declares
+    ``chunk_axes`` (the off-diagonal and cylindrical families) also refuses one whose
+    record does not name its chunks along those axes
+    (:func:`.chunk_coverage.chunk_division_refusal`). It is asked after the family's own
+    predicate, so a configuration the family refuses keeps the family's reason and
+    the census's attribution is unchanged wherever the division is not the question.
+
     A predicate that raises, or returns something that is not a ``(covered, reason)``
     pair, is NOT handled here on purpose: the shared ``_guarded_verdict`` already
     turns both into a named refusal, and catching them a second time would give this
@@ -247,9 +404,14 @@ def coverage_adapter(predicate: Any, shape: str,
     if shape not in _SHAPE_BINDERS:
         raise ValueError(f"shape must be one of {SHAPES}, got {shape!r}")
     binder = _SHAPE_BINDERS[shape]
+    axes = tuple(int(axis) for axis in chunk_axes)
 
     def coverage(context: StepContext, slot: str) -> Coverage:
-        covered, reason = binder(predicate, context, slot, license_key)
+        covered, reason = binder(predicate, context, slot)
+        if covered:
+            refusal = context.chunk_division_refusal(axes)
+            if refusal is not None:
+                return Coverage(False, (refusal,))
         return Coverage(bool(covered), (str(reason),))
 
     return coverage
@@ -358,6 +520,18 @@ class CudaSlotPlan:
     def launchable(self) -> bool:
         """Is there an established launch -- resolution AND launcher -- for this slot?"""
         return self.resolve_launch_args is not None and self.launch_kernel is not None
+
+    @property
+    def chunk_bounds(self) -> Any:
+        """The composition's chunk record on the device (``chunk_bounds_device``).
+
+        One vector per composition, shared by every plan in it; raises by name when
+        the plan carries no context or the context's division has no record.
+        """
+        if self._context is None:
+            raise RuntimeError(f"{self.family}/{self.slot} carries no composition "
+                               "context, so it has no chunk record to bind")
+        return self._context.chunk_bounds_device()
 
     def run(self, *_args: Any, **_kwargs: Any) -> Dict[str, Any]:
         """The single launch. NEEDS A DEVICE, and nothing in a plan build calls it.
@@ -535,7 +709,17 @@ class _RealPmlCurlLauncher:
 
 
 class _RealPmlConstitutiveLauncher:
-    """The certified real-PML constitutive wrappers, the twin of the curl launcher."""
+    """The certified real-PML constitutive wrappers, the twin of the curl launcher.
+
+    THE RUN'S FIRST ``update_H`` STARTS H FROM B FIRST. MEEP allocates H and ``f_w``
+    as copies of B, on the chunks that carry H's own layer, at the first
+    ``update_eh(H_stuff)`` (update_eh.cpp:165-177); the array path does the same in
+    ``stepping.separate_h_from_b``, which ``stepping.update_H`` calls and which a
+    kernel serving the slot would otherwise skip. So a launch at ``update_H`` with
+    ``fields.h_separated`` still False runs that start, on the array path, with the
+    layer the resolver bound (``"layer"``), before the kernel. It runs once: the start
+    records ``h_separated``. A seeded mid-run state carries True and takes no start.
+    """
 
     _WRAPPERS = {"update_H": "_update_H_fused_pml_real",
                  "update_E": "_update_E_fused_pml_real"}
@@ -546,10 +730,23 @@ class _RealPmlConstitutiveLauncher:
                  ) -> Dict[str, Any]:
         from . import constitutive_kernels  # noqa: PLC0415 - imports cupy at scope
 
-        getattr(constitutive_kernels, self._WRAPPERS[slot])(fields, **arguments)
+        launch = dict(arguments)
+        layer = launch.pop("layer", None)
+        started = False
+        if slot == "update_H" and not bool(getattr(fields, "h_separated", True)):
+            if layer is None:
+                raise RuntimeError(
+                    "the run's first update_H starts H from B (stepping.separate_h_from_b) "
+                    "and this launch was resolved without the layer it needs")
+            from ..stepping import separate_h_from_b  # noqa: PLC0415 - NumPy/CuPy array path
+
+            separate_h_from_b(fields, layer)
+            started = True
+        getattr(constitutive_kernels, self._WRAPPERS[slot])(fields, **launch)
         threads = constitutive_kernels._CONSTITUTIVE_THREADS  # noqa: SLF001
         count = int(getattr(fields, self._TARGETS[slot]).size)
-        return {"launched": True, "blocks": (count + threads - 1) // threads}
+        return {"launched": True, "blocks": (count + threads - 1) // threads,
+                "h_started": started}
 
     def warm(self, slot: str) -> Optional[str]:
         from . import constitutive_kernels  # noqa: PLC0415 - imports cupy at scope
@@ -578,7 +775,10 @@ def resolve_curl_launch_args(context: StepContext, slot: str) -> Dict[str, Any]:
     * the tables come from the SHIPPED flattener with the sub-lattice taken from
       :data:`CURL_SLOT_SUB_LATTICE` rather than re-derived;
     * ``dtdx`` is ``grid.dt / grid.dx`` as a python float, which is what the kernel
-      takes.
+      takes;
+    * ``chunk_bounds`` is the composition's chunk record, uploaded once and shared by
+      every plan of the composition (:meth:`StepContext.chunk_bounds_device`): the
+      kernels choose each cell's PML form from it.
 
     RAISES on a host with no CuPy, and on a grid the predicate refuses. Both are
     correct: callers gate on the predicate first, and ``_select_slot`` turns a
@@ -594,6 +794,7 @@ def resolve_curl_launch_args(context: StepContext, slot: str) -> Dict[str, Any]:
         "tables": real_pml_curl_tables(context.pml, CURL_SLOT_SUB_LATTICE[slot]),
         "boundary_codes": real_curl_boundary_codes(context.grid),
         "dtdx": float(context.grid.dt / context.grid.dx),
+        "chunk_bounds": context.chunk_bounds_device(),
     }
 
 
@@ -607,13 +808,19 @@ def resolve_constitutive_launch_args(context: StepContext,
     the same function the predicate asks — so the two cannot disagree about which
     sub-lattice a side reads (``constitutive_kernels.py:444-462``). Binding the
     other one is a half-cell error in the absorber, not a crash.
+
+    ``chunk_bounds`` is the composition's chunk record, as for the curl. ``layer`` is
+    the PML itself, which only the run's first ``update_H`` reads: the start of H from
+    B (:class:`_RealPmlConstitutiveLauncher`).
     """
     from .constitutive_kernels import (  # noqa: PLC0415 - see the curl resolver
         constitutive_tables_for,
     )
 
     return {"tables": constitutive_tables_for(CONSTITUTIVE_SLOT_SIDES[slot],
-                                              context.pml)}
+                                              context.pml),
+            "chunk_bounds": context.chunk_bounds_device(),
+            "layer": context.pml}
 
 
 # ---------------------------------------------------------------------------
@@ -746,67 +953,89 @@ launch_dispersive_offdiag = _DispersiveOffdiagLauncher()
 
 
 def resolve_offdiag_launch_args(context: StepContext, slot: str) -> Dict[str, Any]:
-    """``(tables, codes, walls)`` for the unfolded off-diagonal ``update_E``.
+    """``(tables, codes, walls, chunk_bounds, kept)`` for the unfolded off-diagonal ``update_E``.
 
-    The three calls ``update_E_offdiag_fused_pml_real`` makes when handed ``pml``
+    The calls ``update_E_offdiag_fused_pml_real`` makes when handed ``pml``
     (``offdiag_constitutive_kernels.py``, its ``if pml is not None`` branch), on the
-    same objects: the layer, and the grid of the ``Fields`` being launched on.
+    same objects: the layer, and the grid of the ``Fields`` being launched on. The chunk
+    record is the composition's one upload; the presence words are built against that
+    record and refuse by name where it does not reproduce the array path's presence.
     """
     from .offdiag_constitutive_kernels import (  # noqa: PLC0415 - imports cupy at scope
         offdiag_boundary_codes,
+        offdiag_chunk_arguments,
         offdiag_constitutive_tables,
         offdiag_wall_mask_flags,
     )
 
     grid = context.fields.grid
+    codes = offdiag_boundary_codes(grid, context.pml)
+    _record, kept = offdiag_chunk_arguments(context.fields, context.pml, codes,
+                                            context.chunk_bounds())
     return {"tables": offdiag_constitutive_tables(context.pml),
-            "codes": offdiag_boundary_codes(grid, context.pml),
-            "walls": offdiag_wall_mask_flags(grid)}
+            "codes": codes,
+            "walls": offdiag_wall_mask_flags(grid),
+            "chunk_bounds": context.chunk_bounds_device(),
+            "kept": kept}
 
 
 def resolve_folded_offdiag_launch_args(context: StepContext,
                                        slot: str) -> Dict[str, Any]:
-    """``(tables, codes, walls, weights)`` for the folded off-diagonal ``update_E``.
+    """``(tables, codes, walls, weights, chunk_bounds, kept)`` for the folded off-diagonal ``update_E``.
 
-    The four calls ``update_E_folded_offdiag_fused_pml_real`` makes when handed
-    ``pml``: the half-integer tables, the codes with ``mirror`` in the table, the
-    wall flags off the grid's declaration, and the ghost weights through
-    ``fields.mirror_parity``.
+    The calls ``update_E_folded_offdiag_fused_pml_real`` makes when handed ``pml``:
+    the half-integer tables, the codes with ``mirror`` in the table, the wall flags
+    off the grid's declaration, the ghost weights through ``fields.mirror_parity``,
+    and the presence words against the composition's one record upload.
     """
     from .coverage import offdiag_wall_mask_flags  # noqa: PLC0415
     from .folded_offdiag_kernels import (  # noqa: PLC0415
         folded_offdiag_boundary_codes,
+        folded_offdiag_chunk_arguments,
         folded_offdiag_constitutive_tables,
         mirror_ghost_weights,
     )
 
     grid = context.fields.grid
+    codes = folded_offdiag_boundary_codes(grid, context.pml)
+    _record, kept = folded_offdiag_chunk_arguments(context.fields, context.pml, codes,
+                                                   context.chunk_bounds())
     return {"tables": folded_offdiag_constitutive_tables(context.pml),
-            "codes": folded_offdiag_boundary_codes(grid, context.pml),
+            "codes": codes,
             "walls": offdiag_wall_mask_flags(grid),
-            "weights": mirror_ghost_weights(grid)}
+            "weights": mirror_ghost_weights(grid),
+            "chunk_bounds": context.chunk_bounds_device(),
+            "kept": kept}
 
 
 def resolve_dispersive_offdiag_launch_args(context: StepContext,
                                            slot: str) -> Dict[str, Any]:
-    """``(tables, codes, walls, weights)`` for the dispersive off-diagonal ``update_E``.
+    """``(tables, codes, walls, weights, chunk_bounds, kept)`` for the dispersive
+    off-diagonal ``update_E``.
 
-    The four calls ``update_E_dispersive_offdiag_fused_pml_real`` makes when handed
-    ``pml``. The pole chain is deliberately NOT resolved here; see
+    The derivations ``update_E_dispersive_offdiag_fused_pml_real`` makes when handed
+    ``pml``, the presence words built against the composition's own record (the
+    folded resolver's pattern). The pole chain is deliberately NOT resolved here; see
     :class:`_DispersiveOffdiagLauncher`.
     """
     from .coverage import offdiag_wall_mask_flags  # noqa: PLC0415
     from .dispersive_offdiag_update_e import (  # noqa: PLC0415
         dispersive_offdiag_boundary_codes,
+        dispersive_offdiag_chunk_arguments,
         dispersive_offdiag_constitutive_tables,
         mirror_ghost_weights,
     )
 
     grid = context.fields.grid
+    codes = dispersive_offdiag_boundary_codes(grid, context.pml)
+    _record, kept = dispersive_offdiag_chunk_arguments(context.fields, context.pml,
+                                                       codes, context.chunk_bounds())
     return {"tables": dispersive_offdiag_constitutive_tables(context.pml),
-            "codes": dispersive_offdiag_boundary_codes(grid, context.pml),
+            "codes": codes,
             "walls": offdiag_wall_mask_flags(grid),
-            "weights": mirror_ghost_weights(grid)}
+            "weights": mirror_ghost_weights(grid),
+            "chunk_bounds": context.chunk_bounds_device(),
+            "kept": kept}
 
 
 # ---------------------------------------------------------------------------
@@ -1195,15 +1424,26 @@ class CudaStepPlan:
     ``launchable`` is the subset of ``replaces`` whose plan carries an established
     launch-argument resolution. It is smaller than ``replaces`` on purpose — see
     :class:`CudaSlotPlan`.
+
+    ``chunk_division`` is the chunk division the composition read, as the dispatch
+    record carries it (``StepContext.chunk_layout_block``): where it came from, its
+    ``int32[25]`` record, and the refusal every arm gave it if none describes it.
+    ``None`` for a plan built without a composition context.
     """
 
-    __slots__ = ("plans", "reasons", "selected")
+    __slots__ = ("plans", "reasons", "selected", "_context")
 
     def __init__(self, plans: Dict[str, Any], reasons: Dict[str, Tuple[str, ...]],
-                 selected: Optional[Dict[str, str]] = None) -> None:
+                 selected: Optional[Dict[str, str]] = None,
+                 context: Optional[StepContext] = None) -> None:
         self.plans = dict(plans)
         self.reasons = dict(reasons)
         self.selected = dict(selected or {})
+        self._context = context
+
+    @property
+    def chunk_division(self) -> Optional[Dict[str, Any]]:
+        return None if self._context is None else self._context.chunk_layout_block()
 
     @property
     def replaces(self) -> Tuple[str, ...]:
@@ -1231,11 +1471,10 @@ class CudaStepPlan:
         return self.describe()
 
 
-def plan_step(fields: Any, pml: Any, grid: Any = None,
-              licenses: Optional[Dict[str, Any]] = None,
-              subnormal_policy: Any = None, sources: Any = None,
+def plan_step(fields: Any, pml: Any, grid: Any = None, sources: Any = None,
               fuse: bool = False,
-              fuse_labels: Optional[Sequence[str]] = None) -> CudaStepPlan:
+              fuse_labels: Optional[Sequence[str]] = None,
+              chunk_layout: Any = None) -> CudaStepPlan:
     """Ask every registered arm and report the covered subset with its refusals.
 
     Never raises and never returns ``None``: a configuration nothing covers is a
@@ -1269,6 +1508,14 @@ def plan_step(fields: Any, pml: Any, grid: Any = None,
     dispatch seam existed; a sequence names exactly the products this caller may run
     and the rest are skipped with a NAMED reason under ``fused_pair_<family>``.
 
+    ``chunk_layout`` IS THE RUN'S CHUNK DIVISION (``chunk_map.ChunkLayout``), read by
+    every arm's chunk-division clause and bound to every plan as one device record
+    (:class:`StepContext`). ``None`` reads the division the array path steps with: the
+    lifted one the fields carry (``Fields.chunk_layout``) when a lift installed one,
+    so a forced, folded or folded-periodic division is judged as MEEP divided it, and
+    otherwise the one-rank default of ``grid`` and ``pml``, a driver-without-MEEP's own
+    division. The returned plan's ``chunk_division`` says which one was read.
+
     THIS IS REACHED FROM THE DISPATCH SEAM, AND HAS BEEN SINCE PHASE 2.
     ``meep_gpu.fastpath._decide`` composes this table as the SECOND kernel table on a
     CuPy engine -- imported function-locally, below the backend rung -- and
@@ -1288,7 +1535,7 @@ def plan_step(fields: Any, pml: Any, grid: Any = None,
 
     ensure_registered()
 
-    context = StepContext(fields, pml, grid, licenses, subnormal_policy, sources)
+    context = StepContext(fields, pml, grid, sources, chunk_layout=chunk_layout)
     for slot in STEP_ORDER:
         table = arms_for(slot, context)
         if table:
@@ -1308,4 +1555,4 @@ def plan_step(fields: Any, pml: Any, grid: Any = None,
             plans, reasons, selected, context,
             offered=fused_pairs.offered_labels(fuse_labels))
 
-    return CudaStepPlan(plans, reasons, selected)
+    return CudaStepPlan(plans, reasons, selected, context=context)

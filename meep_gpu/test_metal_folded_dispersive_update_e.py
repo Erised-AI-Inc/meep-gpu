@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from meep_gpu import stepping
+from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record, membership_from_record
 from meep_gpu.dispersion import DRUDE, LORENTZIAN, PolarizationState, Susceptibility
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid, Mirror
@@ -18,6 +19,8 @@ from meep_gpu.pml import PML
 
 
 class HostResidency:
+    device = "cpu"
+
     def __init__(self):
         self.arrays: Dict[str, Any] = {}
 
@@ -62,19 +65,22 @@ def backend_ready(monkeypatch):
 
 
 def _host_function(count, axis):
+    """The kernel's arithmetic on the host: the per-chunk select on the bound record."""
     def run(out, fw, displacement, inverse, *args):
-        *poles, kps, kms, nx, ny, nz, n_elem = args
+        *poles, kps, kms, nx, ny, nz, n_elem, record = args
         assert out.shape == (nx, ny, nz) and out.size == n_elem
+        line = membership_from_record(np.asarray(record), True, axis, out.shape[axis])
+        shape = [1, 1, 1]
+        shape[axis] = -1
+        dw = np.broadcast_to(line.reshape(shape), out.shape)
         source = displacement.copy()
         for pole in poles[:count]:
             source = source - pole
         src = source * inverse
         previous = fw.copy()
-        fw[...] = src
-        coefficient_shape = [1, 1, 1]
-        coefficient_shape[axis] = -1
-        out[...] = out + kps.reshape(coefficient_shape) * src
-        out[...] = out - kms.reshape(coefficient_shape) * previous
+        accumulated = out + ((kps.reshape(shape) * src) - (kms.reshape(shape) * previous))
+        fw[dw] = src[dw]
+        out[...] = np.where(dw, accumulated, src)
     return run
 
 
@@ -121,8 +127,13 @@ def test_shared_builder_matches_stepping_over_the_folded_stored_extent(backend_r
     actual, actual_pml = build(poles=2)
     functions = {(shaders.CONTRACT_OFF, count, axis): _host_function(count, axis)
                  for count in (0, 1, 2) for axis in range(3)}
+    # The record of the division stepping steps with: on a folded axis its membership
+    # line is ghost-adjusted (chunk_map), and the kernel evaluates it at the stored index.
+    record = chunk_bounds_record(stepping._region_plan(reference, pml).layout)
+    assert np.array_equal(record, chunk_bounds_record(ChunkLayout.one_rank(actual.grid,
+                                                                           actual_pml)))
     plan = family.plan_folded_dispersive_e(
-        actual, actual_pml, HostResidency(), functions=functions)
+        actual, actual_pml, HostResidency(), functions=functions, chunk_bounds=record)
     assert isinstance(plan, ordinary.MetalDispersiveEPlan)
     for _ in range(3):
         stepping.update_E(reference, pml)

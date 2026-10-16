@@ -222,6 +222,16 @@ def owner(arm: str):
         f"meep_gpu.cuda_kernels.{family(arm).KERNEL_OWNER_MODULE}")
 
 
+def chunk_record(grid, pml):
+    """The chunk record every launch here binds as ``cb``, on the device: the one-rank
+    division of ``grid`` and ``pml`` (``gate_chunk_records.layer_record``), which is the
+    division the oracle's region plan steps with. The inert layer of the no-absorber
+    arm yields a record with no membership runs."""
+    from gate_chunk_records import layer_record  # noqa: PLC0415
+
+    return cp.asarray(layer_record(grid, pml), dtype=cp.int32)
+
+
 def specs(arm: str) -> Tuple[Dict[str, Any], ...]:
     return tuple(_GATE[arm].SPECS)
 
@@ -409,9 +419,10 @@ def weld_step(arm: str, fields, pml, grid, arguments: Dict[str, Any],
             launches["leading"] += 1
         elif name == "update_P":
             runner = polarization or (
-                lambda f: module.run_three_slot_polarization(f, arm)
-                if arm == "pml" else module.run_three_slot_polarization(f))
-            report = runner(fields)
+                lambda f, cb: module.run_three_slot_polarization(f, arm, chunk_bounds=cb)
+                if arm == "pml" else module.run_three_slot_polarization(
+                    f, chunk_bounds=cb))
+            report = runner(fields, arguments["chunk_bounds"])
             launches["trailing"] += int(report.get("launches", 0))
         elif name not in skipped:
             run_pass(name, fields, pml)
@@ -432,11 +443,12 @@ def _launch_leading(arm: str, fields, arguments: Dict[str, Any],
         return module.launch_dispersive_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["fills"], arguments["dtdx"],
-            poles, counts, kernel)
+            poles, counts, kernel, chunk_bounds=arguments["chunk_bounds"])
     conductivity, cond = module.conductive_bindings(fields)
     return module.launch_no_pml_dispersive_fused_electric_pair(
         fields, arguments["boundary_codes"], arguments["walls"],
-        arguments["dtdx"], poles, counts, conductivity, cond, kernel)
+        arguments["dtdx"], poles, counts, conductivity, cond, kernel,
+        chunk_bounds=arguments["chunk_bounds"])
 
 
 def leading_arguments(arm: str, grid, pml) -> Dict[str, Any]:
@@ -445,7 +457,8 @@ def leading_arguments(arm: str, grid, pml) -> Dict[str, Any]:
 
     arguments = {"boundary_codes": step_curl_kernels.real_curl_boundary_codes(grid),
                  "walls": in_seam_coverage.zero_metal_axes(grid),
-                 "dtdx": float(grid.dt / grid.dx)}
+                 "dtdx": float(grid.dt / grid.dx),
+                 "chunk_bounds": chunk_record(grid, pml)}
     if arm == "pml":
         from meep_gpu.cuda_kernels import fused_electric_pair as real  # noqa: PLC0415
 
@@ -470,13 +483,14 @@ def certified_singles_step(arm: str, fields, pml, grid, tables) -> None:
     dtdx = float(grid.dt / grid.dx)
     walls = in_seam_coverage.zero_metal_axes(grid)
     codes = step_curl_kernels.real_curl_boundary_codes(grid)
+    record = chunk_record(grid, pml)
     for name in DRIVER_ORDER:
         if name == "step_D":
             if arm == "pml":
                 step_curl_kernels._step_D_fused_pml_real(  # noqa: SLF001
-                    fields, tables["curl"], codes, dtdx)
+                    fields, tables["curl"], codes, dtdx, record)
             else:
-                _no_pml_certified_curl(fields, pml, grid, codes, dtdx)
+                _no_pml_certified_curl(fields, pml, grid, codes, dtdx, record)
         elif name == "zero_metal_D":
             if any(walls):
                 in_seam_passes.run_pass("zero_metal", fields, "D", grid=grid)
@@ -490,16 +504,17 @@ def certified_singles_step(arm: str, fields, pml, grid, tables) -> None:
                 in_seam_passes.run_pass("fill_folded_far", fields, "D", grid=grid)
         elif name == "update_E":
             if arm == "pml":
-                dispersive_kernels.update_E_fused_pml_real_dispersive(fields, pml)
+                dispersive_kernels.update_E_fused_pml_real_dispersive(
+                    fields, pml, chunk_bounds=record)
             else:
                 dispersive_kernels.update_E_no_pml_real_dispersive(fields, pml)
         elif name == "update_P":
-            ade_kernels.update_P_fused_pml_real(fields, pml)
+            ade_kernels.update_P_fused_pml_real(fields, pml, chunk_bounds=record)
         else:
             run_pass(name, fields, pml)
 
 
-def _no_pml_certified_curl(fields, pml, grid, codes, dtdx) -> str:
+def _no_pml_certified_curl(fields, pml, grid, codes, dtdx, record) -> str:
     """The no-absorber arm's certified ``step_D``, through its own family's launcher.
 
     WHICH CERTIFIED FAMILY IS ASKED, NOT ASSUMED. The no-absorber ``step_D`` is
@@ -525,8 +540,8 @@ def _no_pml_certified_curl(fields, pml, grid, codes, dtdx) -> str:
         fields, pml, grid, "step_D")
     if conductive:
         return conductive_kernels.step_conductive_curl(
-            fields, pml, "step_D", codes, dtdx)
-    return no_pml_curl.step_no_pml_curl(fields, "step_D", codes, dtdx)
+            fields, pml, "step_D", codes, dtdx, chunk_bounds=record)
+    return no_pml_curl.step_no_pml_curl(fields, "step_D", codes, dtdx, record)
 
 
 # ---------------------------------------------------------------------------
@@ -732,9 +747,10 @@ def leg_launch_structure(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str
     def certified_curl(fields):
         if arm == "pml":
             step_curl_kernels._step_D_fused_pml_real(  # noqa: SLF001
-                fields, tables["curl"], codes, dtdx)
+                fields, tables["curl"], codes, dtdx, arguments["chunk_bounds"])
         else:
-            _no_pml_certified_curl(fields, pml, grid, codes, dtdx)
+            _no_pml_certified_curl(fields, pml, grid, codes, dtdx,
+                                   arguments["chunk_bounds"])
 
     def span_array(fields, layer):
         for name in DRIVER_ORDER:
@@ -748,7 +764,8 @@ def leg_launch_structure(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str
             if name == "step_D":
                 _launch_leading(arm, fields, arguments)
             elif name == "update_P":
-                ade_kernels.update_P_fused_pml_real(fields, layer)
+                ade_kernels.update_P_fused_pml_real(
+                    fields, layer, chunk_bounds=arguments["chunk_bounds"])
             elif name not in tuple(half(arm).REPLACES):
                 run_pass(name, fields, layer)
 
@@ -762,7 +779,8 @@ def leg_launch_structure(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str
                     in_seam(fields)
             elif name == "update_E":
                 ep.run_fused_polarization_pair(
-                    fields, layer if arm == "pml" else None, arm)
+                    fields, layer if arm == "pml" else None, arm,
+                    chunk_bounds=arguments["chunk_bounds"])
             elif name == "update_P":
                 pass  # the E->P weld advanced the polarizations in its own launches
             else:
@@ -1153,6 +1171,14 @@ def leg_refusal() -> Dict[str, Any]:
 # THE MUTATIONS
 # ---------------------------------------------------------------------------
 
+#: The emitted drive load and extent guard the device mutations anchor on.
+_DRIVE_LOAD = "float w = dsigw ? drive_w[idx] : drive_e[idx];"
+_EXTENT_GUARD = "    if (idx >= nx * ny * nz) return;\n"
+
+#: Device mutations whose null is excused ONLY on the no-absorber arm.
+_NULL_ONLY_WITHOUT_A_LAYER = ("drive_select_removed", "drive_selected_by_the_x_record")
+
+
 def _drop(body: str) -> Callable[[str], Tuple[str, int]]:
     return lambda source: (source.replace(body, "", 1), source.count(body))
 
@@ -1170,19 +1196,36 @@ def _drop(body: str) -> Callable[[str], Tuple[str, int]]:
 SOURCE_MUTATIONS: Tuple[Tuple[str, Callable[[str, str], Tuple[str, int]],
                               Optional[str]], ...] = (
     ("drive_from_the_first_pole_slot",
-     lambda s, c: needle(s, "float w = drive[idx];", f"float w = P_{c}_0[idx];"),
+     lambda s, c: needle(s, _DRIVE_LOAD, f"float w = P_{c}_0[idx];"),
      None),
+    # MEEP's per-chunk w: f_w on the cells whose chunk carries the component's layer,
+    # E elsewhere. ARM-DEPENDENT (``leg_mutations``): without a layer both pointers
+    # are the stored E and the edit is the identity.
+    ("drive_select_removed",
+     lambda s, c: needle(s, _DRIVE_LOAD, "float w = drive_w[idx];"),
+     "the layer is inactive, so both drive pointers are the stored E and reading "
+     "drive_w on every cell is the identity"),
+    ("drive_selected_by_the_x_record",
+     lambda s, c: needle(
+         s, "const int dsigw = own_axis == 0 ? in_h_x : "
+            "(own_axis == 1 ? in_h_y : in_h_z);",
+         "const int dsigw = in_h_x;"),
+     "the layer is inactive, so every record entry is empty and every selector "
+     "chooses drive_e"),
     ("drop_the_extent_guard",
-     lambda s, c: needle(s, "    if (idx >= n_elem) return;\n", ""), None),
-    ("swap_c_now_and_c_prev",
-     lambda s, c: needle(s, "(p_0 * c_now_0) + (c_prev_0 * q_0)",
-                         "(p_0 * c_prev_0) + (c_now_0 * q_0)"), None),
+     lambda s, c: needle(s, _EXTENT_GUARD, ""), None),
+    ("swap_two_minus_od_and_gamma1",
+     lambda s, c: needle(s, "(p_0 * two_minus_od_0) - (gamma1_0 * q_0)",
+                         "(p_0 * gamma1_0) - (two_minus_od_0 * q_0)"), None),
     ("regroup_the_sum",
      lambda s, c: needle(
-         s, "p_out_0[idx] = ((p_0 * c_now_0) + (c_prev_0 * q_0)) + "
-            "(c_drive_0 * (s_0 * w));",
-         "p_out_0[idx] = (p_0 * c_now_0) + ((c_prev_0 * q_0) + "
-         "(c_drive_0 * (s_0 * w)));"), None),
+         s, "p_out_0[idx] = gamma1inv_0 * (((p_0 * two_minus_od_0) - "
+            "(gamma1_0 * q_0)) + (omega0dtsqr_0 * (s_0 * w)));",
+         "p_out_0[idx] = gamma1inv_0 * ((p_0 * two_minus_od_0) - "
+         "((gamma1_0 * q_0) - (omega0dtsqr_0 * (s_0 * w))));"), None),
+    ("drop_gamma1inv",
+     lambda s, c: needle(s, "p_out_0[idx] = gamma1inv_0 * (", "p_out_0[idx] = ("),
+     None),
     ("write_the_result_into_p_now",
      lambda s, c: needle(s, "p_out_0[idx] =", f"((float*)P_{c}_0)[idx] ="), None),
     ("drive_scaled_by_the_sigma_of_pole_zero",
@@ -1242,14 +1285,13 @@ HOST_MUTATIONS: Tuple[Tuple[str, Optional[str]], ...] = (
      "volume. A confirmed null is the measurement that the state loop may be fused "
      "into one launch"),
     # THE ONE MUTATION WHOSE VERDICT DEPENDS ON THE ARM, and the reason below is the
-    # NO-PML one. `leg_mutations` supplies `None` on the PML arm instead: an ACTIVE
-    # layer makes `Fields.drive_field` name `f_w_<c>` rather than the stored `E<c>`,
-    # so there the substitution is a real defect -- caught by
-    # `_drive_identity_problem`, which refuses it BY NAME before the launch binds
-    # anything, and is recorded in `refused_by_name`.
+    # NO-PML one. `leg_mutations` supplies `None` on the PML arm instead: there the
+    # launcher binds (f_w_<c>, E<c>) and selects per chunk, so binding the stored E
+    # for both pointers reads E on the layer's chunks where MEEP reads f_w -- a real
+    # defect that must diverge.
     ("drive_from_the_stored_E",
-     "the layer is inactive, so Fields.drive_field returns the stored E itself "
-     "(fields.py:1160-1162) and the substitution is the identity"),
+     "the layer is inactive, so both drive pointers are the stored E already "
+     "(Fields.drive_field returns it) and the substitution is the identity"),
 )
 
 
@@ -1263,7 +1305,7 @@ def mutated_polarization(arm: str, mutation: str):
     module = family(arm)
     terms = module.ELECTRIC_TERMS
 
-    def run(fields) -> Dict[str, Any]:
+    def run(fields, chunk_bounds) -> Dict[str, Any]:
         order = list(terms)
         if mutation == "component_order_reversed":
             order = list(reversed(order))
@@ -1290,16 +1332,18 @@ def mutated_polarization(arm: str, mutation: str):
                     state.P_prev[target] = p
                     state._scratch = p_prev
             if mutation == "drive_from_the_stored_E":
-                original = fields.drive_field
-                fields.drive_field = lambda component: getattr(fields, component)
+                text_owner = owner(arm)
+                original = text_owner._drive_arrays  # noqa: SLF001
+                text_owner._drive_arrays = (  # noqa: SLF001
+                    lambda f, _arm, component: (getattr(f, component),) * 2)
                 try:
                     module.launch_three_slot_polarization_component(
-                        fields, arm, target, states)
+                        fields, arm, target, states, chunk_bounds=chunk_bounds)
                 finally:
-                    fields.drive_field = original
+                    text_owner._drive_arrays = original  # noqa: SLF001
             else:
                 module.launch_three_slot_polarization_component(
-                    fields, arm, target, states)
+                    fields, arm, target, states, chunk_bounds=chunk_bounds)
             launches += 1
             if mutation == "skip_the_rotation":
                 continue
@@ -1318,7 +1362,7 @@ def mutated_polarization(arm: str, mutation: str):
 def measure_extent_guard_overrun(arm: str) -> Dict[str, Any]:
     """DOES ``drop_the_extent_guard`` REACH THE DEVICE? Measured, not reasoned about.
 
-    THE PROBLEM THIS SOLVES. Removing ``if (idx >= n_elem) return;`` comes back a
+    THE PROBLEM THIS SOLVES. Removing ``if (idx >= nx * ny * nz) return;`` comes back a
     NULL in the product comparison on every fixture here, and a null with no reason
     is a leg that measured nothing. Two explanations fit and they are not equally
     acceptable: either the surplus lanes never ran (the mutation is UNARMED and the
@@ -1347,7 +1391,7 @@ def measure_extent_guard_overrun(arm: str) -> Dict[str, Any]:
     blocks = (n_elem + threads - 1) // threads
     span = blocks * threads
     source = module.three_slot_polarization_source(0, 1, (False,))
-    mutated, hits = needle(source, "    if (idx >= n_elem) return;\n", "")
+    mutated, hits = needle(source, _EXTENT_GUARD, "")
     if not hits:
         return {"armed": False,
                 "why": "the guard line was not found in the emitted body"}
@@ -1359,10 +1403,12 @@ def measure_extent_guard_overrun(arm: str) -> Dict[str, Any]:
     p_prev = cp.asarray(rng.uniform(-1, 1, n_elem).astype(np.float32))
     sentinel = np.float32(-12345.0)
     p_out = cp.full(span, sentinel, dtype=cp.float32)
+    # 990 cells as 9 x 10 x 11; an empty record (no membership runs) selects drive_e.
+    record = cp.zeros(25, dtype=cp.int32)
     kernel((blocks,), (threads,),
-           (drive, p_now, p_out, p_prev, np.float32(0.75),
-            np.float32(1.5), np.float32(-0.5), np.float32(0.25),
-            np.int32(n_elem)))
+           (drive, drive, p_now, p_out, p_prev, np.float32(0.75),
+            np.float32(1.5), np.float32(0.5), np.float32(0.25), np.float32(0.8),
+            np.int32(9), np.int32(10), np.int32(11), np.int32(0), record))
     cp.cuda.runtime.deviceSynchronize()
     tail = cp.asnumpy(p_out[n_elem:])
     wrote = int(np.count_nonzero(tail != sentinel))
@@ -1426,7 +1472,8 @@ def leg_mutations(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
             "caught": bool(caught),
             "first_divergence": case.get("first_divergence"),
             "differing_words": case.get("differing_words"),
-            "predicted_null": predicted,
+            "predicted_null": (None if label in _NULL_ONLY_WITHOUT_A_LAYER
+                               and arm == "pml" else predicted),
         }
         # THE ONE NULL THIS LEG EARNS BY MEASUREMENT RATHER THAN BY DECLARATION.
         # Removing the tail guard cannot show up in a volume comparison -- p_out is
@@ -1541,7 +1588,7 @@ def leg_lift() -> Dict[str, Any]:
     sources = module.device_sources()
     guard_present = all(ep._ADE_GUARD in source  # noqa: SLF001
                         for source in sources.values())
-    drive_once = all(source.count("    float w = drive[idx];\n") == 1
+    drive_once = all(source.count(f"    {_DRIVE_LOAD}\n") == 1
                      for source in sources.values())
     arm_independent = (family("no_pml").device_sources() == sources)
     return {"passed": bool(guard_present and drive_once and arm_independent

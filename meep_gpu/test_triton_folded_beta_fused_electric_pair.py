@@ -50,14 +50,6 @@ GATE = PARITY_DIR / "probe_triton_folded_beta_fused_electric_pair.py"
 #: cell has.
 BETA_CORPUS = 0.2
 
-#: The three lines the beta term adds, and the ONLY thing that may separate this
-#: kernel from ``folded_fused_pair.folded_fused_curl_constitutive_D``.
-BETA_INSERT = (
-    "if HAS_BETA:",
-    "curl0 = curl0 - (beta_plus * b)",
-    "curl1 = curl1 - (beta_minus * a)",
-)
-
 
 @pytest.fixture(scope="module")
 def product():
@@ -169,38 +161,57 @@ def _reasons(product, fields, pml, sources=()):
 # ---------------------------------------------------------------------------
 
 def test_removing_the_beta_insert_reproduces_the_shipped_folded_pair(bodies):
-    """``this kernel`` minus the three beta lines IS
-    ``folded_fused_curl_constitutive_D`` — an EXACT statement-list equality."""
-    without_beta = [line for line in bodies["fused"] if line not in BETA_INSERT]
-    assert without_beta == bodies["base"], (
-        "the folded beta fused electric pair is not "
-        "folded_fused_curl_constitutive_D plus the beta insert; first difference "
-        "at index " + str(next((i for i, (a, b) in enumerate(
-            zip(without_beta, bodies["base"])) if a != b), "length")))
+    """``this kernel`` minus its ``if HAS_BETA:`` pass IS ``folded_fused_curl_constitutive_D``.
+
+    An EXACT statement-list equality, in order, against the shipped body read from the
+    file (``test_triton_special_kz.kernel_body_and_insert``). If any statement of the
+    root moved, this fails and names the first difference.
+    """
+    from meep_gpu.test_triton_special_kz import kernel_body_and_insert
+
+    body, insert = kernel_body_and_insert(PACKAGE_DIR / "folded_beta_fused_electric_pair.py", "folded_beta_fused_curl_constitutive_D")
+    root, root_insert = kernel_body_and_insert(PACKAGE_DIR / "folded_fused_pair.py",
+                                               "folded_fused_curl_constitutive_D")
+    assert insert and not root_insert, "the beta pass is missing, or the root has one"
+    assert body == root, (
+        "first difference at index "
+        + str(next((i for i, (a, b) in enumerate(zip(body, root)) if a != b),
+                   "length")))
 
 
 def test_the_beta_insert_is_exactly_the_shipped_folded_curls_delta(bodies):
-    """The three lines are ``folded_beta_pml_curl_step``'s own delta over
-    ``pml_curl_step_folded``."""
-    delta = [line for line in bodies["beta_curl"]
-             if line not in bodies["plain_curl"]]
-    assert delta == list(BETA_INSERT), delta
+    """The pass is ``folded_beta_pml_curl_step``'s own, statement for statement, and that curl is
+    ``pml_curl_step_folded`` plus exactly that pass: the lifter adds nothing of its own
+    to the beta pass (the increment, its ownership mask and the ladder)."""
+    from meep_gpu.test_triton_special_kz import kernel_body_and_insert
+
+    _body, insert = kernel_body_and_insert(PACKAGE_DIR / "folded_beta_fused_electric_pair.py", "folded_beta_fused_curl_constitutive_D")
+    curl_body, curl_insert = kernel_body_and_insert(PACKAGE_DIR / "folded_complex.py",
+                                                    "folded_beta_pml_curl_step")
+    root_curl, _ = kernel_body_and_insert(PACKAGE_DIR / "symmetry.py",
+                                          "pml_curl_step_folded")
+    assert curl_insert and insert == curl_insert, (insert[:3], curl_insert[:3])
+    assert curl_body == root_curl
 
 
 def test_the_insert_sits_after_the_curl_and_before_both_masks(bodies):
     """The POSITION, which the deletion equality above cannot see.
 
-    After the third ``dtdx`` curl line, before the cell-0 ownership mask — the
-    array path's order (S:438-445 after :429, before :450) and K3a's own
-    placement, asserted in the fused body AND in the shipped beta curl.
+    After the last curl form and before the wall clear, the stores and the ghost carries -- the array path's order (the
+    curl forms, then the beta pass after every component, then the seam passes), and
+    K3a's own placement, asserted in the fused body AND in the shipped beta curl.
+    The pass's increment carries BOTH folded ownership masks: the cell-0 block on a
+    non-periodic axis and the top-plane block on a folded PERIODIC one.
     """
-    for label in ("fused", "beta_curl"):
+    last_form = "km_x, si_x, km_y, si_y, du2)"
+    for label, after in (("fused", "if ZM_X:"), ("beta_curl", "tl.store(u0 + idx, n0, mask=live & du0)")):
         body = bodies[label]
         at = body.index("if HAS_BETA:")
-        assert body[at - 1] == "curl2 = dtdx * ((b_x - b) + (a - a_y))", (
-            label, body[at - 1])
-        assert body[at + 3] == "at_x, at_y, at_z = i == 0, j == 0, k == 0", (
-            label, body[at + 3])
+        assert body.index(last_form) < at < body.index(after), label
+        insert = body[at:body.index(after)]
+        assert any("last_" in line and "MIRROR_PERIODIC" not in line for line in insert)
+        assert any(line.endswith("== MIRROR_PERIODIC:") for line in insert)
+        assert any(line.endswith("!= PERIODIC:") for line in insert)
 
 
 def test_every_statement_comes_from_a_shipped_body(bodies):

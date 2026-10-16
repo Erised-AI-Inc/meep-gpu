@@ -45,14 +45,16 @@ could cross, and every one is priced on every row that has it:
 ``H->D``  update_H -> step_D, the magnetic constitutive into the ELECTRIC CURL — the
           boundary that closes the loop and that no board priced until 2026-09-04
           (the fusion-residue audit's §2 "never priced" finding). Exactly ONE pass
-          sits inside it: ``for source in electric: getattr(source, "withdraw",
-          _no_withdraw)(self.fields)`` — the integrated electric sources returning
-          their standing dipole offset to D before the curl ladder reads it. No
-          injection, no fill, no wall clear. It is read off ``driver.py`` at cut time
-          by ``h_to_d_seam.driver_seam_fact`` and refused if anything else appears
-          there. Its per-row presence is MEASURED on the lifted row by
+          sits inside it, and only where H is stored: the integrated magnetic
+          sources' ``f_minus_p`` restore (``sources.f_minus_p_end``), which writes B
+          alone and which the curl does not read. No injection, no fill of D, no wall
+          clear, and no withdraw: an integrated source enters at the constitutive
+          update through ``f_minus_p``. It is read off ``driver.py`` at cut time by
+          ``h_to_d_seam.driver_seam_fact`` and refused if anything else appears
+          there. Whether a withdraw stands there is MEASURED on the lifted row by
           ``probe_h_to_d_seam.py`` (an integrated electric source owning at least one
-          deposit point), never read off a source's name.
+          deposit point and carrying a working ``withdraw``, which the driver ran
+          here before ``f_minus_p``), never read off a source's name.
 
 The first three were the three seams of every board through 2026-09-03; the fourth
 is priced by the same three boards from ``h_to_d_seam.py``, one rule for three
@@ -76,11 +78,11 @@ THE EIGHT BUCKETS (release decision R1), in PRECEDENCE order
     instantaneous chi2/chi3, an unreadable fold map).
 
 ``withdraw_seam``
-    The H->D analogue of the source seam, and filed only there: the row carries an
-    integrated ELECTRIC source owning at least one deposit point, so the driver's
-    withdraw pass runs between ``update_H`` and ``step_D`` and returns the standing
-    dipole to D before the curl reads it. The withdraw touches D only and reads
-    nothing ``update_H`` writes (``sources.VolumeSource.withdraw``), so a fused
+    The H->D analogue of the source seam, and filed only there: the probe measured
+    an integrated ELECTRIC source owning at least one deposit point whose withdraw
+    runs between ``update_H`` and ``step_D`` and returns a standing dipole to D before
+    the curl reads it (the driver before ``f_minus_p``; this driver runs none). The
+    withdraw touches D only and reads nothing ``update_H`` writes, so a fused
     launch running AFTER it, or carrying it, is plausibly order-free — but "plausibly"
     is not a measurement, and this package claims byte identity only from a device
     gate. Until the device probe the audit asked for exists (a fused

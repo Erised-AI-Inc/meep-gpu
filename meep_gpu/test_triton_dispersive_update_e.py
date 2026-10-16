@@ -563,7 +563,7 @@ def test_plan_step_installs_the_dispersive_update_E_when_the_ordinary_one_refuse
     monkeypatch.setattr(
         launch_module,
         "plan_dispersive_constitutive",
-        lambda fields, pml, block=None: sentinel,
+        lambda fields, pml, block=None, chunk_layout=None: sentinel,
         raising=False,
     )
 
@@ -680,3 +680,84 @@ def test_the_dispersive_composition_fingerprint_names_the_exact_gated_bytes():
     assert gate["real_engine_route"]["dispersive_replaces"] == [
         "step_B", "update_H", "step_D", "update_E", "update_P",
     ]
+
+
+# ---------------------------------------------------------------------------
+# The per-chunk forms (bit_parity_0_10 WP KT6), read off the parse tree
+# ---------------------------------------------------------------------------
+
+def _kt6_function(path, name):
+    import ast as _ast
+
+    source = pathlib.Path(path).read_text(encoding="utf-8")
+    for node in _ast.walk(_ast.parse(source)):
+        if isinstance(node, _ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"{name} is not defined in {path}")
+
+
+def _kt6_masks(function, method, pointer):
+    """The ``mask=`` text of every ``tl.<method>(pointer + ...)`` call in the body."""
+    import ast as _ast
+
+    found = []
+    for node in _ast.walk(function):
+        if (isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
+                and node.func.attr == method and node.args
+                and _ast.unparse(node.args[0]).startswith(pointer + " ")):
+            masks = [_ast.unparse(k.value) for k in node.keywords if k.arg == "mask"]
+            found.append(masks[0] if masks else None)
+    return found
+
+
+def test_the_kernel_selects_meeps_constitutive_form_per_chunk():
+    """``cb`` after the last pointer; the dsigw line of each component's own axis on the
+    half-integer lattice picks the form (``forms.constitutive_form``); ``f_w`` and the old
+    E are read and written on the accumulation's cells only, the field stored on every
+    live cell (``stepping._apply_constitutive_regions``)."""
+    import ast as _ast
+
+    function = _kt6_function(module.__file__, "constitutive_step_dispersive")
+    names = [a.arg for a in function.args.args]
+    assert names[names.index("km2") + 1] == "cb" and names[names.index("cb") + 1] == "nx"
+    text = _ast.unparse(function)
+    for index, (word, coordinate) in enumerate((("0", "i"), ("4", "j"), ("8", "k"))):
+        assert f"dw{index} = record_in(cb, RECORD_HALF_INTEGER + {word}, {coordinate})" in text
+        assert _kt6_masks(function, "load", f"w{index}") == [f"live & dw{index}"]
+        assert _kt6_masks(function, "store", f"w{index}") == [f"live & dw{index}"]
+        assert _kt6_masks(function, "load", f"f{index}") == [f"live & dw{index}"]
+        assert _kt6_masks(function, "store", f"f{index}") == ["live"]
+        assert f"constitutive_form(tl.load(f{index} + idx, mask=live & dw{index}" in text
+    # The package's previous two accumulations are gone.
+    assert "kp_0 * src0" not in text and "km_0 * prev0" not in text
+
+
+def test_the_plan_passes_the_record_after_the_coefficient_pointers_every_launch(
+        monkeypatch):
+    from meep_gpu.triton_kernels import launch as launch_kt6
+
+    # The builder and run() read the block size and the fusion guard from kernels.py,
+    # which imports Triton; neither value is this test's subject.
+    monkeypatch.setitem(sys.modules, "meep_gpu.triton_kernels.kernels",
+                        SimpleNamespace(ENABLE_FP_FUSION=False, DEFAULT_BLOCK=256))
+    fields, pml, _states = with_poles((1, 0, 2))
+    record = launch_kt6.chunk_bounds_for(fields, pml, None)
+    calls = []
+
+    class Recorder:
+        def __getitem__(self, grid):
+            return lambda *args, **kwargs: calls.append(args)
+
+    plan = module.plan_dispersive_constitutive_from_arrays(
+        {**{n: getattr(fields, n) for n in ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey",
+                                             "f_w_Ez", "Dx", "Dy", "Dz")},
+         **{"inv_eps_" + n: fields.inverse_epsilon_for(n) for n in ("Ex", "Ey", "Ez")}},
+        {f"{s}_{a}": getattr(pml, f"{s}_{a}_h") for a in "xyz" for s in ("kps", "kms")},
+        {n: [state.P[n] for state in fields.polarizations if state.drives(n)]
+         for n in ("Ex", "Ey", "Ez")},
+        kernel=Recorder(), chunk_bounds=record)
+    plan.run(guard=False)
+    plan.run(guard=False)
+    position = 12 + 3 * module.MAX_POLES + 6
+    assert calls[0][position] is plan._cb and calls[1][position] is plan._cb
+    assert calls[0][position + 1] == fields.grid.shape[0]

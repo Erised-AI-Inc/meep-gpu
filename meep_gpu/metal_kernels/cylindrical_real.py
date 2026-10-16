@@ -1,204 +1,57 @@
 """CYLINDRICAL (Dcyl) curl sub-steps at m = 0 on Metal — real float32 storage.
 
-The Metal port of ``triton_kernels/cylindrical_triton.py``. Source of truth for the
-ARITHMETIC is ``stepping.py``; source of truth for the STRUCTURE — the predicate
-clauses, the plan shape, the refusals — is the Triton module, which is certified.
-The module TEMPLATE followed for the predicate list, the constitutive companion and
-the wiring block is :mod:`.bfast_curl`, which is the closest shipped shape: one
-inverted clause, a curl kernel of its own, and a constitutive pair it re-admits
-without writing a second kernel.
+WHAT IT REPLACES. ``stepping.step_B`` and ``stepping.step_D`` on a Dcyl grid with
+``grid.m == 0``, real storage and an active split-field PML, including MEEP's radial
+sum ``f_rderiv_int``, which runs on the device here.
 
-WHAT IT REPLACES. ``stepping.step_B`` (:261) and ``stepping.step_D`` (:379) on a
-Dcyl grid with ``grid.m == 0``, real storage and an active split-field PML —
-INCLUDING the radial prefix scan, which is the one place this port deliberately
-diverges from the Triton one. See "THE SCAN" below.
+THE CURL IS THE CERTIFIED ONE. :func:`cylindrical_curl_source` derives the kernel from
+:func:`.shaders.curl_source` by four checked edits, so the bounds block, the ghost
+rule, the stencil of targets 0 and 1 (MEEP's left-to-right bracket, with the phi
+partner absent: the record's presence bit for the one-cell phi axis is clear), the
+ownership mask and the two per-chunk PML forms are the certified text. The r axis
+compiles METALLIC: ``_shift_up``'s CYL_AXIS arm is the METALLIC arm, and the
+CYL_AXIS near ghost (``_shift_down``) feeds only Dy and Dz, whose r-Yee shift is 0, so
+the ownership mask zeroes the one row that reads it. The cylindrical additions are
+three, in the array path's order:
 
-THE m = 0 CYLINDRICAL ADDITIONS, in the order the kernel applies them, and there are
-only three. Everything else — the ghost rule, the curl grouping, the ownership mask
-and the split-field recurrence — is the CERTIFIED Cartesian body, unchanged:
+1. **Bz and Dz differentiate the per-chunk radial sum** (step_db.cpp:92-119,
+   ``stepping.cylindrical_rderiv_difference``). MEEP sums ``f_rderiv_int`` in every
+   structure chunk from that chunk's first row, ``F[s] = +0``, ``F[g] = F[g-1] +
+   rinv[g] * ((f_p[g]*w[g]) - (f_p[g-1]*w[g-1]))`` in float32, left to right, with
+   ``rinv = realnum(1.0 / ((g + ir0) - 0.5))`` MULTIPLIED. The scan kernel walks each
+   (phi, z) column serially, restarts the sum where the bound chunk starts name a new
+   chunk, and stores the stencil difference a target row reads from its own chunk's
+   sum: ``F_s[j+1] - F_s[j]`` for Bz (forward, over Ep extended by its zero wall row)
+   and ``F_s[g-1] - F_s[g]`` for Dz (backward). The cut row between two chunks holds
+   two sums, so the scan stores differences, not a prefix. The curl's target 2 is
+   then ``dtdx * rad[ii]`` on both sides.
+2. **The chunk starts are the array path's own** (``stepping._cylindrical_scan_starts``
+   for Bz or Dz, read on the target's Yee lattice), bound as an ``int32`` vector, one
+   start per r row. A division whose r cuts differ along z has no per-row start and is
+   refused by name (:func:`scan_starts`).
+3. **The m = 0 axis rules**, after the forms: ``Bx[r=0] = 0``; ``Dz[r=0] +=
+   (4*Courant)*Hp[r=0]`` then ``Dy[r=0] = 0`` (``stepping._cylindrical_axis_zero_B`` /
+   ``_D``). MEEP forms the on-axis product in double and rounds it once
+   (step_db.cpp:324); the kernel's float32 product with the float32 word of
+   ``4*Courant`` is that word exactly when ``Courant`` is a float32 word, so the D-side
+   predicate refuses any other Courant by name (:func:`courant_reasons`) until a
+   software double product exists on this backend.
 
-1. **Bz's whole curl is REPLACED** (stepping.py:371-375). Ep (= Ey) is extended by
-   ONE ZERO WALL ROW to (nr + 1, nphi, nz) (:359-360), prefixed at ``ir0 = 0.0``,
-   and the curl is ``dtdx * (prefix_ext[1:] - prefix_ext[:-1])`` — ONE subtract and
-   ONE multiply, NOT the four-operand grouping, which is a different float32 number.
-   The wall row is not decoration: without it the forward difference at the last row
-   becomes minus the whole accumulated sum, and the comment at :303-314 records the
-   symptom that found it (the m = 1 run's first divergence born at the LAST TWO ROWS
-   at step 3, rows 0-17 exactly zero, growing inward).
-2. **Dz's ``first`` SOURCE is swapped** (stepping.py:447-455). Hp (= Hy) is prefixed
-   at ``ir0 = 0.5`` — half of Hp's r-Yee shift — and substituted for the Dz term
-   ONLY; the unmodified backward-difference machinery then produces the cylindrical
-   derivative. ``Dx``'s Hy operands stay RAW, which is why this kernel binds both the
-   prefix and the untouched ``g1``. No wall row is needed on this side: a backward
-   difference reads rows i and i-1 (:313-314).
-3. **The m = 0 axis rules**, applied AFTER the recurrence:
-   ``Bx[r=0] = 0`` (:661-662); ``Dz[r=0] += (4*Courant)*Hp[r=0]`` then
-   ``Dy[r=0] = 0`` (:586-587). The D-side increment is a POST-ADD and NOT folded
-   into the curl, and that was MEASURED rather than chosen: the fold breaks m = 0
-   under PML (Er 2.7e-01 / Hp 4.5e-01 against 3.6e-07 for the post-add,
-   stepping.py:575-580), because the split-field routing is not MEEP's axis ladder
-   for this rule while the plain post-add is exact — Dz's dsig is R, whose sigma is
-   zero on the axis row.
-
-WHAT NEEDED NO NEW CODE AT ALL, and both were MEASURED on this host rather than
-inherited from the Triton complex family's 80-row result (which is |m| >= 1 and
-complex, a different question):
-
-* **The r axis compiles as METALLIC.** ``_shift_up``'s CYL_AXIS arm IS the METALLIC
-  arm, character for character (stepping.py:1828-1830). ``_shift_down``'s CYL_AXIS
-  arm is NOT (:1877-1889) — it images stored row 0 with a direction sign and the
-  ``(-1)^m`` phase — but it is UNOBSERVABLE here: the only terms taking a shift-down
-  along r are ``Dy`` (partner Hz) and ``Dz`` (partner Hp), and both have r-Yee shift
-  0. ``probe_metal_cylindrical_real.py`` leg ``axis_ghost`` MEASURES it on the ARRAY
-  PATH — two engines stepped four whole steps apart, one with the CYL_AXIS near ghost
-  forced to METALLIC's zero: **0 differing words of 33,012 over four cases, with 32
-  ghost substitutions actually fired** and 2,036 to 14,176 words moved per case. No
-  byte gate can certify that choice from inside the kernel, so it is stated HERE.
-
-  THE MECHANISM IS DIFFERENT ON THE TWO TARGETS, and this paragraph said otherwise
-  for a round. ``gate_metal_cylindrical_real.py``'s mutation leg armed the ownership
-  mask on BOTH as must-catch, on the reading that the mask is what zeroes the row the
-  ghost writes; on **Dy that is right** (dropping the mask diverges by 11-40 words per
-  case, and the ghost restored WITHOUT the mask is CAUGHT), and on **Dz it is wrong**.
-  Dropping the r mask on Dz changes NOTHING — 0/8 — because that curl's r = 0 value
-  is ALREADY an exact ``+0.0`` before the mask runs: its radial operand pair is
-  ``(prefix[0], the metallic zero ghost)`` and prefix row 0 is an exact ``+0.0`` by
-  construction (stepping.py:1314 ``zeros_like``), while its phi pair is a
-  self-difference on the one-cell invariant axis. Restoring the near ghost there and
-  dropping the mask is *also* 0/8: ``-0.0 - (+0.0)`` is ``-0.0``, which the phi
-  self-difference turns back into ``+0.0`` at the add. So on Dz the prefix's own zero
-  row absorbs the ghost and the mask is redundant. The CONCLUSION — the near ghost is
-  unobservable at m = 0 — is unchanged and separately measured; only the reason for
-  half of it was wrong. If a mutation that puts a faithful ghost back is ever reported
-  CAUGHT, read the paired mask-dropped twin beside it before concluding anything.
-* **The ownership mask is the certified emitter's.** With the r axis compiled
-  METALLIC, ``shaders.ownership_mask`` masks exactly the cells
-  ``_mask_non_owned_cells`` masks on a real cylindrical grid — the ``is_axis`` clause
-  and the ``is_metallic`` clause land on the same rule. Leg ``emitters`` checks the
-  emitter's output against the FUNCTION rather than against a reading of it: agreed
-  on both sub-steps, 60 masked cells on the B side and 119 on the D side.
-
-THE SCAN RUNS ON THE DEVICE HERE, AND THE TRITON MODULE'S REASON FOR REFUSING IT IS
-INVERTED ON THIS BACKEND RATHER THAN IGNORED. ``triton_kernels/cylindrical_triton.py``
-:32-56 calls the array-path scan its round's decisive measurement, and it is: on CuPy
-the ORACLE ITSELF is unreproducible, because ``cupy.cumsum`` in float32 is not a
-sequential accumulation (87,270 of 102,400 elements differ) and ``tl.cumsum`` matches
-neither it nor the sequential sum. **The premise does not hold here.** This backend's
-engine holds NumPy (``coverage.MIRRORED_HOST_MODULE``), and the same Triton paragraph
-records that ``numpy.cumsum`` IS byte-equal to a sequential accumulation — so the
-oracle a Metal kernel must reproduce is the sequential one, which a column-serial scan
-reproduces by construction (:data:`templates.COLUMN_SERIAL_SCAN` exists for exactly
-this). Two facts were measured before the kernel was written, and either could have
-refused the design:
-
-* **Metal's float32 ``/`` is NumPy's divide.** 266,436 words over four operand
-  classes including the real ``(ir + ir0) - 0.5`` divisor ladder: **0 disagreements
-  that are not the platform's subnormal flush** (16 flushed words, all with the
-  reference subnormal and the device zero of the same sign). The control BITES:
-  ``fast::divide`` misses 83,904 words, **625 of 2,046 on the divisor ladder itself**,
-  so choosing ``/`` is measured rather than stylistic.
-* **The column-serial scan is the array path's answer.** 48 shipped cases —
-  4 shapes x both ``ir0`` values x both wall arms x three value classes
-  (``random_band``, ``wide_dynamic`` geometric ladder, ``cancelling`` partial sums
-  through zero) — against ``stepping.cylindrical_rderiv_prefix`` ITSELF, called and
-  never re-derived: **0 differing words of 257,712**, every case subnormal-free.
-
-  What this buys, stated as a cost rather than a boast: the alternative was a host
-  round trip of the source volume and the prefix on EVERY curl sub-step, which hands
-  back a large part of the 12x-64x the residency layer exists to buy
-  (``device.py:167-172``). What it costs is a second launch per curl sub-step, and a
-  scan kernel whose dispatch is sized from its output volume so ``nr - 1`` threads in
-  every ``nr`` return immediately. This family's THROUGHPUT claim must therefore be
-  measured separately and must NOT be inherited from the certified families'
-  benchmark; nothing here is a throughput claim.
-
-WHAT IS METAL-SPECIFIC, and all that is:
-
-* **Source specialisation, not runtime branches.** ``torch.mps.compile_shader`` takes
-  a source string and nothing else, so the direction, the boundary triple, the Bz/Dz
-  substitution and the axis tail are all baked in, as Triton bakes its constexprs.
-* **The contraction pragma is mandatory** and is spelled once, in :mod:`.shaders`,
-  reached through :mod:`.templates`. STATED HONESTLY: the probe measured the
-  ``fast`` arm of the PREFIX kernel identical to the shipped one, so that leg says
-  nothing about the guard — ``w`` is live across the loop iteration and cannot be
-  folded away. The guard is still spelled on both kernels, because the CURL body
-  below is the certified one whose grouping the guard demonstrably decides, and one
-  spelling per package is the rule.
-* **Negation is ``-x``, re-measured on THIS backend for THIS family** rather than
-  inherited: over an exhaustive signed-zero/subnormal table plus 8,192 random words,
-  ``-x`` and ``x * -1.0f`` are both 0/8,462 while ``0.0f - x`` misses 257/8,462
-  (256 flushed subnormals and the ``+0.0 -> -0.0`` word). This family puts signed
-  zeros live on the axis row — ``Dy[0] = 0`` writes one and the mask writes three
-  more — so the spelling is a measurement here, not a citation. The kernel uses no
-  unary minus at all; the rule is recorded because the refuted spelling is a gate
-  mutation rather than a comment.
-* **Twenty-two bindings**, under the measured 31 ceiling (:data:`.device.MAX_BUFFER_BINDINGS`).
-
-WHAT THE WHOLE STEP MEASURED, and it is the only leg that arbitrates the object the
-engine would actually run. Six green per-sub-step comparisons say nothing about a
-composed step, so the family was walked through the driver's REAL pass list
-(driver.py:3279-3304) — ten passes, with ``zero_metal_*`` sitting BETWEEN the two
-fill passes — against a second engine stepped entirely by the array path, comparing
-every volume after every pass:
-
-* **6,730,560 word comparisons over 5 cases x 12 steps x 10 passes, 0 differing**,
-  at four Courant numbers (two of them not powers of two), both z boundary kinds and
-  five shapes; ``Residency.verify()`` empty after every one of the 600 passes, so no
-  mirror went stale across the array-path seam;
-* per-slot launch counters ASSERTED, not reported: each curl slot owes exactly one
-  scan and one curl per cycle and delivered (24, 12, 12) over twelve steps, so no
-  slot passed by not executing;
-* the composer selected all four arithmetic slots on every case, and the composition
-  sweep records ``cylindrical m=0`` winning 8 rows with NO new admitted overlap
-  beyond the two pre-existing planted ones.
-
-CAN THAT COMPARISON FAIL? Fourteen planted defects say yes, and one of them found a
-CASE defect rather than a kernel one:
-
-* **eleven caught**, including the dropped wall row (543 words), the reciprocal
-  multiply (6,373), both weight/divisor off-by-ones (18,604 each), the deleted Bz
-  substitution (9,124), all three axis rules (120 / 3,118 / 117), the prefix leaking
-  into ``Dx`` (9,480), and — the one worth naming — folding the on-axis Dz increment
-  INTO the curl instead of post-adding it (3,118), which is the exact error
-  stepping.py:575-580 records as measured wrong for m = 0 under PML;
-* **three not caught, by design**: the commuted accumulator (float addition IS
-  commutative — the control showing the leg does not flag any edit at all), and BOTH
-  near-ghost restorations. Those last two are the arm that proves the METALLIC
-  substitution is equivalent rather than merely untested, and they agree with the
-  array-path probe leg and with the Triton track's own uncaught ``axis_ghost_sign``.
-  TWO CORRECTIONS FROM THE GATE, both recorded there with numbers: the restoration
-  was planted on ``b_x``, which NO curl on EITHER sub-step consumes, so that null was
-  a dead-store artifact and the gate re-arms it on the two LIVE shift-down-along-r
-  operands (``c_x`` and ``pb_x``) with paired mask-dropped twins; and the Dz half of
-  the null is not a masking fact at all (see the r-axis paragraph above);
-* **``curl_bz_flat_grouping`` was NOT caught at Courant 0.5 and WAS at 0.314159**
-  (4,390 words). Distributing ``dtdx`` over the prefix difference is exact whenever
-  ``dtdx`` is a power of two, so a case matrix without a non-power-of-two Courant
-  cannot see grouping errors in this kernel at all. That is a property of the CASES,
-  not of the kernel, and it is why the grouping is ALSO pinned as source text in
-  ``test_metal_cylindrical_real``.
-
-SUBNORMALS FLUSH ON THIS BACKEND AND CANNOT BE UNFLUSHED, so ``keep`` is not
-offerable and every claim above rides on a CHECKED subnormal-free precondition
-(:mod:`.subnormal`, consulted through ``coverage._metal_backend_reasons``). The
-radial prefix is where a run reaches the band first — it accumulates a decaying field
-down the whole r extent — so the family's gate must census the band as a WINDOW
-(first step, last step) and not as a scalar.
-
-THERE IS NO GENERATED-CODE AUDIT ON THIS BACKEND. ``compile_shader`` exposes no AIR,
-no GPU ISA and no optimisation report (``device.py:46-62``), so every claim in this
-module is BEHAVIOURAL: it catches a wrong answer, not a wrong instruction. That is
-this port's standing gap against the Triton and CUDA tracks and it stays stated.
+WHAT IS METAL-SPECIFIC: source specialisation by substitution (direction, boundary
+triple); the contraction pragma, reached through :mod:`.templates`; the chunk record
+bound as ``constant ChunkBounds&`` after the two cylindrical bindings (23 in all,
+under the 31 ceiling of :data:`.device.MAX_BUFFER_BINDINGS`). Subnormals flush on this
+backend, so every claim rides on the checked subnormal-free precondition
+(:mod:`.subnormal`, through ``coverage._metal_backend_reasons``). There is no
+generated-code audit on this backend (``compile_shader`` exposes no AIR), so every
+claim here is behavioural.
 
 WIRED. This module registers two curl arms and the certified constitutive pair in
-:mod:`.arms`, and ``plan_step`` composes them; ``fastpath.plan_fast_path`` still
-returns ``None`` on every branch, which is the separate decision. What separates
-these arms from every other family is clause 6 INVERTED — ``coverage._grid_reasons``
-:176-182 refuses ``cylindrical`` and ``is_axis`` BY NAME, and every one of the nine
-carried families either uses that list or restates it, so the separation is total and
-stated once per family. The internal split against a future |m| >= 1 family is
-clause 14, which this family answers ``m == 0`` and that one will answer
-``abs(m) >= 1``.
+:mod:`.arms`. What separates these arms from every other family is clause 6 INVERTED
+(``coverage._grid_reasons`` refuses ``cylindrical`` and ``is_axis`` by name, and this
+family requires both); clause 2 (real storage) separates it from the cylindrical
+complex family, and clause 14 (``m == 0``) from the engine's own refusal of real
+storage at ``|m| >= 1``.
 """
 
 from __future__ import annotations
@@ -223,6 +76,9 @@ from ..triton_kernels.coverage import (
 # no import edge into the Metal composer.
 from ..triton_kernels.launch import SUB_STEPS
 from . import shaders, templates
+# Bound as `_chunk_bounds`: the plan builders take the RECORD as a keyword named
+# `chunk_bounds`, the name the composer's StepContext carries (launch.py does the same).
+from . import chunk_bounds as _chunk_bounds
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import Residency, compile_source
 
@@ -236,38 +92,46 @@ from .device import Residency, compile_source
 FAMILY = "cylindrical_real"
 
 __all__ = [
+    "CURL_RECORD_BUFFER",
+    "CYLINDRICAL_CURL2",
     "FAMILY",
+    "SCAN_TARGETS",
     "CylindricalRealCurlPlan",
+    "axis_coefficient",
     "compile_cylindrical_curl",
-    "compile_cylindrical_prefix",
+    "compile_scan",
+    "courant_reasons",
     "cylindrical_real_constitutive_coverage",
     "cylindrical_real_curl_coverage",
     "cylindrical_curl_source",
-    "cylindrical_prefix_source",
     "enumerate_cylindrical_real_sources",
+    "int32_tensor",
     "plan_cylindrical_real_constitutive",
     "plan_cylindrical_real_curl",
     "plan_cylindrical_real_curl_from_arrays",
     "prefix_row_vectors",
     "register_arms",
     "scan_rows",
+    "scan_source",
+    "scan_start_reasons",
+    "scan_starts",
 ]
 
 PERIODIC = shaders.PERIODIC
 METALLIC = shaders.METALLIC
 
 #: ``ir0 = origin_r*a + 0.5*iyee_shift(Fp).in_direction(R)`` per sub-step
-#: (stepping.py:1297-1299). The r origin IS the axis here, so the whole value is the
-#: half-shift: Ep sits at the node (r-shift 0) and Hp half a cell out (r-shift 1).
-#: Getting these two backwards is a HALF-CELL error in the radial weights and is
-#: silent — a smooth, plausible, slightly wrong field — which is why they are a table
-#: with the sub-step as its key rather than a literal at each call site.
+#: (step_db.cpp:99-103, ``stepping.step_B`` / ``step_D``). The r origin IS the axis
+#: here, so the whole value is the half-shift: Ep sits at the node (r-shift 0) and Hp
+#: half a cell out (r-shift 1). Getting these two backwards is a HALF-CELL error in
+#: the radial weights and is silent, which is why they are a table keyed on the
+#: sub-step rather than a literal at each call site.
 PREFIX_IR0: Dict[str, float] = {"step_B": 0.0, "step_D": 0.5}
 
 #: Which sub-step's scan carries the ZERO WALL ROW. Only the B side: its Bz curl is a
-#: forward difference of the prefix and would otherwise read minus the whole
-#: accumulated sum at the last row (stepping.py:331-342). The D side's backward
-#: difference reads rows i and i-1 and never looks past the top.
+#: forward difference of the radial sum, and MEEP stores the wall row with Ep held at
+#: zero (``stepping.step_B``), so the last row reads ``F[wall] - F[last]`` rather than
+#: minus the whole sum. The D side's backward difference never looks past the top.
 PREFIX_WALL_ROW: Dict[str, bool] = {"step_B": True, "step_D": False}
 
 
@@ -279,43 +143,42 @@ def scan_rows(sub_step: str, radial_rows: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# The radial prefix scan
+# The radial scan: MEEP's f_rderiv_int per chunk, emitted as its difference
 # ---------------------------------------------------------------------------
 
-#: ``cylindrical_rderiv_prefix`` (stepping.py:1286-1334) as one thread per (phi, z)
-#: column, summed STRICTLY SERIALLY from r = 0 upward — the shape
-#: :data:`templates.COLUMN_SERIAL_SCAN` carries, with the weighting, the divide and
-#: the wall row filled in.
+#: ``stepping.cylindrical_rderiv_difference`` as one thread per (phi, z) column.
+#: The thread walks the column's rows strictly serially (float32 addition is not
+#: associative, so a blocked or parallel scan is another number), forming each
+#: row's increment ``rinv[g-1] * (w[g] - w[g-1])`` with ``w = f_p * weights`` and
+#: adding it to the running sum of the chunk that owns the target row. The sum
+#: restarts at ``+0`` where ``starts`` names a new chunk (step_db.cpp:104-118), and
+#: the kernel stores the stencil difference the curl reads, not the sum: the cut
+#: row between two chunks holds two sums (the lower chunk's, carried one row
+#: past its last owned row, and the upper chunk's ``+0``), so no single prefix
+#: volume represents the division.
 #:
-#: THE SERIAL SUM IS A LICENCE, NOT A PREFERENCE. float32 addition is not
-#: associative, so a blocked or parallel scan is a different number; the Triton
-#: tranche measured ``torch.cumsum`` against ``numpy.cumsum`` at 2691/4096, 283/555
-#: and 3210/4096 differing words while a column-serial reference sat at 0/4096.
-#:
-#: THE DIVIDE IS ``/`` AND NOT ``fast::divide``, measured on this host rather than
-#: assumed: ``/`` is NumPy's divide over 266,436 words modulo the platform's
-#: subnormal flush, while ``fast::divide`` misses 625 of the 2,046 words of the
-#: divisor ladder this kernel actually walks.
-_PREFIX_TEMPLATE = r"""
+#: ``rinv`` is MULTIPLIED, as MEEP stores and multiplies it; dividing by
+#: ``(g + ir0) - 0.5`` is another float32 word on part of the ladder.
+_SCAN_TEMPLATE = r"""
 #include <metal_stdlib>
 using namespace metal;
 
 __CONTRACT__
 
-kernel void cyl_rderiv_prefix(
+kernel void cyl_rderiv_difference(
     device float*       out     [[buffer(0)]],
     device const float* src     [[buffer(1)]],
     device const float* weights [[buffer(2)]],
-    device const float* divisor [[buffer(3)]],
-    constant uint&      nx      [[buffer(4)]],
-    constant uint&      ny      [[buffer(5)]],
-    constant uint&      nz      [[buffer(6)]],
-    constant uint&      n_cols  [[buffer(7)]],
+    device const float* rinv    [[buffer(3)]],
+    device const int*   starts  [[buffer(4)]],
+    constant uint&      nx      [[buffer(5)]],
+    constant uint&      ny      [[buffer(6)]],
+    constant uint&      nz      [[buffer(7)]],
+    constant uint&      n_cols  [[buffer(8)]],
     uint idx [[thread_position_in_grid]])
 {
     // One thread per (phi, z) column. The dispatch is sized from `out`, which is
-    // nx times wider, so most threads return here; that is a stated throughput cost
-    // of this family and not a correctness one.
+    // nx times wider, so most threads return here.
     if (idx >= n_cols) { return; }
     int nxi = int(nx), nyi = int(ny), nzi = int(nz);
     int k = int(idx) % nzi;
@@ -324,279 +187,199 @@ kernel void cyl_rderiv_prefix(
     int nyz = nyi * nzi;
     int base = j * nzi + k;
 
-    // increment[0] is an exact +0.0 (stepping.py:1285 zeros_like / :1300), and the
-    // cumsum's first output IS that zero. Written rather than assumed: -0.0 here
-    // would be a different word, and this family compares words.
-    float acc = 0.0f;
-    out[base] = acc;
-    float prev = __SRC0__ * weights[0];
-    for (int i = 1; i < nxi; ++i) {
-        int o = i * nyz + base;
-        // weighted = f_p * weights, field LEFT, exactly as stepping.py:1284/:1298
-        // spells it.
-        float w = __SRCI__ * weights[i];
-        // stepping.py:1286 — the difference of two ALREADY-WEIGHTED rows over the
-        // row-constant divisor. NOT `* (1.0f / divisor)`, which is a different
-        // float32 number.
-        float inc = (w - prev) / divisor[i - 1];
-        // STRICTLY SERIAL: numpy.cumsum is out[i] = out[i-1] + in[i].
-        acc = acc + inc;
-        out[o] = acc;
-        prev = w;
-    }
+__LOOP__
 }
-"""  # stepping.py live lines for the frozen device-text citation(s) in this string: 1285->1314, 1300->1329, 1284->1313, 1298->1327, 1286->1315
+"""
+
+#: The B side (Bz, forward): target rows ``j`` read ``F_s[j+1] - F_s[j]`` of the
+#: chunk that owns them, over Ep extended by its zero wall row (row ``nx`` reads
+#: the literal ``0.0f`` the array path assigns). A new chunk's first target row is
+#: its first row ``s`` (checked on the host, :func:`scan_starts`).
+_FORWARD_LOOP = """    float w_prev = src[base] * weights[0];
+    float acc = 0.0f;              // F_s[j]: +0 on the chunk's first row
+    int owner = 0;
+    for (int g = 0; g < nxi; ++g) {
+        int s = starts[g];
+        if (s != owner) { acc = 0.0f; owner = s; }
+        float w = (g + 1 < nxi ? src[(g + 1) * nyz + base] : 0.0f) * weights[g + 1];
+        float inc = rinv[g] * (w - w_prev);
+        float nxt = acc + inc;     // F_s[j+1], the owning chunk's sum
+        out[g * nyz + base] = nxt - acc;
+        acc = nxt;
+        w_prev = w;
+    }"""
+
+#: The D side (Dz, backward, D's negated stride): target rows ``g`` read
+#: ``F_s[g-1] - F_s[g]``; row 0, the axis, reads ``+0`` (the per-m axis rules own
+#: it). A new chunk's first target row is one past its first row ``s``, so its
+#: ``F_s[g-1]`` is the restarted ``+0`` (checked on the host, :func:`scan_starts`).
+_BACKWARD_LOOP = """    out[base] = 0.0f;
+    float w_prev = src[base] * weights[0];
+    float acc = 0.0f;              // F_s[g-1]: +0 on the chunk's first row
+    int owner = 0;
+    for (int g = 1; g < nxi; ++g) {
+        int s = starts[g];
+        if (s != owner) { acc = 0.0f; owner = s; }
+        float w = src[g * nyz + base] * weights[g];
+        float inc = rinv[g - 1] * (w - w_prev);
+        float nxt = acc + inc;     // F_s[g]
+        out[g * nyz + base] = acc - nxt;
+        acc = nxt;
+        w_prev = w;
+    }"""
+
+_SCAN_LOOPS: Dict[str, str] = {"step_B": _FORWARD_LOOP, "step_D": _BACKWARD_LOOP}
 
 
-def cylindrical_prefix_source(sub_step: str,
-                              contract: str = shaders.CONTRACT_OFF) -> str:
-    """The radial-scan source for one sub-step.
-
-    The B side's ZERO WALL ROW is a SOURCE specialisation: the scan covers ``nr + 1``
-    rows over an ``nr``-row source and the top row reads the literal ``0.0f`` the
-    array path assigns (stepping.py:360). Spelling it as a shortened loop instead
-    would drop the wall row's own prefix entry, which is the value Bz's last-row
-    forward difference reads.
-    """
+def scan_source(sub_step: str, contract: str = shaders.CONTRACT_OFF) -> str:
+    """The radial-scan source for one sub-step (its direction and wall row are baked in)."""
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
-    if PREFIX_WALL_ROW[sub_step]:
-        src0 = "(0 < nxi - 1 ? src[base] : 0.0f)"
-        srci = "(i < nxi - 1 ? src[i * nyz + base] : 0.0f)"
-    else:
-        src0 = "src[base]"
-        srci = "src[i * nyz + base]"
-    return templates.substitute(_PREFIX_TEMPLATE, {
+    return templates.substitute(_SCAN_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
-        "__SRC0__": src0,
-        "__SRCI__": srci,
+        "__LOOP__": _SCAN_LOOPS[sub_step],
     })
 
 
-def compile_cylindrical_prefix(sub_step: str,
-                               contract: str = shaders.CONTRACT_OFF) -> Any:
+def compile_scan(sub_step: str, contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised radial-scan entry point for one sub-step."""
-    return compile_source(cylindrical_prefix_source(sub_step, contract)).cyl_rderiv_prefix
+    return compile_source(scan_source(sub_step, contract)).cyl_rderiv_difference
 
 
 def prefix_row_vectors(sub_step: str, radial_rows: int, dtype: Any = None
                        ) -> Tuple[Any, Any]:
-    """The two row vectors the scan binds — ``(weights, divisor)``, FLAT.
+    """The two row vectors the scan binds — ``(weights, rinv)``, FLAT.
 
-    NOT RE-DERIVED. ``stepping._cylindrical_rderiv_weights`` is the one definition of
-    ``(ir + ir0)`` and ``(ir + ir0) - 0.5``, and CALLING it rather than restating it
-    is what stops the two drifting. That is the whole reason, and it is enough.
-
-    THE OTHER REASON THIS DOCSTRING USED TO GIVE IS NOT REACHABLE, measured by
-    ``gate_metal_cylindrical_real.py`` leg ``prefix_row_vector_rounding``. Both
-    ladders are built in float64 and rounded to float32 exactly ONCE
-    (stepping.py:1339-1341), and recomputing them in float32 throughout was described
-    here as a double rounding on the divisor and a silent half-ulp error down the
-    whole radial ladder. It is not: ``ir0`` is 0.0 or 0.5, so the counts are integers
-    and the divisor half-integers, both EXACT in float32. The two spellings are
-    bit-identical at every radial extent in the gate's matrix and first diverge around
-    2^23 rows — four orders of magnitude past any constructible grid. The mutation
-    that plants the float32 recomputation is therefore carried as a MEASURED NULL
-    rather than quietly dropped.
+    ``stepping._cylindrical_rderiv_rows`` is CALLED, not restated: ``weights[g] =
+    realnum(g + ir0)`` and ``rinv[g-1] = realnum(1.0 / ((g + ir0) - 0.5))``, the
+    quotient in double and rounded once, over the sub-step's scan rows (``nr + 1``
+    on the B side, whose source carries the wall row).
     """
     import numpy as np  # noqa: PLC0415
-    from ..stepping import _cylindrical_rderiv_weights  # noqa: PLC0415
+    from ..stepping import _cylindrical_rderiv_rows  # noqa: PLC0415
 
     resolved = np.float32 if dtype is None else np.dtype(dtype).type
-    weights, divisor = _cylindrical_rderiv_weights(
+    weights, rinv = _cylindrical_rderiv_rows(
         np, scan_rows(sub_step, radial_rows), PREFIX_IR0[sub_step], resolved)
     return (np.ascontiguousarray(weights).reshape(-1),
-            np.ascontiguousarray(divisor).reshape(-1))
+            np.ascontiguousarray(rinv).reshape(-1))
+
+
+#: The target each sub-step's scan serves: its chunk starts are read on the target's
+#: own Yee lattice (a Dz cut row belongs to the lower chunk, a Bz one to the upper).
+SCAN_TARGETS: Dict[str, str] = {"step_B": "Bz", "step_D": "Dz"}
+
+
+def scan_starts(sub_step: str, starts: Any, radial_rows: int) -> Any:
+    """The scan's ``int32`` start vector from ``stepping._cylindrical_scan_starts``'s answer.
+
+    ``starts`` is that function's value for the sub-step's target: ``None`` (one chunk
+    from the axis), an ``(nr, 1, 1)`` line, or a full volume. Refused by name
+    (``ValueError``): a full volume (r cuts that differ along z, which a per-row start
+    cannot describe), a line of the wrong length, a first chunk that does not start at
+    the axis, and a chunk change the column walk cannot take — on the B side the new
+    chunk's first target row must be its first row ``s``, on the D side ``s + 1``,
+    which is what MEEP's ownership gives on a division cut at whole cells.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    if sub_step not in SUB_STEPS:
+        raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
+    rows = int(radial_rows)
+    if starts is None:
+        return np.zeros(rows, dtype=np.int32)
+    get = getattr(starts, "get", None)
+    host = np.asarray(get() if callable(get) else starts)
+    if host.ndim != 3 or host.shape[1:] != (1, 1):
+        raise ValueError(
+            f"the chunk starts have shape {host.shape}: the division's r cuts differ "
+            f"along z, and the column walk reads one start per row")
+    line = host.reshape(-1).astype(np.int64)
+    if line.shape[0] != rows:
+        raise ValueError(f"the chunk starts hold {line.shape[0]} rows, not {rows}")
+    backward = bool(SUB_STEPS[sub_step]["backward"])
+    first = 1 if backward and rows > 1 else 0
+    if line[first] != 0:
+        raise ValueError(f"the first chunk starts at row {int(line[first])}, not at the axis")
+    for row in range(first + 1, rows):
+        if line[row] == line[row - 1]:
+            continue
+        expected = row - 1 if backward else row
+        if line[row] != expected:
+            raise ValueError(
+                f"row {row} changes chunk to one starting at row {int(line[row])}; the "
+                f"column walk restarts the sum there only for a chunk starting at row "
+                f"{expected}")
+    return np.ascontiguousarray(line.astype(np.int32))
 
 
 # ---------------------------------------------------------------------------
-# The curl
+# The curl: the certified body with the cylindrical substitution
 # ---------------------------------------------------------------------------
 
-#: The CERTIFIED ``shaders._CURL_TEMPLATE`` with a prefix pointer, one host-rounded
-#: axis scalar and three substitution slots, and NO other change: the ghost rule, the
-#: curl grouping for targets 0 and 1, the ownership mask and the split-field
-#: recurrence are character for character the certified body's.
-#:
-#: 22 BINDINGS: 10 volumes + 6 coefficient vectors + 4 extents + dtdx + the axis
-#: scalar. The ceiling is 31 (``device.MAX_BUFFER_BINDINGS``), so this family fits
-#: with nine to spare — and the sibling test asserts the count rather than leaving a
-#: later edit to discover the ceiling at compile time.
-_CYL_CURL_TEMPLATE = r"""
-#include <metal_stdlib>
-using namespace metal;
+#: The chunk record's binding on this family's curl: two past the certified curl's
+#: (``shaders.CURL_RECORD_BUFFER``), after the radial difference and the axis scalar.
+CURL_RECORD_BUFFER = shaders.CURL_RECORD_BUFFER + 2
 
-__CONTRACT__
+#: The bindings the curl takes in front of the record, in order.
+_CURL_EXTRA_BINDINGS = (
+    f"    device const float* rad       [[buffer({shaders.CURL_RECORD_BUFFER})]],\n"
+    f"    constant float&     axis_coef [[buffer({shaders.CURL_RECORD_BUFFER + 1})]],\n")
 
-kernel void cyl_pml_curl_step(
-    device float*       f0        [[buffer(0)]],
-    device float*       f1        [[buffer(1)]],
-    device float*       f2        [[buffer(2)]],
-    device float*       u0        [[buffer(3)]],
-    device float*       u1        [[buffer(4)]],
-    device float*       u2        [[buffer(5)]],
-    device const float* g0        [[buffer(6)]],
-    device const float* g1        [[buffer(7)]],
-    device const float* g2        [[buffer(8)]],
-    device const float* pfx       [[buffer(9)]],
-    device const float* kmx       [[buffer(10)]],
-    device const float* sinvx     [[buffer(11)]],
-    device const float* kmy       [[buffer(12)]],
-    device const float* sinvy     [[buffer(13)]],
-    device const float* kmz       [[buffer(14)]],
-    device const float* sinvz     [[buffer(15)]],
-    constant uint&      nx        [[buffer(16)]],
-    constant uint&      ny        [[buffer(17)]],
-    constant uint&      nz        [[buffer(18)]],
-    constant uint&      n_elem    [[buffer(19)]],
-    constant float&     dtdx      [[buffer(20)]],
-    constant float&     axis_coef [[buffer(21)]],
-    uint idx [[thread_position_in_grid]])
-{
-    // The dispatch is sized from the first tensor argument's element count, so a
-    // volume wider than n_elem would step cells the array path does not own.
-    if (idx >= n_elem) { return; }
+#: The certified curl's target-2 stencil, which the cylindrical curl replaces: Bz and
+#: Dz differentiate the per-chunk radial sum (stepping.step_B / step_D, the Z case),
+#: and their phi partner is the derivative MEEP drops.
+_CERTIFIED_CURL2 = (
+    "    float curl2 = has_x ? (has_y ? (dtdx * (((b_x - b) + a) - a_y)) : (dtdx * (b_x - b)))\n"
+    "                        : (has_y ? ((-dtdx) * (a_y - a)) : 0.0f);\n")
 
-    int nxi = int(nx), nyi = int(ny), nzi = int(nz);
-    int nyz = nyi * nzi;
-    int ii  = int(idx);
-    int k   = ii % nzi;
-    int plane = ii / nzi;
-    int j   = plane % nyi;
-    int i   = plane / nyi;
+#: ``part_products.scale(dtdx, radial)``: one product of the radial difference.
+CYLINDRICAL_CURL2 = "    float curl2 = dtdx * rad[ii];\n"
 
-    // --- the ghost rule, per axis (stepping._shift_up:1723 / _shift_down:1787) --
-    // THE r AXIS IS COMPILED METALLIC. _shift_up's CYL_AXIS arm IS the METALLIC arm
-    // (:1781-1783). _shift_down's is not (:1830-1842) but is unobservable at m = 0:
-    // only Dy and Dz take a shift-down along r, both have r-Yee shift 0, and the
-    // ownership mask zeroes their curl at exactly the row that ghost writes.
-    // MEASURED on the array path, 0/33,012 words over four whole steps.
-    int si = i __SHIFT__, sj = j __SHIFT__, sk = k __SHIFT__;
-    bool vx = true, vy = true, vz = true;
-__GHOST_X__
-__GHOST_Y__
-__GHOST_Z__
+#: The certified body's first guarded auxiliary store. The per-chunk forms end above
+#: it, so the m = 0 axis rules go in front of it, on the registers.
+_FORMS_END = "    if (du0) { u0[ii] = n0; }\n"
 
-    int ox = si * nyz + j * nzi + k;
-    int oy = i * nyz + sj * nzi + k;
-    int oz = i * nyz + j * nzi + sk;
-
-    // METALLIC serves an exact 0.0 past the wall -- Triton's `other=0.0`. The
-    // ternary short-circuits, so the out-of-range offset is never dereferenced.
-    float a   = g0[ii];
-    float b   = g1[ii];
-    float c   = g2[ii];
-    float a_y = vy ? g0[oy] : 0.0f;
-    float a_z = vz ? g0[oz] : 0.0f;
-    float b_x = vx ? g1[ox] : 0.0f;
-    float b_z = vz ? g1[oz] : 0.0f;
-    float c_x = vx ? g2[ox] : 0.0f;
-    float c_y = vy ? g2[oy] : 0.0f;
-
-__PREFIX_LOADS__
-
-    // --- the curl (stepping._curl_from_operands:1601): DO NOT flatten these parens
-    // Targets 0 and 1 are the certified Cartesian expressions unchanged; target 2 is
-    // the cylindrical substitution.
-    float curl0 = dtdx * ((c_y - c) + (b - b_z));
-    float curl1 = dtdx * ((a_z - a) + (c - c_x));
-__CURL2__
-
-    // --- ownership mask (stepping._mask_non_owned_cells:1865) -------------------
-    // With the r axis compiled METALLIC this is the CERTIFIED emitter's output, and
-    // it masks exactly the cells the is_axis clause (:1898-1902) masks. Checked
-    // against the function itself, not against a reading of it.
-    bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);
-__MASK__
-
-    // --- split-field recurrence (stepping._apply_pml_update:1905) ---------------
-    // dsig/dsigu follow vec.hpp's cycle_direction and are the same triple on both
-    // sides: target 0 takes (y, z), target 1 (z, x), target 2 (x, y).
-    float km_x = kmx[i], si_x = sinvx[i];
-    float km_y = kmy[j], si_y = sinvy[j];
-    float km_z = kmz[k], si_z = sinvz[k];
-
-    float p0 = u0[ii];
-    float n0 = ((p0 * km_y) - curl0) * si_y;
-    float v0 = (((f0[ii] * km_z) + n0) - p0) * si_z;
-
-    float p1 = u1[ii];
-    float n1 = ((p1 * km_z) - curl1) * si_z;
-    float v1 = (((f1[ii] * km_x) + n1) - p1) * si_x;
-
-    float p2 = u2[ii];
-    float n2 = ((p2 * km_x) - curl2) * si_x;
-    float v2 = (((f2[ii] * km_y) + n2) - p2) * si_y;
-
-__AXIS_TAIL__
-
-    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;
-    f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;
+#: The m = 0 axis rules after the forms (stepping._cylindrical_axis_zero_B / _D):
+#: Bx[r=0] = 0 on the B side; on the D side the on-axis Dz increment, then Dp = 0.
+#: ``axis_coef`` is the float32 word of ``4 * Courant`` and ``g1`` the stored Hp:
+#: MEEP's ``dfcnd = g[i] * (Courant * 4)`` is a double product rounded once
+#: (step_db.cpp:324), the same word as this float32 product exactly when ``Courant``
+#: is a float32 word, which the predicate requires (:func:`courant_reasons`).
+_AXIS_TAILS: Dict[str, str] = {
+    "step_B": ("    // stepping._cylindrical_axis_zero_B: Bx[r = 0] = 0, the field only.\n"
+               "    v0 = at_x ? 0.0f : v0;\n"),
+    "step_D": ("    // stepping._cylindrical_axis_zero_D: Dz[r = 0] += 4*Courant*Hp[r = 0],\n"
+               "    // then Dy[r = 0] = 0, the fields only.\n"
+               "    v2 = at_x ? (v2 + (axis_coef * g1[ii])) : v2;\n"
+               "    v1 = at_x ? 0.0f : v1;\n"),
 }
-"""
 
-#: The B side's prefix use: Bz's WHOLE curl is the radial forward difference of the
-#: EXTENDED prefix (stepping.py:371-375). The extended volume has nr + 1 rows at the
-#: same (phi, z) stride, so row i + 1 sits at ``ii + nyz``.
-_B_PREFIX_LOADS = ("    // Bz's curl is REPLACED, so `b_x` above is dead on this side.\n"
-                   "    float pfx_here = pfx[ii];\n"
-                   "    float pfx_up   = pfx[ii + nyz];")
-_B_CURL2 = ("    // ONE subtract, ONE multiply -- NOT the four-operand grouping,\n"
-            "    // which is a different float32 number (stepping.py:347).\n"  # stepping.py live lines for the frozen device-text citation(s) in this string: 347->375
-            "    float curl2 = dtdx * (pfx_up - pfx_here);")
 
-#: The D side's prefix use: Dz's ``first`` operand and its shifted neighbour come from
-#: the prefix while ``Dx``'s Hy operands stay RAW (stepping.py:447-455), which is why
-#: both ``g1`` and ``pfx`` are bound. The ghost rule on the prefix is the SAME
-#: METALLIC rule the raw operand takes.
-_D_PREFIX_LOADS = ("    float pb   = pfx[ii];\n"
-                   "    float pb_x = vx ? pfx[ox] : 0.0f;")
-_D_CURL2 = "    float curl2 = dtdx * ((pb_x - pb) + (a - a_y));"
-
-#: The B-side axis rule: Br on the axis is identically zero — a radial vector at
-#: r = 0 points nowhere (stepping.py:661-662). Applied AFTER the recurrence, exactly
-#: as ``_cylindrical_axis_zero_B`` runs after the term loop (:403-404).
-_B_AXIS_TAIL = (
-    "    // stepping._cylindrical_axis_zero_B:661-662 -- Bx[r = 0] = 0, after the\n"
-    "    // recurrence. A ternary, not a branch: the certified ownership mask uses\n"
-    "    // the same idiom and the same `at_x` predicate.\n"
-    "    v0 = at_x ? 0.0f : v0;")
-
-#: The D-side axis rules, in the array path's own order (stepping.py:586-587): the
-#: on-axis Dz POST-ADD first, then Dp forced to zero.
-#:
-#: ``axis_coef`` IS HOST-ROUNDED and is not ``4.0f * dtdx``. The array path forms
-#: ``4.0 * (grid.dt / grid.dx)`` in float64 and NumPy then casts that one scalar to
-#: float32 before the multiply; binding the already-rounded word is the literal
-#: transcription. (The two happen to agree because scaling by four is exact, and the
-#: sibling test pins that they do rather than leaving it to luck.)
-#:
-#: ``g1`` IS THE RAW Hp, re-read from storage exactly as ``fields.get_H("Hy")`` does:
-#: under an active PML ``update_H`` has not run yet this sub-step, so the stored H is
-#: the same H^{n+1/2} the curls consumed.
-_D_AXIS_TAIL = (
-    "    // stepping._cylindrical_axis_zero_D:586-587. The Dz increment is a\n"
-    "    // POST-ADD and deliberately NOT folded into the curl: the fold was\n"
-    "    // MEASURED to break m = 0 under PML (Er 2.7e-01 / Hp 4.5e-01 against\n"
-    "    // 3.6e-07), because Dz's dsig is R, whose sigma is zero on the axis row,\n"
-    "    // so the plain post-add is the exact one (:546-551).\n"
-    "    // Two separate roundings, as `A += s * B` performs them.\n"
-    "    v2 = at_x ? (v2 + (axis_coef * g1[ii])) : v2;\n"
-    "    v1 = at_x ? 0.0f : v1;")
-
-_PREFIX_LOADS: Dict[str, str] = {"step_B": _B_PREFIX_LOADS, "step_D": _D_PREFIX_LOADS}
-_CURL2: Dict[str, str] = {"step_B": _B_CURL2, "step_D": _D_CURL2}
-_AXIS_TAIL: Dict[str, str] = {"step_B": _B_AXIS_TAIL, "step_D": _D_AXIS_TAIL}
+def _replace_once(text: str, old: str, new: str, what: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise AssertionError(
+            f"the certified curl source carries {what} ({old.strip()!r}) {count} times, "
+            f"not once; the cylindrical curl cannot be derived from it")
+    return text.replace(old, new, 1)
 
 
 def cylindrical_curl_source(sub_step: str, codes: Sequence[int],
                             contract: str = shaders.CONTRACT_OFF) -> str:
-    """The specialised ``cyl_pml_curl_step`` source for one configuration.
+    """The cylindrical curl source: :func:`.shaders.curl_source` with four checked edits.
 
-    ``codes`` is the per-axis 0/1 PERIODIC/METALLIC triple, with the r axis pinned
-    METALLIC — the caller resolves it from ``_boundary_kinds`` and maps ``'axis'``
-    there, and this function REFUSES a periodic r axis by name rather than emitting a
-    kernel whose far ghost wraps around the cylinder.
+    The certified curl for the sub-step's direction and the ``codes`` triple, with:
+    the entry point renamed ``cyl_pml_curl_step``; the radial difference ``rad`` and
+    the axis scalar bound in front of the chunk record; target 2's stencil replaced by
+    ``dtdx * rad[ii]``; the m = 0 axis rules inserted after the forms. Everything else
+    — the bounds block, the ghost rule, targets 0 and 1 with their absent phi partner,
+    the ownership mask and the per-chunk forms — is the certified text. Each edit must
+    land exactly once.
+
+    ``codes`` is the per-axis PERIODIC/METALLIC triple with the r axis METALLIC: a
+    PERIODIC r axis is refused by name rather than emitted with its far ghost wrapping
+    onto the axis row.
     """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
@@ -606,21 +389,22 @@ def cylindrical_curl_source(sub_step: str, codes: Sequence[int],
     if codes[0] != METALLIC:
         raise ValueError(
             f"the r axis must compile as METALLIC (code {METALLIC}), got {codes[0]!r}: "
-            f"CYL_AXIS shares _shift_up's metallic zero ghost exactly "
-            f"(stepping.py:1828-1830), and a PERIODIC r axis would wrap the far face "
-            f"onto the axis row")
+            f"CYL_AXIS shares _shift_up's metallic zero ghost, and a PERIODIC r axis "
+            f"would wrap the far face onto the axis row")
     backward = bool(SUB_STEPS[sub_step]["backward"])
-    return templates.substitute(_CYL_CURL_TEMPLATE, {
-        "__CONTRACT__": templates.contraction_pragma(contract),
-        "__SHIFT__": "- 1" if backward else "+ 1",
-        "__GHOST_X__": templates.ghost("x", codes[0], backward),
-        "__GHOST_Y__": templates.ghost("y", codes[1], backward),
-        "__GHOST_Z__": templates.ghost("z", codes[2], backward),
-        "__PREFIX_LOADS__": _PREFIX_LOADS[sub_step],
-        "__CURL2__": _CURL2[sub_step],
-        "__MASK__": templates.ownership_mask(codes, backward),
-        "__AXIS_TAIL__": _AXIS_TAIL[sub_step],
-    })
+    source = shaders.curl_source(codes, backward, contract)
+    source = _replace_once(source, "kernel void pml_curl_step(",
+                           "kernel void cyl_pml_curl_step(", "its entry point")
+    record = (f"    constant ChunkBounds& cb [[buffer({shaders.CURL_RECORD_BUFFER})]],\n")
+    source = _replace_once(
+        source, record,
+        _CURL_EXTRA_BINDINGS
+        + f"    constant ChunkBounds& cb [[buffer({CURL_RECORD_BUFFER})]],\n",
+        "its chunk-record binding")
+    source = _replace_once(source, _CERTIFIED_CURL2, CYLINDRICAL_CURL2,
+                           "its target-2 stencil")
+    return _replace_once(source, _FORMS_END, _AXIS_TAILS[sub_step] + "\n" + _FORMS_END,
+                         "its first guarded auxiliary store")
 
 
 def compile_cylindrical_curl(sub_step: str, codes: Sequence[int],
@@ -634,16 +418,14 @@ def enumerate_cylindrical_real_sources(contract: str = shaders.CONTRACT_OFF
                                        ) -> Dict[str, str]:
     """Every shipped specialisation, keyed by a stable label.
 
-    TEN sources: two scans (one per sub-step, differing only in the wall row) and
-    eight curls. The curl enumeration pins ``codes[0] = METALLIC`` because the
-    predicate admits no other r axis — enumerating the unreachable half would put
-    strings in ``fingerprints.json`` that no configuration can launch, which reads as
-    a claim that they are shipped.
+    TEN sources: two scans (one per sub-step) and eight curls. The curl enumeration
+    pins ``codes[0] = METALLIC`` because the predicate admits no other r axis. The
+    chunk division and its starts are bound data, so the set does not grow with the
+    grid.
     """
     out: Dict[str, str] = {}
     for sub_step in ("step_B", "step_D"):
-        out[f"cyl_rderiv_prefix/{sub_step}"] = cylindrical_prefix_source(
-            sub_step, contract)
+        out[f"cyl_rderiv_difference/{sub_step}"] = scan_source(sub_step, contract)
         for cy in (PERIODIC, METALLIC):
             for cz in (PERIODIC, METALLIC):
                 label = f"cyl_pml_curl_step/{sub_step}/{METALLIC}{cy}{cz}"
@@ -875,14 +657,17 @@ def cylindrical_real_curl_coverage(fields: Any, pml: Any, sub_step: str,
         if getattr(fields, name, None) is None:
             reasons.append(f"{name} is not allocated")
 
-    # 14b. The D side's axis POST-ADD re-reads Hp from storage exactly as
-    #      `fields.get_H("Hy")` does (stepping.py:586). Under an active PML that IS
-    #      the stored array, and clause 3 already requires one — but the read is
-    #      named here so a future no-PML arm cannot inherit the admission silently.
+    # 14b. The D side's axis increment re-reads Hp from storage exactly as
+    #      `_cylindrical_axis_zero_D` does (the stored H under an active PML, which
+    #      clause 3 requires); named so a future no-PML arm cannot inherit it.
     if sub_step == "step_D" and getattr(fields, "Hy", None) is None:
         reasons.append("Hy is not stored: the m = 0 axis rule adds "
                        "(4*Courant)*Hp[r=0] to Dz and reads the STORED H "
-                       "(stepping.py:586)")
+                       "(stepping._cylindrical_axis_zero_D)")
+
+    # 14c. The D side's on-axis product is MEEP's double product with Courant.
+    if sub_step == "step_D":
+        reasons.extend(courant_reasons(grid, "the m = 0 on-axis Dz increment"))
 
     # 15. Layout: float32, C-contiguous, grid.shape.
     shape = tuple(getattr(grid, "shape", ()))
@@ -890,7 +675,55 @@ def cylindrical_real_curl_coverage(fields: Any, pml: Any, sub_step: str,
     if pml is not None and getattr(pml, "is_active", False) and len(shape) == 3:
         reasons.extend(_coefficient_reasons(pml, shape, ("kms", "sinv"), ("", "_h")))
 
+    # 16. The radial sum's chunk starts: one per r row, on a division the column
+    #     walk can restart on.
+    if not reasons:
+        reasons.extend(scan_start_reasons(fields, pml, sub_step))
+
     return Coverage(not reasons, tuple(reasons))
+
+
+def courant_reasons(grid: Any, use: str) -> List[str]:
+    """Why a double product with ``Courant`` is not this backend's float32 product.
+
+    MEEP's cylindrical axis rules multiply a ``realnum`` by the double ``Courant`` in
+    double and round once (step_db.cpp:324, :377; ``stepping._realnum_double_product``).
+    This backend has no float64, and its float32 product with the float32 word of the
+    factor is the same word exactly when the factor is a float32 word: two float32
+    operands multiply exactly in double. Any other ``Courant`` is refused by name
+    rather than stepped one rounding off; ``use`` names the product.
+    """
+    import numpy  # noqa: PLC0415
+
+    try:
+        courant = float(getattr(grid, "courant"))
+    except Exception as exc:  # noqa: BLE001 - an unreadable Courant is not a float32 one
+        return [f"grid.courant could not be read ({exc!r}); {use} multiplies by it"]
+    if float(numpy.float32(courant)) != courant:
+        return [f"Courant {courant!r} is not a float32 word: {use} is MEEP's double "
+                f"product with Courant rounded once, which this backend forms as a "
+                f"float32 product only when Courant is a float32 word (no float64 on "
+                f"this device; a software double product is not built)"]
+    return []
+
+
+def scan_start_reasons(fields: Any, pml: Any, sub_step: str) -> List[str]:
+    """Why the radial sum's chunk starts cannot be bound; empty when they can.
+
+    The starts are the array path's own (``stepping._cylindrical_scan_starts`` for
+    the sub-step's target, on the division the run steps with), and
+    :func:`scan_starts` refuses what the column walk cannot take.
+    """
+    from ..stepping import _cylindrical_scan_starts  # noqa: PLC0415
+
+    try:
+        starts = _cylindrical_scan_starts(fields, pml, SCAN_TARGETS[sub_step])
+        scan_starts(sub_step, starts, int(fields.grid.shape[0]))
+    except ValueError as exc:
+        return [f"the radial sum's chunk starts are refused: {exc}"]
+    except Exception as exc:  # noqa: BLE001 - an unreadable division is not covered
+        return [f"the radial sum's chunk starts could not be read ({exc!r})"]
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -900,42 +733,29 @@ def cylindrical_real_curl_coverage(fields: Any, pml: Any, sub_step: str,
 class CylindricalRealCurlPlan:
     """One cylindrical m = 0 curl sub-step, as TWO launches: the scan, then the curl.
 
-    DELIBERATELY A SIBLING OF :class:`.plans.KernelPlan` RATHER THAN A SUBCLASS, for
-    the reason :class:`.symmetry.MirrorGhostFillPlan` is one: that base's whole
+    A sibling of :class:`.plans.KernelPlan` rather than a subclass: that base's
     contract is that ``run`` unpacks ONE argument tuple and calls ONE function, and
-    one implementation of that is what keeps the launch path uniform across the
-    family tree. This plan cannot honour it — the curl READS the scan's output, so
-    the two are ordered and cannot be one dispatch — and the divergence is stated
-    here rather than hidden behind an overridden ``run``.
+    this plan cannot honour it — the curl reads the scan's output, so the two are
+    ordered and cannot be one dispatch.
 
-    THE PREFIX MIRROR IS A PLAN-OWNED SCRATCH VOLUME, not an engine one, and this
-    family is the first here to own one at all. Two consequences, both measured
-    rather than assumed:
+    THE RADIAL DIFFERENCE IS A PLAN-OWNED SCRATCH VOLUME, registered non-constant
+    (the device writes it) through :func:`scratch_mirror`, which reuses the array
+    already bound under the name, so two plans for one sub-step on one residency share
+    it; the scan overwrites every word before the curl reads it. The two row vectors
+    are grid invariants, mirrored constant. The chunk starts and the chunk record are
+    ``int32`` plan-owned tensors outside the residency registry, as every ``Params``
+    record is: nothing on the device writes them and nothing on the host reads them
+    back.
 
-    * it is registered NON-CONSTANT even though nothing on the host reads it,
-      because ``constant`` means "the device never writes this" and
-      ``Residency.verify`` — the residency invariant's own check — would then report
-      it as permanently stale. A mirror the verifier cannot interpret is worse than
-      one extra sync;
-    * it is registered through :func:`scratch_mirror`, which REUSES the array
-      already bound under the name. Allocating a fresh one in the builder made a
-      second ``plan_cylindrical_real_curl`` for the same sub-step on one residency
-      raise ``mirror ... is already bound to a different host array`` — a refusal
-      that is right for engine volumes and wrong here, since the prefix is fully
-      overwritten by the scan before the curl reads it and the two row vectors are
-      grid invariants.
-
-    ``launches`` COUNTS KERNEL LAUNCHES, NOT ``run`` CALLS, and it is two per cycle.
-    A gate asserting the exact count per cycle is what stops a slot passing by not
-    executing; :attr:`prefix_launches` and :attr:`curl_launches` are carried
-    separately so "the scan ran and the curl did not" is distinguishable from "the
-    plan ran once".
+    ``launches`` COUNTS KERNEL LAUNCHES, NOT ``run`` CALLS, and it is two per cycle;
+    :attr:`scan_launches` and :attr:`curl_launches` are carried separately so "the
+    scan ran and the curl did not" is distinguishable from "the plan ran once".
     """
 
-    __slots__ = ("sub_step", "shape", "n_elem", "scan_shape", "n_cols", "dtdx",
+    __slots__ = ("sub_step", "shape", "n_elem", "n_cols", "dtdx",
                  "axis_coef", "backward", "bc", "residency", "volumes",
-                 "prefix_host", "launches", "prefix_launches", "curl_launches",
-                 "_prefix_functions", "_prefix_args",
+                 "radial_host", "starts", "chunk_bounds", "launches", "scan_launches",
+                 "curl_launches", "_scan_functions", "_scan_args",
                  "_curl_functions", "_curl_args")
 
     family = "cylindrical m = 0 PML curl"
@@ -943,30 +763,23 @@ class CylindricalRealCurlPlan:
     #: This plan launches kernels; the composer's planned/null split reads it.
     performs_device_work = True
 
-    #: TWO, and this is the one plan in the tree that is not one. ``run`` dispatches
-    #: the radial scan and then the curl that reads it, so a whole-step gate that
-    #: asserted one launch per cycle on every slot would fail a correct composition
-    #: here. Declared with the same name :class:`.plans.KernelPlan` declares it under
-    #: — this class is deliberately not a subclass of that base (see the docstring),
-    #: so the attribute is restated rather than inherited.
+    #: TWO: ``run`` dispatches the radial scan and then the curl that reads it.
     launches_per_run = 2
 
-    REPR_FIELDS = ("sub_step", "shape", "bc", "scan_shape")
+    #: The run's first ``update_H`` is not this plan's slot; declared for symmetry.
+    REPR_FIELDS = ("sub_step", "shape", "bc")
 
-    def __init__(self, sub_step: str, shape, scan_shape, dtdx: float,
-                 axis_coef: float, bc, residency: Residency,
-                 prefix_host: Any, prefix_args: Sequence[Any],
-                 curl_args: Sequence[Any],
-                 prefix_functions: Dict[str, Any],
-                 curl_functions: Dict[str, Any],
-                 volumes: Sequence[str]) -> None:
+    def __init__(self, sub_step: str, shape, dtdx: float, axis_coef: float, bc,
+                 residency: Residency, radial_host: Any, starts: Any,
+                 chunk_bounds: Any, scan_args: Sequence[Any],
+                 curl_args: Sequence[Any], scan_functions: Dict[str, Any],
+                 curl_functions: Dict[str, Any], volumes: Sequence[str]) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(
                 f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
-        self.scan_shape = tuple(int(n) for n in scan_shape)
         self.n_cols = self.shape[1] * self.shape[2]
         # float(): the array path multiplies a float32 volume by a Python float,
         # which NumPy casts to float32 before the multiply; Metal binds a Python
@@ -978,25 +791,21 @@ class CylindricalRealCurlPlan:
         self.bc = tuple(int(code) for code in bc)
         self.residency = residency
         self.volumes = tuple(volumes)
-        self.prefix_host = prefix_host
-        self._prefix_functions = dict(prefix_functions)
+        self.radial_host = radial_host
+        self.starts = starts
+        self.chunk_bounds = chunk_bounds
+        self._scan_functions = dict(scan_functions)
         self._curl_functions = dict(curl_functions)
-        self._prefix_args = tuple(prefix_args)
+        self._scan_args = tuple(scan_args)
         self._curl_args = tuple(curl_args)
         self.launches = 0
-        self.prefix_launches = 0
+        self.scan_launches = 0
         self.curl_launches = 0
 
     @property
     def variants(self) -> Tuple[str, ...]:
-        """The contraction modes BOTH kernels were built with.
-
-        The intersection rather than either one alone: a plan that held a ``fast``
-        scan and no ``fast`` curl would report a variant it cannot launch, and the
-        gate's guard leg would then measure the shipped curl while believing it had
-        removed the guard.
-        """
-        return tuple(sorted(set(self._prefix_functions) & set(self._curl_functions)))
+        """The contraction modes BOTH kernels were built with (their intersection)."""
+        return tuple(sorted(set(self._scan_functions) & set(self._curl_functions)))
 
     def _function(self, table: Dict[str, Any], mode: str, which: str) -> Any:
         function = table.get(mode)
@@ -1007,13 +816,13 @@ class CylindricalRealCurlPlan:
                 f"rather than launching the pinned one")
         return function
 
-    def run_prefix(self, contract: Optional[str] = None) -> None:
-        """The radial scan alone — ``cylindrical_rderiv_prefix`` on the device."""
+    def run_scan(self, contract: Optional[str] = None) -> None:
+        """The radial scan alone — ``cylindrical_rderiv_difference`` on the device."""
         mode = shaders.CONTRACT_OFF if contract is None else contract
-        function = self._function(self._prefix_functions, mode, "scan")
+        function = self._function(self._scan_functions, mode, "scan")
         self.launches += 1
-        self.prefix_launches += 1
-        function(*self._prefix_args)
+        self.scan_launches += 1
+        function(*self._scan_args)
 
     def run_curl(self, contract: Optional[str] = None) -> None:
         """The curl alone. Reads the scan's output, so it is never run first."""
@@ -1026,14 +835,12 @@ class CylindricalRealCurlPlan:
     def run(self, contract: Optional[str] = None) -> None:
         """The sub-step: scan, then curl. In place.
 
-        THE ORDER IS THE CONTRACT. The curl reads the prefix the scan writes, and the
-        prefix is a function of THIS sub-step's source volume — so a scan hoisted out
-        of the loop, or run after the curl, feeds the curl the PREVIOUS timestep's
-        radial derivative. That is a smooth, plausible, entirely wrong field rather
-        than an error, which is why the two launches live behind one ``run`` and the
-        separate entry points exist only for a gate that wants to measure one of them.
+        THE ORDER IS THE CONTRACT. The curl reads the radial difference the scan
+        writes, a function of THIS sub-step's source volume, so a scan run after the
+        curl feeds it the previous timestep's derivative: a plausible wrong field
+        rather than an error.
         """
-        self.run_prefix(contract)
+        self.run_scan(contract)
         self.run_curl(contract)
 
     def describe(self) -> str:
@@ -1045,10 +852,8 @@ class CylindricalRealCurlPlan:
         return self.describe()
 
 
-def _prefix_functions(sub_step: str, contract_variants: Sequence[str]
-                      ) -> Dict[str, Any]:
-    return {mode: compile_cylindrical_prefix(sub_step, mode)
-            for mode in contract_variants}
+def _scan_functions(sub_step: str, contract_variants: Sequence[str]) -> Dict[str, Any]:
+    return {mode: compile_scan(sub_step, mode) for mode in contract_variants}
 
 
 def _curl_functions(sub_step: str, codes, contract_variants: Sequence[str]
@@ -1061,167 +866,167 @@ def scratch_mirror(residency: Residency, name: str, build: Any,
                    constant: bool = False) -> Tuple[Any, Any]:
     """Register a PLAN-OWNED scratch volume, reusing the array already bound.
 
-    Every volume the earlier families mirror belongs to the ENGINE, so the builder
-    always has the array in hand and one name always means one array. This family
-    ALLOCATES its three — the radial prefix and the two row vectors — inside the
-    builder, so building the same sub-step's plan twice against one residency handed
-    ``mirror`` two different arrays under one name and it refused, correctly by its
-    own contract and wrongly for this case: the prefix is fully overwritten by the
-    scan before the curl reads it, and the row vectors are grid invariants, so two
-    plans SHOULD share them.
-
-    ``build`` is called ONLY on the first registration, so the second build neither
-    allocates nor re-derives the ladder.
+    ``build`` is called ONLY on the first registration, so a second plan for the same
+    sub-step on one residency shares the volume rather than being refused for binding
+    a different host array under the same name.
     """
     existing = residency.host(name)
     host = build() if existing is None else existing
     return host, residency.mirror(name, host, constant=constant)
 
 
-def boundary_codes(kinds: Sequence[str]) -> Tuple[int, int, int]:
-    """``_boundary_kinds``' strings as this family's specialisation triple.
+def int32_tensor(values: Any, device: str) -> Any:
+    """A plan-owned ``torch.int32`` copy of a small host vector on ``device``.
 
-    'axis' MAPS TO METALLIC, and that mapping is the whole reason this family needs
-    no ghost code of its own — see the module docstring for the measurement. It is a
-    named function rather than an inline comprehension so both plan builders and the
-    sibling tests read the SAME mapping.
+    Outside the residency registry, as every ``Params`` tensor is: ``Residency.mirror``
+    binds float32 and complex64 volumes only, and nothing on the device writes this.
     """
+    import numpy as np  # noqa: PLC0415
+    import torch  # noqa: PLC0415
+
+    host = np.ascontiguousarray(values, dtype=np.int32).reshape(-1)
+    return torch.from_numpy(host.copy()).to(torch.device(device))
+
+
+def boundary_codes(kinds: Sequence[str]) -> Tuple[int, int, int]:
+    """``_boundary_kinds``' strings as this family's specialisation triple ('axis' -> METALLIC)."""
     return tuple(METALLIC if kind in ("metallic", "axis") else PERIODIC
                  for kind in kinds)  # type: ignore[return-value]
+
+
+def axis_coefficient(courant: float) -> float:
+    """The m = 0 on-axis Dz factor ``4 * Courant``, bound into ``constant float&``.
+
+    MEEP forms ``g[i] * (Courant * 4)`` in double and rounds the product once
+    (step_db.cpp:324, ``stepping._realnum_double_product``). Bound as the float32
+    word of ``4 * Courant``, the kernel's float32 product is that word exactly when
+    ``Courant`` is a float32 word (two float32 operands multiply exactly in double),
+    which :func:`courant_reasons` requires.
+    """
+    return 4.0 * float(courant)
+
+
+def _build_curl_plan(sub_step: str, shape, dtdx: float, courant: float, codes,
+                     residency: Residency, arrays: Dict[str, Any],
+                     coefficients: Sequence[Any], starts: Any, chunk_bounds: Any,
+                     owner: str, scan_function: Optional[Dict[str, Any]],
+                     curl_function: Optional[Dict[str, Any]],
+                     contract_variants: Sequence[str]) -> CylindricalRealCurlPlan:
+    """The ONE plan assembly both routes take (engine and bare arrays)."""
+    import numpy as np  # noqa: PLC0415
+
+    spec = SUB_STEPS[sub_step]
+    shape = tuple(int(n) for n in shape)
+    record = _chunk_bounds.plan_words(chunk_bounds, shape, owner)
+    start_line = scan_starts(sub_step, starts, shape[0])
+
+    targets = [residency.mirror(n, arrays[n]) for n in spec["targets"]]
+    auxiliaries = [residency.mirror("fu_" + n, arrays["fu_" + n])
+                   for n in spec["targets"]]
+    sources = [residency.mirror(n, arrays[n]) for n in spec["sources"]]
+
+    # The scan reads the sub-step's PHI source: Ep on the B side and Hp on the D side,
+    # both `sources[1]`, named through the term table rather than by index.
+    scan_source_name = spec["sources"][1]
+    radial_host, radial = scratch_mirror(
+        residency, f"cyl_radial:{sub_step}",
+        lambda: np.zeros(shape, dtype=np.float32))
+    _, weight_vector = scratch_mirror(
+        residency, f"cyl_weights:{sub_step}",
+        lambda: prefix_row_vectors(sub_step, shape[0])[0], constant=True)
+    _, rinv_vector = scratch_mirror(
+        residency, f"cyl_rinv:{sub_step}",
+        lambda: prefix_row_vectors(sub_step, shape[0])[1], constant=True)
+    starts_tensor = int32_tensor(start_line, residency.device)
+
+    # Zero on the B side, which binds the slot without reading it: one binding layout
+    # for both sub-steps.
+    axis_coef = axis_coefficient(courant) if sub_step == "step_D" else 0.0
+    n_elem = shape[0] * shape[1] * shape[2]
+    volumes = (tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
+               + tuple(spec["sources"]))
+    scan_args = (radial, residency.mirror(scan_source_name, arrays[scan_source_name]),
+                 weight_vector, rinv_vector, starts_tensor,
+                 shape[0], shape[1], shape[2], shape[1] * shape[2])
+    curl_args = (tuple(targets) + tuple(auxiliaries) + tuple(sources)
+                 + tuple(coefficients)
+                 + (shape[0], shape[1], shape[2], n_elem, float(dtdx))
+                 + (radial, float(axis_coef), _chunk_bounds.tensor(record, residency.device)))
+    return CylindricalRealCurlPlan(
+        sub_step, shape, dtdx, axis_coef, codes, residency, radial_host, start_line,
+        record, scan_args, curl_args,
+        scan_function if scan_function is not None
+        else _scan_functions(sub_step, contract_variants),
+        curl_function if curl_function is not None
+        else _curl_functions(sub_step, codes, contract_variants),
+        volumes)
 
 
 def plan_cylindrical_real_curl(fields: Any, pml: Any, sub_step: str,
                                residency: Optional[Residency] = None,
                                contract_variants: Sequence[str] = (
                                    shaders.CONTRACT_OFF,),
+                               *, chunk_bounds: Any,
                                ) -> Optional[CylindricalRealCurlPlan]:
     """Build a cylindrical m = 0 curl plan from the engine's own objects, or None.
 
-    None is the only refusal: a configuration this kernel does not carry must fall
-    back to the array path, never raise into a caller that would otherwise have
-    stepped correctly.
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``) and has no default; the chunk starts are the array
+    path's own (``stepping._cylindrical_scan_starts``). None is the only refusal: a
+    configuration this kernel does not carry falls back to the array path.
     """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
     if not cylindrical_real_curl_coverage(fields, pml, sub_step, residency).covered:
         return None
-    import numpy as np  # noqa: PLC0415
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
+    from ..stepping import _cylindrical_scan_starts  # noqa: PLC0415
 
     spec = SUB_STEPS[sub_step]
     grid = fields.grid
     codes = boundary_codes(resolve(grid, pml))
-    shape = tuple(int(n) for n in grid.shape)
-    scan_shape = (scan_rows(sub_step, shape[0]), shape[1], shape[2])
-
-    targets = [residency.mirror(n, getattr(fields, n)) for n in spec["targets"]]
-    auxiliaries = [residency.mirror("fu_" + n, getattr(fields, "fu_" + n))
-                   for n in spec["targets"]]
-    sources = [residency.mirror(n, getattr(fields, n)) for n in spec["sources"]]
+    names = (tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
+             + tuple(spec["sources"]))
+    arrays = {name: getattr(fields, name) for name in names}
     coefficients = [
         residency.mirror(f"pml:{stem}_{axis}{spec['suffix']}",
                          getattr(pml, f"{stem}_{axis}{spec['suffix']}"),
                          constant=True)
         for axis in "xyz" for stem in ("kms", "sinv")]
-
-    # The scan reads the sub-step's PHI source -- Ep on the B side and Hp on the D
-    # side, both of which are `sources[1]`. Named through the term table rather than
-    # by index so a table change cannot silently repoint it.
-    scan_source_name = spec["sources"][1]
-    scan_source = residency.mirror(scan_source_name,
-                                   getattr(fields, scan_source_name))
-
-    prefix_host, prefix = scratch_mirror(
-        residency, f"cyl_pfx:{sub_step}",
-        lambda: np.zeros(scan_shape, dtype=np.float32))
-    _, weight_vector = scratch_mirror(
-        residency, f"cyl_weights:{sub_step}",
-        lambda: prefix_row_vectors(sub_step, shape[0])[0], constant=True)
-    _, divisor_vector = scratch_mirror(
-        residency, f"cyl_divisor:{sub_step}",
-        lambda: prefix_row_vectors(sub_step, shape[0])[1], constant=True)
-
-    dtdx = grid.dt / grid.dx
-    # stepping.py:586 forms `4.0 * (grid.dt / grid.dx)` in float64 and NumPy rounds
-    # that ONE scalar to float32 before the multiply. Zero on the B side, which binds
-    # the slot without reading it -- one binding layout for both sub-steps, the same
-    # discipline `constitutive_source` follows for its inverse-epsilon buffers.
-    axis_coef = (4.0 * dtdx) if sub_step == "step_D" else 0.0
-    n_elem = shape[0] * shape[1] * shape[2]
-    volumes = (tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
-               + tuple(spec["sources"]))
-    return CylindricalRealCurlPlan(
-        sub_step, shape, scan_shape, dtdx, axis_coef, codes, residency,
-        prefix_host,
-        (prefix, scan_source, weight_vector, divisor_vector,
-         scan_shape[0], shape[1], shape[2], shape[1] * shape[2]),
-        tuple(targets) + tuple(auxiliaries) + tuple(sources) + (prefix,)
-        + tuple(coefficients)
-        + (shape[0], shape[1], shape[2], n_elem, float(dtdx), float(axis_coef)),
-        _prefix_functions(sub_step, contract_variants),
-        _curl_functions(sub_step, codes, contract_variants),
-        volumes)
+    starts = _cylindrical_scan_starts(fields, pml, SCAN_TARGETS[sub_step])
+    return _build_curl_plan(
+        sub_step, grid.shape, grid.dt / grid.dx, grid.courant, codes, residency,
+        arrays, coefficients, starts, chunk_bounds, "plan_cylindrical_real_curl",
+        None, None, contract_variants)
 
 
 def plan_cylindrical_real_curl_from_arrays(
         sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any], codes,
-        dtdx: float, residency: Residency,
-        prefix_function: Optional[Dict[str, Any]] = None,
+        dtdx: float, residency: Residency, *, chunk_bounds: Any,
+        courant: Optional[float] = None, starts: Any = None,
+        scan_function: Optional[Dict[str, Any]] = None,
         curl_function: Optional[Dict[str, Any]] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        axis_coef: Optional[float] = None) -> CylindricalRealCurlPlan:
+        ) -> CylindricalRealCurlPlan:
     """Build a plan from bare host arrays — the gate's route.
 
     No predicate runs: the caller is a harness that constructed the configuration
-    deliberately, including the deliberately wrong ones. ``prefix_function`` and
-    ``curl_function`` are the mutation seams, and they are SEPARATE so a leg can
-    plant a defect in one kernel while the other stays shipped — dropping them is not
-    a silent slowdown but a silent DISARMING, since every mutation leg would then
-    launch the shipped kernels and report the defect as uncaught.
+    deliberately. ``chunk_bounds`` is required; ``starts`` is
+    ``stepping._cylindrical_scan_starts``'s answer for the sub-step's target (``None``:
+    one chunk from the axis); ``courant`` defaults to ``dtdx``. ``scan_function`` and
+    ``curl_function`` are the mutation seams, separate so a leg can plant a defect in
+    one kernel while the other stays shipped.
     """
-    import numpy as np  # noqa: PLC0415
-
     spec = SUB_STEPS[sub_step]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
-    scan_shape = (scan_rows(sub_step, shape[0]), shape[1], shape[2])
-
-    targets = [residency.mirror(n, arrays[n]) for n in spec["targets"]]
-    auxiliaries = [residency.mirror("fu_" + n, arrays["fu_" + n])
-                   for n in spec["targets"]]
-    sources = [residency.mirror(n, arrays[n]) for n in spec["sources"]]
     coefficients = [residency.mirror(f"pml:{stem}_{axis}:{sub_step}",
                                      flat[f"{stem}_{axis}"], constant=True)
                     for axis in "xyz" for stem in ("kms", "sinv")]
-
-    scan_source_name = spec["sources"][1]
-    prefix_host, prefix = scratch_mirror(
-        residency, f"cyl_pfx:{sub_step}",
-        lambda: np.zeros(scan_shape, dtype=np.float32))
-    _, weight_vector = scratch_mirror(
-        residency, f"cyl_weights:{sub_step}",
-        lambda: prefix_row_vectors(sub_step, shape[0])[0], constant=True)
-    _, divisor_vector = scratch_mirror(
-        residency, f"cyl_divisor:{sub_step}",
-        lambda: prefix_row_vectors(sub_step, shape[0])[1], constant=True)
-    resolved_coef = ((4.0 * float(dtdx)) if sub_step == "step_D" else 0.0
-                     ) if axis_coef is None else float(axis_coef)
-    n_elem = shape[0] * shape[1] * shape[2]
-    volumes = (tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
-               + tuple(spec["sources"]))
-    return CylindricalRealCurlPlan(
-        sub_step, shape, scan_shape, dtdx, resolved_coef, codes, residency,
-        prefix_host,
-        (prefix, residency.mirror(scan_source_name, arrays[scan_source_name]),
-         weight_vector, divisor_vector,
-         scan_shape[0], shape[1], shape[2], shape[1] * shape[2]),
-        tuple(targets) + tuple(auxiliaries) + tuple(sources) + (prefix,)
-        + tuple(coefficients)
-        + (shape[0], shape[1], shape[2], n_elem, float(dtdx), resolved_coef),
-        prefix_function if prefix_function is not None
-        else _prefix_functions(sub_step, contract_variants),
-        curl_function if curl_function is not None
-        else _curl_functions(sub_step, codes, contract_variants),
-        volumes)
+    return _build_curl_plan(
+        sub_step, shape, dtdx, float(dtdx) if courant is None else float(courant),
+        tuple(int(code) for code in codes), residency, arrays, coefficients, starts,
+        chunk_bounds, "plan_cylindrical_real_curl_from_arrays", scan_function,
+        curl_function, contract_variants)
 
 
 # ---------------------------------------------------------------------------
@@ -1303,7 +1108,8 @@ def cylindrical_real_constitutive_coverage(fields: Any, pml: Any, side: str,
 def plan_cylindrical_real_constitutive(fields: Any, pml: Any, side: str,
                                        residency: Any = None,
                                        contract_variants: Sequence[str] = (
-                                           templates.CONTRACT_OFF,)) -> Any:
+                                           templates.CONTRACT_OFF,),
+                                       *, chunk_bounds: Any) -> Any:
     """A CERTIFIED constitutive plan for a Dcyl m = 0 run, or None.
 
     The arithmetic, the source and the plan class are the certified ones; only the
@@ -1339,7 +1145,8 @@ def plan_cylindrical_real_constitutive(fields: Any, pml: Any, side: str,
     return ConstitutivePlan(
         side, fields.grid.shape, residency, targets, auxiliaries, sources,
         inverse_epsilon, coefficients,
-        _constitutive_functions(side, contract_variants), volumes)
+        _constitutive_functions(side, contract_variants), volumes,
+        chunk_bounds=chunk_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -1383,7 +1190,8 @@ def _curl_arm_coverage(context: Any, slot: str) -> Coverage:
 
 def _curl_arm_plan(context: Any, slot: str) -> Optional[CylindricalRealCurlPlan]:
     return plan_cylindrical_real_curl(context.fields, context.pml, slot,
-                                      context.residency, context.contract_variants)
+                                      context.residency, context.contract_variants,
+                                      chunk_bounds=context.chunk_bounds)
 
 
 #: Which constitutive side each slot names, so one pair of callables serves both.
@@ -1399,7 +1207,8 @@ def _constitutive_arm_coverage(context: Any, slot: str) -> Coverage:
 def _constitutive_arm_plan(context: Any, slot: str) -> Any:
     return plan_cylindrical_real_constitutive(
         context.fields, context.pml, _CONSTITUTIVE_SLOT_SIDES[slot],
-        context.residency, context.contract_variants)
+        context.residency, context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

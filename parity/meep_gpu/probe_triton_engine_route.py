@@ -404,6 +404,20 @@ def main(argv=None) -> int:
             json.dump(results, handle, indent=2)
         os.replace(tmp, args.out)
 
+    # THE CAMPAIGN'S SUBNORMAL POLICY, installed and measured before the first lift and
+    # stamped into the artifact (owner ruling R16; composition_policy.py). MEEP is
+    # imported first because every case lifts a MEEP simulation, and importing MEEP
+    # flushes the host: after a keep install it would leave the run flushing.
+    import cupy as cp  # noqa: PLC0415
+    from composition_policy import (  # noqa: PLC0415
+        end_of_run_reasons, stamp_campaign_policy)
+
+    refused = stamp_campaign_policy(results, cp, import_meep=True)
+    save()
+    if refused:
+        log(f"[engine] REFUSED: {refused}")
+        return 2
+
     for name, kwargs in COVERED_CASES + REFUSAL_CASES:
         started = time.time()
         try:
@@ -519,6 +533,9 @@ def main(argv=None) -> int:
             if not named:
                 reasons.append(f"{case['case']}: {sub_step} left the composition with "
                                f"no named reason")
+    # THE POLICY STILL HOLDS: the stamp is a claim about the whole run (re-stamped here
+    # with the compile counters the run accumulated).
+    reasons += [f"subnormal policy: {reason}" for reason in end_of_run_reasons(results)]
     results["summary"]["status"] = "passed" if not reasons else "failed"
     results["summary"]["reasons"] = reasons
 

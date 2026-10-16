@@ -13,7 +13,8 @@ Three predicates live here, one per kernel:
 * :func:`constitutive_coverage` — the ``dsigw`` constitutive accumulation
   (``update_H`` and ``update_E``);
 * :func:`ade_update_p_coverage` — one Lorentz/Drude pole's ADE recurrence
-  (``update_P``), per (state, component).
+  (``update_P``), per (state, component), on MEEP's four float32 words
+  (:func:`polarization_constant_reasons`).
 
 COVERAGE IS A SET PER SUB-STEP, NOT PER RUN. A feature that changes one sub-step's
 semantics disqualifies THAT sub-step; the others may still dispatch, because the
@@ -41,8 +42,11 @@ far — are what make a predicate more than a function that returns True.
 
 from __future__ import annotations
 
+import math
+import struct
 from typing import Any, List, NamedTuple, Optional, Sequence, Tuple
 from .. import deposit_repair as _deposit_repair
+from ..chunk_map import AXIS_NAMES, ChunkLayoutRefusal, chunk_bounds_record, grid_frames
 
 #: Does this product bracket its fused launch with the deposit repair? YES, and the
 #: wiring this claims is ``launch._install_fused_pair`` (``launch.py:1639``): when
@@ -85,10 +89,17 @@ CURL_SUB_STEPS = {
 B_SOURCES: Tuple[str, ...] = ("Ex", "Ey", "Ez")
 D_SOURCES: Tuple[str, ...] = ("Hx", "Hy", "Hz")
 
-#: The susceptibility kinds the ADE kernel's three-term recurrence covers. Kept as
-#: a literal rather than imported so this module stays engine-import-free; a test
-#: pins it against ``dispersion.SUSCEPTIBILITY_KINDS`` so the two cannot drift.
+#: The susceptibility kinds the ADE kernel's recurrence covers. Kept as a literal
+#: rather than imported so this module stays engine-import-free; a test pins it
+#: against ``dispersion.SUSCEPTIBILITY_KINDS`` so the two cannot drift.
 COVERED_SUSCEPTIBILITY_KINDS: Tuple[str, ...] = ("lorentzian", "drude")
+
+#: MEEP's four ``update_P`` words, in the order of ``dispersion.RealnumConstants``'s
+#: fields (susceptibility.cpp:191-195): what ``PolarizationState.constants`` holds and
+#: what every Triton ADE kernel takes, as four float32 scalars. Kept as a literal for
+#: the reason above; ``test_triton_kernels`` pins it against the named tuple's fields.
+POLARIZATION_CONSTANTS: Tuple[str, ...] = (
+    "two_minus_od", "gamma1", "omega0dtsqr", "gamma1inv")
 
 #: A polarization may drive these and only these. ``PolarizationState`` allocates
 #: over E components only (dispersion.py:640-647) and ``from_meep`` refuses
@@ -570,21 +581,10 @@ def ade_update_p_coverage(fields: Any, state: Any, component: str) -> Coverage:
     if kind not in COVERED_SUSCEPTIBILITY_KINDS:
         reasons.append(f"kind {kind!r} is outside {COVERED_SUSCEPTIBILITY_KINDS}")
 
-    coefficients = getattr(state, "_coefficients", None)
-    if coefficients is None or len(tuple(coefficients)) != 3:
-        reasons.append("the (c_now, c_prev, c_drive) coefficient triple is missing")
-    else:
-        for name, value in zip(("c_now", "c_prev", "c_drive"), tuple(coefficients)):
-            try:
-                number = float(value)
-            except Exception:  # noqa: BLE001 - a non-numeric coefficient is not coverage
-                reasons.append(f"{name}={value!r} is not a float")
-                continue
-            if number != number or number in (float("inf"), float("-inf")):
-                reasons.append(f"{name}={number!r} is not finite")
+    reasons.extend(polarization_constant_reasons(state))
 
     # dt: PolarizationState.update raises when the two disagree (dispersion.py:681-687),
-    # and the kernel bakes the coefficients that dt produced.
+    # and the kernel takes the words that dt produced.
     dt = getattr(grid, "dt", None)
     if dt is None:
         reasons.append("grid carries no dt")
@@ -630,6 +630,43 @@ def ade_update_p_coverage(fields: Any, state: Any, component: str) -> Coverage:
             reasons.append(f"sigma[{component}]={sigma!r} is neither a scalar nor a volume")
 
     return Coverage(not reasons, tuple(reasons))
+
+
+def polarization_constant_reasons(state: Any) -> List[str]:
+    """Why ``state.constants`` is not MEEP's four ``update_P`` words, or nothing.
+
+    The kernels take the four words as float32 scalars, so each must be one already:
+    a value that is not a float32 word would be rounded at the launch and step a
+    different recurrence from the array path's, smoothly and without an error. A
+    missing, non-numeric or non-finite word is refused by name for the same reason.
+    One clause for every Triton ADE predicate (:func:`ade_update_p_coverage`, the
+    no-PML, complex and fused ADE families), so they cannot disagree about it.
+    """
+    constants = getattr(state, "constants", None)
+    try:
+        values = None if constants is None else tuple(constants)
+    except TypeError:
+        values = None
+    if values is None or len(values) != len(POLARIZATION_CONSTANTS):
+        return [f"MEEP's four update_P words {POLARIZATION_CONSTANTS} "
+                f"(PolarizationState.constants) are missing"]
+    reasons: List[str] = []
+    for name, value in zip(POLARIZATION_CONSTANTS, values):
+        try:
+            number = float(value)
+        except Exception:  # noqa: BLE001 - a non-numeric word is not coverage
+            reasons.append(f"{name}={value!r} is not a float")
+            continue
+        if not math.isfinite(number):
+            reasons.append(f"{name}={number!r} is not finite")
+            continue
+        try:
+            word = struct.unpack("<f", struct.pack("<f", number))[0]
+        except OverflowError:
+            word = None
+        if word != number:
+            reasons.append(f"{name}={number!r} is not a float32 word (MEEP's realnum)")
+    return reasons
 
 
 def sigma_is_volume(state: Any, component: str) -> bool:
@@ -731,6 +768,94 @@ def _coefficient_reasons(pml: Any, shape: Sequence[int], stems: Sequence[str],
                         f"pml.{name} has {int(array.size)} entries, axis {axis} has "
                         f"{int(shape[axis_index])} cells")
     return out
+
+
+#: The opening of every refusal :func:`chunk_layout_reasons` gives a division that is
+#: not separable; the rest of the reason names the axis and lattice.
+NON_SEPARABLE_DIVISION = (
+    "the chunk division is not separable, so no per-axis chunk record describes it "
+    "and the Triton kernels refuse it to the array path")
+
+#: The opening of the refusal a cylindrical or off-diagonal run gets on a division that
+#: is not a ``{low, interior, high}`` product along the axes its kernels index.
+NOT_LOW_INTERIOR_HIGH = (
+    "the chunk division is not a {low, interior, high} product along the axes this "
+    "run's kernels index by chunk (the cylindrical r prefix, the off-diagonal "
+    "presence masks), so they refuse it to the array path")
+
+
+def low_interior_high_reasons(layout: Any, axes: Sequence[int]) -> List[str]:
+    """Why ``layout`` is not a ``{low, interior, high}`` product along ``axes``, if it is not.
+
+    Along each resolved axis in ``axes`` every chunk cut must span the whole
+    cross-section (:meth:`~meep_gpu.chunk_map.ChunkLayout.boundaries` is not
+    ``None``) and cut the axis into at most three segments. Nothing else needs
+    checking over several axes: when every cut along an axis is global, every box
+    face along it is a cut and no box straddles one, so on the axes checked each box
+    is exactly one cell of the segments' product. The one-rank default always
+    qualifies: its boxes are built as that product (``ChunkLayout.one_rank``). An
+    invariant axis has one segment and is skipped. Returns no reasons when the layout
+    qualifies.
+    """
+    reasons: List[str] = []
+    for axis in axes:
+        if layout.frames[axis].invariant:
+            continue
+        cuts = layout.boundaries(axis)
+        if cuts is None:
+            reasons.append(f"{AXIS_NAMES[axis]}: a chunk cut does not span the cross-section")
+            continue
+        count = len(cuts) - 1
+        if count > 3:
+            reasons.append(f"{AXIS_NAMES[axis]}: {count} chunk segments, more than three")
+    return reasons
+
+
+def chunk_layout_reasons(fields: Any, layout: Any, *, cylindrical: bool,
+                         offdiagonal: bool) -> Tuple[str, ...]:
+    """Why the Triton table refuses this chunk division for the whole plan, if it does.
+
+    Judged once per plan, before any arm, by :func:`launch.plan_step` when a caller
+    hands over a division (``FdtdDriver.chunk_layout``):
+
+    * a layout built for another grid (its axis frames are not this grid's);
+    * a division that is not separable, or whose record cannot be built
+      (:func:`~meep_gpu.chunk_map.chunk_bounds_record`'s refusals: no membership line
+      along some axis and lattice, more than two runs on a line);
+    * on a cylindrical run (``cylindrical``), a division that is not a
+      ``{low, interior, high}`` product along r, whose segments the prefix reads;
+      on a run with off-diagonal rows (``offdiagonal``), one that is not such a
+      product along every resolved axis, which the presence masks index
+      (:func:`low_interior_high_reasons`).
+
+    An empty tuple admits the division. Every reason names the refusal; nothing here
+    raises for a division it can read.
+    """
+    frames = grid_frames(fields.grid)
+    if tuple(layout.frames) != tuple(frames):
+        return (f"the chunk layout was built for another grid: its axis frames are "
+                f"{tuple(layout.frames)}, this grid's {tuple(frames)}",)
+    reasons: List[str] = []
+    missing = layout.non_separable()
+    if missing:
+        where = ", ".join(f"{AXIS_NAMES[axis]} ({'half-integer' if half else 'integer'})"
+                          for axis, half in missing)
+        reasons.append(f"{NON_SEPARABLE_DIVISION}: no membership line along {where}")
+    else:
+        try:
+            chunk_bounds_record(layout)
+        except ChunkLayoutRefusal as refusal:
+            reasons.append(f"{NON_SEPARABLE_DIVISION}: {refusal}")
+    axes: Tuple[int, ...] = ()
+    if offdiagonal:
+        axes = (0, 1, 2)
+    elif cylindrical:
+        axes = (0,)
+    if axes:
+        found = low_interior_high_reasons(layout, axes)
+        if found:
+            reasons.append(f"{NOT_LOW_INTERIOR_HIGH}: " + "; ".join(found))
+    return tuple(reasons)
 
 
 def _call(obj: Any, name: str, *args: Any, default: Any = None) -> Any:

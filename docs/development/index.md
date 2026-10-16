@@ -69,6 +69,8 @@ application job, route, or persistence types into the package.
   a missing resource, and which failures are expected in this release.
 - [Running the certification harness](certification.md): how a gate
   and a campaign are run, where their records go, and how a ledger is re-cut.
+- [Certifying a new GPU](certify-a-new-gpu.md): the round, step by step, that
+  adds an NVIDIA compute capability or an Apple GPU architecture to the certified records.
 - [Capability coverage checklist](../guides/capability-coverage.md): the lift
   surface area by area, and how to update it with a compatibility change.
 

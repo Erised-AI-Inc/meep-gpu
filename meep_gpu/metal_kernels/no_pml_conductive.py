@@ -17,9 +17,20 @@ bindings therefore carry three flags, one for each target in ``step_B`` or
 ``step_D``.  A D-only conductivity still admits the ``step_B`` plan, but all of
 its flags are false and it emits the ordinary direct tail for that sub-step.
 
-The native MPS gate now establishes this B/D sub-step pair, including one-sided
-conductivity. The family remains unwired pending complete driver-residency
-composition evidence.
+THE STENCIL IS MEEP'S, the plain no-PML curl's statements imported rather than
+restated (:data:`.no_pml_curl.CURL_STATEMENTS`, the PML curl's own text):
+``dtdx * (((g1s - g1) + g2) - g2s)`` with both partners, ``dtdx * (g1s - g1)`` without
+``g2`` and ``(-dtdx) * (g2s - g2)`` without ``g1`` (``stepping._curl_from_operands``;
+step_generic.cpp:72-76, :104-108), the partner presence read from the chunk record
+bound last (:data:`RECORD_BUFFER`) and decoded by the same anchored bounds block
+(:func:`.no_pml_curl.bounds_block`). The conductive tail is unchanged: it is already
+``_apply_conductive_update``'s three statements. Before this the curl summed the two
+differences pairwise, ``dtdx * ((g1s - g1) + (g2 - g2s))``, which rounds differently
+from MEEP's left-to-right sum and diverged from the array path once the array path
+took MEEP's form.
+
+The native MPS gate establishes this B/D sub-step pair, including one-sided
+conductivity, and the arm is wired.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -36,16 +47,18 @@ from ..triton_kernels.no_pml_conductive import (
     conductive_no_pml_targets,
     conductive_plain_curl_coverage as shared_conductive_coverage,
 )
+from . import chunk_bounds as _chunk_bounds
 from . import shaders, templates
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import Residency, compile_source
-from .no_pml_curl import _FieldsView, _GridView
+from .no_pml_curl import CURL_STATEMENTS, _FieldsView, _GridView, bounds_block
 from .plans import KernelPlan
 
 FAMILY = "no_pml_conductive"
 
 __all__ = [
     "FAMILY",
+    "RECORD_BUFFER",
     "SUB_STEPS",
     "MetalConductivePlainCurlPlan",
     "compile_conductive_plain_curl",
@@ -55,12 +68,17 @@ __all__ = [
     "plan_metal_conductive_plain_curl_from_arrays",
 ]
 
+#: The chunk record's binding index: one past the last scalar (``dtdx``).
+RECORD_BUFFER = 20
+
 
 _CONDUCTIVE_PLAIN_CURL_TEMPLATE = r"""
 #include <metal_stdlib>
 using namespace metal;
 
 __CONTRACT__
+
+__RECORD_STRUCT__
 
 kernel void no_pml_conductive_curl_step(
     device float*       f0      [[buffer(0)]],
@@ -83,6 +101,7 @@ kernel void no_pml_conductive_curl_step(
     constant uint&      nz      [[buffer(17)]],
     constant uint&      n_elem  [[buffer(18)]],
     constant float&     dtdx    [[buffer(19)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
     if (idx >= n_elem) { return; }
@@ -94,6 +113,8 @@ kernel void no_pml_conductive_curl_step(
     int plane = ii / nzi;
     int j = plane % nyi;
     int i = plane / nyi;
+
+__BOUNDS__
 
     int si = i __SHIFT__, sj = j __SHIFT__, sk = k __SHIFT__;
     bool vx = true, vy = true, vz = true;
@@ -115,9 +136,7 @@ __GHOST_Z__
     float c_x = vx ? __C_X__ : 0.0f;
     float c_y = vy ? __C_Y__ : 0.0f;
 
-    float curl0 = dtdx * ((c_y - c) + (b - b_z));
-    float curl1 = dtdx * ((a_z - a) + (c - c_x));
-    float curl2 = dtdx * ((b_x - b) + (a - a_y));
+__CURL__
 
     bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);
 __MASK__
@@ -147,7 +166,11 @@ def _tail(index: int, conductive: bool) -> str:
 def conductive_plain_curl_source(codes: Sequence[int], backward: bool, derive: bool,
                                  conductive: Sequence[bool],
                                  contract: str = shaders.CONTRACT_OFF) -> str:
-    """Specialize the real conductive direct curl and its three target tails."""
+    """Specialize the real conductive direct curl and its three target tails.
+
+    The partner presence is NOT specialised: it is the bound record's word, so one
+    source serves a 3-D, 2-D or 1-D run on the same boundary triple.
+    """
     codes = tuple(int(code) for code in codes)
     flags = tuple(bool(flag) for flag in conductive)
     if len(codes) != 3:
@@ -156,6 +179,10 @@ def conductive_plain_curl_source(codes: Sequence[int], backward: bool, derive: b
         raise ValueError("conductive must carry one flag per curl target")
     return templates.substitute(_CONDUCTIVE_PLAIN_CURL_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(RECORD_BUFFER),
+        "__BOUNDS__": bounds_block(),
+        "__CURL__": "\n".join(CURL_STATEMENTS),
         "__SHIFT__": "- 1" if backward else "+ 1",
         "__GHOST_X__": templates.ghost("x", codes[0], backward),
         "__GHOST_Y__": templates.ghost("y", codes[1], backward),
@@ -202,10 +229,16 @@ def metal_conductive_plain_curl_coverage(fields: Any, pml: Any,
 
 
 class MetalConductivePlainCurlPlan(KernelPlan):
-    """Persistent-mirror plan for one no-PML conductive curl sub-step."""
+    """Persistent-mirror plan for one no-PML conductive curl sub-step.
+
+    THE CHUNK RECORD BINDS LAST (:data:`RECORD_BUFFER`), checked against the plan's
+    shape (:func:`.chunk_bounds.plan_words`) and uploaded once as a plan-owned
+    ``int32`` vector, as the plain no-PML curl binds it. ``chunk_bounds`` keeps the
+    host words for inspection.
+    """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "derive",
-                 "bc", "conductive", "residency", "volumes")
+                 "bc", "conductive", "residency", "volumes", "chunk_bounds")
 
     REPR_FIELDS = ("sub_step", "shape", "bc", "derive", "conductive")
 
@@ -213,7 +246,8 @@ class MetalConductivePlainCurlPlan(KernelPlan):
                  codes: Sequence[int], derive: bool, conductive: Sequence[bool],
                  residency: Residency, targets: Sequence[Any], sources: Sequence[Any],
                  inverse: Sequence[Any], condfac: Sequence[Any], condinv: Sequence[Any],
-                 functions: Dict[str, Any], volumes: Sequence[str]) -> None:
+                 functions: Dict[str, Any], volumes: Sequence[str], *,
+                 chunk_bounds: Any) -> None:
         self.sub_step = sub_step
         self.shape = tuple(int(value) for value in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
@@ -224,11 +258,14 @@ class MetalConductivePlainCurlPlan(KernelPlan):
         self.conductive = tuple(bool(flag) for flag in conductive)
         self.residency = residency
         self.volumes = tuple(volumes)
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, f"MetalConductivePlainCurlPlan({sub_step})")
         super().__init__(
             functions,
             tuple(targets) + tuple(sources) + tuple(inverse)
             + tuple(condfac) + tuple(condinv)
-            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem, self.dtdx),
+            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem, self.dtdx,
+               _chunk_bounds.tensor(self.chunk_bounds)),
         )
 
 
@@ -263,12 +300,21 @@ def plan_metal_conductive_plain_curl(
         fields: Any, pml: Any, sub_step: str, residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Dict[str, Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalConductivePlainCurlPlan]:
-    """Build an admitted no-PML conductive curl plan from engine objects."""
+    """Build an admitted no-PML conductive curl plan from engine objects.
+
+    ``chunk_bounds`` is the record of the division the run steps with -- the
+    composer's ``StepContext.chunk_bounds`` -- and has no default: its presence word
+    decides each curl's stencil form. A missing or malformed record is refused by
+    name (:func:`.chunk_bounds.plan_words`) before anything is mirrored or compiled.
+    """
     if not metal_conductive_plain_curl_coverage(fields, pml, sub_step, residency).covered:
         return None
     assert residency is not None
     grid = fields.grid
+    _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                             f"plan_metal_conductive_plain_curl({sub_step})")
     spec = SUB_STEPS[sub_step]
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, None))
@@ -294,7 +340,7 @@ def plan_metal_conductive_plain_curl(
         residency, targets, sources, inverse, condfac, condinv,
         (functions if functions is not None else _functions(
             codes, bool(spec["backward"]), derive, conductive, contract_variants)),
-        target_names + source_names,
+        target_names + source_names, chunk_bounds=chunk_bounds,
     )
 
 
@@ -304,8 +350,14 @@ def plan_metal_conductive_plain_curl_from_arrays(
         conductive: Sequence[bool] = (True, True, True),
         functions: Optional[Dict[str, Any]] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
+        *, chunk_bounds: Any,
         ) -> MetalConductivePlainCurlPlan:
-    """Build a gate-owned plan without running coverage."""
+    """Build a gate-owned plan without running coverage.
+
+    ``chunk_bounds`` is REQUIRED and has no default: the harness states the
+    division (and so the partner presence) its reference steps with, and a plan
+    built without one is refused by name before anything is mirrored or compiled.
+    """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
     flags = tuple(bool(flag) for flag in conductive)
@@ -313,6 +365,8 @@ def plan_metal_conductive_plain_curl_from_arrays(
         raise ValueError("conductive must carry one flag per curl target")
     spec = SUB_STEPS[sub_step]
     target_names = tuple(spec["targets"])
+    _chunk_bounds.plan_words(chunk_bounds, arrays[target_names[0]].shape,
+                             f"plan_metal_conductive_plain_curl_from_arrays({sub_step})")
     source_names = (tuple(spec["displacement"])
                     if derive else tuple(spec["sources"]))
     targets = [residency.mirror(name, arrays[name]) for name in target_names]
@@ -339,7 +393,7 @@ def plan_metal_conductive_plain_curl_from_arrays(
     return MetalConductivePlainCurlPlan(
         sub_step, shape, dtdx, codes, derive, flags, residency,
         targets, sources, inverse, condfac, condinv, selected,
-        target_names + source_names,
+        target_names + source_names, chunk_bounds=chunk_bounds,
     )
 
 
@@ -351,7 +405,7 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
 def _arm_plan(context: Any, slot: str) -> Optional[MetalConductivePlainCurlPlan]:
     return plan_metal_conductive_plain_curl(
         context.fields, context.pml, slot, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def _arm_gate(context: Any) -> bool:

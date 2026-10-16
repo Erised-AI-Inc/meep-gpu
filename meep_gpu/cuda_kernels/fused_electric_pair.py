@@ -196,7 +196,7 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 # same reason: the predicate is the part whose failure mode is a silent wrong answer,
 # and it must be askable on a host with no device. The emitter refuses BY NAME where
 # they are absent (:func:`_certified_halves`).
-from . import own_cell_hoist
+from . import bounds_block, own_cell_hoist
 
 try:
     from . import constitutive_kernels
@@ -315,12 +315,10 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "names and returns the float it already computed. The expression, its "
             "parenthesisation and the store to f are unchanged, so the global state "
             "it leaves is the certified one."},
-    {"line": "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;",
-     "became": "    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
-               "    f[idx] = value;\n    return value;",
-     "why": "same right-hand side, same tree, same store; the result is "
-            "additionally named so it can be returned. A float32 stored to global "
-            "and reloaded is the identity on the bits."},
+    {"line": "    f[idx] = value;",
+     "became": "    f[idx] = value;\n    return value;",
+     "why": "same value, same store; the result is additionally returned. A "
+            "float32 stored to global and reloaded is the identity on the bits."},
     {"line": "        pml_apply(Dx, fu_Dx, idx, curl, ...);",
      "became": "        d_x = pml_apply_reg(Dx, fu_Dx, idx, curl, ...);",
      "why": "capture the register. Three lines, one per component; the argument "
@@ -337,9 +335,9 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "Dx/Dy/Dz, which is what lets D be bound exactly once. The multiply, its "
             "operand ORDER (D on the left, stepping.py:1011) and the fact that all "
             "three products are formed before any store are untouched."},
-    {"line": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);",
+    {"line": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);",
      "became": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], "
-               "kms_half_x[i]);",
+               "kms_half_x[i], in_h_x);",
      "why": "ONE RENAME, NO ARITHMETIC. kms_x is the INTEGER sub-lattice for the D "
             "curl and the HALF-INTEGER one for update_E -- the mirror image of the "
             "B/H seam's pairing -- and letting one shadow the other is a half-cell "
@@ -359,14 +357,15 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "a fill images is written by its source thread and a second writer would "
             "be a race."},
     # ----- THE FILL CARRY, ADDED 2026-08-31 --------------------------------------
-    {"line": "    float f[idx] = ... (pml_apply's store)",
-     "became": "    if (!owned) return 0.0f;  before the store",
-     "why": "THE OWNERSHIP GUARD, ported from fused_magnetic_pair. On a cell one of "
-            "the two fills images, the SOURCE thread writes D -- so this thread must "
-            "not read D[idx] either, because that word is written by another block "
-            "in this same launch and an ordinary CUDA launch has no grid-wide "
-            "barrier. The fu recurrence stays ABOVE the guard: step_D writes fu at "
-            "every cell and neither fill touches it (stepping.py:1451 writes field, "
+    {"line": "    float fcur = f[idx];   (pml_apply's one load of the field)",
+     "became": "    if (!owned) return 0.0f;\n    float fcur = f[idx];",
+     "why": "THE OWNERSHIP GUARD, ported from fused_magnetic_pair, directly before "
+            "the one load of the field (DESIGN.md D11). On a cell one of the two "
+            "fills images, the SOURCE thread writes D -- so this thread must not "
+            "read D[idx] either, because that word is written by another block in "
+            "this same launch and an ordinary CUDA launch has no grid-wide barrier. "
+            "The fu stage stays ABOVE the guard: step_D steps fu on every "
+            "recurrence cell and neither fill touches it (the fills write field, "
             "never fu_field)."},
     {"line": "    field[_face(axis, 0)] = phase * field[_face(axis, 2)]   "
              "(stepping._write_mirror_ghost:1450-1451)",
@@ -382,6 +381,30 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "on a far axis) against the near fill's +phase, and it runs AFTER "
             "zero_metal_D (driver.py:3310 then :3311), which is why the far carry "
             "reads the POST-clear register and the near carry the pre-clear one."},
+    # ----- THE PER-CHUNK FORMS, 0.10 (bit_parity_0_10 DESIGN.md D1, D5, D10, D11) ----
+    {"line": "    <step_D_pml_real's chunk-record block>\n"
+             "    <update_E_pml_real's chunk-record block>",
+     "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
+     "why": "ONE DECODE OF THE RECORD PER KERNEL (D10). The D curl reads the integer "
+            "record along each component's dsigu axis and update_E the half-integer "
+            "one along each component's own axis. Both bodies' blocks are removed by "
+            "bounds_block.strip_bounds_block (refused unless each is exactly the "
+            "emitter's block for its body) and ONE block over the union is emitted "
+            "directly after the decode. The names are tagged by lattice."},
+    {"line": "    constitutive_apply(Ex, f_w_Ex, gx_x_i, gx_x_s, kps_x[nx - 1], "
+             "kms_half_x[nx - 1]);",
+     "became": "    int gx_x_w = (nx - 1 >= cbh_x_a0 && nx - 1 < cbh_x_a1) || (...);\n"
+               "    constitutive_apply(Ex, f_w_Ex, gx_x_i, gx_x_s, kps_x[nx - 1], "
+               "kms_half_x[nx - 1], gx_x_w);",
+     "why": "THE CARRIED SELECT IS KEYED AT THE DESTINATION, on the row its "
+            "coefficient entry is read at (KERNELS.md section 3.3): the top plane of "
+            "the component's own axis for a far ghost, this thread's own row "
+            "(in_h_x) for a pure near one. update_E steps the ghost row with that "
+            "row's own membership, and the record carries whichever line the division "
+            "gives it: a lifted division's line copies the image row onto a ghost row "
+            "(chunk_map, D5), the one-rank line (chunk_map.one_rank_line) does not. "
+            "Keying at the destination is the array path's answer under both; keying "
+            "at the source agrees only where the two rows' flags agree."},
 )
 
 __all__ = [
@@ -426,25 +449,29 @@ _PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
 _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
 #: The certified helper's parameter list, and the one parameter the carry adds.
 _PML_APPLY_PARAMETERS = (
-    "    float kms, float sinv, float kms_u, float sinv_u\n)")
+    "    float kms, float sinv, float kms_u, float sinv_u, int dsigu\n)")
 _PML_APPLY_PARAMETERS_OWNED = (
-    "    float kms, float sinv, float kms_u, float sinv_u, int owned\n)")
-_PML_APPLY_STORE = "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
-_PML_APPLY_STORE_REG = (
+    "    float kms, float sinv, float kms_u, float sinv_u, int dsigu, int owned\n)")
+#: The helper's one load of the field (DESIGN.md D11): the ownership guard goes
+#: directly in front of it, below the ``fu`` stage.
+_PML_APPLY_FCUR = "    float fcur = f[idx];\n"
+_PML_APPLY_FCUR_OWNED = (
     "    // THE OWNERSHIP GUARD, AND IT IS ABOUT MEMORY TRAFFIC RATHER THAN\n"
     "    // ABOUT A DEAD REGISTER. On a cell a fill images, the SOURCE thread\n"
     "    // writes f -- so this thread must not read f[idx] either: that word is\n"
     "    // written by another block in this same launch and an ordinary CUDA\n"
     "    // launch has no grid-wide barrier at which the load would be defined.\n"
-    "    // fu above is UNGUARDED: step_D writes it at every cell and neither\n"
-    "    // fill touches it (stepping.py:1451).\n"
+    "    // The fu stage above is NOT guarded on ownership: step_D steps fu on\n"
+    "    // every recurrence cell and neither fill touches it.\n"
     "    if (!owned) return 0.0f;\n"
-    "    // THE ONE EDIT TO THIS HELPER: the right-hand side, its\n"
-    "    // parenthesisation and the store are the certified ones; the value is\n"
-    "    // additionally NAMED so the constitutive half can read it from a\n"
-    "    // register instead of reloading it from global memory.\n"
-    "    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
+    + _PML_APPLY_FCUR)
+#: The helper's closing store, and the one edit that turns it into a value.
+_PML_APPLY_STORE = "    f[idx] = value;\n"
+_PML_APPLY_STORE_REG = (
     "    f[idx] = value;\n"
+    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // are the certified ones; the value is additionally RETURNED so the\n"
+    "    // constitutive half can read it from a register instead of reloading it.\n"
     "    return value;\n")
 
 #: The three carried registers, the certified curl's own name for each target volume,
@@ -639,7 +666,10 @@ extern "C" __global__ void fused_electric_pair_pml_real(
     // own spelling of fields.mirror_parity.
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
-    float phase_x, float phase_y, float phase_z
+    float phase_x, float phase_y, float phase_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // which PML form, decoded once, after the index decode.
+    const int* __restrict__ cb
 ) {
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 2237-2239->2284-2286
 
@@ -716,25 +746,50 @@ def fused_electric_pair_prelude() -> str:
     """
     _certified_halves()
     prelude = step_curl_kernels._REAL_PML_PRELUDE
-    if prelude.count(_PML_APPLY_SIGNATURE) != 1:
-        raise AssertionError(
-            f"the certified curl prelude declares pml_apply "
-            f"{prelude.count(_PML_APPLY_SIGNATURE)} times, not once; the value "
-            f"rewrite has no anchor")
-    if prelude.count(_PML_APPLY_STORE) != 1:
-        raise AssertionError(
-            "the certified pml_apply no longer closes with the store this module "
-            "turns into a named value; the arithmetic may have moved")
-    if prelude.count(_PML_APPLY_PARAMETERS) != 1:
-        raise AssertionError(
-            f"the certified pml_apply's parameter list appears "
-            f"{prelude.count(_PML_APPLY_PARAMETERS)} times, not once; the ownership "
-            f"guard has no anchor to take its argument on")
+    for anchor, what in ((_PML_APPLY_SIGNATURE, "pml_apply's signature"),
+                         (_PML_APPLY_PARAMETERS, "pml_apply's parameter list (the "
+                                                 "ownership flag's anchor)"),
+                         (_PML_APPLY_FCUR, "pml_apply's one load of f (the ownership "
+                                           "guard's anchor)"),
+                         (_PML_APPLY_STORE, "pml_apply's closing store (the value's "
+                                            "anchor)")):
+        if prelude.count(anchor) != 1:
+            raise AssertionError(
+                f"the certified curl prelude carries {what} {prelude.count(anchor)} "
+                f"times, not once; the arithmetic may have moved and the rewrite has "
+                f"no anchor")
     prelude = prelude.replace(_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, 1)
     prelude = prelude.replace(_PML_APPLY_PARAMETERS,
                               _PML_APPLY_PARAMETERS_OWNED, 1)
+    prelude = prelude.replace(_PML_APPLY_FCUR, _PML_APPLY_FCUR_OWNED, 1)
     prelude = prelude.replace(_PML_APPLY_STORE, _PML_APPLY_STORE_REG, 1)
     return prelude + constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE
+
+
+#: The chunk-record entries each lifted body decodes, as ``(entries, presence)``:
+#: ``step_D_pml_real`` reads the integer record along each D component's dsigu axis
+#: plus the partner-presence word, ``update_E_pml_real`` the half-integer record along
+#: each E component's own axis (the region plan's rule).
+CURL_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.curl_entries(_TARGETS)), (0, 1, 2))
+CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.constitutive_entries(("Ex", "Ey", "Ez"))), ())
+
+
+def union_bounds_block() -> str:
+    """The fused kernel's ONE chunk-record block: both bodies' entries, one decode.
+
+    Emitted directly after the index decode, ahead of every line that reads a
+    membership flag. ``cbi_*``/``in_i_*`` for the D curl, ``cbh_*``/``in_h_*`` for
+    update_E: the union never redeclares a name (DESIGN.md D10).
+    """
+    return bounds_block.bounds_block(CURL_BLOCK[0] + CONSTITUTIVE_BLOCK[0],
+                                     CURL_BLOCK[1] + CONSTITUTIVE_BLOCK[1])
+
+
+def constitutive_flags() -> Tuple[str, ...]:
+    """The dsigw membership flag each E component's certified statement passes, x/y/z."""
+    return tuple(own_cell_hoist.KERNELS["update_E_pml_real"][7])
 
 
 def ownership_declarations() -> str:
@@ -801,10 +856,15 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "the certified curl body no longer decodes i on its own line; the "
             "carried registers have nowhere to be declared")
+    # ONE DECODE OF THE CHUNK RECORD (D10): the curl body's own block is removed and
+    # the union block, which also carries update_E's entries, takes its place.
+    body = bounds_block.strip_bounds_block(body, "_step_D_pml_real_kernel_code",
+                                           *CURL_BLOCK)
     head, tail = body.split(_DECODE_END, 1)
     body = "".join((
-        head, _DECODE_END,
-        "\n    // The three carried registers. Declared HERE because each certified\n"
+        head, _DECODE_END, "\n",
+        union_bounds_block(),
+        "    // The three carried registers. Declared HERE because each certified\n"
         "    // component below is a braced scope, and a value declared inside one\n"
         "    // does not outlive it.\n"
         "    float d_x = 0.0f;\n"
@@ -1044,6 +1104,13 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
                 f"_write_mirror_ghost:1450-1451)")
         coefficient = (f"{_EXTENT[target]} - 1" if far_subset
                        else _COORDINATE[target])
+        # THE MEMBERSHIP ROW IS THE COEFFICIENT'S ROW: the top plane of the
+        # component's own axis for a far image, this thread's own row (its own flag)
+        # for a pure near one.
+        own_lattice, own_axis = CONSTITUTIVE_BLOCK[0][target]
+        membership = (bounds_block.membership_test(own_lattice, own_axis,
+                                                   f"{_EXTENT[target]} - 1")
+                      if far_subset else constitutive_flags()[target])
         lines.append(f"{indent}if ({' && '.join(guards)}) {{")
         lines.extend(f"{inner}// {text}" for text in described)
         lines.append(f"{inner}int {tag}_i = idx {' '.join(terms)};")
@@ -1108,11 +1175,14 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
         lines.append(
             f"{inner}float {tag}_s = {tag}_v * inv_eps_E{_CARRIED[target]}"
             f"[{tag}_i];")
+        lines.append(f"{inner}// The destination's own membership row, read where its "
+                     f"coefficient entry is.")
+        lines.append(f"{inner}int {tag}_w = {membership};")
         lines.append(
             f"{inner}constitutive_apply(E{_CARRIED[target]}, "
             f"f_w_E{_CARRIED[target]}, {tag}_i, {tag}_s, "
             f"kps_{_CARRIED[target]}[{coefficient}], "
-            f"kms_half_{_CARRIED[target]}[{coefficient}]);")
+            f"kms_half_{_CARRIED[target]}[{coefficient}], {tag}_w);")
         lines.append(f"{indent}}}")
     return lines
 
@@ -1135,6 +1205,10 @@ def certified_constitutive_body() -> str:
         raise AssertionError(
             "the certified constitutive body no longer decodes i on its own line; "
             "the duplicate decomposition cannot be identified")
+    # Its chunk-record block goes with the decode: the union block above decodes
+    # update_E's entries too (D10).
+    body = bounds_block.strip_bounds_block(body, "_update_E_pml_real_kernel_code",
+                                           *CONSTITUTIVE_BLOCK)
     tail = body.split(_DECODE_END, 1)[1]
 
     # THE SEAM. Each certified read becomes the register the curl already holds, which
@@ -1175,7 +1249,8 @@ def certified_constitutive_body() -> str:
     for target, (axis, coordinate) in enumerate(zip(_CARRIED, _COORDINATE)):
         prefix = (f"    constitutive_apply(E{axis}, f_w_E{axis}, idx, src_{axis}, ")
         call = _line_starting(tail, prefix, f"E{axis}'s constitutive_apply")
-        expected = f"{prefix}kps_{axis}[{coordinate}], kms_{axis}[{coordinate}]);"
+        expected = (f"{prefix}kps_{axis}[{coordinate}], kms_{axis}[{coordinate}], "
+                    f"{constitutive_flags()[target]});")
         if call != expected:
             raise AssertionError(
                 f"E{axis}'s constitutive_apply is {call!r}, not the certified "
@@ -1187,7 +1262,7 @@ def certified_constitutive_body() -> str:
             + fill_carry_blocks(target)
             + ["    }"]), 1)
     for axis, coordinate in zip(_CARRIED, _COORDINATE):
-        if f"kms_{axis}[{coordinate}])" in tail:
+        if f"kms_{axis}[{coordinate}]," in tail:
             raise AssertionError(
                 f"kms_{axis} survived the sub-lattice rename; it is the INTEGER "
                 f"vector in the curl body and the HALF-INTEGER one here, and the two "
@@ -1626,7 +1701,7 @@ def launch_fused_electric_pair(
         fields: "Fields", tables: Dict[str, Dict[str, Any]],
         boundary_codes: Sequence[Any], walls: Sequence[int],
         fills: Dict[str, Tuple[Any, ...]], dtdx: float,
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
+        kernel: Optional[Any] = None, *, chunk_bounds: Any) -> Dict[str, Any]:
     """All five of :data:`REPLACES` in ONE launch.
 
     ``boundary_codes`` are ``step_curl_kernels.real_curl_boundary_codes(grid)``;
@@ -1645,9 +1720,15 @@ def launch_fused_electric_pair(
     and every mutation leg would silently launch the shipped one and report the defect
     as uncaught.
 
+    ``chunk_bounds`` IS THE RUN'S CHUNK RECORD ON THE DEVICE, required and keyword-only:
+    the kernel chooses each cell's PML form from it, and a launch handed some other
+    division would step some other forms (``step_curl_kernels.chunk_record_argument``
+    checks it).
+
     Returns the launch geometry rather than ``None`` so a gate can assert that
     something was actually launched.
     """
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
@@ -1665,7 +1746,7 @@ def launch_fused_electric_pair(
     ) + tuple(
         np.int32(int(fills["reflect"][axis])) for axis in range(3)
     ) + tuple(
-        np.float32(float(fills["phase"][axis])) for axis in range(3))
+        np.float32(float(fills["phase"][axis])) for axis in range(3)) + (cb,)
     (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), arguments)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
@@ -1674,7 +1755,7 @@ def launch_fused_electric_pair(
 
 
 def run_fused_electric_pair(fields: "Fields", grid: "Grid", pml: "PML", dtdx: float,
-                            *, sources: Any = None,
+                            *, chunk_bounds: Any, sources: Any = None,
                             tables: Optional[Dict[str, Dict[str, Any]]] = None,
                             kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once.
@@ -1696,7 +1777,8 @@ def run_fused_electric_pair(fields: "Fields", grid: "Grid", pml: "PML", dtdx: fl
     assert_disjoint_bindings(fields, tables)
     return launch_fused_electric_pair(
         fields, tables, step_curl_kernels.real_curl_boundary_codes(grid),
-        zero_metal_axes(grid), fused_electric_pair_fills(grid), dtdx, kernel)
+        zero_metal_axes(grid), fused_electric_pair_fills(grid), dtdx, kernel,
+        chunk_bounds=chunk_bounds)
 
 
 # The in-seam module is imported for one reason and it is worth naming: this file

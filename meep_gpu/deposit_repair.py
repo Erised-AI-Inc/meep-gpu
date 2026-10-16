@@ -21,15 +21,19 @@ most 3.45% on any grid large enough for throughput to matter, so the repair is t
 four orders of magnitude cheaper than the round trip the fusion saves.
 
 WHY A REPAIR AND NOT A SECOND INJECTION. The constitutive half is STATEFUL --
-``_apply_constitutive_pml`` (``stepping.py:2130-2134``) reads ``fw`` before overwriting it
-and then ACCUMULATES into the field:
+``stepping._apply_constitutive_pml`` reads ``fw`` before overwriting it and then
+ACCUMULATES into the field, in MEEP's grouping (step_generic.cpp:697):
 
     fw_previous = fw.copy() ; fw[...] = source
-    field += kps * fw ; field -= kms * fw_previous
+    field += (kps * fw) - (kms * fw_previous)
 
 Correcting that afterwards by adding a delta is not float-exact. :func:`save` therefore
 captures both arrays at the deposit points BEFORE the launch, and :func:`apply` recomputes
-them from the injected field in the same operand order.
+them from the injected field in the same operand order. The accumulation is the form of
+the cells whose chunk carries the target's own layer only; a deposit cell outside them
+takes the plain form, ``field = fresh``, and its ``fw`` is left alone -- the split the
+constitutive sub-step itself makes (``stepping._apply_constitutive_regions``), read from
+the same region plan.
 
 WHERE IT BELONGS IN THE STEP, and it needs no driver change. ``step_D`` and ``update_E``
 are separate consults (``driver.py:3315``, ``:3331``) and ``FastPath.dispatch`` contracts
@@ -53,8 +57,8 @@ WHICH COMPONENTS ARE REPAIRED: THE ONE EACH SOURCE WRITES. A source deposits int
 primary array, and a diagonal constitutive target reads only its own component at the
 cell, so at a deposit cell the other two targets' inputs are exactly what the fused
 launch consumed and its results there stand. Per source, :func:`save` captures and
-:func:`apply` restores only the target whose input that source's injection -- or the
-driver's conductive replay of it -- writes; when that cannot be established they keep
+:func:`apply` restores only the target whose input that source's injection writes (its
+deposit, ``condinv`` scale included under a conductivity); when that cannot be established they keep
 every target of the seam and count the fallback. The comment above
 :func:`_written_targets` carries the citations and the measurement.
 
@@ -67,7 +71,7 @@ whose below-axis ghost is a different image rule entirely, and a folded axis too
 to hold the near fill's source row.
 
 AND IT REFUSES THE ABSORBER IT CANNOT INVERT. Everything above is about the seam; this
-is about the recurrence. ``field + kps*fresh - kms*fw_prev`` is the SPLIT-FIELD
+is about the recurrence. ``field + ((kps*fresh) - (kms*fw_prev))`` is the SPLIT-FIELD
 constitutive update and nothing else, so the layer whose coefficients it reads has to be
 the layer that actually ran. ``stepping._pml_is_active`` sends a layer absorbing on none
 of its six faces down the PLAIN path instead -- ``update_H`` returns without touching H
@@ -180,7 +184,7 @@ from __future__ import annotations
 import itertools
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from . import host_writes
+from . import host_writes, part_products
 
 __all__ = ["SEAMS", "MAGNETIC_FIELD_TYPE", "repairable", "fill_image_rules",
            "repair_cells", "save", "apply", "in_seam_sources", "seam_source_reasons",
@@ -192,9 +196,9 @@ __all__ = ["SEAMS", "MAGNETIC_FIELD_TYPE", "repairable", "fill_image_rules",
 #: importable by predicates on a host with no engine objects built yet.
 MAGNETIC_FIELD_TYPE = "B"
 
-#: THE ORIGINAL REPAIR: the inverse of ``_apply_constitutive_pml``'s split-field
-#: recurrence ``(field + kps*fresh) - kms*fw_prev`` (``stepping.py:2130-2134``), which
-#: is stateful and therefore needs ``field`` and ``fw`` captured before the launch.
+#: THE ORIGINAL REPAIR: the inverse of ``stepping._apply_constitutive_pml``'s split-field
+#: recurrence ``field + ((kps*fresh) - (kms*fw_prev))``, which is stateful and
+#: therefore needs ``field`` and ``fw`` captured before the launch.
 #: Runs when ``stepping._pml_is_active`` is True, and only then.
 SPLIT_FIELD_PATH = "split_field"
 
@@ -552,7 +556,7 @@ def _absorber_reasons(fields: Any, pml: Any, pair: str, *,
         return ("the PML layer absorbs on none of its six faces (is_active False), so "
                 "stepping._pml_is_active sends both constitutive halves down the PLAIN "
                 "path -- update_H does nothing and update_E writes E = constitutive -- "
-                "while this repair recomputes field + kps*fresh - kms*fw_prev; measured "
+                "while this repair recomputes field + ((kps*fresh) - (kms*fw_prev)); measured "
                 "on a 14x14 grid at thickness 0, that leaves 23 words of Ex/Ey/Ez and "
                 "f_w_E* differing from the driver's own order",)
 
@@ -653,7 +657,8 @@ def _plain_path_reasons(fields: Any, pml: Any, pair: str, *,
     """
     if repair_path_for(pml) is not PLAIN_PATH:
         return ("the layer is ACTIVE, so both constitutive halves take the SPLIT-FIELD "
-                "path (stepping.py:2130-2134) and write E = (E + kps*fresh) - kms*fw_prev; "
+                "path (stepping._apply_constitutive_pml) and write "
+                "E = E + ((kps*fresh) - (kms*fw_prev)); "
                 "the plain repair writes E = constitutive and would drop the absorption "
                 "the sub-step applied",)
     if pair not in PLAIN_PATH_SEAMS:
@@ -796,6 +801,16 @@ _PREPARED_KEY = ("__prepared_cells__",)
 #: the stamp -- built by hand, or by a ``save`` older than the restriction -- named no
 #: targets, and what it meant was every target of the seam; :func:`apply` reads it so.
 _TARGETS_KEY = ("__source_targets__",)
+
+#: The reserved key :func:`save` stamps True into when the launch it brackets runs the
+#: run's FIRST magnetic constitutive, before H has been started from B
+#: (``stepping.separate_h_from_b``; ``Fields.h_separated`` False at save). MEEP's H is
+#: B's storage until that first ``update_eh(H_stuff)``, which allocates H and ``f_w`` as
+#: copies of B AFTER ``step_source(B)`` (update_eh.cpp:165-177). The launch sees B
+#: before the injection, so on a deposit cell inside H's own layer the state that update
+#: read is not what :func:`save` captured but ``fresh`` itself, the post-injection B: the
+#: repair takes ``field = fw_prev = fresh`` there. Absent (or False) everywhere else.
+_START_KEY = ("__h_start__",)
 
 
 # ---------------------------------------------------------------------------
@@ -957,7 +972,7 @@ class _CellEntry:
     """
 
     __slots__ = ("builder", "index", "shifts", "rules", "cells", "count", "shape",
-                 "linear", "coefficients")
+                 "linear", "coefficients", "region")
 
 
 class _PreparedCells:
@@ -1049,6 +1064,7 @@ def _prepared_entry(prepared: _PreparedCells, fields: Any, component: str, targe
     entry.shape = (tuple(int(extent) for extent in shape)
                    if entry.linear is not None else None)
     entry.coefficients = None
+    entry.region = None
     prepared.entries[(component, index)] = entry
     return entry
 
@@ -1170,16 +1186,18 @@ def _scatter_cells(xp: Any, array: Any, cells: Tuple[Any, ...], values: Any) -> 
 def _constitutive_at(volume: Any, inverse: Any, cells: Tuple[Any, ...]) -> Any:
     """The constitutive product at ``cells`` on the 3-tuple route.
 
-    ``volume[cells] * inverse[cells]`` is per cell the same float product of the same two
-    operands as ``(volume * inverse)[cells]``, without forming the other N - n cells.
+    ``inverse[cells] * volume[cells]`` is per cell the same float product of the same two
+    operands as ``(inverse * volume)[cells]``, without forming the other N - n cells.
     The whole-volume form is kept only when the two do not share a shape, where the
-    product broadcasts and indexing each operand separately would not.
+    product broadcasts and indexing each operand separately would not. On complex
+    storage the product is formed per part (:func:`~.part_products.scale`), as
+    ``stepping.update_E`` forms it.
     """
     if inverse is None:
         return volume[cells]
     if getattr(volume, "shape", None) == getattr(inverse, "shape", None):
-        return volume[cells] * inverse[cells]
-    return (volume * inverse)[cells]
+        return part_products.scale(inverse[cells], volume[cells])
+    return part_products.scale(inverse, volume)[cells]
 
 
 def _coefficients_at(xp: Any, entry: _CellEntry, kps: Any, kms: Any) -> Tuple[Any, Any]:
@@ -1209,27 +1227,24 @@ def _coefficients_at(xp: Any, entry: _CellEntry, kps: Any, kms: Any) -> Tuple[An
 #   ``self.component`` through ``sources._ARRAY_FOR_COMPONENT`` (``sources.py:120-133``;
 #   ``Ez`` and ``Dz`` both name ``Dz``, ``Hz`` and ``Bz`` both name ``Bz``) and write
 #   that array alone:
-#     ``ContinuousSource.inject``      ``_d_array_for`` at ``sources.py:1733``, the
-#                                      write at ``:1742``;
-#     ``ExtendedSource.inject``        ``_d_array_for`` at ``:1850``, ``_inject_points``
-#                                      at ``:1855-1856`` (the write is ``:1305``);
-#     ``GaussianPulsedSource.inject``  ``_d_array_for`` at ``:1962``, ``_inject_points``
-#                                      at ``:1969-1970``;
-#     ``VolumeSource.inject``          ``_array_for`` at ``:2139``, ``_inject_points`` at
-#                                      ``:2151-2152`` -- integrated or not -- and its
-#                                      ``withdraw`` (``:2118-2120``) writes the same
-#                                      array BEFORE the leading consult, so before
-#                                      :func:`save`.
-#   ``_d_array_for`` / ``_array_for`` (``sources.py:232-237``) are ``getattr(fields,
-#   <that map's value>)``. Each class also mirrors its deposit into ``fu_<array>``
-#   (``:1745-1749``, ``_inject_fu_mirror`` ``:1418-1426``): that is the CURL's split
-#   auxiliary, which no constitutive half reads, so it bears on nothing repaired here.
-# * WHAT THE CONDUCTIVE REPLAY WRITES. ``driver._inject_electric_through_conductivity``
-#   groups the scaled sources by ``"D" + source.component[1]`` (``driver.py:3406``),
-#   snapshots and rewrites that array at the sources' own cells (``:3431``, ``:3445``)
-#   around the same ``inject`` calls (``:3433``), and injects the integrated ones
-#   unscaled (``:3401``). For every electric spelling that name IS the map's value;
-#   :func:`_written_targets` checks the two agree rather than assuming it.
+#     ``ContinuousSource.inject``      ``_d_array_for``, then ``sources._deposit``;
+#     ``ExtendedSource.inject``        ``_d_array_for``, then ``sources._deposit``;
+#     ``GaussianPulsedSource.inject``  ``_d_array_for``, then ``sources._deposit``;
+#     ``VolumeSource.inject``          ``_array_for``, then ``sources._deposit``
+#                                      (nothing for an integrated source, whose
+#                                      ``f_minus_p`` words the driver writes into
+#                                      the same array at the same cells after the
+#                                      fills, before the second consult, and
+#                                      restores after it: ``sources.f_minus_p_begin``
+#                                      / ``f_minus_p_end``).
+#   ``_d_array_for`` / ``_array_for`` are the raw fetch of ``<that map's value>``, and
+#   ``_deposit`` writes exactly that array at the source's own cells, through
+#   ``host_writes.subtract_double``. It reads the same component's ``condinv`` under a
+#   conductivity (``sources._condinv_at``), so a conductive run writes nothing else
+#   either: the driver has no pass over the component. No class writes any other
+#   array: the curl's split auxiliary ``fu_<array>`` is never a deposit target (a chunk
+#   that carries only the dsig layer steps its field with no auxiliary,
+#   ``stepping._apply_dsig_only_update``).
 # * WHAT A TARGET READS. ``_apply_constitutive_pml`` and the plain branch of
 #   ``update_E`` read, for component c at a cell, ``D_c`` / ``B_c``, the poles'
 #   ``P_n[c]``, ``inv_eps(c)``, c's own coefficients and c's own ``field`` / ``f_w`` AT
@@ -1260,7 +1275,7 @@ def _coefficients_at(xp: Any, entry: _CellEntry, kps: Any, kms: Any) -> Tuple[An
 # included: it may override ``inject``), an ``inject`` REBOUND on the class or on the
 # instance so that what runs is not the function that was read, a ``component`` that
 # is not a string or that the map does not hold, an array the seam does not inject,
-# the two electric spellings disagreeing, or a lookup answering anything but a
+# or a lookup answering anything but a
 # repeat-free selection of this seam's own targets -- keeps ALL the seam's targets for
 # that source, which is the bracket this module shipped until 2026-09-20, and bumps
 # ``_PreparedCells.restriction_fallbacks``. WHAT WOULD BREAK THE ARGUMENT, and is
@@ -1279,9 +1294,8 @@ def _coefficients_at(xp: Any, entry: _CellEntry, kps: Any, kms: Any) -> Tuple[An
 # ``gate_metal_complex_conductive_fused_pair.py:970`` on the class); both delegate and
 # write nothing of their own, so under them the bracket is the full one, exact and
 # COUNTED, for as long as the wrapper is in place. WHAT THIS STILL DOES NOT SEE: a
-# rebinding of what a read ``inject`` CALLS -- ``sources._inject_points``,
-# ``_d_array_for``, ``_array_for`` -- or of the driver's conductive replay. Nothing in
-# the tree does either.
+# rebinding of what a read ``inject`` CALLS -- ``sources._deposit``,
+# ``_d_array_for``, ``_array_for``, ``_condinv_at``. Nothing in the tree does.
 
 #: The engine source classes whose ``inject`` was READ for the citations above. Matched
 #: by exact type against ``sources``' own class of that name, never by ``isinstance``:
@@ -1342,8 +1356,6 @@ def _written_targets(source: Any, pair: str) -> Optional[Tuple[Any, ...]]:
     written = getattr(engine_sources, "_ARRAY_FOR_COMPONENT", {}).get(component)
     if written is None or written not in spec["injected"]:
         return None
-    if pair == "D" and written != "D" + component[1:2]:
-        return None  # the conductive replay's own spelling (driver.py:3406) disagrees
     matches = tuple(target for target in spec["targets"] if target[1] == written)
     return matches if len(matches) == 1 else None
 
@@ -1487,7 +1499,9 @@ def save(fields: Any, sources: Sequence[Any], pair: str,
         prepared = _PreparedCells()
     stamped: Dict[int, Tuple[Any, ...]] = {}
     saved: Dict[Any, Any] = {_PATH_KEY: path, _PREPARED_KEY: prepared,
-                             _TARGETS_KEY: stamped}
+                             _TARGETS_KEY: stamped,
+                             _START_KEY: (pair == "B" and path is not PLAIN_PATH
+                                          and not bool(getattr(fields, "h_separated", True)))}
     for index, idx, targets, restricted in deposits:
         if restricted:
             prepared.restricted_sources += 1
@@ -1560,7 +1574,8 @@ def _apply_plain(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
                 linear = entry.linear
                 host_writes.scatter(
                     field, linear,
-                    _fresh_at(fields, component, linear) * inverse.reshape(-1)[linear])
+                    part_products.scale(inverse.reshape(-1)[linear],
+                                        _fresh_at(fields, component, linear)))
                 prepared.linear_repairs += 1
                 repaired += entry.count
                 continue
@@ -1571,6 +1586,60 @@ def _apply_plain(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
                 prepared.cells_repairs += 1
             repaired += int(getattr(cells[0], "size", len(cells[0])))
     return repaired
+
+
+def _region_of(xp: Any, plan: Any, component: str, shape: Tuple[int, ...], cells: Any) -> Any:
+    """Per deposit cell: does its chunk carry the target's own layer? As ``(inside, all, any)``.
+
+    ``inside`` is a bool per listed cell; ``all`` and ``any`` are host bools, read once
+    so the per-step repair does not ask the device twice a step.
+    """
+    inside = plan.inside_at("constitutive", component, shape, cells, xp)
+    return inside, bool(xp.all(inside)), bool(xp.any(inside))
+
+
+def _entry_region(xp: Any, plan: Any, component: str, entry: _CellEntry, cells: Any) -> Any:
+    """:func:`_region_of` for a linear-route entry, cached on it against the plan object."""
+    cached = entry.region
+    if cached is not None and cached[0] is plan:
+        return cached[1]
+    region = _region_of(xp, plan, component, entry.shape, cells)
+    entry.region = (plan, region)
+    return region
+
+
+def _started(xp: Any, region: Any, fresh: Any, field_old: Any, fw_old: Any) -> Tuple[Any, Any]:
+    """The previous H and ``f_w`` the run's first ``update_H`` reads on an in-layer cell: B.
+
+    See :data:`_START_KEY`: MEEP starts both as copies of the post-injection B, which at
+    a deposit cell is ``fresh``. Cells outside the layer's chunks take the plain form,
+    which reads neither.
+    """
+    inside, every, some = region
+    if every:
+        return fresh, fresh
+    if not some:
+        return field_old, fw_old
+    return xp.where(inside, fresh, field_old), xp.where(inside, fresh, fw_old)
+
+
+def _select_plain(xp: Any, region: Any, accumulated: Any, fresh: Any) -> Any:
+    """The accumulated word on the in-region cells, the plain word (``fresh``) elsewhere."""
+    inside, every, some = region
+    if every:
+        return accumulated
+    if not some:
+        return fresh
+    return xp.where(inside, accumulated, fresh)
+
+
+def _scatter_inside(fw: Any, region: Any, linear: Any, fresh: Any, scatter: Any) -> None:
+    """Write ``f_w`` at the in-region cells only: outside them no chunk holds an ``f_w``."""
+    inside, every, some = region
+    if every:
+        scatter(fw, linear, fresh)
+    elif some:
+        scatter(fw, linear[inside], fresh[inside])
 
 
 def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
@@ -1623,6 +1692,12 @@ def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
     spec = SEAMS[pair]
     xp = fields.grid.xp
     prepared = saved.get(_PREPARED_KEY)
+    # WHICH FORM EACH DEPOSIT CELL TAKES IS ITS CHUNK'S: the accumulation where the
+    # chunk carries the target's own (dsigw) layer, ``f = fresh`` everywhere else with
+    # ``f_w`` left alone -- the constitutive sub-step's own split
+    # (``stepping._apply_constitutive_regions``), read from the same region plan.
+    plan = stepping._region_plan(fields, pml)
+    start = bool(saved.get(_START_KEY, False))
     repaired = 0
     for (component, source_name, axis), found in work:
         # RAW, because every touch below is a gather or a scatter of the deposit
@@ -1659,13 +1734,19 @@ def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
                 if inverse is None:
                     fresh = host_writes.gather(volume, linear)
                 else:
-                    fresh = _fresh_at(fields, component, linear) * inverse.reshape(-1)[linear]
+                    fresh = part_products.scale(inverse.reshape(-1)[linear],
+                                                _fresh_at(fields, component, linear))
                 kp_cells, km_cells = _coefficients_at(xp, entry, kps, kms)
-                # SAME OPERAND ORDER as _apply_constitutive_pml: (f + kp*fw) - km*fw_prev.
-                restored = field_old + kp_cells * fresh
-                restored = restored - km_cells * fw_old
+                region = _entry_region(xp, plan, component, entry, cells)
+                if start:
+                    field_old, fw_old = _started(xp, region, fresh, field_old, fw_old)
+                # SAME OPERAND ORDER as _apply_constitutive_pml: f + ((kp*fw) - (km*fw_prev)),
+                # each product per part on complex storage, as there.
+                restored = field_old + (part_products.scale(kp_cells, fresh)
+                                        - part_products.scale(km_cells, fw_old))
+                restored = _select_plain(xp, region, restored, fresh)
                 host_writes.scatter(field, linear, restored)
-                host_writes.scatter(fw, linear, fresh)
+                _scatter_inside(fw, region, linear, fresh, host_writes.scatter)
                 prepared.linear_repairs += 1
                 repaired += entry.count
                 continue
@@ -1675,11 +1756,19 @@ def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
                 kp_full = xp.broadcast_to(xp.asarray(kps), field.shape)
                 km_full = xp.broadcast_to(xp.asarray(kms), field.shape)
             fresh = _constitutive_at(volume, inverse, cells)
-            # SAME OPERAND ORDER as _apply_constitutive_pml: (f + kp*fw) - km*fw_prev.
-            restored = field_old + kp_full[cells] * fresh
-            restored = restored - km_full[cells] * fw_old
-            _scatter_cells(xp, field, cells, restored)
-            _scatter_cells(xp, fw, cells, fresh)
+            region = _region_of(xp, plan, component, tuple(field.shape), cells)
+            if start:
+                field_old, fw_old = _started(xp, region, fresh, field_old, fw_old)
+            # SAME OPERAND ORDER as _apply_constitutive_pml: f + ((kp*fw) - (km*fw_prev)),
+            # each product per part on complex storage, as there.
+            restored = field_old + (part_products.scale(kp_full[cells], fresh)
+                                    - part_products.scale(km_full[cells], fw_old))
+            _scatter_cells(xp, field, cells, _select_plain(xp, region, restored, fresh))
+            inside, every, some = region
+            if every:
+                _scatter_cells(xp, fw, cells, fresh)
+            elif some:
+                _scatter_cells(xp, fw, tuple(column[inside] for column in cells), fresh[inside])
             if prepared is not None:
                 prepared.cells_repairs += 1
             repaired += int(getattr(cells[0], "size", len(cells[0])))

@@ -33,17 +33,6 @@ that on the array path (1024 of 1024 float32 words differ on an 8x8x8 fixture);
 this gate carries it as a DEFECT LEG as well, so the split is measured on a device
 and not only on a laptop.
 
-THE PARITY LICENCE
-==================
-The mirror ghost is ``_symmetry_phase(...) * _mirror_source(...)``
-(stepping.py:1873-1875): a python int on the LEFT of a complex64 plane, which is
-``folded_complex.PARITY_PROBE_PATTERN`` and none of the base four orientations. So
-this gate binds ``folded_complex.parity_expansion_license`` over the FIVE-pattern
-set, not ``complex_fields.expansion_license`` over four. The shipped
-``expansion_probe_2026-08-17`` record carries the fifth pattern under BOTH
-policies, which is why this family can span both where
-``gate_cuda_complex_no_pml`` spans one.
-
 WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
 ================================================================
 * ``oracle_moved`` -- the array path must change at least one output word from the
@@ -63,7 +52,7 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
 * ``folded_axis_absorbs`` -- the folded axis's half-integer profile must beat the
   identity, or the case measures every axis except the one the fold moved.
 * ``phase_is_live`` -- on a phased spec at least one axis must carry a factor that
-  is not ``1+0j``, or every rotation mutation is a null for a reason about the
+  is not ``1+0j``, or every connection mutation is a null for a reason about the
   fixture.
 * The mutation battery INCLUDING legs that must come back UNCAUGHT. A battery of
   only-must-be-caught legs scores identically whether the comparator works or has
@@ -79,13 +68,12 @@ THERE IS NO NumPy BACKEND, DELIBERATELY
 =======================================
 ``gate_cuda_complex_no_pml``'s decision and its reason: a NumPy backend costs a
 SECOND TRANSCRIPTION of the kernel on the leg that is supposed to be checking the
-first, and this family's bodies are the complex ones, where the zero cross terms
-and the FMA arm are the whole question and NumPy expresses neither. What a laptop
-CAN settle is in ``meep_gpu/cuda_kernels/test_complex_offdiag_update_e.py``: the
-emitted text against the certified templates it is built from, a TEXT-ANCHORED
-complex128 evaluator measured against ``stepping.update_E`` over 112 structural
-configurations, three float32 hazards, and the predicates' whole verdict table on
-real engine objects.
+first. What a laptop CAN settle is in
+``meep_gpu/cuda_kernels/test_complex_offdiag_update_e.py``: the emitted text
+against the certified templates it is built from, the emitted text EXECUTED in
+float32 against ``stepping.update_E`` word for word, the chunk forms and presence
+words on layered divisions, and the predicates' whole verdict table on real
+engine objects.
 
 RUNNING IT
 ==========
@@ -134,7 +122,6 @@ from meep_gpu.fields import Fields  # noqa: E402
 from meep_gpu.grid import Grid, Mirror  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
 from meep_gpu.cuda_kernels import coverage  # noqa: E402
-from meep_gpu.cuda_kernels import complex_emitter  # noqa: E402
 from meep_gpu.cuda_kernels import folded_offdiag_kernels as folded  # noqa: E402
 from meep_gpu.cuda_kernels import complex_offdiag_update_e as family  # noqa: E402
 
@@ -149,11 +136,6 @@ SEED = 20260820
 #: Consecutive launches in the multi-step leg, the budget every certified
 #: hand-CUDA record is cut at. "Identical for N steps" is a claim about N.
 MULTI_STEP_BUDGET = 60
-
-#: The FIVE-pattern probe record. The parity orientation is the fifth, and the
-#: base-four licence cannot bind the mirror arm.
-PROBE_RECORD = ("parity/meep_gpu/results/expansion_probe_2026-08-17/"
-                "expansion_probe_{policy}.json")
 
 #: The six arrays the split-field arm writes; the store arm writes the first three.
 OUTPUTS_PML: Tuple[str, ...] = ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez")
@@ -253,6 +235,14 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "pml_fold_XZ_phased_Y", "arm": "pml", "cell": (16.0, 10.0, 16.0),
      "boundaries": ("periodic",) * 3, "symmetry": (("X", -1), ("Z", 1)),
      "k_point": (0.0, 0.27, 0.0)},
+    # THE PRESENCE CASE (0.10). MEEP deletes a row's chi1inv array in every chunk where
+    # it is identically zero over the samples the chunk allocates and drops its term
+    # there, which differs from adding a zero only on a -0 row. ``row_block`` keeps the
+    # rows on an interior block, so every chunk that carries a layer deletes them; the
+    # signed-zero class plants the -0 words the dropped term leaves alone.
+    {"label": "pml_presence_block", "arm": "pml", "cell": (14.0, 14.0, 14.0),
+     "boundaries": ("metallic",) * 3, "symmetry": (), "k_point": (0.0, 0.0, 0.0),
+     "row_block": True},
     {"label": "pml_fold_XYZ", "arm": "pml", "cell": (16.0, 16.0, 16.0),
      "boundaries": ("periodic",) * 3,
      "symmetry": (("X", 1), ("Y", 1), ("Z", 1)), "k_point": (0.0, 0.0, 0.0)},
@@ -288,7 +278,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
 REDUCED_SPEC_LABELS: Tuple[str, ...] = (
     "pml_unfolded_phased", "pml_fold_X_metallic", "pml_fold_X_periodic_odd_plane",
     "pml_fold_Y_phased_X", "pml_fold_Z_wall_X", "pml_fold_XYZ",
-    "store_3d_phased", "store_metallic_walls")
+    "pml_presence_block", "store_3d_phased", "store_metallic_walls")
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +369,12 @@ def build(xp, spec: Dict[str, Any], mask: Sequence[int], courant: float,
         # that only shows on one side of zero is exactly what a positive-only draw
         # hides.
         values = rng.uniform(-0.45, 0.45, size=shape).astype(np.float32)
+        if spec.get("row_block"):
+            # Zero outside the interior block [5, n - 5) of every live axis: the
+            # chunks a layer owns (and the one sample past each) hold only zeros.
+            block = np.zeros(shape, dtype=bool)
+            block[tuple(slice(5, n - 5) if n > 10 else slice(None) for n in shape)] = True
+            values = np.where(block, values, np.float32(0.0)).astype(np.float32)
         rows.setdefault(row, {})[partner] = xp.asarray(
             np.ascontiguousarray(values))
     fields.set_epsilon_volumes(epsilon, inverse, chi1inv_offdiagonal=rows)
@@ -548,6 +544,23 @@ def phase_is_live(grid, flags) -> Dict[str, Any]:
                                              for entry in live)}
 
 
+def presence_drops_a_term(fields, record: Sequence[int], codes: Sequence[int],
+                          kept: Sequence[int]) -> bool:
+    """Whether some live row's cells read a chunk code its presence word clears."""
+    from meep_gpu.cuda_kernels import offdiag_presence  # noqa: PLC0415
+    from meep_gpu.fields import IYEE_SHIFTS  # noqa: PLC0415
+
+    shape = tuple(int(n) for n in fields.grid.shape)
+    for (row, _partner), word in zip(coverage.OFFDIAG_ROW_SLOTS, kept):
+        if not word:
+            continue
+        read = np.unique(offdiag_presence.cell_chunk_codes(
+            record, IYEE_SHIFTS[row], shape, codes))
+        if any(not (int(word) >> int(code)) & 1 for code in read):
+            return True
+    return False
+
+
 def wall_mask_bites(mask: Sequence[int], walls: Sequence[int]) -> bool:
     """Does the metallic wall mask change ANY word on this (mask, grid) pair?
 
@@ -609,31 +622,37 @@ def m_mirror_row_off_by_one(text):
     return _replace("#define MIRROR_ROW 2", "#define MIRROR_ROW 1", text)
 
 
+_PARITY_LINE = "    if (gl && bc == BC_MIRROR) return mul_coefficient_left(w, z);"
+
+
 def m_flip_the_parity_sign(text):
-    return _replace("    if (bc == BC_MIRROR) return mul_coefficient_left(w, z);",
-                    "    if (bc == BC_MIRROR) return mul_coefficient_left("
+    return _replace(_PARITY_LINE,
+                    "    if (gl && bc == BC_MIRROR) return mul_coefficient_left("
                     "0.0f - w, z);", text)
 
 
 def m_drop_the_parity_weight(text):
-    return _replace("    if (bc == BC_MIRROR) return mul_coefficient_left(w, z);",
-                    "    if (bc == BC_MIRROR) return z;", text)
+    return _replace(_PARITY_LINE, "    if (gl && bc == BC_MIRROR) return z;", text)
 
 
-def m_parity_plane_wise(text):
-    """The plane-wise spelling of the parity multiply -- byte-wrong on signed zeros."""
+def m_parity_full_complex_product(text):
+    """INVERTED (KERNELS.md section 7.1): the previous family's full complex product.
+
+    The parity times the stored plane is one product per part
+    (``part_products.scale``); the previous family spelled it as the complex product
+    against ``(w + 0j)``, whose zero cross terms carry the other part's sign into an
+    addend that is exactly zero -- byte-wrong on signed zeros at the multiply.
+    """
     return _replace(
-        "    if (bc == BC_MIRROR) return mul_coefficient_left(w, z);",
-        "    if (bc == BC_MIRROR) { cf o; o.re = w * z.re; o.im = w * z.im; "
-        "return o; }", text)
+        _PARITY_LINE,
+        "    if (gl && bc == BC_MIRROR) { cf o; o.re = (w * z.re) - (0.0f * z.im); "
+        "o.im = (w * z.im) + (0.0f * z.re); return o; }", text)
 
 
 def m_weight_every_lane(text):
     """The blanket weight the module refuses: an operation the oracle does not have."""
-    return _replace("    if (!gl) return z;",
-                    "    if (!gl) return (bc == BC_MIRROR) ? "
-                    "mul_coefficient_left(w, z) : z;", text)
-
+    return _replace(_PARITY_LINE,
+                    "    if (bc == BC_MIRROR) return mul_coefficient_left(w, z);", text)
 
 def m_folded_own_axis_wraps(text):
     """A folded axis wrapping in ``coord_up`` instead of serving the exact zero."""
@@ -641,49 +660,72 @@ def m_folded_own_axis_wraps(text):
                     "    return (bc == BC_METALLIC) ? -1 : 0;", text)
 
 
-# --- the phase, stated wrongly ------------------------------------------------
+# --- the connections, stated wrongly -------------------------------------------
 
-def m_unconjugated_down_phase(text):
-    """The classic sign error: the same factor in both directions.
+_NEAR_TERM = ("    cf near_term = cconnect(mul_field_left(near_pair, u[home]), oa, oph, "
+              "ophase);")
+_FAR_TERM = "    cf far_term = mul_field_left(far_pair, ghosted(u, up));"
 
-    Every magnitude stays plausible and only the phase moves, which is what a band
-    structure is made of. Planted on ALL THREE axes at the point where the kernel
-    unpacks the table, so the leg bites whichever axis the scored case phases.
+
+def m_conjugate_the_pair_connection(text):
+    """The classic sign error: the pair's connection conjugated.
+
+    The same-index operand takes MEEP's not-owned word ABOVE the window (eikna);
+    conjugating it reads the word below. Every magnitude stays plausible and only the
+    phase moves, which is what a band structure is made of. Planted on ALL THREE axes
+    at the point where the kernel unpacks the table, so the leg bites whichever axis
+    the scored case phases.
     """
-    return _sub(r"(cf dp([xyz]); dp\2\.re = dp\2r; dp\2\.im = )dp\2i;",
-                r"\1(0.0f - dp\2i);", text)
+    return _sub(r"(cf pp([xyz]); pp\2\.re = p\2r; pp\2\.im = )p\2i;",
+                r"\1(0.0f - p\2i);", text)
 
 
-def m_phase_the_field_not_the_product(text):
-    """Rotate the pre-coefficient field instead of the formed product."""
-    old = ("    cf far_term = mul_field_left(far_pair, (up < 0) ? 0.0f : u[up]);\n"
-           "    if (uw && uph) far_term = rotate_field_left(far_term, uphase);")
-    new = ("    if (uw && uph) far_pair = rotate_field_left(far_pair, uphase);\n"
-           "    cf far_term = mul_field_left(far_pair, (up < 0) ? 0.0f : u[up]);")
-    return _replace(old, new, text)
+def m_connect_the_field_not_the_product(text):
+    """Connect the pre-coefficient pair instead of the formed near product.
 
-
-def m_drop_the_down_phase(text):
-    """The wrapped near face left unrotated: ``f(x - L)`` served as ``f(x)``.
-
-    Inverting the ``ph`` test drops the rotation on a phased axis (and applies a
-    1+0j rotation on an unphased one, which is why the leg is armed on a case whose
-    live PARTNER axis is phased rather than on any phased case).
-    """
-    return _replace("    return ph ? rotate_field_left(z, phase) : z;",
-                    "    return ph ? z : rotate_field_left(z, phase);", text)
-
-
-def m_phase_the_whole_volume(text):
-    """The Bloch factor applied to every cell instead of the single wrapped plane.
-
-    ``_apply_bloch_phase`` multiplies exactly ``_face(axis, -1)`` of the rolled
-    buffer (stepping.py:1893-1909); a kernel that phased the volume would be
-    smooth, converged and carrying a wrong dispersion relation.
+    ``stepping._offdiagonal_terms`` connects the PRODUCT on the own axis
+    (``_bloch_ghost_operand`` applied after the coefficient); connecting the pair and
+    then scaling is a different float32 number.
     """
     return _replace(
-        "    if (uw && uph) far_term = rotate_field_left(far_term, uphase);",
-        "    if (uph) far_term = rotate_field_left(far_term, uphase);", text)
+        _NEAR_TERM,
+        "    cf near_term = mul_field_left(cconnect(near_pair, oa, oph, ophase), u[home]);",
+        text)
+
+
+def m_drop_the_pair_connection(text):
+    """The pair's same-index operand read as the stored word on plane 0 of a phased
+    partner axis: MEEP's not-owned word served as the owned one."""
+    return _replace("    return cwindow(g, index, pa, pph, pphase);",
+                    "    return cf_load(g, index);", text)
+
+
+def m_connect_every_plane(text):
+    """The near product connected on every plane of the own axis, not plane 0 only.
+
+    ``_bloch_ghost_operand`` replaces exactly plane 0 of a phased axis; a kernel that
+    connected the volume would be smooth, converged and carrying a wrong dispersion
+    relation.
+    """
+    return _replace(
+        _NEAR_TERM,
+        "    cf near_term = cconnect(mul_field_left(near_pair, u[home]), 0, oph, ophase);",
+        text)
+
+
+def m_old_package_ghost_phase(text):
+    """INVERTED (KERNELS.md section 7.1): the previous package's ghost rule.
+
+    The phase on the FAR product's wrapped lane (the top plane of the own axis, where
+    the up index wraps below the home index) and none on the near product, where
+    MEEP's stored window connects the near product on plane 0 and wraps the far one
+    plainly.
+    """
+    return _replace(
+        _NEAR_TERM + "\n" + _FAR_TERM,
+        "    cf near_term = mul_field_left(near_pair, u[home]);\n" + _FAR_TERM + "\n"
+        "    if (up >= 0 && up < home) far_term = cconnect(far_term, 0, oph, ophase);",
+        text)
 
 
 # --- the row product, stated wrongly ------------------------------------------
@@ -691,16 +733,13 @@ def m_phase_the_whole_volume(text):
 def m_hoist_the_coefficient(text):
     """The four-point average times ``u[i]`` -- the same ALGEBRA only for a uniform
     coefficient, and a different float32 number even then."""
-    old = ("    cf near_term = mul_field_left(near_pair, u[home]);\n"
-           "    cf far_term = mul_field_left(far_pair, (up < 0) ? 0.0f : u[up]);")
-    new = ("    cf near_term = mul_field_left(near_pair, u[home]);\n"
-           "    cf far_term = mul_field_left(far_pair, u[home]);")
-    return _replace(old, new, text)
+    return _replace(_FAR_TERM,
+                    "    cf far_term = mul_field_left(far_pair, u[home]);", text)
 
 
 def m_ungosted_up_coefficient(text):
-    """Read ``u[up]`` where ``_shift_up`` writes an exact zero -- bit-identity 4."""
-    return _replace("mul_field_left(far_pair, (up < 0) ? 0.0f : u[up])",
+    """Read a coefficient where ``_shift_up`` writes an exact zero -- bit-identity 4."""
+    return _replace("mul_field_left(far_pair, ghosted(u, up))",
                     "mul_field_left(far_pair, u[home])", text)
 
 
@@ -742,15 +781,16 @@ def m_up_ghost_real_plane_only(text):
     NOT a slack leg: it is the MEASUREMENT of a structural fact this family relies
     on twice. Where ``coord_up`` returns -1 the coefficient read is ghosted to
     ``0.0f`` as well (bit-identity fact 4), so whatever ``up_sample`` returns is
-    annihilated by ``mul_field_left(far_pair, 0.0f)`` before it can reach the
+    annihilated by ``mul_field_left(far_pair, ghosted(u, up))`` before it can reach the
     output. The two ghosts are therefore belt AND braces on this leg, and
     ``ungosted_up_coefficient`` -- which removes the braces -- is the leg that
     proves the belt alone is not enough (CAUGHT, thousands of words).
     """
     return _replace(
-        "    return (index < 0) ? cf_zero() : cf_load(g, index);",
+        "    if (index < 0) return cf_zero();\n"
+        "    return cwindow(g, index, pa, pph, pphase);",
         "    if (index < 0) { cf o = cf_load(g, 0); o.re = 0.0f; return o; }\n"
-        "    return cf_load(g, index);", text)
+        "    return cwindow(g, index, pa, pph, pphase);", text)
 
 
 def m_couple_the_wrong_components(text):
@@ -764,29 +804,42 @@ def m_couple_the_wrong_components(text):
 def m_transpose_the_coefficient(text):
     """Read the coefficient one cell up its own axis -- the registration MEEP fixes."""
     return _replace("mul_field_left(near_pair, u[home])",
-                    "mul_field_left(near_pair, (up < 0) ? 0.0f : u[up])", text)
+                    "mul_field_left(near_pair, ghosted(u, up))", text)
+
+
+_ROW_ADD = (r"    if \(chunk_keeps\(kept_\w+, chunk_(E[xyz])\)\) \{\n"
+            r"        row_\1_re = row_\1_re \+ \(0\.25 \* \(double\)\(term_\1_([01])\.re\)\);\n"
+            r"        row_\1_im = row_\1_im \+ \(0\.25 \* \(double\)\(term_\1_\2\.im\)\);\n"
+            r"    \}\n")
 
 
 def m_drop_a_row_from_the_volume_sum(text):
-    return _sub(r"    total_(E[xyz]) = cf_add\(total_\1, term_\1_([01])\);", "",
-                text)
+    return _sub(_ROW_ADD, "", text)
+
+
+def m_presence_ignored(text):
+    """INVERTED (KERNELS.md section 7.1): every term added in every chunk.
+
+    The previous family added both terms everywhere; MEEP drops a term in a chunk that
+    deleted the array (``update_eh.cpp:191-196``), and the presence word says which.
+    """
+    return _sub(r"if \(chunk_keeps\(kept_\w+, chunk_E[xyz]\)\) \{", "if (1) {", text)
+
+
+_WALL_TERM = r"\((wm_[xyz]) && (at_[xyz])\) \? cf_zero\(\) : (term_E[xyz]_[01]);"
 
 
 def m_invert_the_wall_mask(text):
-    return _sub(r"\? cf_zero\(\) : (total_E[xyz]);", r": \1 ? cf_zero();", text) \
-        if False else _sub(
-            r"\((wm_[xyz]) && (at_[xyz])\) \? cf_zero\(\) : (total_E[xyz]);",
-            r"(\1 && \2) ? \3 : cf_zero();", text)
+    return _sub(_WALL_TERM, r"(\1 && \2) ? \3 : cf_zero();", text)
 
 
 def m_drop_the_wall_mask(text):
-    return _sub(r"\((wm_[xyz]) && (at_[xyz])\) \? cf_zero\(\) : (total_E[xyz]);",
-                r"\3;", text)
+    return _sub(_WALL_TERM, r"\3;", text)
 
 
 def m_wall_mask_real_plane_only(text):
     return _sub(
-        r"    (total_E[xyz]) = \((wm_[xyz]) && (at_[xyz])\) \? cf_zero\(\) : \1;",
+        r"    (term_E[xyz]_[01]) = \((wm_[xyz]) && (at_[xyz])\) \? cf_zero\(\) : \1;",
         r"    if (\2 && \3) \1.re = 0.0f;", text)
 
 
@@ -798,26 +851,54 @@ def m_wrong_own_axis_table(text):
     return _sub(r"kps_x\[i\], kms_x\[i\]", "kps_y[j], kms_y[j]", text)
 
 
+_PREV_LINE = "    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();"
+_FW_STORE = "    if (dsigw) cf_store(fw, idx, src);"
+
+
 def m_store_fw_before_reading_prev(text):
     """Wrong only where kms != 0, i.e. INSIDE the absorber -- which reads as a
     slightly weaker layer rather than as a bug."""
-    old = ("    cf prev = cf_load(fw, idx);\n"
-           "    cf_store(fw, idx, src);")
-    new = ("    cf_store(fw, idx, src);\n"
-           "    cf prev = cf_load(fw, idx);")
-    return _replace(old, new, text)
+    return _replace(_PREV_LINE + "\n" + _FW_STORE, _FW_STORE + "\n" + _PREV_LINE, text)
 
 
-def m_flatten_the_tail(text):
-    """``f + (kps*src - kms*prev)`` -- a different float32 number, and what the
-    twelve uncertified complex kernels in step_curl_kernels.py write."""
-    old = ("    cf a = cf_load(f, idx);\n"
-           "    a = cf_add(a, mul_coefficient_left(kps, src));\n"
-           "    a = cf_sub(a, mul_coefficient_left(kms, prev));")
-    new = ("    cf a = cf_load(f, idx);\n"
-           "    a = cf_add(a, cf_sub(mul_coefficient_left(kps, src),\n"
-           "                         mul_coefficient_left(kms, prev)));")
-    return _replace(old, new, text)
+def m_old_package_constitutive_grouping(text):
+    """INVERTED (KERNELS.md section 7.1): two accumulations where MEEP's
+    ``step_update_EDHB`` forms the right-hand side first, ``f + ((kps*src) -
+    (kms*prev))`` -- a different float32 number on the cells whose chunk carries the
+    dsigw layer."""
+    return _replace(
+        "cf_add(cf_load(f, idx), cf_sub(mul_coefficient_left(kps, src), "
+        "mul_coefficient_left(kms, prev)))",
+        "cf_sub(cf_add(cf_load(f, idx), mul_coefficient_left(kps, src)), "
+        "mul_coefficient_left(kms, prev))", text)
+
+
+# --- KERNELS.md section 7.2: the B battery on the constitutive chunk forms ------
+
+def b_select_removed(text):
+    """The whole-grid recurrence: every cell takes the dsigw form whatever its chunk
+    carries -- the form the family stepped before the chunk forms."""
+    return _replace(_PREV_LINE, "    dsigw = 1;\n" + _PREV_LINE, text)
+
+
+def b_predicate_on_coefficient_identity(text):
+    """The form chosen by the coefficient's value rather than by the chunk's
+    membership, the predicate the family carried until 0.10."""
+    return _sub(r"(constitutive_apply\(E[xyz], f_w_E[xyz], idx, src_E[xyz], "
+                r"kps_([xyz])\[([ijk])\], kms_\2\[\3\]), in_h_\2\);",
+                r"\1, ((kps_\2[\3] != 1.0f) || (kms_\2[\3] != 1.0f)));", text)
+
+
+def b_auxiliary_stored_on_a_plain_cell(text):
+    """The auxiliary written on every cell: the auxiliary contract leaves it untouched
+    on a plain cell, and every auxiliary is compared."""
+    return _replace(_FW_STORE, "    cf_store(fw, idx, src);", text)
+
+
+def b_auxiliary_load_unguarded(text):
+    """A DECLARED NULL: the auxiliary load issued on every cell, the store still
+    guarded. The loaded word feeds only the dsigw form, so no stored word changes."""
+    return _replace(_PREV_LINE, "    cf prev = cf_load(fw, idx);", text)
 
 
 def m_store_arm_accumulates(text):
@@ -829,20 +910,21 @@ def m_store_arm_accumulates(text):
 # --- the must-be-UNCAUGHT nulls ----------------------------------------------
 
 def n_commute_the_row_sum(text):
-    """float32 addition is bitwise COMMUTATIVE, so swapping the two addends of the
-    row accumulation must move NO word. A leg that caught it would be reporting a
+    """Addition is bitwise COMMUTATIVE, so swapping the two addends of the row
+    accumulation must move NO word. A leg that caught it would be reporting a
     comparator that fails everything."""
-    return _sub(r"    total_(E[xyz]) = cf_add\(total_\1, term_\1_([01])\);",
-                r"    total_\1 = cf_add(term_\1_\2, total_\1);", text)
+    return _sub(r"row_(E[xyz])_(re|im) = row_\1_\2 \+ \(0\.25 \* \(double\)"
+                r"\(term_\1_([01])\.\2\)\);",
+                r"row_\1_\2 = (0.25 * (double)(term_\1_\3.\2)) + row_\1_\2;", text)
 
 
 def n_commute_the_pair_add(text):
     """Same fact on the two-point partner pair."""
     return _replace(
-        "    cf near_pair = cf_add(cf_load(g, home),\n"
-        "                          down_sample(g, down, dgl, dbc, dph, dphase, w));",
-        "    cf near_pair = cf_add(down_sample(g, down, dgl, dbc, dph, dphase, w),\n"
-        "                          cf_load(g, home));", text)
+        "    cf near_pair = cf_add(pair_window(g, home, pa, pph, pphase),\n"
+        "                          down_sample(g, down, dgl, dbc, w));",
+        "    cf near_pair = cf_add(down_sample(g, down, dgl, dbc, w),\n"
+        "                          pair_window(g, home, pa, pph, pphase));", text)
 
 
 def n_dead_cshift_up(text):
@@ -875,13 +957,14 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "mirror_row_off_by_one": m_mirror_row_off_by_one,
     "flip_the_parity_sign": m_flip_the_parity_sign,
     "drop_the_parity_weight": m_drop_the_parity_weight,
-    "parity_plane_wise": m_parity_plane_wise,
+    "parity_full_complex_product": m_parity_full_complex_product,
     "weight_every_lane": m_weight_every_lane,
     "folded_own_axis_wraps": m_folded_own_axis_wraps,
-    "unconjugated_down_phase": m_unconjugated_down_phase,
-    "phase_the_field_not_the_product": m_phase_the_field_not_the_product,
-    "drop_the_down_phase": m_drop_the_down_phase,
-    "phase_the_whole_volume": m_phase_the_whole_volume,
+    "conjugate_the_pair_connection": m_conjugate_the_pair_connection,
+    "connect_the_field_not_the_product": m_connect_the_field_not_the_product,
+    "drop_the_pair_connection": m_drop_the_pair_connection,
+    "connect_every_plane": m_connect_every_plane,
+    "old_package_ghost_phase": m_old_package_ghost_phase,
     "hoist_the_coefficient": m_hoist_the_coefficient,
     "ungosted_up_coefficient": m_ungosted_up_coefficient,
     "same_direction_shifts": m_same_direction_shifts,
@@ -890,13 +973,18 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "couple_the_wrong_components": m_couple_the_wrong_components,
     "transpose_the_coefficient": m_transpose_the_coefficient,
     "drop_a_row_from_the_volume_sum": m_drop_a_row_from_the_volume_sum,
+    "presence_ignored": m_presence_ignored,
     "invert_the_wall_mask": m_invert_the_wall_mask,
     "drop_the_wall_mask": m_drop_the_wall_mask,
     "wall_mask_real_plane_only": m_wall_mask_real_plane_only,
     "wrong_own_axis_table": m_wrong_own_axis_table,
     "store_fw_before_reading_prev": m_store_fw_before_reading_prev,
-    "flatten_the_tail": m_flatten_the_tail,
+    "old_package_constitutive_grouping": m_old_package_constitutive_grouping,
     "store_arm_accumulates": m_store_arm_accumulates,
+    "select_removed": b_select_removed,
+    "predicate_on_coefficient_identity": b_predicate_on_coefficient_identity,
+    "auxiliary_stored_on_a_plain_cell": b_auxiliary_stored_on_a_plain_cell,
+    "auxiliary_load_unguarded": b_auxiliary_load_unguarded,
     "commute_the_row_sum": n_commute_the_row_sum,
     "commute_the_pair_add": n_commute_the_pair_add,
     "dead_cshift_up": n_dead_cshift_up,
@@ -909,18 +997,17 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
 #: are MEASURED FINDINGS this gate's first device run established, each recorded
 #: here with the number behind it rather than quietly dropped from the battery.
 #:
-#: ``parity_plane_wise`` -- the plane-wise spelling of the mirror parity multiply.
-#: The two spellings DO differ at the multiply: measured on the host over the four
-#: signed-zero patterns, 4 of 16 float32 words
-#: (``test_complex_offdiag_update_e.test_the_parity_multiply_must_be_the_full_
-#: complex_product``). They do NOT differ at this kernel's OUTPUT, because with the
-#: parity exactly +/-1 the only difference is the SIGN OF A ZERO in the ghost, and
-#: every path from the ghost to a stored word passes through an addition with a
-#: normal operand (``near_pair``, then ``0.25*(near+far)``, then ``diag + total``)
-#: which absorbs it. So ``mul_coefficient_left`` is kept on TRANSCRIPTION FIDELITY
-#: -- it is what the array path dispatches -- and NOT on a measured byte difference
-#: at the output. That is a weaker claim than the module's other five, and it is
-#: written down as the weaker claim it is.
+#: ``parity_full_complex_product`` LEFT THIS LIST (bit_parity_0_10 lane KC6): the
+#: previous family's full complex spelling of the mirror parity multiply, armed as
+#: the mutant, was a null on the previous row, whose additions with a normal operand
+#: absorbed the sign of a zero in the ghost. On MEEP's row -- float32 pair sums,
+#: scaled and summed in double, a term absent where its chunk deleted the array --
+#: that sign reaches a stored word: the first device run of the re-derived family
+#: CAUGHT it on the signed-zero class (1 differing word, reduced product, keep
+#: policy). It is must-catch, as every inverted spelling is (KERNELS.md section 7.1).
+#:
+#: ``auxiliary_load_unguarded`` -- KERNELS.md section 7.2's declared null: the load
+#: feeds only the dsigw form, so no stored word changes.
 #:
 #: ``up_ghost_real_plane_only`` and ``down_ghost_real_plane_only`` -- see each
 #: mutation's own docstring. Both were written expecting a catch and both are NULL
@@ -932,8 +1019,8 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
 NULL_MUTATIONS: Tuple[str, ...] = (
     "commute_the_row_sum", "commute_the_pair_add",
     "dead_cshift_up", "dead_cshift_dn", "dead_pml_apply",
-    "parity_plane_wise", "up_ghost_real_plane_only",
-    "down_ghost_real_plane_only")
+    "up_ghost_real_plane_only",
+    "down_ghost_real_plane_only", "auxiliary_load_unguarded")
 
 #: Legs that can only bite where a fold reaches a LIVE PARTNER axis -- the only arm
 #: on which the mirror ghost is read at all. Scored on a case whose ``roles`` say
@@ -941,22 +1028,23 @@ NULL_MUTATIONS: Tuple[str, ...] = (
 FOLD_PARTNER_MUTATIONS: Tuple[str, ...] = (
     "mirror_ghost_as_the_metallic_zero", "mirror_ghost_as_the_periodic_wrap",
     "mirror_row_off_by_one", "flip_the_parity_sign", "drop_the_parity_weight",
-    "parity_plane_wise", "weight_every_lane")
+    "parity_full_complex_product", "weight_every_lane")
 
 #: Legs that need a fold on a live OWN axis.
 FOLD_OWN_MUTATIONS: Tuple[str, ...] = ("folded_own_axis_wraps",)
 
-#: Legs whose defect sits on the PARTNER-axis DOWN shift, so the case needs a live
-#: partner axis that is PHASED. A phased axis that no live row slot takes as its
-#: partner is a genuine NULL and scoring it a miss would be a statement about the
-#: fixture rather than about the kernel -- the DEAD-BRANCH TRAP, per leg.
+#: Legs whose defect sits on the PAIR's connection (the PARTNER axis's window), so the
+#: case needs a live partner axis that is PHASED. A phased axis that no live row slot
+#: takes as its partner is a genuine NULL and scoring it a miss would be a statement
+#: about the fixture rather than about the kernel -- the DEAD-BRANCH TRAP, per leg.
 DOWN_PHASE_MUTATIONS: Tuple[str, ...] = (
-    "unconjugated_down_phase", "drop_the_down_phase")
+    "conjugate_the_pair_connection", "drop_the_pair_connection")
 
-#: Legs whose defect sits on the OWN-axis UP shift, so the case needs a live own
-#: axis that is PHASED.
+#: Legs whose defect sits on the NEAR PRODUCT's connection (the OWN axis's window), so
+#: the case needs a live own axis that is PHASED.
 UP_PHASE_MUTATIONS: Tuple[str, ...] = (
-    "phase_the_field_not_the_product", "phase_the_whole_volume")
+    "connect_the_field_not_the_product", "connect_every_plane",
+    "old_package_ghost_phase")
 
 #: Legs that need the wall mask to BITE on this (mask, grid) pair.
 WALL_MUTATIONS: Tuple[str, ...] = (
@@ -965,11 +1053,21 @@ WALL_MUTATIONS: Tuple[str, ...] = (
 #: Legs whose defect lives in the SIGN OF A ZERO, so the signed-zero value class is
 #: the one that can show it. Every other leg prefers the uniform class, where a
 #: fixture is all normal words and an ordinary defect has the most room.
-SIGNED_ZERO_MUTATIONS: Tuple[str, ...] = ("parity_plane_wise",)
+SIGNED_ZERO_MUTATIONS: Tuple[str, ...] = ("parity_full_complex_product",
+                                          "presence_ignored")
+
+#: Legs whose defect reaches a stored word on SOME armable cases and not others: the
+#: sign of a zero in the mirror ghost survives MEEP's row only where the rest of the
+#: row is itself a zero of the other sign. Scored over the armable cases in order,
+#: and CAUGHT on the first that shows it; a leg no armable case catches has escaped.
+LIVE_ON_SOME_CASE_MUTATIONS: Tuple[str, ...] = ("parity_full_complex_product",)
 
 #: Legs that exist only on one arm.
 PML_ONLY_MUTATIONS: Tuple[str, ...] = (
-    "wrong_own_axis_table", "store_fw_before_reading_prev", "flatten_the_tail")
+    "wrong_own_axis_table", "store_fw_before_reading_prev",
+    "old_package_constitutive_grouping", "select_removed",
+    "predicate_on_coefficient_identity", "auxiliary_stored_on_a_plain_cell",
+    "auxiliary_load_unguarded")
 STORE_ONLY_MUTATIONS: Tuple[str, ...] = ("store_arm_accumulates",)
 
 #: Legs that need TWO live slots on one component to have anything to drop.
@@ -981,26 +1079,62 @@ TWO_SLOT_MUTATIONS: Tuple[str, ...] = ("drop_a_row_from_the_volume_sum",
 HOST_MUTATIONS: Tuple[str, ...] = (
     "swap_sub_lattice", "hand_the_fold_the_metallic_code", "flip_the_parity",
     "drop_the_wall_flags", "swap_the_phase_directions", "clear_the_phase_flags",
-    "transpose_the_boundary_codes")
+    "transpose_the_boundary_codes", "clear_the_presence_words",
+    "record_bound_off_by_one", "record_lattices_swapped")
+
+#: The host mutations that corrupt the chunk record the launch binds (KERNELS.md
+#: section 7.2); the oracle steps the run's own division.
+RECORD_HOST_MUTATIONS: Tuple[str, ...] = ("record_bound_off_by_one",
+                                          "record_lattices_swapped")
+
+
+def mutated_record(name: str, record: Sequence[int], grid) -> np.ndarray:
+    """``record`` corrupted as KERNELS.md section 7.2 names.
+
+    ``record_bound_off_by_one`` moves each layered axis's low run end one row up on
+    both lattices (the boundary plane changes form); ``record_lattices_swapped`` hands
+    each lattice the other's runs (the boundary plane moves by one cell).
+    """
+    from meep_gpu.chunk_map import record_index  # noqa: PLC0415
+
+    source = np.asarray(record, dtype=np.int32)
+    out = source.copy()
+    for axis in range(3):
+        if int(grid.shape[axis]) <= 1:
+            continue
+        for half in (False, True):
+            a0 = int(source[record_index(half, axis, 0)])
+            a1 = int(source[record_index(half, axis, 1)])
+            if name == "record_bound_off_by_one" and a1 > a0:
+                out[record_index(half, axis, 1)] = a1 + 1
+        if name == "record_lattices_swapped":
+            for word in range(4):
+                low = record_index(False, axis, word)
+                high = record_index(True, axis, word)
+                out[low], out[high] = source[high], source[low]
+    return out
 
 #: HOST mutations that MUST come back UNCAUGHT on a case they cannot reach.
 NULL_HOST_MUTATIONS: Tuple[str, ...] = ("rebind_identical_tables",)
 
 
 def apply_host_mutation(name: Optional[str], layer, grid, arm, tables, codes,
-                        walls, flags, weights, down, up):
-    """Return the launch arguments this leg feeds, mutated or not."""
+                        walls, weights, connections, record, kept):
+    """Return the launch arguments this leg feeds, mutated or not.
+
+    ``connections`` is ``bloch_connection_table``'s four-tuple (pair kinds, pair
+    parts, own kinds, own parts), ``record`` the host chunk record and ``kept`` the
+    six presence words; the record is uploaded here.
+    """
     if name is None or name == "rebind_identical_tables":
         if name == "rebind_identical_tables" and tables is not None:
             tables = {key: value for key, value in tables.items()}
-        return tables, codes, walls, flags, weights, down, up
-    if name == "swap_sub_lattice":
+    elif name == "swap_sub_lattice":
         # The INTEGER pair -- the H side's sub-lattice, wrong for E by half a cell.
         from meep_gpu.cuda_kernels.constitutive_kernels import (  # noqa: PLC0415
             real_constitutive_tables)
-        return (real_constitutive_tables(layer, False), codes, walls, flags,
-                weights, down, up)
-    if name == "hand_the_fold_the_metallic_code":
+        tables = real_constitutive_tables(layer, False)
+    elif name == "hand_the_fold_the_metallic_code":
         codes = tuple(coverage.BC_CODES["metallic"]
                       if code == family.BC_MIRROR_CODE else code
                       for code in codes)
@@ -1009,15 +1143,23 @@ def apply_host_mutation(name: Optional[str], layer, grid, arm, tables, codes,
     elif name == "drop_the_wall_flags":
         walls = (0, 0, 0)
     elif name == "swap_the_phase_directions":
-        down, up = up, down
+        # Each operand handed the OTHER window's connection: the pair the word below,
+        # the near product the word above.
+        pair_kinds, pair_parts, own_kinds, own_parts = connections
+        connections = (own_kinds, own_parts, pair_kinds, pair_parts)
     elif name == "clear_the_phase_flags":
-        flags = (0, 0, 0)
+        pair_kinds, pair_parts, own_kinds, own_parts = connections
+        connections = ((0, 0, 0), pair_parts, (0, 0, 0), own_parts)
     elif name == "transpose_the_boundary_codes":
         codes = (codes[1], codes[2], codes[0])
+    elif name == "clear_the_presence_words":
+        kept = (0,) * len(kept)
+    elif name in RECORD_HOST_MUTATIONS:
+        record = mutated_record(name, record, grid)
     else:  # pragma: no cover - the table above is the whole set
         raise ValueError(f"no host mutation {name!r}")
-    return tables, codes, walls, flags, weights, down, up
-
+    chunk_bounds = cp.asarray(np.asarray(record, dtype=np.int32), dtype=cp.int32)
+    return tables, codes, walls, weights, connections, chunk_bounds, tuple(kept)
 
 # ---------------------------------------------------------------------------
 # The kernel backend
@@ -1060,36 +1202,37 @@ class KernelBackend:
         self.clear()
         self.source_transform = transform
 
-    def pristine_source(self, arm, mask, expansion) -> str:
+    def pristine_source(self, arm, mask) -> str:
         """The UNMUTATED source. Site counting and digesting must never go through
         an installed override: that would apply the transform twice and the leg
         would hash a body it never compiled."""
-        return family.complex_offdiag_source(arm, mask, expansion)
+        return family.complex_offdiag_source(arm, mask)
 
-    def source_for(self, arm, mask, expansion) -> Tuple[str, int]:
-        text = self.pristine_source(arm, mask, expansion)
+    def source_for(self, arm, mask) -> Tuple[str, int]:
+        text = self.pristine_source(arm, mask)
         if self.source_transform is None:
             return text, 0
         return self.source_transform(text)
 
-    def launch(self, fields, arm, mask, expansion, tables, codes, walls, flags,
-               weights, down, up) -> None:
-        text, _sites = self.source_for(arm, mask, expansion)
-        key = (arm, tuple(mask), expansion)
+    def launch(self, fields, arm, mask, tables, codes, walls, weights,
+               connections, chunk_bounds, kept) -> None:
+        text, _sites = self.source_for(arm, mask)
+        key = (arm, tuple(mask))
         if self.source_transform is not None:
-            family.set_kernel_source(arm, mask, expansion, text)
+            family.set_kernel_source(arm, mask, text)
             if key not in self._overridden:
                 self._overridden.append(key)
         self.sources_used[str(key)] = hashlib.sha256(
             text.encode("utf-8")).hexdigest()
         if arm == "pml":
             family.update_E_complex_offdiag_fused_pml(
-                fields, expansion, tables=tables, codes=codes, walls=walls,
-                flags=flags, weights=weights, phases=(down, up))
+                fields, tables=tables, codes=codes, walls=walls,
+                weights=weights, connections=connections,
+                chunk_bounds=chunk_bounds, kept=kept)
         else:
             family.update_E_complex_no_pml_offdiag(
-                fields, expansion, codes=codes, walls=walls, flags=flags,
-                weights=weights, phases=(down, up))
+                fields, codes=codes, walls=walls, weights=weights,
+                connections=connections, chunk_bounds=chunk_bounds, kept=kept)
         cp.cuda.runtime.deviceSynchronize()
 
     def compile_log(self) -> List[Dict[str, Any]]:
@@ -1098,8 +1241,8 @@ class KernelBackend:
         return list(compile_cache.compile_log())
 
     def clear(self) -> int:
-        for arm, mask, expansion in self._overridden:
-            family.set_kernel_source(arm, mask, expansion, None)
+        for arm, mask in self._overridden:
+            family.set_kernel_source(arm, mask, None)
         self._overridden = []
         self.source_transform = None
         return family.clear_kernel_cache()
@@ -1127,7 +1270,7 @@ def case_seed(key: str) -> int:
 
 def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
              courant: float, value_class: str, guard_label: str,
-             guard: Sequence[str], steps: int, expansion,
+             guard: Sequence[str], steps: int,
              source_mutation: Optional[str] = None,
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
@@ -1151,7 +1294,12 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     codes = family.complex_offdiag_boundary_codes(grid)
     walls = coverage.offdiag_wall_mask_flags(grid)
     weights = family.mirror_ghost_weights(grid)
-    flags, down, up = family.bloch_phase_table(grid)
+    connections = family.bloch_connection_table(grid)
+    flags = connections[0]
+    # THE RUN'S CHUNK RECORD AND PRESENCE WORDS, from the real family's builder
+    # (offdiag_presence.launch_chunk_arguments through chunk_arguments): the division
+    # the array path's update_E reads on this layer.
+    record, kept = family.chunk_arguments(kernel_fields, kernel_layer, codes)
     tables = (family.complex_offdiag_tables(kernel_layer) if arm == "pml"
               else None)
 
@@ -1160,7 +1308,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
         "row_mask_label": mask_spec["label"], "row_mask": list(mask),
         "installed_row_mask": list(coverage.offdiag_row_mask(kernel_fields)),
         "courant": courant, "value_class": value_class, "guard": guard_label,
-        "steps": steps, "expansion": expansion,
+        "steps": steps,
         "source_mutation": source_mutation, "host_mutation": host_mutation,
         "shape": [int(n) for n in grid.shape],
         "boundaries": list(spec["boundaries"]),
@@ -1174,43 +1322,45 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
         "codes": list(codes), "walls": list(walls),
         "ghost_weights": [float(value) for value in weights],
         "phase_flags": list(flags),
-        "down_phases": [float(value) for value in down],
-        "up_phases": [float(value) for value in up],
+        "own_kinds": list(connections[2]),
+        "pair_parts": [float(value) for value in connections[1]],
+        "own_parts": [float(value) for value in connections[3]],
+        "chunk_record": [int(word) for word in record],
+        "presence_words": [int(word) for word in kept],
+        "layered": any(int(word) for word in list(record)[:24]),
+        "presence_drops_a_term": presence_drops_a_term(kernel_fields, record, codes,
+                                                       kept),
         "roles": fold_roles(grid, mask),
         "wall_mask_bites": wall_mask_bites(mask, walls),
+        "row_block": bool(spec.get("row_block")),
     }
     case["fold_reaches_the_partner_arm"] = bool(
         case["roles"]["fold_is_a_live_partner_axis"])
     case["fold_reaches_the_own_arm"] = bool(
         case["roles"]["fold_is_a_live_own_axis"])
 
-    # THE PHASE TABLE, CROSS-CHECKED against the certified complex launcher's own
-    # spelling. Two spellings of one fact are equal only until someone edits one,
-    # and the merge bar cannot check this pair because that module imports cupy at
-    # scope.
+    # THE CONNECTION TABLES, CROSS-CHECKED against the certified complex curl
+    # launcher's own spelling: the pair takes the D curl's (eikna), the near product
+    # the B curl's (conj(eikna)). Two spellings of one fact are equal only until
+    # someone edits one, and the merge bar cannot check this pair because that module
+    # imports cupy at scope.
     from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
-    their_flags_down, their_down = complex_pml_kernels.bloch_phase_arguments(
-        grid, backward=True)
-    their_flags_up, their_up = complex_pml_kernels.bloch_phase_arguments(
-        grid, backward=False)
+    their_pair = complex_pml_kernels.bloch_phase_arguments(grid, True)
+    their_own = complex_pml_kernels.bloch_phase_arguments(grid, False)
     case["phase_table_agrees_with_complex_pml_kernels"] = bool(
-        tuple(int(f) for f in their_flags_down) == tuple(flags)
-        and tuple(int(f) for f in their_flags_up) == tuple(flags)
-        and tuple(float(v) for v in their_down) == tuple(float(v) for v in down)
-        and tuple(float(v) for v in their_up) == tuple(float(v) for v in up))
+        tuple(int(f) for f in their_pair[0]) == tuple(connections[0])
+        and tuple(float(v) for v in their_pair[1]) == tuple(connections[1])
+        and tuple(int(f) for f in their_own[0]) == tuple(connections[2])
+        and tuple(float(v) for v in their_own[1]) == tuple(connections[3]))
 
     # THE PREDICATES' ANSWERS, recorded rather than acted on.
-    licence = _licence()
     mine_pml = family.covers_complex_offdiag_pml_update_e(
-        kernel_fields, kernel_layer, grid, license=licence,
-        subnormal_policy=_POLICY_NAME)
+        kernel_fields, kernel_layer, grid)
     mine_store = family.covers_complex_no_pml_offdiag_update_e(
-        kernel_fields, kernel_layer, grid, license=licence,
-        subnormal_policy=_POLICY_NAME)
+        kernel_fields, kernel_layer, grid)
     theirs = coverage.covers_real_pml_complex_constitutive(
-        kernel_fields, kernel_layer, grid, "E", license=licence,
-        subnormal_policy=_POLICY_NAME)
+        kernel_fields, kernel_layer, grid, "E")
     folded_verdict = folded.covers_folded_offdiag_composition(
         kernel_fields, kernel_layer, grid)
     case["predicates"] = {
@@ -1273,11 +1423,11 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     # --- leg 2: the kernel, on the SECOND fixture ---------------------------
     backend.set_guard(guard)
     launch = apply_host_mutation(host_mutation, kernel_layer, grid, arm, tables,
-                                 codes, walls, flags, weights, down, up)
+                                 codes, walls, weights, connections, record, kept)
     launch_error = None
     try:
         for _ in range(steps):
-            backend.launch(kernel_fields, arm, mask, expansion, *launch)
+            backend.launch(kernel_fields, arm, mask, *launch)
             advance_sources(kernel_fields, arm)
     except Exception as exc:  # noqa: BLE001 - a refusal is a result, recorded
         launch_error = f"{type(exc).__name__}: {exc}"[:600]
@@ -1342,7 +1492,19 @@ def summarize(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     scored = [case for case in cases if case.get("case_is_valid")]
     per_guard: Dict[str, Dict[str, int]] = {}
     per_arm: Dict[str, Dict[str, int]] = {}
+    #: The unguarded control at the inexact courant, PER ARM, with every case it
+    #: agreed on named: the guard clause asks the flag to be load-bearing on each
+    #: emitted tail, and an agreement is recorded rather than averaged away.
+    control_by_arm: Dict[str, Dict[str, Any]] = {}
     for case in scored:
+        if case["guard"] == "default_no_options" and case["courant"] == INEXACT_COURANT:
+            control = control_by_arm.setdefault(
+                case["arm"], {"ran": 0, "diverged": 0, "agreed": []})
+            control["ran"] += 1
+            if case["bit_identical"]:
+                control["agreed"].append(case["key"])
+            else:
+                control["diverged"] += 1
         bucket = per_guard.setdefault(case["guard"], {
             "ran": 0, "identical": 0, "inexact_ran": 0, "inexact_identical": 0})
         bucket["ran"] += 1
@@ -1364,6 +1526,7 @@ def summarize(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "refused_as_vacuous": len(cases) - len(scored),
         "per_guard": per_guard,
         "per_arm": per_arm,
+        "unguarded_inexact_by_arm": control_by_arm,
         "guarded_identical": sum(int(c["bit_identical"]) for c in guarded),
         "guarded_ran": len(guarded),
         "folded_identical": sum(int(c["bit_identical"]) for c in folded_cases),
@@ -1405,7 +1568,7 @@ def _fraction(cases: Sequence[Dict[str, Any]]) -> str:
     return f"{sum(int(c['bit_identical']) for c in cases)}/{len(cases)}"
 
 
-def run_sweep(backend, xp, results, out_path, product, steps, expansion,
+def run_sweep(backend, xp, results, out_path, product, steps,
               leg_name) -> None:
     plan = case_product(product, steps)
     total = len(plan) * len(GUARD_SETS)
@@ -1416,7 +1579,7 @@ def run_sweep(backend, xp, results, out_path, product, steps, expansion,
             index += 1
             case = one_case(backend, xp, entry["spec"], entry["mask_spec"],
                             entry["courant"], entry["value_class"], guard_label,
-                            guard, entry["steps"], expansion)
+                            guard, entry["steps"])
             valid, why = case_is_valid(case)
             case["case_is_valid"] = valid
             case["invalid_reason"] = why
@@ -1442,11 +1605,11 @@ def _armable(name: str, case: Dict[str, Any]) -> bool:
     take. It then reports UNCAUGHT while measuring nothing. Every leg is checked
     against the CASE, not just against the rewrite count.
     """
-    if name == "parity_plane_wise":
+    if name == "parity_full_complex_product":
         # THE SPELLING DIFFERS ONLY ON SIGNED ZEROS, so the leg is armed on the
         # signed-zero class -- the class the difference lives in -- and on a fold
-        # the mirror ghost actually reaches. It is a declared NULL; arming it
-        # anywhere weaker would make the NULL a statement about the fixture.
+        # the mirror ghost actually reaches. It is must-catch there; arming it
+        # anywhere weaker would make a miss a statement about the fixture.
         return (case["fold_reaches_the_partner_arm"]
                 and case["value_class"] == "signed_zero")
     if name in ("drop_the_parity_weight", "weight_every_lane"):
@@ -1480,9 +1643,21 @@ def _armable(name: str, case: Dict[str, Any]) -> bool:
         return any(case["phase_flags"][axis]
                    for axis in case["roles"]["live_own_axes"])
     if name in WALL_MUTATIONS:
-        return case["wall_mask_bites"]
+        # The presence case keeps its rows on an interior block, so the coupling the
+        # wall mask clears is already zero there and the mask cannot move a word.
+        return case["wall_mask_bites"] and not case["row_block"]
+    if name in ("select_removed", "predicate_on_coefficient_identity",
+                "auxiliary_stored_on_a_plain_cell"):
+        # THE CHUNK FORMS NEED A LAYERED DIVISION: with no chunk carrying a layer
+        # every cell takes the plain form and the select has nothing to choose.
+        return case["arm"] == "pml" and case["layered"]
     if name in PML_ONLY_MUTATIONS:
         return case["arm"] == "pml"
+    if name == "presence_ignored":
+        # A chunk must DROP an array somewhere for the presence word to decide a
+        # term: where every chunk code a live row's cells read is kept, ignoring the
+        # word changes nothing.
+        return bool(case["presence_drops_a_term"])
     if name in STORE_ONLY_MUTATIONS:
         return case["arm"] == "no_pml"
     if name in TWO_SLOT_MUTATIONS:
@@ -1521,6 +1696,8 @@ def mutation_plan(scored: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                      "must_be_caught": name not in NULL_MUTATIONS,
                      "case": candidates[0]["key"] if candidates else None,
                      "armable_cases": len(candidates)})
+        if name in LIVE_ON_SOME_CASE_MUTATIONS:
+            plan[-1]["cases"] = [c["key"] for c in candidates]
     for name in HOST_MUTATIONS + NULL_HOST_MUTATIONS:
         candidates = [case for case in scored
                       if (name != "hand_the_fold_the_metallic_code"
@@ -1538,7 +1715,10 @@ def mutation_plan(scored: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                       # all-periodic grid the rewrite changes no argument and the
                       # NULL would be about the fixture, not the kernel.
                       and (name != "transpose_the_boundary_codes"
-                           or len(set(case["codes"])) > 1)]
+                           or len(set(case["codes"])) > 1)
+                      # THE RECORD DECIDES THE CONSTITUTIVE FORM ONLY UNDER A LAYER.
+                      and (name not in RECORD_HOST_MUTATIONS
+                           or (case["arm"] == "pml" and case["layered"]))]
         plan.append({"mutation": name, "kind": "host",
                      "must_be_caught": name not in NULL_HOST_MUTATIONS,
                      "case": candidates[0]["key"] if candidates else None,
@@ -1546,7 +1726,7 @@ def mutation_plan(scored: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return plan
 
 
-def run_mutations(backend, xp, results, out_path, scored, expansion) -> None:
+def run_mutations(backend, xp, results, out_path, scored) -> None:
     by_key = {case["key"]: case for case in scored}
     plan = mutation_plan(scored)
     legs: List[Dict[str, Any]] = []
@@ -1569,7 +1749,7 @@ def run_mutations(backend, xp, results, out_path, scored, expansion) -> None:
         if entry["kind"] == "source":
             transform = SOURCE_MUTATIONS[entry["mutation"]]
             pristine = family.complex_offdiag_source(
-                spec["arm"], tuple(mask_spec["mask"]), expansion)
+                spec["arm"], tuple(mask_spec["mask"]))
             mutated, sites = transform(pristine)
             leg["rewritten_sites"] = sites
             leg["source_changed"] = mutated != pristine
@@ -1586,13 +1766,30 @@ def run_mutations(backend, xp, results, out_path, scored, expansion) -> None:
             mutated_case = one_case(
                 backend, xp, spec, mask_spec, case["courant"],
                 case["value_class"], "fmad_false", ("--fmad=false",),
-                case["steps"], expansion, source_mutation=entry["mutation"])
+                case["steps"], source_mutation=entry["mutation"])
+            tried = [entry["case"]]
+            for key in entry.get("cases", [])[1:]:
+                if (not mutated_case["bit_identical"]
+                        or mutated_case["launch_error"] is not None):
+                    break
+                other = by_key[key]
+                other_spec = next(s for s in SPECS if s["label"] == other["label"])
+                other_mask = next(m for m in ROW_MASK_SPECS
+                                  if m["label"] == other["row_mask_label"])
+                mutated_case = one_case(
+                    backend, xp, other_spec, other_mask, other["courant"],
+                    other["value_class"], "fmad_false", ("--fmad=false",),
+                    other["steps"], source_mutation=entry["mutation"])
+                tried.append(key)
+            if "cases" in entry:
+                leg["cases_tried"] = len(tried)
+                leg["case"] = tried[-1]
             backend.clear()
         else:
             mutated_case = one_case(
                 backend, xp, spec, mask_spec, case["courant"],
                 case["value_class"], "fmad_false", ("--fmad=false",),
-                case["steps"], expansion, host_mutation=entry["mutation"])
+                case["steps"], host_mutation=entry["mutation"])
         caught = (not mutated_case["bit_identical"]) or (
             mutated_case["launch_error"] is not None)
         leg["caught"] = bool(caught)
@@ -1632,7 +1829,7 @@ def mutation_summary(legs: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 # THE GUARD, MEASURED RATHER THAN ASSUMED
 # ---------------------------------------------------------------------------
 
-def guard_binary_probe(expansion) -> Dict[str, Any]:
+def guard_binary_probe() -> Dict[str, Any]:
     """Do the two option sets compile DIFFERENT PTX for this family's sources?
 
     WHY THIS LEG EXISTS. Every certified sibling on this track carries an
@@ -1644,11 +1841,12 @@ def guard_binary_probe(expansion) -> Dict[str, Any]:
 
     a. the flag changed the binary and the change happened to move no word --
        which would be luck, and luck is not a licence;
-    b. the flag changed NOTHING, because under the FMA_V1 arm this family has no
-       free multiply-then-add pair left to contract: every fusion is spelled
-       ``__fmaf_rn`` (a single ``fma.rn.f32`` whatever the flag says), every other
-       product feeds a multiply or an fma ADDEND rather than a bare add, and
-       ``cf_add``/``cf_sub`` add values the compiler cannot see a multiply behind.
+    b. the flag changed NOTHING, because the source has no free multiply-then-add
+       pair left to contract. That was the 0.9.2 kernel's case (every fusion
+       spelled ``__fmaf_rn``, a single ``fma.rn.f32`` whatever the flag says). The
+       part-wise body is full of such pairs (the tail's
+       ``kps * src`` minus ``kms * prev``, the row's per-part products), so (b) is
+       not expected and a run that reports it names the source that refutes it.
 
     Those are distinguishable AT THE COMPILER, and this leg distinguishes them:
     it compiles the same source under both option tuples through the same NVRTC
@@ -1657,11 +1855,9 @@ def guard_binary_probe(expansion) -> Dict[str, Any]:
     coincidence -- and DIFFERENT PTX with agreeing cases would be (a) and is
     recorded as such rather than passed over.
 
-    THE FLAG IS KEPT EITHER WAY. A family that compiled the same bytes under
-    different options than its siblings would not be comparable to them, and the
-    NAIVE arm -- which this licence does not bind but the emitter can still emit --
-    DOES carry a bare ``(z.re * c) - (z.im * 0.0f)`` multiply-then-subtract pair.
-    So the probe sweeps BOTH arms and reports each.
+    THE FLAG IS KEPT EITHER WAY: MEEP's contraction-off build rounds every product
+    and every sum on its own, and a family that compiled the same bytes under
+    different options than its siblings would not be comparable to them.
     """
     from cupy.cuda import compiler  # noqa: PLC0415
     from cupy.cuda import device as cuda_device  # noqa: PLC0415
@@ -1672,37 +1868,30 @@ def guard_binary_probe(expansion) -> Dict[str, Any]:
         arch = f"{properties['ComputeCapabilityMajor']}{properties['ComputeCapabilityMinor']}"
     except Exception:  # noqa: BLE001 - the fallback is the compiler's own default
         arch = None
-    out: Dict[str, Any] = {"arch": arch, "per_arm": {}}
-    for arm_name in sorted(complex_emitter.EXPANSIONS):
-        entry: Dict[str, Any] = {}
-        for tail in family.ARMS:
-            source = family.complex_offdiag_source(
-                tail, (1, 1, 1, 1, 1, 1), arm_name)
-            digests = {}
-            for label, options, _scored in GUARD_SETS:
-                try:
-                    ptx = compiler.compile_using_nvrtc(
-                        source, options=tuple(options),
-                        arch=arch, name_expressions=None)
-                except TypeError:
-                    ptx = compiler.compile_using_nvrtc(
-                        source, options=tuple(options), arch=arch)
-                payload = ptx[0] if isinstance(ptx, tuple) else ptx
-                if isinstance(payload, str):
-                    payload = payload.encode("utf-8")
-                digests[label] = hashlib.sha256(payload).hexdigest()
-            entry[tail] = {
-                "digests": digests,
-                "distinct": len(set(digests.values())) == len(digests),
-            }
-        out["per_arm"][arm_name] = entry
-    licensed = complex_emitter.EXPANSION_NAMES[
-        complex_emitter.normalized_expansion(expansion)]
-    out["licensed_arm"] = licensed
-    out["licensed_arm_ptx_distinct"] = any(
-        entry["distinct"] for entry in out["per_arm"][licensed].values())
-    out["naive_arm_ptx_distinct"] = any(
-        entry["distinct"] for entry in out["per_arm"]["NAIVE"].values())
+    out: Dict[str, Any] = {"arch": arch}
+    entry: Dict[str, Any] = {}
+    for tail in family.ARMS:
+        source = family.complex_offdiag_source(
+            tail, (1, 1, 1, 1, 1, 1))
+        digests = {}
+        for label, options, _scored in GUARD_SETS:
+            try:
+                ptx = compiler.compile_using_nvrtc(
+                    source, options=tuple(options),
+                    arch=arch, name_expressions=None)
+            except TypeError:
+                ptx = compiler.compile_using_nvrtc(
+                    source, options=tuple(options), arch=arch)
+            payload = ptx[0] if isinstance(ptx, tuple) else ptx
+            if isinstance(payload, str):
+                payload = payload.encode("utf-8")
+            digests[label] = hashlib.sha256(payload).hexdigest()
+        entry[tail] = {
+            "digests": digests,
+            "distinct": len(set(digests.values())) == len(digests),
+        }
+    out["per_tail"] = entry
+    out["ptx_distinct"] = any(value["distinct"] for value in entry.values())
     return out
 
 
@@ -1717,6 +1906,14 @@ def build_verdict(results: Dict[str, Any]) -> Dict[str, Any]:
     mutations = results.get("mutations", {}).get("summary", {})
     guarded = sweep.get("per_guard", {}).get("fmad_false", {})
     unguarded = sweep.get("per_guard", {}).get("default_no_options", {})
+    control_by_arm = sweep.get("unguarded_inexact_by_arm", {})
+    # LOAD-BEARING ON EVERY TAIL: the unguarded control diverged on at least one
+    # inexact case of each arm. The part-wise body hands the flag multiply-then-add
+    # pairs on both tails; a case on which the two compilations happen to round
+    # alike is named in ``unguarded_inexact_by_arm`` rather than excused.
+    load_bearing_per_arm = bool(
+        set(control_by_arm) == set(family.ARMS)
+        and all(entry.get("diverged", 0) > 0 for entry in control_by_arm.values()))
     clauses = {
         "backend_certifies": results.get("backend") == "cupy",
         "single_launch_all_identical": bool(
@@ -1752,8 +1949,9 @@ def build_verdict(results: Dict[str, Any]) -> Dict[str, Any]:
         "guard_result_explained": bool(
             unguarded.get("inexact_ran", 0) > 0
             and (unguarded.get("inexact_identical") == 0
+                 or load_bearing_per_arm
                  or results.get("guard_binary_probe", {}).get(
-                     "licensed_arm_ptx_distinct") is False)),
+                     "ptx_distinct") is False)),
         "mutations_all_as_required": bool(
             mutations.get("legs", 0) > 0
             and mutations.get("as_required") == mutations.get("legs")),
@@ -1768,17 +1966,28 @@ def build_verdict(results: Dict[str, Any]) -> Dict[str, Any]:
             finding = ("--fmad=false is LOAD-BEARING: the unguarded control "
                        f"diverged on {unguarded['inexact_ran']}/"
                        f"{unguarded['inexact_ran']} cases at the inexact courant")
-        elif probe.get("licensed_arm_ptx_distinct") is False:
+        elif load_bearing_per_arm:
+            agreed = sorted({key.split("|")[0] for entry in control_by_arm.values()
+                             for key in entry.get("agreed", [])})
             finding = (
-                "--fmad=false is NOT load-bearing on the licensed arm and the "
+                "--fmad=false is LOAD-BEARING on every tail: the unguarded control "
+                "diverged on "
+                f"{unguarded['inexact_ran'] - unguarded['inexact_identical']}/"
+                f"{unguarded['inexact_ran']} cases at the inexact courant, "
+                + ", ".join(f"{arm} {entry.get('diverged', 0)}/{entry.get('ran', 0)}"
+                            for arm, entry in sorted(control_by_arm.items()))
+                + f"; it agreed on {unguarded['inexact_identical']}, every one on "
+                f"{agreed} (named per case in unguarded_inexact_by_arm)")
+        elif probe.get("ptx_distinct") is False:
+            finding = (
+                "--fmad=false is NOT load-bearing on this source and the "
                 "compiler says why: NVRTC emitted IDENTICAL PTX under both option "
-                "tuples for both tails, because every fusion in this family is "
-                "spelled __fmaf_rn and no bare multiply feeds a bare add. The "
-                f"unguarded control accordingly agreed on {unguarded['inexact_identical']}"
-                f"/{unguarded['inexact_ran']} cases. The flag is KEPT for "
-                "comparability with the certified siblings and because the NAIVE "
-                "arm this licence does not bind DOES carry a contractable pair "
-                f"(ptx_distinct={probe.get('naive_arm_ptx_distinct')}).")
+                "tuples for both tails, so no bare multiply fed a bare add in the "
+                "emitted source. The unguarded control accordingly agreed on "
+                f"{unguarded['inexact_identical']}/{unguarded['inexact_ran']} cases. "
+                "The part-wise body is expected to carry such pairs, so this "
+                "refutes that expectation on this source; the flag is KEPT, as "
+                "MEEP's contraction-off build requires.")
         else:
             finding = (
                 "UNEXPLAINED: the unguarded control agreed on "
@@ -1809,8 +2018,11 @@ def verdict_flips_against_planted_defect(results: Dict[str, Any]) -> Dict[str, A
         "guard_result_unexplained": lambda r: (
             r["sweep"]["summary"]["per_guard"]["default_no_options"].__setitem__(
                 "inexact_identical", 1),
+            r["sweep"]["summary"].__setitem__("unguarded_inexact_by_arm", {
+                arm: dict(entry, diverged=0) for arm, entry in r["sweep"]["summary"].get(
+                    "unguarded_inexact_by_arm", {"pml": {}}).items()}),
             r.setdefault("guard_binary_probe", {}).__setitem__(
-                "licensed_arm_ptx_distinct", True)),
+                "ptx_distinct", True)),
     }
     for name, plant in plants.items():
         planted = copy.deepcopy(results)
@@ -1823,38 +2035,6 @@ def verdict_flips_against_planted_defect(results: Dict[str, Any]) -> Dict[str, A
     out["all_flip"] = all(
         entry.get("release") is False for entry in out["plants"].values())
     return out
-
-
-# ---------------------------------------------------------------------------
-# The licence
-# ---------------------------------------------------------------------------
-
-_LICENCE: Optional[Dict[str, Any]] = None
-_POLICY_NAME = "keep"
-
-
-def _licence() -> Dict[str, Any]:
-    """The PARITY-pattern verdict, computed once and refused rather than defaulted."""
-    global _LICENCE
-    if _LICENCE is None:
-        from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
-        from meep_gpu.triton_kernels import folded_complex  # noqa: PLC0415
-
-        path = os.path.join(_REPO_API,
-                            PROBE_RECORD.format(policy=_POLICY_NAME))
-        with open(path, "r", encoding="utf-8") as handle:
-            record = json.load(handle)
-        verdict = folded_complex.parity_expansion_license(record)
-        reasons = list(complex_fields.expansion_policy_reasons(
-            record, _POLICY_NAME))
-        if not verdict.get("arm") or verdict.get("refusals") or reasons:
-            raise SystemExit(
-                f"{path} licenses no PARITY arm under {_POLICY_NAME!r}: "
-                f"arm={verdict.get('arm')!r} refusals={verdict.get('refusals')} "
-                f"policy_reasons={reasons[:1]}")
-        verdict["record_path"] = PROBE_RECORD.format(policy=_POLICY_NAME)
-        _LICENCE = verdict
-    return _LICENCE
 
 
 def save(results: Dict[str, Any], out_path: str) -> None:
@@ -1913,8 +2093,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     policy = policy_module.install_subnormal_policy(args.subnormal_policy,
                                                     strict=True)
-    licence = _licence()
-    expansion = licence["arm"]
 
     results: Dict[str, Any] = {
         "gate": os.path.basename(__file__),
@@ -1922,12 +2100,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "subnormal_policy": policy,
         "requested_policy": args.subnormal_policy,
         "meep_import_for_host_policy": results_meep_import,
-        "expansion_licence": {
-            "arm": licence.get("arm"), "basis": licence.get("basis"),
-            "probe_patterns": list(licence.get("probe_patterns") or ()),
-            "record": licence.get("record_path"),
-            "parity_pattern": family.PARITY_PROBE_PATTERN,
-        },
         "product": args.product,
         "multi_step_budget": args.multi_step_budget,
         "emitter_corpus_digest": family.corpus_digest(),
@@ -1943,21 +2115,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     legs = tuple(name.strip() for name in args.legs.split(",") if name.strip())
 
     if "sweep" in legs:
-        run_sweep(backend, xp, results, args.out, args.product, 1, expansion,
+        run_sweep(backend, xp, results, args.out, args.product, 1,
                   "sweep")
     if "multistep" in legs:
         run_sweep(backend, xp, results, args.out, "reduced",
-                  args.multi_step_budget, expansion, "multistep")
+                  args.multi_step_budget, "multistep")
     if "mutations" in legs:
         scored = [case for case in results.get("sweep", {}).get("cases", [])
                   if case.get("case_is_valid") and case["guard"] == "fmad_false"]
-        run_mutations(backend, xp, results, args.out, scored, expansion)
+        run_mutations(backend, xp, results, args.out, scored)
     if "sweep" in legs or "guard" in legs:
-        results["guard_binary_probe"] = guard_binary_probe(expansion)
-        log(f"guard PTX probe: licensed arm distinct="
-            f"{results['guard_binary_probe']['licensed_arm_ptx_distinct']} "
-            f"naive arm distinct="
-            f"{results['guard_binary_probe']['naive_arm_ptx_distinct']}")
+        results["guard_binary_probe"] = guard_binary_probe()
+        log(f"guard PTX probe: distinct="
+            f"{results['guard_binary_probe']['ptx_distinct']}")
         save(results, args.out)
     results["verdict"] = build_verdict(results)
     if "falsify" in legs:

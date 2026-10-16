@@ -109,6 +109,8 @@ for _path in (HERE, API_ROOT):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import fold_pass_mutations as fold_passes  # noqa: E402
+
 PACKAGE_DIR = os.path.join(API_ROOT, "meep_gpu", "triton_kernels")
 PRODUCT_MODULE = "meep_gpu.triton_kernels.bfast_fused_electric_pair"
 KERNEL_FILE = os.path.join(PACKAGE_DIR, "bfast_fused_electric_pair.py")
@@ -172,8 +174,6 @@ MUTATION_REQUIRES_WALL: Dict[str, Tuple[str, ...]] = {
     "m_wall_clear_dropped": ("x",),
     "m_wall_clear_is_the_magnetic_familys_one_row": ("x",),
     "m_wall_clear_after_the_store": ("x",),
-    "m_advance_mask_dropped": ("x", "y"),
-    "m_advance_mask_after_the_state_store": ("x", "y"),
 }
 
 #: The CARRY family: the same grids with a real ELECTRIC deposit IN THIS SEAM.
@@ -278,6 +278,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/bfast_fused_magnetic_pair.py",
         "meep_gpu/triton_kernels/bfast_curl.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/deposit_repair.py",
@@ -483,6 +484,18 @@ def transcription_leg() -> Dict[str, Any]:
     if "f_bfast_B" in joined:
         findings.append("this body names a MAGNETIC BFAST state array; the D seam's "
                         "states are f_bfast_D*")
+    # THE PASS FOLLOWS THE FORMS. MEEP's BFAST pass runs on each component right
+    # after its curl (step_db.cpp:124-142); the seam's wall clear and update_E follow
+    # the whole sub-step.
+    if len(tail) == 1:
+        before, after = fold_passes.insert_neighbours(KERNEL_FILE, KERNEL_NAME,
+                                                      "HAS_BFAST")
+        if not before.startswith("v2, n2 = curl_form("):
+            findings.append(f"the BFAST pass does not follow the last curl form: it "
+                            f"follows {before!r}")
+        if after != "if ZM_X:":
+            findings.append(f"the BFAST pass does not precede the wall clear: it "
+                            f"precedes {after!r}")
 
     return {"leg": "transcription", "device": False,
             "statements_in_the_product": len(fused),
@@ -1439,6 +1452,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
             raise AssertionError("the product refused the reduction case")
         reduced_plan.has_bfast = 0
 
+        from gate_chunk_records import layer_record  # noqa: PLC0415
+
         fields, pml = shipped.fields, shipped.pml
         grid = fields.grid
         arrays = {name: getattr(fields, name) for name in
@@ -1454,7 +1469,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         shipped_plan = plan_fused_pair_from_arrays(
             "D", arrays, curl_flat, constitutive_flat,
             [1 if kind == "metallic" else 0 for kind in resolve(grid, pml)],
-            zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1)
+            zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1,
+            chunk_bounds=layer_record(grid, pml))
 
         roles = {id(reference.fields): "array", id(shipped.fields): "shipped",
                  id(reduced.fields): "reduced"}
@@ -1590,7 +1606,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
 def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant. The rename is what keeps the JIT cache honest."""
     header = ("import triton\nimport triton.language as tl\n"
-              "PERIODIC = tl.constexpr(0)\n"
+              + fold_passes.MUTANT_IMPORTS
+              + "PERIODIC = tl.constexpr(0)\n"
               "METALLIC = tl.constexpr(1)\n\n")
     text = header + source.replace(KERNEL_NAME, kernel_name)
     # A MUTATION THAT DOES NOT PARSE IS NOT A MUTATION. Checked before any device
@@ -1656,86 +1673,56 @@ def _replace_all(source: str, before: str, after: str) -> Tuple[str, int]:
     return source.replace(before, after), hits
 
 
+#: What each case's grid carries, in ``fold_pass_mutations.NEEDS`` words. Every case is
+#: 3-D with a PML layer on all three axes (``build_driver``); the walled ones carry
+#: metallic axes. None is one-partner or carries k on an invariant axis.
+CASE_CARRIES: Dict[str, Tuple[str, ...]] = {
+    "corpus_periodic": ("layer",),
+    "wall_xyz": ("wall", "layer"),
+    "wall_x": ("wall", "layer"),
+    "corpus_periodic_single_launch": ("layer",),
+}
+
+#: The BFAST pass's own mutations and the root forms' (KERNELS.md 7.1's inversions and
+#: 7.2's chunk-form battery): ``fold_pass_mutations``' shared spellings, the same text
+#: in every carrier of the pass. The two one-partner entries (``f_plain_branch_keeps_
+#: the_state``, ``f_absent_partner_read``) need a 2-D grid this probe's 3-D cases are
+#: not; they are scored by ``gate_triton_bfast`` on the curl, whose pass this product's
+#: is statement for statement (the transcription leg).
+SHARED_MUTATIONS = (
+    [entry for entry in fold_passes.bfast_mutations()
+     if set(entry[4]) <= {"wall", "layer"}]
+    + fold_passes.form_mutations(True))
+_SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
+
+
 def mutation_table() -> Tuple[Tuple[str, str, str,
                                     Callable[[str], Tuple[str, int]]], ...]:
-    """(id, why it is armed, expectation, rewrite)."""
+    """(id, why it is armed, expectation, rewrite).
 
-    def m_tail_dropped(source: str) -> Tuple[str, int]:
-        """No BFAST advance at all — the ordinary fused pair on a shear run."""
-        return _replace_all(source, "if HAS_BFAST:", "if HAS_BFAST and False:")
+    The pass's call-site mutations and the seam's own (the wall clear, the inverse
+    permittivity, the ``f_w`` order, the stores) come first; the BFAST pass's shared
+    mutations and the root forms' follow, from :data:`SHARED_MUTATIONS`.
+    """
+    advance0 = "bf0, q0 = bfast_advance(st0, c_y, c, b_z, b, k1_0, k2_0, py, pz, ds0 | du0)"
+    ladder1 = "v1, n1 = fold_ladder(v1, n1, q1, si_z, si_x, du1)"
 
     def m_tail_sums_become_differences(source: str) -> Tuple[str, int]:
-        """``k1*(g1s - g1c)`` instead of ``k1*(g1s + g1c)``.
+        """``k1*(g1s - g1c)`` instead of ``k1*(g1s + g1c)`` on target 0.
 
         BFAST SUMS the same shifted/center pairs the curl DIFFERENCES
-        (stepping.py:1594-1598); a body that reused the curl's operator would be a
-        smooth, plausible, wrong field.
-        """
-        return _rewrite_block(
-            source,
-            ["total0 = (k1_0 * (c_y + c)) - (k2_0 * (b_z + b))"],
-            ["total0 = (k1_0 * (c_y - c)) - (k2_0 * (b_z + b))"])
+        (step_generic.cpp:335-533); the centre partner handed to the advance
+        negated is that difference, planted at the call site."""
+        return _replace_all(source, advance0,
+                            advance0.replace("c_y, c, b_z", "c_y, c * -1.0, b_z"))
 
-    def m_tail_k_pair_swapped(source: str) -> Tuple[str, int]:
-        """``k1`` and ``k2`` exchanged on target 0.
-
-        ``k1`` multiplies the FIRST partner's sum and ``k2`` the SECOND's
-        (stepping.py:911-912, bfast_curl.py:348-349); the two are different entries
-        of the shear vector, so the swap is a real defect wherever they differ —
-        which the case table's three-component shear guarantees.
-        """
-        return _rewrite_block(
-            source,
-            ["total0 = (k1_0 * (c_y + c)) - (k2_0 * (b_z + b))"],
-            ["total0 = (k2_0 * (c_y + c)) - (k1_0 * (b_z + b))"])
-
-    def m_advance_state_factor(source: str) -> Tuple[str, int]:
-        """``total - state`` instead of ``total - 2.0*state`` (S:900)."""
-        return _replace_all(source, "adv0 = total0 - (2.0 * st0)",
-                            "adv0 = total0 - st0")
-
-    def m_advance_sign_flipped(source: str) -> Tuple[str, int]:
-        """``curl + adv`` instead of ``curl - adv`` — the caller-subtracts sign
-        convention (S:904) inverted."""
-        return _replace_all(source, "curl0 = curl0 - adv0", "curl0 = curl0 + adv0")
-
-    def m_state_store_dropped(source: str) -> Tuple[str, int]:
-        """``state`` never advanced. The IIR history then never moves, which is a
-        state defect the NEXT step's advance reads — and one no single-step
-        comparison of the field alone would see."""
-        return _replace_all(source, "tl.store(s0 + idx, st0 + adv0, mask=live)",
-                            "tl.store(s0 + idx, st0, mask=live)")
-
-    def m_advance_mask_dropped(source: str) -> Tuple[str, int]:
-        """The advance not masked at all — a non-owned cell keeps its contribution
-        in BOTH the state and the curl."""
-        return _rewrite_block(
-            source,
-            ["if BCY == METALLIC:",
-             "adv0 = tl.where(at_y, 0.0, adv0)"],
-            ["if BCY == METALLIC:",
-             "    adv0 = adv0"])
-
-    def m_advance_mask_after_the_state_store(source: str) -> Tuple[str, int]:
-        """The advance masked AFTER the state store instead of before it (S:902).
-
-        The curl then sees the same masked value it should, and only the STATE
-        differs — which is exactly why the comparison is over EVERY allocated volume
-        rather than over the fields.
-        """
-        return _rewrite_block(
-            source,
-            ["tl.store(s0 + idx, st0 + adv0, mask=live)",
-             "tl.store(s1 + idx, st1 + adv1, mask=live)",
-             "tl.store(s2 + idx, st2 + adv2, mask=live)"],
-            ["tl.store(s0 + idx, st0 + total0 - (2.0 * st0), mask=live)",
-             "tl.store(s1 + idx, st1 + adv1, mask=live)",
-             "tl.store(s2 + idx, st2 + adv2, mask=live)"])
+    def m_increment_sign_flipped(source: str) -> Tuple[str, int]:
+        """Target 1's increment added where the ladder subtracts it."""
+        return _replace_all(source, ladder1, ladder1.replace(", q1,", ", q1 * -1.0,"))
 
     def m_tail_scaled_by_dtdx(source: str) -> Tuple[str, int]:
-        """The advance multiplied by ``dtdx``; the tail carries none (S:836-837)."""
-        return _replace_all(source, "curl1 = curl1 - adv1",
-                            "curl1 = curl1 - (dtdx * adv1)")
+        """The increment multiplied by ``dtdx``; the pass carries none."""
+        return _replace_all(source, ladder1, ladder1.replace(", q1,", ", q1 * dtdx,"))
 
     def m_state_component_swapped(source: str) -> Tuple[str, int]:
         """Target 0 advances target 1's state array."""
@@ -1760,41 +1747,27 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         """The clear applied after the D store, so the stored D keeps the wall value.
 
         ``update_E`` would still read the cleared register, so this is a defect in
-        the D volume alone — which is exactly why the comparison is over EVERY
-        allocated volume rather than over E.
+        the D volume alone -- which is exactly why the comparison is over EVERY
+        allocated volume rather than over E. The auxiliary stores keep their region
+        masks; only the clear moves.
         """
-        return _rewrite_block(
-            source,
-            ["if ZM_X:",
-             "v1 = tl.where(at_x, 0.0, v1)",
-             "v2 = tl.where(at_x, 0.0, v2)",
-             "if ZM_Y:",
-             "v0 = tl.where(at_y, 0.0, v0)",
-             "v2 = tl.where(at_y, 0.0, v2)",
-             "if ZM_Z:",
-             "v0 = tl.where(at_z, 0.0, v0)",
-             "v1 = tl.where(at_z, 0.0, v1)",
-             "tl.store(u0 + idx, n0, mask=live)",
-             "tl.store(u1 + idx, n1, mask=live)",
-             "tl.store(u2 + idx, n2, mask=live)",
-             "tl.store(f0 + idx, v0, mask=live)",
-             "tl.store(f1 + idx, v1, mask=live)",
-             "tl.store(f2 + idx, v2, mask=live)"],
-            ["tl.store(u0 + idx, n0, mask=live)",
-             "tl.store(u1 + idx, n1, mask=live)",
-             "tl.store(u2 + idx, n2, mask=live)",
-             "tl.store(f0 + idx, v0, mask=live)",
-             "tl.store(f1 + idx, v1, mask=live)",
-             "tl.store(f2 + idx, v2, mask=live)",
-             "if ZM_X:",
-             "    v1 = tl.where(at_x, 0.0, v1)",
-             "    v2 = tl.where(at_x, 0.0, v2)",
-             "if ZM_Y:",
-             "    v0 = tl.where(at_y, 0.0, v0)",
-             "    v2 = tl.where(at_y, 0.0, v2)",
-             "if ZM_Z:",
-             "    v0 = tl.where(at_z, 0.0, v0)",
-             "    v1 = tl.where(at_z, 0.0, v1)"])
+        stores = ["tl.store(u0 + idx, n0, mask=live & du0)",
+                  "tl.store(u1 + idx, n1, mask=live & du1)",
+                  "tl.store(u2 + idx, n2, mask=live & du2)",
+                  "tl.store(f0 + idx, v0, mask=live)",
+                  "tl.store(f1 + idx, v1, mask=live)",
+                  "tl.store(f2 + idx, v2, mask=live)"]
+        clear = ["if ZM_X:",
+                 "v1 = tl.where(at_x, 0.0, v1)",
+                 "v2 = tl.where(at_x, 0.0, v2)",
+                 "if ZM_Y:",
+                 "v0 = tl.where(at_y, 0.0, v0)",
+                 "v2 = tl.where(at_y, 0.0, v2)",
+                 "if ZM_Z:",
+                 "v0 = tl.where(at_z, 0.0, v0)",
+                 "v1 = tl.where(at_z, 0.0, v1)"]
+        nested = [line if line.startswith("if ") else "    " + line for line in clear]
+        return _rewrite_block(source, clear + stores, stores + nested)
 
     def m_inv_eps_dropped(source: str) -> Tuple[str, int]:
         """``update_E`` without the inverse-permittivity multiply."""
@@ -1809,16 +1782,17 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
             "src0 = v0 * tl.load(ie1 + idx, mask=live, other=0.0)")
 
     def m_prev_read_after_the_store(source: str) -> Tuple[str, int]:
-        """``f_w`` read AFTER it is overwritten — the one ordering the constitutive
-        cannot survive being wrong about (S:2083-2085)."""
+        """``f_w`` read AFTER it is overwritten -- the one ordering the constitutive
+        cannot survive being wrong about. On the accumulation's cells only, where both
+        the read and the store live."""
         return _rewrite_block(
             source,
-            ["prev0 = tl.load(w0 + idx, mask=live, other=0.0)",
+            ["prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)",
              "src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)",
-             "tl.store(w0 + idx, src0, mask=live)"],
+             "tl.store(w0 + idx, src0, mask=live & dw0)"],
             ["src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)",
-             "tl.store(w0 + idx, src0, mask=live)",
-             "prev0 = tl.load(w0 + idx, mask=live, other=0.0)"])
+             "tl.store(w0 + idx, src0, mask=live & dw0)",
+             "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)"])
 
     def m_constitutive_axis_swapped(source: str) -> Tuple[str, int]:
         """Component 0's constitutive coefficient indexed on axis y.
@@ -1833,11 +1807,6 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
             ["kp_0 = tl.load(kp0 + j, mask=live, other=0.0)",
              "km_0 = tl.load(km0 + j, mask=live, other=0.0)"])
 
-    def m_curl_parens_flattened(source: str) -> Tuple[str, int]:
-        """``dtdx * (c_y - c + b - b_z)`` — a different float32 grouping."""
-        return _replace_all(source, "curl0 = dtdx * ((c_y - c) + (b - b_z))",
-                            "curl0 = dtdx * (c_y - c + b - b_z)")
-
     def m_d_store_dropped(source: str) -> Tuple[str, int]:
         """The stepped displacement never written back; the next step's curl reads
         it."""
@@ -1845,25 +1814,12 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
                             "tl.store(f0 + idx, v0, mask=live & (idx < 0))")
 
     return (
-        ("m_tail_dropped", "no BFAST advance at all", "caught", m_tail_dropped),
         ("m_tail_sums_become_differences",
-         "the tail differences its operands where the array path sums them",
+         "the pass differences its operands where the array path sums them",
          "caught", m_tail_sums_become_differences),
-        ("m_tail_k_pair_swapped", "k1 and k2 exchanged on target 0", "caught",
-         m_tail_k_pair_swapped),
-        ("m_advance_state_factor", "total - state instead of total - 2*state",
-         "caught", m_advance_state_factor),
-        ("m_advance_sign_flipped", "curl + adv instead of curl - adv", "caught",
-         m_advance_sign_flipped),
-        ("m_state_store_dropped", "the IIR state never advanced", "caught",
-         m_state_store_dropped),
-        ("m_advance_mask_dropped",
-         "the advance not masked by the owned-cell predicate", "caught",
-         m_advance_mask_dropped),
-        ("m_advance_mask_after_the_state_store",
-         "the advance masked after the state store instead of before it (S:902)",
-         "caught", m_advance_mask_after_the_state_store),
-        ("m_tail_scaled_by_dtdx", "the advance multiplied by dtdx", "caught",
+        ("m_increment_sign_flipped", "target 1's increment added, not subtracted",
+         "caught", m_increment_sign_flipped),
+        ("m_tail_scaled_by_dtdx", "the increment multiplied by dtdx", "caught",
          m_tail_scaled_by_dtdx),
         ("m_state_component_swapped", "target 0 advances target 1's state array",
          "caught", m_state_component_swapped),
@@ -1885,11 +1841,9 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         ("m_constitutive_axis_swapped",
          "component 0's constitutive coefficient indexed on axis y", "caught",
          m_constitutive_axis_swapped),
-        ("m_curl_parens_flattened", "a different float32 grouping in the curl",
-         "caught", m_curl_parens_flattened),
         ("m_d_store_dropped", "the stepped displacement never written back",
          "caught", m_d_store_dropped),
-    )
+    ) + _SHARED_ROWS
 
 
 def mutation_case_for(name: str) -> Tuple[str, Tuple[Any, ...]]:
@@ -1910,6 +1864,8 @@ def mutation_case_for(name: str) -> Tuple[str, Tuple[Any, ...]]:
                 f"{case_name!r} declares {declaration(axis_letter)!r} there: the "
                 f"rewritten lines would be a DEAD BRANCH and the leg would report "
                 f"'uncaught' while measuring nothing")
+    fold_passes.check_needs(name, MUTATION_NEEDS.get(name, ()), CASE_CARRIES[case_name],
+                            case_name)
     return case_name, case
 
 

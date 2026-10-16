@@ -1,0 +1,115 @@
+{
+ "_what": "The hygiene guard's rules (tools/ci/check_hygiene.py). Names are listed as salted sha256 digests of their lower-cased words, never in plain text; `python tools/ci/check_hygiene.py digest --class CLASS TEXT` prints a new entry. Every allowlist entry names its rule and carries its reason.",
+ "salt": "meep_gpu.hygiene.v1:",
+ "names": [
+  {
+   "class": "host_name",
+   "words": 1,
+   "sha256": "d5d1a827240afc8661cae6d886dee2146a562a5d5264056ea6940d052040c657",
+   "reason": "a machine that ran certification, timing or development legs"
+  },
+  {
+   "class": "host_name",
+   "words": 1,
+   "sha256": "26c45535279864258645ff68b28eb6a17189f106186d51ec4767c7846ca2871b",
+   "reason": "a machine that ran certification, timing or development legs"
+  },
+  {
+   "class": "host_name",
+   "words": 1,
+   "sha256": "29c8aabf3cb6d8d7efaf494a28e29f492bed450fef46c8d4b3191cc26594f194",
+   "reason": "a machine that ran certification, timing or development legs"
+  },
+  {
+   "class": "host_name",
+   "words": 1,
+   "sha256": "4b8573edd72fc6ebd281a7b711f9b6e6dc760cb73f063ed43a536372b99111cb",
+   "reason": "a machine that ran certification, timing or development legs"
+  },
+  {
+   "class": "host_name",
+   "words": 3,
+   "sha256": "4a34974086dda349ee21cfec4926b30a0c12a759f75c51fe0b2117a970ac325b",
+   "reason": "a machine that ran certification, timing or development legs",
+   "lead_sha256": "e291e566bd5650232ec35f9ccead034e299a51d03bdeb938c679346efbff76ba"
+  },
+  {
+   "class": "account_name",
+   "words": 1,
+   "sha256": "07df9ac79eadc78f5a05001f5a1b7d654eabc02b19e4c62c068ee33e5aa5314f",
+   "reason": "an account or login on a machine or service the project used"
+  },
+  {
+   "class": "account_name",
+   "words": 1,
+   "sha256": "813850c9283b794bb2ac33d15bb7850977befeddaa82e56a2ab4dc0955690aba",
+   "reason": "an account or login on a machine or service the project used"
+  },
+  {
+   "class": "account_name",
+   "words": 1,
+   "sha256": "78518ae36c4808e05bc6849d8100ce0fd88b3987db9cbabee420ae06118c00c4",
+   "reason": "an account or login on a machine or service the project used"
+  },
+  {
+   "class": "account_name",
+   "words": 1,
+   "sha256": "51023445ca44302f6d12bc9c679dad00d0dfa910e3706a0b610a8d14e90dbed1",
+   "reason": "an account or login on a machine or service the project used"
+  },
+  {
+   "class": "account_name",
+   "words": 1,
+   "sha256": "8107a820e04b6ae1dadf5a24cac2f665377de286f8036c197181f08fedb9a036",
+   "reason": "an account or login on a machine or service the project used"
+  },
+  {
+   "class": "account_name",
+   "words": 1,
+   "sha256": "3993ca8c07f92dbd9f2aa1105f4085d6cc1b3a0564a75f9ba3376d7d519f5344",
+   "reason": "an account or login on a machine or service the project used"
+  },
+  {
+   "class": "account_name",
+   "words": 1,
+   "sha256": "c4f97b04fc7c5fa9038a28ffcc21a2a4ae1d2693e61712c73ad4a5b6054a01dc",
+   "reason": "an account or login on a machine or service the project used"
+  }
+ ],
+ "allow": [
+  {
+   "id": "email.credited",
+   "rule": "email",
+   "address_sha256": [
+    "c5ec8414f4ce87d8fbe986cfd724c0ebae5cbbe413ed3d7621f2a95fcaa1e944",
+    "0a53e5d83d12217032610098764d39e72604e7ce85a8ef6dabb3f2b37e096ec2",
+    "b67e8066841ea2dd023e94d40ae90004124704e0dd175f483cc9b75477781ce0"
+   ],
+   "reason": "the maintainer's published address (CITATION.cff, pyproject.toml) and the two co-authors' GitHub no-reply addresses (the credit lines of release commits); a login inside one of these addresses is part of that credit"
+  },
+  {
+   "id": "email.reserved_domain",
+   "rule": "email",
+   "domain_suffixes": [
+    ".invalid"
+   ],
+   "reason": "RFC 2606 reserves the .invalid top-level domain: no address under it reaches anyone (the git identities of throwaway test repositories)"
+  },
+  {
+   "id": "email.ssh_remote",
+   "rule": "email",
+   "addresses": [
+    "git@github.com"
+   ],
+   "reason": "the SSH login of a GitHub remote (git@github.com:<organisation>/<repository>.git): a service account, not a person's address"
+  },
+  {
+   "id": "home.placeholder",
+   "rule": "home_path",
+   "accounts": [
+    "user"
+   ],
+   "reason": "the placeholder home the timing fixtures and their test carry (0.9.2 shipped 100 such paths, the export recipe's scan section 4); it names no account"
+  }
+ ]
+}

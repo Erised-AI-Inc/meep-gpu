@@ -4,10 +4,10 @@ THE MERGE BAR FOR A SLICE WHOSE FAILURE MODE IS A SILENT WRONG ANSWER. Every cla
 here is checkable without CuPy, without Triton and without a device: the emitter
 imports nothing, the predicate imports nothing, and the CuPy half is read off its
 syntax tree. What CANNOT be checked here is the only thing a device is for --
-whether NVRTC keeps ``z.im * 0.0f`` alive, whether ``__fmaf_rn`` lowers to one
-``fma.rn.f32``, whether the compiled bytes match the array path's. That is
+whether ``--fmad=false`` keeps every part-wise product and sum separately rounded
+under NVRTC, whether the compiled bytes match the array path's. That is
 ``parity/meep_gpu/gate_cuda_complex.py`` and nothing in this file substitutes for
-it.
+it; ``test_complex_chunk_forms.py`` executes the emitted text on the host.
 
 The transcription tests read the reference out of ``stepping.py``,
 ``fields.py`` and the certified Triton sibling rather than restating it, so a
@@ -36,7 +36,6 @@ TRITON_COMPLEX = HERE.parent / "triton_kernels" / "complex_fields.py"
 KERNEL_DECLARATION = re.compile(r'extern "C" __global__ void (\w+)\(')
 SIGNATURE = re.compile(r'extern "C" __global__ void \w+\(([^)]*)\)', re.S)
 
-ARMS = ("NAIVE", "FMA_V1")
 SUB_STEPS = ("step_B", "step_D", "update_H", "update_E")
 
 
@@ -74,8 +73,8 @@ def unannotated_module_level_literal(source: str, name: str):
 
 
 def every_source():
-    return {(sub_step, arm): complex_emitter.complex_source(sub_step, arm)
-            for sub_step in SUB_STEPS for arm in ARMS}
+    return {sub_step: complex_emitter.complex_source(sub_step)
+            for sub_step in SUB_STEPS}
 
 
 # --------------------------------------------------------------------------
@@ -126,113 +125,81 @@ def test_no_unary_minus_and_no_division_on_any_float_path():
                 f"{key} line {number} carries a unary minus on a value: {line}")
 
 
-def test_the_two_arms_differ_only_in_the_three_multiply_helpers():
-    """The arm is an ARITHMETIC axis and must touch nothing else.
+def test_the_helpers_are_the_part_wise_products_and_the_unfused_connection():
+    """``part_products.scale``: one float32 product per part, and ``connect_parts``'
+    unfused complex product for a phase -- read off the emitted helper bodies.
 
-    Everything outside the three helpers -- the word addressing, the ghost rules,
-    the stencil, the mask, the recurrences -- is arm-independent, so the two
-    sources may differ only inside the block the arm emits. If they differ
-    anywhere else, a kernel's INDEXING depends on a platform measurement, which is
-    not what the probe licenses.
+    The coefficient helpers carry no zero cross term and no fused multiply-add; the
+    connection's four products and two sums are each rounded on their own, the phase
+    on the left as the array path forms ``thephase * word``.
     """
-    for sub_step in SUB_STEPS:
-        pair = [complex_emitter.complex_source(sub_step, arm) for arm in ARMS]
-        heads = [text.split("// ---- EXPANSION")[0] for text in pair]
-        tails = [text.split("'''")[-1] for text in pair]
-        assert heads[0] == heads[1], sub_step
-        # Everything after the arm block is the shared tail plus the kernel body.
-        after = [text.split("__device__ __forceinline__ cf cshift_up", 1)[1]
-                 for text in pair]
-        assert after[0] == after[1], (
-            f"{sub_step}: the two arms differ outside the multiply helpers")
+    source = complex_emitter.complex_source("step_B")
+    assert "    o.re = z.re * c;\n    o.im = z.im * c;" in source
+    assert "    o.re = c * z.re;\n    o.im = c * z.im;" in source
+    assert ("    o.re = (p.re * g.re) - (p.im * g.im);\n"
+            "    o.im = (p.re * g.im) + (p.im * g.re);") in source
+    assert "    o.re = a.re * -1.0f;\n    o.im = a.im * -1.0f;" in source
+    part_products = (HERE.parent / "part_products.py").read_text(encoding="utf-8")
+    assert "xp.multiply(coeff, values.real, out=out.real)" in part_products
+    assert "xp.multiply(coeff, values.imag, out=out.imag)" in part_products
 
 
-def test_the_arms_are_spelled_as_the_certified_triton_sibling_spells_them():
-    """The arithmetic, side by side with the reference it was transcribed from.
+def test_no_zero_cross_term_and_no_fused_multiply_survives():
+    """The previous family's two clauses, inverted.
 
-    Not a string comparison across languages -- one is Python and one is C -- but
-    a claim about which operands are fused, in which order, with which zero cross
-    terms, checked against the Triton helpers' own bodies rather than against a
-    remembered version of them.
+    A literal zero cross term (``z.im * 0.0f``) or an explicit ``__fmaf_rn`` is the
+    full complex multiply against ``(c + 0j)`` the array path no longer forms, and
+    differs from the part-wise product on signed zeros -- so neither may reach any
+    emitted source.
     """
-    triton = TRITON_COMPLEX.read_text(encoding="utf-8")
-    # Triton's FMA_V1 arms, read out of the file.
-    assert "tl.math.fma(g_re, p_re, (g_im * p_im) * -1.0)" in triton
-    assert "tl.math.fma(g_re, p_im, g_im * p_re)" in triton
-    assert "tl.math.fma(z_re, c, (z_im * 0.0) * -1.0)" in triton
-    assert "tl.math.fma(z_re, 0.0, z_im * c)" in triton
-    assert "tl.math.fma(c, z_re, (0.0 * z_im) * -1.0)" in triton
-    assert "tl.math.fma(c, z_im, 0.0 * z_re)" in triton
-    fma = complex_emitter.complex_source("step_B", "FMA_V1")
-    assert "o.re = __fmaf_rn(g.re, p.re, (g.im * p.im) * -1.0f);" in fma
-    assert "o.im = __fmaf_rn(g.re, p.im, g.im * p.re);" in fma
-    assert "o.re = __fmaf_rn(z.re, c, (z.im * 0.0f) * -1.0f);" in fma
-    assert "o.im = __fmaf_rn(z.re, 0.0f, z.im * c);" in fma
-    assert "o.re = __fmaf_rn(c, z.re, (0.0f * z.im) * -1.0f);" in fma
-    assert "o.im = __fmaf_rn(c, z.im, 0.0f * z.re);" in fma
-    # And the NAIVE arms.
-    assert "(z_re * c) - (z_im * 0.0)" in triton
-    assert "(0.0 * z_re)" in triton
-    naive = complex_emitter.complex_source("step_B", "NAIVE")
-    assert "o.re = (z.re * c) - (z.im * 0.0f);" in naive
-    assert "o.im = (z.re * 0.0f) + (z.im * c);" in naive
-    assert "o.re = (c * z.re) - (0.0f * z.im);" in naive
-    assert "o.im = (c * z.im) + (0.0f * z.re);" in naive
+    for sub_step, source in every_source().items():
+        for needle in ("* 0.0f", "0.0f *", "__fmaf_rn", "fmaf("):
+            assert needle not in source, (sub_step, needle)
 
 
-def test_the_zero_cross_terms_are_present_in_every_multiply():
-    """THE CLAUSE THIS FAMILY EXISTS TO BE PROOF AGAINST.
+def test_the_curl_stencil_is_meeps_bracket_with_the_presence_forms():
+    """``step_curl``'s C-order bracket and its two partner-absent forms.
 
-    ``np.multiply`` carries only 'FF->F' for complex, so a real coefficient on the
-    array path is a FULL complex multiply with a zero-imaginary operand. Dropping
-    the cross terms is right on every value that is not a signed zero, which is
-    why it needs a test rather than a reading.
-    """
-    # The FMA arm carries the cross terms as fma ADDENDS and as the fma's second
-    # operand; the naive arm carries them as explicit products. Both spellings are
-    # listed because the claim is that the TERM SURVIVES, not that it is written
-    # one way.
-    needles = {
-        "FMA_V1": ("(z.im * 0.0f) * -1.0f", "__fmaf_rn(z.re, 0.0f,",
-                   "(0.0f * z.im) * -1.0f", "0.0f * z.re"),
-        "NAIVE": ("z.im * 0.0f", "z.re * 0.0f", "0.0f * z.im", "0.0f * z.re"),
-    }
-    for arm in ARMS:
-        source = complex_emitter.complex_source("step_B", arm)
-        for needle in needles[arm]:
-            assert needle in source, f"{arm}: {needle} is missing"
-
-
-def test_the_curl_grouping_is_the_array_paths_and_not_c_association():
-    """``dtdx * ((sf - f1) + (f2 - ss))`` -- ``_curl_from_operands``, stepping.py:1648.
-
-    NOT ``((sf - f1) + f2) - ss``, which is what C associates from an
-    unparenthesised sum and a different float32 number. The array path's own line
-    is read out of ``stepping.py`` so the two cannot drift.
+    ``stepping._curl_from_operands`` forms ``dtdx * (((g1s - g1) + g2) - g2s)`` with
+    both partners present, ``dtdx * (g1s - g1)`` with the second absent and
+    ``(-dtdx) * (g2s - g2)`` with the first absent; the previous package grouping
+    ``(g1s - g1) + (g2 - g2s)`` is a different float32 number and appears nowhere.
+    The array path's own lines are read out of ``stepping.py`` so the two cannot
+    drift.
     """
     array_path = pathlib.Path(stepping.__file__).read_text(encoding="utf-8")
-    assert ("dtdx * ((operands.shifted_first - operands.first)" in array_path
-            and "+ (operands.second - operands.shifted_second))" in array_path)
+    assert ("part_products.scale(dtdx, ((operands.shifted_first - first) + second)"
+            in array_path)
+    assert "part_products.scale(dtdx, operands.shifted_first - first)" in array_path
+    assert "part_products.scale(-dtdx, operands.shifted_second - second)" in array_path
     for sub_step in ("step_B", "step_D"):
-        source = complex_emitter.complex_source(sub_step, "FMA_V1")
-        assert source.count(
-            "mul_coefficient_left(dtdx, cf_add(cf_sub(sf, f_1), cf_sub(f_2, ss)))"
-        ) == 3, sub_step
+        source = complex_emitter.complex_source(sub_step)
+        assert ("if (pr1 && pr2) return mul_coefficient_left(dtdx, "
+                "cf_sub(cf_add(cf_sub(sf, f1), f2), ss));") in source
+        assert "if (pr1) return mul_coefficient_left(dtdx, cf_sub(sf, f1));" in source
+        assert ("if (pr2) return mul_coefficient_left(dtdx * -1.0f, cf_sub(ss, f2));"
+                in source)
+        assert source.count("cf curl = curl_stencil(dtdx, sf, f_1, f_2, ss, ") == 3
+        assert "cf_add(cf_sub(sf, f_1), cf_sub(f_2, ss))" not in source
 
 
-def test_the_constitutive_tail_is_two_separate_accumulations():
-    """``f += kps*fw`` then ``f -= kms*fwprev`` -- never flattened.
+def test_the_constitutive_tail_is_meeps_grouping_and_not_two_accumulations():
+    """``f + ((kps*src) - (kms*prev))`` -- the right-hand side formed first.
 
-    ``_apply_constitutive_pml`` (stepping.py:2112) writes two statements and
-    float32 addition is not associative, so ``f + (kps*src - kms*prev)`` is a
-    different number. It is also exactly what the twelve uncertified complex
-    kernels in ``step_curl_kernels.py`` write.
+    ``stepping._apply_constitutive_pml`` transcribes ``step_update_EDHB``'s
+    ``f[i] += (kapwkw + sigwkw) * fw[i] - (kapwkw - sigwkw) * fwprev``. The previous
+    package grouping -- two accumulations, ``(f + kps*src) - kms*prev`` -- is a
+    different float32 number and is the gate's inverted mutation now.
     """
-    for arm in ARMS:
-        source = complex_emitter.complex_source("update_H", arm)
-        assert "a = cf_add(a, mul_coefficient_left(kps, src));" in source
-        assert "a = cf_sub(a, mul_coefficient_left(kms, prev));" in source
-        assert "cf_sub(mul_coefficient_left(kps, src)" not in source
+    array_path = pathlib.Path(stepping.__file__).read_text(encoding="utf-8")
+    assert ("field += part_products.scale(kps, fw) - part_products.scale(kms, fw_previous)"
+            in array_path)
+    source = complex_emitter.complex_source("update_H")
+    assert ("cf updated = dsigw ? cf_add(cf_load(f, idx), "
+            "cf_sub(mul_coefficient_left(kps, src), "
+            "mul_coefficient_left(kms, prev)))") in source
+    assert "a = cf_add(a, mul_coefficient_left(kps, src));" not in source
+    assert "a = cf_sub(a, mul_coefficient_left(kms, prev));" not in source
 
 
 def test_prev_is_read_before_the_fw_store():
@@ -240,12 +207,13 @@ def test_prev_is_read_before_the_fw_store():
 
     Wrong only where ``kms != 0``, i.e. INSIDE THE PML ONLY, which reads as a
     slightly weaker absorber rather than as a bug -- the reason it is pinned here
-    and carried as a gate mutation rather than left to review.
+    and carried as a gate mutation rather than left to review. Both sit under the
+    chunk's ``dsigw`` flag (the auxiliary contract).
     """
-    source = complex_emitter.complex_source("update_E", "FMA_V1")
+    source = complex_emitter.complex_source("update_E")
     body = source.split("void constitutive_apply", 1)[1]
-    assert body.index("cf prev = cf_load(fw, idx);") < body.index(
-        "cf_store(fw, idx, src);")
+    assert body.index("cf prev = dsigw ? cf_load(fw, idx) : cf_zero();") < body.index(
+        "if (dsigw) cf_store(fw, idx, src);")
 
 
 def test_the_ownership_mask_axes_are_the_engines_yee_shifts():
@@ -263,34 +231,41 @@ def test_the_ownership_mask_axes_are_the_engines_yee_shifts():
             shifts = fields_module.IYEE_SHIFTS[target]
             expected = tuple("xyz"[axis] for axis in range(3) if shifts[axis] == 0)
             assert table[index] == expected, (sub_step, target, shifts)
-        source = complex_emitter.complex_source(sub_step, "FMA_V1")
+        source = complex_emitter.complex_source(sub_step)
         assert source.count("curl = cf_zero();") == sum(
             len(axes) for axes in table)
 
 
 def test_the_curl_term_table_matches_the_engines():
-    """Target 0 reads g2 shifted on y and g1 shifted on z, and so on.
+    """Target 0 reads g2 windowed on y and g1 windowed on z, and so on.
 
-    ``B_CURL_TERMS``/``D_CURL_TERMS`` (stepping.py:214-224) name the partners and
-    their axes; the emitted source names them positionally, and this is where the
-    two are compared. The two tables are IDENTICAL in shape between B and D -- only
-    the shift direction and the sub-lattice differ -- which is why one template
-    serves both.
+    ``B_CURL_TERMS``/``D_CURL_TERMS`` name the partners and their axes; the emitted
+    source names them positionally, and this is where the two are compared. Each
+    partner is read at the cell itself through ``cwindow`` on ITS derivative axis --
+    the connection across a phased window lives on that axis -- and shifted on the
+    same axis. The two tables are IDENTICAL in shape between B and D -- only the
+    shift direction, the connection's table and the sub-lattice differ -- which is
+    why one template serves both.
     """
     axis_of = {0: "x", 1: "y", 2: "z"}
+    coord_of = {0: "i", 1: "j", 2: "k"}
     for terms, sub_step, sources in (
             (stepping.B_CURL_TERMS, "step_B", ("Ex", "Ey", "Ez")),
             (stepping.D_CURL_TERMS, "step_D", ("Hx", "Hy", "Hz"))):
-        source = complex_emitter.complex_source(sub_step, "FMA_V1")
+        source = complex_emitter.complex_source(sub_step)
         for index, term in enumerate(terms):
             first_slot = sources.index(term.first)
             second_slot = sources.index(term.second)
-            assert f"cf f_1 = cf_load(g{first_slot}, idx);" in source
-            assert f"cf f_2 = cf_load(g{second_slot}, idx);" in source
+            a1, a2 = term.first_axis, term.second_axis
             block = source.split(f"// Target {index}:", 1)[1].split("}", 1)[0]
+            assert (f"cf f_1 = cwindow(g{first_slot}, idx, {coord_of[a1]}, "
+                    f"ph_{axis_of[a1]}, p{axis_of[a1]});") in block
+            assert (f"cf f_2 = cwindow(g{second_slot}, idx, {coord_of[a2]}, "
+                    f"ph_{axis_of[a2]}, p{axis_of[a2]});") in block
             assert f"g{first_slot}, idx, " in block
-            assert f"bc_{axis_of[term.first_axis]}" in block
-            assert f"bc_{axis_of[term.second_axis]}" in block
+            assert f"bc_{axis_of[a1]}" in block
+            assert f"bc_{axis_of[a2]}" in block
+            assert f"pr_{axis_of[a1]}, pr_{axis_of[a2]});" in block
 
 
 def test_the_sub_lattice_table_matches_the_engines_pairing():
@@ -309,18 +284,19 @@ def test_the_sub_lattice_table_matches_the_engines_pairing():
 def test_the_boundary_and_phase_axes_are_runtime_arguments():
     """The design decision, enforced.
 
-    A BRANCH axis (which index, which predicated zero, whether one plane is
-    rotated) is a runtime ``int``; only the ARITHMETIC axis is compile-time. Six
-    binary axes as constexprs would be 64 sources per arm for a family the corpus
-    drives with a handful.
+    A BRANCH axis (which index, which predicated zero, which connection one plane
+    takes, which chunk form a cell takes) is a runtime argument: the boundary codes,
+    the connection kinds and parts, and the run's chunk record ``cb``. Six binary
+    axes as constexprs would be 64 sources for a family the corpus drives with a
+    handful.
     """
     for sub_step in ("step_B", "step_D"):
         params = SIGNATURE.search(
-            complex_emitter.complex_source(sub_step, "FMA_V1")).group(1)
+            complex_emitter.complex_source(sub_step)).group(1)
         for name in ("int bc_x", "int bc_y", "int bc_z",
                      "int ph_x", "int ph_y", "int ph_z",
                      "float pxr", "float pxi", "float pyr", "float pyi",
-                     "float pzr", "float pzi"):
+                     "float pzr", "float pzi", "const int* __restrict__ cb"):
             assert name in params, (sub_step, name)
 
 
@@ -333,8 +309,8 @@ def test_the_inverse_epsilon_pointers_are_not_restrict_and_only_on_the_E_side():
     no such parameter at all: its source is B directly, mu = 1 being already baked
     into ``H_CONSTITUTIVE_TERMS`` (stepping.py:949).
     """
-    electric = complex_emitter.complex_source("update_E", "FMA_V1")
-    magnetic = complex_emitter.complex_source("update_H", "FMA_V1")
+    electric = complex_emitter.complex_source("update_E")
+    magnetic = complex_emitter.complex_source("update_H")
     assert "const float* inv_eps_0" in electric
     assert "const float* __restrict__ inv_eps" not in electric
     assert "mul_field_left(s0, inv_eps_0[idx])" in electric
@@ -352,7 +328,7 @@ def test_inverse_epsilon_is_indexed_by_the_complex_cell_and_never_word_doubled()
     fields.py:1203-1204). Indexing it at ``2*idx`` would read the next cell's
     value into the imaginary plane -- a smooth, wrong permittivity.
     """
-    source = complex_emitter.complex_source("update_E", "FMA_V1")
+    source = complex_emitter.complex_source("update_E")
     for slot in range(3):
         assert f"inv_eps_{slot}[idx]" in source
         assert f"inv_eps_{slot}[2 * idx]" not in source
@@ -412,45 +388,17 @@ def test_the_compile_options_match_all_four_siblings():
         assert module_level_literal(text, "_COMPILE_OPTIONS") == ("--fmad=false",)
 
 
-def test_the_expansion_arm_names_match_the_triton_spelling():
-    """ONE arbiter, ONE spelling of the arms it names.
-
-    The licence comes from ``triton_kernels.complex_fields.expansion_license`` and
-    this family consumes its verdict; if the two disagree about what ``FMA_V1``
-    means, the verdict names an arm this emitter cannot emit.
-    """
-    triton = TRITON_COMPLEX.read_text(encoding="utf-8")
-    assert module_level_literal(triton, "EXPANSIONS") == complex_emitter.EXPANSIONS
-    assert set(coverage.COMPLEX_EXPANSION_ARMS) == set(complex_emitter.EXPANSIONS)
-
-
-def test_the_policy_names_match_the_engines():
-    """The licence clause compares policy NAMES; they have to be the same names."""
-    from .. import subnormal_policy  # noqa: PLC0415
-
-    assert set(coverage.COMPLEX_POLICY_NAMES) == set(subnormal_policy.POLICIES)
-
-
 def test_the_emitter_digest_moves_when_any_source_moves():
     """One sha256 over all eight sources; a changed character anywhere moves it."""
     before = complex_emitter.corpus_digest()
     original = complex_emitter.complex_source
     try:
         complex_emitter.complex_source = (
-            lambda sub_step, arm: original(sub_step, arm) + "\n// moved\n")
+            lambda sub_step: original(sub_step) + "\n// moved\n")
         assert complex_emitter.corpus_digest() != before
     finally:
         complex_emitter.complex_source = original
     assert complex_emitter.corpus_digest() == before
-
-
-def test_an_unknown_arm_is_refused_by_name_and_never_defaulted():
-    """A wrong arm is a WRONG ANSWER, not a crash: both arms compile and run."""
-    for bad in ("FMA_V2", "", 7, None, True):
-        with pytest.raises(ValueError):
-            complex_emitter.normalized_expansion(bad)
-    with pytest.raises(TypeError):
-        complex_emitter.complex_source("step_B")  # no default anywhere
 
 
 # --------------------------------------------------------------------------
@@ -566,22 +514,15 @@ def _pml():
     return P()
 
 
-def _licence(**over):
-    out = {"arm": "FMA_V1", "expansion": 1, "basis": "measured",
-           "refusals": [], "policy_resolved": "keep"}
-    out.update(over)
-    return out
-
-
 def test_a_well_formed_complex_configuration_is_admitted_at_every_sub_step():
     grid = _grid()
     for sub_step in ("step_B", "step_D"):
         assert coverage.covers_real_pml_complex_curl(
-            _fields(grid), _pml(), grid, sub_step, _licence(), "keep") == (
+            _fields(grid), _pml(), grid, sub_step) == (
                 True, "covered")
     for side in ("H", "E"):
         assert coverage.covers_real_pml_complex_constitutive(
-            _fields(grid), _pml(), grid, side, _licence(), "keep") == (
+            _fields(grid), _pml(), grid, side) == (
                 True, "covered")
 
 
@@ -596,11 +537,11 @@ def test_the_storage_clause_is_a_partition_with_the_real_predicates():
                  phases=(None, None, None))
     complex_fields_on = _fields(grid)
     covered, _ = coverage.covers_real_pml_complex_curl(
-        complex_fields_on, _pml(), grid, "step_B", _licence(), "keep")
+        complex_fields_on, _pml(), grid, "step_B")
     assert covered
     real = _fields(grid, force_complex_fields=False)
     covered, reason = coverage.covers_real_pml_complex_curl(
-        real, _pml(), grid, "step_B", _licence(), "keep")
+        real, _pml(), grid, "step_B")
     assert not covered and "real float32 storage" in reason
 
 
@@ -615,7 +556,7 @@ def test_the_storage_clause_is_a_partition_with_the_real_predicates():
 def test_every_grid_clause_refuses_with_its_own_string(over, needle):
     grid = _grid(**over)
     covered, reason = coverage.covers_real_pml_complex_curl(
-        _fields(grid), _pml(), grid, "step_B", _licence(), "keep")
+        _fields(grid), _pml(), grid, "step_B")
     assert not covered and needle in reason, reason
 
 
@@ -624,7 +565,7 @@ def test_a_metallic_axis_with_a_nonzero_k_is_refused_even_with_no_phase_object()
     grid = _grid(metallic=(False, True, False), k_point=(0.0, 0.4, 0.0),
                  phases=(complex(0.5, 0.5), None, None))
     covered, reason = coverage.covers_real_pml_complex_curl(
-        _fields(grid), _pml(), grid, "step_B", _licence(), "keep")
+        _fields(grid), _pml(), grid, "step_B")
     assert not covered and "no lattice vector for the phase" in reason
 
 
@@ -637,7 +578,7 @@ def test_an_unreadable_phase_is_not_an_unphased_one():
     grid.__class__.bloch_phase = staticmethod(lambda axis: (_ for _ in ()).throw(
         RuntimeError("unreadable")))
     covered, reason = coverage.covers_real_pml_complex_curl(
-        _fields(grid), _pml(), grid, "step_B", _licence(), "keep")
+        _fields(grid), _pml(), grid, "step_B")
     assert not covered and "unreadable phase is not an unphased one" in reason
 
 
@@ -651,14 +592,14 @@ def test_a_conductivity_is_charged_to_the_curl_that_writes_the_component():
     grid = _grid()
     fields = _fields(grid, conductive=("Dx",))
     covered, _ = coverage.covers_real_pml_complex_curl(
-        fields, _pml(), grid, "step_B", _licence(), "keep")
+        fields, _pml(), grid, "step_B")
     assert covered
     covered, reason = coverage.covers_real_pml_complex_curl(
-        fields, _pml(), grid, "step_D", _licence(), "keep")
+        fields, _pml(), grid, "step_D")
     assert not covered and "carries a conductivity" in reason
     for side in ("H", "E"):
         covered, _ = coverage.covers_real_pml_complex_constitutive(
-            fields, _pml(), grid, side, _licence(), "keep")
+            fields, _pml(), grid, side)
         assert covered, side
 
 
@@ -666,13 +607,13 @@ def test_the_offdiagonal_row_is_refused_on_E_and_admitted_on_the_curl():
     grid = _grid()
     fields = _fields(grid, has_offdiagonal_epsilon=True)
     covered, _ = coverage.covers_real_pml_complex_curl(
-        fields, _pml(), grid, "step_B", _licence(), "keep")
+        fields, _pml(), grid, "step_B")
     assert covered
     covered, _ = coverage.covers_real_pml_complex_constitutive(
-        fields, _pml(), grid, "H", _licence(), "keep")
+        fields, _pml(), grid, "H")
     assert covered
     covered, reason = coverage.covers_real_pml_complex_constitutive(
-        fields, _pml(), grid, "E", _licence(), "keep")
+        fields, _pml(), grid, "E")
     assert not covered and "off-diagonal chi1inv" in reason
 
 
@@ -682,7 +623,7 @@ def test_real_float32_volumes_are_refused_by_dtype():
     fields = _fields(grid)
     fields.Bx = _Array(SHAPE, dtype="float32")
     covered, reason = coverage.covers_real_pml_complex_curl(
-        fields, _pml(), grid, "step_B", _licence(), "keep")
+        fields, _pml(), grid, "step_B")
     assert not covered and "not complex64" in reason
 
 
@@ -691,7 +632,7 @@ def test_a_strided_complex_volume_is_refused():
     fields = _fields(grid)
     fields.Ex = _Array(SHAPE, contiguous=False)
     covered, reason = coverage.covers_real_pml_complex_curl(
-        fields, _pml(), grid, "step_B", _licence(), "keep")
+        fields, _pml(), grid, "step_B")
     assert not covered and "not C-contiguous" in reason
 
 
@@ -707,62 +648,18 @@ def test_the_int32_bound_is_halved_against_the_real_paths():
     for name in FIELD_NAMES:
         setattr(fields.__class__, name, _Array((cells, 1, 1)))
     covered, reason = coverage.covers_real_pml_complex_curl(
-        fields, _pml(), grid, "step_B", _licence(), "keep")
+        fields, _pml(), grid, "step_B")
     assert not covered and "int32 word-offset range" in reason
-
-
-# --------------------------------------------------------------------------
-# THE EXPANSION LICENCE CLAUSE
-# --------------------------------------------------------------------------
-
-@pytest.mark.parametrize("licence,policy,needle", [
-    (None, "keep", "no expansion licence"),
-    ("FMA_V1", "keep", "not the verdict dict"),
-    ({"refusals": ["no probe record"], "arm": None}, "keep",
-     "the expansion licence refuses"),
-    (_licence(arm="FMA_V2"), "keep", "names arm"),
-    (_licence(expansion=None), "keep", "carries no arm code"),
-    (_licence(basis="guessed"), "keep", "basis"),
-    (_licence(), None, "was not given as a name"),
-    (_licence(policy_resolved=None), "keep", "states no resolved subnormal policy"),
-    (_licence(policy_resolved="flush"), "keep", "does not transfer"),
-])
-def test_every_licence_clause_refuses_with_its_own_string(licence, policy, needle):
-    reason = coverage.complex_expansion_refusal(licence, policy)
-    assert reason is not None and needle in reason, reason
-
-
-def test_a_measured_licence_under_the_matching_policy_is_accepted():
-    assert coverage.complex_expansion_refusal(_licence(), "keep") is None
-    assert coverage.complex_expansion_refusal(
-        _licence(basis="environment_default"), "keep") is None
-    assert coverage.complex_expansion_refusal(
-        _licence(arm="NAIVE", expansion=0, policy_resolved="flush"),
-        "flush") is None
-
-
-def test_the_licence_clause_fires_before_every_other_clause():
-    """An arm is compiled into a binary at this seam and there is no later rung.
-
-    So a configuration that is wrong in EVERY other way must still report the
-    licence first: a reader who fixes the grid and re-runs would otherwise be
-    handed a kernel bound to a guessed arm.
-    """
-    grid = _grid(cylindrical=True, bfast_active=True, beta=1.0)
-    covered, reason = coverage.covers_real_pml_complex_curl(
-        _fields(grid, force_complex_fields=False), _pml(), grid, "step_B",
-        None, None)
-    assert not covered and "no expansion licence" in reason
 
 
 def test_the_sub_step_argument_is_required_and_validated():
     grid = _grid()
     with pytest.raises(ValueError):
         coverage.covers_real_pml_complex_curl(
-            _fields(grid), _pml(), grid, "update_H", _licence(), "keep")
+            _fields(grid), _pml(), grid, "update_H")
     with pytest.raises(ValueError):
         coverage.covers_real_pml_complex_constitutive(
-            _fields(grid), _pml(), grid, "step_B", _licence(), "keep")
+            _fields(grid), _pml(), grid, "step_B")
 
 
 def test_every_uncertified_name_has_no_record_block_and_the_reverse():
@@ -851,7 +748,7 @@ def test_a_dcyl_grid_is_admitted_by_the_constitutive_pair(z_metallic, side):
     """
     grid = _dcyl_grid(z_metallic=z_metallic)
     covered, reason = coverage.covers_real_pml_complex_constitutive(
-        _fields(grid), _pml(), grid, side, _licence(), "keep")
+        _fields(grid), _pml(), grid, side)
     assert covered, reason
 
 
@@ -866,7 +763,7 @@ def test_a_dcyl_grid_is_still_refused_by_the_complex_curl(z_metallic, sub_step):
     """
     grid = _dcyl_grid(z_metallic=z_metallic)
     covered, reason = coverage.covers_real_pml_complex_curl(
-        _fields(grid), _pml(), grid, sub_step, _licence(), "keep")
+        _fields(grid), _pml(), grid, sub_step)
     assert not covered and "cylindrical (Dcyl)" in reason, reason
 
 
@@ -882,7 +779,7 @@ def test_a_phased_dcyl_grid_is_refused_by_name_on_the_constitutive_pair(side):
     grid = _dcyl_grid(z_metallic=False, has_bloch=True, k_point=(0.0, 0.0, 0.3),
                       phases=(None, None, complex(-1.0, 0.0)))
     covered, reason = coverage.covers_real_pml_complex_constitutive(
-        _fields(grid), _pml(), grid, side, _licence(), "keep")
+        _fields(grid), _pml(), grid, side)
     assert not covered and "Bloch phase on a cylindrical grid" in reason, reason
 
 
@@ -899,10 +796,10 @@ def test_an_axis_flag_without_the_cylindrical_flag_is_refused_on_both_families(s
                  has_bloch=False, k_point=(0.0, 0.0, 0.0),
                  phases=(None, None, None))
     covered, reason = coverage.covers_real_pml_complex_constitutive(
-        _fields(grid), _pml(), grid, side, _licence(), "keep")
+        _fields(grid), _pml(), grid, side)
     assert not covered and "cylindrical r = 0 axis" in reason, reason
     covered, reason = coverage.covers_real_pml_complex_curl(
-        _fields(grid), _pml(), grid, "step_B", _licence(), "keep")
+        _fields(grid), _pml(), grid, "step_B")
     assert not covered and "cylindrical r = 0 axis" in reason, reason
 
 
@@ -1072,12 +969,12 @@ def test_the_constitutive_pair_admits_a_fold_and_the_curl_still_refuses(
     fields = _fields(grid)
 
     covered, reason = coverage.covers_real_pml_complex_constitutive(
-        fields, _pml(), grid, side, _licence(), "keep")
+        fields, _pml(), grid, side)
     assert covered, (what, side, reason)
 
     for sub_step in ("step_B", "step_D"):
         covered, reason = coverage.covers_real_pml_complex_curl(
-            fields, _pml(), grid, sub_step, _licence(), "keep")
+            fields, _pml(), grid, sub_step)
         assert not covered, (what, sub_step)
         assert "mirror symmetry" in reason, reason
 
@@ -1113,7 +1010,7 @@ def test_a_grid_reporting_symmetry_with_no_folded_axis_fails_closed():
                  k_point=(0.0, 0.0, 0.0), phases=(None, None, None),
                  has_bloch=False)
     covered, reason = coverage.covers_real_pml_complex_constitutive(
-        _fields(grid), _pml(), grid, "H", _licence(), "keep")
+        _fields(grid), _pml(), grid, "H")
     assert not covered
     assert "symmetry with no folded axis" in reason, reason
 
@@ -1132,12 +1029,12 @@ def test_the_complex_fold_plane_cap_is_the_record_s_number():
     table = coverage.COMPLEX_CONSTITUTIVE_FOLD_ADMISSION
     assert table["folded_planes_swept"] == 3
     assert coverage.covers_real_pml_complex_constitutive(
-        fields, _pml(), grid, "H", _licence(), "keep")[0]
+        fields, _pml(), grid, "H")[0]
     shipped = table["folded_planes_swept"]
     try:
         table["folded_planes_swept"] = 2
         covered, reason = coverage.covers_real_pml_complex_constitutive(
-            fields, _pml(), grid, "H", _licence(), "keep")
+            fields, _pml(), grid, "H")
         assert not covered, (
             "lowering the record's plane count did not change the verdict, so the "
             "predicate is not reading the record and the cap is unpinned")
@@ -1145,7 +1042,7 @@ def test_the_complex_fold_plane_cap_is_the_record_s_number():
     finally:
         table["folded_planes_swept"] = shipped
     assert coverage.covers_real_pml_complex_constitutive(
-        fields, _pml(), grid, "H", _licence(), "keep")[0]
+        fields, _pml(), grid, "H")[0]
 
 
 def test_the_complex_fold_admission_is_the_run_that_produced_it():

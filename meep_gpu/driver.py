@@ -125,7 +125,7 @@ import time as time_module
 from typing import Any, Callable, Mapping, Optional, Sequence
 
 
-from . import host_writes
+from . import host_writes, part_products
 from .backends import resolve_backend, to_numpy
 from .dft import (
     DFTMonitor,
@@ -147,11 +147,14 @@ from .dispersion import (
     Susceptibility,
     conductivity_factor,
 )
-from .deposit_repair import _deposit_index
 from .fastpath import (SYNC_UPDATE_H_PASS, last_dispatch_report, plan_fast_path,
                        reference_record)
 from .absorber import AbsorberLayer, absorber_conductivity, describe_layers
-from .fields import Fields, mirror_parity
+from .chunk_map import (NO_FACES, ChunkLayout, RegionPlan, chunk_bounds_record, faces_equal,
+                        grid_frames, region_backend)
+from .fields import Fields
+from .readback import HAliasRule, PointStencil, h_alias_rule
+from .readback import total_volume as readback_total_volume
 from .grid import (
     INVARIANT_AXES_BY_DIMENSIONS,
     MIRROR_AXES,
@@ -175,6 +178,7 @@ from .smoothing import (
 )
 from .sources import (
     FIELD_TYPE_B,
+    FIELD_TYPE_D,
     ContinuousEnvelope,
     ContinuousSource,
     CustomEnvelope,
@@ -182,6 +186,10 @@ from .sources import (
     GaussianEnvelope,
     GaussianPulsedSource,
     VolumeSource,
+    bind_src_vols,
+    f_minus_p_begin,
+    f_minus_p_end,
+    has_integrated,
 )
 from .stepping import (
     B_COMPONENTS,
@@ -192,6 +200,7 @@ from .stepping import (
     fill_symmetry_bc_B,
     fill_symmetry_bc_D,
     nonlinear_margin,
+    separate_h_from_b,
     step_B,
     step_D,
     update_E,
@@ -528,10 +537,6 @@ def _decimation_request(value: Any) -> int:
             f"decimation_factor must be zero (automatic) or a positive whole number, got {value!r}."
         )
     return factor
-
-
-def _no_withdraw(fields: Any) -> None:  # Sources without an integrated path leave nothing standing in D/B.
-    return None
 
 
 def _envelope_last_time(envelope: Any) -> float:  # When a VolumeSource's waveform stops emitting.
@@ -892,8 +897,8 @@ class FdtdDriver:
                 then carries an ANALYTIC ``exp(i*2*pi*beta*z)`` dependence instead of
                 grid points, so ``d/dz`` is the exact factor ``i*2*pi*beta`` and the
                 curl gains an ``i*beta*zhat x`` cross product that couples the TE and
-                TM polarizations (:func:`~.stepping._special_kz_beta_term`). It costs
-                no storage and no extra pass, and it is NOT a Bloch phase: nothing
+                TM polarizations (:func:`~.stepping._special_kz_beta_term`), a pass after
+                the curl as in MEEP. It costs no storage, and it is NOT a Bloch phase: nothing
                 wraps, and ``k_point`` must keep a hard zero on z (MEEP hands
                 ``use_bloch`` only ``Vector3(kx, ky)``, simulation.py:2498-2504).
                 Legal only at ``dimensions=2``. Works in BOTH storage modes — real
@@ -981,7 +986,7 @@ class FdtdDriver:
             xp=self.xp,
         )
         if self.grid.cylindrical and self.grid.m != 0 and not self.force_complex_fields:
-            # The same refusal _cylindrical_imr_term raises at the first step,
+            # The same refusal _cylindrical_imr_increment raises at the first step,
             # moved to where MEEP decides storage (fields.cpp:824): at build
             # time, before any setup work is spent on an impossible run.
             raise ValueError(
@@ -992,6 +997,12 @@ class FdtdDriver:
             )
         self.fields = Fields(self.grid, force_complex_fields=self.force_complex_fields)
         self.pml: PML | None = None
+        # The chunk division the run steps with (chunk_map.ChunkLayout): set by the
+        # lift (set_chunk_layout) to the simulation's own; None means the one-rank
+        # default, built from the current PML on first read and cached against it.
+        self._chunk_layout: ChunkLayout | None = None
+        self._default_chunk_layout: tuple[Any, ChunkLayout] | None = None
+        self._chunk_record: tuple[ChunkLayout, Any] | None = None
         self.step_count = 0
         # Fast-path plan cache (fastpath.plan_fast_path): built at the next step(),
         # once the configuration has frozen; None is the array path. Stale means
@@ -1007,6 +1018,10 @@ class FdtdDriver:
         # and a driver that has not frozen yet has None.
         self._fast_path_record = None
         self._sources: list[Any] = []
+        # What the sources' MEEP src_vol tables were last bound for (sources.bind_src_vols):
+        # the chunk division and the source list, by identity. Rebound at the next step
+        # when either changes.
+        self._src_vol_key: tuple[Any, ...] | None = None
         self._dft_monitors: list[DFTMonitor] = []
         self._flux_monitors: list[FluxMonitor] = []
         self._pending_monitor_regions: list[tuple[DFTMonitor, Any, Any]] = []
@@ -1045,10 +1060,12 @@ class FdtdDriver:
         # 0.0 is "not set", which installs nothing at all.
         self._chi2: Any = 0.0
         self._chi3: Any = 0.0
-        # (component, point) -> the zero-argument sampler get_field_point runs. Only the
-        # stencil is cached; the arrays it reads are looked up per call, so nothing here
-        # can outlive a reset() or a change of storage mode.
-        self._point_readers: dict[tuple[str, tuple[float, float, float]], Callable[[], Any]] = {}
+        # (component, point) -> the readback.PointStencil get_field_point reads through.
+        # Geometry only; the words are read per call, so nothing here can outlive a
+        # reset() or a change of storage mode.
+        self._point_stencils: dict[tuple[str, tuple[float, float, float]], PointStencil] = {}
+        # The readback's H-alias rule and the (layout, integrated-B points) it was built for.
+        self._h_alias_cache: tuple[Any, HAliasRule] | None = None
         # MEEP's `synchronized_magnetic_fields` counter and the arrays it stands over
         # (energy_and_flux.cpp:146-186): nesting is a no-op and only the outermost
         # restore puts B, H and their PML auxiliaries back.
@@ -1090,27 +1107,20 @@ class FdtdDriver:
           the two combining only at loop_in_chunks.cpp:202
           ``phases[nc] = shift_phase * S.phase_shift(...)``.
 
-          This engine composes them the same way because the readback is PER AXIS.
-          :meth:`~.fields.Fields.to_cell_center` sends a mirrored axis down the fold
-          branch (zero ghost on a metallic termination, ``mirror_parity *
-          result[reflect_row]`` on a periodic one) and every unfolded axis down
-          :meth:`~.fields.Fields._wrapped_neighbour`, which applies
-          ``grid.bloch_phase``; :meth:`~.from_meep.GpuRunResult.get_array` applies
-          ``conj(bloch_phase)`` to the prepended plane and skips mirrored axes. The
-          folded axis needs no Bloch factor precisely because the branch above forces
-          its k to zero.
+          This engine composes them the same way: the readback
+          (:class:`~.readback.CentredLattice`) gives every point
+          ``ph = shift_phase * phase_shift`` with ``shift_phase`` the product of
+          ``pow(eikna[d], ishift[d])`` over the directions, so a folded axis (k = 0,
+          forced by the branch above) contributes its parity and an unfolded Bloch axis
+          its lattice phase, with no cross term.
 
-          MEASURED on this tree (whole-volume complex relative L2, all six
+          MEASURED on the 0.9.2 reader (whole-volume complex relative L2, all six
           components, MEEP ``get_array`` layout): fold(Y,-1) with k_x = 3.5
           **1.030e-06**, against controls of 1.021e-06 for the fold alone and
           1.028e-06 for k_x = 3.5 unfolded; fold(Y,-1) with k_x = 0.1234567
           9.542e-07; fold(X,+1) with k = (0, 0.3, 0.2) in 3-D 1.321e-07 against
           1.294e-07 unfolded; 2-D with ``special_kz`` beta and fold(Y,+1) 4.412e-07
-          against 4.510e-07 unfolded. Dropping the phase from ``_wrapped_neighbour``
-          moves the folded run to 2.728e-01 and moves the folded and unfolded legs by
-          the SAME amount (0.2727518730 against 0.2727518579), which is the evidence
-          that the fold routes its Bloch axis through the unfolded code and adds no
-          separate hazard.
+          against 4.510e-07 unfolded.
 
         The PML pairing is refused separately, in :meth:`setup_pml`, because the layer
         is added after construction — and only per axis: a Bloch phase on an axis with
@@ -1187,9 +1197,7 @@ class FdtdDriver:
         two runs were given the same medium.
         """
         self._require_open()
-        trimmed = self._coerce_epsilon_array(eps, "Epsilon")
-        epsilon = self.xp.ascontiguousarray(trimmed)
-        inverse = (1.0 / epsilon).astype(self.xp.float32)
+        epsilon, inverse = self._coerce_epsilon_array(eps, "Epsilon")
         self.fields.set_isotropic_epsilon_volume(epsilon, inverse)
         self.invalidate_fast_path()  # New material arrays: any cached plan pointer is stale.
 
@@ -1235,19 +1243,12 @@ class FdtdDriver:
                 "epsilon component mapping must contain exactly Ex, Ey, and Ez; "
                 f"missing={missing}, unexpected={unknown}."
             )
-        epsilon_components = {
-            component: self.xp.ascontiguousarray(
-                self._coerce_epsilon_array(
-                    epsilon[component],
-                    f"Epsilon[{component!r}]",
-                )
-            )
+        pairs = {
+            component: self._coerce_epsilon_array(epsilon[component], f"Epsilon[{component!r}]")
             for component in ("Ex", "Ey", "Ez")
         }
-        inverse_components = {
-            component: (1.0 / values).astype(self.xp.float32)
-            for component, values in epsilon_components.items()
-        }
+        epsilon_components = {component: pair[0] for component, pair in pairs.items()}
+        inverse_components = {component: pair[1] for component, pair in pairs.items()}
         offdiagonal = None
         if chi1inv_offdiagonal is not None:
             offdiagonal = {
@@ -1300,7 +1301,17 @@ class FdtdDriver:
         return self.xp.ascontiguousarray(trimmed)
 
     def _coerce_epsilon_array(self, epsilon: Any, label: str):
-        """Copy, validate, and trim one epsilon volume to the stored grid."""
+        """Copy, validate, and trim one epsilon volume to the stored grid: (epsilon, chi1inv).
+
+        Both float32, both C-contiguous copies of the stored grid's shape. ``chi1inv``
+        is the reciprocal of the CALLER's value, formed in double and rounded once, as
+        MEEP stores ``(realnum)`` of the inverse it forms in double
+        (anisotropic_averaging.cpp:252-266). Taking it from the float32 permittivity
+        instead, ``f32(1/f32(eps))``, moves 17 % of random float32 ``chi1inv`` words by an
+        ulp (2,000,000 samples). The lift hands ``1/chi1inv`` in float64, so this returns
+        MEEP's own ``chi1inv`` word: its reciprocal in double is within a double ulp of the
+        float32 word, which rounding to float32 cannot leave.
+        """
         # Copy rather than adopt: the caller's array must not stay wired into the
         # material, and a later mutation of theirs must not silently change physics.
         probe = self.xp.asarray(epsilon)
@@ -1312,6 +1323,7 @@ class FdtdDriver:
             "for a Lorentz/Drude model.",
         )
         values = self.xp.array(probe, dtype=self.xp.float32, order="C", copy=True)
+        wide = self.xp.asarray(probe, dtype=self.xp.float64)
         if values.ndim != 3:
             raise ValueError(f"{label} must be a 3-D array, got {values.ndim} dimensions.")
         grid_shape = (self.grid.nx, self.grid.ny, self.grid.nz)
@@ -1320,7 +1332,8 @@ class FdtdDriver:
         if shape == grid_shape:
             trimmed = values
         elif shape == meep_shape:
-            trimmed = values[:-1, :-1, :-1]
+            trimmed = self.xp.ascontiguousarray(values[:-1, :-1, :-1])
+            wide = wide[:-1, :-1, :-1]
         else:
             raise ValueError(
                 f"{label} shape {shape} matches neither the grid shape {grid_shape} nor MEEP's "
@@ -1337,7 +1350,8 @@ class FdtdDriver:
                 f"perfect-conductor sentinel {PEC_EPSILON_SENTINEL:g}, which mp.metal and "
                 f"mp.perfect_electric_conductor install)."
             )
-        return trimmed
+        inverse = self.xp.ascontiguousarray((1.0 / wide).astype(self.xp.float32))
+        return trimmed, inverse
 
     def set_epsilon_smoothed(
         self,
@@ -2253,18 +2267,171 @@ class FdtdDriver:
         if order_value != order or order_value < 1:
             raise ValueError(f"PML order must be a positive whole number, got {order!r}.")
         pml = PML(self.grid, thickness=thickness_cells, order=order_value)
+        if self._chunk_layout is not None and not faces_equal(self._chunk_layout.faces,
+                                                               pml.thickness_by_face):
+            raise ValueError(
+                f"this driver steps a lifted chunk division built for the absorber "
+                f"{self._chunk_layout.faces}, and setup_pml asks for {pml.thickness_by_face}. "
+                f"MEEP's chunk boxes are cut at the layer it was given, so the lifted "
+                f"division does not describe a different one; lift the simulation with "
+                f"this absorber instead."
+            )
         if self.fields.has_conductivity:
             for source in self._sources:
                 self._require_source_clear_of_conductive_pml(
                     source.center, source.size, pml.thickness_by_face
                 )
         self.pml = pml
+        self._chunk_record = None  # Rebuilt from the layout the new layer gives.
         self.fields.enable_pml_storage()
-        for source in self._sources:
-            # Which deposition cells sit in MEEP's unsplit edge chunks changes with
-            # the layer, so every source re-derives its f_u mirror from this one.
-            source.bind_pml(pml)
+        self._install_region_plan()  # The forms each cell steps, under this layer.
         self.invalidate_fast_path()  # PML tables and storage mode both enter the plan.
+
+    def set_chunk_layout(self, layout: ChunkLayout) -> None:
+        """Step with this chunk division rather than the one-rank default.
+
+        The lift's entry point: :func:`~.from_meep.lift_simulation` hands over the
+        simulation's own division (:meth:`~.chunk_map.ChunkLayout.from_meep`) right
+        after MEEP's ``init_sim``, before the absorber is installed. MEEP selects every
+        PML branch per chunk (step_db.cpp:56-59, update_eh.cpp:162-163), so the
+        division is a property of the run being reproduced, not a tuning knob.
+
+        Refused by name: a layout built for another grid (its axis frames differ), one
+        whose absorber differs from an installed PML, and any change after the first
+        step (the division selects the forms the history was stepped with). The
+        region plan the PML sub-steps dispatch on and the kernel record are rebuilt.
+        """
+        self._require_open()
+        if not isinstance(layout, ChunkLayout):
+            raise TypeError(f"set_chunk_layout takes a chunk_map.ChunkLayout, got {type(layout).__name__}")
+        if self.step_count > 0:
+            raise RuntimeError(
+                "set_chunk_layout() must be called before stepping: the division selects the "
+                "PML form of every cell, so changing it mid-run changes the run being stepped."
+            )
+        if layout.frames != grid_frames(self.grid):
+            raise ValueError(
+                f"this chunk layout was built for another grid: its axis frames are "
+                f"{layout.frames}, this driver's {grid_frames(self.grid)}."
+            )
+        installed = self.pml.thickness_by_face if self.pml is not None else NO_FACES
+        if self.pml is not None and not faces_equal(layout.faces, installed):
+            raise ValueError(
+                f"this chunk layout was built for the absorber {layout.faces}, and the "
+                f"installed PML is {installed}."
+            )
+        self._chunk_layout = layout
+        self._chunk_record = None
+        self._install_region_plan()
+        self.invalidate_fast_path()  # The division is a plan input of every kernel table.
+
+    def set_absent_components(self, names: Any) -> None:  # The lift's record of MEEP's unallocated components.
+        """Step as MEEP does the field components it allocated no array for.
+
+        The lift's entry point: :func:`~.from_meep.lift_simulation` reads
+        ``fields::have_component`` for every component once the sources are in and
+        hands over the ones MEEP has no array for (a 2-D run's other polarization;
+        fields.cpp:471-474, :552-572). Their E is then not stepped and reads +0, as
+        MEEP's (:meth:`~.fields.Fields.set_absent_components` carries the citations
+        and the one sign of zero that makes it observable). Refused by name: a
+        component a source already drives (MEEP allocates every component a source
+        requires) and any change after the first step. A later :meth:`add_source`
+        takes its component's class back out, as MEEP's ``require_component`` does.
+        """
+        self._require_open()
+        if self.step_count > 0:
+            raise RuntimeError(
+                "set_absent_components() must be called before stepping: an absent component "
+                "is never stepped, so declaring one mid-run would freeze a field MEEP steps."
+            )
+        names = tuple(names)
+        driven = sorted({getattr(source, "component", None) for source in self._sources} & set(names))
+        if driven:
+            raise ValueError(
+                f"set_absent_components: {driven} carry a source, and MEEP allocates every "
+                f"component a source requires (fields::require_source_components)."
+            )
+        self.fields.set_absent_components(names)
+        self.invalidate_fast_path()  # The stepped set is a plan input.
+
+    def _require_component(self, component: str) -> None:  # MEEP's fields::_require_component on the absent set.
+        """Take a newly sourced component, and every component MEEP allocates with it, out of the absent set.
+
+        ``_require_component`` (fields.cpp:552-572) allocates each component that
+        ``is_like`` the required one (fields.cpp:471-474): in a 2-D Cartesian cell the
+        same polarization (``is_tm``: Ez, Dz, Hx, Hy, Bx, By, fields.cpp:458-469), in
+        any other cell every component. A no-op while nothing is absent.
+        """
+        absent = self.fields.absent_components
+        if not absent:
+            return
+        grid = self.grid
+        two_d = (not getattr(grid, "cylindrical", False) and grid.is_invariant(2)
+                 and not grid.is_invariant(0) and not grid.is_invariant(1))
+        if two_d:
+            tm = ("Ez", "Dz", "Hx", "Hy", "Bx", "By")
+            like = {name for name in absent if (name in tm) == (component in tm)}
+        else:
+            like = set(absent)
+        self.fields.set_absent_components(set(absent) - like)
+        self.invalidate_fast_path()
+
+    @property
+    def chunk_layout(self) -> ChunkLayout:
+        """The chunk division this run steps with.
+
+        The lifted simulation's own when :meth:`set_chunk_layout` installed one;
+        otherwise :meth:`~.chunk_map.ChunkLayout.one_rank` of the current grid and
+        PML, rebuilt whenever the PML object changes.
+        """
+        if self._chunk_layout is not None:
+            return self._chunk_layout
+        cached = self._default_chunk_layout
+        if cached is None or cached[0] is not self.pml:
+            cached = (self.pml, ChunkLayout.one_rank(self.grid, self.pml))
+            self._default_chunk_layout = cached
+        return cached[1]
+
+    def _install_region_plan(self) -> None:
+        """Build the :class:`~.chunk_map.RegionPlan` the PML sub-steps dispatch on, and install it.
+
+        From :attr:`chunk_layout` and the installed layer, on this grid's array module;
+        the unit-coefficient precondition is checked here, so a layer and a division
+        that disagree are refused by name before anything steps. Nothing to build
+        without an absorbing layer. The lifted division itself is installed on the
+        fields with or without one (:attr:`~.fields.Fields.chunk_layout`): ``update_E``
+        reads the off-diagonal ``chi1inv`` presence per chunk from it, and a lifted
+        run without an absorber can still carry several chunks (``num_chunks``).
+        """
+        self.fields.install_chunk_layout(self._chunk_layout)
+        if self.pml is None or not self.pml.is_active:
+            return
+        self.fields.install_region_plan(
+            RegionPlan(self.chunk_layout, self.grid, self.pml, backend=region_backend(self.xp)))
+
+    def _require_region_plan(self) -> None:  # The installed plan describes this layer and division.
+        if self.fields.chunk_layout is not self._chunk_layout:
+            self.fields.install_chunk_layout(self._chunk_layout)
+        if self.pml is None or not self.pml.is_active:
+            return
+        plan = self.fields.region_plan
+        if plan is None or plan.pml is not self.pml or plan.layout is not self.chunk_layout:
+            self._install_region_plan()
+
+    def chunk_bounds_record(self) -> Any:
+        """The kernels' chunk record for this run (:func:`~.chunk_map.chunk_bounds_record`).
+
+        ``int32[25]``: ``[a0, a1, b0, b1]`` per (sub-lattice, axis), then the
+        partner-presence word. Rebuilt whenever the layout or the PML changes; a
+        division that is not separable is refused by name
+        (:class:`~.chunk_map.ChunkLayoutRefusal`).
+        """
+        layout = self.chunk_layout
+        cached = self._chunk_record
+        if cached is None or cached[0] is not layout:
+            cached = (layout, chunk_bounds_record(layout))
+            self._chunk_record = cached
+        return cached[1]
 
     def _conductivity_reaches_a_pml(self, faces) -> bool:
         """Is any installed D or B conductivity nonzero ANYWHERE inside an absorbing face?
@@ -2418,8 +2585,19 @@ class FdtdDriver:
         floor on Dcyl and Cartesian PEC walls alike). A source inside a PML is
         likewise admitted on every grid: the two defects the old geometric
         refusal masked are fixed and measured on Cartesian and Dcyl alike
-        (evidence packet §1.5-1.7 and the Dcyl sweep in the ``sources``
-        deposit-mirror comment).
+        (evidence packet §1.5-1.7): the curl form is chosen per chunk
+        (``stepping._apply_curl``) and an integrated dipole enters at the
+        constitutive update through ``f_minus_p`` (``sources.f_minus_p_begin``), never
+        through D or B.
+
+        An integrated ELECTRIC source makes E a stored array (``Fields.enable_field_storage``):
+        MEEP allocates E whenever ``f_minus_p`` exists (update_eh.cpp:166-171), because E
+        is then ``chi1inv * f_minus_p`` and no longer ``chi1inv * D``, and the next curl
+        reads it. An integrated MAGNETIC source in a run without a PML has no stored H to
+        hold ``H = f_minus_p``: there the driver keeps B's ``f_minus_p`` words through
+        ``step_D``, which reads H as B, so every stored D, E and B word steps as MEEP's;
+        only an H read back at the source's own points returns B's word where MEEP's H is
+        ``B - dipole``.
         """
         self._require_open()
         if not isinstance(source_data, Mapping):
@@ -2440,6 +2618,7 @@ class FdtdDriver:
                 f"{SOURCE_COMPONENTS} (electric {ELECTRIC_SOURCE_COMPONENTS} drive D, "
                 f"magnetic {MAGNETIC_SOURCE_COMPONENTS} drive B)."
             )
+        self._require_component(component)
         if kind == "custom":
             if source_data.get("src_func") is None:
                 raise ValueError("A custom source requires 'src_func', a callable func(t) -> complex.")
@@ -2473,6 +2652,8 @@ class FdtdDriver:
             source = self._build_volume_source(
                 source_data, kind, component, center, size, amplitude, amp_func, frequency, is_integrated
             )
+            if is_integrated and source.field_type != FIELD_TYPE_B:
+                self._store_E_for_f_minus_p()
             self._sources.append(source)
             # THE SOURCE LIST IS A PLAN INPUT. `plan_fast_path` hands it to the
             # fused-pair predicates, which cannot read it off Fields and refuse
@@ -2481,8 +2662,6 @@ class FdtdDriver:
             # against a deposit nothing repaired. Adding a source after the freeze
             # is legal, so it re-plans -- the same rule the material mutators obey.
             self.invalidate_fast_path()
-            if self.pml is not None:
-                source.bind_pml(self.pml)
             self._refresh_automatic_decimation()
             return source
         arguments: dict[str, Any] = {
@@ -2517,10 +2696,23 @@ class FdtdDriver:
             source = ExtendedSource(**arguments)
         self._sources.append(source)
         self.invalidate_fast_path()  # A plan input; see the note above.
-        if self.pml is not None:
-            source.bind_pml(self.pml)
         self._refresh_automatic_decimation()
         return source
+
+    def _store_E_for_f_minus_p(self) -> None:  # MEEP allocates E once f_minus_p exists.
+        """Make E a stored array, keeping the E the run reads now.
+
+        ``update_eh.cpp:166-171``: a chunk with ``f_minus_p`` holds E apart from D. Until
+        now ``get_E`` served ``D * inv_eps``; that is the E the stored array starts from,
+        so a source added mid-run changes nothing until the next constitutive update.
+        """
+        if self.fields.stores_E:
+            return
+        current = {component: self.fields.get_E(component) for component in E_COMPONENTS}
+        self.fields.enable_field_storage()
+        for component, values in current.items():
+            getattr(self.fields, component)[...] = values
+        self.invalidate_fast_path()  # The storage mode is a plan input.
 
     def _build_volume_source(
         self, source_data, kind, component, center, size, amplitude, amp_func, frequency, is_integrated
@@ -3284,6 +3476,7 @@ class FdtdDriver:
             self._automatic_decimation_monitors.clear()
         if self._pending_monitor_regions:
             self._resolve_monitor_regions()
+        self._require_region_plan()
         if self._fast_path_stale:
             # The configuration freezes at the first step (and re-freezes after any
             # invalidate_fast_path()): plan once here, not per step, so kernel
@@ -3293,7 +3486,7 @@ class FdtdDriver:
             # overwrites; a driver that reads it later reports that driver's verdict.
             if self.gpu is not None:
                 self._fast_path = plan_fast_path(self.fields, self.pml, self.grid,
-                                                 self._sources)
+                                                 self._sources, self.chunk_layout)
                 self._fast_path_record = last_dispatch_report()
             else:
                 # prefer_gpu=False IS THE NUMPY REFERENCE: it consults no kernel
@@ -3309,15 +3502,13 @@ class FdtdDriver:
         # every slot the plan does not carry, which is the array path.
         fast = self._fast_path
         dt = self.grid.dt
+        self._require_src_vols()
         magnetic = [source for source in self._sources if source.field_type == FIELD_TYPE_B]
         electric = [source for source in self._sources if source.field_type != FIELD_TYPE_B]
         # MEEP's integrated source never rides the curl ladder: its dipole enters at
-        # the constitutive read (update_eh.cpp:126-138) and the primary array MEEP
-        # steps holds no offset. Each integrated source here withdraws its standing
-        # offset before step_B/step_D so the ladder — PML rescale, conductivity —
-        # sees exactly MEEP's f, then reinjects the fresh whole dipole in its slot.
-        for source in magnetic:
-            getattr(source, "withdraw", _no_withdraw)(self.fields)
+        # the constitutive read, through f_minus_p (update_eh.cpp:66-140), and the
+        # primary arrays MEEP steps never hold it. The two brackets below write
+        # f_minus_p's words around each constitutive consult and restore D/B after it.
         if fast is None or not fast.dispatch("step_B", self.fields):
             step_B(self.fields, self.pml)
         for source in magnetic:
@@ -3338,18 +3529,24 @@ class FdtdDriver:
         # Far-plane image of a folded periodic even axis.
         if fast is None or not fast.dispatch("fill_folded_far_ghosts_B", self.fields):
             fill_folded_far_ghosts_B(self.fields)
+        # calc_sources(time() + dt/2), then update_eh(H_stuff) on f_minus_p (step.cpp:74-78).
+        f_minus_p_B = self._f_minus_p_begin_B(fast, self.time + 0.5 * dt)
         if fast is None or not fast.dispatch("update_H", self.fields):
             update_H(self.fields, self.pml)
-        for source in electric:
-            getattr(source, "withdraw", _no_withdraw)(self.fields)
+        if self._stores_H():
+            f_minus_p_end(self.fields, f_minus_p_B)
+            f_minus_p_B = None
         if fast is None or not fast.dispatch("step_D", self.fields):
             step_D(self.fields, self.pml)
+        # Without a stored H the curl above read H as B, so B kept f_minus_p's words
+        # through it: MEEP's H there is f_minus_p (update_eh.cpp:166-171).
+        f_minus_p_end(self.fields, f_minus_p_B)
         source_time = self.time + 0.5 * dt
-        if electric and self.fields.has_conductivity:
-            self._inject_electric_through_conductivity(electric, source_time)
-        else:
-            for source in electric:
-                source.inject(self.fields, source_time)
+        # MEEP's step_source(D_stuff). A conductive component's condinv scale is inside
+        # each source's own double-precision deposit (step.cpp:299-307), for a D
+        # conductivity here as for a B conductivity on the magnetic sources above.
+        for source in electric:
+            source.inject(self.fields, source_time)
         # The electric half of the two-consult fill seam above, in the same slot one
         # field type later.
         if fast is None or not fast.dispatch("fill_D", self.fields):
@@ -3358,137 +3555,60 @@ class FdtdDriver:
         # Far-plane image of a folded periodic even axis.
         if fast is None or not fast.dispatch("fill_folded_far_ghosts_D", self.fields):
             fill_folded_far_ghosts_D(self.fields)
+        # calc_sources(time() + dt), then update_eh(E_stuff) on f_minus_p (step.cpp:105-109).
+        f_minus_p_D = f_minus_p_begin(self.fields, self._sources, FIELD_TYPE_D, self.time + dt)
         if fast is None or not fast.dispatch("update_E", self.fields):
             update_E(self.fields, self.pml)
+        f_minus_p_end(self.fields, f_minus_p_D)
         if fast is None or not fast.dispatch("update_P", self.fields):
             update_P(self.fields, self.pml)
+        # MEEP starts H from B once, at the first update_eh(H_stuff); whichever path ran
+        # this step's, a later array-path update_H must not start it again. Recorded
+        # here, after the step, and not beside the update_H consult: between that consult
+        # and step_D's the driver runs nothing but the magnetic f_minus_p restore, which
+        # writes B alone, and the H -> D seam's composer reads that off this method.
+        self.fields.h_separated = True
         self.step_count += 1
         for monitor in self._dft_monitors:
             monitor.update(self.fields, self.time, self.step_count)
         for monitor in self._flux_monitors:
             monitor.update(self.fields, self.time, self.step_count)
 
-    def _inject_electric_through_conductivity(self, electric, source_time):  # MEEP's cndinv-scaled currents.
-        """Inject the electric currents into a lossy D, scaled by ``condinv``.
+    def _require_src_vols(self) -> None:  # The sources' MEEP src_vol tables describe this list and division.
+        """Bind every source's deposit table to MEEP's merged ``src_vol`` list (sources.bind_src_vols).
 
-        **The current is scaled by condinv.** MEEP step.cpp:294-317 multiplies each
-        injected current by ``s->condinv[c][d]`` when a conductivity is present, so a
-        source deposits ``dt*J*condinv`` rather than ``dt*J`` — the same implicit
-        half-step the conductive curl update applies to D.
-
-        Once in D the deposit is then damped by ``step_D`` like every other part of D,
-        which is what a conductivity means. Under PML, MEEP likewise leaves the
-        source out of ``f_cond`` and writes the ``condinv``-scaled increment directly
-        into D after the three-stage curl recurrence.
-
-        ``sources`` is not this file's to edit, so the scaling is applied by
-        difference — but ONLY at the deposit cells the sources publish
-        (``deposit_repair._deposit_index`` reads the same tables): snapshot the target
-        D component at those indices, inject, then replay the rescale per deposit cell
-        in the same operand order. Exact at every deposit cell, untouched everywhere
-        else, and paid only by runs that have both a conductivity and an electric
-        source.
-
-        **Why sparse, not whole-volume.** This used to be three whole-volume passes
-        (``array -= before; array *= condinv; array += before``). Those are the
-        identity at every non-deposit finite value EXCEPT that they canonicalise
-        ``-0.0`` to ``+0.0`` (``x - x`` is ``+0.0``, and ``+0.0 + (-0.0)`` is
-        ``+0.0``) at every cell of the component — a rewrite stock MEEP never
-        performs, because step.cpp:294-317 scales only the injected current at the
-        source's own points. The whole-volume canonicalisation is what forced the
-        fused electric pairs on three backends to refuse conductive rows by name
-        (their launches compute E from pre-rewrite values, so ``-0.0``/``+0.0``
-        word diffs appeared at cells no deposit repair can name). The sparse replay
-        leaves non-deposit ``-0.0`` words as ``-0.0``, matching MEEP. On the CuPy
-        backend the whole-volume passes were lossier still — device arithmetic
-        flushes subnormals, so every non-deposit subnormal word of the component
-        was silently zeroed each conductive-injection step; measured on an RTX
-        A6000 (2026-09-01): replaying sparsely, 54 signed-zero + 68 subnormal
-        words of 588 survive that the passes destroyed, with the deposit cells
-        byte-identical.
-
-        A source that publishes no deposit table at all (no ``_point_ix`` attribute
-        — no in-tree electric source class is one) falls back to the whole-volume
-        difference passes for its component, because an unnameable deposit must
-        still be scaled: correctness of the physics outranks the signed-zero words.
-
-        **An integrated source is NOT scaled**: MEEP's ``step_source`` skips it
-        (step.cpp:300) — its ``cndinv`` multiply never runs — and the dipole instead
-        reaches the field at the constitutive read (update_eh.cpp:126-138),
-        downstream of the conductivity, fresh and undamped. The dipole an integrated
-        source leaves standing in D here is withdrawn before ``step_D`` (see
-        :meth:`step` and :meth:`.sources.VolumeSource.withdraw`), so the conductive
-        recurrence never touches it either; the injection below is the whole of what
-        it needs. Measured against CPU MEEP (2-D 8x8 cell, res 10, eps 2.25, uniform
-        sigma_D = 0.4, CW Ez is_integrated point source, until 15, complex Ez
-        relative L2 over the volume): 2.0417e-07 with the withdraw slot, where the
-        pre-withdraw telescoping — which this driver used to refuse by name — reads
-        6.3802e-02 on the same run.
+        The tables depend on the chunk division (a piece is per chunk) and on the whole
+        source list (a piece merges into an earlier source's entry), so they are rebound
+        whenever either changes, by identity, before the step that deposits through them.
         """
-        integrated = [source for source in electric if source.is_integrated]
-        scaled = [source for source in electric if not source.is_integrated]
-        for source in integrated:
-            source.inject(self.fields, source_time)
-        if not scaled:
+        layout = self.chunk_layout
+        key = (layout, tuple(id(source) for source in self._sources))
+        cached = self._src_vol_key
+        if cached is not None and cached[0] is layout and cached[1] == key[1]:
             return
-        by_target: dict = {}
-        for source in scaled:
-            by_target.setdefault("D" + source.component[1], []).append(source)
-        xp = self.fields.grid.xp
-        sparse = {}  # name -> (ix, iy, iz, before-values at those cells)
-        dense = {}   # name -> whole-volume snapshot (unpublished-deposit fallback only)
-        for name, sources_for in sorted(by_target.items()):
-            if self.fields.condinv_for(name) is None:
-                continue  # This component is lossless; MEEP's cndinv multiply never runs.
-            array = getattr(self.fields, name)
-            columns = []
-            for source in sources_for:
-                index = _deposit_index(source)
-                if index is not None:
-                    columns.append(index)
-                elif not hasattr(source, "_point_ix"):
-                    dense[name] = array.copy()  # Publishes no table; see the docstring.
-                    break
-            else:
-                if not columns:
-                    continue  # Every source on this component deposits into zero cells.
-                if len(columns) == 1:
-                    ix, iy, iz = columns[0]
-                else:
-                    ix = xp.concatenate([column[0] for column in columns])
-                    iy = xp.concatenate([column[1] for column in columns])
-                    iz = xp.concatenate([column[2] for column in columns])
-                sparse[name] = (ix, iy, iz, array[ix, iy, iz])
-        for source in scaled:
-            source.inject(self.fields, source_time)
-        # Replay the rescale per deposit cell, in the whole-volume passes' exact
-        # operand order, so the bytes at every deposit cell are unchanged from the
-        # retired composition. Cells two sources both hit gather the same
-        # post-injection value and scatter the same result, so duplicates are safe.
-        for name, (ix, iy, iz, before) in sparse.items():
-            # SPARSE, through the residency door: a raw fetch, a gather of the deposit
-            # cells, the same arithmetic in the same order, a scatter. Under a held
-            # Metal residency the array is sealed and the old fancy-index store raised
-            # (measured on conductive_2d, 2026-09-23); on the array path these are the
-            # plain NumPy read and write. Duplicates in the cell list are safe here for
-            # the reason the comment above gives -- every duplicate scatters the same
-            # value -- so no uniqueness check is owed.
-            array = host_writes.raw(self.fields, name)
-            linear = host_writes.ravel_points(ix, iy, iz, array.shape)
-            values = host_writes.gather(array, linear)
-            values -= before
-            # MEEP's s->condinv[c][d], read at the deposit cells only.
-            values *= self.fields.condinv_for(name)[ix, iy, iz]
-            values += before
-            host_writes.scatter(array, linear, values)
-        for name, before in dense.items():
-            # Whole-volume by nature (no deposit table to be sparse over), and
-            # unreachable from any in-tree source class; declared as the whole-volume
-            # write it is so a held residency syncs it rather than sealing it.
-            array = host_writes.acquire(getattr(self.fields, name))
-            array -= before
-            array *= self.fields.condinv_for(name)  # The component's OWN volume.
-            array += before
+        bind_src_vols(self._sources, layout, self.grid)
+        self._src_vol_key = key
+
+    def _stores_H(self) -> bool:  # Is H an array of its own (the PML), or B's word?
+        return self.pml is not None and self.pml.is_active
+
+    def _f_minus_p_begin_B(self, fast: Any, time: float) -> Any:
+        """The magnetic ``f_minus_p`` bracket's first half, with MEEP's start of H before it.
+
+        MEEP's first ``update_eh(H_stuff)`` allocates H and ``f_w`` as copies of B
+        BEFORE ``f_minus_p`` is formed (update_eh.cpp:113-140, :165-177), so on an
+        integrated point in H's own layer they start from B, not from B minus the
+        dipole. The array path's ``update_H`` starts them itself
+        (``stepping.separate_h_from_b``) from whatever B holds, so the start is run
+        here first, when that ``update_H`` is the one about to run; a kernel that owns
+        the slot starts H on its own route.
+        """
+        if not has_integrated(self._sources, FIELD_TYPE_B):
+            return None
+        if (self._stores_H() and not self.fields.h_separated
+                and (fast is None or "update_H" not in getattr(fast, "slots", ()))):
+            separate_h_from_b(self.fields, self.pml)
+        return f_minus_p_begin(self.fields, self._sources, FIELD_TYPE_B, time)
 
     def _field_energy(self) -> float:  # sum |E|^2 eps + |B|^2, the divergence guard's scalar.
         """One scalar summarising the field, for the runtime divergence guard.
@@ -3836,195 +3956,82 @@ class FdtdDriver:
         return self.time
 
     def get_field_point(self, component: str, point: Sequence[float]) -> complex:
-        """One field component at one point — MEEP's ``Simulation.get_field_point``.
+        """One field component at one point: MEEP's ``Simulation.get_field_point``, word for word.
 
-        This is ``fields::get_field(component, vec)`` (monitor.cpp:127): the eight
-        surrounding Yee samples of that component, trilinearly interpolated onto
-        ``point`` with ``grid_volume::interpolate``'s weights (vec.cpp:558-612,
-        ``0.5*(1 -+ dv)`` per axis), accumulated in double precision as MEEP
-        accumulates them. The return is always ``complex``, as MEEP's is, with a zero
-        imaginary part in a real-fields run.
+        This is ``fields::get_field(component, vec)`` (monitor.cpp:127-157), transcribed in
+        :class:`~.readback.PointStencil`: ``grid_volume::interpolate``'s weights
+        (vec.cpp:558-612: the per-axis halving ``0.5*(1 -+ dv)``, the total-weight
+        correction, the 1e-13 cut, ``stupidsort`` and the equal-weight reset), then
+        ``res += w * get_field(c, iloc)`` in double precision and in that order, each leg
+        located as MEEP locates it (``locate_point_in_user_volume`` translates a point
+        past a periodic face by a lattice vector with ``eikna`` or its conjugate; a point
+        in a folded-away half is reflected and carries ``S.phase_shift``). The return is
+        always ``complex``, as MEEP's is, with a zero imaginary part in a real-fields run.
 
-        A ``beta`` run (MEEP's ``special_kz``) additionally multiplies the accumulated
-        sum by ``exp(i*2*pi*beta*z)`` for any sample asked for off the z = 0 plane,
-        which is where the whole analytic third axis lives: ``monitor.cpp:139-140``,
-        the ``gv.dim == D2 && loc.in_direction(Z) != 0`` branch.
+        A ``beta`` run (MEEP's ``special_kz``) multiplies the sum by
+        ``std::polar(1.0, 2*pi*beta*z)`` for a point off the z = 0 plane
+        (monitor.cpp:139-140).
 
-        ``point`` is in USER COORDINATES — the full, unfolded cell, exactly as MEEP
-        takes it. A point in the half a mirror plane folded away is reflected onto the
-        stored quadrant and multiplied by that component's parity
-        (``fields::get_field`` -> ``S.phase_shift``, monitor.cpp:145-157); a point past
-        the end of a periodic axis is translated back by a lattice vector and
-        multiplied by the Bloch factor (``locate_point_in_user_volume``). Both folds
-        are exact, not approximate: the mirror maps the component's Yee lattice onto
-        itself.
+        ``point`` is in USER COORDINATES, the full unfolded cell. A leg that no chunk owns
+        (past a metallic wall, the far face of a folded axis, outside the cell) reads
+        ``0.0``, as it does in MEEP; a non-finite coordinate is refused.
 
-        WHERE THIS REFUSES AND MEEP DOES NOT. MEEP returns 0.0 for a point that lies
-        in no chunk — off the end of a non-periodic axis, say — which is a field value
-        indistinguishable from a real null. This raises instead. Nothing else about
-        the sampling differs.
-
-        COST. One call gathers eight elements; on the GPU backend that is one small
-        kernel plus one device-to-host synchronization, so sampling every step of a
-        long run is a real (if modest) cost — the same trade MEEP makes, where each
-        call is an MPI all-reduce. The stencil (indices, weights, fold phase) is built
-        once per (component, point) and cached; the arrays behind it are re-resolved
-        on every call, so a :meth:`reset` or a change of storage mode cannot leave a
-        stale reader behind.
+        COST. The stencil (legs, weights, phases) is built once per (component, point)
+        and cached; each call gathers at most eight words in one transfer and
+        accumulates them on the host, so sampling every step of a long run on the GPU
+        is one small gather and one synchronization per call.
         """
         self._require_open()
-        return complex(self._point_field_reader(component, _as_xyz("point", point))())
-
-    def _point_field_reader(self, component: str, point: tuple[float, float, float]):
-        """The cached zero-argument sampler behind :meth:`get_field_point`."""
-        key = (component, point)
-        reader = self._point_readers.get(key)
-        if reader is None:
-            reader = self._build_point_field_reader(component, point)
-            self._point_readers[key] = reader
-        return reader
-
-    def _build_point_field_reader(self, component: str, point: tuple[float, float, float]):
-        """Resolve one point into a 2x2x2 slice, its weights, and the fold phase.
-
-        Geometry only: nothing here captures a field array or a storage mode, both of
-        which the returned closure looks up when it runs. That is deliberate — a
-        reader cached across :meth:`reset` would otherwise hand back the pre-reset
-        arrays, and a reader built before ``setup_pml`` would keep computing E from D
-        after E became stored. Neither would raise; both would just be wrong.
-        """
         if component not in FIELD_COMPONENTS:
             raise ValueError(f"Unknown field component {component!r}. Supported: {FIELD_COMPONENTS}.")
-        shifts = yee_shifts(component)
-        xp = self.xp
-        axis_indices: list[Any] = []
-        axis_weights: list[Any] = []
-        for axis in range(3):
-            indices, weights = self._point_stencil_along(component, axis, point[axis], shifts[axis])
-            axis_indices.append(xp.asarray(indices, dtype=xp.int64))
-            axis_weights.append(xp.asarray(weights, dtype=xp.complex128))
-        gather = (
-            axis_indices[0][:, None, None],
-            axis_indices[1][None, :, None],
-            axis_indices[2][None, None, :],
-        )
-        # MEEP accumulates the eight terms into a complex<double>; carrying the weights
-        # in complex128 promotes the product the same way, so a point sample is not held
-        # to the field's own single precision — and the fold phases (a mirror parity, a
-        # Bloch factor) ride on the per-leg weights, where a wrapped leg needs its own.
-        weights = (
-            axis_weights[0][:, None, None]
-            * axis_weights[1][None, :, None]
-            * axis_weights[2][None, None, :]
-        )
-        primary = component in PRIMARY_COMPONENTS
-        partner = ("D" if component[0] == "E" else "B") + component[1]
-        # The special_kz readback phase, monitor.cpp:139-140: a 2-D run with beta != 0
-        # carries exp(i*2*pi*beta*z) analytically, so a sample asked for at z != 0 is
-        # the stored z = 0 value times that factor. MEEP applies it AFTER the
-        # interpolation, over the whole accumulated sum, and only for a D2 grid; folded
-        # into the weight product here, which is the same multiplication.
-        if self.grid.beta != 0.0 and point[2] != 0.0:
-            turn = 2.0 * math.pi * self.grid.beta * point[2]
-            weights = weights * complex(math.cos(turn), math.sin(turn))  # std::polar(1.0, turn)
+        key = (component, _as_xyz("point", point))
+        stencil = self._point_stencils.get(key)
+        if stencil is None:
+            stencil = PointStencil(self.grid, component, key[1])
+            self._point_stencils[key] = stencil
+        return stencil.read(self.fields)
 
-        def read_point():  # sum_i w_i * f_i over the 2x2x2 stencil, without materializing a volume.
-            if primary or component[0] == "H" or self.fields.stores_E:
-                # D/B are always arrays and H is numerically B (mu = 1); E is an array
-                # only under PML, a susceptibility or a nonlinearity.
-                name = component if (primary or component[0] == "E") else partner
-                values = getattr(self.fields, name)[gather]
-            else:  # E = D * inv_eps, evaluated on the eight cells rather than the volume.
-                values = (
-                    getattr(self.fields, partner)[gather]
-                    * self.fields.inverse_epsilon_for(component)[gather]
-                )
-            return xp.sum(weights * values)
+    def h_alias_rule(self) -> HAliasRule:
+        """The readback's B/H alias rule for this run (:class:`~.readback.HAliasRule`).
 
-        return read_point
-
-    def _point_stencil_along(
-        self, component: str, axis: int, coordinate: float, iyee_shift: int
-    ) -> tuple[list[int], list[complex]]:
-        """One axis of the interpolation stencil: the cells to read and their weights.
-
-        The weights are MEEP's ``grid_volume::interpolate`` (vec.cpp:571-581) — linear
-        in the fractional index, ``1 - w`` on the cell below and ``w`` on the one above
-        — times whatever phase the fold onto the stored array costs:
-
-        * **Mirror.** A folded axis stores only ``x >= 0``; its plane is at the origin,
-          which is where ``stepping._fill_symmetry_ghost_cells`` puts it when it writes
-          ``cell 0 = parity * cell 2``. Reflecting maps the component's Yee lattice onto
-          itself — the samples sit at ``(i - 1/2)*dx`` or ``(i - 1)*dx``, both sets
-          symmetric about 0 — so the reflected point takes the same weights and carries
-          ``fields.mirror_parity``, MEEP's ``S.phase_shift`` (monitor.cpp:145-157). A
-          point past the FAR end of a folded axis has no image at all and raises, since
-          a mirror is a boundary condition and not a lattice vector.
-        * **Bloch.** A periodic axis is unbounded: the fractional index runs off either
-          end and each leg is reduced modulo the stored count, carrying
-          ``bloch_phase ** (leg // n)`` — the engine's one statement of that convention
-          (``Grid.bloch_phase``: ``f(x + L) = phase * f(x)``). Per LEG rather than per
-          point, because the common case is a point in the outer half cell whose two
-          legs land on opposite faces; translating the whole point could not express it
-          and would refuse an ordinary request.
+        Built from :attr:`chunk_layout`, the registered integrated B-family sources and
+        whether the run has taken exactly one step, and rebuilt whenever one changes: in
+        a chunk where MEEP holds H as B's alias (no layer on the component's own axis, no
+        integrated magnetic source), every not-owned B word a centred sum takes is the
+        owner's H word; after the first step, a chunk with H of its own still holds zero
+        there (MEEP's first B pass runs on connections built before H was allocated).
         """
-        if self.grid.is_mirrored(axis):
-            parity: complex = 1.0 + 0.0j
-            if coordinate < 0.0:
-                coordinate = -coordinate
-                parity = float(mirror_parity(component, axis, self.grid.mirror_phase(axis)))
-            low, upper = self.grid.position_to_index(
-                coordinate, ("x", "y", "z")[axis], iyee_shift=iyee_shift
-            )
-            if self.grid.stored_cells(axis) < 2:  # No neighbour to weigh a folded axis against.
-                return [low], [parity]
-            return [low, low + 1], [parity * (1.0 - upper), parity * upper]
-        count = self.grid.stored_cells(axis)
-        fractional = (
-            (coordinate - self.grid.axis_origin(axis)) / self.grid.dx - 0.5 * iyee_shift
-        )
-        if not math.isfinite(fractional):
-            raise ValueError(
-                f"point coordinate {coordinate!r} on the {('x', 'y', 'z')[axis]} axis is not finite."
-            )
-        below = math.floor(fractional)
-        upper = fractional - below
-        wrap = self.grid.bloch_phase(axis)
-        indices: list[int] = []
-        weights: list[complex] = []
-        for leg, weight in ((below, 1.0 - upper), (below + 1, upper)):
-            images = leg // count  # Lattice vectors between this leg and its stored image.
-            factor = 1.0 + 0.0j if wrap is None else complex(wrap) ** images
-            indices.append(leg - images * count)
-            weights.append(weight * factor)
-        return indices, weights
+        self._require_open()
+        layout = self.chunk_layout
+        points = tuple(
+            (str(source.component), tuple(tuple(int(v) for v in index) for index in (source._indices or ())))
+            for source in self._sources
+            if getattr(source, "field_type", None) == FIELD_TYPE_B and bool(getattr(source, "is_integrated", False)))
+        first_step = self.step_count == 1
+        cached = self._h_alias_cache
+        if cached is None or cached[0][0] is not layout or cached[0][1:] != (points, first_step):
+            cached = ((layout, points, first_step),
+                      h_alias_rule(layout, self.grid, self._sources, first_step=first_step))
+            self._h_alias_cache = cached
+        return cached[1]
 
     def get_field(self, component: str, cell_centered: bool = True) -> Any:  # Host NumPy copy of one field component.
         """Return a field component as a host NumPy array.
 
-        ``cell_centered`` interpolates off the Yee positions to cell centres, matching
-        MEEP's ``get_array`` sampling; the raw form returns the stored Yee array. The
-        result is always a private copy, so callers cannot mutate engine state through
-        it.
-
-        The cell-centring is ``Fields.to_cell_center``, which carries the Bloch
-        factor on the wrapped plane of each interpolated axis itself: the last plane
-        averages with a cell one lattice vector away, and MEEP applies the same
-        factor when it fills an array slice from a shifted chunk
-        (loop_in_chunks.cpp: ``ph *= pow(eikna[d], ishift)``). Keeping that in
-        ``Fields`` rather than here means ``to_meep_array`` and any direct reader
-        get the same answer this method does. At k = 0 every factor is None and the
-        multiply is skipped, so the readback is bit-identical to the pre-Bloch one.
+        ``cell_centered`` returns the word MEEP's ``get_array`` holds at every stored cell
+        centre (:meth:`~.fields.Fields.to_cell_center`: MEEP's centred sum over its chunk
+        words, :mod:`~.readback`), in the stored layout: halved on a folded axis, no
+        periodic duplicate plane. The raw form returns the stored Yee array. The result
+        is always a private copy, so callers cannot mutate engine state through it.
         """
         self._require_open()
         if component not in FIELD_COMPONENTS:
             raise ValueError(f"Unknown field component {component!r}. Supported: {FIELD_COMPONENTS}.")
         if not cell_centered:
             array = self.fields.get_component(component)
-        else:
-            array = self.fields.to_cell_center(component)
-        values = to_numpy(array)
-        return values.copy() if values is array else values
+            values = to_numpy(array)
+            return values.copy() if values is array else values
+        return self.fields.to_cell_center(component, self.h_alias_rule())
 
     def set_field(self, component: str, array: Any):  # Overwrite one primary (D or B) field from an array.
         """Set a primary field array, e.g. to seed an initial condition.
@@ -4144,24 +4151,7 @@ class FdtdDriver:
         cell whose y count is ODD, and a 1-D z cell — exact on every axis of every one.
         """
         self._require_open()
-        centers, sizes = [], []
-        for axis in range(3):
-            if self.grid.is_invariant(axis):
-                centers.append(0.0)
-                sizes.append(0.0)
-                continue
-            low = self.grid.origin_doubled(axis)
-            high = low + 2 * self.grid.stored_cells(axis) - 2
-            if self.grid.is_mirrored(axis):
-                reach = max(abs(low), abs(high))
-                low, high = -reach, reach
-            if self.grid.is_axis(axis):  # Dcyl clips r at the axis (fields.cpp:722).
-                low = max(low, 0)
-            low = low * 0.5 * self.grid.dx
-            high = high * 0.5 * self.grid.dx
-            centers.append(0.5 * (low + high))
-            sizes.append(high - low)
-        return tuple(centers), tuple(sizes)
+        return readback_total_volume(self.grid)
 
     def _reducer_region(self, center, size):  # (center, size), defaulting to the whole cell.
         if center is None and size is None:
@@ -4389,9 +4379,8 @@ class FdtdDriver:
         # the backup above copies OUT and restores in place, so the plan's cached
         # device views survive the synchronization.
         fast = None if self._fast_path_stale else self._fast_path
+        self._require_src_vols()
         magnetic = [source for source in self._sources if source.field_type == FIELD_TYPE_B]
-        for source in magnetic:
-            getattr(source, "withdraw", _no_withdraw)(self.fields)
         if fast is None or not fast.dispatch("step_B", self.fields):
             step_B(self.fields, self.pml)
         for source in magnetic:
@@ -4424,8 +4413,12 @@ class FdtdDriver:
         # the ``DispatchAdapter`` shims, and a frozen copy inside a gate's result
         # directory — answers False to a name it does not carry, which is the array
         # path, where a second method would raise ``AttributeError``.
+        # calc_sources(time() + dt/2) and update_eh(H_stuff) on f_minus_p, as in `step`.
+        f_minus_p_B = self._f_minus_p_begin_B(fast, self.time + 0.5 * self.grid.dt)
         if fast is None or not fast.dispatch(SYNC_UPDATE_H_PASS, self.fields):
             update_H(self.fields, self.pml)  # update_eh(H_stuff) at time() + dt/2.
+        f_minus_p_end(self.fields, f_minus_p_B)
+        self.fields.h_separated = True  # MEEP's H allocation is not undone by the restore.
         for name in self._SYNC_FIELDS:
             array = getattr(self.fields, name, None)
             if array is not None and name in backup:
@@ -4437,8 +4430,11 @@ class FdtdDriver:
                 # case of the 2026-09-23 preflight, through the gate's
                 # second-consult control).
                 host_writes.acquire(array)
-                array *= 0.5
-                array += 0.5 * backup[name]
+                # MEEP's average_with_backup runs per part (energy_and_flux.cpp:136-144),
+                # so on complex storage each half is a realnum product per part
+                # (part_products.scale); on real storage the same two ufuncs as ever.
+                part_products.scale(0.5, array, out=array)
+                array += part_products.scale(0.5, backup[name])
 
     def restore_magnetic_fields(self) -> None:
         """Undo :meth:`synchronize_magnetic_fields` — MEEP's ``restore_magnetic_fields``.
@@ -4477,21 +4473,17 @@ class FdtdDriver:
         return self.fields.bytes_per_cell()
 
     def reset(self):  # Return fields, monitors, and the clock to their initial state.
-        """Clear the fields, the monitors, the sources' own state, and the clock.
+        """Clear the fields, the monitors and the clock.
 
-        An integrated source carries the dipole offset it has already applied across
-        steps, so it has to be reset with the clock: without this a re-run starts by
-        subtracting the increment from the *old* final dipole to the new initial one,
-        which produces a wrong but entirely plausible field.
+        No source carries state across steps: an integrated source's dipole enters at the
+        constitutive update and leaves with it (``sources.f_minus_p_begin``), so a
+        restarted run's sources are the sources it started with.
         """
         self._require_open()
         self.fields.reset()
+        self.fields.h_separated = False  # The restarted run starts H from B again, as MEEP's would.
         self.invalidate_fast_path()  # Field arrays may have been reallocated with the state.
         self.step_count = 0
-        for source in self._sources:
-            source_reset = getattr(source, "reset", None)
-            if source_reset is not None:
-                source_reset()
         for monitor in self._dft_monitors:
             monitor.reset()
         for monitor in self._flux_monitors:
@@ -4510,6 +4502,7 @@ class FdtdDriver:
                 self.fields.scratch.clear()  # The step loop's pooled temporaries, up to ~8 volumes.
         self.fields = None
         self.pml = None
+        self._chunk_layout = self._default_chunk_layout = self._chunk_record = None
         self.invalidate_fast_path()  # A plan holds device views; drop them with everything else.
         self._chi2 = 0.0  # Drop any chi2/chi3 volume the caller handed over.
         self._chi3 = 0.0
@@ -4519,7 +4512,8 @@ class FdtdDriver:
         self._flux_monitors.clear()
         self._pending_monitor_regions.clear()
         self._automatic_decimation_monitors.clear()
-        self._point_readers.clear()  # These hold small index arrays on the device.
+        self._point_stencils.clear()  # These hold small index arrays on the device.
+        self._h_alias_cache = None
         self._closed = True
         memory_pool = getattr(self.xp, "get_default_memory_pool", None)
         if memory_pool is not None:

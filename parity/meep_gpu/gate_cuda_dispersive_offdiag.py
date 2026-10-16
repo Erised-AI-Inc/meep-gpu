@@ -144,7 +144,7 @@ import probe_fused_kernel_bit_identity as probe  # noqa: E402
 import gate_provenance  # noqa: E402
 import gate_cuda_offdiag as flat  # noqa: E402
 
-from meep_gpu import stepping  # noqa: E402
+from meep_gpu import part_products, stepping  # noqa: E402
 from meep_gpu.dispersion import PolarizationState, Susceptibility  # noqa: E402
 from meep_gpu.fields import Fields  # noqa: E402
 from meep_gpu.grid import Grid, Mirror  # noqa: E402
@@ -419,14 +419,22 @@ def coupling_is_live(fields, layer) -> Dict[str, Any]:
     From ``stepping._offdiagonal_terms`` itself, not from a re-derivation, and
     over all three components rather than Ex alone: a mask whose only live slot is
     (Ey, Ez) leaves Ex's coupling identically zero, and a floor that read Ex would
-    refuse a case perfectly able to discriminate.
+    refuse a case perfectly able to discriminate. That function returns the whole
+    row in double, ``gs*us`` included (one float64 volume per stored part), so the
+    contribution is the row less the widened ``gs*us`` product.
     """
     displacement = stepping._nonlinear_displacement(fields, layer)
     out: Dict[str, Any] = {"per_component": {}, "max_abs": 0.0}
     for component in COMPONENTS:
-        term = stepping._offdiagonal_terms(fields, component, displacement)
-        value = (0.0 if term is None
-                 else float(np.max(np.abs(to_host(term).astype(np.float64)))))
+        row = stepping._offdiagonal_terms(fields, component, displacement)
+        if row is None:
+            value = 0.0
+        else:
+            diagonal = part_products.parts(part_products.scale(
+                to_host(fields.inverse_epsilon_for(component)),
+                to_host(displacement["volumes"][component])))
+            value = max(float(np.max(np.abs(to_host(part) - low.astype(np.float64))))
+                        for part, low in zip(row, diagonal))
         out["per_component"][component] = value
         out["max_abs"] = max(out["max_abs"], value)
     out["meets_floor"] = out["max_abs"] > 0.0
@@ -574,9 +582,9 @@ def evaluator_blind_lines(text: str) -> List[str]:
     differ and why both are reported.
     """
     tests = slice_module()
-    grammar = (tests._TERM_CALL, tests._TOTAL_FIRST, tests._TOTAL_ADD,
-               tests._MASK, tests._LANE, tests._GS, tests._US,
-               tests._SRC_COUPLED, tests._SRC_PLAIN, tests._TAIL)
+    # THE SLICE'S OWN GRAMMAR LIST, read rather than restated, so the two cannot
+    # name different patterns.
+    grammar = tests._grammar_patterns()
     body = text[text.index('extern "C"'):]
     covered = set()
     for pattern in grammar:
@@ -667,13 +675,13 @@ class EvaluatorBackend:
         return self.source_transform(text)
 
     def launch(self, fields, layer, rows, poles, mask, arity, tables, codes,
-               walls, weights, plan=None) -> Dict[str, Any]:
+               walls, weights, plan=None, record=None, kept=None) -> Dict[str, Any]:
         text, _sites = self.source_for(mask, arity)
         self.sources_used[str((tuple(mask), tuple(arity)))] = hashlib.sha256(
             text.encode("utf-8")).hexdigest()
         slice_module().evaluate_dispersive_offdiag_source(
             text, device_arrays(fields, rows, poles), tables, codes, walls,
-            weights, tuple(fields.grid.shape))
+            weights, tuple(fields.grid.shape), record, kept)
         return {"kernel_launches": 1, "extra_full_volume_passes": 0,
                 "scratch_volumes": 0}
 
@@ -728,7 +736,7 @@ class KernelBackend:
         return self.source_transform(text)
 
     def launch(self, fields, layer, rows, poles, mask, arity, tables, codes,
-               walls, weights, plan=None) -> Dict[str, Any]:
+               walls, weights, plan=None, record=None, kept=None) -> Dict[str, Any]:
         key = (tuple(mask), tuple(arity))
         text, _sites = self.source_for(*key)
         if self.source_transform is not None:
@@ -739,7 +747,8 @@ class KernelBackend:
             text.encode("utf-8")).hexdigest()
         family.update_E_dispersive_offdiag_fused_pml_real(
             fields, tables=tables, codes=codes, walls=walls, weights=weights,
-            plan=plan)
+            chunk_bounds=cp.asarray(np.asarray(record, dtype=np.int32)),
+            kept=tuple(kept), plan=plan)
         cp.cuda.runtime.deviceSynchronize()
         return {"kernel_launches": 1, "extra_full_volume_passes": 0,
                 "scratch_volumes": 0}
@@ -805,7 +814,7 @@ class CompositionBackend:
         return self.pristine_source(mask, arity), 0
 
     def launch(self, fields, layer, rows, poles, mask, arity, tables, codes,
-               walls, weights, plan=None) -> Dict[str, Any]:
+               walls, weights, plan=None, record=None, kept=None) -> Dict[str, Any]:
         volumes = fields.displacement_minus_polarization_volumes()
         originals = {name: getattr(fields, "D" + name[1])
                      for name in COMPONENTS}
@@ -814,7 +823,9 @@ class CompositionBackend:
                 setattr(fields, "D" + component[1], volumes[component])
             folded.update_E_folded_offdiag_fused_pml_real(
                 fields, tables=tables, codes=codes, walls=walls,
-                weights=weights)
+                weights=weights,
+                chunk_bounds=cp.asarray(np.asarray(record, dtype=np.int32)),
+                kept=tuple(kept))
             if cp is not None:
                 cp.cuda.runtime.deviceSynchronize()
         finally:
@@ -1040,21 +1051,23 @@ def m_ghost_lane_from_the_wall_flag(text):
 
 
 def m_drop_a_row_from_the_volume_sum(text):
-    """One partner's term silently missing from a component's total."""
-    return _sub(r"\n    total_(\w+) = total_\1 \+ term_\w+;", "", text)
+    """One partner's term silently missing from a component's row: the second
+    partner's add dropped (the flat family's anchor on the double row)."""
+    return _sub(r"\n    if \(chunk_keeps\(kept_\w+, chunk_(\w+)\)\) row_\1 = row_\1 \+ "
+                r"\(0\.25 \* \(double\)term_\1_1\);", "", text)
 
 
 def m_invert_the_wall_mask(text):
     """The metallic wall-coupling select inverted: kept at the wall, zeroed
     inside. A defect on EVERY grid, which is why it is not a discriminator --
     measured that way on the folded family's first device run."""
-    return _sub(r"\? 0\.0f : total_(\w+);", r"? total_\1 : 0.0f;", text)
+    return _sub(r"\? 0\.0f : term_(\w+);", r"? term_\1 : 0.0f;", text)
 
 
 def m_drop_the_wall_mask(text):
     """The mask never applied. Its discriminator: a NULL on a grid that declares
     no metallic axis a live row masks against."""
-    return _sub(r"\n *total_\w+ = \(wm_[xyz] && at_[xyz]\) \? 0\.0f : total_\w+;",
+    return _sub(r"\n *term_\w+ = \(wm_[xyz] && at_[xyz]\) \? 0\.0f : term_\w+;",
                 "", text)
 
 
@@ -1081,12 +1094,20 @@ def m_wrong_own_axis_table(text):
                 text)
 
 
-def n_distribute_the_quarter(text):
-    """NULL: 0.25 is an exact power of two, so scaling by it commutes with
-    round-to-nearest AWAY FROM UNDERFLOW. Armed on the uniform class only."""
-    return _replace(_TERM_RETURN,
-                    "return (0.25f * (near_pair * u[home]))"
-                    " + (0.25f * (far_pair * ghosted(u, up)));", text)
+def n_scale_the_quarter_in_float32(text):
+    """NULL: the term's float32 sum scaled by ``0.25f`` in float32 and widened.
+    0.25 is an exact power of two, so the float32 product is exact AWAY FROM
+    UNDERFLOW and widening it gives the double scale's word. Armed on the uniform
+    class only."""
+    return _sub(r"\(0\.25 \* \(double\)term_(\w+)\)", r"(double)(0.25f * term_\1)",
+                text)
+
+
+def m_constitutive_accumulates_on_every_cell(text):
+    """The per-chunk select removed: the accumulation on every cell, the 0.9.2
+    whole-grid form. Off the layer's chunks MEEP stores ``E = src`` and leaves
+    ``f_w`` alone."""
+    return _sub(r"(kms_[xyz]\[[ijk]\]), in_h_[xyz]\);", r"\1, 1);", text)
 
 
 def n_commute_the_near_product(text):
@@ -1118,7 +1139,8 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "hoist_the_coefficient": m_hoist_the_coefficient,
     "same_direction_shifts": m_same_direction_shifts,
     "wrong_own_axis_table": m_wrong_own_axis_table,
-    "distribute_the_quarter": n_distribute_the_quarter,
+    "constitutive_accumulates_on_every_cell": m_constitutive_accumulates_on_every_cell,
+    "scale_the_quarter_in_float32": n_scale_the_quarter_in_float32,
     "commute_the_near_product": n_commute_the_near_product,
 }
 
@@ -1126,7 +1148,7 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
 #: editing the same kind of expression that must be caught, because a battery of
 #: only-must-be-caught legs scores identically whether the comparator works or has
 #: degenerated into failing everything.
-NULL_MUTATIONS: Tuple[str, ...] = ("distribute_the_quarter",
+NULL_MUTATIONS: Tuple[str, ...] = ("scale_the_quarter_in_float32",
                                    "commute_the_near_product")
 
 #: DISCRIMINATORS IN THE POLE ARITY: the same expression at one pole, a different
@@ -1281,6 +1303,9 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     codes = family.dispersive_offdiag_boundary_codes(grid)
     walls = coverage.offdiag_wall_mask_flags(grid)
     weights = family.mirror_ghost_weights(grid)
+    # The chunk record and the six presence words: the family's own derivation
+    # (offdiag_presence.launch_chunk_arguments), bound by every backend.
+    record, kept = family.dispersive_offdiag_chunk_arguments(fields, layer, codes)
 
     case: Dict[str, Any] = {
         "key": key,
@@ -1405,7 +1430,8 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
         for _ in range(steps):
             cost = backend.launch(fields, layer, rows, poles, mask, arity,
                                   tables, launch_codes, launch_walls,
-                                  launch_weights, plan=launch_plan)
+                                  launch_weights, plan=launch_plan,
+                                  record=record, kept=kept)
             advance_sources(fields)
     except Exception as exc:  # noqa: BLE001 - a refusal is a result, recorded
         launch_error = f"{type(exc).__name__}: {exc}"[:600]

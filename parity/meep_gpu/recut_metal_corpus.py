@@ -31,19 +31,13 @@ small, harness-only ``parameterized`` shim is used only where an upstream module
 imports that uninstalled package; generated cases are assigned to the ledger by
 exactly equal measured facts, never a recreated upstream method name.
 
-The corpus requires four explicit expansion-probe artifacts.  A planner result that
-consulted an ambient, unrecorded probe is not useful release evidence.  The campaign
-stamps each supplied probe, source test/example, and every imported API Python source
+The campaign stamps each source test/example and every imported API Python source
 into its output; conflicting imported source bytes make its final release false.
 
 Run from ``the repository root`` on the Apple-Silicon development host::
 
     MEEP_GPU_SUBNORMAL_POLICY=flush python -u \\
-      -m parity.meep_gpu.recut_metal_corpus --out /path/to/corpus-recut \\
-      --probe complex=/path/to/complex.json \\
-      --probe special_kz=/path/to/special-kz.json \\
-      --probe folded_complex=/path/to/folded-complex.json \\
-      --probe cylindrical_complex=/path/to/cylindrical-complex.json
+      -m parity.meep_gpu.recut_metal_corpus --out /path/to/corpus-recut
 
 No CUDA host is contacted and this program does not launch a Metal shader; device
 gates establish arithmetic while this separate campaign establishes live-planner
@@ -78,12 +72,6 @@ EXPECTED_TEST_ROWS = 134
 EXPECTED_ROWS = EXPECTED_EXAMPLE_ROWS + EXPECTED_TEST_ROWS
 EXPECTED_SLOTS = 759
 CORE_SLOTS = ("step_B", "step_D", "update_H", "update_E")
-PROBE_ENVIRONMENTS = {
-    "complex": "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE",
-    "special_kz": "MEEP_GPU_METAL_EXPANSION_PROBE",
-    "folded_complex": "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
-    "cylindrical_complex": "MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE",
-}
 
 
 def sha256(path: Path) -> str:
@@ -196,76 +184,6 @@ def mps_status() -> dict[str, Any]:
                 "error": f"{type(exc).__name__}: {exc}"[:300]}
 
 
-def _probe_paths(values: Iterable[str]) -> dict[str, Path]:
-    """Parse and validate the four explicitly supplied, source-welded probe inputs."""
-    output: dict[str, Path] = {}
-    for value in values:
-        name, separator, raw_path = value.partition("=")
-        if not separator or not name or not raw_path:
-            raise ValueError("--probe must be NAME=/absolute/or/relative/path.json")
-        if name not in PROBE_ENVIRONMENTS:
-            raise ValueError(f"unknown probe {name!r}; expected {sorted(PROBE_ENVIRONMENTS)}")
-        if name in output:
-            raise ValueError(f"probe {name!r} was supplied more than once")
-        path = Path(raw_path).expanduser().resolve()
-        if not path.is_file():
-            raise ValueError(f"probe {name!r} does not exist: {path}")
-        try:
-            parsed = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ValueError(f"probe {name!r} is not readable JSON: {exc}") from exc
-        if not isinstance(parsed, dict):
-            raise ValueError(f"probe {name!r} must have a JSON-object root")
-        output[name] = path
-    missing = sorted(set(PROBE_ENVIRONMENTS) - set(output))
-    if missing:
-        raise ValueError(f"missing explicit probe(s): {', '.join(missing)}")
-    return output
-
-
-def _set_probe_environment(probes: Mapping[str, Path]) -> None:
-    for name, environment in PROBE_ENVIRONMENTS.items():
-        os.environ[environment] = str(probes[name])
-
-
-def validate_probe_records(probes: Mapping[str, Path]) -> dict[str, str]:
-    """Require that each supplied record licenses the matching live family.
-
-    A syntactically valid JSON file is not necessarily an expansion experiment for
-    this executor or a complete probe for the family that reads it.  Calling each
-    family's own parser keeps those rules in one place and turns an old/foreign
-    artifact into an early campaign refusal rather than a broad unexplained gap.
-    """
-    from meep_gpu.metal_kernels import (  # noqa: PLC0415
-        complex_fields,
-        cylindrical_complex,
-        folded_complex,
-        special_kz,
-    )
-
-    parsers = {
-        "complex": complex_fields.expansion_from_probe,
-        "special_kz": special_kz.beta_expansion_from_probe,
-        "folded_complex": folded_complex.expansion_from_probe,
-        "cylindrical_complex": cylindrical_complex.expansion_from_probe,
-    }
-    arms: dict[str, str] = {}
-    for name, parser in parsers.items():
-        record = json.loads(probes[name].read_text(encoding="utf-8"))
-        arm = parser(record)
-        if arm is None:
-            raise ValueError(
-                f"probe {name!r} does not license an unambiguous current Metal "
-                f"expansion arm")
-        arms[name] = str(arm)
-    return arms
-
-
-def _probe_record(probes: Mapping[str, Path]) -> dict[str, dict[str, str]]:
-    return {name: {"path": str(path), "sha256": sha256(path)}
-            for name, path in sorted(probes.items())}
-
-
 def _progress(path: Path, identity: str, message: str, started: float) -> None:
     line = (f"[{time.strftime('%H:%M:%S')}] {identity:<58.58} "
             f"+{time.time() - started:7.1f}s  {message}\n")
@@ -282,11 +200,9 @@ def _runtime_sources() -> dict[str, str]:
     return runtime_source_sha256(gate_path=Path(__file__).resolve())
 
 
-def _stamp_record(record: dict[str, Any], *, source: Path,
-                  probes: Mapping[str, Path]) -> dict[str, Any]:
+def _stamp_record(record: dict[str, Any], *, source: Path) -> dict[str, Any]:
     record["input_sha256"] = {
         "simulation_source": {"path": str(source.resolve()), "sha256": sha256(source)},
-        "expansion_probes": _probe_record(probes),
     }
     record["source_sha256"] = _runtime_sources()
     return record
@@ -331,10 +247,8 @@ def _lift_and_evaluate(sim: Any, record: dict[str, Any], *,
     return record
 
 
-def child_example(*, script: Path, out_json: Path, progress_log: Path,
-                  probes: Mapping[str, Path]) -> int:
+def child_example(*, script: Path, out_json: Path, progress_log: Path) -> int:
     """Capture, lift, and census exactly one example script in a fresh process."""
-    _set_probe_environment(probes)
     started = time.time()
     identity = script.name
     _progress(progress_log, identity, "capture starting", started)
@@ -355,7 +269,7 @@ def child_example(*, script: Path, out_json: Path, progress_log: Path,
     except BaseException as exc:  # noqa: BLE001 - preserve a child failure as one durable row.
         record.update({"measured": False,
                        "child_error": f"{type(exc).__name__}: {exc}"[:1200]})
-    _stamp_record(record, source=script, probes=probes)
+    _stamp_record(record, source=script)
     _atomic_json(out_json, record)
     _progress(progress_log, identity,
               f"measured={record.get('measured')} lift_s={record.get('lift_s')}", started)
@@ -374,10 +288,9 @@ def _parameterized_metadata(module: Any, class_name: str, method_name: str) -> d
 
 
 def child_module(*, module_path: Path, wanted: set[str], output_jsonl: Path,
-                 progress_log: Path, probes: Mapping[str, Path], case_timeout: float,
+                 progress_log: Path, case_timeout: float,
                  take_all: bool) -> int:
     """Replay a test module in order, flushing a raw record after every selected case."""
-    _set_probe_environment(probes)
     from parity.meep_gpu import survey_meep_tests as harness  # noqa: PLC0415
 
     started = time.time()
@@ -420,7 +333,7 @@ def child_module(*, module_path: Path, wanted: set[str], output_jsonl: Path,
                     namespace["_cancel_alarm"],
                 ),
             )
-        _stamp_record(record, source=module_path, probes=probes)
+        _stamp_record(record, source=module_path)
         _append_jsonl(output_jsonl, record)
         _progress(progress_log, identity,
                   f"case {index}/{len(cases)} {case_id}: measured={record.get('measured')}",
@@ -567,7 +480,7 @@ def verify_runtime_sources(sources: Mapping[str, str], *, root: Path = API_ROOT)
 
 
 def verify_row_inputs(rows: Iterable[Mapping[str, Any]]) -> list[str]:
-    """Rehash source scripts and probe artifacts, including resumed child rows."""
+    """Rehash source scripts, including resumed child rows."""
     errors: list[str] = []
     for row in rows:
         if not row.get("measured"):
@@ -582,11 +495,6 @@ def verify_row_inputs(rows: Iterable[Mapping[str, Any]]) -> list[str]:
             records.append(source)
         else:
             errors.append(f"{row.get('leg')}::{row.get('row')} lacks simulation-source digest")
-        probes = inputs.get("expansion_probes")
-        if isinstance(probes, Mapping):
-            records.extend(value for value in probes.values() if isinstance(value, Mapping))
-        else:
-            errors.append(f"{row.get('leg')}::{row.get('row')} lacks probe digests")
         for record in records:
             name, digest = record.get("path"), record.get("sha256")
             if not isinstance(name, str) or not isinstance(digest, str):
@@ -621,11 +529,9 @@ def _write_manifest(path: Path, sources: Mapping[str, str]) -> None:
 
 
 def _command_for_child(arguments: argparse.Namespace, *, mode: str,
-                       probes: Mapping[str, Path], extra: Sequence[str]) -> list[str]:
+                       extra: Sequence[str]) -> list[str]:
     command = [sys.executable, "-u", str(Path(__file__).resolve()), "--child", mode,
                "--subnormal-policy", arguments.subnormal_policy]
-    for name, path in sorted(probes.items()):
-        command.extend(["--probe", f"{name}={path}"])
     command.extend(extra)
     return command
 
@@ -665,8 +571,6 @@ def run_campaign(arguments: argparse.Namespace) -> int:
     """Run the two corpus legs sequentially and release only a fully welded census."""
     if arguments.subnormal_policy != "flush":
         raise SystemExit("the Metal corpus is only valid under --subnormal-policy flush")
-    probes = _probe_paths(arguments.probe)
-    probe_arms = validate_probe_records(probes)
     meep_root = Path(arguments.meep_root).expanduser().resolve()
     examples_dir, tests_dir = meep_root / "python/examples", meep_root / "python/tests"
     if not examples_dir.is_dir() or not tests_dir.is_dir():
@@ -701,8 +605,6 @@ def run_campaign(arguments: argparse.Namespace) -> int:
         "inputs": {
             "examples_ledger": {"path": str(examples_ledger), "sha256": sha256(examples_ledger)},
             "tests_ledger": {"path": str(tests_ledger), "sha256": sha256(tests_ledger)},
-            "probes": _probe_record(probes),
-            "probe_arms": probe_arms,
         },
     }
     if arguments.preflight:
@@ -751,8 +653,7 @@ def run_campaign(arguments: argparse.Namespace) -> int:
             raw = [json.loads(out.read_text(encoding="utf-8"))]
         else:
             command = _command_for_child(
-                arguments, mode="example", probes=probes,
-                extra=["--script", str(examples_dir / name), "--out-json", str(out),
+                arguments, mode="example", extra=["--script", str(examples_dir / name), "--out-json", str(out),
                        "--progress-log", str(progress)],
             )
             code, stderr = _run_child(command, cwd=work, environment=_child_environment(parameterized=False),
@@ -780,8 +681,7 @@ def run_campaign(arguments: argparse.Namespace) -> int:
             raw = _load_child_records(raw_path)
         else:
             command = _command_for_child(
-                arguments, mode="module", probes=probes,
-                extra=["--module-path", str(module_path), "--wanted-json",
+                arguments, mode="module", extra=["--module-path", str(module_path), "--wanted-json",
                        json.dumps([str(row["case"]) for row in wanted_rows]),
                        "--out-jsonl", str(raw_path), "--progress-log", str(progress),
                        "--case-timeout", str(arguments.case_timeout),
@@ -837,7 +737,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--meep-root", default=str(DEFAULT_MEEP_ROOT))
     parser.add_argument("--examples-ledger", default=str(DEFAULT_EXAMPLES_LEDGER))
     parser.add_argument("--tests-ledger", default=str(DEFAULT_TESTS_LEDGER))
-    parser.add_argument("--probe", action="append", default=[], metavar="NAME=PATH")
     parser.add_argument("--subnormal-policy", default="flush")
     parser.add_argument("--example-timeout", type=float, default=900.0)
     parser.add_argument("--case-timeout", type=float, default=300.0)
@@ -861,18 +760,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = parse_args(argv)
-    try:
-        probes = _probe_paths(arguments.probe)
-        validate_probe_records(probes)
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
     if arguments.subnormal_policy != "flush":
         raise SystemExit("the Metal corpus is only valid under --subnormal-policy flush")
     if arguments.child == "example":
         if not all((arguments.script, arguments.out_json, arguments.progress_log)):
             raise SystemExit("example child requires --script, --out-json, and --progress-log")
         return child_example(script=Path(arguments.script).resolve(), out_json=Path(arguments.out_json),
-                             progress_log=Path(arguments.progress_log), probes=probes)
+                             progress_log=Path(arguments.progress_log))
     if arguments.child == "module":
         if not all((arguments.module_path, arguments.wanted_json, arguments.out_jsonl,
                     arguments.progress_log)):
@@ -880,8 +774,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return child_module(
             module_path=Path(arguments.module_path).resolve(),
             wanted=set(json.loads(arguments.wanted_json)), output_jsonl=Path(arguments.out_jsonl),
-            progress_log=Path(arguments.progress_log), probes=probes,
-            case_timeout=float(arguments.case_timeout), take_all=bool(arguments.take_all),
+            progress_log=Path(arguments.progress_log), case_timeout=float(arguments.case_timeout), take_all=bool(arguments.take_all),
         )
     if not arguments.out:
         raise SystemExit("parent mode requires --out")

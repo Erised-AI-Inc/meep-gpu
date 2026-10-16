@@ -45,7 +45,7 @@ import re
 import numpy
 import pytest
 
-from .. import stepping
+from .. import part_products, stepping
 from ..dispersion import PolarizationState, Susceptibility
 from ..fields import Fields
 from ..grid import Grid
@@ -58,7 +58,6 @@ HERE = pathlib.Path(__file__).parent
 MODULE_PATH = HERE / "complex_no_pml_kernels.py"
 STEPPING_PATH = HERE.parent / "stepping.py"
 
-ARMS = ("NAIVE", "FMA_V1")
 CURL_KEYS = ("step_B", "step_D", "step_B_conductive", "step_D_conductive")
 
 
@@ -76,27 +75,6 @@ class _NumpyWearingCupysName:
 
 
 XP = _NumpyWearingCupysName()
-
-#: A refusal-free licence for the four-pattern probe every complex family shares.
-FOUR_PATTERN_LICENCE = {
-    "arm": "FMA_V1", "expansion": 1, "basis": "measured",
-    "policy_resolved": "keep",
-    "refusals": (),
-    "patterns": {"c8_mul_c8": "FMA_V1", "c8_mul_f4_field_left": "FMA_V1",
-                 "f4_mul_c8_coefficient_left": "FMA_V1",
-                 "python_float_left": "FMA_V1"},
-}
-
-#: The same licence over the SEVEN-pattern record, which classifies the
-#: orientation ``update_P`` needs.
-SEVEN_PATTERN_LICENCE = dict(
-    FOUR_PATTERN_LICENCE,
-    patterns=dict(FOUR_PATTERN_LICENCE["patterns"],
-                  **{family.ADE_PROBE_PATTERN: "FMA_V1",
-                     "c8_mul_c8_imaginary_coefficient_left": "AMBIGUOUS_BOTH",
-                     "c8_mul_c8_parity_coefficient_left": "AMBIGUOUS_BOTH"}))
-
-POLICY = "keep"
 
 
 # ---------------------------------------------------------------------------
@@ -149,22 +127,23 @@ def shipped():
 # ===========================================================================
 
 @pytest.mark.parametrize("key", CURL_KEYS)
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_curl_stencil_is_the_shared_templates_own_text(key, arm):
+def test_the_curl_stencil_is_the_shared_templates_own_text(key):
     """Every stencil line in the emitted curl is ``complex_emitter``'s, verbatim.
 
     Not a spot check: the three per-target blocks of the shared template are
     extracted from the SIBLING and each is required to appear in the emitted
     source with only its tail line replaced. A stencil that had drifted -- a
-    swapped source volume, a shifted axis, a lost phase argument -- is a smooth,
-    converged, entirely wrong field that no compile error would report.
+    swapped source volume, a shifted axis, a lost connection argument -- is a
+    smooth, converged, entirely wrong field that no compile error would report. The
+    stencil itself is the shared ``curl_stencil`` (MEEP's bracket and its two
+    partner-absent forms), called once per target with the record's presence bits.
     """
     sub_step, conductive = family.CURL_KERNELS[key]
-    emitted = family.kernel_source(key, arm)
+    emitted = family.kernel_source(key)
     backward = complex_emitter.KERNELS[sub_step][1]
     shift = "cshift_dn" if backward else "cshift_up"
 
-    reference = complex_emitter.complex_source(sub_step, arm)
+    reference = complex_emitter.complex_source(sub_step)
     # The four stencil lines of each of the three target blocks, taken from the
     # certified source rather than restated here.
     blocks = re.findall(
@@ -173,10 +152,10 @@ def test_the_curl_stencil_is_the_shared_templates_own_text(key, arm):
     assert len(blocks) == 3, blocks
     for block in blocks:
         assert block in emitted, (
-            f"a certified stencil block is missing from {key}/{arm}:\n{block}")
-    assert emitted.count(
-        "        cf curl = mul_coefficient_left(dtdx, "
-        "cf_add(cf_sub(sf, f_1), cf_sub(f_2, ss)));") == 3
+            f"a certified stencil block is missing from {key}:\n{block}")
+    assert len(re.findall(
+        r"        cf curl = curl_stencil\(dtdx, sf, f_1, f_2, ss, pr_[xyz], pr_[xyz]\);",
+        emitted)) == 3
     body = emitted[emitted.index('extern "C" __global__ void'):]
     other = "cshift_up" if backward else "cshift_dn"
     assert body.count(shift + "(") == 6, "six ghost reads, all one direction"
@@ -184,8 +163,7 @@ def test_the_curl_stencil_is_the_shared_templates_own_text(key, arm):
 
 
 @pytest.mark.parametrize("key", CURL_KEYS)
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_ownership_masks_are_the_shared_tables(key, arm):
+def test_the_ownership_masks_are_the_shared_tables(key):
     """One ``curl = cf_zero()`` guard per masked axis, from ``_MASK_AXES``.
 
     ``fields.IYEE_SHIFTS`` gives each B target ONE masked axis and each D target
@@ -193,7 +171,7 @@ def test_the_ownership_masks_are_the_shared_tables(key, arm):
     """
     sub_step, _ = family.CURL_KERNELS[key]
     backward = complex_emitter.KERNELS[sub_step][1]
-    emitted = family.kernel_source(key, arm)
+    emitted = family.kernel_source(key)
     expected = sum(len(axes)
                    for axes in complex_emitter._MASK_AXES[backward])
     assert emitted.count("curl = cf_zero();") == expected
@@ -202,23 +180,21 @@ def test_the_ownership_masks_are_the_shared_tables(key, arm):
 
 
 @pytest.mark.parametrize("key", CURL_KEYS)
-@pytest.mark.parametrize("arm", ARMS)
-def test_no_split_field_token_survives_into_a_no_absorber_curl(key, arm):
+def test_no_split_field_token_survives_into_a_no_absorber_curl(key):
     """No ``pml_apply`` call, no ``kms``/``sinv`` index, no ``fu`` pointer.
 
     The whole safety argument for building this family out of the split-field
     template is that the tail is replaced at every site. One missed site would
     step the absorber recurrence with whatever coefficients happened to be bound.
     """
-    emitted = family.kernel_source(key, arm)
+    emitted = family.kernel_source(key)
     body = emitted[emitted.index('extern "C" __global__ void'):]
     for pattern in family._FORBIDDEN_IN_CURL_BODY:
         found = re.search(pattern, body)
-        assert found is None, f"{found.group(0)!r} survived into {key}/{arm}"
+        assert found is None, f"{found.group(0)!r} survived into {key}"
 
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_dead_prelude_helpers_are_carried_whole(arm):
+def test_the_dead_prelude_helpers_are_carried_whole():
     """``pml_apply`` and ``constitutive_apply`` are compiled in and never called.
 
     Carried rather than forked out, for the reason ``no_pml_curl`` carries its
@@ -228,7 +204,7 @@ def test_the_dead_prelude_helpers_are_carried_whole(arm):
     this family really does not route through those recurrences.
     """
     for key in family.KERNEL_KEYS:
-        source = family.kernel_source(key, arm)
+        source = family.kernel_source(key)
         assert "__device__ __forceinline__ void pml_apply(" in source
         assert "__device__ __forceinline__ void constitutive_apply(" in source
         body = source[source.index('extern "C" __global__ void'):]
@@ -236,8 +212,7 @@ def test_the_dead_prelude_helpers_are_carried_whole(arm):
         assert re.search(r"(?<![A-Za-z0-9_])constitutive_apply\(", body) is None
 
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_conductive_arm_differs_from_the_plain_one_only_in_its_tail(arm):
+def test_the_conductive_arm_differs_from_the_plain_one_only_in_its_tail():
     """Same stencil, same masks, same phases; two extra parameter triples and a tail.
 
     Pinned as a DIFF rather than as two independent readings, because the claim
@@ -246,8 +221,8 @@ def test_the_conductive_arm_differs_from_the_plain_one_only_in_its_tail(arm):
     remains must be identical but for the kernel name.
     """
     for sub_step in ("step_B", "step_D"):
-        plain = family.kernel_source(sub_step, arm)
-        cond = family.kernel_source(sub_step + "_conductive", arm)
+        plain = family.kernel_source(sub_step)
+        cond = family.kernel_source(sub_step + "_conductive")
         # Counted in the KERNEL BODY: both helpers are also DECLARED in the
         # prelude, and "no_pml_apply(f" matches "no_pml_apply(float*".
         plain_body = plain[plain.index('extern "C" __global__ void'):]
@@ -266,7 +241,6 @@ def test_the_conductive_arm_differs_from_the_plain_one_only_in_its_tail(arm):
             reduce(cond, family.kernel_name(sub_step + "_conductive"))
 
 
-
 def test_the_builder_refuses_a_template_it_can_no_longer_recognise(monkeypatch):
     """A renamed or restructured shared template fails HERE, loudly, at build.
 
@@ -276,7 +250,7 @@ def test_the_builder_refuses_a_template_it_can_no_longer_recognise(monkeypatch):
     monkeypatch.setattr(complex_emitter, "_CURL_TEMPLATE",
                         complex_emitter._CURL_TEMPLATE.replace("pml_apply", "zzz"))
     with pytest.raises(RuntimeError, match="three pml_apply tail sites"):
-        family.kernel_source("step_B", "FMA_V1")
+        family.kernel_source("step_B")
 
 
 # ===========================================================================
@@ -321,7 +295,7 @@ def test_the_conductive_order_is_load_bearing_and_the_spelling_is_not(capsys):
         f"reassociating the conductive tail changed only {swapped}/{words} "
         f"words; the order clause rests on it changing them")
     # And the shipped device text carries the array path's order.
-    source = family.kernel_source("step_B_conductive", "FMA_V1")
+    source = family.kernel_source("step_B_conductive")
     helper = source[source.index("void conductive_apply("):]
     helper = helper[helper.index(") {"):]
     helper = helper[:helper.index("\n}")]
@@ -348,97 +322,101 @@ def test_the_poles_may_not_be_pre_summed(capsys):
     assert differing > 0, (
         "pre-summing two poles changed no word on this fixture, so the "
         "registration-order clause has no measured basis here")
-    source = family.kernel_source("update_E", "FMA_V1")
+    source = family.kernel_source("update_E")
     helper = source[source.index("cf minus_poles("):]
     helper = helper[:helper.index("return s;")]
     assert helper.count("cf_sub(s, cf_load(") == family.MAX_POLES, (
         "minus_poles must subtract one pole at a time")
 
 
-def test_the_real_coefficient_multiply_is_the_full_complex_product(capsys):
-    """Plane-wise ``{re*c, im*c}`` is byte-wrong on signed zeros; measured.
+def test_the_real_coefficient_multiply_is_the_part_wise_product(capsys):
+    """``part_products.scale``: one float32 product per part, at both new sites.
 
-    This is ``complex_emitter``'s fact, re-measured for the two coefficient sites
-    this family adds (``condfac``, ``condinv``): they are ordinary float32
-    volumes, so the natural implementation is to scale the two planes, and it is
-    the wrong one.
+    The two coefficient sites this family adds (``condfac``, ``condinv``) are
+    ordinary float32 volumes, and the array path scales each stored part by them
+    (``_apply_conductive_update``). The full complex product against ``(c + 0j)`` --
+    the previous family's form -- differs from it on signed zeros, measured here so
+    the clause has a basis on this fixture.
     """
     patterns = numpy.array(
         [complex(0.0, -0.0), complex(-0.0, 0.0), complex(-0.0, -0.0),
          complex(0.0, 0.0)], dtype=numpy.complex64)
     c = numpy.full(patterns.shape, numpy.float32(1.5))
     full = patterns * c
-    plane = (patterns.real * c + 1j * (patterns.imag * c)).astype(numpy.complex64)
+    plane = part_products.scale(numpy.float32(1.5), patterns)
     differing = int(numpy.sum(
         full.view(numpy.uint32) != plane.view(numpy.uint32)))
     with capsys.disabled():
-        print(f"  zero-imaginary product: plane-wise differs on {differing}/"
-              f"{full.view(numpy.uint32).size} words", flush=True)
+        print(f"  zero-imaginary product: the full complex product differs from the "
+              f"part-wise one on {differing}/{full.view(numpy.uint32).size} words",
+              flush=True)
     assert differing > 0
-    source = family.kernel_source("step_B_conductive", "FMA_V1")
+    source = family.kernel_source("step_B_conductive")
     assert "mul_field_left(cf_load(f, idx), condfac)" in source
     assert "mul_field_left(t, condinv)" in source
+    assert "    o.re = z.re * c;\n    o.im = z.im * c;" in source
 
 
 # ===========================================================================
 # 3. THE TRANSCRIPTIONS ARE STILL WHERE THIS FILE SAYS THEY ARE
 # ===========================================================================
 
-@pytest.mark.parametrize("line,expected", [
-    (539, "target -= curl"),
-    (1996, "field *= condfac"),
-    (1997, "field -= curl"),
-    (1998, "field *= condinv"),
-    (1022, "getattr(fields, component)[...] = constitutive"),
+@pytest.mark.parametrize("function,expected", [
+    ("_apply_curl", "target -= curl"),
+    ("_apply_conductive_update", "part_products.scale(condfac, field, out=field)"),
+    ("_apply_conductive_update", "field -= curl"),
+    ("_apply_conductive_update", "part_products.scale(condinv, field, out=field)"),
+    ("update_E", "getattr(fields, component)[...] = constitutive"),
 ])
-def test_every_cited_stepping_line_still_says_what_is_cited(line, expected):
+def test_every_cited_stepping_statement_is_in_the_cited_function(function, expected):
     """A citation that has drifted into fiction is the defect rule 3 forbids.
 
-    Checkable rather than reviewable: the cited line number is read back out of
-    ``stepping.py`` and required to carry the cited text.
+    The family cites the array path's statements by FUNCTION (``no_pml_apply`` is
+    ``_apply_curl``'s fourth tail, the conductive helper is
+    ``_apply_conductive_update`` in its in-place order, the stored E is
+    ``update_E``'s overwrite), so a statement is read back out of the body of the
+    function it is cited in, wherever that body now sits in the file.
     """
-    text = STEPPING_PATH.read_text(encoding="utf-8").splitlines()
-    assert expected in text[line - 1], (
-        f"stepping.py:{line} now reads {text[line - 1]!r}, not {expected!r}")
+    source = STEPPING_PATH.read_text(encoding="utf-8")
+    start = source.index(f"\ndef {function}(")
+    end = source.find("\ndef ", start + 1)
+    body = source[start:end if end >= 0 else len(source)]
+    assert any(line.strip() == expected for line in body.splitlines()), (
+        f"stepping.{function} no longer carries {expected!r}")
+    emitted = family.kernel_source("step_B_conductive")
+    assert f"stepping.{function}" in emitted or function == "update_E"
 
 
 def test_the_array_path_tail_this_family_replaces_is_still_the_one_transcribed():
-    """``_apply_conductive_update`` is still three statements in that order."""
+    """``_apply_conductive_update`` is still three statements in that order, each
+    product part-wise (``part_products.scale``)."""
     body = stepping._apply_conductive_update.__doc__
     assert "f[i] = ((1 - dt/2*cnd[i]) * f[i] - dtdx * curl) * cndinv[i]" in body
     source = STEPPING_PATH.read_text(encoding="utf-8")
     block = source[source.index("def _apply_conductive_update("):]
     block = block[:block.index("\ndef ", 1)]
     statements = [line.strip() for line in block.splitlines()
-                  if line.strip().startswith("field")]
-    assert statements == ["field *= condfac", "field -= curl", "field *= condinv"]
+                  if line.strip().startswith(("field", "part_products"))]
+    assert statements == ["part_products.scale(condfac, field, out=field)",
+                          "field -= curl",
+                          "part_products.scale(condinv, field, out=field)"]
 
 
-def test_max_poles_and_the_probe_pattern_match_the_triton_siblings():
-    """Two tables restated in this package; both pinned against their originals.
-
-    A corpus row with nine poles must be refused by the same number on both
-    tracks, and the fifth expansion orientation must be spelled identically or
-    a probe record classifying it would not be recognised.
-    """
+def test_max_poles_matches_the_triton_sibling():
+    """A table restated in this package, pinned against its original: a corpus row
+    with nine poles must be refused by the same number on both tracks."""
     triton_stored_e = (HERE.parent / "triton_kernels" /
                        "complex_no_pml_stored_e.py").read_text(encoding="utf-8")
     assert f"MAX_POLES = {family.MAX_POLES}" in triton_stored_e
-    triton_ade = (HERE.parent / "triton_kernels" /
-                  "complex_ade.py").read_text(encoding="utf-8")
-    assert (f'COMPLEX_ADE_PROBE_PATTERN = "{family.ADE_PROBE_PATTERN}"'
-            in triton_ade)
 
 
 # ===========================================================================
 # 4. THE PREDICATE VERDICT TABLE
 # ===========================================================================
 
-def _curl(fields, pml, grid, sub_step, licence=None):
+def _curl(fields, pml, grid, sub_step):
     return family.covers_complex_no_pml_curl(
-        fields, pml, grid, sub_step,
-        license=FOUR_PATTERN_LICENCE if licence is None else licence,
-        subnormal_policy=POLICY)
+        fields, pml, grid, sub_step)
 
 
 @pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
@@ -539,19 +517,16 @@ def test_the_curl_admits_dispersion_and_names_why(shipped):
     covered, _ = _curl(fields, pml, grid, "step_B")
     assert covered
     twin_covered, twin_reason = coverage.covers_real_pml_complex_curl(
-        fields, pml, grid, "step_B", license=FOUR_PATTERN_LICENCE,
-        subnormal_policy=POLICY)
+        fields, pml, grid, "step_B")
     assert not twin_covered
     assert twin_reason  # and it is the layer, not the dispersion, that refuses
 
 
 # --- update_E --------------------------------------------------------------
 
-def _stored_e(fields, pml, grid, licence=None):
+def _stored_e(fields, pml, grid):
     return family.covers_complex_no_pml_stored_e(
-        fields, pml, grid,
-        license=FOUR_PATTERN_LICENCE if licence is None else licence,
-        subnormal_policy=POLICY)
+        fields, pml, grid)
 
 
 def test_update_E_is_admitted_on_the_shipped_shape(shipped):
@@ -608,45 +583,20 @@ def test_update_E_refuses_more_poles_than_the_kernel_has_slots():
 
 # --- update_P --------------------------------------------------------------
 
-def _ade(fields, pml, grid, licence):
+def _ade(fields, pml, grid):
     return family.covers_complex_no_pml_ade_update_p(
-        fields, pml, grid, license=licence, subnormal_policy=POLICY)
+        fields, pml, grid)
 
 
-def test_update_P_refuses_the_four_pattern_probe_by_name(shipped):
-    """The fifth orientation is not measured there, and may not be inferred.
-
-    ``xp.multiply(P, c_now)`` is a complex64 array times a Python float. The
-    four-pattern record classifies an array coefficient and a left scalar and
-    neither is this.
-    """
+def test_update_P_is_admitted_on_the_shipped_shape(shipped):
     fields, pml, grid = shipped
-    covered, reason = _ade(fields, pml, grid, FOUR_PATTERN_LICENCE)
-    assert not covered
-    assert family.ADE_PROBE_PATTERN in reason
-
-
-def test_update_P_is_admitted_under_the_seven_pattern_probe(shipped):
-    fields, pml, grid = shipped
-    covered, reason = _ade(fields, pml, grid, SEVEN_PATTERN_LICENCE)
+    covered, reason = _ade(fields, pml, grid)
     assert covered, reason
-
-
-def test_update_P_refuses_a_probe_that_classifies_the_fifth_pattern_differently(
-        shipped):
-    """One kernel cannot be compiled under two arms."""
-    fields, pml, grid = shipped
-    licence = dict(SEVEN_PATTERN_LICENCE,
-                   patterns=dict(SEVEN_PATTERN_LICENCE["patterns"],
-                                 **{family.ADE_PROBE_PATTERN: "NAIVE"}))
-    covered, reason = _ade(fields, pml, grid, licence)
-    assert not covered
-    assert "one kernel cannot be compiled under two arms" in reason
 
 
 def test_update_P_refuses_a_run_with_no_polarization():
     fields, pml, grid = build()
-    covered, reason = _ade(fields, pml, grid, SEVEN_PATTERN_LICENCE)
+    covered, reason = _ade(fields, pml, grid)
     assert not covered
     assert reason == "no polarization is registered; update_P is a no-op"
 
@@ -663,7 +613,7 @@ def test_update_P_pins_the_drive_identity_rather_than_its_existence(shipped):
     assert fields.drive_field("Ex") is fields.Ex
     fields.f_w_Ex = grid.xp.zeros(grid.shape, dtype=numpy.complex64)
     fields._pml_active = True
-    covered, reason = _ade(fields, pml, grid, SEVEN_PATTERN_LICENCE)
+    covered, reason = _ade(fields, pml, grid)
     assert not covered
     # The PML-storage clause fires first, which is the right refusal to name.
     assert "PML storage mode" in reason
@@ -675,7 +625,7 @@ def test_update_P_pins_the_drive_identity_rather_than_its_existence(shipped):
 
 SIBLING_CURLS = (
     ("cuda_complex", lambda f, p, g, s: coverage.covers_real_pml_complex_curl(
-        f, p, g, s, license=FOUR_PATTERN_LICENCE, subnormal_policy=POLICY)),
+        f, p, g, s)),
     ("cuda_curl", lambda f, p, g, s: coverage.covers_real_pml_curl(f, p, g, s)),
 )
 
@@ -719,7 +669,7 @@ def test_update_E_never_overlaps_the_no_pml_null_arm():
 
 def test_update_P_never_overlaps_the_real_ade_family(shipped):
     fields, pml, grid = shipped
-    mine, _ = _ade(fields, pml, grid, SEVEN_PATTERN_LICENCE)
+    mine, _ = _ade(fields, pml, grid)
     theirs, _ = coverage.covers_real_pml_ade_update_p(fields, pml, grid)
     assert mine and not theirs
 
@@ -728,17 +678,15 @@ def test_update_P_never_overlaps_the_real_ade_family(shipped):
 # 6. PLATFORM REQUIREMENTS AND THE RECORD
 # ===========================================================================
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_every_device_string_is_pure_ascii(arm):
+def test_every_device_string_is_pure_ascii():
     """NVRTC gets the source through a locale-encoded ``open``; two em-dashes in a
     comment killed a sibling kernel at its first launch."""
     for key in family.KERNEL_KEYS:
-        source = family.kernel_source(key, arm)
+        source = family.kernel_source(key)
         source.encode("ascii")  # raises on anything else
 
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_no_division_and_no_unary_minus_on_a_float_path(arm):
+def test_no_division_and_no_unary_minus_on_a_float_path():
     """Two platform facts, pinned so an edit cannot reintroduce either.
 
     Division: ptxas expands ``div.rn.f32`` into a sequence whose range checks
@@ -748,7 +696,7 @@ def test_no_division_and_no_unary_minus_on_a_float_path(arm):
     edit that introduced ``-x`` here would make them diverge on a later port.
     """
     for key in family.KERNEL_KEYS:
-        source = family.kernel_source(key, arm)
+        source = family.kernel_source(key)
         code = "\n".join(line.split("//")[0] for line in source.splitlines())
         # Every division that survives must be INTEGER index arithmetic. The one
         # PTX exception on record is ptxas expanding div.rn.f32 into a sequence
@@ -831,21 +779,13 @@ def test_the_mutation_seam_is_read_on_every_call_not_memoized():
     That is "a leg reporting a pass for a mutation it never applied", which the
     sibling track hit three times.
     """
-    before = family.kernel_source("step_B", "FMA_V1")
-    family.set_kernel_source("step_B", "FMA_V1", "// mutated\n" + before)
+    before = family.kernel_source("step_B")
+    family.set_kernel_source("step_B", "// mutated\n" + before)
     try:
-        assert family.kernel_source("step_B", "FMA_V1").startswith("// mutated")
+        assert family.kernel_source("step_B").startswith("// mutated")
     finally:
-        family.set_kernel_source("step_B", "FMA_V1", None)
-    assert family.kernel_source("step_B", "FMA_V1") == before
-
-
-def test_the_arm_has_no_default_anywhere():
-    """A wrong arm is a wrong answer, not a crash: both arms compile and run."""
-    with pytest.raises(TypeError):
-        family.kernel_source("step_B")  # type: ignore[call-arg]
-    with pytest.raises(ValueError, match="expansion must be"):
-        family.kernel_source("step_B", "SOMETHING_ELSE")
+        family.set_kernel_source("step_B", None)
+    assert family.kernel_source("step_B") == before
 
 
 #: ``parity/meep_gpu/results/`` is gitignored, so on a fresh checkout the four
@@ -935,17 +875,16 @@ def test_the_recorded_kernel_digests_are_the_live_source():
     stamped, and pinning the whole file would make every comment edit read as an
     un-gated kernel change. What must not have moved is the seven device strings,
     so those are what the record carries -- and this recomputes them from
-    :func:`kernel_source` under the arm the gate bound.
+    :func:`kernel_source`.
     """
     import hashlib
 
     record = family.COMPLEX_NO_PML_ADMISSION
     _root, gate = _gate_record()
-    arm = gate["expansion_arm"]["code"]
     for key in family.KERNEL_KEYS:
         name = family.kernel_name(key)
         live = hashlib.sha256(
-            family.kernel_source(key, arm).encode("utf-8")).hexdigest()
+            family.kernel_source(key).encode("utf-8")).hexdigest()
         assert record["kernel_source_sha256"][name] == live, (
             f"{name} has changed since the gate ran")
         assert gate["kernel_source_sha256"][name] == live
@@ -972,7 +911,6 @@ def test_the_flush_leg_refused_and_the_record_says_so_first():
     assert "sweep" not in flush, "a refused leg must not carry measurements"
     first = family.COMPLEX_NO_PML_ADMISSION["what_it_does_not_license"][0]
     assert first.startswith("THE FLUSH POLICY")
-    assert family.ADE_PROBE_PATTERN in first
 
 
 def test_the_recorded_slot_delta_is_the_census_artifact():

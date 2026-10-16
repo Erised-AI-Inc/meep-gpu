@@ -42,9 +42,9 @@ WHAT THIS SEAM ADDS THAT NO SIBLING H->D GATE CAN MEASURE
 THE BETA PARTNER. ``stepping._special_kz_beta_term`` consumes the SAME-CELL magnetic
 snapshot, which the array path takes AFTER ``update_H``; welded, that snapshot must be
 this launch's own ``own_h[...]`` register. ``beta_partner_reads_stale_h`` is the armed
-defect: it reverts exactly the two beta partners to a load of the PRE-launch volume
-and leaves the other four own-cell loads alone, so it is one sub-step behind on two of
-the six curl terms and on nothing else. Every magnitude stays plausible.
+defect: it reverts target 0's beta partner to a load of the PRE-launch volume and
+leaves every own-cell load of the curl alone, so the beta pass of one component is one
+sub-step behind and nothing else is. Every magnitude stays plausible.
 
 WHAT THE ARITHMETIC LEGS ADD, AND WHAT THEY RECORD AS ABSENT
 =============================================================================
@@ -53,9 +53,10 @@ four-product form -- the spelling the complex families must get right -- HAS NO 
 here, and neither does any division (the reciprocal the recurrence needs is ``sinv``,
 computed host-side by ``PML``). Both absences are ASSERTED against the emitted text
 rather than omitted, because a reader arriving from the complex or cylindrical H->D
-products will look for each. What IS live is ``--fmad=false``: ``curl - (beta * f)``
-is a multiply feeding a subtract, exactly the shape a compiler contracts, and the
-attribution sub-leg requires the guarded and unguarded builds to differ.
+products will look for each. What IS live is ``--fmad=false``: the beta pass's ladder
+``fcur - (sinv * inc)`` is a multiply feeding a subtract, exactly the shape a compiler
+contracts, and the attribution sub-leg requires the guarded and unguarded builds to
+differ.
 
 NOT WIRED, AND THE ARBITRATION LEG SAYS SO IN BOTH ARRANGEMENTS
 =============================================================================
@@ -150,7 +151,8 @@ SPECS: Tuple[Dict[str, Any], ...] = (
 #: one fixture where the machinery it disables is LIVE: a periodic wrap that survives
 #: the mask, a wall on each in-plane axis, both fold terminations, and both signs of
 #: the beta coefficient.
-MUTATION_SPEC_LABELS: Tuple[str, ...] = ("periodic", "walls_xy", "fold_y_odd_count",
+MUTATION_SPEC_LABELS: Tuple[str, ...] = ("periodic", "walls_xy", "fold_y_even",
+                                         "fold_y_odd_count",
                                          "fold_y_metallic_termination")
 
 #: The subset ``--product reduced`` runs: one periodic, one walled, one of each fold
@@ -166,77 +168,89 @@ REDUCED_LABELS: Tuple[str, ...] = ("periodic", "periodic_negative_beta", "walls_
 DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
     # ---- THE BETA CLAUSES: this seam's own, and the reason the product exists ----
     "beta_partner_reads_stale_h": {
-        "old": ("        float f2 = own_h[1];\n"
-                "        float ss = shift_dn_recompute(1, idx, k, nz, sz, bc_z, weld);\n"
-                "        float curl = dtdx * ((sf - f1) + (f2 - ss));\n"
-                "        curl = curl - (beta_plus * f2);"),
-        "new": ("        float f2 = own_h[1];\n"
-                "        float ss = shift_dn_recompute(1, idx, k, nz, sz, bc_z, weld);\n"
-                "        float curl = dtdx * ((sf - f1) + (f2 - ss));\n"
-                "        curl = curl - (beta_plus * Hy[idx]);"),
+        "old": "        float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;",
+        "new": "        float inc_beta = owned_cell ? (-(beta_plus * Hy[idx])) : 0.0f;",
         "why": ("THE DEFECT THIS WELD CREATES AND NO SIBLING H->D SEAM HAS. The beta "
                 "partner is the SAME-CELL magnetic snapshot, which the array path "
                 "takes AFTER update_H; this reverts it to the PRE-launch volume, "
                 "leaving the finite-difference stencil correct and putting exactly ONE "
-                "of the six curl terms one sub-step behind. Every magnitude stays "
-                "plausible and the run converges"),
+                "beta pass one sub-step behind. Every magnitude stays plausible and "
+                "the run converges"),
         "live_on": "every fixture (beta is nonzero on all of them)",
     },
     "drop_the_beta_term": {
-        "old": "        curl = curl - (beta_plus * f2);\n",
-        "new": "        // beta term removed\n",
-        "why": ("the analytic d/dz factor is dropped from target 0 entirely -- the "
+        "old": ("        fold_apply(Dx, fu_Dx, idx, inc_beta, sinv_y[j], sinv_z[k], "
+                "in_i_z);\n"),
+        "new": "        // beta pass removed\n",
+        "why": ("the analytic d/dz pass is dropped from target 0 entirely -- the "
                 "run is then a beta = 0 run on one component, which is a DIFFERENT "
                 "physical problem that still converges"),
         "live_on": "every fixture",
     },
     "swap_the_beta_signs": {
-        "old": "        curl = curl - (beta_plus * f2);",
-        "new": "        curl = curl - (beta_minus * f2);",
-        "why": ("the +1 call site takes the -1 coefficient (stepping.py:443 against "  # stepping.py live lines for the frozen device-text citation(s) in this string: 443->472
-                ":445). float64 negation and float32 rounding commute exactly, so the "
-                "two words differ only in sign -- and the cross-polarisation coupling "
-                "reverses"),
+        "old": "        float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;",
+        "new": "        float inc_beta = owned_cell ? (-(beta_minus * f2)) : 0.0f;",
+        "why": ("the +1 call site takes the -1 coefficient (step_db.cpp:161-175's "
+                "sign = (d_c == X ? +1 : -1) read backwards). float64 negation and "
+                "float32 rounding commute exactly, so the two words differ only in "
+                "sign -- and the cross-polarisation coupling reverses"),
         "live_on": "every fixture",
     },
     "beta_added_not_subtracted": {
-        "old": "        curl = curl - (beta_plus * f2);",
-        "new": "        curl = curl + (beta_plus * f2);",
-        "why": ("stepping.py:784 returns -(c * partner) and :443 ADDS it; this drops "  # stepping.py live lines for the frozen device-text citation(s) in this string: 784->811, 443->472
-                "the negation. IEEE defines subtraction as addition of the negation, "
-                "so the single subtract in the certified text is the same bits -- and "
-                "this control is what shows that reading is load-bearing"),
+        "old": "        float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;",
+        "new": "        float inc_beta = owned_cell ? (beta_plus * f2) : 0.0f;",
+        "why": ("stepping._special_kz_beta_term returns -(c * partner) and the pass's "
+                "ladder SUBTRACTS it; this drops the negation, so the term lands at "
+                "the wrong sign"),
         "live_on": "every fixture",
     },
     "beta_scaled_by_dtdx": {
-        "old": "        curl = curl - (beta_plus * f2);",
-        "new": "        curl = curl - (dtdx * (beta_plus * f2));",
+        "old": "        float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;",
+        "new": "        float inc_beta = owned_cell ? (-(dtdx * (beta_plus * f2))) : 0.0f;",
         "why": ("the beta term is an ANALYTIC derivative and carries NO dtdx "
-                "(stepping.py:758-762, :797). Scaling it by the finite-difference "
-                "factor is the classic transcription error and rescales the "
-                "TE/TM coupling by the Courant number"),
+                "(stepping._special_kz_beta_term). Scaling it by the finite-difference "
+                "factor is the classic transcription error and rescales the TE/TM "
+                "coupling by the Courant number"),
         "live_on": "every fixture",
     },
     "beta_on_the_third_component": {
-        # TARGET 2 (Dz) GETS A BETA INCREMENT IT MUST NOT HAVE. MEEP's ``cc`` loop
-        # runs over ``d_c`` in {X, Y} only (step_db.cpp:148-176) and
-        # stepping.py:467-474 has no Dz branch, so the third component's curl carries
-        # no analytic term at all. The anchor is target 2's curl line together with
-        # its FIRST mask, which is unique: targets 0 and 1 carry their beta line
-        # between those two statements.
-        "old": ("        float curl = dtdx * ((sf - f1) + (f2 - ss));\n"
-                "        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;\n"
-                "        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;"),
-        "new": ("        float curl = dtdx * ((sf - f1) + (f2 - ss));\n"
-                "        curl = curl - (beta_plus * f2);\n"
-                "        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;\n"
-                "        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;"),
-        "why": ("a beta increment on the component MEEP gives none. The component "
+        # TARGET 2 (Dz) GETS A BETA PASS IT MUST NOT HAVE. MEEP's ``cc`` loop runs
+        # over ``d_c`` in {X, Y} only (step_db.cpp:161-175), so the third component
+        # carries no analytic term at all. The anchor is target 2's own absorber line,
+        # which is unique.
+        "old": ("        pml_apply(Dz, fu_Dz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], "
+                "sinv_y[j], in_i_y);\n"),
+        "new": ("        pml_apply(Dz, fu_Dz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], "
+                "sinv_y[j], in_i_y);\n"
+                "        fold_apply(Dz, fu_Dz, idx, -(beta_plus * f2), sinv_x[i], "
+                "sinv_y[j], in_i_y);\n"),
+        "why": ("a beta pass on the component MEEP gives none. The component "
                 "PATTERN is part of the transcription and not a detail: targets 0 and "
                 "1 must move and target 2 must not"),
         "live_on": "every fixture",
     },
+    "beta_on_an_unowned_cell": {
+        # TARGET 1 (Dy), NOT TARGET 0. Under MEEP's per-chunk forms the beta pass is a
+        # ladder of its own on the stored word, so an increment on an unowned cell
+        # survives a complete driver step only where it reaches an AUXILIARY: the f
+        # word of every unowned plane is rewritten by the wall pass or a fill. Dx's
+        # auxiliary axis is the invariant z, so target 0's increment is inert on every
+        # 2-D fixture; Dy's is x, and Dy's unowned far-ghost row of a PERIODIC-
+        # terminated y fold lies in the x layer's columns. Measured on the host (the
+        # emitted text executed against the array path's update_H, step_D and the
+        # three D passes): target 0 moves 0 words on 6 of 6 grids, target 1 moves 6
+        # words of fu_Dy on the periodic-terminated y fold and 0 elsewhere.
+        "old": "        float inc_beta = owned_cell ? (-(beta_minus * f1)) : 0.0f;",
+        "new": "        float inc_beta = (-(beta_minus * f1));",
+        "why": ("MEEP's beta loop visits owned cells only; the increment formed on "
+                "every cell lands on the masked wall and fold planes, where MEEP "
+                "writes no beta increment, and on the far-ghost row of a periodic "
+                "fold it reaches fu_Dy in the x layer"),
+        "live_on": "fold_y_even (a periodic-terminated y fold with an x layer)",
+    },
     # ---- THE WELD CLAUSES: the shape, shared with the released real sibling ----
+    # (``gate_cuda_fused_hd_pair.DEVICE_MUTATIONS``' spellings: the two welds splice
+    # one constitutive half and one curl transform.)
     "foreign_tap_reads_stale_H": {
         "old": "    if (ia > 0) return resolve_H(comp, idx - stride, weld);",
         "new": ("    if (ia > 0) return (comp == 0 ? weld.Hx\n"
@@ -265,8 +279,8 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "live_on": "every fixture",
     },
     "f_w_H_written_in_place": {
-        "old": "    *fw_out = src;",
-        "new": "    const_cast<float*>(fw)[idx] = src;",
+        "old": "    *fw_out = dsigw ? src : fw[idx];",
+        "new": "    if (dsigw) const_cast<float*>(fw)[idx] = src;",
         "why": ("the split-field history is stored IN PLACE, so a foreign recompute "
                 "reading fw at a cell another block already wrote gets B where its "
                 "recurrence needs B_prev. RACY BY CONSTRUCTION: whether it fires is a "
@@ -278,27 +292,55 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
                            "same arithmetic consequence and MUST be caught"),
     },
     "foreign_history_reads_the_post_store_value": {
-        "old": "    float prev = fw[idx];",
-        "new": "    float prev = src;",
+        "old": "    float prev = dsigw ? fw[idx] : 0.0f;",
+        "new": "    float prev = dsigw ? src : 0.0f;",
         "why": ("THE DETERMINISTIC TWIN of the in-place store: the recurrence reads "
                 "the value the in-place arrangement would have handed it, with no "
                 "race to depend on"),
         "live_on": "every fixture with an active absorber (kms != 0)",
     },
-    "accumulations_regrouped": {
-        "old": "    return a - kms * prev;",
-        "new": "    return f[idx] + (kps * src - kms * prev);",
-        "why": ("the two SEPARATE accumulations become one expression, which is a "
-                "different float32 number because addition is not associative. MEEP's "
-                "step_update_EDHB accumulates left to right and the certified body "
-                "transcribes that; flattening it reads as a slightly weaker absorber "
+    # INVERTED (bit_parity_0_10 KERNELS.md section 7.1): the shipped accumulation IS
+    # MEEP's grouping, f + ((kps*src) - (kms*prev)), so the must-catch edit installs the
+    # package's old grouping, two separate left-to-right accumulations.
+    "accumulation_regrouped_to_the_old_package_order": {
+        "old": "(f[idx] + ((kps * src) - (kms * prev)))",
+        "new": "((f[idx] + (kps * src)) - (kms * prev))",
+        "why": ("MEEP's one accumulation f + ((kps*src) - (kms*prev)) (step_generic.cpp's "
+                "f[i] += ..., the right-hand side formed first) becomes the package's "
+                "old (f + kps*src) - kms*prev, a different float32 number because "
+                "addition is not associative -- it reads as a slightly weaker absorber "
                 "rather than as a bug"),
         "live_on": "every fixture with an active absorber",
     },
+    # --- MEEP's per-chunk forms (KERNELS.md section 7.2, the B battery) ---------------
+    "constitutive_auxiliary_stored_on_a_plain_cell": {
+        "old": "    *fw_out = dsigw ? src : fw[idx];",
+        "new": "    *fw_out = src;",
+        "why": ("the auxiliary contract (C2): off the dsigw run the array path leaves "
+                "f_w_H untouched, and the rotation makes the scratch the live f_w_H, so "
+                "a scratch word written with B there is a changed f_w_H word"),
+        "live_on": "every fixture with an active absorber and a plain cell",
+    },
+    "plain_constitutive_takes_the_accumulation": {
+        "old": "    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;",
+        "new": "    float value = (f[idx] + ((kps * src) - (kms * prev)));",
+        "why": ("the select removed on update_H: the accumulation on every recomputed "
+                "cell, where MEEP's plain chunk steps H = B"),
+        "live_on": "every fixture with an active absorber and a plain cell",
+    },
+    "recurrence_on_every_cell": {
+        "old": ("pml_apply(Dx, fu_Dx, idx, curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k], "
+                "in_i_z);"),
+        "new": ("pml_apply(Dx, fu_Dx, idx, curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k], "
+                "1);"),
+        "why": ("the select removed on Dx's dsigu axis: the recurrence on every cell, "
+                "where MEEP's plain chunk steps the dsig-only form"),
+        "live_on": "every fixture with an active absorber and a plain cell",
+    },
     "coefficient_index_is_the_threads_own": {
-        "old": ("    int k = idx % nz;\n    int j = (idx / nz) % ny;\n"
-                "    int i = idx / (ny * nz);\n\n    // Hx <- Bx"),
-        "new": ("    int k = 0;\n    int j = 0;\n    int i = 0;\n\n    // Hx <- Bx"),
+        "old": ("    // the thread's own.\n\n    int k = idx % nz;\n    int j = (idx / nz) % ny;\n"
+                "    int i = idx / (ny * nz);\n"),
+        "new": "    // the thread's own.\n\n    int k = 0;\n    int j = 0;\n    int i = 0;\n",
         "why": ("the recomputed cell's absorber coefficients are taken from the origin "
                 "instead of from the recomputed cell -- the half-cell class of error, "
                 "converged and smooth"),
@@ -333,8 +375,8 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "new": None,
         "options": (),
         "why": ("the same source built WITHOUT --fmad=false, so NVRTC may contract the "
-                "accidental multiply-adds the transcription does not spell -- of which "
-                "this family has FOUR, including the beta insert's curl - (beta * f)"),
+                "accidental multiply-adds the transcription does not spell -- the beta "
+                "pass's ladder fcur - (sinv * inc) among them"),
         "live_on": "every fixture",
     },
 }
@@ -363,6 +405,20 @@ HOST_MUTATIONS: Tuple[str, ...] = ("rotation_skipped", "scratch_aliased_to_stora
 # The adapter
 # ---------------------------------------------------------------------------
 
+def _planted(source: str, old: str, new: str) -> str:
+    """``source`` with ``old`` replaced once by ``new``, for the spelling leg's plants.
+
+    A plant whose anchor is gone is an UNARMED control: the absence assertion would be
+    handed the shipped text and the leg would read "not refused". So a missing anchor
+    raises by name -- never ``AssertionError``, which is the refusal the leg scores.
+    """
+    sites = source.count(old)
+    if sites != 1:
+        raise RuntimeError(f"the spelling plant's anchor matches {sites} sites, not 1: "
+                           f"{old.strip()!r}")
+    return source.replace(old, new, 1)
+
+
 class SpecialKzAdapter(kit.Adapter):
     """The REAL beta H->D weld's answers to the shared legs' questions."""
 
@@ -389,7 +445,6 @@ class SpecialKzAdapter(kit.Adapter):
     def __init__(self) -> None:
         from meep_gpu.cuda_kernels import special_kz_fused_hd_pair as family  # noqa: PLC0415
         self.family = family
-        self.arm = "real"
 
     # -- the product ----------------------------------------------------------
     def predicate(self, fields, pml, grid, sources) -> Tuple[bool, str]:
@@ -405,6 +460,13 @@ class SpecialKzAdapter(kit.Adapter):
             "scratch": overrides.get("scratch")
                        or self.family.special_kz_fused_hd_pair_scratch(fields),
             "dtdx": float(overrides.get("dtdx", dtdx)),
+            # The chunk record the kernel binds as ``cb`` (the one-rank division the
+            # array path steps with) and the layer the run's first update_H starts H
+            # with.
+            "chunk_bounds": (overrides.get("chunk_bounds")
+                             if overrides.get("chunk_bounds") is not None
+                             else kit.hd_gate.chunk_record(grid, pml)),
+            "layer": pml,
         }
         return state
 
@@ -416,7 +478,8 @@ class SpecialKzAdapter(kit.Adapter):
         return self.family.launch_special_kz_fused_hd_pair(
             fields, state["scratch"], state["tables"], state["codes"], state["beta"],
             state["dtdx"], kernel,
-            self.family._FUSED_THREADS if threads is None else int(threads))  # noqa: SLF001
+            self.family._FUSED_THREADS if threads is None else int(threads),  # noqa: SLF001
+            chunk_bounds=state["chunk_bounds"], layer=state["layer"])
 
     def rotate(self, fields, state) -> None:
         state["scratch"] = self.family.rotate_into_fields(fields, state["scratch"])
@@ -460,18 +523,27 @@ class SpecialKzAdapter(kit.Adapter):
                 pml, coverage.constitutive_sub_lattice(side))
             for side in ("H", "E")}
         beta = special_kz_curl.beta_curl_coefficients(grid.beta, grid.dt)
+        record = kit.hd_gate.chunk_record(grid, pml)
 
         def curl(sub_step: str):
             return lambda: special_kz_curl.step_special_kz(
-                sub_step, fields, curl_tables[sub_step], codes, dtdx, beta)
+                sub_step, fields, curl_tables[sub_step], codes, dtdx, beta,
+                chunk_bounds=record)
+
+        def update_h() -> None:
+            # MEEP's start of H before the run's first update_H
+            # (stepping.separate_h_from_b): the shipped single launcher runs it and the
+            # bare launcher does not.
+            kit.stepping.separate_h_from_b(fields, pml)
+            constitutive_kernels.update_fused_pml_real(
+                "H", fields, tables=constitutive["H"], chunk_bounds=record)
 
         return {
             "step_B": curl("step_B"),
             "step_D": curl("step_D"),
-            "update_H": lambda: constitutive_kernels.update_fused_pml_real(
-                "H", fields, tables=constitutive["H"]),
+            "update_H": update_h,
             "update_E": lambda: constitutive_kernels.update_fused_pml_real(
-                "E", fields, tables=constitutive["E"]),
+                "E", fields, tables=constitutive["E"], chunk_bounds=record),
         }
 
     def released_pairs(self, fields, grid, pml, dtdx: float):
@@ -479,13 +551,15 @@ class SpecialKzAdapter(kit.Adapter):
             special_kz_fused_electric_pair as electric,
             special_kz_fused_magnetic_pair as magnetic)
 
+        record = kit.hd_gate.chunk_record(grid, pml)
+
         def run_magnetic():
             return magnetic.run_special_kz_fused_magnetic_pair(
-                fields, grid, pml, dtdx, sources=())
+                fields, grid, pml, dtdx, chunk_bounds=record, sources=())
 
         def run_electric():
             return electric.run_special_kz_fused_electric_pair(
-                fields, grid, pml, dtdx, sources=())
+                fields, grid, pml, dtdx, chunk_bounds=record, sources=())
 
         return magnetic, electric, run_magnetic, run_electric
 
@@ -536,7 +610,8 @@ class SpecialKzAdapter(kit.Adapter):
             "the_transform_on_the_certified_text_is_the_released_transform":
                 mine == released,
             "the_two_beta_increments_are_present":
-                source.count("curl = curl - (beta_") == family.BETA_INSERT_LINES,
+                source.count("float inc_beta = owned_cell ? (-(beta_")
+                == family.BETA_INSERT_LINES,
             "both_beta_partners_are_weld_registers": all(
                 f"float {register} = own_h[" in source
                 for register in ("f1", "f2")),
@@ -675,15 +750,12 @@ class SpecialKzAdapter(kit.Adapter):
         stale = {"passed": False}
         try:
             corrupted = family._certified_curl_source().replace(  # noqa: SLF001
-                "        float f2 = Hy[idx];\n"
-                "        float ss = shift_dn(Hy, idx, k, nz, sz, bc_z);\n"
-                "        float curl = dtdx * ((sf - f1) + (f2 - ss));\n"
-                "        curl = curl - (beta_plus * f2);",
-                "        float f2 = Hy[idx];\n"
-                "        float ss = shift_dn(Hy, idx, k, nz, sz, bc_z);\n"
-                "        float curl = dtdx * ((sf - f1) + (f2 - ss));\n"
+                "        float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;",
                 "        float f9 = Hy[idx];\n"
-                "        curl = curl - (beta_plus * f9);", 1)
+                "        float inc_beta = owned_cell ? (-(beta_plus * f9)) : 0.0f;", 1)
+            if corrupted == family._certified_curl_source():  # noqa: SLF001
+                raise RuntimeError("the corruption's anchor is gone from the "
+                                   "certified special_kz step_D text")
             family.welded_curl_tail(corrupted)
             stale = {"passed": False,
                      "note": "the transform accepted a beta partner it did not redirect"}
@@ -720,15 +792,16 @@ class SpecialKzAdapter(kit.Adapter):
         armed = {"refused": None, "passed": False}
         try:
             family._assert_the_measured_absences(  # noqa: SLF001
-                source.replace("        float curl = dtdx * ((sf - f1) + (f2 - ss));",
-                               "        float curl = ((sf - f1) + (f2 - ss)) / dtdx;",
-                               1))
+                _planted(source,
+                         "        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_y, pr_z);",
+                         "        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_y, pr_z)"
+                         " / dtdx;"))
         except AssertionError as error:
             armed = {"refused": str(error)[:300], "passed": True}
         complex_armed = {"refused": None, "passed": False}
         try:
             family._assert_the_measured_absences(  # noqa: SLF001
-                source.replace("    float own_h[3];", "    cf own_h[3];", 1))
+                _planted(source, "    float own_h[3];", "    cf own_h[3];"))
         except AssertionError as error:
             complex_armed = {"refused": str(error)[:300], "passed": True}
         checks = {
@@ -856,13 +929,16 @@ class SpecialKzAdapter(kit.Adapter):
                     held["codes"] = family.special_kz_fused_hd_pair_codes(ctx.grid)
                     held["beta"] = family.beta_scalars(ctx.grid)
                     held["scratch"] = family.special_kz_fused_hd_pair_scratch(ctx.fields)
+                    held["chunk_bounds"] = ctx.chunk_bounds_device()
+                    held["layer"] = ctx.pml
                 return dict(held)
 
             def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
                 dtdx = float(context.grid.dt / context.grid.dx)
                 record = family.launch_special_kz_fused_hd_pair(
                     fields, arguments["scratch"], arguments["tables"],
-                    arguments["codes"], arguments["beta"], dtdx)
+                    arguments["codes"], arguments["beta"], dtdx,
+                    chunk_bounds=arguments["chunk_bounds"], layer=arguments["layer"])
                 held["scratch"] = family.rotate_into_fields(fields,
                                                             arguments["scratch"])
                 return record

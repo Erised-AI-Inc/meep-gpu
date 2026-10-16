@@ -1423,8 +1423,8 @@ def complex_word_bound_leg(courant: float) -> Dict[str, Any]:
 
     ``coverage._complex_grid_refusal`` (:2872-2880) is called DIRECTLY rather than
     through ``covers_real_pml_complex_curl``, and the record says so: the public
-    predicates gate on an expansion license loaded from a probe record, which is a
-    different question from the one this leg asks. What is measured here is the
+    predicates conjoin it with every other clause, which is a different question
+    from the one this leg asks. What is measured here is the
     clause itself -- whether a complex fixture's admission flips at ``2*cells ==
     2**31`` and not at ``cells == 2**31`` -- which is the halving, and it is the
     only place in this file where a private function is the subject.

@@ -67,10 +67,14 @@ EVERYTHING IS TRANSCRIBED, and from where
 ===========================================================================
 
 * the curl half — :data:`.no_pml_conductive._CONDUCTIVE_PLAIN_CURL_TEMPLATE`'s own
-  decode, ghost, load, curl, mask and per-target conductive tail text
-  (``no_pml_conductive.py:59-176``), specialised to ONE target per dispatch the way
-  :mod:`.fused_dispersive_pair` specialises the PML curl. Every emitted line is
-  asserted to be a line of the certified all-component emitter's own output;
+  decode, bounds block, ghost, load, curl, mask and per-target conductive tail text,
+  specialised to ONE target per dispatch the way :mod:`.fused_dispersive_pair`
+  specialises the PML curl. The curl statement is :data:`.no_pml_curl.CURL_STATEMENTS`'
+  -- MEEP's left-to-right stencil with its partner-presence forms, the certified
+  conductive curl's own since it took MEEP's form -- so the pair reads the
+  partner-presence word of the chunk record through the same anchored bounds block
+  and binds the record last (:data:`RECORD_BUFFER`). Every emitted line is asserted
+  to be a line of the certified all-component emitter's own output;
 * the wall — :func:`zero_metal_mask` over the imported D off-diagonal table;
 * the constitutive half — :func:`.no_pml_stored_e.stored_e_source`'s own bounded,
   left-associated subtraction chain and ``source * inv_e`` store
@@ -86,8 +90,8 @@ WHY PER COMPONENT AND NOT ONE LAUNCH, measured against the ceiling: this cell's 
 rows carry FIVE poles per component, so an all-three-component signature needs
 3 D + 3 B + 3 E + 3 inv_eps + 3 condfac + 3 condinv + 15 poles = 33 pointers — over
 :data:`.device.MAX_BUFFER_BINDINGS` even with every scalar packed. Per component the
-count is :data:`BINDINGS_PER_COMPONENT` = 21 with all eight pole slots declared and
-the five scalars bound separately, the same resolution
+count is :data:`BINDINGS_PER_COMPONENT` = 22 with all eight pole slots declared,
+the five scalars bound separately and the chunk record last, the same resolution
 :mod:`.fused_dispersive_pair` records for the same pole-budget reason. One dispatch
 per component IS the fusion: the stepped displacement never leaves a register.
 
@@ -114,16 +118,18 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from ..triton_kernels.coverage import Coverage
 from ..triton_kernels.no_pml import SUB_STEPS as _NO_PML_SUB_STEPS
 from ..triton_kernels.no_pml_conductive import conductive_no_pml_targets
+from . import chunk_bounds as _chunk_bounds
 from . import shaders, templates
 from .ade_update_p import _physical_name
 from .coverage import zero_metal_axes
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
-from .fused_dispersive_pair import _TARGETS, _ZERO_METAL_ROWS
+from .fused_dispersive_pair import _ZERO_METAL_ROWS
 from .no_pml_conductive import (
     _tail as certified_conductive_tail,
     conductive_plain_curl_source,
     metal_conductive_plain_curl_coverage,
 )
+from .no_pml_curl import CURL_STATEMENTS, bounds_block
 from .no_pml_stored_e import (
     E_TERMS,
     MAX_POLES,
@@ -172,9 +178,31 @@ CURL_SOURCES: Tuple[str, ...] = tuple(_CURL_SPEC["sources"])
 
 #: The per-component signature, as data the gate compiles rather than arithmetic in
 #: prose: 16 pointers (the D target, three B sources, the E target, the inverse
-#: epsilon, condfac, condinv, and eight pole slots) plus five separate scalars.
+#: epsilon, condfac, condinv, and eight pole slots), five separate scalars, and the
+#: chunk record last.
 POINTERS_PER_COMPONENT = 16
-BINDINGS_PER_COMPONENT = POINTERS_PER_COMPONENT + 5
+RECORD_BUFFER = POINTERS_PER_COMPONENT + 5
+BINDINGS_PER_COMPONENT = RECORD_BUFFER + 1
+
+#: Per D target, the four operand loads its curl reads, as the certified conductive
+#: emitter spells them (``no_pml_conductive._CONDUCTIVE_PLAIN_CURL_TEMPLATE`` with
+#: ``derive`` off: step_D differences the B volumes). Dx reads c (along y) and b (along
+#: z), Dy a (along z) and c (along x), Dz b (along x) and a (along y):
+#: :data:`.no_pml_curl.CURL_STATEMENTS`.
+_CURL_LOADS: Tuple[Tuple[str, ...], ...] = (
+    ("    float b   = g1[ii];",
+     "    float c   = g2[ii];",
+     "    float b_z = vz ? g1[oz] : 0.0f;",
+     "    float c_y = vy ? g2[oy] : 0.0f;"),
+    ("    float a   = g0[ii];",
+     "    float c   = g2[ii];",
+     "    float a_z = vz ? g0[oz] : 0.0f;",
+     "    float c_x = vx ? g2[ox] : 0.0f;"),
+    ("    float a   = g0[ii];",
+     "    float b   = g1[ii];",
+     "    float b_x = vx ? g1[ox] : 0.0f;",
+     "    float a_y = vy ? g0[oy] : 0.0f;"),
+)
 
 #: Why one launch is NOT the shape here: the all-three-component signature at this
 #: cell's own five poles per component. Spelled as data so the gate can refute the
@@ -194,7 +222,8 @@ LIFT_EDITS: Tuple[Tuple[str, str, str], ...] = (
 __all__ = [
     "ALL_COMPONENT_POINTERS_AT_FIVE_POLES", "BINDINGS_PER_COMPONENT",
     "CARRIES_DEPOSIT_REPAIR", "CURL_SOURCES", "CURL_TARGETS", "FAMILY",
-    "LIFT_EDITS", "POINTERS_PER_COMPONENT", "REPAIR_PATHS", "REPLACES", "SLOT",
+    "LIFT_EDITS", "POINTERS_PER_COMPONENT", "RECORD_BUFFER", "REPAIR_PATHS",
+    "REPLACES", "SLOT",
     "MetalNoPmlConductiveFusedElectricPairPlan",
     "compile_no_pml_conductive_fused_electric_pair",
     "no_pml_conductive_fused_electric_pair_coverage",
@@ -213,6 +242,8 @@ _TEMPLATE = r"""
 using namespace metal;
 
 __CONTRACT__
+
+__RECORD_STRUCT__
 
 kernel void no_pml_conductive_fused_electric_pair_component(
     device float*       f__T__  [[buffer(0)]],
@@ -236,6 +267,7 @@ kernel void no_pml_conductive_fused_electric_pair_component(
     constant uint&      nz      [[buffer(18)]],
     constant uint&      n_elem  [[buffer(19)]],
     constant float&     dtdx    [[buffer(20)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
 __BODY__
@@ -270,11 +302,14 @@ def _per_component_curl(codes: Sequence[int], axis: int, conductive: bool,
     ownership-mask rows are the certified emitter's own lines: each one is asserted
     to appear verbatim in :func:`.no_pml_conductive.conductive_plain_curl_source`'s
     output for the same specialisation, so a drift in the certified template reaches
-    this family as an AssertionError rather than as a silent re-derivation.
+    this family as an AssertionError rather than as a silent re-derivation. The
+    bounds block is the certified curl's own (:func:`.no_pml_curl.bounds_block`): the
+    curl statement reads the partner-presence locals it declares.
     """
-    spec = _TARGETS[axis]
     flags = tuple(conductive if index == axis else False for index in range(3))
     certified = _certified_curl_reference(codes, flags)
+    block = bounds_block()
+    assert block in certified, "the certified curl no longer carries its bounds block"
     lines = [
         templates.GUARD,
         "",
@@ -286,6 +321,8 @@ def _per_component_curl(codes: Sequence[int], axis: int, conductive: bool,
         "    int j = plane % nyi;",
         "    int i = plane / nyi;",
         "",
+        *block.splitlines(),
+        "",
         "    int si = i - 1, sj = j - 1, sk = k - 1;",
         "    bool vx = true, vy = true, vz = true;",
         templates.ghost("x", codes[0], True),
@@ -296,9 +333,9 @@ def _per_component_curl(codes: Sequence[int], axis: int, conductive: bool,
         "    int oy = i * nyz + sj * nzi + k;",
         "    int oz = i * nyz + j * nzi + sk;",
         "",
-        *spec["loads"],
+        *_CURL_LOADS[axis],
         "",
-        spec["curl"],
+        CURL_STATEMENTS[axis],
         "",
         "    bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);",
     ]
@@ -378,6 +415,8 @@ def no_pml_conductive_fused_electric_pair_source(
     body.extend(_constitutive_chain(axis, int(pole_count)))
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(RECORD_BUFFER),
         "__T__": str(axis),
         "__BODY__": "\n".join(body),
     })
@@ -395,7 +434,7 @@ def refuted_over_ceiling_source(contract: str = shaders.CONTRACT_OFF) -> str:
     """The shipped per-component signature padded one binding PAST the ceiling.
 
     Not shipped and not launchable: the gate compiles it and requires the failure,
-    which is what turns "21 bindings, ten under the ceiling" into a measurement of
+    which is what turns "22 bindings, nine under the ceiling" into a measurement of
     where the ceiling actually is. The pad buffers are read so dead-code elimination
     cannot decide the answer.
     """
@@ -607,14 +646,15 @@ class MetalNoPmlConductiveFusedElectricPairPlan:
     repair_paths = REPAIR_PATHS
 
     __slots__ = ("entries", "residency", "volumes", "codes", "zero_metal", "shape",
-                 "dtdx", "_functions", "_tensors", "_magnetic", "launches", "runs")
+                 "dtdx", "_functions", "_tensors", "_magnetic", "launches", "runs",
+                 "chunk_bounds", "_record")
 
     def __init__(self, entries: Sequence[_Entry], residency: Residency,
                  volumes: Sequence[str], codes: Sequence[int],
                  zero_metal: Sequence[bool], shape: Sequence[int], dtdx: float,
                  magnetic: Sequence[Any],
                  functions: Mapping[Tuple[str, int], Any],
-                 tensors: Mapping[int, Any]) -> None:
+                 tensors: Mapping[int, Any], *, chunk_bounds: Any) -> None:
         self.entries = tuple(entries)
         self.residency = residency
         self.volumes = tuple(dict.fromkeys(volumes))
@@ -627,6 +667,11 @@ class MetalNoPmlConductiveFusedElectricPairPlan:
         self._magnetic = tuple(magnetic)
         self._functions = dict(functions)
         self._tensors = dict(tensors)
+        # The record binds last, checked against the plan's shape and uploaded once,
+        # outside the residency registry, as every base plan binds it.
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, "MetalNoPmlConductiveFusedElectricPairPlan")
+        self._record = _chunk_bounds.tensor(self.chunk_bounds)
         self.launches = 0
         self.runs = 0
 
@@ -671,7 +716,7 @@ class MetalNoPmlConductiveFusedElectricPairPlan:
                 self._tensors[id(entry.condinv)],
                 *(self._tensors[id(value)] for value in slots),
                 self.shape[0], self.shape[1], self.shape[2],
-                int(entry.displacement.size), self.dtdx,
+                int(entry.displacement.size), self.dtdx, self._record,
             )
             self.launches += 1
         self.runs += 1
@@ -688,8 +733,14 @@ def plan_metal_no_pml_conductive_fused_electric_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[Tuple[str, int], Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalNoPmlConductiveFusedElectricPairPlan]:
     """Build the fused plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the
+    composer's ``StepContext.chunk_bounds``) and has no default, as on the curl it
+    lifts; a missing or malformed record is refused by name before anything is
+    mirrored or compiled.
 
     ``None`` is the only refusal: a configuration this kernel does not carry must
     fall back to the array path, never raise into a caller that would otherwise
@@ -703,6 +754,8 @@ def plan_metal_no_pml_conductive_fused_electric_pair(
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
+    _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                             "plan_metal_no_pml_conductive_fused_electric_pair")
     # `None` for the layer: this family's own predicate has already refused an
     # active absorber, and `_boundary_kinds` consulted WITH one would report the
     # absorber's softening rather than the grid's declaration.
@@ -760,7 +813,7 @@ def plan_metal_no_pml_conductive_fused_electric_pair(
 
     return MetalNoPmlConductiveFusedElectricPairPlan(
         entries, residency, volumes, codes, walls, grid.shape,
-        grid.dt / grid.dx, magnetic, selected, tensors)
+        grid.dt / grid.dx, magnetic, selected, tensors, chunk_bounds=chunk_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -781,7 +834,7 @@ def _arm_plan(context: Any, slot: str
         return None
     return plan_metal_no_pml_conductive_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

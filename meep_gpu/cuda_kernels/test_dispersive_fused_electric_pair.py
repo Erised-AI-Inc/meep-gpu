@@ -353,7 +353,7 @@ def test_device_sources_keys_every_swept_arity(certified):
 @pytest.mark.parametrize("anchor", [
     "    float s_x = Dx[idx];",
     "    float src_y = Dy[idx] * inv_eps_Ey[idx];",
-    "    constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k]);",
+    "    constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k], in_h_z);",
 ])
 def test_a_moved_certified_anchor_fails_the_emit_rather_than_emitting(
         monkeypatch, certified, anchor):

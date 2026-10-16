@@ -78,6 +78,7 @@ for _path in (str(API_ROOT), str(HERE)):
 import numpy as np  # noqa: E402
 
 import metal_composition_matrix as matrix  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
 # THE DRIVER'S CONDUCTIVE INJECTION, transcribed once. The no-PML pairs' gate owns
 # the live transcription (sparse per-deposit-cell replay + dense fallback) and its
@@ -163,6 +164,25 @@ def frozen(fields: Any) -> Dict[str, np.ndarray]:
             for name, value in state_of(fields).items()}
 
 
+#: The auxiliary volumes the per-chunk forms leave untouched off their forms' cells
+#: (KERNELS.md §1, C2): ``fu_*`` off the recurrence's cells, ``f_w_*`` off the
+#: accumulation's. Where a component's layer is absent (an invariant axis) the ORACLE
+#: never moves that volume either; the floor is the tranche-7 gate's.
+AUXILIARY_PREFIXES: Tuple[str, ...] = ("fu_", "f_w_")
+
+
+def movement_floor(still: Sequence[str], reference_still: Sequence[str]) -> bool:
+    """Every compared array MOVED, except an auxiliary the array path left untouched too."""
+    return (set(still) <= set(reference_still)
+            and all(str(name).startswith(AUXILIARY_PREFIXES) for name in still))
+
+
+def unmoved(before: Mapping[str, np.ndarray], fields: Any) -> List[str]:
+    """The arrays of ``fields`` whose words all equal their ``before`` copy."""
+    after = state_of(fields)
+    return sorted(name for name in before if differing(before[name], after[name]) == 0)
+
+
 def compare(left: Any, right: Any) -> Dict[str, int]:
     a, b = state_of(left), state_of(right)
     assert set(a) == set(b), sorted(set(a) ^ set(b))
@@ -228,6 +248,25 @@ def _conductive_mixed() -> Tuple[Any, Any]:
     return fields, pml
 
 
+def _conductive_partial() -> Tuple[Any, Any]:
+    """Dx lossy on the two middle x rows only: the interior chunks along x keep its
+    conductivity and every other chunk deletes it (structure.cpp:883-900), so the
+    lifted curl steps Dx's lossless forms there through the presence words
+    (``conductive_pml.presence_words``). Refused here if the split is not real."""
+    from meep_gpu.chunk_map import ChunkLayout  # noqa: PLC0415
+
+    fields, pml = matrix.cart()
+    shape = tuple(fields.grid.shape)
+    sigma = np.zeros(shape, dtype=np.float32)
+    middle = shape[0] // 2
+    sigma[middle - 1:middle + 1] = np.float32(0.3)
+    kept = ChunkLayout.one_rank(fields.grid, pml).conductive_chunks(sigma, (1, 0, 0))
+    if not any(kept) or all(kept):
+        raise AssertionError(f"the partial-presence fixture is not partial: {kept}")
+    fields.set_d_conductivity({"Dx": sigma})
+    return fields, pml
+
+
 FAMILIES: Tuple[Dict[str, Any], ...] = (
     {
         "name": "bfast_fused_electric_pair",
@@ -236,7 +275,8 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         "plan": bfast_fused_electric_pair.plan_metal_bfast_fused_electric_pair,
         "coverage":
             bfast_fused_electric_pair.metal_bfast_fused_electric_pair_coverage,
-        "takes_probe": False,
+        # The plan binds the chunk record (it rides in Params).
+        "takes_record": True,
         "cases": (
             ("bfast_kx_periodic_3d", lambda: matrix.cart(
                 bfast_scaled_k=(0.2, 0.0, 0.0))),
@@ -256,9 +296,10 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
             ("seam_reads_the_split_field_auxiliary",
              "float src0 = v0 * ie0[ii];", "float src0 = u0[ii] * ie0[ii];"),
             ("bfast_state_store_dropped",
-             "    s0[ii] = st0 + adv0;\n", ""),
-            ("bfast_advance_left_in_the_curl",
-             "    curl1 = curl1 - adv1;\n", ""),
+             "    if (own0 && (has_y || has_z)) { s0[ii] = F0; }\n", ""),
+            ("bfast_increment_dropped",
+             "    float fi1 = (has_z || has_x) ? (-(F1 - fp1)) : 0.0f;\n",
+             "    float fi1 = 0.0f;\n"),
             ("pack_offset_x_reads_the_y_vector",
              "device const float* kmx = cpml + prm.off_kmx;",
              "device const float* kmx = cpml + prm.off_kmy;"),
@@ -284,14 +325,23 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
                  .plan_metal_conductive_fused_electric_pair),
         "coverage": (conductive_fused_electric_pair
                      .metal_conductive_fused_electric_pair_coverage),
-        "takes_probe": False,
+        # The plan binds the chunk record (it rides in Params): the one-rank record of
+        # the case's grid, the division the array-path reference steps with.
+        "takes_record": True,
         "cases": (
             ("sigma_all_periodic_3d", lambda: matrix.conductive(matrix.cart())),
             ("sigma_all_wall_z_3d", lambda: matrix.conductive(
                 matrix.cart(boundaries={"z": "metallic"}))),
             ("sigma_dx_only_3d", _conductive_mixed),
+            ("sigma_dx_partial_3d", _conductive_partial),
         ),
         "mutation_case": "sigma_all_wall_z_3d",
+        # A mutation armed on ANOTHER case than ``mutation_case``: the presence flag
+        # only decides a word where some chunk keeps no conductivity.
+        "case_mutations": (
+            ("presence_flag_inverted", "sigma_dx_partial_3d",
+             "    if (!kc0) {\n", "    if (kc0) {\n"),
+        ),
         "deposit_case": "sigma_all_periodic_3d",
         "deposit_component": "Ez",
         "conductive_injection": True,
@@ -310,6 +360,11 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
             ("conductive_history_drops_condfac", 2,
              "float c0_new = ((c0_previous * cf0[ii]) - curl0) * ci0[ii];",
              "float c0_new = ((c0_previous) - curl0) * ci0[ii];"),
+            # INVERTED (KERNELS.md §7.1): the lifted curl adds the f_cond increment
+            # formed first, MEEP's grouping; this plants the package's previous one.
+            ("conductive_previous_increment_grouping",
+             "float u0_new = ((u0_previous * km_y) + c0_step) * si_y;",
+             "float u0_new = (((u0_previous * km_y) + c0_new) - c0_previous) * si_y;"),
             ("inverse_epsilon_on_the_wrong_component",
              "float src1 = v1 * ie1[ii];", "float src1 = v1 * ie0[ii];"),
         ),
@@ -332,7 +387,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
                  .plan_metal_beta_complex_fused_electric_pair),
         "coverage": (beta_complex_fused_electric_pair
                      .metal_beta_complex_fused_electric_pair_coverage),
-        "takes_probe": True,
+        "takes_record": True,
         "cases": (
             ("beta_complex_2d", lambda: matrix.flat(beta=0.33,
                                                     complex_storage=True)),
@@ -350,20 +405,19 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         "source": lambda plan, mode: (
             beta_complex_fused_electric_pair
             .beta_complex_fused_electric_pair_source(
-                plan.codes, plan.phased, plan.zero_metal, plan.expansion, mode)),
+                plan.codes, plan.phased, plan.zero_metal, mode)),
         "entry": "beta_complex_fused_electric_pair_step",
         "mutations": (
             ("seam_reads_the_split_field_auxiliary",
              "float2 src0 = c_mul_field_left(v0, e0[ii]);",
              "float2 src0 = c_mul_field_left(u0[ii], e0[ii]);"),
             ("beta_insert_dropped",
-             "    curl0 = curl0 - c_mul(float2(bpr, bpi), b);\n", ""),
+             "    float2 bi0 = -bq0;\n", "    float2 bi0 = float2(0.0f, 0.0f);\n"),
             ("beta_partners_swapped",
-             "curl1 = curl1 - c_mul(float2(bmr, bmi), a);",
-             "curl1 = curl1 - c_mul(float2(bmr, bmi), b);"),
-            ("bloch_phase_dropped_on_one_operand",
-             "b_x = wx ? c_mul(b_x, float2(pxr, pxi)) : b_x;",
-             "b_x = b_x;"),
+             "float2(-(beta_minus * a.y), beta_minus * a.x)",
+             "float2(-(beta_minus * b.y), beta_minus * b.x)"),
+            ("bloch_connection_dropped_on_one_operand",
+             "        b_dx = c_mul(b, px);\n", ""),
         ),
         "equivalences": (
             ("seam_reloads_the_flux_it_just_stored",
@@ -383,7 +437,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
                  .plan_metal_beta_complex_fused_magnetic_pair),
         "coverage": (beta_complex_fused_magnetic_pair
                      .metal_beta_complex_fused_magnetic_pair_coverage),
-        "takes_probe": True,
+        "takes_record": True,
         "cases": (
             ("beta_complex_2d", lambda: matrix.flat(beta=0.33,
                                                     complex_storage=True)),
@@ -405,16 +459,16 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         "source": lambda plan, mode: (
             beta_complex_fused_magnetic_pair
             .beta_complex_fused_magnetic_pair_source(
-                plan.codes, plan.phased, plan.zero_metal, plan.expansion, mode)),
+                plan.codes, plan.phased, plan.zero_metal, mode)),
         "entry": "beta_complex_fused_magnetic_pair_step",
         "mutations": (
             ("seam_takes_the_curl_auxiliary",
              "float2 src0 = v0;", "float2 src0 = u0[ii];"),
             ("beta_insert_dropped",
-             "    curl0 = curl0 - c_mul(float2(bpr, bpi), b);\n", ""),
+             "    float2 bi0 = -bq0;\n", "    float2 bi0 = float2(0.0f, 0.0f);\n"),
             ("beta_partners_swapped",
-             "curl1 = curl1 - c_mul(float2(bmr, bmi), a);",
-             "curl1 = curl1 - c_mul(float2(bmr, bmi), b);"),
+             "float2(-(beta_minus * a.y), beta_minus * a.x)",
+             "float2(-(beta_minus * b.y), beta_minus * b.x)"),
         ),
         "equivalences": (
             ("seam_reloads_the_flux_it_just_stored",
@@ -429,21 +483,15 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
 
 
 def build_plan(spec: Mapping[str, Any], fields: Any, pml: Any,
-               residency: Residency, probes: Mapping[str, Any],
-               sources: Sequence[Any] = (),
+               residency: Residency, sources: Sequence[Any] = (),
                functions: Optional[Mapping[Any, Any]] = None) -> Any:
     kwargs: Dict[str, Any] = {}
-    if spec["takes_probe"]:
-        kwargs["probe"] = probes["beta_probe"]
+    if spec.get("takes_record"):
+        kwargs["chunk_bounds"] = layer_record(fields.grid, pml)
     if functions is not None:
         kwargs["functions"] = functions
     return spec["plan"](fields, pml, sources=tuple(sources),
                         residency=residency, **kwargs)
-
-
-def _coverage_kwargs(spec: Mapping[str, Any],
-                     probes: Mapping[str, Any]) -> Dict[str, Any]:
-    return {"probe": probes["beta_probe"]} if spec["takes_probe"] else {}
 
 
 # ---------------------------------------------------------------------------
@@ -466,7 +514,7 @@ def metal_step(fields: Any, pml: Any, plan: Any, owned: Sequence[str],
 
 
 def run_case(spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
-             probes: Mapping[str, Any], steps: Optional[int] = None,
+             steps: Optional[int] = None,
              functions: Optional[Mapping[Any, Any]] = None) -> Dict[str, Any]:
     """Step the two engines side by side and compare per COMPLETE step."""
     steps = STEPS if steps is None else int(steps)
@@ -481,17 +529,16 @@ def run_case(spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
                 "drift": drift}
 
     residency = Residency()
-    plan = build_plan(spec, actual, actual_pml, residency, probes,
-                      functions=functions)
+    plan = build_plan(spec, actual, actual_pml, residency, functions=functions)
     if plan is None:
         return {"passed": False, "reason": "the pair was refused",
                 "refusals": list(spec["coverage"](
-                    actual, actual_pml, (), residency,
-                    **_coverage_kwargs(spec, probes)).reasons)[:8]}
+                    actual, actual_pml, (), residency).reasons)[:8]}
 
     live = live_passes(actual, actual_pml)
     assert live == live_passes(reference, reference_pml)
     before = frozen(actual)
+    reference_before = frozen(reference)
     residency.sync_in()
 
     per_step: List[Dict[str, Any]] = []
@@ -521,8 +568,11 @@ def run_case(spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
     launches_ok = (plan.runs == len(per_step)
                    and plan.launches == plan.launches_per_run * len(per_step))
+    reference_still = unmoved(reference_before, reference)
     return {
-        "passed": bool(identical and clean and launches_ok and not still),
+        "passed": bool(identical and clean and launches_ok
+                       and movement_floor(still, reference_still)),
+        "reference_arrays_that_never_moved": reference_still,
         "bit_identical": identical,
         "subnormal_free": clean,
         "first_divergence": next((row["step"] for row in per_step
@@ -542,13 +592,12 @@ def run_case(spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
     }
 
 
-def leg_identity(spec: Mapping[str, Any],
-                 probes: Mapping[str, Any]) -> Dict[str, Any]:
+def leg_identity(spec: Mapping[str, Any]) -> Dict[str, Any]:
     """A: the full mechanism. Every case must be bit-identical at every step."""
     rows: Dict[str, Any] = {}
     for label, build in spec["cases"]:
         started = time.time()
-        rows[label] = run_case(spec, build, probes)
+        rows[label] = run_case(spec, build)
         log(f"    identity  {spec['name']:36s} {label:26s} "
             f"passed={rows[label]['passed']} "
             f"words={rows[label].get('differing_words')} "
@@ -565,27 +614,27 @@ def _mutated_functions(spec: Mapping[str, Any], plan: Any, old: str, new: str,
     return {mode: function}
 
 
-def leg_mutation(spec: Mapping[str, Any],
-                 probes: Mapping[str, Any]) -> Dict[str, Any]:
+def leg_mutation(spec: Mapping[str, Any]) -> Dict[str, Any]:
     """B: the DEGENERATE mechanism. Every armed mutation MUST diverge; every
     declared equivalence must NOT."""
-    build = dict(spec["cases"])[spec["mutation_case"]]
+    cases = dict(spec["cases"])
+    build = cases[spec["mutation_case"]]
     rows: Dict[str, Any] = {}
-    for mutation in spec["mutations"]:
-        if len(mutation) == 4:
-            label, count, old, new = mutation
-        else:
-            label, old, new = mutation
-            count = 1
-        reference, reference_pml = build()
+    armed = [(mutation if len(mutation) == 4 else
+              (mutation[0], 1, mutation[1], mutation[2]), build)
+             for mutation in spec["mutations"]]
+    armed += [((label, 1, old, new), cases[case])
+              for label, case, old, new in spec.get("case_mutations", ())]
+    for (label, count, old, new), case_build in armed:
+        reference, reference_pml = case_build()
         residency = Residency()
         seed_state(reference, SEED)
-        plan = build_plan(spec, reference, reference_pml, residency, probes)
+        plan = build_plan(spec, reference, reference_pml, residency)
         if plan is None:
             rows[label] = {"passed": False, "reason": "the pair was refused"}
             continue
         functions = _mutated_functions(spec, plan, old, new, count)
-        result = run_case(spec, build, probes, functions=functions)
+        result = run_case(spec, case_build, functions=functions)
         diverged = not result.get("bit_identical", True)
         rows[label] = {
             "passed": bool(diverged and result.get("launches")),
@@ -602,13 +651,13 @@ def leg_mutation(spec: Mapping[str, Any],
         reference, reference_pml = build()
         residency = Residency()
         seed_state(reference, SEED)
-        plan = build_plan(spec, reference, reference_pml, residency, probes)
+        plan = build_plan(spec, reference, reference_pml, residency)
         if plan is None:
             equivalences[label] = {"passed": False,
                                    "reason": "the pair was refused"}
             continue
         functions = _mutated_functions(spec, plan, old, new)
-        result = run_case(spec, build, probes, functions=functions)
+        result = run_case(spec, build, functions=functions)
         identical = bool(result.get("bit_identical"))
         equivalences[label] = {
             "passed": identical, "bit_identical": identical,
@@ -648,8 +697,7 @@ def _inject_plain(fields: Any, sources: Sequence[Any], when: float) -> None:
             source.inject(fields, when)
 
 
-def run_deposit_case(spec: Mapping[str, Any], probes: Mapping[str, Any],
-                     repair: bool = True,
+def run_deposit_case(spec: Mapping[str, Any], repair: bool = True,
                      steps: Optional[int] = None) -> Dict[str, Any]:
     """Complete driver steps with an in-seam electric source, byte compared.
 
@@ -684,11 +732,7 @@ def run_deposit_case(spec: Mapping[str, Any], probes: Mapping[str, Any],
     residency = Residency()
     composed = metal_launch.plan_step(
         actual, actual_pml, residency=residency,
-        sources=(actual_sources if repair else ()), fuse=True,
-        beta_probe=probes["beta_probe"],
-        complex_probe=probes["complex_probe"],
-        folded_complex_probe=probes["folded_complex_probe"],
-        cylindrical_complex_probe=probes["cylindrical_complex_probe"])
+        sources=(actual_sources if repair else ()), fuse=True)
     leading = composed.plans.get("step_D")
     trailing = composed.plans.get("update_E")
     if leading is None or trailing is None:
@@ -712,6 +756,7 @@ def run_deposit_case(spec: Mapping[str, Any], probes: Mapping[str, Any],
 
     live = live_passes(actual, actual_pml)
     before = frozen(actual)
+    reference_before = frozen(reference)
     dt = float(actual.grid.dt)
 
     per_step: List[Dict[str, Any]] = []
@@ -756,10 +801,12 @@ def run_deposit_case(spec: Mapping[str, Any], probes: Mapping[str, Any],
     repairs = int(getattr(leading, "repairs", 0))
     launches_ok = (inner.runs == len(per_step)
                    and inner.launches == inner.launches_per_run * len(per_step))
+    reference_still = unmoved(reference_before, reference)
     return {
         "passed": bool(identical and launches_ok and installed_ok
                        and (repairs > 0 if repair else repairs == 0)
-                       and not still),
+                       and movement_floor(still, reference_still)),
+        "reference_arrays_that_never_moved": reference_still,
         "repair_wired": repair,
         "installed_plans": list(installed),
         "installed_as_expected": installed_ok,
@@ -778,11 +825,10 @@ def run_deposit_case(spec: Mapping[str, Any], probes: Mapping[str, Any],
     }
 
 
-def leg_deposit(spec: Mapping[str, Any],
-                probes: Mapping[str, Any]) -> Dict[str, Any]:
+def leg_deposit(spec: Mapping[str, Any]) -> Dict[str, Any]:
     """C: the in-seam deposit, bracketed and unbracketed."""
-    carried = run_deposit_case(spec, probes, repair=True)
-    control = run_deposit_case(spec, probes, repair=False)
+    carried = run_deposit_case(spec, repair=True)
+    control = run_deposit_case(spec, repair=False)
     diverged = not control.get("bit_identical", True)
     log(f"    deposit   {spec['name']:36s} carried={carried['passed']} "
         f"words={carried.get('differing_words')} "
@@ -836,11 +882,11 @@ def leg_binding_ceiling() -> Dict[str, Any]:
         "beta_complex_fused_electric_pair":
             beta_complex_fused_electric_pair
             .beta_complex_fused_electric_pair_source(
-                (0, 0, 0), (1, 0, 0), (False, False, False), "FMA_V1"),
+                (0, 0, 0), (1, 0, 0), (False, False, False)),
         "beta_complex_fused_magnetic_pair":
             beta_complex_fused_magnetic_pair
             .beta_complex_fused_magnetic_pair_source(
-                (0, 0, 0), (1, 0, 0), (False, False, False), "FMA_V1"),
+                (0, 0, 0), (1, 0, 0), (False, False, False)),
     }
     declared = {
         "bfast_fused_electric_pair": bfast_fused_electric_pair.PACKED_BINDINGS,
@@ -925,43 +971,10 @@ def main() -> int:
     arguments = parser.parse_args()
     STEPS = int(arguments.steps)
 
-    environment = matrix.prepare_environment()
+    matrix.prepare_environment()
     import torch  # noqa: PLC0415
     if not torch.backends.mps.is_available():
         raise SystemExit("MPS is not available; this gate must run on an Apple GPU")
-
-    # THE PROBES ARE LOADED RECORDS, NOT PATHS — handing a family's
-    # `expansion_from_probe` a path returns None and the family refuses BY NAME,
-    # which would make this gate measure the artifact's absence.
-    from meep_gpu.metal_kernels import complex_fields as _complex  # noqa: PLC0415
-    from meep_gpu.metal_kernels import folded_complex as _folded  # noqa: PLC0415
-    from meep_gpu.metal_kernels import special_kz as _beta  # noqa: PLC0415
-    from meep_gpu.metal_kernels import (  # noqa: PLC0415
-        cylindrical_complex as _cylindrical)
-
-    paths = {
-        "complex_probe":
-            environment.get("MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE"),
-        "beta_probe": environment.get("MEEP_GPU_METAL_EXPANSION_PROBE"),
-        "folded_complex_probe":
-            environment.get("MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE"),
-        "cylindrical_complex_probe":
-            environment.get("MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE"),
-    }
-    if paths["beta_probe"] is None:
-        raise SystemExit(
-            "no beta expansion artifact; the two special_kz families would "
-            "refuse BY NAME and this gate would measure the artifact's absence "
-            "rather than the kernels' arithmetic")
-    probes = {
-        "complex_probe": _complex.load_expansion_probe(),
-        "beta_probe": _beta.load_expansion_probe(),
-        "folded_complex_probe": _folded.load_expansion_probe(),
-        "cylindrical_complex_probe": _cylindrical.load_expansion_probe(),
-    }
-    if probes["beta_probe"] is None:
-        raise SystemExit(
-            f"the beta expansion artifact at {paths['beta_probe']!r} did not load")
 
     legs = tuple(part.strip() for part in arguments.legs.split(",") if part.strip())
     started = time.time()
@@ -971,7 +984,6 @@ def main() -> int:
                  "mps_available": bool(torch.backends.mps.is_available())},
         "steps": arguments.steps,
         "seed": SEED,
-        "probes": paths,
         "families": {},
         "corpus_rows": {
             "census": "parity/meep_gpu/results/metal_coverage_tranche6_2026-08-19"
@@ -1001,11 +1013,11 @@ def main() -> int:
         log(f"  {spec['name']}")
         entry: Dict[str, Any] = {}
         if "identity" in legs:
-            entry["identity"] = leg_identity(spec, probes)
+            entry["identity"] = leg_identity(spec)
         if "mutation" in legs:
-            entry["mutation"] = leg_mutation(spec, probes)
+            entry["mutation"] = leg_mutation(spec)
         if "deposit" in legs and spec.get("deposit_case"):
-            entry["deposit"] = leg_deposit(spec, probes)
+            entry["deposit"] = leg_deposit(spec)
         entry["passed"] = all(value.get("passed") for value in entry.values()
                               if isinstance(value, dict))
         record["families"][spec["name"]] = entry

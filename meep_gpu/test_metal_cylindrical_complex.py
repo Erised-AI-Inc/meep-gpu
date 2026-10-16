@@ -5,9 +5,10 @@ THE FAMILY IS ``complex_fields`` PLUS FIVE CYLINDRICAL ADDITIONS, so this file d
 not re-test complex storage: that is byte-certified elsewhere. It tests the five
 additions, the two things this family gets to assume, and the two things it costs.
 
-**1. THE FIVE ADDITIONS, AGAINST ``stepping.py`` DIRECTLY.** The radial prefix, the
-i*m/r coupling, the |m| = 1 axis-row replacement, the per-|m| near-axis rules and
-the m = 0 arm (no coupling, the m = 0 axis rules as post-recurrence edits) are
+**1. THE FIVE ADDITIONS, AGAINST ``stepping.py`` DIRECTLY.** The per-chunk radial
+sum, the i*m/r pass through MEEP's additive ladder, the |m| = 1 axis-row replacement,
+the per-|m| near-axis rules and the m = 0 arm (no coupling, the m = 0 axis rules as
+post-recurrence edits) are
 compared as WORDS against the array path over the three m classes, both z
 terminations, both branches of ``accurate_fields_near_cylorigin`` and multi-launch
 runs. Every leg asserts a VACUITY FLOOR: a plan that wrote nothing would otherwise
@@ -24,10 +25,11 @@ IDENTITY and is asserted as one, by reading ``stepping``'s branch text — so a 
 split of that branch fails here rather than in a field. The NEAR ghost half is NOT an
 identity and is MEASURED on the array path, in this file, at both m classes.
 
-**4. THE ONE THING IT COSTS.** The prefix is a sequential HOST scan, so every launch
-syncs one source volume out and the prefix in. That is counted, and the counter is
-ARMED: a plan whose prefix is not refreshed after its source changes is shown to
-diverge, so ``prefix_syncs == launches`` is evidence rather than bookkeeping.
+**4. THE ONE THING IT COSTS.** The radial sum is the array path's own, on the HOST, so
+every launch syncs one source volume out and the radial difference in. That is
+counted, and the counter is ARMED: a plan whose difference is not refreshed after its
+source changes is shown to diverge, so ``prefix_syncs == launches`` is evidence rather
+than bookkeeping.
 
 **5. THE INVERSIONS.** Six families to stay clear of, and the separations are pinned
 as predicate outcomes rather than as prose — including the one against the
@@ -67,14 +69,6 @@ from meep_gpu.metal_kernels import (  # noqa: E402
 
 ENVIRONMENT = matrix.prepare_environment()
 
-#: The expansion arm every source leg builds with. Read from the SAME artifact the
-#: predicates read, so a test cannot certify a body the family would not launch.
-PROBE = cyl.load_expansion_probe()
-EXPANSION = cyl.expansion_from_probe(PROBE) if PROBE else None
-
-requires_probe = pytest.mark.skipif(
-    EXPANSION is None,
-    reason="no cylindrical-complex expansion probe artifact on this host")
 
 VOLUMES = ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez",
            "Hx", "Hy", "Hz", "fu_Bx", "fu_By", "fu_Bz",
@@ -102,8 +96,20 @@ def _differing(left, right) -> int:
     return int(np.count_nonzero(_words(left) != _words(right)))
 
 
+#: A float32 word that is not a power of two: the axis rules' products with Courant are
+#: MEEP's double products, which this backend forms in float32 only for such a word.
+COURANT = 0.375
+
+
+def _record(fields, pml):
+    """The one-rank chunk record of the run's grid and layer."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
+
+
 def build(m: int = 1, z_kind: str = "metallic", accurate: bool = False,
-          seed: int = 11, nr: int = 18, nz: int = 22, courant: float = 0.37,
+          seed: int = 11, nr: int = 18, nz: int = 22, courant: float = COURANT,
           complex_storage: bool = True, r_pml=(0, 4)):
     """A Dcyl ``(Fields, PML)`` pair seeded in the PHYSICAL BAND.
 
@@ -134,6 +140,10 @@ def build(m: int = 1, z_kind: str = "metallic", accurate: bool = False,
             array.imag[...] = rng.standard_normal(array.shape).astype(np.float32)
         else:
             array[...] = rng.standard_normal(array.shape).astype(array.dtype)
+    # A seeded state is a mid-run state: the run's first update_H, which starts H and
+    # f_w from B on the dsigw cells (stepping.separate_h_from_b), is behind it, as the
+    # composition matrix records for its own fixtures.
+    fields.h_separated = True
     return fields, PML(grid=grid, thickness={"x": tuple(r_pml), "z": 4})
 
 
@@ -141,7 +151,6 @@ def build(m: int = 1, z_kind: str = "metallic", accurate: bool = False,
 # Source structure: what is specialised, what is a runtime uniform, and how many
 # ---------------------------------------------------------------------------
 
-@requires_probe
 def test_the_specialisation_enumeration_is_CLOSED_at_twelve():
     """``12``, not ``12 x UNBOUNDED``. This is the whole point of the round.
 
@@ -152,7 +161,7 @@ def test_the_specialisation_enumeration_is_CLOSED_at_twelve():
     ``BACKWARD x BCZ x M_CLASS``, three m classes since the ``M_ZERO`` arm landed
     (eight sources before 2026-09-04).
     """
-    sources = cyl.enumerate_cylindrical_sources(EXPANSION)
+    sources = cyl.enumerate_cylindrical_sources()
     assert len(sources) == 12, sorted(sources)
     assert len(set(sources.values())) == 12, "two specialisations emit one source"
     assert sum("/m0/" in label for label in sources) == 4
@@ -162,59 +171,80 @@ def test_the_specialisation_enumeration_is_CLOSED_at_twelve():
             f"{label} still holds a placeholder")
 
 
-@requires_probe
 def test_the_m_zero_body_carries_no_coupling_and_the_m_zero_axis_rules():
     """The ``M_ZERO`` arm is a THIRD BODY, transcribed from the array path's own
     ``grid.m != 0`` / ``m == 0`` branches, not the |m| >= 1 body at m = 0.
 
-    Absent: the i*m/r block (a zero coefficient row through ``c_mul`` would still
-    turn a ``-0.0`` curl word into ``+0.0``), the |m| = 1 increment, the |m| >= 2
-    hold. Present, AFTER the recurrence and on the FIELD registers only: ``Bx[r=0]
-    = 0`` on the B side; ``Dz[r=0] += axis_coef * Hp[r=0]`` as a post-add and then
-    ``Dy[r=0] = 0`` on the D side.
+    Absent: the i*m/r pass (a zero row through the ladder would still turn a ``-0.0``
+    field word into ``+0.0``), the |m| = 1 increment, the |m| >= 2 hold. Present, AFTER
+    the forms and on the FIELD registers only: ``Bx[r=0] = 0`` on the B side;
+    ``Dz[r=0] += axis_factor * Hp[r=0]`` and then ``Dy[r=0] = 0`` on the D side.
     """
-    b_side = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ZERO,
-                                         EXPANSION)
-    d_side = cyl.cylindrical_curl_source(templates.METALLIC, True, cyl.M_ZERO,
-                                         EXPANSION)
+    b_side = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ZERO)
+    d_side = cyl.cylindrical_curl_source(templates.METALLIC, True, cyl.M_ZERO)
     for source in (b_side, d_side):
-        assert "float2 q0 = c0[i];" not in source
-        assert "c_mul(q0, c)" not in source and "c_mul(q2, a)" not in source
+        assert "float2 mi0" not in source and "float2 mi2" not in source
         assert "curl0 = at_x ? -inc : curl0;" not in source
         assert "curl1 = at_x ? -inc : curl1;" not in source
         assert "bool near = (i < int(zrows));" not in source
-        # The rows and the |m| = 1 scalars stay BOUND (one signature, three arms).
-        assert "device const float2* c0        [[buffer(10)]]," in source
-        assert "constant float&      axis_coef [[buffer(26)]]," in source
+        # The rows and the factor stay BOUND (one signature, three arms).
+        assert "device const float*  q0      [[buffer(21)]]," in source
+        assert "constant float&      axis_factor [[buffer(24)]]," in source
     assert "v0 = at_x ? float2(0.0f, 0.0f) : v0;" in b_side
-    assert "inc0" not in b_side
-    assert "float2 inc0 = c_mul_coefficient_left(axis_coef, b);" in d_side
-    assert "v2 = at_x ? (v2 + inc0) : v2;" in d_side
+    assert "dfcnd" not in b_side
+    assert "float2 dfcnd = c_mul_coefficient_left(axis_factor, b);" in d_side
+    assert "v2 = at_x ? (v2 + dfcnd) : v2;" in d_side
     assert "v1 = at_x ? float2(0.0f, 0.0f) : v1;" in d_side
     assert "n1 = at_x" not in d_side and "n2 = at_x" not in d_side, (
-        "the m = 0 rules touch the FIELDS only, never fu_ (stepping :586-587, :661)")
-    # The post-add sits AFTER the recurrence's `v2` and BEFORE the store.
-    assert (d_side.index("float2 v2 = ") < d_side.index("v2 = at_x ? (v2 + inc0)")
+        "the m = 0 rules touch the FIELDS only, never fu_")
+    # The post-add sits AFTER the forms' `v2` and BEFORE the store.
+    assert (d_side.index("float2 v2 = ") < d_side.index("v2 = at_x ? (v2 + dfcnd)")
             < d_side.index("f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;"))
-    # And the |m| >= 1 bodies still carry the coupling.
+    # And the |m| >= 1 bodies carry the i*m/r pass.
     for arm in (cyl.M_ONE, cyl.M_MANY):
-        assert "float2 q0 = c0[i];" in cyl.cylindrical_curl_source(
-            templates.METALLIC, True, arm, EXPANSION)
+        source = cyl.cylindrical_curl_source(templates.METALLIC, True, arm)
+        assert "float2 mi0 = float2(-(q0[i] * c.y), q0[i] * c.x);" in source
+        assert "float2 mi2 = float2(-(q2[i] * a.y), q2[i] * a.x);" in source
 
 
-def test_the_m_zero_axis_coefficient_is_the_array_paths_own_scalar():
-    """``4.0 * (dt/dx)`` formed in float64, rounded ONCE at the binding — the word
-    NumPy forms when it casts the Python float to complex64 before the multiply."""
-    for dtdx in (0.37, 0.5, 0.2718281828, 0.25):
-        coefficient = cyl.axis_coefficient(dtdx)
-        assert coefficient == 4.0 * dtdx
-        assert np.float32(coefficient) == np.complex64(4.0 * dtdx).real
-        # Scaling by four is exact, so the in-kernel spelling `4.0f * dtdx` is the
-        # same word; the gate carries that as a null control.
-        assert np.float32(coefficient) == np.float32(4.0) * np.float32(dtdx)
+def test_the_axis_factor_is_the_float32_word_of_the_double_factor():
+    """``4*Courant`` (m = 0 D), ``-Courant`` (|m| = 1 B), ``+Courant`` (|m| = 1 D).
+
+    MEEP forms each product in double and rounds once; for a float32-word Courant the
+    kernel's float32 product with the factor's word is that word on every operand.
+    """
+    courant = COURANT
+    assert cyl.axis_factor("step_D", 0, courant) == 4.0 * courant
+    assert cyl.axis_factor("step_B", 0, courant) == 0.0
+    assert cyl.axis_factor("step_B", 1, courant) == -courant
+    assert cyl.axis_factor("step_D", -1, courant) == courant
+    assert cyl.axis_factor("step_B", 3, courant) == 0.0
+    assert cyl.needs_courant_product("step_D", 0)
+    assert not cyl.needs_courant_product("step_B", 0)
+    assert cyl.needs_courant_product("step_B", 1)
+    assert cyl.needs_courant_product("step_D", -1)
+    assert not cyl.needs_courant_product("step_D", 2)
+    rng = np.random.default_rng(3)
+    values = rng.uniform(-1.0, 1.0, 20000).astype(np.float32)
+    for factor in (4.0 * courant, -courant, courant):
+        double = (values.astype(np.float64) * factor).astype(np.float32)
+        single = np.float32(factor) * values
+        assert np.array_equal(double.view(np.uint32), single.view(np.uint32))
 
 
-@requires_probe
+def test_a_courant_that_is_not_a_float32_word_is_refused_where_a_product_needs_it():
+    """Courant 0.37 is refused by name where the arm forms a product with it."""
+    residency = device.Residency()
+    for m, sub_step, refused in ((0, "step_D", True), (0, "step_B", False),
+                                 (1, "step_B", True), (1, "step_D", True),
+                                 (2, "step_B", False), (2, "step_D", False)):
+        fields, pml = build(m, courant=0.37)
+        verdict = cyl.cylindrical_complex_pml_curl_coverage(fields, pml, sub_step,
+                                                            residency)
+        named = any("is not a float32 word" in reason for reason in verdict.reasons)
+        assert named is refused, (m, sub_step, verdict.reasons)
+
+
 def test_zero_rows_is_a_BOUND_UNIFORM_and_never_a_baked_literal():
     """The near-axis count must not appear in the source at all.
 
@@ -223,7 +253,7 @@ def test_zero_rows_is_a_BOUND_UNIFORM_and_never_a_baked_literal():
     correct, one per m. The check is on the SOURCE TEXT because that is the only
     place this backend lets a claim about specialisation be held.
     """
-    sources = cyl.enumerate_cylindrical_sources(EXPANSION)
+    sources = cyl.enumerate_cylindrical_sources()
     many = [s for label, s in sources.items() if "/mN/" in label]
     assert many, "no M_MANY specialisation was emitted"
     for source in many:
@@ -236,7 +266,6 @@ def test_zero_rows_is_a_BOUND_UNIFORM_and_never_a_baked_literal():
         assert cyl.zero_rows(m, accurate) == expected, (m, accurate)
 
 
-@requires_probe
 def test_the_binding_count_is_what_the_signature_actually_binds():
     """``CURL_BINDINGS`` is CHECKED against the emitted source, not asserted.
 
@@ -245,18 +274,18 @@ def test_the_binding_count_is_what_the_signature_actually_binds():
     home, checked here, so a binding added to the signature is a failing test rather
     than a compile error a reader has to attribute.
     """
-    source = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ONE,
-                                         EXPANSION)
+    source = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ONE)
     bound = {int(n) for n in re.findall(r"\[\[buffer\((\d+)\)\]\]", source)}
     assert bound == set(range(cyl.CURL_BINDINGS)), sorted(bound)
     assert cyl.CURL_BINDINGS <= device.MAX_BUFFER_BINDINGS
-    # The certified complex curl binds 23; this one binds four more (the prefix, the
-    # two i*m/r rows and, since 2026-09-04, the m = 0 axis coefficient) plus three
-    # scalars. Stated as a relation so a change to either is visible here.
-    assert cyl.CURL_BINDINGS == complex_fields.CURL_BINDINGS + 4 == 27
+    # The certified complex curl binds 24; this one drops its three phase scalars and
+    # binds six more (the radial difference, the two i*m/r rows, the near-axis
+    # uniform, the axis factor and the m word). Stated as a relation so a change to
+    # either is visible here.
+    assert cyl.CURL_BINDINGS == complex_fields.CURL_BINDINGS - 3 + 6 == 27
+    assert f"constant ChunkBounds& cb [[buffer({cyl.CURL_RECORD_BUFFER})]]" in source
 
 
-@requires_probe
 def test_the_contraction_directive_is_present_and_the_two_modes_differ():
     """The pragma is mandatory and is a property of the SOURCE on this backend.
 
@@ -264,27 +293,23 @@ def test_the_contraction_directive_is_present_and_the_two_modes_differ():
     (measured by the real tranche at 37,483-37,568 differing words). Spelled exactly
     once per source, from ``shaders``' single home.
     """
-    off = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ONE,
-                                      EXPANSION, shaders.CONTRACT_OFF)
-    fast = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ONE,
-                                       EXPANSION, shaders.CONTRACT_FAST)
+    off = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ONE, shaders.CONTRACT_OFF)
+    fast = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ONE, shaders.CONTRACT_FAST)
     assert off.count("#pragma clang fp contract") == 1
     assert "#pragma clang fp contract(off)" in off
     assert "#pragma clang fp contract(fast)" in fast
     assert off != fast
 
 
-@requires_probe
 def test_the_kernel_never_divides_and_never_takes_a_max():
-    """Two Metal facts forced the i*m/r row onto the host; this is the consequence.
+    """Two Metal facts keep the i*m/r row on the host; this is the consequence.
 
     ``fast::divide`` is measured-divergent on this platform and ``max`` returns the
     SECOND operand when both are zeros, disagreeing with ``numpy.maximum``. The row's
-    clamp and divide therefore stay in ``imr_coefficient_row``, on the host, in
-    float64, rounded once. If either ever appears in the kernel the reason has been
-    forgotten.
+    clamp and quotient therefore stay in ``imr_rinv_row``, on the host. If either ever
+    appears in the kernel the reason has been forgotten.
     """
-    for source in cyl.enumerate_cylindrical_sources(EXPANSION).values():
+    for source in cyl.enumerate_cylindrical_sources().values():
         body = "\n".join(line for line in source.splitlines()
                          if not line.strip().startswith("//"))
         assert "divide" not in body
@@ -292,7 +317,6 @@ def test_the_kernel_never_divides_and_never_takes_a_max():
         assert not re.search(r"\bmin\s*\(", body)
 
 
-@requires_probe
 def test_negation_is_unary_minus_and_not_the_triton_workaround():
     """Measured on THIS backend, not inherited from the Triton track's opposite.
 
@@ -303,7 +327,7 @@ def test_negation_is_unary_minus_and_not_the_triton_workaround():
     word — the ``+0.0`` corner. The array path performs a sign flip, so ``-x`` is the
     transcription and the refuted spelling must not appear.
     """
-    for source in cyl.enumerate_cylindrical_sources(EXPANSION).values():
+    for source in cyl.enumerate_cylindrical_sources().values():
         body = "\n".join(line for line in source.splitlines()
                          if not line.strip().startswith("//"))
         assert "0.0f - " not in body
@@ -377,46 +401,74 @@ def test_the_NEAR_ghost_is_unobservable_on_the_array_path(m, z_kind):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("m", (1, -1, 2, -2, 3, 5))
-def test_the_imr_row_reproduces_steppings_own_factor(m):
-    """``imr_coefficient_row`` x partner == ``-_cylindrical_imr_term(...)``, in WORDS.
+def test_the_imr_row_reproduces_steppings_own_increment(m):
+    """``quarter_turn(imr_rinv_row, partner)`` == ``_cylindrical_imr_increment``, in WORDS.
 
-    The transcription is pinned against the array path rather than against a second
-    transcription of the same formula. ``_cylindrical_imr_term`` returns the term in
-    CURL SIGN CONVENTION (negated once, :724), so the row's product is its negation.
+    The kernel forms ``(-(q*g.im), q*g.re)`` per part; pinned against the array path's
+    own increment rather than against a second transcription of the formula.
     """
     fields, _pml = build(m, seed=31)
     rows = int(fields.grid.shape[0])
-    dtdx = fields.grid.dt / fields.grid.dx
     for sub_step, terms in cyl.IMR_TERMS.items():
         spec = cyl.SUB_STEPS[sub_step]
         partner_names = {0: spec["sources"][2], 2: spec["sources"][0]}
         for index, _register, sign in terms:
             target = spec["targets"][index]
             partner = getattr(fields, partner_names[index])
-            reference = stepping._cylindrical_imr_term(fields, target, partner, sign)
-            row = cyl.imr_coefficient_row(np, target, sign, m, dtdx, rows,
-                                          np.complex64)
-            ours = -(row * partner)
+            reference = stepping._cylindrical_imr_increment(fields, target, partner, sign)
+            row = cyl.imr_rinv_row(target, sign, m, fields.grid.courant, rows)
+            assert row.dtype == np.float32 and row.shape == (rows,)
+            q = row.reshape(-1, 1, 1)
+            ours = np.empty_like(partner)
+            ours.real[...] = -(q * partner.imag)
+            ours.imag[...] = q * partner.real
             assert _differing(ours, reference) == 0, (sub_step, target, sign)
-            # The laundering claim the module docstring rests on: `(-1j) * X` puts
-            # +0.0 in EVERY real word, at both signs of m and of `sign`.
-            assert np.all(_words(np.ascontiguousarray(row).view(np.complex64).real)
-                          == np.uint32(0)), (target, sign, m)
 
 
 @pytest.mark.parametrize("m", (1, -1))
-def test_the_axis_increment_scalar_carries_a_SIGNED_ZERO_real_word(m):
-    """``1j * (m*dtdx)`` gives ``-0.0`` at m < 0 — the opposite of the i*m/r row.
+def test_the_axis_increment_bracket_is_the_array_paths_own(m):
+    """The kernel's |m| = 1 bracket and factor, transcribed, against stepping's increment.
 
-    The difference is the SIGN OF THE UNIT, not the operand order, and it is why both
-    scalars are host-rounded and passed through rather than synthesised in-kernel.
+    B side: ``axis_factor * ((Ep[0] - Ep[0, z+1]) - (m*Ez1.im, -(m*Ez1.re)))``; D side:
+    ``axis_factor * ((Hr[0] - Hr[0, z-1]) - 2*Hz[0])``, per part, each a float32 product
+    with the factor's word (the double product, for a float32-word Courant).
     """
-    dtdx = 0.37
-    minus, (real, imag) = cyl.axis_increment_scalars(m, dtdx)
-    assert minus == float(np.float32(-dtdx))
-    word = _words(np.float32([real]))[0]
-    assert word == (np.uint32(0x80000000) if m < 0 else np.uint32(0)), hex(int(word))
-    assert imag == float(np.float32(m * dtdx))
+    fields, pml = build(m, seed=51)
+    grid = fields.grid
+    boundaries = stepping._boundary_kinds(grid, pml)
+    metallic_z = boundaries[2] == "metallic"
+    for sub_step in ("step_B", "step_D"):
+        names = ("Ex", "Ey", "Ez") if sub_step == "step_B" else ("Hx", "Hy", "Hz")
+        sources = {name: getattr(fields, name) for name in names}
+        phases = stepping._bloch_phases(grid, boundaries, sources[names[0]], pml)
+        if sub_step == "step_B":
+            target, reference = stepping._cylindrical_axis_increment_B(
+                fields, sources, boundaries, phases, grid.dt / grid.dx)
+            ep = sources["Ey"][0]
+            above = np.roll(sources["Ey"], -1, axis=2)[0].copy()
+            if metallic_z:
+                above[..., -1] = 0
+            e1 = sources["Ez"][1]
+            partner_re = np.float32(m) * e1.imag
+            partner_im = -(np.float32(m) * e1.real)
+            bracket_re = (ep.real - above.real) - partner_re
+            bracket_im = (ep.imag - above.imag) - partner_im
+        else:
+            target, reference = stepping._cylindrical_axis_increment_D(
+                fields, sources, boundaries, phases, grid.dt / grid.dx)
+            hr = sources["Hx"][0]
+            below = np.roll(sources["Hx"], 1, axis=2)[0].copy()
+            if metallic_z:
+                below[..., 0] = 0
+            two = np.float32(2.0)
+            bracket_re = (hr.real - below.real) - (two * sources["Hz"][0].real)
+            bracket_im = (hr.imag - below.imag) - (two * sources["Hz"][0].imag)
+        factor = np.float32(cyl.axis_factor(sub_step, m, grid.courant))
+        ours = np.empty(bracket_re.shape, dtype=np.complex64)
+        ours.real[...] = factor * bracket_re
+        ours.imag[...] = factor * bracket_im
+        assert target == ("Bx" if sub_step == "step_B" else "Dy")
+        assert _differing(ours, np.asarray(reference).reshape(ours.shape)) == 0, sub_step
 
 
 def test_m_class_has_three_arms_and_splits_at_zero_and_two():
@@ -428,41 +480,53 @@ def test_m_class_has_three_arms_and_splits_at_zero_and_two():
     assert cyl.M_ARMS == (cyl.M_ZERO, cyl.M_ONE, cyl.M_MANY)
     assert len({cyl.M_ZERO, cyl.M_ONE, cyl.M_MANY}) == 3
     with pytest.raises(ValueError, match="m_arm must be"):
-        cyl.cylindrical_curl_source(templates.METALLIC, False, 7, EXPANSION or "FMA_V1")
+        cyl.cylindrical_curl_source(templates.METALLIC, False, 7)
 
 
-@pytest.mark.parametrize("sub_step,extra", (("step_B", 1), ("step_D", 0)))
-def test_the_prefix_shape_matches_the_array_paths_own(sub_step, extra):
-    """B extends Ep by ONE ZERO WALL ROW; D does not. Both are ``stepping``'s."""
-    fields, _pml = build(1)
+@pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
+def test_the_radial_difference_is_the_array_paths_own(sub_step):
+    """``radial_difference`` CALLS ``stepping.cylindrical_rderiv_difference``: B extends
+    Ep by ONE ZERO WALL ROW and differences forward, D differences Hy backward; the
+    chunk starts are the run's own (two r chunks under the high-r layer)."""
+    fields, pml = build(1)
     shape = tuple(fields.grid.shape)
-    assert cyl.prefix_shape(sub_step, shape) == (shape[0] + extra,) + shape[1:]
     sources = {name: getattr(fields, name)
                for name in cyl.SUB_STEPS[sub_step]["sources"]}
-    prefix = cyl.cylindrical_prefix(np, sub_step, sources)
-    assert prefix.shape == cyl.prefix_shape(sub_step, shape)
-    assert prefix.dtype == np.complex64
+    starts = stepping._cylindrical_scan_starts(fields, pml, cyl.SCAN_TARGETS[sub_step])
+    assert starts is not None, "the one-rank division under an r layer has two chunks"
+    radial = cyl.radial_difference(np, sub_step, sources, starts)
+    assert radial.shape == shape and radial.dtype == np.complex64
+    source = sources[cyl.PREFIX[sub_step]["component"]]
+    if sub_step == "step_B":
+        extended = np.zeros((shape[0] + 1,) + shape[1:], dtype=np.complex64)
+        extended[:shape[0]] = source
+        expected = stepping.cylindrical_rderiv_difference(np, extended, 0.0, starts,
+                                                          shape[0], backward=False)
+    else:
+        expected = stepping.cylindrical_rderiv_difference(np, source, 0.5, starts,
+                                                          shape[0], backward=True)
+    assert _differing(radial, expected) == 0
+    single = cyl.radial_difference(np, sub_step, sources, None)
+    assert _differing(single, expected) > 0, "one radial sum must differ from two"
 
 
 # ---------------------------------------------------------------------------
 # The predicate: the inversions, by name
 # ---------------------------------------------------------------------------
 
-@requires_probe
 def test_a_real_dcyl_run_is_admitted_on_every_slot():
     fields, pml = build(1)
     residency = device.Residency()
     for sub_step in ("step_B", "step_D"):
         verdict = cyl.cylindrical_complex_pml_curl_coverage(
-            fields, pml, sub_step, residency, PROBE)
+            fields, pml, sub_step, residency)
         assert verdict.covered, verdict.reasons
     for side in ("H", "E"):
         verdict = cyl.cylindrical_complex_constitutive_coverage(
-            fields, pml, side, residency, PROBE)
+            fields, pml, side, residency)
         assert verdict.covered, verdict.reasons
 
 
-@requires_probe
 def test_a_complex_m_zero_run_is_ADMITTED_here_and_refused_by_the_real_family():
     """The partition against the cylindrical REAL product is STORAGE, both ways.
 
@@ -480,7 +544,7 @@ def test_a_complex_m_zero_run_is_ADMITTED_here_and_refused_by_the_real_family():
     residency = device.Residency()
     for sub_step in ("step_B", "step_D"):
         verdict = cyl.cylindrical_complex_pml_curl_coverage(
-            fields, pml, sub_step, residency, PROBE)
+            fields, pml, sub_step, residency)
         assert verdict.covered, verdict.reasons
         real = cylindrical_real.cylindrical_real_curl_coverage(
             fields, pml, sub_step, residency)
@@ -488,23 +552,22 @@ def test_a_complex_m_zero_run_is_ADMITTED_here_and_refused_by_the_real_family():
         assert any("force_complex_fields=True" in reason for reason in real.reasons)
     for side in ("H", "E"):
         verdict = cyl.cylindrical_complex_constitutive_coverage(
-            fields, pml, side, residency, PROBE)
+            fields, pml, side, residency)
         assert verdict.covered, verdict.reasons
     plan = cyl.plan_cylindrical_complex_pml_curl(fields, pml, "step_D", residency,
-                                                 probe=PROBE)
+                                                 chunk_bounds=_record(fields, pml))
     assert plan is not None
     assert plan.m_arm == cyl.M_ZERO and plan.zero_rows == 0
-    assert plan.axis_coef == cyl.axis_coefficient(fields.grid.dt / fields.grid.dx)
+    assert plan.axis_factor == cyl.axis_factor("step_D", 0, fields.grid.courant)
     # THE OTHER DIRECTION, by name: float32 storage at m = 0 is the real family's.
     real_fields, real_pml = build(m=0, complex_storage=False)
     verdict = cyl.cylindrical_complex_pml_curl_coverage(
-        real_fields, real_pml, "step_B", device.Residency(), PROBE)
+        real_fields, real_pml, "step_B", device.Residency())
     assert not verdict.covered
     assert any("force_complex_fields is not set" in reason
                and "REAL product" in reason for reason in verdict.reasons)
 
 
-@requires_probe
 @pytest.mark.parametrize("mutate,fragment", (
     (lambda f, p: (matrix.cart()[0], matrix.cart()[1]),
      "grid is not cylindrical"),
@@ -516,12 +579,11 @@ def test_each_inverted_clause_refuses_by_name(mutate, fragment):
     fields, pml = build(1)
     fields, pml = mutate(fields, pml)
     verdict = cyl.cylindrical_complex_pml_curl_coverage(
-        fields, pml, "step_B", device.Residency(), PROBE)
+        fields, pml, "step_B", device.Residency())
     assert not verdict.covered
     assert any(fragment in reason for reason in verdict.reasons), verdict.reasons
 
 
-@requires_probe
 def test_a_single_radial_row_is_refused_because_the_axis_increment_reads_row_one():
     """nr < 2 is a SILENT out-of-bounds read on the GPU, not a loud one.
 
@@ -534,43 +596,16 @@ def test_a_single_radial_row_is_refused_because_the_axis_increment_reads_row_one
     # at all, which is the platform saying the same thing this clause says.
     fields, pml = build(1, nr=1, r_pml=(0, 0))
     verdict = cyl.cylindrical_complex_pml_curl_coverage(
-        fields, pml, "step_B", device.Residency(), PROBE)
+        fields, pml, "step_B", device.Residency())
     assert not verdict.covered
     assert any("radial extent" in reason for reason in verdict.reasons), \
         verdict.reasons
 
 
-def test_a_missing_probe_is_a_named_refusal_and_never_a_default_arm():
-    fields, pml = build(1)
-    residency = device.Residency()
-    assert cyl.expansion_from_probe({}) is None
-    verdict = cyl.cylindrical_complex_pml_curl_coverage(
-        fields, pml, "step_B", residency, probe={})
-    assert not verdict.covered
-    assert any("expansion probe" in reason for reason in verdict.reasons)
-    assert cyl.plan_cylindrical_complex_pml_curl(
-        fields, pml, "step_B", residency, probe={}) is None
-
-
-def test_a_probe_missing_only_this_familys_two_patterns_licenses_nothing():
-    """An artifact cut for the unfolded complex family may not licence this kernel.
-
-    The base five are the same call sites; the two this family adds are calls
-    ``complex_fields``' artifact never made. Reading its record would licence an arm
-    from evidence about five of seven multiplies.
-    """
-    inherited = {"backend": cyl.PROBE_BACKEND,
-                 "patterns": {name: complex_fields.AMBIGUOUS_BOTH
-                              for name in complex_fields.PROBE_PATTERNS}}
-    inherited["patterns"]["c8_mul_c8"] = "FMA_V1"
-    assert complex_fields.expansion_from_probe(inherited) == "FMA_V1"
-    assert cyl.expansion_from_probe(inherited) is None
-
-
 def test_the_residency_must_be_declared():
     fields, pml = build(1)
     verdict = cyl.cylindrical_complex_pml_curl_coverage(
-        fields, pml, "step_B", None, PROBE)
+        fields, pml, "step_B", None)
     assert not verdict.covered
     assert any("residency was not declared" in reason for reason in verdict.reasons)
 
@@ -616,12 +651,10 @@ def test_the_family_registers_on_exactly_four_slots_and_touches_no_others():
     assert all(spec.wired for spec in arms.registered() if spec.family == cyl.FAMILY)
 
 
-@requires_probe
 def test_plan_step_composes_all_four_slots_and_nothing_else_co_admits():
     fields, pml = build(1)
     residency = device.Residency()
-    plan = launch.plan_step(fields, pml, residency, sources=(),
-                            cylindrical_complex_probe=PROBE)
+    plan = launch.plan_step(fields, pml, residency, sources=())
     for slot in ("step_B", "step_D", "update_H", "update_E"):
         assert plan.selected.get(slot) == "cylindrical complex", (
             slot, plan.reasons.get(slot))
@@ -629,7 +662,6 @@ def test_plan_step_composes_all_four_slots_and_nothing_else_co_admits():
         reason for reasons in plan.reasons.values() for reason in reasons)
 
 
-@requires_probe
 def test_the_constitutive_plan_IS_the_certified_complex_one():
     """No new arithmetic on ``update_H``/``update_E`` — only the admission is new.
 
@@ -642,7 +674,8 @@ def test_the_constitutive_plan_IS_the_certified_complex_one():
     residency = device.Residency()
     for side in ("H", "E"):
         plan = cyl.plan_cylindrical_complex_constitutive(fields, pml, side,
-                                                         residency, probe=PROBE)
+                                                         residency,
+                                                         chunk_bounds=_record(fields, pml))
         assert isinstance(plan, complex_fields.ComplexConstitutivePlan), side
         assert plan.side == side
 
@@ -651,7 +684,7 @@ def test_the_constitutive_plan_IS_the_certified_complex_one():
 # The device legs: the four additions, against stepping.py
 # ---------------------------------------------------------------------------
 
-def _run_pair(m, z_kind, sub_step, accurate=False, steps=1, courant=0.37,
+def _run_pair(m, z_kind, sub_step, accurate=False, steps=1, courant=COURANT,
               functions=None, seed=11, route="engine"):
     """Array path and Metal plan on identical state; returns (differing, moved, plan).
 
@@ -674,9 +707,10 @@ def _run_pair(m, z_kind, sub_step, accurate=False, steps=1, courant=0.37,
     residency = device.Residency()
     if functions is None and route == "engine":
         plan = cyl.plan_cylindrical_complex_pml_curl(fields_b, pml_b, sub_step,
-                                                     residency, probe=PROBE)
+                                                     residency,
+                                                     chunk_bounds=_record(fields_b, pml_b))
         assert plan is not None, cyl.cylindrical_complex_pml_curl_coverage(
-            fields_b, pml_b, sub_step, residency, PROBE).reasons
+            fields_b, pml_b, sub_step, residency).reasons
     else:
         grid = fields_b.grid
         kinds = stepping._boundary_kinds(grid, pml_b)
@@ -689,7 +723,10 @@ def _run_pair(m, z_kind, sub_step, accurate=False, steps=1, courant=0.37,
             {f"{stem}_{axis}": getattr(pml_b, f"{stem}_{axis}{spec['suffix']}")
              for axis in "xyz" for stem in ("kms", "sinv")},
             bcz, int(grid.m), bool(grid.accurate_fields_near_cylorigin),
-            grid.dt / grid.dx, EXPANSION, residency, functions=functions)
+            grid.dt / grid.dx, residency, functions=functions,
+            chunk_bounds=_record(fields_b, pml_b), courant=grid.courant,
+            starts=stepping._cylindrical_scan_starts(fields_b, pml_b,
+                                                     cyl.SCAN_TARGETS[sub_step]))
     for _ in range(steps):
         plan.run()
     residency.sync_out()
@@ -712,7 +749,6 @@ def _run_pair(m, z_kind, sub_step, accurate=False, steps=1, courant=0.37,
 
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("m", (0, 1, -1, 2, -2, 3, 5))
 @pytest.mark.parametrize("z_kind", ("metallic", "periodic"))
 @pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
@@ -727,7 +763,6 @@ def test_the_curl_reproduces_stepping_word_for_word(m, z_kind, sub_step):
 
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
 def test_the_accurate_branch_binds_a_DIFFERENT_zero_row_count_at_the_same_m(sub_step):
     """``accurate_fields_near_cylorigin`` selects row 0 alone where the default takes
@@ -743,7 +778,6 @@ def test_the_accurate_branch_binds_a_DIFFERENT_zero_row_count_at_the_same_m(sub_
 
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("m,sub_step", ((1, "step_B"), (1, "step_D"),
                                         (3, "step_B"), (3, "step_D")))
 def test_six_launches_stay_identical_the_accumulating_auxiliary_class(m, sub_step):
@@ -760,20 +794,19 @@ def test_six_launches_stay_identical_the_accumulating_auxiliary_class(m, sub_ste
 
 
 @requires_mps
-@requires_probe
 def test_the_prefix_MUST_be_refreshed_and_the_counter_is_armed():
     """The residency cost this family pays, shown to be load-bearing.
 
-    The prefix is a HOST scan of a volume the device owns between launches, so every
-    launch syncs one source out and the prefix in. This asserts the counter AND arms
-    it: with the source changed under the plan, a launch that reuses the previous
-    prefix produces DIFFERENT bytes from one that refreshes. Without the arming,
-    ``prefix_syncs == launches`` would be bookkeeping rather than evidence.
+    The radial difference is a HOST sum of a volume the device owns between launches,
+    so every launch syncs one source out and the difference in. This asserts the
+    counter AND arms it: with the source changed under the plan, a launch that reuses
+    the previous difference produces DIFFERENT bytes from one that refreshes. Without
+    the arming, ``prefix_syncs == launches`` would be bookkeeping rather than evidence.
     """
     fields, pml = build(1, seed=17)
     residency = device.Residency()
     plan = cyl.plan_cylindrical_complex_pml_curl(fields, pml, "step_B", residency,
-                                                 probe=PROBE)
+                                                 chunk_bounds=_record(fields, pml))
     assert plan is not None
     plan.run()
     residency.sync_out()
@@ -815,51 +848,62 @@ def test_the_prefix_MUST_be_refreshed_and_the_counter_is_armed():
 #: is NOT caught is a leg that certifies nothing, which is why they are here rather
 #: than in a comment about coverage.
 MUTATIONS = (
-    ("imr_sign_flipped", "step_B", 1,
-     "curl0 = curl0 - m0;", "curl0 = curl0 + m0;"),
+    ("imr_ladder_sign_flipped", "step_B", 1,
+     "(v0 - float2(si_z * mdf0.x, si_z * mdf0.y)) : (v0 - mdf0);",
+     "(v0 - float2(si_z * mdf0.x, si_z * mdf0.y)) : (v0 + mdf0);"),
+    ("imr_partner_parts_swapped", "step_D", 1,
+     "float2 mi2 = float2(-(q2[i] * a.y), q2[i] * a.x);",
+     "float2 mi2 = float2(-(q2[i] * a.x), q2[i] * a.y);"),
+    ("imr_rows_swapped", "step_B", 2,
+     "float2 mi0 = float2(-(q0[i] * c.y), q0[i] * c.x);",
+     "float2 mi0 = float2(-(q2[i] * c.y), q2[i] * c.x);"),
+    ("imr_ladder_skips_the_dsigu_coefficient", "step_B", 1,
+     "(v0 - float2(si_z * mdf0.x, si_z * mdf0.y))", "(v0 - mdf0)"),
+    ("imr_increment_not_masked", "step_B", 1,
+     "        mi0 = at_x ? float2(0.0f, 0.0f) : mi0;\n", ""),
     ("zero_rows_off_by_one", "step_D", 3,
      "bool near = (i < int(zrows));", "bool near = (i <= int(zrows));"),
     ("axis_increment_not_negated", "step_B", 1,
      "curl0 = at_x ? -inc : curl0;", "curl0 = at_x ? inc : curl0;"),
-    ("prefix_row_stride_wrong", "step_B", 1,
-     "float2 pu = pfx[ii + nyz];", "float2 pu = pfx[ii + 1];"),
+    ("axis_bracket_regrouped", "step_B", 1,
+     "float2 bracket = (b - b_z) - partner;", "float2 bracket = b - (b_z + partner);"),
+    ("radial_difference_read_one_row_down", "step_B", 1,
+     "c_mul_coefficient_left(dtdx, rad[ii]);",
+     "c_mul_coefficient_left(dtdx, rad[ii >= nzi ? ii - nzi : ii]);"),
     ("near_axis_auxiliary_not_zeroed", "step_B", 3,
      "        n0 = near ? float2(0.0f, 0.0f) : n0;", "        // n0 kept"),
     # THE m = 0 ARM'S OWN RULES, each a transcription slip a reader could make.
     ("m_zero_B_axis_clear_dropped", "step_B", 0,
      "    v0 = at_x ? float2(0.0f, 0.0f) : v0;", "    // MUTANT: Bx[r=0] kept"),
     ("m_zero_D_post_add_dropped", "step_D", 0,
-     "        v2 = at_x ? (v2 + inc0) : v2;", "        // MUTANT: no post-add"),
+     "        v2 = at_x ? (v2 + dfcnd) : v2;", "        // MUTANT: no post-add"),
     ("m_zero_D_Dy_axis_clear_dropped", "step_D", 0,
      "        v1 = at_x ? float2(0.0f, 0.0f) : v1;", "        // MUTANT: Dy[r=0] kept"),
     ("m_zero_D_post_add_also_writes_the_auxiliary", "step_D", 0,
-     "        v2 = at_x ? (v2 + inc0) : v2;",
-     "        v2 = at_x ? (v2 + inc0) : v2;\n        n2 = at_x ? (n2 + inc0) : n2;"),
+     "        v2 = at_x ? (v2 + dfcnd) : v2;",
+     "        v2 = at_x ? (v2 + dfcnd) : v2;\n        if (at_x) { u2[ii] = dfcnd; }"),
 )
 
 
 @requires_mps
-@requires_probe
 def test_the_m_zero_post_add_is_not_a_curl_fold():
     """The one m = 0 defect the needle table above cannot spell in place.
 
-    ``stepping.py:575-580`` records the fold as MEASURED WRONG under PML (Er 2.7e-01
-    / Hp 4.5e-01 against the post-add's 3.6e-07): Dz's split-field ladder is R, and
-    routing the increment through the recurrence instead of adding it to the stored
-    value gives a different ``fu_Dz`` and a different ``Dz``. Planted here as the
-    fold, and it must be CAUGHT.
+    ``stepping._cylindrical_axis_increment_D`` records the fold as MEASURED WRONG for
+    m = 0 under PML: routing the increment through the curl form instead of adding it
+    to the stored value gives a different ``Dz``. Planted here as the fold, and it must
+    be CAUGHT.
     """
     from meep_gpu.metal_kernels.device import compile_source
 
-    source = cyl.cylindrical_curl_source(templates.METALLIC, True, cyl.M_ZERO,
-                                         EXPANSION)
+    source = cyl.cylindrical_curl_source(templates.METALLIC, True, cyl.M_ZERO)
     mutant = source.replace(
-        "        v2 = at_x ? (v2 + inc0) : v2;\n", "")
+        "        v2 = at_x ? (v2 + dfcnd) : v2;\n", "")
     mutant = mutant.replace(
         "    bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);\n",
         "    bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);\n"
-        "    curl2 = at_x ? -(c_mul_coefficient_left(axis_coef, b)) : curl2;\n", 1)
-    assert mutant != source and mutant.count("axis_coef, b") == 2
+        "    curl2 = at_x ? -(c_mul_coefficient_left(axis_factor, b)) : curl2;\n", 1)
+    assert mutant != source and mutant.count("axis_factor, b") == 2
     functions = {shaders.CONTRACT_OFF:
                  compile_source(mutant).cyl_complex_pml_curl_step}
     differing, moved, plan = _run_pair(0, "metallic", "step_D", functions=functions)
@@ -868,7 +912,6 @@ def test_the_m_zero_post_add_is_not_a_curl_fold():
 
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("label,sub_step,m,needle,replacement", MUTATIONS,
                          ids=[row[0] for row in MUTATIONS])
 def test_every_planted_mutation_is_caught(label, sub_step, m, needle, replacement):
@@ -876,7 +919,7 @@ def test_every_planted_mutation_is_caught(label, sub_step, m, needle, replacemen
 
     backward = bool(cyl.SUB_STEPS[sub_step]["backward"])
     arm = cyl.m_class(m)
-    source = cyl.cylindrical_curl_source(templates.METALLIC, backward, arm, EXPANSION)
+    source = cyl.cylindrical_curl_source(templates.METALLIC, backward, arm)
     assert source.count(needle) == 1, (
         f"the {label} needle is not uniquely present; a mutation that does not "
         f"apply reports the defect as UNCAUGHT")
@@ -892,7 +935,6 @@ def test_every_planted_mutation_is_caught(label, sub_step, m, needle, replacemen
 
 
 @requires_mps
-@requires_probe
 def test_the_from_arrays_route_reproduces_the_engine_route():
     """The gate's route and the engine's route must build the SAME plan.
 
@@ -910,6 +952,7 @@ def test_the_from_arrays_route_reproduces_the_engine_route():
     assert plan.bcz == templates.PERIODIC
 
 
+@pytest.mark.usefixtures("host_keeps_subnormals")  # host words in the subnormal band
 def test_the_subnormal_precondition_is_DEMONSTRATED_TO_FIRE():
     """A precondition never shown to fire is decorative.
 
@@ -933,7 +976,6 @@ def test_the_subnormal_precondition_is_DEMONSTRATED_TO_FIRE():
 
 
 @requires_mps
-@requires_probe
 def test_a_mode_the_plan_was_not_built_with_RAISES():
     """The variant selector is a contract, not a convenience.
 
@@ -943,7 +985,8 @@ def test_a_mode_the_plan_was_not_built_with_RAISES():
     """
     fields, pml = build(1)
     plan = cyl.plan_cylindrical_complex_pml_curl(fields, pml, "step_B",
-                                                 device.Residency(), probe=PROBE)
+                                                 device.Residency(),
+                                                 chunk_bounds=_record(fields, pml))
     assert plan is not None
     with pytest.raises(KeyError, match="holds no 'fast' variant"):
         plan.run(shaders.CONTRACT_FAST)
@@ -953,31 +996,30 @@ def test_a_mode_the_plan_was_not_built_with_RAISES():
 # The axis-row rule is a REPLACEMENT, and that is a signed-zero fact
 # ---------------------------------------------------------------------------
 
-def _plant_axis_seam(fields, lane: int = 5) -> None:
+def _plant_axis_seam(fields, lane: int = 9) -> None:
     """Build the ONE state in which REPLACE and ACCUMULATE differ.
 
-    The masked axis row is exactly ``+0.0`` and ``+0.0 + x == x`` for every x EXCEPT
-    ``-0.0``, so the two spellings diverge only where the increment's real word is an
-    exact ``+0.0`` AND the recurrence operand it meets is an exact ``-0.0``. Neither
-    a random seed nor a signed-zero scatter produces that pair — measured 0 of 5 in
-    the family gate before this construction existed — so it is built:
+    The masked axis row is exactly ``+0.0``, and the two spellings ``-inc`` and
+    ``curl - inc`` differ only where the increment's real word is an exact ``+0.0``;
+    that difference reaches a stored word only through a field word ``-0.0``
+    (``-0 - (-0) = +0`` where ``-0 - (+0) = -0``). A random seed does not produce that
+    pair, so it is built, on a cell outside the z layer (where the dsig-only form reads
+    the field itself):
 
     * ``Ey[0,0,k] = -0.0 + 1j`` beside ``Ey[0,0,k+1] = +0.0 + 0.5j`` makes the z
-      difference's real word ``-0.0``, which ``(-dtdx) * d`` turns into ``+0.0``;
-    * ``Ez[1,0,k] = 0`` makes the ``(1j*m*dtdx) * Ez[r+1]`` real word ``+0.0``, so
-      the increment's real word is ``+0.0 - +0.0 = +0.0``;
-    * ``fu_Bx[0,0,k] = -0.0 + 1j`` makes the recurrence minuend's real word ``-0.0``,
-      the only operand that can tell ``-(+0.0)`` from ``+0.0 - (+0.0)``.
+      difference's real word ``-0.0``;
+    * ``Ez[1,0,k] = 0`` makes the partner's real word ``+0.0``, so the bracket's real
+      word is ``-0.0`` and its product with ``-Courant`` is ``+0.0``;
+    * ``Bx[0,0,k] = -0.0 - 0.5j`` is the field word that tells ``-(+0.0)`` from
+      ``+0.0 - (+0.0)``.
     """
     fields.Ey[0, 0, lane] = complex(-0.0, 1.0)
     fields.Ey[0, 0, lane + 1] = complex(0.0, 0.5)
     fields.Ez[1, 0, lane] = complex(0.0, 0.0)
-    fields.fu_Bx[0, 0, lane] = complex(-0.0, 1.0)
-    fields.Bx[0, 0, lane] = complex(0.25, -0.5)
+    fields.Bx[0, 0, lane] = complex(-0.0, -0.5)
 
 
 @requires_mps
-@requires_probe
 def test_the_axis_increment_REPLACES_and_never_accumulates():
     """The shipped kernel is exact on the constructed state; an accumulator is not.
 
@@ -1000,15 +1042,15 @@ def test_the_axis_increment_REPLACES_and_never_accumulates():
 
     residency = device.Residency()
     plan = cyl.plan_cylindrical_complex_pml_curl(fields_b, pml_b, "step_B",
-                                                 residency, probe=PROBE)
+                                                 residency,
+                                                 chunk_bounds=_record(fields_b, pml_b))
     assert plan is not None
     plan.run()
     residency.sync_out()
     assert sum(_differing(getattr(fields_a, n), getattr(fields_b, n))
                for n in touched) == 0
 
-    shipped = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ONE,
-                                          EXPANSION)
+    shipped = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ONE)
     mutant = shipped.replace("curl0 = at_x ? -inc : curl0;",
                              "curl0 = at_x ? (curl0 - inc) : curl0;")
     assert mutant != shipped
@@ -1022,10 +1064,11 @@ def test_the_axis_increment_REPLACES_and_never_accumulates():
         "step_B", {n: getattr(fields_c, n) for n in names},
         {f"{stem}_{axis}": getattr(pml_c, f"{stem}_{axis}{spec['suffix']}")
          for axis in "xyz" for stem in ("kms", "sinv")},
-        templates.METALLIC, 1, False, fields_c.grid.dt / fields_c.grid.dx,
-        EXPANSION, mutant_residency,
+        templates.METALLIC, 1, False, fields_c.grid.dt / fields_c.grid.dx, mutant_residency,
         functions={shaders.CONTRACT_OFF:
-                   compile_source(mutant).cyl_complex_pml_curl_step})
+                   compile_source(mutant).cyl_complex_pml_curl_step},
+        chunk_bounds=_record(fields_c, pml_c), courant=fields_c.grid.courant,
+        starts=stepping._cylindrical_scan_starts(fields_c, pml_c, "Bz"))
     mutant_plan.run()
     mutant_residency.sync_out()
     assert sum(_differing(getattr(fields_a, n), getattr(fields_c, n))
@@ -1070,8 +1113,7 @@ def _complete_step_pair(steps: int = 4, bracket: bool = True):
 
     residency = device.Residency()
     plan = launch.plan_step(fields, pml, residency=residency, sources=(),
-                            synced=("zero_metal_B", "zero_metal_D"),
-                            cylindrical_complex_probe=PROBE)
+                            synced=("zero_metal_B", "zero_metal_D"))
     assert set(plan.plans) == {"step_B", "update_H", "step_D", "update_E"}, \
         sorted(plan.plans)
     residency.sync_in()
@@ -1095,7 +1137,6 @@ def _complete_step_pair(steps: int = 4, bracket: bool = True):
 
 
 @requires_mps
-@requires_probe
 def test_a_complete_walled_step_reproduces_the_array_path():
     """Six green sub-step comparisons say nothing about the object the engine runs.
 
@@ -1115,7 +1156,6 @@ def test_a_complete_walled_step_reproduces_the_array_path():
 
 
 @requires_mps
-@requires_probe
 def test_the_host_wall_pass_MUST_be_bracketed_by_the_residency_syncs():
     """The arming for the test above, and the whole stale-mirror class in one line.
 

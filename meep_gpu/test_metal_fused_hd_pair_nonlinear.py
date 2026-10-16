@@ -58,13 +58,8 @@ API_ROOT = Path(__file__).resolve().parent.parent
 #: RE-CUT AGAIN 2026-09-25 at `_2026-09-25_night`: the citation re-point moved the cell's import
 #: closure; the `_2026-09-25_night` fleet re-gated it (`metal_fused_hd_pair_nonlinear_2026-09-25_night`, released,
 #: zero drift), the host fingerprints were re-cut, and `_b` is the board cut on that ledger.
-#: RE-CUT AGAIN at `_2026-10-05_092_g13s`: the 0.9.2 round re-gated the three Metal
-#: welds that pin `fastpath.py` on the release bytes, rebound them and re-cut the
-#: Metal dispatch record. This board was cut on that ledger, its gate bindings
-#: repointed to the runs the ledger welds: `_2026-10-04_g13s`, and `_2026-10-05_092_g13s`
-#: for the two re-gated families it binds.
 CELLS_BOARD = (API_ROOT / "parity" / "meep_gpu" / "results"
-               / "fusion_matrix_metal_2026-10-05_092_g13s" / "fusion_matrix.json")
+               / "fusion_matrix_metal_2026-10-02_arch3" / "fusion_matrix.json")
 #: The two slots this seam spans, and the two arm labels a nonlinear run selects on
 #: them -- the cell the board files these two corpus rows under.
 CELL_ARMS: Tuple[str, str] = ("nonlinear PML magnetic", "nonlinear PML curl")

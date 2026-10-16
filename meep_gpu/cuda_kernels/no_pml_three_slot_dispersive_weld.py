@@ -190,17 +190,20 @@ __all__ = [
 ]
 
 
-def run_three_slot_polarization(fields: Any, kernel: Optional[Any] = None
-                                ) -> Dict[str, Any]:
+def run_three_slot_polarization(fields: Any, kernel: Optional[Any] = None, *,
+                                chunk_bounds: Any) -> Dict[str, Any]:
     """THE THIRD SLOT on this arm: the shared launcher, pinned to ``no_pml``.
 
     A one-line wrapper rather than an alias, so this module's callers cannot pass the
-    other arm's name into a launcher whose only use for it is
+    other arm's name into a launcher whose only uses for it are
     :func:`~.three_slot_dispersive_weld._drive_identity_problem` -- the clause that
-    asks whether ``Fields.drive_field`` hands back the stored ``E<c>``, which is the
-    one thing about the recurrence that differs between the two arms.
+    asks whether ``Fields.drive_field`` hands back the stored ``E<c>`` -- and the drive
+    binding, which on this arm hands the stored ``E<c>`` to both of the kernel's drive
+    pointers, so the per-chunk select reads ``E<c>`` on every cell whatever the record
+    says. ``chunk_bounds`` is the composition's record, which the kernel decodes.
     """
-    return shared.run_three_slot_polarization(fields, "no_pml", kernel)
+    return shared.run_three_slot_polarization(fields, "no_pml", kernel,
+                                              chunk_bounds=chunk_bounds)
 
 
 # =============================================================================

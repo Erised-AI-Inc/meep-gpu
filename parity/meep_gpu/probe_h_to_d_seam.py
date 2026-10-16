@@ -7,25 +7,30 @@ WHY THIS FILE EXISTS. The fusion-residue audit (§2) found that the boundary bet
 curl->constitutive seams (B->H, D->E) and the E->P chain seam, and the boundary that
 closes the loop — the magnetic constitutive into the electric curl — sat outside
 every denominator. The driver settles what lies in it (``driver.py``, ``step()``,
-between the ``update_H`` consult and the ``step_D`` consult): exactly one pass,
+between the ``update_H`` consult and the ``step_D`` consult): exactly one pass, and
+only where H is stored,
 
-    for source in electric:
-        getattr(source, "withdraw", _no_withdraw)(self.fields)
+    if self._stores_H():
+        f_minus_p_end(self.fields, f_minus_p_B)
 
-the integrated ELECTRIC sources returning their standing dipole offset to D before
-the curl ladder reads it. No injection, no fill, no wall clear. So per row the seam
-is ``update_H`` followed by ``step_D`` with the withdraw as its only in-seam pass,
-present only where the row carries an integrated electric source with at least one
-deposit point — and THAT is a fact about the lifted row, not about a name, which is
-what this probe measures.
+the integrated MAGNETIC sources' ``f_minus_p`` restore, which writes B alone and
+which ``step_D`` does not read (``withdraw_hoist.SEAM_PASS``). No injection, no fill
+of D, no wall clear of D, and no withdraw: an integrated source enters at the
+constitutive update through ``f_minus_p`` and stands no dipole in D or B. The driver
+cut before that change ran the integrated ELECTRIC sources' withdraw here instead,
+and a source class from outside the package may still carry one, so per row the probe
+MEASURES whether any electric source carries a ``withdraw`` that does work — a fact
+about the lifted row, not about a name — and records whether the magnetic restore
+runs in the seam.
 
 WHAT IT MEASURES, PER ROW (the ``h_to_d_seam`` block on every census row):
 
 - every source the driver holds: its class, component, field type, envelope, MEEP's
-  ``is_integrated`` flag, whether its ``withdraw`` attribute is the driver's no-op
-  (``_no_withdraw``) and how many deposit points it owns. A withdraw DOES WORK when
-  the source is integrated, carries a ``withdraw`` method and owns at least one
-  point — ``VolumeSource.withdraw`` returns before touching the array otherwise.
+  ``is_integrated`` flag, whether it carries no ``withdraw`` at all
+  (``withdraw_is_the_no_op``, the name the driver's former no-op stand-in gave the
+  same fact) and how many deposit points it owns. A withdraw DOES WORK when the source
+  is integrated, carries a ``withdraw`` method and owns at least one point
+  (``withdraw_hoist.standing_withdraws``' rule).
 - whether the array path's ``update_H`` launches anything on this row: the function's
   first statement is ``if not _pml_is_active(pml): return`` (stepping.py), so the fact
   is read off ``driver.pml`` and then MEASURED by poisoning: B is filled with ones,
@@ -152,16 +157,16 @@ def _measure_update_H_work(driver: Any, stepping: Any) -> Dict[str, Any]:
             "changed_arrays": changed, "poisoned_b_arrays": b_names}
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The census driver's battery hook: the ``h_to_d_seam`` block for one lifted row."""
     from meep_gpu import stepping  # noqa: PLC0415
-    from meep_gpu.driver import _no_withdraw  # noqa: PLC0415
     from meep_gpu.sources import FIELD_TYPE_B  # noqa: PLC0415
 
     per_source: List[Dict[str, Any]] = []
     for source in list(getattr(driver, "_sources", ())):
         field_type = getattr(source, "field_type", None)
-        withdraw = getattr(source, "withdraw", _no_withdraw)
+        withdraw = getattr(source, "withdraw", None)
+        withdraw = withdraw if callable(withdraw) else None
         is_integrated = bool(getattr(source, "is_integrated", False))
         n_points = getattr(source, "_n_source_points", None)
         envelope = getattr(source, "envelope", None)
@@ -172,11 +177,11 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             "electric": field_type != FIELD_TYPE_B,
             "envelope": type(envelope).__name__ if envelope is not None else None,
             "is_integrated": is_integrated,
-            "withdraw_is_the_no_op": withdraw is _no_withdraw,
+            "withdraw_is_the_no_op": withdraw is None,
             "n_source_points": int(n_points) if n_points is not None else None,
-            # VolumeSource.withdraw returns before touching the array unless the
-            # envelope is integrated AND the source owns a point (sources.py).
-            "withdraw_does_work": (withdraw is not _no_withdraw and is_integrated
+            # withdraw_hoist.standing_withdraws' rule: a withdraw method, an
+            # integrated source, and at least one point.
+            "withdraw_does_work": (withdraw is not None and is_integrated
                                    and bool(n_points)),
         })
     electric = [s for s in per_source if s["electric"]]
@@ -186,10 +191,11 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     block = {
         "seam": "H_to_D",
         "halves": ["update_H", "step_D"],
-        "in_seam_pass": ("the electric integrated-source withdraw: driver.py step(), "
-                         "`for source in electric: getattr(source, 'withdraw', "
-                         "_no_withdraw)(self.fields)` — the only statement between the "
-                         "update_H consult and the step_D consult"),
+        "in_seam_pass": ("the integrated magnetic sources' f_minus_p restore: "
+                         "driver.py step(), `if self._stores_H(): "
+                         "f_minus_p_end(self.fields, f_minus_p_B)` — the only statement "
+                         "between the update_H consult and the step_D consult; it "
+                         "writes B alone and step_D reads no B"),
         "n_sources": len(per_source),
         "n_electric_sources": len(electric),
         "n_magnetic_sources": len(magnetic),
@@ -199,8 +205,13 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
                                                  if s["withdraw_does_work"]),
         "n_electric_withdraws_that_are_the_no_op": sum(1 for s in electric
                                                        if s["withdraw_is_the_no_op"]),
-        # THE SEAM FACT: does anything happen between the two halves on this row?
+        # THE SEAM FACT: does anything step_D reads happen between the two halves?
         "withdraw_in_seam": any(s["withdraw_does_work"] for s in electric),
+        # The pass that does run there, writing B alone: an integrated magnetic source
+        # owning a point, on a row whose H is stored (an active PML).
+        "magnetic_f_minus_p_restore_in_seam": (
+            pml_active and any(s["is_integrated"] and bool(s["n_source_points"])
+                               for s in magnetic)),
         "update_H_array_path": {
             "pml_is_active": pml_active,
             # stepping.update_H's first statement: `if not _pml_is_active(pml): return`
@@ -473,7 +484,6 @@ def recover_case(out: Path, spec: str, environment: dict, log) -> int:
                str(Path(census.TESTS_DIR) / module_name),
                "--child-cases", json.dumps([case_id]),
                "--out-json", str(solo_path),
-               "--probe", str(_API / census.PROBE),
                "--progress-log", str(out / "tests.progress.log"),
                "--battery", "probe_h_to_d_seam"]
     log(f"recover {module_name}:{case_id} as a solo child -> {solo_path.name}")

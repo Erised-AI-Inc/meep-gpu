@@ -159,11 +159,17 @@ def family_of(leg: Dict[str, Any]) -> Dict[str, Any]:
     return FAMILIES[leg.get("family", DEFAULT_FAMILY)]
 
 
+# THE HAND TRACK'S LEG TABLE: the real-PML pair the probe's ``HandTrackAdapter``
+# drives, whose needles are ``probe.HAND_NEEDLES``. Legs are per track, as the
+# needles are: a track's mutations name ITS table's entries, and two tracks'
+# kernels are re-spelled at different times, so one track's legs are never run
+# against another's kernels (:func:`legs_for_track`).
+#
 # (leg, expectation, extra probe arguments, why this leg exists)
 #   expectation "caught"   -> the gate verdict must be False
 #   expectation "uncaught" -> the gate verdict must be True, and that is the point
 #   family                 -> which sub-step's wiring; "curl" when omitted
-LEGS: Sequence[Dict[str, Any]] = (
+HAND_LEGS: Sequence[Dict[str, Any]] = (
     {
         "leg": "gate",
         "expect": "pass",
@@ -176,8 +182,9 @@ LEGS: Sequence[Dict[str, Any]] = (
         "expect": "caught",
         "args": ["--source-mutation", "regroup_stencil", "--guard", "fmad_false",
                  "--coefficients", "synthetic"],
-        "why": "mutation 3: ((a-b)+(c-d)) rewritten as C's ((a-b)+c)-d. If someone "
-               "later 'simplifies' the parentheses, the gate must fail.",
+        "why": "mutation 3, inverted: MEEP's ((a-b)+c)-d, which the pair forms, "
+               "rewritten as the pairwise ((a-b)+(c-d)) it carried until 0.10. If "
+               "someone puts the old parentheses back, the gate must fail.",
     },
     {
         "leg": "m4_drop_metallic_mask",
@@ -326,11 +333,10 @@ LEGS: Sequence[Dict[str, Any]] = (
         "expect": "caught",
         "args": ["--source-mutation", "regroup_constitutive", "--guard",
                  "fmad_false", "--coefficients", "synthetic"],
-        "why": "((f + kps*src) - kms*prev) flattened to f + (kps*src - kms*prev). "
-               "The array path accumulates twice, left to right; the flattened "
-               "form is what BOTH complex constitutive kernels in "
-               "step_curl_kernels.py are written as, so this is the defect the "
-               "template would have introduced.",
+        "why": "inverted: MEEP's f + ((kps*src) - (kms*prev)), which the pair and "
+               "the array path form, regrouped to the two left-to-right "
+               "accumulations ((f + kps*src) - kms*prev) the pair carried until "
+               "0.10 -- a different float32 number, so the gate must fail.",
     },
     {
         "leg": "c2_drop_fw_store",
@@ -450,7 +456,7 @@ LEGS: Sequence[Dict[str, Any]] = (
                  "fmad_false", "--coefficients", "synthetic"],
         "why": "NULL: src * kps in place of kps * src on the accumulation "
                "itself. Its discriminator is c1, which edits the ASSOCIATION of "
-               "the same two lines and must be caught — so the pair says the "
+               "the same expression and must be caught — so the pair says the "
                "comparator is sensitive to the grouping and insensitive to the "
                "operand order, which is what IEEE-754 says.",
     },
@@ -467,6 +473,20 @@ LEGS: Sequence[Dict[str, Any]] = (
                "measurement rather than an assumption.",
     },
 )
+
+#: Every track this driver has a leg table for.
+LEGS_BY_TRACK: Dict[str, Sequence[Dict[str, Any]]] = {"hand": HAND_LEGS}
+
+
+def legs_for_track(track: str) -> Sequence[Dict[str, Any]]:
+    """The leg table of ``track``; refused by name for a track that has none."""
+    if track not in LEGS_BY_TRACK:
+        raise SystemExit(
+            f"--track {track!r} has no leg table in run_pml_gate_mutations.py "
+            f"(tables: {sorted(LEGS_BY_TRACK)}); its mutations are spelled in its "
+            f"own needle table, so it needs legs written against that table "
+            f"rather than another track's.")
+    return LEGS_BY_TRACK[track]
 
 
 def log(message: str) -> None:
@@ -689,7 +709,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     os.makedirs(args.out_dir, exist_ok=True)
     wanted = ({name.strip() for name in args.only.split(",")}
               if args.only else None)
-    legs = [leg for leg in LEGS if wanted is None or leg["leg"] in wanted]
+    legs = [leg for leg in legs_for_track(args.track)
+            if wanted is None or leg["leg"] in wanted]
 
     # Resolved ONCE, in the parent, and passed down: 'match_meep' is a
     # measurement of this host and the legs are subprocesses on it, so one

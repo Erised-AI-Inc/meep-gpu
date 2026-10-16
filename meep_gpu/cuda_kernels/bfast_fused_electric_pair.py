@@ -11,12 +11,14 @@ alone, whatever the fitness verdict says. It is the ELECTRIC TWIN of the
 priced it (fusion-residue audit §1.3: 12 electric-twin instances), with the
 Metal electric twins as the CARRIES=True shape precedent.
 
-WHAT THE CURL HALF IS: the certified ``step_D_bfast_real`` -- the real PML curl
-machinery with the three per-component IIR state advances (``total - 2*bprev``
-into ``fb_D*``, the advance subtracted from the curl) that implement MEEP's
-BFAST scaled-k substitution. The three state advances ride through the register
-capture untouched; the splice asserts they arrived, because a curl body without
-them would compile and be the plain real pair under this family's name.
+WHAT THE CURL HALF IS: the certified ``step_D_bfast_real`` -- the root real PML
+backward curl body with MEEP's BFAST pass after each component's curl
+(``folded_pass.bfast_insert``: the IIR state step into ``fb_D*`` and the folded ladder on
+the word ``pml_apply`` just stored). The pass rides through the register capture: each
+register is the value the LADDER returns (``fold_apply_reg``), because ``update_E`` must
+read D after both passes; the splice asserts the three passes arrived, because a curl
+body without them would compile and be the plain real pair under this family's name.
+The chunk record ``cb`` is decoded ONCE for both halves (bit_parity_0_10 DESIGN.md D10).
 
 THE TWO MIRROR FILLS ARE ABSENT BY REFUSAL, twice over: the certified BFAST
 curl refuses a fold itself (the "folded ghost values are dead" half of the real
@@ -55,6 +57,8 @@ if TYPE_CHECKING:
 # defensively.
 try:
     from . import bfast_curl as _bfast
+    from . import bounds_block
+    from . import folded_pass as _folded_pass
     from .coverage import (covers_real_pml_constitutive,
                            real_curl_boundary_codes)
     from .in_seam_coverage import zero_metal_axes
@@ -86,6 +90,8 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
         return module
 
     _bfast = _load("bfast_curl")
+    bounds_block = _load("bounds_block")
+    _folded_pass = _load("folded_pass")
     _coverage = _load("coverage")
     covers_real_pml_constitutive = _coverage.covers_real_pml_constitutive
     real_curl_boundary_codes = _coverage.real_curl_boundary_codes
@@ -156,26 +162,34 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "__device__ __forceinline__ void pml_apply(",
      "became": "__device__ __forceinline__ float pml_apply_reg(",
      "why": "the constitutive half consumes the value in a register; the helper "
-            "names and returns the expression it already computed. The "
-            "expression, its parenthesisation and the store to f[idx] are "
-            "unchanged, so the global state it leaves is the certified one."},
-    {"line": "        pml_apply(Dx, fu_Dx, idx, curl, ...);",
-     "became": "        d_x = pml_apply_reg(Dx, fu_Dx, idx, curl, ...);",
-     "why": "capture the register; three lines, one per component, argument "
-            "lists untouched, the three BFAST state advances above them "
-            "untouched. Three 'float d_* = 0.0f;' declarations are hoisted "
-            "above the certified braced blocks."},
-    {"line": "    float src_x = Dx[idx] * inv_eps_Ex[idx];   // stepping.py:982: "  # stepping.py live lines for the frozen device-text citation(s) in this string: 982->1011
-             "source * inv_eps",
-     "became": "    float src_x = d_x * inv_eps_Ex[idx];   // stepping.py:982: "  # stepping.py live lines for the frozen device-text citation(s) in this string: 982->1011
-               "source * inv_eps",
+            "names and returns the value it already stored. Both per-chunk forms, "
+            "their parenthesisation and the store to f[idx] are unchanged, so the "
+            "global state it leaves is the certified one."},
+    {"line": "    f[idx] = value;   (pml_apply and fold_apply)",
+     "became": "    f[idx] = value;\n    return value;",
+     "why": "same value, same store; the result is additionally returned. A "
+            "float32 stored to global and reloaded is the identity on the bits."},
+    {"line": "__device__ __forceinline__ void fold_apply(",
+     "became": "__device__ __forceinline__ float fold_apply_reg(",
+     "why": "the folded ladder returns the word it stored, so the register update_E "
+            "reads is D after the curl AND the BFAST pass (folded_pass."
+            "fold_apply_reg_source). The plain helper leaves the prelude."},
+    {"line": "        pml_apply(Dx, fu_Dx, idx, curl, ...);\n"
+             "        ...\n        fold_apply(Dx, fu_Dx, idx, inc_bfast, ...);",
+     "became": "        d_x = pml_apply_reg(Dx, fu_Dx, idx, curl, ...);\n"
+               "        ...\n        d_x = fold_apply_reg(Dx, fu_Dx, idx, inc_bfast, ...);",
+     "why": "capture the register, twice per component, argument lists untouched; "
+            "the BFAST state step between them untouched. Three 'float d_* = 0.0f;' "
+            "declarations are hoisted above the certified braced blocks."},
+    {"line": "    float src_x = Dx[idx] * inv_eps_Ex[idx];",
+     "became": "    float src_x = d_x * inv_eps_Ex[idx];",
      "why": "THE SEAM. The certified constitutive body opens each component by "
             "reloading the flux density the curl just stored; this reads the "
             "register instead, which is also what lets D be bound exactly "
             "once. The multiply and its operand order are untouched."},
-    {"line": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);",
+    {"line": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);",
      "became": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], "
-               "kms_half_x[i]);",
+               "kms_half_x[i], in_h_x);",
      "why": "ONE RENAME, NO ARITHMETIC. kms_x is the INTEGER sub-lattice for "
             "the D curl and the HALF-INTEGER one for update_E; a shadow is a "
             "half-cell error in the absorber profile."},
@@ -186,6 +200,13 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
      "why": "zero_metal_D carried on the registers, the OFF-DIAGONAL table -- "
             "two components per walled axis, never the B diagonal. Launch "
             "geometry re-spelled, arithmetic not; same +0.0f."},
+    {"line": "    <step_D_bfast_real's chunk-record block>\n"
+             "    <update_E_pml_real's chunk-record block>",
+     "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
+     "why": "ONE DECODE OF THE RECORD PER KERNEL (DESIGN.md D10): both lifted bodies' "
+            "blocks are removed by bounds_block.strip_bounds_block, refused unless each "
+            "is exactly the emitter's block for its body, and one block over the union "
+            "is emitted directly after the decode."},
 )
 
 __all__ = [
@@ -196,7 +217,7 @@ __all__ = [
     "certified_curl_body", "covers_bfast_fused_electric_pair",
     "device_sources", "inverse_epsilon_bindings",
     "launch_bfast_fused_electric_pair", "run_bfast_fused_electric_pair",
-    "zero_metal_carry",
+    "union_bounds_block", "zero_metal_carry",
 ]
 
 
@@ -209,14 +230,12 @@ _BODY_ANCHOR = "\n) {\n"
 _DECODE_END = "    int i = idx / (ny * nz);\n"
 _PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
 _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
-_PML_APPLY_STORE = "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
+_PML_APPLY_STORE = "    f[idx] = value;\n"
 _PML_APPLY_STORE_REG = (
-    "    // THE ONE EDIT TO THIS HELPER: the right-hand side, its\n"
-    "    // parenthesisation and the store are the certified ones; the value is\n"
-    "    // additionally NAMED so the constitutive half can read it from a\n"
-    "    // register instead of reloading it from global memory.\n"
-    "    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
     "    f[idx] = value;\n"
+    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // are the certified ones; the value is additionally RETURNED so the\n"
+    "    // constitutive half can read it from a register instead of reloading it.\n"
     "    return value;\n")
 
 _CARRIED: Tuple[str, ...] = ("x", "y", "z")
@@ -230,6 +249,15 @@ _ZERO_METAL_ROWS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
     ("wall_y", "j", ("x", "z")),
     ("wall_z", "k", ("x", "y")),
 )
+
+#: The chunk-record entries each lifted body decodes, as ``(entries, presence)``: the
+#: BFAST curl is the root step_D body (the integer record along each D component's
+#: dsigu axis plus the partner-presence word), update_E the half-integer record along
+#: each E component's own axis.
+CURL_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.curl_entries(_TARGETS)), (0, 1, 2))
+CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.constitutive_entries(("Ex", "Ey", "Ez"))), ())
 
 #: The fused entry point: the certified BFAST step_D signature with the E group,
 #: the inverse-permittivity volumes, the HALF-INTEGER constitutive tables and
@@ -267,7 +295,9 @@ extern "C" __global__ void fused_electric_pair_bfast_real(
     // certified step_D signature's own append.
     float k1_a, float k2_a, float k1_b, float k2_b, float k1_c, float k2_c,
     // zero_metal_D's walled-axis flags, from in_seam_coverage.zero_metal_axes.
-    int wall_x, int wall_y, int wall_z
+    int wall_x, int wall_y, int wall_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded once.
+    const int* __restrict__ cb
 ) {
 '''
 
@@ -321,31 +351,35 @@ def bfast_fused_electric_pair_prelude() -> str:
     _certified_halves()
     prelude, _body = _split_certified(
         _bfast.kernel_source("step_D_bfast_real"), "step_D_bfast_real")
-    for anchor, what in ((_PML_APPLY_SIGNATURE, "pml_apply's signature"),
-                         (_PML_APPLY_STORE, "pml_apply's closing store")):
-        if prelude.count(anchor) != 1:
-            raise AssertionError(
-                f"the certified real prelude carries {what} "
-                f"{prelude.count(anchor)} times, not once; the value rewrite has "
-                f"no anchor")
-    prelude = prelude.replace(_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, 1)
-    prelude = prelude.replace(_PML_APPLY_STORE, _PML_APPLY_STORE_REG, 1)
+    prelude = _folded_pass.rewrite_helper(prelude, _PML_APPLY_SIGNATURE, (
+        (_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, "its signature"),
+        (_PML_APPLY_STORE, _PML_APPLY_STORE_REG, "its closing store"),
+    ), "pml_apply")
+    prelude = _folded_pass.with_fold_reg(prelude, owned=False)
     return prelude + constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE
 
 
+def union_bounds_block() -> str:
+    """The fused kernel's ONE chunk-record block: both bodies' entries, one decode."""
+    return bounds_block.bounds_block(CURL_BLOCK[0] + CONSTITUTIVE_BLOCK[0],
+                                     CURL_BLOCK[1] + CONSTITUTIVE_BLOCK[1])
+
+
 def certified_curl_body() -> str:
-    """``step_D_bfast_real``'s body, lifted, with the registers captured and the
-    three BFAST state advances asserted present."""
+    """``step_D_bfast_real``'s body, lifted, with the registers captured after the
+    BFAST pass and the three passes asserted present."""
     _prelude, body = _split_certified(
         _bfast.kernel_source("step_D_bfast_real"), "step_D_bfast_real")
     if _DECODE_END not in body:
         raise AssertionError(
             "the certified curl body no longer decodes i on its own line; the "
             "carried registers have nowhere to be declared")
+    body = bounds_block.strip_bounds_block(body, "step_D_bfast_real", *CURL_BLOCK)
     head, tail = body.split(_DECODE_END, 1)
     body = "".join((
-        head, _DECODE_END,
-        "\n    // The three carried registers. Declared HERE because each\n"
+        head, _DECODE_END, "\n",
+        union_bounds_block(),
+        "    // The three carried registers. Declared HERE because each\n"
         "    // certified component below is a braced scope, and a value declared\n"
         "    // inside one does not outlive it.\n"
         "    float d_x = 0.0f;\n"
@@ -365,11 +399,15 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "a pml_apply call survived the capture rewrite; its value would be "
             "written to global memory and never read into the seam")
-    if body.count("curl = curl - advance;") != 3:
+    body = _folded_pass.capture_fold_calls(
+        body, {f"{target}, fu_{target}, ": (f"d_{axis}", None)
+               for axis, target in zip(_CARRIED, _TARGETS)},
+        "fold_apply", "fold_apply_reg", "the BFAST fused electric pair")
+    if body.count("bfast_pass(") != 3 or body.count("= fold_apply_reg(D") != 3:
         raise AssertionError(
-            f"the captured BFAST curl body carries "
-            f"{body.count('curl = curl - advance;')} state substitutions, not 3; "
-            f"the lift would ship the plain real pair under this family's name")
+            f"the captured BFAST curl body carries {body.count('bfast_pass(')} state "
+            f"steps and {body.count('= fold_apply_reg(D')} captured ladders, not 3 and "
+            f"3; the lift would ship the plain real pair under this family's name")
     return body
 
 
@@ -407,6 +445,8 @@ def certified_constitutive_body() -> str:
         raise AssertionError(
             "the certified constitutive body no longer decodes i on its own "
             "line; the duplicate decomposition cannot be identified")
+    body = bounds_block.strip_bounds_block(body, "_update_E_pml_real_kernel_code",
+                                           *CONSTITUTIVE_BLOCK)
     tail = body.split(_DECODE_END, 1)[1]
     for axis, target in zip(_CARRIED, _TARGETS):
         anchor = f"    float src_{axis} = {target}[idx] * inv_eps_E{axis}[idx];"
@@ -426,7 +466,8 @@ def certified_constitutive_body() -> str:
     for axis, coordinate in zip(_CARRIED, _COORDINATE):
         prefix = f"    constitutive_apply(E{axis}, f_w_E{axis}, idx, src_{axis}, "
         call = _line_starting(tail, prefix, f"E{axis}'s constitutive_apply")
-        expected = f"{prefix}kps_{axis}[{coordinate}], kms_{axis}[{coordinate}]);"
+        expected = (f"{prefix}kps_{axis}[{coordinate}], kms_{axis}[{coordinate}], "
+                    f"in_h_{axis});")
         if call != expected:
             raise AssertionError(
                 f"E{axis}'s constitutive_apply is {call!r}, not the certified "
@@ -435,7 +476,7 @@ def certified_constitutive_body() -> str:
         tail = tail.replace(call,
                             call.replace(f"kms_{axis}[", f"kms_half_{axis}[", 1), 1)
     for axis, coordinate in zip(_CARRIED, _COORDINATE):
-        if f"kms_{axis}[{coordinate}])" in tail:
+        if f"kms_{axis}[{coordinate}]," in tail:
             raise AssertionError(
                 f"kms_{axis} survived the sub-lattice rename; it is the INTEGER "
                 f"vector in the curl body and the HALF-INTEGER one here, and the "
@@ -682,8 +723,13 @@ def launch_bfast_fused_electric_pair(
         fields: "Fields", tables: Dict[str, Dict[str, Any]],
         boundary_codes: Sequence[Any], walls: Sequence[int],
         coefficients: Sequence[Sequence[float]], dtdx: float,
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """All three of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door."""
+        kernel: Optional[Any] = None, *, chunk_bounds: Any) -> Dict[str, Any]:
+    """All three of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door.
+    ``chunk_bounds`` is the run's chunk record on the device, required
+    (``step_curl_kernels.chunk_record_argument``)."""
+    from . import step_curl_kernels  # noqa: PLC0415 - device-only module
+
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
@@ -701,7 +747,7 @@ def launch_bfast_fused_electric_pair(
     ) + (
         boundary_codes[0], boundary_codes[1], boundary_codes[2],
     ) + tuple(scalars) + tuple(
-        np.int32(int(bool(walls[axis]))) for axis in range(3))
+        np.int32(int(bool(walls[axis]))) for axis in range(3)) + (cb,)
     (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), arguments)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
@@ -711,7 +757,7 @@ def launch_bfast_fused_electric_pair(
 
 def run_bfast_fused_electric_pair(
         fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
-        sources: Any = None,
+        chunk_bounds: Any, sources: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once."""
@@ -727,4 +773,5 @@ def run_bfast_fused_electric_pair(
     return launch_bfast_fused_electric_pair(
         fields, tables, tuple(np.int32(code) for code in codes),
         zero_metal_axes(grid),
-        _bfast.bfast_curl_coefficients(grid, "step_D"), dtdx, kernel)
+        _bfast.bfast_curl_coefficients(grid, "step_D"), dtdx, kernel,
+        chunk_bounds=chunk_bounds)

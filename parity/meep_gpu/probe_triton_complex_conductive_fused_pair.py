@@ -46,7 +46,7 @@ WHAT THIS GATE REFUSES TO INFER
   non-vacuity floor: the compared state must have MOVED, and no read-only material
   volume may have.
 * **A mutation that rewrites an unreached line measures nothing.** ``COND*``,
-  ``NP*``, ``PH*``, ``BCX``/``BCY``/``BCZ`` and ``BACKWARD`` are ``tl.constexpr``
+  ``NP*``, ``CN*``, ``BCX``/``BCY``/``BCZ`` and ``BACKWARD`` are ``tl.constexpr``
   guards that compile DIFFERENT BODIES. Every needle declares the case it is scored
   on and leg ``needle_reachability`` parses the needle's ENCLOSING GUARDS out of the
   shipped text and evaluates them against that case.
@@ -87,12 +87,6 @@ _TEMPORARY: List[str] = []
 
 FAMILY_MODULE = "meep_gpu/triton_kernels/complex_conductive_fused_pair.py"
 
-KEEP_PROBES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/expansion_probe_2026-08-17/expansion_probe_keep.json",
-    "parity/meep_gpu/results/complex_expansion_convention_2026-08-16/results/"
-    "probe_keep/probe.json",
-)
-
 #: ``(name, poles, kind, conductive, k_point, steps)``.
 #:
 #: EVERY AXIS IS A COMPILE-TIME ARM, NOT DECORATION:
@@ -101,8 +95,8 @@ KEEP_PROBES: Tuple[str, ...] = (
 #:   conductive ``COND0``/``COND1``/``COND2`` gate the conductive tail per target;
 #:              a row with all three off compiles no tail and would report every
 #:              tail mutation as uncaught.
-#:   k_point    ``PHX``/``PHY``/``PHZ`` gate the wrap-plane rotation. A zero-k row
-#:              leaves all three unfilled.
+#:   k_point    ``CNX``/``CNY``/``CNZ`` gate the Bloch connection of the unshifted
+#:              partners on plane 0. A zero-k row leaves all three unfilled.
 #:
 #: THE FIRST ROW IS THE CORPUS SHAPE: one pole, all three components conductive,
 #: which is what ``TestLoadDump.test_load_dump_*_3d`` drives.
@@ -134,7 +128,7 @@ LOSSLESS_REFUSAL_CASE = ("no_conductivity_control", 2, "lorentzian",
 
 #: The case every mutation is scored on. FOUR poles, ALL THREE components
 #: conductive and a fully three-axis Bloch phase, so every armed line is emitted
-#: AND executed: a zero-k row would leave the wrap-plane edits unfilled, a
+#: AND executed: a zero-k row would leave the connection edits unfilled, a
 #: non-conductive row would leave the conductive tail's lines unreached, and a
 #: one-pole row would make the chain-order needle a null.
 MUTATION_CASE = "four_pole_at_the_ceiling"
@@ -428,7 +422,7 @@ def install(driver_module, routes, counter: Dict[str, int], roles: Dict[int, str
                     for name, function in originals.items()]
 
 
-def separate_route(driver, probe):
+def separate_route(driver):
     """The two separately certified Triton products this launch replaces."""
     from meep_gpu.triton_kernels import (  # noqa: PLC0415
         complex_no_pml_conductive as conductive)
@@ -436,9 +430,8 @@ def separate_route(driver, probe):
         complex_no_pml_stored_e as stored)
 
     curl = conductive.plan_complex_conductive_no_pml_curl(
-        driver.fields, driver.pml, "step_D", probe=probe)
-    constitutive = stored.plan_complex_stored_e(driver.fields, driver.pml,
-                                                probe=probe)
+        driver.fields, driver.pml, "step_D")
+    constitutive = stored.plan_complex_stored_e(driver.fields, driver.pml)
     missing = [name for name, plan in (("conductive curl", curl),
                                        ("complex stored E", constitutive))
                if plan is None]
@@ -461,9 +454,8 @@ def fused_route(plan):
 # The three-route leg
 # ===========================================================================
 
-def run_leg(cp, name: str, case, product, probe, mutant: Any = None,
-            steps: Optional[int] = None, electric: bool = False,
-            expansion: Optional[int] = None) -> Dict[str, Any]:
+def run_leg(cp, name: str, case, product, mutant: Any = None,
+            steps: Optional[int] = None, electric: bool = False) -> Dict[str, Any]:
     """Three routes in lockstep, per COMPLETE driver step; stop at the FIRST byte
     divergence."""
     import meep_gpu.driver as driver_module  # noqa: PLC0415
@@ -483,22 +475,18 @@ def run_leg(cp, name: str, case, product, probe, mutant: Any = None,
         "shape": list(reference.shape), "poles": poles, "kind": kind,
         "conductive": list(conductive), "k_point": list(k_point),
         "electric_source_in_the_seam": bool(electric),
-        "expansion_override": expansion,
         "first_divergence": None, "control_divergence": None,
     }
     try:
         plan = product.plan_complex_conductive_fused_pair(
             fused.fields, fused.pml, tuple(fused._sources), num_warps=1,
-            kernel=kernel, probe=probe)
+            kernel=kernel)
         if plan is None:
             verdict = product.complex_conductive_fused_pair_coverage(
-                fused.fields, fused.pml, tuple(fused._sources), probe=probe)
+                fused.fields, fused.pml, tuple(fused._sources))
             raise AssertionError(f"the product refused the case: {verdict.reasons}")
-        if expansion is not None:
-            plan.expansion = int(expansion)
         row["plan"] = repr(plan)
         row["plan_replaces"] = list(plan.replaces)
-        row["licensed_expansion"] = plan.expansion
         # THE REPLACES CLAIM IS ASSERTED, not trusted: a product that claimed five
         # call sites here while carrying none of the three in between would be
         # licensing an inline pass it does not perform.
@@ -509,7 +497,7 @@ def run_leg(cp, name: str, case, product, probe, mutant: Any = None,
                 f"would be a claim to carry passes this family refuses")
 
         route = fused_route(plan)
-        separate_plans = separate_route(separate, probe)
+        separate_plans = separate_route(separate)
         row["slot_classes"] = {key: type(value).__name__
                                for key, value in route.plans.items()}
         row["separate_products"] = {key: type(value).__name__
@@ -668,11 +656,17 @@ def shipped_block() -> str:
 
 def compile_mutant(source: str, entry: str):
     """Compile one mutated kernel pair from a REAL FILE."""
+    # THE MODULE NAME MUST NOT START WITH ``triton``: Triton's dependency finder
+    # leaves callees of a ``triton*`` module out of the kernel's cache key, so
+    # helper-only mutants would key alike and be served one binary (measured on the
+    # off-diagonal gate, 2026-10-08; gate_triton_complex.compile_mutated).
     header = (
         "import triton\n"
         "import triton.language as tl\n"
         "from meep_gpu.triton_kernels.complex_fields import (\n"
-        "    METALLIC, _mul_coefficient_left, _mul_field_left, _rotate_field_left)\n"
+        "    METALLIC, _connect, _mul_field_left)\n"
+        "from meep_gpu.triton_kernels.forms import axis_present, curl_stencil\n"
+        "from meep_gpu.triton_kernels.kernels import RECORD_PRESENCE\n"
         "\n")
     handle = tempfile.NamedTemporaryFile(
         "w", suffix="_mutated_condfused.py", delete=False, encoding="utf-8")
@@ -680,7 +674,7 @@ def compile_mutant(source: str, entry: str):
     handle.close()
     _TEMPORARY.append(handle.name)
     spec = importlib.util.spec_from_file_location(
-        "triton_mutated_condfused_" + str(len(_TEMPORARY)), handle.name)
+        "condfused_mutant_" + str(len(_TEMPORARY)), handle.name)
     module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     sys.modules[spec.name] = module  # type: ignore[union-attr]
     spec.loader.exec_module(module)  # type: ignore[union-attr]
@@ -770,17 +764,17 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
     # ---- THE inv_eps MULTIPLY ---------------------------------------------
     "inv_eps_word_doubled":
         (MUTATION_CASE,
-         "        s0_re, s0_im, tl.load(iv0 + idx, mask=live, other=0.0), EXPANSION)",
-         "        s0_re, s0_im, tl.load(iv0 + word, mask=live, other=0.0), EXPANSION)",
+         "        s0_re, s0_im, tl.load(iv0 + idx, mask=live, other=0.0))",
+         "        s0_re, s0_im, tl.load(iv0 + word, mask=live, other=0.0))",
          "catch"),
     "inv_eps_applied_before_the_poles":
         (MUTATION_CASE,
          "    s1_re, s1_im = _subtract_complex_poles_in_registers(\n"
          "        v1_re, v1_im, b0, b1, b2, b3, b4, b5, b6, b7, word, live, NP1)\n"
          "    o1_re, o1_im = _mul_field_left(\n"
-         "        s1_re, s1_im, tl.load(iv1 + idx, mask=live, other=0.0), EXPANSION)\n",
+         "        s1_re, s1_im, tl.load(iv1 + idx, mask=live, other=0.0))\n",
          "    p1_re, p1_im = _mul_field_left(\n"
-         "        v1_re, v1_im, tl.load(iv1 + idx, mask=live, other=0.0), EXPANSION)\n"
+         "        v1_re, v1_im, tl.load(iv1 + idx, mask=live, other=0.0))\n"
          "    o1_re, o1_im = _subtract_complex_poles_in_registers(\n"
          "        p1_re, p1_im, b0, b1, b2, b3, b4, b5, b6, b7, word, live, NP1)\n",
          "catch"),
@@ -801,24 +795,43 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
         (MUTATION_CASE,
          "    if COND1:\n"
          "        factor = tl.load(cf1 + idx, mask=live, other=0.0)\n"
-         "        v1_re, v1_im = _mul_field_left(v1_re, v1_im, factor, EXPANSION)\n"
+         "        v1_re, v1_im = _mul_field_left(v1_re, v1_im, factor)\n"
          "    v1_re = v1_re - curl1_re\n"
          "    v1_im = v1_im - curl1_im\n",
          "    v1_re = v1_re - curl1_re\n"
          "    v1_im = v1_im - curl1_im\n"
          "    if COND1:\n"
          "        factor = tl.load(cf1 + idx, mask=live, other=0.0)\n"
-         "        v1_re, v1_im = _mul_field_left(v1_re, v1_im, factor, EXPANSION)\n",
+         "        v1_re, v1_im = _mul_field_left(v1_re, v1_im, factor)\n",
          "catch"),
     # ---- THE CERTIFIED COMPLEX BASE ----------------------------------------
-    "curl_parens_flattened":
+    # THE INVERSION (KERNELS.md section 7.1): the previous package grouping of the
+    # curl, ``dtdx * ((g1s - g1) + (g2 - g2s))``, against MEEP's left-to-right stencil.
+    "previous_pairwise_grouping":
         (MUTATION_CASE,
-         "    t1_re = ((a_z_re - a_re) + (c_re - c_x_re))",
-         "    t1_re = (a_z_re - a_re + c_re - c_x_re)", "catch"),
-    "bloch_rotation_applied_to_every_lane":
+         "    curl1_re = curl_stencil(a_z_re, a1_re, c1_re, c_x_re, dtdx, pz, px)",
+         "    curl1_re = dtdx * ((a_z_re - a1_re) + (c1_re - c_x_re))", "catch"),
+    # The connected word on EVERY lane, not only plane 0 of the partner's axis.
+    "connection_applied_to_every_lane":
         (MUTATION_CASE,
-         "        b_x_re = tl.where(wx, rot_re, b_x_re)",
-         "        b_x_re = rot_re", "catch"),
+         "        b2_re = tl.where(at_x, r_re, b_re)",
+         "        b2_re = r_re", "catch"),
+    # The previous design's plane: the last plane of the axis, where the rolled
+    # operand used to carry the phase, instead of the unshifted operand's plane 0.
+    "connection_on_the_previous_plane":
+        (MUTATION_CASE,
+         "        c0_re = tl.where(at_y, r_re, c_re)\n"
+         "        c0_im = tl.where(at_y, r_im, c_im)",
+         "        c0_re = tl.where(j == ny - 1, r_re, c_re)\n"
+         "        c0_im = tl.where(j == ny - 1, r_im, c_im)", "catch"),
+    # The presence word ignored. Every axis of every case here stores many cells,
+    # so the word is 7 already: a DECLARED NULL on this probe. The certified curl's
+    # gate (gate_triton_complex_no_pml_conductive.py) scores it on a 2-D row, and
+    # the transcription leg pins this body to that one.
+    "presence_word_ignored":
+        (MUTATION_CASE,
+         "    presence = tl.load(cb + RECORD_PRESENCE)",
+         "    presence = 7", "null"),
     "displacement_store_dropped":
         (MUTATION_CASE,
          "    tl.store(f0 + 2 * idx, v0_re, mask=live)\n", "", "catch"),
@@ -835,6 +848,13 @@ NULL_REASONS: Dict[str, str] = {
         "word the register holds. The edit is therefore byte-invisible HERE and is "
         "armed to record that, not to license dropping the register carry: the "
         "`displacement_store_dropped` row is what measures that the store matters.",
+    "presence_word_ignored":
+        "every case of this probe is a 3-D grid storing many cells on each axis, so "
+        "the record's presence word is 7 and forcing it to 7 changes nothing. The "
+        "one-partner forms it selects are scored on the certified curl's 2-D row "
+        "(gate_triton_complex_no_pml_conductive.py, "
+        "MUTATION_FULL_BRACKET_OVER_AN_ABSENT_PARTNER), and the transcription leg "
+        "requires this body's curl half to be that body's statements.",
 }
 
 
@@ -846,9 +866,11 @@ GUARD_RULES: Dict[str, Callable[[Dict[str, Any]], bool]] = {
     "if BCX == METALLIC:": lambda case: False,
     "if BCY == METALLIC:": lambda case: False,
     "if BCZ == METALLIC:": lambda case: False,
-    "if PHX:": lambda case: case["k_point"][0] != 0.0,
-    "if PHY:": lambda case: case["k_point"][1] != 0.0,
-    "if PHZ:": lambda case: case["k_point"][2] != 0.0,
+    # A connection kind is nonzero on a phased axis whose phase is not +1 within
+    # part_products.CONNECT_TOLERANCE; every nonzero k here is a non-integer phase.
+    "if CNX:": lambda case: case["k_point"][0] != 0.0,
+    "if CNY:": lambda case: case["k_point"][1] != 0.0,
+    "if CNZ:": lambda case: case["k_point"][2] != 0.0,
     "if COND0:": lambda case: case["conductive"][0],
     "if COND1:": lambda case: case["conductive"][1],
     "if COND2:": lambda case: case["conductive"][2],
@@ -1092,7 +1114,7 @@ def leg_transcription() -> Dict[str, Any]:
     }
 
 
-def leg_refusal(cp, probe) -> Dict[str, Any]:
+def leg_refusal(cp) -> Dict[str, Any]:
     """The source seam, the wall refusal and the absorber refusal, BY NAME."""
     from meep_gpu.sources import ContinuousEnvelope, VolumeSource  # noqa: PLC0415
     from meep_gpu.triton_kernels import (  # noqa: PLC0415
@@ -1103,18 +1125,16 @@ def leg_refusal(cp, probe) -> Dict[str, Any]:
     try:
         fields, pml = driver.fields, driver.pml
         undeclared = product.complex_conductive_fused_pair_coverage(
-            fields, pml, None, probe=probe)
+            fields, pml, None)
         magnetic_only = product.complex_conductive_fused_pair_coverage(
-            fields, pml, tuple(driver._sources), probe=probe)
+            fields, pml, tuple(driver._sources))
         electric = VolumeSource(grid=fields.grid, component="Ez",
                                 center=(0.0, 0.0, 0.0), size=(0.0, 0.0, 0.0),
                                 envelope=ContinuousEnvelope(frequency=1.0))
         electric_cov = product.complex_conductive_fused_pair_coverage(
-            fields, pml, (electric,), probe=probe)
+            fields, pml, (electric,))
         electric_plan = product.plan_complex_conductive_fused_pair(
-            fields, pml, sources=(electric,), probe=probe)
-        no_probe = product.complex_conductive_fused_pair_coverage(
-            fields, pml, tuple(driver._sources), probe=None)
+            fields, pml, sources=(electric,))
     finally:
         driver.close()
 
@@ -1127,10 +1147,9 @@ def leg_refusal(cp, probe) -> Dict[str, Any]:
                             SEED)
     try:
         lossless_cov = product.complex_conductive_fused_pair_coverage(
-            lossless.fields, lossless.pml, tuple(lossless._sources), probe=probe)
+            lossless.fields, lossless.pml, tuple(lossless._sources))
         lossless_plan = product.plan_complex_conductive_fused_pair(
-            lossless.fields, lossless.pml, sources=tuple(lossless._sources),
-            probe=probe)
+            lossless.fields, lossless.pml, sources=tuple(lossless._sources))
     finally:
         lossless.close()
 
@@ -1142,7 +1161,6 @@ def leg_refusal(cp, probe) -> Dict[str, Any]:
                        and any("is electric" in r and "driver.py:3294" in r
                                for r in electric_cov.reasons)
                        and electric_plan is None
-                       and not no_probe.covered
                        and not lossless_cov.covered
                        and any("no curl target carries a conductivity" in r
                                for r in lossless_cov.reasons)
@@ -1155,7 +1173,6 @@ def leg_refusal(cp, probe) -> Dict[str, Any]:
         "electric_source_refused": not electric_cov.covered,
         "electric_plan_is_none": electric_plan is None,
         "electric_named": [r for r in electric_cov.reasons if "is electric" in r],
-        "missing_expansion_probe_refused": not no_probe.covered,
         "a_lossless_row_is_refused_to_the_other_family": not lossless_cov.covered,
         "lossless_named": [r for r in lossless_cov.reasons
                            if "conductivity" in r][:2],
@@ -1170,32 +1187,9 @@ def leg_refusal(cp, probe) -> Dict[str, Any]:
 # Main
 # ===========================================================================
 
-def probe_record(explicit: Optional[str]) -> Tuple[Optional[Dict[str, Any]],
-                                                   List[str], Optional[str]]:
-    candidates = ([explicit] if explicit else
-                  [os.path.join(API_ROOT, relative) for relative in KEEP_PROBES])
-    reasons: List[str] = []
-    for path in candidates:
-        if not path or not os.path.isfile(path):
-            reasons.append(f"probe artifact absent: {path}")
-            continue
-        try:
-            with open(path, encoding="utf-8") as handle:
-                record = json.load(handle)
-        except Exception as exc:  # noqa: BLE001
-            reasons.append(f"probe artifact unreadable ({path}): {exc}")
-            continue
-        if not isinstance(record, dict):
-            reasons.append(f"probe artifact is not a verdict dict: {path}")
-            continue
-        return record, reasons, path
-    return None, reasons, None
-
-
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--probe-artifact", default=None)
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--subnormal-policy", default="keep",
                         choices=("keep", "flush"))
@@ -1275,33 +1269,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["policy_stamp"] = shared.install_ftz_strip(args.subnormal_policy)
     flush()
 
-    record, reasons, probe_path = probe_record(args.probe_artifact)
-    if record is None:
-        results["failures"].extend(reasons)
-        results["verdict"] = "REFUSED"
-        results["elapsed_seconds"] = time.time() - started
-        flush()
-        log("REFUSED: " + "; ".join(reasons))
-        return 1
-    results["probe_artifact"] = probe_path
-    results["probe_sha256"] = sha256_of(probe_path)
-    results["probe_policy_reasons"] = list(
-        shared.probe_record_policy_reasons(record))
-
-    from meep_gpu.triton_kernels import complex_fields as cx  # noqa: PLC0415
     from meep_gpu.triton_kernels import (  # noqa: PLC0415
         complex_conductive_fused_pair as product)
-    expansion = cx._resolve_expansion(record)
-    results["licensed_expansion"] = expansion
-    if expansion is None:
-        results["failures"].append("the expansion licence refused this record")
-        results["verdict"] = "REFUSED"
-        results["elapsed_seconds"] = time.time() - started
-        flush()
-        return 1
 
     for case in CASES:
-        row = run_leg(cp, "product", case, product, record, steps=args.steps)
+        row = run_leg(cp, "product", case, product, steps=args.steps)
         passed, failures = verdict_of(row, require_launches=row["steps_budget"])
         row["passed"], row["failures"] = passed, failures
         results["rows"].append(row)
@@ -1312,24 +1284,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     cases = {case[0]: case for case in CASES}
 
-    other = 0 if int(expansion) == 1 else 1
-    row = run_leg(cp, "expansion_override", cases[MUTATION_CASE], product, record,
-                  steps=MUTATION_STEPS, expansion=other)
-    row["expectation"] = "catch"
-    row["caught"] = row.get("first_divergence") is not None
-    row["reason"] = (
-        "this family DOES compile a Bloch rotation, and the mutation case carries a "
-        "three-axis phase — so unlike the cylindrical arm the two expansion arms "
-        "have a nonzero-real-word coefficient to disagree over. The row is armed as "
-        "a CATCH: if it comes back null the licence is decorative on this family "
-        "and that is a finding, not a pass.")
-    row["passed"] = bool(row["caught"])
-    results["rows"].append(row)
-    log(f"[expansion_override] arm {expansion}->{other}: caught={row['caught']}")
-    flush()
-
     results["rows"].append({"leg": "refusal", "device": True,
-                            **leg_refusal(cp, record)})
+                            **leg_refusal(cp)})
     log(f"[refusal] passed={results['rows'][-1]['passed']}")
     flush()
 
@@ -1344,7 +1300,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             continue
         mutated, entry = _renamed(block.replace(old, new, 1), name)
         kernel = compile_mutant(mutated, entry)
-        row = run_leg(cp, "mutation", cases[case_name], product, record,
+        row = run_leg(cp, "mutation", cases[case_name], product,
                       mutant=kernel, steps=MUTATION_STEPS)
         diverged = row.get("first_divergence") is not None
         launched = row.get("fused_kernel_launches") == MUTATION_STEPS

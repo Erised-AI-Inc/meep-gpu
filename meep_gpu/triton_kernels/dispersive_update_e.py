@@ -22,8 +22,16 @@ so the contract this file transcribes, per component, is exactly::
 
     s    = ((D_c - P_0[c]) - P_1[c]) - ...        left to right, polarizations order
     src  = s * inv_eps_c                          D-minus-P on the LEFT
-    prev = f_w_c ; f_w_c = src
-    E_c  = (E_c + kps_h[a]*src) - kms_h[a]*prev   a = the component's OWN axis
+    on the cells whose chunk carries c's own (dsigw) layer:
+        prev = f_w_c ; f_w_c = src
+        E_c  = E_c + ((kps_h[a]*src) - (kms_h[a]*prev))   a = the component's OWN axis
+    everywhere else:
+        E_c  = src                                f_w_c untouched
+
+(``stepping._apply_constitutive_regions`` / ``_apply_constitutive_pml``, MEEP's
+step_update_EDHB, step_generic.cpp:689, :697, and update_eh.cpp:162-170). The record's
+half-integer line on the component's own axis picks the form per cell, read through
+:func:`.forms.constitutive_form`.
 
 THREE THINGS DECIDE BIT-IDENTITY, and each is pinned by a MEASURED control rather
 than by argument (recon, 30 real Grid/Fields/PML cases on NumPy; the counts below
@@ -42,11 +50,13 @@ are that run's):
    Ex, Ey and Ez can each see a different subset in a different order; a plan that
    caches one pole list for all three components is wrong on any anisotropic-sigma
    material, and wrong SILENTLY — the field stays smooth and plausible.
-3. **THE TWO ACCUMULATIONS STAY SEPARATE.** ``(E + kps*src) - kms*prev`` regrouped
-   to ``E + (kps*src - kms*prev)`` was caught 30/30, at BOTH Courant numbers — the
-   non-representable multiplicands here are the PML coefficients themselves, not the
-   Courant scaling, so there is no exact-in-binary case to exempt. ``ENABLE_FP_FUSION
-   = False`` is what stops the multiplies contracting into an FMA on top of that.
+3. **THE ACCUMULATION IS ONE ADD OF THE DIFFERENCE.** MEEP's ``f[i] += X - Y;``
+   forms the right-hand side first, so the word is ``E + ((kps*src) - (kms*prev))``;
+   the package's previous two separate accumulations ``(E + kps*src) - kms*prev`` are
+   a different float32 number on most PML cells (that inversion is the gate's
+   ``old_constitutive_grouping`` mutation). The non-representable multiplicands here
+   are the PML coefficients themselves, so there is no exact-in-binary case to exempt.
+   ``ENABLE_FP_FUSION = False`` is what stops the multiplies contracting into an FMA.
 
 A NULL, measured so it is not mistaken for a fourth: ``inv_eps * s`` versus
 ``s * inv_eps`` is BITWISE IDENTICAL (caught 0/30). float32 multiplication is
@@ -154,6 +164,12 @@ except ImportError as _exc:  # pragma: no cover - the laptop path
 
 if triton is not None:
 
+    # The forms and the record layout the kernel reads. Imported only when Triton is:
+    # the modules that define them import it at module scope, and this module's
+    # predicate must answer without it.
+    from .forms import constitutive_form, record_in  # noqa: E402
+    from .kernels import RECORD_HALF_INTEGER  # noqa: E402
+
     @triton.jit
     def constitutive_step_dispersive(
         f0, f1, f2,                     # targets:      Ex, Ey, Ez          (in/out)
@@ -164,6 +180,7 @@ if triton is not None:
         b0, b1, b2, b3, b4, b5, b6, b7,   # component 1's poles, IN ORDER
         c0, c1, c2, c3, c4, c5, c6, c7,   # component 2's poles, IN ORDER
         kp0, km0, kp1, km1, kp2, km2,   # kps/kms on each component's OWN axis
+        cb,                             # chunk record: the forms' dsigw membership
         nx, ny, nz, n_elem,
         NP0: tl.constexpr, NP1: tl.constexpr, NP2: tl.constexpr,
         BLOCK: tl.constexpr,
@@ -173,9 +190,16 @@ if triton is not None:
         The body is :func:`kernels.constitutive_step`'s E arm with ONE substitution:
         the source is no longer ``D`` but ``D`` with each driving pole's ``P``
         subtracted from it, sequentially, left to right, in ``fields.polarizations``
-        order. Everything else — the ``prev``-before-store ordering, the two separate
-        accumulations, the own-axis coefficient index — is that kernel's, unchanged,
-        because the array path's is unchanged.
+        order. Everything else is that kernel's, because the array path's
+        (``stepping._apply_constitutive_regions``) is the same for a dispersive run:
+        the record's half-integer line on the component's own (dsigw) axis picks the
+        form per cell (:func:`.forms.constitutive_form`), MEEP's accumulation ``E +
+        ((kps*src) - (kms*prev))`` on the layer's chunks and ``E = src`` everywhere else,
+        with ``prev`` read before ``f_w`` is written and ``f_w`` (and the old E) read and
+        written on the accumulation's cells only, the auxiliary contract. Outside those
+        cells ``f_w`` keeps its word and the stored E IS the constitutive product, which
+        is MEEP's ``w`` there (update_pols.cpp:44): ``Fields.drive_field`` composes the
+        two for ``update_P``.
 
         ``NP0``/``NP1``/``NP2`` are the LIVE pole count per component and are
         ``tl.constexpr``, so the subtraction chain is unrolled at compile time and a
@@ -203,8 +227,15 @@ if triton is not None:
         kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
+        # Which cells take the accumulation: the component's own (dsigw) layer on the
+        # half-integer sub-lattice an E component sits on along its own axis
+        # (chunk_map.record_index(True, axis, 0)), x for component 0, y for 1, z for 2.
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
+
         # --- component 0 -------------------------------------------------------
-        prev0 = tl.load(w0 + idx, mask=live, other=0.0)   # BEFORE the store.
+        prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)   # BEFORE the store.
         s0 = tl.load(g0 + idx, mask=live, other=0.0)
         if NP0 > 0:
             s0 = s0 - tl.load(a0 + idx, mask=live, other=0.0)
@@ -223,14 +254,13 @@ if triton is not None:
         if NP0 > 7:
             s0 = s0 - tl.load(a7 + idx, mask=live, other=0.0)
         src0 = s0 * tl.load(e0 + idx, mask=live, other=0.0)
-        tl.store(w0 + idx, src0, mask=live)
-        v0 = tl.load(f0 + idx, mask=live, other=0.0)
-        v0 = v0 + kp_0 * src0
-        v0 = v0 - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=live & dw0)
+        v0 = constitutive_form(tl.load(f0 + idx, mask=live & dw0, other=0.0),
+                                 prev0, src0, kp_0, km_0, dw0)
         tl.store(f0 + idx, v0, mask=live)
 
         # --- component 1 -------------------------------------------------------
-        prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+        prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
         s1 = tl.load(g1 + idx, mask=live, other=0.0)
         if NP1 > 0:
             s1 = s1 - tl.load(b0 + idx, mask=live, other=0.0)
@@ -249,14 +279,13 @@ if triton is not None:
         if NP1 > 7:
             s1 = s1 - tl.load(b7 + idx, mask=live, other=0.0)
         src1 = s1 * tl.load(e1 + idx, mask=live, other=0.0)
-        tl.store(w1 + idx, src1, mask=live)
-        v1 = tl.load(f1 + idx, mask=live, other=0.0)
-        v1 = v1 + kp_1 * src1
-        v1 = v1 - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=live & dw1)
+        v1 = constitutive_form(tl.load(f1 + idx, mask=live & dw1, other=0.0),
+                                 prev1, src1, kp_1, km_1, dw1)
         tl.store(f1 + idx, v1, mask=live)
 
         # --- component 2 -------------------------------------------------------
-        prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+        prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
         s2 = tl.load(g2 + idx, mask=live, other=0.0)
         if NP2 > 0:
             s2 = s2 - tl.load(c0 + idx, mask=live, other=0.0)
@@ -275,10 +304,9 @@ if triton is not None:
         if NP2 > 7:
             s2 = s2 - tl.load(c7 + idx, mask=live, other=0.0)
         src2 = s2 * tl.load(e2 + idx, mask=live, other=0.0)
-        tl.store(w2 + idx, src2, mask=live)
-        v2 = tl.load(f2 + idx, mask=live, other=0.0)
-        v2 = v2 + kp_2 * src2
-        v2 = v2 - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=live & dw2)
+        v2 = constitutive_form(tl.load(f2 + idx, mask=live & dw2, other=0.0),
+                                 prev2, src2, kp_2, km_2, dw2)
         tl.store(f2 + idx, v2, mask=live)
 
 else:  # pragma: no cover - the laptop path
@@ -560,18 +588,25 @@ class DispersiveConstitutivePlan:
     coefficient views, the field pointer adapters, the pole ORDER and the three
     ``NP`` constexprs. What is deliberately NOT resolved ahead of the loop is the
     pole POINTERS — see :class:`LivePoleBinding`.
+
+    ``chunk_bounds`` is the chunk record (``launch.bind_chunk_bounds``), required. The
+    plan holds it as :attr:`chunk_bounds` and passes its device copy to every launch as
+    the kernel's ``cb``, directly after the last pointer.
     """
 
-    __slots__ = ("shape", "n_elem", "block", "counts", "_targets", "_aux",
-                 "_sources", "_inv_eps", "_coefficients", "_poles", "_grid",
-                 "_kernel", "_pointer")
+    __slots__ = ("shape", "n_elem", "block", "counts", "chunk_bounds", "_targets",
+                 "_aux", "_sources", "_inv_eps", "_coefficients", "_poles", "_cb",
+                 "_grid", "_kernel", "_pointer")
 
     def __init__(self, shape, block: int, targets, auxiliaries, sources,
-                 inverse_epsilon, coefficients, poles, kernel: Any = None) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 inverse_epsilon, coefficients, poles, kernel: Any = None, *,
+                 chunk_bounds: Any) -> None:
+        from .launch import CupyPointer, _flat, bind_chunk_bounds  # noqa: PLC0415
 
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "DispersiveConstitutivePlan")
         self.block = int(block)
         self._pointer = CupyPointer
         self._targets = tuple(CupyPointer(a) for a in targets)
@@ -615,7 +650,7 @@ class DispersiveConstitutivePlan:
             slots.extend([self._sources[index]] * (MAX_POLES - len(group)))
         kernel[self._grid](
             *self._targets, *self._aux, *self._sources, *self._inv_eps,
-            *slots, *self._coefficients,
+            *slots, *self._coefficients, self._cb,
             nx, ny, nz, self.n_elem,
             NP0=self.counts[0], NP1=self.counts[1], NP2=self.counts[2],
             BLOCK=self.block,
@@ -624,11 +659,13 @@ class DispersiveConstitutivePlan:
 
     def __repr__(self) -> str:
         return (f"DispersiveConstitutivePlan(shape={self.shape}, "
-                f"poles={self.counts}, block={self.block})")
+                f"poles={self.counts}, block={self.block}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_dispersive_constitutive(fields: Any, pml: Any,
-                                 block: Optional[int] = None
+                                 block: Optional[int] = None,
+                                 chunk_layout: Any = None,
                                  ) -> Optional[DispersiveConstitutivePlan]:
     """Build the dispersive ``update_E`` plan from the engine's own objects, or None.
 
@@ -636,10 +673,14 @@ def plan_dispersive_constitutive(fields: Any, pml: Any,
     :func:`dispersive_constitutive_coverage`. The Triton import stays BELOW the
     predicate, as it does in every builder in this package: a NumPy host must be able
     to plan (to ``None``) without the optional dependency being importable at all.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default;
+    the plan binds its record (``launch.chunk_bounds_for``).
     """
     if not dispersive_constitutive_coverage(fields, pml).covered:
         return None
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
+    from .launch import chunk_bounds_for  # noqa: PLC0415
 
     order = poles_per_component(fields)
     targets = tuple(term[0] for term in E_TERMS)
@@ -652,6 +693,7 @@ def plan_dispersive_constitutive(fields: Any, pml: Any,
         [getattr(pml, f"{stem}_{axis}_h")
          for axis in "xyz" for stem in ("kps", "kms")],
         LivePoleBinding(fields, order),
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
@@ -659,7 +701,8 @@ def plan_dispersive_constitutive_from_arrays(arrays: Dict[str, Any],
                                              flat: Dict[str, Any],
                                              poles: Dict[str, Sequence[Any]],
                                              block: Optional[int] = None,
-                                             kernel: Any = None
+                                             kernel: Any = None, *,
+                                             chunk_bounds: Any,
                                              ) -> DispersiveConstitutivePlan:
     """Build it from bare device arrays — the gate's and benchmark's route.
 
@@ -675,6 +718,8 @@ def plan_dispersive_constitutive_from_arrays(arrays: Dict[str, Any],
     mutated kernel through it, and a builder that drops it launches the SHIPPED
     kernel and reports a pass for a defect it never introduced (plan §13.4, measured
     at 4/4 real defects reported as 120/120 identical).
+
+    ``chunk_bounds`` is REQUIRED and has no default, as in ``launch.plan_from_arrays``.
     """
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
 
@@ -688,7 +733,7 @@ def plan_dispersive_constitutive_from_arrays(arrays: Dict[str, Any],
         [arrays["inv_eps_" + name] for name in targets],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kps", "kms")],
         StaticPoleBinding([poles[name] for name in targets]),
-        kernel=kernel,
+        kernel=kernel, chunk_bounds=chunk_bounds,
     )
 
 

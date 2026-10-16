@@ -13,6 +13,20 @@ Every base case compares all twelve arrays written by the pair against both:
 The mutation legs include real defects and measured nulls. Results are rewritten
 atomically after every case and every progress line is flushed (the progress-reporting rule).
 Run only inside a one-GPU Slurm allocation.
+
+THE CAMPAIGN'S SUBNORMAL POLICY. Until the 1.0 certification round this gate installed
+no float32 subnormal policy and stated none: the CuPy oracle flushed (CuPy's default
+``-ftz=true``) while Triton kept, so its ledger entry declared ``_mixed_policy`` and no
+run could carry evidence for a policy. The two arms that cite it (``fused pair B`` and
+``fused pair D``) were then refused on every flush dispatch, and with them every plan
+the default precedence composes from them on the route gate's flush legs. The gate now
+does what the five composition gates do (``composition_policy.py``, owner ruling R16):
+before it builds anything it installs the policy ``MEEP_GPU_SUBNORMAL_POLICY`` names
+(``keep`` when unset) on the host, CuPy and Triton, refuses by name when it is not
+attained, stamps it as ``subnormal_policy``, and confirms at the end of the run that it
+still holds. It lifts no MEEP simulation, so under ``flush`` it runs through the flush
+fleet's MEEP-importing wrapper (``rounds/1.0/meep_host_import.py``), which
+``run_lane.py`` always uses; a direct flush run without it refuses by name.
 """
 
 from __future__ import annotations
@@ -23,6 +37,7 @@ import importlib.util
 import inspect
 import json
 import os
+import re
 import sys
 import tempfile
 import textwrap
@@ -101,8 +116,17 @@ def reference_fused_electric_step(
     boundaries: Sequence[str],
     zero_metal: Sequence[bool],
     grouping: str = "array_order",
+    *,
+    record: Sequence[int],
 ) -> None:
-    """Independent transcription of the three passes in their driver order."""
+    """Independent transcription of the three passes in their driver order.
+
+    ``step_D``, ``zero_metal_D``, ``update_E``, each half choosing its forms on the
+    one chunk ``record`` (REQUIRED): the record the plans launched with, or, in the
+    validator, the record of the region plan the array path stepped with.
+    ``grouping="regrouped"`` re-associates both halves (the curl's
+    ``pairwise_order`` and the constitutive's ``regrouped``).
+    """
     regrouped = grouping == "regrouped"
     shared.reference_pml_step(
         xp,
@@ -113,7 +137,8 @@ def reference_fused_electric_step(
         dtdx,
         "step_D",
         boundaries,
-        "kernel_order" if regrouped else "array_order",
+        "pairwise_order" if regrouped else "array_order",
+        record=record,
     )
     reference_zero_metal_D(state, zero_metal)
     constitutive_arrays = {
@@ -126,6 +151,7 @@ def reference_fused_electric_step(
         state,
         constitutive_coefficients,
         "regrouped" if regrouped else "array_order",
+        record=record,
     )
 
 
@@ -180,11 +206,15 @@ def run_fused(
     guard: bool = False,
     num_warps: Optional[int] = 1,
 ) -> None:
+    from gate_chunk_records import every_cell_record
     from meep_gpu.triton_kernels.launch import plan_fused_pair_from_arrays
 
+    # The fused and the unfused legs bind ONE division, every cell in a layer chunk:
+    # the hand reference steps the recurrence on every cell.
     plan = plan_fused_pair_from_arrays(
         "D", arrays, curl_flat, constitutive_flat, codes, zero_metal, dtdx,
-        kernel=kernel, num_warps=num_warps)
+        kernel=kernel, num_warps=num_warps,
+        chunk_bounds=every_cell_record(arrays[TARGETS[0]].shape))
     plan.run(guard=guard)
 
 
@@ -197,14 +227,18 @@ def run_unfused(
     dtdx: float,
     guard: bool = False,
 ) -> None:
+    from gate_chunk_records import every_cell_record
     from meep_gpu.triton_kernels.launch import (
         plan_constitutive_from_arrays,
         plan_from_arrays,
     )
 
-    plan_from_arrays("step_D", arrays, curl_flat, codes, dtdx).run(guard=guard)
+    record = every_cell_record(arrays[TARGETS[0]].shape)
+    plan_from_arrays("step_D", arrays, curl_flat, codes, dtdx,
+                     chunk_bounds=record).run(guard=guard)
     reference_zero_metal_D(arrays, zero_metal)
-    plan_constitutive_from_arrays("E", arrays, constitutive_flat).run(guard=guard)
+    plan_constitutive_from_arrays("E", arrays, constitutive_flat,
+                                  chunk_bounds=record).run(guard=guard)
 
 
 def one_case(
@@ -237,10 +271,13 @@ def one_case(
     arrays = make_arrays(cp, shape, shared.SEED + 71)
     flags = zero_metal_flags(boundaries)
 
+    from gate_chunk_records import every_cell_record
+
     reference = {name: arrays[name].copy() for name in STATE_NAMES}
     reference_fused_electric_step(
         cp, arrays, reference, curl_coefficients, constitutive_coefficients,
-        np.float32(dtdx), boundaries, flags)
+        np.float32(dtdx), boundaries, flags,
+        record=every_cell_record(arrays[TARGETS[0]].shape))
 
     kernel_curl = curl_coefficients
     kernel_constitutive = constitutive_coefficients
@@ -294,11 +331,51 @@ def one_case(
     return case
 
 
-def mutate_kernel(name: str):
-    """Compile one derived copy of the shipped D fused kernel from a real file."""
+#: The shipped constitutive call (``forms.constitutive_form``), one per target: the
+#: old field word ``f`` (a masked load), then ``prev``, ``src``, ``kps``, ``kms`` and the
+#: dsigw membership that keys the select.
+_CONSTITUTIVE_CALL = re.compile(
+    r"a(?P<t>\d) = constitutive_form\((?P<f>tl\.load\(e(?P=t) \+ idx, "
+    r"mask=live & dw(?P=t), other=0\.0\)),\s+prev(?P=t), src(?P=t), kp_(?P=t), "
+    r"km_(?P=t), dw(?P=t)\)")
+
+
+def _constant(name: str) -> int:
+    """One of ``kernels.py``'s ``tl.constexpr`` globals as a plain int."""
     from meep_gpu.triton_kernels import kernels
 
-    source = textwrap.dedent(inspect.getsource(kernels.fused_curl_constitutive_D.fn))
+    value = getattr(kernels, name)
+    return int(getattr(value, "value", value))
+
+
+def mutation_header() -> str:
+    """The module text a mutated copy of the kernel compiles under.
+
+    The kernel reads ``PERIODIC``/``METALLIC`` and the chunk record's two word
+    offsets as ``tl.constexpr`` globals and calls the shared ``@triton.jit`` forms of
+    ``triton_kernels/forms.py`` by their imported names. A copy compiled without them
+    does not compile (Triton raises ``NameError`` at the first launch), and a launch
+    error scores as a difference, so every must-differ mutation would read caught
+    while measuring nothing. The constants are read from ``kernels.py``, not spelled.
+    """
+    return ("import triton\nimport triton.language as tl\n"
+            "from meep_gpu.triton_kernels.forms import ("
+            "axis_present, constitutive_form, curl_form, curl_stencil, record_in)\n"
+            f"PERIODIC = tl.constexpr({_constant('PERIODIC')})\n"
+            f"METALLIC = tl.constexpr({_constant('METALLIC')})\n"
+            f"RECORD_HALF_INTEGER = tl.constexpr({_constant('RECORD_HALF_INTEGER')})\n"
+            f"RECORD_PRESENCE = tl.constexpr({_constant('RECORD_PRESENCE')})\n\n")
+
+
+#: The source mutations, each scored with its expectation in ``main``.
+SOURCE_MUTATIONS = ("reload_D_from_memory", "reload_D_from_next_cell",
+                    "inverse_epsilon_on_left", "drop_fw_store", "regroup_constitutive")
+
+
+def mutated_source(name: str, source: str) -> Tuple[str, int]:
+    """``source`` (the shipped kernel's text) with mutation ``name`` applied, and its
+    site count. Every mutation rewrites one site per target, so 3 is the only count
+    that arms it; the caller refuses any other."""
     hits = 0
     if name in ("reload_D_from_memory", "reload_D_from_next_cell"):
         for index in range(3):
@@ -317,30 +394,41 @@ def mutate_kernel(name: str):
             source = source.replace(old, new)
             hits += count
     elif name == "drop_fw_store":
+        # The auxiliary store is masked to the accumulation's cells (the auxiliary
+        # contract); every cell is one under the gate's every-cell record, so dropping
+        # it leaves f_w at its pre-step word everywhere.
         for index in range(3):
-            old = f"    tl.store(w{index} + idx, src{index}, mask=live)\n"
+            old = f"    tl.store(w{index} + idx, src{index}, mask=live & dw{index})\n"
             count = source.count(old)
             source = source.replace(old, "")
             hits += count
     elif name == "regroup_constitutive":
-        for index in range(3):
-            old = (f"a{index} = a{index} + kp_{index} * src{index}\n"
-                   f"    a{index} = a{index} - km_{index} * prev{index}")
-            new = (f"a{index} = a{index} + (kp_{index} * src{index} "
-                   f"- km_{index} * prev{index})\n    a{index} = a{index}")
-            count = source.count(old)
-            source = source.replace(old, new)
-            hits += count
+        # INVERTED (KERNELS.md section 7.1): the shipped form is MEEP's
+        # ``f + ((kps*src) - (kms*prev))`` (``forms.constitutive_form``), so the
+        # mutant puts the two separate accumulations the kernel carried until 0.10
+        # back at the call site, ``(f + kps*src) - kms*prev``, with the same select.
+        hits = len(_CONSTITUTIVE_CALL.findall(source))
+        source = _CONSTITUTIVE_CALL.sub(
+            lambda m: (f"a{m['t']} = tl.where(dw{m['t']}, ({m['f']} + kp_{m['t']} * "
+                       f"src{m['t']}) - km_{m['t']} * prev{m['t']}, src{m['t']})"),
+            source)
     else:  # pragma: no cover - argparse constrains this
         raise ValueError(name)
+    return source, hits
+
+
+def mutate_kernel(name: str):
+    """Compile one derived copy of the shipped D fused kernel from a real file."""
+    from meep_gpu.triton_kernels import kernels
+
+    source = textwrap.dedent(inspect.getsource(kernels.fused_curl_constitutive_D.fn))
+    source, hits = mutated_source(name, source)
     if hits != 3:
         raise RuntimeError(f"mutation {name} hit {hits} sites, expected 3")
 
     handle = tempfile.NamedTemporaryFile(
         "w", suffix="_fused_D_mutation.py", delete=False, encoding="utf-8")
-    handle.write(
-        "import triton\nimport triton.language as tl\n"
-        "PERIODIC = tl.constexpr(0)\nMETALLIC = tl.constexpr(1)\n\n" + source)
+    handle.write(mutation_header() + source)
     handle.close()
     spec = importlib.util.spec_from_file_location(
         f"fused_D_mutation_{name}", handle.name)
@@ -382,15 +470,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
     if cp is None:
         raise SystemExit("CuPy is required for the CUDA gate")
+    from composition_policy import (  # noqa: PLC0415 - beside this file
+        confirm_campaign_policy, stamp_campaign_policy)
+
     out = Path(args.out).resolve()
     results: Dict[str, Any] = {
         "gate": "triton_fused_electric",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "provenance": provenance(args.num_warps),
         "base_cases": [],
         "mutations": [],
     }
+    # THE CAMPAIGN'S SUBNORMAL POLICY, installed and measured before the first kernel
+    # compiles and stamped into the artifact (composition_policy.py). A refusal writes
+    # ``summary.status = refused`` and the run measures nothing.
+    refused = stamp_campaign_policy(results, cp)
+    results["provenance"] = provenance(args.num_warps)
     save(results, out)
+    if refused:
+        log(f"FUSED ELECTRIC GATE REFUSED: {refused}")
+        return 2
 
     combinations = [
         (source, shape, boundaries, dtdx)
@@ -451,6 +549,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"identical={identical} expected={'different' if must_differ else 'identical'} "
             f"caught={row['caught']}")
         save(results, out)
+
+    # THE POLICY MUST STILL HOLD at the end of the run, on every executor and on the
+    # host FPU; the stamp is re-taken with the counters the run accumulated.
+    refused = confirm_campaign_policy(results)
+    if refused:
+        results["elapsed_seconds"] = round(time.time() - started, 2)
+        results["finished_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save(results, out)
+        log(f"FUSED ELECTRIC GATE REFUSED: {refused}")
+        return 2
 
     ran = [case for case in results["base_cases"] if not case.get("skipped")]
     base_pass = bool(ran) and all(

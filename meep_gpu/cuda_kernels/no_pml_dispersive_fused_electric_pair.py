@@ -422,7 +422,10 @@ __POLE_PARAMS__    int nx, int ny, int nz, float dtdx,
     // zero_metal_D's three per-axis flags (driver.py:3310). A FOLDED metallic axis
     // carries no wall (stepping._zero_metal, :2237-2239) and this family refuses a
     // fold outright, so the two can never disagree here.
-    int wall_x, int wall_y, int wall_z
+    int wall_x, int wall_y, int wall_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: the lifted curl
+    // reads its partner-presence word (MEEP's stencil over an invariant axis).
+    const int* __restrict__ cb
 ) {
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 990-993->1019-1022
 
@@ -592,12 +595,18 @@ def certified_curl_body() -> str:
                 f"a store into {target} survived the capture rewrite; the wall clear "
                 f"below writes the register and this store would race it")
     # THE STENCIL IS ASSERTED, NOT EDITED. It is the arithmetic this family reuses
-    # unchanged, so its survival is a property of the build rather than a claim.
-    stencil = "        float curl = dtdx * ((sf - f1) + (f2 - ss));"
+    # unchanged -- the certified template's curl_stencil, MEEP's grouping with its
+    # forms for an absent partner -- so its survival is a property of the build rather
+    # than a claim.
+    stencil = "        float curl = curl_stencil(dtdx, sf, f1, f2, ss, "
     if body.count(stencil) != 3:
         raise AssertionError(
             f"the certified curl body carries {body.count(stencil)} of the three curl "
-            f"stencil lines; this family exists to reuse them unchanged")
+            f"stencil calls; this family exists to reuse them unchanged")
+    if "const int cb_presence = cb[" not in body:
+        raise AssertionError(
+            "the certified curl body no longer decodes the record's presence word; the "
+            "stencil's partner flags would be undeclared")
     return body
 
 
@@ -1026,10 +1035,12 @@ def launch_no_pml_dispersive_fused_electric_pair(
         fields: "Fields", boundary_codes: Sequence[Any], walls: Sequence[int],
         dtdx: float, poles: Sequence[Any], counts: Sequence[int],
         conductivity: Sequence[Any], cond: Sequence[bool],
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
+        kernel: Optional[Any] = None, *, chunk_bounds: Any) -> Dict[str, Any]:
     """All three of :data:`REPLACES` in ONE launch, at this run's mask and arity.
 
-    THE ARGUMENT ORDER IS THE SIGNATURE'S.
+    THE ARGUMENT ORDER IS THE SIGNATURE'S. ``chunk_bounds`` is the run's chunk record on
+    the device, required: the lifted curl reads its presence word
+    (``step_curl_kernels.chunk_record_argument`` checks it).
 
     ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is: a gate
     compiles a deliberately broken copy of the shipped source and hands it here. A
@@ -1047,6 +1058,8 @@ def launch_no_pml_dispersive_fused_electric_pair(
             f"{len(tuple(conductivity))} conductivity pointers were resolved, not 6; "
             f"the signature binds condfac and condinv per target and a mismatch would "
             f"shift every argument after the group")
+    from . import step_curl_kernels  # noqa: PLC0415 - a device import
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     arguments = tuple(getattr(fields, name) for name in _FIELD_BINDINGS) + tuple(
@@ -1056,7 +1069,7 @@ def launch_no_pml_dispersive_fused_electric_pair(
     ) + tuple(inverse_epsilon_bindings(fields)) + tuple(poles) + (
         np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx),
         boundary_codes[0], boundary_codes[1], boundary_codes[2],
-    ) + tuple(np.int32(int(bool(walls[axis]))) for axis in range(3))
+    ) + tuple(np.int32(int(bool(walls[axis]))) for axis in range(3)) + (cb,)
     (kernel or _get_kernel(cond, counts))((blocks,), (_FUSED_THREADS,), arguments)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
@@ -1068,7 +1081,7 @@ def launch_no_pml_dispersive_fused_electric_pair(
 
 def run_no_pml_dispersive_fused_electric_pair(
         fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
-        sources: Any = None,
+        chunk_bounds: Any, sources: Any = None,
         plan: Optional[Dict[str, List[Any]]] = None,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once.
@@ -1097,4 +1110,5 @@ def run_no_pml_dispersive_fused_electric_pair(
     from . import step_curl_kernels  # noqa: PLC0415 - a device import
     return launch_no_pml_dispersive_fused_electric_pair(
         fields, step_curl_kernels.real_curl_boundary_codes(grid),
-        zero_metal_axes(grid), dtdx, poles, counts, conductivity, cond, kernel)
+        zero_metal_axes(grid), dtdx, poles, counts, conductivity, cond, kernel,
+        chunk_bounds=chunk_bounds)

@@ -86,10 +86,10 @@ TESTS_DEFAULT = os.path.join(os.environ.get("MGPU_SITE_MEEP_SOURCE", os.path.joi
 # packages and MEEP's optional modules. A test module that needs one of these is not a
 # fact about the engine until it is run in an environment that has it, so the
 # inventory names the dependency rather than reporting an import error as a refusal.
-# Membership says nothing about the reference environments: both locks hold autograd
-# (added on 2026-10-05, so meep.adjoint imports there), pytest, h5py, matplotlib,
-# scipy and MPB, and neither holds jax, nlopt, gdspy, gdstk, PyMieScatt or
-# parameterized.
+# Membership says nothing about the reference environments: what each holds is its lock
+# (environments/locks/meep-gpu-ref-<platform>.{conda,pip}.txt), and the corpus-only
+# packages among them are named in environments/locks/numerics-relevant.json. Neither
+# lock holds jax, gdstk or parameterized.
 OPTIONAL_DEPS = {
     "jax", "autograd", "nlopt", "gdspy", "gdstk", "PyMieScatt", "parameterized",
     "meep.adjoint", "meep.mpb", "mpb", "pytest", "h5py", "matplotlib", "scipy",

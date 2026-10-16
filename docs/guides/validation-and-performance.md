@@ -44,16 +44,16 @@ There are two device lanes, not one. CUDA conformance and benchmarks run on a
 CUDA host; the Metal table has its own Apple-GPU gate lane. A CPU-only
 developer should still run the NumPy and CPU-MEEP checks.
 
-> **Note: Expected failures in this release**
+> **Warning: Expected failures in this release**
 >
 > The ledger-contract tests compare the source digests recorded in the
-> kernel ledgers with the files in the tree. The certification round ran on
-> the files of 0.9.2 and the ledgers are bound to them; two tests stay
-> pending, those of the fused-product timing records, until a timing campaign
-> on these files re-cuts them. They belong to the certification suite (pytest
-> marker <code>certification</code>), which a run without <code>-m</code> does
-> not select and <code>-m certification</code> runs; there they are failures,
-> not skips. See
+> kernel ledgers with the files in the tree. The 1.0 certification round bound
+> the ledgers on this release's bytes; the tests that still fail are each
+> declared in <code>tools/ci/pending_certification.txt</code>, with the step
+> that removes it. They form the
+> certification suite (pytest marker <code>certification</code>), which a run
+> without <code>-m</code> does not select and <code>-m certification</code>
+> runs; there they are failures, not skips. See
 > [Running the certification harness](../development/certification.md#certification-status-of-this-release).
 
 ## What dispatch changes, and what it does not
@@ -168,9 +168,7 @@ the size dependence are in
 [Compiled-kernel dispatch](kernel-dispatch.md#what-fusing-buys-and-at-which-size).
 The short version: on the NVIDIA tables a two-pair plan loses to its own
 certified single arms below a crossover between 1.0 and 2.4 million cells, and
-the Metal table's coverage figure supports no timing claim at all. The crossover
-was measured on an earlier deposit-repair route and has not been re-measured on
-0.9.2 (CHANGELOG, 0.9.2, "Pending: fused-product timing").
+the Metal table's coverage figure supports no timing claim at all.
 
 The timing harness that produced those rows ships in the repository under
 <code>parity/meep_gpu/</code>: <code>bench_fused_products.py</code> times a case

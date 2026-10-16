@@ -4,7 +4,7 @@ The ``BFAST PML`` -> ``BFAST run`` cell's B->H product. Both halves are already
 certified and neither is re-derived here:
 
 * the curl half is :func:`.bfast_curl.bfast_pml_curl_step` — itself
-  ``kernels.pml_curl_step``'s certified body plus ONE constexpr-gated tail;
+  ``kernels.pml_curl_step``'s body plus ONE constexpr-gated pass;
 * the constitutive half is ``kernels.constitutive_step``'s ``SCALE = 0`` arm,
   admitted on a BFAST run by the shipped
   :func:`.bfast_curl.bfast_run_constitutive_coverage` ("the constitutive sub-steps
@@ -19,30 +19,28 @@ the gate's transcription leg asserts exactly that, as two statement-list equalit
 against both shipped sources.
 
 ===========================================================================
-THE TAIL, AND WHERE IT GOES
+THE PASS, AND WHERE IT GOES
 ===========================================================================
 
-``stepping._bfast_term`` (S:896-904) adds MEEP's BFAST second additive pass to the
-curl. The array path folds it in AFTER the ``dtdx`` curl and BEFORE the ownership
-mask (stepping.py:392-396 after :370, before :397), and that is where it sits here.
-Transcribed from :func:`.bfast_curl.bfast_pml_curl_step`, not re-derived:
+``stepping._bfast_term`` is MEEP's BFAST pass, which runs per component right after
+its curl (step_db.cpp:124-142), through the pass's own additive ladder
+(``stepping._apply_folded_increment``). That is where it sits here: after the three
+curl forms and before the stores. Transcribed from
+:func:`.bfast_curl.bfast_pml_curl_step`, not re-derived:
 
 * **the operands are the loads the curl already made.** BFAST SUMS the same
-  shifted/center pairs the curl DIFFERENCES (stepping.py:1594-1598 — the shared
-  gather is the engine's deliberate advantage over MEEP's two loops);
-* per target, ``total = k1*(g1s + g1c) - k2*(g2s + g2c)`` and
-  ``adv = total - 2.0*state``;
-* ``adv`` is masked by the SAME owned-cell predicate the curl is masked by, and
-  masked BEFORE the state store (S:902) — which is why ``at_x``/``at_y``/``at_z``
-  are computed one statement earlier here than in
-  ``kernels.fused_curl_constitutive_B``, exactly as ``bfast_pml_curl_step``
-  computes them one statement earlier than ``pml_curl_step`` does;
-* ``state <- state + adv`` in place, then ``curl <- curl - adv`` — the
-  caller-subtracts sign convention (S:904), spelled as IEEE subtraction, never as
-  a Triton unary minus;
-* NO ``dtdx`` anywhere in the tail (S:836-837);
-* ALL THREE targets always run the tail (grid.py:744-753). With seeded state the
-  zero-k advance ``-2*state`` is byte-visible, so no arm skips it.
+  shifted/center pairs the curl DIFFERENCES (the shared gather is the engine's
+  deliberate advantage over MEEP's two loops);
+* per target :func:`.forms.bfast_advance` on the record's presence and layer bits:
+  with both partners the state takes MEEP's two roundings (``F = S - F_prev``
+  stored, ``raw = F - F_prev``), with one the surviving term alone, and in MEEP's
+  plain branch no ``- F_prev``;
+* the increment ``raw * -1.0`` is masked to ``+0``, and the state kept, on the cells
+  the curl's own ownership predicate drops; the state is stored in place, and
+  :func:`.forms.fold_ladder` subtracts the increment — never a Triton unary minus;
+* NO ``dtdx`` anywhere in the pass;
+* ALL THREE targets run the pass whenever any k component is nonzero. With seeded
+  state a zero-k target's ``F = -F_prev`` is byte-visible, so no arm skips it.
 
 THE SIX ``k1``/``k2`` WORDS are host-computed and rounded ONCE by
 :func:`.bfast_curl.bfast_curl_coefficients`, exactly as
@@ -186,19 +184,26 @@ if triton is not None:
     # is against a literal code.
     METALLIC = tl.constexpr(1)
 
-    @triton.jit
+    # The forms, the BFAST pass and the chunk record's word offsets, under the names
+    # kernels.py binds them: the lifted body reads them exactly as the root pair does.
+    from .forms import (axis_present, bfast_advance, constitutive_form,  # noqa: E402
+                        curl_form, curl_stencil, fold_ladder, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
+
+    @triton.jit(do_not_specialize=["start_h"])
     def bfast_fused_curl_constitutive_B(
         f0, f1, f2,                       # curl targets: Bx,By,Bz
         u0, u1, u2,                       # curl auxiliaries: fu_Bx,fu_By,fu_Bz
         g0, g1, g2,                       # curl sources: Ex,Ey,Ez
-        s0, s1, s2,                       # f_bfast_B* IIR states, one per target
+        s0, s1, s2,                       # f_bfast states, one per target
         kmx, sinvx, kmy, sinvy, kmz, sinvz,   # curl kms/sinv, HALF-INTEGER lattice
         h0, h1, h2,                       # constitutive targets: Hx,Hy,Hz
         w0, w1, w2,                       # constitutive aux: f_w_Hx,f_w_Hy,f_w_Hz
         kp0, km0, kp1, km1, kp2, km2,     # constitutive kps/kms, INTEGER lattice
-        nx, ny, nz, n_elem, dtdx,
+        cb,                               # chunk record: both halves' forms
+        nx, ny, nz, n_elem, dtdx, start_h,  # start_h: MEEP's start of H
         k1_0, k2_0, k1_1, k2_1, k1_2, k2_2,   # f32 (k1,k2) per target, host-rounded
-        BACKWARD: tl.constexpr,           # bound to 0 by every builder; see below
+        BACKWARD: tl.constexpr,           # bound to 0 by every builder
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         ZM_X: tl.constexpr, ZM_Y: tl.constexpr, ZM_Z: tl.constexpr,
         HAS_BFAST: tl.constexpr,          # 1 on every admitted configuration
@@ -206,21 +211,13 @@ if triton is not None:
     ):
         """BFAST ``step_B`` + ``zero_metal_B`` + ``update_H``, one launch.
 
-        ``kernels.fused_curl_constitutive_B``'s body with
-        ``bfast_curl.bfast_pml_curl_step``'s ``HAS_BFAST`` tail in the one place
-        the array path folds it. Nothing else moves.
-
-        ``BACKWARD`` IS CARRIED AND MUST BE 0. It keeps the curl half a verbatim
-        copy rather than a hand-specialised one. It cannot be 1: the D half's seam
-        carries the ELECTRIC injection and an ``inv_eps`` scaling this body does
-        not have, and the D side's ``k1``/``k2`` are the negated pair.
-
-        ``SCALE`` IS NOT CARRIED. This is the H side, where
-        ``kernels.constitutive_step``'s ``SCALE = 0`` arm reads ``B`` directly.
-
-        ``ZM_X``/``ZM_Y``/``ZM_Z`` are ``coverage.zero_metal_axes`` — the question
-        ``stepping._zero_metal`` asks (the grid's own declaration), NOT the
-        resolved ghost rule.
+        ``kernels.fused_curl_constitutive_B``'s body, character for character, plus
+        ``bfast_curl.bfast_pml_curl_step``'s BFAST pass after the three curl forms and
+        before the wall clear -- the array path's order (each component's curl and its
+        BFAST pass, then the seam, then update_H). The state words are stored on the
+        cells MEEP's owned loop visits; the registers the pass leaves are the B words
+        both the store and the H half read. ``start_h`` is the root pair's MEEP start
+        of H. ``HAS_BFAST = 0`` builds ``kernels.fused_curl_constitutive_B`` exactly.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -230,11 +227,11 @@ if triton is not None:
         j = plane % ny
         i = plane // ny
 
-        # ======================= the curl half ================================
-        # Verbatim from bfast_curl.bfast_pml_curl_step, which is itself
-        # kernels.pml_curl_step plus the HAS_BFAST tail.
+        # ======================= the curl half ====================================
+        # Verbatim from pml_curl_step; the only edit below its stores is that nothing
+        # reads f0/f1/f2 back.
 
-        # --- the ghost rule, per axis (stepping._shift_up / _shift_down) -------
+        # --- the ghost rule, per axis (stepping._shift_up / _shift_down) ------------
         if BACKWARD:
             si, sj, sk = i - 1, j - 1, k - 1
         else:
@@ -267,61 +264,21 @@ if triton is not None:
         c_x = tl.load(g2 + ox, mask=vx, other=0.0)
         c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
-        # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
+        # One call per target: MEEP's left-to-right association with both partners, the
+        # one-partner form where the record says the other partner's derivative axis is
+        # invariant, and an exact +0 with neither. The presence word is the record's
+        # (stepping.curl_presence, MEEP's have_plus_deriv / have_minus_deriv).
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
-        # The ownership predicates, shared by the BFAST advance mask and the curl
-        # mask below (stepping._mask_non_owned_cells — the SAME predicate, applied
-        # to the advance at :902 and to the summed curl at :369). HOISTED ABOVE THE
-        # TAIL, which is the one positional difference from
-        # kernels.fused_curl_constitutive_B and is bfast_pml_curl_step's own.
+        # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
         at_x, at_y, at_z = i == 0, j == 0, k == 0
-
-        # --- the BFAST tail (stepping._bfast_term :896-904), SHARED operands ----
-        # AFTER the dtdx curl, BEFORE the ownership mask — the array path's fold
-        # order. The sums pair each SHIFTED load with its center in the operand
-        # order of :896-897; no dtdx (:836-837); no unary minus anywhere.
-        if HAS_BFAST:
-            st0 = tl.load(s0 + idx, mask=live, other=0.0)
-            st1 = tl.load(s1 + idx, mask=live, other=0.0)
-            st2 = tl.load(s2 + idx, mask=live, other=0.0)
-            total0 = (k1_0 * (c_y + c)) - (k2_0 * (b_z + b))
-            total1 = (k1_1 * (a_z + a)) - (k2_1 * (c_x + c))
-            total2 = (k1_2 * (b_x + b)) - (k2_2 * (a_y + a))
-            adv0 = total0 - (2.0 * st0)
-            adv1 = total1 - (2.0 * st1)
-            adv2 = total2 - (2.0 * st2)
-            # --- advance ownership mask, BEFORE the state store (S:902) ---------
-            if BACKWARD:
-                if BCY == METALLIC:
-                    adv0 = tl.where(at_y, 0.0, adv0)
-                if BCZ == METALLIC:
-                    adv0 = tl.where(at_z, 0.0, adv0)
-                if BCX == METALLIC:
-                    adv1 = tl.where(at_x, 0.0, adv1)
-                if BCZ == METALLIC:
-                    adv1 = tl.where(at_z, 0.0, adv1)
-                if BCX == METALLIC:
-                    adv2 = tl.where(at_x, 0.0, adv2)
-                if BCY == METALLIC:
-                    adv2 = tl.where(at_y, 0.0, adv2)
-            else:
-                if BCX == METALLIC:
-                    adv0 = tl.where(at_x, 0.0, adv0)
-                if BCY == METALLIC:
-                    adv1 = tl.where(at_y, 0.0, adv1)
-                if BCZ == METALLIC:
-                    adv2 = tl.where(at_z, 0.0, adv2)
-            tl.store(s0 + idx, st0 + adv0, mask=live)
-            tl.store(s1 + idx, st1 + adv1, mask=live)
-            tl.store(s2 + idx, st2 + adv2, mask=live)
-            curl0 = curl0 - adv0
-            curl1 = curl1 - adv1
-            curl2 = curl2 - adv2
-
-        # --- ownership mask (stepping._mask_non_owned_cells) -------------------
         if BACKWARD:
             if BCY == METALLIC:
                 curl0 = tl.where(at_y, 0.0, curl0)
@@ -343,7 +300,7 @@ if triton is not None:
             if BCZ == METALLIC:
                 curl2 = tl.where(at_z, 0.0, curl2)
 
-        # --- split-field recurrence (stepping._apply_pml_update) ---------------
+        # --- split-field recurrence (stepping._apply_pml_update) -------------------
         km_x = tl.load(kmx + i, mask=live, other=0.0)
         si_x = tl.load(sinvx + i, mask=live, other=0.0)
         km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -351,22 +308,89 @@ if triton is not None:
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0 = tl.load(u0 + idx, mask=live, other=0.0)
-        n0 = ((p0 * km_y) - curl0) * si_y
-        v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+        # Which cells take the recurrence: the component's dsigu layer, on the component's
+        # own sub-lattice. The dsigu axis is z for target 0, x for 1 and y for 2 (vec.hpp
+        # cycle_direction); the sub-lattice is half-integer for every B target and integer
+        # for every D one (the iyee table), so each target's record line is a compile-time
+        # word index, chunk_map.record_index(half_integer, axis, 0).
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1 = tl.load(u1 + idx, mask=live, other=0.0)
-        n1 = ((p1 * km_z) - curl1) * si_z
-        v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+        v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                           km_y, si_y, km_z, si_z, du0)
 
-        p2 = tl.load(u2 + idx, mask=live, other=0.0)
-        n2 = ((p2 * km_x) - curl2) * si_x
-        v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+        p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+        v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                           km_z, si_z, km_x, si_x, du1)
 
-        # --- the seam: stepping.zero_metal_B (driver.py:3286) ------------------
-        # Applied to the REGISTER, before both the store and the constitutive
-        # read, so the two consumers see the one value the array path leaves in B.
-        # Verbatim from kernels.fused_curl_constitutive_B.
+        p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+        v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                           km_x, si_x, km_y, si_y, du2)
+
+        # --- the BFAST pass (stepping._bfast_term, then stepping._apply_folded_increment)
+        # MEEP's STEP_BFAST on each component right after its STEP_CURL
+        # (step_db.cpp:124-142), on the SAME gathered partners, applied to the registers
+        # the forms returned (forms.bfast_advance: the state's two roundings, the
+        # one-partner forms by the record's presence bits, MEEP's plain branch on cells
+        # in neither the dsig nor the dsigu chunk). The increment is masked to +0, and
+        # the state kept, on the cells the curl's own mask drops (MEEP writes F inside
+        # its owned loop only); the BFAST ladder subtracts it (forms.fold_ladder). No
+        # dtdx anywhere: MEEP passes it to step_bfast and never reads it.
+        if HAS_BFAST:
+            ds0 = record_in(cb, lattice + 4, j)
+            ds1 = record_in(cb, lattice + 8, k)
+            ds2 = record_in(cb, lattice + 0, i)
+            st0 = tl.load(s0 + idx, mask=live, other=0.0)
+            st1 = tl.load(s1 + idx, mask=live, other=0.0)
+            st2 = tl.load(s2 + idx, mask=live, other=0.0)
+            bf0, q0 = bfast_advance(st0, c_y, c, b_z, b, k1_0, k2_0, py, pz, ds0 | du0)
+            bf1, q1 = bfast_advance(st1, a_z, a, c_x, c, k1_1, k2_1, pz, px, ds1 | du1)
+            bf2, q2 = bfast_advance(st2, b_x, b, a_y, a, k1_2, k2_2, px, py, ds2 | du2)
+            if BACKWARD:
+                if BCY == METALLIC:
+                    q0 = tl.where(at_y, 0.0, q0)
+                    bf0 = tl.where(at_y, st0, bf0)
+                if BCZ == METALLIC:
+                    q0 = tl.where(at_z, 0.0, q0)
+                    bf0 = tl.where(at_z, st0, bf0)
+                if BCX == METALLIC:
+                    q1 = tl.where(at_x, 0.0, q1)
+                    bf1 = tl.where(at_x, st1, bf1)
+                if BCZ == METALLIC:
+                    q1 = tl.where(at_z, 0.0, q1)
+                    bf1 = tl.where(at_z, st1, bf1)
+                if BCX == METALLIC:
+                    q2 = tl.where(at_x, 0.0, q2)
+                    bf2 = tl.where(at_x, st2, bf2)
+                if BCY == METALLIC:
+                    q2 = tl.where(at_y, 0.0, q2)
+                    bf2 = tl.where(at_y, st2, bf2)
+            else:
+                if BCX == METALLIC:
+                    q0 = tl.where(at_x, 0.0, q0)
+                    bf0 = tl.where(at_x, st0, bf0)
+                if BCY == METALLIC:
+                    q1 = tl.where(at_y, 0.0, q1)
+                    bf1 = tl.where(at_y, st1, bf1)
+                if BCZ == METALLIC:
+                    q2 = tl.where(at_z, 0.0, q2)
+                    bf2 = tl.where(at_z, st2, bf2)
+            tl.store(s0 + idx, bf0, mask=live)
+            tl.store(s1 + idx, bf1, mask=live)
+            tl.store(s2 + idx, bf2, mask=live)
+            v0, n0 = fold_ladder(v0, n0, q0, si_y, si_z, du0)
+            v1, n1 = fold_ladder(v1, n1, q1, si_z, si_x, du1)
+            v2, n2 = fold_ladder(v2, n2, q2, si_x, si_y, du2)
+
+        # --- the seam: stepping.zero_metal_B, between the two sub-steps ------------
+        # Applied to the REGISTER, before both the store and the constitutive read, so
+        # the two consumers see the one value the array path leaves in B.
         if ZM_X:
             v0 = tl.where(at_x, 0.0, v0)
         if ZM_Y:
@@ -374,17 +398,19 @@ if triton is not None:
         if ZM_Z:
             v2 = tl.where(at_z, 0.0, v2)
 
-        tl.store(u0 + idx, n0, mask=live)
-        tl.store(u1 + idx, n1, mask=live)
-        tl.store(u2 + idx, n2, mask=live)
+        # fu is written on the recurrence's cells ONLY: outside them the dsig-only form
+        # reads and writes the field alone and fu keeps its word (the auxiliary contract).
+        tl.store(u0 + idx, n0, mask=live & du0)
+        tl.store(u1 + idx, n1, mask=live & du1)
+        tl.store(u2 + idx, n2, mask=live & du2)
         tl.store(f0 + idx, v0, mask=live)
         tl.store(f1 + idx, v1, mask=live)
         tl.store(f2 + idx, v2, mask=live)
 
-        # ==================== the constitutive half ===========================
-        # Verbatim from kernels.fused_curl_constitutive_B, which is itself
-        # constitutive_step's SCALE=0 arm with `src0 = tl.load(g0+idx)` replaced
-        # by the register v0. `prev` is read BEFORE the `w` store.
+        # ==================== the constitutive half ================================
+        # Verbatim from constitutive_step's SCALE=0 arm, with `src0 = tl.load(g0+idx)`
+        # replaced by the register v0 (and v1/v2). The three source pointers and the
+        # three inv_eps placeholders are gone with it.
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
         km_0 = tl.load(km0 + i, mask=live, other=0.0)
         kp_1 = tl.load(kp1 + j, mask=live, other=0.0)
@@ -392,31 +418,43 @@ if triton is not None:
         kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
-        # --- component 0 -------------------------------------------------------
-        prev0 = tl.load(w0 + idx, mask=live, other=0.0)   # BEFORE the store.
+        # --- component 0 -----------------------------------------------------------
+        # Which cells take the accumulation: the component's own (dsigw) layer on the
+        # component's own sub-lattice. The own axis is x for target 0, y for 1, z for 2
+        # (the constitutive term tables), so each target's record line is again a
+        # compile-time word index, chunk_map.record_index(half_integer, axis, 0).
+        dw0 = record_in(cb, 0, i)         # H: the integer sub-lattice
+        dw1 = record_in(cb, 4, j)
+        dw2 = record_in(cb, 8, k)
+        # MEEP's start of H (see the docstring).
+        start = start_h != 0
+        prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)   # BEFORE the store.
         src0 = v0
-        tl.store(w0 + idx, src0, mask=live)
-        a0 = tl.load(h0 + idx, mask=live, other=0.0)
-        a0 = a0 + kp_0 * src0
-        a0 = a0 - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=live & dw0)
+        a0 = tl.load(h0 + idx, mask=live & dw0, other=0.0)
+        prev0 = tl.where(start, src0, prev0)    # MEEP's start of H
+        a0 = tl.where(start, src0, a0)
+        a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)
         tl.store(h0 + idx, a0, mask=live)
 
-        # --- component 1 -------------------------------------------------------
-        prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+        # --- component 1 -----------------------------------------------------------
+        prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
         src1 = v1
-        tl.store(w1 + idx, src1, mask=live)
-        a1 = tl.load(h1 + idx, mask=live, other=0.0)
-        a1 = a1 + kp_1 * src1
-        a1 = a1 - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=live & dw1)
+        a1 = tl.load(h1 + idx, mask=live & dw1, other=0.0)
+        prev1 = tl.where(start, src1, prev1)    # MEEP's start of H
+        a1 = tl.where(start, src1, a1)
+        a1 = constitutive_form(a1, prev1, src1, kp_1, km_1, dw1)
         tl.store(h1 + idx, a1, mask=live)
 
-        # --- component 2 -------------------------------------------------------
-        prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+        # --- component 2 -----------------------------------------------------------
+        prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
         src2 = v2
-        tl.store(w2 + idx, src2, mask=live)
-        a2 = tl.load(h2 + idx, mask=live, other=0.0)
-        a2 = a2 + kp_2 * src2
-        a2 = a2 - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=live & dw2)
+        a2 = tl.load(h2 + idx, mask=live & dw2, other=0.0)
+        prev2 = tl.where(start, src2, prev2)    # MEEP's start of H
+        a2 = tl.where(start, src2, a2)
+        a2 = constitutive_form(a2, prev2, src2, kp_2, km_2, dw2)
         tl.store(h2 + idx, a2, mask=live)
 
 else:  # pragma: no cover - laptop path
@@ -533,7 +571,7 @@ class BfastFusedMagneticPairPlan:
     (driver.py:4126-4135).
     """
 
-    __slots__ = ("shape", "n_elem", "dtdx", "ks", "has_bfast", "backward", "bc",
+    __slots__ = ("chunk_bounds", "_cb", "_h_state", "shape", "n_elem", "dtdx", "ks", "has_bfast", "backward", "bc",
                  "zero_metal", "block", "num_warps", "_targets", "_aux",
                  "_sources", "_states", "_curl_coefficients", "_h_targets",
                  "_h_aux", "_h_coefficients", "_grid", "_kernel")
@@ -545,11 +583,17 @@ class BfastFusedMagneticPairPlan:
                  targets, auxiliaries, sources, states, curl_coefficients,
                  h_targets, h_aux, h_coefficients,
                  kernel: Any = None, num_warps: Optional[int] = 1,
-                 has_bfast: int = 1) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 has_bfast: int = 1, *, chunk_bounds: Any,
+                 h_state: Any = None) -> None:
+        from .launch import CupyPointer, _flat, bind_chunk_bounds  # noqa: PLC0415
 
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "BfastFusedMagneticPairPlan")
+        # MEEP's start of H (launch.FusedPairPlan's contract): the Fields the H
+        # half starts from, or None for a state that has already started.
+        self._h_state = h_state
         self.dtdx = float(dtdx)
         # Already f32-rounded by the host (bfast_curl.bfast_curl_coefficients);
         # float() keeps the bits, and Triton types a Python float argument as fp32.
@@ -586,11 +630,12 @@ class BfastFusedMagneticPairPlan:
                   else bfast_fused_curl_constitutive_B_kernel())
         nx, ny, nz = self.shape
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
+        start = self.start_h()
         kernel[self._grid](
             *self._targets, *self._aux, *self._sources, *self._states,
             *self._curl_coefficients,
-            *self._h_targets, *self._h_aux, *self._h_coefficients,
-            nx, ny, nz, self.n_elem, self.dtdx,
+            *self._h_targets, *self._h_aux, *self._h_coefficients, self._cb,
+            nx, ny, nz, self.n_elem, self.dtdx, start,
             *self.ks,
             BACKWARD=self.backward,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
@@ -601,6 +646,13 @@ class BfastFusedMagneticPairPlan:
             enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
             **extra,
         )
+        if start and self._grid[0]:  # an empty grid (the warm pass) starts nothing
+            self._h_state.h_separated = True
+
+    def start_h(self) -> int:
+        """1 on the one launch that starts H from B, 0 otherwise."""
+        state = self._h_state
+        return 0 if state is None or state.h_separated else 1
 
     def __repr__(self) -> str:
         return (f"BfastFusedMagneticPairPlan(shape={self.shape}, bc={self.bc}, "
@@ -613,6 +665,7 @@ def plan_bfast_fused_magnetic_pair(fields: Any, pml: Any, sources: Any = None,
                                    block: Optional[int] = None,
                                    num_warps: Optional[int] = 1,
                                    kernel: Any = None,
+                                   chunk_layout: Any = None,
                                    ) -> Optional[BfastFusedMagneticPairPlan]:
     """Build the plan from the engine's own objects, or ``None`` when refused.
 
@@ -624,7 +677,7 @@ def plan_bfast_fused_magnetic_pair(fields: Any, pml: Any, sources: Any = None,
         return None
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
-    from .launch import SUB_STEPS  # noqa: PLC0415
+    from .launch import SUB_STEPS, chunk_bounds_for  # noqa: PLC0415
 
     curl_spec = SUB_STEPS[CURL_SUB_STEP]
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
@@ -658,6 +711,8 @@ def plan_bfast_fused_magnetic_pair(fields: Any, pml: Any, sources: Any = None,
         [getattr(pml, f"{stem}_{axis}") for axis in "xyz"
          for stem in ("kps", "kms")],
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        h_state=fields,
     )
 
 
@@ -665,7 +720,8 @@ def plan_bfast_fused_magnetic_pair_from_arrays(
         arrays: Dict[str, Any], curl_flat: Dict[str, Any],
         constitutive_flat: Dict[str, Any], codes, zero_metal, ks,
         dtdx: float, block: Optional[int] = None, kernel: Any = None,
-        num_warps: Optional[int] = 1, has_bfast: int = 1,
+        num_warps: Optional[int] = 1, has_bfast: int = 1, *,
+        chunk_bounds: Any,
         ) -> BfastFusedMagneticPairPlan:
     """Build from bare device arrays — the gate's route.
 
@@ -694,4 +750,5 @@ def plan_bfast_fused_magnetic_pair_from_arrays(
         [constitutive_flat[f"{stem}_{axis}"]
          for axis in "xyz" for stem in ("kps", "kms")],
         kernel=kernel, num_warps=num_warps, has_bfast=has_bfast,
+        chunk_bounds=chunk_bounds,
     )

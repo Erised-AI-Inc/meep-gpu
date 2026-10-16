@@ -30,60 +30,51 @@ byte-gated families, or 316 counting this one.
 WHAT IS TRANSCRIBED, AND FROM WHERE
 =============================================================================
 
-The source of truth is ``dispersion.PolarizationState.update``
-(dispersion.py:658-691), reached from ``stepping.update_P`` (stepping.py:1389)
-and from nowhere else. Its array form is three passes over one scratch buffer::
+The source of truth is MEEP's isotropic recurrence (susceptibility.cpp:251-256),
+which ``dispersion.PolarizationState.update`` transcribes and ``stepping.update_P``
+reaches and nothing else does::
 
-    xp.multiply(p, c_now, out=scratch)      # scratch = P^n * c_now
-    scratch += c_prev * p_prev              #         + c_prev * P^(n-1)
-    scratch += c_drive * (sigma * w)        #         + c_drive * (sigma * W^n)
+    realnum pcur = p[i];
+    p[i] = gamma1inv *
+           (pcur * (2 - omega0dtsqr_denom) - gamma1 * pp[i] + omega0dtsqr * (s[i] * w[i]));
 
-TWO CERTIFIED SIBLINGS ALREADY WRITE THAT AS ONE EXPRESSION, and this file
-copies theirs rather than deriving a third:
+in the four realnum words ``Susceptibility.realnum_constants`` rounds to float32
+(``two_minus_od``, ``gamma1``, ``omega0dtsqr``, ``gamma1inv``), passed to the kernel
+as scalars. The device line stores, into the scratch slot ``p_out``,
 
-* Triton ``kernels.ade_update_p`` (``triton_kernels/kernels.py:693-727``), one of
-  the five kernels pinned by ``triton_kernels/fingerprints.json``::
+    gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)))
 
-      tl.store(p_out + idx,
-               ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)), mask=live)
-
-* Metal ``ade_source``'s float32 body (``metal_kernels/ade_update_p.py:117-121``)::
-
-      p_out[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));
-
-The two agree character for character on the arithmetic, which is the strongest
-evidence available that the grouping is the array path's and not one platform's
-accident. The CUDA body below is the same string again.
+and ``w`` is MEEP's drive per chunk (update_pols.cpp:44, ``w = f_w ? f_w : f``):
+``f_w_<c>`` on the cells whose chunk carries the component's own layer and the
+stored ``E<c>`` elsewhere, selected in the kernel from the run's chunk record
+(:func:`drive_pair` binds the two arrays; without a layer both are the stored E).
 
 =============================================================================
 FOUR THINGS DECIDE BIT-IDENTITY HERE
 =============================================================================
 
-1. THE GROUPING IS LEFT-ASSOCIATED ACROSS THE TWO ``+=``.
-   ``((p*c_now) + (c_prev*q)) + (c_drive*(s*w))`` -- NOT
-   ``(p*c_now) + ((c_prev*q) + (c_drive*(s*w)))``, and not one fused sum. The
-   array path's two ``+=`` statements fix the association, and float32 addition
-   is not associative.
+1. THE GROUPING IS MEEP'S. The bracket is left-associated --
+   ``((p*two_minus_od) - (gamma1*q)) + (omega0dtsqr*(s*w))`` -- and ``gamma1inv``
+   multiplies the whole bracket last. float32 addition is not associative, and the
+   0.9.2 three-constant form (``gamma1inv`` folded into each term) is a different
+   number on most cells.
 
-2. THE DRIVE PRODUCT IS ``sigma * w`` FIRST, THEN ``c_drive *`` THAT.
-   ``scratch += c_drive * (sigma * w)`` (dispersion.py:686) builds the inner
-   product first. Distributing ``c_drive`` over it, or reassociating to
-   ``(c_drive * sigma) * w``, is a different float32 number wherever the
-   intermediate rounds.
+2. THE DRIVE PRODUCT IS ``s * w`` FIRST, THEN ``omega0dtsqr *`` THAT, as MEEP writes
+   ``omega0dtsqr * (s[i] * w[i])``. Reassociating to ``(omega0dtsqr * s) * w`` is a
+   different float32 number wherever the intermediate rounds.
 
-3. NO FMA. ``--fmad=false`` is CORRECTNESS here, not tuning, and there are three
-   contraction candidates in one line: both additions can absorb the product to
-   their left. The option tuple is SPELLED IN THIS FILE rather than imported, for
-   the reason both siblings spell theirs -- a bit-identity probe loads these
-   modules BY PATH, outside the package, where an import could pick up a
-   different tuple than the one a gate compiled.
+3. NO FMA. ``--fmad=false`` is CORRECTNESS here, not tuning: every product in the
+   line sits next to an addition that could absorb it. The option tuple is SPELLED
+   IN THIS FILE rather than imported, because a bit-identity probe loads these
+   modules BY PATH, outside the package, where an import could pick up a different
+   tuple than the one a gate compiled.
 
-4. ``p_out`` IS A THIRD BUFFER, NEVER ``p_now``. The array path writes the
-   scratch and rotates the names afterwards (dispersion.py:689-691); it never
-   updates P in place. Writing in place would destroy ``P^n`` before the NEXT
-   step reads it as ``P^(n-1)`` -- a second-order recurrence silently reduced to
-   first order, which is stable, smooth and wrong. The rotation is transcribed in
-   :func:`update_P_fused_pml_real`, not reimplemented.
+4. ``p_out`` IS A THIRD BUFFER, NEVER ``p_now``. The array path writes the scratch
+   and rotates the names afterwards; it never updates P in place. Writing in place
+   would destroy ``P^n`` before the NEXT step reads it as ``P^(n-1)`` -- a
+   second-order recurrence silently reduced to first order, which is stable, smooth
+   and wrong. The rotation is transcribed in :func:`update_P_fused_pml_real`, not
+   reimplemented.
 
 =============================================================================
 THE TWO SPECIALIZATIONS, AND WHY THE AXIS IS COMPILE-TIME
@@ -135,8 +126,13 @@ PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path, adjudicated 2026-08-15/16)
   killed a sibling kernel at its first launch on 2026-08-15.
 
 =============================================================================
-CERTIFIED 2026-08-19. STILL NOT DISPATCHED.
+CERTIFIED 2026-08-19 ON THE 0.9.2 BYTES. THE 0.10 FORM IS OWED ITS RE-GATE.
 =============================================================================
+
+The record below is the verdict on the three-constant form and the whole-grid
+``f_w`` drive this module shipped before it took MEEP's recurrence and MEEP's
+per-chunk drive. It certifies nothing about the bytes above until
+``gate_cuda_ade.py`` is re-cut on them.
 
 Both kernels are in ``CERTIFIED_KERNELS`` and ``UNCERTIFIED_KERNELS`` IS EMPTY.
 The verdict is ``certification.json`` block ``ade_2026-08-19``, cut by
@@ -269,35 +265,36 @@ UNCERTIFIED_KERNELS = {}
 # transcription test pins.
 
 _ADE_UPDATE_P_PROLOGUE = r'''
-// dispersion.PolarizationState.update (dispersion.py:686-691), MEEP
-// susceptibility.cpp:251-258, whose array form is three passes over one scratch:
+// dispersion.PolarizationState.update, MEEP susceptibility.cpp:251-256 (the
+// isotropic branch), in MEEP's float32 words and MEEP's grouping:
 //
-//     xp.multiply(p, c_now, out=scratch)   // scratch = P^n * c_now
-//     scratch += c_prev * p_prev           //         + c_prev * P^(n-1)
-//     scratch += c_drive * (sigma * w)     //         + c_drive * (sigma * W^n)
+//     realnum pcur = p[i];
+//     p[i] = gamma1inv *
+//            (pcur * (2 - omega0dtsqr_denom) - gamma1 * pp[i] + omega0dtsqr * (s[i] * w[i]));
 //
-// so the grouping is ((p*c_now) + (c_prev*q)) + (c_drive*(s*w)): left-associated
-// across the two `+=`, with the inner `s*w` formed before c_drive multiplies it.
-// Character for character the Triton kernel's expression
-// (triton_kernels/kernels.py:728) and the Metal one's
-// (metal_kernels/ade_update_p.py:121).
+// so the expression is gamma1inv * (((p*two_minus_od) - (gamma1*q)) +
+// (omega0dtsqr*(s*w))): the difference first, the drive term added to it, the
+// whole scaled once, every operation one float32 rounding. The four constants are
+// MEEP's realnum words, formed on the host (Susceptibility.realnum_constants,
+// susceptibility.cpp:191-195) and passed as float32 scalars.
 //
-// `w` IS THE DRIVE FIELD, NOT THE STORED E. Fields.drive_field (fields.py:1160-1162)
-// returns f_w_<c> under an active layer and the stored E without one; they agree
-// exactly OUTSIDE the absorber, so binding the wrong one is invisible in every
-// no-PML test. The predicate pins the identity of what drive_field returns and
-// the launcher binds only what it hands back.
+// `w` IS MEEP'S DRIVE PER CHUNK (update_pols.cpp:44, `w = f_w ? f_w : f`):
+// f_w_<c> on the cells whose structure chunk carries the component's own (dsigw)
+// layer, and the stored E<c> everywhere else, which there IS the constitutive
+// product (Fields.drive_field). The kernel reads the run's chunk record and loads
+// exactly one of the two arrays per cell. The flag is the half-integer record entry
+// on the component's own axis, the one update_E keys its two forms on.
 //
 // NO OWNERSHIP MASK AND NO GHOST RULE, transcribed rather than forgotten:
-// stepping.update_P (stepping.py:1369-1374) reads no neighbour and writes every
-// cell of the stored array, folded extent included. Anyone porting the curl
-// kernel's shape into this one will reach for both. Neither belongs here.
+// stepping.update_P reads no neighbour and writes every cell of the stored array,
+// folded extent included. A ghost row's flag is its image row's (the record is the
+// ghost-adjusted membership line), which is the cell drive_field composes there.
 //
 // p_out IS A THIRD BUFFER. The caller rotates it into the P slot after the
 // launch; writing p_now in place would destroy P^n before the next step reads it
 // as P^(n-1), turning a second-order recurrence into a first-order one that
 // still converges.
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 1369-1374->1398-1403
+'''
 
 # SIGMA_IS_VOLUME=1: a graded susceptibility, one coefficient per cell.
 _update_P_pml_real_kernel_code = _ADE_UPDATE_P_PROLOGUE + r'''
@@ -306,18 +303,34 @@ extern "C" __global__ void update_P_pml_real(
     const float* __restrict__ p_now,
     const float* __restrict__ p_prev,
     const float* __restrict__ sigma,
-    const float* __restrict__ drive,
-    float c_now, float c_prev, float c_drive,
-    int n_elem
+    const float* drive_w,
+    const float* drive_e,
+    float two_minus_od, float gamma1, float omega0dtsqr, float gamma1inv,
+    int nx, int ny, int nz, int own_axis,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n_elem) return;
+    if (idx >= nx * ny * nz) return;
 
+    int k = idx % nz;
+    int j = (idx / nz) % ny;
+    int i = idx / (ny * nz);
+
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
+    const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
+    const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
+    const int cbh_y_a0 = cb[16], cbh_y_a1 = cb[17], cbh_y_b0 = cb[18], cbh_y_b1 = cb[19];
+    const int in_h_y = (j >= cbh_y_a0 && j < cbh_y_a1) || (j >= cbh_y_b0 && j < cbh_y_b1);
+    const int cbh_z_a0 = cb[20], cbh_z_a1 = cb[21], cbh_z_b0 = cb[22], cbh_z_b1 = cb[23];
+    const int in_h_z = (k >= cbh_z_a0 && k < cbh_z_a1) || (k >= cbh_z_b0 && k < cbh_z_b1);
+
+    const int dsigw = own_axis == 0 ? in_h_x : (own_axis == 1 ? in_h_y : in_h_z);
     float p = p_now[idx];
     float q = p_prev[idx];
-    float w = drive[idx];
+    float w = dsigw ? drive_w[idx] : drive_e[idx];
     float s = sigma[idx];
-    p_out[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));
+    p_out[idx] = gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)));
 }
 '''
 
@@ -329,18 +342,34 @@ extern "C" __global__ void update_P_pml_real_uniform(
     const float* __restrict__ p_now,
     const float* __restrict__ p_prev,
     float sigma,
-    const float* __restrict__ drive,
-    float c_now, float c_prev, float c_drive,
-    int n_elem
+    const float* drive_w,
+    const float* drive_e,
+    float two_minus_od, float gamma1, float omega0dtsqr, float gamma1inv,
+    int nx, int ny, int nz, int own_axis,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n_elem) return;
+    if (idx >= nx * ny * nz) return;
 
+    int k = idx % nz;
+    int j = (idx / nz) % ny;
+    int i = idx / (ny * nz);
+
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
+    const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
+    const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
+    const int cbh_y_a0 = cb[16], cbh_y_a1 = cb[17], cbh_y_b0 = cb[18], cbh_y_b1 = cb[19];
+    const int in_h_y = (j >= cbh_y_a0 && j < cbh_y_a1) || (j >= cbh_y_b0 && j < cbh_y_b1);
+    const int cbh_z_a0 = cb[20], cbh_z_a1 = cb[21], cbh_z_b0 = cb[22], cbh_z_b1 = cb[23];
+    const int in_h_z = (k >= cbh_z_a0 && k < cbh_z_a1) || (k >= cbh_z_b0 && k < cbh_z_b1);
+
+    const int dsigw = own_axis == 0 ? in_h_x : (own_axis == 1 ? in_h_y : in_h_z);
     float p = p_now[idx];
     float q = p_prev[idx];
-    float w = drive[idx];
+    float w = dsigw ? drive_w[idx] : drive_e[idx];
     float s = sigma;
-    p_out[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));
+    p_out[idx] = gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)));
 }
 '''
 
@@ -389,27 +418,85 @@ def _get_kernel(sigma_is_volume: bool):
         key, lambda: cp.RawKernel(code, func_name, options=_COMPILE_OPTIONS))
 
 
-def _launch(kernel, p_out, p_now, p_prev, sigma, drive,
-            coefficients, sigma_is_volume: bool) -> None:
-    """One component, one launch. ``sigma`` is a device volume or a Python float."""
-    n_elem = int(p_out.size)
+def chunk_record_argument(chunk_bounds):
+    """The ``cb`` argument, checked: one contiguous ``int32[25]`` device vector.
+
+    The twin of ``constitutive_kernels.chunk_record_argument``, spelt here so that loading
+    this file by path picks up no sibling. There is no default: a kernel launched without
+    the run's division would take its drive from some other division's chunks.
+    """
+    if chunk_bounds is None:
+        raise ValueError("update_P takes the run's chunk record (chunk_map.chunk_bounds_record): "
+                         "MEEP's drive is f_w on the cells whose chunk carries the "
+                         "component's layer and E elsewhere, and none was handed in")
+    if not isinstance(chunk_bounds, cp.ndarray):
+        raise ValueError(
+            f"the chunk record must be a device vector, got {type(chunk_bounds).__name__}: "
+            f"upload it once (cupy.asarray(record, dtype=cupy.int32)) and pass that, as "
+            f"arms.StepContext.chunk_bounds_device does")
+    if (getattr(chunk_bounds, "dtype", None) != cp.int32
+            or tuple(getattr(chunk_bounds, "shape", ())) != (_CHUNK_RECORD_WORDS,)
+            or not chunk_bounds.flags.c_contiguous):
+        raise ValueError(
+            f"the chunk record must be one contiguous int32[{_CHUNK_RECORD_WORDS}] device "
+            f"vector, got {getattr(chunk_bounds, 'dtype', type(chunk_bounds).__name__)} of "
+            f"shape {tuple(getattr(chunk_bounds, 'shape', ()))}")
+    return chunk_bounds
+
+
+#: ``chunk_map.RECORD_WORDS``, restated so this file loads by path with no sibling;
+#: ``test_ade_update_p.py`` pins the two equal.
+_CHUNK_RECORD_WORDS = 25
+
+#: The constant names, in the order the device signature declares them and
+#: ``dispersion.RealnumConstants`` carries them.
+CONSTANT_NAMES = ("two_minus_od", "gamma1", "omega0dtsqr", "gamma1inv")
+
+
+def _launch(kernel, p_out, p_now, p_prev, sigma, drive_w, drive_e,
+            constants, sigma_is_volume: bool, own_axis: int, chunk_bounds) -> None:
+    """One component, one launch. ``sigma`` is a device volume or a Python float.
+
+    ``constants`` are MEEP's four realnum words (``PolarizationState.constants``),
+    already float32: ``np.float32`` of each is the same word. ``own_axis`` is the
+    component's own axis (0, 1, 2 for Ex, Ey, Ez), whose half-integer record entry
+    selects the drive per cell.
+    """
+    cb = chunk_record_argument(chunk_bounds)
+    nx, ny, nz = (int(n) for n in p_out.shape)
+    n_elem = nx * ny * nz
     blocks = (n_elem + _ADE_THREADS - 1) // _ADE_THREADS
-    c_now, c_prev, c_drive = coefficients
+    two_minus_od, gamma1, omega0dtsqr, gamma1inv = constants
     sigma_argument = sigma if sigma_is_volume else np.float32(sigma)
     kernel((blocks,), (_ADE_THREADS,), (
-        p_out, p_now, p_prev, sigma_argument, drive,
-        np.float32(c_now), np.float32(c_prev), np.float32(c_drive),
-        np.int32(n_elem),
+        p_out, p_now, p_prev, sigma_argument, drive_w, drive_e,
+        np.float32(two_minus_od), np.float32(gamma1), np.float32(omega0dtsqr),
+        np.float32(gamma1inv),
+        np.int32(nx), np.int32(ny), np.int32(nz), np.int32(own_axis), cb,
     ))
 
 
+def drive_pair(fields: 'Fields', pml: 'PML', component: str):
+    """``(drive_w, drive_e)``: the two arrays the kernel selects MEEP's ``w`` from.
+
+    Under an active layer, ``f_w_<c>`` (the cells whose chunk carries the component's
+    own layer) and the stored ``E<c>`` (everywhere else) -- the two arrays
+    ``Fields.drive_field`` composes from, per chunk. Without one, the stored ``E<c>``
+    twice: there ``drive_field`` is ``E<c>`` on every cell, and binding it to both
+    pointers makes the flag immaterial (neither pointer is ``__restrict__``).
+    """
+    stored = getattr(fields, component)
+    if pml is not None and getattr(pml, "is_active", False):
+        return getattr(fields, "f_w_" + component), stored
+    return stored, stored
+
+
 def update_P_fused_pml_real(fields: 'Fields', pml: 'PML' = None, *,
-                            drive=None) -> int:
+                            chunk_bounds, drives=None) -> int:
     """``stepping.update_P``, one launch per driven component. Returns the count.
 
     THE ROTATION IS THE POINT OF THIS FUNCTION, and it is transcribed from
-    ``dispersion.PolarizationState.update`` (dispersion.py:689-691) rather than
-    reimplemented::
+    ``dispersion.PolarizationState.update`` rather than reimplemented::
 
         state.P[component]      = scratch     # this step's result
         state.P_prev[component] = p           # what P held
@@ -418,90 +505,85 @@ def update_P_fused_pml_real(fields: 'Fields', pml: 'PML' = None, *,
     POINTERS ARE RESOLVED IMMEDIATELY BEFORE EACH LAUNCH, deliberately. The three
     buffers rotate PER COMPONENT inside one call, and the retired history becomes
     the NEXT component's scratch. A launcher that read ``P``/``P_prev``/
-    ``_scratch`` once and reused the views -- the way the certified constitutive
-    launcher may cache its coefficient tables, because those never move -- would
-    be stale from the second component of the first step, and stale in a way that
-    still computes: it would advance one buffer twice and freeze another. A
-    single-launch comparison cannot see that. The sibling plan carries the same
-    hazard in as many words (``triton_kernels/launch.py:1768-1782``).
+    ``_scratch`` once and reused the views would be stale from the second component
+    of the first step, and stale in a way that still computes: it would advance one
+    buffer twice and freeze another. A single-launch comparison cannot see that.
 
     THE ROTATION HAPPENS ONLY AFTER THE LAUNCH RETURNS, so a raised launch leaves
     the state exactly as it found it rather than half-advanced.
 
-    ``pml`` IS ACCEPTED AND UNUSED, which is not an oversight but the array
-    path's own signature: ``stepping.update_P`` takes it and deletes it
-    (stepping.py:1424), because "the absorber reaches the polarization through W
-    and nowhere else". It is taken here so every launcher on this track has the
-    same shape, and so the predicate a caller must consult -- which DOES need the
-    layer, to know that ``drive_field`` will hand back ``f_w`` -- takes the same
-    arguments.
+    ``pml`` SAYS WHICH TWO ARRAYS THE DRIVE IS SELECTED FROM (:func:`drive_pair`):
+    the array path's ``stepping.update_P`` deletes it, because the absorber reaches
+    the polarization through W alone, and W is ``f_w`` only on the cells whose chunk
+    carries the component's layer. ``chunk_bounds`` is the run's chunk record on the
+    device (:func:`chunk_record_argument`), from which the kernel decides those cells.
 
-    ``drive`` IS THE GATE'S DOOR and stays, keyword-only. It defaults to
-    ``fields.drive_field``, the bound method, exactly as
-    ``stepping.update_P`` passes it (stepping.py:1428). A byte gate's control leg
-    binds the STORED E instead, which must DIVERGE; a launcher that could not
-    take its own drive could not arm that control at all.
+    ``drives`` IS THE GATE'S DOOR and stays, keyword-only: a ``component -> (drive_w,
+    drive_e)`` callable, defaulting to :func:`drive_pair`. A byte gate's control legs
+    bind ``f_w`` on every cell (the select removed) or the stored E on every cell,
+    each of which must DIVERGE on a case with cells on both sides of a chunk boundary.
     """
-    if drive is None:
-        drive = getattr(fields, "drive_field", None)
-    if not callable(drive):
+    if drives is None:
+        def drives(component):
+            return drive_pair(fields, pml, component)
+    if not callable(drives):
         raise ValueError(
-            "drive must be callable: it is Fields.drive_field, which returns "
-            "f_w_<c> under an active layer and the stored E without one. This "
-            "launcher never reaches for a field itself.")
+            "drives must be callable: component -> (drive_w, drive_e), the two arrays "
+            "MEEP's per-chunk w is selected from. This launcher never reaches for a "
+            "field itself.")
 
     launches = 0
     for state in tuple(getattr(fields, "polarizations", ()) or ()):
         components = tuple(state.driven())
         if not components:
             continue
-        coefficients = tuple(state._coefficients)
-        if len(coefficients) != 3:
+        constants = tuple(state.constants)
+        if len(constants) != len(CONSTANT_NAMES):
             raise ValueError(
-                f"a polarization carries {len(coefficients)} recurrence "
-                f"coefficients, not the (c_now, c_prev, c_drive) triple this "
-                f"kernel bakes as scalars")
+                f"a polarization carries {len(constants)} recurrence constants, not "
+                f"the four realnum words {CONSTANT_NAMES} this kernel takes as scalars")
         for component in components:
             # Re-read every semantic slot HERE, after the previous component's
             # rotation, never before the loop.
-            w = drive(component)
+            drive_w, drive_e = drives(component)
             p = state.P[component]
             p_prev = state.P_prev[component]
             scratch = state._scratch
             sigma = state.sigma[component]
             volume = bool(ade_sigma_is_volume(state, component))
-            _require_no_aliasing(scratch, p, p_prev, w,
+            _require_no_aliasing(scratch, p, p_prev, drive_w, drive_e,
                                  sigma if volume else None, component)
-            _launch(_get_kernel(volume), scratch, p, p_prev, sigma, w,
-                    coefficients, volume)
+            _launch(_get_kernel(volume), scratch, p, p_prev, sigma, drive_w, drive_e,
+                    constants, volume, ADE_ELECTRIC_COMPONENTS.index(component),
+                    chunk_bounds)
             launches += 1
-            # dispersion.py:689-691, verbatim, and only once the launch returned.
-            # Every buffer is owned by exactly one slot at a time, so no two names
-            # ever alias.
+            # dispersion.PolarizationState.update's rotation, verbatim, and only once
+            # the launch returned. Every buffer is owned by exactly one slot at a time,
+            # so no two names ever alias.
             state.P[component] = scratch
             state.P_prev[component] = p
             state._scratch = p_prev
     return launches
 
 
-def _require_no_aliasing(p_out, p_now, p_prev, drive, sigma, component: str) -> None:
+def _require_no_aliasing(p_out, p_now, p_prev, drive_w, drive_e, sigma,
+                         component: str) -> None:
     """The output distinct from every input this launch reads.
 
     THE PREDICATE ALREADY CHECKED THIS and it is checked again at the launch,
     because the two are answering about different moments. The predicate answers
     about the state as it stood when a planner asked; the rotation moves three
     names between every launch, so what it certified is one permutation and this
-    is the one being run. The certified off-diagonal launcher carries the same
-    belt-and-braces for the same reason.
+    is the one being run.
+
+    The two drive arrays are read-only and carry no ``__restrict__``, so they may be
+    one allocation (the no-layer binding, :func:`drive_pair`); each must still be
+    distinct from the three rotating buffers and the sigma volume.
 
     Equality of BASE addresses only: two overlapping views with different bases
     pass unseen, the accepted limitation every launcher on this track shares.
-    Every pointer in the device signature carries ``__restrict__``, so an alias
-    is not merely wrong -- it is undefined behaviour the compiler is licensed to
-    exploit.
     """
-    named = [("p_out", p_out), ("p_now", p_now), ("p_prev", p_prev),
-             ("drive", drive)]
+    named = [("p_out", p_out), ("p_now", p_now), ("p_prev", p_prev)]
     if sigma is not None:
         named.append(("sigma", sigma))
     seen = {}
@@ -514,6 +596,17 @@ def _require_no_aliasing(p_out, p_now, p_prev, drive, sigma, component: str) -> 
         if address in seen:
             raise ValueError(
                 f"{label} aliases {seen[address]} for {component}; every pointer "
-                f"in this kernel's signature is __restrict__, and the recurrence "
-                f"reads P, P_prev and the drive while writing the scratch")
+                f"in this kernel's signature but the two drives is __restrict__, and "
+                f"the recurrence reads P, P_prev and the drive while writing the "
+                f"scratch")
         seen[address] = label
+    for label, array in (("drive_w", drive_w), ("drive_e", drive_e)):
+        address = _coverage._base_address(array)
+        if address is None:
+            raise ValueError(
+                f"{label} for {component} exposes no readable base address; an "
+                f"unverifiable buffer is not accepted")
+        if address in seen:
+            raise ValueError(
+                f"{label} aliases {seen[address]} for {component}; the drive is read "
+                f"while the scratch is written")

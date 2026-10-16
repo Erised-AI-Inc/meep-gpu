@@ -48,17 +48,6 @@ GATE = PARITY_DIR / "probe_triton_folded_beta_complex_fused_pair.py"
 #: exercises the same insert (the binary gratings carry -0.685 and -0.912).
 BETA_CORPUS = 0.2
 
-#: The seven statements the K3b insert adds, and the ONLY thing that may
-#: separate this kernel from ``folded_complex_fused_curl_constitutive_D``.
-BETA_INSERT = (
-    "if HAS_BETA:",
-    "t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)",
-    "curl0_re = curl0_re - t_re",
-    "curl0_im = curl0_im - t_im",
-    "t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)",
-    "curl1_re = curl1_re - t_re",
-    "curl1_im = curl1_im - t_im",
-)
 
 
 @pytest.fixture(scope="module")
@@ -132,11 +121,6 @@ def bodies():
     }
 
 
-def _probe_record(patterns):
-    from meep_gpu.test_triton_complex_fields import stamp_probe_record
-
-    return stamp_probe_record(
-        {"backend": "cupy", "patterns": {name: "FMA_V1" for name in patterns}})
 
 
 def _build(cell_size=(1.2, 1.0, 0.0), beta=BETA_CORPUS, complex_storage=True,
@@ -170,14 +154,10 @@ def _build(cell_size=(1.2, 1.0, 0.0), beta=BETA_CORPUS, complex_storage=True,
     return fields, PML(grid=grid, thickness=thickness)
 
 
-def _reasons(product, fields, pml, sources=(), probe=None):
-    if probe is None:
-        probe = _probe_record(product.PRODUCT_PROBE_PATTERNS)
-    from meep_gpu.expansion_refusal import declaring_run_policy
+def _reasons(product, fields, pml, sources=()):
 
-    with declaring_run_policy("keep"):
-        verdict = product.folded_beta_complex_fused_pair_coverage(
-            fields, pml, sources, probe=probe)
+    verdict = product.folded_beta_complex_fused_pair_coverage(
+        fields, pml, sources)
     return [r for r in verdict.reasons if "array module" not in r]
 
 
@@ -186,39 +166,57 @@ def _reasons(product, fields, pml, sources=(), probe=None):
 # ---------------------------------------------------------------------------
 
 def test_removing_the_beta_insert_reproduces_the_shipped_folded_pair(bodies):
-    """``this kernel`` minus the seven beta statements IS
-    ``folded_complex_fused_curl_constitutive_D`` — an EXACT statement-list
-    equality."""
-    without_beta = [line for line in bodies["fused"] if line not in BETA_INSERT]
-    assert without_beta == bodies["base"], (
-        "the folded beta complex fused electric pair is not "
-        "folded_complex_fused_curl_constitutive_D plus the beta insert; first "
-        "difference at index " + str(next((i for i, (a, b) in enumerate(
-            zip(without_beta, bodies["base"])) if a != b), "length")))
+    """``this kernel`` minus its ``if HAS_BETA:`` pass IS ``folded_complex_fused_curl_constitutive_D``.
+
+    An EXACT statement-list equality, in order, against the shipped body read from the
+    file (``test_triton_special_kz.kernel_body_and_insert``). If any statement of the
+    root moved, this fails and names the first difference.
+    """
+    from meep_gpu.test_triton_special_kz import kernel_body_and_insert
+
+    body, insert = kernel_body_and_insert(PACKAGE_DIR / "folded_beta_complex_fused_pair.py", "folded_beta_complex_fused_curl_constitutive_D")
+    root, root_insert = kernel_body_and_insert(PACKAGE_DIR / "folded_complex_fused_pair.py",
+                                               "folded_complex_fused_curl_constitutive_D")
+    assert insert and not root_insert, "the beta pass is missing, or the root has one"
+    assert body == root, (
+        "first difference at index "
+        + str(next((i for i, (a, b) in enumerate(zip(body, root)) if a != b),
+                   "length")))
 
 
 def test_the_beta_insert_is_exactly_the_shipped_folded_curls_delta(bodies):
-    """The seven statements are K3b's own delta over K1 — the same set."""
-    delta = [line for line in bodies["beta_curl"]
-             if line not in bodies["plain_curl"]]
-    assert delta == list(BETA_INSERT), delta
+    """The pass is ``folded_beta_bloch_pml_curl_step``'s own, statement for statement, and that curl is
+    ``folded_bloch_pml_curl_step`` plus exactly that pass: the lifter adds nothing of its own
+    to the beta pass (the increment, its ownership mask and the ladder)."""
+    from meep_gpu.test_triton_special_kz import kernel_body_and_insert
+
+    _body, insert = kernel_body_and_insert(PACKAGE_DIR / "folded_beta_complex_fused_pair.py", "folded_beta_complex_fused_curl_constitutive_D")
+    curl_body, curl_insert = kernel_body_and_insert(PACKAGE_DIR / "folded_complex.py",
+                                                    "folded_beta_bloch_pml_curl_step")
+    root_curl, _ = kernel_body_and_insert(PACKAGE_DIR / "folded_complex.py",
+                                          "folded_bloch_pml_curl_step")
+    assert curl_insert and insert == curl_insert, (insert[:3], curl_insert[:3])
+    assert curl_body == root_curl
 
 
 def test_the_insert_sits_after_the_curl_and_before_both_masks(bodies):
     """The POSITION, which the deletion equality above cannot see.
 
-    After the third ``dtdx`` curl line, before the cell-0 ownership mask — the
-    array path's order (S:356-363 against S:369) and K3b's own placement,
-    asserted in the fused body AND in the shipped beta curl.
+    After the last curl form and before the wall clear, the stores and the ghost carries -- the array path's order (the
+    curl forms, then the beta pass after every component, then the seam passes), and
+    K3b's own placement, asserted in the fused body AND in the shipped beta curl.
+    The pass's increment carries BOTH folded ownership masks: the cell-0 block on a
+    non-periodic axis and the top-plane block on a folded PERIODIC one.
     """
-    curl_line = "curl2_re, curl2_im = _mul_coefficient_left(dtdx, t2_re, t2_im, EXPANSION)"
-    mask_line = "at_x, at_y, at_z = i == 0, j == 0, k == 0"
-    for label in ("fused", "beta_curl"):
+    last_form = "curl2_im, km_x, si_x, km_y, si_y, du2)"
+    for label, after in (("fused", "if ZM_X:"), ("beta_curl", "tl.store(u0 + 2 * idx, n0_re, mask=live & du0)")):
         body = bodies[label]
         at = body.index("if HAS_BETA:")
-        assert body[at - 1] == curl_line, (label, body[at - 1])
-        assert body[at + len(BETA_INSERT)] == mask_line, (
-            label, body[at + len(BETA_INSERT)])
+        assert body.index(last_form) < at < body.index(after), label
+        insert = body[at:body.index(after)]
+        assert any("last_" in line and "MIRROR_PERIODIC" not in line for line in insert)
+        assert any(line.endswith("== MIRROR_PERIODIC:") for line in insert)
+        assert any(line.endswith("!= PERIODIC:") for line in insert)
 
 
 def test_every_statement_comes_from_a_shipped_body(bodies):
@@ -268,23 +266,17 @@ def test_replaces_names_the_five_seam_passes(product):
                                 "fill_folded_far_ghosts_D", "update_E")
 
 
-def test_the_probe_pattern_set_is_the_six_pattern_union(product):
-    from meep_gpu.triton_kernels.complex_fields import PROBE_PATTERNS
-    from meep_gpu.triton_kernels.folded_complex import PARITY_PROBE_PATTERN
-    from meep_gpu.triton_kernels.special_kz import BETA_PROBE_PATTERN
-
-    assert set(product.PRODUCT_PROBE_PATTERNS) == (
-        set(PROBE_PATTERNS) | {PARITY_PROBE_PATTERN, BETA_PROBE_PATTERN})
-    assert len(product.PRODUCT_PROBE_PATTERNS) == 6
-
-
-def test_the_licensed_multiply_helpers_are_the_four_named(product):
+def test_the_licensed_multiply_helpers_are_the_connection_alone(product):
+    """The only complex helper any kernel of this module calls is the Bloch
+    connection; the beta pass's quarter turn and the parity carries have real
+    operands and are formed part by part."""
     tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
     called = {getattr(node.func, "id", "") for node in ast.walk(tree)
               if isinstance(node, ast.Call)}
     multiplies = {name for name in called
-                  if name.startswith("_mul") or name.startswith("_rotate")}
-    assert multiplies == set(product.LICENSED_MULTIPLY_HELPERS)
+                  if name.startswith(("_mul", "_rotate", "_connect"))}
+    assert multiplies <= set(product.MULTIPLY_HELPERS), multiplies
+    assert set(product.MULTIPLY_HELPERS) == {"_connect"}
 
 
 def test_the_single_launch_site_passes_the_packages_shared_guard_constant():
@@ -295,22 +287,25 @@ def test_the_single_launch_site_passes_the_packages_shared_guard_constant():
 
 
 def test_the_beta_words_come_from_the_shipped_host_rounding():
-    """The builder computes the coefficient words through
-    ``special_kz.beta_curl_coefficients`` (magnetic=False on this side), never a
-    second rounding."""
+    """The builder computes the two quarter-turn words through
+    ``special_kz.beta_curl_coefficients`` (magnetic=False on this side, complex
+    storage), never a second rounding."""
     text = MODULE_PATH.read_text(encoding="utf-8")
-    assert "beta_curl_coefficients(grid.beta, grid.dt, magnetic=False," in text
+    assert ("beta_curl_coefficients(fields.grid.beta, fields.grid.dt,\n"
+            "                                   magnetic=False, "
+            "complex_storage=True)") in text
     assert text.count("beta_curl_coefficients(") == 1
 
 
 def test_the_plan_validates_the_beta_words_shape(product):
-    """The two-pair check and the has_beta binding exist in the plan; a full
-    instantiation needs device pointers, so what is pinned here is the source."""
+    """The two-word check and the has_beta binding exist in the plan, and the words
+    reach the launch after the runtime group; a full instantiation needs device
+    pointers, so what is pinned here is the source."""
     text = MODULE_PATH.read_text(encoding="utf-8")
-    assert "beta_words is two (re, im) pairs" in text
+    assert "beta_words must be the two real beta words" in text
     assert "self.has_beta = int(has_beta)" in text
     assert "HAS_BETA=self.has_beta," in text
-    assert "bp_re, bp_im, bm_re, bm_im," in text
+    assert "*self.beta_words," in text
 
 
 # ---------------------------------------------------------------------------
@@ -379,44 +374,29 @@ def test_an_offdiagonal_row_is_refused_as_the_stencil(product):
     assert any("STENCIL" in reason for reason in reasons), reasons
 
 
-def test_a_probe_without_the_beta_pattern_is_refused(product):
-    """The census probe's shape — five patterns, no parity — and a four-pattern
-    record must BOTH refuse; the licence is the six-pattern union."""
-    from meep_gpu.triton_kernels.complex_fields import PROBE_PATTERNS
-
-    fields, pml = _build()
-    four = _probe_record(PROBE_PATTERNS)
-    reasons = _reasons(product, fields, pml, (_Electric(),), probe=four)
-    assert any("EXTENDED" in reason or "not classified" in reason
-               for reason in reasons), reasons
-
-
 # ---------------------------------------------------------------------------
 # Disjointness from the neighbours, in BOTH directions
 # ---------------------------------------------------------------------------
 
 def test_this_arm_and_the_beta_less_folded_pair_never_co_admit(product):
-    from meep_gpu.expansion_refusal import declaring_run_policy
     from meep_gpu.triton_kernels import folded_complex_fused_pair as beta_less
 
-    probe = _probe_record(product.PRODUCT_PROBE_PATTERNS)
-    with declaring_run_policy("keep"):
-        for beta in (BETA_CORPUS, 0.0):
-            fields, pml = _build(beta=beta)
-            sources = (_Electric(),)
-            mine = [r for r in product.folded_beta_complex_fused_pair_coverage(
-                fields, pml, sources, probe=probe).reasons
-                if "array module" not in r]
-            theirs = [r for r in beta_less.folded_complex_fused_pair_coverage(
-                fields, pml, sources, probe=probe).reasons
-                if "array module" not in r]
-            assert mine or theirs, (
-                f"both predicates admitted a beta={beta!r} folded complex run")
-            if beta == 0.0:
-                assert mine, "a beta = 0 folded complex run must be refused here"
-            else:
-                assert mine == [] and theirs, \
-                    "a folded complex beta run is this arm's"
+    for beta in (BETA_CORPUS, 0.0):
+        fields, pml = _build(beta=beta)
+        sources = (_Electric(),)
+        mine = [r for r in product.folded_beta_complex_fused_pair_coverage(
+            fields, pml, sources).reasons
+            if "array module" not in r]
+        theirs = [r for r in beta_less.folded_complex_fused_pair_coverage(
+            fields, pml, sources).reasons
+            if "array module" not in r]
+        assert mine or theirs, (
+            f"both predicates admitted a beta={beta!r} folded complex run")
+        if beta == 0.0:
+            assert mine, "a beta = 0 folded complex run must be refused here"
+        else:
+            assert mine == [] and theirs, \
+                "a folded complex beta run is this arm's"
 
 
 # ---------------------------------------------------------------------------
@@ -434,29 +414,25 @@ def test_this_arm_and_the_beta_less_folded_pair_never_co_admit(product):
     ({"offdiag": True}, (_Electric(),)),
 ])
 def test_the_weld_is_never_wider_than_the_halves(product, kwargs, sources):
-    from meep_gpu.expansion_refusal import declaring_run_policy
     from meep_gpu.triton_kernels import folded_complex
 
-    probe = _probe_record(product.PRODUCT_PROBE_PATTERNS)
     fields, pml = _build(**kwargs)
-    with declaring_run_policy("keep"):
-        weld = product.folded_beta_complex_fused_pair_coverage(
-            fields, pml, sources, probe=probe)
-        curl = folded_complex.folded_beta_bloch_pml_curl_coverage(
-            fields, pml, "step_D", probe=probe)
-        electric = folded_complex.folded_complex_constitutive_coverage(
-            fields, pml, "E", probe=probe)
+    weld = product.folded_beta_complex_fused_pair_coverage(
+        fields, pml, sources)
+    curl = folded_complex.folded_beta_bloch_pml_curl_coverage(
+        fields, pml, "step_D")
+    electric = folded_complex.folded_complex_constitutive_coverage(
+        fields, pml, "E")
     assert (not weld.covered) or (curl.covered and electric.covered), (
         weld.reasons, curl.reasons, electric.reasons)
 
 
 def test_the_plan_refuses_rather_than_raises_on_a_numpy_host(product):
     fields, pml = _build()
-    probe = _probe_record(product.PRODUCT_PROBE_PATTERNS)
     assert product.plan_folded_beta_complex_fused_pair(
-        fields, pml, (_Electric(),), probe=probe) is None
+        fields, pml, (_Electric(),)) is None
     assert product.plan_folded_beta_complex_fused_pair(
-        fields, pml, None, probe=probe) is None
+        fields, pml, None) is None
 
 
 # ---------------------------------------------------------------------------
@@ -576,7 +552,8 @@ def test_the_board_and_the_battery_all_know_this_product():
         encoding="utf-8")
     assert '"folded_beta_complex_fused_pair"' in board
     assert "folded_beta_complex_fused_pair_coverage" in battery
-    assert "folded_beta_complex_fused_pair_D@unified_expansion" in battery
+    assert 'seam["folded_beta_complex_fused_pair_D"]' in battery
+    assert "folded_beta_complex_fused_pair_D@unified_expansion" not in battery, "the retired census key"
 
 
 def load_gate():
@@ -605,12 +582,21 @@ def test_every_mutation_the_gate_declares_is_ARMED_against_the_shipped_source():
 
 
 def test_the_gate_carries_the_identity_leg_and_the_beta_mutations():
+    """The HAS_BETA=0 identity leg and the beta pass's shared mutations -- the pass
+    dropped, its partners swapped, its increment unmasked, the
+    quarter turn reversed and the top-plane mask dropped -- each in the table the probe
+    scores, on a case that carries everything its ``needs`` names."""
     text = GATE.read_text(encoding="utf-8")
     assert "def identity_has_beta_off_leg(" in text
-    assert "m_beta_insert_dropped" in text
-    assert "m_beta_partners_swapped" in text
-    assert "m_beta_after_the_masks" in text
-    assert "beta_licence" in text
+    assert "fold_passes.beta_mutations(True, True, CURL_ANCHOR)" in text
+    gate = load_gate()
+    names = {row[0] for row in gate.mutation_table()}
+    for required in ("b_pass_dropped", "b_partners_swapped", "b_increment_unmasked",
+                     "b_quarter_turn_reversed", "b_top_plane_mask_dropped"):
+        assert required in names, required
+        case = gate.MUTATION_CASE.get(required, gate.DEFAULT_MUTATION_CASE)
+        assert set(gate.MUTATION_NEEDS[required]) <= set(gate.CASE_CARRIES[case]), (
+            required, case)
 
 
 def test_the_gate_binds_the_seam_passes_the_driver_actually_calls():

@@ -28,6 +28,9 @@ by name and line, exactly as the certified curl pair does:
 * the E source          ``stepping.update_E`` (:981-984):
                         ``source * fields.inverse_epsilon_for(component)``
 * the recurrence        ``stepping._apply_constitutive_pml`` (:2065-2096)
+* the form per chunk    ``stepping._apply_constitutive_regions``: the accumulation
+                        on the cells whose chunk carries the component's own
+                        (dsigw) layer, ``f = src`` everywhere else
 
 THE REFERENCE FOR THE DECISIONS — tile shape, launch geometry, vectorization —
 is the sibling Triton kernel ``triton_kernels/kernels.py:constitutive_step``,
@@ -46,14 +49,14 @@ DO NOT TRANSCRIBE ``update_H_pml_complex`` / ``update_E_pml_complex``
 They are the obvious template and they are the wrong one. Three defects, all
 read first-hand out of ``step_curl_kernels.py`` and all silent:
 
-1. THE GROUPING IS FLATTENED. Both write
-   ``f[idx] += kps_val * fw_new - kms_val * fw_prev`` — that is
-   ``f + (kps*src - kms*prev)``. The array path is TWO SEPARATE ACCUMULATIONS,
-   ``field += kps*fw`` then ``field -= kms*fw_previous`` (stepping.py:2133-2134
-   and the scratch branch :2140-2143), i.e. ``((f + kps*src) - kms*prev)``.
-   Float addition is not associative; these are different float32 numbers. It
-   is the same defect class that measures the four plain curl kernels at 0/16
-   against the array path.
+1. THEY ACCUMULATE ON EVERY CELL. Both run ``f[idx] += kps_val * fw_new -
+   kms_val * fw_prev`` over the whole volume and store ``fw`` everywhere. The
+   array path runs that accumulation only on the cells whose chunk carries the
+   component's own layer and stores ``f = src`` elsewhere, leaving ``fw`` alone
+   there (``stepping._apply_constitutive_regions``, MEEP's update_eh.cpp:162-170).
+   Their grouping, ``f + (kps*src - kms*prev)``, is MEEP's
+   (step_generic.cpp:689, :697) and the one this file takes since 0.10; until
+   then the array path accumulated twice, left to right, and so did this file.
 2. THE E SIDE BINDS ONE EPSILON VOLUME FOR ALL THREE COMPONENTS. Its host
    wrapper passes ``fields.inv_eps``, which ``Fields.set_epsilon_volumes``
    re-points at ``self._inv_eps_components["Ez"]`` (fields.py:1259-1260) as a
@@ -184,6 +187,12 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
     compile_cache = _importlib_util.module_from_spec(_cache_spec)
     _cache_spec.loader.exec_module(compile_cache)
 
+# The chunk record's length, from its one home (the by-path branch: the probe).
+try:
+    from ..chunk_map import RECORD_WORDS as _CHUNK_RECORD_WORDS
+except ImportError:  # loaded by path, outside the package: the bit-identity probe
+    from meep_gpu.chunk_map import RECORD_WORDS as _CHUNK_RECORD_WORDS
+
 #: Byte-identical to the array path with a gate verdict behind it, cut
 #: 2026-08-15 on an RTX A6000 under BOTH float32 subnormal policies. The evidence
 #: is ``certification.json``'s ``constitutive_2026-08-15`` block; the artifacts
@@ -207,23 +216,22 @@ UNCERTIFIED_KERNELS = {}
 # THE DEVICE CODE
 # =============================================================================
 #
-# FOUR THINGS DECIDE BIT-IDENTITY HERE. The first three are the sibling Triton
+# FIVE THINGS DECIDE BIT-IDENTITY HERE. The first three are the sibling Triton
 # kernel's numbered notes, measured there and re-stated because they are
 # properties of the TRANSCRIPTION, not of the language it is written in. The
-# fourth is this file's own.
+# fourth and fifth are this file's own.
 #
-# 1. THE GROUPING IS TWO SEPARATE ACCUMULATIONS, LEFT TO RIGHT.
+# 1. THE GROUPING IS MEEP'S (step_generic.cpp:689, :697): the right-hand side is
+#    formed first, then added to ``f`` once.
 #
-#        a = f[idx];
-#        a = a + kps * src;        // stepping.py:2133  field += kps * fw
-#        f[idx] = a - kms * prev;  // stepping.py:2134  field -= kms * fw_previous
+#        value = f[idx] + ((kps * src) - (kms * prev));
 #
-#    NOT ``f[idx] + (kps*src - kms*prev)``, which is what the complex kernels in
-#    the sibling module write and a different float32 number. The scratch branch
-#    of ``_apply_constitutive_pml`` (:2089-2096) is the same tree by a different
-#    route — ``multiply(kps, fw, out=product); field += product; multiply(kms,
-#    fw_previous, out=product); field -= product`` — so both array-path branches
-#    agree and there is no ambiguity to resolve.
+#    ``stepping._apply_constitutive_pml`` forms the same tree in both branches:
+#    ``field += (kps * fw) - (kms * fw_previous)``, and in the scratch branch
+#    ``multiply(kps, fw, out=product); multiply(kms, fw_previous,
+#    out=fw_previous); subtract(product, fw_previous, out=product); field +=
+#    product``. ``(f + kps*src) - kms*prev``, the grouping until 0.10, is a
+#    different float32 number.
 #
 # 2. THE COEFFICIENT INDEX IS THE COMPONENT'S OWN AXIS. ``kps_x``/``kms_x`` for
 #    component 0, ``_y`` for 1, ``_z`` for 2 — MEEP's ``dsigw``, the absorption a
@@ -258,31 +266,40 @@ UNCERTIFIED_KERNELS = {}
 #    That does NOT make the sub-step boundary-agnostic, which is why the
 #    predicate still refuses a fold and a cylindrical axis: both change the
 #    STORED EXTENT, and the extent is what turns ``i`` into a coefficient index.
+#
+# 5. THE FORM IS CHOSEN PER STRUCTURE CHUNK (update_eh.cpp:162-163). On a cell
+#    whose chunk carries the component's own layer (``dsigw``) the accumulation
+#    of note 1 runs and ``fw`` takes ``src``; everywhere else ``f = src`` and
+#    ``fw`` is neither read nor written (``stepping._apply_constitutive_regions``,
+#    the auxiliary contract). Which cells those are is the run's chunk record
+#    ``cb``, decoded per thread by ``bounds_block.bounds_block``: ``update_H``
+#    reads the integer-lattice record along each component's own axis and
+#    ``update_E`` the half-integer one, the sub-lattice its coefficient table
+#    already reads. The plain form is a true output select, not ``kps = 1,
+#    kms = 0``: that alternative turns every ``src = -0`` into ``+0``.
 
 _REAL_CONSTITUTIVE_PRELUDE = r'''
-// stepping._apply_constitutive_pml (stepping.py:2065), MEEP's step_update_EDHB
-// with dsigw active:
-//
-//     realnum fwprev = fw[i], kapwkw = kapw[kw], sigwkw = sigw[kw];
-//     fw[i] = g[i] * u[i];                   // B for H, D*inv_eps for E
-//     f[i] += (kapwkw + sigwkw) * fw[i] - (kapwkw - sigwkw) * fwprev;
-//
-// The two accumulations are kept SEPARATE and LEFT-TO-RIGHT (note 1 above);
-// `prev` is loaded before the store (note 3). The intermediate `a` is a
-// register rather than a second read-modify-write of f[idx]: a float32 stored
-// to global memory and loaded back is the identity on the bits, which the
-// sibling track measured as its own null mutation (reload_fu_from_memory,
-// 60/60 identical) on the curl's equivalent expression.
+// stepping._apply_constitutive_regions: MEEP's two constitutive forms, chosen per
+// structure chunk (update_eh.cpp:162-170).
+//   dsigw (the cell's chunk carries the component's own layer): the accumulation of
+//   stepping._apply_constitutive_pml, MEEP's step_update_EDHB with dsigw active
+//       realnum fwprev = fw[i], kapwkw = kapw[kw], sigwkw = sigw[kw];
+//       fw[i] = g[i] * u[i];                   // B for H, D*inv_eps for E
+//       f[i] += (kapwkw + sigwkw) * fw[i] - (kapwkw - sigwkw) * fwprev;
+//   with the right-hand side formed first: f + ((kps*src) - (kms*prev));
+//   otherwise: f = src (H = B, E = D*inv_eps), and fw is not touched.
+// `prev` is loaded before the store (note 3), and the plain form reads neither fw
+// nor the old f.
 __device__ __forceinline__ void constitutive_apply(
     float* __restrict__ f, float* __restrict__ fw, int idx, float src,
-    float kps, float kms
+    float kps, float kms, int dsigw
 ) {
-    float prev = fw[idx];
-    fw[idx] = src;
-    float a = f[idx] + kps * src;
-    f[idx] = a - kms * prev;
+    float prev = dsigw ? fw[idx] : 0.0f;
+    if (dsigw) fw[idx] = src;
+    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;
+    f[idx] = value;
 }
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 2065->2112
+'''  # stepping.py live lines for the frozen device-text citation(s) in this string: _apply_constitutive_regions, _apply_constitutive_pml
 
 # H side: source is B directly (mu = 1 is in the array path, stepping.py:949),
 # INTEGER-position coefficients (:948, half_integer=False).
@@ -296,7 +313,8 @@ extern "C" __global__ void update_H_pml_real(
     int nx, int ny, int nz,
     const float* __restrict__ kps_x, const float* __restrict__ kms_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_y,
-    const float* __restrict__ kps_z, const float* __restrict__ kms_z
+    const float* __restrict__ kps_z, const float* __restrict__ kms_z,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= nx * ny * nz) return;
@@ -305,30 +323,40 @@ extern "C" __global__ void update_H_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
+    const int cbi_x_a0 = cb[0], cbi_x_a1 = cb[1], cbi_x_b0 = cb[2], cbi_x_b1 = cb[3];
+    const int in_i_x = (i >= cbi_x_a0 && i < cbi_x_a1) || (i >= cbi_x_b0 && i < cbi_x_b1);
+    const int cbi_y_a0 = cb[4], cbi_y_a1 = cb[5], cbi_y_b0 = cb[6], cbi_y_b1 = cb[7];
+    const int in_i_y = (j >= cbi_y_a0 && j < cbi_y_a1) || (j >= cbi_y_b0 && j < cbi_y_b1);
+    const int cbi_z_a0 = cb[8], cbi_z_a1 = cb[9], cbi_z_b0 = cb[10], cbi_z_b1 = cb[11];
+    const int in_i_z = (k >= cbi_z_a0 && k < cbi_z_a1) || (k >= cbi_z_b0 && k < cbi_z_b1);
+
     // THE OWN-CELL HOIST (register view): every word this thread reads at idx,
     // loaded before the first store. The certified constitutive_apply steps the
     // registers (f = &field, fw = &aux, idx = 0); the write-back stores them.
-    float w_x = f_w_Hx[idx];
-    float h_x = Hx[idx];
-    float w_y = f_w_Hy[idx];
-    float h_y = Hy[idx];
-    float w_z = f_w_Hz[idx];
-    float h_z = Hz[idx];
+    // The auxiliary and the old field are read only where the form reads them.
+    float w_x = in_i_x ? f_w_Hx[idx] : 0.0f;
+    float h_x = in_i_x ? Hx[idx] : 0.0f;
+    float w_y = in_i_y ? f_w_Hy[idx] : 0.0f;
+    float h_y = in_i_y ? Hy[idx] : 0.0f;
+    float w_z = in_i_z ? f_w_Hz[idx] : 0.0f;
+    float h_z = in_i_z ? Hz[idx] : 0.0f;
     float src_x = Bx[idx];
     float src_y = By[idx];
     float src_z = Bz[idx];
 
     // Hx <- Bx, dsigw = x.  Hy <- By, dsigw = y.  Hz <- Bz, dsigw = z.
-    constitutive_apply(&h_x, &w_x, 0, src_x, kps_x[i], kms_x[i]);
-    constitutive_apply(&h_y, &w_y, 0, src_y, kps_y[j], kms_y[j]);
-    constitutive_apply(&h_z, &w_z, 0, src_z, kps_z[k], kms_z[k]);
+    constitutive_apply(&h_x, &w_x, 0, src_x, kps_x[i], kms_x[i], in_i_x);
+    constitutive_apply(&h_y, &w_y, 0, src_y, kps_y[j], kms_y[j], in_i_y);
+    constitutive_apply(&h_z, &w_z, 0, src_z, kps_z[k], kms_z[k], in_i_z);
 
     // The write-back, in the certified store order (auxiliary, then field).
-    f_w_Hx[idx] = w_x;
+    if (in_i_x) f_w_Hx[idx] = w_x;
     Hx[idx] = h_x;
-    f_w_Hy[idx] = w_y;
+    if (in_i_y) f_w_Hy[idx] = w_y;
     Hy[idx] = h_y;
-    f_w_Hz[idx] = w_z;
+    if (in_i_z) f_w_Hz[idx] = w_z;
     Hz[idx] = h_z;
 }
 '''
@@ -350,7 +378,8 @@ extern "C" __global__ void update_E_pml_real(
     int nx, int ny, int nz,
     const float* __restrict__ kps_x, const float* __restrict__ kms_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_y,
-    const float* __restrict__ kps_z, const float* __restrict__ kms_z
+    const float* __restrict__ kps_z, const float* __restrict__ kms_z,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= nx * ny * nz) return;
@@ -359,15 +388,25 @@ extern "C" __global__ void update_E_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
+    const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
+    const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
+    const int cbh_y_a0 = cb[16], cbh_y_a1 = cb[17], cbh_y_b0 = cb[18], cbh_y_b1 = cb[19];
+    const int in_h_y = (j >= cbh_y_a0 && j < cbh_y_a1) || (j >= cbh_y_b0 && j < cbh_y_b1);
+    const int cbh_z_a0 = cb[20], cbh_z_a1 = cb[21], cbh_z_b0 = cb[22], cbh_z_b1 = cb[23];
+    const int in_h_z = (k >= cbh_z_a0 && k < cbh_z_a1) || (k >= cbh_z_b0 && k < cbh_z_b1);
+
     // THE OWN-CELL HOIST (register view): every word this thread reads at idx,
     // loaded before the first store. The certified constitutive_apply steps the
     // registers (f = &field, fw = &aux, idx = 0); the write-back stores them.
-    float w_x = f_w_Ex[idx];
-    float e_x = Ex[idx];
-    float w_y = f_w_Ey[idx];
-    float e_y = Ey[idx];
-    float w_z = f_w_Ez[idx];
-    float e_z = Ez[idx];
+    // The auxiliary and the old field are read only where the form reads them.
+    float w_x = in_h_x ? f_w_Ex[idx] : 0.0f;
+    float e_x = in_h_x ? Ex[idx] : 0.0f;
+    float w_y = in_h_y ? f_w_Ey[idx] : 0.0f;
+    float e_y = in_h_y ? Ey[idx] : 0.0f;
+    float w_z = in_h_z ? f_w_Ez[idx] : 0.0f;
+    float e_z = in_h_z ? Ez[idx] : 0.0f;
 
     // NOT __restrict__ on the three inv_eps pointers, deliberately: an isotropic
     // run hands the same device pointer three times (fields.py:1323-1325), and
@@ -385,16 +424,16 @@ extern "C" __global__ void update_E_pml_real(
     float src_z = Dz[idx] * inv_eps_Ez[idx];
 
     // Ex <- Dx*inv_eps, dsigw = x.  Ey, dsigw = y.  Ez, dsigw = z.
-    constitutive_apply(&e_x, &w_x, 0, src_x, kps_x[i], kms_x[i]);
-    constitutive_apply(&e_y, &w_y, 0, src_y, kps_y[j], kms_y[j]);
-    constitutive_apply(&e_z, &w_z, 0, src_z, kps_z[k], kms_z[k]);
+    constitutive_apply(&e_x, &w_x, 0, src_x, kps_x[i], kms_x[i], in_h_x);
+    constitutive_apply(&e_y, &w_y, 0, src_y, kps_y[j], kms_y[j], in_h_y);
+    constitutive_apply(&e_z, &w_z, 0, src_z, kps_z[k], kms_z[k], in_h_z);
 
     // The write-back, in the certified store order (auxiliary, then field).
-    f_w_Ex[idx] = w_x;
+    if (in_h_x) f_w_Ex[idx] = w_x;
     Ex[idx] = e_x;
-    f_w_Ey[idx] = w_y;
+    if (in_h_y) f_w_Ey[idx] = w_y;
     Ey[idx] = e_y;
-    f_w_Ez[idx] = w_z;
+    if (in_h_z) f_w_Ez[idx] = w_z;
     Ez[idx] = e_z;
 }
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 969-989->998-1018, 982->1011
@@ -500,12 +539,40 @@ def constitutive_tables_for(side: str, pml: 'PML') -> dict:
     return real_constitutive_tables(pml, constitutive_sub_lattice(side))
 
 
-def _launch(kernel, targets, auxiliaries, sources, inverse_epsilon, tables: dict):
+def chunk_record_argument(chunk_bounds):
+    """The ``cb`` argument, checked: one contiguous ``int32[25]`` device vector.
+
+    The twin of ``step_curl_kernels.chunk_record_argument``, spelt here so that loading
+    this file by path picks up no sibling. There is no default: a kernel launched without
+    the run's division would choose its forms by some other division.
+    """
+    if chunk_bounds is None:
+        raise ValueError("the real-field constitutive kernels take the run's chunk record "
+                         "(chunk_map.chunk_bounds_record) and were handed none")
+    if not isinstance(chunk_bounds, cp.ndarray):
+        raise ValueError(
+            f"the chunk record must be a device vector, got {type(chunk_bounds).__name__}: "
+            f"upload it once (cupy.asarray(record, dtype=cupy.int32)) and pass that, as "
+            f"arms.StepContext.chunk_bounds_device does")
+    if (getattr(chunk_bounds, "dtype", None) != cp.int32
+            or tuple(getattr(chunk_bounds, "shape", ())) != (_CHUNK_RECORD_WORDS,)
+            or not chunk_bounds.flags.c_contiguous):
+        raise ValueError(
+            f"the chunk record must be one contiguous int32[{_CHUNK_RECORD_WORDS}] device "
+            f"vector, got {getattr(chunk_bounds, 'dtype', type(chunk_bounds).__name__)} of "
+            f"shape {tuple(getattr(chunk_bounds, 'shape', ()))}")
+    return chunk_bounds
+
+
+def _launch(kernel, targets, auxiliaries, sources, inverse_epsilon, tables: dict,
+            chunk_bounds):
     """Shared launch: the two sides differ only in their arrays and one argument.
 
     ``inverse_epsilon`` is None on the H side, where the source is B itself
-    (mu = 1, stepping.py:949), and a three-tuple on the E side.
+    (mu = 1, stepping.py:949), and a three-tuple on the E side. ``chunk_bounds`` is
+    the run's chunk record on the device (:func:`chunk_record_argument`).
     """
+    cb = chunk_record_argument(chunk_bounds)
     nx, ny, nz = targets[0].shape
     blocks = (nx * ny * nz + _CONSTITUTIVE_THREADS - 1) // _CONSTITUTIVE_THREADS
     arguments = [
@@ -520,11 +587,12 @@ def _launch(kernel, targets, auxiliaries, sources, inverse_epsilon, tables: dict
         tables["kps_x"], tables["kms_x"],
         tables["kps_y"], tables["kms_y"],
         tables["kps_z"], tables["kms_z"],
+        cb,
     ])
     kernel((blocks,), (_CONSTITUTIVE_THREADS,), tuple(arguments))
 
 
-def _update_H_fused_pml_real(fields: 'Fields', tables: dict):
+def _update_H_fused_pml_real(fields: 'Fields', tables: dict, chunk_bounds):
     """``stepping.update_H`` for real fields under a PML, in one launch.
 
     ``tables`` are the INTEGER coefficient views from
@@ -533,15 +601,20 @@ def _update_H_fused_pml_real(fields: 'Fields', tables: dict):
     ``getattr(fields, source)`` with ``source`` from ``H_CONSTITUTIVE_TERMS``,
     and mu = 1 is already baked into that choice — there is no permeability
     volume to multiply by and introducing one here would be a second engine.
+
+    THE RUN'S FIRST ``update_H`` IS NOT THIS LAUNCH'S BUSINESS: MEEP starts H and
+    ``f_w_H`` as copies of B on the dsigw cells there (``stepping.separate_h_from_b``),
+    and the dispatched launcher runs that start on the array path before its first
+    launch (``arms._RealPmlConstitutiveLauncher``).
     """
     _launch(_get_kernel('update_H_pml_real'),
             (fields.Hx, fields.Hy, fields.Hz),
             (fields.f_w_Hx, fields.f_w_Hy, fields.f_w_Hz),
             (fields.Bx, fields.By, fields.Bz),
-            None, tables)
+            None, tables, chunk_bounds)
 
 
-def _update_E_fused_pml_real(fields: 'Fields', tables: dict):
+def _update_E_fused_pml_real(fields: 'Fields', tables: dict, chunk_bounds):
     """``stepping.update_E`` for real fields under a PML, in one launch.
 
     ``tables`` are the HALF-INTEGER views (``half_integer=True``,
@@ -562,7 +635,7 @@ def _update_E_fused_pml_real(fields: 'Fields', tables: dict):
             (fields.inverse_epsilon_for("Ex"),
              fields.inverse_epsilon_for("Ey"),
              fields.inverse_epsilon_for("Ez")),
-            tables)
+            tables, chunk_bounds)
 
 
 #: Launch one side by name, for callers that hold the side as data (the probe,
@@ -573,7 +646,7 @@ _LAUNCHERS = {"H": _update_H_fused_pml_real, "E": _update_E_fused_pml_real}
 
 
 def update_fused_pml_real(side: str, fields: 'Fields', pml: 'PML' = None, *,
-                          tables: dict = None):
+                          tables: dict = None, chunk_bounds=None):
     """Run ``update_H`` (side='H') or ``update_E`` ('E') in one launch.
 
     SUPPLY ``pml`` AND THE SUB-LATTICE IS DECIDED HERE, from the side, by the same
@@ -591,6 +664,9 @@ def update_fused_pml_real(side: str, fields: 'Fields', pml: 'PML' = None, *,
     DELIBERATELY MIS-PAIRED ones — a gate that could not hand in its own tables
     could not arm that mutation. Passing both, or neither, is refused: a caller
     that supplies a layer AND a table set has two answers to a question with one.
+
+    ``chunk_bounds`` is the run's chunk record on the device, required: the kernels
+    choose their form per chunk from it (:func:`chunk_record_argument`).
     """
     if side not in _LAUNCHERS:
         raise ValueError(
@@ -603,4 +679,4 @@ def update_fused_pml_real(side: str, fields: 'Fields', pml: 'PML' = None, *,
             f"tables={'set' if tables is not None else 'None'}")
     if tables is None:
         tables = constitutive_tables_for(side, pml)
-    return _LAUNCHERS[side](fields, tables)
+    return _LAUNCHERS[side](fields, tables, chunk_bounds)

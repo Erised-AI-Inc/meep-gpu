@@ -94,9 +94,30 @@ def device_modules(monkeypatch):
     teardown (which runs FIRST, because it requested ``monkeypatch``) pops every
     module the test imported and every attribute those imports set on the package,
     so no later test can find a kernel module whose ``cp`` is NumPy.
+
+    WHERE CuPy IS INSTALLED, a kernel module an earlier test imported is bound to the
+    REAL CuPy, and importing it again hands that module back: its checks then refuse
+    the stand-in's arrays by name ("the chunk record must be a device vector").
+    Measured in the NVIDIA reference environment, where 12 tests here failed that
+    way. Every such module is hidden for the test, with its package attribute, so the
+    imports below load fresh copies against the stand-in; ``monkeypatch`` puts the
+    originals back at teardown, after this fixture has popped the copies. On a host
+    without CuPy no module is bound to it and nothing is hidden.
     """
+    real_cupy = sys.modules.get("cupy")
     monkeypatch.setitem(sys.modules, "cupy", _NumpyWearingCupysName())
     package = sys.modules["meep_gpu.cuda_kernels"]
+    if real_cupy is not None:
+        prefix = f"{package.__name__}."
+        bound = [name for name, module in sys.modules.items()
+                 if name.startswith(prefix) and module is not None
+                 and any(getattr(module, attribute, None) is real_cupy
+                         for attribute in ("cp", "cupy"))]
+        for name in bound:
+            monkeypatch.delitem(sys.modules, name)
+            attribute = name[len(prefix):]
+            if "." not in attribute and attribute in vars(package):
+                monkeypatch.delattr(package, attribute)
     modules_before = set(sys.modules)
     attributes_before = set(vars(package))
 
@@ -149,7 +170,10 @@ def parameters(source: str, kernel: str) -> List[Tuple[str, str]]:
     for raw in text.split(","):
         match = _PARAMETER.match(" ".join(raw.split()))
         assert match, f"unreadable parameter {raw!r} in {kernel}"
-        out.append((match["name"], "pointer" if match["pointer"] else match["type"]))
+        kind = match["type"]
+        if match["pointer"]:
+            kind = "pointer" if kind == "float" else "int_pointer"
+        out.append((match["name"], kind))
     return out
 
 
@@ -163,6 +187,10 @@ def bind(signature: List[Tuple[str, str]], args: Tuple[Any, ...]) -> Dict[str, A
         if kind == "pointer":
             assert isinstance(value, numpy.ndarray), (name, type(value))
             assert value.dtype == numpy.float32, (name, value.dtype)
+        elif kind == "int_pointer":
+            # The run's chunk record: one contiguous int32 vector.
+            assert isinstance(value, numpy.ndarray), (name, type(value))
+            assert value.dtype == numpy.int32 and value.ndim == 1, (name, value.dtype)
         elif kind == "int":
             assert isinstance(value, numpy.int32), (name, type(value))
         else:
@@ -315,15 +343,19 @@ def _evaluate(family: str, source: str, bound: Dict[str, Any], shape) -> None:
               if name.startswith(("kps_", "kms_"))}
     codes = tuple(int(bound[f"bc_{axis}"]) for axis in "xyz")
     walls = tuple(int(bound[f"wm_{axis}"]) for axis in "xyz")
+    record = [int(value) for value in bound["cb"]] if "cb" in bound else None
+    kept = tuple(int(bound.get(name, 0)) for name in offdiag_emitter.KEPT_PARAMETERS)
+    arrays.pop("cb", None)
     if family == "cuda_offdiag":
-        evaluate_emitted_source(source, arrays, tables, codes, walls, shape)
+        evaluate_emitted_source(source, arrays, tables, codes, walls, shape, record, kept)
         return
     weights = tuple(float(bound[f"gw_{axis}"]) for axis in "xyz")
     if family == "cuda_folded_offdiag":
-        evaluate_folded_source(source, arrays, tables, codes, walls, weights, shape)
+        evaluate_folded_source(source, arrays, tables, codes, walls, weights, shape,
+                               record, kept)
     else:
         evaluate_dispersive_offdiag_source(source, arrays, tables, codes, walls,
-                                           weights, shape)
+                                           weights, shape, record, kept)
 
 
 _OFFDIAG_CASES = [
@@ -706,9 +738,19 @@ def test_a_folded_real_run_composed_by_this_table_alone_covers_both_fills(
     assert {"step_B", "update_H", "step_D", "update_E"} <= set(merged.plans)
 
 
+#: METALLIC walls for the two off-diagonal seam tests below. With a layer on a
+#: WRAPPING axis the one-rank record merges the stored cell 0 (the image of the high
+#: wall plane, owned by the high chunk) into the low run, so the record does not say
+#: which chunk that cell's off-diagonal presence belongs to and every off-diagonal arm
+#: refuses the division (``chunk_coverage.chunk_product_problem``;
+#: ``test_chunk_binding.py`` pins that refusal). A metallic wall is unowned, so the
+#: record names the {low, interior, high} chunks one to one and the seam is adopted.
+_OFFDIAG_WALLS = ("metallic", "metallic", "metallic")
+
+
 def test_a_folded_off_diagonal_run_adopts_its_whole_d_seam_and_both_fills(xp):
     fields, layer, grid = build(xp, symmetry=(Mirror("Y", 1),),
-                                cell=_fold_cell(("y",)))
+                                cell=_fold_cell(("y",)), boundaries=_OFFDIAG_WALLS)
     install_rows(fields, grid, ROW_MASKS[0], seed=20260927)
     plan = arms.plan_step(fields, layer, grid)
     assert plan.selected["update_E"] == "folded off-diagonal"
@@ -720,7 +762,7 @@ def test_a_folded_off_diagonal_run_adopts_its_whole_d_seam_and_both_fills(xp):
 
 
 def test_an_unfolded_off_diagonal_run_adopts_its_whole_d_seam(xp):
-    fields, layer, grid = build(xp)
+    fields, layer, grid = build(xp, boundaries=_OFFDIAG_WALLS)
     install_rows(fields, grid, ROW_MASKS[1], seed=20260927)
     plan = arms.plan_step(fields, layer, grid)
     assert plan.selected["update_E"] == "off-diagonal"

@@ -103,6 +103,7 @@ for _path in (str(API_ROOT), str(HERE)):
         sys.path.insert(0, _path)
 
 import gate_provenance  # noqa: E402
+import hd_seam_restore  # noqa: E402
 import gate_triton_fused_hd_pair as base  # noqa: E402
 
 from meep_gpu import withdraw_hoist  # noqa: E402
@@ -132,8 +133,10 @@ words = base.words
 EXIT_INCOMPLETE = 75
 
 #: The census this kit lifts corpus rows from, and the seam record whose
-#: ``withdraw_in_seam`` flag names the rows a predicate must refuse. THE PARENT
-#: GATE'S OWN, so a re-cut census moves every H->D gate on this backend together.
+#: ``withdraw_in_seam`` flag named the rows the 0.9.2 predicates refused by their
+#: standing withdraw (admitted since entry 25; the refusals a row owes are derived from
+#: its own sources). THE PARENT GATE'S OWN, so a re-cut census moves every H->D gate on
+#: this backend together.
 CENSUS = base.CENSUS
 SEAM_RECORD = base.SEAM_RECORD
 
@@ -346,6 +349,12 @@ def build_driver(product: Product, spec: Mapping[str, Any], seed: int,
             host = (amplitude * rng.standard_normal(
                 array.shape)).astype(np.float32) * scale
         array[...] = xp.asarray(np.ascontiguousarray(host))
+    # A SEEDED STATE IS A MID-RUN ONE unless the fixture says otherwise: H was started
+    # from B long ago, so no arrangement starts it again. A first-update fixture
+    # (``h_started`` False) keeps the flag False, and ``capture``/``restore`` carry
+    # it, so every arrangement's step 1 is the run's first update_H -- MEEP's start
+    # of H (``stepping.separate_h_from_b``), measured on every arrangement.
+    driver.fields.h_separated = bool(spec.get("h_started", True))
     driver.invalidate_fast_path()
     pin_array_path(driver)
     return driver
@@ -1312,11 +1321,24 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
         stamp_block = record.get("subnormal_policy") or {}
         stamp = stamp_block.get("policy")
         findings: List[str] = []
-        if row["withdraw_in_seam"]:
-            # THE PREDICATE MUST REFUSE THIS ROW BY NAME, and that is the clause the
-            # cell's own instance count rests on.
+        # THE REFUSAL A ROW OWES IS DERIVED FROM ITS OWN SOURCES -- an electric source
+        # whose withdraw does work -- never from the seam record's withdraw_in_seam flag,
+        # which was cut on the driver before f_minus_p: since entry 25 no engine source
+        # stands a withdraw, so a flagged row is admitted and driven like any other. A
+        # measured row with no source list is ignorance, and ignorance fails.
+        source_facts = gate_result.get("source_facts")
+        owes_a_refusal = bool(isinstance(source_facts, list)
+                              and hd_seam_restore.electric_withdraw_sources(
+                                  {"sources": source_facts}))
+        if measured and gate_result and not isinstance(source_facts, list):
+            findings.append(f"{label}: the row recorded no source list, so the refusal "
+                            f"it owes cannot be derived")
+        if owes_a_refusal:
             if admitted:
-                findings.append(f"{label}: a standing in-seam withdraw was ADMITTED")
+                findings.append(f"{label}: a source with a standing withdraw was ADMITTED")
+            elif not any(hd_seam_restore.STANDING_WITHDRAW in str(reason)
+                         for reason in gate_result.get("predicate_reasons") or ()):
+                findings.append(f"{label}: refused, but not by the standing withdraw")
             refused += 1
         elif (record.get("unliftable_on_this_host")
                 and not (record.get("unliftable_evidence") or {}).get("outcome")):
@@ -1337,6 +1359,11 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
             # as a gap is the phantom-half defect the census battery's runtime
             # preflight exists to prevent. It is NOT silently passed: the row carries
             # its own reason and the basis row counts it separately.
+            unliftable += 1
+        elif not measured and hd_seam_restore.lifter_refusal(record):
+            # THE ENGINE'S OWN LIFTER REFUSED THIS ROW BY NAME (MeepSimulationNotLiftable):
+            # nothing runs on any path, so it is counted out with the rows above, its
+            # reason riding in the record (child_error), never scored as a hole.
             unliftable += 1
         elif not measured:
             findings.append(f"{label}: not measured -- "
@@ -1639,6 +1666,14 @@ def evaluate_row(product: Product, driver: Any, steps: int,
         "variant": product.variant(driver),
         "grid_cells": cells,
         "sources": len(sources),
+        # THE ROW'S OWN SOURCES, for the lift's refusal accounting: which electric source
+        # carries a withdraw that does work (hd_seam_restore.electric_withdraw_sources).
+        "source_facts": [{"type": type(source).__name__,
+                          "field_type": str(getattr(source, "field_type", "")),
+                          "is_integrated": bool(getattr(source, "is_integrated", False)),
+                          "withdraw_does_work": bool(
+                              withdraw_hoist._withdraw_does_work(source))}  # noqa: SLF001
+                         for source in sources],
     }
     if not verdict.covered:
         return out
@@ -1646,9 +1681,13 @@ def evaluate_row(product: Product, driver: Any, steps: int,
         out["skipped_for_size"] = f"{cells} cells above the {max_cells} cap"
         return out
     pin_array_path(driver)
-    result = run_product(product, driver, steps, progress=base._child_progress,  # noqa: SLF001
-                         require_full_budget=False,
-                         clean_floor=base.LIFT_CLEAN_STEP_FLOOR)
+    # THE DRIVER'S OWN CHUNK DIVISION for every plan built on this lifted row, the one the
+    # array path steps with (hd_seam_restore.plans_bind_the_driver_chunk_layout).
+    with hd_seam_restore.plans_bind_the_driver_chunk_layout(driver):
+        result = run_product(product, driver, steps,
+                             progress=base._child_progress,  # noqa: SLF001
+                             require_full_budget=False,
+                             clean_floor=base.LIFT_CLEAN_STEP_FLOOR)
     # THE COMPOSER'S OWN SLOT TABLE FOR THIS ROW -- what the arbitration is measured
     # against, per row, rather than argued from a cell-wide join.
     #
@@ -1723,75 +1762,8 @@ def parse_legs(product: "Product", value: str) -> Tuple[str, ...]:
     return wanted
 
 
-#: The substring the certified complex module's own policy clause is refused by. Used
-#: as a NEEDLE rather than an equality: the clause's prose carries the policy names in
-#: it and this gate must not restate a sentence it does not own.
-CERTIFICATION_NEEDLE = "CERTIFIED under the"
-
-
-def policy_licenses_the_arms(product: Product) -> Tuple[bool, List[str]]:
-    """Does the policy IN FORCE license the arms this product is built from?
-
-    ONLY THE COMPLEX-STORAGE PRODUCTS ASK. Every complex arm in this package was
-    certified under the ``keep`` float32 subnormal policy and the expansion probe
-    artifact was cut under it, so under ``flush`` the shipped predicate refuses each
-    of them BY NAME -- a correct answer from the shipped machinery, not a defect in
-    this weld. Measured 2026-09-08 on this lane's first full campaign: the two
-    complex gates died four seconds in, inside :func:`arrangement_singles`, because a
-    certified single the harness expects to admit was refused by that clause
-    (``results/triton_hd_tail_2026-09-08_firstround/tailfinal_foldedcx/flush``,
-    ``.../tailfinal_betacx/flush`` -- neither wrote a ``gate.json``). A gate
-    that CRASHES on a refusal records nothing; this reads the clause first and
-    measures the refusal instead.
-
-    Read off the certified module's own clause and the policy IN FORCE, never off the
-    ``--subnormal-policy`` flag: the flag is what was asked for, and an installed
-    policy outranks a declaration at every other seam in this package.
-    """
-    if not product.complex_storage:
-        return True, []
-    from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
-
-    reasons = list(complex_fields.expansion_certification_reasons(
-        complex_fields._policy_in_force()))  # noqa: SLF001
-    return (not reasons), reasons
-
-
-def leg_policy_refusal(product: Product, seed: int) -> List[Dict[str, Any]]:
-    """Under an unlicensed policy: EVERY fixture refused, and refused BY THAT CLAUSE.
-
-    This is the whole measurement a complex product can honestly make under ``flush``,
-    and it is a real one: it asserts that the shipped certification clause -- not
-    silence, not the withdraw clause, and not some unrelated predicate rung -- is what
-    stands between a ``keep``-cut licence and a flushed run. Nothing is driven, which
-    is the correct answer, and calling it a coverage gap would publish a phantom one.
-    """
-    rows: List[Dict[str, Any]] = []
-    for name, spec in product.fixtures:
-        driver = build_driver(product, spec, seed)
-        try:
-            covered = product.coverage(driver.fields, driver.pml, ())
-            reasons = [str(reason) for reason in covered.reasons]
-            findings: List[str] = []
-            if covered.covered:
-                findings.append(
-                    f"{name}: ADMITTED under a policy no complex arm in this package "
-                    f"was certified for")
-            elif not any(CERTIFICATION_NEEDLE in reason for reason in reasons):
-                findings.append(
-                    f"{name}: refused, but NOT by the certification clause -- "
-                    f"{reasons[0][:300] if reasons else 'no reason recorded'}")
-            rows.append({"leg": "policy_refusal", "case": name,
-                         "passed": not findings, "findings": findings,
-                         "covered": bool(covered.covered), "reasons": reasons})
-        finally:
-            driver.close()
-    return rows
-
-
 def verdict(product: Product, rows: Sequence[Dict[str, Any]],
-            legs: Sequence[str], policy_attained: bool,
-            licensed: bool = True) -> Dict[str, Any]:
+            legs: Sequence[str], policy_attained: bool) -> Dict[str, Any]:
     by_leg: Dict[str, List[Dict[str, Any]]] = {}
     for row in rows:
         by_leg.setdefault(row["leg"], []).append(row)
@@ -1834,14 +1806,7 @@ def verdict(product: Product, rows: Sequence[Dict[str, Any]],
             for entry in basis)
     clauses["the_policy_installed_is_the_one_requested"] = bool(policy_attained)
     clauses["every_leg_requested_ran"] = set(legs) <= set(by_leg)
-    # UNDER AN UNLICENSED POLICY THE GATE IS COMPLETE AT A SMALLER SET, and it is
-    # RELEASED FALSE ANYWAY -- by the licence clause below, which names the reason,
-    # rather than by a truncation clause that would read as an unfinished run.
-    expected = (set(all_legs(product)) if licensed
-                else set(LEG_GROUPS["host"]) | {"policy_refusal"})
-    clauses["the_whole_gate_ran"] = set(legs) == expected
-    if not licensed:
-        clauses["the_policy_licenses_this_products_arms"] = False
+    clauses["the_whole_gate_ran"] = set(legs) == set(all_legs(product))
     return {"clauses": clauses, "released": all(clauses.values()),
             "legs_requested": list(legs), "legs_that_ran": sorted(by_leg)}
 
@@ -1910,7 +1875,6 @@ def run(product: Product, gate_path: Path,
         "rows": rows,
     }
     policy_attained = True
-    licensed = True
     if not args.no_device:
         triton_launch.require_triton()
         import cupy  # noqa: PLC0415
@@ -1939,25 +1903,6 @@ def run(product: Product, gate_path: Path,
             f"{payload['subnormal_policy'].get('policy')!r} "
             f"(requested {args.subnormal_policy!r}, "
             f"CUPY_CACHE_DIR={os.environ.get('CUPY_CACHE_DIR')!r})")
-        licensed, licence_reasons = policy_licenses_the_arms(product)
-        payload["the_policy_licenses_this_products_arms"] = licensed
-        payload["expansion_certification_refusals"] = licence_reasons
-        if not licensed:
-            legs = LEG_GROUPS["host"] + ("policy_refusal",)
-            payload["legs_requested"] = list(legs)
-            payload["what_an_unlicensed_policy_measures"] = (
-                "NOTHING ABOUT THIS WELD'S ARITHMETIC, and this record does not "
-                "pretend otherwise. Every complex arm in this package was certified "
-                "under the 'keep' float32 subnormal policy and the expansion probe "
-                "artifact was cut under it, so under the policy in force the shipped "
-                "predicate refuses this product's halves BY NAME. What ran is the "
-                "policy_refusal leg: every fixture refused, and refused BY THE "
-                "CERTIFICATION CLAUSE rather than by silence. RELEASED IS FALSE, and "
-                "the release under which this product stands is its 'keep' leg")
-            log("the policy in force does not license this product's arms; "
-                "measuring the REFUSAL instead of crashing on it")
-            for reason in licence_reasons:
-                log(f"    licence refusal: {reason[:200]}")
 
     out_path = Path(args.out).resolve() if args.out else None
     stream = (out_path.with_suffix(".rows.jsonl").open("w", encoding="utf-8")
@@ -1982,8 +1927,6 @@ def run(product: Product, gate_path: Path,
             record("driver_order", leg_driver_order(product))
         if "transcription" in legs:
             record("transcription", leg_transcription(product))
-        if "policy_refusal" in legs:
-            record("policy_refusal", leg_policy_refusal(product, args.seed))
         if "refusal" in legs:
             record("refusal", leg_refusal(product, args.seed))
         if "arbitration" in legs:
@@ -2015,9 +1958,8 @@ def run(product: Product, gate_path: Path,
         if stream is not None:
             stream.close()
 
-    payload["release"] = verdict(product, rows, legs, policy_attained, licensed)
-    device_legs = (set(LEG_GROUPS["device"]) | set(product.extra_legs())
-                   | {"policy_refusal"})
+    payload["release"] = verdict(product, rows, legs, policy_attained)
+    device_legs = set(LEG_GROUPS["device"]) | set(product.extra_legs())
     payload["device_status"] = ("RUN" if any(row["leg"] in device_legs
                                              for row in rows) else "NOT_RUN")
     payload["passed"] = bool(payload["release"]["released"])
@@ -2033,12 +1975,9 @@ def run(product: Product, gate_path: Path,
         if not value:
             log(f"  clause FAILED: {name}")
     if not payload["release"]["released"]:
-        # EXIT 75 MEANS "THIS RECORD IS NOT THE WHOLE GATE", and a policy-refusal run
-        # is the whole gate that policy admits -- a DEFINITE non-release, not a
-        # truncated one. Reading 75 back as "could not certify on this host" is how a
-        # measured refusal gets paraphrased into a host problem, so it is not returned
-        # here.
-        if not licensed or set(legs) == set(all_legs(product)):
+        # EXIT 75 MEANS "THIS RECORD IS NOT THE WHOLE GATE"; a whole gate that did not
+        # release is a DEFINITE non-release.
+        if set(legs) == set(all_legs(product)):
             return 1
         return EXIT_INCOMPLETE
     return 0

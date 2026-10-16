@@ -105,10 +105,10 @@ def build(thickness=0.2, boundaries=None, symmetry=(), complex_storage=True,
     return fields, pml
 
 
-#: The two clauses every predicate on a NumPy host fires for reasons that have nothing
-#: to do with any configuration under test. Subtracted BY NAME rather than by position,
-#: so a clause that stopped firing does not quietly take another with it.
-HOST_CLAUSES = ("not cupy", "expansion probe artifact")
+#: The clause every predicate on a NumPy host fires for a reason that has nothing to do
+#: with any configuration under test. Subtracted BY NAME rather than by position, so a
+#: clause that stopped firing does not quietly take another with it.
+HOST_CLAUSES = ("not cupy",)
 
 
 def _reasons(verdict):
@@ -116,12 +116,15 @@ def _reasons(verdict):
             if not any(clause in reason for clause in HOST_CLAUSES)]
 
 
-class _Electric:
-    """A source with a standing INTEGRATED electric withdraw."""
+class _ForeignElectric:
+    """A source class from outside this package that brings an integrated electric
+    ``withdraw`` of its own. No engine source stands one any more (an integrated source
+    enters through ``f_minus_p``; ``withdraw_hoist``), and the predicate still refuses a
+    class that does, because nothing measured a fused launch beside its body."""
 
-    from . import sources as _sources_module
+    def withdraw(self, fields):  # never called: a predicate reads a source, it does not run it
+        raise AssertionError("a coverage predicate called a source's withdraw")
 
-    withdraw = _sources_module.VolumeSource.withdraw
     field_type = "D"
     component = "Ez"
     is_integrated = True
@@ -129,11 +132,11 @@ class _Electric:
     _applied_dipole = 0j
 
 
-class _NonIntegratedElectric(_Electric):
+class _NonIntegratedElectric(_ForeignElectric):
     is_integrated = False
 
 
-class _Magnetic(_Electric):
+class _Magnetic(_ForeignElectric):
     field_type = "B"
     component = "Hz"
 
@@ -190,7 +193,7 @@ def test_replaces_is_the_drivers_own_two_adjacent_consults(product):
     assert order[first:first + 2] == list(product.REPLACES)
 
 
-def test_the_only_statement_in_the_seam_is_the_electric_withdraw(product):
+def test_the_only_statement_in_the_seam_is_the_magnetic_f_minus_p_restore(product):
     """Nothing is INJECTED between the two consults, so the deposit repair is a fact."""
     from . import driver as driver_module
 
@@ -200,8 +203,10 @@ def test_the_only_statement_in_the_seam_is_the_electric_withdraw(product):
     statements = [line.strip() for line in between.splitlines()
                   if line.strip() and not line.strip().startswith("#")
                   and "update_H(self.fields" not in line]
-    assert any("withdraw" in line for line in statements), statements
-    assert not any("inject" in line for line in statements), statements
+    # The magnetic f_minus_p restore (sources.f_minus_p_end), which writes B alone and
+    # which step_D does not read; no withdraw stands here any more (withdraw_hoist).
+    assert any("f_minus_p_end" in line for line in statements), statements
+    assert not any("inject" in line or "withdraw" in line for line in statements), statements
     assert product.CARRIES_DEPOSIT_REPAIR is False
     assert product.REPAIR_PATHS == ()
 
@@ -233,14 +238,6 @@ def test_the_default_block_is_the_certified_modules_own(product, certified):
     assert product.DEFAULT_BLOCK == certified.DEFAULT_BLOCK
 
 
-def test_the_expansion_facts_are_restated_from_the_certified_module(product, certified):
-    """The pattern set and the policy are the complex tranche's, not this product's."""
-    assert product.PROBE_PATTERNS == certified.PROBE_PATTERNS
-    assert product.CERTIFIED_UNDER_SUBNORMAL_POLICY == \
-        certified.CERTIFIED_UNDER_SUBNORMAL_POLICY
-    assert product.CERTIFIED_UNDER_SUBNORMAL_POLICY == "keep"
-
-
 def test_backward_and_the_sub_lattice_are_read_from_the_shipped_tables(product):
     """The shared ``kms`` group is only correct while the two halves agree."""
     curl, constitutive = product._sub_lattice_suffixes()
@@ -258,15 +255,19 @@ def test_the_constitutive_half_is_the_certified_complex_body(product):
 
 def test_every_constitutive_lift_edit_is_declared_with_its_reason(product):
     edits = product.CONSTITUTIVE_LIFT_EDITS
-    assert len(edits) == 8
+    # Ten: the two resolved SCALE arms of the chunk forms (the dsigw lattice and MEEP's
+    # start of H) join the eight pointer, store and decode edits.
+    assert len(edits) == 10
     for edit in edits:
         assert set(edit) == {"line", "became", "why"}
         assert edit["why"].strip()
     # NO ARITHMETIC IN THE TABLE. Every entry is a pointer spelling, a resolved
     # constexpr branch, a store that moves, or the decode. An edit that touched an
-    # operand would be a transcription wearing a lift's name.
+    # operand would be a transcription wearing a lift's name: the form call
+    # (forms.constitutive_form) is named only where its destination moves, with its
+    # arguments elided, and no edit spells the accumulation itself.
     joined = " ".join(edit["line"] + edit["became"] for edit in edits)
-    for arithmetic in ("_mul_coefficient_left(kp", "a_re + t_re", "a_re - t_re"):
+    for arithmetic in ("kp_0 *", "km_0 *", "a_re +", "a_re -", "(kps", "(kms"):
         assert arithmetic not in joined
 
 
@@ -380,19 +381,24 @@ def test_the_welded_curl_reads_no_magnetic_pointer(product):
     assert tail.count("_h_tap_complex(") == 6
 
 
-def test_the_bloch_rotation_is_left_standing_and_is_outside_the_recompute(product):
-    """The phase is applied to the LOADED register, on the wrapped lane only.
+def test_the_bloch_connection_is_left_standing_and_is_outside_the_recompute(product):
+    """MEEP's not-owned word is formed on the UNSHIFTED register, on plane 0 only.
 
-    A weld that rotated inside the recompute would rotate every unwrapped lane too,
-    which is a smooth wrong answer rather than an error.
+    The certified complex curl connects the own-cell partners on plane 0 of each
+    partner's axis (``complex_fields._connect``: six calls, each selected onto plane 0 of
+    both parts). A weld that connected inside the recompute would connect every tap
+    of every plane, which is a smooth wrong answer rather than an error.
     """
     curl = product.lifted_curl_tail()
-    assert curl.count("_rotate_field_left(") == 6
-    assert curl.count("tl.where(w") == 12
+    assert curl.count("_connect(") == 6
+    assert curl.count("= tl.where(at_x, r_") == 4
+    assert curl.count("= tl.where(at_y, r_") == 4
+    assert curl.count("= tl.where(at_z, r_") == 4
     tap = product.function_source("_h_tap_complex", pathlib.Path(product.__file__))
     cell = product.function_source("_h_cell_complex", pathlib.Path(product.__file__))
-    assert "_rotate_field_left" not in tap
-    assert "_rotate_field_left" not in cell
+    for helper in ("_connect", "_rotate_field_left"):
+        assert helper not in tap
+        assert helper not in cell
 
 
 def test_the_tap_serves_an_exact_zero_where_the_certified_load_masked_off(product):
@@ -405,11 +411,13 @@ def test_the_tap_serves_an_exact_zero_where_the_certified_load_masked_off(produc
 # The arithmetic facts, as properties of the shipped text
 # ---------------------------------------------------------------------------
 
-def test_this_kernel_reaches_only_the_three_certified_multiply_helpers(product):
-    """The pattern set is a claim about the text, so the text is scanned.
+def test_this_kernel_reaches_only_the_certified_connection_helper(product):
+    """The helper set is a claim about the text, so the text is scanned.
 
-    A fourth orientation would need its own probe pattern; a kernel that grew one
-    silently would be licensed by an artifact that never measured it.
+    Every product on complex storage is formed part by part on real words (the
+    array path's per-part forms); the one helper left is the connection that forms
+    MEEP's not-owned word on plane 0. A kernel that grew a complex multiply again
+    would be a product nothing in the per-part contract measured.
     """
     called = set()
     for name in product.DEVICE_FUNCTIONS:
@@ -420,20 +428,24 @@ def test_this_kernel_reaches_only_the_three_certified_multiply_helpers(product):
                 continue
             leaf = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
             if leaf and (leaf.startswith("_mul_") or leaf.startswith("_rotate_")
-                         or leaf.startswith("_div_")):
+                         or leaf.startswith("_div_") or leaf == "_connect"):
                 called.add(leaf)
-    # EQUALITY IN BOTH DIRECTIONS: a fourth helper fails here, and so does a
+    # EQUALITY IN BOTH DIRECTIONS: a second helper fails here, and so does a
     # declaration that names a helper the kernel stopped reaching.
     assert called == set(product.MULTIPLY_HELPERS)
-    assert called == {"_rotate_field_left", "_mul_field_left",
-                      "_mul_coefficient_left"}
+    assert called == {"_connect"}
 
 
-def test_the_constitutive_half_launches_only_the_coefficient_left_product(product):
-    """The ``SCALE`` arm that would bring ``inv_eps`` in belongs to the E side."""
+def test_the_constitutive_half_launches_the_real_form_on_each_part(product):
+    """The ``SCALE`` arm that would bring ``inv_eps`` in belongs to the E side.
+
+    Each part takes the root's ``constitutive_form`` on real words, keyed on one
+    dsigw flag per component, so the half reaches no complex multiply at all.
+    """
     cell = product.function_source("_h_cell_complex", pathlib.Path(product.__file__))
-    assert "_mul_coefficient_left(" in cell
-    assert "_mul_field_left(" not in cell
+    assert cell.count("constitutive_form(a_re,") == 3
+    assert cell.count("constitutive_form(a_im,") == 3
+    assert "_mul_" not in cell and "_connect" not in cell
     assert "inv_eps" not in cell and "SCALE" not in cell
 
 
@@ -451,9 +463,10 @@ def test_the_divide_free_count_bites_on_a_planted_divide(product, tmp_path):
     """THE NULL CONTROL. A zero nobody has shown can move is worth nothing."""
     source = pathlib.Path(product.__file__).read_text(encoding="utf-8")
     planted = tmp_path / "planted.py"
+    line = "        km_z = tl.load(kmz + k, mask=live, other=0.0)\n"
+    assert source.count(line) == 1   # the curl half's dsigu coefficient
     planted.write_text(
-        source.replace("v0_re, v0_im = _mul_field_left(r_re, r_im, si_z, EXPANSION)",
-                       "v0_re, v0_im = (r_re / si_z, r_im / si_z)", 1),
+        source.replace(line, line + "        km_z = (km_z / si_z) / si_z\n", 1),
         encoding="utf-8")
     evidence = product.divide_free_evidence(planted)
     assert evidence["divide_free"] is False
@@ -506,12 +519,28 @@ def test_an_undeclared_source_list_is_a_refusal_not_an_empty_set(product):
     assert any("source set was not declared" in reason for reason in reasons), reasons
 
 
-def test_a_standing_integrated_electric_withdraw_is_refused_by_name(product):
+def test_a_foreign_standing_withdraw_is_refused_by_name(product):
     fields, pml = build()
     reasons = _reasons(
-        product.complex_fused_hd_pair_coverage(fields, pml, (_Electric(),)))
+        product.complex_fused_hd_pair_coverage(fields, pml, (_ForeignElectric(),)))
     assert any("standing integrated" in reason and "3313-3314" in reason
                for reason in reasons), reasons
+
+
+def test_an_integrated_electric_source_stands_no_withdraw_in_the_seam(product):
+    """An engine integrated source enters at the constitutive update through
+    ``f_minus_p`` (``sources.f_minus_p_begin``), so nothing stands between the two
+    consults this product spans and the predicate has no withdraw to refuse."""
+    from .sources import ContinuousEnvelope, VolumeSource
+
+    fields, pml = build()
+    source = VolumeSource(grid=fields.grid, component="Ez", center=(0.0, 0.0, 0.0),
+                          size=(0.0, 0.0, 0.0),
+                          envelope=ContinuousEnvelope(frequency=1.0, is_integrated=True))
+    assert source.is_integrated and not hasattr(source, "withdraw")
+    reasons = _reasons(product.complex_fused_hd_pair_coverage(fields, pml, (source,)))
+    assert not any("standing integrated" in reason or "withdraw" in reason
+                   for reason in reasons), reasons
 
 
 def test_a_non_integrated_electric_source_is_not_this_seams_business(product):
@@ -547,16 +576,6 @@ def test_real_storage_is_refused_by_the_two_complex_halves(product):
     reasons = product.complex_fused_hd_pair_coverage(fields, pml, ()).reasons
     assert any(reason.startswith("complex constitutive half:") for reason in reasons)
     assert any(reason.startswith("complex curl half:") for reason in reasons)
-
-
-def test_the_expansion_probe_clause_is_inherited_rather_than_restated(product):
-    """An absent probe is a REFUSAL, and it arrives from the halves' own predicates."""
-    fields, pml = build()
-    reasons = product.complex_fused_hd_pair_coverage(fields, pml, ()).reasons
-    probe = [reason for reason in reasons if "expansion probe artifact" in reason]
-    assert len(probe) == 2, probe
-    assert probe[0].startswith("complex constitutive half:")
-    assert probe[1].startswith("complex curl half:")
 
 
 def test_a_missing_rotating_volume_is_refused_by_name(product):

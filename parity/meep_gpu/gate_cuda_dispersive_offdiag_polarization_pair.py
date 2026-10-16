@@ -8,9 +8,10 @@ with the host rotation between.
 
 THE CELL IT TAKES, AND THE REFUSAL IT ANSWERS. ``E_to_P
 (cuda_dispersive_offdiag/dispersive off-diagonal, cuda_ade/ADE)`` is one seam-instance
--- ``examples/absorbed_power_density.py`` -- and it is the only ``E_to_P`` cell the
-hand-CUDA board prices POINTWISE-BUILDABLE and serves with nothing. The shipped
-sibling refuses it by name, and refuses the PER-COMPONENT SPLIT specifically:
+-- ``examples/absorbed_power_density.py`` -- the cell this weld was built for. (Since
+1.0 the composer refuses that row's update_E arm, and the weld with it, by the chunk
+clause below: its x axis wraps and carries a layer on both faces.) The shipped
+sibling refuses the cell by name, and refuses the PER-COMPONENT SPLIT specifically:
 
     "Split per component, launch y would read ``P[x]`` AFTER launch x's rotation
      moved the advanced buffer into that slot -- the driver order reads the OLD one,
@@ -35,6 +36,27 @@ seam's own claim rather than a formality: reading the drive back out of
 ``f_w_<c>`` instead of taking the ``src`` register must be the IDENTITY, because a
 float32 word stored to global and reloaded is the identity on the bits. That leg is
 what makes the register hand-off a measurement instead of an argument.
+
+A must-catch mutation that CANNOT differ on one fixture's grid -- the stored-E drive on
+a grid where no chunk carries the fused component's own layer -- is declared a
+structural null on that arm by the array path's region plan (``STRUCTURAL_NULLS``),
+run, and required identical; every other arm must still catch it, and a fixture that
+carries the layer is in the sweep for each fused component.
+
+THE DOMAIN: EVERY FIXTURE IS A DIVISION THE COMPOSER CAN HAND THIS WELD. The weld's
+update_E half indexes MEEP's chunks on every axis through the chunk record, so its
+predicate ends on the composer's own clause
+(``arms.StepContext.chunk_division_refusal(CHUNK_AXES_OFFDIAG)``, the clause the
+composer asks of the ``dispersive off-diagonal`` arm and of this product), and the
+composer installs the weld only over the two arms it selected. On an axis that wraps
+AND carries a layer the record's run labels do not name the chunk intervals (on x the
+wrapped row 0 joins the low run while its chunk is the high one, as on
+absorbed_power_density's x), so dispatch never hands the weld such a division and a
+fixture there certifies nothing dispatch can reach. Every axis that carries a layer is
+therefore walled; a wrapping axis is in the sweep only without a layer (``bare``),
+which is how the fold's periodic termination stays swept
+(``periodic_terminated_fold_three_d``); and ``leg_refusal`` measures the weld refusing
+the corpus row's wrapping division with the composer's own reason.
 
 WHAT IT DOES NOT CLAIM. No throughput claim (the box is shared and nothing here is
 timed) and no dispatch claim (``fastpath.plan_fast_path`` still returns ``None`` on
@@ -101,34 +123,62 @@ GUARD_OPTIONS: Tuple[str, ...] = ("--fmad=false",)
 #: pass for a step, and the error would only surface through the next update_E.
 POLARIZATION_SLOTS: Tuple[str, ...] = ("P", "P_prev")
 
+#: The corpus row's own boundaries: every axis wraps, and every axis the gate's layer
+#: rule resolves carries a layer. The composer refuses this division (the module
+#: docstring's DOMAIN); ``leg_refusal`` measures the weld refusing it by the same text.
+WRAPPING: Optional[Dict[str, str]] = None
+
+#: Every layered axis walled. On a 2-D grid z is one cell and carries no layer, so it
+#: keeps the wrap it had; the record names its one chunk.
+WALLED_2D: Dict[str, str] = {"x": "metallic", "y": "metallic"}
+WALLED_3D: Dict[str, str] = {"x": "metallic", "y": "metallic", "z": "metallic"}
+
 #: The fixture sweep. Every one folds (the constitutive arm requires it), and the
 #: axes swept are the ones that change what the WELD does: the row mask, the number
 #: of driving states, the sigma kind, which component the fused launch carries, and
-#: the fold's parity and termination.
+#: the fold's parity and termination. Every one is a division the composer can hand
+#: the weld (the module docstring's DOMAIN): a layered axis is walled, and a wrapping
+#: axis carries no layer (``bare``, the axes the layer rule in :func:`frame` skips).
 SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "one_state_all_components", "cell": (1.6, 2.0, 0.0), "dimensions": 2,
-     "symmetry": (("Y", 1),), "boundaries": None,
+     "symmetry": (("Y", 1),), "boundaries": WALLED_2D,
      "rows": {"Ex": ("Ey",), "Ey": ("Ex",)}, "states": 1,
      "driven": ("Ex", "Ey", "Ez"), "sigma_volume": False},
     {"label": "one_state_all_rows_odd_fold", "cell": (1.6, 2.0, 0.0),
-     "dimensions": 2, "symmetry": (("Y", -1),), "boundaries": None, "rows": "all",
+     "dimensions": 2, "symmetry": (("Y", -1),), "boundaries": WALLED_2D, "rows": "all",
      "states": 1, "driven": ("Ex", "Ey", "Ez"), "sigma_volume": False},
     {"label": "one_state_volume_sigma", "cell": (1.6, 2.0, 0.0), "dimensions": 2,
-     "symmetry": (("Y", 1),), "boundaries": None, "rows": "all", "states": 1,
+     "symmetry": (("Y", 1),), "boundaries": WALLED_2D, "rows": "all", "states": 1,
      "driven": ("Ex", "Ey", "Ez"), "sigma_volume": True},
     {"label": "two_states_mixed_sigma", "cell": (1.6, 2.0, 0.0), "dimensions": 2,
-     "symmetry": (("Y", 1),), "boundaries": None, "rows": "all", "states": 2,
+     "symmetry": (("Y", 1),), "boundaries": WALLED_2D, "rows": "all", "states": 2,
      "driven": ("Ex", "Ey", "Ez"), "sigma_volume": "mixed"},
     {"label": "one_state_one_component", "cell": (1.6, 2.0, 0.0), "dimensions": 2,
-     "symmetry": (("Y", 1),), "boundaries": None, "rows": "all", "states": 1,
+     "symmetry": (("Y", 1),), "boundaries": WALLED_2D, "rows": "all", "states": 1,
      "driven": ("Ez",), "sigma_volume": False},
+    # The fold terminated by a metallic wall at its far face, with the layer there; x is
+    # walled too now, so this fixture's boundaries are the walled default.
     {"label": "metallic_terminated_fold", "cell": (1.6, 2.0, 0.0), "dimensions": 2,
-     "symmetry": (("Y", 1),), "boundaries": ("periodic", "metallic", "periodic"),
+     "symmetry": (("Y", 1),), "boundaries": ("metallic", "metallic", "periodic"),
      "rows": "all", "states": 1, "driven": ("Ex", "Ey", "Ez"),
      "sigma_volume": False},
     {"label": "three_d_fold", "cell": (1.2, 2.0, 1.2), "dimensions": 3,
-     "symmetry": (("Y", 1),), "boundaries": None, "rows": "all", "states": 1,
+     "symmetry": (("Y", 1),), "boundaries": WALLED_3D, "rows": "all", "states": 1,
      "driven": ("Ex", "Ey", "Ez"), "sigma_volume": False},
+    # The single-component weld ON A GRID THAT CARRIES ITS LAYER: a 2-D grid has no z
+    # layer, so ``one_state_one_component``'s Ez launch stores the drive everywhere and
+    # the stored-E mutation is a structural null there; here it must be caught.
+    {"label": "one_state_one_component_three_d", "cell": (1.2, 2.0, 1.2),
+     "dimensions": 3, "symmetry": (("Y", 1),), "boundaries": WALLED_3D, "rows": "all",
+     "states": 1, "driven": ("Ez",), "sigma_volume": False},
+    # THE FOLD'S PERIODIC TERMINATION, inside the domain: the folded y and the
+    # non-folded z wrap and carry no layer, so the record names their chunks and the
+    # kernel's periodic boundary code runs on both; x keeps the layer the fused Ex
+    # needs for the stored-E mutation's arm.
+    {"label": "periodic_terminated_fold_three_d", "cell": (1.2, 2.0, 1.2),
+     "dimensions": 3, "symmetry": (("Y", 1),), "boundaries": {"x": "metallic"},
+     "bare": ("y", "z"), "rows": "all", "states": 1, "driven": ("Ex", "Ey", "Ez"),
+     "sigma_volume": False},
 )
 
 REDUCED_LABELS: Tuple[str, ...] = (
@@ -143,25 +193,57 @@ def case_rng(label: str) -> np.random.Generator:
     return np.random.default_rng(SEED + int.from_bytes(digest[:4], "big"))
 
 
-def build(spec: Dict[str, Any], value_class: str, rng):
-    """A frozen ``(fields, grid, pml)`` on the DEVICE, seeded for this class."""
-    from meep_gpu.dispersion import PolarizationState, Susceptibility  # noqa: PLC0415
+def frame(spec: Dict[str, Any], xp) -> Tuple[Any, Any, Any]:
+    """The fixture's ``(fields, grid, pml)`` before any value is written, on ``xp``.
+
+    One geometry for the device build and for the host-side reading of which chunks
+    carry which layer (``own_layer_absent``). Every axis of six cells or more carries a
+    layer (on the far face only where it folds) unless the spec names it ``bare``.
+    """
     from meep_gpu.fields import Fields  # noqa: PLC0415
     from meep_gpu.grid import Grid, Mirror  # noqa: PLC0415
     from meep_gpu.pml import PML  # noqa: PLC0415
 
     grid = Grid(resolution=10.0, cell_size=spec["cell"],
-                dimensions=spec["dimensions"], courant=0.35, xp=cp,
+                dimensions=spec["dimensions"], courant=0.35, xp=xp,
                 boundaries=spec["boundaries"],
                 symmetry=tuple(Mirror(axis, phase)
                                for axis, phase in spec["symmetry"]))
-    thickness = tuple((0, 0) if grid.shape[axis] < 6
+    bare = tuple("xyz".index(name) for name in spec.get("bare", ()))
+    thickness = tuple((0, 0) if grid.shape[axis] < 6 or axis in bare
                       else (0, 2) if grid.is_mirrored(axis)
                       else (2, 2) for axis in range(3))
     pml = PML(grid=grid, thickness=thickness)
     fields = Fields(grid=grid)
     fields.enable_field_storage()
     fields.enable_pml_storage()
+    return fields, grid, pml
+
+
+def own_layer_absent(fields, pml, component: str) -> Optional[str]:
+    """Why the stored ``component`` IS the drive on every cell of this grid, or None.
+
+    ``update_E`` stores ``(D - P) * chi1inv`` -- the drive, MEEP's plain constitutive
+    (update_eh.cpp:162-170) -- on every cell except those whose chunk carries the
+    component's OWN-axis layer, where it stores the accumulation and keeps the drive in
+    ``f_w_<c>``. When the array path's region plan marks no cell for that form, reading
+    the stored E back is the identity on the bits, so a mutation that drives the
+    recurrence from it cannot differ on this grid: a STRUCTURAL null (KERNELS.md
+    section 7.1), declared by the plan, never by the fixture's label.
+    """
+    plan = stepping._region_plan(fields, pml)  # noqa: SLF001 - the array path's own plan
+    if bool(np.asarray(plan.mask("constitutive", component, np)).any()):
+        return None
+    return (f"no chunk of this grid carries {component}'s own layer (the array path's "
+            f"region plan marks no constitutive cell for it), so the stored "
+            f"{component} is the drive on every cell")
+
+
+def build(spec: Dict[str, Any], value_class: str, rng):
+    """A frozen ``(fields, grid, pml)`` on the DEVICE, seeded for this class."""
+    from meep_gpu.dispersion import PolarizationState, Susceptibility  # noqa: PLC0415
+
+    fields, grid, pml = frame(spec, cp)
     shape = tuple(int(n) for n in grid.shape)
     names = ("Ex", "Ey", "Ez")
     values = (2.0, 2.5, 3.0)
@@ -319,6 +401,25 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, *,
     final = frozen(subject)
     must_move = (list(seeded) if value_class == "uniform"
                  else list(stencil.BAND_MUST_MOVE))
+    # AN AUXILIARY WHOSE FORM NO CHUNK OF THIS GRID CARRIES DOES NOT MOVE, BY CONTRACT:
+    # MEEP writes f_w only on the cells whose chunk carries the component's own layer
+    # and fu only on those that carry its dsigu layer, and on these 2-D fixtures no
+    # chunk carries a z layer. Read off the array path's own region plan, and
+    # recorded rather than dropped silently.
+    plan = getattr(reference, "region_plan", None)
+
+    def form_absent(name: str) -> bool:
+        if plan is None or not name.startswith(("f_w_", "fu_")):
+            return False
+        sub_step, component = (("constitutive", name[4:]) if name.startswith("f_w_")
+                               else ("curl", name[3:]))
+        try:
+            return not bool(np.asarray(plan.mask(sub_step, component, np)).any())
+        except Exception:  # noqa: BLE001 - an unreadable plan exempts nothing
+            return False
+
+    exempt = sorted(name for name in must_move if form_absent(name))
+    must_move = [name for name in must_move if name not in exempt]
     unmoved = sorted(name for name in must_move
                      if name in seeded and not differing(seeded[name], final[name]))
     expected_fused = len(reports)
@@ -345,6 +446,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, *,
         "read_only_drift": stencil.read_only_drift(read_only, subject, pml_s),
         "operand_census": census,
         "unmoved_volumes": unmoved,
+        "exempt_from_the_movement_floor": exempt,
         "non_vacuous": not unmoved,
         "rotated": bool(rotate),
     }
@@ -360,29 +462,41 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Callable[[str], str], str, str], ...] = (
      lambda s, target: stencil.needle(
          s, f"    float w = src_{target};", f"    float w = {target}[idx];"),
      "CAUGHT",
-     "the recurrence driven by the stored E instead of f_w_<c>. Under an active "
-     "layer fields.drive_field returns f_w_<c> (fields.py:1140-1163) and the stored "
-     "E is the OTHER arm's answer -- a value that exists, is the right shape, and is "
-     "not what update_P consumes"),
+     "the recurrence driven by the stored E on every cell. On the chunks that carry "
+     "the component's layer fields.drive_field returns f_w_<c> (MEEP's w per chunk) "
+     "and the stored E there is the accumulated field -- a value that exists, is the "
+     "right shape, and is not what update_P consumes. Where no chunk carries that "
+     "layer the stored E IS the drive, so the arm is a declared structural null "
+     "(STRUCTURAL_NULLS), run and required identical"),
     ("drive_read_back_from_the_volume",
      lambda s, target: stencil.needle(
-         s, f"    float w = src_{target};", f"    float w = f_w_{target}[idx];"),
+         s, f"    float w = src_{target};",
+         f"    float w = in_h_{target[1].lower()} ? f_w_{target}[idx] : {target}[idx];"),
      "NULL CONFIRMED",
-     "THE SEAM'S OWN CLAIM, ARMED AS A NULL. constitutive_apply stored fw[idx] = src "
-     "one line earlier, and a float32 word stored to global and reloaded is the "
-     "identity on the bits -- so reading it back must give exactly the register. If "
-     "this ever came back CAUGHT the register hand-off would be an approximation and "
-     "the whole weld would be unsound"),
+     "THE SEAM'S OWN CLAIM, ARMED AS A NULL. constitutive_apply stored src one line "
+     "earlier -- into fw[idx] on the cells whose chunk carries the layer, into f[idx] "
+     "elsewhere -- and reading MEEP's per-chunk drive back from those two arrays must "
+     "give exactly the register, because a float32 word stored to global and "
+     "reloaded is the identity on the bits. If this ever came back CAUGHT the "
+     "register hand-off would be an approximation and the whole weld would be "
+     "unsound"),
+    ("drive_read_back_from_f_w_on_every_cell",
+     lambda s, target: stencil.needle(
+         s, f"    float w = src_{target};", f"    float w = f_w_{target}[idx];"),
+     "CAUGHT",
+     "the 0.9.2 drive: f_w_<c> read on every cell. Off the layer's chunks the plain "
+     "form leaves f_w untouched, so it is not this step's word -- the partner that "
+     "makes the read-back null above a measurement"),
     ("recurrence_coefficients_swapped",
      lambda s, target: stencil.needle(
-         s, "((p_0 * c_now_0) + (c_prev_0 * q_0))",
-         "((p_0 * c_prev_0) + (c_now_0 * q_0))"),
+         s, "((p_0 * two_minus_od_0) - (gamma1_0 * q_0))",
+         "((p_0 * gamma1_0) - (two_minus_od_0 * q_0))"),
      "CAUGHT",
-     "P^n and P^(n-1) weighted by each other's coefficient -- a second-order "
+     "P^n and P^(n-1) weighted by each other's constant -- a second-order "
      "recurrence that still converges, to the wrong thing"),
     ("recurrence_history_dropped",
      lambda s, target: stencil.needle(
-         s, "((p_0 * c_now_0) + (c_prev_0 * q_0))", "(p_0 * c_now_0)"),
+         s, "((p_0 * two_minus_od_0) - (gamma1_0 * q_0))", "(p_0 * two_minus_od_0)"),
      "CAUGHT",
      "the P^(n-1) term removed: a second-order recurrence turned first-order, which "
      "is the defect the certified ADE prologue names in its own comment"),
@@ -394,6 +508,15 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Callable[[str], str], str, str], ...] = (
      "D - sum P, which is the coupling between the two halves this weld exists to "
      "carry in one launch"),
 )
+
+#: Per-fixture STRUCTURAL NULLS of a source mutation (KERNELS.md section 7.1): name -> a
+#: predicate ``(fields, pml, target)`` giving the reason an arm cannot differ on that
+#: fixture's grid, or None. Declared by structure, never by label. A declared arm still
+#: RUNS and must come back identical; one that diverges fails the scoreboard, and the
+#: remaining arms must score the mutation's expected outcome on their own.
+STRUCTURAL_NULLS: Dict[str, Callable[[Any, Any, str], Optional[str]]] = {
+    "drive_from_the_stored_E": own_layer_absent,
+}
 
 HOST_MUTATIONS: Tuple[Tuple[str, Dict[str, Any], str, str], ...] = (
     ("rotation_skipped", {"rotate": False}, "CAUGHT",
@@ -409,6 +532,26 @@ HOST_MUTATIONS: Tuple[Tuple[str, Dict[str, Any], str, str], ...] = (
 )
 
 
+def score_source_arms(arms: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """One source mutation's outcome over its arms.
+
+    An arm whose anchor is absent (``predicted_null``) did not run; a DECLARED structural
+    null ran and must be identical, and is scored apart from the armed arms; every other
+    arm is armed. A declared null that diverged decides the outcome by itself, so a
+    wrong declaration cannot hide behind the arms that caught.
+    """
+    armed = [arm for arm in arms if "caught" in arm and "declared_null" not in arm]
+    nulls = [arm for arm in arms if "declared_null" in arm]
+    diverged = [arm["spec"] for arm in nulls if arm["caught"]]
+    outcome = ("DECLARED NULL DIVERGED" if diverged
+               else "NOT ARMED" if not armed
+               else "NULL CONFIRMED" if not any(arm["caught"] for arm in armed)
+               else "CAUGHT" if all(arm["caught"] for arm in armed) else "PARTIAL")
+    return {"outcome": outcome, "armed": len(armed),
+            "declared_nulls": [arm["spec"] for arm in nulls],
+            "declared_nulls_diverged": diverged}
+
+
 def leg_mutations(specs: Sequence[Dict[str, Any]], steps: int) -> Dict[str, Any]:
     from meep_gpu.cuda_kernels import (  # noqa: PLC0415
         dispersive_offdiag_fused_polarization_pair as weld,
@@ -421,7 +564,7 @@ def leg_mutations(specs: Sequence[Dict[str, Any]], steps: int) -> Dict[str, Any]
     for name, rewrite, expected, why in SOURCE_MUTATIONS:
         arms: List[Dict[str, Any]] = []
         for spec in specs:
-            fields, _grid, _pml = build(spec, "uniform", case_rng(spec["label"]))
+            fields, _grid, pml = build(spec, "uniform", case_rng(spec["label"]))
             target = weld.fused_component(fields)
             states = list(weld._polar.component_specs(  # noqa: SLF001
                 fields)[target]["states"])
@@ -431,6 +574,8 @@ def leg_mutations(specs: Sequence[Dict[str, Any]], steps: int) -> Dict[str, Any]
             mask = offdiag_row_mask(fields)
             counts = weld.pole_counts(fields)
             source = weld.kernel_source(mask, counts, index, kinds)
+            structural = STRUCTURAL_NULLS.get(name)
+            null_reason = structural(fields, pml, target) if structural else None
             try:
                 mutated = rewrite(source, target)
             except SystemExit as exc:
@@ -441,16 +586,18 @@ def leg_mutations(specs: Sequence[Dict[str, Any]], steps: int) -> Dict[str, Any]
             kernel = cp.RawKernel(mutated, weld.KERNEL_NAME, options=GUARD_OPTIONS)
             record = run_case(spec, "uniform", steps=min(steps, 8), kernel=kernel,
                               label_suffix=f"/M:{name}")
-            arms.append({"spec": spec["label"],
-                         "caught": not record["bit_identical"],
-                         "first_divergence": record["first_divergence"]})
-        armed = [arm for arm in arms if "caught" in arm]
-        outcome = ("NOT ARMED" if not armed
-                   else "NULL CONFIRMED" if not any(a["caught"] for a in armed)
-                   else "CAUGHT" if all(a["caught"] for a in armed) else "PARTIAL")
-        scoreboard[name] = {"why": why, "expected": expected, "outcome": outcome,
-                            "arms": arms, "as_required": outcome == expected}
-        log(f"[mutation] {name:34s} {outcome:14s} ({len(armed)} armed)")
+            arm = {"spec": spec["label"], "target": target,
+                   "caught": not record["bit_identical"],
+                   "first_divergence": record["first_divergence"]}
+            if null_reason is not None:
+                arm["declared_null"] = null_reason
+            arms.append(arm)
+        score = score_source_arms(arms)
+        scoreboard[name] = {"why": why, "expected": expected, **score, "arms": arms,
+                            "as_required": score["outcome"] == expected}
+        log(f"[mutation] {name:34s} {score['outcome']:14s} ({score['armed']} armed, "
+            f"{len(score['declared_nulls'])} declared null, "
+            f"{len(score['declared_nulls_diverged'])} diverged)")
 
     for name, kwargs, expected, why in HOST_MUTATIONS:
         arms = []
@@ -502,10 +649,10 @@ def leg_lift() -> Dict[str, Any]:
         "pole_bound_exactly_once": signature.count("P_Ex_0") == 1,
         "p_now_is_not_a_parameter": "p_now" not in code,
         "the_recurrence_is_the_certified_line": (
-            "p_out_0[idx] = ((p_0 * c_now_0) + (c_prev_0 * q_0)) + "
-            "(c_drive_0 * (s_0 * w));") in source,
+            "p_out_0[idx] = gamma1inv_0 * (((p_0 * two_minus_od_0) - "
+            "(gamma1_0 * q_0)) + (omega0dtsqr_0 * (s_0 * w)));") in source,
         "the_drive_is_the_register": "    float w = src_Ex;" in source
-        and "float w = drive[idx];" not in source,
+        and "drive_w[idx]" not in source,
         "the_entry_point_is_its_own": weld.KERNEL_NAME != offdiag_e.KERNEL_NAME,
     }
     record["passed"] = (not missing and all(
@@ -520,6 +667,10 @@ def leg_refusal() -> Dict[str, Any]:
         dispersive_offdiag_fused_polarization_pair as weld,
         fused_polarization_pair as diagonal,
     )
+    from meep_gpu.cuda_kernels.arms import StepContext  # noqa: PLC0415
+    from meep_gpu.cuda_kernels.chunk_coverage import (  # noqa: PLC0415
+        CHUNK_AXES_OFFDIAG,
+    )
 
     cases: List[Dict[str, Any]] = []
     base = SPECS[0]
@@ -528,6 +679,22 @@ def leg_refusal() -> Dict[str, Any]:
         fields, pml, grid, ())
     cases.append({"case": "admits its own cell", "covered": covered, "want": True,
                   "reason": why})
+    # THE DIVISION DISPATCH NEVER HANDS IT, measured from both sides: the corpus row's
+    # wrapping axes with their layers, everything else the admitted fixture's. The
+    # composer refuses the update_E arm and this product by the clause it asks of both
+    # (``StepContext.chunk_division_refusal`` with the off-diagonal axes), so the weld
+    # must refuse by exactly that text -- a predicate that admitted here, or refused
+    # for another reason, would certify a domain the composer does not share.
+    wrapping = dict(base, label="refusal_wrapping", boundaries=WRAPPING)
+    w_fields, w_grid, w_pml = build(wrapping, "uniform", case_rng("refusal_wrapping"))
+    covered, why = weld.covers_dispersive_offdiag_fused_polarization_pair(
+        w_fields, w_pml, w_grid, ())
+    composer = StepContext(w_fields, w_pml, w_grid).chunk_division_refusal(
+        CHUNK_AXES_OFFDIAG)
+    cases.append({"case": "refuses the wrapping division with the composer's reason",
+                  "covered": covered, "want": False, "reason": why,
+                  "composer_reason": composer,
+                  "reason_is_the_composer_s": composer is not None and why == composer})
     cases.append({"case": "the DIAGONAL E->P pair refuses the same row",
                   "covered": diagonal.covers_fused_polarization_pair(
                       fields, pml, grid, ())[0], "want": False})
@@ -548,7 +715,8 @@ def leg_refusal() -> Dict[str, Any]:
     cases.append({"case": "refuses a run with nothing driven", "covered": covered,
                   "want": False, "reason": why})
     return {"cases": cases,
-            "passed": all(c["covered"] == c["want"] for c in cases)}
+            "passed": all(c["covered"] == c["want"]
+                          and c.get("reason_is_the_composer_s", True) for c in cases)}
 
 
 def save(results: Dict[str, Any], path: str) -> None:

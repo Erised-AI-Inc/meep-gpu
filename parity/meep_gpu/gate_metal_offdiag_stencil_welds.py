@@ -47,6 +47,13 @@ taken against BOTH references the standing Metal format requires:
                          something a bracket carries. The null is the same
                          configuration with NO source, which must be admitted.
 
+RULING R7: SOFTWARE BINARY64. The four welds' constitutive halves are the singles'
+software-binary64 rows (with their presence words in ``Params``), so every leg runs
+for every family, the Bloch-phased folded complex case included: leg A against the
+array path's double row, legs B and the rotation leg against the certified singles
+(the off-diagonal single, the complex no-PML one included, now selected by
+``plan_step`` on ``update_E``).
+
 ONE SUBNORMAL POLICY, AND THAT IS A PLATFORM FACT RATHER THAN A GAP. The standing
 format asks for both float32 subnormal policies "where the platform has two".
 Metal has one: it flushes denormals natively and exposes no lever (both denormal
@@ -100,6 +107,15 @@ from meep_gpu.metal_kernels import (  # noqa: E402
 from meep_gpu.metal_kernels.device import (  # noqa: E402
     MAX_BUFFER_BINDINGS, Residency, compile_source, metal_frontend_version,
 )
+from gate_chunk_records import layer_record  # noqa: E402
+
+
+def _with_record(builder: Callable[..., Any]) -> Callable[..., Any]:
+    """A plan builder that takes the record of the division the oracle steps with."""
+    def build(fields: Any, pml: Any, **kwargs: Any) -> Any:
+        return builder(fields, pml, chunk_bounds=layer_record(fields.grid, pml),
+                       **kwargs)
+    return build
 
 #: An ODD budget, for the reason the residue gate records: a period-2 mode is
 #: byte-equal to its seed after any even number of steps, and the
@@ -236,14 +252,12 @@ def _complex_no_pml_source(plan: Any, mode: str) -> str:
     kinds = stepping._boundary_kinds(grid, None)
     phased, _values = _complex.phase_arguments(
         _complex.bloch_phase_table(grid, kinds), backward=True)
-    expansion = _complex.expansion_from_probe(_complex.load_expansion_probe())
     return complex_no_pml_pair.complex_no_pml_offdiag_fused_electric_pair_source(
-        plan.row_mask, plan.codes, plan.zero_metal, phased, expansion, mode)
+        plan.row_mask, plan.codes, plan.zero_metal, phased, mode)
 
 
 def _folded_complex_source(plan: Any, mode: str) -> str:
     from meep_gpu.metal_kernels import complex_fields as _complex  # noqa: PLC0415
-    from meep_gpu.metal_kernels import folded_complex as _fc  # noqa: PLC0415
     from meep_gpu.metal_kernels import (  # noqa: PLC0415
         folded_offdiag_update_e as _fod)
     grid = plan.fields.grid
@@ -253,11 +267,10 @@ def _folded_complex_source(plan: Any, mode: str) -> str:
         _complex.bloch_phase_table(grid, kinds), backward=True)
     negate = _fod.negated_axes(plan.codes, _fod.mirror_ghost_weights(grid))
     folded_axes, far_axes, _reflect = folded_pair.folded_axis_tables(grid)
-    expansion = _fc.expansion_from_probe(_fc.load_expansion_probe())
     return (folded_complex_pair
             .folded_complex_offdiag_fused_electric_pair_source(
                 plan.row_mask, plan.codes, plan.zero_metal, phased, negate,
-                folded_axes, far_axes, expansion, mode))
+                folded_axes, far_axes, mode))
 
 
 #: THE MUTATIONS EVERY FAMILY CARRIES, spelled against text the shared builder
@@ -274,9 +287,8 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         "name": "offdiag_fused_electric_pair",
         "label": "off-diagonal fused electric D/E pair",
         "module": plain_pair,
-        "plan": plain_pair.plan_metal_offdiag_fused_electric_pair,
+        "plan": _with_record(plain_pair.plan_metal_offdiag_fused_electric_pair),
         "coverage": plain_pair.metal_offdiag_fused_electric_pair_coverage,
-        "takes_probe": False,
         "cases": (
             ("pml_periodic_one_row", lambda: matrix.cart(rows={"Ex": ("Ey",)})),
             ("pml_walled_one_row", lambda: matrix.cart(
@@ -302,6 +314,11 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
              "    float dfin0 = d0s[ii] + 0.0f * d_final_0("),
             ("split_field_scratch_store_dropped",
              "    n0s[ii] = own.n0; n1s[ii] = own.n1; n2s[ii] = own.n2;\n", ""),
+            # The auxiliary contract (KERNELS.md §1, C2), as the weld carries it: off
+            # the recurrence's cells the rotating fu scratch must hold the
+            # pre-launch word. Dropping the carry stores the dsig-only value there.
+            ("auxiliary_carry_dropped_on_component_0",
+             "n0 = du0 ? n0 : u0[ii];", "n0 = n0;", -1),
             ("wall_clear_dropped_on_component_0",
              "    value = ((j == 0) || (k == 0)) ? 0.0f : value;", ""),
             ("curl_pack_offset_x_reads_the_y_vector",
@@ -328,10 +345,9 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         "name": "folded_offdiag_fused_electric_pair",
         "label": "folded off-diagonal fused electric D/E pair",
         "module": folded_pair,
-        "plan": folded_pair.plan_metal_folded_offdiag_fused_electric_pair,
+        "plan": _with_record(folded_pair.plan_metal_folded_offdiag_fused_electric_pair),
         "coverage":
             folded_pair.metal_folded_offdiag_fused_electric_pair_coverage,
-        "takes_probe": False,
         "cases": (
             ("fold_y_even", lambda: matrix.folded(rows={"Ex": ("Ey",)})),
             ("fold_y_odd", lambda: matrix.folded(phase=-1,
@@ -367,6 +383,11 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
              -1),
             ("split_field_scratch_store_dropped",
              "    n0s[ii] = own.n0; n1s[ii] = own.n1; n2s[ii] = own.n2;\n", ""),
+            # The auxiliary contract (KERNELS.md §1, C2), as the weld carries it: off
+            # the recurrence's cells the rotating fu scratch must hold the
+            # pre-launch word. Dropping the carry stores the dsig-only value there.
+            ("auxiliary_carry_dropped_on_component_0",
+             "n0 = du0 ? n0 : u0[ii];", "n0 = n0;", -1),
             # ON A FIXTURE WHERE THE TWO VECTORS DIFFER. A two-axis fold gives x
             # and y the same extent AND the same one-sided absorber, so `kmx` and
             # `kmy` are the same words there and the swap is a MEASURED no-op —
@@ -394,11 +415,11 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         "name": "complex_no_pml_offdiag_fused_electric_pair",
         "label": "complex no-PML off-diagonal fused electric D/E pair",
         "module": complex_no_pml_pair,
-        "plan": (complex_no_pml_pair
-                 .plan_metal_complex_no_pml_offdiag_fused_electric_pair),
+        "plan": _with_record(complex_no_pml_pair
+                             .plan_metal_complex_no_pml_offdiag_fused_electric_pair),
+
         "coverage": (complex_no_pml_pair
                      .metal_complex_no_pml_offdiag_fused_electric_pair_coverage),
-        "takes_probe": "complex_probe",
         "cases": (
             ("bloch_offdiag", matrix.complex_lossless_offdiag_no_pml),
             ("walled_offdiag", lambda: matrix.cart(
@@ -414,7 +435,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
              ", nxi, nyi, nzi, pf0, pf1, pf2, g0, g1, g2, dtdx",
              ", nxi, nyi, nzi, d0s, d1s, d2s, g0, g1, g2, dtdx", -1),
             ("curl_bloch_phase_dropped",
-             "      b_x = wx ? c_mul(b_x, px) : b_x;", ""),
+             "        b_dx = c_mul(b, px);\n", ""),
             ("inverse_epsilon_on_the_wrong_component",
              "c_mul_field_left(dfin1, e1[ii])",
              "c_mul_field_left(dfin1, e0[ii])"),
@@ -433,7 +454,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         "shipped": lambda: (
             complex_no_pml_pair
             .complex_no_pml_offdiag_fused_electric_pair_source(
-                (1, 0, 0, 0, 0, 0), (0, 0, 0), (0, 0, 0), (1, 1, 0), "FMA_V1")),
+                (1, 0, 0, 0, 0, 0), (0, 0, 0), (0, 0, 0), (2, 2, 0))),
         "seam_case": "bloch_offdiag",
         "seam_component": "Ez",
     },
@@ -441,11 +462,10 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         "name": "folded_complex_offdiag_fused_electric_pair",
         "label": "folded complex off-diagonal fused electric D/E pair",
         "module": folded_complex_pair,
-        "plan": (folded_complex_pair
-                 .plan_metal_folded_complex_offdiag_fused_electric_pair),
+        "plan": _with_record(folded_complex_pair
+                             .plan_metal_folded_complex_offdiag_fused_electric_pair),
         "coverage": (folded_complex_pair
                      .metal_folded_complex_offdiag_fused_electric_pair_coverage),
-        "takes_probe": "folded_complex_probe",
         "cases": (
             ("fold_complex_even", lambda: matrix.folded(
                 complex_storage=True, rows={"Ey": ["Ez"]})),
@@ -460,20 +480,24 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
             ("fold_complex_xy_mixed_phase", lambda: matrix.folded(
                 complex_storage=True, axis="XY", phase=(1, -1),
                 rows={"Ey": ["Ez"], "Ex": ["Ey"]})),
+            # THE 3-D FIXTURE: a layer on every axis, so the auxiliaries the 2-D
+            # cases' chunks never write (f_w_Ez, f_w_Hz, fu_Bx, fu_Dx) move here.
+            ("fold_complex_3d", lambda: matrix.folded(
+                complex_storage=True, depth=1.2, rows={"Ey": ["Ez"], "Ex": ["Ey"]})),
         ),
         "mutation_case": "fold_complex_walled_x",
         "source": _folded_complex_source,
         "entry": "folded_complex_offdiag_fused_electric_pair_step",
         "mutations": (
-            # THE AUDIT FINDING, ARMED ON DEVICE. The array path spells a complex
-            # parity `phase * plane`; a plain copy at +1 and a bare negation at -1
-            # are the REAL families' (correct) spelling and differ from it in ten
-            # of a hundred engineered signed-zero pairs. The walled fixture is the
-            # one that reaches such a pair: the far fill images a cell the wall
-            # clear has already zeroed.
-            ("complex_far_parity_spelled_as_a_bare_negation",
-             "    value = was_far ? c_mul(float2(-1.0f, 0.0f), value) : value;",
-             "    value = was_far ? -value : value;", 1),
+            # THE AUDIT FINDING, RE-POINTED. The array path now spells a complex
+            # parity `part_products.scale(parity, plane)`, one product per part,
+            # and the weld follows it. The previous spelling, the full complex
+            # product `c_mul((-1, +0), z)`, differs from it on signed-zero pairs;
+            # the walled fixture is the one that reaches such a pair (the far fill
+            # images a cell the wall clear has already zeroed).
+            ("complex_far_parity_spelled_as_the_previous_full_product",
+             "    value = was_far ? c_mul_coefficient_left(-1.0f, value) : value;",
+             "    value = was_far ? c_mul(float2(-1.0f, 0.0f), value) : value;", 1),
             ("far_redirect_dropped",
              "    j = was_far ? reflect_y : j;", ""),
             ("foreign_tap_read_from_the_LIVE_buffer_not_re_derived",
@@ -482,6 +506,11 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
              -1),
             ("split_field_scratch_store_dropped",
              "    n0s[ii] = own.n0; n1s[ii] = own.n1; n2s[ii] = own.n2;\n", ""),
+            # The auxiliary contract (KERNELS.md §1, C2), as the weld carries it: off
+            # the recurrence's cells the rotating fu scratch must hold the
+            # pre-launch word. Dropping the carry stores the dsig-only value there.
+            ("auxiliary_carry_dropped_on_component_0",
+             "n0 = du0 ? n0 : u0[ii];", "n0 = n0;", -1),
             ("material_pack_offset_reads_the_wrong_row",
              "device const float* u01 = mpack + prm.off_u01;",
              "device const float* u01 = mpack + prm.off_u02;"),
@@ -497,12 +526,16 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         # ever DID diverge the prediction was wrong and the leg fails.
         "predicted_nulls": (
             ("complex_near_parity_spelled_as_a_plain_copy_at_plus_one",
-             "    value = near_y ? c_mul(float2(1.0f, 0.0f), value) : value;",
+             "    value = near_y ? c_mul_coefficient_left(1.0f, value) : value;",
              "", -1,
-             "the near redirect reads stored cell 2, which the wall clear never "
-             "reaches, so no exact zero arrives at the one place a c_mul by "
-             "(+1, +0) and a plain copy differ; the far arm at -1 CAN reach one "
-             "and is armed as a must-catch"),
+             "a product by +1 per part is the identity on every word the "
+             "subnormal-free precondition admits, so the plain copy moves no word"),
+            ("complex_far_parity_spelled_as_a_bare_negation",
+             "    value = was_far ? c_mul_coefficient_left(-1.0f, value) : value;",
+             "    value = was_far ? -value : value;", 1,
+             "a product by -1 per part is the sign flip on every word the "
+             "subnormal-free precondition admits (signed zeros included), so the "
+             "bare negation the real families use moves no word here"),
         ),
         "refuted": (
             ("separate_scalars",
@@ -513,7 +546,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
             folded_complex_pair
             .folded_complex_offdiag_fused_electric_pair_source(
                 (0, 0, 1, 0, 0, 0), (0, 3, 0), (0, 0, 0), (0, 0, 0), (0, 1, 0),
-                {1: 1}, {1: 1}, "FMA_V1")),
+                {1: 1}, {1: 1})),
         "seam_case": "fold_complex_even",
         "seam_component": "Ez",
     },
@@ -521,12 +554,9 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
 
 
 def build_plan(spec: Mapping[str, Any], fields: Any, pml: Any,
-               residency: Residency, probes: Mapping[str, Any],
-               sources: Sequence[Any] = (),
+               residency: Residency, sources: Sequence[Any] = (),
                functions: Optional[Mapping[Any, Any]] = None) -> Any:
     kwargs: Dict[str, Any] = {}
-    if spec["takes_probe"]:
-        kwargs["probe"] = probes[spec["takes_probe"]]
     if functions is not None:
         kwargs["functions"] = functions
     plan = spec["plan"](fields, pml, sources=tuple(sources),
@@ -537,12 +567,6 @@ def build_plan(spec: Mapping[str, Any], fields: Any, pml: Any,
         # the fields object it already owns rather than widening the plan.
         fields.__dict__["_gate_pml"] = pml
     return plan
-
-
-def _coverage_kwargs(spec: Mapping[str, Any],
-                     probes: Mapping[str, Any]) -> Dict[str, Any]:
-    return ({"probe": probes[spec["takes_probe"]]}
-            if spec["takes_probe"] else {})
 
 
 # ---------------------------------------------------------------------------
@@ -592,7 +616,7 @@ def _fused_plans(plan: Any) -> Dict[str, Any]:
 
 
 def run_case(spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
-             probes: Mapping[str, Any], steps: Optional[int] = None,
+             steps: Optional[int] = None,
              functions: Optional[Mapping[Any, Any]] = None) -> Dict[str, Any]:
     """Step the array path and the fused device plan side by side."""
     steps = STEPS if steps is None else int(steps)
@@ -607,13 +631,11 @@ def run_case(spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
                 "drift": drift}
 
     residency = Residency()
-    plan = build_plan(spec, actual, actual_pml, residency, probes,
-                      functions=functions)
+    plan = build_plan(spec, actual, actual_pml, residency, functions=functions)
     if plan is None:
         return {"passed": False, "reason": "the pair was refused",
                 "refusals": list(spec["coverage"](
-                    actual, actual_pml, (), residency,
-                    **_coverage_kwargs(spec, probes)).reasons)[:8]}
+                    actual, actual_pml, (), residency).reasons)[:8]}
 
     counter = CountingFunction(plan._functions[shaders.CONTRACT_OFF])
     plan._functions[shaders.CONTRACT_OFF] = counter
@@ -653,6 +675,20 @@ def run_case(spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
     after = state_of(actual)
     moved = {name: differing(before[name], after[name]) for name in before}
     still = sorted(name for name, count in moved.items() if count == 0)
+    # AN AUXILIARY NO CHUNK WRITES IS NOT A VACUOUS FIXTURE. MEEP's per-chunk forms
+    # write `f_w_c` only in chunks carrying c's own-axis layer and `fu_c` only in the
+    # chunks its curl's absorbing form steps it, so on a 2-D fixture (no layer on the
+    # invariant axis) some auxiliaries stay at their seed in the array path itself,
+    # and the weld, bit-identical with it, leaves them there too. Such an auxiliary
+    # is excused here and named; every PRIMARY volume must still move in every case,
+    # and every volume must move in at least one case of the family
+    # (:func:`leg_identity`'s floor), so no auxiliary goes unexercised.
+    reference_after = state_of(reference)
+    reference_still = sorted(name for name in still
+                             if differing(before[name], reference_after[name]) == 0)
+    still_primary = [name for name in still
+                     if not name.startswith(("f_w_", "fu_"))]
+    still_unexplained = [name for name in still if name not in reference_still]
     identical = (len(per_step) == steps
                  and all(row["differing_words"] == 0 for row in per_step))
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
@@ -660,8 +696,10 @@ def run_case(spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
                    and plan.launches == plan.launches_per_run * len(per_step)
                    and counter.calls == plan.launches)
     return {
-        "passed": bool(identical and clean and launches_ok and not still
-                       and not missing),
+        "passed": bool(identical and clean and launches_ok and not still_primary
+                       and not still_unexplained and not missing),
+        "auxiliaries_no_chunk_writes_on_this_fixture": [
+            name for name in reference_still if name not in still_primary],
         "bit_identical": identical,
         "subnormal_free": clean,
         "first_divergence": next((row["step"] for row in per_step
@@ -685,10 +723,19 @@ def run_case(spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
     }
 
 
+def _singles(spec: Mapping[str, Any], fields: Any, pml: Any,
+             residency: Residency) -> Any:
+    """``plan_step(..., fuse=False)``: the certified singles, the off-diagonal single
+    selected on ``update_E``."""
+    return metal_launch.plan_step(
+        fields, pml, residency=residency, sources=(),
+        fuse=False)
+
+
 def run_against_certified_singles(
         spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
-        probes: Mapping[str, Any],
-        steps: Optional[int] = None) -> Dict[str, Any]:
+        steps: Optional[int] = None,
+        functions: Optional[Mapping[Any, Any]] = None) -> Dict[str, Any]:
     """Leg B: the fused plan against the CERTIFIED DEVICE KERNELS it replaces.
 
     Both engines run on MPS. The reference composes ``launch.plan_step(...,
@@ -704,14 +751,9 @@ def run_against_certified_singles(
     seed_state(actual, SEED)
 
     reference_residency = Residency()
-    single = metal_launch.plan_step(
-        reference, reference_pml, residency=reference_residency, sources=(),
-        complex_probe=probes["complex_probe"], beta_probe=probes["beta_probe"],
-        folded_complex_probe=probes["folded_complex_probe"],
-        cylindrical_complex_probe=probes["cylindrical_complex_probe"],
-        fuse=False)
+    single = _singles(spec, reference, reference_pml, reference_residency)
     residency = Residency()
-    plan = build_plan(spec, actual, actual_pml, residency, probes)
+    plan = build_plan(spec, actual, actual_pml, residency, functions=functions)
     if plan is None:
         return {"passed": False, "reason": "the pair was refused"}
 
@@ -737,6 +779,9 @@ def run_against_certified_singles(
     return {
         "passed": bool(identical and covered),
         "bit_identical": identical,
+        "first_divergence": next((r["step"] for r in rows if r["differing_words"]),
+                                 None),
+        "launches": plan.launches,
         "steps_compared": len(rows),
         "differing_words": rows[-1]["differing_words"],
         "differing_arrays": rows[-1]["differing_arrays"],
@@ -746,29 +791,38 @@ def run_against_certified_singles(
     }
 
 
-def leg_identity(spec: Mapping[str, Any],
-                 probes: Mapping[str, Any]) -> Dict[str, Any]:
-    """A: the full mechanism against the array path, every case, every step."""
+def leg_identity(spec: Mapping[str, Any]) -> Dict[str, Any]:
+    """A: the full mechanism against the array path, every case, every step.
+
+    The family's vacuity floor: every compared volume moves in at least one case.
+    A case may leave an auxiliary that no chunk writes on its fixture at its seed
+    (:func:`run_case`), but the family must carry a fixture that writes it.
+    """
     rows: Dict[str, Any] = {}
     for label, build in spec["cases"]:
         started = time.time()
-        rows[label] = run_case(spec, build, probes)
+        rows[label] = run_case(spec, build)
         log(f"    identity  {spec['name']:44s} {label:28s} "
             f"passed={rows[label]['passed']} "
             f"words={rows[label].get('differing_words')} "
             f"launches={rows[label].get('launches')}"
             f"/{rows[label].get('independent_launch_count')} "
             f"({time.time() - started:5.1f} s)")
-    return {"passed": all(row["passed"] for row in rows.values()), "cases": rows}
+    compared = [row for row in rows.values() if "arrays_that_never_moved" in row]
+    never = sorted(set.intersection(*(set(row["arrays_that_never_moved"])
+                                      for row in compared))) if compared else []
+    log(f"    identity  {spec['name']:44s} volumes no case moved: {never}")
+    return {"passed": bool(compared) and not never
+            and all(row["passed"] for row in rows.values()),
+            "volumes_no_case_moved": never, "cases": rows}
 
 
-def leg_singles(spec: Mapping[str, Any],
-                probes: Mapping[str, Any]) -> Dict[str, Any]:
+def leg_singles(spec: Mapping[str, Any]) -> Dict[str, Any]:
     """B: the fused plan against the certified DEVICE kernels it replaces."""
     rows: Dict[str, Any] = {}
     for label, build in spec["cases"]:
         started = time.time()
-        rows[label] = run_against_certified_singles(spec, build, probes)
+        rows[label] = run_against_certified_singles(spec, build)
         log(f"    singles   {spec['name']:44s} {label:28s} "
             f"passed={rows[label]['passed']} "
             f"words={rows[label].get('differing_words')} "
@@ -793,8 +847,7 @@ def _mutated_functions(spec: Mapping[str, Any], plan: Any, old: str, new: str,
     return {mode: function}
 
 
-def leg_mutation(spec: Mapping[str, Any],
-                 probes: Mapping[str, Any]) -> Dict[str, Any]:
+def leg_mutation(spec: Mapping[str, Any]) -> Dict[str, Any]:
     """C: the DEGENERATE mechanism. Every armed mutation MUST diverge."""
     cases = dict(spec["cases"])
     default = cases[spec["mutation_case"]]
@@ -810,7 +863,7 @@ def leg_mutation(spec: Mapping[str, Any],
         reference, reference_pml = build()
         residency = Residency()
         seed_state(reference, SEED)
-        plan = build_plan(spec, reference, reference_pml, residency, probes)
+        plan = build_plan(spec, reference, reference_pml, residency)
         if plan is None:
             rows[label] = {"passed": False, "reason": "the pair was refused"}
             continue
@@ -820,7 +873,7 @@ def leg_mutation(spec: Mapping[str, Any],
             rows[label] = {"passed": False, "reason": str(error)}
             log(f"    mutation  {spec['name']:44s} {label:56s} UNARMED")
             continue
-        result = run_case(spec, build, probes, functions=functions)
+        result = run_case(spec, build, functions=functions)
         diverged = not result.get("bit_identical", True)
         rows[label] = {
             "passed": bool(diverged and result.get("launches")),
@@ -837,9 +890,9 @@ def leg_mutation(spec: Mapping[str, Any],
         reference, reference_pml = build()
         residency = Residency()
         seed_state(reference, SEED)
-        plan = build_plan(spec, reference, reference_pml, residency, probes)
+        plan = build_plan(spec, reference, reference_pml, residency)
         functions = _mutated_functions(spec, plan, old, new)
-        result = run_case(spec, build, probes, functions=functions)
+        result = run_case(spec, build, functions=functions)
         identical = bool(result.get("bit_identical"))
         equivalences[label] = {"passed": identical,
                                "differing_words": result.get("differing_words")}
@@ -850,9 +903,9 @@ def leg_mutation(spec: Mapping[str, Any],
         reference, reference_pml = build_null()
         residency = Residency()
         seed_state(reference, SEED)
-        plan = build_plan(spec, reference, reference_pml, residency, probes)
+        plan = build_plan(spec, reference, reference_pml, residency)
         functions = _mutated_functions(spec, plan, old, new, count)
-        result = run_case(spec, build_null, probes, functions=functions)
+        result = run_case(spec, build_null, functions=functions)
         identical = bool(result.get("bit_identical"))
         predicted[label] = {
             "passed": identical, "predicted_null": True,
@@ -871,8 +924,7 @@ def leg_mutation(spec: Mapping[str, Any],
 # Leg C2: the ROTATION, driven through the shipped launcher's own door
 # ---------------------------------------------------------------------------
 
-def leg_rotation(spec: Mapping[str, Any],
-                 probes: Mapping[str, Any]) -> Dict[str, Any]:
+def leg_rotation(spec: Mapping[str, Any]) -> Dict[str, Any]:
     """The launcher's post-launch rotation, and the two ways it can be wrong.
 
     NOT A SOURCE MUTATION — this arm exercises the HOST half of the design
@@ -895,7 +947,7 @@ def leg_rotation(spec: Mapping[str, Any],
     seed_state(reference, SEED)
     seed_state(actual, SEED)
     residency = Residency()
-    plan = build_plan(spec, actual, actual_pml, residency, probes)
+    plan = build_plan(spec, actual, actual_pml, residency)
     if plan is None:
         return {"passed": False, "reason": "the pair was refused"}
     live = live_passes(actual, actual_pml)
@@ -914,7 +966,8 @@ def leg_rotation(spec: Mapping[str, Any],
         if compare(reference, actual):
             diverged_at = step
             break
-    rows["rotation_skipped"] = {"passed": diverged_at is not None,
+    rows["rotation_skipped"] = {"reference": "array path",
+                                "passed": diverged_at is not None,
                                 "first_divergence": diverged_at}
     log(f"    rotation  {spec['name']:44s} rotation_skipped "
         f"caught={diverged_at is not None}")
@@ -922,7 +975,7 @@ def leg_rotation(spec: Mapping[str, Any],
     fresh, fresh_pml = build()
     seed_state(fresh, SEED)
     residency2 = Residency()
-    plan2 = build_plan(spec, fresh, fresh_pml, residency2, probes)
+    plan2 = build_plan(spec, fresh, fresh_pml, residency2)
     name = plan2.rotated_names[0]
     plan2.rotated[name] = getattr(fresh, name)
     refused = False
@@ -951,8 +1004,7 @@ def _volume_source(fields: Any, component: str) -> Any:
                                                     is_integrated=False))
 
 
-def leg_seam_refusal(spec: Mapping[str, Any],
-                     probes: Mapping[str, Any]) -> Dict[str, Any]:
+def leg_seam_refusal(spec: Mapping[str, Any]) -> Dict[str, Any]:
     """E: an in-seam ELECTRIC source must be refused BY NAME; none must not.
 
     THE NULL IS THE SAME CONFIGURATION WITH NO SOURCE. Without it, a predicate
@@ -963,14 +1015,12 @@ def leg_seam_refusal(spec: Mapping[str, Any],
     seed_state(fields, SEED)
     residency = Residency()
     source = _volume_source(fields, spec["seam_component"])
-    kwargs = _coverage_kwargs(spec, probes)
-    with_source = spec["coverage"](fields, pml, (source,), residency, **kwargs)
-    without = spec["coverage"](fields, pml, (), residency, **kwargs)
-    undeclared = spec["coverage"](fields, pml, None, residency, **kwargs)
+    with_source = spec["coverage"](fields, pml, (source,), residency)
+    without = spec["coverage"](fields, pml, (), residency)
+    undeclared = spec["coverage"](fields, pml, None, residency)
     named = [reason for reason in with_source.reasons
              if "deposit_repair.repairable" in reason]
-    planned = build_plan(spec, fields, pml, residency, probes,
-                         sources=(source,))
+    planned = build_plan(spec, fields, pml, residency, sources=(source,))
     row = {
         "passed": bool(not with_source.covered and named and without.covered
                        and not undeclared.covered and planned is None),
@@ -1114,38 +1164,10 @@ def main() -> int:
     arguments = parser.parse_args()
     STEPS = int(arguments.steps)
 
-    environment = matrix.prepare_environment()
+    matrix.prepare_environment()
     import torch  # noqa: PLC0415
     if not torch.backends.mps.is_available():
         raise SystemExit("MPS is not available; this gate must run on an Apple GPU")
-
-    from meep_gpu.metal_kernels import complex_fields as _complex  # noqa: PLC0415
-    from meep_gpu.metal_kernels import folded_complex as _folded  # noqa: PLC0415
-    from meep_gpu.metal_kernels import special_kz as _beta  # noqa: PLC0415
-    from meep_gpu.metal_kernels import (  # noqa: PLC0415
-        cylindrical_complex as _cylindrical)
-
-    paths = {
-        "complex_probe":
-            environment.get("MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE"),
-        "beta_probe": environment.get("MEEP_GPU_METAL_EXPANSION_PROBE"),
-        "folded_complex_probe":
-            environment.get("MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE"),
-        "cylindrical_complex_probe":
-            environment.get("MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE"),
-    }
-    probes = {
-        "complex_probe": _complex.load_expansion_probe(),
-        "beta_probe": _beta.load_expansion_probe(),
-        "folded_complex_probe": _folded.load_expansion_probe(),
-        "cylindrical_complex_probe": _cylindrical.load_expansion_probe(),
-    }
-    for key in ("complex_probe", "folded_complex_probe"):
-        if probes[key] is None:
-            raise SystemExit(
-                f"the {key} expansion artifact at {paths[key]!r} did not load; "
-                f"the two complex families would refuse BY NAME and this gate "
-                f"would measure the artifact's absence rather than arithmetic")
 
     legs = tuple(part.strip() for part in arguments.legs.split(",") if part.strip())
     started = time.time()
@@ -1153,7 +1175,7 @@ def main() -> int:
         "gate": "metal_offdiag_stencil_welds",
         "host": {"platform": sys.platform, "torch": torch.__version__,
                  "mps_available": bool(torch.backends.mps.is_available())},
-        "steps": arguments.steps, "seed": SEED, "probes": paths,
+        "steps": arguments.steps, "seed": SEED,
         "families": {}, "corpus_rows": CORPUS_ROWS,
         "subnormal_policy_note": (
             "Metal has ONE float32 subnormal policy: it flushes natively and "
@@ -1169,15 +1191,15 @@ def main() -> int:
         log(f"  {spec['name']}")
         entry: Dict[str, Any] = {}
         if "identity" in legs:
-            entry["identity"] = leg_identity(spec, probes)
+            entry["identity"] = leg_identity(spec)
         if "singles" in legs:
-            entry["certified_singles"] = leg_singles(spec, probes)
+            entry["certified_singles"] = leg_singles(spec)
         if "mutation" in legs:
-            entry["mutation"] = leg_mutation(spec, probes)
+            entry["mutation"] = leg_mutation(spec)
         if "rotation" in legs:
-            entry["rotation"] = leg_rotation(spec, probes)
+            entry["rotation"] = leg_rotation(spec)
         if "seam" in legs:
-            entry["seam_refusal"] = leg_seam_refusal(spec, probes)
+            entry["seam_refusal"] = leg_seam_refusal(spec)
         entry["passed"] = all(value.get("passed") for value in entry.values()
                               if isinstance(value, dict))
         record["families"][spec["name"]] = entry

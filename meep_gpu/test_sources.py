@@ -287,6 +287,25 @@ def test_gaussian_dipole_matches_meep_reference_values():
     assert narrow.dipole(25.0) == 0.0
 
 
+def test_gaussian_envelope_argument_is_meeps_expression_in_meeps_order():
+    """sources.cpp:106 evaluates ``exp(-tt * tt / (2 * width * width))`` in double.
+    ``-0.5 * (tt / width) ** 2`` is the same function and, at some times, a different
+    double; ``_gaussian_dipole`` carries MEEP's word, exactly, at every time sampled."""
+    omega = 2 * math.pi * 0.8
+    width = 1.0 / (2 * math.pi * 0.2) * 1.1
+    times = [k * 0.05 - 7.0 for k in range(281)]
+    differing = 0
+    for time in times:
+        meep_form = math.exp(-time * time / (2 * width * width))
+        other_form = math.exp(-0.5 * (time / width) ** 2)
+        phase = complex(np.exp(-1j * omega * time))
+        expected = phase * meep_form * (1.0 + 0j)
+        differing += expected != phase * other_form * (1.0 + 0j)
+        got = src._gaussian_dipole(time, omega, 1.0 + 0j, 0.0, width, 1.0e9)
+        assert got == expected, time
+    assert differing > 0
+
+
 def test_negative_frequency_is_meeps_conjugate_carrier():
     """dipole(-f, t) == conj(dipole(+f, t)), bit-exact, for every carrier class.
 
@@ -745,6 +764,9 @@ def test_a_source_wider_than_the_cell_is_refused_and_a_sub_pixel_overhang_is_sna
     # The guard is per axis and reads the FULL cell length, so a folded axis is measured
     # against the whole cell rather than the stored quadrant.
     folded = _unit_grid(resolution=10.0, symmetry=('X',))
+    # The stub's folded axis needs a far face: a metallic one, whose wall plane MEEP
+    # places on and zeroes unread (the placement drops it).
+    folded.boundaries = (("metallic", "metallic"), ("periodic", "periodic"), ("periodic", "periodic"))
     ExtendedSource(grid=folded, frequency=0.8, component='Ez', center=(0.0, 0.0, 0.0),
                    size=(2.0, 0.0, 0.0))
     with pytest.raises(ValueError, match="exceeds the cell length"):
@@ -902,21 +924,18 @@ def test_real_injection_of_a_phased_spatial_amplitude_is_the_complex_run_s_real_
 
 
 def test_source_points_have_unique_linear_indices():
-    """The vectorized injection is only correct because the points are unique."""
+    """The vectorized deposit is MEEP's point loop only because the points are unique.
+
+    MEEP subtracts each listed point separately (step.cpp:309-314, one rounding per
+    point); a table listing a cell twice is refused by name at packing time.
+    """
     grid = _unit_grid(resolution=10.0)
     source = ExtendedSource(grid=grid, frequency=0.8, component='Ez',
                             center=(0.0, 0.0, 0.0), size=(0.4, 0.4, 0.2))
     linear = [(x * grid.ny + y) * grid.nz + z for (x, y, z) in source._indices]
     assert len(set(linear)) == len(linear)
-
-    previous = src.DEBUG_VALIDATE_SOURCE_INDICES
-    src.DEBUG_VALIDATE_SOURCE_INDICES = True
-    try:
-        checked = ExtendedSource(grid=grid, frequency=0.8, component='Ez',
-                                 center=(0.0, 0.0, 0.0), size=(0.4, 0.4, 0.2))
-        assert checked._n_source_points == source._n_source_points
-    finally:
-        src.DEBUG_VALIDATE_SOURCE_INDICES = previous
+    with pytest.raises(ValueError, match="same cell more than once"):
+        src._point_index_arrays(grid, source._indices + source._indices[:1])
 
 
 def test_amp_func_receives_all_three_relative_offsets():
@@ -943,6 +962,11 @@ def test_amp_func_receives_all_three_relative_offsets():
     plain_amplitude = dict(zip(plain._indices, plain._amplitudes))
     ratios_by_iz = {}
     for (index, weighted) in zip(source._indices, source._amplitudes):
+        if plain_amplitude[index] == 0:
+            # A point on the request's far boundary carries weight 0 (e0 = w1**2/2 with
+            # w1 = 0): MEEP lists it, and it deposits zero whatever the function returns.
+            assert weighted == 0
+            continue
         ratio = round((weighted / plain_amplitude[index]).real, 9)
         ratios_by_iz.setdefault(index[2], set()).add(ratio)
     assert all(len(ratios) == 1 for ratios in ratios_by_iz.values())  # ratio depends on z only
@@ -1032,11 +1056,12 @@ def test_source_outside_the_stored_grid_is_empty_and_injects_nothing():
     assert np.all(fields.Dz == 0)
 
 
-def test_source_arrays_are_complex64_on_the_numpy_backend():
+def test_source_amplitudes_are_complex128_on_the_numpy_backend():
+    """MEEP's amp[j] is complex<double> (meep_internals.hpp:52-69); the deposit is double."""
     grid = _unit_grid(resolution=10.0)
     source = ExtendedSource(grid=grid, frequency=0.8, component='Ez',
                             center=(0.0, 0.0, 0.0), size=(0.4, 0.4, 0.0))
-    assert source._point_amps.dtype == np.complex64
+    assert source._point_amps.dtype == np.complex128
     assert source._point_ix.dtype == np.int64
     assert source._point_ix.shape == (source._n_source_points,)
 
@@ -1211,100 +1236,111 @@ def test_custom_envelope_time_window_gates_the_waveform():
 
 # --- is_integrated -------------------------------------------------------------
 
-def _integrated_offset(source, fields, component_array, times):  # Inject at each time, return the array.
-    for time in times:
-        source.inject(fields, time)
-    return getattr(fields, component_array)
+def _noisy_fields(grid, seed, complex_fields=True):  # Real Fields with noise in D and B.
+    fields = Fields(grid=grid, force_complex_fields=complex_fields)
+    generator = np.random.default_rng(seed)
+    for name in ("Dx", "Dy", "Dz", "Bx", "By", "Bz"):
+        array = getattr(fields, name)
+        values = generator.standard_normal(array.shape)
+        if complex_fields:
+            values = values + 1j * generator.standard_normal(array.shape)
+        array[...] = values.astype(array.dtype)
+    return fields
 
 
-def test_integrated_source_tracks_the_dipole_instead_of_accumulating_current():
-    """MEEP update_eh.cpp:126-140 — the array must hold D - dipole(t), not a running sum.
+def _f_minus_p_word(stored, amp, dipole):  # MEEP update_eh.cpp:131-134, per part, in double.
+    re = amp.real * dipole.real - amp.imag * dipole.imag
+    im = amp.real * dipole.imag + amp.imag * dipole.real
+    value = complex(stored)
+    return complex(np.float32(value.real - re), np.float32(value.imag - im))
 
-    The distinction is the whole feature: a non-integrated source accumulates
-    `dt * current` step after step, so its total depends on every step taken; an
-    integrated source's offset is a function of the current time alone and comes
-    back to zero when the waveform does.
+
+def _words_of(array):
+    return np.ascontiguousarray(array).view(np.uint32).copy()
+
+
+@pytest.mark.parametrize("component,family,array_name", [("Ez", "D", "Dz"), ("Hz", "B", "Bz")])
+def test_an_integrated_source_enters_through_f_minus_p_and_never_through_the_array(component, family,
+                                                                                 array_name):
+    """MEEP update_eh.cpp:66-140 — D (B) never holds the dipole; f_minus_p does, for the update.
+
+    ``inject`` deposits nothing (step.cpp:300 skips an integrated source); the bracket writes
+    ``float(double(f) - real(amp * dipole))`` at the source's cells and nowhere else, and
+    its end restores every word.
     """
-    grid = _unit_grid(resolution=10.0)
-    fields = _StubFields(grid)
-    envelope = GaussianEnvelope(frequency=0.8, fwidth=0.5, is_integrated=True)
-    source = VolumeSource(grid=grid, component='Ez', center=(0.0, 0.0, 0.0),
-                          size=(0.0, 0.0, 0.0), envelope=envelope, amplitude=1.0)
-    assert source.is_integrated is True
-    dt = grid.dt
-    probe = source._indices[0]
-    amplitude = source._amplitudes[0]
+    grid = Grid(resolution=10, cell_size=(2.0, 2.0, 2.0))
+    fields = _noisy_fields(grid, seed=1007)
+    envelope = GaussianEnvelope(frequency=0.8, fwidth=0.5, start_time=-3.0, is_integrated=True)
+    source = VolumeSource(grid=grid, component=component, center=(0.03, -0.02, 0.01),
+                          size=(0.0, 0.0, 0.0), envelope=envelope, amplitude=0.7 - 0.2j)
+    array = getattr(fields, array_name)
+    before = array.copy()
+    source.inject(fields, 0.4)
+    assert np.array_equal(_words_of(array), _words_of(before))
 
-    peak_excursion = 0.0
-    time = 0.0
-    for _ in range(400):
-        source.inject(fields, time)
-        # MEEP evaluates the integrated E-side dipole at time() + dt, which is half a
-        # step past this slot's time; the array must equal -amp * dipole there exactly.
-        expected = -amplitude * envelope.dipole(time + 0.5 * dt)
-        assert fields.Dz[probe] == pytest.approx(expected, rel=2e-5, abs=2e-4)
-        peak_excursion = max(peak_excursion, abs(complex(fields.Dz[probe])))
-        time += dt
-
-    # Past the pulse the dipole is zero, so the source has given the field back
-    # everything it lent it — the property MEEP's is_integrated exists to provide.
-    assert envelope.dipole(time + 0.5 * dt) == 0.0
-    assert peak_excursion > 1.0, "the pulse never drove the field; the check would be vacuous"
-    assert abs(complex(fields.Dz[probe])) < 1e-5 * peak_excursion
-
-    # A non-integrated source of the same waveform does not have that property step
-    # by step: at the peak it holds the accumulated current, not the dipole.
-    plain_fields = _StubFields(grid)
-    plain = VolumeSource(grid=grid, component='Ez', center=(0.0, 0.0, 0.0),
-                         size=(0.0, 0.0, 0.0),
-                         envelope=GaussianEnvelope(frequency=0.8, fwidth=0.5))
-    time = 0.0
-    for _ in range(40):
-        plain.inject(plain_fields, time)
-        time += dt
-    integrated_here = -amplitude * envelope.dipole(time + 0.5 * dt)
-    assert abs(complex(plain_fields.Dz[probe]) - integrated_here) > 0.1 * abs(integrated_here)
+    time = 0.4 + grid.dt
+    held = src.f_minus_p_begin(fields, [source], family, time)
+    assert held is not None
+    dipole = envelope.dipole(time)
+    assert dipole != 0
+    touched = np.zeros(array.shape, dtype=bool)
+    for (ix, iy, iz), amp in zip(source._indices, source._amplitudes):
+        expected = np.complex64(_f_minus_p_word(before[ix, iy, iz], complex(amp), dipole))
+        assert _words_of(np.asarray([array[ix, iy, iz]])).tolist() == \
+            _words_of(np.asarray([expected])).tolist()
+        touched[ix, iy, iz] = True
+    assert np.array_equal(_words_of(array[~touched]), _words_of(before[~touched]))
+    src.f_minus_p_end(fields, held)
+    assert np.array_equal(_words_of(array), _words_of(before))
 
 
-def test_integrated_magnetic_source_uses_the_same_half_step_offset():
-    """MEEP step.cpp:74 — the integrated H-side dipole is read at time() + dt/2 too."""
-    grid = _unit_grid(resolution=10.0)
-    fields = _StubFields(grid)
-    envelope = ContinuousEnvelope(frequency=0.8, width=2.0, is_integrated=True)
-    source = VolumeSource(grid=grid, component='Hz', center=(0.0, 0.0, 0.0),
-                          size=(0.0, 0.0, 0.0), envelope=envelope)
-    dt = grid.dt
-    probe = source._indices[0]
-    amplitude = source._amplitudes[0]
-    time = 0.0
-    for _ in range(60):
-        source.inject(fields, time)
-        expected = -amplitude * envelope.dipole(time + 0.5 * dt)
-        assert fields.Bz[probe] == pytest.approx(expected, rel=2e-5, abs=2e-4)
-        time += dt
-    assert np.all(fields.Dz == 0)
+def test_f_minus_p_subtracts_each_entry_in_list_order_on_a_shared_cell():
+    """Two integrated entries on one cell subtract one after the other, each rounded once."""
+    grid = Grid(resolution=10, cell_size=(2.0, 2.0, 2.0))
+    fields = _noisy_fields(grid, seed=1008, complex_fields=False)
+    first = VolumeSource(grid=grid, component='Ez', center=(0.0, 0.0, 0.0), size=(0.0, 0.0, 0.0),
+                         envelope=ContinuousEnvelope(frequency=0.8, is_integrated=True), amplitude=1.3)
+    second = VolumeSource(grid=grid, component='Ez', center=(0.0, 0.0, 0.0), size=(0.0, 0.0, 0.0),
+                          envelope=ContinuousEnvelope(frequency=1.1, is_integrated=True), amplitude=-0.6)
+    cell = first._indices[0]
+    assert second._indices[0] == cell
+    before = float(fields.Dz[cell])
+    time = 0.73
+    held = src.f_minus_p_begin(fields, [first, second], "D", time)
+    a1, a2 = complex(first._amplitudes[0]), complex(second._amplitudes[0])
+    d1, d2 = first.dipole(time), second.dipole(time)
+    step = float(np.float32(before - (a1.real * d1.real - a1.imag * d1.imag)))
+    expected = np.float32(step - (a2.real * d2.real - a2.imag * d2.imag))
+    assert np.float32(fields.Dz[cell]).view(np.uint32) == expected.view(np.uint32)
+    src.f_minus_p_end(fields, held)
+    assert float(fields.Dz[cell]) == before
 
 
-def test_integrated_source_reset_forgets_the_applied_offset():
-    grid = _unit_grid(resolution=10.0)
-    fields = _StubFields(grid)
-    source = VolumeSource(grid=grid, component='Ez', center=(0.0, 0.0, 0.0),
-                          size=(0.0, 0.0, 0.0),
-                          envelope=ContinuousEnvelope(frequency=0.8, is_integrated=True))
-    source.inject(fields, 1.0)
-    assert source._applied_dipole != 0
-    source.reset()
-    assert source._applied_dipole == 0
+def test_without_an_integrated_source_the_bracket_writes_nothing():
+    grid = Grid(resolution=10, cell_size=(2.0, 2.0, 2.0))
+    fields = _noisy_fields(grid, seed=1009)
+    plain = VolumeSource(grid=grid, component='Ez', center=(0.0, 0.0, 0.0), size=(0.0, 0.0, 0.0),
+                         envelope=ContinuousEnvelope(frequency=0.8))
+    assert src.f_minus_p_begin(fields, [plain], "D", 0.5) is None
+    assert src.f_minus_p_begin(fields, [], "B", 0.5) is None
+    src.f_minus_p_end(fields, None)  # a no-op
+
+
+def test_no_source_carries_state_across_steps():
+    """The offset that once stood in D/B, and the reset that forgot it, are gone."""
+    for kind in (VolumeSource, ContinuousSource, ExtendedSource, GaussianPulsedSource):
+        for name in ("withdraw", "reset", "_applied_dipole"):
+            assert not hasattr(kind, name), (kind.__name__, name)
 
 
 def test_integrated_source_accepts_a_symmetric_grid():
     """An is_integrated source builds under mirror symmetry — the refusal is retired.
 
-    The fear the old refusal encoded — the mirror repair pass copies cells while
-    they hold ``f - dipole`` — is not a defect: the ghost the repair writes is
-    ``parity * (f - dipole)`` at the source's image cells, which IS MEEP's
-    ``f_minus_p`` there, and ``withdraw`` restores the owned points before the
-    next curl. MEEP itself folds the combination exactly (folded vs unfolded MEEP
+    The f_minus_p bracket images its words into the ghost rows with the driver's own
+    fill passes, so the ghost the constitutive update reads is
+    ``parity * f_minus_p`` at the source's image cells, and the end of the bracket
+    images MEEP's D back (``sources.f_minus_p_begin``). MEEP itself folds the
+    combination exactly (folded vs unfolded MEEP
     measured 1.7e-07..1.0e-06 for an integrated sheet through a Mirror(Y) with a
     PML), and the engine reproduces MEEP's folded run at its ordinary fold floor
     — pinned against CPU MEEP by test_from_meep.py's
@@ -1529,22 +1565,31 @@ def _meep_source_oracle(tmp_path, case):  # Run CPU MEEP in its own process and 
 # mirror repair is the driver's own placement (after injection, before update_E) and
 # is a no-op on an unfolded grid, so the historical cases are unchanged by it.
 def _run_source(source, num_steps=60, b_offset=0.0, d_offset=0.5,
-                complex_fields=True):  # Step a hand-built field set.
+                complex_fields=True):  # Step a hand-built field set in FdtdDriver.step's order.
+    """No PML, so H is B's word: the magnetic f_minus_p bracket closes after ``step_D``,
+    and an integrated electric source makes E a stored array (FdtdDriver.add_source)."""
     grid = source.grid
     fields = Fields(grid=grid, force_complex_fields=complex_fields)
     magnetic = source.field_type == "B"
+    if source.is_integrated and not magnetic:
+        fields.enable_field_storage()
+    sources = [source]
     dt = grid.dt
     time = 0.0
     for _ in range(num_steps):
         step_B(fields, None)
         if magnetic:
             source.inject(fields, time + b_offset * dt)
+        held = src.f_minus_p_begin(fields, sources, "B", time + 0.5 * dt)
         update_H(fields, None)
         step_D(fields, None)
+        src.f_minus_p_end(fields, held)
         if not magnetic:
             source.inject(fields, time + d_offset * dt)
         fill_symmetry_bc_D(fields)
+        held = src.f_minus_p_begin(fields, sources, "D", time + dt)
         update_E(fields, None)
+        src.f_minus_p_end(fields, held)
         time += dt
     return fields
 
@@ -2429,65 +2474,3 @@ def test_the_fold_helpers_defer_to_the_grid_and_cover_every_axis_in_the_fallback
     real = Grid(resolution=10.0, cell_size=(2.0, 2.0, 2.0), symmetry=(Mirror("Z", -1),))
     assert [_axis_is_mirrored(real, axis) for axis in range(3)] == [False, False, True]
     assert [_axis_mirror_phase(real, axis) for axis in range(3)] == [None, None, -1]
-
-
-def test_unsplit_deposit_flags_follow_the_component_ladder_axes_and_the_chunk_rule():
-    """Which deposits mirror into f_u: sigma bites on dsig AND outside every dsigu chunk.
-
-    The truth table this encodes is the evidence packet's (§1.5-1.7), measured against
-    CPU MEEP on the 12x12 cell: an Ez deposit deep in the x layer (dsig) but outside
-    the y layer's CHUNK mirrors (4.9581e-01 -> 5.6e-07); the corner, the y-only cell
-    and the interior do not; and the chunk's own boundary cells — sigma exactly zero,
-    ownership per structure.cpp:509-524 — do not either (mirroring one read 4.59e-01).
-    The axes come from stepping's curl tables per component (Dz: dsig = x, dsigu = y),
-    an integrated source never mirrors (MEEP's step_source skips it, step.cpp:300),
-    and a CYLINDRICAL grid takes the same path: under x = R, y = P, z = Z the same
-    tables equal MEEP's Dcyl cycle_direction start = 2 binding (vec.hpp:583-589),
-    the phi axis never carries a layer, so an Ez deposit under the r layer mirrors
-    everywhere sigma bites — corners INCLUDED, the row where Dcyl differs from the
-    Cartesian table (dsigu = P never rescues it; measured 7.05e+01 -> 2.04e-05 on
-    the sweep's corner case with every control bit-unchanged).
-    """
-    from .pml import PML
-    from .sources import _unsplit_deposit_flags
-
-    grid = Grid(resolution=20.0, cell_size=(12.0, 12.0, 0.0), dimensions=2)
-    layer = PML(grid, thickness={"x": 40, "y": 40})
-    points = [
-        (20, 120, 0),   # deep x layer, y interior      -> mirrors
-        (20, 40, 0),    # deep x layer, y chunk boundary (cell 40, sigma_y = 0) -> no
-        (20, 41, 0),    # ... and the owned plane past it (cell 41)             -> no
-        (20, 42, 0),    # first cell MEEP's interior chunk owns                 -> mirrors
-        (20, 30, 0),    # the corner: both layers       -> no (both-active everywhere)
-        (120, 30, 0),   # y layer only (sigma_dsig = 0) -> no
-        (120, 120, 0),  # interior                      -> no
-        (40, 120, 0),   # AT the x extent, sigma_x exactly 0 -> no (nothing to damp)
-    ]
-    flags = _unsplit_deposit_flags(layer, grid, "Ez", points)
-    assert flags == [True, False, False, True, False, False, False, False]
-    # Hz drives Bz: dsig = x, dsigu = y at HALF-integer offsets — cell 40 is already
-    # outside the half-integer sigma support, and the y chunk keeps cells 0..40.
-    flags_hz = _unsplit_deposit_flags(layer, grid, "Hz", points)
-    assert flags_hz == [True, False, True, True, False, False, False, False]
-    # No mirroring anywhere it cannot be right: every flag False collapses to None.
-    assert _unsplit_deposit_flags(layer, grid, "Ez", [(120, 120, 0)]) is None
-    # A cylindrical grid runs the same rule on the same tables. Ez (dsig = R,
-    # dsigu = P): a deposit under the r-high layer mirrors — in the z layer's
-    # CORNER too, because no phi layer exists to put it in a both-active chunk —
-    # while the interior, the z-only cell and the sigma-zero inner edge do not.
-    cyl_grid = Grid(resolution=10.0, cell_size=(2.0, 0.0, 4.0), cylindrical=True, m=0,
-                    boundaries={"z": "metallic"})
-    cyl_layer = PML(cyl_grid, thickness={"x": (0, 5), "z": (5, 5)})
-    cyl_points = [
-        (18, 0, 20),   # deep r layer, z interior      -> mirrors
-        (18, 0, 2),    # deep r layer, deep z layer    -> mirrors (the Dcyl corner row)
-        (5, 0, 2),     # z layer only (sigma_dsig = 0) -> no
-        (5, 0, 20),    # interior                      -> no
-        (15, 0, 20),   # AT the r extent, sigma_r exactly 0 -> no
-    ]
-    assert _unsplit_deposit_flags(cyl_layer, cyl_grid, "Ez", cyl_points) == [
-        True, True, False, False, False]
-    # Ep drives Dy: dsig = z, dsigu = x — the z layer mirrors it only OUTSIDE the
-    # r layer's chunk (which owns one integer plane past its sigma support).
-    assert _unsplit_deposit_flags(cyl_layer, cyl_grid, "Ey", cyl_points) == [
-        False, False, True, False, False]

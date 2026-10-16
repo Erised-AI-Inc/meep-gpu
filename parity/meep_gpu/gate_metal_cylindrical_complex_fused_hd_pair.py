@@ -4,55 +4,58 @@ device radial scan, then the certified complex curl.
 THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
 :func:`~meep_gpu.metal_kernels.cylindrical_complex_fused_hd_pair.metal_cylindrical_complex_fused_hd_pair_coverage`
 admits, ``run()`` — ONE dispatch of ``cyl_complex_hd_lead_step`` (the pointwise complex H
-constitutive into scratch plus the column-leader scan of the recomputed ``Hy`` into a
-prefix scratch), the H/f_w_H rotation, then ONE dispatch of the CERTIFIED complex
-cylindrical curl against the rotated H and the device prefix — leaves the engine in a
-state that is BIT-IDENTICAL, PER COMPLETE DRIVER STEP, to
+constitutive into scratch plus the column-leader radial sum of the recomputed ``Hy`` into
+a radial-difference scratch), the H/f_w_H rotation, then ONE dispatch of the CERTIFIED
+complex cylindrical curl against the rotated H and the device radial difference — leaves
+the engine in a state that is BIT-IDENTICAL, PER COMPLETE DRIVER STEP, to
 
   * the NumPy array path (``stepping.update_H`` then ``stepping.step_D``, inside the
     driver's full pass list), and
   * the two SEPARATELY CERTIFIED Metal products it replaces —
     ``cylindrical_complex.plan_cylindrical_complex_constitutive`` on ``H`` and
     ``cylindrical_complex.plan_cylindrical_complex_pml_curl`` on ``step_D`` with its
-    HOST prefix round trip,
+    HOST radial-sum round trip,
 
 over every stored volume, compared as uint32 words. ``allclose`` appears nowhere.
 
 WHAT IS NEW AND MEASURED HERE, beyond the two pieces measured elsewhere (the scan against
-``stepping.cylindrical_rderiv_prefix`` in ``gate_metal_cylindrical_complex_scan``; the
-lifted constitutive body being the certified text): the SEAM between them — that the
-column leader's recomputed ``Hy`` at every row is bit-identical to what the thread at
-that row stored, so the prefix the curl reads IS the prefix over the post-``update_H``
-field. Leg ``launch_structure`` measures it directly, and mutation
-``leader_scans_pre_launch_hy`` is the defect it exists to catch.
+``stepping.cylindrical_rderiv_difference`` in ``gate_metal_cylindrical_complex_scan``;
+``h_cell`` being the complex H->D weld's lift of the certified body): the SEAM between
+them — that the column leader's recomputed ``Hy`` at every row is bit-identical to what
+the thread at that row stored, so the radial difference the curl reads IS the per-chunk
+radial difference of the post-``update_H`` field. Leg ``launch_structure`` measures it
+directly, and mutation ``leader_scans_pre_launch_hy`` is the defect it exists to catch.
 
 THE LEGS
 
-  1  binding_ceiling   the lead signature (25 bindings) COMPILES on both expansion arms;
-                       lead + 6 (31) compiles and lead + 7 (32) is refused with the
+  1  binding_ceiling   the lead signature (26 bindings) COMPILES;
+                       lead + 5 (31) compiles and lead + 6 (32) is refused with the
                        platform's own message; the generic sweep pins the ceiling; all
                        six certified curl specialisations compile
-  2  lift              the h_cell body is the certified complex H constitutive with
-                       EXACTLY the declared edits and its arithmetic lines untouched; the
-                       lead source carries the scan module's loop and divide helper
-                       verbatim; launch 2's source IS the certified curl's, byte for byte
+  2  lift              ``h_cell`` is the complex H->D weld's own function, once; the
+                       lead source carries the scan module's column loop with EXACTLY
+                       the two declared source-read edits; launch 2's source IS the
+                       certified curl's, byte for byte
   3  driver_order      the only statement between the update_H and step_D consults is
-                       the electric withdraw loop (h_to_d_seam.driver_seam_fact), and the
+                       the magnetic f_minus_p restore (h_to_d_seam.driver_seam_fact), and the
                        product's REPLACES / SEAM are the driver's span and seam name
-  4  refusal           a standing integrated electric withdraw is refused BY NAME; a
-                       non-integrated electric source and a magnetic integrated one are
-                       admitted; an undeclared source set, a Cartesian grid, real storage
-                       and a missing residency are refused
+  4  refusal           an integrated electric source stands no withdraw in this tree
+                       (withdraw_hoist: integrated sources enter through f_minus_p) and
+                       is admitted, while a source class that still carried one is
+                       refused BY NAME; a non-integrated electric source and a magnetic
+                       integrated one are admitted; an undeclared source set, a
+                       Cartesian grid, real storage and a missing residency are refused
   5  product           six configurations, twelve complete driver steps each, against
                        the array path AND the certified singles, launch counts asserted
                        per cycle, Residency.verify() empty after every step
   6  value_class       the +-0 lattice, with the sign floor in place of the movement one
-  7  launch_structure  per step: two launches (one lead, one curl); the prefix scratch
-                       equals stepping.cylindrical_rderiv_prefix over the device's own
-                       post-update Hy; the plan performs NO host sync
+  7  launch_structure  per step: two launches (one lead, one curl); the radial scratch
+                       equals stepping.cylindrical_rderiv_difference over the device's
+                       own post-update Hy with the run's chunk starts; the plan performs
+                       NO host sync
   8  purity            a static read/write ledger over the lead source: nothing the
                        launch writes is read by it
-  9  sync              the singles' walk pays one prefix sync per step; this product's
+  9  sync              the singles' walk pays one radial sync per step; this product's
                        walk pays none
  10  mutations         six kernel defects and three host defects through the
                        launch-counted harness, each must-catch or a measured equivalence,
@@ -89,6 +92,7 @@ import h_to_d_seam  # noqa: E402
 import metal_composition_matrix as matrix  # noqa: E402
 import metal_gate_kit as kit  # noqa: E402
 import metal_value_classes as values  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
 ENVIRONMENT = matrix.prepare_environment()
 
@@ -149,6 +153,12 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
 )
 MUTATION_CASE = "m1_z_metallic"
 
+#: The float32 word of the composition matrix's default Courant (0.37). The axis rules
+#: (|m| = 1, and m = 0 on the D side) are MEEP's double products with Courant, which
+#: this backend forms in float32 only for a float32-word Courant; any other is refused
+#: by name.
+MATRIX_COURANT = float(np.float32(0.37))
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -165,7 +175,8 @@ def build(label: str, seed: int, value_class: str = values.UNIFORM) -> Tuple[Any
     fields, pml = matrix.cylindrical(m=keywords["m"], complex_storage=True,
                                      z_kind=keywords["z_kind"],
                                      accurate=bool(keywords.get("accurate", False)),
-                                     courant=float(keywords.get("courant", 0.37)))
+                                     courant=float(keywords.get("courant",
+                                                                MATRIX_COURANT)))
     rng = np.random.default_rng(seed)
     if value_class == values.PM_ZERO_LATTICE:
         for name in STATE:
@@ -198,6 +209,23 @@ def compare(left: Dict[str, np.ndarray], right: Dict[str, np.ndarray]) -> Dict[s
 
 def state_census(fields: Any) -> int:
     return sum(int(subnormal.census(array)) for array in state_of(fields).values())
+
+
+class StandingWithdraw:
+    """A source class that still carries a working electric ``withdraw``.
+
+    None in this package does (``withdraw_hoist``: an integrated source enters through
+    ``f_minus_p``), so the seam clause can only be exercised by this stand-in; it
+    publishes exactly the three attributes ``withdraw_hoist.standing_withdraws`` reads.
+    Its body is never run.
+    """
+
+    field_type = "E"
+    is_integrated = True
+    _n_source_points = 1
+
+    def withdraw(self, fields: Any) -> None:  # noqa: ARG002 - never called
+        raise AssertionError("the seam clause must refuse this source, not run it")
 
 
 def volume_source(fields: Any, component: str, integrated: bool) -> Any:
@@ -234,7 +262,8 @@ class ProductEngine:
         self.residency = Residency()
         self.plan = family.plan_metal_cylindrical_complex_fused_hd_pair(
             fields, pml, sources=(), residency=self.residency,
-            lead_functions=plan_functions, curl_functions=curl_functions)
+            lead_functions=plan_functions, curl_functions=curl_functions,
+            chunk_bounds=layer_record(fields.grid, pml))
         if self.plan is None:
             raise AssertionError("the product refused an admitted configuration")
         self.order = order
@@ -284,15 +313,16 @@ class ProductEngine:
 
 
 class SinglesEngine:
-    """The two separately certified Metal products, with the curl's host prefix scan."""
+    """The two separately certified Metal products, with the curl's host radial sum."""
 
     def __init__(self, fields: Any, pml: Any) -> None:
         self.fields, self.pml = fields, pml
         self.residency = Residency()
         self.h_plan = cylc.plan_cylindrical_complex_constitutive(
-            fields, pml, "H", self.residency)
+            fields, pml, "H", self.residency, chunk_bounds=layer_record(fields.grid, pml))
         self.d_plan = cylc.plan_cylindrical_complex_pml_curl(
-            fields, pml, "step_D", self.residency)
+            fields, pml, "step_D", self.residency,
+            chunk_bounds=layer_record(fields.grid, pml))
         if self.h_plan is None or self.d_plan is None:
             raise AssertionError("a certified single refused an admitted configuration")
         self.residency.sync_in()
@@ -346,31 +376,22 @@ def _sweep_source(pointers: int) -> str:
         "}", ""))
 
 
-def bound_expansion() -> Tuple[Optional[str], str]:
-    probe = cylc.load_expansion_probe()
-    arm = cylc.expansion_from_probe(probe) if probe else None
-    return arm, (arm or "FMA_V1")
-
-
 def leg_binding_ceiling(payload: Dict[str, Any], out: str) -> None:
-    probe_arm, expansion = bound_expansion()
     headroom = MAX_BUFFER_BINDINGS - family.LEAD_BINDINGS
     row: Dict[str, Any] = {
         "declared_max_buffer_bindings": MAX_BUFFER_BINDINGS,
         "lead_bindings_declared": family.LEAD_BINDINGS,
         "lead_pointers_declared": family.LEAD_POINTERS,
         "curl_bindings": family.CURL_BINDINGS,
-        "probe_bound_expansion": probe_arm,
         "lead": {}, "lead_plus": {}, "generic_sweep": {}, "curl": {},
     }
-    for arm in templates.EXPANSION_ARMS:
-        ok, error = _compiles(family.lead_source(arm))
-        row["lead"][arm] = {"text_bindings": family.lead_signature_bindings(arm),
-                            "compiled": ok, "error": error}
-        log(f"[binding_ceiling] lead {arm} bindings={row['lead'][arm]['text_bindings']} "
-            f"compiled={ok}")
+    ok, error = _compiles(family.lead_source())
+    row["lead"] = {"text_bindings": family.lead_signature_bindings(),
+                   "compiled": ok, "error": error}
+    log(f"[binding_ceiling] lead bindings={row['lead']['text_bindings']} "
+        f"compiled={ok}")
     for extra in range(0, headroom + 2):
-        ok, error = _compiles(family.refuted_lead_plus_source(extra, expansion))
+        ok, error = _compiles(family.refuted_lead_plus_source(extra))
         row["lead_plus"][str(family.LEAD_BINDINGS + extra)] = {"compiled": ok,
                                                                 "error": error}
         log(f"[binding_ceiling] lead+{extra} bindings={family.LEAD_BINDINGS + extra} "
@@ -380,7 +401,7 @@ def leg_binding_ceiling(payload: Dict[str, Any], out: str) -> None:
         row["generic_sweep"][f"{pointers}_pointers_{pointers + 1}_bindings"] = ok
     for bcz in (templates.PERIODIC, templates.METALLIC):
         for m_arm in cylc.M_ARMS:
-            ok, error = _compiles(family.curl_source(bcz, m_arm, expansion))
+            ok, error = _compiles(family.curl_source(bcz, m_arm))
             row["curl"][f"bcz{bcz}/{cylc.M_ARM_LABELS[m_arm]}"] = {"compiled": ok,
                                                                     "error": error}
     largest = max((int(k.split("_")[0]) for k, ok in row["generic_sweep"].items() if ok),
@@ -394,8 +415,8 @@ def leg_binding_ceiling(payload: Dict[str, Any], out: str) -> None:
     over = row["lead_plus"][str(MAX_BUFFER_BINDINGS + 1)]
     row["lead_headroom_measured"] = headroom
     row["passed"] = bool(
-        all(v["compiled"] for v in row["lead"].values())
-        and all(v["text_bindings"] == family.LEAD_BINDINGS for v in row["lead"].values())
+        row["lead"]["compiled"]
+        and row["lead"]["text_bindings"] == family.LEAD_BINDINGS
         and all(v["compiled"] for k, v in row["lead_plus"].items()
                 if int(k) <= MAX_BUFFER_BINDINGS)
         and at_ceiling["compiled"] and not over["compiled"]
@@ -425,65 +446,55 @@ def _arithmetic_lines(text: str) -> List[str]:
 
 
 def leg_lift(payload: Dict[str, Any], out: str) -> None:
-    _probe, expansion = bound_expansion()
-    certified = complex_fields.bloch_constitutive_source("H", expansion)
-    tail = family.certified_complex_constitutive_tail(expansion)
-    certified_tail = certified.split(family.DECODE_END, 1)[1][: -len("}\n")]
-    # Re-derive the lift from the declared edits and require equality.
-    rederived = certified_tail
-    for target in range(3):
-        for old, new in (
-                (f"    float2 prev{target} = w{target}[ii];\n",
-                 f"    float2 prev{target} = wi{target}[ii];\n"),
-                (f"    float2 src{target} = g{target}[ii];\n",
-                 f"    float2 src{target} = b{target}[ii];\n"),
-                (f"    w{target}[ii] = src{target};\n", ""),
-                (f"    float2 a{target} = f{target}[ii];\n",
-                 f"    float2 a{target} = hi{target}[ii];\n"),
-                (f"    f{target}[ii] = a{target};\n", "")):
-            assert rederived.count(old) == 1, old
-            rederived = rederived.replace(old, new)
-    lead = family.lead_source(expansion)
+    from meep_gpu.metal_kernels import complex_fused_hd_pair  # noqa: PLC0415
+
+    lead = family.lead_source()
+    h_cell = complex_fused_hd_pair.h_cell_function(shaders.CONTRACT_OFF)
+    loop = scan.column_scan_loop("step_D")
+    for edit in family.SCAN_LIFT_EDITS:
+        loop = loop.replace(edit["line"], edit["became"])
+    indented = "\n".join("    " + line if line.strip() else line
+                         for line in loop.splitlines())
     row = {
-        "expansion": expansion,
-        "lift_equals_declared_edits": rederived == tail,
-        "arithmetic_lines_identical": (_arithmetic_lines(certified_tail)
-                                       == _arithmetic_lines(tail)),
-        "arithmetic_line_count": len(_arithmetic_lines(tail)),
-        "lead_carries_certified_helpers": templates.complex_helpers(expansion) in lead,
-        "lead_carries_scan_divide_helper": scan._DIVIDE_HELPER.strip() in lead,
-        "lead_carries_scan_loop": all(
-            line.strip() in lead for line in scan.COLUMN_SCAN_LOOP.splitlines()
-            if line.strip() and "__SRC" not in line),
-        "lead_leader_row_zero_is_own_cell": "c_mul_field_left(own.a1, weights[0])" in lead,
-        "lead_leader_row_i_is_recompute": (
-            f"c_mul_field_left(h_cell(i, j, k, {family.H_CELL_TAIL_ARGS}).a1, weights[i])"
+        "h_cell_is_the_complex_weld_function": family.h_cell_function
+        is complex_fused_hd_pair.h_cell_function,
+        "h_cell_appears_once": lead.count(h_cell) == 1,
+        "scan_edits_declared": len(family.SCAN_LIFT_EDITS),
+        "scan_edit_lines_are_the_scan_modules_reads": tuple(
+            edit["line"] for edit in family.SCAN_LIFT_EDITS) == scan.source_reads("step_D"),
+        "lead_carries_the_lifted_scan_loop": indented in lead,
+        "lead_carries_certified_helpers": templates.complex_helpers() in lead,
+        "lead_leader_row_zero_is_own_cell": "float2 w_prev = own.a1 * weights[0];" in lead,
+        "lead_leader_row_g_is_recompute": (
+            f"float2 w = h_cell(g, j, k, {family.H_CELL_TAIL_ARGS}).a1 * weights[g];"
             in lead),
         "lead_h_cell_returns": all(f"out.{reg} = {reg};" in lead for reg in
-                                   ("a0", "a1", "a2", "src0", "src1", "src2")),
+                                   ("a0", "a1", "a2", "wn0", "wn1", "wn2")),
         "contraction_guard_once": lead.count(
             shaders.contraction_pragma(shaders.CONTRACT_OFF)) == 1,
         "curl_is_certified_byte_for_byte": {},
     }
     for bcz in (templates.PERIODIC, templates.METALLIC):
         for m_arm in cylc.M_ARMS:
-            ours = family.curl_source(bcz, m_arm, expansion)
-            theirs = cylc.cylindrical_curl_source(bcz, True, m_arm, expansion)
+            ours = family.curl_source(bcz, m_arm)
+            theirs = cylc.cylindrical_curl_source(bcz, True, m_arm)
             row["curl_is_certified_byte_for_byte"][
                 f"bcz{bcz}/{cylc.M_ARM_LABELS[m_arm]}"] = (
                 hashlib.sha256(ours.encode()).hexdigest()
                 == hashlib.sha256(theirs.encode()).hexdigest())
     row["passed"] = bool(
-        row["lift_equals_declared_edits"] and row["arithmetic_lines_identical"]
-        and row["arithmetic_line_count"] == 9
-        and row["lead_carries_certified_helpers"] and row["lead_carries_scan_divide_helper"]
-        and row["lead_carries_scan_loop"] and row["lead_leader_row_zero_is_own_cell"]
-        and row["lead_leader_row_i_is_recompute"] and row["lead_h_cell_returns"]
+        row["h_cell_is_the_complex_weld_function"] and row["h_cell_appears_once"]
+        and row["scan_edits_declared"] == 2
+        and row["scan_edit_lines_are_the_scan_modules_reads"]
+        and row["lead_carries_the_lifted_scan_loop"]
+        and row["lead_carries_certified_helpers"]
+        and row["lead_leader_row_zero_is_own_cell"]
+        and row["lead_leader_row_g_is_recompute"] and row["lead_h_cell_returns"]
         and row["contraction_guard_once"]
         and all(row["curl_is_certified_byte_for_byte"].values()))
     payload["legs"]["lift"] = row
     save(payload, out)
-    log(f"[lift] passed={row['passed']} arithmetic_lines={row['arithmetic_line_count']}")
+    log(f"[lift] passed={row['passed']}")
     assert row["passed"], row
 
 
@@ -500,10 +511,11 @@ def leg_driver_order(payload: Dict[str, Any], out: str) -> None:
         "fused_pair_seams_row": list(metal_launch.FUSED_PAIR_SEAMS["update_H"]),
         "fused_pair_seams_routes_to_hoist": (
             metal_launch.FUSED_PAIR_SEAMS["update_H"] == ("step_D", withdraw_hoist.SEAM)),
-        "between_is_the_withdraw_loop_only": all(
-            "withdraw" in entry["statement"] or "for source in electric" in entry["statement"]
-            or "update_H(self.fields, self.pml)" in entry["statement"]
-            for entry in fact["between"]),
+        # The magnetic f_minus_p restore, which writes B alone and which step_D does
+        # not read (withdraw_hoist.SEAM_PASS); an integrated source stands no withdraw.
+        "between_is_the_magnetic_restore_only": (
+            tuple(entry["statement"] for entry in fact["between"])
+            == h_to_d_seam.EXPECTED_BETWEEN),
         "launches_per_run": family.MetalCylindricalComplexFusedHdPairPlan.launches_per_run,
         "carries_deposit_repair": family.CARRIES_DEPOSIT_REPAIR,
         "hoists_the_withdraw": family.HOISTS_THE_WITHDRAW,
@@ -511,7 +523,7 @@ def leg_driver_order(payload: Dict[str, Any], out: str) -> None:
     }
     row["passed"] = bool(row["replaces_is_the_span"] and row["seam_is_the_hoist_seam"]
                          and row["fused_pair_seams_routes_to_hoist"]
-                         and row["between_is_the_withdraw_loop_only"]
+                         and row["between_is_the_magnetic_restore_only"]
                          and row["launches_per_run"] == 2
                          and not row["carries_deposit_repair"]
                          and not row["hoists_the_withdraw"] and not row["installable"])
@@ -535,7 +547,9 @@ def leg_refusal(payload: Dict[str, Any], out: str) -> None:
         return all(any(needle in reason for reason in verdict.reasons) for needle in needles)
 
     admitted = cover(fields, pml, (), residency)
-    integrated = cover(fields, pml, (volume_source(fields, "Ez", True),), residency)
+    integrated_source = volume_source(fields, "Ez", True)
+    integrated = cover(fields, pml, (integrated_source,), residency)
+    standing = cover(fields, pml, (StandingWithdraw(),), residency)
     plain = cover(fields, pml, (volume_source(fields, "Ez", False),), residency)
     magnetic = cover(fields, pml, (volume_source(fields, "Hz", True),), residency)
     undeclared = cover(fields, pml, None, residency)
@@ -546,10 +560,13 @@ def leg_refusal(payload: Dict[str, Any], out: str) -> None:
     real = cover(real_fields, real_pml, (), Residency())
     row = {
         "admitted_with_empty_sources": admitted.covered,
-        "integrated_electric_refused_by_name": (
-            not integrated.covered
-            and named(integrated, "standing", "HOISTS_THE_WITHDRAW = False")),
+        "integrated_electric_admitted": (
+            integrated.covered
+            and withdraw_hoist.standing_withdraws((integrated_source,)) == ()),
         "integrated_electric_reasons": list(integrated.reasons),
+        "standing_withdraw_refused_by_name": (
+            not standing.covered
+            and named(standing, "standing", "HOISTS_THE_WITHDRAW = False")),
         "non_integrated_electric_admitted": plain.covered,
         "magnetic_integrated_admitted": magnetic.covered,
         "undeclared_sources_refused": (not undeclared.covered
@@ -562,7 +579,8 @@ def leg_refusal(payload: Dict[str, Any], out: str) -> None:
         "real_storage_reasons_head": list(real.reasons)[:3],
     }
     row["passed"] = bool(row["admitted_with_empty_sources"]
-                         and row["integrated_electric_refused_by_name"]
+                         and row["integrated_electric_admitted"]
+                         and row["standing_withdraw_refused_by_name"]
                          and row["non_integrated_electric_admitted"]
                          and row["magnetic_integrated_admitted"]
                          and row["undeclared_sources_refused"]
@@ -577,6 +595,15 @@ def leg_refusal(payload: Dict[str, Any], out: str) -> None:
 # ---------------------------------------------------------------------------
 # LEG product / value_class / launch_structure / sync
 # ---------------------------------------------------------------------------
+
+def radial_oracle(fields: Any, pml: Any, one_sum: bool = False) -> Any:
+    """``stepping.cylindrical_rderiv_difference`` over the stored ``Hy`` at ir0 = 0.5,
+    backward, with the run's chunk starts for Dz (``one_sum``: one sum from the axis)."""
+    starts = None if one_sum else stepping._cylindrical_scan_starts(fields, pml, "Dz")
+    hy = np.ascontiguousarray(fields.Hy)
+    return stepping.cylindrical_rderiv_difference(np, hy, 0.5, starts, int(hy.shape[0]),
+                                                  backward=True)
+
 
 def run_case(label: str, seed: int, steps: int,
              value_class: str = values.UNIFORM) -> Dict[str, Any]:
@@ -606,15 +633,14 @@ def run_case(label: str, seed: int, steps: int,
                     for name in prod_state)
         if value_class == values.PM_ZERO_LATTICE and step == 1:
             sign_floor = values.zero_sign_census(list(ref_state.values()))
-        # THE SEAM, MEASURED DIRECTLY: the prefix scratch the lead wrote equals the
-        # array path's own scan over the DEVICE engine's post-update Hy.
-        prefix_expected = stepping.cylindrical_rderiv_prefix(
-            np, np.ascontiguousarray(product.fields.Hy), 0.5)
-        prefix_differing = differing(plan.prefix_host, prefix_expected)
+        # THE SEAM, MEASURED DIRECTLY: the radial scratch the lead wrote equals the
+        # array path's own radial difference over the DEVICE engine's post-update Hy.
+        prefix_differing = differing(plan.radial_host,
+                                     radial_oracle(product.fields, product.pml))
         entry = {"step": step, "compared": compared,
                  "versus_array": versus_array, "versus_singles": versus_singles,
                  "singles_versus_array": singles_versus_array,
-                 "prefix_differing": prefix_differing,
+                 "radial_differing": prefix_differing,
                  "launches": plan.launches, "lead_launches": plan.lead_launches,
                  "curl_launches": plan.curl_launches,
                  "product_seam_syncs": list(product_syncs),
@@ -633,10 +659,10 @@ def run_case(label: str, seed: int, steps: int,
         assert singles.d_plan.prefix_syncs == step, (label, step)
         log(f"[case] {label:<26} {value_class:<16} step {step:>2}/{steps} "
             f"vs_array={versus_array or 0} vs_singles={versus_singles or 0} "
-            f"prefix={prefix_differing} launches={plan.launches} "
+            f"radial={prefix_differing} launches={plan.launches} "
             f"seam_syncs={product_syncs} singles_syncs={singles_syncs}")
     identical = all(not e["versus_array"] and not e["versus_singles"]
-                    and not e["prefix_differing"] for e in per_step)
+                    and not e["radial_differing"] for e in per_step)
     if value_class == values.PM_ZERO_LATTICE:
         assert sign_floor and sign_floor["positive_zero_words"] > 0 \
             and sign_floor["negative_zero_words"] > 0, sign_floor
@@ -646,8 +672,7 @@ def run_case(label: str, seed: int, steps: int,
             "compared_words": total_compared, "bit_identical": identical,
             "first_divergence": first_divergence, "per_step": per_step,
             "shape": list(reference.fields.grid.shape),
-            "m": int(reference.fields.grid.m), "bcz": plan.bcz, "m_arm": plan.m_arm,
-            "expansion": plan.expansion, "zero_sign_census": sign_floor,
+            "m": int(reference.fields.grid.m), "bcz": plan.bcz, "m_arm": plan.m_arm, "zero_sign_census": sign_floor,
             "digest": kit.state_digest(state_of(reference.fields))}
 
 
@@ -678,55 +703,59 @@ def leg_launch_structure(payload: Dict[str, Any], out: str) -> None:
     """The counters and the seam identity are asserted inside :func:`run_case`; this
     leg gathers them across the product leg and adds the standalone-scan agreement."""
     rows = payload["legs"].get("product", ())
-    _probe, expansion = bound_expansion()
-    # The prefix the lead wrote must also equal the STANDALONE complex scan kernel run
-    # over the stored post-update Hy — the two kernels' spellings of the same loop.
+    # The radial difference the lead wrote must also equal the STANDALONE complex scan
+    # kernel run over the stored post-update Hy — the two kernels' spellings of the
+    # same loop — and differ from one sum from the axis (two r chunks here).
     fields, pml = build(MUTATION_CASE, 2)
     engine = ProductEngine(fields, pml)
     engine.step()
     import torch  # noqa: PLC0415
+    from meep_gpu.metal_kernels.cylindrical_real import int32_tensor  # noqa: PLC0415
     nr, ny, nz = fields.grid.shape
     src = torch.from_numpy(np.ascontiguousarray(fields.Hy).reshape(-1)).to("mps")
-    weights, divisor = scan.prefix_row_vectors("step_D", nr)
+    weights, rinv = scan.prefix_row_vectors("step_D", nr)
     out_t = torch.from_numpy(np.full((nr, ny, nz), np.complex64(-7.5 - 7.5j)
                                      ).reshape(-1)).to("mps")
-    function = scan.compile_cylindrical_complex_prefix("step_D", expansion)
+    function = scan.compile_cylindrical_complex_scan("step_D")
     function(*scan.scan_arguments(out_t, src,
                                   torch.from_numpy(weights).to("mps"),
-                                  torch.from_numpy(divisor).to("mps"), (nr, ny, nz)))
+                                  torch.from_numpy(rinv).to("mps"),
+                                  int32_tensor(engine.plan.starts, "mps"), (nr, ny, nz)))
     torch.mps.synchronize()
     standalone = out_t.cpu().numpy().reshape(nr, ny, nz)
+    oracle = radial_oracle(fields, pml)
     row = {
         "per_step_counts_asserted": bool(rows),
         "launches_per_run_declared": family.MetalCylindricalComplexFusedHdPairPlan.launches_per_run,
-        "lead_prefix_vs_standalone_scan_differing": differing(engine.plan.prefix_host,
+        "lead_prefix_vs_standalone_scan_differing": differing(engine.plan.radial_host,
                                                               standalone),
-        "lead_prefix_vs_stepping_differing": differing(
-            engine.plan.prefix_host,
-            stepping.cylindrical_rderiv_prefix(np, np.ascontiguousarray(fields.Hy), 0.5)),
+        "lead_prefix_vs_stepping_differing": differing(engine.plan.radial_host, oracle),
+        "one_sum_control_differing": differing(radial_oracle(fields, pml, one_sum=True),
+                                               oracle),
+        "chunk_starts": sorted({int(s) for s in engine.plan.starts}),
         "prefix_words": int(words(standalone).size),
         "prefix_nonzero_words": differing(standalone, np.zeros_like(standalone)),
     }
     row["passed"] = bool(row["per_step_counts_asserted"]
                          and row["lead_prefix_vs_standalone_scan_differing"] == 0
                          and row["lead_prefix_vs_stepping_differing"] == 0
+                         and row["one_sum_control_differing"] > 0
                          and row["prefix_nonzero_words"] >= 64)
     payload["legs"]["launch_structure"] = row
     save(payload, out)
-    log(f"[launch_structure] prefix vs standalone scan differing="
+    log(f"[launch_structure] radial vs standalone scan differing="
         f"{row['lead_prefix_vs_standalone_scan_differing']} passed={row['passed']}")
     assert row["passed"], row
 
 
 def leg_purity(payload: Dict[str, Any], out: str) -> None:
     """A static read/write ledger over the lead source, comments stripped."""
-    _probe, expansion = bound_expansion()
-    source = family.lead_source(expansion)
+    source = family.lead_source()
     body = source.split("kernel void", 1)[1].split("{", 1)[1]
     code = "\n".join(line.split("//", 1)[0] for line in body.splitlines())
     written = ("ho0", "ho1", "ho2", "wo0", "wo1", "wo2", "out")
     read = ("hi0", "hi1", "hi2", "wi0", "wi1", "wi2", "b0", "b1", "b2",
-            "kp0", "km0", "kp1", "km1", "kp2", "km2", "weights", "divisor")
+            "kp0", "kp1", "kp2", "kmx", "kmy", "kmz", "weights", "rinv", "starts")
     ledger: Dict[str, Dict[str, int]] = {}
     for name in written + read:
         stores = len(re.findall(rf"\b{name}\[[^\]]*\]\s*=(?!=)", code))
@@ -768,8 +797,9 @@ def leg_sync(payload: Dict[str, Any], out: str) -> None:
         "singles_seam_syncs_out_total": sum(s[0] for s in singles_syncs),
         "singles_seam_syncs_in_total": sum(s[1] for s in singles_syncs),
         "finding": ("the certified singles pay one sync_out (Hy) and one sync_in (the "
-                    "prefix) per step inside the seam — the complex family's host round "
-                    "trip; this product pays none: the prefix never leaves the device"),
+                    "radial difference) per step inside the seam — the complex family's "
+                    "host round trip; this product pays none: the radial difference "
+                    "never leaves the device"),
     }
     row["passed"] = bool(row["steps_observed"] > 0
                          and row["product_seam_syncs_out_total"] == 0
@@ -788,61 +818,43 @@ def leg_sync(payload: Dict[str, Any], out: str) -> None:
 # LEG mutations
 # ---------------------------------------------------------------------------
 
-_LITERAL_LOOP = """static inline float2 c_div_real(float2 z, float d) {
-    float rat = 0.0f / d;
-    float scl = 1.0f / (d + 0.0f * rat);
-    return float2((z.x + z.y * rat) * scl, (z.y - z.x * rat) * scl);
-}"""
-_SHIPPED_DIVIDE = """static inline float2 c_div_real(float2 z, float d) {
-    return z * (1.0f / d);
-}"""
-
-
-def kernel_mutations(expansion: str) -> Tuple[Tuple[str, Callable[[str], str],
-                                                    Optional[bool], str], ...]:
-    recompute = f"c_mul_field_left(h_cell(i, j, k, {family.H_CELL_TAIL_ARGS}).a1, weights[i])"
-    serial = "            acc = acc + inc;\n            out[o] = acc;\n"
-    # EIGHT-row tiles, not 32: the fixture has 16 radial rows, and a tile that never
-    # closes IS the serial scan (measured: a 32-row tile was inert, 0/3, on this grid).
-    blocked = ("            local = local + inc;\n            out[o] = carry + local;\n"
-               "            if ((i % 8) == 7) { carry = carry + local; "
-               "local = float2(0.0f, 0.0f); }\n")
+def kernel_mutations() -> Tuple[Tuple[str, Callable[[str], str], Optional[bool], str],
+                                 ...]:
+    recompute = f"h_cell(g, j, k, {family.H_CELL_TAIL_ARGS}).a1 * weights[g]"
+    stores = ("    ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;\n"
+              "    wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;\n")
+    swapped = ("    wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;\n"
+               "    ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;\n")
     return (
-        ("true_divide_spelling",
-         lambda s: kit.needle(s, "return z * (1.0f / d);", "return z / d;"), True,
-         "the real scan's `/` on the complex increment"),
         ("leader_scans_pre_launch_hy",
-         lambda s: kit.needle(s, recompute,
-                              "c_mul_field_left(hi1[i * nyz + base], weights[i])"), True,
-         "the leader scans the PRE-update Hy instead of recomputing the post-update one: "
+         lambda s: kit.needle(s, recompute, "hi1[g * nyz + base] * weights[g]"), True,
+         "the leader sums the PRE-update Hy instead of recomputing the post-update one: "
          "the defect this product's whole seam exists to avoid"),
         ("leader_row_zero_pre_launch",
-         lambda s: kit.needle(s, "c_mul_field_left(own.a1, weights[0])",
-                              "c_mul_field_left(hi1[ii], weights[0])"), True,
-         "row 0 of the scan taken from the pre-launch Hy"),
-        ("blocked_scan_8",
-         lambda s: kit.needle(
-             kit.needle(s, serial, blocked),
-             "        float2 acc = float2(0.0f, 0.0f);\n",
-             "        float2 acc = float2(0.0f, 0.0f);\n"
-             "        float2 carry = float2(0.0f, 0.0f);\n"
-             "        float2 local = float2(0.0f, 0.0f);\n"), True,
-         "an 8-row tiled scan on the 16-row fixture: a different association, a "
-         "different float32 number (a 32-row tile never closes on 16 rows and measured "
-         "inert, which is a fixture fact and not a kernel one)"),
-        ("literal_numpy_divide_loop",
-         lambda s: kit.needle(s, _SHIPPED_DIVIDE, _LITERAL_LOOP), False,
-         "numpy's complex divide loop spelled literally — an equivalence on the prefix"),
+         lambda s: kit.needle(s, "float2 w_prev = own.a1 * weights[0];",
+                              "float2 w_prev = hi1[ii] * weights[0];"), True,
+         "row 0 of the sum taken from the pre-launch Hy"),
+        ("sum_never_restarts",
+         lambda s: kit.needle(s, "{ acc = float2(0.0f, 0.0f); owner = s; }",
+                              "{ owner = s; }"), True,
+         "ONE radial sum from the axis instead of MEEP's f_rderiv_int per structure "
+         "chunk (the fixture's r layer makes two)"),
+        ("quotient_divided_in_kernel",
+         lambda s: kit.needle(s, "float2 inc = rinv[g - 1] * (w - w_prev);",
+                              "float2 inc = (w - w_prev) / ((float(g) + 0.5f) - 0.5f);"),
+         True, "the float32 divide where MEEP multiplies by rinv, the double quotient "
+               "stored as a realnum"),
+        ("rounded_increment_stored",
+         lambda s: kit.needle(s, "out[g * nyz + base] = acc - nxt;",
+                              "out[g * nyz + base] = -inc;"), True,
+         "the increment stored where the stencil's difference of two partial sums is"),
         ("commuted_accumulator",
-         lambda s: kit.needle(s, "acc = acc + inc;", "acc = inc + acc;"), False,
-         "float addition is commutative"),
+         lambda s: kit.needle(s, "float2 nxt = acc + inc;", "float2 nxt = inc + acc;"),
+         False, "float addition is commutative"),
         ("byte_neutral_store_order",
-         lambda s: kit.needle(s, "    ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;\n"
-                                 "    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;\n",
-                              "    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;\n"
-                              "    ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;\n"),
-         False, "the two store lines swapped: no arithmetic, the control that shows the "
-                "leg does not flag every edit"),
+         lambda s: kit.needle(s, stores, swapped), False,
+         "the two store lines swapped: no arithmetic, the control that shows the leg "
+         "does not flag every edit"),
     )
 
 
@@ -870,11 +882,10 @@ def mutated_walk(label: str, seed: int, steps: int, lead_function: Any = None,
 
 
 def leg_mutations(payload: Dict[str, Any], out: str) -> None:
-    _probe, expansion = bound_expansion()
     harness = kit.MutationHarness(payload, out, key="mutations")
-    shipped = family.lead_source(expansion)
+    shipped = family.lead_source()
     steps = 3
-    for label, transform, must_catch, why in kernel_mutations(expansion):
+    for label, transform, must_catch, why in kernel_mutations():
         try:
             mutant = transform(shipped)
         except LookupError:
@@ -889,9 +900,11 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     # HOST DEFECTS: the plan protocol, not the shader.
     for label, order, rotate, why in (
             ("curl_before_lead", "curl_then_lead", True,
-             "the curl launched before the lead reads the previous step's H and prefix"),
+             "the curl launched before the lead reads the previous step's H and "
+             "radial difference"),
             ("curl_without_lead", "curl_only", True,
-             "the lead hoisted out of the loop: the curl reads a prefix computed once"),
+             "the lead hoisted out of the loop: the curl reads a radial difference "
+             "computed once"),
             ("rotation_undone", "lead_then_curl", False,
              "the H/f_w_H rotation undone after the lead: the curl and the host read "
              "the pre-launch H")):
@@ -903,8 +916,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
 
 
 def leg_disarm(payload: Dict[str, Any], out: str) -> None:
-    _probe, expansion = bound_expansion()
-    function = family.compile_lead(expansion)
+    function = family.compile_lead()
     diverged, launches, ran = mutated_walk(MUTATION_CASE, 75000, 3, function)
     row = {"diverged": diverged, "launches": launches, "steps": ran,
            "passed": diverged == 0 and launches == ran}
@@ -941,13 +953,8 @@ def main(argv: Sequence[str]) -> int:
     if not payload["environment"].get("mps_available"):
         reasons.append("no MPS device available")
     reasons.extend(subnormal.mps_policy_reasons())
-    probe_arm, expansion = bound_expansion()
-    if probe_arm is None:
-        reasons.append("the cylindrical complex expansion probe is not bound; the "
-                       "product cannot be built")
     if reasons:
         return kit.cannot_certify(payload, out, reasons)
-    payload["expansion"] = {"probe_bound": probe_arm, "measured": expansion}
     save(payload, out)
 
     legs: List[Tuple[str, Callable[[Dict[str, Any], str], None]]] = [
@@ -983,8 +990,8 @@ def main(argv: Sequence[str]) -> int:
          "meep_gpu/driver.py": os.path.join(API_ROOT, "meep_gpu", "driver.py"),
          "parity/meep_gpu/gate_metal_cylindrical_complex_fused_hd_pair.py":
              os.path.abspath(__file__)},
-        kernel_sources={label: source for arm in templates.EXPANSION_ARMS
-                        for label, source in family.enumerate_sources(arm).items()},
+        kernel_sources={label: source
+                        for label, source in family.enumerate_sources().items()},
         name="provenance.json")
 
     compared = 0
@@ -1012,7 +1019,8 @@ def main(argv: Sequence[str]) -> int:
         payload, out,
         claim=("two launches — the complex H constitutive folded with the column-leader "
                "device scan of the recomputed Hy, then the certified complex cylindrical "
-               "curl against the rotated H and the device prefix — reproduce the array "
+               "curl against the rotated H and the device radial difference — reproduce "
+               "the array "
                "path AND the two certified singles bit for bit per complete driver step "
                "on every admitted Dcyl complex configuration here, with no host round "
                "trip in the seam"),
@@ -1029,8 +1037,7 @@ def main(argv: Sequence[str]) -> int:
                "mutations_caught_of_armed": sum(1 for row in armed
                                                 if row["caught"] == row["ran"]),
                "mutations_null_controls": len(nulls),
-               "mutation_verdicts": {row["mutation"]: row["verdict"] for row in mutations},
-               "expansion": payload.get("expansion")})
+               "mutation_verdicts": {row["mutation"]: row["verdict"] for row in mutations}})
 
 
 if __name__ == "__main__":

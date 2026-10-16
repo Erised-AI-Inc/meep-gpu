@@ -140,7 +140,7 @@ The result records:
 | <code>steps</code> | Number of timesteps taken by this call |
 | <code>meep_time</code> | Reached MEEP simulation time |
 | <code>wall_time_s</code> | Wall time inside the driver run loop |
-| <code>get_array(component)</code> | Host array in MEEP field-array layout |
+| <code>get_array(component, center=None, size=None)</code> | Host array as MEEP's <code>sim.get_array</code> returns it, word for word: the whole cell, or a <code>center</code>/<code>size</code> volume (not on a cylindrical grid) |
 | <code>get_field(component, cell_centered=True)</code> | Host array in the driver's cell-centred layout; the argument selects that centring and is not the only behaviour |
 | <code>driver</code> | The stepped <code>FdtdDriver</code> this result owns — the route to <code>active_step_path</code> and <code>fast_path_report()</code> |
 | <code>get_flux_spectrum(meep_flux)</code> | Spectrum for a migrated MEEP flux monitor |
@@ -218,8 +218,11 @@ finally:
 Not every refusal is an exception. A kernel table that cannot serve a
 configuration, an NVIDIA device or toolchain outside the supported range, an
 identity outside the certified one under
-<code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code>, and an environment switch with a
-value other than <code>0</code> or <code>1</code> leave the run on the array
+<code>MEEP_GPU_HARDWARE=certified</code>, an environment switch with a value it
+does not accept (other than <code>0</code> or <code>1</code>; for
+<code>MEEP_GPU_HARDWARE</code>, other than <code>certified</code>,
+<code>supported</code> or <code>any</code>), and the retired
+<code>MEEP_GPU_ALLOW_UNCERTIFIED</code> set to any value leave the run on the array
 path, print one line on standard error, and record the reason in
 <code>driver.fast_path_report()</code>; see
 [Messages on standard error](#messages-on-standard-error). Without that
@@ -290,7 +293,7 @@ them is an exception; each reason is also in the dispatch record.
 | <code>meep_gpu: step path fused;</code> | Compiled kernels served part of the step: which sub-steps, which kernels, the table, the subnormal policy installed, and the device and toolchain, each marked certified or not; on a Mac the GPU with its architecture, marked <code>supported, UNCERTIFIED</code> on an Apple GPU outside the certified environment |
 | <code>meep_gpu: step path array on the host CPU; dispatch refused:</code> | On an Apple GPU no kernel could serve; the whole run stepped on the host CPU |
 | <code>meep_gpu: step path array; dispatch refused:</code> | On an NVIDIA GPU no kernel could serve; the run stepped on the array path on the device |
-| <code>meep_gpu: NOTE the kernels are NOT CERTIFIED on this host:</code> | The kernels ran on an identity outside the certified list: by default on a supported one (an Apple GPU outside the certified environment, because every Apple GPU is supported; an NVIDIA GPU of compute capability 7.0 to 9.0 or a Triton 3.1 release outside the certified identity); on an NVIDIA identity outside the supported range because <code>MEEP_GPU_ALLOW_UNCERTIFIED=1</code> admitted it |
+| <code>meep_gpu: NOTE the kernels are NOT CERTIFIED on this host:</code> | The kernels ran on an identity outside the certified list: by default on a supported one (an Apple GPU outside the certified environment, because every Apple GPU is supported; an NVIDIA GPU of compute capability 7.0 to 9.0 or a Triton 3.1 release outside the certified identity); on an NVIDIA identity outside the supported range because <code>MEEP_GPU_HARDWARE=any</code> admitted it |
 | <code>meep_gpu: step path array (NumPy reference, prefer_gpu=False);</code> | <code>MEEP_GPU_DISPATCH</code> is set on a reference driver, where it does not apply |
 | <code>meep_gpu: this MEEP build is double precision</code> | The lift read a double-precision MEEP; the engine steps single precision |
 
@@ -367,12 +370,13 @@ most. Each has a docstring (<code>help(meep_gpu.FdtdDriver.run)</code>).
 |---|---|
 | <code>run(num_steps=None, until=None, ..., *, step_functions=(), until_after_sources=None, ...)</code> | Steps to one stopping condition and returns the elapsed wall time. <code>progress_interval</code> defaults to 100 |
 | <code>step()</code> | One time step |
-| <code>get_field(component, cell_centered=True)</code>, <code>get_field_point(component, point)</code> | Read a field component, as an array or at one point |
+| <code>get_field(component, cell_centered=True)</code>, <code>get_field_point(component, point)</code> | Read a field component, as an array or at one point. Both are MEEP's arithmetic: the cell-centred array holds MEEP's <code>get_array</code> word at every stored centre, and the point is MEEP's <code>get_field_point</code>, <code>0.0</code> where no chunk owns a leg, as in MEEP |
 | <code>set_field(component, array)</code> | Write a primary field component |
 | <code>add_source(source_data)</code> | Add a source described by a mapping (<code>component</code>, <code>center</code>, <code>size</code>, <code>amplitude</code>, <code>source_type</code> and the waveform's keys; see its docstring) |
-| <code>set_epsilon(eps)</code>, <code>set_epsilon_components(...)</code>, <code>set_conductivity(...)</code>, <code>add_susceptibility(...)</code> | Set materials |
+| <code>set_epsilon(eps)</code>, <code>set_epsilon_components(...)</code>, <code>set_conductivity(...)</code>, <code>add_susceptibility(...)</code> | Set materials. The stored inverse permittivity is the reciprocal of the value given, formed in double and rounded once, as MEEP stores it |
 | <code>setup_pml(thickness_cells, order=2)</code> | A PML of the given thickness in cells, uniform or per axis and side, graded as <code>u**order</code> |
 | <code>set_absorber(...)</code> | <code>mp.Absorber</code> faces, from <code>AbsorberLayer</code> objects |
+| <code>set_chunk_layout(layout)</code>, <code>chunk_bounds_record()</code> | Step with a chunk division (<code>meep_gpu.chunk_map.ChunkLayout</code>; a lift installs MEEP's own, before the first step), and read the kernels' <code>int32[25]</code> record of it. Every PML form, and whether an off-diagonal inverse-permittivity term is added, is chosen per chunk of it, as MEEP chooses them; a division that disagrees with the layer is refused by name |
 | <code>add_flux_monitor(frequencies=None, center=None, size=None, direction=None, *, fcen=None, df=None, nfreq=None, ...)</code> | A flux plane; read it with the returned monitor's <code>get_flux_spectrum()</code> |
 | <code>add_dft_monitor(...)</code>, <code>add_energy_monitor(...)</code>, <code>add_force_monitor(...)</code> | DFT field, energy and force monitors; frequencies are spelled as for the flux monitor |
 | <code>get_epsilon(frequency=None, component="Ez")</code> | Read the permittivity |
@@ -380,7 +384,8 @@ most. Each has a docstring (<code>help(meep_gpu.FdtdDriver.run)</code>).
 
 Properties: <code>shape</code> (the stored grid, halved on a mirror axis),
 <code>dt</code>, <code>dx</code>, <code>meep_time</code>,
-<code>active_step_path</code>.
+<code>active_step_path</code>, <code>chunk_layout</code> (the division the run steps
+with: the lifted simulation's, else the one-rank division of the current PML).
 
 ### Mirror
 
@@ -450,8 +455,8 @@ root, because it would shadow the <code>meep_gpu.harminv</code> module.
 
 <code>StructuredSigmaLift</code> reports the route used when a structured
 dispersive lift needs per-point susceptibility data. Its fields are
-<code>route</code> (<code>"reader"</code>, <code>"declared-geometry lookup"</code>
-or <code>"chi1inv inversion"</code>), <code>term_count</code>,
+<code>route</code> (<code>"declared-geometry lookup"</code> or
+<code>"chi1inv inversion"</code>), <code>term_count</code>,
 <code>verified_points</code>, <code>verification_frequencies</code>,
 <code>worst_residual</code>, <code>tolerance</code> and
 <code>fallback_reason</code>. <code>MigratedMonitors</code>

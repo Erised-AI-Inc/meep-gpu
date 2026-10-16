@@ -86,7 +86,9 @@ NEVER PASS ``-ftz=false``. NVRTC hard-errors on a duplicate ``-ftz`` option, in
 both orders; the only alignment direction for CuPy is to remove the option CuPy
 adds. And the CuPy cache key is computed ABOVE the ``compile_using_nvrtc`` seam,
 so the strip changes binaries without changing keys — hence the mandatory
-policy-suffixed ``CUPY_CACHE_DIR``. Triton's key does include ``backend.hash()``,
+policy-suffixed ``CUPY_CACHE_DIR``, and, because a keep directory can already hold
+binaries CuPy compiled natively before the install, a keep token folded into the
+key itself (:data:`CUPY_KEEP_CACHE_KEY_TOKEN`). Triton's key does include ``backend.hash()``,
 which this module folds BOTH the policy name AND a digest of the injection
 MECHANISM into: the name alone is not enough, measured — four different injected
 attribute strings compiled into one ``TRITON_CACHE_DIR`` all returned the first
@@ -112,9 +114,18 @@ WHY INSTALLATION MUST COME FIRST, and what happens when it does not. Both device
 executors memoize compiled kernels IN PROCESS, above their disk caches: a CuPy
 kernel compiled before the install keeps flushing after a ``"keep"`` install, and
 a Triton kernel compiled before a ``"flush"`` install keeps keeping, with every
-counter reading zero. Installing therefore DROPS those in-process caches
-(``cupy._util.clear_memo``; every live ``JITFunction.cache``) and records how many
-entries it dropped — a nonzero count is the fingerprint of a late install.
+counter reading zero. Installing therefore DROPS those in-process caches —
+``cupy._util.clear_memo`` AND the kernel dict on every live ``ufunc`` and
+``ElementwiseKernel`` (:data:`CUPY_OBJECT_KERNEL_MEMOS`, which ``clear_memo`` never
+reaches); every live ``JITFunction.cache`` — and records how many entries it
+dropped: a nonzero count is the fingerprint of a late install. Dispatch installs at
+the configuration freeze, AFTER the lift has compiled its CuPy kernels, so on the
+shipped route the drop is what makes the policy reach the array path at all. The
+one CuPy holder it cannot reach is a ``RawKernel`` the caller compiled before the
+install (:func:`_clear_cupy_kernel_memo`). A dropped kernel is rebuilt through the
+disk cache, so the keep token is also folded into CuPy's cache key
+(:func:`_wrap_cache_key_entry_point`): otherwise the rebuild reads back the native
+binary the pre-install compile wrote into a keep directory.
 
 INSTALLATION IS ADDITIVE. This module never edits :mod:`meep_gpu.backends`; it
 composes with it. :func:`install_cupy_policy` calls
@@ -164,7 +175,12 @@ POLICIES: Tuple[str, str] = (FLUSH, KEEP)
 
 #: Ask for whatever MEEP itself does on THIS host — and find out by MEASURING it
 #: (:func:`resolve_match_meep`), never by recognizing a machine string. The
-#: default, and the reason ``platform.machine()`` decides nothing in this module.
+#: default, and the reason ``platform.machine()`` decides no POLICY and no verdict
+#: in this module. It is read in one place for another purpose: the x86-64 glibc
+#: MXCSR lever (:func:`_drive_host_fpu_by_mxcsr`) writes into a C structure at a
+#: fixed offset, so it runs only on the ABI whose layout it mirrors — a
+#: precondition for touching memory, after which the measurement is still the
+#: verdict.
 MATCH_MEEP = "match_meep"
 
 #: Everything a caller may ask for, by argument or through
@@ -335,8 +351,7 @@ POLICY_ENV = "MEEP_GPU_SUBNORMAL_POLICY"
 _POLICY_MARK = "_meep_gpu_subnormal_policy"
 
 #: The policy name a ``"keep"`` artifact carries. Unchanged from the name the nine
-#: certified families were cut under, so their stamps stay comparable and
-#: ``gate_triton_complex.probe_record_policy_reasons`` keeps accepting them.
+#: certified families were cut under, so their stamps stay comparable.
 CUPY_KEEP_POLICY_NAME = "ieee_keep_ftz_stripped"
 
 #: The policy name a ``"flush"`` artifact carries.
@@ -356,6 +371,18 @@ CUPY_CACHE_POLICY_TOKEN = "ftz_stripped"
 #: The CuPy compiler front ends, in every backend CuPy ships — the same tuple
 #: ``backends.guard_kernel_compilation`` wraps, because it is the same seam.
 _COMPILER_ENTRY_POINTS = backends._COMPILER_ENTRY_POINTS
+
+#: Where CuPy 13.5.1 computes the key of its on-disk kernel cache
+#: (``cupy/cuda/compiler.py``, ``_compile_with_cache_cuda``), ABOVE the entry points
+#: the strip wraps. Under ``"keep"`` this is wrapped as well, to fold
+#: :data:`CUPY_KEEP_CACHE_KEY_TOKEN` into the key.
+CUPY_CACHE_KEY_ENTRY_POINT = "_compile_with_cache_cuda"
+
+#: Appended to ``extra_source`` under ``"keep"``. CuPy hashes ``extra_source`` into
+#: its cache key and hands it to no compiler ("NVRTC does not use extra_source.
+#: extra_source is used for cache key", ``compiler.py``), so the token changes which
+#: entry a compile reads and writes and nothing about the binary it builds.
+CUPY_KEEP_CACHE_KEY_TOKEN = "meep_gpu subnormal policy: keep (-ftz=true stripped)"
 
 #: The option CuPy appends unconditionally, in both spellings.
 _CUPY_FTZ_OPTIONS = ("-ftz=true", "--ftz=true")
@@ -607,15 +634,21 @@ def host_policy_reasons(policy: str, module: Any, before: bool, after: bool) -> 
     machine = platform.machine()
     symbol = _FENV_SYMBOL[bool(want_flush)]
     if module is None:
+        abi_ok, abi = glibc_x86_64_abi()
+        mxcsr = (f"the x86-64 glibc MXCSR lever ran on {abi} and did not attain it: "
+                 f"{_MXCSR_LEVER_LAST.get('outcome') or 'no outcome recorded'}"
+                 if abi_ok else f"the x86-64 glibc MXCSR lever does not apply: {abi}")
         return [
-            f"MEEP is not imported in this process, and MEEP's "
-            f"``set_zero_subnormals`` is the only exposure of this process's "
-            f"FTZ/DAZ bits that this package may use (importing MEEP here would "
-            f"break the package's no-MEEP-import boundary and would initialize "
-            f"MPI as a side effect); measured host flushing is {before!r} and "
-            f"{policy!r} needs {want_flush!r}. The fenv fallback ({symbol}) was "
-            f"tried and did not move the FPU either. Import MEEP before installing "
-            f"the policy, or request {KEEP!r} on a host that already keeps"
+            f"MEEP is not imported in this process (importing it here would break "
+            f"the package's no-MEEP-import boundary and would initialize MPI as a "
+            f"side effect), so only the package's MEEP-less levers could drive "
+            f"this thread's FTZ/DAZ bits; measured host flushing is {before!r} and "
+            f"{policy!r} needs {want_flush!r}. Darwin's environment object "
+            f"({symbol}) was tried and did not move the FPU (it is absent outside "
+            f"Darwin), and {mxcsr}. On this ABI {policy!r} is unattainable without "
+            f"MEEP: import MEEP before installing the policy (its "
+            f"``set_zero_subnormals`` is the lever on x86), or request {KEEP!r} on "
+            f"a host that already keeps"
         ]
     return [
         f"mp.set_zero_subnormals({want_flush!r}) did not change this host's FPU: "
@@ -690,6 +723,169 @@ def _drive_host_fpu_by_fenv(want_flush: bool) -> bool:
     return False
 
 
+#: The MXCSR bits MEEP's own ``_set_zero_subnormals`` sets on x86
+#: (``src/mympi.cpp``: ``mxcsr |= 0x8040``): FTZ (bit 15, flush-to-zero for
+#: results) and DAZ (bit 6, denormals-are-zero for operands). The x86-64 glibc
+#: lever sets or clears exactly these two and leaves every other bit of the word —
+#: the exception masks and flags, the rounding mode — as it found it.
+MXCSR_FTZ_DAZ = 0x8040
+
+#: Bits 16-31 of MXCSR are reserved: ``ldmxcsr`` with any of them set raises a
+#: general-protection fault, which kills the process. A word read from the
+#: environment is checked against this mask before anything is written back, so
+#: a layout that did not match the header could never reach ``fesetenv``.
+_MXCSR_RESERVED = 0xFFFF0000
+
+#: How the x86-64 glibc lever is named in a report, one spelling per direction,
+#: under :data:`FENV_MECHANISM_PREFIX` so ``install_host_policy`` reports the FPU as
+#: installed by it.
+_MXCSR_MECHANISM = {True: "fenv:x86_64-glibc MXCSR |= 0x8040 (FTZ|DAZ)",
+                    False: "fenv:x86_64-glibc MXCSR &= ~0x8040 (FTZ|DAZ)"}
+
+#: What the x86-64 glibc lever did the last time it ran, in one sentence, for the
+#: refusal wording of :func:`host_policy_reasons`. Bookkeeping only; nothing
+#: decides on it.
+_MXCSR_LEVER_LAST: Dict[str, Any] = {}
+
+
+class _GlibcX8664Fenv(ctypes.Structure):
+    """glibc's x86_64 ``fenv_t``, field for field from ``bits/fenv.h``.
+
+    The header's layout::
+
+        unsigned short __control_word, __glibc_reserved1;    offsets  0,  2
+        unsigned short __status_word,  __glibc_reserved2;             4,  6
+        unsigned short __tags,         __glibc_reserved3;             8, 10
+        unsigned int   __eip;                                        12
+        unsigned short __cs_selector;                                16
+        unsigned int   __opcode:11, __glibc_reserved4:5;             18 (16 bits)
+        unsigned int   __data_offset;                                20
+        unsigned short __data_selector, __glibc_reserved5;          24, 26
+        unsigned int   __mxcsr;          (#ifdef __x86_64__)          28
+
+    The first 28 bytes are the x87 environment ``fnstenv`` stores, and ``__mxcsr``
+    is what ``stmxcsr`` stores after it. The two bit-fields share the 16 bits after
+    ``__cs_selector`` in GCC's layout; they are one ``c_ushort`` here because
+    ctypes' layout of mixed-width bit-fields is not guaranteed to be GCC's on every
+    Python this package supports, and nothing reads them. Derived from the header on the Linux reference host
+    (glibc 2.31, GCC 9.4): a program printing ``offsetof``/``sizeof`` reads
+    ``sizeof(fenv_t) == 32``, ``offsetof(fenv_t, __mxcsr) == 28`` and
+    ``offsetof(fenv_t, __data_offset) == 20``; ``test_subnormal_policy.py`` pins
+    this structure to those numbers.
+    """
+
+    _fields_ = [
+        ("control_word", ctypes.c_ushort), ("glibc_reserved1", ctypes.c_ushort),
+        ("status_word", ctypes.c_ushort), ("glibc_reserved2", ctypes.c_ushort),
+        ("tags", ctypes.c_ushort), ("glibc_reserved3", ctypes.c_ushort),
+        ("eip", ctypes.c_uint), ("cs_selector", ctypes.c_ushort),
+        ("opcode_and_glibc_reserved4", ctypes.c_ushort),
+        ("data_offset", ctypes.c_uint), ("data_selector", ctypes.c_ushort),
+        ("glibc_reserved5", ctypes.c_ushort), ("mxcsr", ctypes.c_uint),
+    ]
+
+
+def glibc_x86_64_abi() -> Tuple[bool, str]:
+    """Is this process on the ABI whose ``fenv_t`` :class:`_GlibcX8664Fenv` mirrors?
+
+    Returns ``(applies, description)``. The lever writes a 32-bit word at a fixed
+    offset into the structure ``fegetenv`` fills, so it runs only where that
+    layout is the C library's: Linux, an x86-64 processor, 64-bit pointers (not
+    x32), and glibc, recognised by its own ``gnu_get_libc_version`` export in the
+    process's global namespace (musl and others do not export it). This is a
+    precondition for writing memory, never a policy decision: where it holds, the
+    lever still MEASURES before it reports success.
+    """
+    machine = platform.machine()
+    where = f"{sys.platform} {machine!r}, {8 * ctypes.sizeof(ctypes.c_void_p)}-bit pointers"
+    if not sys.platform.startswith("linux") or machine.lower() not in ("x86_64", "amd64"):
+        return False, (f"this process is {where}, and the lever mirrors glibc's "
+                       f"x86_64 fenv_t only")
+    if ctypes.sizeof(ctypes.c_void_p) != 8:
+        return False, f"this process is {where}; the lever mirrors the LP64 ABI only"
+    try:
+        version = ctypes.CDLL(None).gnu_get_libc_version
+    except (OSError, AttributeError):
+        return False, (f"this process is {where} but its C library exports no "
+                       f"gnu_get_libc_version, so it is not glibc and its fenv_t "
+                       f"layout is not the one mirrored")
+    version.restype = ctypes.c_char_p
+    version.argtypes = []
+    return True, f"Linux x86_64 glibc {version().decode('ascii', 'replace')}"
+
+
+def _drive_host_fpu_by_mxcsr(want_flush: bool) -> bool:
+    """The x86-64 glibc host lever: set or clear MXCSR FTZ|DAZ. Did it work?
+
+    WHY THIS EXISTS. On x86 MEEP's ``set_zero_subnormals`` is the mechanism, and it
+    stays first whenever MEEP is imported (:func:`_drive_host_fpu`). A process that
+    has NOT imported MEEP — the Tier A replay of MEEP identity, which blocks MEEP on
+    purpose, or an engine user with no MEEP at all — had no way to reach ``flush``
+    on Linux, because glibc exports no environment object with the denormal bits
+    set (Darwin's ``_FE_DFL_DISABLE_DENORMS_ENV`` has no glibc counterpart). This
+    lever does by hand what MEEP's switch does: ``mxcsr |= 0x8040`` for flush,
+    ``mxcsr &= ~0x8040`` for keep, through the C library's own ``fegetenv`` and
+    ``fesetenv`` (glibc's x86_64 ``fesetenv`` installs ``__mxcsr`` from the
+    structure as given: measured on the reference host, ``fegetenv`` afterwards
+    reads back the word installed).
+
+    WHAT IT REACHES: THE CALLING THREAD. MXCSR is per thread. MEEP's switch sets it
+    on every OpenMP thread through a parallel loop; this lever sets it on the
+    thread that calls it, which is the thread that steps the array path (NumPy's
+    elementwise operations run on the calling thread, and the MEEP flush reference
+    is defined at ``OMP_NUM_THREADS=1``). A thread created afterwards starts from a
+    copy of its creator's floating-point state on Linux; a thread already running
+    keeps its own.
+
+    THE MEASUREMENT IS THE VERDICT AND THE RESTORE IS UNCONDITIONAL, exactly as in
+    :func:`_drive_host_fpu_by_fenv`: the environment is saved, the candidate
+    installed, ``backends.subnormals_flushed`` asked (its FTZ probe and its DAZ
+    probe), and the saved environment put back the moment the answer is no. Two
+    guards come before any write: the ABI must be the one the structure mirrors
+    (:func:`glibc_x86_64_abi`), and the MXCSR word read back must have its
+    reserved bits clear (:data:`_MXCSR_RESERVED`), so a layout mismatch is a
+    refusal rather than a fault.
+    """
+    _MXCSR_LEVER_LAST.clear()
+    applies, abi = glibc_x86_64_abi()
+    if not applies:
+        _MXCSR_LEVER_LAST["outcome"] = f"not run: {abi}"
+        return False
+    library = backends._math_library()  # noqa: SLF001 - the resolved libm, argtypes set
+    if library is None:
+        _MXCSR_LEVER_LAST["outcome"] = "not run: no C library exposing fegetenv/fesetenv"
+        return False
+    # Over-allocated, as backends does, so a C library that wrote more than the
+    # mirrored 32 bytes could not write past the buffer; the structure overlays it.
+    saved = ctypes.create_string_buffer(backends._FENV_BYTES)  # noqa: SLF001
+    candidate = ctypes.create_string_buffer(backends._FENV_BYTES)  # noqa: SLF001
+    if library.fegetenv(ctypes.addressof(saved)) != 0:
+        _MXCSR_LEVER_LAST["outcome"] = "fegetenv failed; nothing was written"
+        return False
+    ctypes.memmove(candidate, saved, backends._FENV_BYTES)  # noqa: SLF001
+    environment = _GlibcX8664Fenv.from_buffer(candidate)
+    before = int(environment.mxcsr)
+    if before & _MXCSR_RESERVED:
+        _MXCSR_LEVER_LAST["outcome"] = (
+            f"the word at the mirrored __mxcsr offset reads {before:#010x}, with "
+            f"reserved bits set, so it is not this thread's MXCSR; nothing was written")
+        return False
+    after = (before | MXCSR_FTZ_DAZ) if want_flush else (before & ~MXCSR_FTZ_DAZ)
+    environment.mxcsr = after
+    if library.fesetenv(ctypes.addressof(candidate)) != 0:
+        _MXCSR_LEVER_LAST["outcome"] = "fesetenv refused the candidate environment"
+        return False
+    if backends.subnormals_flushed() == bool(want_flush):
+        _MXCSR_LEVER_LAST["outcome"] = f"MXCSR {before:#06x} -> {after:#06x} on {abi}"
+        return True
+    library.fesetenv(ctypes.addressof(saved))
+    _MXCSR_LEVER_LAST["outcome"] = (
+        f"MXCSR {before:#06x} -> {after:#06x} was installed but the measurement did "
+        f"not read {'flushing' if want_flush else 'keeping'}, so the entry "
+        f"environment (MXCSR {before:#06x}) was restored")
+    return False
+
+
 def _drive_host_fpu(want_flush: bool) -> Tuple[Any, str]:
     """Drive this thread's FTZ/DAZ state. Returns ``(module used, mechanism)``.
 
@@ -700,12 +896,22 @@ def _drive_host_fpu(want_flush: bool) -> Tuple[Any, str]:
     function's behaviour changes, and on arm64 the policy becomes attainable
     instead of being refused on a platform fact.
 
+    THE x86-64 glibc MXCSR LEVER IS THE MEEP-LESS PATH ONLY
+    (:func:`_drive_host_fpu_by_mxcsr`). It is tried when MEEP is not imported, the
+    Darwin object did not attain the policy (it is absent outside Darwin), and the
+    thread is not already in the requested state — so a keep install on an x86 host
+    that keeps writes nothing and records what it recorded before the lever existed.
+    With MEEP imported it is never tried: there MEEP's switch is the mechanism, and
+    a thread MEEP's switch did not move is one this package must not move behind
+    MEEP's back, so the measurement refuses instead. On any other ABI, with no MEEP
+    imported, nothing attains ``flush`` and the install refuses by name.
+
     Split out of :func:`install_host_policy` because the ROLLBACK path needs the
     same operation: a refused install must put the FPU back where it found it, or
     the process keeps running in the refused policy's mode while this module
-    reports that no policy is installed. The fenv arm serves the rollback too — it
-    is symmetric by construction, ``_FE_DFL_ENV`` being the object that restores
-    denormals.
+    reports that no policy is installed. The fenv arms serve the rollback too — they
+    are symmetric by construction, ``_FE_DFL_ENV`` being the object that restores
+    denormals on Darwin and clearing FTZ|DAZ the MXCSR lever's other direction.
     """
     module = _meep_module()
     mechanism = "none (MEEP is not imported in this process)"
@@ -719,6 +925,18 @@ def _drive_host_fpu(want_flush: bool) -> Tuple[Any, str]:
         if module is None:
             return module, lever
         return module, f"{mechanism} (no-op here) + {lever}"
+    if module is None:
+        # NOTHING TO MOVE, NOTHING WRITTEN: a MEEP-less process already in the
+        # requested state (the common case, keep on a host that keeps) is reported
+        # exactly as it was before this lever existed, with no mechanism claimed.
+        if backends.subnormals_flushed() == bool(want_flush):
+            return module, mechanism
+        if _drive_host_fpu_by_mxcsr(want_flush):
+            return module, _MXCSR_MECHANISM[bool(want_flush)]
+        mechanism = (f"none (MEEP is not imported in this process; Darwin's "
+                     f"{_FENV_SYMBOL[bool(want_flush)]} is absent or did not attain it; "
+                     f"x86-64 glibc MXCSR lever: "
+                     f"{_MXCSR_LEVER_LAST.get('outcome') or 'not run'})")
     return module, mechanism
 
 
@@ -979,6 +1197,34 @@ def _wrap_compiler_entry_point(original: Callable, state: Dict[str, Any], name: 
     return stripped
 
 
+def _wrap_cache_key_entry_point(original: Callable, state: Dict[str, Any]) -> Callable:
+    """CuPy's cache-key front end, with :data:`CUPY_KEEP_CACHE_KEY_TOKEN` folded in.
+
+    WHY THE DIRECTORY NAME WAS NOT ENOUGH. The key is computed above the strip, so a
+    binary CuPy compiled with its own ``-ftz=true`` and a stripped one share a key.
+    The policy-suffixed directory separates them only when nothing compiles into it
+    before the install, and that does not hold when ``CUPY_CACHE_DIR`` already names
+    a keep directory as the process starts (every route-campaign leg sets it so):
+    the lift compiles natively INTO it, dispatch installs keep at the freeze, and
+    the recompile after the in-process drop reads the native binary back. Measured
+    on the GPU host: with the memo walk alone, ``cp.multiply``, ``x * y`` and an
+    ``ElementwiseKernel`` all returned 0.0 for 1e-30 * 1e-10 after the install in a
+    pre-minted keep directory (0 of 3), and 9.99995e-41 in a fresh plain one (3 of
+    3). With the token in the key, a keep compile can only ever read an entry a
+    keep compile wrote, whatever the directory.
+    """
+
+    @functools.wraps(original)
+    def keyed(source, options, arch, cache_dir, extra_source=None, *args, **kwargs):
+        state["keyed"] = state.get("keyed", 0) + 1
+        folded = (CUPY_KEEP_CACHE_KEY_TOKEN if extra_source is None
+                  else f"{extra_source}\n{CUPY_KEEP_CACHE_KEY_TOKEN}")
+        return original(source, options, arch, cache_dir, folded, *args, **kwargs)
+
+    setattr(keyed, _POLICY_MARK, KEEP)
+    return keyed
+
+
 def _cupy_compiler(cupy: Any) -> Any:  # ``cupy.cuda.compiler``, however it is reachable.
     compiler = getattr(getattr(cupy, "cuda", None), "compiler", None)
     if compiler is not None:
@@ -986,34 +1232,154 @@ def _cupy_compiler(cupy: Any) -> Any:  # ``cupy.cuda.compiler``, however it is r
     return importlib.import_module("cupy.cuda.compiler")
 
 
-def _clear_cupy_kernel_memo(cupy: Any) -> Dict[str, Any]:
-    """Drop CuPy's IN-PROCESS compiled-kernel memo, so the policy reaches everything.
+#: The per-object kernel memos :func:`_clear_cupy_kernel_memo` drops, as
+#: ``(module under cupy._core, class, attribute)``. Each attribute is a dict that maps a
+#: launch key to a compiled ``cupy.cuda.function.Function`` and lives ON THE KERNEL
+#: OBJECT, so ``cupy.clear_memo()`` (which clears only ``@memoize``d functions) never
+#: reaches it. Measured on the GPU host (CuPy 13.5.1, RTX A6000): a float32 ``x * y``
+#: compiled before a keep install still returned 0.0 for 1e-30 * 1e-10 after
+#: ``clear_memo()`` through ``cp.multiply``, the ``*`` operator and a user
+#: ``ElementwiseKernel``, and returned 9.99995e-41 once these two dicts were emptied.
+#: Reductions, ``RawModule`` and ``cupy.fuse`` obeyed ``clear_memo()`` alone.
+CUPY_OBJECT_KERNEL_MEMOS: Tuple[Tuple[str, str, str], ...] = (
+    ("_kernel", "ufunc", "_kernel_memo"),
+    ("_kernel", "ElementwiseKernel", "_elementwise_kernel_memo"),
+)
 
-    CuPy memoizes elementwise, ufunc and raw kernels per device inside the
-    process, above the disk cache and above the seam the strip installs at.
-    Measured: ``cp.multiply`` compiled BEFORE a ``"keep"`` install kept flushing
-    afterwards, with the install reporting ``attained=True`` — while the first
-    kernel compiled after the install obeyed the policy. Dropping the memo is what
-    makes "installed" mean "in force"; kernels are recompiled on next use.
 
-    ``cupy._util.clear_memo`` is the documented hammer (it is what
-    ``cupy.clear_memo`` exposes) and clears every ``@memoize``d cache, which is
-    exactly the set of caches that hold compiled kernels.
+def _cupy_kernel_classes(cupy: Any) -> Tuple[Optional[Any], List[str]]:
+    """``cupy._core._kernel`` for the per-object walk, or why it cannot be walked.
+
+    Returns ``(module, reasons)``. ``module`` is ``None`` with NO reasons for an
+    object that is not an installed CuPy package (the test suites' namespace fakes):
+    there is no kernel object to walk, and ``clear_memo`` is all there is. A real
+    CuPy whose module or attributes have moved is a REASON: the policy would then
+    be reported in force while pre-install kernels stay reachable, which is the
+    defect this walk exists to close.
     """
-    for holder, name in ((cupy, "clear_memo"), (getattr(cupy, "_util", None), "clear_memo")):
-        function = getattr(holder, name, None)
+    module = getattr(getattr(cupy, "_core", None), "_kernel", None)
+    if module is None:
+        real = (isinstance(cupy, type(sys)) and getattr(cupy, "__name__", None) == "cupy"
+                and bool(getattr(cupy, "__file__", None)))
+        if not real:
+            return None, []
+        try:
+            module = importlib.import_module("cupy._core._kernel")
+        except Exception as exc:  # noqa: BLE001 - a moved seam is a named refusal
+            return None, [f"cupy._core._kernel is not importable ({exc}), so the "
+                          f"per-object kernel memos cannot be dropped"]
+    reasons = []
+    for module_name, class_name, attribute in CUPY_OBJECT_KERNEL_MEMOS:
+        holder = getattr(module, class_name, None)
+        if holder is None:
+            reasons.append(f"cupy._core.{module_name}.{class_name} does not exist")
+        elif not hasattr(holder, attribute):
+            reasons.append(f"cupy._core.{module_name}.{class_name} has no {attribute}")
+    return module, reasons
+
+
+def _live_cupy_functions(cupy: Any) -> Optional[int]:
+    """How many compiled CuPy kernels (``cupy.cuda.function.Function``) are alive.
+
+    Taken after a full collection, so a count is what something still REFERENCES.
+    ``None`` when this CuPy has no reachable ``Function`` type.
+    """
+    import gc  # noqa: PLC0415 - only an install pays for it
+
+    function_type = getattr(getattr(getattr(cupy, "cuda", None), "function", None),
+                            "Function", None)
+    if function_type is None:
+        return None
+    gc.collect()
+    return sum(1 for item in gc.get_objects() if type(item) is function_type)
+
+
+def _clear_cupy_kernel_memo(cupy: Any) -> Dict[str, Any]:
+    """Drop every compiled CuPy kernel this process holds, so the policy reaches everything.
+
+    CuPy holds compiled kernels in process, above the disk cache and above the
+    seam the strip installs at, in TWO kinds of place. ``@memoize``d functions —
+    reductions, ``RawModule``, ``cupy.fuse`` — are dropped by ``cupy.clear_memo()``.
+    A ``ufunc`` and an ``ElementwiseKernel`` keep their compiled kernels in a dict
+    on the object itself (:data:`CUPY_OBJECT_KERNEL_MEMOS`), which ``clear_memo()``
+    does NOT touch, so those are emptied object by object, every live one found
+    through the garbage collector. Kernels are recompiled on next use, under the
+    policy now in force.
+
+    THE FIRST REVISION CLEARED ONLY THE ``@memoize`` CACHES, and that was a
+    measured falsehood in the field: a lift compiles
+    ``cupy_multiply__float32_float32_float32`` before dispatch installs the policy
+    (``dft._volume_boundary_weights``), stepping reuses that signature, and the
+    kernel kept NVRTC's ``-ftz=true`` for the life of the process under a keep
+    install that reported ``attained=True`` — 11 of 15 landed-family cases of the
+    shipped route diverged from the array path in the subnormal range.
+
+    MEASURED, NOT ASSUMED: the report carries how many entries were dropped (a
+    nonzero count is the fingerprint of a late install) and how many compiled
+    kernels are still ALIVE afterwards. On a lifted ``pml_2d`` driver the count
+    went from 48 live kernels to 0. What stays alive is what neither drop reaches:
+    a ``RawKernel`` keeps its compiled kernel in a private attribute that is not
+    reachable from Python, so a ``RawKernel`` the CALLER compiled before the
+    install keeps that kernel's policy. This package's own ``RawKernel`` memo is
+    keyed on the policy (``cuda_kernels/compile_cache.py``), so a lookup after the
+    install misses and builds a new kernel; an entry it built earlier stays alive
+    but is never served, which is why a live count is recorded and not refused.
+
+    A dropped kernel is rebuilt through CuPy's disk cache, so this drop is half of
+    the reach; the other half is the keep token in the cache key
+    (:func:`_wrap_cache_key_entry_point`), without which the rebuild reads back a
+    binary the pre-install compile wrote into a keep directory.
+    """
+    record: Dict[str, Any] = {"cleared": False, "walked": False, "entries_dropped": {}}
+    for holder in (cupy, getattr(cupy, "_util", None)):
+        function = getattr(holder, "clear_memo", None)
         if callable(function):
             function()
-            return {"cleared": True, "mechanism": f"cupy{'' if holder is cupy else '._util'}.clear_memo()"}
-    try:
-        util = importlib.import_module("cupy._util")
-    except Exception as exc:  # pragma: no cover - a CuPy without its own util module
-        return {"cleared": False, "mechanism": f"unavailable: {exc}"}
-    function = getattr(util, "clear_memo", None)
-    if not callable(function):
-        return {"cleared": False, "mechanism": "cupy._util exposes no clear_memo"}
-    function()
-    return {"cleared": True, "mechanism": "cupy._util.clear_memo()"}
+            record["mechanism"] = f"cupy{'' if holder is cupy else '._util'}.clear_memo()"
+            break
+    else:
+        try:
+            util = importlib.import_module("cupy._util")
+        except Exception as exc:  # pragma: no cover - a CuPy without its own util module
+            record["mechanism"] = f"unavailable: {exc}"
+            return record
+        function = getattr(util, "clear_memo", None)
+        if not callable(function):
+            record["mechanism"] = "cupy._util exposes no clear_memo"
+            return record
+        function()
+        record["mechanism"] = "cupy._util.clear_memo()"
+    module, reasons = _cupy_kernel_classes(cupy)
+    if reasons:
+        record["mechanism"] += "; per-object kernel memos NOT dropped: " + "; ".join(reasons)
+        return record
+    record["cleared"] = True
+    if module is None:
+        record["mechanism"] += "; no CuPy kernel objects to walk (not an installed CuPy)"
+        return record
+    import gc  # noqa: PLC0415 - only an install pays for it
+
+    targets = [(getattr(module, class_name), class_name, attribute)
+               for _module_name, class_name, attribute in CUPY_OBJECT_KERNEL_MEMOS]
+    kinds = tuple(holder for holder, _class_name, _attribute in targets)
+    dropped = {f"{class_name}.{attribute}": 0 for _holder, class_name, attribute in targets}
+    objects = {class_name: 0 for _holder, class_name, _attribute in targets}
+    for item in gc.get_objects():
+        if not isinstance(item, kinds):
+            continue
+        for holder, class_name, attribute in targets:
+            if isinstance(item, holder):
+                memo = getattr(item, attribute, None)
+                if isinstance(memo, dict):
+                    dropped[f"{class_name}.{attribute}"] += len(memo)
+                    memo.clear()
+                objects[class_name] += 1
+    record.update(walked=True, entries_dropped=dropped, objects_walked=objects,
+                  live_compiled_kernels_after_drop=_live_cupy_functions(cupy))
+    record["mechanism"] += ("; every live " + " and ".join(
+        f"{class_name}.{attribute}" for _m, class_name, attribute in CUPY_OBJECT_KERNEL_MEMOS)
+        + " emptied")
+    return record
 
 
 def _cupy_reduction_accelerators(policy: str, cupy: Any = None) -> Dict[str, Any]:
@@ -1201,7 +1567,9 @@ def install_cupy_policy(policy: str, cupy: Any = None, *, strict: bool = True) -
             f"CuPy's in-process compiled-kernel memo was NOT dropped "
             f"({memo.get('mechanism')}): kernels compiled before this install stay "
             f"memoized above both the disk cache and the seam the strip installs "
-            f"at, so they keep obeying whatever policy they were built under")
+            f"at, so they keep obeying whatever policy they were built under. "
+            f"Install the policy before the first CuPy kernel compiles, in a fresh "
+            f"process")
 
     if policy == FLUSH:
         if not guarded:
@@ -1243,15 +1611,33 @@ def install_cupy_policy(policy: str, cupy: Any = None, *, strict: bool = True) -
         reasons.append(
             "this CuPy exposes none of the compiler entry points the strip "
             f"installs at ({', '.join(_COMPILER_ENTRY_POINTS)}): the seam has moved")
+    keyer = getattr(compiler, CUPY_CACHE_KEY_ENTRY_POINT, None)
+    if keyer is not None:
+        if getattr(keyer, _POLICY_MARK, None) is None:
+            _STATE.setdefault("_cupy_originals", {}).setdefault(
+                CUPY_CACHE_KEY_ENTRY_POINT, (compiler, keyer))
+            setattr(compiler, CUPY_CACHE_KEY_ENTRY_POINT,
+                    _wrap_cache_key_entry_point(keyer, state))
+    elif isinstance(compiler, type(sys)) and compiler.__name__ == "cupy.cuda.compiler":
+        # The real module, without the function that computes the key: the token
+        # cannot be folded in, so a native binary already written under a keep
+        # directory would be served to this policy with no NVRTC call to notice.
+        reasons.append(
+            f"cupy.cuda.compiler has no {CUPY_CACHE_KEY_ENTRY_POINT}, so the keep "
+            f"token cannot be folded into CuPy's cache key and a binary compiled "
+            f"before this install with CuPy's own -ftz=true stays reachable on disk")
     report.update(
         attained=not reasons,
         installed=bool(found),
         wrapped_entry_points=found,
+        cache_key_folded=keyer is not None,
         mechanism="cupy.cuda.compiler.{" + ",".join(found) + "} wrapped; "
                   "'-ftz=true' filtered from every option tuple (never replaced "
                   "by '-ftz=false': NVRTC rejects a duplicate -ftz option); "
                   "policy-suffixed private CUPY_CACHE_DIR because the cache key "
-                  "is computed above the seam",
+                  "is computed above the seam"
+                  + (f"; cupy.cuda.compiler.{CUPY_CACHE_KEY_ENTRY_POINT} wrapped to "
+                     f"fold the keep token into that key" if keyer is not None else ""),
         reasons=reasons,
     )
     _STATE["executors"]["cupy"] = report
@@ -2314,9 +2700,20 @@ def uninstall_subnormal_policy() -> Dict[str, int]:
     particular FPU state installs a policy that says so.
     """
     restored = int(_restore_cupy_accelerators())
-    for name, (compiler, original) in (_STATE.pop("_cupy_originals", {}) or {}).items():
+    originals = _STATE.pop("_cupy_originals", {}) or {}
+    for name, (compiler, original) in originals.items():
         setattr(compiler, name, original)
         restored += 1
+    # THE STRIP'S KERNELS GO WITH THE STRIP. Kernels compiled while it was installed
+    # are memoized in process exactly as pre-install kernels are, so restoring the
+    # seam alone would leave stripped binaries serving a process that now compiles
+    # natively. Dropped only when a strip was installed and CuPy is already
+    # imported: an uninstall never imports CuPy.
+    kernels_dropped = 0
+    cupy_module = sys.modules.get("cupy") if originals else None
+    if cupy_module is not None:
+        memo = _clear_cupy_kernel_memo(cupy_module)
+        kernels_dropped = sum(int(n) for n in (memo.get("entries_dropped") or {}).values())
     for name, (backend_class, original) in (_STATE.pop("_triton_originals", {}) or {}).items():
         setattr(backend_class, name, original)
         restored += 1
@@ -2325,7 +2722,7 @@ def uninstall_subnormal_policy() -> Dict[str, int]:
     _STATE.pop("_cupy_strip", None)
     _STATE.pop("_triton", None)
     _bump_epoch()
-    return {"seams_restored": restored}
+    return {"seams_restored": restored, "cupy_kernels_dropped": kernels_dropped}
 
 
 def _reset_for_tests() -> None:  # Test hook: a full uninstall, seams included.

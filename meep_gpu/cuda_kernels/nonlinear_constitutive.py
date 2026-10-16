@@ -65,15 +65,19 @@ polarization, no off-diagonal row, real float32 storage, an active PML::
                                                                  # aliases D with no poles
     gs   = volumes[c]                                            # stepping.py:1092
     us   = fields.inverse_epsilon_for(c)                         # :1093
-    g1s  = (g1 + shift_down(g1, a1)) + shift_up(same, a_own)     # :1155-1163
+    g1s  = ((g1 + shift_up(g1, a_own)) + shift_down(g1, a1))
+           + shift_up(shift_down(g1, a1), a_own)                 # _nonlinear_transverse_sums
     g2s  = likewise for the second partner
-    dsqr = gs*gs + 0.0625*(g1s*g1s + g2s*g2s)                    # :1117-1118
+    dsqr = float(double(gs*gs) + 0.0625*double(g1s*g1s + g2s*g2s))  # _nonlinear_dsqr
     c2   = (gs   * chi2) * (us*us)                               # :1025
     c3   = (dsqr * chi3) * ((us*us)*us)                          # :1026
     u    = ((1 + c2) + 2*c3) / ((1 + 2*c2) + 3*c3)               # :1027
     src  = (gs * us) * u                                         # :1078-1080
-    prev = f_w_c ; f_w_c = src                                   # :2084-2087
-    E_c  = (E_c + kps_a_h*src) - kms_a_h*prev                    # :2086-2087, half-integer
+    on a cell whose chunk carries the own-axis layer (_apply_constitutive_regions):
+        prev = f_w_c ; f_w_c = src                               # _apply_constitutive_pml
+        E_c  = E_c + ((kps_a_h*src) - (kms_a_h*prev))            # half-integer
+    elsewhere:
+        E_c  = src                                               # f_w_c untouched
 
 A component with no chi installed in a partly nonlinear run takes MEEP's
 ``else if (u)`` branch (stepping.py:1100-1102) and is the certified plain body,
@@ -82,32 +86,34 @@ Python ``if``; this kernel makes it with a runtime flag, so the NL=0 arm is the
 certified expression tree character for character.
 
 =============================================================================
-THE SIX THINGS THAT DECIDE BIT-IDENTITY HERE
+THE SEVEN THINGS THAT DECIDE BIT-IDENTITY HERE
 =============================================================================
 
 The first three are the certified constitutive pair's notes and are unchanged
 (``constitutive_kernels.py``): two separate left-to-right accumulations, the
 coefficient index is the component's OWN axis, and ``prev`` is read before ``fw``
-is written. This family adds three of its own.
+is written. This family adds four of its own.
 
-4. **THE FOUR-CORNER ASSOCIATION IS THE SHIFTED-PAIR ONE, NOT MEEP C's.**
-   ``stepping._nonlinear_transverse_sums`` (:1155-1163) forms
-   ``pair = g + shift_down(g, a1)`` and then ``pair + shift_up(pair, a_own)``, so
-   the bytes are ``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])``. MEEP C sums left to
-   right, ``g[i] + g[i+s] + g[i-s1] + g[i+(s-s1)]`` (step_generic.cpp:646-648).
-   The BYTE ARBITER IS ``stepping.py``, because that is what the array path runs
-   and what every gate on this track compares against, so the pair association is
-   what this kernel carries. The gate's ``four_point_left_to_right`` mutation is
-   what makes the difference measured rather than argued.
+4. **THE FOUR-CORNER ASSOCIATION IS MEEP C's, LEFT TO RIGHT.**
+   ``stepping._nonlinear_transverse_sums`` adds the four corners in the order MEEP
+   C reads them, ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]``
+   (step_generic.cpp:646-648), each addition one float32 rounding, and so does
+   ``four_point_sum`` below. The array path paired the corners,
+   ``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])``, until bit_parity_0_10 put it in
+   MEEP's arithmetic: against MEEP 1.33.0 single precision built without
+   contraction (phase-0 leg P0-h, the four unfolded nonlinear cases) the pair form
+   moved 79,850 to 2,056,001 stored words on three of them and this order none on
+   any. The BYTE ARBITER is still ``stepping.py``, which now carries MEEP's order;
+   the gate's ``four_point_pair_association`` mutation puts the old pairing back
+   and must be caught.
 
-   The far pair is the near pair moved one cell up, so loading the two far
-   corners and adding them is the same bits as shifting the formed pair: a shift
-   is data movement. Ghost rules compose per axis -- a periodic index wraps, a
-   metallic out-of-range corner contributes ``+0.0f``, and the doubly-shifted
-   corner takes BOTH axes' rules -- exactly as shifting an already-shifted array
-   applies them in sequence. A METALLIC own-axis top plane therefore contributes
-   ``0.0f + 0.0f`` for the WHOLE far pair, which is what
-   ``_shift_up``'s ``shifted[face] = 0`` (stepping.py:1830) writes.
+   Each corner is ONE stored word, read where MEEP reads it. Ghost rules compose
+   per axis -- a periodic index wraps, a metallic out-of-range corner contributes
+   ``+0.0f``, and the doubly-shifted corner ``g[i+(s-s1)]`` takes BOTH axes'
+   rules -- exactly as ``_shift_up`` of the already down-shifted partner applies
+   them in sequence. A METALLIC own-axis top plane therefore contributes
+   ``+0.0f`` for ``g[i+s]`` and for the corner, which is what ``_shift_up``'s
+   zero face writes.
 
 5. **THE TWO SHIFTS GO IN OPPOSITE DIRECTIONS.** Half a cell DOWN the partner's
    own axis, half a cell UP this component's axis (stepping.py:1160-1171 states
@@ -143,11 +149,32 @@ is written. This family adds three of its own.
    so the gate probes it (``plain_division``, reported as a spelling probe with a
    reading, exactly as the contraction guard's control is reported).
 
+7. **DSQR IS FORMED IN DOUBLE AND ROUNDED ONCE, AS MEEP's C EVALUATES IT.** In
+   ``gs*gs + 0.0625*(g1s*g1s + g2s*g2s)`` (step_generic.cpp:646-654) the two
+   squares and their sum are ``realnum`` (float) operations, but ``0.0625`` is a
+   double literal: the scale and the add that follows are double operations, and
+   the ``realnum Dsqr`` parameter of ``calc_nonlinear_u`` (:542) rounds the result
+   once. ``stepping._nonlinear_dsqr`` forms it that way, and so does
+   ``nonlinear_dsqr`` below: the two float32 terms are widened (exact), scaled by
+   ``0.0625 = 2^-4`` (exact in double), added once in double and rounded once to
+   nearest back to float (``__double2float_rn``). Against the float32 form this
+   moves ``Dsqr`` only where the exact ``0.0625*t`` lies below float32's normal
+   range (P0-h: 12,568,559 of 396,821,530 operand pairs differ, 0 outside that
+   band), so it reaches a stored E word only when ``chi3`` is large enough to lift
+   such a ``Dsqr`` into ``c3``. Under a flushing policy the float32 form drops that
+   term to zero instead, which changes ``Dsqr`` only where ``gs*gs`` is still normal.
+   The gate's ``dsqr_band`` class plants a band that reaches both (D in
+   ``(-2^-62.75, 2^-62.75)``, ``chi3 = 6e36``, still inside the pole guard), and its
+   ``dsqr_in_float32`` mutation, the float32 form put back, must be caught there
+   under each policy.
+   ``--fmad=false`` keeps the double add uncontracted, though a contraction could
+   not change it: the product ``0.0625*t`` is exact.
+
 =============================================================================
 PLATFORM FACTS INHERITED FROM THE CERTIFIED PAIR
 =============================================================================
 
-* ``--fmad=false`` is CORRECTNESS. Every one of ``gs*gs + 0.0625*(...)``,
+* ``--fmad=false`` is CORRECTNESS. Every one of ``g1s*g1s + g2s*g2s``,
   ``(1 + c2) + 2*c3``, ``(1 + 2*c2) + 3*c3`` and both tail accumulations is a
   contraction candidate the array path rounds twice.
 * THE DEVICE STRINGS ARE PURE ASCII. ``cupy.cuda.compiler`` writes the source
@@ -362,6 +389,21 @@ NONLINEAR_CONSTITUTIVE_CERTIFICATION: Dict[str, Any] = {
              "(separate processes by construction) had been drawing DIFFERENT case "
              "sets. Identical maxima across the policies is that reseed working"),
          "revision_sha256": None},
+        {"what": ("2026-10-07: bit_parity_0_10 lanes KC1 and KC1n moved the device "
+                  "strings. KC1: update_E_pml_real_nonlinear reads the chunk record "
+                  "cb and its constitutive tail takes MEEP's per-chunk forms "
+                  "(accumulation where the chunk carries the own-axis layer, f = src "
+                  "elsewhere). KC1n: four_point_sum adds the corners left to right in "
+                  "MEEP's order and Dsqr is formed in double and rounded once "
+                  "(nonlinear_dsqr), the forms stepping takes since 16-AP6h"),
+         "touches_device_code": True,
+         "why_the_verdict_survives": (
+             "It does not survive. Every number above was measured on the 2026-08-21 "
+             "bytes against the 0.9.2 array path; the re-cut is owed on a CUDA host "
+             "against the aligned array path (bit_parity_0_10 certification). "
+             "device_source_sha256 and certified_module_sha256 above are left as the "
+             "gate recorded them"),
+         "revision_sha256": None},
     ),
     "dependency_drift_during_the_run": (
         "coverage.py was edited by a concurrent session BETWEEN the sync and the "
@@ -439,32 +481,47 @@ _NONLINEAR_PRELUDE = r'''
 #define BC_PERIODIC 0
 #define BC_METALLIC 1
 
-// stepping._apply_constitutive_pml (stepping.py:2065-2096), MEEP's
-// step_update_EDHB with dsigw active. Two SEPARATE accumulations, left to right;
-// `prev` loaded before the store.
+// stepping._apply_constitutive_regions: MEEP's two constitutive forms, chosen per
+// structure chunk (update_eh.cpp:162-170). On a dsigw cell the accumulation of
+// stepping._apply_constitutive_pml, right-hand side first,
+// f + ((kps*src) - (kms*prev)), with `prev` loaded before the store; elsewhere
+// f = src and fw is not touched. Character for character constitutive_kernels'.
 __device__ __forceinline__ void constitutive_apply(
     float* __restrict__ f, float* __restrict__ fw, int idx, float src,
-    float kps, float kms
+    float kps, float kms, int dsigw
 ) {
-    float prev = fw[idx];
-    fw[idx] = src;
-    float a = f[idx] + kps * src;
-    f[idx] = a - kms * prev;
+    float prev = dsigw ? fw[idx] : 0.0f;
+    if (dsigw) fw[idx] = src;
+    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;
+    f[idx] = value;
 }
 
-// stepping._nonlinear_transverse_sums (stepping.py:1155-1163), the SHIFTED-PAIR
-// association:  (g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1]).
-// `o_c` is this cell, `o_d` the partner-axis neighbour below, `o_u` the own-axis
-// neighbour above, `o_ud` the corner that took both shifts. A false validity
-// flag is the zero ghost `_shift_up`/`_shift_down` write into the face; the
-// index is clamped in bounds by the caller so nothing is dereferenced for it.
+// stepping._nonlinear_transverse_sums: MEEP's association, LEFT TO RIGHT
+// (step_generic.cpp:646-648):  ((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)].
+// `o_c` is this cell, `o_u` the own-axis neighbour above (g[i+s]), `o_d` the
+// partner-axis neighbour below (g[i-s1]), `o_ud` the corner that took both shifts
+// (g[i+(s-s1)]). A false validity flag is the zero ghost `_shift_up`/`_shift_down`
+// write into the face; the index is clamped in bounds by the caller so nothing is
+// dereferenced for it.
 __device__ __forceinline__ float four_point_sum(
     const float* __restrict__ g, int o_c, int o_d, int o_u, int o_ud,
     bool v_d, bool v_u, bool v_ud
 ) {
-    float near_pair = g[o_c] + (v_d ? g[o_d] : 0.0f);
-    float far_pair = (v_u ? g[o_u] : 0.0f) + (v_ud ? g[o_ud] : 0.0f);
-    return near_pair + far_pair;
+    float own_pair = g[o_c] + (v_u ? g[o_u] : 0.0f);
+    float with_down = own_pair + (v_d ? g[o_d] : 0.0f);
+    return with_down + (v_ud ? g[o_ud] : 0.0f);
+}
+
+// stepping._nonlinear_dsqr: Dsqr = gs*gs + 0.0625*(g1s*g1s + g2s*g2s) as MEEP's C
+// evaluates it (step_generic.cpp:646-654). The two squares and their sum are float
+// operations; 0.0625 is a DOUBLE literal, so the scale and the add are double
+// operations, and the realnum Dsqr parameter of calc_nonlinear_u (:542) rounds the
+// sum once. Widening a float is exact and so is the scale by 0.0625 = 2^-4; the one
+// rounding is __double2float_rn, round to nearest even.
+__device__ __forceinline__ float nonlinear_dsqr(float gs, float g1s, float g2s) {
+    double own_sq = gs * gs;
+    double transverse_sq = g1s * g1s + g2s * g2s;
+    return __double2float_rn(own_sq + 0.0625 * transverse_sq);
 }
 
 // stepping.calc_nonlinear_u (stepping.py:996-1027), transcribed term for term:
@@ -485,7 +542,7 @@ __device__ __forceinline__ float pade_u(
     float den = (1.0f + 2.0f * c2) + 3.0f * c3;
     return __fdiv_rn(num, den);
 }
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 2065-2096->2112-2143, 1155-1163->1184-1192, 996-1027->1025-1056
+'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 996-1027->1141-1172
 
 # THE E SIDE. Half-integer coefficients (stepping.py:1015), THREE inverse-epsilon
 # pointers (never fields.inv_eps, which is the Ez view, fields.py:1259-1260), and
@@ -518,7 +575,8 @@ extern "C" __global__ void update_E_pml_real_nonlinear(
     const float* __restrict__ kps_x, const float* __restrict__ kms_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_z,
-    int bc_x, int bc_y, int bc_z
+    int bc_x, int bc_y, int bc_z,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= nx * ny * nz) return;
@@ -526,6 +584,16 @@ extern "C" __global__ void update_E_pml_real_nonlinear(
     int k = idx % nz;
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
+
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
+    const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
+    const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
+    const int cbh_y_a0 = cb[16], cbh_y_a1 = cb[17], cbh_y_b0 = cb[18], cbh_y_b1 = cb[19];
+    const int in_h_y = (j >= cbh_y_a0 && j < cbh_y_a1) || (j >= cbh_y_b0 && j < cbh_y_b1);
+    const int cbh_z_a0 = cb[20], cbh_z_a1 = cb[21], cbh_z_b0 = cb[22], cbh_z_b1 = cb[23];
+    const int in_h_z = (k >= cbh_z_a0 && k < cbh_z_a1) || (k >= cbh_z_b0 && k < cbh_z_b1);
+
     int nyz = ny * nz;
 
     // Per-axis neighbour indices in BOTH directions, with that axis's ghost
@@ -596,7 +664,7 @@ extern "C" __global__ void update_E_pml_real_nonlinear(
             ui * nyz + j * nz + k,
             ui * nyz + j * nz + dk,
             dvz, uvx, uvx && dvz);
-        float dsqr = gs_x * gs_x + 0.0625f * (g1s * g1s + g2s * g2s);
+        float dsqr = nonlinear_dsqr(gs_x, g1s, g2s);
         float q2 = q2v_x ? chi2_Ex[idx] : s2_Ex;
         float q3 = q3v_x ? chi3_Ex[idx] : s3_Ex;
         float us_sq = us_x * us_x;
@@ -619,7 +687,7 @@ extern "C" __global__ void update_E_pml_real_nonlinear(
             i * nyz + uj * nz + k,
             di * nyz + uj * nz + k,
             dvx, uvy, uvy && dvx);
-        float dsqr = gs_y * gs_y + 0.0625f * (g1s * g1s + g2s * g2s);
+        float dsqr = nonlinear_dsqr(gs_y, g1s, g2s);
         float q2 = q2v_y ? chi2_Ey[idx] : s2_Ey;
         float q3 = q3v_y ? chi3_Ey[idx] : s3_Ey;
         float us_sq = us_y * us_y;
@@ -642,7 +710,7 @@ extern "C" __global__ void update_E_pml_real_nonlinear(
             i * nyz + j * nz + uk,
             i * nyz + dj * nz + uk,
             dvy, uvz, uvz && dvy);
-        float dsqr = gs_z * gs_z + 0.0625f * (g1s * g1s + g2s * g2s);
+        float dsqr = nonlinear_dsqr(gs_z, g1s, g2s);
         float q2 = q2v_z ? chi2_Ez[idx] : s2_Ez;
         float q3 = q3v_z ? chi3_Ez[idx] : s3_Ez;
         float us_sq = us_z * us_z;
@@ -650,10 +718,11 @@ extern "C" __global__ void update_E_pml_real_nonlinear(
         src_z = src_z * pade_u(gs_z, dsqr, q2, q3, us_sq, us_cu);
     }
 
-    // Ex <- dsigw = x.  Ey <- dsigw = y.  Ez <- dsigw = z.
-    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);
-    constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j]);
-    constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k]);
+    // Ex <- dsigw = x.  Ey <- dsigw = y.  Ez <- dsigw = z, each on the cells whose
+    // chunk carries that layer (the half-integer record along the own axis).
+    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);
+    constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j], in_h_y);
+    constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k], in_h_z);
 }
 '''
 
@@ -748,7 +817,8 @@ def boundary_codes(grid: Any) -> Tuple[Any, Any]:
 def update_E_fused_pml_real_nonlinear(fields: 'Fields', pml: 'PML' = None, *,
                                       tables: Dict[str, Any] = None,
                                       codes: Tuple[int, int, int] = None,
-                                      bindings: Dict[str, Any] = None) -> None:
+                                      bindings: Dict[str, Any] = None,
+                                      chunk_bounds: Any = None) -> None:
     """``stepping.update_E`` under a PML with chi2/chi3 installed, in one launch.
 
     ``tables``, ``codes`` and ``bindings`` are THE GATE'S DOOR, keyword-only and
@@ -758,6 +828,10 @@ def update_E_fused_pml_real_nonlinear(fields: 'Fields', pml: 'PML' = None, *,
     from the SIDE through ``constitutive_sub_lattice`` -- the same function the
     predicate asks -- so the half-cell error is not one argument away on the entry
     point anything real would call.
+
+    ``chunk_bounds`` is the run's chunk record on the device and is required: the
+    constitutive tail chooses its form per chunk from it
+    (``constitutive_kernels.chunk_record_argument``).
     """
     if (pml is None) == (tables is None):
         raise ValueError(
@@ -774,6 +848,8 @@ def update_E_fused_pml_real_nonlinear(fields: 'Fields', pml: 'PML' = None, *,
             raise ValueError(refusal)
     if bindings is None:
         bindings = nonlinear_bindings(fields)
+    from . import constitutive_kernels as _constitutive  # noqa: PLC0415 - device-only import
+    cb = _constitutive.chunk_record_argument(chunk_bounds)
 
     targets = (fields.Ex, fields.Ey, fields.Ez)
     nx, ny, nz = targets[0].shape
@@ -801,6 +877,7 @@ def update_E_fused_pml_real_nonlinear(fields: 'Fields', pml: 'PML' = None, *,
         tables["kps_y"], tables["kms_y"],
         tables["kps_z"], tables["kms_z"],
         np.int32(codes[0]), np.int32(codes[1]), np.int32(codes[2]),
+        cb,
     ])
     kernel = _get_kernel('update_E_pml_real_nonlinear')
     kernel((blocks,), (_NONLINEAR_THREADS,), tuple(arguments))

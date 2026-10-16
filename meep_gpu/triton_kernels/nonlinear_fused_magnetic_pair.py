@@ -354,7 +354,8 @@ def nonlinear_fused_magnetic_pair_equivalence(fields: Any, pml: Any,
 def plan_nonlinear_fused_magnetic_pair(fields: Any, pml: Any, sources: Any = None,
                                        block: Optional[int] = None,
                                        num_warps: Any = "default",
-                                       kernel: Any = None) -> Any:
+                                       kernel: Any = None,
+                                       chunk_layout: Any = None) -> Any:
     """Build the fused B/H plan for a nonlinear run, or ``None`` when refused.
 
     THE PLAN CLASS IS THE WELDED FAMILY'S, not a subclass, and THE BINDING LIST IS
@@ -370,6 +371,17 @@ def plan_nonlinear_fused_magnetic_pair(fields: Any, pml: Any, sources: Any = Non
     fall back to the array path, never raise into a caller that would otherwise
     have stepped correctly.
 
+    ``chunk_layout`` is the run's chunk division (``None``: the one-rank default),
+    handed to :func:`.launch.plan_fused_pair`, which binds its record: the shipped
+    kernel reads both halves' forms from it.
+
+    THE H STATE IS THE REAL ``Fields``, NOT THE VIEW. :class:`.launch.FusedPairPlan`
+    starts H from B on its first launch of a run and then records that on its
+    ``h_state`` (``Fields.h_separated``). The builder is handed the view, whose slots
+    hold only the wrapped fields, so the record would be written to an object that
+    cannot take it; the plan is therefore re-bound to the fields the view wraps,
+    which is where the array path keeps the flag.
+
     ``kernel`` is THE MUTATION SEAM and it is honoured. ``plan_fused_pair`` takes
     no such argument — only ``plan_fused_pair_from_arrays`` does — so it is
     installed onto the built plan's own ``_kernel`` slot, which
@@ -384,9 +396,10 @@ def plan_nonlinear_fused_magnetic_pair(fields: Any, pml: Any, sources: Any = Non
 
     warps = (FUSED_DEFAULT_NUM_WARPS if num_warps == "default" else num_warps)
     plan = plan_fused_pair(_LinearScopeView(fields), pml, PAIR, sources,
-                           block=block, num_warps=warps)
+                           block=block, num_warps=warps, chunk_layout=chunk_layout)
     if plan is None:  # pragma: no cover - the predicate above already admitted
         return None
+    plan._h_state = fields  # noqa: SLF001 - the real Fields, see the docstring
     if kernel is not None:
         plan._kernel = kernel  # noqa: SLF001 - the documented mutation seam
     return plan

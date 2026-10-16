@@ -32,6 +32,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Sequence, Tuple
 
+from . import softfp64
+
 # ---------------------------------------------------------------------------
 # Compilation, memoized by source string
 # ---------------------------------------------------------------------------
@@ -461,12 +463,15 @@ class Mirror:
 # The sparse-door kernels
 # ---------------------------------------------------------------------------
 
-#: The three sparse doors as Metal kernels: one thread per index, ``width`` floats
-#: per row (1 for a float32 mirror, 2 for the ``(N, 2)`` real view a complex64
-#: mirror indexes through -- see :meth:`Mirror.index_view`). DATA MOVEMENT ONLY:
-#: no arithmetic, so the words written are the words given, and duplicates in an
-#: index set are unordered exactly as ``index_copy_`` left them (the callers'
-#: tables are unique by construction).
+#: The sparse doors as Metal kernels: one thread per index, ``width`` floats per row
+#: (1 for a float32 mirror, 2 for the ``(N, 2)`` real view a complex64 mirror indexes
+#: through -- see :meth:`Mirror.index_view`). The copy and zero doors are DATA
+#: MOVEMENT ONLY: no arithmetic, so the words written are the words given. The
+#: subtract door is the source deposit's one statement, MEEP's ``f = float(double(f) -
+#: x)``, carried in software binary64 (:mod:`.softfp64`): integer arithmetic only, so
+#: no float mode of the device reaches it. Duplicates in an index set are unordered
+#: exactly as ``index_copy_`` left them (the callers' tables are unique by
+#: construction).
 #:
 #: WHY NOT THE TORCH INDEX OPS THEY REPLACE, measured on this host (2026-09-24,
 #: 160^3 float32 volume, ``parity/meep_gpu/results/round_2026-09-24_night_drivers/
@@ -483,10 +488,10 @@ class Mirror:
 #: so a :class:`LaunchAudit` watching the library cache would report a foreign
 #: operand on every held step; and a door is not a sub-step launch, so it must not
 #: be counted as one.
-_DOOR_SOURCE = r"""
-#include <metal_stdlib>
-using namespace metal;
-
+#:
+#: ASSEMBLED BY :func:`.softfp64.library_source`: the header, the shipped contraction
+#: directive and the software binary64 helpers ahead of the door kernels.
+_DOOR_SOURCE = softfp64.library_source(r"""
 kernel void door_scatter_copy(device float* rows          [[buffer(0)]],
                               device const long* index    [[buffer(1)]],
                               device const float* values  [[buffer(2)]],
@@ -501,20 +506,26 @@ kernel void door_scatter_copy(device float* rows          [[buffer(0)]],
     }
 }
 
-kernel void door_scatter_sub(device float* rows           [[buffer(0)]],
+// MEEP's source deposit, f = float(double(f) - x), on the words a held mirror owns: ONE
+// binary64 subtraction and ONE rounding per word, in software binary64, so each word is
+// the host float64 unit's. The rows are read and written as uint words -- a float32
+// mirror, or the (N, 2) real view of a complex64 one, whose imaginary word takes ``im``
+// (MEEP's second line, f[c][1][i] -= imag(A)). ``re``/``im`` are the payload's binary64
+// bit patterns, one per index; ``flush`` is the host FPU's subnormal mode at the call.
+kernel void door_scatter_sub(device uint* rows            [[buffer(0)]],
                              device const long* index     [[buffer(1)]],
-                             device const float* values   [[buffer(2)]],
-                             constant uint& n             [[buffer(3)]],
-                             constant uint& width         [[buffer(4)]],
+                             device const ulong* re       [[buffer(2)]],
+                             device const ulong* im       [[buffer(3)]],
+                             constant uint& n             [[buffer(4)]],
+                             constant uint& width         [[buffer(5)]],
+                             constant uint& flush         [[buffer(6)]],
                              uint g [[thread_position_in_grid]])
 {
     if (g >= n) { return; }
-    ulong row = ulong(index[g]);
-    for (uint w = 0; w < width; ++w) {
-        // ONE float32 subtraction per word, the array path's ``current - values``
-        // (a complex64 row is two words, and complex subtraction is componentwise).
-        rows[row * width + w] = rows[row * width + w] - values[ulong(g) * width + w];
-    }
+    bool fz = flush != 0u;
+    ulong row = ulong(index[g]) * ulong(width);
+    rows[row] = sd_subtract_from_word(rows[row], re[g], fz);
+    if (width == 2u) { rows[row + 1ul] = sd_subtract_from_word(rows[row + 1ul], im[g], fz); }
 }
 
 kernel void door_scatter_zero(device float* rows          [[buffer(0)]],
@@ -552,7 +563,7 @@ kernel void door_scatter_zero_multi(device float* rows0         [[buffer(0)]],
         rows[row * width + w] = 0.0f;
     }
 }
-"""
+""")
 
 #: How many arrays ``door_scatter_zero_multi`` clears in one launch -- its row-buffer
 #: count, and the largest group :meth:`Residency.zero_index_sets` accepts. Chosen from
@@ -599,22 +610,33 @@ def _scatter_rows(view: Any, index: Any, values_dev: Any) -> None:
                                       _rows_width(view), threads=n)
 
 
-def _subtract_rows(view: Any, index: Any, values_dev: Any) -> None:
-    """``view[index] = view[index] - values_dev`` on whichever device holds the view.
+def _subtract_double_rows(view: Any, index: Any, re_dev: Any, im_dev: Any, flush: bool) -> None:
+    """``view[index] = float32(float64(view[index]) - payload)`` per word, where the view lives.
 
-    The Metal door on MPS; ``index_add_`` of the negated payload elsewhere (the CPU
-    twin a gate builds): IEEE subtraction IS addition of the negation, word for word,
-    signed zeros included. Duplicate indices are the caller's to refuse, as for
-    :func:`_scatter_rows`.
+    The Metal door on MPS (``door_scatter_sub``, software binary64). Elsewhere -- the CPU
+    twin a gate builds -- the array path's own statements on the host's float64 unit, one
+    subtraction and one rounding per word, the imaginary column of a complex64 row against
+    ``im_dev``; they run in the host FPU's mode, which is what ``flush`` reports. The
+    payloads are the binary64 values as int64 bit patterns. Duplicate indices are the
+    caller's to refuse, as for :func:`_scatter_rows`.
     """
     n = int(index.numel())
     if n == 0:
         return
     if view.device.type != "mps":
-        view.index_add_(0, index, -values_dev)
+        import numpy as np  # noqa: PLC0415
+        import torch  # noqa: PLC0415
+
+        wide = view.index_select(0, index).numpy().astype(np.float64)
+        if wide.ndim == 2:
+            wide[:, 0] -= re_dev.numpy().view(np.float64)
+            wide[:, 1] -= im_dev.numpy().view(np.float64)
+        else:
+            wide -= re_dev.numpy().view(np.float64)
+        view.index_copy_(0, index, torch.from_numpy(wide.astype(np.float32)))
         return
-    _door_kernels().door_scatter_sub(view, index, values_dev.contiguous(), n,
-                                     _rows_width(view), threads=n)
+    _door_kernels().door_scatter_sub(view, index, re_dev, im_dev, n, _rows_width(view),
+                                     int(bool(flush)), threads=n)
 
 
 def _zero_rows(view: Any, index: Any) -> None:
@@ -674,7 +696,7 @@ class Residency:
     __slots__ = ("device", "_mirrors", "syncs_in", "syncs_out", "held", "hoisted",
                  "generation", "copies_in", "copies_out", "flushes",
                  "sparse_gathers", "sparse_scatters", "sparse_zeros", "zero_launches",
-                 "_index_cache", "_zero_set_cache", "__weakref__")
+                 "double_subtracts", "_index_cache", "_zero_set_cache", "__weakref__")
 
     def __init__(self, device: str = "mps") -> None:
         self.device = device
@@ -732,6 +754,12 @@ class Residency:
         #: :meth:`zero_index` and one per :meth:`zero_index_sets` group (a Metal
         #: launch each on MPS). The batched wall clear is read off this counter.
         self.zero_launches = 0
+        #: Source deposits formed ON THE DEVICE by :meth:`subtract_double_index` (one
+        #: ``door_scatter_sub`` launch each on MPS): each is a deposit that used to cost a
+        #: sparse gather -- a blocking device-to-host read -- and a scatter, and now costs
+        #: neither. A deposit on a host-current mirror is formed on the host and counts as
+        #: a sparse scatter instead.
+        self.double_subtracts = 0
         #: Device index tensors, keyed by the id() of the host index array and
         #: holding a reference to it so the id cannot be reused while cached. The
         #: deposit tables and the source point lists are built once and reused
@@ -950,30 +978,72 @@ class Residency:
         _scatter_rows(mirror.index_view(), index, payload_dev)
         self.sparse_scatters += 1
 
-    def subtract_index(self, array: Any, linear: Any, values: Any) -> None:
-        """``array.reshape(-1)[linear] -= values`` -- the difference formed where the words live.
+    def subtract_double_index(self, array: Any, linear: Any, real64: Any,
+                              imag64: Any = None) -> None:
+        """MEEP's source deposit, ``f = float(double(f) - real(A))``, formed where the words live.
 
-        The source deposit's shape (``sources._sparse_subtract``): a few cells, one
-        subtraction each. Gathering the cells to the host, subtracting there and
-        scattering back was word-identical but cost a blocking device->host read a
-        step -- under a held residency the one host wait left after the per-launch
-        drain went (2.6-2.7 ms of a 4.6 ms ``pml_3d`` step at 4.1M cells, measured
-        2026-09-24, ``results/round_2026-09-24_night_drivers/profile_held_step_res40_patched.json``).
-        Forming the difference on the device removes the wait; the ownership rule is
-        :meth:`scatter`'s (DEVICE_OWNED: tensor only; otherwise both sides, so the
-        state need not move). The array path is untouched: with no residency this is
-        NumPy's own in-place fancy subtraction.
+        The door :func:`meep_gpu.host_writes.subtract_double` hands the residency that owns
+        ``array``. Its specification is the array path's statement
+        (``host_writes._rounded_difference``: the word widened, ONE float64 subtraction, ONE
+        rounding; complex64 per part, the imaginary word against ``imag64``) in the mode the
+        host FPU is in at the call, and the two states it can meet are served as
+        :meth:`scatter` serves them:
+
+        * DEVICE_OWNED: ``door_scatter_sub`` forms the difference ON THE DEVICE, from the
+          device's words, in software binary64 (:mod:`.softfp64`). The host stays stale and
+          sealed and the state does not move. Until this door existed the cells were
+          gathered to the host -- one blocking device-to-host read per deposit per step --
+          subtracted in NumPy and scattered back: the same words, and the read is gone.
+        * otherwise the host copy is current: the difference is formed there by the array
+          path's own statement and written to both sides, so no state moves.
+
+        THE MODE IS MEASURED AT EVERY CALL (``backends.subnormals_flushed``), never
+        assumed. A Metal composition runs under ``flush`` and the dispatch drives the host
+        there, so a held deposit is that mode's arithmetic -- a subnormal stored word or
+        payload reads as a signed zero, and a result whose exact value is below 2**-126 is
+        a signed zero, decided before rounding (P0-d1's band) -- while a host left keeping
+        gets gradual underflow, because that is what the array path's statement does on it.
+
+        ``linear`` must not repeat an index: MEEP's loop subtracts a repeated point twice
+        and one launch would subtract it once. ``sources._linear_points`` refuses a
+        repeated table by name before it gets here.
         """
+        import numpy as np  # noqa: PLC0415
+        import torch  # noqa: PLC0415
+
+        from .. import backends, host_writes  # noqa: PLC0415
+
         mirror = self._by_host_identity(array)
-        if mirror is None:
-            array.reshape(-1)[linear] -= values
+        if mirror is None or mirror.state != DEVICE_OWNED:
+            source = array if mirror is None else mirror.host
+            values = host_writes._rounded_difference(  # noqa: SLF001 - the array path's statement
+                source.reshape(-1)[linear], real64, imag64)
+            if mirror is None:
+                array.reshape(-1)[linear] = values
+                return
+            self.scatter(array, linear, values)
             return
-        payload, payload_dev = self._payload(mirror, values)
+        complex_words = mirror.tensor.is_complex()
+        if not complex_words and imag64 is not None:
+            raise ValueError("real float32 storage has no imaginary plane to subtract imag(A) from")
+        if complex_words and imag64 is None:
+            raise ValueError("complex64 storage needs imag(A) as well as real(A)")
         index = self._device_index(linear)
-        if mirror.state != DEVICE_OWNED:
-            self._host_write(mirror, linear, mirror.host.reshape(-1)[linear] - payload)
-        _subtract_rows(mirror.index_view(), index, payload_dev)
-        self.sparse_scatters += 1
+        n = int(index.numel())
+
+        def payload(values: Any) -> Any:
+            # A fresh, writable float64 copy (a broadcast view is read-only, and torch
+            # warns on a non-writable source), uploaded as its int64 bit patterns: MPS
+            # has no float64 tensors, and the door reads the words, not the values.
+            words = np.array(np.broadcast_to(np.asarray(values, dtype=np.float64), (n,)),
+                             dtype=np.float64).view(np.int64)
+            return torch.from_numpy(words).to(mirror.tensor.device)
+
+        real = payload(real64)
+        imaginary = payload(imag64) if complex_words else real
+        _subtract_double_rows(mirror.index_view(), index, real, imaginary,
+                              backends.subnormals_flushed())
+        self.double_subtracts += 1
 
     def zero_index(self, array: Any, linear: Any) -> None:
         """Write zero at flat indices ``linear``, same ownership rule as :meth:`scatter`.

@@ -321,7 +321,7 @@ def cited_keys() -> List[str]:
 def route_campaign(stamp: str, architecture: str) -> str:
     """The route campaign directory for one architecture: ``<stamp>_<architecture>``.
 
-    One stamp per release (``metal_dispatch.METAL_DRIVER_ROUTE_GATE``), one campaign
+    One stamp per release (``route_stamps.route_gate("metal")``), one campaign
     per architecture under it, so the directory name says which GPU a route record
     describes, as ``fastpath.route_campaign`` spells ``<stamp>_cc86`` on the NVIDIA
     tables.

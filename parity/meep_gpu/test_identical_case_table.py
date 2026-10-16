@@ -189,7 +189,7 @@ def test_an_uncertified_gpu_leg_is_struck(pull, tmp_path):
     record, _text = build(pull, tmp_path)
     pml = next(s for s in record["sizes"] if s["case"] == "pml_3d")
     assert pml["legs"]["metal"]["passes_gate"] is False
-    assert any("MEEP_GPU_ALLOW_UNCERTIFIED=1" in strike
+    assert any("ran with the ladder's ALLOW_UNCERTIFIED=1" in strike
                for strike in pml["legs"]["metal"]["strikes"])
     assert not any(r["enters_per_ratio"] for r in pml["ratios"] if r["gpu"] == "metal")
 
@@ -277,3 +277,81 @@ def test_metal_rows_without_a_device_reading_are_not_counted_as_clean(pull, tmp_
     d = record["denominators"]
     assert d["gpu_device_read"] == 0 and d["gpu_foreign_on_device_before_or_after"] == 0
     assert f"{d['gpu_rows']} of {d['gpu_rows']} rows carry no device reading" in text
+
+
+def test_the_code_digest_count_reads_one_set_of_rows_on_a_resumed_ladder(pull, tmp_path):
+    """CERT-8 F4: "86 of 79 GPU and MEEP ledger rows carry a code digest" on the 1.0 Mac
+    ladder. The numerator counted the lift and digest entries too; a resume records a
+    preflight digest again. Numerator and denominator now count the same rows, once."""
+    def code(entry):
+        if entry.get("ledger") in ("gpu", "meep"):
+            entry["code_digest"] = "c" * 64
+    _rewrite(pull, code)
+    ledger = pull / "ladder_rows.jsonl"
+    entries = [json.loads(line) for line in open(ledger)]
+    rows = sum(e.get("ledger") in ("gpu", "meep") for e in entries)
+    extra = [{"ledger": "lift", "tier": "digests", "index": 90 + i, "case": "pml_3d",
+              "res": RES["pml_3d"], "code_digest": "c" * 64} for i in range(2)]
+    digest = {"ledger": "digest", "tier": "preflight", "index": 89, "code_digest": "c" * 64}
+    # the resumed run records the preflight digest and the last MEEP row a second time
+    again = dict(next(e for e in reversed(entries) if e.get("ledger") == "meep"))
+    ledger.write_text("".join(json.dumps(e) + "\n"
+                              for e in entries + extra + [digest, digest, again]))
+    record, text = build(pull, tmp_path)
+    d = record["denominators"]
+    assert d["ledger_gpu_and_meep_rows"] == rows
+    assert d["ledger_rows_carrying_code_digest"] == rows
+    assert d["ledger_other_entries_carrying_code_digest"] == 4
+    assert f"{rows} of {rows} GPU and MEEP ledger rows carry a code digest" in text
+
+
+def test_a_build_named_by_its_record_alone_reports_the_records_flags(pull, tmp_path):
+    """CERT-8 F4: the Mac build was named by its record and no config.log, so the probe's
+    configure line read None and its flags {} beside a record that carried both."""
+    environment = json.loads((pull / "environment.json").read_text())
+    given = {"configure_line": "./configure --enable-single --enable-portable-binary",
+             "makefile_flags": {"CXXFLAGS": "-g -O2"}, "openmp": False}
+    environment["meep_builds"] = {
+        "reference": {"configure_line": None, "makefile_flags": {}, "config_log": None,
+                      "openmp": False, "build_record_file": given},
+        "native": {"configure_line": None, "makefile_flags": {},
+                   "build_record_file": {"makefile_flags": {"CXXFLAGS": "-O3 -march=native"}}}}
+    (pull / "environment.json").write_text(json.dumps(environment))
+    record, text = build(pull, tmp_path)
+    env = record["environment"]
+    assert env["meep_configure_line"] == given["configure_line"]
+    assert env["meep_cxxflags"] == "-g -O2"
+    assert env["builds"]["native"]["cxxflags"] == "-O3 -march=native"
+    assert f"configured `{given['configure_line']}`, CXXFLAGS `-g -O2`" in text
+    # a probed value still wins over the record it was given
+    environment["meep_builds"]["reference"]["makefile_flags"] = {"CXXFLAGS": "-O2"}
+    (pull / "environment.json").write_text(json.dumps(environment))
+    record, _text = build(pull, tmp_path)
+    assert record["environment"]["meep_cxxflags"] == "-O2"
+
+
+def test_gpu_only_rows_are_identical_only_by_their_identity_row(pull, tmp_path):
+    """A GPU-only row has no array leg: the table reads its identity from the identity
+    row the ledger cited, and strikes the pass when there was none."""
+    def solo(entry):
+        if entry.get("ledger") == "gpu":
+            entry["measured"]["legs_mode"] = "gpu-only"
+            entry["measured"]["bit_identical_fused_vs_array"] = None
+            entry["bit_identity_from"] = {"ok": True, "key": "identity_gpu_metal_res10_p0"}
+    _rewrite(pull, solo)
+    record, text = build(pull, tmp_path)
+    d = record["denominators"]
+    assert d["gpu_rows_gpu_only"] == d["gpu_rows"] == d["gpu_identity_from_identity_row"]
+    assert d["gpu_bit_identical"] == d["gpu_rows"]
+    assert f"({d['gpu_rows']} of the {d['gpu_rows']} GPU-only rows by their identity row)" in text
+    pml = next(s for s in record["sizes"] if s["case"] == "pml_3d")
+    assert not any("not bit-identical" in s for s in pml["legs"]["metal"]["strikes"])
+
+    def uncited(entry):
+        if entry.get("ledger") == "gpu":
+            entry.pop("bit_identity_from", None)
+    _rewrite(pull, uncited)
+    record, _text = build(pull, tmp_path)
+    pml = next(s for s in record["sizes"] if s["case"] == "pml_3d")
+    assert any("not bit-identical" in s for s in pml["legs"]["metal"]["strikes"])
+    assert record["denominators"]["gpu_bit_identical"] == 0

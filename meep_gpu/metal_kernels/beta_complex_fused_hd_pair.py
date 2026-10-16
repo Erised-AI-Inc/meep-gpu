@@ -103,9 +103,9 @@ ONE TRANSFORM, TWO DEVICE STRINGS. :func:`beta_complex_curl_source` selects the
 emitter and nothing else:
 
 * ``plain``  -> :func:`.special_kz.beta_bloch_curl_source`
-* ``folded`` -> :func:`.folded_beta.folded_beta_bloch_curl_source`, which is the SAME
-  parent template with one slot inserted (``__TOP_MASK__``) and the ghost/ownership
-  emitters driven over ``symmetry._reduced_codes``.
+* ``folded`` -> :func:`.folded_beta.folded_beta_bloch_curl_source`, the certified
+  folded complex curl with the SAME pass (:func:`.special_kz.beta_pass`) inserted on
+  its own mask rows.
 
 Every table the lift walks is shared between them because the two templates' nine
 magnetic load lines are the same lines: the three own-cell loads
@@ -114,12 +114,11 @@ magnetic load lines are the same lines: the three own-cell loads
 (:func:`.complex_fused_hd_pair.offset_coordinates`). :func:`resolve_variant` reads the
 fold off the grid, so a row never chooses between them.
 
-THE GHOST SPELLING IS THIS FAMILY'S OWN AND IS PARSED, NOT ASSUMED. The certified beta
-complex curl hoists ``const float2 zero2 = float2(0.0f, 0.0f);`` and serves ``zero2``
-past a wall, where the plain complex curl spells the literal. The lift requires the
-emitted line to end in the family's own spelling and RAISES otherwise, so a parent
-that changed it fails the build instead of leaving a tap redirected past a different
-ghost.
+THE GHOST SPELLING IS PARSED, NOT ASSUMED. The certified complex curl the beta source
+is derived from serves :data:`.templates.COMPLEX_ZERO` past a wall (the plain complex
+product's ``_GHOST``). The lift requires the emitted line to end in that spelling and
+RAISES otherwise, so a parent that changed it fails the build instead of leaving a tap
+redirected past a different ghost.
 
 THE BLOCH PHASE AND THE BETA TERM ARE BOTH OUTSIDE THE REDIRECT, and for two different
 reasons. The phase rotates the SHIFTED operands after the gather
@@ -151,15 +150,11 @@ function's own rule and it is live: 14,926 of 40,000 random draws produce a diff
 float32 word when the chain is widened first. The gate arms the widened spelling as a
 mutation.
 
-``phased``/``phase_values`` come from :func:`.special_kz.bloch_phase_words` with
-``backward=True`` -- this is the D seam, whose wrapped lane carries the CONJUGATE
-phase. Taking the conjugation anywhere else would give one fact two homes.
-
-THE EXPANSION ARM IS THE **BETA** PROBE'S, not ``complex_fields``'. The beta artifact
-classifies one more call-site orientation, so it licenses everything the complex
-artifact does and one pattern more; :func:`.special_kz.plan_beta_run_complex_constitutive`
-and :mod:`.folded_beta` both bind it that way and this module follows. An absent or
-non-discriminating probe is a REFUSAL, not a fallback.
+``phased``/``phase_values`` are :func:`.complex_fields.phase_arguments` of
+:func:`.complex_fields.bloch_phase_table` with ``backward=True`` -- this is the D seam,
+which reads the word above the stored window, and MEEP's connection kind and word for
+that side have one home there. The two beta words are real (``part_products``'
+quarter turn by one realnum per sign) and ride in ``Params`` beside the chunk record.
 
 =============================================================================
 WHAT SITS IN THE SEAM, AND WHAT THIS PRODUCT REFUSES
@@ -223,10 +218,10 @@ them and exactly one clause differs:
 * the ``h_cell`` LIFT is byte-identical -- it is imported, once;
 * the ROTATION ORDER, the twins, the mirrors and the plan class are the same;
 * all four REFUTED signatures are the same signature, so they are imported;
-* the two curl emitters are the SAME PARENT TEMPLATE, one with a slot inserted:
-  :func:`.folded_beta.folded_beta_bloch_curl_template` is
-  ``special_kz._BETA_BLOCH_CURL_TEMPLATE`` with ``__TOP_MASK__`` after the cell-0 mask
-  anchor, and nothing else.
+* the two curl emitters carry the SAME PASS: :func:`.special_kz.beta_bloch_curl_source`
+  and :func:`.folded_beta.folded_beta_bloch_curl_source` are the certified complex and
+  folded complex curls with :func:`.special_kz.beta_pass` inserted after the per-chunk
+  forms (:func:`.folded_pass.with_folded_pass`).
 
 What differs is which emitter runs and which routine resolves ``codes`` -- a source
 specialisation beside the boundary codes, which is where a fold belongs. That is the
@@ -260,6 +255,7 @@ from . import complex_fused_hd_pair as _plain
 from . import folded_beta, special_kz
 from . import offdiag_weld_common as _weld
 from . import shaders, symmetry, templates
+from . import chunk_bounds as _chunk_bounds
 from .device import MAX_BUFFER_BINDINGS, Residency
 from .launch import SUB_STEPS
 
@@ -381,11 +377,11 @@ SPLIT_PLANE_BINDINGS = _plain.SPLIT_PLANE_BINDINGS
 #: sat at 30 of 31.
 SEPARATE_SCALAR_BINDINGS = 45
 
-#: The host record's total size in bytes. MEASURED off a launched probe on this host:
-#: five ``float2`` members then five scalars is 60 bytes of payload and Metal rounds
-#: ``sizeof(Params)`` up to its 8-byte alignment, so the record is 64 and a 60-byte
-#: buffer is four bytes short of what the shader may address.
-PARAMS_ITEMSIZE = 64
+#: The host record's total size in bytes: three ``float2`` connection words, five
+#: scalars and the two beta words (52 bytes), then the 100-byte chunk record, rounded
+#: up to Metal's 8-byte struct alignment -- a record four bytes short would be a
+#: plausible number rather than a crash.
+PARAMS_ITEMSIZE = 152
 
 #: The rotating volumes, in SIGNATURE ORDER. The plain complex product's, imported:
 #: this weld has the same six and the same order, and two spellings of one order is
@@ -398,16 +394,12 @@ KERNEL = "beta_complex_fused_hd_pair_step"
 #: The exact complex ghost the certified BETA complex curl serves past a wall. It is
 #: this family's own spelling -- a hoisted ``const float2`` rather than the literal the
 #: non-beta complex curl uses -- and the lift REQUIRES it rather than assuming it.
-_GHOST = "zero2"
+_GHOST = _plain._GHOST
 
-#: The line the parent template hoists that ghost on. Checked to be present, so a
-#: parent that stopped hoisting it fails the build here.
-_GHOST_DECLARATION = "    const float2 zero2 = float2(0.0f, 0.0f);\n"
-
-#: The four identifiers the beta term introduces. The constitutive lift is asserted to
+#: The two identifiers the beta pass introduces. The constitutive lift is asserted to
 #: contain NONE of them: beta is a curl-only term and a future beta-dependent
 #: ``update_H`` must fail this build rather than step a beta run with a beta-free H.
-BETA_IDENTIFIERS: Tuple[str, ...] = ("bpr", "bpi", "bmr", "bmi")
+BETA_IDENTIFIERS: Tuple[str, ...] = ("beta_plus", "beta_minus")
 
 if PACKED_BINDINGS > MAX_BUFFER_BINDINGS:  # pragma: no cover - a design invariant
     raise RuntimeError(
@@ -442,7 +434,7 @@ split_plane_pair_signature = _plain.split_plane_pair_signature
 # The lift: the certified COMPLEX update_H at an arbitrary cell — imported, checked
 # ---------------------------------------------------------------------------
 
-def certified_h_cell(expansion: str, contract: str = shaders.CONTRACT_OFF) -> str:
+def certified_h_cell(contract: str = shaders.CONTRACT_OFF) -> str:
     """:func:`.complex_fused_hd_pair.h_cell_function`, with the beta-free assertion.
 
     THE BODY IS IMPORTED AND UNMODIFIED. What this wrapper adds is the check that
@@ -452,7 +444,7 @@ def certified_h_cell(expansion: str, contract: str = shaders.CONTRACT_OFF) -> st
     instead of stepping a beta run with a beta-free magnetic field, which is a smooth
     wrong answer.
     """
-    body = _plain.h_cell_function(expansion, contract)
+    body = _plain.h_cell_function(contract)
     for name in BETA_IDENTIFIERS:
         if name in body:
             raise AssertionError(
@@ -469,7 +461,7 @@ def certified_h_cell(expansion: str, contract: str = shaders.CONTRACT_OFF) -> st
 # ---------------------------------------------------------------------------
 
 def beta_complex_curl_source(variant: str, codes: Sequence[int],
-                             phased: Sequence[int], expansion: str,
+                             phased: Sequence[int],
                              contract: str = shaders.CONTRACT_OFF) -> str:
     """The certified beta complex ``step_D`` curl for one variant.
 
@@ -488,14 +480,13 @@ def beta_complex_curl_source(variant: str, codes: Sequence[int],
         raise ValueError(f"variant must be one of {VARIANTS}, got {variant!r}")
     backward = bool(SUB_STEPS["step_D"]["backward"])
     if variant == "plain":
-        return special_kz.beta_bloch_curl_source(codes, backward, phased, expansion,
+        return special_kz.beta_bloch_curl_source(codes, backward, phased,
                                                  True, contract)
-    return folded_beta.folded_beta_bloch_curl_source(codes, backward, phased,
-                                                     expansion, True, contract)
+    return folded_beta.folded_beta_bloch_curl_source(codes, backward, phased, True, contract)
 
 
 def welded_curl_tail(variant: str, codes: Sequence[int], phased: Sequence[int],
-                     expansion: str, contract: str = shaders.CONTRACT_OFF
+                     contract: str = shaders.CONTRACT_OFF
                      ) -> Tuple[str, str]:
     """``(prologue, body)`` of the beta complex ``step_D`` curl, H reads redirected.
 
@@ -506,20 +497,18 @@ def welded_curl_tail(variant: str, codes: Sequence[int], phased: Sequence[int],
     needle that stopped matching RAISES here rather than emitting a kernel that reads
     the wrong volume.
 
-    THE GHOST IS THIS FAMILY'S OWN SPELLING AND IS REQUIRED, NOT ASSUMED. The parent
-    hoists ``const float2 zero2 = float2(0.0f, 0.0f);`` and serves ``zero2``; the
-    literal the non-beta complex curl uses would silently satisfy a laxer check.
+    THE GHOST IS THE CERTIFIED COMPLEX CURL'S OWN SPELLING (``templates.COMPLEX_ZERO``,
+    the plain complex weld's), parsed and required on every redirected tap.
 
     WHAT IS NOT TOUCHED, and each for its own reason: the ghost ternary's GUARD and
-    OFFSET are parsed out of the emitter's own line rather than retyped; the Bloch
-    PHASE rotates the shifted operands AFTER the gather and is never seen here; the
-    BETA term multiplies the unshifted centre registers ``a`` and ``b``, which the
-    own-cell edits have already replaced with ``own.a0``/``own.a1``, so the term
-    consumes the post-``update_H`` field at the thread's own cell exactly as the array
-    path's ``step_D`` does; and both fold blocks (the top-plane mask and the widened
-    cell-0 mask) write ``curlN = ... : curlN;`` and touch no ``gN[``.
+    OFFSET are parsed out of the emitter's own line rather than retyped; MEEP's Bloch
+    connection acts on the centre registers as read across a wrap and is never seen
+    here; the BETA pass multiplies the unshifted centre registers ``a`` and ``b``,
+    which the own-cell edits have already replaced with ``own.a0``/``own.a1``, so the
+    pass consumes the post-``update_H`` field at the thread's own cell exactly as the
+    array path's ``step_D`` does; and both fold blocks touch no ``gN[``.
     """
-    source = beta_complex_curl_source(variant, codes, phased, expansion, contract)
+    source = beta_complex_curl_source(variant, codes, phased, contract)
     if _plain._BODY_ANCHOR not in source:
         raise AssertionError(
             "the certified beta complex curl no longer carries the body anchor; the "
@@ -535,11 +524,6 @@ def welded_curl_tail(variant: str, codes: Sequence[int], phased: Sequence[int],
             "with nxi/nyi/nzi")
     prologue, tail = body.split(_plain.PROLOGUE_END, 1)
     prologue = prologue + _plain.PROLOGUE_END
-    if _GHOST_DECLARATION not in tail:
-        raise AssertionError(
-            f"the beta complex curl no longer hoists {_GHOST_DECLARATION.strip()!r}; "
-            f"this weld requires the family's own ghost spelling so that a tap "
-            f"redirected past a DIFFERENT ghost cannot pass unnoticed")
     offsets = _plain.offset_coordinates(tail)
     for var, target in _plain.OWN_LOAD_EDITS:
         tail = _weld.needle(tail, f"    float2 {var}   = g{target}[ii];\n",
@@ -587,14 +571,18 @@ __CONTRACT__
 
 __HELPERS__
 
-// THE FIVE float2 MEMBERS COME FIRST. Metal aligns float2 to 8 bytes, so with the
+__RECORD_STRUCT__
+
+// THE THREE float2 MEMBERS COME FIRST. Metal aligns float2 to 8 bytes, so with the
 // scalars first this struct needs internal padding and the natural host record puts
 // every phase one word early — it then reads back as a plausible complex number
-// rather than as garbage. Phases and beta words first, no internal padding; the
-// struct's own size is 64 (measured off a launched probe, not computed).
+// rather than as garbage. Phases first, then the scalars, the two beta words and the
+// chunk record (offset 52); the struct's size is 152.
 struct Params {
-    float2 px; float2 py; float2 pz; float2 bp; float2 bm;
+    float2 px; float2 py; float2 pz;
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
+    float beta_plus; float beta_minus;
+__RECORD_MEMBER__
 };
 
 __H_CELL__
@@ -640,25 +628,23 @@ kernel void beta_complex_fused_hd_pair_step(
     // declared lift edits and the redirected magnetic reads.
     //
     // THE BETA WORDS ARE READ HERE AND NOWHERE ELSE. The certified curl binds them as
-    // four `constant float&`; packed, they cost nothing, which is the only reason
-    // this cell fits inside the 31-binding ceiling at all.
+    // two `constant float&`; packed, they cost nothing, which is the only reason this
+    // cell fits inside the 31-binding ceiling at all.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
-    float pxr = prm.px.x, pxi = prm.px.y;
-    float pyr = prm.py.x, pyi = prm.py.y;
-    float pzr = prm.pz.x, pzi = prm.pz.y;
-    float bpr = prm.bp.x, bpi = prm.bp.y;
-    float bmr = prm.bm.x, bmi = prm.bm.y;
+    float2 px = prm.px, py = prm.py, pz = prm.pz;
+    float beta_plus = prm.beta_plus, beta_minus = prm.beta_minus;
+__RECORD_ALIAS__
 __PROLOGUE__
     // --- THE WELD: complex update_H, computed into registers and stored to SCRATCH -
     // Nothing written here is read by this launch. The curl half below takes its OWN
     // cell's magnetic field from these registers and recomputes every foreign tap
     // from PRE-LAUNCH state through the same `h_cell`, so no thread observes another
-    // thread's store; the launcher rotates H/f_w_H afterwards. The BETA term's two
+    // thread's store; the launcher rotates H/f_w_H afterwards. The BETA pass's two
     // partners are `a` and `b`, which are exactly these registers.
     h_cell_result own = h_cell(i, j, k, __H_CELL_ARGS__);
     ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;
-    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;
+    wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;
 
     // --- the beta complex step_D curl (stepping.step_D / _apply_pml_update:1905) --
     // D and fu_D update IN PLACE and that is safe by construction: the curl reads and
@@ -670,7 +656,7 @@ __CURL__
 
 
 def beta_complex_fused_hd_pair_source(
-        variant: str, codes: Sequence[int], phased: Sequence[int], expansion: str,
+        variant: str, codes: Sequence[int], phased: Sequence[int],
         contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (variant, boundaries, phases, arm, mode).
 
@@ -690,11 +676,14 @@ def beta_complex_fused_hd_pair_source(
         raise ValueError(f"codes must be a per-axis triple, got {codes!r}")
     if len(phased) != 3:
         raise ValueError(f"phased must be a per-axis triple, got {phased!r}")
-    prologue, curl = welded_curl_tail(variant, codes, phased, expansion, contract)
+    prologue, curl = welded_curl_tail(variant, codes, phased, contract)
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
-        "__H_CELL__": certified_h_cell(expansion, contract),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
+        "__H_CELL__": certified_h_cell(contract),
         "__PROLOGUE__": prologue,
         "__H_CELL_ARGS__": _plain.H_CELL_TAIL_ARGS,
         "__CURL__": curl,
@@ -702,18 +691,17 @@ def beta_complex_fused_hd_pair_source(
 
 
 def compile_beta_complex_fused_hd_pair(
-        variant: str, codes: Sequence[int], phased: Sequence[int], expansion: str,
+        variant: str, codes: Sequence[int], phased: Sequence[int],
         contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised entry point for one (variant, boundaries, phases, arm, mode)."""
     from .device import compile_source  # noqa: PLC0415
 
     return getattr(
-        compile_source(beta_complex_fused_hd_pair_source(variant, codes, phased,
-                                                         expansion, contract)),
+        compile_source(beta_complex_fused_hd_pair_source(variant, codes, phased, contract)),
         KERNEL)
 
 
-def shipped_signature_bindings(variant: str, expansion: str) -> int:
+def shipped_signature_bindings(variant: str) -> int:
     """How many bindings the SHIPPED kernel declares, counted off its own source.
 
     Read from the emitted text rather than from :data:`PACKED_BINDINGS`, so the
@@ -724,7 +712,7 @@ def shipped_signature_bindings(variant: str, expansion: str) -> int:
     codes = ((symmetry.CODE_PERIODIC,) * 3 if variant == "plain"
              else (symmetry.CODE_PERIODIC, symmetry.CODE_MIRROR_PERIODIC,
                    symmetry.CODE_PERIODIC))
-    source = beta_complex_fused_hd_pair_source(variant, codes, (0, 0, 0), expansion)
+    source = beta_complex_fused_hd_pair_source(variant, codes, (0, 0, 0))
     signature = source.split(f"kernel void {KERNEL}(", 1)[1]
     signature = signature.split("uint idx [[thread_position_in_grid]])", 1)[0]
     return signature.count("[[buffer(")
@@ -782,16 +770,18 @@ def refuted_separate_scalar_source(contract: str = shaders.CONTRACT_OFF) -> str:
 
 
 def _phase_triples(codes: Sequence[int]) -> Tuple[Tuple[int, int, int], ...]:
-    """Every phase triple legal against one boundary triple/quadruple.
+    """Every connection-kind triple legal against one boundary triple/quadruple.
 
     Only a plain PERIODIC axis can carry a Bloch phase: a METALLIC one cannot, and a
     MIRROR one reflects rather than repeating, so ``stepping._bloch_phases`` raises and
     the driver refuses the configuration outright.
     """
+    from .complex_fields import CONNECT_KINDS  # noqa: PLC0415
+
     legal: List[Tuple[int, int, int]] = []
-    for px in (0, 1):
-        for py in (0, 1):
-            for pz in (0, 1):
+    for px in CONNECT_KINDS:
+        for py in CONNECT_KINDS:
+            for pz in CONNECT_KINDS:
                 triple = (px, py, pz)
                 if any(triple[axis] and codes[axis] != symmetry.CODE_PERIODIC
                        for axis in range(3)):
@@ -800,8 +790,7 @@ def _phase_triples(codes: Sequence[int]) -> Tuple[Tuple[int, int, int], ...]:
     return tuple(legal)
 
 
-def enumerate_sources(expansion: str,
-                      contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
+def enumerate_sources(contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
     """Every specialisation a shipped plan can emit, keyed by a stable label.
 
     ``plain`` enumerates the PERIODIC/METALLIC triples; ``folded`` enumerates the four
@@ -819,9 +808,9 @@ def enumerate_sources(expansion: str,
                 codes = (cx, cy, cz)
                 for phased in _phase_triples(codes):
                     label = (f"{KERNEL}/plain/{cx}{cy}{cz}/"
-                             f"ph{phased[0]}{phased[1]}{phased[2]}/{expansion}")
+                             f"ph{phased[0]}{phased[1]}{phased[2]}")
                     out[label] = beta_complex_fused_hd_pair_source(
-                        "plain", codes, phased, expansion, contract)
+                        "plain", codes, phased, contract)
     codes_axis = (symmetry.CODE_PERIODIC, symmetry.CODE_METALLIC,
                   symmetry.CODE_MIRROR_METALLIC, symmetry.CODE_MIRROR_PERIODIC)
     mirrors = {symmetry.CODE_MIRROR_METALLIC, symmetry.CODE_MIRROR_PERIODIC}
@@ -833,9 +822,9 @@ def enumerate_sources(expansion: str,
                     continue
                 for phased in _phase_triples(codes):
                     label = (f"{KERNEL}/folded/{cx}{cy}{cz}/"
-                             f"ph{phased[0]}{phased[1]}{phased[2]}/{expansion}")
+                             f"ph{phased[0]}{phased[1]}{phased[2]}")
                     out[label] = beta_complex_fused_hd_pair_source(
-                        "folded", codes, phased, expansion, contract)
+                        "folded", codes, phased, contract)
     return out
 
 
@@ -844,16 +833,18 @@ def enumerate_sources(expansion: str,
 # ---------------------------------------------------------------------------
 
 def _PHASE_RESOLVER(grid: Any, kinds: Sequence[str]) -> Tuple[int, ...]:
-    """The per-axis Bloch flags THIS product bakes, through its own parent's resolver.
+    """The per-axis connection kinds THIS product bakes, through the certified resolver.
 
     Exposed under a name a harness can find so a gate never re-derives them: a leg
-    that resolved the flags a different way would compile a different specialisation
-    from the one the plan launches, which is how a mutation harness reports a defect
-    as uncaught. ``backward=True``: this seam's curl is ``step_D``, whose wrapped lane
-    carries the CONJUGATE phase, and the conjugation lives in
-    :func:`.special_kz.bloch_phase_words` and nowhere else.
+    that resolved them a different way would compile a different specialisation from
+    the one the plan launches, which is how a mutation harness reports a defect as
+    uncaught. ``backward=True``: this seam's curl is ``step_D``, which reads the word
+    above the stored window, and the side's connection lives in
+    :func:`.complex_fields.phase_arguments` and nowhere else.
     """
-    phased, _words = special_kz.bloch_phase_words(grid, kinds, True)
+    from .complex_fields import bloch_phase_table, phase_arguments  # noqa: PLC0415
+
+    phased, _values = phase_arguments(bloch_phase_table(grid, kinds), backward=True)
     return tuple(int(flag) for flag in phased)
 
 
@@ -907,16 +898,15 @@ def resolve_codes(variant: str, grid: Any, pml: Any) -> Optional[Tuple[int, ...]
 # ---------------------------------------------------------------------------
 
 def metal_beta_complex_fused_hd_pair_coverage(
-        fields: Any, pml: Any, sources: Any = None, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, sources: Any = None, residency: Any = None) -> Coverage:
     """May ONE dispatch span beta complex ``update_H`` -> withdraw -> ``step_D``?
 
     A conjunction of the RESOLVED VARIANT's two halves' own certified predicates plus
     the seam clauses. Nothing is weakened: a configuration either half refuses is
     refused here with that half's reasons, prefixed so a reader can tell which side
     said it. That construction is what makes the beta clause, the complex-storage
-    clause, the expansion-probe clause, the BFAST clause, the off-diagonal clause, the
-    polarization clause and the fold clause INHERITED rather than restated.
+    clause, the BFAST clause, the off-diagonal clause, the polarization clause and
+    the fold clause INHERITED rather than restated.
 
     THE VARIANT IS RESOLVED FIRST AND THE OTHER ONE IS NEVER ASKED. Asking both and
     taking the disjunction would admit a row on a predicate whose kernel the plan
@@ -937,14 +927,14 @@ def metal_beta_complex_fused_hd_pair_coverage(
 
     if variant == "plain":
         magnetic = special_kz.beta_run_complex_constitutive_coverage(
-            fields, pml, "H", residency, probe)
+            fields, pml, "H", residency)
         curl = special_kz.beta_bloch_pml_curl_coverage(
-            fields, pml, "step_D", residency, probe)
+            fields, pml, "step_D", residency)
     else:
         magnetic = folded_beta.folded_beta_complex_constitutive_coverage(
-            fields, pml, "H", residency, probe)
+            fields, pml, "H", residency)
         curl = folded_beta.folded_beta_composition_bloch_curl_coverage(
-            fields, pml, "step_D", residency, probe)
+            fields, pml, "step_D", residency)
     if not magnetic.covered:
         reasons.extend(f"{variant} beta complex constitutive half: {reason}"
                        for reason in magnetic.reasons)
@@ -988,6 +978,13 @@ def metal_beta_complex_fused_hd_pair_coverage(
             reasons.append(
                 f"{name} is not allocated; this weld rotates it against a plan-owned "
                 f"scratch twin after every launch")
+
+    # THE RUN'S FIRST update_H, on the composer's rule for the base constitutive kernel
+    # this half lifts (launch.h_start_reasons): the array path starts H and f_w from B
+    # on the dsigw cells at that update and this weld does not.
+    from .launch import h_start_reasons  # noqa: PLC0415 - launch imports this family's peers
+    reasons.extend(f"constitutive half: {reason}"
+                   for reason in h_start_reasons(fields, sources))
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
@@ -1001,50 +998,50 @@ class MetalBetaComplexFusedHdPairPlan(_weld.ScratchWeldPairPlan):
     THE ROTATION IS NOT REIMPLEMENTED. ``run`` and ``_resolve`` are the base's. What
     the subclass adds is the specialisation a harness must not re-derive: the variant
     the source was emitted for, the per-axis phase flags, the rounded and conjugated
-    phase values, the two rounded beta word pairs, and the PROBE-MEASURED expansion
-    arm. Re-deriving any of them at a call site is how a mutation harness ends up
-    compiling a different specialisation from the one it launches.
+    phase values and the two rounded beta word pairs. Re-deriving any of them at a call
+    site is how a mutation harness ends up compiling a different specialisation from the
+    one it launches.
     """
 
-    __slots__ = ("variant", "phased", "phase_values", "beta_words", "expansion")
+    __slots__ = ("variant", "phased", "phase_values", "beta_words")
 
     def __init__(self, *arguments: Any, variant: str, phased: Sequence[int],
                  phase_values: Sequence[Tuple[float, float]],
-                 beta_words: Sequence[Tuple[float, float]],
-                 expansion: str) -> None:
+                 beta_words: Sequence[float]) -> None:
         super().__init__(*arguments)
         self.variant = str(variant)
         self.phased = tuple(int(flag) for flag in phased)
         self.phase_values = tuple((float(re), float(im)) for re, im in phase_values)
-        self.beta_words = tuple((float(re), float(im)) for re, im in beta_words)
-        self.expansion = str(expansion)
+        self.beta_words = tuple(float(word) for word in beta_words)
 
 
 def params_record_dtype() -> Any:
-    """The host record's dtype -- FIVE ``float2`` MEMBERS FIRST, itemsize 64.
+    """The host record's dtype -- THE THREE ``float2`` MEMBERS FIRST, itemsize 152.
 
     ONE HOME FOR THE LAYOUT, because getting it wrong is a silent wrong answer rather
-    than a crash. The offsets are stated EXPLICITLY even though the float2-first order
-    makes them the natural ones, so the record cannot drift into agreeing with Metal
-    only by accident; ``itemsize`` is stated because the payload is 60 bytes and
-    Metal's struct is 64 -- measured off a launched probe on this host, not computed.
+    than a crash. The offsets are stated EXPLICITLY, so the record cannot drift into
+    agreeing with Metal only by accident: three connection words, five scalars, the
+    two beta words and the chunk record at offset 52, padded to Metal's 8-byte struct
+    alignment.
     """
     import numpy as np  # noqa: PLC0415
 
     return np.dtype({
-        "names": ["px", "py", "pz", "bp", "bm",
-                  "nx", "ny", "nz", "n_elem", "dtdx"],
-        "formats": [("<f4", 2), ("<f4", 2), ("<f4", 2), ("<f4", 2), ("<f4", 2),
-                    "<u4", "<u4", "<u4", "<u4", "<f4"],
-        "offsets": [0, 8, 16, 24, 32, 40, 44, 48, 52, 56],
+        "names": ["px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx",
+                  "beta_plus", "beta_minus", "cb"],
+        "formats": [("<f4", 2), ("<f4", 2), ("<f4", 2),
+                    "<u4", "<u4", "<u4", "<u4", "<f4", "<f4", "<f4",
+                    _chunk_bounds.record_dtype()],
+        "offsets": [0, 8, 16, 24, 28, 32, 36, 40, 44, 48, 52],
         "itemsize": PARAMS_ITEMSIZE,
     })
 
 
 def _params_tensor(shape: Sequence[int], dtdx: float,
                    phase_values: Sequence[Tuple[float, float]],
-                   beta_words: Sequence[Tuple[float, float]], device: str) -> Any:
-    """The five scalars, three phases and two beta pairs as one 64-byte record.
+                   beta_words: Sequence[float], device: str, chunk_bounds: Any) -> Any:
+    """The five scalars, three connection words, two beta words and the chunk record
+    (checked against the shape first) as one 152-byte record.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused pair's
     ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and complex64
@@ -1062,8 +1059,11 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
     record["dtdx"] = np.float32(dtdx)
     for name, (real, imag) in zip(("px", "py", "pz"), tuple(phase_values)):
         record[name] = (np.float32(real), np.float32(imag))
-    for name, (real, imag) in zip(("bp", "bm"), tuple(beta_words)):
-        record[name] = (np.float32(real), np.float32(imag))
+    plus, minus = tuple(beta_words)
+    record["beta_plus"] = np.float32(plus)
+    record["beta_minus"] = np.float32(minus)
+    record["cb"] = _chunk_bounds.pack(
+        _chunk_bounds.plan_words(chunk_bounds, (nx, ny, nz), f"{FAMILY} Params"))[0]
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -1073,11 +1073,14 @@ def plan_metal_beta_complex_fused_hd_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
-        probe: Any = None,
         codes: Optional[Sequence[int]] = None,
-        beta_words: Optional[Sequence[Tuple[float, float]]] = None,
+        beta_words: Optional[Sequence[float]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional["_weld.ScratchWeldPairPlan"]:
     """Build the beta complex fused H/D plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``) and has no default; it rides in ``Params``.
 
     ``None`` is the only refusal, for the reason :func:`.launch.plan_pml_curl` gives:
     a configuration this kernel does not carry must fall back to the array path, never
@@ -1092,11 +1095,7 @@ def plan_metal_beta_complex_fused_hd_pair(
     difference rather than a hypothetical one.
     """
     if not metal_beta_complex_fused_hd_pair_coverage(
-            fields, pml, sources, residency, probe).covered:
-        return None
-    record = probe if probe is not None else special_kz.load_expansion_probe()
-    expansion = special_kz.beta_expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+            fields, pml, sources, residency).covered:
         return None
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
@@ -1110,22 +1109,23 @@ def plan_metal_beta_complex_fused_hd_pair(
             return None
     codes = tuple(int(code) for code in codes)
 
-    # THE PHASE FLAGS COME FROM `_boundary_kinds` ON BOTH VARIANTS, NOT FROM THE
+    # THE CONNECTION COMES FROM `_boundary_kinds` ON BOTH VARIANTS, NOT FROM THE
     # FOLDED CODES: a folded axis is refused a phase by the folded family's own
-    # clause, so the two agree on every admitted run, and reading the phase off the
-    # RESOLVED kinds keeps this builder identical to `special_kz`'s and keeps the
-    # conjugation in one place. backward=True: this is the D seam.
+    # clause, so the two agree on every admitted run, and reading it through
+    # `complex_fields`' own host decisions keeps it in one place. backward=True: this
+    # is the D seam.
+    from .complex_fields import bloch_phase_table, phase_arguments  # noqa: PLC0415
+
     kinds = _boundary_kinds(grid, pml)
-    phased, phase_flat = special_kz.bloch_phase_words(grid, kinds, True)
-    phase_values = tuple((phase_flat[2 * axis], phase_flat[2 * axis + 1])
-                         for axis in range(3))
+    phased, phase_values = phase_arguments(bloch_phase_table(grid, kinds),
+                                           backward=True)
     if beta_words is None:
         # magnetic=False: this seam's CURL is step_D. `beta` and `dt` are passed AS
         # GIVEN, which is that function's own rule and is what keeps the coefficient
         # word the array path's bits.
         beta_words = special_kz.beta_curl_coefficients(
             grid.beta, grid.dt, magnetic=False, complex_storage=True)
-    beta_words = tuple((float(re), float(im)) for re, im in beta_words)
+    beta_words = tuple(float(word) for word in beta_words)
 
     volumes: List[str] = []
 
@@ -1185,13 +1185,13 @@ def plan_metal_beta_complex_fused_hd_pair(
     for mode in contract_variants:
         if mode not in selected:
             selected[mode] = compile_beta_complex_fused_hd_pair(
-                variant, codes, phased, expansion, mode)
+                variant, codes, phased, mode)
 
     dtdx = grid.dt / grid.dx
     static = (flux + displacement + auxiliary
               + curl_coefficients + constitutive_coefficients
               + [_params_tensor(grid.shape, dtdx, phase_values, beta_words,
-                                residency.device)])
+                                residency.device, chunk_bounds)])
     assert (2 * len(ROTATED_NAMES) + len(static)) == PACKED_BINDINGS, (
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     assert PACKED_BINDINGS == MAX_BUFFER_BINDINGS, (PACKED_BINDINGS,
@@ -1201,7 +1201,7 @@ def plan_metal_beta_complex_fused_hd_pair(
         tuple(static), tuple(volumes), tuple(grid.shape), tuple(codes),
         (0, 0, 0), (), REPLACES,
         variant=variant, phased=phased, phase_values=phase_values,
-        beta_words=beta_words, expansion=expansion)
+        beta_words=beta_words)
 
 
 # ---------------------------------------------------------------------------
@@ -1225,8 +1225,7 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
         return Coverage(False,
                         (f"beta complex fused H/D pair cannot fill {slot}",))
     return metal_beta_complex_fused_hd_pair_coverage(
-        context.fields, context.pml, context.sources, context.residency,
-        context.extra.get("beta_probe"))
+        context.fields, context.pml, context.sources, context.residency)
 
 
 def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
@@ -1234,7 +1233,7 @@ def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
         return None
     return plan_metal_beta_complex_fused_hd_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants, probe=context.extra.get("beta_probe"))
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

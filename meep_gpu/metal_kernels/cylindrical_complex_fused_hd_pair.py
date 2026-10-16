@@ -4,45 +4,45 @@ radial scan, then the certified complex curl — no host round trip.
 THE CELL. Sixteen ``cylindrical complex`` corpus rows (``h_to_d_seam.instances``,
 identical on the Metal, Triton and CUDA boards), every one ``pml_active`` with ``ny = 1``,
 radial extents 80 to 1050 rows and 1 to 497 columns. Today each of them pays, on every
-``step_D``, a device->host->device round trip so that ``numpy`` can scan the radial
-prefix (:meth:`.cylindrical_complex.CylindricalComplexCurlPlan.refresh_prefix`,
-``cylindrical_complex.py:1468-1485``) — the one place that module says this backend is
-worse than the CuPy one. This product removes the round trip and owns both seam slots.
+``step_D``, a device->host->device round trip so that ``numpy`` can form the radial
+difference (:meth:`.cylindrical_complex.CylindricalComplexCurlPlan.refresh_prefix`).
+This product removes the round trip and owns both seam slots.
 
 =========================================================================
 THE SHAPE, AND WHY IT IS TWO LAUNCHES AND NOT ONE
 =========================================================================
 
-``stepping.step_D`` on a Dcyl grid differences ``cylindrical_rderiv_prefix(Hy)`` for the
-``Dz`` term (stepping.py:447, :461-462), and the prefix is a strictly serial scan down
-each radial column of the POST-``update_H`` ``Hy`` — a non-local dependence that a
-single pointwise dispatch cannot satisfy (a local halo is REFUSED: the prefix cannot be
-algebraically collapsed, 103,175 of 124,096 words). The recompute unit is a whole
-radial column, so:
+``stepping.step_D`` on a Dcyl grid takes the ``Dz`` term's radial derivative as the
+backward difference of MEEP's ``f_rderiv_int`` (``stepping.cylindrical_rderiv_difference``):
+a sum down each radial column of the POST-``update_H`` ``Hy``, restarted at +0 on every
+structure chunk's first row, with ``rinv`` multiplied. The sum is strictly serial within
+a chunk — a non-local dependence that a single pointwise dispatch cannot satisfy, since
+the difference of two rounded partial sums is not the rounded increment. The recompute
+unit is a whole radial column, so:
 
 * **LAUNCH 1** (``cyl_complex_hd_lead_step``, the ``update_H`` slot): every thread
   computes its OWN cell's ``H`` and split-field ``f_w_H`` through ``h_cell`` — the
   certified complex ``bloch_constitutive_step`` body lifted as a function of an
   arbitrary cell, reading ONLY pre-launch buffers — and stores them to WRITE-ONLY
   scratch. The ``r = 0`` thread of each (phi, z) column additionally walks its column,
-  recomputing ``Hy`` at every row through the SAME ``h_cell`` and accumulating the
-  D-side prefix (``ir0 = 0.5``, no wall row) into a prefix scratch — the
-  :data:`.cylindrical_complex_scan.COLUMN_SCAN_LOOP` with the row source being the
-  recompute rather than a load. NOTHING WRITTEN BY THIS LAUNCH IS READ BY IT, so no
+  recomputing ``Hy`` at every row through the SAME ``h_cell`` and writing the D-side
+  radial difference (``ir0 = 0.5``, no wall row, per-chunk restart) into a scratch —
+  :func:`.cylindrical_complex_scan.column_scan_loop` for ``step_D`` with the row source
+  being the recompute rather than a load. NOTHING WRITTEN BY THIS LAUNCH IS READ BY IT, so no
   thread observes another thread's store; the plan rotates ``H``/``f_w_H`` to the
   scratch afterwards, exactly as :class:`.offdiag_weld_common.ScratchWeldPairPlan` does
   for the D->E welds and :mod:`.fused_hd_pair` for the Cartesian H->D one.
 * **LAUNCH 2** (the ``step_D`` slot): the CERTIFIED complex cylindrical curl,
   :func:`.cylindrical_complex.cylindrical_curl_source` UNCHANGED, bound to the rotated
-  ``H`` and to the prefix scratch launch 1 wrote. No new pointer, no new arithmetic.
+  ``H`` and to the radial scratch launch 1 wrote. No new pointer, no new arithmetic.
 
 Bit identity is the composition of two pieces each measured on its own: the pointwise
-constitutive recompute (the lift is the certified body with pointer renames and the
-stores moved, no arithmetic touched — :data:`CONSTITUTIVE_LIFT_EDITS`) and the
-column-serial complex scan (:mod:`.cylindrical_complex_scan`, gated against
-``stepping.cylindrical_rderiv_prefix`` itself). What is NEW to measure is the seam
-between them — that the leader's recomputed ``Hy`` at row r is bit-identical to what
-the thread at row r stored — and the gate measures it as a complete driver step.
+constitutive recompute (``h_cell``, the complex H->D weld's lift of the certified body,
+imported from :mod:`.complex_fused_hd_pair`) and the column-serial complex radial sum
+(:mod:`.cylindrical_complex_scan`, against ``stepping.cylindrical_rderiv_difference``
+itself). What is NEW to measure is the seam between them — that the leader's recomputed
+``Hy`` at row r is bit-identical to what the thread at row r stored — and the gate
+measures it as a complete driver step.
 
 LAUNCHES: two per seam, where the array path's complex family pays two launches AND a
 host round trip of one component out and one volume in. The extra arithmetic is one
@@ -69,9 +69,10 @@ THE BINDING CEILING IS MEASURED, NOT COUNTED
 =========================================================================
 
 Launch 2 is the certified curl at its own :data:`.cylindrical_complex.CURL_BINDINGS`
-(27). Launch 1 binds :data:`LEAD_BINDINGS` = 25 (24 pointers plus one packed
-``Params``): six scratch, six pre-launch, three ``B``, the prefix scratch, six
-constitutive coefficient vectors, the two row vectors. That count is read off the
+(27). Launch 1 binds :data:`LEAD_BINDINGS` = 26 (25 pointers plus one packed
+``Params`` that carries the chunk record): six scratch, six pre-launch, three ``B``, the
+radial scratch, six constitutive coefficient vectors, the two row vectors and the chunk
+starts. That count is read off the
 emitted text (:func:`lead_signature_bindings`), and the gate COMPILES it on the
 platform and BISECTS the ceiling around it rather than trusting the arithmetic — a
 one-launch weld of this cell would be over the ceiling before it was written (the curl
@@ -89,7 +90,7 @@ arithmetic does NOT price is the host round trip the D->E pair still pays and th
 product removes — that is a composition decision recorded in
 :data:`INSTALLABLE_REASON` for the owner, not one this module takes. The natural end
 state for these rows — one product owning ``update_H`` through ``update_E``, launch 1
-as here and launch 2 the released D->E fused kernel reading the device prefix — is
+as here and launch 2 the released D->E fused kernel reading the device difference — is
 named there too and is not built here.
 
 REGISTERED UNWIRED on ``update_H`` (``wired=False``, ``replaces=REPLACES``), so the
@@ -113,7 +114,9 @@ from ..triton_kernels.launch import SUB_STEPS
 from . import complex_fields, cylindrical_complex, cylindrical_complex_scan as scan
 from . import offdiag_weld_common as _weld
 from . import shaders, templates
-from .cylindrical_real import scratch_mirror
+from . import chunk_bounds as _chunk_bounds
+from .complex_fused_hd_pair import H_CELL_POINTERS, H_CELL_TAIL_ARGS, h_cell_function
+from .cylindrical_real import int32_tensor, scratch_mirror, scan_starts
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
 
 FAMILY = "cylindrical_complex_fused_hd_pair"
@@ -150,15 +153,16 @@ INSTALLABLE_REASON = (
     "this product installs (step_B + update_H + [D/E fused] versus step_B + [this, two "
     "launches] + update_E) and _neighbouring_seam_claimant resolves the tie for the "
     "incumbent. What that count does not price: the D->E pair still pays the complex "
-    "family's per-step host round trip for the radial prefix (cylindrical_complex.py:"
-    "1468-1485, sync_out of Hy, the numpy scan, sync_in of the prefix), which this "
+    "family's per-step host round trip for the radial sum (cylindrical_complex."
+    "CylindricalComplexCurlPlan.refresh_prefix: sync_out of Hy, the numpy sum, sync_in "
+    "of the radial difference), which this "
     "product removes, and a round trip was measured at 12x-64x the kernel it "
     "surrounds (device.py). Whether a removed round trip outranks a tied launch count "
     "is a composition decision for the owner, and the natural end state — one product "
     "owning update_H through update_E, launch 1 as here and launch 2 the released D->E "
-    "fused kernel reading the device prefix — is not built here. Until that decision "
-    "this product installs on zero rows, executes nowhere outside its own gate and "
-    "tests, and licenses no timing claim and no dispatch claim")
+    "fused kernel reading the device radial difference — is not built here. Until "
+    "that decision this product installs on zero rows, executes nowhere outside its "
+    "own gate and tests, and licenses no timing claim and no dispatch claim")
 
 #: WELDED. Empty means ``fingerprints.json`` carries
 #: ``metal_cylindrical_complex_fused_hd_pair_device_gate`` (minted from the released
@@ -172,11 +176,12 @@ WELD_OWED: str = ""
 #: static arguments — so this order IS the signature's.
 ROTATED_NAMES: Tuple[str, ...] = ("Hx", "Hy", "Hz", "f_w_Hx", "f_w_Hy", "f_w_Hz")
 
-#: Launch 1's bindings: 6 scratch + 6 pre-launch + 3 B + 1 prefix + 6 coefficient
-#: vectors + 2 row vectors = 24 pointers, plus one ``Params``. Compared against the
-#: emitted text by :func:`lead_signature_bindings` and against the platform by the gate.
-LEAD_POINTERS = 24
-LEAD_BINDINGS = 25
+#: Launch 1's bindings: 6 scratch + 6 pre-launch + 3 B + 1 radial difference + 6
+#: coefficient vectors + 2 row vectors + the chunk starts = 25 pointers, plus one
+#: ``Params``. Compared against the emitted text by :func:`lead_signature_bindings`
+#: and against the platform by the gate.
+LEAD_POINTERS = 25
+LEAD_BINDINGS = 26
 if LEAD_BINDINGS > MAX_BUFFER_BINDINGS:  # pragma: no cover - a design invariant
     raise RuntimeError(
         f"the complex H->D lead launch binds {LEAD_BINDINGS} buffers and Metal's "
@@ -190,11 +195,11 @@ LEAD_KERNEL = "cyl_complex_hd_lead_step"
 CURL_KERNEL = "cyl_complex_pml_curl_step"
 
 __all__ = [
-    "CARRIES_DEPOSIT_REPAIR", "CONSTITUTIVE_LIFT_EDITS", "CURL_BINDINGS", "CURL_KERNEL",
+    "CARRIES_DEPOSIT_REPAIR", "CURL_BINDINGS", "CURL_KERNEL",
     "FAMILY", "HOISTS_THE_WITHDRAW", "H_CELL_POINTERS", "INSTALLABLE",
     "INSTALLABLE_REASON", "LEAD_BINDINGS", "LEAD_KERNEL", "LEAD_POINTERS", "REPLACES",
-    "ROTATED_NAMES", "SEAM", "SLOT", "WELD_OWED",
-    "MetalCylindricalComplexFusedHdPairPlan", "certified_complex_constitutive_tail",
+    "ROTATED_NAMES", "SCAN_LIFT_EDITS", "SEAM", "SLOT", "WELD_OWED",
+    "MetalCylindricalComplexFusedHdPairPlan",
     "compile_lead", "curl_source", "enumerate_sources", "h_cell_function",
     "lead_signature_bindings", "lead_source",
     "metal_cylindrical_complex_fused_hd_pair_coverage",
@@ -204,111 +209,29 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
-# The lift: the certified complex H constitutive as a function of an arbitrary cell
-# ---------------------------------------------------------------------------
-
-#: Where the certified complex constitutive body ends its index decode —
-#: ``templates.DECODE_IJK``'s last line, which :data:`.offdiag_weld_common.DECODE_END`
-#: names for every family that lifts a body.
-DECODE_END = _weld.DECODE_END
-
-#: ``h_cell``'s pointer parameters, under the CERTIFIED BODY'S OWN NAMES for the
-#: coefficient vectors (``kp0``..``km2``, which the lifted text indexes) and under the
-#: fused kernel's names for the three volume groups the lift renames.
-H_CELL_POINTERS: Tuple[Tuple[str, str], ...] = tuple(
-    [("device const float2*", name) for name in
-     ("hi0", "hi1", "hi2", "wi0", "wi1", "wi2", "b0", "b1", "b2")]
-    + [("device const float*", name) for name in
-       ("kp0", "km0", "kp1", "km1", "kp2", "km2")])
-
-#: What one call site forwards after the three coordinates.
-H_CELL_TAIL_ARGS = ", ".join(("nxi", "nyi", "nzi")
-                             + tuple(name for _kind, name in H_CELL_POINTERS))
-
-#: Every line of certified constitutive text this weld does not lift verbatim, with the
-#: reason. DATA, so the suite and the gate can assert the list. THERE IS NO ARITHMETIC
-#: IN THIS TABLE: every entry is a pointer spelling or a store that moves to the caller.
-CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
-    {"line": "    float2 prevN = wN[ii];",
-     "became": "    float2 prevN = wiN[ii];",
-     "why": "the split-field history is read from the PRE-LAUNCH buffer, which nothing "
-            "in this launch writes; the certified in-place read would hand a racing "
-            "column leader the value another thread had just stored"},
-    {"line": "    float2 srcN = gN[ii];",
-     "became": "    float2 srcN = bN[ii];",
-     "why": "pointer spelling only: the flux density B under its own name, because "
-            "`g` is the curl's magnetic source in the other launch"},
-    {"line": "    wN[ii] = srcN;",
-     "became": "(removed -- the caller stores own.srcN to the SCRATCH volume)",
-     "why": "the weld writes scratch; the value and the expression that produced it "
-            "are untouched, only the destination moves, and only for the thread's OWN "
-            "cell (the leader's recompute stores nothing)"},
-    {"line": "    float2 aN = fN[ii];",
-     "became": "    float2 aN = hiN[ii];",
-     "why": "the accumulator is read from the PRE-LAUNCH H, const for the dispatch: "
-            "this is what makes the leader's recompute a pure function of unwritten "
-            "memory"},
-    {"line": "    fN[ii] = aN;",
-     "became": "(removed -- the value is RETURNED in the struct)",
-     "why": "the destination moves to the caller; the two accumulations, their order "
-            "and their operands are untouched"},
-    {"line": "    int k   = ii % nzi; ... int i   = plane / nyi;",
-     "became": "(removed -- i, j and k are parameters; ii is composed from them)",
-     "why": "the certified body becomes a function evaluated at an ARBITRARY cell, so "
-            "the column leader can evaluate it at every row of its column with the "
-            "SAME text the thread at that row evaluates for its own cell"},
-)
-
-
-def certified_complex_constitutive_tail(expansion: str,
-                                        contract: str = shaders.CONTRACT_OFF) -> str:
-    """The complex ``update_H`` body BELOW the decode prologue, stores removed.
-
-    :func:`.complex_fields.bloch_constitutive_source`'s own output for side ``H`` with
-    the preamble, the decode prologue and the closing brace cut, and with exactly the
-    substitutions :data:`CONSTITUTIVE_LIFT_EDITS` names, each applied through
-    :func:`.offdiag_weld_common.needle` so a spelling that drifted raises here.
-    """
-    source = complex_fields.bloch_constitutive_source("H", expansion, contract)
-    edits: List[Tuple[str, str]] = []
-    for target in range(3):
-        edits.extend((
-            (f"    float2 prev{target} = w{target}[ii];\n",
-             f"    float2 prev{target} = wi{target}[ii];\n"),
-            (f"    float2 src{target} = g{target}[ii];\n",
-             f"    float2 src{target} = b{target}[ii];\n"),
-            (f"    w{target}[ii] = src{target};\n", ""),
-            (f"    float2 a{target} = f{target}[ii];\n",
-             f"    float2 a{target} = hi{target}[ii];\n"),
-            (f"    f{target}[ii] = a{target};\n", ""),
-        ))
-    tail = _weld.lift_curl_tail(source, store_edits=tuple(edits), decode_end=DECODE_END)
-    # In the lead kernel `f*`, `w*`, `g*` and `e*` do not exist; a surviving read
-    # would be a compile error, but the check is kept so the reason is stated.
-    for stem in ("f", "w", "g", "e"):
-        for target in range(3):
-            if f"{stem}{target}[" in tail:
-                raise AssertionError(
-                    f"the lifted complex update_H body still indexes {stem}{target}")
-    return tail
-
-
-def h_cell_function(expansion: str, contract: str = shaders.CONTRACT_OFF) -> str:
-    """Complex ``update_H`` at an arbitrary cell, as one inline function.
-
-    ONE code path serves the thread's own cell and the column leader's recompute at
-    every row, so the two cannot disagree — the whole identity of this product rests
-    on that sentence, and the gate measures it.
-    """
-    return _weld.step_cell_function(
-        "h_cell", certified_complex_constitutive_tail(expansion, contract),
-        value_type="float2", pointer_parameters=H_CELL_POINTERS, scalar_parameters=(),
-        returns=("a0", "a1", "a2", "src0", "src1", "src2"))
-
-
-# ---------------------------------------------------------------------------
 # Launch 1: the lead kernel
 # ---------------------------------------------------------------------------
+#
+# ``h_cell`` is the complex H->D weld's (:func:`.complex_fused_hd_pair.h_cell_function`):
+# the CERTIFIED complex ``update_H`` body as a function of an arbitrary cell over the
+# pre-launch buffers, with the chunk record as its last parameter so the dsigw form is
+# the recomputed cell's. IMPORTED, not re-lifted: one lift of that body in the package.
+
+#: The two source reads of the certified complex D-side scan loop this product does
+#: not lift verbatim, with what each became. DATA, so the suite and the gate can assert
+#: the list. THERE IS NO ARITHMETIC IN THIS TABLE: each replaces a memory read with the
+#: recompute of the same value.
+SCAN_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
+    {"line": scan.source_reads("step_D")[0],
+     "became": "own.a1",
+     "why": "row 0 of the column's Hy is the leader's own cell, which it has just "
+            "computed into `own` from the pre-launch state"},
+    {"line": scan.source_reads("step_D")[1],
+     "became": f"h_cell(g, j, k, {H_CELL_TAIL_ARGS}).a1",
+     "why": "row g of the column's Hy, RECOMPUTED from the pre-launch state through "
+            "the same h_cell the thread at that row stores its own cell from, instead "
+            "of read from a volume this launch writes"},
+)
 
 _LEAD_TEMPLATE = r"""
 #include <metal_stdlib>
@@ -318,9 +241,10 @@ __CONTRACT__
 
 __HELPERS__
 
-__DIVIDE__
+__RECORD_STRUCT__
 
-struct Params { uint nx; uint ny; uint nz; uint n_elem; };
+struct Params { uint nx; uint ny; uint nz; uint n_elem;
+__RECORD_MEMBER__ };
 
 __H_CELL__
 
@@ -342,17 +266,21 @@ kernel void cyl_complex_hd_lead_step(
     device const float2* b2      [[buffer(14)]],
     device float2*       out     [[buffer(15)]],
     device const float*  kp0     [[buffer(16)]],
-    device const float*  km0     [[buffer(17)]],
-    device const float*  kp1     [[buffer(18)]],
-    device const float*  km1     [[buffer(19)]],
-    device const float*  kp2     [[buffer(20)]],
-    device const float*  km2     [[buffer(21)]],
+    device const float*  kp1     [[buffer(17)]],
+    device const float*  kp2     [[buffer(18)]],
+    device const float*  kmx     [[buffer(19)]],
+    device const float*  kmy     [[buffer(20)]],
+    device const float*  kmz     [[buffer(21)]],
     device const float*  weights [[buffer(22)]],
-    device const float*  divisor [[buffer(23)]],
-    constant Params&     prm     [[buffer(24)]],
+    device const float*  rinv    [[buffer(23)]],
+    device const int*    starts  [[buffer(24)]],
+    constant Params&     prm     [[buffer(25)]],
     uint idx [[thread_position_in_grid]])
 {
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
+    // THE CHUNK RECORD rides in the struct; `h_cell` evaluates membership from it at
+    // the cell it steps.
+__RECORD_ALIAS__
 __GUARD__
 
 __DECODE__
@@ -364,42 +292,48 @@ __DECODE__
     // pre-launch buffers alone, and the launcher rotates H/f_w_H afterwards.
     h_cell_result own = h_cell(i, j, k, __H_CELL_ARGS__);
     ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;
-    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;
+    wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;
 
-    // --- THE COLUMN LEADER: the r = 0 thread scans its (phi, z) column -------------
-    // stepping.py:418 — prefixed["Hy"] = cylindrical_rderiv_prefix(Hy, ir0 = 0.5) over
-    // the POST-update_H Hy. The leader recomputes Hy at every row through the SAME
-    // h_cell the thread at that row used for its own store, from the same pre-launch
-    // bytes, so the value it scans IS the value that thread stored. Row 0 is its own.
+    // --- THE COLUMN LEADER: the r = 0 thread walks its (phi, z) column -------------
+    // stepping.step_D: Dz's radial difference of the per-chunk sum over the
+    // POST-update_H Hy (ir0 = 0.5, backward, no wall row). The leader recomputes Hy
+    // at every row through the SAME h_cell the thread at that row used for its own
+    // store, from the same pre-launch bytes, so the value it sums IS the value that
+    // thread stored. Row 0 is its own.
     if (i == 0) {
         int base = j * nzi + k;
 __LOOP__
     }
 }
-"""  # stepping.py live lines for the frozen device-text citation(s) in this string: 418->447
+"""
 
 
-def lead_source(expansion: str, contract: str = shaders.CONTRACT_OFF) -> str:
-    """Launch 1's source for one expansion arm and contraction mode.
+def lead_source(contract: str = shaders.CONTRACT_OFF) -> str:
+    """Launch 1's source for one contraction mode.
 
-    The column loop is :data:`.cylindrical_complex_scan.COLUMN_SCAN_LOOP` with the row
-    sources substituted: row 0 is the thread's own ``own.a1`` and row ``i`` is the
-    recompute ``h_cell(i, j, k, ...).a1`` — the D side scans ``Hy`` raw (no wall row),
-    exactly as :func:`.cylindrical_complex_scan.source_reads` spells ``step_D``. The
-    divide helper is the scan module's own, so the two kernels cannot spell the
-    complex-by-real divide differently.
+    The column loop is :func:`.cylindrical_complex_scan.column_scan_loop` for
+    ``step_D`` with exactly the two source reads :data:`SCAN_LIFT_EDITS` names
+    replaced, each required to land once.
     """
-    loop = templates.substitute(scan.COLUMN_SCAN_LOOP, {
-        "__SRC0__": "own.a1",
-        "__SRCI__": f"h_cell(i, j, k, {H_CELL_TAIL_ARGS}).a1",
-    })
+    loop = scan.column_scan_loop("step_D")
+    for edit in SCAN_LIFT_EDITS:
+        if loop.count(edit["line"]) != 1:
+            raise AssertionError(
+                f"the certified complex scan loop reads {edit['line']!r} "
+                f"{loop.count(edit['line'])} times, not once; the lead cannot lift it")
+        loop = loop.replace(edit["line"], edit["became"])
+    if "src[" in loop:
+        raise AssertionError("the lifted scan loop still reads `src`, which this kernel "
+                             "does not bind")
     loop = "\n".join("    " + line if line.strip() else line
                      for line in loop.splitlines())
     return templates.substitute(_LEAD_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
-        "__DIVIDE__": scan._DIVIDE_HELPER,
-        "__H_CELL__": h_cell_function(expansion, contract),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
+        "__H_CELL__": h_cell_function(contract),
         "__GUARD__": templates.GUARD,
         "__DECODE__": templates.DECODE_IJK,
         "__H_CELL_ARGS__": H_CELL_TAIL_ARGS,
@@ -407,31 +341,31 @@ def lead_source(expansion: str, contract: str = shaders.CONTRACT_OFF) -> str:
     })
 
 
-def compile_lead(expansion: str, contract: str = shaders.CONTRACT_OFF) -> Any:
-    return getattr(compile_source(lead_source(expansion, contract)), LEAD_KERNEL)
+def compile_lead(contract: str = shaders.CONTRACT_OFF) -> Any:
+    return getattr(compile_source(lead_source(contract)), LEAD_KERNEL)
 
 
-def curl_source(bcz: int, m_arm: int, expansion: str,
+def curl_source(bcz: int, m_arm: int,
                 contract: str = shaders.CONTRACT_OFF) -> str:
     """Launch 2's source: the CERTIFIED complex ``step_D`` curl, character for character."""
-    return cylindrical_complex.cylindrical_curl_source(bcz, True, m_arm, expansion,
+    return cylindrical_complex.cylindrical_curl_source(bcz, True, m_arm,
                                                        contract)
 
 
-def compile_curl(bcz: int, m_arm: int, expansion: str,
+def compile_curl(bcz: int, m_arm: int,
                  contract: str = shaders.CONTRACT_OFF) -> Any:
-    return cylindrical_complex.compile_cylindrical_curl(bcz, True, m_arm, expansion,
+    return cylindrical_complex.compile_cylindrical_curl(bcz, True, m_arm,
                                                         contract)
 
 
-def lead_signature_bindings(expansion: str = "FMA_V1") -> int:
+def lead_signature_bindings() -> int:
     """How many buffers the emitted lead signature binds — read from the TEXT."""
-    source = lead_source(expansion)
+    source = lead_source()
     signature = source.split("kernel void", 1)[1].split("{", 1)[0]
     return signature.count("[[buffer(")
 
 
-def refuted_lead_plus_source(extra: int, expansion: str = "FMA_V1",
+def refuted_lead_plus_source(extra: int,
                              contract: str = shaders.CONTRACT_OFF) -> str:
     """The lead signature with ``extra`` more pointers, for the gate's ceiling bisect.
 
@@ -441,14 +375,13 @@ def refuted_lead_plus_source(extra: int, expansion: str = "FMA_V1",
     one more must fail, which is what turns :data:`LEAD_BINDINGS` and its headroom from
     a count into a measurement.
     """
-    source = lead_source(expansion, contract)
-    anchor = "    constant Params&     prm     [[buffer(24)]],\n"
+    source = lead_source(contract)
+    anchor = f"    constant Params&     prm     [[buffer({LEAD_POINTERS})]],\n"
     if anchor not in source:
         raise AssertionError("the lead signature no longer carries its Params anchor")
     pointers = "".join(f"    device const float*  x{n:<6}[[buffer({LEAD_BINDINGS + n})]],\n"
                        for n in range(extra))
-    source = source.replace(
-        anchor, "    constant Params&     prm     [[buffer(24)]],\n" + pointers)
+    source = source.replace(anchor, anchor + pointers)
     if extra:
         touch = " + ".join(f"x{n}[0]" for n in range(extra))
         body_anchor = "    ho0[ii] = own.a0;"
@@ -461,15 +394,14 @@ def refuted_lead_plus_source(extra: int, expansion: str = "FMA_V1",
     return source
 
 
-def enumerate_sources(expansion: str,
-                      contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
-    """Every specialisation a plan can emit: ONE lead per arm, the six curls."""
-    out = {f"{LEAD_KERNEL}/{expansion}": lead_source(expansion, contract)}
+def enumerate_sources(contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
+    """Every specialisation a plan can emit: ONE lead, the six curls."""
+    out = {f"{LEAD_KERNEL}": lead_source(contract)}
     for bcz in (templates.PERIODIC, templates.METALLIC):
         for m_arm in cylindrical_complex.M_ARMS:
             label = (f"{CURL_KERNEL}/step_D/bcz{bcz}/"
-                     f"{cylindrical_complex.M_ARM_LABELS[m_arm]}/{expansion}")
-            out[label] = curl_source(bcz, m_arm, expansion, contract)
+                     f"{cylindrical_complex.M_ARM_LABELS[m_arm]}")
+            out[label] = curl_source(bcz, m_arm, contract)
     return out
 
 
@@ -478,8 +410,7 @@ def enumerate_sources(expansion: str,
 # ---------------------------------------------------------------------------
 
 def metal_cylindrical_complex_fused_hd_pair_coverage(
-        fields: Any, pml: Any, sources: Any = None, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, sources: Any = None, residency: Any = None) -> Coverage:
     """May two launches span ``update_H`` -> the electric withdraw -> ``step_D`` here?
 
     A conjunction of the two halves' OWN certified predicates —
@@ -489,12 +420,12 @@ def metal_cylindrical_complex_fused_hd_pair_coverage(
     """
     reasons: List[str] = []
     constitutive = cylindrical_complex.cylindrical_complex_constitutive_coverage(
-        fields, pml, "H", residency, probe)
+        fields, pml, "H", residency)
     if not constitutive.covered:
         reasons.extend(f"complex constitutive half: {reason}"
                        for reason in constitutive.reasons)
     curl = cylindrical_complex.cylindrical_complex_pml_curl_coverage(
-        fields, pml, "step_D", residency, probe)
+        fields, pml, "step_D", residency)
     if not curl.covered:
         reasons.extend(f"complex cylindrical curl half: {reason}"
                        for reason in curl.reasons)
@@ -515,6 +446,14 @@ def metal_cylindrical_complex_fused_hd_pair_coverage(
             f"holding the previous step's dipole"),
         hoists_the_withdraw=HOISTS_THE_WITHDRAW))
 
+    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # cells at that update (stepping.separate_h_from_b) and h_cell does not, so this
+    # product takes that update only where the start cannot change a word: the base
+    # single's own clause (launch.h_start_reasons), in its own words.
+    from .launch import h_start_reasons  # noqa: PLC0415 - launch imports this family's peers
+    reasons.extend(f"complex constitutive half: {reason}"
+                   for reason in h_start_reasons(fields, sources))
+
     grid = getattr(fields, "grid", None)
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
@@ -533,7 +472,7 @@ def metal_cylindrical_complex_fused_hd_pair_coverage(
 
 class MetalCylindricalComplexFusedHdPairPlan:
     """Launch 1 (constitutive + column scan, then the H/f_w_H rotation), launch 2 (the
-    certified curl against the rotated H and the device prefix).
+    certified curl against the rotated H and the device radial difference).
 
     A SIBLING of :class:`.plans.KernelPlan`, not a subclass, for the reason the other
     two-launch plans are: the base freezes ONE argument tuple and calls ONE function,
@@ -541,29 +480,32 @@ class MetalCylindricalComplexFusedHdPairPlan:
     launches are ordered. :attr:`lead_launches` and :attr:`curl_launches` are carried
     apart so "the lead ran and the curl did not" is distinguishable from "ran once".
 
-    THE ORDER IS THE CONTRACT. The curl reads the prefix and the H the lead wrote; a
+    THE ORDER IS THE CONTRACT. The curl reads the radial difference and the H the lead
+    wrote; a
     curl run first, or a lead hoisted out of the loop, feeds the curl the PREVIOUS
     step's magnetic field — a smooth, plausible, entirely wrong field.
     """
 
     __slots__ = ("residency", "fields", "shape", "n_elem", "rotated", "volumes",
-                 "prefix_host", "static_lead_args", "curl_static", "curl_tail",
+                 "radial_host", "starts", "chunk_bounds", "static_lead_args",
+                 "curl_static", "curl_tail",
                  "launches", "lead_launches", "curl_launches", "runs",
-                 "_lead_functions", "_curl_functions", "m_arm", "bcz", "expansion")
+                 "_lead_functions", "_curl_functions", "m_arm", "bcz")
 
     family = "cylindrical complex fused H/D pair"
     replaces_sub_steps = REPLACES
     performs_device_work = True
     launches_per_run = 2
     repair_paths: Tuple[str, ...] = ()
-    REPR_FIELDS = ("shape", "bcz", "m_arm", "expansion")
+    REPR_FIELDS = ("shape", "bcz", "m_arm")
 
     def __init__(self, residency: Residency, fields: Any, shape: Sequence[int],
-                 rotated: Mapping[str, Any], prefix_host: Any,
+                 rotated: Mapping[str, Any], radial_host: Any, starts: Any,
+                 chunk_bounds: Any,
                  static_lead_args: Sequence[Any], curl_static: Sequence[Any],
                  curl_tail: Sequence[Any], lead_functions: Mapping[str, Any],
                  curl_functions: Mapping[str, Any], volumes: Sequence[str],
-                 bcz: int, m_arm: int, expansion: str) -> None:
+                 bcz: int, m_arm: int) -> None:
         self.residency = residency
         self.fields = fields
         self.shape = tuple(int(n) for n in shape)
@@ -575,7 +517,9 @@ class MetalCylindricalComplexFusedHdPairPlan:
             raise ValueError(f"the twin table {sorted(self.rotated)} does not name "
                              f"{ROTATED_NAMES}")
         self.volumes = tuple(dict.fromkeys(volumes))
-        self.prefix_host = prefix_host
+        self.radial_host = radial_host
+        self.starts = starts
+        self.chunk_bounds = chunk_bounds
         self.static_lead_args = tuple(static_lead_args)
         self.curl_static = tuple(curl_static)
         self.curl_tail = tuple(curl_tail)
@@ -583,7 +527,6 @@ class MetalCylindricalComplexFusedHdPairPlan:
         self._curl_functions = dict(curl_functions)
         self.bcz = int(bcz)
         self.m_arm = int(m_arm)
-        self.expansion = str(expansion)
         self.launches = 0
         self.lead_launches = 0
         self.curl_launches = 0
@@ -634,7 +577,7 @@ class MetalCylindricalComplexFusedHdPairPlan:
             self.rotated[name] = current
 
     def run_curl(self, contract: Optional[str] = None) -> None:
-        """Launch 2: the certified curl against the ROTATED H and the device prefix."""
+        """Launch 2: the certified curl against the ROTATED H and the device difference."""
         mode = shaders.CONTRACT_OFF if contract is None else contract
         function = self._function(self._curl_functions, mode, "curl")
         sources = []
@@ -660,15 +603,24 @@ class MetalCylindricalComplexFusedHdPairPlan:
         return self.describe()
 
 
-def _params_tensor(shape: Sequence[int], device: str) -> Any:
-    """The four extents as one 16-byte device record, plan-owned."""
+def params_record_dtype() -> Any:
+    """The host dtype of the lead's ``Params``: the four extents, then the chunk record."""
+    import numpy as np  # noqa: PLC0415
+
+    return np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4")]
+                    + _chunk_bounds.record_dtype_fields())
+
+
+def _params_tensor(shape: Sequence[int], device: str, *, chunk_bounds: Any) -> Any:
+    """The four extents and the chunk record as one device record, plan-owned."""
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
-    record = np.zeros(1, dtype=np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"),
-                                         ("n_elem", "<u4")]))
+    record = np.zeros(1, dtype=params_record_dtype())
     nx, ny, nz = (int(n) for n in shape)
-    record[0] = (nx, ny, nz, nx * ny * nz)
+    for name, value in (("nx", nx), ("ny", ny), ("nz", nz), ("n_elem", nx * ny * nz)):
+        record[name] = value
+    record["cb"] = _chunk_bounds.pack(chunk_bounds)
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -679,26 +631,31 @@ def plan_metal_cylindrical_complex_fused_hd_pair(
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         lead_functions: Optional[Mapping[str, Any]] = None,
         curl_functions: Optional[Mapping[str, Any]] = None,
-        probe: Any = None) -> Optional[MetalCylindricalComplexFusedHdPairPlan]:
+        *, chunk_bounds: Any,
+        ) -> Optional[MetalCylindricalComplexFusedHdPairPlan]:
     """Build the two-launch complex H/D plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``) and has no default; the radial sum's chunk starts are
+    the array path's own (``stepping._cylindrical_scan_starts`` for Dz).
 
     ``lead_functions`` and ``curl_functions`` are the KERNEL mutation seams, SEPARATE so
     a gate can plant a defect in one launch while the other stays shipped. Dropping
     either is a silent DISARMING.
     """
     if not metal_cylindrical_complex_fused_hd_pair_coverage(
-            fields, pml, sources, residency, probe).covered:
-        return None
-    expansion = cylindrical_complex.expansion_from_probe(
-        probe if probe is not None else cylindrical_complex.load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
+            fields, pml, sources, residency).covered:
         return None
     import numpy  # noqa: PLC0415
 
-    from ..stepping import _boundary_kinds  # noqa: PLC0415
+    from ..stepping import _boundary_kinds, _cylindrical_scan_starts  # noqa: PLC0415
 
     grid = fields.grid
     shape = tuple(int(n) for n in grid.shape)
+    words = _chunk_bounds.plan_words(chunk_bounds, shape,
+                                     "plan_metal_cylindrical_complex_fused_hd_pair")
+    start_line = scan_starts("step_D", _cylindrical_scan_starts(fields, pml, "Dz"),
+                             shape[0])
     kinds = _boundary_kinds(grid, pml)
     bcz = templates.METALLIC if kinds[2] == "metallic" else templates.PERIODIC
     m = int(grid.m)
@@ -728,74 +685,79 @@ def plan_metal_cylindrical_complex_fused_hd_pair(
 
     flux = [bind_complex(name, getattr(fields, name)) for name in side["sources"]]
 
-    # THE PREFIX SCRATCH: (nr, ny, nz) complex64, fully overwritten by every lead launch
-    # before the curl reads it, shared between plans built against one residency.
-    # NOT through `scratch_mirror`: that helper binds float32 by default, which on a
-    # complex64 array is a silent cast that discards the imaginary plane (the
-    # `scratch_twin` docstring records the same trap). The reuse rule is the same —
-    # a second plan built against one residency shares the array — spelled here for
-    # the complex dtype.
-    prefix_name = "cylhd:pfx:step_D"
-    prefix_host = residency.host(prefix_name)
-    if prefix_host is None:
-        prefix_host = numpy.zeros(cylindrical_complex.prefix_shape("step_D", shape),
-                                  dtype=numpy.complex64)
-    prefix = mirror(residency, prefix_name, prefix_host)
-    volumes.append(prefix_name)
+    # THE RADIAL SCRATCH: (nr, ny, nz) complex64, fully overwritten by every lead
+    # launch before the curl reads it, shared between plans built against one
+    # residency. NOT through `scratch_mirror`: that helper binds float32 by default,
+    # which on a complex64 array is a silent cast that discards the imaginary plane
+    # (the `scratch_twin` docstring records the same trap). The reuse rule is the
+    # same, spelled here for the complex dtype.
+    radial_name = "cylhd:radial:step_D"
+    radial_host = residency.host(radial_name)
+    if radial_host is None:
+        radial_host = numpy.zeros(shape, dtype=numpy.complex64)
+    radial = mirror(residency, radial_name, radial_host)
+    volumes.append(radial_name)
 
-    # THE CONSTITUTIVE COEFFICIENTS on H's sub-lattice (stepping.py:948): kps/kms per
-    # axis, integer lattice, in the certified plan's own order.
+    # THE CONSTITUTIVE COEFFICIENTS on H's sub-lattice: kps per axis then kms per axis,
+    # integer lattice, in `h_cell`'s parameter order (complex_fused_hd_pair).
     suffix = "_h" if side["half_integer"] else ""
-    coefficients = [bind_real(f"pml:{stem}_{axis}{suffix}",
-                              getattr(pml, f"{stem}_{axis}{suffix}"))
-                    for axis in "xyz" for stem in ("kps", "kms")]
+    coefficients = ([bind_real(f"pml:kps_{axis}{suffix}",
+                               getattr(pml, f"kps_{axis}{suffix}")) for axis in "xyz"]
+                    + [bind_real(f"pml:kms_{axis}{suffix}",
+                                 getattr(pml, f"kms_{axis}{suffix}")) for axis in "xyz"])
 
     # THE TWO ROW VECTORS, from stepping's own builder, grid invariants.
     rows = shape[0]
-    weights, divisor = scan.prefix_row_vectors("step_D", rows)
+    weights, rinv = scan.prefix_row_vectors("step_D", rows)
     weights_host, weights_t = scratch_mirror(
         residency, "cylhd:weights:step_D", lambda: weights, constant=True)
-    divisor_host, divisor_t = scratch_mirror(
-        residency, "cylhd:divisor:step_D", lambda: divisor, constant=True)
-    volumes.extend(("cylhd:weights:step_D", "cylhd:divisor:step_D"))
+    rinv_host, rinv_t = scratch_mirror(
+        residency, "cylhd:rinv:step_D", lambda: rinv, constant=True)
+    volumes.extend(("cylhd:weights:step_D", "cylhd:rinv:step_D"))
 
-    static_lead = (flux + [prefix] + coefficients + [weights_t, divisor_t]
-                   + [_params_tensor(shape, residency.device)])
+    static_lead = (flux + [radial] + coefficients + [weights_t, rinv_t]
+                   + [int32_tensor(start_line, residency.device)]
+                   + [_params_tensor(shape, residency.device, chunk_bounds=words)])
     if 2 * len(ROTATED_NAMES) + len(static_lead) != LEAD_BINDINGS:  # pragma: no cover
         raise AssertionError((2 * len(ROTATED_NAMES) + len(static_lead), LEAD_BINDINGS))
 
     # LAUNCH 2's arguments, assembled EXACTLY as `cylindrical_complex._build_curl_plan`
     # assembles the certified plan's, with the magnetic sources resolved at run time
-    # (they rotate) and the prefix being the device scratch.
+    # (they rotate) and the radial difference being the device scratch.
     targets = [bind_complex(name, getattr(fields, name)) for name in spec["targets"]]
     auxiliaries = [bind_complex("fu_" + name, getattr(fields, "fu_" + name))
                    for name in spec["targets"]]
     imr_rows = []
     for index, _register, sign in cylindrical_complex.IMR_TERMS["step_D"]:
         target = spec["targets"][index]
-        row = numpy.ascontiguousarray(cylindrical_complex.imr_coefficient_row(
-            numpy, target, sign, m, dtdx, rows, numpy.complex64).reshape(-1))
-        imr_rows.append(bind_complex(f"cylhd:imr:step_D:{target}", row))
+        row = cylindrical_complex.imr_rinv_row(target, sign, m, grid.courant, rows)
+        imr_rows.append(bind_real(f"cylhd:imr:step_D:{target}", row))
     curl_coefficients = [bind_real(f"pml:{stem}_{axis}{spec['suffix']}",
                                    getattr(pml, f"{stem}_{axis}{spec['suffix']}"))
                          for axis in "xyz" for stem in ("kms", "sinv")]
-    minus_dtdx, inc_b = cylindrical_complex.axis_increment_scalars(m, dtdx)
     zero_rows = cylindrical_complex.zero_rows(m, bool(grid.accurate_fields_near_cylorigin))
-    axis_coef = cylindrical_complex.axis_coefficient(dtdx)
     curl_static = tuple(targets) + tuple(auxiliaries)
-    curl_tail = ((prefix,) + tuple(imr_rows) + tuple(curl_coefficients)
+    # THE CURL'S ARGUMENT ORDER IS THE CERTIFIED EMITTER'S: D, fu_D, H (resolved at run
+    # time, they rotate), the six coefficient vectors, the five scalars, the radial
+    # difference, the two i*m/r rows, the near-axis uniform, the axis factor, the m
+    # word and the chunk record.
+    curl_tail = (tuple(curl_coefficients)
                  + (shape[0], shape[1], shape[2], shape[0] * shape[1] * shape[2],
-                    float(dtdx), int(zero_rows), float(minus_dtdx),
-                    (float(inc_b[0]), float(inc_b[1])), float(axis_coef)))
+                    float(dtdx))
+                 + (radial,) + tuple(imr_rows)
+                 + (int(zero_rows),
+                    float(cylindrical_complex.axis_factor("step_D", m, grid.courant)),
+                    float(m),
+                    _chunk_bounds.tensor(words, complex_fields._plan_device(residency))))
 
     leads = dict(lead_functions or {})
     curls = dict(curl_functions or {})
     for mode in contract_variants:
-        leads.setdefault(mode, compile_lead(expansion, mode))
-        curls.setdefault(mode, compile_curl(bcz, m_arm, expansion, mode))
+        leads.setdefault(mode, compile_lead(mode))
+        curls.setdefault(mode, compile_curl(bcz, m_arm, mode))
     return MetalCylindricalComplexFusedHdPairPlan(
-        residency, fields, shape, twins, prefix_host, static_lead, curl_static,
-        curl_tail, leads, curls, volumes, bcz, m_arm, expansion)
+        residency, fields, shape, twins, radial_host, start_line, words, static_lead,
+        curl_static, curl_tail, leads, curls, volumes, bcz, m_arm)
 
 
 # ---------------------------------------------------------------------------
@@ -806,8 +768,7 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
     if slot != SLOT:
         return Coverage(False, (f"cylindrical complex fused H/D pair cannot fill {slot}",))
     return metal_cylindrical_complex_fused_hd_pair_coverage(
-        context.fields, context.pml, context.sources, context.residency,
-        context.extra.get("cylindrical_complex_probe"))
+        context.fields, context.pml, context.sources, context.residency)
 
 
 def _arm_plan(context: Any,
@@ -816,7 +777,8 @@ def _arm_plan(context: Any,
         return None
     return plan_metal_cylindrical_complex_fused_hd_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants, probe=context.extra.get("cylindrical_complex_probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

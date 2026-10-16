@@ -15,23 +15,24 @@ conductivity, and has no susceptibility.
 THIS IS THE SIGNED-ZERO ROW, AND THAT IS WHAT MAKES THIS GATE DIFFERENT
 =============================================================================
 
-``FdtdDriver._inject_electric_through_conductivity`` used to apply its ``condinv``
-scaling as three WHOLE-VOLUME passes, which are the identity at every finite value
-EXCEPT that they canonicalise ``-0.0`` to ``+0.0`` at every cell of the component --
+The driver used to apply the source's ``condinv`` scaling as three WHOLE-VOLUME
+passes, which are the identity at every finite value EXCEPT that they canonicalise ``-0.0`` to ``+0.0`` at every cell of the component --
 and on a device that flushes subnormals also ZERO every non-deposit subnormal word.
 Both rewrites land where no deposit closure can name them, so the fused electric pairs
 on three backends refused conductive rows BY NAME and this cell stood empty on every
 backend.
 
-THE DRIVER NOW REPLAYS THAT RESCALE SPARSELY at the published deposit indices.
+THE DRIVER NOW HAS NO PASS OVER THE COMPONENT AT ALL: the ``condinv`` scale is inside
+each source's own double-precision deposit at its own cells (``sources._deposit``).
 :func:`leg_rescale` is where this gate re-measures that ON A DEVICE rather than
 inheriting it:
 
 * the SHIPPED injection must leave every non-deposit word UNTOUCHED -- measured on a
   fixture seeded with all four word classes and an exactly-zero curl, so a ``-0.0``
   survives ``step_D`` to the injection point;
-* the RETIRED whole-volume composition, replayed as a control, MUST diverge, and every
-  differing word must classify as SIGNED-ZERO or SUBNORMAL. The classifier admits BOTH
+* the RETIRED whole-volume passes, replayed around the shipped deposit as a control
+  (:func:`_dense_rescale`), MUST diverge, and every differing word must classify as
+  SIGNED-ZERO or SUBNORMAL. The classifier admits BOTH
   classes deliberately: the published CuPy figure is 68 subnormal beside 54
   signed-zero words of 588, and a classifier that knew only about signed zeros would
   report an unexplained divergence on a device that flushes.
@@ -65,6 +66,17 @@ WHAT THIS GATE REFUSES TO LET PASS SILENTLY
 4. A mutation that was never armed, or a leg whose case never reached a comparison.
 5. A case that measured nothing -- the movement floor requires every volume the class
    should move to have moved.
+
+=============================================================================
+MEEP'S PER-CHUNK FORMS (bit_parity_0_10, 0.10)
+=============================================================================
+
+Every launch binds the case's one-rank chunk record (``base.chunk_record``) and the
+conductive-chunk binding ``conductive_keeps`` resolves. ``corpus_damping_half_sigma``
+carries the corpus row's real configuration -- the conductivity in one region, so the
+chunks of the x layer's low face keep none of it and their dsig cells step the
+non-conductive form -- and the mutation battery carries the B battery (KERNELS.md
+section 7.2) and the inverted increment grouping (section 7.1).
 """
 
 from __future__ import annotations
@@ -92,7 +104,6 @@ import gate_cuda_fused_electric_pair as base  # noqa: E402
 import cupy as cp  # noqa: E402
 
 from meep_gpu import deposit_repair, stepping  # noqa: E402
-from meep_gpu.driver import FdtdDriver  # noqa: E402
 from meep_gpu.fields import Fields  # noqa: E402
 from meep_gpu.grid import Grid  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
@@ -161,13 +172,41 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "wall_z_deep_pml", "boundaries": ("periodic", "periodic", "metallic"),
      "pml": ((2, 2), (2, 2), (4, 4)), "cell": CELL, "epsilon": "anisotropic",
      "conductivity": 0.25, "cond_mask": (True, True, True)},
+    # THE CORPUS ROW'S OWN CONDUCTIVITY LAYOUT: the conductivity in one region (an
+    # adjoint design region, a lossy block), so the chunks of the x layer's low face
+    # keep none of it (RegionPlan.conductive_chunks) and step the non-conductive forms
+    # while the rest step the conductive ones.
+    {"label": "corpus_damping_half_sigma",
+     "boundaries": ("metallic", "metallic", "periodic"), "pml": 2,
+     "cell": (12.0, 10.0, 11.0), "epsilon": "anisotropic", "conductivity": 0.4,
+     "cond_mask": (True, True, True), "sigma": "half_space"},
 )
 
 MUTATION_SPEC_LABELS: Tuple[str, ...] = (
     "corpus_damping_wall_xy", "wall_xyz_asymmetric_pml", "periodic_no_wall",
-    "wall_z_deep_pml")
+    "wall_z_deep_pml", "corpus_damping_half_sigma")
 SEPARATE_CONTROL_LABELS: Tuple[str, ...] = ("corpus_damping_wall_xy",
-                                            "periodic_no_wall")
+                                            "periodic_no_wall",
+                                            "corpus_damping_half_sigma")
+
+
+def spec_keep(spec: Dict[str, Any]) -> Tuple[bool, bool, bool]:
+    """The keep mask a spec's conductivity layout gives (``conductive_keeps``' answer):
+    every chunk keeps an everywhere conductivity, and none keeps the whole of a
+    half-space one; a lossless target's flag is not read."""
+    half = spec.get("sigma") == "half_space"
+    return tuple(not (half and flag) for flag in spec["cond_mask"])  # type: ignore[return-value]
+
+
+def launch_fused(family: Any, fields: Any, pml: Any, record: Any, tables: Any,
+                 codes: Any, walls: Any, dtdx: float, kernel: Any = None) -> Dict[str, Any]:
+    """One fused launch with the run's own bindings: the conductive volumes, the
+    histories, the conductive-chunk masks and the chunk record."""
+    conductivity, histories, cond = family.conductive_bindings(fields)
+    keep, keep_masks = family.conductive_keeps(fields, pml)
+    return family.launch_conductive_fused_electric_pair(
+        fields, tables, codes, walls, dtdx, conductivity, histories, cond, kernel,
+        chunk_bounds=record, keep=keep, keep_masks=keep_masks)
 DEPOSIT_SPEC_LABELS: Tuple[str, ...] = ("corpus_damping_wall_xy",
                                         "wall_xyz_asymmetric_pml")
 RESCALE_SPEC_LABELS: Tuple[str, ...] = ("corpus_damping_wall_xy", "periodic_no_wall")
@@ -230,6 +269,8 @@ def build(spec: Dict[str, Any], value_class: str, rng,
 
     volume = np.full(shape, float(spec["conductivity"]), dtype=np.float32)
     volume *= np.linspace(0.5, 1.5, shape[0], dtype=np.float32)[:, None, None]
+    if spec.get("sigma") == "half_space":
+        volume[: shape[0] // 2] = np.float32(0.0)
     fields.set_d_conductivity(cp.asarray(volume))
     fields.enable_pml_storage()
     thickness = (spec["pml"] if isinstance(spec["pml"], int)
@@ -441,6 +482,14 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
         return case
     case["distinct_allocations_checked"] = family.assert_disjoint_bindings(
         actual, tables, conductivity, histories)
+    keep, _masks = family.conductive_keeps(actual, pml)
+    case["keep_mask"] = [bool(flag) for flag in keep]
+    if tuple(keep) != spec_keep(spec):
+        case["passed"] = False
+        case["why"] = (f"the resolved keep mask {tuple(keep)} is not the spec's "
+                       f"{spec_keep(spec)}")
+        return case
+    record = base.chunk_record(grid, pml)
     if tables_patch is not None:
         tables = tables_patch(tables, pml)
 
@@ -461,13 +510,10 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
     with counter:
         for step in range(1, steps + 1):
             array_step(reference, ref_pml)
-            live_conductivity, live_histories, live_cond = family.conductive_bindings(
-                actual)
             for name in DRIVER_ORDER:
                 if name == "step_D":
-                    report = family.launch_conductive_fused_electric_pair(
-                        actual, tables, codes, walls, case["dtdx"],
-                        live_conductivity, live_histories, live_cond, kernel)
+                    report = launch_fused(family, actual, pml, record, tables, codes,
+                                          walls, case["dtdx"], kernel)
                     launched += int(bool(report.get("launched")))
                     cp.cuda.runtime.deviceSynchronize()
                 elif name not in FUSED_PASSES:
@@ -549,6 +595,8 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     # THE CURL'S OWN TABLE IS THE INTEGER SUB-LATTICE (half_integer False for step_D);
     # the certified launcher takes it directly rather than through this family's pair.
     curl_tables = step_curl_kernels.real_pml_curl_tables(sep_pml, False)
+    separate_record = base.chunk_record(sep_grid, sep_pml)
+    fused_record = base.chunk_record(grid, pml)
     row: Dict[str, Any] = {"label": spec["label"],
                            "zero_metal_axes": [bool(w) for w in walls]}
 
@@ -567,22 +615,21 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                 with separate_counter:
                     conductive_kernels.step_conductive_curl(
                         separate, sep_pml, "step_D", codes, dtdx,
-                        tables=curl_tables)
+                        tables=curl_tables, chunk_bounds=separate_record)
                     if any(walls):
                         # THE CERTIFIED IN-SEAM PASS, through its own dispatcher.
                         in_seam_passes.run_pass("zero_metal", separate, "D",
                                                 grid=sep_grid)
-                    constitutive_kernels.update_fused_pml_real("E", separate, sep_pml)
+                    constitutive_kernels.update_fused_pml_real(
+                        "E", separate, sep_pml, chunk_bounds=separate_record)
                 cp.cuda.runtime.deviceSynchronize()
             elif name not in FUSED_PASSES:
                 run_pass(name, separate, sep_pml)
         for name in DRIVER_ORDER:
             if name == "step_D":
                 with fused_counter:
-                    conductivity, histories, cond = family.conductive_bindings(fused)
-                    family.launch_conductive_fused_electric_pair(
-                        fused, tables, codes, walls, dtdx, conductivity, histories,
-                        cond)
+                    launch_fused(family, fused, pml, fused_record, tables, codes, walls,
+                                 dtdx)
                 cp.cuda.runtime.deviceSynchronize()
             elif name not in FUSED_PASSES:
                 run_pass(name, fused, pml)
@@ -605,11 +652,13 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 class _Injector:
-    """The SHIPPED ``_inject_electric_through_conductivity``, bound to bare fields.
+    """The SHIPPED electric injection on a conductive run, on bare fields.
 
-    The method reads ``self.fields`` and nothing else, so binding it to a two-line
-    shim drives the TREE'S OWN code rather than a transcription of it -- which is the
-    whole point of the rescale leg.
+    ``FdtdDriver.step`` hands every electric source to its own ``inject``; the
+    ``condinv`` scale is inside each source's double-precision deposit
+    (``sources._deposit``, MEEP step.cpp:299-307), so there is no driver pass over the
+    component to bind. This shim makes exactly those calls, which drives the TREE'S OWN
+    code rather than a transcription of it -- the whole point of the rescale leg.
     """
 
     __slots__ = ("fields",)
@@ -617,14 +666,24 @@ class _Injector:
     def __init__(self, fields: Any) -> None:
         self.fields = fields
 
-    inject = FdtdDriver._inject_electric_through_conductivity
+    def inject(self, sources: Sequence[Any], when: float) -> None:
+        for source in sources:
+            source.inject(self.fields, when)
 
 
 def _dense_rescale(fields: Any, sources: Sequence[Any], when: float) -> None:
-    """THE RETIRED COMPOSITION, kept as a control and never as a code path.
+    """THE RETIRED WHOLE-VOLUME PASSES, kept as a control and never as a code path.
 
-    Three WHOLE-VOLUME passes, transcribed from the docstring of the method that
-    replaced them.
+    Until the double-precision deposit the driver injected a plain current and then
+    rescaled the increment by ``condinv`` over the WHOLE component:
+    ``array -= before; array *= condinv; array += before``. The scale now lives inside
+    each source's own deposit, so what the retired composition did BEYOND the deposit
+    is what this control keeps: the shipped injection, then those three passes over
+    every cell the sources do NOT deposit into. There they are the identity at every
+    finite value except that they canonicalise ``-0.0`` to ``+0.0`` (``x - x`` is
+    ``+0.0``) and, on a device that flushes, zero a subnormal -- the rewrites no
+    deposit closure can name. The deposit cells keep the shipped deposit's words, so
+    every word this control moves is one of those two classes.
     """
     by_target: Dict[str, List[Any]] = {}
     for source in sources:
@@ -640,9 +699,16 @@ def _dense_rescale(fields: Any, sources: Sequence[Any], when: float) -> None:
         source.inject(fields, when)
     for name, snapshot in before.items():
         array = getattr(fields, name)
-        array -= snapshot
-        array *= fields.condinv_for(name)
-        array += snapshot
+        outside = cp.ones(array.shape, dtype=bool)
+        for source in by_target[name]:
+            index = deposit_repair._deposit_index(source)  # noqa: SLF001
+            if index is not None:
+                outside[index] = False
+        values = array[outside]
+        values -= snapshot[outside]
+        values *= fields.condinv_for(name)[outside]
+        values += snapshot[outside]
+        array[outside] = values
 
 
 def _source_for(grid):
@@ -688,6 +754,7 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
         walls = in_seam_coverage.zero_metal_axes(grid)
         tables = family.conductive_fused_electric_pair_tables(pml)
         dtdx = float(grid.dt / grid.dx)
+        record = base.chunk_record(grid, pml)
         for step in range(steps):
             when = (step + 0.5) * dt
             # THE FUSED ROUTE RUNS AT step_D'S POSITION, with every other driver pass
@@ -696,10 +763,8 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                 if name == "step_D":
                     saved = deposit_repair.save(fields, tuple(sources), "D", pml,
                                                 paths=family.REPAIR_PATHS)
-                    conductivity, histories, cond = family.conductive_bindings(fields)
-                    family.launch_conductive_fused_electric_pair(
-                        fields, tables, codes, walls, dtdx, conductivity, histories,
-                        cond)
+                    launch_fused(family, fields, pml, record, tables, codes, walls,
+                                 dtdx)
                     cp.cuda.runtime.deviceSynchronize()
                     # THE SHIPPED CONDUCTIVE INJECTION, not a plain one: on this cell
                     # the driver routes every electric source through the condinv
@@ -799,6 +864,7 @@ def leg_rescale(spec: Dict[str, Any], steps: int, policy: str) -> Dict[str, Any]
     tables = family.conductive_fused_electric_pair_tables(pml2)
     dtdx = float(grid2.dt / grid2.dx)
     dt = float(ref_grid.dt)
+    record = base.chunk_record(grid2, pml2)
     for step in range(steps):
         when = (step + 0.5) * dt
         # THE REFERENCE TAKES THE SHIPPED SPARSE INJECTION -- it is the array path as
@@ -811,9 +877,7 @@ def leg_rescale(spec: Dict[str, Any], steps: int, policy: str) -> Dict[str, Any]
 
         saved = deposit_repair.save(engine, tuple(eng_sources), "D", pml2,
                                     paths=family.REPAIR_PATHS)
-        conductivity, histories, cond = family.conductive_bindings(engine)
-        family.launch_conductive_fused_electric_pair(
-            engine, tables, codes, walls, dtdx, conductivity, histories, cond)
+        launch_fused(family, engine, pml2, record, tables, codes, walls, dtdx)
         cp.cuda.runtime.deviceSynchronize()
         _dense_rescale(engine, eng_sources, when)
         stepping.zero_metal_D(engine)
@@ -864,6 +928,11 @@ def _always(spec) -> bool:
     return True
 
 
+def _half_space(spec) -> bool:
+    """A conductivity some chunk keeps none of: the per-chunk keep is observable."""
+    return spec.get("sigma") == "half_space"
+
+
 SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
                               Callable[[Dict[str, Any]], bool]], ...] = (
     # --- THE SEAM ------------------------------------------------------------
@@ -883,27 +952,64 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # HALF-INTEGER, and letting the certified name shadow is a half-cell error in the
     # absorber profile -- converged, smooth and wrong.
     ("constitutive_sublattice_shadow",
-     ("    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i]);",
-      "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);", 1),
+     ("    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i], in_h_x);",
+      "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);", 1),
      True, _graded_pml),
-    # --- THE CONDUCTIVE RECURRENCE ------------------------------------------
-    ("conductive_case_predicate_uses_a_tolerance",
-     ("    bool dsig = (km1 != 1.0f) || (si1 != 1.0f);",
-      "    bool dsig = (fabsf(km1 - 1.0f) > 1e-6f) || (fabsf(si1 - 1.0f) > 1e-6f);",
-      1), None, _always),
+    # --- THE CONDUCTIVE FORMS, chosen per structure chunk ---------------------
+    # The predicate this family carried until 0.10, on coefficient identity instead of
+    # chunk membership (KERNELS.md section 7.2): a sigma = 0 cell inside a layer's
+    # chunk takes a different form.
+    ("conductive_predicate_on_coefficient_identity",
+     ("    float cfv = cf[idx];\n    float civ = ci[idx];\n",
+      "    dsig = (km1 != 1.0f) || (si1 != 1.0f);\n"
+      "    dsigu = (km2 != 1.0f) || (si2 != 1.0f);\n"
+      "    float cfv = cf[idx];\n    float civ = ci[idx];\n", 1), True, _always),
+    # The dsig-only cells handed the neither-layer form.
     ("conductive_selection_prefers_the_wrong_case",
-     ("    float value = dsigu ? f_split : (dsig ? f_first : f_direct);",
-      "    float value = dsigu ? f_split : f_direct;", 1), True, _always),
+     ("                : (dsig ? (((fv * km1) + inc) * si1)",
+      "                : (0 ? (((fv * km1) + inc) * si1)", 1), True, _always),
+    # INVERTED (KERNELS.md section 7.1): MEEP forms the increment (c' - c) first and
+    # then adds it (step_generic.cpp:209); the two accumulations left to right are what
+    # this family carried until 0.10 and a different float32 number.
+    ("conductive_increment_regrouped_to_the_old_package_order",
+     ("float u_new = dsig ? (((uv * km1) + inc) * si1)",
+      "float u_new = dsig ? ((((uv * km1) + c_new) - cv) * si1)", 1), True, _always),
     ("conductive_drops_condinv",
-     ("    float c_new    = ((cv * cfv) - curl) * civ;            "
-      "// cases A and C",
-      "    float c_new    = (cv * cfv) - curl;            // cases A and C", 1),
+     ("    float c_new = ((cv * cfv) - curl) * civ;",
+      "    float c_new = (cv * cfv) - curl;", 1),
      True, _always),
     # THE THIRD HISTORY MUST STILL BE WRITTEN. A weld that swallowed this store would
     # leave the conductive recurrence a step behind at every cell.
     ("conductive_history_store_dropped",
-     ("    if (dsig) c[idx] = c_new;\n    return value;",
-      "    return value;", 1), True, _always),
+     ("    if (dsig) c[idx] = c_new;\n", "", 1), True, _always),
+    # The B battery on the record (KERNELS.md section 7.2), on Dx's flags.
+    ("conductive_membership_bound_off_by_one",
+     ("const int in_i_z = (k >= cbi_z_a0 && k < cbi_z_a1)",
+      "const int in_i_z = (k >= cbi_z_a0 && k < cbi_z_a1 + 1)", 1), True, _always),
+    ("conductive_half_integer_record_on_the_integer_lattice",
+     ("const int cbi_z_a0 = cb[8], cbi_z_a1 = cb[9], cbi_z_b0 = cb[10], cbi_z_b1 = cb[11];",
+      "const int cbi_z_a0 = cb[20], cbi_z_a1 = cb[21], cbi_z_b0 = cb[22], "
+      "cbi_z_b1 = cb[23];", 1), True, _always),
+    ("conductive_flags_swapped",
+     ("sinv_z[k], in_i_y, in_i_z, KEPT0);", "sinv_z[k], in_i_z, in_i_y, KEPT0);", 1),
+     True, _always),
+    # Every chunk taken to keep the conductivity: the conductive form on the dsig cells
+    # of a chunk that keeps none.
+    ("conductive_chunks_ignored",
+     ("#define KEPT0 (ck0[idx] != 0)\n", "#define KEPT0 1\n", 1), True, _half_space),
+    ("conductive_auxiliary_stored_on_a_plain_cell",
+     ("    if (dsigu) u[idx] = u_new;\n", "    u[idx] = u_new;\n", 1), True, _always),
+    # The auxiliary load issued on every cell, the store still guarded: the loaded word
+    # feeds only the forms of the cells whose chunk carries dsigu (KERNELS.md section
+    # 7.2's declared null).
+    ("conductive_auxiliary_load_unguarded",
+     ("    float uv = dsigu ? u[idx] : 0.0f;\n", "    float uv = u[idx];\n", 1),
+     False, _always),
+    # INVERTED: MEEP's stencil grouping replaced by the pairwise one these kernels
+    # carried until 0.10 (the lifted curl_stencil helper).
+    ("curl_stencil_regrouped_to_the_old_package_order",
+     ("if (pr1 && pr2) return dtdx * (((sf - f1) + f2) - ss);",
+      "if (pr1 && pr2) return dtdx * ((sf - f1) + (f2 - ss));", 1), True, _always),
     ("split_field_auxiliary_store_dropped",
      ("    if (dsigu) u[idx] = u_new;", "", 1), True, _always),
     # --- THE WALL CARRY ------------------------------------------------------
@@ -993,11 +1099,11 @@ def warm_memo(specs_by_label: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     started = time.time()
-    masks = sorted({tuple(bool(v) for v in spec["cond_mask"])
+    masks = sorted({(tuple(bool(v) for v in spec["cond_mask"]), spec_keep(spec))
                     for spec in specs_by_label.values()})
-    for mask in masks:
-        family._get_kernel(mask)
-    return {"masks_compiled": [list(m) for m in masks],
+    for mask, keep in masks:
+        family._get_kernel(mask, keep)
+    return {"masks_compiled": [[list(m), list(k)] for m, k in masks],
             "seconds": round(time.time() - started, 2)}
 
 
@@ -1061,7 +1167,8 @@ def run_mutations(results, out_path, steps, specs_by_label):
 
     def runner(spec, payload, step_count, label):
         old, new, count = payload
-        source = family.conductive_fused_electric_pair_source(spec["cond_mask"])
+        source = family.conductive_fused_electric_pair_source(spec["cond_mask"],
+                                                              spec_keep(spec))
         mutated, hits = needle(source, old, new, count)
         if hits != count:
             return None

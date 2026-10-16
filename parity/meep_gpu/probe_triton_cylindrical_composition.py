@@ -28,8 +28,9 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 API_ROOT = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir))
-if API_ROOT not in sys.path:
-    sys.path.insert(0, API_ROOT)
+for _path in (HERE, API_ROOT):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 
 # name, cell_size, resolution, optional source, complete steps
@@ -271,6 +272,8 @@ def main() -> int:
     args = parser.parse_args()
     import cupy as cp  # noqa: PLC0415
     import triton  # noqa: PLC0415
+    from composition_policy import (  # noqa: PLC0415
+        confirm_campaign_policy, stamp_campaign_policy)
 
     payload: Dict[str, Any] = {
         "environment": {
@@ -281,11 +284,22 @@ def main() -> int:
         },
         "cases": [],
     }
+    # THE CAMPAIGN'S SUBNORMAL POLICY, installed and measured before the first driver
+    # is built and stamped into the artifact (owner ruling R16; composition_policy.py).
+    refused = stamp_campaign_policy(payload, cp)
     save(payload, args.out)
+    if refused:
+        log(f"CYLINDRICAL COMPOSITION GATE REFUSED: {refused}")
+        return 2
     for item in CASES:
         row = run_case(cp, *item)
         payload["cases"].append(row)
         save(payload, args.out)
+    refused = confirm_campaign_policy(payload)
+    if refused:
+        save(payload, args.out)
+        log(f"CYLINDRICAL COMPOSITION GATE REFUSED: {refused}")
+        return 2
     total_steps = sum(row["steps"] for row in payload["cases"])
     payload["summary"] = {
         "status": "passed", "cases_exact": f"{len(payload['cases'])}/{len(CASES)}",

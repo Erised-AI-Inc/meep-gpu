@@ -79,8 +79,17 @@ from typing import (Any, Callable, Dict, Iterator, List, Mapping, NamedTuple, Op
 #: cannot drift apart.
 RUNS = "runs"
 
+#: The key of the array-path oracle leaf (``meep_gpu.array_path_oracle.LEAF_KEY``),
+#: spelled here for the same reason :data:`RUNS` is; ``test_weld_record_walk.py``
+#: asserts the two agree.
+ARRAY_PATH_ORACLE = "array_path_oracle"
+
+#: The map inside that leaf that reports module code digests without judging them.
+ARRAY_PATH_ORACLE_PROVENANCE = "provenance_code_sha256"
+
 __all__ = [
     "Found", "discover", "census", "dotted", "rules_that_fired",
+    "ARRAY_PATH_ORACLE", "ARRAY_PATH_ORACLE_PROVENANCE",
     "TIER_RAW", "TIER_CODE", "TIER_DEVICE", "UNCLASSIFIED", "RULE_REASONS",
     "PREMISE_ABSENT_FROM_TREE", "GITIGNORED_PREFIX", "premise_violations",
     "DELEGATED_COVERAGE", "ROUTE_RUN_PASS", "route_run_problems", "route_record_problems",
@@ -248,6 +257,25 @@ RULE_REASONS: Dict[str, str] = {
         "entry has at least one live capability. A run whose bound no longer matches is "
         "history by design — the capability stops being admitted — so this is not "
         "delegated coverage waiting on a re-cut.",
+    "array_path_oracle_fingerprint":
+        "inside an array_path_oracle leaf: fingerprint_sha256, and in driver_dispatch the "
+        "per-case case_sha256 digests, of the float32 words the fixture set of "
+        "meep_gpu/array_path_oracle.py produces when the array path steps it. A behaviour, "
+        "not a file: there is no byte or code digest to recompute from a checkout, so it is "
+        "recomputed by RUNNING the fixture and compared in the record that makes the claim, "
+        "by test_cuda_weld_contract.py::test_the_cuda_ledger_records_the_live_array_path_oracle, "
+        "test_triton_weld_contract.py::"
+        "test_the_triton_ledger_records_the_live_array_path_oracle and "
+        "test_metal_weld_contract.py::test_the_metal_ledger_records_the_live_array_path_oracle. "
+        "Not delegated: each contract runs the comparison itself. Written only by "
+        "parity/meep_gpu/record_array_path_oracle.py.",
+    "array_path_oracle_provenance":
+        "inside an array_path_oracle leaf's provenance_code_sha256 map: the "
+        "code_identity digest of each array-path module the fingerprint was minted from. "
+        "REPORTED, NOT JUDGED, by design. The judged value is the fingerprint, which moves "
+        "on an arithmetic change; comparing these to the tree would turn the tripwire red "
+        "on a refactor that changes no word, which is why the map is never spelled "
+        "code_sha256 (that spelling is the checked code tier).",
     "artifact_or_log_digest":
         "an artifact_sha256 or log_sha256: the digest of a run artifact or log under the "
         "gitignored parity/meep_gpu/results/ tree. It cannot be recomputed from a clean "
@@ -435,6 +463,12 @@ def _classify(trail: Tuple[Any, ...], parent: Any) -> Tuple[str, Optional[str],
                 claimed if isinstance(claimed, str) else None, None)
     if "serial_driver" in ancestors:
         return "serial_driver_script", None, (leaf if isinstance(leaf, str) else None), None
+
+    # --- the array-path oracle leaf: a behaviour, compared by running the fixture ---
+    if ARRAY_PATH_ORACLE in ancestors:
+        if ARRAY_PATH_ORACLE_PROVENANCE in ancestors:
+            return "array_path_oracle_provenance", None, None, None
+        return "array_path_oracle_fingerprint", None, None, None
 
     # --- shapes whose digests are about something other than a tree file's bytes ---
     if "device_sha256" in ancestors:

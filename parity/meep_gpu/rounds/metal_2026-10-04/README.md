@@ -1,5 +1,10 @@
 # Metal round, 2026-10-04
 
+**Retired: a dated record of the 0.9.2 procedure.** A 1.0 round runs from
+`parity/meep_gpu/rounds/1.0/metal_round.py`, whose lift children run under the round's
+interpreter, never the one a census row records; `ALLOW_NO_LIFT` belongs to this
+retired driver only (`docs/development/certification.md`, the lift legs).
+
 The inputs and the driver of a Metal certification round on a Mac that does not hold
 the evidence archive: every Metal gate on one Apple GPU, written where the rebind
 reads it. The manifest describes what the Metal gates of this commit read from
@@ -97,7 +102,7 @@ rebind names the architectures whose runs it would strand, and `--supersede
 route run exists, and the route-record contract test fails until it does. It is
 copied, uncommitted, into this Mac's checkout of the same commit (the only file that
 differs), the Metal route campaign runs there under
-`<stamp of metal_dispatch.METAL_DRIVER_ROUTE_GATE>_<architecture>`, its legs come back,
+`<stamp of route_stamps.route_gate("metal")>_<architecture>`, its legs come back,
 `recut_driver_dispatch_record.py --backend metal` adds its route run beside the first,
 and the weld runs and the route run are committed together. Every route row reads the
 architecture's verdict off the ledger in the tree it runs in, and the recut refuses a

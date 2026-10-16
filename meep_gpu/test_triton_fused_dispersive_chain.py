@@ -124,13 +124,13 @@ def test_the_electric_source_seam_is_inherited_from_the_pair(sources, refused):
 
 
 def test_an_inactive_pml_is_refused_for_the_seams_own_reason():
-    """Without PML ``drive_field`` returns E, so the register would be the wrong field."""
+    """Without an active PML ``update_E`` is a different sub-step: no split-field tail."""
     grid = Grid(resolution=10.0, cell_size=(0.8, 0.8, 0.8))
     fields = Fields(grid=grid, force_complex_fields=False)
     fields.polarizations.append(PolarizationState(
         Susceptibility(frequency=0.8, gamma=0.1), 0.4, grid, np.float32))
     verdict = reasons(fields, None, ())
-    assert any("drive_field" in reason and "stored E" in reason
+    assert any("PML is not active" in reason and "split-field tail" in reason
                for reason in verdict), verdict
 
 
@@ -229,6 +229,7 @@ class _FakePointer:
 
 def _plan_arguments(fields, pml, state, components, counts):
     from meep_gpu.triton_kernels.dispersive_update_e import StaticPoleBinding
+    from meep_gpu.triton_kernels.launch import chunk_bounds_for
 
     volumes = [np.zeros(fields.grid.shape, dtype=np.float32) for _ in range(3)]
     poles = StaticPoleBinding([
@@ -249,6 +250,7 @@ def _plan_arguments(fields, pml, state, components, counts):
                         for a in "xyz" for s in ("kps", "kms")],
         poles=poles, state=state, components=components,
         pointer=_FakePointer,
+        chunk_bounds=chunk_bounds_for(fields, pml, None),
     )
 
 
@@ -362,11 +364,13 @@ def test_the_recurrence_is_spelled_exactly_as_the_separate_ade_product_spells_it
         return re.sub(r"[a-z]+[0-9]", "X", text)
 
     separate = re.findall(
-        r"\(\(p[0-9] \* c_now\) \+ \(c_prev \* q[0-9]\)\) \+\s*\(c_drive \* \(s[0-9] \* d[0-9]\)\)",
+        r"gamma1inv \* \(\(\(p[0-9] \* two_minus_od\) - \(gamma1 \* q[0-9]\)\) \+\s*"
+        r"\(omega0dtsqr \* \(s[0-9] \* d[0-9]\)\)\)",
         ade_source)
     assert len(separate) == 3, separate
     fused = re.findall(
-        r"\(\(pa[0-9] \* c_now\) \+ \(c_prev \* h[0-9]\)\) \+\s*\(c_drive \* \(sv[0-9] \* src[0-9]\)\)",
+        r"gamma1inv \* \(\(\(pa[0-9] \* two_minus_od\) - \(gamma1 \* h[0-9]\)\) \+\s*"
+        r"\(omega0dtsqr \* \(sv[0-9] \* src[0-9]\)\)\)",
         SOURCE)
     assert len(fused) == 3, fused
     assert {normalized(text) for text in separate} == {normalized(text) for text in fused}

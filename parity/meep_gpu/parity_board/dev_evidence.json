@@ -1,0 +1,260 @@
+{
+ "about": "DEVELOPMENT EVIDENCE, NOT CERTIFICATION. Integrators record here the device legs they re-ran at integration (record_dev_evidence.py). Column (d-dev) of the bit-parity board counts a record only while its subject -- the module's bytes, its emitted device text and the array path -- is the live one. Columns (d) and (e) never read this file.",
+ "records": [
+  {
+   "artifact": "cuda__device__box3d__keep.json",
+   "artifact_sha256": "aecab5ec0e0380c43e87807c193372f184047db1237462970ba6231c370e759f",
+   "backend": "cuda",
+   "date": "2026-10-10",
+   "gate": "x4b_device_smoke box3d singles (MEEP_GPU_FUSE_ARMS=0)",
+   "host_class": "NVIDIA RTX A6000",
+   "module": "constitutive_kernels",
+   "note": "3-D real PML box (64^3 cells, PML 8 cells per face, metallic walls), seeded D/B with planted -0 and subnormals; steps 1, 4 and 16 on one RTX A6000 under keep; every float array of Fields and the PML compared as uint32 words against the NumPy array path of the same tree; planted one-ulp flip caught; launches step_B_pml_real 16, step_D_pml_real 16, update_E_pml_real 16, update_H_pml_real 16; re-run at the batch_r13 integration on the Linux GPU host's copy of a tree whose module bytes, emitted texts and array path equal this one's, the subject taken there before the leg",
+   "recorded_by": "batch_r13 (A11)",
+   "subject": {
+    "array_path_oracle": {
+     "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+     "fixture_set": "array_path_oracle/real-v6"
+    },
+    "emitted_sha256": "2ef6d12aa967b3e10b1863708f9d4fddc553d50da52f9d326b268accaaf5ca17",
+    "module_sha256": "f0d677ea3a7ba0c36357b56001af3b703f5c0bb95b4f67ce05ab2411e660b57e"
+   },
+   "subnormal_baseline": "keep",
+   "table": "cuda",
+   "words_compared": 20450688,
+   "words_differing": 0
+  },
+  {
+   "artifact": "cuda__device__box3d__keep.json",
+   "artifact_sha256": "fb52bbe48282b5ae6da721f9306df11eaadb6ef6e2528395091748b9a2cee6de",
+   "backend": "cuda",
+   "date": "2026-10-10",
+   "gate": "x4b_device_smoke box3d default composition",
+   "host_class": "NVIDIA RTX A6000",
+   "module": "fused_electric_pair",
+   "note": "3-D real PML box (64^3 cells, PML 8 cells per face, metallic walls), seeded D/B with planted -0 and subnormals; steps 1, 4 and 16 on one RTX A6000 under keep; every float array of Fields and the PML compared as uint32 words against the NumPy array path of the same tree; planted one-ulp flip caught; launches fused_electric_pair_pml_real 16, fused_magnetic_pair_pml_real 16; re-run at the batch_r13 integration on the Linux GPU host's copy of a tree whose module bytes, emitted texts and array path equal this one's, the subject taken there before the leg",
+   "recorded_by": "batch_r13 (A11)",
+   "subject": {
+    "array_path_oracle": {
+     "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+     "fixture_set": "array_path_oracle/real-v6"
+    },
+    "emitted_sha256": "f08f3cf1ccb5986ad49d78852dd8dbf4795c11663fb6ed22ff13ebec03b71960",
+    "module_sha256": "074c2da4dd62c802ad2ba3bea0aab99816e54b25d53ab1e1a5ee3b69e8afb431"
+   },
+   "subnormal_baseline": "keep",
+   "table": "cuda",
+   "words_compared": 20450688,
+   "words_differing": 0
+  },
+  {
+   "artifact": "cuda__device__box3d__keep.json",
+   "artifact_sha256": "fb52bbe48282b5ae6da721f9306df11eaadb6ef6e2528395091748b9a2cee6de",
+   "backend": "cuda",
+   "date": "2026-10-10",
+   "gate": "x4b_device_smoke box3d default composition",
+   "host_class": "NVIDIA RTX A6000",
+   "module": "fused_magnetic_pair",
+   "note": "3-D real PML box (64^3 cells, PML 8 cells per face, metallic walls), seeded D/B with planted -0 and subnormals; steps 1, 4 and 16 on one RTX A6000 under keep; every float array of Fields and the PML compared as uint32 words against the NumPy array path of the same tree; planted one-ulp flip caught; launches fused_electric_pair_pml_real 16, fused_magnetic_pair_pml_real 16; re-run at the batch_r13 integration on the Linux GPU host's copy of a tree whose module bytes, emitted texts and array path equal this one's, the subject taken there before the leg",
+   "recorded_by": "batch_r13 (A11)",
+   "subject": {
+    "array_path_oracle": {
+     "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+     "fixture_set": "array_path_oracle/real-v6"
+    },
+    "emitted_sha256": "95c1691c3db60698596db0c8814f1ab1f889eb6b03291fdb84204a50ebb304ba",
+    "module_sha256": "4839e638c24df3a8f90abfa3e5de218965d06ee085362c3be1dba29e585abe05"
+   },
+   "subnormal_baseline": "keep",
+   "table": "cuda",
+   "words_compared": 20450688,
+   "words_differing": 0
+  },
+  {
+   "artifact": "cuda__device__box3d__keep.json",
+   "artifact_sha256": "aecab5ec0e0380c43e87807c193372f184047db1237462970ba6231c370e759f",
+   "backend": "cuda",
+   "date": "2026-10-10",
+   "gate": "x4b_device_smoke box3d singles (MEEP_GPU_FUSE_ARMS=0)",
+   "host_class": "NVIDIA RTX A6000",
+   "module": "step_curl_kernels",
+   "note": "3-D real PML box (64^3 cells, PML 8 cells per face, metallic walls), seeded D/B with planted -0 and subnormals; steps 1, 4 and 16 on one RTX A6000 under keep; every float array of Fields and the PML compared as uint32 words against the NumPy array path of the same tree; planted one-ulp flip caught; launches step_B_pml_real 16, step_D_pml_real 16, update_E_pml_real 16, update_H_pml_real 16; re-run at the batch_r13 integration on the Linux GPU host's copy of a tree whose module bytes, emitted texts and array path equal this one's, the subject taken there before the leg",
+   "recorded_by": "batch_r13 (A11)",
+   "subject": {
+    "array_path_oracle": {
+     "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+     "fixture_set": "array_path_oracle/real-v6"
+    },
+    "emitted_sha256": "bcae08baaa21bbac797f9ad679994369679c5591526e4cbd94e17607dadb77dc",
+    "module_sha256": "6bcfc710e57d38f29a404b5fbb314f3d07628cec5e652ebdf0793f087768d6a7"
+   },
+   "subnormal_baseline": "keep",
+   "table": "cuda",
+   "words_compared": 20450688,
+   "words_differing": 0
+  },
+  {
+   "artifact": "metal__device__box3d__flush.json",
+   "artifact_sha256": "ba93e558e394651874c8a29919d1952f7a3d8699ef053e5d24b3f615cd68dc41",
+   "backend": "metal",
+   "date": "2026-10-10",
+   "gate": "x4b_device_smoke box3d default composition",
+   "host_class": "Apple M1 Max GPU",
+   "module": "fused_electric_pair",
+   "note": "3-D real PML box (64^3 cells, PML 8 cells per face, metallic walls), seeded D/B with planted -0 and subnormals; steps 1, 4 and 16 under flush (host and MPS driven); every float array of Fields and the PML compared as uint32 words against the NumPy array path of the same tree; planted one-ulp flip caught; slots step_B 'fused magnetic B/H pair', step_D 'fused electric D/E pair', update_E 'fused electric D/E pair', update_H 'fused magnetic B/H pair'; re-run at the batch_r13 integration on a tree whose module bytes, emitted texts and array path equal this one's (it differs only in the board's own files and CHANGELOG.md), the subject taken before the leg",
+   "recorded_by": "batch_r13 (A11)",
+   "subject": {
+    "array_path_oracle": {
+     "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+     "fixture_set": "array_path_oracle/real-v6"
+    },
+    "emitted_sha256": "ae6e216e992d920ce5afd16eaaf686b26caf9d0da2e7f5181bd47e4820fbd028",
+    "module_sha256": "cdaa9e0259502def81ef156c693a74be27f60bdf2bef64c91cfd1141e80fdfed"
+   },
+   "subnormal_baseline": "flush",
+   "table": "metal",
+   "words_compared": 20450688,
+   "words_differing": 0
+  },
+  {
+   "artifact": "metal__device__box3d__flush.json",
+   "artifact_sha256": "ba93e558e394651874c8a29919d1952f7a3d8699ef053e5d24b3f615cd68dc41",
+   "backend": "metal",
+   "date": "2026-10-10",
+   "gate": "x4b_device_smoke box3d default composition",
+   "host_class": "Apple M1 Max GPU",
+   "module": "fused_magnetic_pair",
+   "note": "3-D real PML box (64^3 cells, PML 8 cells per face, metallic walls), seeded D/B with planted -0 and subnormals; steps 1, 4 and 16 under flush (host and MPS driven); every float array of Fields and the PML compared as uint32 words against the NumPy array path of the same tree; planted one-ulp flip caught; slots step_B 'fused magnetic B/H pair', step_D 'fused electric D/E pair', update_E 'fused electric D/E pair', update_H 'fused magnetic B/H pair'; re-run at the batch_r13 integration on a tree whose module bytes, emitted texts and array path equal this one's (it differs only in the board's own files and CHANGELOG.md), the subject taken before the leg",
+   "recorded_by": "batch_r13 (A11)",
+   "subject": {
+    "array_path_oracle": {
+     "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+     "fixture_set": "array_path_oracle/real-v6"
+    },
+    "emitted_sha256": "41e14cbaeebdfc660f93f7d7e2db807933b51ca2b1010d1b28ca99345c887b55",
+    "module_sha256": "c4d7c5203a61f3a7ec67d81fd92be2bfb3fd673917b412dc2d8766a7dbb2c3e2"
+   },
+   "subnormal_baseline": "flush",
+   "table": "metal",
+   "words_compared": 20450688,
+   "words_differing": 0
+  },
+  {
+   "artifact": "metal__device__box3d__flush.json",
+   "artifact_sha256": "e37e1dd1063c33cc64f9a0246d7567f5f1da7ae1e47d819a045dda0729a26749",
+   "backend": "metal",
+   "date": "2026-10-10",
+   "gate": "x4b_device_smoke box3d singles (MEEP_GPU_FUSE_ARMS=0)",
+   "host_class": "Apple M1 Max GPU",
+   "module": "shaders",
+   "note": "3-D real PML box (64^3 cells, PML 8 cells per face, metallic walls), seeded D/B with planted -0 and subnormals; steps 1, 4 and 16 under flush (host and MPS driven); every float array of Fields and the PML compared as uint32 words against the NumPy array path of the same tree; planted one-ulp flip caught; slots step_B 'PML', step_D 'PML', update_E 'ordinary', update_H 'ordinary'; re-run at the batch_r13 integration on a tree whose module bytes, emitted texts and array path equal this one's (it differs only in the board's own files and CHANGELOG.md), the subject taken before the leg",
+   "recorded_by": "batch_r13 (A11)",
+   "subject": {
+    "array_path_oracle": {
+     "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+     "fixture_set": "array_path_oracle/real-v6"
+    },
+    "emitted_sha256": "d3708e317d86964e8daf0093306861d9bdc8b570fe0d88f8ab3c47987a8ca167",
+    "module_sha256": "6f0ae4824a096fc3886c553183dde230381d3cc05b1dcbad25b6c4d365a56e28"
+   },
+   "subnormal_baseline": "flush",
+   "table": "metal",
+   "words_compared": 20450688,
+   "words_differing": 0
+  },
+  {
+   "artifact": "triton__device__box3d__keep.json",
+   "artifact_sha256": "2d381bc5b0fbbfa9213f6d0082bde66fb0af3f194dc87cffe912910147022aac",
+   "backend": "triton",
+   "date": "2026-10-10",
+   "gate": "x4b_device_smoke box3d default composition",
+   "host_class": "NVIDIA RTX A6000",
+   "module": "forms",
+   "note": "3-D real PML box (64^3 cells, PML 8 cells per face, metallic walls), seeded D/B with planted -0 and subnormals; steps 1, 4 and 16 on one RTX A6000 under keep; every float array of Fields and the PML compared as uint32 words against the NumPy array path of the same tree; planted one-ulp flip caught; launches fused_curl_constitutive_B 17, fused_curl_constitutive_D 17; re-run at the batch_r13 integration on the Linux GPU host's copy of a tree whose module bytes, emitted texts and array path equal this one's, the subject taken there before the leg",
+   "recorded_by": "batch_r13 (A11)",
+   "subject": {
+    "array_path_oracle": {
+     "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+     "fixture_set": "array_path_oracle/real-v6"
+    },
+    "emitted_sha256": "0ab7e4274f19d307875e070c21e8f01393cd1afef3ff79231781b553dbbe4afc",
+    "module_sha256": "7d015c5c8668cbce5b306d65f8774f2fb278142b6257c2b5dfc5653709761456"
+   },
+   "subnormal_baseline": "keep",
+   "table": "triton",
+   "words_compared": 20450688,
+   "words_differing": 0
+  },
+  {
+   "artifact": "triton__device__box3d__keep.json",
+   "artifact_sha256": "2bd1ec8c72760c764f8bde7c2561184a63fb962f13a90177c67533fa51cbd03f",
+   "backend": "triton",
+   "date": "2026-10-10",
+   "gate": "x4b_device_smoke box3d singles (MEEP_GPU_FUSE_ARMS=0)",
+   "host_class": "NVIDIA RTX A6000",
+   "module": "forms",
+   "note": "3-D real PML box (64^3 cells, PML 8 cells per face, metallic walls), seeded D/B with planted -0 and subnormals; steps 1, 4 and 16 on one RTX A6000 under keep; every float array of Fields and the PML compared as uint32 words against the NumPy array path of the same tree; planted one-ulp flip caught; launches constitutive_step 34, pml_curl_step 34; re-run at the batch_r13 integration on the Linux GPU host's copy of a tree whose module bytes, emitted texts and array path equal this one's, the subject taken there before the leg",
+   "recorded_by": "batch_r13 (A11)",
+   "subject": {
+    "array_path_oracle": {
+     "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+     "fixture_set": "array_path_oracle/real-v6"
+    },
+    "emitted_sha256": "0ab7e4274f19d307875e070c21e8f01393cd1afef3ff79231781b553dbbe4afc",
+    "module_sha256": "7d015c5c8668cbce5b306d65f8774f2fb278142b6257c2b5dfc5653709761456"
+   },
+   "subnormal_baseline": "keep",
+   "table": "triton",
+   "words_compared": 20450688,
+   "words_differing": 0
+  },
+  {
+   "artifact": "triton__device__box3d__keep.json",
+   "artifact_sha256": "2d381bc5b0fbbfa9213f6d0082bde66fb0af3f194dc87cffe912910147022aac",
+   "backend": "triton",
+   "date": "2026-10-10",
+   "gate": "x4b_device_smoke box3d default composition",
+   "host_class": "NVIDIA RTX A6000",
+   "module": "kernels",
+   "note": "3-D real PML box (64^3 cells, PML 8 cells per face, metallic walls), seeded D/B with planted -0 and subnormals; steps 1, 4 and 16 on one RTX A6000 under keep; every float array of Fields and the PML compared as uint32 words against the NumPy array path of the same tree; planted one-ulp flip caught; launches fused_curl_constitutive_B 17, fused_curl_constitutive_D 17; re-run at the batch_r13 integration on the Linux GPU host's copy of a tree whose module bytes, emitted texts and array path equal this one's, the subject taken there before the leg",
+   "recorded_by": "batch_r13 (A11)",
+   "subject": {
+    "array_path_oracle": {
+     "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+     "fixture_set": "array_path_oracle/real-v6"
+    },
+    "emitted_sha256": "6e940ae9a0f7e79e785bf04b7e75cff9f7288dc4fb57acddc0b5b764f26aeda0",
+    "module_sha256": "91deb7cef7ee08867b459b3fdd90197b325cba0f7224010f163715eb916f3880"
+   },
+   "subnormal_baseline": "keep",
+   "table": "triton",
+   "words_compared": 20450688,
+   "words_differing": 0
+  },
+  {
+   "artifact": "triton__device__box3d__keep.json",
+   "artifact_sha256": "2bd1ec8c72760c764f8bde7c2561184a63fb962f13a90177c67533fa51cbd03f",
+   "backend": "triton",
+   "date": "2026-10-10",
+   "gate": "x4b_device_smoke box3d singles (MEEP_GPU_FUSE_ARMS=0)",
+   "host_class": "NVIDIA RTX A6000",
+   "module": "kernels",
+   "note": "3-D real PML box (64^3 cells, PML 8 cells per face, metallic walls), seeded D/B with planted -0 and subnormals; steps 1, 4 and 16 on one RTX A6000 under keep; every float array of Fields and the PML compared as uint32 words against the NumPy array path of the same tree; planted one-ulp flip caught; launches constitutive_step 34, pml_curl_step 34; re-run at the batch_r13 integration on the Linux GPU host's copy of a tree whose module bytes, emitted texts and array path equal this one's, the subject taken there before the leg",
+   "recorded_by": "batch_r13 (A11)",
+   "subject": {
+    "array_path_oracle": {
+     "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+     "fixture_set": "array_path_oracle/real-v6"
+    },
+    "emitted_sha256": "6e940ae9a0f7e79e785bf04b7e75cff9f7288dc4fb57acddc0b5b764f26aeda0",
+    "module_sha256": "91deb7cef7ee08867b459b3fdd90197b325cba0f7224010f163715eb916f3880"
+   },
+   "subnormal_baseline": "keep",
+   "table": "triton",
+   "words_compared": 20450688,
+   "words_differing": 0
+  }
+ ],
+ "schema": "meep_gpu.parity_board_dev_evidence",
+ "version": 1
+}

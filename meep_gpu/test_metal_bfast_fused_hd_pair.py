@@ -180,7 +180,7 @@ def test_the_six_tustin_scalars_are_the_curls_own_signature_order():
     exchanged on every cell, which is smooth and wrong rather than a failure.
     """
     assert family.K_SCALARS == ("k1_0", "k2_0", "k1_1", "k2_1", "k1_2", "k2_2")
-    certified = bfast_curl._BFAST_CURL_TEMPLATE  # noqa: SLF001
+    certified = bfast_curl.bfast_curl_source(CODES[0], False)
     positions = [certified.index(f"constant float&     {name}")
                  for name in family.K_SCALARS]
     assert positions == sorted(positions)
@@ -229,23 +229,24 @@ def test_the_lift_redirects_exactly_the_nine_magnetic_loads():
                              source), (codes, var)
 
 
-def test_the_bfast_tail_survives_the_lift_untouched():
+def test_the_bfast_pass_survives_the_lift_untouched():
     """Its operands are the curl's OWN registers, so it contains no ``gN[`` at all.
 
-    Every line of the certified tail must appear character for character in the welded
-    body: this family adds no arithmetic to the Tustin filter, and a lift that touched
-    one of those lines would be arithmetic it does not own.
+    The certified pass block must appear character for character in the welded body:
+    this family adds no arithmetic to the BFAST pass, and a lift that touched one of
+    its lines would be arithmetic it does not own.
     """
+    from meep_gpu.metal_kernels import folded_pass
+
     for codes, _source in sources():
         certified = bfast_curl.bfast_curl_source(
             codes, bool(SUB_STEPS["step_D"]["backward"]), has_bfast=True)
         welded = family.bfast_welded_curl_tail(codes)
-        for line in certified.splitlines():
-            stripped = line.strip()
-            if not re.match(r"(float (st|total|adv)\d|s\d\[ii\] = |curl\d = curl\d - "
-                            r"adv\d;|adv\d = at_[xyz] \?)", stripped):
-                continue
-            assert stripped in welded, (codes, stripped)
+        start = certified.index(folded_pass.FOLDED_PASS_BEGIN)
+        end = certified.index(folded_pass.FOLDED_PASS_END, start)
+        block = certified[start:end + len(folded_pass.FOLDED_PASS_END)]
+        assert "fp0 = s0[ii];" in block
+        assert block in welded, codes
 
 
 def test_the_tustin_state_is_stepped_in_place_and_is_not_rotated():
@@ -259,7 +260,8 @@ def test_the_tustin_state_is_stepped_in_place_and_is_not_rotated():
     assert family.ROTATED_NAMES == plain.ROTATED_NAMES
     for codes, source in sources():
         for index in range(3):
-            assert f"s{index}[ii] = st{index} + adv{index};" in source
+            assert f"float fp{index} = s{index}[ii];" in source
+            assert f"{{ s{index}[ii] = F{index}; }}" in source
             # read at the thread's own cell only -- no shifted index anywhere.
             assert not re.search(rf"s{index}\[o[xyz]\]", source), (codes, index)
 

@@ -32,6 +32,7 @@ NOTHING HERE LAUNCHES A KERNEL. The device half is
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import sys
@@ -217,6 +218,18 @@ def test_a_triton_that_cannot_be_governed_refuses_instead_of_dispatching(monkeyp
     module = types.ModuleType("triton")
     module.__version__ = "3.1.0"
     monkeypatch.setitem(sys.modules, "triton", module)
+    # BARE MEANS BARE: where a real Triton was imported earlier in the process, its
+    # submodules are still in ``sys.modules`` and ``from triton.backends import
+    # backends`` would reach the real compiler behind the stand-in, which governs.
+    # Hidden for the test (``monkeypatch`` puts them back), as on a host where the
+    # module is all there is.
+    for name in [name for name in sys.modules if name.startswith("triton.")]:
+        monkeypatch.delitem(sys.modules, name)
+    # AND NO CuPy LEG. Where CuPy is installed its seam installs before the Triton leg
+    # refuses, and a partial install that installed a device seam keeps its lock by
+    # design (``subnormal_policy._rollback``), so the last assertion would be about
+    # CuPy rather than Triton. CuPy is hidden here, as on a host without it.
+    monkeypatch.setitem(sys.modules, "cupy", None)
     import meep_gpu.triton_kernels as package
 
     monkeypatch.setattr(package, "plan_step", lambda f, p, **kwargs: step_plan(
@@ -438,10 +451,18 @@ def test_the_second_freeze_still_credits_dispatch_for_its_own_install(monkeypatc
     assert second == "dispatch, at an earlier configuration freeze in this process"
 
 
-def test_a_caller_installed_policy_is_still_credited_to_the_caller(monkeypatch):
+def test_a_caller_installed_policy_is_still_credited_to_the_caller(monkeypatch, tmp_path):
     """The other side of the same string, which ``probe_dispatch_policy_gate``
-    reads as its evidence that the caller installed it."""
+    reads as its evidence that the caller installed it.
+
+    The caller's install is a direct one, so where CuPy is installed the caller names
+    the policy-suffixed private cache ``keep`` requires (dispatch derives one; a direct
+    install refuses without it). Elsewhere the CuPy leg is not driven.
+    """
     governable_triton(monkeypatch)
+    if importlib.util.find_spec("cupy") is not None:
+        monkeypatch.setenv("CUPY_CACHE_DIR", str(
+            tmp_path / f"cupy-cache-{policy_module.CUPY_CACHE_POLICY_TOKEN}"))
     policy_module.install_subnormal_policy("keep", strict=True)
     assert plan_on_a_governed_host(monkeypatch) is not None, (
         fastpath.last_dispatch_report()["refused_because"])

@@ -145,7 +145,7 @@ def _no_leaked_backend_stub():
 
 
 #: Every environment variable this package reads is spelled ``MEEP_GPU_*`` — the
-#: policy itself and the expansion-probe paths alike. The prefix is the unit of
+#: subnormal policy and every other switch alike. The prefix is the unit of
 #: restoration rather than one hand-listed name, because the failure mode is a
 #: module-scope ``setdefault`` in a file nobody remembers importing, and a list
 #: would silently stop covering the next one somebody adds.
@@ -167,8 +167,8 @@ _PRISTINE_POLICY_ENV = _policy_environment()
 
 #: The same variables AFTER collection has imported every test module — i.e.
 #: exactly what the Metal modules' own import-time ``setdefault`` calls
-#: established, the policy and both expansion-probe paths together. Captured
-#: rather than hand-listed so that a Metal module which starts needing a fourth
+#: established. Captured
+#: rather than hand-listed so that a Metal module which starts needing another
 #: variable gets it without this file being edited, and so the profile is always
 #: the modules' own declaration rather than this guard's guess at it.
 _COLLECTED_POLICY_ENV: dict[str, str] = {}
@@ -286,6 +286,32 @@ def _uninstall_policy() -> None:
         subnormal_policy.uninstall_subnormal_policy()
 
 
+@pytest.fixture
+def host_keeps_subnormals():
+    """The host FPU keeps subnormals for this test, and is put back afterwards.
+
+    For a test that seeds or counts subnormal words in HOST arrays. Whether the
+    thread flushes at entry is session order, not the test's own doing: MEEP's
+    initialization flushes the host on x86-64 and never undoes it, and a flush
+    install leaves the FPU where it put it (:func:`_no_leaked_subnormal_policy`
+    leaves the FPU alone on purpose). Measured on the NVIDIA reference environment:
+    a census of ``1.4e-45`` read 0 after ``test_meep_precision_notice.py`` ran in
+    the same process, and 1 without it. Opt-in by name, never autouse: the
+    ``match_meep`` tests measure what MEEP's initialization left the FPU doing.
+    """
+    from meep_gpu import backends, subnormal_policy
+
+    flushing_at_entry = backends.subnormals_flushed()
+    if flushing_at_entry:
+        subnormal_policy._drive_host_fpu(False)  # noqa: SLF001
+    assert not backends.subnormals_flushed(), (
+        "the host could not be driven to keep subnormals, so this test's subnormal "
+        "words would be flushed before it measured them")
+    yield
+    if backends.subnormals_flushed() != flushing_at_entry:
+        subnormal_policy._drive_host_fpu(flushing_at_entry)  # noqa: SLF001
+
+
 @pytest.fixture(autouse=True, scope="module")
 def _no_leaked_subnormal_policy(request):
     """Give each module the policy IT declares, whatever collection left behind.
@@ -364,36 +390,3 @@ def _no_leaked_subnormal_policy(request):
 
     _apply_policy_environment(_PRISTINE_POLICY_ENV)
     _uninstall_policy()
-
-
-# ---------------------------------------------------------------------------
-# The subnormal policy a predicate question is asked UNDER
-# ---------------------------------------------------------------------------
-#
-# A complex family's coverage predicate cannot answer "may this kernel step
-# this?" without knowing which float32 subnormal policy the run will use: the
-# EXPANSION licence its probe artifact carries is conditional on the policy the
-# artifact was cut under (``complex_fields.POLICY_CONDITIONAL_LICENCE``), so the
-# same record licenses an arm under one policy and refuses under the other.
-#
-# That clause FAILS CLOSED as of 2026-08-16: asked when the policy can be
-# neither read nor declared, it refuses. Production never lands there — dispatch
-# declares the policy it is about to install, four rungs before it installs it —
-# but a test process installs nothing, so a module that builds keep-stamped probe
-# records and asks a predicate about them has to say so. This fixture is how it
-# says so, and modules opt in by name::
-#
-#     pytestmark = pytest.mark.usefixtures("run_policy_declared_keep")
-#
-# It states a premise those modules always had and could not previously write
-# down. It is deliberately NOT autouse: the tests that pin the fail-closed
-# behaviour itself must be able to ask the question with nothing declared.
-
-
-@pytest.fixture
-def run_policy_declared_keep():
-    """Declare 'keep' as the policy this test's predicate questions are about."""
-    from meep_gpu.expansion_refusal import declaring_run_policy
-
-    with declaring_run_policy("keep"):
-        yield "keep"

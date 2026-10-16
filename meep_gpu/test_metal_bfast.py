@@ -75,57 +75,85 @@ requires_mps = pytest.mark.skipif(not _mps_available(),
 # 1. The predicted nulls — byte-invisible, so pinned by source text
 # ---------------------------------------------------------------------------
 
-def test_the_tail_sits_between_the_curl_and_the_mask():
-    """PREDICTED NULL. The array path folds BFAST at stepping.py:392-396, AFTER
-    the curl (:370) and BEFORE ``_mask_non_owned_cells`` (:397).
+def _pass(source: str) -> str:
+    """The BFAST pass's text, between its two marker lines."""
+    from meep_gpu.metal_kernels import folded_pass
 
-    WHY NO SEED CAN CATCH A MOVE. Both orders write an exact ``0.0`` into the same
-    cells: the advance is masked by the same predicate the curl is, so masking
-    before or after the fold produces identical words on every input. The ORDER is
-    still the array path's and is held here rather than left to drift.
+    start = source.index(folded_pass.FOLDED_PASS_BEGIN)
+    return source[start:source.index(folded_pass.FOLDED_PASS_END, start)]
+
+
+@pytest.mark.parametrize("backward", (False, True), ids=("step_B", "step_D"))
+def test_the_pass_runs_after_the_forms_and_before_every_store(backward):
+    """MEEP's STEP_BFAST follows each component's STEP_CURL (step_db.cpp:124-142).
+
+    The pass reads the forms' ``n``/``v`` registers and sits in front of the first
+    guarded ``fu`` store, so both stores carry it; everything else in the source is
+    the certified curl's own text, which this pins by removing the pass, the nine
+    extra bindings and the rename and comparing with :func:`.shaders.curl_source`.
     """
-    source = _source()
-    curl = source.index("float curl0 = dtdx *")
-    tail = source.index("float total0 =")
-    mask = source.index("curl0 = at_x ? 0.0f : curl0;")
-    assert curl < tail < mask, (
-        "the BFAST tail must sit between the curl and the ownership mask, which "
-        "is where stepping.py:392-396 folds it")
+    from meep_gpu.metal_kernels import folded_pass
+
+    for codes in (CODES, (0, 0, 0), (1, 0, 1)):
+        source = bfast.bfast_curl_source(codes, backward)
+        start = source.index(folded_pass.FOLDED_PASS_BEGIN)
+        end = source.index(folded_pass.FOLDED_PASS_END)
+        assert source.index("float v2 = ") < start
+        assert end < source.index(folded_pass.FOLDED_PASS_ANCHOR)
+        stripped = source[:start] + source[end:].split("\n", 2)[2]
+        stripped = stripped.replace("bfast_pml_curl_step(", "pml_curl_step(")
+        stripped = stripped.replace(bfast._PARAMETERS, "")  # noqa: SLF001
+        stripped = stripped.replace(
+            f"[[buffer({bfast.RECORD_BUFFER})]]",
+            f"[[buffer({shaders.CURL_RECORD_BUFFER})]]")
+        assert stripped == shaders.curl_source(codes, backward), codes
 
 
 def test_the_sums_put_the_shifted_operand_first():
-    """PREDICTED NULL. stepping.py:923-924 writes ``shifted + centre``.
+    """PREDICTED NULL. ``_bfast_term`` writes ``shifted + centre``.
 
-    WHY NO SEED CAN CATCH A SWAP. IEEE addition is commutative IN BITS, including
-    for signed zeros, so ``(c_y + c)`` and ``(c + c_y)`` are the same float32 word
-    for every input. The operand order is the array path's and is pinned literally.
+    IEEE addition is commutative IN BITS, including for signed zeros, so the operand
+    order is unobservable; it is the array path's and is pinned literally, with the
+    pairing ``shaders.CURL_OPERANDS`` fixes (target 0: Ez along y, Ey along z).
     """
-    source = _source()
-    for line in ("float total0 = (k1_0 * (c_y + c)) - (k2_0 * (b_z + b));",
-                 "float total1 = (k1_1 * (a_z + a)) - (k2_1 * (c_x + c));",
-                 "float total2 = (k1_2 * (b_x + b)) - (k2_2 * (a_y + a));"):
-        assert line in source, line
+    block = _pass(_source())
+    for line in ("float sp0 = k1_0 * (c_y + c);", "float sm0 = k2_0 * (b_z + b);",
+                 "float sp1 = k1_1 * (a_z + a);", "float sm1 = k2_1 * (c_x + c);",
+                 "float sp2 = k1_2 * (b_x + b);", "float sm2 = k2_2 * (a_y + a);"):
+        assert line in block, line
 
 
-def test_the_curl_fold_is_spelled_as_a_subtraction():
-    """PREDICTED NULL. ``curl - adv`` carries stepping.py's ``curl + (-advance)``.
+def test_the_state_takes_two_roundings_and_the_increment_is_negated():
+    """MEEP stores ``F = S - F_prev`` (one rounding) and adds ``raw = F - F_prev``.
 
-    WHY NO SEED CAN CATCH THE DIFFERENCE. IEEE-754 defines subtraction AS addition
-    of the negation, so the two agree on every input including signed zeros. The
-    subtraction spelling is used because it introduces NO unary minus — on Triton
-    that mattered because unary minus lowers as ``0.0 - x``; on Metal ``-x`` was
-    measured to be a sign-bit operation, so the workaround does NOT transfer and
-    the spelling is kept for literalness rather than for the Triton reason.
+    The previous one-rounding advance ``S - 2*F_prev`` is gone (the array path's
+    separate-pass change measured the second rounding necessary: 458,721 of 1,113,272
+    words differ without it). The
+    increment is ``-(F - F_prev)``, negated as the array path returns it, and every
+    ladder stage subtracts it; with no partner at all it is an exact ``+0`` and the
+    state is not stored.
     """
-    source = _source()
-    for target in range(3):
-        assert f"curl{target} = curl{target} - adv{target};" in source
-    # No unary minus anywhere in the emitted CODE. Comments are stripped first:
-    # the tail's commentary quotes stepping.py's `-advance`, and a text search
-    # that matched prose would fail for the wrong reason.
-    code = "\n".join(line.split("//")[0] for line in source.splitlines())
-    assert "-adv" not in code, (
-        "no unary minus belongs in the tail; the fold is a subtraction")
+    block = _pass(_source())
+    assert "2.0f" not in block
+    for t, (has_p, has_m) in enumerate((("has_y", "has_z"), ("has_z", "has_x"),
+                                        ("has_x", "has_y"))):
+        assert f"float F{t} = {has_p} ? ({has_m} ? ((sp{t} - sm{t}) - fp{t})" in block
+        assert (f"float fi{t} = ({has_p} || {has_m}) ? (-(F{t} - fp{t})) : 0.0f;"
+                in block)
+        assert f"if (own{t} && ({has_p} || {has_m})) {{ s{t}[ii] = F{t}; }}" in block
+        assert f"v{t} = du{t} ? (v{t} - (" in block
+
+
+def test_the_one_partner_plain_branch_drops_the_state():
+    """MEEP's plain one-partner line ``F = k1*(g1s + g1)`` has no ``- F``
+    (step_generic.cpp:373-379), in the chunks that carry neither layer.
+    """
+    block = _pass(_source())
+    assert "const bool pl0 = !in_h_y && !du0;" in block
+    assert "(pl0 ? sp0 : (sp0 - fp0))" in block
+    assert "(pl0 ? sm0 : (sm0 - fp0))" in block
+    d_block = _pass(_source(backward=True))
+    assert "const bool pl0 = !in_i_y && !du0;" in d_block
 
 
 def test_the_d_side_negates_before_rounding():
@@ -147,42 +175,30 @@ def test_the_d_side_negates_before_rounding():
         assert np.float32(value) == np.float32(np.float32(value))
 
 
-def test_the_advance_uses_the_two_times_spelling():
-    """PREDICTED NULL. ``advance = total - 2.0*state`` is stepping.py:928 literally.
-
-    WHY NO SEED CAN CATCH IT. ``2.0f * x`` and ``x + x`` are exactly equal in
-    binary floating point for every finite input — multiplying by a power of two is
-    exact — so the literal spelling is unobservable.
-    """
-    source = _source()
-    for target in range(3):
-        assert f"float adv{target} = total{target} - (2.0f * st{target});" in source
-
-
 # ---------------------------------------------------------------------------
 # 2. Duplicate-plus-pin agreements
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("backward", (False, True), ids=("step_B", "step_D"))
-def test_the_advance_mask_is_the_curl_mask(backward):
-    """The advance carries the SAME ownership predicate the summed curl does.
-
-    ``shaders.ownership_mask`` generalises on the ZERO LITERAL (for the complex
-    family) and not on the masked VARIABLE, so this family restates the pair table.
-    A restatement that masked different cells would leave an unowned cell's
-    ``f_bfast`` holding a value MEEP's owned-cell loop never writes — invisible in
-    the field, visible only in a diagnostic read of the state.
+def test_the_increment_mask_is_the_curl_mask(backward):
+    """The increment and the state store carry the SAME ownership predicate the curl
+    does: the pass's rows are the certified mask rows read off the source and
+    re-emitted on ``fi`` (and as ``false`` on the ``own`` flags), so they cannot drift
+    into masking different cells.
     """
     for cx in (0, 1):
         for cy in (0, 1):
             for cz in (0, 1):
                 codes = (cx, cy, cz)
-                mine = bfast.advance_mask(codes, backward)
+                block = _pass(bfast.bfast_curl_source(codes, backward))
                 theirs = shaders.ownership_mask(codes, backward)
-                if theirs.lstrip().startswith("//"):
-                    assert mine.lstrip().startswith("//"), codes
-                    continue
-                assert mine == theirs.replace("curl", "adv"), codes
+                rows = [line for line in theirs.splitlines()
+                        if not line.lstrip().startswith("//")]
+                for row in rows:
+                    assert row.replace("curl", "fi") in block, (codes, row)
+                    own = row.replace("curl", "own").replace("0.0f", "false")
+                    assert own in block, (codes, own)
+                assert block.count("? 0.0f : fi") == len(rows), codes
 
 
 def test_the_clause_list_matches_the_triton_bfast_predicate():
@@ -366,7 +382,7 @@ def test_the_import_route_answers_what_steppings_own_call_site_answers(
 # ---------------------------------------------------------------------------
 
 def test_the_binding_count_stays_under_the_metal_ceiling():
-    """29 bindings, and the Metal argument-table ceiling is 31.
+    """30 bindings, and the Metal argument-table ceiling is 31.
 
     Asserted rather than left for a later edit to discover as a compile error on
     someone else's machine. A complex build of this family would double the volume
@@ -377,20 +393,20 @@ def test_the_binding_count_stays_under_the_metal_ceiling():
             source = bfast.bfast_curl_source(CODES, backward,
                                              has_bfast=has_bfast)
             count = source.count("[[buffer(")
-            assert count == 29, (backward, has_bfast, count)
+            assert count == 30, (backward, has_bfast, count)
             assert count <= 31
 
 
 def test_the_has_bfast_off_build_carries_no_tail():
     off = _source(has_bfast=False)
-    for token in ("total0", "adv0", "st0"):
+    for token in ("fp0", "fi0", "F0 ="):
         assert token not in off, token
     # ...and still binds the states, so the identity leg proves they are inert.
     assert "device float*       s0" in off
 
 
 def test_every_shipped_source_carries_the_contraction_guard():
-    """The tail's ``k1*(sum) - k2*(sum)`` is a multiply-subtract and would fuse."""
+    """The pass's ``k1*(sum) - k2*(sum)`` is a multiply-subtract and would fuse."""
     guard = shaders.contraction_pragma(shaders.CONTRACT_OFF)
     for label, source in bfast.enumerate_bfast_sources().items():
         assert guard in source, label
@@ -466,7 +482,8 @@ def test_the_constitutive_companion_delegates_to_the_certified_plan_class(
     for side in ("H", "E"):
         assert bfast.bfast_run_constitutive_coverage(fields, pml, side,
                                                      Residency()).covered
-        plan = bfast.plan_bfast_run_constitutive(fields, pml, side, Residency())
+        plan = bfast.plan_bfast_run_constitutive(
+            fields, pml, side, Residency(), chunk_bounds=_one_rank_record(fields, pml))
         assert type(plan) is ConstitutivePlan, type(plan)
 
 
@@ -675,25 +692,21 @@ def test_every_declared_divergence_is_actually_reached():
     assert len(_OBSERVED) == len(_DECLARED)
 
 
-def test_clause_11a_refuses_k_on_a_declared_invariant_axis():
-    """THE OVER-COVERAGE DEFECT, refused by name.
+def test_clause_11a_admits_k_on_a_declared_invariant_axis():
+    """A nonzero k on a DECLARED-invariant axis is admitted, as the Triton predicate admits it.
 
-    MEEP nulls the partner OPERAND as well as zeroing the coefficient, so its
-    increment on a guarded target is ``F_new = -F_prev`` with the other term
-    dropped; stepping.py zeroes only the coefficient and keeps the other product.
-    They agree only while the surviving k is itself zero. The gate re-measures the
-    divergence on the device; this pins that the predicate refuses it at all.
+    Every product such a k scales multiplies a partner MEEP does not read: MEEP hands
+    ``step_bfast`` a NULL operand for the absent partner, the array path takes the same
+    one-partner forms (``stepping._bfast_term``), and so does this kernel's pass, which
+    selects on the record's presence flags. The predicate therefore answers exactly what
+    it answers for the same run without the invariant-axis k: no reason is added.
     """
-    grid = _Grid(bfast_scaled_k=(0.4, 0.0, 0.3), _invariant=(2,))
-    reasons = bfast._bfast_grid_reasons(_Fields(grid), _PML(), grid)
-    assert any("DECLARED-invariant axis 2" in r for r in reasons), reasons
-
-
-def test_clause_11a_admits_k_that_avoids_the_invariant_axis():
-    """The refusal must be SPECIFIC, or it sends correct runs to the array path."""
-    grid = _Grid(bfast_scaled_k=(0.4, 0.0, 0.0), _invariant=(2,))
-    reasons = bfast._bfast_grid_reasons(_Fields(grid), _PML(), grid)
-    assert not any("DECLARED-invariant" in r for r in reasons), reasons
+    with_k = _Grid(bfast_scaled_k=(0.4, 0.0, 0.3), _invariant=(2,))
+    without_k = _Grid(bfast_scaled_k=(0.4, 0.0, 0.0), _invariant=(2,))
+    reasons = bfast._bfast_grid_reasons(_Fields(with_k), _PML(), with_k)
+    control = bfast._bfast_grid_reasons(_Fields(without_k), _PML(), without_k)
+    assert reasons == control, (reasons, control)
+    assert not any("invariant" in r for r in reasons), reasons
 
 
 def test_an_unanswerable_invariance_question_is_refused_not_admitted():
@@ -703,7 +716,21 @@ def test_an_unanswerable_invariance_question_is_refused_not_admitted():
 
     grid = _NoReader()
     reasons = bfast._bfast_grid_reasons(_Fields(grid), _PML(), grid)
-    assert any("cannot be answered" in r for r in reasons), reasons
+    assert any("the k assignment cannot be formed" in r for r in reasons), reasons
+
+
+def test_a_reader_that_raises_is_refused_by_name_per_axis():
+    """A reader that cannot answer is not read as resolving the axis."""
+    class _Raising(_Grid):
+        def is_invariant(self, axis):
+            raise RuntimeError("unanswerable")
+
+    grid = _Raising()
+    reasons = bfast._bfast_grid_reasons(_Fields(grid), _PML(), grid)
+    unread = [r for r in reasons if r.startswith("the k assignment could not be read")]
+    assert len(unread) == 3, reasons
+    triton = triton_bfast._bfast_grid_reasons(_Fields(grid), _PML(), grid)
+    assert set(unread) <= set(triton), (unread, triton)
 
 
 def test_a_non_bfast_run_belongs_to_the_certified_plain_kernels():
@@ -731,9 +758,28 @@ def test_an_unknown_sub_step_raises_rather_than_refusing_quietly():
 # Device: the smallest non-vacuous byte comparison
 # ---------------------------------------------------------------------------
 
+#: The device cases: a 3-D run with every partner present, a z-invariant 2-D run whose x
+#: and y components have ONE partner, so MEEP's plain one-partner branch and the dsig and
+#: dsigu forms each take cells, and the same 2-D run with a nonzero k on the invariant z
+#: axis, which the predicate admits (clause 11a) and which multiplies only partners MEEP
+#: does not read.
+_DEVICE_CASES = {
+    "full_k_3d": dict(cell_size=(1.2, 1.0, 0.9), dimensions=3,
+                      boundaries=("metallic", "metallic", "periodic"),
+                      bfast_scaled_k=(0.31, 0.17, 0.23)),
+    "one_partner_2d": dict(cell_size=(1.6, 1.2, 0.0), dimensions=2,
+                           boundaries=("metallic", "periodic", "periodic"),
+                           bfast_scaled_k=(0.21, -0.13, 0.0)),
+    "invariant_axis_k_2d": dict(cell_size=(1.6, 1.2, 0.0), dimensions=2,
+                                boundaries=("metallic", "periodic", "periodic"),
+                                bfast_scaled_k=(0.21, -0.13, 0.17)),
+}
+
+
 @requires_mps
+@pytest.mark.parametrize("case", sorted(_DEVICE_CASES))
 @pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
-def test_the_kernel_is_byte_identical_to_stepping(sub_step, monkeypatch):
+def test_the_kernel_is_byte_identical_to_stepping(sub_step, case, monkeypatch):
     """The whole claim, in its smallest form: one launch, one seed, uint32 words.
 
     THE POLICY IS SET THROUGH ``monkeypatch``, NOT ``os.environ`` DIRECTLY, and the
@@ -756,10 +802,8 @@ def test_the_kernel_is_byte_identical_to_stepping(sub_step, monkeypatch):
              "fu_Dx", "fu_Dy", "fu_Dz",
              "f_bfast_Bx", "f_bfast_By", "f_bfast_Bz",
              "f_bfast_Dx", "f_bfast_Dy", "f_bfast_Dz")
-    grid = Grid(resolution=10.0, cell_size=(1.2, 1.0, 0.9),
-                boundaries=("metallic", "metallic", "periodic"), dimensions=3,
-                courant=0.35, k_point=(0.0, 0.0, 0.0), xp=np,
-                bfast_scaled_k=(0.31, 0.17, 0.23))
+    grid = Grid(resolution=10.0, courant=0.35, k_point=(0.0, 0.0, 0.0), xp=np,
+                **_DEVICE_CASES[case])
     fields = Fields(grid=grid, force_complex_fields=False)
     fields.enable_pml_storage()
     count = int(np.prod(grid.shape))
@@ -767,7 +811,8 @@ def test_the_kernel_is_byte_identical_to_stepping(sub_step, monkeypatch):
     epsilon = (1.45 + 0.30 * np.sin(index * np.float32(0.037))).astype(np.float32)
     fields.set_isotropic_epsilon_volume(
         epsilon, (np.float32(1.0) / epsilon).astype(np.float32))
-    pml = PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
+    pml = PML(grid=grid, thickness=tuple((2, 2) if grid.shape[a] > 1 else (0, 0)
+                                         for a in range(3)))
     rng = np.random.default_rng(20260815)
     for name in names:
         array = getattr(fields, name, None)
@@ -781,7 +826,8 @@ def test_the_kernel_is_byte_identical_to_stepping(sub_step, monkeypatch):
     for name, value in before.items():
         getattr(fields, name)[...] = value
     residency = device.Residency()
-    plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step, residency)
+    plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step, residency,
+                                     chunk_bounds=_one_rank_record(fields, pml))
     assert plan is not None, bfast.bfast_pml_curl_coverage(
         fields, pml, sub_step, residency).reasons
     plan.run()
@@ -801,3 +847,10 @@ def test_the_kernel_is_byte_identical_to_stepping(sub_step, monkeypatch):
         differing = int(np.count_nonzero(
             words(getattr(fields, name)) != words(after[name])))
         assert differing == 0, f"{name}: {differing} differing words"
+
+
+def _one_rank_record(fields, pml):
+    """The record of the one-rank division ``stepping`` steps these ``Fields`` with."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))

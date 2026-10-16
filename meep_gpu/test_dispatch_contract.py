@@ -42,6 +42,7 @@ from conftest import requires_resource_skip
 
 import meep_gpu.driver as driver_module
 import meep_gpu.fastpath as fastpath
+from meep_gpu import route_stamps
 from meep_gpu.driver import FdtdDriver
 from meep_gpu.triton_kernels import launch as launch_module
 from meep_gpu.triton_kernels.coverage import Coverage
@@ -724,164 +725,6 @@ def test_an_uncertified_triton_version_drops_that_table_by_name(monkeypatch):
     assert list(validated) == record["environment"]["validated_triton_versions"]
 
 
-# ---------------------------------------------------------------------------
-# The complex-expansion licence, at the rung that consumes it
-# ---------------------------------------------------------------------------
-#
-# The artifact shipped x86 naturally cuts is stamped 'flush' — CuPy appends
-# -ftz=true to every NVRTC compile — while CERTIFICATION_SUBNORMAL_POLICY is
-# 'keep' and the subnormal gate refuses any process that installed anything else.
-# So the natural artifact and the only permitted run policy disagree BY
-# CONSTRUCTION, and the licence is consumed by ``plan_step`` FOUR RUNGS BEFORE
-# that gate runs. Until 2026-08-15 nothing compared them.
-
-def _probe_artifact(tmp_path, resolved, name="probe.json"):
-    """A well-formed, fully-discriminating probe record cut under ``resolved``."""
-    patterns = ("c8_mul_c8", "c8_mul_f4_field_left",
-                "f4_mul_c8_coefficient_left", "python_float_left")
-    record = {
-        "backend": "cupy",
-        "patterns": {p: "FMA_V1" for p in patterns},
-        "vectors": {p: 2792 for p in patterns},
-        "detail": {p: {"licensable_arms_disagreement_words": 128,
-                       "discriminates": True,
-                       "matches": {"FMA_V1": True, "NAIVE": False,
-                                   "PLANEWISE_diagnostic": False}}
-                   for p in patterns},
-        "subnormal_policy": {"policy": f"stamp_{resolved}", "resolved": resolved},
-        "candidates": {"policy": resolved},
-        "environment": {"backend": "cupy", "machine": "x86_64",
-                        "cupy_version": "13.5.1"},
-    }
-    path = tmp_path / name
-    path.write_text(json.dumps(record), encoding="utf-8")
-    return path, record
-
-
-def test_a_probe_cut_under_the_wrong_policy_is_dropped_before_the_composer(
-        monkeypatch, tmp_path):
-    """THE FIX. A flush-cut licence must not reach a run that will step under
-    keep — the policy under which the three zero-imaginary patterns licensing
-    every real-coefficient multiply in both complex kernels are NOT bit-identical
-    between the arms. The record is DROPPED rather than the plan refused: a
-    refused probe makes the complex predicates refuse by name, which is the array
-    path for the complex arms and no change for a run with no complex storage.
-
-    WHAT THIS TEST USED TO ASSERT, AND WHY THAT WAS THE HOLE. It asserted the
-    composer was handed ``None``. It was — and the composer then re-read the same
-    environment variable, got the same artifact back, and handed it to all eight
-    complex arms, because ``None`` is ALSO how "no artifact was offered" is
-    spelled and that case may legitimately read the environment. A test that
-    accepts ``None`` here cannot tell a refusal from an absence, which is exactly
-    the confusion the code had. It now asserts the refusal is a value of its own.
-    ``test_dispatch_expansion_refusal.py`` carries what that value does at the
-    rungs below."""
-    from meep_gpu.expansion_refusal import RefusedExpansionProbe
-
-    assert fastpath.CERTIFICATION_SUBNORMAL_POLICY == "keep"
-    path, record = _probe_artifact(tmp_path, "flush")
-    monkeypatch.setenv(fastpath.COMPLEX_PROBE_ENV, str(path))
-    calls = install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
-                                                    {"step_B": "PML"}))
-    stub_triton(monkeypatch, "3.1.0")
-    fastpath.plan_fast_path(object(), object(), cupy_like_grid())
-
-    assert calls, "the composer was never called"
-    offered = calls[0]["probe"]
-    assert offered != record, (
-        "the composer was handed a licence cut under the wrong policy")
-    assert isinstance(offered, RefusedExpansionProbe), (
-        "the refusal was passed as None, which every rung below reads as "
-        f"'nothing was offered' and answers by reading {fastpath.COMPLEX_PROBE_ENV} "
-        f"for itself; the composer got {offered!r}")
-    assert offered.key == fastpath.COMPLEX_PROBE_ENV
-    assert any("does not transfer" in reason for reason in offered.reasons)
-    environment = fastpath.last_dispatch_report()["environment"]
-    dropped = environment["complex_expansion_probe_dropped"]
-    assert dropped and "does not transfer" in dropped[0]
-    assert "flush" in dropped[0] and "keep" in dropped[0]
-    assert environment["complex_expansion_probe_resolved"] is False
-
-
-def test_a_probe_cut_under_the_required_policy_reaches_the_composer(
-        monkeypatch, tmp_path):
-    """The other direction, or the check would be a blanket refusal."""
-    path, record = _probe_artifact(tmp_path, "keep")
-    monkeypatch.setenv(fastpath.COMPLEX_PROBE_ENV, str(path))
-    calls = install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
-                                                    {"step_B": "PML"}))
-    stub_triton(monkeypatch, "3.1.0")
-    fastpath.plan_fast_path(object(), object(), cupy_like_grid())
-
-    assert calls and calls[0]["probe"] == record
-    environment = fastpath.last_dispatch_report()["environment"]
-    assert "complex_expansion_probe_dropped" not in environment
-    assert environment["complex_expansion_probe_resolved"] is True
-
-
-def test_the_dispatch_record_says_which_licence_it_consumed(monkeypatch, tmp_path):
-    """AUDITABILITY. The record used to carry only 'was an env var set' and 'did
-    a record resolve' — not the arm, not the basis, not the policy, and not the
-    environment the artifact CLAIMS, which is what the environment-default table
-    keys on. A probe.json copied from another machine licensed dispatch here and
-    left no trace of having done so."""
-    path, _ = _probe_artifact(tmp_path, "keep")
-    monkeypatch.setenv(fastpath.COMPLEX_PROBE_ENV, str(path))
-    install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
-                                            {"step_B": "PML"}))
-    stub_triton(monkeypatch, "3.1.0")
-    fastpath.plan_fast_path(object(), object(), cupy_like_grid())
-
-    licence = fastpath.last_dispatch_report()["environment"]["complex_expansion_licence"]
-    assert licence["arm"] == "FMA_V1"
-    assert licence["basis"] == "measured"
-    assert licence["policy_resolved"] == "keep"
-    assert licence["refusals"] == []
-    assert licence["claimed_environment"]["machine"] == "x86_64"
-    assert licence["claimed_environment"]["cupy_version"] == "13.5.1"
-
-
-def test_an_artifact_claiming_another_machine_is_named_in_the_record(
-        monkeypatch, tmp_path):
-    """``environment_default`` matches its table against the record's own
-    ``environment`` block and nothing cross-checked that block against the host
-    it is being READ on. Reported rather than refused — the policy check is what
-    holds the line — but a wrong-host artifact must be visible in the audit."""
-    path, _ = _probe_artifact(tmp_path, "keep")
-    record = json.loads(path.read_text(encoding="utf-8"))
-    record["environment"]["machine"] = "s390x"
-    record["environment"]["cupy_version"] = "99.0.0"
-    path.write_text(json.dumps(record), encoding="utf-8")
-    monkeypatch.setenv(fastpath.COMPLEX_PROBE_ENV, str(path))
-    install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
-                                            {"step_B": "PML"}))
-    stub_triton(monkeypatch, "3.1.0")
-    fastpath.plan_fast_path(object(), object(), cupy_like_grid())
-
-    mismatch = fastpath.last_dispatch_report()["environment"][
-        "complex_expansion_probe_environment_mismatch"]
-    assert any("s390x" in line for line in mismatch)
-    assert any("99.0.0" in line for line in mismatch)
-
-
-def test_a_malformed_probe_artifact_does_not_take_the_planner_down(
-        monkeypatch, tmp_path):
-    """``plan_fast_path`` never raises. A JSON list where a pattern verdict
-    belongs used to raise TypeError out of the licence rule; the seam must reach
-    the array path instead."""
-    path, _ = _probe_artifact(tmp_path, "keep")
-    record = json.loads(path.read_text(encoding="utf-8"))
-    record["patterns"]["c8_mul_c8"] = ["FMA_V1"]
-    path.write_text(json.dumps(record), encoding="utf-8")
-    monkeypatch.setenv(fastpath.COMPLEX_PROBE_ENV, str(path))
-    install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
-                                            {"step_B": "PML"}))
-    stub_triton(monkeypatch, "3.1.0")
-    fastpath.plan_fast_path(object(), object(), cupy_like_grid())  # must not raise
-    licence = fastpath.last_dispatch_report()["environment"]["complex_expansion_licence"]
-    assert licence["refusals"], "a malformed artifact must refuse by name"
-
-
 def test_a_deliberately_uncovered_grid_reaches_the_array_path_with_reasons(monkeypatch):
     """Nothing admitted: refused, and every slot carries the refusal text."""
     reasons = {slot: (f"{slot}: the grid carries a feature no kernel implements",)
@@ -1182,6 +1025,13 @@ def _assert_one_licence_holds(record, package, wanted) -> None:
         "recut_driver_dispatch_record.py --end-to-end")
     assert licence["gate"] == recut.LICENCE_GATE, licence.get("gate")
     assert licence["run"] and licence["recorded_utc"] and licence["host"], licence
+    # THE LICENCE IS THE ROUND'S BY NAME (``route_stamps.licence_campaign``): the slot's
+    # bytes can be unchanged across a re-route, so only the directory its ship leg ran
+    # in tells this round's licence from another's.
+    refused = route_stamps.licence_refusal(
+        "triton", recut._licence_directory(licence),  # noqa: SLF001
+        recut._device_suffix(wanted))  # noqa: SLF001
+    assert refused is None, refused
     verdicts = licence["verdicts"]
     assert len(verdicts) == 9, sorted(verdicts)
     assert set(verdicts.values()) <= set(recut.LICENCE_VERDICTS), verdicts
@@ -1391,7 +1241,7 @@ def test_the_recorded_dispatch_shape_matches_the_wiring_it_describes():
     released = record["exclusions"]["released_fused_arms"]
     assert set(released["arms"]) == set(fastpath.RELEASED_FUSED_ARMS), released
     _assert_each_admitted_capability_names_its_route_campaign(
-        record, "triton", fastpath.DRIVER_ROUTE_FUSED_GATE)
+        record, "triton", route_stamps.route_gate("triton"))
     for arm, cases in fastpath.RELEASED_FUSED_ARMS.items():
         assert fastpath.arm_is_fused(arm), arm
         assert cases, f"{arm} is released without naming a case it was driven on"
@@ -1598,7 +1448,7 @@ def test_the_cited_driver_route_gate_ran_the_bytes_the_record_binds():
     admitted = fastpath.capability_admission("triton")["admitted"] or ()
     assert admitted, "the Triton table admits no compute capability to read a run for"
     for capability in admitted:
-        campaign = fastpath.route_campaign(fastpath.DRIVER_ROUTE_FUSED_GATE, capability)
+        campaign = fastpath.route_campaign(route_stamps.route_gate("triton"), capability)
         slot = (record.get(fastpath.RUNS) or {}).get(capability) or {}
         assert (slot.get("released_fused_arms") or {}).get("gate") == campaign, (
             f"runs[{capability!r}] cites "
@@ -1606,13 +1456,13 @@ def test_the_cited_driver_route_gate_ran_the_bytes_the_record_binds():
             f"constant spells {campaign!r} for this capability")
         run = results / campaign
         assert run.is_dir(), (
-            f"DRIVER_ROUTE_FUSED_GATE spells {campaign} for compute capability "
+            f"route_stamps.route_gate('triton') spells {campaign} for compute capability "
             f"{capability}, which is not a directory under {results}. The release "
             f"cites an artifact that is not here.")
         legs = sorted(p for p in run.glob("*/gate.json"))
-        assert len(legs) >= 4, (
-            f"{campaign} carries {len(legs)} legs; the gate is four (shipped, "
-            f"harness_keep, flush, shipped_expansion_probe)")
+        assert len(legs) >= 3, (
+            f"{campaign} carries {len(legs)} legs; the gate is three (shipped, "
+            f"harness_keep, flush)")
         for leg in legs:
             artifact = json.loads(leg.read_text(encoding="utf-8"))
             assert artifact["release"]["released"] is True, (
@@ -1629,12 +1479,6 @@ def test_the_cited_driver_route_gate_ran_the_bytes_the_record_binds():
         # arm was driven on; a case no leg drove would be provenance for a measurement
         # nobody took. The record's driven_on_cases is checked against the constant
         # above; this checks the ARTIFACT, which is the thing that did the driving.
-        # A CASE WHOSE LICENCE LIVES ON ANOTHER LEG IS NOT THIS LEG'S EVIDENCE (phase B,
-        # 2026-09-13): the complex, beta-complex, folded-complex and cylindrical-complex
-        # arms take their expansion licence from the unified probe record, which ONE
-        # leg exports, so every other leg records PASS-NOT-THIS-LEG for their cases --
-        # the gate's own spelling, read off the artifact rather than off a table here.
-        # What is still required of EVERY (arm, case) is that some leg drove it.
         driven_somewhere: set = set()
         for leg in legs:
             artifact = json.loads(leg.read_text(encoding="utf-8"))
@@ -1642,11 +1486,8 @@ def test_the_cited_driver_route_gate_ran_the_bytes_the_record_binds():
                 continue          # this leg's licence is rung 8b refusing, not a dispatch
             driven = {case: set((arms or {}).values())
                       for case, arms in (artifact.get("arms_driven") or {}).items()}
-            verdicts = artifact.get("verdicts") or {}
             for arm, cases in fastpath.RELEASED_FUSED_ARMS.items():
                 for case in cases:
-                    if verdicts.get(case) == "PASS-NOT-THIS-LEG":
-                        continue
                     assert arm in driven.get(case, set()), (
                         f"{leg.parent.name}: RELEASED_FUSED_ARMS says {arm!r} was "
                         f"driven on {case!r}, and this leg's artifact does not show it")
@@ -1951,7 +1792,7 @@ def test_every_pending_fused_label_is_one_the_composer_installs():
     # TWENTY-FIVE ON 2026-09-17: `fused pair D (off-diagonal)` and `fused pair D
     # (folded off-diagonal)`, the two scratch-output welds, routed and released in
     # one batch on `offdiag_magnetic_2d` / `folded_offdiag_magnetic_2d`. Their drive
-    # with the weld installed is what `DRIVER_ROUTE_FUSED_GATE`'s campaign owes.
+    # with the weld installed is what the Triton route campaign owed.
     assert (installed & set(fastpath.RELEASED_FUSED_ARMS)) == {
         "fused pair D (off-diagonal)", "fused pair D (folded off-diagonal)",
         "fused pair B (cylindrical)", "fused pair D (cylindrical)",
@@ -2156,7 +1997,7 @@ def test_a_second_fused_arm_riding_along_refuses_the_whole_step(monkeypatch):
     # released arm, so a reader who sees it refused has to be told that what is
     # missing is the CONFIGURATION and not the arm — otherwise the refusal reads
     # as a contradiction of the release list two lines above it in the record.
-    assert fastpath.DRIVER_ROUTE_FUSED_GATE in refusal, refusal
+    assert fastpath.ROUTE_RECORD in refusal, refusal
     # WHERE THE AXIS IS NAMED MOVED IN THE 2026-09-14 TARGET ROUND, so the assertion
     # moves with it rather than being dropped. The refusal STRING quotes the SHARED
     # half of the release only (fastpath's "... is released only for the
@@ -2266,7 +2107,7 @@ def test_the_real_composer_accepts_every_argument_the_dispatcher_passes(monkeypa
     source = pathlib.Path(fastpath.__file__).read_text(encoding="utf-8")
     call = source.split("triton_kernels.plan_step(", 1)[1].split(")\n", 1)[0]
     passed = set(re.findall(r"(\w+)=(?!=)", call))
-    assert {"fuse", "fuse_ade", "fuse_labels", "sources", "probe"} <= passed, passed
+    assert {"fuse", "fuse_ade", "fuse_labels", "sources", "chunk_layout"} <= passed, passed
 
     for function in (package.plan_step, launch_real.plan_step):
         parameters = inspect.signature(function).parameters
@@ -2283,10 +2124,12 @@ def test_the_real_composer_accepts_every_argument_the_dispatcher_passes(monkeypa
     monkeypatch.setattr(launch_real, "plan_step",
                         lambda *args, **kwargs: seen.update(
                             {"args": args, "kwargs": kwargs}) or step_plan())
+    division = object()
     package.plan_step(object(), object(), fuse=True,
-                      fuse_labels=("fused pair B",))
+                      fuse_labels=("fused pair B",), chunk_layout=division)
     assert ("fused pair B",) in seen["args"] or \
            seen["kwargs"].get("fuse_labels") == ("fused pair B",), seen
+    assert seen["kwargs"].get("chunk_layout") is division, seen
 
 
 def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeypatch):
@@ -2721,7 +2564,7 @@ def test_a_released_fused_arm_dispatches_only_inside_the_envelope(monkeypatch, l
     """THE RELEASE, both directions, over the whole fused label space.
 
     Every released label in this map was driven through the driver's own consults
-    by ``fastpath.DRIVER_ROUTE_FUSED_GATE`` and dispatches here with nothing set;
+    by the Triton route campaign and dispatches here with nothing set;
     the unreleased ones do not and still refuse by name on the very configuration
     that admits their siblings. The refusal for an unreleased label must not read as
     a configuration problem, and the refusal for a released label outside the
@@ -3012,7 +2855,7 @@ def test_the_fusion_opt_in_is_recorded_on_a_run_that_never_asked(monkeypatch):
     assert block["variable"] == "MEEP_GPU_FUSE_ARMS"
     assert block["value"] is None and block["opted_in"] == []
     assert block["driven"] == {}
-    assert block["driver_route_gate"] == fastpath.DRIVER_ROUTE_FUSED_GATE
+    assert block["driver_route_gate"] == fastpath.ROUTE_RECORD
     assert block["released_by_the_gate"] == sorted(fastpath.RELEASED_FUSED_ARMS)
     # Outside the envelope: released_here is empty AND says which axes said so.
     assert block["released_here"] == [] and block["admitted"] == []
@@ -3557,16 +3400,6 @@ def test_every_array_slot_carries_a_named_reason(monkeypatch):
     for slot, entry in plan.report()["slots"].items():
         if entry["state"] == "array":
             assert entry["reason"], f"{slot} went to the array path with nothing to say"
-
-
-def test_the_artifact_records_the_expansion_probe_state(monkeypatch):
-    """R5: four certified families refuse without the complex-expansion licence,
-    and that must be visible rather than show up as families quietly missing."""
-    monkeypatch.delenv(fastpath.COMPLEX_PROBE_ENV, raising=False)
-    plan_on_a_cupy_host(monkeypatch, step_plan())
-    environment = fastpath.last_dispatch_report()["environment"]
-    assert environment["complex_expansion_probe_env_set"] is False
-    assert environment["complex_expansion_probe_resolved"] in (True, False)
 
 
 def test_one_json_object_is_appended_per_configuration_freeze(tmp_path, monkeypatch):
@@ -4279,8 +4112,8 @@ def test_a_mirror_folded_run_refuses_even_when_both_fill_arms_declined(monkeypat
          "step_D": "folded complex PML", "update_E": "folded complex"},
         {"fill_B": ("mirror fill: force_complex_fields=True (complex64 storage is "
                     "not carried)",),
-         "fill_D": ("folded complex fill: the expansion probe artifact lacks the "
-                    "pattern this tranche adds",)}))
+         "fill_D": ("folded complex fill: grid.bloch_phase is missing or not "
+                    "callable; an unreadable phase table is not an unphased one",)}))
     plan = fastpath.plan_fast_path(object(), object(), folded_grid())
     assert plan is None, "a folded run must not dispatch while the seam cannot fill"
     record = fastpath.last_dispatch_report()
@@ -4482,7 +4315,7 @@ def test_a_device_the_gates_never_ran_on_is_refused_by_name_when_it_is_unsupport
 
 def test_a_supported_device_the_gates_never_ran_on_dispatches_uncertified(monkeypatch):
     """A device in the supported range that no gate ran on runs by default, and the
-    record says it is not certified; ``MEEP_GPU_ALLOW_UNCERTIFIED=0`` refuses it."""
+    record says it is not certified; ``MEEP_GPU_HARDWARE=certified`` refuses it."""
     stub_triton(monkeypatch)
     block_cuda(monkeypatch)
     install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
@@ -4496,10 +4329,10 @@ def test_a_supported_device_the_gates_never_ran_on_dispatches_uncertified(monkey
     assert record["environment"]["device_certified"] is False
     assert record["environment"]["device_supported"] is True
     assert [entry["table"] for entry in record["uncertified"]["served"]] == ["triton"]
-    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, "0")
+    monkeypatch.setenv(fastpath.HARDWARE_SWITCH, fastpath.HARDWARE_CERTIFIED)
     assert fastpath.plan_fast_path(object(), object(), grid) is None
     assert fastpath.last_dispatch_report()["refused_because"].endswith(
-        fastpath.CERTIFIED_ONLY_TAIL)
+        fastpath.CERTIFIED_SCOPE_TAIL)
 
 
 def test_the_certified_device_dispatches_and_is_recorded(monkeypatch):
@@ -4819,8 +4652,8 @@ def test_a_partial_family_dispatch_is_disclosed_rather_than_refused(monkeypatch)
     plan = plan_on_a_cupy_host(monkeypatch, step_plan(
         {"update_H": CountingPlan("h"), "update_E": CountingPlan("e")},
         {"update_H": "complex beta run", "update_E": "complex beta run"},
-        {"step_B": ("complex beta PML: the expansion probe artifact lacks "
-                    "'c8_mul_c8_imaginary_coefficient_left'",)}))
+        {"step_B": ("complex beta PML: boundary kinds could not be resolved "
+                    "for this grid",)}))
     assert plan is not None
     composition = plan.report()["composition"]
     assert composition["mixed"] is True
@@ -5080,7 +4913,7 @@ def test_the_metal_record_is_welded_to_the_live_sources_when_it_exists():
     ledger = json.loads((package / "metal_kernels" / "fingerprints.json")
                         .read_text(encoding="utf-8"))
     record = ledger.get("driver_dispatch")
-    stamp = metal_dispatch.METAL_DRIVER_ROUTE_GATE
+    stamp = route_stamps.route_gate("metal")
     if record is None:
         # THE PRE-CAMPAIGN BRANCH, AND IT NOW ASSERTS SOMETHING. It read
         # ``assert <expr> or True`` until 2026-09-11 -- a tautology, in a branch whose
@@ -5423,8 +5256,7 @@ def test_the_composer_signature_matches_the_call_the_ladder_makes():
     passed = set(re.findall(r"(\w+)=", call.group(1)))
     accepted = set(inspect.signature(cuda_arms.plan_step).parameters)
     assert passed <= accepted, sorted(passed - accepted)
-    assert {"fuse", "fuse_labels", "sources", "licenses",
-            "subnormal_policy"} <= passed
+    assert {"fuse", "fuse_labels", "sources", "chunk_layout"} <= passed
 
 
 def test_the_record_carries_both_tables_on_a_refused_early_run(monkeypatch):
@@ -5457,14 +5289,14 @@ def test_the_recorded_cuda_dispatch_shape_matches_the_wiring_it_describes():
     if record is None:
         requires_resource_skip(
             "cuda_driver_dispatch_record",
-            f"{fastpath_cuda.CUDA_DRIVER_ROUTE_FUSED_GATE} has not been run and "
+            f"{route_stamps.route_gate('cuda')} has not been run and "
             "recut_driver_dispatch_record.py --backend cuda has not written the "
             "block; the gate is NAMED before it runs, so this interval is the "
             "ordering rule rather than a gap")
     assert record.get("table") == "cuda", record.get("table")
     exclusions = record["exclusions"]["released_fused_arms"]
     _assert_each_admitted_capability_names_its_route_campaign(
-        record, fastpath.CUDA_TABLE, fastpath_cuda.CUDA_DRIVER_ROUTE_FUSED_GATE)
+        record, fastpath.CUDA_TABLE, route_stamps.route_gate("cuda"))
     assert set(exclusions["arms"]) == set(fastpath_cuda.CUDA_RELEASED_FUSED_ARMS)
     for arm, cases in fastpath_cuda.CUDA_RELEASED_FUSED_ARMS.items():
         assert set(exclusions["per_arm_cases"][arm]) == set(cases), arm

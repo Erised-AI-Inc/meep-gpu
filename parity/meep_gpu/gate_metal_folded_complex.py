@@ -16,6 +16,22 @@ were ever zero this family should be deleted and the real fold's fill admitted o
 complex storage instead, and a gate that did not say so would be certifying a family
 whose reason to exist had evaporated.
 
+THE PER-CHUNK FORMS AND THE PER-PART PARITY (bit_parity_0_10, KERNELS.md §7, step M5).
+The curl is ``complex_fields``' per-chunk template with the top-plane mask, bound to the
+chunk record of the division the array path steps with
+(``gate_chunk_records.layer_record``), and the constitutive is the complex family's.
+The array path now writes a mirror ghost as ``part_products.scale(parity, plane)``: one
+float32 product per part by the host-rounded parity word, which IS the real fold's sign
+flip (or copy) on every normal word and zero. So leg ``parity`` is INVERTED: the real
+fold's sign-bit spelling must reproduce the array path on the physical band (it differs
+only on subnormal words, which a product flushes on this backend and a sign-bit copy
+does not -- leg ``band``), the plane-wise and orientation mutations are declared
+equivalences, and the X, Y, Z order is a measured null because a product by +/-1 per
+part commutes exactly. Whether this family's fill should give way to the real fold's on
+complex storage is an owner decision this gate records rather than makes. Where the text
+below speaks of the parity as a full complex product with zero cross terms, it
+describes the previous fill.
+
 THE SUBNORMAL PRECONDITION IS LOAD-BEARING HERE IN A WAY IT IS NOT FOR THE REAL
 FOLD. That family records its FILL as band-safe because the fill performs no
 arithmetic; making the parity a complex product makes it arithmetic, and arithmetic
@@ -81,6 +97,7 @@ from meep_gpu.triton_kernels import symmetry as triton_symmetry  # noqa: E402
 from meep_gpu.triton_kernels.coverage import CONSTITUTIVE_SIDES  # noqa: E402
 
 import metal_gate_kit as kit  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
 log, save, differing, words = kit.log, kit.save, kit.differing, kit.words
 needle = kit.needle
@@ -138,9 +155,6 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
                                     boundaries={"y": "metallic"}, depth=1.2)),
 )
 
-PROBE = folded_complex.load_expansion_probe()
-EXPANSION = folded_complex.expansion_from_probe(PROBE) if PROBE else None
-
 
 def build(label: str) -> Tuple[Any, Any]:
     return matrix.folded(complex_storage=True, **dict(CASES)[label])
@@ -177,7 +191,7 @@ def tags(fields: Any, pml: Any) -> Tuple[str, ...]:
     # CAUGHT 8/10, and the two misses are exactly `metallic_even_3d` and
     # `bloch_metallic_fold_3d`. Scoping on the tag turns a misleading 8/10 into an
     # honest 8/8 over the cases where the defect EXISTS.
-    if any(entry["coefficient"][0] < 0
+    if any(entry["coefficient"] < 0
            for family in ("B", "D") for pass_name in ("near", "far")
            for entry in folded_complex.fill_axis_entries(
                fields.grid, family, pass_name)):
@@ -256,13 +270,14 @@ def run_curl(fields: Any, pml: Any, sub_step: str,
              functions: Optional[Dict[str, Any]] = None) -> Any:
     """Launch the folded complex curl through the ENGINE route (or a mutant)."""
     residency = device.Residency()
+    record = layer_record(fields.grid, pml)
     if functions is None:
         plan = folded_complex.plan_folded_complex_pml_curl(
-            fields, pml, sub_step, residency, probe=PROBE)
+            fields, pml, sub_step, residency, chunk_bounds=record)
         if plan is None:
             raise AssertionError(
                 folded_complex.folded_complex_composition_curl_coverage(
-                    fields, pml, sub_step, residency, PROBE).reasons)
+                    fields, pml, sub_step, residency).reasons)
     else:
         codes, _ = folded_complex.folded_axis_kinds(fields.grid, pml)
         kinds = stepping._boundary_kinds(fields.grid, pml)
@@ -274,8 +289,8 @@ def run_curl(fields: Any, pml: Any, sub_step: str,
             for axis in "xyz" for stem in ("kms", "sinv")}
         plan = folded_complex.plan_folded_complex_pml_curl_from_arrays(
             sub_step, arrays, flat, codes, phases,
-            fields.grid.dt / fields.grid.dx, EXPANSION, residency,
-            functions=functions)
+            fields.grid.dt / fields.grid.dx, residency,
+            functions=functions, chunk_bounds=record)
     residency.sync_in()
     plan.run()
     residency.sync_out()
@@ -310,7 +325,7 @@ def build_fill(fields: Any, family: str, residency: Any,
             if key in functions[shaders.CONTRACT_OFF]:
                 continue
             shipped = folded_complex.folded_mirror_fill_complex_source(
-                entry["axis"], entry["pass"], entry["shifts"], EXPANSION)
+                entry["axis"], entry["pass"], entry["shifts"])
             text = source_text(key, entry)
             functions[shaders.CONTRACT_OFF][key] = compile_source(
                 text if text is not None else shipped).folded_mirror_fill_complex
@@ -319,12 +334,10 @@ def build_fill(fields: Any, family: str, residency: Any,
         # classified DISARMED rather than passing as uncaught.
         return folded_complex.plan_folded_complex_fill_from_arrays(
             family, "fill_" + family,
-            {n: getattr(fields, n) for n in fill_names(family)}, near, far,
-            EXPANSION, residency, functions=functions)
+            {n: getattr(fields, n) for n in fill_names(family)}, near, far, residency, functions=functions)
     return folded_complex.plan_folded_complex_fill_from_arrays(
         family, "fill_" + family,
-        {n: getattr(fields, n) for n in fill_names(family)}, near, far,
-        EXPANSION, residency)
+        {n: getattr(fields, n) for n in fill_names(family)}, near, far, residency)
 
 
 def run_fill(fields: Any, family: str, **kwargs: Any) -> Any:
@@ -340,10 +353,11 @@ def run_fill(fields: Any, family: str, **kwargs: Any) -> Any:
 def run_constitutive(fields: Any, pml: Any, side: str) -> Any:
     residency = device.Residency()
     plan = folded_complex.plan_folded_complex_constitutive(
-        fields, pml, side, residency, probe=PROBE)
+        fields, pml, side, residency,
+        chunk_bounds=layer_record(fields.grid, pml))
     if plan is None:
         raise AssertionError(folded_complex.folded_complex_constitutive_coverage(
-            fields, pml, side, residency, PROBE).reasons)
+            fields, pml, side, residency).reasons)
     residency.sync_in()
     plan.run()
     residency.sync_out()
@@ -363,19 +377,20 @@ def reference_step(fields: Any, pml: Any) -> None:
 
 
 def composed_plans(fields: Any, pml: Any, residency: Any) -> Dict[str, Any]:
+    record = layer_record(fields.grid, pml)
     plans = {
         "step_B": folded_complex.plan_folded_complex_pml_curl(
-            fields, pml, "step_B", residency, probe=PROBE),
+            fields, pml, "step_B", residency, chunk_bounds=record),
         "fill_B": folded_complex.plan_folded_complex_fill(
-            fields, "B", "fill_B", residency, probe=PROBE),
+            fields, "B", "fill_B", residency),
         "update_H": folded_complex.plan_folded_complex_constitutive(
-            fields, pml, "H", residency, probe=PROBE),
+            fields, pml, "H", residency, chunk_bounds=record),
         "step_D": folded_complex.plan_folded_complex_pml_curl(
-            fields, pml, "step_D", residency, probe=PROBE),
+            fields, pml, "step_D", residency, chunk_bounds=record),
         "fill_D": folded_complex.plan_folded_complex_fill(
-            fields, "D", "fill_D", residency, probe=PROBE),
+            fields, "D", "fill_D", residency),
         "update_E": folded_complex.plan_folded_complex_constitutive(
-            fields, pml, "E", residency, probe=PROBE),
+            fields, pml, "E", residency, chunk_bounds=record),
     }
     missing = [name for name, plan in plans.items() if plan is None]
     assert not missing, f"no plan for {missing}"
@@ -404,7 +419,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
     curl restricted to the phase flags each code quadruple can legally carry (a
     metallic or folded axis cannot phase), plus the fill.
     """
-    sources = folded_complex.enumerate_folded_complex_sources(EXPANSION)
+    sources = folded_complex.enumerate_folded_complex_sources()
     kit.provenance(os.path.dirname(out), {
         "folded_complex.py": os.path.join(
             API_ROOT, "meep_gpu/metal_kernels/folded_complex.py"),
@@ -420,14 +435,12 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
     built = 0
     for mode in shaders.CONTRACT_MODES:
         for source in folded_complex.enumerate_folded_complex_sources(
-                EXPANSION, mode).values():
+                mode).values():
             compile_source(source)
             built += 1
     kit.assert_moved(built, "no specialisation compiled", floor=2 * len(sources))
 
     payload["legs"]["execution"] = {
-        "expansion": EXPANSION,
-        "probe_patterns": (PROBE or {}).get("patterns"),
         "specialisations": len(sources),
         "compiled": built,
         "environment": ENVIRONMENT,
@@ -438,7 +451,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
             "that the contraction guard was obeyed. Every leg is behavioural."),
     }
     save(payload, out)
-    log(f"[execution] arm={EXPANSION} specialisations={len(sources)} "
+    log(f"[execution] specialisations={len(sources)} "
         f"compiled={built}")
 
 
@@ -529,7 +542,7 @@ def leg_constitutive(payload: Dict[str, Any], out: str) -> None:
     the execution leg records.
     """
     assert not any("constitutive" in label for label in
-                   folded_complex.enumerate_folded_complex_sources(EXPANSION)), (
+                   folded_complex.enumerate_folded_complex_sources()), (
         "this family emitted a constitutive source: it is supposed to re-admit "
         "complex_fields.bloch_constitutive_step, not replace it")
     rows: List[Dict[str, Any]] = []
@@ -696,11 +709,16 @@ def sign_bit_spelling(plane: Any, parity: int) -> Any:
 
 
 def leg_parity(payload: Dict[str, Any], out: str) -> None:
-    """THE WHOLE REASON THIS FAMILY EXISTS, measured and REQUIRED to be nonzero.
+    """The real fold's sign-bit spelling against the array path's per-part parity product.
 
-    Apply the real fold's sign-bit spelling to the same fill under complex64 and
-    count the words it misses. If this were ever zero, ``folded_complex`` should be
-    deleted and ``symmetry.mirror_ghost_fill`` admitted on complex storage instead.
+    INVERTED WITH THE ARRAY PATH. The array path writes a mirror ghost as one float32
+    product per part by the host-rounded parity word, which is the sign flip (or the
+    copy) on every normal word and on both zeros. So the real fold's sign-bit
+    spelling must reproduce it on every word of the physical band, signed zeros
+    planted -- the previous fill's zero cross terms, which canonicalized a zero's sign,
+    are gone. The two differ only on subnormal words (leg ``band``), and whether this
+    family's fill should give way to the real fold's on complex storage is recorded as
+    an owner decision, not made here.
     """
     rows: List[Dict[str, Any]] = []
     for label, _ in CASES:
@@ -738,9 +756,10 @@ def leg_parity(payload: Dict[str, Any], out: str) -> None:
                     volume[tuple(index)] = sign_bit_spelling(
                         volume[tuple(source)], -declared)
         misses = sum(differing(candidate[n], after[n]) for n in names)
-        assert misses > 0, (
-            label, "the real fold's sign-bit spelling reproduced the array path on "
-            "every word: this family's whole reason to exist is unmeasured here")
+        assert misses == 0, (
+            label, misses, "the real fold's sign-bit spelling missed words of the "
+            "array path's per-part parity product on the physical band, where a "
+            "product by +/-1 per part is the sign flip")
         rows.append({"case": label, "tags": tags(fields, pml), "moved": moved,
                      "sign_bit_spelling_misses": misses})
         log(f"[parity] {label:<24} the real fold's spelling misses {misses} words "
@@ -762,7 +781,7 @@ def leg_band(payload: Dict[str, Any], out: str) -> None:
     the window is what is recorded.
     """
     module = compile_source(folded_complex.folded_mirror_fill_complex_source(
-        1, "near", (0, 1, 0), EXPANSION))
+        1, "near", (0, 1, 0)))
     import torch  # noqa: PLC0415
 
     rng = np.random.default_rng(20260816)
@@ -782,12 +801,17 @@ def leg_band(payload: Dict[str, Any], out: str) -> None:
         volumes = [np.ascontiguousarray(plane.copy()) for _ in range(3)]
         reference = [v.copy() for v in volumes]
         for target in (0, 2):                       # shifts (0, 1, 0)
-            reference[target][:, 0, :] = np.complex64(1) * reference[target][:, 2, :]
+            # The array path's per-part product by the +1 parity word; the host here
+            # keeps subnormals, so this is the unflushed word.
+            row2 = reference[target][:, 2, :]
+            out_row = np.empty_like(row2)
+            out_row.real[...] = np.float32(1.0) * row2.real
+            out_row.imag[...] = np.float32(1.0) * row2.imag
+            reference[target][:, 0, :] = out_row
         tensors = [torch.from_numpy(v.view(np.float32).reshape(-1, 2).copy()).to("mps")
                    for v in volumes]
         module.folded_mirror_fill_complex(
-            *tensors, shape[0], shape[1], shape[2], shape[0] * shape[2], -1,
-            (1.0, 0.0))
+            *tensors, shape[0], shape[1], shape[2], shape[0] * shape[2], -1, 1.0)
         torch.mps.synchronize()
         got = [t.cpu().numpy().reshape(-1).view(np.complex64).reshape(shape)
                for t in tensors]
@@ -811,8 +835,9 @@ def leg_band(payload: Dict[str, Any], out: str) -> None:
                  "READS, doubled for the two shift-0 targets that read it, so it is "
                  "commensurable with `differing`. The two match at every scale: "
                  "every subnormal operand word flushes and nothing else moves. The "
-                 "FILL is band-safe on the REAL fold and is NOT here, because the "
-                 "composition made the parity arithmetic"),
+                 "FILL is band-safe on the REAL fold (a sign-bit copy) and is NOT "
+                 "here, because the parity is a per-part product, as the array path's "
+                 "is"),
     }
     save(payload, out)
 
@@ -953,28 +978,30 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                        extra={"scope": scope, "signed_zeros_planted": plant,
                               "skipped_cases": skipped})
 
-    # 1. THE HEADLINE. A plane-wise sign flip is the REAL fold's certified spelling
-    #    and is WRONG here at BOTH parities, including the even mirror.
+    # 1. THE REAL FOLD'S SIGN-BIT SPELLING, a DECLARED EQUIVALENCE now: the array
+    #    path's parity is a product by +/-1 per part, which is the sign flip (or the
+    #    copy) on every normal word and zero. The planted signed zeros are exactly
+    #    the class the previous fill's zero cross terms canonicalized.
     fill_mutation(
-        "planewise_sign_flip_instead_of_complex_product", True,
-        "the real fold's spelling: {-re, -im} for odd, a plain copy for even. Under "
-        "complex64 the array path is a FULL multiply by (+/-1, +0) with its zero "
-        "cross terms, and the even mirror is not the identity",
+        "sign_bit_spelling_instead_of_the_product", False,
+        "DECLARED EQUIVALENCE: {-re, -im} for odd and a plain copy for even, against "
+        "one float32 product per part by the +/-1 parity word. They agree on every "
+        "normal word and on both zeros (planted here); they differ only on a "
+        "subnormal word, which leg band measures",
         source_text=lambda key, entry: needle(
             folded_complex.folded_mirror_fill_complex_source(
-                entry["axis"], entry["pass"], entry["shifts"], EXPANSION),
-            "c_mul(c, f", "c_planewise(c, f").replace(
+                entry["axis"], entry["pass"], entry["shifts"]),
+            "c_mul_coefficient_left(c, f", "c_signbit(c, f").replace(
                 "kernel void folded_mirror_fill_complex(",
-                "static inline float2 c_planewise(float2 c, float2 z) "
-                "{ return float2(z.x * c.x, z.y * c.x); }\n\n"
+                "static inline float2 c_signbit(float c, float2 z) "
+                "{ return c < 0.0f ? -z : z; }\n\n"
                 "kernel void folded_mirror_fill_complex("))
 
     # 2. THE COEFFICIENT IS PASSED, never synthesised: a flipped word must be caught.
     def flip(family: str, near: List[Dict[str, Any]],
              far: List[Dict[str, Any]]) -> None:
         for entry in near + far:
-            re, im = entry["coefficient"]
-            entry["coefficient"] = (-re, im)
+            entry["coefficient"] = -float(entry["coefficient"])
 
     fill_mutation("flipped_parity_coefficient", True,
                   "the parity enters ONLY as a host-rounded passed word, which is "
@@ -995,20 +1022,19 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                   "second mirror: a whole cell wrong at an ODD full count",
                   scope="odd_full_count", transform=bake_n_minus_two)
 
-    # 4. THE ORIENTATION. A MEASURED EQUIVALENCE for THIS coefficient (c_im is
-    #    bitwise +0.0), and named as one rather than left untested.
+    # 4. THE ORIENTATION. A DECLARED EQUIVALENCE: one float32 product per part,
+    #    and IEEE multiplication is commutative on every non-NaN word.
     fill_mutation(
         "coefficient_orientation_swapped", False,
-        "phase * plane vs plane * phase. For a GENERAL complex coefficient this is "
-        "load-bearing; with c_im an exact +0.0 the two fma addends are the same "
-        "exact zero and float addition is sign-commutative",
+        "parity * plane vs plane * parity, one product per part: IEEE multiplication "
+        "is commutative on every non-NaN word, signed zero included",
         source_text=lambda key, entry: needle(
             folded_complex.folded_mirror_fill_complex_source(
-                entry["axis"], entry["pass"], entry["shifts"], EXPANSION),
-            "c_mul(c, f", "c_swapped(c, f").replace(
+                entry["axis"], entry["pass"], entry["shifts"]),
+            "c_mul_coefficient_left(c, f", "c_swapped(c, f").replace(
                 "kernel void folded_mirror_fill_complex(",
-                "static inline float2 c_swapped(float2 c, float2 z) "
-                "{ return c_mul(z, c); }\n\n"
+                "static inline float2 c_swapped(float c, float2 z) "
+                "{ return c_mul_field_left(z, c); }\n\n"
                 "kernel void folded_mirror_fill_complex("))
 
     # 5. MIRROR THE WRONG HALF. The near pass writes the GHOST cell 0 from the OWNED
@@ -1016,21 +1042,21 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     #    that destroys the half the fold is supposed to reconstruct, and it is the
     #    one a per-sub-step comparison of the CURL alone would never see.
     def near_body_line(slot: int) -> str:
-        return (f"    f{slot}[base] = c_mul(c, "
+        return (f"    f{slot}[base] = c_mul_coefficient_left(c, "
                 f"f{slot}[base + {folded_complex.MIRROR_SOURCE_INDEX} * stride]);")
 
     def mirror_wrong_half(key: str, entry: Dict[str, Any]) -> Optional[str]:
         if entry["pass"] != "near":
             return None            # the far pass carries no `base` write to invert
         text = folded_complex.folded_mirror_fill_complex_source(
-            entry["axis"], entry["pass"], entry["shifts"], EXPANSION)
+            entry["axis"], entry["pass"], entry["shifts"])
         for slot, shift in enumerate(entry["shifts"]):
             if shift != 0:
                 continue
             text = needle(
                 text, near_body_line(slot),
                 f"    f{slot}[base + {folded_complex.MIRROR_SOURCE_INDEX} * stride]"
-                f" = c_mul(c, f{slot}[base]);")
+                f" = c_mul_coefficient_left(c, f{slot}[base]);")
         return text
 
     fill_mutation(
@@ -1049,7 +1075,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
             return None
         return needle(
             folded_complex.folded_mirror_fill_complex_source(
-                entry["axis"], entry["pass"], entry["shifts"], EXPANSION),
+                entry["axis"], entry["pass"], entry["shifts"]),
             f"+ {folded_complex.MIRROR_SOURCE_INDEX} * stride]",
             f"+ {folded_complex.MIRROR_SOURCE_INDEX + 1} * stride]")
 
@@ -1069,8 +1095,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     def drop_sign_flip(family: str, near: List[Dict[str, Any]],
                        far: List[Dict[str, Any]]) -> None:
         for entry in near + far:
-            re, im = entry["coefficient"]
-            entry["coefficient"] = (abs(re), im)
+            entry["coefficient"] = abs(float(entry["coefficient"]))
 
     fill_mutation(
         "drop_the_sign_flip", True,
@@ -1108,21 +1133,21 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "a boundary that has no mirror",
         per_case=wrong_axis)
 
-    # 9. REVERSE THE X, Y, Z FILL ORDER. A MEASURED NULL on one folded axis and on
-    #    matched phases — complex multiplication is not associative, so the order is
-    #    load-bearing exactly where a corner is unowned on two planes whose parities
-    #    DIFFER. Measured: 5 words on `two_axis_mixed_3d`, 0 on all nine others,
-    #    which is why the scope is the tag rather than the whole matrix.
+    # 9. REVERSE THE X, Y, Z FILL ORDER. A DECLARED NULL now, scoped to the one
+    #    configuration where the order was ever measurable (a doubly-unowned corner
+    #    at MIXED phase): a product by +/-1 per part is exact, so the two parities
+    #    compose in either order to the same word. The previous fill's complex
+    #    product did not associate there.
     def reverse_axis_order(family: str, near: List[Dict[str, Any]],
                            far: List[Dict[str, Any]]) -> None:
         near.reverse()
         far.reverse()
 
     fill_mutation(
-        "fill_axis_order_reversed", True,
-        "the array path applies the folded axes in X, Y, Z order; a doubly-unowned "
-        "corner carries the PRODUCT of both parities and complex multiplication does "
-        "not associate, so the order is only measurable at MIXED phase",
+        "fill_axis_order_reversed", False,
+        "DECLARED NULL: a doubly-unowned corner carries both parities, and a product "
+        "by +/-1 per part is exact, so the composition commutes; the order is kept "
+        "as the array path's by transcription",
         scope="mixed_phase", transform=reverse_axis_order)
 
     # 10. READ THE GHOST BEFORE IT IS WRITTEN, by swapping the near and far passes.
@@ -1185,7 +1210,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                 fields.grid, stepping._boundary_kinds(fields.grid, pml)),
             backward=True)
         shipped = folded_complex.folded_bloch_curl_source(
-            codes, True, flags, EXPANSION)
+            codes, True, flags)
         mask = folded_complex.folded_top_plane_mask(
             codes, True, zero=templates.COMPLEX_ZERO)
         try:
@@ -1206,6 +1231,58 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                    "the folded PERIODIC top plane sits past MEEP's big_corner and "
                    "the FILL writes it, not the curl; masking it is what makes the "
                    "two agree", extra={"scope": "far"})
+
+    # 11b. THE §7.2 BATTERY ON THE FOLDED CURL (KERNELS.md §7.2): the per-chunk
+    #     select keyed wrongly, on step_D over every case, against stepping.step_D.
+    curl_flags = "    const bool du0 = in_i_z, du1 = in_i_x, du2 = in_i_y;\n"
+    battery = (
+        ("b1_select_removed", True,
+         "the whole-grid recurrence (the previous package form) on the folded curl",
+         lambda s: needle(s, curl_flags,
+                          "    const bool du0 = true, du1 = true, du2 = true;\n")),
+        ("b5_dsig_dsigu_swapped", True,
+         "each target keyed on its dsig axis's chunk instead of its dsigu axis's",
+         lambda s: needle(s, curl_flags,
+                          "    const bool du0 = in_i_y, du1 = in_i_z, du2 = in_i_x;\n")),
+        ("b6_auxiliary_stored_on_a_plain_cell", True,
+         "fu written outside the recurrence's cells",
+         lambda s: needle(s, "    if (du0) { u0[ii] = n0; }\n", "    u0[ii] = n0;\n")),
+        ("b7_auxiliary_load_unconditional", False,
+         "DECLARED NULL (KERNELS.md §7.2): an unguarded fu load with the store still "
+         "guarded changes no word",
+         lambda s: needle(s, "    float2 p0 = du0 ? u0[ii] : f0[ii];",
+                          "    float2 p0u = u0[ii]; float2 p0 = du0 ? p0u : f0[ii];")),
+    )
+    for label, must_catch, why, apply in battery:
+        missed = False
+        ran = caught = launches = 0
+        for case, _ in CASES:
+            fields, pml = build(case)
+            names = curl_names("step_D")
+            before, after, moved = oracle(
+                fields, lambda: stepping.step_D(fields, pml), names)
+            codes, _ = folded_complex.folded_axis_kinds(fields.grid, pml)
+            flags, _values = complex_fields.phase_arguments(
+                complex_fields.bloch_phase_table(
+                    fields.grid, stepping._boundary_kinds(fields.grid, pml)),
+                backward=True)
+            shipped = folded_complex.folded_bloch_curl_source(
+                codes, True, flags)
+            try:
+                mutant = apply(shipped)
+            except LookupError:
+                missed = True
+                continue
+            counter = kit.Counter(compile_source(mutant).bloch_pml_curl_step)
+            run_curl(fields, pml, "step_D", functions={shaders.CONTRACT_OFF: counter})
+            launches += counter.launches
+            ran += 1
+            if sum(divergence(fields, after).values()):
+                caught += 1
+            restore(fields, before)
+        harness.record(label, harness.verdict(missed, ran, launches, caught),
+                       launches, caught, ran, must_catch, why,
+                       extra={"sub_step": "step_D"})
 
     # 12. READ THE GHOST BEFORE IT IS WRITTEN, at the only granularity where the
     #     defect EXISTS — the complete step. Every sub-step kernel here is the
@@ -1267,7 +1344,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         axis = 1 if codes[1] in folded_complex.MIRROR_CODES else 0
         flags = tuple(1 if i == axis else 0 for i in range(3))
         try:
-            folded_complex.folded_bloch_curl_source(codes, False, flags, EXPANSION)
+            folded_complex.folded_bloch_curl_source(codes, False, flags)
         except ValueError:
             refusals += 1
     assert refusals == 2, refusals
@@ -1312,12 +1389,6 @@ def main() -> int:
             reasons.append("no MPS device on this host")
     except Exception as exc:  # noqa: BLE001
         reasons.append(f"torch unavailable: {exc!r}")
-    if EXPANSION is None:
-        reasons.append(
-            "no folded-complex expansion probe artifact: this family needs the "
-            f"{folded_complex.PARITY_PROBE_PATTERN!r} orientation, which no earlier "
-            "artifact carries. Cut one with "
-            "probe_metal_folded_complex_expansion.py")
     if reasons:
         return kit.cannot_certify(payload, out, reasons)
 

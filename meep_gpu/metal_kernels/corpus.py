@@ -59,7 +59,6 @@ DOMAINS: Dict[str, Tuple[Any, ...]] = {
     "zero_metal": _BOOL_TRIPLES,       # per-axis inline wall clear
     "conductive": _BOOL_TRIPLES,
     "has_beta": (False, True),
-    "expansion": ("FMA_V1", "NAIVE"),  # the two measured complex-multiply arms
     "contract": (templates.CONTRACT_OFF,),
 }
 

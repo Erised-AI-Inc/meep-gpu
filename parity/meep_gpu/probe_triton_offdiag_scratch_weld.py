@@ -80,6 +80,7 @@ SOURCES: Tuple[str, ...] = (
     "meep_gpu/triton_kernels/offdiag_fused_electric_pair.py",
     "meep_gpu/triton_kernels/offdiag_update_e.py",
     "meep_gpu/triton_kernels/kernels.py",
+    "meep_gpu/triton_kernels/forms.py",
     "meep_gpu/stepping.py",
     "parity/meep_gpu/probe_triton_offdiag_scratch_weld.py",
 )
@@ -94,7 +95,9 @@ FAMILIES: Dict[str, Dict[str, Any]] = {
         "curl_module": "meep_gpu/triton_kernels/kernels.py",
         "curl_kernel": "pml_curl_step",
         "curl_decode_end": "    i = plane // ny\n",
-        "curl_store_start": "    tl.store(u0 + idx, n0, mask=live)",
+        # The certified curl stores fu on the recurrence's cells only (the
+        # auxiliary contract), so its first store line carries that mask.
+        "curl_store_start": "    tl.store(u0 + idx, n0, mask=live & du0)",
         "lift_decode_end": "        idx = i * nyz + j * nz + k\n",
         "lift_return_start": "        return v0, v1, v2, n0, n1, n2",
         "constitutive_module": "meep_gpu/triton_kernels/offdiag_update_e.py",
@@ -121,7 +124,7 @@ FAMILIES: Dict[str, Dict[str, Any]] = {
         "curl_module": "meep_gpu/triton_kernels/symmetry.py",
         "curl_kernel": "pml_curl_step_folded",
         "curl_decode_end": "    i = plane // ny\n",
-        "curl_store_start": "    tl.store(u0 + idx, n0, mask=live)",
+        "curl_store_start": "    tl.store(u0 + idx, n0, mask=live & du0)",
         "lift_decode_end": "        idx = i * nyz + j * nz + k\n",
         "lift_return_start": "        return v0, v1, v2, n0, n1, n2",
         "constitutive_module":
@@ -342,11 +345,16 @@ def transcription_leg(family: str) -> Dict[str, Any]:
             f"{spec['welded_term']} is not {spec['term']} under the four "
             f"declared needles alone")
 
-    # 5. The row-sum helper is the certified one, verbatim.
-    if _dedent(_statements(_function_source(spec["module"], "_masked_row_sum"))) \
-            != _dedent(_statements(_function_source(
-                spec["constitutive_module"], "_masked_row_sum"))):
-        findings.append("_masked_row_sum was edited on the way in")
+    # 5. The row helper is the certified one, by import and not by copy: the
+    #    weld defines no row helper of its own and binds offdiag_update_e._row_add,
+    #    the one the certified constitutive kernels call.
+    module_text = open(os.path.join(API_ROOT, spec["module"]), encoding="utf-8").read()
+    for name in ("_row_add", "_masked_row_sum"):
+        if re.search(r"^\s*def " + name + r"\(", module_text, re.MULTILINE):
+            findings.append(f"the weld defines its own {name}; the row helper is "
+                            f"offdiag_update_e._row_add, imported")
+    if not re.search(r"from \.offdiag_update_e import [^\n]*\b_row_add\b", module_text):
+        findings.append("the weld does not import offdiag_update_e._row_add")
 
     # 6. NO DISPLACEMENT LOAD SURVIVES BELOW THE SEAM. In the fused signature the
     #    three `g` pointers are the MAGNETIC field; a missed read is a smooth

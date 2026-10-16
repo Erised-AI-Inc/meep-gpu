@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 """Local MPS byte gate for the complete Lorentz/Drude ``update_P`` slot.
 
-The oracle is :meth:`PolarizationState.update` itself.  Each product is emitted
-to JSONL, flushed, and fsynced before the next product starts.  The result is
-bound to the exact host planner, gate, and specialized Metal source bytes.
+The oracle is :meth:`PolarizationState.update` itself: MEEP's isotropic update on
+its four float32 constants, with the drive MEEP's per-chunk ``w = f_w ? f_w : f``
+(:meth:`Fields.drive_field` on the one-rank region plan the build installs). Each
+product is emitted to JSONL, flushed, and fsynced before the next product starts.
+The result is bound to the exact host planner, gate, and specialized Metal source
+bytes.
+
+The mutation legs (KERNELS.md §7.1, §7.2): the previous package form -- the three
+folded coefficients and its three-term grouping -- is planted and must be caught,
+as are the other groupings and dropped terms; under an absorber the drive select is
+removed both ways, inverted and keyed on the wrong lattice, and the bound record is
+moved by one row. Every PML case splits each driven component between the two
+drive forms, so both sides of the select are stepped.
 """
 
 from __future__ import annotations
@@ -25,6 +35,8 @@ if str(API_ROOT) not in sys.path:
 
 import numpy as np  # noqa: E402
 
+from meep_gpu import stepping  # noqa: E402
+from meep_gpu.chunk_map import record_index  # noqa: E402
 from meep_gpu.dispersion import (  # noqa: E402
     DRUDE,
     LORENTZIAN,
@@ -41,6 +53,15 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
     metal_frontend_version,
 )
 from meep_gpu.pml import PML  # noqa: E402
+
+from gate_chunk_records import layer_record  # noqa: E402
+
+#: The one shipped real arithmetic line (no absorber, scalar sigma), the needle the
+#: grouping mutations replace.
+SHIPPED_LINE = ("p_out[idx] = gamma1inv * (((two_minus_od * p) - (gamma1 * q)) + "
+                "(omega0dtsqr * (s * w)));")
+#: The shipped drive select, the needle the select mutations replace.
+SELECT_LINE = "w = dw ? fw[idx] : drive[idx];"
 
 
 def sha256_bytes(payload: bytes) -> str:
@@ -60,25 +81,94 @@ def differing(left: Any, right: Any) -> int:
     return int(np.count_nonzero(words(left) != words(right)))
 
 
+def _planted(source: str, needle: str, replacement: str) -> str:
+    if source.count(needle) != 1:
+        raise RuntimeError(f"mutation needle {needle!r} is not unique in the source")
+    return source.replace(needle, replacement, 1)
+
+
 def mutation_sources() -> Dict[str, str]:
+    """Arithmetic mutants of the no-absorber real body, each must-catch.
+
+    ``previous_folded_three_term_form`` is the inverted mutation (KERNELS.md §7.1):
+    the package's previous spelling, three coefficients folded from MEEP's four
+    (``c_now = gamma1inv*two_minus_od``, ``c_prev = -(gamma1inv*gamma1)``,
+    ``c_drive = gamma1inv*omega0dtsqr``) and its left-associated three-term sum.
+    """
     base = family.ade_source("float32", False)
     return {
-        "drop_previous_history": base.replace(
-            "(c_prev * q)", "(0.0f * q)", 1),
-        "reassociate_three_terms": base.replace(
-            "((p * c_now) + (c_prev * q)) + (c_drive * (s * w))",
-            "(p * c_now) + ((c_prev * q) + (c_drive * (s * w)))", 1),
-        "drop_sigma": base.replace("(s * w)", "(1.0f * w)", 1),
+        "previous_folded_three_term_form": _planted(base, SHIPPED_LINE, (
+            "float c_now = gamma1inv * two_minus_od; "
+            "float c_prev = -(gamma1inv * gamma1); "
+            "float c_drive = gamma1inv * omega0dtsqr; "
+            "p_out[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));")),
+        "drop_previous_history": _planted(base, "(gamma1 * q)", "(0.0f * q)"),
+        "drive_product_reassociated": _planted(
+            base, "(omega0dtsqr * (s * w))", "((omega0dtsqr * s) * w)"),
+        "outer_scale_distributed": _planted(base, SHIPPED_LINE, (
+            "p_out[idx] = (gamma1inv * ((two_minus_od * p) - (gamma1 * q))) + "
+            "(gamma1inv * (omega0dtsqr * (s * w)));")),
+        "drop_sigma": _planted(base, "(s * w)", "(1.0f * w)"),
     }
+
+
+def complex_mutation_sources() -> Dict[str, str]:
+    """Grouping mutants of the complex (two real passes) body, each must-catch."""
+    base = family.ade_source("complex64", True)
+    return {
+        "complex_sum_regrouped": _planted(
+            base, "p_out[idx] = gamma1inv * ((a - b) + d);",
+            "p_out[idx] = gamma1inv * (a - (b - d));"),
+        "complex_drive_product_reassociated": _planted(
+            base, "float2 d = omega0dtsqr * sw;", "float2 d = (omega0dtsqr * s) * w;"),
+    }
+
+
+def select_mutation_sources(axis: int) -> Dict[str, str]:
+    """Drive-select mutants of the absorber body on one component's axis."""
+    base = family.ade_source("float32", True, select_axis=axis)
+    swapped = base.split("// chunk bounds: begin", 1)
+    lattice = swapped[0] + "// chunk bounds: begin" + swapped[1].replace(
+        "cbh_", "cbi_").replace("in_h_", "in_i_")
+    return {
+        "drive_select_removed_reads_f_w": _planted(base, SELECT_LINE, "w = fw[idx];"),
+        "drive_select_removed_reads_stored_e": _planted(
+            base, SELECT_LINE, "w = drive[idx];"),
+        "drive_select_inverted": _planted(base, SELECT_LINE,
+                                          "w = dw ? drive[idx] : fw[idx];"),
+        "drive_select_on_the_integer_lattice": lattice,
+    }
+
+
+#: The record mutations (§7.2's off-by-one row): the kernel binds the true record
+#: transformed, the oracle steps the true division.
+def _record_moved(word: int, delta: int):
+    def mutate(record: np.ndarray, axis: int) -> np.ndarray:
+        moved = np.array(record, copy=True)
+        moved[record_index(True, axis, word)] += delta
+        return moved
+    return mutate
+
+
+RECORD_MUTATIONS = {
+    "record_low_run_end_plus_one": _record_moved(1, +1),
+    "record_high_run_start_minus_one": _record_moved(2, -1),
+}
 
 
 def source_provenance() -> Dict[str, Any]:
     sources = {
-        f"{dtype}/sigma-{kind}": sha256_bytes(
-            family.ade_source(dtype, kind == "volume").encode("utf-8"))
+        f"{dtype}/sigma-{kind}/select-{axis}": sha256_bytes(
+            family.ade_source(dtype, kind == "volume", select_axis=axis).encode("utf-8"))
         for dtype in ("float32", "complex64")
         for kind in ("scalar", "volume")
+        for axis in (None, 0, 1, 2)
     }
+    mutants = dict(mutation_sources())
+    mutants.update(complex_mutation_sources())
+    for axis in range(3):
+        mutants.update({f"{name}/axis-{axis}": source
+                        for name, source in select_mutation_sources(axis).items()})
     return {
         "files": {
             "family": sha256_file(Path(family.__file__).resolve()),
@@ -88,7 +178,7 @@ def source_provenance() -> Dict[str, Any]:
         "specialized_metal_sources": sources,
         "mutation_metal_sources": {
             name: sha256_bytes(source.encode("utf-8"))
-            for name, source in mutation_sources().items()
+            for name, source in mutants.items()
         },
     }
 
@@ -137,16 +227,20 @@ def build(*, shape: Sequence[int], active_pml: bool, complex_storage: bool,
         state = PolarizationState(susceptibility, sigma, grid, dtype)
         fields.polarizations.append(state)
 
+    if active_pml:
+        # THE REGION PLAN A DRIVER INSTALLS WITH THE LAYER: the one-rank division of
+        # this grid and absorber, which Fields.drive_field (the oracle's drive) reads.
+        stepping._region_plan(fields, pml)
     for component in ("Ex", "Ey", "Ez"):
-        drive = fields.drive_field(component)
-        drive.real[...] = rng.uniform(-0.5, 0.5, shape).astype(np.float32)
-        if np.iscomplexobj(drive):
-            drive.imag[...] = rng.uniform(-0.5, 0.5, shape).astype(np.float32)
-        if active_pml:
-            stored = getattr(fields, component)
-            stored.real[...] = rng.uniform(0.65, 0.95, shape).astype(np.float32)
-            if np.iscomplexobj(stored):
-                stored.imag[...] = rng.uniform(0.65, 0.95, shape).astype(np.float32)
+        # Both drive arrays are seeded, on disjoint ranges, so a select that reads
+        # the wrong one on any cell moves the result.
+        names = (("f_w_" + component, (-0.5, 0.5)), (component, (0.65, 0.95))) \
+            if active_pml else ((component, (-0.5, 0.5)),)
+        for name, (low, high) in names:
+            array = getattr(fields, name)
+            array.real[...] = rng.uniform(low, high, shape).astype(np.float32)
+            if np.iscomplexobj(array):
+                array.imag[...] = rng.uniform(low, high, shape).astype(np.float32)
     for state in fields.polarizations:
         for component in state.driven():
             for table in (state.P, state.P_prev):
@@ -204,7 +298,7 @@ def plant_adversarial_complex(fields: Fields) -> None:
     forward = np.resize(base, total).reshape(fields.grid.shape)
     reverse = np.resize(base[::-1], total).reshape(fields.grid.shape)
     for component_index, component in enumerate(("Ex", "Ey", "Ez")):
-        drive = fields.drive_field(component)
+        drive = getattr(fields, component)   # no absorber: the drive is the stored E
         drive.real[...] = np.roll(forward, component_index, axis=0)
         drive.imag[...] = np.roll(reverse, component_index, axis=1)
     for state_index, state in enumerate(fields.polarizations):
@@ -275,7 +369,8 @@ def run_rotation_mutation(name: str, case: Dict[str, Any], cycles: int,
     reference, _ = build(seed=seed, **build_args)
     actual, pml = build(seed=seed, **build_args)
     residency = Residency()
-    plan = family.plan_metal_ade_update_p(actual, pml, residency)
+    plan = family.plan_metal_ade_update_p(
+        actual, pml, residency, chunk_bounds=layer_record(actual.grid, pml))
     if plan is None:
         return {"mutation": name, "caught": False, "differing_words": -1,
                 "reason": "planner refused the product this leg needs"}
@@ -326,7 +421,8 @@ def run_product(case: Dict[str, Any], cycles: int, seed: int) -> Dict[str, Any]:
         plant_adversarial_complex(reference)
         plant_adversarial_complex(actual)
     residency = Residency()
-    plan = family.plan_metal_ade_update_p(actual, pml, residency)
+    plan = family.plan_metal_ade_update_p(
+        actual, pml, residency, chunk_bounds=layer_record(actual.grid, pml))
     if plan is None:
         return {"passed": False, "differing_words": -1,
                 "reason": "planner refused a declared product"}
@@ -339,26 +435,50 @@ def run_product(case: Dict[str, Any], cycles: int, seed: int) -> Dict[str, Any]:
     diff, moved = compare_states(reference, actual)
     expected_launches = cycles * sum(
         len(state.driven()) for state in actual.polarizations)
+    forms = drive_forms(actual, pml)
+    both = all(min(count) > 0 for count in forms.values()) if forms else True
     return {
-        "passed": diff == 0 and moved > 0 and plan.launches == expected_launches,
+        "passed": (diff == 0 and moved > 0 and plan.launches == expected_launches
+                   and both),
         "differing_words": diff,
         "moved_words": moved,
         "launches": plan.launches,
         "expected_launches": expected_launches,
         "variants": list(plan.variants),
+        "drive_forms": forms,
     }
 
 
-def run_mutation(name: str, source: str, cycles: int) -> Dict[str, Any]:
-    case = {"shape": (17, 11, 9), "active_pml": False,
-            "complex_storage": False, "kind": LORENTZIAN,
-            "volume_sigma": False, "states": 1, "counts": (1, 1, 1)}
-    reference, _ = build(seed=9917, **case)
-    actual, pml = build(seed=9917, **case)
+def drive_forms(fields: Fields, pml: PML) -> Dict[str, Any]:
+    """Per driven component under an absorber: (f_w cells, stored-E cells) the select reads.
+
+    The form-coverage rule (DESIGN.md D13): a PML case must step both drive forms.
+    """
+    if not (pml is not None and pml.is_active):
+        return {}
+    plan = stepping._region_plan(fields, pml)
+    driven = {component for state in fields.polarizations for component in state.driven()}
+    out: Dict[str, Any] = {}
+    for component in sorted(driven):
+        mask = np.broadcast_to(plan.mask("constitutive", component, np),
+                               fields.grid.shape)
+        inside = int(np.count_nonzero(mask))
+        out[component] = [inside, int(mask.size) - inside]
+    return out
+
+
+def _mutated_run(case: Dict[str, Any], seed: int, cycles: int,
+                 functions: Dict[Any, Any] | None = None,
+                 record_mutation=None) -> Dict[str, Any]:
+    """Step the oracle and a plan built with ``functions`` (or a moved record)."""
+    reference, _ = build(seed=seed, **case)
+    actual, pml = build(seed=seed, **case)
     residency = Residency()
-    mutant = compile_source(source).ade_update_p_step
+    record = layer_record(actual.grid, pml)
+    if record_mutation is not None:
+        record = record_mutation(record)
     plan = family.plan_metal_ade_update_p(
-        actual, pml, residency, functions={("off", False, "float32"): mutant})
+        actual, pml, residency, functions=functions, chunk_bounds=record)
     if plan is None:
         return {"passed": False, "differing_words": -1,
                 "reason": "mutation plan refused"}
@@ -370,33 +490,55 @@ def run_mutation(name: str, source: str, cycles: int) -> Dict[str, Any]:
     residency.sync_out(plan.volumes)
     diff, _ = compare_states(reference, actual)
     return {"passed": diff > 0 and plan.launches > 0,
-            "differing_words": diff, "launches": plan.launches,
-            "mutation": name}
+            "differing_words": diff, "launches": plan.launches}
 
 
-def run_wrong_drive_mutation(cycles: int) -> Dict[str, Any]:
-    case = {"shape": (17, 11, 9), "active_pml": True,
-            "complex_storage": False, "kind": DRUDE,
-            "volume_sigma": True, "states": 1, "counts": (1, 0, 0)}
-    reference, _ = build(seed=9121, **case)
-    actual, pml = build(seed=9121, **case)
-    residency = Residency()
-    plan = family.plan_metal_ade_update_p(actual, pml, residency)
-    assert plan is not None
-    wrong = actual.Ex
-    wrong_tensor = residency.mirror("mutation:stored-Ex", wrong, dtype=np.float32)
-    entry = dataclasses.replace(plan.entries[0], drive=wrong)
-    plan.entries = (entry,)
-    plan._tensor_by_host[id(wrong)] = wrong_tensor
-    residency.sync_in()
-    for _ in range(cycles):
-        reference.polarizations[0].update(reference.drive_field, reference.grid.dt)
-        plan.run()
-    residency.sync_out(plan.volumes)
-    diff, _ = compare_states(reference, actual)
-    return {"passed": diff > 0 and plan.launches > 0,
-            "differing_words": diff, "launches": plan.launches,
-            "mutation": "stored_E_instead_of_f_w"}
+#: The mutation cases: real without an absorber (arithmetic), complex without one
+#: (the per-part grouping), and real under an absorber with all three components
+#: driven and split between the two drive forms (the select and the record).
+MUTATION_CASE = {"shape": (17, 11, 9), "active_pml": False,
+                 "complex_storage": False, "kind": LORENTZIAN,
+                 "volume_sigma": False, "states": 1, "counts": (1, 1, 1)}
+COMPLEX_MUTATION_CASE = {"shape": (17, 11, 9), "active_pml": False,
+                         "complex_storage": True, "kind": DRUDE,
+                         "volume_sigma": True, "states": 1, "counts": (1, 1, 1)}
+SELECT_MUTATION_CASE = {"shape": (17, 11, 9), "active_pml": True,
+                        "complex_storage": False, "kind": DRUDE,
+                        "volume_sigma": True, "states": 1, "counts": (1, 1, 1)}
+
+
+def run_mutation(name: str, source: str, cycles: int) -> Dict[str, Any]:
+    mutant = compile_source(source).ade_update_p_step
+    result = _mutated_run(MUTATION_CASE, 9917, cycles,
+                          functions={("off", False, "float32", None): mutant})
+    return {**result, "mutation": name}
+
+
+def run_complex_mutation(name: str, source: str, cycles: int) -> Dict[str, Any]:
+    mutant = compile_source(source).ade_update_p_step
+    result = _mutated_run(COMPLEX_MUTATION_CASE, 9919, cycles,
+                          functions={("off", True, "complex64", None): mutant})
+    return {**result, "mutation": name}
+
+
+def run_select_mutation(name: str, cycles: int) -> Dict[str, Any]:
+    functions = {("off", True, "float32", axis):
+                 compile_source(select_mutation_sources(axis)[name]).ade_update_p_step
+                 for axis in range(3)}
+    result = _mutated_run(SELECT_MUTATION_CASE, 9121, cycles, functions=functions)
+    return {**result, "mutation": name}
+
+
+def run_record_mutation(name: str, cycles: int) -> Dict[str, Any]:
+    mutate = RECORD_MUTATIONS[name]
+
+    def every_axis(record):
+        for axis in range(3):
+            record = mutate(record, axis)
+        return record
+
+    result = _mutated_run(SELECT_MUTATION_CASE, 9123, cycles, record_mutation=every_axis)
+    return {**result, "mutation": name}
 
 
 def emit(handle, payload: Dict[str, Any]) -> None:
@@ -418,28 +560,39 @@ def main() -> int:
     records_path = args.out.with_suffix(".jsonl")
     products = product_cases()
     mutations = mutation_sources()
-    total = len(products) + len(mutations) + 1
+    complex_mutations = complex_mutation_sources()
+    select_names = tuple(select_mutation_sources(0))
+    record_names = tuple(RECORD_MUTATIONS)
+    total = (len(products) + len(mutations) + len(complex_mutations)
+             + len(select_names) + len(record_names) + 2)
     records = []
     started = time.perf_counter()
     with records_path.open("w", encoding="utf-8") as handle:
-        for index, case in enumerate(products, 1):
+        index = 0
+        for case in products:
+            index += 1
             result = run_product(case, args.cycles, 7300 + index)
             record = {"index": index, "total": total, "leg": "product",
                       **case, **result}
             emit(handle, record)
             records.append(record)
-        offset = len(products)
-        for sub_index, (name, source) in enumerate(mutations.items(), 1):
-            result = run_mutation(name, source, args.cycles)
-            record = {"index": offset + sub_index, "total": total,
-                      "leg": "mutation", "label": name, **result}
+        runs = ([(name, lambda name=name, source=source:
+                  run_mutation(name, source, args.cycles))
+                 for name, source in mutations.items()]
+                + [(name, lambda name=name, source=source:
+                    run_complex_mutation(name, source, args.cycles))
+                   for name, source in complex_mutations.items()]
+                + [(name, lambda name=name: run_select_mutation(name, args.cycles))
+                   for name in select_names]
+                + [(name, lambda name=name: run_record_mutation(name, args.cycles))
+                   for name in record_names])
+        for name, run in runs:
+            index += 1
+            result = run()
+            record = {"index": index, "total": total, "leg": "mutation",
+                      "label": name, "expected": "caught", **result}
             emit(handle, record)
             records.append(record)
-        result = run_wrong_drive_mutation(args.cycles)
-        record = {"index": total, "total": total, "leg": "mutation",
-                  "label": "stored_E_instead_of_f_w", **result}
-        emit(handle, record)
-        records.append(record)
 
         # THE ROTATION LEG, with its own discriminator. Each defect must be
         # CAUGHT at the gate's budget and INERT at one cycle: that pair is what
@@ -470,7 +623,8 @@ def main() -> int:
         "passed": all(record["passed"] for record in records),
         "records": len(records),
         "product_records": len(products),
-        "mutation_records": len(mutations) + 1,
+        "mutation_records": (len(mutations) + len(complex_mutations)
+                             + len(select_names) + len(record_names)),
         "rotation_records": 2,
         "cycles": args.cycles,
         "elapsed_seconds": time.perf_counter() - started,

@@ -2,7 +2,8 @@
 
 ``recut_driver_dispatch_record.py --backend metal`` reads the GPU architecture off
 every leg's ``provenance.apple_gpu``, refuses a campaign directory other than
-``metal_runs.route_campaign(METAL_DRIVER_ROUTE_GATE, <architecture>)``, and files the
+``metal_runs.route_campaign(route_stamps.route_gate("metal"), <architecture>)``, and
+files the
 route run (its legs, records, timestamp, the run's ``released_fused_arms`` subkeys,
 the residency and the lift) under ``runs[<architecture>]``. A second Mac's cut on the
 same bytes joins the first; a cut on moved bytes refuses to strand another
@@ -25,13 +26,15 @@ sys.path.insert(0, str(HERE))
 
 import recut_driver_dispatch_record as recut  # noqa: E402
 
-from meep_gpu import fastpath, metal_dispatch, metal_runs  # noqa: E402
+from meep_gpu import fastpath, metal_dispatch, metal_runs, route_stamps  # noqa: E402
 from meep_gpu import test_metal_weld_contract as metal_contract  # noqa: E402
 
+#: The stamp these campaigns run under: pinned, so this file does not move with the
+#: registry's state (the placeholder until a freeze sets it), and never spent.
+STAMP = "2099-01-01_test"
 G13S = "applegpu_g13s"
 G15S = "applegpu_g15s"
-LEGS = ("harness_flush", "harness_keep", "shipped", "shipped_expansion_probe",
-        "band_witness")
+LEGS = ("harness_flush", "harness_keep", "shipped", "band_witness")
 BOUND = recut.BACKENDS["metal"]["bound"]
 
 
@@ -40,8 +43,8 @@ def _live(name: str) -> str:
 
 
 def _campaign(results: pathlib.Path, architecture: str, *, legs_on=None) -> str:
-    """A released five-leg Metal route campaign on the live bytes, as the gate writes it."""
-    name = metal_runs.route_campaign(metal_dispatch.METAL_DRIVER_ROUTE_GATE, architecture)
+    """A released four-leg Metal route campaign on the live bytes, as the gate writes it."""
+    name = metal_runs.route_campaign(route_stamps.route_gate("metal"), architecture)
     released = metal_dispatch.METAL_RELEASED_FUSED_ARMS
     cases = sorted({case for arm_cases in released.values() for case in arm_cases})
     arms_driven = {case: {f"slot{index}": arm
@@ -107,6 +110,8 @@ def tree(tmp_path, monkeypatch):
     monkeypatch.setattr(recut, "RESULTS", results)
     monkeypatch.setitem(recut.BACKENDS, "metal",
                         dict(recut.BACKENDS["metal"], record=ledger))
+    monkeypatch.setattr(route_stamps, "ROUND", STAMP)
+    monkeypatch.setattr(route_stamps, "REROUTED", {})
     return results, ledger
 
 
@@ -177,8 +182,7 @@ def test_a_run_directory_that_is_not_this_architectures_campaign_is_refused(tree
     results, ledger = tree
     _record(ledger)
     name = _campaign(results, G13S)
-    renamed = results / metal_runs.route_campaign(metal_dispatch.METAL_DRIVER_ROUTE_GATE,
-                                                  G15S)
+    renamed = results / metal_runs.route_campaign(route_stamps.route_gate("metal"), G15S)
     (results / name).rename(renamed)
     assert _cut(renamed.name) == 2
     assert "run_is_not_this_architecture_campaign" in capsys.readouterr().err
@@ -197,3 +201,45 @@ def test_a_record_in_the_one_run_shape_is_refused(tree, capsys):
     _record(ledger, one_run_shape=True)
     assert _cut(_campaign(results, G13S)) == 2
     assert "run migrate_metal_runs.py first" in capsys.readouterr().err
+
+
+# THE CAMPAIGN NAME IS THE REGISTRY'S, and the cut keys on it (meep_gpu/route_stamps.py).
+# Each of these must refuse with nothing written; each is a campaign the legs would
+# otherwise file cleanly (the first test above cuts the same campaign shape).
+
+
+def test_a_cut_under_the_placeholder_stamp_is_refused_by_name(tree, monkeypatch, capsys):
+    results, ledger = tree
+    _record(ledger)
+    monkeypatch.setattr(route_stamps, "ROUND", route_stamps.PLACEHOLDER)
+    name = _campaign(results, G13S)
+    before = ledger.read_text()
+    assert _cut(name) == 2
+    assert "route_stamp_is_unset" in capsys.readouterr().err
+    assert ledger.read_text() == before
+
+
+def test_a_spent_campaign_is_refused_by_name(tree, monkeypatch, capsys):
+    results, ledger = tree
+    _record(ledger)
+    name = _campaign(results, G13S)
+    monkeypatch.setitem(route_stamps.SPENT, "metal",
+                        route_stamps.SPENT["metal"] + (name,))
+    before = ledger.read_text()
+    assert _cut(name) == 2
+    assert "route_campaign_is_spent" in capsys.readouterr().err
+    assert ledger.read_text() == before
+
+
+def test_a_campaign_of_an_earlier_stamp_is_refused_once_the_stamp_moves(
+        tree, monkeypatch, capsys):
+    """A table re-routed alone: the registry names a new Metal stamp, and the run the
+    old one spelled is no longer the release's, whatever it measured."""
+    results, ledger = tree
+    _record(ledger)
+    name = _campaign(results, G13S)
+    monkeypatch.setattr(route_stamps, "REROUTED", {"metal": "2099-01-02_test"})
+    before = ledger.read_text()
+    assert _cut(name) == 2
+    assert "run_is_not_this_architecture_campaign" in capsys.readouterr().err
+    assert ledger.read_text() == before

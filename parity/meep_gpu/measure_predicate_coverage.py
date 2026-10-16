@@ -276,40 +276,6 @@ EXAMPLES_DIR = (os.path.join(_CORPUS_ROOT, "examples") if _CORPUS_ROOT
 TESTS_DIR = (os.path.join(_CORPUS_ROOT, "tests") if _CORPUS_ROOT
              else os.path.join(os.environ.get("MGPU_SITE_MEEP_SOURCE", os.path.join(os.path.expanduser("~"), "meep")), "python", "tests"))
 
-#: The certified expansion probe. A MEASURED device fact from the re-cut run that
-#: certified both the complex tranche and, through its extended pattern,
-#: the special_kz tranche. Passed in so the probe clause is satisfied by the same
-#: artifact the gate ran under rather than factored out as unmeasurable.
-#:
-#: THIS DEFAULT IS THE ARTIFACT THE 2026-08-16 ROUND *REJECTED*, and it is kept as
-#: the default only because two censuses have already been cut against it and must
-#: stay reproducible. ``score_probe_artifacts.py`` in
-#: ``results/predicate_coverage_2026-08-16_wired_convention/`` put five candidates
-#: through the shipped ``complex_fields.expansion_license``; this one is refused
-#: because its ``subnormal_policy`` block states a policy but no RESOLVED policy,
-#: and "an artifact from before artifacts stated their policy certifies nothing".
-#: Cutting with it does not fail -- it silently costs 153 of 759 slots, and the run
-#: still looks like a full census. MEASURED: the promoted driver at this default
-#: reproduces ``predicate_coverage_2026-08-16_wired`` exactly (563/759, 508, 482,
-#: 41 rows admitted nowhere) rather than the licensed ``_wired_convention`` cut's
-#: 716/759. PASS ``--probe-artifact`` to choose the licensed one.
-PROBE = ("parity/meep_gpu/results/complex_signed_zero_2026-08-12/results/run_2345/"
-         "probe.json")
-
-#: THE LICENSED CUT NEEDS A DECLARED POLICY AS WELL AS THE RIGHT ARTIFACT, and the
-#: two are one decision rather than two. ``complex_fields._policy_in_force`` reads
-#: an INSTALLED policy first and a DECLARED one second, and answers
-#: ``UNREADABLE_POLICY`` with neither. This harness installs nothing -- it steps no
-#: field and compiles no kernel -- so without a declaration every complex-family
-#: predicate refuses BY NAME and the run measures the absence of a declaration
-#: rather than the tree's coverage. Declared, never installed: a declaration is the
-#: honest shape of a coverage number CONDITIONAL on a run under that policy
-#: consuming an artifact cut under the same one, which is the configuration every
-#: device gate in this campaign ran under. ``None`` declares nothing, which is what
-#: every cut before 2026-08-28 did.
-DEFAULT_RUN_POLICY = None
-
-
 def log(path: Path, message: str) -> None:
     print(message, flush=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -317,39 +283,15 @@ def log(path: Path, message: str) -> None:
         handle.flush()
 
 
-def load_probe(api_root: Path) -> dict:
-    return json.loads((api_root / PROBE).read_text(encoding="utf-8"))
-
-
-def _policy_argv(args) -> tuple:
-    """``--run-policy`` for a child, or nothing. Nothing is not the same as ``None``:
-    passing the string "None" would DECLARE a policy named None."""
-    return ("--run-policy", args.run_policy) if args.run_policy else ()
-
-
-def _evaluate(battery: str, driver, probe, probe_path: str, run_policy):
-    """The battery's ``evaluate``, under a DECLARED run policy when one is asked for.
-
-    The declaration and the artifact are both stamped into the row, so a reader can
-    see what the verdicts are conditional on instead of having to find the harness.
-    """
-    evaluate = _load_battery(battery)
-    if not run_policy:
-        result = evaluate(driver, probe)
-    else:
-        from meep_gpu.expansion_refusal import declaring_run_policy  # noqa: PLC0415
-        with declaring_run_policy(run_policy):
-            result = evaluate(driver, probe)
-    result["run_policy_declared"] = run_policy
-    result["probe_artifact"] = probe_path
-    return result
+def _evaluate(battery: str, driver) -> dict:
+    """The battery's ``evaluate`` on one lifted driver."""
+    return _load_battery(battery)(driver)
 
 
 # --- children ------------------------------------------------------------------------
 
 
-def child_examples(script: str, out_json: str, probe_path: str, progress: str,
-                   battery: str, run_policy) -> None:
+def child_examples(script: str, out_json: str, progress: str, battery: str) -> None:
     from parity.meep_gpu.sweep_corpus_lift_parity import capture_simulation
 
     def mark(message: str) -> None:
@@ -358,7 +300,6 @@ def child_examples(script: str, out_json: str, probe_path: str, progress: str,
                          f"{message}\n")
             handle.flush()
 
-    probe = json.loads(Path(probe_path).read_text(encoding="utf-8"))
     record, sim, restore = capture_simulation(script)
     record["row"] = Path(script).name
     mark(f"captured has_sim={record.get('has_simulation')}")
@@ -383,7 +324,7 @@ def child_examples(script: str, out_json: str, probe_path: str, progress: str,
     record["grid_shape"] = [int(v) for v in driver.shape]
     record["grid_cells"] = int(math.prod(int(v) for v in driver.shape))
     try:
-        record.update(_evaluate(battery, driver, probe, probe_path, run_policy))
+        record.update(_evaluate(battery, driver))
         record["measured"] = True
     except BaseException as exc:  # noqa: BLE001
         record["measured"] = False
@@ -397,9 +338,8 @@ def child_examples(script: str, out_json: str, probe_path: str, progress: str,
     mark(f"measured={record.get('measured')} ({record.get('lift_s')} s lift)")
 
 
-def child_tests(module_path: str, wanted: list, out_json: str, probe_path: str,
-                progress: str, case_timeout: float, battery: str,
-                run_policy) -> None:
+def child_tests(module_path: str, wanted: list, out_json: str, progress: str,
+                case_timeout: float, battery: str) -> None:
     """Run EVERY case in the module in enumeration order; measure the wanted ones.
 
     Order matters: the survey ran whole modules in one process, and several MEEP test
@@ -408,7 +348,6 @@ def child_tests(module_path: str, wanted: list, out_json: str, probe_path: str,
     """
     from parity.meep_gpu import survey_meep_tests as harness
 
-    probe = json.loads(Path(probe_path).read_text(encoding="utf-8"))
     namespace = harness.build_child_namespace()
     module = namespace["_import_module"](module_path)
     cases = namespace["_enumerate_cases"](module)
@@ -460,7 +399,7 @@ def child_tests(module_path: str, wanted: list, out_json: str, probe_path: str,
         record["grid_shape"] = [int(v) for v in driver.shape]
         record["grid_cells"] = int(math.prod(int(v) for v in driver.shape))
         try:
-            record.update(_evaluate(battery, driver, probe, probe_path, run_policy))
+            record.update(_evaluate(battery, driver))
             record["measured"] = True
         except BaseException as exc:  # noqa: BLE001
             record["measured"] = False
@@ -491,18 +430,10 @@ def main() -> int:
     parser.add_argument("--child-module", default=None)
     parser.add_argument("--child-cases", default=None)
     parser.add_argument("--out-json", default=None)
-    parser.add_argument("--probe", default=None)
     parser.add_argument("--battery", default=DEFAULT_BATTERY,
                         help="module name of the predicate battery to call: "
                              "predicate_battery (Metal) or "
                              "triton_predicate_battery")
-    parser.add_argument("--probe-artifact", default=PROBE,
-                        help="repository-relative path to the expansion-probe "
-                             "artifact; see PROBE for why the default is the one "
-                             "the 2026-08-16 round rejected")
-    parser.add_argument("--run-policy", default=DEFAULT_RUN_POLICY,
-                        help="subnormal policy to DECLARE for the run (e.g. keep). "
-                             "Required to consume a policy-stamped probe artifact")
     parser.add_argument("--progress-log", default=None)
     parser.add_argument("--interpreter", action="append", default=None,
                         metavar="RECORDED=PATH",
@@ -521,13 +452,12 @@ def main() -> int:
         return 0
 
     if args.child_script:
-        child_examples(args.child_script, args.out_json, args.probe,
-                       args.progress_log, args.battery, args.run_policy)
+        child_examples(args.child_script, args.out_json, args.progress_log,
+                       args.battery)
         return 0
     if args.child_module:
         child_tests(args.child_module, json.loads(args.child_cases), args.out_json,
-                    args.probe, args.progress_log, args.case_timeout, args.battery,
-                    args.run_policy)
+                    args.progress_log, args.case_timeout, args.battery)
         return 0
 
     api_root = _API
@@ -538,10 +468,6 @@ def main() -> int:
     jsonl = out_root / f"{args.leg}.jsonl"
     log_path = out_root / f"{args.leg}.log"
     progress_log = out_root / f"{args.leg}.progress.log"
-    probe_path = api_root / args.probe_artifact
-    if not probe_path.exists():
-        print(f"probe artifact missing: {probe_path}", flush=True)
-        return 2
 
     if not args.resume:
         for path in (jsonl, log_path, progress_log):
@@ -550,8 +476,6 @@ def main() -> int:
     # of which backend was measured -- the jsonl schema is the same either way.
     log(log_path, f"battery: {args.battery}   corpus: "
                   f"{_CORPUS_ROOT or 'default (~/Documents/meep/python)'}")
-    log(log_path, f"probe  : {args.probe_artifact}")
-    log(log_path, f"policy : {args.run_policy or 'NONE DECLARED'}")
 
     # The subject digest is computed ONCE, before any leg runs, and stamped on every
     # row: rows measured against different trees are not one census. The package it
@@ -666,9 +590,9 @@ def main() -> int:
                 command = [interpreter, "-u", str(Path(__file__).resolve()),
                            "--leg", "examples",
                            "--child-script", str(Path(EXAMPLES_DIR) / name),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
-                           "--battery", args.battery, *_policy_argv(args)]
+                           "--battery", args.battery]
                 status = "ok"
                 try:
                     completed = subprocess.run(command, cwd=str(work), env=environment,
@@ -731,10 +655,10 @@ def main() -> int:
                        "--leg", "tests",
                        "--child-module", str(Path(TESTS_DIR) / module_name),
                        "--child-cases", json.dumps(wanted[module_name]),
-                       "--out-json", str(record_path), "--probe", str(probe_path),
+                       "--out-json", str(record_path),
                        "--progress-log", str(progress_log),
                        "--case-timeout", str(args.case_timeout),
-                       "--battery", args.battery, *_policy_argv(args)]
+                       "--battery", args.battery]
             case_started = time.time()
             status = "ok"
             try:
@@ -777,11 +701,9 @@ def main() -> int:
                                     "--child-module", str(Path(TESTS_DIR) / module_name),
                                     "--child-cases", json.dumps([case_id]),
                                     "--out-json", str(solo_path),
-                                    "--probe", str(probe_path),
                                     "--progress-log", str(progress_log),
                                     "--case-timeout", str(args.case_timeout),
-                                    "--battery", args.battery,
-                                    *_policy_argv(args)]
+                                    "--battery", args.battery]
                     try:
                         subprocess.run(solo_command, cwd=str(out_root), env=environment,
                                        timeout=args.timeout, stdout=subprocess.DEVNULL,

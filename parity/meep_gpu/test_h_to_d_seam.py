@@ -4,13 +4,15 @@ pricing rule, and the taxonomy floors that make the new denominator refusable.
 What each test pins, and what would break it:
 
 - ``driver_seam_fact`` reads the driver's own text: the only statements between the
-  update_H consult and the step_D consult inside ``FdtdDriver.step`` are the electric
-  withdraw loop. A pass added there would be priced into no bucket; the locator
-  raises instead. The null control plants a pass and requires the refusal.
+  update_H consult and the step_D consult inside ``FdtdDriver.step`` are the magnetic
+  ``f_minus_p`` restore, which writes B alone. A pass added there would be priced into
+  no bucket; the locator raises instead. The null control plants a pass and requires
+  the refusal.
 - ``probe_h_to_d_seam.evaluate`` MEASURES the withdraw on a lifted row rather than
-  reading a name: an integrated electric source with a deposit point puts the
-  withdraw in the seam; the same source non-integrated, or integrated but magnetic,
-  does not. The update_H null verdict is measured by poisoning B and watching H.
+  reading a name: an integrated electric source enters through ``f_minus_p`` and
+  stands no withdraw in the seam, and neither does the same source non-integrated; an
+  integrated magnetic source puts only its B-only restore there. The update_H null
+  verdict is measured by poisoning B and watching H.
 - ``classify`` applies the taxonomy's precedence (not_fusion_surface > served >
   withdraw_seam > missing_half > buildable_not_built — read off
   ``fusion_taxonomy.BUCKETS`` here rather than spelled) and names the missing kernel
@@ -59,7 +61,7 @@ RESULTS = _HERE / "results"
 # --- the driver fact -----------------------------------------------------------------
 
 
-def test_the_driver_runs_only_the_electric_withdraw_between_update_H_and_step_D():
+def test_the_driver_runs_only_the_magnetic_f_minus_p_restore_between_update_H_and_step_D():
     fact = h_to_d_seam.driver_seam_fact()
     statements = tuple(item["statement"] for item in fact["between"])
     assert statements == h_to_d_seam.EXPECTED_BETWEEN, statements
@@ -72,11 +74,11 @@ def test_the_driver_runs_only_the_electric_withdraw_between_update_H_and_step_D(
 def test_a_pass_planted_in_the_seam_is_refused_by_name(tmp_path):
     """The null control: the locator must be able to fail."""
     source = h_to_d_seam.DRIVER.read_text(encoding="utf-8")
-    needle = '            getattr(source, "withdraw", _no_withdraw)(self.fields)\n        if fast is None or not fast.dispatch("step_D", self.fields):'
+    needle = '            f_minus_p_B = None\n        if fast is None or not fast.dispatch("step_D", self.fields):'
     assert source.count(needle) == 1, "the seam's text moved; re-anchor this control"
     planted = source.replace(
         needle,
-        '            getattr(source, "withdraw", _no_withdraw)(self.fields)\n'
+        '            f_minus_p_B = None\n'
         '        zero_metal_D(self.fields)\n'
         '        if fast is None or not fast.dispatch("step_D", self.fields):')
     copy = tmp_path / "driver.py"
@@ -106,18 +108,21 @@ def mp():
     return pytest.importorskip("meep", reason="CPU MEEP is not installed")
 
 
-def test_an_integrated_electric_source_puts_the_withdraw_in_the_seam(mp):
+def test_an_integrated_electric_source_stands_no_withdraw_in_the_seam(mp):
+    """It enters at the constitutive update through f_minus_p, so the seam holds nothing
+    step_D reads: integrated, owning points, and carrying no withdraw."""
     driver = _lift(mp)
     try:
-        block = probe.evaluate(driver, None)["h_to_d_seam"]
+        block = probe.evaluate(driver)["h_to_d_seam"]
     finally:
         driver.close()
     assert block["n_electric_sources"] == 1
     assert block["n_integrated_electric_sources"] == 1
-    assert block["n_electric_withdraws_that_do_work"] == 1
-    assert block["withdraw_in_seam"] is True
+    assert block["n_electric_withdraws_that_do_work"] == 0
+    assert block["withdraw_in_seam"] is False
+    assert block["magnetic_f_minus_p_restore_in_seam"] is False
     (source,) = block["sources"]
-    assert source["is_integrated"] and not source["withdraw_is_the_no_op"]
+    assert source["is_integrated"] and source["withdraw_is_the_no_op"]
     assert source["n_source_points"] >= 1
     # PML is active, so update_H launches: read off the driver AND measured.
     assert block["update_H_array_path"]["pml_is_active"] is True
@@ -127,11 +132,11 @@ def test_an_integrated_electric_source_puts_the_withdraw_in_the_seam(mp):
 
 
 def test_the_same_source_non_integrated_leaves_the_seam_empty(mp):
-    """The null control for the withdraw: the name is the same, the flag differs."""
+    """The same source with the flag cleared: nothing in the seam either way."""
     driver = _lift(mp, sources=[mp.Source(mp.ContinuousSource(frequency=1.0),
                                           component=mp.Ez, center=mp.Vector3(0, -0.5, 0))])
     try:
-        block = probe.evaluate(driver, None)["h_to_d_seam"]
+        block = probe.evaluate(driver)["h_to_d_seam"]
     finally:
         driver.close()
     assert block["n_electric_sources"] == 1
@@ -139,24 +144,26 @@ def test_the_same_source_non_integrated_leaves_the_seam_empty(mp):
     assert block["withdraw_in_seam"] is False
 
 
-def test_an_integrated_magnetic_source_is_not_this_seams_withdraw(mp):
-    """The magnetic withdraw runs before step_B; it is B->H's business, not H->D's."""
+def test_an_integrated_magnetic_source_puts_only_its_b_restore_in_the_seam(mp):
+    """With a PML the magnetic f_minus_p restore runs between the halves; it writes B
+    alone, so it is not a withdraw step_D reads."""
     driver = _lift(mp, sources=[mp.Source(mp.ContinuousSource(frequency=1.0, is_integrated=True),
                                           component=mp.Hx, center=mp.Vector3(0, -0.5, 0))])
     try:
-        block = probe.evaluate(driver, None)["h_to_d_seam"]
+        block = probe.evaluate(driver)["h_to_d_seam"]
     finally:
         driver.close()
     assert block["n_magnetic_sources"] == 1
     assert block["n_integrated_magnetic_sources"] == 1
     assert block["n_electric_sources"] == 0
     assert block["withdraw_in_seam"] is False
+    assert block["magnetic_f_minus_p_restore_in_seam"] is True
 
 
 def test_without_a_pml_update_H_launches_nothing_and_the_poison_says_so(mp):
     driver = _lift(mp, boundary_layers=[])
     try:
-        block = probe.evaluate(driver, None)["h_to_d_seam"]
+        block = probe.evaluate(driver)["h_to_d_seam"]
     finally:
         driver.close()
     path = block["update_H_array_path"]

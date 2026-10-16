@@ -27,6 +27,7 @@ import pytest
 
 from .fields import IYEE_SHIFTS, Fields, mirror_parity
 from .grid import Grid, Mirror
+from .triton_kernels.offdiag_update_e import ALL_PRESENT
 from .pml import PML
 
 HERE = pathlib.Path(__file__).parent
@@ -34,6 +35,25 @@ PACKAGE_DIR = HERE / "triton_kernels"
 PARITY = HERE.parent / "parity" / "meep_gpu"
 MODULE = "meep_gpu.triton_kernels.folded_offdiag_fused_electric_pair"
 FAMILY = "folded_offdiag_fused_electric_pair"
+
+
+def _every_cell_record(shape):
+    """The harness's every-cell chunk record for ``shape`` (``gate_chunk_records``).
+
+    These builds take their record from the harness rather than from a layer: the
+    arrays are bare, and every test here asserts something other than the division.
+    """
+    parity = str(pathlib.Path(__file__).parent.parent / "parity" / "meep_gpu")
+    if parity not in sys.path:
+        sys.path.insert(0, parity)
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
+    return every_cell_record(shape)
+
+
+def _chunk_record(arrays):
+    """:func:`_every_cell_record`, sized from the first three-axis volume of ``arrays``."""
+    shape = next(tuple(a.shape) for a in arrays.values() if getattr(a, "ndim", 0) == 3)
+    return _every_cell_record(shape)
 
 
 @pytest.fixture(scope="module")
@@ -242,7 +262,8 @@ def test_the_wall_clear_and_the_fold_never_share_an_axis(product):
             (1, 1, 1), (1.0, -1.0, 1.0), 8, object(),
             {name: numpy.zeros((2, 2, 1), dtype=numpy.float32)
              for name in product.ROTATED},
-            [], [], [], [], [], [None] * 6, [])
+            [], [], [], [], [], [None] * 6, [], chunk_bounds=_every_cell_record((2, 2, 1)),
+            presence=ALL_PRESENT)
 
 
 def test_the_plan_refuses_a_fold_with_no_readable_phase(product):
@@ -254,7 +275,8 @@ def test_the_plan_refuses_a_fold_with_no_readable_phase(product):
             (1, 0, 1), (1.0, -1.0, 1.0), 8, object(),
             {name: numpy.zeros((2, 2, 1), dtype=numpy.float32)
              for name in product.ROTATED},
-            [], [], [], [], [], [None] * 6, [])
+            [], [], [], [], [], [None] * 6, [], chunk_bounds=_every_cell_record((2, 2, 1)),
+            presence=ALL_PRESENT)
 
 
 def test_the_plan_refuses_a_ghost_weight_that_is_not_a_parity(product):
@@ -264,7 +286,8 @@ def test_the_plan_refuses_a_ghost_weight_that_is_not_a_parity(product):
             (1, 1, 1), (1.0, 0.5, 1.0), 8, object(),
             {name: numpy.zeros((2, 2, 1), dtype=numpy.float32)
              for name in product.ROTATED},
-            [], [], [], [], [], [None] * 6, [])
+            [], [], [], [], [], [None] * 6, [], chunk_bounds=_every_cell_record((2, 2, 1)),
+            presence=ALL_PRESENT)
 
 
 # ---------------------------------------------------------------------------

@@ -12,7 +12,6 @@ from meep_gpu.dispersion import LORENTZIAN, PolarizationState, Susceptibility
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
 from meep_gpu.metal_kernels import arms, shaders
-from meep_gpu.metal_kernels import complex_fields as shared_predicate
 from meep_gpu.metal_kernels import complex_no_pml_stored_e as family
 from meep_gpu.pml import PML
 
@@ -27,13 +26,6 @@ class HostResidency:
             raise ValueError(f"{name} rebound")
         self.arrays[name] = host
         return host
-
-
-def probe():
-    return {"backend": "numpy", "patterns": {
-        name: "FMA_V1" for name in (
-            "c8_mul_c8", "c8_mul_c8_scalar_right", "c8_mul_f4_field_left",
-            "f4_mul_c8_coefficient_left", "python_float_left")}}
 
 
 def build(*, poles=2, bloch=True, complex_storage=True, seed=41):
@@ -82,7 +74,7 @@ def _host_function(count):
 
 
 def test_source_uses_float2_and_only_the_probed_field_left_orientation():
-    source = family.complex_stored_e_source(2, "FMA_V1")
+    source = family.complex_stored_e_source(2)
     assert "device float2*" in source and "[[buffer(11)]]" in source
     assert "source = source - p0[idx];" in source
     assert "source = source - p1[idx];" in source
@@ -94,27 +86,23 @@ def test_source_uses_float2_and_only_the_probed_field_left_orientation():
 def test_complex_bloch_no_pml_product_is_admitted(backend_ready):
     fields, pml, _ = build()
     verdict = family.metal_complex_stored_e_coverage(
-        fields, pml, HostResidency(), probe())
+        fields, pml, HostResidency())
     assert verdict.covered, verdict.reasons
 
 
 @pytest.mark.parametrize("mutation, needle", [
     ("real", "complex64 storage"), ("pml", "active PML"),
-    ("offdiag", "off-diagonal"), ("missing_probe", "probe artifact"),
+    ("offdiag", "off-diagonal"),
 ])
-def test_distinct_products_refuse_by_name(backend_ready, monkeypatch, mutation, needle):
+def test_distinct_products_refuse_by_name(backend_ready, mutation, needle):
     fields, pml, _ = build()
-    record = probe()
     if mutation == "real":
         fields, pml, _ = build(complex_storage=False, bloch=False)
     elif mutation == "pml":
         pml = PML(grid=fields.grid, thickness=1)
-    elif mutation == "offdiag":
-        fields._chi1inv_offdiagonal = {"Ex": {"Ey": np.ones(fields.grid.shape, np.float32)}}
     else:
-        record = None
-        monkeypatch.delenv(shared_predicate.PROBE_PATH_ENVIRONMENT, raising=False)
-    verdict = family.metal_complex_stored_e_coverage(fields, pml, HostResidency(), record)
+        fields._chi1inv_offdiagonal = {"Ex": {"Ey": np.ones(fields.grid.shape, np.float32)}}
+    verdict = family.metal_complex_stored_e_coverage(fields, pml, HostResidency())
     assert not verdict.covered
     assert any(needle in reason for reason in verdict.reasons), verdict.reasons
 
@@ -122,10 +110,10 @@ def test_distinct_products_refuse_by_name(backend_ready, monkeypatch, mutation, 
 def test_plan_matches_complex_reference_across_pointer_rotation(backend_ready):
     reference, pml, _ = build()
     actual, actual_pml, states = build()
-    functions = {(shaders.CONTRACT_OFF, count, "FMA_V1"): _host_function(count)
+    functions = {(shaders.CONTRACT_OFF, count): _host_function(count)
                  for count in (0, 2)}
     plan = family.plan_metal_complex_stored_e(
-        actual, actual_pml, HostResidency(), probe=probe(), functions=functions)
+        actual, actual_pml, HostResidency(), functions=functions)
     assert plan is not None
     physical = {id(array) for state in states for component in state.driven()
                 for array in (state.P[component], state.P_prev[component], state._scratch)}

@@ -34,12 +34,11 @@ REACHABILITY = (REPO / "parity" / "meep_gpu" / "results"
                 / "metal_unbuilt_cells_reachability_2026-08-20" / "d_to_e_seam.json")
 
 from meep_gpu.metal_kernels import (  # noqa: E402
-    arms, complex_conductive_fused_pair as family, complex_no_pml_conductive,
-    complex_no_pml_stored_e, registry, templates,
+    arms, chunk_bounds, complex_conductive_fused_pair as family,
+    complex_no_pml_conductive, complex_no_pml_stored_e, registry, templates,
 )
 from meep_gpu.metal_kernels.device import MAX_BUFFER_BINDINGS  # noqa: E402
 
-ARM = "FMA_V1"
 PERIODIC = (0, 0, 0)
 PHASED = (1, 1, 1)
 CONDUCTIVE = (True, True, True)
@@ -47,7 +46,7 @@ CONDUCTIVE = (True, True, True)
 
 def _source(codes=PERIODIC, phased=PHASED, conductive=CONDUCTIVE, poles=(1, 1, 1)):
     return family.complex_conductive_fused_pair_source(
-        codes, phased, conductive, poles, ARM)
+        codes, phased, conductive, poles)
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +62,7 @@ def test_the_curl_half_appears_as_one_contiguous_certified_block():
     inside that span fails here; a line-by-line check would not see it.
     """
     certified = complex_no_pml_conductive.complex_conductive_no_pml_curl_source(
-        PERIODIC, True, PHASED, CONDUCTIVE, ARM)
+        PERIODIC, True, PHASED, CONDUCTIVE)
     start = certified.index("    int si = i - 1")
     end = certified.index("    bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);")
     block = certified[start:end]
@@ -97,7 +96,7 @@ def test_the_non_conductive_tail_is_exactly_the_documented_split():
 
 
 def test_the_constitutive_half_is_the_certified_e_body_under_the_named_renames():
-    certified = complex_no_pml_stored_e.complex_stored_e_source(2, ARM)
+    certified = complex_no_pml_stored_e.complex_stored_e_source(2)
     fused = _source(poles=(2, 2, 2))
     for wanted, emitted in (
             ("    float2 source = d_in[idx];", "        float2 source = value0;"),
@@ -118,32 +117,34 @@ def test_d_in_is_never_bound_because_it_IS_the_curls_own_target():
 
 
 def test_the_helper_block_is_the_certified_emitters_own_text():
-    assert templates.complex_helpers(ARM) in _source()
+    assert templates.complex_helpers() in _source()
 
 
 # ---------------------------------------------------------------------------
 # 2. The branch census — this body is NOT straight line, and that is the point
 # ---------------------------------------------------------------------------
 
-def test_the_only_if_is_the_guard_and_every_other_branch_is_a_ternary():
-    """The curl half carries ghost wraps and Bloch wrap planes; the count is pinned.
+def test_the_ifs_are_the_guard_and_one_plane_zero_connection_per_phased_axis():
+    """The curl half's branches are the guard and the Bloch connections; the count is pinned.
 
     This family cannot answer the dead-branch question the way the E->P chain does,
     so the branches are ENUMERATED instead and a mutation is required to sit on a
-    line the scored case executes. Recording the counts per specialisation is what
-    turns a future added branch into a changed census rather than a silent pass.
+    line the scored case executes. Each phased axis (connection kind 1 or 2) adds ONE
+    ``if (<axis> == 0) {`` block, the connection of the unshifted partners on plane 0
+    (``complex_fields._phase_block``); everything else is a ternary. Recording the
+    counts per specialisation is what turns a future added branch into a changed
+    census rather than a silent pass.
     """
-    for codes, phased, conductive, wraps in (
+    for codes, phased, conductive, planes in (
             (PERIODIC, PHASED, CONDUCTIVE, 3),
             (PERIODIC, (0, 0, 0), CONDUCTIVE, 0),
-            (PERIODIC, PHASED, (True, False, False), 3),
-            ((1, 0, 0), (0, 1, 1), CONDUCTIVE, 2)):
+            (PERIODIC, (2, 1, 0), (True, False, False), 2),
+            ((1, 0, 0), (0, 1, 2), CONDUCTIVE, 2)):
         source = _source(codes, phased, conductive)
-        assert len(re.findall(r"\bif\s*\(", source)) == 1
+        assert len(re.findall(r"\bif\s*\(", source)) == 1 + planes
+        assert len(re.findall(r"\bif \([ijk] == 0\) \{", source)) == planes
         assert not re.findall(r"\b(for|while)\s*\(", source)
-        assert source.count("bool w") == wraps, (
-            f"codes={codes} phased={phased}: {source.count('bool w')} wrap planes, "
-            f"expected {wraps}")
+        assert "bool w" not in source, "the shifted-read wrap planes are gone"
 
 
 def test_a_walled_axis_emits_the_ownership_mask_and_an_unwalled_one_emits_the_comment():
@@ -177,16 +178,17 @@ def test_an_over_ceiling_signature_is_refused_by_name_not_left_to_the_compiler()
 
 
 def test_the_packed_params_is_what_buys_the_headroom_and_the_number_is_stated():
-    """Without it, the certified curl's EIGHT separate scalars put two poles over.
+    """Without it, the certified curl's EIGHT separate scalars and its record put two
+    poles over.
 
     The arithmetic is done here rather than asserted in prose: the unpacked count
-    is the fused pointers plus the certified curl's own scalar bindings.
+    is the fused pointers plus the certified curl's own scalar and record bindings.
     """
     unpacked_two_pole = (family.CURL_POINTERS + family.CONSTITUTIVE_POINTERS
-                         + 2 * 3 + 8)
+                         + 2 * 3 + 9)
     assert unpacked_two_pole > MAX_BUFFER_BINDINGS
     assert family.binding_count((2, 2, 2)) <= MAX_BUFFER_BINDINGS
-    assert family.params_words() == 11
+    assert family.params_words() == 11 + len(chunk_bounds.MEMBERS)
 
 
 def test_the_params_prologue_rebuilds_every_name_the_certified_emitters_use():
@@ -198,7 +200,8 @@ def test_the_params_prologue_rebuilds_every_name_the_certified_emitters_use():
                  "    float dtdx = prm.dtdx;",
                  "    float2 px = float2(prm.px_re, prm.px_im);",
                  "    float2 py = float2(prm.py_re, prm.py_im);",
-                 "    float2 pz = float2(prm.pz_re, prm.pz_im);"):
+                 "    float2 pz = float2(prm.pz_re, prm.pz_im);",
+                 chunk_bounds.params_alias()):
         assert line in source
     assert templates.GUARD in source
     assert templates.DECODE_IJK in source
@@ -395,7 +398,9 @@ def test_the_device_gate_exists_and_measures_the_seam_on_the_real_driver():
     assert "complex_conductive_fused_pair as family" in text
     assert "def leg_seam_is_empty" in text, (
         "the seam's emptiness must be MEASURED on the driver, not read off a guard")
-    assert "_inject_electric_through_conductivity" in text
+    assert "cls.inject = make_inject(function)" in text, (
+        "the seam leg must instrument every source class's own inject, which is where "
+        "an electric deposit (condinv scale included) runs")
     assert "gate_provenance" in text
 
 
@@ -410,3 +415,66 @@ def test_the_reachability_artifact_records_the_determination_and_its_control():
     assert record["corpus_leg_seam_empty"] is True
     assert record["control_leg_fired"] is True
     assert record["corpus_leg_conductive_pass_ran"] is False
+
+
+# ---------------------------------------------------------------------------
+# The chunk record and the lifted curl span (bit_parity 0.10)
+# ---------------------------------------------------------------------------
+
+def test_the_curl_span_is_lifted_and_never_re_spelled():
+    """The stencil exists ONCE in the package: the certified emitter's statements
+    appear exactly once in the fused source, and this module's own text spells none
+    of them (the span is cut from the certified output at its two anchors)."""
+    source = _source()
+    for statement in complex_no_pml_conductive.CURL_STATEMENTS:
+        assert source.count(statement) == 1
+    module_text = pathlib.Path(family.__file__).read_text(encoding="utf-8")
+    assert "c_mul_coefficient_left(dtdx" not in module_text
+    assert "((c_y - c) + (b - b_z))" not in module_text
+    assert source.count(chunk_bounds.BLOCK_BEGIN) == 1
+
+
+def test_the_record_rides_last_in_params_and_the_packer_writes_it_word_for_word():
+    import numpy  # noqa: PLC0415
+
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record  # noqa: PLC0415
+    from meep_gpu.grid import Grid  # noqa: PLC0415
+    from meep_gpu.pml import PML  # noqa: PLC0415
+
+    source = _source()
+    struct = source.split("struct Params {", 1)[1].split("};", 1)[0]
+    assert struct.rstrip().endswith(chunk_bounds.params_member().strip())
+    assert source.index("struct ChunkBounds {") < source.index("struct Params {")
+    grid = Grid(resolution=8.0, cell_size=(1.0, 0.875, 0.0), courant=0.3,
+                k_point=(0.2, 0.0, 0.0), xp=numpy, dimensions=2)
+    record = chunk_bounds_record(ChunkLayout.one_rank(grid, PML(grid=grid, thickness=0)))
+    blob = family.pack_params(0.3, ((1.0, 0.0), (1.0, 0.0), (1.0, 0.0)), *grid.shape,
+                              int(numpy.prod(grid.shape)), record)
+    assert blob.dtype == numpy.float32 and blob.size == family.params_words()
+    assert numpy.array_equal(blob[family.SCALAR_WORDS:].view(numpy.int32),
+                             chunk_bounds.words(record))
+
+
+def test_the_builder_takes_the_record_with_no_default_and_the_arm_hands_it_over(
+        monkeypatch):
+    import inspect  # noqa: PLC0415
+
+    parameter = inspect.signature(
+        family.plan_metal_complex_conductive_fused_pair).parameters["chunk_bounds"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty
+    seen = {}
+
+    def builder(fields, pml, sources, residency, variants, *, chunk_bounds):
+        seen["chunk_bounds"] = chunk_bounds
+
+    monkeypatch.setattr(family, "plan_metal_complex_conductive_fused_pair", builder)
+
+    class _Context:
+        fields = pml = sources = residency = None
+        contract_variants = ("off",)
+        extra = {}
+        chunk_bounds = object()
+
+    family._arm_plan(_Context, family.SLOT)
+    assert seen["chunk_bounds"] is _Context.chunk_bounds

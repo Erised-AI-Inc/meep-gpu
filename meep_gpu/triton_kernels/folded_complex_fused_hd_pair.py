@@ -149,18 +149,6 @@ and dropping the cell-0 mask 540, after COMPLETE driver steps, every one of them
 the engine allocates, arms both mask drops, and asserts the ATTRIBUTION.
 
 =============================================================================
-THE EXPANSION LICENCE IS POLICY-CONDITIONAL, AND IT IS THE FAMILY'S, NOT THIS
-PRODUCT'S
-=============================================================================
-
-Every complex arm in this package was certified under the ``keep`` float32 subnormal
-policy (:data:`.complex_fields.CERTIFIED_UNDER_SUBNORMAL_POLICY`) and the predicates
-this module conjoins refuse under any other policy in force. Under ``flush`` the
-composer installs nothing complex on these rows and this product's predicate refuses
-by that name; what a gate can still measure there is the arithmetic from arrays with
-the arm FORCED, and its record must say so.
-
-=============================================================================
 IT IS NOT INSTALLED, AND THE ARBITRATION IS MEASURED
 =============================================================================
 
@@ -194,7 +182,7 @@ from . import coverage as _coverage
 from . import folded_complex as _folded
 from . import fused_hd_pair as _plain
 from .. import withdraw_hoist as _withdraw_hoist
-from .complex_fields import _resolve_expansion, _word_view
+from .complex_fields import _word_view
 from .offdiag_scratch_weld import ScratchWeldPairPlan, twin_table
 
 #: The family name, as the board, the battery and the weld record spell it.
@@ -307,19 +295,15 @@ INSTALLABLE_REASON = (
     "only span that is strictly additive everywhere is a four-slot "
     "step_B -> update_H -> step_D -> update_E weld, which is not built")
 
-#: The policy the complex tranche's expansion licence was cut under. Restated from
-#: the certified module so the two cannot drift.
-CERTIFIED_UNDER_SUBNORMAL_POLICY: str = _cf.CERTIFIED_UNDER_SUBNORMAL_POLICY
-
-#: The three multiply helpers this kernel may reach, and NO OTHER. A laptop test
-#: scans the shipped kernel text for ``_mul_``/``_rotate_``/``_div_`` call sites and
-#: fails on anything outside this tuple -- which is how "this product launches no
-#: orientation its two halves do not already launch" stays a measurement.
+#: The one helper this kernel may reach, and NO OTHER: the Bloch connection. Every
+#: other product on complex storage is formed part by part on real words. A laptop
+#: test scans the shipped kernel text for ``_mul_``/``_rotate_``/``_div_``/``_connect``
+#: call sites and fails on anything outside this tuple.
 MULTIPLY_HELPERS: Tuple[str, ...] = _complex.MULTIPLY_HELPERS
 
 __all__ = [
     "ADMISSIONS", "ADMISSION_ARMS", "ARMS", "BACKWARD", "CARRIES_DEPOSIT_REPAIR",
-    "CERTIFIED_UNDER_SUBNORMAL_POLICY", "CONSTITUTIVE_SIDE", "CONSTITUTIVE_SOURCES",
+    "CONSTITUTIVE_SIDE", "CONSTITUTIVE_SOURCES",
     "CURL_BODY_ANCHOR", "CURL_FUNCTION", "CURL_PATH", "CURL_SUB_STEP", "DECODE_END",
     "DEFAULT_BLOCK", "EXTRA_ARMS", "FAMILY", "HOISTS_THE_WITHDRAW", "INSTALLABLE",
     "INSTALLABLE_REASON", "IN_PLACE", "LAUNCHES_PER_RUN", "MULTIPLY_HELPERS",
@@ -387,9 +371,9 @@ def curl_lift_edits() -> Tuple[Tuple[str, str], ...]:
     redirecting a tap to the unfolded kernel's cell.
 
     NOTHING IN THE RETURNED PAIRS IS TRANSCRIBED except the call's shape. In
-    particular the BLOCH ROTATION is not touched: the emitter applies it afterwards,
-    to the wrapped lane only, in the emitter's own order -- which is why
-    :func:`.complex_fused_hd_pair._h_tap_complex` deliberately carries no phase.
+    particular the BLOCH CONNECTION is not touched: the emitter applies it to the
+    UNSHIFTED partners' plane 0 after the loads, in the emitter's own order -- which
+    is why :func:`.complex_fused_hd_pair._h_tap_complex` deliberately carries none.
     """
     tail = raw_curl_tail()
     offsets = _complex.offset_coordinates(tail)
@@ -449,9 +433,14 @@ except ImportError as _exc:  # pragma: no cover - the laptop path
 
 if triton is not None:  # pragma: no cover - device code, certified by the gate
 
-    from .complex_fields import (  # noqa: PLC0415
-        _mul_coefficient_left, _mul_field_left, _rotate_field_left,
-    )
+    # The names the certified folded complex curl reads -- the Bloch connection, the
+    # shared forms and the record's word offsets -- the very objects
+    # folded_complex.folded_bloch_pml_curl_step calls, so the lift is the same text
+    # resolving to the same functions.
+    from .complex_fields import _connect  # noqa: PLC0415
+    from .forms import (axis_present, curl_form, curl_stencil,  # noqa: PLC0415
+                        record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: PLC0415
 
     #: The FOUR ghost codes, read from :mod:`.folded_complex`' own integers rather
     #: than spelled, and pinned equal to them by this family's laptop test. A plan
@@ -472,7 +461,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
     # nothing.
     from .complex_fused_hd_pair import _h_cell_complex, _h_tap_complex  # noqa: PLC0415
 
-    @triton.jit
+    @triton.jit(do_not_specialize=["start_h"])
     def fused_folded_complex_constitutive_curl_H_to_D(
         ho0, ho1, ho2,                  # SCRATCH out: stepped Hx,Hy,Hz  (c8 as words)
         wo0, wo1, wo2,                  # SCRATCH out: stepped f_w_H*    (c8 as words)
@@ -483,12 +472,12 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         u0, u1, u2,                     # curl auxiliaries: fu_Dx/y/z          (in/out)
         kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, INTEGER lattice
         kp0, kp1, kp2,                  # kps on each component's OWN axis, INTEGER
-        nx, ny, nz, n_elem, dtdx,       # n_elem = COMPLEX cells
-        pxr, pxi, pyr, pyi, pzr, pzi,   # per-axis complex64-rounded phase (conj here)
+        cb,                             # chunk record: both halves' forms and presence
+        nx, ny, nz, n_elem, dtdx, start_h,   # n_elem = COMPLEX cells; MEEP's start of H
+        cxr, cxi, cyr, cyi, czr, czi,   # per-axis connection factor, float32 parts
         BACKWARD: tl.constexpr,
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
-        PHX: tl.constexpr, PHY: tl.constexpr, PHZ: tl.constexpr,
-        EXPANSION: tl.constexpr,
+        CNX: tl.constexpr, CNY: tl.constexpr, CNZ: tl.constexpr,   # connection kinds
         BLOCK: tl.constexpr,
     ):
         """folded complex ``update_H`` + folded complex ``step_D``, one launch.
@@ -505,7 +494,9 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         this launch; ``f``/``u`` step IN PLACE and that is safe by construction,
         because the curl reads and writes them at the program's OWN cell only. The
         fold adds NO argument: the stored extent and the four constexpr codes carry
-        it.
+        it. Both halves read the chunk record ``cb`` (the recompute at every cell it
+        is handed, the curl at the program's own cell); ``start_h`` is the launch's
+        one start-of-H scalar and is not specialized on.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -524,28 +515,40 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         # extent, ghost planes included, and the B those planes hold was written by
         # the driver's near and far fills BEFORE this seam opened.
         (own0_re, own0_im, own1_re, own1_im, own2_re, own2_im,
-         src0_re, src0_im, src1_re, src1_im, src2_re, src2_im) = _h_cell_complex(
+         src0_re, src0_im, src1_re, src1_im, src2_re, src2_im,
+         dw0, dw1, dw2) = _h_cell_complex(
             i, j, k, live, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-            kp0, kp1, kp2, kmx, kmy, kmz, ny, nz, EXPANSION)
+            kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         tl.store(ho0 + 2 * idx, own0_re, mask=live)
         tl.store(ho0 + 2 * idx + 1, own0_im, mask=live)
         tl.store(ho1 + 2 * idx, own1_re, mask=live)
         tl.store(ho1 + 2 * idx + 1, own1_im, mask=live)
         tl.store(ho2 + 2 * idx, own2_re, mask=live)
         tl.store(ho2 + 2 * idx + 1, own2_im, mask=live)
-        tl.store(wo0 + 2 * idx, src0_re, mask=live)
-        tl.store(wo0 + 2 * idx + 1, src0_im, mask=live)
-        tl.store(wo1 + 2 * idx, src1_re, mask=live)
-        tl.store(wo1 + 2 * idx + 1, src1_im, mask=live)
-        tl.store(wo2 + 2 * idx, src2_re, mask=live)
-        tl.store(wo2 + 2 * idx + 1, src2_im, mask=live)
+        # The history takes B on the accumulation's cells only (the auxiliary
+        # contract); every other cell of the twin takes the pre-launch word pair, so
+        # the rotation hands the engine an f_w_H that kept its words there and the
+        # twin is written at every cell.
+        tl.store(wo0 + 2 * idx, tl.where(dw0, src0_re, tl.load(
+            wi0 + 2 * idx, mask=live & (dw0 == 0), other=0.0)), mask=live)
+        tl.store(wo0 + 2 * idx + 1, tl.where(dw0, src0_im, tl.load(
+            wi0 + 2 * idx + 1, mask=live & (dw0 == 0), other=0.0)), mask=live)
+        tl.store(wo1 + 2 * idx, tl.where(dw1, src1_re, tl.load(
+            wi1 + 2 * idx, mask=live & (dw1 == 0), other=0.0)), mask=live)
+        tl.store(wo1 + 2 * idx + 1, tl.where(dw1, src1_im, tl.load(
+            wi1 + 2 * idx + 1, mask=live & (dw1 == 0), other=0.0)), mask=live)
+        tl.store(wo2 + 2 * idx, tl.where(dw2, src2_re, tl.load(
+            wi2 + 2 * idx, mask=live & (dw2 == 0), other=0.0)), mask=live)
+        tl.store(wo2 + 2 * idx + 1, tl.where(dw2, src2_im, tl.load(
+            wi2 + 2 * idx + 1, mask=live & (dw2 == 0), other=0.0)), mask=live)
 
         # === the certified folded complex step_D curl body begins here ===
 
         # --- DELTA 1: the ghost rule, per axis (stepping._shift_up / _shift_down) ---
-        # PERIODIC wraps; EVERY other rule here serves an exact 0.0 past the face,
-        # which `tl.load`'s `other=` delivers on BOTH words without dereferencing
-        # anything. On a folded axis that zero stands in for a value nothing reads.
+        # PERIODIC wraps (a plain roll, phased or not); EVERY other rule here serves an
+        # exact (+0.0, +0.0) past the face, which `tl.load`'s `other=` delivers on both
+        # words. On a folded axis that zero stands in for a value nothing reads (the two
+        # masks below zero every cell that reads it).
         if BACKWARD:
             si, sj, sk = i - 1, j - 1, k - 1
         else:
@@ -568,12 +571,6 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         oy = i * nyz + sj * nz + k
         oz = i * nyz + j * nz + sk
 
-        # --- wrapped-lane predicates, one plane per axis ----------------------------
-        if BACKWARD:
-            wx, wy, wz = i == 0, j == 0, k == 0
-        else:
-            wx, wy, wz = i == nx - 1, j == ny - 1, k == nz - 1
-
         # --- loads: two words per operand ------------------------------------------
         a_re = own0_re
         a_im = own0_im
@@ -583,62 +580,76 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         c_im = own2_im
         a_y_re, a_y_im = _h_tap_complex(0, i, sj, k, vy,
                              hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                             kp0, kp1, kp2, kmx, kmy, kmz, ny, nz, EXPANSION)
+                             kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         a_z_re, a_z_im = _h_tap_complex(0, i, j, sk, vz,
                              hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                             kp0, kp1, kp2, kmx, kmy, kmz, ny, nz, EXPANSION)
+                             kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         b_x_re, b_x_im = _h_tap_complex(1, si, j, k, vx,
                              hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                             kp0, kp1, kp2, kmx, kmy, kmz, ny, nz, EXPANSION)
+                             kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         b_z_re, b_z_im = _h_tap_complex(1, i, j, sk, vz,
                              hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                             kp0, kp1, kp2, kmx, kmy, kmz, ny, nz, EXPANSION)
+                             kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         c_x_re, c_x_im = _h_tap_complex(2, si, j, k, vx,
                              hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                             kp0, kp1, kp2, kmx, kmy, kmz, ny, nz, EXPANSION)
+                             kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         c_y_re, c_y_im = _h_tap_complex(2, i, sj, k, vy,
                              hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                             kp0, kp1, kp2, kmx, kmy, kmz, ny, nz, EXPANSION)
+                             kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
 
-        # --- Bloch phase on the wrapped lane, BEFORE the difference -----------------
-        # SHIFTED operands only; PH* is 0 on every folded axis by the predicate.
-        if PHX:
-            rot_re, rot_im = _rotate_field_left(b_x_re, b_x_im, pxr, pxi, EXPANSION)
-            b_x_re = tl.where(wx, rot_re, b_x_re)
-            b_x_im = tl.where(wx, rot_im, b_x_im)
-            rot_re, rot_im = _rotate_field_left(c_x_re, c_x_im, pxr, pxi, EXPANSION)
-            c_x_re = tl.where(wx, rot_re, c_x_re)
-            c_x_im = tl.where(wx, rot_im, c_x_im)
-        if PHY:
-            rot_re, rot_im = _rotate_field_left(a_y_re, a_y_im, pyr, pyi, EXPANSION)
-            a_y_re = tl.where(wy, rot_re, a_y_re)
-            a_y_im = tl.where(wy, rot_im, a_y_im)
-            rot_re, rot_im = _rotate_field_left(c_y_re, c_y_im, pyr, pyi, EXPANSION)
-            c_y_re = tl.where(wy, rot_re, c_y_re)
-            c_y_im = tl.where(wy, rot_im, c_y_im)
-        if PHZ:
-            rot_re, rot_im = _rotate_field_left(a_z_re, a_z_im, pzr, pzi, EXPANSION)
-            a_z_re = tl.where(wz, rot_re, a_z_re)
-            a_z_im = tl.where(wz, rot_im, a_z_im)
-            rot_re, rot_im = _rotate_field_left(b_z_re, b_z_im, pzr, pzi, EXPANSION)
-            b_z_re = tl.where(wz, rot_re, b_z_re)
-            b_z_im = tl.where(wz, rot_im, b_z_im)
-
-        # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-        t0_re = ((c_y_re - c_re) + (b_re - b_z_re))
-        t0_im = ((c_y_im - c_im) + (b_im - b_z_im))
-        t1_re = ((a_z_re - a_re) + (c_re - c_x_re))
-        t1_im = ((a_z_im - a_im) + (c_im - c_x_im))
-        t2_re = ((b_x_re - b_re) + (a_re - a_y_re))
-        t2_im = ((b_x_im - b_im) + (a_im - a_y_im))
-        curl0_re, curl0_im = _mul_coefficient_left(dtdx, t0_re, t0_im, EXPANSION)
-        curl1_re, curl1_im = _mul_coefficient_left(dtdx, t1_re, t1_im, EXPANSION)
-        curl2_re, curl2_im = _mul_coefficient_left(dtdx, t2_re, t2_im, EXPANSION)
-
-        # --- DELTA 2: ownership mask, cell 0 (stepping._mask_non_owned_cells) ------
-        # Byte-copied from the certified complex kernel with `== METALLIC` widened to
-        # `!= PERIODIC`. Writes +0.0 to BOTH planes (S:1896, S:1902).
+        # --- the connection on the UNSHIFTED partners, plane 0 of each partner's axis
+        # Target 0 reads c along y and b along z, target 1 a along z and c along x,
+        # target 2 b along x and a along y (stepping's term table). `tl.where` is a
+        # bitwise select, so every cell off plane 0 keeps its loaded words.
         at_x, at_y, at_z = i == 0, j == 0, k == 0
+        c0_re, c0_im = c_re, c_im          # target 0's g1, connected on y
+        b0_re, b0_im = b_re, b_im          # target 0's g2, connected on z
+        a1_re, a1_im = a_re, a_im          # target 1's g1, connected on z
+        c1_re, c1_im = c_re, c_im          # target 1's g2, connected on x
+        b2_re, b2_im = b_re, b_im          # target 2's g1, connected on x
+        a2_re, a2_im = a_re, a_im          # target 2's g2, connected on y
+        if CNX:
+            r_re, r_im = _connect(c_re, c_im, cxr, cxi, CNX)
+            c1_re = tl.where(at_x, r_re, c_re)
+            c1_im = tl.where(at_x, r_im, c_im)
+            r_re, r_im = _connect(b_re, b_im, cxr, cxi, CNX)
+            b2_re = tl.where(at_x, r_re, b_re)
+            b2_im = tl.where(at_x, r_im, b_im)
+        if CNY:
+            r_re, r_im = _connect(c_re, c_im, cyr, cyi, CNY)
+            c0_re = tl.where(at_y, r_re, c_re)
+            c0_im = tl.where(at_y, r_im, c_im)
+            r_re, r_im = _connect(a_re, a_im, cyr, cyi, CNY)
+            a2_re = tl.where(at_y, r_re, a_re)
+            a2_im = tl.where(at_y, r_im, a_im)
+        if CNZ:
+            r_re, r_im = _connect(b_re, b_im, czr, czi, CNZ)
+            b0_re = tl.where(at_z, r_re, b_re)
+            b0_im = tl.where(at_z, r_im, b_im)
+            r_re, r_im = _connect(a_re, a_im, czr, czi, CNZ)
+            a1_re = tl.where(at_z, r_re, a_re)
+            a1_im = tl.where(at_z, r_im, a_im)
+
+        # --- the curl (stepping._curl_from_operands), per part ---------------------
+        # kernels.pml_curl_step's three calls on each part: MEEP's left-to-right
+        # association with both partners, the one-partner form where the record says the
+        # other partner's derivative axis is invariant, an exact +0 with neither. The
+        # dtdx scale is the real scalar times each part (part_products.scale).
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)
+        curl0_im = curl_stencil(c_y_im, c0_im, b0_im, b_z_im, dtdx, py, pz)
+        curl1_re = curl_stencil(a_z_re, a1_re, c1_re, c_x_re, dtdx, pz, px)
+        curl1_im = curl_stencil(a_z_im, a1_im, c1_im, c_x_im, dtdx, pz, px)
+        curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)
+        curl2_im = curl_stencil(b_x_im, b2_im, a2_im, a_y_im, dtdx, px, py)
+
+        # --- DELTA 2: ownership mask, cell 0 (stepping._mask_non_owned_cells) -------
+        # Every target whose Yee shift is 0 on a non-periodic axis (``is_mirrored or
+        # is_metallic``): the unfolded body's ``== METALLIC`` widened to ``!= PERIODIC``.
+        # Writes +0.0 to BOTH parts -- the array path assigns complex zero.
         if BACKWARD:
             if BCY != PERIODIC:
                 curl0_re = tl.where(at_y, 0.0, curl0_re)
@@ -669,13 +680,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
                 curl2_re = tl.where(at_z, 0.0, curl2_re)
                 curl2_im = tl.where(at_z, 0.0, curl2_im)
 
-        # --- DELTA 3: ownership mask, TOP plane of a folded PERIODIC axis ----------
-        # The complement of the block above: every target whose Yee shift is 1 there.
-        # Written out per (side, target, axis) exactly as that block is, so a reader
-        # checks it against `_mask_non_owned_cells`'s `if iyee[axis] != 0` arm by eye.
+        # --- DELTA 3: ownership mask, the TOP plane of a folded PERIODIC axis --------
+        # Every target whose Yee shift is 1 there: that slot sits past MEEP's owned
+        # window and the far fill, not the curl, writes it (symmetry.py's block, both
+        # parts).
         last_x, last_y, last_z = i == nx - 1, j == ny - 1, k == nz - 1
         if BACKWARD:
-            # Dx:(1,0,0)  Dy:(0,1,0)  Dz:(0,0,1) — shift 1 on its OWN axis only.
+            # Dx:(1,0,0)  Dy:(0,1,0)  Dz:(0,0,1) -- shift 1 on its OWN axis only.
             if BCX == MIRROR_PERIODIC:
                 curl0_re = tl.where(last_x, 0.0, curl0_re)
                 curl0_im = tl.where(last_x, 0.0, curl0_im)
@@ -686,7 +697,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
                 curl2_re = tl.where(last_z, 0.0, curl2_re)
                 curl2_im = tl.where(last_z, 0.0, curl2_im)
         else:
-            # Bx:(0,1,1)  By:(1,0,1)  Bz:(1,1,0) — shift 1 on the two OTHER axes.
+            # Bx:(0,1,1)  By:(1,0,1)  Bz:(1,1,0) -- shift 1 on the two OTHER axes.
             if BCY == MIRROR_PERIODIC:
                 curl0_re = tl.where(last_y, 0.0, curl0_re)
                 curl0_im = tl.where(last_y, 0.0, curl0_im)
@@ -706,11 +717,10 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
                 curl2_re = tl.where(last_y, 0.0, curl2_re)
                 curl2_im = tl.where(last_y, 0.0, curl2_im)
 
-        # --- split-field recurrence (stepping._apply_pml_update) -------------------
-        # Byte-copied from the certified complex kernel. The PML coefficient vectors
-        # are built at the STORED extent on a folded axis (symmetry.py:318-320
-        # measured kms_y.shape == (1, 22, 1) on a grid storing 22), so the per-axis
-        # indexing needs no fold-aware change.
+        # --- the PML forms (stepping._apply_curl_regions), per part ----------------
+        # dsig/dsigu cycle: target 0 -> (y, z), 1 -> (z, x), 2 -> (x, y). One record
+        # select per target serves both parts; fu is read and written on the
+        # recurrence's cells only (the auxiliary contract), both words.
         km_x = tl.load(kmx + i, mask=live, other=0.0)
         si_x = tl.load(sinvx + i, mask=live, other=0.0)
         km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -718,52 +728,42 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0_re = tl.load(u0 + 2 * idx, mask=live, other=0.0)
-        p0_im = tl.load(u0 + 2 * idx + 1, mask=live, other=0.0)
-        q_re, q_im = _mul_field_left(p0_re, p0_im, km_y, EXPANSION)
-        q_re = q_re - curl0_re
-        q_im = q_im - curl0_im
-        n0_re, n0_im = _mul_field_left(q_re, q_im, si_y, EXPANSION)
-        e_re = tl.load(f0 + 2 * idx, mask=live, other=0.0)
-        e_im = tl.load(f0 + 2 * idx + 1, mask=live, other=0.0)
-        r_re, r_im = _mul_field_left(e_re, e_im, km_z, EXPANSION)
-        r_re = (r_re + n0_re) - p0_re
-        r_im = (r_im + n0_im) - p0_im
-        v0_re, v0_im = _mul_field_left(r_re, r_im, si_z, EXPANSION)
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1_re = tl.load(u1 + 2 * idx, mask=live, other=0.0)
-        p1_im = tl.load(u1 + 2 * idx + 1, mask=live, other=0.0)
-        q_re, q_im = _mul_field_left(p1_re, p1_im, km_z, EXPANSION)
-        q_re = q_re - curl1_re
-        q_im = q_im - curl1_im
-        n1_re, n1_im = _mul_field_left(q_re, q_im, si_z, EXPANSION)
-        e_re = tl.load(f1 + 2 * idx, mask=live, other=0.0)
-        e_im = tl.load(f1 + 2 * idx + 1, mask=live, other=0.0)
-        r_re, r_im = _mul_field_left(e_re, e_im, km_x, EXPANSION)
-        r_re = (r_re + n1_re) - p1_re
-        r_im = (r_im + n1_im) - p1_im
-        v1_re, v1_im = _mul_field_left(r_re, r_im, si_x, EXPANSION)
+        p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)
+        p_im = tl.load(u0 + 2 * idx + 1, mask=live & du0, other=0.0)
+        v0_re, n0_re = curl_form(tl.load(f0 + 2 * idx, mask=live, other=0.0), p_re, curl0_re,
+                                 km_y, si_y, km_z, si_z, du0)
+        v0_im, n0_im = curl_form(tl.load(f0 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                                 curl0_im, km_y, si_y, km_z, si_z, du0)
 
-        p2_re = tl.load(u2 + 2 * idx, mask=live, other=0.0)
-        p2_im = tl.load(u2 + 2 * idx + 1, mask=live, other=0.0)
-        q_re, q_im = _mul_field_left(p2_re, p2_im, km_x, EXPANSION)
-        q_re = q_re - curl2_re
-        q_im = q_im - curl2_im
-        n2_re, n2_im = _mul_field_left(q_re, q_im, si_x, EXPANSION)
-        e_re = tl.load(f2 + 2 * idx, mask=live, other=0.0)
-        e_im = tl.load(f2 + 2 * idx + 1, mask=live, other=0.0)
-        r_re, r_im = _mul_field_left(e_re, e_im, km_y, EXPANSION)
-        r_re = (r_re + n2_re) - p2_re
-        r_im = (r_im + n2_im) - p2_im
-        v2_re, v2_im = _mul_field_left(r_re, r_im, si_y, EXPANSION)
+        p_re = tl.load(u1 + 2 * idx, mask=live & du1, other=0.0)
+        p_im = tl.load(u1 + 2 * idx + 1, mask=live & du1, other=0.0)
+        v1_re, n1_re = curl_form(tl.load(f1 + 2 * idx, mask=live, other=0.0), p_re, curl1_re,
+                                 km_z, si_z, km_x, si_x, du1)
+        v1_im, n1_im = curl_form(tl.load(f1 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                                 curl1_im, km_z, si_z, km_x, si_x, du1)
 
-        # --- stores: u then f (kernels.py:193-198 order), both planes ---------------
-        tl.store(u0 + 2 * idx, n0_re, mask=live)
-        tl.store(u0 + 2 * idx + 1, n0_im, mask=live)
-        tl.store(u1 + 2 * idx, n1_re, mask=live)
-        tl.store(u1 + 2 * idx + 1, n1_im, mask=live)
-        tl.store(u2 + 2 * idx, n2_re, mask=live)
-        tl.store(u2 + 2 * idx + 1, n2_im, mask=live)
+        p_re = tl.load(u2 + 2 * idx, mask=live & du2, other=0.0)
+        p_im = tl.load(u2 + 2 * idx + 1, mask=live & du2, other=0.0)
+        v2_re, n2_re = curl_form(tl.load(f2 + 2 * idx, mask=live, other=0.0), p_re, curl2_re,
+                                 km_x, si_x, km_y, si_y, du2)
+        v2_im, n2_im = curl_form(tl.load(f2 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                                 curl2_im, km_x, si_x, km_y, si_y, du2)
+
+        # --- stores: fu (recurrence cells only), then the fields, both parts --------
+        tl.store(u0 + 2 * idx, n0_re, mask=live & du0)
+        tl.store(u0 + 2 * idx + 1, n0_im, mask=live & du0)
+        tl.store(u1 + 2 * idx, n1_re, mask=live & du1)
+        tl.store(u1 + 2 * idx + 1, n1_im, mask=live & du1)
+        tl.store(u2 + 2 * idx, n2_re, mask=live & du2)
+        tl.store(u2 + 2 * idx + 1, n2_im, mask=live & du2)
         tl.store(f0 + 2 * idx, v0_re, mask=live)
         tl.store(f0 + 2 * idx + 1, v0_im, mask=live)
         tl.store(f1 + 2 * idx, v1_re, mask=live)
@@ -786,8 +786,7 @@ def fused_folded_complex_constitutive_curl_H_to_D_kernel() -> Any:
 # Coverage
 # ---------------------------------------------------------------------------
 
-def resolve_admission(fields: Any, pml: Any,
-                      probe: Any = None) -> Tuple[Optional[str], Tuple[str, ...]]:
+def resolve_admission(fields: Any, pml: Any) -> Tuple[Optional[str], Tuple[str, ...]]:
     """Which admission a run resolves to, or ``(None, reasons)``.
 
     THE RUN DECIDES, NOT THE CALLER, and unlike a two-KERNEL family this resolution
@@ -801,9 +800,9 @@ def resolve_admission(fields: Any, pml: Any,
     order.
     """
     offdiag = _folded.folded_complex_offdiag_pml_curl_coverage(
-        fields, pml, CURL_SUB_STEP, probe=probe)
+        fields, pml, CURL_SUB_STEP)
     plain = _folded.folded_complex_pml_curl_coverage(
-        fields, pml, CURL_SUB_STEP, probe=probe)
+        fields, pml, CURL_SUB_STEP)
     if offdiag.covered and plain.covered:
         return None, (
             "both the plain and the off-diagonal folded complex step_D predicates "
@@ -822,15 +821,14 @@ def resolve_admission(fields: Any, pml: Any,
 
 
 def folded_complex_fused_hd_pair_coverage(
-        fields: Any, pml: Any, sources: Any = None, probe: Any = None,
+        fields: Any, pml: Any, sources: Any = None,
         admission: Optional[str] = None) -> "_coverage.Coverage":
     """May ONE launch span ``update_H`` -> the electric withdraw -> ``step_D``?
 
     A conjunction of the admitted pair's OWN certified predicates plus the seam
     clauses. Nothing is weakened: a configuration either half refuses is refused here
     with that half's reasons, prefixed so a reader can tell which side said it -- and
-    that carries the expansion licence, the subnormal-policy clause and the complex
-    layout checks without this file restating any of them.
+    that carries the complex layout checks without this file restating any of them.
 
     THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
     first (driver.py:3311).
@@ -841,7 +839,7 @@ def folded_complex_fused_hd_pair_coverage(
 
     reasons: List[str] = []
     if admission is None:
-        admission, why = resolve_admission(fields, pml, probe=probe)
+        admission, why = resolve_admission(fields, pml)
         if admission is None:
             return _coverage.Coverage(False, tuple(dict.fromkeys(why)))
     elif admission not in ADMISSIONS:
@@ -849,14 +847,14 @@ def folded_complex_fused_hd_pair_coverage(
 
     if admission == "offdiag":
         constitutive = _folded.folded_complex_offdiag_constitutive_coverage(
-            fields, pml, CONSTITUTIVE_SIDE, probe=probe)
+            fields, pml, CONSTITUTIVE_SIDE)
         curl = _folded.folded_complex_offdiag_pml_curl_coverage(
-            fields, pml, CURL_SUB_STEP, probe=probe)
+            fields, pml, CURL_SUB_STEP)
     else:
         constitutive = _folded.folded_complex_constitutive_coverage(
-            fields, pml, CONSTITUTIVE_SIDE, probe=probe)
+            fields, pml, CONSTITUTIVE_SIDE)
         curl = _folded.folded_complex_pml_curl_coverage(
-            fields, pml, CURL_SUB_STEP, probe=probe)
+            fields, pml, CURL_SUB_STEP)
     if not constitutive.covered:
         reasons.extend(f"folded complex constitutive half: {reason}"
                        for reason in constitutive.reasons)
@@ -912,16 +910,15 @@ def folded_complex_fused_hd_pair_coverage(
 
 
 def explain_folded_complex_fused_hd_pair(
-        fields: Any, pml: Any, sources: Any = None,
-        probe: Any = None) -> Dict[str, Any]:
+        fields: Any, pml: Any, sources: Any = None) -> Dict[str, Any]:
     """The verdict under the name a report reads, WITH the admission it resolved to.
 
     One home for "which arm pair did this product absorb", which is the question a
     two-cell family must keep answerable from its own record.
     """
-    admission, why = resolve_admission(fields, pml, probe=probe)
+    admission, why = resolve_admission(fields, pml)
     verdict = folded_complex_fused_hd_pair_coverage(
-        fields, pml, sources, probe=probe, admission=admission)
+        fields, pml, sources, admission=admission)
     return {
         "admission": admission,
         "arms": ADMISSION_ARMS.get(admission or "", None),
@@ -934,7 +931,7 @@ def explain_folded_complex_fused_hd_pair(
 # The plan
 # ---------------------------------------------------------------------------
 
-class FoldedComplexFusedHdPairPlan(ScratchWeldPairPlan):
+class FoldedComplexFusedHdPairPlan(_plain.StartsH, ScratchWeldPairPlan):
     """ONE allocation-free launch for folded complex ``update_H`` and ``step_D``.
 
     THE SIX ROTATING VOLUMES ARE RESOLVED PER LAUNCH, never cached: the plan owns a
@@ -948,24 +945,25 @@ class FoldedComplexFusedHdPairPlan(ScratchWeldPairPlan):
     among the written volumes themselves.
     """
 
-    __slots__ = ("dtdx", "backward", "bc", "phased", "phase_values", "expansion",
+    __slots__ = ("dtdx", "backward", "bc", "connections", "connection_values",
                  "_b", "_targets", "_aux", "_curl_coeff", "_kps", "_kernel",
-                 "_pointer", "_dtype")
+                 "_pointer", "_dtype", "_h_state")
 
     replaces = REPLACES
     launches_per_run = LAUNCHES_PER_RUN
 
     def __init__(self, shape: Sequence[int], dtdx: float, codes: Sequence[int],
-                 phased: Sequence[int], phase_values: Sequence[float],
-                 expansion: int, block: int, fields: Any, twins: Dict[str, Any],
+                 connections: Sequence[int], connection_values: Sequence[float],
+                 block: int, fields: Any, twins: Dict[str, Any],
                  flux: Sequence[Any], targets: Sequence[Any],
                  auxiliaries: Sequence[Any], curl_coefficients: Sequence[Any],
                  constitutive_coefficients: Sequence[Any], kernel: Any = None,
-                 num_warps: Optional[int] = 1) -> None:
+                 num_warps: Optional[int] = 1, *, chunk_bounds: Any,
+                 h_state: Any = None) -> None:
         from .launch import CupyPointer, _flat  # noqa: PLC0415
 
         super().__init__(FAMILY, fields, twins, ROTATED, shape, block, REPLACES,
-                         num_warps=num_warps)
+                         num_warps=num_warps, chunk_bounds=chunk_bounds)
         self.dtdx = float(dtdx)
         self.backward = BACKWARD
         self.bc = tuple(int(code) for code in codes)
@@ -981,13 +979,21 @@ class FoldedComplexFusedHdPairPlan(ScratchWeldPairPlan):
                 f"this weld takes folded_axis_kinds' four codes and needs at least "
                 f"one mirror axis, got {self.bc}; the unfolded 0/1 mapping here wraps "
                 f"the ghost and emits neither ownership mask")
-        self.phased = tuple(int(flag) for flag in phased)
-        self.phase_values = tuple(float(value) for value in phase_values)
-        if len(self.phased) != 3 or len(self.phase_values) != 6:
+        # THE CONNECTION IS THE CERTIFIED CURL PLAN'S: three kinds and six float32
+        # parts from complex_fields.connection_arguments for step_D's direction, and
+        # a connection only on a PERIODIC axis (a folded axis carries no phase), as
+        # FoldedComplexPmlCurlPlan checks.
+        self.connections = tuple(int(kind) for kind in connections)
+        self.connection_values = tuple(float(value) for value in connection_values)
+        if len(self.connections) != 3 or len(self.connection_values) != 6 or any(
+                kind not in _cf.CONNECTION_KINDS.values() for kind in self.connections):
             raise ValueError(
-                "this plan binds three PH flags and six float32 phase components "
-                "(re, im per axis), exactly as FoldedComplexPmlCurlPlan does")
-        self.expansion = int(expansion)
+                "this plan binds three connection kinds and six float32 parts (re, im "
+                "per axis), exactly as FoldedComplexPmlCurlPlan does")
+        for axis, (kind, code) in enumerate(zip(self.connections, self.bc)):
+            if kind and code != _folded.CODE_PERIODIC:
+                raise ValueError(f"axis {axis} carries a connection but its code "
+                                 f"{code} does not wrap")
         self._dtype = getattr(targets[0], "dtype", None)
         if str(self._dtype) != "complex64":
             raise ValueError(
@@ -1012,6 +1018,8 @@ class FoldedComplexFusedHdPairPlan(ScratchWeldPairPlan):
         self._check_aliases(twins, flux, targets, auxiliaries,
                             curl_coefficients, constitutive_coefficients)
         self._kernel = kernel
+        # MEEP's start of H, on the real product's terms (fused_hd_pair.StartsH).
+        self._h_state = h_state
 
     def _check_aliases(self, twins, flux, targets, auxiliaries,
                        curl_coefficients, constitutive_coefficients) -> None:
@@ -1068,13 +1076,13 @@ class FoldedComplexFusedHdPairPlan(ScratchWeldPairPlan):
         prior = [self._pointer(_word_view(array)) for array in reads]
         kernel[self._grid](
             *scratch, *prior, *self._b, *self._targets, *self._aux,
-            *self._curl_coeff, *self._kps,
-            nx, ny, nz, self.n_elem, self.dtdx,
-            *self.phase_values,
+            *self._curl_coeff, *self._kps, self._cb,
+            nx, ny, nz, self.n_elem, self.dtdx, self.start_h(),
+            *self.connection_values,
             BACKWARD=self.backward,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
-            PHX=self.phased[0], PHY=self.phased[1], PHZ=self.phased[2],
-            EXPANSION=self.expansion,
+            CNX=self.connections[0], CNY=self.connections[1],
+            CNZ=self.connections[2],
             BLOCK=self.block,
             enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
             **extra,
@@ -1082,7 +1090,7 @@ class FoldedComplexFusedHdPairPlan(ScratchWeldPairPlan):
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return (f"FoldedComplexFusedHdPairPlan(shape={self.shape}, bc={self.bc}, "
-                f"phased={self.phased}, expansion={self.expansion}, "
+                f"connections={self.connections}, "
                 f"block={self.block}, num_warps={self.num_warps})")
 
 
@@ -1108,7 +1116,7 @@ def _sub_lattice_suffixes() -> Tuple[str, str]:
 
 def plan_folded_complex_fused_hd_pair(
         fields: Any, pml: Any, sources: Any = None, block: Optional[int] = None,
-        num_warps: Optional[int] = 1, kernel: Any = None, probe: Any = None
+        num_warps: Optional[int] = 1, kernel: Any = None
 ) -> Optional[FoldedComplexFusedHdPairPlan]:
     """Build the plan from the engine's own objects, or ``None`` when refused.
 
@@ -1117,16 +1125,14 @@ def plan_folded_complex_fused_hd_pair(
     slowdown.
 
     THE BOUNDARY CODES ARE :func:`.folded_complex.folded_axis_kinds`', never the 0/1
-    mapping; the PHASE TABLE and its conjugation are the certified module's.
+    mapping; the CONNECTION is the certified module's, for step_D's direction.
     """
-    admission, _why = resolve_admission(fields, pml, probe=probe)
+    from .launch import chunk_bounds_for  # noqa: PLC0415
+    admission, _why = resolve_admission(fields, pml)
     if admission is None:
         return None
     if not folded_complex_fused_hd_pair_coverage(
-            fields, pml, sources, probe=probe, admission=admission).covered:
-        return None
-    expansion = _resolve_expansion(probe)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+            fields, pml, sources, admission=admission).covered:
         return None
     suffix, constitutive_suffix = _sub_lattice_suffixes()
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
@@ -1136,14 +1142,14 @@ def plan_folded_complex_fused_hd_pair(
     if codes is None:  # pragma: no cover - the predicate already refused
         return None
     kinds = resolve(grid, pml)
-    # THE PHASE TABLE AND ITS CONJUGATION ARE THE CERTIFIED MODULE'S, not this one's:
-    # `_phase_arguments` rounds to complex64 BEFORE splitting and negates the
-    # imaginary part for a BACKWARD sub-step, which is what makes the wrap
-    # bit-identical to `_shift_down`'s.
+    # THE CONNECTION IS THE CERTIFIED MODULE'S, not this one's:
+    # `connection_arguments` classifies each axis's not-owned word for step_D's
+    # direction (eikna above the window under its backward differences) and rounds a
+    # product's parts to float32, as the certified folded curl plan binds it.
     phases = _cf.bloch_phase_table(grid, kinds)
-    phased, values = _cf._phase_arguments(phases, backward=bool(BACKWARD))  # noqa: SLF001
+    connections, values = _cf.connection_arguments(phases, backward=bool(BACKWARD))
     return FoldedComplexFusedHdPairPlan(
-        grid.shape, grid.dt / grid.dx, codes, phased, values, expansion,
+        grid.shape, grid.dt / grid.dx, codes, connections, values,
         DEFAULT_BLOCK if block is None else block,
         fields, twin_table(fields, ROTATED),
         [getattr(fields, name) for name in CONSTITUTIVE_SOURCES],
@@ -1153,29 +1159,31 @@ def plan_folded_complex_fused_hd_pair(
          for axis in "xyz" for stem in ("kms", "sinv")],
         [getattr(pml, f"kps_{axis}{constitutive_suffix}") for axis in "xyz"],
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, None),
+        h_state=fields,
     )
 
 
 def plan_folded_complex_fused_hd_pair_from_arrays(
         arrays: Dict[str, Any], flat: Dict[str, Any], dtdx: float,
-        codes: Sequence[int], phases: Sequence[Optional[complex]], expansion: int,
+        codes: Sequence[int], phases: Sequence[Optional[complex]],
         fields: Any, block: Optional[int] = None, kernel: Any = None,
-        num_warps: Optional[int] = 1) -> FoldedComplexFusedHdPairPlan:
+        num_warps: Optional[int] = 1, *, chunk_bounds: Any) -> FoldedComplexFusedHdPairPlan:
     """Build from bare device arrays -- the gate's route.
 
     No coverage predicate runs: the caller is a harness that constructed the
     configuration deliberately, including the deliberately wrong ones. ``fields`` is
     the object whose attributes the ROTATION swaps; ``arrays`` supplies the twins
     under ``scratch_Hx`` ...; ``phases`` is the per-axis ``Optional[complex]`` table
-    and the conjugation for ``step_D`` is applied HERE by the certified module's own
-    encoder; ``expansion`` arrives as the constexpr the caller resolved OR FORCED.
+    and step_D's connection is classified HERE by the certified module's own
+    encoder. No start of H: a harness state has already started.
     """
     shape = tuple(int(n) for n in arrays[IN_PLACE[0]].shape)
     twins = {name: arrays["scratch_" + name] for name in ROTATED}
-    phased, values = _cf._phase_arguments(tuple(phases),  # noqa: SLF001
-                                          backward=bool(BACKWARD))
+    connections, values = _cf.connection_arguments(tuple(phases),
+                                                   backward=bool(BACKWARD))
     return FoldedComplexFusedHdPairPlan(
-        shape, dtdx, codes, phased, values, int(expansion),
+        shape, dtdx, codes, connections, values,
         DEFAULT_BLOCK if block is None else block,
         fields, twins,
         [arrays[name] for name in CONSTITUTIVE_SOURCES],
@@ -1183,5 +1191,5 @@ def plan_folded_complex_fused_hd_pair_from_arrays(
         [arrays[name] for name in IN_PLACE[3:]],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
         [flat[f"kps_{axis}"] for axis in "xyz"],
-        kernel=kernel, num_warps=num_warps,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )

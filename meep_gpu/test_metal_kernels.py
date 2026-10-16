@@ -18,6 +18,13 @@ this file must pass on any host:
    bit-identity is spelled once in the package; a second spelling, or any math-mode
    pragma, fails the build. Mirrors the Triton package's ``ENABLE_FP_FUSION`` test.
 4. **The fingerprints.** The checked-in file must match the tree.
+5. **The chunk record and the per-chunk forms**, read off the emitted text: the
+   record binds last; the anchored bounds block names one membership per target on
+   the region plan's own (axis, lattice); every auxiliary load and store sits behind
+   its form's membership; both plain forms are output selects; the curl is MEEP's
+   left-to-right bracket with the absent-partner forms; the shared splice anchors
+   survive, so a family that lifts a body needs only ``chunk_bounds.params_alias()``
+   to bind it; and no plan route takes a default record.
 
 The device-touching tests below are skipped without MPS, and they are the ones
 that check the arithmetic against ``stepping.py`` in process. The full case matrix
@@ -35,6 +42,7 @@ import re
 import numpy as np
 import pytest
 
+from meep_gpu.metal_kernels import chunk_bounds
 from meep_gpu.metal_kernels import coverage as metal_coverage
 from meep_gpu.metal_kernels import shaders, subnormal
 from meep_gpu.triton_kernels import coverage as triton_coverage
@@ -304,24 +312,401 @@ def test_the_constitutive_product_puts_d_on_the_left():
     assert "float src0 = g0[ii];" in shaders.constitutive_source("H")
 
 
-def test_the_two_accumulations_are_never_flattened():
+def test_the_accumulation_forms_its_right_hand_side_first():
+    """MEEP's ``f + ((kps*src) - (kms*prev))`` (step_generic.cpp:689, :697): the two
+    products, their difference, then one add. The package's previous grouping,
+    ``(f + kps*src) - kms*prev``, is a different float32 number and is gone."""
     for side in ("H", "E"):
         source = shaders.constitutive_source(side)
-        assert "a0 = a0 + kp_0 * src0;" in source
-        assert "a0 = a0 - km_0 * prev0;" in source
+        for t in range(3):
+            assert (f"if (dw{t}) {{ a{t} = f{t}[ii] + ((kp_{t} * src{t}) - "
+                    f"(km_{t} * prev{t})); }}") in source, (side, t)
+            assert f"a{t} = a{t} + kp_{t} * src{t};" not in source
+            assert f"a{t} = a{t} - km_{t} * prev{t};" not in source
         assert "kp_0 * src0 - km_0 * prev0" not in source
 
 
-def test_the_curl_grouping_is_never_flattened():
-    source = shaders.curl_source((0, 0, 0), False)
-    assert "dtdx * ((c_y - c) + (b - b_z))" in source
-    assert "dtdx * (c_y - c + b - b_z)" not in source
+def test_the_curl_is_meeps_left_to_right_bracket_with_the_absent_partner_forms():
+    """``stepping._curl_from_operands``: ``((g1s - g1) + g2) - g2s`` with both
+    partners, ``dtdx * (g1s - g1)`` without g2, ``(-dtdx) * (g2s - g2)`` without g1,
+    and an exact zero with neither, chosen on the record's presence bits."""
+    for backward in (False, True):
+        source = shaders.curl_source((0, 0, 0), backward)
+        assert ("float curl0 = has_y ? (has_z ? (dtdx * (((c_y - c) + b) - b_z)) : "
+                "(dtdx * (c_y - c)))\n                        : (has_z ? ((-dtdx) * "
+                "(b_z - b)) : 0.0f);") in source
+        assert ("float curl1 = has_z ? (has_x ? (dtdx * (((a_z - a) + c) - c_x)) : "
+                "(dtdx * (a_z - a)))\n                        : (has_x ? ((-dtdx) * "
+                "(c_x - c)) : 0.0f);") in source
+        assert ("float curl2 = has_x ? (has_y ? (dtdx * (((b_x - b) + a) - a_y)) : "
+                "(dtdx * (b_x - b)))\n                        : (has_y ? ((-dtdx) * "
+                "(a_y - a)) : 0.0f);") in source
+        # The package's previous pairwise grouping is gone, flattened or not.
+        assert "dtdx * ((c_y - c) + (b - b_z))" not in source
+        assert "dtdx * (c_y - c + b - b_z)" not in source
+        for axis in "xyz":
+            assert (f"const bool has_{axis} = (cb.cb_presence & "
+                    f"{1 << 'xyz'.index(axis)}u) != 0u;") in source
+
+
+def test_the_curl_terms_pair_the_operands_steppings_terms_name():
+    """The kernel's operand and cycle tables are ``stepping``'s term tables, and its
+    membership lattices are the Yee table's."""
+    from meep_gpu import stepping
+    from meep_gpu.fields import IYEE_SHIFTS
+
+    for terms, sources, backward in ((stepping.B_CURL_TERMS, ("Ex", "Ey", "Ez"), False),
+                                     (stepping.D_CURL_TERMS, ("Hx", "Hy", "Hz"), True)):
+        for (first, first_axis, second, second_axis), (dsig, dsigu), term in zip(
+                shaders.CURL_OPERANDS, shaders.CURL_CYCLE, terms):
+            assert (sources[first], first_axis, sources[second], second_axis) == (
+                term.first, term.first_axis, term.second, term.second_axis), term
+            assert ("xyz"[dsig], "xyz"[dsigu]) == (term.dsig, term.dsigu), term
+            assert IYEE_SHIFTS[term.target][dsigu] == int(
+                shaders.CURL_HALF_INTEGER[backward]), term
+    for side, terms in (("H", stepping.H_CONSTITUTIVE_TERMS),
+                        ("E", stepping.E_CONSTITUTIVE_TERMS)):
+        for name, _source, axis in terms:
+            assert IYEE_SHIFTS[name]["xyz".index(axis)] == int(
+                shaders.CONSTITUTIVE_HALF_INTEGER[side]), name
 
 
 def test_prev_is_read_before_fw_is_written():
     for side in ("H", "E"):
         source = shaders.constitutive_source(side)
-        assert source.index("float prev0 = w0[ii];") < source.index("w0[ii] = src0;")
+        for t in range(3):
+            assert (source.index(f"float prev{t} = dw{t} ? w{t}[ii] : 0.0f;")
+                    < source.index(f"if (dw{t}) {{ w{t}[ii] = src{t}; }}"))
+
+
+def _block(source: str) -> str:
+    begin = source.index(chunk_bounds.BLOCK_BEGIN)
+    end = source.index(chunk_bounds.BLOCK_END) + len(chunk_bounds.BLOCK_END)
+    return source[source.rindex("\n", 0, begin) + 1:end]
+
+
+def _flag_line(source: str, flag: str) -> str:
+    lines = [line.strip() for line in source.splitlines()
+             if line.strip().startswith(f"const bool {flag}0 = ")]
+    assert len(lines) == 1, (flag, lines)
+    return lines[0]
+
+
+@pytest.mark.parametrize("codes", [(0, 0, 0), (1, 0, 1), (1, 1, 1)])
+def test_the_bounds_block_is_the_anchored_emitter_and_names_one_flag_per_target(codes):
+    for backward in (False, True):
+        source = shaders.curl_source(codes, backward)
+        assert source.count(chunk_bounds.BLOCK_BEGIN) == 1
+        assert source.count(chunk_bounds.BLOCK_END) == 1
+        assert _block(source) == shaders.curl_bounds_block(backward)
+        tag = "h" if not backward else "i"
+        assert _flag_line(source, "du") == (
+            f"const bool du0 = in_{tag}_z, du1 = in_{tag}_x, du2 = in_{tag}_y;")
+    for side, tag in (("H", "i"), ("E", "h")):
+        source = shaders.constitutive_source(side)
+        assert source.count(chunk_bounds.BLOCK_BEGIN) == 1
+        assert _block(source) == shaders.constitutive_bounds_block(side)
+        assert _flag_line(source, "dw") == (
+            f"const bool dw0 = in_{tag}_x, dw1 = in_{tag}_y, dw2 = in_{tag}_z;")
+
+
+def test_the_membership_each_form_reads_is_the_region_plans_own_line():
+    """Each target's flag is the record entry on the (axis, lattice) the array path's
+    region plan splits that component on: the dsigu axis for a curl target, the own
+    axis for a constitutive component, on the component's Yee shift there."""
+    from meep_gpu.chunk_map import ChunkLayout, RegionPlan
+    from meep_gpu.grid import Grid
+    from meep_gpu.pml import PML
+
+    grid = Grid(resolution=10.0, cell_size=(1.2, 1.0, 0.9), boundaries="periodic",
+                dimensions=3, courant=0.35, k_point=(0.0, 0.0, 0.0), xp=np)
+    pml = PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
+    plan = RegionPlan(ChunkLayout.one_rank(grid, pml), grid, pml)
+    for backward, names in ((False, ("Bx", "By", "Bz")), (True, ("Dx", "Dy", "Dz"))):
+        flags = shaders.curl_membership_flags(backward)
+        for target, name in enumerate(names):
+            spec = plan.spec("curl", name)
+            assert flags[target] == chunk_bounds.membership_name(
+                spec.half_integer, spec.axis), name
+    for side, names in (("H", ("Hx", "Hy", "Hz")), ("E", ("Ex", "Ey", "Ez"))):
+        flags = shaders.constitutive_membership_flags(side)
+        for target, name in enumerate(names):
+            spec = plan.spec("constitutive", name)
+            assert flags[target] == chunk_bounds.membership_name(
+                spec.half_integer, spec.axis), name
+
+
+def test_every_auxiliary_load_and_store_sits_behind_its_forms_membership():
+    """The auxiliary contract (DESIGN D3) on the device text: ``fu`` is read and
+    written only under ``du``, ``f_w`` only under ``dw``. A load outside the guard
+    changes no word (a declared null on the gate), so this static needle is what
+    pins it."""
+    for backward in (False, True):
+        source = shaders.curl_source((0, 0, 0), backward)
+        for t in range(3):
+            assert source.count(f"u{t}[ii]") == 2, (backward, t)
+            assert f"float p{t} = du{t} ? u{t}[ii] : f{t}[ii];" in source
+            assert f"if (du{t}) {{ u{t}[ii] = n{t}; }}" in source
+    for side in ("H", "E"):
+        source = shaders.constitutive_source(side)
+        for t in range(3):
+            assert source.count(f"w{t}[ii]") == 2, (side, t)
+            assert f"float prev{t} = dw{t} ? w{t}[ii] : 0.0f;" in source
+            assert f"if (dw{t}) {{ w{t}[ii] = src{t}; }}" in source
+
+
+def test_the_plain_forms_are_output_selects():
+    """Outside the dsigu run the curl's word is the dsig-only form, the recurrence's
+    first stage with ``fu := f`` (not ``p := 0``, which differs on one signed-zero
+    pair); outside the dsigw run the constitutive's word is ``src`` itself (not the
+    accumulation with ``kps = 1, kms = 0``, which turns every -0 into +0)."""
+    for backward in (False, True):
+        source = shaders.curl_source((0, 0, 0), backward)
+        for t, (dsig, dsigu) in enumerate(shaders.CURL_CYCLE):
+            a, b = "xyz"[dsig], "xyz"[dsigu]
+            assert f"float n{t} = ((p{t} * km_{a}) - curl{t}) * si_{a};" in source
+            assert (f"float v{t} = du{t} ? ((((f{t}[ii] * km_{b}) + n{t}) - p{t}) * "
+                    f"si_{b}) : n{t};") in source
+            assert f"du{t} ? u{t}[ii] : 0.0f" not in source
+    for side in ("H", "E"):
+        source = shaders.constitutive_source(side)
+        for t in range(3):
+            assert f"float a{t} = src{t};" in source
+            assert f"f{t}[ii] = a{t};" in source
+        assert "1.0f * src" not in source and "0.0f * prev" not in source
+
+
+def test_the_record_binds_last_and_under_the_ceiling():
+    from meep_gpu.metal_kernels import device
+
+    for source, index in (
+            [(shaders.curl_source((0, 0, 0), backward), shaders.CURL_RECORD_BUFFER)
+             for backward in (False, True)]
+            + [(shaders.constitutive_source(side), shaders.CONSTITUTIVE_RECORD_BUFFER)
+               for side in ("H", "E")]):
+        binding = chunk_bounds.binding(index)
+        assert f"    {binding},\n    uint idx [[thread_position_in_grid]])" in source
+        assert source.count("[[buffer(") == index + 1
+        assert source.count("[[buffer(") <= device.MAX_BUFFER_BINDINGS
+        assert chunk_bounds.struct_source() in source
+        assert source.index(chunk_bounds.struct_source()) < source.index("kernel void")
+    assert shaders.CURL_RECORD_BUFFER == 20 and shaders.CONSTITUTIVE_RECORD_BUFFER == 22
+
+
+def test_the_shared_splice_anchors_survive_byte_for_byte():
+    """The lines the lifting families splice on stay character for character, and the
+    lifted body reads the record ONLY through the anchored bounds block's ``cb.``
+    reads. So a family that lifts a body and carries its scalars in a ``Params``
+    needs exactly the one-liner ``chunk_bounds.params_alias()`` before ``__BODY__``
+    (plus the struct and the ``Params`` member) to bind it."""
+    from meep_gpu.metal_kernels.fused_magnetic_pair import (
+        _BODY_ANCHOR, _CONSTITUTIVE_PROLOGUE_END, _CURL_STORE)
+
+    sources = ([shaders.curl_source(codes, backward)
+                for codes in ((0, 0, 0), (1, 1, 1)) for backward in (False, True)]
+               + [shaders.constitutive_source(side) for side in ("H", "E")])
+    for source in sources:
+        assert source.count(_BODY_ANCHOR) == 1
+        body = source.split(_BODY_ANCHOR, 1)[1]
+        block = _block(body)
+        outside = body.replace(block, "")
+        assert "cb." not in outside and "cb_presence" not in outside
+        assert all(line.strip().startswith("const ") or line.strip().startswith("//")
+                   for line in block.splitlines())
+    for source in sources[:4]:
+        assert source.count(_CURL_STORE) == 1
+    for side, product in (("H", "g{t}[ii]"), ("E", "g{t}[ii] * e{t}[ii]")):
+        source = shaders.constitutive_source(side)
+        assert source.count(_CONSTITUTIVE_PROLOGUE_END) == 1
+        assert (source.index(_CONSTITUTIVE_PROLOGUE_END)
+                < source.index(chunk_bounds.BLOCK_BEGIN))
+        for t in range(3):
+            assert f"    float src{t} = {product.format(t=t)};\n" in source
+            assert f"f{t}[ii]" in source
+    assert chunk_bounds.params_alias() == "    constant ChunkBounds& cb = prm.cb;"
+
+
+def test_the_specialisation_set_does_not_grow_with_the_division():
+    """The record is runtime data: the labelled set is the same eighteen per mode, and
+    no emitter takes a division argument."""
+    import inspect
+
+    for mode in shaders.CONTRACT_MODES:
+        labels = set(shaders.enumerate_sources(mode))
+        assert len(labels) == 18
+        assert sum(label.startswith("pml_curl_step/") for label in labels) == 16
+    for emitter in (shaders.curl_source, shaders.constitutive_source):
+        assert set(inspect.signature(emitter).parameters) <= {
+            "codes", "backward", "side", "contract"}
+
+
+def test_the_harness_routes_take_no_default_record():
+    """Every route that builds a base plan states which division it binds: the
+    record is a keyword with no default, and a missing one is refused by name."""
+    import inspect
+
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+    from meep_gpu.metal_kernels import launch, nonlinear_update_e, symmetry
+
+    for builder in (launch.plan_from_arrays, launch.plan_constitutive_from_arrays,
+                    launch.plan_pml_curl, launch.plan_constitutive,
+                    launch.PmlCurlPlan.__init__, launch.ConstitutivePlan.__init__,
+                    symmetry.plan_folded_pml_curl,
+                    symmetry.plan_folded_pml_curl_from_arrays,
+                    symmetry.plan_folded_constitutive,
+                    symmetry.FoldedPmlCurlPlan.__init__,
+                    nonlinear_update_e.plan_nonlinear_run_pml_curl,
+                    nonlinear_update_e.plan_nonlinear_run_constitutive):
+        parameter = inspect.signature(builder).parameters["chunk_bounds"]
+        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY, builder
+        assert parameter.default is inspect.Parameter.empty, builder
+    with pytest.raises(ChunkLayoutRefusal, match="PmlCurlPlan.*no chunk record"):
+        chunk_bounds.plan_words(None, (4, 3, 2), "PmlCurlPlan(step_B)")
+
+
+def test_a_plan_record_that_disagrees_with_its_shape_is_refused_by_name():
+    from meep_gpu.chunk_map import (RECORD_PRESENCE_WORD, RECORD_WORDS, ChunkLayoutRefusal,
+                                    record_index)
+
+    record = np.zeros(RECORD_WORDS, dtype=np.int32)
+    record[RECORD_PRESENCE_WORD] = 0b011
+    record[record_index(False, 0, 1)] = 2
+    assert chunk_bounds.plan_words(record, (4, 3, 1), "owner").tolist() == record.tolist()
+    with pytest.raises(ChunkLayoutRefusal, match="owner: the chunk record marks z invariant"):
+        chunk_bounds.plan_words(record, (4, 3, 2), "owner")
+    with pytest.raises(ChunkLayoutRefusal, match="owner: .*reach row 2"):
+        chunk_bounds.plan_words(record, (1, 3, 1), "owner")
+    stray = record.copy()
+    stray[record_index(True, 2, 1)] = 1
+    with pytest.raises(ChunkLayoutRefusal, match="invariant but holds a run"):
+        chunk_bounds.plan_words(stray, (4, 3, 1), "owner")
+
+
+def test_a_plan_binds_the_division_the_array_path_steps_the_same_fields_with():
+    """The composer's record is the record of the region plan ``stepping`` steps the
+    same ``Fields`` with: the one-rank division when none is installed, and the
+    installed one otherwise."""
+    from meep_gpu import stepping
+    from meep_gpu.chunk_map import ChunkLayout, RegionPlan, chunk_bounds_record
+    from meep_gpu.metal_kernels import launch
+
+    _, fields, pml = _engine_case()
+    layout, words, refused = launch.chunk_division(fields, pml)
+    assert not refused
+    plan = stepping._region_plan(fields, pml)
+    assert np.array_equal(words, chunk_bounds_record(plan.layout))
+    assert np.array_equal(words, chunk_bounds.for_layout(layout))
+
+    # A division the driver installed is the one both read.
+    installed = ChunkLayout.one_rank(fields.grid, pml)
+    fields.install_region_plan(RegionPlan(installed, fields.grid, pml))
+    _, words, refused = launch.chunk_division(fields, pml, installed)
+    assert not refused
+    assert np.array_equal(words, chunk_bounds_record(stepping._region_plan(fields,
+                                                                         pml).layout))
+
+
+class _Source:
+    def __init__(self, field_type):
+        self.field_type = field_type
+
+
+def test_the_first_update_h_is_refused_where_the_h_start_could_move_a_word():
+    """``stepping.separate_h_from_b`` starts H and f_w from B at the run's first
+    update_H and the base kernel does not; the composer leaves that update to the
+    array path unless B is +0 on every cell at that moment."""
+    from meep_gpu.metal_kernels import launch
+
+    _, fields, pml = _engine_case()
+    for name in launch.H_START_VOLUMES:
+        getattr(fields, name)[...] = 0.0
+    fields.h_separated = False
+    assert launch.h_start_reasons(fields, ()) == ()
+    assert launch.h_start_reasons(fields, (_Source("E"),)) == ()
+    assert any("magnetic source(s) [1]" in r
+               for r in launch.h_start_reasons(fields, (_Source("E"), _Source("B"))))
+    assert any("not declared" in r for r in launch.h_start_reasons(fields, None))
+    fields.Ey[1, 1, 1] = np.float32(-0.0)
+    assert any("Ey holds a word other than +0" in r
+               for r in launch.h_start_reasons(fields, ()))
+    fields.h_separated = True
+    assert launch.h_start_reasons(fields, (_Source("B"),)) == ()
+
+
+class _MagneticSource:
+    def __init__(self, component):
+        self.field_type = "B"
+        self.component = component
+
+
+def _started_2d_case():
+    """A 2-D xy engine case (PML on x and y, z invariant) at a run's first update_H."""
+    from meep_gpu.metal_kernels import launch
+
+    _, fields, pml = _engine_case(cell=(1.2, 1.0, 0.0))
+    for name in launch.H_START_VOLUMES + ("Hx", "Hy", "Hz", "f_w_Hx", "f_w_Hy",
+                                          "f_w_Hz"):
+        array = getattr(fields, name, None)
+        if array is not None:
+            array[...] = 0.0
+    fields.h_separated = False
+    return fields, pml
+
+
+def test_the_start_writes_nothing_on_a_component_whose_layer_no_chunk_carries():
+    """The premise the narrowed clause rests on, measured on the array path's own start.
+
+    ``stepping.separate_h_from_b`` copies B into H and ``f_w`` only on the cells whose
+    chunk carries H's own layer. On a 2-D xy run z carries none, so a deposit into Bz
+    moves no started word; a deposit into Bx inside x's layer does (the planted
+    negative the clause must still refuse).
+    """
+    from meep_gpu import stepping
+
+    fields, pml = _started_2d_case()
+    region = stepping._region_plan(fields, pml)  # noqa: SLF001
+    assert region.spec("constitutive", "Hz").mode == "outside_only"
+    assert region.spec("constitutive", "Hx").mode != "outside_only"
+    inside = np.broadcast_to(region.mask("constitutive", "Hx", np), fields.Hx.shape)
+    cell = tuple(int(axis[0]) for axis in np.nonzero(inside))
+    fields.Bz[3, 3, 0] = np.float32(0.5)
+    fields.Bx[cell] = np.float32(0.5)
+    names = ("Hx", "Hy", "Hz", "f_w_Hx", "f_w_Hy", "f_w_Hz")
+    before = {name: np.array(getattr(fields, name), copy=True) for name in names
+              if getattr(fields, name, None) is not None}
+    stepping.separate_h_from_b(fields, pml)
+    moved = {name: int(np.count_nonzero(getattr(fields, name).view(np.uint32)
+                                        != value.view(np.uint32)))
+             for name, value in before.items()}
+    assert moved.get("Hz", 0) == 0 and moved.get("f_w_Hz", 0) == 0, moved
+    assert moved["Hx"] == 1 and moved["f_w_Hx"] == 1, moved
+
+
+def test_the_layer_narrows_the_magnetic_clause_to_the_components_the_start_copies():
+    """Given the layer, a magnetic source refuses only where its B component's H
+    carries cells in its own layer. The composer passes it for the base update_H
+    kernel, whose refusal is run-long; the products that ask without it refuse every
+    magnetic source, as before."""
+    import inspect
+
+    from meep_gpu.metal_kernels import launch
+
+    fields, pml = _started_2d_case()
+    assert launch.h_start_reasons(fields, (_MagneticSource("Hz"),), pml) == ()
+    assert launch.h_start_reasons(fields, (_MagneticSource("Bz"),), pml) == ()
+    refused = launch.h_start_reasons(
+        fields, (_Source("E"), _MagneticSource("Hx")), pml)
+    assert any("magnetic source(s) [1]" in r and "Hx's own layer" in r
+               for r in refused), refused
+    assert any("magnetic source(s) [0]" in r for r in launch.h_start_reasons(
+        fields, (_MagneticSource("Hz"),)))
+    # A source that names no magnetic component cannot be cleared: it refuses.
+    assert launch.h_start_reasons(fields, (_Source("B"),), pml)
+    # The volumes clause still stands under the layer.
+    fields.Ey[1, 1, 0] = np.float32(-0.0)
+    assert any("Ey holds a word other than +0" in r for r in launch.h_start_reasons(
+        fields, (_MagneticSource("Hz"),), pml))
+    assert "h_start_reasons(fields, sources, pml)" in inspect.getsource(launch.plan_step)
 
 
 def test_an_unknown_boundary_code_is_refused_rather_than_defaulted():
@@ -453,6 +838,7 @@ def test_the_policy_report_records_the_absent_disassembly_audit(monkeypatch):
     assert "no disassembly" in report["ptx_equivalent_audit_note"]
 
 
+@pytest.mark.usefixtures("host_keeps_subnormals")  # host words in the subnormal band
 def test_the_subnormal_census_counts_bits_not_values():
     band = np.array([1.401298464324817e-45, 0.0, -0.0, 1.0], dtype=np.float32)
     assert subnormal.census(band) == 1
@@ -493,26 +879,37 @@ def test_the_fingerprint_file_pins_a_toolchain_it_measured():
 # ---------------------------------------------------------------------------
 
 def _engine_case(boundaries=("periodic", "periodic", "periodic"), courant=0.35,
-                 seed=20260814):
+                 seed=20260814, cell=(1.2, 1.0, 0.9)):
     from meep_gpu.fields import Fields
     from meep_gpu.grid import Grid
     from meep_gpu.pml import PML
 
-    grid = Grid(resolution=10.0, cell_size=(1.2, 1.0, 0.9), boundaries=boundaries,
-                dimensions=3, courant=courant, k_point=(0.0, 0.0, 0.0), xp=np)
+    dimensions = 3 if cell[2] else 2
+    grid = Grid(resolution=10.0, cell_size=cell, boundaries=boundaries,
+                dimensions=dimensions, courant=courant, k_point=(0.0, 0.0, 0.0), xp=np)
     fields = Fields(grid=grid, force_complex_fields=False)
     fields.enable_pml_storage()
     count = int(np.prod(grid.shape))
     index = np.arange(count, dtype=np.float32).reshape(grid.shape)
     eps = (1.45 + 0.30 * np.sin(index * np.float32(0.037))).astype(np.float32)
     fields.set_isotropic_epsilon_volume(eps, (np.float32(1.0) / eps).astype(np.float32))
-    pml = PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
+    pml = PML(grid=grid, thickness=tuple((2, 2) if cell[axis] else (0, 0)
+                                         for axis in range(3)))
     rng = np.random.default_rng(seed)
     for name in _STATE:
         array = getattr(fields, name, None)
         if array is not None:
             array[...] = (rng.standard_normal(grid.shape) * 0.37).astype(np.float32)
+    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago.
+    fields.h_separated = True
     return grid, fields, pml
+
+
+def _one_rank_record(fields, pml):
+    """The record of the one-rank division ``stepping`` steps these ``Fields`` with."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
 
 
 _STATE = ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
@@ -525,17 +922,20 @@ def _words(array):
 
 
 @requires_mps
-def test_one_complete_cycle_is_byte_identical_to_stepping(monkeypatch):
+@pytest.mark.parametrize("cell", [(1.2, 1.0, 0.9), (1.2, 1.0, 0.0)],
+                         ids=["3d", "2d_absent_partner"])
+def test_one_complete_cycle_is_byte_identical_to_stepping(monkeypatch, cell):
     """Four sub-steps on the device against four on the array path, in one process.
 
     uint32 word equality on the targets AND the auxiliaries, and an assertion that
-    the step MOVED STATE — a no-op agreeing with a no-op is trivially identical.
+    the step MOVED STATE — a no-op agreeing with a no-op is trivially identical. The
+    2-D cell carries an invariant z, so the curl takes its absent-partner forms.
     """
     monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
     from meep_gpu import stepping
     from meep_gpu.metal_kernels import launch
 
-    grid, fields, pml = _engine_case()
+    grid, fields, pml = _engine_case(cell=cell)
     before = {name: np.array(getattr(fields, name), copy=True) for name in _STATE}
 
     residency = launch.Residency()
@@ -586,7 +986,8 @@ def test_asking_for_an_unbuilt_contract_variant_raises(monkeypatch):
 
     _, fields, pml = _engine_case()
     residency = launch.Residency()
-    plan = launch.plan_pml_curl(fields, pml, "step_B", residency)
+    plan = launch.plan_pml_curl(fields, pml, "step_B", residency,
+                                chunk_bounds=_one_rank_record(fields, pml))
     with pytest.raises(KeyError):
         plan.run(contract=shaders.CONTRACT_FAST)
 
@@ -598,8 +999,10 @@ def test_two_plans_share_one_mirror_rather_than_holding_private_copies(monkeypat
 
     _, fields, pml = _engine_case()
     residency = launch.Residency()
-    curl = launch.plan_pml_curl(fields, pml, "step_B", residency)
-    constitutive = launch.plan_constitutive(fields, pml, "H", residency)
+    record = _one_rank_record(fields, pml)
+    curl = launch.plan_pml_curl(fields, pml, "step_B", residency, chunk_bounds=record)
+    constitutive = launch.plan_constitutive(fields, pml, "H", residency,
+                                            chunk_bounds=record)
     assert curl is not None and constitutive is not None
     assert residency.tensor("Bx").data_ptr() == residency.tensor("Bx").data_ptr()
     # step_B writes Bx; update_H reads it. Same allocation or the second launch

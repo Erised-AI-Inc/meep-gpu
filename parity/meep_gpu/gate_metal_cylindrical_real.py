@@ -9,11 +9,14 @@ transcription choices that decide those words carried as ARMED MUTATIONS rather 
 as comments.
 
 THE ORACLE IS IN-PROCESS NumPy AND THAT IS THIS FAMILY'S WHOLE LICENCE. The engine
-holds NumPy (``coverage.MIRRORED_HOST_MODULE``), ``numpy.cumsum`` in float32 IS a
-sequential accumulation, and the device scan is column-serial — so the prefix has a
-reproducible oracle here where the Triton track's CuPy host had none. Leg ``prefix``
-is that claim, measured against ``stepping.cylindrical_rderiv_prefix`` CALLED rather
-than re-derived.
+holds NumPy (``coverage.MIRRORED_HOST_MODULE``), and the array path's radial term
+(``stepping.cylindrical_rderiv_difference``: MEEP's ``f_rderiv_int`` summed in every
+structure chunk from that chunk's first row, ``rinv`` multiplied, and the stencil's
+difference of two partial sums) is a sequential float32 walk down each radial column.
+The device scan walks each column in the same order with the same restarts, so the
+radial difference has a reproducible oracle here. Leg ``radial`` is that claim,
+measured against the array path's function CALLED with the run's own chunk starts, and
+against ONE radial sum, which must differ on every case (each carries two r chunks).
 
 WHY THE COMPLETE STEP IS THE ARBITER AND NOT A BONUS. Six green per-sub-step
 comparisons say nothing about the object the engine would run. The complete step here
@@ -79,9 +82,9 @@ THE LEGS:
 
 1.  ``execution``     provenance, every specialisation COMPILED in both contraction
                       modes, and the enumeration count pinned.
-2.  ``prefix``        the device scan alone against ``cylindrical_rderiv_prefix``
-                      CALLED — the family's decisive inversion of the Triton track's
-                      refusal, re-measured here per case per sub-step.
+2.  ``radial``        the device scan alone against
+                      ``cylindrical_rderiv_difference`` CALLED with the run's chunk
+                      starts, per case per sub-step, and the one-sum control.
 3.  ``curl``          per sub-step, the two-launch product against ``stepping.step_B``
                       / ``step_D``. Words, never ``allclose``; a vacuity floor and an
                       asserted launch split on every case.
@@ -99,8 +102,8 @@ THE LEGS:
 7.  ``precondition``  the same per-step census driven over a state scaled INTO the
                       band, REQUIRED to fire. A precondition never demonstrated to
                       fire is decoration.
-8.  ``split``         the m = 0 versus |m| >= 1 boundary and the family's other
-                      un-inverted clauses, as REFUSALS BY NAME.
+8.  ``split``         the m = 0 versus |m| >= 1 boundary, the Courant clause and the
+                      family's other un-inverted clauses, as REFUSALS BY NAME.
 9.  ``containment``   Metal's admitted set beside Triton's, every slot named.
 10. ``mutations``     armed, launch-counted, caught-of-armed reported honestly,
                       including the classes only a complete step can see.
@@ -138,6 +141,7 @@ import metal_composition_matrix as matrix  # noqa: E402
 ENVIRONMENT = matrix.prepare_environment()
 
 from meep_gpu import stepping  # noqa: E402
+from meep_gpu.chunk_map import record_index  # noqa: E402
 from meep_gpu.metal_kernels import (  # noqa: E402
     coverage as metal_coverage,
     cylindrical_real as cyl,
@@ -151,6 +155,8 @@ from meep_gpu.metal_kernels.launch import ConstitutivePlan  # noqa: E402
 from meep_gpu.triton_kernels.coverage import CONSTITUTIVE_SIDES  # noqa: E402
 
 import metal_gate_kit as kit  # noqa: E402
+from b_battery_states import plant_curl_negative_zero  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
 log, save, differing, words = kit.log, kit.save, kit.differing, kit.words
 needle = kit.needle
@@ -204,12 +210,12 @@ CYCLES = 12
 #:   RADIAL EXTENT  the scan's trip count is a RUNTIME loop over ``nxi``. Four extents
 #:                  including one shorter than the z extent, so a kernel that happened
 #:                  to work at one aspect ratio is not what is certified;
-#:   COURANT        ``curl_bz_flat_grouping`` was measured NOT CAUGHT at 0.5 and
-#:                  CAUGHT at 0.314159: distributing ``dtdx`` over the prefix
-#:                  difference is EXACT whenever ``dtdx`` is a power of two, so a
-#:                  matrix without a non-power-of-two Courant cannot see grouping
-#:                  errors in this kernel at all. That is a property of the CASES and
-#:                  it is why the tag exists and the mutation is scoped by it;
+#:   COURANT        scaling by a power of two is exact, so a matrix without a
+#:                  non-power-of-two Courant cannot see a scaling slip at all. Every
+#:                  odd Courant here is a FLOAT32 WORD: the D side's axis rule is
+#:                  MEEP's double product ``4 * Courant * Hp[r=0]`` rounded once,
+#:                  which this backend forms in float32 only for such a word, and any
+#:                  other Courant is refused by name (leg ``split``);
 #:   z KIND         METALLIC drives the other ghost/mask arm AND makes the
 #:                  ``zero_metal_*`` SEAM live; PERIODIC has no wall pass at all, so
 #:                  every seam mutation is a structural null there and is SCOPED
@@ -220,24 +226,51 @@ CYCLES = 12
 #:                  state a gate happens to build is reported as UNCAUGHT, which is
 #:                  the most dangerous row a mutation leg can print;
 #:   MATRIX ROW     the configuration the composition sweep itself drives
-#:                  (``dcyl_m0_real``), so the gate and the sweep share one grid
-#:                  exactly rather than two that merely resemble each other.
+#:                  (``dcyl_m0_real``) at the float32 word of its Courant, so the gate
+#:                  and the sweep share one grid rather than two that merely resemble
+#:                  each other;
+#:   PLANTED ZERO   ``f = -0`` with a curl of exactly ``+0`` on a plain Dy cell, the
+#:                  one state in which MEEP's plain curl form and the recurrence read
+#:                  with ``p := 0`` store different words (KERNELS.md §7.2, ``b8``).
+
+
+def _f32(value: float) -> float:
+    """The float32 word of ``value``, as the Python float the grid carries."""
+    return float(np.float32(value))
+
+
+#: The composition sweep's default Courant (0.37) is not a float32 word; the gate's
+#: matrix row takes its word, and leg ``split`` measures the refusal of 0.37 itself.
+MATRIX_COURANT = _f32(0.37)
+
 CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     ("wide_metallic", dict(shape=(20, 1, 40), courant=0.5, z_kind="metallic")),
     ("wide_metallic_odd_courant",
-     dict(shape=(20, 1, 40), courant=0.3141592653589793, z_kind="metallic")),
+     dict(shape=(20, 1, 40), courant=_f32(0.3141592653589793), z_kind="metallic")),
     ("wide_periodic", dict(shape=(20, 1, 40), courant=0.5, z_kind="periodic")),
     ("short_periodic_odd_courant",
-     dict(shape=(13, 1, 9), courant=0.4142135623730951, z_kind="periodic")),
+     dict(shape=(13, 1, 9), courant=_f32(0.4142135623730951), z_kind="periodic")),
     ("narrow_metallic_odd_courant",
-     dict(shape=(9, 1, 12), courant=0.3141592653589793, z_kind="metallic")),
+     dict(shape=(9, 1, 12), courant=_f32(0.3141592653589793), z_kind="metallic")),
     ("tall_metallic_odd_courant",
-     dict(shape=(32, 1, 16), courant=0.6, z_kind="metallic")),
+     dict(shape=(32, 1, 16), courant=_f32(0.6), z_kind="metallic")),
     ("signed_zeros_metallic",
-     dict(shape=(20, 1, 40), courant=0.3141592653589793, z_kind="metallic",
+     dict(shape=(20, 1, 40), courant=_f32(0.3141592653589793), z_kind="metallic",
           plant=True)),
+    ("planted_curl_zero",
+     dict(shape=(20, 1, 40), courant=_f32(0.3141592653589793), z_kind="metallic",
+          plant_curl=True)),
     ("composition_matrix_row", dict(matrix_row=True)),
 )
+
+#: Where ``planted_curl_zero`` puts ``Dy = -0``: a plain cell (outside Dy's dsigu run,
+#: the r layer), off the axis row, off both metallic z faces and outside the z layer.
+PLANTED_CURL_CELL = (6, 0, 20)
+
+#: Where the same case puts ``Dz = -0`` beside ``Hp = +0`` on the axis row: the one
+#: pair on which the m = 0 post-add and a fold of it into the curl store different
+#: words (``axis_dz_postadd_folded_into_curl``).
+PLANTED_AXIS_CELL = (0, 0, 20)
 
 #: Scattered ON TOP of the random state rather than replacing it, so the class is
 #: reachable without flattening the row-to-row variation the index needles need.
@@ -305,7 +338,8 @@ def build(label: str, seed: int = 99) -> Tuple[Any, Any]:
 
     options = dict(CASES)[label]
     if options.get("matrix_row"):
-        fields, pml = matrix.cylindrical(m=0, complex_storage=False)
+        fields, pml = matrix.cylindrical(m=0, complex_storage=False,
+                                         courant=MATRIX_COURANT)
         shape = tuple(int(n) for n in fields.grid.shape)
     else:
         shape = tuple(int(n) for n in options["shape"])
@@ -326,8 +360,20 @@ def build(label: str, seed: int = 99) -> Tuple[Any, Any]:
         array = getattr(fields, name, None)
         if array is not None:
             array[...] = rng.uniform(-1.0, 1.0, size=shape).astype(array.dtype)
+    # A seeded state is a MID-RUN state: the run's first update_H, which starts H and
+    # f_w from B on the dsigw cells (stepping.separate_h_from_b), is behind it. The
+    # composition matrix records the same for its own fixtures; without it the array
+    # path's update_H would perform that start here and no base kernel does.
+    fields.h_separated = True
     if options.get("plant"):
         plant_signed_zeros(fields)
+    if options.get("plant_curl"):
+        state = {name: getattr(fields, name) for name in ("Dy", "Hx", "Hz")}
+        fields.gate_planted_curl = plant_curl_negative_zero(
+            state, ("Dy", "Hx", 2, "Hz", 0), PLANTED_CURL_CELL, -1,
+            ("axis", "periodic", options["z_kind"]), dtdx=dtdx_of(fields))
+        fields.Dz[PLANTED_AXIS_CELL] = np.float32(-0.0)
+        fields.Hy[PLANTED_AXIS_CELL] = np.float32(0.0)
     return fields, pml
 
 
@@ -363,6 +409,8 @@ def tags(fields: Any, pml: Any) -> Tuple[str, ...]:
         found.append("narrow")
     if carries_signed_zeros(fields):
         found.append("signed_zeros")
+    if getattr(fields, "gate_planted_curl", None) is not None:
+        found.append("planted_curl_zero")
     return tuple(found)
 
 
@@ -441,9 +489,13 @@ def state_census(fields: Any) -> int:
 # ---------------------------------------------------------------------------
 
 def build_curl_plan(fields: Any, pml: Any, sub_step: str,
-                    residency: Optional[Residency] = None) -> Any:
+                    residency: Optional[Residency] = None,
+                    record: Optional[Any] = None) -> Any:
+    """The engine's plan, bound to the one-rank record of the run (or ``record``)."""
     residency = Residency() if residency is None else residency
-    plan = cyl.plan_cylindrical_real_curl(fields, pml, sub_step, residency)
+    plan = cyl.plan_cylindrical_real_curl(
+        fields, pml, sub_step, residency,
+        chunk_bounds=layer_record(fields.grid, pml) if record is None else record)
     if plan is None:
         raise AssertionError(cyl.cylindrical_real_curl_coverage(
             fields, pml, sub_step, residency).reasons)
@@ -451,9 +503,9 @@ def build_curl_plan(fields: Any, pml: Any, sub_step: str,
 
 
 def run_curl(fields: Any, pml: Any, sub_step: str,
-             prefix_mutant: Optional[Any] = None,
+             scan_mutant: Optional[Any] = None,
              curl_mutant: Optional[Any] = None,
-             launches: int = 1) -> Any:
+             launches: int = 1, record: Optional[Any] = None) -> Any:
     """Launch this family's curl through the ENGINE route, or with a mutant bound.
 
     THE MUTANT SEAMS ARE SEPARATE, and dropping either would not be a slowdown but a
@@ -462,9 +514,9 @@ def run_curl(fields: Any, pml: Any, sub_step: str,
     builds it, so what is measured is the object the engine would run.
     """
     residency = Residency()
-    plan = build_curl_plan(fields, pml, sub_step, residency)
-    if prefix_mutant is not None:
-        plan._prefix_functions[shaders.CONTRACT_OFF] = prefix_mutant
+    plan = build_curl_plan(fields, pml, sub_step, residency, record=record)
+    if scan_mutant is not None:
+        plan._scan_functions[shaders.CONTRACT_OFF] = scan_mutant
     if curl_mutant is not None:
         plan._curl_functions[shaders.CONTRACT_OFF] = curl_mutant
     residency.sync_in()
@@ -476,7 +528,8 @@ def run_curl(fields: Any, pml: Any, sub_step: str,
 
 def run_constitutive(fields: Any, pml: Any, side: str) -> Any:
     residency = Residency()
-    plan = cyl.plan_cylindrical_real_constitutive(fields, pml, side, residency)
+    plan = cyl.plan_cylindrical_real_constitutive(fields, pml, side, residency,
+                                                  chunk_bounds=layer_record(fields.grid, pml))
     if plan is None:
         raise AssertionError(cyl.cylindrical_real_constitutive_coverage(
             fields, pml, side, residency).reasons)
@@ -587,6 +640,8 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
     kit.provenance(os.path.dirname(os.path.abspath(out)), {
         "cylindrical_real.py": os.path.join(
             API_ROOT, "meep_gpu/metal_kernels/cylindrical_real.py"),
+        "chunk_bounds.py": os.path.join(
+            API_ROOT, "meep_gpu/metal_kernels/chunk_bounds.py"),
         "templates.py": os.path.join(API_ROOT, "meep_gpu/metal_kernels/templates.py"),
         "shaders.py": os.path.join(API_ROOT, "meep_gpu/metal_kernels/shaders.py"),
         "launch.py": os.path.join(API_ROOT, "meep_gpu/metal_kernels/launch.py"),
@@ -646,138 +701,97 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# LEG prefix — the decisive inversion, re-measured through the SHIPPED plan
+# LEG radial — the device scan against the array path's own radial difference
 # ---------------------------------------------------------------------------
 
-def reference_prefix(fields: Any, sub_step: str) -> Any:
-    """``stepping``'s own prefix for this sub-step — CALLED, never re-derived.
+def reference_radial(fields: Any, pml: Any, sub_step: str,
+                     one_sum: bool = False) -> Any:
+    """``stepping``'s own radial difference for this sub-step — CALLED, never re-derived.
 
-    The B side scans Ep EXTENDED BY ITS ZERO WALL ROW at ``ir0 = 0.0``
-    (stepping.py:344-360); the D side scans Hp raw at ``ir0 = 0.5`` (:447-448). Both
-    are transcribed from the array path's own lines and then handed to the array
-    path's own function, so a divergence here cannot be an argument about what the
-    reference is.
+    The B side sums Ep EXTENDED BY ITS ZERO WALL ROW at ``ir0 = 0.0`` and differences
+    forward; the D side sums Hp raw at ``ir0 = 0.5`` and differences backward. The
+    chunk starts are the run's (``stepping._cylindrical_scan_starts`` for the
+    sub-step's target); ``one_sum`` passes ``None`` instead, one sum from the axis.
     """
+    rows = int(fields.grid.shape[0])
+    starts = None if one_sum else stepping._cylindrical_scan_starts(
+        fields, pml, cyl.SCAN_TARGETS[sub_step])
     if sub_step == "step_B":
         source = fields.Ey
-        rows = source.shape[0]
-        extended = np.empty((rows + 1,) + source.shape[1:], dtype=source.dtype)
+        extended = np.zeros((rows + 1,) + source.shape[1:], dtype=source.dtype)
         extended[:rows] = source
-        extended[rows] = 0
-        return stepping.cylindrical_rderiv_prefix(np, extended, 0.0)
-    source = fields.Hy
-    return stepping.cylindrical_rderiv_prefix(np, source, 0.5)
+        return stepping.cylindrical_rderiv_difference(np, extended, 0.0, starts, rows,
+                                                      backward=False)
+    return stepping.cylindrical_rderiv_difference(np, fields.Hy, 0.5, starts, rows,
+                                                  backward=True)
 
 
-def leg_prefix(payload: Dict[str, Any], out: str) -> None:
-    """The DEVICE scan alone against the array path's own prefix.
+def leg_radial(payload: Dict[str, Any], out: str) -> None:
+    """The DEVICE scan alone against the array path's own radial difference.
 
-    THIS IS THE LEG THAT PAYS FOR THE DESIGN. The Triton cylindrical module refuses a
-    device scan because on CuPy the ORACLE ITSELF is unreproducible — ``cupy.cumsum``
-    in float32 is not a sequential accumulation. That premise is INVERTED here rather
-    than ignored: this backend's engine holds NumPy, ``numpy.cumsum`` IS sequential,
-    and a column-serial device scan reproduces it by construction. Construction is an
-    argument; this is the measurement, on the SHIPPED PLAN's own scan launch rather
-    than on a bare kernel a harness assembled.
+    The column walk restarts its sum at +0 on each chunk's first row, from the run's
+    chunk starts, and stores the difference of two partial sums — not the rounded
+    increment, which is a different float32 number. Measured on the SHIPPED PLAN's
+    own scan launch. The ONE-SUM CONTROL is the same reference with one sum from the
+    axis; it must differ on every case, or the per-chunk restart would be unmeasured.
 
-    The row vectors are ALSO checked here, against ``_cylindrical_rderiv_weights``
-    called: they are built in float64 and rounded to float32 exactly ONCE
-    (stepping.py:1339-1341), and recomputing them in float32 would round twice on the
-    divisor and put a silent half-ulp error on the whole radial ladder.
+    The row vectors are checked against ``stepping._cylindrical_rderiv_rows`` called:
+    ``weights[g] = realnum(g + ir0)`` and ``rinv`` the double quotient rounded once.
     """
     rows: List[Dict[str, Any]] = []
     for label, _ in CASES:
         fields, pml = build(label)
         for sub_step in ("step_B", "step_D"):
-            expected = reference_prefix(fields, sub_step)
+            expected = reference_radial(fields, pml, sub_step)
+            one_sum = reference_radial(fields, pml, sub_step, one_sum=True)
             residency = Residency()
             plan = build_curl_plan(fields, pml, sub_step, residency)
             residency.sync_in()
-            plan.run_prefix()
+            plan.run_scan()
             residency.sync_out()
-            got = plan.prefix_host
+            got = plan.radial_host
 
             assert tuple(got.shape) == tuple(expected.shape), (
                 label, sub_step, got.shape, expected.shape)
             differ = differing(got, expected)
+            control = differing(expected, one_sum)
             moved = differing(got, np.zeros_like(got))
             kit.assert_moved(moved, f"{label}/{sub_step} scan output is all zero",
                              floor=64)
-            assert plan.prefix_launches == 1 and plan.curl_launches == 0, (
-                label, sub_step, plan.prefix_launches, plan.curl_launches)
+            kit.assert_moved(control, f"{label}/{sub_step} one-sum control: one radial "
+                             f"sum from the axis equals the per-chunk sums", floor=1)
+            assert plan.scan_launches == 1 and plan.curl_launches == 0, (
+                label, sub_step, plan.scan_launches, plan.curl_launches)
 
-            weights, divisor = cyl.prefix_row_vectors(sub_step,
-                                                      int(fields.grid.shape[0]))
+            radial_rows = int(fields.grid.shape[0])
+            weights, rinv = cyl.prefix_row_vectors(sub_step, radial_rows)
+            own_weights, own_rinv = stepping._cylindrical_rderiv_rows(
+                np, cyl.scan_rows(sub_step, radial_rows), cyl.PREFIX_IR0[sub_step],
+                np.float32)
+            rows_differing = (differing(weights, own_weights.reshape(-1))
+                              + differing(rinv, own_rinv.reshape(-1)))
+            assert rows_differing == 0, (label, sub_step, rows_differing)
             band = int(subnormal.census(got)) + int(subnormal.census(expected))
             row = {"case": label, "sub_step": sub_step, "tags": tags(fields, pml),
-                   "scan_shape": list(plan.scan_shape),
+                   "chunk_starts": sorted({int(s) for s in plan.starts}),
                    "wall_row": bool(cyl.PREFIX_WALL_ROW[sub_step]),
                    "ir0": cyl.PREFIX_IR0[sub_step],
                    "compared": int(words(expected).size),
                    "differing": differ, "nonzero_words": moved,
+                   "one_sum_differing": control,
                    "weights_words": int(weights.size),
-                   "divisor_words": int(divisor.size),
+                   "rinv_words": int(rinv.size),
+                   "row_vectors_differing": rows_differing,
                    "subnormal_words": band,
-                   "digest": kit.state_digest({"prefix": expected})}
+                   "digest": kit.state_digest({"radial": expected})}
             rows.append(row)
-            payload["legs"]["prefix"] = rows
+            payload["legs"]["radial"] = rows
             save(payload, out)
-            log(f"[prefix] {label:<28} {sub_step} shape={plan.scan_shape} "
-                f"compared={row['compared']} differing={differ} band={band}")
-
-    # WHERE THE float64 INTERMEDIATE ACTUALLY BITES, measured rather than asserted.
-    # The module rounds the ladders ONCE from float64 on the stated ground that a
-    # float32 recomputation would round the divisor twice. At ir0 in {0.0, 0.5} the
-    # counts are integers and the divisor half-integers — EXACT in float32 — so the
-    # two spellings agree bitwise until the integers stop being representable. The
-    # crossing is recorded here so the mutation row that measures 0/8 can cite a
-    # number instead of an argument.
-    def float32_ladder(rows_count: int, ir0: float) -> Tuple[Any, Any]:
-        counts = np.arange(rows_count, dtype=np.float32) + np.float32(ir0)
-        return counts, counts[1:] - np.float32(0.5)
-
-    reachability: List[Dict[str, Any]] = []
-    for sub_step in ("step_B", "step_D"):
-        ir0 = cyl.PREFIX_IR0[sub_step]
-        for radial in sorted({int(dict(CASES)[label].get("shape", (16, 1, 20))[0])
-                              for label, _ in CASES if not
-                              dict(CASES)[label].get("matrix_row")} | {16}):
-            count = cyl.scan_rows(sub_step, radial)
-            once = cyl.prefix_row_vectors(sub_step, radial)
-            twice = float32_ladder(count, ir0)
-            reachability.append({
-                "sub_step": sub_step, "radial_rows": radial, "scan_rows": count,
-                "weights_differing": differing(once[0], twice[0]),
-                "divisor_differing": differing(once[1], twice[1])})
-    crossing = None
-    for exponent in range(10, 26):
-        count = 2 ** exponent
-        edge = np.arange(count - 1, count + 1, dtype=np.float64) + 0.5
-        edge32 = np.arange(count - 1, count + 1, dtype=np.float32) + np.float32(0.5)
-        if differing((edge - 0.5).astype(np.float32),
-                     edge32 - np.float32(0.5)):
-            crossing = count
-            break
-    assert all(row["weights_differing"] == 0 and row["divisor_differing"] == 0
-               for row in reachability), reachability
-    payload["legs"]["prefix_row_vector_rounding"] = {
-        "per_shape": reachability,
-        "first_divergent_row_count": crossing,
-        "finding": (
-            "the float64-then-round-once ladder and a pure float32 recomputation are "
-            "BIT-IDENTICAL at every radial extent in this matrix, and first diverge "
-            f"around {crossing} rows. ir0 is 0.0 or 0.5, so the counts are integers "
-            "and the divisor half-integers, both exact in float32 until the integers "
-            "themselves stop being representable. The module's stated reason for the "
-            "float64 intermediate — a silent half-ulp error on the radial ladder — is "
-            "therefore NOT REACHABLE on any constructible grid. The spelling is still "
-            "right, for the other reason it also gives: _cylindrical_rderiv_weights "
-            "is the one definition and calling it is what stops the two drifting."),
-    }
-    payload["legs"]["prefix"] = rows
+            log(f"[radial] {label:<28} {sub_step} starts={row['chunk_starts']} "
+                f"compared={row['compared']} differing={differ} "
+                f"one_sum_differing={control} band={band}")
+    payload["legs"]["radial"] = rows
     save(payload, out)
-    log(f"[prefix] row-vector rounding: identical at every shape here, first "
-        f"divergence at ~{crossing} rows")
 
 
 # ---------------------------------------------------------------------------
@@ -789,8 +803,8 @@ def leg_curl(payload: Dict[str, Any], out: str) -> None:
 
     THE LAUNCH SPLIT IS ASSERTED, not reported. ``launches`` counts KERNEL launches
     and one ``run`` owes exactly one scan and one curl; a plan that ran the curl twice
-    on a stale prefix, or the scan and no curl, would otherwise be indistinguishable
-    from a plan that ran once correctly.
+    on a stale radial difference, or the scan and no curl, would otherwise be
+    indistinguishable from a plan that ran once correctly.
     """
     rows: List[Dict[str, Any]] = []
     for label, _ in CASES:
@@ -802,8 +816,8 @@ def leg_curl(payload: Dict[str, Any], out: str) -> None:
             kit.assert_moved(moved, f"{label}/{sub_step} reference barely moved",
                              floor=64)
             plan = run_curl(fields, pml, sub_step)
-            assert (plan.launches, plan.prefix_launches, plan.curl_launches) == (
-                2, 1, 1), (label, sub_step, plan.launches, plan.prefix_launches,
+            assert (plan.launches, plan.scan_launches, plan.curl_launches) == (
+                2, 1, 1), (label, sub_step, plan.launches, plan.scan_launches,
                            plan.curl_launches)
             per = divergence(fields, after)
             row = {"case": label, "sub_step": sub_step, "tags": tags(fields, pml),
@@ -812,7 +826,7 @@ def leg_curl(payload: Dict[str, Any], out: str) -> None:
                    "moved": moved, "compared": compared_words(after),
                    "differing": sum(per.values()), "per_target": per,
                    "launches": plan.launches,
-                   "prefix_launches": plan.prefix_launches,
+                   "scan_launches": plan.scan_launches,
                    "curl_launches": plan.curl_launches,
                    "digest": kit.state_digest(after)}
             rows.append(row)
@@ -895,16 +909,15 @@ def leg_axis(payload: Dict[str, Any], out: str) -> None:
     THE THIRD ROW IS A DEADNESS MEASUREMENT AND IT CORRECTS AN EARLIER CLAIM. The
     build round's mutation table restored the near ghost on ``b_x`` and recorded the
     resulting null as evidence that the METALLIC substitution is equivalent. Reading
-    the emitted source, ``b_x`` is not consumed by ANY curl on EITHER sub-step — the B
-    side's Bz curl is the prefix difference and the D side's Dz curl takes ``pb_x`` —
-    so that null was a DEAD-STORE fact, not a masking fact, and it certified nothing.
-    The live shift-down-along-r operands are ``c_x`` (Hz, partner of Dy) and ``pb_x``
-    (the prefixed Hp, partner of Dz); leg ``mutations`` re-arms the nulls THERE, and
-    pairs each with a mask-dropped twin that must be CAUGHT. This row records the
-    deadness itself as a number.
+    the emitted source, ``b_x`` is not consumed by ANY curl on EITHER sub-step — both
+    sides' z-component curl is ``dtdx`` times the bound radial difference — so that
+    null was a DEAD-STORE fact, not a masking fact, and it certified nothing. The live
+    shift-down-along-r operand is ``c_x`` (Hz, partner of Dy); leg ``mutations``
+    re-arms the null THERE and pairs it with a mask-dropped twin that must be CAUGHT.
+    This row records the deadness itself as a number.
 
     THE FOURTH ROW IS A VACUITY FLOOR NOBODY ELSE CARRIES: how many words the
-    reference moved ON ROW 0. Every cylindrical addition except the prefix acts on
+    reference moved ON ROW 0. Every cylindrical addition but the radial sum acts on
     that row, and a matrix whose reference never touched it would certify the r = 0
     machinery by never exercising it.
     """
@@ -928,14 +941,14 @@ def leg_axis(payload: Dict[str, Any], out: str) -> None:
             fired = {"count": 0}
 
             def metallic_near_ghost(xp, field, axis, boundary, component,
-                                    phase=None, mirror_phase=None, scratch=None,
+                                    mirror_phase=None, scratch=None,
                                     scratch_tag="shift_down", _original=original):
                 if boundary == stepping.CYL_AXIS:
                     fired["count"] += 1
                     boundary = stepping.METALLIC
                     mirror_phase = None
-                return _original(xp, field, axis, boundary, component, phase,
-                                 mirror_phase, scratch, scratch_tag)
+                return _original(xp, field, axis, boundary, component, mirror_phase,
+                                 scratch, scratch_tag)
 
             stepping._shift_down = metallic_near_ghost
             try:
@@ -1014,13 +1027,12 @@ def leg_axis(payload: Dict[str, Any], out: str) -> None:
     payload["legs"]["axis_operand_deadness"] = {
         "b_x_garbage_differing": deadness,
         "finding": (
-            "b_x — g1's shift-down along r — is consumed by NO curl on EITHER "
-            "sub-step: the B side's Bz curl is the prefix difference and the D side's "
-            "Dz curl takes the PREFIXED pb_x. A near-ghost mutation planted on b_x is "
-            "therefore a dead-store edit and its null certifies nothing. The live "
-            "shift-down-along-r operands are c_x (Hz) and pb_x (prefixed Hp), and the "
-            "mutation leg arms the nulls there, each paired with a mask-dropped twin "
-            "that must be CAUGHT."),
+            "b_x — g1's shift along r — is consumed by NO curl on EITHER sub-step: "
+            "both sides' z-component curl is dtdx times the bound radial difference. "
+            "A near-ghost mutation planted on b_x is therefore a dead-store edit and "
+            "its null certifies nothing. The live shift-down-along-r operand is c_x "
+            "(Hz), and the mutation leg arms the null there, paired with a "
+            "mask-dropped twin that must be CAUGHT."),
     }
     payload["legs"]["axis"] = rows
     save(payload, out)
@@ -1090,7 +1102,7 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = CYCLES) -> N
         kit.assert_moved(evolved, f"{label} whole-step state never evolved",
                          floor=64)
         counters = {slot: [plan.plans[slot].launches,
-                           getattr(plan.plans[slot], "prefix_launches", None),
+                           getattr(plan.plans[slot], "scan_launches", None),
                            getattr(plan.plans[slot], "curl_launches", None)]
                     for slot in ARITHMETIC_SLOTS}
         for slot in ("step_B", "step_D"):
@@ -1158,7 +1170,7 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = CYCLES) -> N
 #: THE ``band_edge`` ROW IS RECORDED RATHER THAN ASSERTED, and it is where a WINDOW
 #: earns its place over a scalar: the state is scaled UNIFORMLY and the scale itself
 #: is a normal float32, so anything the census finds was reached BY THE RUN — through
-#: cancellation in the split-field recurrence and down the radial ladder the prefix
+#: cancellation in the split-field recurrence and down the radial sums the scan
 #: accumulates — and not by the seeding. A census taken once at step 0 would say
 #: "clean" about a run that is not.
 PRECONDITION_SCALES: Tuple[Tuple[str, float, Optional[bool]], ...] = (
@@ -1306,8 +1318,9 @@ def leg_split(payload: Dict[str, Any], out: str) -> None:
             named = [r for r in verdict.reasons if f"grid.m = {m}" in r]
             assert not verdict.covered and named, (m, sub_step, verdict.reasons)
             per_slot[sub_step] = named
-            assert cyl.plan_cylindrical_real_curl(m_fields, m_pml, sub_step,
-                                                  residency) is None
+            assert cyl.plan_cylindrical_real_curl(
+                m_fields, m_pml, sub_step, residency,
+                chunk_bounds=layer_record(m_fields.grid, m_pml)) is None
         for side in ("H", "E"):
             verdict = cyl.cylindrical_real_constitutive_coverage(
                 m_fields, m_pml, side, residency)
@@ -1362,7 +1375,28 @@ def leg_split(payload: Dict[str, Any], out: str) -> None:
     assert not verdict.covered and named, verdict.reasons
     record["clause_3_refusal"] = named
 
-    # 6. update_P is owned by the independent, geometry-free ADE family, never by
+    # 6. THE COURANT CLAUSE. The D side's axis rule is MEEP's double product
+    #    4 * Courant * Hp[r=0] rounded once; this backend forms it in float32, which is
+    #    the same word only for a float32-word Courant. The sweep's default 0.37 is
+    #    not one: step_D is refused by name and step_B, which forms no product with
+    #    Courant, is admitted. Its float32 word is admitted on both (leg whole_step's
+    #    composition_matrix_row).
+    odd_fields, odd_pml = matrix.cylindrical(m=0, complex_storage=False)
+    assert float(np.float32(odd_fields.grid.courant)) != float(odd_fields.grid.courant)
+    courant_verdicts: Dict[str, Any] = {}
+    for sub_step in ("step_B", "step_D"):
+        verdict = cyl.cylindrical_real_curl_coverage(odd_fields, odd_pml, sub_step,
+                                                     residency)
+        named = [r for r in verdict.reasons if "is not a float32 word" in r]
+        courant_verdicts[sub_step] = {"covered": bool(verdict.covered),
+                                      "named": named}
+    assert courant_verdicts["step_D"]["named"] and not courant_verdicts["step_D"][
+        "covered"], courant_verdicts
+    assert courant_verdicts["step_B"]["covered"], courant_verdicts
+    record["courant_clause"] = {"courant": float(odd_fields.grid.courant),
+                                "verdicts": courant_verdicts}
+
+    # 7. update_P is owned by the independent, geometry-free ADE family, never by
     #    this cylindrical family. Checked at the registry so ownership cannot drift.
     from meep_gpu.metal_kernels import arms as metal_arms  # noqa: PLC0415
 
@@ -1378,7 +1412,8 @@ def leg_split(payload: Dict[str, Any], out: str) -> None:
     payload["legs"]["split"] = record
     save(payload, out)
     log(f"[split] clause 14 refuses |m| >= 1 on 4 slots at m in (1, -1, 2); "
-        f"clauses 2/3/6/10 refuse by name; update_P arms={families_on_p}")
+        f"clauses 2/3/6/10 and the Courant clause refuse by name; "
+        f"update_P arms={families_on_p}")
 
 
 # ---------------------------------------------------------------------------
@@ -1390,7 +1425,6 @@ def leg_split(payload: Dict[str, Any], out: str) -> None:
 #: Triton products require CuPy, and the engine on this machine holds NumPy.
 BACKEND_ONLY_FRAGMENTS: Tuple[str, ...] = (
     "array module is",
-    "expansion probe artifact",
 )
 
 
@@ -1405,8 +1439,8 @@ def leg_containment(payload: Dict[str, Any], out: str) -> None:
     The Triton cylindrical product's predicate carries a BACKEND clause — it requires
     the engine's array module to be CuPy, and this host's engine holds NumPy — so on
     this machine it refuses every row for a reason that has nothing to do with
-    cylindrical geometry. A row whose only Triton refusals are the backend and probe
-    clauses is recorded NOT COMPARABLE rather than counted as Metal-only. A
+    cylindrical geometry. A row whose only Triton refusals are the backend clause
+    is recorded NOT COMPARABLE rather than counted as Metal-only. A
     like-for-like admission diff needs a CuPy host and this gate does not claim one.
     """
     from meep_gpu.triton_kernels import cylindrical_triton as triton_cyl
@@ -1542,11 +1576,11 @@ def leg_containment(payload: Dict[str, Any], out: str) -> None:
 # LEG mutations — a leg that cannot fail certifies nothing
 # ---------------------------------------------------------------------------
 
-#: ``(label, kernel, sub_steps, scope, edits, must_catch, why)`` where ``edits`` is a
-#: tuple of ``(old, new)`` pairs applied in order — a tuple rather than one pair
-#: because two of this family's defects are genuinely two statements (moving the axis
-#: post-add INTO the curl deletes one line and adds another, and a ghost restored
-#: WITHOUT its mask is the ghost edit plus the mask edit).
+#: ``(label, sub_steps, scope, edits, must_catch, why)``. ``edits`` maps a kernel to the
+#: ``(old, new)`` pairs applied to its shipped source, in order: key ``"scan"`` or
+#: ``"curl"`` for every listed sub-step, ``"scan:step_B"``-style for one. Two kernels
+#: in one row is a defect that is genuinely two statements (the D side's radial row 0
+#: given a value AND the mask that hides it dropped).
 #:
 #: ``scope`` is a tag from :func:`tags` or ``None`` for the whole matrix. A defect
 #: STRUCTURALLY ABSENT on some cases is scoped rather than reported as a partial
@@ -1554,284 +1588,362 @@ def leg_containment(payload: Dict[str, Any], out: str) -> None:
 #: miss into a pass.
 #:
 #: ``must_catch=False`` is a NULL CONTROL — a spelling asserted to be genuinely
-#: equivalent rather than merely untested.
-SOURCE_MUTATIONS: Tuple[Tuple[str, str, Tuple[str, ...], Optional[str],
-                              Tuple[Tuple[str, str], ...], Optional[bool],
+#: equivalent rather than merely untested; ``None`` records the number only.
+#:
+#: The §7.2 battery (``b*``, KERNELS.md) is armed on the curl's per-chunk select, which
+#: this family lifts from the base curl (``shaders.curl_source``): ``b3``/``b4`` hand
+#: the shipped kernel a wrong record (:data:`RECORD_MUTATIONS`), ``b7`` is the declared
+#: null, ``b8`` runs on the planted ``f = -0`` case. The curl's grouping mutation is
+#: INVERTED (§7.1): the shipped stencil is MEEP's left-to-right bracket, so the row
+#: plants the package's previous pairwise grouping and stays must-catch.
+
+#: The per-chunk dsigu select line of each sub-step's curl (B: half-integer lattice).
+_SELECT = {"step_B": "    const bool du0 = in_h_z, du1 = in_h_x, du2 = in_h_y;\n",
+           "step_D": "    const bool du0 = in_i_z, du1 = in_i_x, du2 = in_i_y;\n"}
+
+
+def _select_edit(du0: str, du1: str, du2: str) -> Dict[str, Tuple[Tuple[str, str], ...]]:
+    """The select line replaced on both sub-steps; ``{h}`` is the sub-step's lattice."""
+    out: Dict[str, Tuple[Tuple[str, str], ...]] = {}
+    for sub_step, lattice in (("step_B", "h"), ("step_D", "i")):
+        new = (f"    const bool du0 = {du0.format(h=lattice)}, "
+               f"du1 = {du1.format(h=lattice)}, du2 = {du2.format(h=lattice)};\n")
+        out[f"curl:{sub_step}"] = ((_SELECT[sub_step], new),)
+    return out
+
+
+_BOTH = ("step_B", "step_D")
+
+SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, ...], Optional[str],
+                              Dict[str, Tuple[Tuple[str, str], ...]], Optional[bool],
                               str], ...] = (
     # ---- THE RADIAL SCAN ---------------------------------------------------
-    ("prefix_wall_row_dropped", "prefix", ("step_B",), None,
-     (("(i < nxi - 1 ? src[i * nyz + base] : 0.0f)",
-       "(i < nxi - 1 ? src[i * nyz + base] : 1.0f)"),),
-     True,
-     "the B side's ZERO WALL ROW carries a value instead of zero. Bz's last-row "
-     "forward difference then reads minus the whole accumulated sum "
-     "(stepping.py:331-342), which is the symptom that found the wall row in the "
-     "first place. "
-     "RE-ARMED 2026-08-19, IN BOUNDS. The original spelling replaced the guarded "
-     "read with a bare src[i * nyz + base], which on the last row reads PAST THE "
-     "END of the prefix volume - so it was caught only when the memory beyond the "
-     "buffer happened to differ from zero. Measured: CAUGHT 5/8, then 7/8 on a "
-     "re-run of the same bytes, and 8/8 when the case was run alone. A "
-     "NON-DETERMINISTIC needle is not a needle, and this file already states the "
-     "rule for the mirror-image defect: a gate must not rest on an out-of-bounds "
-     "read. The re-arm keeps the defect class (wall row not zero) and reads the "
-     "LAST VALID ROW instead, which is in bounds. "
-     "RE-ARMED AGAIN 2026-08-27: that row is in bounds but NOT deterministic, and "
-     "the determinism was asserted rather than measured. It is the WALL ROW -- the "
-     "one this kernel never writes -- living in PLAN-OWNED scratch reused across "
-     "launches, so it holds whatever the previous tenant left. "
-     "prefix_loop_stops_one_row_short, four entries down, says exactly that of the "
-     "same row: 'whatever the plan-owned scratch held, which is a stale value'. "
-     "Measured on the re-armed bytes: CAUGHT 8/8, 5/8, 8/8 across three consecutive "
-     "runs, with the same run-alone-passes signature the original had -- because "
-     "bounds were never the cause. The cause is reading memory this kernel does not "
-     "define. The needle is now a LITERAL 1.0f: same defect class (the wall row "
-     "carries a value instead of zero), no read of undefined memory, nothing left "
-     "for a prior launch to perturb"),
-    ("prefix_reciprocal_multiply", "prefix", ("step_B", "step_D"), None,
-     (("float inc = (w - prev) / divisor[i - 1];",
-       "float inc = (w - prev) * (1.0f / divisor[i - 1]);"),), True,
-     "x/y replaced by x*(1/y): algebraically equal, a DIFFERENT float32 number. This "
-     "is the mutation that makes the module's `/` rather than a reciprocal a "
-     "measurement instead of a style note"),
-    ("prefix_weight_off_by_one", "prefix", ("step_B", "step_D"), None,
-     (("* weights[i];", "* weights[i - 1];"),), True,
-     "shift the radial weight ladder by one row — a half-cell error in ir0, the "
-     "silent kind: a smooth, plausible, slightly wrong field (stepping.py:1297-1299)"),
-    ("prefix_divisor_off_by_one", "prefix", ("step_B", "step_D"), None,
-     (("/ divisor[i - 1];", "/ divisor[i];"),), True,
-     "the divisor is the INTEGER SITE THE DIFFERENCE LANDS ON, not the next one "
-     "(stepping.py:1312 builds it as counts[1:] - 0.5)"),
-    ("prefix_loop_stops_one_row_short", "prefix", ("step_B", "step_D"), None,
-     (("for (int i = 1; i < nxi; ++i)", "for (int i = 1; i < nxi - 1; ++i)"),), True,
-     "the scan's trip count is a RUNTIME loop over nxi and the last row is the one "
-     "the B side's forward difference reads. A short loop leaves it holding whatever "
-     "the plan-owned scratch held, which is a stale value rather than a crash"),
-    ("prefix_column_decomposition_swapped", "prefix", ("step_B", "step_D"), None,
-     (("int k = int(idx) % nzi;\n    int j = int(idx) / nzi;",
-       "int j = int(idx) % nzi;\n    int k = int(idx) / nzi;"),), True,
-     "swap the (phi, z) column decomposition. On a Dcyl grid ny is 1, so the swapped "
-     "form makes every thread but one fail the `j >= nyi` guard and return: the scan "
-     "writes one column and leaves the rest of the prefix stale"),
-    ("prefix_commuted_add", "prefix", ("step_B", "step_D"), None,
-     (("acc = acc + inc;", "acc = inc + acc;"),), False,
-     "NULL CONTROL. float addition IS commutative, so this cannot differ in a bit. "
-     "Carried as the arm that shows this leg does not flag any edit at all"),
+    ("radial_wall_row_carries_a_value", ("step_B",), None,
+     {"scan": (("src[(g + 1) * nyz + base] : 0.0f)",
+                "src[(g + 1) * nyz + base] : 1.0f)"),)}, True,
+     "the B side's ZERO WALL ROW carries a value instead of zero: the last row's "
+     "forward difference then reads a sum the array path does not form. A LITERAL "
+     "1.0f, so no read of memory this kernel does not define (an earlier spelling "
+     "read the never-written wall row of reused scratch and was non-deterministic)"),
+    ("radial_sum_never_restarts", _BOTH, None,
+     {"scan": (("        if (s != owner) { acc = 0.0f; owner = s; }\n",
+                "        if (s != owner) { owner = s; }\n"),)}, True,
+     "ONE radial sum from the axis instead of MEEP's f_rderiv_int per structure chunk "
+     "(step_db.cpp:104-118): the radial analogue of the B select removed. Every case "
+     "carries two r chunks (the r layer), so the cut row and every row above it move"),
+    ("radial_restart_read_one_row_late", _BOTH, None,
+     {"scan": (("        int s = starts[g];\n",
+                "        int s = starts[g > 0 ? g - 1 : 0];\n"),)}, True,
+     "the chunk boundary one row off: the sum restarts one row after the chunk's first "
+     "row (the §7.2 bound-off-by-one class, on the radial walk)"),
+    ("radial_quotient_divided_in_kernel", ("step_B",), None,
+     {"scan": (("float inc = rinv[g] * (w - w_prev);",
+                "float inc = (w - w_prev) / (float(g + 1) - 0.5f);"),)}, True,
+     "x / ((g + ir0) - 0.5) in float32 where MEEP multiplies by rinv, the double "
+     "quotient stored as realnum: algebraically equal, a different float32 number"),
+    ("radial_quotient_divided_in_kernel_D", ("step_D",), None,
+     {"scan": (("float inc = rinv[g - 1] * (w - w_prev);",
+                "float inc = (w - w_prev) / ((float(g) + 0.5f) - 0.5f);"),)}, True,
+     "the same substitution on the D side (ir0 = 0.5)"),
+    ("radial_weight_off_by_one", _BOTH, None,
+     {"scan:step_B": (("* weights[g + 1];", "* weights[g];"),),
+      "scan:step_D": (("float w = src[g * nyz + base] * weights[g];",
+                       "float w = src[g * nyz + base] * weights[g - 1];"),)}, True,
+     "the weight ladder shifted by one row — a half-cell error in ir0, the silent "
+     "kind: a smooth, plausible, slightly wrong field"),
+    ("radial_rinv_off_by_one", _BOTH, None,
+     {"scan:step_B": (("float inc = rinv[g] *", "float inc = rinv[g > 0 ? g - 1 : 0] *"),),
+      "scan:step_D": (("float inc = rinv[g - 1] *",
+                       "float inc = rinv[g > 1 ? g - 2 : 0] *"),)}, True,
+     "rinv read one row down (in bounds): the quotient is the row the increment lands "
+     "on, not the one below"),
+    ("radial_loop_stops_one_row_short", _BOTH, None,
+     {"scan:step_B": (("for (int g = 0; g < nxi; ++g)",
+                       "for (int g = 0; g < nxi - 1; ++g)"),),
+      "scan:step_D": (("for (int g = 1; g < nxi; ++g)",
+                       "for (int g = 1; g < nxi - 1; ++g)"),)}, True,
+     "the walk's trip count is a RUNTIME loop over nxi; a short loop leaves the last "
+     "row holding the zero the fresh scratch was built with"),
+    ("radial_column_decomposition_swapped", _BOTH, None,
+     {"scan": (("int k = int(idx) % nzi;\n    int j = int(idx) / nzi;",
+                "int j = int(idx) % nzi;\n    int k = int(idx) / nzi;"),)}, True,
+     "swap the (phi, z) column decomposition. ny is 1, so every thread but one fails "
+     "the `j >= nyi` guard and returns: one column written, the rest stale"),
+    ("radial_rounded_increment_stored", _BOTH, None,
+     {"scan:step_B": (("out[g * nyz + base] = nxt - acc;", "out[g * nyz + base] = inc;"),),
+      "scan:step_D": (("out[g * nyz + base] = acc - nxt;",
+                       "out[g * nyz + base] = -inc;"),)}, True,
+     "the increment stored where the stencil's difference of two partial sums is: "
+     "(acc + inc) - acc is not inc in float32 once acc is not +0, which is why MEEP's "
+     "radial term is a difference of the summed array and not the increment"),
+    ("radial_difference_reversed", _BOTH, None,
+     {"scan:step_B": (("out[g * nyz + base] = nxt - acc;",
+                       "out[g * nyz + base] = acc - nxt;"),),
+      "scan:step_D": (("out[g * nyz + base] = acc - nxt;",
+                       "out[g * nyz + base] = nxt - acc;"),)}, True,
+     "forward F[j+1] - F[j] on the B side and backward F[g-1] - F[g] on the D side; "
+     "reversing either negates the z-component's whole curl"),
+    ("radial_commuted_add", _BOTH, None,
+     {"scan": (("float nxt = acc + inc;", "float nxt = inc + acc;"),)}, False,
+     "NULL CONTROL. float addition IS commutative, so this cannot differ in a bit"),
+    ("radial_sum_starts_at_negative_zero", _BOTH, None,
+     {"scan": (("    float acc = 0.0f;", "    float acc = -0.0f;"),)}, None,
+     "RECORDED ONLY. MEEP's F[first row] is +0; a -0 start reaches a stored word only "
+     "where every term of a difference is a zero, which a random state does not draw"),
 
-    # ---- Bz's SUBSTITUTED CURL ---------------------------------------------
-    ("curl_bz_flat_grouping", "curl", ("step_B",), "odd_courant",
-     (("float curl2 = dtdx * (pfx_up - pfx_here);",
-       "float curl2 = (dtdx * pfx_up) - (dtdx * pfx_here);"),), True,
-     "distribute dtdx over the prefix difference instead of scaling it once "
-     "(stepping.py:375). SCOPED TO A NON-POWER-OF-TWO COURANT, and that scoping is a "
-     "MEASUREMENT rather than caution: the round that built this family measured the "
-     "same edit NOT CAUGHT at Courant 0.5 and CAUGHT at 0.314159, because scaling by "
-     "a power of two is exact. Sweeping it unscoped would report a property of the "
-     "CASES as a weakness of the kernel"),
-    ("curl_bz_substitution_deleted", "curl", ("step_B",), None,
-     (("float curl2 = dtdx * (pfx_up - pfx_here);",
-       "float curl2 = dtdx * ((b_x - b) + (a - a_y));"),), True,
-     "the CARTESIAN four-operand Bz curl where cylindrical needs the prefix "
-     "difference — the whole substitution deleted"),
-    ("curl_bz_difference_reversed", "curl", ("step_B",), None,
-     (("float curl2 = dtdx * (pfx_up - pfx_here);",
-       "float curl2 = dtdx * (pfx_here - pfx_up);"),), True,
-     "stepping.py:347 is prefix_ext[1:] - prefix_ext[:-1]; reversing it negates Bz's "  # stepping.py live lines for the frozen device-text citation(s) in this string: 347->375
-     "whole curl"),
-    ("curl_bz_prefix_row_stride_one", "curl", ("step_B",), None,
-     (("float pfx_up   = pfx[ii + nyz];", "float pfx_up   = pfx[ii + 1];"),), True,
-     "the extended prefix is (nr+1, ny, nz) and the forward difference steps one ROW "
-     "— a stride of nyz cells. A stride of one is the z neighbour, stays in bounds "
-     "and crashes nothing"),
-    ("curl_prefix_leaks_into_dx", "curl", ("step_D",), None,
-     (("float curl0 = dtdx * ((c_y - c) + (b - b_z));",
-       "float curl0 = dtdx * ((c_y - c) + (pb - b_z));"),), True,
-     "feed Dx the PREFIXED Hp where the array path keeps it RAW: stepping.py:418-426 "  # stepping.py live lines for the frozen device-text citation(s) in this string: 418-426->447-455
-     "substitutes for the Dz term ONLY, which is why the plan binds both g1 and pfx"),
+    # ---- THE z-COMPONENT'S CURL --------------------------------------------
+    ("curl_z_substitution_deleted", ("step_B",), None,
+     {"curl": (("    float curl2 = dtdx * rad[ii];\n",
+                "    float curl2 = dtdx * (((b_x - b) + a) - a_y);\n"),)}, True,
+     "the CARTESIAN Bz stencil where cylindrical needs the radial difference — the "
+     "whole substitution deleted"),
+    ("curl_z_scaled_with_the_wrong_sign", _BOTH, None,
+     {"curl": (("    float curl2 = dtdx * rad[ii];\n",
+                "    float curl2 = (-dtdx) * rad[ii];\n"),)}, True,
+     "the radial term negated: the z-component's whole curl changes sign"),
+    ("curl_radial_read_one_cell_over", _BOTH, None,
+     {"curl": (("dtdx * rad[ii];", "dtdx * rad[(ii + 1) % int(n_elem)];"),)}, True,
+     "the radial difference read at the z neighbour (in bounds, crashes nothing)"),
+    ("curl_radial_leaks_into_dx", ("step_D",), None,
+     {"curl": (("(has_z ? ((-dtdx) * (b_z - b)) : 0.0f)",
+                "(has_z ? ((-dtdx) * (b_z - rad[ii])) : 0.0f)"),)}, True,
+     "feed Dx the radial difference where the array path keeps Hp RAW: the radial "
+     "term substitutes for the Dz term ONLY"),
+    ("curl1_previous_package_grouping", _BOTH, None,
+     {"curl": (("(dtdx * (((a_z - a) + c) - c_x))",
+                "(dtdx * ((a_z - a) + (c - c_x)))"),)}, True,
+     "INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping "
+     "(g1s - g1) + (g2 - g2s) planted in place of MEEP's left-to-right "
+     "((g1s - g1) + g2) - g2s on the one target with both partners present"),
+    ("curl0_absent_phi_partner_as_a_self_difference", _BOTH, None,
+     {"curl": (("(has_z ? ((-dtdx) * (b_z - b)) : 0.0f)",
+                "(has_z ? (dtdx * ((c_y - c) + (b - b_z))) : 0.0f)"),)}, None,
+     "RECORDED ONLY (KERNELS.md Appendix A, the invariant-axis class): the package's "
+     "previous spelling, the phi partner read as a self-difference on the one-cell "
+     "axis, where MEEP's one-partner form is (-dtdx) * (g2s - g2). The two differ only "
+     "in the sign of a zero curl"),
 
     # ---- THE r = 0 SEAM: the axis rules and the ownership mask --------------
-    ("axis_bx_not_zeroed", "curl", ("step_B",), None,
-     (("    v0 = at_x ? 0.0f : v0;", "    v0 = v0 + 0.0f;"),), True,
-     "delete Br[r = 0] = 0. A radial vector at r = 0 points nowhere "
-     "(stepping.py:661-662)"),
-    ("axis_dz_postadd_dropped", "curl", ("step_D",), None,
-     (("v2 = at_x ? (v2 + (axis_coef * g1[ii])) : v2;", "v2 = v2 + 0.0f;"),), True,
-     "delete the m = 0 on-axis Dz increment, (4*Courant)*Hp[r=0] (stepping.py:586)"),
-    ("axis_dz_postadd_folded_into_curl", "curl", ("step_D",), None,
-     # Anchored on the r MASK LINE rather than on the curl statement, because `at_x`
-     # is declared by the mask block: the fold has to sit after that declaration and
-     # before the recurrence, which is exactly where a transcription that folded it
-     # would put it. curl2 is already the masked +0.0 there, so the appended line IS
-     # the increment routed through the recurrence.
-     (("    curl2 = at_x ? 0.0f : curl2;",
-       "    curl2 = at_x ? 0.0f : curl2;\n"
-       "    curl2 = at_x ? (curl2 - (axis_coef * g1[ii])) : curl2;"),
-      ("v2 = at_x ? (v2 + (axis_coef * g1[ii])) : v2;", "v2 = v2 + 0.0f;")), True,
-     "route the axis increment THROUGH the split-field recurrence instead of "
-     "post-adding it after. TWO EDITS, because that is what the defect is. This is "
-     "the exact error stepping.py:575-580 records as MEASURED WRONG for m = 0 under "
-     "PML (Er 2.7e-01 / Hp 4.5e-01 against 3.6e-07 for the post-add), because Dz's "
-     "dsig is R, whose sigma is zero on the axis row"),
-    ("axis_dp_not_zeroed", "curl", ("step_D",), None,
-     (("    v1 = at_x ? 0.0f : v1;", "    v1 = v1 + 0.0f;"),), True,
-     "delete Dp[r = 0] = 0 (stepping.py:587)"),
-    ("r_ownership_mask_dropped_on_dy", "curl", ("step_D",), None,
-     (("    curl1 = at_x ? 0.0f : curl1;",
-       "    // MUTANT: the r ownership mask on Dy dropped"),), True,
-     "MEEP's little_owned_corner0 deliberately excludes r = 0 (vec.hpp:1100-1104) — "
-     "the axis row belongs to the per-m rules. On Dy the mask is LOAD-BEARING: its "
-     "radial operand pair at r = 0 is (Hz[0], the metallic zero ghost), whose "
-     "difference is Hz[0] and is not zero"),
-    ("r_ownership_mask_dropped_on_bx", "curl", ("step_B",), None,
-     (("    curl0 = at_x ? 0.0f : curl0;",
-       "    // MUTANT: the r ownership mask on Bx dropped"),), True,
-     "the SAME mask on the B side, and it is worth its own row because the FIELD "
-     "cannot carry it: v0 is overwritten by the axis rule at exactly at_x, so the "
-     "only witness is the AUXILIARY fu_Bx. A gate comparing fields alone would report "
-     "this defect as uncaught"),
-    ("r_ownership_mask_dropped_on_dz", "curl", ("step_D",), None,
-     (("    curl2 = at_x ? 0.0f : curl2;",
-       "    // MUTANT: the r ownership mask on Dz dropped"),), False,
-     "MEASURED NULL, 0/8, AND IT CORRECTS THE FAMILY'S STATED MECHANISM. This row was "
-     "armed CAUGHT on the module's own reasoning — that the ownership mask is what "
-     "zeroes the r = 0 curl of the two shift-down-along-r targets — and it came back "
-     "0/8. Measured directly: on Dz at m = 0 the curl at r = 0 is ALREADY exactly "
-     "+0.0 without the mask, because BOTH its operand differences vanish exactly. The "
-     "radial pair is (prefix[0], the metallic zero ghost) and prefix row 0 is an "
-     "exact +0.0 by construction (stepping.py:1314 zeros_like, and the census here "
-     "confirms every word of that row is 0x00000000); the phi pair is a "
-     "self-difference on the one-cell invariant axis, which wraps onto itself. So the "
-     "mask writes the word that is already there. The CONCLUSION the family draws — "
-     "the CYL_AXIS near ghost is unobservable — is unaffected and separately measured "
-     "in leg axis; the MECHANISM it names is right for Dy and wrong for Dz, and that "
-     "is what this row now records"),
-    ("near_ghost_restored_on_hz", "curl", ("step_D",), None,
-     (("float c_x = vx ? g2[ox] : 0.0f;", "float c_x = vx ? g2[ox] : (-g2[ii]);"),),
-     False,
-     "put the r_to_minus_r NEAR GHOST back on Hz — Dy's partner, one of the two LIVE "
-     "shift-down-along-r operands (stepping.py:1877-1889). MUST NOT be caught: it is "
-     "the arm that proves the METALLIC substitution is equivalent rather than merely "
-     "untested, and here the null IS a masking fact, which the twin below measures"),
-    ("near_ghost_restored_on_hz_WITH_mask_dropped", "curl", ("step_D",), None,
-     (("float c_x = vx ? g2[ox] : 0.0f;", "float c_x = vx ? g2[ox] : (-g2[ii]);"),
-      ("    curl1 = at_x ? 0.0f : curl1;",
-       "    // MUTANT: the r ownership mask on Dy dropped")), True,
-     "THE PAIRED TWIN, and the row that makes the null above mean something. Restore "
-     "the near ghost AND drop the mask that hides it: CAUGHT here means the operand "
-     "is live and the null next door is a MASKING measurement rather than a "
-     "dead-store artifact — which is exactly what the build round's b_x null turned "
-     "out to be (leg axis_operand_deadness)"),
-    ("near_ghost_restored_on_prefix", "curl", ("step_D",), None,
-     (("float pb_x = vx ? pfx[ox] : 0.0f;",
-       "float pb_x = vx ? pfx[ox] : (-pfx[ii]);"),), False,
-     "the same near ghost on the PREFIXED operand — Dz's. MUST NOT be caught, and the "
-     "REASON IS NOT THE MASK: the ghost value here is -pfx[0] = -0.0, and "
-     "-0.0 - (+0.0) is -0.0, which the phi self-difference then turns back into +0.0 "
-     "at the add. The prefix's own exact zero row absorbs the sign before the mask is "
-     "ever consulted, which is what the twin below measures"),
-    ("near_ghost_restored_on_prefix_WITH_mask_dropped", "curl", ("step_D",), None,
-     (("float pb_x = vx ? pfx[ox] : 0.0f;",
-       "float pb_x = vx ? pfx[ox] : (-pfx[ii]);"),
-      ("    curl2 = at_x ? 0.0f : curl2;",
-       "    // MUTANT: the r ownership mask on Dz dropped")), False,
-     "MEASURED NULL, 0/8, and it is the twin that FAILED TO BITE — deliberately kept "
-     "for that. Restoring the ghost AND dropping the mask still changes nothing on "
-     "Dz, which is the direct evidence that the mask is not what hides this ghost. "
-     "Contrast the Hz twin above, which is CAUGHT at 11-40 words on the same cases: "
-     "the two rows side by side are what separate 'masked away' from 'already zero'"),
-    ("prefix_row_zero_negated", "prefix", ("step_B", "step_D"), None,
-     (("float acc = 0.0f;", "float acc = -0.0f;"),), None,
-     "RECORDED ONLY, and it is the row that keeps the previous one honest. The module "
-     "writes prefix row 0 as an exact +0.0 rather than assuming it, on the stated "
-     "ground that -0.0 would be a different WORD and this family compares words. It "
-     "would be — in the PREFIX — but the prefix is scratch that no comparison reads, "
-     "and both consumers absorb the sign: the B side forms pfx[1] - (-0.0), the D "
-     "side (+0.0) - (-0.0), and both are the same float32 word as before. So the "
-     "spelling is right and its stated justification is not the reason. Carried at "
-     "must_catch=None so the artifact reports the number rather than a verdict this "
-     "gate has no business asserting either way"),
+    ("axis_bx_not_zeroed", ("step_B",), None,
+     {"curl": (("    v0 = at_x ? 0.0f : v0;", "    v0 = v0 + 0.0f;"),)}, True,
+     "delete Br[r = 0] = 0 (stepping._cylindrical_axis_zero_B)"),
+    ("axis_dz_postadd_dropped", ("step_D",), None,
+     {"curl": (("v2 = at_x ? (v2 + (axis_coef * g1[ii])) : v2;", "v2 = v2 + 0.0f;"),)},
+     True,
+     "delete the m = 0 on-axis Dz increment, (4*Courant)*Hp[r=0]"),
+    ("axis_dz_postadd_folded_into_curl", ("step_D",), "planted_curl_zero",
+     {"curl": (("    curl2 = at_x ? 0.0f : curl2;",
+                "    curl2 = at_x ? 0.0f : curl2;\n"
+                "    curl2 = at_x ? (curl2 - (axis_coef * g1[ii])) : curl2;"),
+               ("v2 = at_x ? (v2 + (axis_coef * g1[ii])) : v2;", "v2 = v2 + 0.0f;"))},
+     None,
+     "RECORDED ONLY. Route the axis increment THROUGH the curl form instead of "
+     "post-adding it to the stored value (TWO EDITS, because that is what it is). "
+     "Under MEEP's forms the axis row is outside every r layer, so Dz's dsig "
+     "coefficient there is 1 and the fold equals the post-add on every word but one "
+     "pair: Dz[r=0] = -0 with Hp[r=0] = +0, where IEEE arithmetic gives +0 for the "
+     "post-add and -0 for the fold. MEASURED on that planted pair (PLANTED_AXIS_CELL): "
+     "the compiled mutant stores +0 there too, because on the at_x path the masked "
+     "curl is the literal +0 and the compiler, which keeps no signed zeros under its "
+     "default fast-math options, may spell 0 - x as -x; the fold is then the "
+     "post-add's word. A distinction only a signed zero carries, and that the compiler "
+     "is free to erase, cannot be a must-catch on this backend"),
+    ("axis_dp_not_zeroed", ("step_D",), None,
+     {"curl": (("    v1 = at_x ? 0.0f : v1;", "    v1 = v1 + 0.0f;"),)}, True,
+     "delete Dp[r = 0] = 0"),
+    ("r_ownership_mask_dropped_on_dy", ("step_D",), None,
+     {"curl": (("    curl1 = at_x ? 0.0f : curl1;",
+                "    // MUTANT: the r ownership mask on Dy dropped"),)}, False,
+     "NULL CONTROL under MEEP's forms. MEEP's little_owned_corner0 excludes r = 0 "
+     "(vec.hpp:1100-1104), but on Dy nothing stores the masked word: the m = 0 axis "
+     "rule stores Dp[r = 0] = +0 over whatever the form gave (axis_dp_not_zeroed), "
+     "and fu_Dy is stored only on Dy's dsigu (r) layer, which row 0 is outside of "
+     "(KERNELS.md §1, C2)"),
+    ("r_ownership_mask_dropped_on_bx", ("step_B",), None,
+     {"curl": (("    curl0 = at_x ? 0.0f : curl0;",
+                "    // MUTANT: the r ownership mask on Bx dropped"),)}, True,
+     "the same mask on the B side; the FIELD cannot carry it (v0 is overwritten by the "
+     "axis rule at at_x), so the only witness is the auxiliary fu_Bx"),
+    ("r_ownership_mask_dropped_on_dz", ("step_D",), None,
+     {"curl": (("    curl2 = at_x ? 0.0f : curl2;",
+                "    // MUTANT: the r ownership mask on Dz dropped"),)}, False,
+     "MEASURED NULL: the D side's radial row 0 is written +0 by the scan "
+     "(stepping.cylindrical_rderiv_difference), so curl2 is already +0 there and the "
+     "mask writes the word that is already there"),
+    ("radial_row_zero_given_a_value", ("step_D",), None,
+     {"scan": (("    out[base] = 0.0f;\n", "    out[base] = 1.0f;\n"),)}, False,
+     "NULL: the D side's radial row 0 given a value is hidden by the r ownership mask "
+     "on Dz (curl2 is masked at r = 0); the twin below drops the mask too"),
+    ("radial_row_zero_given_a_value_WITH_mask_dropped", ("step_D",), None,
+     {"scan": (("    out[base] = 0.0f;\n", "    out[base] = 1.0f;\n"),),
+      "curl": (("    curl2 = at_x ? 0.0f : curl2;",
+                "    // MUTANT: the r ownership mask on Dz dropped"),)}, True,
+     "THE PAIRED TWIN: a nonzero radial row 0 AND the mask dropped. Caught here and "
+     "null in each half alone separates 'masked away' from 'already zero'"),
+    ("near_ghost_restored_on_hz", ("step_D",), None,
+     {"curl": (("float c_x = vx ? g2[ox] : 0.0f;",
+                "float c_x = vx ? g2[ox] : (-g2[ii]);"),)}, False,
+     "put the r_to_minus_r NEAR GHOST back on Hz — Dy's partner, the LIVE "
+     "shift-down-along-r operand. MUST NOT be caught: the ghost feeds Dy's curl on "
+     "row 0 only, which the mask zeroes"),
+    ("near_ghost_restored_on_hz_WITH_mask_dropped", ("step_D",), None,
+     {"curl": (("float c_x = vx ? g2[ox] : 0.0f;",
+                "float c_x = vx ? g2[ox] : (-g2[ii]);"),
+               ("    curl1 = at_x ? 0.0f : curl1;",
+                "    // MUTANT: the r ownership mask on Dy dropped"))}, False,
+     "THE PAIRED TWIN, A NULL UNDER MEEP'S FORMS: restore the near ghost AND drop the "
+     "mask that hides it. Dy's row-0 curl still reaches no stored word: the m = 0 "
+     "axis rule stores Dp[r = 0] = +0 over the form's result, and fu_Dy is stored only "
+     "on Dy's dsigu (r) layer, which row 0 is outside of (KERNELS.md §1, C2); see "
+     "r_ownership_mask_dropped_on_dy. The radial twin above keeps the pair's "
+     "discrimination on Dz"),
 
     # ---- THE m = 0 / |m| >= 1 SPLIT, AS STRUCTURAL ABSENCE ------------------
-    ("m0_imr_coupling_injected", "curl", ("step_B",), None,
-     (("    float curl0 = dtdx * ((c_y - c) + (b - b_z));",
-       "    float curl0 = dtdx * ((c_y - c) + (b - b_z));\n"
-       "    curl0 = curl0 - (dtdx * c) / (float(2 * i) + 1.0f);"),), True,
-     "INJECT the |m| >= 1 i*m/r coupling into the m = 0 body at |m| = 1 magnitude "
-     "(stepping.py:375-383 adds it only under grid.m != 0, over the 2*ir + shift "
-     "denominator). At m = 0 the coefficient is EXACTLY ZERO and the term does not "
-     "exist — so the only way to arm the absence is to put the term back and require "
-     "it CAUGHT. That turns 'this family carries no m phase' from an omission a "
-     "reader must trust into a measurement"),
-    ("m0_near_axis_zeroing_injected", "curl", ("step_B",), None,
-     (("    v0 = at_x ? 0.0f : v0;",
-       "    v0 = at_x ? 0.0f : v0;\n"
-       "    v1 = at_x ? 0.0f : v1;\n"
-       "    n1 = at_x ? 0.0f : n1;"),), True,
-     "INJECT the |m| >= 2 near-axis zeroing — six volumes held at zero over "
-     "slice(0, |m|) — into the m = 0 body. _cylindrical_axis_rows is slice(0, |m|), "
-     "which is EMPTY at m = 0, so the row count this family carries is ZERO rows and "
-     "the B side's only axis rule is Bx. Same discipline as the row above: the "
-     "absence is armed by putting the rule back"),
-    ("m0_D_side_zeroes_the_auxiliary_too", "curl", ("step_D",), None,
-     (("    v1 = at_x ? 0.0f : v1;",
-       "    v1 = at_x ? 0.0f : v1;\n    n1 = at_x ? 0.0f : n1;"),), True,
-     "stepping.py:587 zeroes the Dp FIELD on the axis row and NOT fu_Dp. The "
-     "|m| >= 2 rule zeroes both, so the two arms differ in exactly this and a "
-     "transcription that copied the wrong one is invisible unless the auxiliaries "
-     "are compared"),
+    ("m0_imr_coupling_injected", ("step_B",), None,
+     {"curl": (("    float curl2 = dtdx * rad[ii];\n",
+                "    float curl2 = dtdx * rad[ii];\n"
+                "    curl0 = curl0 - (dtdx * c) / (float(2 * i) + 1.0f);\n"),)}, True,
+     "INJECT an |m| = 1-shaped i*m/r coupling into the m = 0 body. At m = 0 the term "
+     "does not exist, so the only way to arm its absence is to put it back and "
+     "require it CAUGHT"),
+    ("m0_near_axis_zeroing_injected", ("step_B",), None,
+     {"curl": (("    v0 = at_x ? 0.0f : v0;",
+                "    v0 = at_x ? 0.0f : v0;\n"
+                "    v1 = at_x ? 0.0f : v1;\n"
+                "    n1 = at_x ? 0.0f : n1;"),)}, True,
+     "INJECT the |m| >= 2 near-axis hold into the m = 0 body; _cylindrical_axis_rows "
+     "is slice(0, |m|), EMPTY at m = 0"),
+    ("m0_D_side_zeroes_the_auxiliary_too", ("step_D",), None,
+     {"curl": (("    v1 = at_x ? 0.0f : v1;",
+                "    v1 = at_x ? 0.0f : v1;\n    n1 = at_x ? 0.0f : n1;"),)}, False,
+     "NULL CONTROL under MEEP's forms. The m = 0 rule zeroes the Dp FIELD on the axis "
+     "row and NOT fu_Dp, where the |m| >= 2 rule zeroes both; but fu_Dp is stored only "
+     "on Dy's dsigu (r) layer, which the axis row is outside of (KERNELS.md §1, C2), "
+     "so zeroing its register there reaches no stored word"),
+
+    # ---- THE §7.2 BATTERY on the curl's per-chunk select ---------------------
+    ("b1_select_removed", _BOTH, None, _select_edit("true", "true", "true"), True,
+     "every cell steps the split-field recurrence (the whole-grid form): fu read and "
+     "written everywhere"),
+    ("b2_predicate_on_coefficient_identity", _BOTH, None,
+     _select_edit("(km_z != 1.0f || si_z != 1.0f)", "(km_x != 1.0f || si_x != 1.0f)",
+                  "(km_y != 1.0f || si_y != 1.0f)"), True,
+     "the form keyed on the dsigu coefficients differing from 1 (the previous package "
+     "predicate) instead of chunk membership"),
+    ("b5_dsig_dsigu_swapped", _BOTH, None,
+     _select_edit("in_{h}_y", "in_{h}_z", "in_{h}_x"), True,
+     "each target's dsigu membership replaced by its dsig axis's: dsig-only and "
+     "dsigu-only cells trade forms"),
+    ("b6_auxiliary_stored_on_a_plain_cell", _BOTH, None,
+     {"curl": (("    if (du1) { u1[ii] = n1; }\n", "    u1[ii] = n1;\n"),)}, True,
+     "fu written outside the recurrence's cells, where the array path leaves it "
+     "untouched (the auxiliary contract) and the gate compares it"),
+    ("b7_auxiliary_load_unconditional", _BOTH, None,
+     {"curl": (("    float p0 = du0 ? u0[ii] : f0[ii];\n",
+                "    float p0_loaded = u0[ii];\n"
+                "    float p0 = du0 ? p0_loaded : f0[ii];\n"),)}, False,
+     "DECLARED NULL: an fu load hoisted above the select with every store still "
+     "guarded changes no word; the guard is traffic"),
+    ("b8_plain_curl_through_the_recurrence", ("step_D",), "planted_curl_zero",
+     {"curl": (("    float p1 = du1 ? u1[ii] : f1[ii];\n",
+                "    bool unit1 = (km_z == 1.0f) && (si_z == 1.0f) && (km_x == 1.0f)"
+                " && (si_x == 1.0f);\n"
+                "    float p1 = du1 ? u1[ii] : (unit1 ? 0.0f : f1[ii]);\n"),
+               ("    float v1 = du1 ? ((((f1[ii] * km_x) + n1) - p1) * si_x) : n1;\n",
+                "    float v1 = (du1 || unit1) ? ((((f1[ii] * km_x) + n1) - p1) * si_x)"
+                " : n1;\n"))}, True,
+     "on unit-coefficient plain cells, MEEP's plain f - curl spelled as the recurrence "
+     "with p := 0: differs only at f = -0, curl = +0, which the planted case puts on "
+     "a plain Dy cell (b_battery_states.plant_curl_negative_zero)"),
+)
+
+
+def _bound_off_by_one(record: Any, shape: Sequence[int]) -> Any:
+    """Every non-empty low run one row longer: the boundary plane changes form.
+
+    A run that already ends on the axis's last stored row (the r layer, recorded as
+    the axis's one run) starts one row earlier instead: a run past the stored rows is
+    refused by the plan builder (``chunk_bounds.plan_words``) and would launch nothing.
+    """
+    out = np.array(record, copy=True)
+    for half in (False, True):
+        for axis in range(3):
+            n = int(shape[axis])
+            a0, a1, b0 = (int(out[record_index(half, axis, w)]) for w in range(3))
+            if a1 > a0 and a1 >= n and a0 > 0:
+                out[record_index(half, axis, 0)] = a0 - 1
+            elif a1 > a0 and a1 < n and (b0 == 0 or a1 + 1 < b0):
+                out[record_index(half, axis, 1)] = a1 + 1
+    return out
+
+
+def _lattices_swapped(record: Any, shape: Sequence[int]) -> Any:  # noqa: ARG001
+    """The integer and half-integer entries exchanged."""
+    out = np.array(record, copy=True)
+    for axis in range(3):
+        for word in range(4):
+            i, h = record_index(False, axis, word), record_index(True, axis, word)
+            out[i], out[h] = record[h], record[i]
+    return out
+
+
+#: The record mutations (KERNELS.md §7.2): the kernel is the shipped one and the record
+#: it is handed is not; the reference steps the true division.
+RECORD_MUTATIONS: Tuple[Tuple[str, Callable[[Any, Sequence[int]], Any], str], ...] = (
+    ("b3_bound_off_by_one", _bound_off_by_one, "a run end one row past the chunk"),
+    ("b4_lattices_swapped", _lattices_swapped,
+     "the integer and half-integer records swapped"),
 )
 
 #: Host-side mutations: defects the KERNEL SOURCE cannot express because the value is
-#: computed on the host and BOUND, and the kernel takes a pointer.
-#: ``(label, kind, sub_step, scope, must_catch, why)``.
-HOST_MUTATIONS: Tuple[Tuple[str, str, str, Optional[str], Optional[bool],
+#: computed on the host and BOUND. ``(label, kind, sub_steps, scope, must_catch, why)``.
+HOST_MUTATIONS: Tuple[Tuple[str, str, Tuple[str, ...], Optional[str], Optional[bool],
                             str], ...] = (
-    ("prefix_ir0_swapped", "ir0", "step_B", None, True,
+    ("radial_ir0_swapped", "ir0", ("step_B",), None, True,
      "ir0 is 0.0 on the B side (Ep at the node) and 0.5 on the D side (Hp half a cell "
-     "out) — the two sub-lattices, stepping.py:1297-1299. The scan runs either way "
-     "and the radial profile is smoothly wrong"),
-    ("prefix_wall_row_given_to_the_D_side", "wall", "step_D", None, False,
-     "MEASURED NULL, 0/8, and it PINS THE ASYMMETRY rather than testing the kernel. "
-     "Give the D side the B side's zero wall row and its scan really does grow — the "
-     "harness ASSERTS the plan's scan_shape went from nr to nr + 1, so this is not a "
-     "no-op agreeing with a no-op — yet not one compared word moves. The reason is "
-     "the module's own: a BACKWARD difference reads rows i and i-1 and never looks "
-     "past the top, so the extra row is computed and never read, and the shared head "
-     "of the weight ladder is bit-identical because counts = arange(rows) + ir0 "
-     "agrees on the overlap. The defect in the OTHER direction — the B side's wall "
-     "row removed — is armed as prefix_wall_row_dropped and is CAUGHT. It is armed "
-     "there as a SOURCE edit and not as this flag, deliberately: clearing the flag on "
-     "the B side would shrink the prefix volume under a forward difference that "
-     "still reads ii + nyz, and a gate must not rest on an out-of-bounds read"),
-    ("prefix_rows_rounded_twice", "weights", "step_B", None, False,
-     "MEASURED NULL, 0/8, AND IT CORRECTS A STATED JUSTIFICATION. The module builds "
-     "the weight and divisor ladders in float64 and rounds to float32 exactly ONCE "
-     "(stepping.py:1339-1341), on the ground that recomputing them in float32 would "
-     "round twice on the divisor and put a silent half-ulp error on the whole radial "
-     "ladder. It would not, at any grid this family can run: ir0 is 0.0 or 0.5, so "
-     "the counts are integers and the divisor half-integers, both EXACT in float32. "
-     "Leg prefix measures the crossing — the two ladders are bit-identical at every "
-     "row count in this matrix and first diverge around 2^23 radial rows, four orders "
-     "of magnitude past anything constructible. The float64 intermediate is still the "
-     "right spelling and for a better reason: _cylindrical_rderiv_weights is the ONE "
-     "definition, and calling it is what stops the two drifting"),
-    ("scan_source_from_the_sibling_component", "source", "step_B", None, True,
-     "the B side's scan reads Ep (Ey) specifically and the D side Hp (Hy). Repointed "
-     "at a SIBLING SOURCE OF THE SAME SUB-STEP — Ex, which the plan already mirrors — "
-     "so the defect is a silent wrong field rather than an unregistered-mirror crash, "
-     "which would be measuring the harness"),
-    ("axis_coef_rounded_after_the_multiply", "axis_coef", "step_D", None, False,
-     "NULL CONTROL that PINS THE MODULE'S OWN CLAIM. The array path forms "
-     "4.0 * (dt/dx) in float64 and NumPy rounds that ONE scalar to float32; the "
-     "module says binding float32(4) * float32(dtdx) instead cannot differ because "
-     "scaling by four is exact. Carried so that claim is measured rather than "
-     "asserted — and if the coefficient ever stopped being a power of two this row "
-     "flips to CAUGHT"),
+     "out). The walk runs either way and the radial profile is smoothly wrong"),
+    ("radial_wall_row_given_to_the_D_side", "wall", ("step_D",), None, False,
+     "MEASURED NULL that PINS THE ASYMMETRY. Give the D side the B side's wall row and "
+     "its row vectors really do grow — the harness ASSERTS the bound weight vector "
+     "went from nr to nr + 1 words — yet no compared word moves: the backward walk "
+     "reads rows g and g - 1 and never the extra one, and the shared head of each "
+     "ladder is the same words. The B side's wall row is armed as a source edit "
+     "(radial_wall_row_carries_a_value)"),
+    ("radial_rinv_formed_in_float32", "rinv", _BOTH, None, None,
+     "RECORDED ONLY. rinv formed as a float32 quotient 1.0f / ((g + ir0) - 0.5f) "
+     "instead of MEEP's double quotient rounded once (stepping._cylindrical_rderiv_rows)"
+     ": both are correctly rounded quotients of the same exact operands except where "
+     "the double rounding lands differently, so the count is a property of the rows"),
+    ("scan_source_from_the_sibling_component", "source", ("step_B",), None, True,
+     "the B side's walk reads Ep (Ey) and the D side's Hp (Hy). Repointed at a SIBLING "
+     "SOURCE OF THE SAME SUB-STEP — Ex, which the plan already mirrors — so the defect "
+     "is a silent wrong field rather than an unregistered-mirror crash"),
+    ("radial_sum_over_one_chunk", "one_chunk", _BOTH, None, True,
+     "the chunk starts bound as all zeros — one sum from the axis — on the shipped "
+     "kernel: the host half of the per-chunk sum, measured apart from the walk's text"),
+    ("radial_starts_from_the_other_lattice", "other_lattice_refused", _BOTH, None, True,
+     "the starts read on the other target's Yee lattice (Dz's for the B side, Bz's for "
+     "the D side): the cut row belongs to the upper chunk for Bz and the lower for Dz "
+     "(a chunk owns lo < p <= hi in doubled r), so the chunk changes one row off where "
+     "the column walk restarts. CAUGHT means REFUSED BY NAME before a launch: the plan "
+     "builder's start vector (cylindrical_real.scan_starts) refuses a chunk change the "
+     "walk cannot take, so the shipped route never binds such a line"),
+    ("radial_starts_from_the_other_lattice_bound_raw", "other_lattice", _BOTH, None, None,
+     "RECORDED ONLY: the same line bound past that refusal, raw, on the shipped kernel. "
+     "The walk then restarts one row off; the words it moves are the few differences "
+     "that straddle the cut, and they can round to the oracle's words on a small grid "
+     "(MEASURED on the device: 8 of 9 cases on the D side; on the host, with the array "
+     "path's own sum, 0 words on short_periodic_odd_courant's B side). The refusal row "
+     "above is the defence"),
+    ("axis_coef_rounded_after_the_multiply", "axis_coef", ("step_D",), None, False,
+     "NULL CONTROL that PINS THE MODULE'S OWN CLAIM: binding float32(4) * "
+     "float32(Courant) instead of the word of the double 4 * Courant cannot differ, "
+     "because scaling by four is exact"),
 )
 
 
-def compile_prefix_mutant(source: str) -> Any:
-    return kit.Counter(compile_source(source).cyl_rderiv_prefix)
+def compile_scan_mutant(source: str) -> Any:
+    return kit.Counter(compile_source(source).cyl_rderiv_difference)
 
 
 def compile_curl_mutant(source: str) -> Any:
@@ -1844,12 +1956,22 @@ def apply_edits(source: str, edits: Sequence[Tuple[str, str]]) -> str:
     return source
 
 
+def row_edits(edits: Dict[str, Tuple[Tuple[str, str], ...]], sub_step: str
+              ) -> Dict[str, Tuple[Tuple[str, str], ...]]:
+    """The ``(old, new)`` pairs per kernel for one sub-step; empty kernels dropped."""
+    out: Dict[str, Tuple[Tuple[str, str], ...]] = {}
+    for kernel in ("scan", "curl"):
+        pairs = edits.get(f"{kernel}:{sub_step}", edits.get(kernel, ()))
+        if pairs:
+            out[kernel] = pairs
+    return out
+
+
 def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     harness = kit.MutationHarness(payload, out)
 
     # ---- source needles, per SUB-STEP ---------------------------------------
-    for (label, kernel, sub_steps, scope, edits, must_catch, why) in \
-            SOURCE_MUTATIONS:
+    for (label, sub_steps, scope, edits, must_catch, why) in SOURCE_MUTATIONS:
         missed = False
         ran = caught = launches = 0
         skipped: List[str] = []
@@ -1865,33 +1987,63 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                 kit.assert_moved(moved, f"{label}/{case}/{sub_step} reference",
                                  floor=64)
                 plan = build_curl_plan(fields, pml, sub_step)
-                shipped = (cyl.cylindrical_prefix_source(sub_step)
-                           if kernel == "prefix"
-                           else cyl.cylindrical_curl_source(sub_step, plan.bc))
+                shipped = {"scan": cyl.scan_source(sub_step),
+                           "curl": cyl.cylindrical_curl_source(sub_step, plan.bc)}
+                counters: Dict[str, Any] = {}
                 try:
-                    mutant_source = apply_edits(shipped, edits)
+                    for kernel, pairs in row_edits(edits, sub_step).items():
+                        mutant_source = apply_edits(shipped[kernel], pairs)
+                        counters[kernel] = (compile_scan_mutant(mutant_source)
+                                            if kernel == "scan"
+                                            else compile_curl_mutant(mutant_source))
                 except LookupError:
                     missed = True
                     restore(fields, before)
                     continue
-                counter = (compile_prefix_mutant(mutant_source) if kernel == "prefix"
-                           else compile_curl_mutant(mutant_source))
-                run_curl(fields, pml, sub_step,
-                         prefix_mutant=counter if kernel == "prefix" else None,
-                         curl_mutant=counter if kernel == "curl" else None)
-                launches += counter.launches
+                assert counters, (label, sub_step, "no kernel edited")
+                run_curl(fields, pml, sub_step, scan_mutant=counters.get("scan"),
+                         curl_mutant=counters.get("curl"))
+                launches += min(counter.launches for counter in counters.values())
                 ran += 1
                 if sum(divergence(fields, after).values()):
                     caught += 1
                 restore(fields, before)
         harness.record(label, harness.verdict(missed, ran, launches, caught),
                        launches, caught, ran, must_catch, why,
-                       extra={"kind": "source", "kernel": kernel,
+                       extra={"kind": "source",
+                              "kernels": sorted({k.split(":")[0] for k in edits}),
                               "sub_steps": list(sub_steps), "scope": scope,
-                              "edits": len(edits), "skipped_cases": skipped})
+                              "edits": sum(len(v) for v in edits.values()),
+                              "skipped_cases": skipped})
+
+    # ---- record mutations: the shipped kernel handed a wrong record ----------
+    for label, transform, why in RECORD_MUTATIONS:
+        ran = caught = launches = 0
+        changed_records = 0
+        for case, _ in CASES:
+            fields, pml = build(case)
+            true_record = layer_record(fields.grid, pml)
+            wrong = transform(true_record, fields.grid.shape)
+            changed_records += int(not np.array_equal(wrong, true_record))
+            for sub_step in _BOTH:
+                names = curl_names(sub_step)
+                before, after, moved = oracle(
+                    fields, lambda: getattr(stepping, sub_step)(fields, pml), names)
+                kit.assert_moved(moved, f"{label}/{case}/{sub_step} reference",
+                                 floor=64)
+                plan = run_curl(fields, pml, sub_step, record=wrong)
+                launches += plan.curl_launches
+                ran += 1
+                if sum(divergence(fields, after).values()):
+                    caught += 1
+                restore(fields, before)
+        assert changed_records, (label, "the transform changed no record")
+        harness.record(label, harness.verdict(False, ran, launches, caught),
+                       launches, caught, ran, True, why,
+                       extra={"kind": "record", "records_changed": changed_records})
 
     # ---- host mutations -----------------------------------------------------
-    for (label, kind, sub_step, scope, must_catch, why) in HOST_MUTATIONS:
+    for (label, kind, sub_steps, scope, must_catch, why) in HOST_MUTATIONS:
         ran = caught = launches = 0
         skipped: List[str] = []
         for case, _ in CASES:
@@ -1899,23 +2051,61 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
             if scope is not None and scope not in tags(fields, pml):
                 skipped.append(case)
                 continue
-            names = curl_names(sub_step)
-            before, after, moved = oracle(
-                fields, lambda: getattr(stepping, sub_step)(fields, pml), names)
-            kit.assert_moved(moved, f"{label}/{case} reference", floor=64)
-            plan = apply_host_mutation(kind, fields, pml, sub_step)
-            launches += plan.launches
-            ran += 1
-            if sum(divergence(fields, after).values()):
-                caught += 1
-            restore(fields, before)
-        harness.record(label, harness.verdict(False, ran, launches, caught),
-                       launches, caught, ran, must_catch, why,
-                       extra={"kind": "host", "sub_step": sub_step, "scope": scope,
-                              "skipped_cases": skipped})
+            for sub_step in sub_steps:
+                if kind == "other_lattice_refused":
+                    other = "step_D" if sub_step == "step_B" else "step_B"
+                    wrong = stepping._cylindrical_scan_starts(
+                        fields, pml, cyl.SCAN_TARGETS[other])
+                    ran += 1
+                    try:
+                        cyl.scan_starts(sub_step, wrong, int(fields.grid.shape[0]))
+                    except ValueError as exc:
+                        caught += int("changes chunk" in str(exc))
+                    continue
+                names = curl_names(sub_step)
+                before, after, moved = oracle(
+                    fields, lambda: getattr(stepping, sub_step)(fields, pml), names)
+                kit.assert_moved(moved, f"{label}/{case} reference", floor=64)
+                plan = apply_host_mutation(kind, fields, pml, sub_step)
+                launches += plan.launches
+                ran += 1
+                if sum(divergence(fields, after).values()):
+                    caught += 1
+                restore(fields, before)
+        # A refusal row launches nothing BY DESIGN: its verdict counts refusals by name.
+        verdict = (f"REFUSED {caught}/{ran}" if kind == "other_lattice_refused"
+                   else harness.verdict(False, ran, launches, caught))
+        harness.record(label, verdict, launches, caught, ran, must_catch, why,
+                       extra={"kind": "host", "sub_steps": list(sub_steps),
+                              "scope": scope, "skipped_cases": skipped})
 
     # ---- whole-step mutations: the classes a single launch CANNOT see -------
     leg_whole_step_mutations(harness)
+
+
+def _launch(plan: Any, residency: Any) -> Any:
+    residency.sync_in()
+    plan.run()
+    residency.sync_out()
+    return plan
+
+
+def _rebind_starts(plan: Any, residency: Any, starts: Any, raw: bool = False) -> None:
+    """Replace the plan's bound chunk-start vector (scan argument 4).
+
+    ``raw`` binds the line's words as they are, past :func:`cylindrical_real.scan_starts`'
+    refusal of a line the column walk cannot take: a defect that hands the shipped
+    kernel such a line is what the row measures, and the validator would refuse it
+    before a launch.
+    """
+    if raw:
+        line = np.ascontiguousarray(np.asarray(starts).reshape(-1), dtype=np.int32)
+        assert line.shape[0] == int(plan.shape[0]), (line.shape, plan.shape)
+    else:
+        line = cyl.scan_starts(plan.sub_step, starts, plan.shape[0])
+    plan._scan_args = (tuple(plan._scan_args[:4])
+                       + (cyl.int32_tensor(line, residency.device),)
+                       + tuple(plan._scan_args[5:]))
 
 
 def apply_host_mutation(kind: str, fields: Any, pml: Any, sub_step: str) -> Any:
@@ -1934,57 +2124,60 @@ def apply_host_mutation(kind: str, fields: Any, pml: Any, sub_step: str) -> Any:
         elif kind == "wall":
             saved["wall"] = cyl.PREFIX_WALL_ROW[sub_step]
             cyl.PREFIX_WALL_ROW[sub_step] = cyl.PREFIX_WALL_ROW[other]
-            # NON-VACUITY, ASSERTED RATHER THAN HOPED. This mutation's verdict is a
-            # NULL, and a null is only worth recording if the patch actually changed
-            # the object: the scan must really cover one more row than it shipped
-            # with, or the row is measuring nothing.
+            # NON-VACUITY, ASSERTED RATHER THAN HOPED: the bound weight vector must
+            # really carry one more row than it shipped with.
             residency = Residency()
             plan = build_curl_plan(fields, pml, sub_step, residency)
-            assert plan.scan_shape[0] == plan.shape[0] + 1, (
-                "the wall-row flag was patched and the plan's scan did not grow; the "
-                "null this mutation records would be vacuous",
-                plan.scan_shape, plan.shape)
-            residency.sync_in()
-            plan.run()
-            residency.sync_out()
-            return plan
-        elif kind == "weights":
+            bound = int(plan._scan_args[2].numel())
+            assert bound == plan.shape[0] + 1, (
+                "the wall-row flag was patched and the bound weights did not grow; the "
+                "null this mutation records would be vacuous", bound, plan.shape)
+            return _launch(plan, residency)
+        elif kind == "rinv":
             original = cyl.prefix_row_vectors
             saved["fn"] = original
 
-            def twice_rounded(step: str, radial_rows: int, dtype: Any = None):
-                # The float64 intermediate removed: counts, weights and the divisor
-                # all formed and stored in float32, so the divisor rounds twice.
-                rows = cyl.scan_rows(step, radial_rows)
-                counts = (np.arange(rows, dtype=np.float32)
+            def float32_quotient(step: str, radial_rows: int, dtype: Any = None):
+                weights, _rinv = original(step, radial_rows, dtype)
+                counts = (np.arange(cyl.scan_rows(step, radial_rows), dtype=np.float32)
                           + np.float32(cyl.PREFIX_IR0[step]))
-                return (np.ascontiguousarray(counts).reshape(-1),
-                        np.ascontiguousarray(counts[1:] - np.float32(0.5)
-                                             ).reshape(-1))
+                rinv = np.float32(1.0) / (counts[1:] - np.float32(0.5))
+                return weights, np.ascontiguousarray(rinv, dtype=np.float32).reshape(-1)
 
-            cyl.prefix_row_vectors = twice_rounded
+            cyl.prefix_row_vectors = float32_quotient
         elif kind == "source":
             spec = cyl.SUB_STEPS[sub_step]
             sibling = spec["sources"][0]
             residency = Residency()
             plan = build_curl_plan(fields, pml, sub_step, residency)
             swapped = residency.mirror(sibling, getattr(fields, sibling))
-            plan._prefix_args = ((plan._prefix_args[0], swapped)
-                                 + tuple(plan._prefix_args[2:]))
-            residency.sync_in()
-            plan.run()
-            residency.sync_out()
-            return plan
+            plan._scan_args = ((plan._scan_args[0], swapped)
+                               + tuple(plan._scan_args[2:]))
+            return _launch(plan, residency)
+        elif kind == "one_chunk":
+            residency = Residency()
+            plan = build_curl_plan(fields, pml, sub_step, residency)
+            assert any(int(s) for s in plan.starts), (
+                "the run's division has one chunk; a one-chunk start vector would "
+                "measure nothing", list(plan.starts))
+            _rebind_starts(plan, residency, None)
+            return _launch(plan, residency)
+        elif kind == "other_lattice":
+            residency = Residency()
+            plan = build_curl_plan(fields, pml, sub_step, residency)
+            wrong = stepping._cylindrical_scan_starts(fields, pml,
+                                                      cyl.SCAN_TARGETS[other])
+            _rebind_starts(plan, residency, wrong, raw=True)
+            return _launch(plan, residency)
         elif kind == "axis_coef":
             residency = Residency()
             plan = build_curl_plan(fields, pml, sub_step, residency)
-            rounded = float(np.float32(4.0) * np.float32(plan.dtdx))
+            rounded = float(np.float32(4.0) * np.float32(fields.grid.courant))
             plan.axis_coef = rounded
-            plan._curl_args = tuple(plan._curl_args[:-1]) + (rounded,)
-            residency.sync_in()
-            plan.run()
-            residency.sync_out()
-            return plan
+            # The curl's last two arguments are the axis factor and the chunk record.
+            plan._curl_args = (tuple(plan._curl_args[:-2]) + (rounded,)
+                               + (plan._curl_args[-1],))
+            return _launch(plan, residency)
         else:  # pragma: no cover - a typo in the table is a hard failure
             raise ValueError(f"unknown host mutation {kind!r}")
         return run_curl(fields, pml, sub_step)
@@ -2070,9 +2263,9 @@ def leg_whole_step_mutations(harness: Any, budget: int = MUTATION_CYCLES) -> Non
         harness.record(label, harness.verdict(False, ran, launches, caught),
                        launches, caught, ran, must_catch, why, extra=record)
 
-    # 1. THE STALE PREFIX, and this family is where the class stops being abstract.
-    #    The curl reads the prefix the scan wrote; hoisting the scan out of the loop
-    #    is invisible for one launch and wrong forever after.
+    # 1. THE STALE RADIAL DIFFERENCE, and this family is where the class stops being
+    #    abstract. The curl reads what the scan wrote; hoisting the scan out of the
+    #    loop is invisible for one launch and wrong forever after.
     def hoist_the_scan(plan: Any) -> Callable[[], None]:
         """Run each curl slot's scan ONCE up front, then only its curl per cycle.
 
@@ -2099,7 +2292,7 @@ def leg_whole_step_mutations(harness: Any, budget: int = MUTATION_CYCLES) -> Non
         for slot in ("step_B", "step_D"):
             product = plan.plans[slot]
             saved[slot] = product
-            product.run_prefix()                      # scan ONCE, up front
+            product.run_scan()                        # scan ONCE, up front
             plan.plans[slot] = CurlOnly(product)
 
         def undo() -> None:
@@ -2115,7 +2308,7 @@ def leg_whole_step_mutations(harness: Any, budget: int = MUTATION_CYCLES) -> Non
     assert sub_step_total == 0, (
         "the sub-step route already differs from the array path; nothing below "
         "means anything", blindness)
-    sweep("prefix_scanned_ONCE_outside_the_loop", True,
+    sweep("radial_scanned_ONCE_outside_the_loop", True,
           "the curl READS the scan's output and the scan is a function of THIS "
           "sub-step's source volume, so the two launches are ORDERED and the scan owes "
           "one launch per curl. Hoisted out of the loop the curl is fed the PREVIOUS "
@@ -2160,7 +2353,7 @@ def leg_whole_step_mutations(harness: Any, budget: int = MUTATION_CYCLES) -> Non
 
 LEGS: Tuple[Tuple[str, Callable[[Dict[str, Any], str], None]], ...] = (
     ("execution", leg_execution),
-    ("prefix", leg_prefix),
+    ("radial", leg_radial),
     ("curl", leg_curl),
     ("constitutive", leg_constitutive),
     ("axis", leg_axis),
@@ -2200,7 +2393,7 @@ def main(argv: Sequence[str]) -> int:
 
     compared = 0
     certified = True
-    for key in ("prefix", "curl", "constitutive"):
+    for key in ("radial", "curl", "constitutive"):
         for row in payload["legs"].get(key, ()):
             compared += int(row["compared"])
             certified = certified and row["differing"] == 0
@@ -2229,8 +2422,10 @@ def main(argv: Sequence[str]) -> int:
                "family's restated predicate — per sub-step AND per complete "
                "ten-pass driver step, against the in-process NumPy oracle"),
         scope=("the case matrix in CASES: four radial extents, both z terminations, "
-               "power-of-two and non-power-of-two Courant numbers, planted signed "
-               "zeros and the composition sweep's own dcyl_m0_real grid. |m| >= 1, "
+               "power-of-two and non-power-of-two float32-word Courant numbers, planted "
+               "signed zeros, a planted -0 on a plain Dy cell and the composition "
+               "sweep's own dcyl_m0_real grid at the float32 word of its Courant. A "
+               "Courant that is not a float32 word, |m| >= 1, "
                "complex storage, a Cartesian grid, conductivity, dispersion, "
                "chi2/chi3, BFAST, grid.beta, a Bloch phase, a mirror plane and an "
                "inactive absorber are OUT OF SCOPE and refused BY NAME by the "

@@ -35,12 +35,10 @@ THE SEVEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    So leg ``separate_control`` re-establishes it here on complex storage: the array
    path, the two ALREADY CERTIFIED complex products in the DRIVER's order, and the
    fused product, three ways, word for word, at every one of sixty steps.
-6. **An unmeasured arm.** Both halves multiply complex numbers and the two
-   certified halves take their expansion arm from DIFFERENT places — the E half
-   from the measured probe, the ADE half baked in at ade_update_p.py:105. Leg
-   ``arm_binding`` measures that they agree TODAY and that a disagreeing probe is
-   REFUSED BY NAME, so the agreement is a checked precondition rather than a
-   coincidence the product silently rests on.
+6. **A helper the ADE half should not call.** The certified complex ADE body is
+   MEEP's two real passes: each product a real float32 word times one part, no complex
+   helper called. Leg ``ade_half_calls_no_helper`` measures that from the emitted text
+   (no helper call in the certified ADE source or in the fused ADE half).
 7. **A vacuous value class.** ``uniform`` is the physical band; ``pm_zero_lattice``
    is exempt from the movement floor (a zero state is a fixed point of this seam)
    and is instead required to carry BOTH signs of zero in the reference output, so
@@ -53,17 +51,11 @@ has NO LEVER (metal_kernels/subnormal.py:6-13), so ``keep`` is not a second
 comparison but a REFUSAL, and leg ``policy`` requires the plan to be refused BY
 NAME under it rather than silently downgraded.
 
-THE EXPANSION PROBE IS THE MEASURED ARTIFACT, NOT AN INLINE DICT. This gate reads
-the record ``MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE`` names — the one
-``recut_metal_gates.sh`` cuts on this Mac and exports — so the claim rests on a
-measurement of this host rather than on a literal typed into a gate. A synthesized DISAGREEING
-record is used in exactly one place, leg ``arm_binding``, to show the refusal fires.
-
 LEGS
   0  binding_ceiling   worst in-ceiling signature COMPILES; the next one FAILS
   1  single_guard      the emitted kernel has exactly one branch
   2  transcription     the arithmetic lines equal the certified emitters', parsed
-  3  arm_binding       probe arm == ADE's baked arm; a disagreeing probe is refused
+  3  ade_half_calls_no_helper  the ADE half calls no complex helper
   4  policy            `keep` is REFUSED by name; `flush` admits
   5  product           complete seam steps, per-step byte compare, counters, floor
   6  separate_control  array path vs the two CERTIFIED complex products vs fused
@@ -104,17 +96,6 @@ for _path in (str(API_ROOT), str(HERE)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-#: The MEASURED expansion-probe artifact this host's complex families bind to: the
-#: one the environment names, which is the file ``load_expansion_probe`` reads.
-#: ``recut_metal_gates.sh`` cuts it with ``gate_metal_complex`` on the Mac it runs on
-#: and exports it before every other gate; by hand, export
-#: ``MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE`` to this host's probe. A dated archive
-#: path typed here would name one machine's record while the loader read another's,
-#: and on a Mac without that archive it refused although the round had cut its own.
-PROBE_ENVIRONMENT = "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE"
-PROBE_ARTIFACT = (Path(os.environ[PROBE_ENVIRONMENT])
-                  if os.environ.get(PROBE_ENVIRONMENT) else None)
-
 import numpy as np  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
@@ -127,11 +108,11 @@ from meep_gpu.metal_kernels import (  # noqa: E402
     ade_update_p, complex_fused_ade_chain as family, complex_no_pml_stored_e,
     shaders, subnormal, templates,
 )
-from meep_gpu.metal_kernels.complex_fields import load_expansion_probe  # noqa: E402
 from meep_gpu.metal_kernels.device import (  # noqa: E402
     MAX_BUFFER_BINDINGS, Residency, compile_source, metal_frontend_version,
 )
 from meep_gpu.pml import PML  # noqa: E402
+
 
 #: Complete seam steps every case walks. SIXTY, not twelve: the whole ADE history
 #: is state carried between steps and the rotation's own period is only ``d + 1``,
@@ -155,12 +136,6 @@ STATE_NAMES: Tuple[str, ...] = tuple(
 #: run, demanding it from none passes a run that launched nothing.
 WRITTEN_PREFIXES = ("E", "P[", "P_prev[", "scratch[")
 READ_ONLY_PREFIXES = ("B", "D", "H")
-
-#: The four signed-zero classes a complex operand plane pair can take. Used by the
-#: ``sign_class_product`` value class to enumerate the COMPLETE operand product,
-#: which is what turns a null mutation into a measurement rather than a shrug.
-SIGN_CLASSES: Tuple[Tuple[float, float], ...] = (
-    (0.0, 0.0), (0.0, -0.0), (-0.0, 0.0), (-0.0, -0.0))
 
 #: The corpus configuration this family exists for, read off
 #: ``results/metal_coverage_tranche6_2026-08-19``: the four
@@ -307,36 +282,6 @@ def build(case: Case, seed: int, scale: float = 1.0
             for component in state.driven():
                 state.P[component][...] = np.complex64(0.0)
                 state.P_prev[component][...] = np.complex64(0.0)
-        return grid, fields, PML(grid=grid, thickness=0)
-
-    if case.value_class == "sign_class_product":
-        # THE COMPLETE PRODUCT OF SIGNED-ZERO OPERAND CLASSES, and it exists to
-        # make a NULL a measurement. D, P and P_prev each independently cycle the
-        # four (+-0, +-0) sign patterns on a stride of 16, 4 and 1, so all 64
-        # combinations occur — and every ADE arm therefore sees every combination
-        # of its p, q and drive signs somewhere on the grid. A defect that this
-        # class cannot expose is not one the seam's operands can express.
-        index = np.arange(int(np.prod(shape))).reshape(shape)
-
-        def pattern(stride: int) -> np.ndarray:
-            value = np.zeros(shape, dtype=np.complex64)
-            real = np.zeros(shape, dtype=np.float32)
-            imaginary = np.zeros(shape, dtype=np.float32)
-            for slot, (r, i) in enumerate(SIGN_CLASSES):
-                mask = (index // stride) % len(SIGN_CLASSES) == slot
-                real[mask] = np.float32(r)
-                imaginary[mask] = np.float32(i)
-            value.real = real          # planes assigned directly; see above
-            value.imag = imaginary
-            return value
-        for name in STATE_NAMES:
-            array = getattr(fields, name, None)
-            if array is not None:
-                array[...] = pattern(16)
-        for state in fields.polarizations:
-            for component in state.driven():
-                state.P[component][...] = pattern(4)
-                state.P_prev[component][...] = pattern(1)
         return grid, fields, PML(grid=grid, thickness=0)
 
     for name in STATE_NAMES:
@@ -524,7 +469,6 @@ def run_case(case: Case, leg: str, steps: int,
         "launches_per_run": plan.launches_per_run,
         "launches_expected": plan.launches_per_run * len(per_step),
         "replaces": list(plan.replaces_sub_steps),
-        "expansion": plan.expansion,
         "poles": [entry.pole_count for entry in plan.entries],
         "volume_sigmas": [sum(1 for flag in entry.sigma_is_volume if flag)
                           for entry in plan.entries],
@@ -565,8 +509,9 @@ def run_separate_control(case: Case, steps: int) -> Dict[str, Any]:
     separate_residency = Residency()
     electric = complex_no_pml_stored_e.plan_metal_complex_stored_e(
         separate, separate_pml, separate_residency)
+    # No absorber: the ADE drive is the stored E and no chunk record binds.
     polarization = ade_update_p.plan_metal_ade_update_p(
-        separate, separate_pml, separate_residency)
+        separate, separate_pml, separate_residency, chunk_bounds=None)
     fused_residency = Residency()
     plan = family.plan_metal_complex_fused_ade_chain(
         fused, fused_pml, fused_residency)
@@ -640,7 +585,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
         expected_fit = bindings <= MAX_BUFFER_BINDINGS
         try:
             compile_source(family.complex_fused_ade_chain_source(
-                poles, flags, family.ade_expansion_arm()))
+                poles, flags))
             compiled, error = True, ""
         except Exception as exc:  # noqa: BLE001 - the refusal IS the measurement
             compiled, error = False, str(exc).splitlines()[0]
@@ -676,19 +621,18 @@ def leg_single_guard() -> Dict[str, Any]:
 
     WHICH HELPERS THE BODY CALLS IS ALSO MEASURED, and it is what stops the OTHER
     half of the dead-code trap. The helper block is emitted VERBATIM from
-    :func:`.templates.complex_helpers` — the certified emitters' own text, all
-    three orientations — but this kernel invokes only two of them: there is no
-    complex-by-complex multiply anywhere in an E->P chain, so ``c_mul``'s body is
-    emitted and never reached. An arm mutation planted there would report UNCAUGHT
-    while measuring nothing, so :data:`LATTICE_SCORED` arms only the called ones
-    and this row records the call census that licenses that choice.
+    :func:`.templates.complex_helpers` — the certified emitters' own text — but this
+    kernel invokes only ``c_mul_field_left`` (the E half's ``D * inv_eps``): the ADE
+    half's products are real words times one part, written inline, and there is no
+    complex-by-complex multiply anywhere in an E->P chain. A helper mutation planted
+    in an uncalled body would report UNCAUGHT while measuring nothing, so none is
+    armed there, and this row records the call census that licenses that choice.
     """
-    arm = family.ade_expansion_arm()
-    helpers = templates.complex_helpers(arm)
+    helpers = templates.complex_helpers()
     rows: List[Dict[str, Any]] = []
     for poles in (0, 1, 3, 6):
         flags = tuple((index % 2) == 0 for index in range(poles))
-        source = family.complex_fused_ade_chain_source(poles, flags, arm)
+        source = family.complex_fused_ade_chain_source(poles, flags)
         branches = len(re.findall(r"\bif\s*\(", source))
         ternaries = source.count("?")
         loops = len(re.findall(r"\b(for|while)\s*\(", source))
@@ -701,20 +645,19 @@ def leg_single_guard() -> Dict[str, Any]:
 
     # The call census, taken on the BODY (everything after the helper block) so a
     # helper's own definition does not count as a call to itself.
-    source = family.complex_fused_ade_chain_source(2, (True, False), arm)
+    source = family.complex_fused_ade_chain_source(2, (True, False))
     body = source.split("kernel void", 1)[1]
     called = {name: (f"{name}(" in body) for name in
               ("c_mul", "c_mul_field_left", "c_mul_coefficient_left")}
-    armed_helpers = {"c_mul_field_left", "c_mul_coefficient_left"}
+    armed_helpers = {"c_mul_field_left"}
     census_agrees = (not called["c_mul"] and called["c_mul_field_left"]
-                     and called["c_mul_coefficient_left"])
+                     and not called["c_mul_coefficient_left"])
     return {"passed": bool(all(row["straight_line"] for row in rows)
                            and helper_branchless and census_agrees),
             "rows": rows, "helper_block_is_branchless": helper_branchless,
             "helpers_the_body_calls": called,
             "helpers_arm_mutations_are_planted_in": sorted(armed_helpers),
             "call_census_agrees_with_the_arming": census_agrees,
-            "expansion_arm": arm,
             "guard": "if (idx >= n_elem) { return; }  (templates.GUARD)"}
 
 
@@ -728,23 +671,22 @@ def leg_transcription() -> Dict[str, Any]:
     for the same line modulo the documented pointer renames, and the two are
     required equal.
     """
-    arm = family.ade_expansion_arm()
-    fused = family.complex_fused_ade_chain_source(2, (True, True), arm)
+    fused = family.complex_fused_ade_chain_source(2, (True, True))
     rows: List[Dict[str, Any]] = []
 
     # --- the ADE recurrence, against ade_update_p.ade_source's complex64 body --
     certified = ade_update_p.ade_source("complex64", True)
     for wanted, emitted, rename in (
-            ("    float2 a = c_mul_field_left(p, c_now);",
-             "        float2 a = c_mul_field_left(p, c_now);", "(indent only)"),
-            ("    float2 b = c_mul_coefficient_left(c_prev, q);",
-             "        float2 b = c_mul_coefficient_left(c_prev, q);", "(indent only)"),
-            ("    float2 sw = c_mul_coefficient_left(s, w);",
-             "        float2 sw = c_mul_coefficient_left(s, w);", "(indent only)"),
-            ("    float2 d = c_mul_coefficient_left(c_drive, sw);",
-             "        float2 d = c_mul_coefficient_left(c_drive, sw);", "(indent only)"),
-            ("    p_out[idx] = (a + b) + d;",
-             "        o0[idx] = (a + b) + d;", "p_out -> o0"),
+            ("    float2 a = two_minus_od * p;",
+             "        float2 a = two_minus_od * p;", "(indent only)"),
+            ("    float2 b = gamma1 * q;",
+             "        float2 b = gamma1 * q;", "(indent only)"),
+            ("    float2 sw = s * w;",
+             "        float2 sw = s * w;", "(indent only)"),
+            ("    float2 d = omega0dtsqr * sw;",
+             "        float2 d = omega0dtsqr * sw;", "(indent only)"),
+            ("    p_out[idx] = gamma1inv * ((a - b) + d);",
+             "        o0[idx] = gamma1inv * ((a - b) + d);", "p_out -> o0"),
             ("    float2 p = p_now[idx];",
              "        float2 p = p0[idx];", "p_now -> p0 (the SHARED pointer)"),
             ("    float2 q = p_prev[idx];",
@@ -768,13 +710,13 @@ def leg_transcription() -> Dict[str, Any]:
                    and "        float s = s0[idx];" in fused)})
 
     # --- the pole chain and the constitutive product, against the E emitter ----
-    certified_e = complex_no_pml_stored_e.complex_stored_e_source(2, arm)
+    certified_e = complex_no_pml_stored_e.complex_stored_e_source(2)
     for wanted in ("    float2 source = d_in[idx];",
                    "    source = source - p0[idx];",
                    "    source = source - p1[idx];"):
         rows.append({
             "line": wanted.strip(),
-            "certified_source": f"complex_no_pml_stored_e.complex_stored_e_source(2, {arm!r})",
+            "certified_source": "complex_no_pml_stored_e.complex_stored_e_source(2)",
             "present_in_certified": wanted in certified_e,
             "present_in_fused": wanted in fused,
             "rename": "(none)",
@@ -784,7 +726,7 @@ def leg_transcription() -> Dict[str, Any]:
     split_source = "    e_out[idx] = c_mul_field_left(source, inv_e[idx]);"
     rows.append({
         "line": "constitutive_split",
-        "certified_source": f"complex_no_pml_stored_e.complex_stored_e_source(2, {arm!r})",
+        "certified_source": "complex_no_pml_stored_e.complex_stored_e_source(2)",
         "present_in_certified": split_source in certified_e,
         "present_in_fused": ("    float2 e = c_mul_field_left(source, inv_e[idx]);"
                              in fused and "    e_out[idx] = e;" in fused),
@@ -807,80 +749,43 @@ def leg_transcription() -> Dict[str, Any]:
         "agrees": ("    float2 w = drive[idx];" in certified
                    and "        float2 w = e;" in fused)})
 
-    # --- the helper block, byte for byte with the certified ADE half's --------
+    # --- the helper block: the E half's, and the ADE half calls none of it ------
     rows.append({
         "line": "complex_helper_block",
-        "certified_source": "ade_update_p.ade_source('complex64', True)",
-        "present_in_certified": templates.complex_helpers(arm) in certified,
-        "present_in_fused": templates.complex_helpers(arm) in fused,
+        "certified_source": "complex_no_pml_stored_e.complex_stored_e_source(2)",
+        "present_in_certified": templates.complex_helpers() in certified_e,
+        "present_in_fused": templates.complex_helpers() in fused,
         "rename": "(none)",
-        "agrees": (templates.complex_helpers(arm) in certified
-                   and templates.complex_helpers(arm) in fused)})
+        "agrees": (templates.complex_helpers() in certified_e
+                   and templates.complex_helpers() in fused
+                   and "c_mul" not in certified.split("kernel void", 1)[1])})
     return {"passed": all(row["agrees"] for row in rows), "rows": rows}
 
 
-def leg_arm_binding() -> Dict[str, Any]:
-    """The probe-licensed complex arm and the ADE half's baked arm must AGREE.
+def leg_ade_half_calls_no_helper() -> Dict[str, Any]:
+    """The ADE half calls no complex helper.
 
-    ONE FUSED SOURCE CARRIES ONE SET OF HELPERS under one set of names, so a
-    platform whose probe licensed an arm the certified ADE half does not bake in
-    is unspellable here. On this host they agree — and this leg makes that a
-    CHECKED PRECONDITION rather than a coincidence the product silently rests on:
-
-    * the arm is read from the MEASURED artifact this gate exported, not an inline
-      literal, and the artifact's own path and digest are recorded;
-    * the ADE half's arm is PARSED out of its emitted source, so the answer moves
-      if ade_update_p.py:105 does;
-    * a synthesized DISAGREEING probe must be REFUSED BY NAME. Without that row
-      the clause is a comment.
+    * the certified complex ADE body (``ade_update_p.ade_source``) calls no ``c_mul``
+      helper: MEEP's two real passes, each product a real word times one part;
+    * the fused ADE half calls none either (parsed after its marker);
+    * the corpus row is admitted.
     """
-    from meep_gpu.metal_kernels import templates as _templates  # noqa: PLC0415
-
-    artifact = load_expansion_probe()
-    baked = family.ade_expansion_arm()
-    licensed = None
-    if isinstance(artifact, dict):
-        from meep_gpu.metal_kernels.complex_fields import (  # noqa: PLC0415
-            expansion_from_probe,
-        )
-        licensed = expansion_from_probe(artifact)
-
-    other = next(arm for arm in _templates.EXPANSION_ARMS if arm != baked)
-    disagreeing = {
-        "backend": "numpy",
-        "measured": "SYNTHESIZED FOR THIS LEG — not a measurement of any host",
-        "patterns": {name: other for name in (
-            "c8_mul_c8", "c8_mul_c8_scalar_right", "c8_mul_f4_field_left",
-            "f4_mul_c8_coefficient_left", "python_float_left")},
-    }
+    certified = {volume: ade_update_p.ade_source("complex64", volume)
+                 for volume in (False, True)}
+    certified_calls = {str(volume): ("c_mul" in source.split("kernel void", 1)[1])
+                       for volume, source in certified.items()}
+    fused = family.complex_fused_ade_chain_source(2, (True, False))
+    ade_half = fused[fused.index("update_P for every pole"):]
     case = _case("corpus_one_pole_scalar_sigma")
     _, fields, pml = build(case, case_seed(case.label, "arm_binding"))
-    residency = Residency()
-    verdict = family.complex_fused_ade_chain_coverage(
-        fields, pml, residency, probe=disagreeing)
-    plan = family.plan_metal_complex_fused_ade_chain(
-        fields, pml, residency, probe=disagreeing)
-    named = any("cannot carry two arms" in reason for reason in verdict.reasons)
-
     admitted = family.complex_fused_ade_chain_coverage(
-        fields, pml, Residency(), probe=artifact)
+        fields, pml, Residency())
     return {
-        "passed": bool(licensed is not None and licensed == baked
-                       and not verdict.covered and plan is None and named
+        "passed": bool(not any(certified_calls.values()) and "c_mul" not in ade_half
                        and admitted.covered),
-        "probe_artifact": None if PROBE_ARTIFACT is None else str(PROBE_ARTIFACT),
-        "probe_artifact_sha256": (
-            hashlib.sha256(PROBE_ARTIFACT.read_bytes()).hexdigest()
-            if PROBE_ARTIFACT is not None and PROBE_ARTIFACT.is_file() else None),
-        "arm_the_probe_licenses": licensed,
-        "arm_the_certified_ADE_half_bakes_in": baked,
-        "they_agree": licensed == baked,
-        "measured_artifact_admits": admitted.covered,
-        "disagreeing_probe_arm": other,
-        "disagreeing_probe_covered": verdict.covered,
-        "disagreeing_probe_planned": plan is not None,
-        "disagreeing_probe_refused_by_name": named,
-        "refusal_reasons": list(verdict.reasons)[:4],
+        "certified_ade_body_calls_a_helper": certified_calls,
+        "fused_ade_half_calls_a_helper": "c_mul" in ade_half,
+        "corpus_row_admitted": admitted.covered,
     }
 
 
@@ -923,106 +828,6 @@ def leg_policy() -> Dict[str, Any]:
         "note": ("MPS flush is native and uncontrollable; `keep` is a refusal, "
                  "not a second byte comparison (metal_kernels/subnormal.py:6-13)"),
     }
-
-
-def leg_sign_class_null(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]],
-                        arm: str, steps: int = 4) -> Dict[str, Any]:
-    """PROVE the null: the folded coefficient-left spelling is unobservable HERE.
-
-    A mutation reported "null" on one seeded case is a shrug. This leg enumerates
-    the COMPLETE product of signed-zero operand classes — D, P and P_prev each
-    cycling all four ``(+-0, +-0)`` patterns independently, so every one of the 64
-    combinations occurs on the grid — at three pole counts, over four complete seam
-    steps, and requires ZERO differing words between the shipped and folded
-    spellings.
-
-    THE NULL HAS ITS OWN NON-VACUITY FLOOR. A class product that did not actually
-    contain all four sign patterns in each of the three roles would prove nothing,
-    so the patterns present are counted and all four required in each role. And the
-    same enumeration is run against a mutation that IS observable
-    (``complex_field_left_zero_cross_term_folded``), which must DIVERGE — a
-    harness that reported zero for everything would "prove" every null.
-    """
-    folded_coefficient = (
-        "    return float2(fma(c, z.x, -(0.0f * z.y)),\n"
-        "                  fma(c, z.y,  (0.0f * z.x)));",
-        "    return float2(c * z.x, c * z.y);")
-    folded_field = (
-        "    return float2(fma(z.x, c,    -(z.y * 0.0f)),\n"
-        "                  fma(z.x, 0.0f,  (z.y * c)));",
-        "    return float2(z.x * c, z.y * c);")
-
-    def walk(case: Case, edit: Tuple[str, str]) -> int:
-        seed = case_seed(case.label, "sign_class_null")
-        _, shipped, shipped_pml = build(case, seed)
-        _, mutated, mutated_pml = build(case, seed)
-        assert not compare(shipped, mutated)
-        shipped_residency, mutated_residency = Residency(), Residency()
-        base = family.plan_metal_complex_fused_ade_chain(
-            shipped, shipped_pml, shipped_residency)
-        assert base is not None
-        functions: Dict[Tuple[str, int], Any] = {}
-        for entry in base.entries:
-            source = family.complex_fused_ade_chain_source(
-                entry.pole_count, entry.sigma_is_volume, arm)
-            replaced = source.replace(edit[0], edit[1], 1)
-            assert replaced != source, "the enumerated edit matched nothing"
-            functions[(shaders.CONTRACT_OFF, entry.axis)] = compile_source(
-                replaced).complex_fused_ade_chain_component
-        other = family.plan_metal_complex_fused_ade_chain(
-            mutated, mutated_pml, mutated_residency, functions=functions)
-        assert other is not None
-        shipped_residency.sync_in()
-        mutated_residency.sync_in()
-        total = 0
-        for _ in range(steps):
-            base.run()
-            other.run()
-            shipped_residency.sync_out()
-            mutated_residency.sync_out()
-            total += sum(compare(shipped, mutated).values())
-        return total
-
-    rows: List[Dict[str, Any]] = []
-    for poles in (1, 2, 6):
-        case = Case(f"sign_class_{poles}_pole", poles, LORENTZIAN, True,
-                    value_class="sign_class_product")
-        null_words = walk(case, folded_coefficient)
-        control_words = walk(case, folded_field)
-        rows.append({"poles": poles,
-                     "coefficient_left_fold_differing_words": null_words,
-                     "field_left_fold_differing_words": control_words,
-                     "null_holds": null_words == 0,
-                     "control_diverged": control_words > 0})
-        log(f"    sign_class poles={poles} coefficient_fold={null_words} "
-            f"field_fold(control)={control_words}")
-
-    # The non-vacuity floor on the class product itself.
-    case = Case("sign_class_floor", 2, LORENTZIAN, True,
-                value_class="sign_class_product")
-    _, fields, _pml = build(case, case_seed(case.label, "sign_class_null"))
-
-    def classes_present(array: Any) -> int:
-        flat = words(array)
-        pairs = set(zip(flat[0::2].tolist(), flat[1::2].tolist()))
-        wanted = {(np.float32(r).view(np.uint32).item(),
-                   np.float32(i).view(np.uint32).item())
-                  for r, i in SIGN_CLASSES}
-        return len(wanted & pairs)
-
-    present = {
-        "D": classes_present(fields.Dx),
-        "P": classes_present(fields.polarizations[0].P["Ex"]),
-        "P_prev": classes_present(fields.polarizations[0].P_prev["Ex"]),
-    }
-    complete = all(count == len(SIGN_CLASSES) for count in present.values())
-    return {"passed": bool(complete and all(row["null_holds"] for row in rows)
-                           and all(row["control_diverged"] for row in rows)),
-            "rows": rows,
-            "sign_classes_present_per_role": present,
-            "class_product_is_complete": complete,
-            "combinations_enumerated": len(SIGN_CLASSES) ** 3,
-            "steps": steps}
 
 
 #: Scale, and what the per-step census MUST do at it: ``True`` stay clean,
@@ -1068,58 +873,20 @@ def leg_precondition(case: Case, budget: int = 8) -> Dict[str, Any]:
 # The armed defects
 # ---------------------------------------------------------------------------
 
-def _shipped_functions(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]],
-                       arm: str) -> Dict[Tuple[str, int], Any]:
+def _shipped_functions(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]]) -> Dict[Tuple[str, int], Any]:
     return {(shaders.CONTRACT_OFF, axis): family.compile_complex_fused_ade_chain(
-        poles, flags, arm) for axis, poles, flags in shape}
+        poles, flags) for axis, poles, flags in shape}
 
 
 def _mutate(base: str, shape: Sequence[Tuple[int, int, Tuple[bool, ...]]],
-            arm: str, source: str) -> Dict[Tuple[str, int], Any]:
-    table = _shipped_functions(shape, arm)
+            source: str) -> Dict[Tuple[str, int], Any]:
+    table = _shipped_functions(shape)
     table[(shaders.CONTRACT_OFF, 0)] = compile_source(
         source).complex_fused_ade_chain_component
     return table
 
 
-#: A mutation whose defect is only visible on a value class the uniform band does
-#: not contain is scored on THAT class, and the choice is recorded per mutation.
-#: The three complex-arm edits below are exactly that case and the reason is
-#: MEASURED, not guessed: the certified helper block's own comment records that
-#: folding a zero cross term misses 12/128 words and 24/128, and spelling negation
-#: ``0.0f - x`` misses 36/512, on EXHAUSTIVE signed-zero tables — while "RANDOM
-#: DATA DISCRIMINATES NONE OF THEM (0/16,384 for all three)"
-#: (templates.py:42-56, re-measured by gate_metal_complex leg `zero_cross_terms`).
-#: Scoring them on the uniform band and reporting UNCAUGHT would be a hollow row:
-#: the line IS reached, the inputs simply cannot tell the two spellings apart.
-LATTICE_SCORED: Tuple[str, ...] = (
-    "complex_field_left_zero_cross_term_folded",
-    "complex_negation_spelled_zero_minus_x",
-)
-
-#: A mutation this seam's OPERANDS CANNOT EXPRESS, scored NULL — and the null is a
-#: MEASUREMENT, not a shrug. ``c_mul_coefficient_left`` is called three times in
-#: the ADE arm and its folded spelling differs from the certified one in exactly
-#: one place: a lone ``-0.0`` where the certified form writes ``+0.0``. Every one
-#: of those three results then flows into the certified body's own
-#: ``o[idx] = (a + b) + d`` — and IEEE addition of a lone negative zero to anything
-#: yields the other operand's sign, so the difference is absorbed before it can be
-#: stored. Leg ``sign_class_null`` proves that over the COMPLETE product of
-#: signed-zero operand classes (D x P x P_prev = 64 combinations, at 1, 2 and 6
-#: poles, over four complete seam steps) rather than over a sampled lattice.
-#:
-#: THIS IS NOT A HOLE IN THE ARM'S CERTIFICATION. The spelling is certified where
-#: it IS observable — ``gate_metal_complex``'s exhaustive ``zero_cross_terms``
-#: tables, on the helper itself. What is recorded here is narrower and true: no
-#: input this fused seam can be given distinguishes the two spellings through it.
-NULL_SCORED: Dict[str, str] = {
-    "complex_coefficient_left_zero_cross_term_folded":
-        "every difference it can produce is a lone -0.0 that the certified "
-        "`(a + b) + d` addition absorbs before the store (ade_update_p.py:114)",
-}
-
-
-def shader_mutations(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]], arm: str
+def shader_mutations(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]]
                      ) -> Dict[str, Dict[Tuple[str, int], Any]]:
     """Source defects, each a plausible transcription slip.
 
@@ -1132,30 +899,43 @@ def shader_mutations(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]], arm: st
 
     EVERY EDIT SITS ON A LINE THE SCORED CASE EXECUTES. There is exactly one
     branch in this kernel (leg ``single_guard`` measures that), so no armed line
-    can sit under a guard the scored grid does not enter. Whether the scored
-    VALUES can discriminate it is a separate question, answered per mutation by
-    :data:`LATTICE_SCORED`.
+    can sit under a guard the scored grid does not enter.
     """
     axis, poles, flags = next(row for row in shape if row[0] == 0)
-    base = family.complex_fused_ade_chain_source(poles, flags, arm)
+    base = family.complex_fused_ade_chain_source(poles, flags)
     edits: Dict[str, str] = {
         # THE SEAM ITSELF: feed update_P the pre-inverse-epsilon displacement.
         "seam_takes_the_pre_constitutive_source":
             base.replace("float2 w = e;", "float2 w = source;"),
-        # The complex association. ade_update_p's parens are the complex answer.
-        "ade_parens_flattened":
-            base.replace("        o0[idx] = (a + b) + d;",
-                         "        o0[idx] = a + (b + d);", 1),
+        # INVERTED (KERNELS.md §7.1): the shipped recurrence is MEEP's two real
+        # passes on its four float32 constants; this plants the package's previous
+        # spelling -- three coefficients folded from the four and the three-term
+        # sum, each product per part -- and stays must-catch.
+        "ade_previous_folded_three_term_form":
+            base.replace("        float2 a = two_minus_od * p;\n"
+                         "        float2 b = gamma1 * q;\n"
+                         "        float2 sw = s * w;\n"
+                         "        float2 d = omega0dtsqr * sw;\n"
+                         "        o0[idx] = gamma1inv * ((a - b) + d);",
+                         "        float2 a = (gamma1inv * two_minus_od) * p;\n"
+                         "        float2 b = (-(gamma1inv * gamma1)) * q;\n"
+                         "        float2 sw = s * w;\n"
+                         "        float2 d = (gamma1inv * omega0dtsqr) * sw;\n"
+                         "        o0[idx] = (a + b) + d;", 1),
+        # The per-part sum regrouped.
+        "ade_sum_regrouped":
+            base.replace("        o0[idx] = gamma1inv * ((a - b) + d);",
+                         "        o0[idx] = gamma1inv * (a - (b - d));", 1),
         "ade_p_and_q_swapped":
             base.replace("        float2 p = p0[idx];\n        float2 q = q0[idx];",
                          "        float2 p = q0[idx];\n        float2 q = p0[idx];", 1),
-        "ade_c_now_and_c_prev_swapped":
-            base.replace("        float c_now = prm.c_now[0];\n"
-                         "        float c_prev = prm.c_prev[0];",
-                         "        float c_now = prm.c_prev[0];\n"
-                         "        float c_prev = prm.c_now[0];", 1),
+        "ade_two_minus_od_and_gamma1_swapped":
+            base.replace("        float two_minus_od = prm.two_minus_od[0];\n"
+                         "        float gamma1 = prm.gamma1[0];",
+                         "        float two_minus_od = prm.gamma1[0];\n"
+                         "        float gamma1 = prm.two_minus_od[0];", 1),
         "ade_arm_one_never_stores":
-            base.replace("        o1[idx] = (a + b) + d;\n",
+            base.replace("        o1[idx] = gamma1inv * ((a - b) + d);\n",
                          "        // arm 1 never stores\n", 1),
         "second_pole_dropped_from_the_e_chain":
             base.replace("    source = source - p1[idx];\n", "", 1),
@@ -1163,25 +943,6 @@ def shader_mutations(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]], arm: st
             base.replace("        float s = s1[idx];", "        float s = s0[idx];", 1),
         "e_store_dropped":
             base.replace("    e_out[idx] = e;", "    // stale E", 1),
-        # --- THE COMPLEX ARM, three refuted spellings the certified helpers name
-        #     as measured misses. Rewriting the helper block reaches every
-        #     multiply in the body, so these are the arithmetic's own mutations.
-        #     EACH ONE IS ARMED ON A HELPER THIS KERNEL ACTUALLY CALLS — see
-        #     leg_single_guard's `helpers_the_body_calls`: `c_mul` is emitted (the
-        #     helper block is the certified emitters' own text) but NEVER INVOKED
-        #     here, so an edit to its body would be a dead-code mutation reporting
-        #     UNCAUGHT while measuring nothing.
-        "complex_field_left_zero_cross_term_folded":
-            base.replace("    return float2(fma(z.x, c,    -(z.y * 0.0f)),\n"
-                         "                  fma(z.x, 0.0f,  (z.y * c)));",
-                         "    return float2(z.x * c, z.y * c);", 1),
-        "complex_negation_spelled_zero_minus_x":
-            base.replace("fma(z.x, c,    -(z.y * 0.0f))",
-                         "fma(z.x, c,    0.0f - (z.y * 0.0f))", 1),
-        "complex_coefficient_left_zero_cross_term_folded":
-            base.replace("    return float2(fma(c, z.x, -(0.0f * z.y)),\n"
-                         "                  fma(c, z.y,  (0.0f * z.x)));",
-                         "    return float2(c * z.x, c * z.y);", 1),
         # The real/imaginary planes crossed in the constitutive product.
         "constitutive_planes_swapped":
             base.replace("    float2 e = c_mul_field_left(source, inv_e[idx]);",
@@ -1193,11 +954,11 @@ def shader_mutations(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]], arm: st
             raise AssertionError(
                 f"mutation {name!r} did not change the source; a no-op edit would "
                 f"report the shipped kernel as an uncaught defect")
-        mutants[name] = _mutate(base, shape, arm, source)
+        mutants[name] = _mutate(base, shape, source)
     return mutants
 
 
-def byte_neutral_control(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]], arm: str
+def byte_neutral_control(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]]
                          ) -> Dict[Tuple[str, int], Any]:
     """THE ONE ARMED EDIT REQUIRED TO BE UNCAUGHT, and it is scored on that.
 
@@ -1209,12 +970,12 @@ def byte_neutral_control(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]], arm
     a hypothesis; this row is the comparator agreeing with it.
     """
     axis, poles, flags = next(row for row in shape if row[0] == 0)
-    base = family.complex_fused_ade_chain_source(poles, flags, arm)
+    base = family.complex_fused_ade_chain_source(poles, flags)
     source = base.replace("float2 w = e;", "float2 w = e_out[idx];")
     assert source != base, (
         "the byte-neutral control edit matched nothing; a control that changes "
         "nothing would report the shipped bytes as byte-neutral against themselves")
-    return _mutate(base, shape, arm, source)
+    return _mutate(base, shape, source)
 
 
 def swap_sigma_between_components(plan: Any, pml: Any, residency: Residency) -> None:
@@ -1237,11 +998,12 @@ def swap_sigma_between_components(plan: Any, pml: Any, residency: Residency) -> 
 
 
 def swap_params_coefficients(plan: Any, pml: Any, residency: Residency) -> None:
-    """HOST DEFECT: pack ``c_prev`` and ``c_drive`` into each other's slots.
+    """HOST DEFECT: pack ``gamma1`` and ``omega0dtsqr`` into each other's slots.
 
-    The recurrence constants come from the susceptibility and the timestep
-    (dispersion.py:644). Swapping two of them is a plausible packing slip that no
-    shader edit can reach — the kernel reads ``prm.c_prev[k]`` either way.
+    MEEP's four recurrence constants come from the susceptibility and the timestep
+    (``Susceptibility.realnum_constants``). Swapping two of them is a plausible
+    packing slip that no shader edit can reach — the kernel reads
+    ``prm.gamma1[k]`` either way.
     """
     entries = list(plan.entries)
     for index, entry in enumerate(entries):
@@ -1294,7 +1056,7 @@ def swap_inverse_epsilon(plan: Any, pml: Any, residency: Residency) -> None:
 #: its patch asserts the identity that makes it a null.
 HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Any, Residency], None], str]] = {
     "sigma_bound_for_the_wrong_component": (swap_sigma_between_components, "caught"),
-    "params_c_prev_and_c_drive_swapped": (swap_params_coefficients, "caught"),
+    "params_gamma1_and_omega0dtsqr_swapped": (swap_params_coefficients, "caught"),
     "pole_order_reversed_on_Ex": (reverse_pole_order, "caught"),
     "inverse_epsilon_bound_for_the_wrong_component": (swap_inverse_epsilon, "null"),
 }
@@ -1307,8 +1069,8 @@ HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Any, Residency], None], str]] = {
 #: classes, disarm — runs against defective bytes and the top-level verdict must
 #: flip to FAIL. Run with ``--plant <name>`` and require a nonzero exit.
 PLANTED: Dict[str, Tuple[str, str]] = {
-    "ade_parens_reassociated_everywhere": (
-        "[idx] = (a + b) + d;", "[idx] = a + (b + d);"),
+    "ade_sum_regrouped_everywhere": (
+        "[idx] = gamma1inv * ((a - b) + d);", "[idx] = gamma1inv * (a - (b - d));"),
     "seam_reads_the_stale_pole_instead_of_the_drive": (
         "float2 w = e;", "float2 w = p;"),
 }
@@ -1326,7 +1088,7 @@ def plant(name: str) -> None:
         return source
 
     family.complex_fused_ade_chain_source = defective  # type: ignore[assignment]
-    probe = original(2, (True, True), family.ade_expansion_arm())
+    probe = original(2, (True, True))
     assert wanted in probe, (
         f"planted defect {name!r} matches nothing in the shipped source; a "
         f"marker that matches nothing disables the check it feeds SILENTLY")
@@ -1369,27 +1131,11 @@ def main() -> int:
     import torch
     if not torch.backends.mps.is_available():
         raise SystemExit("MPS is not available; this gate must run on an Apple GPU")
-    if PROBE_ARTIFACT is None or not PROBE_ARTIFACT.is_file():
-        raise SystemExit(
-            f"no measured expansion probe: {PROBE_ENVIRONMENT} is "
-            f"{'unset' if PROBE_ARTIFACT is None else repr(str(PROBE_ARTIFACT)) + ', not a file'}"
-            f"; which complex arm this host takes may not be guessed")
     if args.plant:
         plant(args.plant)
         log(f"PLANTED DEFECT {args.plant!r}: the verdict below MUST be FAIL")
 
-    arm = family.ade_expansion_arm()
     mutation_case = _case(MUTATION_CASE)
-    #: The same configuration seeded with the signed-zero lattice, for the three
-    #: arm-spelling edits the uniform band provably cannot discriminate.
-    lattice_case = dataclasses.replace(
-        mutation_case, label=f"{MUTATION_CASE}:pm_zero_lattice",
-        value_class="pm_zero_lattice")
-    #: And with the COMPLETE signed-zero operand product, for the one edit this
-    #: seam's operands provably cannot express (see NULL_SCORED).
-    sign_class_case = dataclasses.replace(
-        mutation_case, label=f"{MUTATION_CASE}:sign_class_product",
-        value_class="sign_class_product")
     # UNDER A PLANTED DEFECT THE MUTATION LEGS ARE MEANINGLESS and are skipped by
     # name rather than run: they would compare defective bytes against defective
     # bytes, and one armed edit IS the planted one, which the name-drift guard
@@ -1401,8 +1147,8 @@ def main() -> int:
     neutral: Optional[Dict[Tuple[str, int], Any]] = None
     if args.plant is None:
         shape = plan_shape_of(mutation_case)
-        mutants = shader_mutations(shape, arm)
-        neutral = byte_neutral_control(shape, arm)
+        mutants = shader_mutations(shape)
+        neutral = byte_neutral_control(shape)
     else:
         host_mutations = {}
 
@@ -1414,7 +1160,7 @@ def main() -> int:
         for name in ("corpus_one_pole_scalar_sigma", "three_pole_mixed_volume_sigma"))
     total = (5 + len(CASES) + len(controls) + len(value_cases) + 1
              + len(mutants) + len(host_mutations)
-             + (0 if args.plant else 3))
+             + (0 if args.plant else 2))
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     jsonl = args.out.with_suffix(".jsonl")
@@ -1428,8 +1174,8 @@ def main() -> int:
                 ("single_guard", "every_shipped_specialisation", leg_single_guard),
                 ("transcription", "arithmetic_lines_vs_certified_emitters",
                  leg_transcription),
-                ("arm_binding", "probe_arm_vs_the_ADE_halfs_baked_arm",
-                 leg_arm_binding),
+                ("ade_half_calls_no_helper", "the_ADE_half_calls_no_complex_helper",
+                 leg_ade_half_calls_no_helper),
                 ("policy", "flush_admits_keep_is_refused", leg_policy)):
             index += 1
             rows.append({"index": index, "total": total, "leg": leg,
@@ -1466,13 +1212,6 @@ def main() -> int:
                      **leg_precondition(mutation_case)})
         emit(handle, rows[-1])
 
-        if args.plant is None:
-            index += 1
-            rows.append({"index": index, "total": total, "leg": "sign_class_null",
-                         "label": "the_complete_signed_zero_operand_product",
-                         **leg_sign_class_null(plan_shape_of(mutation_case), arm)})
-            emit(handle, rows[-1])
-
         if neutral is not None:
             index += 1
             result = run_case(mutation_case, "byte_neutral", args.steps,
@@ -1489,41 +1228,19 @@ def main() -> int:
 
         for name, functions in mutants.items():
             index += 1
-            lattice = name in LATTICE_SCORED
-            null = name in NULL_SCORED
-            scored = (sign_class_case if null
-                      else lattice_case if lattice else mutation_case)
-            result = run_case(scored, f"mutation:{name}", args.steps,
+            result = run_case(mutation_case, f"mutation:{name}", args.steps,
                               functions=functions)
             caught = not result.get("bit_identical", False)
-            expected = "null" if null else "caught"
             outcome = "caught" if caught else "null"
-            row = {"index": index, "total": total, "leg": "mutation",
-                   "label": name, "caught": caught, "expected": expected,
-                   "outcome": outcome,
-                   "scored_on_value_class": scored.value_class,
-                   "scored_case": scored.label,
-                   "passed": bool(outcome == expected and result.get("launches")),
-                   "first_divergence": result.get("first_divergence"),
-                   "differing_words": result.get("differing_words"),
-                   "launches": result.get("launches")}
-            if null:
-                row["null_reason"] = NULL_SCORED[name]
-                row["null_evidence"] = ("leg sign_class_null, which enumerates the "
-                                        "COMPLETE signed-zero operand product")
-            if lattice:
-                # REPORTED, NOT GATED. The uniform band is expected not to
-                # discriminate these three (templates.py:42-56); recording what it
-                # actually did keeps that a measurement rather than a citation.
-                uniform = run_case(mutation_case, f"mutation:{name}:uniform",
-                                   args.steps, functions=functions)
-                row["also_scored_on_uniform_band"] = {
-                    "caught": not uniform.get("bit_identical", False),
-                    "differing_words": uniform.get("differing_words"),
-                    "note": ("random data discriminates none of the three arm "
-                             "spellings; the signed-zero lattice is the class "
-                             "that does (templates.py:42-56)")}
-            rows.append(row)
+            rows.append({"index": index, "total": total, "leg": "mutation",
+                         "label": name, "caught": caught, "expected": "caught",
+                         "outcome": outcome,
+                         "scored_on_value_class": mutation_case.value_class,
+                         "scored_case": mutation_case.label,
+                         "passed": bool(outcome == "caught" and result.get("launches")),
+                         "first_divergence": result.get("first_divergence"),
+                         "differing_words": result.get("differing_words"),
+                         "launches": result.get("launches")})
             emit(handle, rows[-1])
 
         for name, (patch, expected) in host_mutations.items():
@@ -1565,10 +1282,6 @@ def main() -> int:
                    "shader_mutations": len(mutants),
                    "host_mutations": len(host_mutations),
                    "byte_neutral_controls": 0 if neutral is None else 1},
-        "expansion_arm": arm,
-        "expansion_probe_artifact": str(PROBE_ARTIFACT),
-        "expansion_probe_artifact_sha256": hashlib.sha256(
-            PROBE_ARTIFACT.read_bytes()).hexdigest(),
         "torch_version": torch.__version__,
         "numpy_version": np.__version__,
         "metal_frontend": metal_frontend_version(),

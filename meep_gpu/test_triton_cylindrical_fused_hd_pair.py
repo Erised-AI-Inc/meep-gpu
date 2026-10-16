@@ -2,13 +2,12 @@
 ``triton_kernels/cylindrical_fused_hd_pair.py``.
 
 The complex twin of ``test_triton_cylindrical_real_fused_hd_pair.py``. What this suite
-adds is the one thing the complex family gets wrong if it copies either neighbour: the
-increment's multiply is the FMA_V1 ``mul_field_left`` arrangement with EXPLICIT fused
-multiply-adds and the divide is CuPy's SCALED complex division with every zero-valued
-term kept and both reciprocals correctly rounded -- neither numpy's ``a * (1/d)`` (the
-sibling backend's verdict), nor the real family's componentwise ``/``, nor the
-certified constitutive's own arm-gated helper. Each is pinned by its exact statements,
-and the lift of the constitutive half is asserted byte for byte.
+adds is the complex storage's one fact: launch 1 is the complex Cartesian weld's
+constitutive block, statement for statement, on both word planes, through the IMPORTED
+``complex_fused_hd_pair._h_cell_complex`` (the root's per-part forms), and nothing in
+this product spells a complex multiply, a multiply-add or a divide -- the pre-scan
+increment's FMA_V1 multiply and scaled complex divide left with the elementwise prefix.
+Launches 2 and 3 are the certified ``CylindricalComplexCurlPlan``.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ import sys
 import numpy
 import pytest
 
-from .fields import Fields, StepScratch
+from .fields import Fields
 from .grid import Grid
 from .pml import PML
 
@@ -31,7 +30,25 @@ PACKAGE_DIR = HERE / "triton_kernels"
 PARITY = HERE.parent / "parity" / "meep_gpu"
 MODULE = "meep_gpu.triton_kernels.cylindrical_fused_hd_pair"
 FAMILY = "cylindrical_fused_hd_pair"
-PROBE = PARITY / "results" / "expansion_probe_2026-08-17" / "expansion_probe_keep.json"
+
+
+def _every_cell_record(shape):
+    """The harness's every-cell chunk record for ``shape`` (``gate_chunk_records``).
+
+    These builds take their record from the harness rather than from a layer: the
+    arrays are bare, and every test here asserts something other than the division.
+    """
+    parity = str(pathlib.Path(__file__).parent.parent / "parity" / "meep_gpu")
+    if parity not in sys.path:
+        sys.path.insert(0, parity)
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
+    return every_cell_record(shape)
+
+
+def _chunk_record(arrays):
+    """:func:`_every_cell_record`, sized from the first three-axis volume of ``arrays``."""
+    shape = next(tuple(a.shape) for a in arrays.values() if getattr(a, "ndim", 0) == 3)
+    return _every_cell_record(shape)
 
 
 @pytest.fixture(scope="module")
@@ -52,19 +69,8 @@ def monkeypatch_module():
     from _pytest.monkeypatch import MonkeyPatch
 
     patch = MonkeyPatch()
-    if PROBE.is_file():
-        patch.setenv("MEEP_GPU_COMPLEX_EXPANSION_PROBE", str(PROBE))
     yield patch
     patch.undo()
-
-
-@pytest.fixture
-def probe():
-    if not PROBE.is_file():
-        pytest.skip("the keep-cut expansion probe record is not in this checkout")
-    import json
-
-    return json.loads(PROBE.read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -91,10 +97,15 @@ def _reasons(verdict):
     return [reason for reason in verdict.reasons if "not cupy" not in reason]
 
 
-class _Electric:
-    from . import sources as _sources_module
+class _ForeignElectric:
+    """A source class from outside this package that brings an integrated electric
+    ``withdraw`` of its own. No engine source stands one any more (an integrated source
+    enters through ``f_minus_p``; ``withdraw_hoist``), and the predicate still refuses a
+    class that does, because nothing measured a fused launch beside its body."""
 
-    withdraw = _sources_module.VolumeSource.withdraw
+    def withdraw(self, fields):  # never called: a predicate reads a source, it does not run it
+        raise AssertionError("a coverage predicate called a source's withdraw")
+
     field_type = "D"
     component = "Ez"
     is_integrated = True
@@ -125,9 +136,9 @@ def test_the_product_declares_the_seam_it_replaces(product):
     assert product.BACKWARD == 1
     assert product.ROTATED == ("Hx", "Hy", "Hz", "f_w_Hx", "f_w_Hy", "f_w_Hz")
     assert product.IN_PLACE == ("Dx", "Dy", "Dz", "fu_Dx", "fu_Dy", "fu_Dz")
-    assert product.LAUNCHES_PER_RUN == 3 and product.KERNEL_LAUNCHES_PER_RUN == 2
+    assert product.LAUNCHES_PER_RUN == 3 and product.KERNEL_LAUNCHES_PER_RUN == 3
     assert product.PREFIX_COMPONENT == "Hy" and product.PREFIX_IR0 == 0.5
-    assert product.INCREMENT_TAG == "cyl_increment" and product.PREFIX_TAG == "cyl_prefix"
+    assert product.MULTIPLY_HELPERS == ()
 
 
 def test_the_flags_and_the_reason_are_the_real_twins_with_this_gate_named(product):
@@ -154,7 +165,8 @@ def test_the_prefix_declaration_is_the_complex_familys_own(product):
     assert (spec["component"], spec["ir0"], spec["extend_wall_row"]) == ("Hy", 0.5, False)
     step_d = (HERE / "stepping.py").read_text(encoding="utf-8").split(
         "def step_D(", 1)[1].split("\ndef ", 1)[0]
-    assert 'prefixed["Hy"] = cylindrical_rderiv_prefix(grid.xp, magnetic["Hy"], 0.5' in step_d
+    assert ('radial = cylindrical_rderiv_difference(\n'
+            '            grid.xp, magnetic["Hy"], 0.5,') in step_d
 
 
 # ---------------------------------------------------------------------------
@@ -162,130 +174,81 @@ def test_the_prefix_declaration_is_the_complex_familys_own(product):
 # ---------------------------------------------------------------------------
 
 def test_the_constitutive_half_is_the_certified_complex_body_plus_the_declared_edits(product):
-    certified = product.certified_constitutive_tail()
-    lifted = product.lifted_constitutive_tail()
-    assert certified == lifted
-    statements = [line for line in certified.splitlines()
-                  if line.strip() and not line.strip().startswith("#")]
-    assert len(statements) >= 40, len(statements)
-    # Every accumulation is the certified helper under the run's arm, in the certified
-    # order (kps*src added, then kms*prev subtracted), never regrouped.
-    assert certified.count("_mul_coefficient_left(kp_") == 3
-    assert certified.count("_mul_coefficient_left(km_") == 3
-    assert "a_re = a_re + t_re" in certified and "a_re = a_re - t_re" in certified
+    """The complex constitutive this product launches is the complex Cartesian weld's
+    lifted ``bloch_constitutive_step`` body, imported, not copied: its lift holds, and
+    launch 1 is that weld's block, statement for statement."""
+    from .triton_kernels import complex_fused_hd_pair
+
+    assert (complex_fused_hd_pair.certified_constitutive_tail()
+            == complex_fused_hd_pair.lifted_constitutive_tail())
+    text = pathlib.Path(product.__file__).read_text(encoding="utf-8")
+    assert "from .complex_fused_hd_pair import _h_cell_complex  # noqa: PLC0415" in text
+    for name in ("def _h_cell_complex(", "def _h_tap_complex(", "CONSTITUTIVE_LIFT_EDITS",
+                 "def certified_constitutive_tail("):
+        assert name not in text, name
+    assert product.certified_weld_block() == product.lifted_weld_block()
+    assert len(product.lifted_weld_block()) >= 20
 
 
-def test_no_certified_pointer_or_branch_survives_in_the_lift(product):
-    lifted = product.lifted_constitutive_tail()
-    for stem in ("f", "w", "g", "e"):
-        for target in range(3):
-            assert f"{stem}{target} +" not in lifted, f"{stem}{target}"
-    assert "SCALE" not in lifted and "tl.store(" not in lifted
-
-
-def test_every_declared_lift_edit_carries_a_reason_and_none_is_arithmetic(product):
-    assert len(product.CONSTITUTIVE_LIFT_EDITS) >= 6
-    for edit in product.CONSTITUTIVE_LIFT_EDITS:
-        assert edit["line"] and edit["became"] and edit["why"]
-        assert "*" not in edit["became"].replace("2 * idx", "").replace("...", "")
-
-
-def test_a_drifted_certified_spelling_raises_rather_than_lifting(product):
-    from .triton_kernels import fused_hd_pair
-
-    tail = product.function_source("bloch_constitutive_step")
-    with pytest.raises(AssertionError):
-        fused_hd_pair.needle(tail, "this needle matches nothing", "x")
-    with pytest.raises(AssertionError):
-        fused_hd_pair.needle(tail, "mask=live, other=0.0", "x")
+def test_launch_one_spells_no_arithmetic_of_its_own(product):
+    lifted = product.lifted_weld_block()
+    for needle in ("_mul_", "_rotate_", "_div_", "_connect", "tl.math.", " / ", "fma"):
+        assert not any(needle in line for line in lifted), needle
+    # Both word planes of every scratch volume, and the history's auxiliary contract.
+    assert sum(1 for line in lifted if line.strip().startswith("tl.store(ho")) == 6
+    assert sum(1 for line in lifted if "tl.where(dw" in line) == 6
 
 
 # ---------------------------------------------------------------------------
 # The two spellings that invert, pinned statement by statement
 # ---------------------------------------------------------------------------
 
-def test_the_divide_is_cupys_scaled_algorithm_with_the_zero_terms_kept(product):
-    statements = product.increment_statements()
-    for needle in product.DIVIDE_SPELLING:
-        assert statements.count(needle) == 1, needle
-    assert "q_re, q_im = _div_coefficient_scaled(d_re, d_im, d_im1)" in statements
-    # Both reciprocals correctly rounded, and NO `/` anywhere below the decode.
-    assert statements.count("oos = tl.math.div_rn(1.0, s)") == 1
-    assert statements.count("oos2 = tl.math.div_rn(1.0, s2)") == 1
-    divisions = [line for line in statements
-                 if " = " in line and " / " in line.split("#", 1)[0] and "//" not in line]
-    assert divisions == [], divisions
-    # NOT numpy's reciprocal multiply (the Metal verdict) and NOT componentwise.
-    joined = "\n".join(statements)
-    assert "_mul_field_left_fma(d_re, d_im" not in joined
-    assert "tl.math.div_rn(d_re, d_im1)" not in joined
-
-
-def test_the_multiply_is_the_fma_v1_field_left_arrangement_ungated_by_the_arm(product):
-    statements = product.increment_statements()
-    for needle in product.MULTIPLY_SPELLING:
-        assert statements.count(needle) == 1, needle
-    assert "wh_re, wh_im = _mul_field_left_fma(o1_re, o1_im, w_i)" in statements
-    assert "wb_re, wb_im = _mul_field_left_fma(h_re, h_im, w_im1)" in statements
-    # The arm-gated certified helper is NOT reached by the increment.
-    assert not any("_mul_field_left(" in line and "_mul_field_left_fma(" not in line
-                   for line in statements)
-    # Negation is `* -1.0`, never unary minus (complex_fields' own rule).
-    source = pathlib.Path(product.__file__).read_text(encoding="utf-8")
-    helper = source.split("def _mul_field_left_fma(", 1)[1].split("@triton.jit", 1)[0]
-    assert "* -1.0" in helper and "(-" not in helper.split('"""')[-1]
-
-
 def test_the_fma_v1_arrangement_is_the_certified_helpers_own_text(product):
-    """``_mul_field_left_fma`` spells exactly ``complex_fields._mul_field_left``'s FMA_V1
-    branch -- read off that module's source so the two cannot drift."""
+    """No multiply-add survives anywhere in the complex cylindrical H->D path: this
+    module spells none, and the certified complex helpers it no longer copies have one
+    per-part body each, so no multiply-add branch is left to transcribe."""
     from .triton_kernels import complex_fields
 
-    text = pathlib.Path(complex_fields.__file__).read_text(encoding="utf-8")
-    branch = text.split("def _mul_field_left(", 1)[1].split("if EXPANSION == FMA_V1:", 1)[1]
-    branch = branch.split("else:", 1)[0]
-    for needle in product.MULTIPLY_SPELLING:
-        assert needle in branch, needle
+    text = pathlib.Path(product.__file__).read_text(encoding="utf-8")
+    assert "tl.math.fma" not in text and "_mul_field_left_fma" not in text
+    certified = pathlib.Path(complex_fields.__file__).read_text(encoding="utf-8")
+    helper = certified.split("def _mul_field_left(", 1)[1].split("\n@triton.jit", 1)[0]
+    assert "tl.math.fma" not in helper
 
 
-def test_every_increment_statement_appears_exactly_once(product):
-    statements = product.increment_statements()
-    for tag, needle in product.INCREMENT_SPELLING:
-        assert sum(1 for line in statements if needle in line) == 1, tag
-    assert "q_re = tl.where(inner, q_re, 0.0)" in statements
-    assert "q_im = tl.where(inner, q_im, 0.0)" in statements
-    assert "d_re = wh_re - wb_re" in statements and "d_im = wh_im - wb_im" in statements
-
-
-def test_the_halo_is_a_recompute_through_the_lifted_body(product):
-    joined = "\n".join(product.increment_statements())
-    assert "h_re, h_im = _h_tap_complex(1, i - 1, j, k, inner," in joined
-    assert "tl.load(hi1 + 2 * (idx - nyz)" not in joined
-    assert "tl.load(ho1 + 2 * (idx - nyz)" not in joined
+def test_no_neighbour_is_read_and_no_prefix_name_survives(product):
+    text = pathlib.Path(product.__file__).read_text(encoding="utf-8")
+    for name in ("_h_tap_complex(", "cylindrical_rderiv_prefix", "cyl_increment",
+                 "cyl_prefix", "cumsum", "_cylindrical_rderiv_rows", "imr_rinv_row("):
+        assert name not in text, name
 
 
 def test_launch_two_is_the_certified_complex_curl_with_the_shipped_argument_list(product):
+    """Launches 2 and 3 are the certified ``CylindricalComplexCurlPlan``, built by the
+    certified harness builder over each rotating allocation; its argument list, i*m/r
+    rows, axis rules and Courant words are that plan's own, never restated here."""
     from .triton_kernels import cylindrical_complex
 
     text = pathlib.Path(product.__file__).read_text(encoding="utf-8")
-    assert "_cx.cyl_complex_pml_curl_step" in text
-    for needle in ("curl0_re =", "curl2_re =", "def cyl_complex_pml_curl_step"):
+    assert "_cx.plan_cylindrical_complex_curl_from_arrays(" in text
+    assert "plan.run(guard)" in text
+    for needle in ("curl0_re =", "curl2_re =", "def cyl_complex_pml_curl_step",
+                   "def cyl_radial_difference"):
         assert needle not in text, needle
-    tree = ast.parse(pathlib.Path(cylindrical_complex.__file__).read_text(encoding="utf-8"))
-    kernel = next(node for node in ast.walk(tree)
-                  if isinstance(node, ast.FunctionDef)
-                  and node.name == "cyl_complex_pml_curl_step")
-    names = [arg.arg for arg in kernel.args.args]
-    assert names[:12] == ["f0", "f1", "f2", "u0", "u1", "u2", "g0", "g1", "g2", "pfx",
-                          "c0", "c2"]
-    assert names[18:27] == ["nx", "ny", "nz", "n_elem", "dtdx", "minus_dtdx", "inc_b_re",
-                            "inc_b_im", "four_dtdx"]
-    launch = inspect.getsource(product.CylindricalFusedHdPairPlan._launch)
-    assert "pointer(_word_view(prefix)), *self._imr_rows," in launch
-    assert "minus_dtdx, inc_b[0], inc_b[1], self.four_dtdx," in launch
-    for constexpr in ("BACKWARD=self.backward", "BCZ=self.bcz", "M_CLASS=self.m_class",
-                      "ZERO_ROWS=self.zero_rows", "EXPANSION=self.expansion"):
-        assert constexpr in launch, constexpr
+    arrays, curl_flat, constitutive_flat, holder = _arrays(product)
+    plan = _plan(product, arrays, curl_flat, constitutive_flat, holder, m=2, accurate=True)
+    plans = plan.step_d_plans
+    assert len(plans) == 2
+    for curl in plans:
+        assert type(curl) is cylindrical_complex.CylindricalComplexCurlPlan
+        assert curl.sub_step == "step_D" and curl.backward == 1
+        assert curl.m == 2 and curl.m_class == cylindrical_complex.m_class(2)
+        assert curl.zero_rows == cylindrical_complex.zero_rows(2, True) == 1
+        assert curl.bcz == 1 and curl.courant == 0.5
+        assert numpy.array_equal(curl.chunk_bounds, plan.chunk_bounds)
+    scanned = {curl.scan._source.__array_interface__["data"][0] for curl in plans}
+    assert scanned == {arrays["Hy"].view(numpy.float32).__array_interface__["data"][0],
+                       arrays["scratch_Hy"].view(numpy.float32).__array_interface__["data"][0]}
 
 
 def test_the_restated_block_size_is_the_certified_modules_own(product):
@@ -302,12 +265,28 @@ def test_the_restated_block_size_is_the_certified_modules_own(product):
 # The predicate
 # ---------------------------------------------------------------------------
 
-def test_an_undeclared_source_list_and_a_standing_withdraw_are_refused_by_name(product):
+def test_an_undeclared_source_list_and_a_foreign_standing_withdraw_are_refused_by_name(product):
     fields, pml = build()
     reasons = _reasons(product.cylindrical_fused_hd_pair_coverage(fields, pml, None))
     assert any("was not declared" in reason for reason in reasons), reasons
-    reasons = _reasons(product.cylindrical_fused_hd_pair_coverage(fields, pml, (_Electric(),)))
+    reasons = _reasons(product.cylindrical_fused_hd_pair_coverage(fields, pml, (_ForeignElectric(),)))
     assert any("standing integrated" in reason for reason in reasons), reasons
+
+
+def test_an_integrated_electric_source_stands_no_withdraw_in_the_seam(product):
+    """An engine integrated source enters at the constitutive update through
+    ``f_minus_p`` (``sources.f_minus_p_begin``), so nothing stands between the two
+    consults this product spans and the predicate has no withdraw to refuse."""
+    from .sources import ContinuousEnvelope, VolumeSource
+
+    fields, pml = build()
+    source = VolumeSource(grid=fields.grid, component="Ez", center=(0.0, 0.0, 0.0),
+                          size=(0.0, 0.0, 0.0),
+                          envelope=ContinuousEnvelope(frequency=1.0, is_integrated=True))
+    assert source.is_integrated and not hasattr(source, "withdraw")
+    reasons = _reasons(product.cylindrical_fused_hd_pair_coverage(fields, pml, (source,)))
+    assert not any("standing integrated" in reason or "withdraw" in reason
+                   for reason in reasons), reasons
 
 
 def test_real_storage_is_refused_by_name(product):
@@ -316,16 +295,9 @@ def test_real_storage_is_refused_by_name(product):
     assert any("force_complex_fields is not set" in reason for reason in reasons), reasons
 
 
-def test_a_missing_probe_is_refused_by_name(product, monkeypatch):
-    monkeypatch.delenv("MEEP_GPU_COMPLEX_EXPANSION_PROBE", raising=False)
+def test_on_a_numpy_host_with_a_probe_only_the_array_module_clause_refuses(product):
     fields, pml = build()
-    reasons = _reasons(product.cylindrical_fused_hd_pair_coverage(fields, pml, ()))
-    assert any("expansion probe" in reason for reason in reasons), reasons
-
-
-def test_on_a_numpy_host_with_a_probe_only_the_array_module_clause_refuses(product, probe):
-    fields, pml = build()
-    verdict = product.cylindrical_fused_hd_pair_coverage(fields, pml, (), probe=probe)
+    verdict = product.cylindrical_fused_hd_pair_coverage(fields, pml, ())
     assert not verdict.covered
     residual = [reason for reason in _reasons(verdict)
                 if "subnormal policy" not in reason]
@@ -334,9 +306,9 @@ def test_on_a_numpy_host_with_a_probe_only_the_array_module_clause_refuses(produ
 
 @pytest.mark.parametrize("m,z", [(0, "metallic"), (1, "periodic"), (-1, "metallic"),
                                  (2, "metallic"), (3, "periodic")])
-def test_every_m_class_and_both_z_terminations_reach_the_predicate(product, probe, m, z):
+def test_every_m_class_and_both_z_terminations_reach_the_predicate(product, m, z):
     fields, pml = build(m=m, z=z, courant=0.25)
-    verdict = product.cylindrical_fused_hd_pair_coverage(fields, pml, (), probe=probe)
+    verdict = product.cylindrical_fused_hd_pair_coverage(fields, pml, ())
     residual = [reason for reason in _reasons(verdict) if "subnormal policy" not in reason]
     assert residual == [], residual
 
@@ -346,13 +318,6 @@ def test_an_inactive_absorber_is_named_by_the_constitutive_half_first(product):
     verdict = product.cylindrical_fused_hd_pair_coverage(fields, pml, ())
     assert not verdict.covered
     assert verdict.reasons[0].startswith("cylindrical complex constitutive half"), verdict.reasons
-
-
-def test_a_missing_step_scratch_is_refused_by_name(product):
-    fields, pml = build()
-    reasons = _reasons(product.cylindrical_fused_hd_pair_coverage(
-        _View(fields, scratch=None), pml, ()))
-    assert any("StepScratch" in reason for reason in reasons), reasons
 
 
 def test_the_builder_returns_none_rather_than_raising_on_a_refused_run(product):
@@ -438,50 +403,58 @@ def _arrays(product, shape=(6, 1, 5)):
     return arrays, curl_flat, constitutive_flat, holder
 
 
-def _plan(product, arrays, curl_flat, constitutive_flat, holder, scratch, m=1, accurate=False,
+def _plan(product, arrays, curl_flat, constitutive_flat, holder, m=1, accurate=False,
           bcz=1):
+    """The harness route, with the record and the one-chunk starts line it requires."""
+    rows = next(a.shape[0] for a in arrays.values() if getattr(a, "ndim", 0) == 3)
     return product.plan_cylindrical_fused_hd_pair_from_arrays(
-        arrays, curl_flat, constitutive_flat, 0.35, m, accurate, bcz, 1, holder, numpy,
-        scratch)
+        arrays, curl_flat, constitutive_flat, 0.35, 0.5, m, accurate, bcz, holder,
+        numpy, chunk_bounds=_chunk_record(arrays),
+        scan_starts=numpy.zeros(rows, dtype=numpy.int32))
 
 
 def test_the_plan_rotates_the_six_volumes_and_binds_the_pool(product):
+    """The plan rotates the six H volumes (the real family's choreography and its start
+    of H), binds the complex constitutive's kps and kms, and holds one certified step_D
+    plan per rotating allocation, each with its own scan output."""
+    from .triton_kernels.fused_hd_pair import StartsH
     from .triton_kernels.offdiag_scratch_weld import ScratchWeldPairPlan
-    from .triton_kernels import cylindrical_complex
 
     assert issubclass(product.CylindricalFusedHdPairPlan, ScratchWeldPairPlan)
+    assert issubclass(product.CylindricalFusedHdPairPlan, StartsH)
+    assert product.CylindricalFusedHdPairPlan.launches_per_run == 3
+    assert product.CylindricalFusedHdPairPlan.kernel_launches_per_run == 3
     arrays, curl_flat, constitutive_flat, holder = _arrays(product)
-    scratch = StepScratch(numpy)
-    plan = _plan(product, arrays, curl_flat, constitutive_flat, holder, scratch, m=2,
-                 accurate=True)
-    assert plan._increment() is scratch.take("cyl_increment", (6, 1, 5),
-                                             numpy.dtype("complex64"))
-    assert plan.m_class == cylindrical_complex.m_class(2)
-    assert plan.zero_rows == cylindrical_complex.zero_rows(2, True) == 1
-    assert plan.expansion == 1 and plan.bcz == 1
-    assert plan.four_dtdx == cylindrical_complex.four_dtdx_scalar(0.35)
-    assert plan.increment_scalars == cylindrical_complex.axis_increment_scalars(2, 0.35)
-    assert len(plan._imr_rows) == 2 and len(plan._h_coeff) == 6
+    plan = _plan(product, arrays, curl_flat, constitutive_flat, holder, m=2, accurate=True)
+    assert plan.rotated_names == product.ROTATED
+    assert len(plan._kps) == 3 and len(plan._kms) == 3
+    assert plan.bcz == 1 and plan.m == 2
+    assert plan.start_h() == 0
+    assert len({id(curl.scan.out) for curl in plan.step_d_plans}) == 2
+    writes, _reads = plan._resolve()
+    assert plan._curl_plan_for(writes) in plan.step_d_plans
 
 
 def test_real_storage_a_none_pool_and_an_alias_are_refused(product):
     arrays, curl_flat, constitutive_flat, holder = _arrays(product)
-    with pytest.raises(ValueError):
-        _plan(product, arrays, curl_flat, constitutive_flat, holder, None)
     real = {name: (value.real.astype(numpy.float32) if value.dtype == numpy.complex64
                    else value) for name, value in arrays.items()}
     with pytest.raises(ValueError):
-        _plan(product, real, curl_flat, constitutive_flat, holder, StepScratch(numpy))
+        _plan(product, real, curl_flat, constitutive_flat, holder)
+    aliased = dict(arrays)
+    aliased["scratch_Hy"] = aliased["Hy"]
+    with pytest.raises((ValueError, RuntimeError)):
+        _plan(product, aliased, curl_flat, constitutive_flat, holder)._resolve()
     arrays["Bx"] = arrays["Dx"]
     with pytest.raises(ValueError):
-        _plan(product, arrays, curl_flat, constitutive_flat, holder, StepScratch(numpy))
+        _plan(product, arrays, curl_flat, constitutive_flat, holder)
 
 
 def test_the_module_is_importable_without_triton(product):
     if product.triton is not None:  # pragma: no cover - a device host
         pytest.skip("Triton is importable here; the absence path is the laptop's")
     with pytest.raises(ImportError):
-        product.cyl_complex_update_H_increment_kernel()
+        product.cyl_complex_update_H_scratch_kernel()
 
 
 # ---------------------------------------------------------------------------
@@ -506,57 +479,43 @@ def test_every_mutation_needle_resolves_exactly_once(gate, product):
     assert source.count(gate.BYTE_NEUTRAL["old"]) == 1
     nulls = [tag for tag, spec in gate.MUTATIONS.items()
              if spec.get("expected_override") == "NULL"]
+    assert nulls, "a mutation set with no predicted null has not been thought about"
     for tag in nulls:
         assert ("PREDICTED NULL" in gate.MUTATIONS[tag]["why"]
                 or "MEASURED NULL" in gate.MUTATIONS[tag]["why"]), tag
-    for tag in ("m_numpy_reciprocal_divide", "m_componentwise_divide",
-                "m_first_reciprocal_spelled_with_slash", "m_halo_reads_the_stored_Hy",
-                "m_rotation_skipped", "m_scan_skipped", "m_ir0_zero_ladder",
-                "m_curl_reads_the_pre_launch_H"):
+    for tag in ("m_H_written_in_place", "m_imaginary_plane_takes_B",
+                "m_f_w_H_written_in_place", "b7_fw_scratch_stored_unmasked",
+                "b8_fw_scratch_stored_on_the_layer_only", "b11_start_of_H_not_forwarded",
+                "m_rotation_skipped", "m_scan_skipped", "m_scan_reads_the_pre_launch_Hy",
+                "m_ir0_zero_ladder", "m_curl_reads_the_pre_launch_H"):
         assert gate.MUTATIONS[tag]["expected"] == "CAUGHT", tag
         assert "expected_override" not in gate.MUTATIONS[tag], tag
-    # numpy's reciprocal coincides with the scaled divide wherever d * (1/d) rounds to
-    # exactly 1.0 -- every ladder value below 41 -- so the mutation case must reach it.
-    shape = dict(gate.CASES)[gate.MUTATION_CASE]["shape"]
-    assert shape[0] > 41 and shape[0] * shape[1] <= 256, shape
-    assert gate.MUTATIONS["m_halo_reads_the_neighbours_scratch"]["expected_override"] == "NULL"
-    # The four-product multiply is a MEASURED null inside the increment (its signed-zero
-    # difference cannot reach the increment through the subtract and the scaled divide,
-    # 0 of 8,991,940 words under both policies) and is pinned where it IS byte-visible:
-    # the multiply sub-leg's planted row-0 class under flush.
-    assert gate.MUTATIONS["m_four_product_multiply_in_the_increment"]["expected_override"] == "NULL"
-    assert "MEASURED NULL" in gate.MUTATIONS["m_four_product_multiply_in_the_increment"]["why"]
-    assert gate.INCREMENT_VARIANTS["four_product_multiply"]["expected"] == "IDENTICAL"
-    assert gate.MULTIPLY_VARIANTS["four_product"]["expected"]["flush"]["planted"] == "DIFFERS"
-    assert gate.MULTIPLY_VARIANTS["four_product"]["expected"]["keep"] == "IDENTICAL"
+    assert gate.MUTATIONS["b11_start_of_H_not_forwarded"]["case"] == gate.FIRST_UPDATE_CASE
+    assert dict(gate.CASES)[gate.FIRST_UPDATE_CASE]["h_started"] is False
 
 
-def test_the_increment_variants_carry_the_kernels_own_spelling(gate, product):
-    primary = gate.INCREMENT_VARIANTS["primary"]
-    for needle in ("tl.math.fma(fr_i, w_i, (fi_i * 0.0) * -1.0)",
-                   "tl.math.fma(fr_i, 0.0, fi_i * w_i)"):
-        assert needle in primary["multiply"], needle
-    for needle in ("s = tl.abs(d_im1) + 0.0", "oos = tl.math.div_rn(1.0, s)",
-                   "bis = 0.0 * oos", "s2 = (brs * brs) + (bis * bis)",
-                   "oos2 = tl.math.div_rn(1.0, s2)",
-                   "q_re = ((ars * brs) + (ais * bis)) * oos2",
-                   "q_im = ((ais * brs) - (ars * bis)) * oos2"):
-        assert needle in primary["divide"], needle
-    for name in ("numpy_reciprocal", "componentwise"):
-        assert gate.INCREMENT_VARIANTS[name]["expected"] == "DIFFERS", name
+def test_the_gate_counts_every_kernel_the_weld_can_launch(gate, product):
+    """Launch 1 and BOTH certified step_D plans' scan and curl are counted, through the
+    plans' own slots, so the unpicked plan's counters are a measured zero: the gate
+    names the five slots, and the kit resolves every dotted slot on a real plan."""
+    source = inspect.getsource(gate.Spec.default_kernels)
+    for needle in ('slots[f"step_d_plans.{index}._kernel"]',
+                   'slots[f"step_d_plans.{index}.scan._kernel"]',
+                   "family.cyl_complex_update_H_scratch_kernel()"):
+        assert needle in source, needle
+    kit = sys.modules["triton_cylindrical_hd_gate_kit"]
+    arrays, curl_flat, constitutive_flat, holder = _arrays(product)
+    plan = _plan(product, arrays, curl_flat, constitutive_flat, holder)
+    for index, curl in enumerate(plan.step_d_plans):
+        assert kit._slot_owner(plan, f"step_d_plans.{index}._kernel") == (curl, "_kernel")
+        assert kit._slot_owner(plan, f"step_d_plans.{index}.scan._kernel") == (
+            curl.scan, "_kernel")
 
 
-def test_the_curl_redirect_names_the_three_magnetic_arguments_of_launch_two(gate):
-    assert gate.SPEC.curl_prelaunch_positions() == {6: 0, 7: 1, 8: 2}
-
-
-def test_the_flush_policy_does_not_reach_the_composer_and_keep_does(gate, probe):
-    reachable, why = gate.SPEC.policy_reaches_composer("flush")
-    assert not reachable and "CERTIFIED under the 'keep'" in why
-    reachable, why = gate.SPEC.policy_reaches_composer("keep")
-    assert reachable, why
-    forced = gate.SPEC.forced_expansion()
-    assert forced["expansion"] == 1 and forced["arm"] == "FMA_V1"
+def test_both_policies_reach_the_composer(gate):
+    for policy in ("flush", "keep"):
+        reachable, why = gate.SPEC.policy_reaches_composer(policy)
+        assert reachable, (policy, why)
 
 
 def test_the_gates_cell_is_the_boards_cell(gate, product):

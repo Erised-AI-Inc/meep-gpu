@@ -596,6 +596,10 @@ DRIVER_MUTATORS = {
     "set_chi2": lambda d: d.set_chi2(1e-4),
     "set_chi3": lambda d: d.set_chi3(1e-4),
     "setup_pml": lambda d: d.setup_pml(10),
+    "set_chunk_layout": lambda d: d.set_chunk_layout(d.chunk_layout),
+    # Mid-run, so refused by name on both paths (an absent component is never stepped).
+    "set_absent_components": lambda d: d.set_absent_components(
+        ("Ex", "Ey", "Dx", "Dy", "Hz", "Bz")),
     "add_source": _add_source,
     "add_dft_monitor": lambda d: d.add_dft_monitor(
         frequency=0.25, components=("Ez",), center=(0.0, 0.0, 0.0), size=(1.0, 1.0, 0.0)),

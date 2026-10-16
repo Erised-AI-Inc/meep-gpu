@@ -9,8 +9,10 @@ catch what the tight ones can:
    ``chi1_discrete`` against the recurrence it claims to solve, the poles, and
    MEEP's documented stability limit. Every units and 2*pi error dies here, before
    a single field exists.
-2. **The kernel.** ``PolarizationState`` against the scalar recurrence, its buffer
-   rotation, its component skipping, and its lack of any spatial stencil.
+2. **The kernel.** ``PolarizationState`` against MEEP's own words (its four float32
+   constants and its update expression, compiled from MEEP's source without
+   contraction), against the scalar recurrence, its buffer rotation, its component
+   skipping, and its lack of any spatial stencil.
 3. **The physics.** A measured phase velocity against the EXACT discrete
    dispersion relation (which carries no discretisation error, so the bound is
    1e-4 rather than a physics tolerance), then the same measurement against the
@@ -63,13 +65,30 @@ from .driver import FdtdDivergence, FdtdDriver
 from .grid import Grid
 
 
+def _exact_recurrence(susceptibility, dt):
+    """MEEP's recurrence ``P' = c_now*P + c_prev*P_prev + c_drive*sigma*W`` in exact (float64)
+    arithmetic: susceptibility.cpp:192-195 with nothing rounded to float32.
+
+    ``chi1_discrete`` is the transfer function of THIS recurrence. The engine steps MEEP's
+    float32 words instead (``Susceptibility.realnum_constants``), which moves the transfer
+    function by float32 round-off and is pinned word for word against MEEP below.
+    """
+    omega_dt = 2.0 * math.pi * susceptibility.frequency * dt
+    half_gamma_dt = 2.0 * math.pi * susceptibility.gamma * dt / 2.0
+    omega0dtsqr = omega_dt * omega_dt
+    restoring = 0.0 if susceptibility.is_drude else omega0dtsqr
+    gamma1inv = 1.0 / (1.0 + half_gamma_dt)
+    return (gamma1inv * (2.0 - restoring), -gamma1inv * (1.0 - half_gamma_dt),
+            gamma1inv * omega0dtsqr)
+
+
 def _scalar_recurrence(susceptibility, sigma, frequency, dt, steps):
     """Drive MEEP's recurrence with W^n = exp(-i*2*pi*f*n*dt), in float64.
 
     Returns ``(P^steps, W^steps)``. This is the reference the array kernel is held
     against, and the thing ``chi1_discrete`` claims to be the transfer function of.
     """
-    c_now, c_prev, c_drive = susceptibility.coefficients(dt)
+    c_now, c_prev, c_drive = _exact_recurrence(susceptibility, dt)
     omega = 2.0 * math.pi * frequency
     polarization, previous = 0j, 0j
     for step in range(steps):
@@ -314,42 +333,216 @@ def test_gain_and_unsupported_kinds_are_refused():
         Susceptibility(0.0, 0.1, LORENTZIAN)
 
 
-def test_the_recurrence_coefficients_carry_the_angular_frequency():
+def _word(value) -> str:  # A float32 word as eight hex digits.
+    return f"{int(np.asarray(value, dtype=np.float32).view(np.uint32)):08x}"
+
+
+def _float(word: str) -> np.float32:
+    return np.array([int(word, 16)], dtype=np.uint32).view(np.float32)[0]
+
+
+# MEEP's update_P constants and its isotropic update, compiled from susceptibility.cpp:188-196
+# and :251-256 with MEEP's types (realnum = float, pi = meep.hpp:53's double) by clang
+# -ffp-contract=off -O2, as the single-precision reference build is compiled. Rows:
+# (frequency, gamma, Drude?, dt) -> (2 - omega0dtsqr_denom, gamma1, omega0dtsqr, gamma1inv).
+_MEEP_CONSTANT_WORDS = {
+    (1.1, 0.05, False, 0.05): ("3ff0b6c6", "3f7dfd48", "3df493a3", "3f7e014b"),
+    (0.8, 0.12, True, 0.05): ("40000000", "3f7b2cad", "3d815ce7", "3f7b4387"),
+    (0.37, 0.0, False, 0.05): ("3ffe4541", "3f800000", "3c5d5f4b", "3f800000"),
+    (1.1, 0.05, False, 0.0125): ("3fff0b6c", "3f7f7f52", "3bf493a3", "3f7f7f93"),
+    (3.0 / (2.0 * math.pi), 0.0625, True, 0.0625): ("40000000", "3f7cdbc1", "3d100000", "3f7ce580"),
+}
+
+# One update, (p, pp, s, w) -> p', from the same compiled source, for the first two terms
+# above at dt = 0.05: plain words, a sign of zero carried through the drive, the +0 that
+# -0 - (-0) leaves, subnormal operands and a large cancellation.
+_MEEP_UPDATE_OPERANDS = (
+    ("3f800000", "3f000000", "3f000000", "3f800000"),
+    ("be4ccccd", "3e99999a", "3e99999a", "40490fdb"),
+    ("80000000", "00000000", "3f000000", "80000000"),
+    ("80000000", "80000000", "00000000", "3f800000"),
+    ("00400000", "80200000", "3e99999a", "00100000"),
+    ("3a83126f", "ba03126f", "3f000000", "bf9d70a4"),
+    ("447a0000", "4479c000", "3e99999a", "c2c80000"),
+)
+_MEEP_UPDATE_RESULTS = {
+    (1.1, 0.05, False): ("3fb76b48", "bf0e8c9e", "80000000", "00000000", "00977d35", "bd9069bf",
+                         "445bbc0a"),
+    (0.8, 0.12, True): ("3fc19985", "bf1f816a", "80000000", "00000000", "009cbed4", "bd1228f0",
+                        "4479c698"),
+}
+
+
+@pytest.mark.parametrize("key", sorted(_MEEP_CONSTANT_WORDS, key=repr))
+def test_the_recurrence_constants_are_meeps_float32_words(key):
+    """Each constant is the word MEEP 1.33.0 single precision forms, rounded where it rounds.
+
+    omega_0, gamma and dt enter as float32 (``realnum`` parameters); ``2*pi*omega_0`` and
+    ``gamma*2*pi`` are formed in double and stored as float32; everything after that is
+    float32, left to right. Forming the constants in double and rounding once, or folding
+    them into the three-term form ``(c_now, c_prev, c_drive)``, gives other words.
+    """
+    frequency, gamma, drude, dt = key
+    term = Susceptibility(frequency, gamma, DRUDE if drude else LORENTZIAN)
+    constants = term.realnum_constants(dt)
+    assert all(np.asarray(value).dtype == np.float32 for value in constants)
+    assert tuple(_word(value) for value in constants) == _MEEP_CONSTANT_WORDS[key]
+
+
+def _single_cell_state(term, operands, dtype=np.float32):
+    """A PolarizationState on a (7, 1, 1) grid at dt = 0.05 holding one operand row per cell."""
+    grid = _grid((len(operands), 1, 1))
+    assert grid.dt == 0.05
+    columns = [np.array([_float(row[i]) for row in operands], dtype=np.float32).reshape(grid.shape)
+               for i in range(4)]
+    p, pp, sigma, w = columns
+    state = PolarizationState(term, {"Ex": sigma}, grid, dtype)
+    state.P["Ex"][...] = p
+    state.P_prev["Ex"][...] = pp
+    return state, grid, p, w
+
+
+@pytest.mark.parametrize("key", sorted(_MEEP_UPDATE_RESULTS, key=repr))
+def test_one_update_is_meeps_expression_word_for_word(key):
+    """``gamma1inv * ((p*(2 - od) - gamma1*pp) + od*(s*w))``, every operation float32.
+
+    The expected words are MEEP's isotropic update compiled without contraction; they
+    include the sign of a zero carried through the drive, the +0 that ``-0 - (-0)``
+    leaves, and subnormal operands, so a regrouping, a fused multiply-add or a constant
+    formed in another precision shows here as a different word.
+    """
+    frequency, gamma, drude = key
+    term = Susceptibility(frequency, gamma, DRUDE if drude else LORENTZIAN)
+    state, grid, p, w = _single_cell_state(term, _MEEP_UPDATE_OPERANDS)
+    state.update(lambda component: w, grid.dt)
+    assert [_word(value) for value in state.P["Ex"].ravel()] == list(_MEEP_UPDATE_RESULTS[key])
+    assert np.array_equal(state.P_prev["Ex"].view(np.uint32), p.view(np.uint32)), (
+        "pp must take the step's pcur word")
+
+
+def _meep_update_scalar(constants, p, pp, s, w):
+    """MEEP's isotropic update cell by cell, in NumPy float32 scalars, in MEEP's order."""
+    two_minus_od, gamma1, omega0dtsqr, gamma1inv = constants
+    out = np.empty_like(p)
+    for index in np.ndindex(p.shape):
+        drive = omega0dtsqr * (s[index] * w[index])
+        out[index] = gamma1inv * ((p[index] * two_minus_od - gamma1 * pp[index]) + drive)
+    return out
+
+
+def _random_words(rng, shape, scale):
+    values = (rng.standard_normal(shape) * scale).astype(np.float32)
+    values.ravel()[::17] = np.float32(-0.0)
+    return values
+
+
+@pytest.mark.parametrize("kind", [LORENTZIAN, DRUDE])
+def test_the_update_takes_meeps_grouping_on_every_word(kind):
+    """The vectorized update equals MEEP's scalar expression on every word of a volume.
+
+    Random words over four steps, a sigma volume with zeros, signed zeros in the state.
+    The three-term form the array path took before (``c_now*p + c_prev*pp + c_drive*(s*w)``
+    with its constants folded in double) reads a different word on a large share of these
+    cells, so this test separates the two groupings.
+    """
+    rng = np.random.default_rng(20261008)
+    term = Susceptibility(1.1, 0.05, kind)
+    grid = _grid((6, 5, 4))
+    sigma = np.abs(_random_words(rng, grid.shape, 0.5))
+    sigma.ravel()[::5] = 0.0
+    state = PolarizationState(term, {"Ex": sigma, "Ey": 0.3}, grid, np.float32)
+    state.P["Ex"][...] = _random_words(rng, grid.shape, 1.0)
+    state.P_prev["Ex"][...] = _random_words(rng, grid.shape, 1.0)
+    differing_folded = 0
+    for _ in range(4):
+        w = _random_words(rng, grid.shape, 2.0)
+        p, pp = state.P["Ex"].copy(), state.P_prev["Ex"].copy()
+        expected = _meep_update_scalar(state.constants, p, pp, sigma, w)
+        c_now, c_prev, c_drive = (np.float32(c) for c in _exact_recurrence(term, grid.dt))
+        folded = (c_now * p + c_prev * pp) + c_drive * (sigma * w)
+        differing_folded += int(np.count_nonzero(folded.view(np.uint32) != expected.view(np.uint32)))
+        state.update(lambda component: w, grid.dt)
+        assert np.array_equal(state.P["Ex"].view(np.uint32), expected.view(np.uint32))
+    assert differing_folded > 0.1 * 4 * sigma.size, (
+        f"the folded three-term form differs on only {differing_folded} of {4 * sigma.size} words; "
+        f"this test would not see the grouping")
+
+
+def test_complex_storage_steps_the_two_parts_as_two_real_passes():
+    """MEEP's DOCMP2: the real and the imaginary part are each stepped as a real field.
+
+    A complex64 polarization is updated part by part with real operands, so each part is
+    bit for bit what a real run on that part alone gives, signed zeros included.
+    """
+    rng = np.random.default_rng(7)
+    term = Susceptibility(0.8, 0.12, DRUDE)
+    grid = _grid((5, 4, 3))
+    sigma = np.abs(_random_words(rng, grid.shape, 0.5))
+    complex_state = PolarizationState(term, sigma, grid, np.complex64)
+    parts = [PolarizationState(term, sigma, grid, np.float32) for _ in range(2)]
+    for name in ("P", "P_prev"):
+        for component in E_COMPONENTS:
+            re, im = (_random_words(rng, grid.shape, 1.0) for _ in range(2))
+            getattr(complex_state, name)[component].real[...] = re
+            getattr(complex_state, name)[component].imag[...] = im
+            getattr(parts[0], name)[component][...] = re
+            getattr(parts[1], name)[component][...] = im
+    for _ in range(3):
+        drive = {c: (_random_words(rng, grid.shape, 2.0), _random_words(rng, grid.shape, 2.0))
+                 for c in E_COMPONENTS}
+        stacked = {c: np.empty(grid.shape, dtype=np.complex64) for c in E_COMPONENTS}
+        for c in E_COMPONENTS:
+            stacked[c].real[...] = drive[c][0]
+            stacked[c].imag[...] = drive[c][1]
+        complex_state.update(lambda c: stacked[c], grid.dt)
+        parts[0].update(lambda c: drive[c][0], grid.dt)
+        parts[1].update(lambda c: drive[c][1], grid.dt)
+    for component in E_COMPONENTS:
+        for part, real_state in zip(("real", "imag"), parts):
+            for name in ("P", "P_prev"):
+                got = getattr(getattr(complex_state, name)[component], part)
+                want = getattr(real_state, name)[component]
+                assert np.array_equal(np.ascontiguousarray(got).view(np.uint32), want.view(np.uint32)), (
+                    f"{name}[{component}].{part} differs from the real pass on that part")
+
+
+def test_the_recurrence_constants_carry_the_angular_frequency():
     """A dropped 2*pi is invisible to chi1 and fatal to the timestepping.
 
     ``chi1`` is a ratio of two omega^2 quantities, so the factor cancels and the
-    function is right in either unit system; ``coefficients`` carries a bare dt and
-    is not. The three constants are therefore pinned against the angular closed form
-    directly, which is the only place the convention is observable in isolation.
+    function is right in either unit system; ``realnum_constants`` carries a bare dt and
+    is not. The four constants are therefore pinned against the angular closed form
+    directly, at float32 resolution, which is the only place the convention is
+    observable in isolation.
     """
     term = Susceptibility(1.1, 0.05, LORENTZIAN)
     dt = 0.5 / 40
     omega_dt_squared = (2.0 * math.pi * 1.1 * dt) ** 2
     half_gamma_dt = 2.0 * math.pi * 0.05 * dt / 2.0
-    c_now, c_prev, c_drive = term.coefficients(dt)
-    assert c_now == pytest.approx((2.0 - omega_dt_squared) / (1.0 + half_gamma_dt), rel=1e-14)
-    assert c_prev == pytest.approx(-(1.0 - half_gamma_dt) / (1.0 + half_gamma_dt), rel=1e-14)
-    assert c_drive == pytest.approx(omega_dt_squared / (1.0 + half_gamma_dt), rel=1e-14)
+    two_minus_od, gamma1, omega0dtsqr, gamma1inv = (float(c) for c in term.realnum_constants(dt))
+    assert omega0dtsqr == pytest.approx(omega_dt_squared, rel=1e-6)
+    assert gamma1 == pytest.approx(1.0 - half_gamma_dt, rel=1e-6)
+    assert gamma1inv == pytest.approx(1.0 / (1.0 + half_gamma_dt), rel=1e-6)
+    assert two_minus_od == pytest.approx(2.0 - omega_dt_squared, rel=1e-6)
     # Dropping the 2*pi from omega alone would move the resonance by 6.28x.
-    assert c_drive / (1.1 * dt) ** 2 == pytest.approx((2 * math.pi) ** 2 / (1 + half_gamma_dt), rel=1e-12)
+    assert omega0dtsqr / (1.1 * dt) ** 2 == pytest.approx((2 * math.pi) ** 2, rel=1e-6)
 
 
 def test_drude_zeroes_the_restoring_force_and_not_the_drive():
-    """MEEP's omega0dtsqr_denom changes c_now ONLY.
+    """MEEP's omega0dtsqr_denom changes ``2 - omega0dtsqr_denom`` ONLY.
 
-    Applying the flag to ``c_drive`` instead gives P == 0 everywhere — a metal that
+    Applying the flag to the drive instead gives P == 0 everywhere — a metal that
     transmits like vacuum, which scores as a pristine transmission spectrum rather
-    than as a failure. The two coefficients are therefore compared term by term
-    against the Lorentzian with the same parameters.
+    than as a failure. The constants are therefore compared word by word against the
+    Lorentzian with the same parameters.
     """
     dt = 0.5 / 40
-    lorentz = Susceptibility(1.0, 0.05, LORENTZIAN).coefficients(dt)
-    drude = Susceptibility(1.0, 0.05, DRUDE).coefficients(dt)
-    assert drude[2] == pytest.approx(lorentz[2], rel=1e-14), "Drude must keep the full drive term."
-    assert drude[1] == pytest.approx(lorentz[1], rel=1e-14), "Drude must keep c_prev unchanged."
-    assert drude[0] != pytest.approx(lorentz[0], rel=1e-9), "Drude must drop the restoring force."
-    half_gamma_dt = 2.0 * math.pi * 0.05 * dt / 2.0
-    assert drude[0] == pytest.approx(2.0 / (1.0 + half_gamma_dt), rel=1e-14)
+    lorentz = Susceptibility(1.0, 0.05, LORENTZIAN).realnum_constants(dt)
+    drude = Susceptibility(1.0, 0.05, DRUDE).realnum_constants(dt)
+    assert _word(drude.omega0dtsqr) == _word(lorentz.omega0dtsqr), "Drude must keep the full drive term."
+    assert _word(drude.gamma1) == _word(lorentz.gamma1) and _word(drude.gamma1inv) == _word(lorentz.gamma1inv)
+    assert _word(drude.two_minus_od) == _word(np.float32(2.0)), "Drude must drop the restoring force."
+    assert _word(lorentz.two_minus_od) == _word(np.float32(2.0) - lorentz.omega0dtsqr)
 
 
 def test_conductivity_factor_matches_meeps_worked_example():
@@ -487,7 +680,7 @@ def test_polarization_state_reproduces_the_scalar_recurrence():
     state = PolarizationState(term, 0.6, grid, np.complex64)
     omega = 2.0 * math.pi * 0.9
     reference, previous = 0j, 0j
-    c_now, c_prev, c_drive = term.coefficients(grid.dt)
+    c_now, c_prev, c_drive = _exact_recurrence(term, grid.dt)
     for step in range(400):
         drive_value = cmath.exp(-1j * omega * step * grid.dt)
         buffer = np.full(grid.shape, drive_value, dtype=np.complex64)
@@ -916,7 +1109,7 @@ def test_the_divergence_guard_fires_on_a_run_that_slipped_past_the_pole_test():
     unstable = Susceptibility(2.0001 / (2 * math.pi * driver.dt), 0.0, LORENTZIAN)
     report = unstable.stability(driver.dt)
     assert 1.0 < report.pole_magnitude < 1.05, f"the mutation must be MILD: {report.describe()}"
-    driver.fields.polarizations[0]._coefficients = unstable.coefficients(driver.dt)
+    driver.fields.polarizations[0].constants = unstable.realnum_constants(driver.dt)
     driver._susceptibilities[0] = (unstable, 0.002)
     with pytest.raises(FdtdDivergence) as raised, np.errstate(all="ignore"):
         driver.run(until=60.0)

@@ -141,8 +141,8 @@ CASE_INTENT: Dict[str, str] = {
     "folded_dispersive_2d": "the folded pairs over a susceptibility, update_P live",
     "cylindrical": "the cylindrical m=0 electric pair on a Dcyl grid",
     "special_kz_2d": "the beta electric pair on real storage carrying a nonzero beta",
-    "bloch_2d": "the complex pairs; selects NOTHING without the complex expansion probe",
-    "folded_complex_2d": "the folded complex pairs; needs the folded-complex probe",
+    "bloch_2d": "the complex pairs on a Bloch-periodic grid",
+    "folded_complex_2d": "the folded complex pairs",
     "pml_3d": "THE ENVELOPE CONTROL (a sphere): off-diagonal chi1inv rows",
     "no_pml_2d": "THE NO-FUSED-ARM CONTROL: no absorber, so no pair is selected",
     "offdiag_2d": "the ordinary magnetic pair on a 2-D off-diagonal grid; the D "
@@ -154,9 +154,8 @@ CASE_INTENT: Dict[str, str] = {
     "folded_dispersive_3d": "the folded magnetic pair in 3-D over one pole; the D "
                             "seam keeps its singles",
     "complex_nobloch_2d": "both complex pairs under force_complex_fields with no "
-                          "k_point; needs the complex expansion probe",
-    "cylindrical_m1": "the cylindrical complex electric pair at m = 1; needs the "
-                      "cylindrical-complex expansion probe",
+                          "k_point",
+    "cylindrical_m1": "the cylindrical complex electric pair at m = 1",
 }
 
 
@@ -189,18 +188,38 @@ class DryRunShim:
     ``run_near``/``run_far`` ARE REACHED THROUGH ``hasattr``, which is why
     ``launch.SyncedPlan`` answers them through ``__getattr__``: a wrapper defining
     them as real methods would make ``hasattr`` True for a fill plan that has none.
+
+    THE ABSENT COMPONENTS' CLEAR IS THE FOURTH CLAUSE, and the plan's own: where a
+    kernel serves ``update_E``, ``FastPathPlan`` builds
+    ``fastpath._absent_component_clears`` once, applies it before the first step, and
+    applies it again after every ``update_E`` consult, whatever plan sits in the slot
+    (``fastpath.AbsentComponentClear``: a dispatched ``update_E`` steps every
+    component and leaves -0 where the array path leaves an absent one at +0). A shim
+    without it measures a composition the engine never runs: measured 2026-10-10 on
+    the cliff control, folded_offdiag_magnetic_2d's absent ``Ez`` (159 words) and
+    folded_complex_2d's absent ``f_w_Ey`` (160 words) read -0 against the array
+    path's +0 under an EQUAL host policy. Built and applied exactly as the plan does,
+    through ``fastpath``'s own two functions.
     """
 
     __slots__ = ("fields", "plans", "dispatched", "declined", "far_dispatched",
-                 "residency")
+                 "residency", "absent_clears", "absent_block")
 
     def __init__(self, fields: Any, plans: Dict[str, Any], residency: Any) -> None:
+        from meep_gpu import fastpath as fp  # noqa: PLC0415 - late, after the policy
+
         self.fields = fields
         self.plans = {name: plan for name, plan in plans.items() if plan is not None}
         self.residency = residency
         self.dispatched: Dict[str, int] = {}
         self.declined: Dict[str, int] = {}
         self.far_dispatched: Dict[str, int] = {}
+        self.absent_clears: Tuple[Any, ...] = ()
+        self.absent_block: Dict[str, Any] = {}
+        if "update_E" in self.plans:
+            self.absent_clears, self.absent_block = fp._absent_component_clears(  # noqa: SLF001
+                fields)
+            fp._clear_absent_components(self.absent_clears)  # noqa: SLF001
 
     def dispatch(self, slot: str, fields: Any) -> bool:
         from meep_gpu import fastpath as fp  # noqa: PLC0415 - late, after the policy
@@ -225,6 +244,8 @@ class DryRunShim:
             plan.run_near()
         else:
             plan.run()
+        if slot == "update_E" and self.absent_clears:
+            fp._clear_absent_components(self.absent_clears)  # noqa: SLF001
         self.dispatched[slot] = self.dispatched.get(slot, 0) + 1
         return True
 
@@ -298,15 +319,25 @@ def compose_metal_step(driver: Any, sources: Any, fuse: bool = True,
     both folded complex pairs, while the release admits only the magnetic one of
     each.
     """
-    from meep_gpu.expansion_refusal import declaring_run_policy  # noqa: PLC0415
     from meep_gpu.metal_kernels import device, launch  # noqa: PLC0415
+    from meep_gpu.metal_kernels.subnormal import declaring_dispatch_policy  # noqa: PLC0415
 
     fields, pml = driver.fields, driver.pml
+    # THE DRIVER'S OWN CHUNK DIVISION, as the ladder's rung 4bM hands it to the composer
+    # (``metal_dispatch``: ``launch.chunk_division(fields, pml, chunk_layout)``). Left
+    # out, ``plan_step`` binds the one-rank division of the grid, which is not the
+    # division a lifted run steps with wherever MEEP divided it otherwise (a folded
+    # cell, a forced split): the kernels then select their forms and presence from
+    # another record than the array path does, and this probe measures a composition
+    # the engine never runs. Measured 2026-10-10 on the cliff control's shim:
+    # folded_offdiag_magnetic_2d, folded_complex_2d and folded_complex_kz2d_3d
+    # disagreed with the array path under an EQUAL host policy until it was passed.
+    layout = getattr(driver, "chunk_layout", None)
     residency = device.Residency()
-    with declaring_run_policy("flush"):
+    with declaring_dispatch_policy("flush"):
         scout = launch.plan_step(fields, pml, residency=device.Residency(),
                                  sources=sources, fuse=fuse,
-                                 fuse_labels=fuse_labels)
+                                 fuse_labels=fuse_labels, chunk_layout=layout)
         covered = set()
         for slot, product in scout.plans.items():
             covered.add(slot)
@@ -315,7 +346,8 @@ def compose_metal_step(driver: Any, sources: Any, fuse: bool = True,
         live = launch.live_sub_steps(fields, pml, sources) or ()
         synced = tuple(name for name in live if name not in covered)
         plan = launch.plan_step(fields, pml, residency=residency, sources=sources,
-                                synced=synced, fuse=fuse, fuse_labels=fuse_labels)
+                                synced=synced, fuse=fuse, fuse_labels=fuse_labels,
+                                chunk_layout=layout)
     launch.wrap_for_residency(plan, residency)
     detail = {
         "fuse": bool(fuse),
@@ -530,12 +562,6 @@ def _provenance(policy: Dict[str, Any]) -> Dict[str, Any]:
         "this_script_sha256": hashlib.sha256(
             open(os.path.abspath(__file__), "rb").read()).hexdigest(),
         "installed_policy": policy,
-        "expansion_probes": {
-            name: os.environ.get(name) for name in (
-                "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE",
-                "MEEP_GPU_METAL_EXPANSION_PROBE",
-                "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
-                "MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE")},
     }
     for module in ("meep", "numpy", "torch"):
         try:

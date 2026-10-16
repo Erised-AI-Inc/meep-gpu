@@ -50,6 +50,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+import numpy
+
 # One definition, imported rather than copied. Everything in this list is pure
 # Python over duck-typed engine objects and carries no backend clause of its own.
 from ..triton_kernels.coverage import (  # noqa: F401 - re-exported deliberately
@@ -629,3 +631,146 @@ def constitutive_coverage(fields: Any, pml: Any, side: str,
         reasons.extend(_coefficient_reasons(pml, shape, ("kps", "kms"), suffix))
 
     return Coverage(not reasons, tuple(reasons))
+
+
+# ---------------------------------------------------------------------------
+# The chunk division
+# ---------------------------------------------------------------------------
+#
+# MEEP selects each cell's PML form per structure chunk, and the Metal kernels read
+# the division through one per-axis record (``chunk_bounds``): two runs of stored
+# rows per Yee sub-lattice and axis. A division the record cannot describe is
+# refused here by name and steps on the array path, whose mask route carries it.
+
+def chunk_division_reasons(layout: Any,
+                           shape: Optional[Sequence[int]] = None) -> List[str]:
+    """Why the Metal kernels cannot read this chunk division; empty when they can.
+
+    Refused: a division that is not separable along some (axis, sub-lattice) — which
+    PML form a cell steps depends on more than its index along that axis, so no
+    per-axis record describes it — and any division whose record
+    ``chunk_map.chunk_bounds_record`` or ``chunk_bounds.words`` refuses (a line with
+    more than two runs, or runs past the stored extent ``shape``).
+    """
+    from ..chunk_map import AXIS_NAMES, ChunkLayoutRefusal  # noqa: PLC0415
+    from . import chunk_bounds  # noqa: PLC0415
+
+    if layout is None:
+        return ["no chunk division was given; the kernels read the membership of every "
+                "cell from it"]
+    try:
+        missing = list(layout.non_separable())
+    except Exception as exc:  # noqa: BLE001 - an unreadable division is not covered
+        return [f"the chunk division could not be read ({exc!r})"]
+    if missing:
+        where = ", ".join(
+            f"{AXIS_NAMES[axis]} on the {'half-integer' if half else 'integer'} lattice"
+            for axis, half in missing)
+        return [f"the chunk division is not separable along {where}: the PML form of a "
+                f"cell there depends on more than its index along the axis, so the "
+                f"per-axis chunk record the Metal kernels read cannot describe it; the "
+                f"array path steps it"]
+    try:
+        chunk_bounds.for_layout(layout, shape)
+    except ChunkLayoutRefusal as exc:
+        return [f"the chunk record of this division is refused: {exc}"]
+    return []
+
+
+def lih_product_reasons(layout: Any, axes: Sequence[int] = (0, 1, 2)) -> List[str]:
+    """Why the record's owner decode cannot name the chunk along ``axes``; empty when it can.
+
+    A kernel that needs the owning CHUNK and not only its layer flag (the
+    off-diagonal presence masks, the cylindrical prefix segments) decodes a stored
+    row ``i`` of an axis into one of three classes from the record: ``0`` in the
+    first run, ``2`` in the second, ``1`` otherwise. That names the chunk only on a
+    division that is a product of at most three segments per axis whose classes map
+    each to one segment. Checked here on every owned row of both sub-lattices, and
+    refused by name otherwise:
+
+    * chunk cuts along an axis that are not planes across the whole cross-section;
+    * more than three segments along an axis, or boxes that are not the product of
+      the per-axis segments;
+    * a wrapping axis that carries a layer (its row 0 is the image of the high wall
+      plane and joins the low run);
+    * a decode class whose rows lie in two segments (two adjacent segments that both
+      carry the layer, or two that both carry none).
+
+    Conservative: a division refused here is one these kernels do not serve, not
+    one that cannot be served.
+    """
+    from ..chunk_map import AXIS_NAMES  # noqa: PLC0415
+
+    reasons: List[str] = []
+    try:
+        frames = layout.frames
+        boxes = layout.boxes
+    except Exception as exc:  # noqa: BLE001 - an unreadable division is not covered
+        return [f"the chunk division could not be read ({exc!r})"]
+    segments: Dict[int, Tuple[int, ...]] = {}
+    for axis in range(3):
+        if frames[axis].invariant:
+            continue
+        cuts = layout.boundaries(axis)
+        if cuts is None:
+            if axis in axes:
+                reasons.append(
+                    f"the chunk cuts along {AXIS_NAMES[axis]} are not planes across the "
+                    f"whole cross-section, so no per-axis segment names a chunk")
+            continue
+        segments[axis] = tuple(cuts)
+    resolved = [axis for axis in range(3) if not frames[axis].invariant]
+    if all(axis in segments for axis in resolved):
+        product = 1
+        for axis in resolved:
+            product *= len(segments[axis]) - 1
+        if product != len(boxes):
+            reasons.append(
+                f"the {len(boxes)} chunks are not the product of the per-axis segments "
+                f"({product})")
+    for axis in axes:
+        axis = int(axis)
+        if frames[axis].invariant or axis not in segments:
+            continue
+        cuts = segments[axis]
+        name = AXIS_NAMES[axis]
+        if len(cuts) - 1 > 3:
+            reasons.append(
+                f"{len(cuts) - 1} chunk segments along {name}; the record's owner decode "
+                f"has three classes")
+            continue
+        if frames[axis].wraps and any(flags[axis] for flags in layout.pml_flags):
+            reasons.append(
+                f"{name} wraps and carries a layer: its row 0 is the stored image of the "
+                f"high wall plane and joins the low run, so one class spans two chunks")
+            continue
+        for half in (False, True):
+            line = layout.membership(axis, half)
+            if line is None:
+                reasons.append(
+                    f"the division is not separable along {name} on the "
+                    f"{'half-integer' if half else 'integer'} lattice")
+                continue
+            points, owned = layout._resolve(axis, half)  # noqa: SLF001 - MEEP's owns(), one definition
+            classes = _decode_classes(line)
+            owner = numpy.searchsorted(numpy.asarray(cuts), points, side="left") - 1
+            for label in (0, 1, 2):
+                rows = owned & (classes == label)
+                spanned = sorted({int(s) for s in owner[rows]})
+                if len(spanned) > 1:
+                    reasons.append(
+                        f"on the {'half-integer' if half else 'integer'} lattice of "
+                        f"{name}, owner class {label} covers rows of {len(spanned)} chunk "
+                        f"segments {spanned}")
+    return reasons
+
+
+def _decode_classes(line: Any) -> Any:
+    """Per stored row, the record's owner class: 0 first run, 2 second run, 1 otherwise."""
+    line = numpy.asarray(line, dtype=bool)
+    padded = numpy.concatenate(([False], line, [False]))
+    edges = numpy.flatnonzero(padded[1:] != padded[:-1])
+    classes = numpy.ones(line.size, dtype=numpy.int64)
+    for run, start in enumerate(range(0, len(edges), 2)):
+        classes[edges[start]:edges[start + 1]] = 0 if run == 0 else 2
+    return classes

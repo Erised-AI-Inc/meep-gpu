@@ -10,7 +10,7 @@ cannot take "the lift succeeded" as "the lift is mine":
 * the NVIDIA route gate also refuses a non-smoke leg on a card the table under test
   does not certify (``capability_admission``, and on the Triton table the Triton
   version), where the default would dispatch it uncertified, and a leg started with
-  ``MEEP_GPU_ALLOW_UNCERTIFIED`` exported;
+  ``MEEP_GPU_HARDWARE`` or the retired ``MEEP_GPU_ALLOW_UNCERTIFIED`` exported;
 * the Metal route gate and the Metal bench refuse a host whose GPU is not an Apple
   one, and check ``driver.gpu == "metal"`` after every lift, so a reference lift
   cannot be compared or timed as a fused leg;
@@ -207,11 +207,12 @@ def test_the_triton_table_also_needs_a_certified_triton_version():
 def _route_main(monkeypatch, tmp_path, leg, *extra, capability, version="certified"):
     """Run the route gate's ``main`` up to its first write, with the card stubbed.
 
-    The uncertified switch is removed from the environment, as a route leg runs; a
-    test that wants it exported sets it after this.
+    The hardware scope and the name it replaced are removed from the environment, as
+    a route leg runs; a test that wants one exported sets it after this.
     """
     _cuda(monkeypatch, True)
-    monkeypatch.delenv(fastpath.UNCERTIFIED_SWITCH, raising=False)
+    monkeypatch.delenv(fastpath.HARDWARE_SWITCH, raising=False)
+    monkeypatch.delenv(fastpath.RETIRED_HARDWARE_SWITCH, raising=False)
     _keep(monkeypatch, fused_route, "BACKEND", "TABLE_PREFERENCE")
     _keep(monkeypatch, e2e, "PREFER_GPU", "_PROGRESS_PATH")
     asked = {}
@@ -274,38 +275,55 @@ def test_the_route_gate_refuses_an_uncertified_triton_on_a_certified_card(
     assert not out.exists()
 
 
-@pytest.mark.parametrize("value", ["1", "0", ""])
+@pytest.mark.parametrize("value", ["any", "certified", "supported", ""])
 @pytest.mark.parametrize("backend,leg", [("triton", "shipped"), ("cuda", "cuda_shipped")])
-def test_the_route_gate_refuses_an_exported_uncertified_switch(
+def test_the_route_gate_refuses_an_exported_hardware_switch(
         monkeypatch, capsys, tmp_path, backend, leg, value):
-    """On a certified card too: ``=1`` would compose the other table uncertified.
+    """On a certified card too: ``any`` would compose the other table uncertified.
 
-    ``0`` is not the default either, and any other value takes the array path, so
-    every set value is refused and a leg runs with the switch unset.
+    ``certified`` and ``supported`` are not the run a user who sets nothing gets, and
+    any other value takes the array path, so every set value is refused and a leg
+    runs with the switch unset.
     """
     out, _ = _route_main(monkeypatch, tmp_path, leg, "--backend", backend,
                          capability=_admitted(backend)[0])
-    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, value)
+    monkeypatch.setenv(fastpath.HARDWARE_SWITCH, value)
     assert fused_route.main() == 2
     err = capsys.readouterr().err
-    assert f"REFUSING: {fastpath.UNCERTIFIED_SWITCH}={value!r} is set" in err, err
+    assert f"REFUSING: {fastpath.HARDWARE_SWITCH}={value!r} is set" in err, err
+    assert not out.exists(), "the refusal must land before the leg directory exists"
+
+
+@pytest.mark.parametrize("value", ["1", "0", ""])
+@pytest.mark.parametrize("backend,leg", [("triton", "shipped"), ("cuda", "cuda_shipped")])
+def test_the_route_gate_refuses_the_retired_switch_by_its_own_name(
+        monkeypatch, capsys, tmp_path, backend, leg, value):
+    """The package refuses the retired name at rung 3b, set to anything, so every leg
+    would take the array path: the gate refuses it first, naming its replacement."""
+    out, _ = _route_main(monkeypatch, tmp_path, leg, "--backend", backend,
+                         capability=_admitted(backend)[0])
+    monkeypatch.setenv(fastpath.RETIRED_HARDWARE_SWITCH, value)
+    assert fused_route.main() == 2
+    err = capsys.readouterr().err
+    assert (f"REFUSING: {fastpath.RETIRED_HARDWARE_SWITCH}={value!r} is set; that "
+            f"variable is retired (its replacement is {fastpath.HARDWARE_SWITCH})") in err, err
     assert not out.exists(), "the refusal must land before the leg directory exists"
 
 
 def test_a_smoke_route_run_is_never_asked_about_the_card(monkeypatch, capsys, tmp_path):
     """``--smoke`` lifts the NumPy reference, which consults no kernel table.
 
-    So neither the card nor the uncertified switch is asked, even when it is exported.
+    So neither the card nor the hardware switch is asked, even when it is exported.
     """
     out, asked = _route_main(monkeypatch, tmp_path, "shipped", "--smoke",
                              capability=None, version=None)
-    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, "1")
+    monkeypatch.setenv(fastpath.HARDWARE_SWITCH, "any")
 
     def must_not_be_asked(*_args, **_kwargs):
         raise AssertionError("a smoke run consulted the card admission or the switch")
 
     monkeypatch.setattr(fused_route, "uncertified_card_refusal", must_not_be_asked)
-    monkeypatch.setattr(fused_route, "uncertified_switch_refusal", must_not_be_asked)
+    monkeypatch.setattr(fused_route, "hardware_switch_refusal", must_not_be_asked)
     out.mkdir()
     (out / "cases.jsonl").write_text("", encoding="utf-8")
     assert fused_route.main() == 5

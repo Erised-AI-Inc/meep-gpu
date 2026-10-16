@@ -93,11 +93,6 @@ API_ROOT = Path(__file__).resolve().parent.parent
 BOARD = (API_ROOT / "parity" / "meep_gpu" / "results"
          / "fusion_matrix_metal_2026-09-07_wired" / "fusion_matrix.json")
 
-#: The expansion arm every emission test bakes. A LITERAL, deliberately: these tests
-#: are about the SPLICE, and a probe-resolved arm would make them skip on a host whose
-#: probe is absent while the splice is perfectly testable there.
-ARM = "NAIVE"
-
 #: The folded quadruples the emission tests sweep: one of each termination, one mixed,
 #: one with a live non-folded wall, and the three-axis fold.
 CODES = [
@@ -223,7 +218,7 @@ def test_the_binding_constants_are_the_plain_complex_products_by_identity():
 def test_the_ceiling_is_an_equality_and_the_fold_adds_no_argument():
     assert folded.PACKED_BINDINGS == MAX_BUFFER_BINDINGS
     for codes in CODES:
-        source = folded.folded_complex_fused_hd_pair_source(codes, (0, 0, 0), ARM)
+        source = folded.folded_complex_fused_hd_pair_source(codes, (0, 0, 0))
         signature = source.split(f"kernel void {folded.KERNEL}(", 1)[1]
         signature = signature.split("uint idx [[thread_position_in_grid]])", 1)[0]
         assert signature.count("[[buffer(") == MAX_BUFFER_BINDINGS, codes
@@ -259,9 +254,9 @@ def test_the_board_files_five_rows_in_this_cell_and_none_carries_a_withdraw():
 @pytest.mark.parametrize("codes", CODES)
 def test_the_curl_lift_moves_exactly_the_nine_magnetic_loads(codes):
     """Reconstruct the certified body independently and diff it line-wise."""
-    parent = folded_complex.folded_bloch_curl_source(codes, True, (0, 0, 0), ARM)
+    parent = folded_complex.folded_bloch_curl_source(codes, True, (0, 0, 0))
     body = parent.split(plain._BODY_ANCHOR, 1)[1][: -len("}\n")]
-    prologue, tail = folded.folded_welded_curl_tail(codes, (0, 0, 0), ARM)
+    prologue, tail = folded.folded_welded_curl_tail(codes, (0, 0, 0))
     parent_lines = body.splitlines()
     # THE PROLOGUE IS PART OF THE EMISSION and is compared with the body: the weld
     # splits the certified text at `int nyz = nyi * nzi;` only so that `h_cell` can be
@@ -278,7 +273,7 @@ def test_the_curl_lift_moves_exactly_the_nine_magnetic_loads(codes):
 
 @pytest.mark.parametrize("codes", CODES)
 def test_no_magnetic_pointer_survives_in_the_curl_half(codes):
-    _prologue, tail = folded.folded_welded_curl_tail(codes, (0, 0, 0), ARM)
+    _prologue, tail = folded.folded_welded_curl_tail(codes, (0, 0, 0))
     for target in range(3):
         assert f"g{target}[" not in tail, target
     assert tail.count("h_cell(") == 6
@@ -299,7 +294,7 @@ def test_the_two_fold_blocks_survive_the_lift_character_for_character(codes):
                 + "\n"
                 + symmetry.folded_top_plane_mask(codes, True,
                                                  zero=templates.COMPLEX_ZERO))
-    _prologue, tail = folded.folded_welded_curl_tail(codes, (0, 0, 0), ARM)
+    _prologue, tail = folded.folded_welded_curl_tail(codes, (0, 0, 0))
     for line in expected.splitlines():
         if line.strip():
             assert line in tail, line
@@ -307,9 +302,10 @@ def test_the_two_fold_blocks_survive_the_lift_character_for_character(codes):
 
 @pytest.mark.parametrize("codes", [c for c in CODES if c[0] == P])
 def test_the_bloch_phase_block_survives_the_lift_character_for_character(codes):
-    """The phase rotates the LOADED register after the gather; the weld never sees it."""
-    block = complex_fields._phase_block("x", True, True)
-    _prologue, tail = folded.folded_welded_curl_tail(codes, (1, 0, 0), ARM)
+    """The connection acts on the unshifted registers on plane 0; the weld never sees it."""
+    block = complex_fields._phase_block("x", complex_fields.CONNECT_PHASE)
+    _prologue, tail = folded.folded_welded_curl_tail(
+        codes, (complex_fields.CONNECT_PHASE, 0, 0))
     for line in block.splitlines():
         if line.strip():
             assert line in tail, line
@@ -324,7 +320,7 @@ def test_the_folded_ghost_is_the_exact_complex_zero_and_not_a_mirror_read(codes)
     behind: a redirect that served the recompute past the face would read a cell the
     emitter says is not there.
     """
-    _prologue, tail = folded.folded_welded_curl_tail(codes, (0, 0, 0), ARM)
+    _prologue, tail = folded.folded_welded_curl_tail(codes, (0, 0, 0))
     ghosts = [line for line in tail.splitlines() if " ? h_cell(" in line]
     assert len(ghosts) == 6
     for line in ghosts:
@@ -333,9 +329,9 @@ def test_the_folded_ghost_is_the_exact_complex_zero_and_not_a_mirror_read(codes)
 
 def test_the_constitutive_half_is_the_plain_products_lift_and_not_a_copy():
     """``folded_complex`` adds NO device code on ``update_H`` -- asserted by digest."""
-    source = folded.folded_complex_fused_hd_pair_source((P, MP, P), (0, 0, 0), ARM)
+    source = folded.folded_complex_fused_hd_pair_source((P, MP, P), (0, 0, 0))
     emitted = source.split("h_cell_result h_cell(", 1)[1].split("kernel void", 1)[0]
-    certified = plain.h_cell_function(ARM).split(
+    certified = plain.h_cell_function().split(
         "h_cell_result h_cell(", 1)[1]
     assert certified.startswith(emitted[:200])
 
@@ -358,7 +354,7 @@ def test_the_source_decodes_and_carries_exactly_one_contraction_pragma(codes, mo
     that the contraction pragma is emitted exactly once, so a specialisation cannot
     quietly acquire a second one -- is asserted.
     """
-    source = folded.folded_complex_fused_hd_pair_source(codes, (0, 0, 0), ARM, mode)
+    source = folded.folded_complex_fused_hd_pair_source(codes, (0, 0, 0), mode)
     assert source.encode("utf-8").decode("utf-8") == source
     assert source.count("#pragma") == shaders.contraction_pragma(mode).count("#pragma")
 
@@ -370,7 +366,7 @@ def test_the_enumeration_never_offers_a_phase_on_a_mirror_axis():
     outright, so a label enumerating one would be fingerprinted as buildable when it
     is not.
     """
-    labels = folded.enumerate_sources(ARM)
+    labels = folded.enumerate_sources()
     assert labels
     for label in labels:
         codes_text, phase_text = label.split("/")[2], label.split("/")[3]
@@ -391,18 +387,10 @@ def flush_policy(monkeypatch):
     return "flush"
 
 
-def _probe():
-    """The folded-complex expansion probe, or a skip -- never a default."""
-    record = folded_complex.load_expansion_probe()
-    if record is None:
-        pytest.skip("no folded-complex expansion probe on this host")
-    return record
-
-
 def test_the_predicate_admits_the_cell_this_product_was_built_for(flush_policy):
     fields, pml = _folded_complex_pair()
     verdict = folded.metal_folded_complex_fused_hd_pair_coverage(
-        fields, pml, (), _FakeResidency(), _probe())
+        fields, pml, (), _FakeResidency())
     assert verdict.covered, list(verdict.reasons)
 
 
@@ -413,7 +401,7 @@ def test_an_unfolded_complex_grid_is_refused_naming_the_plain_product(flush_poli
     fields.enable_pml_storage()
     pml = PML(grid=grid, thickness=((2, 2), (2, 2), (0, 0)))
     verdict = folded.metal_folded_complex_fused_hd_pair_coverage(
-        fields, pml, (), _FakeResidency(), _probe())
+        fields, pml, (), _FakeResidency())
     assert not verdict.covered
     assert any("complex_fused_hd_pair" in reason for reason in verdict.reasons)
 
@@ -422,7 +410,7 @@ def test_the_plain_complex_product_refuses_this_products_cell(flush_policy):
     """THE OTHER DIRECTION. Disjointness is a property of a PAIR of predicates."""
     fields, pml = _folded_complex_pair()
     verdict = plain.metal_complex_fused_hd_pair_coverage(
-        fields, pml, (), _FakeResidency(), _probe())
+        fields, pml, (), _FakeResidency())
     assert not verdict.covered
     assert any("folded complex" in reason for reason in verdict.reasons)
 
@@ -431,7 +419,7 @@ def test_an_undeclared_source_list_is_refused_by_name(flush_policy):
     """IGNORANCE IS NEVER AN EMPTY SET."""
     fields, pml = _folded_complex_pair()
     verdict = folded.metal_folded_complex_fused_hd_pair_coverage(
-        fields, pml, None, _FakeResidency(), _probe())
+        fields, pml, None, _FakeResidency())
     assert not verdict.covered
     assert any("not declared" in reason for reason in verdict.reasons)
 
@@ -447,7 +435,7 @@ def test_a_standing_integrated_electric_withdraw_is_refused_by_name(flush_policy
 
     fields, pml = _folded_complex_pair()
     verdict = folded.metal_folded_complex_fused_hd_pair_coverage(
-        fields, pml, (_Source(),), _FakeResidency(), _probe())
+        fields, pml, (_Source(),), _FakeResidency())
     assert not verdict.covered
     joined = " | ".join(verdict.reasons)
     assert "HOISTS_THE_WITHDRAW = False" in joined
@@ -461,7 +449,7 @@ def test_real_storage_under_a_fold_is_refused_naming_the_other_family(flush_poli
     fields.enable_pml_storage()
     pml = PML(grid=grid, thickness=((2, 2), (0, 2), (0, 0)))
     verdict = folded.metal_folded_complex_fused_hd_pair_coverage(
-        fields, pml, (), _FakeResidency(), _probe())
+        fields, pml, (), _FakeResidency())
     assert not verdict.covered
     assert any("real float32" in reason or "complex64" in reason
                for reason in verdict.reasons)
@@ -474,7 +462,7 @@ def test_a_folded_complex_beta_run_is_refused_by_name(flush_policy):
     fields.enable_pml_storage()
     pml = PML(grid=grid, thickness=((2, 2), (0, 2), (0, 0)))
     verdict = folded.metal_folded_complex_fused_hd_pair_coverage(
-        fields, pml, (), _FakeResidency(), _probe())
+        fields, pml, (), _FakeResidency())
     assert not verdict.covered
     assert any("beta" in reason for reason in verdict.reasons)
 
@@ -553,7 +541,7 @@ def test_every_shipped_specialisation_compiles_on_this_host(codes):
 
     os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
     library = compile_source(
-        folded.folded_complex_fused_hd_pair_source(codes, (0, 0, 0), ARM))
+        folded.folded_complex_fused_hd_pair_source(codes, (0, 0, 0)))
     assert hasattr(library, folded.KERNEL)
 
 

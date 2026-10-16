@@ -1,44 +1,46 @@
 """Sub-step byte-identity gate for the NEW hand-CUDA CYLINDRICAL curl pair, m = 0.
 
 THE CLAIM UNDER TEST. ``meep_gpu/cuda_kernels/cylindrical_kernels.py`` ships two
-kernels that did not exist before this run — ``cyl_step_B_pml_real`` and
-``cyl_step_D_pml_real`` — and this gate asks whether either reproduces
-``stepping.step_B`` / ``stepping.step_D`` WORD FOR WORD on a real Dcyl grid at m = 0
-under a split-field PML. Nothing in ``step_curl_kernels.py`` or ``coverage.py`` is
-touched; the Cartesian pair keeps its cylindrical refusal and this pair carries its
-own predicate.
-
-CUDA HAS NEVER BEEN MEASURED ON A Dcyl RUN AT ANY SUB-STEP. So there is no standing
-record to reproduce here and nothing to inherit: every number below is this run's.
+kernels -- ``cyl_step_B_pml_real`` and ``cyl_step_D_pml_real`` -- and this gate asks
+whether, with the column-serial radial scan in front of each (``cylindrical_prefix``),
+they reproduce ``stepping.step_B`` / ``stepping.step_D`` WORD FOR WORD on a real Dcyl
+grid at m = 0 under a split-field PML, with MEEP's per-chunk forms (bit_parity_0_10
+DESIGN.md D1, D6, D10, D11; AP6c's Dcyl forms). Every launch binds the run's chunk
+record ``cb``.
 
 =============================================================================
 WHAT CYLINDRICAL ADDS, AND THEREFORE WHAT THIS GATE HAS TO BE ABLE TO SEE
 =============================================================================
 
-Four things (``cylindrical_kernels``' docstring derives them off ``stepping.py`` with
-line numbers). The battery is built around them, because a gate that only re-runs the
-Cartesian battery would certify a Dcyl kernel against Cartesian defects:
+Four things (``cylindrical_kernels``' docstring derives them off ``stepping.py``). The
+battery is built around them, because a gate that only re-runs the Cartesian battery
+would certify a Dcyl kernel against Cartesian defects:
 
-1. the RADIAL PREFIX SUM and its ZERO WALL ROW on the B side;
-2. Bz's whole curl REPLACED by the prefix's forward difference — one subtract, one
-   multiply, NOT the four-operand grouping;
-3. Dz's ``first`` source SWAPPED for the prefix while Dx's Hy operands stay RAW;
-4. the m = 0 AXIS RULES: ``Bx[r=0] = 0``; ``Dz[r=0] += (4*Courant)*Hp[r=0]`` as a
-   POST-ADD, then ``Dy[r=0] = 0``.
+1. the RADIAL DIFFERENCE of MEEP's per-chunk ``f_rderiv_int``, with the zero wall row on
+   the B side -- the scan's, measured by ``gate_cuda_cylindrical_scan.py`` and re-read
+   here by leg ``scan_order``;
+2. Bz's whole curl REPLACED by ``dtdx`` times that difference, forward;
+3. Dz's whole curl REPLACED by ``dtdx`` times the backward difference, while Dx's Hy
+   operands stay RAW;
+4. the m = 0 AXIS RULES: ``Bx[r=0] = 0``; ``Dz[r=0] += realnum(double(4*Courant) *
+   double(Hp[r=0]))`` as a POST-ADD (one double product, rounded once), then
+   ``Dy[r=0] = 0``.
+
+And the per-chunk PML forms every root kernel now carries (KERNELS.md section 7.2):
+the recurrence on the cells whose chunk carries the dsigu layer, the dsig-only form
+elsewhere, the auxiliary touched only on the recurrence's cells -- armed as the B
+battery, with the record's bounds, lattices and flags as host and source mutations.
 
 =============================================================================
-THE SCAN IS MEASURED HERE, NOT ASSUMED
+THE SCAN IS MEASURED, AND ITS VERDICT IS ITS OWN GATE'S
 =============================================================================
 
-The kernels do NOT own the radial prefix: it stays on the array path, because on this
-backend the oracle is ``cupy.cumsum``'s float32 summation order and the Triton track
-measured that order to be reproducible by no other scan. That is a citation from
-another tranche until this box says it, so leg ``scan_order`` compiles a column-serial
-CUDA scan — the shape the Metal port ships, where the same premise INVERTS because
-that engine holds NumPy — and compares it word for word against ``cupy.cumsum`` on
-this gate's own shapes. The verdict does not change the design either way; what it
-settles is whether "the scan cannot be fused bit-identically on CuPy" is a
-measurement on this backend or a borrowed reading.
+The kernels read the radial difference the shipped scan writes, so a diverging case
+could be the scan's or the curl's. Leg ``scan_order`` runs the scan gate's identity
+comparison (``gate_cuda_cylindrical_scan.identity_leg``) on this gate's shapes, so the
+answer to the first question is in this artifact beside the second. The scan's whole
+battery -- complex storage, many-chunk divisions, its own mutations, both policies --
+is ``gate_cuda_cylindrical_scan.py``'s.
 
 =============================================================================
 THE FLOORS THAT REFUSE A VACUOUS PASS
@@ -50,17 +52,16 @@ THE FLOORS THAT REFUSE A VACUOUS PASS
   rules touch. An axis rule applied to a row nothing writes is a rule this case
   cannot score, and all three axis mutations would come back UNCAUGHT for a reason
   about the fixture.
-* ``prefix_is_live`` — the prefix must be non-constant down r, and Bz must move. A
-  flat prefix makes every prefix defect invisible.
+* ``radial_is_live`` — the radial difference must be non-zero and non-constant down
+  r. A flat difference makes every radial-substitution defect invisible.
 * ``absorbs`` — ``max|kms-1|`` and ``max|sinv-1|`` on the r AND z axes. If a
   coefficient vector is the identity everywhere, a coefficient-index error on that
   axis cannot be seen.
-* ``INEXACT_COURANT`` — 0.5 is exactly representable in float32 and distributing
-  ``dtdx`` over a difference is then EXACT, so a case matrix without a
-  non-power-of-two Courant cannot see a grouping error in the Bz substitution at all.
-  The Metal port measured exactly that (``curl_bz_flat_grouping`` uncaught at 0.5,
-  caught at 0.314159), so the primary courant here is 0.35 and 0.5 is carried beside
-  it rather than instead of it.
+* ``INEXACT_COURANT`` — 0.5 is exactly representable in float32, so ``4*Courant`` is a
+  float32 word there and the on-axis product formed in float32 is the same word as
+  MEEP's double product. A case matrix without a non-power-of-two Courant cannot see
+  that defect at all, so the primary courant here is 0.35 and 0.5 is carried beside it
+  rather than instead of it.
 * the mutation battery, INCLUDING legs that must be UNCAUGHT. A battery of
   only-must-be-caught legs scores identically whether the comparator works or has
   degenerated into failing everything.
@@ -87,8 +88,7 @@ fail::
 
 One flushed line per case (the progress-reporting rule); the artifact is rewritten atomically
 after every case, so an interrupted run keeps everything up to the failure.
-Correctness only — no throughput claim is made or possible, because the prefix stays
-on the array path.
+Correctness only — no throughput claim is made.
 """
 
 from __future__ import annotations
@@ -117,9 +117,13 @@ except ImportError:  # laptop: the NumPy backend still runs
     cp = None
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import gate_chunk_records  # noqa: E402
+import gate_cuda_cylindrical_scan as scan_gate  # noqa: E402
+import gate_needles  # noqa: E402
 import gate_provenance  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
+from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, record_index  # noqa: E402
 from meep_gpu.fields import Fields, IYEE_SHIFTS  # noqa: E402
 from meep_gpu.grid import Grid  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
@@ -142,8 +146,8 @@ MULTI_STEP_BUDGET = 60
 #: How the multi-step leg keeps the recurrence live. Held fixed, the curl operands
 #: never move and a 60-launch leg becomes a slow single-launch leg. The same exact
 #: float32 scale is applied on both paths, so it cancels out of the comparison. It
-#: also moves the PREFIX every launch, which is the point on this family: a prefix
-#: recomputed from a frozen source is a constant the kernel could have cached.
+#: also moves the RADIAL DIFFERENCE every launch, which is the point on this family: a
+#: difference rescanned from a frozen source is a constant the kernel could have cached.
 _ADVANCE = np.float32(0.97)
 
 BC_PERIODIC = 0
@@ -186,7 +190,7 @@ CURL_TERMS: Dict[str, Tuple[Tuple[str, str, str, int, str, int, int, int], ...]]
 }
 
 #: Every array a case seeds and compares. Both sub-steps' volumes are seeded on every
-#: case, because ``step_D``'s axis rule READS ``Hy`` and ``step_B``'s prefix reads
+#: case, because ``step_D``'s axis rule READS ``Hy`` and ``step_B``'s scan reads
 #: ``Ey``: a zero source there is a fixed point that hides the rule.
 STATE: Tuple[str, ...] = (
     "Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
@@ -219,7 +223,7 @@ CASES: Tuple[Dict[str, Any], ...] = (
     # The reference shape, both z terminations.
     {"label": "r16_z20_metallic", "shape": (16, 1, 20), "z_kind": "metallic"},
     {"label": "r16_z20_periodic", "shape": (16, 1, 20), "z_kind": "periodic"},
-    # A WIDER RADIAL EXTENT: the prefix's accumulated sum runs further, which is
+    # A WIDER RADIAL EXTENT: the scan's accumulated sum runs further, which is
     # where a decaying field reaches the subnormal band first.
     {"label": "r40_z16_metallic", "shape": (40, 1, 16), "z_kind": "metallic"},
     # ODD EXTENTS on both axes. The wall row lands on an odd row count and the
@@ -262,6 +266,13 @@ SHARED_SOURCE_MUTATIONS: Tuple[str, ...] = (
     "commute_dtdx_scale",
     "reload_fu_from_memory",
 )
+#: THIS GATE'S NEEDLE TABLE for the shared battery above, every one borrowed from the
+#: probe's shared default. The pair lifts the root pair's prelude (``curl_stencil``,
+#: the chunk-keyed ``pml_apply``), which is the text the shared default is spelled on
+#: (``regroup_stencil`` inverted to the pairwise grouping the pair carried until 0.10;
+#: ``gate_needles.py``).
+SHARED_NEEDLES = gate_needles.gate_table(
+    "gate_cuda_cylindrical_real", probe.SOURCE_MUTATIONS, SHARED_SOURCE_MUTATIONS)
 SHARED_NULL_MUTATIONS: Tuple[str, ...] = probe.PML_NULL_MUTATIONS
 
 
@@ -269,228 +280,246 @@ SHARED_NULL_MUTATIONS: Tuple[str, ...] = probe.PML_NULL_MUTATIONS
 # The CYLINDRICAL mutations — this family's own, one per addition it makes
 # ---------------------------------------------------------------------------
 
-def _drop_bz_prefix_substitution(source: str) -> Tuple[str, int]:
+def _needle(old: str, new: str):
+    """A plain text rewrite: ``(mutated source, sites)``."""
+    def transform(source: str) -> Tuple[str, int]:
+        return source.replace(old, new), source.count(old)
+    return transform
+
+
+#: Bz's and Dz's whole curl, as the kernels spell it: dtdx times the scan's radial
+#: difference. One site per side.
+_RADIAL_CURL = "        float curl = dtdx * rad[idx];\n"
+
+#: The Cartesian four-operand curls the radial substitution replaces, on the term
+#: table's operands (``stepping.B_CURL_TERMS[2]`` / ``D_CURL_TERMS[2]``).
+_CARTESIAN_BZ = ("        float f1 = Ey[idx];\n"
+                 "        float sf = shift_up(Ey, idx, i, nx, sx, bc_x);\n"
+                 "        float f2 = Ex[idx];\n"
+                 "        float ss = shift_up(Ex, idx, j, ny, sy, bc_y);\n"
+                 "        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_x, pr_y);\n")
+_CARTESIAN_DZ = ("        float f1 = Hy[idx];\n"
+                 "        float sf = shift_dn(Hy, idx, i, nx, sx, bc_x);\n"
+                 "        float f2 = Hx[idx];\n"
+                 "        float ss = shift_dn(Hx, idx, j, ny, sy, bc_y);\n"
+                 "        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_x, pr_y);\n")
+
+#: The m = 0 on-axis Dz rule as the D kernel spells it (MEEP's double product,
+#: step_db.cpp:324, rounded once) and the Dz block's last two lines.
+_AXIS_ADD = ("        Dz[idx] = Dz[idx] + __double2float_rn(axis_courant * "
+             "(double)(Hy[idx]));\n")
+_DZ_TAIL = ("        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;\n"
+            "        pml_apply(Dz, fu_Dz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], "
+            "sinv_y[j], in_i_y);\n")
+
+
+def _drop_bz_radial_substitution(source: str) -> Tuple[str, int]:
     """Bz's curl becomes the ordinary Cartesian four-operand one.
 
-    THE WHOLE B-SIDE SUBSTITUTION, deleted. ``stepping.step_B``:343-347 replaces that
-    curl outright, and a kernel that computed ``dEy/dr - dEx/dphi`` instead would be
-    solving Cartesian Maxwell on a cylindrical grid — smooth, plausible and wrong
-    everywhere off the axis. MUST BE CAUGHT.
+    THE WHOLE B-SIDE SUBSTITUTION, deleted. ``stepping.step_B`` replaces that curl with
+    dtdx times the radial difference of MEEP's per-chunk ``f_rderiv_int``; a kernel that
+    computed ``dEy/dr - dEx/dphi`` instead solves Cartesian Maxwell on a cylindrical grid
+    -- smooth, plausible and wrong everywhere off the axis. MUST BE CAUGHT.
     """
-    needle = ("        float pfx_here = pfx[idx];\n"
-              "        float pfx_up   = pfx[idx + sx];\n"
-              "        float curl = dtdx * (pfx_up - pfx_here);\n")
-    replacement = ("        float f1 = Ey[idx];\n"
-                   "        float sf = shift_up(Ey, idx, i, nx, sx, bc_x);\n"
-                   "        float f2 = Ex[idx];\n"
-                   "        float ss = shift_up(Ex, idx, j, ny, sy, bc_y);\n"
-                   "        float curl = dtdx * ((sf - f1) + (f2 - ss));\n")
-    return source.replace(needle, replacement), source.count(needle)
+    return _needle(_RADIAL_CURL, _CARTESIAN_BZ)(source)
 
 
-def _bz_flat_grouping(source: str) -> Tuple[str, int]:
-    """``dtdx*pfx_up - dtdx*pfx_here`` in place of ``dtdx*(pfx_up - pfx_here)``.
-
-    Distributing the scale over the difference is EXACT whenever ``dtdx`` is a power
-    of two, so this leg is expected to be caught at :data:`INEXACT_COURANT` and NOT
-    at 0.5. That is a property of the CASES, not of the kernel, and the Metal port
-    measured it (uncaught at 0.5, 4,390 words at 0.314159). MUST BE CAUGHT at the
-    inexact courant, which is the only courant the battery runs.
-    """
-    needle = "float curl = dtdx * (pfx_up - pfx_here);"
-    replacement = "float curl = dtdx * pfx_up - dtdx * pfx_here;"
-    return source.replace(needle, replacement), source.count(needle)
-
-
-def _bz_metallic_ghost_for_wall_row(source: str) -> Tuple[str, int]:
-    """The WALL ROW replaced by the generic metallic zero ghost.
-
-    ``stepping.step_B``:326-333 extends Ep by a zero wall row and prefixes the
-    EXTENDED volume, so the last row's forward difference reads a real prefix entry.
-    Serving a zero there instead turns that difference into MINUS THE WHOLE
-    ACCUMULATED SUM — the symptom :303-314 records (the first divergence born at the
-    last two rows and growing inward). MUST BE CAUGHT.
-    """
-    needle = "        float pfx_up   = pfx[idx + sx];\n"
-    replacement = "        float pfx_up   = (i + 1 < nx) ? pfx[idx + sx] : 0.0f;\n"
-    return source.replace(needle, replacement), source.count(needle)
-
-
-def _drop_dz_prefix_substitution(source: str) -> Tuple[str, int]:
-    """Dz's ``first`` source reverts to the RAW Hp.
-
-    ``stepping.step_D``:424-426 substitutes the prefix for that term only. Without
-    it the Dz update computes ``dHp/dr`` where cylindrical Maxwell needs
-    ``(1/r)d(r*Hp)/dr``. MUST BE CAUGHT.
-    """
-    needle = ("        float f1 = pfx[idx];\n"
-              "        float sf = shift_dn(pfx, idx, i, nx, sx, bc_x);\n")
-    replacement = ("        float f1 = Hy[idx];\n"
-                   "        float sf = shift_dn(Hy, idx, i, nx, sx, bc_x);\n")
-    return source.replace(needle, replacement), source.count(needle)
-
-
-def _prefix_into_dx(source: str) -> Tuple[str, int]:
-    """The prefix LEAKS into Dx, whose Hy operands must stay RAW.
-
-    ``stepping.step_D``:423-426 swaps the source dict for the Dz TERM only; ``Dx``
-    reads the untouched ``magnetic`` mapping. The two operands differ by a whole
-    radial integral, so this is a wrong answer on a component the substitution has
-    nothing to do with. MUST BE CAUGHT.
-    """
-    needle = ("        float f2 = Hy[idx];\n"
-              "        float ss = shift_dn(Hy, idx, k, nz, sz, bc_z);\n")
-    replacement = ("        float f2 = pfx[idx];\n"
-                   "        float ss = shift_dn(pfx, idx, k, nz, sz, bc_z);\n")
-    return source.replace(needle, replacement), source.count(needle)
+def _radial_curl_commuted(source: str) -> Tuple[str, int]:
+    """A NULL: ``rad[idx] * dtdx`` for ``dtdx * rad[idx]``. IEEE multiplication commutes
+    bitwise; paired with the substitution legs on the same line. MUST BE UNCAUGHT."""
+    return _needle(_RADIAL_CURL, "        float curl = rad[idx] * dtdx;\n")(source)
 
 
 def _drop_axis_zero_bx(source: str) -> Tuple[str, int]:
-    """``Bx[r=0] = 0`` deleted (``stepping._cylindrical_axis_zero_B``:659-661).
+    """``Bx[r=0] = 0`` deleted (``stepping._cylindrical_axis_zero_B``, m = 0).
 
     A radial vector at r = 0 points nowhere. MUST BE CAUGHT.
     """
-    needle = "    if (i == 0) Bx[idx] = 0.0f;\n"
-    return source.replace(needle, ""), source.count(needle)
+    return _needle("    if (i == 0) Bx[idx] = 0.0f;\n", "")(source)
+
+
+def _drop_dz_radial_substitution(source: str) -> Tuple[str, int]:
+    """Dz's curl becomes the Cartesian one over the RAW Hp.
+
+    ``stepping.step_D`` replaces that curl with dtdx times the backward radial difference
+    of Hp's per-chunk sum. Without it the Dz update computes ``dHp/dr`` where cylindrical
+    Maxwell needs ``(1/r)d(r*Hp)/dr``. MUST BE CAUGHT.
+    """
+    return _needle(_RADIAL_CURL, _CARTESIAN_DZ)(source)
+
+
+def _radial_into_dx(source: str) -> Tuple[str, int]:
+    """The radial difference LEAKS into Dx, whose Hy operands must stay RAW.
+
+    ``stepping.step_D`` substitutes for the Dz TERM only; ``Dx`` reads the untouched
+    ``magnetic`` mapping. The two operands differ by a whole radial integral, so this is
+    a wrong answer on a component the substitution has nothing to do with. MUST BE
+    CAUGHT.
+    """
+    return _needle("        float f2 = Hy[idx];\n"
+                   "        float ss = shift_dn(Hy, idx, k, nz, sz, bc_z);\n",
+                   "        float f2 = rad[idx];\n"
+                   "        float ss = shift_dn(rad, idx, k, nz, sz, bc_z);\n")(source)
 
 
 def _drop_axis_zero_dy(source: str) -> Tuple[str, int]:
-    """``Dy[r=0] = 0`` deleted (``stepping._cylindrical_axis_zero_D``:587).
+    """``Dy[r=0] = 0`` deleted (``stepping._cylindrical_axis_zero_D``, m = 0).
 
     An azimuthal vector at r = 0 has no direction to point. MUST BE CAUGHT.
     """
-    needle = "        Dy[idx] = 0.0f;\n"
-    return source.replace(needle, ""), source.count(needle)
+    return _needle("        Dy[idx] = 0.0f;\n", "")(source)
 
 
 def _drop_axis_add_dz(source: str) -> Tuple[str, int]:
-    """The on-axis Dz post-add deleted (``stepping._cylindrical_axis_zero_D``:585).
+    """The on-axis Dz post-add deleted (``stepping._cylindrical_axis_zero_D``, m = 0).
 
-    ``4*Courant*Hp`` at the axis row is the analytic limit of ``(1/r)d(r*Hp)/dr``
-    there (step_db.cpp:299-341), and the prefix machinery cannot supply it because
-    the curl is masked on that row. MUST BE CAUGHT.
+    ``4*Courant*Hp`` at the axis row is the analytic limit of ``(1/r)d(r*Hp)/dr`` there
+    (step_db.cpp:299-341), and the radial difference cannot supply it because the curl is
+    masked on that row. MUST BE CAUGHT.
     """
-    needle = "        Dz[idx] = Dz[idx] + (axis_coef * Hy[idx]);\n"
-    return source.replace(needle, ""), source.count(needle)
+    return _needle(_AXIS_ADD, "")(source)
 
 
 def _fold_axis_add_into_curl(source: str) -> Tuple[str, int]:
     """The on-axis Dz increment FOLDED INTO THE CURL instead of post-added.
 
-    THE EXACT ERROR ``stepping.py``:545-551 RECORDS AS MEASURED WRONG for m = 0 under
-    PML (Er 2.7e-01 / Hp 4.5e-01 against 3.6e-07 for the post-add). The split-field
-    routing curl -> fu -> field is not MEEP's axis ladder for this rule; the plain
-    post-add is exact because Dz's dsig is R, whose sigma is zero on the axis row.
-    The curl enters the recurrence NEGATED (``fu = fu*kms - curl``), so an increment
-    of ``+axis_coef*Hy`` on the field is ``-axis_coef*Hy`` on the curl. MUST BE
-    CAUGHT — and if it ever is not, the fixture has no absorption on the axis row and
-    the ``absorbs`` floor has stopped working.
+    A DECLARED NULL SINCE THE PER-CHUNK FORMS (re-read under KERNELS.md section 7.1, and
+    measured UNCAUGHT on 4 of 4 specs on the device, keep). It was caught while the
+    split-field recurrence ran on every cell, because the folded increment reached
+    ``fu_Dz`` on the axis row. Now the axis row carries no Dz layer (dsig R: the r
+    layer sits at r-high only; dsigu phi: never a layer), so Dz takes the plain form
+    there and ``fu_Dz`` is untouched (the auxiliary contract, C2); and the ownership
+    mask has made the row's curl ``+0``. The fold is then ``f - (+0 - a)`` against
+    MEEP's ``(f - +0) + a``: the same word exactly, except for the signed-zero pair
+    ``f = -0``, ``a = +0`` (``Hp[0] = +0``), which this case matrix does not plant.
+    MUST BE UNCAUGHT here.
     """
-    fold = ("        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;\n"
-            "        pml_apply(Dz, fu_Dz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]);\n")
-    replacement = ("        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;\n"
-                   "        if (i == 0) curl = curl - (axis_coef * Hy[idx]);\n"
-                   "        pml_apply(Dz, fu_Dz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]);\n")
-    out, sites = source.replace(fold, replacement), source.count(fold)
+    folded = _DZ_TAIL.replace(
+        "        pml_apply(",
+        "        if (i == 0) curl = curl - __double2float_rn(axis_courant * "
+        "(double)(Hy[idx]));\n        pml_apply(", 1)
+    out, sites = _needle(_DZ_TAIL, folded)(source)
     if sites:
         out, _ = _drop_axis_add_dz(out)
     return out, sites
 
 
-def _axis_coef_recomputed_in_kernel(source: str) -> Tuple[str, int]:
-    """A MEASURED NULL: ``4.0f * dtdx`` in place of the host-rounded ``axis_coef``.
+def _axis_product_in_float32(source: str) -> Tuple[str, int]:
+    """The on-axis product rounded through a float32 factor: ``(float)axis_courant * Hy``.
 
-    The array path forms ``4.0 * (dt/dx)`` in float64 and NEP-50 casts that ONE
-    scalar to float32 before the multiply (stepping.py:585), so binding the
-    already-rounded word is the literal transcription. Scaling by four is EXACT in
-    float32 — it only moves the exponent — so the two spellings should agree, and the
-    Metal port pins that they do rather than leaving it to luck. Carried as a leg
-    rather than as a comment because a claim nobody armed is not a measurement.
-    MUST BE UNCAUGHT.
+    MEEP forms ``realnum(double(4*Courant) * double(Hp))`` and rounds once
+    (``stepping._realnum_double_product``); a float32 factor is a different word wherever
+    ``4*Courant`` is not a float32 word, which 0.35 is not. MUST BE CAUGHT at the inexact
+    Courant, the only one the battery runs.
     """
-    needle = "Dz[idx] + (axis_coef * Hy[idx])"
-    replacement = "Dz[idx] + ((4.0f * dtdx) * Hy[idx])"
-    return source.replace(needle, replacement), source.count(needle)
+    return _needle(_AXIS_ADD, "        Dz[idx] = Dz[idx] + (((float)axis_courant) * "
+                              "Hy[idx]);\n")(source)
+
+
+def _axis_product_commuted(source: str) -> Tuple[str, int]:
+    """A NULL: the double product's two factors commuted. Double multiplication commutes
+    bitwise; paired with :func:`_axis_product_in_float32`. MUST BE UNCAUGHT."""
+    return _needle("__double2float_rn(axis_courant * (double)(Hy[idx]))",
+                   "__double2float_rn((double)(Hy[idx]) * axis_courant)")(source)
 
 
 def _restore_r_ghost_hz(source: str) -> Tuple[str, int]:
     """A NULL: the r_to_minus_r near ghost put BACK on Dy's live shift-down operand.
 
-    ``stepping._shift_down``'s CYL_AXIS branch (:1830-1841) images stored row 0 with
-    a direction sign and the ``(-1)^m`` phase; at m = 0 the phase is +1 and Hz is a
-    z-direction component, so its ghost is ``+Hz[row 0]``. The kernel serves the
-    METALLIC zero instead. It is UNOBSERVABLE because ``Dy`` has r-Yee shift 0 and the
-    ownership mask zeroes its curl at exactly that row — the claim both sibling tracks
-    measured. MUST BE UNCAUGHT; its paired twin
-    :func:`_restore_r_ghost_hz_no_mask` drops the mask and MUST be caught, which is
-    what makes "unobservable" a demonstration rather than an untested arm.
+    ``stepping._shift_down``'s CYL_AXIS branch images stored row 0 with a direction sign
+    and the ``(-1)^m`` phase; at m = 0 the phase is +1 and Hz is a z-direction
+    component, so its ghost is ``+Hz[row 0]``. The kernel serves the METALLIC zero
+    instead. It is UNOBSERVABLE because ``Dy`` has r-Yee shift 0 and the ownership mask
+    zeroes its curl at exactly that row. MUST BE UNCAUGHT; its paired twin
+    :func:`_restore_r_ghost_hz_no_mask` drops the mask and MUST be caught.
     """
-    needle = "        float ss = shift_dn(Hz, idx, i, nx, sx, bc_x);\n"
-    replacement = "        float ss = (i > 0) ? Hz[idx - sx] : (1.0f * Hz[idx]);\n"
-    return source.replace(needle, replacement), source.count(needle)
+    return _needle("        float ss = shift_dn(Hz, idx, i, nx, sx, bc_x);\n",
+                   "        float ss = (i > 0) ? Hz[idx - sx] : (1.0f * Hz[idx]);\n")(source)
 
 
 def _restore_r_ghost_hz_no_mask(source: str) -> Tuple[str, int]:
-    """The ghost restored AND Dy's r mask dropped — the paired twin. MUST BE CAUGHT.
+    """The ghost restored AND Dy's r mask dropped -- the paired twin.
 
-    The Metal gate found this pairing necessary after arming the ghost on a DEAD
-    operand and reading the resulting null as evidence. Here the ghost lands on the
-    operand ``Dy``'s curl actually consumes, and with the mask gone the row is no
-    longer dropped, so the ghost's value reaches an output word.
+    A DECLARED NULL SINCE THE PER-CHUNK FORMS (re-read under KERNELS.md section 7.1, and
+    measured UNCAUGHT on 4 of 4 specs on the device, keep). The ghost reaches only Dy's
+    axis-row curl. While the recurrence ran on every cell it reached ``fu_Dy`` there
+    and was caught; now the axis row carries no Dy dsigu (r) layer, so ``fu_Dy`` is
+    untouched there (C2), and the m = 0 axis rule stores ``Dy[0] = +0`` after the
+    recurrence (``stepping._cylindrical_axis_zero_D``; :func:`_drop_axis_zero_dy` is the
+    caught leg on that store). MUST BE UNCAUGHT here.
     """
     out, sites = _restore_r_ghost_hz(source)
     if not sites:
         return source, 0
-    needle = ("        float curl = dtdx * ((sf - f1) + (f2 - ss));\n"
+    needle = ("        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_z, pr_x);\n"
               "        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;\n"
-              "        if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;\n"
-              "        pml_apply(Dy, fu_Dy, idx, curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i]);\n")
-    replacement = ("        float curl = dtdx * ((sf - f1) + (f2 - ss));\n"
-                   "        if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;\n"
-                   "        pml_apply(Dy, fu_Dy, idx, curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i]);\n")
+              "        if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;\n")
+    replacement = ("        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_z, pr_x);\n"
+                   "        if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;\n")
     if needle not in out:
         return source, 0
     return out.replace(needle, replacement), sites
 
 
-def _restore_r_ghost_prefix(source: str) -> Tuple[str, int]:
-    """A NULL: the near ghost put back on Dz's live shift-down operand, the PREFIX.
+# --- KERNELS.md section 7.2: the B battery on the per-chunk forms -------------------
+#
+# The record decode is the kernel's own (bounds_block.curl_entries), so each leg edits
+# the side's own lattice: the HALF-INTEGER record on B, the INTEGER one on D.
 
-    The term's component name is still ``Hy`` — the substitution swaps the ARRAY, not
-    the name (``stepping.step_D``:417-419) — so ``_shift_down``'s CYL_AXIS branch
-    would give ``-prefix[row 0]`` at m = 0 (a phi-direction component, sign -1). The
-    Metal port measured that on Dz the mask is REDUNDANT: prefix row 0 is an exact
-    ``+0.0`` by construction (stepping.py:1314/:1329 zeros_like), so the ghost is
-    ``-0.0``, ``-0.0 - (+0.0)`` is ``-0.0``, and the phi self-difference on the
-    one-cell invariant axis turns it back into ``+0.0`` at the add. MUST BE UNCAUGHT.
-    """
-    needle = "        float sf = shift_dn(pfx, idx, i, nx, sx, bc_x);\n"
-    replacement = "        float sf = (i > 0) ? pfx[idx - sx] : (-1.0f * pfx[idx]);\n"
-    return source.replace(needle, replacement), source.count(needle)
-
-
-def _restore_r_ghost_prefix_no_mask(source: str) -> Tuple[str, int]:
-    """The prefix ghost restored AND Dz's r mask dropped. PREDICTED UNCAUGHT.
-
-    The Metal port measured this twin at 0/8 and gave the reason: the prefix's own
-    zero row absorbs the ghost, so the mask on Dz is redundant and dropping it changes
-    nothing. This leg carries that CROSS-BACKEND PREDICTION as an armed expectation.
-    A CAUGHT verdict here is a FINDING — it would say the prefix row 0 is not an exact
-    ``+0.0`` on this backend — not a failure to be hidden.
-    """
-    out, sites = _restore_r_ghost_prefix(source)
-    if not sites:
-        return source, 0
-    needle = ("        float curl = dtdx * ((sf - f1) + (f2 - ss));\n"
-              "        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;\n"
-              "        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;\n"
-              "        pml_apply(Dz, fu_Dz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]);\n")
-    replacement = ("        float curl = dtdx * ((sf - f1) + (f2 - ss));\n"
-                   "        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;\n"
-                   "        pml_apply(Dz, fu_Dz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]);\n")
-    if needle not in out:
-        return source, 0
-    return out.replace(needle, replacement), sites
+def _b_battery(side: str) -> Dict[str, Any]:
+    lat = "h" if side == "step_B" else "i"
+    words_z = "cb[20], cbh_z_a1 = cb[21], cbh_z_b0 = cb[22], cbh_z_b1 = cb[23]" \
+        if side == "step_B" else "cb[8], cbi_z_a1 = cb[9], cbi_z_b0 = cb[10], cbi_z_b1 = cb[11]"
+    swapped_z = "cb[8], cbh_z_a1 = cb[9], cbh_z_b0 = cb[10], cbh_z_b1 = cb[11]" \
+        if side == "step_B" else "cb[20], cbi_z_a1 = cb[21], cbi_z_b0 = cb[22], cbi_z_b1 = cb[23]"
+    first = "Bx" if side == "step_B" else "Dx"
+    second = "By" if side == "step_B" else "Dy"
+    membership_z = (f"const int in_{lat}_z = (k >= cb{lat}_z_a0 && k < cb{lat}_z_a1) || "
+                    f"(k >= cb{lat}_z_b0 && k < cb{lat}_z_b1);")
+    membership_x = (f"const int in_{lat}_x = (i >= cb{lat}_x_a0 && i < cb{lat}_x_a1) || "
+                    f"(i >= cb{lat}_x_b0 && i < cb{lat}_x_b1);")
+    return {
+        # The select removed on the z and r memberships: the recurrence on every cell,
+        # the 0.9.2 form. Off the run the dsig-only form is a different word.
+        "recurrence_on_every_cell_z": (
+            _needle(membership_z, f"const int in_{lat}_z = 1;"), True),
+        "recurrence_on_every_cell_r": (
+            _needle(membership_x, f"const int in_{lat}_x = 1;"), True),
+        # The form chosen by coefficient identity instead of chunk membership.
+        "predicate_on_coefficient_identity": (
+            _needle(f"pml_apply({first}, fu_{first}, idx, curl, kms_y[j], sinv_y[j], "
+                    f"kms_z[k], sinv_z[k], in_{lat}_z);",
+                    f"pml_apply({first}, fu_{first}, idx, curl, kms_y[j], sinv_y[j], "
+                    f"kms_z[k], sinv_z[k], (kms_z[k] != 1.0f));"), True),
+        # The low run's end moved one row: the boundary plane changes form.
+        "membership_bound_off_by_one": (
+            _needle(f"const int in_{lat}_z = (k >= cb{lat}_z_a0 && k < cb{lat}_z_a1)",
+                    f"const int in_{lat}_z = (k >= cb{lat}_z_a0 && k < cb{lat}_z_a1 + 1)"),
+            True),
+        # The other lattice's record: the boundary plane moves by one cell.
+        "record_of_the_other_lattice": (
+            _needle(f"const int cb{lat}_z_a0 = {words_z};",
+                    f"const int cb{lat}_z_a0 = {swapped_z};"), True),
+        # The dsig axis's membership handed in as the dsigu flag (dsig z, dsigu r on the
+        # second component): dsig-only against dsigu-only.
+        "dsig_and_dsigu_flags_swapped": (
+            _needle(f"pml_apply({second}, fu_{second}, idx, curl, kms_z[k], sinv_z[k], "
+                    f"kms_x[i], sinv_x[i], in_{lat}_x);",
+                    f"pml_apply({second}, fu_{second}, idx, curl, kms_z[k], sinv_z[k], "
+                    f"kms_x[i], sinv_x[i], in_{lat}_z);"), True),
+        # The auxiliary stored on a plain cell (the auxiliary contract, C2).
+        "auxiliary_stored_on_a_plain_cell": (
+            _needle("    if (dsigu) fu[idx] = fu_new;\n", "    fu[idx] = fu_new;\n"),
+            True),
+        # A DECLARED NULL: the auxiliary load issued on every cell, the store still
+        # guarded; the loaded word feeds only the recurrence's cells.
+        "auxiliary_load_unguarded": (
+            _needle("    float fprev = dsigu ? fu[idx] : 0.0f;\n"
+                    "    float fu_new = ((fprev * kms) - curl) * sinv;\n",
+                    "    float fu_any = fu[idx];\n"
+                    "    float fprev = dsigu ? fu_any : 0.0f;\n"
+                    "    float fu_new = ((fprev * kms) - curl) * sinv;\n"), False),
+    }
 
 
 #: This family's own battery, keyed by the sub-step whose source it edits. A mutation
@@ -499,34 +528,54 @@ def _restore_r_ghost_prefix_no_mask(source: str) -> Tuple[str, int]:
 #: cannot bite look identical in a verdict.
 CYLINDRICAL_SOURCE_MUTATIONS: Dict[str, Dict[str, Any]] = {
     "step_B": {
-        "drop_bz_prefix_substitution": (_drop_bz_prefix_substitution, True),
-        "bz_flat_grouping": (_bz_flat_grouping, True),
-        "bz_metallic_ghost_for_wall_row": (_bz_metallic_ghost_for_wall_row, True),
+        "drop_bz_radial_substitution": (_drop_bz_radial_substitution, True),
         "drop_axis_zero_bx": (_drop_axis_zero_bx, True),
+        **_b_battery("step_B"),
+        # THE NULLS.
+        "radial_curl_commuted": (_radial_curl_commuted, False),
     },
     "step_D": {
-        "drop_dz_prefix_substitution": (_drop_dz_prefix_substitution, True),
-        "prefix_into_dx": (_prefix_into_dx, True),
+        "drop_dz_radial_substitution": (_drop_dz_radial_substitution, True),
+        "radial_into_dx": (_radial_into_dx, True),
         "drop_axis_zero_dy": (_drop_axis_zero_dy, True),
         "drop_axis_add_dz": (_drop_axis_add_dz, True),
-        "fold_axis_add_into_curl": (_fold_axis_add_into_curl, True),
-        "restore_r_ghost_hz_no_mask": (_restore_r_ghost_hz_no_mask, True),
+        "axis_product_in_float32": (_axis_product_in_float32, True),
+        **_b_battery("step_D"),
         # THE NULLS.
-        "axis_coef_recomputed_in_kernel": (_axis_coef_recomputed_in_kernel, False),
+        "radial_curl_commuted": (_radial_curl_commuted, False),
+        "axis_product_commuted": (_axis_product_commuted, False),
         "restore_r_ghost_hz": (_restore_r_ghost_hz, False),
-        "restore_r_ghost_prefix": (_restore_r_ghost_prefix, False),
-        "restore_r_ghost_prefix_no_mask": (_restore_r_ghost_prefix_no_mask, False),
+        "restore_r_ghost_hz_no_mask": (_restore_r_ghost_hz_no_mask, False),
+        "fold_axis_add_into_curl": (_fold_axis_add_into_curl, False),
     },
 }
 
-#: HOST mutations: they corrupt the TABLES or the PREFIX rather than the device text,
-#: so they run on both backends.
+#: Source mutations LIVE ONLY ON SOME SPECS, by construction: each maps to the spec
+#: labels it must be caught on, and is a null control (must move no word) on the others.
+#: ``drop_metallic_mask`` removes the r AND z wall masks at once. On the D side the r mask
+#: is unobservable since the per-chunk forms (measured: uncaught on the periodic-z spec
+#: only, device, keep): the axis row of Dy is stored ``+0`` by the m = 0 axis rule after
+#: the recurrence, Dz's axis-row curl is ``dtdx`` times the backward difference's row 0,
+#: which no segment writes (``+0``, the word the mask stores), and no auxiliary is
+#: touched on that row (C2). Only the z wall mask bites, so the leg is live where z is
+#: metallic.
+SOURCE_MUTATION_LIVE_ON: Dict[str, Tuple[str, ...]] = {
+    "step_D:drop_metallic_mask": ("r16_z20_metallic", "r9_z17_metallic",
+                                  "r12_z48_metallic"),
+}
+
+#: HOST mutations: they corrupt the TABLES or the CHUNK RECORD a launch binds rather
+#: than the device text, so they run on both backends. The scan's own host defects (the
+#: starts line, the segment list, the weights' ir0, the wall row) are
+#: gate_cuda_cylindrical_scan.py's.
 HOST_MUTATIONS: Tuple[str, ...] = (
-    "swap_curl_sublattice",   # half-integer vs integer PML positions
-    "swap_prefix_ir0",        # the other sub-step's radial weights
-    "wall_row_not_zero",      # B side: the wall row filled from the last source row
+    "swap_curl_sublattice",       # half-integer vs integer PML positions
+    "record_bound_off_by_one",    # the low run's end one row up: the plane changes form
+    "record_lattices_swapped",    # each lattice handed the other's runs
 )
-B_ONLY_HOST_MUTATIONS: Tuple[str, ...] = ("wall_row_not_zero",)
+B_ONLY_HOST_MUTATIONS: Tuple[str, ...] = ()
+RECORD_HOST_MUTATIONS: Tuple[str, ...] = ("record_bound_off_by_one",
+                                          "record_lattices_swapped")
 
 
 # ---------------------------------------------------------------------------
@@ -580,7 +629,7 @@ def seed_state(fields, grid, value_class: str, rng) -> Dict[str, np.ndarray]:
     coefficient would only show from step two.
 
     BOTH sub-steps' volumes are seeded on every case even though one is stepped: the
-    D-side axis rule READS ``Hy`` and the B-side prefix reads ``Ey``, and a zero there
+    D-side axis rule READS ``Hy`` and the B-side scan reads ``Ey``, and a zero there
     is a fixed point that hides the rule this gate exists to score.
     """
     xp = grid.xp
@@ -634,7 +683,8 @@ def boundary_codes_for(grid) -> Tuple[Tuple[int, int, int], Tuple[str, str, str]
 
 
 # ---------------------------------------------------------------------------
-# The coefficient tables and the prefix, plus the host mutations that corrupt them
+# The coefficient tables, the chunk record and the radial difference, plus the host
+# mutations that corrupt them
 # ---------------------------------------------------------------------------
 
 def tables_for(sub_step: str, layer) -> Dict[str, Any]:
@@ -650,62 +700,77 @@ def wrong_sub_lattice_tables(sub_step: str, layer) -> Dict[str, Any]:
             for axis in "xyz" for stem in ("kms", "sinv")}
 
 
-def prefix_for(fields, sub_step: str, host_mutation: Optional[str] = None):
-    """The prefix this launch feeds the kernel.
-
-    THE SHIPPED HELPER IS CALLED, not re-derived: ``cylindrical_prefix`` extends Ep by
-    the zero wall row on the B side and calls ``stepping.cylindrical_rderiv_prefix``
-    itself, so the words the kernel reads are the words the array path computed.
-    """
-    if host_mutation == "swap_prefix_ir0":
-        # The other sub-step's ir0: a HALF-CELL error in the radial weights, silent.
-        other = "step_D" if sub_step == "step_B" else "step_B"
-        from meep_gpu.stepping import _face, _span, cylindrical_rderiv_prefix
-        source = getattr(fields, cyl_prefix.PREFIX_COMPONENT[sub_step])
-        xp = fields.grid.xp
-        if not cyl_prefix.PREFIX_WALL_ROW[sub_step]:
-            return cylindrical_rderiv_prefix(xp, source,
-                                             cyl_prefix.PREFIX_IR0[other])
-        rows = source.shape[0]
-        extended = xp.empty((rows + 1,) + source.shape[1:], dtype=source.dtype)
-        extended[_span(0, 0, rows)] = source
-        extended[_face(0, rows)] = 0
-        return cylindrical_rderiv_prefix(xp, extended, cyl_prefix.PREFIX_IR0[other])
-    if host_mutation == "wall_row_not_zero":
-        # The wall row filled from the LAST SOURCE ROW instead of held at zero
-        # (stepping.py:360 assigns 0). In bounds on every shape, and wrong only on the
-        # last radial row's forward difference — the plane the array path's zero wall
-        # exists to make right.
-        from meep_gpu.stepping import _face, _span, cylindrical_rderiv_prefix
-        source = getattr(fields, cyl_prefix.PREFIX_COMPONENT[sub_step])
-        xp = fields.grid.xp
-        rows = source.shape[0]
-        extended = xp.empty((rows + 1,) + source.shape[1:], dtype=source.dtype)
-        extended[_span(0, 0, rows)] = source
-        extended[_face(0, rows)] = source[_face(0, rows - 1)]
-        return cylindrical_rderiv_prefix(xp, extended,
-                                         cyl_prefix.PREFIX_IR0[sub_step])
-    return cyl_prefix.cylindrical_prefix(fields, sub_step, scratch=None)
-
-
-def host_mutated_tables(name: str, sub_step: str, layer) -> Dict[str, Any]:
+def host_mutated_tables(name: Optional[str], sub_step: str, layer) -> Dict[str, Any]:
     if name == "swap_curl_sublattice":
         return wrong_sub_lattice_tables(sub_step, layer)
-    if name in ("swap_prefix_ir0", "wall_row_not_zero"):
-        return tables_for(sub_step, layer)  # this one corrupts the PREFIX, not tables
+    if name is None or name in RECORD_HOST_MUTATIONS:
+        return tables_for(sub_step, layer)
     raise KeyError(f"unknown host mutation {name!r}")
+
+
+def case_record(grid, layer) -> np.ndarray:
+    """The chunk record of the case's own division: the one-rank division of ``grid``
+    with ``layer``, which is the division the oracle steps with (``stepping``'s region
+    plan when no driver installed one)."""
+    return gate_chunk_records.layer_record(grid, layer)
+
+
+def host_mutated_record(name: Optional[str], record: np.ndarray, grid) -> np.ndarray:
+    """Corrupt the chunk record a LAUNCH BINDS, leaving the oracle's division alone.
+
+    KERNELS.md section 7.2: ``record_bound_off_by_one`` moves each layered axis's low
+    run end one row up on both lattices (the boundary plane changes form);
+    ``record_lattices_swapped`` hands each lattice the other's runs (the boundary plane
+    moves by one cell). The record itself for any other name.
+    """
+    if name not in RECORD_HOST_MUTATIONS:
+        return record
+    out = np.array(record, dtype=np.int32, copy=True)
+    for axis in range(3):
+        if int(grid.shape[axis]) <= 1:
+            continue
+        for half in (False, True):
+            a0 = out[record_index(half, axis, 0)]
+            a1 = out[record_index(half, axis, 1)]
+            if name == "record_bound_off_by_one" and a1 > a0:
+                out[record_index(half, axis, 1)] = a1 + 1
+        if name == "record_lattices_swapped":
+            for word in range(4):
+                low = record_index(False, axis, word)
+                high = record_index(True, axis, word)
+                out[low], out[high] = record[high], record[low]
+    return out
+
+
+def radial_for(backend: str, fields, layer, sub_step: str):
+    """The radial difference this launch's Bz / Dz curl reads.
+
+    On the device it is the SHIPPED scan (``cylindrical_prefix.radial_difference``) over
+    the current source, as ``cylindrical_kernels.step_cylindrical`` runs it, so a case
+    certifies the scan and the curl together; the scan alone is
+    ``gate_cuda_cylindrical_scan.py``'s. The NumPy backend runs that gate's transcription
+    of the column-serial loop.
+    """
+    if backend == "cuda":
+        return cyl_prefix.radial_difference(fields, layer, sub_step)
+    tables = cyl_prefix.radial_scan_tables(fields, layer, sub_step)
+    source = getattr(fields, cyl_prefix.PREFIX_COMPONENT[sub_step])
+    return scan_gate.scan_numpy(np.asarray(to_host(source)), tables)
 
 
 # ---------------------------------------------------------------------------
 # The two kernel-side backends
 # ---------------------------------------------------------------------------
 
-def run_kernel_cuda(sub_step: str, fields, tables, codes, dtdx, prefix) -> None:
-    """The SHIPPED kernel, through its own launch wrapper, with the prefix handed in."""
+def run_kernel_cuda(sub_step: str, fields, tables, codes, dtdx, radial, record) -> None:
+    """The SHIPPED kernel, through its own launch wrapper, with the radial difference
+    and the chunk record handed in."""
     from meep_gpu.cuda_kernels import cylindrical_kernels  # noqa: PLC0415
 
     entry = cylindrical_kernels.CYLINDRICAL_LAUNCHERS[sub_step]
-    entry(fields, tables, tuple(np.int32(c) for c in codes), dtdx, prefix=prefix)
+    cb = cp.ascontiguousarray(cp.asarray(np.ascontiguousarray(record, dtype=np.int32)))
+    entry(fields, tables, tuple(np.int32(c) for c in codes), dtdx, radial=radial,
+          chunk_bounds=cb)
     cp.cuda.runtime.deviceSynchronize()
 
 
@@ -735,12 +800,37 @@ def _broadcast(vector, axis: int) -> np.ndarray:
     return np.asarray(vector, dtype=np.float32).reshape(shape)
 
 
-def run_kernel_numpy(sub_step: str, fields, tables, codes, dtdx, prefix) -> None:
-    """The device tree, transcribed, in float32 — the laptop backend.
+def _membership(record: np.ndarray, half: bool, axis: int, n: int) -> np.ndarray:
+    """The record's ``(a0 <= r < a1) || (b0 <= r < b1)`` along one axis, shaped to
+    broadcast along it."""
+    a0, a1, b0, b1 = (int(record[record_index(half, axis, word)]) for word in range(4))
+    rows = np.arange(n)
+    inside = ((rows >= a0) & (rows < a1)) | ((rows >= b0) & (rows < b1))
+    shape = [1, 1, 1]
+    shape[axis] = n
+    return inside.reshape(shape)
 
-    THE GROUPING IS THE SHIPPED ONE and it is load-bearing: ``dtdx * ((sf - f1) +
-    (f2 - ss))``, never the left-to-right form, and ``dtdx * (pfx_up - pfx_here)``
-    on Bz, never the distributed one.
+
+def _curl_stencil_numpy(scale, sf, f1, f2, ss, pr1: int, pr2: int) -> np.ndarray:
+    """``curl_stencil``: MEEP's left-to-right bracket, or the one-partner forms."""
+    if pr1 and pr2:
+        return (scale * (((sf - f1) + f2) - ss)).astype(np.float32)
+    if pr1:
+        return (scale * (sf - f1)).astype(np.float32)
+    if pr2:
+        return ((-scale) * (ss - f2)).astype(np.float32)
+    return np.zeros_like(f1, dtype=np.float32)
+
+
+def run_kernel_numpy(sub_step: str, fields, tables, codes, dtdx, radial, record) -> None:
+    """The device tree, transcribed, in float32 -- the laptop backend.
+
+    The forms are the kernel's: ``curl_stencil``'s left-to-right bracket with the
+    partner-presence forms, the radial curl ``dtdx * rad``, ``pml_apply``'s two forms
+    chosen per cell by the chunk record (the recurrence where the cell's chunk carries
+    the dsigu layer, the dsig-only form elsewhere, the auxiliary touched only on the
+    recurrence's cells), and the m = 0 axis rules with the on-axis Dz product formed in
+    double and rounded once.
 
     THIS COMPILES NOTHING AND CERTIFIES NOTHING. It cannot see a defect the NVRTC
     contraction guard exists for and it is not the shipped bytes. What it settles is
@@ -748,25 +838,27 @@ def run_kernel_numpy(sub_step: str, fields, tables, codes, dtdx, prefix) -> None
     """
     spec = SUB_STEP_ARRAYS[sub_step]
     shift = _shift_dn_numpy if spec["backward"] else _shift_up_numpy
+    half = bool(spec["half_integer"])
     scale = np.float32(dtdx)
     names = "xyz"
-    prefix_host = np.asarray(to_host(prefix), dtype=np.float32)
+    shape = tuple(int(n) for n in fields.grid.shape)
+    record = np.asarray(record, dtype=np.int32)
+    presence = int(record[RECORD_PRESENCE_WORD])
+    present = [(presence >> axis) & 1 for axis in range(3)]
+    radial_host = np.asarray(to_host(radial), dtype=np.float32)
     for (target, aux, first, first_axis, second, second_axis,
          dsig, dsigu) in CURL_TERMS[sub_step]:
         f = getattr(fields, target)
         fu = getattr(fields, aux)
-        if sub_step == "step_B" and target == "Bz":
-            curl = (scale * (prefix_host[1:] - prefix_host[:-1])).astype(np.float32)
+        if target in ("Bz", "Dz"):
+            curl = (scale * radial_host).astype(np.float32)
         else:
-            if sub_step == "step_D" and target == "Dz":
-                f1 = prefix_host
-                sf = shift(prefix_host, first_axis, codes[first_axis])
-            else:
-                f1 = getattr(fields, first)
-                sf = shift(f1, first_axis, codes[first_axis])
+            f1 = getattr(fields, first)
+            sf = shift(f1, first_axis, codes[first_axis])
             f2 = getattr(fields, second)
             ss = shift(f2, second_axis, codes[second_axis])
-            curl = (scale * ((sf - f1) + (f2 - ss))).astype(np.float32)
+            curl = _curl_stencil_numpy(scale, sf, f1, f2, ss, present[first_axis],
+                                       present[second_axis])
         iyee = IYEE_SHIFTS[target]
         for axis in range(3):
             if iyee[axis] == 0 and codes[axis] == BC_METALLIC:
@@ -775,19 +867,23 @@ def run_kernel_numpy(sub_step: str, fields, tables, codes, dtdx, prefix) -> None
         sinv = _broadcast(tables[f"sinv_{names[dsig]}"], dsig)
         kms_u = _broadcast(tables[f"kms_{names[dsigu]}"], dsigu)
         sinv_u = _broadcast(tables[f"sinv_{names[dsigu]}"], dsigu)
-        fprev = fu.copy()
+        inside = np.broadcast_to(_membership(record, half, dsigu, shape[dsigu]), shape)
+        fprev = np.where(inside, fu, np.float32(0.0)).astype(np.float32)
         fu_new = (((fprev * kms).astype(np.float32) - curl).astype(np.float32)
                   * sinv).astype(np.float32)
-        fu[...] = fu_new
-        a = ((f * kms_u).astype(np.float32) + fu_new).astype(np.float32)
-        f[...] = ((a - fprev).astype(np.float32) * sinv_u).astype(np.float32)
-    axis_row = _plane_index(0, 0, tuple(fields.grid.shape))
+        recurrence = ((((f * kms_u).astype(np.float32) + fu_new).astype(np.float32)
+                       - fprev).astype(np.float32) * sinv_u).astype(np.float32)
+        plain = ((((f * kms).astype(np.float32) - curl).astype(np.float32))
+                 * sinv).astype(np.float32)
+        fu[...] = np.where(inside, fu_new, fu)
+        f[...] = np.where(inside, recurrence, plain)
+    axis_row = _plane_index(0, 0, shape)
     if sub_step == "step_B":
         fields.Bx[axis_row] = np.float32(0.0)
     else:
-        axis_coef = np.float32(4.0 * float(dtdx))
-        fields.Dz[axis_row] = (fields.Dz[axis_row]
-                               + (axis_coef * fields.Hy[axis_row])).astype(np.float32)
+        factor = np.float64(4.0 * float(fields.grid.courant))
+        product = (factor * fields.Hy[axis_row].astype(np.float64)).astype(np.float32)
+        fields.Dz[axis_row] = (fields.Dz[axis_row] + product).astype(np.float32)
         fields.Dy[axis_row] = np.float32(0.0)
 
 
@@ -835,24 +931,23 @@ def axis_row_is_live(frozen, reference, sub_step: str, shape) -> Dict[str, Any]:
     return out
 
 
-def prefix_is_live(prefix, reference, sub_step: str) -> Dict[str, Any]:
-    """Is the prefix non-constant down r, and did the prefixed target move?
+def radial_is_live(radial, sub_step: str) -> Dict[str, Any]:
+    """Is the radial difference non-zero somewhere, and non-constant down r?
 
-    A flat prefix makes every prefix defect invisible: the forward difference is zero
-    everywhere and the substitution and its absence agree.
+    A difference that is ``+0`` everywhere makes every radial-substitution defect
+    invisible: the substitution and its absence would both feed the recurrence nothing.
     """
-    host = np.ascontiguousarray(to_host(prefix), dtype=np.float32)
-    diffs = host[1:] - host[:-1]
+    host = np.ascontiguousarray(to_host(radial), dtype=np.float32)
     target = "Bz" if sub_step == "step_B" else "Dz"
+    nonzero = int(np.count_nonzero(host.ravel().view(np.uint32)))
+    varies = int(np.count_nonzero(host[1:] - host[:-1])) if host.shape[0] > 1 else 0
     return {
         "rows": int(host.shape[0]),
-        "distinct_radial_differences": int(np.count_nonzero(diffs)),
+        "nonzero_words": nonzero,
+        "rows_that_differ_from_the_one_below": varies,
         "max_abs": float(np.max(np.abs(host))) if host.size else 0.0,
-        "row0_all_exact_positive_zero": bool(
-            np.all(np.ascontiguousarray(host[0], dtype=np.float32)
-                   .ravel().view(np.uint32) == 0)),
-        "prefixed_target": target,
-        "meets_floor": int(np.count_nonzero(diffs)) > 0,
+        "radial_target": target,
+        "meets_floor": nonzero > 0 and varies > 0,
     }
 
 
@@ -944,83 +1039,21 @@ def check_axis_rules_against_stepping() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# The scan-order leg: is cupy.cumsum reproducible by a column-serial CUDA scan?
+# The scan-order leg: the shipped scan against the array path's difference
 # ---------------------------------------------------------------------------
 
-_SERIAL_SCAN_SOURCE = r'''
-extern "C" __global__ void column_serial_scan(
-    float* __restrict__ out, const float* __restrict__ inc,
-    int nx, int ny, int nz, int n_cols
-) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n_cols) return;
-    int nyz = ny * nz;
-    int k = idx % nz;
-    int j = idx / nz;
-    if (j >= ny) return;
-    int base = j * nz + k;
-    float acc = inc[base];
-    out[base] = acc;
-    for (int i = 1; i < nx; ++i) {
-        int o = i * nyz + base;
-        acc = acc + inc[o];
-        out[o] = acc;
-    }
-}
-'''
+def scan_order_leg(shapes: Sequence[Tuple[int, int, int]]) -> Dict[str, Any]:
+    """Does the SHIPPED column-serial scan reproduce the array path's radial difference?
 
-
-def scan_order_leg(shapes: Sequence[Tuple[int, int, int]], rng) -> Dict[str, Any]:
-    """Does a column-serial CUDA scan reproduce ``cupy.cumsum`` word for word?
-
-    THE POINT IS NOT TO SHIP THIS SCAN. It is to convert the sibling track's reading —
-    "the CuPy prefix cannot be reproduced by any other summation order, so the scan
-    stays on the array path" — into a measurement ON THIS BACKEND. Whatever it says,
-    the kernels do not change: they consume the array path's prefix either way. What
-    changes is whether the design decision is measured here or borrowed.
+    The cases below read the scan's output, so a case that diverged could be the scan's
+    or the curl's; this leg answers the first on this gate's own shapes, through the scan
+    gate's own comparison (``gate_cuda_cylindrical_scan.identity_leg``: real storage, the
+    one-rank division of the case's layer, both sides). The scan's full battery --
+    complex storage, many-chunk divisions, its mutations and both policies -- is that
+    gate's.
     """
-    out: Dict[str, Any] = {"cases": [], "cupy_version": getattr(cp, "__version__", None)}
-    kernel = cp.RawKernel(_SERIAL_SCAN_SOURCE, "column_serial_scan",
-                          options=("--fmad=false",))
-    threads = 128
-    for shape in shapes:
-        nx, ny, nz = shape
-        host = rng.uniform(-1.0, 1.0, size=shape).astype(np.float32)
-        inc = cp.asarray(host)
-        reference = cp.cumsum(inc, axis=0)
-        produced = cp.empty_like(inc)
-        cols = ny * nz
-        blocks = (cols + threads - 1) // threads
-        kernel((blocks,), (threads,), (produced, inc, np.int32(nx), np.int32(ny),
-                                       np.int32(nz), np.int32(cols)))
-        cp.cuda.runtime.deviceSynchronize()
-        a = to_host(reference).astype(np.float32).ravel().view(np.uint32)
-        b = to_host(produced).astype(np.float32).ravel().view(np.uint32)
-        differing = int(np.count_nonzero(a != b))
-        # NumPy's cumsum IS a sequential accumulation; comparing the serial CUDA scan
-        # against it too says which of the two the device kernel actually reproduces.
-        numpy_reference = np.cumsum(host, axis=0, dtype=np.float32)
-        c = np.ascontiguousarray(numpy_reference, np.float32).ravel().view(np.uint32)
-        out["cases"].append({
-            "shape": list(shape),
-            "words": int(a.size),
-            "serial_cuda_vs_cupy_cumsum_differing": differing,
-            "serial_cuda_vs_numpy_cumsum_differing": int(np.count_nonzero(c != b)),
-            "cupy_vs_numpy_cumsum_differing": int(np.count_nonzero(a != c)),
-        })
-        log(f"[scan] shape={shape} serial_vs_cupy={differing}/{a.size} "
-            f"serial_vs_numpy={out['cases'][-1]['serial_cuda_vs_numpy_cumsum_differing']} "
-            f"cupy_vs_numpy={out['cases'][-1]['cupy_vs_numpy_cumsum_differing']}")
-    out["serial_cuda_reproduces_cupy"] = all(
-        c["serial_cuda_vs_cupy_cumsum_differing"] == 0 for c in out["cases"])
-    out["reading"] = (
-        "a column-serial CUDA scan IS bit-equal to cupy.cumsum on these shapes: the "
-        "prefix COULD be fused, and the array-path decision is a cost choice rather "
-        "than a correctness one"
-        if out["serial_cuda_reproduces_cupy"] else
-        "a column-serial CUDA scan is NOT bit-equal to cupy.cumsum: the oracle's "
-        "summation order is CuPy's own and the prefix cannot be fused bit-identically "
-        "on this backend — MEASURED HERE, not inherited")
+    out = scan_gate.identity_leg(shapes, backend="cuda")
+    out["cupy_version"] = getattr(cp, "__version__", None)
     return out
 
 
@@ -1095,22 +1128,24 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, courant: float,
         case["seconds"] = time.time() - started
         return case
 
-    # Leg 2: the kernel, from the SAME frozen state, with the prefix computed from
-    # the SAME sources the oracle differenced.
+    # Leg 2: the kernel, from the SAME frozen state, with the radial difference
+    # scanned from the SAME sources the oracle differenced and the chunk record of the
+    # division the oracle stepped with.
     restore(fields, frozen)
-    tables = (tables_for(sub_step, layer) if host_mutation is None
-              else host_mutated_tables(host_mutation, sub_step, layer))
-    prefix = prefix_for(fields, sub_step, host_mutation)
-    liveness = prefix_is_live(prefix, reference, sub_step)
-    case["prefix_is_live"] = liveness
+    tables = host_mutated_tables(host_mutation, sub_step, layer)
+    record = host_mutated_record(host_mutation, case_record(grid, layer), grid)
+    case["chunk_record"] = [int(word) for word in record]
+    radial = radial_for(backend, fields, layer, sub_step)
+    liveness = radial_is_live(radial, sub_step)
+    case["radial_is_live"] = liveness
     if not liveness["meets_floor"]:
-        case["skipped"] = ("the prefix is constant down r; every prefix defect is "
-                           "invisible on this case")
+        case["skipped"] = ("the radial difference is +0 everywhere or constant down r; "
+                           "every radial defect is invisible on this case")
         case["seconds"] = time.time() - started
         return case
 
     runner = run_kernel_cuda if backend == "cuda" else run_kernel_numpy
-    runner(sub_step, fields, tables, codes, dtdx, prefix)
+    runner(sub_step, fields, tables, codes, dtdx, radial, record)
 
     parts = {name: bit_compare(reference[name], getattr(fields, name))
              for name in outputs(sub_step)}
@@ -1121,8 +1156,8 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, courant: float,
         for name in outputs(sub_step)}
 
     # Leg 3: the multi-step. ``fu`` IS STATE. ONE ``Fields`` object, run twice from
-    # the SAME frozen state, with the prefix RECOMPUTED every launch on both paths —
-    # which is what a real driver does and what a cached prefix would get wrong.
+    # the SAME frozen state, with the radial difference RESCANNED every launch on both
+    # paths -- which is what a real driver does and what a cached one would get wrong.
     if host_mutation is None:
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
@@ -1133,7 +1168,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, courant: float,
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
             runner(sub_step, fields, tables, codes, dtdx,
-                   prefix_for(fields, sub_step, None))
+                   radial_for(backend, fields, layer, sub_step), record)
             advance_sources(fields, sub_step)
         multi = {name: bit_compare(oracle_multi[name], getattr(fields, name))
                  for name in outputs(sub_step)}
@@ -1252,7 +1287,7 @@ def _score(legs: List[Dict[str, Any]], must_be_caught: bool) -> Dict[str, Any]:
 
 
 def run_host_mutations(results, out_path, backend, scorable) -> Dict[str, Any]:
-    """Every table- and prefix-level defect. A gate that cannot fail certifies nothing."""
+    """Every table- and record-level defect. A gate that cannot fail certifies nothing."""
     out: Dict[str, Any] = {}
     plan = mutation_plan(scorable)
     for name in HOST_MUTATIONS:
@@ -1288,7 +1323,7 @@ def run_source_mutations(results, out_path, scorable) -> Dict[str, Any]:
 
     def _battery(sub_step: str):
         for name in SHARED_SOURCE_MUTATIONS:
-            yield name, probe.SOURCE_MUTATIONS[name], name not in SHARED_NULL_MUTATIONS
+            yield name, SHARED_NEEDLES[name], name not in SHARED_NULL_MUTATIONS
         for name, (transform, must) in CYLINDRICAL_SOURCE_MUTATIONS[sub_step].items():
             yield name, transform, must
 
@@ -1321,7 +1356,15 @@ def run_source_mutations(results, out_path, scorable) -> Dict[str, Any]:
                 cylindrical_kernels._clear_kernel_cache()
                 from_mutated = sum(1 for entry in compile_cache.compile_log()
                                    if entry["source_sha256"] == digest)
-                scored = _score(legs, must_be_caught)
+                if key in SOURCE_MUTATION_LIVE_ON:
+                    live = SOURCE_MUTATION_LIVE_ON[key]
+                    on = _score([c for c in legs if c.get("label") in live], True)
+                    off = _score([c for c in legs if c.get("label") not in live], False)
+                    scored = dict(on, live_on=list(live), null_control=off)
+                    if off["ran"] and off["verdict"] != "NULL CONFIRMED":
+                        scored["verdict"] = "NULL VIOLATED"
+                else:
+                    scored = _score(legs, must_be_caught)
                 out[key] = dict(scored, armed=True, sites=sites,
                                 mutated_source_sha256=digest,
                                 kernel_constructions_from_mutated_bytes=from_mutated,
@@ -1463,6 +1506,11 @@ def summarize(results) -> Dict[str, Any]:
                        f"{policy_evidence['why']}")
     if not results.get("curl_terms_vs_stepping", {}).get("agreed", False):
         reasons.append("the transcribed curl term table disagrees with stepping's")
+    scan = results.get("scan_order")
+    if results.get("backend") == "cuda" and not (scan or {}).get("all_identical", False):
+        reasons.append("the shipped radial scan is not word-identical to the array path's "
+                       "difference on this gate's shapes (leg scan_order), so a case here "
+                       "cannot say whether the curl or the scan diverged")
     if not results.get("axis_rules_vs_stepping", {}).get("both_none", False):
         reasons.append("stepping folds an axis increment into the curl at m = 0; the "
                        "kernel carries no such term")
@@ -1517,8 +1565,7 @@ def summarize(results) -> Dict[str, Any]:
                   f"{MULTI_STEP_BUDGET} consecutive launches, on the case matrix in "
                   "CASES"),
         "does_not_claim": [
-            "no throughput claim: the radial prefix stays on the array path, so this "
-            "pair cannot go below the prefix's own launches and nothing here was timed",
+            "no throughput claim: nothing here was timed",
             "|m| >= 1 is NOT covered and is refused by name: complex storage, the "
             "i*m/r coupling and the per-|m| axis rules are a second kernel",
             "nothing dispatches these kernels; fastpath.plan_fast_path is untouched",
@@ -1588,9 +1635,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     save(results, args.out)
 
     if args.backend == "cuda":
-        results["scan_order"] = scan_order_leg(
-            tuple(spec["shape"] for spec in CASES),
-            np.random.default_rng(SEED + 1))
+        results["scan_order"] = scan_order_leg(tuple(spec["shape"] for spec in CASES))
         save(results, args.out)
 
     for guard, options, _is_primary in GUARD_SETS:

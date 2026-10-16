@@ -58,7 +58,7 @@ GATE_PATH = API_DIR / "parity" / "meep_gpu" / "gate_subnormal_policy.py"
 
 
 @pytest.fixture(autouse=True)
-def _fresh_policy():
+def _fresh_policy(monkeypatch):
     """Every test starts with no policy installed AND with the FPU where it found it.
 
     THE SECOND HALF IS NEW AND IT IS NOT TIDINESS. ``_reset_for_tests`` clears this
@@ -77,6 +77,14 @@ def _fresh_policy():
     """
     sp._reset_for_tests()
     flushing_at_entry = backends.subnormals_flushed()
+    # AND WITH NO CuPy CACHE POINTER, where CuPy is installed. A dispatch earlier in
+    # the session points ``CUPY_CACHE_DIR`` at its keep-policy directory for the rest
+    # of the process (``point_cupy_cache_at_keep_policy``), and a ``flush`` install
+    # here then refuses that directory by name. Measured in the NVIDIA reference
+    # environment, in a run where a keep dispatch came earlier. A test that needs a
+    # directory names one itself (:func:`_keep_policy_cupy_cache`).
+    if importlib.util.find_spec("cupy") is not None:
+        monkeypatch.delenv("CUPY_CACHE_DIR", raising=False)
     try:
         yield
     finally:
@@ -105,7 +113,27 @@ def _a_host_with_no_working_lever(monkeypatch):
     """
     module, state = _fake_meep(monkeypatch, effective=False)
     monkeypatch.setattr(sp, "_drive_host_fpu_by_fenv", lambda want_flush: False)
+    # The x86-64 glibc lever is the MEEP-less path and a stand-in MEEP is imported
+    # here, so it is not reached; it is stubbed too so "neither lever" stays true
+    # on an x86-64 Linux host whatever the ladder's order becomes.
+    monkeypatch.setattr(sp, "_drive_host_fpu_by_mxcsr", lambda want_flush: False)
     return module, state
+
+
+def _keep_policy_cupy_cache(monkeypatch, tmp_path) -> None:
+    """Where CuPy is installed, a private ``CUPY_CACHE_DIR`` that ``keep`` may use.
+
+    A direct ``keep`` install drives the CuPy executor too, and refuses by name
+    without a policy-suffixed private directory (:func:`sp.cupy_cache_reasons`):
+    dispatch derives one, a direct install does not. The tests that install ``keep``
+    themselves name one first, carrying :data:`sp.CUPY_CACHE_POLICY_TOKEN`, fresh and
+    empty. Where CuPy is not installed nothing is set: the CuPy leg is not driven
+    there, and those hosts run these tests exactly as before.
+    """
+    if importlib.util.find_spec("cupy") is None:
+        return
+    monkeypatch.setenv("CUPY_CACHE_DIR",
+                       str(tmp_path / f"cupy-cache-{sp.CUPY_CACHE_POLICY_TOKEN}"))
 
 
 @pytest.fixture(scope="module")
@@ -317,7 +345,7 @@ def test_the_unmeasurable_case_says_which_unmeasurable_case_it_is():
     assert "no MEEP behaviour on this host to match" in absent["reasons"][0]
 
 
-def test_the_default_is_attainable_on_this_host_without_meep_imported():
+def test_the_default_is_attainable_on_this_host_without_meep_imported(monkeypatch, tmp_path):
     """The default must never be a policy this host cannot deliver.
 
     This is the assertion behind the deferred startup wiring: whatever the default
@@ -327,6 +355,7 @@ def test_the_default_is_attainable_on_this_host_without_meep_imported():
     it also keeps ``install_subnormal_policy(strict=True)``'s FPU mutation out of
     the suite's own process.
     """
+    _keep_policy_cupy_cache(monkeypatch, tmp_path)
     stamp = _run_meep_free(
         _MEEP_FREE_PRELUDE +
         "stamp = sp.install_subnormal_policy(strict=True)\n"
@@ -490,7 +519,7 @@ def test_flush_is_attained_where_the_knob_actually_moves_the_fpu(monkeypatch):
         sp.EXECUTOR_OP_EXCEPTIONS["host_negation"]["ops"]]
 
 
-def test_installing_a_policy_never_imports_meep(monkeypatch):
+def test_installing_a_policy_never_imports_meep(monkeypatch, tmp_path):
     """``backends.py``: "none may import meep at all".
 
     Not a style rule here — ``import meep`` initializes MPI, so an install that
@@ -516,6 +545,7 @@ def test_installing_a_policy_never_imports_meep(monkeypatch):
     # ``default_policy()`` is now the one request that WANTS to know what MEEP
     # does, so this is the install most tempted to import it — and the one that
     # must instead record that it could not measure.
+    _keep_policy_cupy_cache(monkeypatch, tmp_path)
     stamp = sp.install_subnormal_policy(sp.default_policy(), strict=True)
     assert "meep" not in sys.modules
     assert sp._meep_module() is None
@@ -646,14 +676,16 @@ def test_host_policy_reasons_is_empty_when_the_measurement_agrees():
 # ---------------------------------------------------------------------------
 
 
-def test_installing_the_same_policy_twice_is_idempotent():
+def test_installing_the_same_policy_twice_is_idempotent(monkeypatch, tmp_path):
+    _keep_policy_cupy_cache(monkeypatch, tmp_path)
     first = sp.install_subnormal_policy(sp.KEEP)
     second = sp.install_subnormal_policy(sp.KEEP)
     assert first["requested"] == second["requested"] == "keep"
 
 
-def test_a_second_different_policy_is_refused_not_swapped():
+def test_a_second_different_policy_is_refused_not_swapped(monkeypatch, tmp_path):
     """Binaries and cache entries already exist under the first one."""
+    _keep_policy_cupy_cache(monkeypatch, tmp_path)
     sp.install_subnormal_policy(sp.KEEP)
     with pytest.raises(sp.SubnormalPolicyLocked) as excinfo:
         sp.install_subnormal_policy(sp.FLUSH)
@@ -661,12 +693,14 @@ def test_a_second_different_policy_is_refused_not_swapped():
     assert sp.get_subnormal_policy() == "keep"
 
 
-def test_a_refusal_that_installed_no_device_seam_leaves_the_process_unlocked(monkeypatch):
+def test_a_refusal_that_installed_no_device_seam_leaves_the_process_unlocked(monkeypatch,
+                                                                             tmp_path):
     """Otherwise the refused policy would lock out the one the caller can have."""
     _a_host_with_no_working_lever(monkeypatch)
     with pytest.raises(sp.SubnormalPolicyUnattainable):
         sp.install_subnormal_policy(sp.FLUSH, strict=True)
     assert sp._STATE["policy"] is None
+    _keep_policy_cupy_cache(monkeypatch, tmp_path)
     sp.install_subnormal_policy(sp.KEEP)  # must not raise SubnormalPolicyLocked
     assert sp.get_subnormal_policy() == "keep"
 
@@ -946,6 +980,211 @@ def test_installing_the_policy_drops_cupys_in_process_kernel_memo(monkeypatch, t
     report = sp.install_cupy_policy(sp.KEEP, cupy)
     assert state["memo_cleared"] == 1
     assert report["kernel_memo"]["cleared"] is True
+
+
+def _fake_kernel_module(*, ufunc_memo="_kernel_memo",
+                        elementwise_memo="_elementwise_kernel_memo"):
+    """``cupy._core._kernel`` as far as the per-object drop reads it.
+
+    The two classes carry their memo NAME at class level, as CuPy's compiled classes
+    do (a ``readonly dict`` attribute is a descriptor on the class), and each
+    instance holds its own dict of compiled kernels. Pass ``None`` for a name to
+    stand in for a CuPy whose class no longer has that attribute.
+    """
+    namespace = {}
+    for class_name, attribute in (("ufunc", ufunc_memo),
+                                  ("ElementwiseKernel", elementwise_memo)):
+        body = {attribute: None} if attribute else {}
+        namespace[class_name] = type(class_name, (), body)
+    return types.SimpleNamespace(**namespace)
+
+
+def test_keep_drops_the_kernels_a_ufunc_and_an_elementwise_kernel_hold_themselves(
+        monkeypatch, tmp_path):
+    """``clear_memo`` is not the whole drop: a ufunc keeps its kernels ON THE OBJECT.
+
+    Measured on the GPU host (CuPy 13.5.1): a float32 ``cp.multiply`` compiled before
+    a keep install returned 0.0 for 1e-30 * 1e-10 after ``cupy.clear_memo()``, while
+    the install reported ``attained=True``; a lift compiles exactly that signature
+    before dispatch installs the policy, and stepping reuses it. Emptying every live
+    ufunc's ``_kernel_memo`` and every ``ElementwiseKernel``'s
+    ``_elementwise_kernel_memo`` is what made the same call return 9.99995e-41.
+    """
+    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
+    cache.mkdir()
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
+    cupy, _compiler, _calls, state = _fake_cupy(monkeypatch, tmp_path)
+    kernel = _fake_kernel_module()
+    cupy._core._kernel = kernel
+    multiply = kernel.ufunc()
+    multiply._kernel_memo = {(0, "float32,float32->float32", (), False): object(),
+                             (0, "float64,float64->float64", (), False): object()}
+    elementwise = kernel.ElementwiseKernel()
+    elementwise._elementwise_kernel_memo = {(0, "float32"): object()}
+
+    report = sp.install_cupy_policy(sp.KEEP, cupy)
+    assert report["attained"] is True, report["reasons"]
+    assert multiply._kernel_memo == {} and elementwise._elementwise_kernel_memo == {}
+    memo = report["kernel_memo"]
+    assert state["memo_cleared"] == 1
+    assert memo["walked"] is True and memo["cleared"] is True
+    assert memo["entries_dropped"] == {"ufunc._kernel_memo": 2,
+                                       "ElementwiseKernel._elementwise_kernel_memo": 1}
+
+
+@pytest.mark.parametrize("missing", ["ufunc", "ElementwiseKernel"])
+def test_a_cupy_whose_per_object_memo_has_moved_is_refused_by_name(
+        monkeypatch, tmp_path, missing):
+    """A memo the drop cannot find is a policy that is not in force, so it is refused.
+
+    The defect this drop closes was a policy reported attained while pre-install
+    kernels stayed reachable. A CuPy whose classes no longer carry the attribute
+    would reproduce it silently, so the install names the attribute and refuses.
+    """
+    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
+    cache.mkdir()
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
+    cupy, _compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path)
+    cupy._core._kernel = _fake_kernel_module(
+        ufunc_memo=None if missing == "ufunc" else "_kernel_memo",
+        elementwise_memo=None if missing == "ElementwiseKernel"
+        else "_elementwise_kernel_memo")
+    with pytest.raises(sp.SubnormalPolicyUnattainable) as excinfo:
+        sp.install_cupy_policy(sp.KEEP, cupy)
+    attribute = "_kernel_memo" if missing == "ufunc" else "_elementwise_kernel_memo"
+    assert f"cupy._core._kernel.{missing} has no {attribute}" in str(excinfo.value)
+    assert sp.executor_report("cupy")["attained"] is False
+
+
+def test_uninstalling_the_strip_drops_the_kernels_compiled_under_it(monkeypatch, tmp_path):
+    """The mirror of a late install: stripped kernels must not outlive the strip.
+
+    After an uninstall the seam compiles natively again (CuPy's own ``-ftz=true``),
+    so a ufunc kernel compiled while the strip was in place would otherwise keep
+    subnormals in a process that no longer carries the policy.
+    """
+    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
+    cache.mkdir()
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
+    cupy, _compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path)
+    kernel = _fake_kernel_module()
+    cupy._core._kernel = kernel
+    sp.install_cupy_policy(sp.KEEP, cupy)
+    multiply = kernel.ufunc()
+    multiply._kernel_memo = {(0, "float32,float32->float32", (), False): object()}
+    monkeypatch.setitem(sys.modules, "cupy", cupy)
+
+    restored = sp.uninstall_subnormal_policy()
+    assert multiply._kernel_memo == {}
+    assert restored["cupy_kernels_dropped"] == 1
+
+
+def test_keep_folds_its_token_into_cupys_cache_key_and_uninstall_takes_it_out(
+        monkeypatch, tmp_path):
+    """The key is computed above the strip, so the keep token goes into the key itself.
+
+    ``extra_source`` is hashed into CuPy's key and handed to no compiler. With the
+    token folded in, a keep compile cannot read a binary CuPy compiled natively into
+    the same directory before the install — measured on device: in a keep directory
+    minted before the process started, the memo drop alone left 0 of 3 float32
+    products keeping, because the recompile read the pre-install binary back.
+    """
+    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
+    cache.mkdir()
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
+    cupy, compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path)
+    keys = []
+
+    def compile_with_cache(source, options, arch, cache_dir, extra_source=None,
+                           backend="nvrtc", *rest):
+        keys.append(extra_source)
+        return "module"
+
+    compiler._compile_with_cache_cuda = compile_with_cache
+    report = sp.install_cupy_policy(sp.KEEP, cupy)
+    assert report["cache_key_folded"] is True
+    compiler._compile_with_cache_cuda("src", (), None, None, None, "nvrtc")
+    compiler._compile_with_cache_cuda("src", (), None, None, "headers", "nvrtc")
+    assert keys == [sp.CUPY_KEEP_CACHE_KEY_TOKEN, "headers\n" + sp.CUPY_KEEP_CACHE_KEY_TOKEN]
+
+    sp.uninstall_subnormal_policy()
+    compiler._compile_with_cache_cuda("src", (), None, None, None, "nvrtc")
+    assert keys[-1] is None
+
+
+#: Run in a child process: the suite's own process may already hold a keep-policy
+#: ``cp.multiply`` kernel, and the defect is about what a kernel compiled BEFORE the
+#: install does after it. The CuPy cache directory is a fresh one, given either as a
+#: plain directory (the install moves to a keep sibling) or as a keep directory
+#: minted before the first compile, as every route-campaign leg sets it — so the
+#: pre-install compile writes CuPy's own ``-ftz=true`` binary INTO the directory the
+#: policy then uses.
+_LATE_INSTALL_CHILD = r"""
+import json
+import sys
+import numpy as np
+import cupy as cp
+from meep_gpu import subnormal_policy as sp
+
+if sys.argv[1] == "keep_directory":
+    sp.point_cupy_cache_at_keep_policy(cupy=cp)
+x = cp.full(8, np.float32(1e-30), dtype=cp.float32)
+y = cp.full(8, np.float32(1e-10), dtype=cp.float32)
+before = float(cp.asnumpy(cp.multiply(x, y))[0])
+cache = sp.point_cupy_cache_at_keep_policy(cupy=cp)
+report = sp.install_cupy_policy("keep", cupy=cp)
+after = float(cp.asnumpy(cp.multiply(x, y))[0])
+operator = float(cp.asnumpy(x * y)[0])
+print(json.dumps({"before": before, "after": after, "operator": operator,
+                  "attained": report["attained"], "reasons": report["reasons"],
+                  "memo": report["kernel_memo"], "cache": cache.get("after")},
+                 default=str))
+"""
+
+
+@pytest.mark.requires_resource("cupy")
+@pytest.mark.parametrize("directory", ["plain_directory", "keep_directory"])
+def test_a_float32_ufunc_compiled_before_a_keep_install_keeps_subnormals_after_it(
+        tmp_path, directory):
+    """On device: the install reaches a ufunc kernel that was compiled before it.
+
+    The shipped route's order — the lift compiles ``cupy_multiply__float32_float32_float32``
+    under CuPy's own ``-ftz=true``, then dispatch moves ``CUPY_CACHE_DIR`` and installs
+    keep — reproduced on one ``x * y``. Before the install 1e-30 * 1e-10 flushes to
+    0.0 (the precondition: without it this test could not see the defect); after it
+    the same signature must return the IEEE word 0x000116c2, 9.99995e-41, through
+    ``cp.multiply`` and through the ``*`` operator, with no compiled kernel left
+    alive by the drop. ``keep_directory`` is the configuration the route campaign
+    runs in, where the pre-install binary sits in the policy's own directory; the
+    memo drop alone measured 0 of 3 there, and the cache-key token is what reaches it.
+    """
+    if not backends.cupy_available():
+        pytest.skip("CuPy is not installed or no CUDA device is visible")
+    environment = {name: value for name, value in os.environ.items()
+                   if not name.startswith("MEEP_GPU_")}
+    environment["CUPY_CACHE_DIR"] = str(tmp_path / "cupy_cache")
+    root = str(Path(meep_gpu.__file__).resolve().parent.parent)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [root] + [p for p in environment.get("PYTHONPATH", "").split(os.pathsep) if p])
+    completed = subprocess.run([sys.executable, "-c", _LATE_INSTALL_CHILD, directory],
+                               env=environment, cwd=str(tmp_path), capture_output=True,
+                               text=True, timeout=600)
+    assert completed.returncode == 0, completed.stderr[-4000:]
+    result = json.loads(completed.stdout.strip().splitlines()[-1])
+    expected = float(np.array([0x000116C2], dtype=np.uint32).view(np.float32)[0])
+    assert result["before"] == 0.0, (
+        f"precondition: a float32 product compiled before any install must flush "
+        f"(CuPy appends -ftz=true to every NVRTC compile); it returned "
+        f"{result['before']!r}, so this host cannot show the defect")
+    assert result["attained"] is True, result["reasons"]
+    assert result["after"] == expected, (
+        f"cp.multiply compiled before the keep install returned {result['after']!r} "
+        f"after it, not {expected!r}: the pre-install kernel is still reachable "
+        f"({result['memo']})")
+    assert result["operator"] == expected, result
+    assert result["memo"]["walked"] is True, result["memo"]
+    assert result["memo"]["entries_dropped"]["ufunc._kernel_memo"] >= 1, result["memo"]
+    assert result["memo"]["live_compiled_kernels_after_drop"] == 0, result["memo"]
 
 
 def test_flush_refuses_when_the_compile_time_fenv_guard_could_not_be_installed(
@@ -1686,42 +1925,7 @@ def test_the_triton_hooks_are_idempotent(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_the_keep_stamp_still_satisfies_the_gates_policy_predicate(monkeypatch, tmp_path):
-    """Continuity, checked by CALLING the predicate rather than by paraphrasing it.
-
-    ``gate_triton_complex.probe_record_policy_reasons`` is the thing that decides
-    whether an artifact may license an expansion, and its substantive clauses are
-    about the strip COUNTERS, not the name: an earlier version of this test
-    asserted the name plus two ``isinstance`` checks and passed on a stamp the
-    real predicate refuses ("zero NVRTC compiles under a fresh cache").
-    """
-    gate_path = API_DIR / "parity" / "meep_gpu" / "gate_triton_complex.py"
-    spec = importlib.util.spec_from_file_location("gate_triton_complex", gate_path)
-    complex_gate = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(complex_gate)
-
-    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
-    cache.mkdir()
-    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
-    cupy, compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path)
-    sp.install_subnormal_policy(sp.KEEP, cupy=cupy)
-
-    # A stamp with no compiles behind it is REFUSED — by the real predicate.
-    assert complex_gate.probe_record_policy_reasons({"subnormal_policy": sp.policy_stamp()})
-
-    compiler.compile_using_nvrtc("src", ("--fmad=false", "-ftz=true"))
-    stamp = sp.policy_stamp()
-    assert complex_gate.probe_record_policy_reasons({"subnormal_policy": stamp}) == []
-    assert stamp["policy"] == "ieee_keep_ftz_stripped"
-    assert stamp["nvrtc_calls"] == 1 and stamp["ftz_removed"] == 1
-    assert stamp["requested"] == "keep"
-    assert stamp["resolved"] == "keep"
-    assert stamp["match_meep"] is None, "an explicit request measured nothing"
-    assert stamp["resolved_from"] == "argument"
-    assert stamp["machine"]
-
-
-def test_the_stamp_carries_the_question_the_answer_and_the_measurement(monkeypatch):
+def test_the_stamp_carries_the_question_the_answer_and_the_measurement(monkeypatch, tmp_path):
     """A reader must be able to tell WHY this process is on the policy it is on.
 
     ``requested`` is what was asked (``match_meep`` for a default startup),
@@ -1747,12 +1951,13 @@ def test_the_stamp_carries_the_question_the_answer_and_the_measurement(monkeypat
     sp._reset_for_tests()
     monkeypatch.delitem(sys.modules, "meep")      # the standalone-user process
     state["flushing"] = False                     # a host that keeps, so keep installs
+    _keep_policy_cupy_cache(monkeypatch, tmp_path)
     fallback = sp.install_subnormal_policy(strict=True)["match_meep"]
     assert fallback["measured"] is False and fallback["fallback"] == sp.KEEP
     assert "could NOT be measured" in fallback["why"]
 
 
-def test_an_uninstalled_stamp_carries_no_certification_grade_name(monkeypatch):
+def test_an_uninstalled_stamp_carries_no_certification_grade_name(monkeypatch, tmp_path):
     """A resolved policy is a preference; a stamp is a certification.
 
     Measured on an earlier revision: with ``MEEP_GPU_SUBNORMAL_POLICY=keep`` and
@@ -1766,6 +1971,7 @@ def test_an_uninstalled_stamp_carries_no_certification_grade_name(monkeypatch):
     assert stamp["policy"] not in (sp.CUPY_KEEP_POLICY_NAME, sp.FLUSH_POLICY_NAME)
     assert stamp["would_be_policy"] == sp.CUPY_KEEP_POLICY_NAME
     assert stamp["installed"] is False
+    _keep_policy_cupy_cache(monkeypatch, tmp_path)
     sp.install_subnormal_policy(sp.KEEP)
     assert sp.policy_stamp()["policy"] == sp.CUPY_KEEP_POLICY_NAME
 
@@ -2128,6 +2334,239 @@ def test_a_lever_that_moves_the_fpu_without_attaining_the_policy_restores_it(
     assert sp._drive_host_fpu_by_fenv(True) is False
     # Two calls: the candidate, then the saved environment put back.
     assert calls["set"] == 2, calls
+
+
+# ---------------------------------------------------------------------------
+# The x86-64 glibc MXCSR lever: flush and keep on Linux without MEEP
+# ---------------------------------------------------------------------------
+#
+# On x86 MEEP's own switch is the mechanism whenever MEEP is imported. A process
+# that does not import MEEP (the Tier A replay of MEEP identity blocks it on
+# purpose) had no lever that reached ``flush`` on Linux, because glibc exports no
+# environment object with the denormal bits set. The lever sets or clears MXCSR
+# FTZ|DAZ through ``fegetenv``/``fesetenv`` on a mirror of glibc's x86_64
+# ``fenv_t``. The tests that need the real FPU run on an x86-64 glibc host only;
+# the ones that pin the ladder, the layout and the guards run everywhere.
+
+#: glibc's x86_64 ``fenv_t`` as the compiler reads ``bits/fenv.h`` on the Linux
+#: reference host (glibc 2.31, GCC 9.4): a program printing ``sizeof`` and
+#: ``offsetof`` reads 32, 28 (``__mxcsr``) and 20 (``__data_offset``).
+_GLIBC_X86_64_FENV_T = {"sizeof": 32, "mxcsr": 28, "data_offset": 20}
+
+
+def _require_x86_64_glibc():
+    applies, abi = sp.glibc_x86_64_abi()
+    if not applies:
+        from conftest import requires_resource_skip  # noqa: PLC0415
+
+        requires_resource_skip("x86_64_glibc_host", f"the MXCSR lever's real-FPU "
+                                                    f"tests need an x86-64 glibc host: {abi}")
+
+
+def _thread_mxcsr():
+    """This thread's MXCSR, read through ``fegetenv`` on the mirrored structure."""
+    library = backends._math_library()  # noqa: SLF001
+    buffer = sp.ctypes.create_string_buffer(backends._FENV_BYTES)  # noqa: SLF001
+    assert library.fegetenv(sp.ctypes.addressof(buffer)) == 0
+    return int(sp._GlibcX8664Fenv.from_buffer(buffer).mxcsr)  # noqa: SLF001
+
+
+def _meep_not_imported(monkeypatch):
+    monkeypatch.delitem(sys.modules, "meep", raising=False)
+
+
+def test_the_mirrored_fenv_t_is_glibcs_x86_64_header_layout():
+    """The structure the lever writes into, against the header's own numbers."""
+    layout = sp._GlibcX8664Fenv  # noqa: SLF001
+    assert sp.ctypes.sizeof(layout) == _GLIBC_X86_64_FENV_T["sizeof"]
+    assert layout.mxcsr.offset == _GLIBC_X86_64_FENV_T["mxcsr"]
+    assert layout.data_offset.offset == _GLIBC_X86_64_FENV_T["data_offset"]
+    assert sp.ctypes.sizeof(layout) <= backends._FENV_BYTES  # noqa: SLF001
+    assert sp.MXCSR_FTZ_DAZ == 0x8040
+
+
+def test_the_mxcsr_lever_drives_flush_and_keep_without_meep_and_measures_both(monkeypatch):
+    """x86-64 glibc, MEEP not imported: both policies attain, by the MXCSR lever.
+
+    The verdict is the measurement: the install reads ``backends.subnormals_flushed``
+    and the test reads all four probes (FTZ and DAZ, float32 and float64) through
+    ``meep_identity.subnormal_state``, plus the MXCSR word itself, whose other
+    control bits (exception masks, rounding) must come back as they were.
+    """
+    _require_x86_64_glibc()
+    _meep_not_imported(monkeypatch)
+    from meep_gpu import meep_identity  # noqa: PLC0415
+
+    assert sp.install_host_policy(sp.KEEP, strict=True)["attained"] is True
+    entry = _thread_mxcsr()
+    flush = sp.install_host_policy(sp.FLUSH, strict=True)
+    assert flush["attained"] is True and flush["flushing_after"] is True, flush
+    assert flush["mechanism"] == sp._MXCSR_MECHANISM[True]  # noqa: SLF001
+    assert flush["installed"] is True, "the lever moved the FPU and the record must say so"
+    assert meep_identity.subnormal_state()["mode"] == "flush"
+    assert _thread_mxcsr() & 0x8040 == 0x8040
+    keep = sp.install_host_policy(sp.KEEP, strict=True)
+    assert keep["attained"] is True and keep["flushing_before"] is True, keep
+    assert keep["mechanism"] == sp._MXCSR_MECHANISM[False]  # noqa: SLF001
+    assert meep_identity.subnormal_state()["mode"] == "keep"
+    word = _thread_mxcsr()
+    assert word & 0x8040 == 0
+    assert word & 0x7F80 == entry & 0x7F80, (hex(entry), hex(word))
+
+
+def test_the_mxcsr_lever_reaches_the_calling_thread_only(monkeypatch):
+    """MXCSR is per thread: a thread already running keeps its own state.
+
+    MEEP's switch reaches every OpenMP thread through a parallel loop; this lever
+    reaches the thread that calls it, which is the thread that steps the array
+    path. A thread created after the call starts from a copy of its creator's state.
+    """
+    _require_x86_64_glibc()
+    _meep_not_imported(monkeypatch)
+    import threading  # noqa: PLC0415
+
+    from meep_gpu import meep_identity  # noqa: PLC0415
+
+    seen = {}
+    go, done = threading.Event(), threading.Event()
+
+    def running_before():
+        go.wait(30)
+        seen["before"] = meep_identity.subnormal_state()["mode"]
+        done.set()
+
+    def created_after():
+        seen["after"] = meep_identity.subnormal_state()["mode"]
+
+    assert sp.install_host_policy(sp.KEEP, strict=True)["attained"] is True
+    early = threading.Thread(target=running_before)
+    early.start()
+    assert sp.install_host_policy(sp.FLUSH, strict=True)["attained"] is True
+    go.set()
+    assert done.wait(30)
+    early.join(30)
+    late = threading.Thread(target=created_after)
+    late.start()
+    late.join(30)
+    assert meep_identity.subnormal_state()["mode"] == "flush"
+    assert seen == {"before": "keep", "after": "flush"}, seen
+
+
+def test_the_mxcsr_lever_restores_the_entry_word_when_the_measurement_disagrees(monkeypatch):
+    """x86-64 glibc, real FPU: the candidate goes in, the stand-in measurement says
+    no, and the entry environment is back — FTZ|DAZ as they were on entry."""
+    _require_x86_64_glibc()
+    _meep_not_imported(monkeypatch)
+    from meep_gpu import meep_identity  # noqa: PLC0415
+
+    entry_mode = meep_identity.subnormal_state()["mode"]
+    entry = _thread_mxcsr()
+    monkeypatch.setattr(sp.backends, "subnormals_flushed", lambda: entry & 0x8040 == 0x8040)
+    assert sp._drive_host_fpu_by_mxcsr(entry & 0x8040 != 0x8040) is False  # noqa: SLF001
+    assert "restored" in sp._MXCSR_LEVER_LAST["outcome"]  # noqa: SLF001
+    assert _thread_mxcsr() & 0xFFC0 == entry & 0xFFC0
+    assert meep_identity.subnormal_state()["mode"] == entry_mode
+
+
+def _fake_glibc(monkeypatch, word):
+    """An x86-64 glibc stand-in: ``fegetenv`` writes ``word`` at the mirrored
+    ``__mxcsr`` offset, and ``fesetenv`` records the word each call installs."""
+    installed = []
+
+    class _Library:
+        def fegetenv(self, address):
+            sp.ctypes.memset(address, 0, sp.ctypes.sizeof(sp._GlibcX8664Fenv))  # noqa: SLF001
+            sp.ctypes.c_uint.from_address(address + _GLIBC_X86_64_FENV_T["mxcsr"]).value = word
+            return 0
+
+        def fesetenv(self, address):
+            installed.append(sp.ctypes.c_uint.from_address(
+                address + _GLIBC_X86_64_FENV_T["mxcsr"]).value)
+            return 0
+
+    monkeypatch.setattr(sp, "glibc_x86_64_abi", lambda: (True, "a stand-in x86-64 glibc"))
+    monkeypatch.setattr(sp.backends, "_math_library", lambda: _Library())
+    return installed
+
+
+def test_the_mxcsr_lever_puts_the_saved_word_back_when_the_measurement_disagrees(monkeypatch):
+    """Every host: the candidate is the entry word with FTZ|DAZ set, and the second
+    ``fesetenv`` installs the entry word itself."""
+    installed = _fake_glibc(monkeypatch, 0x1F80)
+    monkeypatch.setattr(sp.backends, "subnormals_flushed", lambda: False)
+    assert sp._drive_host_fpu_by_mxcsr(True) is False  # noqa: SLF001
+    assert installed == [0x9FC0, 0x1F80], [hex(w) for w in installed]
+    installed.clear()
+    monkeypatch.setattr(sp.backends, "subnormals_flushed", lambda: True)
+    assert sp._drive_host_fpu_by_mxcsr(True) is True  # noqa: SLF001
+    assert installed == [0x9FC0]
+
+
+def test_the_mxcsr_lever_writes_nothing_when_the_word_is_not_an_mxcsr(monkeypatch):
+    """Reserved bits set means the offset is not this C library's ``__mxcsr``:
+    ``ldmxcsr`` would fault, so nothing is installed and the lever refuses."""
+    installed = _fake_glibc(monkeypatch, 0xDEAD1F80)
+    assert sp._drive_host_fpu_by_mxcsr(True) is False  # noqa: SLF001
+    assert installed == []
+    assert "reserved bits" in sp._MXCSR_LEVER_LAST["outcome"]  # noqa: SLF001
+
+
+def test_a_meep_less_flush_on_an_abi_with_no_lever_refuses_by_name(monkeypatch):
+    """Neither MEEP-less lever applies: ``flush`` refuses, naming the ABI; ``keep``,
+    which the host already does, still attains."""
+    _meep_not_imported(monkeypatch)
+    monkeypatch.setattr(sp, "_drive_host_fpu_by_fenv", lambda want_flush: False)
+    monkeypatch.setattr(sp, "glibc_x86_64_abi",
+                        lambda: (False, "this process is a stand-in ABI with no lever"))
+    if backends.subnormals_flushed():
+        from conftest import requires_resource_skip  # noqa: PLC0415
+
+        requires_resource_skip("host_fpu_mode", "the test needs a host that keeps at entry")
+    with pytest.warns(RuntimeWarning, match="UNATTAINABLE"):
+        report = sp.install_host_policy(sp.FLUSH, strict=False)
+    assert report["attained"] is False and report["installed"] is False, report
+    assert "a stand-in ABI with no lever" in report["reasons"][0]
+    assert "a stand-in ABI with no lever" in report["mechanism"]
+    with pytest.raises(sp.SubnormalPolicyUnattainable, match="stand-in ABI"):
+        sp.install_host_policy(sp.FLUSH, strict=True)
+    assert sp.install_host_policy(sp.KEEP, strict=True)["attained"] is True
+
+
+def test_the_mxcsr_lever_is_not_tried_when_meep_is_imported(monkeypatch):
+    """With MEEP imported its switch is the mechanism; a thread it did not move is
+    refused, never moved behind MEEP's back by the MEEP-less lever."""
+    calls = []
+    _module, state = _fake_meep(monkeypatch, effective=False)
+    state["flushing"] = False  # a host that keeps, whatever this process entered in
+    monkeypatch.setattr(sp, "_drive_host_fpu_by_fenv", lambda want_flush: False)
+    monkeypatch.setattr(sp, "_drive_host_fpu_by_mxcsr",
+                        lambda want_flush: calls.append(want_flush) or True)
+    with pytest.warns(RuntimeWarning, match="UNATTAINABLE"):
+        report = sp.install_host_policy(sp.FLUSH, strict=False)
+    assert report["attained"] is False
+    assert calls == [], "the MEEP-less lever ran in a process that imported MEEP"
+
+
+def test_a_meep_less_install_already_in_the_requested_state_writes_nothing(monkeypatch):
+    """Keep on a host that keeps, no MEEP: no lever runs and the record is the one a
+    keep install made before the MXCSR lever existed (no mechanism, nothing installed)."""
+    _meep_not_imported(monkeypatch)
+    monkeypatch.setattr(sp, "_drive_host_fpu_by_fenv", lambda want_flush: False)
+    monkeypatch.setattr(sp, "_drive_host_fpu_by_mxcsr",
+                        lambda want_flush: pytest.fail("the MXCSR lever ran with nothing to move"))
+    monkeypatch.setattr(sp.backends, "subnormals_flushed", lambda: False)
+    report = sp.install_host_policy(sp.KEEP, strict=True)
+    assert report["attained"] is True and report["installed"] is False, report
+    assert report["mechanism"] == "none (MEEP is not imported in this process)"
+
+
+def test_the_mxcsr_lever_declines_off_its_abi_without_touching_the_c_library(monkeypatch):
+    """Off x86-64 glibc the lever returns False before resolving any symbol."""
+    monkeypatch.setattr(sp, "glibc_x86_64_abi", lambda: (False, "not the mirrored ABI"))
+    monkeypatch.setattr(sp.backends, "_math_library",
+                        lambda: pytest.fail("the lever resolved the C library off its ABI"))
+    assert sp._drive_host_fpu_by_mxcsr(True) is False  # noqa: SLF001
+    assert sp._MXCSR_LEVER_LAST["outcome"] == "not run: not the mirrored ABI"  # noqa: SLF001
 
 
 def test_the_mps_executor_is_asked_only_when_it_is_named(monkeypatch):

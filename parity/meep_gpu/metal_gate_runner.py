@@ -5,8 +5,7 @@ Metal gates are deliberately separate processes: an MPS device gate must not
 share a process with a CPU-MEEP oracle.  That separation used to leave a
 provenance hole: gates could report a hand-curated source hash, or no decisive
 machine-readable release verdict at all.  This runner is the required public
-entry point for every ``gate_metal_*.py`` script and the standalone Metal
-expansion probes that license complex families.  It imports one measurement, runs its
+entry point for every ``gate_metal_*.py`` script.  It imports one measurement, runs its
 ``main`` function, then records the actual imported Python files by reading each
 module's ``__file__`` *after* the gate has run.
 
@@ -90,16 +89,6 @@ def discover_dispatch_gates(directory: Path = HERE) -> tuple[Path, ...]:
     :func:`run_current_measurement` and gets the same source-welded release.
     """
     names = ("gate_dispatch_metal_route.py",)
-    return tuple(directory / name for name in names if (directory / name).is_file())
-
-
-def discover_probes(directory: Path = HERE) -> tuple[Path, ...]:
-    """Return the standalone MPS expansion measurements used by Metal arms."""
-    names = (
-        "probe_metal_beta_expansion.py",
-        "probe_metal_folded_complex_expansion.py",
-        "probe_metal_cylindrical_complex.py",
-    )
     return tuple(directory / name for name in names if (directory / name).is_file())
 
 
@@ -296,45 +285,6 @@ def finalize_artifact(*, artifact_path: Path, gate_path: Path, exit_code: int,
     return payload
 
 
-def finalize_related_artifact(*, artifact_path: Path,
-                              parent_artifact: Path) -> dict[str, Any]:
-    """Weld a companion measurement emitted by an already-welded gate.
-
-    The complex gate writes its expansion probe in the same process as its primary
-    JSON result.  The parent artifact is therefore the only honest runtime-source
-    record for the companion: it is verified here before being inherited, rather
-    than copied by a caller or reconstructed from the working directory.
-    """
-    parent, reasons = _read_artifact(parent_artifact)
-    if not parent.get("release", {}).get("released"):
-        reasons.append(f"parent artifact is not released: {parent_artifact}")
-    parent_sources = parent.get("source_sha256")
-    if not isinstance(parent_sources, dict) or not parent_sources:
-        reasons.append(f"parent artifact has no normalized source map: {parent_artifact}")
-        parent_sources = {}
-    else:
-        reasons.extend(check_artifact_weld(parent))
-
-    payload, artifact_reasons = _read_artifact(artifact_path)
-    reasons.extend(artifact_reasons)
-    if "source_sha256" in payload:
-        payload["measurement_reported_source_sha256"] = payload["source_sha256"]
-    payload["source_sha256"] = parent_sources
-    payload["parent_artifact"] = str(parent_artifact.resolve())
-    weld_reasons = check_artifact_weld(payload)
-    reasons.extend(weld_reasons)
-    payload["weld"] = {
-        "passed": not reasons,
-        "source_count": len(parent_sources),
-        "inherited_from": str(parent_artifact.resolve()),
-    }
-    payload["release"] = {"released": not reasons, "reasons": reasons}
-    _atomic_json_write(payload, artifact_path)
-    print(f"[release] related released={payload['release']['released']} "
-          f"sources={len(parent_sources)} artifact={artifact_path}", flush=True)
-    return payload
-
-
 def _load_gate(gate_path: Path) -> ModuleType:
     name = f"_metal_gate_runtime_{gate_path.stem}_{os.getpid()}"
     specification = importlib.util.spec_from_file_location(name, gate_path)
@@ -380,11 +330,11 @@ def artifact_path_from_args(gate_path: Path, gate_args: Sequence[str]) -> Path:
 
 
 def run_current_measurement(gate_path: str | Path, gate_args: Sequence[str]) -> int:
-    """Execute and finalize one gate or standalone expansion measurement.
+    """Execute and finalize one gate measurement.
 
     Every direct gate calls the gate-named wrapper below under its ``__main__``
-    guards.  The campaign shell also invokes this generic entry for the three
-    standalone probes, so the JSON that licenses an expansion arm receives the same
+    guards.  The campaign shell (``run_metal_dispatch_campaign.sh``) invokes this
+    generic entry for each leg, so every gate JSON it writes receives the same
     source-welded release contract instead of becoming an ambient input.
     """
     path = Path(gate_path).resolve()
@@ -423,10 +373,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="arguments forwarded to the gate; begin with --")
     parser.add_argument("--verify", type=Path, metavar="ARTIFACT",
                         help="verify an existing artifact's source weld")
-    parser.add_argument("--weld-related", type=Path, metavar="ARTIFACT",
-                        help="weld a gate-produced companion measurement")
-    parser.add_argument("--parent-artifact", type=Path, metavar="GATE.json",
-                        help="released gate artifact that produced --weld-related")
     arguments = parser.parse_args(argv)
     if arguments.verify:
         payload, reasons = _read_artifact(arguments.verify)
@@ -437,21 +383,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
         print(f"[weld] PASS: {arguments.verify}", flush=True)
         return 0
-    if arguments.weld_related:
-        if not arguments.parent_artifact:
-            parser.error("--weld-related requires --parent-artifact")
-        payload = finalize_related_artifact(
-            artifact_path=arguments.weld_related.resolve(),
-            parent_artifact=arguments.parent_artifact.resolve(),
-        )
-        return 0 if payload["release"]["released"] else 1
     if arguments.gate is None:
         parser.error("GATE is required unless --verify is used")
-    allowed = (set(discover_gates()) | set(discover_probes())
-               | set(discover_dispatch_gates()))
+    allowed = set(discover_gates()) | set(discover_dispatch_gates())
     if arguments.gate.resolve() not in allowed:
-        parser.error("GATE must be a checked-in gate_metal_*.py, a Metal expansion "
-                     "probe, or one of the named dispatch gates "
+        parser.error("GATE must be a checked-in gate_metal_*.py or one of the named "
+                     "dispatch gates "
                      f"({', '.join(p.name for p in discover_dispatch_gates())})")
     forwarded = tuple(arguments.gate_args)
     if forwarded[:1] == ("--",):

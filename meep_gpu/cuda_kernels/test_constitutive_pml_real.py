@@ -24,9 +24,10 @@ CuPy-free is most of it:
 WHY THE DEVICE-TEXT ASSERTIONS ARE TEXTUAL. ``constitutive_kernels`` imports
 ``cupy`` at module scope because it holds ``cp.RawKernel`` objects, so importing
 it on this laptop is impossible. The kernel strings are still just text in a
-file, and the three defects that would silently break the sub-step — a flattened
-grouping, a store before the load, a dropped inverse epsilon — are all visible in
-that text. ``test_certification_record.py`` established the pattern (it evaluates
+file, and the defects that would silently break the sub-step — the grouping the
+file carried until 0.10, a store before the load, a dropped inverse epsilon, the
+accumulation run on every cell — are all visible in that text. Which cells take
+which form is executed against ``stepping`` in ``test_root_chunk_forms.py``. ``test_certification_record.py`` established the pattern (it evaluates
 the sibling module's device strings from the syntax tree without importing it);
 this file reuses it.
 
@@ -894,19 +895,27 @@ def test_every_module_function_the_slice_ships_is_reachable_from_the_entry_point
     exactly as long as ``constitutive_tables_for`` had no callers — they refuse
     inputs that could never arrive. Walking the call graph from the two public
     entry points is what turns "it is wired" into something that fails when it
-    stops being.
+    stops being. The walk goes THROUGH private helpers (the launchers in
+    ``_LAUNCHERS``, ``_launch``), because a public guard is reached through them;
+    only a public function nothing reaches is an orphan.
     """
     tree = ast.parse(kernel_source())
-    defined = {node.name: node for node in tree.body
-               if isinstance(node, ast.FunctionDef)
-               and not node.name.startswith("_")}
-    reachable, frontier = set(), ["update_fused_pml_real"]
+    every = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    defined = {name: node for name, node in every.items() if not name.startswith("_")}
+    launchers = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "_LAUNCHERS" for t in node.targets):
+            launchers += [value.id for value in node.value.values
+                          if isinstance(value, ast.Name)]
+    assert launchers, "the side -> launcher table was not found"
+    reachable, frontier = set(), ["update_fused_pml_real", *launchers]
     while frontier:
         name = frontier.pop()
         if name in reachable:
             continue
         reachable.add(name)
-        node = defined.get(name)
+        node = every.get(name)
         if node is None:
             continue
         frontier.extend(inner.func.id for inner in ast.walk(node)
@@ -1162,23 +1171,24 @@ def test_the_record_pins_the_device_source_that_was_gated():
         concatenated.encode("utf-8")).hexdigest()
 
 
-def test_the_grouping_is_two_separate_accumulations():
+def test_the_grouping_is_meeps_right_hand_side_first():
     """THE clause the whole slice's bit-identity rests on.
 
-    ``((f + kps*src) - kms*prev)``, which is ``stepping._apply_constitutive_pml``
-    (:2086-2087) and its scratch branch (:2093-2096) alike. The flattened
-    ``f + (kps*src - kms*prev)`` is a different float32 number and is what the
-    two complex constitutive kernels in the sibling module write.
+    ``f + ((kps*src) - (kms*prev))``: MEEP's step_update_EDHB forms the right-hand
+    side first (step_generic.cpp:689, :697), and so do both branches of
+    ``stepping._apply_constitutive_pml``. The two accumulations left to right,
+    ``((f + kps*src) - kms*prev)``, which this file carried until 0.10, is a
+    different float32 number.
     """
     prelude = device_sources(kernel_source())["_update_H_pml_real_kernel_code"]
-    assert "float a = f[idx] + kps * src;" in prelude
-    assert "f[idx] = a - kms * prev;" in prelude
-    # The flattened form, in either spelling, must not appear anywhere.
-    for flattened in ("kps * src - kms * prev", "kps*src - kms*prev",
-                      "+= kps", "+= kms"):
-        assert flattened not in prelude, (
-            f"the flattened grouping {flattened!r} is in the device source; the "
-            f"array path accumulates twice, left to right")
+    assert "float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;" in prelude
+    assert "f[idx] = value;" in prelude
+    # The two-accumulation form, in any spelling, must not appear anywhere.
+    for previous in ("float a = f[idx] + kps * src;", "a - kms * prev",
+                     "(f[idx] + (kps * src)) - (kms * prev)", "+= kps", "+= kms"):
+        assert previous not in prelude, (
+            f"the two-accumulation grouping {previous!r} is in the device source; the "
+            f"array path forms the right-hand side first")
 
 
 def test_prev_is_loaded_before_the_auxiliary_is_stored():
@@ -1189,8 +1199,8 @@ def test_prev_is_loaded_before_the_auxiliary_is_stored():
     weaker PML rather than as a bug.
     """
     body = device_sources(kernel_source())["_update_E_pml_real_kernel_code"]
-    load = body.index("float prev = fw[idx];")
-    store = body.index("fw[idx] = src;")
+    load = body.index("float prev = dsigw ? fw[idx] : 0.0f;")
+    store = body.index("if (dsigw) fw[idx] = src;")
     assert load < store, "the auxiliary is stored before its previous value is read"
 
 
@@ -1263,18 +1273,20 @@ def test_each_component_reads_its_own_axis_coefficient_table():
     so the y and z tables are never indexed there.
     """
     sources = device_sources(kernel_source())
-    for prefix, kernel in (("H", "_update_H_pml_real_kernel_code"),
-                           ("E", "_update_E_pml_real_kernel_code")):
+    for prefix, kernel, lattice in (("H", "_update_H_pml_real_kernel_code", "i"),
+                                    ("E", "_update_E_pml_real_kernel_code", "h")):
         body = sources[kernel]
         for component, axis, index in ((0, "x", "i"), (1, "y", "j"), (2, "z", "k")):
             target = prefix + "xyz"[component]
-            assert f"kps_{axis}[{index}], kms_{axis}[{index}]);" in body, (
+            # The pair, and the membership flag of the same axis on the same
+            # sub-lattice the pair is drawn from (H integer, E half-integer).
+            assert f"kps_{axis}[{index}], kms_{axis}[{index}], in_{lattice}_{axis});" in body, (
                 f"{target} does not read the {axis} coefficient pair at [{index}]")
         # ...and no component reads another axis's pair. Two components both
         # reading `kps_x[i]` is exactly the armed gate mutation
         # `own_axis_to_x_for_all_three`, and it must not be the shipped text.
         for axis, index in (("x", "i"), ("y", "j"), ("z", "k")):
-            assert body.count(f"kps_{axis}[{index}], kms_{axis}[{index}]);") == 1, (
+            assert body.count(f"kps_{axis}[{index}], kms_{axis}[{index}],") == 1, (
                 f"{kernel}: the {axis} coefficient pair is read by more than one "
                 f"component")
 
@@ -1483,14 +1495,21 @@ def test_the_probe_can_load_the_kernel_module_by_path():
     relative = [t for t in handlers
                 if any(isinstance(n, ast.ImportFrom) and n.level > 0
                        for n in ast.walk(t))]
-    assert len(relative) == 2, (
-        "expected the coverage and compile_cache relative imports each to carry "
-        "an ImportError fallback for the by-path load")
+    assert len(relative) == 3, (
+        "expected the coverage, compile_cache and chunk_map relative imports each to "
+        "carry an ImportError fallback for the by-path load")
     for block in relative:
         assert any(isinstance(handler.type, ast.Name)
                    and handler.type.id == "ImportError"
                    for handler in block.handlers)
-        assert "spec_from_file_location" in ast.dump(block)
+        sibling = [n.module for n in ast.walk(block)
+                   if isinstance(n, ast.ImportFrom) and n.level > 0]
+        if sibling == ["chunk_map"]:
+            # The record's length comes from the package's chunk_map, which a probe
+            # host has installed; it is NumPy-only, not a CuPy module.
+            assert "'meep_gpu.chunk_map'" in ast.dump(block)
+        else:
+            assert "spec_from_file_location" in ast.dump(block)
 
 
 # --------------------------------------------------------------------------
@@ -1506,7 +1525,7 @@ def test_the_probe_can_load_the_kernel_module_by_path():
 #
 # Every leg carries its own vacuity control: a leg that passes because the
 # operands cannot tell the two groupings apart has measured nothing. The control
-# is ``test_the_flattened_grouping_diverges_at_these_operands``, and the
+# is ``test_the_previous_grouping_diverges_at_these_operands``, and the
 # assumption it was WRITTEN to protect against turned out not to apply here —
 # see ``test_a_unit_coefficient_does_not_hide_this_groupings_divergence``, which
 # was written expecting an agreement and measured a divergence.
@@ -1520,31 +1539,32 @@ def _broadcast(values, axis: int):
 
 
 def _kernel_tree(field, fw, source, kps, kms):
-    """``constitutive_apply``'s arithmetic, transcribed from the shipped device source.
+    """``constitutive_apply``'s accumulation, transcribed from the shipped device source.
 
     Element-wise and in float32, so it is the same tree the kernel evaluates per
-    thread::
+    thread on a cell whose chunk carries the layer::
 
-        float prev = fw[idx];
-        fw[idx] = src;
-        float a = f[idx] + kps * src;
-        f[idx] = a - kms * prev;
+        float prev = dsigw ? fw[idx] : 0.0f;
+        if (dsigw) fw[idx] = src;
+        float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;
+        f[idx] = value;
 
-    ``test_the_grouping_is_two_separate_accumulations`` pins those four lines in
-    the device source, so this stays a transcription of what ships rather than of
-    what it once said.
+    ``test_the_grouping_is_meeps_right_hand_side_first`` pins those lines in the
+    device source, so this stays a transcription of what ships. Which cells take
+    this form and which take ``f = src`` is executed from the text itself in
+    ``test_root_chunk_forms.py``.
     """
+    prev = fw.copy()
+    fw[...] = source
+    field[...] = field + ((kps * source) - (kms * prev))
+
+
+def _previous_tree(field, fw, source, kps, kms):
+    """The grouping this file carried until 0.10: ``(f + kps*src) - kms*prev``. The control."""
     prev = fw.copy()
     fw[...] = source
     a = field + kps * source
     field[...] = a - kms * prev
-
-
-def _flattened_tree(field, fw, source, kps, kms):
-    """The complex kernels' tree: ``f + (kps*src - kms*prev)``. The control."""
-    prev = fw.copy()
-    fw[...] = source
-    field[...] = field + (kps * source - kms * prev)
 
 
 def _seeded(shape=(7, 5, 3), seed=20260815):
@@ -1632,18 +1652,18 @@ def test_the_scratch_branch_of_the_array_path_is_the_same_tree():
     assert _run(with_scratch, 60, state, coefficients) == plain
 
 
-def test_the_flattened_grouping_diverges_at_these_operands():
+def test_the_previous_grouping_diverges_at_these_operands():
     """THE VACUITY CONTROL. Without it the test above measures nothing.
 
-    ``f + (kps*src - kms*prev)`` is the tree both complex constitutive kernels in
-    ``step_curl_kernels.py`` are written in. If it agreed with the array path at
-    these operands, then so would anything, and the pass above would be a
-    statement about the seed rather than about the transcription.
+    ``(f + kps*src) - kms*prev`` is the tree this file carried until 0.10. If it
+    agreed with the array path at these operands, then so would anything, and the
+    pass above would be a statement about the seed rather than about the
+    transcription.
     """
     state, coefficients = _seeded()
-    assert _run(_flattened_tree, 60, state, coefficients) != \
+    assert _run(_previous_tree, 60, state, coefficients) != \
         _run(_array_path, 60, state, coefficients), (
-            "the flattened grouping agrees with the array path at these operands, "
+            "the previous grouping agrees with the array path at these operands, "
             "so the seed cannot distinguish the two trees and the bit-identity "
             "leg above is vacuous")
 
@@ -1657,7 +1677,7 @@ def test_a_unit_coefficient_does_not_hide_this_groupings_divergence():
     leg's six lifted corpus cases, all at 0.5, could not distinguish it).
 
     THAT RULE DOES NOT TRANSFER TO THIS SUB-STEP, and this test is the
-    measurement. What the flattened grouping changes here is the association of
+    measurement. What the previous grouping changes here is the association of
     the two ADDITIONS — ``((f + s) - p)`` against ``f + (s - p)`` — and that is a
     different float32 number whatever the coefficients are. Setting
     ``kps = kms = 1.0`` makes both multiplies exact and the two trees still
@@ -1673,10 +1693,10 @@ def test_a_unit_coefficient_does_not_hide_this_groupings_divergence():
     """
     state, _ = _seeded()
     ones = {"kps": numpy.float32(1.0), "kms": numpy.float32(1.0)}
-    assert _run(_flattened_tree, 60, state, ones) != \
+    assert _run(_previous_tree, 60, state, ones) != \
         _run(_array_path, 60, state, ones)
     # ...and the shipped tree still agrees, so the divergence above is the
-    # flattening rather than the unit table upsetting something else.
+    # regrouping rather than the unit table upsetting something else.
     assert _run(_kernel_tree, 60, state, ones) == \
         _run(_array_path, 60, state, ones)
 

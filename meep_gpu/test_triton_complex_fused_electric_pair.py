@@ -44,7 +44,6 @@ import sys
 import numpy as np
 import pytest
 
-from meep_gpu import expansion_refusal
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid, Mirror
 from meep_gpu.pml import PML
@@ -54,8 +53,6 @@ from meep_gpu.triton_kernels import complex_fused_magnetic_pair as twin
 
 PACKAGE_DIR = pathlib.Path(product.__file__).parent
 API_ROOT = PACKAGE_DIR.parents[1]
-KEEP_PROBE = (API_ROOT / "parity" / "meep_gpu" / "results"
-              / "expansion_probe_2026-08-17" / "expansion_probe_keep.json")
 #: The board that priced this cell, and the line it priced it on. Read rather than
 #: quoted: the module docstring names a ceiling of 16/16, and a docstring number
 #: nothing re-derives is a number that goes stale silently.
@@ -72,10 +69,6 @@ def build(cell=(3.0, 3.0, 0.0), boundaries="periodic", k_point=(0.23, 0.0, 0.0),
     fields = Fields(grid=grid, force_complex_fields=complex_storage)
     fields.enable_pml_storage()
     return fields, PML(grid=grid, thickness=thickness)
-
-
-def probe_record():
-    return json.loads(KEEP_PROBE.read_text(encoding="utf-8"))
 
 
 def residual(verdict):
@@ -111,6 +104,19 @@ def electric_deposit(fields, component="Ey"):
     assert deposit_repair._deposit_index(source) is not None, (
         "the case cannot exercise the repair: this source publishes no deposit index")
     return source
+
+
+def _every_cell(shape):
+    """Every cell of every resolved axis inside a layer chunk, both lattices."""
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, RECORD_WORDS, record_index
+
+    record = np.zeros(RECORD_WORDS, dtype=np.int32)
+    for axis, n in enumerate(shape):
+        if n > 1:
+            record[RECORD_PRESENCE_WORD] |= 1 << axis
+            for half in (False, True):
+                record[record_index(half, axis, 1)] = n
+    return record
 
 
 class Source:
@@ -149,7 +155,8 @@ def test_the_backward_constexpr_is_step_Ds_and_only_step_Ds():
     arrays, curl, constitutive = _bare_arrays()
     plan = product.plan_complex_fused_electric_pair_from_arrays(
         arrays, curl, constitutive, (0, 0, 0), (False, False, False),
-        (None, None, None), 0.35, 1)
+        (None, None, None), 0.35,
+            chunk_bounds=_every_cell((4, 5, 6)))
     assert plan.backward == 1
 
 
@@ -168,7 +175,8 @@ def test_the_scale_constexpr_is_the_E_sides_and_the_twin_carries_none():
     arrays, curl, constitutive = _bare_arrays()
     plan = product.plan_complex_fused_electric_pair_from_arrays(
         arrays, curl, constitutive, (0, 0, 0), (False, False, False),
-        (None, None, None), 0.35, 1)
+        (None, None, None), 0.35,
+            chunk_bounds=_every_cell((4, 5, 6)))
     assert plan.scale == 1
 
 
@@ -199,22 +207,20 @@ def test_the_kernel_guards_the_inv_eps_load_on_SCALE_and_indexes_it_UNDOUBLED():
         assert any(call in ast.walk(branch) for call in inv_eps)
 
 
-def test_the_inv_eps_multiply_is_field_LEFT_and_adds_no_fourth_orientation():
-    """The SCALE arm's multiply is ``_mul_field_left``, which the curl half already
-    calls six times — which is why :data:`PRODUCT_PROBE_PATTERNS` stays the BASE set.
-
-    A different helper here would be a fourth operand orientation and would need its
-    own probe pattern before it could be licensed under any arm.
+def test_the_inv_eps_multiply_is_one_product_per_part_field_LEFT():
+    """The SCALE arm multiplies each stored part by the real ``inv_eps`` once
+    (``part_products.scale``; MEEP's ``DOCMP`` loop), the field word LEFT: one
+    float32 product per part, no zero cross term and no helper.
     """
     node = _kernel_ast(product, "complex_fused_curl_constitutive_D")
     guarded = [n for n in ast.walk(node)
                if isinstance(n, ast.If) and getattr(n.test, "id", None) == "SCALE"]
+    assert len(guarded) == 3
     for branch in guarded:
-        called = {getattr(n.func, "id", None) for n in ast.walk(branch)
-                  if isinstance(n, ast.Call)}
-        assert "_mul_field_left" in called, ast.unparse(branch)
-    assert product.PRODUCT_PROBE_PATTERNS == tuple(complex_fields.PROBE_PATTERNS)
-    assert product.PRODUCT_PROBE_PATTERNS == twin.PRODUCT_PROBE_PATTERNS
+        text = ast.unparse(branch)
+        assert "src_re = src_re * ie" in text and "src_im = src_im * ie" in text, text
+        assert not any(isinstance(n, ast.Call) and getattr(n.func, "id", "")
+                       .startswith("_") for n in ast.walk(branch)), text
 
 
 def test_the_kernel_body_calls_only_the_three_licensed_multiply_helpers():
@@ -222,12 +228,13 @@ def test_the_kernel_body_calls_only_the_three_licensed_multiply_helpers():
     called = {getattr(n.func, "id", None) for n in ast.walk(node)
               if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
     multiplies = {name for name in called
-                  if name and (name.startswith("_mul_") or name.startswith("_rotate_"))}
-    assert multiplies <= set(product.LICENSED_MULTIPLY_HELPERS), multiplies
-    assert multiplies == set(product.LICENSED_MULTIPLY_HELPERS), (
+                  if name and (name.startswith("_mul_") or name.startswith("_rotate_")
+                               or name == "_connect")}
+    assert multiplies <= set(product.MULTIPLY_HELPERS), multiplies
+    assert multiplies == set(product.MULTIPLY_HELPERS), (
         "a licensed helper is declared but never called; the declaration is wider "
         "than the body")
-    assert set(product.LICENSED_MULTIPLY_HELPERS) == set(twin.LICENSED_MULTIPLY_HELPERS)
+    assert set(product.MULTIPLY_HELPERS) == set(twin.MULTIPLY_HELPERS)
 
 
 # ---------------------------------------------------------------------------
@@ -331,18 +338,14 @@ def test_the_predicate_refuses_when_the_baked_wall_map_leaves_the_engines():
     """The clause is only worth having if it fires. ``IYEE_SHIFTS`` is the engine's
     and cannot be edited from here, so the module's baked copy is moved instead —
     the same disagreement, reached from the other side."""
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        record = probe_record()
-        before = product.complex_fused_electric_pair_coverage(fields, pml, (),
-                                                              probe=record)
-        saved = product.WALL_CLEARED_COMPONENTS
-        product.WALL_CLEARED_COMPONENTS = ((0,), (1,), (2,))  # the twin's map
-        try:
-            after = product.complex_fused_electric_pair_coverage(fields, pml, (),
-                                                                 probe=record)
-        finally:
-            product.WALL_CLEARED_COMPONENTS = saved
+    fields, pml = build()
+    before = product.complex_fused_electric_pair_coverage(fields, pml, ())
+    saved = product.WALL_CLEARED_COMPONENTS
+    product.WALL_CLEARED_COMPONENTS = ((0,), (1,), (2,))  # the twin's map
+    try:
+        after = product.complex_fused_electric_pair_coverage(fields, pml, ())
+    finally:
+        product.WALL_CLEARED_COMPONENTS = saved
     assert residual(before) == []
     assert not after.covered
     assert any("zero one plane and leave another live" in reason
@@ -360,10 +363,9 @@ def test_the_zero_metal_axes_rule_is_imported_and_not_respelled():
 # ---------------------------------------------------------------------------
 
 def test_a_complex_bloch_grid_is_admitted_modulo_the_numpy_host():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = product.complex_fused_electric_pair_coverage(
-            fields, pml, (), probe=probe_record())
+    fields, pml = build()
+    verdict = product.complex_fused_electric_pair_coverage(
+        fields, pml, ())
     assert residual(verdict) == []
 
 
@@ -371,13 +373,9 @@ def test_the_seam_clauses_add_nothing_the_twin_does_not_also_refuse():
     """The two predicates must agree on every configuration where the seam is not
     the difference. A D-side clause that fired on a plain complex Bloch grid would
     be a refusal the board could not see and nobody would look for."""
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        record = probe_record()
-        mine = product.complex_fused_electric_pair_coverage(fields, pml, (),
-                                                            probe=record)
-        theirs = twin.complex_fused_magnetic_pair_coverage(fields, pml, (),
-                                                           probe=record)
+    fields, pml = build()
+    mine = product.complex_fused_electric_pair_coverage(fields, pml, ())
+    theirs = twin.complex_fused_magnetic_pair_coverage(fields, pml, ())
     assert residual(mine) == residual(theirs) == []
 
 
@@ -390,18 +388,16 @@ def test_an_electric_deposit_is_CARRIED_and_a_magnetic_source_is_irrelevant():
     the sixteen complex corpus rows declare an electric source, so this is the
     clause that decides whether the product is worth 1 row or 16.
     """
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        record = probe_record()
-        # (1) the OTHER seam's source: not this pair's business at all.
-        magnetic = product.complex_fused_electric_pair_coverage(
-            fields, pml, (Source("B"),), probe=record)
-        # (2) a REAL electric deposit in this seam: CARRIED by the repair.
-        carried = product.complex_fused_electric_pair_coverage(
-            fields, pml, (electric_deposit(fields),), probe=record)
-        # (3) an electric source that publishes no index: STILL REFUSED BY NAME.
-        opaque = product.complex_fused_electric_pair_coverage(
-            fields, pml, (Source("D"),), probe=record)
+    fields, pml = build()
+    # (1) the OTHER seam's source: not this pair's business at all.
+    magnetic = product.complex_fused_electric_pair_coverage(
+        fields, pml, (Source("B"),))
+    # (2) a REAL electric deposit in this seam: CARRIED by the repair.
+    carried = product.complex_fused_electric_pair_coverage(
+        fields, pml, (electric_deposit(fields),))
+    # (3) an electric source that publishes no index: STILL REFUSED BY NAME.
+    opaque = product.complex_fused_electric_pair_coverage(
+        fields, pml, (Source("D"),))
     assert residual(magnetic) == []
     assert residual(carried) == [], residual(carried)
     assert not opaque.covered
@@ -416,11 +412,10 @@ def test_holding_the_carry_flag_False_puts_the_electric_seam_refusal_straight_ba
     The refusal prose names the driver line, because that is what a reader needs
     to check the claim against.
     """
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        monkeypatch.setattr(product, "CARRIES_DEPOSIT_REPAIR", False)
-        held = product.complex_fused_electric_pair_coverage(
-            fields, pml, (electric_deposit(fields),), probe=probe_record())
+    fields, pml = build()
+    monkeypatch.setattr(product, "CARRIES_DEPOSIT_REPAIR", False)
+    held = product.complex_fused_electric_pair_coverage(
+        fields, pml, (electric_deposit(fields),))
     assert not held.covered
     assert any("is electric" in reason and "BETWEEN step_D and update_E" in reason
                for reason in held.reasons), held.reasons
@@ -439,10 +434,9 @@ def test_the_declared_flag_and_the_wiring_argument_move_together():
 
 
 def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = product.complex_fused_electric_pair_coverage(
-            fields, pml, None, probe=probe_record())
+    fields, pml = build()
+    verdict = product.complex_fused_electric_pair_coverage(
+        fields, pml, None)
     assert not verdict.covered
     assert any("was not declared" in reason for reason in verdict.reasons)
 
@@ -458,11 +452,10 @@ def test_a_registered_susceptibility_is_refused_by_this_products_own_clause():
     class _Pole:
         pass
 
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        object.__setattr__(fields, "polarizations", (_Pole(),))
-        verdict = product.complex_fused_electric_pair_coverage(
-            fields, pml, (), probe=probe_record())
+    fields, pml = build()
+    object.__setattr__(fields, "polarizations", (_Pole(),))
+    verdict = product.complex_fused_electric_pair_coverage(
+        fields, pml, ())
     assert not verdict.covered
     assert any("D and not (D - sum P)" in reason for reason in verdict.reasons), (
         verdict.reasons)
@@ -481,10 +474,9 @@ def test_a_fields_that_cannot_hand_over_inv_eps_is_refused_not_crashed():
         def __getattr__(self, name):
             return getattr(object.__getattribute__(self, "_inner"), name)
 
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = product.complex_fused_electric_pair_coverage(
-            _NoEps(fields), pml, (), probe=probe_record())
+    fields, pml = build()
+    verdict = product.complex_fused_electric_pair_coverage(
+        _NoEps(fields), pml, ())
     assert not verdict.covered
     assert any("inverse_epsilon_for" in reason for reason in verdict.reasons), (
         verdict.reasons)
@@ -495,47 +487,34 @@ def test_a_fold_is_refused_by_this_products_own_clause_and_not_only_by_the_halve
     wording. If the complex tranche ever admits a fold, the halves' refusal
     disappears and this weld would silently swallow two passes that had started
     doing work."""
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build(boundaries=("metallic", "metallic", "periodic"),
-                            k_point=(0.0, 0.0, 0.0), mirrors=(("Y", 1),))
-        verdict = product.complex_fused_electric_pair_coverage(
-            fields, pml, (), probe=probe_record())
+    fields, pml = build(boundaries=("metallic", "metallic", "periodic"),
+                        k_point=(0.0, 0.0, 0.0), mirrors=(("Y", 1),))
+    verdict = product.complex_fused_electric_pair_coverage(
+        fields, pml, ())
     assert not verdict.covered
     seam = [reason for reason in verdict.reasons
             if "fill_symmetry_bc_D" in reason or "symmetry passes in this seam" in reason]
     assert seam, verdict.reasons
 
 
-def test_a_missing_expansion_probe_is_a_refusal_not_a_guessed_arm():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = product.complex_fused_electric_pair_coverage(fields, pml, (),
-                                                               probe={})
-    assert not verdict.covered
-    assert any("expansion probe artifact" in reason for reason in verdict.reasons)
-
-
 def test_no_pml_is_refused_because_update_E_is_a_no_op_without_one():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = product.complex_fused_electric_pair_coverage(
-            fields, None, (), probe=probe_record())
+    fields, pml = build()
+    verdict = product.complex_fused_electric_pair_coverage(
+        fields, None, ())
     assert not verdict.covered
     assert any("PML" in reason for reason in verdict.reasons)
 
 
 def test_real_storage_is_refused_this_is_the_complex_arm():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build(complex_storage=False)
-        verdict = product.complex_fused_electric_pair_coverage(
-            fields, pml, (), probe=probe_record())
+    fields, pml = build(complex_storage=False)
+    verdict = product.complex_fused_electric_pair_coverage(
+        fields, pml, ())
     assert not verdict.covered
 
 
 def test_the_predicate_reports_both_halves_reasons_with_their_side_named():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = product.complex_fused_electric_pair_coverage(fields, pml, ())
+    fields, pml = build()
+    verdict = product.complex_fused_electric_pair_coverage(fields, pml, ())
     prefixes = {reason.split(":")[0] for reason in verdict.reasons}
     assert "complex curl half" in prefixes, verdict.reasons
     assert "complex constitutive half" in prefixes, verdict.reasons
@@ -547,20 +526,18 @@ def test_the_builder_refuses_every_configuration_the_predicate_refuses():
     A licence refused at the coverage seam but still bound at the plan seam is how
     an unlicensed arm reaches a kernel.
     """
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        folded_fields, folded_pml = build(
-            boundaries=("metallic", "metallic", "periodic"),
-            k_point=(0.0, 0.0, 0.0), mirrors=(("Y", 1),))
-        record = probe_record()
-        for args, kwargs in (
-            ((fields, pml, (Source("D"),)), {"probe": record}),
-            ((fields, pml, None), {"probe": record}),
-            ((fields, pml, ()), {"probe": {}}),
-            ((fields, None, ()), {"probe": record}),
-            ((folded_fields, folded_pml, ()), {"probe": record}),
-        ):
-            assert product.plan_complex_fused_electric_pair(*args, **kwargs) is None
+    fields, pml = build()
+    folded_fields, folded_pml = build(
+        boundaries=("metallic", "metallic", "periodic"),
+        k_point=(0.0, 0.0, 0.0), mirrors=(("Y", 1),))
+    for args, kwargs in (
+        ((fields, pml, (Source("D"),)), {}),
+        ((fields, pml, None), {}),
+        ((fields, pml, ()), {}),
+        ((fields, None, ()), {}),
+        ((folded_fields, folded_pml, ()), {}),
+    ):
+        assert product.plan_complex_fused_electric_pair(*args, **kwargs) is None
 
 
 # ---------------------------------------------------------------------------
@@ -583,23 +560,25 @@ def _bare_arrays(shape=(4, 5, 6)):
     return arrays, curl, constitutive
 
 
-def test_the_phase_table_is_rounded_to_complex64_AND_conjugated_for_this_backward_step():
-    """Backward sub-step: the imaginary part is NEGATED, the conjugate of
-    ``_shift_down`` (complex_fields:1818-1822).
+def test_the_connection_is_the_word_above_the_window_for_this_backward_step():
+    """Backward sub-step: D reads the not-owned word ABOVE the stored window,
+    ``eikna`` (``stepping._bloch_ghost_operand``), where the B twin reads
+    ``conj(eikna)``.
 
     This is the twin's test with the sign flipped, and the flip is the assertion:
-    a forward-convention phase on a backward curl is a wrong Bloch factor on
-    exactly one wrapped plane per axis — a boundary-only error that a bulk field
+    a forward-convention factor on a backward curl is a wrong Bloch factor on
+    exactly one connected plane per axis — a boundary-only error that a bulk field
     comparison can miss entirely.
     """
     arrays, curl, constitutive = _bare_arrays()
     phase = complex(0.5, 0.25)
     plan = product.plan_complex_fused_electric_pair_from_arrays(
         arrays, curl, constitutive, (0, 0, 0), (False, False, False),
-        (phase, None, None), 0.35, 1)
-    assert plan.phased == (1, 0, 0)
-    assert plan.phase_values[:2] == (float(np.float32(phase.real)),
-                                     -float(np.float32(phase.imag)))
+        (phase, None, None), 0.35,
+            chunk_bounds=_every_cell((4, 5, 6)))
+    assert plan.connections == (complex_fields.CONNECTION_KINDS["phase"], 0, 0)
+    assert plan.connection_values[:2] == (float(np.float32(phase.real)),
+                                          float(np.float32(phase.imag)))
     # ...and the twin, on the same phase, does NOT negate — which is what makes
     # the line above a statement about this sub-step and not about the helper.
     twin_arrays = {name.replace("D", "B").replace("Ex", "Hx").replace("Ey", "Hy")
@@ -610,10 +589,11 @@ def test_the_phase_table_is_rounded_to_complex64_AND_conjugated_for_this_backwar
                         for axis in "xyz"})
     twin_plan = twin.plan_complex_fused_magnetic_pair_from_arrays(
         twin_arrays, curl, constitutive, (0, 0, 0), (False, False, False),
-        (phase, None, None), 0.35, 1)
-    assert twin_plan.phase_values[1] == float(np.float32(phase.imag))
-    # An unphased axis passes (1.0, 0.0) under PH = 0 and emits no multiply.
-    assert plan.phase_values[2:] == (1.0, 0.0, 1.0, 0.0)
+        (phase, None, None), 0.35,
+            chunk_bounds=_every_cell((4, 5, 6)))
+    assert twin_plan.connection_values[1] == float(np.float32(-phase.imag))
+    # An unphased axis carries no connection (kind 0) and (1.0, 0.0).
+    assert plan.connection_values[2:] == (1.0, 0.0, 1.0, 0.0)
 
 
 def test_the_engine_route_binds_the_MIRRORED_lattices_and_not_the_twins():
@@ -647,7 +627,7 @@ def test_the_plan_refuses_a_placeholder_inv_eps_binding():
     with pytest.raises(ValueError, match="placeholder"):
         product.ComplexFusedElectricPairPlan(
             shape, 0.35, (0, 0, 0), (False, False, False), (0, 0, 0),
-            (1.0, 0.0, 1.0, 0.0, 1.0, 0.0), 1, 256,
+            (1.0, 0.0, 1.0, 0.0, 1.0, 0.0), 256,
             [arrays[n] for n in ("Dx", "Dy", "Dz")],
             [arrays[n] for n in ("fu_Dx", "fu_Dy", "fu_Dz")],
             [arrays[n] for n in ("Hx", "Hy", "Hz")],
@@ -656,7 +636,7 @@ def test_the_plan_refuses_a_placeholder_inv_eps_binding():
             [arrays[n] for n in ("f_w_Ex", "f_w_Ey", "f_w_Ez")],
             None,
             [constitutive[f"{stem}_{axis}"] for axis in "xyz"
-             for stem in ("kps", "kms")])
+             for stem in ("kps", "kms")], chunk_bounds=_every_cell(shape))
 
 
 def test_the_plan_refuses_a_cell_count_whose_word_index_overflows_int32():
@@ -683,7 +663,8 @@ def test_the_plan_refuses_a_cell_count_whose_word_index_overflows_int32():
     with pytest.raises(ValueError, match="overflows"):
         product.plan_complex_fused_electric_pair_from_arrays(
             arrays, curl, constitutive, (0, 0, 0), (False, False, False),
-            (None, None, None), 0.35, 1)
+            (None, None, None), 0.35,
+            chunk_bounds=_every_cell((4, 5, 6)))
 
 
 def test_a_real_storage_volume_is_refused_at_the_word_view():
@@ -693,7 +674,8 @@ def test_a_real_storage_volume_is_refused_at_the_word_view():
     with pytest.raises(ValueError, match="complex64"):
         product.plan_complex_fused_electric_pair_from_arrays(
             arrays, curl, constitutive, (0, 0, 0), (False, False, False),
-            (None, None, None), 0.35, 1)
+            (None, None, None), 0.35,
+            chunk_bounds=_every_cell((4, 5, 6)))
 
 
 def test_the_run_passes_both_constexprs_and_every_pointer_group_in_order(monkeypatch):
@@ -716,7 +698,8 @@ def test_the_run_passes_both_constexprs_and_every_pointer_group_in_order(monkeyp
     arrays, curl, constitutive = _bare_arrays()
     plan = product.plan_complex_fused_electric_pair_from_arrays(
         arrays, curl, constitutive, (0, 0, 0), (False, False, False),
-        (None, None, None), 0.35, 1)
+        (None, None, None), 0.35,
+            chunk_bounds=_every_cell((4, 5, 6)))
     seen = {}
 
     class _Recorder:
@@ -770,10 +753,9 @@ def test_the_module_imports_and_answers_coverage_with_triton_absent(monkeypatch)
         assert reloaded.complex_fused_curl_constitutive_D is None
         with pytest.raises(ImportError, match="triton"):
             reloaded.complex_fused_curl_constitutive_D_kernel()
-        with expansion_refusal.declaring_run_policy("keep"):
-            fields, pml = build()
-            verdict = reloaded.complex_fused_electric_pair_coverage(
-                fields, pml, (), probe=probe_record())
+        fields, pml = build()
+        verdict = reloaded.complex_fused_electric_pair_coverage(
+            fields, pml, ())
         assert residual(verdict) == []
     finally:
         monkeypatch.setattr(builtins, "__import__", real_import)

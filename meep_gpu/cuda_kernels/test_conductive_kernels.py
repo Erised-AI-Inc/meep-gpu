@@ -10,8 +10,9 @@ Four things are settled here and nothing else is:
    must recover the sibling's kernel EXACTLY.
 
 2. **The arithmetic.** A NumPy transcription of the two device tails -- written as
-   the KERNEL writes them, per cell, selecting a branch rather than computing all
-   four over the volume -- is compared against ``stepping.step_B`` /
+   the KERNEL writes them, per cell, selecting a form from the chunk record's
+   membership flags and from which chunks keep the conductivity rather than
+   computing every form over the volume -- is compared against ``stepping.step_B`` /
    ``stepping.step_D`` as uint32 words. This is the local half of the question the
    brief asked ("decide by measurement whether one kernel can serve a mixed
    run"): the mixed masks are swept, and the answer is measured rather than
@@ -44,6 +45,8 @@ import numpy
 import pytest
 
 from .. import stepping
+from ..chunk_map import (RECORD_PRESENCE_WORD, ChunkLayout, chunk_bounds_record,
+                         membership_from_record)
 from ..fields import IYEE_SHIFTS, Fields
 from ..grid import Grid, Mirror
 from ..pml import PML
@@ -205,27 +208,28 @@ def test_the_pml_templates_are_the_certified_pairs_bytes_plus_a_tail(mine, their
     ours = _strip_guards(_body(conductive_kernels.kernel_source(mine, LOSSLESS), mine))
     ours = ours.replace(conductive_kernels._COND_PARAMS, "")
     ours = ours.replace(conductive_kernels._FCOND_PARAMS, "")
+    ours = ours.replace(conductive_kernels._KEEP_PARAMS, "")
     ours = ours.replace(f"void {mine}(", f"void {theirs}(")
     assert ours == certified
 
 
 def _preprocess(text: str) -> str:
-    """The text NVRTC would see: the ``#if COND<n>`` arms resolved by the defines.
+    """The text NVRTC would see: the ``#if COND<n>`` / ``#if KEEP<n>`` arms resolved.
 
     Written out rather than shelled to a preprocessor because the whole claim is
     that the guard is the mechanism -- so the mechanism has to be evaluated here,
     on the same defines the kernel is built with, and an unbalanced nest has to
-    raise rather than be silently dropped.
+    raise rather than be silently dropped. ``KEPT<n>`` macros are left unexpanded.
     """
     defines = {}
     out, keeping = [], []
     for line in text.splitlines(keepends=True):
         stripped = line.strip()
-        if stripped.startswith("#define COND"):
+        if stripped.startswith(("#define COND", "#define KEEP")):
             name, value = stripped[len("#define "):].split()
             defines[name] = int(value)
             continue
-        if stripped.startswith("#if COND"):
+        if stripped.startswith(("#if COND", "#if KEEP")):
             expression = stripped[len("#if "):].strip()
             keeping.append(any(defines[name.strip()]
                                for name in expression.split("||")))
@@ -258,7 +262,7 @@ def test_a_lossless_component_compiles_out_of_the_conductive_branch(name):
         compiled = _preprocess(conductive_kernels.kernel_source(name, tuple(cond)))
         body = _body(compiled, name)
         body = body[body.index(") {"):]
-        for pointer in (f"cf{index}", f"ci{index}", f"fc{index}"):
+        for pointer in (f"cf{index}", f"ci{index}", f"fc{index}", f"KEPT{index}"):
             assert pointer not in body, (
                 f"{name}: component {index} still reads {pointer} at "
                 f"COND{index} == 0")
@@ -288,17 +292,56 @@ def test_only_the_reachable_tail_helper_is_compiled(name, helper, absent):
     assert f"__forceinline__ void {absent}" not in live
 
 
-def test_the_four_case_tail_carries_the_exact_predicate_not_a_tolerance():
-    """``!= 1.0f``, transcribed from stepping.py:2055-2058.
+def test_the_forms_are_chosen_by_chunk_membership_not_by_coefficient_identity():
+    """MEEP chooses a form per structure chunk; the kernel reads which from data.
 
-    A ``>=`` or an epsilon here is a defect the REAL coefficient tables cannot
-    expose -- there is no near-one band in them -- so it has to be pinned on the
-    text as well as driven by the gate's synthetic near-one table.
+    The coefficient-identity predicate this family carried until 0.10
+    (``kms != 1.0f``) is gone from the text, the helper takes the two membership flags
+    and the keep flag, and every call passes the flags the certified decode block
+    declares for that target's dsig and dsigu axes on its own sub-lattice
+    (:func:`conductive_kernels.membership_flags`) -- the lattice ``RegionPlan.axis_mask``
+    and ``RegionPlan.mask`` read for the oracle.
     """
     text = conductive_kernels._COND_PML_APPLY_PRELUDE
-    assert "(km1 != 1.0f) || (si1 != 1.0f)" in text
-    assert "(km2 != 1.0f) || (si2 != 1.0f)" in text
-    assert not re.search(r"fabs|epsilon|1e-", text)
+    assert "!= 1.0f" not in text and not re.search(r"fabs|epsilon|1e-", text)
+    assert "    int dsig, int dsigu, int kept\n" in text
+    for name, targets in (("step_B_pml_conductive", ("Bx", "By", "Bz")),
+                          ("step_D_pml_conductive", ("Dx", "Dy", "Dz"))):
+        template = conductive_kernels.kernel_template(name)
+        terms = {term.target: term for term in _terms(
+            "step_B" if name.startswith("step_B") else "step_D")}
+        for index, target in enumerate(targets):
+            dsig, dsigu = conductive_kernels.membership_flags(target)
+            for flag, letter in ((dsig, terms[target].dsig), (dsigu, terms[target].dsigu)):
+                axis = "xyz".index(letter)
+                lattice = "h" if IYEE_SHIFTS[target][axis] == 1 else "i"
+                assert flag == f"in_{lattice}_{letter}"
+                assert f"const int {flag} = " in template
+            assert f", {dsig}, {dsigu}, KEPT{index});" in template
+
+
+def test_the_auxiliaries_are_touched_only_on_their_forms_cells():
+    """The auxiliary contract (KERNELS.md section 1, C2), pinned on the text.
+
+    ``u`` is loaded and stored only under ``dsigu`` and ``c`` only under ``dsig``; the
+    gate's unguarded-load mutations are declared NULLS (no stored word changes), so
+    the guard on the LOAD is pinned here rather than by a word comparison.
+    """
+    text = conductive_kernels._COND_PML_APPLY_PRELUDE
+    assert "    float uv = dsigu ? u[idx] : 0.0f;\n" in text
+    assert "    float cv = dsig ? c[idx] : 0.0f;\n" in text
+    assert "    if (dsigu) u[idx] = u_new;\n" in text
+    assert "    if (dsig) c[idx] = c_new;\n" in text
+    assert text.count("u[idx]") == 2 and text.count("c[idx]") == 2
+
+
+def test_the_increment_is_formed_before_it_is_added():
+    """MEEP's grouping (step_generic.cpp:167, :209): ``(c' - c)`` first, then added."""
+    text = conductive_kernels._COND_PML_APPLY_PRELUDE
+    assert "    float inc = c_new - cv;\n" in text
+    assert "(((uv * km1) + inc) * si1)" in text
+    assert "(((fv * km1) + inc) * si1)" in text
+    assert "+ c_new) - cv" not in text
 
 
 def test_a_restructured_sibling_fails_loudly_rather_than_silently():
@@ -326,15 +369,38 @@ def _shift(field, axis, boundary, up):
     return shifted
 
 
-def _curls(grid, boundaries, terms, operands, backward):
-    """The six curl expressions, exactly as the device text groups them."""
+def _record(grid, layer):
+    """The one-rank chunk record of ``grid`` and ``layer``, as the kernels are handed it."""
+    return chunk_bounds_record(ChunkLayout.one_rank(grid, layer))
+
+
+def _curl_form(sf, f1, f2, ss, dtdx, first, second):
+    """``curl_stencil``: MEEP's grouping, and its forms for an absent partner."""
+    if first and second:
+        return (dtdx * (((sf - f1) + f2) - ss)).astype(numpy.float32)
+    if first:
+        return (dtdx * (sf - f1)).astype(numpy.float32)
+    if second:
+        return ((-dtdx) * (ss - f2)).astype(numpy.float32)
+    return numpy.zeros_like(f1, dtype=numpy.float32)
+
+
+def _curls(grid, boundaries, terms, operands, backward, record):
+    """The six curl expressions, exactly as the device text forms them.
+
+    The partners' presence is the record's presence word (``cb[24]``), as the kernel
+    reads it.
+    """
     dtdx = numpy.float32(grid.dt / grid.dx)
+    word = int(record[RECORD_PRESENCE_WORD])
+    present = tuple(bool((word >> axis) & 1) for axis in range(3))
     out = {}
     for term in terms:
         f1, f2 = operands[term.first], operands[term.second]
         sf = _shift(f1, term.first_axis, boundaries[term.first_axis], not backward)
         ss = _shift(f2, term.second_axis, boundaries[term.second_axis], not backward)
-        curl = (dtdx * ((sf - f1) + (f2 - ss))).astype(numpy.float32)
+        curl = _curl_form(sf, f1, f2, ss, dtdx, present[term.first_axis],
+                          present[term.second_axis])
         for axis in range(3):
             if IYEE_SHIFTS[term.target][axis] == 0 and boundaries[axis] == "metallic":
                 selector = [slice(None)] * 3
@@ -347,9 +413,9 @@ def _curls(grid, boundaries, terms, operands, backward):
 def _reference_no_pml(fields, grid, boundaries, terms, operands, backward):
     """``cond_apply`` / the plain tail, per component, in float32."""
     out = {}
-    for term, curl in ((term, curl) for term, curl
-                       in zip(terms, _curls(grid, boundaries, terms, operands,
-                                            backward).values())):
+    curls = _curls(grid, boundaries, terms, operands, backward, _record(grid, None))
+    for term in terms:
+        curl = curls[term.target]
         field = numpy.asarray(getattr(fields, term.target)).copy()
         condfac = fields.condfac_for(term.target)
         if condfac is None:
@@ -360,19 +426,33 @@ def _reference_no_pml(fields, grid, boundaries, terms, operands, backward):
     return out
 
 
-def _reference_pml(fields, layer, grid, boundaries, terms, operands, backward,
-                   half_integer):
-    """``cond_pml_apply`` / ``pml_apply``, per CELL, selecting one branch.
+def _membership(record, target, letter, shape):
+    """The kernel's membership flag of ``letter``'s layer on ``target``'s lattice."""
+    axis = "xyz".index(letter)
+    line = membership_from_record(record, IYEE_SHIFTS[target][axis] == 1, axis,
+                                  shape[axis])
+    view = [1, 1, 1]
+    view[axis] = shape[axis]
+    return numpy.broadcast_to(numpy.asarray(line, dtype=bool).reshape(view), shape)
 
-    The four case expressions are the module's own transcription of
-    ``stepping._apply_conductive_pml_update``; here they are evaluated and then
-    SELECTED, which is what a kernel does and what the array path does not.
-    Returns the three fields, the three auxiliaries, the three histories, and the
-    per-target case census the non-vacuity floor reads.
+
+def _reference_pml(fields, layer, grid, boundaries, terms, operands, backward,
+                   half_integer, sub_step):
+    """``cond_pml_apply`` / ``pml_apply``, per CELL, selecting one form.
+
+    The forms are the module's transcription of ``stepping._apply_conductive_pml_update``;
+    here each cell's is SELECTED from the record's membership flags and from which
+    chunks keep the conductivity (``conductive_kernels.conductive_keeps``), which is
+    what a kernel does and what the array path does not. Returns the three fields, the
+    three auxiliaries, the three histories, and the per-target form census the
+    non-vacuity floor reads (every target: a lossless one steps the same membership
+    forms through ``pml_apply``).
     """
-    curls = _curls(grid, boundaries, terms, operands, backward)
+    record = _record(grid, layer)
+    curls = _curls(grid, boundaries, terms, operands, backward, record)
+    keep, masks = conductive_kernels.conductive_keeps(fields, layer, sub_step)
     fields_out, aux_out, hist_out, census = {}, {}, {}, {}
-    for term in terms:
+    for index, term in enumerate(terms):
         curl = curls[term.target]
         km1, si1 = stepping._curl_coefficients(layer, term.dsig, half_integer)
         km2, si2 = stepping._curl_coefficients(layer, term.dsigu, half_integer)
@@ -380,33 +460,40 @@ def _reference_pml(fields, layer, grid, boundaries, terms, operands, backward,
         km2, si2 = numpy.asarray(km2), numpy.asarray(si2)
         field = numpy.asarray(getattr(fields, term.target)).copy()
         aux = numpy.asarray(getattr(fields, "fu_" + term.target)).copy()
-        dsig = (km1 != 1.0) | (si1 != 1.0)
-        dsigu = (km2 != 1.0) | (si2 != 1.0)
-        dsig, dsigu = numpy.broadcast_to(dsig, field.shape), numpy.broadcast_to(dsigu, field.shape)
+        shape = field.shape
+        dsig = _membership(record, term.target, term.dsig, shape)
+        dsigu = _membership(record, term.target, term.dsigu, shape)
+        plain_aux = (((aux * km1) - curl) * si1).astype(numpy.float32)
+        plain = numpy.where(dsigu, (((field * km2) + plain_aux) - aux) * si2,
+                            ((field * km1) - curl) * si1).astype(numpy.float32)
+        plain_aux = numpy.where(dsigu, plain_aux, aux).astype(numpy.float32)
+        kept = (numpy.ones(shape, dtype=bool) if keep[index]
+                else numpy.asarray(masks[index], dtype=bool))
         census[term.target] = {
-            "A": int((dsig & dsigu).sum()), "B": int((~dsig & dsigu).sum()),
-            "C": int((dsig & ~dsigu).sum()), "D": int((~dsig & ~dsigu).sum())}
+            "A": int((kept & dsig & dsigu).sum()), "B": int((kept & ~dsig & dsigu).sum()),
+            "C": int((kept & dsig & ~dsigu).sum()), "D": int((kept & ~dsig & ~dsigu).sum()),
+            "unkept_dsig": int((~kept & dsig).sum())}
         condfac = fields.condfac_for(term.target)
         if condfac is None:
-            new_aux = (((aux * km1) - curl) * si1).astype(numpy.float32)
-            fields_out[term.target] = (
-                (((field * km2) + new_aux) - aux) * si2).astype(numpy.float32)
-            aux_out[term.target] = new_aux
+            fields_out[term.target] = plain
+            aux_out[term.target] = plain_aux
             hist_out[term.target] = None
             continue
         condinv = fields.condinv_for(term.target)
         history = numpy.asarray(getattr(fields, "f_cond_" + term.target)).copy()
         c_new = (((history * condfac) - curl) * condinv).astype(numpy.float32)
-        u_cond = (((aux * condfac) - curl) * condinv).astype(numpy.float32)
-        u_split = ((((aux * km1) + c_new) - history) * si1).astype(numpy.float32)
-        u_new = numpy.where(dsig, u_split, u_cond).astype(numpy.float32)
-        f_split = ((((field * km2) + u_new) - aux) * si2).astype(numpy.float32)
-        f_first = ((((field * km1) + c_new) - history) * si1).astype(numpy.float32)
-        f_direct = (((field * condfac) - curl) * condinv).astype(numpy.float32)
-        fields_out[term.target] = numpy.where(
-            dsigu, f_split, numpy.where(dsig, f_first, f_direct)).astype(numpy.float32)
-        aux_out[term.target] = numpy.where(dsigu, u_new, aux).astype(numpy.float32)
-        hist_out[term.target] = numpy.where(dsig, c_new, history).astype(numpy.float32)
+        increment = (c_new - history).astype(numpy.float32)
+        u_new = numpy.where(dsig, ((aux * km1) + increment) * si1,
+                            ((aux * condfac) - curl) * condinv).astype(numpy.float32)
+        value = numpy.where(
+            dsigu, (((field * km2) + u_new) - aux) * si2,
+            numpy.where(dsig, ((field * km1) + increment) * si1,
+                        ((field * condfac) - curl) * condinv)).astype(numpy.float32)
+        fields_out[term.target] = numpy.where(kept, value, plain).astype(numpy.float32)
+        aux_out[term.target] = numpy.where(
+            kept, numpy.where(dsigu, u_new, aux), plain_aux).astype(numpy.float32)
+        hist_out[term.target] = numpy.where(kept & dsig, c_new, history).astype(
+            numpy.float32)
     return fields_out, aux_out, hist_out, census
 
 
@@ -472,15 +559,21 @@ def test_the_no_pml_conductive_tail_is_stepping_bit_for_bit(sub_step, mask, xp):
 
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
-@pytest.mark.parametrize("mask", [(True, True, True), (True, False, False)],
-                         ids=["all", "x_only"])
-def test_the_four_case_pml_tail_is_stepping_bit_for_bit(sub_step, mask, xp):
-    """The four subchunk cases, selected PER CELL, against the array path's copyto.
+@pytest.mark.parametrize("mask,half_space", [((True, True, True), False),
+                                             ((True, False, False), False),
+                                             ((True, True, True), True)],
+                         ids=["all", "x_only", "all_half_space"])
+def test_the_four_case_pml_tail_is_stepping_bit_for_bit(sub_step, mask, half_space, xp):
+    """MEEP's conductive forms, selected PER CELL, against the array path's copyto.
 
     THE NON-VACUITY FLOOR IS THE POINT. A layer absorbing on two axes and not on
-    the third puts every one of MEEP's four cases somewhere in the volume for at
-    least one target; the census below asserts a nonzero cell count in each, so a
-    pass cannot mean "case A was right and the other three were never reached".
+    the third puts every one of MEEP's four conductive forms somewhere in the volume
+    for at least one target; the census below asserts a nonzero cell count in each,
+    so a pass cannot mean "one form was right and the other three were never
+    reached". ``all_half_space`` puts the conductivity on the high half of x only, so
+    the chunks of x's low layer keep none of it and their dsig cells step the
+    non-conductive form (``RegionPlan.conductive_chunks``); its census asserts those
+    cells are reached too.
     """
     rng = numpy.random.default_rng(31)
     boundaries = ("metallic", "metallic", "periodic")
@@ -490,10 +583,16 @@ def test_the_four_case_pml_tail_is_stepping_bit_for_bit(sub_step, mask, xp):
     targets = conductive_kernels.CONDUCTIVE_SUB_STEPS[sub_step]
     live = [name for name, flag in zip(targets, mask) if flag]
     side = "d_sigma" if sub_step == "step_D" else "b_sigma"
+    sigma = sigma_map(probe, live, rng)
+    if half_space:
+        half = numpy.zeros(probe.shape, dtype=bool)
+        half[probe.shape[0] // 2:] = True
+        sigma = {name: numpy.where(half, volume, numpy.float32(0.0)).astype(numpy.float32)
+                 for name, volume in sigma.items()}
     fields, layer, grid = make(
         xp, boundaries=boundaries, cell=cell,
         absorber=((3, 3), (3, 3), (0, 0)),
-        **{side: sigma_map(probe, live, rng)})
+        **{side: sigma})
     assert layer is not None and layer.is_active
     seed_arrays(fields, grid, ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez",
                                "Hx", "Hy", "Hz", "fu_Bx", "fu_By", "fu_Bz",
@@ -507,13 +606,17 @@ def test_the_four_case_pml_tail_is_stepping_bit_for_bit(sub_step, mask, xp):
     before = {name: numpy.asarray(getattr(fields, name)).copy() for name in targets}
     expected, aux, hist, census = _reference_pml(
         fields, layer, grid, kinds, _terms(sub_step), operands,
-        backward=(sub_step == "step_D"), half_integer=(sub_step == "step_B"))
+        backward=(sub_step == "step_D"), half_integer=(sub_step == "step_B"),
+        sub_step=sub_step)
 
     reached = {case: max(counts[case] for counts in census.values())
-               for case in ("A", "B", "C", "D")}
-    assert all(count > 0 for count in reached.values()), (
-        f"the fixture did not reach all four subchunk cases: {reached}; a pass "
-        f"here would be a statement about the layer, not about the kernel")
+               for case in ("A", "B", "C", "D", "unkept_dsig")}
+    wanted = ("A", "B", "C", "D") + (("unkept_dsig",) if half_space else ())
+    assert all(reached[case] > 0 for case in wanted), (
+        f"the fixture did not reach every form: {reached}; a pass here would be a "
+        f"statement about the layer, not about the kernel")
+    if not half_space:
+        assert reached["unkept_dsig"] == 0
 
     getattr(stepping, sub_step)(fields, layer)
     for name in targets:
@@ -530,13 +633,14 @@ def test_the_four_case_pml_tail_is_stepping_bit_for_bit(sub_step, mask, xp):
                                      words(getattr(fields, "f_cond_" + name)))
 
 
-def test_flattening_the_four_case_parentheses_diverges(xp):
-    """The mutation control: the grouping the transcription refuses to lose.
+def test_the_old_increment_grouping_diverges(xp):
+    """The inversion control: the grouping this family carried until 0.10.
 
     Without it, "bit-identical" above could be a statement about a comparator that
-    cannot tell two float32 numbers apart. ``(((f*km2) + u_new) - u) * si2``
-    flattened to ``((f*km2) + (u_new - u)) * si2`` is a different float32 number,
-    and this measures that the comparison sees it.
+    cannot tell two float32 numbers apart. ``((u*km1) + (c' - c)) * si1`` (MEEP's) and
+    ``(((u*km1) + c') - c) * si1`` (the old package order) are different float32
+    numbers, and this measures that the comparison sees it on the cells whose chunk
+    carries both layers.
     """
     rng = numpy.random.default_rng(5)
     boundaries = ("metallic", "metallic", "periodic")
@@ -554,27 +658,26 @@ def test_flattening_the_four_case_parentheses_diverges(xp):
 
     kinds = stepping._boundary_kinds(grid, layer)
     operands = _operands(fields, "step_D")
-    expected, _, _, _ = _reference_pml(fields, layer, grid, kinds,
+    record = _record(grid, layer)
+    _, expected, _, _ = _reference_pml(fields, layer, grid, kinds,
                                        stepping.D_CURL_TERMS, operands,
-                                       backward=True, half_integer=False)
-    curls = _curls(grid, kinds, stepping.D_CURL_TERMS, operands, True)
-    flattened = {}
+                                       backward=True, half_integer=False,
+                                       sub_step="step_D")
+    curls = _curls(grid, kinds, stepping.D_CURL_TERMS, operands, True, record)
+    differing = 0
     for term in stepping.D_CURL_TERMS:
         km1, si1 = stepping._curl_coefficients(layer, term.dsig, False)
-        km2, si2 = stepping._curl_coefficients(layer, term.dsigu, False)
-        field = numpy.asarray(getattr(fields, term.target)).copy()
         aux = numpy.asarray(getattr(fields, "fu_" + term.target)).copy()
         history = numpy.asarray(getattr(fields, "f_cond_" + term.target)).copy()
         cf, ci = fields.condfac_for(term.target), fields.condinv_for(term.target)
         c_new = (((history * cf) - curls[term.target]) * ci).astype(numpy.float32)
-        u_split = ((((aux * km1) + c_new) - history) * si1).astype(numpy.float32)
-        # THE FLATTENING, and only it.
-        flattened[term.target] = (((field * km2) + (u_split - aux)) * si2).astype(
-            numpy.float32)
-    differing = sum(int((words(flattened[name]) != words(expected[name])).sum())
-                    for name in ("Dx", "Dy", "Dz"))
-    assert differing > 0, ("the flattened grouping produced the same float32 words; "
-                           "the comparison above cannot be measuring the grouping")
+        old = ((((aux * km1) + c_new) - history) * si1).astype(numpy.float32)
+        both = (_membership(record, term.target, term.dsig, aux.shape)
+                & _membership(record, term.target, term.dsigu, aux.shape))
+        differing += int((words(old)[both.ravel()]
+                          != words(expected[term.target])[both.ravel()]).sum())
+    assert differing > 0, ("the old grouping produced the same float32 words; the "
+                           "comparison above cannot be measuring the grouping")
 
 
 # ---------------------------------------------------------------------------
@@ -669,6 +772,70 @@ def test_a_partially_conductive_sub_step_is_admitted_whole(xp):
     assert conductive_kernels.conductive_targets(fields, "step_D") == (False, True, False)
     covered, reason = covers(fields, layer, grid, "step_D")
     assert covered, reason
+
+
+@pytest.mark.parametrize("sub_step", SUB_STEPS)
+@pytest.mark.parametrize("absorber", [None, ((3, 3), (3, 3), (0, 0))],
+                         ids=["none", "active"])
+def test_a_launch_without_the_runs_chunk_record_is_refused(sub_step, absorber, xp):
+    """Every template reads the chunk record; a launch without it is refused.
+
+    The no-absorber templates are ``no_pml_curl``'s bytes and read its
+    partner-presence word; the PML pair is the certified pair's and reads its
+    membership runs too. There is no default, as there is none on the certified
+    launchers: a missing record raises by name on the host, before anything compiles,
+    instead of launching the kernel one argument short.
+    """
+    rng = numpy.random.default_rng(37)
+    boundaries = ("metallic", "metallic", "periodic")
+    cell = (12.0, 14.0, 10.0)
+    probe = Grid(resolution=1.0, cell_size=cell, boundaries=boundaries, xp=xp,
+                 courant=0.5)
+    targets = conductive_kernels.CONDUCTIVE_SUB_STEPS[sub_step]
+    side = "d_sigma" if sub_step == "step_D" else "b_sigma"
+    fields, layer, grid = make(xp, boundaries=boundaries, cell=cell,
+                               stored=absorber is None, absorber=absorber,
+                               **{side: sigma_map(probe, targets[:1], rng)})
+    assert (layer is None) == (absorber is None)
+    with pytest.raises(ValueError, match="chunk record"):
+        conductive_kernels.step_conductive_curl(fields, layer, sub_step, (0, 0, 0), 0.5)
+
+
+def test_which_chunks_keep_the_conductivity_is_the_region_plans_answer(xp):
+    """``conductive_keeps`` asks the array path's own plan, and binds its own mask.
+
+    Everywhere: every chunk keeps every target's conductivity and nothing is bound.
+    On the high half of x: the chunks of x's low layer keep none, and the bound mask
+    is the plan's ``conductive_mask`` -- the volume the array path selects with. Both
+    are admitted.
+    """
+    rng = numpy.random.default_rng(59)
+    boundaries = ("metallic", "metallic", "periodic")
+    cell = (12.0, 14.0, 10.0)
+    probe = Grid(resolution=1.0, cell_size=cell, boundaries=boundaries, xp=xp,
+                 courant=0.5)
+    sigma = sigma_map(probe, ("Dx", "Dz"), rng)
+    fields, layer, grid = make(xp, boundaries=boundaries, cell=cell,
+                               absorber=((3, 3), (3, 3), (0, 0)), d_sigma=sigma)
+    keep, masks = conductive_kernels.conductive_keeps(fields, layer, "step_D")
+    assert keep == (True, True, True) and masks == (None, None, None)
+    assert covers(fields, layer, grid, "step_D")[0]
+
+    half = numpy.zeros(probe.shape, dtype=bool)
+    half[probe.shape[0] // 2:] = True
+    sigma = {name: numpy.where(half, volume, numpy.float32(0.0)).astype(numpy.float32)
+             for name, volume in sigma.items()}
+    fields, layer, grid = make(xp, boundaries=boundaries, cell=cell,
+                               absorber=((3, 3), (3, 3), (0, 0)), d_sigma=sigma)
+    keep, masks = conductive_kernels.conductive_keeps(fields, layer, "step_D")
+    assert keep == (False, True, False)
+    plan = stepping._region_plan(fields, layer)
+    for index, name in ((0, "Dx"), (2, "Dz")):
+        expected = numpy.asarray(plan.conductive_mask(name, fields.conductivity_for(name)))
+        assert numpy.array_equal(numpy.asarray(masks[index]), expected)
+        assert 0 < int(expected.sum()) < expected.size
+    assert masks[1] is None
+    assert covers(fields, layer, grid, "step_D")[0]
 
 
 def test_an_unnamed_sub_step_raises_rather_than_refusing(xp):
@@ -853,7 +1020,8 @@ def gate():
 
 
 @pytest.mark.parametrize("label", ["3d_mixed", "1d_metallic", "3d_pml_all_axes",
-                                   "2d_pml_two_axes"])
+                                   "2d_pml_two_axes", "3d_pml_all_axes_half_sigma",
+                                   "2d_pml_two_axes_half_sigma"])
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
 @pytest.mark.parametrize("mask_index", [0, 1], ids=["CCC", "C--"])
 def test_the_gate_numpy_backend_reproduces_stepping(gate, label, sub_step,
@@ -868,7 +1036,7 @@ def test_the_gate_numpy_backend_reproduces_stepping(gate, label, sub_step,
     mask = gate.COND_MASKS[mask_index]
     storage = "stored" if gate.spec_is_active(spec) else "derived"
     case = gate.one_case("numpy", spec, sub_step, mask, storage, 0.35, "uniform",
-                         "shipped", "fmad_false", gate.LICENSED_SUBSTITUTION)
+                         "fmad_false", gate.LICENSED_SUBSTITUTION)
     if case.get("skipped"):
         assert "four of MEEP's subchunk cases" in case["skipped"], case["skipped"]
         reached = case["pml_case_census"]["reached"]
@@ -886,7 +1054,7 @@ def test_the_gate_can_fail(gate):
     """A misdeclared code triple must DIVERGE, or the gate measures nothing."""
     spec = gate._spec_by_label("3d_mixed")
     case = gate.one_case("numpy", spec, "step_D", gate.COND_MASKS[0], "stored",
-                         0.35, "uniform", "shipped", "fmad_false", "all_periodic")
+                         0.35, "uniform", "fmad_false", "all_periodic")
     assert not case.get("skipped"), case.get("skipped")
     assert not case["single_launch"]["bit_identical"]
     assert case["localization_summary"]["differing_words"] > 0
@@ -902,37 +1070,34 @@ def test_the_gate_refuses_a_layer_that_reaches_only_some_subchunk_cases(gate):
     """
     spec = gate._spec_by_label("2d_pml_two_axes")
     case = gate.one_case("numpy", spec, "step_B", gate.COND_MASKS[1], "stored",
-                         0.35, "uniform", "shipped", "fmad_false",
+                         0.35, "uniform", "fmad_false",
                          gate.LICENSED_SUBSTITUTION)
     assert case.get("skipped")
     assert "four of MEEP's subchunk cases" in case["skipped"]
     assert case["pml_case_census"]["reached"]["D"] > 0
 
 
-def test_the_near_one_table_lands_strictly_below_one(gate, xp):
-    """``1.0 - 1e-7`` rounds to 1.0 in float32; the fixture must not be a no-op.
+@pytest.mark.parametrize("mutation", ["record_bound_off_by_one",
+                                      "record_lattices_swapped",
+                                      "conductive_chunks_unbound"])
+def test_the_gate_catches_each_binding_defect_on_the_host(gate, mutation):
+    """The B battery's binding defects (KERNELS.md section 7.2), through the NumPy leg.
 
-    The whole tolerance experiment turns on the perturbed entry being a DIFFERENT
-    float32 from 1.0 while a 1e-7 tolerance still calls it one. Measured here
-    rather than assumed, because a fixture that silently collapsed to 1.0 would
-    make the tolerance mutation come back UNCAUGHT on both tables and read as
-    evidence that the exact comparison does not matter.
+    A bound off by one and the two lattices' records swapped move a boundary plane's
+    form; the conductive chunks unbound take the conductive form where a chunk keeps
+    none. Each must diverge, and ``identity_rebind`` beside them must not.
     """
-    assert gate.NEAR_ONE != numpy.float32(1.0)
-    assert abs(float(gate.NEAR_ONE) - 1.0) < 1e-7
-    # ...and it is the LARGEST such float32: nothing sits between it and 1.0, so
-    # the fixture puts the entry as close to the boundary as float32 allows.
-    assert numpy.nextafter(gate.NEAR_ONE, numpy.float32(2.0),
-                           dtype=numpy.float32) == numpy.float32(1.0)
-    grid = Grid(resolution=1.0, cell_size=(9.0, 10.0, 11.0),
-                boundaries=("metallic", "metallic", "periodic"), xp=xp,
-                courant=0.5)
-    layer = PML(grid=grid, thickness=((2, 2), (2, 2), (0, 0)))
-    record = gate.install_near_one(layer)
-    assert record["installed"] and record["entries"]
-    touched = [numpy.asarray(getattr(layer, e["attribute"])).reshape(-1)[e["index"]]
-               for e in record["entries"]]
-    assert all(value == gate.NEAR_ONE for value in touched)
+    spec = gate._spec_by_label("3d_pml_all_axes_half_sigma")
+    for sub_step in SUB_STEPS:
+        caught = gate.one_case("numpy", spec, sub_step, gate.COND_MASKS[0], "stored",
+                               0.35, "uniform", "fmad_false",
+                               gate.LICENSED_SUBSTITUTION, host_mutation=mutation)
+        assert not caught.get("skipped"), caught.get("skipped")
+        assert not caught["single_launch"]["bit_identical"], (sub_step, mutation)
+        null = gate.one_case("numpy", spec, sub_step, gate.COND_MASKS[0], "stored",
+                             0.35, "uniform", "fmad_false",
+                             gate.LICENSED_SUBSTITUTION, host_mutation="identity_rebind")
+        assert null["single_launch"]["bit_identical"]
 
 
 def test_every_named_mutation_resolves_and_arms(gate):

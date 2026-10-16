@@ -12,17 +12,33 @@ value classes, and both courants.
 
 WHAT COLLAPSES, AND WHAT DOES NOT
 =================================
-``stepping._apply_curl`` (stepping.py:489-539) has four tails. With
+``stepping._apply_curl`` (stepping.py:516-582) has four tails. With
 ``_pml_is_active(pml)`` False and ``fields.condfac_for(target)`` None the tail is
-one line, ``target -= curl`` (:510): no ``fu`` auxiliary, no ``kms``/``sinv``
-pair, no split-field recurrence. The CURL is unchanged -- term table, ghost rule,
-grouping, wall masks -- so ``step_{B,D}_no_pml_real`` are the certified
-``step_{B,D}_pml_real`` blocks verbatim with only the tail replaced.
+one line, ``target -= curl`` (:582): no ``fu`` auxiliary, no ``kms``/``sinv``
+pair, no split-field recurrence, no per-chunk form. The CURL is unchanged -- term
+table, ghost rule, MEEP's stencil and its partner-presence forms, wall masks -- so
+``step_{B,D}_no_pml_real`` are the certified ``step_{B,D}_pml_real`` blocks
+verbatim with only the tail replaced and the chunk-record words that choose a PML
+form dropped.
+
+THE STENCIL IS MEEP'S, AND IT READS THE CHUNK RECORD
+====================================================
+Since 0.10 the certified pair forms the curl in ``curl_stencil`` (the shared
+prelude): ``dtdx * (((g1s - g1) + g2) - g2s)`` as C associates ``step_curl``
+(step_generic.cpp:104), and the one-partner forms where a partner's derivative
+axis is invariant (:72-76, :108) -- ``stepping._curl_from_operands``'s forms. These
+kernels carry it verbatim and take which partners are present from the run's chunk
+record (``chunk_map.chunk_bounds_record``, word 24), the last argument ``cb``. Each
+case hands the kernel the record of its own one-rank division
+(:func:`case_record`), and the NumPy backend reads the same word. The grouping
+defect is inverted (it plants the pairwise grouping the kernels carried until 0.10)
+and stays must-catch; ``full_bracket_over_an_absent_partner`` is the presence
+defect, caught wherever an axis is invariant.
 
 THE THIRD KERNEL EXISTS BECAUSE OF A MEASUREMENT, NOT A READING
 ===============================================================
 ``stepping.step_B`` reads its operands through ``_read_component``
-(stepping.py:2438-2454), whose E branch derives ``D * inv_eps`` whenever
+(stepping.py:2892-2908), whose E branch derives ``D * inv_eps`` whenever
 ``fields.stores_E`` is False -- which, without an absorber and without a
 susceptibility, is the normal case: ``fields.Ex`` is None. Measured on a real
 (6, 8, 10) Grid/Fields pair with an inhomogeneous inverse epsilon,
@@ -142,12 +158,16 @@ except ImportError:  # laptop: the NumPy backend still runs
     cp = None
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import gate_chunk_records  # noqa: E402
+import gate_needles  # noqa: E402
 import gate_provenance  # noqa: E402
+from gate_needles import Needle  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.fields import Fields, IYEE_SHIFTS  # noqa: E402
 from meep_gpu.grid import Grid, Mirror  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
+from meep_gpu.chunk_map import RECORD_PRESENCE_WORD  # noqa: E402
 from meep_gpu.cuda_kernels import coverage, no_pml_curl  # noqa: E402
 
 log = probe.log
@@ -519,13 +539,55 @@ def _source_arrays(fields, sub_step: str, arm: str):
     return arrays, None
 
 
-def run_kernel_cuda(sub_step: str, arm: str, fields, codes, dtdx: float,
+def run_kernel_cuda(sub_step: str, arm: str, fields, codes, dtdx: float, record,
                     inverse_epsilon=None) -> None:
-    """The SHIPPED kernel, through its own launch wrapper, with codes handed in."""
+    """The SHIPPED kernel, through its own launch wrapper, with codes and record handed in.
+
+    ``record`` is the case's host chunk record (:func:`case_record`), uploaded here
+    as the one contiguous ``int32[25]`` device vector the launcher requires.
+    """
     no_pml_curl.step_no_pml_curl(
-        fields, sub_step, tuple(np.int32(c) for c in codes), dtdx, arm=arm,
+        fields, sub_step, tuple(np.int32(c) for c in codes), dtdx,
+        cp.asarray(np.ascontiguousarray(record, dtype=np.int32)), arm=arm,
         inverse_epsilon=inverse_epsilon)
     cp.cuda.runtime.deviceSynchronize()
+
+
+def case_record(grid, layer) -> np.ndarray:
+    """The chunk record of the case's own division: the one-rank division of ``grid``
+    with ``layer`` (None, or the inert layer, whose faces are all zero).
+
+    The kernels read its partner-presence word only (word 24: bit ``a`` set when axis
+    ``a`` is not invariant, ``Grid.is_invariant``), which chooses MEEP's stencil form
+    per component, as ``stepping.curl_presence`` chooses it for the oracle.
+    """
+    return np.ascontiguousarray(gate_chunk_records.layer_record(grid, layer),
+                                dtype=np.int32)
+
+
+def record_presence(record) -> Tuple[bool, bool, bool]:
+    """The three partner-presence bits of a chunk record, as the kernels decode them."""
+    word = int(np.asarray(record)[RECORD_PRESENCE_WORD])
+    return tuple(bool((word >> axis) & 1) for axis in range(3))
+
+
+def _curl_numpy(f1: np.ndarray, sf: np.ndarray, f2: np.ndarray, ss: np.ndarray,
+                scale: np.float32, first_present: bool,
+                second_present: bool) -> np.ndarray:
+    """``curl_stencil`` from ``_REAL_PML_PRELUDE``, transcribed in float32.
+
+    MEEP's ``step_curl`` (step_generic.cpp:72-76, :104-108), as C associates it:
+    both partners ``dtdx * (((sf - f1) + f2) - ss)``; the second absent
+    ``dtdx * (sf - f1)``; the first absent ``(-dtdx) * (ss - f2)``; neither, an exact
+    zero. Each operation rounds once, as the kernel's ``--fmad=false`` build does.
+    """
+    if first_present and second_present:
+        return (scale * (((sf - f1) + f2) - ss)).astype(np.float32)
+    if first_present:
+        return (scale * (sf - f1)).astype(np.float32)
+    if second_present:
+        return ((-scale) * (ss - f2)).astype(np.float32)
+    return np.zeros_like(f1, dtype=np.float32)
 
 
 def _shift_up_numpy(field: np.ndarray, axis: int, bc: int) -> np.ndarray:
@@ -547,16 +609,20 @@ def _shift_dn_numpy(field: np.ndarray, axis: int, bc: int) -> np.ndarray:
     return shifted
 
 
-def run_kernel_numpy(sub_step: str, arm: str, fields, codes, dtdx: float,
+def run_kernel_numpy(sub_step: str, arm: str, fields, codes, dtdx: float, record,
                      inverse_epsilon=None) -> None:
     """The device tree, transcribed, in float32 -- the laptop backend.
 
-    THE GROUPING IS THE SHIPPED ONE and it is load-bearing::
+    THE STENCIL IS ``curl_stencil``'s, MEEP's, and its grouping is load-bearing::
 
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        both partners:  dtdx * (((sf - f1) + f2) - ss)
+        g2 absent:      dtdx * (sf - f1)
+        g1 absent:      (-dtdx) * (ss - f2)
 
-    NOT ``dtdx * (sf - f1 + f2 - ss)``, which C associates left to right; float
-    addition is not associative and the two differ in the last bits.
+    with the partners' presence read off the record's presence word, as the kernel
+    reads it (:func:`record_presence`). Float addition is not associative: the
+    pairwise ``(sf - f1) + (f2 - ss)`` the kernels carried until 0.10 differs in the
+    last bits, and so does the full bracket over an absent partner.
 
     THE DERIVED OPERAND IS FORMED FIRST AND SHIFTED AFTER, which is the order
     ``stepping._read_component`` uses and the order ``derived_up`` implements: the
@@ -570,6 +636,7 @@ def run_kernel_numpy(sub_step: str, arm: str, fields, codes, dtdx: float,
     """
     shift = _shift_dn_numpy if ARM_ARRAYS[(sub_step, arm)]["backward"] else _shift_up_numpy
     scale = np.float32(dtdx)
+    presence = record_presence(record)
     arrays, inverses = _source_arrays(fields, sub_step, arm)
     if inverse_epsilon is not None:
         inverses = inverse_epsilon
@@ -586,7 +653,8 @@ def run_kernel_numpy(sub_step: str, arm: str, fields, codes, dtdx: float,
         f2 = operands[_SOURCE_INDEX[second]]
         sf = shift(f1, first_axis, codes[first_axis])
         ss = shift(f2, second_axis, codes[second_axis])
-        curl = (scale * ((sf - f1) + (f2 - ss))).astype(np.float32)
+        curl = _curl_numpy(f1, sf, f2, ss, scale, presence[first_axis],
+                           presence[second_axis])
         for axis, index in masked_planes(target, codes, curl.shape):
             curl[_plane_index(axis, index, curl.shape)] = np.float32(0.0)
         field = getattr(fields, target)
@@ -615,10 +683,11 @@ def oracle_moved(before: Dict[str, np.ndarray], after: Dict[str, np.ndarray],
 
 
 def unmasked_curl(frozen: Dict[str, np.ndarray], fields, sub_step: str, arm: str,
-                  codes, dtdx: float) -> Dict[str, np.ndarray]:
+                  codes, dtdx: float, record) -> Dict[str, np.ndarray]:
     """Each term's curl BEFORE the wall/fold masks, on the host, from the frozen state."""
     shift = _shift_dn_numpy if ARM_ARRAYS[(sub_step, arm)]["backward"] else _shift_up_numpy
     scale = np.float32(dtdx)
+    presence = record_presence(record)
     names = ARM_ARRAYS[(sub_step, arm)]["sources"]
     if arm == "derived_E":
         inverses = [to_host(fields.inverse_epsilon_for(c)).astype(np.float32)
@@ -633,7 +702,8 @@ def unmasked_curl(frozen: Dict[str, np.ndarray], fields, sub_step: str, arm: str
         f2 = operands[_SOURCE_INDEX[second]]
         sf = shift(f1, first_axis, codes[first_axis])
         ss = shift(f2, second_axis, codes[second_axis])
-        out[target] = (scale * ((sf - f1) + (f2 - ss))).astype(np.float32)
+        out[target] = _curl_numpy(f1, sf, f2, ss, scale, presence[first_axis],
+                                  presence[second_axis])
     return out
 
 
@@ -742,7 +812,7 @@ def check_terms_against_stepping() -> Dict[str, Any]:
 def check_arm_selection_against_stepping() -> Dict[str, Any]:
     """``no_pml_curl_arm`` must branch on the flag ``stepping`` branches on.
 
-    ``_read_component`` (stepping.py:2440) reads ``fields.stores_E``; the arm
+    ``_read_component`` (stepping.py:2894) reads ``fields.stores_E``; the arm
     table reads the same attribute. An arm chosen off anything else -- the
     presence of ``fields.Ex``, a polarization count -- would be right on today's
     corpus and wrong on the first configuration that separates them.
@@ -807,10 +877,11 @@ def _drop_derived_inverse_epsilon(source: str) -> Tuple[str, int]:
 def _derived_operand_order(source: str) -> Tuple[str, int]:
     """A NULL: ``inv_eps * D`` in place of ``D * inv_eps``. IEEE multiply commutes.
 
-    ``get_E`` writes ``D * self.inverse_epsilon_for(component)`` (fields.py:1035)
-    with D on the left and the kernel keeps that order for transcription
-    discipline, not because it moves a bit. Paired with
-    :func:`_drop_derived_inverse_epsilon` on the same expression. MUST BE UNCAUGHT.
+    ``get_E`` writes ``part_products.scale(self.inverse_epsilon_for(component), D)``
+    (fields.py:1047), inverse epsilon on the left, and the kernel writes D on the
+    left: the order is not arithmetic, and this null is what measures that. Paired
+    with :func:`_drop_derived_inverse_epsilon` on the same expression. MUST BE
+    UNCAUGHT.
     """
     pattern = r"d\[(idx(?: [-+] ia \* stride)?)\] \* ie\[\1\]"
     return re.subn(pattern, r"ie[\1] * d[\1]", source)[0], \
@@ -835,7 +906,7 @@ def _derived_far_ghost_wraps(source: str) -> Tuple[str, int]:
     """DERIVED ARM: the non-periodic far ghost becomes the wrapped product.
 
     ``_shift_up``'s METALLIC / folded branch writes an exact zero
-    (stepping.py:1828-1830); this makes the helper wrap on every code, which is a
+    (stepping.py:2079-2080); this makes the helper wrap on every code, which is a
     wrong answer on the far face of every metallic and every folded axis and
     IDENTICAL on an all-periodic grid -- so the leg is scored only where the grid
     carries a non-periodic code. MUST BE CAUGHT.
@@ -859,6 +930,19 @@ def _derived_wrap_uses_own_inv_eps(source: str) -> Tuple[str, int]:
     replacement = "d[idx - ia * stride] * ie[idx]"
     return source.replace(needle, replacement), source.count(needle)
 
+
+#: MEEP's one-partner stencil form, defeated: the second-partner-absent arm of
+#: ``curl_stencil`` takes the full bracket over the absent partner. On an invariant
+#: axis the absent partner's shifted operand is the partner itself (a one-cell
+#: periodic wrap), so the bracket is ``((a + g2) - g2)``, which rounds where MEEP's
+#: form returns ``a`` (step_generic.cpp:108; ``stepping._curl_from_operands``). The
+#: arm is reached only where some axis is invariant. MUST BE CAUGHT.
+_FULL_BRACKET_OVER_AN_ABSENT_PARTNER = Needle(
+    find="if (pr1) return dtdx * (sf - f1);",
+    replace="if (pr1) return dtdx * (((sf - f1) + f2) - ss);",
+    why=("MEEP's g2-absent form dtdx * (g1s - g1) replaced by the full bracket over "
+         "the absent partner. Reached only on a grid with an invariant axis. MUST BE "
+         "CAUGHT."))
 
 #: Local spellings, on top of the shared battery. The GATE owns which defects a
 #: sub-step must be proof against; the spellings live here rather than in the
@@ -901,6 +985,27 @@ def index_decomposition_is_observable(shape) -> bool:
 LOCAL_SOURCE_MUTATIONS["fortran_order_index_decomposition_on_a_flat_grid"] = \
     probe.SOURCE_MUTATIONS["fortran_order_index_decomposition"]
 
+#: THE PARTNER-PRESENCE FORMS, armed both ways. ``full_bracket_over_an_absent_partner``
+#: must be caught wherever an axis is invariant; on a grid whose three axes are all
+#: resolved the arm it edits is never taken, so the same transform is scored there as
+#: a NULL under a second name, and a leg that catches it is a finding.
+LOCAL_SOURCE_MUTATIONS["full_bracket_over_an_absent_partner"] = \
+    _FULL_BRACKET_OVER_AN_ABSENT_PARTNER
+LOCAL_SOURCE_MUTATIONS["full_bracket_over_an_absent_partner_on_a_resolved_grid"] = \
+    _FULL_BRACKET_OVER_AN_ABSENT_PARTNER
+
+#: THE GROUPING DEFECT'S STRUCTURAL NULL. These kernels carry the certified pair's
+#: prelude verbatim -- ``curl_stencil`` and ``pml_apply`` -- the text the probe's
+#: shared default spells the stencil and recurrence defects on, so those are borrowed
+#: (the stencil grouping inverted: it plants the pairwise grouping these kernels
+#: carried until 0.10, and it stays must-catch; its commuted-scale null; and the four
+#: ``pml_apply`` defects, which edit a helper these kernels compile and never call).
+#: ``regroup_stencil`` edits the both-partner form of ``curl_stencil``, which no
+#: component of a 1-D grid takes (each has at most one partner present), so on such a
+#: grid the same transform is scored as a NULL under this name.
+LOCAL_SOURCE_MUTATIONS["regroup_stencil_where_no_component_has_both_partners"] = \
+    probe.SOURCE_MUTATIONS["regroup_stencil"]
+
 #: THE SECOND STRUCTURAL NULL, for the same reason and from the same measurement.
 #: ``derived_wrap_uses_own_inv_eps`` edits the PERIODIC branch of ``derived_up``,
 #: which returns ``d[idx - ia*stride] * ie[idx - ia*stride]``. ON AN INVARIANT AXIS
@@ -928,8 +1033,6 @@ LOCAL_SOURCE_MUTATIONS["derived_wrap_uses_own_inv_eps_on_an_invariant_axis"] = \
 LOCAL_SOURCE_MUTATIONS["derived_far_ghost_wraps_on_a_folded_axis"] = \
     _derived_far_ghost_wraps
 
-SOURCE_MUTATIONS_ALL = dict(probe.SOURCE_MUTATIONS, **LOCAL_SOURCE_MUTATIONS)
-
 #: The curl body is the certified pair's, so the certified pair's curl battery is
 #: the right battery for it, plus the six the tail and the derive add.
 SOURCE_MUTATIONS: Tuple[str, ...] = (
@@ -939,6 +1042,8 @@ SOURCE_MUTATIONS: Tuple[str, ...] = (
     "drop_folded_periodic_top_mask",
     "drop_folded_periodic_near_mask",
     "fortran_order_index_decomposition",
+    # MEEP's partner-presence forms, read off the chunk record's presence word.
+    "full_bracket_over_an_absent_partner",
     # THE TAIL, which is the only thing this family changed.
     "flip_tail_sign",
     "drop_tail_store",
@@ -954,6 +1059,8 @@ SOURCE_MUTATIONS: Tuple[str, ...] = (
     "derived_far_ghost_wraps_on_a_folded_axis",
     "derived_wrap_uses_own_inv_eps_on_an_invariant_axis",
     "fortran_order_index_decomposition_on_a_flat_grid",
+    "full_bracket_over_an_absent_partner_on_a_resolved_grid",
+    "regroup_stencil_where_no_component_has_both_partners",
     # THE FOUR DEAD-PRELUDE NULLS. They edit ``pml_apply``, which this family
     # compiles and never calls; UNCAUGHT is the measurement that the tail is not
     # the split-field recurrence.
@@ -963,11 +1070,23 @@ SOURCE_MUTATIONS: Tuple[str, ...] = (
     "reload_fu_from_memory",
 )
 
+#: THIS GATE'S NEEDLE TABLE: every armed name, this family's own spellings from
+#: :data:`LOCAL_SOURCE_MUTATIONS`, and the certified curl's stencil, recurrence, mask
+#: and index defects borrowed from the probe's shared default (``gate_needles.py``).
+#: Built after the last addition to
+#: :data:`LOCAL_SOURCE_MUTATIONS`; a shared defect this gate re-spells for its own
+#: kernels becomes a local entry and moves no other gate.
+SOURCE_MUTATIONS_ALL = gate_needles.gate_table(
+    "gate_cuda_no_pml_curl", probe.SOURCE_MUTATIONS, SOURCE_MUTATIONS,
+    own=LOCAL_SOURCE_MUTATIONS)
+
 NULL_SOURCE_MUTATIONS: Tuple[str, ...] = (
     "commute_dtdx_scale", "tail_as_fma", "derived_operand_order",
     "derived_far_ghost_wraps_on_a_folded_axis",
     "derived_wrap_uses_own_inv_eps_on_an_invariant_axis",
     "fortran_order_index_decomposition_on_a_flat_grid",
+    "full_bracket_over_an_absent_partner_on_a_resolved_grid",
+    "regroup_stencil_where_no_component_has_both_partners",
     "drop_fu_store", "read_fprev_after_store", "swap_dsig_dsigu",
     "reload_fu_from_memory",
 )
@@ -1016,6 +1135,19 @@ SOURCE_MUTATION_LEG_FILTER = {
         lambda codes, shape: index_decomposition_is_observable(shape),
     "fortran_order_index_decomposition_on_a_flat_grid":
         lambda codes, shape: not index_decomposition_is_observable(shape),
+    # THE PRESENCE FORMS. A one-cell axis of these specs is exactly an invariant one
+    # (``test_every_spec_one_cell_axis_is_an_invariant_one`` measures it), so the
+    # shape says which partners are present: the one-partner arm is reached only
+    # where an axis is invariant, and the both-partner form only where two axes are
+    # resolved.
+    "full_bracket_over_an_absent_partner":
+        lambda codes, shape: any(int(n) == 1 for n in shape),
+    "full_bracket_over_an_absent_partner_on_a_resolved_grid":
+        lambda codes, shape: all(int(n) > 1 for n in shape),
+    "regroup_stencil":
+        lambda codes, shape: sum(int(n) > 1 for n in shape) >= 2,
+    "regroup_stencil_where_no_component_has_both_partners":
+        lambda codes, shape: sum(int(n) > 1 for n in shape) < 2,
 }
 
 #: The same, in words, for the artifact -- a filter a reader cannot see is a
@@ -1035,6 +1167,12 @@ SOURCE_MUTATION_LEG_REQUIREMENT: Dict[str, str] = {
         "a shape on which the C-order and Fortran-order decompositions differ",
     "fortran_order_index_decomposition_on_a_flat_grid":
         "a shape on which the two decompositions coincide (one axis with extent)",
+    "full_bracket_over_an_absent_partner": "an invariant (one-cell) axis",
+    "full_bracket_over_an_absent_partner_on_a_resolved_grid":
+        "every axis resolved (no partner is ever absent)",
+    "regroup_stencil": "two or more resolved axes (some component has both partners)",
+    "regroup_stencil_where_no_component_has_both_partners":
+        "fewer than two resolved axes (no component has both partners)",
 }
 
 #: Mutations whose lines exist only in one kernel. ``derived_*`` edit the derive
@@ -1107,6 +1245,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, e_storage: str,
     fields, layer, grid = build(xp, spec, courant, e_storage, rng)
     host = seed_state(fields, grid, sub_step, arm, value_class, rng)
     dtdx = float(grid.dt / grid.dx)
+    record = case_record(grid, layer)
     codes, resolved, kinds, why_skip = boundary_codes_for(grid, substitution)
 
     case: Dict[str, Any] = {
@@ -1121,6 +1260,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, e_storage: str,
         "boundary_codes": None if codes is None else [int(c) for c in codes],
         "resolved_kinds": None if kinds is None else list(kinds),
         "dtdx": dtdx,
+        "chunk_record": [int(word) for word in record],
         "structure": structure_facts(grid),
         "operand_census": operand_census(host),
     }
@@ -1154,7 +1294,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, e_storage: str,
         case["seconds"] = time.time() - started
         return case
 
-    curls = unmasked_curl(frozen, fields, sub_step, arm, resolved, dtdx)
+    curls = unmasked_curl(frozen, fields, sub_step, arm, resolved, dtdx, record)
     case["masked_planes_are_live"] = masked_planes_are_live(curls, sub_step, arm,
                                                             resolved)
 
@@ -1179,7 +1319,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, e_storage: str,
     inverse_epsilon = (host_mutated_inverse_epsilon(host_mutation, fields, grid)
                        if (host_mutation is not None and arm == "derived_E") else None)
     runner = run_kernel_cuda if backend == "cuda" else run_kernel_numpy
-    runner(sub_step, arm, fields, codes, dtdx, inverse_epsilon)
+    runner(sub_step, arm, fields, codes, dtdx, record, inverse_epsilon)
 
     parts = {name: bit_compare(reference[name], getattr(fields, name))
              for name in outputs(sub_step, arm)}
@@ -1211,7 +1351,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, e_storage: str,
 
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
-            runner(sub_step, arm, fields, codes, dtdx, None)
+            runner(sub_step, arm, fields, codes, dtdx, record, None)
             advance_sources(fields, sub_step, arm)
         multi = {name: bit_compare(oracle_multi[name], getattr(fields, name))
                  for name in outputs(sub_step, arm)}

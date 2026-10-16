@@ -59,9 +59,12 @@ import pytest
 from .. import stepping
 from ..fields import IYEE_SHIFTS, mirror_parity
 from . import coverage, folded_offdiag_kernels as folded, offdiag_emitter
+from ..chunk_map import membership_from_record
+from . import offdiag_presence
 from .test_offdiag_constitutive_pml_real import (
-    _advance_sources, _bits, _device_arrays, _tables_for, build, install_rows,
-    seed_state)
+    _MASK, _ROW_ADD, _ROW_START, _SRC_ROW, _TAIL, PRESENCE_CELL, _advance_sources,
+    _bits, _device_arrays, _tables_for, build, chunk_arguments,
+    execute_row_statements, install_rows, seed_state)
 
 HERE = pathlib.Path(__file__).parent
 MODULE = HERE / "folded_offdiag_kernels.py"
@@ -134,11 +137,6 @@ _TERM_CALL = re.compile(
     r"flat\((?P<up>[^)]*), nyz, nz\),\s*"
     r"flat\((?P<corner>[^)]*), nyz, nz\),\s*"
     r"(?P<lane>mg_[xyz]), (?P<weight>gw_[xyz])\);")
-_TOTAL_FIRST = re.compile(r"float total_(?P<name>\w+) = term_(?P<tag>\w+);")
-_TOTAL_ADD = re.compile(
-    r"total_(?P<name>\w+) = total_(?P=name) \+ term_(?P<tag>\w+);")
-_MASK = re.compile(r"total_(?P<name>\w+) = \((?P<wall>wm_[xyz]) && "
-                   r"(?P<face>at_[xyz])\) \? 0\.0f : total_(?P=name);")
 #: The ghost-lane definitions, matched by SHAPE rather than by their exact text so
 #: the evaluator EXECUTES whatever the emitter wrote. Anchoring the expression
 #: would make a leg that rewrote it fail as a harness error instead of as a caught
@@ -167,13 +165,7 @@ _BRANCH = re.compile(r"if \((?P<condition>[^)]+)\) return (?P<value>[^;]+);")
 _DEVICE_CONSTANTS = {"BC_PERIODIC": 0, "BC_METALLIC": 1, "BC_MIRROR": 2}
 _GS = re.compile(r"float gs_(?P<name>\w+) = (?P<volume>\w+)\[idx\];")
 _US = re.compile(r"float us_(?P<name>\w+) = (?P<volume>\w+)\[idx\];")
-_SRC_COUPLED = re.compile(
-    r"float src_(?P<name>\w+) = \(gs_(?P=name) \* us_(?P=name)\)"
-    r" \+ total_(?P=name);")
 _SRC_PLAIN = re.compile(r"float src_(?P<name>\w+) = gs_(?P=name) \* us_(?P=name);")
-_TAIL = re.compile(
-    r"constitutive_apply\((?P<field>\w+), (?P<aux>f_w_\w+), idx, src_(?P<name>\w+),"
-    r" (?P<kps>kps_[xyz])\[(?P<index>[ijk])\], (?P<kms>kms_[xyz])\[(?P=index)\]\);")
 _TERM_BODY = re.compile(
     r"float near_pair = (?P<near>.+);\n"
     r"    float far_pair = (?P<far>.+);\n"
@@ -246,11 +238,15 @@ def _ghost_rules(source):
     return coord_dn, coord_up
 
 
-def evaluate_folded_source(source, arrays, tables, codes, walls, weights, shape):
-    """Run one launch of the emitted kernel over the whole grid, in float32.
+def evaluate_folded_source(source, arrays, tables, codes, walls, weights, shape,
+                           record, kept):
+    """Run one launch of the emitted kernel over the whole grid, in float32 (the row in
+    double).
 
     ``arrays`` maps device parameter names to (nx, ny, nz) float32 arrays and is
-    MUTATED in place, exactly as the kernel mutates its outputs.
+    MUTATED in place, exactly as the kernel mutates its outputs. ``record`` and
+    ``kept`` are the chunk record and the six presence words, read as the certified
+    family's evaluator reads them.
     """
     nx, ny, nz = shape
     i, j, k = numpy.indices(shape)
@@ -267,6 +263,18 @@ def evaluate_folded_source(source, arrays, tables, codes, walls, weights, shape)
                      "gw_y": numpy.float32(weights[1]),
                      "gw_z": numpy.float32(weights[2])}
     faces = {"at_x": i == 0, "at_y": j == 0, "at_z": k == 0}
+
+    flags = {}
+    for axis, letter in enumerate("xyz"):
+        for half, lattice in ((False, "i"), (True, "h")):
+            view = [1, 1, 1]
+            view[axis] = shape[axis]
+            flags[f"in_{lattice}_{letter}"] = membership_from_record(
+                record, half, axis, shape[axis]).reshape(view)
+    chunk_codes = {name: offdiag_presence.cell_chunk_codes(record, IYEE_SHIFTS[name],
+                                                           shape, codes)
+                   for name in ("Ex", "Ey", "Ez")}
+    kept_words = dict(zip(offdiag_emitter.KEPT_PARAMETERS, kept))
 
     body = source[source.index("int at_x"):]
 
@@ -337,25 +345,21 @@ def evaluate_folded_source(source, arrays, tables, codes, walls, weights, shape)
         environment["far_pair"] = evaluate(far_text)
         return evaluate(term_text)
 
-    terms, totals, sources = {}, {}, {}
+    terms, rows, sources = {}, {}, {}
     for match in _TERM_CALL.finditer(body):
         terms[match["tag"]] = folded_offdiag_term(
             numpy.asarray(arrays[match["volume"]]),
             numpy.asarray(arrays[match["coefficient"]]),
             flat(match["down"]), flat(match["up"]), flat(match["corner"]),
             lanes[match["lane"]], ghost_weights[match["weight"]])
-    for match in _TOTAL_FIRST.finditer(body):
-        totals[match["name"]] = terms[match["tag"]].copy()
-    for match in _TOTAL_ADD.finditer(body):
-        totals[match["name"]] = _f32(totals[match["name"]] + terms[match["tag"]])
     for match in _MASK.finditer(body):
         if wall_flags[match["wall"]]:
-            totals[match["name"]] = _f32(numpy.where(
-                faces[match["face"]], numpy.float32(0.0), totals[match["name"]]))
-    for match in _SRC_COUPLED.finditer(body):
+            terms[match["tag"]] = _f32(numpy.where(
+                faces[match["face"]], numpy.float32(0.0), terms[match["tag"]]))
+    execute_row_statements(body, scalars, terms, rows, kept_words, chunk_codes)
+    for match in _SRC_ROW.finditer(body):
         name = match["name"]
-        sources[name] = _f32(_f32(scalars[f"gs_{name}"] * scalars[f"us_{name}"])
-                             + totals[name])
+        sources[name] = _f32(rows[name].astype(numpy.float32))
     for match in _SRC_PLAIN.finditer(body):
         name = match["name"]
         sources[name] = _f32(scalars[f"gs_{name}"] * scalars[f"us_{name}"])
@@ -367,14 +371,16 @@ def evaluate_folded_source(source, arrays, tables, codes, walls, weights, shape)
         kms = _f32(numpy.asarray(tables[match["kms"]]).reshape(broadcast))
         field = arrays[match["field"]]
         aux = arrays[match["aux"]]
-        # constitutive_apply (PINNED by exact string, and welded to the certified
-        # sibling's): prev is read BEFORE fw is written, then two separate
-        # accumulations left to right.
+        flagged = numpy.broadcast_to(flags[match["flag"]], tuple(shape))
+        # constitutive_apply (the certified family's extracted bytes, welded to the
+        # plain constitutive pair's): on a flagged cell prev is read BEFORE fw is
+        # written and f + ((kps*src) - (kms*prev)); elsewhere f = src, fw untouched.
         previous = numpy.asarray(aux).copy()
         source_values = sources[match["name"]]
-        aux[...] = source_values
-        accumulated = _f32(numpy.asarray(field) + _f32(kps * source_values))
-        field[...] = _f32(accumulated - _f32(kms * previous))
+        difference = _f32(_f32(kps * source_values) - _f32(kms * previous))
+        accumulated = _f32(numpy.asarray(field) + difference)
+        aux[...] = numpy.where(flagged, source_values, previous)
+        field[...] = numpy.where(flagged, accumulated, source_values)
 
 
 # --------------------------------------------------------------------------
@@ -384,7 +390,7 @@ def evaluate_folded_source(source, arrays, tables, codes, walls, weights, shape)
 def run_both_paths(mask, symmetry=(), phase=1, termination="periodic", steps=2,
                    source=None, seed=20260820, boundaries=None,
                    codes_override=None, weights_override=None,
-                   emitter="folded"):
+                   emitter="folded", block=False, negative_zero=False, cell=None):
     """``stepping.update_E`` and the emitted source from ONE frozen state.
 
     Returns ``(oracle_bits, produced_bits, floors)``. ``floors`` carries the three
@@ -419,9 +425,13 @@ def run_both_paths(mask, symmetry=(), phase=1, termination="periodic", steps=2,
         boundaries = tuple(termination if "xyz"[axis] in symmetry else "periodic"
                            for axis in range(3))
     fields, layer, grid = build(numpy, boundaries=boundaries, symmetry=planes,
-                                cell=_fold_cell(symmetry))
-    rows = install_rows(fields, grid, mask, seed=seed)
-    seed_state(fields, grid, seed=seed % 1000)
+                                cell=_fold_cell(symmetry) if cell is None else cell)
+    rows = install_rows(fields, grid, mask, seed=seed, block=block)
+    layout = stepping._chunk_layout(fields, layer)
+    dropping = sum(not kept
+                   for row, partners in rows.items() for volume in partners.values()
+                   for kept in layout.offdiag_kept(volume))
+    seed_state(fields, grid, seed=seed % 1000, negative_zero=negative_zero)
     frozen = {name: numpy.asarray(getattr(fields, name)).copy()
               for name in ("Dx", "Dy", "Dz", "Ex", "Ey", "Ez",
                            "f_w_Ex", "f_w_Ey", "f_w_Ez")}
@@ -470,17 +480,19 @@ def run_both_paths(mask, symmetry=(), phase=1, termination="periodic", steps=2,
         codes = (tuple(codes_override) if codes_override is not None
                  else folded.folded_offdiag_boundary_codes(grid))
         text = folded.folded_offdiag_source(mask) if source is None else source
+    record, kept = chunk_arguments(fields, layer, codes)
     arrays = _device_arrays(fields, rows)
     for _ in range(steps):
         if emitter == "certified":
             evaluate_emitted_source(text, arrays, _tables_for(layer), codes,
-                                    walls, grid.shape)
+                                    walls, grid.shape, record, kept)
         else:
             evaluate_folded_source(text, arrays, _tables_for(layer), codes,
-                                   walls, weights, grid.shape)
+                                   walls, weights, grid.shape, record, kept)
         _advance_sources(fields)
         arrays = _device_arrays(fields, rows)
     floors = {"oracle_moved": moved, "coupling_max_abs": coupling,
+              "dropping_chunks": dropping,
               "folded_axis_deviation": deviation, "mirror_ghost_min_abs": ghost,
               "shape": tuple(grid.shape), "codes": codes, "walls": walls,
               "weights": weights}
@@ -678,7 +690,7 @@ def test_the_welded_tail_is_character_for_character_the_certified_siblings():
     extraction itself, and this states it as an assertion so a future edit that
     inlines a copy fails here."""
     tail = folded._sibling_block("constitutive_apply")
-    assert "float prev = fw[idx];" in tail and "fw[idx] = src;" in tail
+    assert "float prev = dsigw ? fw[idx] : 0.0f;" in tail and "if (dsigw) fw[idx] = src;" in tail
     constitutive = (HERE / "constitutive_kernels.py").read_text(encoding="utf-8")
     body = tail[tail.index("__device__"):]
     assert body in constitutive, (
@@ -778,13 +790,15 @@ def test_every_line_of_the_device_source_is_executed_or_pinned():
     scaffolding = (
         'extern "C" __global__', "float* __restrict__", "const float*",
         "int nx, int ny, int nz,", "int bc_x", "int wm_x", "float gw_x",
+        "const int* __restrict__ cb", "int kept_",
         "int idx = blockIdx.x", "if (idx >= nx * ny * nz) return;",
         "int nyz = ny * nz;", "int k = idx % nz;", "int j = (idx / nz) % ny;",
         "int i = idx / (ny * nz);", "int di = coord_dn", "int dj = coord_dn",
         "int dk = coord_dn", "int at_x = (i == 0)", ") {", "}", "{",
     )
-    grammar = (_TERM_CALL, _TOTAL_FIRST, _TOTAL_ADD, _MASK, _LANE, _GS, _US,
-               _SRC_COUPLED, _SRC_PLAIN, _TAIL)
+    pinned_blocks = (offdiag_emitter.RECORD_BLOCK + offdiag_emitter.CHUNK_LINES).split("\n")
+    grammar = (_TERM_CALL, _MASK, _LANE, _GS, _US, _ROW_START, _ROW_ADD, _SRC_ROW,
+               _SRC_PLAIN, _TAIL)
     for mask in folded.LIVE_ROW_MASKS:
         text = folded.folded_offdiag_source(mask)
         body = text[text.index('extern "C"'):]
@@ -801,8 +815,33 @@ def test_every_line_of_the_device_source_is_executed_or_pinned():
                 continue
             if span & covered:
                 continue
+            if line in pinned_blocks:
+                continue
             assert any(token in line for token in scaffolding), (
                 f"{mask}: no leg in this file executes or pins {stripped!r}")
+
+
+def test_the_folded_source_carries_the_certified_record_block_and_chunk_lines():
+    """The chunk-record decode and the chunk-label lines are the certified emitter's
+    (``offdiag_emitter.RECORD_BLOCK`` / ``CHUNK_LINES``), which its own suite pins
+    against ``bounds_block`` and the presence builder's host twin."""
+    for mask in folded.LIVE_ROW_MASKS:
+        text = folded.folded_offdiag_source(mask)
+        assert text.count(offdiag_emitter.RECORD_BLOCK) == 1
+        assert text.count(offdiag_emitter.CHUNK_LINES) == 1
+
+
+def test_the_presence_rows_reproduce_stepping_on_a_fold():
+    """Rows on an interior block (the chunks that carry a layer delete them) with
+    ``D = -0`` planted, on a fold whose axis is a live partner: the mirror ghost and
+    the dropped terms together, byte-compared."""
+    for mask in CORPUS_ROW_MASKS:
+        oracle, produced, floors = run_both_paths(
+            mask, ("x",), phase=-1, termination="metallic", steps=4, block=True,
+            negative_zero=True, cell=(2 * PRESENCE_CELL[0],) + PRESENCE_CELL[1:])
+        assert floors["oracle_moved"] > 0
+        assert floors["dropping_chunks"] > 0, "no chunk deletes a row: presence unexercised"
+        assert oracle == produced
 
 
 def test_every_line_of_the_prelude_is_executed_or_pinned():
@@ -830,7 +869,8 @@ def test_every_line_of_the_prelude_is_executed_or_pinned():
                           for name in folded.SIBLING_HELPERS)
     scaffolding = ("#define ", "__device__ __forceinline__", "const float*",
                    "int a, int n, int bc", "int i, int j, int k, int nyz, int nz",
-                   "float kps, float kms", "int mg, float w", ") {", "{", "}")
+                   "float kps, float kms, int dsigw", "int mg, float w", ") {", "{",
+                   "}")
     for line in text.split("\n"):
         stripped = line.strip()
         if not stripped or stripped.startswith("//"):
@@ -1040,19 +1080,15 @@ def _mutate(text, kind):
                        lambda m: "flat({}, {}, {}, nyz, nz)".format(
                            *[rename.get(g, g) for g in m.groups()]), text)
     if kind == "hoist_the_coefficient":
-        needle = ("return 0.25f * ((near_pair * u[home])"
-                  " + (far_pair * ghosted(u, up)));")
+        needle = "return (near_pair * u[home]) + (far_pair * ghosted(u, up));"
         return (text.replace(
-            needle, "return 0.25f * ((near_pair + far_pair) * u[home]);"),
+            needle, "return (near_pair + far_pair) * u[home];"),
             text.count(needle))
-    if kind == "distribute_the_quarter":
-        needle = ("return 0.25f * ((near_pair * u[home])"
-                  " + (far_pair * ghosted(u, up)));")
-        return (text.replace(
-            needle,
-            "return (0.25f * (near_pair * u[home]))"
-            " + (0.25f * (far_pair * ghosted(u, up)));"),
-            text.count(needle))
+    if kind == "scale_the_quarter_in_float32":
+        # NULL: 0.25 is an exact power of two, so scaling the float32 sum in float32
+        # and widening is the double scale's word away from underflow.
+        return re.subn(r"\(0\.25 \* \(double\)term_(\w+)\)",
+                       r"(double)(0.25f * term_\1)", text)
     if kind == "commute_the_near_product":
         # NULL: IEEE multiply commutes bitwise. Its discriminator is
         # ``hoist_the_coefficient``, which edits the same expression's
@@ -1082,7 +1118,7 @@ CAUGHT_ON_A_LIVE_OWN_AXIS = ("folded_own_axis_wraps",)
 #: NULLS, each paired with a leg editing the same kind of expression that must be
 #: caught. A battery of only-must-be-caught legs scores identically whether the
 #: comparator works or has degenerated into failing everything.
-PREDICTED_NULLS = ("distribute_the_quarter", "commute_the_near_product")
+PREDICTED_NULLS = ("scale_the_quarter_in_float32", "commute_the_near_product")
 
 
 @pytest.mark.parametrize("kind", CAUGHT_ON_A_LIVE_PARTNER)

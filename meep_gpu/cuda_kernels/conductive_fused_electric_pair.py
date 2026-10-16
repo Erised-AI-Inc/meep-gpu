@@ -150,7 +150,7 @@ try:  # pragma: no cover
 except Exception:  # pragma: no cover
     conductive_kernels = None  # type: ignore
 
-from . import own_cell_hoist
+from . import bounds_block, own_cell_hoist
 
 try:  # pragma: no cover
     from . import constitutive_kernels
@@ -223,22 +223,46 @@ COND_MASKS_SWEPT: Tuple[Tuple[bool, bool, bool], ...] = (
     (True, True, False),
 )
 
+#: The keep masks the gate sweeps: every chunk keeps every target's conductivity, and
+#: none does where a target carries one (``conductive_kernels.conductive_keeps``; a
+#: lossless target's flag is not read).
+KEEP_MASKS_SWEPT: Tuple[Tuple[bool, bool, bool], ...] = (
+    (True, True, True),
+    (False, False, False),
+)
+
 #: Every line of certified device text this file did not lift verbatim, with the
 #: reason. DATA, not prose, so a gate can assert the list rather than a docstring.
 LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"what": "the certified curl helpers pml_apply and cond_pml_apply",
-     "from": "void pml_apply(...) { ... f[idx] = ...; }",
-     "to": "float pml_apply_reg(...) { ... float value = ...; return value; }",
+     "from": "void pml_apply(...) { ... f[idx] = value; }  /  "
+             "void cond_pml_apply(...) { ... f[idx] = value; }",
+     "to": "float pml_apply_reg(...) { ... return value; }  /  "
+           "float cond_pml_apply_reg(...) { ... return value; }",
      "why": "the stepped displacement is CARRIED in a register instead of being "
             "written and read back. THE AUXILIARY STORES STAY: fu and f_cond are the "
             "curl's own histories, zero_metal_D does not touch them, and update_E "
             "does not read them"},
+    {"what": "cond_pml_apply's non-conductive arm (a chunk that keeps no conductivity)",
+     "from": "pml_apply(f, u, idx, curl, km1, si1, km2, si2, dsigu); return;",
+     "to": "return pml_apply_reg(f, u, idx, curl, km1, si1, km2, si2, dsigu);",
+     "why": "the certified helper's value is carried like the conductive forms', from "
+            "the same register rewrite; its arguments are the certified ones"},
     {"what": "the curl's per-target tail",
      "from": "pml_apply(Dx, fu_Dx, idx, curl, ...);  /  cond_pml_apply(Dx, ...);",
      "to": "d_x = pml_apply_reg(...);  /  d_x = cond_pml_apply_reg(...);",
      "why": "both branches of the certified #if are captured; capturing one would "
             "leave the other writing to global memory where the wall clear below "
             "could not reach it"},
+    {"what": "the two bodies' chunk-record blocks",
+     "from": "<step_D_pml_conductive's block>  /  <update_E_pml_real's block>",
+     "to": "<ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
+     "why": "ONE DECODE OF THE RECORD PER KERNEL (bit_parity_0_10 DESIGN.md D10). The "
+            "D curl reads the integer record (each component's dsig and dsigu axes) "
+            "and update_E the half-integer one (each component's own axis). Both "
+            "bodies' blocks are removed by bounds_block.strip_bounds_block (refused "
+            "unless each is exactly the emitter's block for its body) and the real "
+            "twin's union block is emitted directly after the decode"},
     {"what": "the constitutive half's index decomposition and bounds guard",
      "from": "int idx = ...; if (idx >= nx * ny * nz) return; int k = ...; ...",
      "to": "(dropped)",
@@ -251,8 +275,8 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "bits, so the substitution is exact rather than close; it is also what "
             "removes this half's only use of Dx/Dy/Dz and lets D be bound once"},
     {"what": "the constitutive half's kms_* coefficient names",
-     "from": "constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);",
-     "to": "... kps_x[i], kms_half_x[i]);",
+     "from": "constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);",
+     "to": "... kps_x[i], kms_half_x[i], in_h_x);",
      "why": "kms_x is the INTEGER sigma sub-lattice in the curl body and the "
             "HALF-INTEGER one here (stepping.py:1015); on the bare name the two "
             "parameters would collide and one launch would bind a half-cell error"},
@@ -267,8 +291,9 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
 __all__ = [
     "CARRIES_DEPOSIT_REPAIR", "CERTIFIED_KERNELS", "COND_MASKS_SWEPT", "FAMILY",
     "KERNEL_NAME", "LIFT_EDITS", "REPAIR_PATHS", "REPLACES", "SLOT",
-    "UNCERTIFIED_KERNELS", "assert_disjoint_bindings", "certified_constitutive_body",
-    "certified_curl_body", "conductive_bindings",
+    "UNCERTIFIED_KERNELS", "KEEP_MASKS_SWEPT", "assert_disjoint_bindings",
+    "certified_constitutive_body", "certified_curl_body", "conductive_bindings",
+    "conductive_keeps", "keep_bindings",
     "conductive_fused_electric_pair_prelude",
     "conductive_fused_electric_pair_signature",
     "conductive_fused_electric_pair_source",
@@ -309,28 +334,33 @@ _ZERO_METAL_ROWS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
 #: where the certified helper puts them.
 _PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
 _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
-_PML_APPLY_STORE = "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
+#: The closing store of each certified helper, spelled the same in both; each is
+#: rewritten inside its own helper's text (:func:`_helper_span`).
+_HELPER_STORE = "    f[idx] = value;\n"
 _PML_APPLY_STORE_REG = (
-    "    // THE ONE EDIT TO THIS HELPER: the right-hand side, its parenthesisation\n"
-    "    // and every auxiliary store are the certified ones; the displacement is\n"
-    "    // additionally NAMED and RETURNED so the weld can clear it on a metallic\n"
-    "    // wall before storing it, which is where driver.py:3310 puts zero_metal_D.\n"
-    "    return (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n")
+    "    // THE ONE EDIT TO THIS HELPER: the value, both forms and the auxiliary store\n"
+    "    // are the certified ones; the displacement is RETURNED rather than stored so\n"
+    "    // the weld can clear it on a metallic wall before storing it, which is where\n"
+    "    // driver.py:3310 puts zero_metal_D.\n"
+    "    return value;\n")
 
 _COND_PML_APPLY_SIGNATURE = "__device__ __forceinline__ void cond_pml_apply(\n"
 _COND_PML_APPLY_SIGNATURE_REG = (
     "__device__ __forceinline__ float cond_pml_apply_reg(\n")
-_COND_PML_APPLY_STORE = (
-    "    f[idx] = dsigu ? f_split : (dsig ? f_first : f_direct);\n")
+_COND_PML_APPLY_PLAIN = ("        pml_apply(f, u, idx, curl, km1, si1, km2, si2, dsigu);\n"
+                         "        return;\n")
+_COND_PML_APPLY_PLAIN_REG = (
+    "        return pml_apply_reg(f, u, idx, curl, km1, si1, km2, si2, dsigu);\n")
 _COND_PML_APPLY_STORE_REG = (
-    "    // THE ONE EDIT TO THIS HELPER, and it is the SELECTION that is returned\n"
-    "    // rather than stored -- the three-way case choice, its predicates and both\n"
-    "    // history stores below are the certified ones, untouched.\n"
-    "    float value = dsigu ? f_split : (dsig ? f_first : f_direct);\n")
-_COND_PML_APPLY_TAIL = "    if (dsig) c[idx] = c_new;\n"
-_COND_PML_APPLY_TAIL_REG = (
-    "    if (dsig) c[idx] = c_new;\n"
+    "    // THE ONE EDIT TO THIS HELPER, and it is the SELECTED FORM that is returned\n"
+    "    // rather than stored -- the per-chunk choice, its flags and both history\n"
+    "    // stores above are the certified ones, untouched.\n"
     "    return value;\n")
+
+#: The auxiliary stores that must survive the value rewrite.
+_HISTORY_STORES: Tuple[str, ...] = ("    if (dsigu) fu[idx] = fu_new;\n",
+                                    "    if (dsigu) u[idx] = u_new;\n",
+                                    "    if (dsig) c[idx] = c_new;\n")
 
 #: The fused entry point. The ONLY hand-written device text in this module, and it is a
 #: signature: no arithmetic lives here.
@@ -358,6 +388,11 @@ extern "C" __global__ void __NAME__(
     // The conductive recurrence's THIRD history, and what makes this curl arm a
     // family of its own (Fields._ensure_conductive_pml_storage).
     float* __restrict__ fc0, float* __restrict__ fc1, float* __restrict__ fc2,
+    // Which structure chunks keep each target's conductivity (RegionPlan
+    // .conductive_mask, one byte per cell), read only where KEEP<n> is 0. NOT
+    // __restrict__: a target every chunk keeps the conductivity of binds its own D
+    // array here, which is never dereferenced.
+    const unsigned char* ck0, const unsigned char* ck1, const unsigned char* ck2,
     // E and its dsigw auxiliary, the constitutive half's targets.
     float* __restrict__ Ex, float* __restrict__ Ey, float* __restrict__ Ez,
     float* __restrict__ f_w_Ex, float* __restrict__ f_w_Ey,
@@ -382,7 +417,11 @@ extern "C" __global__ void __NAME__(
     // zero_metal_D's three per-axis flags (driver.py:3310). A FOLDED metallic axis
     // carries no wall (stepping._zero_metal, :2237-2239) and this family refuses a
     // fold outright, so the two can never disagree here.
-    int wall_x, int wall_y, int wall_z
+    int wall_x, int wall_y, int wall_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // which PML form, per sub-lattice and axis, and the partner-presence word. ONE
+    // decode serves both halves (DESIGN.md D10).
+    const int* __restrict__ cb
 ) {
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 986->1015
 
@@ -447,6 +486,37 @@ def _line_starting(body: str, prefix: str, what: str) -> str:
     return matches[0]
 
 
+def _helper_span(prelude: str, signature: str) -> Tuple[int, int]:
+    """``[start, stop)`` of one certified helper in ``prelude``: its signature to its
+    closing brace. Refused by name unless the signature appears exactly once."""
+    if prelude.count(signature) != 1:
+        raise AssertionError(
+            f"the certified curl prelude declares {signature.strip()!r} "
+            f"{prelude.count(signature)} times, not once; the value rewrite has no anchor")
+    start = prelude.index(signature)
+    stop = prelude.index("\n}\n", start) + len("\n}\n")
+    return start, stop
+
+
+def _rewrite_helper(prelude: str, signature: str,
+                    edits: Sequence[Tuple[str, str, str]]) -> str:
+    """Each ``(old, new, what)`` of ``edits`` applied exactly once INSIDE one helper.
+
+    Both certified helpers close with the same store line, so an edit is scoped to the
+    helper it belongs to rather than counted over the whole prelude.
+    """
+    start, stop = _helper_span(prelude, signature)
+    helper = prelude[start:stop]
+    for old, new, what in edits:
+        if helper.count(old) != 1:
+            raise AssertionError(
+                f"the certified helper {signature.strip()!r} carries {what} "
+                f"{helper.count(old)} times, not once ({old.strip()!r}); the arithmetic "
+                f"may have moved")
+        helper = helper.replace(old, new, 1)
+    return prelude[:start] + helper + prelude[stop:]
+
+
 def conductive_fused_electric_pair_prelude() -> str:
     """Both certified preludes, with the two curl helpers turned into values.
 
@@ -457,34 +527,22 @@ def conductive_fused_electric_pair_prelude() -> str:
     _certified_halves()
     template = conductive_kernels.kernel_template(_CURL_TEMPLATE)
     prelude = template.split('extern "C" __global__ void', 1)[0]
-    for signature, store in ((_PML_APPLY_SIGNATURE, _PML_APPLY_STORE),
-                             (_COND_PML_APPLY_SIGNATURE, _COND_PML_APPLY_STORE)):
-        if prelude.count(signature) != 1:
-            raise AssertionError(
-                f"the certified curl prelude declares {signature.strip()!r} "
-                f"{prelude.count(signature)} times, not once; the value rewrite has "
-                f"no anchor")
-        if prelude.count(store) != 1:
-            raise AssertionError(
-                f"the certified helper no longer closes with the store this module "
-                f"turns into a named value ({store.strip()!r}); the arithmetic may "
-                f"have moved")
-    prelude = prelude.replace(_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, 1)
-    prelude = prelude.replace(_PML_APPLY_STORE, _PML_APPLY_STORE_REG, 1)
-    prelude = prelude.replace(_COND_PML_APPLY_SIGNATURE,
-                              _COND_PML_APPLY_SIGNATURE_REG, 1)
-    prelude = prelude.replace(_COND_PML_APPLY_STORE, _COND_PML_APPLY_STORE_REG, 1)
-    prelude = _replace_once(prelude, _COND_PML_APPLY_TAIL, _COND_PML_APPLY_TAIL_REG,
-                            "cond_pml_apply's return")
+    prelude = _rewrite_helper(prelude, _PML_APPLY_SIGNATURE, (
+        (_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, "its signature"),
+        (_HELPER_STORE, _PML_APPLY_STORE_REG, "its closing store")))
+    prelude = _rewrite_helper(prelude, _COND_PML_APPLY_SIGNATURE, (
+        (_COND_PML_APPLY_SIGNATURE, _COND_PML_APPLY_SIGNATURE_REG, "its signature"),
+        (_COND_PML_APPLY_PLAIN, _COND_PML_APPLY_PLAIN_REG,
+         "its non-conductive arm"),
+        (_HELPER_STORE, _COND_PML_APPLY_STORE_REG, "its closing store")))
     # THE HISTORY STORES SURVIVE, and that is checked rather than trusted: fu and
     # f_cond are the curl's own state and a rewrite that swallowed them would leave
     # the recurrence one step behind on every cell, which no seam test would notice.
-    for store in ("    fu[idx] = fu_new;\n", "    if (dsigu) u[idx] = u_new;\n",
-                  "    if (dsig) c[idx] = c_new;\n"):
-        if store not in prelude:
+    for store in _HISTORY_STORES:
+        if prelude.count(store) != 1:
             raise AssertionError(
                 f"the auxiliary store {store.strip()!r} did not survive the value "
-                f"rewrite; the curl's histories would stop advancing")
+                f"rewrite exactly once; the curl's histories would stop advancing")
     return prelude + constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE
 
 
@@ -506,16 +564,21 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "the certified curl body no longer decodes i on its own line; the carried "
             "registers have nowhere to be declared")
+    # ONE DECODE OF THE CHUNK RECORD (D10): the curl body's own block is removed and
+    # the real twin's union block, which also carries update_E's entries, takes its
+    # place.
+    body = bounds_block.strip_bounds_block(
+        body, f"kernel_template({_CURL_TEMPLATE!r})", *real.CURL_BLOCK)
     head, tail = body.split(_DECODE_END, 1)
     body = "".join((
-        head, _DECODE_END,
-        "\n    // The three carried registers. Declared HERE because each certified\n"
+        head, _DECODE_END, "\n",
+        real.union_bounds_block(),
+        "    // The three carried registers. Declared HERE because each certified\n"
         "    // component below is a braced scope, and a value declared inside one\n"
         "    // does not outlive it.\n"
         "    float d_x = 0.0f;\n"
         "    float d_y = 0.0f;\n"
-        "    float d_z = 0.0f;\n"
-        "\n",
+        "    float d_z = 0.0f;\n",
         tail,
     ))
     # BOTH BRANCHES OF THE CERTIFIED #if ARE REWRITTEN, matched as WHOLE LINES so a
@@ -549,11 +612,11 @@ def certified_curl_body() -> str:
             raise AssertionError(
                 f"a store into {target} survived the capture rewrite; the wall clear "
                 f"below writes the register and this store would race it")
-    stencil = "        float curl = dtdx * ((sf - f1) + (f2 - ss));"
+    stencil = "        float curl = curl_stencil(dtdx, "
     if body.count(stencil) != 3:
         raise AssertionError(
             f"the certified curl body carries {body.count(stencil)} of the three curl "
-            f"stencil lines; this family exists to reuse them unchanged")
+            f"stencil calls; this family exists to reuse them unchanged")
     return body
 
 
@@ -605,6 +668,10 @@ def certified_constitutive_body() -> str:
         raise AssertionError(
             "the certified constitutive body no longer decodes i on its own line; the "
             "duplicate decomposition cannot be identified")
+    # Its chunk-record block goes with the decode: the union block above decodes
+    # update_E's entries too (D10).
+    body = bounds_block.strip_bounds_block(body, "_update_E_pml_real_kernel_code",
+                                           *real.CONSTITUTIVE_BLOCK)
     tail = body.split(_DECODE_END, 1)[1]
 
     # THE SEAM. ONE TOKEN PER LINE is substituted and the rest of the certified
@@ -636,10 +703,11 @@ def certified_constitutive_body() -> str:
                 f"signature exists to avoid")
 
     # THE ONE RENAME, on one line each.
-    for axis, coordinate in zip(_CARRIED, _COORDINATE):
+    for target, (axis, coordinate) in enumerate(zip(_CARRIED, _COORDINATE)):
         prefix = f"    constitutive_apply(E{axis}, f_w_E{axis}, idx, src_{axis}, "
         call = _line_starting(tail, prefix, f"E{axis}'s constitutive_apply")
-        expected = f"{prefix}kps_{axis}[{coordinate}], kms_{axis}[{coordinate}]);"
+        expected = (f"{prefix}kps_{axis}[{coordinate}], kms_{axis}[{coordinate}], "
+                    f"{real.constitutive_flags()[target]});")
         if call != expected:
             raise AssertionError(
                 f"E{axis}'s constitutive_apply is {call!r}, not the certified "
@@ -648,7 +716,7 @@ def certified_constitutive_body() -> str:
         tail = tail.replace(call, call.replace(f"kms_{axis}[", f"kms_half_{axis}[", 1),
                             1)
     for axis, coordinate in zip(_CARRIED, _COORDINATE):
-        if f"kms_{axis}[{coordinate}])" in tail:
+        if f"kms_{axis}[{coordinate}]," in tail:
             raise AssertionError(
                 f"kms_{axis} survived the sub-lattice rename; it is the INTEGER "
                 f"vector in the curl body and the HALF-INTEGER one here, and the two "
@@ -656,15 +724,20 @@ def certified_constitutive_body() -> str:
     return tail
 
 
-def conductive_fused_electric_pair_source(cond: Sequence[bool]) -> str:
-    """The whole fused kernel at one conductive mask.
+def conductive_fused_electric_pair_source(
+        cond: Sequence[bool], keep: Sequence[bool] = (True, True, True)) -> str:
+    """The whole fused kernel at one conductive mask and one keep mask.
 
-    THE THREE ``#define`` LINES ARE THIS FILE'S ONLY ADDITION TO THE MASK, exactly as
-    ``conductive_kernels.kernel_source`` spells it, and for that function's own reason:
-    the conductive tail helper lives INSIDE the emitted text behind
+    THE ``#define`` LINES ARE THIS FILE'S ONLY ADDITION TO THE MASKS, exactly as
+    ``conductive_kernels.kernel_source`` spells them, and for that function's own
+    reason: the conductive tail helper lives INSIDE the emitted text behind
     ``#if COND0 || COND1 || COND2``, so a gate that mutates the emitted source reaches
-    it.
+    it. ``keep`` is ``conductive_kernels.conductive_keeps``' answer: ``KEEP<n>`` 1
+    where every structure chunk keeps target n's conductivity.
     """
+    kept = tuple(bool(flag) for flag in keep)
+    if len(kept) != 3:
+        raise ValueError(f"keep must be a triple of per-target flags, got {keep!r}")
     mask = tuple(bool(flag) for flag in cond)
     if len(mask) != 3:
         raise ValueError(
@@ -679,6 +752,8 @@ def conductive_fused_electric_pair_source(cond: Sequence[bool]) -> str:
             "Emitting it would be a body no admitted configuration can reach")
     defines = "".join(f"#define COND{index} {int(flag)}\n"
                       for index, flag in enumerate(mask))
+    defines += "".join(f"#define KEEP{index} {int(flag)}\n"
+                       for index, flag in enumerate(kept))
     source = "".join((
         defines,
         conductive_fused_electric_pair_prelude(),
@@ -693,10 +768,12 @@ def conductive_fused_electric_pair_source(cond: Sequence[bool]) -> str:
 
 
 def device_sources() -> Dict[str, str]:
-    """Every source this family can emit, keyed by mask -- for a digest."""
-    return {"".join("1" if flag else "0" for flag in mask):
-            conductive_fused_electric_pair_source(mask)
-            for mask in COND_MASKS_SWEPT}
+    """Every source this family can emit, keyed by conductive mask and keep mask (the
+    keep mask is all-kept or none-kept here) -- for a digest."""
+    return {"".join("1" if flag else "0" for flag in mask)
+            + ("" if all(keep) else ":unkept"):
+            conductive_fused_electric_pair_source(mask, keep)
+            for mask in COND_MASKS_SWEPT for keep in KEEP_MASKS_SWEPT}
 
 
 _COMPILE_OPTIONS: Tuple[str, ...] = ('--fmad=false',)
@@ -708,7 +785,8 @@ def _clear_kernel_cache() -> int:
     return compile_cache.clear()
 
 
-def _get_kernel(cond: Sequence[bool], name: str = KERNEL_NAME):
+def _get_kernel(cond: Sequence[bool], keep: Sequence[bool] = (True, True, True),
+                name: str = KERNEL_NAME):
     """Compile (or fetch) the kernel at one mask.
 
     ``compile_cache.kernel_cache_key`` keys the memo ON THE SOURCE, so a gate that
@@ -718,7 +796,7 @@ def _get_kernel(cond: Sequence[bool], name: str = KERNEL_NAME):
         raise RuntimeError(
             "CuPy is not importable on this host, so this kernel cannot be compiled; "
             "the predicate and the emitter need no device and still run")
-    code = conductive_fused_electric_pair_source(cond)
+    code = conductive_fused_electric_pair_source(cond, keep)
     key = compile_cache.kernel_cache_key(name, True, _COMPILE_OPTIONS, code)
     return compile_cache.get_or_compile(
         key, lambda: cp.RawKernel(code, name, options=_COMPILE_OPTIONS))
@@ -895,6 +973,34 @@ def conductive_bindings(fields: "Fields") -> Tuple[Tuple[Any, ...], Tuple[Any, .
             tuple(bool(flag) for flag in mask))
 
 
+def conductive_keeps(fields: "Fields", pml: "PML"
+                     ) -> Tuple[Tuple[bool, bool, bool], Tuple[Any, Any, Any]]:
+    """``(keep, masks)`` for ``step_D``: ``conductive_kernels.conductive_keeps``, whole."""
+    if conductive_kernels is None:
+        raise RuntimeError(
+            "conductive_kernels is not importable on this host, so which chunks keep "
+            "the conductivity cannot be read from the family that defines it")
+    return conductive_kernels.conductive_keeps(fields, pml, "step_D")
+
+
+def keep_bindings(fields: "Fields", keep: Sequence[bool],
+                  masks: Sequence[Any]) -> Tuple[Any, Any, Any]:
+    """The three ``ck`` pointers: the mask where ``KEEP<n>`` is 0, the target otherwise.
+
+    A target every chunk keeps the conductivity of binds its own D array, which is
+    ``conductive_kernels.step_conductive_curl``'s own convention: the pointer is never
+    dereferenced.
+    """
+    targets = tuple(getattr(fields, name) for name in _TARGETS)
+    out = []
+    for name, flag, mask, target in zip(_TARGETS, keep, masks, targets):
+        if not flag and mask is None:
+            raise ValueError(f"{name} is not kept by every chunk and no conductive-chunk "
+                             f"mask was resolved for it")
+        out.append(target if flag else mask)
+    return tuple(out)  # type: ignore[return-value]
+
+
 def assert_disjoint_bindings(fields: "Fields", tables: Dict[str, Dict[str, Any]],
                              conductivity: Sequence[Any],
                              histories: Sequence[Any]) -> int:
@@ -950,11 +1056,21 @@ def launch_conductive_fused_electric_pair(
         fields: "Fields", tables: Dict[str, Dict[str, Any]],
         boundary_codes: Sequence[Any], walls: Sequence[int], dtdx: float,
         conductivity: Sequence[Any], histories: Sequence[Any],
-        cond: Sequence[bool], kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """All three of :data:`REPLACES` in ONE launch, at this run's mask.
+        cond: Sequence[bool], kernel: Optional[Any] = None, *,
+        chunk_bounds: Any, keep: Sequence[bool] = (True, True, True),
+        keep_masks: Sequence[Any] = (None, None, None)) -> Dict[str, Any]:
+    """All three of :data:`REPLACES` in ONE launch, at this run's masks.
 
     ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is.
+
+    ``chunk_bounds`` IS THE RUN'S CHUNK RECORD ON THE DEVICE, required and keyword-only
+    (one contiguous ``int32[25]`` vector, ``chunk_map.chunk_bounds_record``): both halves
+    choose MEEP's per-chunk forms from it, and a launch without it is refused by name.
+    ``keep`` and ``keep_masks`` are :func:`conductive_keeps`' answer; ``keep`` must be
+    the one the kernel was compiled with.
     """
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
+    kept = keep_bindings(fields, keep, keep_masks)
     if len(tuple(conductivity)) != 6 or len(tuple(histories)) != 3:
         raise ValueError(
             f"{len(tuple(conductivity))} conductivity and {len(tuple(histories))} "
@@ -967,7 +1083,7 @@ def launch_conductive_fused_electric_pair(
     constitutive = tables["constitutive"]
     arguments = tuple(getattr(fields, name) for name in _FIELD_BINDINGS) + tuple(
         conductivity
-    ) + tuple(histories) + tuple(
+    ) + tuple(histories) + tuple(kept) + tuple(
         getattr(fields, name) for name in _ELECTRIC_BINDINGS
     ) + tuple(real.inverse_epsilon_bindings(fields)) + (
         np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx),
@@ -975,17 +1091,18 @@ def launch_conductive_fused_electric_pair(
         constitutive[key] for key in _CONSTITUTIVE_TABLE_KEYS
     ) + (
         boundary_codes[0], boundary_codes[1], boundary_codes[2],
-    ) + tuple(np.int32(int(bool(walls[axis]))) for axis in range(3))
-    (kernel or _get_kernel(cond))((blocks,), (_FUSED_THREADS,), arguments)
+    ) + tuple(np.int32(int(bool(walls[axis]))) for axis in range(3)) + (cb,)
+    (kernel or _get_kernel(cond, keep))((blocks,), (_FUSED_THREADS,), arguments)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
             "cond": tuple(bool(flag) for flag in cond),
+            "keep": tuple(bool(flag) for flag in keep),
             "walls": tuple(int(bool(walls[axis])) for axis in range(3))}
 
 
 def run_conductive_fused_electric_pair(
         fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
-        sources: Any = None,
+        chunk_bounds: Any, sources: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once.
@@ -1000,7 +1117,9 @@ def run_conductive_fused_electric_pair(
     if tables is None:
         tables = conductive_fused_electric_pair_tables(pml)
     conductivity, histories, cond = conductive_bindings(fields)
+    keep, keep_masks = conductive_keeps(fields, pml)
     assert_disjoint_bindings(fields, tables, conductivity, histories)
     return launch_conductive_fused_electric_pair(
         fields, tables, step_curl_kernels.real_curl_boundary_codes(grid),
-        zero_metal_axes(grid), dtdx, conductivity, histories, cond, kernel)
+        zero_metal_axes(grid), dtdx, conductivity, histories, cond, kernel,
+        chunk_bounds=chunk_bounds, keep=keep, keep_masks=keep_masks)

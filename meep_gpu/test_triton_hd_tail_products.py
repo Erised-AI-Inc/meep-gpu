@@ -417,15 +417,6 @@ def test_the_families_declare_the_multiply_helpers_they_may_reach() -> None:
             f"{family.FAMILY} reaches {sorted(called - set(family.MULTIPLY_HELPERS))}")
 
 
-def test_the_complex_families_restate_the_certified_subnormal_policy() -> None:
-    """The expansion licence is the certified family's, not this product's."""
-    from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
-
-    for family in (folded_complex, beta_complex):
-        assert (family.CERTIFIED_UNDER_SUBNORMAL_POLICY
-                == complex_fields.CERTIFIED_UNDER_SUBNORMAL_POLICY)
-
-
 # ---------------------------------------------------------------------------
 # THE LIFT JOIN. Six of this lane's fifteen corpus rows were silently excluded on the
 # first full campaign because a name match found nothing and the miss was reported as
@@ -563,27 +554,6 @@ def test_the_index_is_not_confused_with_a_longer_index_sharing_its_digits() -> N
 
     target, _why = kit.resolve_case(_Wide, (("T", "m"),), "T.test_x_1_2")
     assert target is None
-
-
-def test_the_gate_kit_names_the_policy_certification_needle_it_scores_on() -> None:
-    """The unlicensed-policy leg scores a refusal BY CLAUSE, so the needle is data."""
-    kit = _kit()
-    assert kit.CERTIFICATION_NEEDLE == "CERTIFIED under the"
-
-
-def test_only_the_complex_products_ask_the_policy_for_a_licence() -> None:
-    """A real-storage product has no expansion licence to lose, and must not fake one."""
-    kit = _kit()
-    for family, _instances, _cells in FAMILIES:
-        if family in (folded_complex, beta_complex):
-            continue
-
-        class _RealProduct(kit.Product):
-            complex_storage = False
-
-        licensed, reasons = kit.policy_licenses_the_arms(_RealProduct())
-        assert licensed is True
-        assert reasons == []
 
 
 def test_upstream_safe_name_reproduces_the_three_shapes_the_corpus_uses() -> None:

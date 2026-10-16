@@ -394,6 +394,13 @@ def _raw_factors(fields, name):
 
     if name in ("Ex", "Ey", "Ez") and not fields._stored_E:
         displacement = host_writes.raw(fields, "D" + name[1])
+        if name in fields.absent_components:
+            # The zeros ``component_factors`` serves for a component MEEP never
+            # allocated, as a read-only view: ``D * inv_eps`` is -0 on its conductor
+            # cells, where MEEP reads 0.0 (monitor.cpp:160-164).
+            xp = fields.grid.xp
+            return (xp.broadcast_to(xp.zeros((), dtype=displacement.dtype),
+                                    displacement.shape),)
         inverse = fields.inverse_epsilon_for(name)
         if getattr(inverse, "shape", None) == getattr(displacement, "shape", None):
             return (displacement, inverse)
@@ -458,8 +465,8 @@ def _sliced_component(fields, grid, component, region, periodic=(False, False, F
     (`_append_metallic_planes`); over PERIODIC boundaries the second mirror at
     doubled ``n_full`` reflects, and the plane past the stored top is the
     parity-weighted image row `stepping._far_reflect_rows` names
-    (`_append_reflected_planes`) — the same neighbour `fields.to_cell_center`
-    supplies there. Either plane is appended for the same reason the periodic
+    (`_append_reflected_planes`) — the same neighbour the field readback
+    (`readback._up`) supplies there. Either plane is appended for the same reason the periodic
     plane is fetched above: without it the extended slice has the region's own
     length, `_apply_yee_interpolation` finds nothing to consume, and THE AVERAGE IS
     DROPPED FOR THE WHOLE AXIS — the quadrant then holds raw Yee samples on the
@@ -530,7 +537,7 @@ def _sliced_component(fields, grid, component, region, periodic=(False, False, F
             layers = tuple(layer[block] for layer in layers)
             continue
         indices, phases = _lattice_gather_device(grid, axis, low, span,
-                                                 _axis_bloch_phase(grid, axis))
+                                                 _axis_bloch_phase(grid, axis), shifts[axis])
         layers = tuple(layer.take(indices, axis=axis) for layer in layers)
         if phases is not None:
             deferred_phases.append(phases)
@@ -568,8 +575,8 @@ def _append_reflected_planes(grid, sampled, axes, component, lows):
 
     Past the stored top of such an axis stands the parity-weighted image of
     stored row ``n_full - stored + 2`` about the second mirror at doubled
-    ``n_full`` — the row `stepping._far_reflect_rows` derives and
-    `fields.to_cell_center` averages against. ``lows`` are the region's stored
+    ``n_full`` — the row `stepping._far_reflect_rows` derives and the field
+    readback (`readback._up`) averages against. ``lows`` are the region's stored
     start indices, which locate that stored row inside the already-sliced array
     (the plane is taken from `sampled` itself, so an axis appended earlier in the
     loop contributes its plane to a later axis's corner exactly as the sequential
@@ -889,11 +896,33 @@ def _axis_bloch_phase(grid, axis):  # grid.bloch_phase(axis) where the grid has 
     return reader(axis) if callable(reader) else None
 
 
+def _window_low(grid, axis, iyee_shift):  # Grid.stored_window_low where the grid has it, else 0.
+    """The first ladder index of the stored window (``Grid.stored_window_low``).
+
+    1 for a Yee-shift-0 component on a Bloch-phased axis, whose stored cell 0 is MEEP's
+    owned top point ``lc + 2N``; 0 everywhere else, and on the test stubs, which carry
+    no phase.
+    """
+    reader = getattr(grid, "stored_window_low", None)
+    return reader(axis, iyee_shift) if callable(reader) else 0
+
+
+def _lattice_fold(grid, axis, raw, iyee_shift):
+    """``(stored indices, lattice-vector counts)`` of ladder indices ``raw`` on a wrapping axis.
+
+    The cell is ``raw mod n``; the count is ``floor((raw - low) / n)`` with ``low`` the
+    stored window's first ladder index (:func:`_window_low`, ``Grid.wrap_count``), so the
+    field at ladder point ``raw`` is ``bloch_phase ** count`` times the stored word.
+    """
+    count = _axis_cell_count(grid, axis)
+    return np.mod(raw, count), np.floor_divide(raw - _window_low(grid, axis, iyee_shift), count)
+
+
 def _axis_cell_count(grid, axis):  # Stored cell count on one axis.
     return (grid.nx, grid.ny, grid.nz)[axis]
 
 
-def _lattice_gather(grid, axis, first_cell, cell_count, phase):
+def _lattice_gather(grid, axis, first_cell, cell_count, phase, iyee_shift):
     """Stored-grid indices and per-cell Bloch factors for a run of ladder cells.
 
     MEEP source: loop_in_chunks.cpp lines 390-415. A monitor whose requested extent
@@ -901,19 +930,19 @@ def _lattice_gather(grid, axis, first_cell, cell_count, phase):
     lattice shifts whose translated cell still intersects the request and
     multiplies each shifted copy by ``pow(eikna[d], ishift)``. Ladder cell
     ``first_cell + i`` therefore samples stored cell ``(first_cell + i) mod n`` and
-    carries ``bloch_phase ** ((first_cell + i) // n)``, which is the same statement
-    one cell at a time: cell ``j + n`` sits one lattice vector up from cell ``j``,
-    and ``grid.bloch_phase`` is by definition the factor between them.
+    carries ``bloch_phase ** count``, with ``count`` the lattice vectors between the
+    ladder point and the stored window (:func:`_lattice_fold`): cell ``j + n`` sits one
+    lattice vector up from cell ``j``, and ``grid.bloch_phase`` is by definition the
+    factor between them. ``iyee_shift`` is the sampled component's Yee shift on the
+    axis, which decides the window (``Grid.stored_window_low``).
 
     Returns:
         (indices, phases) — an int array into the stored axis and the matching
         complex factors, or None when every factor is 1 (no Bloch phase, or no
         cell actually wrapped).
     """
-    count = _axis_cell_count(grid, axis)
     raw = np.arange(first_cell, first_cell + cell_count, dtype=np.int64)
-    shifts = np.floor_divide(raw, count)
-    indices = raw - shifts * count
+    indices, shifts = _lattice_fold(grid, axis, raw, iyee_shift)
     if phase is None or not shifts.any():
         return indices, None
     factors = np.array([complex(phase) ** int(shift) for shift in shifts], dtype=np.complex64)
@@ -928,7 +957,7 @@ _LATTICE_GATHER_DEVICE: dict = {}
 _LATTICE_GATHER_DEVICE_LIMIT = 1024
 
 
-def _lattice_gather_device(grid, axis, first_cell, cell_count, phase):
+def _lattice_gather_device(grid, axis, first_cell, cell_count, phase, iyee_shift):
     """:func:`_lattice_gather`'s result as BACKEND arrays, built once per run, not per step.
 
     The host build is pure — it depends on the axis length, the ladder and the Bloch
@@ -950,12 +979,13 @@ def _lattice_gather_device(grid, axis, first_cell, cell_count, phase):
     multiplies without reshaping.
     """
     key = (id(grid.xp), int(axis), _axis_cell_count(grid, axis), int(first_cell),
-           int(cell_count), None if phase is None else complex(phase))
+           int(cell_count), None if phase is None else complex(phase), int(iyee_shift),
+           _window_low(grid, axis, iyee_shift))
     entry = _LATTICE_GATHER_DEVICE.get(key)
     if entry is None:
         if len(_LATTICE_GATHER_DEVICE) >= _LATTICE_GATHER_DEVICE_LIMIT:
             _LATTICE_GATHER_DEVICE.clear()
-        indices, factors = _lattice_gather(grid, axis, first_cell, cell_count, phase)
+        indices, factors = _lattice_gather(grid, axis, first_cell, cell_count, phase, iyee_shift)
         shape = [1, 1, 1]
         shape[axis] = int(cell_count)
         entry = (grid.xp.asarray(indices),
@@ -1318,10 +1348,12 @@ def _register_volume(grid, center, size, periodic, description):
     # The +1 is the plane a Yee-to-centre average consumes: a region ending on the
     # last row of cell centres needs the wrapped neighbour to interpolate a
     # component whose Yee shift is 0 on that axis, even though its own ladder is in
-    # range.
+    # range. On a Bloch-phased axis a region starting at row 0 is gathered too: the
+    # shift-0 sample at ``lc`` is the not-owned image of stored cell 0, which holds the
+    # owned top point ``lc + 2N`` (``Grid.stored_window_low``).
     wrapped = tuple(
         bool(periodic[axis])
-        and (ladders[axis][0] < 0
+        and (ladders[axis][0] < _window_low(grid, axis, 0)
              or ladders[axis][0] + ladders[axis][1] + 1 > _axis_cell_count(grid, axis))
         for axis in range(3)
     )
@@ -1377,8 +1409,10 @@ def _register_volume(grid, center, size, periodic, description):
                     f"would read as a real measurement of the cell."
                 )
             phase = _axis_bloch_phase(grid, axis)
-            base_indices, base_phases = _lattice_gather(grid, axis, first_cell, cell_count, phase)
-            extended = _lattice_gather(grid, axis, first_cell, cell_count + 1, phase)
+            # The base list serves a component with Yee shift 1 on the axis, the extended
+            # one (one plane more, for the Yee-to-centre average) a component with 0.
+            base_indices, base_phases = _lattice_gather(grid, axis, first_cell, cell_count, phase, 1)
+            extended = _lattice_gather(grid, axis, first_cell, cell_count + 1, phase, 0)
             starts.append(first_cell)
             counts.append(cell_count)
             gathered.append((base_indices, extended[0], base_phases, extended[1]))
@@ -2376,8 +2410,8 @@ class DFTMonitor:
         folded PERIODIC axis, where the quadrant's last cell is the stored
         ``big_corner`` cell (`Grid.stored_cells` one past `owned_cells`, at
         either count parity): its centre sits past the window top, so it
-        has no full-domain cell to land on and is dropped — the same clip
-        `fields._reconstruct_full_domain` takes. The grid bound
+        has no full-domain cell to land on and is dropped — the same clip the
+        field readback's unfolding (`readback._unfold`) takes. The grid bound
         ``n_full - centre`` states that directly for a whole-axis quadrant and
         never binds on a narrower region.
         """
@@ -2403,8 +2437,8 @@ class DFTMonitor:
         folded in Y, so unfolding Y multiplies the already-phased X half by
         `parity_y` and the doubly mirrored corner ends up carrying
         `parity_x * parity_y`. That reproduces the hand-written four-quadrant
-        version BIT FOR BIT, overlapping writes included — the same statement
-        `fields._reconstruct_full_domain` makes for the field arrays.
+        version BIT FOR BIT, overlapping writes included — the same unfolding
+        the field readback (`readback._unfold`) applies to the field arrays.
 
         Args:
             quadrant: Stored DFT block, halved on each folded axis.
@@ -4341,8 +4375,8 @@ class Near2FarMonitor:
         because for a MONITOR the physics still demands it: each face's absorber
         begins one own-thickness inside it, a half-cell allowance covers the Yee
         snapping of the ladder, and a face with no absorber constrains nothing.
-        (Sources are ADMITTED inside the layer now — the deposit-mirror and
-        withdraw fixes in ``sources`` are measured on Cartesian and Dcyl alike —
+        (Sources are ADMITTED inside the layer now — the per-chunk curl form and
+        the withdraw fix are measured on Cartesian and Dcyl alike —
         but a near-field patch has no analogous fix: it reads an attenuated field,
         which is not an engine defect but the absorber doing its job.)
         """
@@ -5171,8 +5205,7 @@ def _reducer_axis_map(grid, axis: int, first_site: int, count: int, parity: int)
         return dropped, indices, codes, None
     raw = np.arange(first_site, first_site + count, dtype=np.int64)
     if _wrapping_axes(grid)[axis] and not _axis_is_metallic(grid, axis) and not grid.is_axis(axis):
-        shifts = np.floor_divide(raw, stored)
-        indices = raw - shifts * stored
+        indices, shifts = _lattice_fold(grid, axis, raw, parity)
         phase = _axis_bloch_phase(grid, axis)
         if phase is None or not shifts.any():
             return 0, indices, None, None
@@ -5224,8 +5257,7 @@ def _reducer_extension_map(grid, axis: int, start: int, count: int):
         return indices, codes, None
     raw = np.arange(start, start + count, dtype=np.int64)
     if _wrapping_axes(grid)[axis] and not _axis_is_metallic(grid, axis) and not grid.is_axis(axis):
-        shifts = np.floor_divide(raw, stored)
-        indices = raw - shifts * stored
+        indices, shifts = _lattice_fold(grid, axis, raw, 0)  # The parity-0 read map.
         phase = _axis_bloch_phase(grid, axis)
         if phase is None or not shifts.any():
             return indices, None, None

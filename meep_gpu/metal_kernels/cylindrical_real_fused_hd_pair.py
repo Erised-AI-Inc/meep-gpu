@@ -1,5 +1,5 @@
-"""The Dcyl m = 0 H->D seam in TWO launches: ``update_H`` and the radial prefix in one,
-the certified ``step_D`` curl in the other, one product owning both slots.
+"""The Dcyl m = 0 H->D seam in TWO launches: ``update_H`` and the radial difference in
+one, the certified ``step_D`` curl in the other, one product owning both slots.
 
 THE CELL. ``h_to_d_seam.instances`` files 3 ``cylindrical m=0 -> cylindrical m=0`` rows
 (``tests:TestAdjointSolver.test_adjoint_solver_cyl_n2f_fields_0_0``, ``..._1_0``,
@@ -13,24 +13,24 @@ WHY THIS SEAM WAS FILED AS PERMANENTLY REFUSED, AND WHY THAT WAS WRONG HERE
 ===========================================================================
 
 :mod:`.fused_hd_pair` refuses cylindrical by name: the cylindrical ``step_D`` differences
-``cylindrical_rderiv_prefix(Hy)``, a column-serial radial scan, and a scan "is deliberately
-NOT a kernel on this track (a hand-written scan is a different float32 number)". That is
+a column-serial radial sum of ``Hy``, and a scan "is deliberately NOT a kernel on this
+track (a hand-written scan is a different float32 number)". That is
 the CuPy premise (``cupy.cumsum`` is not a sequential accumulation, device-measured) and
-this backend's engine is NumPy (``coverage.MIRRORED_HOST_MODULE``), where ``numpy.cumsum``
-IS a strictly-serial accumulation -- :mod:`.cylindrical_real` states the inversion at
-:80-95 and ships the scan as a gated device kernel (``cyl_rderiv_prefix``, 0 differing
-words of 257,712 against ``stepping.cylindrical_rderiv_prefix`` itself). So the premise
-does not hold on this backend, and the seam is reachable with the shape below.
+this backend's engine is NumPy (``coverage.MIRRORED_HOST_MODULE``), whose radial sum
+(``stepping.cylindrical_rderiv_difference``, MEEP's ``f_rderiv_int`` per structure chunk)
+is a strictly serial walk -- :mod:`.cylindrical_real` ships it as a gated device kernel
+(``cyl_rderiv_difference``) reproducing the array path word for word. So the premise does
+not hold on this backend, and the seam is reachable with the shape below.
 
-WHAT IS GENUINELY HARD ABOUT THIS SEAM, and it is one thing: the prefix's SOURCE is what
-the seam's first half WRITES. ``stepping.py:447`` prefixes ``magnetic["Hy"]`` at
+WHAT IS GENUINELY HARD ABOUT THIS SEAM, and it is one thing: the radial sum's SOURCE is
+what the seam's first half WRITES. ``stepping.step_D`` sums ``magnetic["Hy"]`` at
 ``ir0 = 0.5``, and under an active PML ``get_H`` returns the STORED H -- ``update_H``'s own
-output (fields.py:1181-1182). A single launch would have every thread's Dz depend on
-every ``Hy[r' <= r]`` of its column as written by other threads in the same launch. The
-prefix cannot be collapsed to a local halo either: ``prefix[i+1] - prefix[i] ==
-increment[i+1]`` fails in float32 on 103,175 of 124,096 words (the adjudication's direct
-probe), so a halo weld would be bit-right on most cells and bit-wrong on a sparse,
-data-dependent set. THE UNIT OF RECOMPUTE IS A WHOLE RADIAL COLUMN.
+output. A single launch would have every thread's Dz depend on every ``Hy[r' <= r]`` of
+its chunk's column as written by other threads in the same launch. The sum cannot be
+collapsed to a local halo either: the difference of two rounded partial sums is not the
+rounded increment in float32, so a halo weld would be bit-right on most cells and
+bit-wrong on a sparse, data-dependent set. THE UNIT OF RECOMPUTE IS A WHOLE RADIAL
+COLUMN.
 
 ===========================================================================
 THE SHAPE: TWO LAUNCHES, ZERO FOREIGN READS OF ANYTHING THIS PRODUCT WRITES
@@ -43,21 +43,21 @@ coefficients -- and stores it to WRITE-ONLY SCRATCH (``H_out``/``f_w_H_out``), e
 :mod:`.fused_hd_pair` does. The COLUMN-LEADER threads (``i == 0``, one per ``(phi, z)``
 column) additionally walk their own radial column, RECOMPUTING ``Hy`` at every row through
 the SAME ``h_cell`` from the SAME const inputs -- never reading ``H_out`` -- forming the
-weighted term ``f_p * weights`` (field LEFT), the difference of two already-weighted rows
-over the row-constant divisor spelled as ``/`` (NOT a reciprocal multiply: the real family
-measures that mutation at 6,373 words, and the adjudication's ``adj_divide`` at
-102,004 of 400,000), and accumulating the prefix STRICTLY SERIALLY in the exact order of
-``stepping.cylindrical_rderiv_prefix`` at ``ir0 = 0.5``. The scan text is LIFTED from
-:func:`.cylindrical_real.cylindrical_prefix_source` with exactly two declared edits -- the
-two ``src[...]`` reads become the recompute (:data:`SCAN_LIFT_EDITS`). Nothing written by
+weighted term ``f_p * weights`` (field LEFT), the increment ``rinv * (w - w_prev)`` with
+``rinv`` MEEP's double quotient stored as a realnum (multiplied, never divided), the sum
+STRICTLY SERIALLY with a restart at +0 on each chunk's first row, and storing the
+difference of two partial sums, in the exact order of
+``stepping.cylindrical_rderiv_difference`` at ``ir0 = 0.5``. The scan text is LIFTED
+from :func:`.cylindrical_real.scan_source` with exactly two declared edits -- the two
+``src[...]`` reads become the recompute (:data:`SCAN_LIFT_EDITS`). Nothing written by
 this launch is read by it, so no thread observes another thread's store and the launch has
 no schedule to depend on.
 
 **Launch 2** occupies ``step_D``: the CERTIFIED cylindrical curl, UNCHANGED --
 :func:`.cylindrical_real.compile_cylindrical_curl` for ``step_D`` -- reading the ROTATED
-``H`` (the scratch launch 1 just wrote, now under the engine's own names) and the prefix
-as const. ``Dx`` reads the RAW ``Hy``; only ``Dz`` takes the prefixed term
-(stepping.py:461-462); the m = 0 axis post-add re-reads the raw ``Hy`` at r = 0.
+``H`` (the scratch launch 1 just wrote, now under the engine's own names) and the radial
+difference as const. ``Dx`` reads the RAW ``Hy``; only ``Dz`` takes the radial term; the
+m = 0 axis post-add re-reads the raw ``Hy`` at r = 0.
 
 The launcher ROTATES the six ``H``/``f_w_H`` references between the two launches, which
 is :class:`.offdiag_weld_common.ScratchWeldPairPlan`'s certified choreography one seam
@@ -68,8 +68,8 @@ WHY THE RECOMPUTED ``Hy`` IS THE POINTWISE ``Hy`` TO THE BIT. ``update_H`` is po
 at a cell is a pure function of state this launch does not write, evaluated twice by one
 inline function with the contraction pragma on. The gate does not take that on
 construction: leg ``recompute_identity`` runs launch 1 and then the SHIPPED
-``cyl_rderiv_prefix`` over the rotated ``H_out`` into a second scratch, and compares the
-two prefixes word for word, beside ``stepping.cylindrical_rderiv_prefix`` itself over the
+``cyl_rderiv_difference`` over the rotated ``H_out`` into a second scratch, and compares
+the two word for word, beside ``stepping.cylindrical_rderiv_difference`` itself over the
 synced host ``Hy``; the null control runs the shipped scan over the PRE-launch ``Hy`` and
 must differ.
 
@@ -84,13 +84,13 @@ LAUNCHES, COST, BINDINGS
 * **Extra work: one redundant pointwise ``Hy`` per cell** -- ``n_elem`` recomputes over
   the leaders' walks, 1.0x the cell count, against 233.6x for a per-thread whole-column
   recompute. Not a throughput claim; a count.
-* **Bindings: 25 of the 31 the platform allows** for launch 1 (:data:`CONSTITUTIVE_BINDINGS`
-  = 24 pointers + one packed ``Params``), six of headroom; launch 2 is the certified
-  curl's 22. Both are COMPILED by the gate rather than counted from a signature, and the
-  ceiling itself is bisected on this host (leg ``binding_ceiling``): 30 pointers plus one
-  struct compiles, 31 is refused, the launch-1 signature with six more pointers compiles
-  and with seven is refused with the platform's own ``'buffer' attribute parameter is
-  out of bounds``.
+* **Bindings: 26 of the 31 the platform allows** for launch 1 (:data:`CONSTITUTIVE_BINDINGS`
+  = 25 pointers + one packed ``Params`` carrying the chunk record), five of headroom;
+  launch 2 is the certified curl's 23. Both are COMPILED by the gate rather than counted
+  from a signature, and the ceiling itself is bisected on this host (leg
+  ``binding_ceiling``): 30 pointers plus one struct compiles, 31 is refused, the launch-1
+  signature with five more pointers compiles and with six is refused with the platform's
+  own ``'buffer' attribute parameter is out of bounds``.
 
 ===========================================================================
 WHAT SITS IN THE SEAM
@@ -154,17 +154,21 @@ from ..triton_kernels.coverage import CONSTITUTIVE_SIDES, Coverage
 from ..triton_kernels.launch import SUB_STEPS
 from . import offdiag_weld_common as _weld
 from . import shaders, templates
+from . import chunk_bounds as _chunk_bounds
 from .cylindrical_real import (
     METALLIC,
     PREFIX_IR0,
+    SCAN_TARGETS,
+    axis_coefficient,
     boundary_codes,
     compile_cylindrical_curl,
     cylindrical_curl_source,
-    cylindrical_prefix_source,
     cylindrical_real_constitutive_coverage,
     cylindrical_real_curl_coverage,
+    int32_tensor,
     prefix_row_vectors,
-    scan_rows,
+    scan_source,
+    scan_starts,
     scratch_mirror,
 )
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
@@ -189,7 +193,7 @@ SEAM: str = _withdraw_hoist.SEAM
 CURL_SUB_STEP = "step_D"
 CONSTITUTIVE_SIDE = "H"
 
-#: ``cylindrical_rderiv_prefix``'s ``ir0`` on this side: half of Hp's r-Yee shift.
+#: ``cylindrical_rderiv_difference``'s ``ir0`` on this side: half of Hp's r-Yee shift.
 #: Read off the certified family's table rather than written as 0.5 here.
 IR0: float = PREFIX_IR0[CURL_SUB_STEP]
 
@@ -260,13 +264,15 @@ WELD_OWED: str = ""
 #: buffer second, in this order, then the static arguments.
 ROTATED_NAMES: Tuple[str, ...] = ("Hx", "Hy", "Hz", "f_w_Hx", "f_w_Hy", "f_w_Hz")
 
-#: Launch 1's signature: 24 pointers plus one packed ``Params``. Six under the ceiling.
-CONSTITUTIVE_POINTERS = 24
-CONSTITUTIVE_BINDINGS = 25
+#: Launch 1's signature: 25 pointers (the chunk starts among them) plus one packed
+#: ``Params``. Five under the ceiling.
+CONSTITUTIVE_POINTERS = 25
+CONSTITUTIVE_BINDINGS = 26
 
-#: Launch 2's signature is the certified cylindrical curl's, unchanged: 22 bindings
-#: (16 pointers + 6 scalars), read off :mod:`.cylindrical_real`'s own text by the test.
-CURL_BINDINGS = 22
+#: Launch 2's signature is the certified cylindrical curl's, unchanged: 23 bindings
+#: (16 pointers, 5 scalars, the radial difference and its axis scalar, the record),
+#: read off :mod:`.cylindrical_real`'s own text by the test.
+CURL_BINDINGS = 23
 
 #: How many pointers launch 1 could still take: the gate compiles the shipped signature
 #: plus this many and requires success, plus one more and requires the refusal.
@@ -276,20 +282,19 @@ HEADROOM = MAX_BUFFER_BINDINGS - CONSTITUTIVE_BINDINGS
 #: reason. DATA, so the gate's transcription leg can assert the list and a needle that
 #: stopped matching RAISES rather than leaving a stale read standing. THERE IS NO
 #: ARITHMETIC IN THIS TABLE: the two edits replace a memory read with the recompute of
-#: the same value; the weight multiply, the difference, the divide and the serial
-#: accumulation are untouched.
+#: the same value; the weight multiply, the increment's ``rinv`` multiply, the chunk
+#: restart, the serial accumulation and the stored difference are untouched.
 SCAN_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
-    {"line": "    float prev = src[base] * weights[0];",
-     "became": f"    float prev = h_cell(0, j, k, {H_CELL_TAIL_ARGS}).a1 * weights[0];",
+    {"line": "    float w_prev = src[base] * weights[0];",
+     "became": f"    float w_prev = h_cell(0, j, k, {H_CELL_TAIL_ARGS}).a1 * weights[0];",
      "why": "row 0 of the column's Hy, RECOMPUTED from the pre-launch state through "
             "the same h_cell every thread stores its own cell from, instead of read "
             "from a volume this launch writes. Field LEFT of the weight, as "
-            "stepping.py:1313/:1327 spells it."},
-    {"line": "        float w = src[i * nyz + base] * weights[i];",
-     "became": f"        float w = h_cell(i, j, k, {H_CELL_TAIL_ARGS}).a1 * weights[i];",
-     "why": "row i of the column's Hy, recomputed the same way. `i` here is the scan "
-            "loop's own variable (the certified loop's spelling, kept), shadowing the "
-            "leader's i == 0 inside the loop body only."},
+            "stepping.cylindrical_rderiv_difference spells it."},
+    {"line": "        float w = src[g * nyz + base] * weights[g];",
+     "became": f"        float w = h_cell(g, j, k, {H_CELL_TAIL_ARGS}).a1 * weights[g];",
+     "why": "row g of the column's Hy, recomputed the same way, at the scan loop's own "
+            "row variable."},
 )
 
 __all__ = [
@@ -319,14 +324,14 @@ _SCAN_PROLOGUE_END = "    int base = j * nzi + k;\n"
 def certified_scan_tail(contract: str = shaders.CONTRACT_OFF) -> str:
     """The ``step_D`` radial scan BELOW its prologue, its two source reads redirected.
 
-    Not a transcription: this is :func:`.cylindrical_real.cylindrical_prefix_source`'s
+    Not a transcription: this is :func:`.cylindrical_real.scan_source`'s
     own output for ``step_D`` with the preamble, the signature and the per-thread
     index prologue cut, and exactly the edits :data:`SCAN_LIFT_EDITS` names applied
     through :func:`.offdiag_weld_common.needle`, so a spelling that drifted raises
     rather than emitting a scan that reads a stale volume. The ``out`` pointer name and
     every arithmetic line are the certified text's.
     """
-    source = cylindrical_prefix_source(CURL_SUB_STEP, contract)
+    source = scan_source(CURL_SUB_STEP, contract)
     if _SCAN_PROLOGUE_END not in source:
         raise AssertionError(
             "the certified radial scan no longer carries its index prologue anchor; "
@@ -354,7 +359,10 @@ using namespace metal;
 
 __CONTRACT__
 
-struct Params { uint nx; uint ny; uint nz; uint n_elem; };
+__RECORD_STRUCT__
+
+struct Params { uint nx; uint ny; uint nz; uint n_elem;
+__RECORD_MEMBER__ };
 
 __H_CELL__
 
@@ -382,11 +390,15 @@ kernel void cyl_real_hd_constitutive_prefix(
     device const float* kmz     [[buffer(20)]],
     device float*       out     [[buffer(21)]],
     device const float* weights [[buffer(22)]],
-    device const float* divisor [[buffer(23)]],
-    constant Params&    prm     [[buffer(24)]],
+    device const float* rinv    [[buffer(23)]],
+    device const int*   starts  [[buffer(24)]],
+    constant Params&    prm     [[buffer(25)]],
     uint idx [[thread_position_in_grid]])
 {
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
+    // THE CHUNK RECORD rides in the struct; `h_cell` evaluates membership from it at
+    // the cell it steps.
+__RECORD_ALIAS__
     // The dispatch is sized from the first tensor argument's element count, so a
     // volume wider than n_elem would step cells the array path does not own.
     if (idx >= n_elem) { return; }
@@ -405,14 +417,15 @@ kernel void cyl_real_hd_constitutive_prefix(
     // RECOMPUTES the Hy it scans from that same state rather than reading ho1.
     h_cell_result own = h_cell(i, j, k, __H_CELL_ARGS__);
     ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;
-    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;
+    wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;
 
-    // --- the radial prefix, by the COLUMN LEADER (r = 0) -------------------------
+    // --- the radial difference, by the COLUMN LEADER (r = 0) ---------------------
     // One thread per (phi, z) column walks its whole column from r = 0 upward,
-    // strictly serially, exactly as `cylindrical_real.cyl_rderiv_prefix` does and
-    // as numpy.cumsum does (the oracle: stepping.cylindrical_rderiv_prefix at
-    // ir0 = 0.5). The text below is that kernel's, lifted, with the two source reads
-    // replaced by the recompute (SCAN_LIFT_EDITS).
+    // strictly serially, restarting the sum at each chunk start, exactly as
+    // `cylindrical_real.cyl_rderiv_difference` does (the oracle:
+    // stepping.cylindrical_rderiv_difference at ir0 = 0.5). The text below is that
+    // kernel's, lifted, with the two source reads replaced by the recompute
+    // (SCAN_LIFT_EDITS).
     if (i != 0) { return; }
     int base = j * nzi + k;
 __SCAN__
@@ -430,6 +443,9 @@ def cylindrical_real_fused_hd_pair_constitutive_source(
     """
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__H_CELL__": h_cell_function(contract),
         "__H_CELL_ARGS__": H_CELL_TAIL_ARGS,
         "__SCAN__": certified_scan_tail(contract),
@@ -480,13 +496,14 @@ def _padded_signature_source(extra: int, contract: str = shaders.CONTRACT_OFF) -
     and the first output is written from the sum.
     """
     source = cylindrical_real_fused_hd_pair_constitutive_source(contract)
-    anchor = "    constant Params&    prm     [[buffer(24)]],\n"
+    params_at = CONSTITUTIVE_POINTERS
+    anchor = f"    constant Params&    prm     [[buffer({params_at})]],\n"
     if anchor not in source:
-        raise AssertionError("launch 1's signature no longer binds Params at 24")
-    lines = "".join(f"    device const float* extra{n} [[buffer({24 + n})]],\n"
+        raise AssertionError(f"launch 1's signature no longer binds Params at {params_at}")
+    lines = "".join(f"    device const float* extra{n} [[buffer({params_at + n})]],\n"
                     for n in range(extra))
     source = source.replace(
-        anchor, lines + f"    constant Params&    prm     [[buffer({24 + extra})]],\n")
+        anchor, lines + f"    constant Params&    prm     [[buffer({params_at + extra})]],\n")
     touch = " + ".join(f"extra{n}[0]" for n in range(extra))
     marker = "    ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;\n"
     if marker not in source:
@@ -573,6 +590,14 @@ def metal_cylindrical_real_fused_hd_pair_coverage(
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
+    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # cells at that update (stepping.separate_h_from_b) and h_cell does not, so this
+    # product takes that update only where the start cannot change a word: the base
+    # single's own clause (launch.h_start_reasons), in its own words.
+    from .launch import h_start_reasons  # noqa: PLC0415 - launch imports this family's peers
+    reasons.extend(f"cylindrical constitutive half: {reason}"
+                   for reason in h_start_reasons(fields, sources))
+
     # THE ROTATION IS THE PRODUCT'S OWN INVARIANT. The plan swaps the ENGINE's
     # references for the six volumes in ROTATED_NAMES between its two launches, so
     # those attributes must be settable and must be the arrays the residency mirrored.
@@ -597,7 +622,8 @@ class MetalCylindricalRealFusedHdPairPlan:
     reading what launch 1 wrote. The divergence is stated here rather than hidden
     behind an overridden ``run``.
 
-    THE ORDER IS THE CONTRACT. Launch 2 reads the prefix and the H launch 1 writes, and
+    THE ORDER IS THE CONTRACT. Launch 2 reads the radial difference and the H launch 1
+    writes, and
     both are functions of THIS step's B -- so launch 2 hoisted ahead of launch 1, or
     launch 2 bound to the pre-launch H, feeds the curl the PREVIOUS half-step's magnetic
     field: a smooth, plausible, entirely wrong field rather than an error, and a gate
@@ -608,9 +634,10 @@ class MetalCylindricalRealFusedHdPairPlan:
     can assert that BOTH advanced and no slot passed by not executing.
     """
 
-    __slots__ = ("shape", "n_elem", "scan_shape", "n_cols", "dtdx", "axis_coef", "bc",
+    __slots__ = ("shape", "n_elem", "n_cols", "dtdx", "axis_coef", "bc",
                  "residency", "fields", "volumes", "rotated", "rotated_names",
-                 "prefix_host", "launches", "constitutive_launches", "curl_launches",
+                 "radial_host", "starts", "chunk_bounds", "launches",
+                 "constitutive_launches", "curl_launches",
                  "runs", "_constitutive_functions", "_curl_functions",
                  "_constitutive_static", "_curl_static")
 
@@ -624,14 +651,15 @@ class MetalCylindricalRealFusedHdPairPlan:
     #: This plan launches kernels; the composer's planned/null split reads it.
     performs_device_work = True
 
-    #: TWO: the constitutive-plus-prefix launch and the certified curl.
+    #: TWO: the constitutive-plus-scan launch and the certified curl.
     launches_per_run = 2
 
-    REPR_FIELDS = ("shape", "bc", "scan_shape")
+    REPR_FIELDS = ("shape", "bc")
 
-    def __init__(self, shape, scan_shape, dtdx: float, axis_coef: float, bc,
+    def __init__(self, shape, dtdx: float, axis_coef: float, bc,
                  residency: Residency, fields: Any, rotated: Mapping[str, Any],
-                 prefix_host: Any, constitutive_static: Sequence[Any],
+                 radial_host: Any, starts: Any, chunk_bounds: Any,
+                 constitutive_static: Sequence[Any],
                  curl_static: Sequence[Any],
                  constitutive_functions: Mapping[str, Any],
                  curl_functions: Mapping[str, Any],
@@ -642,7 +670,6 @@ class MetalCylindricalRealFusedHdPairPlan:
                 f"a Dcyl grid stores one phi cell; shape {self.shape} does not "
                 f"(the exp(i*m*phi) dependence is analytic)")
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
-        self.scan_shape = tuple(int(n) for n in scan_shape)
         self.n_cols = self.shape[1] * self.shape[2]
         self.dtdx = float(dtdx)
         self.axis_coef = float(axis_coef)
@@ -655,7 +682,9 @@ class MetalCylindricalRealFusedHdPairPlan:
             raise ValueError(
                 f"the rotation order {self.rotated_names} does not name the same "
                 f"volumes as the twin table {tuple(sorted(self.rotated))}")
-        self.prefix_host = prefix_host
+        self.radial_host = radial_host
+        self.starts = starts
+        self.chunk_bounds = chunk_bounds
         self.volumes = tuple(dict.fromkeys(volumes))
         self._constitutive_static = tuple(constitutive_static)
         self._curl_static = tuple(curl_static)
@@ -718,16 +747,17 @@ class MetalCylindricalRealFusedHdPairPlan:
     def launch_curl(self, magnetic: Sequence[Any], contract: Optional[str] = None) -> None:
         """Launch 2 alone, reading ``magnetic`` as ``g0..g2``. Counted.
 
-        Never run first: it reads the prefix launch 1 writes.
+        Never run first: it reads the radial difference launch 1 writes.
         """
         mode = shaders.CONTRACT_OFF if contract is None else contract
         function = self._function(self._curl_functions, mode, "curl")
         static = self._curl_static
         self.launches += 1
         self.curl_launches += 1
-        # THE CURL'S ARGUMENT ORDER IS THE CERTIFIED EMITTER'S: D, fu_D, H, pfx, the
-        # six coefficient vectors, then the six scalars. `magnetic` is spliced into
-        # the H slot; everything else is static for the life of the plan.
+        # THE CURL'S ARGUMENT ORDER IS THE CERTIFIED EMITTER'S: D, fu_D, H, the six
+        # coefficient vectors, the five scalars, the radial difference, the axis
+        # scalar and the chunk record. `magnetic` is spliced into the H slot;
+        # everything else is static for the life of the plan.
         function(*(list(static[:6]) + list(magnetic) + list(static[6:])))
 
     def rotate(self) -> None:
@@ -757,21 +787,29 @@ class MetalCylindricalRealFusedHdPairPlan:
         return self.describe()
 
 
-def _params_tensor(shape: Sequence[int], device: str) -> Any:
-    """The four extents as one 16-byte device record.
+def params_record_dtype() -> Any:
+    """The host dtype of launch 1's ``Params``: the four extents, then the chunk record."""
+    import numpy as np  # noqa: PLC0415
+
+    return np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4")]
+                    + _chunk_bounds.record_dtype_fields())
+
+
+def _params_tensor(shape: Sequence[int], device: str, *, chunk_bounds: Any) -> Any:
+    """The four extents and the chunk record as one 116-byte device record.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused pair's
     ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and complex64
-    volumes and refuses anything else BY NAME, because a wider element silently
-    reinterprets. This record is neither.
+    volumes only.
     """
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
-    record = np.zeros(1, dtype=np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"),
-                                         ("n_elem", "<u4")]))
+    record = np.zeros(1, dtype=params_record_dtype())
     nx, ny, nz = (int(n) for n in shape)
-    record[0] = (nx, ny, nz, nx * ny * nz)
+    for name, value in (("nx", nx), ("ny", ny), ("nz", nz), ("n_elem", nx * ny * nz)):
+        record[name] = value
+    record["cb"] = _chunk_bounds.pack(chunk_bounds)
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -793,6 +831,7 @@ def plan_metal_cylindrical_real_fused_hd_pair(
         constitutive_function: Optional[Mapping[str, Any]] = None,
         curl_function: Optional[Mapping[str, Any]] = None,
         scan_vectors: Optional[Tuple[Any, Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalCylindricalRealFusedHdPairPlan]:
     """Build the fused Dcyl H/D plan, or ``None`` when the seam is refused.
 
@@ -803,7 +842,7 @@ def plan_metal_cylindrical_real_fused_hd_pair(
     ``constitutive_function`` and ``curl_function`` are the KERNEL mutation seams, and
     they are SEPARATE so a leg can plant a defect in one launch while the other stays
     shipped. ``scan_vectors`` is the HOST mutation seam this family adds: the
-    ``(weights, divisor)`` ladder the scan binds, so a leg can hand it the ``ir0 = 0.0``
+    ``(weights, rinv)`` ladder the scan binds, so a leg can hand it the ``ir0 = 0.0``
     ladder the B side uses. Dropping any of the three is not a silent slowdown but a
     silent DISARMING, since every mutation leg would then launch the shipped bytes and
     report the defect as uncaught.
@@ -813,13 +852,17 @@ def plan_metal_cylindrical_real_fused_hd_pair(
         return None
     import numpy as np  # noqa: PLC0415
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
+    from ..stepping import _cylindrical_scan_starts  # noqa: PLC0415
 
     spec = SUB_STEPS[CURL_SUB_STEP]
     side = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
     grid = fields.grid
     codes = boundary_codes(resolve(grid, pml))
     shape = tuple(int(n) for n in grid.shape)
-    scan_shape = (scan_rows(CURL_SUB_STEP, shape[0]), shape[1], shape[2])
+    words = _chunk_bounds.plan_words(chunk_bounds, shape,
+                                     "plan_metal_cylindrical_real_fused_hd_pair")
+    start_line = scan_starts(CURL_SUB_STEP, _cylindrical_scan_starts(
+        fields, pml, SCAN_TARGETS[CURL_SUB_STEP]), shape[0])
 
     volumes: List[str] = []
 
@@ -857,27 +900,27 @@ def plan_metal_cylindrical_real_fused_hd_pair(
     kms = [bind(f"pml:kms_{axis}{suffix}", getattr(pml, f"kms_{axis}{suffix}"),
                 constant=True) for axis in "xyz"]
 
-    # THE PREFIX MIRROR IS PLAN-OWNED SCRATCH, registered NON-CONSTANT (the device
+    # THE RADIAL DIFFERENCE IS PLAN-OWNED SCRATCH, registered NON-CONSTANT (the device
     # writes it) through `scratch_mirror`, which REUSES the array already bound under
     # the name so this plan and the certified step_D curl plan may share one.
-    prefix_host, prefix = scratch_mirror(
-        residency, f"cyl_pfx:{CURL_SUB_STEP}",
-        lambda: np.zeros(scan_shape, dtype=np.float32))
-    volumes.append(f"cyl_pfx:{CURL_SUB_STEP}")
+    radial_host, radial = scratch_mirror(
+        residency, f"cyl_radial:{CURL_SUB_STEP}",
+        lambda: np.zeros(shape, dtype=np.float32))
+    volumes.append(f"cyl_radial:{CURL_SUB_STEP}")
     if scan_vectors is None:
         _, weight_vector = scratch_mirror(
             residency, f"cyl_weights:{CURL_SUB_STEP}",
             lambda: prefix_row_vectors(CURL_SUB_STEP, shape[0])[0], constant=True)
-        _, divisor_vector = scratch_mirror(
-            residency, f"cyl_divisor:{CURL_SUB_STEP}",
+        _, rinv_vector = scratch_mirror(
+            residency, f"cyl_rinv:{CURL_SUB_STEP}",
             lambda: prefix_row_vectors(CURL_SUB_STEP, shape[0])[1], constant=True)
     else:
         weight_vector = residency.mirror(f"mutation:cyl_weights:{CURL_SUB_STEP}",
                                          np.ascontiguousarray(scan_vectors[0]),
                                          constant=True)
-        divisor_vector = residency.mirror(f"mutation:cyl_divisor:{CURL_SUB_STEP}",
-                                          np.ascontiguousarray(scan_vectors[1]),
-                                          constant=True)
+        rinv_vector = residency.mirror(f"mutation:cyl_rinv:{CURL_SUB_STEP}",
+                                       np.ascontiguousarray(scan_vectors[1]),
+                                       constant=True)
 
     displacement = [bind(name, getattr(fields, name)) for name in spec["targets"]]
     auxiliary = [bind("fu_" + name, getattr(fields, "fu_" + name))
@@ -888,25 +931,29 @@ def plan_metal_cylindrical_real_fused_hd_pair(
         for axis in "xyz" for stem in ("kms", "sinv")]
 
     dtdx = grid.dt / grid.dx
-    # stepping.py:586 forms `4.0 * (grid.dt / grid.dx)` in float64 and NumPy rounds
-    # that ONE scalar to float32 before the multiply -- the D side's axis post-add.
-    axis_coef = 4.0 * dtdx
+    # The float32 word of 4 * Courant (cylindrical_real.axis_coefficient): the D side's
+    # on-axis increment.
+    axis_coef = axis_coefficient(grid.courant)
     n_elem = shape[0] * shape[1] * shape[2]
 
-    constitutive_static = (flux + kps + kms + [prefix, weight_vector, divisor_vector]
-                           + [_params_tensor(shape, residency.device)])
+    constitutive_static = (flux + kps + kms
+                           + [radial, weight_vector, rinv_vector,
+                              int32_tensor(start_line, residency.device)]
+                           + [_params_tensor(shape, residency.device,
+                                             chunk_bounds=words)])
     if 2 * len(ROTATED_NAMES) + len(constitutive_static) != CONSTITUTIVE_BINDINGS:
         raise AssertionError((2 * len(ROTATED_NAMES) + len(constitutive_static),
                               CONSTITUTIVE_BINDINGS))  # pragma: no cover - arithmetic
-    curl_static = (displacement + auxiliary + [prefix] + curl_coefficients
-                   + [shape[0], shape[1], shape[2], n_elem, float(dtdx),
-                      float(axis_coef)])
+    curl_static = (displacement + auxiliary + curl_coefficients
+                   + [shape[0], shape[1], shape[2], n_elem, float(dtdx)]
+                   + [radial, float(axis_coef),
+                      _chunk_bounds.tensor(words, residency.device)])
     if len(curl_static) + 3 != CURL_BINDINGS:  # pragma: no cover - arithmetic guard
         raise AssertionError((len(curl_static) + 3, CURL_BINDINGS))
 
     return MetalCylindricalRealFusedHdPairPlan(
-        shape, scan_shape, dtdx, axis_coef, codes, residency, fields, twins,
-        prefix_host, constitutive_static, curl_static,
+        shape, dtdx, axis_coef, codes, residency, fields, twins,
+        radial_host, start_line, words, constitutive_static, curl_static,
         dict(constitutive_function) if constitutive_function is not None
         else _constitutive_functions(contract_variants),
         dict(curl_function) if curl_function is not None
@@ -931,7 +978,7 @@ def _arm_plan(context: Any, slot: str
         return None
     return plan_metal_cylindrical_real_fused_hd_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

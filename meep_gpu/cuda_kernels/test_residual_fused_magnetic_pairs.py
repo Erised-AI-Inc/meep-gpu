@@ -22,6 +22,8 @@ kernel runs:
 """
 
 import numpy
+import re
+
 import pytest
 
 from ..fields import Fields
@@ -32,14 +34,8 @@ from . import (bfast_fused_magnetic_pair, complex_beta_fused_magnetic_pair,
                complex_folded_fused_magnetic_pair,
                cylindrical_real_fused_magnetic_pair, fused_pairs,
                special_kz_fused_magnetic_pair)
-from .registry import LICENSE_COMPLEX
 from .test_fused_pairs import _NumpyWearingCupysName
 
-#: The licence the two complex welds require; the same stub the complex electric
-#: pair tests ask with, and never defaulted.
-LICENCE = {"arm": "FMA_V1", "expansion": 1, "basis": "measured",
-           "refusals": [], "policy_resolved": "keep"}
-POLICY = "keep"
 
 
 @pytest.fixture
@@ -122,9 +118,11 @@ def test_the_ghost_value_is_a_chained_certified_multiply_and_never_a_scale():
 
 
 def test_the_near_ghost_takes_the_destinations_coefficient_entry():
+    """The coefficient entry AND the chunk membership are the destination row's: the
+    near ghost reads stored index 0 and its own block's membership flag."""
     blocks = "\n".join(complex_fill_carry.fill_carry_blocks(0))
-    assert "kps_x[0], kms_int_x[0]);" in blocks     # near: stored index 0
-    assert "kps_x[i], kms_int_x[i]);" in blocks     # far: this thread's own
+    assert re.search(r"kps_x\[0\], kms_int_x\[0\], g0_\w+_w\);", blocks)  # near
+    assert re.search(r"kps_x\[i\], kms_int_x\[i\], g0_\w+_w\);", blocks)  # far
 
 
 def test_fills_plan_raises_on_a_far_row_with_no_declared_phase():
@@ -151,9 +149,9 @@ def test_fills_plan_raises_on_a_far_row_with_no_declared_phase():
 
 EMITTERS = {
     "folded": lambda: complex_folded_fused_magnetic_pair
-        .complex_folded_fused_magnetic_pair_source("FMA_V1"),
+        .complex_folded_fused_magnetic_pair_source(),
     "beta": lambda: complex_beta_fused_magnetic_pair
-        .complex_beta_fused_magnetic_pair_source("FMA_V1"),
+        .complex_beta_fused_magnetic_pair_source(),
 }
 
 
@@ -175,8 +173,8 @@ def test_the_fill_carrying_welds_emit_21_ghost_blocks_and_bind_b_once(name):
     # the ownership guard sits between the fu store and the field load.
     prelude = source.split('extern "C" __global__', 1)[0]
     guard = prelude.index("if (!owned) return cf_zero();")
-    assert prelude.index("cf_store(fu, idx, fu_new);") < guard
-    assert guard < prelude.index("cf a = mul_field_left(cf_load(f, idx), kms_u);")
+    assert prelude.index("if (dsigu) cf_store(fu, idx, fu_new);") < guard
+    assert guard < prelude.index("cf fcur = cf_load(f, idx);")
     # the wall clear is guarded on ownership and the register is cleared beside
     # the store.
     assert "if (own_0 && wall_x && i == 0) { b0 = cf_zero(); cf_store(f0, idx, b0); }" \
@@ -186,10 +184,12 @@ def test_the_fill_carrying_welds_emit_21_ghost_blocks_and_bind_b_once(name):
 def test_the_beta_weld_carries_the_beta_statements_and_the_folded_one_does_not():
     folded = EMITTERS["folded"]()
     beta = EMITTERS["beta"]()
-    assert beta.count("mul_imag_coefficient_left(") >= 2
-    assert "mul_imag_coefficient_left(" not in folded
-    assert "float bp_re, float bp_im, float bm_re, float bm_im" in beta
-    assert "bp_re" not in folded
+    # MEEP's beta pass on targets 0 and 1 (folded_pass.complex_beta_insert), from two
+    # real call-site words bound as floats.
+    assert beta.count("cf inc_beta = owned_cell ? beta_increment(") == 2
+    assert "beta_increment(" not in folded
+    assert "float bp, float bm," in beta
+    assert "float bp, float bm," not in folded
 
 
 def test_the_corner_block_chains_near_before_far():
@@ -209,8 +209,7 @@ def test_a_moved_certified_anchor_fails_the_emit_rather_than_emitting(monkeypatc
     monkeypatch.setattr(
         complex_emitter, "_TAIL",
         complex_emitter._TAIL.replace(
-            "cf_store(f, idx, mul_field_left(cf_sub(cf_add(a, fu_new), fprev), "
-            "sinv_u));", "cf_store(f, idx, fu_new);"))
+            "    cf_store(f, idx, value);\n", "    cf_store(f, idx, fu_new);\n"))
     with pytest.raises(AssertionError):
         EMITTERS["folded"]()
     with pytest.raises(AssertionError):
@@ -243,28 +242,28 @@ def test_the_folded_weld_admits_its_cell_and_names_what_it_refuses(xp):
     fields, layer, grid = build_folded_complex(xp)
     covered, reason = (complex_folded_fused_magnetic_pair
                        .covers_complex_folded_fused_magnetic_pair(
-                           fields, layer, grid, (), LICENCE, POLICY))
+                           fields, layer, grid, ()))
     assert covered, reason
 
     # an UNFOLDED complex run belongs to the plain complex pair.
     fields2, layer2, grid2 = build_folded_complex(xp, symmetry=())
     covered, reason = (complex_folded_fused_magnetic_pair
                        .covers_complex_folded_fused_magnetic_pair(
-                           fields2, layer2, grid2, (), LICENCE, POLICY))
+                           fields2, layer2, grid2, ()))
     assert not covered
     assert "no mirror fold is active" in reason
 
     # an undeclared source set is a refusal about the caller, stated as one.
     covered, reason = (complex_folded_fused_magnetic_pair
                        .covers_complex_folded_fused_magnetic_pair(
-                           fields, layer, grid, None, LICENCE, POLICY))
+                           fields, layer, grid, None))
     assert not covered and "source set was not declared" in reason
 
     # real storage is the real welds' and the real pair's, never this one's.
     fields3, layer3, grid3 = build_folded_complex(xp, complex_storage=False)
     covered, reason = (complex_folded_fused_magnetic_pair
                        .covers_complex_folded_fused_magnetic_pair(
-                           fields3, layer3, grid3, (), LICENCE, POLICY))
+                           fields3, layer3, grid3, ()))
     assert not covered, "a real-storage run must be refused"
 
 
@@ -285,7 +284,7 @@ def test_the_beta_weld_requires_beta_and_serves_both_fold_sides(xp):
         beta=-0.39, dimensions=2)
     covered, reason = (complex_beta_fused_magnetic_pair
                        .covers_complex_beta_fused_magnetic_pair(
-                           fields, layer, grid, (), LICENCE, POLICY))
+                           fields, layer, grid, ()))
     assert covered, reason
 
     # FOLDED beta (the TestEigCoeffs shape).
@@ -295,7 +294,7 @@ def test_the_beta_weld_requires_beta_and_serves_both_fold_sides(xp):
         cell=(8.0, 9.0, 0.0), beta=-0.685, dimensions=2)
     covered, reason = (complex_beta_fused_magnetic_pair
                        .covers_complex_beta_fused_magnetic_pair(
-                           fields2, layer2, grid2, (), LICENCE, POLICY))
+                           fields2, layer2, grid2, ()))
     assert covered, reason
 
     # beta = 0 is the folded pair's cell, refused by the curl half by name.
@@ -303,7 +302,7 @@ def test_the_beta_weld_requires_beta_and_serves_both_fold_sides(xp):
         xp, symmetry=(Mirror("Y", 1),), cell=(8.0, 9.0, 0.0), dimensions=2)
     covered, reason = (complex_beta_fused_magnetic_pair
                        .covers_complex_beta_fused_magnetic_pair(
-                           fields3, layer3, grid3, (), LICENCE, POLICY))
+                           fields3, layer3, grid3, ()))
     assert not covered
     assert "curl half" in reason
 
@@ -548,16 +547,16 @@ def test_the_eight_step_b_candidates_partition_on_the_folded_cell(xp):
             fields, layer, grid, ()),
         "complex": lambda: complex_fused_magnetic_pair
             .covers_complex_fused_magnetic_pair(
-                fields, layer, grid, (), LICENCE, POLICY),
+                fields, layer, grid, ()),
         "cyl_complex": lambda: cylindrical_fused_magnetic_pair
             .covers_cylindrical_fused_magnetic_pair(
-                fields, layer, grid, (), LICENCE, POLICY),
+                fields, layer, grid, ()),
         "folded": lambda: complex_folded_fused_magnetic_pair
             .covers_complex_folded_fused_magnetic_pair(
-                fields, layer, grid, (), LICENCE, POLICY),
+                fields, layer, grid, ()),
         "beta": lambda: complex_beta_fused_magnetic_pair
             .covers_complex_beta_fused_magnetic_pair(
-                fields, layer, grid, (), LICENCE, POLICY),
+                fields, layer, grid, ()),
         "cyl_real": lambda: cylindrical_real_fused_magnetic_pair
             .covers_cylindrical_real_fused_magnetic_pair(fields, layer, grid, ()),
         "special_kz": lambda: special_kz_fused_magnetic_pair

@@ -37,8 +37,8 @@ WHAT THE READING SAYS, and every fact is read off a named line:
    folded cases, the fold-specific mutation caught 10/10).
 
 FACT 4 IS NOT INHERITED EITHER. The complex kernels are different bytes --
-complex64 word pairs, the zero cross terms, an expansion arm the real pair does
-not take -- and this project does not transfer a verdict across kernels. That is
+complex64 word pairs and the zero cross terms -- and this project does not
+transfer a verdict across kernels. That is
 the rule the Dcyl round stated and followed, and it is why this gate exists
 rather than a sentence citing the real one.
 
@@ -109,7 +109,7 @@ token because CuPy's disk-cache key is computed above the strip seam)::
     export LD_LIBRARY_PATH="$TRITON_LIBCUDA_PATH:$LD_LIBRARY_PATH"
     CUDA_VISIBLE_DEVICES=3 CUPY_CACHE_DIR=$OUT/cupy_cache/ftz_stripped \\
         python -u gate_cuda_complex_folded_constitutive.py --backend cupy \\
-        --subnormal-policy keep --expansion-probe $PROBE --out $OUT/keep/gate.json
+        --subnormal-policy keep --out $OUT/keep/gate.json
 
 Laptop (no CUDA): ``--backend numpy`` runs the same oracle, fixture and floors
 through the harness backend and CERTIFIES NOTHING; ``--backend host`` compiles
@@ -188,7 +188,6 @@ oracle_moved = cyl.oracle_moved
 leg_caught = cyl.leg_caught
 adjudicate = cyl.adjudicate
 constitutive_sites = cyl.constitutive_sites
-_licence_stub = cyl._licence_stub
 _NumpyWearingCupysName = cyl._NumpyWearingCupysName
 
 COURANTS = cyl.COURANTS
@@ -341,6 +340,9 @@ def build(xp, spec: Dict[str, Any], courant: float, rng):
     fields = Fields(grid=grid, force_complex_fields=True)
     fields.enable_field_storage()
     fields.enable_pml_storage()
+    # MID-RUN: H is already separated from B, so the oracle and the kernel both step
+    # the seeded state and neither performs the run's first-update_H start.
+    fields.h_separated = True
     epsilon, inverse = {}, {}
     for component in ("Ex", "Ey", "Ez"):
         values = rng.uniform(1.2, 3.4, size=grid.shape).astype(np.float32)
@@ -392,6 +394,38 @@ def host_mutated_tables(name: str, side: str, layer, grid) -> Dict[str, Any]:
     if name == "swap_kps_kms":
         return swapped_kps_kms_tables(side, layer)
     raise KeyError(f"unknown host mutation {name!r}")
+
+
+def coefficient_departs_from_membership(side: str, layer, grid) -> bool:
+    """Whether coefficient identity and chunk membership choose different forms somewhere.
+
+    KERNELS.md section 7.2's ``predicate_on_coefficient_identity`` replaces the side's
+    own-axis membership flag with ``(kps != 1) || (kms != 1)`` on the coefficients of
+    the same Yee sub-lattice (``complex_emitter.HALF_INTEGER``). Where those two lines
+    agree on every cell of every axis the rewrite is the identity, and a case there
+    cannot show it.
+    """
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+
+    record = base.case_record(grid, layer)
+    half = bool(complex_emitter.HALF_INTEGER[side])
+    suffix = "_h" if half else ""
+    for axis, name in enumerate("xyz"):
+        n_cells = int(grid.shape[axis])
+        if n_cells <= 1:
+            continue
+        kps = np.asarray(_host(getattr(layer, f"kps_{name}{suffix}"))).reshape(-1)
+        kms = np.asarray(_host(getattr(layer, f"kms_{name}{suffix}"))).reshape(-1)
+        by_value = (kps != np.float32(1.0)) | (kms != np.float32(1.0))
+        by_chunk = membership_from_record(record, half, axis, n_cells)
+        if by_value.shape != by_chunk.shape or bool(np.any(by_value != by_chunk)):
+            return True
+    return False
+
+
+def _host(array):
+    return cp.asnumpy(array) if cp is not None and isinstance(array, cp.ndarray) \
+        else np.asarray(array)
 
 
 def folded_axis_absorbs(side: str, layer, grid) -> Dict[str, Any]:
@@ -458,20 +492,17 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = dict(
     cyl.SOURCE_MUTATIONS)
 
 MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
-    {"leg": "s1_fold_the_zero_cross_terms", "mutation": "fold_the_zero_cross_terms",
+    {"leg": "s1_full_complex_coefficient_products",
+     "mutation": "full_complex_coefficient_products",
      "kind": "source", "expect": "caught_where_live", "reach": "signed_zero",
-     "why": "the zero cross terms carry the sign of the other plane into an "
-            "addend that is exactly zero; folding them to a literal is the "
-            "transformation the compiler must NOT be doing for us"},
-    {"leg": "s2_plane_wise_scaling", "mutation": "plane_wise_scaling",
-     "kind": "source", "expect": "caught_where_live", "reach": "signed_zero",
-     "why": "np.multiply carries no scalar-times-complex loop, so a real "
-            "coefficient IS a full complex multiply on the array path"},
-    {"leg": "s3_flatten_the_constitutive_tail",
-     "mutation": "flatten_the_constitutive_tail", "kind": "source",
+     "why": "INVERTED: the previous family's full complex product against (c + 0j) "
+            "carries the other part's sign into an addend that is exactly zero; "
+            "part_products.scale forms one product per part"},
+    {"leg": "s3_old_package_constitutive_grouping",
+     "mutation": "old_package_constitutive_grouping", "kind": "source",
      "expect": "caught",
-     "why": "two separate accumulations, left to right, is what the array path's "
-            "two += statements fix"},
+     "why": "INVERTED (KERNELS.md section 7.1): MEEP's f + ((kps*src) - (kms*prev)) "
+            "is shipped; two accumulations are a different float32 number"},
     {"leg": "s4_store_fw_before_reading_prev",
      "mutation": "store_fw_before_reading_prev", "kind": "source",
      "expect": "caught",
@@ -499,6 +530,26 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
      "why": "the same defect on the AUXILIARY, which is STATE: a half-written f_w "
             "is wrong forever after, and is invisible to a gate that compares "
             "only the field"},
+    {"leg": "b1_select_removed", "mutation": "select_removed", "kind": "source",
+     "expect": "caught",
+     "why": "KERNELS.md section 7.2: the whole-grid accumulation on every cell"},
+    {"leg": "b2_predicate_on_coefficient_identity",
+     "mutation": "predicate_on_coefficient_identity", "kind": "source",
+     "expect": "caught_where_live", "reach": "coefficient_departs",
+     "why": "KERNELS.md section 7.2: the form chosen by the coefficient's value "
+            "rather than by the chunk's membership. Live only on a division where "
+            "the two lines differ on some cell: with every axis folded the far-face "
+            "chunks begin where the graded coefficients do, and the predicate is "
+            "the identity there"},
+    {"leg": "b4_auxiliary_stored_on_a_plain_cell",
+     "mutation": "auxiliary_stored_on_a_plain_cell", "kind": "source",
+     "expect": "caught",
+     "why": "KERNELS.md section 7.2: f_w is untouched on a plain cell, and it is "
+            "compared"},
+    {"leg": "b5_auxiliary_load_unguarded", "mutation": "auxiliary_load_unguarded",
+     "kind": "source", "expect": "uncaught",
+     "why": "A DECLARED NULL (KERNELS.md section 7.2): the loaded word feeds only the "
+            "layered form"},
     {"leg": "h1_reverse_folded_axis_coefficients",
      "mutation": "reverse_folded_axis_coefficients", "kind": "host",
      "expect": "caught_where_live", "reach": "folded",
@@ -515,13 +566,6 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
     {"leg": "h3_swap_kps_kms", "mutation": "swap_kps_kms", "kind": "host",
      "expect": "caught",
      "why": "(kap+sig) and (kap-sig) exchanged: the absorber runs backwards"},
-    {"leg": "h4_the_other_expansion_arm", "mutation": "the_other_expansion_arm",
-     "kind": "host", "expect": "measure",
-     "why": "the arm this platform was NOT licensed for. Where the two arms are "
-            "measurably apart this must DIVERGE; where they coincide the "
-            "coincidence is the finding, and the number of cases in each bucket "
-            "is what the licence's discrimination claim is worth on THIS "
-            "sub-step and on a FOLDED grid"},
     {"leg": "n1_reload_the_constitutive_store",
      "mutation": "reload_the_constitutive_store", "kind": "source",
      "expect": "uncaught",
@@ -553,8 +597,7 @@ MUTATION_SPEC_LABELS: Tuple[str, ...] = (
 )
 
 HOST_MUTATION_NAMES = ("reverse_folded_axis_coefficients",
-                       "swap_constitutive_sublattice", "swap_kps_kms",
-                       "the_other_expansion_arm")
+                       "swap_constitutive_sublattice", "swap_kps_kms")
 
 
 def _reaches(leg: Dict[str, Any], case: Dict[str, Any]) -> bool:
@@ -574,6 +617,8 @@ def _reaches(leg: Dict[str, Any], case: Dict[str, Any]) -> bool:
     reach = leg.get("reach")
     if reach is None:
         return True
+    if reach == "coefficient_departs":
+        return bool(case.get("coefficient_departs_from_membership"))
     if reach == "folded":
         return bool(case["fold_axes"])
     if reach == "signed_zero":
@@ -586,7 +631,7 @@ def _reaches(leg: Dict[str, Any], case: Dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------------
 
 def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
-             value_class: str, guard: str, expansion, policy: Optional[str],
+             value_class: str, guard: str, policy: Optional[str],
              host_mutation: Optional[str] = None,
              multi_step: bool = True) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
@@ -609,12 +654,6 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
     fields, layer, grid = build(xp, spec, courant, rng)
     host = seed_state(fields, grid, side, value_class, rng)
 
-    arm_override = None
-    if host_mutation == "the_other_expansion_arm":
-        arm_override = base.other_arm(
-            complex_emitter.EXPANSION_NAMES[
-                complex_emitter.normalized_expansion(expansion)])
-
     case: Dict[str, Any] = {
         "label": spec["label"], "side": side, "courant": courant,
         "value_class": value_class, "guard": guard, "backend": backend.name,
@@ -624,8 +663,6 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
         "boundaries": list(spec["boundaries"]),
         "structure": structure_facts(grid),
         "operand_census": word_census(host),
-        "arm": complex_emitter.EXPANSION_NAMES[
-            complex_emitter.normalized_expansion(arm_override or expansion)],
     }
 
     # THE PREDICATE'S CURRENT ANSWER, recorded rather than acted on. This gate
@@ -633,10 +670,11 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
     # thing that gates the measurement -- but a record that did not carry it could
     # not show WHICH clause the run was taken against.
     covered, reason = coverage.covers_real_pml_complex_constitutive(
-        fields, layer, grid, side, license=_licence_stub(expansion, policy),
-        subnormal_policy=policy)
+        fields, layer, grid, side)
     case["predicate_today"] = {"covered": bool(covered), "reason": reason}
 
+    case["coefficient_departs_from_membership"] = coefficient_departs_from_membership(
+        side, layer, grid)
     absorbs = folded_axis_absorbs(side, layer, grid)
     case["folded_axis_absorbs"] = absorbs
     if not absorbs["meets_floor"]:
@@ -666,10 +704,11 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
     # Leg 2: the kernel, from the SAME frozen state.
     restore(fields, frozen)
     tables = (tables_for(side, layer)
-              if host_mutation in (None, "the_other_expansion_arm")
+              if host_mutation is None
               else host_mutated_tables(host_mutation, side, layer, grid))
-    launch_arm = arm_override if arm_override is not None else expansion
-    backend.launch_constitutive(side, fields, layer, grid, launch_arm, tables=tables)
+    record = base.case_record(grid, layer)
+    backend.launch_constitutive(side, fields, layer, grid, record=record,
+                                tables=tables)
     if backend.name == "cupy":
         cp.cuda.runtime.deviceSynchronize()
 
@@ -692,8 +731,8 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
 
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
-            backend.launch_constitutive(side, fields, layer, grid, launch_arm,
-                                        tables=tables)
+            backend.launch_constitutive(side, fields, layer, grid,
+                                        record=record, tables=tables)
             advance_sources(fields, side)
         if backend.name == "cupy":
             cp.cuda.runtime.deviceSynchronize()
@@ -724,12 +763,11 @@ def case_product(product: str) -> List[Tuple[Dict[str, Any], str, float, str]]:
 
 
 def run_sweep(backend, xp, results: Dict[str, Any], out_path: str,
-              product: str, guard: str, expansion, policy) -> List[Dict[str, Any]]:
+              product: str, guard: str, policy) -> List[Dict[str, Any]]:
     cases: List[Dict[str, Any]] = []
     plan = case_product(product)
     for index, (spec, side, courant, value_class) in enumerate(plan, start=1):
-        case = one_case(backend, xp, spec, side, courant, value_class, guard,
-                        expansion, policy)
+        case = one_case(backend, xp, spec, side, courant, value_class, guard, policy)
         cases.append(case)
         results.setdefault("sweep", {})[guard] = cases
         save(results, out_path)
@@ -755,8 +793,7 @@ def mutation_plan(product: str) -> List[Tuple[Dict[str, Any], str, float, str]]:
     this defect at all", and multiplying it by both courants buys repetitions of
     that answer rather than a second question. The VALUE CLASSES are not collapsed
     the same way, because ``signed_zero`` is the reach of two of the legs and
-    ``subnormal_band`` is the class the family's certified round measured to
-    separate the two EXPANSION ARMS.
+    ``subnormal_band`` is the class a float32 subnormal policy decides.
     """
     by_label = {spec["label"]: spec for spec in FOLD_SPECS}
     labels = MUTATION_SPEC_LABELS if product == "full" else MUTATION_SPEC_LABELS[:3]
@@ -766,7 +803,7 @@ def mutation_plan(product: str) -> List[Tuple[Dict[str, Any], str, float, str]]:
 
 
 def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
-                  product: str, expansion, policy) -> Dict[str, Any]:
+                  product: str, policy) -> Dict[str, Any]:
     """Every leg, source and host. A gate that cannot fail certifies nothing.
 
     THE COMPILE MEMO IS KEYED THROUGH THE SOURCE
@@ -785,7 +822,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
         live_sides = set(SIDES)
         if leg["kind"] == "source":
             transform = SOURCE_MUTATIONS[name]
-            sites = constitutive_sites(transform, expansion)
+            sites = constitutive_sites(transform)
             live_sides = {side for side, count in sites.items() if count > 0}
             if not live_sides:
                 out[key] = {"armed": False, "mutation": name, "sites": sites,
@@ -805,7 +842,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
                     continue
                 host_mutation = name if leg["kind"] == "host" else None
                 legs.append(one_case(backend, xp, spec, side, courant, value_class,
-                                     "fmad_false", expansion, policy,
+                                     "fmad_false", policy,
                                      host_mutation=host_mutation))
         finally:
             if leg["kind"] == "source":
@@ -964,11 +1001,6 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
                            f"({leg.get('caught')}/{leg.get('ran')}), "
                            f"expected {leg.get('expect')}")
 
-    licence = results.get("expansion_licence") or {}
-    if not licence.get("usable"):
-        reasons.append("no usable expansion licence: the complex multiply's arm "
-                       "is a measured platform fact and may not be guessed")
-
     if not backend_certifies:
         reasons.append("this backend compiles nothing through NVRTC and certifies "
                        "nothing; a laptop leg measures the transcription only")
@@ -1050,8 +1082,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         default="cupy")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
     parser.add_argument("--subnormal-policy", choices=("keep", "flush"), default=None)
-    parser.add_argument("--expansion-probe", default=None,
-                        help="the probe artifact the expansion licence is cut from")
     parser.add_argument("--import-meep-for-host-policy", action="store_true",
                         help=("import MEEP first so the HOST half of a 'flush' "
                               "policy can be attained; strict install refuses "
@@ -1078,8 +1108,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                      "a divergence in the CONSTITUTIVE arithmetic, or is it "
                      "inherited from the complex CURL through the one function "
                      "the two predicates share?"),
-        "licence_subject": probe.source_digest(os.path.join(
-            _REPO_API, "meep_gpu", "cuda_kernels", "complex_emitter.py")),
     }
 
     if args.backend == "cupy":
@@ -1106,28 +1134,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                      "nothing about the device")}
     save(results, args.out)
 
-    licence = base.load_licence(args.expansion_probe, args.subnormal_policy)
-    results["expansion_licence"] = licence
-    if not licence["usable"]:
-        # A REFUSAL RATHER THAN A DEFAULT. The arm is a measured platform fact and
-        # this family derives it from nothing; a run without one would be a
-        # guessed constexpr compiled into a binary.
-        results["status"] = "refused: no usable expansion licence"
-        results["summary"] = {"released": False, "reasons": [
-            "no usable expansion licence: cut a probe artifact with "
-            "cut_expansion_probe.py under the SAME subnormal policy this run "
-            "installs, and pass it with --expansion-probe"],
-            "licence_refusals": (licence.get("verdict") or {}).get("refusals", []),
-            "policy_reasons": licence.get("policy_reasons", [])}
-        save(results, args.out)
-        log("[done] REFUSED: no usable expansion licence")
-        return 2
-    expansion = licence["arm"]
-    results["expansion_arm"] = expansion
-    results["expansion_arm_basis"] = licence.get("basis")
-    log(f"[licence] arm={expansion} basis={licence.get('basis')} "
-        f"record={(licence.get('record_sha256') or '')[:12]}")
-
     backend = base.build_backend(args.backend)
     xp = cp if args.backend == "cupy" else _NumpyWearingCupysName()
     results["backend_certifies"] = bool(backend.certifies)
@@ -1137,7 +1143,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.falsify:
             # THE VERDICT'S OWN FALSIFICATION LEG. Every mutation leg below shows
             # that a LEG can fail; this shows that the RELEASE DECISION can.
-            sites = constitutive_sites(SOURCE_MUTATIONS[args.falsify], expansion)
+            sites = constitutive_sites(SOURCE_MUTATIONS[args.falsify])
             backend.set_source_transform(SOURCE_MUTATIONS[args.falsify])
             results["falsification"] = {
                 "planted": args.falsify, "sites": sites,
@@ -1151,23 +1157,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 continue  # there is no NVRTC on this leg to guard
             backend.set_guard(options)
             log(f"[guard] {guard} options={options}")
-            run_sweep(backend, xp, results, args.out, args.product, guard,
-                      expansion, args.subnormal_policy)
+            run_sweep(backend, xp, results, args.out, args.product, guard, args.subnormal_policy)
 
         backend.set_guard(("--fmad=false",))
         if args.backend == "cupy":
             # THE COMPILED-IMAGE COMPARISON, which is what makes an identical
             # output control readable: two bit-identical NVRTC images cannot
             # produce different words, so "inert" and "unmeasured" come apart.
-            results["guard_effect"] = backend.guard_effect(expansion)
+            results["guard_effect"] = backend.guard_effect()
             save(results, args.out)
 
         if not args.skip_mutations and not args.falsify:
             # NOT UNDER --falsify: ``run_mutations`` clears the source transform in
             # its own ``finally``, which would silently disarm the planted defect
             # partway through the run.
-            run_mutations(backend, xp, results, args.out, args.product,
-                          expansion, args.subnormal_policy)
+            run_mutations(backend, xp, results, args.out, args.product, args.subnormal_policy)
     finally:
         backend.restore()
 

@@ -4,6 +4,16 @@
 The gate owns only the pointwise PML constitutive/ADE handoff.  Curl, source,
 and whole-driver residency are explicitly outside this gate's scope.  Each row
 is appended and fsynced before the following Metal product is launched.
+
+The oracle is ``stepping.update_E`` then ``PolarizationState.update`` on the
+one-rank region plan of each case's grid and layer, and the plans bind that
+division's chunk record. Every product row records, per component, the cells of
+each constitutive form (the form-coverage rule, DESIGN.md D13) and requires both
+forms on every split component. Mutations (KERNELS.md §7.1, §7.2): the previous
+package accumulation grouping is planted and must be caught; so are the select
+removed, the auxiliary stored on a plain cell, the integer lattice read for the
+half-integer one and the bound record moved by one row; the auxiliary load made
+unconditional is a declared null (the store stays guarded, so no word moves).
 """
 
 from __future__ import annotations
@@ -38,6 +48,9 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
 )
 from meep_gpu.pml import PML  # noqa: E402
 
+from gate_chunk_records import layer_record  # noqa: E402
+from meep_gpu.chunk_map import record_index  # noqa: E402
+
 
 def _words(value: Any) -> np.ndarray:
     return np.ascontiguousarray(value).reshape(-1).view(np.uint32)
@@ -60,6 +73,8 @@ def _build(*, shape: Sequence[int], poles: int, kind: str, seed: int) -> Tuple[F
         fields.polarizations.append(state)
     fields.enable_pml_storage()
     pml = PML(grid=grid, thickness=1)
+    # The region plan a driver installs with the layer: the one-rank division.
+    stepping._region_plan(fields, pml)
     rng = np.random.default_rng(seed)
     for name in ("Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez"):
         getattr(fields, name)[...] = rng.uniform(-0.4, 0.4, grid.shape).astype(np.float32)
@@ -90,15 +105,32 @@ def _array(fields: Fields, name: str) -> Any:
     return state.P_prev[component] if head.startswith("P_prev") else state.P[component]
 
 
+def _forms(fields: Fields, pml: PML) -> Dict[str, Any]:
+    """Per component: (accumulating cells, plain cells) of the region plan stepped."""
+    plan = stepping._region_plan(fields, pml)
+    out: Dict[str, Any] = {}
+    for component in ("Ex", "Ey", "Ez"):
+        mask = np.broadcast_to(plan.mask("constitutive", component, np), fields.grid.shape)
+        inside = int(np.count_nonzero(mask))
+        out[component] = {"mode": plan.spec("constitutive", component).mode,
+                          "accumulate": inside, "plain": int(mask.size) - inside}
+    return out
+
+
 def _run(*, shape: Sequence[int], poles: int, kind: str, seed: int, cycles: int,
-         functions: Mapping[Tuple[str, int, int], Any] | None = None) -> Dict[str, Any]:
+         functions: Mapping[Tuple[str, int, int], Any] | None = None,
+         record_mutation: Any = None) -> Dict[str, Any]:
     reference, reference_pml = _build(shape=shape, poles=poles, kind=kind, seed=seed)
     actual, actual_pml = _build(shape=shape, poles=poles, kind=kind, seed=seed)
     names = _names(actual)
     before = {name: np.array(_array(actual, name), copy=True) for name in names}
     residency = Residency()
-    e_plan = family.plan_metal_dispersive_e(actual, actual_pml, residency, functions=functions)
-    p_plan = ade_update_p.plan_metal_ade_update_p(actual, actual_pml, residency)
+    record = layer_record(actual.grid, actual_pml)
+    e_record = record if record_mutation is None else record_mutation(record)
+    e_plan = family.plan_metal_dispersive_e(actual, actual_pml, residency, functions=functions,
+                                            chunk_bounds=e_record)
+    p_plan = ade_update_p.plan_metal_ade_update_p(actual, actual_pml, residency,
+                                                  chunk_bounds=record)
     if e_plan is None or p_plan is None:
         return {"passed": False, "reason": "a declared product was refused"}
     residency.sync_in()
@@ -118,11 +150,16 @@ def _run(*, shape: Sequence[int], poles: int, kind: str, seed: int, cycles: int,
         if difference or census:
             break
     moved = sum(_different(before[name], _array(actual, name)) for name in names)
+    forms = _forms(actual, actual_pml)
+    split_ok = all(row["accumulate"] and row["plain"] for row in forms.values()
+                   if row["mode"] not in ("outside_only", "inside_only"))
     return {
         "passed": (len(per_cycle) == cycles
                    and all(row["differing_words"] == row["reference_subnormals"] == 0
                            for row in per_cycle)
-                   and moved > 0 and e_plan.runs == p_plan.runs == len(per_cycle)),
+                   and moved > 0 and e_plan.runs == p_plan.runs == len(per_cycle)
+                   and split_ok),
+        "forms": forms,
         "per_cycle": per_cycle,
         "differing_words": per_cycle[-1]["differing_words"],
         "reference_subnormals": per_cycle[-1]["reference_subnormals"],
@@ -131,27 +168,78 @@ def _run(*, shape: Sequence[int], poles: int, kind: str, seed: int, cycles: int,
     }
 
 
-def _mutants() -> Dict[str, Mapping[Tuple[str, int, int], Any]]:
+def _planted(source: str, needle: str, replacement: str) -> str:
+    if source.count(needle) != 1:
+        raise RuntimeError(f"mutation needle {needle!r} is not unique in the source")
+    return source.replace(needle, replacement, 1)
+
+
+#: The mutated component: Ex (axis 0), a split component in every mutation case.
+_ACCUMULATE = "    if (dw) { value = e_out[idx] + ((kps[i] * src) - (kms[i] * prev)); }"
+
+
+def _mutant_sources() -> Dict[str, Tuple[str, str]]:
+    """label -> (expected, Ex source at two poles)."""
+    base = family.dispersive_e_source(2, 0)
+    head, tail = base.split("// chunk bounds: begin", 1)
+    return {
+        "second_pole_dropped": ("caught", _planted(
+            base, "source = source - p1[idx];", "// dropped p1")),
+        "fw_store_dropped": ("caught", _planted(
+            base, "    if (dw) { fw[idx] = src; }", "    // stale fw")),
+        # §7.1, inverted: the package's previous grouping, (f + kps*src) - kms*prev.
+        "previous_accumulation_grouping": ("caught", _planted(
+            base, _ACCUMULATE,
+            "    if (dw) { value = (e_out[idx] + (kps[i] * src)) - (kms[i] * prev); }")),
+        "pml_kps_kms_order_reversed": ("caught", _planted(
+            base, _ACCUMULATE,
+            "    if (dw) { value = e_out[idx] + ((kms[i] * src) - (kps[i] * prev)); }")),
+        # §7.2: today's previous whole-grid form, the accumulation on every cell.
+        "select_removed": ("caught", _planted(
+            _planted(_planted(base, "    float prev = dw ? fw[idx] : 0.0f;",
+                              "    float prev = fw[idx];"),
+                     "    if (dw) { fw[idx] = src; }", "    fw[idx] = src;"),
+            _ACCUMULATE,
+            "    value = e_out[idx] + ((kps[i] * src) - (kms[i] * prev));")),
+        "auxiliary_stored_on_a_plain_cell": ("caught", _planted(
+            base, "    if (dw) { fw[idx] = src; }", "    fw[idx] = src;")),
+        "half_integer_line_read_on_the_integer_lattice": ("caught", head
+            + "// chunk bounds: begin" + tail.replace("cbh_", "cbi_").replace("in_h_", "in_i_")),
+        # Declared null: the load is unconditional but nothing it reads is stored on a
+        # plain cell, so no word moves; the module test pins the guard statically.
+        "auxiliary_load_unconditional": ("null", _planted(
+            base, "    float prev = dw ? fw[idx] : 0.0f;", "    float prev = fw[idx];")),
+    }
+
+
+def _mutants() -> Dict[str, Tuple[str, Mapping[Tuple[str, int, int], Any]]]:
     normal = {
         (shaders.CONTRACT_OFF, count, axis): compile_source(
             family.dispersive_e_source(count, axis)).dispersive_e_component
         for count in (0, 1, 2) for axis in range(3)
     }
-    base = family.dispersive_e_source(2, 0)
-    sources = {
-        "second_pole_dropped": base.replace("source = source - p1[idx];", "// dropped p1", 1),
-        "fw_store_dropped": base.replace("fw[idx] = src;", "// stale fw", 1),
-        "pml_accumulations_reversed": base.replace(
-            "value = value + kps[i] * src;\n    value = value - kms[i] * prev;",
-            "value = value - kms[i] * src;\n    value = value + kps[i] * prev;", 1),
-    }
     return {
-        label: {
+        label: (expected, {
             **normal,
             (shaders.CONTRACT_OFF, 2, 0): compile_source(source).dispersive_e_component,
-        }
-        for label, source in sources.items()
+        })
+        for label, (expected, source) in _mutant_sources().items()
     }
+
+
+def _record_moved(word: int, delta: int):
+    """b3: one bound of the Ex half-integer x line moved by one row."""
+    def mutate(record: np.ndarray) -> np.ndarray:
+        moved = np.array(record, copy=True)
+        moved[record_index(True, 0, word)] += delta
+        return moved
+    return mutate
+
+
+RECORD_MUTATIONS = {
+    "record_low_run_end_plus_one": _record_moved(1, +1),
+    "record_high_run_start_minus_one": _record_moved(2, -1),
+}
 
 
 def _emit(handle: Any, row: Dict[str, Any]) -> None:
@@ -180,7 +268,7 @@ def main() -> int:
         ("one_pole_control", (9, 7, 5), 1, LORENTZIAN),
     )
     mutations = _mutants()
-    total = len(products) + len(mutations)
+    total = len(products) + len(mutations) + len(RECORD_MUTATIONS)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     jsonl = args.out.with_suffix(".jsonl")
     started = time.perf_counter()
@@ -193,20 +281,29 @@ def main() -> int:
                           cycles=args.cycles)}
             rows.append(row)
             _emit(handle, row)
-        for index, (label, functions) in enumerate(mutations.items(), len(products) + 1):
+        index = len(products)
+        planned = [(label, expected, {"functions": functions})
+                   for label, (expected, functions) in mutations.items()]
+        planned += [(label, "caught", {"record_mutation": mutate})
+                    for label, mutate in RECORD_MUTATIONS.items()]
+        for label, expected, keywords in planned:
+            index += 1
             result = _run(shape=(9, 7, 5), poles=2, kind=LORENTZIAN,
-                          seed=33000 + index, cycles=1, functions=functions)
+                          seed=33000 + index, cycles=1, **keywords)
             difference = int(result.get("differing_words", 0))
+            caught = difference > 0
             row = {"index": index, "total": total, "leg": "mutation", "label": label,
-                   "differing_words": difference, "e_launches": result.get("e_launches"),
-                   "caught": difference > 0,
-                   "passed": result.get("e_launches") == 3 and difference > 0}
+                   "expected": expected, "differing_words": difference,
+                   "e_launches": result.get("e_launches"), "caught": caught,
+                   "passed": (result.get("e_launches") == 3
+                              and caught == (expected == "caught"))}
             rows.append(row)
             _emit(handle, row)
     result = {
         "verdict": "PASS" if all(row["passed"] for row in rows) else "FAIL",
         "elapsed_seconds": time.perf_counter() - started, "product_rows": len(products),
-        "mutation_rows": len(mutations), "rows": rows, "torch_version": torch.__version__,
+        "mutation_rows": len(mutations) + len(RECORD_MUTATIONS), "rows": rows,
+        "torch_version": torch.__version__,
         "metal_frontend": metal_frontend_version(), "jsonl": str(jsonl),
         "source_sha256": {
             "family": hashlib.sha256(Path(family.__file__).read_bytes()).hexdigest(),

@@ -163,6 +163,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/dispersive_update_e.py",
         "meep_gpu/triton_kernels/dispersive_fused_pair.py",
         "meep_gpu/triton_kernels/fused_ade_state.py",
@@ -339,6 +340,41 @@ def first_divergence(left: Dict[str, np.ndarray],
 def moved(before: Dict[str, np.ndarray], after: Dict[str, np.ndarray]) -> List[str]:
     return sorted(name for name in before
                   if name in after and bool((before[name] != after[name]).any()))
+
+
+#: Each auxiliary's record line: (half-integer sub-lattice, axis). ``fu`` follows its
+#: component's dsigu axis, ``f_w`` its own (dsigw) axis; B and E sit on the half-integer
+#: lattice of those axes, D and H on the integer one (chunk_map.record_index).
+AUXILIARY_LINES: Dict[str, Tuple[bool, int]] = {
+    "fu_Bx": (True, 2), "fu_By": (True, 0), "fu_Bz": (True, 1),
+    "fu_Dx": (False, 2), "fu_Dy": (False, 0), "fu_Dz": (False, 1),
+    "f_w_Hx": (False, 0), "f_w_Hy": (False, 1), "f_w_Hz": (False, 2),
+    "f_w_Ex": (True, 0), "f_w_Ey": (True, 1), "f_w_Ez": (True, 2),
+}
+
+
+def outside_every_layer(driver, names) -> List[str]:
+    """The auxiliaries whose record line holds no row of the run's division.
+
+    THE AUXILIARY CONTRACT LEAVES THEM UNTOUCHED: an auxiliary word outside its form's
+    region is never read or written, so on a division that gives a component's layer no
+    cell at all (an invariant axis, or an axis with no layer, carries no run) the
+    auxiliary keeps its first word for the whole run, on the array path and in the
+    kernel alike. Such an array is not a vacuous leg; it is the contract, and it is
+    checked as one: it must NOT move. (The rule probe_triton_folded_fused_pair.py states.)
+    """
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+
+    record = driver.chunk_bounds_record()
+    shape = tuple(int(n) for n in driver.fields.grid.shape)
+    out = []
+    for name in names:
+        if name not in AUXILIARY_LINES:
+            continue
+        half, axis = AUXILIARY_LINES[name]
+        if not membership_from_record(record, half, axis, shape[axis]).any():
+            out.append(name)
+    return sorted(out)
 
 
 def signed_zero_census(state: Dict[str, np.ndarray]) -> Dict[str, int]:
@@ -683,15 +719,19 @@ def run_leg(cp, name: str, boundaries, kind: str, sigma_form: str, steps: int,
                 break
 
         # Every array must have moved at least once during the leg, or the leg
-        # certified two frozen states against each other.
+        # certified two frozen states against each other -- except an auxiliary the
+        # auxiliary contract leaves untouched, which must NOT move.
         final = snapshot(cp, chain)
         ever_moved = moved(opening, final)
         material = [name for name in final if name in MATERIAL]
         row["arrays_total"] = len(final)
         row["arrays_compared"] = sorted(final)
         row["arrays_ever_moved"] = len(ever_moved)
+        outside = outside_every_layer(chain, final)
+        row["arrays_outside_every_layer"] = outside
+        row["auxiliary_contract_violations"] = sorted(set(outside) & set(ever_moved))
         row["arrays_never_moved"] = sorted(
-            set(final) - set(ever_moved) - set(material))
+            set(final) - set(ever_moved) - set(material) - set(outside))
         row["material_arrays"] = sorted(material)
         row["material_changed"] = sorted(name for name in material
                                          if name in ever_moved)
@@ -741,6 +781,10 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
         never = row.get("arrays_never_moved") or []
         if never:
             failures.append(f"VACUOUS: these arrays never moved: {never}")
+    if row.get("auxiliary_contract_violations"):
+        failures.append(
+            f"an auxiliary outside every layer of the division moved (the auxiliary "
+            f"contract): {row['auxiliary_contract_violations']}")
     changed_material = row.get("material_changed") or []
     if changed_material:
         failures.append(
@@ -768,6 +812,10 @@ def shipped_source(chain_module) -> str:
 def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant.  The rename is what keeps the JIT cache honest."""
     header = ("import triton\nimport triton.language as tl\n"
+              "from meep_gpu.triton_kernels.forms import (axis_present, "
+              "constitutive_form, curl_form, curl_stencil, record_in)\n"
+              "from meep_gpu.triton_kernels.kernels import (RECORD_HALF_INTEGER, "
+              "RECORD_PRESENCE)\n"
               "METALLIC = tl.constexpr(1)\n\n")
     handle = tempfile.NamedTemporaryFile(
         "w", suffix="_mutated_chain.py", delete=False, encoding="utf-8")
@@ -788,14 +836,14 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
 def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
 
     def m1_drive_reloaded(source: str) -> Tuple[str, int]:
-        """PREDICTED NULL: read f_w back instead of keeping the register.
+        """MUST-CATCH: read f_w back on every cell instead of keeping the register.
 
-        This is the fusion itself, undone.  A float32 store followed by a load of
-        the same address is the identity, so the null is the claim that the
-        eliminated round trip changed no value — and it is the ONLY mutation whose
-        null is the product's thesis rather than a limitation of the case."""
-        needle = "(c_drive * (sv0 * src0))"
-        replacement = ("(c_drive * (sv0 * tl.load(w0 + idx, mask=live, other=0.0)))")
+        Off the layer's chunks the E tail writes the field and leaves ``f_w``
+        untouched (the auxiliary contract), and MEEP's ``w`` there is the stored E
+        (update_pols.cpp:44, per chunk), so re-reading ``f_w`` everywhere drives the
+        polarization from a stale word on every interior cell."""
+        needle = "(omega0dtsqr * (sv0 * src0))"
+        replacement = ("(omega0dtsqr * (sv0 * tl.load(w0 + idx, mask=live, other=0.0)))")
         return source.replace(needle, replacement), source.count(needle)
 
     def m2_drive_is_stored_E(source: str) -> Tuple[str, int]:
@@ -804,8 +852,9 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         MEEP update_pols.cpp:44 takes f_w when it exists; using the stored E agrees
         exactly OUTSIDE the absorber, so this is a smooth, plausible wrong answer
         that only a PML case can see.  Both PML sides are 6 cells thick here."""
-        needle = "(c_drive * (sv0 * src0))"
-        return source.replace(needle, "(c_drive * (sv0 * a0v))"), source.count(needle)
+        needle = "(omega0dtsqr * (sv0 * src0))"
+        return (source.replace(needle, "(omega0dtsqr * (sv0 * a0v))"),
+                source.count(needle))
 
     def m3_store_hoisted_above_history_load(source: str) -> Tuple[str, int]:
         """The aliasing hazard, armed: arm 1 stores before arm 0's history load.
@@ -828,20 +877,22 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             f"{indent}    else:\n"
             f"{indent}        sv1e = sg1\n"
             f"{indent}    tl.store(o1 + idx,\n"
-            f"{indent}             ((pa1 * c_now) + (c_prev * tl.load("
-            f"q1p + idx, mask=live, other=0.0))) +\n"
-            f"{indent}             (c_drive * (sv1e * src1)), mask=live)\n")
+            f"{indent}             gamma1inv * (((pa1 * two_minus_od) - (gamma1 * "
+            f"tl.load(q1p + idx, mask=live, other=0.0))) +\n"
+            f"{indent}             (omega0dtsqr * (sv1e * src1))), mask=live)\n")
         return source[:match.start()] + early + source[match.start():], hits
 
     def m4_pole_register_crossed(source: str) -> Tuple[str, int]:
         """Arm 0 advances arm 1's pole: the register reuse pointed at the wrong volume."""
-        needle = "((pa0 * c_now) + (c_prev * h0))"
-        return source.replace(needle, "((pa1 * c_now) + (c_prev * h0))"), source.count(needle)
+        needle = "((pa0 * two_minus_od) - (gamma1 * h0))"
+        return (source.replace(needle, "((pa1 * two_minus_od) - (gamma1 * h0))"),
+                source.count(needle))
 
     def m5_history_coefficients_swapped(source: str) -> Tuple[str, int]:
-        """c_now and c_prev exchanged: the second-order recurrence's two histories."""
-        needle = "((pa0 * c_now) + (c_prev * h0))"
-        return source.replace(needle, "((pa0 * c_prev) + (c_now * h0))"), source.count(needle)
+        """two_minus_od and gamma1 exchanged: the recurrence's two histories."""
+        needle = "((pa0 * two_minus_od) - (gamma1 * h0))"
+        return (source.replace(needle, "((pa0 * gamma1) - (two_minus_od * h0))"),
+                source.count(needle))
 
     def m6_destination_rotated(source: str) -> Tuple[str, int]:
         """Arm 0's result lands in arm 1's destination: the rotation off by one."""
@@ -849,18 +900,21 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source.replace(needle, "tl.store(o1 + idx,"), source.count(needle)
 
     def m7_association_changed(source: str) -> Tuple[str, int]:
-        """Right-associated recurrence: same algebra, different float32 rounding."""
+        """INVERTED (KERNELS.md section 7.1): the package's previous folded three-term
+        form planted back -- the same algebra, a different float32 number."""
         pattern = re.compile(
-            r"\(\(pa0 \* c_now\) \+ \(c_prev \* h0\)\) \+\s*"
-            r"\(c_drive \* \(sv0 \* src0\)\)")
-        replacement = "(pa0 * c_now) + ((c_prev * h0) + (c_drive * (sv0 * src0)))"
+            r"gamma1inv \* \(\(\(pa0 \* two_minus_od\) - \(gamma1 \* h0\)\) \+\s*"
+            r"\(omega0dtsqr \* \(sv0 \* src0\)\)\)")
+        replacement = ("((pa0 * (gamma1inv * two_minus_od)) + "
+                       "((0.0 - (gamma1inv * gamma1)) * h0)) + "
+                       "((gamma1inv * omega0dtsqr) * (sv0 * src0))")
         mutated, hits = pattern.subn(replacement, source)
         return mutated, hits
 
     def m8_commuted_multiply(source: str) -> Tuple[str, int]:
         """PREDICTED NULL: IEEE multiplication commutes; only the PTX may move."""
-        needle = "(pa0 * c_now)"
-        return source.replace(needle, "(c_now * pa0)"), source.count(needle)
+        needle = "(pa0 * two_minus_od)"
+        return source.replace(needle, "(two_minus_od * pa0)"), source.count(needle)
 
     def m10_pole_reloaded(source: str) -> Tuple[str, int]:
         """PREDICTED NULL: reload P instead of reusing the subtraction's register.
@@ -869,17 +923,18 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         this kernel, so the reload must return the same word the subtraction
         loaded; a divergence here would mean the register reuse is not the
         identity the product claims it is."""
-        needle = "((pa0 * c_now)"
-        replacement = "((tl.load(a0 + idx, mask=live, other=0.0) * c_now)"
+        needle = "((pa0 * two_minus_od)"
+        replacement = "((tl.load(a0 + idx, mask=live, other=0.0) * two_minus_od)"
         return source.replace(needle, replacement), source.count(needle)
 
     def m9_sigma_dropped(source: str) -> Tuple[str, int]:
         """sigma dropped from the drive term — the strength of the whole term."""
-        needle = "(c_drive * (sv0 * src0))"
-        return source.replace(needle, "(c_drive * src0)"), source.count(needle)
+        needle = "(omega0dtsqr * (sv0 * src0))"
+        return source.replace(needle, "(omega0dtsqr * src0)"), source.count(needle)
 
     return (
-        ("m1_drive_reloaded", "the fusion undone", "null", m1_drive_reloaded),
+        ("m1_drive_reloaded", "f_w re-read off the layer's chunks", "caught",
+         m1_drive_reloaded),
         ("m2_drive_is_stored_E", "the drive-field trap", "caught", m2_drive_is_stored_E),
         ("m3_store_hoisted", "the aliasing hazard", "caught",
          m3_store_hoisted_above_history_load),
@@ -887,7 +942,8 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         ("m5_coefficients_swapped", "history coefficients", "caught",
          m5_history_coefficients_swapped),
         ("m6_destination_rotated", "rotation off by one", "caught", m6_destination_rotated),
-        ("m7_association", "float32 association", "caught", m7_association_changed),
+        ("m7_association", "the previous folded form (inverted)", "caught",
+         m7_association_changed),
         ("m8_commuted_multiply", "commuted multiply", "null", m8_commuted_multiply),
         ("m9_sigma_dropped", "term strength", "caught", m9_sigma_dropped),
         ("m10_pole_reloaded", "the pole register reuse undone", "null",

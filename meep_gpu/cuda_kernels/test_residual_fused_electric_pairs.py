@@ -23,6 +23,8 @@ SILENT WRONG ANSWER before any kernel runs:
 """
 
 import numpy
+import re
+
 import pytest
 
 from ..fields import Fields
@@ -35,8 +37,7 @@ from . import (bfast_fused_electric_pair, complex_beta_fused_electric_pair,
                cylindrical_real_fused_electric_pair, fused_pairs,
                special_kz_fused_electric_pair)
 from .test_fused_pairs import _NumpyWearingCupysName
-from .test_residual_fused_magnetic_pairs import (LICENCE, POLICY,
-                                                 build_folded_complex)
+from .test_residual_fused_magnetic_pairs import (build_folded_complex)
 
 
 @pytest.fixture
@@ -94,9 +95,12 @@ def test_a_pure_far_ghost_reads_the_post_clear_register():
 
 
 def test_the_far_ghost_takes_the_destinations_coefficient_entry():
+    """The coefficient entry AND the chunk membership are the destination row's: the
+    far ghost reads stored index n - 1 and its own block's membership flag."""
     blocks = "\n".join(complex_electric_fill_carry.fill_carry_blocks(0))
-    assert "kps_x[nx - 1], kms_half_x[nx - 1]);" in blocks   # far: stored n-1
-    assert "kps_x[i], kms_half_x[i]);" in blocks             # near: own index
+    assert re.search(r"kps_x\[nx - 1\], kms_half_x\[nx - 1\], g0_\w+_w\);",
+                     blocks)                                             # far
+    assert re.search(r"kps_x\[i\], kms_half_x\[i\], g0_\w+_w\);", blocks)  # near
 
 
 def test_the_wall_clear_is_the_off_diagonal_and_named():
@@ -133,9 +137,9 @@ def test_fills_plan_raises_on_a_far_row_with_no_declared_phase():
 
 EMITTERS = {
     "folded": lambda: complex_folded_fused_electric_pair
-        .complex_folded_fused_electric_pair_source("FMA_V1"),
+        .complex_folded_fused_electric_pair_source(),
     "beta": lambda: complex_beta_fused_electric_pair
-        .complex_beta_fused_electric_pair_source("FMA_V1"),
+        .complex_beta_fused_electric_pair_source(),
 }
 
 
@@ -154,8 +158,8 @@ def test_the_fill_carrying_twins_emit_21_ghost_blocks_and_bind_d_once(name):
     # the ownership guard sits between the fu store and the field load.
     prelude = source.split('extern "C" __global__', 1)[0]
     guard = prelude.index("if (!owned) return cf_zero();")
-    assert prelude.index("cf_store(fu, idx, fu_new);") < guard
-    assert guard < prelude.index("cf a = mul_field_left(cf_load(f, idx), kms_u);")
+    assert prelude.index("if (dsigu) cf_store(fu, idx, fu_new);") < guard
+    assert guard < prelude.index("cf fcur = cf_load(f, idx);")
     # the pre-clear registers exist and precede the wall carry.
     assert source.index("cf pre0 = d0;") < source.index("int clr_0 = 0;")
 
@@ -163,18 +167,19 @@ def test_the_fill_carrying_twins_emit_21_ghost_blocks_and_bind_d_once(name):
 def test_the_beta_twin_carries_the_beta_statements_and_the_folded_one_does_not():
     folded = EMITTERS["folded"]()
     beta = EMITTERS["beta"]()
-    assert beta.count("mul_imag_coefficient_left(") >= 2
-    assert "mul_imag_coefficient_left(" not in folded
-    assert "float bp_re, float bp_im, float bm_re, float bm_im" in beta
-    assert "bp_re" not in folded
+    # MEEP's beta pass on targets 0 and 1 (folded_pass.complex_beta_insert), from two
+    # real call-site words bound as floats.
+    assert beta.count("cf inc_beta = owned_cell ? beta_increment(") == 2
+    assert "beta_increment(" not in folded
+    assert "float bp, float bm," in beta
+    assert "float bp, float bm," not in folded
 
 
 def test_a_moved_certified_anchor_fails_the_emit_rather_than_emitting(monkeypatch):
     monkeypatch.setattr(
         complex_emitter, "_TAIL",
         complex_emitter._TAIL.replace(
-            "cf_store(f, idx, mul_field_left(cf_sub(cf_add(a, fu_new), fprev), "
-            "sinv_u));", "cf_store(f, idx, fu_new);"))
+            "    cf_store(f, idx, value);\n", "    cf_store(f, idx, fu_new);\n"))
     with pytest.raises(AssertionError):
         EMITTERS["folded"]()
     with pytest.raises(AssertionError):
@@ -196,7 +201,7 @@ def test_the_real_twins_refuse_the_emit_by_name_on_a_cupy_free_host():
 def test_the_polarization_pairs_seam_register_replaces_the_drive():
     source = (complex_no_pml_fused_polarization_pair
               .fused_polarization_pair_no_pml_complex_source(
-                  "FMA_V1", 0, 2, (True, False)))
+                  0, 2, (True, False)))
     code = "\n".join(line for line in source.splitlines()
                      if not line.lstrip().startswith("//"))
     assert code.count("cf ev = mul_field_left(") == 1
@@ -212,7 +217,7 @@ def test_the_polarization_pairs_seam_register_replaces_the_drive():
 
 def test_the_polarization_pairs_zero_arity_body_is_the_e_half_alone():
     source = (complex_no_pml_fused_polarization_pair
-              .fused_polarization_pair_no_pml_complex_source("FMA_V1", 2, 0, ()))
+              .fused_polarization_pair_no_pml_complex_source(2, 0, ()))
     assert "p_out" not in source
     assert "ade_step" in source  # the prelude still defines it; nothing calls it
     body = source.split('extern "C" __global__', 1)[1]
@@ -223,8 +228,8 @@ def test_a_drifted_certified_recurrence_fails_the_polarization_splice(monkeypatc
     from . import complex_no_pml_kernels
     real = complex_no_pml_kernels.kernel_source
 
-    def drifted(key, expansion):
-        text = real(key, expansion)
+    def drifted(key):
+        text = real(key)
         if key == "update_P":
             text = text.replace("cf_load(p_now, idx), cf_load(p_prev, idx)",
                                 "cf_load(p_prev, idx), cf_load(p_now, idx)")
@@ -233,7 +238,7 @@ def test_a_drifted_certified_recurrence_fails_the_polarization_splice(monkeypatc
     monkeypatch.setattr(complex_no_pml_kernels, "kernel_source", drifted)
     with pytest.raises(AssertionError):
         (complex_no_pml_fused_polarization_pair
-         .fused_polarization_pair_no_pml_complex_source("FMA_V1", 0, 1, (True,)))
+         .fused_polarization_pair_no_pml_complex_source(0, 1, (True,)))
 
 
 # ---------------------------------------------------------------------------
@@ -258,17 +263,17 @@ ELECTRIC_CANDIDATES = {
     ).covers_fused_electric_pair(f, l, g, ()),
     "complex": lambda f, l, g: __import__(
         "meep_gpu.cuda_kernels.complex_fused_electric_pair", fromlist=["x"]
-    ).covers_complex_fused_electric_pair(f, l, g, (), LICENCE, POLICY),
+    ).covers_complex_fused_electric_pair(f, l, g, ()),
     "cyl_complex": lambda f, l, g: __import__(
         "meep_gpu.cuda_kernels.cylindrical_fused_electric_pair", fromlist=["x"]
-    ).covers_cylindrical_fused_electric_pair(f, l, g, (), LICENCE, POLICY),
+    ).covers_cylindrical_fused_electric_pair(f, l, g, ()),
     "no_pml_complex": lambda f, l, g: __import__(
         "meep_gpu.cuda_kernels.no_pml_complex_fused_electric_pair", fromlist=["x"]
-    ).covers_no_pml_complex_fused_electric_pair(f, l, g, (), LICENCE, POLICY),
+    ).covers_no_pml_complex_fused_electric_pair(f, l, g, ()),
     "folded": lambda f, l, g: complex_folded_fused_electric_pair
-        .covers_complex_folded_fused_electric_pair(f, l, g, (), LICENCE, POLICY),
+        .covers_complex_folded_fused_electric_pair(f, l, g, ()),
     "beta": lambda f, l, g: complex_beta_fused_electric_pair
-        .covers_complex_beta_fused_electric_pair(f, l, g, (), LICENCE, POLICY),
+        .covers_complex_beta_fused_electric_pair(f, l, g, ()),
     "cyl_real": lambda f, l, g: cylindrical_real_fused_electric_pair
         .covers_cylindrical_real_fused_electric_pair(f, l, g, ()),
     "special_kz": lambda f, l, g: special_kz_fused_electric_pair
@@ -350,7 +355,7 @@ def test_an_undeclared_source_set_is_refused_everywhere(xp):
     fields, layer, grid = build_folded_complex(xp)
     covered, reason = (complex_folded_fused_electric_pair
                        .covers_complex_folded_fused_electric_pair(
-                           fields, layer, grid, None, LICENCE, POLICY))
+                           fields, layer, grid, None))
     assert not covered and "source set was not declared" in reason
     fields2, layer2, grid2 = _real_grid(
         xp, cell_size=(12.0, 8.0, 0.0), boundaries=("periodic",) * 3,
@@ -395,7 +400,7 @@ def test_the_polarization_pair_partitions_on_storage(xp):
     fields, layer, grid = build(poles=2, pml_on=False)
     covered, reason = (complex_no_pml_fused_polarization_pair
                        .covers_complex_no_pml_fused_polarization_pair(
-                           fields, layer, grid, (), LICENCE, POLICY))
+                           fields, layer, grid, ()))
     assert not covered, "a real-storage run must be refused"
     real_covered, real_reason = real_family.covers_no_pml_fused_polarization_pair(
         fields, layer, grid)

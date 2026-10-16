@@ -136,6 +136,14 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
     compile_cache = _importlib_util.module_from_spec(_cache_spec)
     _cache_spec.loader.exec_module(compile_cache)
 
+# The chunk record's length, from its one home. Read through the package when the
+# module is imported as part of it, and through the installed package when the probe
+# loads this file by path.
+try:
+    from ..chunk_map import RECORD_WORDS as _CHUNK_RECORD_WORDS
+except ImportError:  # loaded by path, outside the package: the bit-identity probe
+    from meep_gpu.chunk_map import RECORD_WORDS as _CHUNK_RECORD_WORDS
+
 # =============================================================================
 # CERTIFIED, AND DEAD — WHICH OF THE FOURTEEN KERNELS BELOW MAY BE WIRED
 # =============================================================================
@@ -231,10 +239,11 @@ UNCERTIFIED_KERNELS = {}
 #   Dy: dsig=Z, dsigu=X → kms_z[k], sinv_z[k], kms_x[i], sinv_x[i]
 #   Dz: dsig=X, dsigu=Y → kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]
 #
-# PML update formula (step_generic.cpp):
+# PML update formula (step_generic.cpp), on a cell whose chunk carries dsigu:
 #   fprev = fu[idx]
 #   fu[idx] = (kms * fu[idx] - curl) * sinv
 #   field[idx] = sinv_u * (kms_u * field[idx] + fu[idx] - fprev)
+# and the dsig-only form ``field[idx] = (kms * field[idx] - curl) * sinv`` elsewhere.
 
 
 
@@ -401,7 +410,7 @@ def _get_kernel(name: str, is_complex: bool = False):
 # ``stepping.step_D`` and nothing else; source injection, zero_metal_*, the
 # symmetry fills, update_H/update_E and update_P keep running on the array path.
 #
-# FOUR THINGS DIFFER FROM THE COMPLEX KERNELS ABOVE, and each of them is a
+# FIVE THINGS DIFFER FROM THE COMPLEX KERNELS ABOVE, and each of them is a
 # wrong answer rather than a crash if it is dropped:
 #
 # 1. THE BOUNDARY KIND IS AN ARGUMENT, NOT A LAYOUT. The complex kernels clamp
@@ -422,15 +431,26 @@ def _get_kernel(name: str, is_complex: bool = False):
 #    and the one this pair carried for its first nine days without. It is
 #    numbered separately because it masks a DIFFERENT plane for a DIFFERENT
 #    reason and the two never coincide — see the block below note 4.
-# 4. THE STENCIL IS PARENTHESISED TO ``stepping._curl_from_operands``:
+# 4. THE STENCIL IS ``stepping._curl_from_operands``, which is MEEP's
+#    ``step_curl`` (step_generic.cpp:72-76, :104-108), in ``curl_stencil``:
 #
-#        dtdx * ((sf - f1) + (f2 - ss))
+#        dtdx * (((sf - f1) + f2) - ss)
 #
-#    NOT ``dtdx * (sf - f1 + f2 - ss)``, which C associates left-to-right as
-#    ``((sf - f1) + f2) - ss``. Float addition is not associative and the two
-#    differ in the last bits — measured, and the reason the bit-identity probe
-#    carries both groupings as separate references. The complex kernels above
-#    are written in the left-to-right form; these are not.
+#    with the partner-presence forms for an invariant derivative axis. Float
+#    addition is not associative: the pairwise grouping
+#    ``(sf - f1) + (f2 - ss)`` these kernels carried until 0.10 is a different
+#    float32 number, and so is the full bracket over an absent partner
+#    (``(a + g2) - g2`` rounds where the absent form returns ``a``). The presence
+#    bits come from the chunk record's presence word (``cb[24]``).
+# 5. THE PML FORM IS CHOSEN PER STRUCTURE CHUNK, as MEEP chooses it
+#    (step_db.cpp:56-59): the split-field recurrence on the cells whose chunk
+#    carries the component's dsigu layer, the dsig-only form on the field alone
+#    everywhere else, with ``fu`` read and written only on the recurrence's cells
+#    (``pml_apply``; ``stepping._apply_curl_regions``). Which cells those are is
+#    data, the run's chunk record ``cb`` (``chunk_map.chunk_bounds_record``),
+#    decoded once per thread by the block ``bounds_block.bounds_block`` spells; a
+#    B component reads the half-integer record along its dsigu axis and a D
+#    component the integer one.
 #
 # ``_COMPILE_OPTIONS``' ``--fmad=false`` is load-bearing here for the same
 # reason it is above, and for one more: ``(fu*kms) - curl`` and
@@ -527,17 +547,47 @@ __device__ __forceinline__ float shift_dn(
     return (bc == BC_PERIODIC) ? g[idx + (na - 1) * stride] : 0.0f;
 }
 
-// stepping._apply_pml_update, in its in-place order:
-//   fu *= kms; fu -= curl; fu *= sinv;
-//   f *= kms_u; f += fu; f -= fu_previous; f *= sinv_u
+// stepping._curl_from_operands: MEEP's step_curl stencil, rounded op by op.
+//   both partners present: dtdx * (((g1s - g1) + g2) - g2s)   (step_generic.cpp:104)
+//   g2 absent:             dtdx * (g1s - g1)                  (:108)
+//   g1 absent:             (-dtdx) * (g2s - g2)               (:72-76, partners swapped)
+//   neither:               +0 (MEEP steps no such component)
+// A partner is absent when its derivative axis is invariant (pr1/pr2 from the record's
+// presence word). The full bracket over an absent partner is not the same number:
+// (a + g2) - g2 rounds where the absent form returns a.
+__device__ __forceinline__ float curl_stencil(
+    float dtdx, float sf, float f1, float f2, float ss, int pr1, int pr2
+) {
+    if (pr1 && pr2) return dtdx * (((sf - f1) + f2) - ss);
+    if (pr1) return dtdx * (sf - f1);
+    if (pr2) return (-dtdx) * (ss - f2);
+    return 0.0f;
+}
+
+// MEEP's two non-conductive curl forms, chosen per structure chunk (step_db.cpp:56-59;
+// stepping._apply_curl_regions):
+//   dsigu (the cell's chunk carries the dsigu layer): the split-field recurrence,
+//     stepping._apply_pml_update in its in-place order
+//       fu *= kms; fu -= curl; fu *= sinv;
+//       f *= kms_u; f += fu; f -= fu_previous; f *= sinv_u
+//   otherwise: the dsig-only form on the field alone, stepping._apply_dsig_only_update
+//       f *= kms; f -= curl; f *= sinv
+//     which is MEEP's plain f - curl wherever the dsig coefficients are exactly 1 (the
+//     region plan's precondition, chunk_map.check_unit_coefficients).
+// fu is read and written only on the recurrence's cells (the auxiliary contract). The
+// fu stage precedes the one load of f, and the conditional operator evaluates only the
+// arm it selects.
 __device__ __forceinline__ void pml_apply(
     float* __restrict__ f, float* __restrict__ fu, int idx, float curl,
-    float kms, float sinv, float kms_u, float sinv_u
+    float kms, float sinv, float kms_u, float sinv_u, int dsigu
 ) {
-    float fprev = fu[idx];
+    float fprev = dsigu ? fu[idx] : 0.0f;
     float fu_new = ((fprev * kms) - curl) * sinv;
-    fu[idx] = fu_new;
-    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;
+    if (dsigu) fu[idx] = fu_new;
+    float fcur = f[idx];
+    float value = dsigu ? ((((fcur * kms_u) + fu_new) - fprev) * sinv_u)
+                        : (((fcur * kms) - curl) * sinv);
+    f[idx] = value;
 }
 '''
 
@@ -558,7 +608,8 @@ extern "C" __global__ void step_B_pml_real(
     const float* __restrict__ kms_x, const float* __restrict__ sinv_x,
     const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
     const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
-    int bc_x, int bc_y, int bc_z
+    int bc_x, int bc_y, int bc_z,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= nx * ny * nz) return;
@@ -571,6 +622,19 @@ extern "C" __global__ void step_B_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
+    const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
+    const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
+    const int cbh_y_a0 = cb[16], cbh_y_a1 = cb[17], cbh_y_b0 = cb[18], cbh_y_b1 = cb[19];
+    const int in_h_y = (j >= cbh_y_a0 && j < cbh_y_a1) || (j >= cbh_y_b0 && j < cbh_y_b1);
+    const int cbh_z_a0 = cb[20], cbh_z_a1 = cb[21], cbh_z_b0 = cb[22], cbh_z_b1 = cb[23];
+    const int in_h_z = (k >= cbh_z_a0 && k < cbh_z_a1) || (k >= cbh_z_b0 && k < cbh_z_b1);
+    const int cb_presence = cb[24];
+    const int pr_x = (cb_presence >> 0) & 1;
+    const int pr_y = (cb_presence >> 1) & 1;
+    const int pr_z = (cb_presence >> 2) & 1;
+
     // Bx: curl_x = dEz/dy - dEy/dz; dsig=y, dsigu=z; iyee=(0,1,1) -> cell 0 on x,
     // and on a folded PERIODIC axis the top plane on y and z.
     {
@@ -578,12 +642,12 @@ extern "C" __global__ void step_B_pml_real(
         float sf = shift_up(Ez, idx, j, ny, sy, bc_y);
         float f2 = Ey[idx];
         float ss = shift_up(Ey, idx, k, nz, sz, bc_z);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_y, pr_z);
         if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
         if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) curl = 0.0f;
         if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) curl = 0.0f;
-        pml_apply(Bx, fu_Bx, idx, curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k]);
+        pml_apply(Bx, fu_Bx, idx, curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k], in_h_z);
     }
 
     // By: curl_y = dEx/dz - dEz/dx; dsig=z, dsigu=x; iyee=(1,0,1) -> cell 0 on y,
@@ -593,12 +657,12 @@ extern "C" __global__ void step_B_pml_real(
         float sf = shift_up(Ex, idx, k, nz, sz, bc_z);
         float f2 = Ez[idx];
         float ss = shift_up(Ez, idx, i, nx, sx, bc_x);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_z, pr_x);
         if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
         if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
         if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) curl = 0.0f;
-        pml_apply(By, fu_By, idx, curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i]);
+        pml_apply(By, fu_By, idx, curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i], in_h_x);
     }
 
     // Bz: curl_z = dEy/dx - dEx/dy; dsig=x, dsigu=y; iyee=(1,1,0) -> cell 0 on z,
@@ -608,12 +672,12 @@ extern "C" __global__ void step_B_pml_real(
         float sf = shift_up(Ey, idx, i, nx, sx, bc_x);
         float f2 = Ex[idx];
         float ss = shift_up(Ex, idx, j, ny, sy, bc_y);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_x, pr_y);
         if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
         if (bc_z == BC_MIRROR_PERIODIC && k == 0) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) curl = 0.0f;
         if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) curl = 0.0f;
-        pml_apply(Bz, fu_Bz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]);
+        pml_apply(Bz, fu_Bz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j], in_h_y);
     }
 }
 '''
@@ -626,6 +690,8 @@ extern "C" __global__ void step_B_pml_real(
 # mask fires on an axis the component reads no neighbour on is not a slip: the
 # mask is about which cells MEEP's owned loop VISITS, not about where the
 # stencil reaches (stepping._mask_non_owned_cells is per-axis, per-component).
+# The membership flags read the INTEGER-lattice record (every D component sits on
+# the integer lattice along its dsigu axis), the B side's the half-integer one.
 _step_D_pml_real_kernel_code = _REAL_PML_PRELUDE + r'''
 extern "C" __global__ void step_D_pml_real(
     float* __restrict__ Dx, float* __restrict__ Dy, float* __restrict__ Dz,
@@ -636,7 +702,8 @@ extern "C" __global__ void step_D_pml_real(
     const float* __restrict__ kms_x, const float* __restrict__ sinv_x,
     const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
     const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
-    int bc_x, int bc_y, int bc_z
+    int bc_x, int bc_y, int bc_z,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= nx * ny * nz) return;
@@ -649,6 +716,19 @@ extern "C" __global__ void step_D_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
+    const int cbi_x_a0 = cb[0], cbi_x_a1 = cb[1], cbi_x_b0 = cb[2], cbi_x_b1 = cb[3];
+    const int in_i_x = (i >= cbi_x_a0 && i < cbi_x_a1) || (i >= cbi_x_b0 && i < cbi_x_b1);
+    const int cbi_y_a0 = cb[4], cbi_y_a1 = cb[5], cbi_y_b0 = cb[6], cbi_y_b1 = cb[7];
+    const int in_i_y = (j >= cbi_y_a0 && j < cbi_y_a1) || (j >= cbi_y_b0 && j < cbi_y_b1);
+    const int cbi_z_a0 = cb[8], cbi_z_a1 = cb[9], cbi_z_b0 = cb[10], cbi_z_b1 = cb[11];
+    const int in_i_z = (k >= cbi_z_a0 && k < cbi_z_a1) || (k >= cbi_z_b0 && k < cbi_z_b1);
+    const int cb_presence = cb[24];
+    const int pr_x = (cb_presence >> 0) & 1;
+    const int pr_y = (cb_presence >> 1) & 1;
+    const int pr_z = (cb_presence >> 2) & 1;
+
     // Dx: curl_x = dHz/dy - dHy/dz; dsig=y, dsigu=z; iyee=(1,0,0) -> cell 0 on y and
     // z, and on a folded PERIODIC axis the top plane on x -- an axis this stencil
     // never differences along.
@@ -657,13 +737,13 @@ extern "C" __global__ void step_D_pml_real(
         float sf = shift_dn(Hz, idx, j, ny, sy, bc_y);
         float f2 = Hy[idx];
         float ss = shift_dn(Hy, idx, k, nz, sz, bc_z);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_y, pr_z);
         if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
         if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
         if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
         if (bc_z == BC_MIRROR_PERIODIC && k == 0) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) curl = 0.0f;
-        pml_apply(Dx, fu_Dx, idx, curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k]);
+        pml_apply(Dx, fu_Dx, idx, curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k], in_i_z);
     }
 
     // Dy: curl_y = dHx/dz - dHz/dx; dsig=z, dsigu=x; iyee=(0,1,0) -> cell 0 on x and
@@ -673,13 +753,13 @@ extern "C" __global__ void step_D_pml_real(
         float sf = shift_dn(Hx, idx, k, nz, sz, bc_z);
         float f2 = Hz[idx];
         float ss = shift_dn(Hz, idx, i, nx, sx, bc_x);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_z, pr_x);
         if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
         if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
         if (bc_z == BC_MIRROR_PERIODIC && k == 0) curl = 0.0f;
         if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) curl = 0.0f;
-        pml_apply(Dy, fu_Dy, idx, curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i]);
+        pml_apply(Dy, fu_Dy, idx, curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i], in_i_x);
     }
 
     // Dz: curl_z = dHy/dx - dHx/dy; dsig=x, dsigu=y; iyee=(0,0,1) -> cell 0 on x and
@@ -689,13 +769,13 @@ extern "C" __global__ void step_D_pml_real(
         float sf = shift_dn(Hy, idx, i, nx, sx, bc_x);
         float f2 = Hx[idx];
         float ss = shift_dn(Hx, idx, j, ny, sy, bc_y);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_x, pr_y);
         if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
         if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
         if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
         if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) curl = 0.0f;
-        pml_apply(Dz, fu_Dz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]);
+        pml_apply(Dz, fu_Dz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j], in_i_y);
     }
 }
 '''
@@ -770,9 +850,36 @@ def real_curl_boundary_codes(grid) -> tuple:
     return tuple(np.int32(code) for code in codes)
 
 
+def chunk_record_argument(chunk_bounds):
+    """The ``cb`` argument, checked: one contiguous ``int32[25]`` device vector.
+
+    ``arms.StepContext.chunk_bounds_device`` uploads it once per composition; a gate
+    hands its own (``parity/meep_gpu/gate_chunk_records.py``). There is no default: a
+    kernel launched without the run's division would step the PML forms of some other
+    one, a silent wrong answer (bit_parity_0_10 DESIGN.md D4, D6).
+    """
+    if chunk_bounds is None:
+        raise ValueError("the real-field PML kernels take the run's chunk record "
+                         "(chunk_map.chunk_bounds_record) and were handed none")
+    if not isinstance(chunk_bounds, cp.ndarray):
+        raise ValueError(
+            f"the chunk record must be a device vector, got {type(chunk_bounds).__name__}: "
+            f"upload it once (cupy.asarray(record, dtype=cupy.int32)) and pass that, as "
+            f"arms.StepContext.chunk_bounds_device does")
+    if (getattr(chunk_bounds, "dtype", None) != cp.int32
+            or tuple(getattr(chunk_bounds, "shape", ())) != (_CHUNK_RECORD_WORDS,)
+            or not chunk_bounds.flags.c_contiguous):
+        raise ValueError(
+            f"the chunk record must be one contiguous int32[{_CHUNK_RECORD_WORDS}] device "
+            f"vector, got {getattr(chunk_bounds, 'dtype', type(chunk_bounds).__name__)} of "
+            f"shape {tuple(getattr(chunk_bounds, 'shape', ()))}")
+    return chunk_bounds
+
+
 def _step_fused_pml_real(kernel, targets, auxiliaries, sources,
-                         tables: dict, boundary_codes, dtdx: float):
+                         tables: dict, boundary_codes, dtdx: float, chunk_bounds):
     """Shared launch for both sides: the argument list differs only in which arrays."""
+    cb = chunk_record_argument(chunk_bounds)
     nx, ny, nz = targets[0].shape
     blocks = (nx * ny * nz + _REAL_PML_THREADS - 1) // _REAL_PML_THREADS
     kernel((blocks,), (_REAL_PML_THREADS,), (
@@ -785,27 +892,29 @@ def _step_fused_pml_real(kernel, targets, auxiliaries, sources,
         tables["kms_y"], tables["sinv_y"],
         tables["kms_z"], tables["sinv_z"],
         boundary_codes[0], boundary_codes[1], boundary_codes[2],
+        cb,
     ))
 
 
 def _step_B_fused_pml_real(fields: 'Fields', tables: dict, boundary_codes,
-                           dtdx: float):
+                           dtdx: float, chunk_bounds):
     """``stepping.step_B`` for real fields under a PML, in one launch.
 
     ``tables`` are the HALF-INTEGER coefficient views from
     :func:`real_pml_curl_tables` (``half_integer=True``); the sources are the
-    STORED ``Ex/Ey/Ez``, which a PML run always has.
+    STORED ``Ex/Ey/Ez``, which a PML run always has. ``chunk_bounds`` is the run's
+    chunk record on the device (:func:`chunk_record_argument`).
     """
     _step_fused_pml_real(
         _get_kernel('step_B_pml_real', False),
         (fields.Bx, fields.By, fields.Bz),
         (fields.fu_Bx, fields.fu_By, fields.fu_Bz),
         (fields.Ex, fields.Ey, fields.Ez),
-        tables, boundary_codes, dtdx)
+        tables, boundary_codes, dtdx, chunk_bounds)
 
 
 def _step_D_fused_pml_real(fields: 'Fields', tables: dict, boundary_codes,
-                           dtdx: float):
+                           dtdx: float, chunk_bounds):
     """``stepping.step_D`` for real fields under a PML, in one launch.
 
     ``tables`` are the INTEGER coefficient views from
@@ -816,7 +925,7 @@ def _step_D_fused_pml_real(fields: 'Fields', tables: dict, boundary_codes,
         (fields.Dx, fields.Dy, fields.Dz),
         (fields.fu_Dx, fields.fu_Dy, fields.fu_Dz),
         (fields.Hx, fields.Hy, fields.Hz),
-        tables, boundary_codes, dtdx)
+        tables, boundary_codes, dtdx, chunk_bounds)
 
 
 # =============================================================================

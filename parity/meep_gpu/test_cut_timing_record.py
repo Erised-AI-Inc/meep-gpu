@@ -410,6 +410,18 @@ def test_a_verdict_that_is_not_a_timing_is_not_admitted(tmp_path, verdict):
     assert excluded_reasons(record) == [f"verdict {verdict}"]
 
 
+def test_a_gpu_only_row_is_left_out_by_name(tmp_path):
+    """A ``--legs gpu-only`` row times the fused leg alone: no singles, so no ratio a
+    preference record could key on, whatever its floors say."""
+    solo = bench_row(case="solo")
+    solo["legs_mode"] = "gpu-only"
+    write(tmp_path, "tree/rows.jsonl", [bench_row(), bench_row(case="second"), solo])
+    record = cut_tree(tmp_path)
+    assert excluded_reasons(record) == [
+        "a gpu-only row (the fused leg alone): it times no product against its singles"]
+    assert record["rows"]["admitted"] == 2
+
+
 def test_a_host_smoke_row_is_not_admitted(tmp_path):
     smoke = bench_row(case="smoke")
     smoke["prefer_gpu"] = False
@@ -1312,7 +1324,8 @@ def _key_rows(record):
 #: was made at all -- the bench row is not a timing, is another table's row, or is a
 #: host smoke row -- as against a device timing that failed a floor or cannot be priced
 #: alone. An excluded row of the first kind accounts for a case without measuring it.
-_NOT_A_TIMING = ("verdict ", "a row of the ", "a host smoke row")
+#: The cutter's own spelling, since it names a record's missing keys by the same rule.
+_NOT_A_TIMING = cut.NOT_A_TIMING
 
 
 def test_the_reasons_read_as_no_timing_are_the_ones_the_cutter_writes():
@@ -1327,6 +1340,41 @@ def test_the_reasons_read_as_no_timing_are_the_ones_the_cutter_writes():
         assert cut.admission_refusal(spoiled, table, False).startswith(_NOT_A_TIMING)
     failed = dict(row, floors=dict(row["floors"], spread_within_gate=False))
     assert not cut.admission_refusal(failed, "triton", False).startswith(_NOT_A_TIMING)
+
+
+def test_a_partial_set_names_its_missing_keys_and_still_cuts(tmp_path):
+    """H1: the 1.0 round's eleven ERROR rows left their products untimed and the record
+    failed the release check. Accounted for, the cut names each released (product, case)
+    it lacks, with the rows' own reason, and the reader takes the record."""
+    write(tmp_path, "tree/rows.jsonl", [
+        bench_row(case="pml_2d"), bench_row(case="pml_2d", utc="2026-09-19T14:00:00Z"),
+        {"case": "absorber_1d", "drive_table": "triton", "verdict": "ERROR",
+         "error": "TypeError: 'numpy.float32' object does not support item assignment",
+         "utc": "2026-09-19T15:00:00Z", "prefer_gpu": True}])
+    released = {"fused pair D": ["absorber_1d", "pml_2d", "never_run"],
+                "fused pair B": ["pml_2d"]}
+    record = cut_tree(tmp_path, released=released)
+    assert record["missing"] == [
+        {"product": "fused pair D", "case": "absorber_1d",
+         "reason": "no timing of this table: verdict ERROR"},
+        {"product": "fused pair D", "case": "never_run",
+         "reason": "no row of this case among the rows cut"}]
+    assert record["cut"]["account_for_release"] is True
+    dp.validate(record, expect_table="triton")
+    assert "MISSING FROM THE RELEASE: 2" in cut.render_report(record)
+    # nothing lacking: no block at all, and a record cut without the release carries
+    # neither the block nor the parameter (what a 2026-09-21 record recomputes to)
+    whole = cut_tree(tmp_path, released={"fused pair D": ["pml_2d"]})
+    assert "missing" not in whole and whole["cut"]["account_for_release"] is True
+    plain = cut_tree(tmp_path)
+    assert "missing" not in plain and "account_for_release" not in plain["cut"]
+
+
+def test_a_malformed_missing_block_is_refused_by_the_reader(tmp_path):
+    standard_tree(tmp_path)
+    record = dict(cut_tree(tmp_path), missing=[{"product": "fused pair D"}])
+    with pytest.raises(dp.RecordRefused):
+        dp.validate(dp.seal(record))
 
 
 @pytest.mark.parametrize("table", ["triton", "cuda"])
@@ -1492,6 +1540,11 @@ def test_every_product_the_table_releases_is_accounted_for_in_its_record(table):
     """
     record = dp.load_record(shipped(table), expect_table=table)
     released, constituents = _released(table)
+    # A RECORD CUT FROM PART OF A CAMPAIGN NAMES WHAT IT LACKS: a (product, case) the
+    # record names under ``missing``, with its reason, is accounted for by name.
+    named = {(item["product"], item["case"]) for item in record.get("missing") or ()}
+    released = {arm: [case for case in cases if (arm, case) not in named]
+                for arm, cases in released.items()}
     priced = {row["case"] for row in _key_rows(record)}
     left_out = {item["case"] for item in record["excluded"]}
     unrecorded = sorted({(arm, case) for arm, cases in released.items() for case in cases
@@ -1507,7 +1560,7 @@ def test_every_product_the_table_releases_is_accounted_for_in_its_record(table):
     partnered = {partner["product"] for row in _key_rows(record)
                  for partner in row["co_fused"]}
     silent = sorted(arm for arm, cases in released.items()
-                    if arm not in keyed and arm not in partnered
+                    if arm not in keyed and arm not in partnered and cases
                     and not set(cases) <= timed_out)
     assert silent == [], silent
     for key, entry in record["keys"].items():

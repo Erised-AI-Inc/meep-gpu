@@ -232,25 +232,12 @@ class LeadingWrapper:
         self.inner.run()
 
 
-def _probes():
-    from meep_gpu.metal_kernels import (  # noqa: PLC0415
-        complex_fields, cylindrical_complex, folded_complex, special_kz)
-
-    return {"complex_probe": complex_fields.load_expansion_probe(),
-            "beta_probe": special_kz.load_expansion_probe(),
-            "folded_complex_probe": folded_complex.load_expansion_probe(),
-            "cylindrical_complex_probe":
-                cylindrical_complex.load_expansion_probe()}
-
-
 def _compose(pair, *, fuse=True, fuse_labels=None, sources=()):
     """The ladder's rung 5M, minus the ladder: the two-pass scout and the bracket."""
     fields, pml = pair
     residency = CountingResidency()
-    probes = _probes()
     scout = launch.plan_step(fields, pml, residency=device.Residency(),
-                             sources=sources, fuse=fuse, fuse_labels=fuse_labels,
-                             **probes)
+                             sources=sources, fuse=fuse, fuse_labels=fuse_labels)
     covered = set()
     for slot, product in scout.plans.items():
         covered.add(slot)
@@ -259,8 +246,7 @@ def _compose(pair, *, fuse=True, fuse_labels=None, sources=()):
     live = launch.live_sub_steps(fields, pml, sources) or ()
     synced = tuple(name for name in live if name not in covered)
     plan = launch.plan_step(fields, pml, residency=residency, sources=sources,
-                            synced=synced, fuse=fuse, fuse_labels=fuse_labels,
-                            **probes)
+                            synced=synced, fuse=fuse, fuse_labels=fuse_labels)
     launch.wrap_for_residency(plan, residency)
     return plan, residency
 
@@ -877,7 +863,7 @@ def test_an_unadmitted_fused_label_refuses_the_whole_plan_by_name(monkeypatch):
     reason = record.get("refused_because") or ""
     assert "a fused cross-sub-step product won" in reason, reason
     assert "has not been driven through the driver seam" in reason, reason
-    assert metal_dispatch.METAL_DRIVER_ROUTE_GATE in reason, reason
+    assert metal_dispatch.METAL_ROUTE_RECORD in reason, reason
     assert fastpath.FUSE_ARMS_SWITCH in reason, reason
 
 
@@ -947,7 +933,7 @@ def test_the_record_names_the_table_and_the_route_gate():
     record, _result, _seen = _drive(matrix.cart())
     assert record["table"] == "metal"
     assert (record.get("fusion") or {}).get("driver_route_gate") == \
-        metal_dispatch.METAL_DRIVER_ROUTE_GATE
+        metal_dispatch.METAL_ROUTE_RECORD
 
 
 def test_the_record_carries_the_residency_the_composition_installed(monkeypatch):

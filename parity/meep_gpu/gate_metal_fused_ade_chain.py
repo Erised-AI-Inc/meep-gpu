@@ -21,10 +21,12 @@ THE SIX THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    NULL CONFIRMED by an identity check rather than reported as uncaught. Leg
    ``disarm`` reruns the identical case with the shipped bytes and requires zero.
 3. **A dead-branch mutation.** A mutation that rewrites a line the scored grid
-   never reaches measures nothing. This kernel has EXACTLY ONE branch — the
-   ``n_elem`` guard — and :func:`leg_single_guard` asserts that from the emitted
-   text, so every other emitted line is reached by every in-range thread and no
-   mutation can be dead.
+   never reaches measures nothing. The no-PML arm has EXACTLY ONE branch — the
+   ``n_elem`` guard — and the PML arm adds exactly the per-chunk constitutive
+   select (two ``if (dw)`` lines and one ``dw ?`` load) and nothing else;
+   :func:`leg_single_guard` asserts both from the emitted text, and the mutation
+   case's own division steps BOTH forms on every component (its ``forms`` census),
+   so no armed line sits under a branch the scored grid never takes.
 4. **A mirrored evaluator.** :func:`leg_transcription` PARSES the three
    load-bearing arithmetic lines out of this family's emitted source AND out of
    the CERTIFIED emitters' own output, and requires them equal modulo the
@@ -40,6 +42,15 @@ THE SIX THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    compiles the worst IN-ceiling signature and requires success, then compiles the
    first OVER-ceiling one and requires the failure.
 
+THE ADE HALF IS MEEP'S ARITHMETIC. Each pole's recurrence is
+``gamma1inv * (((two_minus_od * p) - (gamma1 * q)) + (omega0dtsqr * (s * w)))`` on
+MEEP's four float32 constants (``PolarizationState.constants``), the certified
+``ade_update_p`` body's own line. The mutation leg plants the package's previous
+spelling -- the three folded coefficients and their three-term grouping -- and
+requires it caught (KERNELS.md §7.1). The pointwise ADE single selects its drive per
+chunk on the record (``w = f_w ? f_w : f``), so the PML rows plan through the ADE
+half's own predicate unchanged, and the separate control scores all three sides.
+
 BOTH SUBNORMAL POLICIES, AS FAR AS THIS BACKEND HAS THEM. MPS flush is native and
 has NO LEVER (metal_kernels/subnormal.py:6-13), so ``keep`` is not a second
 comparison but a REFUSAL, and leg ``policy`` requires the plan to be refused BY
@@ -51,9 +62,12 @@ LEGS
   2  transcription     the arithmetic lines equal the certified emitters', parsed
   3  policy            `keep` is REFUSED by name; `flush` admits
   4  product           complete seam steps, per-step byte compare, counters, floor
-  5  separate_control  array path vs the two CERTIFIED products vs fused, 3 ways
+  5  separate_control  array path vs the separate products vs fused, all three
+                       scored word for word on every row
   6  value_classes     uniform, +-0 lattice, subnormal band (refused, census fires)
   7  mutation          armed defects, each CAUGHT or NULL CONFIRMED
+  7b battery           the per-chunk constitutive battery (KERNELS.md §7.2) on the
+                       PML arm, scored against its declarations
   8  disarm            the same harness, shipped bytes, must not diverge
 
 Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
@@ -104,6 +118,9 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
     MAX_BUFFER_BINDINGS, Residency, compile_source, metal_frontend_version,
 )
 from meep_gpu.pml import PML  # noqa: E402
+from meep_gpu.triton_kernels.coverage import Coverage  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
+import metal_fused_battery as battery  # noqa: E402
 
 #: Complete seam steps every case walks. SIXTY, not twelve: ``f_w_E`` and the
 #: whole ADE history are state carried between steps, and the rotation's own
@@ -255,6 +272,11 @@ def build(case: Case, seed: int, scale: float = 1.0) -> Tuple[Grid, Fields, Opti
             else:
                 thickness.append((2, 2))
         pml = PML(grid=grid, thickness=tuple(thickness))
+        # THE REGION PLAN A DRIVER INSTALLS WITH THE LAYER (driver._install_region_plan):
+        # the one-rank division of this grid and absorber. Stepping Fields directly
+        # would install the same plan at the first update_E, but the ADE half's
+        # predicate reads Fields.drive_field at PLAN time, which needs it already.
+        stepping._region_plan(fields, pml)
     else:
         fields.enable_field_storage()
 
@@ -354,11 +376,38 @@ def _split_movement(before: Mapping[str, np.ndarray], after: Mapping[str, Any]
     return still, disturbed, int(sum(moved.values()))
 
 
+def _planned(case: Case, fields: Fields, pml: Optional[PML], residency: Residency,
+             **keywords: Any) -> Any:
+    """``plan_metal_fused_ade_chain`` for one case, and its verdict when refused."""
+    plan = family.plan_metal_fused_ade_chain(
+        fields, pml, case.arm, case.folded, residency, **keywords)
+    verdict = (family.fused_ade_chain_coverage(
+        fields, pml, case.arm, case.folded, residency) if plan is None else None)
+    return plan, verdict
+
+
+def _record(grid: Any, pml: Optional[PML],
+            mutate: Optional[Callable[[Any], Any]] = None) -> Any:
+    """The case's one-rank chunk record (the no-PML arm binds none and ignores it)."""
+    record = layer_record(grid, pml)
+    return record if mutate is None else mutate(record)
+
+
+#: The components whose per-chunk forms the PML rows report.
+FORM_COMPONENTS: Tuple[str, ...] = ("Ex", "Ey", "Ez")
+
+
 def run_case(case: Case, leg: str, steps: int,
              functions: Optional[Mapping[Tuple[str, int], Any]] = None,
              patch: Optional[Callable[[Any, Any, Residency], None]] = None,
+             record: Optional[Callable[[Any], Any]] = None,
              ) -> Dict[str, Any]:
-    """Step the two engines side by side and compare per COMPLETE SEAM STEP."""
+    """Step the two engines side by side and compare per COMPLETE SEAM STEP.
+
+    ``record`` is the chunk-record mutation seam (the battery's ``b3``/``b4``): the
+    kernel is the shipped one and the record it binds is the true one transformed.
+    The oracle always steps the true division.
+    """
     seed = case_seed(case.label, leg)
     _, reference, reference_pml = build(case, seed)
     _, actual, actual_pml = build(case, seed)
@@ -366,13 +415,12 @@ def run_case(case: Case, leg: str, steps: int,
     assert not drift, f"{case.label}: the two builds are not identical: {drift}"
 
     residency = Residency()
-    plan = family.plan_metal_fused_ade_chain(
-        actual, actual_pml, case.arm, case.folded, residency, functions=functions)
+    plan, verdict = _planned(case, actual, actual_pml, residency,
+                             functions=functions,
+                             chunk_bounds=_record(actual.grid, actual_pml, record))
     if plan is None:
-        reasons = family.fused_ade_chain_coverage(
-            actual, actual_pml, case.arm, case.folded, residency).reasons
         return {"passed": False, "reason": "the fused chain was refused",
-                "refusals": list(reasons)}
+                "refusals": list(verdict.reasons)}
     if patch is not None:
         patch(plan, actual_pml, residency)
 
@@ -441,6 +489,10 @@ def run_case(case: Case, leg: str, steps: int,
             for entry in plan.entries],
         "mirrors": len(residency.names),
         "shape": list(plan.shape), "seed": seed,
+        # THE FORMS THIS CASE STEPPED (DESIGN.md D13), on the PML arm.
+        "forms": ({name: counts for name, counts in battery.form_census(
+            actual.grid, actual_pml).items() if name in FORM_COMPONENTS}
+                  if actual_pml is not None else None),
     }
 
 
@@ -463,6 +515,11 @@ def run_separate_control(case: Case, steps: int) -> Dict[str, Any]:
     The separate side is not a strawman: it is exactly what ``plan_step`` composes
     for this configuration today, which is why disagreement here would be a defect
     in the fused product rather than in an invented comparator.
+
+    ALL THREE SIDES ARE SCORED ON EVERY ROW. The pointwise E singles
+    (``dispersive_update_e`` / ``folded_dispersive_update_e``) step MEEP's per-chunk
+    forms on the chunk record they bind, and the pointwise ADE single selects its
+    drive on it, as the array path and the fused product do.
     """
     seed = case_seed(case.label, "separate_control")
     _, reference, reference_pml = build(case, seed)
@@ -475,21 +532,24 @@ def run_separate_control(case: Case, steps: int) -> Dict[str, Any]:
     # the predicate that establishes the stored extent, and the ordinary one
     # refuses a live mirror by name. Picking it here would have made the folded
     # control a refusal rather than a comparison.
+    record = _record(separate.grid, separate_pml)
     if case.arm == "dispersive" and case.folded:
         electric = folded_dispersive_update_e.plan_folded_dispersive_e(
-            separate, separate_pml, separate_residency)
+            separate, separate_pml, separate_residency, chunk_bounds=record)
     elif case.arm == "dispersive":
         electric = dispersive_update_e.plan_metal_dispersive_e(
-            separate, separate_pml, separate_residency)
+            separate, separate_pml, separate_residency, chunk_bounds=record)
     else:
         electric = no_pml_stored_e.plan_metal_stored_e(
             separate, separate_pml, separate_residency)
     polarization = ade_update_p.plan_metal_ade_update_p(
-        separate, separate_pml, separate_residency)
+        separate, separate_pml, separate_residency, chunk_bounds=record)
     fused_residency = Residency()
-    plan = family.plan_metal_fused_ade_chain(
-        fused, fused_pml, case.arm, case.folded, fused_residency)
-    if electric is None or polarization is None or plan is None:
+    plan, _verdict = _planned(case, fused, fused_pml, fused_residency,
+                              chunk_bounds=_record(fused.grid, fused_pml))
+    scored_three_ways = True
+    separate_built = electric is not None and polarization is not None
+    if plan is None or not separate_built:
         return {"passed": False, "reason": "a declared product was refused",
                 "electric": electric is not None,
                 "polarization": polarization is not None,
@@ -501,37 +561,54 @@ def run_separate_control(case: Case, steps: int) -> Dict[str, Any]:
     per_step: List[Dict[str, Any]] = []
     for step in range(1, steps + 1):
         seam_step(reference, reference_pml)
-        electric.run()
-        polarization.run()
+        if separate_built:
+            electric.run()
+            polarization.run()
         plan.run()
         separate_residency.sync_out()
         fused_residency.sync_out()
         per_step.append({
             "step": step,
-            "separate_vs_array": sum(compare(reference, separate).values()),
+            "separate_vs_array": (sum(compare(reference, separate).values())
+                                  if separate_built else None),
             "fused_vs_array": sum(compare(reference, fused).values()),
-            "fused_vs_separate": sum(compare(separate, fused).values()),
+            "fused_vs_separate": (sum(compare(separate, fused).values())
+                                  if separate_built else None),
         })
-        if any(value for key, value in per_step[-1].items() if key != "step"):
+        if (any(value for key, value in per_step[-1].items() if key != "step")
+                if scored_three_ways else per_step[-1]["fused_vs_array"]):
             break
 
     still, disturbed, _ = _split_movement(before, state_of(fused))
-    identical = (len(per_step) == steps
-                 and all(row["separate_vs_array"] == row["fused_vs_array"]
-                         == row["fused_vs_separate"] == 0 for row in per_step))
+    if scored_three_ways:
+        identical = (len(per_step) == steps
+                     and all(row["separate_vs_array"] == row["fused_vs_array"]
+                             == row["fused_vs_separate"] == 0 for row in per_step))
+    else:
+        identical = (len(per_step) == steps
+                     and all(row["fused_vs_array"] == 0 for row in per_step))
     return {
-        "passed": bool(identical and plan.launches and electric.launches
-                       and polarization.launches and not still and not disturbed),
+        "passed": bool(identical and plan.launches and not still and not disturbed
+                       and (not scored_three_ways
+                            or (electric.launches and polarization.launches))),
+        "separate_side_built": separate_built,
+        "separate_side_scored": scored_three_ways,
+        "separate_side_identical_to_array": (all(
+            row["separate_vs_array"] == 0 for row in per_step)
+            if separate_built else None),
         "per_step_tail": per_step[-3:],
         "steps_compared": len(per_step),
-        "separate_dispatches_per_step": (electric.launches_per_run
-                                         + polarization.launches_per_run),
+        "separate_dispatches_per_step": ((electric.launches_per_run
+                                          + polarization.launches_per_run)
+                                         if separate_built else None),
         "fused_dispatches_per_step": plan.launches_per_run,
-        "separate_launches": electric.launches + polarization.launches,
+        "separate_launches": ((electric.launches + polarization.launches)
+                              if separate_built else None),
         "fused_launches": plan.launches,
-        "dispatches_removed_per_step": (electric.launches_per_run
-                                        + polarization.launches_per_run
-                                        - plan.launches_per_run),
+        "dispatches_removed_per_step": ((electric.launches_per_run
+                                         + polarization.launches_per_run
+                                         - plan.launches_per_run)
+                                        if separate_built else None),
         "written_arrays_that_never_moved": still,
         "read_only_arrays_the_seam_disturbed": disturbed,
         "seed": seed,
@@ -590,6 +667,10 @@ def leg_single_guard() -> Dict[str, Any]:
     line after the ``n_elem`` guard — and that is asserted from the emitted TEXT
     for every shipped specialisation rather than argued from the source layout.
     """
+    #: arm -> (if-branches, ternaries) the emitted text may carry: the guard, plus on
+    #: the PML arm the per-chunk constitutive select (``if (dw)`` around the f_w
+    #: store and around the accumulation, and the ``dw ?`` load of f_w).
+    allowed = {"no_pml": (1, 0), "dispersive": (3, 1)}
     rows: List[Dict[str, Any]] = []
     for arm, poles in (("no_pml", 0), ("no_pml", 5), ("dispersive", 1),
                        ("dispersive", 6)):
@@ -599,12 +680,24 @@ def leg_single_guard() -> Dict[str, Any]:
             branches = len(re.findall(r"\bif\s*\(", source))
             ternaries = source.count("?")
             loops = len(re.findall(r"\b(for|while)\s*\(", source))
+            selects = len(re.findall(r"\bif \(dw\)", source)) + source.count("dw ?")
             rows.append({"arm": arm, "axis": axis, "poles": poles,
                          "if_branches": branches, "ternaries": ternaries,
-                         "loops": loops,
-                         "straight_line": branches == 1 and not ternaries and not loops})
-    return {"passed": all(row["straight_line"] for row in rows),
+                         "loops": loops, "select_sites": selects,
+                         "straight_line": ((branches, ternaries) == allowed[arm]
+                                           and not loops
+                                           and selects == sum(allowed[arm]) - 1)})
+    # THE SELECT'S TWO FORMS ARE BOTH REACHED by the case the mutations are scored
+    # on: every component has cells in and out of its own-axis layer chunk.
+    case = _case(MUTATION_CASE)
+    _, fields, pml = build(case, case_seed(case.label, "single_guard"))
+    census = {name: counts for name, counts in battery.form_census(
+        fields.grid, pml).items() if name in FORM_COMPONENTS}
+    both = all(all(count > 0 for count in forms.values()) for forms in census.values())
+    return {"passed": bool(all(row["straight_line"] for row in rows) and both),
             "rows": rows,
+            "mutation_case_forms": census,
+            "mutation_case_steps_both_forms": both,
             "guard": "if (idx >= n_elem) { return; }  (templates.GUARD)"}
 
 
@@ -622,9 +715,10 @@ def leg_transcription() -> Dict[str, Any]:
 
     # --- the ADE recurrence, against ade_update_p.ade_source's float32 body ----
     certified = ade_update_p.ade_source("float32", True)
-    wanted = "p_out[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));"
+    wanted = ("p_out[idx] = gamma1inv * (((two_minus_od * p) - (gamma1 * q)) + "
+              "(omega0dtsqr * (s * w)));")
     fused = family.fused_ade_chain_source("no_pml", 0, 2, (True, True))
-    emitted = "o0[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));"
+    emitted = wanted.replace("p_out", "o0")
     rows.append({
         "line": "ade_recurrence",
         "certified_source": "ade_update_p.ade_source('float32', True)",
@@ -660,22 +754,44 @@ def leg_transcription() -> Dict[str, Any]:
                    and "float e = source * inv_e[idx];" in fused
                    and "e_out[idx] = e;" in fused)})
 
-    # --- the PML half, against dispersive_update_e.dispersive_e_source ---------
-    certified = dispersive_update_e.dispersive_e_source(2, 1)
+    # --- the PML half, against the CERTIFIED constitutive body's own lines -------
+    # The per-chunk select and MEEP's accumulation grouping are the ALIGNED
+    # constitutive body's (shaders.constitutive_source, side E), which is what the
+    # array path's _apply_constitutive_regions transcribes. Its component-1 lines are
+    # parsed out of the emitter's output and renamed pointer by pointer.
+    certified = shaders.constitutive_source("E")
     fused_pml = family.fused_ade_chain_source("dispersive", 1, 2, (True, True))
-    for wanted in ("    float src = source * inv_e[idx];",
-                   "    fw[idx] = src;",
-                   "    value = value + kps[j] * src;",
-                   "    value = value - kms[j] * prev;"):
+    renames = (("dw1", "dw"), ("w1[ii]", "fw[idx]"), ("src1", "src"),
+               ("prev1", "prev"), ("a1", "value"), ("f1[ii]", "e_out[idx]"),
+               ("kp_1", "kps[j]"), ("km_1", "kms[j]"))
+    for wanted in ("    float prev1 = dw1 ? w1[ii] : 0.0f;",
+                   "    if (dw1) { w1[ii] = src1; }",
+                   "    float a1 = src1;",
+                   "    if (dw1) { a1 = f1[ii] + ((kp_1 * src1) - (km_1 * prev1)); }",
+                   "    f1[ii] = a1;"):
+        renamed = wanted
+        for old, new in renames:
+            renamed = renamed.replace(old, new)
         rows.append({
             "line": wanted.strip(),
-            "certified_source": "dispersive_update_e.dispersive_e_source(2, 1)",
+            "certified_source": "shaders.constitutive_source('E')",
             "present_in_certified": wanted in certified,
-            "present_in_fused": wanted in fused_pml,
-            "rename": "(none)",
-            "agrees": wanted in certified and wanted in fused_pml})
+            "present_in_fused": renamed in fused_pml,
+            "rename": "; ".join(f"{old} -> {new}" for old, new in renames),
+            "agrees": wanted in certified and renamed in fused_pml})
+    rows.append({
+        "line": "the select reads the component's own half-integer membership",
+        "certified_source": "shaders.constitutive_membership_flags('E')",
+        "present_in_certified": True,
+        "present_in_fused": (f"const bool dw = "
+                             f"{shaders.constitutive_membership_flags('E')[1]};"
+                             in fused_pml),
+        "rename": "dw1 -> dw",
+        "agrees": (f"const bool dw = {shaders.constitutive_membership_flags('E')[1]};"
+                   in fused_pml)})
 
     # --- the seam itself, on the arm where it needed no rewrite at all ---------
+    certified = dispersive_update_e.dispersive_e_source(2, 1)
     rows.append({
         "line": "dispersive_seam_is_a_pure_addition",
         "certified_source": "dispersive_update_e.dispersive_e_source(2, 1)",
@@ -710,8 +826,8 @@ def leg_policy() -> Dict[str, Any]:
             residency = Residency()
             verdict = family.fused_ade_chain_coverage(
                 fields, pml, case.arm, case.folded, residency)
-            plan = family.plan_metal_fused_ade_chain(
-                fields, pml, case.arm, case.folded, residency)
+            plan, _verdict = _planned(case, fields, pml, residency,
+                                      chunk_bounds=_record(fields.grid, pml))
             rows[policy] = {"covered": verdict.covered, "planned": plan is not None,
                             "reasons": list(verdict.reasons)[:6]}
     finally:
@@ -781,6 +897,11 @@ def _shipped_functions(case: Case, plan_shape: Sequence[Tuple[int, int, Tuple[bo
         case.arm, axis, poles, flags) for axis, poles, flags in plan_shape}
 
 
+#: The shipped recurrence line of pole 0, the needle the ADE mutations replace.
+NEW_ADE = ("o0[idx] = gamma1inv * (((two_minus_od * p) - (gamma1 * q)) + "
+           "(omega0dtsqr * (s * w)));")
+
+
 def shader_mutations(case: Case, plan_shape: Sequence[Tuple[int, int, Tuple[bool, ...]]]
                      ) -> Dict[str, Dict[Tuple[str, int], Any]]:
     """Source defects, each a plausible transcription slip.
@@ -798,22 +919,32 @@ def shader_mutations(case: Case, plan_shape: Sequence[Tuple[int, int, Tuple[bool
         "seam_takes_the_pre_constitutive_source":
             base.replace("float w = src;", "float w = source;")
                 .replace("float w = e;", "float w = source;"),
-        # The ADE association. ade_update_p's parens are the float32 answer.
-        "ade_parens_flattened":
+        # INVERTED (KERNELS.md §7.1): the shipped recurrence is MEEP's, on its four
+        # float32 constants; this plants the package's previous spelling -- three
+        # coefficients folded from the four and the three-term grouping -- and stays
+        # must-catch.
+        "ade_previous_folded_three_term_form":
             base.replace(
-                "o0[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));",
-                "o0[idx] = p * c_now + c_prev * q + c_drive * s * w;", 1),
+                "        " + NEW_ADE,
+                "        float c_now = gamma1inv * two_minus_od;\n"
+                "        float c_prev = -(gamma1inv * gamma1);\n"
+                "        float c_drive = gamma1inv * omega0dtsqr;\n"
+                "        o0[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));", 1),
+        # The ADE association: the drive product regrouped.
+        "ade_drive_product_reassociated":
+            base.replace(NEW_ADE, NEW_ADE.replace(
+                "(omega0dtsqr * (s * w))", "((omega0dtsqr * s) * w)"), 1),
         "ade_p_and_q_swapped":
             base.replace("        float p = p0[idx];\n        float q = q0[idx];",
                          "        float p = q0[idx];\n        float q = p0[idx];", 1),
-        "ade_c_now_and_c_prev_swapped":
-            base.replace("        float c_now = prm.c_now[0];\n"
-                         "        float c_prev = prm.c_prev[0];",
-                         "        float c_now = prm.c_prev[0];\n"
-                         "        float c_prev = prm.c_now[0];", 1),
+        "ade_two_minus_od_and_gamma1_swapped":
+            base.replace("        float two_minus_od = prm.two_minus_od[0];\n"
+                         "        float gamma1 = prm.gamma1[0];",
+                         "        float two_minus_od = prm.gamma1[0];\n"
+                         "        float gamma1 = prm.two_minus_od[0];", 1),
         "ade_arm_one_never_stores":
             base.replace(
-                "        o1[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));\n",
+                "        " + NEW_ADE.replace("o0", "o1") + "\n",
                 "        // arm 1 never stores\n", 1),
         "second_pole_dropped_from_the_e_chain":
             base.replace("    source = source - p1[idx];\n", "", 1),
@@ -821,14 +952,20 @@ def shader_mutations(case: Case, plan_shape: Sequence[Tuple[int, int, Tuple[bool
             base.replace("        float s = s1[idx];", "        float s = s0[idx];", 1),
     }
     if case.arm == "dispersive":
+        accumulation = "value = e_out[idx] + ((kps[i] * src) - (kms[i] * prev));"
         edits.update({
+            # The two products of the accumulation trade operands.
             "pml_accumulations_reversed":
-                base.replace("    value = value + kps[i] * src;\n"
-                             "    value = value - kms[i] * prev;",
-                             "    value = value - kms[i] * src;\n"
-                             "    value = value + kps[i] * prev;", 1),
+                base.replace(accumulation,
+                             "value = e_out[idx] + ((kps[i] * prev) - (kms[i] * src));", 1),
+            # INVERTED (KERNELS.md §7.1): the shipped accumulation is MEEP's
+            # f + ((kps*src) - (kms*prev)); this plants the package's previous
+            # ((f + kps*src) - kms*prev) and stays must-catch.
+            "pml_previous_accumulation_grouping":
+                base.replace(accumulation,
+                             "value = (e_out[idx] + (kps[i] * src)) - (kms[i] * prev);", 1),
             "fw_store_dropped":
-                base.replace("    fw[idx] = src;", "    // stale fw", 1),
+                base.replace("    if (dw) { fw[idx] = src; }", "    // stale fw", 1),
         })
     else:
         edits["e_store_dropped"] = base.replace(
@@ -847,6 +984,44 @@ def shader_mutations(case: Case, plan_shape: Sequence[Tuple[int, int, Tuple[bool
     return mutants
 
 
+def battery_rows(case: Case, plan_shape: Sequence[Tuple[int, int, Tuple[bool, ...]]]
+                 ) -> Dict[str, Dict[str, Any]]:
+    """The per-chunk constitutive battery (KERNELS.md §7.2), armed on the X component.
+
+    The PML arm's only per-chunk form is the constitutive select, so the rows are
+    the base gate's constitutive ones (``b9``..``b13``) spelled on this family's
+    one-component flag line, with each row's declaration taken from the base gate.
+    """
+    import gate_metal_pml as base_gate
+
+    axis, poles, flags = next(row for row in plan_shape if row[0] == 0)
+    base = family.fused_ade_chain_source(case.arm, axis, poles, flags)
+    dw_line = "    const bool dw = in_h_x;"
+    edits = {
+        "b9_constitutive_select_removed": (dw_line, "    const bool dw = true;"),
+        "b10_constitutive_predicate_on_coefficient_identity": (
+            dw_line, "    const bool dw = (kps[i] != 1.0f);"),
+        "b11_f_w_stored_on_a_plain_cell": (
+            "    if (dw) { fw[idx] = src; }", "    fw[idx] = src;"),
+        "b12_constitutive_load_unconditional": (
+            "    float prev = dw ? fw[idx] : 0.0f;", "    float prev = fw[idx];"),
+        "b13_plain_constitutive_through_the_accumulation": (
+            "    float value = src;",
+            "    float value = 0.0f + ((1.0f * src) - (0.0f * prev));"),
+    }
+    rows: Dict[str, Dict[str, Any]] = {}
+    for name, (old, new) in edits.items():
+        source = base_gate._needle(base, old, new)
+        table = _shipped_functions(case, plan_shape)
+        table[(shaders.CONTRACT_OFF, 0)] = compile_source(
+            source).fused_ade_chain_component
+        rows[name] = {"functions": table,
+                      "must_catch": base_gate.CONSTITUTIVE_MUTATIONS[name]["must_catch"],
+                      "why": base_gate.CONSTITUTIVE_MUTATIONS[name]["why"],
+                      "lattice": name in battery.LATTICE_ROWS}
+    return rows
+
+
 def swap_sigma_between_components(plan: Any, pml: Any, residency: Residency) -> None:
     """HOST DEFECT: bind Ey's sigma volumes to Ex's arms.
 
@@ -863,19 +1038,20 @@ def swap_sigma_between_components(plan: Any, pml: Any, residency: Residency) -> 
 
 
 def swap_params_coefficients(plan: Any, pml: Any, residency: Residency) -> None:
-    """HOST DEFECT: pack ``c_prev`` and ``c_drive`` into each other's slots.
+    """HOST DEFECT: pack ``gamma1`` and ``omega0dtsqr`` into each other's slots.
 
-    The recurrence constants come from the susceptibility and the timestep
-    (dispersion.py:644). Swapping two of them is a plausible packing slip that no
-    shader edit can reach — the kernel reads ``prm.c_prev[k]`` either way.
+    MEEP's four recurrence constants come from the susceptibility and the timestep
+    (``Susceptibility.realnum_constants``). Swapping two of them is a plausible
+    packing slip that no shader edit can reach — the kernel reads
+    ``prm.gamma1[k]`` either way.
     """
     entries = list(plan.entries)
     for index, entry in enumerate(entries):
         span = max(entry.pole_count, 1)
         blob = np.array(entry.params, copy=True)
-        prev = blob[span:2 * span].copy()
+        gamma1 = blob[span:2 * span].copy()
         blob[span:2 * span] = blob[2 * span:3 * span]
-        blob[2 * span:3 * span] = prev
+        blob[2 * span:3 * span] = gamma1
         name = f"mutation:params:{entry.component}"
         plan._tensors[id(blob)] = residency.mirror(name, blob, constant=True)
         entries[index] = dataclasses.replace(entry, params=blob)
@@ -920,7 +1096,7 @@ def swap_inverse_epsilon(plan: Any, pml: Any, residency: Residency) -> None:
 #: its patch asserts the identity that makes it a null.
 HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Any, Residency], None], str]] = {
     "sigma_bound_for_the_wrong_component": (swap_sigma_between_components, "caught"),
-    "params_c_prev_and_c_drive_swapped": (swap_params_coefficients, "caught"),
+    "params_gamma1_and_omega0dtsqr_swapped": (swap_params_coefficients, "caught"),
     "pole_order_reversed_on_Ex": (reverse_pole_order, "caught"),
     "inverse_epsilon_bound_for_the_wrong_component": (swap_inverse_epsilon, "null"),
 }
@@ -933,9 +1109,11 @@ HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Any, Residency], None], str]] = {
 #: value classes, disarm — runs against defective bytes and the top-level verdict
 #: must flip to FAIL. Run with ``--plant <name>`` and require a nonzero exit.
 PLANTED: Dict[str, Tuple[str, str]] = {
-    "ade_parens_flattened_everywhere": (
-        "o0[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));",
-        "o0[idx] = p * c_now + c_prev * q + c_drive * s * w;"),
+    "ade_drive_product_reassociated_everywhere": (
+        "o0[idx] = gamma1inv * (((two_minus_od * p) - (gamma1 * q)) + "
+        "(omega0dtsqr * (s * w)));",
+        "o0[idx] = gamma1inv * (((two_minus_od * p) - (gamma1 * q)) + "
+        "((omega0dtsqr * s) * w));"),
     "seam_reads_the_stale_pole_instead_of_the_drive": (
         "float w = src;", "float w = p;"),
 }
@@ -963,10 +1141,9 @@ def plan_shape_of(case: Case) -> Tuple[Tuple[int, int, Tuple[bool, ...]], ...]:
     """The (axis, poles, sigma flags) triple each component compiles to."""
     _, fields, pml = build(case, case_seed(case.label, "shape"))
     residency = Residency()
-    plan = family.plan_metal_fused_ade_chain(
-        fields, pml, case.arm, case.folded, residency)
-    assert plan is not None, family.fused_ade_chain_coverage(
-        fields, pml, case.arm, case.folded, residency).reasons
+    plan, verdict = _planned(case, fields, pml, residency,
+                             chunk_bounds=_record(fields.grid, pml))
+    assert plan is not None, verdict.reasons
     return tuple((entry.axis, entry.pole_count, entry.sigma_is_volume)
                  for entry in plan.entries)
 
@@ -1010,6 +1187,7 @@ def main() -> int:
     # legs that speak about the SHIPPED bytes — transcription, product, separate
     # control and the value classes — and those all run.
     mutants: Dict[str, Dict[str, Any]] = {}
+    batteries: Dict[str, Dict[str, Any]] = {}
     host_mutations = dict(HOST_MUTATIONS)
     if args.plant is None:
         shapes = {case.label: plan_shape_of(case)
@@ -1018,6 +1196,7 @@ def main() -> int:
             MUTATION_CASE: shader_mutations(mutation_case, shapes[MUTATION_CASE]),
             MUTATION_CASE_NO_PML: shader_mutations(
                 mutation_case_no_pml, shapes[MUTATION_CASE_NO_PML])}
+        batteries = battery_rows(mutation_case, shapes[MUTATION_CASE])
     else:
         host_mutations = {}
 
@@ -1027,9 +1206,11 @@ def main() -> int:
         dataclasses.replace(_case(name), label=f"{name}:pm_zero_lattice",
                             value_class="pm_zero_lattice")
         for name in ("no_pml_two_pole_scalar_sigma", "pml_five_pole_scalar_sigma"))
+    record_rows = {} if args.plant else dict(battery.RECORD_ROWS)
     total = (4 + len(CASES) + len(controls) + len(value_cases) + 1
              + sum(len(table) for table in mutants.values())
-             + len(host_mutations) + (0 if args.plant else 1))
+             + len(host_mutations) + len(batteries) + len(record_rows)
+             + (0 if args.plant else 1))
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     jsonl = args.out.with_suffix(".jsonl")
@@ -1109,6 +1290,41 @@ def main() -> int:
                          "launches": result.get("launches")})
             emit(handle, rows[-1])
 
+        # THE PER-CHUNK CONSTITUTIVE BATTERY (KERNELS.md §7.2) on the PML arm, each
+        # row scored against its declaration; b13 differs only on a -0 source and
+        # runs on the +-0 lattice.
+        for name, entry in batteries.items():
+            index += 1
+            case = (dataclasses.replace(mutation_case, value_class="pm_zero_lattice")
+                    if entry["lattice"] else mutation_case)
+            result = run_case(case, f"battery:{name}", args.steps,
+                              functions=entry["functions"])
+            caught = not result.get("bit_identical", False)
+            rows.append({"index": index, "total": total, "leg": "battery",
+                         "label": name, "caught": caught,
+                         "must_catch": entry["must_catch"], "why": entry["why"],
+                         "value_class": case.value_class,
+                         "passed": battery.scored(entry["must_catch"], caught,
+                                                  bool(result.get("launches"))),
+                         "first_divergence": result.get("first_divergence"),
+                         "differing_words": result.get("differing_words"),
+                         "launches": result.get("launches")})
+            emit(handle, rows[-1])
+        for name, (mutate, why) in record_rows.items():
+            index += 1
+            result = run_case(mutation_case, f"battery:{name}", args.steps,
+                              record=mutate)
+            caught = not result.get("bit_identical", False)
+            rows.append({"index": index, "total": total, "leg": "battery",
+                         "label": name, "record_defect": True, "caught": caught,
+                         "must_catch": True, "why": why,
+                         "passed": battery.scored(True, caught,
+                                                  bool(result.get("launches"))),
+                         "first_divergence": result.get("first_divergence"),
+                         "differing_words": result.get("differing_words"),
+                         "launches": result.get("launches")})
+            emit(handle, rows[-1])
+
         # THE DISARM CHECK. The identical harness, the identical case, the SHIPPED
         # bytes and no host patch. A nonzero here would mean every "caught" above
         # is a harness that diverges on its own.
@@ -1132,7 +1348,8 @@ def main() -> int:
         "counts": {"product": len(CASES), "separate_controls": len(controls),
                    "value_classes": len(value_cases) + 1,
                    "shader_mutations": sum(len(t) for t in mutants.values()),
-                   "host_mutations": len(host_mutations)},
+                   "host_mutations": len(host_mutations),
+                   "battery_rows": len(batteries) + len(record_rows)},
         "torch_version": torch.__version__,
         "numpy_version": np.__version__,
         "metal_frontend": metal_frontend_version(),

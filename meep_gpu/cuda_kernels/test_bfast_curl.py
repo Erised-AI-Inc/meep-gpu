@@ -34,7 +34,7 @@ from ..fields import Fields
 from ..grid import Grid, Mirror
 from ..pml import PML
 from .. import stepping
-from . import bfast_curl, coverage
+from . import bfast_curl, coverage, folded_pass
 
 
 class _NumpyWearingCupysName(types.ModuleType):
@@ -299,69 +299,79 @@ def _code_only(text: str) -> str:
     return "\n".join(out)
 
 
+#: The lines the BFAST pass adds to each component block (``folded_pass.bfast_insert``):
+#: the ownership flag, its mask lines, the state step and its ladder.
+_PASS_LINE_PATTERNS = (
+    re.compile(r"int owned_cell = 1;"),
+    re.compile(r"if \(.*\) owned_cell = 0;"),
+    re.compile(r"float inc_bfast = bfast_pass\(fb_[BD][xyz], idx, sf, f1, ss, f2, "
+               r"k1_[abc], k2_[abc], pr_[xyz], pr_[xyz], "
+               r"!in_[hi]_[xyz] && !in_[hi]_[xyz], owned_cell\);"),
+    re.compile(r"fold_apply\([BD][xyz], fu_[BD][xyz], idx, inc_bfast, .*\);"),
+)
+
+
 @pytest.mark.parametrize("side,letters", [("B", "Bx By Bz"), ("D", "Dx Dy Dz")])
 def test_kernel_is_the_certified_kernel_plus_exactly_the_bfast_insert(side, letters):
-    """THE ANTI-DRIFT TEST. Strip the comments, delete the BFAST statements and the
-    state/scalar parameters, rename the entry point, and what is left must be the
-    CERTIFIED ``step_{B,D}_pml_real`` byte for byte.
+    """THE ANTI-DRIFT TEST. Strip the comments, the fold helpers, the BFAST pass
+    statements and the state/scalar parameters, rename the entry point, and what is
+    left must be the CERTIFIED ``step_{B,D}_pml_real`` byte for byte.
 
-    Note what "delete the BFAST statements" includes: the mask lines applied to
-    ``advance`` are removed too, so the surviving text carries the certified mask
-    block exactly once per component -- which is how this test also pins that the
-    curl's own masks were not disturbed by the insert.
+    The pass is MEEP's own loop after the curl (step_db.cpp:124-142), so deleting it
+    leaves the curl block untouched: this test also pins that the curl's own masks and
+    absorber were not disturbed by the insert.
     """
     targets = letters.split()
     mine = _code_only(bfast_curl.kernel_source(f"step_{side}_bfast_real"))
     certified = _code_only(bfast_curl._REAL_PML_PRELUDE
                            + _literal(f"_step_{side}_pml_real_kernel_code"))
-    kept = []
-    for line in mine.splitlines():
-        text = line.strip()
-        if text.startswith("float total = (k1_") or text.startswith("float bprev = fb_"):
-            continue
-        if text.startswith("float advance = total"):
-            continue
-        if text.endswith("advance = 0.0f;"):
-            continue
-        if re.match(r"fb_[BD][xyz]\[idx\] = bprev \+ advance;", text):
-            continue
-        if text == "curl = curl - advance;":
-            continue
-        kept.append(line)
+    helpers = _code_only(folded_pass.REAL_FOLD_HELPERS + folded_pass.BFAST_PASS_HELPER)
+    assert mine.count(helpers) == 1
+    mine = mine.replace(helpers + "\n", "", 1)
+    kept = [line for line in mine.splitlines()
+            if not any(pattern.fullmatch(line.strip()) for pattern in _PASS_LINE_PATTERNS)]
     stripped = "\n".join(kept)
     stripped = stripped.replace(
         "    float* __restrict__ fb_%s, float* __restrict__ fb_%s, "
         "float* __restrict__ fb_%s,\n" % tuple(targets), "")
     stripped = stripped.replace(
-        "    int bc_x, int bc_y, int bc_z,\n"
-        "    float k1_a, float k2_a, float k1_b, float k2_b, float k1_c, float k2_c\n",
-        "    int bc_x, int bc_y, int bc_z\n")
+        "    float k1_a, float k2_a, float k1_b, float k2_b, float k1_c, float k2_c,\n",
+        "")
     stripped = stripped.replace(f"step_{side}_bfast_real",
                                 f"step_{side}_pml_real")
     assert stripped == certified
 
 
 @pytest.mark.parametrize("side", ["B", "D"])
-def test_every_component_carries_a_bfast_term(side):
+def test_every_component_carries_a_bfast_pass(side):
     """Unlike special_kz, whose z component gets none: MEEP's ``step_bfast`` runs
-    over all three (step_db.cpp:129-142)."""
+    over all three (step_db.cpp:129-142), each a pass of its own after the curl."""
     text = _code_only(bfast_curl.kernel_source(f"step_{side}_bfast_real"))
-    assert len(re.findall(r"float total = \(k1_", text)) == 3
-    assert len(re.findall(r"curl = curl - advance;", text)) == 3
-    assert len(re.findall(r"\[idx\] = bprev \+ advance;", text)) == 3
+    assert len(re.findall(r"float inc_bfast = bfast_pass\(", text)) == 3
+    assert len(re.findall(r"fold_apply\([BD][xyz], fu_[BD][xyz], idx, inc_bfast, ",
+                          text)) == 3
 
 
 @pytest.mark.parametrize("side", ["B", "D"])
-def test_the_advance_is_masked_before_the_state_absorbs_it(side):
-    """stepping.py:929-930 masks then adds. Reversed, the field is right on launch
-    one and the state steps cells MEEP's owned loop never visits -- and the
-    ``(-1)^n`` mode never decays it away."""
+def test_each_pass_follows_its_own_curl(side):
+    """The pass reads the absorber's output: per component, the curl's ``pml_apply``
+    comes first, then the state step, then its ladder. Reversed, the ladder would add
+    the increment to a field the curl then overwrites."""
     text = _code_only(bfast_curl.kernel_source(f"step_{side}_bfast_real"))
-    for match in re.finditer(r"float advance = total[^\n]*\n", text):
-        tail = text[match.end():]
-        store = tail.index("[idx] = bprev + advance;")
-        assert "advance = 0.0f;" in tail[:store], (
-            "a component stores its state before masking the advance")
+    body = text[text.index('extern "C"'):]
+    for target in (f"{side}x", f"{side}y", f"{side}z"):
+        curl = body.index(f"pml_apply({target}, fu_{target}, idx, curl, ")
+        state = body.index(f"bfast_pass(fb_{target}, idx, ")
+        ladder = body.index(f"fold_apply({target}, fu_{target}, idx, inc_bfast, ")
+        assert curl < state < ladder, target
+
+
+def test_the_state_is_stored_on_owned_cells_only():
+    """MEEP writes ``F`` only inside its owned-cell loop: the pass returns before the
+    store on an unowned cell, and forms the increment from the register it loaded."""
+    helper = folded_pass.BFAST_PASS_HELPER
+    assert "    if (!owned) return 0.0f;\n    F[idx] = updated;\n" in helper
+    assert "    return -(updated - fprev);\n" in helper
 
 
 def test_the_shared_prelude_is_the_certified_one():
@@ -400,8 +410,8 @@ def test_the_transcribed_tree_steps_a_bfast_grid_identically(gate, label, sub_st
     FIELD, PML AUXILIARY AND ``f_bfast`` STATE.
 
     COMPILES NOTHING AND CERTIFIES NOTHING; the byte verdict is the device gate's.
-    The case carries its own floors: the state must start nonzero (or ``2.0f *
-    bprev`` is invisible at launch one), the array path must have moved, and the
+    The case carries its own floors: the state must start nonzero (or the ``- F_prev``
+    term is invisible at launch one), the array path must have moved, and the
     run must differ BOTH from a BFAST-off control and from a zero-k control -- the
     second is what makes the k assignment load-bearing rather than the recurrence
     alone.
@@ -431,6 +441,19 @@ def test_a_planted_k_defect_diverges(gate, mutation):
     case = gate.one_case("numpy", spec, "step_B", gate.INEXACT_COURANT, "uniform",
                          "fmad_false", host_mutation=mutation)
     assert not case.get("skipped")
+    assert not case["single_launch"]["bit_identical"], mutation
+
+
+@pytest.mark.parametrize("mutation", ["record_bound_off_by_one",
+                                      "record_lattices_swapped"])
+def test_a_corrupted_chunk_record_diverges(gate, mutation):
+    """KERNELS.md section 7.2: the record the launch binds, corrupted while the
+    oracle's division is untouched, must move a word -- the per-cell forms are chosen
+    by the record and nothing else."""
+    spec = next(s for s in gate.BFAST_SPECS if s["label"] == "general_k_periodic")
+    case = gate.one_case("numpy", spec, "step_B", gate.INEXACT_COURANT, "uniform",
+                         "fmad_false", host_mutation=mutation)
+    assert not case.get("skipped"), case.get("skipped")
     assert not case["single_launch"]["bit_identical"], mutation
 
 

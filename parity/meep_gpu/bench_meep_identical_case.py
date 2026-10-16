@@ -38,7 +38,8 @@ is unset, initialises MPI with ``MPI_THREAD_FUNNELED`` when built with OpenMP, a
 threads its step loops inside each chunk (``omp parallel for collapse(3)``). With
 ``--threads-per-rank T`` (T > 1) the bench refuses unless ``OMP_NUM_THREADS`` is T and
 the ``--build-record`` says MEEP's OWN libraries link an OpenMP runtime (a runtime that
-OpenBLAS maps into the process does not count), and records the threads the process
+OpenBLAS maps into the process does not count) and, once MEEP is imported, an OpenMP
+runtime is mapped into the process; it records the threads the process
 gained after MPI initialisation and each rank's CPU seconds per wall second over the
 windows, from which ``timing_records.py record-meep`` strikes a row that did not run T.
 
@@ -76,6 +77,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+import gate_provenance  # noqa: E402
 import timing_cases  # noqa: E402
 
 #: MEEP's own timers, read back after the windows where the build exposes them.
@@ -634,15 +636,17 @@ def check_threads(threads: Optional[int],
                   build_record: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Refuse a threaded row whose environment cannot run the threads it names.
 
-    WHETHER MEEP WAS BUILT WITH OPENMP is read from the build record's ``openmp``:
-    ``timing_records.py meep-build-record`` decides it from the libraries MEEP's own
-    images link DIRECTLY. A runtime merely MAPPED into the process proves nothing --
-    an OpenBLAS built with OpenMP maps ``libgomp``/``libomp`` into a MEEP that has no
-    threaded loop -- so it is recorded, and its absence still refuses, but its presence
-    never admits a row. The ladder passes the record it probed itself.
+    Run BEFORE MEEP IS IMPORTED, so it reads nothing MEEP's import changes: the thread
+    count the row was started with and the build record. WHETHER MEEP WAS BUILT WITH
+    OPENMP is read from the record's ``openmp``: ``timing_records.py meep-build-record``
+    decides it from the libraries MEEP's own images link DIRECTLY. A runtime merely
+    MAPPED into the process proves nothing -- an OpenBLAS built with OpenMP maps
+    ``libgomp``/``libomp`` into a MEEP that has no threaded loop -- so it never admits
+    a row. The ladder passes the record it probed itself. Whether the runtime is mapped
+    is :func:`check_threads_after_import`'s question.
     """
     if threads is None or threads == 1:
-        return {"asked": threads or 1, "omp_runtime_mapped": mapped_openmp()}
+        return {"asked": threads or 1, "omp_runtime_mapped_before_import": mapped_openmp()}
     if threads < 1:
         raise SystemExit(f"REFUSING: --threads-per-rank {threads}")
     variable = os.environ.get("OMP_NUM_THREADS")
@@ -650,12 +654,7 @@ def check_threads(threads: Optional[int],
         raise SystemExit(f"REFUSING: --threads-per-rank {threads} and OMP_NUM_THREADS is "
                          f"{variable!r}; MEEP's setup() takes its thread count from that "
                          "variable")
-    mapped = mapped_openmp()
     linked = (build_record or {}).get("openmp")
-    if mapped is not None and not mapped:
-        raise SystemExit(f"REFUSING: --threads-per-rank {threads} and no OpenMP runtime "
-                         f"({', '.join(OPENMP_RUNTIMES)}) is mapped into this process; "
-                         "this MEEP was not built with OpenMP")
     if build_record is None:
         raise SystemExit(f"REFUSING: --threads-per-rank {threads} needs --build-record: "
                          "whether MEEP's own libraries link OpenMP is read from the record "
@@ -664,7 +663,27 @@ def check_threads(threads: Optional[int],
         raise SystemExit(f"REFUSING: --threads-per-rank {threads} and the build record "
                          f"says MEEP's own libraries link no OpenMP runtime (openmp="
                          f"{linked!r}); a threaded row would run one thread per rank")
-    return {"asked": threads, "omp_runtime_mapped": mapped, "build_record_openmp": linked}
+    return {"asked": threads, "build_record_openmp": linked,
+            "omp_runtime_mapped_before_import": mapped_openmp()}
+
+
+def check_threads_after_import(threads: Optional[int],
+                               check: Dict[str, Any]) -> Dict[str, Any]:
+    """The OpenMP runtime a threaded row needs, read AFTER ``import meep``.
+
+    Until the 1.0 round this was read before the import, where MEEP's own library --
+    the image that links the runtime -- is not loaded yet: every hybrid MPI x OpenMP
+    row refused "no OpenMP runtime is mapped" on a build configured ``--with-openmp``
+    that links ``libgomp`` (18 / 18 rows on the GPU host). Read here, its absence
+    still refuses; both readings are recorded.
+    """
+    mapped = mapped_openmp()
+    check["omp_runtime_mapped"] = mapped
+    if threads is not None and threads > 1 and mapped is not None and not mapped:
+        raise SystemExit(f"REFUSING: --threads-per-rank {threads} and no OpenMP runtime "
+                         f"({', '.join(OPENMP_RUNTIMES)}) is mapped into this process "
+                         "after importing MEEP; this MEEP was not built with OpenMP")
+    return check
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -679,6 +698,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     thread_check = check_threads(args.threads_per_rank, build_record)
 
     import meep as mp  # noqa: PLC0415
+
+    thread_check = check_threads_after_import(args.threads_per_rank, thread_check)
 
     try:
         mp.verbosity(0)
@@ -966,6 +987,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                      "epsilon_sha256_exact": digest["epsilon_sha256_exact"]},
         "environment": environment,
         "box_at_end": box_reading(),
+        # THE IMPORT RECORD, IN THE HARNESS (as on every GPU row): the repository
+        # modules this rank holds, keyed repo-relative. A MEEP row's holds harness files
+        # and no package module, which is what shows the package was not in its process.
+        gate_provenance.IMPORTED_KEY: gate_provenance.provenance(),
     }
     if not monitor["stepped"]:
         measurement["struck"] = ("the flux monitor shows no sign of having been "

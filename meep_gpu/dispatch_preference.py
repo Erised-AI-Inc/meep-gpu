@@ -34,11 +34,13 @@ One JSON document per kernel table PER COMPUTE CAPABILITY, cut by
 ``parity/meep_gpu/cut_timing_record.py`` from timing rows and never written by hand
 (it carries a digest of its own body, and a record whose digest does not match
 REFUSES). :func:`record_path` spells where it lives --
-``<table>_kernels/timing_cc86.json``, with ``timing_cc86.report.txt`` beside it --
-because a kernel's cost is a property of the ARCHITECTURE that ran it: the same bytes
-on another architecture have another ratio, and that ratio is the whole veto. So the
-capability is in the file name (a reader sees from a directory listing which
-architectures have been timed and which have not), :func:`validate` refuses a record
+``<table>_kernels/timing_cc86.json``, with ``timing_cc86.report.txt`` beside it, and
+for the Metal table ``metal_kernels/timing_applegpu_g13s.json``, named for the Apple
+GPU family -- because a kernel's cost is a property of the ARCHITECTURE that ran it:
+the same bytes on another architecture have another ratio, and that ratio is the whole
+veto. So the architecture is in the file name (a reader sees from a directory listing
+which architectures have been timed and which have not), a new architecture's record
+is ADDED beside the others and never replaces one, :func:`validate` refuses a record
 whose rows do not name exactly one of them, and :func:`consult` answers ``no_record``
 when the device it is asked about is not that one. Its ``keys`` map is::
 
@@ -537,6 +539,33 @@ def repair_route_sha256(path: Optional[str] = None) -> str:
 #: that one and decide a comparison by which reader answered first.
 CAPABILITY = re.compile(r"^[1-9][0-9]*\.[0-9]$")
 
+#: The Apple GPU family, the Metal table's architecture: ``applegpu_g13s``. A Metal row
+#: stamps it where an NVIDIA row stamps its compute capability
+#: (``environment.device.compute_capability``), and it is the spelling the Metal run
+#: records key on (``metal_runs.ARCHITECTURE_KEY``; ``test_dispatch_preference`` holds
+#: the two patterns equal, because this module imports no package module).
+APPLE_FAMILY = re.compile(r"^applegpu_[a-z0-9_]+$")
+
+#: Which spelling each table's architecture takes. An NVIDIA table's record is named for
+#: a compute capability and the Metal table's for an Apple GPU family; a value of the
+#: other spelling is refused by name, so neither table's record can be cut or looked up
+#: under the other's architecture.
+ARCHITECTURE_BY_TABLE = {"triton": CAPABILITY, "cuda": CAPABILITY, "metal": APPLE_FAMILY}
+
+
+def architecture_refusal(table: str, architecture: Any) -> Optional[str]:
+    """Why ``architecture`` cannot name a record of ``table``, or None when it can."""
+    pattern = ARCHITECTURE_BY_TABLE.get(table)
+    if pattern is None:
+        return f"{table!r} is not one of {TABLES}"
+    if pattern.match(str(architecture)):
+        return None
+    if table == "metal":
+        return (f"{architecture!r} is not an Apple GPU family spelled applegpu_<name>, "
+                f"which is how a Metal row names the architecture it ran on")
+    return (f"{architecture!r} is not a compute capability spelled major.minor, which "
+            f"is how every record names the device its rows ran on")
+
 
 def record_capabilities(record: Any) -> Tuple[str, ...]:
     """The compute capabilities a record's admitted rows were timed on, sorted.
@@ -570,22 +599,22 @@ def record_path(table: str, capability: str, root: Optional[str] = None) -> str:
     architecture. The report lands beside it, ``.json`` replaced by ``.report.txt``.
 
     ``root`` defaults to the package directory, beside the kernel tables, which is
-    where the shipped records are. A capability outside :data:`CAPABILITY`'s spelling
-    is refused by name: Metal's environment is a GPU architecture with a torch and
-    a Metal frontend rather than a capability, and naming its record is a rule this
-    function does not have.
+    where the shipped records are. An NVIDIA table's record is named for its compute
+    capability (``timing_cc86.json``) and the Metal table's for its Apple GPU family
+    (``timing_applegpu_g13s.json``); a value in the other table's spelling, or in
+    neither, is refused by name (:func:`architecture_refusal`). ONE FILE PER
+    ARCHITECTURE: a second architecture's record lands beside the first, never in it.
     """
     if table not in TABLES:
         raise ConsultRefused("unknown_table", f"{table!r} is not one of {TABLES}")
-    if not CAPABILITY.match(str(capability)):
-        raise ConsultRefused(
-            "unreadable_capability",
-            f"{capability!r} is not a compute capability spelled major.minor, which "
-            f"is how every record names the device its rows ran on")
+    refusal = architecture_refusal(table, capability)
+    if refusal is not None:
+        raise ConsultRefused("unreadable_capability", refusal)
     if root is None:
         root = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(root, f"{table}_kernels",
-                        f"timing_cc{str(capability).replace('.', '')}.json")
+    name = (str(capability) if table == "metal"
+            else f"cc{str(capability).replace('.', '')}")
+    return os.path.join(root, f"{table}_kernels", f"timing_{name}.json")
 
 
 # ---------------------------------------------------------------------------
@@ -687,7 +716,8 @@ def validate(record: Any, expect_table: Optional[str] = None) -> None:
             record["recorded_utc"]):
         raise _malformed(f"recorded_utc is {record.get('recorded_utc')!r}")
     capabilities = record_capabilities(record)
-    if len(capabilities) != 1 or not CAPABILITY.match(capabilities[0]):
+    if (len(capabilities) != 1
+            or architecture_refusal(record["table"], capabilities[0]) is not None):
         raise RecordRefused(
             "host_names_no_single_capability",
             f"the admitted rows name {list(capabilities)} as the compute capability "
@@ -731,6 +761,20 @@ def validate(record: Any, expect_table: Optional[str] = None) -> None:
         for (_lo, hi, first), (lo, _hi, second) in zip(held, held[1:]):
             if lo <= hi:
                 raise _malformed(f"bands overlap: {first!r} and {second!r}")
+    # A RECORD CUT FROM PART OF A CAMPAIGN NAMES WHAT IT LACKS (``missing``, optional):
+    # each released (product, case) that no admitted row timed, with the reason. The
+    # consult never reads it -- an absent key already answers ``no_record`` -- so it
+    # is checked only for shape, and a record that names nothing missing omits it.
+    missing_block = record.get("missing")
+    if missing_block is not None:
+        if not isinstance(missing_block, list) or not missing_block:
+            raise _malformed("missing is present and is not a non-empty list")
+        for item in missing_block:
+            if (not isinstance(item, Mapping)
+                    or not all(isinstance(item.get(name), str) and item.get(name)
+                               for name in ("product", "case", "reason"))):
+                raise _malformed(f"missing names {item!r}, not a product, a case and "
+                                 "a reason")
     if expect_table is not None and record["table"] != expect_table:
         raise RecordRefused("wrong_table",
                             f"the record was cut for the {record['table']!r} table and "

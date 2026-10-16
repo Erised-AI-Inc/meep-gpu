@@ -16,10 +16,13 @@ THE FOUR THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    oracle is the array path this walk would otherwise take. So every case asserts
    the exact LAUNCH COUNT (``launches_per_run`` x steps) and a nonzero ``runs``,
    and every case asserts every compared array MOVED from its seeded value.
-2. **A hollow pass.** ELEVEN mutations are ARMED — nine in the shader source, two
+2. **A hollow pass.** TWELVE mutations are ARMED — ten in the shader source, two
    in the HOST binding that no shader edit can reach — and each must be CAUGHT. Leg
-   ``disarm`` reruns the identical case with the shipped functions and requires
-   zero, so a mutation reported as caught cannot be a harness that diverges anyway.
+   ``battery`` arms the per-chunk form battery (KERNELS.md §7.2) on top: eleven
+   source rows and two record rows, each scored against its declaration (two are
+   declared nulls). Leg ``disarm`` reruns the identical case with the shipped
+   functions and requires zero, so a mutation reported as caught cannot be a
+   harness that diverges anyway.
 3. **A vacuous claim.** On MPS the float32 subnormal flush is native and has no
    lever, so byte-identity is claimed subject to a CHECKED subnormal-free
    precondition; every case censuses the oracle's own state and reports it.
@@ -31,10 +34,14 @@ THE FOUR THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
 LEGS
   0  binding_ceiling   the 35-binding signature must FAIL to compile
   1  product           complete steps, per-step byte compare, launch counters, movement
-  2  separate_control  the two ALREADY CERTIFIED products stepping the same seam as
-                       separate dispatches, on identical state: three-way byte
-                       agreement plus the dispatch counts the fusion removes
-  3  mutation          eleven armed defects, each of which MUST diverge
+  2  separate_control  the separate products stepping the same seam as separate
+                       dispatches, on identical state: the fused product scored
+                       against the array path, the separate side recorded beside it
+                       (its pointwise E single is lane KM8's and steps the
+                       pre-alignment forms until then) with the dispatch counts
+  3  mutation          twelve armed defects, each of which MUST diverge
+  3b battery           the per-chunk form battery, scored against its declarations
+  3c forms             every component steps both of its forms somewhere
   4  disarm            the same harness, shipped bytes, must not diverge
 
 Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
@@ -76,6 +83,8 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
     Residency, compile_source, metal_frontend_version,
 )
 from meep_gpu.pml import PML  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
+import metal_fused_battery as battery  # noqa: E402
 
 #: The budget every case runs. Twelve, matching the whole-step arbiter's, and for
 #: its reason: the classes this gate exists for COMPOUND. ``fu_D`` and ``f_w_E``
@@ -322,8 +331,14 @@ def run_case(label: str, cell: Sequence[float], boundaries: Any, poles: int,
              functions: Optional[Mapping[Tuple[str, int], Any]] = None,
              patch: Optional[Callable[[Any, PML, Residency], None]] = None,
              value_class: str = values.UNIFORM,
+             record: Optional[Callable[[Any], Any]] = None,
              ) -> Dict[str, Any]:
-    """Step the two engines side by side and compare per COMPLETE step."""
+    """Step the two engines side by side and compare per COMPLETE step.
+
+    ``record`` is the chunk-record mutation seam (the battery's ``b3``/``b4``): the
+    kernel is the shipped one and the record it binds is the true one transformed.
+    The oracle always steps the true division.
+    """
     _, reference, reference_pml = build(cell, boundaries, poles, kind, seed,
                                         value_class)
     _, actual, actual_pml = build(cell, boundaries, poles, kind, seed,
@@ -334,7 +349,8 @@ def run_case(label: str, cell: Sequence[float], boundaries: Any, poles: int,
 
     residency = Residency()
     plan = family.plan_metal_fused_dispersive_pair(
-        actual, actual_pml, sources=(), residency=residency, functions=functions)
+        actual, actual_pml, sources=(), residency=residency, functions=functions,
+        chunk_bounds=battery.record_for(actual.grid, actual_pml, record))
     if plan is None:
         reasons = family.metal_fused_dispersive_pair_coverage(
             actual, actual_pml, (), residency).reasons
@@ -367,6 +383,18 @@ def run_case(label: str, cell: Sequence[float], boundaries: Any, poles: int,
     after = state_of(actual)
     moved = {name: differing(before[name], after[name]) for name in before}
     still = sorted(name for name, count in moved.items() if count == 0)
+    # THE AUXILIARY CONTRACT DECIDES WHICH ARRAYS MAY NOT MOVE (KERNELS.md §1 C2): an
+    # auxiliary whose form's region is empty under this case's division -- fu where
+    # no chunk carries the component's dsigu layer, f_w where none carries its own
+    # -- is never touched on EITHER side, and must stay at its seed. Every other
+    # array must move.
+    census = battery.form_census(actual.grid, actual_pml)
+    untouched = sorted(
+        [f"fu_{name}" for name, forms in census.items()
+         if "recurrence" in forms and not forms["recurrence"]]
+        + [f"f_w_{name}" for name, forms in census.items()
+           if "accumulate" in forms and not forms["accumulate"]])
+    untouched = [name for name in untouched if name in moved]
     identical = (len(per_step) == steps
                  and all(row["differing_words"] == 0 for row in per_step))
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
@@ -382,11 +410,12 @@ def run_case(label: str, cell: Sequence[float], boundaries: Any, poles: int,
     if value_class == values.PM_ZERO_LATTICE:
         floor_ok = bool(signs["positive_zero_words"] and signs["negative_zero_words"])
     else:
-        floor_ok = not still
+        floor_ok = still == untouched
     return {
         "passed": bool(identical and clean and launches_ok and floor_ok),
         "value_class": value_class,
         "floor_met": floor_ok,
+        "auxiliaries_the_division_leaves_untouched": untouched,
         "reference_zero_sign_census": signs,
         "bit_identical": identical,
         "subnormal_free": clean,
@@ -407,6 +436,10 @@ def run_case(label: str, cell: Sequence[float], boundaries: Any, poles: int,
         "poles": [entry.pole_count for entry in plan.entries],
         "mirrors": len(residency.names),
         "shape": list(plan.shape),
+        # THE FORMS THIS CASE STEPPED (DESIGN.md D13): cells per (component, form)
+        # under the true division.
+        "forms": {name: counts for name, counts in battery.form_census(
+            actual.grid, actual_pml).items() if name in FORM_COMPONENTS},
     }
 
 
@@ -417,7 +450,12 @@ def run_case(label: str, cell: Sequence[float], boundaries: Any, poles: int,
 def run_separate_control(label: str, cell: Sequence[float], boundaries: Any,
                          poles: int, kind: str, seed: int, steps: int,
                          ) -> Dict[str, Any]:
-    """The SEPARATE certified products beside the fused one, on identical state.
+    """The SEPARATE products beside the fused one, on identical state.
+
+    THE POINTWISE SIDE IS SCORED. ``dispersive_update_e`` (the pointwise
+    dispersive E single) steps MEEP's per-chunk constitutive forms on the chunk
+    record it binds, as the array path and this fused product do, so all three
+    sides are held to word identity at every step (``separate_side_scored``).
 
     THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three
     engines from one seed: the array path, the two ALREADY CERTIFIED Metal
@@ -439,12 +477,16 @@ def run_separate_control(label: str, cell: Sequence[float], boundaries: Any,
 
     separate_residency = Residency()
     curl = metal_launch.plan_pml_curl(separate, separate_pml, "step_D",
-                                      separate_residency)
+                                      separate_residency,
+                                      chunk_bounds=layer_record(separate.grid, separate_pml))
     electric = pointwise.plan_metal_dispersive_e(separate, separate_pml,
-                                                 separate_residency)
+                                                 separate_residency,
+                                                 chunk_bounds=layer_record(separate.grid,
+                                                                           separate_pml))
     fused_residency = Residency()
     plan = family.plan_metal_fused_dispersive_pair(
-        fused, fused_pml, sources=(), residency=fused_residency)
+        fused, fused_pml, sources=(), residency=fused_residency,
+        chunk_bounds=layer_record(fused.grid, fused_pml))
     if curl is None or electric is None or plan is None:
         return {"passed": False,
                 "reason": "a declared product was refused",
@@ -470,7 +512,7 @@ def run_separate_control(label: str, cell: Sequence[float], boundaries: Any,
             "fused_vs_array": sum(compare(reference, fused).values()),
             "fused_vs_separate": sum(compare(separate, fused).values()),
         })
-        if any(value for key, value in per_step[-1].items() if key != "step"):
+        if per_step[-1]["fused_vs_array"] or per_step[-1]["separate_vs_array"]:
             break
 
     # The host pass each composition leaves on the array path INSIDE the seam.
@@ -480,11 +522,14 @@ def run_separate_control(label: str, cell: Sequence[float], boundaries: Any,
                         if name in ("fill_D", "zero_metal_D",
                                     "fill_folded_far_ghosts_D")]
     identical = (len(per_step) == steps
-                 and all(row["separate_vs_array"] == row["fused_vs_array"]
+                 and all(row["fused_vs_array"] == row["separate_vs_array"]
                          == row["fused_vs_separate"] == 0 for row in per_step))
     return {
         "passed": bool(identical and plan.launches and curl.launches
                        and electric.launches),
+        "separate_side_scored": True,
+        "separate_side_identical_to_array": all(
+            row["separate_vs_array"] == 0 for row in per_step),
         "per_step": per_step,
         "steps_compared": len(per_step),
         "separate_dispatches_per_step": (curl.launches_per_run
@@ -514,7 +559,7 @@ def _shipped_functions(codes: Sequence[int], poles: int,
 
 def shader_mutations(codes: Sequence[int], poles: int,
                      zero_metal: Sequence[bool]) -> Dict[str, Dict[Tuple[str, int], Any]]:
-    """Nine source defects, each a plausible transcription slip.
+    """Ten source defects, each a plausible transcription slip.
 
     Every one is armed on the X component only and the other two axes keep the
     shipped bytes, which is what makes a caught mutation evidence about the
@@ -541,21 +586,28 @@ def shader_mutations(codes: Sequence[int], poles: int,
         "ownership_mask_dropped":
             base.replace("    curl0 = at_y ? 0.0f : curl0;\n", "", 1)
                 .replace("    curl0 = at_z ? 0.0f : curl0;\n", "", 1),
-        # shaders.py rule 2: flattening these parens is a different float32 number.
-        "curl_parens_flattened":
-            base.replace("dtdx * ((c_y - c) + (b - b_z))",
-                         "dtdx * (c_y - c + b - b_z)", 1),
+        # INVERTED (KERNELS.md §7.1): the shipped curl IS MEEP's left-to-right
+        # bracket now, so this plants the package's PREVIOUS pairwise grouping and
+        # stays must-catch.
+        "curl_previous_grouping":
+            base.replace("dtdx * (((c_y - c) + b) - b_z)",
+                         "dtdx * ((c_y - c) + (b - b_z))", 1),
         "second_pole_dropped":
             base.replace("    source = source - q1[idx];\n", "", 1),
         "fw_store_dropped":
-            base.replace("    fw[idx] = src;", "    // stale fw", 1),
+            base.replace("    if (dw) { fw[idx] = src; }", "    // stale fw", 1),
         "fu_store_dropped":
-            base.replace("    u0[ii] = n0;", "    // stale fu_Dx", 1),
+            base.replace("    if (du0) { u0[ii] = n0; }", "    // stale fu_Dx", 1),
+        # The two products of the accumulation trade operands: kps*prev - kms*src.
         "pml_accumulations_reversed":
-            base.replace("    value = value + kps[i] * src;\n"
-                         "    value = value - kms[i] * prev;",
-                         "    value = value - kms[i] * src;\n"
-                         "    value = value + kps[i] * prev;", 1),
+            base.replace("value = e_out[idx] + ((kps[i] * src) - (kms[i] * prev));",
+                         "value = e_out[idx] + ((kps[i] * prev) - (kms[i] * src));", 1),
+        # INVERTED (KERNELS.md §7.1): the shipped accumulation is MEEP's
+        # f + ((kps*src) - (kms*prev)); this plants the package's previous
+        # ((f + kps*src) - kms*prev) and stays must-catch.
+        "pml_previous_accumulation_grouping":
+            base.replace("value = e_out[idx] + ((kps[i] * src) - (kms[i] * prev));",
+                         "value = (e_out[idx] + (kps[i] * src)) - (kms[i] * prev);", 1),
     }
     mutants: Dict[str, Dict[Tuple[str, int], Any]] = {}
     for name, source in edits.items():
@@ -568,6 +620,87 @@ def shader_mutations(codes: Sequence[int], poles: int,
             source).fused_dispersive_pair_component
         mutants[name] = table
     return mutants
+
+
+#: The components this product steps, whose per-chunk forms each product row reports.
+FORM_COMPONENTS: Tuple[str, ...] = ("Dx", "Dy", "Dz", "Ex", "Ey", "Ez")
+
+
+def _membership(half: bool, axis: int) -> str:
+    """The record's membership formula for one entry, read from ``cb`` directly.
+
+    The kernel declares only the entries its forms read; a battery row that keys a
+    form on another entry spells that entry's formula in place, from the same
+    record, rather than leaning on a local the kernel does not declare.
+    """
+    from meep_gpu.metal_kernels.chunk_bounds import member_name
+
+    at = "(" + "ijk"[axis] + ")"
+    a0, a1, b0, b1 = (f"cb.{member_name(half, axis, word)}" for word in range(4))
+    return f"(({at} >= {a0} && {at} < {a1}) || ({at} >= {b0} && {at} < {b1}))"
+
+
+def battery_rows(codes: Sequence[int], poles: int, zero_metal: Sequence[bool]
+                 ) -> Dict[str, Dict[str, Any]]:
+    """The per-chunk form battery (KERNELS.md §7.2) armed on the X component.
+
+    This family spells one target per launch, so its flag lines are its own
+    (``const bool du0 = in_i_z;``, ``const bool dw = in_h_x;``) and the select rows
+    are spelled here. The rows on the certified recurrence lines -- ``b6``, ``b7``,
+    ``b8`` -- are the base gate's own transforms, because those lines are the
+    certified emitter's bytes. Each row's ``must_catch`` and value class follow the
+    base gate's declarations.
+    """
+    import gate_metal_pml as base_gate
+
+    base = family.fused_dispersive_pair_source(codes, 0, poles, zero_metal)
+    dsig, dsigu = shaders.CURL_CYCLE[0]
+    du_line = f"    const bool du0 = in_i_{'xyz'[dsigu]};"
+    dw_line = "    const bool dw = in_h_x;"
+
+    def replaced(old: str, new: str) -> Any:
+        return lambda source: base_gate._needle(source, old, new)
+
+    edits = {
+        "b1_select_removed": replaced(du_line, "    const bool du0 = true;"),
+        "b2_predicate_on_coefficient_identity": replaced(
+            du_line, f"    const bool du0 = (km{'xyz'[dsigu]}[{'ijk'[dsigu]}] != 1.0f);"),
+        "b5_dsig_dsigu_swapped": replaced(
+            du_line, f"    const bool du0 = {_membership(False, dsig)};"),
+        "b6_auxiliary_stored_on_a_plain_cell":
+            base_gate.CURL_MUTATIONS["b6_auxiliary_stored_on_a_plain_cell"]["apply"],
+        "b7_auxiliary_load_unconditional":
+            base_gate.CURL_MUTATIONS["b7_auxiliary_load_unconditional"]["apply"],
+        "b8_plain_curl_through_the_recurrence":
+            base_gate.CURL_MUTATIONS["b8_plain_curl_through_the_recurrence"]["apply"],
+        "b9_constitutive_select_removed": replaced(dw_line, "    const bool dw = true;"),
+        "b10_constitutive_predicate_on_coefficient_identity": replaced(
+            dw_line, "    const bool dw = (kps[i] != 1.0f);"),
+        "b11_f_w_stored_on_a_plain_cell": replaced(
+            "    if (dw) { fw[idx] = src; }", "    fw[idx] = src;"),
+        "b12_constitutive_load_unconditional": replaced(
+            "    float prev = dw ? fw[idx] : 0.0f;", "    float prev = fw[idx];"),
+        "b13_plain_constitutive_through_the_accumulation": replaced(
+            "    float value = src;",
+            "    float value = 0.0f + ((1.0f * src) - (0.0f * prev));"),
+    }
+    rows: Dict[str, Dict[str, Any]] = {}
+    for name, apply in edits.items():
+        table = (base_gate.CURL_MUTATIONS if name in battery.CURL_ROWS
+                 else base_gate.CONSTITUTIVE_MUTATIONS)
+        source = apply(base)
+        if source == base:
+            raise AssertionError(f"battery row {name!r} did not change the source")
+        functions = _shipped_functions(codes, poles, zero_metal)
+        functions[(shaders.CONTRACT_OFF, 0)] = compile_source(
+            source).fused_dispersive_pair_component
+        rows[name] = {"functions": functions,
+                      "must_catch": table[name]["must_catch"],
+                      "why": table[name]["why"],
+                      "value_class": (values.PM_ZERO_LATTICE
+                                      if name in battery.LATTICE_ROWS
+                                      else values.UNIFORM)}
+    return rows
 
 
 def swap_e_lattice(plan: Any, pml: PML, residency: Residency) -> None:
@@ -635,7 +768,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
                 "ceiling": 31,
                 "compiled": False,
                 "error": message.splitlines()[0] if message else "",
-                "per_component_bindings": 29}
+                "per_component_bindings": 30}
     return {"passed": False, "bindings": bindings, "compiled": True,
             "error": "the 35-binding signature COMPILED; the per-component shape "
                      "of this family rests on a ceiling this host does not have"}
@@ -671,10 +804,11 @@ def main() -> int:
         f"{MUTATION_CASE} has no walled axis; the two boundary mutations would be "
         f"vacuous")
     mutants = shader_mutations(codes, poles, walls)
+    batteries = battery_rows(codes, poles, walls)
 
     controls = ("periodic_two_pole_lorentz", "metallic_all_three_pole")
     total = (1 + len(CASES) + len(CASES) + 1 + len(controls) + len(mutants)
-             + len(HOST_MUTATIONS) + 1)
+             + len(HOST_MUTATIONS) + len(batteries) + len(battery.RECORD_ROWS) + 1 + 1)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     jsonl = args.out.with_suffix(".jsonl")
     started = time.perf_counter()
@@ -755,6 +889,57 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
+        # THE PER-CHUNK FORM BATTERY (KERNELS.md §7.2), each row scored against its
+        # declaration: must-catch rows must diverge, the two declared nulls must not.
+        for name, entry in batteries.items():
+            index += 1
+            result = run_case(MUTATION_CASE, cell, boundaries, poles, kind,
+                              53000 + index, args.steps, functions=entry["functions"],
+                              value_class=entry["value_class"])
+            caught = not result.get("bit_identical", False)
+            row = {"index": index, "total": total, "leg": "battery", "label": name,
+                   "caught": caught, "must_catch": entry["must_catch"],
+                   "why": entry["why"], "value_class": entry["value_class"],
+                   "passed": battery.scored(entry["must_catch"], caught,
+                                            bool(result.get("launches"))),
+                   "first_divergence": result.get("first_divergence"),
+                   "differing_words": result.get("differing_words"),
+                   "differing_arrays": result.get("differing_arrays"),
+                   "launches": result.get("launches")}
+            rows.append(row)
+            emit(handle, row)
+        for name, (mutate, why) in battery.RECORD_ROWS.items():
+            index += 1
+            result = run_case(MUTATION_CASE, cell, boundaries, poles, kind,
+                              53000 + index, args.steps, record=mutate)
+            caught = not result.get("bit_identical", False)
+            row = {"index": index, "total": total, "leg": "battery", "label": name,
+                   "record_defect": True, "caught": caught, "must_catch": True,
+                   "why": why,
+                   "passed": battery.scored(True, caught, bool(result.get("launches"))),
+                   "first_divergence": result.get("first_divergence"),
+                   "differing_words": result.get("differing_words"),
+                   "launches": result.get("launches")}
+            rows.append(row)
+            emit(handle, row)
+
+        # THE FORM-COVERAGE FLOOR (DESIGN.md D13), over the product rows.
+        index += 1
+        classes: Dict[str, int] = {}
+        for product in (r for r in rows if r["leg"] == "product"):
+            for component, forms in (product.get("forms") or {}).items():
+                for form, count in forms.items():
+                    key = f"{component}/{form}"
+                    classes[key] = classes.get(key, 0) + int(count)
+        empty = sorted(key for key, count in classes.items() if not count)
+        row = {"index": index, "total": total, "leg": "forms",
+               "label": "every_component_steps_both_of_its_forms",
+               "classes": classes, "empty_classes": empty,
+               "passed": bool(classes) and len(classes) == 2 * len(FORM_COMPONENTS)
+               and not empty}
+        rows.append(row)
+        emit(handle, row)
+
         # THE DISARM CHECK. The identical harness, the identical case, the SHIPPED
         # bytes and no host patch. A nonzero here would mean every "caught" above
         # is a harness that diverges on its own.
@@ -777,7 +962,8 @@ def main() -> int:
         "rows": rows,
         "counts": {"product": len(CASES), "separate_controls": len(controls),
                    "shader_mutations": len(mutants),
-                   "host_mutations": len(HOST_MUTATIONS)},
+                   "host_mutations": len(HOST_MUTATIONS),
+                   "battery_rows": len(batteries) + len(battery.RECORD_ROWS)},
         "torch_version": torch.__version__,
         "numpy_version": np.__version__,
         "metal_frontend": metal_frontend_version(),

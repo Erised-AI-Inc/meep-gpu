@@ -280,8 +280,8 @@ class _WrongBackend(gate.EvaluatorBackend):
     """A kernel side that is wrong by one word. Nothing more is needed: the
     comparator is on RAW BYTES, so a single word is a divergence."""
 
-    def launch(self, fields, layer, rows, mask, tables, codes, walls):
-        super().launch(fields, layer, rows, mask, tables, codes, walls)
+    def launch(self, fields, layer, rows, mask, tables, codes, walls, record, kept):
+        super().launch(fields, layer, rows, mask, tables, codes, walls, record, kept)
         flat = fields.Ex.reshape(-1)
         flat[0] = np.float32(flat[0] + np.float32(1.0))
 
@@ -330,12 +330,18 @@ def test_the_evaluator_grammar_covers_every_shipped_source():
     ("hoist_the_coefficient", "arithmetic"),
     ("drop_the_wall_mask", "arithmetic"),
     ("column_major_index", "pinned_half"),
-    ("flatten_the_tail", "pinned_half"),
+    ("previous_tail_grouping", "pinned_half"),
     ("store_fw_before_reading_prev", "pinned_half"),
     ("drop_fw_store", "pinned_half"),
+    ("plain_constitutive_via_unit_coefficients", "pinned_half"),
     ("invert_the_wall_mask", "outside_the_grammar"),
     ("over_apply_the_wall_mask", "outside_the_grammar"),
     ("commute_the_diagonal_product", "outside_the_grammar"),
+    ("predicate_on_coefficient_identity", "outside_the_grammar"),
+    ("row_in_float32", "arithmetic"),
+    ("presence_ignored", "arithmetic"),
+    ("drop_a_row_from_the_volume_sum", "arithmetic"),
+    ("scale_the_quarter_in_float32", "arithmetic"),
 ])
 def test_the_classifier_says_which_defects_the_evaluator_can_see(name, expected):
     """THE MEASURED HAZARD, pinned per defect.
@@ -362,15 +368,18 @@ def test_the_classifier_says_which_defects_the_evaluator_can_see(name, expected)
 def test_the_pinned_half_is_what_the_slice_tests_pin_by_exact_string():
     """The other half of the pinned-half claim: those defects are not unguarded off
     device, they are guarded by a different mechanism."""
-    slice_tests = gate.slice_module()
     source = offdiag_emitter.offdiag_source((1, 1, 1, 1, 1, 1))
-    for name in ("column_major_index", "flatten_the_tail",
-                 "store_fw_before_reading_prev"):
+    pinned = gate.pinned_texts()
+    slice_tests = gate.slice_module()
+    for name, text in slice_tests.PINNED_HELPERS.items():
+        assert pinned[name] == text and text in source, name
+    assert pinned["constitutive_apply"] in source
+    assert pinned["record_block"] == offdiag_emitter.RECORD_BLOCK in source
+    assert pinned["chunk_lines"] == offdiag_emitter.CHUNK_LINES in source
+    for name in ("column_major_index", "previous_tail_grouping",
+                 "store_fw_before_reading_prev", "drop_fw_store",
+                 "plain_constitutive_via_unit_coefficients"):
         mutated, _sites = gate.SOURCE_MUTATIONS[name](source)
-        pinned = dict(slice_tests.PINNED_HELPERS)
-        pinned["constitutive_apply"] = (
-            "    float prev = fw[idx];\n    fw[idx] = src;\n"
-            "    float a = f[idx] + kps * src;\n    f[idx] = a - kms * prev;")
         assert any(body not in mutated for body in pinned.values()), name
 
 
@@ -457,9 +466,28 @@ def test_the_product_sweeps_a_courant_that_is_not_exactly_representable():
 
 def test_the_product_sweeps_both_row_forms_and_both_value_classes():
     specs = gate.case_product("full", 1)
-    assert {s["row_form"] for s in specs} == set(gate.ROW_FORMS)
-    assert {s["value_class"] for s in specs} == set(gate.VALUE_CLASSES)
+    assert {s["row_form"] for s in specs} == set(gate.ROW_FORMS) | {gate.PRESENCE_ROW_FORM}
+    assert {s["value_class"] for s in specs} == (set(gate.VALUE_CLASSES)
+                                                 | {gate.PRESENCE_VALUE_CLASS})
     assert {tuple(s["mask"]) for s in specs} == {tuple(m) for m in gate.GATE_ROW_MASKS}
+
+
+def test_the_presence_cases_delete_rows_and_reproduce_the_array_path():
+    """The presence cases are what the random product cannot be: rows some chunk deletes,
+    with planted -0 cells. Through the gate's own ``one_case``, every presence case of
+    the reduced product carries a deleted row and reproduces the array path."""
+    backend = gate.build_backend("numpy")
+    xp = gate._NumpyWearingCupysName()
+    specs = gate.presence_cases(gate.GATE_ROW_MASKS[:2], 2)
+    assert specs
+    for spec in specs:
+        record = gate.one_case(backend, xp, spec["cell"], spec["shape_label"],
+                               spec["boundaries"], spec["mask"], spec["row_form"],
+                               spec["courant"], spec["value_class"], "fmad_false",
+                               ("--fmad=false",), spec["steps"])
+        assert gate.case_is_valid(record)[0], record
+        assert record["rows_some_chunk_deletes"] > 0, record["key"]
+        assert record["bit_identical"], (record["key"], record["differing_floats"])
 
 
 def test_the_product_includes_an_invariant_axis_and_refuses_the_impossible_pair():
@@ -509,7 +537,8 @@ def test_the_needle_arithmetic_is_what_the_probe_claims_it_is():
                                  else np.zeros(shape[i], dtype=np.float32))
               for i, axis in enumerate("xyz") for stem in ("kps", "kms")}
     gate.evaluator()(offdiag_emitter.offdiag_source(policy_probe.NEEDLE_MASK),
-                     arrays, tables, (0, 0, 0), (0, 0, 0), shape)
+                     arrays, tables, (0, 0, 0), (0, 0, 0), shape, [0] * 25,
+                     (offdiag_emitter.ALL_CHUNKS_KEPT,) * 6)
 
     def word(name):
         return int(arrays[name].ravel()[0].view(np.uint32))
@@ -630,7 +659,7 @@ def test_the_kernel_backend_mutates_and_digests_the_launch_text(monkeypatch):
     assert offdiag_emitter.offdiag_launch_source(mask) == mutated
     assert backend.source_for(mask) == (mutated, 1)
     # the certified text is untouched: the evaluator and the lifters still read it
-    assert "    fw[idx] = src;\n" in offdiag_emitter.offdiag_source(mask)
+    assert "    if (dsigw) fw[idx] = src;\n" in offdiag_emitter.offdiag_source(mask)
     assert backend.pristine_source(mask) == launch
     backend.set_source_mutation(None)
     assert offdiag_emitter.offdiag_launch_source(mask) == launch

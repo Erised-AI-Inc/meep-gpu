@@ -1,5 +1,12 @@
 """THE BYTE GATE for the Metal chi2/chi3 (Pade) ``update_E`` family.
 
+The kernel steps the array path's forms: the four corners left to right, ``Dsqr``'s
+``0.0625`` term and the addition after it in software binary64 rounded once (ruling
+R7: soft-fp64, ``stepping._nonlinear_dsqr``), and the constitutive form per structure
+chunk from the chunk record every plan here binds (``layer_record``, the one-rank
+division the reference ``Fields`` steps with). The reference runs with the host's FPU
+in the flush policy, the only one the executor runs (:func:`flushed_host`).
+
 WHAT IT CERTIFIES: that the shipped kernel reproduces ``stepping.update_E``
 (stepping.py:954, the ``if nonlinear:`` branch at :999-1000) WORD FOR WORD as
 uint32, over the configuration space the family's predicate admits, and that the
@@ -40,7 +47,13 @@ THE LEGS:
    caught, plus NULL controls whose whole job is to fail to be caught. Every
    mutation carries the boundary set it is ARMED on; on the complement it is run
    as a PREDICTED NULL and required NOT to fire, so "this defect cannot show under
-   a periodic ghost" is a measurement rather than an excuse.
+   a periodic ghost" is a measurement rather than an excuse. The previous package
+   forms are must-catch mutations here (KERNELS.md §7.1): the paired corners
+   (``four_corner_pair_association``), the two-step accumulation
+   (``previous_two_step_accumulation``) and the float32 ``Dsqr``
+   (``dsqr_in_float32``, armed on the ``dsqr_band`` class); the §7.2 B battery of the
+   per-chunk tail rides with them, two of its entries planted in the RECORD rather
+   than the source.
 4. ``ceiling`` — the plan-time magnitude clause at 1e29, pinned in both
    directions: a configuration under it is admitted AND byte-identical, one over
    it is REFUSED BY NAME. Both sides carry a non-vacuity check on the MEASURED
@@ -52,7 +65,13 @@ THE LEGS:
    REFUSED BY NAME and its comparisons are withheld. Carries the firing control
    ``preconditions`` requires, because a precondition never demonstrated to fire
    is decorative.
-6. ``spine`` — the three sub-steps that do **not** read chi2/chi3,
+6. ``dsqr`` — the binary64 helper alone, launched on its band (``gs*gs`` normal,
+   ``0.0625*(g1s*g1s + g2s*g2s)`` below float32's smallest normal) and at field
+   scale, against ``stepping._nonlinear_dsqr`` under the flush policy, with the
+   float32 form as the control that must differ on the band and nowhere else; then
+   the shipped kernel on a ``dsqr_band`` state per boundary configuration, with the
+   number of source words the float32 form would have moved as its vacuity floor.
+7. ``spine`` — the three sub-steps that do **not** read chi2/chi3,
    ``step_B -> update_H -> step_D``.  They deliberately reuse the separately
    certified ordinary PML shaders under nonlinear-only admissions.  This leg
    proves that the new admissions build, launch, retain their shared mirrors, and
@@ -79,8 +98,10 @@ if API_ROOT not in sys.path:
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 
 import metal_gate_kit as kit  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
-from meep_gpu import stepping  # noqa: E402
+from meep_gpu import backends, stepping, subnormal_policy  # noqa: E402
+from meep_gpu.chunk_map import record_index  # noqa: E402
 from meep_gpu.fields import Fields  # noqa: E402
 from meep_gpu.grid import Grid  # noqa: E402
 from meep_gpu.metal_kernels import (  # noqa: E402
@@ -88,6 +109,7 @@ from meep_gpu.metal_kernels import (  # noqa: E402
     nonlinear_update_e as nonlinear,
     preconditions,
     shaders,
+    softfp64,
     subnormal,
 )
 from meep_gpu.metal_kernels.device import Residency, compile_source  # noqa: E402
@@ -117,6 +139,34 @@ MASKS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
 #: measured to be a RUN-and-WINDOW fact rather than a family fact, so a census at
 #: step 0 certifies step 0 and nothing else.
 CENSUS_STEPS = 8
+
+#: The ``dsqr_band`` class: ``|Dz| ~ 2**BAND_GS_EXPONENT`` and the partner volumes
+#: Dx, Dy ~ ``2**BAND_PARTNER_EXPONENT`` and same-signed, so each four-corner sum is
+#: ``2**-63 .. 2**-62``, its square a normal float, and ``0.0625 * (g1s*g1s +
+#: g2s*g2s)`` below float32's smallest normal: the band where the float32 and the
+#: binary64 ``Dsqr`` differ under the flush policy. ``chi3`` is solved per cell for
+#: ``chi3 * |chi1inv|^3 = BAND_CHI3_MAGNITUDE``, under the 1e29 ceiling, which is
+#: what carries the ``Dsqr`` change into ``c3`` and the ``1 + ...`` sums.
+BAND_GS_EXPONENT = -57
+BAND_PARTNER_EXPONENT = -65
+BAND_CHI3_MAGNITUDE = 9e28
+
+
+class flushed_host:
+    """``with flushed_host():`` drives this thread's FPU to the flush policy and puts
+    back the mode it found. The reference runs inside it: the Metal executor flushes,
+    so the array path it must equal is the one a flushing host computes, and a Metal
+    plan's freeze leaves the thread flushing, so the mode is set here rather than
+    inherited from whichever leg ran last."""
+
+    def __enter__(self) -> "flushed_host":
+        self.before = backends.subnormals_flushed()
+        subnormal_policy._drive_host_fpu(True)  # noqa: SLF001
+        assert backends.subnormals_flushed(), "the host FPU could not be driven to flush"
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        subnormal_policy._drive_host_fpu(bool(self.before))  # noqa: SLF001
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +253,15 @@ def build(boundaries: Any, components: Sequence[str], scalar: bool,
             # Amplitudes that drive u well away from 1, so the quotient's own
             # arithmetic is exercised rather than only the 1 + epsilon band.
             values = 12.0 * rng.standard_normal(shape)
+        elif value_class == "dsqr_band":
+            # See BAND_GS_EXPONENT. E and f_w stay at field scale.
+            if name == "Dz":
+                values = (np.ldexp(rng.uniform(1.0, 2.0, shape), BAND_GS_EXPONENT)
+                          * rng.choice((-1.0, 1.0), shape))
+            elif name in ("Dx", "Dy"):
+                values = np.ldexp(rng.uniform(1.0, 2.0, shape), BAND_PARTNER_EXPONENT)
+            else:
+                values = rng.standard_normal(shape)
         else:
             raise ValueError(value_class)
         getattr(fields, name)[...] = values.astype(np.float32)
@@ -212,8 +271,20 @@ def build(boundaries: Any, components: Sequence[str], scalar: bool,
             return np.float32(magnitude)
         return (magnitude * (0.5 + rng.random(shape))).astype(np.float32)
 
-    fields.set_nonlinear_volumes({c: chi(chi2_magnitude) for c in components},
-                                 {c: chi(chi3_magnitude) for c in components})
+    if value_class == "dsqr_band":
+        # Solved in float64 against the installed epsilon and rounded once, as
+        # build_at_magnitude does; a scalar arm takes the smallest |chi1inv|'s value.
+        solved = BAND_CHI3_MAGNITUDE / np.abs(inverse.astype(np.float64)) ** 3
+        third = (np.float32(BAND_CHI3_MAGNITUDE / float(np.max(np.abs(inverse))) ** 3)
+                 if scalar else solved.astype(np.float32))
+        fields.set_nonlinear_volumes({c: chi(chi2_magnitude) for c in components},
+                                     {c: third for c in components})
+    else:
+        fields.set_nonlinear_volumes({c: chi(chi2_magnitude) for c in components},
+                                     {c: chi(chi3_magnitude) for c in components})
+    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago
+    # (stepping.separate_h_from_b), so the reference's update_H does not start it.
+    fields.h_separated = True
     return fields, PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
 
 
@@ -249,6 +320,7 @@ def build_at_magnitude(boundaries: Any, components: Sequence[str],
     fields.enable_pml_storage()
     for name in SEEDED:
         getattr(fields, name)[...] = rng.standard_normal(shape).astype(np.float32)
+    fields.h_separated = True  # A seeded state is a mid-run one.
 
     # Solved in float64 and rounded once: the clause reads float64 (the family's
     # _magnitude is float64 deliberately, because chi3 * |chi1inv|^3 at the ceiling
@@ -283,9 +355,10 @@ def measured_magnitude(fields: Any, component: str, order: int) -> float:
 
 def array_path_reference(fields: Any, pml: Any) -> Tuple[Dict[str, Any],
                                                          Dict[str, Any], int]:
-    """Run ``stepping.update_E`` and return (before, after, words moved)."""
+    """Run ``stepping.update_E`` on a flushing host and return (before, after, moved)."""
     before = {n: getattr(fields, n).copy() for n in WATCHED}
-    stepping.update_E(fields, pml)
+    with flushed_host():
+        stepping.update_E(fields, pml)
     after = {n: getattr(fields, n).copy() for n in WATCHED}
     moved = sum(kit.differing(after[n], before[n]) for n in WATCHED)
     for name, values in before.items():
@@ -399,9 +472,15 @@ def harness_arrays(fields: Any, pml: Any) -> Tuple[Dict[str, Any],
 
 
 def run_plan(plan: Any, residency: Any, fields: Any) -> None:
-    residency.sync_in()
-    plan.run()
-    residency.sync_out()
+    with flushed_host():
+        residency.sync_in()
+        plan.run()
+        residency.sync_out()
+
+
+def record_of(fields: Any, pml: Any) -> Any:
+    """The chunk record a plan here binds: the reference's own one-rank division."""
+    return layer_record(fields.grid, pml)
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +507,7 @@ def leg_identity(payload: Dict[str, Any], out: str) -> None:
 
                     residency = Residency()
                     plan = nonlinear.plan_nonlinear_constitutive(
-                        fields, pml, residency)
+                        fields, pml, residency, chunk_bounds=record_of(fields, pml))
                     assert plan is not None
                     run_plan(plan, residency, fields)
                     assert plan.launches == 1
@@ -481,7 +560,8 @@ def leg_linear_reduction(payload: Dict[str, Any], out: str) -> None:
         kit.assert_moved(moved, f"linear_reduction/{boundary_label}")
 
         residency = Residency()
-        plan = nonlinear.plan_nonlinear_constitutive(fields, pml, residency)
+        plan = nonlinear.plan_nonlinear_constitutive(
+            fields, pml, residency, chunk_bounds=record_of(fields, pml))
         run_plan(plan, residency, fields)
         nonlinear_state = {n: getattr(fields, n).copy() for n in WATCHED}
 
@@ -493,11 +573,11 @@ def leg_linear_reduction(payload: Dict[str, Any], out: str) -> None:
                 getattr(linear_fields, name)
         linear_residency = Residency()
         linear_plan = plan_constitutive(linear_fields, linear_pml, "E",
-                                        linear_residency)
+                                        linear_residency,
+                                        chunk_bounds=record_of(linear_fields,
+                                                               linear_pml))
         assert linear_plan is not None, "the certified plain kernel refused"
-        linear_residency.sync_in()
-        linear_plan.run()
-        linear_residency.sync_out()
+        run_plan(linear_plan, linear_residency, linear_fields)
 
         # Ex and Ey are LINEAR in the nonlinear run and are the comparison; Ez is
         # not and must NOT match, which is the control that stops this leg from
@@ -560,41 +640,52 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
      ALL_BOUNDARIES, False, "random",
      "the measured-divergent divide spelling: fast::divide misses by up to 2 ulp "
      "on 102,578 words. This is the mutation the whole divide probe exists for"),
-    ("four_corner_left_to_right",
-     "float sum_20 = near_20 + far_20;",
-     "float sum_20 = ((g0[ii] + (dvx ? g0[di * nyz + j * nzi + k] : 0.0f)) "
-     "+ (uvz ? g0[i * nyz + j * nzi + uk] : 0.0f)) "
-     "+ ((uvz && dvx) ? g0[di * nyz + j * nzi + uk] : 0.0f);", True,
+    ("four_corner_pair_association",
+     "float sum_20 = ((g0[ii] + (uvz ? g0[i * nyz + j * nzi + uk] : 0.0f)) "
+     "+ (dvx ? g0[di * nyz + j * nzi + k] : 0.0f)) "
+     "+ ((uvz && dvx) ? g0[di * nyz + j * nzi + uk] : 0.0f);",
+     "float sum_20 = (g0[ii] + (dvx ? g0[di * nyz + j * nzi + k] : 0.0f)) "
+     "+ ((uvz ? g0[i * nyz + j * nzi + uk] : 0.0f) "
+     "+ ((uvz && dvx) ? g0[di * nyz + j * nzi + uk] : 0.0f));", True,
      ALL_BOUNDARIES, False, "large_u",
-     "MEEP C's left-to-right sum instead of stepping.py's shifted-PAIR "
-     "association (step_generic.cpp:646-648 vs stepping.py:1187-1191). "
-     "ARMED ON large_u AND THAT IS A CORRECTION, NOT A PREFERENCE. The previous "
-     "cut of this entry spelled the replacement with the Y-AXIS names — `dvy` and "
-     "`dj` — inside the sum whose partner axis is X, so the mutant it compiled was "
-     "an INDEX MISPAIRING and diverged by ~6,450 words in every case. It reported "
-     "CAUGHT 3/3 and the association it names was never tested. With the axis "
-     "names corrected the association alone diverges by 0 words at a physical "
-     "chi3, because c3 ~ 7e-3 there and a one-ulp change in the four-corner sum "
-     "moves u by ~1e-9 relative — a hundredfold under float32's resolution. "
-     "Measured 34 / 32 / 39 words under large_u. The mispairing it used to test "
-     "by accident is now armed deliberately, next"),
+     "THE PACKAGE'S PREVIOUS ASSOCIATION, put back (KERNELS.md 7.1): the near pair "
+     "(g[i] + g[i-s1]) plus the far pair (g[i+s] + g[i+(s-s1)]), where MEEP and "
+     "stepping._nonlinear_transverse_sums add the four corners left to right, "
+     "((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)] (step_generic.cpp:646-648). "
+     "ARMED ON large_u, as its mirror image was: at a physical chi3, c3 ~ 7e-3, and "
+     "a one-ulp change in the four-corner sum moves u by ~1e-9 relative, a "
+     "hundredfold under float32's resolution; large_u is where the association "
+     "reaches a stored word"),
     ("four_corner_index_axis_mispair",
-     "float sum_20 = near_20 + far_20;",
-     "float sum_20 = ((g0[ii] + (dvy ? g0[i * nyz + dj * nzi + k] : 0.0f)) "
-     "+ (uvz ? g0[i * nyz + j * nzi + uk] : 0.0f)) "
+     "float sum_20 = ((g0[ii] + (uvz ? g0[i * nyz + j * nzi + uk] : 0.0f)) "
+     "+ (dvx ? g0[di * nyz + j * nzi + k] : 0.0f)) "
+     "+ ((uvz && dvx) ? g0[di * nyz + j * nzi + uk] : 0.0f);",
+     "float sum_20 = ((g0[ii] + (uvz ? g0[i * nyz + j * nzi + uk] : 0.0f)) "
+     "+ (dvy ? g0[i * nyz + dj * nzi + k] : 0.0f)) "
      "+ ((uvz && dvy) ? g0[i * nyz + dj * nzi + uk] : 0.0f);", True,
      ALL_BOUNDARIES, False, "random",
      "the offset-1 sum shifted down the Y axis when its partner axis is X — the "
      "exact defect `_index`/`_STRIDE` exist to prevent, since the module assembles "
      "the six index expressions from data precisely because 'six hand-written "
-     "index expressions is six chances to write dj where dk belongs'. Split out of "
-     "`four_corner_left_to_right`, which was testing this by accident under the "
-     "association's name; ~6,450 words, and unlike the association it is gross"),
+     "index expressions is six chances to write dj where dk belongs'"),
     ("dsqr_quarter_not_sixteenth",
-     "0.0625f * ((sum_20 * sum_20)", "0.25f * ((sum_20 * sum_20)", True,
+     "sd_scale_pow2(sd_widen_f(transverse, true), -4, true)",
+     "sd_scale_pow2(sd_widen_f(transverse, true), -2, true)", True,
      ALL_BOUNDARIES, False, "random",
-     "0.0625 = (1/4)^2 renormalises each UNNORMALIZED four-point sum before it is "
-     "squared (stepping.py:1147); 0.25 is the un-squared factor"),
+     "0.0625 = (1/4)^2 = 2**-4 renormalises each UNNORMALIZED four-point sum before "
+     "it is squared (stepping._nonlinear_dsqr); 2**-2 is the un-squared factor"),
+    ("dsqr_in_float32",
+     "    return sd_narrow_f(sd_add(sd_widen_f(own, true),\n"
+     "                              sd_scale_pow2(sd_widen_f(transverse, true), -4, true),\n"
+     "                              true), true);",
+     "    return own + 0.0625f * transverse;", True,
+     ALL_BOUNDARIES, False, "dsqr_band",
+     "THE PACKAGE'S PREVIOUS Dsqr, put back (ruling R7 replaced it): the scale and "
+     "the addition in float32, where MEEP's 0.0625 is a double literal and "
+     "stepping._nonlinear_dsqr forms both in binary64 and rounds once. The two "
+     "forms differ only where 0.0625 * t lies below float32's smallest normal, so "
+     "it is ARMED ON THE dsqr_band CLASS, where chi3 * |chi1inv|^3 = 9e28 (under the "
+     "ceiling) carries the change into c3; on a physical class it is invisible"),
     ("pade_numerator_coefficient",
      "float num2 = (1.0f + c2_2) + 2.0f * c3_2;",
      "float num2 = (1.0f + c2_2) + 3.0f * c3_2;", True,
@@ -618,15 +709,14 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
      "stepping.py:1078-1080 forms the ROW and then scales it; folding u into the "  # stepping.py live lines for the frozen device-text citation(s) in this string: 1078-1080->1107-1109
      "epsilon multiply is a different rounding"),
     ("prev_used_after_store",
-     "a2 = a2 - km_2 * prev2;", "a2 = a2 - km_2 * src2;", True,
+     "if (dw2) { a2 = f2[ii] + ((kp_2 * src2) - (km_2 * prev2)); }",
+     "if (dw2) { a2 = f2[ii] + ((kp_2 * src2) - (km_2 * src2)); }", True,
      ALL_BOUNDARIES, False, "random",
      "the dsigw tail must subtract the PREVIOUS f_w, not the one just stored "
-     "(stepping.py:2137). Wrong only where kms != 0 — INSIDE THE PML ONLY — so it "
-     "looks like a slightly worse absorber rather than like a bug. The first "
-     "spelling of this entry planted a redundant initialiser, which was a NO-OP "
-     "needle: it reported 0/3 and would have certified nothing"),
+     "(stepping._apply_constitutive_pml). Wrong only where kms != 0 — INSIDE THE "
+     "PML ONLY — so it looks like a slightly worse absorber rather than like a bug"),
     ("partner_volume_mispair",
-     "float near_20 = g0[ii]", "float near_20 = g1[ii]", True,
+     "float sum_20 = ((g0[ii] +", "float sum_20 = ((g1[ii] +", True,
      ALL_BOUNDARIES, False, "random",
      "Ez's offset-1 partner is Dx and its offset-2 partner is Dy "
      "(cycle_direction, stepping.py:1183-1185). Reading the wrong partner volume "
@@ -637,10 +727,12 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
     # ---- ARMED THIS ROUND: the structural choices the module calls load-bearing
     # ---- and the previous cut left unmeasured.
     ("shifts_same_direction",
-     "float far_20 = (uvz ? g0[i * nyz + j * nzi + uk] : 0.0f)\n"
-     "        + ((uvz && dvx) ? g0[di * nyz + j * nzi + uk] : 0.0f);",
-     "float far_20 = (dvz ? g0[i * nyz + j * nzi + dk] : 0.0f)\n"
-     "        + ((dvz && dvx) ? g0[di * nyz + j * nzi + dk] : 0.0f);", True,
+     "float sum_20 = ((g0[ii] + (uvz ? g0[i * nyz + j * nzi + uk] : 0.0f)) "
+     "+ (dvx ? g0[di * nyz + j * nzi + k] : 0.0f)) "
+     "+ ((uvz && dvx) ? g0[di * nyz + j * nzi + uk] : 0.0f);",
+     "float sum_20 = ((g0[ii] + (dvz ? g0[i * nyz + j * nzi + dk] : 0.0f)) "
+     "+ (dvx ? g0[di * nyz + j * nzi + k] : 0.0f)) "
+     "+ ((dvz && dvx) ? g0[di * nyz + j * nzi + dk] : 0.0f);", True,
      ALL_BOUNDARIES, False, "random",
      "THE HALF-CELL REGISTRATION ERROR stepping.py:1131-1142 names explicitly: the "  # stepping.py live lines for the frozen device-text citation(s) in this string: 1131-1142->1160-1171
      "two shifts genuinely go in OPPOSITE directions — half a cell DOWN the "
@@ -696,14 +788,70 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
      "in the signature, where a mispairing is invisible to the compiler. Armed on "
      "the SCALAR arm, which is the only arm that reads the buffer"),
 
-    # ---- NULL CONTROLS -----------------------------------------------------
-    ("dsqr_distributed_sixteenth",
-     "0.0625f * ((sum_20 * sum_20) + (sum_21 * sum_21))",
-     "((0.0625f * (sum_20 * sum_20)) + (0.0625f * (sum_21 * sum_21)))", False,
+    # ---- THE PER-CHUNK TAIL (KERNELS.md 7.1 and the 7.2 B battery) -----------
+    ("previous_two_step_accumulation",
+     "if (dw2) { a2 = f2[ii] + ((kp_2 * src2) - (km_2 * prev2)); }",
+     "if (dw2) { a2 = (f2[ii] + kp_2 * src2) - km_2 * prev2; }", True,
      ALL_BOUNDARIES, False, "random",
-     "NULL CONTROL: 0.0625 is an exact power of two, so distributing it is "
-     "bitwise identical away from underflow. A CAUGHT verdict here would mean the "
-     "run reached the subnormal band, which the precondition denies"),
+     "THE PACKAGE'S PREVIOUS ACCUMULATION, put back (KERNELS.md 7.1): "
+     "((f + kps*src) - kms*prev), where MEEP's step_update_EDHB and "
+     "stepping._apply_constitutive_pml form the right-hand side first, "
+     "f + ((kps*src) - (kms*prev))"),
+    ("select_removed_accumulates_everywhere",
+     "const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_z;",
+     "const bool dw0 = true, dw1 = true, dw2 = true;", True,
+     ALL_BOUNDARIES, False, "random",
+     "the per-chunk select removed: every cell takes the accumulation and touches "
+     "f_w, the whole-grid form the kernel stepped before the record (7.2 b1). On a "
+     "plain cell the array path stores src itself and leaves f_w alone"),
+    ("predicate_on_coefficient_identity",
+     "const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_z;",
+     "const bool dw0 = (km_0 != 1.0f), dw1 = (km_1 != 1.0f), dw2 = (km_2 != 1.0f);",
+     True, ALL_BOUNDARIES, False, "random",
+     "the form keyed on the coefficient (kms != 1) instead of chunk membership "
+     "(7.2 b2): a cell inside its layer's chunk whose sigma is 0 (kps = kms = 1 "
+     "there) takes the output select instead of the accumulation"),
+    ("dsig_flag_on_the_wrong_axis",
+     "const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_z;",
+     "const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_x;", True,
+     ALL_BOUNDARIES, False, "random",
+     "Ez's membership read on the x line rather than its own z line: the "
+     "constitutive form follows the component's OWN axis (MEEP's dsigw), as the "
+     "coefficient index does"),
+    ("aux_stored_on_a_plain_cell",
+     "if (dw2) { w2[ii] = src2; }", "w2[ii] = src2;", True,
+     ALL_BOUNDARIES, False, "random",
+     "f_w written outside its layer's chunks (7.2 b6): the auxiliary contract "
+     "leaves it untouched there, and the watched f_w volumes compare every cell"),
+    ("plain_cell_as_unit_coefficients",
+     "    float a2 = src2;\n"
+     "    if (dw2) { a2 = f2[ii] + ((kp_2 * src2) - (km_2 * prev2)); }",
+     "    float a2 = 0.0f + ((1.0f * src2) - (0.0f * prev2));\n"
+     "    if (dw2) { a2 = f2[ii] + ((kp_2 * src2) - (km_2 * prev2)); }", True,
+     ALL_BOUNDARIES, False, "signed_zero",
+     "the plain constitutive spelled as the accumulation with kps = 1, kms = 0 and "
+     "zeroed inputs instead of the output select (7.2 b8, C4). It differs only on a "
+     "-0 source: MEEP stores -0, the accumulation +0, so it is ARMED ON signed_zero, "
+     "whose half-zero D lanes plant -0 on plain cells"),
+    # ---- NULL CONTROLS -----------------------------------------------------
+    ("aux_load_unconditional",
+     "float prev2 = dw2 ? w2[ii] : 0.0f;", "float prev2 = w2[ii];", False,
+     ALL_BOUNDARIES, False, "random",
+     "DECLARED NULL (7.2): the auxiliary load made unconditional while its store "
+     "stays guarded. prev2 is read only inside the guarded accumulation, so no word "
+     "changes; the guard is pinned by the module test that reads the tail's lines"),
+    ("dsqr_add_operands_commuted",
+     "    return sd_narrow_f(sd_add(sd_widen_f(own, true),\n"
+     "                              sd_scale_pow2(sd_widen_f(transverse, true), -4, true),\n"
+     "                              true), true);",
+     "    return sd_narrow_f(sd_add(sd_scale_pow2(sd_widen_f(transverse, true), -4, true),\n"
+     "                              sd_widen_f(own, true),\n"
+     "                              true), true);", False,
+     ALL_BOUNDARIES, False, "dsqr_band",
+     "NULL CONTROL: the binary64 addition's operands commuted. IEEE addition is "
+     "commutative on every non-NaN operand, signed zero included, and the software "
+     "helper is exact, so no word may change, even on the band where the two Dsqr "
+     "forms differ. A CAUGHT verdict would mean the helper is not IEEE addition"),
     ("us_cube_operands_commuted",
      "float us_cu2 = (us2 * us2) * us2;", "float us_cu2 = us2 * (us2 * us2);",
      False, ALL_BOUNDARIES, False, "random",
@@ -713,8 +861,8 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
      "spurious catches on operand order — the genuine association hazards are "
      "`chi_powers_flattened` and `pade_flattened_numerator`, which ARE caught"),
     ("partner_squares_order_swapped",
-     "((sum_20 * sum_20) + (sum_21 * sum_21))",
-     "((sum_21 * sum_21) + (sum_20 * sum_20))", False,
+     "float transverse = (g1s * g1s) + (g2s * g2s);",
+     "float transverse = (g2s * g2s) + (g1s * g1s);", False,
      ALL_BOUNDARIES, False, "random",
      "NULL CONTROL THAT RECORDS A REAL BLIND SPOT rather than a safe spelling. A "
      "WHOLESALE swap of the two transverse partners — Ez taking Dy then Dx instead "
@@ -739,8 +887,11 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         launches = 0
         for boundary_label, boundaries in BOUNDARIES:
             is_armed = boundary_label in armed_on
-            fields, pml = build(boundaries, ("Ex", "Ey", "Ez"), scalar_arm,
-                                value_class)
+            # The band class makes Ez alone nonlinear: its partners are the tiny
+            # Dx, Dy volumes, whose own squares would underflow as Ex's and Ey's gs.
+            components = (("Ez",) if value_class == "dsqr_band"
+                          else ("Ex", "Ey", "Ez"))
+            fields, pml = build(boundaries, components, scalar_arm, value_class)
             _before, reference, moved = array_path_reference(fields, pml)
             kit.assert_moved(moved, f"{label}/{boundary_label}")
             arrays, flat, chi = harness_arrays(fields, pml)
@@ -767,7 +918,8 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
             residency = Residency()
             plan = nonlinear.plan_nonlinear_constitutive_from_arrays(
                 arrays, flat, chi, codes, residency,
-                functions={shaders.CONTRACT_OFF: function})
+                functions={shaders.CONTRACT_OFF: function},
+                chunk_bounds=record_of(fields, pml))
             run_plan(plan, residency, fields)
             launches += function.launches
             differing = sum(kit.differing(getattr(fields, n), reference[n])
@@ -831,7 +983,8 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                       nonlinear._boundary_kinds(fields.grid, pml))
         residency = Residency()
         plan = nonlinear.plan_nonlinear_constitutive_from_arrays(
-            arrays, swapped, chi, codes, residency)
+            arrays, swapped, chi, codes, residency,
+            chunk_bounds=record_of(fields, pml))
         run_plan(plan, residency, fields)
         launches += plan.launches
         differing = sum(kit.differing(getattr(fields, n), reference[n])
@@ -850,11 +1003,73 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     payload["mutation_totals"]["caught_cases"] += caught
     payload["mutation_totals"]["must_catch_entries"] += 1
     kit.save(payload, out)
+
+    # THE RECORD MUTATIONS (KERNELS.md 7.2 b3, b4): planted in the chunk record the
+    # plan binds rather than in the source, because the kernel reads bounds and
+    # cannot see which division they describe.
+    for label, mutate, why in RECORD_MUTATIONS:
+        ran = caught = launches = 0
+        for boundary_label, boundaries in BOUNDARIES:
+            fields, pml = build(boundaries, ("Ex", "Ey", "Ez"), False, "random")
+            _before, reference, moved = array_path_reference(fields, pml)
+            kit.assert_moved(moved, f"{label}/{boundary_label}")
+            arrays, flat, chi = harness_arrays(fields, pml)
+            codes = tuple(nonlinear.BOUNDARY_CODES[kind] for kind in
+                          nonlinear._boundary_kinds(fields.grid, pml))
+            shipped = np.array(record_of(fields, pml), dtype=np.int32, copy=True)
+            planted = mutate(shipped.copy())
+            assert int(np.count_nonzero(planted != shipped)), (
+                f"{label}: the planted record equals the shipped one on this grid, so "
+                f"the mutation could not diverge for a reason that is the kernel's")
+            residency = Residency()
+            plan = nonlinear.plan_nonlinear_constitutive_from_arrays(
+                arrays, flat, chi, codes, residency, chunk_bounds=planted)
+            run_plan(plan, residency, fields)
+            launches += plan.launches
+            differing = sum(kit.differing(getattr(fields, n), reference[n])
+                            for n in WATCHED)
+            ran += 1
+            caught += int(differing > 0)
+        harness.record(label, kit.MutationHarness.verdict(False, ran, launches, caught),
+                       launches, caught, ran, True, why)
+        payload["mutation_totals"]["armed_cases"] += ran
+        payload["mutation_totals"]["caught_cases"] += caught
+        payload["mutation_totals"]["must_catch_entries"] += 1
+        kit.save(payload, out)
     kit.log(f"[mutations] armed {payload['mutation_totals']['caught_cases']}"
             f"/{payload['mutation_totals']['armed_cases']} cases caught across "
             f"{payload['mutation_totals']['must_catch_entries']} must-catch "
             f"entries; {payload['mutation_totals']['null_control_entries']} null "
             f"controls held")
+
+
+def _swap_lattices(record: Any) -> Any:
+    """The integer and half-integer entries exchanged on every axis."""
+    out = record.copy()
+    for axis in range(3):
+        for word in range(4):
+            out[record_index(True, axis, word)] = record[record_index(False, axis, word)]
+            out[record_index(False, axis, word)] = record[record_index(True, axis, word)]
+    return out
+
+
+def _low_bound_off_by_one(record: Any) -> Any:
+    """The half-integer x line's low run one cell longer: ``a1 + 1``."""
+    out = record.copy()
+    out[record_index(True, 0, 1)] += 1
+    return out
+
+
+#: (label, record mutation, why). Each must be caught.
+RECORD_MUTATIONS: Tuple[Tuple[str, Any, str], ...] = (
+    ("record_lattices_swapped", _swap_lattices,
+     "the integer-lattice runs bound where update_E reads the half-integer ones "
+     "(7.2 b4): an E component sits half a cell off on its own axis, so the "
+     "boundary plane of every layer moves by one cell"),
+    ("record_bound_off_by_one", _low_bound_off_by_one,
+     "a1 + 1 on the half-integer x line (7.2 b3): the first interior plane takes "
+     "the accumulation"),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -930,7 +1145,8 @@ def leg_ceiling(payload: Dict[str, Any], out: str) -> None:
         _before, reference, moved = array_path_reference(fields, pml)
         kit.assert_moved(moved, f"ceiling/{label}/below")
         residency = Residency()
-        plan = nonlinear.plan_nonlinear_constitutive(fields, pml, residency)
+        plan = nonlinear.plan_nonlinear_constitutive(
+            fields, pml, residency, chunk_bounds=record_of(fields, pml))
         assert plan is not None
         run_plan(plan, residency, fields)
         state = {n: getattr(fields, n) for n in WATCHED}
@@ -975,7 +1191,7 @@ def leg_ceiling(payload: Dict[str, Any], out: str) -> None:
             f"derived from: {named[0]!r}")
         # And the refusal must actually stop a plan, not merely be recorded.
         assert nonlinear.plan_nonlinear_constitutive(
-            fields, pml, Residency()) is None, (
+            fields, pml, Residency(), chunk_bounds=record_of(fields, pml)) is None, (
             "the predicate refused but the plan builder still returned a plan: a "
             "coverage refusal that does not stop the build is decorative")
         row = {"clause": label, "order": order, "side": "above",
@@ -1184,7 +1400,142 @@ def leg_census(payload: Dict[str, Any], out: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Leg 6: nonlinear PML spine (B -> H -> D)
+# Leg 6: the binary64 Dsqr, alone and through the kernel
+# ---------------------------------------------------------------------------
+
+#: The helper alone, launched over three float32 volumes: the bytes the kernel
+#: inlines (``nonlinear_update_e.DSQR_HELPER``), behind the same header, directive
+#: and software binary64 fragment.
+_DSQR_PROBE_KERNEL = """
+kernel void nonlinear_dsqr_probe(
+    device float*       out     [[buffer(0)]],
+    device const float* gs      [[buffer(1)]],
+    device const float* g1s     [[buffer(2)]],
+    device const float* g2s     [[buffer(3)]],
+    constant uint&      n       [[buffer(4)]],
+    uint idx [[thread_position_in_grid]])
+{
+    if (idx >= n) { return; }
+    out[idx] = nonlinear_dsqr(gs[idx], g1s[idx], g2s[idx]);
+}
+"""
+
+#: Operands per class of the helper leg.
+DSQR_OPERANDS = 1 << 20
+
+
+def dsqr_probe_source(helper: str = None) -> str:
+    """The probe library: the kernel's own prologue pieces and ``helper``."""
+    return softfp64.library_source(
+        "\n" + (nonlinear.DSQR_HELPER if helper is None else helper) + "\n"
+        + _DSQR_PROBE_KERNEL)
+
+
+def _dsqr_operands(band: bool, n: int, seed: int) -> Tuple[Any, Any, Any]:
+    rng = np.random.default_rng(seed)
+    if band:
+        gs = (np.ldexp(rng.uniform(1.0, 2.0, n), BAND_GS_EXPONENT)
+              * rng.choice((-1.0, 1.0), n)).astype(np.float32)
+        g1s = np.ldexp(rng.uniform(1.0, 2.0, n), BAND_PARTNER_EXPONENT + 2).astype(np.float32)
+        g2s = np.ldexp(rng.uniform(1.0, 2.0, n), BAND_PARTNER_EXPONENT + 2).astype(np.float32)
+    else:
+        gs, g1s, g2s = (rng.standard_normal(n).astype(np.float32) for _ in range(3))
+    return gs, g1s, g2s
+
+
+def launch_dsqr(library: Any, gs: Any, g1s: Any, g2s: Any) -> Any:
+    import torch  # noqa: PLC0415
+
+    n = int(gs.size)
+    out = torch.empty(n, dtype=torch.float32, device="mps")
+    library.nonlinear_dsqr_probe(
+        out, *(torch.from_numpy(np.ascontiguousarray(a)).to("mps")
+               for a in (gs, g1s, g2s)), n, threads=n)
+    torch.mps.synchronize()
+    return out.cpu().numpy()
+
+
+def leg_dsqr(payload: Dict[str, Any], out: str) -> None:
+    """The binary64 ``Dsqr`` as words: the helper on its band and at field scale, then
+    the shipped kernel on the ``dsqr_band`` state.
+
+    The float32 form is the CONTROL on both halves: it must differ from
+    ``stepping._nonlinear_dsqr`` on the band and nowhere at field scale, and on the
+    kernel half the number of ``src`` words it would have moved is the vacuity floor
+    (a band that moved no stored word would certify the helper and say nothing
+    about E).
+    """
+    result: Dict[str, Any] = {"helper": [], "kernel": []}
+    payload["legs"]["dsqr"] = result
+    library = compile_source(dsqr_probe_source())
+    float32_library = compile_source(dsqr_probe_source(
+        nonlinear.DSQR_HELPER.replace(
+            "    return sd_narrow_f(sd_add(sd_widen_f(own, true),\n"
+            "                              sd_scale_pow2(sd_widen_f(transverse, true), -4, true),\n"
+            "                              true), true);",
+            "    return own + 0.0625f * transverse;")))
+    for band, seed in ((True, 71), (False, 73)):
+        gs, g1s, g2s = _dsqr_operands(band, DSQR_OPERANDS, seed)
+        with flushed_host():
+            reference = stepping._nonlinear_dsqr(gs, (g1s, g2s), stepping._WHOLE)
+            shipped = launch_dsqr(library, gs, g1s, g2s)
+            float32_form = launch_dsqr(float32_library, gs, g1s, g2s)
+        row = {"class": "band" if band else "field_scale", "operands": int(gs.size),
+               "shipped_differing": TALLY.compare(shipped, reference),
+               "float32_form_differing": kit.differing(float32_form, reference)}
+        result["helper"].append(row)
+        kit.save(payload, out)
+        kit.log(f"[dsqr] helper {row['class']:<11} shipped "
+                f"{row['shipped_differing']}/{row['operands']} differ, float32 form "
+                f"{row['float32_form_differing']}/{row['operands']}")
+        assert row["shipped_differing"] == 0, row
+        if band:
+            assert row["float32_form_differing"] > row["operands"] // 10, (
+                "VACUOUS: the band does not separate the two Dsqr forms", row)
+        else:
+            assert row["float32_form_differing"] == 0, (
+                "the float32 Dsqr differs at field scale, where the two forms are "
+                "the same word: the reference or the control is not what it says", row)
+
+    for boundary_label, boundaries in BOUNDARIES:
+        fields, pml = build(boundaries, ("Ez",), False, "dsqr_band", seed=79)
+        verdict = nonlinear.nonlinear_constitutive_coverage(fields, pml, Residency())
+        assert verdict.covered, (boundary_label, verdict.reasons)
+        displacement = stepping._nonlinear_displacement(fields, pml)
+        g1s, g2s = stepping._nonlinear_transverse_sums(fields, "Ez", displacement)
+        gs, us = fields.Dz, fields.inverse_epsilon_for("Ez")
+        chi2, chi3 = fields.chi2_for("Ez"), fields.chi3_for("Ez")
+        with flushed_host():
+            exact = stepping._nonlinear_dsqr(gs, (g1s, g2s), stepping._WHOLE)
+            float32_form = gs * gs + np.float32(0.0625) * (g1s * g1s + g2s * g2s)
+            rows = [(gs * us) * stepping.calc_nonlinear_u(d, gs, us, chi2, chi3)
+                    for d in (exact, float32_form)]
+        dsqr_moved = kit.differing(exact, float32_form)
+        src_moved = kit.differing(rows[0], rows[1])
+        _before, reference, moved = array_path_reference(fields, pml)
+        kit.assert_moved(moved, f"dsqr/{boundary_label}")
+        residency = Residency()
+        plan = nonlinear.plan_nonlinear_constitutive(
+            fields, pml, residency, chunk_bounds=record_of(fields, pml))
+        assert plan is not None
+        run_plan(plan, residency, fields)
+        state = {n: getattr(fields, n) for n in WATCHED}
+        differing = TALLY.compare_state(state, reference)
+        row = {"boundaries": boundary_label, "dsqr_words_the_forms_split": dsqr_moved,
+               "src_words_the_float32_form_moves": src_moved,
+               "moved_words": moved, "differing": differing,
+               "words_compared": int(sum(kit.words(state[n]).size for n in WATCHED))}
+        result["kernel"].append(row)
+        kit.save(payload, out)
+        kit.log(f"[dsqr] kernel {boundary_label:<9} Dsqr split {dsqr_moved}, src "
+                f"the float32 form moves {src_moved}, differing={differing}")
+        assert differing == 0, row
+        assert src_moved > 0, (
+            "VACUOUS: on this state the float32 Dsqr moves no source word", row)
+
+
+# ---------------------------------------------------------------------------
+# Leg 7: nonlinear PML spine (B -> H -> D)
 # ---------------------------------------------------------------------------
 
 _SPINE_STEPS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
@@ -1195,11 +1546,18 @@ _SPINE_STEPS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
 
 
 def _spine_plan(fields: Any, pml: Any, slot: str, residency: Residency) -> Any:
-    """Build one of the three nonlinear-only admissions through its public route."""
+    """Build one of the three nonlinear-only admissions through its public route.
+
+    Each binds the one-rank record of the case's layer, the division the reference
+    ``Fields`` steps with (no driver installs another).
+    """
+    record = layer_record(fields.grid, pml)
     if slot == "update_H":
         return nonlinear.plan_nonlinear_run_constitutive(fields, pml, "H",
-                                                          residency)
-    return nonlinear.plan_nonlinear_run_pml_curl(fields, pml, slot, residency)
+                                                          residency,
+                                                          chunk_bounds=record)
+    return nonlinear.plan_nonlinear_run_pml_curl(fields, pml, slot, residency,
+                                                 chunk_bounds=record)
 
 
 def _spine_reference(fields: Any, pml: Any, slot: str) -> None:
@@ -1236,6 +1594,7 @@ def _spine_case(fields: Any, pml: Any, label: str) -> Dict[str, Any]:
          for component in ("Ex", "Ey", "Ez")},
         {component: fields.chi3_for(component)
          for component in ("Ex", "Ey", "Ez")})
+    reference.h_separated = True
 
     residency = Residency()
     plans = [(slot, watched, _spine_plan(fields, pml, slot, residency))
@@ -1247,9 +1606,13 @@ def _spine_case(fields: Any, pml: Any, label: str) -> Dict[str, Any]:
     # The original ordinary builders are the deliberately wrong admission under a
     # nonlinear field.  They MUST refuse: accepting them would make the result
     # depend on table order rather than the separate, inverted spine predicate.
-    assert launch.plan_pml_curl(fields, pml, "step_B", Residency()) is None
-    assert launch.plan_pml_curl(fields, pml, "step_D", Residency()) is None
-    assert launch.plan_constitutive(fields, pml, "H", Residency()) is None
+    record = layer_record(fields.grid, pml)
+    assert launch.plan_pml_curl(fields, pml, "step_B", Residency(),
+                                chunk_bounds=record) is None
+    assert launch.plan_pml_curl(fields, pml, "step_D", Residency(),
+                                chunk_bounds=record) is None
+    assert launch.plan_constitutive(fields, pml, "H", Residency(),
+                                    chunk_bounds=record) is None
 
     residency.sync_in()
     rows: List[Dict[str, Any]] = []
@@ -1358,6 +1721,7 @@ def main(argv: Sequence[str]) -> int:
     kit.provenance(out_dir, {
         "nonlinear_update_e.py": os.path.join(
             API_ROOT, "meep_gpu/metal_kernels/nonlinear_update_e.py"),
+        "softfp64.py": os.path.join(API_ROOT, "meep_gpu/metal_kernels/softfp64.py"),
         "stepping.py": os.path.join(API_ROOT, "meep_gpu/stepping.py"),
         "preconditions.py": os.path.join(
             API_ROOT, "meep_gpu/metal_kernels/preconditions.py"),
@@ -1374,6 +1738,7 @@ def main(argv: Sequence[str]) -> int:
         ("mutations", leg_mutations),
         ("ceiling", leg_ceiling),
         ("census", leg_census),
+        ("dsqr", leg_dsqr),
         ("spine", leg_spine),
     )
     ran = kit.run_legs(legs, payload, out, kit.wanted_legs(args.legs))
@@ -1388,13 +1753,13 @@ def main(argv: Sequence[str]) -> int:
 
     return kit.summarize(
         payload, out,
-        claim=("the Metal chi2/chi3 Pade update_E kernel reproduces "
-               "stepping.update_E word for word over the swept configuration "
-               "space, the transcription choices that decide those words are "
-               "byte-visible, the 1e29 magnitude clause admits below it and "
-               "refuses by name above it, and the nonlinear-only B/H/D spine "
-               "reuses the certified ordinary PML shaders with exact bytes and "
-               "persistent mirror continuity"),
+        claim=("the Metal chi2/chi3 Pade update_E kernel, bound to the chunk record, "
+               "reproduces stepping.update_E word for word over the swept "
+               "configuration space, its binary64 Dsqr included; the transcription "
+               "choices that decide those words are byte-visible; the 1e29 "
+               "magnitude clause admits below it and refuses by name above it; and "
+               "the nonlinear-only B/H/D spine reuses the base PML shaders with "
+               "exact bytes and persistent mirror continuity"),
         scope=("ONE sub-step, real float32 storage, active PML, k = 0, unfolded, "
                "Cartesian, no poles and no off-diagonal row; FLUSH policy, which "
                "is the only one this executor can honour. The census leg alone is "

@@ -89,6 +89,23 @@ for _path in (str(HERE), str(API)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import artifact_drift  # noqa: E402
+
+
+def leg_drift(payload: dict, label: str, pinned: Sequence[str] = ()) -> Optional[str]:
+    """Why a leg no longer describes the tree being released, or None.
+
+    A chunked round certifies chunks on earlier tips, so every leg this tool binds must
+    describe the shipped bytes by its WHOLE import record, not by the pinned files alone:
+    one file it names at other bytes, or gone, refuses the leg by name
+    (``artifact_drift.py``, the rule the rebind tools apply too). ``pinned`` are the
+    entry's pinned basenames, which the caller has already compared (to the tree, or to
+    the bound run's digests of it) with its own, more specific, refusal.
+    """
+    skip = {pinned_path(name) for name in pinned}
+    moved = [name for name in artifact_drift.artifact_moved(payload, API) if name not in skip]
+    return artifact_drift.refusal(label, moved, API) if moved else None
+
 #: entry key -> (leg directory names this tool accepts, probe path)
 #:
 #: THE SEVEN BELOW ARE THE COMPOSITION AND FUSED-PROBE WELDS, and the five added
@@ -290,8 +307,19 @@ ENTRY_MUTABLE = {"probe_sha256", "source_sha256"}
 #: The RUN facts, which live in ``runs[<capability>]`` and nowhere else. Every one is
 #: in ``fastpath.RUN_FIELDS``, asserted at import below, because ``bind_capability``
 #: refuses a field that belongs beside the digests.
+#: The run field naming the subnormal policies a record's gate RELEASED under on that
+#: capability (``fastpath.CERTIFIED_POLICIES``, asserted equal at import below). The
+#: NVIDIA tables admit a caller-installed policy other than their install default only
+#: on this field, per arm, so the composition and family records 33 Triton arms cite
+#: must be able to carry it too: without a writer here those arms could never dispatch
+#: under ``flush`` whatever the fleet measured. It is written only from released legs
+#: whose own stamps attain the policy (:func:`attained_policy`), and a second policy
+#: only from a run of the SAME legs on the same bytes and capability
+#: (:func:`second_policy_leg`, :func:`family_policy_evidence`).
+CERTIFIED_POLICIES = "certified_policies"
+
 SLOT_FIELDS = {"artifact_sha256", "log_sha256", "records", "recorded_utc", "elapsed",
-               "_this_recut", "host", "device_policy"}
+               "_this_recut", "host", "device_policy", CERTIFIED_POLICIES}
 
 #: The two slot fields that are PINS -- they name bytes. A record whose existing
 #: capabilities carry one and whose fresh run cannot produce it is REFUSED rather than
@@ -305,7 +333,8 @@ SLOT_PINS = ("artifact_sha256", "log_sha256")
 #: The run facts of ``family_recert_2026-08-14``'s record. ``families`` holds the nine
 #: per-family blocks, which are facts about nine runs and so belong inside the record
 #: for the architecture they ran on, not beside the entry's digests.
-FAMILY_SLOT_FIELDS = {"host", "records", "recorded_utc", "families", "_this_recut"}
+FAMILY_SLOT_FIELDS = {"host", "records", "recorded_utc", "families", "_this_recut",
+                      CERTIFIED_POLICIES}
 
 #: What a family record says when its gate's artifact states no step budget.
 #:
@@ -375,6 +404,10 @@ def _fastpath():
     if missing:
         raise SystemExit(f"{missing} are not fastpath.RUN_FIELDS, so bind_capability "
                          f"would refuse them; the two tables have drifted")
+    if fastpath.CERTIFIED_POLICIES != CERTIFIED_POLICIES:
+        raise SystemExit(f"fastpath.CERTIFIED_POLICIES is "
+                         f"{fastpath.CERTIFIED_POLICIES!r} and this tool writes "
+                         f"{CERTIFIED_POLICIES!r}; dispatch would never read it")
     return fastpath
 
 
@@ -690,6 +723,124 @@ def leg_capability(payload: dict, directories: Sequence[Path]
     return run_capability(payload, [str(path) for path in directories])
 
 
+def attained_policy(payload: dict) -> Optional[str]:
+    """``keep`` or ``flush``: the policy one leg ATTAINED, or ``None``.
+
+    Read through ``seed_triton_welds.policy_line``, the reader every Triton record's
+    policy line is written by; its line begins with the resolved policy. A leg that
+    states none, or whose spellings disagree, answers ``None``, which narrows the
+    evidence rather than widening it.
+    """
+    from seed_triton_welds import PolicyStampConflict, policy_line  # noqa: PLC0415
+    try:
+        line = policy_line(payload)
+    except PolicyStampConflict:
+        return None
+    head = line.split(" ", 1)[0] if isinstance(line, str) else None
+    return head if head in ("keep", "flush") else None
+
+
+def second_policy_leg(run: Path, run_rel: str, leg_names: Sequence[str],
+                      capability: str, pinned: Sequence[str],
+                      fresh_sources: Dict[str, str],
+                      policy: str) -> Tuple[Optional[dict], str]:
+    """Evidence that a composition weld's leg ALSO released under ``policy``.
+
+    ``run`` is a second composition run of the same legs (the round's ``_flush``
+    composition root). It is evidence only if the leg released, attained ``policy``,
+    ran on the bound run's capability, and recorded, in its own manifest, the digest
+    the bound run proved equal to the tree for every file the entry pins. Anything
+    else answers ``None`` with the reason, and the weld stays bound under its first
+    policy alone.
+    """
+    directory, why_not = leg_directory(run, leg_names)
+    if directory is None:
+        return None, f"the {policy} run: {why_not}"
+    artifact = directory / "gate.json"
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    verdict, read_from = released(payload)
+    if verdict is not True:
+        return None, (f"the {policy} leg {directory.name}/ reports released={verdict!r} "
+                      f"(read from {read_from})")
+    attained = attained_policy(payload)
+    if attained != policy:
+        return None, f"the {policy} leg {directory.name}/ attained {attained!r}"
+    second, _identity = leg_capability(payload, [directory, run])
+    if second != capability:
+        return None, (f"the {policy} leg ran on compute capability {second!r} and the "
+                      f"bound run on {capability!r}")
+    manifest, source = leg_digests(payload, read_staged(run), directory)
+    if manifest is None:
+        return None, f"the {policy} run: {source}"
+    absent = sorted(name for name in pinned if pinned_path(name) not in manifest)
+    moved = sorted(name for name in pinned if pinned_path(name) in manifest
+                   and manifest[pinned_path(name)] != fresh_sources.get(name))
+    if absent or moved:
+        return None, (f"the {policy} leg does not speak for the bound bytes "
+                      f"({source}): absent {absent[:3]}, other bytes for {moved[:3]}")
+    drift = leg_drift(payload, f"{run_rel}/{directory.name}/gate.json", pinned)
+    if drift:
+        return None, f"the {policy} run: {drift}"
+    return {"artifact_sha256": sha256_of(artifact),
+            "verdict_read_from": f"{run_rel}/{directory.name}/gate.json:{read_from}"}, ""
+
+
+def family_policy_evidence(root_rels: Sequence[str], families: Sequence[str],
+                           capability: str, policy: str
+                           ) -> Tuple[Optional[dict], List[str]]:
+    """Evidence that EVERY family of ``family_recert_2026-08-14`` released under ``policy``.
+
+    The entry is one weld cited by 22 arms across nine families, and dispatch reads
+    the policy evidence per entry, not per family; so a second policy is recorded only
+    when all nine families released under it, in campaign roots holding the same gate
+    names, on the same capability, with every imported digest equal to the tree.
+    One family short answers ``None`` with every reason, never a partial map.
+    """
+    reasons: List[str] = []
+    found: Dict[str, dict] = {}
+    roots = [(rel, (HERE / rel).resolve()) for rel in root_rels]
+    for family in families:
+        chosen = None
+        for rel, root in roots:
+            artifact = root / family / "gate.json"
+            if artifact.is_file():
+                payload = json.loads(artifact.read_text(encoding="utf-8"))
+                if released(payload)[0] is True:
+                    chosen = (rel, root, artifact, payload)
+                    break
+        if chosen is None:
+            reasons.append(f"{family}: no {policy} root holds a released artifact")
+            continue
+        rel, root, artifact, payload = chosen
+        row, why_not = campaign_row(root, family)
+        if row is None or row.get("exit_code") != 0 or row.get("released") is not True:
+            reasons.append(f"{family}: {why_not or 'the campaign row did not exit 0 released'}")
+            continue
+        attained = attained_policy(payload)
+        if attained != policy:
+            reasons.append(f"{family}: attained {attained!r}")
+            continue
+        second, _identity = leg_capability(payload, [root / family, root])
+        if second != capability:
+            reasons.append(f"{family}: ran on {second!r}, the bound run on {capability!r}")
+            continue
+        drift = leg_drift(payload, f"{rel}/{family}/gate.json")
+        if drift:
+            reasons.append(f"{family}: {drift}")
+            continue
+        imported = payload.get("imported_source_sha256") or {}
+        drifted = sorted(name for name, recorded in imported.items()
+                         if (API / name).is_file() and sha256_of(API / name) != recorded)
+        if not imported or drifted:
+            reasons.append(f"{family}: imported digests absent or moved ({drifted[:3]})")
+            continue
+        found[family] = {"artifact_sha256": sha256_of(artifact),
+                         "records": f"parity/meep_gpu/{rel}/{family}/gate.json"}
+    if reasons:
+        return None, reasons
+    return {"families": {name: found[name] for name in sorted(found)}}, []
+
+
 def derived_host(identity: Dict[str, Any]) -> Tuple[Optional[str], str]:
     """The slot's ``host`` line, DERIVED on every write, in the one shared spelling.
 
@@ -835,6 +986,16 @@ def main(argv=None) -> int:
                              "then certify bytes that no longer ship, and the refusal "
                              "names them. Re-running them on the same tree is the "
                              "other way out, and the one that keeps them admitted")
+    parser.add_argument("--flush-run", default=None,
+                        help="with --run: a composition run of the SAME legs under the "
+                             "flush policy, parity/meep_gpu relative. A key whose leg "
+                             "released there on the same bytes and capability gains "
+                             "'flush' in its run's certified_policies; otherwise it is "
+                             "bound under its --run policy alone and the report says why")
+    parser.add_argument("--flush-family-recert", nargs="+", default=(), metavar="ROOT",
+                        help="with --family-recert: campaign roots holding the nine "
+                             "family gates run under the flush policy. 'flush' is "
+                             "recorded only when all nine released there")
     parser.add_argument("--write", action="store_true", help="apply (default: report)")
     args = parser.parse_args(argv)
     supersede = tuple(part for part in args.supersede.split(",") if part)
@@ -843,17 +1004,30 @@ def main(argv=None) -> int:
         if args.only:
             raise SystemExit("--only selects among LEGS; --family-recert writes one "
                              "entry and takes its selection from the roots")
-        return family_recert(list(args.family_recert), args.why, supersede, args.write)
-    return recut_run(args.run, args.why, args.only, supersede, args.write)
+        if args.flush_run:
+            raise SystemExit("--flush-run belongs to --run; --family-recert takes "
+                             "--flush-family-recert")
+        return family_recert(list(args.family_recert), args.why, supersede, args.write,
+                             flush_rels=list(args.flush_family_recert))
+    if args.flush_family_recert:
+        raise SystemExit("--flush-family-recert belongs to --family-recert")
+    return recut_run(args.run, args.why, args.only, supersede, args.write,
+                     flush_rel=args.flush_run)
 
 
 def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
-              write: bool) -> int:
+              write: bool, flush_rel: Optional[str] = None) -> int:
     """Re-cut the composition welds a single composition or fleet run covers."""
     fastpath = _fastpath()
     run = (HERE / run_rel).resolve()
     if not run.is_dir():
         raise SystemExit(f"no such run directory: {run}")
+    flush_run = None
+    if flush_rel:
+        flush_run = (HERE / flush_rel).resolve()
+        if not flush_run.is_dir():
+            raise SystemExit(f"no such flush run directory: {flush_run}")
+    flush_notes: List[Tuple[str, str]] = []
     staged = read_staged(run)
     ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
 
@@ -943,6 +1117,12 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
                     f"tree disagree and this record may not be cut against either")
                 continue
             fresh_sources[name] = live
+        # AND BY ITS WHOLE IMPORT RECORD, the pinned files compared just above aside
+        # (leg_drift): a leg cut on an earlier tip may hold a moved file no pin names.
+        drift = leg_drift(payload, f"{run_rel}/{leg}/gate.json", entry["source_sha256"])
+        if drift:
+            problems.append(f"{key}: {drift}")
+            continue
 
         host, why_not = derived_host(identity)
         if host is None:
@@ -1000,6 +1180,24 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
         # another host or scheduler would inherit as a false account of its own. It
         # used to be carried unconditionally, even from a record bound to other bytes,
         # and that also made the two binding orders of one commit disagree.
+
+        # THE POLICIES THAT RELEASED (``fastpath.CERTIFIED_POLICIES``): this leg's own,
+        # and the flush run's leg of the same name when one is given and speaks for
+        # the same bytes and capability. Without it dispatch admits only the install
+        # default for the arms this weld certifies.
+        first = attained_policy(payload)
+        if first is not None:
+            run_facts[CERTIFIED_POLICIES] = {first: {
+                "artifact_sha256": sha256_of(artifact),
+                "verdict_read_from": f"{run_rel}/{leg}/gate.json:{read_from}"}}
+        if flush_run is not None and first != "flush":
+            evidence, why_not = second_policy_leg(
+                flush_run, flush_rel, leg_names, capability, list(entry["source_sha256"]),
+                fresh_sources, "flush")
+            if evidence is None:
+                flush_notes.append((key, why_not))
+            else:
+                run_facts.setdefault(CERTIFIED_POLICIES, {})["flush"] = evidence
 
         updates[key] = {
             "entry": {name: value for name, value in
@@ -1153,6 +1351,14 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
     # another architecture's record is only discoverable with both bounds in hand, and
     # discovering it after --write would mean discovering it in the ledger.
     capability = next(iter(set(capabilities.values())), "")
+    for key, why_not in flush_notes:
+        print(f"  NO FLUSH  {key}: bound under its --run policy only ({why_not})",
+              flush=True)
+    if flush_run is not None:
+        with_flush = sorted(key for key, fresh in updates.items()
+                            if "flush" in (fresh["run"].get(CERTIFIED_POLICIES) or {}))
+        print(f"  flush evidence: {len(with_flush)} of {len(updates)} records "
+              f"({', '.join(with_flush) or 'none'})", flush=True)
     target = ledger if write else json.loads(json.dumps(ledger))
     notes, bind_problems = apply_updates(target, updates, capability, supersede)
     for note in notes:
@@ -1233,7 +1439,7 @@ def _step_budget(payload: dict) -> Tuple[Any, Optional[str]]:
 
 
 def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
-                  write: bool) -> int:
+                  write: bool, flush_rels: Sequence[str] = ()) -> int:
     """Rebuild ``family_recert_2026-08-14``'s nine family records FROM A FLEET CAMPAIGN.
 
     WHY THIS MODE EXISTS. Those nine records were transcribed from the 2026-08-14
@@ -1295,6 +1501,9 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
     problems: List[str] = []
     families: Dict[str, dict] = {}
     hosts: Dict[str, str] = {}
+    # The raw machine stamps, compared and never written: the host line names the
+    # machine by its neutral label, so two machines would read alike in ``hosts``.
+    machines: Dict[str, str] = {}
     capabilities: Dict[str, str] = {}
     union: Dict[str, str] = {}
     witness: Dict[str, str] = {}
@@ -1398,6 +1607,7 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
             continue
         capabilities[family] = capability
         hosts[family] = host
+        machines[family] = str(identity.get("hostname"))
 
         budget, budget_from = _step_budget(payload)
         # A CONTRADICTION IS NOT AN ABSENCE. ``None`` means the artifact states no
@@ -1449,6 +1659,9 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
         problems.append("the families disagree about the host they ran on: "
                         + "; ".join(f"{name}: {line}"
                                     for name, line in sorted(hosts.items())))
+    if len(set(machines.values())) > 1:
+        problems.append(f"the families stamp {len(set(machines.values()))} machines; one "
+                        f"record names one GPU host")
     if problems:
         print("\nREFUSED, nothing written:", flush=True)
         for problem in problems:
@@ -1494,6 +1707,30 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
                     f"contained."),
             "recorded_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
+    # THE POLICIES THAT RELEASED (``fastpath.CERTIFIED_POLICIES``), per ENTRY: the one
+    # policy every family attained when they agree, and a second policy only when all
+    # nine released under it (:func:`family_policy_evidence`). A family whose stamp
+    # names no policy leaves the first map empty, which narrows the licence.
+    attained = {name: str(record["certified_under_subnormal_policy"]).split(" ", 1)[0]
+                for name, record in families.items()}
+    evidence: Dict[str, Any] = {}
+    if len(set(attained.values())) == 1 and next(iter(attained.values())) in ("keep",
+                                                                              "flush"):
+        evidence[next(iter(attained.values()))] = {"families": {
+            name: {"artifact_sha256": families[name]["artifact_sha256"],
+                   "records": families[name]["records"]} for name in sorted(families)}}
+    if flush_rels and "flush" not in evidence:
+        flush, reasons = family_policy_evidence(flush_rels, sorted(families), capability,
+                                                "flush")
+        if flush is None:
+            for reason in reasons:
+                print(f"  NO FLUSH  {reason}", flush=True)
+            print(f"  {key}: bound under {sorted(evidence) or 'no stated policy'} only; "
+                  f"flush is recorded when all {len(families)} families released under "
+                  f"it", flush=True)
+        else:
+            evidence["flush"] = flush
+            print(f"  {key}: flush evidence for all {len(families)} families", flush=True)
     run_facts = {
         "families": {name: families[name] for name in sorted(families)},
         "host": next(iter(set(hosts.values()))),
@@ -1510,6 +1747,8 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
                           f"compute capability {capability} from the runs' own "
                           f"identity."),
     }
+    if evidence:
+        run_facts[CERTIFIED_POLICIES] = evidence
     updates = {key: {"entry": moved, "run": run_facts, "claims": {},
                      "moves": tuple(moved),
                      "run_fields": sorted(FAMILY_SLOT_FIELDS)}}

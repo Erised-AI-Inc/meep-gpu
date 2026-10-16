@@ -23,8 +23,9 @@ tool refuses it by name, because refreshing a standing pin is
 THE DISTINCTION THIS TOOL RESTS ON. Deriving an entry from a RELEASED artifact is not
 forgery; typing one is. Every field here comes out of the gate's own record: the pins
 from ``imported_source_sha256``, the verdict from the artifact's own verdict field,
-the host from its environment block, the digest from the artifact bytes. Nothing is
-typed, and the refusals below are what keep it that way. It is the Triton twin of
+the host from its environment block (written as its neutral label,
+``neutral_labels.py``), the digest from the artifact bytes. Nothing is typed, and the
+refusals below are what keep it that way. It is the Triton twin of
 ``rebind_cuda_welds.py --seed``.
 
 WHAT IT REFUSES.
@@ -91,6 +92,7 @@ LEDGER = _API / "meep_gpu" / "triton_kernels" / "fingerprints.json"
 SHARED = ("meep_gpu/driver.py", "meep_gpu/fields.py", "meep_gpu/stepping.py",
           "meep_gpu/grid.py", "meep_gpu/pml.py", "meep_gpu/subnormal_policy.py",
           "meep_gpu/triton_kernels/launch.py", "meep_gpu/triton_kernels/kernels.py",
+          "meep_gpu/triton_kernels/forms.py",
           "meep_gpu/triton_kernels/coverage.py")
 
 
@@ -216,17 +218,16 @@ STAMP_NAME_POLICY = {
     _subnormal_policy.FLUSH: _subnormal_policy.FLUSH,
 }
 
-#: NOT READ, and why. ``policy_stamps`` holds BOTH policies of a probe that cuts each
-#: in one run (its keep install is copied into the top-level block, which is read);
-#: ``environment.subnormal_policy_stamps`` is the same two-policy record kept inside
-#: the environment block. ``expansion``, ``expansion_probe``, ``expansion_license``,
+#: NOT READ, and why. ``policy_stamps`` is a probe's per-policy record of its installs
+#: (the run's own install is copied into the top-level block, which is read);
+#: ``environment.subnormal_policy_stamps`` is the same record kept inside the
+#: environment block. ``expansion``, ``expansion_probe``, ``expansion_license``,
 #: ``unified_licenses`` and ``no_device_legs`` describe the expansion-probe artifact
 #: the gate LOADED from disk to license an arm: their stamps are another run's policy,
 #: not this one's. ``policies`` and ``rows[].policy`` are not read for the same reason
 #: as ``policy_stamps``: in the one gate that writes them (cylindrical_fused_magnetic_pair,
-#: a probe that cuts both policies in one run) they list each leg's policy, ``keep``
-#: and ``flush`` side by side by design, and the run's own install is the top-level
-#: block.
+#: which cut both policies in one run until 2026-10-10 and the campaign's one since) they
+#: list each leg's policy, and the run's own install is the top-level block.
 POLICY_NOT_READ = ("policy_stamps", "environment.subnormal_policy_stamps", "policies",
                    "rows[].policy", "expansion", "expansion_probe", "expansion_license",
                    "unified_licenses", "no_device_legs")
@@ -544,7 +545,9 @@ def main(argv=None) -> int:
         # would go back to. It was defensible only while every gate ran on one box;
         # it is a forgery the moment one does not, and nothing in the entry would
         # say so. The gates record it now (parity/meep_gpu/triton_device_identity.py)
-        # and a gate that does not is refused by name.
+        # and a gate that does not is refused by name. The line WRITES the neutral
+        # label of the machine the run stamped (neutral_labels.py), never the stamp:
+        # the ledger ships, and the raw stamp stays in the run's own artifact.
         host = rebind_triton_welds._host_line(identity)
         if host is None:
             refused.append((sub.name, "neither the artifact's own identity block nor "

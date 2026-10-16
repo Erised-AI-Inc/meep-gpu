@@ -74,11 +74,11 @@ RESULTS = _HERE / "results"
 #: THE ORDER IS THE ARGUMENT. A multi-leg campaign has one leg whose licence is the
 #: SHIPPED behaviour — the harness installs nothing and the ladder does its own work
 #: — and the others are controls around it (a policy installed from outside, a
-#: policy the table refuses, an expansion licence supplied). A weld binds the bytes
+#: policy the table refuses). A weld binds the bytes
 #: a gate executed, and the leg that executed them the way a user's process would is
 #: the one to bind. Preferring any other would make the record's own verdict a
 #: statement about a harness rather than about the product.
-CAMPAIGN_LEGS = ("shipped", "harness_flush", "shipped_expansion_probe")
+CAMPAIGN_LEGS = ("shipped", "harness_flush")
 
 
 def _artifact_for(family: str, stamp: str) -> Path:

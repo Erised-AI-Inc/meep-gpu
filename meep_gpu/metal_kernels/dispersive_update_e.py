@@ -1,10 +1,17 @@
 """Real PML dispersive ``update_E`` for the experimental Metal composer.
 
-For each electric component this transcribes the array path exactly: ordered
-``D - P0 - ...``, inverse epsilon, a pre-store ``f_w`` load, then the two distinct
-PML accumulations ``(E + kps*src) - kms*prev``. The family is wired only in the
-experimental Metal composer after dedicated MPS byte and full-step residency
-evidence with :mod:`.ade_update_p`.
+For each electric component this transcribes the array path
+(``stepping.update_E`` with polarizations, ``stepping._apply_constitutive_regions``):
+the ordered ``((D - P0) - P1) - ...`` (``Fields.displacement_minus_polarization``),
+the constitutive product ``src = (D - sum P) * inv_eps``, then MEEP's per-chunk form,
+selected on the chunk record the plan binds last (:data:`RECORD_BUFFER`). On a cell
+whose chunk carries the component's own (``dsigw``) layer -- its own axis's
+half-integer membership line, the line the base constitutive kernel selects on
+(``shaders.constitutive_bounds_block("E")``) -- ``prev`` is read before ``f_w`` is
+written and ``E = E + ((kps*src) - (kms*prev))``, the right-hand side formed first
+(step_generic.cpp:689, :697); everywhere else ``E = src``, an output select, and
+``f_w`` is neither read nor written. The family is wired only in the experimental
+Metal composer, beside :mod:`.ade_update_p`.
 """
 
 from __future__ import annotations
@@ -19,6 +26,7 @@ from ..triton_kernels.coverage import (
     _coefficient_reasons, _inverse_epsilon_reasons, _susceptibility_reasons,
     _volume_reasons,
 )
+from . import chunk_bounds as _chunk_bounds
 from . import shaders, templates
 from .ade_update_p import _physical_name
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
@@ -28,8 +36,14 @@ FAMILY = "dispersive_update_e"
 MAX_POLES = 8
 E_TERMS = (("Ex", "Dx", 0, "x"), ("Ey", "Dy", 1, "y"), ("Ez", "Dz", 2, "z"))
 
+#: The chunk record's binding index: last, one past ``n_elem``.
+RECORD_BUFFER = 18
+
+#: Buffer bindings the shader declares: 14 volumes, 4 scalars and the record.
+BINDING_COUNT = 19
+
 __all__ = [
-    "E_TERMS", "FAMILY", "MAX_POLES", "MetalDispersiveEPlan",
+    "BINDING_COUNT", "E_TERMS", "FAMILY", "MAX_POLES", "MetalDispersiveEPlan", "RECORD_BUFFER",
     "dispersive_e_source", "compile_dispersive_e", "metal_dispersive_e_coverage",
     "plan_metal_dispersive_e", "_plan_metal_dispersive_e_covered",
 ]
@@ -38,6 +52,7 @@ _TEMPLATE = r"""
 #include <metal_stdlib>
 using namespace metal;
 __CONTRACT__
+__RECORD_STRUCT__
 kernel void dispersive_e_component(
     device float*       e_out  [[buffer(0)]],
     device float*       fw     [[buffer(1)]],
@@ -57,6 +72,7 @@ kernel void dispersive_e_component(
     constant uint& ny           [[buffer(15)]],
     constant uint& nz           [[buffer(16)]],
     constant uint& n_elem       [[buffer(17)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
 __BODY__
@@ -73,15 +89,25 @@ def dispersive_e_source(pole_count: int, axis: int,
     coordinate = ("i", "j", "k")[axis]
     chain = "\n".join(f"    source = source - p{index}[idx];"
                       for index in range(int(pole_count)))
-    body = "\n".join((templates.GUARD, templates.DECODE_IJK,
-                       "    float prev = fw[idx];", "    float source = d_in[idx];",
-                       chain, "    float src = source * inv_e[idx];", "    fw[idx] = src;",
-                       "    float value = e_out[idx];",
-                       f"    value = value + kps[{coordinate}] * src;",
-                       f"    value = value - kms[{coordinate}] * prev;",
-                       "    e_out[idx] = value;"))
+    lines = [templates.GUARD, templates.DECODE_IJK, "",
+             "    // --- the chunk record: this component's own-axis membership --------",
+             _chunk_bounds.prologue(((True, axis),)), "",
+             f"    const bool dw = {_chunk_bounds.membership_name(True, axis)};",
+             "    float prev = dw ? fw[idx] : 0.0f;",
+             "    float source = d_in[idx];"]
+    if chain:
+        lines.append(chain)
+    lines.extend(("    float src = source * inv_e[idx];",
+                  "    if (dw) { fw[idx] = src; }",
+                  "    float value = src;",
+                  f"    if (dw) {{ value = e_out[idx] + ((kps[{coordinate}] * src) - "
+                  f"(kms[{coordinate}] * prev)); }}",
+                  "    e_out[idx] = value;"))
     return templates.substitute(_TEMPLATE, {
-        "__CONTRACT__": templates.contraction_pragma(contract), "__BODY__": body,
+        "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(RECORD_BUFFER),
+        "__BODY__": "\n".join(lines),
     })
 
 
@@ -186,15 +212,27 @@ class _Entry:
 
 
 class MetalDispersiveEPlan:
+    """One launch per electric component, the chunk record bound last.
+
+    ``chunk_bounds`` is the host record the plan binds (checked against the grid by
+    :func:`.chunk_bounds.plan_words` when the plan is built); the device copy is
+    plan-owned, outside the residency registry, as every ``Params`` tensor is.
+    """
+
     performs_device_work = True
     replaces_sub_steps = ("update_E",)
 
     def __init__(self, entries: Sequence[_Entry], residency: Residency,
                  volumes: Sequence[str], functions: Mapping[Tuple[str, int, int], Any],
-                 tensors: Mapping[int, Any]) -> None:
+                 tensors: Mapping[int, Any], *, chunk_bounds: Any,
+                 record_tensor: Any = None) -> None:
         self.entries, self.residency = tuple(entries), residency
         self.volumes = tuple(dict.fromkeys(volumes))
         self._functions, self._tensors = dict(functions), dict(tensors)
+        self.chunk_bounds = chunk_bounds
+        self._record_tensor = (record_tensor if record_tensor is not None
+                               else _chunk_bounds.tensor(
+                                   chunk_bounds, str(getattr(residency, "device", "mps"))))
         self.launches = self.runs = 0
         self.launches_per_run = len(self.entries)
 
@@ -213,7 +251,7 @@ class MetalDispersiveEPlan:
                      self._tensors[id(entry.displacement)], self._tensors[id(entry.inverse_epsilon)],
                      *(self._tensors[id(value)] for value in slots),
                      self._tensors[id(entry.kps)], self._tensors[id(entry.kms)],
-                     *map(int, shape), int(entry.target.size))
+                     *map(int, shape), int(entry.target.size), self._record_tensor)
             self.launches += 1
         self.runs += 1
 
@@ -222,8 +260,13 @@ def plan_metal_dispersive_e(
         fields: Any, pml: Any, residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[Tuple[str, int, int], Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalDispersiveEPlan]:
     """Build the ordinary (unfolded) PML stored-E plan, or refuse it.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``) and has no default: the kernel selects each cell's
+    constitutive form on it.
 
     The binding construction intentionally lives in
     :func:`_plan_metal_dispersive_e_covered`.  A mirror fold changes neither this
@@ -235,13 +278,15 @@ def plan_metal_dispersive_e(
     if not metal_dispersive_e_coverage(fields, pml, residency).covered:
         return None
     return _plan_metal_dispersive_e_covered(
-        fields, pml, residency, contract_variants, functions)
+        fields, pml, residency, contract_variants, functions,
+        chunk_bounds=chunk_bounds)
 
 
 def _plan_metal_dispersive_e_covered(
         fields: Any, pml: Any, residency: Residency,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[Tuple[str, int, int], Any]] = None,
+        *, chunk_bounds: Any,
         ) -> MetalDispersiveEPlan:
     """Bind the pointwise stored-E kernel after a family-specific predicate passed.
 
@@ -251,6 +296,8 @@ def _plan_metal_dispersive_e_covered(
     device gate proves this builder over an actual folded stored extent.
     """
     assert residency is not None and pml is not None
+    record = _chunk_bounds.plan_words(chunk_bounds, fields.grid.shape,
+                                      "plan_metal_dispersive_e")
     tensors: Dict[int, Any] = {}
     volumes: List[str] = []
     entries: List[_Entry] = []
@@ -286,7 +333,8 @@ def _plan_metal_dispersive_e_covered(
     for key in required:
         if key not in selected:
             selected[key] = compile_dispersive_e(key[1], key[2], key[0])
-    return MetalDispersiveEPlan(entries, residency, volumes, selected, tensors)
+    return MetalDispersiveEPlan(entries, residency, volumes, selected, tensors,
+                                chunk_bounds=record)
 
 
 def _arm_coverage(context: Any, slot: str) -> Coverage:
@@ -296,7 +344,8 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
 
 def _arm_plan(context: Any, slot: str) -> Optional[MetalDispersiveEPlan]:
     return (plan_metal_dispersive_e(context.fields, context.pml, context.residency,
-                                    context.contract_variants)
+                                    context.contract_variants,
+                                    chunk_bounds=context.chunk_bounds)
             if slot == "update_E" else None)
 
 

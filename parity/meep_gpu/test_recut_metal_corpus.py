@@ -103,35 +103,6 @@ def test_verify_runtime_sources_rehashes_the_source_at_campaign_close(tmp_path):
         f"runtime source changed during campaign: {source}"]
 
 
-def test_probe_validation_uses_special_kzs_beta_specific_parser(monkeypatch, tmp_path):
-    probes = {}
-    for name in corpus.PROBE_ENVIRONMENTS:
-        path = tmp_path / f"{name}.json"
-        path.write_text("{}", encoding="utf-8")
-        probes[name] = path
-
-    class Parser:
-        @staticmethod
-        def expansion_from_probe(_record):
-            return "FMA_V1"
-
-    class Special:
-        @staticmethod
-        def beta_expansion_from_probe(_record):
-            return "NAIVE"
-
-    import meep_gpu.metal_kernels as kernels
-
-    monkeypatch.setattr(kernels, "complex_fields", Parser, raising=False)
-    monkeypatch.setattr(kernels, "folded_complex", Parser, raising=False)
-    monkeypatch.setattr(kernels, "cylindrical_complex", Parser, raising=False)
-    monkeypatch.setattr(kernels, "special_kz", Special, raising=False)
-    assert corpus.validate_probe_records(probes) == {
-        "complex": "FMA_V1", "special_kz": "NAIVE",
-        "folded_complex": "FMA_V1", "cylindrical_complex": "FMA_V1",
-    }
-
-
 def test_canonicalize_preserves_a_missing_ledger_row_as_unmeasured():
     expected = [_ledger("Case.one", {"a": 1})]
     rows, errors = corpus.canonicalize_rows(
@@ -144,24 +115,20 @@ def test_canonicalize_preserves_a_missing_ledger_row_as_unmeasured():
 
 def test_module_child_dispatch_uses_output_jsonl_keyword(monkeypatch, tmp_path):
     """The parent must reach module replay instead of failing on its output name."""
-    probes = {name: tmp_path / f"{name}.json" for name in corpus.PROBE_ENVIRONMENTS}
     observed = {}
 
     def fake_child_module(*, module_path, wanted, output_jsonl, progress_log,
-                          probes, case_timeout, take_all):
+                          case_timeout, take_all):
         observed.update({
             "module_path": module_path,
             "wanted": wanted,
             "output_jsonl": output_jsonl,
             "progress_log": progress_log,
-            "probes": probes,
             "case_timeout": case_timeout,
             "take_all": take_all,
         })
         return 23
 
-    monkeypatch.setattr(corpus, "_probe_paths", lambda _values: probes)
-    monkeypatch.setattr(corpus, "validate_probe_records", lambda _probes: {})
     monkeypatch.setattr(corpus, "child_module", fake_child_module)
 
     result = corpus.main([
@@ -177,7 +144,6 @@ def test_module_child_dispatch_uses_output_jsonl_keyword(monkeypatch, tmp_path):
         "wanted": {"Case.test"},
         "output_jsonl": tmp_path / "rows.jsonl",
         "progress_log": tmp_path / "progress.log",
-        "probes": probes,
         "case_timeout": 17.0,
         "take_all": True,
     }

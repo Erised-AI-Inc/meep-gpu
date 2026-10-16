@@ -14,12 +14,10 @@ the arithmetic would mirror a defect instead of executing it, which is a failure
 mode this project has measured (three planted assembly defects, 86 of 87 tests
 still green).
 
-THE ONE FACT THIS FAMILY OWNS THAT ITS FLOAT32 SIBLING DOES NOT is the complex ARM.
-``complex_no_pml_stored_e`` takes its expansion from the measured probe;
-``ade_update_p`` BAKES ``FMA_V1`` into its complex body (ade_update_p.py:105). One
-fused source carries one set of helpers under one set of names, so the two must
-agree — and this suite pins that the module READS the ADE half's arm out of its
-emitted text rather than restating it, and REFUSES by name when they disagree.
+THE ADE HALF NAMES NO COMPLEX ARM. Its complex body is MEEP's two real passes,
+each product a real word times one part, with no complex helper; so whichever helper
+body the E half is emitted with cannot disagree with it in the one fused scope. This
+suite pins that absence rather than an arm clause.
 """
 
 from __future__ import annotations
@@ -39,12 +37,6 @@ from meep_gpu.metal_kernels import (  # noqa: E402
 )
 from meep_gpu.metal_kernels.device import MAX_BUFFER_BINDINGS  # noqa: E402
 
-#: The arm every text test emits at. Which arm the PLATFORM licenses is a
-#: measurement (`ade_expansion_arm`) and is asserted separately; pinning it here
-#: would make every transcription test depend on that measurement's answer.
-ARM = "FMA_V1"
-
-
 # ---------------------------------------------------------------------------
 # 1. The source is a transcription of two certified bodies, and it PARSES as one
 # ---------------------------------------------------------------------------
@@ -56,15 +48,15 @@ def test_the_complex_ade_recurrence_is_the_certified_bodys_own_lines():
     and in this family's, with only the documented pointer renames applied.
     """
     certified = ade_update_p.ade_source("complex64", True)
-    fused = family.complex_fused_ade_chain_source(2, (True, True), ARM)
-    for line in ("float2 a = c_mul_field_left(p, c_now);",
-                 "float2 b = c_mul_coefficient_left(c_prev, q);",
-                 "float2 sw = c_mul_coefficient_left(s, w);",
-                 "float2 d = c_mul_coefficient_left(c_drive, sw);"):
+    fused = family.complex_fused_ade_chain_source(2, (True, True))
+    for line in ("float2 a = two_minus_od * p;",
+                 "float2 b = gamma1 * q;",
+                 "float2 sw = s * w;",
+                 "float2 d = omega0dtsqr * sw;"):
         assert f"    {line}" in certified, f"the certified body's {line!r} moved"
         assert f"        {line}" in fused, (
             f"{line!r} is not the certified line; it is a re-derivation")
-    store = "p_out[idx] = (a + b) + d;"
+    store = "p_out[idx] = gamma1inv * ((a - b) + d);"
     assert f"    {store}" in certified
     for index in (0, 1):
         assert f"        {store.replace('p_out', f'o{index}')}" in fused, (
@@ -79,7 +71,7 @@ def test_the_shared_pole_pointer_is_the_fusion_and_it_is_bound_once():
     from the SIGNATURE rather than described in prose: the emitted parameter list
     must declare ``p{k}`` once and never a ``p_now``.
     """
-    fused = family.complex_fused_ade_chain_source(3, (False, False, False), ARM)
+    fused = family.complex_fused_ade_chain_source(3, (False, False, False))
     signature = fused.split("uint idx [[thread_position_in_grid]]")[0]
     assert "p_now" not in signature
     for index in range(3):
@@ -92,8 +84,8 @@ def test_the_shared_pole_pointer_is_the_fusion_and_it_is_bound_once():
 
 
 def test_the_pole_chain_and_the_constitutive_are_the_certified_e_bodys_own():
-    certified = complex_no_pml_stored_e.complex_stored_e_source(2, ARM)
-    fused = family.complex_fused_ade_chain_source(2, (True, True), ARM)
+    certified = complex_no_pml_stored_e.complex_stored_e_source(2)
+    fused = family.complex_fused_ade_chain_source(2, (True, True))
     for line in ("    float2 source = d_in[idx];",
                  "    source = source - p0[idx];",
                  "    source = source - p1[idx];"):
@@ -107,10 +99,10 @@ def test_the_one_rewritten_line_is_exactly_the_split_and_nothing_else():
     ``e_out[idx] = `` replaced by ``float2 e = `` — so a future edit that changed
     the arithmetic while keeping the shape fails here.
     """
-    certified = complex_no_pml_stored_e.complex_stored_e_source(1, ARM)
+    certified = complex_no_pml_stored_e.complex_stored_e_source(1)
     stored = "    e_out[idx] = c_mul_field_left(source, inv_e[idx]);"
     assert stored in certified
-    fused = family.complex_fused_ade_chain_source(1, (False,), ARM)
+    fused = family.complex_fused_ade_chain_source(1, (False,))
     named = stored.replace("e_out[idx] = ", "float2 e = ")
     assert named in fused, "the constitutive product is not the certified line split"
     assert "    e_out[idx] = e;" in fused
@@ -120,14 +112,14 @@ def test_the_one_rewritten_line_is_exactly_the_split_and_nothing_else():
 def test_the_seam_reads_a_register_where_the_certified_ade_read_a_volume():
     certified = ade_update_p.ade_source("complex64", False)
     assert "    float2 w = drive[idx];" in certified
-    fused = family.complex_fused_ade_chain_source(1, (False,), ARM)
+    fused = family.complex_fused_ade_chain_source(1, (False,))
     assert "        float2 w = e;" in fused
     assert "drive[idx]" not in fused, "the drive volume is still being read"
 
 
 def test_the_helper_block_is_the_certified_emitters_own_text():
-    fused = family.complex_fused_ade_chain_source(1, (True,), ARM)
-    assert templates.complex_helpers(ARM) in fused
+    fused = family.complex_fused_ade_chain_source(1, (True,))
+    assert templates.complex_helpers() in fused
 
 
 # ---------------------------------------------------------------------------
@@ -144,28 +136,30 @@ def test_the_body_is_straight_line_so_no_mutation_can_be_dead(poles):
     emitted TEXT rather than argued from the source layout.
     """
     flags = tuple((index % 2) == 0 for index in range(poles))
-    source = family.complex_fused_ade_chain_source(poles, flags, ARM)
+    source = family.complex_fused_ade_chain_source(poles, flags)
     assert len(re.findall(r"\bif\s*\(", source)) == 1
     assert "?" not in source
     assert not re.findall(r"\b(for|while)\s*\(", source)
 
 
-def test_c_mul_is_emitted_and_never_called_which_is_why_no_needle_is_armed_in_it():
+def test_only_the_field_left_helper_is_called_which_is_why_no_needle_is_armed_elsewhere():
     """The other half of the dead-code guard, and it is a real one.
 
     The helper block is emitted VERBATIM from :func:`.templates.complex_helpers` —
-    all three orientations, because that is the certified emitters' own text — but
-    an E->P chain has no complex-by-complex multiply, so ``c_mul``'s body is
-    emitted and never reached. An arm mutation planted there would report UNCAUGHT
-    while measuring nothing, which is why the gate arms only the two called ones.
+    the certified emitters' own text — but only the E half's ``D * inv_eps`` calls a
+    helper (``c_mul_field_left``): the ADE half's products are written inline, one
+    per part, and an E->P chain has no complex-by-complex multiply. A mutation
+    planted in an uncalled helper body would report UNCAUGHT while measuring nothing,
+    which is why the gate arms none there.
     """
-    source = family.complex_fused_ade_chain_source(2, (True, False), ARM)
+    source = family.complex_fused_ade_chain_source(2, (True, False))
     body = source.split("kernel void", 1)[1]
     assert "c_mul(" not in body, "c_mul is called after all; the gate must arm it"
     assert "c_mul_field_left(" in body
-    assert "c_mul_coefficient_left(" in body
-    # and it IS defined, so the absence above is about reachability not spelling
+    assert "c_mul_coefficient_left(" not in body
+    # and both ARE defined, so the absence above is about reachability not spelling
     assert "static inline float2 c_mul(float2 z, float2 p)" in source
+    assert "static inline float2 c_mul_coefficient_left(float c, float2 z)" in source
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +173,7 @@ def test_binding_count_equals_the_emitted_attribute_count(poles):
         expected = family.binding_count(poles, volumes)
         if expected > MAX_BUFFER_BINDINGS:
             continue
-        source = family.complex_fused_ade_chain_source(poles, flags, ARM)
+        source = family.complex_fused_ade_chain_source(poles, flags)
         indices = [int(m) for m in re.findall(r"\[\[buffer\((\d+)\)\]\]", source)]
         assert sorted(indices) == list(range(expected)), (
             f"{poles} poles / {volumes} volume sigmas: the emitted signature "
@@ -191,13 +185,13 @@ def test_an_over_ceiling_signature_is_refused_by_name_not_left_to_the_compiler()
     flags = (True,) * poles
     assert family.binding_count(poles, poles) > MAX_BUFFER_BINDINGS
     with pytest.raises(ValueError) as raised:
-        family.complex_fused_ade_chain_source(poles, flags, ARM)
+        family.complex_fused_ade_chain_source(poles, flags)
     assert "device.py:72" in str(raised.value)
 
 
 def test_the_pole_slots_are_not_padded_to_eight():
     """The pad is what would break the ceiling; its absence is the design."""
-    source = family.complex_fused_ade_chain_source(2, (False, False), ARM)
+    source = family.complex_fused_ade_chain_source(2, (False, False))
     assert "p2" not in source.split("uint idx")[0]
 
 
@@ -207,33 +201,21 @@ def test_the_packer_is_the_float32_familys_own_and_not_a_second_layout():
     assert family.params_words is fused_ade_chain.params_words
 
 
+def test_the_ade_half_calls_no_complex_helper():
+    """MEEP's DOCMP2 per-part products: no helper, no complex-by-complex product."""
+    for volume in (False, True):
+        certified = ade_update_p.ade_source("complex64", volume)
+        assert "c_mul" not in certified
+        assert templates.complex_helpers() not in certified
+    fused = family.complex_fused_ade_chain_source(2, (True, False))
+    ade_half = fused[fused.index("update_P for every pole"):]
+    assert "c_mul" not in ade_half
+    assert not hasattr(family, "ade_expansion_arm")
+
+
 # ---------------------------------------------------------------------------
-# 4. The complex ARM is READ from the certified emitter, never restated
+# 4. The ADE half names no complex arm
 # ---------------------------------------------------------------------------
-
-def test_the_ade_halfs_arm_is_parsed_out_of_its_emitted_source():
-    """A change to ade_update_p.py:105 must move this answer, not leave it stale."""
-    arm = family.ade_expansion_arm()
-    assert arm in templates.EXPANSION_ARMS
-    assert templates.complex_helpers(arm) in ade_update_p.ade_source("complex64", True)
-    # and the module holds no literal copy of the answer
-    text = pathlib.Path(family.__file__).read_text()
-    body = text.split('"""', 2)[-1]          # past the module docstring
-    assert f'"{arm}"' not in body and f"'{arm}'" not in body, (
-        "the arm is restated as a literal somewhere in the module body; it must "
-        "be parsed so ade_update_p.py:105 moving moves this with it")
-
-
-def test_a_probe_that_licenses_the_other_arm_is_refused_by_name():
-    other = next(a for a in templates.EXPANSION_ARMS
-                 if a != family.ade_expansion_arm())
-    probe = {"backend": "numpy",
-             "patterns": {name: other for name in (
-                 "c8_mul_c8", "c8_mul_c8_scalar_right", "c8_mul_f4_field_left",
-                 "f4_mul_c8_coefficient_left", "python_float_left")}}
-    verdict = family.complex_fused_ade_chain_coverage(_Fields(), None, probe=probe)
-    assert verdict.covered is False
-    assert any("cannot carry two arms" in reason for reason in verdict.reasons)
 
 
 # ---------------------------------------------------------------------------

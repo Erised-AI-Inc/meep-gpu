@@ -1411,63 +1411,28 @@ def test_boundary_condition_refuses_an_axis_or_a_side_it_cannot_resolve():
             grid.boundary_condition(0, side)
 
 
-# --- where the layer bites, and which cells MEEP's chunking hands to it ------------
+# --- where the layer grades (which cells MEEP's chunking hands to it: test_chunk_map) -
 
 
-def test_sigma_bites_matches_the_stored_grading_at_both_yee_offsets():
-    """`sigma_bites` is the coefficient tables' own support, not a re-derivation.
+def test_the_graded_sigma_is_exactly_zero_at_the_snapped_extent():
+    """The grading's support, at integer positions, read from the stored profile.
 
-    The integer set must agree with `get_sigma_profile` (the same grading pass), the
-    first cell AT the snapped extent must read False with no tolerance (MEEP's u = 0
-    sample carries sigma exactly 0 — why "touching the inner edge" is exact), and the
-    half-integer set is the B-side support, whose deepest graded low-face sample is
-    cell extent/2 - 1 (distance 2j+1 < extent) — half a cell shy of the integer edge.
+    The first cell AT the snapped extent reads exactly 0 with no tolerance (MEEP's
+    ``u = 0`` sample carries sigma exactly 0), cell 0 of a wrapping axis is the image
+    of the high wall and is graded, and an axis with no layer grades nowhere. Which
+    FORM a cell steps is not this: it is its chunk's (``chunk_map``; a chunk carrying
+    a layer owns cells whose own sigma is zero).
     """
     grid = Grid(resolution=20.0, cell_size=(12.0, 12.0, 0.0), dimensions=2)
     layer = PML(grid, thickness={"x": 40, "y": 40})
-    integer = layer.sigma_bites("x")
-    assert integer.shape == (grid.nx,)
-    assert numpy.array_equal(integer, layer.get_sigma_profile("x") != 0.0)
-    # 40-cell faces on a wrapping axis: cell 0 is the image of the high wall (bites),
+    graded = layer.get_sigma_profile("x") != 0.0
+    assert graded.shape == (grid.nx,)
+    # 40-cell faces on a wrapping axis: cell 0 is the image of the high wall (graded),
     # cells 1..39 grade the low face, cell 40 sits AT the extent with sigma exactly 0.
-    assert bool(integer[0]) is True and bool(integer[39]) is True
-    assert bool(integer[40]) is False and bool(integer[120]) is False
-    assert bool(integer[grid.nx - 40]) is False and bool(integer[grid.nx - 39]) is True
-    half = layer.sigma_bites("x", half_integer=True)
-    assert bool(half[0]) is True and bool(half[39]) is True  # half-index 79 < 80.
-    assert bool(half[40]) is False  # half-index 81 is already outside the extent.
-    # An axis with no layer bites nowhere at either offset.
-    assert not layer.sigma_bites("z").any()
-    assert not layer.sigma_bites("z", half_integer=True).any()
-
-
-def test_in_pml_chunk_owns_one_integer_plane_past_the_inner_edge():
-    """The chunk rule is structure.cpp:509-524 ownership, NOT the sigma support.
-
-    MEEP's per-side effort volume is `int(cells + 1.5)` array cells from the wall and
-    chunk selection reads sigsize per CHUNK (step_db.cpp:56-59), so the boundary
-    cells whose own sigma is exactly zero still step the both-active branch.
-    Measured discriminators on the 12x12 evidence-packet cell (CW Ez at x = -5,
-    against CPU MEEP): deposits at y = -4.0 (cell 40) and y = -3.975 (cells 40+41)
-    are both-active — mirroring either reads 2.3e-01 … 4.6e-01 where leaving them
-    split reads ~7e-07 — while y = -3.9 (cell 42) runs unsplit (4.9583e-01
-    unmirrored, 5.6135e-07 mirrored). Integer samples: a chunk spanning doubled
-    [c0, c1] owns c0+2..c1, so the low chunk owns cells 1..span and the boundary
-    plane belongs to it, not to the interior neighbour; half-integer samples are
-    c0+1..c1-1, cells 0..span-1.
-    """
-    grid = Grid(resolution=20.0, cell_size=(12.0, 12.0, 0.0), dimensions=2)
-    layer = PML(grid, thickness={"x": 40, "y": 40})
-    integer = layer.in_pml_chunk("y")
-    assert bool(integer[40]) is True and bool(integer[41]) is True  # the measured pair
-    assert bool(integer[42]) is False  # the measured unsplit cell
-    assert bool(integer[grid.ny - 41]) is False and bool(integer[grid.ny - 40]) is True
-    assert bool(integer[0]) is True, "cell 0 is the high wall's own plane on a wrapping axis"
-    half = layer.in_pml_chunk("y", half_integer=True)
-    assert bool(half[0]) is True and bool(half[40]) is True
-    assert bool(half[41]) is False
-    assert bool(half[grid.ny - 41]) is True and bool(half[grid.ny - 42]) is False
-    assert not layer.in_pml_chunk("z").any()
+    assert bool(graded[0]) is True and bool(graded[39]) is True
+    assert bool(graded[40]) is False and bool(graded[120]) is False
+    assert bool(graded[grid.nx - 40]) is False and bool(graded[grid.nx - 39]) is True
+    assert not (layer.get_sigma_profile("z") != 0.0).any()
 
 
 def test_beta_is_carried_as_a_scalar_and_refused_off_a_2d_cartesian_grid():

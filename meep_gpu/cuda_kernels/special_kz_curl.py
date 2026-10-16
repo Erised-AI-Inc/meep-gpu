@@ -23,17 +23,23 @@ THE FAMILY ADDS ONE TERM TO THE TWO CURL SUB-STEPS AND CHANGES NOTHING ELSE:
 * rounding (stepping.py:811) -- ``partner_values.dtype.type(coefficient)``, rounded
   ONCE on the host, then ``return -(c * partner)``: the negation is of the PRODUCT,
   in curl sign convention, because the caller subtracts;
-* position -- added to ``curl`` AFTER ``_curl_from_operands`` (:342 / :429) and
-  BEFORE ``_mask_non_owned_cells`` (:369 / :450) and ``_apply_curl`` (:374 / :455),
-  so the increment rides the SAME split-field kms/sinv ladder as the finite
-  difference curl, exactly and linearly;
+* position -- a PASS OF ITS OWN after every component's curl (step_db.cpp:161-175;
+  ``stepping.step_B`` / ``step_D``'s beta loop), through its own additive ladder
+  (``stepping._apply_folded_increment``; step_generic.cpp:255-333): ``f += raw*sinv``
+  outside the component's dsigu chunks, ``fu += (df = raw*sinv); f += sinv_u*df``
+  inside them, MEEP's unowned cells left as they are. Each kernel here is the
+  CERTIFIED root curl kernel with that pass inserted after the ``pml_apply`` call of
+  the x and y components (``folded_pass.beta_insert``), on the words ``pml_apply``
+  just stored. Until 0.10 the increment was added to the curl before the masks and
+  rode the curl's own recurrence, which is a different number (bit_parity_0_10
+  KERNELS.md section 6);
 * partner -- the SAME-CELL component snapshot (:293 electric, :408 magnetic). Per
   ``B_CURL_TERMS`` / ``D_CURL_TERMS`` (stepping.py:214-223) every beta partner is a
   CENTRE operand the certified curl already loads: Bx takes ``f2`` (the second
   source's centre, Ey), By takes ``f1`` (the first source's centre, Ex), Dx takes
   ``f2`` (Hy) and Dy ``f1`` (Hx). The term therefore costs no new pointer and no
   extra memory traffic -- and the load reused must be the UNSHIFTED centre one,
-  never an ``sf``/``ss`` shifted operand, which is a gate mutation;
+  never an ``sf``/``ss`` shifted operand;
 * no new state array, no ghost rule, no fold parity, no wrap. ``update_H`` /
   ``update_E`` (``_apply_constitutive_pml``, stepping.py:2112) read nothing
   beta-dependent, which is why :func:`covers_special_kz_constitutive` below is an
@@ -74,6 +80,7 @@ import pathlib
 from typing import Any, Dict, Tuple
 
 from . import coverage as _coverage
+from . import folded_pass as _folded_pass
 
 
 def _sibling_prelude() -> str:
@@ -166,174 +173,58 @@ def beta_curl_coefficients(beta: float, dt: float) -> Tuple[float, float]:
                  for sign in (1.0, -1.0))
 
 
-# B side: the CERTIFIED ``step_B_pml_real`` block for block, with the beta
-# insert between the curl and the masks -- the array path's own order (:361/:363
-# after :342, before :369). Bx's partner is ``f2`` (the Ey CENTRE the stencil
-# already loaded) at sign +1, By's is ``f1`` (Ex centre) at sign -1, and Bz gets
-# nothing at all.
+# THE DEVICE TEXT IS DERIVED, NOT COPIED. Each kernel is the CERTIFIED root kernel
+# (``step_curl_kernels._step_{B,D}_pml_real_kernel_code``, read off the sibling's source
+# as its prelude is) with exactly three anchored edits and nothing else:
 #
-# ``curl - (beta * g)`` CARRIES ``curl + (-(beta * g))``. stepping.py:811 negates
-# the PRODUCT and :389 adds it; IEEE-754 defines subtraction as addition of the
-# negation, so the single subtract is the same bits on every input, signed zeros
-# included. ``--fmad=false`` is what keeps it from contracting into the dtdx
-# multiply that precedes it.
-_step_B_special_kz_real_kernel_code = _REAL_PML_PRELUDE + r'''
-extern "C" __global__ void step_B_special_kz_real(
-    float* __restrict__ Bx, float* __restrict__ By, float* __restrict__ Bz,
-    float* __restrict__ fu_Bx, float* __restrict__ fu_By, float* __restrict__ fu_Bz,
-    const float* __restrict__ Ex, const float* __restrict__ Ey,
-    const float* __restrict__ Ez,
-    int nx, int ny, int nz, float dtdx,
-    const float* __restrict__ kms_x, const float* __restrict__ sinv_x,
-    const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
-    const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
-    int bc_x, int bc_y, int bc_z,
-    float beta_plus, float beta_minus
-) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= nx * ny * nz) return;
+# 1. the entry point renamed ``step_{B,D}_special_kz_real``;
+# 2. the two host-rounded beta coefficients appended before the chunk record ``cb``,
+#    which stays last as on every kernel of this table;
+# 3. after the ``pml_apply`` call of target 0 and of target 1, MEEP's beta pass of that
+#    component (``folded_pass.beta_insert``; step_db.cpp:161-175): the curl's own mask
+#    lines re-spelled as MEEP's ownership flag, the increment ``-(c * g)`` -- ``g`` the
+#    partner's stored word at the cell, which is the curl's own unshifted centre load
+#    (Bx/Dx take ``f2``, the second source; By/Dy take ``f1``, the first) -- and the
+#    folded ladder on the words ``pml_apply`` just stored. The z component gets none:
+#    MEEP's ``cc`` runs over d_c in {X, Y} only.
+#
+# THE ORDER IS MEEP'S. ``step_db`` runs the beta pass after EVERY component's curl; a
+# thread here runs it right after its own component's curl. The two agree word for word:
+# the beta increment of a B (D) component reads only E (H), which ``step_B`` (``step_D``)
+# never writes, and no other component's pass writes this component's words.
+#
+# SAME SIGNS ON BOTH SIDES: the ``+-1j`` that distinguishes them lives only in complex
+# storage (``stepping._special_kz_beta_term``), and this family is real. The prelude is
+# the root's, with ``folded_pass.REAL_FOLD_HELPERS`` appended. A moved anchor raises by
+# name at import.
 
-    const int sx = ny * nz;
-    const int sy = nz;
-    const int sz = 1;
+def _sibling_kernel(name: str) -> str:
+    """The certified root kernel string ``name`` (prelude + kernel), read off the
+    sibling's source, where it is assigned ``_REAL_PML_PRELUDE`` plus a string literal."""
+    source = (pathlib.Path(__file__).with_name("step_curl_kernels.py")
+              .read_text(encoding="utf-8"))
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not (isinstance(target, ast.Name) and target.id == name):
+            continue
+        value = node.value
+        if (isinstance(value, ast.BinOp) and isinstance(value.left, ast.Name)
+                and value.left.id == "_REAL_PML_PRELUDE"
+                and isinstance(value.right, ast.Constant)
+                and isinstance(value.right.value, str)):
+            return _REAL_PML_PRELUDE + value.right.value
+    raise RuntimeError(
+        f"step_curl_kernels.py no longer assigns {name} = _REAL_PML_PRELUDE + a string "
+        f"literal; the special_kz curl pair is derived from that kernel and cannot be "
+        f"built without it")
 
-    int k = idx % nz;
-    int j = (idx / nz) % ny;
-    int i = idx / (ny * nz);
 
-    // Bx: curl_x = dEz/dy - dEy/dz; dsig=y, dsigu=z; iyee=(0,1,1).
-    // Beta partner: the Ey CENTRE, which is f2, at sign +1 (stepping.py:361).
-    {
-        float f1 = Ez[idx];
-        float sf = shift_up(Ez, idx, j, ny, sy, bc_y);
-        float f2 = Ey[idx];
-        float ss = shift_up(Ey, idx, k, nz, sz, bc_z);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        curl = curl - (beta_plus * f2);
-        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) curl = 0.0f;
-        pml_apply(Bx, fu_Bx, idx, curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k]);
-    }
-
-    // By: curl_y = dEx/dz - dEz/dx; dsig=z, dsigu=x; iyee=(1,0,1).
-    // Beta partner: the Ex CENTRE, which is f1, at sign -1 (stepping.py:363).
-    {
-        float f1 = Ex[idx];
-        float sf = shift_up(Ex, idx, k, nz, sz, bc_z);
-        float f2 = Ez[idx];
-        float ss = shift_up(Ez, idx, i, nx, sx, bc_x);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        curl = curl - (beta_minus * f1);
-        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) curl = 0.0f;
-        pml_apply(By, fu_By, idx, curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i]);
-    }
-
-    // Bz: curl_z = dEy/dx - dEx/dy; dsig=x, dsigu=y; iyee=(1,1,0).
-    // NO BETA TERM: MEEP's `cc` loop runs over d_c in {X, Y} only
-    // (step_db.cpp:148-176), and stepping.py:356-363 has no Bz branch.
-    {
-        float f1 = Ey[idx];
-        float sf = shift_up(Ey, idx, i, nx, sx, bc_x);
-        float f2 = Ex[idx];
-        float ss = shift_up(Ex, idx, j, ny, sy, bc_y);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == 0) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) curl = 0.0f;
-        pml_apply(Bz, fu_Bz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]);
-    }
-}
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 361->389, 363->391, 356-363->384-391
-
-# D side: MEEP's negated strides, integer-position coefficients, iyee -- Dx
-# (1,0,0), Dy (0,1,0), Dz (0,0,1). SAME SIGNS AS THE B SIDE: the ``+-1j`` that
-# distinguishes them lives only in complex storage (stepping.py:798-799), and this
-# family is real. Dx's partner is the Hy centre (f2) at +1 (:472), Dy's the Hx
-# centre (f1) at -1 (:445), Dz none.
-_step_D_special_kz_real_kernel_code = _REAL_PML_PRELUDE + r'''
-extern "C" __global__ void step_D_special_kz_real(
-    float* __restrict__ Dx, float* __restrict__ Dy, float* __restrict__ Dz,
-    float* __restrict__ fu_Dx, float* __restrict__ fu_Dy, float* __restrict__ fu_Dz,
-    const float* __restrict__ Hx, const float* __restrict__ Hy,
-    const float* __restrict__ Hz,
-    int nx, int ny, int nz, float dtdx,
-    const float* __restrict__ kms_x, const float* __restrict__ sinv_x,
-    const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
-    const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
-    int bc_x, int bc_y, int bc_z,
-    float beta_plus, float beta_minus
-) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= nx * ny * nz) return;
-
-    const int sx = ny * nz;
-    const int sy = nz;
-    const int sz = 1;
-
-    int k = idx % nz;
-    int j = (idx / nz) % ny;
-    int i = idx / (ny * nz);
-
-    // Dx: curl_x = dHz/dy - dHy/dz; dsig=y, dsigu=z; iyee=(1,0,0).
-    // Beta partner: the Hy CENTRE, which is f2, at sign +1 (stepping.py:443).
-    {
-        float f1 = Hz[idx];
-        float sf = shift_dn(Hz, idx, j, ny, sy, bc_y);
-        float f2 = Hy[idx];
-        float ss = shift_dn(Hy, idx, k, nz, sz, bc_z);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        curl = curl - (beta_plus * f2);
-        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
-        if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == 0) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) curl = 0.0f;
-        pml_apply(Dx, fu_Dx, idx, curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k]);
-    }
-
-    // Dy: curl_y = dHx/dz - dHz/dx; dsig=z, dsigu=x; iyee=(0,1,0).
-    // Beta partner: the Hx CENTRE, which is f1, at sign -1 (stepping.py:445).
-    {
-        float f1 = Hx[idx];
-        float sf = shift_dn(Hx, idx, k, nz, sz, bc_z);
-        float f2 = Hz[idx];
-        float ss = shift_dn(Hz, idx, i, nx, sx, bc_x);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        curl = curl - (beta_minus * f1);
-        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
-        if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == 0) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) curl = 0.0f;
-        pml_apply(Dy, fu_Dy, idx, curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i]);
-    }
-
-    // Dz: curl_z = dHy/dx - dHx/dy; dsig=x, dsigu=y; iyee=(0,0,1). NO BETA TERM.
-    {
-        float f1 = Hy[idx];
-        float sf = shift_dn(Hy, idx, i, nx, sx, bc_x);
-        float f2 = Hx[idx];
-        float ss = shift_dn(Hx, idx, j, ny, sy, bc_y);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
-        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) curl = 0.0f;
-        pml_apply(Dz, fu_Dz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]);
-    }
-}
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 443->472, 445->474
-
-_SOURCES: Dict[str, str] = {
-    "step_B_special_kz_real": _step_B_special_kz_real_kernel_code,
-    "step_D_special_kz_real": _step_D_special_kz_real_kernel_code,
+#: ``sub_step -> (root kernel string name, root entry point, targets)``.
+_ROOT: Dict[str, Tuple[str, str, Tuple[str, str, str]]] = {
+    "step_B": ("_step_B_pml_real_kernel_code", "step_B_pml_real", ("Bx", "By", "Bz")),
+    "step_D": ("_step_D_pml_real_kernel_code", "step_D_pml_real", ("Dx", "Dy", "Dz")),
 }
 
 #: ``sub_step -> kernel name``, so a caller does not spell an if.
@@ -341,6 +232,61 @@ KERNEL_FOR_SUB_STEP: Dict[str, str] = {
     "step_B": "step_B_special_kz_real",
     "step_D": "step_D_special_kz_real",
 }
+
+#: ``target -> (partner register, coefficient)``: target 0 takes the second source's
+#: centre (``f2``) at sign +1, target 1 the first source's centre (``f1``) at sign -1
+#: (stepping.B_CURL_TERMS / D_CURL_TERMS against step_B's and step_D's beta loops).
+BETA_PARTNER: Dict[int, Tuple[str, str]] = {0: ("f2", "beta_plus"), 1: ("f1", "beta_minus")}
+
+
+def _replace_once(text: str, old: str, new: str, what: str) -> str:
+    if text.count(old) != 1:
+        raise RuntimeError(
+            f"the certified root kernel carries {what} {text.count(old)} times, not once; "
+            f"the special_kz derivation has no anchor")
+    return text.replace(old, new, 1)
+
+
+def derive_kernel(sub_step: str, root: str = "") -> str:
+    """The special_kz kernel for one sub-step, derived from the certified root kernel.
+
+    ``root`` is the root kernel string (prelude + kernel); empty reads the sibling's
+    literal. A gate passes a mutated root to see the mutation reach this family.
+    """
+    name, entry, targets = _ROOT[sub_step]
+    text = root or _sibling_kernel(name)
+    marker = 'extern "C" __global__ void '
+    if text.count(marker) != 1:
+        raise RuntimeError(f"{name} carries {text.count(marker)} entry points, not 1")
+    prelude, kernel = text.split(marker, 1)
+    kernel = _replace_once(kernel, f"{entry}(", f"{KERNEL_FOR_SUB_STEP[sub_step]}(",
+                           "its entry point")
+    tail = "    int bc_x, int bc_y, int bc_z,\n    const int* __restrict__ cb\n) {"
+    kernel = _replace_once(
+        kernel, tail,
+        "    int bc_x, int bc_y, int bc_z,\n"
+        "    float beta_plus, float beta_minus,\n"
+        "    const int* __restrict__ cb\n) {", "the signature's tail")
+    for index in _folded_pass.BETA_TARGETS:
+        target = targets[index]
+        partner, coefficient = BETA_PARTNER[index]
+        prefix = f"        pml_apply({target}, fu_{target}, idx, "
+        what = f"{KERNEL_FOR_SUB_STEP[sub_step]} {target}"
+        kernel = _folded_pass.insert_after_call(
+            kernel, prefix,
+            _folded_pass.beta_insert(kernel, prefix, partner, coefficient, what), what)
+    return (prelude.rstrip("\n") + "\n" + _folded_pass.REAL_FOLD_HELPERS + "\n" + marker
+            + kernel)
+
+
+_step_B_special_kz_real_kernel_code = derive_kernel("step_B")
+_step_D_special_kz_real_kernel_code = derive_kernel("step_D")
+
+_SOURCES: Dict[str, str] = {
+    "step_B_special_kz_real": _step_B_special_kz_real_kernel_code,
+    "step_D_special_kz_real": _step_D_special_kz_real_kernel_code,
+}
+
 
 
 def kernel_source(name: str) -> str:
@@ -497,17 +443,24 @@ def _clear_kernel_cache() -> int:
 
 def step_special_kz(sub_step: str, fields: Any, tables: Dict[str, Any],
                     boundary_codes: Any, dtdx: float,
-                    beta_coefficients: Tuple[float, float]) -> None:
+                    beta_coefficients: Tuple[float, float], *,
+                    chunk_bounds: Any) -> None:
     """One special_kz curl sub-step, in place, in one launch.
 
     ``tables`` are the six flattened kms/sinv views from
-    ``step_curl_kernels.real_pml_curl_tables`` -- HALF-INTEGER for ``step_B``
-    (stepping.py:404), INTEGER for ``step_D`` (:486). ``beta_coefficients`` is
-    :func:`beta_curl_coefficients`' ``(plus, minus)``; the two scalars are bound
-    LAST so the argument list is the certified one with an append, which is what
-    lets a reader diff the two launches.
+    ``step_curl_kernels.real_pml_curl_tables`` -- HALF-INTEGER for ``step_B``,
+    INTEGER for ``step_D``. ``beta_coefficients`` is :func:`beta_curl_coefficients`'
+    ``(plus, minus)``; the two scalars are bound after the boundary codes, so the
+    argument list is the certified one with an insert, which is what lets a reader
+    diff the two launches. ``chunk_bounds`` is the run's chunk record on the device,
+    required and bound last, as on the root kernel
+    (``step_curl_kernels.chunk_record_argument``).
     """
     import numpy  # noqa: PLC0415
+
+    from .step_curl_kernels import chunk_record_argument  # noqa: PLC0415 - device-only
+
+    cb = chunk_record_argument(chunk_bounds)
 
     targets = (("Bx", "By", "Bz") if sub_step == "step_B" else ("Dx", "Dy", "Dz"))
     sources = (("Ex", "Ey", "Ez") if sub_step == "step_B" else ("Hx", "Hy", "Hz"))
@@ -527,6 +480,7 @@ def step_special_kz(sub_step: str, fields: Any, tables: Dict[str, Any],
         tables["kms_z"], tables["sinv_z"],
         boundary_codes[0], boundary_codes[1], boundary_codes[2],
         numpy.float32(plus), numpy.float32(minus),
+        cb,
     ))
 
 

@@ -352,7 +352,10 @@ def test_the_same_protocol_without_the_repair_diverges(cell):
                        "above proves nothing")
     # WHERE it lands is the discriminating half: the constitutive target the deposit
     # feeds and its PML auxiliary, which are exactly the two arrays `apply` restores.
-    assert set(differing) == {"Hz", "f_w_Hz"}, differing
+    # Since the PML forms are chosen per structure chunk, f_w_Hz is written only on
+    # the cells whose chunk carries Hz's own layer, so it shows the miss only when a
+    # deposit cell lies there; Hz shows it always.
+    assert "Hz" in set(differing) and set(differing) <= {"Hz", "f_w_Hz"}, differing
 
 
 def test_a_clean_seam_keeps_the_cheap_sentinel_in_the_second_slot():
@@ -879,33 +882,40 @@ def test_the_product_table_and_the_absorb_table_name_the_same_families():
 # check it, because that claim is what says the re-cut owed is a re-cut and not a
 # re-certification of different bytes.
 
-def test_the_lift_is_twelve_edits_and_no_silent_thirteenth():
+def test_the_lift_is_fourteen_edits_and_no_silent_fifteenth():
     """``LIFT_EDITS`` is data so a gate can assert the list rather than the prose.
 
     FIVE UNTIL 2026-08-28, SEVEN SINCE, and the two that arrived are the ownership
     inversion's two halves -- the guard inside ``pml_apply_reg`` and the guarded,
     carry-bearing constitutive statement. TWELVE SINCE THE OWN-CELL HOIST: the
     twelve guarded pre-loads, the two derived ``_pre`` helpers, and the two sets of
-    own-cell call rewrites. A thirteenth entry would be a thirteenth
-    departure from the certified text and may not arrive quietly; the five that were
-    there before must all still be there, which is what stops a rewrite from
-    replacing one departure with another and keeping the count.
+    own-cell call rewrites. FOURTEEN SINCE MEEP'S PER-CHUNK FORMS (bit_parity_0_10
+    KC2): the one chunk-record decode over both halves, and each carried ghost keyed on
+    its destination's membership row. A fifteenth entry would be a fifteenth departure
+    from the certified text and may not arrive quietly; the five that were there before
+    must all still be there, which is what stops a rewrite from replacing one departure
+    with another and keeping the count.
     """
-    assert len(family.LIFT_EDITS) == 12
+    assert len(family.LIFT_EDITS) == 14
     lines = {edit["line"] for edit in family.LIFT_EDITS}
     assert {
         "    int own_z = !(...);",
         "__device__ __forceinline__ float pml_apply_reg(\n    ...)",
         "(nothing: appended after _REAL_CONSTITUTIVE_PRELUDE)",
-        "        b_x = pml_apply_reg(Bx, fu_Bx, idx, curl, ..., own_x);",
-        "        constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i]);",
+        "        b_x = pml_apply_reg(Bx, fu_Bx, idx, curl, ..., in_h_z, own_x);",
+        "        constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i], in_i_x);",
     } <= lines
     assert {
         "__device__ __forceinline__ void pml_apply(",
-        "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;",
+        "    f[idx] = value;",
         "        pml_apply(Bx, fu_Bx, idx, curl, ...);",
-        "    constitutive_apply(Hx, f_w_Hx, idx, Bx[idx], kps_x[i], kms_x[i]);",
+        "    constitutive_apply(Hx, f_w_Hx, idx, Bx[idx], kps_x[i], kms_x[i], in_i_x);",
         "        if (t < plane) Bx[base] = 0.0f;   (in_seam_passes.zero_metal_B)",
+    } <= lines
+    assert {
+        "    <step_B_pml_real's chunk-record block>\n"
+        "    <update_H_pml_real's chunk-record block>",
+        "    constitutive_apply(Hx, f_w_Hx, gx_n_i, gx_n_v, kps_x[0], kms_int_x[0]);",
     } <= lines
     carried = [edit for edit in family.LIFT_EDITS
                if "OWNERSHIP INVERSION" in edit["why"]]
@@ -999,7 +1009,7 @@ def test_the_e_to_p_incumbent_survives_arbitration_on_a_dispersive_run():
     (asserted first, as shipped); the trade is what this test is about.
     """
     fields, layer, grid = build_dispersive(poles=2, pml_on=True)
-    context = arms.StepContext(fields, layer, grid, None, None, ())
+    context = arms.StepContext(fields, layer, grid, ())
     # The released direction still holds: the D->E pair loses update_E to the E->P pair.
     assert fused_pairs._later_seam_claimant(
         {}, {}, {}, context, "update_E", ("step_D", "update_E")

@@ -77,7 +77,6 @@ os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 
 import gate_metal_special_kz as gate  # noqa: E402
 import metal_gate_kit as kit  # noqa: E402
-import probe_metal_beta_expansion as expansion_probe  # noqa: E402
 
 from meep_gpu import fastpath  # noqa: E402
 from meep_gpu.driver import FdtdDriver  # noqa: E402
@@ -342,8 +341,7 @@ class MetalShim:
         return sum(plan.launches for plan in self.plans.values())
 
 
-def build_plans(driver: FdtdDriver, probe: Any,
-                functions: Optional[Dict[str, Dict[str, Any]]] = None
+def build_plans(driver: FdtdDriver, functions: Optional[Dict[str, Dict[str, Any]]] = None
                 ) -> Tuple[Dict[str, Any], Any]:
     """The plans a wired version of this family would build for one driver.
 
@@ -358,14 +356,18 @@ def build_plans(driver: FdtdDriver, probe: Any,
     complex_storage = bool(np.iscomplexobj(fields.Ex))
     for sub_step in ("step_B", "step_D"):
         plans[sub_step] = (
-            special_kz.plan_beta_bloch_pml_curl(fields, pml, sub_step, residency,
-                                                probe=probe)
+            special_kz.plan_beta_bloch_pml_curl(
+                fields, pml, sub_step, residency,
+                chunk_bounds=driver.chunk_bounds_record())
             if complex_storage else
-            special_kz.plan_beta_pml_curl(fields, pml, sub_step, residency))
+            special_kz.plan_beta_pml_curl(
+                fields, pml, sub_step, residency,
+                chunk_bounds=driver.chunk_bounds_record()))
     if not complex_storage:
         for slot, side in (("update_H", "H"), ("update_E", "E")):
             plans[slot] = special_kz.plan_beta_run_constitutive(
-                fields, pml, side, residency)
+                fields, pml, side, residency,
+                chunk_bounds=driver.chunk_bounds_record())
     for slot, replacement in (functions or {}).items():
         plan = plans.get(slot)
         if plan is not None:
@@ -472,7 +474,6 @@ def leg_driver_steps(payload: Dict[str, Any], out: str) -> None:
     produces a wall of consequences and one cause.
     """
     rows: List[Dict[str, Any]] = []
-    probe = expansion_probe.measure()
     started = time.time()
     for case in gate.CASES:
         for variant, seed in VARIANTS:
@@ -484,7 +485,7 @@ def leg_driver_steps(payload: Dict[str, Any], out: str) -> None:
                 f"the enumerated inventory is missing {missing}, which the gate "
                 f"steps: the enumeration found fewer volumes than the transcribed "
                 f"list and would compare less than the gate does")
-            plans, residency = build_plans(device_driver, probe)
+            plans, residency = build_plans(device_driver)
             shim = MetalShim(device_driver.fields, plans, residency)
             install(device_driver, shim)
             install(oracle_driver, None)
@@ -585,14 +586,13 @@ def leg_source_control(payload: Dict[str, Any], out: str) -> None:
     nothing on its own.
     """
     rows: List[Dict[str, Any]] = []
-    probe = expansion_probe.measure()
     for case in gate.CASES:
         driver = build_driver(case, sourced=True, seed=None)
         control = build_driver(case, sourced=False, seed=None)
         control_array = build_driver(case, sourced=False, seed=None)
         names = inventory(driver.fields, driver.grid.shape)
         for target in (driver, control):
-            plans, residency = build_plans(target, probe)
+            plans, residency = build_plans(target)
             install(target, MetalShim(target.fields, plans, residency))
         install(control_array, None)
 
@@ -704,14 +704,13 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
     firing case is a genuine refusal rather than a warning.
     """
     rows: List[Dict[str, Any]] = []
-    probe = expansion_probe.measure()
     started = time.time()
     for case in CENSUS_CASES:
         for label, scale, expect_clean in (("physical", 1.0, True),
                                            ("subnormal_band", 1e-38, False)):
             driver = build_driver(case, sourced=True, seed=SEED, scale=scale)
             names = inventory(driver.fields, driver.grid.shape)
-            plans, residency = build_plans(driver, probe)
+            plans, residency = build_plans(driver)
             shim = MetalShim(driver.fields, plans, residency)
             install(driver, shim)
             oracle_driver = build_driver(case, sourced=True, seed=SEED, scale=scale)
@@ -815,7 +814,6 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     """
     budget = 4
     harness = kit.MutationHarness(payload, out)
-    probe = expansion_probe.measure()
     case = gate.case_named("r2_metallic_x_negative_beta")  # wall passes live, so the interleave
     for label, entry in DRIVER_MUTATIONS.items():
         counters: List[kit.Counter] = []
@@ -841,7 +839,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
             counter = kit.Counter(function)
             counters.append(counter)
             functions[sub_step] = {templates.CONTRACT_OFF: counter}
-        plans, residency = build_plans(driver, probe, functions=functions)
+        plans, residency = build_plans(driver, functions=functions)
         shim = MetalShim(driver.fields, plans, residency)
         install(driver, shim)
         names = inventory(driver.fields, driver.grid.shape)
@@ -897,7 +895,6 @@ def leg_monitors(payload: Dict[str, Any], out: str) -> None:
     spectrum is float64.
     """
     rows: List[Dict[str, Any]] = []
-    probe = expansion_probe.measure()
     started = time.time()
     for case in gate.CASES:
         device_driver = build_driver(case, sourced=True, seed=None)
@@ -911,7 +908,7 @@ def leg_monitors(payload: Dict[str, Any], out: str) -> None:
                 "flux": driver.add_flux_monitor(
                     frequencies=1.0, center=(0.3, 0.0, 0.0), size=(0.0, 0.8, 0.0)),
             }
-        plans, residency = build_plans(device_driver, probe)
+        plans, residency = build_plans(device_driver)
         shim = MetalShim(device_driver.fields, plans, residency)
         install(device_driver, shim)
         install(oracle_driver, None)

@@ -1,0 +1,114 @@
+# kernels.pml_curl_step
+def pml_curl_step(
+    f0, f1, f2,                       # targets: Bx,By,Bz  or  Dx,Dy,Dz
+    u0, u1, u2,                       # auxiliaries: fu_B*  or  fu_D*
+    g0, g1, g2,                       # sources: Ex,Ey,Ez  or  Hx,Hy,Hz
+    kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, one Yee sub-lattice
+    nx, ny, nz, n_elem, dtdx,
+    BACKWARD: tl.constexpr,           # 0 = B (forward differences), 1 = D
+    BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """One curl sub-step of all three components, PML recurrence included."""
+    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    live = idx < n_elem
+    nyz = ny * nz
+    k = idx % nz
+    plane = idx // nz
+    j = plane % ny
+    i = plane // ny
+
+    # --- the ghost rule, per axis (stepping._shift_up / _shift_down) ------------
+    # PERIODIC wraps; METALLIC serves an exact 0.0 past the wall, which `tl.load`'s
+    # `other=` delivers without dereferencing anything.
+    if BACKWARD:
+        si, sj, sk = i - 1, j - 1, k - 1
+    else:
+        si, sj, sk = i + 1, j + 1, k + 1
+    vx, vy, vz = live, live, live
+    if BCX == METALLIC:
+        vx = live & (si >= 0) & (si < nx)
+    else:
+        si = tl.where(si < 0, nx - 1, tl.where(si == nx, 0, si))
+    if BCY == METALLIC:
+        vy = live & (sj >= 0) & (sj < ny)
+    else:
+        sj = tl.where(sj < 0, ny - 1, tl.where(sj == ny, 0, sj))
+    if BCZ == METALLIC:
+        vz = live & (sk >= 0) & (sk < nz)
+    else:
+        sk = tl.where(sk < 0, nz - 1, tl.where(sk == nz, 0, sk))
+
+    ox = si * nyz + j * nz + k
+    oy = i * nyz + sj * nz + k
+    oz = i * nyz + j * nz + sk
+
+    a = tl.load(g0 + idx, mask=live, other=0.0)
+    b = tl.load(g1 + idx, mask=live, other=0.0)
+    c = tl.load(g2 + idx, mask=live, other=0.0)
+    a_y = tl.load(g0 + oy, mask=vy, other=0.0)
+    a_z = tl.load(g0 + oz, mask=vz, other=0.0)
+    b_x = tl.load(g1 + ox, mask=vx, other=0.0)
+    b_z = tl.load(g1 + oz, mask=vz, other=0.0)
+    c_x = tl.load(g2 + ox, mask=vx, other=0.0)
+    c_y = tl.load(g2 + oy, mask=vy, other=0.0)
+
+    # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
+    curl0 = dtdx * ((c_y - c) + (b - b_z))
+    curl1 = dtdx * ((a_z - a) + (c - c_x))
+    curl2 = dtdx * ((b_x - b) + (a - a_y))
+
+    # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
+    # Cell 0 of a metallic axis, for every target whose Yee shift there is 0. The
+    # B targets have a single zero shift each (Bx:x, By:y, Bz:z); the D targets
+    # have two (Dx:y,z  Dy:x,z  Dz:x,y). Masked, then the recurrence runs on zero.
+    at_x, at_y, at_z = i == 0, j == 0, k == 0
+    if BACKWARD:
+        if BCY == METALLIC:
+            curl0 = tl.where(at_y, 0.0, curl0)
+        if BCZ == METALLIC:
+            curl0 = tl.where(at_z, 0.0, curl0)
+        if BCX == METALLIC:
+            curl1 = tl.where(at_x, 0.0, curl1)
+        if BCZ == METALLIC:
+            curl1 = tl.where(at_z, 0.0, curl1)
+        if BCX == METALLIC:
+            curl2 = tl.where(at_x, 0.0, curl2)
+        if BCY == METALLIC:
+            curl2 = tl.where(at_y, 0.0, curl2)
+    else:
+        if BCX == METALLIC:
+            curl0 = tl.where(at_x, 0.0, curl0)
+        if BCY == METALLIC:
+            curl1 = tl.where(at_y, 0.0, curl1)
+        if BCZ == METALLIC:
+            curl2 = tl.where(at_z, 0.0, curl2)
+
+    # --- split-field recurrence (stepping._apply_pml_update) -------------------
+    # dsig/dsigu follow vec.hpp's cycle_direction and are the same triple on both
+    # sides: target 0 takes (y, z), target 1 (z, x), target 2 (x, y).
+    km_x = tl.load(kmx + i, mask=live, other=0.0)
+    si_x = tl.load(sinvx + i, mask=live, other=0.0)
+    km_y = tl.load(kmy + j, mask=live, other=0.0)
+    si_y = tl.load(sinvy + j, mask=live, other=0.0)
+    km_z = tl.load(kmz + k, mask=live, other=0.0)
+    si_z = tl.load(sinvz + k, mask=live, other=0.0)
+
+    p0 = tl.load(u0 + idx, mask=live, other=0.0)
+    n0 = ((p0 * km_y) - curl0) * si_y
+    v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+
+    p1 = tl.load(u1 + idx, mask=live, other=0.0)
+    n1 = ((p1 * km_z) - curl1) * si_z
+    v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+
+    p2 = tl.load(u2 + idx, mask=live, other=0.0)
+    n2 = ((p2 * km_x) - curl2) * si_x
+    v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+
+    tl.store(u0 + idx, n0, mask=live)
+    tl.store(u1 + idx, n1, mask=live)
+    tl.store(u2 + idx, n2, mask=live)
+    tl.store(f0 + idx, v0, mask=live)
+    tl.store(f1 + idx, v1, mask=live)
+    tl.store(f2 + idx, v2, mask=live)

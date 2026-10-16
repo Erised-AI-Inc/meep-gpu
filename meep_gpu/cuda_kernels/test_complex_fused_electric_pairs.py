@@ -58,7 +58,6 @@ from ..triton_kernels.launch import NoopPlan
 from . import arms, fused_pairs, in_seam_coverage
 from . import complex_fused_electric_pair as cartesian
 from . import cylindrical_fused_electric_pair as cylindrical
-from .registry import LICENSE_COMPLEX
 from ..test_deposit_repair import _build, _differing, _reference, _words
 from .test_fused_pairs import _NumpyWearingCupysName
 
@@ -69,14 +68,6 @@ FAMILIES = {
     "cartesian": cartesian,
     "cylindrical": cylindrical,
 }
-
-#: The expansion licence both predicates require. It is NOT optional and never
-#: defaulted: the arm is compiled into the binary at this seam, and asking with
-#: ``license=None`` returns the complex family's own named refusal on every
-#: configuration -- an answer about the caller, recorded as if it were about the run.
-LICENCE = {"arm": "FMA_V1", "expansion": 1, "basis": "measured",
-           "refusals": [], "policy_resolved": "keep"}
-POLICY = "keep"
 
 
 @pytest.fixture
@@ -126,7 +117,7 @@ def covers(name, fields, layer, grid, sources=()):
     """The named family's predicate, always asked WITH the licence."""
     module = FAMILIES[name]
     predicate = getattr(module, f"covers_{module.FAMILY[len('cuda_'):]}")
-    return predicate(fields, layer, grid, sources, LICENCE, POLICY)
+    return predicate(fields, layer, grid, sources)
 
 
 def electric_source(grid, component="Ez"):
@@ -401,7 +392,7 @@ def _electric_seam_admitters(fields, layer, grid):
         if covers(name, fields, layer, grid)[0]:
             admitters.append(module.FAMILY)
     if no_pml.covers_no_pml_complex_fused_electric_pair(
-            fields, layer, grid, (), LICENCE, POLICY)[0]:
+            fields, layer, grid, ())[0]:
         admitters.append(no_pml.FAMILY)
     return admitters
 
@@ -529,7 +520,7 @@ def test_the_conductivity_refusal_is_this_products_own_and_not_a_halfs(name, xp)
         has_conductivity = True
 
     covered, reason = covers_real_pml_complex_constitutive(
-        _Conductive(), layer, grid, "E", LICENCE, POLICY)
+        _Conductive(), layer, grid, "E")
     assert covered, reason
 
 
@@ -631,18 +622,6 @@ def test_an_inverse_permittivity_volume_of_the_wrong_extent_is_refused(name, xp)
     assert "inverse_epsilon_for" in why
 
 
-@pytest.mark.parametrize("name", sorted(FAMILIES))
-def test_the_licence_is_required_and_never_defaulted(name, xp):
-    """A wrong arm is a WRONG ANSWER, not a crash: both arms compile and run, and the
-    arm is baked into the binary at this seam with no later rung to check it."""
-    module = FAMILIES[name]
-    predicate = getattr(module, f"covers_{module.FAMILY[len('cuda_'):]}")
-    fields, layer, grid = BUILD[name](xp)
-    covered, why = predicate(fields, layer, grid, (), None, None)
-    assert not covered
-    assert "licence" in why
-
-
 def test_the_real_storage_refusal_is_the_partition_with_the_real_electric_pair(xp):
     """No configuration is admitted by both families, and none falls between."""
     fields, layer, grid = build_cartesian(xp, complex_storage=False)
@@ -667,10 +646,10 @@ def test_the_cartesian_product_refuses_a_dcyl_grid_and_the_dcyl_one_requires_it(
 # 4. THE LIFT — THE CERTIFIED TEXT, AND THE EDITS THAT ARE NOT VERBATIM
 # --------------------------------------------------------------------------
 
-def _source(name, arm="NAIVE"):
+def _source(name):
     module = FAMILIES[name]
     emit = getattr(module, f"{module.FAMILY[len('cuda_'):]}_source")
-    return emit(arm)
+    return emit()
 
 
 #: The name each product's shared flux-density group carries in its own signature.
@@ -680,12 +659,11 @@ ENTRY = {"cartesian": "fused_electric_pair_pml_complex(",
 
 
 @pytest.mark.parametrize("name", sorted(FAMILIES))
-@pytest.mark.parametrize("arm", ("NAIVE", "FMA_V1"))
-def test_the_shared_flux_density_is_bound_exactly_once(name, arm):
+def test_the_shared_flux_density_is_bound_exactly_once(name):
     """THE ALIASING HAZARD. Two ``__restrict__`` pointers to one allocation is UB that
     NVRTC miscompiles without a diagnostic, so the constitutive half must have no D
     source pointers at all -- which is only true if the seam removed all three loads."""
-    source = _source(name, arm)
+    source = _source(name)
     # SPLIT AT THE ENTRY POINT, not at the first ``\n) {``: the prelude's own device
     # helpers (``cshift_dn`` above all) close their parameter lists the same way, so a
     # split at the first terminator would inspect the helper library instead of the
@@ -709,12 +687,11 @@ def test_the_shared_flux_density_is_bound_exactly_once(name, arm):
 
 
 @pytest.mark.parametrize("name", sorted(FAMILIES))
-@pytest.mark.parametrize("arm", ("NAIVE", "FMA_V1"))
-def test_the_seam_reads_the_register_and_keeps_the_certified_operand_order(name, arm):
+def test_the_seam_reads_the_register_and_keeps_the_certified_operand_order(name):
     """``D * inv_eps`` with D ON THE LEFT (stepping.py:1011), and the register in place
     of the reload. A float32 multiply is commutative on the bits, but the certified text
     is what this family lifts and a reordered operand is an edit with no LIFT_EDITS row."""
-    source = _source(name, arm)
+    source = _source(name)
     for index in ("0", "1", "2"):
         assert f"cf s{index} = d{index};" in source
         assert (f"s{index} = mul_field_left(s{index}, inv_eps_{index}[idx]);"
@@ -722,12 +699,11 @@ def test_the_seam_reads_the_register_and_keeps_the_certified_operand_order(name,
 
 
 @pytest.mark.parametrize("name", sorted(FAMILIES))
-@pytest.mark.parametrize("arm", ("NAIVE", "FMA_V1"))
-def test_the_constitutive_half_reads_the_half_integer_sub_lattice(name, arm):
+def test_the_constitutive_half_reads_the_half_integer_sub_lattice(name):
     """THE COLLISION THAT MATTERS. ``kms_a`` is the INTEGER vector for the D curl and
     the HALF-INTEGER one for ``update_E``; letting one shadow the other compiles
     perfectly and is half a cell wrong in the absorber profile."""
-    source = _source(name, arm)
+    source = _source(name)
     target = "h" if name == "cartesian" else "f"
     for index, axis, coordinate in (("0", "x", "i"), ("1", "y", "j"),
                                     ("2", "z", "k")):
@@ -735,10 +711,14 @@ def test_the_constitutive_half_reads_the_half_integer_sub_lattice(name, arm):
         # helper, taking its two preloaded own-cell words (the hoist's own claims are
         # test_cylindrical_fused_electric_pair_hoist.py's). The coefficient pair -- the
         # claim this test guards -- is spelt identically on both products.
+        # Both products' certified tails take the chunk's dsigw flag last
+        # (in_h_<own axis>, the half-integer record on the component's own axis).
         call = ("constitutive_apply(" if name == "cartesian" else "constitutive_apply_pre(")
         preloads = ("" if name == "cartesian" else f"pre_w_{index}, pre_e_{index}, ")
+        flag = f", in_h_{axis}"
         assert (f"{call}{target}{index}, w{index}, idx, s{index}, {preloads}"
-                f"kps_{axis}[{coordinate}], kms_half_{axis}[{coordinate}]);") in source
+                f"kps_{axis}[{coordinate}], kms_half_{axis}[{coordinate}]{flag});"
+                ) in source
         # The curl half keeps the bare name, so both groups are present and distinct.
         assert f"kms_{axis}[" in source and f"kms_half_{axis}[" in source
 
@@ -847,8 +827,7 @@ def _string_constants(module_name):
     return bound
 
 
-@pytest.mark.parametrize("arm", ("NAIVE", "FMA_V1"))
-def test_the_cylindrical_axis_tail_is_carried_on_both_branches(arm):
+def test_the_cylindrical_axis_tail_is_carried_on_both_branches():
     """THE EDIT THIS FAMILY ADDS, and the one a Cartesian port would silently omit.
 
     ``stepping._cylindrical_axis_zero_D`` runs AFTER the recurrence with TWO branches:
@@ -857,7 +836,7 @@ def test_the_cylindrical_axis_tail_is_carried_on_both_branches(arm):
     would hand ``update_E`` the pre-zeroing displacement on exactly the rows a Dcyl run
     cares most about.
     """
-    source = _source("cylindrical", arm)
+    source = _source("cylindrical")
     tail = source.split("stepping._cylindrical_axis_zero_D", 1)[1]
     assert "if (m_class == 1 && i == 0) {\n        d2 = cf_zero(); cf_store(Dz, idx, d2);\n    }" in tail
     for index, volume in enumerate(("Dx", "Dy", "Dz")):
@@ -870,11 +849,10 @@ def test_the_cylindrical_axis_tail_is_carried_on_both_branches(arm):
         assert f"cf_zero(); cf_store({volume}," not in tail
 
 
-@pytest.mark.parametrize("arm", ("NAIVE", "FMA_V1"))
-def test_the_cylindrical_wall_clear_runs_after_the_axis_tail(arm):
+def test_the_cylindrical_wall_clear_runs_after_the_axis_tail():
     """The driver's order, and not a choice: the axis tail is INSIDE ``step_D``
     (stepping.py:485-486) and ``zero_metal_D`` is the separate driver pass at :3310."""
-    source = _source("cylindrical", arm)
+    source = _source("cylindrical")
     assert (source.index("in_seam_passes.zero_metal_D")
             > source.index("stepping._cylindrical_axis_zero_D"))
 
@@ -891,28 +869,25 @@ def test_the_lift_edits_are_data_and_every_one_is_complete(name):
 
 
 @pytest.mark.parametrize("name", sorted(FAMILIES))
-def test_the_emitted_source_is_pure_ascii_and_arm_dependent(name):
-    """Pure ASCII is an NVRTC requirement; and the two arms must really differ, or the
-    licence this seam bakes in would be measuring nothing."""
-    naive, fma = _source(name, "NAIVE"), _source(name, "FMA_V1")
-    for text in (naive, fma):
-        text.encode("ascii")
-    assert naive != fma
+def test_the_emitted_source_is_pure_ascii(name):
+    """Pure ASCII is an NVRTC requirement."""
+    _source(name).encode("ascii")
 
 
 def test_the_cylindrical_emitter_refuses_by_name_where_the_text_is_unreachable():
     """THE SPLICE IS THE LIFT, so a missing half is not a degraded emit. The refusal has
     to name the module, one frame from the caller, rather than surface as an
-    AttributeError inside a string operation -- and the predicate must still answer,
-    which is why that import is defensive."""
+    AttributeError inside a string operation -- and the predicate must still answer.
+    ``cylindrical_complex_kernels`` imports CuPy lazily, so on a real host it is never
+    absent: the module attribute set to None here is the door that plants the absence."""
     saved = cylindrical.cylindrical_complex_kernels
     try:
         cylindrical.cylindrical_complex_kernels = None
         with pytest.raises(RuntimeError) as raised:
-            cylindrical.cylindrical_fused_electric_pair_source("NAIVE")
+            cylindrical.cylindrical_fused_electric_pair_source()
         assert "cylindrical_complex_kernels" in str(raised.value)
         assert cylindrical.covers_cylindrical_fused_electric_pair(
-            None, None, None, (), LICENCE, POLICY)[0] is False
+            None, None, None, ())[0] is False
     finally:
         cylindrical.cylindrical_complex_kernels = saved
 
@@ -988,26 +963,32 @@ def test_the_cartesian_resolver_binds_the_BACKWARD_bloch_table():
     assert complex_emitter.KERNELS["step_B"][1] is False
 
 
-def test_the_cylindrical_resolver_binds_the_step_D_prefix_and_imr_rows():
-    """The radial prefix sums Hp on this side and Ep on the other, and the two i*m/r
-    rows carry the OPPOSITE SIGNS (``cylindrical_complex_kernels.IMR_TERMS``). Both
-    compile, both run, and either taken from the B side is a different engine.
+def test_the_cylindrical_resolver_binds_the_step_D_scan_and_imr_rows():
+    """The radial scan sums Hp on this side and Ep on the other, and the two i*m/r rows
+    carry the OPPOSITE SIGNS (``cylindrical_complex_kernels.IMR_TERMS``). Both compile,
+    both run, and either taken from the B side is a different engine. The run and the
+    plan share ONE resolver, so it is the resolver whose calls are read.
     """
     from . import cylindrical_complex_kernels as certified  # noqa: PLC0415
 
-    for module, function in (
-            (cylindrical, "run_cylindrical_fused_electric_pair"),
-            (fused_pairs, "_cylindrical_fused_electric_pair_plan")):
-        for callee in ("imr_rows_for", "cylindrical_prefix"):
+    for module, function, callees in (
+            (cylindrical, "resolve_launch_arguments",
+             ("imr_rows_for", "axis_courant_words", "radial_scan_tables")),
+            (cylindrical, "launch_cylindrical_fused_electric_pair", ("radial_difference",)),
+            (cylindrical, "run_cylindrical_fused_electric_pair", ("radial_difference",))):
+        for callee in callees:
             for arguments in _call_arguments(module, function, callee):
-                # The sub-step is the FIRST argument of one and the SECOND of the
-                # other, so the literal is looked for rather than positioned -- and
+                # The sub-step is the FIRST argument of one and a later one of the
+                # others, so the literal is looked for rather than positioned -- and
                 # ``step_B`` is refused explicitly, because an absent ``step_D`` and a
                 # present ``step_B`` are different failures.
                 assert "step_D" in arguments, (
                     f"{function} does not ask {callee} for 'step_D' ({arguments})")
                 assert "step_B" not in arguments, (
                     f"{function} asks {callee} for the B side's rows ({arguments})")
+    for module, function in ((cylindrical, "run_cylindrical_fused_electric_pair"),
+                             (fused_pairs, "_cylindrical_fused_electric_pair_plan")):
+        assert _call_arguments(module, function, "resolve_launch_arguments")
     # NOT VACUOUS: the two sub-steps really do carry different terms.
     assert (certified.IMR_TERMS["step_D"] != certified.IMR_TERMS["step_B"])
     from .cylindrical_prefix import PREFIX_COMPONENT  # noqa: PLC0415
@@ -1116,7 +1097,10 @@ def test_the_same_protocol_without_the_repair_diverges(cell):
                        "above proves nothing")
     # WHERE it lands is the discriminating half: the constitutive target the deposit
     # feeds and its PML auxiliary, which are exactly the two arrays `apply` restores.
-    assert set(differing) == {"Ez", "f_w_Ez"}, differing
+    # Since the PML forms are chosen per structure chunk, f_w_Ez is written only on
+    # the cells whose chunk carries Ez's own layer, so it shows the miss only when a
+    # deposit cell lies there; Ez shows it always.
+    assert "Ez" in set(differing) and set(differing) <= {"Ez", "f_w_Ez"}, differing
 
 
 def test_a_clean_seam_keeps_the_cheap_sentinel_in_the_second_slot():
@@ -1161,9 +1145,7 @@ def test_the_seam_fuses_and_the_pair_reports_the_pass_it_carries(name, label, xp
     product refuses, which is a fact about the caller and not about the run.
     """
     fields, layer, grid = BUILD[name](xp)
-    plan = arms.plan_step(fields, layer, grid,
-                          licenses={LICENSE_COMPLEX: LICENCE},
-                          subnormal_policy=POLICY, sources=(), fuse=True)
+    plan = arms.plan_step(fields, layer, grid, sources=(), fuse=True)
     assert plan.selected.get("step_D") == label
     assert plan.selected.get("update_E") == label
     assert "zero_metal_D" in fused_pairs.replaced_sub_steps(plan.plans)
@@ -1174,8 +1156,6 @@ def test_fusion_is_opt_in_on_this_seam_too(name, xp):
     """``fuse`` defaults to off, so the composition the coverage census measured is
     unchanged and these products add nothing nobody asked for."""
     fields, layer, grid = BUILD[name](xp)
-    plan = arms.plan_step(fields, layer, grid,
-                          licenses={LICENSE_COMPLEX: LICENCE},
-                          subnormal_policy=POLICY, sources=())
+    plan = arms.plan_step(fields, layer, grid, sources=())
     assert plan.selected.get("step_D") not in (
         "complex fused electric pair", "cylindrical fused electric pair")

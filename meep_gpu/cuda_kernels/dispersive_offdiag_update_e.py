@@ -401,8 +401,12 @@ def _define_block(text: str, name: str) -> str:
 
 #: Helpers taken verbatim from ``offdiag_emitter.PRELUDE``. ``ghosted`` stays for
 #: the COEFFICIENT side of every term (``ghosted(u, up)``): a chi1inv row carries
-#: no poles and never did, so its ghosted load is the certified one unchanged.
-FLAT_HELPERS: Tuple[str, ...] = ("flat", "ghosted", "constitutive_apply")
+#: no poles and never did, so its ghosted load is the certified one unchanged. The
+#: three chunk helpers read the presence of each term's array per chunk, and the
+#: tail is the per-chunk constitutive form -- the same list
+#: ``folded_offdiag_kernels.SIBLING_HELPERS`` takes.
+FLAT_HELPERS: Tuple[str, ...] = ("flat", "ghosted", "chunk_label", "chunk_row",
+                                 "chunk_keeps", "constitutive_apply")
 
 #: Constants and helpers taken verbatim from ``folded_offdiag_kernels``. The two
 #: coordinate rules ARE the fold, and this family inherits them unchanged because
@@ -442,11 +446,11 @@ def _borrowed_prelude() -> str:
 MIRROR_SELECT_LINE = "    return mg ? (w * value) : value;"
 
 #: The term's return expression, character for character
-#: ``folded_offdiag_kernels``' ``folded_offdiag_term``'s. The association is the
-#: certified one and the only edit this family makes to a term is to the two
-#: PAIR lines above it.
-TERM_RETURN_LINE = ("    return 0.25f * ((near_pair * u[home])"
-                    " + (far_pair * ghosted(u, up)));")
+#: ``folded_offdiag_kernels``' ``folded_offdiag_term``'s: the float32 sum of the two
+#: pair products, inside MEEP's double 0.25 scale, which the caller applies. The
+#: only edit this family makes to a term is to the two PAIR lines above it.
+TERM_RETURN_LINE = ("    return (near_pair * u[home])"
+                    " + (far_pair * ghosted(u, up));")
 
 
 def pole_parameter_names(counts: Sequence[int]) -> Tuple[str, ...]:
@@ -697,6 +701,12 @@ def _own_prelude(row_mask: Sequence[int], counts: Sequence[int]) -> str:
 # validates each to be exactly +1.0f or -1.0f on a folded axis, where a NaN would
 # otherwise launch rather than raise.
 #
+# THE CHUNK RECORD AND THE PRESENCE WORDS ARE THE OFF-DIAGONAL FAMILY'S, emitted by
+# its own constants (``offdiag_emitter.RECORD_BLOCK``/``CHUNK_LINES`` and the
+# ``kept_<row>_<partner>`` words after the live coefficients): the tail chooses each
+# cell's constitutive form from the record, and each term is added only where the
+# cell's chunk keeps that off-diagonal array (anisotropic_averaging.cpp:316-320).
+#
 # WHICH POINTERS CARRY __restrict__. The six outputs and the six PML coefficient
 # vectors do, as in both siblings. The POLE pointers do, on
 # ``dispersive_kernels``' grounds -- two susceptibilities never share a P buffer
@@ -719,7 +729,8 @@ __POLE_PARAMETERS____ROW_PARAMETERS__
     const float* __restrict__ kps_z, const float* __restrict__ kms_z,
     int bc_x, int bc_y, int bc_z,
     int wm_x, int wm_y, int wm_z,
-    float gw_x, float gw_y, float gw_z
+    float gw_x, float gw_y, float gw_z,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= nx * ny * nz) return;
@@ -729,7 +740,7 @@ __POLE_PARAMETERS____ROW_PARAMETERS__
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // Both neighbour coordinates on every axis: one term reads an axis DOWN (the
+__RECORD_BLOCK__    // Both neighbour coordinates on every axis: one term reads an axis DOWN (the
     // partner's) and another reads an axis UP (its own), and a component's two
     // terms take different partners, so every axis can be needed either way.
     int di = coord_dn(i, nx, bc_x), ui = coord_up(i, nx, bc_x);
@@ -756,6 +767,7 @@ __POLE_PARAMETERS____ROW_PARAMETERS__
     int mg_y = (bc_y == BC_MIRROR) && at_y;
     int mg_z = (bc_z == BC_MIRROR) && at_z;
 
+__CHUNK_LINES__
     // The three components are independent, and that is read off the loop rather
     // than assumed: the coupling reads D, the pole buffers and the inverse
     // permittivity, and the tail writes E and f_w_E. Four disjoint sets, so the
@@ -834,18 +846,18 @@ def _term_lines(component: int, offset: int, counts: Sequence[int]) -> List[str]
     ]
 
 
-def _wall_mask_lines(component: int) -> List[str]:
-    """``stepping._mask_metallic_wall_coupling`` for one component's total.
+def _wall_mask_lines(component: int, offset: int) -> List[str]:
+    """``stepping._mask_metallic_wall_coupling`` for one term's float32 sum.
 
     Face 0 of every axis whose Yee shift is 0
     (:data:`coverage.OFFDIAG_WALL_MASK_AXES`), ascending -- the mask's own loop
-    order (stepping.py:1279-1283). Unchanged from both sibling emitters, because
-    the mask itself is unchanged: it asks the grid's DECLARATION and knows nothing
-    about poles.
+    order. Unchanged from both sibling emitters, because the mask itself is
+    unchanged: it asks the grid's DECLARATION and knows nothing about poles. It
+    zeroes the term's sum before its double scale.
     """
-    total = f"total_{E_TERMS[component][0]}"
-    return [f"    {total} = ({_WALL_FLAGS[axis]} && {_WALL_PREDICATES[axis]})"
-            f" ? 0.0f : {total};"
+    term = f"term_{E_TERMS[component][0]}_{offset}"
+    return [f"    {term} = ({_WALL_FLAGS[axis]} && {_WALL_PREDICATES[axis]})"
+            f" ? 0.0f : {term};"
             for axis in _coverage.OFFDIAG_WALL_MASK_AXES[component]]
 
 
@@ -854,10 +866,13 @@ def _component_source(component: int, row_mask: Sequence[int],
     """One component's whole block, on the arm its two row slots select.
 
     Four arms: none, offset-1 only, offset-2 only, both. THE NONE ARM IS THE
-    PLAIN DISPERSIVE CONSTITUTIVE BODY -- ``src = (D - sum P) * inv_eps`` and the
-    same tail -- because ``_offdiagonal_terms`` returns None for a component with
-    no surviving row and ``update_E`` then never forms a ``+ 0`` copy
-    (stepping.py:1222-1227, :1006).
+    PLAIN DISPERSIVE CONSTITUTIVE BODY -- ``src = (D - sum P) * inv_eps`` in float32
+    and the same tail -- because ``_offdiagonal_terms`` returns None for a component
+    with no surviving row and ``update_E`` then never forms a double row. THE ROW
+    ARM is ``folded_offdiag_kernels``' own, with the diagonal operand and every
+    gathered partner read routed through the poles: ``gs*us`` in float32 widened,
+    each kept term's sum scaled by the double 0.25 and added in partner order, the
+    row rounded once by the store.
     """
     name, source, own_axis = E_TERMS[component]
     axis_letter = "xyz"[own_axis]
@@ -874,26 +889,26 @@ def _component_source(component: int, row_mask: Sequence[int],
     else:
         for offset in live:
             lines.extend(_term_lines(component, offset, counts))
-        # ``total`` accumulates offset 1 then offset 2 (stepping.py:1250). Both
-        # additions are bitwise commutative in float32, so this is transcription
-        # fidelity rather than a pinned grouping.
-        lines.append(f"    float total_{name} = term_{name}_{live[0]};")
-        for offset in live[1:]:
-            lines.append(f"    total_{name} = total_{name} + term_{name}_{offset};")
-        # The mask runs BEFORE the row sum: stepping.py:1252 precedes :1006-1007.
-        lines.extend(_wall_mask_lines(component))
-        lines.append(f"    float src_{name} = (gs_{name} * us_{name})"
-                     f" + total_{name};")
+            # The mask zeroes the term's float32 sum before its scale.
+            lines.extend(_wall_mask_lines(component, offset))
+        # The row: gs*us in float32, widened; each kept term's sum scaled by the double
+        # 0.25 and added in partner order (cycle 1, then 2); rounded once by the store.
+        lines.append(f"    double row_{name} = (double)(gs_{name} * us_{name});")
+        for offset in live:
+            kept = _flat.KEPT_PARAMETERS[2 * component + offset]
+            lines.append(f"    if (chunk_keeps({kept}, chunk_{name}))"
+                         f" row_{name} = row_{name} + (0.25 * (double)term_{name}_{offset});")
+        lines.append(f"    float src_{name} = (float)row_{name};")
     lines.append(f"    constitutive_apply({name}, f_w_{name}, idx, src_{name},"
                  f" kps_{axis_letter}[{index_letter}],"
-                 f" kms_{axis_letter}[{index_letter}]);")
+                 f" kms_{axis_letter}[{index_letter}], in_h_{axis_letter});")
     return "\n".join(lines)
 
 
 def _row_parameter_lines(row_mask: Sequence[int]) -> str:
-    """The live coefficient parameters, in :data:`coverage.OFFDIAG_ROW_SLOTS` order."""
-    return "\n".join(f"    const float* {ROW_PARAMETERS[slot]},"
-                     for slot, flag in enumerate(row_mask) if flag)
+    """The live coefficient parameters, then their presence words -- the certified
+    emitter's spelling, imported."""
+    return _flat._row_parameter_lines(row_mask)  # noqa: SLF001
 
 
 def _pole_parameter_lines(counts: Sequence[int]) -> str:
@@ -918,6 +933,8 @@ def dispersive_offdiag_source(row_mask: Sequence[int],
     rows = _row_parameter_lines(mask)
     body = TEMPLATE.replace("__POLE_PARAMETERS__", poles + "\n" if poles else "")
     body = body.replace("__ROW_PARAMETERS__", rows)
+    body = body.replace("__RECORD_BLOCK__", _flat.RECORD_BLOCK)
+    body = body.replace("__CHUNK_LINES__", _flat.CHUNK_LINES)
     for component, term in enumerate(E_TERMS):
         body = body.replace(f"__SRC_{term[0]}__",
                             _component_source(component, mask, values))
@@ -1626,10 +1643,15 @@ def _validate_launch_arguments(shape: Sequence[int], codes: Sequence[int],
 
 def _launch(kernel, fields: Any, rows: Sequence[Any],
             plan: Dict[str, Sequence[Any]], tables: dict, codes: Sequence[int],
-            walls: Sequence[int], weights: Sequence[float]) -> None:
-    """One launch. ``rows`` are the LIVE coefficient volumes, in slot order."""
+            walls: Sequence[int], weights: Sequence[float], kept: Sequence[int],
+            chunk_bounds: Any) -> None:
+    """One launch. ``rows`` are the LIVE coefficient volumes, in slot order, ``kept``
+    their presence words in the same order, ``chunk_bounds`` the device record."""
     import numpy as np  # noqa: PLC0415 - only the scalar types are needed
 
+    from .constitutive_kernels import chunk_record_argument  # noqa: PLC0415 - imports cupy
+
+    cb = chunk_record_argument(chunk_bounds)
     nx, ny, nz = fields.Ex.shape
     blocks = ((nx * ny * nz + _DISPERSIVE_OFFDIAG_THREADS - 1)
               // _DISPERSIVE_OFFDIAG_THREADS)
@@ -1644,6 +1666,7 @@ def _launch(kernel, fields: Any, rows: Sequence[Any],
     for target, _source, _axis in E_TERMS:
         arguments.extend(plan.get(target, ()))
     arguments.extend(rows)
+    arguments.extend(np.int32(word) for word in kept)
     arguments.extend([
         np.int32(nx), np.int32(ny), np.int32(nz),
         tables["kps_x"], tables["kms_x"],
@@ -1652,13 +1675,26 @@ def _launch(kernel, fields: Any, rows: Sequence[Any],
         np.int32(codes[0]), np.int32(codes[1]), np.int32(codes[2]),
         np.int32(walls[0]), np.int32(walls[1]), np.int32(walls[2]),
         np.float32(weights[0]), np.float32(weights[1]), np.float32(weights[2]),
+        cb,
     ])
     kernel((blocks,), (_DISPERSIVE_OFFDIAG_THREADS,), tuple(arguments))
 
 
+def dispersive_offdiag_chunk_arguments(fields: Any, pml: Any, codes: Sequence[int],
+                                       record: Any = None
+                                       ) -> Tuple[List[int], Tuple[int, ...]]:
+    """``(record, kept)`` for a launch: the off-diagonal family's own derivation
+    (``offdiag_presence.launch_chunk_arguments``), which refuses by name where the
+    record does not reproduce the array path's per-chunk presence."""
+    from . import offdiag_presence  # noqa: PLC0415 - NumPy
+
+    return offdiag_presence.launch_chunk_arguments(fields, pml, codes, record)
+
+
 def update_E_dispersive_offdiag_fused_pml_real(
         fields: Any, pml: Any = None, *, tables: dict = None, codes=None,
-        walls=None, weights=None, plan: Optional[Dict[str, List[Any]]] = None
+        walls=None, weights=None, chunk_bounds=None, kept=None,
+        plan: Optional[Dict[str, List[Any]]] = None
 ) -> Dict[str, Any]:
     """``stepping.update_E``'s dispersive tensor row product, in ONE launch.
 
@@ -1666,13 +1702,15 @@ def update_E_dispersive_offdiag_fused_pml_real(
     tables through :func:`coverage.constitutive_sub_lattice`, the boundary codes
     through ``real_pml_boundary_kinds`` and :data:`FOLDED_BC_CODES`, the wall flags
     through the grid's own declaration, the ghost weights through
-    ``fields.mirror_parity``. That is what makes "the launcher and the predicate
-    cannot disagree" an enforced property of this function rather than a
-    convention a caller may keep.
+    ``fields.mirror_parity``, the chunk record and the presence words through
+    :func:`dispersive_offdiag_chunk_arguments`. That is what makes "the launcher and
+    the predicate cannot disagree" an enforced property of this function rather
+    than a convention a caller may keep.
 
-    ``tables``/``codes``/``walls``/``weights`` ARE THE GATE'S DOOR and stay,
-    keyword-only: a byte gate feeds synthetic tables no ``PML`` produces, and its
-    mutations feed DELIBERATELY WRONG ones. Passing ``pml`` together with an
+    ``tables``/``codes``/``walls``/``weights``/``chunk_bounds``/``kept`` ARE THE
+    GATE'S DOOR and stay, keyword-only: a byte gate feeds synthetic tables no ``PML``
+    produces, and its mutations feed DELIBERATELY WRONG ones. ``kept`` is the six
+    words in slot order (0 for a dead slot). Passing ``pml`` together with an
     override, or neither, is refused: a caller with two answers to a one-answer
     question has a bug either way.
 
@@ -1684,7 +1722,7 @@ def update_E_dispersive_offdiag_fused_pml_real(
 
     Returns the arity it launched at, so a caller can record which body ran.
     """
-    overrides = (tables, codes, walls, weights)
+    overrides = (tables, codes, walls, weights, chunk_bounds, kept)
     supplied = [value is not None for value in overrides]
     if (pml is not None) and any(supplied):
         raise ValueError(
@@ -1692,19 +1730,26 @@ def update_E_dispersive_offdiag_fused_pml_real(
             "supplied one cannot both be the one this launch used")
     if pml is None and not all(supplied):
         raise ValueError(
-            "pass exactly one of pml (tables, codes, walls and weights are all "
-            "derived from it and the grid) or ALL FOUR of tables, codes, walls "
-            "and weights (the gate supplies its own, including deliberately "
-            "wrong ones); got "
+            "pass exactly one of pml (tables, codes, walls, weights, the chunk "
+            "record and the presence words are all derived from it and the grid) "
+            "or ALL SIX of tables, codes, walls, weights, chunk_bounds and kept "
+            "(the gate supplies its own, including deliberately wrong ones); got "
             f"tables={'set' if tables is not None else 'None'}, "
             f"codes={'set' if codes is not None else 'None'}, "
             f"walls={'set' if walls is not None else 'None'}, "
-            f"weights={'set' if weights is not None else 'None'}")
+            f"weights={'set' if weights is not None else 'None'}, "
+            f"chunk_bounds={'set' if chunk_bounds is not None else 'None'}, "
+            f"kept={'set' if kept is not None else 'None'}")
     if pml is not None:
+        import cupy as cp  # noqa: PLC0415 - device-only
+        import numpy as np  # noqa: PLC0415
+
         tables = dispersive_offdiag_constitutive_tables(pml)
         codes = dispersive_offdiag_boundary_codes(fields.grid, pml)
         walls = _coverage.offdiag_wall_mask_flags(fields.grid)
         weights = mirror_ghost_weights(fields.grid)
+        record, kept = dispersive_offdiag_chunk_arguments(fields, pml, codes)
+        chunk_bounds = cp.asarray(np.asarray(record, dtype=np.int32))
 
     if plan is None:
         plan = resolve_pole_plan(fields)
@@ -1712,8 +1757,12 @@ def update_E_dispersive_offdiag_fused_pml_real(
     mask = normalized_row_mask(_coverage.offdiag_row_mask(fields))
     rows = [volume for volume in _coverage.offdiag_row_volumes(fields)
             if volume is not None]
+    if len(kept) != len(_coverage.OFFDIAG_ROW_SLOTS):
+        raise ValueError(f"kept carries {len(kept)} presence words, not one per row slot "
+                         f"({len(_coverage.OFFDIAG_ROW_SLOTS)}, 0 for a dead slot)")
+    live_kept = [int(word) for word, flag in zip(kept, mask) if flag]
     _validate_launch_arguments(tuple(fields.Ex.shape), codes, walls, weights)
     _require_no_aliasing(fields, rows, plan)
     _launch(_get_kernel(mask, counts), fields, rows, plan, tables, codes, walls,
-            weights)
+            weights, live_kept, chunk_bounds)
     return {"row_mask": list(mask), "counts": list(counts), "launches": 1}

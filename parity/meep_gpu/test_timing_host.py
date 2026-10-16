@@ -343,6 +343,22 @@ def test_default_thresholds():
     assert th.default_mem_min_gib(1007.6) == pytest.approx(251.9)
 
 
+def test_the_calibrated_cpu_gate_opens_above_a_laptops_idle_floor():
+    """CERT-8 F6: the 1.0 round's Mac idled at 1.2-2.0 busy CPUs of 10 with no work of
+    ours, so the 10 % default (1) could never open. Calibrated by the rule that round
+    fixed in advance, the same box gets 2.5; a quiet box keeps the default."""
+    floor = [1.2, 1.5, 1.9, 2.0, 1.4, 1.7] * 3
+    assert min(floor) >= th.default_cpu_max(10)        # the default never opens here
+    found = th.calibrated_cpu_max(floor, 10)
+    assert found["value"] == 2.5 and found["p80"] == pytest.approx(1.9)
+    assert "warning" not in found
+    assert th.calibrated_cpu_max([0.3, 0.5, 0.8] * 6, 10)["value"] == 1.0
+    busy = th.calibrated_cpu_max([2.5, 2.7, 3.0] * 6, 10)  # the round's foreign process
+    assert busy["value"] == 2.5 and "wait at the gate" in busy["warning"]
+    assert th.calibrated_cpu_max([None] * 18, 10)["value"] == 1.0
+    assert th.percentile([1, 2, 3, 4, 5], 0.8) == pytest.approx(4.2)
+
+
 # ---------------------------------------------------------------------------
 # Placement, Slurm, macOS conditions, GPU identity
 # ---------------------------------------------------------------------------
@@ -375,6 +391,58 @@ def test_placement_hwthread_spreads_over_cores_first():
     assert th.check_placement("bound-hwthread", [[0], [4], [2], [6]], 4, CORES, None) == []
     packed = th.check_placement("bound-hwthread", [[0], [1], [4], [5]], 4, CORES, None)
     assert any("cores are left idle" in p for p in packed), packed
+
+
+def _hwloc_placement(flags, ranks, sockets, cores_per_socket, threads_per_core):
+    """What Open MPI's ORDERED pe-list binds rank r to, as Linux CPU numbers, on a host
+    laid out like the GPU host: logical thread t of core i of package p is hwloc's
+    ``(p * C + i) * T + t``, and Linux numbers it ``p * C + i + t * P`` (siblings P
+    apart, P physical cores). Returns (affinity sets, CPU -> "package:core" map)."""
+    import re  # noqa: PLC0415
+    found = re.search(r"pe-list=([\d,]+):ORDERED", flags).group(1)
+    listed = [int(v) for v in found.split(",")]
+    physical = sockets * cores_per_socket
+    core_of_cpu, affinities = {}, []
+    for logical in listed[:ranks]:
+        thread = logical % threads_per_core
+        core = logical // threads_per_core            # package-major global core index
+        cpu = core + thread * physical
+        core_of_cpu[str(cpu)] = f"{core // cores_per_socket}:{core % cores_per_socket}"
+        affinities.append([cpu])
+    for core in range(physical):
+        for thread in range(threads_per_core):
+            core_of_cpu.setdefault(str(core + thread * physical),
+                                   f"{core // cores_per_socket}:{core % cores_per_socket}")
+    return affinities, core_of_cpu, listed
+
+
+@pytest.mark.parametrize("ranks", [4, 48, 64, 96])
+def test_bound_hwthread_takes_every_core_before_any_second_thread(ranks):
+    """CERT-8 H3: the 2026-09-28 template (``--map-by package --bind-to hwthread``) put
+    64 ranks on 32 of the GPU host's 48 cores. The template now names each rank's
+    hardware thread; on a 2 x 24 x 2 host, N ranks use min(N, 48) cores, balanced."""
+    flags, label = th.binding_flags("openmpi", "bound-hwthread", ranks=ranks, sockets=2,
+                                    threads_per_core=2, physical_cores=48)
+    assert label == "bound-hwthread"
+    assert flags.startswith("--use-hwthread-cpus --map-by pe-list=")
+    assert flags.endswith(":ORDERED --bind-to hwthread")
+    affinities, core_of_cpu, listed = _hwloc_placement(flags, ranks, 2, 24, 2)
+    assert sorted(listed) == list(range(96))
+    assert th.check_placement("bound-hwthread", affinities, ranks, core_of_cpu, None) == []
+    used = {core_of_cpu[str(a[0])] for a in affinities}
+    assert len(used) == min(ranks, 48)
+
+
+def test_bound_hwthread_refuses_by_name_without_the_topology():
+    with pytest.raises(SystemExit, match="named hardware thread"):
+        th.binding_flags("openmpi", "bound-hwthread", ranks=64, sockets=2,
+                         threads_per_core=2)
+    with pytest.raises(SystemExit, match="named hardware thread"):
+        th.binding_flags("openmpi", "bound-hwthread", ranks=64, sockets=5,
+                         threads_per_core=2, physical_cores=48)
+    explicit = {"bound-hwthread": "--my-own-flags"}
+    assert th.binding_flags("openmpi", "bound-hwthread", explicit=explicit)[0] == \
+        "--my-own-flags"
 
 
 def test_placement_pe_and_unbound():
@@ -451,6 +519,22 @@ def test_darwin_daemon_and_ioreg_parsers():
     assert parsed["model"] == "Apple M1 Max" and parsed["gpu_core_count"] == 32
     assert parsed["device_utilization_percent"] == 20
     assert parsed["in_use_system_memory_bytes"] == 326942720
+
+
+def test_the_apple_gpu_state_calls_ioreg_by_its_absolute_path(monkeypatch):
+    """The reference environment's PATH (<prefix>/bin:/usr/bin:/bin) holds no /usr/sbin, where
+    ioreg lives: called by name, the state read unreadable on every reference shell."""
+    calls = []
+
+    def run_text(command, timeout=30.0, env=None, cwd=None):
+        calls.append(list(command))
+        return '  "PerformanceStatistics" = {"Device Utilization %"=7}\n'
+
+    monkeypatch.setattr(th, "run_text", run_text)
+    state = th.apple_gpu_state()
+    assert calls == [["/usr/sbin/ioreg", "-r", "-d", "1", "-c", "IOAccelerator"]]
+    assert th.IOREG == "/usr/sbin/ioreg"
+    assert state["readable"] is True and state["state"]["device_utilization_percent"] == 7
 
 
 def test_gpu_identity_by_uuid():

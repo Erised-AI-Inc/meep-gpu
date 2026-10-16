@@ -26,8 +26,8 @@ two defects the whole shape exists to avoid.
 
 THE LEGS
 
-  1  binding_ceiling  the shipped signature (31 bindings) COMPILES on BOTH expansion
-                      arms with the count read off the emitted text; the same shape at
+  1  binding_ceiling  the shipped signature (31 bindings) COMPILES with the count
+                      read off the emitted text; the same shape at
                       32, 33 and 34 is REFUSED with the platform's own message; a
                       generic float2 sweep bisects the ceiling; the three refuted
                       signatures (one more pointer, unshared kms, separate scalars) and
@@ -38,11 +38,12 @@ THE LEGS
                       declared load redirections -- measured by REVERSING them and
                       requiring the certified text back, byte for byte
   3  driver_order     the only statement between the update_H and step_D consults is
-                      the electric withdraw loop (h_to_d_seam.driver_seam_fact), and
+                      the magnetic f_minus_p restore (h_to_d_seam.driver_seam_fact), and
                       REPLACES / SEAM are the driver's span and seam name
-  4  refusal          a standing integrated electric withdraw is refused BY NAME; a
-                      non-integrated electric source and a magnetic integrated one are
-                      admitted; an undeclared source set, a missing residency, real
+  4  refusal          a source class bringing a standing integrated electric withdraw
+                      of its own is refused BY NAME; an engine integrated electric
+                      source (through f_minus_p), a non-integrated electric source and a
+                      magnetic integrated one are admitted; an undeclared source set, a missing residency, real
                       storage, a cylindrical grid, a folded axis, a beta run and a
                       registered susceptibility are all refused
   5  product          eight configurations x twelve complete driver steps against both
@@ -69,6 +70,18 @@ THE LEGS
                       each on both value classes, each must-catch or a measured
                       equivalence
  13  disarm           the shipped bytes through the mutation path must NOT diverge
+
+THE PER-CHUNK FORMS (bit_parity_0_10, KERNELS.md §7, step M5). Both halves lift the
+aligned complex emitters: the recomputed ``update_H`` selects its form on the dsigw
+membership OF THE CELL IT IS EVALUATED AT (its bounds block takes the record as a
+parameter), and the scratch takes the pre-launch ``f_w`` on a cell outside the dsigw
+chunks; the curl half takes the per-chunk forms on the integer record. Every plan binds
+the chunk record of the division the array path steps with
+(``gate_chunk_records.layer_record``), carried in ``Params``. The grouping and product
+mutations are INVERTED (§7.1): each plants the package's PREVIOUS spelling and stays
+must-catch, the §7.2 battery is armed on both halves with its two declared nulls, and the
+record rows are host defects. The connection's operand order is a declared equivalence
+now: with every product and sum rounded on its own it moves no word.
 
 Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 
@@ -104,6 +117,7 @@ for _path in (API_ROOT, HERE):
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 
 import h_to_d_seam  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 import metal_composition_matrix as matrix  # noqa: E402
 import metal_gate_kit as kit  # noqa: E402
 import metal_value_classes as values  # noqa: E402
@@ -281,6 +295,11 @@ def build_from_grid(grid: Any, seed: int,
         imag.reshape(-1)[3::19] = np.float32(-0.0)
         imag.reshape(-1)[11::29] = np.float32(0.0)
         array[...] = complex_from_planes(real, imag)
+    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # ``stepping.separate_h_from_b`` must not run on it again -- the array path would
+    # copy B into H and f_w on the dsigw cells at the first update_H, and the weld
+    # refuses that update by name (``launch.h_start_reasons``).
+    fields.h_separated = True
     return fields, pml
 
 
@@ -307,6 +326,22 @@ def state_census(fields: Any) -> int:
     return sum(int(subnormal.census(array)) for array in state_of(fields).values())
 
 
+class ForeignStandingWithdraw:
+    """A source class from outside this package that brings an integrated electric
+    ``withdraw`` of its own, built to ``withdraw_hoist._withdraw_does_work``'s three
+    conditions. No engine source stands one any more (an integrated source enters
+    through ``f_minus_p``); the predicate still refuses a class that does, by name."""
+
+    field_type = "D"
+    component = "Ez"
+    is_integrated = True
+    _n_source_points = 3
+    _applied_dipole = 0j
+
+    def withdraw(self, fields: Any) -> None:  # noqa: ARG002 - never called by a predicate
+        raise AssertionError("a coverage predicate called a source's withdraw")
+
+
 def volume_source(fields: Any, component: str, integrated: bool) -> Any:
     from meep_gpu.sources import GaussianEnvelope, VolumeSource  # noqa: PLC0415
 
@@ -314,12 +349,6 @@ def volume_source(fields: Any, component: str, integrated: bool) -> Any:
                         center=(0.0, 0.0, 0.0), size=(0.0, 0.0, 0.0),
                         envelope=GaussianEnvelope(frequency=1.0, fwidth=0.5,
                                                   is_integrated=integrated))
-
-
-def bound_expansion() -> Tuple[Optional[str], str]:
-    probe = complex_fields.load_expansion_probe()
-    arm = complex_fields.expansion_from_probe(probe) if probe else None
-    return arm, (arm or "FMA_V1")
 
 
 # ---------------------------------------------------------------------------
@@ -361,14 +390,18 @@ class ProductEngine:
 
     def __init__(self, fields: Any, pml: Any,
                  functions: Optional[Dict[str, Any]] = None,
-                 rotate: bool = True, half_lattice: bool = False) -> None:
+                 rotate: bool = True, half_lattice: bool = False,
+                 record_patch: Optional[Callable[[Any], Any]] = None) -> None:
         self.fields, self.pml = fields, pml
         self.residency = Residency()
         self.plan = family.plan_metal_complex_fused_hd_pair(
             fields, HalfLatticePml(pml) if half_lattice else pml, sources=(),
-            residency=self.residency, functions=functions)
+            residency=self.residency, functions=functions,
+            chunk_bounds=layer_record(fields.grid, pml))
         if self.plan is None:
             raise AssertionError("the product refused an admitted configuration")
+        if record_patch is not None:
+            rebind_record(self.plan, self.residency, record_patch)
         self.rotate = rotate
         self.residency.sync_in()
 
@@ -410,10 +443,11 @@ class SinglesEngine:
     def __init__(self, fields: Any, pml: Any) -> None:
         self.fields, self.pml = fields, pml
         self.residency = Residency()
-        self.h_plan = complex_fields.plan_complex_constitutive(fields, pml, "H",
-                                                               self.residency)
-        self.d_plan = complex_fields.plan_complex_pml_curl(fields, pml, "step_D",
-                                                           self.residency)
+        record = layer_record(fields.grid, pml)
+        self.h_plan = complex_fields.plan_complex_constitutive(
+            fields, pml, "H", self.residency, chunk_bounds=record)
+        self.d_plan = complex_fields.plan_complex_pml_curl(
+            fields, pml, "step_D", self.residency, chunk_bounds=record)
         if self.h_plan is None or self.d_plan is None:
             raise AssertionError("a certified single refused an admitted configuration")
         self.residency.sync_in()
@@ -479,20 +513,17 @@ def _sweep_source(complex_volumes: int, real_vectors: int) -> Tuple[int, str]:
 
 
 def leg_binding_ceiling(payload: Dict[str, Any], out: str) -> None:
-    probe_arm, expansion = bound_expansion()
     row: Dict[str, Any] = {
         "declared_max_buffer_bindings": MAX_BUFFER_BINDINGS,
         "packed_bindings_declared": family.PACKED_BINDINGS,
-        "probe_bound_expansion": probe_arm,
         "shipped": {}, "shipped_shape_sweep": {}, "generic_sweep": {}, "refuted": {},
     }
-    for arm in templates.EXPANSION_ARMS:
-        text_bindings = family.shipped_signature_bindings(arm)
-        ok, error = _compiles(
-            family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1), arm))
-        row["shipped"][arm] = {"text_bindings": text_bindings, "compiled": ok,
-                               "error": error}
-        log(f"[binding_ceiling] shipped {arm} bindings={text_bindings} compiled={ok}")
+    text_bindings = family.shipped_signature_bindings()
+    ok, error = _compiles(
+        family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1)))
+    row["shipped"] = {"text_bindings": text_bindings, "compiled": ok,
+                      "error": error}
+    log(f"[binding_ceiling] shipped bindings={text_bindings} compiled={ok}")
     # THE BISECT, ON THE SHIPPED SHAPE: 21 float2 volumes and a growing real group,
     # packed Params. 28..31 must compile and 32..34 must not.
     for reals in range(len(family._REAL_VECTORS) - 3,  # noqa: SLF001
@@ -534,9 +565,8 @@ def leg_binding_ceiling(payload: Dict[str, Any], out: str) -> None:
     at_ceiling = row["shipped_shape_sweep"][str(MAX_BUFFER_BINDINGS)]
     over = row["shipped_shape_sweep"][str(MAX_BUFFER_BINDINGS + 1)]
     row["passed"] = bool(
-        all(entry["compiled"] for entry in row["shipped"].values())
-        and all(entry["text_bindings"] == family.PACKED_BINDINGS
-                for entry in row["shipped"].values())
+        row["shipped"]["compiled"]
+        and row["shipped"]["text_bindings"] == family.PACKED_BINDINGS
         and all(entry["compiled"] for key, entry in row["shipped_shape_sweep"].items()
                 if int(key) <= MAX_BUFFER_BINDINGS)
         and at_ceiling["compiled"] and not over["compiled"]
@@ -577,10 +607,9 @@ def _coefficient_lines(text: str) -> List[str]:
 
 
 def leg_lift(payload: Dict[str, Any], out: str) -> None:
-    _probe, expansion = bound_expansion()
-    certified = complex_fields.bloch_constitutive_source("H", expansion)
+    certified = complex_fields.bloch_constitutive_source("H")
     certified_tail = certified.split(family.DECODE_END, 1)[1][: -len("}\n")]
-    tail = family.certified_complex_constitutive_tail(expansion)
+    tail = family.certified_complex_constitutive_tail()
     # RE-DERIVE THE LIFT FROM THE DECLARED EDIT TABLE and require equality: the table
     # in the module is then DATA the gate checks, not prose beside the code.
     rederived = certified_tail
@@ -592,15 +621,17 @@ def leg_lift(payload: Dict[str, Any], out: str) -> None:
         ("    float kp_2 = kp2[k], km_2 = km2[k];\n",
          "    float kp_2 = kp2[k], km_2 = kmz[k];\n"),
     ]
+    zero = templates.COMPLEX_ZERO
     for target in range(3):
         edits.extend((
-            (f"    float2 prev{target} = w{target}[ii];\n",
-             f"    float2 prev{target} = wi{target}[ii];\n"),
+            (f"    float2 prev{target} = dw{target} ? w{target}[ii] : {zero};\n",
+             f"    float2 prev{target} = dw{target} ? wi{target}[ii] : {zero};\n"),
             (f"    float2 src{target} = g{target}[ii];\n",
              f"    float2 src{target} = b{target}[ii];\n"),
-            (f"    w{target}[ii] = src{target};\n", ""),
-            (f"    float2 a{target} = f{target}[ii];\n",
-             f"    float2 a{target} = hi{target}[ii];\n"),
+            (f"    if (dw{target}) {{ w{target}[ii] = src{target}; }}\n",
+             f"    float2 wn{target} = dw{target} ? src{target} : wi{target}[ii];\n"),
+            (f"    if (dw{target}) {{ a{target} = f{target}[ii] + ",
+             f"    if (dw{target}) {{ a{target} = hi{target}[ii] + "),
             (f"    f{target}[ii] = a{target};\n", ""),
         ))
     for old, new in edits:
@@ -614,7 +645,7 @@ def leg_lift(payload: Dict[str, Any], out: str) -> None:
     reversed_rows: Dict[str, bool] = {}
     for codes, phased in ((( 0, 0, 0), (1, 1, 1)), ((1, 1, 0), (0, 0, 1)),
                           ((1, 1, 1), (0, 0, 0)), ((0, 1, 0), (1, 0, 1))):
-        prologue, body = family.welded_curl_tail(codes, phased, expansion)
+        prologue, body = family.welded_curl_tail(codes, phased)
         restored = body
         for var, target in family.OWN_LOAD_EDITS:
             restored = restored.replace(f"    float2 {var}   = own.a{target};\n",
@@ -625,18 +656,23 @@ def leg_lift(payload: Dict[str, Any], out: str) -> None:
                 call = (f"h_cell({', '.join(coordinates)}, "
                         f"{family.H_CELL_TAIL_ARGS}).a{target}")
                 restored = restored.replace(call, f"g{target}[{offset}]")
-        theirs = complex_fields.bloch_curl_source(codes, True, phased, expansion)
+        theirs = complex_fields.bloch_curl_source(codes, True, phased)
         theirs_body = theirs.split(
             "uint idx [[thread_position_in_grid]])\n{\n", 1)[1][: -len("}\n")]
         reversed_rows[f"{codes}/{phased}"] = (prologue + restored) == theirs_body
 
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1), expansion)
+    phased = (complex_fields.CONNECT_PHASE,) * 3
+    source = family.complex_fused_hd_pair_source((0, 0, 0), phased)
     row = {
-        "expansion": expansion,
         "lift_equals_declared_edits": rederived == tail,
         "declared_edit_rows": len(family.CONSTITUTIVE_LIFT_EDITS),
-        "arithmetic_lines_identical": (_arithmetic_lines(certified_tail)
-                                       == _arithmetic_lines(tail)),
+        # The accumulation line carries the declared accumulator rename (the
+        # pre-launch H, hi{t}) and nothing else.
+        "arithmetic_lines_identical": (
+            [line.replace("f0[ii] +", "hi0[ii] +").replace("f1[ii] +", "hi1[ii] +")
+                 .replace("f2[ii] +", "hi2[ii] +")
+             for line in _arithmetic_lines(certified_tail)]
+            == _arithmetic_lines(tail)),
         "arithmetic_line_count": len(_arithmetic_lines(tail)),
         "coefficient_loads_differ_only_by_the_declared_rename": (
             [line.replace("km0[", "kmx[").replace("km1[", "kmy[")
@@ -645,25 +681,26 @@ def leg_lift(payload: Dict[str, Any], out: str) -> None:
             == _coefficient_lines(tail)),
         "coefficient_load_count": len(_coefficient_lines(tail)),
         "curl_reverses_to_the_certified_text": reversed_rows,
-        "carries_certified_helpers": templates.complex_helpers(expansion) in source,
+        "carries_certified_helpers": templates.complex_helpers() in source,
         "contraction_guard_once": source.count(
             shaders.contraction_pragma(shaders.CONTRACT_OFF)) == 1,
         "h_cell_returns": all(f"out.{register} = {register};" in source
-                              for register in ("a0", "a1", "a2", "src0", "src1",
-                                               "src2")),
+                              for register in ("a0", "a1", "a2", "wn0", "wn1",
+                                               "wn2")),
         "own_cell_stored_to_scratch": (
             "    ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;\n" in source),
         "no_magnetic_pointer_survives": all(f"g{target}[" not in source
                                             for target in range(3)),
         "phase_block_untouched": all(
-            f"c_mul({operand}, p{axis})" in source
-            for axis, operands in (("x", ("b_x", "c_x")), ("y", ("a_y", "c_y")),
-                                   ("z", ("a_z", "b_z")))
-            for operand in operands),
+            f"{connected} = c_mul({operand}, p{axis});" in source
+            for axis, pairs in (("x", (("c_dx", "c"), ("b_dx", "b"))),
+                                ("y", (("c_dy", "c"), ("a_dy", "a"))),
+                                ("z", (("b_dz", "b"), ("a_dz", "a"))))
+            for connected, operand in pairs),
     }
     row["passed"] = bool(
         row["lift_equals_declared_edits"] and row["arithmetic_lines_identical"]
-        and row["arithmetic_line_count"] == 6
+        and row["arithmetic_line_count"] == 3
         and row["coefficient_loads_differ_only_by_the_declared_rename"]
         and row["coefficient_load_count"] == 3
         and all(row["curl_reverses_to_the_certified_text"].values())
@@ -690,11 +727,11 @@ def leg_driver_order(payload: Dict[str, Any], out: str) -> None:
         "seam_is_the_hoist_seam": family.SEAM == withdraw_hoist.SEAM,
         "fused_pair_seams_routes_to_hoist": (
             metal_launch.FUSED_PAIR_SEAMS["update_H"] == ("step_D", withdraw_hoist.SEAM)),
-        "between_is_the_withdraw_loop_only": all(
-            "withdraw" in entry["statement"]
-            or "for source in electric" in entry["statement"]
-            or "update_H(self.fields, self.pml)" in entry["statement"]
-            for entry in fact["between"]),
+        # The magnetic f_minus_p restore, which writes B alone and which step_D does
+        # not read (withdraw_hoist.SEAM_PASS); an integrated source stands no withdraw.
+        "between_is_the_magnetic_restore_only": (
+            tuple(entry["statement"] for entry in fact["between"])
+            == h_to_d_seam.EXPECTED_BETWEEN),
         "launches_per_run": ProductEngine(*build(MUTATION_CASE, 1)).plan.launches_per_run,
         "carries_deposit_repair": family.CARRIES_DEPOSIT_REPAIR,
         "hoists_the_withdraw": family.HOISTS_THE_WITHDRAW,
@@ -714,7 +751,7 @@ def leg_driver_order(payload: Dict[str, Any], out: str) -> None:
     }
     row["passed"] = bool(row["replaces_is_the_span"] and row["seam_is_the_hoist_seam"]
                          and row["fused_pair_seams_routes_to_hoist"]
-                         and row["between_is_the_withdraw_loop_only"]
+                         and row["between_is_the_magnetic_restore_only"]
                          and row["launches_per_run"] == 1
                          and not row["carries_deposit_repair"]
                          and not row["hoists_the_withdraw"]
@@ -748,7 +785,10 @@ def leg_refusal(payload: Dict[str, Any], out: str) -> None:
                    for needle in needles)
 
     admitted = cover(fields, pml, (), residency)
-    integrated = cover(fields, pml, (volume_source(fields, "Ez", True),), residency)
+    engine_integrated = volume_source(fields, "Ez", True)
+    integrated = cover(fields, pml, (engine_integrated,), residency)
+    foreign_source = ForeignStandingWithdraw()
+    foreign = cover(fields, pml, (foreign_source,), residency)
     plain = cover(fields, pml, (volume_source(fields, "Ez", False),), residency)
     magnetic = cover(fields, pml, (volume_source(fields, "Hz", True),), residency)
     undeclared = cover(fields, pml, None, residency)
@@ -766,10 +806,17 @@ def leg_refusal(payload: Dict[str, Any], out: str) -> None:
     row = {
         "admitted_with_empty_sources": admitted.covered,
         "admitted_reasons": list(admitted.reasons),
-        "integrated_electric_refused_by_name": (
-            not integrated.covered
-            and named(integrated, "standing", "HOISTS_THE_WITHDRAW = False")),
+        # An ENGINE integrated source enters through f_minus_p and stands no withdraw
+        # in the seam; a source class bringing one of its own is refused.
+        "integrated_electric_admitted": (
+            integrated.covered
+            and not withdraw_hoist.standing_withdraws((engine_integrated,))),
         "integrated_electric_reasons": list(integrated.reasons),
+        "foreign_standing_withdraw_refused_by_name": (
+            not foreign.covered
+            and len(withdraw_hoist.standing_withdraws((foreign_source,))) == 1
+            and named(foreign, "standing", "HOISTS_THE_WITHDRAW = False")),
+        "foreign_standing_withdraw_reasons": list(foreign.reasons),
         "non_integrated_electric_admitted": plain.covered,
         "magnetic_integrated_admitted": magnetic.covered,
         "undeclared_sources_refused": (not undeclared.covered
@@ -789,7 +836,8 @@ def leg_refusal(payload: Dict[str, Any], out: str) -> None:
     }
     row["passed"] = bool(
         row["admitted_with_empty_sources"]
-        and row["integrated_electric_refused_by_name"]
+        and row["integrated_electric_admitted"]
+        and row["foreign_standing_withdraw_refused_by_name"]
         and row["non_integrated_electric_admitted"]
         and row["magnetic_integrated_admitted"]
         and row["undeclared_sources_refused"] and row["no_residency_refused"]
@@ -862,8 +910,7 @@ def run_case(label: str, seed: int, steps: int,
             "first_divergence": first_divergence, "per_step": per_step,
             "shape": list(reference.fields.grid.shape),
             "codes": list(plan.codes), "phased": list(plan.phased),
-            "phase_values": [list(pair) for pair in plan.phase_values],
-            "expansion": plan.expansion, "zero_sign_census": sign_floor,
+            "phase_values": [list(pair) for pair in plan.phase_values], "zero_sign_census": sign_floor,
             "digest": kit.state_digest(state_of(reference.fields))}
 
 
@@ -935,8 +982,7 @@ def leg_null_control(payload: Dict[str, Any], out: str) -> None:
 
 def leg_purity(payload: Dict[str, Any], out: str) -> None:
     """A static read/write ledger over the fused source, comments stripped."""
-    _probe, expansion = bound_expansion()
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1), expansion)
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1))
     kernel = source.split(f"kernel void {family.KERNEL}(", 1)[1].split("{", 1)[1]
     code = "\n".join(line.split("//", 1)[0] for line in kernel.splitlines())
     written = ("ho0", "ho1", "ho2", "wo0", "wo1", "wo2")
@@ -999,8 +1045,7 @@ def leg_divide_spelling(payload: Dict[str, Any], out: str) -> None:
     signed-zero-rich table, so the neighbouring family's finding is carried forward as
     a measurement on this host and this numpy rather than as a reference.
     """
-    _probe, expansion = bound_expansion()
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1), expansion)
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1))
     code = "\n".join(line.split("//", 1)[0] for line in source.splitlines())
     # Integer index arithmetic uses `/` (`ii / nzi`); a FLOAT divide is what this leg
     # is about, and it is counted by the operand shapes the emitters can produce.
@@ -1129,8 +1174,7 @@ def leg_helper_spellings(payload: Dict[str, Any], out: str) -> None:
     the exhaustive table the certified complex family uses, so both numbers exist and
     the mutation leg's entries can name which instrument saw them.
     """
-    _probe, expansion = bound_expansion()
-    shipped = templates.complex_helpers(expansion)
+    shipped = templates.complex_helpers()
     full = _exhaustive_table(4)
     z_full = complex_from_planes(full[:, 0], full[:, 1])
     p_full = complex_from_planes(full[:, 2], full[:, 3])
@@ -1139,22 +1183,31 @@ def leg_helper_spellings(payload: Dict[str, Any], out: str) -> None:
     z_real = complex_from_planes(real[:, 0], real[:, 1])
     p_real = np.zeros_like(z_real)
     c_real = np.ascontiguousarray(real[:, 2])
+    # RE-POINTED WITH THE PART-WISE HELPERS: the shipped real-coefficient products are
+    # one float32 product per part and the connection is MEEP's unfused product, so
+    # the refuted spellings measured here are the PREVIOUS ones -- NumPy's complex
+    # multiply against (c + 0j) with its zero cross terms, on both orientations, and
+    # the connection with a `0.0f - x` negation inside it. Each differs from the
+    # shipped helper only in the sign of an exactly-zero word, which is why the
+    # exhaustive sign/zero table is the instrument.
     cases = (
         ("c_mul/negation_zero_minus_x", "out[idx] = c_mul(z[idx], p[idx]);",
-         lambda text: kit.needle(text, "fma(z.x, p.x, -(z.y * p.y))",
-                                 "fma(z.x, p.x, (0.0f - (z.y * p.y)))"),
+         lambda text: kit.needle(text, "(z.x * p.x) - (z.y * p.y)",
+                                 "(z.x * p.x) + (0.0f - (z.y * p.y))"),
          z_full, p_full, c_full),
-        ("c_mul_field_left/plane_wise",
+        ("c_mul_field_left/previous_zero_cross_terms",
          "out[idx] = c_mul_field_left(z[idx], c[idx]);",
          lambda text: kit.needle(
              text, "static inline float2 c_mul_field_left(float2 z, float c) {",
              "static inline float2 c_mul_field_left(float2 z, float c) {\n"
-             "    return float2(z.x * c, z.y * c);"),
+             "    return float2(fma(z.x, c, -(z.y * 0.0f)), fma(z.x, 0.0f, (z.y * c)));"),
          z_real, p_real, c_real),
-        ("c_mul_coefficient_left/folded_zero_cross_term",
+        ("c_mul_coefficient_left/previous_zero_cross_terms",
          "out[idx] = c_mul_coefficient_left(c[idx], z[idx]);",
-         lambda text: kit.needle(text, "return float2(fma(c, z.x, -(0.0f * z.y)),",
-                                 "return float2(fma(c, z.x, -0.0f),"),
+         lambda text: kit.needle(
+             text, "static inline float2 c_mul_coefficient_left(float c, float2 z) {",
+             "static inline float2 c_mul_coefficient_left(float c, float2 z) {\n"
+             "    return float2(fma(c, z.x, -(0.0f * z.y)), fma(c, z.y, (0.0f * z.x)));"),
          z_real, p_real, c_real),
         ("c_mul_coefficient_left/field_left_orientation",
          "out[idx] = c_mul_coefficient_left(c[idx], z[idx]);",
@@ -1178,7 +1231,7 @@ def leg_helper_spellings(payload: Dict[str, Any], out: str) -> None:
         save(payload, out)
     by_label = {entry["spelling"]: entry for entry in rows}
     block = {
-        "rows": rows, "expansion": expansion,
+        "rows": rows,
         "finding": (
             "the three refuted spellings ARE discriminating at the helper, on the "
             "exhaustive sign/zero table, on this host and this toolchain. Whether a "
@@ -1190,8 +1243,8 @@ def leg_helper_spellings(payload: Dict[str, Any], out: str) -> None:
     block["passed"] = bool(
         rows
         and by_label["c_mul/negation_zero_minus_x"]["differing"] > 0
-        and by_label["c_mul_field_left/plane_wise"]["differing"] > 0
-        and by_label["c_mul_coefficient_left/folded_zero_cross_term"]["differing"] > 0
+        and by_label["c_mul_field_left/previous_zero_cross_terms"]["differing"] > 0
+        and by_label["c_mul_coefficient_left/previous_zero_cross_terms"]["differing"] > 0
         # The orientation swap is the family's measured EQUIVALENCE for a real
         # coefficient, and it must stay one here or the null it licenses is wrong.
         and by_label["c_mul_coefficient_left/field_left_orientation"]["differing"] == 0)
@@ -1215,12 +1268,19 @@ def cell_rows() -> Tuple[List[dict], Dict[str, Any]]:
 
     DERIVED from the census's own ``plan_step.selected`` -- the arms the composer chose
     for each row -- never from a list in this file. The seam record supplies each row's
-    ``withdraw_in_seam`` flag, which names the rows the predicate must refuse.
+    ``withdraw_in_seam`` flag, which names the rows the predicate must refuse. The four
+    files read here are the lift legs' inputs (``lift_host.lift_inputs``), each required
+    by name: without ``tests_param_matched.jsonl`` this cell used to shrink from 17 rows
+    to 12 with no error.
     """
+    import lift_host  # noqa: PLC0415
+
     census = os.path.join(HERE, "results", CENSUS)
     seam = os.path.join(HERE, "results", SEAM_RECORD)
-    if not os.path.isdir(census) or not os.path.isdir(seam):
-        raise SystemExit(f"the corpus_rows leg needs {census} and {seam}")
+    results = os.path.join(HERE, "results")
+    missing = lift_host.missing_inputs(results, CENSUS, SEAM_RECORD)
+    if missing:
+        raise SystemExit(lift_host.missing_reason(results, missing))
     seam_rows = {row["label"]: row
                  for row in _load_jsonl(os.path.join(seam, "h_to_d_seam.jsonl"))}
     rows: Dict[str, dict] = {}
@@ -1383,7 +1443,6 @@ def drive_corpus_row(row: dict, steps: int, seed: int) -> Dict[str, Any]:
     record.update({
         "driven": True,
         "codes": list(product.plan.codes), "phased": list(product.plan.phased),
-        "expansion": product.plan.expansion,
         "steps_run": len(per_step), "steps_in_band": len(per_step) - len(clean),
         "compared_words": sum(entry["compared"] for entry in clean),
         "bit_identical": all(not entry["versus_array"] and not entry["versus_singles"]
@@ -1499,7 +1558,7 @@ def leg_arbitration(payload: Dict[str, Any], out: str) -> None:
 # LEG mutations
 # ---------------------------------------------------------------------------
 
-def kernel_mutations(expansion: str) -> Tuple[Tuple[str, Callable[[str], str],
+def kernel_mutations() -> Tuple[Tuple[str, Callable[[str], str],
                                                     Optional[bool], str, str], ...]:
     """``(label, transform, must_catch, value_class, why)``.
 
@@ -1525,30 +1584,30 @@ def kernel_mutations(expansion: str) -> Tuple[Tuple[str, Callable[[str], str],
          "commit non-deterministically"),
         ("constitutive_kms_wrong_axis",
          lambda s: kit.needle(s, "float kp_0 = kp0[i], km_0 = kmx[i];",
-                              "float kp_0 = kp0[i], km_0 = kmy[i];"), True,
+                              "float kp_0 = kp0[i], km_0 = kmy[j];"), True,
          values.UNIFORM,
-         "the shared kms group indexed on the wrong axis -- the silent failure the "
-         "sharing makes possible, and the reason the sub-lattice equality is asserted "
-         "in the plan"),
-        ("constitutive_accumulations_swapped",
+         "the shared kms group read on the wrong axis (y's vector at y's index) -- the "
+         "silent failure the sharing makes possible, and the reason the sub-lattice "
+         "equality is asserted in the plan. Re-pointed from `kmy[i]`: the accumulation "
+         "now reads km_0 only on Hx's own dsigw cells, where this fixture's equal x and "
+         "y layers give kmy[i] == kmx[i], so that spelling no longer reaches a word"),
+        ("constitutive_previous_accumulation_grouping",
          lambda s: kit.needle(
              s,
-             # EIGHT SPACES: the lifted constitutive body sits inside `h_cell` and
-             # `step_cell_function` indents it by four more than the certified text.
-             "        a0 = a0 + c_mul_coefficient_left(kp_0, src0);\n"
-             "        a0 = a0 - c_mul_coefficient_left(km_0, prev0);\n",
-             "        a0 = a0 - c_mul_coefficient_left(km_0, prev0);\n"
-             "        a0 = a0 + c_mul_coefficient_left(kp_0, src0);\n"), True,
+             # EIGHT SPACES: the lifted constitutive body sits inside `h_cell`.
+             "        if (dw0) { a0 = hi0[ii] + (c_mul_coefficient_left(kp_0, src0) - "
+             "c_mul_coefficient_left(km_0, prev0)); }\n",
+             "        if (dw0) { a0 = (hi0[ii] + c_mul_coefficient_left(kp_0, src0)) - "
+             "c_mul_coefficient_left(km_0, prev0); }\n"), True,
          values.UNIFORM,
-         "the two split-field accumulations reordered: float addition is not "
-         "associative, and the array path's order is (f + kps*src) - kms*prev"),
-        ("phase_multiply_operands_swapped",
-         lambda s: kit.needle(s, "b_x = wx ? c_mul(b_x, px) : b_x;",
-                              "b_x = wx ? c_mul(px, b_x) : b_x;"), True,
-         values.UNIFORM,
-         "the Bloch rotation with the phase on the LEFT: a full complex product's "
-         "imaginary part fuses a different pair in each orientation, and the array "
-         "path's is field-left (S:1862)"),
+         "INVERTED (KERNELS.md §7.1): the package's previous grouping ((f + kps*src) "
+         "- kms*prev) planted in place of MEEP's f + ((kps*src) - (kms*prev))"),
+        ("connection_operands_swapped",
+         lambda s: kit.needle(s, "b_dx = c_mul(b, px);", "b_dx = c_mul(px, b);"),
+         False, values.UNIFORM,
+         "the Bloch connection with the phase on the LEFT. A DECLARED EQUIVALENCE: with "
+         "every product and every sum rounded on its own, IEEE multiplication and "
+         "two-operand addition are commutative, so the orientation moves no word"),
         ("componentwise_divide_by_reciprocal",
          lambda s: kit.needle(
              s,
@@ -1559,52 +1618,50 @@ def kernel_mutations(expansion: str) -> Tuple[Tuple[str, Callable[[str], str],
          "the split-field multiply respelled as a COMPONENTWISE complex-by-real "
          "divide by the reciprocal's reciprocal -- the spelling the Dcyl scan measured "
          "wrong, armed here so this kernel's freedom from division is a measurement"),
-        ("plane_wise_field_multiply",
+        ("previous_zero_cross_term_field_multiply",
          lambda s: kit.needle(
              s,
              "static inline float2 c_mul_field_left(float2 z, float c) {",
              "static inline float2 c_mul_field_left(float2 z, float c) {\n"
-             "    return float2(z.x * c, z.y * c);"), True,
+             "    return float2(fma(z.x, c,    -(z.y * 0.0f)),\n"
+             "                  fma(z.x, 0.0f,  (z.y * c)));"), True,
          values.PM_ZERO_LATTICE,
-         "the plane-wise fast path {re*c, im*c}: 24/128 words on the exhaustive "
-         "signed-zero table and 0 on random data, which is why this entry names the "
-         "+-0 lattice"),
-        ("negation_zero_minus_x",
-         lambda s: kit.needle(s, "fma(z.x, p.x, -(z.y * p.y))",
-                              "fma(z.x, p.x, (0.0f - (z.y * p.y)))"), None,
-         values.PM_ZERO_LATTICE,
-         "negation spelled `0.0f - x` inside the FULL complex product, which only the "
-         "Bloch rotation uses. RECORD-ONLY, and the classification is a measurement "
-         "rather than a concession: leg helper_spellings measures this exact edit at "
-         "36/512 words on the exhaustive sign/zero table, so the spelling IS wrong; "
-         "what it is wrong by is the SIGN of an exactly-zero word, and a complete "
-         "driver step does not carry one -- the curl differences the rotated operand "
-         "against another and the split-field recurrence accumulates into a register, "
-         "and IEEE addition does not preserve a lone negative zero through either. "
-         "Measured 0/3 on BOTH value classes here. Recording it as an equivalence "
-         "would be a false equivalence; the helper leg is where the defect is caught"),
-        ("folded_zero_cross_term",
+         "INVERTED: the package's previous real-coefficient product, NumPy's fused "
+         "complex multiply against (c + 0j), in place of one product per part. Its "
+         "zero cross terms flip the sign of a zero part, and the split-field "
+         "recurrence stores this helper's output directly (u0[ii] = n0), so the +-0 "
+         "lattice carries it to a stored word"),
+        ("previous_fused_connection",
          lambda s: kit.needle(
-             s, "return float2(fma(c, z.x, -(0.0f * z.y)),",
-             "return float2(fma(c, z.x, -0.0f),"), None,
+             s,
+             "    return float2((z.x * p.x) - (z.y * p.y),\n"
+             "                  (z.x * p.y) + (z.y * p.x));",
+             "    return float2(fma(z.x, p.x, -(z.y * p.y)),\n"
+             "                  fma(z.x, p.y,  (z.y * p.x)));"), True,
+         values.UNIFORM,
+         "INVERTED: the package's previous connection product, fused as NumPy's "
+         "complex64 multiply, in place of MEEP's unfused libc++ operator*: the curl "
+         "differences the connected word, so one rounding of z.x*p.x - z.y*p.y "
+         "reaches D on the phased planes"),
+        ("previous_zero_cross_term_coefficient_left",
+         lambda s: kit.needle(
+             s,
+             "static inline float2 c_mul_coefficient_left(float c, float2 z) {",
+             "static inline float2 c_mul_coefficient_left(float c, float2 z) {\n"
+             "    return float2(fma(c, z.x, -(0.0f * z.y)),\n"
+             "                  fma(c, z.y,  (0.0f * z.x)));"), True,
          values.PM_ZERO_LATTICE,
-         "the coefficient-left zero cross term folded to a literal. RECORD-ONLY on the "
-         "same measured grounds as `negation_zero_minus_x`: leg helper_spellings "
-         "measures this exact edit at 12/128 words, so the folding IS wrong, and its "
-         "difference is the sign of an exactly-zero word. This helper feeds the "
-         "constitutive ACCUMULATION (a = a +/- c_mul_coefficient_left(...)), and an "
-         "addition does not carry a lone negative zero into the stored accumulator, so "
-         "it measures 0/3 on both value classes here. Contrast "
-         "`plane_wise_field_multiply`, whose helper output IS stored directly by the "
-         "split-field recurrence (u0[ii] = n0) and which this same walk catches 3/3 -- "
-         "the pair is what shows the step-level instrument is discriminating and the "
-         "two nulls are a property of where each helper's result goes"),
+         "INVERTED (KERNELS.md §7.1): the previous coefficient-left product with its zero "
+         "cross terms. Its difference is the sign of an exactly-zero word, which an "
+         "addition with an exact-zero partner keeps, so the planted +-0 lattice catches "
+         "it (3 of 3 launches; it was record-only while the reading was that the "
+         "following addition always drops a lone negative zero)"),
         ("byte_neutral_store_order",
          lambda s: kit.needle(
              s,
              "    ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;\n"
-             "    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;\n",
-             "    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;\n"
+             "    wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;\n",
+             "    wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;\n"
              "    ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;\n"),
          False, values.UNIFORM,
          "the two scratch store lines swapped: no arithmetic, the control that shows "
@@ -1620,25 +1677,149 @@ def kernel_mutations(expansion: str) -> Tuple[Tuple[str, Callable[[str], str],
          "the packed record unpacked in the other order: a second byte-neutral "
          "control, on the seam where a wrong struct layout would show"),
         ("coefficient_left_orientation",
-         lambda s: kit.needle(s, "a0 = a0 + c_mul_coefficient_left(kp_0, src0);",
-                              "a0 = a0 + c_mul_field_left(src0, kp_0);"),
+         lambda s: kit.needle(s, "c_mul_coefficient_left(kp_0, src0)",
+                              "c_mul_field_left(src0, kp_0)"),
          False, values.PM_ZERO_LATTICE,
          "the constitutive product with the FIELD on the left: measured 0/128 on the "
          "exhaustive signed-zero table by gate_metal_complex, and re-measured here as "
          "an equivalence rather than left as an inherited belief"),
+    ) + b_battery()
+
+
+_CURL_FLAGS = "    const bool du0 = in_i_z, du1 = in_i_x, du2 = in_i_y;\n"
+_H_FLAGS = "        const bool dw0 = in_i_x, dw1 = in_i_y, dw2 = in_i_z;\n"
+
+
+def _flags(line: str, stem: str, values_: Sequence[str]) -> Callable[[str], str]:
+    indent = line[: len(line) - len(line.lstrip())]
+    return lambda s: kit.needle(s, line, f"{indent}const bool {stem}0 = {values_[0]}, "
+                                         f"{stem}1 = {values_[1]}, {stem}2 = {values_[2]};\n")
+
+
+def b_battery() -> Tuple[Tuple[str, Callable[[str], str], Optional[bool], str, str], ...]:
+    """KERNELS.md §7.2 on both halves: the curl's flags at the kernel's indent, the
+    recomputed update_H's inside ``h_cell`` (eight spaces). Must-catch on the uniform
+    class (which seeds signed zeros), the two declared nulls scored on agreeing."""
+    u = values.UNIFORM
+    return (
+        ("b1_select_removed", _flags(_CURL_FLAGS, "du", ("true", "true", "true")), True,
+         u, "the whole-grid recurrence (the previous package form) on the D half"),
+        ("b2_predicate_on_coefficient_identity",
+         _flags(_CURL_FLAGS, "du", ("(kmz[k] != 1.0f)", "(kmx[i] != 1.0f)",
+                                    "(kmy[j] != 1.0f)")), True, u,
+         "the curl form keyed on kms != 1 instead of chunk membership"),
+        ("b5_dsig_dsigu_swapped",
+         _flags(_CURL_FLAGS, "du", ("in_i_y", "in_i_z", "in_i_x")), True, u,
+         "each D target keyed on its dsig axis's chunk instead of its dsigu axis's"),
+        ("b6_auxiliary_stored_on_a_plain_cell",
+         lambda s: kit.needle(s, "    if (du0) { u0[ii] = n0; }\n", "    u0[ii] = n0;\n"),
+         True, u, "fu_D written outside the recurrence's cells"),
+        ("b7_auxiliary_load_unconditional",
+         lambda s: kit.needle(s, "    float2 p0 = du0 ? u0[ii] : f0[ii];",
+                              "    float2 p0u = u0[ii]; float2 p0 = du0 ? p0u : f0[ii];"),
+         False, u, "DECLARED NULL (KERNELS.md §7.2): an unguarded fu load with the store "
+                   "still guarded changes no word"),
+        ("b8_plain_curl_through_the_recurrence",
+         lambda s: kit.needle(kit.needle(
+             s, "    float2 p0 = du0 ? u0[ii] : f0[ii];",
+             "    float2 p0 = du0 ? u0[ii] : float2(0.0f, 0.0f);"),
+             "float2 v0 = du0 ? c_mul_field_left((c_mul_field_left(f0[ii], km_z) + n0) - "
+             "p0, si_z) : n0;",
+             "float2 v0 = c_mul_field_left((c_mul_field_left(f0[ii], km_z) + n0) - p0, "
+             "si_z);"), True, u,
+         "the dsig-only form spelled as the recurrence with p := 0"),
+        ("b9_constitutive_select_removed",
+         _flags(_H_FLAGS, "dw", ("true", "true", "true")), True, u,
+         "the whole-grid accumulation in the recomputed update_H"),
+        ("b10_constitutive_predicate_on_coefficient_identity",
+         _flags(_H_FLAGS, "dw", ("(kp0[i] != 1.0f)", "(kp1[j] != 1.0f)",
+                                 "(kp2[k] != 1.0f)")), True, u,
+         "the constitutive form keyed on kps != 1 instead of chunk membership"),
+        ("b11_f_w_stored_on_a_plain_cell",
+         lambda s: kit.needle(s, "        float2 wn0 = dw0 ? src0 : wi0[ii];\n",
+                              "        float2 wn0 = src0;\n"), True, u,
+         "f_w_H's scratch takes B outside the accumulation's cells"),
+        ("b12_constitutive_load_unconditional",
+         lambda s: kit.needle(s, "        float2 prev0 = dw0 ? wi0[ii] : float2(0.0f, 0.0f);",
+                              "        float2 prev0 = wi0[ii];"), False, u,
+         "DECLARED NULL (KERNELS.md §7.2): prev is consumed only on the accumulation's "
+         "cells"),
+        ("b13_plain_constitutive_through_the_accumulation",
+         lambda s: kit.needle(s, "        float2 a0 = src0;\n",
+                              "        float2 a0 = float2(0.0f, 0.0f) + "
+                              "(c_mul_coefficient_left(1.0f, src0) - "
+                              "c_mul_coefficient_left(0.0f, prev0));\n"), True,
+         values.PM_ZERO_LATTICE,
+         "H = B spelled as the accumulation with kps = 1, kms = 0 on zeroed inputs: "
+         "wrong on every -0 part of B a plain cell carries into update_H. Planted by the "
+         "+-0 lattice (KERNELS.md §7.2): on the uniform class step_B leaves no plain "
+         "cell's B at -0, so the walk measures nothing there (0 of 3 launches)"),
     )
+
+
+#: The chunk record's first word inside the packed ``Params`` (byte 44 / 4).
+PARAMS_RECORD_WORD = family.params_record_dtype().fields["cb"][1] // 4
+
+
+def _bound_off_by_one(record: Any) -> Any:
+    """Every non-empty low run one row longer: the boundary plane changes form."""
+    from meep_gpu.chunk_map import record_index  # noqa: PLC0415
+
+    out = np.array(record, copy=True)
+    for half in (False, True):
+        for axis in range(3):
+            a0, a1, b0 = (int(out[record_index(half, axis, w)]) for w in range(3))
+            if a1 > a0 and (b0 == 0 or a1 + 1 < b0):
+                out[record_index(half, axis, 1)] = a1 + 1
+    return out
+
+
+def _lattices_swapped(record: Any) -> Any:
+    """The integer and half-integer entries exchanged."""
+    from meep_gpu.chunk_map import record_index  # noqa: PLC0415
+
+    out = np.array(record, copy=True)
+    for axis in range(3):
+        for word in range(4):
+            i, h = record_index(False, axis, word), record_index(True, axis, word)
+            out[i], out[h] = record[h], record[i]
+    return out
+
+
+def rebind_record(plan: Any, residency: Residency, mutate: Callable[[Any], Any]) -> Any:
+    """HOST DEFECT: the kernel is right and the record packed into its Params is not.
+
+    The plan's own Params words are read back and only the record's 25 words are
+    replaced, so the five scalars stay the shipped ones.
+    """
+    import torch  # noqa: PLC0415
+    from meep_gpu.chunk_map import RECORD_WORDS  # noqa: PLC0415
+
+    static = list(plan.static_args)
+    host = static[-1].detach().to("cpu").numpy().astype(np.int32).copy()
+    span = slice(PARAMS_RECORD_WORD, PARAMS_RECORD_WORD + RECORD_WORDS)
+    planted = np.asarray(mutate(host[span]), dtype=np.int32)
+    if np.array_equal(planted, host[span]):
+        raise AssertionError("the record mutation changed no word of the record")
+    host[span] = planted
+    static[-1] = torch.from_numpy(host).to(torch.device(residency.device))
+    plan.static_args = tuple(static)
+    return plan
 
 
 def mutated_walk(label: str, seed: int, steps: int, value_class: str,
                  function: Any = None, rotate: bool = True,
-                 half_lattice: bool = False) -> Tuple[int, int, int]:
+                 half_lattice: bool = False,
+                 record_patch: Optional[Callable[[Any], Any]] = None,
+                 ) -> Tuple[int, int, int]:
     """(steps diverged, launches, steps run) for one mutant against the array path."""
     reference = ArrayEngine(*build(label, seed, value_class))
     counter = kit.Counter(function) if function is not None else None
     engine = ProductEngine(*build(label, seed, value_class),
                            functions=({shaders.CONTRACT_OFF: counter}
                                       if counter is not None else None),
-                           rotate=rotate, half_lattice=half_lattice)
+                           rotate=rotate, half_lattice=half_lattice,
+                           record_patch=record_patch)
     diverged = 0
     for _step in range(steps):
         reference.step()
@@ -1650,7 +1831,6 @@ def mutated_walk(label: str, seed: int, steps: int, value_class: str,
 
 
 def leg_mutations(payload: Dict[str, Any], out: str) -> None:
-    _probe, expansion = bound_expansion()
     harness = kit.MutationHarness(payload, out, key="mutations")
     _name, _cell, boundaries, k_point = config(MUTATION_CASE)
     from meep_gpu.stepping import _boundary_kinds  # noqa: PLC0415
@@ -1660,9 +1840,9 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     codes = tuple(1 if kind == "metallic" else 0 for kind in kinds)
     flags, _values = complex_fields.phase_arguments(
         complex_fields.bloch_phase_table(fields.grid, kinds), backward=True)
-    shipped = family.complex_fused_hd_pair_source(codes, flags, expansion)
+    shipped = family.complex_fused_hd_pair_source(codes, flags)
     steps = 3
-    for label, transform, must_catch, value_class, why in kernel_mutations(expansion):
+    for label, transform, must_catch, value_class, why in kernel_mutations():
         try:
             mutant = transform(shipped)
         except LookupError:
@@ -1688,18 +1868,23 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                               "also_on": {other: other_diverged}})
     # HOST DEFECTS: the plan protocol and the host's choice of Yee sub-lattice, not
     # the shader.
-    for label, rotate, half_lattice, why in (
-            ("rotation_undone", False, False,
+    for label, rotate, half_lattice, record_patch, why in (
+            ("rotation_undone", False, False, None,
              "the H/f_w_H rotation undone after the launch: the next launch and the "
              "host read the pre-launch H, which is the in-place weld this shape "
              "exists to avoid"),
-            ("half_integer_constitutive_lattice", True, True,
+            ("half_integer_constitutive_lattice", True, True, None,
              "the constitutive kps group bound from the HALF-INTEGER sub-lattice: it "
              "compiles, converges and is a half-cell-wrong absorber profile, which is "
-             "why it is a leg and not a comment")):
+             "why it is a leg and not a comment"),
+            ("b3_bound_off_by_one", True, False, _bound_off_by_one,
+             "the packed record's low runs one row long: the boundary plane takes the "
+             "in-chunk form in both halves"),
+            ("b4_lattices_swapped", True, False, _lattices_swapped,
+             "the packed record's integer and half-integer entries exchanged")):
         diverged, launches, ran = mutated_walk(MUTATION_CASE, 73000, steps,
                                                values.UNIFORM, None, rotate,
-                                               half_lattice)
+                                               half_lattice, record_patch)
         harness.record(label, kit.MutationHarness.verdict(False, ran, launches,
                                                           diverged),
                        launches, diverged, ran, True, why,
@@ -1708,7 +1893,6 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
 
 
 def leg_disarm(payload: Dict[str, Any], out: str) -> None:
-    _probe, expansion = bound_expansion()
     fields, pml = build(MUTATION_CASE, 1)
     from meep_gpu.stepping import _boundary_kinds  # noqa: PLC0415
 
@@ -1716,7 +1900,7 @@ def leg_disarm(payload: Dict[str, Any], out: str) -> None:
     codes = tuple(1 if kind == "metallic" else 0 for kind in kinds)
     flags, _values = complex_fields.phase_arguments(
         complex_fields.bloch_phase_table(fields.grid, kinds), backward=True)
-    function = family.compile_complex_fused_hd_pair(codes, flags, expansion)
+    function = family.compile_complex_fused_hd_pair(codes, flags)
     diverged, launches, ran = mutated_walk(MUTATION_CASE, 75000, 3, values.UNIFORM,
                                            function)
     row = {"diverged": diverged, "launches": launches, "steps": ran,
@@ -1742,7 +1926,7 @@ def runtime_reasons() -> List[str]:
     return list(coverage._metal_backend_reasons(_HostGrid()))  # noqa: SLF001
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:  # noqa: ARG001
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The census driver's battery hook: the predicate verdict on ONE lifted row.
 
     DELIBERATELY PREDICATE-ONLY. Driving a re-lifted corpus row through three engines
@@ -1792,13 +1976,8 @@ def main(argv: Sequence[str]) -> int:
     if not payload["environment"].get("mps_available"):
         reasons.append("no MPS device available")
     reasons.extend(subnormal.mps_policy_reasons())
-    probe_arm, expansion = bound_expansion()
-    if probe_arm is None:
-        reasons.append("the complex expansion probe is not bound; the product cannot "
-                       "be built and an arm chosen without it would be a guess")
     if reasons:
         return kit.cannot_certify(payload, out, reasons)
-    payload["expansion"] = {"probe_bound": probe_arm, "measured": expansion}
     save(payload, out)
 
     legs: List[Tuple[str, Callable[[Dict[str, Any], str], None]]] = [
@@ -1837,8 +2016,8 @@ def main(argv: Sequence[str]) -> int:
          "meep_gpu/driver.py": os.path.join(API_ROOT, "meep_gpu", "driver.py"),
          "parity/meep_gpu/gate_metal_complex_fused_hd_pair.py":
              os.path.abspath(__file__)},
-        kernel_sources={label: source for arm in templates.EXPANSION_ARMS
-                        for label, source in family.enumerate_sources(arm).items()},
+        kernel_sources={label: source
+                        for label, source in family.enumerate_sources().items()},
         name="provenance.json")
 
     compared = 0
@@ -1901,8 +2080,7 @@ def main(argv: Sequence[str]) -> int:
                "mutation_verdicts": {row["mutation"]: row["verdict"]
                                      for row in mutations},
                "cell_rows_in_census": corpus_block.get("rows_in_cell"),
-               "cell_rows_driven": corpus_block.get("rows_driven"),
-               "expansion": payload.get("expansion")})
+               "cell_rows_driven": corpus_block.get("rows_driven")})
 
 
 if __name__ == "__main__":

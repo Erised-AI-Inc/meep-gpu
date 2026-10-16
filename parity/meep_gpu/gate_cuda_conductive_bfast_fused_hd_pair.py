@@ -33,9 +33,10 @@ All four must agree with the weld word for word.
 LEGS
   host legs (no device launch)
   driver_order         REPLACES is exactly the driver's two adjacent consults, the only
-                       statement between them is the electric withdraw loop, and the
+                       statement between them is the magnetic f_minus_p restore (which
+                       writes B alone, where H is stored; hd_seam_restore), and the
                        sync channel's containment rule excludes step_D -- all read off
-                       the tree with ``ast``, never spelled
+                       the tree, never spelled
   transcription        per VARIANT and, on the conductive one, per MASK: the certified
                        curl's parameter list is carried across CHARACTER FOR CHARACTER,
                        the certified tail differs in EXACTLY the twelve redirected
@@ -46,8 +47,9 @@ LEGS
   refusal              by name: a run that is neither conductive nor BFAST; a run that
                        is BOTH; a lossless step_D; a no-absorber conductive run; a
                        folded BFAST grid; complex storage; an undeclared source list; a
-                       standing INTEGRATED electric withdraw; a non-integrated electric
-                       source NOT refused; a magnetic source NOT refused
+                       source class bringing a standing INTEGRATED electric withdraw of
+                       its own; a non-integrated electric source NOT refused; a
+                       magnetic source NOT refused
   arbitration          the shipped composer, asked. On both variants: which product
                        won each slot, that THIS product is refused BY NAME, that the
                        refusal text names INSTALLABLE False, that the selection is
@@ -84,9 +86,13 @@ LEGS
                        An arm whose plan answers that consult MUST diverge in D/fu_D --
                        that divergence IS the citation for the composer refusal -- and
                        the arm that declines by the containment rule MUST NOT
-  withdraw             an integrated electric source in the seam (the configuration the
-                       predicate refuses today): the hoisted arrangement identical, the
-                       un-hoisted launch and the ``after_step_D`` placement both diverge
+  withdraw             the seam's one pass on the device, per variant
+                       (hd_seam_restore.seam_restore_leg): integrated electric AND
+                       magnetic sources under the absorber, so the magnetic f_minus_p
+                       restore stands between the two consults; the predicate admits
+                       the run, the weld is identical to the array path, and the weld
+                       with the restore moved before the launch and with no magnetic
+                       f_minus_p both diverge
   byte_neutral         the own-cell register reads replaced by reloads of the scratch
                        just stored: the one armed edit required NOT to diverge
   mutation             the armed device and host defects, each with its expectation
@@ -155,6 +161,7 @@ except ImportError:  # laptop: only the host legs run
     cp = None
 
 import gate_provenance  # noqa: E402
+import hd_seam_restore  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 
 # THE TWO SIBLING GATES, imported for the machinery all three share: the launch counter
@@ -239,7 +246,9 @@ LEG_GROUPS: Dict[str, Tuple[str, ...]] = {
 ALL_LEGS: Tuple[str, ...] = tuple(leg for group in LEG_GROUPS.values() for leg in group)
 
 #: The census this gate lifts its corpus rows from, and the seam record whose
-#: ``withdraw_in_seam`` flag names the rows the predicate must refuse.
+#: ``withdraw_in_seam`` flag named the rows the 0.9.2 predicate refused by their standing
+#: withdraw. Since entry 25 those rows are admitted; the rows the predicate must refuse
+#: are derived from each row's own sources (:func:`hd_seam_restore.lift_withdraw_accounting`).
 CENSUS = "cuda_predicate_coverage_2026-09-03_extended"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
 
@@ -477,8 +486,15 @@ class Arrangement:
         raise NotImplementedError
 
 
-def _certified_single_launchers(fields, grid, pml, dtdx, variant: str):
+def _certified_single_launchers(fields, grid, pml, dtdx, variant: str,
+                                record: Any = None):
     """``{slot: callable}`` -- the certified single-slot launchers for this variant.
+
+    ``record`` is the chunk record every launch binds: the one-rank division by default
+    (a synthetic fixture has no driver), the DRIVER's own on a driver leg -- the record
+    the weld binds there (``gate_cuda_fused_hd_pair._certified_single_launchers``, where
+    the one-rank record on a lifted mirror-folded row was measured to move the singles
+    off the array path while the weld stayed on it).
 
     RESOLVED THROUGH EACH CERTIFIED FAMILY'S OWN ENTRY POINT, never re-derived: the
     conductive variant's ``step_D`` is ``conductive_kernels.step_conductive_curl`` and
@@ -497,24 +513,34 @@ def _certified_single_launchers(fields, grid, pml, dtdx, variant: str):
     codes = step_curl_kernels.real_curl_boundary_codes(grid)
     tables_h = constitutive_kernels.constitutive_tables_for("H", pml)
     tables_e = constitutive_kernels.constitutive_tables_for("E", pml)
+    if record is None:
+        record = hd_gate.chunk_record(grid, pml)
+
+    def update_h() -> None:
+        # MEEP's start of H before the run's first update_H
+        # (stepping.separate_h_from_b): the shipped single launcher runs it and the
+        # bare launcher does not.
+        stepping.separate_h_from_b(fields, pml)
+        constitutive_kernels.update_fused_pml_real("H", fields, tables=tables_h,
+                                                   chunk_bounds=record)
+
     plans = {
-        "update_H": lambda: constitutive_kernels.update_fused_pml_real(
-            "H", fields, tables=tables_h),
+        "update_H": update_h,
         "update_E": lambda: constitutive_kernels.update_fused_pml_real(
-            "E", fields, tables=tables_e),
+            "E", fields, tables=tables_e, chunk_bounds=record),
     }
     if variant == "conductive":
         plans["step_B"] = lambda: step_curl_kernels._step_B_fused_pml_real(  # noqa: SLF001
-            fields, curl_b, codes, dtdx)
+            fields, curl_b, codes, dtdx, record)
         plans["step_D"] = lambda: conductive_kernels.step_conductive_curl(
-            fields, pml, "step_D", codes, dtdx, tables=curl_d)
+            fields, pml, "step_D", codes, dtdx, tables=curl_d, chunk_bounds=record)
     else:
         k_b = bfast_curl.bfast_curl_coefficients(grid, "step_B")
         k_d = bfast_curl.bfast_curl_coefficients(grid, "step_D")
         plans["step_B"] = lambda: bfast_curl.step_bfast(
-            "step_B", fields, curl_b, codes, dtdx, k_b)
+            "step_B", fields, curl_b, codes, dtdx, k_b, chunk_bounds=record)
         plans["step_D"] = lambda: bfast_curl.step_bfast(
-            "step_D", fields, curl_d, codes, dtdx, k_d)
+            "step_D", fields, curl_d, codes, dtdx, k_d, chunk_bounds=record)
     return plans
 
 
@@ -567,7 +593,9 @@ def _neighbour_entry(variant: str, role: str, kind: str):
 
 def _run_neighbour(variant: str, role: str, fields, grid, pml, dtdx) -> Dict[str, Any]:
     """Launch one neighbouring released pair through ITS OWN named entry point."""
-    return _neighbour_entry(variant, role, "run")(fields, grid, pml, dtdx, sources=())
+    return _neighbour_entry(variant, role, "run")(
+        fields, grid, pml, dtdx, chunk_bounds=hd_gate.chunk_record(grid, pml),
+        sources=())
 
 
 def _neighbour_verdict(variant: str, role: str, fields, pml, grid) -> Tuple[bool, str]:
@@ -660,14 +688,16 @@ def make_arrangement(mode: str, spec: Mapping[str, Any], fields, grid, pml,
                     run_pass(name, fields, pml)
 
     elif mode in ("weld", "weld_composed"):
-        arrangement.state = family.resolve(fields, grid, pml, dtdx=dtdx)
+        arrangement.state = family.resolve(
+            fields, grid, pml, dtdx=dtdx, chunk_bounds=hd_gate.chunk_record(grid, pml))
         family.assert_bindings_are_disjoint(fields, arrangement.state)
         block = family._FUSED_THREADS if threads is None else int(threads)  # noqa: SLF001
         neighbours = (_certified_single_launchers(fields, grid, pml, dtdx, variant)
                       if mode == "weld_composed" else None)
         launch_kernel = kernel
         if own_load_reads_scratch and launch_kernel is None:
-            launch_kernel = _byte_neutral_kernel(variant, arrangement.state["cond"])
+            launch_kernel = _byte_neutral_kernel(variant, arrangement.state["cond"],
+                                                 arrangement.state["keep"])
 
         def step() -> None:
             for name in STEP_PASSES:
@@ -850,10 +880,9 @@ def leg_driver_order() -> Dict[str, Any]:
     between = [name for name in consulted
                if consulted.index(name) > consulted.index("update_H")
                and consulted.index(name) < consulted.index("step_D")]
-    withdraw_calls = sum(
-        1 for node in statements
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Call)
-        and getattr(node.func.func, "id", None) == "getattr")
+    # THE SEAM'S ONE PASS, read off driver.py: the magnetic f_minus_p restore (writes B
+    # alone, where H is stored), not the electric withdraw entry 25 retired.
+    seam = hd_seam_restore.driver_seam_facts()
     record = {
         "driver_calls": called, "walked_order": order,
         "replaces": replaces, "driver_span": span,
@@ -862,7 +891,8 @@ def leg_driver_order() -> Dict[str, Any]:
         "consulted_slots_in_order": consulted,
         "slots_consulted_between_the_two": between,
         "the_seam_holds_no_other_consult": between == [],
-        "withdraw_getattr_call_sites_in_step": withdraw_calls,
+        "driver_seam": seam,
+        "the_seam_holds_only_the_magnetic_restore": bool(seam.get("passed")),
         "seam_module": family.SEAM,
         "seam_module_is_the_withdraw_hoist": family.SEAM == withdraw_hoist.SEAM,
         "carries_deposit_repair": bool(family.CARRIES_DEPOSIT_REPAIR),
@@ -885,7 +915,7 @@ def leg_driver_order() -> Dict[str, Any]:
         and record["step_D_is_outside_the_sync_window"]
         and record["the_sync_consult_owner_is_this_products_leading_slot"]
         and record["the_span_is_the_released_siblings_span"]
-        and withdraw_calls >= 2)
+        and record["the_seam_holds_only_the_magnetic_restore"])
     return record
 
 
@@ -974,11 +1004,10 @@ def leg_transcription() -> Dict[str, Any]:
             tail_markers = {
                 "cond_pml_apply_is_defined_once": source.count(
                     "__device__ __forceinline__ void cond_pml_apply(") == 1,
-                # ``(km1 != 1.0f) || (si1 != 1.0f)`` and its dsigu twin: FOUR exact
-                # comparisons, and a tolerance in place of any one of them is the
-                # armed mutation m_conductive_partition_is_a_tolerance.
-                "the_exact_partition_survives": source.count("!= 1.0f") == 4,
-                "the_three_store_predicates_survive": (
+                # THE FORMS ARE CHOSEN BY THE CHUNK RECORD, not by a coefficient's
+                # value: no exact unity comparison survives in the text.
+                "no_coefficient_identity_partition": "!= 1.0f" not in source,
+                "the_two_store_predicates_survive": (
                     "if (dsigu) u[idx] = u_new;" in source
                     and "if (dsig) c[idx] = c_new;" in source),
                 "the_mask_defines_say_what_the_mask_says":
@@ -988,25 +1017,26 @@ def leg_transcription() -> Dict[str, Any]:
                     f"cond_pml_apply({target}, fu_{target}," in source
                     and f"pml_apply({target}, fu_{target}," in source
                     for target in family.D_TARGETS),
-                "the_four_case_recurrence_is_present_whole": all(
+                "the_conductive_forms_are_present_whole": all(
                     marker in source for marker in (
-                        "float c_new    = ((cv * cfv) - curl) * civ;",
-                        "float u_cond   = ((uv * cfv) - curl) * civ;",
-                        "float u_split  = (((uv * km1) + c_new) - cv) * si1;",
-                        "float f_split  = (((fv * km2) + u_new) - uv) * si2;",
-                        "float f_first  = (((fv * km1) + c_new) - cv) * si1;",
-                        "float f_direct = ((fv * cfv) - curl) * civ;")),
+                        "float c_new = ((cv * cfv) - curl) * civ;",
+                        "float inc = c_new - cv;",
+                        "float u_new = dsig ? (((uv * km1) + inc) * si1) "
+                        ": (((uv * cfv) - curl) * civ);",
+                        "float value = dsigu ? ((((fv * km2) + u_new) - uv) * si2)")),
             }
         else:
             tail_markers = {
-                "the_bfast_sum_survives": source.count("* (sf + f1)") == 3,
-                "the_tustin_term_survives": source.count(
-                    "float advance = total - (2.0f * bprev);") == 3,
-                "the_state_store_survives": all(
-                    f"fb_D{axis}[idx] = bprev + advance;" in source
-                    for axis in "xyz"),
-                "the_double_mask_survives": source.count(
-                    "advance = 0.0f;") == source.count("curl = 0.0f;"),
+                # MEEP's separate pass after each component's curl (step_db.cpp:
+                # 124-142): one state step and one ladder per component.
+                "the_bfast_pass_is_defined_once": source.count(
+                    "__device__ __forceinline__ float bfast_pass(") == 1,
+                "the_three_passes_survive": source.count(
+                    "float inc_bfast = bfast_pass(") == 3,
+                "the_three_ladders_survive": source.count(
+                    "fold_apply(D") == 3 and source.count(", inc_bfast, ") == 3,
+                "the_state_is_stored_on_owned_cells_only":
+                    "    if (!owned) return 0.0f;\n    F[idx] = updated;" in source,
                 "the_six_scalars_are_declared": all(
                     f"float k{n}_{g}" in source
                     for n in (1, 2) for g in ("a", "b", "c")),
@@ -1609,8 +1639,10 @@ def leg_launch_structure(steps: int) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _build_driver(spec: Mapping[str, Any], *, integrated: bool = False,
-                  seed: int = SEED, scale_bits: int = SEED_SCALE_BITS):
-    """One seeded ``FdtdDriver`` on the device, with one electric source."""
+                  seed: int = SEED, scale_bits: int = SEED_SCALE_BITS,
+                  sources: Optional[Sequence[Mapping[str, Any]]] = None):
+    """One seeded ``FdtdDriver`` on the device, with one electric source (or ``sources``,
+    ``add_source`` specs, in its place)."""
     from meep_gpu.driver import FdtdDriver  # noqa: PLC0415
 
     boundaries = ({axis: kind for axis, kind in zip("xyz", spec["boundaries"])}
@@ -1634,11 +1666,12 @@ def _build_driver(spec: Mapping[str, Any], *, integrated: bool = False,
     if spec["variant"] == "conductive":
         _install_conductivity(driver.fields, driver.grid, spec,
                               np.random.default_rng(seed + 7))
-    driver.add_source({"component": "Ez", "center": (0.0, 0.0, 0.0),
-                       "size": (0.0, 0.0, 0.0), "frequency": 1.0,
-                       "source_type": "continuous" if integrated else "gaussian",
-                       **({"is_integrated": True} if integrated
-                          else {"fwidth": 0.2})})
+    for source in (sources if sources is not None else (
+            {"component": "Ez", "center": (0.0, 0.0, 0.0),
+             "size": (0.0, 0.0, 0.0), "frequency": 1.0,
+             "source_type": "continuous" if integrated else "gaussian",
+             **({"is_integrated": True} if integrated else {"fwidth": 0.2})},)):
+        driver.add_source(dict(source))
     rng = np.random.default_rng(seed)
     scale = np.float32(2.0) ** int(scale_bits)
     for name in STATE_NAMES:
@@ -1657,7 +1690,8 @@ def _weld_plan_for(driver, *, hoisted: bool = False,
     family = _family()
     fields, pml, grid = driver.fields, driver.pml, driver.grid
     dtdx = float(grid.dt / grid.dx)
-    resolved = family.resolve(fields, grid, pml, dtdx=dtdx)
+    resolved = family.resolve(fields, grid, pml, dtdx=dtdx,
+                              chunk_bounds=hd_gate.driver_chunk_record(driver))
     state = {"resolved": resolved, "launches": 0, "withdrawn": 0}
 
     def run() -> None:
@@ -1763,113 +1797,65 @@ def leg_sync(steps: int) -> Dict[str, Any]:
 
 
 def leg_withdraw(steps: int) -> Dict[str, Any]:
-    """The seam's one pass, on a device, with both null controls.
+    """The seam's one pass on a device, per variant: :func:`hd_seam_restore.seam_restore_leg`.
 
-    The configuration this predicate REFUSES today -- a standing integrated electric
-    withdraw -- driven anyway with the hoist wired, so what the refusal costs is
-    measured rather than assumed. Three arrangements, each stepped in lockstep with its
-    own array-path reference and compared per COMPLETE step:
+    Since entry 25 what stands between the two consults is the magnetic ``f_minus_p``
+    restore, not an electric withdraw. On each variant's fixture the driver carries an
+    integrated electric AND an integrated magnetic source; the weld is force-installed,
+    stepped in lockstep with its own array-path reference and required identical, and the
+    weld with the restore moved before the launch and with no magnetic ``f_minus_p``
+    must each diverge.
 
-    ``hoisted``      the withdraw performed immediately before the launch. IDENTICAL.
-    ``not_hoisted``  the same launch with no hoist: the curl reads a D still holding
-                     the previous step's standing dipole. MUST diverge.
-    ``after_step_D`` the campaign's own null control, at the wrong placement. MUST be
-                     refused by name or diverge -- never launch and agree.
-
-    THIS LEG SEEDS AT 2^0 AND THE OTHER DRIVER LEGS AT 2^80, AND THE EXPONENT IS THE
-    MEASUREMENT HERE RATHER THAN A SETTING. Every other driver leg scales the seed away
-    from the denormal band; this one compares a run whose ONLY difference is a source
-    dipole of order one, and at 2^80 that dipole is eighty binades below the state it
-    is added to -- ``(f + d) == f`` exactly in float32, so the withdraw becomes a no-op
-    and BOTH null controls report "did not diverge" for a reason that has nothing to do
-    with the seam. Measured 2026-09-07: at 2^80 the un-hoisted arm was byte-identical
-    to the array path on both variants over six complete steps while the hoist itself
-    performed six withdraws.
+    THIS LEG SEEDS AT 2^0 AND THE OTHER DRIVER LEGS AT 2^80, the measurement it made on
+    the withdraw it used to drive (2026-09-07: at 2^80 the order-one dipole was eighty
+    binades below the state and both null controls stopped controlling anything), and
+    it holds for the ``f_minus_p`` words it drives now.
     """
+    family = _family()
+    integrated = (hd_seam_restore.INTEGRATED_ELECTRIC_SOURCE,
+                  hd_seam_restore.INTEGRATED_MAGNETIC_SOURCE)
     rows: Dict[str, Any] = {}
     findings: List[str] = []
     for label in ("cond_periodic_CCC", "bfast_periodic_3d"):
         spec = BY_LABEL[label]
-        # THE PREDICATE'S OWN VERDICT ON THIS CONFIGURATION, first: it must REFUSE.
-        family = _family()
-        probe_driver = _build_driver(spec, integrated=True, scale_bits=0)
-        covered, reason = family.covers_conductive_bfast_fused_hd_pair(
-            probe_driver.fields, probe_driver.pml, probe_driver.grid,
-            tuple(probe_driver._sources))  # noqa: SLF001
-        probe_driver.close()
+        built: List[Any] = []
 
-        arms_out: Dict[str, Any] = {}
-        for arm, hoisted, placement in (
-                ("hoisted", True, withdraw_hoist.BEFORE_UPDATE_H),
-                ("not_hoisted", False, withdraw_hoist.BEFORE_UPDATE_H),
-                ("after_step_D", True, withdraw_hoist.AFTER_STEP_D)):
-            subject = _build_driver(spec, integrated=True, scale_bits=0)
-            reference = _build_driver(spec, integrated=True, scale_bits=0)
-            plans, state = _weld_plan_for(subject, hoisted=hoisted,
-                                          placement=placement)
-            subject._fast_path = Shim(plans)  # noqa: SLF001
-            subject._fast_path_stale = False  # noqa: SLF001
-            reference._fast_path = None  # noqa: SLF001
-            reference._fast_path_stale = False  # noqa: SLF001
-            first: Optional[Dict[str, Any]] = None
-            refused: Optional[str] = None
-            try:
-                for step in range(steps):
-                    subject.step()
-                    reference.step()
-                    cp.cuda.runtime.deviceSynchronize()
-                    if first is None:
-                        moved = compare(_driver_state(reference),
-                                        _driver_state(subject))
-                        if moved:
-                            first = {"step": step + 1, "volumes": moved}
-            except withdraw_hoist.WithdrawNotHoistable as error:
-                # THE STRONGEST FORM THE NULL CONTROL CAN TAKE, and it is the module's
-                # own doing rather than this leg's: `after_step_D` is not merely wrong,
-                # it is REFUSED BY NAME before a single launch, with the campaign that
-                # measured its divergence quoted in the refusal. A leg that swallowed
-                # this and reported "did not diverge" would be scoring the wrong thing.
-                refused = str(error)[:600]
-            arms_out[arm] = {"identical": first is None and refused is None,
-                             "first_divergence": first,
-                             "refused_by_name": refused,
-                             "launches": state["launches"],
-                             "withdraws_hoisted": state["withdrawn"]}
-            subject.close()
-            reference.close()
-        row = {
-            "variant": spec["variant"],
-            "the_predicate_refuses_this_configuration": not covered,
-            "refusal_reason": reason,
-            "arms": arms_out,
-            "the_hoisted_arrangement_is_identical": arms_out["hoisted"]["identical"],
-            "the_unhoisted_arrangement_diverges":
-                not arms_out["not_hoisted"]["identical"],
-            # EITHER OUTCOME SATISFIES IT, and the record says which: the wrong
-            # placement is refused by name before it launches, or (if some future
-            # widening admits it) it launches and diverges. What is forbidden is that
-            # it launches and agrees.
-            "the_wrong_placement_is_refused_or_diverges":
-                not arms_out["after_step_D"]["identical"],
-            "the_wrong_placement_was_refused_by_name":
-                arms_out["after_step_D"]["refused_by_name"] is not None,
-        }
+        def build(spec: Mapping[str, Any] = spec, built: List[Any] = built) -> Any:
+            driver = _build_driver(spec, sources=integrated, scale_bits=0)
+            built.append(driver)
+            return driver
+
+        def install(driver: Any) -> Mapping[str, Any]:
+            plans, state = _weld_plan_for(driver)
+            driver._fast_path = Shim(plans)  # noqa: SLF001
+            driver._fast_path_stale = False  # noqa: SLF001
+            return state
+
+        try:
+            row = hd_seam_restore.seam_restore_leg(
+                build=build, install_weld=install,
+                coverage=lambda driver: family.covers_conductive_bfast_fused_hd_pair(
+                    driver.fields, driver.pml, driver.grid,
+                    tuple(driver._sources)),  # noqa: SLF001
+                state_of=_driver_state, compare=compare,
+                synchronize=cp.cuda.runtime.deviceSynchronize, steps=steps,
+                spec_label=label)
+        finally:
+            for driver in built:
+                with contextlib.suppress(Exception):
+                    driver.close()
+        row["variant"] = spec["variant"]
         rows[label] = row
-        for key in ("the_predicate_refuses_this_configuration",
-                    "the_hoisted_arrangement_is_identical",
-                    "the_unhoisted_arrangement_diverges",
-                    "the_wrong_placement_is_refused_or_diverges"):
-            if not row[key]:
-                findings.append(f"{label}: {key} is False")
-        log(f"[withdraw] {label:28s} refused={row['the_predicate_refuses_this_configuration']} "
-            f"hoisted={row['the_hoisted_arrangement_is_identical']} "
-            f"unhoisted_diverges={row['the_unhoisted_arrangement_diverges']}")
+        if not row["passed"]:
+            findings.append(f"{label}: the seam leg did not pass")
+        log(f"[withdraw] {label:28s} admitted={row['predicate_admits_the_integrated_sources']} "
+            f"weld_identical={row['weld_identical']} "
+            f"controls={row['null_controls_first_divergence']}")
     return {"rows": rows, "findings": findings,
             "what_this_measures": (
-                "what the HOISTS_THE_WITHDRAW = False refusal costs, driven rather "
-                "than assumed. The hoist is correct arithmetic on this seam; what "
-                "makes the flag False is that no wiring performs it while the product "
-                "declares INSTALLABLE False"),
+                "the weld beside the 0.10 seam pass on both variants: the magnetic "
+                "f_minus_p restore after the launch is byte-identical to the driver's "
+                "order, and the two orderings the commutation does not license diverge"),
             "passed": not findings}
 
 
@@ -1881,7 +1867,7 @@ _OWN_LOAD_STORES = (
     "    Hx_out[idx] = own_h[0]; Hy_out[idx] = own_h[1]; Hz_out[idx] = own_h[2];\n")
 
 
-def _byte_neutral_kernel(variant: str, cond):
+def _byte_neutral_kernel(variant: str, cond, keep=None):
     """The shipped body with the own-cell registers replaced by RELOADS of the scratch.
 
     A float32 stored to global memory and loaded back is the identity on the bits, so
@@ -1890,7 +1876,7 @@ def _byte_neutral_kernel(variant: str, cond):
     reads it, which no mutation that MUST diverge can show.
     """
     family = _family()
-    source = family.kernel_source(variant, cond)
+    source = family.kernel_source(variant, cond, keep=keep)
     if _OWN_LOAD_STORES not in source:
         raise AssertionError("the scratch stores are not where this edit expects them")
     source = source.replace(
@@ -1899,7 +1885,7 @@ def _byte_neutral_kernel(variant: str, cond):
         + "    __threadfence_block();\n"
           "    own_h[0] = Hx_out[idx]; own_h[1] = Hy_out[idx];\n"
           "    own_h[2] = Hz_out[idx];\n", 1)
-    return family._get_kernel(variant, cond, source)  # noqa: SLF001
+    return family._get_kernel(variant, cond, source, keep=keep)  # noqa: SLF001
 
 
 def leg_byte_neutral(steps: int) -> Dict[str, Any]:
@@ -1996,26 +1982,44 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
                "NEXT step's constitutive recurrence, so a comparison that stopped at "
                "one step would miss it",
     },
-    "m_constitutive_regrouped": {
+    # INVERTED (bit_parity_0_10 KERNELS.md section 7.1): the shipped accumulation IS
+    # MEEP's grouping, f + ((kps*src) - (kms*prev)), so the must-catch edit installs
+    # the package's old grouping, two separate left-to-right accumulations.
+    "m_constitutive_regrouped_to_the_old_package_order": {
         "expected": "CAUGHT", "variant": None,
-        "old": "    return a - kms * prev;\n",
-        "new": "    return f[idx] + (kps * src - kms * prev);\n",
-        "why": "the two accumulations are REASSOCIATED: the array path forms "
-               "`f + kps*src` and rounds it, then subtracts `kms*prev` and rounds "
-               "again (constitutive_kernels' note 1). This spelling rounds the "
-               "difference of the two products first. Same value in exact arithmetic, "
-               "a different float32",
+        "old": "    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;\n",
+        "new": "    float value = dsigw ? ((f[idx] + (kps * src)) - (kms * prev)) : src;\n",
+        "why": "MEEP's one accumulation f + ((kps*src) - (kms*prev)) (step_generic.cpp's "
+               "f[i] += ..., the right-hand side formed first) becomes the package's "
+               "old (f + kps*src) - kms*prev. Same value in exact arithmetic, a "
+               "different float32",
     },
-    "m_constitutive_inlined": {
+    "m_constitutive_product_commuted": {
         "expected": "NULL", "variant": None,
-        "old": "    return a - kms * prev;\n",
-        "new": "    return (f[idx] + kps * src) - kms * prev;\n",
-        "why": "`a` is SUBSTITUTED BY ITS DEFINITION and nothing else moves -- same "
-               "operands, same operators, same associativity, so the expression tree "
-               "is identical and `--fmad=false` keeps it from contracting either way. "
-               "PREDICTED NULL and MEASURED NULL, and it is the control that makes "
-               "m_constitutive_regrouped's catch a statement about the GROUPING rather "
-               "than about touching that line at all",
+        "old": "    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;\n",
+        "new": "    float value = dsigw ? (f[idx] + ((src * kps) - (kms * prev))) : src;\n",
+        "why": "the product's operands exchanged and nothing else moves: float32 "
+               "multiplication commutes exactly, so the expression's value is "
+               "identical and `--fmad=false` keeps it from contracting either way. "
+               "PREDICTED NULL, and it is the control that makes the regrouping's "
+               "catch a statement about the GROUPING rather than about touching that "
+               "line at all",
+    },
+    # --- MEEP's per-chunk forms (KERNELS.md section 7.2, the B battery) ---------------
+    "m_constitutive_auxiliary_stored_on_a_plain_cell": {
+        "expected": "CAUGHT", "variant": None,
+        "old": "    *fw_out = dsigw ? src : fw[idx];\n",
+        "new": "    *fw_out = src;\n",
+        "why": "the auxiliary contract (C2): off the dsigw run the array path leaves "
+               "f_w_H untouched, and the rotation makes the scratch the live f_w_H, so "
+               "a scratch word written with B there is a changed f_w_H word",
+    },
+    "m_plain_constitutive_takes_the_accumulation": {
+        "expected": "CAUGHT", "variant": None,
+        "old": "    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;\n",
+        "new": "    float value = (f[idx] + ((kps * src) - (kms * prev)));\n",
+        "why": "the select removed on update_H: the accumulation on every recomputed "
+               "cell, where MEEP's plain chunk steps H = B",
     },
     "m_recompute_indexes_the_threads_own_profile": {
         "expected": "CAUGHT", "variant": None,
@@ -2037,24 +2041,13 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
                "profile is indexed at the WRONG cell. Converged, smooth and wrong -- "
                "the failure mode a tolerance comparison cannot see",
     },
-    "m_conductive_partition_is_a_tolerance": {
-        "expected": "NULL", "variant": "conductive", "premise": "near_one_entries",
-        "old": "    bool dsig = (km1 != 1.0f) || (si1 != 1.0f);\n",
-        "new": ("    bool dsig = (fabsf(km1 - 1.0f) > 1e-6f) "
-                "|| (fabsf(si1 - 1.0f) > 1e-6f);\n"),
-        "why": "the four-case partition becomes a tolerance where the array path spells "
-               "an EXACT comparison (stepping.py:2055-2058). PREDICTED NULL ON THESE "
-               "FIXTURES AND THE PREDICTION IS MEASURED: the ``premise`` field counts "
-               "the coefficient entries that are within 1e-6 of 1.0 WITHOUT being "
-               "exactly 1.0, which is the only band where the two spellings can "
-               "disagree, and a real absorber profile has no such entry -- the "
-               "certified conductive family measured the same thing on its own tables "
-               "(561/640 entries exactly 1.0, 561 within 1e-7) and drives this defect "
-               "with a SYNTHETIC near-one table instead "
-               "(gate_cuda_conductive.py, coefficient_tables_swept 'near_one'). "
-               "Recorded here with its premise rather than dropped, and a fixture that "
-               "GREW a near-one entry would flip the premise and the expectation "
-               "together",
+    "m_conductive_auxiliary_stored_on_a_plain_cell": {
+        "expected": "CAUGHT", "variant": "conductive",
+        "old": "    if (dsigu) u[idx] = u_new;\n",
+        "new": "    u[idx] = u_new;\n",
+        "why": "the auxiliary contract (C2): the conductive curl's split-field "
+               "auxiliary written off the dsigu run, where the array path leaves it "
+               "untouched (stepping.py:2650-2658)",
     },
     "m_conductive_history_not_stored": {
         "expected": "CAUGHT", "variant": "conductive",
@@ -2066,16 +2059,18 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
     },
     "m_bfast_sum_becomes_the_difference": {
         "expected": "CAUGHT", "variant": "bfast",
-        "old": "        float total = (k1_a * (sf + f1)) - (k2_a * (ss + f2));\n",
-        "new": "        float total = (k1_a * (sf - f1)) - (k2_a * (ss + f2));\n",
+        "old": ("    float updated = (pr1 && pr2) ? (((k1 * (sf + f1)) - (k2 * (ss + f2))) "
+                "- fprev)\n"),
+        "new": ("    float updated = (pr1 && pr2) ? (((k1 * (sf - f1)) - (k2 * (ss + f2))) "
+                "- fprev)\n"),
         "why": "the BFAST term SUMS the same operands the curl DIFFERENCES. Turning "
                "one sum into a difference is the single easiest way to lose the term "
                "silently, and on an invariant axis it takes 2*g to exactly zero",
     },
     "m_bfast_state_not_stored": {
         "expected": "CAUGHT", "variant": "bfast",
-        "old": "        fb_Dx[idx] = bprev + advance;\n",
-        "new": "        // the IIR store, removed\n",
+        "old": "    F[idx] = updated;\n",
+        "new": "    // the IIR store, removed\n",
         "why": "the BFAST IIR state is never advanced. Its homogeneous mode is UNDAMPED "
                "forever, so a kernel that gets the field right and the state wrong is "
                "correct for exactly one launch and wrong from the second",
@@ -2087,17 +2082,17 @@ HOST_MUTATIONS: Tuple[str, ...] = ("rotation_skipped", "scratch_aliased_to_stora
                                    "swapped_sub_lattice", "boundary_codes_dropped")
 
 
-def _mutated_kernel(tag: str, variant: str, cond):
+def _mutated_kernel(tag: str, variant: str, cond, keep=None):
     family = _family()
     spec = DEVICE_MUTATIONS[tag]
-    source = family.kernel_source(variant, cond)
+    source = family.kernel_source(variant, cond, keep=keep)
     if source.count(spec["old"]) != 1:
         raise AssertionError(
             f"{tag}: its anchor appears {source.count(spec['old'])} times in the "
             f"{variant} text, not once; a mutation that did not land would be "
             f"reported UNCAUGHT")
     return family._get_kernel(  # noqa: SLF001
-        variant, cond, source.replace(spec["old"], spec["new"], 1))
+        variant, cond, source.replace(spec["old"], spec["new"], 1), keep=keep)
 
 
 def _host_mutation(tag: str, spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
@@ -2111,7 +2106,8 @@ def _host_mutation(tag: str, spec: Mapping[str, Any], steps: int) -> Dict[str, A
                 "why": ("the launcher never rotates, so the driver keeps reading the "
                         "PRE-launch H for the whole run")}
     fields, grid, pml, dtdx = build(spec, "uniform", case_rng(f"host/{tag}/{spec['label']}"))
-    state = family.resolve(fields, grid, pml, dtdx=dtdx)
+    state = family.resolve(fields, grid, pml, dtdx=dtdx,
+                           chunk_bounds=hd_gate.chunk_record(grid, pml))
     if tag == "scratch_aliased_to_storage":
         state["scratch"]["Hx"] = fields.Hx
         try:
@@ -2161,46 +2157,11 @@ def _one_step_divergence(spec, fields, grid, pml, state, tag: str) -> Dict[str, 
             "why": f"{tag} corrupts a binding the launcher resolves"}
 
 
-def _near_one_entries(specs: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
-    """The premise behind the tolerance mutation's declared NULL, MEASURED.
-
-    The exact ``!= 1.0f`` partition and a ``|x - 1| > 1e-6`` tolerance can only
-    disagree on a coefficient that is NEAR one without BEING one. This counts those
-    entries on every conductive fixture's own tables, so the declared null rests on a
-    number rather than on a recollection.
-    """
-    from meep_gpu.cuda_kernels import step_curl_kernels  # noqa: PLC0415
-
-    rows: Dict[str, Any] = {}
-    for spec in specs:
-        if spec["variant"] != "conductive":
-            continue
-        _fields, _grid, pml, _dtdx = build(spec, "uniform",
-                                           case_rng(f"premise/{spec['label']}"))
-        tables = step_curl_kernels.real_pml_curl_tables(pml, False)
-        exact = near = total = 0
-        for name, array in tables.items():
-            if not name.startswith(("kms_", "sinv_")):
-                continue
-            host = to_host(array).astype(np.float64)
-            total += int(host.size)
-            exact += int(np.count_nonzero(host == 1.0))
-            near += int(np.count_nonzero((host != 1.0)
-                                         & (np.abs(host - 1.0) <= 1e-6)))
-        rows[spec["label"]] = {"entries": total, "exactly_one": exact,
-                               "near_one_but_not_one": near}
-    return {"per_fixture": rows,
-            "no_fixture_carries_a_near_one_entry":
-                bool(rows) and all(row["near_one_but_not_one"] == 0
-                                   for row in rows.values())}
-
-
 def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int) -> Dict[str, Any]:
     """Every armed defect, each scored on a fixture where its machinery is LIVE."""
     family = _family()
     rows: Dict[str, Any] = {}
     findings: List[str] = []
-    premises = {"near_one_entries": _near_one_entries(specs)}
     for tag, spec in DEVICE_MUTATIONS.items():
         wanted = spec.get("variant")
         cases = [s for s in specs if wanted in (None, s["variant"])]
@@ -2210,8 +2171,17 @@ def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int) -> Dict[str, An
         outcomes: Dict[str, Any] = {}
         for case in cases:
             cond = case.get("mask") if case["variant"] == "conductive" else None
+            keep = None
+            if case["variant"] == "conductive":
+                # THE KEEP TRIPLE THE LAUNCH BINDS, read off the fixture's own run, so
+                # the mutated text compiles the same KEEP<n> as the shipped one.
+                fields, grid, pml, dtdx = build(case, "uniform",
+                                                case_rng(f"keep/{case['label']}"))
+                keep = family.resolve(fields, grid, pml, dtdx=dtdx,
+                                      chunk_bounds=hd_gate.chunk_record(grid, pml)
+                                      )["keep"]
             try:
-                kernel = _mutated_kernel(tag, case["variant"], cond)
+                kernel = _mutated_kernel(tag, case["variant"], cond, keep)
             except AssertionError as error:
                 outcomes[case["label"]] = {"armed": False, "error": str(error)[:400]}
                 continue
@@ -2227,8 +2197,7 @@ def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int) -> Dict[str, An
         verdict = "CAUGHT" if caught else "NULL"
         rows[tag] = {"expected": spec["expected"], "verdict": verdict,
                      "armed_everywhere": armed, "why": spec["why"],
-                     "variant": wanted, "outcomes": outcomes,
-                     "premise": premises.get(spec.get("premise"))}
+                     "variant": wanted, "outcomes": outcomes}
         if not armed:
             findings.append(f"{tag}: did not arm on every scored fixture")
         elif verdict != spec["expected"]:
@@ -2256,17 +2225,8 @@ def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int) -> Dict[str, An
 
     caught_count = sum(1 for row in rows.values() if row["verdict"] == "CAUGHT")
     null_count = sum(1 for row in rows.values() if row["verdict"] == "NULL")
-    # A DECLARED NULL IS ONLY WORTH ITS PREMISE, so a null whose premise stopped
-    # holding fails the leg rather than passing quietly.
-    if not premises["near_one_entries"]["no_fixture_carries_a_near_one_entry"]:
-        findings.append(
-            "a conductive fixture now carries a coefficient NEAR one without BEING "
-            "one, so m_conductive_partition_is_a_tolerance is an ARMED mutation that "
-            "must be caught rather than a structural null; flip its expectation and "
-            "re-run")
     return {
         "device": rows, "host": host_rows, "findings": findings,
-        "premises": premises,
         "armed": len(rows) + len(host_rows),
         "caught": caught_count + sum(1 for r in host_rows.values()
                                      if r["verdict"] == "CAUGHT"),
@@ -2426,7 +2386,8 @@ def _drive_lifted_row(driver: Any, steps: int) -> Dict[str, Any]:
             raise RuntimeError(refusal)
         singles = _certified_single_launchers(
             driver.fields, driver.grid, driver.pml,
-            float(driver.grid.dt / driver.grid.dx), variant)
+            float(driver.grid.dt / driver.grid.dx), variant,
+            record=hd_gate.driver_chunk_record(driver))
         singles_shim = Shim({"update_H": singles["update_H"],
                              "step_D": singles["step_D"]})
     except Exception as error:  # noqa: BLE001
@@ -2549,7 +2510,7 @@ def _drive_lifted_row(driver: Any, steps: int) -> Dict[str, Any]:
     }
 
 
-def evaluate(driver: Any, probe_module: Any) -> Dict[str, Any]:  # noqa: ARG001
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The census driver's battery hook: the identity on ONE lifted row."""
     from meep_gpu.cuda_kernels import arms  # noqa: PLC0415
 
@@ -2667,7 +2628,7 @@ def _lift_child(leg: str, target: str, cases: Sequence[str], out_json: str,
         record["grid_shape"] = [int(v) for v in driver.shape]
         record["grid_cells"] = int(np.prod([int(v) for v in driver.shape]))
         try:
-            record.update(evaluate(driver, None))
+            record.update(evaluate(driver))
             record["measured"] = True
         except BaseException as exc:  # noqa: BLE001
             record.update({"measured": False,
@@ -2875,9 +2836,6 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     admitted = sorted(label for label, b in blocks.items() if b.get("predicate_admits"))
     refused = sorted(label for label, b in blocks.items()
                      if b.get("predicate_admits") is False)
-    refused_by_the_withdraw = sorted(
-        label for label in refused
-        if "standing integrated" in str(blocks[label].get("predicate_reason", "")))
     _ABSENT_DEPENDENCY = ("ModuleNotFoundError", "ImportError",
                           "must be configured/compiled with")
 
@@ -2894,8 +2852,15 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     unlifted = {label: reason for label, record in by_label.items()
                 if "predicate_admits" not in (blocks.get(label) or {})
                 and (reason := _unlifted_reason(record))}
+    # The engine's own lifter refusing a row by name (MeepSimulationNotLiftable) is no
+    # product's to measure: named, counted out, never a hole (hd_seam_restore).
+    refused_by_the_lifter = {label: reason for label, record in by_label.items()
+                             if "predicate_admits" not in (blocks.get(label) or {})
+                             and label not in unlifted
+                             and (reason := hd_seam_restore.lifter_refusal(record))}
     unmeasured = sorted(label for label, b in blocks.items()
-                        if "predicate_admits" not in b and label not in unlifted)
+                        if "predicate_admits" not in b and label not in unlifted
+                        and label not in refused_by_the_lifter)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     diverged = sorted(label for label in driven if blocks[label].get("first_divergence"))
     backend_rows = {label: len(blocks[label].get("backend_disagreement_steps") or ())
@@ -2907,10 +2872,11 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     unreplayable = {label: blocks[label]["not_replayable"]["volumes"]
                     for label in driven if blocks[label].get("not_replayable")}
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
-    expected_refused = sorted(set(facts["rows_with_a_standing_withdraw"])
-                              - set(unlifted))
-    if only:
-        expected_refused = sorted(set(expected_refused) & set(blocks))
+    # THE REFUSALS, DERIVED FROM EACH ROW'S OWN SOURCES (an electric source whose
+    # withdraw does work; none since entry 25), so the seam record's withdraw_in_seam
+    # rows -- cut on the driver before f_minus_p -- are admitted and driven.
+    accounting = hd_seam_restore.lift_withdraw_accounting(
+        blocks, facts["rows_with_a_standing_withdraw"])
     # THE VARIANT THE PRODUCT PICKED ON EACH ROW MUST BE THE ONE THE SEAM RECORD'S CELL
     # NAMES. A row served by the wrong tail would be byte-identical to nothing and this
     # is where a mis-resolution shows.
@@ -2920,13 +2886,14 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     return {
         "facts": facts, "rows_measured": len(measured),
         "admitted": len(admitted), "refused": len(refused),
-        "refused_by_the_withdraw_clause": refused_by_the_withdraw,
-        "expected_refused": expected_refused,
-        "the_refusals_are_exactly_the_withdraw_rows":
-            refused_by_the_withdraw == expected_refused and refused == expected_refused,
+        "refused_by_the_withdraw_clause": accounting["refused_by_a_standing_withdraw"],
+        "expected_refused": accounting["expected_refused_from_the_row_sources"],
+        "refusal_accounting": accounting,
         "unmeasured": unmeasured,
         "unlifted_on_this_host": unlifted,
-        "rows_the_engine_was_asked_about": len(blocks) - len(unlifted),
+        "refused_by_the_lifter": refused_by_the_lifter,
+        "rows_the_engine_was_asked_about": (len(blocks) - len(unlifted)
+                                            - len(refused_by_the_lifter)),
         "driven": len(driven),
         "passed_rows": len(passed_rows), "diverged": diverged,
         "backend_disagreement_rows": backend_rows,
@@ -2942,7 +2909,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         "words_compared": sum(int(blocks[label].get("words_compared") or 0)
                               for label in driven),
         "passed": bool(measured and not diverged and not errored and not unmeasured
-                       and refused == expected_refused
+                       and accounting["passed"]
                        and (all(variant_agrees.values()) if variant_agrees else False)),
     }
 

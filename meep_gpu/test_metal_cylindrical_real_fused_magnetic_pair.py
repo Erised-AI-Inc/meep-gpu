@@ -112,6 +112,13 @@ class Source:
         self.field_type = field_type
 
 
+def _record(fields, pml):
+    """The one-rank chunk record of the run's grid and layer."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
+
+
 def census_rows():
     def load(name):
         path = CENSUS / name
@@ -259,8 +266,12 @@ def test_the_six_scalars_are_unpacked_into_the_certified_bodies_own_names():
     body = source.split("__BODY__", 1)[0] if "__BODY__" in source else source
     for name in ("nx", "ny", "nz", "n_elem", "dtdx", "axis_coef"):
         assert f"prm.{name}" in source
-    # ...and the lifted body uses the bare names, never the struct.
-    lifted = source.split("float axis_coef = prm.axis_coef;", 1)[1]
+    # ...the chunk record is aliased once, and the lifted body uses the bare names,
+    # never the struct.
+    from meep_gpu.metal_kernels import chunk_bounds
+
+    assert source.count(chunk_bounds.params_alias()) == 1
+    lifted = source.split(chunk_bounds.params_alias() + "\n", 1)[1]
     assert "prm." not in lifted
 
 
@@ -307,7 +318,8 @@ def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set(monkeypatch
     assert not verdict.covered
     assert any("was not declared" in r for r in verdict.reasons)
     assert family.plan_metal_cylindrical_real_fused_magnetic_pair(
-        fields, pml, None, residency) is None
+        fields, pml, None, residency,
+        chunk_bounds=_record(fields, pml)) is None
 
 
 def test_m_not_zero_and_a_cartesian_grid_are_both_refused_by_name(monkeypatch):
@@ -633,10 +645,10 @@ def test_the_released_artifact_is_in_the_tree_and_says_it_released():
     assert walled and walled[0]["seam_host_passes_for_separate"] == ["zero_metal_B"]
     assert walled[0]["seam_host_passes_for_fused"] == []
     mutations = [row for row in payload["rows"] if row["leg"] == "mutation"]
-    assert len(mutations) == 21
+    assert len(mutations) == 22
     nulls = [row for row in mutations if row.get("expectation") == "null"]
     assert [row["label"] for row in nulls] == [
-        "curl_parens_flattened_on_the_invariant_pair"]
+        "curl_invariant_term_kept_as_a_self_difference"]
     assert nulls[0]["caught"] is False
     assert all(row["caught"] for row in mutations
                if row.get("expectation", "caught") == "caught")

@@ -191,24 +191,27 @@ _PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
 _PML_APPLY_SIGNATURE_PURE = "__device__ __forceinline__ float pml_apply_pure(\n"
 _PML_APPLY_PARAMETERS = (
     "    float* __restrict__ f, float* __restrict__ fu, int idx, float curl,\n"
-    "    float kms, float sinv, float kms_u, float sinv_u\n)")
+    "    float kms, float sinv, float kms_u, float sinv_u, int dsigu\n)")
 _PML_APPLY_PARAMETERS_PURE = (
     "    const float* __restrict__ f, const float* __restrict__ fu, int idx,\n"
     "    float curl,\n"
-    "    float kms, float sinv, float kms_u, float sinv_u, float* fu_out\n)")
-_PML_APPLY_FU_STORE = "    fu[idx] = fu_new;\n"
+    "    float kms, float sinv, float kms_u, float sinv_u, int dsigu,\n"
+    "    float* fu_out\n)")
+_PML_APPLY_FU_STORE = "    if (dsigu) fu[idx] = fu_new;\n"
 _PML_APPLY_FU_STORE_PURE = (
     "    // THE FIRST OF THE TWO STORES, HANDED BACK INSTEAD OF PERFORMED. The\n"
     "    // caller writes it to the SCRATCH volume, so nothing this launch reads\n"
-    "    // is ever a word this launch wrote.\n"
-    "    *fu_out = fu_new;\n")
-_PML_APPLY_F_STORE = "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
+    "    // is ever a word this launch wrote. The scratch replaces the stored split\n"
+    "    // field at every cell, so on a cell outside the recurrence's chunks -- where\n"
+    "    // the certified helper leaves fu untouched -- it carries the pre-launch word.\n"
+    "    *fu_out = dsigu ? fu_new : fu[idx];\n")
+_PML_APPLY_F_STORE = "    f[idx] = value;\n"
 _PML_APPLY_F_STORE_PURE = (
     "    // THE SECOND STORE, LIKEWISE. Same right-hand side, same tree, same\n"
     "    // parenthesisation; the value is RETURNED so the resolution can redirect\n"
     "    // it, the wall clear can replace it and the constitutive can consume it\n"
     "    // from a register.\n"
-    "    return (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n")
+    "    return value;\n")
 
 #: Every line of certified CURL text the weld does not lift verbatim, with the reason.
 #: DATA, not prose, so a gate and a host suite can assert the list.
@@ -219,12 +222,15 @@ CURL_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "returns the displacement and hands the split-field value back through "
             "an out-parameter; f and fu become const because nothing in this launch "
             "writes them."},
-    {"line": "    fu[idx] = fu_new;",
-     "became": "    *fu_out = fu_new;",
+    {"line": "    if (dsigu) fu[idx] = fu_new;",
+     "became": "    *fu_out = dsigu ? fu_new : fu[idx];",
      "why": "the store moves to the caller, which addresses the scratch. The value "
-            "and the expression that produced it are untouched."},
-    {"line": "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;",
-     "became": "    return (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;",
+            "and the expression that produced it are untouched on the recurrence's "
+            "cells; elsewhere the scratch, which replaces the stored split field at "
+            "every cell, carries the pre-launch word the certified helper leaves "
+            "there (the auxiliary contract)."},
+    {"line": "    f[idx] = value;",
+     "became": "    return value;",
      "why": "same right-hand side, same tree, same operand order; the result is "
             "returned rather than stored, because the resolution may redirect it, "
             "the wall clear may replace it with an exact +0.0f, and the "
@@ -309,6 +315,7 @@ WELD_ARGS_FIELDS: Tuple[Tuple[str, str], ...] = (
     ("int", "reflect_x"), ("int", "reflect_y"), ("int", "reflect_z"),
     ("float", "near_phase_x"), ("float", "near_phase_y"), ("float", "near_phase_z"),
     ("float", "far_phase_x"), ("float", "far_phase_y"), ("float", "far_phase_z"),
+    ("const int* __restrict__", "cb"),
 )
 
 
@@ -556,6 +563,9 @@ def raw_step_D_cell_source() -> str:
     for _kind, name in WELD_ARGS_FIELDS:
         if name.startswith(("D", "fu_D", "H", "kms_", "sinv_")):
             unpack.append(f"    const float* __restrict__ {name} = weld.{name};")
+    # The run's chunk record: the certified body's decode block, lifted with it, reads
+    # the membership at the cell this function is evaluated at.
+    unpack.append("    const int* __restrict__ cb = weld.cb;")
     return signature + "\n".join(unpack) + "\n" + body + "}\n"
 
 

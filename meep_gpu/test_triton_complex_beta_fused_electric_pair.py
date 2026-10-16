@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import ast
 import importlib
-import json
 import pathlib
 import sys
 from typing import List
@@ -21,7 +20,6 @@ from typing import List
 import numpy
 import pytest
 
-from meep_gpu.expansion_refusal import declaring_run_policy
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
 from meep_gpu.pml import PML
@@ -34,31 +32,10 @@ DRIVER_PATH = API_ROOT / "meep_gpu" / "driver.py"
 #: TestSpecialKz.test_special_kz's own beta (census ``configuration.beta``).
 BETA_CORPUS = -0.39073112848927377
 
-#: The statements the beta term adds — K2's own delta over
-#: ``bloch_pml_curl_step``, derived below from the shipped sources as well.
-BETA_INSERT = (
-    "if HAS_BETA:",
-    "t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)",
-    "curl0_re = curl0_re - t_re",
-    "curl0_im = curl0_im - t_im",
-    "t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)",
-    "curl1_re = curl1_re - t_re",
-    "curl1_im = curl1_im - t_im",
-)
-
-PROBE_PATH = (API_ROOT / "parity" / "meep_gpu" / "results" /
-              "complex_expansion_beta_extension_2026-09-01" / "probe_keep" /
-              "probe.json")
-
 
 @pytest.fixture(scope="module")
 def product():
     return importlib.import_module(MODULE_NAME)
-
-
-@pytest.fixture(scope="module")
-def probe():
-    return json.loads(PROBE_PATH.read_text(encoding="utf-8"))
 
 
 class _Magnetic:
@@ -132,10 +109,9 @@ def _build(cell_size=(2.0, 0.4, 0.0), boundaries=None, complex_storage=True,
     return fields, PML(grid=grid, thickness=thickness)
 
 
-def _reasons(product, fields, pml, sources=(), probe=None):
-    with declaring_run_policy("keep"):
-        verdict = product.complex_beta_fused_electric_pair_coverage(
-            fields, pml, sources, probe=probe)
+def _reasons(product, fields, pml, sources=()):
+    verdict = product.complex_beta_fused_electric_pair_coverage(
+        fields, pml, sources)
     return [r for r in verdict.reasons if "array module" not in r]
 
 
@@ -144,13 +120,37 @@ def _reasons(product, fields, pml, sources=(), probe=None):
 # ---------------------------------------------------------------------------
 
 def test_removing_the_beta_insert_reproduces_the_shipped_complex_fused_pair(bodies):
-    without_beta = [line for line in bodies["fused"] if line not in BETA_INSERT]
-    assert without_beta == bodies["twin_fused"], (
-        "the complex beta fused electric pair is not "
-        "complex_fused_curl_constitutive_D plus the beta insert; first "
-        "difference at index "
-        + str(next((i for i, (a, b) in enumerate(
-            zip(without_beta, bodies["twin_fused"])) if a != b), "length")))
+    """``this kernel`` minus its ``if HAS_BETA:`` pass IS ``complex_fused_curl_constitutive_D``.
+
+    An EXACT statement-list equality, in order, against the shipped body read from the
+    file (``test_triton_special_kz.kernel_body_and_insert``). If any statement of the
+    root moved, this fails and names the first difference.
+    """
+    from meep_gpu.test_triton_special_kz import kernel_body_and_insert
+
+    body, insert = kernel_body_and_insert(PACKAGE_DIR / "complex_beta_fused_electric_pair.py", "complex_beta_fused_curl_constitutive_D")
+    root, root_insert = kernel_body_and_insert(PACKAGE_DIR / "complex_fused_electric_pair.py",
+                                               "complex_fused_curl_constitutive_D")
+    assert insert and not root_insert, "the beta pass is missing, or the root has one"
+    assert body == root, (
+        "first difference at index "
+        + str(next((i for i, (a, b) in enumerate(zip(body, root)) if a != b),
+                   "length")))
+
+
+def test_the_beta_insert_is_exactly_the_shipped_curls_delta(bodies):
+    """The pass is ``beta_bloch_pml_curl_step``'s own, statement for statement, and that curl is
+    ``bloch_pml_curl_step`` plus exactly that pass: the lifter adds nothing of its own
+    to the beta pass (the increment, its ownership mask and the ladder)."""
+    from meep_gpu.test_triton_special_kz import kernel_body_and_insert
+
+    _body, insert = kernel_body_and_insert(PACKAGE_DIR / "complex_beta_fused_electric_pair.py", "complex_beta_fused_curl_constitutive_D")
+    curl_body, curl_insert = kernel_body_and_insert(PACKAGE_DIR / "special_kz.py",
+                                                    "beta_bloch_pml_curl_step")
+    root_curl, _ = kernel_body_and_insert(PACKAGE_DIR / "complex_fields.py",
+                                          "bloch_pml_curl_step")
+    assert curl_insert and insert == curl_insert, (insert[:3], curl_insert[:3])
+    assert curl_body == root_curl
 
 
 def test_removing_the_weld_reproduces_the_shipped_beta_bloch_curl(bodies):
@@ -166,12 +166,6 @@ def test_removing_the_weld_reproduces_the_shipped_beta_bloch_curl(bodies):
         "beta_bloch_pml_curl_step; first difference at index "
         + str(next((i for i, (a, b) in enumerate(
             zip(without_weld, bodies["beta_curl"])) if a != b), "length")))
-
-
-def test_the_beta_insert_is_exactly_the_shipped_curls_delta(bodies):
-    delta = [line for line in bodies["beta_curl"]
-             if line not in bodies["bloch_curl"]]
-    assert delta == list(BETA_INSERT), delta
 
 
 def test_every_statement_comes_from_a_shipped_body(bodies):
@@ -216,13 +210,6 @@ def test_replaces_is_the_drivers_own_call_order(product):
     assert positions == sorted(positions), product.REPLACES
 
 
-def test_the_probe_pattern_claim_is_the_extended_set(product):
-    from meep_gpu.triton_kernels import special_kz  # noqa: PLC0415
-
-    assert product.PRODUCT_PROBE_PATTERNS == special_kz.BETA_PROBE_PATTERNS
-    assert special_kz.BETA_PROBE_PATTERN in product.PRODUCT_PROBE_PATTERNS
-
-
 def test_the_wall_map_is_the_D_sides_and_derived_from_iyee(product):
     """An x wall clears the TANGENTIAL Dy/Dz — the exact complement of the B
     side's map, re-derived from the shipped IYEE_SHIFTS."""
@@ -236,20 +223,17 @@ def test_the_wall_map_is_the_D_sides_and_derived_from_iyee(product):
     assert product.WALL_CLEARED_COMPONENTS == ((1, 2), (0, 2), (0, 1))
 
 
-def test_the_beta_words_are_the_electric_sides_minus_i_pair(product):
+def test_the_beta_words_are_the_electric_sides_quarter_turn(product):
     """The plan binds ``beta_curl_coefficients(..., magnetic=False,
-    complex_storage=True)`` — the -1j pair with the signed-zero real word."""
+    complex_storage=True)``: one real word per sign, the negated coefficient (the D
+    side's quarter turn by -1j), each rounded once -- no complex coefficient."""
     from meep_gpu.triton_kernels import special_kz  # noqa: PLC0415
 
     words = special_kz.beta_curl_coefficients(BETA_CORPUS, 0.035, False, True)
-    expected = []
-    for sign in (1.0, -1.0):
-        value = numpy.complex64(
-            (sign * 2.0 * numpy.pi * BETA_CORPUS * 0.035) * -1j)
-        expected.append((float(numpy.float32(value.real)),
-                         float(numpy.float32(value.imag))))
-    assert [tuple(pair) for pair in words] == expected
-    assert all(pair[0] == 0.0 for pair in words)
+    expected = tuple(float(numpy.float32(-(sign * 2.0 * numpy.pi * BETA_CORPUS * 0.035)))
+                     for sign in (1.0, -1.0))
+    assert tuple(words) == expected
+    assert all(isinstance(word, float) for word in words)
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +241,7 @@ def test_the_beta_words_are_the_electric_sides_minus_i_pair(product):
 # ---------------------------------------------------------------------------
 
 def test_an_electric_deposit_is_carried_and_a_magnetic_source_is_irrelevant(
-        product, probe):
+        product):
     """The cell's one corpus row injects electrically in THIS seam; the shipped
     repair is what carries it. A magnetic source belongs to the other seam."""
     from meep_gpu import deposit_repair  # noqa: PLC0415
@@ -269,53 +253,53 @@ def test_an_electric_deposit_is_carried_and_a_magnetic_source_is_irrelevant(
                           envelope=GaussianEnvelope(frequency=1.0, fwidth=0.2),
                           amplitude=1.0)
     assert deposit_repair._deposit_index(source) is not None
-    assert _reasons(product, fields, pml, (source, _Magnetic()), probe) == []
+    assert _reasons(product, fields, pml, (source, _Magnetic())) == []
 
 
-def test_an_electric_source_without_an_index_is_refused_by_name(product, probe):
+def test_an_electric_source_without_an_index_is_refused_by_name(product):
     fields, pml = _build()
-    reasons = _reasons(product, fields, pml, (_Electric(),), probe)
+    reasons = _reasons(product, fields, pml, (_Electric(),))
     assert any("does not publish the index" in reason for reason in reasons), reasons
 
 
-def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set(product, probe):
+def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set(product):
     fields, pml = _build()
-    reasons = _reasons(product, fields, pml, None, probe)
+    reasons = _reasons(product, fields, pml, None)
     assert any("was not declared" in reason for reason in reasons), reasons
 
 
-def test_a_zero_beta_run_is_refused_by_name(product, probe):
+def test_a_zero_beta_run_is_refused_by_name(product):
     fields, pml = _build(beta=0.0)
-    reasons = _reasons(product, fields, pml, (), probe)
+    reasons = _reasons(product, fields, pml, ())
     assert any("beta is zero" in reason for reason in reasons), reasons
 
 
-def test_real_storage_is_refused_this_is_the_complex_arm(product, probe):
+def test_real_storage_is_refused_this_is_the_complex_arm(product):
     fields, pml = _build(complex_storage=False, k_point=(0.0, 0.0, 0.0))
-    reasons = _reasons(product, fields, pml, (), probe)
+    reasons = _reasons(product, fields, pml, ())
     assert any("storage is real float32" in reason for reason in reasons), reasons
 
 
-def test_a_fold_is_refused_by_this_products_own_clause(product, probe):
+def test_a_fold_is_refused_by_this_products_own_clause(product):
     from meep_gpu.grid import Mirror  # noqa: PLC0415
 
     fields, pml = _build(symmetry=(Mirror("Y", 1),), k_point=(0.0, 0.0, 0.0),
                          cell_size=(2.0, 1.0, 0.0),
                          thickness=((2, 2), (0, 0), (0, 0)))
-    reasons = _reasons(product, fields, pml, (), probe)
+    reasons = _reasons(product, fields, pml, ())
     assert any("mirror plane is active" in reason for reason in reasons), reasons
 
 
 def test_a_registered_susceptibility_is_refused_by_this_products_own_clause(
-        product, probe):
+        product):
     fields, pml = _build()
     fields.polarizations = ("stub",)
-    reasons = _reasons(product, fields, pml, (), probe)
+    reasons = _reasons(product, fields, pml, ())
     assert any("(D - sum P)" in reason for reason in reasons), reasons
 
 
 def test_a_fields_that_cannot_hand_over_inv_eps_is_refused_not_crashed(
-        product, probe):
+        product):
     fields, pml = _build()
 
     class _NoInvEps:
@@ -327,31 +311,21 @@ def test_a_fields_that_cannot_hand_over_inv_eps_is_refused_not_crashed(
         inverse_epsilon_for = None
 
     shim = _NoInvEps()
-    reasons = _reasons(product, shim, pml, (), probe)
+    reasons = _reasons(product, shim, pml, ())
     assert any("inverse_epsilon_for" in reason for reason in reasons), reasons
 
 
-def test_the_base_four_probe_is_refused_on_the_extended_clause(product):
-    old = json.loads((API_ROOT / "parity" / "meep_gpu" / "results" /
-                      "complex_expansion_convention_2026-08-16" / "results" /
-                      "probe_keep" / "probe.json").read_text(encoding="utf-8"))
-    fields, pml = _build()
-    reasons = _reasons(product, fields, pml, (), old)
-    assert any("EXTENDED pattern set" in reason for reason in reasons), reasons
-
-
-def test_the_builder_refuses_every_configuration_the_predicate_refuses(product, probe):
+def test_the_builder_refuses_every_configuration_the_predicate_refuses(product):
     cases = (
         {"beta": 0.0},
         {"complex_storage": False, "k_point": (0.0, 0.0, 0.0)},
     )
     for keywords in cases:
         fields, pml = _build(**keywords)
-        with declaring_run_policy("keep"):
-            covered = product.complex_beta_fused_electric_pair_coverage(
-                fields, pml, (), probe=probe).covered
-            plan = product.plan_complex_beta_fused_electric_pair(
-                fields, pml, (), probe=probe)
+        covered = product.complex_beta_fused_electric_pair_coverage(
+            fields, pml, ()).covered
+        plan = product.plan_complex_beta_fused_electric_pair(
+            fields, pml, ())
         assert not covered
         assert plan is None, keywords
 
@@ -360,8 +334,8 @@ def test_the_plan_refuses_a_placeholder_inv_eps_binding(product):
     with pytest.raises(ValueError, match="inv_eps"):
         product.ComplexBetaFusedElectricPairPlan(
             (4, 4, 1), 0.5, (0, 0, 0), (False, False, False),
-            (0, 0, 0), (0.0,) * 6, ((0.0, 0.1), (-0.0, -0.1)), 1, 256,
-            [], [], [], [], [], [], None, [])
+            (0, 0, 0), (0.0,) * 6, (0.1, -0.1), 256,
+            [], [], [], [], [], [], None, [], chunk_bounds=None)
 
 
 def test_the_plan_refuses_a_cell_count_whose_word_index_overflows_int32(product):
@@ -371,8 +345,8 @@ def test_the_plan_refuses_a_cell_count_whose_word_index_overflows_int32(product)
     with pytest.raises(ValueError, match="int32"):
         product.ComplexBetaFusedElectricPairPlan(
             (2048, 1024, 1024), 0.5, (0, 0, 0), (False, False, False),
-            (0, 0, 0), (0.0,) * 6, ((0.0, 0.1), (-0.0, -0.1)), 1, 256,
-            [], [], [], [], [], [], (stub, stub, stub), [])
+            (0, 0, 0), (0.0,) * 6, (0.1, -0.1), 256,
+            [], [], [], [], [], [], (stub, stub, stub), [], chunk_bounds=None)
 
 
 def test_the_from_arrays_route_carries_the_identity_arm(product):

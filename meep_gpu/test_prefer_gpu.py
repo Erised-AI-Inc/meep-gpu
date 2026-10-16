@@ -31,7 +31,8 @@ from meep_gpu.driver import FdtdDriver
 SWITCHES = ("MEEP_GPU_DISPATCH", "MEEP_GPU_FUSED", "MEEP_GPU_KERNEL_TABLE",
             "MEEP_GPU_FUSE_ARMS", "MEEP_GPU_METAL_RESIDENCY", "MEEP_GPU_DISPATCH_LOG",
             "MEEP_GPU_SUBNORMAL_POLICY", "MEEP_GPU_SUBNORMAL_INSTALL",
-            "MEEP_GPU_ALLOW_UNCERTIFIED", "MEEP_GPU_BACKEND_PREFERENCE")
+            "MEEP_GPU_HARDWARE", "MEEP_GPU_ALLOW_UNCERTIFIED",
+            "MEEP_GPU_BACKEND_PREFERENCE")
 STEPS = 5
 
 
@@ -189,7 +190,7 @@ def test_certified_only_runs_an_uncertified_toolchain_on_the_host_cpu_and_says_s
 
     ``prefer_gpu=True`` resolves from the HARDWARE; whether this host's environment
     is one the cited Metal welds ran on is rung 4M's question, asked at the freeze.
-    A run restricted to certified environments (``MEEP_GPU_ALLOW_UNCERTIFIED=0``)
+    A run restricted to certified environments (``MEEP_GPU_HARDWARE=certified``)
     refuses a torch outside them by name, and on an Apple GPU the array path it falls
     to is the host CPU, which the line a user reads says.
     """
@@ -211,7 +212,7 @@ def test_certified_only_runs_an_uncertified_toolchain_on_the_host_cpu_and_says_s
         return toolchain
 
     monkeypatch.setattr(metal_dispatch, "metal_toolchain", other_torch)
-    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, "0")
+    monkeypatch.setenv(fastpath.HARDWARE_SWITCH, fastpath.HARDWARE_CERTIFIED)
     driver = _driver(True)
     assert driver.gpu == "metal" and driver.xp is np
     for _ in range(STEPS):
@@ -420,8 +421,8 @@ def test_a_reference_driver_never_consults_the_planner(monkeypatch, capsys, enab
         assert "is not an accepted value" not in lines[0], lines[0]
 
 
-@pytest.mark.parametrize("value", [None, "0", "1"])
-def test_a_reference_driver_ignores_the_uncertified_switch(monkeypatch, capsys, value):
+@pytest.mark.parametrize("value", [None, "certified", "any", "not-a-scope"])
+def test_a_reference_driver_ignores_the_hardware_switch(monkeypatch, capsys, value):
     """The switch decides which identities a GPU driver's kernels run on; a reference
     driver runs none, so it is not read and nothing is said about it."""
     def refuse(*_args, **_kwargs):
@@ -429,7 +430,7 @@ def test_a_reference_driver_ignores_the_uncertified_switch(monkeypatch, capsys, 
 
     monkeypatch.setattr(driver_module, "plan_fast_path", refuse)
     if value is not None:
-        monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, value)
+        monkeypatch.setenv(fastpath.HARDWARE_SWITCH, value)
     driver = FdtdDriver(cell_size=(0.5, 0.5, 0.5), resolution=8)
     for _ in range(3):
         driver.step()
@@ -441,12 +442,12 @@ def test_a_reference_driver_ignores_the_uncertified_switch(monkeypatch, capsys, 
     assert _meep_lines(capsys.readouterr().err) == []
 
 
-@pytest.mark.parametrize("value", [None, "1", "0"])
+@pytest.mark.parametrize("value", [None, "supported", "any", "certified"])
 def test_a_cuda_driver_on_a_supported_uncertified_device(monkeypatch, capsys, value):
     """``prefer_gpu=True`` on an NVIDIA GPU the kernels support and no gate ran on.
 
     The shipped default dispatches, records ``certified: False`` and says so once;
-    ``MEEP_GPU_ALLOW_UNCERTIFIED=0`` steps the array path (on this GPU, CuPy) and
+    ``MEEP_GPU_HARDWARE=certified`` steps the array path (on this GPU, CuPy) and
     says why. The engine is a NumPy-backed stand-in for CuPy that reports the device.
     """
     from meep_gpu.test_dispatch_contract import (  # noqa: PLC0415
@@ -455,7 +456,7 @@ def test_a_cuda_driver_on_a_supported_uncertified_device(monkeypatch, capsys, va
 
     (capability,) = supported_uncertified_capabilities(1)
     if value is not None:
-        monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, value)
+        monkeypatch.setenv(fastpath.HARDWARE_SWITCH, value)
     driver = numpy_driver()
     xp = numpy_backed_cupy_alias()
     xp.cuda = types.SimpleNamespace(runtime=types.SimpleNamespace(
@@ -475,9 +476,9 @@ def test_a_cuda_driver_on_a_supported_uncertified_device(monkeypatch, capsys, va
     lines = _meep_lines(capsys.readouterr().err)
     notes = [line for line in lines if "NOT CERTIFIED" in line]
     spelled = f"{capability[0]}.{capability[1]}"
-    if value == "0":
+    if value == "certified":
         assert driver.active_step_path == "array"
-        assert report["refused_because"].endswith(fastpath.CERTIFIED_ONLY_TAIL), \
+        assert report["refused_because"].endswith(fastpath.CERTIFIED_SCOPE_TAIL), \
             report["refused_because"]
         assert plan_b.runs == 0 and notes == [], lines
     else:

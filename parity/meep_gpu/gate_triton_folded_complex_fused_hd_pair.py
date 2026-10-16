@@ -30,10 +30,13 @@ NOT true of the AUXILIARY: ``curlN`` feeds both ``nN`` (stored to ``fu_D``) and 
 ``fu_D``. Every stored volume the engine allocates is compared, so both mask drops are
 observable, and each is armed.
 
-THE EXPANSION LICENCE IS POLICY-CONDITIONAL and it is the certified family's: every
-complex arm in this package was certified under ``keep``, so under ``flush`` the
-predicates this product conjoins refuse by that name and the record says so rather
-than reporting a silent zero.
+THE FORMS ARE THE ARRAY PATH'S. Both halves step each stored part with the root's
+forms on the chunk record (the left-to-right stencil with partner presence, the
+chunk-keyed recurrence, the one-add constitutive accumulation, the auxiliary contract on
+``fu_D`` and on the scratch ``f_w_H``), and the run's first ``update_H`` starts H from B
+(``mirror_periodic_first_update``). The KERNELS.md 7.1 inversions and the 7.2 battery
+are armed, and the Bloch connection is armed on the one fixture whose PERIODIC axis
+carries a phase.
 
 THE LEG SET, THE REFERENCE COUNTING AND WHAT IS RECORDED-RATHER-THAN-ASSERTED are the
 shared kit's; see :mod:`triton_hd_tail_gate_kit`.
@@ -84,6 +87,7 @@ class FoldedComplexProduct(kit.Product):
         "meep_gpu/triton_kernels/complex_fields.py",
         "meep_gpu/triton_kernels/symmetry.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/stepping.py",
@@ -114,6 +118,13 @@ class FoldedComplexProduct(kit.Product):
          {"symmetry": (("y", -1),),
           "boundaries": {"x": "metallic", "y": "metallic"},
           "offdiagonal": True}),
+        # THE RUN'S FIRST update_H on the mutation fixture's grid: unseparated, so
+        # every arrangement performs MEEP's start of H at step 1 (the array path in
+        # update_H, the weld through its start_h scalar). Every fixture above is
+        # seeded mid-run.
+        ("mirror_periodic_first_update",
+         {"symmetry": (("y", 1),), "boundaries": {"x": "metallic"},
+          "h_started": False}),
     )
     mutation_fixture = "mirror_periodic"
 
@@ -145,9 +156,8 @@ class FoldedComplexProduct(kit.Product):
             "old": ("        c_y_re, c_y_im = _h_tap_complex(2, i, sj, k, vy,\n"),
             "new": ("        c_y_im, c_y_re = _h_tap_complex(2, i, sj, k, vy,\n"),
             "why": "a tap's two word planes are swapped. Under complex storage this "
-                   "is the mis-binding a word-pair return makes easy, and the Bloch "
-                   "rotation the emitter applies afterwards consumes it without "
-                   "complaint",
+                   "is the mis-binding a word-pair return makes easy, and the curl the "
+                   "emitter forms per part afterwards consumes it without complaint",
         },
         "m_H_written_in_place": {
             "target": "kernel", "expected": "CAUGHT", "hits": 1,
@@ -158,10 +168,104 @@ class FoldedComplexProduct(kit.Product):
         },
         "m_f_w_H_written_in_place": {
             "target": "kernel", "expected": "CAUGHT", "hits": 1,
-            "old": "        tl.store(wo0 + 2 * idx, src0_re, mask=live)\n",
-            "new": "        tl.store(wi0 + 2 * idx, src0_re, mask=live)\n",
+            "old": "        tl.store(wo0 + 2 * idx, tl.where(dw0, src0_re, tl.load(\n",
+            "new": "        tl.store(wi0 + 2 * idx, tl.where(dw0, src0_re, tl.load(\n",
             "why": "on this side the newly written f_w_H IS B exactly, so a foreign "
                    "recompute reads B where it needs B_prev",
+        },
+        "a1_pairwise_curl_grouping": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "old": ("        curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, "
+                    "px, py)\n"),
+            "new": "        curl2_re = dtdx * ((b_x_re - b2_re) + (a2_re - a_y_re))\n",
+            "why": "INVERTED (KERNELS.md 7.1): Dz's real curl takes the PREVIOUS package "
+                   "grouping, the pairwise `(g1s - g1) + (g2 - g2s)`, in place of MEEP's "
+                   "left-to-right `((g1s - g1) + g2) - g2s` that forms.curl_stencil "
+                   "spells",
+        },
+        "b1_whole_grid_recurrence": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "old": "        du0 = record_in(cb, lattice + 8, k)\n",
+            "new": "        du0 = idx >= 0\n",
+            "why": "the select is removed for Dx: the split-field recurrence runs at "
+                   "EVERY cell on both parts and fu_Dx is read and written everywhere, "
+                   "as the 0.9.2 kernels ran it",
+        },
+        "b3_membership_one_row_off": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "old": "        du2 = record_in(cb, lattice + 4, j)\n",
+            "new": "        du2 = record_in(cb, lattice + 4, j + 1)\n",
+            "why": "Dz's membership is read one row off along its dsigu axis (y, the "
+                   "folded axis whose high face carries the layer), so the boundary "
+                   "plane of each chunk run changes form",
+        },
+        "b6_fu_store_unmasked": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "old": "        tl.store(u0 + 2 * idx, n0_re, mask=live & du0)\n",
+            "new": "        tl.store(u0 + 2 * idx, n0_re, mask=live)\n",
+            "why": "fu_Dx's real word is stored on a plain cell, which the auxiliary "
+                   "contract leaves untouched; every fixture volume is seeded at every "
+                   "cell",
+        },
+        "b7_fw_scratch_stored_unmasked": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "old": ("        tl.store(wo0 + 2 * idx, tl.where(dw0, src0_re, tl.load(\n"
+                    "            wi0 + 2 * idx, mask=live & (dw0 == 0), other=0.0)), "
+                    "mask=live)\n"),
+            "new": "        tl.store(wo0 + 2 * idx, src0_re, mask=live)\n",
+            "why": "the scratch f_w_Hx real word takes B at every cell, as the 0.9.2 "
+                   "kernels wrote it, instead of B on the dsigw cells and the pre-launch "
+                   "word everywhere else; the rotation publishes the moved history",
+        },
+        "b11_start_of_H_not_forwarded": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "case": "mirror_periodic_first_update",
+            "old": ("            kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)\n"
+                    "        tl.store(ho0 + 2 * idx, own0_re, mask=live)\n"),
+            "new": ("            kp0, kp1, kp2, kmx, kmy, kmz, cb, 0, ny, nz)\n"
+                    "        tl.store(ho0 + 2 * idx, own0_re, mask=live)\n"),
+            "why": "the own cell's constitutive is handed 0 for MEEP's start of H, so "
+                   "the run's first update_H accumulates onto the stored H at the "
+                   "program's own cell while every foreign recompute starts it from B. "
+                   "Scored on the first-update fixture",
+        },
+        "b12_presence_ignored": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "old": "        presence = tl.load(cb + RECORD_PRESENCE)\n",
+            "new": "        presence = tl.load(cb + RECORD_PRESENCE) * 0\n",
+            "why": "the record's partner-presence word read as no partner on any axis: "
+                   "every curl takes the exact +0 MEEP reserves for a target with "
+                   "neither partner, where both are live on this 3-D fixture",
+        },
+        "c1_connection_dropped_on_x": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "case": "mirror_periodic_bloch",
+            "old": "        if CNX:\n",
+            "new": "        if 0:\n",
+            "why": "the x connection thrown away on the one fixture whose PERIODIC x "
+                   "carries a phase (a folded axis carries none): the Bloch run becomes "
+                   "a plain periodic one on x. CNX is a constexpr, so on an unphased "
+                   "fixture the block compiles away and the needle sits in dead text",
+        },
+        "c2_connection_applied_to_every_lane": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "case": "mirror_periodic_bloch",
+            "old": ("            c1_re = tl.where(at_x, r_re, c_re)\n"
+                    "            c1_im = tl.where(at_x, r_im, c_im)\n"),
+            "new": ("            c1_re = r_re\n"
+                    "            c1_im = r_im\n"),
+            "why": "the x connection reaches EVERY lane of target 1's g2 instead of "
+                   "plane 0 of the unshifted operand; the certified select is a bitwise "
+                   "`tl.where`, and this weld redirects the LOADS and must leave it "
+                   "standing",
+        },
+        "n1_fu_load_unmasked": {
+            "target": "kernel", "expected": "NULL", "hits": 1,
+            "old": "        p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)\n",
+            "new": "        p_re = tl.load(u0 + 2 * idx, mask=live, other=0.0)\n",
+            "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): "
+                   "off the dsigu chunk the selected form never consumes fu_Dx and its "
+                   "store stays masked; the guard is pinned by the lift",
         },
         "m_top_plane_mask_dropped": {
             "target": "kernel", "expected": "CAUGHT", "hits": 3,
@@ -379,21 +483,23 @@ class FoldedComplexProduct(kit.Product):
             findings.append(
                 "the imported complex constitutive lift no longer equals the "
                 "certified body")
-        # THE MULTIPLY HELPERS THIS KERNEL MAY REACH, and no other: a helper outside
-        # the declared set is an orientation neither half already launches.
+        # THE HELPERS THIS KERNEL MAY REACH, and no other: the connection alone; every
+        # other product on complex storage is formed part by part on real words.
         import re as _re  # noqa: PLC0415
 
         text = (API_ROOT / self.family_path).read_text(encoding="utf-8")
         # CALL SITES, parsed, never "any line that mentions the name": the import
         # statement at the top of the Triton guard names all three helpers on one
         # line and a substring scan reads that as three stray calls.
-        called = set(_re.findall(r"\b(_(?:mul|rotate|div)_[A-Za-z0-9_]*)\s*\(",
-                                 text))
+        called = set(_re.findall(
+            r"\b(_(?:mul|rotate|div)_[A-Za-z0-9_]*|_connect)\s*\(", text))
         reached = sorted(called & set(family.MULTIPLY_HELPERS))
         stray = sorted(called - set(family.MULTIPLY_HELPERS))
         if stray:
             findings.append(f"the kernel reaches multiply helpers outside the "
                             f"declared set: {stray}")
+        if reached != ["_connect"]:
+            findings.append(f"the kernel reaches {reached}, not the connection alone")
         codes = {"PERIODIC": _folded.CODE_PERIODIC, "METALLIC": _folded.CODE_METALLIC,
                  "MIRROR_METALLIC": _folded.CODE_MIRROR_METALLIC,
                  "MIRROR_PERIODIC": _folded.CODE_MIRROR_PERIODIC}
@@ -414,8 +520,6 @@ class FoldedComplexProduct(kit.Product):
             "ghost_codes": codes,
             "arms": {"primary": list(family.ARMS),
                      "extra": [list(pair) for pair in family.EXTRA_ARMS]},
-            "certified_under_subnormal_policy":
-                family.CERTIFIED_UNDER_SUBNORMAL_POLICY,
             "one_kernel_two_cells": (
                 "the off-diagonal cell is served by the SAME launch: the shipped "
                 "plan_folded_complex_offdiag_pml_curl says 'The kernel and the plan "

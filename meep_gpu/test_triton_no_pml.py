@@ -216,16 +216,21 @@ def _load_gate_module():
 
 def _passing_gate_payload():
     return {
-        "legs": ["product", "multistep", "mutations", "engine"],
+        "legs": ["product", "planted", "multistep", "mutations", "engine"],
         "product_guarded": {
             "n_identical": 2, "n_live": 2, "worst_differing_floats": 0,
             "all_targets_changed": "2/2",
         },
         "product_unguarded": {"n_identical": 1, "n_live": 2},
+        "planted": {"cases": [{"bit_identical": True}], "identical": "1/1",
+                    "negative_zero_words": 3, "positive_zero_words": 1},
         "multistep": {"cases": [{"bit_identical": True}]},
         "mutations": {"mutations": [
             {"mutation": "add_instead_of_subtract", "n_caught": 2, "n_live": 2},
-            {"mutation": "flatten_grouping", "n_caught": 1, "n_live": 2},
+            {"mutation": "regroup_stencil", "n_caught": 1, "n_live": 2},
+            {"mutation": "full_bracket_over_an_absent_partner", "n_caught": 1,
+             "n_live": 1},
+            {"mutation": "presence_from_the_extent", "n_caught": 1, "n_live": 1},
             {"mutation": "drop_inverse_epsilon", "n_caught": 1, "n_live": 2},
             {"mutation": "derive_centre_only", "n_caught": 1, "n_live": 2},
             {"mutation": "drop_ownership_mask", "n_caught": 1, "n_live": 2},
@@ -268,6 +273,35 @@ def test_the_cuda_gate_fails_if_the_central_route_selects_the_wrong_product():
     payload["engine"]["covered"][0]["selected"]["step_D"] = "PmlCurlPlan"
     with pytest.raises(AssertionError, match="central no-PML route"):
         gate.validate_payload(payload)
+
+
+@pytest.mark.parametrize("edit, message", [
+    (lambda p: p["planted"]["cases"].append({"bit_identical": False}),
+     "planted signed-zero cases diverged"),
+    (lambda p: p["planted"].update(positive_zero_words=0), "stored no -0 or no \\+0"),
+    (lambda p: p["mutations"]["mutations"].pop(2), "mutation rows are missing"),
+    (lambda p: p["mutations"]["mutations"][3].update(n_caught=0),
+     "presence_from_the_extent caught no live case"),
+])
+def test_the_gate_refuses_a_vacuous_planted_leg_and_an_unarmed_presence_row(edit, message):
+    gate = _load_gate_module()
+    payload = _passing_gate_payload()
+    edit(payload)
+    with pytest.raises(AssertionError, match=message):
+        gate.validate_payload(payload)
+
+
+def test_every_gate_mutation_is_armed_against_the_shipped_kernel():
+    """A rewrite whose anchor is gone measures nothing; checked here, not on a device."""
+    gate = _load_gate_module()
+    source = MODULE_PATH.read_text(encoding="utf-8")
+    for name, old, new, _why in gate.MUTATIONS:
+        assert source.count(old) >= 1, (name, old)
+        assert old != new, name
+    names = {row[0] for row in gate.MUTATIONS}
+    assert {"regroup_stencil", "full_bracket_over_an_absent_partner",
+            "presence_from_the_extent"} <= names
+    assert "flatten_grouping" not in names, "the MEEP grouping is the shipped one now"
 
 
 def test_the_guard_is_the_packages_one_spelling_and_appears_once():
@@ -654,20 +688,25 @@ def test_mutation_dropping_the_layout_check_is_caught(no_pml_module, monkeypatch
 # ---------------------------------------------------------------------------
 
 def test_the_curl_grouping_is_the_one_stepping_uses():
-    """``dtdx * ((sf - f) + (s - ss))``, parenthesised, three times.
+    """MEEP's stencil per partner presence, through the shared form, three times.
 
     Read off the source rather than the imported module, so it holds with no
-    Triton. C and Triton alike would associate ``sf - f + s - ss`` as
-    ``((sf - f) + s) - ss``, which is a DIFFERENT float32 — and the gate's
-    ``flatten_grouping`` mutation is caught 36/54 rather than 54/54 precisely
-    because a one-cell axis makes one difference an exact zero. On the shapes this
-    kernel is actually benchmarked on, that mutation is INVISIBLE, so the grouping
-    needs a structural pin as well as a numerical one.
+    Triton. ``stepping._curl_from_operands`` associates the two-partner stencil left
+    to right, ``dtdx * (((g1s - g1) + g2) - g2s)``, and takes a one-partner form where
+    a partner's axis is invariant; :func:`forms.curl_stencil` is that one spelling,
+    selected by the record's presence word. The gate's ``regroup_stencil`` mutation
+    (the pairwise grouping this kernel carried before) is invisible wherever fewer
+    than two axes are resolved, so the call needs a structural pin as well as a
+    numerical one.
     """
     segment = _kernel_source_segment()
-    assert "curl0 = dtdx * ((c_y - c) + (b - b_z))" in segment
-    assert "curl1 = dtdx * ((a_z - a) + (c - c_x))" in segment
-    assert "curl2 = dtdx * ((b_x - b) + (a - a_y))" in segment
+    assert "presence = tl.load(cb + RECORD_PRESENCE)" in segment
+    for axis, name in enumerate("xyz"):
+        assert f"p{name} = axis_present(presence, {axis})" in segment
+    assert "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)" in segment
+    assert "curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)" in segment
+    assert "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)" in segment
+    assert "dtdx * ((" not in segment, "the pairwise grouping is the gate's mutant now"
 
 
 def test_the_plain_tail_is_a_subtraction_and_carries_no_pml_arithmetic():
@@ -687,13 +726,15 @@ def test_the_plain_tail_is_a_subtraction_and_carries_no_pml_arithmetic():
 
 
 def test_the_derive_product_keeps_the_array_paths_operand_order():
-    """D on the LEFT, as ``stepping._read_component`` writes it (stepping.py:2448).
+    """``D * inv_eps``: the kernel's one spelling of ``stepping._read_component``'s product.
 
-    Float multiplication is bitwise commutative — the gate's
-    ``swap_derive_operand_order`` leg is 0/54 CAUGHT and is labelled an EXPECTED
-    miss for exactly that reason. So this is a transcription-fidelity pin, not a
-    numerical one, and it is worth having: the next person to move part of
-    ``update_E`` into a kernel should find the convention already stated.
+    The array path writes ``part_products.scale(inverse, displacement)``
+    (stepping.py:3002), inverse epsilon on the left; float multiplication is bitwise
+    commutative, signed zero included, so the two spellings are one word and the
+    gate's ``swap_derive_operand_order`` leg is an EXPECTED miss for exactly that
+    reason. This is a transcription pin of the kernel's own spelling, which the
+    gate's ``drop_inverse_epsilon`` and ``swap_derive_operand_order`` mutations
+    anchor on, not a numerical one.
     """
     segment = _kernel_source_segment()
     assert "tl.load(g0 + idx, mask=live, other=0.0) * tl.load(e0 + idx, mask=live, other=0.0)" \
@@ -718,7 +759,7 @@ def test_the_module_does_not_reach_into_another_tracks_file():
         assert not any(forbidden in name for name in imported), (
             f"no_pml.py imports {forbidden}: {sorted(imported)}")
     assert imported <= {"__future__", "typing", "triton", "triton.language",
-                        ".coverage", ".kernels", ".launch", "..stepping"}, imported
+                        ".coverage", ".forms", ".kernels", ".launch", "..stepping"}, imported
     code = code_of(MODULE_PATH)
     for forbidden in ("fastpath", "cuda_kernels"):
         assert forbidden not in code, f"no_pml.py references {forbidden}"
@@ -817,3 +858,232 @@ def test_the_module_file_is_readable_as_utf8_without_a_locale():
 def test_the_destination_is_where_the_gate_expects_it():
     assert MODULE_PATH.exists()
     assert MODULE_PATH == pathlib.Path(__file__).parent / "triton_kernels" / "no_pml.py"
+
+
+# ---------------------------------------------------------------------------
+# The chunk record: the no-absorber family reads its presence word, and only that
+# ---------------------------------------------------------------------------
+#
+# The three kernels of the family (this module's curl, the conductive curl and the
+# fused electric pair, whose curl halves are one transcription) read the record's
+# partner-presence word, because which curl partners exist is a fact of the run
+# (``stepping.curl_presence``, ``Grid.is_invariant``) and not of the stored extent: a
+# 3-D run may store one cell on an axis that still takes both partners. No membership
+# run is read: with no absorber every one is empty.
+
+FAMILY_PATHS = {
+    "plain_curl_step": PACKAGE_DIR / "no_pml.py",
+    "conductive_plain_curl_step": PACKAGE_DIR / "no_pml_conductive.py",
+    "no_pml_fused_curl_constitutive_D": PACKAGE_DIR / "no_pml_fused_electric_pair.py",
+}
+
+#: Pointer arguments before ``cb`` in each kernel, the one position both sides of a
+#: launch pin: targets, sources, inverse epsilon (3 + 3 + 3); the conductive curl adds
+#: condfac and condinv (+ 6); the fused pair adds those, the E targets and the three
+#: components' eight pole slots each (+ 6 + 3 + 24).
+POINTERS_BEFORE_CB = {
+    "plain_curl_step": 9,
+    "conductive_plain_curl_step": 15,
+    "no_pml_fused_curl_constitutive_D": 42,
+}
+
+
+def _family_kernel(name):
+    tree = ast.parse(FAMILY_PATHS[name].read_text(encoding="utf-8"))
+    found = [node for node in ast.walk(tree)
+             if isinstance(node, ast.FunctionDef) and node.name == name]
+    assert len(found) == 1, (name, len(found))
+    return found[0]
+
+
+def _no_layer_record(shape, invariant=()):
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, RECORD_WORDS  # noqa: PLC0415
+
+    record = numpy.zeros(RECORD_WORDS, dtype=numpy.int32)
+    record[RECORD_PRESENCE_WORD] = sum(1 << axis for axis in range(3)
+                                       if axis not in invariant)
+    return record
+
+
+@pytest.mark.parametrize("kernel", sorted(FAMILY_PATHS))
+def test_each_family_kernel_declares_cb_after_its_last_pointer_and_reads_presence(kernel):
+    function = _family_kernel(kernel)
+    names = [arg.arg for arg in function.args.posonlyargs + function.args.args]
+    pointers = POINTERS_BEFORE_CB[kernel]
+    assert names.count("cb") == 1, (kernel, names)
+    assert names.index("cb") == pointers, (kernel, names.index("cb"), pointers)
+    assert names[pointers + 1] == "nx", (kernel, names[pointers + 1])
+    calls = [node.func.id for node in ast.walk(function)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)]
+    assert calls.count("curl_stencil") == 3, (kernel, calls)
+    assert calls.count("axis_present") == 3, (kernel, calls)
+    assert "record_in" not in calls, "no membership run is read on this path"
+    reads = [node for node in ast.walk(function)
+             if isinstance(node, ast.Name) and node.id == "cb"]
+    assert len(reads) == 1, f"{kernel} reads cb at {len(reads)} sites, not the presence word"
+
+
+@pytest.mark.parametrize("path", sorted(set(FAMILY_PATHS.values())), ids=lambda p: p.name)
+def test_the_family_record_constant_is_chunk_maps_own_word(path):
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD  # noqa: PLC0415
+
+    source = path.read_text(encoding="utf-8")
+    assert f"RECORD_PRESENCE = tl.constexpr({RECORD_PRESENCE_WORD})\n" in source
+    assert "from .forms import axis_present, curl_stencil\n" in source
+
+
+def test_the_module_record_constant_is_the_kernels_one(no_pml_module):
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD  # noqa: PLC0415
+
+    # Without Triton, ``tl.constexpr`` is the identity, so the constant is its value.
+    assert no_pml_module.RECORD_PRESENCE == RECORD_PRESENCE_WORD
+    source = (PACKAGE_DIR / "kernels.py").read_text(encoding="utf-8")
+    assert f"\nRECORD_PRESENCE = tl.constexpr({RECORD_PRESENCE_WORD})\n" in source
+
+
+def test_the_harness_route_has_no_default_record(no_pml_module, stub_kernels):
+    from meep_gpu.chunk_map import ChunkLayoutRefusal  # noqa: PLC0415
+
+    shape = (3, 1, 4)
+    arrays = {name: numpy.zeros(shape, numpy.float32)
+              for name in ("Bx", "By", "Bz", "Ex", "Ey", "Ez")}
+    # Through a local name: the parse-tree rule of test_triton_chunk_bounds flags any
+    # construction without the record, and these two are refusals on purpose.
+    builder = no_pml_module.plan_plain_curl_from_arrays
+    with pytest.raises(TypeError, match="chunk_bounds"):
+        builder("step_B", arrays, (0, 0, 0), 0.35)
+    with pytest.raises(ChunkLayoutRefusal, match="PlainCurlPlan was given no chunk record"):
+        builder("step_B", arrays, (0, 0, 0), 0.35, chunk_bounds=None)
+    # A one-cell axis may be present (a 3-D run's) or invariant (a 2-D run's): both bind.
+    for invariant in ((), (1,)):
+        record = _no_layer_record(shape, invariant)
+        plan = no_pml_module.plan_plain_curl_from_arrays(
+            "step_B", arrays, (0, 0, 0), 0.35, chunk_bounds=record)
+        assert plan.chunk_bounds.tolist() == record.tolist()
+    # An invariant axis that stores more than one cell is refused by name.
+    with pytest.raises(ChunkLayoutRefusal, match="marks x invariant"):
+        no_pml_module.plan_plain_curl_from_arrays(
+            "step_B", arrays, (0, 0, 0), 0.35, chunk_bounds=_no_layer_record(shape, (0,)))
+
+
+def _split_division(grid, cuts):
+    """A no-absorber division of ``grid``: the window cut at ``cuts[axis]`` cells.
+
+    ``cuts`` maps an axis to the stored cells at which it is cut; the boxes are the
+    product of the pieces, so the division is separable. None carries a layer.
+    """
+    from meep_gpu.chunk_map import ChunkLayout, grid_frames  # noqa: PLC0415
+
+    frames = grid_frames(grid)
+    pieces = []
+    for axis, frame in enumerate(frames):
+        lo, hi = frame.window
+        edges = [lo] + [lo + 2 * cell for cell in cuts.get(axis, ())] + [hi]
+        pieces.append(list(zip(edges[:-1], edges[1:])))
+    boxes = [((x[0], y[0], z[0]), (x[1], y[1], z[1]))
+             for x in pieces[0] for y in pieces[1] for z in pieces[2]]
+    return ChunkLayout(boxes, [(False, False, False)] * len(boxes), frames)
+
+
+@pytest.mark.parametrize("dimensions,cell,cuts", [
+    (3, (0.8, 0.6, 0.7), {0: (3,)}),
+    (3, (0.8, 0.6, 0.7), {0: (2, 5), 2: (4,)}),
+    (2, (0.8, 0.6, 0.0), {1: (2,)}),
+])
+def test_every_division_of_a_run_with_no_absorber_binds_the_one_rank_words(
+        dimensions, cell, cuts):
+    """Why the engine route may bind the one-rank record for this family.
+
+    The certified-product composer builds the fused pair without the run's division,
+    so its plan binds ``launch.chunk_bounds_for(fields, pml, None)``. That is the
+    run's own record for every division: with no absorber no chunk carries a layer,
+    so every membership run is empty, and the presence word is the grid's.
+    """
+    grid = Grid(resolution=10.0, cell_size=cell, dimensions=dimensions)
+    fields = Fields(grid=grid, force_complex_fields=False)
+    pml = PML(grid=grid, thickness=0)
+    one_rank = launch_module.chunk_bounds_for(fields, pml, None)
+    divided = launch_module.chunk_bounds_for(fields, pml, _split_division(grid, cuts))
+    assert divided.tolist() == one_rank.tolist()
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD  # noqa: PLC0415
+
+    assert not one_rank[:RECORD_PRESENCE_WORD].any()
+    assert int(one_rank[RECORD_PRESENCE_WORD]) == sum(
+        1 << axis for axis in range(3) if not grid.is_invariant(axis))
+
+
+class _RecordingKernel:
+    def __init__(self, name, calls):
+        self.name = name
+        self.calls = calls
+
+    def __getitem__(self, grid):
+        def launch(*args, **kwargs):
+            self.calls.append(SimpleNamespace(kernel=self.name, grid=grid, args=args,
+                                              kwargs=kwargs))
+        return launch
+
+
+@pytest.fixture
+def stub_kernels(monkeypatch):
+    """A stand-in for ``triton_kernels.kernels``: the launch reads its two constants."""
+    import types  # noqa: PLC0415
+
+    module = types.ModuleType("meep_gpu.triton_kernels.kernels")
+    module.ENABLE_FP_FUSION = False
+    module.DEFAULT_BLOCK = 256
+    monkeypatch.setitem(sys.modules, "meep_gpu.triton_kernels.kernels", module)
+    return module
+
+
+def _family_plans(record, shape):
+    from meep_gpu.triton_kernels import no_pml_conductive  # noqa: PLC0415
+    from meep_gpu.triton_kernels import no_pml_fused_electric_pair  # noqa: PLC0415
+    from meep_gpu.triton_kernels.no_pml import plan_plain_curl_from_arrays  # noqa: PLC0415
+
+    rng = numpy.random.default_rng(5)
+    names = ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "inv_eps_Ex",
+             "inv_eps_Ey", "inv_eps_Ez", "condfac_Bx", "condfac_By", "condfac_Bz",
+             "condinv_Bx", "condinv_By", "condinv_Bz", "condfac_Dx", "condfac_Dy",
+             "condfac_Dz", "condinv_Dx", "condinv_Dy", "condinv_Dz")
+    arrays = {name: rng.uniform(-1.0, 1.0, size=shape).astype(numpy.float32)
+              for name in names}
+    calls = []
+    plans = {
+        "plain_curl_step": plan_plain_curl_from_arrays(
+            "step_B", arrays, (0, 1, 0), 0.35, derive=1,
+            kernel=_RecordingKernel("plain_curl_step", calls), chunk_bounds=record),
+        "conductive_plain_curl_step":
+            no_pml_conductive.plan_conductive_plain_curl_from_arrays(
+                "step_D", arrays, (0, 1, 0), 0.35,
+                kernel=_RecordingKernel("conductive_plain_curl_step", calls),
+                chunk_bounds=record),
+        "no_pml_fused_curl_constitutive_D":
+            no_pml_fused_electric_pair.plan_no_pml_fused_electric_pair_from_arrays(
+                arrays, {"Ex": [], "Ey": [], "Ez": []}, 0.35, (0, 1, 0),
+                (False, True, False),
+                kernel=_RecordingKernel("no_pml_fused_curl_constitutive_D", calls),
+                chunk_bounds=record),
+    }
+    return plans, calls
+
+
+@pytest.mark.parametrize("kernel", sorted(FAMILY_PATHS))
+def test_each_family_plan_passes_cb_after_its_last_pointer(kernel, stub_kernels):
+    shape = (6, 5, 4)
+    record = _no_layer_record(shape)
+    plans, calls = _family_plans(record, shape)
+    plan = plans[kernel]
+    pointers = POINTERS_BEFORE_CB[kernel]
+    plan.run()
+    plan.run()
+    first, second = calls
+    for call in (first, second):
+        assert call.kernel == kernel
+        assert all(isinstance(arg, launch_module.CupyPointer)
+                   for arg in call.args[:pointers + 1]), kernel
+        assert call.args[pointers] is plan._cb  # noqa: SLF001 - the binding is the subject
+        assert numpy.array_equal(call.args[pointers].array, record)
+        assert call.args[pointers + 1] == shape[0]  # nx: the first scalar follows cb
+    assert first.args[pointers] is second.args[pointers]
+    assert f"chunk_bounds={record.tolist()}" in repr(plan)

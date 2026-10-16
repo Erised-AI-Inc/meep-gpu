@@ -21,8 +21,9 @@ configuration. It passes when
   (b) the spread of its pass medians is at most 5 %,
 both spreads (max - min) / median. A GPU leg must also carry the harness's own verdict
 ``TIMED`` on every pass, launch what its route expects, be bit-identical to the array
-path, carry the deposit-repair route its case declares, and not have run with
-``MEEP_GPU_ALLOW_UNCERTIFIED=1`` (such a leg is shown and struck as uncertified); a
+path, carry the deposit-repair route its case declares, and not have run under the
+ladder's ``ALLOW_UNCERTIFIED=1`` (recorded per row as ``allow_uncertified``; it exports
+the package's widest hardware scope, so such a leg is shown and struck as uncertified); a
 MEEP leg must carry its size's geometry digest of record, a stepped flux monitor and
 a single-precision build.
 Every strike names its reason.
@@ -249,6 +250,12 @@ def gpu_rows(ledger: List[Dict[str, Any]], pull: Pull, tiers: Sequence[str],
                int(entry["pass"]))
         attached = measured.get("monitors_attached")
         host = [row.get("host_before"), row.get("host_after")]
+        # A GPU-ONLY ROW'S IDENTITY IS ITS IDENTITY ROW'S (``timing_records.identity_source``):
+        # read as bit-identical only when the ledger found that row and every clause held.
+        in_row = measured.get("bit_identical_fused_vs_array")
+        cited = entry.get("bit_identity_from")
+        identical = in_row if in_row is not None else (
+            None if cited is None else bool(cited.get("ok")))
         darwin = entry.get("platform") == "darwin" or entry.get("route") == "metal"
         out[key] = {
             "monitors_mode": measured.get("monitors_mode"),
@@ -265,7 +272,11 @@ def gpu_rows(ledger: List[Dict[str, Any]], pull: Pull, tiers: Sequence[str],
             "verdict": measured.get("verdict"),
             "what_launched": measured.get("what_launched"),
             "expected_launched": entry.get("expected_launched"),
-            "bit_identical": measured.get("bit_identical_fused_vs_array"),
+            "bit_identical": identical,
+            "bit_identity_source": ("in-row" if in_row is not None else
+                                    None if cited is None else
+                                    f"identity row {cited.get('key')}"),
+            "legs_mode": measured.get("legs_mode") or "all",
             "deposit_repair": entry.get("deposit_repair"),
             "allow_uncertified": bool(entry.get("allow_uncertified")),
             "struck": entry.get("struck"),
@@ -378,6 +389,26 @@ def pct(value: Optional[float]) -> str:
     return "—" if value is None else f"{100 * value:.1f} %"
 
 
+def build_fact(build: Dict[str, Any], key: str) -> Any:
+    """A MEEP build's ``key``, from the ladder's probe or else from the record it was given.
+
+    The ladder probes each build's interpreter and embeds the build record it was handed
+    under ``build_record_file``. A build named by its record alone (no config.log path:
+    the Mac's) probes with no config.log, so the probe's ``configure_line`` is None and
+    its ``makefile_flags`` empty while the given record carries both; the 1.0 Mac table
+    printed "configured None, CXXFLAGS None" over a record that said
+    ``--enable-single --enable-portable-binary`` and ``-g -O2``.
+    """
+    value = build.get(key)
+    if value in (None, {}, ""):
+        value = (build.get("build_record_file") or {}).get(key)
+    return value
+
+
+def build_cxxflags(build: Dict[str, Any]) -> Optional[str]:
+    return (build_fact(build, "makefile_flags") or {}).get("CXXFLAGS")
+
+
 def environment_facts(environment: Dict[str, Any]) -> Dict[str, Any]:
     lscpu = {line.split(":", 1)[0].strip(): line.split(":", 1)[1].strip()
              for line in (environment.get("lscpu") or "").splitlines() if ":" in line}
@@ -410,14 +441,14 @@ def environment_facts(environment: Dict[str, Any]) -> Dict[str, Any]:
         "gpu_index": gpu_index, "gpu_name": gpu_cells[2] if len(gpu_cells) > 2 else None,
         "compute_capability": gpu_cells[7] if len(gpu_cells) > 7 else None,
         "packages": packages,
-        "meep_configure_line": (reference.get("configure_line")
+        "meep_configure_line": (build_fact(reference, "configure_line")
                                 or environment.get("meep_configure_line")),
-        "meep_cxxflags": ((reference.get("makefile_flags") or {}).get("CXXFLAGS")
+        "meep_cxxflags": (build_cxxflags(reference)
                           or (environment.get("meep_build_flags") or {}).get("CXXFLAGS")),
         "mpirun": ((environment.get("mpirun_version") or reference.get("launcher_version")
                     or "").splitlines() or [None])[0],
-        "builds": {name: {"configure_line": b.get("configure_line"),
-                          "cxxflags": (b.get("makefile_flags") or {}).get("CXXFLAGS"),
+        "builds": {name: {"configure_line": build_fact(b, "configure_line"),
+                          "cxxflags": build_cxxflags(b),
                           "openmp": b.get("openmp"), "unrecorded": b.get("unrecorded")}
                    for name, b in builds.items()},
         "platform": environment.get("platform"),
@@ -482,6 +513,18 @@ def build(args: argparse.Namespace) -> Dict[str, Any]:
         by_kind[key] = by_kind.get(key, 0) + 1
     code_digests = sorted({e.get("code_digest") for e in ledger if e.get("code_digest")})
     planned = max((int(e.get("of") or 0) for e in ledger), default=0)
+    # ONE NUMERATOR, ONE DENOMINATOR, ONE SET OF ROWS. The 1.0 Mac table read "86 of 79
+    # GPU and MEEP ledger rows carry a code digest": the numerator counted every ledger
+    # kind (the lift and digest entries carry one too) and the denominator GPU and MEEP
+    # entries. Both now count GPU and MEEP rows, once each -- a resumed ladder records
+    # a row again under the same tier and index, and the last entry is the row's.
+    measured_rows: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+    for entry in ledger:
+        if entry.get("ledger") in ("gpu", "meep"):
+            key = (entry.get("ledger"), entry.get("tier"), entry.get("index"))
+            if entry.get("index") is None:
+                key = key + (len(measured_rows),)
+            measured_rows[key] = entry
     record["denominators"] = {
         "ledger_entries": len(ledger), "rows_planned": planned,
         "ledger_by_tier_and_kind": by_kind,
@@ -490,6 +533,10 @@ def build(args: argparse.Namespace) -> Dict[str, Any]:
         "gpu_launched_as_expected": sum(g["what_launched"] == g["expected_launched"]
                                         for g in gpus.values()),
         "gpu_bit_identical": sum(g["bit_identical"] is True for g in gpus.values()),
+        "gpu_rows_gpu_only": sum(g["legs_mode"] == "gpu-only" for g in gpus.values()),
+        "gpu_identity_from_identity_row": sum(
+            g["legs_mode"] == "gpu-only" and g["bit_identical"] is True
+            for g in gpus.values()),
         "gpu_repair_as_declared": sum((g["deposit_repair"] or {}).get("ok") is True
                                       for g in gpus.values()),
         "gpu_repair_recorded": sum(g["deposit_repair"] is not None for g in gpus.values()),
@@ -509,8 +556,12 @@ def build(args: argparse.Namespace) -> Dict[str, Any]:
         "array_controls_struck": sum(bool(c.get("struck")) for c in controls.values()),
         "bindcheck_rows": len(checks), "bindprobe_rows": len(probes),
         "code_digests_on_ledger_rows": code_digests,
-        "ledger_rows_carrying_code_digest": sum(bool(e.get("code_digest")) for e in ledger),
-        "ledger_gpu_and_meep_rows": sum(e.get("ledger") in ("gpu", "meep") for e in ledger),
+        "ledger_rows_carrying_code_digest": sum(bool(e.get("code_digest"))
+                                                for e in measured_rows.values()),
+        "ledger_gpu_and_meep_rows": len(measured_rows),
+        "ledger_other_entries_carrying_code_digest": sum(
+            bool(e.get("code_digest")) for e in ledger
+            if e.get("ledger") not in ("gpu", "meep")),
     }
     record["environment"] = environment_facts(environment)
     record["binding_decision"] = decision
@@ -597,7 +648,7 @@ def build(args: argparse.Namespace) -> Dict[str, Any]:
                 if row["deposit_repair"] is not None and not row["deposit_repair"].get("ok"):
                     extra.append(f"pass {p} deposit-repair route not as declared")
                 if row["allow_uncertified"]:
-                    extra.append(f"pass {p} ran with MEEP_GPU_ALLOW_UNCERTIFIED=1: "
+                    extra.append(f"pass {p} ran with the ladder's ALLOW_UNCERTIFIED=1: "
                                  "uncertified, enters no certified figure")
                 if row["struck"]:
                     extra.append(f"pass {p} struck by the ledger: {row['struck']}")
@@ -801,7 +852,7 @@ def build(args: argparse.Namespace) -> Dict[str, Any]:
     record["bindcheck"] = bindcheck
     outside = []
     for entry in ledger:
-        if entry.get("tier") not in ("preflight", "bindprobe", "digests"):
+        if entry.get("tier") not in ("preflight", "bindprobe", "digests", "identity"):
             continue
         measured_entry = entry.get("measured") or {}
         item: Dict[str, Any] = {"index": entry.get("index"), "tier": entry.get("tier"),
@@ -990,7 +1041,10 @@ def render(record: Dict[str, Any]) -> str:
         f"(a binding decision writes `binding_decision.json`, not a ledger line). GPU rows "
         f"{d['gpu_timed']} of {d['gpu_rows']} `TIMED`, {d['gpu_launched_as_expected']} of "
         f"{d['gpu_rows']} launched what their route expects, {d['gpu_bit_identical']} of "
-        f"{d['gpu_rows']} bit-identical to the array path, {d['gpu_repair_as_declared']} of "
+        f"{d['gpu_rows']} bit-identical to the array path"
+        + (f" ({d['gpu_identity_from_identity_row']} of the {d['gpu_rows_gpu_only']} "
+           f"GPU-only rows by their identity row)" if d.get("gpu_rows_gpu_only") else "")
+        + f", {d['gpu_repair_as_declared']} of "
         f"{d['gpu_repair_recorded']} carrying the deposit-repair route their case declares, "
         f"{d['gpu_struck_by_ledger']} of {d['gpu_rows']} struck by the ledger; MEEP rows "
         f"{d['meep_rows'] - d['meep_struck_by_ledger']} of {d['meep_rows']} measured "

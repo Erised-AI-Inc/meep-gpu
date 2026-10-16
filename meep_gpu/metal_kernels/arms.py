@@ -65,22 +65,29 @@ class StepContext:
     built at import time — so the context is passed at composition time and each
     entry is a pair of functions of it. That is the whole reason the table can be
     data.
+
+    ``chunk_layout`` is the chunk division the run steps with
+    (:class:`meep_gpu.chunk_map.ChunkLayout`) and ``chunk_bounds`` its validated
+    ``int32[25]`` record (:func:`.chunk_bounds.words`), the bytes a plan binds as
+    ``ChunkBounds``. The composer fills both before any arm is consulted, and
+    refuses every slot when the division is one the record cannot describe.
     """
 
     __slots__ = ("fields", "pml", "residency", "contract_variants", "sources",
-                 "synced", "extra")
+                 "synced", "chunk_layout", "chunk_bounds")
 
     def __init__(self, fields: Any, pml: Any, residency: Any = None,
                  contract_variants: Sequence[str] = (),
                  sources: Any = None, synced: Sequence[str] = (),
-                 extra: Optional[Dict[str, Any]] = None) -> None:
+                 chunk_layout: Any = None, chunk_bounds: Any = None) -> None:
         self.fields = fields
         self.pml = pml
         self.residency = residency
         self.contract_variants = tuple(contract_variants)
         self.sources = sources
         self.synced = tuple(synced)
-        self.extra = dict(extra or {})
+        self.chunk_layout = chunk_layout
+        self.chunk_bounds = chunk_bounds
 
 
 class ArmSpec:

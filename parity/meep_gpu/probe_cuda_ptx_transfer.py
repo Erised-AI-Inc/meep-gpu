@@ -53,8 +53,10 @@ import numpy as np
 
 _REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _path in (_REPO_ROOT, _HERE):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 SEED = 20260814
 
@@ -504,6 +506,7 @@ def _clear(jit_fn) -> None:
 def section_triton_ptx(results: Dict[str, Any], ptx_dir: Optional[str]) -> None:
     import cupy as cp  # noqa: PLC0415
 
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
     from meep_gpu.triton_kernels import kernels as km  # noqa: PLC0415
     from meep_gpu.triton_kernels.launch import (  # noqa: PLC0415
         plan_constitutive_from_arrays,
@@ -529,6 +532,8 @@ def section_triton_ptx(results: Dict[str, Any], ptx_dir: Optional[str]) -> None:
     codes = [1, 1, 0]
     zero_metal = (True, True, False)
     dtdx = 0.35
+    # Random coefficient tables on every cell: the division is every cell in a layer.
+    record = every_cell_record(shape)
 
     out: Dict[str, Any] = {"block": 256, "shape": list(shape), "kernels": {}}
     if ptx_dir:
@@ -537,13 +542,14 @@ def section_triton_ptx(results: Dict[str, Any], ptx_dir: Optional[str]) -> None:
     plans = (
         ("pml_curl_step", km.pml_curl_step,
          lambda w: plan_from_arrays("step_B", arrays, curl_flat, codes, dtdx,
-                                    block=256, num_warps=w)),
+                                    block=256, num_warps=w, chunk_bounds=record)),
         ("constitutive_step", km.constitutive_step,
          lambda w: plan_constitutive_from_arrays("H", arrays, h_flat, block=256,
-                                                 num_warps=w)),
+                                                 num_warps=w, chunk_bounds=record)),
         ("fused_curl_constitutive_B", km.fused_curl_constitutive_B,
          lambda w: plan_fused_pair_from_arrays("B", arrays, curl_flat, h_flat, codes,
-                                               zero_metal, dtdx, block=256, num_warps=w)),
+                                               zero_metal, dtdx, block=256, num_warps=w,
+                                               chunk_bounds=record)),
     )
     for warps in (1, 2, 4, None):
         for label, jit_fn, build in plans:

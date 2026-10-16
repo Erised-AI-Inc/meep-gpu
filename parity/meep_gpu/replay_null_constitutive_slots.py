@@ -295,7 +295,7 @@ def _sibling_admits(fields, pml, grid, side: str) -> Tuple[bool, List[str]]:
                       if side == "E" else (False, "H has no off-diagonal kernel"))),
             ("covers_real_pml_complex_constitutive",
              lambda: coverage.covers_real_pml_complex_constitutive(
-                 fields, pml, grid, side, "NAIVE"))):
+                 fields, pml, grid, side))):
         try:
             covered, _ = call()
         except Exception:  # noqa: BLE001 - a predicate that raised did not admit

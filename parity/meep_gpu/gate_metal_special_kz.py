@@ -7,22 +7,16 @@ identity through 1e-30 and total divergence at 1e-38, so a tolerance would be
 either meaninglessly loose or would falsely admit the divergent case.
 
 THE ORACLE IS IN PROCESS. ``stepping.step_B(fields, pml)`` and the Metal launch run
-in ONE process against ONE seed on real ``Grid``/``Fields``/``PML`` objects. The
-in-gate transcription still exists, in a reduced role: it is the mutation substrate
-and the only way to attribute a defect to a sub-step. LEG ``transcription`` pins it
-against ``stepping.py`` over four full cycles BEFORE any shader is trusted, which
-is what stops "bit-identical" from meaning the kernel reproduced whatever the
-harness wrote twice.
+in ONE process against ONE seed on real ``Grid``/``Fields``/``PML`` objects, and the
+array path IS the reference: it steps MEEP's per-chunk forms and runs the beta
+coupling as MEEP's own pass after every component's curl (``_apply_folded_increment``),
+which the kernels transcribe in register (:mod:`meep_gpu.metal_kernels.folded_pass`).
+There is no in-gate transcription: every mutation row compares the mutant with
+``stepping`` itself, so a defect shared between a harness reference and the kernel
+cannot make a mutation row a comparison of one wrong answer with another.
 
 THE LEGS, and what each is FOR beyond the standard discipline:
 
-  transcription  the in-gate reference vs stepping.py, 4 cycles, both storages
-  expansion      THE PROBE COMES FIRST and the predicate refuses without it. On
-                 Metal the question is INVERTED versus Triton: the shader spells
-                 what it is told under contract(off), so the open question is what
-                 the HOST ORACLE (numpy's own complex64 multiply) does, per
-                 call-site ORIENTATION. Measured here, with a NEITHER refused by
-                 name and example words recorded
   reference      both kernels vs stepping.py: both corpus beta SIGNS, Courants
                  0.34/0.4375/0.35, the Brillouin-edge phase EXACTLY -1+0j, a
                  metallic axis, 4 cycles per case
@@ -34,27 +28,21 @@ THE LEGS, and what each is FOR beyond the standard discipline:
                  real and complex constitutive kernels under restated predicates,
                  against stepping.py, four cycles, isolated from the curls. The
                  complex half was a predicted null until 2026-08-19
-  position       the beta term's POSITION between curl and mask, isolated: the
-                 same term applied AFTER the ownership mask must DIFFER on a
-                 metallic axis, and the periodic case is recorded as a PREDICTED
-                 NULL with its reason rather than dropped
-  guard          the contraction directive, MEASURED, PER ARM. The real arm's
-                 contract=fast build must diverge. The COMPLEX arm's cannot — the
-                 FMA_V1 spelling leaves no implicit multiply-add pair — so that is
-                 recorded as a predicted null AND backed by a NAIVE-arm control
-                 that must diverge, or "does not contract" and "cannot be seen to
-                 contract" would be the same measurement
+  guard          the contraction directive, MEASURED, PER ARM: the contract=fast
+                 build must diverge on both storages (the pass's multiply-subtract
+                 shapes and the forms' are contractable in both)
   signed_zero    +-0 lattice seeding with a census floor (the beta term is a pure
                  scalar-by-field product, so +-0 partners flow straight through it)
   precondition   the subnormal census over BOTH storage families, with the beta
                  term's own intermediate reconstructed per storage, AND the scaled
                  control that makes the window fire
-  mutations      armed, launch-counted, three-valued must_catch — including one
-                 must-NOT-catch row (the IEEE subtraction identity) and one that
-                 refutes an INHERITED Triton workaround rather than assuming it.
-                 The product-layer rows take NUMPY as their oracle, not the shipped
-                 device helper, and the shipped helper is pinned against numpy on
-                 the exhaustive +-0 table first (leg key `product_reference`)
+  mutations      armed, launch-counted, three-valued must_catch, every row against
+                 stepping.py: the beta pass's own defects (dropped, signs, partner,
+                 position folded back into the curl, the mask, the ladder's dsig
+                 and dsigu stages, fu leaking onto a plain cell), the per-chunk
+                 form battery of the certified curl the source is derived from
+                 (KERNELS.md 7.2), the two record mutations, and the host's own
+                 choices (sub-lattice, conjugation, the coefficient's dt)
   refusals       every named refusal, including the two the ENGINE ITSELF raises
                  (offdiag+beta, beta off 2-D) rather than only the predicate's.
                  A configuration this leg cannot CONSTRUCT is a hard failure, never
@@ -88,8 +76,8 @@ sub-steps — is outside this artifact's scope, and so is any defect that only
 compounds over a budget. ``probe_metal_special_kz_driver_step`` is where that is
 measured: complete driver steps for a stated budget, uint32 over the full enumerated
 inventory, with the dispatch accounted so a silent fall-back to the array path
-cannot pass as agreement. The family's artifact set is gate.json + expansion.json +
-composition.json + driver_step.json, and a reader who has only this file has the
+cannot pass as agreement. The family's artifact set is gate.json + composition.json +
+driver_step.json, and a reader who has only this file has the
 sub-steps without the run.
 
     python -u gate_metal_special_kz.py \\
@@ -98,7 +86,6 @@ sub-steps without the run.
 
 from __future__ import annotations
 
-import math
 import os
 import sys
 import time
@@ -120,7 +107,6 @@ if HERE not in sys.path:
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 
 import metal_gate_kit as kit  # noqa: E402
-import probe_metal_beta_expansion as expansion_probe  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.fields import Fields  # noqa: E402
@@ -128,6 +114,7 @@ from meep_gpu.grid import Grid  # noqa: E402
 from meep_gpu.metal_kernels import device, preconditions, special_kz  # noqa: E402
 from meep_gpu.metal_kernels import subnormal, templates  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
 log, save, differing = kit.log, kit.save, kit.differing
 words = kit.words
@@ -294,6 +281,11 @@ def build(case: Dict[str, Any], seed: int = SEED, scale: float = 1.0,
             array[...] = _complex_of(host, imag)
         else:
             array[...] = host
+    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # ``stepping.separate_h_from_b`` must not run on it again -- the array path would
+    # copy B into H and f_w on the dsigw cells at the first update_H, and no kernel
+    # this gate launches does (``launch.h_start_reasons``).
+    fields.h_separated = True
     return grid, fields, pml
 
 
@@ -346,97 +338,17 @@ def flat_coefficients(pml, suffix: str) -> Dict[str, Any]:
             for key, value in curl_coefficients(pml, suffix).items()}
 
 
-# ---------------------------------------------------------------------------
-# The in-gate transcription — the MUTATION SUBSTRATE, pinned by leg 0
-# ---------------------------------------------------------------------------
-#
-# NOT the reference for the identity question — stepping.py itself is, in process.
-# This exists because a whole-sub-step comparison cannot attribute a defect and
-# cannot express a deliberately wrong configuration at all.
+def oracle_after(fields, pml, base: Dict[str, Any], sub_step: str) -> Dict[str, Any]:
+    """``stepping``'s own answer for one sub-step from ``base``; ``fields`` ends at ``base``.
 
-def _shifted(array: Any, axis: int, backward: bool, code: int,
-             phase: Optional[complex]) -> Any:
-    """``stepping._shift_up`` / ``_shift_down`` for one axis, plus the Bloch face.
-
-    ``np.roll`` is a pure gather and preserves every bit including signed zeros;
-    the metallic wall is then overwritten with an exact ``+0.0``, which is what the
-    kernel's ternary delivers. The phase multiplies the WRAPPED FACE ONLY
-    (stepping.py:1909) and is applied with the FIELD ON THE LEFT, which is the
-    orientation that decides the fused product.
+    The array path is the aligned oracle: its first PML sub-step installs the one-rank
+    region plan the device legs bind as their chunk record (:func:`layer_record`).
     """
-    out = np.roll(array, 1 if backward else -1, axis=axis)
-    index: List[Any] = [slice(None)] * 3
-    if code == METALLIC:
-        index[axis] = 0 if backward else array.shape[axis] - 1
-        out[tuple(index)] = array.dtype.type(0.0)
-        return out
-    if phase is not None:
-        index[axis] = 0 if backward else array.shape[axis] - 1
-        out[tuple(index)] = out[tuple(index)] * out.dtype.type(phase)
-    return out
-
-
-def reference_beta_curl(targets: Sequence[Any], aux: Sequence[Any],
-                        sources: Sequence[Any], coefficients: Dict[str, Any],
-                        codes: Sequence[int], backward: bool, dtdx: float,
-                        beta: float, dt: float, magnetic: bool,
-                        phases: Sequence[Optional[complex]],
-                        has_beta: bool = True,
-                        beta_after_mask: bool = False) -> None:
-    """``stepping.step_B`` / ``step_D`` WITH the beta term, transcribed, in place.
-
-    ``beta_after_mask`` is the position mutation's substrate: the array path adds
-    the term BEFORE ``_mask_non_owned_cells`` (S:356-363 against S:369), and this
-    is the only place that ordering can be expressed and measured.
-    """
-    a, b, c = sources
-    a_y = _shifted(a, 1, backward, codes[1], phases[1])
-    a_z = _shifted(a, 2, backward, codes[2], phases[2])
-    b_x = _shifted(b, 0, backward, codes[0], phases[0])
-    b_z = _shifted(b, 2, backward, codes[2], phases[2])
-    c_x = _shifted(c, 0, backward, codes[0], phases[0])
-    c_y = _shifted(c, 1, backward, codes[1], phases[1])
-
-    curls = [dtdx * ((c_y - c) + (b - b_z)),
-             dtdx * ((a_z - a) + (c - c_x)),
-             dtdx * ((b_x - b) + (a - a_y))]
-
-    def add_beta() -> None:
-        # stepping._special_kz_beta_term:770-784, inline: the coefficient is
-        # rounded ONCE by the partner's own dtype and the PRODUCT is negated.
-        for target, partner, sign in ((0, b, +1.0), (1, a, -1.0)):
-            coefficient: Any = sign * 2.0 * math.pi * beta * dt
-            if partner.dtype.kind == "c":
-                coefficient = coefficient * (1j if magnetic else -1j)
-            curls[target] = curls[target] + (
-                -(partner.dtype.type(coefficient) * partner))
-
-    if has_beta and not beta_after_mask:
-        add_beta()
-
-    pairs = (((0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1)) if backward
-             else ((0, 0), (1, 1), (2, 2)))
-    for target, axis in pairs:
-        if codes[axis] == METALLIC:
-            index: List[Any] = [slice(None)] * 3
-            index[axis] = 0
-            curls[target][tuple(index)] = curls[target].dtype.type(0.0)
-
-    if has_beta and beta_after_mask:
-        add_beta()
-
-    cycle = (("y", "z"), ("z", "x"), ("x", "y"))
-    for target, (first, second) in enumerate(cycle):
-        kms, sinv = coefficients["kms_" + first], coefficients["sinv_" + first]
-        kms_u, sinv_u = coefficients["kms_" + second], coefficients["sinv_" + second]
-        previous = aux[target].copy()
-        aux[target] *= kms
-        aux[target] -= curls[target]
-        aux[target] *= sinv
-        targets[target] *= kms_u
-        targets[target] += aux[target]
-        targets[target] -= previous
-        targets[target] *= sinv_u
+    restore(fields, base)
+    getattr(stepping, sub_step)(fields, pml)
+    oracle = snapshot(fields)
+    restore(fields, base)
+    return oracle
 
 
 def _reference_arrays(state: Dict[str, Any], sub_step: str):
@@ -448,27 +360,11 @@ def _reference_arrays(state: Dict[str, Any], sub_step: str):
     return arrays
 
 
-def run_reference(state: Dict[str, Any], grid, pml, sub_step: str, codes,
-                  has_beta: bool = True, beta_after_mask: bool = False,
-                  beta: Optional[float] = None) -> Dict[str, Any]:
-    spec = SUB_STEPS[sub_step]
-    arrays = _reference_arrays(state, sub_step)
-    kinds = stepping._boundary_kinds(grid, pml)
-    reader = getattr(grid, "bloch_phase", None)
-    phases = [reader(axis) if (callable(reader) and kinds[axis] == "periodic")
-              else None for axis in range(3)]
-    if spec["backward"]:
-        phases = [None if p is None else np.conj(np.complex64(p)) for p in phases]
-    reference_beta_curl(
-        [arrays[n] for n in spec["targets"]],
-        [arrays["fu_" + n] for n in spec["targets"]],
-        [arrays[n] for n in spec["sources"]],
-        curl_coefficients(pml, spec["suffix"]), codes, bool(spec["backward"]),
-        float(grid.dt / grid.dx),
-        float(grid.beta if beta is None else beta), float(grid.dt),
-        magnetic=(sub_step == "step_B"), phases=phases, has_beta=has_beta,
-        beta_after_mask=beta_after_mask)
-    return arrays
+def phase_table(grid, pml) -> Tuple[Optional[complex], ...]:
+    """The per-axis ``eikna`` table the complex plans choose their connection from."""
+    from meep_gpu.metal_kernels import complex_fields  # noqa: PLC0415
+
+    return complex_fields.bloch_phase_table(grid, stepping._boundary_kinds(grid, pml))
 
 
 # ---------------------------------------------------------------------------
@@ -476,19 +372,24 @@ def run_reference(state: Dict[str, Any], grid, pml, sub_step: str, codes,
 # ---------------------------------------------------------------------------
 
 def run_on_device(state: Dict[str, Any], grid, pml, sub_step: str, codes,
-                  complex_storage: bool, expansion: str,
+                  complex_storage: bool,
                   source: Optional[str] = None,
                   contract: str = templates.CONTRACT_OFF,
                   has_beta: bool = True,
                   beta_words: Any = None,
                   suffix: Optional[str] = None,
-                  conjugate: Optional[bool] = None,
+                  conjugate: bool = True,
+                  record: Any = None,
                   counters: Optional[List[kit.Counter]] = None) -> Dict[str, Any]:
     """One beta curl launch through the shipped plan, returning the host results.
 
     Everything goes through ``plan_*_from_arrays -> KernelPlan.run`` so the bytes
     this gate certifies are the bytes the engine route would launch. ``source`` is
     the MUTATION SEAM; dropping it would silently disarm every mutation leg.
+    ``record`` replaces the one-rank chunk record (a record mutation);
+    ``conjugate=False`` hands the plan the conjugated phase table, so the D side
+    connects with the B side's factor (a host mutation); ``beta_words`` replaces the
+    host-rounded ``(plus, minus)`` words.
     """
     spec = SUB_STEPS[sub_step]
     arrays = _reference_arrays(state, sub_step)
@@ -497,32 +398,33 @@ def run_on_device(state: Dict[str, Any], grid, pml, sub_step: str, codes,
     functions = None
     entry = ("beta_bloch_pml_curl_step" if complex_storage
              else "beta_pml_curl_step")
+    chunk = layer_record(grid, pml) if record is None else record
+    if beta_words is None:
+        beta_words = special_kz.beta_curl_coefficients(
+            grid.beta, grid.dt, magnetic=(sub_step == "step_B"),
+            complex_storage=complex_storage)
 
     if complex_storage:
-        kinds = stepping._boundary_kinds(grid, pml)
-        backward = (bool(spec["backward"]) if conjugate is None else conjugate)
-        phased, phase_words = special_kz.bloch_phase_words(grid, kinds, backward)
-        if beta_words is None:
-            beta_words = special_kz.beta_curl_coefficients(
-                grid.beta, grid.dt, magnetic=(sub_step == "step_B"),
-                complex_storage=True)
+        from meep_gpu.metal_kernels import complex_fields  # noqa: PLC0415
+
+        phases = phase_table(grid, pml)
+        if not conjugate:
+            phases = tuple(None if p is None else complex(np.conj(p)) for p in phases)
         if source is not None or contract != templates.CONTRACT_OFF:
+            phased, _values = complex_fields.phase_arguments(
+                phases, backward=bool(spec["backward"]))
             text = source if source is not None else special_kz.beta_bloch_curl_source(
-                codes, spec["backward"], phased, expansion, has_beta, contract)
+                codes, spec["backward"], phased, has_beta, contract)
             function = getattr(device.compile_source(text), entry)
             if counters is not None:
                 function = kit.Counter(function)
                 counters.append(function)
             functions = {templates.CONTRACT_OFF: function}
         plan = special_kz.plan_beta_bloch_pml_curl_from_arrays(
-            sub_step, arrays, flat, codes, phased, phase_words,
-            float(grid.dt / grid.dx), beta_words, expansion, residency,
-            functions=functions, has_beta=has_beta)
+            sub_step, arrays, flat, codes, phases, float(grid.dt / grid.dx),
+            beta_words[0], beta_words[1], residency,
+            functions=functions, has_beta=has_beta, chunk_bounds=chunk)
     else:
-        if beta_words is None:
-            beta_words = special_kz.beta_curl_coefficients(
-                grid.beta, grid.dt, magnetic=(sub_step == "step_B"),
-                complex_storage=False)
         if source is not None or contract != templates.CONTRACT_OFF:
             text = source if source is not None else special_kz.beta_curl_source(
                 codes, spec["backward"], has_beta, contract)
@@ -534,7 +436,7 @@ def run_on_device(state: Dict[str, Any], grid, pml, sub_step: str, codes,
         plan = special_kz.plan_beta_pml_curl_from_arrays(
             sub_step, arrays, flat, codes, float(grid.dt / grid.dx),
             beta_words[0], beta_words[1], residency, functions=functions,
-            has_beta=has_beta)
+            has_beta=has_beta, chunk_bounds=chunk)
     plan.run()
     residency.sync_out()
     if counters is None and plan.launches != 1:
@@ -553,122 +455,6 @@ def apply_to_fields(fields, arrays: Dict[str, Any], sub_step: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# LEG transcription
-# ---------------------------------------------------------------------------
-
-def leg_transcription(payload: Dict[str, Any], out: str) -> None:
-    """The in-gate reference vs ``stepping.py`` itself, over four full cycles.
-
-    Not a formality and not a warm-up: the reference is what every mutation leg
-    measures against, so a defect SHARED between it and the kernel would make every
-    mutation row a comparison of one wrong answer with another. Four cycles because
-    the auxiliaries are state — a reference that is right once and wrong forever
-    after is only visible on the second cycle.
-    """
-    rows: List[Dict[str, Any]] = []
-    started = time.time()
-    for case in CASES:
-        grid, fields, pml = build(case)
-        codes = boundary_codes(grid, pml)
-        moved_total = 0
-        for cycle in range(CYCLES):
-            for sub_step in SUB_STEPS:
-                base = snapshot(fields)
-                getattr(stepping, sub_step)(fields, pml)
-                after = snapshot(fields)
-                got = run_reference(base, grid, pml, sub_step, codes)
-                names = compared_names(sub_step)
-                moved = sum(differing(after[n], base[n]) for n in names)
-                moved_total += moved
-                bad = compare(got, after, names)
-                row = {"case": case["name"], "cycle": cycle, "sub_step": sub_step,
-                       "complex": case["complex"], "moved": moved,
-                       "differing": bad}
-                rows.append(row)
-                payload["legs"]["transcription"] = rows
-                save(payload, out)
-                kit.assert_moved(
-                    moved, f"{case['name']}/{sub_step}/cycle{cycle} (the array "
-                           f"path moved nothing, so the comparison is a no-op "
-                           f"agreeing with a no-op)")
-                assert not bad, row
-        log(f"[transcription] {case['name']:<28} {CYCLES} cycles x 2 sub-steps "
-            f"IDENTICAL moved={moved_total} ({time.time() - started:.1f}s)")
-
-
-# ---------------------------------------------------------------------------
-# LEG expansion — the probe comes FIRST
-# ---------------------------------------------------------------------------
-
-def leg_expansion(payload: Dict[str, Any], out: str) -> None:
-    """Measure the reference's complex-multiply arm, and refuse without a licence.
-
-    THE QUESTION IS INVERTED versus Triton and the leg says so: the shader spells
-    whatever it is told under ``contract(off)``, so what is unknown is what NUMPY —
-    the oracle — does, per call-site ORIENTATION. A platform matching NO arm is a
-    refusal BY NAME with example words, recorded here rather than left to the
-    predicate.
-
-    The three ambiguous base patterns are RECORDED AS AMBIGUOUS with the arithmetic
-    reason, not silently dropped: a real-scalar coefficient makes one cross product
-    exactly ±0, both transcriptions become exact, and the pattern cannot express a
-    preference. At least one pattern must still discriminate, or nothing was
-    measured.
-    """
-    record = expansion_probe.measure()
-    arm = special_kz.beta_expansion_from_probe(record)
-    discriminating = [name for name, verdict in record["patterns"].items()
-                      if verdict in templates.EXPANSIONS]
-    neither = [name for name, verdict in record["patterns"].items()
-               if verdict == "NEITHER"]
-    leg = {"patterns": record["patterns"], "licensed_expansion": arm,
-           "discriminating_patterns": sorted(discriminating),
-           "neither_patterns": sorted(neither),
-           "detail": record["detail"], "numpy": record["numpy"]}
-
-    # The refusal contract, measured rather than asserted: a record without the
-    # fifth pattern licenses nothing, and neither does one that names NEITHER.
-    stripped = {"backend": record["backend"],
-                "patterns": {k: v for k, v in record["patterns"].items()
-                             if k != special_kz.BETA_PROBE_PATTERN}}
-    leg["refuses_without_the_fifth_pattern"] = (
-        special_kz.beta_expansion_from_probe(stripped) is None)
-    poisoned = {"backend": record["backend"],
-                "patterns": dict(record["patterns"],
-                                 **{special_kz.BETA_PROBE_PATTERN: "NEITHER"})}
-    leg["refuses_a_neither_verdict"] = (
-        special_kz.beta_expansion_from_probe(poisoned) is None)
-    all_ambiguous = {"backend": record["backend"],
-                     "patterns": {name: "AMBIGUOUS_BOTH"
-                                  for name in special_kz.BETA_PROBE_PATTERNS}}
-    leg["refuses_an_all_ambiguous_record"] = (
-        special_kz.beta_expansion_from_probe(all_ambiguous) is None)
-    wrong_backend = {"backend": "cupy", "patterns": record["patterns"]}
-    leg["refuses_another_backends_artifact"] = (
-        special_kz.beta_expansion_from_probe(wrong_backend) is None)
-
-    payload["legs"]["expansion"] = leg
-    payload["licensed_expansion"] = arm
-    save(payload, out)
-    for name, verdict in sorted(record["patterns"].items()):
-        log(f"[expansion] {name:<40} {verdict}")
-    log(f"[expansion] licensed arm = {arm!r} from {len(discriminating)} "
-        f"discriminating pattern(s)")
-    assert not neither, (
-        f"this host's reference matches NO transcription arm for {neither}; the "
-        f"complex beta curl is REFUSED by name rather than built on a guess "
-        f"(example words in the artifact)")
-    assert arm is not None, "no expansion arm is licensed by the measured record"
-    assert discriminating, (
-        "every pattern was ambiguous: nothing was measured, and an arm chosen "
-        "under that record would be a default rather than a fact")
-    for key in ("refuses_without_the_fifth_pattern", "refuses_a_neither_verdict",
-                "refuses_an_all_ambiguous_record",
-                "refuses_another_backends_artifact"):
-        assert leg[key], f"the probe contract did not hold: {key}"
-
-
-# ---------------------------------------------------------------------------
 # LEG reference — both kernels vs stepping.py
 # ---------------------------------------------------------------------------
 
@@ -679,7 +465,6 @@ def leg_reference(payload: Dict[str, Any], out: str) -> None:
     from the device's own state: a per-launch-correct kernel that drifts is only
     caught this way.
     """
-    arm = payload.get("licensed_expansion") or "FMA_V1"
     rows: List[Dict[str, Any]] = []
     started = time.time()
     for case in CASES:
@@ -692,7 +477,7 @@ def leg_reference(payload: Dict[str, Any], out: str) -> None:
                 oracle = snapshot(fields)
                 restore(fields, base)
                 got = run_on_device(base, grid, pml, sub_step, codes,
-                                    bool(case["complex"]), arm)
+                                    bool(case["complex"]))
                 names = compared_names(sub_step)
                 moved = sum(differing(oracle[n], base[n]) for n in names)
                 bad = compare(got, oracle, names)
@@ -725,10 +510,9 @@ def leg_identity(payload: Dict[str, Any], out: str) -> None:
        certified plan. This is what makes "the beta kernel adds a term" a
        measurement rather than a description: everything ELSE in the body is
        pinned to already-certified bytes;
-    2. the same build against ``stepping.py`` on a beta = 0 run, which is the
-       oracle either way and is the only form available to the COMPLEX arm (no
-       certified complex curl exists on this backend, so the identity claim there
-       is against the array path).
+    2. the same build against ``stepping.py`` on a beta = 0 run, the oracle either
+       way. The COMPLEX arm's certified-kernel comparison is against
+       ``complex_fields``' Bloch curl, which its source is derived from.
 
     NON-VACUITY: the beta term must MATTER. Each case also runs the HAS_BETA=1
     build on the same state and asserts it DIFFERS from the HAS_BETA=0 one — a
@@ -737,7 +521,6 @@ def leg_identity(payload: Dict[str, Any], out: str) -> None:
     """
     from meep_gpu.metal_kernels import launch as metal_launch
 
-    arm = payload.get("licensed_expansion") or "FMA_V1"
     rows: List[Dict[str, Any]] = []
     started = time.time()
     for case in CASES:
@@ -756,31 +539,35 @@ def leg_identity(payload: Dict[str, Any], out: str) -> None:
             zoracle = snapshot(zfields)
             zcodes = boundary_codes(zgrid, zpml)
             plain = run_on_device(zbase, zgrid, zpml, sub_step, zcodes,
-                                  bool(case["complex"]), arm, has_beta=False,
-                                  beta_words=((0.0, 0.0), (0.0, 0.0))
-                                  if case["complex"] else (0.0, 0.0))
+                                  bool(case["complex"]), has_beta=False,
+                                  beta_words=(0.0, 0.0))
             against_stepping = compare(plain, zoracle, names)
 
-            # --- half 1: REAL only — against the CERTIFIED tranche-1 kernel -----
-            against_certified: Dict[str, int] = {}
-            certified_available = not case["complex"]
-            if certified_available:
-                arrays = _reference_arrays(zbase, sub_step)
-                flat = flat_coefficients(zpml, spec["suffix"])
-                residency = device.Residency()
+            # --- half 1: against the CERTIFIED curl the source is derived from ---
+            arrays = _reference_arrays(zbase, sub_step)
+            flat = flat_coefficients(zpml, spec["suffix"])
+            residency = device.Residency()
+            if case["complex"]:
+                from meep_gpu.metal_kernels import complex_fields  # noqa: PLC0415
+
+                certified = complex_fields.plan_complex_pml_curl_from_arrays(
+                    sub_step, arrays, flat, zcodes, phase_table(zgrid, zpml),
+                    float(zgrid.dt / zgrid.dx), residency,
+                    chunk_bounds=layer_record(zgrid, zpml))
+            else:
                 certified = metal_launch.plan_from_arrays(
                     sub_step, arrays, flat, zcodes,
-                    float(zgrid.dt / zgrid.dx), residency)
-                certified.run()
-                residency.sync_out()
-                against_certified = compare(plain, arrays, names)
+                    float(zgrid.dt / zgrid.dx), residency,
+                    chunk_bounds=layer_record(zgrid, zpml))
+            certified.run()
+            residency.sync_out()
+            against_certified = compare(plain, arrays, names)
 
             # --- non-vacuity: the term must MOVE something ----------------------
             with_beta = run_on_device(base, grid, pml, sub_step, codes,
-                                      bool(case["complex"]), arm, has_beta=True)
+                                      bool(case["complex"]), has_beta=True)
             without_beta = run_on_device(base, grid, pml, sub_step, codes,
-                                         bool(case["complex"]), arm,
-                                         has_beta=False)
+                                         bool(case["complex"]), has_beta=False)
             term_words = sum(differing(with_beta[n], without_beta[n])
                              for n in names)
 
@@ -788,20 +575,14 @@ def leg_identity(payload: Dict[str, Any], out: str) -> None:
                    "complex": case["complex"],
                    "beta0_vs_stepping": against_stepping,
                    "beta0_vs_certified_kernel": against_certified,
-                   "certified_comparison_available": certified_available,
                    "beta_term_words": term_words}
-            if not certified_available:
-                kit.predicted_null(row, (
-                    "no certified COMPLEX curl exists on this backend, so the "
-                    "identity claim for the complex arm is against stepping.py "
-                    "alone; the real arm carries the certified-kernel comparison"))
             rows.append(row)
             payload["legs"]["identity"] = rows
             save(payload, out)
             log(f"[identity] {case['name']:<28} {sub_step} beta0-vs-stepping="
                 f"{'IDENTICAL' if not against_stepping else against_stepping} "
                 f"beta0-vs-certified="
-                f"{'IDENTICAL' if certified_available and not against_certified else ('n/a' if not certified_available else against_certified)} "
+                f"{'IDENTICAL' if not against_certified else against_certified} "
                 f"beta_words={term_words} ({time.time() - started:.1f}s)")
             assert not against_stepping, row
             assert not against_certified, row
@@ -842,12 +623,6 @@ def leg_constitutive(payload: Dict[str, Any], out: str) -> None:
 
     rows: List[Dict[str, Any]] = []
     started = time.time()
-    # THIS GATE'S OWN MEASURED PROBE, never `load_expansion_probe()`. The env-var
-    # route returns None when the harness did not export a path, and the complex
-    # predicate would then refuse on the probe clause — which this leg's own assert
-    # would report as "the plan builder refused an admitted run", pointing at the
-    # wrong thing entirely. Every other leg here takes the measured record.
-    probe = expansion_probe.measure()
     for case in CASES:
         grid, fields, pml = build(case)
         residency = device.Residency()
@@ -855,9 +630,11 @@ def leg_constitutive(payload: Dict[str, Any], out: str) -> None:
         for slot, side in (("update_H", "H"), ("update_E", "E")):
             plans[slot] = (
                 special_kz.plan_beta_run_complex_constitutive(
-                    fields, pml, side, residency, probe=probe)
+                    fields, pml, side, residency,
+                    chunk_bounds=layer_record(fields.grid, pml))
                 if case["complex"] else
-                special_kz.plan_beta_run_constitutive(fields, pml, side, residency))
+                special_kz.plan_beta_run_constitutive(fields, pml, side, residency,
+                                                      chunk_bounds=layer_record(fields.grid, pml)))
             assert plans[slot] is not None, (
                 f"{case['name']}/{slot}: the restated predicate ADMITS this beta "
                 f"run but the plan builder refused it")
@@ -901,96 +678,19 @@ def leg_constitutive(payload: Dict[str, Any], out: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# LEG position — the term's place between curl and mask
-# ---------------------------------------------------------------------------
-
-def leg_position(payload: Dict[str, Any], out: str) -> None:
-    """The beta term goes in BEFORE the ownership mask. Measured, with its null.
-
-    The array path adds it at S:356-363, before ``_mask_non_owned_cells`` at S:369.
-    Moving it after leaves a nonzero curl in the cell the mask exists to drop — but
-    ONLY where something is masked, so the periodic cases are recorded as PREDICTED
-    NULLS with their reason rather than quietly passing.
-    """
-    rows: List[Dict[str, Any]] = []
-    started = time.time()
-    for case in CASES:
-        grid, fields, pml = build(case)
-        codes = boundary_codes(grid, pml)
-        masked = case["name"] in MASKED_CASES
-        for sub_step in SUB_STEPS:
-            base = snapshot(fields)
-            correct = run_reference(base, grid, pml, sub_step, codes)
-            moved_late = run_reference(base, grid, pml, sub_step, codes,
-                                       beta_after_mask=True)
-            names = compared_names(sub_step)
-            delta = sum(differing(correct[n], moved_late[n]) for n in names)
-            row = {"case": case["name"], "sub_step": sub_step,
-                   "metallic_axis_live": masked,
-                   "words_changed_by_moving_the_term_after_the_mask": delta}
-            if not masked:
-                # THROUGH kit.predicted_null, which stamps the FLAG as well as the
-                # reason. Writing `predicted_null_reason` alone left these six rows
-                # invisible to any reader (or script) that counts the flag the kit
-                # defines — measured on this directory's first cut: 6 rows carried
-                # a reason and the flag count came back 0.
-                kit.predicted_null(row, (
-                    "no metallic axis: nothing is masked, so the term's position "
-                    "relative to the mask is byte-invisible on this configuration"))
-            rows.append(row)
-            payload["legs"]["position"] = rows
-            save(payload, out)
-            log(f"[position] {case['name']:<28} {sub_step} masked={masked} "
-                f"delta={delta} ({time.time() - started:.1f}s)")
-            if masked:
-                kit.assert_census_floor(
-                    delta, f"{case['name']}/{sub_step} position sensitivity "
-                           f"(moving the term across the ownership mask changed "
-                           f"nothing on a live metallic axis, so the position "
-                           f"this transcription pins is not byte-visible)")
-            else:
-                assert delta == 0, row
-
-
-# ---------------------------------------------------------------------------
 # LEG guard — the contraction directive, measured
 # ---------------------------------------------------------------------------
 
-#: The complex arm's contraction null, stated once and asserted per row. MEASURED
-#: 2026-08-15 over three seeds x three complex cases x both sub-steps: the shipped
-#: FMA_V1 build is byte-identical under ``contract(fast)`` and ``contract(off)``.
-#: The reason is structural rather than a gap in the harness — every multiply in
-#: the FMA_V1 helper body is EITHER already inside an explicit ``fma()`` (which the
-#: directive permits and does not touch) OR has an exactly-zero operand, so the
-#: source contains no implicit multiply-add pair left for the compiler to contract.
-COMPLEX_GUARD_NULL_REASON = (
-    "the shipped complex arm is the FMA_V1 spelling, whose every product is "
-    "already inside an explicit fma() or carries an exact zero operand: there is "
-    "no IMPLICIT multiply-add pair for contract(fast) to fuse, so the directive is "
-    "byte-invisible here. This is a property of the spelling, not of the harness — "
-    "the NAIVE control row below plants a body that DOES contract and must diverge")
-
-
 def leg_guard(payload: Dict[str, Any], out: str) -> None:
-    """``contract(fast)`` must DIVERGE. A guard nobody can measure guards nothing.
+    """``contract(fast)`` must DIVERGE, on each storage. A guard nobody can measure
+    guards nothing.
 
-    On Metal this is a SOURCE variant rather than a launch keyword, so the two
-    modes are two compiled kernels and the plan holds one per mode. The REAL arm's
-    hazard is the multiply-subtract tail ``curl - (c*g)``: exactly the shape a
-    compiler contracts into an fma, and the reason the Triton tranche had to
-    certify this family with fusion off.
-
-    THE FLOOR IS PER ARM, and that correction is what this leg's earlier shape hid.
-    A single sum over all twelve rows was satisfied by the real arm alone while
-    every COMPLEX row sat at zero — so the guard was unmeasured on half the family
-    and the null was not even recorded. It is now recorded with its reason
-    (:data:`COMPLEX_GUARD_NULL_REASON`), the real arm carries its own floor, and a
-    NAIVE-arm control proves the harness can see a contraction in the complex body
-    when one exists. Without that control "the complex arm does not contract" and
-    "this leg cannot see contraction" are the same measurement.
+    On Metal this is a SOURCE variant rather than a launch keyword, so the two modes
+    are two compiled kernels and the plan holds one per mode. Both arms carry
+    contractable shapes: the forms' ``(p * km) - curl`` and the pass's
+    ``v - (si * df)``, spelled per part on the complex arm. THE FLOOR IS PER ARM: a
+    single sum would be satisfied by one storage while the other sat at zero.
     """
-    arm = payload.get("licensed_expansion") or "FMA_V1"
-    other = "NAIVE" if arm == "FMA_V1" else "FMA_V1"
     rows: List[Dict[str, Any]] = []
     started = time.time()
     for case in CASES:
@@ -998,100 +698,29 @@ def leg_guard(payload: Dict[str, Any], out: str) -> None:
         codes = boundary_codes(grid, pml)
         for sub_step in SUB_STEPS:
             base = snapshot(fields)
-            getattr(stepping, sub_step)(fields, pml)
-            oracle = snapshot(fields)
-            restore(fields, base)
+            oracle = oracle_after(fields, pml, base, sub_step)
             guarded = run_on_device(base, grid, pml, sub_step, codes,
-                                    bool(case["complex"]), arm)
+                                    bool(case["complex"]))
             fast = run_on_device(base, grid, pml, sub_step, codes,
-                                 bool(case["complex"]), arm,
-                                 contract=templates.CONTRACT_FAST)
+                                 bool(case["complex"]), contract=templates.CONTRACT_FAST)
             names = compared_names(sub_step)
             guarded_bad = sum(differing(guarded[n], oracle[n]) for n in names)
             fast_bad = sum(differing(fast[n], oracle[n]) for n in names)
             row = {"case": case["name"], "sub_step": sub_step,
                    "arm": "complex" if case["complex"] else "real",
                    "guarded_differing": guarded_bad, "fast_differing": fast_bad}
-            if case["complex"]:
-                kit.predicted_null(row, COMPLEX_GUARD_NULL_REASON)
             rows.append(row)
             payload["legs"]["guard"] = rows
             save(payload, out)
             log(f"[guard] {case['name']:<28} {sub_step} guarded={guarded_bad} "
                 f"fast={fast_bad} ({time.time() - started:.1f}s)")
             assert guarded_bad == 0, row
-            if case["complex"]:
-                assert fast_bad == 0, (
-                    f"{row}: the complex arm DID diverge under contract(fast). "
-                    f"That contradicts {COMPLEX_GUARD_NULL_REASON!r} — an implicit "
-                    f"multiply-add pair has appeared in the complex body and the "
-                    f"null recorded here is no longer a fact")
-
-    real_fast = sum(row["fast_differing"] for row in rows
-                    if row["arm"] == "real")
-    kit.assert_census_floor(
-        real_fast, "REAL-arm contraction guard effect (the contract=fast build "
-                   "agreed with stepping.py on every real case, so the one compile "
-                   "option this certification rests on is not measurable and its "
-                   "pinning is decorative)")
-
-    # THE CONTROL. Plant the OTHER expansion arm — four rounded products and two
-    # rounded adds, which is exactly a contractable shape — into the same complex
-    # kernel and require contract(fast) to move bytes. This is what separates "the
-    # shipped complex body has nothing to contract" from "this leg cannot see a
-    # contraction in a complex body at all", and only the first is a null.
-    control: List[Dict[str, Any]] = []
-    for case in CASES:
-        if not case["complex"]:
-            continue
-        grid, fields, pml = build(case)
-        codes = boundary_codes(grid, pml)
-        for sub_step in SUB_STEPS:
-            base = snapshot(fields)
-            off = run_on_device(base, grid, pml, sub_step, codes, True, other)
-            fast = run_on_device(base, grid, pml, sub_step, codes, True, other,
-                                 contract=templates.CONTRACT_FAST)
-            names = compared_names(sub_step)
-            delta = sum(differing(off[n], fast[n]) for n in names)
-            # THE DISCRIMINATOR, spelled from the bound words rather than from
-            # "is there a phase". A contraction needs a product whose BOTH factors
-            # are nonzero: c1 carries no phase at all and c3's is exactly -1+0j, so
-            # in both the cross products are exact and even the NAIVE body has
-            # nothing to fuse. Only a phase with two nonzero words is general.
-            phased, words_bound = special_kz.bloch_phase_words(
-                grid, stepping._boundary_kinds(grid, pml),
-                bool(SUB_STEPS[sub_step]["backward"]))
-            general = any(
-                flag and words_bound[2 * axis] != 0.0
-                and words_bound[2 * axis + 1] != 0.0
-                for axis, flag in enumerate(phased))
-            control.append({"case": case["name"], "sub_step": sub_step,
-                            "arm": other, "off_vs_fast": delta,
-                            "a_general_complex_product_is_live": bool(general)})
-            assert bool(delta) == bool(general), (
-                f"{case['name']}/{sub_step}: the NAIVE control diverged="
-                f"{bool(delta)} while a general complex product was live="
-                f"{bool(general)}. The control's own explanation of WHICH rows can "
-                f"contract no longer matches what it measured")
-    payload["legs"]["guard_control"] = {
-        "arm": other,
-        "why": ("the NAIVE body spells `(a*b) - (c*d)`, an IMPLICIT multiply-add "
-                "pair, so contract(fast) has something to fuse. A general complex "
-                "product only exists where a Bloch phase is live and is neither "
-                "1+0j nor -1+0j, which is why the rows without one are zero and "
-                "are reported rather than dropped"),
-        "rows": control,
-        "diverging_rows": sum(1 for r in control if r["off_vs_fast"]),
-    }
-    save(payload, out)
-    log(f"[guard] control arm={other} diverging rows="
-        f"{payload['legs']['guard_control']['diverging_rows']}/{len(control)}")
-    kit.assert_census_floor(
-        sum(r["off_vs_fast"] for r in control),
-        f"complex contraction CONTROL ({other} arm): contract(fast) moved nothing "
-        f"even on a body that spells an implicit multiply-add pair, so this leg "
-        f"cannot see a contraction in the complex kernel at all and the shipped "
-        f"arm's zero rows are an absence of measurement rather than a null")
+    for storage in ("real", "complex"):
+        kit.assert_census_floor(
+            sum(row["fast_differing"] for row in rows if row["arm"] == storage),
+            f"{storage.upper()}-arm contraction guard effect (the contract=fast "
+            f"build agreed with stepping.py on every {storage} case, so the one "
+            f"compile option this certification rests on is not measurable there)")
 
 
 # ---------------------------------------------------------------------------
@@ -1154,7 +783,6 @@ def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
     :func:`_seed_signed_zero_lattice` asserts the volumes are actually distinct, so
     the leg's own non-degeneracy is measured rather than assumed.
     """
-    arm = payload.get("licensed_expansion") or "FMA_V1"
     rows: List[Dict[str, Any]] = []
     started = time.time()
     for case in CASES:
@@ -1167,7 +795,7 @@ def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
             getattr(stepping, sub_step)(fields, pml)
             oracle = snapshot(fields)
             got = run_on_device(seeded, grid, pml, sub_step, codes,
-                                bool(case["complex"]), arm)
+                                bool(case["complex"]))
             names = compared_names(sub_step)
             moved = sum(differing(oracle[n], seeded[n]) for n in names)
             census_in = sum(
@@ -1216,27 +844,24 @@ PRECONDITION_CASES = (case_named("r2_metallic_x_negative_beta"),
 
 def _beta_intermediates(grid, sub_step: str, base: Dict[str, Any],
                         complex_storage: bool) -> Dict[str, Any]:
-    """The beta term's un-storable product, reconstructed on the host.
+    """The beta pass's un-storable products, reconstructed on the host.
 
-    Same operand order as the kernel: the coefficient on the LEFT, the UNSHIFTED
-    centre partner on the right, target 0 taking the second source at ``+1`` and
-    target 1 the first source at ``-1``. Under complex storage the coefficient's
-    words are rebuilt into a complex64 WITHOUT ``re + 1j*im``, which would
-    canonicalize the ±0 real word this coefficient exists to carry.
+    The word times the UNSHIFTED centre partner, target 0 taking the second source
+    and target 1 the first. Under complex storage the pass forms one product per part
+    (the quarter turn), so each part's product is observed on its own.
     """
     spec = SUB_STEPS[sub_step]
-    plus, minus = special_kz.beta_curl_coefficients(
+    plus, minus = (np.float32(word) for word in special_kz.beta_curl_coefficients(
         grid.beta, grid.dt, magnetic=(sub_step == "step_B"),
-        complex_storage=complex_storage)
+        complex_storage=complex_storage))
+    second, first = base[spec["sources"][1]], base[spec["sources"][0]]
     if complex_storage:
-        def scalar(words):
-            return _complex_of(np.float32([words[0]]),
-                               np.float32([words[1]]))[0]
-        plus, minus = scalar(plus), scalar(minus)
-    else:
-        plus, minus = np.float32(plus), np.float32(minus)
-    return {"beta_product_plus": plus * base[spec["sources"][1]],
-            "beta_product_minus": minus * base[spec["sources"][0]]}
+        return {"beta_product_plus_re": plus * second.real,
+                "beta_product_plus_im": plus * second.imag,
+                "beta_product_minus_re": minus * first.real,
+                "beta_product_minus_im": minus * first.imag}
+    return {"beta_product_plus": plus * second,
+            "beta_product_minus": minus * first}
 
 
 def leg_precondition(payload: Dict[str, Any], out: str) -> None:
@@ -1253,7 +878,6 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
     names complex64 storage and censused only float32 would be stating a
     precondition it had checked on half its own scope.
     """
-    arm = payload.get("licensed_expansion") or "FMA_V1"
     rows: List[Dict[str, Any]] = []
     started = time.time()
     for case in PRECONDITION_CASES:
@@ -1266,7 +890,7 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
                 oracle = snapshot(fields)
                 restore(fields, base)
                 got = run_on_device(base, grid, pml, sub_step, codes,
-                                    bool(case["complex"]), arm)
+                                    bool(case["complex"]))
                 names = compared_names(sub_step)
                 spec = SUB_STEPS[sub_step]
                 window = preconditions.SubnormalWindow(
@@ -1315,562 +939,340 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
 # LEG mutations
 # ---------------------------------------------------------------------------
 
+def _drop_pass(source: str) -> str:
+    """The whole beta pass removed (its two marker lines and everything between)."""
+    from meep_gpu.metal_kernels import folded_pass  # noqa: PLC0415
+
+    start = source.find(folded_pass.FOLDED_PASS_BEGIN)
+    end = source.find(folded_pass.FOLDED_PASS_END)
+    if start < 0 or end < 0:
+        raise LookupError("the folded pass block")
+    end += len(folded_pass.FOLDED_PASS_END) + 1
+    return source[:start] + "    // beta pass dropped\n" + source[end:]
+
+
+def _fold_into_curl(source: str, complex_storage: bool) -> str:
+    """The PREVIOUS package form: the term added to the curl before the mask and the
+    forms, with no pass of its own -- what the array path did before MEEP's order."""
+    if complex_storage:
+        terms = ("    curl0 = curl0 - float2(-(beta_plus * b.y), beta_plus * b.x);\n"
+                 "    curl1 = curl1 - float2(-(beta_minus * a.y), beta_minus * a.x);\n")
+    else:
+        terms = ("    curl0 = curl0 - (beta_plus * b);\n"
+                 "    curl1 = curl1 - (beta_minus * a);\n")
+    anchor = "    // --- ownership mask"
+    return kit.needle(_drop_pass(source), anchor, terms + "\n" + anchor)
+
+
+def _pass_unmasked(source: str) -> str:
+    """The increment's ownership rows removed: MEEP's pass visits owned cells only."""
+    import re  # noqa: PLC0415
+
+    out, count = re.subn(r"^    bi[01] = \w+ \? .+ : bi[01];\n", "", source,
+                         flags=re.MULTILINE)
+    if not count:
+        raise LookupError("the increment's ownership rows")
+    return out
+
+
+#: The beta pass's own defects, on the REAL source. ``must_catch``: True (must be
+#: caught) | None (record only, with its reason) | False (must NOT be caught).
 REAL_MUTATIONS: Dict[str, Dict[str, Any]] = {
-    "m1_beta_term_dropped": {
+    "m1_beta_pass_dropped": {
         "must_catch": True,
-        "why": "the whole feature deleted: proves every other leg is measuring "
-               "the term rather than the certified curl underneath it",
-        "apply": lambda s: kit.needle(
-            s, "    curl0 = curl0 - (beta_plus * b);", "    // term dropped"),
+        "why": "the whole feature deleted: proves every other leg is measuring the "
+               "pass rather than the certified curl underneath it",
+        "apply": _drop_pass,
     },
     "m2_beta_sign_swap": {
         "must_catch": True,
-        "why": "the two host-rounded signs exchanged (S:361 is +1, :363 is -1)",
+        "why": "the two host-rounded signs exchanged (Bx is +1, By is -1)",
         "apply": lambda s: kit.needle(
-            kit.needle(s, "(beta_plus * b)", "(beta_minus * b)"),
-            "(beta_minus * a)", "(beta_plus * a)"),
+            kit.needle(s, "-(beta_plus * b)", "-(beta_minus * b)"),
+            "-(beta_minus * a)", "-(beta_plus * a)"),
     },
     "m3_beta_partner_swap": {
         "must_catch": True,
-        "why": "Bx takes Ex instead of Ey — the cross product's pairing "
-               "(B_CURL_TERMS, S:213-222)",
+        "why": "Bx takes Ex instead of Ey -- the cross product's pairing",
         "apply": lambda s: kit.needle(
-            kit.needle(s, "(beta_plus * b)", "(beta_plus * a)"),
-            "(beta_minus * a)", "(beta_minus * b)"),
+            kit.needle(s, "-(beta_plus * b)", "-(beta_plus * a)"),
+            "-(beta_minus * a)", "-(beta_minus * b)"),
     },
     "m4_beta_partner_shifted_on_a_live_axis": {
         "must_catch": True,
-        "why": "the term reads a SHIFTED operand rather than the unshifted CENTER "
-               "snapshot (S:293/:408). The shift is along X, which has 20 cells: "
-               "see m4b for why the obvious z-shift spelling cannot hold this",
-        "apply": lambda s: kit.needle(s, "(beta_plus * b)", "(beta_plus * b_x)"),
+        "why": "the pass reads a SHIFTED operand rather than the stored centre",
+        "apply": lambda s: kit.needle(s, "-(beta_plus * b)", "-(beta_plus * b_x)"),
     },
     "m4b_beta_partner_shifted_on_the_invariant_axis": {
-        # A NEGATIVE RESULT, STATED. Measured 0/2 caught, and the reason is
-        # structural rather than a gap in the harness: beta is legal ONLY on an
-        # effective-2-D grid (grid._resolve_beta; MEEP fields.cpp:546-547), so the
-        # invariant axis has EXTENT 1 and a z-shift is the identity map -- `b_z`
-        # and `b` are the same word. This defect is byte-invisible in every
-        # configuration this family can ever step, so it is pinned by SOURCE-TEXT
-        # assertion in `test_metal_special_kz` instead, and recorded here as a
-        # predicted null rather than quietly dropped or forced green.
         "must_catch": None,
         "predicted_null_reason": (
-            "beta requires an effective-2-D grid, so the invariant axis has "
-            "extent 1 and a shift along it is the identity: b_z IS b. The "
-            "defect cannot be made byte-visible on any configuration in this "
-            "family's coverage"),
-        "why": "the z-shifted partner, which is byte-identical to the centre on "
-               "every grid beta admits",
-        "apply": lambda s: kit.needle(s, "(beta_plus * b)", "(beta_plus * b_z)"),
+            "beta requires an effective-2-D grid, so the invariant axis has extent "
+            "1 and a shift along it is the identity: b_z IS b"),
+        "why": "the z-shifted partner, byte-identical to the centre on every grid "
+               "beta admits",
+        "apply": lambda s: kit.needle(s, "-(beta_plus * b)", "-(beta_plus * b_z)"),
     },
     "m5_beta_scaled_by_dtdx": {
         "must_catch": True,
-        "why": "the analytic derivative treated as a finite difference — the one "
-               "thing S:731-735 says must NOT happen",
-        "apply": lambda s: kit.needle(
-            s, "(beta_plus * b)", "(dtdx * (beta_plus * b))"),
+        "why": "the analytic derivative treated as a finite difference",
+        "apply": lambda s: kit.needle(s, "-(beta_plus * b)",
+                                      "-(dtdx * (beta_plus * b))"),
     },
     "m6_beta_on_the_third_target": {
         "must_catch": True,
-        "why": "a term added to curl2; step_db.cpp:148-176 runs d_c over {X, Y} "
-               "only and the z component gets none",
+        "why": "an increment added to the z component; step_db.cpp:161-175 runs "
+               "d_c over {X, Y} only",
         "apply": lambda s: kit.needle(
-            s, "    curl1 = curl1 - (beta_minus * a);",
-            "    curl1 = curl1 - (beta_minus * a);\n"
-            "    curl2 = curl2 - (beta_plus * c);"),
+            s, "    float bi1 = -(beta_minus * a);",
+            "    float bi1 = -(beta_minus * a);\n    v2 = v2 + (beta_plus * c);"),
     },
-    "m7_beta_after_the_ownership_mask": {
+    "m7_beta_folded_into_the_curl": {
         "must_catch": True,
-        "codes": (METALLIC, PERIODIC, PERIODIC),
-        "why": "the term's POSITION: added after the mask it survives in the cell "
-               "MEEP's owned-cell loop never visits",
+        "why": "the PREVIOUS package form: the term inside the curl, before the "
+               "mask and the per-chunk forms, instead of MEEP's separate pass after "
+               "them (with the passes folded into the curl, the array path differed "
+               "from MEEP in 147,772 of 251,596 words on case bz; CHANGELOG)",
+        "apply": lambda s: _fold_into_curl(s, False),
+    },
+    "m7b_increment_not_masked": {
+        "must_catch": True,
+        "codes": (METALLIC, METALLIC, PERIODIC),
+        "why": "the increment kept on the cells MEEP's owned-cell loop never "
+               "visits (the pass masks to +0 where the curl is masked)",
+        "apply": _pass_unmasked,
+    },
+    "m7c_ladder_ignores_dsigu": {
+        "must_catch": True,
+        "why": "the dsigu chunks take the outside stage: fu not advanced and f not "
+               "scaled by sinv_u (By's dsigu is x, which carries the layer)",
         "apply": lambda s: kit.needle(
-            kit.needle(s,
-                       "    curl0 = curl0 - (beta_plus * b);\n"
-                       "    curl1 = curl1 - (beta_minus * a);",
-                       "    // moved below the mask"),
-            "    // --- split-field recurrence",
-            "    curl0 = curl0 - (beta_plus * b);\n"
-            "    curl1 = curl1 - (beta_minus * a);\n\n"
-            "    // --- split-field recurrence"),
+            kit.needle(s, "    n1 = du1 ? (n1 - bd1) : n1;", "    n1 = n1;"),
+            "    v1 = du1 ? (v1 - (si_x * bd1)) : (v1 - bd1);",
+            "    v1 = (v1 - bd1);"),
+    },
+    "m7d_ladder_skips_the_dsig_coefficient": {
+        "must_catch": True,
+        "why": "df = raw instead of raw * siginv: wrong in a dsig chunk (Bx's dsig "
+               "is y, which carries the layer)",
+        "apply": lambda s: kit.needle(s, "    float bd0 = (si_y * bi0);",
+                                      "    float bd0 = bi0;"),
+    },
+    "m7e_fu_advanced_on_a_plain_cell": {
+        "must_catch": True,
+        "why": "the pass's fu stage run outside the dsigu chunks and stored there; "
+               "the array path leaves fu untouched on those cells",
+        "apply": lambda s: kit.needle(
+            kit.needle(s, "    n1 = du1 ? (n1 - bd1) : n1;", "    n1 = (n1 - bd1);"),
+            "    if (du1) { u1[ii] = n1; }", "    u1[ii] = n1;"),
     },
     "m8_contract_fast": {
         "must_catch": True,
-        "why": "removes the one compile option; the multiply-subtract tail "
-               "contracts into an fma with the curl that precedes it",
+        "why": "removes the one compile option; the pass's multiply-subtracts "
+               "contract",
         "apply": lambda s: kit.needle(s, templates.contraction_pragma("off"),
                                       templates.contraction_pragma("fast")),
     },
     "m9_subtraction_as_addition_of_the_negation": {
-        # THE ONE must_catch=False ROW, and it is not decoration: it PINS grouping
-        # choice 2. IEEE-754 defines subtraction as addition of the negation, so
-        # these are the same bits on every input including signed zeros. If this
-        # ever DID diverge, the transcription's licence to spell the array path's
-        # `curl + (-(c*g))` as a single subtract would be gone.
         "must_catch": False,
-        "why": "IEEE-754 identity: `x - y` IS `x + (-y)`, so the array path's "
-               "negate-then-add and this single subtract are the same bits",
+        "why": "IEEE-754 identity: `x - y` IS `x + (-y)`, signed zeros included",
         "apply": lambda s: kit.needle(
-            s, "    curl0 = curl0 - (beta_plus * b);",
-            "    curl0 = curl0 + (-(beta_plus * b));"),
+            s, "    v0 = du0 ? (v0 - (si_z * bd0)) : (v0 - bd0);",
+            "    v0 = du0 ? (v0 - (si_z * bd0)) : (v0 + (-bd0));"),
     },
-    "m10_real_arm_zero_minus_spelling": {
-        # A NEGATIVE RESULT, STATED, and it corrects the reason rather than the
-        # spelling. Triton needed `* -1.0` because IT lowers unary minus as
-        # `0.0 - x`, canonicalizing a zero's sign. The obvious transfer is to plant
-        # `0.0f - x` here and require a catch -- but the REAL arm never spells a
-        # negation at all: it spells `curl - (c*g)`, IEEE subtraction, where the
-        # question does not arise. Measured 0/2 caught, because `a - b` and
-        # `a + (0.0f - b)` differ only when b is +0.0 AND a is -0.0 in the same
-        # cell, which the recurrence does not produce here.
-        #
-        # So the workaround's REAL test is m13b, on the COMPLEX arm, where a unary
-        # negation IS spelled (`-(z.y * p.y)` inside c_mul). This row stays as the
-        # record that the real arm was checked and is structurally immune.
+    "m10_negation_as_zero_minus": {
         "must_catch": None,
         "predicted_null_reason": (
-            "the real arm spells IEEE subtraction, not a negation: `a - b` and "
-            "`a + (0.0f - b)` can differ only where b is +0.0 and a is -0.0 in "
-            "the same cell. The spelling hazard lives in the complex helper and "
-            "is measured there (m13b)"),
-        "why": "the Triton `0.0 - x` lowering, planted where the real arm would "
-               "have to carry it",
-        "apply": lambda s: kit.needle(
-            s, "    curl0 = curl0 - (beta_plus * b);",
-            "    curl0 = curl0 + (0.0f - (beta_plus * b));"),
+            "`0.0f - x` and `-x` differ only on x = +0, and the ladder's following "
+            "subtraction then differs only where the field word is -0 in the same "
+            "cell; the physical-band state reaches neither"),
+        "why": "the Triton `0.0 - x` lowering, planted on the increment",
+        "apply": lambda s: kit.needle(s, "    float bi0 = -(beta_plus * b);",
+                                      "    float bi0 = 0.0f - (beta_plus * b);"),
     },
 }
 
 COMPLEX_MUTATIONS: Dict[str, Dict[str, Any]] = {
-    "m11_beta_product_orientation_swapped": {
-        # A NEGATIVE RESULT, MEASURED, and it agrees with the probe. Under the
-        # fused arm operand order normally decides which product is rounded -- but
-        # the BETA coefficient's real word is exactly +-0 (Python's own complex
-        # multiply puts it there, S:771-772), so one factor of every cross product
-        # is zero, both fusions are exact, and the two orientations produce the
-        # same bytes. That is the same arithmetic that makes the probe classify
-        # this pattern AMBIGUOUS_BOTH, so a catch here would have CONTRADICTED the
-        # probe rather than confirmed the transcription.
-        #
-        # The orientation rule is real and is measured where it bites: m11b, on the
-        # Bloch phase rotation, a general complex product with no zero word.
-        "must_catch": None,
-        "predicted_null_reason": (
-            "the beta coefficient's real word is exactly +-0, so both fusions are "
-            "exact and the product's operand order is byte-invisible -- the same "
-            "fact the expansion probe records as AMBIGUOUS_BOTH for this pattern"),
-        "why": "the coefficient moved to the RIGHT of the product (S:784 writes it "
-               "on the left)",
-        "apply": lambda s: kit.needle(
-            s, "c_mul(float2(bpr, bpi), b)", "c_mul(b, float2(bpr, bpi))"),
-    },
-    "m11b_phase_rotation_orientation_swapped": {
-        # THE ORIENTATION RULE, where it IS byte-visible: a general complex
-        # product with no zero word. S:1862 writes `shifted[plane] *= phase` --
-        # the FIELD on the left -- and under FMA_V1 that decides which product is
-        # fused. This is the positive control m11 cannot be.
+    "m11_quarter_turn_parts_swapped": {
         "must_catch": True,
-        "why": "the Bloch phase multiply reversed. S:1862 is an in-place `*=`, so "
-               "the FIELD is the left operand, and the measured arm fuses the "
-               "LEFT operand's real product",
+        "why": "the quarter turn's two parts exchanged: multiplication by -i "
+               "instead of +i",
         "apply": lambda s: kit.needle(
-            s, "c_mul(b_x, float2(pxr, pxi))", "c_mul(float2(pxr, pxi), b_x)"),
+            s, "float2(-(beta_plus * b.y), beta_plus * b.x)",
+            "float2(beta_plus * b.x, -(beta_plus * b.y))"),
     },
-    "m12_beta_partner_bloch_rotated": {
+    "m12_beta_partner_bloch_connected": {
         "must_catch": True,
-        "why": "the beta partner taken AFTER the wrap rotation. The array path's "
-               "partner is the unrotated same-cell snapshot (S:293/:408); the "
-               "rotation applies to SHIFTED operands only",
+        "why": "the beta partner taken AFTER MEEP's Bloch connection; the array "
+               "path's partner is the stored same-cell word",
         "apply": lambda s: kit.needle(
-            s, "c_mul(float2(bpr, bpi), b)",
-            "c_mul(float2(bpr, bpi), c_mul(b, float2(pxr, pxi)))"),
+            s, "float2(-(beta_plus * b.y), beta_plus * b.x)",
+            "float2(-(beta_plus * b_dx.y), beta_plus * b_dx.x)"),
+    },
+    "m13_complex_beta_folded_into_the_curl": {
+        "must_catch": True,
+        "why": "the PREVIOUS package form on complex storage: the term inside the "
+               "curl before the mask and the forms",
+        "apply": lambda s: _fold_into_curl(s, True),
+    },
+    "m13b_complex_ladder_ignores_dsigu": {
+        "must_catch": True,
+        "why": "the dsigu chunks take the outside stage on complex storage",
+        "apply": lambda s: kit.needle(
+            kit.needle(s, "    n1 = du1 ? (n1 - bd1) : n1;", "    n1 = n1;"),
+            "    v1 = du1 ? (v1 - float2(si_x * bd1.x, si_x * bd1.y)) : (v1 - bd1);",
+            "    v1 = (v1 - bd1);"),
     },
 }
 
 
-
-# ---------------------------------------------------------------------------
-# The product layer — where a spelling that the curl canonicalizes is visible
-# ---------------------------------------------------------------------------
-
-_PRODUCT_PROBE = r"""
-#include <metal_stdlib>
-using namespace metal;
-
-__CONTRACT__
-
-__HELPERS__
-
-kernel void product_probe(
-    device float2*       out [[buffer(0)]],
-    device const float2* z   [[buffer(1)]],
-    device const float2* p   [[buffer(2)]],
-    constant uint&       n   [[buffer(3)]],
-    uint idx [[thread_position_in_grid]])
-{
-    if (idx >= n) { return; }
-__CALL__
-}
-"""
+def _score(harness: Any, label: str, entry: Dict[str, Any], missed: bool, ran: int,
+           launches: int, caught: int) -> None:
+    harness.record(label, harness.verdict(missed, ran, launches, caught), launches,
+                   caught, ran, entry["must_catch"], entry["why"],
+                   extra=kit.predicted_null({}, entry["predicted_null_reason"])
+                   if "predicted_null_reason" in entry else None)
 
 
-def _zero_table() -> Tuple[Any, Any]:
-    """An EXHAUSTIVE operand table over the signed zeros and two finite magnitudes.
+def _source_rows(case: Dict[str, Any], table: Dict[str, Dict[str, Any]],
+                 harness: Any, storage_complex: bool) -> None:
+    """Every row of ``table`` on one case, each against ``stepping`` itself."""
+    from meep_gpu.metal_kernels import complex_fields  # noqa: PLC0415
 
-    Random data does not discriminate a zero-sign defect at all — every word it
-    produces is normal — so the table is exhaustive over the four signed-zero
-    combinations crossed with finite values, which is 256 operand pairs. This is
-    the same discipline the fragment layer's own measurements use.
-    """
-    values = [0.0, -0.0, 1.5, -1.5]
-    pairs = [(zr, zi, pr, pi) for zr in values for zi in values
-             for pr in values for pi in values]
-    left = np.zeros(len(pairs), dtype=np.complex64)
-    right = np.zeros(len(pairs), dtype=np.complex64)
-    lv = left.view(np.float32).reshape(-1, 2)
-    rv = right.view(np.float32).reshape(-1, 2)
-    for row, (zr, zi, pr, pi) in enumerate(pairs):
-        lv[row] = (np.float32(zr), np.float32(zi))
-        rv[row] = (np.float32(pr), np.float32(pi))
-    return left, right
-
-
-#: The THREE helper call sites this family uses, as product-layer probes, each with
-#: the NUMPY expression that is its oracle. The orientations are separate entries
-#: because operand order decides bytes under a fused expansion; the third
-#: (coefficient-left-by-real-scalar) is the curl's own `xp.multiply(dtdx, total)`
-#: and was previously unprobed at this layer, so its zero cross terms — the ones
-#: the fragment layer's docstring quotes at 24/128 — were pinned by prose alone.
-PRODUCT_CALLS = {
-    "c_mul": ("    out[idx] = c_mul(z[idx], p[idx]);",
-              lambda left, right: (left * right).astype(np.complex64)),
-    "c_mul_field_left": (
-        "    out[idx] = c_mul_field_left(z[idx], p[idx].x);",
-        lambda left, right: (left * right.real.astype(np.float32)
-                             ).astype(np.complex64)),
-    "c_mul_coefficient_left": (
-        "    out[idx] = c_mul_coefficient_left(z[idx].x, p[idx]);",
-        lambda left, right: (left.real.astype(np.float32) * right
-                             ).astype(np.complex64)),
-}
-
-
-def _numpy_product(left: Any, right: Any, call: str) -> Any:
-    """The ORACLE for one product-layer call site: numpy's own complex64 multiply.
-
-    THIS IS THE CORRECTION THAT MAKES THE PRODUCT LAYER MEAN SOMETHING. These rows
-    used to compare a mutated helper against the SHIPPED helper on the device, which
-    establishes only that a respelling moves bytes — it cannot establish that the
-    shipped spelling is the RIGHT one, because both sides were the device. The
-    reference is the array path, so the reference here is numpy, on exactly the
-    exhaustive ±0 table where the two spellings differ and where nothing else in
-    this gate compares them.
-    """
-    return PRODUCT_CALLS[call][1](left, right)
-
-
-def _product_layer(helpers: str, left: Any, right: Any,
-                   counters: Optional[List[kit.Counter]] = None,
-                   call: str = "c_mul") -> Any:
-    """Launch one complex-multiply spelling over the operand table."""
-    import torch  # noqa: PLC0415
-
-    source = templates.substitute(_PRODUCT_PROBE, {
-        "__CONTRACT__": templates.contraction_pragma(templates.CONTRACT_OFF),
-        "__CALL__": PRODUCT_CALLS[call][0],
-        "__HELPERS__": helpers})
-    function = device.compile_source(source).product_probe
-    if counters is not None:
-        function = kit.Counter(function)
-        counters.append(function)
-    out = torch.zeros(left.size, dtype=torch.complex64, device="mps")
-    function(out, torch.from_numpy(left).to("mps"),
-             torch.from_numpy(right).to("mps"), left.size)
-    torch.mps.synchronize()
-    return out.cpu().numpy()
-
-
-def leg_mutations(payload: Dict[str, Any], out: str) -> None:
-    """Every mutation ARMED, LAUNCH-COUNTED and classified three ways.
-
-    The HOST mutations at the end have no source transform at all: they are the
-    plan's own choices — the Yee sub-lattice, the step_D phase conjugation, the
-    host rounding of the coefficient — each a silent wrong answer that no kernel
-    source would show.
-    """
-    arm = payload.get("licensed_expansion") or "FMA_V1"
-    harness = kit.MutationHarness(payload, out)
-    record = harness.record
-
-    # --- REAL source mutations ------------------------------------------------
-    real_case = case_named("r2_metallic_x_negative_beta")  # mask and wall live
-    for label, entry in REAL_MUTATIONS.items():
-        case = dict(real_case)
+    for label, entry in table.items():
         grid, fields, pml = build(case)
         codes = tuple(entry.get("codes", boundary_codes(grid, pml)))
-        # THE SIGNED-ZERO SEEDING SEAM, through the one helper that asserts the
-        # volumes are DISTINCT. No REAL_MUTATIONS entry requests it today — the
-        # real arm's zero-sign hazard is structurally absent (m10) and the complex
-        # one is measured at the product layer (m13b) — but the branch used to
-        # carry its own copy of the lattice, seeded every volume identically, and
-        # would have silently made any future row that asked for it degenerate.
-        if entry.get("seeding") == "signed_zero":
-            _seed_signed_zero_lattice(fields, grid, False)
+        if entry.get("codes") is not None:
+            # the row needs a wall the case does not carry: build that grid
+            boundaries = tuple("metallic" if code == METALLIC else "periodic"
+                               for code in entry["codes"])
+            grid, fields, pml = build(dict(case, boundaries=boundaries))
+            codes = boundary_codes(grid, pml)
         base = snapshot(fields)
         counters: List[kit.Counter] = []
         caught = ran = 0
         missed = False
         for sub_step in SUB_STEPS:
             spec = SUB_STEPS[sub_step]
-            shipped = special_kz.beta_curl_source(codes, spec["backward"], True)
+            if storage_complex:
+                phased, _ = complex_fields.phase_arguments(
+                    phase_table(grid, pml), backward=bool(spec["backward"]))
+                shipped = special_kz.beta_bloch_curl_source(
+                    codes, spec["backward"], phased, True)
+            else:
+                shipped = special_kz.beta_curl_source(codes, spec["backward"], True)
             try:
                 mutated = entry["apply"](shipped)
             except LookupError:
                 missed = True
                 continue
-            oracle = run_reference(base, grid, pml, sub_step, codes)
-            got = run_on_device(base, grid, pml, sub_step, codes, False, arm,
+            oracle = oracle_after(fields, pml, base, sub_step)
+            got = run_on_device(base, grid, pml, sub_step, codes, storage_complex,
                                 source=mutated, counters=counters)
-            names = compared_names(sub_step)
             ran += 1
-            caught += int(any(differing(got[n], oracle[n]) for n in names))
-        launches = sum(counter.launches for counter in counters)
-        record(label, harness.verdict(missed, ran, launches, caught), launches,
-               caught, ran, entry["must_catch"], entry["why"],
-               # THE FLAG TRAVELS WITH THE REASON. `must_catch: None` already
-               # marks a record-only row, but a reader counting the kit's own
-               # `predicted_null` flag would not see these; `kit.predicted_null`
-               # stamps both, so one spelling finds every null in the artifact.
-               extra=kit.predicted_null({}, entry["predicted_null_reason"])
-               if "predicted_null_reason" in entry else None)
+            caught += int(any(differing(got[n], oracle[n])
+                              for n in compared_names(sub_step)))
+        _score(harness, label, entry, missed, ran,
+               sum(counter.launches for counter in counters), caught)
 
-    # --- COMPLEX source mutations --------------------------------------------
-    complex_case = case_named("c2_marquee_inplane_bloch")  # rotation participates
-    grid, fields, pml = build(complex_case)
+
+def leg_mutations(payload: Dict[str, Any], out: str) -> None:
+    """Every mutation ARMED, LAUNCH-COUNTED and classified three ways, against stepping.
+
+    Four groups: the beta pass's own defects on each storage; the per-chunk form
+    battery of the certified curl the source is derived from
+    (:mod:`metal_fused_battery`, KERNELS.md 7.2), whose needles resolve in the derived
+    source because its forms ARE the certified text; the record mutations (the kernel
+    right, the record it is handed wrong); and the host's own choices -- the Yee
+    sub-lattice, the step_D connection, the coefficient's dt -- each a silent wrong
+    answer no kernel source would show.
+    """
+    import metal_fused_battery as battery  # noqa: PLC0415
+
+    harness = kit.MutationHarness(payload, out)
+    record = harness.record
+    real_case = case_named("r2_metallic_x_negative_beta")  # mask and wall live
+    complex_case = case_named("c2_marquee_inplane_bloch")  # connection live
+
+    _source_rows(real_case, REAL_MUTATIONS, harness, False)
+    _source_rows(complex_case, COMPLEX_MUTATIONS, harness, True)
+
+    # --- the certified curl's per-chunk form battery, on the derived source ----
+    grid, fields, pml = build(real_case)
     codes = boundary_codes(grid, pml)
-    plain_base = snapshot(fields)
-    # A SECOND SEEDING, because the two hazards need different states: the
-    # orientation and rotation defects show on ordinary data, while a zero-SIGN
-    # defect is only visible where the words are zeros. Through the shared helper,
-    # which asserts the volumes are distinct: the copy that used to live here
-    # seeded all twenty-four identically, so `Ex == Ey` held exactly and any row
-    # that selected this state could not have told the beta term's two partners
-    # apart. NO COMPLEX_MUTATIONS ENTRY SELECTS IT TODAY (the zero-sign question
-    # lives at the product layer, m13b/m13c), and the seam is kept, correct, for
-    # the row that does.
-    _seed_signed_zero_lattice(fields, grid, True)
-    zero_base = snapshot(fields)
-    restore(fields, plain_base)
-    for label, entry in COMPLEX_MUTATIONS.items():
-        base = (zero_base if entry.get("seeding") == "signed_zero" else plain_base)
+    base = snapshot(fields)
+    rows_by_side = {sub_step: battery.source_rows(
+        special_kz.beta_curl_source(codes, spec["backward"], True),
+        curl=True, constitutive=False) for sub_step, spec in SUB_STEPS.items()}
+    for name in battery.CURL_ROWS:
         counters = []
         caught = ran = 0
-        missed = False
+        entry = rows_by_side["step_B"][name]
         for sub_step in SUB_STEPS:
-            spec = SUB_STEPS[sub_step]
-            kinds = stepping._boundary_kinds(grid, pml)
-            phased, _ = special_kz.bloch_phase_words(grid, kinds,
-                                                     bool(spec["backward"]))
-            shipped = special_kz.beta_bloch_curl_source(
-                codes, spec["backward"], phased, arm, True)
-            try:
-                mutated = entry["apply"](shipped)
-            except LookupError:
-                missed = True
-                continue
-            oracle = run_reference(base, grid, pml, sub_step, codes)
-            got = run_on_device(base, grid, pml, sub_step, codes, True, arm,
-                                source=mutated, counters=counters)
-            names = compared_names(sub_step)
+            oracle = oracle_after(fields, pml, base, sub_step)
+            got = run_on_device(base, grid, pml, sub_step, codes, False, source=rows_by_side[sub_step][name]["source"],
+                                counters=counters)
             ran += 1
-            caught += int(any(differing(got[n], oracle[n]) for n in names))
-        launches = sum(counter.launches for counter in counters)
-        record(label, harness.verdict(missed, ran, launches, caught), launches,
-               caught, ran, entry["must_catch"], entry["why"],
-               # THE FLAG TRAVELS WITH THE REASON. `must_catch: None` already
-               # marks a record-only row, but a reader counting the kit's own
-               # `predicted_null` flag would not see these; `kit.predicted_null`
-               # stamps both, so one spelling finds every null in the artifact.
-               extra=kit.predicted_null({}, entry["predicted_null_reason"])
-               if "predicted_null_reason" in entry else None)
+            caught += int(any(differing(got[n], oracle[n])
+                              for n in compared_names(sub_step)))
+        _score(harness, name, {"must_catch": entry["must_catch"], "why": entry["why"]},
+               False, ran, sum(counter.launches for counter in counters), caught)
 
-    base = plain_base
+    # --- the record mutations: the kernel right, the record wrong --------------
+    for name, (mutate, why) in battery.RECORD_ROWS.items():
+        caught = ran = 0
+        for sub_step in SUB_STEPS:
+            oracle = oracle_after(fields, pml, base, sub_step)
+            got = run_on_device(base, grid, pml, sub_step, codes, False, record=mutate(layer_record(grid, pml)))
+            ran += 1
+            caught += int(any(differing(got[n], oracle[n])
+                              for n in compared_names(sub_step)))
+        record(name, f"CAUGHT {caught}/{ran}", ran, caught, ran, True, why)
 
-    # --- PRODUCT-LAYER mutations ---------------------------------------------
-    # THE STORED LAYER CANNOT HOLD THESE, and that is a measurement rather than a
-    # gap. `-x` versus `0.0f - x` differs only where the addend is +0.0 AND the
-    # fused product is -0.0 in the same cell; inside the composed curl the very
-    # next `+` canonicalizes the sign (`-0.0 + 0.0` is `+0.0`), so the difference
-    # is erased before any store. Planting it in the shader and comparing STORED
-    # bytes therefore measures the curl's summation, not the spelling.
-    #
-    # So it is measured where it lives: one launch of the helper alone over an
-    # EXHAUSTIVE 256-pair signed-zero operand table. The Triton track pins its own
-    # equivalent at the product layer for the same reason.
-    left, right = _zero_table()
-    shipped_helpers = templates.complex_helpers(arm)
-
-    # THE SHIPPED SPELLING IS PINNED AGAINST NUMPY FIRST, per orientation. Without
-    # this the mutation rows below compare one device answer with another and can
-    # only say "the respelling moved bytes" — never "the shipped spelling is the
-    # array path's". The zero table is where the three orientations differ and is
-    # the one place in this gate they are compared to the oracle at all.
-    shipped_rows: List[Dict[str, Any]] = []
-    for call in sorted(PRODUCT_CALLS):
-        oracle_product = _numpy_product(left, right, call)
-        got = _product_layer(shipped_helpers, left, right, call=call)
-        delta = differing(got, oracle_product)
-        shipped_rows.append({"call_site": call, "operand_pairs": int(left.size),
-                             "differing_words_vs_numpy": delta})
-        TALLY["compared"] += 1
-        TALLY["disagreed"] += int(bool(delta))
-        log(f"[product] shipped {call:<26} vs numpy over {left.size} exhaustive "
-            f"pairs: {'IDENTICAL' if not delta else delta}")
-    payload["legs"]["product_reference"] = {
-        "arm": arm,
-        "why": ("the exhaustive 256-pair signed-zero table is the only place the "
-                "three helper orientations are compared to numpy itself; random "
-                "data discriminates none of the three spellings"),
-        "rows": shipped_rows}
-    save(payload, out)
-    assert not [row for row in shipped_rows if row["differing_words_vs_numpy"]], (
-        f"a SHIPPED complex helper disagrees with numpy on the exhaustive "
-        f"signed-zero table: {shipped_rows}")
-
-    for label, call, transform, must_catch, why in (
-        ("m13b_negation_as_zero_minus_product_layer", "c_mul",
-         lambda text: kit.needle(text, "fma(z.x, p.x, -(z.y * p.y))",
-                                 "fma(z.x, p.x, 0.0f - (z.y * p.y))"),
-         True,
-         "`0.0f - x` canonicalizes -0.0 to +0.0 and `-x` does not. The Triton "
-         "track carries a `* -1.0` workaround because ITS unary minus lowers to "
-         "`0.0 - x`; this row is the measurement that the reason does not hold "
-         "on Metal, rather than the workaround being inherited"),
-        ("m13_zero_cross_terms_folded_product_layer", "c_mul_field_left",
-         lambda text: kit.needle(
-             text, "    return float2(fma(z.x, c,    -(z.y * 0.0f)),\n"
-                   "                  fma(z.x, 0.0f,  (z.y * c)));",
-             "    return float2(z.x * c, z.y * c);"),
-         True,
-         "the real-scalar multiply's zero cross terms folded away. numpy carries "
-         "only the FF->F complex loop, so `fu *= kms` IS a full complex multiply "
-         "and the zero cross terms carry the field's zero SIGNS; a plane-wise "
-         "fast path drops them"),
-        ("m13d_zero_cross_terms_folded_coefficient_left", "c_mul_coefficient_left",
-         lambda text: kit.needle(
-             text, "    return float2(fma(c, z.x, -(0.0f * z.y)),\n"
-                   "                  fma(c, z.y,  (0.0f * z.x)));",
-             "    return float2(c * z.x, c * z.y);"),
-         True,
-         "the SAME fold in the OTHER orientation — the curl's own "
-         "`xp.multiply(dtdx, total)` (S:1635). Operand order changes which cross "
-         "product is zero, so the two orientations are separate measurements and "
-         "this one had no row at all"),
-        ("m13c_negation_as_times_minus_one_product_layer", "c_mul",
-         lambda text: kit.needle(text, "fma(z.x, p.x, -(z.y * p.y))",
-                                 "fma(z.x, p.x, (z.y * p.y) * -1.0f)"),
-         False,
-         "the Triton workaround itself, planted: `* -1.0f` is an IEEE-exact "
-         "negation here, so it must NOT be caught. That is what makes the row "
-         "above a fact about `0.0f - x` rather than about any respelling"),
-    ):
-        counters = []
-        # THE ORACLE IS NUMPY, not the shipped device helper: a mutant is "caught"
-        # when it stops reproducing the ARRAY PATH, which is the only claim this
-        # gate makes.
-        oracle_product = _numpy_product(left, right, call)
-        try:
-            mutated_helpers = transform(shipped_helpers)
-        except LookupError:
-            record(label, "NEEDLE-MISSED", 0, 0, 0, must_catch, why)
-            continue
-        got = _product_layer(mutated_helpers, left, right, counters, call=call)
-        delta = differing(got, oracle_product)
-        caught = int(delta > 0)
-        launches = sum(counter.launches for counter in counters)
-        record(label, harness.verdict(False, 1, launches, caught), launches,
-               caught, 1, must_catch, why,
-               extra={"operand_pairs": int(left.size), "call_site": call,
-                      "oracle": "numpy complex64 multiply",
-                      "differing_words": delta,
-                      "layer": "product",
-                      "stored_layer_note": (
-                          "invisible at the STORED layer inside the curl: the "
-                          "summation that follows canonicalizes the zero sign "
-                          "before anything is written")})
-
-    # --- HOST mutations -------------------------------------------------------
-    # m14: the expansion arm bound WRONG. Not a source needle in the family's own
-    # body — it is the plan's choice of which measured arm to compile, and it is
-    # what makes the probe's licence load-bearing rather than ceremonial.
-    counters = []
-    caught = ran = 0
-    other = "NAIVE" if arm == "FMA_V1" else "FMA_V1"
-    for sub_step in SUB_STEPS:
-        oracle = run_reference(base, grid, pml, sub_step, codes)
-        got = run_on_device(base, grid, pml, sub_step, codes, True, other)
-        names = compared_names(sub_step)
-        ran += 1
-        caught += int(any(differing(got[n], oracle[n]) for n in names))
-    record("m14_wrong_expansion_arm_bound", f"CAUGHT {caught}/{ran}", ran, caught,
-           ran, True,
-           f"the plan compiled the {other} arm on a host whose reference takes "
-           f"{arm}; the probe's licence is what stops this and this row is what "
-           f"makes the licence measurable")
-
-    # m15: the step_D phase NOT conjugated. The backward difference reads the
-    # wrapped face from the other side, so its phase is the conjugate; getting it
-    # wrong is a plausible, smooth, wrong dispersion relation.
+    # --- HOST mutations ---------------------------------------------------------
+    # m15: the step_D connection taken with the B side's factor.
+    cgrid, cfields, cpml = build(complex_case)
+    ccodes = boundary_codes(cgrid, cpml)
+    cbase = snapshot(cfields)
     caught = ran = 0
     for sub_step in ("step_D",):
-        oracle = run_reference(base, grid, pml, sub_step, codes)
-        got = run_on_device(base, grid, pml, sub_step, codes, True, arm,
-                            conjugate=False)
-        names = compared_names(sub_step)
+        oracle = oracle_after(cfields, cpml, cbase, sub_step)
+        got = run_on_device(cbase, cgrid, cpml, sub_step, ccodes, True, conjugate=False)
         ran += 1
-        caught += int(any(differing(got[n], oracle[n]) for n in names))
-    record("m15_step_d_phase_not_conjugated", f"CAUGHT {caught}/{ran}", ran,
+        caught += int(any(differing(got[n], oracle[n])
+                          for n in compared_names(sub_step)))
+    record("m15_step_d_connection_not_conjugated", f"CAUGHT {caught}/{ran}", ran,
            caught, ran, True,
-           "step_D differences DOWNWARD, so its wrapped lane carries the "
-           "conjugate phase")
+           "step_D reads the word above the stored window, so its connection is "
+           "eikna, not the B side's conj(eikna)")
 
-    # m16: the Yee sub-lattice swapped — the curl's PML coefficients taken from
-    # the other half-cell. Chosen by the HOST and invisible in any kernel source.
-    real_grid, real_fields, real_pml = build(real_case)
-    real_codes = boundary_codes(real_grid, real_pml)
-    real_base = snapshot(real_fields)
+    # m16: the Yee sub-lattice swapped -- the PML coefficients of the other half-cell.
     caught = ran = 0
     for sub_step, spec in SUB_STEPS.items():
         wrong = "" if spec["suffix"] == "_h" else "_h"
-        oracle = run_reference(real_base, real_grid, real_pml, sub_step, real_codes)
-        got = run_on_device(real_base, real_grid, real_pml, sub_step, real_codes,
-                            False, arm, suffix=wrong)
-        names = compared_names(sub_step)
+        oracle = oracle_after(fields, pml, base, sub_step)
+        got = run_on_device(base, grid, pml, sub_step, codes, False, suffix=wrong)
         ran += 1
-        caught += int(any(differing(got[n], oracle[n]) for n in names))
+        caught += int(any(differing(got[n], oracle[n])
+                          for n in compared_names(sub_step)))
     record("m16_half_integer_suffix_swap", f"CAUGHT {caught}/{ran}", ran, caught,
            ran, True,
            "the curl's PML coefficients taken from the other Yee sub-lattice")
 
-    # m17: the coefficient rounded from the WRONG dt — a beta coefficient that is
-    # plausible to four digits. This is the row that would catch a plan reading
-    # `grid.dt` from the wrong object, which no kernel source could show.
+    # m17: the coefficient rounded from a perturbed dt.
     caught = ran = 0
     for sub_step in SUB_STEPS:
         wrong_words = special_kz.beta_curl_coefficients(
-            real_grid.beta, float(real_grid.dt) * 1.0001,
+            grid.beta, float(grid.dt) * 1.0001,
             magnetic=(sub_step == "step_B"), complex_storage=False)
-        oracle = run_reference(real_base, real_grid, real_pml, sub_step, real_codes)
-        got = run_on_device(real_base, real_grid, real_pml, sub_step, real_codes,
-                            False, arm, beta_words=wrong_words)
-        names = compared_names(sub_step)
+        oracle = oracle_after(fields, pml, base, sub_step)
+        got = run_on_device(base, grid, pml, sub_step, codes, False, beta_words=wrong_words)
         ran += 1
-        caught += int(any(differing(got[n], oracle[n]) for n in names))
+        caught += int(any(differing(got[n], oracle[n])
+                          for n in compared_names(sub_step)))
     record("m17_coefficient_from_a_perturbed_dt", f"CAUGHT {caught}/{ran}", ran,
            caught, ran, True,
-           "the host-rounded coefficient built from a dt 1e-4 off: the term is "
-           "the only place dt enters this sub-step without dtdx")
+           "the host-rounded coefficient built from a dt 1e-4 off: the pass is the "
+           "only place dt enters this sub-step without dtdx")
 
 
 # ---------------------------------------------------------------------------
@@ -1887,10 +1289,6 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
     """
     rows: List[Dict[str, Any]] = []
     residency = device.Residency()
-    probe = {"backend": special_kz.PROBE_BACKEND,
-             "patterns": dict({name: "AMBIGUOUS_BOTH"
-                               for name in special_kz.BETA_PROBE_PATTERNS},
-                              c8_mul_c8="FMA_V1")}
 
     def add(label: str, covered: bool, reasons: Sequence[str], expect: bool,
             kind: str = "predicate") -> None:
@@ -1931,17 +1329,11 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
     verdict = special_kz.beta_pml_curl_coverage(cfields, cpml, "step_B", residency)
     add("complex_storage_on_the_real_arm", verdict.covered, verdict.reasons, False)
     verdict = special_kz.beta_bloch_pml_curl_coverage(fields, pml, "step_B",
-                                                      residency, probe)
+                                                      residency)
     add("real_storage_on_the_complex_arm", verdict.covered, verdict.reasons, False)
     verdict = special_kz.beta_bloch_pml_curl_coverage(cfields, cpml, "step_B",
-                                                      residency, probe)
+                                                      residency)
     add("complex_beta_run_is_ADMITTED", verdict.covered, verdict.reasons, True)
-
-    # 6. the probe contract: no artifact, and an unlicensable one.
-    verdict = special_kz.beta_bloch_pml_curl_coverage(cfields, cpml, "step_B",
-                                                      residency, probe={})
-    add("complex_arm_without_a_probe_artifact", verdict.covered, verdict.reasons,
-        False)
 
     # 7. a conductivity on a curl target.
     grid7, fields7, pml7 = build(case_named("r1_kz2d_periodic"))
@@ -2012,7 +1404,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
     #     2026-08-19; these rows are the inversion, measured in both directions so
     #     "admitted" cannot mean "admits anything".
     verdict = special_kz.beta_run_complex_constitutive_coverage(
-        cfields, cpml, "E", residency, probe)
+        cfields, cpml, "E", residency)
     add("complex_constitutive_on_a_COMPLEX_beta_run_is_ADMITTED", verdict.covered,
         verdict.reasons, True)
     verdict = special_kz.beta_run_constitutive_coverage(fields, pml, "H", residency)
@@ -2021,22 +1413,16 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
     # ...and each refuses the OTHER storage, which is what keeps the pair disjoint
     # rather than merely both-green.
     verdict = special_kz.beta_run_complex_constitutive_coverage(
-        fields, pml, "H", residency, probe)
+        fields, pml, "H", residency)
     add("complex_constitutive_on_a_REAL_beta_run", verdict.covered,
         verdict.reasons, False)
     verdict = special_kz.beta_run_constitutive_coverage(cfields, cpml, "H",
                                                         residency)
     add("real_constitutive_on_a_COMPLEX_beta_run", verdict.covered,
         verdict.reasons, False)
-    # ...the probe contract holds on the constitutive arm too: an unlicensable
-    # artifact must refuse it exactly as it refuses the curl.
-    verdict = special_kz.beta_run_complex_constitutive_coverage(
-        cfields, cpml, "E", residency, probe={})
-    add("complex_constitutive_without_a_probe_artifact", verdict.covered,
-        verdict.reasons, False)
     # ...and no residency declared.
     verdict = special_kz.beta_run_complex_constitutive_coverage(
-        cfields, cpml, "E", None, probe)
+        cfields, cpml, "E", None)
     add("complex_constitutive_without_a_residency", verdict.covered,
         verdict.reasons, False)
     # 10b. an off-diagonal chi1inv row: the complex CURL admits it (the row product
@@ -2048,15 +1434,15 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
         "clause below would be measured against a configuration that does not "
         "carry it")
     verdict = special_kz.beta_bloch_pml_curl_coverage(fields10, pml10, "step_D",
-                                                      residency, probe)
+                                                      residency)
     add("offdiagonal_on_the_complex_beta_CURL_is_ADMITTED", verdict.covered,
         verdict.reasons, True)
     verdict = special_kz.beta_run_complex_constitutive_coverage(
-        fields10, pml10, "E", residency, probe)
+        fields10, pml10, "E", residency)
     add("offdiagonal_on_the_complex_constitutive_E_side", verdict.covered,
         verdict.reasons, False)
     verdict = special_kz.beta_run_complex_constitutive_coverage(
-        fields10, pml10, "H", residency, probe)
+        fields10, pml10, "H", residency)
     add("offdiagonal_on_the_complex_constitutive_H_side_is_ADMITTED",
         verdict.covered, verdict.reasons, True)
 
@@ -2151,50 +1537,6 @@ def unregistered_arms() -> Tuple[Any, ...]:
     registry = metal_arms.registered()
     return tuple(spec for spec in declared_arms()
                  if not any(spec is known for known in registry))
-
-
-def complex_family_probe() -> Tuple[Optional[Dict[str, Any]], str]:
-    """A measured expansion record for ``complex_fields``' OWN pattern set, or None.
-
-    WITHOUT ONE THE COMPLEX HALF OF THE DISJOINTNESS SWEEP IS VACUOUS, and that was
-    measured rather than suspected. ``complex_fields`` reads
-    ``context.extra['complex_probe']`` and requires the pattern
-    ``c8_mul_c8_scalar_right``, which THIS family's probe does not measure — so with
-    only ``extra={'probe': ...}`` bound it refused EVERY configuration it was ever
-    shown, for a missing-artifact reason that has nothing to do with beta. Every
-    complex row then reported "exactly one admitter" against a product that could
-    not have admitted anything, and read identically to a real disjointness result.
-
-    The record is looked up by environment variable first and then by scanning the
-    results tree, and the PATH is recorded in the artifact so a reader can tell which
-    measurement licensed the control. Absent one, the caller records a NULL with this
-    reason rather than passing quietly or failing on an artifact this family does not
-    own.
-    """
-    import glob  # noqa: PLC0415
-    import json  # noqa: PLC0415
-
-    from meep_gpu.metal_kernels import complex_fields  # noqa: PLC0415
-
-    candidates: List[str] = []
-    override = os.environ.get(complex_fields.PROBE_PATH_ENVIRONMENT)
-    if override:
-        candidates.append(override)
-    candidates.extend(sorted(glob.glob(os.path.join(
-        HERE, "results", "*", "complex_expansion_probe.json")), reverse=True))
-    for path in candidates:
-        try:
-            with open(path, "r", encoding="utf-8") as handle:
-                record = json.load(handle)
-        except (OSError, ValueError):
-            continue
-        if complex_fields.expansion_from_probe(record) is not None:
-            return record, path
-    return None, (
-        f"no measured record licenses complex_fields on this run: it needs its own "
-        f"pattern set ({complex_fields.PROBE_PATTERNS}), which this family's probe "
-        f"does not measure. Set {complex_fields.PROBE_PATH_ENVIRONMENT} or cut "
-        f"gate_metal_complex's complex_expansion_probe.json first")
 
 
 def peer_admitters(names: List[str]) -> List[str]:
@@ -2343,28 +1685,6 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
         sorted(table["registered_families"].items())))
     log(f"[engine] unregistered arms swept: {table['unregistered_arms']}")
 
-    arm = payload.get("licensed_expansion") or "FMA_V1"
-    probe = expansion_probe.measure()
-    # complex_fields reads a DIFFERENT key and a DIFFERENT pattern set; binding only
-    # this family's probe made it refuse everything and the complex rows vacuous.
-    complex_probe, complex_source = complex_family_probe()
-    payload["complex_probe_source"] = (complex_source if complex_probe is not None
-                                       else None)
-    payload["complex_probe_reason"] = (None if complex_probe is not None
-                                       else complex_source)
-    log(f"[engine] complex_fields licence: "
-        f"{'from ' + complex_source if complex_probe is not None else 'NONE — ' + complex_source[:80]}")
-    # THE KEY THE ARMS ACTUALLY READ IS `beta_probe`, and binding `probe` instead
-    # made the COMPLEX half of the disjointness sweep vacuous. Measured 2026-08-15
-    # on this gate's own artifact: `_complex_curl_coverage` reads
-    # `ctx.extra.get("beta_probe")` (special_kz.py:1634), nothing in the package
-    # reads `"probe"` at all, and so every complex case reported ZERO admitters
-    # while `plan_step` — which binds the key correctly — selected this family's
-    # complex arm on both curl slots in the same row. `len(admitting) <= 1` passed
-    # on the empty list, so the sweep proved disjointness for a product it had
-    # silently disabled. This is the same defect the `complex_family_probe`
-    # docstring records for `complex_fields`, turned on THIS family by the wiring.
-    extra = {"beta_probe": probe, "complex_probe": complex_probe}
     rows: List[Dict[str, Any]] = []
     started = time.time()
     for case in CASES:
@@ -2372,7 +1692,7 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
         grid, fields, pml = build(case)
         context = metal_arms.StepContext(fields, pml, residency,
                                          (templates.CONTRACT_OFF,),
-                                         sources=(), extra=extra)
+                                         sources=())
         wired: Dict[str, List[str]] = {
             slot: admitters_for(slot, context)
             for slot in ("step_B", "step_D", "update_H", "update_E")}
@@ -2382,20 +1702,15 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
         if case["complex"]:
             for sub_step in SUB_STEPS:
                 built[sub_step] = special_kz.plan_beta_bloch_pml_curl(
-                    fields, pml, sub_step, residency, probe=probe)
+                    fields, pml, sub_step, residency,
+                    chunk_bounds=layer_record(grid, pml))
         else:
             for sub_step in SUB_STEPS:
                 built[sub_step] = special_kz.plan_beta_pml_curl(
-                    fields, pml, sub_step, residency)
-        # THE PROBES ARE BOUND HERE BECAUSE AN ENGINE WOULD BIND THEM. `plan_step`
-        # takes `beta_probe`/`complex_probe` and treats `None` as "no measured
-        # licence", which is a REFUSAL BY NAME, not a default arm. Measured
-        # 2026-08-15: called bare, the composer filled nothing at all on every
-        # complex case — so a bare call would have measured the absence of a probe
-        # argument and reported it as a fact about beta coverage.
+                    fields, pml, sub_step, residency,
+                    chunk_bounds=layer_record(grid, pml))
         shipped = metal_launch.plan_step(fields, pml, residency=residency,
-                                         sources=(), beta_probe=probe,
-                                         complex_probe=complex_probe)
+                                         sources=())
         row = {"case": case["name"], "complex": case["complex"],
                "admitters": wired,
                "engine_route_built": {k: v is not None for k, v in built.items()},
@@ -2420,9 +1735,8 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
                 f"sub-step arm covers")
         # THE VACUITY FLOOR, without which `<= 1` passes hardest when the sweep is
         # broken. Zero admitters satisfies the disjointness assertion perfectly, so
-        # a mis-bound licence key disables a product and STRENGTHENS the green.
-        # That is not hypothetical: it is how the `beta_probe` mis-binding above
-        # survived a full certified run. Every case in CASES is a beta run this
+        # a product switched off by its harness STRENGTHENS the green. Every case
+        # in CASES is a beta run this
         # family covers on both curl slots, so anything less than one admitter
         # there means the sweep measured a product it had switched off.
         # COUNTED OVER PEERS, for the same reason the disjointness above is: a weld
@@ -2517,8 +1831,7 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
     residency = device.Residency()
     grid, fields, pml = build(case_named("r1_kz2d_periodic"), beta=0.0)
     context = metal_arms.StepContext(fields, pml, residency,
-                                     (templates.CONTRACT_OFF,), sources=(),
-                                     extra=extra)
+                                     (templates.CONTRACT_OFF,), sources=())
     unwired_on_plain = [spec.label for spec in special_kz.ARMS
                         if spec.slot == "step_B"
                         and spec.coverage(context, "step_B").covered]
@@ -2546,15 +1859,11 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
     residency = device.Residency()
     grid, fields, pml = build(case_named("c2_marquee_inplane_bloch"), beta=0.0)
     context = metal_arms.StepContext(fields, pml, residency,
-                                     (templates.CONTRACT_OFF,), sources=(),
-                                     extra=extra)
+                                     (templates.CONTRACT_OFF,), sources=())
     complex_control = {slot: admitters_for(slot, context)
                        for slot in ("step_B", "step_D")}
     control_row = {"case": "complex_beta_zero_control",
-                   "admitters": complex_control,
-                   "complex_probe_source": payload["complex_probe_source"]}
-    if complex_probe is None:
-        kit.predicted_null(control_row, complex_source)
+                   "admitters": complex_control}
     rows.append(control_row)
     payload["legs"]["engine"] = rows
     save(payload, out)
@@ -2567,12 +1876,10 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
             f"complex_beta_zero_control: {slot} is admitted by WELD(s) {welds} "
             f"while no peer arm admits it")
         admitting = peers
-        if complex_probe is None:
-            continue  # recorded as a NULL with its reason, above
         assert any("complex_fields" in name for name in admitting), (
             f"complex_beta_zero_control: {slot} was admitted by {admitting}, and "
-            f"no complex_fields arm is among them even though {complex_source} "
-            f"licenses it. The complex disjointness rows above are then vacuous — "
+            f"no complex_fields arm is among them. The complex disjointness rows "
+            f"above are then vacuous — "
             f"the only other complex curl on the slot refuses every configuration "
             f"it is shown, so 'exactly one admitter' says nothing about overlap")
 
@@ -2625,8 +1932,6 @@ def leg_shipped(payload: Dict[str, Any], out: str) -> None:
         return tuple(spec["targets"]) + tuple(spec["aux"])
 
     whole_step = tuple(SUB_STEPS) + ("update_H", "update_E")
-    probe = expansion_probe.measure()
-    complex_probe, complex_source = complex_family_probe()
     rows: List[Dict[str, Any]] = []
     started = time.time()
     for case in CASES:
@@ -2640,8 +1945,7 @@ def leg_shipped(payload: Dict[str, Any], out: str) -> None:
 
                 residency = device.Residency()
                 shipped = metal_launch.plan_step(
-                    fields, pml, residency=residency, sources=(),
-                    beta_probe=probe, complex_probe=complex_probe)
+                    fields, pml, residency=residency, sources=())
                 plan = shipped.plans.get(sub_step)
                 assert plan is not None, (
                     f"{case['name']}/{sub_step}: the shipped composer left this "
@@ -2678,12 +1982,9 @@ def leg_shipped(payload: Dict[str, Any], out: str) -> None:
 # ---------------------------------------------------------------------------
 
 LEGS = (
-    ("transcription", leg_transcription),
-    ("expansion", leg_expansion),
     ("reference", leg_reference),
     ("identity", leg_identity),
     ("constitutive", leg_constitutive),
-    ("position", leg_position),
     ("guard", leg_guard),
     ("signed_zero", leg_signed_zero),
     ("precondition", leg_precondition),
@@ -2767,6 +2068,10 @@ def main() -> int:
             "stepping.py": os.path.join(API_ROOT, "meep_gpu", "stepping.py"),
             "metal_kernels/special_kz.py": os.path.join(kernel_dir, "special_kz.py"),
             "metal_kernels/templates.py": os.path.join(kernel_dir, "templates.py"),
+            "metal_kernels/folded_pass.py": os.path.join(kernel_dir, "folded_pass.py"),
+            "metal_kernels/complex_fields.py": os.path.join(kernel_dir,
+                                                            "complex_fields.py"),
+            "metal_kernels/chunk_bounds.py": os.path.join(kernel_dir, "chunk_bounds.py"),
             "metal_kernels/shaders.py": os.path.join(kernel_dir, "shaders.py"),
             "metal_kernels/plans.py": os.path.join(kernel_dir, "plans.py"),
             "metal_kernels/device.py": os.path.join(kernel_dir, "device.py"),
@@ -2786,8 +2091,6 @@ def main() -> int:
             "metal_kernels/arms.py": os.path.join(kernel_dir, "arms.py"),
             "metal_kernels/registry.py": os.path.join(kernel_dir, "registry.py"),
             "gate_metal_special_kz.py": os.path.abspath(__file__),
-            "probe_metal_beta_expansion.py": os.path.join(
-                HERE, "probe_metal_beta_expansion.py"),
         }, kernel_sources=special_kz.enumerate_sources()),
         "weld": weld_state(),
         "legs": {},

@@ -120,7 +120,9 @@ def run_case(label: str, shape: tuple[int, int, int], poles: int, kind: str,
     e_plan = no_pml_stored_e.plan_metal_stored_e(
         actual, pml, residency,
         functions=functions)
-    p_plan = ade_update_p.plan_metal_ade_update_p(actual, pml, residency)
+    # No absorber: the ADE drive is the stored E and no chunk record binds.
+    p_plan = ade_update_p.plan_metal_ade_update_p(actual, pml, residency,
+                                                  chunk_bounds=None)
     if e_plan is None or p_plan is None:
         return {"label": label, "passed": False, "reason": "planner refused product"}
     residency.sync_in()

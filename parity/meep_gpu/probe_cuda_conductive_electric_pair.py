@@ -20,8 +20,8 @@ has called THE SIGNED-ZERO ROW.
 WHY IT WAS CALLED THAT, AND WHAT THIS PROBE RE-MEASURES RATHER THAN INHERITS
 =============================================================================
 
-``FdtdDriver._inject_electric_through_conductivity`` scales an injected current by
-``condinv`` (MEEP step.cpp:294-317). It USED to do that as three WHOLE-VOLUME passes --
+The driver scales an injected current by ``condinv`` (MEEP step.cpp:294-317). It USED
+to do that as three WHOLE-VOLUME passes --
 ``array -= before; array *= condinv; array += before`` -- which are the identity at
 every finite value EXCEPT that they canonicalise ``-0.0`` to ``+0.0`` at every cell of
 the component, and on a device that flushes subnormals also ZERO every non-deposit
@@ -30,12 +30,12 @@ launch that computed E from pre-rewrite values diverged in words the repair coul
 reach -- which is why the fused electric pairs on three backends refused conductive
 rows by name.
 
-THE DRIVER NO LONGER DOES THAT. It snapshots the target at the deposit cells the
-sources publish and replays the rescale per deposit cell in the retired passes' exact
-operand order. THAT FACT IS VERIFIED HERE ON THE LIVE TREE rather than taken on trust:
-:func:`sparse_rescale_leg` reads the shipped method, drives it, and MEASURES that the
-non-deposit words are untouched -- and replays the retired dense composition as a
-CONTROL that must diverge.
+THE DRIVER NO LONGER DOES THAT. The ``condinv`` scale is inside each source's own
+double-precision deposit at its own cells (``sources._deposit``), and the driver has no
+pass over the component. THAT FACT IS VERIFIED HERE ON THE LIVE TREE rather than taken
+on trust: :func:`rescale_leg` drives the shipped injection and MEASURES that the
+non-deposit words are untouched -- and replays the retired whole-volume passes around
+it as a CONTROL that must diverge.
 
 THE CLASSIFIER ADMITS BOTH CLASSES, and that is deliberate. The published CuPy finding
 (RTX A6000, 2026-09-01) was that the dense passes destroyed 54 signed-zero AND 68
@@ -102,7 +102,6 @@ if str(_REPO_API) not in sys.path:
     sys.path.insert(0, str(_REPO_API))
 
 from meep_gpu import deposit_repair, stepping  # noqa: E402
-from meep_gpu.driver import FdtdDriver  # noqa: E402
 from meep_gpu.fields import Fields  # noqa: E402
 from meep_gpu.grid import Grid  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
@@ -446,11 +445,13 @@ def _source_for(grid: Any, component: str = "Ez") -> Any:
 
 
 class _Injector:
-    """The SHIPPED ``_inject_electric_through_conductivity``, bound to bare fields.
+    """The SHIPPED electric injection on a conductive run, on bare fields.
 
-    The method reads ``self.fields`` and nothing else, so binding it to a two-line
-    shim drives the tree's own code rather than a transcription of it -- which is the
-    whole point of the rescale leg.
+    ``FdtdDriver.step`` hands every electric source to its own ``inject``; the
+    ``condinv`` scale is inside each source's double-precision deposit
+    (``sources._deposit``, MEEP step.cpp:299-307), so there is no driver pass over the
+    component to bind. This shim makes exactly those calls, which drives the tree's own
+    code rather than a transcription of it -- the whole point of the rescale leg.
     """
 
     __slots__ = ("fields",)
@@ -458,16 +459,24 @@ class _Injector:
     def __init__(self, fields: Any) -> None:
         self.fields = fields
 
-    inject = FdtdDriver._inject_electric_through_conductivity
+    def inject(self, sources: Sequence[Any], when: float) -> None:
+        for source in sources:
+            source.inject(self.fields, when)
 
 
 def _dense_rescale(fields: Any, sources: Sequence[Any], when: float) -> None:
-    """THE RETIRED COMPOSITION, kept as a control and never as a code path.
+    """THE RETIRED WHOLE-VOLUME PASSES, kept as a control and never as a code path.
 
-    Three WHOLE-VOLUME passes, transcribed from the docstring of the method that
-    replaced them. It is the identity at every finite value and canonicalises ``-0.0``
-    to ``+0.0`` at every cell of the component -- which is exactly what this leg is
-    for.
+    Until the double-precision deposit the driver injected a plain current and then
+    rescaled the increment by ``condinv`` over the WHOLE component:
+    ``array -= before; array *= condinv; array += before``. The scale now lives inside
+    each source's own deposit, so what the retired composition did BEYOND the deposit
+    is what this control keeps: the shipped injection, then those three passes over
+    every cell the sources do NOT deposit into. There they are the identity at every
+    finite value except that they canonicalise ``-0.0`` to ``+0.0`` (``x - x`` is
+    ``+0.0``) and, on a device that flushes, zero a subnormal -- the rewrites no
+    deposit closure can name. The deposit cells keep the shipped deposit's words, so
+    every word this control moves is one of those two classes.
     """
     by_target: Dict[str, List[Any]] = {}
     for source in sources:
@@ -483,9 +492,16 @@ def _dense_rescale(fields: Any, sources: Sequence[Any], when: float) -> None:
         source.inject(fields, when)
     for name, snapshot in before.items():
         array = getattr(fields, name)
-        array -= snapshot
-        array *= fields.condinv_for(name)
-        array += snapshot
+        outside = np.ones(array.shape, dtype=bool)
+        for source in by_target[name]:
+            index = deposit_repair._deposit_index(source)  # noqa: SLF001
+            if index is not None:
+                outside[index] = False
+        values = array[outside]
+        values -= snapshot[outside]
+        values *= fields.condinv_for(name)[outside]
+        values += snapshot[outside]
+        array[outside] = values
 
 
 def _driver_order(fields: Any, pml: Any, sources: Sequence[Any], when: float,

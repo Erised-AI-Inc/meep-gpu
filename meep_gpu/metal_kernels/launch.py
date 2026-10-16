@@ -120,11 +120,15 @@ from .. import deposit_repair as _deposit_repair
 # second thing to place wrong — the campaign's own null control put it one pass
 # later and diverged at step 2.
 from .. import withdraw_hoist as _withdraw_hoist
+# The module is bound as `_chunk_bounds`: the plan builders take the RECORD as a
+# keyword named `chunk_bounds`, the name the composer's StepContext carries.
 from . import arms, no_pml_constitutive, shaders
+from . import chunk_bounds as _chunk_bounds
 from ..triton_kernels.coverage import _call
 from .coverage import (
     RESIDENCY_ORDER,
     Coverage,
+    chunk_division_reasons,
     constitutive_coverage,
     folded_periodic_axes,
     pml_curl_coverage,
@@ -199,16 +203,23 @@ class PmlCurlPlan(KernelPlan):
     THE BINDING LAYOUT IS THE ONLY THING THIS CLASS CONTRIBUTES. ``run`` and the
     contraction-variant contract are the base's — one implementation for the whole
     package, so seven families cannot spell the guard seven ways.
+
+    THE CHUNK RECORD BINDS LAST (``shaders.CURL_RECORD_BUFFER``), checked against
+    the plan's shape (:func:`.chunk_bounds.plan_words`) and uploaded once as a
+    plan-owned ``int32`` vector, outside the residency registry as every packed
+    scalar block is: nothing on the device writes it and nothing on the host reads
+    it back. ``chunk_bounds`` keeps the host words for inspection.
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc",
-                 "residency", "volumes")
+                 "residency", "volumes", "chunk_bounds")
 
     REPR_FIELDS = ("sub_step", "shape", "bc")
 
     def __init__(self, sub_step: str, shape, dtdx: float, bc, residency: Residency,
                  targets, auxiliaries, sources, coefficients,
-                 functions: Dict[str, Any], volumes: Sequence[str]) -> None:
+                 functions: Dict[str, Any], volumes: Sequence[str], *,
+                 chunk_bounds: Any) -> None:
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
@@ -222,13 +233,15 @@ class PmlCurlPlan(KernelPlan):
         self.bc = tuple(int(code) for code in bc)
         self.residency = residency
         self.volumes = tuple(volumes)
+        self.chunk_bounds = _chunk_bounds.plan_words(chunk_bounds, self.shape,
+                                                     f"PmlCurlPlan({sub_step})")
         # Built ONCE. The launch path unpacks this tuple and does nothing else.
         super().__init__(
             functions,
             tuple(targets) + tuple(auxiliaries) + tuple(sources)
             + tuple(coefficients)
             + (self.shape[0], self.shape[1], self.shape[2],
-               self.n_elem, self.dtdx))
+               self.n_elem, self.dtdx, _chunk_bounds.tensor(self.chunk_bounds)))
 
 
 def _curl_functions(codes, backward: bool,
@@ -239,12 +252,16 @@ def _curl_functions(codes, backward: bool,
 def plan_pml_curl(fields: Any, pml: Any, sub_step: str,
                   residency: Optional[Residency] = None,
                   contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-                  ) -> Optional[PmlCurlPlan]:
+                  *, chunk_bounds: Any) -> Optional[PmlCurlPlan]:
     """Build a plan from the engine's own objects, or None when out of coverage.
 
     None is the only refusal: a configuration this kernel does not carry must fall
     back to the array path, never raise into a caller that would otherwise have
     stepped correctly.
+
+    ``chunk_bounds`` is the record of the division the run steps with — the
+    composer's ``StepContext.chunk_bounds``, resolved by :func:`chunk_division` —
+    and has no default, so every caller states which division it binds.
     """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
@@ -269,14 +286,15 @@ def plan_pml_curl(fields: Any, pml: Any, sub_step: str,
     return PmlCurlPlan(
         sub_step, grid.shape, grid.dt / grid.dx, codes, residency,
         targets, auxiliaries, sources, coefficients,
-        _curl_functions(codes, spec["backward"], contract_variants), volumes)
+        _curl_functions(codes, spec["backward"], contract_variants), volumes,
+        chunk_bounds=chunk_bounds)
 
 
 def plan_from_arrays(sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any],
                      codes, dtdx: float, residency: Residency,
                      functions: Optional[Dict[str, Any]] = None,
                      contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-                     ) -> PmlCurlPlan:
+                     *, chunk_bounds: Any) -> PmlCurlPlan:
     """Build a plan from bare host arrays — the gate's and benchmark's route.
 
     ``arrays`` is keyed by component name, ``flat`` by ``kms_x``/``sinv_x``/... on
@@ -289,6 +307,11 @@ def plan_from_arrays(sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any]
     copy of the shipped source and hands it here; dropping the argument is not a
     silent slowdown, it is a silent DISARMING — every mutation leg would then
     launch the shipped kernel and report the defect as uncaught.
+
+    ``chunk_bounds`` is REQUIRED and has no default: the harness hands over the
+    record of the division its reference steps with, and a plan without one is
+    refused by name (:func:`.chunk_bounds.plan_words`). A default would decide, on
+    the gate's behalf, which cells take which form.
     """
     spec = SUB_STEPS[sub_step]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
@@ -306,7 +329,7 @@ def plan_from_arrays(sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any]
         coefficients,
         functions if functions is not None
         else _curl_functions(codes, spec["backward"], contract_variants),
-        volumes)
+        volumes, chunk_bounds=chunk_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -321,15 +344,24 @@ class ConstitutivePlan(KernelPlan):
     The kernel takes six coefficient pointers and never asks which lattice they came
     from, so a swap on this line is a silent half-cell error in the absorber profile
     — converged, smooth, and wrong. The gate carries a mutation for exactly it.
+
+    The chunk record binds last (``shaders.CONSTITUTIVE_RECORD_BUFFER``), as
+    :class:`PmlCurlPlan` binds it.
     """
 
-    __slots__ = ("side", "shape", "n_elem", "residency", "volumes")
+    __slots__ = ("side", "shape", "n_elem", "residency", "volumes", "chunk_bounds")
 
     REPR_FIELDS = ("side", "shape")
 
+    #: The kernel steps the forms alone: it does not start H and ``f_w`` from B on a
+    #: run's first ``update_H``. The composer carries that start around the slot
+    #: (:class:`StartOfHPlan`) and bounds admission with :func:`h_start_reasons`.
+    starts_h_from_b = False
+
     def __init__(self, side: str, shape, residency: Residency, targets, auxiliaries,
                  sources, inverse_epsilon, coefficients,
-                 functions: Dict[str, Any], volumes: Sequence[str]) -> None:
+                 functions: Dict[str, Any], volumes: Sequence[str], *,
+                 chunk_bounds: Any) -> None:
         self.side = side
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
@@ -340,11 +372,14 @@ class ConstitutivePlan(KernelPlan):
         # buffer argument still has to bind, and passing None makes the failure a
         # TypeError far from its cause. Same choice the Triton plan makes.
         placeholders = tuple(sources if inverse_epsilon is None else inverse_epsilon)
+        self.chunk_bounds = _chunk_bounds.plan_words(chunk_bounds, self.shape,
+                                                     f"ConstitutivePlan({side})")
         super().__init__(
             functions,
             tuple(targets) + tuple(auxiliaries) + tuple(sources)
             + placeholders + tuple(coefficients)
-            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem))
+            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem,
+               _chunk_bounds.tensor(self.chunk_bounds)))
 
 
 def _constitutive_functions(side: str,
@@ -355,8 +390,11 @@ def _constitutive_functions(side: str,
 def plan_constitutive(fields: Any, pml: Any, side: str,
                       residency: Optional[Residency] = None,
                       contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-                      ) -> Optional[ConstitutivePlan]:
-    """Build a constitutive plan from the engine's own objects, or None when refused."""
+                      *, chunk_bounds: Any) -> Optional[ConstitutivePlan]:
+    """Build a constitutive plan from the engine's own objects, or None when refused.
+
+    ``chunk_bounds`` as :func:`plan_pml_curl` takes it.
+    """
     if side not in CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, got {side!r}")
     if not constitutive_coverage(fields, pml, side, residency).covered:
@@ -378,7 +416,8 @@ def plan_constitutive(fields: Any, pml: Any, side: str,
     return ConstitutivePlan(
         side, fields.grid.shape, residency, targets, auxiliaries, sources,
         inverse_epsilon, coefficients,
-        _constitutive_functions(side, contract_variants), volumes)
+        _constitutive_functions(side, contract_variants), volumes,
+        chunk_bounds=chunk_bounds)
 
 
 def plan_constitutive_from_arrays(side: str, arrays: Dict[str, Any],
@@ -386,13 +425,14 @@ def plan_constitutive_from_arrays(side: str, arrays: Dict[str, Any],
                                   functions: Optional[Dict[str, Any]] = None,
                                   contract_variants: Sequence[str] = (
                                       shaders.CONTRACT_OFF,),
-                                  ) -> ConstitutivePlan:
+                                  *, chunk_bounds: Any) -> ConstitutivePlan:
     """Build a constitutive plan from bare host arrays — the gate's route.
 
     ``arrays`` is keyed by component name (plus ``inv_eps_Ex``... on the E side) and
     ``flat`` by ``kps_x``/``kms_x``/... on the sub-lattice THE CALLER already
     selected. ``functions`` is the same mutation seam :func:`plan_from_arrays`
     documents, and dropping it disarms every constitutive mutation leg.
+    ``chunk_bounds`` is required, as :func:`plan_from_arrays` requires it.
     """
     spec = CONSTITUTIVE_SIDES[side]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
@@ -410,7 +450,125 @@ def plan_constitutive_from_arrays(side: str, arrays: Dict[str, Any],
         side, shape, residency, targets, auxiliaries, sources, inverse_epsilon,
         coefficients,
         functions if functions is not None
-        else _constitutive_functions(side, contract_variants), volumes)
+        else _constitutive_functions(side, contract_variants), volumes,
+        chunk_bounds=chunk_bounds)
+
+
+#: The volumes whose words decide B at a run's first ``update_H``: B itself, its
+#: split-field auxiliary, and the E the first ``step_B`` differences.
+H_START_VOLUMES: Tuple[str, ...] = ("Bx", "By", "Bz", "fu_Bx", "fu_By", "fu_Bz",
+                                    "Ex", "Ey", "Ez")
+
+
+#: The H component a magnetic source's B component is started into, and the source
+#: component spellings that name it (``sources._B_ARRAY_FOR_COMPONENT``).
+_H_OF_MAGNETIC_COMPONENT: Dict[str, str] = {
+    "Hx": "Hx", "Hy": "Hy", "Hz": "Hz", "Bx": "Hx", "By": "Hy", "Bz": "Hz"}
+
+
+def _start_reaching_sources(fields: Any, pml: Any, sources: Sequence[Any],
+                            magnetic: Sequence[int]) -> Tuple[List[int], List[str]]:
+    """The magnetic sources whose deposit can reach a word the run's H start copies.
+
+    ``stepping.separate_h_from_b`` copies ``B_c`` into ``H_c`` and ``f_w_c`` only on the
+    cells whose chunk carries ``H_c``'s own (dsigw) layer, read from the region plan the
+    array path steps with: it skips a component whose constitutive spec is
+    ``"outside_only"`` (no chunk carries that layer on its lattice), so a source that
+    deposits into such a ``B_c`` cannot move a started word -- not at its own cells and
+    not at any image a fill writes from them. Every other B component is +0 at that
+    update (the volumes clause of :func:`h_start_reasons`). A source whose component or
+    spec cannot be read is counted as reaching: an unreadable answer refuses.
+    Returns ``(reaching indices, the H component each one reaches, as text)``.
+    """
+    from .. import stepping  # noqa: PLC0415 - the array path's own region plan
+
+    try:
+        plan = stepping._region_plan(fields, pml)  # noqa: SLF001
+    except Exception:  # noqa: BLE001 - no plan, no proof: every magnetic source reaches
+        return list(magnetic), ["the region plan could not be built"] * len(magnetic)
+    listed = list(sources)
+    reaching: List[int] = []
+    why: List[str] = []
+    for index in magnetic:
+        component = str(getattr(listed[index], "component", ""))
+        target = _H_OF_MAGNETIC_COMPONENT.get(component)
+        if target is None:
+            reaching.append(index)
+            why.append(f"source {index} names no magnetic component ({component!r})")
+            continue
+        try:
+            mode = plan.spec("constitutive", target).mode
+        except Exception:  # noqa: BLE001 - an unreadable spec refuses
+            reaching.append(index)
+            why.append(f"{target}'s constitutive regions could not be read")
+            continue
+        if mode != "outside_only":
+            reaching.append(index)
+            why.append(f"{target}'s own layer is carried by a chunk ({mode})")
+    return reaching, why
+
+
+def h_start_reasons(fields: Any, sources: Any, pml: Any = None) -> Tuple[str, ...]:
+    """Why a base ``update_H`` kernel may not take a run's FIRST ``update_H``, or ``()``.
+
+    The array path's first ``update_H`` starts H and ``f_w`` from B on the dsigw cells
+    (:func:`meep_gpu.stepping.separate_h_from_b`, MEEP's update_eh.cpp:165-177) and
+    then steps the forms; the kernels step the forms alone. THIS CLAUSE BOUNDS
+    ADMISSION, AND NOTHING MORE: what makes an admitted first update exact is the start
+    the composition carries around whatever serves the slot (:class:`StartOfHPlan`,
+    installed by :func:`plan_step`). The clause used to be the whole argument -- with
+    B, its auxiliary and E holding only +0 words at plan time and no magnetic deposit
+    before that update, "the first ``step_B`` leaves B at +0", so the start could not
+    change a word. That premise is FALSE: the dsig-only form and the recurrence both
+    multiply a +0 word by ``kms``, which is negative on the outer cells of a strong
+    layer, so B lands on -0 there; on a dsigw cell whose own ``kms`` is negative as well
+    the start carries that -0 into H, where the forms alone store +0 (measured
+    2026-10-12 on the corpus row ``ex.differential_cross_section``: 240 H words at step
+    1, sign of zero only, on the domain's edge lines). The clause is kept as it was, so
+    the composition admits exactly what it admitted before. Ignorance is never an
+    empty set: an undeclared source list refuses. The words are read as bits, so a -0
+    refuses too.
+
+    ``pml`` NARROWS THE MAGNETIC-SOURCE CLAUSE TO THE CELLS THE START WRITES. Given the
+    layer, a magnetic source refuses only where its B component's H carries cells in
+    its own layer (:func:`_start_reaching_sources`): an ``Hz`` source on a 2-D run, whose
+    z axis carries no layer, deposits into a B the start never copies, so the start and
+    the forms store the same words on every cell. The composer passes it for the base
+    kernel, whose refusal is RUN-LONG: the plan is frozen at the first step, so a
+    refused first ``update_H`` keeps the whole run off the kernel, and under held
+    residency the whole composition. Called without ``pml`` (the fused and H->D
+    products, whose own gates count this clause's refusals) every magnetic source
+    refuses, as before.
+    """
+    if bool(getattr(fields, "h_separated", False)):
+        return ()
+    lead = ("the run's first update_H starts H and f_w from B on the dsigw cells "
+            "(stepping.separate_h_from_b) and the base kernel does not; ")
+    reasons: List[str] = []
+    if sources is None:
+        reasons.append(lead + "the source set was not declared, so no magnetic deposit "
+                       "into B before that update can be ruled out")
+    else:
+        magnetic = [index for index, source in enumerate(sources)
+                    if str(getattr(source, "field_type", "")) == "B"]
+        detail = ""
+        if magnetic and pml is not None:
+            magnetic, why = _start_reaching_sources(fields, pml, sources, magnetic)
+            detail = f" ({'; '.join(why)})" if why else ""
+        if magnetic:
+            reasons.append(lead + f"magnetic source(s) {magnetic} deposit into B before "
+                           f"that update{detail}")
+    import numpy  # noqa: PLC0415
+
+    for name in H_START_VOLUMES:
+        values = getattr(fields, name, None)
+        if values is None:
+            continue
+        words = numpy.ascontiguousarray(numpy.asarray(values)).view(numpy.uint8)
+        if words.any():
+            reasons.append(lead + f"{name} holds a word other than +0 now, so B need not "
+                           f"be +0 at that update")
+    return tuple(reasons)
 
 
 #: Which constitutive side each slot steps. The arm callables take the SLOT and
@@ -448,7 +606,8 @@ for _slot in ("step_B", "step_D"):
         coverage=(lambda ctx, slot: pml_curl_coverage(
             ctx.fields, ctx.pml, slot, ctx.residency)),
         plan=(lambda ctx, slot: plan_pml_curl(
-            ctx.fields, ctx.pml, slot, ctx.residency, ctx.contract_variants)),
+            ctx.fields, ctx.pml, slot, ctx.residency, ctx.contract_variants,
+            chunk_bounds=ctx.chunk_bounds)),
         prefix="PML: ", noun="PML curl", wired=True)
 
 for _slot, _side in (("update_H", "H"), ("update_E", "E")):
@@ -458,7 +617,7 @@ for _slot, _side in (("update_H", "H"), ("update_E", "E")):
             ctx.fields, ctx.pml, CONSTITUTIVE_SLOT_SIDES[slot], ctx.residency)),
         plan=(lambda ctx, slot: plan_constitutive(
             ctx.fields, ctx.pml, CONSTITUTIVE_SLOT_SIDES[slot], ctx.residency,
-            ctx.contract_variants)),
+            ctx.contract_variants, chunk_bounds=ctx.chunk_bounds)),
         prefix="ordinary: ", noun="ordinary constitutive", wired=True)
 
 del _slot, _side
@@ -645,8 +804,17 @@ def synced(plan: Any, residency: Any,
       launch's ``sync_in`` carries their host writes to the device;
     * a plan that declares ``performs_device_work = False`` (the no-PML null arm) —
       LEFT ALONE: it binds no buffer and stales no mirror.
+
+    A fifth shape sits OUTSIDE the four: :class:`StartOfHPlan`, the start of H the
+    composer puts around whatever serves the run's first ``update_H``. Its ``inner`` is
+    the slot's occupant in any of the four shapes, so the rule is applied to that
+    occupant and the start's host work stays outside -- before the bracketed launch
+    for a leading occupant, after the slot's work for an absorbed one.
     """
     if plan is None:
+        return plan
+    if isinstance(plan, StartOfHPlan):
+        plan.inner = synced(plan.inner, residency, reads, writes)
         return plan
     inner = getattr(plan, "inner", None)
     if inner is not None and getattr(plan, "absorbed_by", None) is inner:
@@ -690,6 +858,178 @@ def wrap_for_residency(step_plan: MetalStepPlan, residency: Any,
         reads, writes = per_slot.get(slot, (None, None))
         step_plan.plans[slot] = synced(plan, residency, reads, writes)
     return step_plan
+
+
+# ---------------------------------------------------------------------------
+# MEEP's start of H, carried by the composition
+# ---------------------------------------------------------------------------
+#
+# MEEP allocates no H array at first -- ``alloc_f`` points H at B's storage
+# (fields.cpp:485-494) -- and the run's first ``update_eh(H_stuff)`` in a chunk that
+# carries H's own layer starts H and its ``f_w`` as COPIES of B, then steps the two
+# forms over them (update_eh.cpp:165-177). The array path does the same: its first
+# ``stepping.update_H`` calls ``stepping.separate_h_from_b``. Every Metal kernel that
+# can serve ``update_H`` -- the ordinary and complex singles, the fused magnetic B/H
+# pairs, the H->D welds -- steps the forms alone, from the stored H and ``f_w``. So the
+# start is carried by the composition, around whatever serves the slot, the way the two
+# NVIDIA tables carry it: the hand-CUDA launchers run ``separate_h_from_b`` on the
+# array path before a launch whose B is final (``cuda_kernels.arms``'s constitutive
+# launcher, ``cuda_kernels.fused_hd_pair``) and re-step ``stepping.update_H`` after a
+# fused magnetic launch (``cuda_kernels.fused_magnetic_pair.start_of_h``); the Triton
+# kernels take the start as a runtime flag (``start_h``).
+#
+# WHY NOT A PREDICATE. Until 2026-10-12 the Metal composition admitted a kernel on the
+# first update only where :func:`h_start_reasons` found every word the first
+# ``step_B`` reads at +0, on the premise that B then stays +0 and the start cannot
+# change a word. The premise is false wherever a layer's ``kms`` is negative, which a
+# strong layer's outer cells are: ``+0 * kms`` is -0 there, B lands on -0, and on a
+# dsigw cell whose own ``kms`` is negative too the start keeps that -0 in H while the
+# forms alone store +0. A predicate that refused every such run would refuse, for the
+# whole run, every run whose layer puts a negative ``kms`` on a dsigw cell -- the
+# outermost cells of a strong layer, both lattices of a 4-cell layer at resolution 8
+# among them -- so the start is carried instead.
+
+def start_h_from_b(fields: Any, pml: Any) -> None:
+    """MEEP's start of H alone, on the array path: H and ``f_w_H`` become B on the dsigw cells.
+
+    For a launch that steps the forms over the stored H and ``f_w`` and whose B is
+    already final -- the singles, and a product whose launch begins with ``update_H``
+    (the H->D welds) -- so the launch computes ``f + ((kps*src) - (kms*prev))`` from the
+    started words, which is the array path's first update word for word. The writes
+    are WHOLE-VOLUME host writes and are declared as such, as ``stepping.update_H``
+    declares them: under a hold that syncs the device's words down and marks the
+    mirrors host-owned, so the launch's own ``sync_in`` carries the started words up;
+    on the shipped bracket the ``sync_in`` copies every mirror anyway.
+    """
+    from .. import stepping  # noqa: PLC0415 - the array path's own start
+
+    stepping._acquire_written(  # noqa: SLF001 - the declaration stepping.update_H makes
+        fields, stepping.H_COMPONENTS
+        + tuple("f_w_" + name for name in stepping.H_COMPONENTS))
+    stepping.separate_h_from_b(fields, pml)
+
+
+def restep_update_h(fields: Any, pml: Any) -> None:
+    """MEEP's start of H and both forms, on the array path, over the B a launch stored.
+
+    For a product that performed ``update_H`` at an EARLIER consult -- a fused magnetic
+    B/H pair launches at ``step_B``, and this slot holds its ``NoopPlan`` or trailing
+    deposit repair. ``stepping.update_H`` starts H and ``f_w_H`` from the final B and
+    steps the forms, overwriting that one launch's H and ``f_w_H`` with the array
+    path's own first update, as ``cuda_kernels.fused_magnetic_pair.start_of_h`` does.
+    It declares its own whole-volume writes and reads B through the read barrier.
+    """
+    from .. import stepping  # noqa: PLC0415 - the array path's own first update
+
+    stepping.update_H(fields, pml)
+
+
+class StartOfHPlan:
+    """MEEP's start of H around the plan that serves a run's first ``update_H``.
+
+    ``inner`` is the slot's occupant, in any of the four shapes :func:`synced` knows,
+    and ``after_launch`` says which half of the start this slot owes:
+
+    * False -- the occupant LEADS a launch that steps ``update_H`` (a single, or an H->D
+      weld whose launch is at this consult): :func:`start_h_from_b` runs first, then
+      the occupant, so the launch reads the started words;
+    * True -- the occupant is ABSORBED (``NoopPlan`` or ``TrailingRepairPlan`` after a
+      fused magnetic pair): the occupant runs first, then :func:`restep_update_h`.
+
+    THE START RUNS ONCE A RUN, while ``fields.h_separated`` is False. Both functions
+    set it, the driver sets it after every step, and a state seeded mid-run carries
+    True and takes no start. ``fields`` is the run's own object, the one the plan was
+    composed for; ``fastpath.FastPathPlan.dispatch`` refuses any other. ``starts``
+    counts the starts performed, so a gate can see that one happened.
+
+    TRANSPARENT TO EVERY READER OF THE SLOT. ``absorbed_by`` is the occupant's
+    DECLARING plan (:func:`declaring_plan`), so the planned/null split, the residency
+    verdict's volumes, ``replaces_sub_steps`` and ``fastpath._pair_identity`` read what
+    they read off the bare occupant; every other attribute is the occupant's, answered
+    through :meth:`__getattr__` as :class:`SyncedPlan` answers it. It keeps no launch
+    counter of its own: the launch, where there is one, is the occupant's.
+    """
+
+    __slots__ = ("inner", "absorbed_by", "fields", "pml", "after_launch", "starts")
+
+    def __init__(self, inner: Any, fields: Any, pml: Any, after_launch: bool) -> None:
+        self.inner = inner
+        self.absorbed_by = declaring_plan(inner)
+        self.fields = fields
+        self.pml = pml
+        self.after_launch = bool(after_launch)
+        self.starts = 0
+
+    def run(self, *args: Any, **kwargs: Any) -> None:
+        first = not bool(getattr(self.fields, "h_separated", True))
+        if first and not self.after_launch:
+            start_h_from_b(self.fields, self.pml)
+            self.starts += 1
+        self.inner.run(*args, **kwargs)
+        if first and self.after_launch:
+            restep_update_h(self.fields, self.pml)
+            self.starts += 1
+
+    def __getattr__(self, name: str) -> Any:
+        if name in StartOfHPlan.__slots__:
+            raise AttributeError(name)
+        return getattr(self.inner, name)
+
+    def __repr__(self) -> str:
+        return f"StartOfHPlan({self.inner!r}, after_launch={self.after_launch})"
+
+
+def _carry_start_of_h(plans: Dict[str, Any], reasons: Dict[str, Tuple[str, ...]],
+                      selected: Dict[str, str], fields: Any, pml: Any,
+                      sources: Any) -> None:
+    """Put :class:`StartOfHPlan` around whatever serves a run's first ``update_H``.
+
+    Only for a composition frozen before the start (``fields.h_separated`` False) over
+    an active layer -- without one ``stepping.update_H`` stores no H and starts nothing
+    -- and never around a plan that declares it starts H itself
+    (``starts_h_from_b = True``) or performs no device work.
+
+    AN INTEGRATED MAGNETIC SOURCE REFUSES THE PRODUCT. MEEP starts H from B BEFORE the
+    source's ``f_minus_p`` words are written into B (update_eh.cpp:113-140, :165-177);
+    the driver does too, but only when the array path serves ``update_H``
+    (``driver._f_minus_p_begin_B``). A start carried at the ``update_H`` consult reads
+    B after those words, so where such a source reaches the cells the start copies
+    (:func:`_start_reaching_sources`) every slot the serving product owns is refused by
+    name and the sub-steps fall to the array path. No source refuses a product here
+    that :func:`h_start_reasons` admits for a single: that clause refuses every
+    magnetic source reaching those cells already.
+    """
+    occupant = plans.get("update_H")
+    if occupant is None or bool(getattr(fields, "h_separated", True)):
+        return
+    from .. import stepping  # noqa: PLC0415 - the array path's own layer test
+
+    if not stepping._pml_is_active(pml):  # noqa: SLF001
+        return
+    declaring = declaring_plan(occupant)
+    if not getattr(declaring, "performs_device_work", True):
+        return
+    if getattr(declaring, "starts_h_from_b", False) is True:
+        return
+    integrated = [index for index, source in enumerate(sources or ())
+                  if str(getattr(source, "field_type", "")) == "B"
+                  and bool(getattr(source, "is_integrated", False))]
+    if integrated:
+        reaching, why = _start_reaching_sources(fields, pml, sources, integrated)
+        if reaching:
+            reason = ("the run's first update_H starts H from B before the integrated "
+                      f"magnetic source(s) {reaching} write their f_minus_p words into B "
+                      "(update_eh.cpp:113-140, :165-177), and a start carried at the "
+                      f"update_H consult would read those words ({'; '.join(why)})")
+            for slot in [name for name, plan in plans.items()
+                         if declaring_plan(plan) is declaring]:
+                plans.pop(slot)
+                selected.pop(slot, None)
+                reasons[slot] = (reason,)
+            return
+    absorbed_by = getattr(occupant, "absorbed_by", None)
+    leading = absorbed_by is None or getattr(occupant, "inner", None) is absorbed_by
+    plans["update_H"] = StartOfHPlan(occupant, fields, pml, after_launch=not leading)
 
 
 def live_sub_steps(fields: Any, pml: Any, sources: Any) -> Optional[Tuple[str, ...]]:
@@ -996,8 +1336,8 @@ FUSED_PAIR_SEAMS: Dict[str, Tuple[str, str]] = {
 #: ARE the ``cylindrical complex`` curl arm's and constitutive arm's own bodies.
 #: MEASURED through ``plan_step`` with ``fuse=False`` on
 #: ``metal_composition_matrix.cylindrical(m=1, complex_storage=True)`` and again at
-#: ``m=2``, under ``MEEP_GPU_SUBNORMAL_POLICY=flush`` with the cylindrical-complex
-#: expansion probe bound: all four arithmetic slots come back
+#: ``m=2``, under ``MEEP_GPU_SUBNORMAL_POLICY=flush`` (then with the cylindrical-complex
+#: expansion probe bound, a licence since deleted): all four arithmetic slots come back
 #: ``'cylindrical complex'`` on both — and, since the family's ``M_ZERO`` arm of
 #: 2026-09-04, at ``m=0`` with complex64 storage as well (the same row serves that
 #: arm; ``gate_metal_cylindrical_complex.py`` leg ``split`` reads the selection).
@@ -1802,14 +2142,64 @@ def _install_fused_pairs(plans: Dict[str, Any], reasons: Dict[str, Tuple[str, ..
             reasons[key] = ("the fused pair was refused",)
 
 
+def chunk_division(fields: Any, pml: Any, chunk_layout: Any = None
+                   ) -> Tuple[Any, Any, Tuple[str, ...]]:
+    """``(layout, record words, refusal reasons)`` for one composition. Never raises.
+
+    ``chunk_layout`` ``None`` resolves to the division the array path steps this run
+    with: the lifted one the fields carry (``Fields.chunk_layout``, which
+    ``stepping._chunk_layout`` reads the off-diagonal presence and the PML forms
+    through) when the driver installed one, else ``ChunkLayout.one_rank(fields.grid,
+    pml)``, the division a driver built without MEEP steps with. Resolving ``None`` to
+    the one-rank division on a lifted run composed against a division the run does
+    not have: on ``TestHoleyWvgBands.test_fields_at_kx`` (a mirror-folded axis with a
+    high-face layer) MEEP's high chunk starts one row earlier than the one-rank one,
+    so the off-diagonal presence the arms read through the run's division matched no
+    word of the one-rank record and ``update_E`` was refused, while a driver, which
+    hands its own division in, composed and served it. A layout, given or installed,
+    must have been built for this grid (its axis frames equal the grid's, the check
+    ``FdtdDriver.set_chunk_layout`` makes), and the record is validated against the
+    grid's stored shape (:func:`.coverage.chunk_division_reasons`). The words are
+    ``None`` whenever the reasons are not empty.
+    """
+    from ..chunk_map import ChunkLayout, grid_frames  # noqa: PLC0415
+
+    grid = getattr(fields, "grid", None)
+    layout = chunk_layout
+    if layout is None:
+        layout = getattr(fields, "chunk_layout", None)
+    if layout is None:
+        try:
+            layout = ChunkLayout.one_rank(grid, pml)
+        except Exception as exc:  # noqa: BLE001 - a division that cannot be built refuses
+            return None, None, (
+                f"the one-rank chunk division of this grid could not be built ({exc!r}); "
+                f"the kernels read every cell's PML form from it",)
+    else:
+        try:
+            frames = grid_frames(grid)
+        except Exception as exc:  # noqa: BLE001 - an unreadable grid refuses
+            return layout, None, (
+                f"the grid's axis frames could not be read ({exc!r}), so the chunk "
+                f"division cannot be checked against it",)
+        if tuple(getattr(layout, "frames", ())) != tuple(frames):
+            return layout, None, (
+                "the chunk division was built for another grid: its axis frames differ "
+                "from this grid's",)
+    shape = getattr(grid, "shape", None)
+    shape = tuple(int(n) for n in shape) if shape is not None and len(shape) == 3 else None
+    reasons = tuple(chunk_division_reasons(layout, shape))
+    if reasons:
+        return layout, None, reasons
+    return layout, _chunk_bounds.for_layout(layout, shape), ()
+
+
 def plan_step(fields: Any, pml: Any, residency: Optional[Residency] = None,
               sources: Any = None, synced: Sequence[str] = (),
               contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-              complex_probe: Any = None, beta_probe: Any = None,
-              folded_complex_probe: Any = None,
-              cylindrical_complex_probe: Any = None,
               fuse: bool = False,
               fuse_labels: Optional[Sequence[str]] = None,
+              chunk_layout: Any = None,
               ) -> MetalStepPlan:
     """Ask every predicate independently and report the covered subset with its refusals.
 
@@ -1836,21 +2226,6 @@ def plan_step(fields: Any, pml: Any, residency: Optional[Residency] = None,
     side effect: without it, ``import metal_kernels.launch`` alone produced a
     six-row table, so the SELECTION — and whether an ambiguity was detected at all
     — depended on an unrelated earlier import.
-
-    ``complex_probe``, ``beta_probe``, ``folded_complex_probe`` and
-    ``cylindrical_complex_probe`` are the measured expansion artifacts the complex,
-    beta, folded-complex and cylindrical-complex arms bind their multiply arm from.
-    FOUR ARGUMENTS AND NOT ONE, because the four families require DIFFERENT PATTERN
-    SETS: the beta family needs a complex scalar with a signed-zero real word, the
-    folded complex family needs the mirror parity as a complex coefficient on the
-    LEFT, the cylindrical complex family needs a complex ROW coefficient on the left
-    (the i*m/r term) and a complex SCALAR on the left whose real word is a signed
-    zero (the |m| = 1 axis increment), and none of those orientations appears in the
-    base five. A shared argument would let an artifact that classified five
-    orientations licence a kernel that performs seven. ``None`` is not a default arm:
-    each family falls back to its own environment variable and REFUSES BY NAME when
-    no artifact can be read, because which arm this host's reference takes is a
-    measured platform fact.
 
     THE NULL FAMILY'S PREDICATE IS SHARED VERBATIM WITH THE TRITON PACKAGE; ITS
     PLAN AND ITS COMPOSITION ARE NOT, and this docstring said otherwise for a
@@ -1891,6 +2266,14 @@ def plan_step(fields: Any, pml: Any, residency: Optional[Residency] = None,
     every product. A sequence offers exactly those labels and skips the rest with a
     named reason; see :func:`_install_fused_pairs`. It is read only when ``fuse``
     is true, because the fusion block is what consumes it.
+
+    ``chunk_layout`` IS THE CHUNK DIVISION THE RUN STEPS WITH
+    (:class:`meep_gpu.chunk_map.ChunkLayout`); ``None`` is the division the fields
+    carry when a lift installed one, else the one-rank division of this grid and
+    PML, the default of a driver built without MEEP (:func:`chunk_division`). It is resolved
+    and its record validated before any arm is consulted (:func:`chunk_division`),
+    and both reach every arm through the context. A division the per-axis record
+    cannot describe refuses EVERY slot by name, so no arm can serve it.
     """
     plans: Dict[str, Any] = {}
     reasons: Dict[str, Tuple[str, ...]] = {}
@@ -1903,28 +2286,48 @@ def plan_step(fields: Any, pml: Any, residency: Optional[Residency] = None,
     # detected. See `arms.ensure_registered`.
     arms.ensure_registered()
 
+    layout, chunk_words, division = chunk_division(fields, pml, chunk_layout)
     context = arms.StepContext(fields, pml, residency, contract_variants,
                                sources=sources, synced=synced,
-                               extra={"complex_probe": complex_probe,
-                                      "beta_probe": beta_probe,
-                                      "folded_complex_probe": folded_complex_probe,
-                                      "cylindrical_complex_probe":
-                                          cylindrical_complex_probe})
-    for slot in STEP_ORDER:
-        table = arms.arms_for(slot, context)
-        if table:
-            _select_slot(slot, table, arms.ambiguity(slot),
-                         plans, reasons, selected)
-        else:
-            reasons[slot] = (NO_ARM_REASONS[slot],)
+                               chunk_layout=layout, chunk_bounds=chunk_words)
+    if division:
+        # A division the record cannot describe is refused on every slot before any
+        # arm is asked, so no predicate can admit it (and no fusion is offered).
+        for slot in STEP_ORDER:
+            reasons[slot] = division
+    else:
+        for slot in STEP_ORDER:
+            table = arms.arms_for(slot, context)
+            if table:
+                _select_slot(slot, table, arms.ambiguity(slot),
+                             plans, reasons, selected)
+            else:
+                reasons[slot] = (NO_ARM_REASONS[slot],)
 
     # THE CROSS-SUB-STEP SEAM, AFTER the per-slot table and never instead of it.
     # `_pair_may_absorb` reads what the table selected, so the table has to have
     # run; and a refused fusion is not a refused step — both sub-steps keep the
     # separate plans built above and the reason is reported alongside them.
-    if fuse:
+    if fuse and not division:
         _install_fused_pairs(plans, reasons, selected, context, fields, pml, sources,
                              fuse_labels)
+
+    # THE RUN'S FIRST update_H, after the fusion block so a pair that absorbs the slot
+    # keeps it. A base constitutive kernel on the H side takes the slot only where
+    # :func:`h_start_reasons` admits it -- an admission bound, kept as it was. Every
+    # such plan declares ``starts_h_from_b = False``, the complex one included.
+    standing = declaring_plan(plans.get("update_H"))
+    if (getattr(standing, "starts_h_from_b", True) is False
+            and getattr(standing, "side", None) == "H"):
+        start = h_start_reasons(fields, sources, pml)
+        if start:
+            plans.pop("update_H")
+            selected.pop("update_H", None)
+            reasons["update_H"] = start
+    # ...and MEEP's start of H itself, carried around whatever now serves the slot
+    # (:class:`StartOfHPlan`): no Metal kernel starts H, and the clause above cannot
+    # make the start a no-op (a +0 B times a negative ``kms`` is -0).
+    _carry_start_of_h(plans, reasons, selected, fields, pml, sources)
 
     # THE PLANNED/NULL SPLIT, and it is read off the PLAN rather than off the arm
     # label. `planned` means "runs on the device, against the mirror"; a null plan
@@ -1976,8 +2379,6 @@ def plan_step(fields: Any, pml: Any, residency: Optional[Residency] = None,
 
     return MetalStepPlan(plans, reasons, selected, residency_verdict,
                          live or (), synced)
-
-
 
 
 def explain(fields: Any, pml: Any, residency: Optional[Residency] = None) -> Coverage:

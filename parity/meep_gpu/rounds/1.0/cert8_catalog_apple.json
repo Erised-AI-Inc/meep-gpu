@@ -1,0 +1,14 @@
+{
+ "schema": "meep_gpu.cert8_catalog/1",
+ "what": "The 1.0 round's Apple timing rows on applegpu_g13s: the identical-case ladder (pml_3d at the three sizes of record and the two smaller ones, the Metal route, three passes). No fused-product row: no Metal dispatch-preference record has been cut; a table added under fused.tables cuts one, named for this architecture.",
+ "architecture": "applegpu_g13s",
+ "ladder": {
+  "cases": ["pml_3d"],
+  "sizes": {"priority": [512000, 2097152, 7077888], "rest": [110592, 262144]},
+  "passes": 3,
+  "routes": ["metal"],
+  "variance": {"case": "pml_3d", "cells": 512000, "route": "metal", "meep_ranks": 8},
+  "ladder_args": ["--binding", "unbound", "--controls", "none"]
+ },
+ "fused": {"tables": {}}
+}

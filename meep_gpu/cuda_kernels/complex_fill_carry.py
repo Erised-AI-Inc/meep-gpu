@@ -135,32 +135,51 @@ _ZERO_METAL_ROWS: Tuple[Tuple[int, str, str], ...] = (
 #: ``field``, never ``fu_field``).
 _PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
 _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ cf pml_apply_reg(\n"
-_PML_APPLY_PARAMETERS = "    float kms, float sinv, float kms_u, float sinv_u\n)"
+_PML_APPLY_PARAMETERS = (
+    "    float kms, float sinv, float kms_u, float sinv_u, int dsigu\n)")
 _PML_APPLY_PARAMETERS_OWNED = (
-    "    float kms, float sinv, float kms_u, float sinv_u, int owned\n)")
-_PML_APPLY_STORE = (
-    "    cf_store(f, idx, mul_field_left(cf_sub(cf_add(a, fu_new), fprev), sinv_u));\n")
-_PML_APPLY_LOAD = "    cf a = mul_field_left(cf_load(f, idx), kms_u);\n"
-_PML_APPLY_GUARDED_TAIL = (
+    "    float kms, float sinv, float kms_u, float sinv_u, int dsigu, int owned\n)")
+#: The helper's one load of the field (DESIGN.md D11): the ownership guard goes
+#: directly in front of it, below the ``fu`` stage.
+_PML_APPLY_FCUR = "    cf fcur = cf_load(f, idx);\n"
+_PML_APPLY_FCUR_OWNED = (
     "    // THE OWNERSHIP GUARD. On a cell a fill images, the SOURCE thread\n"
     "    // writes f -- so this thread must not read f[idx] either: that word is\n"
     "    // written by another block in this same launch and an ordinary CUDA\n"
     "    // launch has no grid-wide barrier at which the load would be defined.\n"
-    "    // fu above is UNGUARDED: step_B writes it at every cell and neither\n"
-    "    // fill touches it (stepping.py:1451).\n"
+    "    // The fu stage above is NOT guarded on ownership: step_B steps fu on every\n"
+    "    // recurrence cell and neither fill touches it (the fills write the\n"
+    "    // field, never fu).\n"
     "    if (!owned) return cf_zero();\n"
-    "    // THE ONE EDIT BELOW THE GUARD: the right-hand side, its\n"
-    "    // parenthesisation and the store are the certified ones; the value is\n"
-    "    // additionally NAMED so the constitutive half can read it from a\n"
-    "    // register instead of reloading the word pair from global memory.\n"
-    "    cf a = mul_field_left(cf_load(f, idx), kms_u);\n"
-    "    cf value = mul_field_left(cf_sub(cf_add(a, fu_new), fprev), sinv_u);\n"
+    + _PML_APPLY_FCUR)
+#: The helper's closing store, and the one edit that turns it into a value.
+_PML_APPLY_STORE = "    cf_store(f, idx, value);\n"
+_PML_APPLY_STORE_REG = (
     "    cf_store(f, idx, value);\n"
+    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // are the certified ones; the value is additionally RETURNED so the\n"
+    "    // constitutive half can read it from a register instead of reloading the\n"
+    "    // word pair from global memory.\n"
     "    return value;\n")
 
 #: The last line of the certified index decomposition -- where the carried registers
 #: and the ownership flags are declared.
 _DECODE_END = "    int i = idx / (ny * nz);\n"
+
+#: The dsigw membership flag each update_H statement passes (its own axis on the integer
+#: lattice, ``complex_emitter.CONSTITUTIVE_FLAGS["H"]``), restated so loading this file by
+#: path stays stdlib-only, and pinned equal by the tests.
+_CONSTITUTIVE_FLAGS: Tuple[str, ...] = ("in_i_x", "in_i_y", "in_i_z")
+
+def _bounds_block():
+    """``bounds_block``, imported at the call site: it reads ``chunk_map`` (NumPy), and
+    this module imports neither CuPy nor NumPy at module scope."""
+    try:
+        from . import bounds_block  # noqa: PLC0415
+    except ImportError:  # loaded by path, outside the package: the bit-identity probe
+        from meep_gpu.cuda_kernels import bounds_block  # noqa: PLC0415
+    return bounds_block
+
 
 
 def near_fill_axes(target: int) -> Tuple[int, ...]:
@@ -376,6 +395,13 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
                 f"imaged from {NEAR_SOURCE_INDEX}, weight {_PHASE[axis]} "
                 f"(stepping._fill_symmetry_ghost_cells:1440-1447)")
         coefficient = "0" if carries_near else _COORDINATE[target]
+        # THE MEMBERSHIP ROW IS THE COEFFICIENT'S ROW (KERNELS.md section 3.3): stored
+        # row 0 of the component's own axis for a near image, this thread's own row
+        # (its own flag) for a pure far one. update_H steps the ghost with that row's
+        # own dsigw form.
+        membership = (_bounds_block().membership_test(False, target, "0")
+                      if carries_near
+                      else _CONSTITUTIVE_FLAGS[target])
         chain = parity_chain(near, subset, carries_near)
         lines.append(f"{indent}if ({' && '.join(guards)}) {{")
         lines.extend(f"{inner}// {text}" for text in described)
@@ -383,12 +409,11 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
         first_axis, first_pass = chain[0]
         first = (_PHASE[first_axis] if first_pass == "near"
                  else f"({_PHASE[first_axis]} * -1.0f)")
-        lines.append(f"{inner}// THE PARITY CHAIN, one certified complex multiply "
-                     f"per pass, in the")
-        lines.append(f"{inner}// driver's own composition order (near innermost, "
-                     f"then far ascending);")
-        lines.append(f"{inner}// pre-multiplying the parities moves bytes under "
-                     f"complex storage.")
+        lines.append(f"{inner}// THE PARITY CHAIN, one part-wise product per pass "
+                     f"(host_writes.copy_face's")
+        lines.append(f"{inner}// part_products.scale), in the driver's own "
+                     f"composition order (near")
+        lines.append(f"{inner}// innermost, then far ascending).")
         lines.append(f"{inner}cf {tag}_v = mul_coefficient_left({first}, "
                      f"b{target});")
         for axis, pass_name in chain[1:]:
@@ -417,10 +442,13 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
             lines.append(
                 f"{inner}// component on, so it takes this thread's own pair "
                 f"unchanged.")
+        lines.append(f"{inner}// The destination's own membership row, read where its "
+                     f"coefficient entry is.")
+        lines.append(f"{inner}int {tag}_w = {membership};")
         lines.append(
             f"{inner}constitutive_apply(h{target}, w{target}, {tag}_i, {tag}_v, "
             f"kps_{_AXIS_NAME[target]}[{coefficient}], "
-            f"kms_int_{_AXIS_NAME[target]}[{coefficient}]);")
+            f"kms_int_{_AXIS_NAME[target]}[{coefficient}], {tag}_w);")
         lines.append(f"{indent}}}")
     return lines
 
@@ -436,7 +464,7 @@ def pml_apply_reg_prelude(prelude: str, name: str) -> str:
     """
     for anchor, what in ((_PML_APPLY_SIGNATURE, "pml_apply's signature"),
                          (_PML_APPLY_PARAMETERS, "pml_apply's parameter list"),
-                         (_PML_APPLY_LOAD, "pml_apply's field load"),
+                         (_PML_APPLY_FCUR, "pml_apply's one load of the field"),
                          (_PML_APPLY_STORE, "pml_apply's closing store")):
         if prelude.count(anchor) != 1:
             raise AssertionError(
@@ -445,16 +473,12 @@ def pml_apply_reg_prelude(prelude: str, name: str) -> str:
                 f"has no anchor")
     prelude = prelude.replace(_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, 1)
     prelude = prelude.replace(_PML_APPLY_PARAMETERS, _PML_APPLY_PARAMETERS_OWNED, 1)
-    if prelude.count(_PML_APPLY_LOAD + _PML_APPLY_STORE) != 1:
-        raise AssertionError(
-            f"{name}'s certified pml_apply no longer closes with the load+store "
-            f"pair this rewrite guards as one unit; the arithmetic may have moved")
-    prelude = prelude.replace(_PML_APPLY_LOAD + _PML_APPLY_STORE,
-                              _PML_APPLY_GUARDED_TAIL, 1)
+    prelude = prelude.replace(_PML_APPLY_FCUR, _PML_APPLY_FCUR_OWNED, 1)
+    prelude = prelude.replace(_PML_APPLY_STORE, _PML_APPLY_STORE_REG, 1)
     return prelude
 
 
-def captured_curl_body(body: str, name: str) -> str:
+def captured_curl_body(body: str, name: str, bounds: Any = None) -> str:
     """One family's certified curl body with the three registers captured OWNED.
 
     Hoists the ``cf b0/b1/b2`` declarations and the ownership flags above the
@@ -464,15 +488,29 @@ def captured_curl_body(body: str, name: str) -> str:
     a fold mask, a Bloch block or a beta insert between the decode and the calls
     rides through untouched, which is what lets ONE function serve both the
     folded and the beta curl bodies.
+
+    ``bounds`` is ``(curl entries, curl presence, union block)``: when given, the curl
+    body's own chunk-record block is removed and the product's ONE block over the union
+    of both halves' entries is emitted directly after the decode (DESIGN.md D10).
     """
     if _DECODE_END not in body:
         raise AssertionError(
             f"{name}'s certified curl body no longer decodes i on its own line; "
             f"the carried registers have nowhere to be declared")
+    union = ""
+    if bounds is not None:
+        # ONE DECODE OF THE CHUNK RECORD PER KERNEL (DESIGN.md D10): the curl body's
+        # own block is removed (refused unless it is exactly the emitter's block for
+        # the curl's entries) and the product's union block takes its place.
+        curl_entries, curl_presence, union = bounds
+        body = _bounds_block().strip_bounds_block(body, f"{name}'s certified curl body",
+                                                  curl_entries, curl_presence)
     head, tail = body.split(_DECODE_END, 1)
     body = "".join((
-        head, _DECODE_END,
-        "\n    // The three carried registers. Declared HERE because each\n"
+        head, _DECODE_END, "\n" if union else "",
+        union,
+        "" if union else "\n",
+        "    // The three carried registers. Declared HERE because each\n"
         "    // certified component below is a braced scope, and a value declared\n"
         "    // inside one does not outlive it.\n"
         "    cf b0 = cf_zero();\n"
@@ -536,7 +574,7 @@ def constitutive_body_with_carry(tail: str, name: str) -> str:
         call = _line_starting(tail, prefix,
                               f"target {target}'s constitutive_apply")
         expected = (f"{prefix}kps_{axis}[{_COORDINATE[target]}], "
-                    f"kms_{axis}[{_COORDINATE[target]}]);")
+                    f"kms_{axis}[{_COORDINATE[target]}], {_CONSTITUTIVE_FLAGS[target]});")
         if call != expected:
             raise AssertionError(
                 f"target {target}'s constitutive_apply is {call!r}, not the "

@@ -1,0 +1,1157 @@
+{
+ "about": "Outcomes of the test files in one recorded run, written only by build_parity_board.py outcomes. The board refuses it once the tree no longer hashes to its subject.",
+ "cases": 12137,
+ "cases_without_a_test_file": 0,
+ "files": {
+  "meep_gpu/cuda_kernels/test_ade_strings_parse_cache.py": {
+   "failed": [],
+   "passed": 7,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_ade_update_p.py": {
+   "failed": [
+    "meep_gpu.cuda_kernels.test_ade_update_p::test_the_record_block_pins_the_device_strings_that_ship_today"
+   ],
+   "passed": 69,
+   "skipped": 1
+  },
+  "meep_gpu/cuda_kernels/test_arms.py": {
+   "failed": [],
+   "passed": 23,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_bfast_curl.py": {
+   "failed": [],
+   "passed": 42,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_bloch_connection.py": {
+   "failed": [],
+   "passed": 7,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_certification_metadata.py": {
+   "failed": [],
+   "passed": 8,
+   "skipped": 5
+  },
+  "meep_gpu/cuda_kernels/test_certification_record.py": {
+   "failed": [
+    "meep_gpu.cuda_kernels.test_certification_record::test_the_record_matches_the_shipped_kernel_module",
+    "meep_gpu.cuda_kernels.test_certification_record::test_the_recorded_device_sources_are_the_shipped_device_sources"
+   ],
+   "passed": 14,
+   "skipped": 2
+  },
+  "meep_gpu/cuda_kernels/test_chunk_binding.py": {
+   "failed": [],
+   "passed": 25,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_compile_cache.py": {
+   "failed": [],
+   "passed": 13,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_complex_beta.py": {
+   "failed": [],
+   "passed": 30,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_complex_beta_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 21,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_complex_chunk_forms.py": {
+   "failed": [],
+   "passed": 274,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_complex_folded.py": {
+   "failed": [],
+   "passed": 50,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_complex_fused_electric_pairs.py": {
+   "failed": [],
+   "passed": 67,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_complex_no_pml.py": {
+   "failed": [],
+   "passed": 58,
+   "skipped": 5
+  },
+  "meep_gpu/cuda_kernels/test_complex_no_pml_ade_parts.py": {
+   "failed": [],
+   "passed": 9,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_complex_no_pml_chunk_forms.py": {
+   "failed": [],
+   "passed": 38,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_complex_no_pml_three_slot_dispersive_weld.py": {
+   "failed": [],
+   "passed": 29,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_complex_offdiag_stencil_welds.py": {
+   "failed": [],
+   "passed": 39,
+   "skipped": 2
+  },
+  "meep_gpu/cuda_kernels/test_complex_offdiag_update_e.py": {
+   "failed": [
+    "meep_gpu.cuda_kernels.test_complex_offdiag_update_e::test_the_admission_record_is_bound_to_the_emitter_it_describes"
+   ],
+   "passed": 84,
+   "skipped": 1
+  },
+  "meep_gpu/cuda_kernels/test_complex_pml.py": {
+   "failed": [],
+   "passed": 60,
+   "skipped": 2
+  },
+  "meep_gpu/cuda_kernels/test_conductive_bfast_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 36,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_conductive_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 26,
+   "skipped": 3
+  },
+  "meep_gpu/cuda_kernels/test_conductive_kernels.py": {
+   "failed": [
+    "meep_gpu.cuda_kernels.test_conductive_kernels::test_admission_record_is_all_or_nothing"
+   ],
+   "passed": 84,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_constitutive_pml_real.py": {
+   "failed": [
+    "meep_gpu.cuda_kernels.test_constitutive_pml_real::test_the_fold_admission_names_a_record_block_that_reports_a_pass",
+    "meep_gpu.cuda_kernels.test_constitutive_pml_real::test_the_record_pins_the_device_source_that_was_gated"
+   ],
+   "passed": 150,
+   "skipped": 2
+  },
+  "meep_gpu/cuda_kernels/test_cylindrical_chunk_forms.py": {
+   "failed": [],
+   "passed": 241,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_cylindrical_complex.py": {
+   "failed": [],
+   "passed": 124,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_cylindrical_fused_electric_pair_hoist.py": {
+   "failed": [],
+   "passed": 4,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_cylindrical_fused_magnetic_pair_hoist.py": {
+   "failed": [],
+   "passed": 4,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_cylindrical_pml_real.py": {
+   "failed": [],
+   "passed": 60,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_dispersive.py": {
+   "failed": [
+    "meep_gpu.cuda_kernels.test_dispersive::test_the_recorded_gate_verdict_pins_the_emitted_bodies_that_ship_today"
+   ],
+   "passed": 90,
+   "skipped": 1
+  },
+  "meep_gpu/cuda_kernels/test_dispersive_chunk_forms.py": {
+   "failed": [],
+   "passed": 45,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_dispersive_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 39,
+   "skipped": 4
+  },
+  "meep_gpu/cuda_kernels/test_dispersive_fused_pair_chunk_forms.py": {
+   "failed": [],
+   "passed": 40,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_dispersive_offdiag_polarization_pair.py": {
+   "failed": [],
+   "passed": 25,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_dispersive_offdiag_update_e.py": {
+   "failed": [],
+   "passed": 226,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_fold_chunk_forms.py": {
+   "failed": [],
+   "passed": 40,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_fold_complex_chunk_forms.py": {
+   "failed": [],
+   "passed": 116,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_fold_fused_chunk_forms.py": {
+   "failed": [],
+   "passed": 129,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_folded_offdiag.py": {
+   "failed": [
+    "meep_gpu.cuda_kernels.test_folded_offdiag::test_the_record_was_cut_against_the_emitter_that_ships_today"
+   ],
+   "passed": 189,
+   "skipped": 2
+  },
+  "meep_gpu/cuda_kernels/test_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 42,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 11,
+   "skipped": 8
+  },
+  "meep_gpu/cuda_kernels/test_fused_magnetic_pair_fill_carry.py": {
+   "failed": [],
+   "passed": 68,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_fused_pair_chunk_forms.py": {
+   "failed": [],
+   "passed": 85,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_fused_pair_held_source.py": {
+   "failed": [],
+   "passed": 74,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_fused_pairs.py": {
+   "failed": [],
+   "passed": 41,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_fused_polarization_pair.py": {
+   "failed": [],
+   "passed": 37,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_in_seam_passes.py": {
+   "failed": [],
+   "passed": 291,
+   "skipped": 1
+  },
+  "meep_gpu/cuda_kernels/test_kernel_partition.py": {
+   "failed": [
+    "meep_gpu.cuda_kernels.test_kernel_partition::test_the_record_claims_no_kernel_that_no_module_certifies"
+   ],
+   "passed": 65,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_no_pml_complex_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 74,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_no_pml_constitutive.py": {
+   "failed": [
+    "meep_gpu.cuda_kernels.test_no_pml_constitutive::test_every_cited_return_site_is_read_back_out_of_stepping"
+   ],
+   "passed": 160,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_no_pml_curl.py": {
+   "failed": [
+    "meep_gpu.cuda_kernels.test_no_pml_curl::test_every_cited_stepping_line_is_read_back_out_of_stepping",
+    "meep_gpu.cuda_kernels.test_no_pml_curl::test_the_recorded_device_digests_are_the_device_text_that_ships"
+   ],
+   "passed": 79,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_no_pml_dispersive_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 24,
+   "skipped": 4
+  },
+  "meep_gpu/cuda_kernels/test_nonlinear_constitutive.py": {
+   "failed": [],
+   "passed": 51,
+   "skipped": 12
+  },
+  "meep_gpu/cuda_kernels/test_offdiag_constitutive_pml_real.py": {
+   "failed": [
+    "meep_gpu.cuda_kernels.test_offdiag_constitutive_pml_real::test_the_record_block_was_cut_against_the_emitter_that_ships_today",
+    "meep_gpu.cuda_kernels.test_offdiag_constitutive_pml_real::test_the_record_block_was_cut_against_the_launch_texts_that_ship_today"
+   ],
+   "passed": 254,
+   "skipped": 1
+  },
+  "meep_gpu/cuda_kernels/test_offdiag_stencil_welds.py": {
+   "failed": [],
+   "passed": 39,
+   "skipped": 2
+  },
+  "meep_gpu/cuda_kernels/test_own_cell_hoist_store_sequence.py": {
+   "failed": [],
+   "passed": 190,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_residual_fused_electric_pairs.py": {
+   "failed": [],
+   "passed": 29,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_residual_fused_magnetic_pairs.py": {
+   "failed": [],
+   "passed": 26,
+   "skipped": 1
+  },
+  "meep_gpu/cuda_kernels/test_root_chunk_forms.py": {
+   "failed": [],
+   "passed": 72,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_single_arm_launches.py": {
+   "failed": [],
+   "passed": 54,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_special_kz_bfast_admission.py": {
+   "failed": [],
+   "passed": 2,
+   "skipped": 11
+  },
+  "meep_gpu/cuda_kernels/test_special_kz_curl.py": {
+   "failed": [],
+   "passed": 38,
+   "skipped": 0
+  },
+  "meep_gpu/cuda_kernels/test_special_kz_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 14,
+   "skipped": 5
+  },
+  "meep_gpu/cuda_kernels/test_step_curl_pml_real.py": {
+   "failed": [],
+   "passed": 98,
+   "skipped": 4
+  },
+  "meep_gpu/cuda_kernels/test_three_slot_dispersive_weld.py": {
+   "failed": [],
+   "passed": 37,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_ade_update_p.py": {
+   "failed": [],
+   "passed": 50,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_artifact_provenance.py": {
+   "failed": [],
+   "passed": 1,
+   "skipped": 2
+  },
+  "meep_gpu/test_metal_below_the_cut_fused_pairs.py": {
+   "failed": [],
+   "passed": 65,
+   "skipped": 4
+  },
+  "meep_gpu/test_metal_beta_complex_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 61,
+   "skipped": 3
+  },
+  "meep_gpu/test_metal_beta_real_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 63,
+   "skipped": 2
+  },
+  "meep_gpu/test_metal_bfast.py": {
+   "failed": [],
+   "passed": 54,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_bfast_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 29,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_chunk_bounds.py": {
+   "failed": [],
+   "passed": 20,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_coefficient_pack.py": {
+   "failed": [],
+   "passed": 18,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_complex_conductive_fused_pair.py": {
+   "failed": [],
+   "passed": 36,
+   "skipped": 1
+  },
+  "meep_gpu/test_metal_complex_conductive_pml.py": {
+   "failed": [],
+   "passed": 21,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_complex_dispersive_update_e.py": {
+   "failed": [],
+   "passed": 12,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_complex_fields.py": {
+   "failed": [],
+   "passed": 73,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_complex_folded_offdiag_update_e.py": {
+   "failed": [],
+   "passed": 11,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_complex_fused_ade_chain.py": {
+   "failed": [],
+   "passed": 31,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_complex_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 41,
+   "skipped": 8
+  },
+  "meep_gpu/test_metal_complex_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 49,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_complex_no_pml_conductive.py": {
+   "failed": [],
+   "passed": 37,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_complex_no_pml_curl.py": {
+   "failed": [],
+   "passed": 13,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_complex_no_pml_offdiag_update_e.py": {
+   "failed": [],
+   "passed": 17,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_complex_no_pml_stored_e.py": {
+   "failed": [],
+   "passed": 8,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_conductive_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 37,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_conductive_pml.py": {
+   "failed": [],
+   "passed": 17,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_cylindrical_complex.py": {
+   "failed": [],
+   "passed": 19,
+   "skipped": 71
+  },
+  "meep_gpu/test_metal_cylindrical_complex_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 19,
+   "skipped": 4
+  },
+  "meep_gpu/test_metal_cylindrical_complex_scan.py": {
+   "failed": [],
+   "passed": 17,
+   "skipped": 4
+  },
+  "meep_gpu/test_metal_cylindrical_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 22,
+   "skipped": 9
+  },
+  "meep_gpu/test_metal_cylindrical_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 25,
+   "skipped": 1
+  },
+  "meep_gpu/test_metal_cylindrical_radial_source_pull.py": {
+   "failed": [],
+   "passed": 13,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_cylindrical_real.py": {
+   "failed": [],
+   "passed": 33,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_cylindrical_real_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 34,
+   "skipped": 10
+  },
+  "meep_gpu/test_metal_cylindrical_real_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 26,
+   "skipped": 2
+  },
+  "meep_gpu/test_metal_cylindrical_real_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 19,
+   "skipped": 4
+  },
+  "meep_gpu/test_metal_dispatch.py": {
+   "failed": [],
+   "passed": 37,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_dispersive_update_e.py": {
+   "failed": [],
+   "passed": 11,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_environment.py": {
+   "failed": [],
+   "passed": 55,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_folded_beta.py": {
+   "failed": [],
+   "passed": 39,
+   "skipped": 7
+  },
+  "meep_gpu/test_metal_folded_complex.py": {
+   "failed": [],
+   "passed": 9,
+   "skipped": 117
+  },
+  "meep_gpu/test_metal_folded_complex_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 46,
+   "skipped": 8
+  },
+  "meep_gpu/test_metal_folded_complex_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 37,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_folded_dispersive_update_e.py": {
+   "failed": [],
+   "passed": 9,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_folded_fused_dispersive_pair.py": {
+   "failed": [],
+   "passed": 13,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_folded_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 126,
+   "skipped": 2
+  },
+  "meep_gpu/test_metal_folded_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 47,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_folded_fused_pair.py": {
+   "failed": [],
+   "passed": 19,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_folded_offdiag.py": {
+   "failed": [],
+   "passed": 106,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_folded_offdiag_dispersive_update_e.py": {
+   "failed": [],
+   "passed": 14,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_fused_ade_chain.py": {
+   "failed": [],
+   "passed": 39,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_fused_dispersive_pair.py": {
+   "failed": [],
+   "passed": 41,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 42,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 121,
+   "skipped": 3
+  },
+  "meep_gpu/test_metal_fused_hd_pair_nonlinear.py": {
+   "failed": [],
+   "passed": 14,
+   "skipped": 2
+  },
+  "meep_gpu/test_metal_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 33,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_fused_pair_deposit_wiring.py": {
+   "failed": [],
+   "passed": 34,
+   "skipped": 3
+  },
+  "meep_gpu/test_metal_held_fallback.py": {
+   "failed": [],
+   "passed": 49,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_kernels.py": {
+   "failed": [],
+   "passed": 63,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_no_pml_conductive.py": {
+   "failed": [],
+   "passed": 17,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_no_pml_constitutive.py": {
+   "failed": [],
+   "passed": 113,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_no_pml_curl.py": {
+   "failed": [],
+   "passed": 32,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_no_pml_fused_electric_pairs.py": {
+   "failed": [],
+   "passed": 44,
+   "skipped": 1
+  },
+  "meep_gpu/test_metal_no_pml_stored_e.py": {
+   "failed": [],
+   "passed": 13,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_nonlinear_update_e.py": {
+   "failed": [],
+   "passed": 65,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_offdiag.py": {
+   "failed": [],
+   "passed": 66,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_offdiag_stencil_welds.py": {
+   "failed": [],
+   "passed": 87,
+   "skipped": 1
+  },
+  "meep_gpu/test_metal_planner_composition.py": {
+   "failed": [],
+   "passed": 117,
+   "skipped": 36
+  },
+  "meep_gpu/test_metal_residency_barrier.py": {
+   "failed": [],
+   "passed": 14,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_residency_ownership.py": {
+   "failed": [],
+   "passed": 54,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_residue_fused_pairs.py": {
+   "failed": [],
+   "passed": 39,
+   "skipped": 9
+  },
+  "meep_gpu/test_metal_runs.py": {
+   "failed": [],
+   "passed": 32,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_silent_deposit.py": {
+   "failed": [],
+   "passed": 5,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_softfp64.py": {
+   "failed": [],
+   "passed": 94,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_special_kz.py": {
+   "failed": [],
+   "passed": 84,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_start_of_h.py": {
+   "failed": [],
+   "passed": 13,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_symmetry.py": {
+   "failed": [],
+   "passed": 241,
+   "skipped": 0
+  },
+  "meep_gpu/test_metal_weld_contract.py": {
+   "failed": [],
+   "passed": 26,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_beta_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 48,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_beta_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 29,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_bfast.py": {
+   "failed": [],
+   "passed": 90,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_bfast_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 48,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_bfast_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 29,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_certified_fused_products.py": {
+   "failed": [],
+   "passed": 227,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_chunk_bounds.py": {
+   "failed": [],
+   "passed": 38,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_complex_ade.py": {
+   "failed": [],
+   "passed": 19,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_complex_beta_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 13,
+   "skipped": 9
+  },
+  "meep_gpu/test_triton_complex_beta_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 12,
+   "skipped": 9
+  },
+  "meep_gpu/test_triton_complex_conductive_fused_pair.py": {
+   "failed": [],
+   "passed": 24,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_complex_fields.py": {
+   "failed": [],
+   "passed": 74,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_complex_fused_ade_chain.py": {
+   "failed": [],
+   "passed": 33,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_complex_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 20,
+   "skipped": 14
+  },
+  "meep_gpu/test_triton_complex_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 47,
+   "skipped": 3
+  },
+  "meep_gpu/test_triton_complex_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 19,
+   "skipped": 11
+  },
+  "meep_gpu/test_triton_complex_no_pml_conductive.py": {
+   "failed": [],
+   "passed": 35,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_complex_no_pml_curl.py": {
+   "failed": [],
+   "passed": 83,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_complex_no_pml_stored_e.py": {
+   "failed": [],
+   "passed": 21,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_complex_offdiag_update_e.py": {
+   "failed": [],
+   "passed": 14,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_conductive_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 47,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_conductivity.py": {
+   "failed": [
+    "meep_gpu.test_triton_conductivity::test_the_conductivity_composition_fingerprint_names_the_exact_gated_bytes"
+   ],
+   "passed": 44,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_cylindrical.py": {
+   "failed": [],
+   "passed": 43,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_cylindrical_complex.py": {
+   "failed": [],
+   "passed": 168,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_cylindrical_composition.py": {
+   "failed": [],
+   "passed": 6,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_cylindrical_fused_electric_pair.py": {
+   "failed": [
+    "meep_gpu.test_triton_cylindrical_fused_electric_pair::test_the_module_has_no_fingerprints_entry_until_its_gate_has_run"
+   ],
+   "passed": 37,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_cylindrical_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 25,
+   "skipped": 7
+  },
+  "meep_gpu/test_triton_cylindrical_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 21,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_cylindrical_real_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 51,
+   "skipped": 3
+  },
+  "meep_gpu/test_triton_cylindrical_real_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 43,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_cylindrical_real_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 27,
+   "skipped": 4
+  },
+  "meep_gpu/test_triton_device_identity.py": {
+   "failed": [],
+   "passed": 4,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_dispersive_fused_pair.py": {
+   "failed": [
+    "meep_gpu.test_triton_dispersive_fused_pair::test_the_fused_dispersive_record_is_welded_to_every_live_dependency"
+   ],
+   "passed": 14,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_dispersive_update_e.py": {
+   "failed": [
+    "meep_gpu.test_triton_dispersive_update_e::test_the_dispersive_composition_fingerprint_names_the_exact_gated_bytes"
+   ],
+   "passed": 41,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_folded_beta_complex_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 43,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_folded_beta_complex_fused_pair.py": {
+   "failed": [],
+   "passed": 43,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_folded_beta_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 47,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_folded_beta_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 46,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_folded_complex.py": {
+   "failed": [],
+   "passed": 175,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_folded_complex_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 63,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_folded_complex_fused_pair.py": {
+   "failed": [],
+   "passed": 74,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_folded_complex_offdiag_admission.py": {
+   "failed": [],
+   "passed": 17,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_folded_dispersive_fused_pair.py": {
+   "failed": [],
+   "passed": 56,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_folded_dispersive_update_e.py": {
+   "failed": [],
+   "passed": 23,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_folded_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 45,
+   "skipped": 4
+  },
+  "meep_gpu/test_triton_folded_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 41,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_folded_fused_pair.py": {
+   "failed": [],
+   "passed": 44,
+   "skipped": 2
+  },
+  "meep_gpu/test_triton_folded_offdiag_dispersive_update_e.py": {
+   "failed": [],
+   "passed": 19,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_folded_offdiag_fused_ade_chain.py": {
+   "failed": [],
+   "passed": 102,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_folded_offdiag_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 38,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_folded_offdiag_update_e.py": {
+   "failed": [],
+   "passed": 77,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_fused_ade_chain.py": {
+   "failed": [],
+   "passed": 85,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_fused_ade_state.py": {
+   "failed": [
+    "meep_gpu.test_triton_fused_ade_state::test_fused_ADE_state_record_is_welded_to_every_live_dependency"
+   ],
+   "passed": 7,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_fused_dispersive_chain.py": {
+   "failed": [],
+   "passed": 28,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_fused_hd_pair.py": {
+   "failed": [],
+   "passed": 47,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_hd_tail_products.py": {
+   "failed": [],
+   "passed": 71,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_kernels.py": {
+   "failed": [
+    "meep_gpu.test_triton_kernels::test_the_fingerprint_record_matches_the_shipped_kernel_source",
+    "meep_gpu.test_triton_kernels::test_the_fused_electric_record_is_welded_to_both_oracles_and_the_route"
+   ],
+   "passed": 92,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_no_pml.py": {
+   "failed": [
+    "meep_gpu.test_triton_no_pml::test_the_no_pml_composition_fingerprint_names_the_exact_gated_bytes",
+    "meep_gpu.test_triton_no_pml::test_the_recorded_kernel_hash_matches_the_shipped_kernel"
+   ],
+   "passed": 59,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_no_pml_ade.py": {
+   "failed": [],
+   "passed": 32,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_no_pml_conductive.py": {
+   "failed": [],
+   "passed": 55,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_no_pml_constitutive.py": {
+   "failed": [],
+   "passed": 172,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_no_pml_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 41,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_no_pml_stored_e.py": {
+   "failed": [],
+   "passed": 37,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_nonlinear_fused_magnetic_pair.py": {
+   "failed": [],
+   "passed": 29,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_nonlinear_update_e.py": {
+   "failed": [],
+   "passed": 87,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_offdiag_fused_electric_pair.py": {
+   "failed": [],
+   "passed": 37,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_offdiag_update_e.py": {
+   "failed": [],
+   "passed": 64,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_planner_composition.py": {
+   "failed": [],
+   "passed": 276,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_residual_group_wiring.py": {
+   "failed": [],
+   "passed": 30,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_residual_probe_discipline.py": {
+   "failed": [],
+   "passed": 21,
+   "skipped": 1
+  },
+  "meep_gpu/test_triton_source_seams.py": {
+   "failed": [],
+   "passed": 14,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_special_kz.py": {
+   "failed": [],
+   "passed": 80,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_symmetry.py": {
+   "failed": [],
+   "passed": 47,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_symmetry_composition.py": {
+   "failed": [],
+   "passed": 9,
+   "skipped": 0
+  },
+  "meep_gpu/test_triton_weld_contract.py": {
+   "failed": [
+    "meep_gpu.test_triton_weld_contract::test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest",
+    "meep_gpu.test_triton_weld_contract::test_the_triton_code_tier_recomputes_against_the_tree",
+    "meep_gpu.test_triton_weld_contract::test_the_triton_device_tier_recomputes_against_the_tree",
+    "meep_gpu.test_triton_weld_contract::test_the_triton_welds_are_bound_to_the_live_sources",
+    "meep_gpu.test_triton_weld_contract::test_the_walker_finds_a_digest_planted_at_a_new_nesting_depth"
+   ],
+   "passed": 27,
+   "skipped": 0
+  }
+ },
+ "files_not_run": [],
+ "host": {
+  "machine": "arm64",
+  "python": "3.12.13",
+  "system": "Darwin"
+ },
+ "note": "carved from one integration's suites: the CUDA and Triton test files' cases of its package suite (CPU-only shim, Apple GPU hidden, SUITE_ENFORCE_SKIPS=0) and the Metal test files' cases of its device run (Apple GPU, no shim), on this tree's outcome subject; every marker; MEEP_GPU_DISPATCH=0",
+ "recorded_utc": "2026-10-16T01:29:32Z",
+ "reports": [
+  {
+   "file": "host_b176.xml",
+   "sha256": "0d834d60e2057ff7f0a196dd070622d20630f93f5cc840b949f0b888db37a810"
+  },
+  {
+   "file": "device_b176.xml",
+   "sha256": "502cc690227c4f3a0ebd579a766cbd360a80cee2fe9d78f5d966e596500cd3eb"
+  }
+ ],
+ "schema": "meep_gpu.parity_board_outcomes",
+ "subject_files": 1152,
+ "subject_manifest_sha256": "a83679c745e50993792457698a826507c70df48ff89515a597ce649e389e0830",
+ "version": 1
+}

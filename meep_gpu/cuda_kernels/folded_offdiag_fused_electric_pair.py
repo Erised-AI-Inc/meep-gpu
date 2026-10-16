@@ -106,6 +106,7 @@ import numpy as np
 from . import coverage as _coverage
 from . import folded_offdiag_kernels as _folded
 from . import offdiag_emitter as _flat
+from . import offdiag_presence as _presence
 from . import offdiag_stencil_weld as _weld
 from .compile_cache import (clear_kernel_cache as _clear_cache,
                             get_or_compile as _get_or_compile,
@@ -245,9 +246,10 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = _weld.CURL_LIFT_EDITS + (
                "ghosted_mirror(comp, corner, mg, w, weld);",
      "why": "the same, for the term's other two foreign samples, keeping the "
             "asymmetry the certified body has: the UP leg is the component's own "
-            "axis, unweighted and unredirected. The 0.25f scale, the coefficient "
-            "multiply BETWEEN the two shifts and the two accumulations are untouched "
-            "-- the return line is verbatim."},
+            "axis, unweighted and unredirected. The coefficient multiply BETWEEN "
+            "the two shifts and the float32 sum are untouched -- the return line is "
+            "verbatim -- and so are the double scale, the presence-guarded row and "
+            "its one rounding in the lifted body."},
     {"line": "        flat(...),\n        mg_*, gw_*);   (each term's closing line)",
      "became": "        mg_*, gw_*, weld);",
      "why": "the resolved helper needs the argument pack. Found STRUCTURALLY -- the "
@@ -273,15 +275,22 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = _weld.CURL_LIFT_EDITS + (
             "constitutive body reads its own. Letting one shadow the other is a "
             "wrong ghost rule on a whole plane, not a compile failure. Three lines, "
             "one per axis."},
+    {"line": "    const int wi = chunk_row(i, bc_x == BC_METALLIC);",
+     "became": "    const int wi = chunk_row(i, cbc_x == BC_METALLIC);",
+     "why": "the presence labels' wall-row clamp reads the constitutive's codes, the "
+            "ones offdiag_presence.presence_words built the words against: on a folded "
+            "metallic-terminated axis the curl's code is METALLIC and the "
+            "constitutive's MIRROR, whose row 0 is a ghost, not a wall. Three lines."},
     {"line": "    int mg_x = (bc_x == BC_MIRROR) && at_x;",
      "became": "    int mg_x = (cbc_x == BC_MIRROR) && at_x;",
      "why": "the same rename on the ghost-lane predicate, which the certified body "
             "DERIVES FROM bc_* IN ONE PLACE precisely so the index redirect and the "
             "weight cannot disagree about which lane is the ghost. Renaming one and "
             "not the other would break exactly that property. Three lines."},
-    {"line": "    constitutive_apply(E*, f_w_E*, idx, src_E*, kps_*[*], kms_*[*]);",
+    {"line": "    constitutive_apply(E*, f_w_E*, idx, src_E*, kps_*[*], kms_*[*], "
+             "in_h_*);",
      "became": "    constitutive_apply(E*, f_w_E*, idx, src_E*, kps_*[*], "
-               "kms_half_*[*]);",
+               "kms_half_*[*], in_h_*);",
      "why": "ONE RENAME, NO ARITHMETIC -- the integer/half-integer sub-lattice "
             "collision, half a cell in the absorber profile."},
     {"line": "    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n"
@@ -342,8 +351,10 @@ def prelude() -> str:
 def signature(row_mask: Sequence[int]) -> str:
     """The kernel's parameter list, with only the LIVE row coefficients bound."""
     mask = _flat.normalized_row_mask(row_mask)
-    rows = "\n".join(f"    const float* {_flat.ROW_PARAMETERS[slot]},"
-                     for slot, flag in enumerate(mask) if flag)
+    rows = "\n".join([f"    const float* {_flat.ROW_PARAMETERS[slot]},"
+                      for slot, flag in enumerate(mask) if flag]
+                     + [f"    int {_flat.KEPT_PARAMETERS[slot]},"
+                        for slot, flag in enumerate(mask) if flag])
     return f'''
 extern "C" __global__ void {KERNEL_NAME}(
     // THE SCRATCH OUTPUTS. A DIFFERENT ALLOCATION from the D/fu group below --
@@ -370,7 +381,8 @@ extern "C" __global__ void {KERNEL_NAME}(
     // (fields.py:1321-1326).
     const float* inv_eps_Ex, const float* inv_eps_Ey, const float* inv_eps_Ez,
     // NOT __restrict__ either: a row volume may legally alias another row's, an
-    // epsilon volume or a D volume.
+    // epsilon volume or a D volume. Each live row's presence word follows the rows
+    // (offdiag_presence.presence_words).
 {rows}
     int nx, int ny, int nz, float dtdx,
     // The D curl's INTEGER split-field coefficients, certified names kept.
@@ -411,7 +423,11 @@ extern "C" __global__ void {KERNEL_NAME}(
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
     float near_phase_x, float near_phase_y, float near_phase_z,
-    float far_phase_x, float far_phase_y, float far_phase_z
+    float far_phase_x, float far_phase_y, float far_phase_z,
+    // The run's chunk record (chunk_map.chunk_bounds_record): the curl half's forms,
+    // evaluated at the cell raw_step_D_cell is called for, and the constitutive
+    // half's forms and the presence labels at the thread's own cell.
+    const int* __restrict__ cb
 ) {{
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 1253->1282
 
@@ -455,6 +471,19 @@ def constitutive_body(row_mask: Sequence[int]) -> str:
         body = body.replace(
             ghost, ghost.replace(f"(bc_{letter} ==", f"(cbc_{letter} ==", 1), 1)
 
+    # (1b) THE CHUNK LABELS READ THE CONSTITUTIVE'S CODES TOO: the wall-row clamp of
+    #      the certified chunk lines asks whether an axis is a metallic wall, and on a
+    #      folded metallic-terminated axis the curl's code says METALLIC where the
+    #      constitutive's says MIRROR (its row 0 is a ghost, not a wall).
+    for letter, coordinate in zip("xyz", "ijk"):
+        old = f"chunk_row({coordinate}, bc_{letter} == BC_METALLIC);"
+        if body.count(old) != 1:
+            raise AssertionError(
+                f"the certified folded body carries {body.count(old)} copies of the "
+                f"axis-{letter} chunk-row line, not one; the rename has no anchor")
+        body = body.replace(old, f"chunk_row({coordinate}, cbc_{letter} == BC_METALLIC);",
+                            1)
+
     # (2) THE SEAM, diagonal half.
     for component, target in enumerate(_D_TARGETS):
         name = _ELECTRIC[component]
@@ -492,7 +521,7 @@ def constitutive_body(row_mask: Sequence[int]) -> str:
             body, f"    constitutive_apply({name}, f_w_{name}, idx, src_{name},",
             f"{name}'s certified constitutive_apply call")
         wanted = (f"    constitutive_apply({name}, f_w_{name}, idx, src_{name},"
-                  f" kps_{axis}[{index}], kms_{axis}[{index}]);")
+                  f" kps_{axis}[{index}], kms_{axis}[{index}], in_h_{axis});")
         if line != wanted:
             raise AssertionError(
                 f"the certified folded body spells {name}'s constitutive tail "
@@ -501,7 +530,7 @@ def constitutive_body(row_mask: Sequence[int]) -> str:
         body = body.replace(
             line,
             f"    constitutive_apply({name}, f_w_{name}, idx, src_{name},"
-            f" kps_{axis}[{index}], kms_half_{axis}[{index}]);", 1)
+            f" kps_{axis}[{index}], kms_half_{axis}[{index}], in_h_{axis});", 1)
     return body
 
 
@@ -841,14 +870,20 @@ def launch_folded_offdiag_fused_electric_pair(
         fields: Any, scratch: Dict[str, Any], tables: Dict[str, Dict[str, Any]],
         codes: Dict[str, Tuple[int, ...]], wall_mask: Sequence[int],
         weights: Sequence[float], fills: Dict[str, Tuple[Any, ...]], dtdx: float,
-        row_mask: Sequence[int], rows: Sequence[Any],
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
+        row_mask: Sequence[int], rows: Sequence[Any], kept: Sequence[int],
+        chunk_bounds: Any, kernel: Optional[Any] = None) -> Dict[str, Any]:
     """All five of :data:`REPLACES` in ONE launch. THE CALLER ROTATES AFTERWARDS.
+
+    ``kept`` is the six presence words in slot order (0 for a dead slot) and
+    ``chunk_bounds`` the run's chunk record on the device.
 
     ``kernel`` IS THE GATE'S DOOR: a gate compiles a deliberately broken copy of the
     shipped source and hands it here. A launcher that could not be handed its own
     kernel could not arm a single mutation.
     """
+    if len(kept) != len(_flat.KEPT_PARAMETERS):
+        raise ValueError(f"kept carries {len(kept)} presence words, not one per row slot")
+    cb = constitutive_kernels.chunk_record_argument(chunk_bounds)
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
@@ -859,6 +894,7 @@ def launch_folded_offdiag_fused_electric_pair(
                    "Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez")]
     arguments += [fields.inverse_epsilon_for(component) for component in _ELECTRIC]
     arguments += list(rows)
+    arguments += [np.int32(int(word)) for word, flag in zip(kept, row_mask) if flag]
     arguments += [np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx)]
     for axis in ("x", "y", "z"):
         arguments += [curl[f"kms_{axis}"], curl[f"sinv_{axis}"]]
@@ -873,10 +909,12 @@ def launch_folded_offdiag_fused_electric_pair(
     arguments += [np.int32(int(row)) for row in fills["reflect"]]
     arguments += [np.float32(float(value)) for value in fills["near_phase"]]
     arguments += [np.float32(float(value)) for value in fills["far_phase"]]
+    arguments += [cb]
     (kernel or _get_kernel(row_mask))((blocks,), (_FUSED_THREADS,), tuple(arguments))
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
             "row_mask": tuple(int(flag) for flag in row_mask),
+            "kept": tuple(int(word) for word in kept),
             "boundary_codes": {key: tuple(value) for key, value in codes.items()},
             "coupling_wall_mask": tuple(int(bool(flag)) for flag in wall_mask),
             "ghost_weights": tuple(float(value) for value in weights),
@@ -920,9 +958,13 @@ def run_folded_offdiag_fused_electric_pair(
                                wall_mask, weights, fills)
     mask = _flat.normalized_row_mask(offdiag_row_mask(fields))
     rows = [volume for volume in offdiag_row_volumes(fields) if volume is not None]
+    chunk_record, kept = _presence.launch_chunk_arguments(fields, pml,
+                                                          codes["constitutive"])
+    import cupy as cp  # noqa: PLC0415 - device-only, in a laptop-importable module
+    chunk_bounds = cp.asarray(np.asarray(chunk_record, dtype=np.int32))
     record = launch_folded_offdiag_fused_electric_pair(
         fields, scratch, tables, codes, wall_mask, weights, fills, dtdx, mask, rows,
-        kernel)
+        kept, chunk_bounds, kernel)
     record["rotated"] = bool(rotate)
     record["scratch"] = rotate_into_fields(fields, scratch) if rotate else scratch
     return record

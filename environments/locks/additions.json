@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "about": "What recut_locks.py adds to each reference lock beyond the environment the lock was read from, each pinned to one artifact, with what needs it. Found by an inventory of what the package, its tests, the certification round, the timing harness and the MEEP identity corpus import or run (README.md, 'What the environment carries'). The tool solves the lock's own lines and these, refuses unless the solve returns exactly them, and writes the locks. role: meep_links (MEEP links it; numerics-relevant.json judges it), corpus_only (only the identity corpus needs it; numerics-relevant.json names it apart), tool (a program the round or the tests run), tests (only the test suite imports it). floor: the virtual packages of the solve, the lock's host floor.",
+  "platforms": {
+    "osx-arm64": {
+      "conda_lock": "meep-gpu-ref-osx-arm64.conda.txt",
+      "pip_lock": "meep-gpu-ref-osx-arm64.pip.txt",
+      "floor": {
+        "CONDA_OVERRIDE_OSX": "11.0"
+      },
+      "conda": [
+        {
+          "name": "libgdsii",
+          "version": "0.21",
+          "build": "ha393de7_5",
+          "role": "meep_links",
+          "needed_by": "MEEP's configure links libGDSII when it finds the header and the library (AC_CHECK_LIB(GDSII, libGDSIIExists)); without it mp.get_GDSII_prisms and mp.GDSII_vol abort, so ex.coupler and ex.ring_gds cannot run"
+        },
+        {
+          "name": "gdspy",
+          "version": "1.6.13",
+          "build": "py312h389731b_1",
+          "role": "corpus_only",
+          "needed_by": "ex.ring_gds imports gdspy to write the GDSII file it reads back; PyPI has no wheel of gdspy for this platform"
+        },
+        {
+          "name": "git",
+          "version": "2.53.0",
+          "build": "pl5321hc9deb11_0",
+          "role": "tool",
+          "needed_by": "the round's chunk tooling (rounds/1.0/chunks.py, legs.py, metal_round.py, l3_corpus.py), the boards (build_triton_fusion_matrix.py, repoint_board_bindings.py, snapshot_census_tree.py), the hygiene guard (tools/ci/check_hygiene.py) and their tests run git"
+        }
+      ],
+      "pypi": [
+        {
+          "name": "llvmlite",
+          "version": "0.47.0",
+          "wheel": "llvmlite-0.47.0-cp312-cp312-macosx_11_0_arm64.whl",
+          "role": "tests",
+          "needed_by": "meep_gpu/subnormal_policy.py hands the Triton IR its policy rewrites to LLVM's own parser when llvmlite imports; five tests of meep_gpu/test_subnormal_policy.py skip by the declared resource [llvmlite] without it"
+        },
+        {
+          "name": "imageio-ffmpeg",
+          "version": "0.6.0",
+          "wheel": "imageio_ffmpeg-0.6.0-py3-none-macosx_11_0_arm64.whl",
+          "role": "corpus_only",
+          "needed_by": "t.test_visualization.TestVisualization.test_animation_output is skipped unless `which ffmpeg` succeeds; the wheel carries one ffmpeg executable that loads only the operating system's libraries and no shared library of its own, and the build scripts link it into <prefix>/bin"
+        }
+      ]
+    },
+    "linux-64": {
+      "conda_lock": "meep-gpu-ref-linux-64.conda.txt",
+      "pip_lock": "meep-gpu-ref-linux-64.pip.txt",
+      "floor": {
+        "CONDA_OVERRIDE_GLIBC": "2.28",
+        "CONDA_OVERRIDE_CUDA": "11.8"
+      },
+      "conda": [
+        {
+          "name": "libgdsii",
+          "version": "0.21",
+          "build": "h84d6215_5",
+          "role": "meep_links",
+          "needed_by": "MEEP's configure links libGDSII when it finds the header and the library (AC_CHECK_LIB(GDSII, libGDSIIExists)); without it mp.get_GDSII_prisms and mp.GDSII_vol abort, so ex.coupler and ex.ring_gds cannot run"
+        },
+        {
+          "name": "gdspy",
+          "version": "1.6.13",
+          "build": "py310hd41b1e2_1",
+          "role": "corpus_only",
+          "needed_by": "ex.ring_gds imports gdspy to write the GDSII file it reads back; PyPI has no wheel of gdspy for this platform"
+        },
+        {
+          "name": "git",
+          "version": "2.55.0",
+          "build": "pl5321h5685339_1",
+          "role": "tool",
+          "needed_by": "the round's chunk tooling (rounds/1.0/chunks.py, legs.py, run_lane.py, l3_corpus.py), the boards (build_triton_fusion_matrix.py, repoint_board_bindings.py, snapshot_census_tree.py), the hygiene guard (tools/ci/check_hygiene.py) and their tests run git"
+        },
+        {
+          "name": "binutils",
+          "version": "2.46.1",
+          "build": "default_h4852527_103",
+          "role": "tool",
+          "needed_by": "the unprefixed names (objdump, c++filt, readelf, ar, nm, ranlib, strip) of the binutils the lock's compilers already use: tools/fma_census.py runs `objdump` and `c++filt`, and MEEP's build runs `ar`, `nm`, `ranlib` and `strip`, which otherwise come from the host"
+        }
+      ],
+      "pypi": [
+        {
+          "name": "llvmlite",
+          "version": "0.47.0",
+          "wheel": "llvmlite-0.47.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+          "role": "tests",
+          "needed_by": "meep_gpu/subnormal_policy.py hands the Triton IR its policy rewrites to LLVM's own parser when llvmlite imports; five tests of meep_gpu/test_subnormal_policy.py skip by the declared resource [llvmlite] without it"
+        },
+        {
+          "name": "imageio-ffmpeg",
+          "version": "0.6.0",
+          "wheel": "imageio_ffmpeg-0.6.0-py3-none-manylinux2014_x86_64.whl",
+          "role": "corpus_only",
+          "needed_by": "t.test_visualization.TestVisualization.test_animation_output is skipped unless `which ffmpeg` succeeds; the wheel carries one statically linked ffmpeg executable and no shared library, and the build scripts link it into <prefix>/bin"
+        }
+      ]
+    }
+  }
+}

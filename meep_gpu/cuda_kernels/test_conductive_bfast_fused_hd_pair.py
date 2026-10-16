@@ -93,10 +93,15 @@ def _stub_fields(variant: str, mask) -> _Stub:
     return _Stub(names, mask or (True, True, True))
 
 
-def _stub_state(variant: str, mask) -> Dict[str, Any]:
+def _stub_state(variant: str, mask, keep=(True, True, True)) -> Dict[str, Any]:
+    conductive = variant == "conductive"
     return {
         "variant": variant,
-        "cond": tuple(mask) if variant == "conductive" else None,
+        "cond": tuple(mask) if conductive else None,
+        "keep": tuple(keep) if conductive else None,
+        "masks": (tuple(None if flag else f"<ck_D{'xyz'[n]}>" for n, flag in enumerate(keep))
+                  if conductive else (None, None, None)),
+        "chunk_bounds": "<cb>",
         "tables": {group: {axis: f"<{group}_{axis}>" for axis in "xyz"}
                    for group in ("kms", "sinv", "kps")},
         "boundary_codes": (1, 0, 1),
@@ -159,17 +164,21 @@ def test_the_conductive_mask_selects_the_branches_it_names():
             assert f"pml_apply({target}, fu_{target}," in source
 
 
-def test_the_bfast_insert_survives_whole():
-    """The SUM, the Tustin term, the double mask and the IIR store are all present."""
+def test_the_bfast_pass_survives_whole():
+    """MEEP's BFAST pass after each component's curl arrives whole: the state step over
+    the curl's own operands, its ownership flag spelled from the curl's own mask lines,
+    and the folded ladder on the word ``pml_apply`` just stored."""
     source = _source("bfast", None)
-    assert source.count("* (sf + f1)") == 3
-    assert source.count("float advance = total - (2.0f * bprev);") == 3
+    body = source.split('extern "C" __global__ void fused_hd_pair_bfast_real(', 1)[1]
+    assert body.count("bfast_pass(fb_D") == 3
+    assert body.count("fold_apply(D") == 3
     for axis in "xyz":
-        assert f"fb_D{axis}[idx] = bprev + advance;" in source
-    # THE MASK IS APPLIED TWICE, to two different things -- on `advance` before the
-    # state absorbs it and on the `curl` it was added to. Equal counts is what says
-    # neither copy was dropped by the lift.
-    assert source.count("advance = 0.0f;") == source.count("curl = 0.0f;")
+        assert f"bfast_pass(fb_D{axis}, idx, sf, f1, ss, f2, " in body
+    # THE OWNERSHIP FLAG IS THE CURL'S MASK, re-spelled: one owned_cell line per
+    # curl mask line, so neither copy was dropped by the lift.
+    assert body.count("owned_cell = 0;") == body.count("curl = 0.0f;")
+    # The state is written on owned cells only, the prelude's own BFAST helper.
+    assert "    if (!owned) return 0.0f;\n    F[idx] = updated;" in source
 
 
 def test_the_two_variants_emit_two_distinct_device_strings():
@@ -197,10 +206,12 @@ def test_the_lifted_constitutive_half_is_read_not_copied():
         assert literal.count(old) == 1
         literal = literal.replace(old, new, 1)
     assert literal == lifted
-    # THE TWO ACCUMULATIONS STAY SEPARATE and `prev` is still read before the store.
-    assert "float a = f[idx] + kps * src;" in lifted
-    assert "return a - kms * prev;" in lifted
-    assert lifted.index("float prev = fw[idx];") < lifted.index("*fw_out = src;")
+    # MEEP's accumulation, the right-hand side formed first (A2), and the plain form's
+    # output select; `prev` is read before the handed-back store.
+    assert ("float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;"
+            in lifted)
+    assert (lifted.index("float prev = dsigw ? fw[idx] : 0.0f;")
+            < lifted.index("*fw_out = dsigw ? src : fw[idx];"))
 
 
 def test_a_changed_certified_anchor_raises_rather_than_splicing_around_it():
@@ -250,9 +261,15 @@ def test_the_launcher_binds_the_emitted_signature_slot_for_slot(variant, cond):
                     "f_w_Hz_out": "<f_w_Hz_out>"}.get(name)
         if expected is None:
             for prefix, group in (("cf", "condfac"), ("ci", "condinv"),
-                                  ("fc", "f_cond")):
+                                  ("fc", "f_cond"), ("ck", "ck")):
                 if re.fullmatch(prefix + r"[012]", name):
                     component = family.D_TARGETS[int(name[-1])]
+                    if prefix == "ck":
+                        # A target every chunk keeps binds its own volume (KEEP<n> 1,
+                        # never dereferenced); otherwise the conductive-chunk mask.
+                        kept = state["keep"][int(name[-1])]
+                        expected = f"<{component}>" if kept else f"<ck_{component}>"
+                        break
                     live = state["cond"][int(name[-1])]
                     expected = (f"<{group}_{component}>" if live
                                 else f"<{component}>")
@@ -285,7 +302,7 @@ def test_a_swapped_argument_is_caught_by_that_comparison(variant, cond):
     arguments[0], arguments[1] = arguments[1], arguments[0]
     mismatched = [index for index, (name, value) in enumerate(zip(names, arguments))
                   if str(value).startswith("<") and str(value) != f"<{name}>"
-                  and not re.fullmatch(r"(cf|ci|fc)[012]", name)]
+                  and not re.fullmatch(r"(cf|ci|fc|ck)[012]", name)]
     assert mismatched, "a swapped argument pair was not visible to the comparison"
 
 
@@ -390,3 +407,17 @@ def test_every_shipped_kernel_name_is_in_exactly_one_partition_set():
 def test_the_active_layer_clause_is_declared_and_explained():
     assert family.ACTIVE_LAYER_ONLY is True
     assert "step_D_no_pml_conductive" in family.__doc__ or True
+
+
+def test_an_unkept_target_binds_its_conductive_chunk_mask():
+    """Where a chunk keeps none of a target's conductivity the weld binds the region
+    plan's mask in that slot and compiles KEEP<n> 0, as the certified launcher does."""
+    state = _stub_state("conductive", (True, True, True), keep=(True, False, True))
+    fields = _stub_fields("conductive", (True, True, True))
+    arguments = [str(v) for v in family._launch_arguments(fields, state)]  # noqa: SLF001
+    assert "<ck_Dy>" in arguments and "<ck_Dx>" not in arguments
+    source = family.kernel_source("conductive", (True, True, True),
+                                  keep=(True, False, True))
+    assert "#define KEEP1 0" in source and "#define KEEP0 1" in source
+    with pytest.raises(ValueError):
+        family.certified_curl_text("bfast", None, keep=(True, True, True))

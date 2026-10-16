@@ -283,50 +283,34 @@ def test_k_zero_is_refused_by_the_inverted_clause(bf):
                for r in _constitutive_reasons(bf, fields, pml, "E"))
 
 
-def test_a_nonzero_k_on_an_invariant_axis_is_refused_by_clause_11a(bf):
-    """Clause 11a: the ONE reachable class where the array path this kernel
-    transcribes is not MEEP's answer.
-
-    MEEP nulls the partner OPERAND as well as zeroing the coefficient
-    (step_db.cpp:62-63 vs :130-133) and step_bfast swaps a null g1 into the g2
-    slot with k1 := k2 (step_generic.cpp:342-346), so either false flag gives
-    F_new = -F_prev with the other term DROPPED. stepping.py:911-912 zeroes
-    only the coefficient. The two agree only while the surviving k is zero."""
+def test_a_nonzero_k_on_an_invariant_axis_is_admitted(bf):
+    """The class the previous kernel refused (a nonzero k on a DECLARED-invariant
+    axis) is admitted: the array path now takes MEEP's one-partner forms there -- the
+    absent partner is not read (step_db.cpp:62-63, step_generic.cpp:342-346) -- and so
+    does this kernel."""
     fields, pml = _guard_2d_build(bfast=(0.4, 0.0, 0.3))
     assert fields.grid.is_invariant(2) is True
-    reasons = _curl_reasons(bf, fields, pml)
-    assert any("DECLARED-invariant axis 2" in r for r in reasons), reasons
-    assert any("DECLARED-invariant axis 2" in r
-               for r in _constitutive_reasons(bf, fields, pml, "E"))
-    # The in-plane k on the SAME grid stays admitted: only the invariant axis
-    # carries the gap, and the marquee/guard needles must not be fenced off.
-    assert _curl_reasons(bf, *_guard_2d_build()) == []
+    assert _curl_reasons(bf, fields, pml) == []
+    assert _constitutive_reasons(bf, fields, pml, "E") == []
 
 
-def test_the_refused_class_is_exactly_where_stepping_leaves_meep(bf):
-    """The measurement behind clause 11a, on real objects, not a citation.
-
-    MEEP's whole increment on a false flag is F_new = -F_prev. At kz = 0 the
-    array path lands on that EXACTLY (max|diff| = 0 in f32) for the two guarded
-    targets; at kz != 0 it does not — which is what clause 11a refuses."""
-    def measure(bfast):
+def test_a_k_on_the_invariant_axis_moves_no_word(bf):
+    """The measurement behind admitting it, on real objects: on a declared-2-D grid
+    every product a nonzero k_z would scale multiplies a partner differenced along the
+    invariant z, which MEEP does not read, so a run with k_z = 0.3 stores exactly the
+    k_z = 0 run's words -- states, auxiliaries and fields, on both sub-steps."""
+    def run(bfast):
         fields, pml = _guard_2d_build(bfast=bfast)
-        rng = numpy.random.default_rng(20260812)
-        for name in ("Ex", "Ey", "Ez", "Bx", "By", "Bz",
-                     "fu_Bx", "fu_By", "fu_Bz") + BFAST_STATE_ALL:
-            getattr(fields, name)[...] = rng.uniform(
-                -1, 1, fields.grid.shape).astype(numpy.float32)
-        before = {name: numpy.array(getattr(fields, name))
-                  for name in ("f_bfast_Bx", "f_bfast_By")}
+        _seed(fields)
         stepping.step_B(fields, pml)
-        return {name: float(numpy.max(numpy.abs(
-            numpy.asarray(getattr(fields, name)) - (-value))))
-            for name, value in before.items()}
+        stepping.step_D(fields, pml)
+        return {name: numpy.asarray(getattr(fields, name)).tobytes()
+                for name in ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "fu_Bx", "fu_By",
+                             "fu_Bz", "fu_Dx", "fu_Dy", "fu_Dz") + BFAST_STATE_ALL}
 
-    agrees = measure((0.4, 0.0, 0.0))
-    assert agrees == {"f_bfast_Bx": 0.0, "f_bfast_By": 0.0}, agrees
-    diverges = measure((0.4, 0.0, 0.3))
-    assert min(diverges.values()) > 1e-3, diverges
+    with_kz, without_kz = run((0.4, 0.0, 0.3)), run((0.4, 0.0, 0.0))
+    assert with_kz == without_kz, [name for name in with_kz
+                                   if with_kz[name] != without_kz[name]]
 
 
 def test_complex_storage_is_refused_by_name(bf):
@@ -609,17 +593,33 @@ def test_m_widening_the_boundary_set_is_caught(bf, monkeypatch):
     assert _curl_reasons(bf, fields, pml) == []
 
 
-def test_m_dropping_the_invariant_axis_clause_is_caught(bf, monkeypatch):
-    """Clause 11a is the only thing standing between this product and a
-    configuration where stepping.py is not MEEP — delete it and the kz-on-an-
-    invariant-axis run is admitted."""
-    fields, pml = _guard_2d_build(bfast=(0.4, 0.0, 0.3))
-    assert _curl_reasons(bf, fields, pml) != []
+def test_m_dropping_the_k_assignment_reader_clause_is_caught(bf, monkeypatch):
+    """Clause 11a reads the k assignment's two inputs; a grid that cannot answer
+    ``is_invariant`` is refused by name rather than read as resolving every axis."""
+    fields, pml = _guard_2d_build()
+    grid = fields.grid
+
+    class _Unanswerable:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+        def is_invariant(self, axis):
+            raise RuntimeError("unanswerable")
+
+    shim = SimpleNamespace(**{name: getattr(fields, name) for name in vars(fields)
+                              if not name.startswith("__")})
+    shim.grid = _Unanswerable(grid)
+    reasons = bf._bfast_grid_reasons(shim, pml, shim.grid)
+    assert any("k assignment could not be read" in r for r in reasons), reasons
     mutated = _mutate(bf, bf._bfast_grid_reasons,
-                      "if invariant and component != 0.0:",
-                      "if False:")
+                      "                bool(reader(axis))\n",
+                      "                pass\n")
     monkeypatch.setattr(bf, "_bfast_grid_reasons", mutated)
-    assert _curl_reasons(bf, fields, pml) == []
+    assert not any("k assignment" in r
+                   for r in bf._bfast_grid_reasons(shim, pml, shim.grid))
 
 
 def test_m_dropping_the_bfast_active_clause_is_caught(bf, monkeypatch):
@@ -779,6 +779,21 @@ def _curl_arrays(sub_step="step_B", shape=(4, 3, 5)):
     return arrays, flat
 
 
+def _record(shape):
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, RECORD_WORDS, record_index
+
+    record = numpy.zeros(RECORD_WORDS, dtype=numpy.int32)
+    presence = 0
+    for axis, n in enumerate(shape):
+        if n <= 1:
+            continue
+        presence |= 1 << axis
+        for half in (False, True):
+            record[record_index(half, axis, 1)] = n
+    record[RECORD_PRESENCE_WORD] = presence
+    return record
+
+
 def test_engine_route_plans_return_none_on_a_numpy_host(bf):
     fields, pml = _build()
     assert bf.plan_bfast_pml_curl(fields, pml, "step_B") is None
@@ -789,8 +804,10 @@ def test_the_plan_shape_from_arrays(bf):
     arrays, flat = _curl_arrays()
     ks = bf.bfast_curl_coefficients(FULL_K, (False, False, False), True)
     plan = bf.plan_bfast_pml_curl_from_arrays(
-        "step_B", arrays, flat, (0, 1, 0), 0.35, ks)
+        "step_B", arrays, flat, (0, 1, 0), 0.35, ks,
+        chunk_bounds=_record((4, 3, 5)))
     assert plan.sub_step == "step_B"
+    assert plan.chunk_bounds.tolist() == _record((4, 3, 5)).tolist()
     assert plan.shape == (4, 3, 5)
     assert plan.n_elem == 60
     assert plan.backward == 0
@@ -810,7 +827,8 @@ def test_the_plan_binds_the_state_arrays_pointer_identically(bf):
     arrays, flat = _curl_arrays("step_D")
     ks = bf.bfast_curl_coefficients(FULL_K, (False, False, False), False)
     plan = bf.plan_bfast_pml_curl_from_arrays(
-        "step_D", arrays, flat, (0, 0, 0), 0.35, ks)
+        "step_D", arrays, flat, (0, 0, 0), 0.35, ks,
+        chunk_bounds=_record((4, 3, 5)))
     for pointer, name in zip(plan._states,
                              ("f_bfast_Dx", "f_bfast_Dy", "f_bfast_Dz")):
         assert pointer.array is arrays[name]
@@ -822,15 +840,29 @@ def test_the_identity_arm_is_constructible(bf):
     arrays, flat = _curl_arrays()
     plan = bf.plan_bfast_pml_curl_from_arrays(
         "step_B", arrays, flat, (0, 1, 0), 0.35,
-        (0.1, 0.2, 0.3, 0.4, 0.5, 0.6), has_bfast=0)
+        (0.1, 0.2, 0.3, 0.4, 0.5, 0.6), has_bfast=0,
+        chunk_bounds=_record((4, 3, 5)))
     assert plan.has_bfast == 0
+
+
+def test_a_harness_plan_without_a_record_is_refused_by_name(bf):
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+
+    arrays, flat = _curl_arrays()
+    ks = bf.bfast_curl_coefficients(FULL_K, (False, False, False), True)
+    with pytest.raises(TypeError):
+        bf.plan_bfast_pml_curl_from_arrays("step_B", arrays, flat, (0, 1, 0), 0.35, ks)
+    with pytest.raises(ChunkLayoutRefusal, match="no chunk record"):
+        bf.plan_bfast_pml_curl_from_arrays("step_B", arrays, flat, (0, 1, 0), 0.35,
+                                           ks, chunk_bounds=None)
 
 
 def test_a_wrong_scalar_count_raises(bf):
     arrays, flat = _curl_arrays()
     with pytest.raises(ValueError, match="six"):
         bf.plan_bfast_pml_curl_from_arrays(
-            "step_B", arrays, flat, (0, 1, 0), 0.35, (0.1, 0.2))
+            "step_B", arrays, flat, (0, 1, 0), 0.35, (0.1, 0.2),
+            chunk_bounds=_record((4, 3, 5)))
 
 
 # ---------------------------------------------------------------------------
@@ -856,69 +888,96 @@ def _shift(field, axis, kind, backward):
     return shifted
 
 
+def _membership(record, half, axis, shape):
+    from meep_gpu.chunk_map import membership_from_record
+
+    view = [1, 1, 1]
+    view[axis] = shape[axis]
+    return numpy.broadcast_to(
+        membership_from_record(record, half, axis, shape[axis]).reshape(view), shape)
+
+
 def _transcribed_sub_step(fields, pml, sub_step):
-    """One BFAST curl sub-step on COPIES of the state, returned by name —
-    stepping.py:923-931 inline: shared operands, cross-indexed k, host-f64 D
-    negation, single f32 rounding at use, advance = total - 2*state, advance
-    masked BEFORE the state write, curl folded as + (-advance)."""
+    """One BFAST curl sub-step on COPIES of the state, returned by name: per component
+    the curl by partner presence, the ownership mask and the chunk's form, then MEEP's
+    BFAST pass on the same gathered partners -- the new state from the two roundings
+    (``F = S - F_prev`` stored, ``raw = F - F_prev``), the one-partner forms (the
+    absent partner not read; MEEP's plain branch without ``- F`` on cells in neither
+    the dsig nor the dsigu chunk), the increment masked to +0 and the state kept on the
+    cells the curl's mask drops -- through the BFAST ladder."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
     grid = fields.grid
     kinds = stepping._boundary_kinds(grid, pml)
+    record = chunk_bounds_record(ChunkLayout.one_rank(grid, pml))
+    shape = tuple(grid.shape)
     backward = sub_step == "step_D"
     magnetic = not backward
     terms = D_TERMS if backward else B_TERMS
     sources = {name: numpy.array(getattr(fields, name))
                for name in (("Hx", "Hy", "Hz") if backward
                             else ("Ex", "Ey", "Ez"))}
-    state_out = {}
-    dtdx = grid.dt / grid.dx
+    out = {}
+    dtdx = numpy.float32(grid.dt / grid.dx)
     suffix = "" if backward else "_h"
     bfast = grid.bfast_scaled_k
     invariant = tuple(grid.is_invariant(axis) for axis in range(3))
     for target, g1, a1, g2, a2, dsig, dsigu in terms:
         field = numpy.array(getattr(fields, target))
         fu = numpy.array(getattr(fields, "fu_" + target))
-        shifted_first = _shift(sources[g1], a1, kinds[a1], backward)
-        shifted_second = _shift(sources[g2], a2, kinds[a2], backward)
-        curl = dtdx * ((shifted_first - sources[g1])
-                       + (sources[g2] - shifted_second))
-        if grid.bfast_active:
-            have_p = not invariant[a1]
-            have_m = not invariant[a2]
-            k1 = bfast["xyz".index(g2[-1].lower())] if have_m else 0.0
-            k2 = bfast["xyz".index(g1[-1].lower())] if have_p else 0.0
-            if not magnetic:
-                k1, k2 = -k1, -k2
-            state = numpy.array(getattr(fields, "f_bfast_" + target))
-            dtype = state.dtype
-            total = (dtype.type(k1) * (shifted_first + sources[g1])
-                     - dtype.type(k2) * (shifted_second + sources[g2]))
-            advance = total - dtype.type(2.0) * state
-            iyee = IYEE_SHIFTS[target]
-            for axis in range(3):
-                if iyee[axis] == 0 and kinds[axis] == "metallic":
-                    advance[_face(axis, 0)] = 0
-            state = state + advance
-            curl = curl + (-advance)
-            state_out["f_bfast_" + target] = state
+        g1s = _shift(sources[g1], a1, kinds[a1], backward)
+        g2s = _shift(sources[g2], a2, kinds[a2], backward)
+        have_p, have_m = not invariant[a1], not invariant[a2]
+        if have_p and have_m:
+            curl = dtdx * (((g1s - sources[g1]) + sources[g2]) - g2s)
+        elif have_p:
+            curl = dtdx * (g1s - sources[g1])
+        elif have_m:
+            curl = (-dtdx) * (g2s - sources[g2])
+        else:
+            curl = numpy.zeros_like(field)
+        owned = numpy.ones(shape, dtype=bool)
         iyee = IYEE_SHIFTS[target]
         for axis in range(3):
             if iyee[axis] == 0 and kinds[axis] == "metallic":
                 curl[_face(axis, 0)] = 0
+                owned[_face(axis, 0)] = False
         kms = getattr(pml, f"kms_{dsig}{suffix}")
         sinv = getattr(pml, f"sinv_{dsig}{suffix}")
         kms_u = getattr(pml, f"kms_{dsigu}{suffix}")
         sinv_u = getattr(pml, f"sinv_{dsigu}{suffix}")
-        fu_previous = fu.copy()
-        fu *= kms
-        fu -= curl
-        fu *= sinv
-        field *= kms_u
-        field += fu
-        field -= fu_previous
-        field *= sinv_u
-        state_out[target] = field
-        state_out["fu_" + target] = fu
-    return state_out
+        du = _membership(record, magnetic, "xyz".index(dsigu), shape)
+        ds = _membership(record, magnetic, "xyz".index(dsig), shape)
+        n = sinv * ((kms * fu) - curl)
+        field_out = numpy.where(du, sinv_u * ((kms_u * field + n) - fu),
+                                sinv * ((kms * field) - curl))
+        fu_out = numpy.where(du, n, fu)
+        state = numpy.array(getattr(fields, "f_bfast_" + target))
+        k1 = bfast["xyz".index(g2[-1].lower())] if have_m else 0.0
+        k2 = bfast["xyz".index(g1[-1].lower())] if have_p else 0.0
+        if not magnetic:
+            k1, k2 = -k1, -k2
+        k1, k2 = numpy.float32(k1), numpy.float32(k2)
+        if have_p or have_m:
+            s1 = k1 * (g1s + sources[g1])
+            s2 = k2 * (g2s + sources[g2])
+            if have_p and have_m:
+                updated = (s1 - s2) - state
+            else:
+                single = s1 if have_p else s2
+                updated = numpy.where(ds | du, single - state, single)
+            increment = -(updated - state)
+            increment[~owned] = 0
+            state_out = numpy.where(owned, updated, state)
+            df = sinv * increment
+            fu_out = numpy.where(du, fu_out - df, fu_out)
+            field_out = numpy.where(du, field_out - sinv_u * df, field_out - df)
+        else:
+            state_out = state
+        out[target] = field_out
+        out["fu_" + target] = fu_out
+        out["f_bfast_" + target] = state_out
+    return out
 
 
 def _seed(fields, seed=20260812):
@@ -1017,8 +1076,11 @@ def test_the_transcription_is_not_vacuous_against_a_bfast_free_run(
     differing = sum(
         int(numpy.asarray(getattr(twin, key)).tobytes() != value.tobytes())
         for key, value in expected.items() if not key.startswith("f_bfast"))
-    assert differing >= 4, (
-        f"{name}: the BFAST fold moved no bytes on the seeded state; the "
+    # In D1 only z is resolved: Bz has neither partner, which MEEP does not step, so
+    # the pass reaches Bx, By and the one auxiliary whose dsigu axis (z) has a layer.
+    minimum = 3 if name == "dims1_z_only" else 4
+    assert differing >= minimum, (
+        f"{name}: the BFAST pass moved no bytes on the seeded state; the "
         f"reference pins above would be vacuous")
 
 
@@ -1059,8 +1121,8 @@ def test_a_zero_k_target_still_advances_its_state(bf):
 
 def test_the_d1_arm_of_the_guard_gates_every_coefficient_to_zero(bf):
     """dimensions=1 makes x AND y invariant, so four of the six flags are
-    false at once and — for the only k clause 11a admits there, k along z —
-    every one of the six scalars dies:
+    false at once and — for a k along z, the one axis D1 resolves — every one
+    of the six scalars dies:
 
     Bx: k1 = k_y (gated live) = 0; k2 = k_z KILLED by have_p (first_axis = y).
     By: k1 = k_z KILLED by have_m (second_axis = x); k2 = k_x = 0.
@@ -1082,17 +1144,18 @@ def test_the_d1_arm_of_the_guard_gates_every_coefficient_to_zero(bf):
     assert unguarded[2] == float(numpy.float32(grid.bfast_scaled_k[2]))
 
 
-def test_the_d1_arm_from_a_zero_state_is_exactly_a_non_bfast_run(bf):
+def test_the_d1_arm_from_a_zero_state_differs_only_in_signed_zeros(bf):
     """The D1 MEEP-fidelity statement, measured.
 
-    MEEP's OTHER reason for a false flag is ``gv.has_field``: in D1 it leaves
-    Bx/Bz/Dy/Dz unallocated, so ``step_db``'s ``if (f[cc][cmp])`` never steps
-    them, where this engine steps all six. That asymmetry is invisible in a
-    RUN, because with every coefficient zero (the test above) the advance is
-    ``-2*state`` and the physical state starts at zero: the states stay
-    exactly zero and every component is byte-identical to the same run with
-    BFAST off. Only an artificially seeded state moves them, which is a
-    harness configuration and not a simulation."""
+    With every coefficient zero (the test above) a one-partner component's new state
+    is the surviving k -- zero -- times the partner sum: a SIGNED zero (-0 on the D
+    side for a positive sum, through the negated k), MEEP's plain one-partner line
+    ``F = k1*(g1s + g1)`` outside a layer chunk and ``k1*(g1s + g1) - F`` inside one.
+    So from the physical all-zero state the states hold zeros only, of both signs, and
+    the increments they hand the ladder are zeros: every field and auxiliary word of
+    the run either equals the BFAST-free run's or differs from it only in the sign
+    of a zero. MEEP's other reason for a false flag (``gv.has_field`` leaves
+    Bx/Bz/Dy/Dz unallocated in D1) is invisible here for the same reason."""
     fields, pml = _dims1_build()
     twin, twin_pml = _dims1_build(bfast=(0.0, 0.0, 0.0))
     assert fields.grid.bfast_active is True
@@ -1100,10 +1163,12 @@ def test_the_d1_arm_from_a_zero_state_is_exactly_a_non_bfast_run(bf):
     assert float(fields.grid.dt) == float(twin.grid.dt), (
         "BFAST must not move the timestep (grid.py:719-724)")
     rng = numpy.random.default_rng(20260812)
-    for name in ("Bx", "By", "Bz", "Dx", "Dy", "Dz",
-                 "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
-                 "fu_Bx", "fu_By", "fu_Bz", "fu_Dx", "fu_Dy", "fu_Dz"):
+    names = ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
+             "fu_Bx", "fu_By", "fu_Bz", "fu_Dx", "fu_Dy", "fu_Dz")
+    for name in names:
         host = rng.uniform(-1, 1, fields.grid.shape).astype(numpy.float32)
+        host.reshape(-1)[::5] = numpy.float32(-0.0)
+        host.reshape(-1)[2::7] = numpy.float32(0.0)
         getattr(fields, name)[...] = host
         getattr(twin, name)[...] = host
     for name in BFAST_STATE_ALL:  # the PHYSICAL initial condition: exactly zero
@@ -1113,14 +1178,19 @@ def test_the_d1_arm_from_a_zero_state_is_exactly_a_non_bfast_run(bf):
         for sub_step in ("step_B", "update_H", "step_D", "update_E"):
             getattr(stepping, sub_step)(fields, pml)
             getattr(stepping, sub_step)(twin, twin_pml)
-    for name in ("Bx", "By", "Bz", "Dx", "Dy", "Dz",
-                 "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
-                 "fu_Bx", "fu_By", "fu_Bz", "fu_Dx", "fu_Dy", "fu_Dz"):
-        assert (numpy.asarray(getattr(fields, name)).tobytes()
-                == numpy.asarray(getattr(twin, name)).tobytes()), name
+    for name in names:
+        mine = numpy.asarray(getattr(fields, name))
+        theirs = numpy.asarray(getattr(twin, name))
+        apart = mine.view(numpy.uint32) != theirs.view(numpy.uint32)
+        assert numpy.all((mine[apart] == 0) & (theirs[apart] == 0)), name
+    signs = set()
     for name in BFAST_STATE_ALL:
         state = numpy.asarray(getattr(fields, name))
-        assert state.tobytes() == numpy.zeros_like(state).tobytes(), name
+        assert numpy.all(state == 0), name
+        signs |= {bool(numpy.signbit(value)) for value in state.reshape(-1)}
+    assert signs == {False, True}, (
+        "the states should carry zeros of both signs: the D side's negated k makes a "
+        "-0 of a positive partner sum")
 
 
 def test_the_state_write_is_in_place_in_the_array_path(bf):
@@ -1174,115 +1244,92 @@ def _kernel_code_lines(segment: str):
 
 
 def _tail_block() -> str:
+    """The HAS_BFAST block: from its guard to the blank line that closes it."""
     segment = _segment("bfast_pml_curl_step")
-    block = segment[segment.index("if HAS_BFAST:"):]
-    return block[:block.index("# --- ownership mask (stepping._mask_non_owned_cells)")]
+    start = segment.index("    if HAS_BFAST:")
+    return segment[start:segment.index("\n\n", start)]
 
 
-def test_the_tail_sits_after_the_curl_and_before_the_mask():
+def test_the_pass_sits_after_the_forms_and_before_the_stores():
     segment = _segment("bfast_pml_curl_step")
-    curl = segment.index("curl0 = dtdx * ((c_y - c)")
+    last_form = segment.index("v2, n2 = curl_form(")
     tail = segment.index("if HAS_BFAST:")
-    mask = segment.index("# --- ownership mask (stepping._mask_non_owned_cells)")
-    assert curl < tail < mask, (
-        "the BFAST fold must sit between the curl and the ownership mask, "
-        "where the array path adds it (stepping.py:392-396/:475-478)")
+    first_store = segment.index("tl.store(u0 + idx, n0, mask=live & du0)")
+    assert last_form < tail < first_store, (
+        "MEEP's BFAST pass follows its component's curl (step_db.cpp:124-142): the "
+        "pass must sit after the curl forms and before the stores")
 
 
-def test_the_tail_pairs_shifted_with_center_in_operand_order():
+def test_the_pass_pairs_shifted_with_center_in_operand_order():
     block = _tail_block()
-    assert "total0 = (k1_0 * (c_y + c)) - (k2_0 * (b_z + b))" in block
-    assert "total1 = (k1_1 * (a_z + a)) - (k2_1 * (c_x + c))" in block
-    assert "total2 = (k1_2 * (b_x + b)) - (k2_2 * (a_y + a))" in block
+    assert ("bf0, q0 = bfast_advance(st0, c_y, c, b_z, b, k1_0, k2_0, py, pz, "
+            "ds0 | du0)") in block
+    assert ("bf1, q1 = bfast_advance(st1, a_z, a, c_x, c, k1_1, k2_1, pz, px, "
+            "ds1 | du1)") in block
+    assert ("bf2, q2 = bfast_advance(st2, b_x, b, a_y, a, k1_2, k2_2, px, py, "
+            "ds2 | du2)") in block
 
 
-def test_the_advance_is_masked_before_the_state_store():
+def test_the_state_and_increment_are_masked_before_the_state_store():
     block = _tail_block()
     first_store = block.index("tl.store(s0 + idx")
-    mask_marker = block.index("advance ownership mask")
-    assert mask_marker < first_store, (
-        "stepping.py:929 masks the advance BEFORE the state write; the store "
-        "must come after the mask block")
-    assert "tl.store(s0 + idx, st0 + adv0, mask=live)" in block
-    assert "tl.store(s1 + idx, st1 + adv1, mask=live)" in block
-    assert "tl.store(s2 + idx, st2 + adv2, mask=live)" in block
+    for index in range(3):
+        assert block.index(f"q{index} = tl.where(") < first_store
+        assert block.index(f"bf{index} = tl.where(") < first_store
+        assert f"tl.store(s{index} + idx, bf{index}, mask=live)" in block
 
 
-def test_the_fold_and_advance_avoid_unary_minus_and_dtdx():
-    """Platform fact: Triton lowers -x as 0.0 - x, canonicalizing signed-zero
-    addends; the tail must spell every negation as IEEE subtraction. And the
-    Tustin filter carries NO dtdx (stepping.py:863-864)."""
+def test_the_pass_avoids_unary_minus_and_dtdx():
+    """Platform fact: Triton lowers -x as 0.0 - x, canonicalizing signed zeros; every
+    negation in the pass is ``* -1.0`` (forms.bfast_advance). MEEP passes dtdx to
+    step_bfast and never reads it."""
     block = _tail_block()
-    assert "curl0 = curl0 - adv0" in block
-    assert "curl1 = curl1 - adv1" in block
-    assert "curl2 = curl2 - adv2" in block
-    assert "adv0 = total0 - (2.0 * st0)" in block
     assert "dtdx" not in block
-    for spelling in (" -adv", "(-adv", " -st", "(-st", " -total", "(-total"):
-        assert spelling not in block, (
-            f"unary minus spelled {spelling!r} in the BFAST tail; Triton's "
-            f"0.0 - x lowering canonicalizes signed zeros")
+    helper = (PACKAGE_DIR / "forms.py").read_text(encoding="utf-8")
+    advance = helper[helper.index("def bfast_advance("):]
+    assert "(updated - state) * -1.0" in advance
+    assert "-(" not in block and "-(" not in advance.split('"""')[2]
 
 
-def test_all_three_targets_always_run_the_tail():
-    """grid.py:744-753: ANY nonzero component runs the pass for EVERY
-    component. One constexpr gates the whole tail; no per-target arm."""
+def test_the_dsig_lines_are_the_targets_own():
+    """The plain one-partner branch is keyed on the component's dsig AND dsigu chunks,
+    each on the component's own sub-lattice: target 0's dsig is y, 1's z, 2's x."""
+    block = _tail_block()
+    assert "ds0 = record_in(cb, lattice + 4, j)" in block
+    assert "ds1 = record_in(cb, lattice + 8, k)" in block
+    assert "ds2 = record_in(cb, lattice + 0, i)" in block
+
+
+def test_all_three_targets_always_run_the_pass():
+    """grid.py:744-753: ANY nonzero component runs the pass for EVERY component. One
+    constexpr gates the whole pass; no per-target arm."""
     segment = _segment("bfast_pml_curl_step")
     assert segment.count("if HAS_BFAST:") == 1
     block = _tail_block()
     for index in range(3):
-        assert f"total{index} =" in block
-        assert f"adv{index} = total{index}" in block
+        assert f"bf{index}, q{index} = bfast_advance(" in block
         assert f"tl.store(s{index} + idx" in block
+        assert f"v{index}, n{index} = fold_ladder(v{index}, n{index}, q{index}" in block
 
 
-def test_the_certified_body_is_carried_verbatim():
-    """EVERY certified statement, in order — not a six-line spot check.
+def test_the_root_body_is_carried_verbatim():
+    """EVERY root statement, in order: removing the HAS_BFAST insert from the kernel
+    leaves ``kernels.pml_curl_step``'s statements exactly."""
+    import ast  # noqa: PLC0415
 
-    The identity leg (HAS_BFAST=0) pins the bytes on device for ONE boundary
-    triple, one shape and one dtdx; the synthetic sweep covers the rest but
-    only on the GPU host. This pins the whole shared text at merge: every code line
-    of ``kernels.pml_curl_step``'s body must appear in
-    ``bfast_pml_curl_step``'s body, in the same order (the tail is an
-    insertion, and ``at_x, at_y, at_z`` is hoisted above it — a subsequence,
-    never a reordering)."""
-    certified = _kernel_code_lines(
-        _segment("pml_curl_step", PACKAGE_DIR / "kernels.py"))
-    mine = _kernel_code_lines(_segment("bfast_pml_curl_step"))
-    assert len(certified) >= 60, (
-        f"only {len(certified)} certified body lines were extracted; the "
-        f"segment/docstring parsing drifted and this pin went hollow")
+    def statements(path, name, drop_insert):
+        text = path.read_text(encoding="utf-8")
+        node = next(n for n in ast.walk(ast.parse(text))
+                    if isinstance(n, ast.FunctionDef) and n.name == name)
+        kept = [statement for statement in node.body[1:]
+                if not (drop_insert and isinstance(statement, ast.If)
+                        and getattr(statement.test, "id", "") == "HAS_BFAST")]
+        return [ast.get_source_segment(text, statement) for statement in kept]
 
-    missing = [line for line in certified if line not in mine]
-    assert missing == [], (
-        f"{len(missing)} certified statement(s) are no longer carried "
-        f"verbatim: {missing[:5]}")
-
-    cursor = 0
-    for line in certified:
-        cursor = mine.index(line, cursor) + 1  # raises if the order drifted
-
-    # The BFAST tail is the ONLY addition: the surplus, counted as a multiset
-    # so the tail's replicated ownership predicate is not silently forgiven.
-    import collections  # noqa: PLC0415
-
-    surplus = collections.Counter(mine) - collections.Counter(certified)
-    tail_lines = [line.strip() for line in _tail_block().splitlines()
-                  if line.strip() and not line.strip().startswith("#")]
-    assert sum(surplus.values()) == len(tail_lines) == 36, (
-        f"the body carries {sum(surplus.values())} lines the certified kernel "
-        f"does not, but the BFAST tail is {len(tail_lines)} lines — something "
-        f"outside the tail was added or removed")
-    allowed = ("HAS_BFAST", "adv", "total", "st0", "st1", "st2",
-               "s0 + idx", "s1 + idx", "s2 + idx")
-    # The tail replicates the body's ownership predicate, so its `if BACKWARD:`
-    # / `else:` / `if BC? == METALLIC:` lines legitimately recur.
-    replicated = ("if BACKWARD:", "else:", "if BCX == METALLIC:",
-                  "if BCY == METALLIC:", "if BCZ == METALLIC:")
-    for line in surplus:
-        assert any(token in line for token in allowed) or line in replicated, (
-            f"a non-BFAST line appeared that the certified kernel does not "
-            f"carry: {line!r}")
+    root = statements(PACKAGE_DIR / "kernels.py", "pml_curl_step", False)
+    mine = statements(MODULE_PATH, "bfast_pml_curl_step", True)
+    assert len(root) >= 30
+    assert mine == root
 
 
 # ---------------------------------------------------------------------------
@@ -1311,29 +1358,53 @@ def test_the_composition_probes_stated_budget_matches_its_case_table():
 
 
 def test_the_gate_does_not_claim_to_hold_the_byte_invisible_choices():
-    """f32 cannot see the tail's POSITION (the advance is masked with the same
-    predicate, so mask(curl) - mask(adv) == mask(curl - adv)) or the sum's
-    operand ORDER (IEEE addition commutes). Those are held by the source
-    assertions above; the gate must record them as predicted nulls rather than
-    list them among what it holds empirically."""
+    """f32 cannot see three spellings: the D side's negate-then-round against
+    round-then-negate (f64 negation and f32 rounding commute exactly), the ladder's
+    subtraction of the NEGATED raw word against adding the raw one (``x - (-y)`` is
+    ``x + y`` in IEEE-754, signed zeros included), and each sum's operand ORDER (IEEE
+    addition commutes). The gate must record them as predicted nulls rather than list
+    them among what it holds empirically, and must name where the pass's POSITION
+    after the forms is held (a source assertion, not a byte)."""
     text = GATE_PATH.read_text(encoding="utf-8")
-    held = text[text.index("WHAT THIS GATE HOLDS"):text.index("Legs, in order")]
-    invisible = held[held.index("NOT held here"):]
-    for phrase in ("POSITION between curl and mask", "sum ORDER"):
-        assert phrase in invisible, phrase
-    for key in ("tail_before_the_mask_vs_tail_after_the_mask",
-                "shifted_plus_center_vs_center_plus_shifted",
-                "curl_minus_adv_vs_curl_plus_negated_adv"):
+    held = " ".join(text[text.index("WHAT THIS GATE HOLDS"):
+                         text.index("Legs, in order")].split())
+    assert ("Its position after the forms is held by a SOURCE assertion in "
+            "``meep_gpu/test_triton_bfast.py``") in held
+    for key in ("negate_then_round_vs_round_then_negate",
+                "subtract_the_negated_increment_vs_add_the_raw",
+                "shifted_plus_center_vs_center_plus_shifted"):
         assert f'"{key}"' in text, (
             f"{key} is no longer recorded in the gate's predicted_nulls; the "
             f"artifact would imply it was measured")
 
 
-def test_the_metallic_restricted_mutation_excludes_the_all_periodic_combos():
-    """m8's restriction must reach GUARD_CONFIGS, whose single entry declares
-    all-periodic boundaries: with no masked row the mutant is byte-identical
-    BY CONSTRUCTION there, which is a false miss, not a predicted null."""
+def test_every_source_mutation_is_scored_on_the_whole_sweep_that_carries_its_needs():
+    """A needle that needs a wall, a chunk layer, a one-partner config or an
+    invariant-axis k is byte-identical BY CONSTRUCTION on a config without it (the
+    all-periodic configs mask no row, the every-cell record has no layer), which is a
+    false miss, not a predicted null. So every source mutation is scored on the
+    UNRESTRICTED synthetic sweep -- the walled configs, both records, the declared-2-D
+    guard configs and the invariant-axis k -- and a catch anywhere in it is a catch."""
+    import importlib.util  # noqa: PLC0415
+
     text = GATE_PATH.read_text(encoding="utf-8")
-    assert ('guard_configs = () if restriction == "metallic" '
-            "else GUARD_CONFIGS") in text
-    assert "guard_configs=guard_configs" in text
+    loop = text[text.index("    for name, (transform, expectation, why) in "
+                           "SOURCE_MUTATIONS.items():"):
+                text.index("    # m1 (host)")]
+    call = loop[loop.index("summary = run_synthetic("):]
+    call = call[:call.index(")\n") + 1]
+    for restriction in ("configs", "k_sets", "record_kinds", "sub_steps"):
+        assert restriction not in call, (restriction, call)
+    assert 'caught = summary["identical"] < summary["ran"]' in loop
+    for needle in ('"name": "metallic_x"', '"name": "guard_2d_declared"',
+                   '"name": "guard_2d_invariant_k"'):
+        assert needle in text, needle
+
+    spec = importlib.util.spec_from_file_location(
+        "fold_pass_mutations_for_bfast_test", PARITY_DIR / "fold_pass_mutations.py")
+    shared = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shared)
+    carried = {"wall", "layer", "one_partner", "invariant_k"}
+    for name, _why, _expectation, _rewrite, needs in (
+            shared.bfast_mutations() + shared.form_mutations(False)):
+        assert set(needs) <= carried, (name, needs)

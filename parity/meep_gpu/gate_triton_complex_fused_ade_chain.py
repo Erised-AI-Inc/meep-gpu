@@ -58,13 +58,6 @@ THE SEVEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
 7. **A verdict that cannot fail.** ``--plant`` rewrites the SHIPPED kernel source
    for the whole process and the release verdict must come back FAIL.
 
-AND ONE MORE THIS FAMILY OWNS ALONE: **the expansion arm.** Two certified halves
-ask the same probe record for different pattern sets and one fused source carries
-ONE ``EXPANSION`` constexpr. :func:`leg_expansion` records what the probe on this
-host licenses for each half, requires them equal, and requires the constexpr the
-plan launched to BE that value — so a platform that split them would refuse here
-rather than silently downgrade one half.
-
 BOTH FLOAT32 SUBNORMAL POLICIES, ONE PER PROCESS. ``--subnormal-policy`` drives
 host, CuPy and Triton before the first device compile, and the runner
 (``run_triton_complex_fused_ade_chain_direct.sh``) executes this gate twice with
@@ -155,12 +148,6 @@ _TEMPORARY: List[str] = []
 #: before the first device compile.
 _POLICY: Optional[str] = None
 
-#: The expansion probe record this process resolved, recorded once so every leg
-#: asks the SAME record. ``None`` means "ask the installed artifact", which is what
-#: the shipped predicates do.
-_PROBE: Any = None
-
-
 @dataclasses.dataclass(frozen=True)
 class Case:
     """One configuration. Every one of them is complex64 and absorber-inert —
@@ -233,6 +220,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/fields.py", "meep_gpu/subnormal_policy.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/triton_kernels/complex_fields.py",
         "meep_gpu/triton_kernels/complex_no_pml_stored_e.py",
@@ -287,10 +275,8 @@ def build(xp, case: Case, seed: int, scale: Optional[float] = None):
     IDENTICAL.
 
     BOTH HALVES OF EVERY COMPLEX VOLUME ARE FILLED. A run that left every
-    imaginary word at +0.0 would be a real-valued gate wearing a complex dtype: the
-    two expansion arms differ precisely in how the cross terms are rounded, so a
-    zero imaginary part hides the whole question this family's ``EXPANSION``
-    constexpr answers.
+    imaginary word at +0.0 would be a real-valued gate wearing a complex dtype, and
+    every imaginary-part product would be measured on zeros alone.
     """
     from meep_gpu.dispersion import (  # noqa: PLC0415
         DRUDE, LORENTZIAN, PolarizationState, Susceptibility,
@@ -503,7 +489,7 @@ class CountingKernel:
             self.grids.append(tuple(int(value) for value in grid))
             self.constexprs.append({
                 key: value for key, value in keywords.items()
-                if key in ("NP0", "NP1", "NP2", "EXPANSION", "BLOCK",
+                if key in ("NP0", "NP1", "NP2", "BLOCK",
                            "SV_a0", "SV_b0", "SV_c0")})
             return launcher(*arguments, **keywords)
 
@@ -540,11 +526,11 @@ def run_case(xp, case: Case, leg: str, steps: int, kernel: Any = None,
     counter = CountingKernel(kernel if kernel is not None
                              else family.complex_fused_ade_chain_kernel())
     plan = family.plan_complex_fused_ade_chain(
-        actual, actual_pml, num_warps=1, kernel=counter, probe=_PROBE)
+        actual, actual_pml, num_warps=1, kernel=counter)
     if plan is None:
         return {"passed": False, "reason": "the complex fused chain was refused",
                 "refusals": list(family.complex_fused_ade_chain_coverage(
-                    actual, actual_pml, probe=_PROBE).reasons)}
+                    actual, actual_pml).reasons)}
     note: Dict[str, Any] = {}
     if patch is not None:
         note = patch(plan) or {}
@@ -637,7 +623,6 @@ def run_case(xp, case: Case, leg: str, steps: int, kernel: Any = None,
         "launches_expected": plan.launches_per_run * len(per_step),
         "replaces": list(plan.replaces_sub_steps),
         "arm": plan.arm, "poles": list(plan.counts),
-        "expansion": plan.expansion,
         "constexprs": counter.constexprs[:1],
         "extra_scratch_volumes": plan.extra_scratch_volumes,
         "grid": [list(g) for g in counter.grids[:1]],
@@ -671,12 +656,12 @@ def run_separate_control(xp, case: Case, steps: int) -> Dict[str, Any]:
     _, fused, fused_pml = build(xp, case, seed)
 
     electric = complex_no_pml_stored_e.plan_complex_stored_e(
-        separate, separate_pml, probe=_PROBE)
+        separate, separate_pml)
     polarizations = [complex_ade.plan_complex_ade_update_p(
-        separate, separate_pml, state, probe=_PROBE)
+        separate, separate_pml, state)
         for state in separate.polarizations]
     plan = family.plan_complex_fused_ade_chain(
-        fused, fused_pml, num_warps=1, probe=_PROBE)
+        fused, fused_pml, num_warps=1)
     if electric is None or plan is None or any(p is None for p in polarizations):
         return {"passed": False, "reason": "a declared product was refused",
                 "electric": electric is not None,
@@ -795,30 +780,28 @@ def leg_transcription() -> Dict[str, Any]:
         # THE CONSTITUTIVE PRODUCT and its store, character for character.
         row(f"constitutive[{index}]", stored,
             f"o{index}_re, o{index}_im = _mul_field_left( s{index}_re, "
-            f"s{index}_im, tl.load(e{index} + idx, mask=live, other=0.0), "
-            f"EXPANSION)",
+            f"s{index}_im, tl.load(e{index} + idx, mask=live, other=0.0))",
             f"o{index}_re, o{index}_im = _mul_field_left( s{index}_re, "
-            f"s{index}_im, tl.load(e{index} + idx, mask=live, other=0.0), "
-            f"EXPANSION)", "none")
+            f"s{index}_im, tl.load(e{index} + idx, mask=live, other=0.0))", "none")
         row(f"store_E[{index}].re", stored,
             f"tl.store(f{index} + word, o{index}_re, mask=live)",
             f"tl.store(f{index} + word, o{index}_re, mask=live)", "none")
         # THE RECURRENCE, every arithmetic line, under the per-component names.
         for line in (
-            "a_re, a_im = _mul_field_left(p_re, p_im, c_now, EXPANSION)",
-            "b_re, b_im = _mul_coefficient_left(c_prev, q_re, q_im, EXPANSION)",
-            "out_re = a_re + b_re",
-            "out_im = a_im + b_im",
-            "sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im, EXPANSION)",
-            "d_re, d_im = _mul_coefficient_left(c_drive, sw_re, sw_im, EXPANSION)",
+            "a_re, a_im = _mul_field_left(p_re, p_im, two_minus_od)",
+            "b_re, b_im = _mul_coefficient_left(gamma1, q_re, q_im)",
+            "out_re = a_re - b_re",
+            "out_im = a_im - b_im",
+            "sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im)",
+            "d_re, d_im = _mul_coefficient_left(omega0dtsqr, sw_re, sw_im)",
             "out_re = out_re + d_re",
             "out_im = out_im + d_im",
+            "out_re, out_im = _mul_coefficient_left(gamma1inv, out_re, out_im)",
         ):
-            renamed = (line.replace("c_now", f"cnow_{letter}0")
-                           .replace("c_prev", f"cprev_{letter}0")
-                           .replace("c_drive", f"cdrive_{letter}0"))
+            renamed = re.sub(r"\b(two_minus_od|gamma1|omega0dtsqr|gamma1inv)\b",
+                             rf"\1_{letter}0", line)
             row(f"recurrence[{letter}] {line.split('=')[0].strip()}", ade, line,
-                renamed, f"c_* -> c*_{letter}0")
+                renamed, f"MEEP's four words -> *_{letter}0")
         row(f"sigma_branch[{letter}].volume", ade,
             "s = tl.load(sigma + idx, mask=live, other=0.0)",
             f"s = tl.load(sigma_{letter}0 + idx, mask=live, other=0.0)",
@@ -852,13 +835,8 @@ def leg_shape(xp) -> Dict[str, Any]:
     rows: List[Dict[str, Any]] = []
     for case in CASES:
         _, fields, pml = build(xp, case, case_seed(case.label, "shape"))
-        expansion, refusals = family.resolve_chain_expansion(_PROBE)
-        if expansion is None:
-            rows.append({"case": case.label, "agrees": False,
-                         "refusals": refusals})
-            continue
         plan = family.ComplexFusedAdeChainPlan(
-            fields, pml, 256, expansion, num_warps=1)
+            fields, pml, 256, num_warps=1)
         driven = sum(len(tuple(state.driven())) for state in fields.polarizations)
         expected = sum(len(tuple(state.driven())) - 1
                        for state in fields.polarizations)
@@ -909,13 +887,12 @@ def leg_plan_refusals(xp) -> Dict[str, Any]:
     )
 
     case = _case(MUTATION_CASE)
-    expansion, _ = family.resolve_chain_expansion(_PROBE)
     rows: List[Dict[str, Any]] = []
 
     def refuses(name: str, break_it) -> None:
         _, fields, pml = build(xp, case, case_seed(case.label, "refusal:" + name))
         plan = family.ComplexFusedAdeChainPlan(
-            fields, pml, 256, expansion or 1, num_warps=1)
+            fields, pml, 256, num_warps=1)
         chain = plan._resolve(plan._poles.arrays())
         broken = break_it(plan, chain)
         try:
@@ -943,7 +920,7 @@ def leg_refusals(xp) -> Dict[str, Any]:
 
     def ask(fields, pml) -> List[str]:
         return [reason for reason in family.complex_fused_ade_chain_coverage(
-            fields, pml, probe=_PROBE).reasons if "not cupy" not in reason]
+            fields, pml).reasons if "not cupy" not in reason]
 
     rows: List[Dict[str, Any]] = []
     base = _case(MUTATION_CASE)
@@ -977,37 +954,6 @@ def leg_refusals(xp) -> Dict[str, Any]:
     refuses("Fields_in_PML_storage_mode",
             lambda f, p: f.enable_pml_storage(), "PML storage mode")
     return {"passed": all(entry["agrees"] for entry in rows), "rows": rows}
-
-
-def leg_expansion() -> Dict[str, Any]:
-    """The ONE fact this family must not inherit, measured on THIS host.
-
-    The two certified halves ask the same probe record for different pattern sets
-    and one fused source carries ONE constexpr. This records what each half's own
-    resolver returned, requires them equal, and requires the shared resolver to
-    hand back that value — so a platform that split them refuses rather than
-    silently downgrading one half.
-    """
-    from meep_gpu.triton_kernels import complex_ade as ade  # noqa: PLC0415
-    from meep_gpu.triton_kernels import (  # noqa: PLC0415
-        complex_fused_ade_chain as family,
-        complex_no_pml_stored_e as e_half,
-    )
-
-    electric = e_half._resolve_expansion(_PROBE)
-    ade_arm = ade._resolve_complex_ade_expansion(_PROBE)
-    shared, refusals = family.resolve_chain_expansion(_PROBE)
-    superset = (set(ade.COMPLEX_ADE_PROBE_PATTERNS)
-                > set(e_half.PROBE_PATTERNS))
-    agrees = (electric is not None and electric == ade_arm == shared
-              and not refusals and superset)
-    log(f"    expansion: E half={electric} ADE half={ade_arm} shared={shared}")
-    return {"passed": bool(agrees), "e_half_arm": electric,
-            "ade_half_arm": ade_arm, "shared_arm": shared,
-            "refusals": refusals,
-            "ade_pattern_set_is_a_strict_superset": superset,
-            "e_half_patterns": list(e_half.PROBE_PATTERNS),
-            "ade_half_patterns": list(ade.COMPLEX_ADE_PROBE_PATTERNS)}
 
 
 def leg_precondition(xp, case: Case, budget: int = 8) -> Dict[str, Any]:
@@ -1077,9 +1023,8 @@ def _swap_two(source: str, first: str, second: str,
 
 
 #: The value classes a mutation may be scored on, by name. ``uniform`` is the
-#: physical band; ``subnormal_band`` is the same case at 1e-34, which is where the
-#: expansion probe's own record says the two licensable arms separate (74 words on
-#: ``c8_mul_f4_field_left`` under keep, measured candidate-against-candidate).
+#: physical band; ``subnormal_band`` is the same case at 1e-34, the underflow class
+#: where a rounding difference in a product with a real operand can surface.
 #: A mutation whose defect can only be visible in an underflowing product must be
 #: scored THERE or its null is a statement about the case, not about the kernel.
 MUTATION_VALUE_CLASSES: Dict[str, str] = {"uniform": "", "subnormal_band": "1e-34"}
@@ -1127,22 +1072,50 @@ def mutation_table() -> Tuple[Tuple[str, str, Tuple[str, ...], str, str,
         # one that re-associates.
         needle = "out_re = out_re + d_re"
         return (source.replace(
-            needle, "out_re = a_re + (b_re + d_re)"), source.count(needle))
+            needle, "out_re = a_re - (b_re - d_re)"), source.count(needle))
 
     def m7_field_left_becomes_coefficient_left(source: str) -> Tuple[str, int]:
-        needle = "a_re, a_im = _mul_field_left(p_re, p_im, cnow_a0, EXPANSION)"
+        needle = "a_re, a_im = _mul_field_left(p_re, p_im, two_minus_od_a0)"
         return (source.replace(
             needle,
-            "a_re, a_im = _mul_coefficient_left(cnow_a0, p_re, p_im, EXPANSION)"),
+            "a_re, a_im = _mul_coefficient_left(two_minus_od_a0, p_re, p_im)"),
             source.count(needle))
 
-    def m8_c_now_and_c_prev_swapped(source: str) -> Tuple[str, int]:
+    def m8_two_minus_od_and_gamma1_swapped(source: str) -> Tuple[str, int]:
         return _swap_two(
             source,
-            "a_re, a_im = _mul_field_left(p_re, p_im, cnow_a0, EXPANSION)",
-            "b_re, b_im = _mul_coefficient_left(cprev_a0, q_re, q_im, EXPANSION)",
-            ("a_re, a_im = _mul_field_left(p_re, p_im, cprev_a0, EXPANSION)",
-             "b_re, b_im = _mul_coefficient_left(cnow_a0, q_re, q_im, EXPANSION)"))
+            "a_re, a_im = _mul_field_left(p_re, p_im, two_minus_od_a0)",
+            "b_re, b_im = _mul_coefficient_left(gamma1_a0, q_re, q_im)",
+            ("a_re, a_im = _mul_field_left(p_re, p_im, gamma1_a0)",
+             "b_re, b_im = _mul_coefficient_left(two_minus_od_a0, q_re, q_im)"))
+
+    def m16_previous_folded_three_term_form(source: str) -> Tuple[str, int]:
+        # THE INVERSION (KERNELS.md section 7.1): the package's previous form per
+        # part, gamma1inv folded into three coefficients, planted back on Ex's arm.
+        edits = (
+            ("b_re, b_im = _mul_coefficient_left(gamma1_a0, q_re, q_im)",
+             "b_re, b_im = _mul_coefficient_left(0.0 - (gamma1inv_a0 * gamma1_a0), "
+             "q_re, q_im)"),
+            ("a_re, a_im = _mul_field_left(p_re, p_im, two_minus_od_a0)",
+             "a_re, a_im = _mul_field_left(p_re, p_im, gamma1inv_a0 * two_minus_od_a0)"),
+            ("d_re, d_im = _mul_coefficient_left(omega0dtsqr_a0, sw_re, sw_im)",
+             "d_re, d_im = _mul_coefficient_left(gamma1inv_a0 * omega0dtsqr_a0, sw_re, "
+             "sw_im)"),
+        )
+        hits = 0
+        for old, new in edits:
+            hits += source.count(old)
+            source = source.replace(old, new)
+        # the first arm's subtraction becomes the old addition, and its last scale goes
+        index = source.index("b_re, b_im = _mul_coefficient_left(0.0 - (gamma1inv_a0")
+        head, tail = source[:index], source[index:]
+        tail = tail.replace("out_re = a_re - b_re", "out_re = a_re + b_re", 1)
+        tail = tail.replace("out_im = a_im - b_im", "out_im = a_im + b_im", 1)
+        scale = "out_re, out_im = _mul_coefficient_left(gamma1inv_a0, out_re, out_im)"
+        cut = tail.index(scale)
+        end = cut + len(scale)
+        tail = tail[:cut] + "pass  # the final gamma1inv scale, folded away" + tail[end:]
+        return head + tail, hits
 
     def m9_second_pole_slot_dropped(source: str) -> Tuple[str, int]:
         needle = ("            s0_re = s0_re - tl.load(a1 + word, mask=live, "
@@ -1159,17 +1132,13 @@ def mutation_table() -> Tuple[Tuple[str, str, Tuple[str, ...], str, str,
         return (source.replace(needle, "pass  # the imaginary store, dropped"),
                 source.count(needle))
 
-    def m11_expansion_pinned_to_naive(source: str) -> Tuple[str, int]:
-        needle = "EXPANSION)"
-        return source.replace(needle, "0)"), source.count(needle)
-
     def m12_ade_output_written_to_the_pole(source: str) -> Tuple[str, int]:
         needle = "tl.store(p_out_a0 + word, out_re, mask=live)"
         return (source.replace(needle, "tl.store(a0 + word, out_re, mask=live)"),
                 source.count(needle))
 
     def m13_sigma_dropped_from_the_drive(source: str) -> Tuple[str, int]:
-        needle = "sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im, EXPANSION)"
+        needle = "sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im)"
         return (source.replace(needle, "sw_re, sw_im = w_re, w_im"),
                 source.count(needle))
 
@@ -1200,28 +1169,27 @@ def mutation_table() -> Tuple[Tuple[str, str, Tuple[str, ...], str, str,
         ("m6_recurrence_association_broken", "Ex", ("uniform",),
          "float addition is not associative in float32", "caught",
          m6_recurrence_association_broken),
-        # SCORED ON BOTH CLASSES, and the reason is the probe's own record.
-        # Every complex multiply in this kernel has a REAL operand, so the two
-        # orientations and the two expansion arms can only separate where the
-        # extra precision of the fused product changes a rounded word — the
-        # underflow class, not the physical band. Scoring these two on `uniform`
-        # alone would report a property of the CASE as a property of the kernel.
+        # SCORED ON BOTH CLASSES. Every complex multiply in this kernel has a REAL
+        # operand, so the two orientations can only separate where a rounded word
+        # changes in the underflow class, not the physical band. Scoring these two
+        # on `uniform` alone would report a property of the CASE as a property of
+        # the kernel.
         ("m7_field_left_becomes_coefficient_left", "Ex",
          ("uniform", "subnormal_band"),
-         "the operand ORIENTATION the probe licensed, reversed", "measure",
+         "the operand ORIENTATION the array path takes, reversed", "measure",
          m7_field_left_becomes_coefficient_left),
-        ("m8_c_now_and_c_prev_swapped", "Ex", ("uniform",),
-         "the recurrence's two history coefficients exchanged", "caught",
-         m8_c_now_and_c_prev_swapped),
+        ("m8_two_minus_od_and_gamma1_swapped", "Ex", ("uniform",),
+         "two of MEEP's four words exchanged", "caught",
+         m8_two_minus_od_and_gamma1_swapped),
+        ("m16_previous_folded_three_term_form", "Ex", ("uniform",),
+         "INVERTED: the package's previous folded three-term form, per part",
+         "caught", m16_previous_folded_three_term_form),
         ("m9_second_pole_slot_dropped", "Ex", ("uniform",),
          "a slot the mutation case does not carry — DEAD, and named as such so "
          "leg_no_dead_mutations can refuse it if it is ever scored",
          "dead", m9_second_pole_slot_dropped),
         ("m10_imaginary_store_dropped", "Ex", ("uniform",),
          "half of E never written", "caught", m10_imaginary_store_dropped),
-        ("m11_expansion_pinned_to_naive", "Ex", ("uniform", "subnormal_band"),
-         "the constexpr the probe licensed, replaced by the other arm", "measure",
-         m11_expansion_pinned_to_naive),
         ("m12_ade_output_written_to_the_pole", "Ex", ("uniform",),
          "the recurrence writes its own input — the alias this shape exists to "
          "prevent, introduced INSIDE the kernel where the plan's check cannot see "
@@ -1407,10 +1375,11 @@ def swap_sigma_between_components(plan: Any) -> Dict[str, Any]:
 
 
 def reverse_ade_coefficients_on_Ex(plan: Any) -> Dict[str, Any]:
-    c_now, c_prev, c_drive = plan._coeff[("Ex", 0)]
-    assert c_now != c_prev, "the coefficients are equal; this mutation is a null"
-    plan._coeff[("Ex", 0)] = (c_prev, c_now, c_drive)
-    return {"was": [c_now, c_prev, c_drive], "now": [c_prev, c_now, c_drive]}
+    two_minus_od, gamma1, omega0dtsqr, gamma1inv = plan._coeff[("Ex", 0)]
+    assert two_minus_od != gamma1, "the two words are equal; this mutation is a null"
+    plan._coeff[("Ex", 0)] = (gamma1, two_minus_od, omega0dtsqr, gamma1inv)
+    return {"was": [two_minus_od, gamma1, omega0dtsqr, gamma1inv],
+            "now": [gamma1, two_minus_od, omega0dtsqr, gamma1inv]}
 
 
 def swap_inverse_epsilon(plan: Any) -> Dict[str, Any]:
@@ -1572,10 +1541,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                              "keeping record's name.")
     parser.add_argument("--no-device", action="store_true",
                         help="run only the legs that need neither CUDA nor Triton")
-    parser.add_argument("--probe", default=None,
-                        help="path to the complex-multiply expansion probe "
-                             "artifact; omitted means 'the installed record', "
-                             "which is what the shipped predicates read")
     parser.add_argument("--plant", choices=sorted(PLANTED), default=None,
                         help="run the whole gate against a defective SHIPPED "
                              "kernel; the verdict below MUST come back FAIL")
@@ -1636,19 +1601,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     payload["environment"] = environment(xp)
     log(f"environment: {json.dumps(payload['environment'], sort_keys=True)}")
 
-    # THE PROBE IS RESOLVED ONCE and every leg asks the SAME record. A gate whose
-    # legs each re-read the installed artifact could score one leg against a
-    # different licence than the next.
-    global _PROBE
-    if args.probe:
-        from meep_gpu.triton_kernels.complex_fields import (  # noqa: PLC0415
-            load_expansion_probe,
-        )
-
-        _PROBE = load_expansion_probe(args.probe)
-        payload["probe_path"] = args.probe
-    payload["probe_supplied"] = _PROBE is not None
-
     from meep_gpu.triton_kernels import (  # noqa: PLC0415
         complex_fused_ade_chain as family,
     )
@@ -1680,7 +1632,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ]
     if not args.no_device:
         static_legs += [
-            ("expansion", "one_arm_for_both_halves", leg_expansion),
             ("shape", "the_rotation_orbit_walked_to_closure", lambda: leg_shape(xp)),
             ("shape", "the_plan_refuses_a_broken_chain",
              lambda: leg_plan_refusals(xp)),

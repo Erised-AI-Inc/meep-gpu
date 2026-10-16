@@ -82,7 +82,6 @@ for _path in (str(API_ROOT), str(HERE)):
 
 import numpy as np  # noqa: E402
 
-import cuda_predicate_battery as battery  # noqa: E402
 import metal_composition_matrix as matrix  # noqa: E402
 from cuda_predicate_battery import _GridWithCupyBackend  # noqa: E402
 
@@ -583,7 +582,7 @@ def adversarial_leg(fields: Any, facts: Dict[str, Any], seed: int
 # The arms: no fixture may measure a configuration the product refuses
 # ---------------------------------------------------------------------------
 
-def arm_verdicts(fields: Any, pml: Any, family: str, licence: Any) -> Dict[str, Any]:
+def arm_verdicts(fields: Any, pml: Any, family: str) -> Dict[str, Any]:
     """The SHIPPED PRODUCT's own predicate, asked modulo the CuPy backend.
 
     Not the two halves separately: the product's predicate conjoins them and adds
@@ -599,18 +598,17 @@ def arm_verdicts(fields: Any, pml: Any, family: str, licence: Any) -> Dict[str, 
     predicate = (folded_pair.covers_folded_complex_offdiag_fused_electric_pair
                  if family == "F"
                  else no_pml_pair.covers_complex_no_pml_offdiag_fused_electric_pair)
-    covered, reason = predicate(fields, pml, proxy, sources=(), license=licence,
-                                subnormal_policy=battery.COMPLEX_POLICY)
+    covered, reason = predicate(fields, pml, proxy, sources=())
     return {"product": {"covered": bool(covered), "reason": str(reason)}}
 
 
 def run_case(name: str, family: str, build: Callable[[], Tuple[Any, Any]],
              rows: Dict[str, Sequence[str]], seed: int,
-             expect: Dict[str, bool], licence: Any) -> Dict[str, Any]:
+             expect: Dict[str, bool]) -> Dict[str, Any]:
     started = time.time()
     fields, pml = build()
     facts = grid_facts(fields)
-    arms = arm_verdicts(fields, pml, family, licence)
+    arms = arm_verdicts(fields, pml, family)
     assert arms["product"]["covered"], (
         name, "the shipped predicate refuses this fixture",
         arms["product"]["reason"])
@@ -852,19 +850,16 @@ def main() -> int:
     trail = (args.out / "progress.jsonl").open("w")
 
     matrix.prepare_environment()
-    licence = battery._complex_offdiag_license()
 
     log("=" * 78)
     log("THE HAND-CUDA COMPLEX STENCIL WELDS -- host arithmetic, no device")
     log("=" * 78)
     log(f"policy      : {os.environ['MEEP_GPU_SUBNORMAL_POLICY']}")
-    log(f"licence arm : {licence.get('arm')}")
     log(f"cases       : {len(CASES)}")
     started = time.time()
     records: List[Dict[str, Any]] = []
     for index, (name, family, build, rows, expect) in enumerate(CASES, start=1):
-        record = run_case(name, family, build, rows, args.seed + index, expect,
-                          licence)
+        record = run_case(name, family, build, rows, args.seed + index, expect)
         record["case_index"] = f"{index}/{len(CASES)}"
         records.append(record)
         trail.write(json.dumps(record) + "\n")
@@ -886,7 +881,6 @@ def main() -> int:
         "certifies": "NOTHING. NumPy is not NVRTC. The substitution, the launch "
                      "counts and the mutation battery belong to the device gate",
         "policy": os.environ["MEEP_GPU_SUBNORMAL_POLICY"],
-        "expansion_licence_arm": licence.get("arm"),
         "adversarial_word_pairs": [list(pair) for pair in ADVERSARIAL_WORDS],
         "cases": records,
         "totals": {

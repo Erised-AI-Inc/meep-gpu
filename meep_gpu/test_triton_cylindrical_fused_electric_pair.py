@@ -36,9 +36,9 @@ THE SIX CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
    against a pre-injection field and report success. The flag is asserted against
    ``test_fused_pair_deposit_wiring``'s own sets rather than restated here.
 
-THE ARM IS NOT ASSERTED HERE. Which expansion arm the platform takes is a measured
-fact carried in a probe artifact, and a unit test that pinned one would be a guess
-wearing a test's clothes.
+NO EXPANSION ARM IS ASSERTED HERE, because none remains: the expansion licence, its
+probe artifacts and the arm argument are deleted on all three tables, so every
+complex product has one emitted form. The device gate holds the bytes.
 """
 
 from __future__ import annotations
@@ -260,27 +260,23 @@ def test_a_magnetic_source_is_irrelevant_to_THIS_seam():
 # The multiply helpers — the probe-pattern claim
 # ---------------------------------------------------------------------------
 
-def test_the_kernel_calls_no_multiply_helper_outside_the_three_it_declares():
-    """A fourth helper would be a fourth operand orientation, which would need its
-    own probe pattern before it could be licensed. Scanned from the AST of the
-    shipped body, so a call added anywhere in it is caught."""
+def test_the_kernel_calls_no_complex_multiply_helper():
+    """Every product in the fused body has a real operand and is formed per part --
+    the inverse epsilon times each D word included -- so no complex-multiply helper is
+    called and none is licensed. Scanned from the AST of the shipped body."""
     tree = ast.parse("if True:\n" + body())
     called = {node.func.id for node in ast.walk(tree)
               if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
     multiplies = {name for name in called if "_mul" in name}
-    assert multiplies <= set(family.LICENSED_MULTIPLY_HELPERS), multiplies
-    assert multiplies, "the scan found NO multiply helper; it is measuring nothing"
+    assert family.MULTIPLY_HELPERS == ()
+    assert multiplies == set(), multiplies
+    assert {"curl_stencil", "curl_form", "record_in", "constitutive_form"} <= called
 
 
-def test_the_probe_pattern_set_is_the_base_four_unextended():
-    """The cylindrical-only orientations are ARM-DEGENERATE — their coefficient's
-    real word is a zero — and the E-side constitutive's ``inv_eps`` multiply is
-    ``_mul_field_left``, an orientation the recurrence above it already launches six
-    times. So this product launches no orientation its halves do not."""
-    from meep_gpu.triton_kernels.complex_fields import PROBE_PATTERNS
+    """Every product in this body has a real operand -- the E-side constitutive's
+    ``inv_eps`` multiply is formed per part -- so the product launches no complex
+    orientation and its declared set stays the base four of its halves."""
 
-    assert family.PRODUCT_PROBE_PATTERNS == tuple(PROBE_PATTERNS)
-    assert len(family.PRODUCT_PROBE_PATTERNS) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -293,11 +289,11 @@ def test_every_certified_curl_statement_appears_in_the_fused_body():
     certified = statements(
         CURL.read_text(encoding="utf-8"),
         "    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)",
-        "    # --- stores: u then f (kernels.py:193-198 order), both planes ---")
+        "    # --- stores: fu on its cells")
     fused = set(statements(
         body(),
         "        idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)",
-        "        # --- the seam: stepping.zero_metal_D (driver.py:3301) ---"))
+        "        # --- the seam: stepping.zero_metal_D"))
     missing = [line for line in certified if line not in fused]
     assert len(certified) > 100, "the certified statement scan found almost nothing"
     assert missing == []
@@ -312,10 +308,8 @@ def test_every_constitutive_statement_of_the_cartesian_weld_appears_here():
         "        kp_0 = tl.load(kp0 + i, mask=live, other=0.0)",
         "else:  # pragma: no cover - laptop path")
     fused = set(statements(
-        body(),
-        "        kp_0 = tl.load(kp0 + i, mask=live, other=0.0)",
-        "        tl.store(h2 + 2 * idx + 1, a_im, mask=live)"))
-    fused.add("tl.store(h2 + 2 * idx + 1, a_im, mask=live)")
+        body() + "\n#__END__\n",
+        "        kp_0 = tl.load(kp0 + i, mask=live, other=0.0)", "#__END__"))
     missing = [line for line in certified if line not in fused]
     assert len(certified) > 30
     assert missing == []
@@ -345,13 +339,13 @@ def test_the_inv_eps_multiply_precedes_the_w_store_on_every_component():
     Moving the multiply after the store is a history one step stale, which the gate
     arms as a catch."""
     text = body()
-    multiply = "src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)"
+    multiply = "src_re = src_re * ie"
     for target in range(3):
         # The component's OWN region: from its `prev` read to its `w` store. A
         # positional compare against the whole body would be satisfied by any
         # earlier component's multiply and would measure nothing.
         opens = text.index(f"prev_re = tl.load(w{target} + 2 * idx,")
-        closes = text.index(f"tl.store(w{target} + 2 * idx, src_re, mask=live)")
+        closes = text.index(f"tl.store(w{target} + 2 * idx, src_re, mask=live & dw{target})")
         region = text[opens:closes]
         assert multiply in region, target
         assert f"ie = tl.load(e{target} + idx" in region, target
@@ -448,7 +442,7 @@ def test_the_seam_reads_the_value_the_axis_rules_left_and_not_the_recurrences():
     displacement the array path never leaves in D — which is exactly the subtlety
     the CUDA track measured on this same family."""
     text = body()
-    recurrence = text.index("v2_re, v2_im = _mul_field_left(r_re, r_im, si_y, EXPANSION)")
+    recurrence = text.index("v2_re, n2_re = curl_form(")
     axis_rules = text.index("if M_CLASS == M_ONE:\n            if BACKWARD:\n"
                             "                v2_re = tl.where(at_r, 0.0, v2_re)")
     seam = text.index("src_re = v0_re")
@@ -489,34 +483,34 @@ def test_the_axis_increment_replaces_the_row_and_negates_with_a_literal():
     assert "tl.where(at_r, -inc_re" not in text
 
 
-def test_the_curl_grouping_is_the_array_paths_and_is_not_flattened():
-    """``stepping._curl_from_operands`` groups ``((A) + (B))``."""
+def test_the_curls_are_selected_by_partner_presence_and_dz_is_the_radial_difference():
+    """``stepping._curl_from_operands`` by the record's presence word, MEEP's
+    left-to-right association; target 2's whole curl is ``dtdx`` times the radial
+    difference the scan computed."""
     text = body()
-    assert "t0_re = ((c_p_re - c_re) + (b_re - b_z_re))" in text
-    assert "t1_re = ((a_z_re - a_re) + (c_re - c_r_re))" in text
-    assert "t2_re = ((b_r_re - b_re) + (a_re - a_p_re))" in text
+    assert "curl0_re = curl_stencil(c_p_re, c_re, b_re, b_z_re, dtdx, pp, pz)" in text
+    assert "curl1_re = curl_stencil(a_z_re, a_re, c_re, c_r_re, dtdx, pz, pr)" in text
+    assert "curl2_re = dtdx * tl.load(rad + 2 * idx, mask=live, other=0.0)" in text
 
 
-def test_the_D_side_prefix_substitution_is_the_backward_arm_and_not_the_B_sides():
-    """The D-side prefix is ``(nr, ny, nz)`` from ``Hy`` at ``ir0 = 0.5`` with no
-    extended wall row, and its substitution is a BACKWARD difference of the prefix
-    against the same ``(a - a_p)`` term. The B side's is the forward difference of
-    the EXTENDED prefix — one subtract, one multiply — and taking it here is a
-    silently different curl."""
+def test_the_D_side_radial_sum_is_Hp_at_half_without_a_wall_row():
+    """The D side's radial sum runs over Hp = Hy at ``ir0 = 0.5`` with no wall row and
+    Dz reads its BACKWARD difference; the B side's runs over Ep and its wall row. The
+    plan binds the D side's scan by the sub-step it is constructed for."""
     from meep_gpu.triton_kernels.cylindrical_complex import PREFIX
 
+    assert PREFIX["step_D"] == {"component": "Hy", "ir0": 0.5, "extend_wall_row": False}
     assert PREFIX["step_D"] != PREFIX["step_B"]
-    text = body()
-    assert "t2_re = ((p_down_re - p_here_re) + (a_re - a_p_re))" in text
-    assert "p_down_re = tl.load(pfx + 2 * o_r, mask=vr, other=0.0)" in text
+    assert family.CURL_SUB_STEP == "step_D"
 
 
-def test_the_imr_fold_is_a_subtract_and_the_coefficient_is_on_the_left():
+def test_the_imr_pass_is_a_quarter_turn_through_the_additive_ladder():
+    """MEEP's i*m/r pass on the D side: ``(-(rinv*g.im), rinv*g.re)``, then
+    ``df = sinv*inc`` subtracted through the ladder, after the curl's form."""
     text = body()
-    assert "_mul_general_coefficient_left(q0_re, q0_im, c_re, c_im" in text
-    assert "_mul_general_coefficient_left(q2_re, q2_im, a_re, a_im" in text
-    assert "curl0_re = curl0_re - m0_re" in text
-    assert "curl2_re = curl2_re - m2_re" in text
+    assert "i0_re = (r0 * c_im) * -1.0" in text and "i0_im = r0 * c_re" in text
+    assert "i2_re = (r2 * a_im) * -1.0" in text and "i2_im = r2 * a_re" in text
+    assert "v2_re = tl.where(du2, v2_re - (si_y * d_re), v2_re - d_re)" in text
 
 
 # ---------------------------------------------------------------------------
@@ -602,16 +596,6 @@ def test_the_plan_refuses_to_none_rather_than_raising():
     assert family.plan_cylindrical_fused_electric_pair(fields, pml, ()) is None
 
 
-def test_a_missing_expansion_probe_is_a_refusal_not_a_guessed_arm():
-    """Which arm the platform takes is a MEASURED fact. Without a probe the halves
-    refuse, and the builder must return ``None`` rather than picking one."""
-    fields, pml = cylindrical(m=1)
-    verdict = family.cylindrical_fused_electric_pair_coverage(
-        fields, pml, (), probe=None)
-    assert not verdict.covered
-    assert any("expansion" in reason.lower() for reason in verdict.reasons)
-
-
 # ---------------------------------------------------------------------------
 # The gate exists and carries the machinery this suite refers to
 # ---------------------------------------------------------------------------
@@ -636,8 +620,8 @@ def test_the_gate_arms_a_needle_for_every_seam_choice_this_suite_pins():
                    "zero_metal_takes_the_magnetic_twins_component_map",
                    "axis_increment_writes_the_B_sides_target",
                    "inv_eps_word_doubled",
-                   "inv_eps_multiply_moved_after_the_w_store",
-                   "prefix_substitution_dropped"):
+                   "radial_sum_replaced_by_the_raw_hp_difference",
+                   "constitutive_accumulation_grouping_inverted"):
         assert needle in gate.MUTATIONS, needle
     # And every needle must still be findable in the shipped source: a mutation
     # whose needle has drifted arms NOTHING, and the gate would report it as an

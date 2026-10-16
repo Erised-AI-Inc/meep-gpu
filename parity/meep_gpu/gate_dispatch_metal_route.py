@@ -40,6 +40,13 @@ now the NumPy reference and never plans, so it could not be the fused leg.)::
     unfused    MEEP_GPU_DISPATCH=1  MEEP_GPU_FUSE_ARMS=0            the substitution baseline
     array      MEEP_GPU_DISPATCH=1  MEEP_GPU_FUSED=0                the oracle
 
+BOTH KERNEL LEGS MUST MATCH THE ORACLE. The unfused leg dispatches the certified
+singles, so a divergence there fails the row as ``UNFUSED-DIVERGENCE`` on every branch
+(:func:`case_verdict`); until 2026-10-10 it was compared and not read. And no instrument
+riding a leg may move its residency: the seam census reads without the read barrier
+(:func:`_census_state`). Beside the route rows, :data:`ENGINE_SMOKE` drives Dcyl complex
+runs through the engine's default route with no instrument on the legs at all.
+
 FOUR INDEPENDENT ANSWERS TO "DID A KERNEL ACTUALLY RUN", because a leg that quietly
 fell back matches trivially — the oracle IS the array path:
 
@@ -83,6 +90,19 @@ Run (this Mac, ONE MPS device, through the runner that welds the artifact)::
         parity/meep_gpu/gate_dispatch_metal_route.py -- \\
         --out parity/meep_gpu/results/dispatch_metal_route_<stamp>/shipped
 
+BEFORE A FREEZE, THE CONTROLS DRY RUN (``--controls-dry-run``, run directly, not
+through the runner; :func:`controls_dry_run`): one lift per drive case, the gate's
+freeze step, and each residency control armed on it in the gate's own schedule. It
+reports every plan's wrapper chains against :data:`ROUTE_WRAPPER_RULINGS`, what each
+control would arm on, and ``smoke_cases``, the cases on which a must-diverge control
+arms, which need the full gate before the freeze; ``--dry-run-reference`` names a
+previous campaign leg's ``controls.jsonl`` and reports every case whose controls
+moved from it. It compares no bytes, writes no ``gate.json`` and releases nothing::
+
+    PYTHONPATH=. python -u parity/meep_gpu/gate_dispatch_metal_route.py \\
+        --controls-dry-run --out <scratch dir> \\
+        [--dry-run-reference <campaign>/shipped/controls.jsonl]
+
 THE NAME IS LOAD-BEARING AND IS DELIBERATELY OUTSIDE THE ``gate_metal_*`` GLOB.
 Three separate mechanisms derive meaning from that stem: ``recut_metal_gates.sh``'s
 fleet loop would launch this four-leg campaign with the wrong arguments and count it
@@ -95,6 +115,7 @@ is one explicit allowlist entry in ``metal_gate_runner.discover_dispatch_gates``
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import sys
@@ -440,8 +461,7 @@ def case_complex_nobloch_2d(mp, res=20):
     ``k_point`` zero, ``grid_shape`` (200, 120, 1). The composer selects BOTH
     complex pairs when offered (unfused 4, fused 2), byte-identical — so this is
     the case that lets the complex pairs' rows drop their ``bloch`` row: both
-    values driven, every other axis of the row single-valued. It needs the complex
-    expansion licence exactly as ``bloch_2d`` does.
+    values driven, every other axis of the row single-valued.
     """
     cell = mp.Vector3(10, 6, 0)
     geometry = [mp.Block(mp.Vector3(mp.inf, 1.0, mp.inf), center=mp.Vector3(),
@@ -464,8 +484,9 @@ def case_cylindrical_m1(mp, res=20):
     the lift 2026-09-12: ``cylindrical`` True, ``m`` 1, ``complex_storage`` True,
     ``bloch`` False, ``grid_shape`` (80, 1, 80). The composer selects the
     cylindrical complex fused electric D/E pair on the D seam (unfused 4, fused 3),
-    byte-identical to the array path. It needs the cylindrical-complex expansion
-    licence, so it dispatches on the probe leg.
+    byte-identical to the array path. It dispatched on the probe leg alone until the
+    expansion licence was deleted (bit_parity_0_10 X1); it dispatches on the
+    shipped leg now.
 
     THE B SEAM CHANGED ON 2026-09-17 and this docstring said the opposite until then:
     it read that the composer "keeps the ``cylindrical complex`` singles on the B
@@ -1009,8 +1030,8 @@ CASE_INTENT["folded_dispersive_3d"] = (
     "THE FOLDED 3-D GRID OVER A SUSCEPTIBILITY: the folded magnetic pair alone, "
     "driving the (3-D, one pole) corner its omitted susceptibilities row needs")
 CASE_INTENT["complex_nobloch_2d"] = (
-    "COMPLEX STORAGE WITHOUT A k_point: both complex pairs under the complex "
-    "expansion licence, and the case that lets their rows drop bloch")
+    "COMPLEX STORAGE WITHOUT A k_point: both complex pairs, and the case that lets "
+    "their rows drop bloch")
 CASE_INTENT["dispersive6_2d"] = (
     "SIX SUSCEPTIBILITY STATES on an unfolded 2-D grid: the 6 in the ordinary "
     "magnetic pair's enumerated susceptibilities row, with the dispersive electric "
@@ -1051,8 +1072,8 @@ CASE_INTENT["folded_complex_nobloch_offdiag_2d"] = (
     "no D-seam product is admitted on an off-diagonal grid and this case is "
     "therefore not evidence for it")
 CASE_INTENT["cylindrical_m1"] = (
-    "Dcyl at m = 1: the cylindrical COMPLEX electric pair on the D seam under the "
-    "cylindrical-complex expansion licence; the B seam keeps the singles")
+    "Dcyl at m = 1: the cylindrical COMPLEX electric pair on the D seam; the B seam "
+    "keeps the singles")
 CASE_INTENT["cylindrical_m0_complex"] = (
     "Dcyl at m = 0 with complex storage forced: the cylindrical COMPLEX electric "
     "pair on the corner its row admits without an m pin")
@@ -1106,16 +1127,18 @@ CASE_INTENT["cylindrical_m0_complex"] = (
 #:   launch each (4->2, 11->9, and 4->4 becoming 4->3) and all three are ordinary
 #:   dispatching rows now;
 #: * ``bloch_2d``, ``complex_nobloch_2d``, ``folded_complex_2d`` and
-#:   ``cylindrical_m1`` dispatch ONLY on the probe leg, because their pairs are
-#:   licensed by an expansion probe outside the tree; on the shipped leg every one
-#:   of them is refused by name. Until later on 2026-09-12 the two complex D/E
-#:   pairs were selected-but-withheld on the first two, so those rows drove one
-#:   pair; they drive two now. SEVEN OF THE NINE ROWS ADDED 2026-09-13 ARE IN THE
-#:   SAME POSITION — ``complex_1d``, ``complex_3d_thinline`` and ``complex_3d``
-#:   under the complex probe, ``folded_complex_3d``, ``folded_complex_kz2d_3d``,
+#:   ``cylindrical_m1`` dispatched ONLY on the probe leg until the expansion
+#:   licence was deleted (bit_parity_0_10 X1): their pairs were licensed by an
+#:   expansion probe outside the tree, and on the shipped leg every one of them
+#:   was refused by name. They dispatch on the shipped leg now. Until later on
+#:   2026-09-12 the two complex D/E pairs were selected-but-withheld on the first
+#:   two, so those rows drove one pair; they drive two now. SEVEN OF THE NINE ROWS
+#:   ADDED 2026-09-13 WERE IN THE SAME POSITION — ``complex_1d``,
+#:   ``complex_3d_thinline`` and ``complex_3d`` under the complex probe,
+#:   ``folded_complex_3d``, ``folded_complex_kz2d_3d``,
 #:   ``folded_complex_offdiag_2d`` and ``folded_complex_nobloch_offdiag_2d`` under
 #:   the folded-complex one — and the two real-storage additions
-#:   (``dispersive6_2d``, ``folded_dispersive5_2d``) need no probe at all;
+#:   (``dispersive6_2d``, ``folded_dispersive5_2d``) needed no probe at all;
 #: * ``pml_3d``, ``offdiag_2d``, ``folded_offdiag_2d`` and, from 2026-09-13,
 #:   ``folded_complex_offdiag_2d`` and ``folded_complex_nobloch_offdiag_2d`` are the
 #:   off-diagonal grids, and each admits EXACTLY ONE arm — the ordinary magnetic
@@ -1313,11 +1336,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "complex fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "launches_per_step": (4, 2), "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE",
-        "why": ("COMPLEX STORAGE UNDER A NONZERO k_point, and a case whose answer "
-                "depends on an input outside the tree. WITHOUT the complex "
-                "expansion licence the complex arms refuse by name and the whole "
-                "case falls to the array path; WITH it BOTH complex pairs "
+        "why": ("COMPLEX STORAGE UNDER A NONZERO k_point: BOTH complex pairs "
                 "dispatch. The electric pair was selected-but-withheld until later "
                 "on 2026-09-12 (its cell is bound by the tranche-7 GROUP weld and "
                 "the group-key ruling reached it last), so the drop was 4 -> 3 "
@@ -1328,7 +1347,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "complex fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "launches_per_step": (4, 2), "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE",
         "why": ("COMPLEX STORAGE WITH NO k_point AT ALL (force_complex_fields), the "
                 "shape of wvg-src.py and the two waveguide-source tests. It is the "
                 "case that lets the complex pairs' rows DROP their bloch row: "
@@ -1399,7 +1417,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         # The proof expected 1 and read DROPPED-BUT-NOT-EXACT on a correct result.
         # See :func:`expected_drop_per_step` for the rule and what keeps it honest.
         "collapsed_single_launches_per_step": {"update_E": 3},
-        "needs_probe": "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE",
         "why": ("THE COMPLEX CONDUCTIVE NO-ABSORBER WELD, on the shape the four "
                 "TestLoadDump 3-D rows carry. Lifted 2026-09-17: dimensions 3, grid "
                 "(23, 21, 27), complex storage, bloch True at k_point "
@@ -1416,16 +1433,15 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["complex no-PML off-diagonal fused electric D/E pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["D"],
-        "needs_probe": "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE",
         "why": ("THE COMPLEX UNFOLDED OFF-DIAGONAL WELD. Lifted 2026-09-17: "
                 "dimensions 2, grid (25, 25, 1), complex storage, bloch True at "
                 "k_point (0.3892, 0.1597, 0), off_diagonal True, lossless, "
-                "pml_active False. Both this case and complex_no_pml_3d above read "
-                "SELECTED-NOTHING on the first dry-run pass and the composer said "
-                "why in both halves' words -- 'no complex-multiply expansion probe "
-                "artifact is available ... which arm the numpy reference takes is a "
-                "measured platform fact and may not be guessed' -- which is exactly "
-                "what the probe leg exists to carry, and why both rows name it."),
+                "pml_active False. It dispatches on the shipped leg now that no "
+                "complex family reads an expansion probe (bit_parity_0_10 X1): "
+                "measured on the Mac (Apple M1 Max, held residency, 2026-10-10), the "
+                "weld drove step_D and update_E for 1500 steps and the fused leg read "
+                "0 of 17,500 words differing from the array path at all ten "
+                "checkpoints."),
     },
     "offdiag_magnetic_2d": {
         "arms": ["fused magnetic B/H pair", "off-diagonal fused electric D/E pair"],
@@ -1519,21 +1535,17 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "complex-beta fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"],
-        "needs_probe": "MEEP_GPU_METAL_EXPANSION_PROBE",
         "why": ("THE COMPLEX BETA PAIRS AT bloch=False. Lifted 2026-09-17: "
                 "dimensions 2, grid (120, 120, 1), complex storage, beta 0.4, "
-                "bloch False, lossless, PML active. The licence is special_kz's "
-                "rather than the base complex one -- both families call "
-                "`special_kz.load_expansion_probe()` -- so this case rides the probe "
-                "leg on MEEP_GPU_METAL_EXPANSION_PROBE and refuses by name on the "
-                "shipped leg."),
+                "bloch False, lossless, PML active. Both pairs dispatch on the "
+                "shipped leg: they no longer read an expansion probe (bit_parity_0_10 "
+                "X1)."),
     },
     "complex_beta_bloch_2d": {
         "arms": ["complex-beta fused magnetic B/H pair",
                  "complex-beta fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"],
-        "needs_probe": "MEEP_GPU_METAL_EXPANSION_PROBE",
         "why": ("THE bloch=True VALUE OF THE SAME TWO ARMS, on the same cell. Both "
                 "values are driven because both arms' rows pin `bloch` as the "
                 "enumeration {False, True}, and an axis that named a value no case "
@@ -1546,7 +1558,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "folded beta complex fused D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
-        "needs_probe": "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
         "why": ("THE FOLDED BETA-COMPLEX PAIRS AT bloch=False. Lifted 2026-09-17: "
                 "dimensions 2, grid (120, 62, 1), folded 'mirror plane on Y', "
                 "complex storage, beta 0.4, bloch False, lossless, PML active. This "
@@ -1560,7 +1571,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "folded beta complex fused D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
-        "needs_probe": "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
         "why": ("THE bloch=True VALUE OF THE SAME TWO ARMS, for the reason "
                 "complex_beta_bloch_2d exists: both rows pin `bloch` as {False, "
                 "True} and both values must be driven for that enumeration to rest "
@@ -1573,9 +1583,9 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
         "why": ("THE FOLDED REAL-BETA PAIRS. Lifted 2026-09-17: dimensions 2, grid "
                 "(120, 62, 1), folded 'mirror plane on Y', REAL storage, beta 0.4, "
-                "bloch False, lossless, PML active. No probe: real storage takes no "
-                "expansion licence, which is the axis that separates these two arms "
-                "from the folded beta COMPLEX pair on folded_complex_beta_2d. The "
+                "bloch False, lossless, PML active. Real storage is the axis that "
+                "separates these two arms from the folded beta COMPLEX pair on "
+                "folded_complex_beta_2d. The "
                 "run shape reads bloch False although the case carries a kz k_point, "
                 "because a kz-only k_point on a 2-D cell folds into beta."),
     },
@@ -1633,7 +1643,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
         "launches_per_step": (8, 6), "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
         "why": ("A FOLD AND A NONZERO k_point AT ONCE: the folded complex fill "
                 "covers both fill slots (so rung 6bM passes) and BOTH folded "
                 "complex pairs take their seams. The D/E pair was "
@@ -1753,7 +1762,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "complex fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE",
         "why": ("COMPLEX STORAGE ON A CELL DECLARED 1-D: the 1 in the complex "
                 "pairs' dimensions row, which this round opens from 2 to "
                 "{1, 2, 3}. dimensions=1 is passed explicitly, so the case is "
@@ -1779,7 +1787,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "complex fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE",
         "why": ("A (0, 0, L) CELL DECLARED 3-D UNDER AN OBLIQUE k, which MEEP does "
                 "not collapse: measured on the lift 2026-09-13, dimensions 3 on a "
                 "(1, 1, 275) grid, complex storage, k=(0.41, 0, 1.8), both complex "
@@ -1798,7 +1805,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "complex fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE",
         "why": ("A GENUINE 3-D COMPLEX BLOCK, AND IT CREDITS NOTHING. Measured on "
                 "the lift 2026-09-13: dimensions 3, grid (40, 40, 40), complex "
                 "storage, bloch True at k=(0.3, 0, 0), off_diagonal_epsilon False "
@@ -1826,7 +1832,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "folded complex fused D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"], "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
         "why": ("A FOLD, A NONZERO k_point AND THREE DIMENSIONS AT ONCE — the "
                 "triangular-lattice-oblique cell, which is "
                 "TestModeDecomposition.test_triangular_lattice_oblique's own "
@@ -1860,7 +1865,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "folded complex fused D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"], "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
         "why": ("A FOLDED ZERO-THICKNESS CELL ASKED FOR AS 3-D. kz_2d='3d' is what "
                 "keeps the z component of the k_point from lifting as a beta, so "
                 "the declared 3 stands on a cell with no z extent; MEEP reports "
@@ -1885,7 +1889,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["folded complex fused B/H pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["B"], "fills": ["fill_B", "fill_D"], "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
         "why": ("THE FOLDED COMPLEX OFF-DIAGONAL GRID, BLOCH HALF. "
                 "folded_complex_2d with its slab replaced by a cylinder centred on "
                 "the fold plane — the same cell, PML, k_point, mirror and source — "
@@ -1911,7 +1914,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["folded complex fused B/H pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["B"], "fills": ["fill_B", "fill_D"], "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
         "why": ("THE FOLDED COMPLEX OFF-DIAGONAL GRID, UNPHASED HALF: two mirror "
                 "planes and force_complex_fields with NO k_point at all, a "
                 "cylinder for the off-diagonal chi1inv. Measured on the lift "
@@ -1942,7 +1944,6 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "cylindrical complex fused magnetic B/H pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE",
         "why": ("Dcyl AT m = 1: complex storage on a cylindrical grid, the shape of "
                 "all eighteen cylindrical complex corpus rows (every one lossless, "
                 "no k_point, no susceptibility). The cylindrical complex fused "
@@ -1957,16 +1958,14 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "m = -1, which is what stands behind a row that cannot pin m (the "
                 "census records no m, so a row would refuse every corpus row as "
                 "unread; the arm is bounded on complex storage as its m = 0 twin "
-                "is bounded on real). Licensed by the cylindrical-complex "
-                "expansion probe, so it dispatches on the probe leg and is refused "
-                "by name on the shipped leg."),
+                "is bounded on real). It dispatches on the shipped leg: no complex "
+                "family reads an expansion probe (bit_parity_0_10 X1)."),
     },
     "cylindrical_m0_complex": {
         "arms": ["cylindrical complex fused electric D/E pair",
                  "cylindrical complex fused magnetic B/H pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "monitors": 1,
-        "needs_probe": "MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE",
         "why": ("Dcyl AT m = 0 UNDER COMPLEX STORAGE: the corner the 2026-09-12 "
                 "round's verifier named. The arm's row cannot pin m (the census "
                 "records none) and pins complex_storage True, so it admits the "
@@ -1986,6 +1985,96 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "on the 2026-09-17 dry run across every Dcyl complex case (m = 0, 2, "
                 "3 and -1). `launches_per_step` is dropped rather than re-guessed: "
                 "the recorded (4, 3) was the one-pair composition's."),
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# The engine-smoke rows
+# ---------------------------------------------------------------------------
+
+def case_engine_cylindrical_complex_m1(mp, res=16):
+    """Dcyl, complex storage, m = 1: PML on r and z, a dielectric shell, an Er Gaussian.
+
+    The engine smoke's ``cyl_m1`` (lane MCC), on which the held-residency defect in the
+    three complex cylindrical plans was found: 111,415 of 1,376,256 words differed from
+    the array path over steps 1, 4, 16 and 64 (first seen at step 4) on the tree
+    carrying series entries 01..86, held; 0 shipped.
+    """
+    shell = [mp.Cylinder(radius=2.0, height=mp.inf, material=mp.Medium(epsilon=2.5)),
+             mp.Cylinder(radius=1.2, height=mp.inf, material=mp.Medium(epsilon=1.0))]
+    pulse = mp.GaussianSource(frequency=0.6, fwidth=0.4)
+    sim = mp.Simulation(
+        cell_size=mp.Vector3(4, 0, 6), dimensions=mp.CYLINDRICAL, m=1,
+        boundary_layers=[mp.PML(1.0)], geometry=shell, resolution=res,
+        sources=[mp.Source(pulse, component=mp.Er, center=mp.Vector3(0.9, 0, -0.2))])
+    return sim, [], 4.0
+
+
+def case_engine_cylindrical_complex_m2(mp, res=16):
+    """Dcyl, complex storage, m = 2: PML on r only (metallic z walls), an Ep Gaussian.
+
+    The engine smoke's ``cyl_m2`` (lane MCC): 118,204 of 1,146,880 words differed from
+    the array path held on the 01..86 tree, 0 shipped.
+    """
+    shell = [mp.Cylinder(radius=2.0, height=mp.inf, material=mp.Medium(epsilon=2.5)),
+             mp.Cylinder(radius=1.2, height=mp.inf, material=mp.Medium(epsilon=1.0))]
+    pulse = mp.GaussianSource(frequency=0.6, fwidth=0.4)
+    sim = mp.Simulation(
+        cell_size=mp.Vector3(4, 0, 5), dimensions=mp.CYLINDRICAL, m=2,
+        boundary_layers=[mp.PML(1.0, direction=mp.R)], geometry=shell, resolution=res,
+        sources=[mp.Source(pulse, component=mp.Ep, center=mp.Vector3(1.5, 0, 0.4))])
+    return sim, [], 4.0
+
+
+#: The checkpoints an engine-smoke row compares the whole state at, in driver steps.
+ENGINE_SMOKE_CHECKPOINTS: Tuple[int, ...] = (1, 4, 16, 64)
+
+#: The residency modes every engine-smoke row drives, each as its own leg: ``held`` is
+#: the package default (``MEEP_GPU_METAL_RESIDENCY`` unset), ``shipped`` the
+#: per-launch bracket.
+ENGINE_SMOKE_RESIDENCIES: Tuple[str, ...] = ("held", "shipped")
+
+_DCYL_COMPLEX_ARMS: Dict[str, str] = {
+    "step_B": "cylindrical complex fused magnetic B/H pair",
+    "update_H": "cylindrical complex fused magnetic B/H pair",
+    "step_D": "cylindrical complex fused electric D/E pair",
+    "update_E": "cylindrical complex fused electric D/E pair",
+}
+
+#: ROWS DRIVEN THE WAY A USER'S RUN IS, NOT THE WAY A ROUTE ROW IS. A route row
+#: (:data:`DRIVE`) steps three legs through the gate's instrument -- a
+#: :class:`MetalLaunchCounter` wrapped round every compiled callable, the seam census
+#: patched into every launch, ``driver.run`` in chunks, the fused route reached through
+#: the release with the arms named -- and every one of those is a place the instrument
+#: can change what it measures. Until 2026-10-10 one did: the seam census read the
+#: fused leg's state through the residency read barrier before every launch, which
+#: refreshed exactly the stale host copies three complex cylindrical plans read under
+#: a hold, so the route rows' fused legs passed while the engine smoke on the same
+#: tree differed on 111,415 words (:func:`_census_state`).
+#:
+#: An engine-smoke row takes none of that. Each leg is ``lift_simulation(sim,
+#: prefer_gpu=True)`` under the engine's own default environment (no
+#: ``MEEP_GPU_DISPATCH``, ``MEEP_GPU_FUSED`` or ``MEEP_GPU_FUSE_ARMS``; held residency
+#: by leaving ``MEEP_GPU_METAL_RESIDENCY`` unset, shipped by setting it), stepped one
+#: ``driver.step()`` at a time with nothing patched, and its WHOLE state compared word
+#: for word with the array leg at :data:`ENGINE_SMOKE_CHECKPOINTS`. What the row asks
+#: of the record instead of a counter: the fused step path, the named pair on all four
+#: slots, a dispatch on every slot every step, and the residency mode it asked for.
+#: Every leg drives them, as it drives their route twins.
+ENGINE_SMOKE: Dict[str, Dict[str, Any]] = {
+    "engine_cylindrical_complex_m1": {
+        "builder": case_engine_cylindrical_complex_m1, "m": 1,
+        "arms": dict(_DCYL_COMPLEX_ARMS),
+        "why": ("Dcyl complex at m = 1 (PML on r and z, Er source) through the engine's "
+                "default route: the case the held-residency radial-source defect was "
+                "found on, driven with no gate instrument on the legs"),
+    },
+    "engine_cylindrical_complex_m2": {
+        "builder": case_engine_cylindrical_complex_m2, "m": 2,
+        "arms": dict(_DCYL_COMPLEX_ARMS),
+        "why": ("Dcyl complex at m = 2 (PML on r only, metallic z walls, Ep source) "
+                "through the engine's default route, no gate instrument on the legs"),
     },
 }
 
@@ -2606,6 +2695,21 @@ def _synced_plans(driver: Any) -> List[Any]:
     return found
 
 
+#: The ``mode`` the held form of :func:`_drop_one_sync_in` records, and the key
+#: :func:`residency_controls` reads that form's verdict by.
+HELD_SYNC_IN_MODE = "held: one acquire_write leaves the mirror unclaimed"
+
+#: The residency's sparse-door counters (``device.Residency``): writes that land on
+#: the current side of a mirror and move no ownership, which the held form of
+#: :func:`_drop_one_sync_in` cannot reach. Read as deltas over the armed steps.
+_DOOR_COUNTERS = ("sparse_scatters", "sparse_zeros", "double_subtracts")
+
+
+def _door_counts(residency: Any) -> Dict[str, int]:
+    """The residency's sparse-door counters now (0 for a counter it does not keep)."""
+    return {name: int(getattr(residency, name, 0) or 0) for name in _DOOR_COUNTERS}
+
+
 def _drop_one_sync_in(driver: Any):
     """Suppress the sync_in of the LEADING bracketed launch of every step. MUST diverge.
 
@@ -2645,15 +2749,34 @@ def _drop_one_sync_in(driver: Any):
     # then lands on the host and the next ``sync_in`` skips it, because the machine
     # still believes the mirror clean. That is precisely the missed-write defect the
     # ownership machine exists to prevent, so the run MUST diverge.
+    #
+    # THE HELD NULL MEASURES ITS OWN REACH, NOT AN UPLOAD. ``verify()`` is not read on
+    # this path and no step is judged stale, so the per-launch fields are dropped from
+    # the state rather than left at a zero nothing measured (until 2026-10-13 they
+    # stayed, and :func:`residency_controls` read that zero as "verify() read EMPTY at
+    # every skipped sync_in"). What the path does count: every entry into
+    # ``acquire_write`` over the armed steps, the entries that named a registered
+    # mirror, and what the residency's sparse doors (``scatter``, the zero doors, the
+    # device-side deposit subtraction) counted over the same steps. Those doors write
+    # the current side and move no ownership, so they never reach this null. Measured
+    # on the round's held route campaign (2026-10-13, 42 / 42 dispatched cases on both
+    # dispatch legs): ``suppressed`` 0 on every row, so no host write reached
+    # ``acquire_write`` on a mirror in the armed steps.
     residency = getattr(targets[0], "residency", None)
     if residency is not None and getattr(residency, "held", frozenset()):
         real_acquire = type(residency).acquire_write
-        state["mode"] = "held: one acquire_write leaves the mirror unclaimed"
-        state["armed"] = True
+        for key in ("steps_with_stale_mirrors", "stale_mirrors"):
+            state.pop(key, None)
+        state.update({"mode": HELD_SYNC_IN_MODE, "armed": True, "acquire_calls": 0,
+                      "acquires_on_a_mirror": 0})
+        doors_at_arm = _door_counts(residency)
 
         def patched_acquire(self, target):  # noqa: ANN001
+            state["acquire_calls"] += 1
             array = real_acquire(self, target)
             mirrors = self._targets(target)
+            if mirrors:
+                state["acquires_on_a_mirror"] += 1
             if mirrors and state["suppressed"] < 1:
                 for mirror in mirrors:
                     mirror.state = device_module.CLEAN_BOTH
@@ -2665,6 +2788,9 @@ def _drop_one_sync_in(driver: Any):
 
         def restore_acquire() -> None:
             type(residency).acquire_write = real_acquire
+            after = _door_counts(residency)
+            state["door_counts"] = {name: after[name] - doors_at_arm[name]
+                                    for name in after}
 
         return restore_acquire, state
     target_id = id(targets[0])
@@ -2721,6 +2847,22 @@ def _drop_the_inner_bracket(driver: Any):
 
     Returns ``armed: False`` when the case's plan carries no such wrapper, which is
     the honest answer for a clean seam rather than a pass.
+
+    A SPENT START OF H IS LOOKED THROUGH, NEVER ARMED ON. ``launch.StartOfHPlan``
+    sits around whatever serves a run's first ``update_H`` and does host work only
+    while ``fields.h_separated`` is False -- on that first ``update_H`` and on no
+    later step, and nothing but ``driver.reset`` (which drops the plan) lowers the
+    flag again. This control arms after one step, so on every armed step such a
+    wrapper is a pass-through, and moving a bracket across it cannot change a byte:
+    the slot is judged by its OCCUPANT, the plan the start wraps. Measured on
+    ``special_kz_2d`` and ``bfast_1d`` (2026-10-13): arming on the spent start
+    itself read NULL-DID-NOT-DIVERGE on both, structurally. A start still pending
+    when the control arms WOULD do host work at an armed step and is not looked
+    through: it is armed on as any writing wrapper is. ``looked_through`` records
+    each start looked through with its ``starts`` count at arm time; a start that
+    performed host work while looked through is named in
+    ``started_while_looked_through`` at restore, and the row then reads
+    HARNESS-FAILURE rather than a verdict resting on the look-through.
     """
     from meep_gpu.metal_kernels import launch  # noqa: PLC0415
 
@@ -2728,9 +2870,15 @@ def _drop_the_inner_bracket(driver: Any):
     step_plan = getattr(plan, "step_plan", None)
     plans = getattr(step_plan, "plans", None) or {}
     state: Dict[str, Any] = {"armed": False, "slots": [], "read_only_slots": [],
-                             "wrapper_kinds": {}}
-    undo: List[Tuple[Any, str, Any]] = []
-    for slot, entry in list(plans.items()):
+                             "wrapper_kinds": {}, "looked_through": {}}
+    undo: List[Tuple[Any, str, Any, Any]] = []
+    for slot, top in list(plans.items()):
+        entry, start = top, None
+        if _start_of_h_is_spent(top):
+            start, entry = top, top.inner
+            state["looked_through"][slot] = {
+                "wrapper": type(top).__name__, "occupant": type(entry).__name__,
+                "starts_at_arm": int(getattr(top, "starts", 0))}
         inner = getattr(entry, "inner", None)
         if not isinstance(inner, launch.SyncedPlan):
             continue
@@ -2756,18 +2904,42 @@ def _drop_the_inner_bracket(driver: Any):
             continue
         residency = inner.residency
         raw = inner.inner
-        undo.append((entry, slot, inner))
+        undo.append((entry, slot, inner, start))
         entry.inner = raw                    # the host work loses its bracket...
-        plans[slot] = launch.SyncedPlan(entry, residency)   # ...and the SLOT gains one
+        moved = launch.SyncedPlan(entry, residency)   # ...and the SLOT gains one
+        if start is None:
+            plans[slot] = moved
+        else:
+            start.inner = moved              # inside the spent start, a pass-through
         state["armed"] = True
         state["slots"].append(slot)
 
     def restore() -> None:
-        for wrapper, slot, bracketed in undo:
+        for wrapper, slot, bracketed, start in undo:
             wrapper.inner = bracketed
-            plans[slot] = wrapper
+            if start is None:
+                plans[slot] = wrapper
+            else:
+                start.inner = wrapper
+        started = [slot for slot, seen in state["looked_through"].items()
+                   if int(getattr(plans.get(slot), "starts", 0)) != seen["starts_at_arm"]]
+        if started:
+            state["started_while_looked_through"] = started
 
     return restore, state
+
+
+def _start_of_h_is_spent(entry: Any) -> bool:
+    """True for a ``launch.StartOfHPlan`` whose start can no longer run.
+
+    The test is the one ``StartOfHPlan.run`` makes, on the wrapper's own ``fields``:
+    a start runs only while ``h_separated`` is False.
+    """
+    from meep_gpu.metal_kernels import launch  # noqa: PLC0415
+
+    if not isinstance(entry, launch.StartOfHPlan):
+        return False
+    return bool(getattr(entry.fields, "h_separated", True))
 
 
 #: Wrapper classes whose pre-launch host work only READS the fields. Named by class
@@ -2869,14 +3041,122 @@ def _verify_after_every_sync_out(driver: Any):
 # The subnormal census
 # ---------------------------------------------------------------------------
 
+def _walk_unbarriered(obj: Any, prefix: str, out: Dict[str, Any], seen: set,
+                      depth: int) -> None:
+    """``gate_dispatch_end_to_end._walk``'s enumeration, fetching WITHOUT the read barrier.
+
+    The same arrays under the same paths, with the same exclusions; the one difference
+    is HOW each attribute is fetched. A held residency installs its read barrier as a
+    property on a generated subclass (and on a dict subclass for the polarization
+    mappings), so ``getattr`` on a held array copies the whole volume out of the device
+    and changes its ownership. Here every dataclass field and every mapping entry is
+    read through :func:`meep_gpu.host_writes.raw` / :func:`~meep_gpu.host_writes.raw_item`
+    -- the instance's own object -- so the walk itself moves no word and no state.
+    """
+    from meep_gpu import host_writes  # noqa: PLC0415
+
+    if depth > 5 or obj is None or isinstance(obj, e2e._MODULE_TYPE):  # noqa: SLF001
+        return
+    if e2e._is_array(obj):  # noqa: SLF001
+        out.setdefault(prefix, obj)
+        return
+    if isinstance(obj, (str, bytes, int, float, bool, complex)):
+        return
+    if id(obj) in seen:
+        return
+    seen.add(id(obj))
+    skip = set(e2e.SCRATCH_NAMES) | set(e2e.NOT_STATE_NAMES)
+    if isinstance(obj, dict):
+        for key in sorted(dict.keys(obj), key=repr):
+            _walk_unbarriered(host_writes.raw_item(obj, key), f"{prefix}[{key!r}]", out,
+                              seen, depth + 1)
+        return
+    if isinstance(obj, (list, tuple)):
+        for index, item in enumerate(obj):
+            _walk_unbarriered(item, f"{prefix}[{index}]", out, seen, depth + 1)
+        return
+    if dataclasses.is_dataclass(obj):
+        for field in dataclasses.fields(obj):
+            if field.name in skip:
+                continue
+            _walk_unbarriered(host_writes.raw(obj, field.name), f"{prefix}.{field.name}",
+                              out, seen, depth + 1)
+        return
+    namespace = getattr(obj, "__dict__", None)
+    if isinstance(namespace, dict):
+        for name in sorted(namespace):
+            if name.startswith("__") or name in skip:
+                continue
+            _walk_unbarriered(namespace[name], f"{prefix}.{name}", out, seen, depth + 1)
+        return
+    for name in getattr(type(obj), "__slots__", ()) or ():
+        if name in skip:
+            continue
+        _walk_unbarriered(getattr(obj, name, None), f"{prefix}.{name}", out, seen,
+                          depth + 1)
+
+
+#: Every flat index of a volume, one array per size (:func:`_current_words`).
+_CENSUS_INDEX: Dict[int, Any] = {}
+
+
+def _current_words(array: Any) -> Any:
+    """The array's CURRENT values as a fresh host array, moving no residency state.
+
+    :func:`meep_gpu.host_writes.gather` over every flat index: from the device tensor
+    when a held mirror is device-owned (``Residency.gather`` reads the tensor and
+    leaves the mirror's state as it was), from the host array otherwise. Never a
+    barriered read, never an ``acquire_read``.
+    """
+    from meep_gpu import host_writes  # noqa: PLC0415
+
+    # ONE INDEX OBJECT PER SIZE, reused: ``Residency._device_index`` caches the device
+    # copy of an index array by IDENTITY and keeps the host array alive, so a fresh
+    # ``arange`` per call would add a whole-volume index (host and device) to that
+    # cache on every launch of the run.
+    size = int(getattr(array, "size", 0) or 0)
+    flat = _CENSUS_INDEX.get(size)
+    if flat is None:
+        flat = _CENSUS_INDEX[size] = numpy.arange(size, dtype=numpy.int64)
+    values = host_writes.gather(array, flat)
+    try:
+        from meep_gpu import to_numpy  # noqa: PLC0415
+        values = to_numpy(values)
+    except Exception:  # noqa: BLE001 - already a host array
+        pass
+    return numpy.asarray(values).reshape(numpy.shape(array))
+
+
 def _census_state(driver: Any) -> Dict[str, int]:
-    """How many float32 words of every stored array are in the subnormal band."""
+    """How many float32 words of every stored array are in the subnormal band.
+
+    AN INSTRUMENT THAT RIDES THE FUSED LEG MUST NOT CHANGE IT, and until 2026-10-10 this
+    one did. It read the state through ``gate_dispatch_end_to_end.collect_state``, whose
+    walk fetches every array with ``getattr`` -- through a held residency's READ
+    BARRIER, which copies each device-owned volume out and marks it clean. Installed by
+    :func:`_seam_census` before EVERY launch of the run, it refreshed the fused leg's
+    host copies before every kernel read them, so the fused leg never ran under a hold
+    at all: whatever a plan read from a stale host copy was made current by the census
+    first. MEASURED on the tree carrying series entries 01..86 (MCC's defect: three
+    complex cylindrical plans read the radial source's stale host copy under a hold),
+    ``cylindrical_m1`` with the released probes, 24 steps: census ON, the fused leg 0
+    differing words at every checkpoint while the unfused leg (whose own driver the
+    census never read) differed from step 2; census OFF, the fused leg differed too,
+    22,684 of 358,400 words at step 24, the same count as the unfused leg.
+
+    So the walk fetches without the barrier (:func:`_walk_unbarriered`) and the values
+    are read with :func:`_current_words`, which reads a device-owned mirror's tensor
+    without moving its ownership. The count is exact and the residency is untouched.
+    """
     from meep_gpu.metal_kernels import subnormal  # noqa: PLC0415
 
+    found: Dict[str, Any] = {}
+    _walk_unbarriered(driver.fields, "fields", found, set(), 0)
+    _walk_unbarriered(getattr(driver, "pml", None), "pml", found, set(), 0)
     out: Dict[str, int] = {}
-    for name, array in e2e.collect_state(driver).items():
+    for name, array in sorted(found.items()):
         try:
-            count = subnormal.census(array)
+            count = subnormal.census(_current_words(array))
         except Exception:  # noqa: BLE001 - a dtype with no float32 word view is skipped
             continue
         if count:
@@ -2944,14 +3224,44 @@ def _seam_census(driver: Any):
     as PROVENANCE and not as a verdict: under the installed flush both executors
     flush, so the byte comparison is the arbiter and this says which value class the
     comparison was made over.
+
+    THE FUSED LEG'S OWN LAUNCHES ONLY. The patch sits on the CLASS, so every leg's
+    launches reach it while the three legs step alternately; a launch whose residency
+    mirrors none of this driver's field arrays belongs to another leg, cannot have
+    changed this driver's operands, and is counted under ``other_legs_launches``
+    without a census. (Until 2026-10-10 each of those launches took a census of this
+    driver too -- through the read barrier, see :func:`_census_state`.)
     """
+    from meep_gpu import host_writes  # noqa: PLC0415
     from meep_gpu.metal_kernels import launch  # noqa: PLC0415
 
     real = launch.SyncedPlan.run
     state: Dict[str, Any] = {"launches": 0, "launches_with_subnormals": 0,
-                             "worst": 0, "first": None}
+                             "worst": 0, "first": None, "other_legs_launches": 0}
+    fields = driver.fields
+    owners: Dict[int, bool] = {}
+
+    def mirrors_this_driver(plan: Any) -> bool:
+        residency = getattr(plan, "residency", None)
+        if residency is None:
+            return False
+        key = id(residency)
+        if key not in owners:
+            # Mirrors are keyed by host-array IDENTITY, so another leg's residency can
+            # never claim one of this driver's arrays.
+            arrays = [host_writes.raw(fields, name)
+                      for name in ("Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
+                                   "Dx", "Dy", "Dz", "Bx", "By", "Bz")]
+            owners[key] = any(
+                residency._by_host_identity(array) is not None  # noqa: SLF001
+                for array in arrays if array is not None)
+        return owners[key]
 
     def patched(self, *args: Any, **kwargs: Any) -> None:  # noqa: ANN001
+        if not mirrors_this_driver(self):
+            state["other_legs_launches"] += 1
+            real(self, *args, **kwargs)
+            return
         counts = _census_state(driver)
         state["launches"] += 1
         total = sum(counts.values())
@@ -3115,7 +3425,6 @@ def _pml_intermediate_of(array: Any) -> Optional[str]:
     if not dot:
         return None
     return f"{head}.{_BAND_INTERMEDIATE_PREFIX}{leaf}"
-
 
 
 def _band_census(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -3296,6 +3605,79 @@ def band_confinement(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
             "per_array": per_array}
 
 
+def replay_licensed(confinement: Dict[str, Any], fused_state: Dict[str, Any],
+                    replay_state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """An array over a ceiling, licensed by the HOST FLUSH REPLAY reproducing it word for word.
+
+    THE STRONGER MOVE :data:`_BAND_INTERMEDIATE_VALUE_CEILING`'s note recorded as owed.
+    ``replay_state`` is the array path stepped on the HOST with the FPU FLUSHING -- MPS's
+    mode -- over the same steps as the two legs (:func:`_host_flush_replay`). Where the
+    fused leg's array equals it in every word, the fused leg's disagreement with the
+    keeping array leg on that array IS the array path's own flush-vs-keep split, at
+    whatever magnitude the split happens to reach: no constant can say that and a
+    replay can. An array the replay does not reproduce keeps its ceilings, so a kernel
+    that departs from the flushing array path by one word is refused as before, and an
+    array within its ceilings needs no replay at all.
+
+    MEASURED 2026-10-10 on ``pml_3d`` (01..106): ``fields.Dz`` and ``fields.Ez`` differ at
+    1.875e-28, over the 1e-28 field ceiling and not downstream of a larger ``fu_Dz``
+    (3.892e-31); the host replay reproduces all 20 differing arrays' counts and
+    magnitudes exactly. Pure, so the test suite arms it without a device; returns a new
+    dict, ``confined`` recomputed.
+    """
+    rows = []
+    for row in confinement.get("per_array", ()):
+        row = dict(row)
+        name = str(row.get("array"))
+        if row.get("over_ceiling"):
+            fused = fused_state.get(name)
+            replay = None if replay_state is None else replay_state.get(name)
+            reproduced = (fused is not None and replay is not None
+                          and numpy.asarray(fused).dtype == numpy.asarray(replay).dtype
+                          and numpy.asarray(fused).shape == numpy.asarray(replay).shape
+                          and numpy.asarray(fused).tobytes()
+                          == numpy.asarray(replay).tobytes())
+            row["reproduced_by_the_host_flush_replay"] = bool(reproduced)
+        rows.append(row)
+    out = dict(confinement)
+    out["per_array"] = rows
+    out["confined"] = bool(rows) and all(
+        not row.get("over_ceiling") or row.get("reproduced_by_the_host_flush_replay")
+        for row in rows)
+    out["licensed_by_the_host_flush_replay"] = sorted(
+        str(row.get("array")) for row in rows
+        if row.get("over_ceiling") and row.get("reproduced_by_the_host_flush_replay"))
+    return out
+
+
+def _host_flush_replay(case: str, res: Optional[int], steps: int) -> Dict[str, Any]:
+    """The case's array path on the HOST, the FPU FLUSHING, ``steps`` steps: the replay leg.
+
+    A NumPy-reference lift (``prefer_gpu=False``), which never plans whatever
+    ``MEEP_GPU_DISPATCH`` says, stepped in the cliff control's two chunks. The FPU is
+    driven to flush for the replay's own steps and restored to its entry state after,
+    exception included.
+    """
+    import meep as mp  # noqa: PLC0415
+    import meep_gpu  # noqa: PLC0415
+    from meep_gpu import subnormal_policy  # noqa: PLC0415
+
+    builder = CASES[case]
+    sim, _monitors, _until = builder(mp) if res is None else builder(mp, res)
+    driver = meep_gpu.lift_simulation(sim, prefer_gpu=False)
+    entry = subnormal_policy.backends.subnormals_flushed()
+    try:
+        subnormal_policy._drive_host_fpu(True)  # noqa: SLF001
+        if not subnormal_policy.backends.subnormals_flushed():
+            raise RuntimeError("the host FPU could not be driven to flush for the replay")
+        for _ in range(2):
+            driver.run(num_steps=steps // 2)
+        return e2e.collect_state(driver)
+    finally:
+        subnormal_policy._drive_host_fpu(entry)  # noqa: SLF001
+        driver.close()
+
+
 def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[str, Any]:
     """Drive a released pair with the HOST KEEPING and require divergence IN THE BAND.
 
@@ -3404,6 +3786,8 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
     band_census = _band_census(keeping_state)
     band_arrays = len(keeping_state)
     row["band_census"] = band_census
+    # The fused leg's words, kept for the host flush replay (:func:`replay_licensed`).
+    fused_state = e2e.collect_state(fused_driver)
     fused_driver.close()
     array_driver.close()
     row["policy_in_force"] = dict(meep_gpu.policy_stamp())
@@ -3469,6 +3853,17 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
                     "reads_as": entry.get("reads_as")}
                    for entry in worst]
     confinement = band_confinement(worst)
+    if any(entry["over_ceiling"] for entry in confinement["per_array"]):
+        # AN ARRAY OVER A CEILING IS JUDGED AGAINST THE HOST FLUSH REPLAY, not refused on
+        # the constant alone (:func:`replay_licensed`); one that the replay does not
+        # reproduce word for word keeps its ceilings.
+        try:
+            replay_state = _host_flush_replay(case, res, CONTROL_STEPS * 2)
+            row["host_flush_replay"] = {"steps": CONTROL_STEPS * 2, "ran": True}
+        except Exception as exc:  # noqa: BLE001 - no replay licenses nothing
+            replay_state = None
+            row["host_flush_replay"] = {"ran": False, "error": repr(exc)}
+        confinement = replay_licensed(confinement, fused_state, replay_state)
     confined = confinement["confined"]
     row["band_bounds"] = confinement
     # FAIL CLOSED ON A SHORT LIST. The predicate is only a statement about the case if
@@ -3611,9 +4006,230 @@ def _one_step_report(case: str, env: Dict[str, Optional[str]],
 # The armed controls
 # ---------------------------------------------------------------------------
 
+#: The furthest the ABSORBED-CONSULT-WITHHELD control's window may be extended to reach
+#: the step at which its mechanism first exists (:func:`withheld_control`). The window is
+#: the first step at which re-applying a withheld constitutive sub-step changes a word,
+#: plus ``CONTROL_STEPS - 1`` more; this bounds the REACH LEG that finds that step. The
+#: same bound, for the same reason, as the fused route gate's: measured there on the
+#: NumPy array path of the tree carrying series entries 01..86, the first such step is 2
+#: to 48 across the route cases (the cylindrical cases 26), and a case that needs more
+#: than four times the largest refuses by name rather than stepping without bound.
+ARMED_NULL_REACH_CAP = 200
+
+#: The components each constitutive slot's ARRAY arm writes, in the order
+#: ``stepping.H_CONSTITUTIVE_TERMS`` / ``E_CONSTITUTIVE_TERMS`` step them. Every
+#: geometry names its components this way (a cylindrical grid's r, phi, z live in the
+#: x, y, z slots).
+_SLOT_COMPONENTS: Dict[str, Tuple[str, ...]] = {
+    "update_H": ("Hx", "Hy", "Hz"),
+    "update_E": ("Ex", "Ey", "Ez"),
+}
+
+#: The constitutive region modes on which a component's array arm is a pure write of
+#: the constitutive product on every cell (``outside_only``), or on which the
+#: component is not stepped at all (``absent``: MEEP allocated no array for it).
+_NO_ACCUMULATION_MODES = ("outside_only", "absent")
+
+
+def _own_axis_structure(leg: Dict[str, Any],
+                        slots: Any) -> Optional[Dict[str, Dict[str, str]]]:
+    """Per withheld constitutive slot, each component's constitutive region mode.
+
+    THE ACCUMULATION LIVES ONLY ON A COMPONENT'S OWN-AXIS LAYER. ``update_H`` and
+    ``update_E`` step every component through ``stepping._apply_constitutive_regions``:
+    the dsigw accumulation on the cells whose chunk carries the component's OWN-axis
+    layer, and MEEP's plain constitutive, the pure write ``f = src``, everywhere else
+    (update_eh.cpp:162-170). ``outside_only`` means no cell of the component
+    accumulates, so applying its array arm a second time is the identity on every cell
+    whatever the kernel did. A component MEEP allocated no array for is ``absent``.
+
+    Read off the plan the driver installed (``Fields.region_plan``), never built here.
+    FAIL CLOSED: ``None`` -- an unreadable driver, an inactive or foreign layer, a slot
+    that is not constitutive -- grants no NOT-APPLICABLE. The fused route gate's reader
+    (lane FXR) with the same contract; the Metal gate reads the ARRAY leg, which holds
+    nothing on a device.
+    """
+    driver = leg.get("driver")
+    if driver is None:
+        return None
+    try:
+        fields, pml = driver.fields, driver.pml
+        plan = getattr(fields, "region_plan", None)
+        if plan is None or pml is None or getattr(plan, "pml", None) is not pml:
+            return None
+        absent = set(getattr(fields, "absent_components", ()) or ())
+        out: Dict[str, Dict[str, str]] = {}
+        for slot in sorted(slots):
+            components = _SLOT_COMPONENTS.get(slot)
+            if components is None:
+                return None
+            out[slot] = {component: ("absent" if component in absent
+                                     else str(plan.spec("constitutive", component).mode))
+                         for component in components}
+        return out
+    except Exception:  # noqa: BLE001 - an unreadable plan is "unknown", not "plain"
+        return None
+
+
+def _accumulating_components(structure: Dict[str, Dict[str, str]]) -> List[str]:
+    """``slot:component`` for every withheld component with an own-axis accumulation."""
+    return sorted(f"{slot}:{component}" for slot, modes in structure.items()
+                  for component, mode in modes.items()
+                  if mode not in _NO_ACCUMULATION_MODES)
+
+
+def _reapplication_witness(target: Any, slots: Any):
+    """On ``target`` (one leg's ``Fields``) only: apply each slot's ARRAY arm a second time.
+
+    Returns ``(restore, state)``. The driver's module-level ``update_H`` / ``update_E``
+    -- the names its array branch calls when a consult answers False -- are wrapped:
+    after the real call the wrapper snapshots every array that arm writes (the
+    components and their ``f_w_`` auxiliaries), calls the arm AGAIN, counts the words
+    that second call changed, and writes the snapshot back. So the leg it watches steps
+    exactly as the array path does, and ``state["first_change"][slot]`` is the first
+    step at which a second application would have changed a word: the step at which
+    the withheld-consult comparison first has an armed direction.
+
+    Watching stops for a slot once it has fired, and the wrapper passes every other
+    ``Fields`` straight through. Patched on the driver MODULE and restored by the caller
+    in a ``finally``. The leg it watches is an ARRAY-path lift, so no array it touches
+    is held on a device.
+    """
+    import meep_gpu.driver as drv  # noqa: PLC0415 - late, as elsewhere
+    from meep_gpu import to_numpy  # noqa: PLC0415
+
+    state: Dict[str, Any] = {"calls": {}, "first_change": {}, "words_changed": {}}
+    real: Dict[str, Any] = {}
+
+    def make(slot: str, arm: Any):
+        components = _SLOT_COMPONENTS[slot]
+
+        def wrapped(fields, pml=None):  # noqa: ANN001
+            arm(fields, pml)
+            if fields is not target:
+                return
+            call = state["calls"].get(slot, 0) + 1
+            state["calls"][slot] = call
+            if slot in state["first_change"]:
+                return
+            names = [name for name in (*components,
+                                       *("f_w_" + component for component in components))
+                     if getattr(fields, name, None) is not None]
+            kept = {name: getattr(fields, name).copy() for name in names}
+            arm(fields, pml)
+            changed: Dict[str, int] = {}
+            for name in names:
+                words = int(numpy.count_nonzero(
+                    e2e._as_words(to_numpy(kept[name]))  # noqa: SLF001
+                    != e2e._as_words(to_numpy(getattr(fields, name)))))  # noqa: SLF001
+                if words:
+                    changed[name] = words
+                getattr(fields, name)[...] = kept[name]
+            if changed:
+                state["first_change"][slot] = call
+                state["words_changed"][slot] = changed
+
+        return wrapped
+
+    for slot in sorted(slots):
+        if slot in _SLOT_COMPONENTS:
+            real[slot] = getattr(drv, slot)
+            setattr(drv, slot, make(slot, real[slot]))
+
+    def restore() -> None:
+        for slot, arm in real.items():
+            setattr(drv, slot, arm)
+
+    return restore, state
+
+
+def reach_leg(case: str, res: Optional[int], counter: MetalLaunchCounter,
+              slots: Any, cap: int = ARMED_NULL_REACH_CAP) -> Dict[str, Any]:
+    """The first step at which re-applying a withheld constitutive arm changes a word.
+
+    A FRESH ARRAY-PATH LIFT (:data:`ARRAY_ENV`), stepped one step at a time under
+    :func:`_reapplication_witness` until any watched slot fires or ``cap`` steps have
+    run. Its own trajectory is the array path's; nothing it measures reaches the two
+    legs the control compares, which are never wrapped. ``first_change_step`` is
+    ``None`` when no slot fired within the cap.
+    """
+    leg = e2e.run_leg(case, CASES[case], "reach", ARRAY_ENV, counter, 0, res)
+    restore, state = _reapplication_witness(leg["driver"].fields, slots)
+    steps = 0
+    started = time.time()
+    try:
+        e2e._apply_env(leg)  # noqa: SLF001
+        while steps < cap and not state["first_change"]:
+            leg["driver"].run(num_steps=1)
+            steps += 1
+    finally:
+        restore()
+        path = leg["driver"].active_step_path
+        leg["driver"].close()
+    fired = dict(state["first_change"])
+    out = {"leg": ("array path; after each withheld constitutive arm, the arm applied "
+                   "a second time, its changed words counted, and the snapshot "
+                   "restored"),
+           "step_path": path,
+           "slots_watched": sorted(slot for slot in slots if slot in _SLOT_COMPONENTS),
+           "steps_stepped": steps, "cap": cap,
+           "first_change_step": min(fired.values()) if fired else None,
+           "first_change_by_slot": fired,
+           "words_changed_at_first_change": dict(state["words_changed"]),
+           "wall_s": round(time.time() - started, 2)}
+    say(f"{case}: REACH — a second application of {out['slots_watched']} first changes "
+        f"a word at step {out['first_change_step']} ({fired}; {steps} steps, "
+        f"cap {cap}, {out['wall_s']} s)")
+    return out
+
+
+def withheld_verdict(*, withheld: int, launching_failures: List[str], identical: bool,
+                     overwrite_branch: Optional[bool], constitutive_only: bool,
+                     in_seam_carries: bool,
+                     structure: Optional[Dict[str, Dict[str, str]]],
+                     reach: Optional[Dict[str, Any]]) -> Tuple[str, str]:
+    """``(verdict, named reason)`` for the absorbed-consult-withheld control. Pure.
+
+    The fused route gate's ladder (lane FXR), with this gate's stricter NOT-APPLICABLE
+    guard kept on both rulings: a ruling that the comparison has no armed direction is
+    granted only where the case's in-seam mutation is scheduled and armed for every
+    withheld side and no device group was left running (``in_seam_carries``), because
+    that row and the main byte comparison are what carry the claim instead. In order:
+
+    1. ``NOT-ARMED`` / ``NOTHING-WITHHELD``: no absorbed consult was reached.
+    2. ``LAUNCHING-SLOT-DID-NOT-LAUNCH``: a device group left running did not run.
+    3. ``DIVERGED-AS-REQUIRED`` / ``DIVERGED``.
+    4. ``NOT-APPLICABLE`` / ``INACTIVE-LAYER``: the layer is inactive, every withheld
+       slot constitutive -- every arm a pure overwrite (unchanged since 2026-09-18).
+    5. ``NOT-APPLICABLE`` / ``NO-OWN-AXIS-LAYER``: the layer is active, every withheld
+       slot constitutive, and the plan the driver installed gives no withheld component
+       an own-axis accumulation cell -- the per-component form of rule 4.
+    6. ``NOT-ARMED`` / ``ACCUMULATION-NOT-REACHED``: some withheld component has an
+       own-axis layer and the reach leg saw no second application change a word within
+       its cap, so the window could not be placed. A failure, by name.
+    7. ``NULL-DID-NOT-DIVERGE`` / ``ARMED-AND-IDENTICAL``: everything else -- including
+       an unreadable plan, which grants nothing.
+    """
+    if not withheld:
+        return "NOT-ARMED", "NOTHING-WITHHELD"
+    if launching_failures:
+        return "LAUNCHING-SLOT-DID-NOT-LAUNCH", "LAUNCHING-SLOT-DID-NOT-LAUNCH"
+    if not identical:
+        return "DIVERGED-AS-REQUIRED", "DIVERGED"
+    if overwrite_branch is True and constitutive_only and in_seam_carries:
+        return "NOT-APPLICABLE", "INACTIVE-LAYER"
+    if overwrite_branch is False and constitutive_only and structure is not None:
+        if not _accumulating_components(structure):
+            if in_seam_carries:
+                return "NOT-APPLICABLE", "NO-OWN-AXIS-LAYER"
+        elif reach is not None and reach.get("first_change_step") is None:
+            return "NOT-ARMED", "ACCUMULATION-NOT-REACHED"
+    return "NULL-DID-NOT-DIVERGE", "ARMED-AND-IDENTICAL"
+
+
 def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
                      counter: MetalLaunchCounter) -> Dict[str, Any]:
-    """The absorbed consult forced False. MUST diverge.
+    """The absorbed consult forced False. MUST diverge — WHERE THE MECHANISM EXISTS.
 
     With the second consult answering False the driver runs the array
     ``update_H``/``update_E`` ON TOP of the constitutive half the fused launch
@@ -3640,6 +4256,33 @@ def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
     NOT-ARMED until the envelope round admitted those arms on ``pml_active=False``,
     and NULL-DID-NOT-DIVERGE after, on the same blindness. NOT-APPLICABLE is granted
     only where every guard below holds, and never on an unreadable layer.
+
+    ON AN ACTIVE LAYER THE ACCUMULATION IS PER COMPONENT, AND IT HAS TO BE REACHED --
+    the fused route gate's rule (lane FXR), adopted here because the same blind control
+    exists on this table. On an accumulating cell a second application adds
+    ``(kps * fw) - (kms * fw)``, which is +0 wherever sigma is 0 or the field has not
+    arrived; once the kernels' constitutive halves are bit-identical to the array
+    path's, the control diverges only through that accumulation, and twelve steps from
+    the start reach no graded own-axis cell on many cases. MEASURED with this gate on
+    the probe leg: on the tree carrying series entries 01..79, ``NULL-DID-NOT-DIVERGE``
+    on 3 of 5 cases (``bloch_2d``, ``complex_3d``, ``cylindrical_m1``); on that tree
+    with the expansion-licence deletion applied, on 10 of 18 (``cylindrical_m0_complex``
+    and six complex shapes besides); every one of them read DIVERGED-AS-REQUIRED on
+    2026-10-05, before the series.
+    So the window is PLACED rather than fixed: where no withheld component has an
+    own-axis cell the control is NOT-APPLICABLE by name (``NO-OWN-AXIS-LAYER``, read off
+    the plan the driver installed, under the same guard as the inactive layer); where
+    one does and twelve steps leave the legs identical, :func:`reach_leg` finds the
+    first step at which a second application changes a word and both legs are stepped
+    to ``CONTROL_STEPS`` past it with the consult still withheld; identical then is
+    NULL-DID-NOT-DIVERGE, and a reach leg that never fires within
+    :data:`ARMED_NULL_REACH_CAP` is ``NOT-ARMED`` by name. Every branch is
+    :func:`withheld_verdict`. MEASURED with this rule on the probe leg, series entries
+    01..86 with the cylindrical plan fix (lane MCC): ``cylindrical``,
+    ``cylindrical_m0``, ``cylindrical_m1`` and ``cylindrical_m0_complex`` first armed at
+    step 26 and DIVERGED-AS-REQUIRED over a 37-step window, ``pml_2d`` at 13 (24 steps),
+    ``bloch_2d`` at 25 (36 steps), and ``pml_1d`` NOT-APPLICABLE by
+    ``NO-OWN-AXIS-LAYER``.
     """
     say(f"{case}: ARMED NULL — {CONTROL_STEPS} steps with the ABSORBED consult "
         "forced False")
@@ -3659,22 +4302,66 @@ def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
     finally:
         restore()
     step_leg(case, b, counter, CONTROL_STEPS)
-    block = fusion_block(a)
+    steps = CONTROL_STEPS
     verdict = e2e.compare_state(e2e.collect_state(a["driver"]),
                                 e2e.collect_state(b["driver"]))
-    skipped_launching = dict(state.get("skipped_launching") or {})
-    launching = route._launching_slots_ran(a, skipped_launching,  # noqa: SLF001
-                                           CONTROL_STEPS)
     constitutive_only = bool(state["slots"]) and all(
         slot in route._CONSTITUTIVE_SLOTS for slot in state["slots"])  # noqa: SLF001
     overwrite_branch = route._constitutive_is_an_overwrite(a)  # noqa: SLF001
+    structure = (_own_axis_structure(b, state["slots"])
+                 if constitutive_only and overwrite_branch is False else None)
+    reach: Optional[Dict[str, Any]] = None
+    if (verdict["identical"] and state["withheld"] and structure is not None
+            and _accumulating_components(structure)
+            and not route._launching_slots_ran(  # noqa: SLF001
+                a, dict(state.get("skipped_launching") or {}), steps)["failures"]):
+        # THE WINDOW IS PLACED WHERE THE MECHANISM EXISTS. Some withheld component
+        # accumulates on an own-axis layer and twelve steps from the start did not part
+        # the legs; the reach leg finds the first step at which a second application
+        # changes a word, and both legs are stepped to CONTROL_STEPS past it, the
+        # withheld consult still forced False on the fused leg throughout.
+        reach = reach_leg(case, res, counter, state["slots"])
+        first = reach.get("first_change_step")
+        if first is not None and first + CONTROL_STEPS - 1 > steps:
+            extra = first + CONTROL_STEPS - 1 - steps
+            say(f"{case}: ARMED NULL — window extended by {extra} steps to "
+                f"{steps + extra} (first armed step {first})")
+            restore, more = route._withhold_absorbed_consult()  # noqa: SLF001
+            try:
+                step_leg(case, a, counter, extra)
+            finally:
+                restore()
+            step_leg(case, b, counter, extra)
+            steps += extra
+            state["withheld"] += more["withheld"]
+            for key in ("slots", "skipped_leading", "skipped_launching"):
+                merged = dict(state.get(key) or {})
+                for slot, count in dict(more.get(key) or {}).items():
+                    merged[slot] = merged.get(slot, 0) + count
+                state[key] = merged
+            verdict = e2e.compare_state(e2e.collect_state(a["driver"]),
+                                        e2e.collect_state(b["driver"]))
+    block = fusion_block(a)
+    skipped_launching = dict(state.get("skipped_launching") or {})
+    launching = route._launching_slots_ran(a, skipped_launching,  # noqa: SLF001
+                                           steps)
     sides = sorted(side for side, slots in _SEAM_SLOTS.items()
                    if any(slot in slots for slot in state["slots"]))
     unarmed_sides = [side for side in sides
                      if side not in (spec.get("seam") or ())
                      or not _side_is_fused(block["driven"], side)]
+    in_seam_carries = bool(sides) and not unarmed_sides and not skipped_launching
     row.update({
-        "steps": CONTROL_STEPS,
+        "steps": steps,
+        # THE WINDOW, stated: CONTROL_STEPS from the start, or CONTROL_STEPS past the
+        # first step at which the mechanism exists when the reach leg placed it later.
+        "window": {"control_steps": CONTROL_STEPS, "steps": steps,
+                   "extended": steps > CONTROL_STEPS,
+                   "first_armed_step": (reach or {}).get("first_change_step")},
+        "own_axis_structure": structure,
+        "accumulating_components": (_accumulating_components(structure)
+                                    if structure is not None else None),
+        "reach": reach,
         "consults_withheld": state["withheld"],
         "withheld_slots": state["slots"],
         "leading_repair_slots_left_running": state["skipped_leading"],
@@ -3690,20 +4377,20 @@ def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
         "arrays_compared": verdict["arrays"],
         "first_differences": verdict["differences"][:6],
     })
-    if not state["withheld"]:
-        row["verdict"] = "NOT-ARMED"
+    row["verdict"], row["reason"] = withheld_verdict(
+        withheld=state["withheld"], launching_failures=launching["failures"],
+        identical=verdict["identical"], overwrite_branch=overwrite_branch,
+        constitutive_only=constitutive_only, in_seam_carries=in_seam_carries,
+        structure=structure, reach=reach)
+    if row["reason"] == "NOTHING-WITHHELD":
         row["why"] = ("no absorbed consult was reached, so nothing was withheld and "
                       "this control measured nothing")
-    elif launching["failures"]:
+    elif row["reason"] == "LAUNCHING-SLOT-DID-NOT-LAUNCH":
         # PORTED FROM THE FUSED ROUTE GATE: a device group this control left running
         # must show it ran. It only tightens; no Metal composition measured so far
         # leaves one running.
-        row["verdict"] = "LAUNCHING-SLOT-DID-NOT-LAUNCH"
         row["why"] = "; ".join(launching["failures"])
-    elif not verdict["identical"]:
-        row["verdict"] = "DIVERGED-AS-REQUIRED"
-    elif (overwrite_branch is True and constitutive_only and sides
-          and not unarmed_sides and not skipped_launching):
+    elif row["reason"] == "INACTIVE-LAYER":
         # THE MECHANISM DOES NOT EXIST ON THIS BRANCH (docstring). What carries the
         # claim is named in the order it carries it: the MAIN byte comparison first
         # -- the fused leg answered the update_E consult itself on every step, so no
@@ -3713,7 +4400,6 @@ def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
         # corroboration that no array pass recomputed E after the wipe. The in-seam
         # row alone does NOT carry it: it diverges identically with the second half
         # suppressed.
-        row["verdict"] = "NOT-APPLICABLE"
         row["why"] = (
             f"the layer is INACTIVE, so the array arm of every withheld slot "
             f"{sorted(state['slots'])} is a pure overwrite (update_E, "
@@ -3725,16 +4411,37 @@ def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
             f"product answered every step (a dead second half fails it); corroborated "
             f"by in-seam-pass-mutated-{'/'.join(sides)}, which shows no array pass "
             f"recomputed E after the wall wipe")
-    elif verdict["identical"]:
-        row["verdict"] = "NULL-DID-NOT-DIVERGE"
+    elif row["reason"] == "NO-OWN-AXIS-LAYER":
+        # THE SAME RULING, PER COMPONENT, under the same guard: the layer is active,
+        # but the plan the driver installed gives no withheld component a cell on its
+        # own-axis layer, so each array arm is the plain constitutive, a pure write, on
+        # every cell.
+        row["why"] = (
+            f"the layer is active but no withheld component accumulates: "
+            f"{structure}; every array arm of {sorted(state['slots'])} is MEEP's plain "
+            f"constitutive f = src on every cell (update_eh.cpp:162-170), so applying "
+            f"it a second time is the identity whatever the kernel did and this "
+            f"comparison has no armed direction here. What carries the claim instead: "
+            f"the case row's own fused-vs-array byte comparison over the full run; "
+            f"corroborated by in-seam-pass-mutated-{'/'.join(sides)}")
+    elif row["reason"] == "ACCUMULATION-NOT-REACHED":
+        row["why"] = (
+            f"{_accumulating_components(structure)} accumulate on an own-axis layer, "
+            f"and the reach leg saw no second application change a word within "
+            f"{(reach or {}).get('steps_stepped')} steps (cap "
+            f"{(reach or {}).get('cap')}), so no window could be placed where the "
+            f"comparison has an armed direction; this control measured nothing")
+    elif row["reason"] == "ARMED-AND-IDENTICAL":
+        armed = (f" A second application changes words from step "
+                 f"{reach['first_change_step']} ({reach['first_change_by_slot']}), "
+                 f"and the legs were compared {steps} steps in."
+                 if reach and reach.get("first_change_step") is not None else "")
         row["why"] = ("the array constitutive call ran ON TOP of the fused launch's "
                       "own constitutive half and the answer did not change, so this "
                       "comparison cannot see whether the fused kernel's second half "
-                      "ran at all")
-    else:
-        row["verdict"] = "DIVERGED-AS-REQUIRED"
-    say(f"{case}: ARMED NULL -> {row['verdict']} "
-        f"({row.get('consults_withheld')} consults withheld, "
+                      "ran at all." + armed)
+    say(f"{case}: ARMED NULL -> {row['verdict']} [{row['reason']}] "
+        f"({row.get('consults_withheld')} consults withheld over {steps} steps, "
         f"{row.get('arrays_differing')} arrays differ)")
     a["driver"].close()
     b["driver"].close()
@@ -3835,6 +4542,59 @@ def seam_mutation_control(case: str, spec: Dict[str, Any], side: str,
     return row
 
 
+def held_sync_in_verdict(state: Dict[str, Any], *, identical: bool) -> Tuple[str, str]:
+    """The verdict and text of ``residency-sync_in-dropped`` in its HELD form.
+
+    Every clause names a field the held form of :func:`_drop_one_sync_in` measured
+    over the armed steps, and nothing else: that form reads no ``verify()`` and judges
+    no step stale, so no text here may claim an upload was measured. Four outcomes:
+
+    * nothing suppressed, legs identical: NOT-APPLICABLE. No host write reached
+      ``acquire_write`` on a mirror, so there was no ownership move to leave
+      unclaimed and the null did not bite; that is a measured property of the
+      composition (its host writes, if any, went through the sparse doors, whose
+      counts the row carries), and the held seam's evidence here is the
+      ``residency-verify-after-every-sync_out`` row and the case's byte identity;
+    * nothing suppressed, legs differ: HARNESS-FAILURE. The patched ``acquire_write``
+      changed nothing, so the divergence is not this control's;
+    * a mirror left unclaimed, legs identical: NULL-DID-NOT-DIVERGE;
+    * a mirror left unclaimed, legs differ: DIVERGED-AS-REQUIRED.
+    """
+    steps = state.get("steps", CONTROL_STEPS)
+    calls = state.get("acquire_calls")
+    on_mirror = state.get("acquires_on_a_mirror")
+    doors = state.get("door_counts")
+    if not state.get("suppressed"):
+        if not identical:
+            return ("HARNESS-FAILURE",
+                    f"the held null suppressed nothing over {steps} armed steps "
+                    f"(acquire_write entered {calls} time(s), {on_mirror} on a mirror) "
+                    "and the armed leg still differs from its twin, so the divergence "
+                    "is not this control's")
+        return ("NOT-APPLICABLE",
+                f"held residency: this control leaves the mirror of the first "
+                f"acquire_write after it arms unclaimed, and over {steps} armed steps "
+                f"Residency.acquire_write was entered {calls} time(s), {on_mirror} of "
+                "them on a registered mirror, so no host write declared an ownership "
+                "move for it to suppress and the held null did not bite. The sparse "
+                f"doors counted {doors} over the same steps; they write the current "
+                "side and move no ownership, so this control does not reach them. No "
+                "upload was measured on this path (verify() is not read), and the held "
+                "seam's evidence on this composition is "
+                "residency-verify-after-every-sync_out and the case's byte identity")
+    if identical:
+        return ("NULL-DID-NOT-DIVERGE",
+                f"held residency: the mirror {state.get('slot')!r} was left clean after "
+                f"a host write declared it ({on_mirror} acquire(s) on a mirror over "
+                f"{steps} armed steps), so the next sync_in skipped that write, and the "
+                "answer still did not change, so the ownership move is not "
+                "load-bearing here and the byte identity above it is not evidence "
+                "about the seam")
+    return ("DIVERGED-AS-REQUIRED",
+            f"held residency: the mirror {state.get('slot')!r} was left clean after a "
+            "host write declared it, and the run diverged")
+
+
 def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
                        counter: MetalLaunchCounter) -> List[Dict[str, Any]]:
     """The three residency controls, each a separate row. Two MUST diverge; one is a floor.
@@ -3882,8 +4642,19 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
                     "first_differences": verdict["differences"][:4],
                     "fused_arms_driven": fusion_block(a)["driven"]})
         if must_diverge:
-            if not state.get("armed"):
+            if state.get("started_while_looked_through"):
+                # THE LOOK-THROUGH WAS WRONG, so no verdict may rest on it. The
+                # control judged these slots by their occupant because their start
+                # of H was spent when it armed; a start that then ran did host work
+                # the control treated as absent.
+                row["verdict"] = "HARNESS-FAILURE"
+                row["why"] = (
+                    f"the start of H on {state['started_while_looked_through']} was "
+                    "looked through as spent (fields.h_separated True at arm time) and "
+                    "then performed a start during the armed steps")
+            elif not state.get("armed"):
                 read_only = state.get("read_only_slots") or []
+                looked = state.get("looked_through") or {}
                 # A PROVEN NO-OP IS NOT AN UNARMED CONTROL. ``NOT-ARMED`` says the
                 # control could not arm and does not say why, and the leg fails on
                 # it; ``NOT-APPLICABLE`` carries the measurement that this
@@ -3897,6 +4668,9 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
                 # shape the control was never about.
                 row["verdict"] = "NOT-APPLICABLE"
                 row["why"] = (
+                    ("the frozen plan holds no launch.SyncedPlan, so there is no "
+                     "residency bracket whose sync_in this control could drop")
+                    if name == "residency-sync_in-dropped" else
                     (f"this composition carries no bracketed wrapper at all "
                      f"({state.get('wrapper_kinds') or 'none'}), so there is no "
                      "pre-launch host work for this control to move an upload "
@@ -3907,8 +4681,27 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
                      "only READS the fields; moving an upload across a read-only "
                      "operation cannot change a byte, so there is nothing this "
                      "control could have measured on this composition"))
-            elif verdict["identical"] and not state.get("steps_with_stale_mirrors",
-                                                        1):
+                if looked:
+                    row["why"] += (
+                        f"; the start of H on {sorted(looked)} ({looked}) was looked "
+                        "through to its occupant, because the run's first update_H "
+                        "was done when the control armed (fields.h_separated True), "
+                        "so that wrapper does no host work at any armed step")
+            elif state.get("mode") == HELD_SYNC_IN_MODE:
+                # THE HELD FORM IS READ BY ITS OWN FIELDS. It suppresses no upload
+                # and reads no verify(), so the no-op branch below is not open to it
+                # (its state carries no ``steps_with_stale_mirrors``); what it
+                # measured is how often a host write reached ``acquire_write``.
+                row["verdict"], row["why"] = held_sync_in_verdict(
+                    state, identical=verdict["identical"])
+            elif (verdict["identical"] and "steps_with_stale_mirrors" in state
+                  and not state["steps_with_stale_mirrors"]):
+                # ONLY A CONTROL THAT MEASURED THE UPLOAD may call it a no-op:
+                # ``_drop_one_sync_in`` counts, at the instant of each skipped
+                # sync_in, the steps on which the device lacked the host's bytes.
+                # ``_drop_the_inner_bracket`` suppresses no upload -- it moves one --
+                # and keeps no such count, so this branch is not open to it; nor is
+                # the held form of ``_drop_one_sync_in``, read above.
                 # THE UPLOAD HAD NOTHING TO CARRY. Measured at the instant it was
                 # suppressed: every mirror already held what the host held, on every
                 # step. Skipping a copy of bytes that are already equal cannot change
@@ -3922,6 +4715,20 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
                     "at the instant of every skipped sync_in, so the device already "
                     "held the host's bytes and there was nothing for the bracket to "
                     "carry")
+            elif verdict["identical"] and name == "residency-inner-bracket-dropped":
+                # THIS CONTROL'S OWN FIELDS: the slots it re-bracketed and the
+                # wrapper kind in each, over the armed steps.
+                slots = state.get("slots") or []
+                kinds = {slot: (state.get("wrapper_kinds") or {}).get(slot)
+                         for slot in slots}
+                row["verdict"] = "NULL-DID-NOT-DIVERGE"
+                row["why"] = (
+                    f"the residency bracket was moved off the inner launch of "
+                    f"{slots} ({kinds}) onto the whole slot for {CONTROL_STEPS} "
+                    "steps, so each upload landed BEFORE that wrapper's pre-launch "
+                    "host work, and the answer still did not change, so the "
+                    "placement is not load-bearing here and the byte identity above "
+                    "it is not evidence about the seam")
             elif verdict["identical"]:
                 row["verdict"] = "NULL-DID-NOT-DIVERGE"
                 row["why"] = (
@@ -3984,6 +4791,279 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
         b["driver"].close()
         rows.append(row)
     return rows
+
+
+# ---------------------------------------------------------------------------
+# The controls dry run (pre-freeze; not a gate run)
+# ---------------------------------------------------------------------------
+
+#: Every WRAPPER a frozen Metal route plan may hold -- a plan entry, or an entry's
+#: ``inner``, that itself wraps an ``inner`` -- and how the residency controls treat
+#: it. The controls dry run refuses a plan holding a wrapper not named here: a new
+#: wrapper is a shape no control was written for, and the 2026-10-13 round's route
+#: campaign paid for one (``launch.StartOfHPlan``, new in that round, armed
+#: ``residency-inner-bracket-dropped`` on 2 of 42 cases and read NULL-DID-NOT-DIVERGE
+#: on both; the route smoke before the freeze had run 2 other cases). Adding a wrapper
+#: here is the ruling the dry run asks for.
+ROUTE_WRAPPER_RULINGS: Dict[str, str] = {
+    "SyncedPlan": ("the residency bracket around a launch: residency-sync_in-dropped "
+                   "drops its upload (held: the ownership move), "
+                   "residency-verify-after-every-sync_out reads after it"),
+    "LeadingRepairPlan": ("pre-launch host work that only READS the fields: "
+                          "residency-inner-bracket-dropped records the slot as "
+                          "read-only and cannot arm on it"),
+    "LeadingWithdrawPlan": ("pre-launch host work that WRITES: "
+                            "residency-inner-bracket-dropped arms on it and must "
+                            "diverge"),
+    "StartOfHPlan": ("the run's start of H, host work on the first update_H only: "
+                     "residency-inner-bracket-dropped looks through a spent start to "
+                     "its occupant and arms on one still owed"),
+}
+
+#: The residency controls the dry run arms, in the order it arms them on its one leg:
+#: the placement control is read at its arm instant and restored before a step, so
+#: the next control arms on a leg in exactly the state the gate's own leg is in (one
+#: step past the freeze); the two that need steps then run CONTROL_STEPS each.
+DRY_RUN_CONTROLS = ("residency-inner-bracket-dropped", "residency-sync_in-dropped",
+                    "residency-verify-after-every-sync_out")
+
+#: A previous campaign leg's control verdict, as the class the dry run predicts.
+_VERDICT_CLASS = {"NOT-APPLICABLE": "NOT-APPLICABLE", "DIVERGED-AS-REQUIRED": "ARMS",
+                  "NULL-DID-NOT-DIVERGE": "ARMS", "NOT-ARMED": "NOT-ARMED",
+                  "HARNESS-FAILURE": "HARNESS-FAILURE", "RESIDENCY-CLEAN": "READS",
+                  "RESIDENCY-DISAGREED": "READS", "RESIDENCY-UNDER-SYNCED": "READS"}
+
+
+def plan_chains(driver: Any, depth: int = 8) -> Dict[str, List[str]]:
+    """Per slot of the frozen plan, the class names from the slot's entry down its
+    ``inner`` chain to the occupant that wraps nothing. Every name but the last is a
+    wrapper."""
+    plan = getattr(driver, "_fast_path", None)
+    step_plan = getattr(plan, "step_plan", None)
+    plans = getattr(step_plan, "plans", None) or {}
+    chains: Dict[str, List[str]] = {}
+    for slot in getattr(plan, "slots", ()) or sorted(plans):
+        entry = plans.get(slot)
+        if entry is None:
+            continue
+        chain, seen = [], set()
+        while entry is not None and id(entry) not in seen and len(chain) < depth:
+            seen.add(id(entry))
+            chain.append(type(entry).__name__)
+            entry = getattr(entry, "inner", None)
+        chains[slot] = chain
+    return chains
+
+
+def unruled_wrappers(chains: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    """The wrappers in ``chains`` that :data:`ROUTE_WRAPPER_RULINGS` does not name."""
+    out = {slot: [name for name in chain[:-1] if name not in ROUTE_WRAPPER_RULINGS]
+           for slot, chain in chains.items()}
+    return {slot: names for slot, names in out.items() if names}
+
+
+def predict_control(name: str, state: Dict[str, Any]) -> str:
+    """The verdict CLASS a residency control's state implies before any comparison.
+
+    ``NOT-APPLICABLE``, ``NOT-ARMED`` and ``HARNESS-FAILURE`` are what the gate reads
+    from the state alone. ``ARMS`` is a must-diverge control that will disarm
+    something: only the full gate's byte comparison can say DIVERGED-AS-REQUIRED or
+    NULL-DID-NOT-DIVERGE, so a case carrying one is a case to run through the full
+    gate before the freeze. ``READS`` is the vacuity floor with a non-empty registry.
+    """
+    if name == "residency-verify-after-every-sync_out":
+        return "READS" if state.get("reads") and state.get("mirrors") else "NOT-ARMED"
+    if state.get("started_while_looked_through"):
+        return "HARNESS-FAILURE"
+    if not state.get("armed"):
+        return "NOT-APPLICABLE"
+    if state.get("mode") == HELD_SYNC_IN_MODE and not state.get("suppressed"):
+        return "NOT-APPLICABLE"
+    return "ARMS"
+
+
+def _reference_rows(path: Optional[str]) -> Dict[Tuple[str, str], Dict[str, Any]]:
+    """A previous campaign leg's ``controls.jsonl``, keyed by (case, control)."""
+    if not path:
+        return {}
+    rows: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                row = json.loads(line)
+                rows[(str(row.get("case")), str(row.get("control")))] = row
+    return rows
+
+
+def dry_run_moves(case: str, controls: Dict[str, Dict[str, Any]],
+                  reference: Dict[Tuple[str, str], Dict[str, Any]]) -> List[str]:
+    """How this case's dry-run controls differ from the reference leg's rows.
+
+    A control whose predicted class differs from the class of the reference verdict,
+    and a placement control whose plan shape moved (the bracketed wrapper kinds, or
+    the starts looked through), are both reported: either is a shape the reference
+    campaign never graded.
+    """
+    moves: List[str] = []
+    for name, entry in controls.items():
+        before = reference.get((case, name))
+        if before is None:
+            moves.append(f"{name}: no row in the reference leg")
+            continue
+        was = _VERDICT_CLASS.get(str(before.get("verdict")), str(before.get("verdict")))
+        if was != entry["predicts"]:
+            moves.append(f"{name}: {before.get('verdict')} in the reference, "
+                         f"{entry['predicts']} now")
+        if name == "residency-inner-bracket-dropped":
+            old, new = before.get("state") or {}, entry["state"]
+            for key in ("wrapper_kinds", "slots", "read_only_slots"):
+                if (old.get(key) or None) != (new.get(key) or None):
+                    moves.append(f"{name}: {key} {old.get(key)} -> {new.get(key)}")
+            old_looked = {slot: (v or {}).get("occupant")
+                          for slot, v in (old.get("looked_through") or {}).items()}
+            new_looked = {slot: v.get("occupant")
+                          for slot, v in (new.get("looked_through") or {}).items()}
+            if old_looked != new_looked:
+                moves.append(f"{name}: looked_through {old_looked} -> {new_looked}")
+    return moves
+
+
+def controls_dry_run_case(case: str, spec: Dict[str, Any], res: Optional[int],
+                          counter: MetalLaunchCounter) -> Dict[str, Any]:
+    """ONE lift, the gate's own freeze step, and every residency control armed on it.
+
+    Reads what the gate would arm on, without the gate's byte comparisons: the plan's
+    wrapper chains, the arms driven, the seam sides, and each residency control's
+    state with the class it implies (:func:`predict_control`). The leg is lifted the
+    way the case's own route reaches it (:func:`_pair_of_lifted`'s fused leg).
+    """
+    started = time.time()
+    leg = e2e.run_leg(case, CASES[case], "dry-run",
+                      _fuse_env(spec["arms"], spec.get("reached_by", "release")),
+                      counter, 0, res)
+    require_metal_driver(leg["driver"], f"{case}/dry-run")
+    try:
+        step_leg(case, leg, counter, 1)
+        chains = plan_chains(leg["driver"])
+        driven = fusion_block(leg)["driven"]
+        controls: Dict[str, Dict[str, Any]] = {}
+        arms = {"residency-inner-bracket-dropped": _drop_the_inner_bracket,
+                "residency-sync_in-dropped": _drop_one_sync_in,
+                "residency-verify-after-every-sync_out": _verify_after_every_sync_out}
+        for name in DRY_RUN_CONTROLS:
+            restore, state = arms[name](leg["driver"])
+            steps = 0 if name == "residency-inner-bracket-dropped" else CONTROL_STEPS
+            try:
+                if steps:
+                    step_leg(case, leg, counter, steps)
+            finally:
+                restore()
+            if name == "residency-verify-after-every-sync_out":
+                state = {"reads": state.get("reads", 0), "mirrors": state.get("mirrors", 0),
+                         "held_reads": state.get("held_reads", 0),
+                         "under_synced_reads": len(state.get("under_synced") or []),
+                         "disagreements": len(state.get("disagreements") or [])}
+            controls[name] = {"state": state, "steps": steps,
+                              "predicts": predict_control(name, state)}
+    finally:
+        leg["driver"].close()
+    return {"case": case, "reached_by": spec.get("reached_by", "release"),
+            "active_step_path": leg.get("active_step_path"), "arms_driven": driven,
+            "seam_sides_fused": {side: _side_is_fused(driven, side)
+                                 for side in spec.get("seam", ())},
+            "plan": chains, "unruled_wrappers": unruled_wrappers(chains),
+            "controls": controls, "wall_s": round(time.time() - started, 2)}
+
+
+def controls_dry_run(names: Sequence[str], res: Optional[int], out: str,
+                     provenance: Dict[str, Any], reference: Optional[str]) -> int:
+    """The pre-freeze dry run of the residency controls over every named case.
+
+    One flushed line per case and one row per case appended to
+    ``controls_dry_run.jsonl`` as it lands; ``controls_dry_run.json`` is the summary.
+    Exit 0 when every case lifted, every wrapper is ruled, no control predicts
+    NOT-ARMED or HARNESS-FAILURE and, with a reference leg, nothing moved; 1
+    otherwise. ``smoke_cases`` lists the cases on which a must-diverge control ARMS
+    (or that the reference never graded): run those through the full gate before the
+    freeze, because only its comparison can tell a divergence from a null. It writes
+    no ``gate.json`` and releases nothing.
+    """
+    counter = MetalLaunchCounter()
+    ref = _reference_rows(reference)
+    rows: List[Dict[str, Any]] = []
+    rows_path = os.path.join(out, "controls_dry_run.jsonl")
+    for index, name in enumerate(names, 1):
+        try:
+            row = controls_dry_run_case(name, DRIVE[name], res, counter)
+            row["moved"] = dry_run_moves(name, row["controls"], ref) if ref else []
+        except BaseException as exc:  # noqa: BLE001 - a raising case is a recorded row
+            import traceback  # noqa: PLC0415
+            row = {"case": name, "error": f"{type(exc).__name__}: {exc}"[:2000],
+                   "traceback": traceback.format_exc()[-4000:]}
+        rows.append(row)
+        with open(rows_path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, default=str) + "\n")
+            handle.flush()
+        predicts = {k: v["predicts"] for k, v in (row.get("controls") or {}).items()}
+        say(f"dry run {index}/{len(names)}: {name} "
+            f"{'ERROR ' + row['error'][:200] if 'error' in row else predicts} "
+            f"wrappers={sorted({w for c in (row.get('plan') or {}).values() for w in c[:-1]})} "
+            f"unruled={row.get('unruled_wrappers') or {}} moved={len(row.get('moved') or [])} "
+            f"({row.get('wall_s')} s)")
+    problems: List[str] = []
+    for row in rows:
+        case = row["case"]
+        if "error" in row:
+            problems.append(f"{case}: the dry run raised: {row['error'][:300]}")
+            continue
+        for slot, wrappers in row["unruled_wrappers"].items():
+            problems.append(f"{case}: slot {slot} holds the wrapper(s) {wrappers}, which "
+                            "ROUTE_WRAPPER_RULINGS does not name: no residency control "
+                            "was written for them")
+        for control, entry in row["controls"].items():
+            if entry["predicts"] in ("NOT-ARMED", "HARNESS-FAILURE"):
+                problems.append(f"{case}: {control} predicts {entry['predicts']}, which "
+                                "fails the gate's leg")
+        problems.extend(f"{case}: {move}" for move in row.get("moved") or [])
+    smoke = sorted({row["case"] for row in rows if "error" not in row and (
+        any(entry["predicts"] == "ARMS" and control != "residency-verify-after-every-sync_out"
+            for control, entry in row["controls"].items())
+        or any("no row in the reference leg" in move for move in row.get("moved") or []))})
+    wrapper_census: Dict[str, int] = {}
+    for row in rows:
+        for chain in (row.get("plan") or {}).values():
+            for wrapper in chain[:-1]:
+                wrapper_census[wrapper] = wrapper_census.get(wrapper, 0) + 1
+    predictions: Dict[str, Dict[str, int]] = {}
+    for row in rows:
+        for control, entry in (row.get("controls") or {}).items():
+            bucket = predictions.setdefault(control, {})
+            bucket[entry["predicts"]] = bucket.get(entry["predicts"], 0) + 1
+    summary = {
+        "mode": "controls_dry_run", "provenance": provenance,
+        "reference_controls": reference,
+        "cases": len(names), "cases_read": sum(1 for r in rows if "error" not in r),
+        "wrapper_slots": wrapper_census, "predictions": predictions,
+        "smoke_cases": smoke, "problems": problems, "ok": not problems,
+        "what_this_is": (
+            "a pre-freeze reading of what the route gate's residency controls would "
+            "arm on, case by case, on one lift each: the plan's wrapper chains, every "
+            "wrapper checked against ROUTE_WRAPPER_RULINGS, and each control's state "
+            "after the gate's own arm schedule. It compares no bytes, grades no "
+            "control and licenses nothing; a case in smoke_cases needs the full gate "
+            "before the freeze."),
+        "rows": rows,
+    }
+    gate_provenance.stamp(summary)
+    with open(os.path.join(out, "controls_dry_run.json"), "w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=1, default=str)
+    say(f"CONTROLS DRY RUN {summary['cases_read']}/{len(names)} cases read; wrappers "
+        f"{wrapper_census}; predictions {predictions}; smoke {smoke}")
+    for line in problems:
+        say(f"DRY RUN PROBLEM {line}")
+    say(f"CONTROLS DRY RUN {'OK' if not problems else 'NEEDS A RULING'} "
+        f"({len(problems)} problem(s))")
+    return 0 if not problems else 1
 
 
 def release_route_leg(case: str, spec: Dict[str, Any],
@@ -4179,6 +5259,30 @@ def envelope_leg(res: Optional[int]) -> Dict[str, Any]:
     return row
 
 
+def second_consult_verdict(out: Dict[str, Any]) -> Tuple[str, List[str]]:
+    """``(PASS|FAIL, failing clauses)`` for the second consult site's record. Pure.
+
+    BOTH KERNEL LEGS ARE JUDGED. The site steps the magnetic half again on every leg,
+    and until 2026-10-10 only the fused leg's synchronized and restored states were
+    read; the unfused leg -- the singles -- was compared and its answer discarded, the
+    same single-leg blind spot the case verdict carried (:func:`unfused_agreement`).
+    A missing reading fails closed.
+    """
+    synced = out.get("synchronized_state") or {}
+    launched = out.get("array_leg_launched")
+    clauses = {
+        "synchronized fused == array": synced.get("fused_vs_array") is True,
+        "synchronized unfused == array": synced.get("unfused_vs_array") is True,
+        "restored fused == array": out.get("restored_fused_vs_array") is True,
+        "restored unfused == array": out.get("restored_unfused_vs_array") is True,
+        "the array leg launched nothing": launched == 0,
+        "no pair was declined at the second site":
+            out.get("no_pair_was_declined_at_the_second_site") is True,
+    }
+    failing = [name for name, held in clauses.items() if not held]
+    return ("FAIL" if failing else "PASS"), failing
+
+
 def second_consult_site(case: str, legs: Dict[str, Dict[str, Any]],
                         counter: MetalLaunchCounter,
                         spec: Dict[str, Any]) -> Dict[str, Any]:
@@ -4244,15 +5348,12 @@ def second_consult_site(case: str, legs: Dict[str, Dict[str, Any]],
         for label in legs}
     out["restored_fused_vs_array"] = e2e.compare_state(
         restored["fused"], restored["array"])["identical"]
+    out["restored_unfused_vs_array"] = e2e.compare_state(
+        restored["unfused"], restored["array"])["identical"]
     out["launch_drop_in_sync"] = (launches["unfused"]["total"]
                                   - launches["fused"]["total"])
     out["array_leg_launched"] = launches["array"]["total"]
-    out["verdict"] = (
-        "PASS" if (out["synchronized_state"]["fused_vs_array"]
-                   and out["restored_fused_vs_array"]
-                   and launches["array"]["total"] == 0
-                   and out["no_pair_was_declined_at_the_second_site"])
-        else "FAIL")
+    out["verdict"], out["failing_clauses"] = second_consult_verdict(out)
     say(f"{case}: second consult site -> {out['verdict']} (sync launches "
         f"fused={launches['fused']['total']} unfused={launches['unfused']['total']} "
         f"array={launches['array']['total']})")
@@ -4271,32 +5372,8 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
         "case": case, "intent": CASE_INTENT.get(case, "?"),
         "why_this_case": spec["why"], "arms_requested": spec["arms"],
         "pairs_expected": spec["pairs"], "expect": spec["expect"],
-        "needs_probe": spec.get("needs_probe"),
-        "probe_path": (os.environ.get(spec["needs_probe"])
-                       if spec.get("needs_probe") else None),
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
-
-    # A CASE WHOSE LICENCE THIS LEG DOES NOT CARRY IS NOT THIS LEG'S EVIDENCE.
-    # The complex arms take their expansion licence from a probe record named by an
-    # environment variable, and the probe leg is the one that exports it. Run
-    # anywhere else the arm refuses by name, the case falls to the array path, and
-    # the leg used to record that as DID-NOT-FUSE -- a FAILING verdict that says
-    # "this product did not dispatch" when the honest statement is "this leg was
-    # never the one that could dispatch it". Every leg of the campaign then failed
-    # on two cases that only one leg was ever meant to drive.
-    #
-    # THE TEST IS THE ENVIRONMENT, NOT THE LEG'S NAME, so a probe leg that forgot to
-    # export the variable is still a failure rather than a skip.
-    needs = spec.get("needs_probe")
-    if needs and not os.environ.get(needs):
-        row["verdict"] = "PASS-NOT-THIS-LEG"
-        row["why"] = (f"this case's expansion licence comes from the record "
-                      f"{needs} names, and this leg exports no such path; the "
-                      f"arms {spec['arms']} cannot be admitted here and the "
-                      f"campaign drives them on shipped_expansion_probe")
-        say(f"{case}: {needs} unset -> PASS-NOT-THIS-LEG (the probe leg drives it)")
-        return row
 
     say(f"{case}: lifting three legs (fused / unfused / array)")
     fused = e2e.run_leg(case, builder, "fused",
@@ -4335,8 +5412,11 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
     row["checkpoints_planned"] = ladder
     row["checkpoints"] = []
     row["first_divergent_checkpoint"] = None
+    row["first_divergent_checkpoint_unfused"] = None
 
     # THE SEAM CENSUS rides the fused leg for its whole run, recorded as provenance.
+    # It reads without the residency read barrier (:func:`_census_state`), so riding
+    # the leg does not refresh its host copies before each launch.
     census_restore, census_state = _seam_census(fused["driver"])
     taken = 0
     try:
@@ -4354,7 +5434,8 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
                      "arrays": fa["arrays"], "words": fa["words_compared"],
                      "fused_arrays_differing": fa["arrays_differing"],
                      "unfused_arrays_differing": ua["arrays_differing"],
-                     "differences": fa["differences"][:6]}
+                     "differences": fa["differences"][:6],
+                     "unfused_differences": ua["differences"][:6]}
             row["checkpoints"].append(entry)
             say(f"{case}: checkpoint {point}/{total} -> fused"
                 f"{'==' if fa['identical'] else '!='}array, unfused"
@@ -4362,6 +5443,9 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
             if not fa["identical"] and row["first_divergent_checkpoint"] is None:
                 row["first_divergent_checkpoint"] = point
                 row["first_divergence"] = entry
+            if (not ua["identical"]
+                    and row["first_divergent_checkpoint_unfused"] is None):
+                row["first_divergent_checkpoint_unfused"] = point
     finally:
         census_restore()
     row["seam_census"] = dict(census_state)
@@ -4375,6 +5459,8 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
     row["final_state_unfused_vs_array"] = e2e.compare_state(finals["unfused"],
                                                             finals["array"])
     row["observables"] = e2e.compare_spectra(spectra["fused"], spectra["array"])
+    row["observables_unfused"] = e2e.compare_spectra(spectra["unfused"],
+                                                     spectra["array"])
     row["comparator_control"] = e2e.comparator_negative_control(finals["fused"])
     row["array_leg_control"] = array_leg_is_clean(array)
     row["legs"] = {label: {"plan": leg["plan"], "fusion": fusion_block(leg),
@@ -4391,21 +5477,104 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
         leg["driver"].close()
 
     # ------------------------------------------------------------------ verdict
+    case_verdict(row, spec,
+                 fused_report=dict(fused.get("report") or {}),
+                 fused_path=fused["active_step_path"],
+                 unfused_path=unfused["active_step_path"],
+                 fused_dispatched_slots=fusion_block(fused)["dispatched_slots"],
+                 policy_installed=UNCERTIFIED_POLICY_INSTALLED)
+    return row
+
+
+def unfused_agreement(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Did the UNFUSED leg agree with the array path everywhere it was compared? Pure.
+
+    Three readings, each required: every checkpoint of the ladder, the final state, and
+    the observables. A reading the row does not carry is NOT agreement -- a row with no
+    checkpoints, no final comparison or no observable comparison fails closed, because
+    "the comparison was never made" must not score as "the comparison was clean".
+    """
+    checkpoints = list(row.get("checkpoints") or [])
+    diverging = [entry for entry in checkpoints
+                 if entry.get("unfused_vs_array_identical") is not True]
+    final = (row.get("final_state_unfused_vs_array") or {}).get("identical")
+    observables = (row.get("observables_unfused") or {}).get("identical")
+    identical = bool(checkpoints) and not diverging and final is True \
+        and observables is True
+    out: Dict[str, Any] = {
+        "identical": identical,
+        "checkpoints_compared": len(checkpoints),
+        "checkpoints_diverging": len(diverging),
+        "first_divergent_checkpoint": diverging[0].get("steps") if diverging else None,
+        "final_state_identical": final,
+        "observables_identical": observables,
+    }
+    if identical:
+        out["why"] = None
+        return out
+    parts: List[str] = []
+    if not checkpoints:
+        parts.append("the row carries no checkpoint comparison")
+    elif diverging:
+        first = diverging[0]
+        differing = first.get("unfused_arrays_differing")
+        count = len(differing) if isinstance(differing, (list, tuple)) else differing
+        parts.append(f"{len(diverging)} of {len(checkpoints)} checkpoints differed, "
+                     f"first at step {first.get('steps')} ({count} of "
+                     f"{first.get('arrays')} arrays)")
+    if final is not True:
+        parts.append("the final state differed" if final is False
+                     else "no final-state comparison was recorded")
+    if observables is not True:
+        parts.append("the observables differed" if observables is False
+                     else "no observable comparison was recorded")
+    out["why"] = ("the UNFUSED leg -- the certified singles of every slot the fused leg "
+                  "fuses (MEEP_GPU_FUSE_ARMS=0) -- differed from the array path: "
+                  + "; ".join(parts) + ". The singles are a kernel route of their own; "
+                  "a fused leg that agrees beside them does not excuse them")
+    return out
+
+
+def case_verdict(row: Dict[str, Any], spec: Dict[str, Any], *,
+                 fused_report: Dict[str, Any], fused_path: Optional[str],
+                 unfused_path: Optional[str], fused_dispatched_slots: Sequence[str],
+                 policy_installed: Optional[str]) -> str:
+    """Write ``row["verdict"]`` (and its ``why``) from a finished case row. Pure.
+
+    Lifted out of :func:`run_case` so the verdict chain can be driven on a host with no
+    device: it reads only the row's recorded blocks and the five facts passed in.
+
+    THE UNFUSED LEG IS JUDGED ON EVERY BRANCH. It dispatches the certified SINGLES of
+    every slot the fused leg fuses (``MEEP_GPU_FUSE_ARMS=0``), so it is a kernel leg in
+    its own right, and until 2026-10-10 its byte comparison was recorded and never
+    read: the probe legs of the 2026-09-25, 2026-10-02 and 2026-10-05 campaigns each
+    passed ``cylindrical_m1`` and ``cylindrical_m0_complex`` PASS-FUSED with the
+    unfused leg differing from step 2 (24 of 32 arrays, NaN, at step 1600 on
+    2026-10-05) -- 6 of the 342 compared rows of those three campaigns, every one of
+    them Dcyl complex, and a real defect in the singles' held-residency reads (lane
+    MCC). The unfused leg of every other row matched the array path.
+    A divergence on that leg -- at any checkpoint, in the final state, or in the
+    observables (:func:`unfused_agreement`) -- now fails the row as
+    ``UNFUSED-DIVERGENCE``, after the fused leg's own DIVERGENCE and before anything
+    else, whatever the case expects.
+    """
+    unfused = unfused_agreement(row)
+    row["unfused_agreement"] = unfused
     agree = (row["final_state_fused_vs_array"]["identical"]
              and row["observables"]["identical"]
              and row["first_divergent_checkpoint"] is None)
     control = row["comparator_control"]
-    dispatched = (fused["active_step_path"] == "fused"
+    dispatched = (fused_path == "fused"
                   and bool(row["evidence"]["driven"]))
 
-    if UNCERTIFIED_POLICY_INSTALLED is not None and spec["expect"] == "dispatch":
+    if policy_installed is not None and spec["expect"] == "dispatch":
         # THE SEAM SUPPORTS ONE POLICY, AND THIS IS THE LEG THAT SAYS SO. The
         # harness installed a policy this table was not certified under, so the
         # required outcome inverts: rung 8bM must refuse BY NAME, nothing may fuse,
         # and the run must still be byte-identical to the array path, because a
         # refusal that also changed the answer would be two failures wearing one
         # word.
-        report = fused.get("report") or {}
+        report = fused_report
         reason = report.get("refused_because") or ""
         # THE REFUSAL IS WHEREVER THE LADDER PUT IT, AND UNDER AN INSTALLED KEEP IT
         # IS PER SLOT. The composer's own backend clause
@@ -4431,7 +5600,7 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
             if all(needle in text for needle in POLICY_REFUSAL_NEEDLES))
         named = named_in_top or bool(naming_slots)
         row["policy_refusal"] = {
-            "harness_installed": UNCERTIFIED_POLICY_INSTALLED,
+            "harness_installed": policy_installed,
             "named_by": ("the plan's own refusal" if named_in_top
                          else f"{len(naming_slots)} slot reason(s)" if naming_slots
                          else None),
@@ -4440,15 +5609,15 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
             "refusing_rung": classify_refusal(reason) if reason else None,
             "names_the_policy_rung": named,
             "names_the_installed_policy": (
-                repr(UNCERTIFIED_POLICY_INSTALLED) in reason
-                or any(repr(UNCERTIFIED_POLICY_INSTALLED) in per_slot[name]
+                repr(policy_installed) in reason
+                or any(repr(policy_installed) in per_slot[name]
                        for name in naming_slots)),
             "did_not_dispatch": not dispatched,
             "byte_identical_to_array": agree,
         }
         if dispatched:
             row["verdict"] = "DISPATCHED-UNDER-AN-UNCERTIFIED-POLICY"
-            row["why"] = (f"the harness installed {UNCERTIFIED_POLICY_INSTALLED!r} "
+            row["why"] = (f"the harness installed {policy_installed!r} "
                           "and a fused pair dispatched anyway; every Metal family "
                           "was certified under flush and MPS cannot keep")
         elif not named:
@@ -4459,9 +5628,12 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
             row["verdict"] = "DIVERGENCE"
             row["why"] = ("the policy rung refused as required and the run still "
                           "differed from the array path")
+        elif not unfused["identical"]:
+            row["verdict"] = "UNFUSED-DIVERGENCE"
+            row["why"] = unfused["why"]
         else:
             row["verdict"] = "PASS-POLICY-REFUSED"
-        return row
+        return row["verdict"]
 
     if spec["expect"] == "no-fused-arm":
         # A PRODUCT THE COMPOSER SELECTS AND THE RELEASE DOES NOT ADMIT. What must
@@ -4469,7 +5641,7 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
         # to the array path whichever way the plan goes. When the plan IS refused
         # the rung is classified and recorded, so a refusal that moves between rungs
         # is visible rather than absorbed.
-        report = fused.get("report") or {}
+        report = fused_report
         reason = report.get("refused_because") or ""
         driven = ((report.get("fusion") or {}).get("driven") or {})
         row["no_fused_arm"] = {
@@ -4477,8 +5649,8 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
             "refusing_rung": classify_refusal(reason) if reason else None,
             "the_plan_was_refused": bool(reason),
             "fused_arms_driven": dict(driven),
-            "dispatched_slots": fusion_block(fused)["dispatched_slots"],
-            "unfused_leg_dispatched": unfused["active_step_path"] == "fused",
+            "dispatched_slots": list(fused_dispatched_slots),
+            "unfused_leg_dispatched": unfused_path == "fused",
             "byte_identical_to_array": agree,
         }
         if driven:
@@ -4492,9 +5664,12 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
                           f"this gate knows: {reason!r}")
         elif not agree:
             row["verdict"] = "DIVERGENCE"
+        elif not unfused["identical"]:
+            row["verdict"] = "UNFUSED-DIVERGENCE"
+            row["why"] = unfused["why"]
         else:
             row["verdict"] = "PASS-NO-FUSED-ARM"
-        return row
+        return row["verdict"]
 
     if not agree:
         row["verdict"] = "DIVERGENCE"
@@ -4504,12 +5679,15 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
                           f"and array paths differed at "
                           f"{row['first_divergent_checkpoint']} steps and the "
                           "difference was later absorbed; they computed different bits")
+    elif not unfused["identical"]:
+        row["verdict"] = "UNFUSED-DIVERGENCE"
+        row["why"] = unfused["why"]
     elif not (control.get("armed") and control.get("comparator_saw_it")
               and control.get("words_mismatched") == 1):
         row["verdict"] = "COMPARATOR-BLIND"
     elif not dispatched:
         row["verdict"] = "DID-NOT-FUSE"
-        row["why"] = ((fused.get("report") or {}).get("refused_because")
+        row["why"] = (fused_report.get("refused_because")
                       or "the fused route was asked for and did not dispatch")
         row["refusing_rung"] = classify_refusal(row["why"]) if row["why"] else None
     elif not row["evidence"]["real"]:
@@ -4530,6 +5708,209 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
         row["verdict"] = "SECOND-CONSULT-FAILURE"
     else:
         row["verdict"] = "PASS-FUSED"
+    return row["verdict"]
+
+
+# ---------------------------------------------------------------------------
+# One engine-smoke row
+# ---------------------------------------------------------------------------
+
+def engine_smoke_env(residency: str) -> Dict[str, Optional[str]]:
+    """The engine's own default environment, with one residency mode chosen.
+
+    Every dispatch switch is UNSET -- the route a user's ``lift_simulation`` takes -- and
+    ``held`` is reached by leaving the residency variable unset too, so the row
+    measures the default rather than a spelling of it.
+    """
+    if residency not in ENGINE_SMOKE_RESIDENCIES:
+        raise ValueError(f"engine smoke residency {residency!r}; one of "
+                         f"{ENGINE_SMOKE_RESIDENCIES}")
+    return {"MEEP_GPU_DISPATCH": None, "MEEP_GPU_FUSED": None, "MEEP_GPU_FUSE_ARMS": None,
+            "MEEP_GPU_METAL_RESIDENCY": None if residency == "held" else residency}
+
+
+def engine_leg_record(report: Dict[str, Any], path: Optional[str], steps: int,
+                      residency: str, arms: Dict[str, str]) -> Dict[str, Any]:
+    """What one engine-smoke Metal leg's own record says it did, as named failures. Pure.
+
+    Read from ``fast_path_report()`` after the last step: the step path, the arm driven
+    on each of the four slots, each slot's dispatch count against the steps taken, and
+    the residency block (mode, held set, admission refusal, hold refusals).
+    """
+    fusion = dict(report.get("fusion") or {})
+    driven = dict(fusion.get("driven") or {})
+    counters = dict(report.get("launch_counters") or {})
+    held_block = dict(report.get("residency") or {})
+    failures: List[str] = []
+    if path != "fused":
+        failures.append(f"the step path is {path!r}, not 'fused' (refused because "
+                        f"{report.get('refused_because')!r})")
+    for slot, arm in sorted(arms.items()):
+        if driven.get(slot) != arm:
+            failures.append(f"{slot} drove {driven.get(slot)!r}, not {arm!r}")
+        dispatches = (counters.get(slot) or {}).get("dispatches")
+        if dispatches != steps:
+            failures.append(f"{slot} dispatched {dispatches} times over {steps} steps")
+    mode = held_block.get("mode")
+    residency_failures: List[str] = []
+    if mode != residency:
+        residency_failures.append(f"the residency mode is {mode!r}, not {residency!r}")
+    if residency == "held":
+        if not held_block.get("held"):
+            residency_failures.append("the held set is empty")
+        if (held_block.get("admission") or {}).get("refused"):
+            residency_failures.append("the hold's admission was refused")
+        if held_block.get("hold_refused"):
+            residency_failures.append(f"holds refused: {held_block.get('hold_refused')}")
+    return {"residency_asked": residency, "step_path": path, "steps": steps,
+            "driven": driven,
+            "dispatches": {slot: (counters.get(slot) or {}).get("dispatches")
+                           for slot in sorted(arms)},
+            "residency_mode": mode, "held": len(held_block.get("held") or ()),
+            "hold_refused": list(held_block.get("hold_refused") or ()),
+            "refused_because": report.get("refused_because"),
+            "failures": failures, "residency_failures": residency_failures}
+
+
+def engine_smoke_verdict(row: Dict[str, Any], *,
+                         policy_installed: Optional[str]) -> str:
+    """Write ``row["verdict"]`` for a finished engine-smoke row. Pure.
+
+    In order: HARNESS-FAILURE (the legs were lifted to different states), DIVERGENCE (a
+    Metal leg differed from the array leg at any checkpoint), COMPARATOR-BLIND,
+    DID-NOT-FUSE (a leg's own record shows the fused pairs did not carry all four slots
+    on every step), RESIDENCY-NOT-AS-ASKED, then PASS-ENGINE-SMOKE. Under a harness-
+    installed uncertified policy the outcome inverts as it does for a route row: no leg
+    may fuse and every leg must still match the array path (PASS-POLICY-REFUSED).
+    """
+    if not (row.get("precondition") or {}).get("identical"):
+        row["verdict"] = "HARNESS-FAILURE"
+        row["why"] = ("the legs were lifted to DIFFERENT initial states, so no "
+                      "downstream comparison is about the engine route")
+        return row["verdict"]
+    legs = dict(row.get("legs") or {})
+    diverging = sorted(label for label, leg in legs.items()
+                       if leg.get("first_divergent_checkpoint") is not None
+                       or not leg.get("checkpoints"))
+    if policy_installed is not None:
+        fused = sorted(label for label, leg in legs.items()
+                       if (leg.get("record") or {}).get("step_path") == "fused")
+        if fused:
+            row["verdict"] = "DISPATCHED-UNDER-AN-UNCERTIFIED-POLICY"
+            row["why"] = (f"the harness installed {policy_installed!r} and the "
+                          f"{fused} leg(s) dispatched anyway")
+        elif diverging:
+            row["verdict"] = "DIVERGENCE"
+            row["why"] = f"refused as required and still differed: {diverging}"
+        else:
+            row["verdict"] = "PASS-POLICY-REFUSED"
+        return row["verdict"]
+    control = row.get("comparator_control") or {}
+    if diverging:
+        row["verdict"] = "DIVERGENCE"
+        row["why"] = "; ".join(
+            f"{label}: first at step {legs[label].get('first_divergent_checkpoint')}, "
+            f"{legs[label].get('words_differing')} of {legs[label].get('words_compared')} "
+            f"words over the checkpoints" for label in diverging)
+    elif not (control.get("armed") and control.get("comparator_saw_it")
+              and control.get("words_mismatched") == 1):
+        row["verdict"] = "COMPARATOR-BLIND"
+    elif any((leg.get("record") or {}).get("failures") for leg in legs.values()):
+        row["verdict"] = "DID-NOT-FUSE"
+        row["why"] = "; ".join(f"{label}: " + "; ".join(leg["record"]["failures"])
+                               for label, leg in sorted(legs.items())
+                               if (leg.get("record") or {}).get("failures"))
+    elif any((leg.get("record") or {}).get("residency_failures")
+             for leg in legs.values()):
+        row["verdict"] = "RESIDENCY-NOT-AS-ASKED"
+        row["why"] = "; ".join(f"{label}: " + "; ".join(leg["record"]["residency_failures"])
+                               for label, leg in sorted(legs.items())
+                               if (leg.get("record") or {}).get("residency_failures"))
+    else:
+        row["verdict"] = "PASS-ENGINE-SMOKE"
+    return row["verdict"]
+
+
+def engine_smoke_case(case: str, res: Optional[int]) -> Dict[str, Any]:
+    """One :data:`ENGINE_SMOKE` row: held and shipped Metal legs against the array leg."""
+    spec = ENGINE_SMOKE[case]
+    row: Dict[str, Any] = {
+        "case": case, "protocol": "engine-smoke", "why_this_case": spec["why"],
+        "m": spec["m"], "arms_expected": dict(spec["arms"]),
+        "residencies": list(ENGINE_SMOKE_RESIDENCIES),
+        "checkpoints_planned": list(ENGINE_SMOKE_CHECKPOINTS),
+        "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    builder = spec["builder"]
+    labels = list(ENGINE_SMOKE_RESIDENCIES) + ["array"]
+    envs = {label: engine_smoke_env(label) for label in ENGINE_SMOKE_RESIDENCIES}
+    envs["array"] = dict(ARRAY_ENV)
+    say(f"{case}: lifting {labels} through the engine route (no gate instrument)")
+    legs: Dict[str, Dict[str, Any]] = {}
+    for label in labels:
+        legs[label] = e2e.run_leg(case, builder, label, envs[label], None, 0, res)
+        require_metal_driver(legs[label]["driver"], f"{case}/{label}")
+    row["grid_shape"] = legs["array"]["grid_shape"]
+    states = {label: e2e.collect_state(leg["driver"]) for label, leg in legs.items()}
+    pre = [e2e.compare_state(states[label], states["array"])
+           for label in ENGINE_SMOKE_RESIDENCIES]
+    row["precondition"] = {"identical": all(p["identical"] for p in pre),
+                           "arrays": pre[0]["arrays"], "words": pre[0]["words_compared"]}
+    per_leg: Dict[str, Dict[str, Any]] = {
+        label: {"checkpoints": [], "first_divergent_checkpoint": None,
+                "words_differing": 0, "words_compared": 0}
+        for label in ENGINE_SMOKE_RESIDENCIES}
+    final_state: Dict[str, Any] = {}
+    try:
+        if row["precondition"]["identical"]:
+            taken = 0
+            for point in ENGINE_SMOKE_CHECKPOINTS:
+                # Metal legs FIRST at every chunk: the first Metal step is where rung
+                # 8bM installs the certified policy on the host, so the array leg is
+                # never stepped under a policy the Metal legs did not run under.
+                for label in labels:
+                    e2e._apply_env(legs[label])  # noqa: SLF001
+                    driver = legs[label]["driver"]
+                    for _ in range(point - taken):
+                        driver.step()
+                taken = point
+                snap = {label: e2e.collect_state(leg["driver"])
+                        for label, leg in legs.items()}
+                for label in ENGINE_SMOKE_RESIDENCIES:
+                    verdict = e2e.compare_state(snap[label], snap["array"])
+                    words = sum(int(d.get("words_mismatched", 0))
+                                for d in verdict["differences"])
+                    entry = {"steps": point, "identical": verdict["identical"],
+                             "arrays": verdict["arrays"],
+                             "arrays_differing": verdict["arrays_differing"],
+                             "words_compared": verdict["words_compared"],
+                             "words_differing": words,
+                             "differences": verdict["differences"][:4]}
+                    per_leg[label]["checkpoints"].append(entry)
+                    per_leg[label]["words_differing"] += words
+                    per_leg[label]["words_compared"] += int(verdict["words_compared"])
+                    if (not verdict["identical"]
+                            and per_leg[label]["first_divergent_checkpoint"] is None):
+                        per_leg[label]["first_divergent_checkpoint"] = point
+                say(f"{case}: checkpoint {point}/{ENGINE_SMOKE_CHECKPOINTS[-1]} -> "
+                    + ", ".join(f"{label} "
+                                f"{per_leg[label]['checkpoints'][-1]['words_differing']} "
+                                f"words differ" for label in ENGINE_SMOKE_RESIDENCIES))
+                final_state = snap
+            for label in ENGINE_SMOKE_RESIDENCIES:
+                driver = legs[label]["driver"]
+                per_leg[label]["record"] = engine_leg_record(
+                    dict(driver.fast_path_report() or {}), driver.active_step_path,
+                    int(driver.step_count), label, spec["arms"])
+            row["comparator_control"] = e2e.comparator_negative_control(
+                final_state[ENGINE_SMOKE_RESIDENCIES[0]])
+            row["array_leg_step_path"] = legs["array"]["driver"].active_step_path
+    finally:
+        for leg in legs.values():
+            leg["driver"].close()
+    row["legs"] = per_leg
+    row["policy"] = e2e._policy_stamp()  # noqa: SLF001
+    engine_smoke_verdict(row, policy_installed=UNCERTIFIED_POLICY_INSTALLED)
     return row
 
 
@@ -4537,13 +5918,11 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
 # Entry point
 # ---------------------------------------------------------------------------
 
-#: ``PASS-NOT-THIS-LEG`` is a SKIP, not a pass about the product: the case declares
-#: an expansion-probe record this leg does not export, so no arm of it could be
-#: admitted here. It keeps a leg from failing on cases a different leg drives, and
-#: it cannot mask a real refusal because the probe leg DOES export the variable and
-#: so never reaches it.
+#: ``PASS-ENGINE-SMOKE`` is an :data:`ENGINE_SMOKE` row's pass: both residency modes'
+#: legs matched the array leg word for word at every checkpoint, through the engine's
+#: default route with no gate instrument on them.
 PASS_VERDICTS = ("PASS-FUSED", "PASS-POLICY-REFUSED", "PASS-NO-FUSED-ARM",
-                 "PASS-NOT-THIS-LEG")
+                 "PASS-ENGINE-SMOKE")
 #: Every verdict a control may carry and still let the leg release. ``NO-CLIFF`` is
 #: NOT among them, deliberately: a released pair that ran under a keeping host and
 #: did not move is either a run that never entered the band or a device that did not
@@ -4604,12 +5983,6 @@ def _provenance() -> Dict[str, Any]:
         "lift": {"prefer_gpu": True, "driver_gpu": "metal",
                  "checked": "driver.gpu == 'metal' after every lift "
                             "(require_metal_driver)"},
-        "expansion_probes": {
-            name: os.environ.get(name) for name in (
-                "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE",
-                "MEEP_GPU_METAL_EXPANSION_PROBE",
-                "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
-                "MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE")},
     }
     for module in ("meep", "numpy", "torch"):
         try:
@@ -4628,7 +6001,7 @@ def _provenance() -> Dict[str, Any]:
         # and a dispatch's declaration.
         record["mps_policy_report"] = subnormal.mps_policy_report()
         record["table"] = {
-            "driver_route_gate": metal_dispatch.METAL_DRIVER_ROUTE_GATE,
+            "driver_route_gate": metal_dispatch.METAL_ROUTE_RECORD,
             "subnormal_policy": metal_dispatch.certification_policy(),
             "governed_executors": list(metal_dispatch.GOVERNED_EXECUTORS),
             "released_fused_arms": {
@@ -4669,7 +6042,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--no-controls", action="store_true",
                         help="skip the armed controls (diagnostic only; a run made "
                              "with this is not a gate run)")
+    parser.add_argument("--controls-dry-run", action="store_true",
+                        help="PRE-FREEZE: one lift per drive case, the gate's freeze "
+                             "step, and each residency control armed on it; reports "
+                             "the plan's wrappers, what each control would arm on and "
+                             "the cases to run through the full gate. Compares no "
+                             "bytes and writes no gate.json (not a gate run)")
+    parser.add_argument("--dry-run-reference", default=None,
+                        help="with --controls-dry-run: a previous campaign leg's "
+                             "controls.jsonl; a case whose controls would read another "
+                             "class, or whose placement shape moved, is reported")
     arguments = parser.parse_args(argv)
+    if arguments.controls_dry_run and (arguments.band_witness or arguments.no_controls
+                                       or arguments.install_policy):
+        print("--controls-dry-run reads the shipped configuration: it takes none of "
+              "--band-witness, --no-controls or --install-policy", file=sys.stderr)
+        return 2
+    if arguments.dry_run_reference and not arguments.controls_dry_run:
+        print("--dry-run-reference needs --controls-dry-run", file=sys.stderr)
+        return 2
 
     # A METAL GATE, REFUSED OFF AN APPLE GPU before its leg directory exists.
     refusal = metal_host_refusal("gate_dispatch_metal_route.py")
@@ -4685,7 +6076,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # this process's own list, so the two disagree and only the JSONL carries the
     # contamination. Refusing is the fix; truncating would destroy the earlier run.
     existing = sorted(name for name in ("cases.jsonl", "controls.jsonl",
-                                        "summary.json", "gate.json")
+                                        "summary.json", "gate.json",
+                                        "controls_dry_run.jsonl",
+                                        "controls_dry_run.json")
                       if os.path.exists(os.path.join(arguments.out, name)))
     if existing:
         print(f"REFUSING: {arguments.out} already holds a previous run's "
@@ -4704,12 +6097,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     e2e.PREFER_GPU = True
     rows_path = os.path.join(arguments.out, "cases.jsonl")
 
-    names = (list(DRIVE) if arguments.cases == "all"
+    names = (list(DRIVE) + list(ENGINE_SMOKE) if arguments.cases == "all"
              else [n.strip() for n in arguments.cases.split(",") if n.strip()])
-    unknown = [n for n in names if n not in DRIVE]
+    unknown = [n for n in names if n not in DRIVE and n not in ENGINE_SMOKE]
     if unknown:
-        print(f"unknown cases: {unknown}; known: {sorted(DRIVE)}", file=sys.stderr)
+        print(f"unknown cases: {unknown}; known: {sorted(DRIVE) + sorted(ENGINE_SMOKE)}",
+              file=sys.stderr)
         return 2
+    if arguments.band_witness or arguments.controls_dry_run:
+        # THE WITNESS CENSUSES THE ROUTE ROWS' ORACLES; an engine-smoke row has no cliff
+        # control to read it, so it is not a witness case. Nor does it carry an armed
+        # control, so the controls dry run skips it too.
+        names = [n for n in names if n in DRIVE]
 
     # MEEP FIRST, and not as a formality: `install_host_policy` drives the host FPU
     # through MEEP's own `set_zero_subnormals` before falling back to the fenv lever,
@@ -4753,6 +6152,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     say(f"host={provenance['host']} torch={provenance.get('torch')} "
         f"meep={provenance.get('meep')} frontend={provenance.get('metal_frontend')} "
         f"policy={provenance['policy_at_start']}")
+    if arguments.controls_dry_run:
+        return controls_dry_run(names, arguments.resolution, arguments.out, provenance,
+                                arguments.dry_run_reference)
 
     counter = MetalLaunchCounter()
     rows: List[Dict[str, Any]] = []
@@ -4815,7 +6217,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         say(f"=== case {index}/{len(names)}: {name} ===")
         started = time.time()
         try:
-            row = run_case(name, counter, arguments.resolution, arguments.max_steps)
+            if name in ENGINE_SMOKE:
+                # Its own resolution and checkpoints: the row reproduces a fixed run,
+                # so --resolution and --max-steps do not reshape it.
+                row = engine_smoke_case(name, None)
+            else:
+                row = run_case(name, counter, arguments.resolution,
+                               arguments.max_steps)
         except BaseException as exc:  # noqa: BLE001 - a raising case is a recorded row
             import traceback  # noqa: PLC0415
             row = {"case": name, "verdict": "ERROR",
@@ -4829,12 +6237,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         say(f"=== case {index}/{len(names)}: {name} -> {row.get('verdict')} "
             f"({row['case_wall_s']} s) ===")
 
-        # THE CONTROLS FOLLOW THE CASE. A case skipped because this leg carries no
-        # probe for it has no fused launch to arm anything against, and running the
-        # armed controls anyway produced eight NOT-ARMED rows per case -- each of
-        # which the release reads as a control that failed.
-        if (arguments.no_controls or DRIVE[name]["expect"] != "dispatch"
-                or row.get("verdict") == "PASS-NOT-THIS-LEG"):
+        # THE CONTROLS FOLLOW THE CASE. An engine-smoke row carries no armed control:
+        # its legs are deliberately uninstrumented, and the route rows' controls arm
+        # the same products.
+        if (arguments.no_controls or name in ENGINE_SMOKE
+                or DRIVE[name]["expect"] != "dispatch"):
             continue
         if UNCERTIFIED_POLICY_INSTALLED is not None:
             # THE ARMED CONTROLS CANNOT ARM ON THIS LEG, and the honest record says
@@ -4982,6 +6389,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "residency": {r["case"]: ((r.get("evidence") or {}).get("residency"))
                       for r in rows},
         "seam_census": {r["case"]: r.get("seam_census") for r in rows},
+        "unfused_leg_identical": {r["case"]: (r.get("unfused_agreement") or {}).get(
+            "identical") for r in rows if r.get("case") in DRIVE},
         "controls": {f"{c.get('case')}:{c.get('control') or c.get('leg')}":
                      c.get("verdict") for c in controls},
         "dispatched_cases": dispatched,

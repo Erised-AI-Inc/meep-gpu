@@ -14,25 +14,25 @@ WRONG field rather than a crash:
   they admit. If adding this pair widened either, a run would reach a kernel with the
   wrong stride or the wrong arithmetic. Asserted in both directions on real objects.
 * THE DEVICE TEXT. Five things separate this pair from the certified complex Cartesian
-  one, four of them ARITHMETIC (the prefix substitution, the i*m/r term and its
-  ordering against the mask, the |m| = 1 curl-row replacement, the per-|m| axis
-  rules). The gate can see a wrong answer; only a text pin can see a grouping change
-  that is exact at one Courant and wrong at another, or an ordering that happens to be
-  invisible on every case the sweep reaches.
+  one, four of them ARITHMETIC (the radial difference the scan supplies, the i*m/r
+  pass and its ordering against the recurrence and the mask, the |m| = 1 curl-row
+  replacement, the per-|m| axis rules). The gate can see a wrong answer; only a text
+  pin can see a grouping change that is exact at one Courant and wrong at another, or
+  an ordering that happens to be invisible on every case the sweep reaches.
 * THE PRELUDE IS IMPORTED, NOT COPIED. The certified complex strings are this family's
   whole non-cylindrical body; a second copy would drift and would silently un-arm the
   shared mutation battery, whose needles are those exact characters.
-* THE HOST-SIDE CONSTANTS. ``imr_coefficient_row`` and ``axis_increment_scalars`` are
-  re-derivations of two array-path expressions whose float32 words are load-bearing
-  down to the sign of a zero. They are checked against ``stepping``'s own values by
-  CALLING both, not by reading either.
+* THE HOST-SIDE CONSTANTS. ``imr_rinv_row`` and ``axis_courant_words`` re-derive the
+  array path's i*m/r ``rinv`` row and its axis rules' double factors, whose words are
+  load-bearing down to the sign of a zero. They are checked against ``stepping``'s
+  own values by CALLING both, not by reading either.
 * THE ARGUMENT ORDER. The kernel signature and the launcher's tuple are two lists that
   must agree; ``RawKernel`` does not check, so a swapped pair is a wrong answer at a
   wrong pointer.
 
 THE SOURCE IS IMPORTED, NOT READ WITH ``ast``, and that is why
-``cylindrical_complex_kernels`` imports CuPy LAZILY: its device text is a FUNCTION of
-the expansion arm, so there is no module-level string for ``ast`` to read, and the
+``cylindrical_complex_kernels`` imports CuPy LAZILY: its device text is built from the
+imported prelude, so there is no module-level string for ``ast`` to read, and the
 merge bar is a machine with no GPU. The module's own docstring gives the argument.
 """
 
@@ -55,16 +55,6 @@ from . import complex_emitter, coverage, cylindrical_coverage
 from . import cylindrical_complex_kernels as family
 
 SUB_STEPS = ("step_B", "step_D")
-ARMS = ("FMA_V1", "NAIVE")
-
-#: A licence verdict shaped exactly as ``complex_fields.expansion_license`` returns
-#: one, with the fields ``coverage.complex_expansion_refusal`` reads. Built here
-#: rather than loaded from a probe artifact so this file needs no results directory;
-#: the SHAPE is pinned against the real arbiter by
-#: :func:`test_the_licence_stub_is_the_shape_the_arbiter_returns`.
-LICENCE = {"arm": "FMA_V1", "expansion": 1, "refusals": [], "basis": "measured",
-           "policy": "ieee_keep_ftz_stripped", "policy_resolved": "keep"}
-POLICY = "keep"
 
 
 class _NumpyWearingCupysName(types.ModuleType):
@@ -113,11 +103,11 @@ def build(shape=(16, 1, 20), m=1, z_kind="metallic", complex_storage=True,
 
 def covered(fields, layer, grid, sub_step="step_B"):
     return cylindrical_coverage.covers_pml_cylindrical_complex_curl(
-        fields, layer, grid, sub_step, license=LICENCE, subnormal_policy=POLICY)
+        fields, layer, grid, sub_step)
 
 
-def source(sub_step="step_B", arm="FMA_V1"):
-    return family.cylindrical_complex_source(sub_step, arm)
+def source(sub_step="step_B"):
+    return family.cylindrical_complex_source(sub_step)
 
 
 # --------------------------------------------------------------------------
@@ -155,7 +145,7 @@ def test_the_accurate_near_axis_branch_is_admitted():
 def test_a_run_with_no_absorber_is_refused(m):
     fields, layer, grid = build(m=m)
     ok, why = cylindrical_coverage.covers_pml_cylindrical_complex_curl(
-        fields, None, grid, "step_B", license=LICENCE, subnormal_policy=POLICY)
+        fields, None, grid, "step_B")
     assert not ok and "no active PML layer" in why
 
 
@@ -205,21 +195,6 @@ def test_a_backend_that_is_not_cupy_is_refused():
     grid.xp = numpy
     ok, why = covered(fields, layer, grid)
     assert not ok and why == "backend is not CuPy"
-
-
-def test_a_licence_cut_under_the_other_policy_is_refused():
-    """The arm is compiled in at this seam and is POLICY-CONDITIONAL."""
-    fields, layer, grid = build(m=1)
-    ok, why = cylindrical_coverage.covers_pml_cylindrical_complex_curl(
-        fields, layer, grid, "step_B", license=LICENCE, subnormal_policy="flush")
-    assert not ok and "does not transfer across that boundary" in why
-
-
-def test_no_licence_at_all_is_refused_before_anything_else():
-    fields, layer, grid = build(m=1)
-    ok, why = cylindrical_coverage.covers_pml_cylindrical_complex_curl(
-        fields, layer, grid, "step_B")
-    assert not ok and "no expansion licence" in why
 
 
 def test_a_conductivity_disqualifies_only_the_sub_step_that_carries_it():
@@ -291,23 +266,6 @@ def test_the_shared_helpers_this_module_borrows_all_still_exist():
     for name in cylindrical_coverage.SHARED_HELPERS:
         assert hasattr(coverage, name), name
     assert "_complex_volume_problem" in cylindrical_coverage.SHARED_HELPERS
-    assert "complex_expansion_refusal" in cylindrical_coverage.SHARED_HELPERS
-
-
-def test_the_licence_stub_is_the_shape_the_arbiter_returns():
-    """The stub above must carry every key the refusal function reads.
-
-    Pinned against the REAL arbiter's key set rather than against a list written
-    here, so a licence that grows a required field fails at the merge bar.
-    """
-    from ..triton_kernels import complex_fields  # noqa: PLC0415
-
-    verdict = complex_fields.expansion_license({
-        "measurements": [], "policy": "ieee_keep_ftz_stripped"})
-    for key in ("arm", "expansion", "refusals", "basis"):
-        assert key in verdict, key
-        assert key in LICENCE, key
-    assert coverage.complex_expansion_refusal(LICENCE, POLICY) is None
 
 
 # --------------------------------------------------------------------------
@@ -326,7 +284,7 @@ def test_neither_existing_pair_admits_what_this_one_admits(m, sub_step):
     assert real_ok is False and "complex64 storage" in real_why
 
     cart_ok, cart_why = coverage.covers_real_pml_complex_curl(
-        fields, layer, grid, sub_step, license=LICENCE, subnormal_policy=POLICY)
+        fields, layer, grid, sub_step)
     assert cart_ok is False and "cylindrical (Dcyl)" in cart_why
 
     plain_ok, plain_why = coverage.covers_real_pml_curl(fields, layer, grid, sub_step)
@@ -348,7 +306,7 @@ def test_this_pair_refuses_what_the_real_dcyl_pair_admits(sub_step):
 def test_this_pair_refuses_what_the_cartesian_complex_pair_admits(sub_step):
     fields, layer, grid = build(shape=(12, 12, 12), cylindrical=False)
     cart_ok, _ = coverage.covers_real_pml_complex_curl(
-        fields, layer, grid, sub_step, license=LICENCE, subnormal_policy=POLICY)
+        fields, layer, grid, sub_step)
     assert cart_ok is True
     ok, why = covered(fields, layer, grid, sub_step)
     assert ok is False and "not a cylindrical (Dcyl) grid" in why
@@ -392,115 +350,147 @@ def test_m_class_zero_is_the_third_arm_and_the_three_codes_are_distinct():
     assert family.zero_rows(0, False) == 0 and family.zero_rows(0, True) == 0
 
 
-@pytest.mark.parametrize("dtdx", [0.5, 0.35, 0.2, 0.123456789])
-def test_the_axis_coefficient_is_nep50s_one_rounding_of_the_python_float(dtdx):
-    """``Dz[axis] += (4.0*(dt/dx)) * Hy[axis]`` casts the weak scalar ONCE.
+@pytest.mark.parametrize("courant", [0.5, 0.35, 0.3, 0.123456789])
+def test_the_axis_courant_words_are_the_double_factors_stepping_multiplies_by(courant):
+    """The axis rules' factors travel as DOUBLES: ``-Courant`` on B, ``+Courant`` and
+    ``4*Courant`` on D, each exact in double (``stepping._realnum_double_product``).
 
-    The multiplicand the array path forms is a float64 ``4.0 * dtdx`` that NEP-50
-    converts to the array's complex64 -- one rounding of the real word, +0.0 for the
-    imaginary -- before the full complex product. The host helper returns exactly
-    that word, and the product it feeds is the array path's, measured on random
-    complex64 operands as uint32 words.
+    The product each feeds is the array path's, measured on random complex64 operands
+    as uint32 words; and at a Courant that is not a float32 word, a float32 factor is a
+    different word somewhere, which is why the factor is not rounded on the host.
     """
-    rng = numpy.random.default_rng(int(dtdx * 1e6))
-    hy = (rng.uniform(-1, 1, 64) + 1j * rng.uniform(-1, 1, 64)).astype(numpy.complex64)
-    coefficient = family.axis_coefficient(dtdx)
-    assert coefficient.dtype == numpy.float32
-    assert coefficient == numpy.float32(4.0 * float(dtdx))
-    array_path = (4.0 * float(dtdx)) * hy
-    rounded_first = numpy.complex64(complex(float(coefficient), 0.0)) * hy
-    assert array_path.dtype == numpy.complex64
-    assert (array_path.view(numpy.uint32) == rounded_first.view(numpy.uint32)).all()
+    _fields, _layer, grid = build(shape=(8, 1, 6), m=1, courant=courant)
+    (minus,) = family.axis_courant_words("step_B", grid)
+    plus, four = family.axis_courant_words("step_D", grid)
+    for word in (minus, plus, four):
+        assert isinstance(word, numpy.float64)
+    assert minus == -float(grid.courant) and plus == float(grid.courant)
+    assert four == 4.0 * float(grid.courant)
+    rng = numpy.random.default_rng(int(courant * 1e6))
+    values = (rng.uniform(-1, 1, 64) + 1j * rng.uniform(-1, 1, 64)).astype(numpy.complex64)
+    differs = False
+    for word in (minus, plus, four):
+        theirs = stepping._realnum_double_product(float(word), values)
+        mine = numpy.empty_like(values)
+        mine.real = (values.real.astype(numpy.float64) * word).astype(numpy.float32)
+        mine.imag = (values.imag.astype(numpy.float64) * word).astype(numpy.float32)
+        assert numpy.array_equal(mine.view(numpy.uint32), theirs.view(numpy.uint32))
+        rounded = values * numpy.float32(word)
+        differs |= not numpy.array_equal(rounded.view(numpy.uint32), theirs.view(numpy.uint32))
+    assert differs == (float(numpy.float32(grid.courant)) != float(grid.courant)), courant
+    with pytest.raises(ValueError):
+        family.axis_courant_words("update_H", grid)
 
 
-@pytest.mark.parametrize("m", [1, -1, 2, 3, 5])
+@pytest.mark.parametrize("m", [1, -1, 2, 3, -5])
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
-def test_the_imr_rows_are_word_for_word_the_array_paths(m, sub_step):
-    """Built by CALLING ``stepping._cylindrical_imr_term``, never by re-reading it.
+def test_the_imr_increment_is_word_for_word_the_array_paths(m, sub_step):
+    """Built by CALLING ``stepping._cylindrical_imr_increment``, never by re-reading it.
 
-    The array path forms the row, multiplies it by a partner volume and NEGATES the
-    product; the row itself is recovered from that by dividing out a partner of
-    exactly one, which is exact in float32 for these words.
+    The kernel forms ``((rinv*g.im) * -1, rinv*g.re)`` from the bound real row
+    (``imr_increment``); the array path's increment is the same quarter turn of the
+    partner by its own cached row. Compared on random complex64 partners as uint32
+    words, for both of the sub-step's terms, whose rows are indexed by the TARGET's own
+    radial Yee shift -- one 0 and one 1 per side, so a row built with one shift for both
+    targets is a defect the gate arms.
     """
     fields, _layer, grid = build(shape=(9, 1, 4), m=m)
     rows = grid.shape[0]
-    dtdx = float(grid.dt / grid.dx)
-    ones = numpy.ones(tuple(grid.shape), dtype=numpy.complex64)
-    for index, target, sign in family.IMR_TERMS[sub_step]:
-        mine = family.imr_coefficient_row(numpy, target, sign, m, dtdx, rows,
-                                          numpy.complex64)
-        theirs = -stepping._cylindrical_imr_term(fields, target, ones, sign)
-        assert theirs.shape == tuple(grid.shape)
-        column = numpy.ascontiguousarray(theirs[:, 0, 0])
-        assert numpy.array_equal(
-            mine.view(numpy.float32).view(numpy.uint32),
-            column.view(numpy.float32).view(numpy.uint32)), (target, sign)
-        # The Yee shift is the TARGET's own; using 0 for every target is a defect
-        # the gate arms, and this is the fact that makes it one.
+    rng = numpy.random.default_rng(97 + 31 * (m + 8))
+    theirs_terms = {"step_B": stepping._CYLINDRICAL_IMR_B,
+                    "step_D": stepping._CYLINDRICAL_IMR_D}[sub_step]
+    bound = family.imr_rows_for(sub_step, grid, rows)
+    assert len(bound) == 2
+    for (index, target, sign), (term, _partner, their_sign), row in zip(
+            family.IMR_TERMS[sub_step], theirs_terms, bound):
+        assert (term.target, their_sign) == (target, sign)
         assert index in (0, 2)
-        assert IYEE_SHIFTS[target][0] in (0, 1)
+        shape = tuple(grid.shape)
+        partner = (rng.uniform(-1, 1, shape)
+                   + 1j * rng.uniform(-1, 1, shape)).astype(numpy.complex64)
+        theirs = stepping._cylindrical_imr_increment(fields, target, partner, sign)
+        rinv = family.imr_rinv_row(grid, target, sign, rows)
+        assert rinv.dtype == numpy.float32 and rinv.shape == (rows,)
+        assert numpy.array_equal(rinv.view(numpy.uint32), row.view(numpy.uint32))
+        column = rinv.reshape(-1, 1, 1)
+        mine = numpy.empty_like(partner)
+        mine.real = (column * partner.imag) * numpy.float32(-1.0)
+        mine.imag = column * partner.real
+        assert numpy.array_equal(mine.view(numpy.uint32), theirs.view(numpy.uint32)), target
+    assert {IYEE_SHIFTS[target][0] for _i, target, _s in family.IMR_TERMS[sub_step]} == {0, 1}
 
 
-@pytest.mark.parametrize("m", [1, -1])
-@pytest.mark.parametrize("dtdx", [0.35, 0.5, 0.37])
-def test_the_imr_row_real_word_is_exactly_positive_zero(m, dtdx):
-    """``(-1j) * X`` launders the real word to +0.0 for BOTH signs of X.
-
-    Measured rather than asserted from the spelling: the arm choice at this call site
-    is degenerate BECAUSE of it, and the module docstring says so.
-    """
-    for target, sign in (("Bx", +1.0), ("Bz", -1.0), ("Dx", -1.0), ("Dz", +1.0)):
-        row = family.imr_coefficient_row(numpy, target, sign, m, dtdx, 6,
-                                         numpy.complex64)
-        words = numpy.ascontiguousarray(row.real).view(numpy.uint32)
-        assert set(words.tolist()) == {0}, (target, sign, m, dtdx)
-
-
-@pytest.mark.parametrize("m", [1, -1])
-@pytest.mark.parametrize("dtdx", [0.35, 0.5])
-def test_the_axis_increment_scalars_are_the_array_paths(m, dtdx):
-    """And the second one's real word is a SIGNED ZERO for m < 0 -- measured."""
-    minus_dtdx, (re, im) = family.axis_increment_scalars(m, dtdx)
-    assert numpy.float32(minus_dtdx) == numpy.float32(-dtdx)
-    expected = numpy.complex64(1j * (m * dtdx))
-    assert numpy.float32(re).view(numpy.uint32) == \
-        numpy.float32(expected.real).view(numpy.uint32)
-    assert numpy.float32(im).view(numpy.uint32) == \
-        numpy.float32(expected.imag).view(numpy.uint32)
-    sign_bit = int(numpy.float32(re).view(numpy.uint32)) >> 31
-    assert sign_bit == (1 if m < 0 else 0)
-
-
-def test_the_axis_increment_row_matches_steppings_own(monkeypatch):
-    """The whole |m| = 1 B-side increment, from ``stepping``, on a seeded grid.
-
-    Not a re-derivation: ``_cylindrical_axis_increment_B`` is CALLED and the two
-    scalars this module binds are used to reassemble the same row in float32.
-    """
-    fields, layer, grid = build(shape=(8, 1, 6), m=-1)
-    rng = numpy.random.default_rng(4)
-    for name in ("Ex", "Ey", "Ez"):
+def _seeded_axis_grid(m, courant):
+    fields, layer, grid = build(shape=(8, 1, 6), m=m, courant=courant)
+    rng = numpy.random.default_rng(4 + 31 * (m + 8))
+    for name in ("Ex", "Ey", "Ez", "Hx", "Hy", "Hz"):
         volume = getattr(fields, name)
         volume.real = rng.uniform(-1, 1, volume.shape).astype(numpy.float32)
         volume.imag = rng.uniform(-1, 1, volume.shape).astype(numpy.float32)
+    return fields, layer, grid
+
+
+def _double_product(word, values):
+    out = numpy.empty_like(values)
+    out.real = (values.real.astype(numpy.float64) * word).astype(numpy.float32)
+    out.imag = (values.imag.astype(numpy.float64) * word).astype(numpy.float32)
+    return out
+
+
+def _words(values):
+    return numpy.ascontiguousarray(values).view(numpy.float32).view(numpy.uint32)
+
+
+@pytest.mark.parametrize("m", [1, -1])
+@pytest.mark.parametrize("courant", [0.35, 0.5, 0.3])
+def test_the_b_axis_increment_row_matches_steppings_own(m, courant):
+    """The whole |m| = 1 B-side increment, from ``stepping``, on a seeded grid.
+
+    ``_cylindrical_axis_increment_B`` is CALLED; the kernel's spelling -- the turn
+    ``(m*Ez1.im, (m*Ez1.re) * -1)`` by the bound ``m_word``, the bracket in float32 left
+    to right, one double product with the bound ``-Courant`` -- is reassembled on the host
+    and compared word for word.
+    """
+    fields, layer, grid = _seeded_axis_grid(m, courant)
     electric = {n: getattr(fields, n) for n in ("Ex", "Ey", "Ez")}
     boundaries = stepping._boundary_kinds(grid, layer)
-    phases = (None, None, None)
-    dtdx = float(grid.dt / grid.dx)
     target, theirs = stepping._cylindrical_axis_increment_B(
-        fields, electric, boundaries, phases, dtdx)
+        fields, electric, boundaries, (None, None, None), float(grid.dt / grid.dx))
     assert target == "Bx"
     assert family.AXIS_INCREMENT_TARGET["step_B"] == 0
-
-    minus_dtdx, (inc_re, inc_im) = family.axis_increment_scalars(-1, dtdx)
+    (minus,) = family.axis_courant_words("step_B", grid)
+    m_word = numpy.float32(float(m))
     ep = electric["Ey"]
-    ep_above = stepping._shift_up(numpy, ep, 2, boundaries[2], None)
-    first = numpy.complex64(minus_dtdx) * (ep[0] - ep_above[0])
-    second = numpy.complex64(complex(inc_re, inc_im)) * numpy.take(electric["Ez"], 1, 0)
-    mine = (first - second).astype(numpy.complex64)
-    assert numpy.array_equal(
-        numpy.ascontiguousarray(mine).view(numpy.float32).view(numpy.uint32),
-        numpy.ascontiguousarray(theirs).view(numpy.float32).view(numpy.uint32))
+    ep_above = stepping._shift_up(numpy, ep, 2, boundaries[2])
+    e1 = electric["Ez"][1]
+    turn = numpy.empty_like(e1)
+    turn.real = m_word * e1.imag
+    turn.imag = (m_word * e1.real) * numpy.float32(-1.0)
+    mine = _double_product(minus, (ep[0] - ep_above[0]) - turn)
+    assert numpy.array_equal(_words(mine), _words(theirs))
+
+
+@pytest.mark.parametrize("m", [1, -1])
+@pytest.mark.parametrize("courant", [0.35, 0.5, 0.3])
+def test_the_d_axis_increment_row_matches_steppings_own(m, courant):
+    """The |m| = 1 D-side increment: ``(Hr - Hr_zdn) - 2*Hz`` then the ``+Courant``
+    double product, against ``_cylindrical_axis_increment_D`` CALLED on a seeded grid."""
+    fields, layer, grid = _seeded_axis_grid(m, courant)
+    magnetic = {n: getattr(fields, n) for n in ("Hx", "Hy", "Hz")}
+    boundaries = stepping._boundary_kinds(grid, layer)
+    target, theirs = stepping._cylindrical_axis_increment_D(
+        fields, magnetic, boundaries, (None, None, None), float(grid.dt / grid.dx))
+    assert target == "Dy"
+    assert family.AXIS_INCREMENT_TARGET["step_D"] == 1
+    plus, _four = family.axis_courant_words("step_D", grid)
+    hr = magnetic["Hx"]
+    hr_below = stepping._shift_down(numpy, hr, 2, boundaries[2], "Hx")
+    hz = magnetic["Hz"][0]
+    two_hz = numpy.empty_like(hz)
+    two_hz.real = numpy.float32(2.0) * hz.real
+    two_hz.imag = numpy.float32(2.0) * hz.imag
+    mine = _double_product(plus, (hr[0] - hr_below[0]) - two_hz)
+    assert numpy.array_equal(_words(mine), _words(theirs))
 
 
 # --------------------------------------------------------------------------
@@ -508,37 +498,32 @@ def test_the_axis_increment_row_matches_steppings_own(monkeypatch):
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_emitted_source_is_pure_ascii_and_declares_one_kernel(sub_step, arm):
+def test_the_emitted_source_is_pure_ascii_and_declares_one_kernel(sub_step):
     """ASCII is a COMPILE requirement: NVRTC writes the source through a locale open."""
-    text = source(sub_step, arm)
+    text = source(sub_step)
     text.encode("ascii")
     assert family.shipped_kernel_names(text) == {family.KERNELS[sub_step][0]}
 
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
-def test_the_two_arms_differ_and_only_in_the_arm_block(sub_step):
-    """A wrong arm is a wrong answer, so the arms must be different strings."""
-    fma, naive = source(sub_step, "FMA_V1"), source(sub_step, "NAIVE")
-    assert fma != naive
-    assert "__fmaf_rn" in fma and "__fmaf_rn" not in naive
-    # Everything outside the arm block is identical, which is what "the arm is this
-    # emitter's ONLY parameter" means.
-    for text in (fma, naive):
-        assert complex_emitter._HEAD in text
-        assert complex_emitter._TAIL in text
-        assert family._TEMPLATES[sub_step] in text
+def test_the_emitted_body_carries_no_fused_multiply_add(sub_step):
+    """The certified prelude emits one part-wise body, and this family adds none of its
+    own."""
+    text = source(sub_step)
+    assert "__fmaf_rn" not in text
+    assert complex_emitter._HEAD in text
+    assert complex_emitter._TAIL in text
+    assert family._TEMPLATES[sub_step].replace(
+        "__BOUNDS__", complex_emitter.curl_bounds_block(sub_step)) in text
 
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_certified_strings_are_imported_not_copied(arm):
+def test_the_certified_strings_are_imported_not_copied():
     """The non-cylindrical body must be the certified characters, not a second copy."""
     for sub_step in SUB_STEPS:
-        text = source(sub_step, arm)
-        assert complex_emitter._ARM_SOURCE[complex_emitter.EXPANSIONS[arm]] in text
-    # And the module must not carry its own copy of any of the three.
+        assert complex_emitter._PART_PRODUCTS in source(sub_step)
+    # And the module must not carry its own copy of any of them.
     module_text = open(family.__file__, encoding="utf-8").read()
-    for helper in ("cf_load", "cshift_up", "cshift_dn", "pml_apply",
+    for helper in ("cf_load", "cshift_up", "cshift_dn", "pml_apply", "curl_stencil",
                    "mul_field_left", "mul_coefficient_left", "rotate_field_left"):
         assert f"__device__ __forceinline__ cf {helper}" not in module_text, helper
         assert f"__device__ __forceinline__ void {helper}" not in module_text, helper
@@ -546,7 +531,7 @@ def test_the_certified_strings_are_imported_not_copied(arm):
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
 def test_no_floating_point_division_anywhere(sub_step):
-    """The i*m/r row is bound as an array PRECISELY so the kernel performs none."""
+    """The i*m/r ``rinv`` row is bound as an array PRECISELY so the kernel performs none."""
     text = source(sub_step)
     body = text[text.index('extern "C"'):]
     stripped = re.sub(r"//[^\n]*", "", body)
@@ -554,56 +539,73 @@ def test_no_floating_point_division_anywhere(sub_step):
         "idx / nz", "").replace("idx / (ny * nz)", ""), stripped
 
 
-@pytest.mark.parametrize("sub_step", SUB_STEPS)
-def test_the_prefix_substitution_is_the_shipped_grouping(sub_step):
-    """Bz is ONE subtract and ONE multiply; Dz swaps only its ``first`` source."""
-    text = source(sub_step)
-    if sub_step == "step_B":
-        assert "cf pfx_up = cf_load(pfx, idx + sx);" in text
-        assert ("cf curl = mul_coefficient_left(dtdx, cf_sub(pfx_up, pfx_here));"
-                in text)
-        # NOT the distributed form, which is a different float32 number per plane.
-        assert "mul_coefficient_left(dtdx, pfx_up)" not in text
-    else:
-        assert "cf f_1 = cf_load(pfx, idx);" in text
-        assert "cf sf = cshift_dn(pfx, idx, i, nx, sx, bc_x, ph_x, noph);" in text
-        # Dx's Hy operands stay RAW -- the prefix reaches Dz and nothing else.
-        assert text.count("cf_load(pfx,") == 1
-        assert "cf f_2 = cf_load(Hy, idx);" in text
+def _target_block(text, target):
+    """One target's ``{ ... }`` block of the emitted kernel, from its comment line."""
+    block = text[text.index(f"    // {target}:"):]
+    return block[:block.index("\n    }\n")]
 
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
-def test_the_imr_term_is_on_targets_0_and_2_only_and_before_the_mask(sub_step):
-    """Ordering is the array path's: after the dtdx curl, BEFORE the ownership mask."""
+def test_the_radial_difference_is_the_whole_curl_of_one_target(sub_step):
+    """Bz's (Dz's) curl is ``dtdx`` times the scan's radial difference -- ONE product,
+    read at the target's own index -- and no other target reads it."""
     text = source(sub_step)
-    assert text.count("mul_complex_left(cf_load(imr0, i)") == 1
-    assert text.count("mul_complex_left(cf_load(imr2, i)") == 1
-    for row in ("imr0", "imr2"):
-        add = text.index(f"curl = cf_sub(curl, mul_complex_left(cf_load({row}, i)")
-        after = text[add:]
-        mask = after.index("== BC_METALLIC")
-        assert mask > 0, row
-        # No mask may precede the add inside the same target block.
-        block_start = text.rindex("    {", 0, add)
-        assert "BC_METALLIC" not in text[block_start:add], row
+    assert text.count("cf_load(rad,") == 1
+    target = family.CURL_ARRAYS[sub_step][0][2]
+    block = _target_block(text, target)
+    assert "cf curl = mul_coefficient_left(dtdx, cf_load(rad, idx));" in block
+    # Not the stencil: the target's curl is not formed from the partner volumes.
+    assert "curl_stencil" not in block
+    if sub_step == "step_D":
+        # Dx's Hy operand stays RAW -- the radial sum reaches Dz and nothing else.
+        assert "cf f_2 = cf_load(Hy, idx);" in _target_block(text, "Dx")
+
+
+_CURL_MASK = r"if \((bc_[xyz]) == BC_METALLIC && (\w) == 0\) {} = cf_zero\(\);"
 
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
-def test_the_axis_increment_replaces_the_row_and_negates_per_word(sub_step):
-    """REPLACE, never accumulate: the two differ only on a stored signed zero."""
+def test_the_imr_pass_follows_its_targets_recurrence_and_masks_its_own_increment(sub_step):
+    """The array path's order: the curl's recurrence first, then the pass's increment,
+    masked by the target's own ownership rule, through the folded ladder; target 1 takes
+    none."""
     text = source(sub_step)
-    assert "if (m_class == 1 && i == 0) {" in text
-    assert "curl.re = inc.re * -1.0f;" in text
-    assert "curl.im = inc.im * -1.0f;" in text
+    targets, _sources = family.CURL_ARRAYS[sub_step]
+    for index, target, _sign in family.IMR_TERMS[sub_step]:
+        call = f"imr_increment(imr{index}[i],"
+        assert text.count(call) == 1
+        block = _target_block(text, target)
+        at = block.index(call)
+        recurrence = block.index(f"pml_apply({target}, fu_{target}, idx, curl,")
+        fold = block.index(f"fold_apply({target}, fu_{target}, idx, inc,")
+        assert recurrence < at < fold, target
+        curl_masks = re.findall(_CURL_MASK.format("curl"), block[:recurrence])
+        inc_masks = re.findall(_CURL_MASK.format("inc"), block[at:fold])
+        assert inc_masks and inc_masks == curl_masks, target
+    assert "fold_apply(" not in _target_block(text, targets[1])
+
+
+@pytest.mark.parametrize("sub_step", SUB_STEPS)
+def test_the_axis_increment_replaces_the_masked_row_before_the_recurrence(sub_step):
+    """REPLACE, never accumulate, after the mask and before the recurrence: the
+    caller's ``curl[row 0] = -dfcnd`` (``stepping.step_B`` / ``step_D``)."""
+    text = source(sub_step)
+    target = family.CURL_ARRAYS[sub_step][0][family.AXIS_INCREMENT_TARGET[sub_step]]
+    word = "minus_courant" if sub_step == "step_B" else "plus_courant"
+    block = _target_block(text, target)
+    replace = block.index("if (m_class == 1 && i == 0) {")
+    assert block.index("BC_METALLIC") < replace < block.index(f"pml_apply({target},")
+    assert f"curl = cf_neg(double_product({word}, " in block
     # Accumulation is the defect; it must not be the spelling.
-    assert "curl.re = curl.re +" not in text
+    assert "curl = cf_add(curl" not in text and "curl.re = curl.re +" not in text
     if sub_step == "step_B":
-        assert "cf e1 = cf_load(Ez, sx + j * sy + k);" in text
-        assert "mul_coefficient_left(minus_dtdx, cf_sub(f_2, ss))" in text
-        assert "mul_complex_left(q, e1)" in text
+        assert "cf e1 = cf_load(Ez, idx + sx);" in block
+        assert "turn.re = m_word * e1.im;" in block
+        assert "turn.im = (m_word * e1.re) * -1.0f;" in block
+        assert "cf_sub(cf_sub(f_2, ss), turn)" in block
     else:
-        assert "cf two_c = mul_coefficient_left(2.0f, f_2);" in text
-        assert "cf s = cf_sub(cf_sub(f_1, sf), two_c);" in text
+        assert ("cf bracket = cf_sub(cf_sub(f_1, sf), mul_coefficient_left(2.0f, f_2));"
+                in block)
 
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
@@ -640,8 +642,8 @@ def test_the_m_zero_axis_rules_are_the_array_paths_and_the_imr_terms_are_guarded
     """
     text = source(sub_step)
     assert text.count("if (m_class != 0) {") == 2
-    for row in ("imr0", "imr2"):
-        guard = text.index(f"curl = cf_sub(curl, mul_complex_left(cf_load({row}, i)")
+    for index, _target, _sign in family.IMR_TERMS[sub_step]:
+        guard = text.index(f"imr_increment(imr{index}[i],")
         assert text.rindex("if (m_class != 0) {", 0, guard) > text.rindex("    {", 0, guard)
     assert text.count("if (m_class == 0 && i == 0) {") == 1
     tail = text[text.index("if (m_class == 0 && i == 0) {"):]
@@ -649,13 +651,12 @@ def test_the_m_zero_axis_rules_are_the_array_paths_and_the_imr_terms_are_guarded
     if sub_step == "step_B":
         assert "cf_store(Bx, idx, cf_zero());" in tail
         assert "fu_Bx" not in tail and "By" not in tail and "Bz" not in tail
-        assert "axis_coef" not in text
+        assert "four_courant" not in text
     else:
-        assert ("cf_store(Dz, idx, cf_add(cf_load(Dz, idx),\n"
-                "                                 mul_coefficient_left(axis_coef, "
-                "cf_load(Hy, idx))));") in tail
+        assert ("cf_store(Dz, idx, cf_add(cf_load(Dz, idx), "
+                "double_product(four_courant, cf_load(Hy, idx))));") in tail
         assert tail.index("cf_store(Dz") < tail.index("cf_store(Dy, idx, cf_zero());")
-        assert "fu_D" not in tail and "pfx" not in tail
+        assert "fu_D" not in tail and "rad" not in tail
         # The tail runs AFTER every recurrence and after both |m| >= 1 blocks.
         assert text.index("if (m_class == 0 && i == 0) {") > text.rindex("pml_apply(")
         assert text.index("if (m_class == 0 && i == 0) {") > text.index(
@@ -703,13 +704,9 @@ def test_the_corpus_digest_moves_when_the_text_moves(monkeypatch):
     assert family.corpus_digest() != before
 
 
-def test_the_arm_is_required_and_never_defaulted():
-    with pytest.raises(TypeError):
-        family.cylindrical_complex_source("step_B")  # noqa: PLC0304 - the point
+def test_a_sub_step_this_family_does_not_emit_is_refused():
     with pytest.raises(ValueError):
-        family.cylindrical_complex_source("step_B", "SOMETHING_ELSE")
-    with pytest.raises(ValueError):
-        family.cylindrical_complex_source("update_H", "FMA_V1")
+        family.cylindrical_complex_source("update_H")
 
 
 # --------------------------------------------------------------------------
@@ -733,46 +730,96 @@ def parameters(sub_step):
 def test_the_signature_is_the_order_the_launcher_builds(sub_step):
     """``RawKernel`` does not check; a swapped pair is a wrong answer at a wrong pointer."""
     targets, sources = family.CURL_ARRAYS[sub_step]
-    # THE m = 0 ON-AXIS Dz MULTIPLICAND rides on the D side only (2026-09-04): the
-    # B side's m = 0 rule is a zero store and binds no scalar.
+    # The B side binds the turn's m and the |m| = 1 factor; the D side the |m| = 1 factor
+    # and the m = 0 on-axis Dz factor. Both travel as doubles.
+    scalars = (["m_word", "minus_courant"] if sub_step == "step_B"
+               else ["plus_courant", "four_courant"])
     expected = (list(targets) + ["fu_" + n for n in targets] + list(sources)
-                + ["pfx", "imr0", "imr2",
-                   "nx", "ny", "nz", "dtdx", "minus_dtdx", "inc_re", "inc_im"]
-                + (["axis_coef"] if sub_step == "step_D" else [])
+                + ["rad", "imr0", "imr2", "nx", "ny", "nz", "dtdx"] + scalars
                 + [f"{stem}_{axis}" for axis in "xyz" for stem in ("kms", "sinv")]
-                + ["bc_x", "bc_y", "bc_z", "ph_x", "ph_y", "ph_z",
-                   "m_class", "zero_rows"])
+                + ["bc_x", "bc_y", "bc_z", "m_class", "zero_rows", "cb"])
     assert [name for _kind, name in parameters(sub_step)] == expected
 
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
 def test_every_pointer_parameter_is_a_float_word_pointer(sub_step):
-    """complex64 reaches the kernel as float32 WORDS; a complex type here is a lie."""
+    """complex64 reaches the kernel as float32 WORDS; a complex type here is a lie. The
+    chunk record is the one integer vector."""
     for kind, name in parameters(sub_step):
         if "*" in kind:
-            assert kind.replace("const", "").strip().startswith("float"), (kind, name)
+            expected = "int" if name == "cb" else "float"
+            assert kind.replace("const", "").strip().startswith(expected), (kind, name)
 
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
-def test_the_branch_axes_are_runtime_ints_not_compiled_in(sub_step):
-    """The boundary codes, the phase flags, the m class and ZERO_ROWS are branches."""
+def test_the_branch_axes_are_runtime_ints_and_the_courant_words_doubles(sub_step):
+    """The boundary codes, the m class and ZERO_ROWS are branches, not compiled in; the
+    axis factors are doubles, because a float32 factor is another word."""
     kinds = dict((name, kind) for kind, name in parameters(sub_step))
-    for name in ("bc_x", "bc_y", "bc_z", "ph_x", "ph_y", "ph_z",
-                 "m_class", "zero_rows", "nx", "ny", "nz"):
+    for name in ("bc_x", "bc_y", "bc_z", "m_class", "zero_rows", "nx", "ny", "nz"):
         assert kinds[name] == "int", name
+    doubles = ("minus_courant",) if sub_step == "step_B" else ("plus_courant",
+                                                                "four_courant")
+    for name in doubles:
+        assert kinds[name] == "double", name
+    assert kinds["dtdx"] == "float"
 
 
-def test_the_launcher_refuses_a_gridless_call_that_omits_a_derived_quantity():
-    """A defaulted m class or increment would be a silently different sub-step."""
+@pytest.mark.parametrize("sub_step", SUB_STEPS)
+def test_the_launcher_tuple_matches_the_signature_kind_for_kind(sub_step, monkeypatch):
+    """``curl_arguments`` against the parsed signature: same length, and each slot the
+    host type ``RawKernel`` marshals for that C type."""
+    monkeypatch.setattr(family, "word_view", lambda array: array)
     fields, _layer, grid = build(m=1)
-    with pytest.raises(ValueError, match="exactly one of grid"):
-        family.step_cylindrical_complex(
-            "step_B", fields, "FMA_V1", grid=grid, pml=None, tables={},
-            boundary_codes=(1, 0, 1))
-    with pytest.raises(ValueError, match="without a grid the caller must supply"):
-        family.step_cylindrical_complex(
-            "step_B", fields, "FMA_V1", tables={"kms_x": None},
-            boundary_codes=(1, 0, 1))
+    targets, _sources = family.CURL_ARRAYS[sub_step]
+    shape = tuple(getattr(fields, targets[0]).shape)
+    radial = numpy.zeros(shape, numpy.complex64)
+    rows = family.imr_rows_for(sub_step, grid, shape[0])
+    tables = {f"{stem}_{axis}": numpy.zeros(4, numpy.float32)
+              for axis in "xyz" for stem in ("kms", "sinv")}
+    record = numpy.zeros(25, numpy.int32)
+    arguments = family.curl_arguments(
+        sub_step, fields, radial, rows, 0.35, 1, family.axis_courant_words(sub_step, grid),
+        tables, (1, 0, 1), family.M_ONE, 0, record)
+    kinds = parameters(sub_step)
+    assert len(arguments) == len(kinds)
+    host_type = {"int": numpy.int32, "float": numpy.float32, "double": numpy.float64}
+    for (kind, name), value in zip(kinds, arguments):
+        if "*" in kind:
+            assert isinstance(value, numpy.ndarray), name
+        else:
+            assert type(value) is host_type[kind], (name, type(value))
+    named = dict(zip([name for _kind, name in kinds], arguments))
+    for name in targets:
+        assert named[name] is getattr(fields, name)
+    assert named["rad"] is radial and named["cb"] is record
+    with pytest.raises(ValueError, match="radial difference"):
+        family.curl_arguments(
+            sub_step, fields, radial[:-1], rows, 0.35, 1,
+            family.axis_courant_words(sub_step, grid), tables, (1, 0, 1), family.M_ONE, 0,
+            record)
+
+
+def test_the_launcher_refuses_a_call_without_its_grid_layer_or_chunk_record():
+    """A defaulted grid, layer or division would be a silently different sub-step."""
+    fields, layer, grid = build(m=1)
+    record = numpy.zeros(25, numpy.int32)
+    with pytest.raises(ValueError, match="pass the grid and the layer"):
+        family.step_cylindrical_complex("step_B", fields, grid=grid, pml=None,
+                                        chunk_bounds=record)
+    with pytest.raises(ValueError, match="pass the grid and the layer"):
+        family.step_cylindrical_complex("step_B", fields, pml=layer,
+                                        chunk_bounds=record)
+    with pytest.raises(TypeError):
+        family.step_cylindrical_complex("step_B", fields, grid, layer)
+    with pytest.raises(ValueError, match="sub_step"):
+        family.step_cylindrical_complex("update_H", fields, grid, layer,
+                                        chunk_bounds=record)
+    with pytest.raises(ValueError, match="handed none"):
+        family.chunk_record_argument(None)
+    for wrong in (numpy.zeros(24, numpy.int32), numpy.zeros(25, numpy.int64)):
+        with pytest.raises(ValueError, match="int32"):
+            family.chunk_record_argument(wrong)
 
 
 def test_the_sub_lattice_table_is_the_one_stepping_reads():
@@ -783,17 +830,25 @@ def test_the_sub_lattice_table_is_the_one_stepping_reads():
 
 
 def test_the_imr_term_table_is_the_one_stepping_applies():
-    """Four call sites and only four, with the array path's own signs."""
+    """Four call sites and only four, with the array path's own targets, partners and
+    signs (``stepping._CYLINDRICAL_IMR_B`` / ``_D``), and the kernel reads that partner."""
     assert family.IMR_TERMS == {
         "step_B": ((0, "Bx", +1.0), (2, "Bz", -1.0)),
         "step_D": ((0, "Dx", -1.0), (2, "Dz", +1.0))}
-    source_text = open(stepping.__file__, encoding="utf-8").read()
-    for sub_step, terms in family.IMR_TERMS.items():
-        for _index, target, sign in terms:
-            spelling = f'_cylindrical_imr_term(fields, "{target}"'
-            assert spelling in source_text, target
-            call = source_text[source_text.index(spelling):]
-            assert call[:200].split(")")[0].endswith(f"{sign:+.1f}"), (target, sign)
+    for sub_step, theirs, terms in (
+            ("step_B", stepping._CYLINDRICAL_IMR_B, stepping.B_CURL_TERMS),
+            ("step_D", stepping._CYLINDRICAL_IMR_D, stepping.D_CURL_TERMS)):
+        mine = family.IMR_TERMS[sub_step]
+        assert [(terms.index(term), term.target, sign) for term, _p, sign in theirs] == \
+            [tuple(entry) for entry in mine]
+        text = source(sub_step)
+        for (index, target, _sign), (_term, partner, _s) in zip(mine, theirs):
+            block = _target_block(text, target)
+            if index == 0:
+                assert f"cf f_1 = cf_load({partner}, idx);" in block
+                assert "imr_increment(imr0[i], f_1)" in block
+            else:
+                assert f"imr_increment(imr2[i], cf_load({partner}, idx))" in block
 
 
 def _executable_text(path) -> str:

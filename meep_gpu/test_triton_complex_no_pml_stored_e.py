@@ -17,40 +17,12 @@ from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
 from meep_gpu.pml import PML
 
-pytestmark = pytest.mark.usefixtures("run_policy_declared_keep")
 
 MODULE_NAME = "meep_gpu.triton_kernels.complex_no_pml_stored_e"
 MODULE_PATH = (
     pathlib.Path(__file__).parent / "triton_kernels" /
     "complex_no_pml_stored_e.py"
 )
-
-
-def _detail(value="FMA_V1"):
-    return {
-        "matches": {"FMA_V1": value == "FMA_V1",
-                    "NAIVE": value == "NAIVE",
-                    "PLANEWISE_diagnostic": False},
-        "mismatch_words": {"FMA_V1": 0 if value == "FMA_V1" else 7,
-                           "NAIVE": 0 if value == "NAIVE" else 7,
-                           "PLANEWISE_diagnostic": 31},
-        "licensable_arms_disagreement_words": 128,
-        "discriminates": True,
-        "classified": value,
-    }
-
-
-def probe_record(arm, value="FMA_V1"):
-    patterns = {name: value for name in arm.PROBE_PATTERNS}
-    return {
-        "backend": "cupy",
-        "patterns": patterns,
-        "vectors": {name: 2792 for name in patterns},
-        "detail": {name: _detail(value) for name in patterns},
-        "subnormal_policy": {
-            "policy": "ieee_keep_ftz_stripped", "resolved": "keep"},
-        "candidates": {"policy": "keep"},
-    }
 
 
 @pytest.fixture(scope="module")
@@ -107,10 +79,9 @@ def build(*, poles=1, driven=("Ex", "Ey", "Ez"), kind="lorentzian",
     return fields, pml, states
 
 
-def clean_reasons(arm, fields, pml, probe=None):
-    record = probe_record(arm) if probe is None else probe
+def clean_reasons(arm, fields, pml):
     return [reason for reason in arm.complex_stored_e_coverage(
-        fields, pml, probe=record).reasons if "not cupy" not in reason]
+        fields, pml).reasons if "not cupy" not in reason]
 
 
 def test_module_imports_and_answers_without_triton(arm, monkeypatch):
@@ -128,7 +99,7 @@ def test_module_imports_and_answers_without_triton(arm, monkeypatch):
     module = importlib.import_module(MODULE_NAME)
     fields, pml, _ = build()
     verdict = module.complex_stored_e_coverage(
-        fields, pml, probe=probe_record(module))
+        fields, pml)
     assert isinstance(verdict.covered, bool)
 
 
@@ -151,7 +122,7 @@ def test_cuda_gate_is_incremental_and_names_exact_group_i_rows(arm):
         "TestLoadDump.test_load_dump_structure_3d",
         "TestLoadDump.test_load_dump_structure_sharded_3d",
     )
-    cases = gate.build_cases(numpy, probe_record(arm))
+    cases = gate.build_cases(numpy)
     assert len([row for row in cases if row["name"].startswith("product_")]) == 7
     assert len([row for row in cases if "MUTATION" in row["name"]]) == 4
     assert len([row for row in cases if "CONTROL" in row["name"]]) == 1
@@ -170,7 +141,7 @@ def test_cuda_gate_is_incremental_and_names_exact_group_i_rows(arm):
     assert clean_reasons(arm, fields, pml) == []
 
 
-def test_kernel_source_pins_word_pairs_order_and_probe_scope(arm):
+def test_kernel_source_pins_word_pairs_and_order(arm):
     source = MODULE_PATH.read_text(encoding="utf-8")
     tree = ast.parse(source)
     functions = {node.name: node for node in tree.body
@@ -184,9 +155,6 @@ def test_kernel_source_pins_word_pairs_order_and_probe_scope(arm):
     assert kernel.count("_subtract_complex_poles") == 3
     assert kernel.count("_mul_field_left") == 3
     assert "_mul_coefficient_left" not in kernel
-    assert tuple(arm.PROBE_PATTERNS) == tuple(
-        importlib.import_module(
-            "meep_gpu.triton_kernels.complex_fields").PROBE_PATTERNS)
 
 
 @pytest.mark.parametrize("kind", ("lorentzian", "drude"))
@@ -269,7 +237,7 @@ def _direct_plan(arm, fields, kernel, *, live=True):
         [getattr(fields, c) for c, _ in arm.E_TERMS],
         [getattr(fields, d) for _, d in arm.E_TERMS],
         [fields.inverse_epsilon_for(c) for c, _ in arm.E_TERMS],
-        binding, expansion=1, kernel=kernel, pointer=lambda value: value,
+        binding, kernel=kernel, pointer=lambda value: value,
     )
 
 
@@ -321,13 +289,12 @@ def test_target_is_admitted_modulo_backend_and_incumbents_refuse(arm):
         fields.grid.shape, 0.2, dtype=numpy.float32))
     fields.set_b_conductivity(numpy.full(
         fields.grid.shape, 0.15, dtype=numpy.float32))
-    record = probe_record(arm)
-    assert clean_reasons(arm, fields, pml, record) == []
+    assert clean_reasons(arm, fields, pml) == []
     assert any("complex64" in reason
                for reason in stored_e_constitutive_coverage(fields, pml).reasons)
     assert any("no active PML" in reason
                for reason in complex_constitutive_coverage(
-                   fields, pml, "E", probe=record).reasons)
+                   fields, pml, "E").reasons)
     assert any("no active PML" in reason
                for reason in dispersive_constitutive_coverage(fields, pml).reasons)
 
@@ -358,15 +325,6 @@ def test_adjacent_products_are_refused(arm, mutation, fragment):
         fields._chi2_components = {"Ex": 0.1}
     reasons = clean_reasons(arm, fields, pml)
     assert any(fragment in reason for reason in reasons), reasons
-
-
-def test_missing_base_probe_pattern_refuses(arm):
-    fields, pml, _ = build()
-    record = probe_record(arm)
-    missing = arm.PROBE_PATTERNS[-1]
-    del record["patterns"][missing]
-    reasons = clean_reasons(arm, fields, pml, record)
-    assert any(missing in reason for reason in reasons)
 
 
 def test_malformed_history_and_pole_count_refuse(arm):

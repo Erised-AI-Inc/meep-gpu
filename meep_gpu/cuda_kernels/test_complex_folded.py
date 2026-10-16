@@ -17,20 +17,20 @@ of these failures is a plausible, smooth, WRONG field rather than a crash:
   two families on one slot is a widening the union census reports as a FINDING --
   and whose refusals (a phase on a folded axis, an undecidable fold termination)
   are configurations the array path does not express.
-* THE BEHAVIOUR. The transcribed device tree is stepped against ``stepping.step_B``
-  / ``step_D`` on real FOLDED complex grids and compared as uint32 words, with the
-  two fold masks each shown to MATTER: dropped, the answer diverges. A test that
-  only checks verdict strings cannot tell a working kernel from one that returns
-  its input.
+* THE BEHAVIOUR. The EMITTED device text, executed in float32 NumPy by the
+  interpreter of ``test_complex_chunk_forms.py`` through the family's own launcher
+  (``step_folded_complex``, with the run's chunk record), is stepped against
+  ``stepping.step_B`` / ``step_D`` on real FOLDED complex grids and compared as
+  uint32 words, with the two fold masks each shown to MATTER: rewritten out of the
+  text, the answer diverges. A test that only checks verdict strings cannot tell a
+  working kernel from one that returns its input.
 
-WHAT THE NUMPY LEG CANNOT SEE, stated rather than papered over: it compiles
-nothing, so it cannot see an NVRTC contraction, a lost signed zero, or the
-expansion arm -- and on NumPy the complex multiply is bitwise commutative
-(``ar*br - ai*bi`` against ``br*ar - bi*ai``, and ``x + y`` against ``y + x``), so
-the operand ORIENTATION that ``FMA_V1`` makes normative is invisible here. Those
-are the device gate's questions. What this leg settles is the STRUCTURE: which
-ghost each face takes, which planes the masks drop, and that the fold's parity
-ghost never reaches an output word.
+WHAT THE HOST LEG CANNOT SEE, stated rather than papered over: it compiles
+nothing, so it cannot see an NVRTC contraction or a lost signed zero under a
+compiler's rewriting. Those are the device gate's questions. What this leg
+settles is the arithmetic the text spells -- every part-wise product, the chunk
+forms, which ghost each face takes, which planes the masks drop, and that the
+fold's parity ghost never reaches an output word.
 """
 
 from __future__ import annotations
@@ -46,6 +46,7 @@ from ..fields import Fields, IYEE_SHIFTS
 from ..grid import Grid, Mirror
 from ..pml import PML
 from . import complex_emitter, complex_folded_kernels as folded, coverage
+from .test_complex_chunk_forms import InterpretedKernel, device_record, launcher  # noqa: F401,F811
 
 BC_PERIODIC = 0
 BC_METALLIC = 1
@@ -53,12 +54,6 @@ BC_MIRROR_PERIODIC = 2
 
 HERE = pathlib.Path(__file__).resolve().parent
 
-#: A licence shaped exactly as ``expansion_license`` returns one, so the
-#: predicate's licence clause is satisfied and the rest of it can be asked. It is
-#: NOT a claim about any platform: no kernel is compiled in this file.
-LICENCE = {"arm": "FMA_V1", "expansion": 1, "basis": "measured",
-           "refusals": [], "policy_resolved": "keep"}
-POLICY = "keep"
 
 
 # ---------------------------------------------------------------------------
@@ -104,25 +99,6 @@ CURL_ARRAYS = {
                "backward": True},
 }
 
-#: ``(target, aux, first, first_axis, second, second_axis, dsig, dsigu)`` -- the
-#: six curl terms as the EMITTED KERNEL spells them (``g2``/``g1`` for target 0 and
-#: so on), transcribed from the device text rather than derived from ``stepping``:
-#: deriving it from the oracle would make the behaviour leg compare the oracle with
-#: itself. :func:`test_the_transcribed_term_table_is_steppings` pins it.
-CURL_TERMS = {
-    "step_B": (
-        ("Bx", "fu_Bx", "Ez", 1, "Ey", 2, 1, 2),
-        ("By", "fu_By", "Ex", 2, "Ez", 0, 2, 0),
-        ("Bz", "fu_Bz", "Ey", 0, "Ex", 1, 0, 1),
-    ),
-    "step_D": (
-        ("Dx", "fu_Dx", "Hz", 1, "Hy", 2, 1, 2),
-        ("Dy", "fu_Dy", "Hx", 2, "Hz", 0, 2, 0),
-        ("Dz", "fu_Dz", "Hy", 0, "Hx", 1, 0, 1),
-    ),
-}
-
-
 def seed(fields, grid, names, rng):
     """Physical-band complex values in every array the sub-step touches.
 
@@ -167,158 +143,10 @@ def boundary_codes_for(grid):
     return tuple(int(code) for code in codes)
 
 
-def tables_for(sub_step, layer):
-    suffix = "_h" if CURL_ARRAYS[sub_step]["half_integer"] else ""
-    return {f"{stem}_{axis}": getattr(layer, f"{stem}_{axis}{suffix}").reshape(-1)
-            for axis in "xyz" for stem in ("kms", "sinv")}
-
-
-def phase_arguments(grid, backward):
-    """``(flags, complex64 phases)`` -- ``stepping._bloch_phases``, transcribed.
-
-    A phase of None is flag 0 and NO multiply, never a multiply against ``1+0j``:
-    that skip is the bit-identity of k = 0. The BACKWARD sub-step takes the
-    CONJUGATE (stepping.py:1865-1869), and negation is exact so the order of
-    conjugation and rounding is immaterial.
-    """
-    flags, values = [], []
-    for axis in range(3):
-        phase = grid.bloch_phase(axis) if getattr(grid, "has_bloch", False) else None
-        if phase is None:
-            flags.append(0)
-            values.append(numpy.complex64(1.0))
-            continue
-        rounded = numpy.complex64(phase)
-        flags.append(1)
-        values.append(numpy.complex64(rounded.conjugate() if backward else rounded))
-    return tuple(flags), tuple(values)
-
-
 def _plane(axis, index, shape):
     key = [slice(None)] * len(shape)
     key[axis] = index
     return tuple(key)
-
-
-def _cshift_up(field, axis, bc, flag, phase):
-    """``cshift_up`` from the emitted text: wrap, phase the wrapped lane, else zero.
-
-    ``BC_MIRROR_PERIODIC`` takes the metallic zero -- the fold delta -- and the
-    zero is ``(+0.0f, +0.0f)``, which is what an integer 0 assigned into a complex64
-    array is.
-    """
-    shifted = numpy.roll(field, -1, axis=axis)
-    if bc == BC_PERIODIC:
-        if flag:
-            shifted[_plane(axis, -1, field.shape)] = (
-                shifted[_plane(axis, -1, field.shape)] * phase)
-        return shifted
-    shifted[_plane(axis, -1, field.shape)] = 0
-    return shifted
-
-
-def _cshift_dn(field, axis, bc, flag, phase):
-    """``cshift_dn`` from the emitted text -- the mirror of :func:`_cshift_up`."""
-    shifted = numpy.roll(field, 1, axis=axis)
-    if bc == BC_PERIODIC:
-        if flag:
-            shifted[_plane(axis, 0, field.shape)] = (
-                shifted[_plane(axis, 0, field.shape)] * phase)
-        return shifted
-    shifted[_plane(axis, 0, field.shape)] = 0
-    return shifted
-
-
-def _broadcast(vector, axis):
-    shape = [1, 1, 1]
-    shape[axis] = int(numpy.asarray(vector).size)
-    return numpy.asarray(vector, dtype=numpy.float32).reshape(shape)
-
-
-def run_kernel_numpy(sub_step, fields, tables, codes, dtdx, flags, phases,
-                     *, mask_arms=("metallic0", "mirror0", "mirror_top"),
-                     beta=None, beta_after_mask=False,
-                     beta_partner_shifted=False):
-    """The emitted device tree, transcribed, in complex64 -- the laptop backend.
-
-    Transcribed from the EMITTED SOURCE, statement for statement::
-
-        cf curl = mul_coefficient_left(dtdx, cf_add(cf_sub(sf, f_1),
-                                                    cf_sub(f_2, ss)));
-        [beta insert, targets 0 and 1 only]        # complex_beta_kernels
-        if (bc_a == BC_METALLIC        && a == 0)      curl = cf_zero();
-        if (bc_a == BC_MIRROR_PERIODIC && a == 0)      curl = cf_zero();
-        if (bc_b == BC_MIRROR_PERIODIC && b == nb - 1) curl = cf_zero();
-        pml_apply(...)
-
-    THE MUTATION SEAMS are ``mask_arms``, ``beta_after_mask`` and
-    ``beta_partner_shifted``, and they exist for the same reason the gate's do: a
-    branch that is never shown to change an answer has not been tested, only
-    executed. Dropping a mask arm is what makes the two fold masks measurable;
-    moving the beta insert BELOW the masks is the composition needle a fold makes
-    reachable (a fold widens the mask from METALLIC-only at cell 0 to
-    non-PERIODIC at cell 0 PLUS MIRROR_PERIODIC at the top plane, and both arms
-    reach a beta target); taking the SHIFTED companion instead of the centre is the
-    partner defect.
-
-    ``beta`` is ``((plus_re, plus_im), (minus_re, minus_im))`` or None, and lets
-    ``test_complex_beta.py`` reuse this one transcription instead of keeping a
-    second copy in step with it.
-
-    THIS COMPILES NOTHING AND CERTIFIES NOTHING.
-    """
-    spec = CURL_ARRAYS[sub_step]
-    shift = _cshift_dn if spec["backward"] else _cshift_up
-    scale = numpy.float32(dtdx)
-    names = "xyz"
-    coefficients = None
-    if beta is not None:
-        coefficients = (numpy.complex64(complex(*beta[0])),
-                        numpy.complex64(complex(*beta[1])))
-    for target_index, (target, aux, first, first_axis, second, second_axis,
-                       dsig, dsigu) in enumerate(CURL_TERMS[sub_step]):
-        f = getattr(fields, target)
-        fu = getattr(fields, aux)
-        f_1 = getattr(fields, first)
-        f_2 = getattr(fields, second)
-        sf = shift(f_1, first_axis, codes[first_axis],
-                   flags[first_axis], phases[first_axis])
-        ss = shift(f_2, second_axis, codes[second_axis],
-                   flags[second_axis], phases[second_axis])
-        curl = (scale * ((sf - f_1) + (f_2 - ss))).astype(numpy.complex64)
-
-        def _beta(current):
-            partner = f_2 if target_index == 0 else f_1
-            if beta_partner_shifted:
-                partner = ss if target_index == 0 else sf
-            return (current - (coefficients[target_index] * partner)).astype(
-                numpy.complex64)
-
-        live_beta = coefficients is not None and target_index in (0, 1)
-        if live_beta and not beta_after_mask:
-            curl = _beta(curl)
-        iyee = IYEE_SHIFTS[target]
-        for axis in range(3):
-            if iyee[axis] == 0:
-                if codes[axis] == BC_METALLIC and "metallic0" in mask_arms:
-                    curl[_plane(axis, 0, curl.shape)] = 0
-                if codes[axis] == BC_MIRROR_PERIODIC and "mirror0" in mask_arms:
-                    curl[_plane(axis, 0, curl.shape)] = 0
-            elif codes[axis] == BC_MIRROR_PERIODIC and "mirror_top" in mask_arms:
-                curl[_plane(axis, -1, curl.shape)] = 0
-        if live_beta and beta_after_mask:
-            curl = _beta(curl)
-        kms = _broadcast(tables[f"kms_{names[dsig]}"], dsig)
-        sinv = _broadcast(tables[f"sinv_{names[dsig]}"], dsig)
-        kms_u = _broadcast(tables[f"kms_{names[dsigu]}"], dsigu)
-        sinv_u = _broadcast(tables[f"sinv_{names[dsigu]}"], dsigu)
-        fprev = fu.copy()
-        fu_new = (((fprev * kms).astype(numpy.complex64) - curl).astype(
-            numpy.complex64) * sinv).astype(numpy.complex64)
-        fu[...] = fu_new
-        a = ((f * kms_u).astype(numpy.complex64) + fu_new).astype(numpy.complex64)
-        f[...] = ((a - fprev).astype(numpy.complex64) * sinv_u).astype(
-            numpy.complex64)
 
 
 #: The fixtures the behaviour legs step. Two of them are the CORPUS's own shapes in
@@ -453,22 +281,21 @@ def test_the_only_difference_from_the_certified_complex_source_is_the_deltas():
     on a device.
     """
     for sub_step in ("step_B", "step_D"):
-        for arm in sorted(complex_emitter.EXPANSIONS):
-            base = complex_emitter.complex_source(sub_step, arm).split("\n")
-            new = folded.folded_source(sub_step, arm).split("\n")
-            added_ok, removed_ok = set(), set()
-            for _label, old, replacement, _sites in folded._deltas_for(sub_step):
-                added_ok.update(replacement.split("\n"))
-                removed_ok.update(old.split("\n"))
-            added = [line for line in new if line not in base]
-            removed = [line for line in base if line not in new]
-            assert all(line in added_ok for line in added), (
-                sub_step, arm, [line for line in added if line not in added_ok])
-            assert all(line in removed_ok for line in removed), (
-                sub_step, arm, [line for line in removed if line not in removed_ok])
-            # And the transform must have DONE something: an empty diff would
-            # satisfy both assertions above and would mean the fold never landed.
-            assert added and removed, (sub_step, arm)
+        base = complex_emitter.complex_source(sub_step).split("\n")
+        new = folded.folded_source(sub_step).split("\n")
+        added_ok, removed_ok = set(), set()
+        for _label, old, replacement, _sites in folded._deltas_for(sub_step):
+            added_ok.update(replacement.split("\n"))
+            removed_ok.update(old.split("\n"))
+        added = [line for line in new if line not in base]
+        removed = [line for line in base if line not in new]
+        assert all(line in added_ok for line in added), (
+            sub_step, [line for line in added if line not in added_ok])
+        assert all(line in removed_ok for line in removed), (
+            sub_step, [line for line in removed if line not in removed_ok])
+        # And the transform must have DONE something: an empty diff would
+        # satisfy both assertions above and would mean the fold never landed.
+        assert added and removed, sub_step
 
 
 def test_a_moved_anchor_fails_the_transform_instead_of_emitting_a_short_kernel():
@@ -481,13 +308,13 @@ def test_a_moved_anchor_fails_the_transform_instead_of_emitting_a_short_kernel()
     """
     original = complex_emitter.complex_source
     for label, old, _new, _sites in folded._deltas_for("step_B"):
-        def broken(sub_step, expansion, _old=old):
-            return original(sub_step, expansion).replace(_old, "/* moved */")
+        def broken(sub_step, _old=old):
+            return original(sub_step).replace(_old, "/* moved */")
 
         complex_emitter.complex_source = broken
         try:
             with pytest.raises(RuntimeError, match=r"matched 0 sites"):
-                folded.folded_source("step_B", "FMA_V1")
+                folded.folded_source("step_B")
         finally:
             complex_emitter.complex_source = original
         assert label  # every delta was exercised, by name
@@ -516,7 +343,7 @@ def test_the_folded_ghost_takes_the_metallic_zero_on_both_shift_helpers():
     about the transform and this is a claim about the kernel.
     """
     for sub_step in ("step_B", "step_D"):
-        source = folded.folded_source(sub_step, "FMA_V1")
+        source = folded.folded_source(sub_step)
         assert source.count(
             "if (bc == BC_METALLIC || bc == BC_MIRROR_PERIODIC) return cf_zero();"
         ) == 2, sub_step
@@ -526,34 +353,69 @@ def test_the_folded_ghost_takes_the_metallic_zero_on_both_shift_helpers():
         assert complex_emitter.KERNELS[sub_step][0] not in source
 
 
-def test_the_transcribed_term_table_is_steppings():
-    """The behaviour leg's term table against ``stepping``'s, so it is not a fiction.
-
-    The leg consumes :data:`CURL_TERMS`; deriving it from ``stepping`` would make
-    the leg compare the oracle with itself, and NOT pinning it would let a
-    transcription error read as a passing test.
-    """
-    for sub_step, terms in CURL_TERMS.items():
-        reference = (stepping.B_CURL_TERMS if sub_step == "step_B"
-                     else stepping.D_CURL_TERMS)
-        assert len(terms) == len(reference) == 3
-        for (target, aux, first, first_axis, second, second_axis, dsig,
-             dsigu), term in zip(terms, reference):
-            assert target == term.target
-            assert aux == "fu_" + term.target
-            assert (first, first_axis) == (term.first, term.first_axis)
-            assert (second, second_axis) == (term.second, term.second_axis)
-            assert (dsig, dsigu) == ("xyz".index(term.dsig), "xyz".index(term.dsigu))
-
-
 # ---------------------------------------------------------------------------
 # THE BEHAVIOUR
 # ---------------------------------------------------------------------------
 
+#: Each fold mask arm as the emitted text spells its lines, by the boundary code and
+#: the plane it drops. A planted defect removes every line of one arm.
+MASK_LINES = {
+    "metallic0": re.compile(r"\n        if \(bc_[xyz] == BC_METALLIC && [ijk] == 0\) "
+                            r"curl = cf_zero\(\);"),
+    "mirror0": re.compile(r"\n        if \(bc_[xyz] == BC_MIRROR_PERIODIC && [ijk] == 0\) "
+                          r"curl = cf_zero\(\);"),
+    "mirror_top": re.compile(r"\n        if \(bc_[xyz] == BC_MIRROR_PERIODIC && "
+                             r"[ijk] == n[xyz] - 1\) curl = cf_zero\(\);"),
+}
+
+
+def _run_emitted(launcher, monkeypatch, sub_step, fields, layer, grid, record,
+                 drop_arm=None):
+    """The family's own launcher on the interpreter: the emitted text, or the text
+    with one mask arm's lines rewritten out."""
+    import sys  # noqa: PLC0415
+
+    monkeypatch.setitem(sys.modules, "meep_gpu.cuda_kernels.complex_pml_kernels", launcher)
+
+    def text(name):
+        source = folded.kernel_source(name)
+        if drop_arm is not None:
+            source, count = MASK_LINES[drop_arm].subn("", source)
+            assert count, (drop_arm, name)
+        return InterpretedKernel(source)
+
+    monkeypatch.setattr(folded, "_get_kernel", text)
+    folded.reset_kernel_sources()
+    try:
+        folded.step_folded_complex(sub_step, fields, grid=grid, pml=layer,
+                                   chunk_bounds=record)
+    finally:
+        folded.reset_kernel_sources()
+
+
+def _stepped(spec, sub_step, seed_value):
+    """``(fields, layer, grid, frozen, oracle, record, arrays, outputs)`` for one case."""
+    fields, layer, grid = build_spec(spec)
+    rng = numpy.random.default_rng(seed_value)
+    arrays = (tuple(CURL_ARRAYS[sub_step]["targets"])
+              + tuple(CURL_ARRAYS[sub_step]["aux"])
+              + tuple(CURL_ARRAYS[sub_step]["sources"]))
+    seed(fields, grid, arrays, rng)
+    frozen = snapshot(fields, arrays)
+    getattr(stepping, sub_step)(fields, layer)
+    oracle = snapshot(fields, arrays)
+    record = device_record(fields)
+    restore(fields, frozen)
+    outputs = (tuple(CURL_ARRAYS[sub_step]["targets"])
+               + tuple(CURL_ARRAYS[sub_step]["aux"]))
+    return fields, layer, grid, frozen, oracle, record, arrays, outputs
+
+
 @pytest.mark.parametrize("spec", FOLD_SPECS, ids=lambda s: s["label"])
 @pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
-def test_the_folded_curl_reproduces_stepping_word_for_word(spec, sub_step):
-    """THE leg. The transcribed device tree against ``stepping`` on a folded grid.
+def test_the_folded_curl_reproduces_stepping_word_for_word(spec, sub_step, launcher,
+                                                           monkeypatch):
+    """THE leg. The emitted device text against ``stepping`` on a folded grid.
 
     NON-VACUITY FLOORS, both asserted rather than hoped for:
 
@@ -563,33 +425,18 @@ def test_the_folded_curl_reproduces_stepping_word_for_word(spec, sub_step):
       every ``sinv`` at 1 a coefficient-index error is invisible, so the case would
       measure the stencil and nothing else.
     """
-    fields, layer, grid = build_spec(spec)
-    rng = numpy.random.default_rng(20260820)
-    arrays = (tuple(CURL_ARRAYS[sub_step]["targets"])
-              + tuple(CURL_ARRAYS[sub_step]["aux"])
-              + tuple(CURL_ARRAYS[sub_step]["sources"]))
-    seed(fields, grid, arrays, rng)
-    frozen = snapshot(fields, arrays)
-
+    fields, layer, grid, frozen, oracle, record, arrays, outputs = _stepped(
+        spec, sub_step, 20260820)
     profile = numpy.concatenate([
         numpy.asarray(getattr(layer, f"{stem}_{axis}{suffix}")).ravel()
         for axis in "xyz" for stem in ("kms", "sinv") for suffix in ("", "_h")])
     assert float(numpy.max(numpy.abs(profile - 1.0))) > 1e-3, (
         "the absorber is the identity on every axis; this case cannot see a "
         "coefficient-index error")
-
-    getattr(stepping, sub_step)(fields, layer)
-    oracle = snapshot(fields, arrays)
-    outputs = (tuple(CURL_ARRAYS[sub_step]["targets"])
-               + tuple(CURL_ARRAYS[sub_step]["aux"]))
     assert differing_words(frozen, oracle, outputs) > 0, "the array path moved nothing"
-
-    restore(fields, frozen)
     codes = boundary_codes_for(grid)
     assert BC_MIRROR_PERIODIC in codes or BC_METALLIC in codes, codes
-    flags, phases = phase_arguments(grid, CURL_ARRAYS[sub_step]["backward"])
-    run_kernel_numpy(sub_step, fields, tables_for(sub_step, layer), codes,
-                     grid.dt / grid.dx, flags, phases)
+    _run_emitted(launcher, monkeypatch, sub_step, fields, layer, grid, record)
     mine = snapshot(fields, arrays)
     assert differing_words(oracle, mine, outputs) == 0, (
         f"{spec['label']} {sub_step}: "
@@ -608,46 +455,31 @@ LIVE_ARMS = {
 
 
 @pytest.mark.parametrize("spec", FOLD_SPECS, ids=lambda s: s["label"])
-def test_the_fold_mask_arms_are_live_exactly_where_the_termination_says(spec):
+def test_the_fold_mask_arms_are_live_exactly_where_the_termination_says(spec, launcher,
+                                                                        monkeypatch):
     """Each arm is shown to reach a word -- and to reach NONE where it must not.
 
     THE HALF THAT IS EASY TO FORGET is the second one. A family that masked the top
     plane on a folded METALLIC axis too would still reproduce every folded-PERIODIC
     fixture, and would silently drop a plane MEEP steps. So this asserts the FULL
-    matrix: dropping a live arm must change words, and dropping a dead one must
-    change none.
+    matrix on the emitted text: rewriting a live arm out must change words, and
+    rewriting a dead one out must change none.
 
     Without it, :func:`test_the_folded_curl_reproduces_stepping_word_for_word` would
     pass just as happily for a kernel whose fold branches were dead code on every
-    fixture -- which is exactly the state the certified complex family is in and the
-    reason this module exists.
+    fixture.
     """
-    fold_code = None
     for sub_step in ("step_B", "step_D"):
         for arm in ("metallic0", "mirror0", "mirror_top"):
-            fields, layer, grid = build_spec(spec)
-            rng = numpy.random.default_rng(20260821)
-            arrays = (tuple(CURL_ARRAYS[sub_step]["targets"])
-                      + tuple(CURL_ARRAYS[sub_step]["aux"])
-                      + tuple(CURL_ARRAYS[sub_step]["sources"]))
-            seed(fields, grid, arrays, rng)
-            frozen = snapshot(fields, arrays)
-            getattr(stepping, sub_step)(fields, layer)
-            oracle = snapshot(fields, arrays)
-            restore(fields, frozen)
+            fields, layer, grid, _frozen, oracle, record, arrays, outputs = _stepped(
+                spec, sub_step, 20260821)
             codes = boundary_codes_for(grid)
             folded_axes = [a for a in range(3) if grid.is_mirrored(a)]
             fold_code = codes[folded_axes[0]]
             assert all(codes[a] == fold_code for a in folded_axes), codes
-            flags, phases = phase_arguments(
-                grid, CURL_ARRAYS[sub_step]["backward"])
-            kept = tuple(a for a in ("metallic0", "mirror0", "mirror_top")
-                         if a != arm)
-            run_kernel_numpy(sub_step, fields, tables_for(sub_step, layer), codes,
-                             grid.dt / grid.dx, flags, phases, mask_arms=kept)
+            _run_emitted(launcher, monkeypatch, sub_step, fields, layer, grid, record,
+                         drop_arm=arm)
             mine = snapshot(fields, arrays)
-            outputs = (tuple(CURL_ARRAYS[sub_step]["targets"])
-                       + tuple(CURL_ARRAYS[sub_step]["aux"]))
             moved = differing_words(oracle, mine, outputs)
             if arm in LIVE_ARMS[fold_code]:
                 assert moved > 0, (
@@ -701,8 +533,7 @@ def test_the_mirror_ghost_the_array_path_writes_is_nonzero_and_still_dead(spec):
 # ---------------------------------------------------------------------------
 
 def _ask(predicate, fields, layer, grid, key):
-    return predicate(fields, layer, grid, key, license=LICENCE,
-                     subnormal_policy=POLICY)
+    return predicate(fields, layer, grid, key)
 
 
 class _GridWithCupysName:

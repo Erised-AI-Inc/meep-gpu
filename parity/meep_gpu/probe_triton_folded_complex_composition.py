@@ -49,8 +49,7 @@ reachable at the driver level.
 SUBNORMAL POLICY. This probe runs UNDER THE STRIPPED IEEE-KEEP POLICY — the ship
 configuration — installed via ``gate_triton_complex.install_ftz_strip`` BEFORE
 any CuPy compile, never re-implemented here and never as a ``-ftz=false`` user
-option (NVRTC rejects the duplicate). A probe artifact handed in with
-``--probe-artifact`` must certify that same policy and carry the PARITY pattern.
+option (NVRTC rejects the duplicate).
 
 Usage (the GPU host, one clear device; the cache dir must carry the policy token)::
 
@@ -241,7 +240,7 @@ class SlotCounter:
         self.call()
 
 
-def build_plans(driver, record) -> Tuple[Dict[str, SlotCounter], Dict[str, Any]]:
+def build_plans(driver) -> Tuple[Dict[str, SlotCounter], Dict[str, Any]]:
     """Six patched slots per complete step, each its own plan or delegation.
 
     The two fill passes are SEPARATE slots — the driver runs ``zero_metal_*``
@@ -254,15 +253,15 @@ def build_plans(driver, record) -> Tuple[Dict[str, SlotCounter], Dict[str, Any]]
     curl = (folded_complex.plan_folded_beta_bloch_pml_curl if beta != 0.0
             else folded_complex.plan_folded_complex_pml_curl)
     plans: Dict[str, Any] = {
-        "step_B": curl(fields, pml, "step_B", probe=record),
-        "step_D": curl(fields, pml, "step_D", probe=record),
+        "step_B": curl(fields, pml, "step_B"),
+        "step_D": curl(fields, pml, "step_D"),
         "update_H": folded_complex.plan_folded_complex_constitutive(
-            fields, pml, "H", probe=record),
+            fields, pml, "H"),
         "update_E": folded_complex.plan_folded_complex_constitutive(
-            fields, pml, "E", probe=record),
+            fields, pml, "E"),
     }
     fills = {family: folded_complex.plan_folded_mirror_ghost_fill_complex(
-        fields, family, probe=record) for family in ("B", "D")}
+        fields, family) for family in ("B", "D")}
     missing = sorted([slot for slot, plan in plans.items() if plan is None]
                      + [f"fill_{f}" for f, plan in fills.items() if plan is None])
     if missing:
@@ -271,17 +270,16 @@ def build_plans(driver, record) -> Tuple[Dict[str, SlotCounter], Dict[str, Any]]
             if slot.startswith("fill_"):
                 reasons[slot] = list(
                     folded_complex.folded_mirror_ghost_fill_complex_coverage(
-                        fields, slot[-1], probe=record).reasons)
+                        fields, slot[-1]).reasons)
             elif slot.startswith("step_"):
                 verdict = (folded_complex.folded_beta_bloch_pml_curl_coverage
                            if beta != 0.0 else
                            folded_complex.folded_complex_pml_curl_coverage)
-                reasons[slot] = list(verdict(fields, pml, slot,
-                                             probe=record).reasons)
+                reasons[slot] = list(verdict(fields, pml, slot).reasons)
             else:
                 reasons[slot] = list(
                     folded_complex.folded_complex_constitutive_coverage(
-                        fields, pml, slot[-1], probe=record).reasons)
+                        fields, pml, slot[-1]).reasons)
         raise AssertionError(f"plans refused for {missing}: "
                              + json.dumps(reasons, indent=1))
 
@@ -332,8 +330,7 @@ def install(driver_module, counters: Dict[str, SlotCounter], owner):
 
 PRODUCT_PROBE_SOURCE = '''
 @triton.jit
-def parity_product_probe(z, out, n_elem, c_re, c_im,
-                         EXPANSION: tl.constexpr, BLOCK: tl.constexpr):
+def parity_product_probe(z, out, n_elem, c_re, c_im, BLOCK: tl.constexpr):
     """Store ``_mul_imag_coefficient_left(c, z)``'s words DIRECTLY.
 
     The stored layer can be blind to a class the product layer catches
@@ -344,13 +341,13 @@ def parity_product_probe(z, out, n_elem, c_re, c_im,
     live = idx < n_elem
     z_re = tl.load(z + 2 * idx, mask=live, other=0.0)
     z_im = tl.load(z + 2 * idx + 1, mask=live, other=0.0)
-    o_re, o_im = _mul_imag_coefficient_left(c_re, c_im, z_re, z_im, EXPANSION)
+    o_re, o_im = _mul_imag_coefficient_left(c_re, c_im, z_re, z_im)
     tl.store(out + 2 * idx, o_re, mask=live)
     tl.store(out + 2 * idx + 1, o_im, mask=live)
 '''
 
 
-def run_product_layer(xp, expansion: int) -> Dict[str, Any]:
+def run_product_layer(xp) -> Dict[str, Any]:
     """The parity product's own words against the array path's, byte for byte."""
     import inspect  # noqa: PLC0415
 
@@ -376,7 +373,7 @@ def run_product_layer(xp, expansion: int) -> Dict[str, Any]:
             kernel[((n_elem + 255) // 256,)](
                 _pointer(device), _pointer(out), n_elem,
                 float(np.float32(c.real)), float(np.float32(c.imag)),
-                EXPANSION=expansion, BLOCK=256,
+                BLOCK=256,
                 enable_fp_fusion=_fusion())
             xp.cuda.runtime.deviceSynchronize()
             reference = coefficient * plane          # what stepping.py does
@@ -412,7 +409,7 @@ def _fusion():
 # One case
 # ---------------------------------------------------------------------------
 
-def run_case(xp, record, spec, results: Dict[str, Any],
+def run_case(xp, spec, results: Dict[str, Any],
              out_path: str) -> Dict[str, Any]:
     from meep_gpu import driver as driver_module  # noqa: PLC0415
 
@@ -430,7 +427,7 @@ def run_case(xp, record, spec, results: Dict[str, Any],
                             "step_budget_stated": steps,
                             "zero_init": zero_init}
     try:
-        counters, refusals = build_plans(candidate, record)
+        counters, refusals = build_plans(candidate)
         case["expected_refusals"] = refusals
         missing = REQUIRED_STATE - set(state(candidate))
         if missing:
@@ -520,12 +517,6 @@ def self_check(out_path: str) -> int:
         "cases": [],
         "core_budget": CORE_BUDGET,
     }
-    record = {"backend": "cupy",
-              "patterns": {name: "FMA_V1" for name in
-                           set(folded_complex.PARITY_PROBE_PATTERNS)
-                           | set(folded_complex.FOLDED_BETA_PROBE_PATTERNS)},
-              "subnormal_policy": {"policy": gate.active_policy_name(),
-                                   "nvrtc_calls": 1, "ftz_removed": 1}}
     failures = 0
     for index, spec in enumerate(CASES, start=1):
         started = time.time()
@@ -543,10 +534,10 @@ def self_check(out_path: str) -> int:
         verdict = (folded_complex.folded_beta_bloch_pml_curl_coverage
                    if beta != 0.0 else
                    folded_complex.folded_complex_pml_curl_coverage)(
-            driver.fields, driver.pml, "step_B", probe=record)
+            driver.fields, driver.pml, "step_B")
         blocking = [r for r in verdict.reasons if "array module" not in r]
         fill_verdict = folded_complex.folded_mirror_ghost_fill_complex_coverage(
-            driver.fields, "B", probe=record)
+            driver.fields, "B")
         fill_blocking = [r for r in fill_verdict.reasons
                          if "array module" not in r]
         ok = not blocking and not fill_blocking and codes is not None
@@ -595,7 +586,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default=os.path.join(
         HERE, "results", "triton_folded_complex", "composition.json"))
-    parser.add_argument("--probe-artifact", default=None)
     parser.add_argument("--self-check", action="store_true")
     args = parser.parse_args(argv)
 
@@ -610,15 +600,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     gate.install_ftz_strip()
 
-    record: Optional[Dict[str, Any]] = None
-    if args.probe_artifact and os.path.exists(args.probe_artifact):
-        with open(args.probe_artifact, "r", encoding="utf-8") as handle:
-            record = json.load(handle)
-    else:
-        record = fold_gate.measure_folded_expansion_record(xp, "cupy")
-
-    from meep_gpu.triton_kernels import folded_complex  # noqa: PLC0415
-
     results: Dict[str, Any] = {
         "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "environment": environment(xp),
@@ -628,45 +609,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "fusion_configuration": "enable_fp_fusion=ENABLE_FP_FUSION (fusion OFF)",
         "provenance": fold_gate.write_provenance(
             os.path.dirname(os.path.abspath(args.out))),
-        "probe_patterns": record.get("patterns") if record else None,
     }
     save(results, args.out)
 
-    reasons = gate.ftz_strip_license_reasons() + gate.probe_record_policy_reasons(record)
-    # THE VERDICT, not the boolean: 'measured' against 'environment_default' is
-    # the difference between this run having discriminated the arm and having
-    # inherited it, and ``non_discriminating`` names the patterns whose MEASURED
-    # blindness took them out of the agreement test. The BETA verdict is recorded
-    # BESIDE it and does not gate anything here — K3b's licence is enforced where
-    # it is bound, by ``folded_beta_bloch_pml_curl_coverage``'s own refusal
-    # enumeration, and asserting it a second time up front would refuse a run the
-    # predicate would have admitted.
-    parity_verdict = folded_complex.parity_expansion_license(record)
-    expansion = parity_verdict["expansion"]
-    if expansion is None:
-        reasons.append("the probe record licenses no EXPANSION for the parity "
-                       "product; a guessed constexpr certifies nothing: "
-                       + "; ".join(parity_verdict["refusals"]))
-    results["license"] = {"licensed": not reasons, "reasons": reasons,
-                          "parity": parity_verdict,
-                          "beta_recorded_not_gated":
-                              folded_complex.folded_beta_expansion_license(record)}
+    reasons = gate.ftz_strip_license_reasons()
+    results["policy"] = {"refused": bool(reasons), "reasons": reasons}
     save(results, args.out)
-    log(f"[license] parity arm={parity_verdict['arm']} "
-        f"basis={parity_verdict['basis']} discriminating="
-        f"{sorted(parity_verdict['discriminating'])} non_discriminating="
-        f"{parity_verdict['non_discriminating']}")
     if reasons:
-        log("[license] REFUSED: " + "; ".join(reasons))
+        log("[policy] REFUSED: " + "; ".join(reasons))
         return 1
 
-    results["product_layer"] = run_product_layer(xp, expansion)
+    results["product_layer"] = run_product_layer(xp)
     save(results, args.out)
 
     cases: List[Dict[str, Any]] = []
     started_all = time.time()
     for index, spec in enumerate(CASES, start=1):
-        case = run_case(xp, record, spec, results, args.out)
+        case = run_case(xp, spec, results, args.out)
         cases.append(case)
         log(f"case {index}/{len(CASES)} [{case['name']}] "
             f"identical={case.get('identical')} "

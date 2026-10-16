@@ -3,8 +3,8 @@
 The complex conductive path combines three facts that must remain separate in the
 implementation: the complex Yee stencil and Bloch rotation, the inactive-absorber
 branch, and the per-target conductive tail.  Its tail is the array path's ordered
-three-pass recurrence, with a real coefficient applied through the probe-licensed
-``float2`` field-left expansion::
+three-pass recurrence, with a real coefficient applied part by part through the
+``float2`` field-left helper::
 
     value = value * condfac
     value = value - curl
@@ -15,6 +15,27 @@ the plan binds six additional real volumes and a component without sigma must no
 load either one. The native MPS byte gate establishes this B/D sub-step pair; its
 complete-step composition is separately exercised with the stored-E and null
 companions before the arm is wired in the experimental composer.
+
+THE STENCIL AND THE BLOCH CONNECTION ARE THE COMPLEX PML CURL'S, character for
+character (:data:`CONNECTED_REGISTERS`, :data:`CURL_STATEMENTS`; the lines
+:func:`.complex_fields.bloch_curl_source` emits), because ``stepping._curl_operands``
+and ``stepping._curl_from_operands`` are one function with and without an absorber:
+
+* MEEP's left-to-right bracket ``dtdx * (((g1s - g1) + g2) - g2s)``, ``dtdx * (g1s -
+  g1)`` without ``g2`` and ``(-dtdx) * (g2s - g2)`` without ``g1``
+  (step_generic.cpp:72-76, :104-108), each product one per part;
+* the shifted reads are plain wraps of the stored window and the UNSHIFTED partner
+  carries the connection on plane 0 of a phased axis (``stepping._bloch_ghost_operand``,
+  :func:`.complex_fields._phase_block`): a copy, a negation per part or MEEP's unfused
+  ``c_mul``, chosen on the host (:func:`.complex_fields.phase_arguments`).
+
+Partner presence is a fact of the run, not of the stored shape, so the kernel reads
+it from the partner-presence word of the chunk record
+(:func:`meep_gpu.chunk_map.chunk_bounds_record`), bound last as ``constant
+ChunkBounds& cb`` (:data:`RECORD_BUFFER`) and decoded by the presence-only bounds
+block :func:`.no_pml_curl.bounds_block`. No membership entry is read: no chunk of a
+run without an absorber carries a layer, so the plain and conductive tails are the
+only forms. Every plan builder takes the record with no default.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -35,22 +56,51 @@ from ..triton_kernels.coverage import (
     _volume_reasons,
 )
 from ..triton_kernels.no_pml_conductive import conductive_no_pml_targets
+from . import chunk_bounds as _chunk_bounds
 from . import shaders, templates
 from .complex_fields import (
+    CONNECT_KINDS,
     _complex_mirror,
     _complex_volume_reasons,
-    _expansion_reasons,
     _phase_block,
+    _plan_device,
     bloch_phase_table,
-    expansion_from_probe,
-    load_expansion_probe,
     phase_arguments,
 )
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import Residency, compile_source
+from .no_pml_curl import bounds_block
 from .plans import KernelPlan
 
 FAMILY = "complex_no_pml_conductive"
+
+#: The chunk record's binding index: one past the last phase (``pz``).
+RECORD_BUFFER = 20
+
+#: The unshifted partner each term differences along each axis, before the Bloch
+#: connection replaces it on plane 0 (:func:`.complex_fields._phase_block`): the
+#: complex PML curl's own lines.
+CONNECTED_REGISTERS = (
+    "    float2 c_dy = c, b_dz = b;\n"
+    "    float2 a_dz = a, c_dx = c;\n"
+    "    float2 b_dx = b, a_dy = a;")
+
+#: Per target, MEEP's stencil with its partner-presence forms, in the complex PML
+#: curl's own spelling (``stepping._curl_from_operands``): target 0 differences
+#: ``g1 = c`` along y and ``g2 = b`` along z, target 1 ``a`` along z and ``c`` along
+#: x, target 2 ``b`` along x and ``a`` along y. Each operation rounds once, per part;
+#: DO NOT regroup.
+CURL_STATEMENTS: Tuple[str, str, str] = (
+    "    float2 curl0 = has_y ? (has_z ? c_mul_coefficient_left(dtdx, ((c_y - c_dy) + b_dz) - b_z)\n"
+    "                                  : c_mul_coefficient_left(dtdx, c_y - c_dy))\n"
+    "                         : (has_z ? c_mul_coefficient_left(-dtdx, b_z - b_dz) : float2(0.0f, 0.0f));",
+    "    float2 curl1 = has_z ? (has_x ? c_mul_coefficient_left(dtdx, ((a_z - a_dz) + c_dx) - c_x)\n"
+    "                                  : c_mul_coefficient_left(dtdx, a_z - a_dz))\n"
+    "                         : (has_x ? c_mul_coefficient_left(-dtdx, c_x - c_dx) : float2(0.0f, 0.0f));",
+    "    float2 curl2 = has_x ? (has_y ? c_mul_coefficient_left(dtdx, ((b_x - b_dx) + a_dy) - a_y)\n"
+    "                                  : c_mul_coefficient_left(dtdx, b_x - b_dx))\n"
+    "                         : (has_y ? c_mul_coefficient_left(-dtdx, a_y - a_dy) : float2(0.0f, 0.0f));",
+)
 SUB_STEPS = {
     "step_B": {"targets": ("Bx", "By", "Bz"), "sources": ("Ex", "Ey", "Ez"),
                "backward": False},
@@ -60,7 +110,10 @@ SUB_STEPS = {
 SOURCE_ACCESSOR = {"step_B": "get_E", "step_D": "get_H"}
 
 __all__ = [
+    "CONNECTED_REGISTERS",
+    "CURL_STATEMENTS",
     "FAMILY",
+    "RECORD_BUFFER",
     "SUB_STEPS",
     "MetalComplexConductiveNoPmlCurlPlan",
     "complex_conductive_no_pml_curl_source",
@@ -76,6 +129,8 @@ using namespace metal;
 
 __CONTRACT__
 __HELPERS__
+
+__RECORD_STRUCT__
 
 kernel void complex_no_pml_conductive_curl_step(
     device float2*       f0      [[buffer(0)]],
@@ -98,6 +153,7 @@ kernel void complex_no_pml_conductive_curl_step(
     constant float2&     px      [[buffer(17)]],
     constant float2&     py      [[buffer(18)]],
     constant float2&     pz      [[buffer(19)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
 __GUARD__
@@ -105,6 +161,12 @@ __DECODE__
     int nxi = int(nx);
     int nyz = nyi * nzi;
 
+    // --- the chunk record: partner presence (no layer is carried without PML) ---
+__BOUNDS__
+
+    // --- the ghost rule, per axis (stepping._shift_up / _shift_down) -------------
+    // A phased axis wraps plainly: the stored window makes every read one cell over
+    // an owned word (stepping._bloch_ghost_operand).
     int si = i __SHIFT__, sj = j __SHIFT__, sk = k __SHIFT__;
     bool vx = true, vy = true, vz = true;
 __GHOST_X__
@@ -125,17 +187,16 @@ __GHOST_Z__
     float2 c_x = vx ? g2[ox] : float2(0.0f, 0.0f);
     float2 c_y = vy ? g2[oy] : float2(0.0f, 0.0f);
 
+    // --- the Bloch connection of the unshifted partners, on plane 0 ------------
+__CONNECTED__
 __PHASE_X__
 __PHASE_Y__
 __PHASE_Z__
 
-    float2 t0 = ((c_y - c) + (b - b_z));
-    float2 t1 = ((a_z - a) + (c - c_x));
-    float2 t2 = ((b_x - b) + (a - a_y));
-    float2 curl0 = c_mul_coefficient_left(dtdx, t0);
-    float2 curl1 = c_mul_coefficient_left(dtdx, t1);
-    float2 curl2 = c_mul_coefficient_left(dtdx, t2);
+    // --- the curl: MEEP's bracket and its absent-partner forms. DO NOT regroup.
+__CURL__
 
+    // --- ownership mask (stepping._mask_non_owned_cells), then the tails ---------
     bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);
 __MASK__
 
@@ -158,29 +219,43 @@ def _tail(index: int, conductive: bool) -> str:
 
 def complex_conductive_no_pml_curl_source(
         codes: Sequence[int], backward: bool, phased: Sequence[int],
-        conductive: Sequence[bool], expansion: str,
+        conductive: Sequence[bool],
         contract: str = shaders.CONTRACT_OFF) -> str:
-    """Emit the fully specialized complex no-PML conductive curl source."""
+    """Emit the fully specialized complex no-PML conductive curl source.
+
+    ``phased`` is the per-axis connection kind (:data:`.complex_fields.CONNECT_KINDS`,
+    from :func:`.complex_fields.phase_arguments` for the side ``backward`` names).
+    Partner presence is NOT specialised: it is the bound record's word, so one source
+    serves a 3-D, 2-D or 1-D run on the same boundary and connection triples.
+    """
     codes = tuple(int(code) for code in codes)
     phased = tuple(int(flag) for flag in phased)
     flags = tuple(bool(flag) for flag in conductive)
     if len(codes) != 3 or len(phased) != 3 or len(flags) != 3:
         raise ValueError("codes, phased, and conductive must each be triples")
     for axis, (code, flag) in enumerate(zip(codes, phased)):
+        if flag not in CONNECT_KINDS:
+            raise ValueError(f"axis {axis} connection kind {flag!r} is not one of "
+                             f"{CONNECT_KINDS}")
         if flag and code != templates.PERIODIC:
             raise ValueError(f"axis {axis} carries a phase but is not periodic")
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(RECORD_BUFFER),
         "__GUARD__": templates.GUARD,
         "__DECODE__": templates.DECODE_IJK,
+        "__BOUNDS__": bounds_block(),
         "__SHIFT__": "- 1" if backward else "+ 1",
         "__GHOST_X__": templates.ghost("x", codes[0], backward),
         "__GHOST_Y__": templates.ghost("y", codes[1], backward),
         "__GHOST_Z__": templates.ghost("z", codes[2], backward),
-        "__PHASE_X__": _phase_block("x", bool(phased[0]), backward),
-        "__PHASE_Y__": _phase_block("y", bool(phased[1]), backward),
-        "__PHASE_Z__": _phase_block("z", bool(phased[2]), backward),
+        "__CONNECTED__": CONNECTED_REGISTERS,
+        "__PHASE_X__": _phase_block("x", phased[0]),
+        "__PHASE_Y__": _phase_block("y", phased[1]),
+        "__PHASE_Z__": _phase_block("z", phased[2]),
+        "__CURL__": "\n".join(CURL_STATEMENTS),
         "__MASK__": templates.ownership_mask(
             codes, backward, zero=templates.COMPLEX_ZERO),
         "__TAIL0__": _tail(0, flags[0]),
@@ -191,15 +266,14 @@ def complex_conductive_no_pml_curl_source(
 
 def compile_complex_conductive_no_pml_curl(
         codes: Sequence[int], backward: bool, phased: Sequence[int],
-        conductive: Sequence[bool], expansion: str,
+        conductive: Sequence[bool],
         contract: str = shaders.CONTRACT_OFF) -> Any:
     return compile_source(complex_conductive_no_pml_curl_source(
-        codes, backward, phased, conductive, expansion,
+        codes, backward, phased, conductive,
         contract)).complex_no_pml_conductive_curl_step
 
 
-def _base_reasons(fields: Any, pml: Any, grid: Any, residency: Any,
-                  probe: Any) -> List[str]:
+def _base_reasons(fields: Any, pml: Any, grid: Any, residency: Any) -> List[str]:
     """Shared complex curl facts, with inactive PML and conductivity admitted."""
     reasons = list(_metal_backend_reasons(grid))
     reasons.extend(_residency_declaration_reasons(residency))
@@ -255,20 +329,18 @@ def _base_reasons(fields: Any, pml: Any, grid: Any, residency: Any,
     if bool(getattr(fields, "has_nonlinearity", False)):
         reasons.append("chi2/chi3 is installed")
     reasons.extend(_susceptibility_reasons(fields))
-    reasons.extend(_expansion_reasons(probe))
     return reasons
 
 
 def metal_complex_conductive_no_pml_curl_coverage(
-        fields: Any, pml: Any, sub_step: str, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, sub_step: str, residency: Any = None) -> Coverage:
     """Whether one complex conductive curl sub-step is covered."""
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
     grid = getattr(fields, "grid", None)
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
-    reasons = _base_reasons(fields, pml, grid, residency, probe)
+    reasons = _base_reasons(fields, pml, grid, residency)
     reader = getattr(fields, "condfac_for", None)
     inverse_reader = getattr(fields, "condinv_for", None)
     if not callable(reader) or not callable(inverse_reader):
@@ -321,17 +393,25 @@ def metal_complex_conductive_no_pml_curl_coverage(
 
 
 class MetalComplexConductiveNoPmlCurlPlan(KernelPlan):
-    """Persistent-mirror plan for a complex no-PML conductive curl sub-step."""
+    """Persistent-mirror plan for a complex no-PML conductive curl sub-step.
+
+    THE CHUNK RECORD BINDS LAST (:data:`RECORD_BUFFER`), checked against the plan's
+    shape (:func:`.chunk_bounds.plan_words`) and uploaded once as a plan-owned
+    ``int32`` vector on the residency's device, as every base plan binds it. Its
+    presence word decides each curl's stencil form; ``chunk_bounds`` keeps the host
+    words for inspection.
+    """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc",
-                 "phased", "phase_values", "conductive", "expansion",
-                 "residency", "volumes")
-    REPR_FIELDS = ("sub_step", "shape", "bc", "phased", "conductive", "expansion")
+                 "phased", "phase_values", "conductive",
+                 "residency", "volumes", "chunk_bounds")
+    REPR_FIELDS = ("sub_step", "shape", "bc", "phased", "conductive")
 
     def __init__(self, sub_step: str, shape: Sequence[int], dtdx: float,
                  codes: Sequence[int], phased: Sequence[int], phase_values, conductive,
-                 expansion: str, residency: Residency, targets, sources, condfac, condinv,
-                 functions: Dict[str, Any], volumes: Sequence[str]) -> None:
+                 residency: Residency, targets, sources, condfac, condinv,
+                 functions: Dict[str, Any], volumes: Sequence[str], *,
+                 chunk_bounds: Any) -> None:
         self.sub_step = sub_step
         self.shape = tuple(int(value) for value in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
@@ -341,17 +421,20 @@ class MetalComplexConductiveNoPmlCurlPlan(KernelPlan):
         self.phased = tuple(int(flag) for flag in phased)
         self.phase_values = tuple((float(re), float(im)) for re, im in phase_values)
         self.conductive = tuple(bool(flag) for flag in conductive)
-        self.expansion = str(expansion)
         self.residency = residency
         self.volumes = tuple(volumes)
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, f"{type(self).__name__}({sub_step})")
         super().__init__(functions, tuple(targets) + tuple(sources) + tuple(condfac)
                          + tuple(condinv) + (self.shape[0], self.shape[1], self.shape[2],
-                                              self.n_elem, self.dtdx) + self.phase_values)
+                                              self.n_elem, self.dtdx) + self.phase_values
+                         + (_chunk_bounds.tensor(self.chunk_bounds,
+                                                 _plan_device(residency)),))
 
 
-def _functions(codes, backward, phased, conductive, expansion, variants):
+def _functions(codes, backward, phased, conductive, variants):
     return {mode: compile_complex_conductive_no_pml_curl(
-        codes, backward, phased, conductive, expansion, mode) for mode in variants}
+        codes, backward, phased, conductive, mode) for mode in variants}
 
 
 def _source_binding(fields: Any, sub_step: str, name: str) -> Tuple[str, Any]:
@@ -374,18 +457,23 @@ def _source_binding(fields: Any, sub_step: str, name: str) -> Tuple[str, Any]:
 
 def plan_metal_complex_conductive_no_pml_curl(
         fields: Any, pml: Any, sub_step: str, residency: Optional[Residency] = None,
-        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,), probe: Any = None,
-        functions: Optional[Dict[str, Any]] = None,
+        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
+        functions: Optional[Dict[str, Any]] = None, *, chunk_bounds: Any,
         ) -> Optional[MetalComplexConductiveNoPmlCurlPlan]:
-    """Build one covered complex/Bloch conductive curl plan, otherwise ``None``."""
+    """Build one covered complex/Bloch conductive curl plan, otherwise ``None``.
+
+    ``chunk_bounds`` is the record of the division the run steps with — the
+    composer's ``StepContext.chunk_bounds`` — and has no default: its presence word
+    decides each curl's stencil form. A missing or malformed record is refused by
+    name (:func:`.chunk_bounds.plan_words`) before anything is mirrored or compiled.
+    """
     if not metal_complex_conductive_no_pml_curl_coverage(
-            fields, pml, sub_step, residency, probe).covered:
+            fields, pml, sub_step, residency).covered:
         return None
     assert residency is not None
-    expansion = expansion_from_probe(probe if probe is not None else load_expansion_probe())
-    if expansion is None:
-        return None
     grid = fields.grid
+    _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                             f"plan_metal_complex_conductive_no_pml_curl({sub_step})")
     spec = SUB_STEPS[sub_step]
     kinds = _boundary_kinds(grid, None)
     codes = tuple(1 if kind == "metallic" else 0 for kind in kinds)
@@ -408,24 +496,25 @@ def plan_metal_complex_conductive_no_pml_curl(
         for index, name in enumerate(spec["targets"])
     ]
     selected = functions if functions is not None else _functions(
-        codes, bool(spec["backward"]), phased, conductive, expansion, contract_variants)
+        codes, bool(spec["backward"]), phased, conductive, contract_variants)
     return MetalComplexConductiveNoPmlCurlPlan(
         sub_step, grid.shape, grid.dt / grid.dx, codes, phased, phase_values,
-        conductive, expansion, residency, targets, sources, condfac, condinv,
+        conductive, residency, targets, sources, condfac, condinv,
         selected, tuple(spec["targets"]) + tuple(name for name, _ in source_bindings),
+        chunk_bounds=chunk_bounds,
     )
 
 
 def _arm_coverage(context: Any, slot: str) -> Coverage:
     return metal_complex_conductive_no_pml_curl_coverage(
-        context.fields, context.pml, slot, context.residency,
-        context.extra.get("probe"))
+        context.fields, context.pml, slot, context.residency)
 
 
 def _arm_plan(context: Any, slot: str) -> Optional[MetalComplexConductiveNoPmlCurlPlan]:
     return plan_metal_complex_conductive_no_pml_curl(
         context.fields, context.pml, slot, context.residency,
-        context.contract_variants, context.extra.get("probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def _arm_gate(context: Any) -> bool:

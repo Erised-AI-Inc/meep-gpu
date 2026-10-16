@@ -58,28 +58,31 @@ whole launch); every foreign read is a RECOMPUTE of the certified pointwise
 WHAT THIS SEAM ADDS THAT NO OTHER H->D WELD HAS: THE BETA PARTNER
 =============================================================================
 
-``stepping._special_kz_beta_term`` takes the SAME-CELL component snapshot
-(stepping.py:437 magnetic, :321 electric), and in the D-side curl that snapshot is
-already in a register: Dx's partner is the Hy CENTRE the stencil loaded into ``f2``
-and Dy's is the Hx CENTRE in ``f1`` (special_kz_curl.py's own transcription, pinned
-there against ``D_CURL_TERMS`` and the call sites :443/:445). The array path
-evaluates ``step_D`` AFTER ``update_H``, so that snapshot is the POST-``update_H``
-magnetic field.
+``stepping._special_kz_beta_term`` takes the SAME-CELL component snapshot, and in the
+D-side curl that snapshot is already in a register: Dx's partner is the Hy CENTRE the
+stencil loaded into ``f2`` and Dy's is the Hx CENTRE in ``f1`` (special_kz_curl's own
+transcription, pinned there against ``D_CURL_TERMS``). The array path evaluates
+``step_D`` AFTER ``update_H``, so that snapshot is the POST-``update_H`` magnetic field.
+Since 0.10 the beta increment is MEEP's own pass after the component's curl, through its
+own additive ladder (``folded_pass.beta_insert``; bit_parity_0_10 KERNELS.md section 6),
+and the ladder writes ``D``/``fu_D`` at the thread's OWN cell only -- in place, safe by
+construction, exactly as ``pml_apply`` is.
 
 **Welded, those two registers are the weld's own** ``own_h[1]`` **and**
 ``own_h[0]``, because this weld redirects every own-cell magnetic load in the body
-and the beta term consumes the redirected declaration rather than a load of its own.
+and the beta pass consumes the redirected declaration rather than a load of its own.
 That is checked and not assumed: :func:`welded_curl_tail` asserts, per target block,
-that each surviving ``beta_*`` line names a register whose declaration it has just
-rewritten to ``own_h[...]``. A beta term left reading the PRE-launch ``H`` would be
-one sub-step behind on exactly two of the six curl terms -- converged, plausible and
+that each surviving ``inc_beta`` line names a register whose declaration it has just
+rewritten to ``own_h[...]``. A beta pass left reading the PRE-launch ``H`` would put
+the beta pass of targets 0 and 1 one sub-step behind -- converged, plausible and
 wrong -- and it is the armed mutation ``beta_partner_reads_stale_h``, which no
 sibling H->D gate has a site for.
 
 THE ARITHMETIC IS THE CERTIFIED FAMILY'S. Every operation in this kernel comes from
 ``step_curl_kernels._REAL_PML_PRELUDE`` (``shift_up``, ``shift_dn``, ``pml_apply``,
 the three boundary codes), from ``constitutive_kernels``' ``constitutive_apply``, or
-from ``special_kz_curl``'s two beta lines. NOTHING is retyped.
+from ``special_kz_curl``'s two beta passes and the folded ladder they call
+(``folded_pass.REAL_FOLD_HELPERS``). NOTHING is retyped.
 
 TWO CuPy SPELLINGS MEASURED ON THIS BACKEND ARE RESPECTED RATHER THAN REDISCOVERED,
 and on THIS family both are recorded as ABSENCES rather than sites:
@@ -94,9 +97,9 @@ and on THIS family both are recorded as ABSENCES rather than sites:
   because the complex sibling's divide spelling is a DIFFERENT algorithm that must
   never be carried here. The gate asserts the absence and arms it.
 
-What IS live is ``--fmad=false``: ``curl - (beta * f)`` is a multiply feeding a
-subtract, exactly the shape a compiler contracts, where the array path rounds the
-product (stepping.py:811) and the addition (:472) separately. That guard is the
+What IS live is ``--fmad=false``: the ladder's ``fcur - (sinv_u * df)`` is a multiply
+feeding a subtract, exactly the shape a compiler contracts, where the array path rounds
+the product and the subtraction separately. That guard is the
 certified special_kz pair's own and is restated in :data:`_COMPILE_OPTIONS` rather
 than imported, so loading this file by path cannot pick up a different tuple than
 the one the gate compiled.
@@ -144,6 +147,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from . import bounds_block as _bounds_block
 from . import coverage as _coverage
 from . import fused_hd_pair as _hd
 from . import special_kz_curl as _kz
@@ -191,12 +195,16 @@ H_TARGETS: Tuple[str, str, str] = _hd.H_TARGETS
 HALO_TAPS: int = _hd.HALO_TAPS
 OWN_LOAD_EDITS: int = _hd.OWN_LOAD_EDITS
 
-#: How many beta increments the certified special_kz ``step_D`` carries: one on
-#: target 0 and one on target 1, none on target 2 (``cc`` runs over ``d_c`` in
-#: {X, Y} only -- MEEP step_db.cpp:148-176, stepping.py:472-474). A site count is a
-#: WELD: a body that grew or lost one must FAIL here rather than emit a kernel with a
-#: beta term missing, which compiles, runs and is wrong on one component.
+#: How many beta passes the certified special_kz ``step_D`` carries: one on target 0
+#: and one on target 1, none on target 2 (``cc`` runs over ``d_c`` in {X, Y} only --
+#: MEEP step_db.cpp:161-175). A site count is a WELD: a body that grew or lost one must
+#: FAIL here rather than emit a kernel with a beta pass missing, which compiles, runs
+#: and is wrong on one component.
 BETA_INSERT_LINES = 2
+
+#: The beta pass's increment line, as ``folded_pass.beta_insert`` spells it; its last
+#: factor names the partner register.
+_BETA_INCREMENT_PREFIX = "float inc_beta = owned_cell ? (-(beta_"
 
 #: NOT CERTIFIED YET. The gate for this family is
 #: ``parity/meep_gpu/gate_special_kz_fused_hd_pair.py`` and its artifacts are
@@ -262,10 +270,9 @@ _FUSED_THREADS = 256
 
 #: ``--fmad=false`` is CORRECTNESS and not tuning, and it is the certified special_kz
 #: pair's own tuple, restated rather than imported so that loading this file by path
-#: cannot pick up a different one than the gate compiled. Four contraction candidates:
-#: the constitutive's ``a - kms * prev`` and ``f + kps * src``, the curl's
-#: ``(fu * kms) - curl`` and ``(f * kms_u) + fu_new``, and the beta insert's
-#: ``curl - (beta * f)``.
+#: cannot pick up a different one than the gate compiled. Contraction candidates:
+#: the constitutive's ``(kps * src) - (kms * prev)``, the curl's ``(fu * kms) - curl``
+#: and ``(f * kms_u) + fu_new``, and ``fcur - (sinv_u * df)``.
 _COMPILE_OPTIONS: Tuple[str, ...] = ("--fmad=false",)
 
 __all__ = [
@@ -274,7 +281,7 @@ __all__ = [
     "INSTALLABLE_REASON", "KERNEL_NAME", "OWN_LOAD_EDITS", "REPLACES",
     "SCRATCH_VOLUMES", "SEAM", "SLOT", "UNCERTIFIED_KERNELS",
     "WHAT_A_RELEASE_DOES_NOT_LICENSE", "assert_scratch_is_disjoint",
-    "beta_scalars", "covers_special_kz_fused_hd_pair", "device_sources",
+    "beta_scalars", "covers_special_kz_fused_hd_pair", "curl_prelude", "device_sources",
     "kernel_source", "launch_special_kz_fused_hd_pair", "rotate_into_fields",
     "run_special_kz_fused_hd_pair", "signature", "source_digest",
     "special_kz_fused_hd_pair_codes", "special_kz_fused_hd_pair_scratch",
@@ -329,11 +336,46 @@ def signature() -> str:
             "weld appends the beta scalars immediately before that close")
     body = parameters[: -len(tail)]
     return (_SIGNATURE_HEAD + body + ",\n"
-            "    // The two complex64-free beta coefficients, one per call-site sign,\n"
-            "    // rounded ONCE on the host at stepping.py:784. Appended LAST so this\n"  # stepping.py live lines for the frozen device-text citation(s) in this string: 784->811
-            "    // signature is the released real weld's with the certified\n"
-            "    // special_kz curl's own two-scalar tail, and a reader can diff them.\n"
+            "    // The two real beta coefficients, one per call-site sign, rounded ONCE\n"
+            "    // on the host. Appended LAST so this signature is the released real\n"
+            "    // weld's (chunk record included) with a two-scalar tail a reader can\n"
+            "    // diff.\n"
             + _BETA_PARAMETERS + ") {\n")
+
+
+def _curl_prelude_and_body(text: str, name: str) -> Tuple[str, str]:
+    """``(prelude, body)`` of one certified curl kernel string, split at its ONE entry
+    point: the prelude is everything above ``extern "C" __global__``, the body everything
+    below the signature's close, without the final brace. The fold family's prelude
+    carries the folded ladder after the root's, so the split is on the entry point and
+    never on the root prelude's length."""
+    marker = 'extern "C" __global__ void '
+    if text.count(marker) != 1:
+        raise AssertionError(f"{name} carries {text.count(marker)} entry points, not 1")
+    prelude, kernel = text.split(marker, 1)
+    if not prelude.startswith(_kz._REAL_PML_PRELUDE.rstrip("\n")):  # noqa: SLF001
+        raise AssertionError(
+            f"{name} no longer opens with the certified root prelude; this weld emits "
+            f"that prelude's shift helpers and pml_apply and cannot vouch for another")
+    if kernel.count(_hd._BODY_ANCHOR) != 1:  # noqa: SLF001
+        raise AssertionError(f"{name}'s signature no longer closes on its own line")
+    body = kernel.split(_hd._BODY_ANCHOR, 1)[1]  # noqa: SLF001
+    if not body.endswith("}\n"):
+        raise AssertionError(f"{name} does not end with a closing brace")
+    return prelude, body[: -len("}\n")]
+
+
+def curl_prelude() -> str:
+    """The certified special_kz prelude: the root's, verbatim, then the folded ladder the
+    beta passes call (``folded_pass.REAL_FOLD_HELPERS``), read off the certified single
+    rather than re-assembled, and asserted to open with the released weld's own."""
+    prelude, _body = _curl_prelude_and_body(_certified_curl_source(),
+                                            "the certified special_kz step_D")
+    if not prelude.startswith(_hd.curl_prelude().rstrip("\n")):
+        raise AssertionError(
+            "the special_kz prelude no longer opens with the released H->D weld's curl "
+            "prelude; the two welds would emit different shift helpers")
+    return prelude
 
 
 def welded_curl_tail(source: Optional[str] = None) -> Tuple[str, str]:
@@ -343,24 +385,30 @@ def welded_curl_tail(source: Optional[str] = None) -> Tuple[str, str]:
     convenience: applied to the CERTIFIED real ``step_D`` this function returns
     exactly what :func:`.fused_hd_pair.welded_curl_tail` returns, which
     ``test_special_kz_fused_hd_pair.py`` asserts as a byte equality. The beta weld is
-    therefore the released transform plus the two beta assertions below, MEASURED
-    rather than claimed.
+    therefore the released transform plus the beta assertions below, MEASURED rather
+    than claimed.
 
-    ``head`` is the certified preamble, the stride constants and the index decode,
-    lifted VERBATIM and kept as the fused kernel's own. ``tail`` is everything below
-    it with the six own-cell magnetic loads taken from registers and the six shifted
-    ones recomputed.
+    ``head`` is the certified preamble, the stride constants, the index decode and the
+    curl's chunk-record block, lifted VERBATIM and kept as the fused kernel's own (the
+    released weld's cut). ``tail`` is everything below it with the six own-cell
+    magnetic loads taken from registers and the six shifted ones recomputed.
     """
     text = _certified_curl_source() if source is None else source
-    body = _hd._split_body(text, _kz._REAL_PML_PRELUDE,  # noqa: SLF001
-                           "the certified step_D source this weld lifts")
+    _prelude, body = _curl_prelude_and_body(text, "the certified step_D source this "
+                                                  "weld lifts")
     if (body.count(_hd._THREAD_PREAMBLE) != 1  # noqa: SLF001
             or body.count(_hd._INDEX_DECODE) != 1):  # noqa: SLF001
         raise AssertionError(
             "the certified step_D body no longer carries exactly one thread preamble "
             "and one index decode; this weld keeps both verbatim and splices its "
             "constitutive half directly below the decode")
-    cut = body.index(_hd._INDEX_DECODE) + len(_hd._INDEX_DECODE)  # noqa: SLF001
+    block = "\n" + _bounds_block.bounds_block(*_hd.CURL_BLOCK)
+    if body.count(_hd._INDEX_DECODE + block) != 1:  # noqa: SLF001
+        raise AssertionError(
+            "the certified step_D body does not carry its chunk-record block directly "
+            "after its index decode; this weld keeps both verbatim as its own head")
+    cut = (body.index(_hd._INDEX_DECODE + block)  # noqa: SLF001
+           + len(_hd._INDEX_DECODE + block))  # noqa: SLF001
     head, tail = body[:cut], body[cut:]
 
     own = 0
@@ -421,12 +469,12 @@ def welded_curl_tail(source: Optional[str] = None) -> Tuple[str, str]:
 def _assert_the_beta_partner_is_the_weld_register(tail: str, lifted: bool) -> None:
     """Every surviving beta line consumes a register THIS WELD redirected.
 
-    THE ONE CLAUSE THIS FAMILY OWNS AND NO SIBLING H->D WELD HAS. The beta term's
-    partner is the SAME-CELL component snapshot (stepping.py:437), which the array
-    path evaluates after ``update_H``; welded, that snapshot must be the weld's own
-    ``own_h[...]`` register and never a load of the pre-launch volume. The redirect
-    above rewrites the DECLARATION and leaves the beta line's spelling alone, so this
-    checks the pairing rather than the line: per target block, each ``beta_*`` factor
+    THE ONE CLAUSE THIS FAMILY OWNS AND NO SIBLING H->D WELD HAS. The beta pass's
+    partner is the SAME-CELL component snapshot, which the array path evaluates after
+    ``update_H``; welded, that snapshot must be the weld's own ``own_h[...]`` register
+    and never a load of the pre-launch volume. The redirect above rewrites the
+    DECLARATION and leaves the increment line's spelling alone, so this checks the
+    pairing rather than the line: per target block, each ``inc_beta`` line's partner
     names a register declared ``= own_h[...]`` in that same block.
 
     THE SITE COUNT IS A WELD ON BOTH PATHS, and only its EMPTY case is conditional. A
@@ -447,10 +495,11 @@ def _assert_the_beta_partner_is_the_weld_register(tail: str, lifted: bool) -> No
                     declared[variable] = stripped[len(f"float {variable} = "):]
         for line in block.splitlines():
             stripped = line.strip()
-            if not stripped.startswith("curl = curl - (beta_"):
+            if not stripped.startswith(_BETA_INCREMENT_PREFIX):
                 continue
             seen += 1
-            partner = stripped.rstrip(");").rsplit("* ", 1)[-1]
+            # ``float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;``
+            partner = stripped.split("* ", 1)[1].split(")", 1)[0]
             source_of = declared.get(partner)
             if source_of is None:
                 raise AssertionError(
@@ -462,7 +511,7 @@ def _assert_the_beta_partner_is_the_weld_register(tail: str, lifted: bool) -> No
                     f"the beta line {stripped!r} consumes {partner!r}, declared as "
                     f"{source_of!r} rather than from this launch's own_h register; "
                     f"the beta partner would then be the PRE-launch magnetic field, "
-                    f"one sub-step behind on exactly two of the six curl terms")
+                    f"and that target's beta pass one sub-step behind")
     if seen != BETA_INSERT_LINES and not (lifted and seen == 0):
         raise AssertionError(
             f"the certified special_kz step_D body carries {seen} beta increments, "
@@ -495,11 +544,11 @@ def kernel_source() -> str:
         "    f_w_Hz_out[idx] = own_w[2];",
         "",
         "    // --- step_D (stepping.step_D / _apply_pml_update) with the special_kz",
-        "    // beta insert, the certified body from its own stride constants down,",
+        "    // beta passes, the certified body from its own stride constants down,",
         "    // with the twelve magnetic reads redirected and NOTHING else touched.",
         "",
     ])
-    source = (_hd.curl_prelude() + _hd.constitutive_prelude() + _hd.weld_args_struct()
+    source = (curl_prelude() + _hd.constitutive_prelude() + _hd.weld_args_struct()
               + _hd.raw_update_H_cell_source() + _hd.resolution_source()
               + _hd.shift_dn_recompute_source() + signature() + head + weld + tail
               + "}\n")
@@ -764,17 +813,37 @@ def launch_special_kz_fused_hd_pair(fields: Any, scratch: Dict[str, Any],
                                     beta_coefficients: Tuple[float, float],
                                     dtdx: float,
                                     kernel: Optional[Any] = None,
-                                    threads: int = _FUSED_THREADS) -> Dict[str, Any]:
+                                    threads: int = _FUSED_THREADS, *,
+                                    chunk_bounds: Any,
+                                    layer: Any = None) -> Dict[str, Any]:
     """Both of :data:`REPLACES` in ONE launch. THE CALLER ROTATES AFTERWARDS.
 
     The argument list is the released real weld's with the two beta words APPENDED,
-    which is what lets a reader diff the two launches.
+    which is what lets a reader diff the two launches. ``chunk_bounds`` is the run's
+    chunk record on the device, required (``step_curl_kernels.chunk_record_argument``).
+    THE RUN'S FIRST ``update_H`` STARTS H FROM B: when ``fields.h_separated`` is still
+    False the start runs on the array path BEFORE the launch, with ``layer``, as on the
+    released weld (``fused_hd_pair.launch_fused_hd_pair``), and every recompute then
+    reads the started state. A first update with no ``layer`` is refused by name.
 
     ``kernel`` IS THE GATE'S DOOR: a gate compiles a deliberately broken copy of the
     shipped source and hands it here. ``threads`` is the gate's schedule door -- the
     design's whole claim is that the answer does not depend on which block ran first,
     and a block size that never moves cannot expose the opposite.
     """
+    from . import step_curl_kernels  # noqa: PLC0415 - device-only module
+
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
+    started = False
+    if not bool(getattr(fields, "h_separated", True)):
+        if layer is None:
+            raise RuntimeError(
+                "the run's first update_H starts H from B (stepping.separate_h_from_b) "
+                "and this H->D launch was handed no layer to start it with")
+        from ..stepping import separate_h_from_b  # noqa: PLC0415 - NumPy/CuPy array path
+
+        separate_h_from_b(fields, layer)
+        started = True
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + threads - 1) // threads
     arguments: List[Any] = [scratch[name] for name in SCRATCH_VOLUMES]
@@ -787,11 +856,12 @@ def launch_special_kz_fused_hd_pair(fields: Any, scratch: Dict[str, Any],
         arguments += [tables["kms"][axis], tables["sinv"][axis]]
     arguments += [tables["kps"][axis] for axis in ("x", "y", "z")]
     arguments += [np.int32(int(code)) for code in boundary_codes]
+    arguments += [cb]
     plus, minus = beta_coefficients
     arguments += [np.float32(plus), np.float32(minus)]
     (kernel or _get_kernel())((blocks,), (threads,), tuple(arguments))
     return {"launched": True, "blocks": blocks, "threads": threads,
-            "elements": nx * ny * nz, "replaces": REPLACES,
+            "elements": nx * ny * nz, "replaces": REPLACES, "h_started": started,
             "kernel": KERNEL_NAME,
             "boundary_codes": tuple(int(code) for code in boundary_codes),
             "beta_coefficients": (float(plus), float(minus))}
@@ -810,6 +880,7 @@ def rotate_into_fields(fields: Any, scratch: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def run_special_kz_fused_hd_pair(fields: Any, grid: Any, pml: Any, dtdx: float, *,
+                                 chunk_bounds: Any,
                                  scratch: Optional[Dict[str, Any]] = None,
                                  sources: Any = None,
                                  tables: Optional[Dict[str, Any]] = None,
@@ -841,7 +912,7 @@ def run_special_kz_fused_hd_pair(fields: Any, grid: Any, pml: Any, dtdx: float, 
     assert_scratch_is_disjoint(fields, scratch, tables)
     record = launch_special_kz_fused_hd_pair(
         fields, scratch, tables, special_kz_fused_hd_pair_codes(grid),
-        beta_coefficients, dtdx, kernel, threads)
+        beta_coefficients, dtdx, kernel, threads, chunk_bounds=chunk_bounds, layer=pml)
     record["rotated"] = bool(rotate)
     record["scratch"] = rotate_into_fields(fields, scratch) if rotate else scratch
     return record

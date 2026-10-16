@@ -32,10 +32,10 @@ second vocabulary to keep in sync with the composer's own literals; a mechanical
 ``"cuda:"`` prefix on the composer's OWN literal cannot drift, and it leaves every
 existing Triton record, weld, gate needle and board join untouched.
 
-THE ORDERING TRAP APPLIES TO THIS FILE TOO. :data:`CUDA_DRIVER_ROUTE_FUSED_GATE`
-and :data:`CUDA_RELEASED_FUSED_ARMS` are written BEFORE the campaign that measures
-them, exactly as ``fastpath.DRIVER_ROUTE_FUSED_GATE`` is: the gate is named first so
-the run it names is the run the shipping tree asked for, and the contract tests are
+THE ORDERING TRAP APPLIES TO THIS FILE TOO. :data:`CUDA_RELEASED_FUSED_ARMS` and
+this table's route stamp (``route_stamps.route_gate("cuda")``) are written BEFORE the
+campaign that measures them, exactly as the Triton table's are: the gate is named first
+so the run it names is the run the shipping tree asked for, and the contract tests are
 RED on the named record until the campaign cuts it. A row here is a promise, and the
 red test is what keeps the promise from being mistaken for evidence.
 """
@@ -395,97 +395,18 @@ CUDA_FUSED_ARM_CONSTITUENTS: Mapping[str, Tuple[str, ...]] = {
 # The release
 # ---------------------------------------------------------------------------
 
-#: THE CUDA DRIVER-ROUTE GATE, NAMED BEFORE IT RUNS. ``gate_dispatch_fused_route.py
-#: --backend cuda`` writes ``results/<this name>/`` with five legs, and
-#: ``recut_driver_dispatch_record.py --backend cuda`` refuses to cut the record
-#: unless every ``(arm, case, leg)`` row of :data:`CUDA_RELEASED_FUSED_ARMS` appears
-#: in that leg's ``arms_driven``. Naming it here first is what makes the run the
-#: shipping tree asked for the run that is measured.
-#: REPOINTED 2026-09-15 to a FRESH stamp rather than re-run under the old one: the
-#: ``2026-09-14_weldgrid`` run is what the 346-of-594 board cites, and overwriting it
-#: would strand that board's provenance. The re-run exists because the replacement-case
-#: edits moved ``fastpath.py`` and ``gate_dispatch_fused_route.py``, which the record
-#: binds, so the board no longer describes the tree.
-# ``_2026-09-15_offdiag``: the same cases and legs again, because the Triton
-# off-diagonal fix moved fastpath.py and the route file, both bound by this record.
-# ``dispatch_fused_route_cuda_2026-09-15_weldgrid`` released all five legs and stays.
-# ``_2026-09-15_gapclose``: the same cases and legs again, because one Triton batch
-# moved fastpath.py and the route file, both bound by this record: the release of
-# ``fused pair D (complex conductive no-PML)``, which restored the Triton
-# ``complex_no_pml_3d`` row, and the lift of ``complex folded off-diagonal`` with the
-# widening of ``fused pair B (folded complex)``, which turned the two off-diagonal
-# folds back into Triton dispatch rows. On ``complex_no_pml_3d`` the Triton incumbent
-# under default precedence is now a fused label. DRIVE_CUDA's case set is unchanged:
-# the two off-diagonal folds stay out of it (see the note in the route file).
-# ``_2026-09-15_offdiag`` released five legs and stays.
-# ``_2026-09-17_allpaths``: the round the two withdrawn notes above both point at.
-# DRIVE_CUDA's case set CHANGES here for the first time since the target round: the
-# two off-diagonal folds return (``folded_complex_offdiag_2d`` and
-# ``folded_complex_nobloch_offdiag_2d``), with the
-# :data:`CUDA_OFF_DIAGONAL_CORNERS` entry that bounds them. What that buys is three
-# census instances on B->H, and what it risks is named where the row is written: the
-# arbitration-default-precedence control is a NEW measurement on those grids, because
-# the 2026-09-15 batch moved the Triton table's answer there. ``_2026-09-15_gapclose``
-# released its legs and stays as the record of the table with the folds held out.
-# ``_2026-09-17_singles2`` released on all five legs and cut the 352 / 597 board; it stays
-# as that record's provenance. ``_2026-09-19_overhead`` is the re-run after the two
-# fused-path overhead fixes: ``cuda_kernels/fused_pairs.py`` now holds each product's
-# emitted source (and, for the non-rotating products, its resolved arguments) per plan
-# instead of rebuilding them on every launch, and the route gate records the bytes of
-# ``deposit_repair.py`` and ``fused_pairs.py`` it ran. CORRECTED 2026-09-20: only
-# ``fused_pairs.py`` is BOUND by this record; ``deposit_repair.py`` is recorded in each
-# leg's provenance and bound by no CUDA record (the route gate's own note reads
-# "RECORDED, NOT BOUND"), which the sentence above overstated.
-# ``_2026-09-20_restrict`` is the re-run after the deposit repair was restricted to the
-# component the source writes: the bracket a fused pair carries on the source's seam now
-# repairs one target per single-component source instead of three, bit-identical, and
-# every route row that dispatches a bracketed seam executes different bytes. Measured in
-# process on this table before it landed: 1.50-1.66x on the two-pair step at <= 1.0M
-# cells (``results/repair_phase0_2026-09-19_phase0/``).
-# ``_2026-09-24_hoist`` is the re-run after the fused magnetic pair's own-cell loads
-# were hoisted to the top of the kernel (``cuda_kernels/fused_magnetic_pair.py``, module
-# docstring item 6): same arithmetic, same stores, the twelve loads issued before the first
-# store instead of one at a time after each; 1.34-1.37x on the pair at 2.1-7.1M cells.
-# ``_2026-09-25_roundb`` (named 2026-09-25, before its campaign) is the re-run after the
-# same own-cell hoist reached four more kernels: the two certified real-PML constitutive
-# singles (``update_H_pml_real`` / ``update_E_pml_real`` in
-# ``cuda_kernels/constitutive_kernels.py``, register view: the certified helper steps
-# registers, every own-cell word is loaded before the first store and written back in
-# the certified store order, six stores each, same arithmetic) and the Dcyl complex
-# fused magnetic and electric pairs (``cuda_kernels/cylindrical_fused_{magnetic,
-# electric}_pair.py``). The products that lift the singles read the certified statement
-# form back through ``cuda_kernels/own_cell_hoist.py`` and emit byte-identical text, so
-# ``fused_magnetic_pair.py`` executes different module bytes but the same device text.
-# The run is also the first on the batched ``stepping.py`` wall clears and the citation
-# re-point. Measured kernel-only on one RTX A6000 at each arm's corpus-maximum grid
-# (``results/cuda_a1_screen_2026-09-25/``): update_H 1.92x, update_E 1.75x, the
-# cylindrical pairs 1.34x / 1.33x; no whole-step number of record yet.
-# ``_2026-09-25_roundb`` released all five legs and is the route of record the
-# 352 / 597 board cites; it stays as that board's provenance.
-# ``_2026-09-27_flip`` (named 2026-09-27, before its campaign) is the re-run after two
-# edits to this file and to ``cuda_kernels/arms.py`` / ``cuda_kernels/registry.py``,
-# none of which adds or changes a kernel. (1) The six certified real-storage in-seam
-# fill kernels (``in_seam_2026-08-21``, re-gated in Round B) are registered as a CUDA
-# fill arm on ``fill_B``/``fill_D`` (``cuda:mirror fill``), so rung 6b stops refusing a
-# real mirror-folded row whole when this table composes without a second table. (2)
-# The three off-diagonal ``update_E`` singles (``cuda:off-diagonal``,
-# ``cuda:folded off-diagonal``, ``cuda:dispersive off-diagonal``) carry a
-# launch-argument resolver and a launcher, so the merge adopts them as the D/E seam
-# beside the already-launchable ``step_D`` 'PML'. The campaign also gains a sixth leg,
-# ``cuda_alone``: the preference unset and Triton made unimportable in the gate
-# process, which is the composition a host without a validated Triton gets and which
-# no earlier leg drove.
-# ``_2026-09-30_091`` (named 2026-09-30, before its campaign) is release 0.9.1's route:
-# the off-diagonal ``update_E`` single now launches its own-cell hoisted text, so the
-# legs that drive it execute different device bytes. ``_2026-09-27_flip`` stays the
-# record of the 0.9.0 route.
-# ``_2026-10-05_092`` (named 2026-10-05, before its campaign) is release 0.9.2's route:
-# this file and ``fastpath.py`` moved (a supported device that is not certified runs
-# by default, and a table certified here outranks one that is only supported), and so
-# did ``gate_dispatch_fused_route.py``, which this record binds. One stamp for the
-# release, shared by every compute capability that drives it. ``_2026-09-30_091``
-# stays the record of the 0.9.1 route.
-CUDA_DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_cuda_2026-10-05_092"
+#: WHERE THIS TABLE'S ROUTE RELEASE IS RECORDED, and what a refusal cites for it.
+#: ``gate_dispatch_fused_route.py --backend cuda`` writes one campaign per compute
+#: capability, ``results/dispatch_fused_route_cuda_<stamp>_cc86/``, and
+#: ``recut_driver_dispatch_record.py --backend cuda`` refuses to cut the record unless
+#: every ``(arm, case, leg)`` row of :data:`CUDA_RELEASED_FUSED_ARMS` appears in that
+#: leg's ``arms_driven``; the run it cut is filed under the capability, and this names
+#: the slot. The stamp is in ``meep_gpu/route_stamps.py``
+#: (``route_stamps.route_gate("cuda")``), with its history, and no dispatch module
+#: imports it (``fastpath.ROUTE_RECORD`` says why).
+CUDA_ROUTE_RECORD = ("the hand-CUDA route campaign recorded in "
+                     "cuda_kernels/fingerprints.json at driver_dispatch.runs"
+                     "[<compute capability>].released_fused_arms.gate")
 
 #: THE ARMS THIS TABLE MAY DISPATCH, and the gate cases that drove each. TIER 1
 #: (2026-09-11), TIER 2 (2026-09-13) AND TIER 3 (2026-09-13, typed ahead of its
@@ -512,8 +433,8 @@ CUDA_DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_cuda_2026-10-05_092"
 #: LIFTED off-device on stock MEEP 1.33.0 (``lift_simulation(prefer_gpu=False)``,
 #: the run shape read straight off ``fastpath._run_shape``) and have NOT been driven
 #: through a seam on any device. What each row's reason string states is the LIFT and
-#: nothing more, and the arm this buys is admitted only once
-#: :data:`CUDA_DRIVER_ROUTE_FUSED_GATE`'s campaign drives the case: that is this
+#: nothing more, and the arm this buys is admitted only once this table's route
+#: campaign (``route_stamps.route_gate("cuda")``) drives the case: that is this
 #: module's own ordering rule (the gate is named before it runs, and the contract
 #: tests are RED on the named record until the campaign cuts it), applied to rows
 #: rather than to a gate name. A reader pricing coverage off this table before that
@@ -523,13 +444,13 @@ CUDA_DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_cuda_2026-10-05_092"
 #:
 #:   * cylindrical fused magnetic pair / cylindrical fused electric pair — FIVE Dcyl
 #:     complex cases, m in {-1, 0, 1, 2, 3} (``cylindrical_m0_complex`` forces complex
-#:     storage at m = 0), probe leg; the ``m`` row is the frozenset of those five;
+#:     storage at m = 0); the ``m`` row is the frozenset of those five;
 #:   * off-diagonal stencil weld / folded off-diagonal stencil weld —
 #:     ``offdiag_magnetic_2d`` (a cylinder with an Hz source, so the in-plane E the
 #:     weld owns is live) and its fold ``folded_offdiag_magnetic_2d`` (Mirror(Y,
 #:     phase=-1), the fills served by the Triton table beside it), shipped leg;
 #:   * complex beta fused magnetic/electric pair — ``complex_beta_2d`` (the
-#:     special_kz cell stored complex, ``kz_2d="complex"``), probe leg;
+#:     special_kz cell stored complex, ``kz_2d="complex"``);
 #:   * BFAST fused magnetic/electric pair — ``bfast_1d`` (refl-angular's shape: a
 #:     z-only cell declared 3-D, ``bfast_scaled_k`` set, real storage), shipped leg;
 #:   * the ordinary magnetic pair's OFF-DIAGONAL row is gone, replaced by a CORNER
@@ -568,15 +489,13 @@ CUDA_DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_cuda_2026-10-05_092"
 #: while the host flush flag never moves (measured 2026-09-13: cylindrical_m1 then
 #: pml_2d diverges; cylindrical (m = 0, real), complex_nobloch_2d or complex_beta_2d
 #: then pml_2d does not; every case alone is byte-identical). So the five
-#: cylindrical cases are the LAST rows of ``DRIVE_CUDA`` and lift only on the probe
-#: leg; nothing real-storage steps after them. The cause is open (expansion plan
+#: cylindrical cases are the LAST rows of ``DRIVE_CUDA``; nothing real-storage steps
+#: after them. The cause is open (expansion plan
 #: §10) and this table makes no claim about a process that interleaves the two.
 #:
-#: THE LEG MATTERS AND IS PART OF THE ROW. Real-storage arms are driven on
-#: ``cuda_shipped`` (and re-driven on ``cuda_harness_keep``); complex-storage arms
-#: dispatch ONLY on ``cuda_shipped_expansion_probe``, because their expansion
-#: licence comes from the unified probe record and nothing else offers it. The
-#: recut reads :data:`CUDA_RELEASED_ARM_LEGS` beside this table.
+#: THE LEG IS PART OF THE ROW. Every arm, real or complex storage, is driven on
+#: ``cuda_shipped`` and re-driven on ``cuda_harness_keep``. The recut reads
+#: :data:`CUDA_RELEASED_ARM_LEGS` beside this table.
 CUDA_RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # ``pml_3d`` (the sphere) writes off-diagonal chi1inv rows through subpixel
     # averaging -- measured on the GPU host 2026-09-11 -- and until 2026-09-13 this arm's
@@ -697,40 +616,16 @@ CUDA_RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # re-gate seeded its weld, withdrawn the same evening when the route leg refused
     # on the incumbent table's pending arms, and RESTORED when the release decision
     # released those arms. ``complex_no_pml_3d`` is the ONLY route case this arm
-    # has, which is why every axis on its row below is pinned rather than left open,
-    # and it dispatches on the expansion-probe leg alone: the arm stores complex
-    # fields, so its licence has to come from the probe record.
+    # has, which is why every axis on its row below is pinned rather than left open.
     "cuda:complex no-absorber three-slot weld": ("complex_no_pml_3d",),
 }
 
 #: Which LEG of the campaign drives each released arm. Read by
 #: ``recut_driver_dispatch_record.py --backend cuda``, which walks
-#: ``(arm, case, leg)`` rather than ``(arm, case)``: a complex arm that appeared in
-#: the shipped leg's ``arms_driven`` would mean the expansion licence had been
-#: consumed without the probe, which is the one thing that leg exists to keep apart.
+#: ``(arm, case, leg)`` rather than ``(arm, case)``. Every arm is driven on the same
+#: two legs: complex storage needs nothing a real-storage arm does not.
 CUDA_RELEASED_ARM_LEGS: Mapping[str, Tuple[str, ...]] = {
-    arm: (("cuda_shipped_expansion_probe",)
-          if arm in ("cuda:complex fused magnetic pair",
-                     "cuda:complex fused electric pair",
-                     "cuda:folded complex fused magnetic pair",
-                     "cuda:folded complex fused electric pair",
-                     "cuda:cylindrical fused magnetic pair",
-                     "cuda:cylindrical fused electric pair",
-                     "cuda:complex beta fused magnetic pair",
-                     "cuda:complex beta fused electric pair",
-                     # 2026-09-14. Complex storage, so its expansion licence comes
-                     # from the probe record and nowhere else; listed here for the
-                     # reason stated above, that a complex arm turning up in the
-                     # shipped leg's ``arms_driven`` would mean the licence had been
-                     # consumed without the probe.
-                     "cuda:complex no-absorber three-slot weld",
-                     # 2026-09-17. The two complex off-diagonal stencil welds, for
-                     # the same reason: both store complex fields, so both take
-                     # their expansion licence from the probe record, and both are
-                     # driven on the probe leg alone.
-                     "cuda:folded complex off-diagonal stencil weld")
-          else ("cuda_shipped", "cuda_harness_keep"))
-    for arm in CUDA_RELEASED_FUSED_ARMS
+    arm: ("cuda_shipped", "cuda_harness_keep") for arm in CUDA_RELEASED_FUSED_ARMS
 }
 
 #: THE AXES EVERY RELEASED CUDA ARM WAS DRIVEN ON WITH THE SAME VALUE — AND SINCE
@@ -947,7 +842,7 @@ CUDA_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         # every off-diagonal grid. The row wins, and the corner was dead text.
         #
         # THE CAMPAIGN SAID SO IN ONE LINE rather than being reasoned out: the CUDA
-        # route's probe leg drove `folded_complex_offdiag_2d` and
+        # route drove `folded_complex_offdiag_2d` and
         # `folded_complex_nobloch_offdiag_2d` to PASS-FUSED with
         # ``tables_dispatched: ['triton']`` -- the Triton incumbent held every slot
         # because the CUDA arm was never admitted -- and
@@ -1511,18 +1406,18 @@ CUDA_PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
         "folded_offdiag_magnetic_2d with its cylinder made Lorentzian, the Hz "
         "source kept because this product spans update_E/update_P on the two "
         "components the off-diagonal rows couple — refuses to lift on MEEP 1.33.0: "
-        "the chi1inv tensor is non-diagonal at the curved interface and this MEEP "
-        "carries no fields.get_susceptibility_sigma, so the sigma cannot be read "
-        "back. Both escapes the refusal offers were tried on 2026-09-13 and neither "
+        "the chi1inv tensor is non-diagonal at the curved interface, so the lift "
+        "cannot check the susceptibility sigma there. Both escapes the refusal "
+        "offers were tried on 2026-09-13 and neither "
         "produces this shape: eps_averaging=False lifts and reads "
         "off_diagonal_epsilon False (subpixel averaging IS what writes the "
         "off-diagonal rows, so turning it off deletes the axis the case exists to "
         "drive), and moving the dispersion onto an axis-aligned block beside a "
         "NON-dispersive cylinder still refuses, because the check is over the cell "
-        "rather than per region. The case needs a MEEP built with MEEP_SIGMA_PATCH=1 "
-        "(parity/meep_gpu/build_meep_133_macos.sh, macOS-only today); until one is "
-        "on the campaign host neither this arm nor the one-pole widening of "
-        "CUDA_OFF_DIAGONAL_CORNERS['cuda:fused magnetic pair'] has evidence",
+        "rather than per region. Stock MEEP 1.33.0 cannot lift the case, so neither "
+        "this arm nor the one-pole widening of "
+        "CUDA_OFF_DIAGONAL_CORNERS['cuda:fused magnetic pair'] has evidence; run "
+        "this simulation on CPU MEEP",
 }
 
 
@@ -1694,6 +1589,10 @@ def certification_for(arm: str, *, capability: Optional[str] = None) -> Dict[str
                 entry[key] = run[key]
             elif key in record:
                 entry[key] = record[key]
+        # The run's own policy evidence (``fastpath.CERTIFIED_POLICIES``), never the
+        # entry's: it is a fact about one run on one capability.
+        if isinstance(run.get(fastpath.CERTIFIED_POLICIES), Mapping):
+            entry[fastpath.CERTIFIED_POLICIES] = dict(run[fastpath.CERTIFIED_POLICIES])
     if entry.get("step_budget") is None:
         entry["step_budget"] = (
             f"not stated per family by {gate}; see that record's legs and the "
@@ -1735,7 +1634,7 @@ GOVERNED_EXECUTORS: Tuple[str, ...] = ("host", "cupy", "triton")
 #:   12 toolkit, which targets newer devices too, so 9.0 is conservative for it.
 #:
 #: Static rather than read off NVRTC, so the range a record states is the range the
-#: code applies; ``UNCERTIFIED_SWITCH=1`` runs a device outside it, recorded
+#: code applies; ``fastpath.HARDWARE_SWITCH=any`` runs a device outside it, recorded
 #: ``supported: False``.
 SUPPORTED_COMPUTE_CAPABILITIES: Tuple[Tuple[int, int], Tuple[int, int]] = ((7, 0), (9, 0))
 
@@ -1774,7 +1673,7 @@ def validated_compute_capabilities() -> Tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
-# Candidacy and licences
+# Candidacy
 # ---------------------------------------------------------------------------
 
 def cuda_candidate(record: Mapping[str, Any], xp: Any) -> Dict[str, Any]:
@@ -1806,107 +1705,6 @@ def cuda_candidate(record: Mapping[str, Any], xp: Any) -> Dict[str, Any]:
         return block
     block["candidate"] = True
     return block
-
-
-#: Which expansion licences the unified complex-expansion probe can license, by the
-#: registry key the CUDA composer reads them under.
-COMPLEX_LICENCE_KEYS: Tuple[str, ...] = (
-    "LICENSE_COMPLEX", "LICENSE_COMPLEX_NO_PML", "LICENSE_COMPLEX_OFFDIAG")
-
-
-def licences_from_probe(probe: Any) -> Optional[Dict[str, Any]]:
-    """The CUDA composer's ``licenses`` mapping, built from ONE probe record.
-
-    THE SAME ARTIFACT LICENSES BOTH TABLES, and that is the point of reading it
-    here: ``fastpath`` rung 4c has already judged the record against the policy this
-    dispatch installs and has DROPPED it if it disagrees, so a refused artifact
-    arrives here as a refusal value rather than as ``None``. What this function does
-    is ask each licence function whether it licenses that record, exactly as
-    ``cuda_predicate_battery._composer_licenses`` does off-device, and OMIT any key
-    that cannot be licensed — an absent key makes the family refuse by its own name,
-    which is a named refusal, whereas a key mapped to nothing would be a licence
-    claim nobody made.
-
-    Returns ``None`` when no key licenses, so the composer sees "no licence offered"
-    rather than an empty mapping it might read as "every licence refused".
-    """
-    if probe is None:
-        return None
-    try:
-        from .cuda_kernels import registry as _registry  # noqa: PLC0415
-        from .triton_kernels import complex_fields as _complex  # noqa: PLC0415
-        from .triton_kernels import folded_complex as _folded  # noqa: PLC0415
-    except Exception:  # noqa: BLE001 - an unreadable rule licenses nothing
-        return None
-    licences: Dict[str, Any] = {}
-    for name, reader in (
-            ("LICENSE_COMPLEX", getattr(_complex, "expansion_license", None)),
-            ("LICENSE_COMPLEX_NO_PML", getattr(_complex, "expansion_license", None)),
-            ("LICENSE_COMPLEX_OFFDIAG",
-             getattr(_folded, "parity_expansion_license", None))):
-        key = getattr(_registry, name, None)
-        if key is None or reader is None:
-            continue
-        try:
-            verdict = reader(probe)
-        except Exception:  # noqa: BLE001 - a refusal is a refusal, not a crash
-            verdict = None
-        if verdict is None:
-            continue
-        # THE VERDICT ITSELF IS THE LICENCE, not a wrapper around it, and the
-        # difference was silent. ``StepContext.license_for`` hands whatever is stored
-        # here straight to the predicate, and that predicate reads ``arm``,
-        # ``refusals``, ``expansion``, ``basis`` and ``policy_resolved`` OFF THIS
-        # OBJECT (``cuda_kernels/coverage.py``). Storing ``{"arm": verdict, ...}``
-        # put the whole verdict dict where the arm NAME belongs, so every complex
-        # family refused with "the expansion licence names arm {…}, which is not one
-        # of ['NAIVE', 'FMA_V1']" -- a correctly licensed run reading as an
-        # unlicensed one. Measured 2026-09-11 on bloch_2d: four slots served by the
-        # incumbent's complex singles and not one CUDA fused pair installed, on the
-        # ONE leg those arms can dispatch on.
-        #
-        # THE OFF-DEVICE BATTERY HAD IT RIGHT ALL ALONG
-        # (``cuda_predicate_battery._composer_licenses`` stores ``verdict``), which
-        # is why the census credited these families and the device could not run
-        # them: the composer and the instrument that measures its coverage disagreed
-        # about the shape of one argument.
-        #
-        # AND THE SAME DISAGREEMENT HAD A SECOND HALF, measured 2026-09-13 and fixed
-        # here. ``expansion_license`` never returns a ``patterns`` key -- it returns
-        # ``probe_patterns``, the set it REQUIRED the record to classify, not the
-        # record's own classification table -- while
-        # ``complex_no_pml_kernels._ade_probe_refusal`` asks a question about the
-        # RECORD: whether it classifies the orientation ``update_P`` launches (a
-        # complex64 array times a Python float), which is outside the four patterns
-        # the base licence rule reads. Looking for it in ``verdict["patterns"]`` and
-        # then ``verdict["record"]["patterns"]``, it found neither and refused EVERY
-        # record, seven-pattern ones included, with "the expansion licence carries no
-        # readable pattern table". So the complex no-absorber families could not
-        # install whatever artifact the run was given. The off-device battery again
-        # had it right and again by one line
-        # (``_complex_no_pml_license``'s ``verdict.setdefault("patterns",
-        # record.get("patterns"))``); this is that line, on the composer's side, and
-        # it is why ``MEEP_GPU_COMPLEX_EXPANSION_PROBE`` must point at a record that
-        # classifies the fifth orientation -- a SEVEN-pattern unified expansion
-        # record. Measured on one: with the table attached ``_ade_probe_refusal``
-        # returns None and the licence binds FMA_V1 with no refusals; without it,
-        # the same record refuses. A four-pattern record still refuses, and by a
-        # DIFFERENT reason ("does not classify"), which is the half of the mismatch
-        # that stays a refusal and should.
-        #
-        # The verdict is COPIED rather than mutated: it is the licence object the
-        # predicate reads, and a probe record read once per process may be handed to
-        # more than one reader.
-        patterns = None
-        try:
-            patterns = probe.get("patterns")
-        except Exception:  # noqa: BLE001 - a refusal value is not a record
-            patterns = None
-        if isinstance(verdict, dict) and patterns is not None and (
-                verdict.get("patterns") is None):
-            verdict = dict(verdict, patterns=patterns)
-        licences[key] = verdict
-    return licences or None
 
 
 # ---------------------------------------------------------------------------
@@ -2136,6 +1934,26 @@ def _adoptable_fill_slots(plans: Mapping[str, Any],
     return {slot for slot in fills if FILL_ARM_TWINS[slot] in fills}
 
 
+def _record_chunk_division(record: Dict[str, Any], plan: Any) -> None:
+    """Write the chunk division the CUDA table composed against into its tables row.
+
+    ``record["tables"]["cuda"]["chunk_division"]`` is the composer's own block
+    (``cuda_kernels.arms.CudaStepPlan.chunk_division``): which division was read
+    (the lifted simulation's, or the one-rank default when none was handed in), its
+    ``int32[25]`` record, and the refusal every CUDA arm gave it when no record
+    describes it -- so a run whose kernels all refused on the division says so
+    beside the table, rather than only per slot. Written only where the composer
+    carries one and the row exists; a plan without it (a stand-in) writes nothing.
+    """
+    tables = record.get("tables")
+    row = tables.get(CUDA_TABLE) if isinstance(tables, dict) else None
+    if not isinstance(row, dict):
+        return
+    block = getattr(plan, "chunk_division", None)
+    if block is not None:
+        row["chunk_division"] = block
+
+
 def merge_tables(tables_in_order: Sequence[Tuple[str, Any]],
                  pending_of: Mapping[str, Mapping[str, str]],
                  record: Dict[str, Any]) -> MergedStepPlan:
@@ -2195,6 +2013,8 @@ def merge_tables(tables_in_order: Sequence[Tuple[str, Any]],
     # dispatch set on the leg where that table composes FIRST, which a verbatim copy
     # of its plans would have dispatched.
     for table_name, plan in tables_in_order:
+        if table_name == CUDA_TABLE:
+            _record_chunk_division(record, plan)
         table_refusals = refused.setdefault(table_name, {})
         table_plans = dict(getattr(plan, "plans", {}) or {})
         table_selected = dict(getattr(plan, "selected", {}) or {})

@@ -101,7 +101,9 @@ nav:
       - Execution backends and kernel tables: development/execution-backends.md
       - The three kernel tables: development/kernel-tables.md
       - Running the tests: development/testing.md
+      - "Table 2: MEEP identity on the corpus": development/meep-identity-corpus.md
       - Running the certification harness: development/certification.md
+      - Certifying a new GPU: development/certify-a-new-gpu.md
       - Running the timing ladder: development/timing.md
       - Capability coverage checklist: guides/capability-coverage.md
   - How to cite: citing.md

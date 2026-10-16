@@ -57,13 +57,13 @@ THE EIGHT THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
 
 WHAT THIS GATE DOES NOT CLAIM. Nothing about throughput. The fusion removes ONE
 DISPATCH and, on a walled run, one host wall pass; it does NOT remove the radial
-prefix pre-pass, which stays on the host because its float32 summation order defines
-the answer. Leg ``separate_control`` records the dispatch and in-seam host-pass
+sum's pre-pass (``stepping.cylindrical_rderiv_difference``, MEEP's ``f_rderiv_int``
+per structure chunk), which stays on the host because its float32 summation order
+defines the answer. Leg ``separate_control`` records the dispatch and in-seam host-pass
 counts on both compositions, which is the only place a byte-neutral fusion's
 difference shows up at all.
 
 LEGS
-  0  expansion            the arm is bound from THIS family's seven-pattern artifact
   1  binding_ceiling      38 separate and 32 packed must FAIL; the shipped 31 must
                           COMPILE, LAUNCH and read every Params field back
   2  needle_reachability  every mutation needle is present in the source of the case
@@ -71,7 +71,7 @@ LEGS
   3  transcription        both halves are the certified emitters' own bytes,
                           differing only in the three seam lines
   4  signed_zero          the +-0 class at one launch, with its vacuity floor
-  5  product              complete steps, per-step byte compare, launch + prefix-sync
+  5  product              complete steps, per-step byte compare, launch + radial-sync
                           counters, movement, subnormal census
   6  separate_control     the two ALREADY CERTIFIED products stepping the same seam
                           as separate dispatches with the wall clear on the host
@@ -116,6 +116,8 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
     Residency, compile_source, metal_frontend_version,
 )
 from meep_gpu.triton_kernels.coverage import zero_metal_axes  # noqa: E402
+from gate_chunk_records import every_cell_record, layer_record  # noqa: E402
+from meep_gpu.metal_kernels import chunk_bounds as chunk_bounds_module  # noqa: E402
 
 ENVIRONMENT = matrix.prepare_environment()
 
@@ -172,6 +174,20 @@ STATE_NAMES: Tuple[str, ...] = tuple(
 #:                  corpus row's own z termination, the other one, and a
 #:                  non-power-of-two Courant so nothing passes because every scale
 #:                  factor happened to be exact.
+#:   COURANT        every Courant is a FLOAT32 WORD: the |m| = 1 B side's axis rule is
+#:                  MEEP's double product ``-Courant * bracket`` rounded once, which
+#:                  this backend forms in float32 only for such a word, and any other
+#:                  Courant is refused by name. A case that names none takes
+#:                  :data:`MATRIX_COURANT`, the word of the matrix's default 0.37.
+
+
+def _f32(value: float) -> float:
+    """The float32 word of ``value``, as the Python float the grid carries."""
+    return float(np.float32(value))
+
+
+MATRIX_COURANT = _f32(0.37)
+
 CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     ("m1_z_metallic", dict(m=1, z_kind="metallic")),
     ("m_minus1_z_metallic", dict(m=-1, z_kind="metallic")),
@@ -183,7 +199,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     ("m0_z_metallic", dict(m=0, z_kind="metallic")),
     ("m0_z_periodic", dict(m=0, z_kind="periodic")),
     ("m0_odd_courant_z_metallic",
-     dict(m=0, z_kind="metallic", courant=0.2718281828)),
+     dict(m=0, z_kind="metallic", courant=_f32(0.2718281828))),
 )
 
 #: The case the |m| = 1 mutations are armed on. z METALLIC, so the ownership mask's
@@ -206,11 +222,6 @@ WALL_CASE = "m1_z_metallic"
 #: The row leg ``refusal`` builds its source and geometry questions on.
 REFUSAL_CASE: Dict[str, Any] = dict(m=1, z_kind="metallic")
 
-#: Bound by ``leg_expansion`` before any other leg runs.
-EXPANSION: Optional[str] = None
-PROBE_ARTIFACT: Optional[str] = None
-
-
 def log(message: str) -> None:
     print(message, flush=True)
 
@@ -218,6 +229,32 @@ def log(message: str) -> None:
 def words(array: Any) -> np.ndarray:
     """One array as uint32 WORDS. Byte compares, never allclose."""
     return np.frombuffer(np.ascontiguousarray(array).tobytes(), dtype=np.uint32)
+
+
+def floor_violations(moved: Mapping[str, int], pml: Any) -> List[str]:
+    """The vacuity floor under the auxiliary contract (KERNELS.md §1, C2).
+
+    ``f_w_{H,E}c`` is touched only where c's own axis (its dsigw) carries a layer and
+    ``fu_{B,D}c`` only where its dsigu axis, ``(c + 2) % 3``, does, by the array path
+    and by every kernel alike. On a Dcyl grid phi carries none, so ``f_w_Hy``,
+    ``f_w_Ey``, ``fu_Bz`` and ``fu_Dz`` keep their seeds for the whole run, except
+    where the |m| >= 2 near-axis rule zeroes every array on its rows. The floor
+    exempts exactly the set derived here from the layer, never the set a run happened
+    to leave still: every other compared array must move, and below |m| = 2 an exempt
+    one that moved is a violation too.
+    """
+    silent = set()
+    for index, c in enumerate("xyz"):
+        if not pml.axis_has_pml(index):
+            silent.update((f"f_w_H{c}", f"f_w_E{c}"))
+        if not pml.axis_has_pml((index + 2) % 3):
+            silent.update((f"fu_B{c}", f"fu_D{c}"))
+    zeroing = abs(int(getattr(getattr(pml, "grid", None), "m", 0) or 0)) >= 2
+    return (sorted(name for name, count in moved.items()
+                   if count == 0 and name not in silent)
+            + sorted(f"{name} (moved, untouched by the contract)"
+                     for name, count in moved.items()
+                     if count and name in silent and not zeroing))
 
 
 def differing(left: Any, right: Any) -> int:
@@ -231,6 +268,7 @@ def differing(left: Any, right: Any) -> int:
 # The configuration
 # ---------------------------------------------------------------------------
 
+
 def build(keywords: Mapping[str, Any], seed: int,
           value_class: str = values.UNIFORM, scale: float = 1.0,
           ) -> Tuple[Any, Any]:
@@ -242,7 +280,7 @@ def build(keywords: Mapping[str, Any], seed: int,
     identically on every side — the epsilon volume must stay bit-equal or the
     comparison measures the material rather than the kernel.
     """
-    fields, pml = matrix.cylindrical(**dict(keywords))
+    fields, pml = matrix.cylindrical(**{"courant": MATRIX_COURANT, **dict(keywords)})
     if value_class == values.PM_ZERO_LATTICE:
         # The COMPLEX lattice: real and imaginary planes carry OPPOSITE signs of
         # zero at every cell, which is the class this family's complex helpers
@@ -383,7 +421,8 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
 
     residency = Residency()
     plan = family.plan_cylindrical_fused_magnetic_pair(
-        actual, actual_pml, sources=(), residency=residency, functions=functions)
+        actual, actual_pml, sources=(), residency=residency, functions=functions,
+        chunk_bounds=layer_record(actual.grid, actual_pml))
     if plan is None:
         reasons = family.cylindrical_fused_magnetic_pair_coverage(
             actual, actual_pml, (), residency).reasons
@@ -416,7 +455,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
 
     after = state_of(actual)
     moved = {name: differing(before[name], after[name]) for name in before}
-    still = sorted(name for name, count in moved.items() if count == 0)
+    still = floor_violations(moved, actual_pml)
     identical = (len(per_step) == steps
                  and all(row["differing_words"] == 0 for row in per_step))
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
@@ -495,12 +534,15 @@ def run_separate_control(keywords: Mapping[str, Any], seed: int, steps: int,
 
     separate_residency = Residency()
     curl = cylindrical_complex.plan_cylindrical_complex_pml_curl(
-        separate, separate_pml, "step_B", separate_residency)
+        separate, separate_pml, "step_B", separate_residency,
+        chunk_bounds=layer_record(separate.grid, separate_pml))
     magnetic = cylindrical_complex.plan_cylindrical_complex_constitutive(
-        separate, separate_pml, "H", separate_residency)
+        separate, separate_pml, "H", separate_residency,
+        chunk_bounds=layer_record(separate.grid, separate_pml))
     fused_residency = Residency()
     plan = family.plan_cylindrical_fused_magnetic_pair(
-        fused, fused_pml, sources=(), residency=fused_residency)
+        fused, fused_pml, sources=(), residency=fused_residency,
+        chunk_bounds=layer_record(fused.grid, fused_pml))
     if curl is None or magnetic is None or plan is None:
         return {"passed": False, "reason": "a declared product was refused",
                 "curl": curl is not None, "constitutive": magnetic is not None,
@@ -587,8 +629,7 @@ def needle(source: str, old: str, new: str, count: int = 1) -> str:
 #: project has already paid for: ``M_ONE`` and ``M_MANY`` compile DIFFERENT BODIES
 #: and a metallic-z line does not exist on a periodic-z source, so a needle armed on
 #: the wrong case would edit nothing and report UNCAUGHT while measuring nothing.
-def _edits(expansion: str) -> Dict[str, Tuple[str, str, str]]:
-    other = "NAIVE" if expansion == "FMA_V1" else "FMA_V1"
+def _edits() -> Dict[str, Tuple[str, str, str]]:
     zero = templates.COMPLEX_ZERO
     return {
         # ---- THE SEAM ITSELF ------------------------------------------------
@@ -602,28 +643,34 @@ def _edits(expansion: str) -> Dict[str, Tuple[str, str, str]]:
         # The i*m/r partner registers: target 0 takes `c` (Ez), target 2 takes `a`
         # (Ex). Swapping them is the single most plausible slip in this term.
         "imr_partners_swapped":
-            (M_ONE_CASE, "float2 m0 = c_mul(q0, c);", "float2 m0 = c_mul(q0, a);"),
-        # The i*m/r coefficient is on the LEFT (S:724 `factor * partner_values`).
-        # For a FULL complex product the orientation is load-bearing.
-        "imr_operands_swapped":
-            (M_ONE_CASE, "float2 m2 = c_mul(q2, a);", "float2 m2 = c_mul(a, q2);"),
-        # The row is indexed by the RADIAL index i, not by the lane or by z.
+            (M_ONE_CASE, "float2 mi0 = float2(-(q0[i] * c.y), q0[i] * c.x);",
+             "float2 mi0 = float2(-(q0[i] * a.y), q0[i] * a.x);"),
+        # quarter_turn(rinv, g) is (-(rinv*g.im), rinv*g.re); the opposite turn is
+        # the conjugate coupling.
+        "imr_quarter_turn_reversed":
+            (M_ONE_CASE, "float2 mi2 = float2(-(q2[i] * a.y), q2[i] * a.x);",
+             "float2 mi2 = float2(q2[i] * a.y, -(q2[i] * a.x));"),
+        # The row is indexed by the RADIAL index i, not by z (kept in bounds).
         "imr_row_indexed_by_z":
-            (M_ONE_CASE, "float2 q0 = c0[i];", "float2 q0 = c0[k];"),
-        # `curl - m` carries the array path's `curl + (-(c*g))`. Flipping the sign
-        # is the classic transcription slip on an additive coupling term.
+            (M_ONE_CASE, "float2 mi0 = float2(-(q0[i] * c.y), q0[i] * c.x);",
+             "float2 mi0 = float2(-(q0[k % int(nx)] * c.y), q0[k % int(nx)] * c.x);"),
+        # The increment is SUBTRACTED through MEEP's additive ladder
+        # (_apply_folded_increment); added, it is the classic sign slip.
         "imr_sign_flipped":
-            (M_ONE_CASE, "curl0 = curl0 - m0;", "curl0 = curl0 + m0;"),
-        # THE PREFIX IS Bz's WHOLE CURL on the B side (S:343-347): ONE subtract and
-        # ONE multiply. Falling back to the four-operand grouping is a different
-        # float32 number per plane and is exactly what the prefix exists to avoid.
-        "prefix_replaced_by_the_four_operand_grouping":
-            (M_ONE_CASE, "curl2 = c_mul_coefficient_left(dtdx, pu - pd);",
-             "curl2 = c_mul_coefficient_left(dtdx, ((b_x - b) + (a - a_y)));"),
-        # The extended prefix's row stride is nyz CELLS. Reading the same row twice
-        # is a zero difference everywhere, which is smooth and wrong.
-        "prefix_row_stride_dropped":
-            (M_ONE_CASE, "float2 pu = pfx[ii + nyz];", "float2 pu = pfx[ii];"),
+            (M_ONE_CASE,
+             "        v0 = du0 ? (v0 - float2(si_z * mdf0.x, si_z * mdf0.y)) "
+             ": (v0 - mdf0);",
+             "        v0 = du0 ? (v0 + float2(si_z * mdf0.x, si_z * mdf0.y)) "
+             ": (v0 + mdf0);"),
+        # Bz's WHOLE CURL is dtdx times the per-chunk radial difference; falling back
+        # to the generic stencil is a different number everywhere.
+        "radial_replaced_by_the_generic_stencil":
+            (M_ONE_CASE, "float2 curl2 = c_mul_coefficient_left(dtdx, rad[ii]);",
+             "float2 curl2 = c_mul_coefficient_left(dtdx, ((b_x - b) + a) - a_y);"),
+        # The radial difference read at the z neighbour (in bounds).
+        "radial_read_one_cell_over":
+            (M_ONE_CASE, "c_mul_coefficient_left(dtdx, rad[ii]);",
+             "c_mul_coefficient_left(dtdx, rad[(ii + 1) % int(n_elem)]);"),
         # ---- THE |m| = 1 AXIS INCREMENT (M_ONE body only) -------------------
         # NOTE: `axis_increment_accumulates` is NOT armed here. It is byte-visible
         # only on the +-0 LATTICE and leg `signed_zero` owns it, where the census
@@ -644,6 +691,11 @@ def _edits(expansion: str) -> Dict[str, Tuple[str, str, str]]:
         "axis_increment_lands_on_the_wrong_target":
             (M_ONE_CASE, "curl0 = at_x ? -inc : curl0;",
              "curl1 = at_x ? -inc : curl1;"),
+        # MEEP's bracket ((Ep[0] - Ep[z+1]) - i*m*Ez[1]) left to right; regrouped, a
+        # different float32 number.
+        "axis_bracket_regrouped":
+            (M_ONE_CASE, "float2 bracket = (b - b_z) - partner;",
+             "float2 bracket = b - (b_z + partner);"),
         # ---- THE |m| >= 2 NEAR-AXIS HOLD (M_MANY body only) -----------------
         # The hold covers all three components AND their fu (post-#3164). Dropping
         # the auxiliaries is the 1.29-era component set.
@@ -679,38 +731,28 @@ def _edits(expansion: str) -> Dict[str, Tuple[str, str, str]]:
         "zero_metal_clears_only_the_real_plane":
             (WALL_CASE, f"    v2 = at_z ? {zero} : v2;",
              "    v2 = at_z ? float2(0.0f, v2.y) : v2;"),
-        # `zero_metal_B` passes B_COMPONENTS only (S:2203); masking fu_B as well is
-        # a plausible over-carry, and it is NOT what the array path does.
+        # `zero_metal_B` passes B_COMPONENTS only; masking fu_B as well is a
+        # plausible over-carry, and it is NOT what the array path does. Armed on
+        # fu_Bx, which is stored on the z wall (its dsigu chunk is the z layer); fu_Bz
+        # is never stored on a Dcyl grid (its dsigu axis is phi).
         "zero_metal_also_masks_the_auxiliary":
-            (WALL_CASE, "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;",
-             f"    u0[ii] = n0; u1[ii] = n1; u2[ii] = at_z ? {zero} : n2;"),
+            (WALL_CASE, "    if (du0) { u0[ii] = n0; }",
+             f"    if (du0) {{ u0[ii] = at_z ? {zero} : n0; }}"),
         # ---- THE CERTIFIED COMPLEX BASE -------------------------------------
-        # THE ARM. Swapping the whole helper block to the other licensable arm is
-        # the defect the expansion probe exists to prevent. It is reachable here
-        # through the i*m/r product and the |m| = 1 scalar — both of which have a
-        # ZERO real word, where the two arms are DEGENERATE — so this row is
-        # expected to be a PREDICTED NULL rather than a catch, and it is scored
-        # that way with the reason recorded. See PREDICTED_NULL_REASON.
-        "expansion_arm_swapped":
-            (M_ONE_CASE, templates.complex_helpers(expansion),
-             templates.complex_helpers(other)),
-        # shaders.py rule 2: flattening these parens is a different float32 number.
-        #
-        # ARMED ON t1 AND ONLY t1, AND THAT IS A MEASUREMENT RATHER THAN A CHOICE.
-        # `t0` and `t2` each lead with a PHI SELF-DIFFERENCE — `c_y` is the phi wrap
-        # of `c` on a one-cell axis and is the SAME element, so `(c_y - c)` is an
-        # exact +0.0 and both associations reduce to `b - b_z`. `t2` is null twice
-        # over: on the B side `curl2` is unconditionally overwritten by the prefix
-        # block, so the whole statement is dead. Measured on this host 2026-08-20:
-        # t0 flattened 0 words, t2 flattened 0 words, t1 flattened 528 words at
-        # step 1. The two nulls are carried below as predicted nulls with that
-        # measurement, because deleting them would hide the reason.
-        "curl_parens_flattened":
-            (M_ONE_CASE, "float2 t1 = ((a_z - a) + (c - c_x));",
-             "float2 t1 = (a_z - a + c - c_x);"),
-        "curl_parens_flattened_on_the_invariant_term":
-            (M_ONE_CASE, "float2 t0 = ((c_y - c) + (b - b_z));",
-             "float2 t0 = (c_y - c + b - b_z);"),
+        # No arm-swap row: the family binds one helper block (templates.complex_helpers,
+        # products formed part by part).
+        # INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping planted
+        # in place of MEEP's left-to-right ((g1s - g1) + g2) - g2s, on target 1, the
+        # one whose two partners are both present on a Dcyl grid.
+        "curl_previous_package_grouping":
+            (M_ONE_CASE, "c_mul_coefficient_left(dtdx, ((a_z - a_dz) + c_dx) - c_x)",
+             "c_mul_coefficient_left(dtdx, (a_z - a_dz) + (c_dx - c_x))"),
+        # THE INVARIANT-AXIS TERM (KERNELS.md Appendix A): target 0's phi partner is
+        # absent and MEEP's one-partner form is (-dtdx) * (g2s - g2); the package's
+        # previous spelling kept it as a self-difference. A PREDICTED NULL.
+        "curl_invariant_term_kept_as_a_self_difference":
+            (M_ONE_CASE, "c_mul_coefficient_left(-dtdx, b_z - b_dz)",
+             "c_mul_coefficient_left(dtdx, (c_y - c_dy) + (b_dz - b_z))"),
         # step_B is FORWARD. step_D's negated strides are a different product.
         "curl_direction_reversed":
             (M_ONE_CASE, "int si = i + 1, sj = j + 1, sk = k + 1;",
@@ -721,103 +763,72 @@ def _edits(expansion: str) -> Dict[str, Tuple[str, str, str]]:
              "float2 n0 = c_mul_field_left(c_mul_field_left(p0, km_y) - curl0, si_y);",
              "float2 n0 = c_mul_field_left(c_mul_field_left(p0, km_z) - curl0, si_z);"),
         "fu_store_dropped":
-            (M_ONE_CASE, "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;",
-             "    u1[ii] = n1; u2[ii] = n2;"),
+            (M_ONE_CASE, "    if (du0) { u0[ii] = n0; }\n", ""),
         "flux_store_dropped":
             (M_ONE_CASE, "    f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;",
              "    f1[ii] = v1; f2[ii] = v2;"),
         "fw_store_dropped":
-            (M_ONE_CASE, "    w0[ii] = src0;", "    // stale f_w_Hx"),
+            (M_ONE_CASE, "    if (dw0) { w0[ii] = src0; }", "    // stale f_w_Hx"),
         # The dsigw index is the component's OWN axis (S:226-227), not the curl's
         # cycle. Moving it one axis over is a silent half-cell error.
         "constitutive_coefficient_index_moved":
             (M_ONE_CASE, "float kp_0 = kp0[i], km_0 = km0[i];",
              "float kp_0 = kp0[j], km_0 = km0[j];"),
-        "constitutive_accumulations_reversed":
+        "constitutive_coefficients_exchanged":
             (M_ONE_CASE,
-             "    a0 = a0 + c_mul_coefficient_left(kp_0, src0);\n"
-             "    a0 = a0 - c_mul_coefficient_left(km_0, prev0);",
-             "    a0 = a0 - c_mul_coefficient_left(km_0, src0);\n"
-             "    a0 = a0 + c_mul_coefficient_left(kp_0, prev0);"),
-        # `prev` is read BEFORE `fw` is written (S:2083-2085). Reversed, this is
-        # wrong only where kms != 0 -- INSIDE THE PML ONLY -- and looks like a
-        # slightly worse absorber, not like a bug.
+             "a0 = h0[ii] + (c_mul_coefficient_left(kp_0, src0) - "
+             "c_mul_coefficient_left(km_0, prev0));",
+             "a0 = h0[ii] + (c_mul_coefficient_left(km_0, src0) - "
+             "c_mul_coefficient_left(kp_0, prev0));"),
+        # INVERTED (KERNELS.md §7.1): the package's previous constitutive grouping
+        # ((f + kps*src) - kms*prev) in place of MEEP's f + ((kps*src) - (kms*prev)).
+        "constitutive_previous_package_grouping":
+            (M_ONE_CASE,
+             "a0 = h0[ii] + (c_mul_coefficient_left(kp_0, src0) - "
+             "c_mul_coefficient_left(km_0, prev0));",
+             "a0 = (h0[ii] + c_mul_coefficient_left(kp_0, src0)) - "
+             "c_mul_coefficient_left(km_0, prev0);"),
+        # `prev` is read BEFORE `fw` is written. Reversed, this is wrong only on the
+        # dsigw cells -- INSIDE THE PML ONLY -- and looks like a slightly worse
+        # absorber, not like a bug.
         "constitutive_prev_read_after_write":
             (M_ONE_CASE,
-             "    float2 prev0 = w0[ii];\n"
+             "    float2 prev0 = dw0 ? w0[ii] : float2(0.0f, 0.0f);\n"
              "    // THE SEAM: the register step_B just wrote, not a reload of Bx.\n"
              "    float2 src0 = v0;\n"
-             "    w0[ii] = src0;",
+             "    if (dw0) { w0[ii] = src0; }",
              "    // THE SEAM: the register step_B just wrote, not a reload of Bx.\n"
              "    float2 src0 = v0;\n"
-             "    w0[ii] = src0;\n"
-             "    float2 prev0 = w0[ii];"),
+             "    if (dw0) { w0[ii] = src0; }\n"
+             "    float2 prev0 = dw0 ? w0[ii] : float2(0.0f, 0.0f);"),
     }
 
 
 #: The rows scored on NOT diverging, with the measured reason each is null for.
 #:
-#: THE ARM SWAP IS A PREDICTED NULL ON THIS FAMILY, and that is a MEASURED property
-#: of the cylindrical tranche rather than a convenience. FMA_V1 and NAIVE differ
-#: only where a complex product's coefficient has a NONZERO real part: with
-#: ``c_re = ±0.0`` the product ``c_re * z_re`` is exact, so
-#: ``fma(c_re, z_re, -(c_im*z_im))`` and ``(c_re*z_re) - (c_im*z_im)`` are the same
-#: single-rounding operation. This kernel's only general complex products are the
-#: two i*m/r rows (real word exactly ``+0.0`` — the ``(-1j) * X`` spelling launders
-#: the sign) and the |m| = 1 scalar ``1j*(m*dtdx)`` (real word ``±0.0``). Every
-#: other multiply takes a REAL coefficient, where the arms coincide by construction.
-#: THIS FAMILY HAS NO BLOCH ROTATION — it refuses a ``k_point`` by name — so unlike
-#: the complex twin there is no phased row on which the arm becomes visible.
-#:
-#: So the row is armed, run, and scored on being NULL. Reporting it as caught would
-#: be false; deleting it would hide the fact that the arm binding is INERT here,
-#: which a reader of ``leg_expansion`` needs to know.
 PREDICTED_NULL: Dict[str, str] = {
-    "expansion_arm_swapped":
-        "the two arms differ only where a complex product's coefficient has a "
-        "NONZERO real word, and every general complex product in this kernel takes "
-        "a coefficient whose real word is a zero (the i*m/r rows are exactly +0.0, "
-        "the |m| = 1 scalar is ±0.0) — measured by the cylindrical tranche's own "
-        "probe, which reports AMBIGUOUS_BOTH for both orientations. This family "
-        "compiles no Bloch rotation, so there is no phased row on which the arm is "
-        "discriminating. The binding is inert HERE and is still bound from a "
-        "measured artifact, because a later widening could make it live.",
-    "imr_operands_swapped":
-        "the i*m/r coefficient's REAL WORD IS EXACTLY +0.0 on every entry of every "
-        "row this family binds (measured on this host 2026-08-20: 16/16 words are "
-        "0x00000000 at m = +-1 and m = 3, on both targets, because "
-        "stepping:713-718 spells the numerator (-1j) * X and the cross-term "
-        "subtraction launders the sign for both signs of X). With c_re = +-0.0 the "
-        "product c_re * z_re is exact, so c_mul(q, z) and c_mul(z, q) are the same "
-        "single-rounding operation on both planes. THE ORIENTATION IS STILL WHAT "
-        "THE ARRAY PATH COMPUTES and is kept for that reason, pinned by a "
-        "source-text assertion in meep_gpu/test_metal_cylindrical_fused_magnetic_"
-        "pair.py; if a future change ever gives a coefficient row a nonzero real "
-        "word, this row must be re-armed as a catch.",
-    "curl_parens_flattened_on_the_invariant_term":
-        "t0 leads with the PHI SELF-DIFFERENCE (c_y - c). phi has n = 1, so the "
-        "wrap returns the SAME element and the difference is an exact +0.0; both "
-        "associations then reduce to `b - b_z` and no word can differ. Measured on "
-        "this host 2026-08-20: 0 differing words over 12 complete steps, against "
-        "528 for the identical edit on t1, which carries no invariant-axis operand "
-        "and is armed as a catch. The grouping is kept because it is what the "
-        "array path computes and is pinned by a source-text assertion.",
+    "curl_invariant_term_kept_as_a_self_difference":
+        "target 0's phi partner is absent on a Dcyl grid and (c_y - c_dy) is an exact "
+        "+0.0 (phi has n = 1, so the wrap returns the SAME element); the package's "
+        "previous spelling then equals MEEP's one-partner form on every word but the "
+        "sign of a zero curl, which reaches a stored word only through a field word of "
+        "the opposite zero. Its sibling on target 1, whose two partners are live, is "
+        "armed as a catch (curl_previous_package_grouping).",
 }
 
 
 #: THE VALUE-CLASS FINDING, measured 2026-08-20 on both backends.
 VALUE_CLASS_FINDING = (
     "the increment REPLACES row 0 rather than accumulating, and after the "
-    "ownership mask that row is exactly +0.0 — so `+0.0 + x` and `x` differ ONLY "
-    "at x = -0.0. WHICH VALUE CLASS REACHES THAT IS THE WHOLE QUESTION. A random "
-    "seed reaches it with probability zero. A ZERO-INIT state cannot manufacture "
-    "it on this seam either: Bx's split-field dsig axis is PHI, whose kms is 1.0 "
-    "and never negative, so the `fu * kms` minuend from an all-+0.0 state is "
-    "+0.0. A +-0 LATTICE DOES: it puts -0.0 words into `fu` itself and "
-    "`-0.0 * 1.0` keeps the sign. MEASURED: NULL under random seeding and under "
-    "zero-init with 2- and 3-cell absorbers, CAUGHT on the lattice on both "
-    "backends. The first cut of this gate swept zero-init only and reported the "
-    "defect UNCAUGHT; the pair of rows is what corrects it.")
+    "ownership mask that row is exactly +0.0 — so `-inc` and `+0.0 - inc` differ "
+    "ONLY where the increment's real word is an exact +0.0, and that reaches a "
+    "stored word only through a field (or auxiliary) word -0.0. WHICH VALUE CLASS "
+    "REACHES THAT IS THE WHOLE QUESTION. A random seed reaches it with probability "
+    "zero. A ZERO-INIT state cannot manufacture it on this seam either: Bx's dsig "
+    "axis is PHI, whose kms is 1.0 and never negative. A +-0 LATTICE DOES: it puts "
+    "-0.0 words into the field and the auxiliary themselves, and `-0.0 * 1.0` keeps "
+    "the sign. The pair of rows — null under zero-init, caught on the lattice — is "
+    "what this leg measures.")
 
 
 #: THE ARM SWAPS: the WHOLE body of another m class compiled for a case, which is the
@@ -832,14 +843,13 @@ ARM_SWAPS: Dict[str, Tuple[str, int]] = {
 }
 
 
-def shader_mutations(specialisations: Mapping[str, Tuple[int, int, Sequence[bool]]],
-                     expansion: str) -> Dict[str, Dict[str, Any]]:
+def shader_mutations(specialisations: Mapping[str, Tuple[int, int, Sequence[bool]]]) -> Dict[str, Dict[str, Any]]:
     """Compile every armed defect against the source of the case it is scored on."""
     mutants: Dict[str, Dict[str, Any]] = {}
-    for name, (case, old, new) in _edits(expansion).items():
+    for name, (case, old, new) in _edits().items():
         bcz, arm, walls = specialisations[case]
         base = family.cylindrical_fused_magnetic_pair_source(
-            bcz, arm, walls, expansion)
+            bcz, arm, walls)
         mutants[name] = {
             "case": case,
             "functions": {shaders.CONTRACT_OFF:
@@ -850,7 +860,7 @@ def shader_mutations(specialisations: Mapping[str, Tuple[int, int, Sequence[bool
         bcz, arm, walls = specialisations[case]
         assert other_arm != arm, (name, arm)
         swapped = family.cylindrical_fused_magnetic_pair_source(
-            bcz, other_arm, walls, expansion)
+            bcz, other_arm, walls)
         mutants[name] = {
             "case": case,
             "functions": {shaders.CONTRACT_OFF:
@@ -859,8 +869,7 @@ def shader_mutations(specialisations: Mapping[str, Tuple[int, int, Sequence[bool
     return mutants
 
 
-def byte_neutral_source(bcz: int, arm: int, walls: Sequence[bool],
-                        expansion: str) -> str:
+def byte_neutral_source(bcz: int, arm: int, walls: Sequence[bool]) -> str:
     """The seam replaced by a RELOAD of the words the curl half just stored.
 
     Not a defect. ``f0[ii] = v0`` executes three lines above, so ``f0[ii]`` and
@@ -869,7 +878,7 @@ def byte_neutral_source(bcz: int, arm: int, walls: Sequence[bool],
     therefore the fusion's central claim written as a program, and leg
     ``byte_neutral_control`` requires it NOT to diverge.
     """
-    source = family.cylindrical_fused_magnetic_pair_source(bcz, arm, walls, expansion)
+    source = family.cylindrical_fused_magnetic_pair_source(bcz, arm, walls)
     for target in range(3):
         source = needle(source, f"float2 src{target} = v{target};",
                         f"float2 src{target} = f{target}[ii];")
@@ -932,124 +941,35 @@ def swap_imr_rows(plan: Any, pml: Any, residency: Residency) -> None:
             [plan._args[IMR_ROW_SLOTS[1]], plan._args[IMR_ROW_SLOTS[0]]])
 
 
-def naive_params_tensor(plan: Any, pml: Any, residency: Residency) -> None:
-    """HOST DEFECT: the NAIVE end-to-end Params record — the alignment trap, armed.
-
-    THE MOST IMPORTANT HOST MUTATION IN THIS FILE, because it is the one a future
-    editor is most likely to write by accident. Metal aligns ``float2`` to 8 bytes;
-    a NumPy record whose fields are laid end to end puts ``inc_b`` one word early
-    once the scalars come first. Shipped, ``inc_b`` is FIRST and the natural offsets
-    coincide, so this mutant reproduces the trap by moving it LAST.
-
-    The result is not a crash and not noise: ``inc_b`` reads a well-formed complex
-    number built from its neighbours' words. This mutation is what turns "the layout
-    was measured" from a docstring into a gate row.
-    """
+def params_axis_factor_and_m_word_swapped(plan: Any, pml: Any,
+                                           residency: Residency) -> None:
+    """HOST DEFECT: the shipped Params record with ``axis_factor`` and ``m_word``
+    exchanged — two adjacent 4-byte scalars of the same type, the swap a hand-edited
+    record field order makes. On the |m| = 1 case the axis rule then scales by m and
+    turns the partner by Courant: a plausible field, not a crash."""
     import torch  # noqa: PLC0415
 
-    naive = np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"),
-                      ("n_elem", "<u4"), ("zrows", "<u4"), ("dtdx", "<f4"),
-                      ("minus_dtdx", "<f4"), ("axis_coef", "<f4"),
-                      ("inc_b", "<f4", 2)])
-    record = np.zeros(1, dtype=naive)
-    nx, ny, nz = plan.shape
-    record["nx"], record["ny"], record["nz"] = nx, ny, nz
-    record["n_elem"] = nx * ny * nz
-    record["zrows"] = plan.zero_rows
-    record["dtdx"] = np.float32(plan.dtdx)
-    minus_dtdx, inc_b = cylindrical_complex.axis_increment_scalars(
-        _M_OF_CASE[M_ONE_CASE], plan.dtdx)
-    record["minus_dtdx"] = np.float32(minus_dtdx)
-    record["axis_coef"] = np.float32(cylindrical_complex.axis_coefficient(plan.dtdx))
-    record["inc_b"] = (np.float32(inc_b[0]), np.float32(inc_b[1]))
-    words_ = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
-    pad = (family.PARAMS_ITEMSIZE - words_.nbytes) // 4
-    if pad > 0:
-        words_ = np.concatenate([words_, np.zeros(pad, dtype=np.int32)])
+    dtype = family.params_record_dtype()
+    words_ = plan.params.cpu().numpy().copy()
+    a = dtype.fields["axis_factor"][1] // 4
+    m = dtype.fields["m_word"][1] // 4
+    words_[a], words_[m] = words_[m], words_[a]
     _rebind(plan, (PARAMS_SLOT,),
             (torch.from_numpy(words_).to(torch.device(residency.device)),))
 
-
-#: m per case name, so the params mutation can rebuild the scalars the shipped plan
-#: computed without re-deriving them from the plan (which does not hold m).
-_M_OF_CASE: Dict[str, int] = {name: int(kw.get("m", 1)) for name, kw in CASES}
 
 HOST_MUTATIONS: Dict[str, Callable[[Any, Any, Residency], None]] = {
     "curl_takes_the_integer_lattice": swap_curl_lattice,
     "h_half_takes_the_half_integer_lattice": swap_h_lattice,
     "imr_rows_swapped_between_targets": swap_imr_rows,
-    "params_record_uses_the_naive_layout": naive_params_tensor,
+    "params_record_axis_factor_and_m_word_swapped":
+        params_axis_factor_and_m_word_swapped,
 }
 
 
 # ---------------------------------------------------------------------------
 # Legs
 # ---------------------------------------------------------------------------
-
-def leg_expansion() -> Dict[str, Any]:
-    """Which arm was bound, from which artifact, and the three refusals.
-
-    THE ARM IS NOT A FREE CHOICE. A complex product has two licensable
-    transcription arms and which one the REFERENCE takes is a measured platform
-    fact. This family binds through the CYLINDRICAL family's probe, which classifies
-    SEVEN orientations — ``complex_fields``' base five plus the i*m/r row and the
-    |m| = 1 scalar — because this kernel performs all seven. Reading the plain
-    complex family's five-pattern artifact would licence a kernel from a record that
-    never measured two of its calls.
-
-    Four questions:
-
-    1. an artifact must be present and must name exactly one arm;
-    2. a MISSING probe must refuse — never a default arm;
-    3. an AMBIGUOUS probe must ALSO refuse;
-    4. a record carrying only the BASE FIVE patterns must refuse, which is what
-       makes the separate environment variable load-bearing rather than decorative.
-
-    AND THE CONSEQUENCE THIS LEG RECORDS RATHER THAN LEAVES IMPLICIT: on this family
-    the arm is INERT. Every general complex product here has a coefficient whose
-    real word is a zero, so the two arms coincide bit for bit — see
-    :data:`PREDICTED_NULL`. The binding is still made from a measurement, because a
-    widening (a z Bloch phase, an E-side ``inv_eps``) would make it live.
-    """
-    global EXPANSION, PROBE_ARTIFACT
-    configured = os.environ.get(cylindrical_complex.PROBE_PATH_ENVIRONMENT)
-    record = cylindrical_complex.load_expansion_probe()
-    arm = cylindrical_complex.expansion_from_probe(record)
-    EXPANSION, PROBE_ARTIFACT = arm, configured
-
-    missing_refused = cylindrical_complex.expansion_from_probe(None) is None
-    ambiguous = {"backend": cylindrical_complex.PROBE_BACKEND,
-                 "patterns": {name: "AMBIGUOUS_BOTH"
-                              for name in cylindrical_complex.CYLINDRICAL_PROBE_PATTERNS}}
-    ambiguous_refused = cylindrical_complex.expansion_from_probe(ambiguous) is None
-    base_only = {"backend": cylindrical_complex.PROBE_BACKEND,
-                 "patterns": {name: value
-                              for name, value in ((record or {}).get("patterns")
-                                                  or {}).items()
-                              if name not in (cylindrical_complex.IMR_ROW_PROBE_PATTERN,
-                                              cylindrical_complex.AXIS_SCALAR_PROBE_PATTERN)}}
-    base_only_refused = cylindrical_complex.expansion_from_probe(base_only) is None
-
-    digest = (hashlib.sha256(Path(configured).read_bytes()).hexdigest()
-              if configured and Path(configured).is_file() else None)
-    return {
-        "passed": bool(arm in templates.EXPANSIONS and missing_refused
-                       and ambiguous_refused and base_only_refused),
-        "arm": arm,
-        "probe_artifact": configured,
-        "probe_sha256": digest,
-        "probe_backend": (record or {}).get("backend"),
-        "probe_patterns": (record or {}).get("patterns"),
-        "required_patterns": list(cylindrical_complex.CYLINDRICAL_PROBE_PATTERNS),
-        "host_numpy": np.__version__,
-        "missing_probe_refused": missing_refused,
-        "ambiguous_probe_refused": ambiguous_refused,
-        "base_five_only_probe_refused": base_only_refused,
-        "note": "the arm is INERT on this family: every general complex product "
-                "here takes a coefficient whose real word is a zero, and there is "
-                "no Bloch rotation. The arm-swap mutation is therefore a PREDICTED "
-                "NULL and is scored as one.",
-    }
 
 
 #: The absorber depths leg ``signed_zero`` sweeps, and the one that is VACUOUS.
@@ -1085,7 +1005,7 @@ def _thin_absorber(keywords: Mapping[str, Any], depth: int,
     """
     from meep_gpu.pml import PML  # noqa: PLC0415
 
-    fields, _pml = matrix.cylindrical(**dict(keywords))
+    fields, _pml = matrix.cylindrical(**{"courant": MATRIX_COURANT, **dict(keywords)})
     # THE DRAW IS INDEPENDENT OF THE ABSORBER DEPTH, deliberately: the depth axis
     # of this leg is about which coefficients go negative, and a lattice that also
     # changed with it would confound the two. Seeded from a DIGEST, not hash(),
@@ -1126,7 +1046,8 @@ def _zero_init_launch(keywords: Mapping[str, Any], depth: int,
     actual, actual_pml = _thin_absorber(keywords, depth, value_class, draw)
     residency = Residency()
     plan = family.plan_cylindrical_fused_magnetic_pair(
-        actual, actual_pml, sources=(), residency=residency, functions=functions)
+        actual, actual_pml, sources=(), residency=residency, functions=functions,
+        chunk_bounds=layer_record(actual.grid, actual_pml))
     assert plan is not None, family.cylindrical_fused_magnetic_pair_coverage(
         actual, actual_pml, (), residency).reasons
     before = frozen(actual)
@@ -1172,8 +1093,7 @@ def leg_signed_zero() -> Dict[str, Any]:
     """
     rows: List[Dict[str, Any]] = []
     base = family.cylindrical_fused_magnetic_pair_source(
-        templates.METALLIC, cylindrical_complex.M_ONE, (False, False, True),
-        EXPANSION or "FMA_V1")
+        templates.METALLIC, cylindrical_complex.M_ONE, (False, False, True))
     # THE TWO NEEDLES WHOSE VISIBILITY IS A QUESTION ABOUT THE VALUE CLASS. Both
     # differ from the shipped spelling ONLY in the sign of a zero, so both are
     # invisible on a uniform seed by construction; whether they are visible at all
@@ -1182,8 +1102,9 @@ def leg_signed_zero() -> Dict[str, Any]:
         "axis_increment_accumulates":
             ("curl0 = at_x ? -inc : curl0;",
              "curl0 = at_x ? (curl0 - inc) : curl0;"),
-        "imr_operands_swapped":
-            ("float2 m2 = c_mul(q2, a);", "float2 m2 = c_mul(a, q2);"),
+        "imr_quarter_turn_as_a_complex_product":
+            ("float2 mi2 = float2(-(q2[i] * a.y), q2[i] * a.x);",
+             "float2 mi2 = c_mul(float2(0.0f, q2[i]), a);"),
     }
     compiled = {name: {shaders.CONTRACT_OFF:
                        compile_source(needle(base, old, new)
@@ -1244,9 +1165,10 @@ def leg_signed_zero() -> Dict[str, Any]:
                 entry["axis_increment_accumulates_differing_words"]
             for entry in rows},
         "accumulate_mutant_null_under_zero_init": null_on_zero_init,
-        "imr_operands_swapped_by_row": {
+        "imr_quarter_turn_as_a_complex_product_by_row": {
             f"{entry['value_class']}/draw{entry['draw']}@{entry['absorber_cells']}":
-                entry["imr_operands_swapped_differing_words"] for entry in rows},
+                entry["imr_quarter_turn_as_a_complex_product_differing_words"]
+            for entry in rows},
         "reason": VALUE_CLASS_FINDING,
     }
 
@@ -1289,43 +1211,46 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     f0[0] = float2(float(nx), float(ny));
     f0[1] = float2(float(nz), float(n_elem));
     f0[2] = float2(float(zrows), dtdx);
-    f0[3] = float2(minus_dtdx, axis_coef);
-    f0[4] = inc_b;
+    f0[3] = float2(axis_factor, m_word);
+    f0[4] = float2(float(cb.cb_presence), float(cb.cbi_x_a1));
 """)
     readback = templates.substitute(readback, {
         "__CONTRACT__": shaders.contraction_pragma(shaders.CONTRACT_OFF),
-        "__HELPERS__": templates.complex_helpers(EXPANSION or "FMA_V1"),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": chunk_bounds_module.struct_source(),
+        "__RECORD_MEMBER__": chunk_bounds_module.params_member(),
+        "__RECORD_ALIAS__": chunk_bounds_module.params_alias(),
     })
     function = compile_source(readback).cylindrical_fused_magnetic_pair_step
     out = torch.zeros(8, dtype=torch.complex64, device="mps")
-    others = [torch.zeros(8, dtype=torch.complex64, device="mps") for _ in range(14)]
-    reals = [torch.zeros(8, dtype=torch.float32, device="mps") for _ in range(12)]
+    others = [torch.zeros(8, dtype=torch.complex64, device="mps") for _ in range(15)]
+    reals = [torch.zeros(8, dtype=torch.float32, device="mps") for _ in range(14)]
     record = np.zeros(1, dtype=family.params_record_dtype())
     record["nx"], record["ny"], record["nz"] = 5, 6, 7
     record["n_elem"] = 210
     record["zrows"] = 3
-    record["dtdx"] = np.float32(0.37)
-    record["minus_dtdx"] = np.float32(-0.37)
-    record["axis_coef"] = np.float32(1.48)
-    record["inc_b"] = (np.float32(-0.0), np.float32(-0.37))
+    record["dtdx"] = np.float32(0.375)
+    record["axis_factor"] = np.float32(-0.375)
+    record["m_word"] = np.float32(-1.0)
+    record["cb"] = chunk_bounds_module.pack(every_cell_record((5, 6, 7)))
     params = torch.from_numpy(
         np.frombuffer(record.tobytes(), dtype=np.int32).copy()).to("mps")
-    # Argument order is the signature's: 9 complex volumes, prefix, 2 imr rows,
-    # 6 real curl coefficients, 6 complex constitutive volumes, 6 real ones, Params.
-    function(out, *others[:8], *others[8:11], *reals[:6], *others[11:14],
-             *[torch.zeros(8, dtype=torch.complex64, device="mps") for _ in range(3)],
-             *reals[6:12], params, threads=1)
+    # Argument order is the signature's: 9 complex volumes, the radial difference,
+    # 2 real i*m/r rows, 6 real curl coefficients, 6 complex constitutive volumes,
+    # 6 real ones, Params.
+    function(out, *others[:8], others[8], *reals[:2], *reals[2:8], *others[9:15],
+             *reals[8:14], params, threads=1)
     torch.mps.synchronize()
     got = out.cpu().numpy()
     fields_ok = {
         "nx": float(got[0].real) == 5.0, "ny": float(got[0].imag) == 6.0,
         "nz": float(got[1].real) == 7.0, "n_elem": float(got[1].imag) == 210.0,
         "zrows": float(got[2].real) == 3.0,
-        "dtdx": np.float32(got[2].imag) == np.float32(0.37),
-        "minus_dtdx": np.float32(got[3].real) == np.float32(-0.37),
-        "axis_coef": np.float32(got[3].imag) == np.float32(1.48),
-        "inc_b_re_is_negative_zero": np.signbit(np.float32(got[4].real)),
-        "inc_b_im": np.float32(got[4].imag) == np.float32(-0.37),
+        "dtdx": np.float32(got[2].imag) == np.float32(0.375),
+        "axis_factor": np.float32(got[3].real) == np.float32(-0.375),
+        "m_word": np.float32(got[3].imag) == np.float32(-1.0),
+        "record_presence": float(got[4].real) == float(record["cb"]["cb_presence"][0]),
+        "record_first_run_end": float(got[4].imag) == float(record["cb"]["cbi_x_a1"][0]),
     }
     return {
         "passed": bool(separate_failed and over_failed and all(fields_ok.values())),
@@ -1344,8 +1269,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
 
 
 def leg_needle_reachability(
-        specialisations: Mapping[str, Tuple[int, int, Sequence[bool]]],
-        expansion: str) -> Dict[str, Any]:
+        specialisations: Mapping[str, Tuple[int, int, Sequence[bool]]]) -> Dict[str, Any]:
     """Every needle must be PRESENT in the source of the case it is scored on.
 
     THE DEAD-BRANCH CHECK, and it is the reason this leg exists at all. A mutation
@@ -1357,12 +1281,12 @@ def leg_needle_reachability(
     guard says they must be — a needle that were present everywhere would mean the
     specialisation had stopped specialising.
     """
-    edits = _edits(expansion)
+    edits = _edits()
     present: Dict[str, bool] = {}
     for name, (case, old, _new) in edits.items():
         bcz, arm, walls = specialisations[case]
         source = family.cylindrical_fused_magnetic_pair_source(
-            bcz, arm, walls, expansion)
+            bcz, arm, walls)
         present[name] = old in source
 
     # THE CROSS-CHECKS. Each asks whether a needle armed on one arm is ABSENT from
@@ -1371,13 +1295,13 @@ def leg_needle_reachability(
     m_many_bcz, m_many_arm, m_many_walls = specialisations[M_MANY_CASE]
     m_zero_bcz, m_zero_arm, m_zero_walls = specialisations[M_ZERO_CASE]
     m_one_source = family.cylindrical_fused_magnetic_pair_source(
-        m_one_bcz, m_one_arm, m_one_walls, expansion)
+        m_one_bcz, m_one_arm, m_one_walls)
     m_many_source = family.cylindrical_fused_magnetic_pair_source(
-        m_many_bcz, m_many_arm, m_many_walls, expansion)
+        m_many_bcz, m_many_arm, m_many_walls)
     m_zero_source = family.cylindrical_fused_magnetic_pair_source(
-        m_zero_bcz, m_zero_arm, m_zero_walls, expansion)
+        m_zero_bcz, m_zero_arm, m_zero_walls)
     periodic_source = family.cylindrical_fused_magnetic_pair_source(
-        templates.PERIODIC, m_one_arm, (False, False, False), expansion)
+        templates.PERIODIC, m_one_arm, (False, False, False))
     zero = templates.COMPLEX_ZERO
     absent = {
         "axis_increment_absent_from_the_m_many_body":
@@ -1387,8 +1311,8 @@ def leg_needle_reachability(
         # THE m = 0 BODY (2026-09-04): no coupling, no increment, no hold — and its
         # own clear is absent from the two |m| >= 1 bodies.
         "imr_coupling_absent_from_the_m_zero_body":
-            "float2 q0 = c0[i];" not in m_zero_source
-            and "c_mul(q0, c)" not in m_zero_source,
+            "float2 mi0 = " not in m_zero_source
+            and "float2 mi2 = " not in m_zero_source,
         "axis_increment_absent_from_the_m_zero_body":
             "curl0 = at_x ? -inc : curl0;" not in m_zero_source,
         "near_axis_hold_absent_from_the_m_zero_body":
@@ -1419,8 +1343,7 @@ def leg_needle_reachability(
     }
 
 
-def leg_transcription(bcz: int, arm: int, walls: Sequence[bool],
-                      expansion: str) -> Dict[str, Any]:
+def leg_transcription(bcz: int, arm: int, walls: Sequence[bool]) -> Dict[str, Any]:
     """Both halves must be the CERTIFIED emitters' own bytes.
 
     The module claims its arithmetic is lifted rather than retyped. That is a
@@ -1434,13 +1357,13 @@ def leg_transcription(bcz: int, arm: int, walls: Sequence[bool],
     """
     from meep_gpu.metal_kernels import complex_fused_magnetic_pair as twin
 
-    source = family.cylindrical_fused_magnetic_pair_source(bcz, arm, walls, expansion)
-    curl = family.certified_cylindrical_curl_body(bcz, arm, expansion)
+    source = family.cylindrical_fused_magnetic_pair_source(bcz, arm, walls)
+    curl = family.certified_cylindrical_curl_body(bcz, arm)
     head, tail = curl.split(family._CURL_STORE, 1)
     curl_head_present = head in source
     curl_tail_present = (family._CURL_STORE + tail) in source
 
-    certified = twin.certified_constitutive_body(expansion).splitlines()
+    certified = twin.certified_constitutive_body().splitlines()
     marker = "    // --- update_H (stepping.update_H"
     spliced = [line for line in source.split(marker, 1)[1].splitlines()
                if "// THE SEAM:" not in line]
@@ -1452,7 +1375,7 @@ def leg_transcription(bcz: int, arm: int, walls: Sequence[bool],
     expected = [(f"    float2 src{t} = g{t}[ii];", f"    float2 src{t} = v{t};")
                 for t in range(3)]
     lengths_match = len(certified) == len(spliced)
-    helpers_present = templates.complex_helpers(expansion) in source
+    helpers_present = templates.complex_helpers() in source
     return {
         "passed": bool(curl_head_present and curl_tail_present and lengths_match
                        and changed == expected and helpers_present),
@@ -1517,7 +1440,8 @@ def leg_refusal() -> Dict[str, Any]:
     magnetic_named = [r for r in magnetic_coverage.reasons
                       if "is magnetic" in r and "driver.py:3283-3284" in r]
     magnetic_plan = family.plan_cylindrical_fused_magnetic_pair(
-        fields, pml, sources=(magnetic,), residency=residency)
+        fields, pml, sources=(magnetic,), residency=residency,
+        chunk_bounds=layer_record(fields.grid, pml))
 
     electric = _volume_source(fields, "Ez")
     electric_coverage = family.cylindrical_fused_magnetic_pair_coverage(
@@ -1534,7 +1458,8 @@ def leg_refusal() -> Dict[str, Any]:
     m0c_coverage = family.cylindrical_fused_magnetic_pair_coverage(
         m0c_fields, m0c_pml, (), m0c_residency)
     m0c_plan = family.plan_cylindrical_fused_magnetic_pair(
-        m0c_fields, m0c_pml, sources=(), residency=m0c_residency)
+        m0c_fields, m0c_pml, sources=(), residency=m0c_residency,
+        chunk_bounds=layer_record(m0c_fields.grid, m0c_pml))
     # ...and the REAL family refuses the same run on the same clause, the other way.
     from meep_gpu.metal_kernels import cylindrical_real  # noqa: PLC0415
 
@@ -1615,17 +1540,6 @@ def main() -> int:
     started = time.perf_counter()
     rows: List[Dict[str, Any]] = []
 
-    # THE EXPANSION LEG RUNS FIRST AND EVERY LATER LEG READS ITS ARM. A leg that ran
-    # before it would bind a guess, which is the one thing this family may not do.
-    expansion_row = leg_expansion()
-    if EXPANSION is None:
-        raise SystemExit(
-            "no complex-multiply expansion arm could be bound from a measured "
-            f"artifact (${cylindrical_complex.PROBE_PATH_ENVIRONMENT}); which arm "
-            f"the {cylindrical_complex.PROBE_BACKEND} reference takes on this "
-            "family's SEVEN orientations is a platform fact this gate refuses to "
-            "guess")
-
     specialisations: Dict[str, Tuple[int, int, Tuple[bool, ...]]] = {}
     for name in (M_ONE_CASE, M_MANY_CASE, M_ZERO_CASE, WALL_CASE):
         probe_fields, probe_pml = build(cases[name], 1)
@@ -1643,25 +1557,19 @@ def main() -> int:
         f"{WALL_CASE} does not wall z; the wall mutations would be armed on lines "
         f"the shipped kernel does not emit")
 
-    mutants = shader_mutations(specialisations, EXPANSION)
+    mutants = shader_mutations(specialisations)
     bcz, arm, walls = specialisations[M_ONE_CASE]
     neutral = {shaders.CONTRACT_OFF:
-               compile_source(byte_neutral_source(bcz, arm, walls, EXPANSION)
+               compile_source(byte_neutral_source(bcz, arm, walls)
                               ).cylindrical_fused_magnetic_pair_step}
 
     controls = ("m1_z_metallic", "m3_z_metallic", "m1_z_periodic", "m0_z_metallic")
-    total = (1 + 1 + 1 + 1 + 1 + len(CASES) + len(CASES) + 1 + len(controls)
+    total = (1 + 1 + 1 + 1 + len(CASES) + len(CASES) + 1 + len(controls)
              + 1 + 1 + len(mutants) + len(HOST_MUTATIONS) + 1)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     jsonl = args.out.with_suffix(".jsonl")
     index = 0
     with jsonl.open("w", encoding="utf-8") as handle:
-        index += 1
-        rows.append({"index": index, "total": total, "leg": "expansion",
-                     "label": "the_arm_is_bound_from_a_seven_pattern_artifact",
-                     **expansion_row})
-        emit(handle, rows[-1])
-
         index += 1
         rows.append({"index": index, "total": total, "leg": "binding_ceiling",
                      "label": "thirty_one_of_thirty_one_with_zero_headroom",
@@ -1671,13 +1579,13 @@ def main() -> int:
         index += 1
         rows.append({"index": index, "total": total, "leg": "needle_reachability",
                      "label": "every_needle_is_in_the_body_it_is_scored_on",
-                     **leg_needle_reachability(specialisations, EXPANSION)})
+                     **leg_needle_reachability(specialisations)})
         emit(handle, rows[-1])
 
         index += 1
         rows.append({"index": index, "total": total, "leg": "transcription",
                      "label": "both_halves_are_the_certified_bytes",
-                     **leg_transcription(bcz, arm, walls, EXPANSION)})
+                     **leg_transcription(bcz, arm, walls)})
         emit(handle, rows[-1])
 
         index += 1
@@ -1800,8 +1708,6 @@ def main() -> int:
                    "host_mutations": len(HOST_MUTATIONS),
                    "byte_neutral_controls": 1},
         "predicted_null_reasons": PREDICTED_NULL,
-        "expansion_arm": EXPANSION,
-        "expansion_probe": PROBE_ARTIFACT,
         "environment": ENVIRONMENT,
         "mutation_cases": {"m_one": M_ONE_CASE, "m_many": M_MANY_CASE,
                            "m_zero": M_ZERO_CASE, "wall": WALL_CASE},
@@ -1840,7 +1746,7 @@ def main() -> int:
         },
         "kernel_source_sha256": {
             label: hashlib.sha256(source.encode("utf-8")).hexdigest()
-            for label, source in family.enumerate_sources(EXPANSION).items()
+            for label, source in family.enumerate_sources().items()
         },
     }
     from gate_provenance import stamp as _stamp_provenance  # noqa: PLC0415

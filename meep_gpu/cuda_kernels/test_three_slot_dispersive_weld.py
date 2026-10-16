@@ -10,8 +10,9 @@ between its own two device groups:
    ``fused_polarization_pair``'s own per-pole renames, IMPORTED rather than copied, so
    a certified string that drifts raises here instead of emitting a body that is
    quietly not the certified arithmetic. Two things the E->P weld had to edit are
-   RESTORED and that is asserted rather than described: ``float w = drive[idx];`` and
-   the ADE guard.
+   RESTORED and that is asserted rather than described: the drive select
+   ``float w = dsigw ? drive_w[idx] : drive_e[idx];`` and the ADE prefix (guard, index
+   decode, chunk-record block, drive flag).
 2. **The predicates.** Each is a conjunction of two shipped ones, so its admission set
    is a SUBSET of each half's -- which is what makes the supersession rule non-lossy,
    and is measured here in both directions rather than argued.
@@ -56,34 +57,36 @@ def test_every_digest_source_is_ascii_and_declares_one_entry_point():
         assert source.count(f"void {family.KERNEL_NAME}(") == 1, key
 
 
-def test_the_certified_drive_load_is_restored_unedited():
-    """THE ROW THAT DISAPPEARED. ``fused_polarization_pair`` had to replace
-    ``float w = drive[idx];`` with a register hand-off and argue that a float32 word
-    stored and reloaded is the identity on the bits. This weld's kernel has no
-    ``update_E`` half above it, so the certified line is spliced whole -- ONCE per
-    component, never once per pole -- and there IS a ``drive`` parameter again."""
+def test_the_certified_drive_select_is_restored_unedited():
+    """THE ROW THAT DISAPPEARED. ``fused_polarization_pair`` had to replace the drive
+    load with a register hand-off and argue that a float32 word stored and reloaded is
+    the identity on the bits. This weld's kernel has no ``update_E`` half above it, so
+    the certified select -- MEEP's per-chunk ``w`` -- is spliced whole, ONCE per
+    component, never once per pole, and the two drive parameters are back."""
     source = family.three_slot_polarization_source(1, 3, (True, True, False))
-    assert source.count("    float w = drive[idx];\n") == 1
-    assert source.count("const float* __restrict__ drive,") == 1
+    line = "    float w = dsigw ? drive_w[idx] : drive_e[idx];\n"
+    assert source.count(line) == 1
+    assert source.count("    const float* drive_w,\n    const float* drive_e,\n") == 1
     assert "src_" not in source, "no seam register survives in this family"
     # ...and the line is the certified body's own, not a retyped twin.
-    volume = ep._ADE_VOLUME_BODY
-    assert "    float w = drive[idx];\n" in volume
+    assert line == ep._ADE_DRIVE_LINE and line in ep._ADE_VOLUME_BODY
 
 
-def test_the_certified_guard_is_restored_and_n_elem_is_a_parameter():
-    """The other row that disappeared. The E->P weld dropped the ADE guard because an
-    ``update_E`` body above had already declared ``idx``; nothing here has."""
+def test_the_certified_prefix_is_restored_and_the_extent_is_a_parameter():
+    """The other row that disappeared. The E->P weld dropped the ADE prefix -- guard,
+    index decode, chunk-record block, drive flag -- because an ``update_E`` body above
+    had already declared ``idx``; nothing here has."""
     source = family.three_slot_polarization_source(0, 1, (False,))
     assert ep._ADE_GUARD in source
-    assert source.count("    int n_elem\n") == 1
+    assert source.count("    int nx, int ny, int nz, int own_axis,\n"
+                        "    const int* __restrict__ cb\n) {") == 1
 
 
 def test_a_drifted_certified_recurrence_raises_instead_of_emitting(monkeypatch):
     """A certified string that moves must fail HERE, on a laptop, not compile a body
     that is quietly not the certified arithmetic."""
     monkeypatch.setattr(ep, "_ADE_VOLUME_BODY",
-                        ep._ADE_VOLUME_BODY.replace("c_prev * q", "q * c_prev"))
+                        ep._ADE_VOLUME_BODY.replace("gamma1 * q", "q * gamma1"))
     with pytest.raises(AssertionError, match="no longer carries the recurrence"):
         family.three_slot_polarization_source(0, 1, (True,))
 
@@ -92,9 +95,9 @@ def test_the_recurrence_keeps_the_certified_grouping_per_pole():
     """float32 addition is not associative: the grouping IS the arithmetic."""
     source = family.three_slot_polarization_source(2, 2, (True, False))
     for index in range(2):
-        assert (f"p_out_{index}[idx] = ((p_{index} * c_now_{index}) + "
-                f"(c_prev_{index} * q_{index})) + "
-                f"(c_drive_{index} * (s_{index} * w));") in source
+        assert (f"p_out_{index}[idx] = gamma1inv_{index} * "
+                f"(((p_{index} * two_minus_od_{index}) - (gamma1_{index} * q_{index})) + "
+                f"(omega0dtsqr_{index} * (s_{index} * w)));") in source
 
 
 def test_the_pole_pointer_is_bound_once_per_pole_and_stays_restrict():
@@ -253,12 +256,12 @@ def test_the_conjunction_adds_no_clause_of_its_own_and_needs_none():
     import inspect
 
     fields, layer, grid = _pml_case()
-    fields.polarizations[0]._coefficients = (1.0, 2.0)
+    fields.polarizations[0].constants = (1.0, 2.0)
     covered, reason = family.covers_three_slot_dispersive_weld(
         fields, layer, grid, ())
     assert not covered
     assert reason.startswith("update_E->update_P half: ")
-    assert "triple has 2 entries" in reason
+    assert "constants have 2 entries, not 4" in reason
 
     body = inspect.getsource(family.covers_three_slot_dispersive_weld)
     body = body.split('"""')[-1]
@@ -501,7 +504,7 @@ def test_the_later_seam_claimant_still_withholds_from_a_two_slot_product():
     """THE RULE THAT KEPT THE D->E PAIR OUT IS NOT WEAKENED, only made specific to a
     product that trades. Asked with a two-slot span it answers exactly as before."""
     fields, layer, grid = build(poles=2, pml_on=True)
-    context = arms.StepContext(fields, layer, grid, None, None, ())
+    context = arms.StepContext(fields, layer, grid, ())
     claimant = fused_pairs._later_seam_claimant(
         {}, {}, {}, context, "update_E", ("step_D", "update_E"))
     assert claimant == "cuda_fused_polarization_pair"

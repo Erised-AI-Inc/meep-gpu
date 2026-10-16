@@ -204,6 +204,15 @@ DEPOSIT_SPEC_LABELS: Tuple[str, ...] = ("corpus_absorber_wall_z",
 # The fixture
 # ---------------------------------------------------------------------------
 
+def chunk_record(grid, pml):
+    """The chunk record a launch binds as ``cb``, on the device: the one-rank division of
+    ``grid`` and its inert layer (``gate_chunk_records.layer_record``). No chunk carries
+    a layer, so it holds no membership runs; the lifted curl reads its presence word."""
+    from gate_chunk_records import layer_record  # noqa: PLC0415
+
+    return cp.asarray(layer_record(grid, pml), dtype=cp.int32)
+
+
 def case_rng(label: str) -> np.random.Generator:
     return np.random.default_rng(
         SEED + int.from_bytes(hashlib.sha256(label.encode()).digest()[:4], "big"))
@@ -292,10 +301,16 @@ def competing_step_D_products(fields, pml, grid, sources) -> List[str]:
     coverage -- it COSTS whatever the other product was serving. Asked over the whole
     table rather than against a hand-picked neighbour, so a product landing later
     cannot quietly overlap this one.
+
+    A product whose span STRICTLY CONTAINS this one's is not an overlap: the composer
+    hands it the slots by name (``fused_pairs._superseded_by_a_longer_span``) -- the
+    no-absorber three-slot weld, which opens on this pair's own D->E launch -- so it
+    is not counted here.
     """
     from meep_gpu.cuda_kernels import fused_pairs  # noqa: PLC0415
 
     mine = "cuda_no_pml_dispersive_fused_electric_pair"
+    my_span = set(fused_pairs.span_of(mine, fused_pairs.FUSED_PRODUCTS[mine]))
 
     class _Context:
         def __init__(self):
@@ -306,6 +321,8 @@ def competing_step_D_products(fields, pml, grid, sources) -> List[str]:
     for family_name, product in fused_pairs.FUSED_PRODUCTS.items():
         if family_name == mine or product["curl_slot"] != "step_D":
             continue
+        if my_span < set(fused_pairs.span_of(family_name, product)):
+            continue  # a longer span the composer prefers, not a competitor
         try:
             verdict = product["coverage"](context)
         except Exception:  # a raising predicate is a refusal, as in the composer
@@ -541,7 +558,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
                     report = family.launch_no_pml_dispersive_fused_electric_pair(
                         actual, codes, walls, case["dtdx"], step_poles,
                         dispersive_kernels.pole_counts_of(live), live_conductivity,
-                        live_cond, kernel)
+                        live_cond, kernel, chunk_bounds=chunk_record(grid, pml))
                     launched += int(bool(report.get("launched")))
                     cp.cuda.runtime.deviceSynchronize()
                 elif name not in FUSED_PASSES:
@@ -630,6 +647,8 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     row: Dict[str, Any] = {"label": spec["label"], "arity": list(arity),
                            "zero_metal_axes": [bool(w) for w in walls]}
 
+    separate_record = chunk_record(sep_grid, sep_pml)
+    fused_record = chunk_record(grid, pml)
     separate_counter = MemoLaunchCounter()
     fused_counter = MemoLaunchCounter()
     for _step in range(steps):
@@ -652,9 +671,11 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                     # against a composition the array path would never build.
                     if any(spec["cond_mask"]):
                         conductive_kernels.step_conductive_curl(
-                            separate, sep_pml, "step_D", codes, dtdx)
+                            separate, sep_pml, "step_D", codes, dtdx,
+                            chunk_bounds=separate_record)
                     else:
-                        no_pml_curl.step_no_pml_curl(separate, "step_D", codes, dtdx)
+                        no_pml_curl.step_no_pml_curl(separate, "step_D", codes, dtdx,
+                                                     separate_record)
                     if any(walls):
                         # THE CERTIFIED IN-SEAM PASS, through its own dispatcher.
                         in_seam_passes.run_pass("zero_metal", separate, "D",
@@ -670,7 +691,8 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                     poles, counts = family.pole_bindings(fused)
                     conductivity, cond = family.conductive_bindings(fused)
                     family.launch_no_pml_dispersive_fused_electric_pair(
-                        fused, codes, walls, dtdx, poles, counts, conductivity, cond)
+                        fused, codes, walls, dtdx, poles, counts, conductivity, cond,
+                        chunk_bounds=fused_record)
                 cp.cuda.runtime.deviceSynchronize()
             elif name not in FUSED_PASSES:
                 run_pass(name, fused, pml)
@@ -767,7 +789,8 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                     poles, counts = family.pole_bindings(fields)
                     conductivity, cond = family.conductive_bindings(fields)
                     family.launch_no_pml_dispersive_fused_electric_pair(
-                        fields, codes, walls, dtdx, poles, counts, conductivity, cond)
+                        fields, codes, walls, dtdx, poles, counts, conductivity, cond,
+                        chunk_bounds=chunk_record(grid, pml))
                     cp.cuda.runtime.deviceSynchronize()
                     # THE DRIVER'S OWN SEAM, between the two consults: inject, then
                     # the wall clear that sits behind no consult at all.

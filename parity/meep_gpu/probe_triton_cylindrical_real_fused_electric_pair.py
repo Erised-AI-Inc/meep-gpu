@@ -223,6 +223,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/cylindrical_real_fused_magnetic_pair.py",
         "meep_gpu/triton_kernels/cylindrical_triton.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/deposit_repair.py",
@@ -312,38 +313,35 @@ def _rewrite_block(source: str, before: Sequence[str],
 # NO-DEVICE LEG 1 — the transcription, read off the shipped source
 # ---------------------------------------------------------------------------
 
-#: The cylindrical curl's arithmetic, whose grouping decides float32 bits.
+#: The cylindrical curl's arithmetic and forms, whose grouping decides float32 bits.
 CURL_LINES = (
-    "curl0 = dtdx * ((c_p - c) + (b - b_z))",
-    "curl1 = dtdx * ((a_z - a) + (c - c_r))",
-    "curl2 = dtdx * ((b_r - b) + (a - a_p))",
-    "n0 = ((p0 * km_y) - curl0) * si_y",
-    "n1 = ((p1 * km_z) - curl1) * si_z",
-    "n2 = ((p2 * km_x) - curl2) * si_x",
-    "v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z",
-    "v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x",
-    "v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y",
+    "curl0 = curl_stencil(c_p, c, b, b_z, dtdx, pp, pz)",
+    "curl1 = curl_stencil(a_z, a, c, c_r, dtdx, pz, pr)",
+    "curl2 = dtdx * tl.load(rad + idx, mask=live, other=0.0)",
+    "du0 = record_in(cb, lattice + 8, k)",
+    "du1 = record_in(cb, lattice + 0, i)",
+    "du2 = record_in(cb, lattice + 4, j)",
+    "p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)",
+    "v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,",
+    "tl.store(u1 + idx, n1, mask=live & du1)",
 )
 
-#: The m = 0 substitutions the BACKWARD arm makes and this body must keep. Every one
-#: of these is compile-time ABSENT in the magnetic twin, which is why this gate is
-#: the first to execute any of them.
+#: The m = 0 lines the BACKWARD arm executes and this body must keep: the D-family
+#: ownership mask and the D side's axis rules, the add a DOUBLE product rounded once.
 CYLINDRICAL_LINES = (
-    "p_here = tl.load(pfx + idx, mask=live, other=0.0)",
-    "p_down = tl.load(pfx + o_r, mask=vr, other=0.0)",
-    "curl2 = dtdx * ((p_down - p_here) + (a - a_p))",
+    "presence = tl.load(cb + RECORD_PRESENCE)",
     "at_r, at_z = i == 0, k == 0",
     "curl0 = tl.where(at_z, 0.0, curl0)",
     "curl1 = tl.where(at_r, 0.0, curl1)",
     "curl1 = tl.where(at_z, 0.0, curl1)",
     "curl2 = tl.where(at_r, 0.0, curl2)",
     "v1 = tl.where(at_r, 0.0, v1)",
-    "v2 = tl.where(at_r, v2 + four_dtdx * tl.load(hp + idx, mask=live, other=0.0),",
-    "v2)",
+    "dfcnd = tl.cast(tl.cast(b, tl.float64) * tl.load(courant + COURANT_FOUR),",
+    "v2 = tl.where(at_r, v2 + dfcnd, v2)",
 )
 
 #: The wall clear, byte-copied from ``kernels.fused_curl_constitutive_D``'s ZM block
-#: — the SIX rows ``stepping._zero_metal`` writes for the D family, against the
+#: -- the SIX rows ``stepping._zero_metal`` writes for the D family, against the
 #: magnetic twin's three.
 ZERO_METAL_LINES = (
     "v1 = tl.where(at_x, 0.0, v1)",
@@ -354,19 +352,17 @@ ZERO_METAL_LINES = (
     "v1 = tl.where(at_z, 0.0, v1)",
 )
 
-#: The constitutive half, byte-copied from the same function. ``src`` is the SCALE=1
-#: arm's product, which the magnetic twin does not have at all.
+#: The constitutive half, byte-copied from the same function: the chunk-keyed dsigw
+#: forms on the half-integer lattice, ``src`` the SCALE = 1 product.
 CONSTITUTIVE_LINES = (
-    "prev0 = tl.load(w0 + idx, mask=live, other=0.0)",
+    "dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)",
+    "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)",
     "src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)",
     "src1 = v1 * tl.load(ie1 + idx, mask=live, other=0.0)",
     "src2 = v2 * tl.load(ie2 + idx, mask=live, other=0.0)",
-    "a0 = a0 + kp_0 * src0",
-    "a0 = a0 - km_0 * prev0",
-    "a1 = a1 + kp_1 * src1",
-    "a1 = a1 - km_1 * prev1",
-    "a2 = a2 + kp_2 * src2",
-    "a2 = a2 - km_2 * prev2",
+    "tl.store(w0 + idx, src0, mask=live & dw0)",
+    "a0 = constitutive_form(tl.load(e0 + idx, mask=live & dw0, other=0.0),",
+    "tl.store(e0 + idx, a0, mask=live)",
 )
 
 
@@ -400,7 +396,7 @@ def transcription_leg() -> Dict[str, Any]:
                 f"kernels.fused_curl_constitutive_D no longer contains {line!r}; the "
                 f"wall clear / constitutive transcription source has moved")
     # And the constitutive grouping traces one step further back.
-    for line in ("a0 = a0 + kp_0 * src0", "a0 = a0 - km_0 * prev0"):
+    for line in ("a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)",):
         if line not in constitutive:
             findings.append(
                 f"kernels.constitutive_step no longer contains {line!r}")
@@ -410,7 +406,7 @@ def transcription_leg() -> Dict[str, Any]:
     # the two tangential ones.
     clears = [line for line in fused
               if line.startswith("v") and "tl.where(at_" in line
-              and "0.0, v" in line and "four_dtdx" not in line]
+              and "0.0, v" in line and "dfcnd" not in line]
     if len(clears) < len(ZERO_METAL_LINES):
         findings.append(
             f"the fused body carries {len(clears)} wall-clear rows, fewer than the "
@@ -822,12 +818,10 @@ def build_driver(cp, cell, resolution, courant, seed: int, electric: bool,
     for name in ("Bx", "By", "Bz", "Dx", "Dy", "Dz"):
         driver.set_field(name, cp.asarray(np.ascontiguousarray(
             rng.uniform(-0.25, 0.25, size=shape).astype(np.float32))))
-    # BOTH constitutive histories are seeded, and the ELECTRIC one is what makes the
-    # curl's ownership mask observable at all. MEASURED on the magnetic twin's first
-    # device run (2026-08-20): with ``f_w_E*`` left at zero, ``Ep`` is EXACTLY +0.0 on
-    # the r = 0 row and on the z = 0 wall plane forever — the m = 0 axis rule sets
-    # ``Dp[0] = 0`` and ``zero_metal_D`` clears ``Dy`` at z = 0 — so a mask mutation
-    # came back UNCAUGHT while measuring nothing. That was a defect in the fixture.
+    # BOTH constitutive histories are seeded, so the accumulation's cells read a live
+    # previous word from the first update. The D-family ownership mask is observable
+    # through fu_Dx (z layer, z = 0) and fu_Dy (r layer, z = 0), which the masked curl
+    # rows feed before the wall clear and the axis rule zero the fields.
     for name in ("f_w_Hx", "f_w_Hy", "f_w_Hz", "f_w_Ex", "f_w_Ey", "f_w_Ez"):
         array = getattr(driver.fields, name, None)
         if array is not None:
@@ -1020,6 +1014,32 @@ def fused_route(plan, driver=None, sources=(), bracket: bool = True):
 # The three-route leg
 # ---------------------------------------------------------------------------
 
+def at_rest_by_the_auxiliary_contract(pml: Any) -> Tuple[str, ...]:
+    """The auxiliary volumes the aligned forms never touch on this run, both seams.
+
+    DERIVED, not listed: ``fu`` of a curl target is read and written only where the
+    target's chunk carries its dsigu layer, and ``f_w`` of a constitutive component only
+    where its own axis carries one (the auxiliary contract, KERNELS.md section 1 C2). An
+    axis with no absorber on either face (``PML.axis_has_pml``: phi on every Dcyl run, z on
+    a periodic one) carries no layer in any chunk, so the target whose dsigu axis it is
+    (``cylindrical_triton.DSIG_AXES``) and the component whose own axis it is keep their
+    seeded words. They are still compared word for word; they are only excused from the
+    non-vacuity floor, which would otherwise call every row vacuous over them.
+    """
+    from meep_gpu.triton_kernels.coverage import CONSTITUTIVE_SIDES  # noqa: PLC0415
+    from meep_gpu.triton_kernels.cylindrical_triton import DSIG_AXES, SUB_STEPS  # noqa: PLC0415
+
+    rest = []
+    for sub_step in ("step_B", "step_D"):
+        rest += ["fu_" + target for index, target in enumerate(SUB_STEPS[sub_step]["targets"])
+                 if not pml.axis_has_pml(DSIG_AXES[index][1])]
+    # A constitutive component's own axis is its index (x, y, z = r, phi, z).
+    for side in ("H", "E"):
+        rest += ["f_w_" + name for index, name in enumerate(CONSTITUTIVE_SIDES[side]["targets"])
+                 if not pml.axis_has_pml(index)]
+    return tuple(rest)
+
+
 def run_leg(cp, name: str, cell, resolution, courant, steps: int, product,
             mutant: Any = None, install_fused: bool = True,
             freeze_electric: bool = False, electric: bool = False,
@@ -1121,8 +1141,10 @@ def run_leg(cp, name: str, cell, resolution, courant, steps: int, product,
         row["arrays_total"] = len(final)
         row["arrays_compared"] = sorted(final)
         row["arrays_ever_moved"] = len(ever_moved)
+        at_rest = set(at_rest_by_the_auxiliary_contract(fused.pml))
+        row["arrays_at_rest_by_contract"] = sorted(set(final) & at_rest - set(ever_moved))
         row["arrays_never_moved"] = sorted(
-            set(final) - set(ever_moved) - set(material))
+            set(final) - set(ever_moved) - set(material) - at_rest)
         row["material_changed"] = sorted(key for key in material if key in ever_moved)
         row["inventory_asymmetry_vs_array"] = sorted(
             set(final).symmetric_difference(snapshot(cp, reference)))
@@ -1210,8 +1232,16 @@ def shipped_source(product) -> str:
 
 
 def compile_mutant(source: str, kernel_name: str) -> Any:
-    """Compile a renamed mutant. The rename is what keeps the JIT cache honest."""
-    header = "import triton\nimport triton.language as tl\n\n"
+    """Compile a renamed mutant. The rename is what keeps the JIT cache honest.
+
+    The body calls the shared forms and reads the record constexprs, so the mutant's
+    module takes the product module's globals before its own definition.
+    """
+    header = ("import importlib\n"
+              "globals().update({k: v for k, v in vars(importlib.import_module("
+              "'meep_gpu.triton_kernels.cylindrical_real_fused_electric_pair')).items() "
+              "if not k.startswith('__')})\n"
+              "import triton\nimport triton.language as tl\n\n")
     handle = tempfile.NamedTemporaryFile(
         "w", suffix="_mutated_cyl_real_electric_pair.py", delete=False,
         encoding="utf-8")
@@ -1285,42 +1315,27 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             source, ["v1 = tl.where(at_r, 0.0, v1)"], ["v1 = v1 + 0.0"])
 
     def m4_axis_hp_add_dropped(source: str) -> Tuple[str, int]:
-        """``Dz[0] += (4*Courant) * Hp[0]`` — the OTHER half of the axis rule.
-
-        A POST-add on the updated field, deliberately not folded into the curl
-        (measured: the fold breaks m = 0 under PML). Dropping it leaves the r = 0 row
-        of ``Dz`` short by exactly that term. COMPILE-TIME ABSENT in the twin, and it
-        is the only consumer of the ``hp`` and ``four_dtdx`` arguments — which the
-        twin binds and never dereferences."""
+        """``Dz[0] += realnum(double(4*Courant) * double(Hp[0]))`` -- the OTHER half of
+        the axis rule, a POST-add on the updated field. Dropping it leaves the r = 0
+        row of ``Dz`` short by exactly that term. COMPILE-TIME ABSENT in the twin."""
         return _rewrite_block(
-            source,
-            ["v2 = tl.where(at_r, v2 + four_dtdx * tl.load(hp + idx, mask=live, other=0.0),",
-             "v2)"],
-            ["v2 = v2"])
+            source, ["v2 = tl.where(at_r, v2 + dfcnd, v2)"], ["v2 = v2"])
 
-    def m5_dz_curl_is_the_generic_one(source: str) -> Tuple[str, int]:
-        """``Dz``'s curl replaced by the generic four-operand stencil.
-
-        ``step_D`` :425-426 does NOT compute Dz's curl from the raw operands: its
-        ``first`` source is the radial PREFIX, backward-differenced. The generic form
-        below is the substitution undone. COMPILE-TIME ABSENT in the magnetic twin,
-        whose arm takes the FORWARD difference of the extended prefix instead."""
+    def m5_dz_curl_is_the_raw_hp_difference(source: str) -> Tuple[str, int]:
+        """``Dz``'s curl taken as the raw backward difference of Hp, not of MEEP's
+        per-chunk sum of (1/r)d(r*Hp)/dr -- the radial scan undone."""
         return _rewrite_block(
-            source,
-            ["p_here = tl.load(pfx + idx, mask=live, other=0.0)",
-             "p_down = tl.load(pfx + o_r, mask=vr, other=0.0)",
-             "curl2 = dtdx * ((p_down - p_here) + (a - a_p))"],
-            ["curl2 = dtdx * ((b_r - b) + (a - a_p))"])
+            source, ["curl2 = dtdx * tl.load(rad + idx, mask=live, other=0.0)"],
+            ["curl2 = dtdx * (tl.load(g1 + o_r, mask=vr, other=0.0) - b)"])
 
     def m6_ownership_mask_dropped(source: str) -> Tuple[str, int]:
         """The D-family r = 0 / z = 0 ownership mask
         (stepping._mask_non_owned_cells:1865).
 
         FOUR rows here against the magnetic twin's two, and all four are compile-time
-        absent there. OBSERVABLE ONLY BECAUSE THE FIXTURE SEEDS THE ELECTRIC
-        CONSTITUTIVE HISTORY — measured on the twin's first device run, where an
-        unseeded ``f_w_E*`` made the same mutation come back UNCAUGHT while measuring
-        nothing."""
+        absent there. Observable through ``fu_Dy``
+        on its r-layer cells and through the walled planes, from the seeded ``H`` the
+        first step_D reads."""
         return _rewrite_block(
             source,
             ["curl0 = tl.where(at_z, 0.0, curl0)",
@@ -1368,32 +1383,33 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             ["src0 = v0 * tl.load(ie0 + idx - 1, mask=live & (idx > 0), other=0.0)"])
 
     def m9_constitutive_association(source: str) -> Tuple[str, int]:
-        """Right-associated accumulation: same algebra, different float32 rounding."""
-        return _rewrite_block(
-            source, ["a0 = a0 + kp_0 * src0", "a0 = a0 - km_0 * prev0"],
-            ["a0 = a0 + (kp_0 * src0 - km_0 * prev0)"])
-
-    def m10_history_read_after_write(source: str) -> Tuple[str, int]:
-        """f_w read AFTER it is written: wrong only where kms != 0, i.e. in the PML."""
+        """THE INVERSION (Appendix A): the PREVIOUS package grouping put back,
+        ``(f + kps*src) - kms*prev`` in place of MEEP's ``f + ((kps*src) - (kms*prev))``
+        on the accumulation's cells. Same algebra, different float32 rounding."""
         return _rewrite_block(
             source,
-            ["prev0 = tl.load(w0 + idx, mask=live, other=0.0)",
+            ["a0 = constitutive_form(tl.load(e0 + idx, mask=live & dw0, other=0.0),",
+             "prev0, src0, kp_0, km_0, dw0)"],
+            ["a0 = tl.where(dw0, (tl.load(e0 + idx, mask=live & dw0, other=0.0) "
+             "+ kp_0 * src0) - km_0 * prev0, src0)"])
+
+    def m10_history_read_after_write(source: str) -> Tuple[str, int]:
+        """f_w read AFTER it is written: wrong only on the accumulation's cells."""
+        return _rewrite_block(
+            source,
+            ["prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)",
              "src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)",
-             "tl.store(w0 + idx, src0, mask=live)"],
+             "tl.store(w0 + idx, src0, mask=live & dw0)"],
             ["src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)",
-             "tl.store(w0 + idx, src0, mask=live)",
-             "prev0 = tl.load(w0 + idx, mask=live, other=0.0)"])
+             "tl.store(w0 + idx, src0, mask=live & dw0)",
+             "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)"])
 
     def m11_phi_term_sign_flipped(source: str) -> Tuple[str, int]:
-        """The invariant-axis term COMPUTED, and computed wrong.
-
-        phi has n = 1, so its rolled operand equals the original and ``(c_p - c)`` is
-        exactly ``+0.0``; ``(c_p + c)`` is ``2c``, which is loud. The ELISION itself
-        is refused by the TRANSCRIPTION leg instead, which requires the four-operand
-        line verbatim and is deterministic."""
+        """The invariant phi partner COMPUTED, and computed wrong: ``(c_p + c)`` is
+        ``2c``, which is loud."""
         return _rewrite_block(
-            source, ["curl0 = dtdx * ((c_p - c) + (b - b_z))"],
-            ["curl0 = dtdx * ((c_p + c) + (b - b_z))"])
+            source, ["curl0 = curl_stencil(c_p, c, b, b_z, dtdx, pp, pz)"],
+            ["curl0 = dtdx * (((c_p + c) + b) - b_z)"])
 
     def m12_coefficient_index_moved(source: str) -> Tuple[str, int]:
         """The constitutive coefficient read on the WRONG axis for component 0.
@@ -1406,10 +1422,21 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             source, ["kp_0 = tl.load(kp0 + i, mask=live, other=0.0)"],
             ["kp_0 = tl.load(kp0 + k, mask=live, other=0.0)"])
 
-    def m13_commuted_multiply(source: str) -> Tuple[str, int]:
-        """PREDICTED NULL: IEEE multiplication commutes; only the PTX may move."""
-        needle = "kp_0 * src0"
-        return source.replace(needle, "src0 * kp_0"), source.count(needle)
+    def m13_fu_load_unconditional(source: str) -> Tuple[str, int]:
+        """PREDICTED NULL: ``fu`` loaded on every cell, stored on the recurrence's only.
+        The recurrence's arm alone reads it, so no stored word can move."""
+        return _rewrite_block(
+            source, ["p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)"],
+            ["p1 = tl.load(u1 + idx, mask=live, other=0.0)"])
+
+    def m14_axis_add_in_float32(source: str) -> Tuple[str, int]:
+        """The axis add's DOUBLE product computed in float32: a different word wherever
+        ``4*Courant`` is not a float32 word (every case's Courant but 0.5)."""
+        return _rewrite_block(
+            source,
+            ["dfcnd = tl.cast(tl.cast(b, tl.float64) * tl.load(courant + COURANT_FOUR),",
+             "tl.float32)"],
+            ["dfcnd = b * tl.cast(tl.load(courant + COURANT_FOUR), tl.float32)"])
 
     return (
         ("m1_zero_metal_dropped", "the wall clear's slot", "caught",
@@ -1419,23 +1446,26 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         ("m3_axis_zero_dropped", "Dp[0] = 0", "caught", m3_axis_zero_dropped),
         ("m4_axis_hp_add_dropped", "the on-axis Dz add", "caught",
          m4_axis_hp_add_dropped),
-        ("m5_dz_curl_is_the_generic_one", "Dz's prefix substitution", "caught",
-         m5_dz_curl_is_the_generic_one),
+        ("m5_dz_curl_is_the_raw_hp_difference", "Dz's radial sum", "caught",
+         m5_dz_curl_is_the_raw_hp_difference),
         ("m6_ownership_mask_dropped", "the D-family ownership mask", "caught",
          m6_ownership_mask_dropped),
         ("m7_inverse_epsilon_dropped", "the SCALE=1 arm", "caught",
          m7_inverse_epsilon_dropped),
         ("m8_inverse_epsilon_at_a_shifted_cell", "the material index", "caught",
          m8_inverse_epsilon_at_a_shifted_cell),
-        ("m9_constitutive_association", "float32 association", "caught",
-         m9_constitutive_association),
+        ("m9_constitutive_association", "the inverted constitutive grouping",
+         "caught", m9_constitutive_association),
         ("m10_history_read_after_write", "the f_w ordering", "caught",
          m10_history_read_after_write),
         ("m11_phi_term_sign_flipped", "the invariant-axis term", "caught",
          m11_phi_term_sign_flipped),
         ("m12_coefficient_index_moved", "dsigw's own axis", "caught",
          m12_coefficient_index_moved),
-        ("m13_commuted_multiply", "commuted multiply", "null", m13_commuted_multiply),
+        ("m13_fu_load_unconditional", "the auxiliary load's guard", "null",
+         m13_fu_load_unconditional),
+        ("m14_axis_add_in_float32", "the axis add's double product", "caught",
+         m14_axis_add_in_float32),
     )
 
 
@@ -1443,7 +1473,11 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
 #: m = 0 declaration with the same compiled branches, so no mutation can land on a
 #: grid that fails to enter the lines it rewrites — the dead-branch hazard this family
 #: carries is the ZM_X / ZM_Y rows, and no mutation touches them.
-MUTATION_CASE: Dict[str, int] = {}
+MUTATION_CASE: Dict[str, int] = {
+    # Courant 0.37: 4*Courant is not a float32 word there, so the double product and a
+    # float32 one differ; at CASES[0]'s 0.5 they are one word and the needle is a null.
+    "m14_axis_add_in_float32": 2,
+}
 
 #: CASES[0] is SQUARE (nr == nz), and that is load-bearing for one mutation rather
 #: than a default. ``m12_coefficient_index_moved`` reads ``kp0`` — a length-nr column

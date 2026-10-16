@@ -67,7 +67,10 @@ from __future__ import annotations
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..triton_kernels.coverage import Coverage
-from . import complex_fields, shaders, special_kz, templates
+from . import complex_fields, folded_pass, shaders, special_kz, templates
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as a keyword named
+# `chunk_bounds`, the name the composer's StepContext carries.
+from . import chunk_bounds as _chunk_bounds
 from .complex_fused_electric_pair import (
     _BODY_ANCHOR,
     _CURL_STORE,
@@ -116,10 +119,10 @@ if PACKED_BINDINGS > MAX_BUFFER_BINDINGS:  # pragma: no cover - a design invaria
         f"Metal's ceiling on this toolchain is {MAX_BUFFER_BINDINGS}; the signature "
         f"cannot be built at all")
 
-#: The host record's total size in bytes. Natural end is 60 (five ``float2`` + four
-#: ``uint`` + one ``float``); Metal pads the struct to its 8-byte alignment, so the
-#: record is padded to match rather than letting the tail word float.
-PARAMS_ITEMSIZE = 64
+#: The host record's total size in bytes: the three connection words, five scalars,
+#: two beta words and the chunk record (offset 52), padded to the struct's 8-byte
+#: alignment.
+PARAMS_ITEMSIZE = 152
 
 __all__ = [
     "CARRIES_DEPOSIT_REPAIR", "FAMILY", "PACKED_BINDINGS", "PARAMS_ITEMSIZE",
@@ -138,9 +141,9 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 #: THE BUFFER ORDER IS ``complex_fused_electric_pair``'s, POINTER FOR POINTER. Only
-#: the struct grows: two ``float2`` beta members after the three phases, unpacked
-#: into the certified curl body's own scalar names (``bpr``/``bpi``/``bmr``/``bmi``)
-#: before any lifted text runs.
+#: the struct grows: the two real beta words after the scalars, then the chunk
+#: record, unpacked into the certified curl body's own names (``beta_plus``/
+#: ``beta_minus``, ``cb``) before any lifted text runs.
 _TEMPLATE = r"""
 #include <metal_stdlib>
 using namespace metal;
@@ -149,12 +152,16 @@ __CONTRACT__
 
 __HELPERS__
 
-// THE FIVE float2 MEMBERS COME FIRST, for the measured reason
+// THE THREE float2 MEMBERS COME FIRST, for the measured reason
 // `complex_fused_magnetic_pair` records: Metal aligns float2 to 8 bytes, and with
 // the scalars first the natural host record puts every phase one word early.
+__RECORD_STRUCT__
+
 struct Params {
-    float2 px; float2 py; float2 pz; float2 bp; float2 bm;
+    float2 px; float2 py; float2 pz;
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
+    float beta_plus; float beta_minus;
+__RECORD_MEMBER__
 };
 
 kernel void beta_complex_fused_electric_pair_step(
@@ -197,12 +204,11 @@ kernel void beta_complex_fused_electric_pair_step(
     // `complex_fields.bloch_constitutive_source` emit, plus the wall clear.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
-    float pxr = prm.px.x, pxi = prm.px.y;
-    float pyr = prm.py.x, pyi = prm.py.y;
-    float pzr = prm.pz.x, pzi = prm.pz.y;
-    float bpr = prm.bp.x, bpi = prm.bp.y;
-    float bmr = prm.bm.x, bmi = prm.bm.y;
-    (void)pzr; (void)pzi;   // the invariant axis carries no phase; bound for one layout
+    float2 px = prm.px, py = prm.py, pz = prm.pz;
+    float beta_plus = prm.beta_plus, beta_minus = prm.beta_minus;
+    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // line gives the lifted bounds blocks the `cb` they read.
+__RECORD_ALIAS__
 
 __BODY__
 }
@@ -210,7 +216,6 @@ __BODY__
 
 
 def certified_beta_bloch_curl_body(codes: Sequence[int], phased: Sequence[int],
-                                   expansion: str,
                                    contract: str = shaders.CONTRACT_OFF) -> str:
     """The COMPLEX BETA ``step_D`` curl kernel's BODY, lifted from its own emitter.
 
@@ -221,7 +226,7 @@ def certified_beta_bloch_curl_body(codes: Sequence[int], phased: Sequence[int],
     would be the plain complex product under a second name, and that product already
     exists (:mod:`.complex_fused_electric_pair`).
     """
-    source = special_kz.beta_bloch_curl_source(codes, True, phased, expansion,
+    source = special_kz.beta_bloch_curl_source(codes, True, phased,
                                                True, contract)
     if _BODY_ANCHOR not in source:
         raise AssertionError(
@@ -237,7 +242,7 @@ def certified_beta_bloch_curl_body(codes: Sequence[int], phased: Sequence[int],
 
 def beta_complex_fused_electric_pair_source(
         codes: Sequence[int], phased: Sequence[int], zero_metal: Sequence[bool],
-        expansion: str, contract: str = shaders.CONTRACT_OFF) -> str:
+        contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (boundaries, phases, walls, arm, contraction).
 
     THE SPLICE IS :func:`.complex_fused_electric_pair
@@ -254,13 +259,14 @@ def beta_complex_fused_electric_pair_source(
     if len(zero_metal) != 3:
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
 
-    curl = certified_beta_bloch_curl_body(codes, phased, expansion, contract)
+    curl = certified_beta_bloch_curl_body(codes, phased, contract)
     # THE BETA TERM MUST BE PRESENT. A lift that silently produced the has_beta=0
     # arm would be the plain complex weld wearing this family's name, and every
     # device leg would still pass at beta = 0 because a zero coefficient IS the
     # plain arithmetic.
-    for statement in ("curl0 = curl0 - c_mul(float2(bpr, bpi), b);",
-                      "curl1 = curl1 - c_mul(float2(bmr, bmi), a);"):
+    for statement in (folded_pass.FOLDED_PASS_BEGIN,
+                      "float2 bq0 = float2(-(beta_plus * b.y), beta_plus * b.x);",
+                      "float2 bq1 = float2(-(beta_minus * a.y), beta_minus * a.x);"):
         if statement not in curl:
             raise AssertionError(
                 f"the lifted complex beta curl body does not carry {statement!r}; "
@@ -280,7 +286,7 @@ def beta_complex_fused_electric_pair_source(
         _CURL_STORE, tail,
     ))
 
-    electric = certified_constitutive_body(expansion, contract)
+    electric = certified_constitutive_body(contract)
     # THE SEAM, and it is exactly three lines — the plain complex weld's, unchanged:
     # the certified complex E body's reload of the displacement becomes the live
     # register, the inverse-epsilon factor stays on the right and D stays on the
@@ -313,17 +319,20 @@ def beta_complex_fused_electric_pair_source(
     ))
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__BODY__": body,
     })
 
 
 def compile_beta_complex_fused_electric_pair(
         codes: Sequence[int], phased: Sequence[int], zero_metal: Sequence[bool],
-        expansion: str, contract: str = shaders.CONTRACT_OFF) -> Any:
+        contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised entry point for one (boundaries, phases, walls, arm, mode)."""
     return compile_source(beta_complex_fused_electric_pair_source(
-        codes, phased, zero_metal, expansion,
+        codes, phased, zero_metal,
         contract)).beta_complex_fused_electric_pair_step
 
 
@@ -358,8 +367,7 @@ def refuted_separate_scalar_source(contract: str = shaders.CONTRACT_OFF) -> str:
 # ---------------------------------------------------------------------------
 
 def metal_beta_complex_fused_electric_pair_coverage(
-        fields: Any, pml: Any, sources: Any = None, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, sources: Any = None, residency: Any = None) -> Coverage:
     """May ONE dispatch span complex-beta ``step_D`` -> wall -> ``update_E``?
 
     A conjunction of the two halves' OWN shipped predicates plus the seam clauses,
@@ -372,18 +380,17 @@ def metal_beta_complex_fused_electric_pair_coverage(
 
     Nothing is weakened: a configuration either half refuses is refused here with
     that half's reasons, prefixed so a reader can tell which side said it — the
-    beta clause, the expansion-probe clause (the beta tranche's FIVE patterns, one
-    more than the plain complex artifact's), the complex-storage clause and the
-    fold clause are all INHERITED rather than restated.
+    beta clause, the complex-storage clause and the fold clause are all INHERITED
+    rather than restated.
     """
     reasons: List[str] = []
 
     curl = special_kz.beta_bloch_pml_curl_coverage(
-        fields, pml, "step_D", residency, probe)
+        fields, pml, "step_D", residency)
     if not curl.covered:
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
     electric = special_kz.beta_run_complex_constitutive_coverage(
-        fields, pml, "E", residency, probe)
+        fields, pml, "E", residency)
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
@@ -446,14 +453,14 @@ class MetalBetaComplexFusedElectricPairPlan(KernelPlan):
     """
 
     __slots__ = ("residency", "volumes", "codes", "phased", "phase_values",
-                 "beta_words", "zero_metal", "shape", "n_elem", "dtdx",
-                 "expansion", "params")
+                 "beta_plus", "beta_minus", "zero_metal", "shape", "n_elem", "dtdx", "params",
+                 "chunk_bounds")
 
     family = "complex-beta fused PML D-curl/stored-E pair"
 
     replaces_sub_steps = REPLACES
 
-    REPR_FIELDS = ("shape", "codes", "phased", "zero_metal", "expansion")
+    REPR_FIELDS = ("shape", "codes", "phased", "zero_metal")
 
     #: This plan launches a kernel; the composer's planned/null split reads it.
     performs_device_work = True
@@ -461,19 +468,21 @@ class MetalBetaComplexFusedElectricPairPlan(KernelPlan):
     def __init__(self, residency: Residency, volumes: Sequence[str],
                  codes: Sequence[int], phased: Sequence[int],
                  phase_values: Sequence[Tuple[float, float]],
-                 beta_words: Sequence[Tuple[float, float]],
-                 zero_metal: Sequence[bool], shape: Sequence[int], dtdx: float,
-                 expansion: str, params: Any, pointers: Sequence[Any],
-                 functions: Mapping[str, Any]) -> None:
+                 beta_plus: float, beta_minus: float,
+                 zero_metal: Sequence[bool], shape: Sequence[int], dtdx: float, params: Any,
+                 pointers: Sequence[Any],
+                 functions: Mapping[str, Any], *, chunk_bounds: Any) -> None:
         self.residency = residency
         self.volumes = tuple(dict.fromkeys(volumes))
         self.codes = tuple(int(code) for code in codes)
         self.phased = tuple(int(flag) for flag in phased)
         self.phase_values = tuple((float(re), float(im)) for re, im in phase_values)
-        self.beta_words = tuple((float(re), float(im)) for re, im in beta_words)
-        if len(self.beta_words) != 2:
-            raise ValueError(f"beta_words must be the (plus, minus) pair, "
-                             f"got {beta_words!r}")
+        # One host-rounded word per sign (special_kz.beta_curl_coefficients):
+        # the pass takes a quarter turn of the partner by each.
+        self.beta_plus = float(beta_plus)
+        self.beta_minus = float(beta_minus)
+        # The host words of the record ``params`` carries, kept for inspection.
+        self.chunk_bounds = chunk_bounds
         self.zero_metal = tuple(bool(value) for value in zero_metal)
         self.shape = tuple(int(n) for n in shape)
         # The COMPLEX CELL count — the dispatch is sized from the first tensor
@@ -481,7 +490,6 @@ class MetalBetaComplexFusedElectricPairPlan(KernelPlan):
         # cell count.
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
         self.dtdx = float(dtdx)
-        self.expansion = str(expansion)
         self.params = params
         super().__init__(dict(functions), tuple(pointers) + (params,))
 
@@ -491,29 +499,32 @@ class MetalBetaComplexFusedElectricPairPlan(KernelPlan):
 
 
 def params_record_dtype() -> Any:
-    """The host record's dtype — THE FIVE ``float2`` MEMBERS FIRST, itemsize 64.
+    """The host record's dtype — THE THREE ``float2`` MEMBERS FIRST, itemsize 152.
 
     ONE HOME FOR THE LAYOUT, for the measured reason
     :func:`.complex_fused_electric_pair.params_record_dtype` gives. The offsets are
-    stated explicitly; ``itemsize`` is stated because the natural record ends at 60
-    bytes and Metal pads the struct to its 8-byte alignment.
+    stated explicitly; ``itemsize`` is stated because the natural record ends at 152
+    only after Metal pads the struct to its 8-byte alignment.
     """
     import numpy as np  # noqa: PLC0415
 
     return np.dtype({
-        "names": ["px", "py", "pz", "bp", "bm",
-                  "nx", "ny", "nz", "n_elem", "dtdx"],
-        "formats": [("<f4", 2), ("<f4", 2), ("<f4", 2), ("<f4", 2), ("<f4", 2),
-                    "<u4", "<u4", "<u4", "<u4", "<f4"],
-        "offsets": [0, 8, 16, 24, 32, 40, 44, 48, 52, 56],
+        "names": ["px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx",
+                  "beta_plus", "beta_minus", "cb"],
+        "formats": [("<f4", 2), ("<f4", 2), ("<f4", 2),
+                    "<u4", "<u4", "<u4", "<u4", "<f4", "<f4", "<f4",
+                    _chunk_bounds.record_dtype()],
+        "offsets": [0, 8, 16, 24, 28, 32, 36, 40, 44, 48, 52],
         "itemsize": PARAMS_ITEMSIZE,
     })
 
 
 def _params_tensor(shape: Sequence[int], dtdx: float,
                    phase_values: Sequence[Tuple[float, float]],
-                   beta_words: Sequence[Tuple[float, float]], device: str) -> Any:
-    """The five scalars, three phases and two beta words as one 64-byte record.
+                   beta_plus: float, beta_minus: float, device: str, *,
+                   chunk_bounds: Any) -> Any:
+    """The five scalars, three connection words, two beta words and the chunk record
+    as one 152-byte record.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused
     pair's ``_params_tensor`` gives. Built here, once, at plan time. Nothing on the
@@ -529,8 +540,9 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
     record["dtdx"] = np.float32(dtdx)
     for name, (real, imag) in zip(("px", "py", "pz"), tuple(phase_values)):
         record[name] = (np.float32(real), np.float32(imag))
-    for name, (real, imag) in zip(("bp", "bm"), tuple(beta_words)):
-        record[name] = (np.float32(real), np.float32(imag))
+    record["beta_plus"] = np.float32(beta_plus)
+    record["beta_minus"] = np.float32(beta_minus)
+    record["cb"] = _chunk_bounds.pack(chunk_bounds)[0]
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -539,24 +551,21 @@ def plan_metal_beta_complex_fused_electric_pair(
         fields: Any, pml: Any, sources: Any = None,
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        functions: Optional[Mapping[str, Any]] = None,
-        probe: Any = None,
+        functions: Optional[Mapping[str, Any]] = None, *, chunk_bounds: Any,
         ) -> Optional[MetalBetaComplexFusedElectricPairPlan]:
     """Build the complex-beta fused D/E plan, or ``None`` when the seam is refused.
 
     ``None`` is the only refusal. ``functions`` is the mutation seam and is
     FORWARDED; dropping it would silently disarm every mutation leg. The phase and
-    beta words come from the special_kz arm's OWN helpers
-    (:func:`.special_kz.bloch_phase_words`,
-    :func:`.special_kz.beta_curl_coefficients`), so the conjugation rule and the
-    signed-zero-carrying coefficient rounding live in one place each.
+    beta words come from the certified helpers
+    (:func:`.complex_fields.phase_arguments` of
+    :func:`.complex_fields.bloch_phase_table`, and
+    :func:`.special_kz.beta_curl_coefficients`), so the connection rule and the
+    coefficient rounding live in one place each. ``chunk_bounds`` is the record of the
+    division the run steps with and has no default.
     """
     if not metal_beta_complex_fused_electric_pair_coverage(
-            fields, pml, sources, residency, probe).covered:
-        return None
-    record = probe if probe is not None else special_kz.load_expansion_probe()
-    expansion = special_kz.beta_expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+            fields, pml, sources, residency).covered:
         return None
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
@@ -565,11 +574,12 @@ def plan_metal_beta_complex_fused_electric_pair(
     codes = tuple(1 if kind == "metallic" else 0 for kind in kinds)
     walls = zero_metal_axes(grid)
     # backward=True: this is the D seam, whose wrapped lane carries the CONJUGATE.
-    phased, phase_words = special_kz.bloch_phase_words(grid, kinds, True)
-    phase_values = tuple((phase_words[2 * axis], phase_words[2 * axis + 1])
-                         for axis in range(3))
-    beta_words = special_kz.beta_curl_coefficients(
+    phased, phase_values = complex_fields.phase_arguments(
+        complex_fields.bloch_phase_table(grid, kinds), backward=True)
+    beta_plus, beta_minus = special_kz.beta_curl_coefficients(
         grid.beta, grid.dt, magnetic=False, complex_storage=True)
+    chunk_words = _chunk_bounds.plan_words(
+        chunk_bounds, grid.shape, "plan_metal_beta_complex_fused_electric_pair")
 
     volumes: List[str] = []
 
@@ -616,15 +626,15 @@ def plan_metal_beta_complex_fused_electric_pair(
     for mode in contract_variants:
         if mode not in selected:
             selected[mode] = compile_beta_complex_fused_electric_pair(
-                codes, phased, walls, expansion, mode)
+                codes, phased, walls, mode)
 
     dtdx = grid.dt / grid.dx
     return MetalBetaComplexFusedElectricPairPlan(
-        residency, volumes, codes, phased, phase_values, beta_words, walls,
-        grid.shape, dtdx, expansion,
-        _params_tensor(grid.shape, dtdx, phase_values, beta_words,
-                       residency.device),
-        pointers, selected)
+        residency, volumes, codes, phased, phase_values, beta_plus, beta_minus,
+        walls, grid.shape, dtdx,
+        _params_tensor(grid.shape, dtdx, phase_values, beta_plus, beta_minus,
+                       residency.device, chunk_bounds=chunk_words),
+        pointers, selected, chunk_bounds=chunk_words)
 
 
 # ---------------------------------------------------------------------------
@@ -636,8 +646,7 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
         return Coverage(
             False, (f"complex-beta fused electric pair cannot fill {slot}",))
     return metal_beta_complex_fused_electric_pair_coverage(
-        context.fields, context.pml, context.sources, context.residency,
-        context.extra.get("beta_probe"))
+        context.fields, context.pml, context.sources, context.residency)
 
 
 def _arm_plan(context: Any,
@@ -646,7 +655,8 @@ def _arm_plan(context: Any,
         return None
     return plan_metal_beta_complex_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants, probe=context.extra.get("beta_probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

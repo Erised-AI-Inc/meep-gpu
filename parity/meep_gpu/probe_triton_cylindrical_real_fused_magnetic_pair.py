@@ -1,22 +1,16 @@
 """Byte gate for the Dcyl m = 0 fused magnetic pair: ``step_B`` welded into ``update_H``.
 
-DEVICE STATUS: **RELEASED 2026-08-20** on the GPU host, RTX A6000 GPU 6, Triton 3.1.0 /
-    CuPy 13.5.1, ``keep`` subnormal policy —
-    ``parity/meep_gpu/results/triton_cylindrical_real_fused_magnetic_pair_2026-08-20/``.
-    4/4 device cases bit-identical over 10 complete steps against both oracles, 2/2
-    armed harness mutations refused, 9/10 kernel mutations caught with the tenth a
-    confirmed null, 3/3 refusals.
-
-    THE FIRST RUN FOUND A DEFECT IN THIS HARNESS, not in the kernel.
-    ``m5_ownership_mask_dropped`` came back UNCAUGHT because the fixture left the
-    ELECTRIC constitutive history at zero, which makes ``Ep`` exactly ``+0.0`` on both
-    planes the ownership mask touches — so the mask wrote a value already present and
-    the mutation could not fail. :func:`build_driver` now seeds ``f_w_E*`` and
-    :func:`mask_observability_leg` measures both arms.
+DEVICE STATUS: RE-CUT 2026-10-09 onto the aligned forms (MEEP's per-chunk radial sum,
+    the chunk-keyed PML forms, the double-product axis rule, the root pair's
+    chunk-keyed constitutive half). The release recorded under
+    ``parity/meep_gpu/results/triton_cylindrical_real_fused_magnetic_pair_2026-08-20/``
+    measured the previous text and does not license this one; the certification round
+    owes the re-run.
 
 THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
 :func:`~meep_gpu.triton_kernels.cylindrical_real_fused_magnetic_pair.cylindrical_real_fused_magnetic_pair_coverage`
-admits, the array-path radial prefix followed by ONE launch of
+admits, the radial scan (``cylindrical_triton.cyl_radial_difference``) followed by ONE
+launch of
 ``cyl_real_fused_curl_constitutive_B`` leaves the engine in a state that is
 BIT-IDENTICAL, PER COMPLETE ``driver.step()``, to
 
@@ -55,17 +49,15 @@ WHAT THE GATE REFUSES TO INFER.
   that is the row the wall-clear mutation targets.
 
 ===========================================================================
-THE PREFIX IS UPSTREAM OF THE SEAM, and this gate compares like with like
+THE RADIAL SCAN IS UPSTREAM OF THE SEAM, and this gate compares like with like
 ===========================================================================
 
-``cyl_pml_curl_step`` consumes a radial prefix scan the HOST computes; that decision
-belongs to :mod:`~meep_gpu.triton_kernels.cylindrical_triton` and is unchanged here.
-What matters for fusion is that the prefix runs BEFORE the curl, so no launch
-straddles it. Both the separate route and the fused route compute the same prefix
-through the same shipped function; what the fusion removes is the SECOND device
-launch — the constitutive one — and the ``B`` round trip between them. The launch
-counter in this gate counts the FUSED kernel only, so the count it reports is
-one per step, not one per device call in the step.
+``cylindrical_triton.cyl_radial_difference`` computes MEEP's per-chunk radial
+difference on the device before the curl, so no launch straddles it. Both the separate
+route and the fused route launch the same scan; what the fusion removes is the SECOND
+curl-side launch -- the constitutive one -- and the ``B`` round trip between them. The
+launch counter in this gate counts the FUSED kernel only, so the count it reports is one
+per step.
 
 Usage::
 
@@ -201,6 +193,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/cylindrical_real_fused_magnetic_pair.py",
         "meep_gpu/triton_kernels/cylindrical_triton.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/stepping.py",
@@ -291,46 +284,46 @@ def _rewrite_block(source: str, before: Sequence[str],
 # NO-DEVICE LEG 1 — the transcription, read off the shipped source
 # ---------------------------------------------------------------------------
 
-#: The cylindrical curl's arithmetic, whose grouping decides float32 bits.
+#: The cylindrical curl's arithmetic and forms, whose grouping decides float32 bits.
 CURL_LINES = (
-    "curl0 = dtdx * ((c_p - c) + (b - b_z))",
-    "curl1 = dtdx * ((a_z - a) + (c - c_r))",
-    "curl2 = dtdx * ((b_r - b) + (a - a_p))",
-    "n0 = ((p0 * km_y) - curl0) * si_y",
-    "n1 = ((p1 * km_z) - curl1) * si_z",
-    "n2 = ((p2 * km_x) - curl2) * si_x",
-    "v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z",
-    "v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x",
-    "v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y",
+    "curl0 = curl_stencil(c_p, c, b, b_z, dtdx, pp, pz)",
+    "curl1 = curl_stencil(a_z, a, c, c_r, dtdx, pz, pr)",
+    "curl2 = dtdx * tl.load(rad + idx, mask=live, other=0.0)",
+    "du0 = record_in(cb, lattice + 8, k)",
+    "du1 = record_in(cb, lattice + 0, i)",
+    "du2 = record_in(cb, lattice + 4, j)",
+    "p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)",
+    "v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,",
+    "tl.store(u0 + idx, n0, mask=live & du0)",
 )
 
-#: The m = 0 substitutions the cylindrical curl makes and this body must keep.
+#: The m = 0 cylindrical lines the curl makes and this body must keep.
 CYLINDRICAL_LINES = (
-    "curl2 = dtdx * (tl.load(pfx + idx + nyz, mask=live, other=0.0)",
-    "- tl.load(pfx + idx, mask=live, other=0.0))",
+    "presence = tl.load(cb + RECORD_PRESENCE)",
     "at_r, at_z = i == 0, k == 0",
     "v0 = tl.where(at_r, 0.0, v0)",
 )
 
 #: The wall clear, byte-copied from ``kernels.fused_curl_constitutive_B``'s ZM block
-#: — the same three rows ``stepping._zero_metal`` writes for the B family.
+#: -- the same three rows ``stepping._zero_metal`` writes for the B family.
 ZERO_METAL_LINES = (
     "v0 = tl.where(at_x, 0.0, v0)",
     "v1 = tl.where(at_y, 0.0, v1)",
     "v2 = tl.where(at_z, 0.0, v2)",
 )
 
-#: The constitutive half, byte-copied from the same function.
+#: The constitutive half, byte-copied from the same function: the chunk-keyed dsigw
+#: forms with MEEP's start of H.
 CONSTITUTIVE_LINES = (
-    "prev0 = tl.load(w0 + idx, mask=live, other=0.0)",
+    "dw0 = record_in(cb, 0, i)",
+    "start = start_h != 0",
+    "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)",
     "src0 = v0",
-    "a0 = tl.load(h0 + idx, mask=live, other=0.0)",
-    "a0 = a0 + kp_0 * src0",
-    "a0 = a0 - km_0 * prev0",
-    "a1 = a1 + kp_1 * src1",
-    "a1 = a1 - km_1 * prev1",
-    "a2 = a2 + kp_2 * src2",
-    "a2 = a2 - km_2 * prev2",
+    "tl.store(w0 + idx, src0, mask=live & dw0)",
+    "a0 = tl.load(h0 + idx, mask=live & dw0, other=0.0)",
+    "prev0 = tl.where(start, src0, prev0)",
+    "a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)",
+    "a2 = constitutive_form(a2, prev2, src2, kp_2, km_2, dw2)",
 )
 
 
@@ -358,7 +351,7 @@ def transcription_leg() -> Dict[str, Any]:
                 f"wall clear / constitutive transcription source has moved")
     # And the constitutive grouping traces one step further back, to the sub-step
     # kernel the plain pair itself copied.
-    for line in ("a0 = a0 + kp_0 * src0", "a0 = a0 - km_0 * prev0"):
+    for line in ("a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)",):
         if line not in constitutive:
             findings.append(
                 f"kernels.constitutive_step no longer contains {line!r}")
@@ -590,44 +583,28 @@ def mask_observability_leg() -> Dict[str, Any]:
     """Does the fixture put a NON-ZERO value where the ownership mask acts?
 
     THE MASK THIS PRODUCT CARRIES ZEROES TWO PLANES: ``Bx``'s curl at r = 0 and
-    ``Bz``'s curl at z = 0 (``_mask_non_owned_cells``:1865, on the ``is_axis`` and
-    ``is_metallic`` clauses). Both curls read ``Ep`` (= ``Ey``) as their only
-    non-invariant operand there, so if ``Ep`` is exactly ``+0.0`` on those planes the
-    mask is REDUNDANT — the value it writes is the value already present — and a
-    mutation that drops it measures nothing while reporting "uncaught".
-
-    THAT IS NOT HYPOTHETICAL. Measured on the first device run of this gate: with the
-    ELECTRIC constitutive history ``f_w_E*`` left at zero, ``Ep`` never leaves ``+0.0``
-    on either plane — the m = 0 axis rule sets ``Dp[0] = 0`` (stepping.py:589) and
-    ``zero_metal_D`` clears ``Dy`` at z = 0, and ``update_E`` accumulates
-    ``E += kps*(D*inv_eps) - kms*f_w_prev``, which stays at zero when both terms are.
-    ``m5_ownership_mask_dropped`` came back UNCAUGHT for exactly that reason.
-
-    So this leg measures BOTH arms: the seeded fixture (which :func:`build_driver`
-    now uses) must leave ``Ep`` non-zero on both planes after one complete step, and
-    the un-seeded control must leave it exactly zero. A leg that reported only the
-    first would not show that the seeding is what does the work.
+    ``Bz``'s curl at z = 0 (``stepping._mask_non_owned_cells``). Both curls read
+    ``Ep`` (= ``Ey``) there, and under the aligned forms ``Ep`` is EXACTLY ``+0`` on
+    both planes after any ``update_E``: ``Ey``'s own axis (phi) never carries a layer,
+    so ``E = D * inv_eps`` there, and the m = 0 axis rule zeroes ``Dp[0]`` while
+    ``zero_metal_D`` clears ``Dy`` at z = 0. The mask is therefore observable only on
+    the FIRST ``step_B`` of a fixture that seeds ``E`` itself -- and only through
+    ``fu_Bx`` on r = 0 inside the z layer, since the axis rule and the wall clear then
+    zero the fields. This leg measures BOTH arms on the state the first ``step_B``
+    reads: the seeded fixture (:func:`build_driver` seeds ``E``) must put non-zero
+    ``Ep`` words on both planes, and the control (``E`` left at zero) must not.
     """
-    import meep_gpu.driver as driver_module  # noqa: PLC0415
-
-    SEEDED = ("Bx", "By", "Bz", "Dx", "Dy", "Dz",
+    SEEDED = ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez",
               "f_w_Hx", "f_w_Hy", "f_w_Hz", "f_w_Ex", "f_w_Ey", "f_w_Ez")
     CONTROL = ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "f_w_Hx", "f_w_Hy", "f_w_Hz")
 
     rows: List[Dict[str, Any]] = []
     findings: List[str] = []
     for name, cell, resolution, courant, _steps in CASES:
-        for arm, names in (("electric_history_seeded", SEEDED),
-                           ("electric_history_zero", CONTROL)):
-            _grid, fields, pml = _dcyl(cell, resolution, courant)
+        for arm, names in (("electric_field_seeded", SEEDED),
+                           ("electric_field_zero", CONTROL)):
+            _grid, fields, _pml = _dcyl(cell, resolution, courant)
             _seed(fields, f"mask|{name}", names)
-            for _ in range(2):
-                driver_module.step_B(fields, pml)
-                driver_module.zero_metal_B(fields)
-                driver_module.update_H(fields, pml)
-                driver_module.step_D(fields, pml)
-                driver_module.zero_metal_D(fields)
-                driver_module.update_E(fields, pml)
             ep = np.asarray(fields.Ey, dtype=np.float32)
             axis_row = np.ascontiguousarray(ep[0, :, :]).view(np.uint32)
             wall_plane = np.ascontiguousarray(ep[:, :, 0]).view(np.uint32)
@@ -635,20 +612,20 @@ def mask_observability_leg() -> Dict[str, Any]:
                    "nonzero_words_on_the_r0_row": int(np.count_nonzero(axis_row)),
                    "nonzero_words_on_the_z0_plane": int(np.count_nonzero(wall_plane))}
             rows.append(row)
-            if arm == "electric_history_seeded" and not (
+            if arm == "electric_field_seeded" and not (
                     row["nonzero_words_on_the_r0_row"]
                     and row["nonzero_words_on_the_z0_plane"]):
                 findings.append(
-                    f"{name}: Ep is zero on a masked plane even with the electric "
-                    f"history seeded, so the ownership mask is unobservable and "
-                    f"m5_ownership_mask_dropped would be a FALSE null: {row}")
-            if arm == "electric_history_zero" and (
+                    f"{name}: Ep is zero on a masked plane even with E seeded, so the "
+                    f"ownership mask is unobservable and m5_ownership_mask_dropped "
+                    f"would be a FALSE null: {row}")
+            if arm == "electric_field_zero" and (
                     row["nonzero_words_on_the_r0_row"]
                     or row["nonzero_words_on_the_z0_plane"]):
                 findings.append(
                     f"{name}: the un-seeded CONTROL is non-zero on a masked plane, so "
-                    f"this leg cannot show that seeding the electric history is what "
-                    f"makes the mask observable: {row}")
+                    f"this leg cannot show that seeding E is what makes the mask "
+                    f"observable: {row}")
     return {"leg": "mask_observability", "device": False, "rows": rows,
             "findings": findings, "passed": not findings}
 
@@ -920,16 +897,18 @@ def build_driver(cp, cell, resolution, courant, seed: int, electric: bool):
     for name in ("Bx", "By", "Bz", "Dx", "Dy", "Dz"):
         driver.set_field(name, cp.asarray(np.ascontiguousarray(
             rng.uniform(-0.25, 0.25, size=shape).astype(np.float32))))
-    # BOTH constitutive histories are seeded, and the ELECTRIC one is what makes the
-    # curl's ownership mask observable at all. MEASURED 2026-08-20, on the first
-    # device run of this gate: with ``f_w_E*`` left at zero, ``Ey`` (= Ep) is EXACTLY
-    # +0.0 on the r = 0 row and on the z = 0 wall plane forever — the m = 0 axis rule
-    # sets ``Dp[0] = 0`` and ``zero_metal_D`` clears ``Dy`` at z = 0, and with a zero
-    # history the accumulation never leaves zero. Both masked curls are then already
-    # an exact +0.0 before the mask runs, so ``m5_ownership_mask_dropped`` came back
-    # UNCAUGHT while measuring nothing. That was a defect in this fixture, not a
-    # property of the kernel. :func:`mask_observability_leg` now measures the
-    # difference rather than leaving it to be rediscovered.
+    # THE ELECTRIC FIELD IS SEEDED, and that is what makes the curl's ownership mask
+    # observable: under the aligned forms ``Ep`` is exactly +0 on the r = 0 row and the
+    # z = 0 wall after any update_E (``E = D * inv_eps`` off E's own layer, ``Dp[0] = 0``,
+    # ``Dy`` cleared on the wall), so only the first step_B can see the mask, and only if
+    # it reads a seeded E. :func:`mask_observability_leg` measures both arms.
+    for name in ("Ex", "Ey", "Ez"):
+        array = getattr(driver.fields, name, None)
+        if array is not None:
+            array[...] = cp.asarray(np.ascontiguousarray(
+                rng.uniform(-0.25, 0.25, size=shape).astype(np.float32)))
+    # BOTH constitutive histories are seeded, so the accumulation's cells read a live
+    # previous word from the first update.
     for name in ("f_w_Hx", "f_w_Hy", "f_w_Hz", "f_w_Ex", "f_w_Ey", "f_w_Ez"):
         array = getattr(driver.fields, name, None)
         if array is not None:
@@ -1102,6 +1081,32 @@ def fused_route(plan):
 # The three-route leg
 # ---------------------------------------------------------------------------
 
+def at_rest_by_the_auxiliary_contract(pml: Any) -> Tuple[str, ...]:
+    """The auxiliary volumes the aligned forms never touch on this run, both seams.
+
+    DERIVED, not listed: ``fu`` of a curl target is read and written only where the
+    target's chunk carries its dsigu layer, and ``f_w`` of a constitutive component only
+    where its own axis carries one (the auxiliary contract, KERNELS.md section 1 C2). An
+    axis with no absorber on either face (``PML.axis_has_pml``: phi on every Dcyl run, z on
+    a periodic one) carries no layer in any chunk, so the target whose dsigu axis it is
+    (``cylindrical_triton.DSIG_AXES``) and the component whose own axis it is keep their
+    seeded words. They are still compared word for word; they are only excused from the
+    non-vacuity floor, which would otherwise call every row vacuous over them.
+    """
+    from meep_gpu.triton_kernels.coverage import CONSTITUTIVE_SIDES  # noqa: PLC0415
+    from meep_gpu.triton_kernels.cylindrical_triton import DSIG_AXES, SUB_STEPS  # noqa: PLC0415
+
+    rest = []
+    for sub_step in ("step_B", "step_D"):
+        rest += ["fu_" + target for index, target in enumerate(SUB_STEPS[sub_step]["targets"])
+                 if not pml.axis_has_pml(DSIG_AXES[index][1])]
+    # A constitutive component's own axis is its index (x, y, z = r, phi, z).
+    for side in ("H", "E"):
+        rest += ["f_w_" + name for index, name in enumerate(CONSTITUTIVE_SIDES[side]["targets"])
+                 if not pml.axis_has_pml(index)]
+    return tuple(rest)
+
+
 def run_leg(cp, name: str, cell, resolution, courant, steps: int, product,
             mutant: Any = None, install_fused: bool = True,
             freeze_magnetic: bool = False, electric: bool = True) -> Dict[str, Any]:
@@ -1190,8 +1195,10 @@ def run_leg(cp, name: str, cell, resolution, courant, steps: int, product,
         row["arrays_total"] = len(final)
         row["arrays_compared"] = sorted(final)
         row["arrays_ever_moved"] = len(ever_moved)
+        at_rest = set(at_rest_by_the_auxiliary_contract(fused.pml))
+        row["arrays_at_rest_by_contract"] = sorted(set(final) & at_rest - set(ever_moved))
         row["arrays_never_moved"] = sorted(
-            set(final) - set(ever_moved) - set(material))
+            set(final) - set(ever_moved) - set(material) - at_rest)
         row["material_changed"] = sorted(key for key in material if key in ever_moved)
         row["inventory_asymmetry_vs_array"] = sorted(
             set(final).symmetric_difference(snapshot(cp, reference)))
@@ -1247,8 +1254,16 @@ def shipped_source(product) -> str:
 
 
 def compile_mutant(source: str, kernel_name: str) -> Any:
-    """Compile a renamed mutant. The rename is what keeps the JIT cache honest."""
-    header = "import triton\nimport triton.language as tl\n\n"
+    """Compile a renamed mutant. The rename is what keeps the JIT cache honest.
+
+    The body calls the shared forms and reads the record constexprs, so the mutant's
+    module takes the product module's globals before its own definition.
+    """
+    header = ("import importlib\n"
+              "globals().update({k: v for k, v in vars(importlib.import_module("
+              "'meep_gpu.triton_kernels.cylindrical_real_fused_magnetic_pair')).items() "
+              "if not k.startswith('__')})\n"
+              "import triton\nimport triton.language as tl\n\n")
     handle = tempfile.NamedTemporaryFile(
         "w", suffix="_mutated_cyl_real_pair.py", delete=False, encoding="utf-8")
     handle.write(header + source.replace("cyl_real_fused_curl_constitutive_B",
@@ -1315,19 +1330,12 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return _rewrite_block(
             source, ["v0 = tl.where(at_r, 0.0, v0)"], ["v0 = v0 + 0.0"])
 
-    def m4_bz_curl_is_the_generic_one(source: str) -> Tuple[str, int]:
-        """``Bz``'s whole curl replaced by the generic four-operand stencil.
-
-        ``step_B`` :343-346 does NOT compute Bz's curl from the raw operands: it
-        extends Ep by one zero wall row, prefixes it at ``ir0 = 0.0`` and takes ONE
-        forward difference of the prefix. The generic form below is the substitution
-        undone — the sibling of the ``bz_flat_grouping`` mutation the cylindrical
-        curl's own gate measured moving 211 ``Bz`` floats on step 0."""
+    def m4_bz_curl_is_the_raw_ep_difference(source: str) -> Tuple[str, int]:
+        """``Bz``'s curl taken as the raw radial difference of Ep, not of MEEP's
+        per-chunk sum of (1/r)d(r*Ep)/dr -- the radial scan undone."""
         return _rewrite_block(
-            source,
-            ["curl2 = dtdx * (tl.load(pfx + idx + nyz, mask=live, other=0.0)",
-             "- tl.load(pfx + idx, mask=live, other=0.0))"],
-            ["curl2 = dtdx * ((b_r - b) + (a - a_p))"])
+            source, ["curl2 = dtdx * tl.load(rad + idx, mask=live, other=0.0)"],
+            ["curl2 = dtdx * (tl.load(g1 + o_r, mask=vr, other=0.0) - b)"])
 
     def m5_ownership_mask_dropped(source: str) -> Tuple[str, int]:
         """The r = 0 / z = 0 ownership mask (stepping._mask_non_owned_cells:1865).
@@ -1345,36 +1353,30 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             ["curl0 = curl0", "curl2 = curl2"])
 
     def m6_constitutive_association(source: str) -> Tuple[str, int]:
-        """Right-associated accumulation: same algebra, different float32 rounding."""
+        """THE INVERSION (Appendix A): the PREVIOUS package grouping put back,
+        ``(f + kps*src) - kms*prev`` in place of MEEP's ``f + ((kps*src) - (kms*prev))``
+        on the accumulation's cells. Same algebra, different float32 rounding."""
         return _rewrite_block(
-            source, ["a0 = a0 + kp_0 * src0", "a0 = a0 - km_0 * prev0"],
-            ["a0 = a0 + (kp_0 * src0 - km_0 * prev0)"])
+            source, ["a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)"],
+            ["a0 = tl.where(dw0, (a0 + kp_0 * src0) - km_0 * prev0, src0)"])
 
     def m7_history_read_after_write(source: str) -> Tuple[str, int]:
-        """f_w read AFTER it is written: wrong only where kms != 0, i.e. in the PML."""
+        """f_w read AFTER it is written: wrong only on the accumulation's cells."""
         return _rewrite_block(
             source,
-            ["prev0 = tl.load(w0 + idx, mask=live, other=0.0)", "src0 = v0",
-             "tl.store(w0 + idx, src0, mask=live)"],
-            ["src0 = v0", "tl.store(w0 + idx, src0, mask=live)",
-             "prev0 = tl.load(w0 + idx, mask=live, other=0.0)"])
+            ["prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)", "src0 = v0",
+             "tl.store(w0 + idx, src0, mask=live & dw0)"],
+            ["src0 = v0", "tl.store(w0 + idx, src0, mask=live & dw0)",
+             "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)"])
 
     def m8_phi_term_sign_flipped(source: str) -> Tuple[str, int]:
-        """The invariant-axis term COMPUTED, and computed wrong.
-
-        phi has n = 1, so its rolled operand equals the original and ``(c_p - c)`` is
-        exactly ``+0.0``; ``(c_p + c)`` is ``2c``, which is loud.
-
-        WHY NOT THE ELISION ITSELF. Dropping ``(c_p - c)`` outright — the signed-zero
-        trap ``cylindrical_triton``'s docstring names — differs from the shipped body
-        ONLY where ``(b - b_z)`` is ``-0.0``, and whether that pattern arises is a
-        property of the FIXTURE, not of the kernel. A mutation whose visibility this
-        gate cannot predict would be scored on a guess. The elision is refused by the
-        TRANSCRIPTION leg instead, which requires the four-operand line verbatim and
-        is deterministic."""
+        """The invariant phi partner COMPUTED, and computed wrong: ``(c_p + c)`` is
+        ``2c``, which is loud. (Keeping the exact ``+0`` phi addend MEEP drops is a
+        signed-zero difference, measured by the cylindrical gate on its ``lattice``
+        seeding, not here.)"""
         return _rewrite_block(
-            source, ["curl0 = dtdx * ((c_p - c) + (b - b_z))"],
-            ["curl0 = dtdx * ((c_p + c) + (b - b_z))"])
+            source, ["curl0 = curl_stencil(c_p, c, b, b_z, dtdx, pp, pz)"],
+            ["curl0 = dtdx * (((c_p + c) + b) - b_z)"])
 
     def m9_coefficient_index_moved(source: str) -> Tuple[str, int]:
         """The constitutive coefficient read on the WRONG axis for component 0.
@@ -1385,10 +1387,17 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             source, ["kp_0 = tl.load(kp0 + i, mask=live, other=0.0)"],
             ["kp_0 = tl.load(kp0 + k, mask=live, other=0.0)"])
 
-    def m10_commuted_multiply(source: str) -> Tuple[str, int]:
-        """PREDICTED NULL: IEEE multiplication commutes; only the PTX may move."""
-        needle = "kp_0 * src0"
-        return source.replace(needle, "src0 * kp_0"), source.count(needle)
+    def m10_fu_load_unconditional(source: str) -> Tuple[str, int]:
+        """PREDICTED NULL: ``fu`` loaded on every cell, stored on the recurrence's only.
+        The recurrence's arm alone reads it, so no stored word can move."""
+        return _rewrite_block(
+            source, ["p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)"],
+            ["p1 = tl.load(u1 + idx, mask=live, other=0.0)"])
+
+    def m11_whole_grid_recurrence(source: str) -> Tuple[str, int]:
+        """The section 7.2 battery: the recurrence on every cell (the previous form)."""
+        return _rewrite_block(
+            source, ["du0 = record_in(cb, lattice + 8, k)"], ["du0 = k >= 0"])
 
     return (
         ("m1_zero_metal_dropped", "the wall clear's slot", "caught",
@@ -1397,19 +1406,22 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
          m2_zero_metal_after_the_constitutive),
         ("m3_axis_rule_dropped", "the m = 0 on-axis rule", "caught",
          m3_axis_rule_dropped),
-        ("m4_bz_curl_is_the_generic_one", "Bz's prefix substitution", "caught",
-         m4_bz_curl_is_the_generic_one),
+        ("m4_bz_curl_is_the_raw_ep_difference", "Bz's radial sum", "caught",
+         m4_bz_curl_is_the_raw_ep_difference),
         ("m5_ownership_mask_dropped", "the cell-0 ownership mask", "caught",
          m5_ownership_mask_dropped),
-        ("m6_constitutive_association", "float32 association", "caught",
-         m6_constitutive_association),
+        ("m6_constitutive_association", "the inverted constitutive grouping",
+         "caught", m6_constitutive_association),
         ("m7_history_read_after_write", "the f_w ordering", "caught",
          m7_history_read_after_write),
         ("m8_phi_term_sign_flipped", "the invariant-axis term", "caught",
          m8_phi_term_sign_flipped),
         ("m9_coefficient_index_moved", "dsigw's own axis", "caught",
          m9_coefficient_index_moved),
-        ("m10_commuted_multiply", "commuted multiply", "null", m10_commuted_multiply),
+        ("m10_fu_load_unconditional", "the auxiliary load's guard", "null",
+         m10_fu_load_unconditional),
+        ("m11_whole_grid_recurrence", "the chunk-keyed form", "caught",
+         m11_whole_grid_recurrence),
     )
 
 

@@ -50,7 +50,8 @@ def test_the_ade_recurrence_is_the_certified_bodys_own_line():
     certifying a re-derivation.
     """
     certified = ade_update_p.ade_source("float32", True)
-    line = "p_out[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));"
+    line = ("p_out[idx] = gamma1inv * (((two_minus_od * p) - (gamma1 * q)) + "
+            "(omega0dtsqr * (s * w)));")
     assert line in certified, "the certified ADE body's arithmetic line moved"
     fused = family.fused_ade_chain_source("no_pml", 0, 2, (True, True))
     for index in (0, 1):
@@ -69,26 +70,56 @@ def test_the_pole_chain_is_the_certified_stored_e_bodys_own_lines():
 
 
 @pytest.mark.parametrize("axis,coordinate", ((0, "i"), (1, "j"), (2, "k")))
-def test_the_pml_half_is_the_certified_dispersive_bodys_own_lines(axis, coordinate):
-    """The dispersive arm's seam is a PURE ADDITION — nothing is rewritten.
+def test_the_pml_half_is_the_certified_constitutive_select(axis, coordinate):
+    """The PML arm's E half is the certified constitutive body's per-chunk select.
 
-    ``dispersive_update_e``'s body already names the drive ``src`` one line before
-    it stores it into ``f_w`` (dispersive_update_e.py:79-80), so the fused body
-    keeps every line and only ADDS ``float w = src;`` inside the ADE arms.
+    The accumulation in MEEP's grouping where the component's own chunk carries its
+    layer, ``E = src`` elsewhere, ``f_w`` touched only on the former: the ALIGNED
+    certified body's lines (``shaders.constitutive_source``, side E), renamed pointer
+    by pointer. The product and the pole chain are still the pointwise dispersive
+    body's own lines, and the drive is the register ``src`` -- which is ``f_w`` on the
+    accumulating cells and the stored E on the plain ones, MEEP's per-chunk ``w``.
     """
     certified = dispersive_update_e.dispersive_e_source(2, axis)
     fused = family.fused_ade_chain_source("dispersive", axis, 2, (True, True))
-    for line in ("    float prev = fw[idx];",
-                 "    float source = d_in[idx];",
-                 "    float src = source * inv_e[idx];",
-                 "    fw[idx] = src;",
-                 "    float value = e_out[idx];",
-                 f"    value = value + kps[{coordinate}] * src;",
-                 f"    value = value - kms[{coordinate}] * prev;",
-                 "    e_out[idx] = value;"):
+    for line in ("    float source = d_in[idx];",
+                 "    float src = source * inv_e[idx];"):
         assert line in certified, f"the certified dispersive body changed: {line!r}"
         assert line in fused, f"the fused body dropped a certified line: {line!r}"
+    pairs, flag = _aligned_e_lines(axis, coordinate)
+    for line, renamed in pairs:
+        assert renamed in fused, f"the fused body does not carry {line!r} as {renamed!r}"
+    assert flag in fused
     assert "float w = src;" in fused, "the seam register is not read by the ADE arm"
+
+
+#: The certified ALIGNED constitutive body's per-component lines (side E, component
+#: ``t``), and the pointer renames that carry them into a one-component E half:
+#: ``dw{t}`` -> ``dw``, ``w{t}[ii]`` -> ``fw[idx]``, ``src{t}`` -> ``src``,
+#: ``prev{t}`` -> ``prev``, ``a{t}`` -> ``value``, ``f{t}[ii]`` -> ``e_out[idx]``,
+#: ``kp_{t}``/``km_{t}`` -> ``kps[c]``/``kms[c]``.
+def _aligned_e_lines(axis, coordinate):
+    from meep_gpu.metal_kernels import shaders as _shaders
+
+    certified = _shaders.constitutive_source("E")
+    t = axis
+    lines = (f"    float prev{t} = dw{t} ? w{t}[ii] : 0.0f;",
+             f"    if (dw{t}) {{ w{t}[ii] = src{t}; }}",
+             f"    float a{t} = src{t};",
+             f"    if (dw{t}) {{ a{t} = f{t}[ii] + ((kp_{t} * src{t}) - (km_{t} * prev{t})); }}",
+             f"    f{t}[ii] = a{t};")
+    renames = ((f"dw{t}", "dw"), (f"w{t}[ii]", "fw[idx]"), (f"src{t}", "src"),
+               (f"prev{t}", "prev"), (f"a{t}", "value"), (f"f{t}[ii]", "e_out[idx]"),
+               (f"kp_{t}", f"kps[{coordinate}]"), (f"km_{t}", f"kms[{coordinate}]"))
+    pairs = []
+    for line in lines:
+        assert line in certified, f"the certified constitutive body changed: {line!r}"
+        renamed = line
+        for old, new in renames:
+            renamed = renamed.replace(old, new)
+        pairs.append((line, renamed))
+    flag = _shaders.constitutive_membership_flags("E")[axis]
+    return pairs, f"    const bool dw = {flag};"
 
 
 def test_the_no_pml_seam_is_the_one_rewritten_line_and_it_is_declared():
@@ -123,18 +154,22 @@ def test_the_certified_ade_drive_line_is_the_only_thing_the_seam_replaces():
 
 @pytest.mark.parametrize("arm", ("no_pml", "dispersive"))
 @pytest.mark.parametrize("poles", (0, 1, 6))
-def test_the_body_has_exactly_one_branch(arm, poles):
-    """Every emitted line but the guard is reached by every in-range thread.
+def test_the_body_has_one_branch_and_on_pml_only_the_select(arm, poles):
+    """Every emitted line but the guard and the PML arm's select is straight line.
 
     THE DEAD-BRANCH MUTATION — an edit to a line the scored grid never enters,
-    reported UNCAUGHT while measuring nothing — cannot exist in a kernel with one
-    branch. That property is asserted from the emitted TEXT rather than argued
-    from the emitter's layout.
+    reported UNCAUGHT while measuring nothing — cannot hide in a kernel whose only
+    branches are the ``n_elem`` guard and, under PML, the per-chunk constitutive
+    select (two ``if (dw)`` and one ``dw ?``), whose two forms the gate's mutation
+    case both steps. Asserted from the emitted TEXT.
     """
     flags = tuple((index % 2) == 0 for index in range(poles))
     source = family.fused_ade_chain_source(arm, 0, poles, flags)
-    assert len(re.findall(r"\bif\s*\(", source)) == 1
-    assert "?" not in source
+    select = arm == "dispersive"
+    assert len(re.findall(r"\bif\s*\(", source)) == (3 if select else 1)
+    assert len(re.findall(r"\bif \(dw\)", source)) == (2 if select else 0)
+    assert source.count("?") == (1 if select else 0)
+    assert source.count("dw ?") == (1 if select else 0)
     assert not re.findall(r"\b(for|while)\s*\(", source)
 
 
@@ -178,17 +213,38 @@ def test_an_over_ceiling_signature_is_refused_by_name_not_left_to_the_compiler()
 
 
 def test_the_params_blob_is_a_flat_word_sequence_the_host_can_pack():
-    """Every struct member is 4 bytes, so the layout has no padding to guess at."""
-    blob = family.pack_params([(1.5, 2.5, 3.5), (4.5, 5.5, 6.5)],
+    """Every struct member is 4 bytes, so the layout has no padding to guess at.
+
+    Per pole MEEP's four constants in ``RealnumConstants`` order, then the scalar
+    sigma, then ``ny``, ``nz``, ``n_elem``.
+    """
+    blob = family.pack_params([(1.5, 2.5, 3.5, 4.5), (5.5, 6.5, 7.5, 8.5)],
                               [0.25, 0.75], 7, 9, 630)
     assert blob.dtype == np.float32
-    assert blob.size == family.params_words(2) == 4 * 2 + 3
-    assert blob[0] == np.float32(1.5) and blob[1] == np.float32(4.5)
-    assert blob[2] == np.float32(2.5) and blob[3] == np.float32(5.5)
-    assert blob[4] == np.float32(3.5) and blob[5] == np.float32(6.5)
-    assert blob[6] == np.float32(0.25) and blob[7] == np.float32(0.75)
-    tail = np.frombuffer(blob[8:11].tobytes(), dtype=np.uint32)
+    assert blob.size == family.params_words(2) == 5 * 2 + 3
+    assert family.CONSTANT_ARRAYS == ade_update_p.CONSTANT_NAMES
+    for position, (first, second) in enumerate(((1.5, 5.5), (2.5, 6.5),
+                                                (3.5, 7.5), (4.5, 8.5),
+                                                (0.25, 0.75))):
+        assert blob[2 * position] == np.float32(first)
+        assert blob[2 * position + 1] == np.float32(second)
+    tail = np.frombuffer(blob[10:13].tobytes(), dtype=np.uint32)
     assert tuple(int(value) for value in tail) == (7, 9, 630)
+
+
+def test_the_packer_refuses_a_constant_that_is_not_a_float32_word():
+    with pytest.raises(ValueError, match="gamma1=.* is not a float32 word"):
+        family.pack_params([(1.5, 0.1, 3.5, 4.5)], [0.25], 7, 9, 630)
+    with pytest.raises(ValueError, match="not the four"):
+        family.pack_params([(1.5, 2.5, 3.5)], [0.25], 7, 9, 630)
+
+
+def test_the_struct_declares_meeps_four_constants_and_not_the_retired_triple():
+    source = family.fused_ade_chain_source("no_pml", 0, 2, (True, False))
+    for name in family.CONSTANT_ARRAYS:
+        assert f"    float {name}[2];" in source
+    for retired in ("c_now", "c_prev", "c_drive"):
+        assert retired not in source
 
 
 def test_the_signature_declares_exactly_the_poles_it_binds_not_eight():
@@ -418,3 +474,47 @@ def test_the_rotation_probe_is_present_and_stamps_its_provenance():
     assert "hashlib.sha256" in text, (
         "a per-case seed must come from a digest, not hash(): PYTHONHASHSEED "
         "salts hash() of a string and a failing case could not be replayed")
+
+
+# ---------------------------------------------------------------------------
+# The chunk record: the PML arm carries it in Params, the no-PML arm not at all
+# ---------------------------------------------------------------------------
+
+def test_the_pml_arm_embeds_the_record_and_the_no_pml_arm_keeps_its_bytes():
+    from meep_gpu.metal_kernels import chunk_bounds
+
+    pml = family.fused_ade_chain_source("dispersive", 2, 2, (False, True))
+    assert pml.count(chunk_bounds.struct_source()) == 1
+    params = pml.split("struct Params {", 1)[1].split("};", 1)[0]
+    assert params.rstrip().endswith(chunk_bounds.params_member().strip())
+    assert pml.count(chunk_bounds.params_alias()) == 1
+    plain = family.fused_ade_chain_source("no_pml", 2, 2, (False, True))
+    assert "ChunkBounds" not in plain and "cb." not in plain
+    assert "\n\n\nstruct Params" not in plain and "n_elem;\n\n};" not in plain
+
+
+def test_the_record_rides_after_the_shared_blob_word_for_word():
+    """``pack_params``/``params_words`` keep their layout (``complex_fused_ade_chain``
+    shares them); the PML arm appends the record's 25 words after them."""
+    import numpy as np
+
+    from meep_gpu.chunk_map import RECORD_WORDS
+
+    blob = family.pack_params([(1.0, 2.0, 3.0, 4.0)], [0.5], 4, 5, 60)
+    assert blob.size == family.params_words(1)
+    record = np.zeros(RECORD_WORDS, dtype=np.int32)
+    record[0:4] = (0, 2, 5, 6)
+    record[-1] = 0b111
+    packed = family.record_params(blob, record)
+    assert packed.dtype == np.float32 and packed.size == blob.size + RECORD_WORDS
+    assert np.array_equal(packed[:blob.size].view(np.uint32), blob.view(np.uint32))
+    assert list(packed[blob.size:].view(np.int32)) == [int(v) for v in record]
+
+
+def test_the_builder_takes_the_record_as_a_required_keyword():
+    import inspect
+
+    parameter = inspect.signature(
+        family.plan_metal_fused_ade_chain).parameters["chunk_bounds"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty

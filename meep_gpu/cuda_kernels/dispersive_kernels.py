@@ -25,41 +25,40 @@ one ``if``::
 
     if pml_active:
         kps, kms = _constitutive_coefficients(pml, axis_name, half_integer=True)
-        _apply_constitutive_pml(field, constitutive, kps, kms, f_w, scratch)   # :985-989
+        _apply_constitutive_regions(plan, component, field, constitutive, ...)  # per chunk
     else:
         # MEEP update_eh.cpp with dsigw == NO_DIRECTION: E = chi1inv * (D - P)
         getattr(fields, component)[...] = constitutive                         # :990-993
 
-Arm 1 accumulates ``f += (kap+sig)*fw - (kap-sig)*fwprev`` into an auxiliary that
-is STATE, indexes a per-axis coefficient vector, and reads the previous ``f_w``
-before overwriting it. Arm 2 has no auxiliary, no coefficient, no history and no
-per-axis index: it is a store. A kernel that served both behind one flag would be
-two kernels wearing one name, so they are two device strings, and arm 2's
-predicate refuses an active layer by name while arm 1's requires one.
+Arm 1 takes MEEP's two forms per structure chunk (update_eh.cpp:162-170), chosen per
+cell from the run's chunk record: on the chunks that carry the component's own layer
+it accumulates ``f + ((kps*src) - (kms*prev))`` into an auxiliary that is STATE,
+indexes a per-axis coefficient vector, and reads the previous ``f_w`` before
+overwriting it; elsewhere it stores ``f = src`` and leaves ``f_w`` untouched. Arm 2
+has no auxiliary, no coefficient, no history and no per-axis index: it is a store. A
+kernel that served both behind one flag would be two kernels wearing one name, so
+they are two device strings, and arm 2's predicate refuses an active layer by name
+while arm 1's requires one.
 
 ARM 3 IS NOT A NEW KERNEL AND THIS FILE DOES NOT WRITE ONE. That was the open
 question this round was told to settle by measurement, and the answer is a
 PREDICATE WIDENING over the shipped ``ade_kernels.update_P_pml_real*``
 pair. ``stepping.update_P`` (stepping.py:1360-1384) deletes its ``pml`` argument
 at :1424 -- "the absorber reaches the polarization through W and nowhere else" --
-and passes ``fields.drive_field`` as the drive. ``Fields.drive_field``
-(fields.py:1140-1163) is::
-
-    if self._pml_active:
-        return getattr(self, 'f_w_' + component)
-    return getattr(self, component)
-
-so the ONLY thing an absorber changes about this sub-step is WHICH ARRAY the
-launcher binds -- and ``ade_kernels.update_P_fused_pml_real`` already binds
-``drive(component)`` rather than reaching for ``f_w`` itself (ade_kernels.py:
-"``drive`` IS THE GATE'S DOOR"). :func:`covers_no_pml_ade_update_p` is therefore
-the shipped ADE predicate with one clause inverted and the drive identity check
-re-pointed at the stored E. ``gate_cuda_dispersive.py``'s ``arm3`` leg is what
-turns that reading into a measurement: it runs the SHIPPED launcher against
-``stepping.update_P`` on a layerless run, and carries
-``arm3_wrong_drive_CONTROL`` -- the same launcher with ``D`` bound as the drive --
-which must DIVERGE, because a leg whose control cannot fail has not shown that
-binding the right array is what produced the pass.
+and passes ``fields.drive_field`` as the drive: MEEP's ``w = f_w ? f_w : f`` per
+chunk (update_pols.cpp:44) -- ``f_w_<c>`` on the chunks that carry the component's
+own layer and the stored ``E<c>`` elsewhere, and the stored ``E<c>`` everywhere
+without a layer. So the ONLY thing an absorber changes about this sub-step is WHICH
+ARRAYS the launcher binds and selects between -- and
+``ade_kernels.update_P_fused_pml_real`` binds a drive PAIR (``drive_pair``: the
+stored E for both without a layer) rather than reaching for ``f_w`` itself.
+:func:`covers_no_pml_ade_update_p` is therefore the shipped ADE predicate with one
+clause inverted and the drive identity check re-pointed at the stored E.
+``gate_cuda_dispersive.py``'s ``arm3`` leg is what turns that reading into a
+measurement: it runs the SHIPPED launcher against ``stepping.update_P`` on a
+layerless run, and carries ``arm3_wrong_drive_CONTROL`` -- the same launcher with
+``D`` bound as the drive -- which must DIVERGE, because a leg whose control cannot
+fail has not shown that binding the right array is what produced the pass.
 
 =============================================================================
 WHAT IS TRANSCRIBED, AND FROM WHERE
@@ -114,13 +113,13 @@ FIVE THINGS DECIDE BIT-IDENTITY HERE
    expression which MUST be caught. Without the pair, "the operand order is
    inert" would be a claim about a leg nobody showed could fail.
 
-4. NO FMA. ``--fmad=false`` is CORRECTNESS, not tuning. Arm 1 has three
-   contraction candidates per component (``s * inv_eps`` into either
-   accumulation, and ``kps * src`` / ``kms * prev`` into their adds); arm 2 has
-   one. The option tuple is SPELLED IN THIS FILE rather than imported, for the
-   reason every sibling spells its own: a bit-identity probe loads these modules
-   BY PATH, outside the package, where an import could pick up a different tuple
-   than the one a gate compiled.
+4. NO FMA. ``--fmad=false`` is CORRECTNESS, not tuning. Arm 1 has contraction
+   candidates per component (``kps * src`` and ``kms * prev`` into the subtraction,
+   and that difference into the accumulation); arm 2 has none worth naming, and is
+   compiled under the same tuple. The option tuple is SPELLED IN THIS FILE rather
+   than imported, for the reason every sibling spells its own: a bit-identity probe
+   loads these modules BY PATH, outside the package, where an import could pick up a
+   different tuple than the one a gate compiled.
 
 5. THE POLE POINTERS ARE RESOLVED IMMEDIATELY BEFORE EACH LAUNCH, never cached.
    ``PolarizationState.update`` rotates ``P``/``P_prev``/``_scratch`` every step
@@ -225,7 +224,13 @@ from .coverage import (ADE_BOUNDARY_KINDS, ADE_ELECTRIC_COMPONENTS,
                        _base_address, _boundary_kinds_from,
                        _coefficient_vector_problem, _grid_facts,
                        ade_sigma_is_volume)
-from . import compile_cache
+from . import bounds_block, compile_cache
+
+#: The chunk-record entries the PML arm decodes: each E component's own axis, on
+#: the half-integer lattice (the region plan's rule for update_E,
+#: ``bounds_block.constitutive_entries``).
+PML_BOUNDS_ENTRIES: Tuple[Tuple[bool, int], ...] = tuple(
+    bounds_block.constitutive_entries(("Ex", "Ey", "Ez")))
 
 #: SIMULTANEOUS MIRROR PLANES THIS FAMILY'S GATE HAS SCORED, and the reason it is
 #: a constant here rather than a read of
@@ -366,28 +371,29 @@ _POLE_CHAIN_NOTE = r'''
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 968-993->997-1022
 
 _PML_ACCUMULATION_NOTE = r'''
-// stepping._apply_constitutive_pml (stepping.py:2065-2098), MEEP's
-// step_update_EDHB with dsigw active:
-//
-//     realnum fwprev = fw[i], kapwkw = kapw[kw], sigwkw = sigw[kw];
-//     fw[i] = g[i] * u[i];
-//     f[i] += (kapwkw + sigwkw) * fw[i] - (kapwkw - sigwkw) * fwprev;
-//
-// The two accumulations are kept SEPARATE and LEFT-TO-RIGHT, and `prev` is
-// loaded before the store. Character for character the certified
-// constitutive_kernels.constitutive_apply body; restated here rather than
-// imported because a bit-identity probe rewrites these strings by hand and a
-// shared prelude would make one mutation hit two families.
+// stepping._apply_constitutive_regions: MEEP's two constitutive forms, chosen per
+// structure chunk (update_eh.cpp:162-170).
+//   dsigw (the cell's chunk carries the component's own layer): the accumulation of
+//   stepping._apply_constitutive_pml, MEEP's step_update_EDHB with dsigw active
+//       realnum fwprev = fw[i], kapwkw = kapw[kw], sigwkw = sigw[kw];
+//       fw[i] = g[i] * u[i];                   // B for H, D*inv_eps for E
+//       f[i] += (kapwkw + sigwkw) * fw[i] - (kapwkw - sigwkw) * fwprev;
+//   with the right-hand side formed first: f + ((kps*src) - (kms*prev));
+//   otherwise: f = src (H = B, E = D*inv_eps), and fw is not touched.
+// `prev` is loaded before the store (note 3), and the plain form reads neither fw
+// nor the old f. Character for character the root constitutive_kernels helper;
+// restated here rather than imported because a bit-identity probe rewrites these
+// strings by hand and a shared prelude would make one mutation hit two families.
 __device__ __forceinline__ void constitutive_apply(
     float* __restrict__ f, float* __restrict__ fw, int idx, float src,
-    float kps, float kms
+    float kps, float kms, int dsigw
 ) {
-    float prev = fw[idx];
-    fw[idx] = src;
-    float a = f[idx] + kps * src;
-    f[idx] = a - kms * prev;
+    float prev = dsigw ? fw[idx] : 0.0f;
+    if (dsigw) fw[idx] = src;
+    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;
+    f[idx] = value;
 }
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 2065-2098->2112-2145
+'''
 
 
 def normalized_pole_counts(counts: Sequence[int]) -> Tuple[int, int, int]:
@@ -501,7 +507,8 @@ def dispersive_source(arm: str, counts: Sequence[int]) -> str:
             "    int nx, int ny, int nz,\n"
             "    const float* __restrict__ kps_x, const float* __restrict__ kms_x,\n"
             "    const float* __restrict__ kps_y, const float* __restrict__ kms_y,\n"
-            "    const float* __restrict__ kps_z, const float* __restrict__ kms_z\n"
+            "    const float* __restrict__ kps_z, const float* __restrict__ kms_z,\n"
+            "    const int* __restrict__ cb\n"
             ") {\n")
         index_block = (
             "    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n"
@@ -510,7 +517,8 @@ def dispersive_source(arm: str, counts: Sequence[int]) -> str:
             "    int k = idx % nz;\n"
             "    int j = (idx / nz) % ny;\n"
             "    int i = idx / (ny * nz);\n"
-            "\n")
+            "\n"
+            + bounds_block.bounds_block(PML_BOUNDS_ENTRIES))
         tail = (
             "\n\n"
             "    // All three sources are formed BEFORE any store, where the array\n"
@@ -522,10 +530,11 @@ def dispersive_source(arm: str, counts: Sequence[int]) -> str:
             "    // rewritten per component and never read across them, so it does\n"
             "    // not carry a dependency either.\n"
             "    // Ex <- dsigw x.  Ey <- dsigw y.  Ez <- dsigw z. Component c reads\n"
-            "    // AXIS c's table (E_CONSTITUTIVE_TERMS, stepping.py:227).\n"  # stepping.py live lines for the frozen device-text citation(s) in this string: 227->228
-            "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);\n"
-            "    constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j]);\n"
-            "    constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k]);\n"
+            "    // AXIS c's table (E_CONSTITUTIVE_TERMS) and its half-integer record\n"
+            "    // entry, which chooses the cell's form.\n"
+            "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);\n"
+            "    constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j], in_h_y);\n"
+            "    constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k], in_h_z);\n"
             "}\n")
         return prologue + signature + index_block + body + tail
 
@@ -745,11 +754,46 @@ def _require_no_aliasing(fields: "Any", plan: Dict[str, Sequence[Any]]) -> None:
         seen[address] = label
 
 
+def chunk_record_argument(chunk_bounds: Any) -> Any:
+    """The ``cb`` argument, checked: one contiguous ``int32[25]`` device vector.
+
+    The twin of ``constitutive_kernels.chunk_record_argument``, spelt here so that loading
+    this file by path picks up no sibling. There is no default: a kernel launched without
+    the run's division would choose its constitutive forms by some other division.
+    """
+    cp = _cupy()
+    if chunk_bounds is None:
+        raise ValueError("the PML dispersive update_E takes the run's chunk record "
+                         "(chunk_map.chunk_bounds_record) and was handed none")
+    if not isinstance(chunk_bounds, cp.ndarray):
+        raise ValueError(
+            f"the chunk record must be a device vector, got {type(chunk_bounds).__name__}: "
+            f"upload it once (cupy.asarray(record, dtype=cupy.int32)) and pass that, as "
+            f"arms.StepContext.chunk_bounds_device does")
+    if (getattr(chunk_bounds, "dtype", None) != cp.int32
+            or tuple(getattr(chunk_bounds, "shape", ())) != (CHUNK_RECORD_WORDS,)
+            or not chunk_bounds.flags.c_contiguous):
+        raise ValueError(
+            f"the chunk record must be one contiguous int32[{CHUNK_RECORD_WORDS}] device "
+            f"vector, got {getattr(chunk_bounds, 'dtype', type(chunk_bounds).__name__)} of "
+            f"shape {tuple(getattr(chunk_bounds, 'shape', ()))}")
+    return chunk_bounds
+
+
+#: ``chunk_map.RECORD_WORDS``, restated so the launcher check reads no sibling.
+CHUNK_RECORD_WORDS = 25
+
+
 def update_E_fused_pml_real_dispersive(fields: "Any", pml: "Any" = None, *,
+                                       chunk_bounds: Any,
                                        tables: Optional[Dict[str, Any]] = None,
                                        plan: Optional[Dict[str, List[Any]]] = None
                                        ) -> Dict[str, Any]:
     """Arm 1: ``stepping.update_E`` under an absorber, dispersive, in ONE launch.
+
+    ``chunk_bounds`` is the run's chunk record on the device, required: each E
+    component takes the dsigw accumulation on the cells whose chunk carries its own
+    layer and ``E = (D - sum P) * inv_eps`` elsewhere (:func:`chunk_record_argument`).
 
     ``tables`` and ``plan`` are the GATE'S DOORS, keyword-only. Supply ``pml``
     and the half-integer sub-lattice is decided here by :func:`dispersive_tables`;
@@ -760,6 +804,7 @@ def update_E_fused_pml_real_dispersive(fields: "Any", pml: "Any" = None, *,
 
     Returns the arity it launched at, so a caller can record which body ran.
     """
+    cb = chunk_record_argument(chunk_bounds)
     if tables is None:
         if pml is None:
             raise ValueError(
@@ -788,7 +833,7 @@ def update_E_fused_pml_real_dispersive(fields: "Any", pml: "Any" = None, *,
         np.int32(nx), np.int32(ny), np.int32(nz),
         tables["kps_x"], tables["kms_x"],
         tables["kps_y"], tables["kms_y"],
-        tables["kps_z"], tables["kms_z"],
+        tables["kps_z"], tables["kms_z"], cb,
     ])
     _get_kernel("pml", counts)((blocks,), (_DISPERSIVE_THREADS,), tuple(arguments))
     return {"arm": "pml", "counts": list(counts), "launches": 1}
@@ -1231,12 +1276,13 @@ def covers_no_pml_ade_component(fields: Any, pml: Any, grid: Any,
     on a run with NO absorber.
 
     NO NEW KERNEL IS INVOLVED AND THAT IS THE MEASURED FINDING, not an
-    assumption. ``ade_kernels.update_P_fused_pml_real`` binds ``drive(component)``
-    where ``drive`` defaults to ``fields.drive_field``; ``stepping.update_P``
-    passes the same bound method (stepping.py:1428) and deletes its ``pml``
-    argument (:1424). So the device text, the coefficient triple, the rotation
-    and the sigma specialization are all unchanged, and the only thing an
-    absorber decides is which array the bound method returns.
+    assumption. ``ade_kernels.update_P_fused_pml_real`` binds a drive pair and
+    selects between the two per cell from the chunk record (MEEP's per-chunk
+    ``w``); without a layer ``ade_kernels.drive_pair`` binds the stored E for both,
+    which is what ``fields.drive_field`` returns there and what
+    ``stepping.update_P`` passes. So the device text, the four constants, the
+    rotation and the sigma specialization are all unchanged, and the only thing an
+    absorber decides is which arrays the pair names.
     ``gate_cuda_dispersive.py``'s ``arm3`` leg runs the shipped launcher against
     ``stepping.update_P`` on layerless runs and carries a wrong-drive control
     that must DIVERGE.

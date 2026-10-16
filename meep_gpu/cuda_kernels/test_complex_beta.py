@@ -1,35 +1,30 @@
-"""``grid.beta`` under complex64 storage: its coefficient, its deltas, its behaviour.
+"""``grid.beta`` under complex64 storage: its coefficient, its deltas, its predicate.
 
 WHAT IS PINNED HERE AND WHAT IS NOT. The BYTE-IDENTITY VERDICT needs a device and
 lives in ``parity/meep_gpu/gate_cuda_complex_beta.py``. What a laptop can reach --
 and every one of these is a plausible, smooth, WRONG field if it leaks -- is:
 
 * THE COEFFICIENT, against ``stepping._special_kz_beta_term``'s own arithmetic on a
-  real ``Grid``/``Fields`` pair, not against a restatement of it. Its real word is a
-  SIGNED zero that Python's complex multiply produces and the kernel must be handed
-  rather than synthesise, and that asymmetry is MEASURED here over the corpus's own
-  betas rather than described.
+  real ``Grid``/``Fields`` pair, not against a restatement of it: one real float32
+  word per call site, the D side's negated in double before its one rounding, and the
+  increment ``-quarter_turn(c, g)`` formed part by part.
 * THE DELTAS, line by line against the FOLDED complex source this family transforms,
-  so "the fold plus one statement per beta target" is a claim a diff checks.
-* THE BEHAVIOUR, on beta grids folded and unfolded, against ``stepping.step_B`` /
-  ``step_D`` as uint32 words -- with FIVE defects each shown to diverge, including
-  the composition needle a fold makes reachable: the beta insert moved BELOW the
-  masks, which is invisible in the interior and wrong on the mirror plane and on the
-  far-ghost plane.
+  so "the fold plus MEEP's beta pass after targets 0 and 1" is a claim a diff checks.
 * THE PREDICATE, whose admissions must partition against the certified complex pair
   AND against ``complex_folded_kernels`` -- twelve of this family's sixteen census
   slots are folded, so the two are one wrong clause away from claiming the same
   rows.
 
-WHAT THE NUMPY LEG CANNOT SEE, stated rather than papered over: it compiles nothing,
-so no NVRTC contraction and no expansion arm; and on NumPy the complex multiply is
-bitwise commutative, so the COEFFICIENT-LEFT orientation that ``FMA_V1`` makes
-normative cannot be discriminated here at all. Those are the device gate's.
+THE BEHAVIOUR -- the emitted text executed against ``stepping.step_B`` / ``step_D`` as
+uint32 words on beta grids folded and unfolded, with planted defects each shown to
+diverge -- is ``test_fold_complex_chunk_forms.py``'s: it runs the shipped device text
+itself through the complex interpreter rather than a transcription of it.
 """
 
 from __future__ import annotations
 
 import math
+import re
 
 import numpy
 import pytest
@@ -39,16 +34,13 @@ from ..fields import Fields
 from ..grid import Grid, Mirror
 from ..pml import PML
 from . import complex_beta_kernels as beta_family
-from . import complex_emitter, complex_folded_kernels as folded, coverage
-from .test_complex_folded import (  # the ONE transcription, not a second copy
-    BC_METALLIC, BC_MIRROR_PERIODIC, CURL_ARRAYS, LICENCE, POLICY,
-    _GridWithCupysName, boundary_codes_for, build, build_spec, differing_words,
-    phase_arguments, restore, run_kernel_numpy, seed, snapshot, tables_for)
+from . import complex_folded_kernels as folded, coverage, folded_pass
+from .test_complex_folded import (  # the ONE fixture builder, not a second copy
+    _GridWithCupysName, build, build_spec)
 
-#: The corpus's own beta values, plus the two REAL-storage ones for contrast. The
-#: signed-zero measurement below runs over all of them because the sign of the
-#: PRODUCT ``sign * 2*pi*beta*dt`` is what decides the zero's sign, and a table
-#: sampled only at positive beta would miss half the states.
+#: The corpus's own beta values, plus the two REAL-storage ones for contrast, over
+#: both signs: the D side's word is the B side's negated, and a table sampled only at
+#: positive beta would see half the states.
 CORPUS_BETAS = (0.2, -0.6850526103319672, -0.9120991827764708,
                 -0.39073112848927377, 0.3321611318837033)
 
@@ -90,36 +82,45 @@ def build_beta(spec, courant=0.5):
     return build_spec(spec, courant=courant, beta=spec["beta"])
 
 
-def coefficients_for(sub_step, grid):
-    return beta_family.beta_curl_coefficients(
-        grid.beta, grid.dt, beta_family.MAGNETIC[sub_step])
-
-
 # ---------------------------------------------------------------------------
 # THE COEFFICIENT
 # ---------------------------------------------------------------------------
+
+def _beta_increment(word, partner):
+    """The kernel's ``beta_increment(c, g)``, transcribed in float32 part by part:
+    ``(c * g.im, -(c * g.re))`` -- ``-quarter_turn(c, g)`` with no complex product."""
+    word = numpy.float32(word)
+    out = numpy.empty(partner.shape, dtype=numpy.complex64)
+    out.real = (word * partner.imag).astype(numpy.float32)
+    out.imag = (-(word * partner.real)).astype(numpy.float32)
+    return out
+
 
 @pytest.mark.parametrize("beta", CORPUS_BETAS)
 @pytest.mark.parametrize("magnetic", (True, False))
 def test_the_coefficient_is_steppings_own_word_for_word(beta, magnetic):
     """Against ``stepping._special_kz_beta_term`` on a real grid, not a restatement.
 
-    The oracle returns ``-(complex64(coefficient) * partner)`` for a whole volume,
-    so this multiplies by the SAME partner and compares uint32 words: that catches a
-    wrong sign, a wrong rounding, a missing ``+-1j`` and a lost signed zero in one
-    comparison, where checking the scalar alone would only catch the first three.
+    The oracle returns the negated quarter turn of the call site's coefficient for a
+    whole volume, so this forms the kernel's increment from the SAME partner and
+    compares uint32 words: that catches a wrong sign, a wrong rounding, the two parts
+    exchanged and a lost signed zero in one comparison, where checking the scalar alone
+    would only catch the first two.
     """
     fields, _layer, grid = build(
         (16.0, 8.0, 0.0), ("periodic",) * 3, (), dimensions=2, beta=beta)
     rng = numpy.random.default_rng(20260820)
-    partner = (rng.uniform(-1.0, 1.0, size=grid.shape)
-               + 1j * rng.uniform(-1.0, 1.0, size=grid.shape)).astype(numpy.complex64)
+    partner = numpy.empty(grid.shape, dtype=numpy.complex64)
+    partner.real = rng.uniform(-1.0, 1.0, size=grid.shape).astype(numpy.float32)
+    partner.imag = rng.uniform(-1.0, 1.0, size=grid.shape).astype(numpy.float32)
+    # Signed zeros in both parts, so the increment's own zeros carry a sign to compare.
+    partner.real[0, ::2] = numpy.float32(-0.0)
+    partner.imag[1, ::3] = numpy.float32(-0.0)
     for index, sign in enumerate((1.0, -1.0)):
         oracle = stepping._special_kz_beta_term(fields, partner, sign,
                                                 magnetic=magnetic)
-        word = beta_family.beta_curl_coefficients(
-            grid.beta, grid.dt, magnetic)[index]
-        mine = -(numpy.complex64(complex(*word)) * partner)
+        word = beta_family.beta_curl_coefficients(grid.beta, grid.dt, magnetic)[index]
+        mine = _beta_increment(word, partner)
         assert oracle.dtype == mine.dtype == numpy.complex64
         assert numpy.array_equal(
             numpy.ascontiguousarray(oracle).view(numpy.float32).view(numpy.uint32),
@@ -127,51 +128,37 @@ def test_the_coefficient_is_steppings_own_word_for_word(beta, magnetic):
             beta, magnetic, sign)
 
 
-def test_the_real_word_is_a_signed_zero_exactly_where_python_puts_one():
-    """MEASURED, and it is why the word is passed through instead of written as 0.0f.
-
-    ``coefficient * 1j`` is ``(coefficient*0.0 - 0.0*1.0, coefficient*1.0)``, so the
-    REAL word is ``-0.0`` exactly when ``coefficient`` is negative AND the ``+1j``
-    (magnetic) branch is taken, and ``+0.0`` in every other combination. This walks
-    the corpus betas at two courants and asserts the whole table, because a kernel
-    that synthesised the zero would be right on three quarters of the states and
-    wrong on the rest -- and ``fma(x, y, -0.0f)`` differs from ``fma(x, y, +0.0f)``
-    wherever ``x*y`` is exactly zero, which a thin absorber reaches from all-zero
-    state.
-    """
-    negative_zeros = 0
+def test_each_call_site_word_is_one_rounding_of_the_signed_double():
+    """ONE float32 word per call site: ``sign * 2*pi*beta*dt`` in double, negated on the
+    D side before the round (stepping's ``coefficient if magnetic else -coefficient``),
+    rounded ONCE. No complex coefficient -- and so no signed-zero real word -- exists
+    to be handed over."""
     total = 0
     for beta in CORPUS_BETAS:
         for dt in (0.0125, 0.00875):
             for magnetic in (True, False):
                 pair = beta_family.beta_curl_coefficients(beta, dt, magnetic)
+                assert len(pair) == 2
                 for index, sign in enumerate((1.0, -1.0)):
                     coefficient = sign * 2.0 * math.pi * beta * dt
-                    real = numpy.float32(pair[index][0])
-                    bits = int(numpy.float32(real).view(numpy.uint32))
-                    expected = 0x80000000 if (coefficient < 0.0 and magnetic) else 0
-                    assert bits == expected, (beta, dt, magnetic, sign, hex(bits))
-                    negative_zeros += int(bits == 0x80000000)
+                    expected = numpy.float32(coefficient if magnetic else -coefficient)
+                    word = numpy.float32(pair[index])
+                    assert word.view(numpy.uint32) == expected.view(numpy.uint32), (
+                        beta, dt, magnetic, sign)
                     total += 1
     assert total == 40
-    assert negative_zeros == 10, (
-        "the negative-zero states vanished from the table; the measurement this "
-        "clause rests on no longer holds and the pass-through may be pointless")
 
 
-def test_the_imaginary_word_carries_the_whole_magnitude_and_both_signs():
-    """The ``+-1j`` is not decoration: swapping it swaps which sub-step gets which.
-
-    ``step_B`` takes ``+1j`` and ``step_D`` ``-1j`` (stepping.py:798-799), so the two
-    sub-steps' coefficients are exact negatives of each other. A kernel that used one
-    for both would be a plausible run with the out-of-plane coupling reversed on half
-    the fields.
-    """
+def test_the_sub_steps_and_the_call_sites_are_exact_negatives():
+    """``step_B`` takes ``+1j`` and ``step_D`` ``-1j``, so the two sub-steps' words are
+    exact negatives of each other; and the two call sites (sign +1 and -1) are too. A
+    kernel that used one for both would be a plausible run with the out-of-plane
+    coupling reversed on half the fields."""
     magnetic = beta_family.beta_curl_coefficients(0.2, 0.0125, True)
     electric = beta_family.beta_curl_coefficients(0.2, 0.0125, False)
     for index in (0, 1):
-        assert magnetic[index][1] == -electric[index][1] != 0.0
-    assert magnetic[0][1] == -magnetic[1][1]
+        assert magnetic[index] == -electric[index] != 0.0
+    assert magnetic[0] == -magnetic[1]
     assert beta_family.MAGNETIC == {"step_B": True, "step_D": False}
 
 
@@ -179,279 +166,118 @@ def test_the_imaginary_word_carries_the_whole_magnitude_and_both_signs():
 # THE DELTAS
 # ---------------------------------------------------------------------------
 
+#: The lines one beta pass adds after its target's ``pml_apply`` call
+#: (``folded_pass.complex_beta_insert``), as code: the ownership flag, the curl's own
+#: mask lines as that flag, the increment and the ladder.
+_PASS_LINES = (
+    re.compile(r" *int owned_cell = 1;"),
+    re.compile(r" *if \(.*\) owned_cell = 0;"),
+    re.compile(r" *cf inc_beta = owned_cell \? beta_increment\(b[pm], f_[12]\) "
+               r": cf_zero\(\);"),
+    re.compile(r" *cfold_apply\(f[01], u[01], idx, inc_beta, .*\);"),
+    re.compile(r" *//.*"),
+)
+
+
 def test_the_only_difference_from_the_folded_source_is_the_deltas():
-    """This family IS the folded kernel plus one statement per beta target."""
+    """This family IS the folded kernel plus MEEP's beta pass after targets 0 and 1."""
+    helpers = set(folded_pass.COMPLEX_FOLD_HELPERS.split("\n"))
     for sub_step in ("step_B", "step_D"):
-        for arm in sorted(complex_emitter.EXPANSIONS):
-            base = folded.folded_source(sub_step, arm).split("\n")
-            new = beta_family.beta_source(sub_step, arm).split("\n")
-            added_ok, removed_ok = set(), set()
-            for _label, old, replacement, _sites in beta_family._deltas_for(sub_step):
-                added_ok.update(replacement.split("\n"))
-                removed_ok.update(old.split("\n"))
-            added = [line for line in new if line not in base]
-            removed = [line for line in base if line not in new]
-            assert all(line in added_ok for line in added), (
-                sub_step, arm, [line for line in added if line not in added_ok])
-            assert all(line in removed_ok for line in removed), (
-                sub_step, arm, [line for line in removed if line not in removed_ok])
-            assert added, (sub_step, arm)
+        base = folded.folded_source(sub_step).split("\n")
+        new = beta_family.beta_source(sub_step).split("\n")
+        renamed = (f'extern "C" __global__ void '
+                   f'{beta_family.BETA_KERNELS[sub_step]}(')
+        added = [line for line in new if line not in base]
+        removed = [line for line in base if line not in new]
+        unexplained = [line for line in added
+                       if line not in helpers and line != renamed
+                       and line != "    float bp, float bm,"
+                       and not any(p.fullmatch(line) for p in _PASS_LINES)]
+        assert not unexplained, (sub_step, unexplained)
+        assert removed == [f'extern "C" __global__ void '
+                           f'{folded.FOLDED_KERNELS[sub_step]}('], sub_step
+        assert "    float bp, float bm," in added
 
 
-def test_a_moved_anchor_fails_the_transform_instead_of_dropping_a_beta_term():
+@pytest.mark.parametrize("anchor,moved", [
+    ("    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,\n"
+     "    const int* __restrict__ cb\n) {",
+     "    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,\n"
+     "    const int* cb\n) {"),
+    ("        cf f_2 = cwindow(g1, idx, k, ph_z, pz);\n",
+     "        cf f_2 = cshift_up(g1, idx, k, nz, sz, bc_z);\n"),
+])
+def test_a_moved_anchor_fails_the_transform_instead_of_dropping_a_beta_pass(anchor,
+                                                                           moved):
     """A site count is a WELD. Two beta targets, and a kernel missing one compiles."""
-    original = folded.folded_source
-    for label, old, _new, _sites in beta_family._deltas_for("step_D"):
-        def broken(sub_step, expansion, _old=old):
-            return original(sub_step, expansion).replace(_old, "/* moved */")
-
-        beta_family.reset_kernel_sources()
-        folded.folded_source = broken
-        try:
-            with pytest.raises(RuntimeError, match=r"matched 0 sites"):
-                beta_family.beta_source("step_D", "FMA_V1")
-        finally:
-            folded.folded_source = original
-        assert label
+    base = folded.folded_source("step_B")
+    assert base.count(anchor) == 1
+    with pytest.raises((RuntimeError, AssertionError)):
+        beta_family.beta_source("step_B",
+                                folded=base.replace(anchor, moved, 1))
 
 
-def test_the_beta_statement_lands_on_two_targets_and_takes_the_centre_register():
-    """Two terms, the right registers, and NOTHING on the third component.
+def test_the_beta_pass_lands_on_two_targets_and_takes_the_centre_register():
+    """Two passes, the right registers, and NOTHING on the third component.
 
-    MEEP's ``cc`` loop runs over ``d_c`` in {X, Y} only (step_db.cpp:148-176), which
-    is why Bz and Dz get no term at all -- and why a kernel that added one to all
+    MEEP's ``cc`` loop runs over ``d_c`` in {X, Y} only (step_db.cpp:161-175), which
+    is why Bz and Dz get no pass at all -- and why a kernel that added one to all
     three would look entirely plausible. The registers are ``f_2`` for target 0 and
     ``f_1`` for target 1, the UNSHIFTED centre operands the stencil already loaded;
     an ``sf``/``ss`` there is the partner defect.
     """
     for sub_step in ("step_B", "step_D"):
-        source = beta_family.beta_source(sub_step, "FMA_V1")
-        assert source.count("curl = cf_sub(curl, mul_imag_coefficient_left(") == 2
-        assert "mul_imag_coefficient_left(bp, f_2)" in source
-        assert "mul_imag_coefficient_left(bm, f_1)" in source
-        assert "mul_imag_coefficient_left(bp, sf" not in source
-        assert "mul_imag_coefficient_left(bm, ss" not in source
-        # The third target's block must be untouched: split at its own comment.
+        source = beta_family.beta_source(sub_step)
+        assert source.count("cf inc_beta = owned_cell ? beta_increment(") == 2
+        assert "beta_increment(bp, f_2)" in source
+        assert "beta_increment(bm, f_1)" in source
+        assert "beta_increment(bp, sf" not in source
+        assert "beta_increment(bm, ss" not in source
         third = source[source.index("// Target 2:"):]
-        assert "mul_imag_coefficient_left" not in third
+        assert "beta_increment(" not in third and "cfold_apply(" not in third
 
 
-def test_the_beta_statement_precedes_every_mask_line_in_both_kernels():
-    """Position, read out of the emitted text -- the composition needle's other half.
-
-    The array path adds the increment BEFORE ``_mask_non_owned_cells`` (:361/:363
-    then :369; :443/:445 then :450). Under a fold that mask has two arms and both
-    reach a beta target, so an insert below them leaves a live increment on the
-    mirror plane and on the far-ghost plane. The behaviour leg measures that; this
-    reads the ordering directly, so the two cannot both be satisfied by an accident
-    of one fixture.
-    """
+def test_the_beta_pass_follows_its_own_curl_and_is_guarded_to_owned_cells():
+    """Position, read out of the emitted text. MEEP's pass runs after the curl
+    (step_db.cpp:161-175) and visits owned cells only, so per target the curl's
+    ``pml_apply`` comes first, then the guarded increment, then its ladder."""
     for sub_step in ("step_B", "step_D"):
-        source = beta_family.beta_source(sub_step, "FMA_V1")
+        source = beta_family.beta_source(sub_step)
         for target in ("// Target 0:", "// Target 1:"):
             block = source[source.index(target):]
-            block = block[:block.index("pml_apply(")]
-            insert = block.index("mul_imag_coefficient_left(")
-            first_mask = block.index("curl = cf_zero();")
-            assert insert < first_mask, (sub_step, target)
+            block = block[:block.index("\n    }\n")]
+            curl = block.index("pml_apply(")
+            increment = block.index("cf inc_beta = owned_cell ? beta_increment(")
+            ladder = block.index("cfold_apply(")
+            assert curl < increment < ladder, (sub_step, target)
 
 
-def test_the_coefficient_left_product_is_a_name_over_the_arms_own_body():
-    """One arithmetic, not two: the helper is a single call and has no arm branch.
-
-    ``rotate_field_left`` already fuses the FIRST operand's product under FMA_V1 and
-    rounds both separately under NAIVE, and "left" means "first operand" in every
-    orientation this family carries. A second body would be a second spelling of one
-    rule with two arms to keep in step by hand -- so the emitted helper is pinned to
-    its single statement, and pinned to be IDENTICAL under both arms.
-    """
-    bodies = set()
-    for arm in sorted(complex_emitter.EXPANSIONS):
-        source = beta_family.beta_source("step_B", arm)
-        start = source.index("__device__ __forceinline__ cf mul_imag_coefficient_left")
-        body = source[start:source.index("\n}\n", start) + 3]
-        bodies.add(body)
-        assert body.count("return rotate_field_left(c, z);") == 1
-        assert "__fmaf_rn" not in body and "*" not in body.split("{")[1]
-    assert len(bodies) == 1, "the helper grew an arm branch"
+def test_the_beta_increment_is_one_part_wise_body():
+    """One arithmetic: the helper forms ``-quarter_turn(c, g)`` from two real products
+    and two sign flips, with no complex product."""
+    source = beta_family.beta_source("step_B")
+    start = source.index("__device__ __forceinline__ cf beta_increment(")
+    body = source[start:source.index("\n}\n", start) + 3]
+    assert "    o.re = c * g.im;\n    o.im = -(c * g.re);\n" in body
+    assert "__fmaf_rn" not in body
 
 
-def test_the_signature_carries_four_beta_words_and_the_folded_arguments():
-    """Appended, never inserted: the argument list is the folded one plus four."""
+def test_the_signature_carries_two_beta_words_before_the_chunk_record():
+    """The argument list is the folded one with the two words inserted before ``cb``,
+    which stays last."""
     for sub_step in ("step_B", "step_D"):
-        source = beta_family.beta_source(sub_step, "FMA_V1")
-        folded_source = folded.folded_source(sub_step, "FMA_V1")
+        source = beta_family.beta_source(sub_step)
+        folded_source = folded.folded_source(sub_step)
         start = source.index(f"void {beta_family.BETA_KERNELS[sub_step]}(")
         signature = source[start:source.index(") {", start)]
-        base_start = folded_source.index(
-            f"void {folded.FOLDED_KERNELS[sub_step]}(")
+        base_start = folded_source.index(f"void {folded.FOLDED_KERNELS[sub_step]}(")
         base = folded_source[base_start:folded_source.index(") {", base_start)]
-        base_arguments = base.split("(", 1)[1]
-        assert base_arguments.rstrip().rstrip(",") in signature.replace(
-            "float pzr, float pzi\n", "float pzr, float pzi,\n")
-        assert "float bp_re, float bp_im, float bm_re, float bm_im" in signature
+        expected = base.split("(", 1)[1].replace(
+            "    const int* __restrict__ cb\n",
+            "    float bp, float bm,\n    const int* __restrict__ cb\n")
+        assert signature.split("(", 1)[1] == expected
         assert beta_family.BETA_KERNELS[sub_step] in source
         assert folded.FOLDED_KERNELS[sub_step] not in source
-
-
-# ---------------------------------------------------------------------------
-# THE BEHAVIOUR
-# ---------------------------------------------------------------------------
-
-@pytest.mark.parametrize("spec", BETA_SPECS, ids=lambda s: s["label"])
-@pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
-def test_the_complex_beta_curl_reproduces_stepping_word_for_word(spec, sub_step):
-    """THE leg. Transcribed device tree against ``stepping`` on a beta grid.
-
-    NON-VACUITY FLOORS: the array path must move state, the absorber must not be the
-    identity, and the BETA TERM ITSELF must reach an output word -- the last checked
-    by re-running with a zero coefficient and requiring the answers to differ. On a
-    beta grid whose coupling happened to cancel, the case would measure the certified
-    complex curl and report it as a beta verdict.
-    """
-    fields, layer, grid = build_beta(spec)
-    rng = numpy.random.default_rng(20260823)
-    arrays = (tuple(CURL_ARRAYS[sub_step]["targets"])
-              + tuple(CURL_ARRAYS[sub_step]["aux"])
-              + tuple(CURL_ARRAYS[sub_step]["sources"]))
-    outputs = (tuple(CURL_ARRAYS[sub_step]["targets"])
-               + tuple(CURL_ARRAYS[sub_step]["aux"]))
-    seed(fields, grid, arrays, rng)
-    frozen = snapshot(fields, arrays)
-
-    profile = numpy.concatenate([
-        numpy.asarray(getattr(layer, f"{stem}_{axis}{suffix}")).ravel()
-        for axis in "xyz" for stem in ("kms", "sinv") for suffix in ("", "_h")])
-    assert float(numpy.max(numpy.abs(profile - 1.0))) > 1e-3, (
-        "the absorber is the identity; this case cannot see a coefficient-index "
-        "error")
-
-    getattr(stepping, sub_step)(fields, layer)
-    oracle = snapshot(fields, arrays)
-    assert differing_words(frozen, oracle, outputs) > 0, "the array path moved nothing"
-
-    codes = boundary_codes_for(grid)
-    flags, phases = phase_arguments(grid, CURL_ARRAYS[sub_step]["backward"])
-    tables = tables_for(sub_step, layer)
-    dtdx = grid.dt / grid.dx
-
-    restore(fields, frozen)
-    run_kernel_numpy(sub_step, fields, tables, codes, dtdx, flags, phases,
-                     beta=coefficients_for(sub_step, grid))
-    mine = snapshot(fields, arrays)
-    assert differing_words(oracle, mine, outputs) == 0, (
-        f"{spec['label']} {sub_step}: "
-        f"{differing_words(oracle, mine, outputs)} words differ")
-
-    restore(fields, frozen)
-    run_kernel_numpy(sub_step, fields, tables, codes, dtdx, flags, phases,
-                     beta=((0.0, 0.0), (0.0, 0.0)))
-    without = snapshot(fields, arrays)
-    assert differing_words(oracle, without, outputs) > 0, (
-        f"{spec['label']} {sub_step}: zeroing the beta coefficient changed nothing, "
-        f"so this case measures the certified complex curl and not the beta insert")
-
-
-#: THE FIVE DEFECTS, and what each one is. Every entry must CHANGE an output word on
-#: at least one sub-step of its fixture, or the branch it targets is untested.
-BETA_DEFECTS = ("dropped", "signs_swapped", "added_not_subtracted",
-                "after_mask", "partner_shifted")
-
-
-def _mutate(defect, sub_step, grid, kwargs):
-    plus, minus = coefficients_for(sub_step, grid)
-    if defect == "dropped":
-        return dict(kwargs, beta=((0.0, 0.0), (0.0, 0.0)))
-    if defect == "signs_swapped":
-        return dict(kwargs, beta=(minus, plus))
-    if defect == "added_not_subtracted":
-        # curl + (c*g) instead of curl - (c*g): the same magnitude, the wrong side.
-        return dict(kwargs, beta=((-plus[0], -plus[1]), (-minus[0], -minus[1])))
-    if defect == "after_mask":
-        return dict(kwargs, beta=(plus, minus), beta_after_mask=True)
-    if defect == "partner_shifted":
-        return dict(kwargs, beta=(plus, minus), beta_partner_shifted=True)
-    raise AssertionError(defect)
-
-
-@pytest.mark.parametrize("defect", BETA_DEFECTS)
-def test_each_beta_defect_changes_an_output_word_somewhere(defect):
-    """A branch never shown to change an answer has been executed, not tested.
-
-    ``after_mask`` is the one a FOLD makes reachable and an unfolded grid cannot see
-    at all -- on an all-periodic beta grid there is no mask on the beta targets, so
-    the insert's position is genuinely free there. That is why the sweep runs every
-    fixture and asks only that SOME fixture catches each defect, and why the fold
-    fixtures are in the list.
-
-    ``partner_shifted`` is the one the REAL special_kz family measured as a
-    structural NULL: every beta partner's only shifted companion is the neighbour
-    along Z, and every beta grid has nz == 1, so the two are the same word. It is
-    kept here rather than deleted, and the assertion below records which way it
-    came out on THIS family's fixtures.
-    """
-    caught = {}
-    for spec in BETA_SPECS:
-        for sub_step in ("step_B", "step_D"):
-            fields, layer, grid = build_beta(spec)
-            rng = numpy.random.default_rng(20260824)
-            arrays = (tuple(CURL_ARRAYS[sub_step]["targets"])
-                      + tuple(CURL_ARRAYS[sub_step]["aux"])
-                      + tuple(CURL_ARRAYS[sub_step]["sources"]))
-            outputs = (tuple(CURL_ARRAYS[sub_step]["targets"])
-                       + tuple(CURL_ARRAYS[sub_step]["aux"]))
-            seed(fields, grid, arrays, rng)
-            frozen = snapshot(fields, arrays)
-            getattr(stepping, sub_step)(fields, layer)
-            oracle = snapshot(fields, arrays)
-            restore(fields, frozen)
-            codes = boundary_codes_for(grid)
-            flags, phases = phase_arguments(grid, CURL_ARRAYS[sub_step]["backward"])
-            kwargs = _mutate(defect, sub_step, grid, {})
-            run_kernel_numpy(sub_step, fields, tables_for(sub_step, layer), codes,
-                             grid.dt / grid.dx, flags, phases, **kwargs)
-            mine = snapshot(fields, arrays)
-            caught[(spec["label"], sub_step)] = differing_words(oracle, mine, outputs)
-    live = {key: value for key, value in caught.items() if value}
-    if defect == "partner_shifted":
-        # A MEASURED NULL, recorded rather than deleted: on nz == 1 the shifted
-        # companion of every beta partner IS the partner, so this defect cannot be
-        # seen by any grid beta is legal on. The REAL special_kz family measured the
-        # same null (0/12 CAUGHT across both policies) and kept it for the same
-        # reason. If it ever becomes detectable, this assertion is what says so.
-        assert not live, (
-            f"partner_shifted became detectable on {sorted(live)}; the structural "
-            f"argument (every beta grid has nz == 1) no longer holds and this "
-            f"family needs a real partner mutation")
-        return
-    assert live, f"{defect} changed no output word on any of {len(caught)} cases"
-    if defect != "after_mask":
-        assert len(live) == len(caught), (
-            f"{defect} was invisible on {sorted(set(caught) - set(live))}; a defect "
-            f"in the term itself must reach a word on every beta fixture")
-        return
-    # AFTER_MASK IS THE COMPOSITION NEEDLE, and how many words it moves is decided
-    # by HOW MANY MASK ARMS reach a beta target. Measured on these fixtures:
-    #   all-periodic unfolded : 0   -- no mask on a beta target, the position is free
-    #   one non-PERIODIC code : 64  -- the cell-0 arm only (metallic, or a folded
-    #                                 METALLIC axis, which inherits that same arm)
-    #   a folded PERIODIC axis: 128 -- BOTH arms, cell 0 and the top plane
-    # The 0/64/128 ladder IS the claim that a fold doubles this defect's reach, so
-    # it is asserted rather than summarised as "some fixture caught it".
-    for (label, sub_step), moved in sorted(caught.items()):
-        spec = next(s for s in BETA_SPECS if s["label"] == label)
-        codes = boundary_codes_for(build_beta(spec)[2])
-        folded_periodic = BC_MIRROR_PERIODIC in codes
-        walled = any(code != 0 for code in codes)
-        if not walled:
-            expected = 0
-        elif folded_periodic:
-            expected = 64
-        else:
-            expected = 32
-        assert moved == expected, (
-            label, sub_step, f"moved {moved} words, expected {expected} for "
-            f"codes={codes}")
 
 
 # ---------------------------------------------------------------------------
@@ -459,8 +285,7 @@ def test_each_beta_defect_changes_an_output_word_somewhere(defect):
 # ---------------------------------------------------------------------------
 
 def _ask(predicate, fields, layer, grid, key):
-    return predicate(fields, layer, grid, key, license=LICENCE,
-                     subnormal_policy=POLICY)
+    return predicate(fields, layer, grid, key)
 
 
 @pytest.mark.parametrize("spec", BETA_SPECS, ids=lambda s: s["label"])

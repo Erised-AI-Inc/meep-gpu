@@ -7,6 +7,12 @@ with all three per-target ``COND`` flags false, and conversely for B-only
 ``step_D``.  The incumbent plain family refuses both slots per run, so those
 lossless specialisations belong here.
 
+The curl is MEEP's, per partner presence, read from the chunk record the engine
+builder binds: the product rows run a resolved 3-D box, a 2-D run (z invariant:
+one-partner forms) and a 3-D run that stores one cell on a resolved z axis (both
+partners, where the extent alone would say otherwise). The presence mutation clears
+a resolved axis's bit in the bound record and must diverge.
+
 Every case compares the complete allocated field inventory as uint32 words over
 multiple launches.  Inputs are perturbed between launches by the audited shared
 probe, and each row carries the shared probe's moved-word and signed-zero vacuity
@@ -76,6 +82,26 @@ def swapped_factors_mutation(fields: Any, pml: Any, sub_step: str):
     return plan
 
 
+def presence_bit_cleared_mutation(fields: Any, pml: Any, sub_step: str):
+    """Rebind the record with the x partner's presence bit cleared on a resolved axis.
+
+    The device copy is rebound directly, past ``launch.bind_chunk_bounds``, which
+    refuses such a record by name: the mutation is a kernel that is handed a wrong
+    presence word, and the curl must then take the one-partner form there.
+    """
+    import cupy as cp
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD
+    from meep_gpu.triton_kernels.launch import CupyPointer
+
+    plan = shipped_plan(fields, pml, sub_step)
+    record = plan.chunk_bounds.copy()
+    if not int(record[RECORD_PRESENCE_WORD]) & 1:
+        raise RuntimeError("mutation fixture unexpectedly has no x partner")
+    record[RECORD_PRESENCE_WORD] = int(record[RECORD_PRESENCE_WORD]) & ~1
+    plan._cb = CupyPointer(cp.asarray(record))
+    return plan
+
+
 def wrong_derive_mutation(fields: Any, pml: Any, sub_step: str):
     """Derive E from a plan whose sources are already the stored E volumes."""
     plan = shipped_plan(fields, pml, sub_step)
@@ -102,6 +128,16 @@ def build_cases() -> List[Dict[str, Any]]:
                                 magnetic_conductivity=0.17, poles=2)),
         ("D_only", dict(conductivity=0.20, poles=0)),
         ("B_only", dict(magnetic_conductivity=0.17, poles=0)),
+        # z invariant: the one-partner forms of the curl.
+        ("both_no_poles_2d", dict(conductivity=0.20, magnetic_conductivity=0.17,
+                                  poles=0, cell=(0.8, 0.8, 0.0), dimensions=2,
+                                  boundaries={"x": "metallic", "y": "metallic",
+                                              "z": "periodic"})),
+        # One stored cell on a RESOLVED z axis: both partners, by the record.
+        ("both_no_poles_thin_3d", dict(conductivity=0.20, magnetic_conductivity=0.17,
+                                       poles=0, cell=(0.8, 0.8, 0.1), dimensions=3,
+                                       boundaries={"x": "metallic", "y": "metallic",
+                                                   "z": "periodic"})),
     )
     for tag, config in product:
         for sub_step in ("step_B", "step_D"):
@@ -122,6 +158,9 @@ def build_cases() -> List[Dict[str, Any]]:
         ("MUTATION_swap_condfac_condinv", "step_D",
          dict(conductivity=0.20, magnetic_conductivity=0.17, poles=2),
          swapped_factors_mutation),
+        ("MUTATION_presence_bit_cleared", "step_D",
+         dict(conductivity=0.20, magnetic_conductivity=0.17, poles=0),
+         presence_bit_cleared_mutation),
         ("MUTATION_force_derive_against_stored_E", "step_B",
          dict(conductivity=0.20, magnetic_conductivity=0.17, poles=0),
          wrong_derive_mutation),
@@ -181,10 +220,10 @@ def validate(payload: Dict[str, Any]) -> Dict[str, Any]:
     rows = payload.get("cases") or []
     products = [row for row in rows if str(row.get("case", "")).startswith("product_")]
     mutations = [row for row in rows if "MUTATION" in str(row.get("case", ""))]
-    if len(products) != 8:
-        reasons.append(f"expected 8 product rows, found {len(products)}")
-    if len(mutations) != 3:
-        reasons.append(f"expected 3 mutations, found {len(mutations)}")
+    if len(products) != 12:
+        reasons.append(f"expected 12 product rows, found {len(products)}")
+    if len(mutations) != 4:
+        reasons.append(f"expected 4 mutations, found {len(mutations)}")
     for row in rows:
         if row.get("error"):
             reasons.append(f"{row.get('case')}: {row['error']}")
@@ -205,6 +244,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--cycles", type=int, default=CYCLES)
+    parser.add_argument("--subnormal-policy", default="keep", choices=("keep", "flush"),
+                        help="the float32 subnormal policy to install before the first device compile (keep, the default, or flush: the certification round gates every family under both on the NVIDIA tables)")
     args = parser.parse_args(argv)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -216,8 +257,8 @@ def main(argv=None) -> int:
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     from meep_gpu.subnormal_policy import install_subnormal_policy
-    install_subnormal_policy("keep")
-    payload["subnormal_policy_installed"] = "keep"
+    install_subnormal_policy(args.subnormal_policy)
+    payload["subnormal_policy_installed"] = args.subnormal_policy
 
     rows = []
     built = build_cases()

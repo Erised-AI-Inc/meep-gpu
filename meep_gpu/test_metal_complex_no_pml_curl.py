@@ -14,17 +14,23 @@ import numpy as np
 import pytest
 
 from meep_gpu import stepping
+from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
 from meep_gpu.metal_kernels import arms, shaders
-from meep_gpu.metal_kernels import complex_fields as expansion_predicate
 from meep_gpu.metal_kernels import complex_no_pml_curl as family
 from meep_gpu.metal_kernels import complex_no_pml_conductive as shared_predicate
 from meep_gpu.pml import PML
 
 
 class HostResidency:
-    """Identity mirrors make plan argument ordering observable on this host."""
+    """Identity mirrors make plan argument ordering observable on this host.
+
+    ``device`` is where a plan uploads its chunk record (``chunk_bounds.tensor``): the
+    host, so no GPU is reached.
+    """
+
+    device = "cpu"
 
     def __init__(self) -> None:
         self.arrays: Dict[str, Any] = {}
@@ -35,13 +41,6 @@ class HostResidency:
             raise ValueError(f"{name} rebound")
         self.arrays[name] = host
         return host
-
-
-def probe():
-    return {"backend": "numpy", "patterns": {
-        name: "FMA_V1" for name in (
-            "c8_mul_c8", "c8_mul_c8_scalar_right", "c8_mul_f4_field_left",
-            "f4_mul_c8_coefficient_left", "python_float_left")}}
 
 
 def build(*, complex_storage=True, bloch=True, seed=71):
@@ -60,6 +59,11 @@ def build(*, complex_storage=True, bloch=True, seed=71):
             imag = rng.uniform(-0.3, 0.3, grid.shape).astype(np.float32)
             array[...] = real + 1j * imag if complex_storage else real
     return fields, PML(grid=grid, thickness=0)
+
+
+def record_of(fields, pml):
+    """The record the composer hands a plan for this run: the one-rank division."""
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
 
 
 @pytest.fixture
@@ -95,22 +99,29 @@ def _unresolvable(grid, pml):  # noqa: ARG001
 
 
 def test_lossless_source_reuses_phase_stencil_but_compiles_out_all_coefficients():
+    """The shared body's stencil and plane-0 connection; no conductivity read.
+
+    Connection kind 2 (``CONNECT_PHASE``) on x is MEEP's unfused product of the
+    unshifted partners on plane 0; the record binds last, one past ``pz``.
+    """
     source = family.complex_no_pml_curl_source(
-        (0, 0, 0), False, (1, 0, 0), "FMA_V1")
+        (0, 0, 0), False, (2, 0, 0))
     body = source[source.index("kernel void"):]
-    assert "b_x = wx ? c_mul(b_x, px) : b_x;" in body
+    assert "        c_dx = c_mul(c, px);\n        b_dx = c_mul(b, px);" in body
+    for statement in shared_predicate.CURL_STATEMENTS:
+        assert statement in body
     assert "f0[ii] = f0[ii] - curl0;" in body
     assert "f1[ii] = f1[ii] - curl1;" in body
     assert "f2[ii] = f2[ii] - curl2;" in body
     assert "cf0[ii]" not in body and "ci0[ii]" not in body
-    assert "[[buffer(19)]]" in body and "[[buffer(20)]]" not in body
+    assert "[[buffer(20)]]" in body and "[[buffer(21)]]" not in body
 
 
 def test_coverage_admits_both_complex_lossless_curl_sides(backend_ready):
     fields, pml = build()
     for slot in family.SUB_STEPS:
         verdict = family.metal_complex_no_pml_curl_coverage(
-            fields, pml, slot, HostResidency(), probe())
+            fields, pml, slot, HostResidency())
         assert verdict.covered, verdict.reasons
 
 
@@ -119,12 +130,12 @@ def test_complex_bloch_two_lossless_curl_cycles_match_the_array_path(backend_rea
     actual, actual_pml = build()
     residency = HostResidency()
     b = family.plan_metal_complex_no_pml_curl(
-        actual, actual_pml, "step_B", residency, probe=probe(),
-        functions={shaders.CONTRACT_OFF: _reference_function(
+        actual, actual_pml, "step_B", residency,
+        chunk_bounds=record_of(actual, actual_pml), functions={shaders.CONTRACT_OFF: _reference_function(
             reference, actual, reference_pml, "step_B", (actual.Bx, actual.By, actual.Bz))})
     d = family.plan_metal_complex_no_pml_curl(
-        actual, actual_pml, "step_D", residency, probe=probe(),
-        functions={shaders.CONTRACT_OFF: _reference_function(
+        actual, actual_pml, "step_D", residency,
+        chunk_bounds=record_of(actual, actual_pml), functions={shaders.CONTRACT_OFF: _reference_function(
             reference, actual, reference_pml, "step_D", (actual.Dx, actual.Dy, actual.Dz))})
     assert b is not None and d is not None
     for _ in range(2):
@@ -140,8 +151,9 @@ def test_step_d_binds_derived_h_through_the_live_b_mirrors(backend_ready):
     fields, pml = build()
     residency = HostResidency()
     plan = family.plan_metal_complex_no_pml_curl(
-        fields, pml, "step_D", residency, probe=probe(),
-        functions={shaders.CONTRACT_OFF: lambda *args: None})
+        fields, pml, "step_D", residency,
+        functions={shaders.CONTRACT_OFF: lambda *args: None},
+        chunk_bounds=record_of(fields, pml))
     assert plan is not None
     assert {"Bx", "By", "Bz"}.issubset(residency.arrays)
     assert not {"Hx", "Hy", "Hz"}.intersection(residency.arrays)
@@ -162,7 +174,7 @@ def test_an_unreadable_boundary_rule_is_a_refusal_and_not_a_crash(monkeypatch):
     fields, pml = build()
     monkeypatch.setattr(stepping, "_boundary_kinds", _unresolvable)
     verdict = family.metal_complex_no_pml_curl_coverage(
-        fields, pml, "step_B", HostResidency(), probe())
+        fields, pml, "step_B", HostResidency())
     assert verdict.covered is False
     assert any("the per-axis boundary rule is unreadable" in reason
                for reason in verdict.reasons), verdict.reasons
@@ -172,22 +184,17 @@ def test_an_unreadable_boundary_rule_is_a_refusal_and_not_a_crash(monkeypatch):
     ("real", "complex64 storage"),
     ("active_pml", "active PML"),
     ("conductive", "conductivity is installed on Bx"),
-    ("missing_probe", "probe artifact"),
 ])
-def test_distinct_products_are_refused_by_name(backend_ready, monkeypatch, mutation, needle):
+def test_distinct_products_are_refused_by_name(backend_ready, mutation, needle):
     fields, pml = build()
-    record = probe()
     if mutation == "real":
         fields, pml = build(complex_storage=False, bloch=False)
     elif mutation == "active_pml":
         pml = PML(grid=fields.grid, thickness=1)
     elif mutation == "conductive":
         fields.set_b_conductivity(np.full(fields.grid.shape, np.float32(0.18)))
-    elif mutation == "missing_probe":
-        record = None
-        monkeypatch.delenv(expansion_predicate.PROBE_PATH_ENVIRONMENT, raising=False)
     verdict = family.metal_complex_no_pml_curl_coverage(
-        fields, pml, "step_B", HostResidency(), record)
+        fields, pml, "step_B", HostResidency())
     assert not verdict.covered
     assert any(needle in reason for reason in verdict.reasons), verdict.reasons
 
@@ -213,8 +220,53 @@ def test_native_gate_is_incremental_and_arms_the_lossless_failure_modes():
 
     gate = (Path(__file__).resolve().parents[1] / "parity" / "meep_gpu"
             / "gate_metal_complex_no_pml_curl.py")
-    source = gate.read_text(encoding="utf-8")
+    # The stencil, connection and presence rows live in the module both complex
+    # no-PML curl gates import, so the gate's armed text is the two files together.
+    source = gate.read_text(encoding="utf-8") + gate.with_name(
+        "complex_no_pml_gate_common.py").read_text(encoding="utf-8")
     assert "flush=True" in source and "os.fsync" in source
     assert "curl_subtraction_reversed" in source
-    assert "curl_grouping_flattened" in source
-    assert "bloch_x_rotation_dropped" in source
+    assert "previous_curl_grouping" in source
+    assert "bloch_x_connection_dropped" in source
+
+
+def test_the_builder_takes_the_record_with_no_default_and_the_arm_hands_it_over(
+        monkeypatch):
+    import inspect
+
+    parameter = inspect.signature(family.plan_metal_complex_no_pml_curl).parameters[
+        "chunk_bounds"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty
+    seen = {}
+
+    def builder(fields, pml, slot, residency, variants, *, chunk_bounds):
+        seen["chunk_bounds"] = chunk_bounds
+
+    monkeypatch.setattr(family, "plan_metal_complex_no_pml_curl", builder)
+
+    class _Context:
+        fields = pml = residency = None
+        contract_variants = (shaders.CONTRACT_OFF,)
+        extra = {}
+        chunk_bounds = object()
+
+    family._arm_plan(_Context, "step_B")
+    assert seen["chunk_bounds"] is _Context.chunk_bounds
+
+
+def test_a_missing_record_is_refused_by_name_before_anything_compiles(
+        backend_ready, monkeypatch):
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+    from meep_gpu.metal_kernels import complex_no_pml_conductive as shared
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("compiled before the record was checked")
+
+    monkeypatch.setattr(shared, "compile_source", refuse)
+    fields, pml = build()
+    residency = HostResidency()
+    with pytest.raises(ChunkLayoutRefusal, match="no chunk record"):
+        family.plan_metal_complex_no_pml_curl(
+            fields, pml, "step_B", residency, chunk_bounds=None)
+    assert residency.arrays == {}

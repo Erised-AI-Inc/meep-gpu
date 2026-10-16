@@ -24,10 +24,11 @@ TWO THINGS ARE PINNED, and the second is the one the whole tranche turns on:
 1. the folded complex CURL sub-steps (``step_B`` / ``step_D``), with and without
    beta, in complex64 and — for the beta family — in real float32;
 2. the folded complex GHOST FILL, against ``stepping.fill_symmetry_bc_*`` plus
-   ``fill_folded_far_ghosts_*``. The array path spells the parity as
-   ``phase * plane`` with a PYTHON INT, which on complex64 is a FULL complex
-   product; the reference must reproduce that byte for byte, including on the
-   engineered signed-zero rows a plane-wise sign flip would get wrong.
+   ``fill_folded_far_ghosts_*``. Since the per-part alignment the array path forms
+   ``parity * plane`` part by part (``host_writes.copy_face``,
+   ``part_products.scale``); the reference must reproduce that byte for byte,
+   including on the engineered signed-zero rows a full complex product would get
+   wrong.
 
 The configuration list is chosen for what each row is the ONLY witness to: both
 terminations (a folded PERIODIC axis, a folded METALLIC one), both full-count
@@ -94,11 +95,11 @@ CASES: Tuple[Tuple[Any, ...], ...] = (
     ("Z/periodic/-1/even", "Z", "periodic", (1.2, 1.2, 2.0), -1, True, 0.0, 0.0),
     ("XY/periodic/+1/MIXED", "XY", "periodic", (2.0, 2.1, 1.2), 1, True, 0.0, 0.0),
     # MIXED PHASE, not merely mixed count parity: the two planes carry DIFFERENT
-    # coefficients, which is the only configuration in which the fill's
-    # composition order is byte-visible at all (measured 8/128 diverging words at
-    # (+1,-1) against 0/128 at (+1,+1) and (-1,-1)). The device gate's
-    # `reverse_axis_order` leg runs on this grid, so the reference must be pinned
-    # on it here first.
+    # coefficients. Under the full complex product of 0.9.2 it was the only
+    # configuration in which the fill's composition order was byte-visible
+    # (measured 8/128 diverging words at (+1,-1) against 0/128 at (+1,+1) and
+    # (-1,-1)); since the parity is applied per part the order changes no word,
+    # and the row stays as the one where two different parities meet on a corner.
     ("XY/periodic/+1,-1/MIXED-PHASE", "XY", "periodic", (2.0, 2.1, 1.2), (1, -1),
      True, 0.0, 0.0),
     ("Y/periodic/+1/even+kx", "Y", "periodic", (1.6, 2.0, 0.0), 1, True, 0.0, 0.23),
@@ -339,14 +340,17 @@ def run(xp=np, out_path: Optional[str] = None) -> Dict[str, Any]:
                 if mismatched:
                     failures.append((tag, name, mismatched))
 
+        record = None
         for _ in range(STEPS):
             for sub_step in ("step_B", "step_D"):
                 getattr(stepping, sub_step)(fields, pml)
+                # The oracle's own division: its first PML sub-step installs it.
+                record = gate.region_plan_record(fields) if record is None else record
                 gate.folded_reference_step(
                     np, mine, _coefficients_of(pml, sub_step == "step_B"),
                     np.float32(grid.dt / grid.dx), sub_step, boundaries, phases,
                     mirror_phases, rows, beta=grid.beta, dt=grid.dt,
-                    complex_storage=complex_storage)
+                    complex_storage=complex_storage, record=record)
                 check(curl_failures, sub_step)
 
                 family = "B" if sub_step == "step_B" else "D"

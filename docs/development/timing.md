@@ -20,6 +20,8 @@ installed with the package.
 | <code>build_3d_comparison.py</code> | A comparison across hosts, refusing pairs that are not the same simulation |
 | <code>audit_timing_validity.py</code> | A read-only audit of a ladder's windows, passes and host state |
 | <code>build_meep_133_native.sh</code> | A native-tuned MEEP build, as a timing control |
+| <code>timing_rows.py</code> | The row store: a row's record, its validity on a release tree, and the cuts (the identical-case table, the dispatch-preference records, the fused-product report) |
+| <code>rounds/1.0/cert8.py</code> | The release round: times any subset of rows, one row at a time ([below](#the-release-round-one-row-at-a-time)) |
 
 ## What a row measures
 
@@ -28,7 +30,14 @@ installed with the package.
   path), lifted in one process, timed in AB/BA-interleaved windows with monitors
   attached. Its verdict is the harness's own (<code>TIMED</code> or not). The
   ladder adds what launched, bit identity, and the deposit-repair route the case
-  declares.
+  declares. Each window's step count is sized from a timed probe that runs after a
+  restore and a few untimed steps, so the restore's own cost does not shorten the
+  window; each leg runs one full-length window first that enters no statistic
+  (<code>windows_discarded</code>), because a leg's first long run read 5-7 % slow.
+  With <code>--gpu-legs gpu-only</code> the timed GPU rows lift the dispatched route
+  alone (one lift, no singles, no array leg) and carry no bit-identity verdict of
+  their own: each cites the three-leg row the <code>identity</code> tier ran at its
+  route, case and size, on the same pinned sources, and is struck by name without one.
 - **A MEEP row** is one fresh process of stock MEEP at N ranks, timing
   <code>fields.step()</code> over windows sized by calibration, after
   <code>init_sim</code> and a warm-up, with the flux monitor stepped. Its rate is
@@ -41,6 +50,31 @@ installed with the package.
   sources, monitors); a lift that disagrees, or that finds a digest of record
   already there that is not its own, stops the ladder.
 
+## The subnormal policy of each row
+
+| Row | Policy | Set by |
+|---|---|---|
+| NVIDIA GPU row | <code>keep</code> | <code>--subnormal-policy</code>, <code>keep</code> by default on Linux: exported as <code>MEEP_GPU_SUBNORMAL_POLICY</code>, with a CuPy cache the package mints for keep before the first row |
+| Apple GPU row | flush | the package's default (<code>--subnormal-policy</code> unset on macOS): the Apple GPU flushes and has no lever ([Floating point](../design/floating-point.md)) |
+| MEEP row, Linux | flush | MEEP itself: importing MEEP on x86 sets the FTZ and DAZ bits (<code>set_zero_subnormals</code>); the bench changes nothing |
+| MEEP row, macOS | keep | MEEP's switch has no effect on Apple silicon |
+
+Every NVIDIA timing of record is of <code>keep</code>, beside MEEP under its own flush on
+the same host. No NVIDIA ladder has run under <code>--subnormal-policy flush</code>, so
+the dispatched route's time under flush is unmeasured and no NVIDIA figure states it.
+A GPU row's environment delta in the ledger names the policy it exported, and the bench's
+own record of the row carries the policy in force (<code>subnormal_policy</code>).
+
+**The dispatch-preference records are keep-only.**
+<code>meep_gpu/triton_kernels/timing_cc86.json</code> and
+<code>meep_gpu/cuda_kernels/timing_cc86.json</code> are cut from rows timed under
+<code>keep</code> (each record's <code>policy</code> is <code>["keep"]</code>;
+<code>cut_timing_record.py</code> refuses rows of mixed policy). A record key carries no
+policy axis and <code>dispatch_preference.consult</code> takes no policy, so once the
+consult is wired into dispatch it answers a flush run from keep rows. Nothing in the 1.0
+dispatch path consults the records yet (<code>meep_gpu/dispatch_preference.py</code>,
+"UNWIRED"): they move no slot under either policy.
+
 ## The order of work
 
 Tiers run in order, outermost; inside a tier, passes, then sizes, then cases:
@@ -49,6 +83,7 @@ Tiers run in order, outermost; inside a tier, passes, then sizes, then cases:
 |---|---|
 | <code>preflight</code> | Every row kind once at the preflight size with short windows. A GPU row that does not launch what its route expects, bit-identically, with its case's deposit-repair bracket stops the ladder. Never figures of record |
 | <code>digests</code> | The harness lift's digest per planned (case, size) |
+| <code>identity</code> | With <code>--gpu-legs gpu-only</code> only: one three-leg GPU row per route, case and timed size, with the preflight's short windows; a row that is not bit-identical stops the ladder. Never figures of record |
 | <code>bindprobe</code> | MEEP at the probe rank counts, bound against unbound, two passes; a rule fixed in advance chooses the binding (Linux only) |
 | <code>priority</code>, <code>rest</code>, <code>largest</code> | The sizes of record, every pass |
 | <code>bindcheck</code> | The binding not chosen, at the priority sizes, one pass |
@@ -87,10 +122,12 @@ apart:
   other process driving the Apple GPU through the harness, another ladder or its
   drivers included (<code>bench_timing_case.py</code>,
   <code>gpu_array_control.py</code>, <code>timing_ladder.py</code>).
-- **macOS only.** On AC power and not in low power mode (both waived with
-  <code>--require-ac-power 0</code>), no CPU speed limit below 100, and no
-  Spotlight, backup, software-update, photo or media analysis or XProtect process
-  above 10 % CPU (<code>--gate-darwin-daemons 0</code> waives it). With
+- **macOS only.** No CPU speed limit below 100, and no Spotlight, backup,
+  software-update, photo or media analysis or XProtect process above 10 % CPU
+  (<code>--gate-darwin-daemons 0</code> waives it). The power source gates nothing
+  by default: with <code>--require-ac-power 1</code> a row also waits for AC power
+  and no low power mode, and a row taken on battery or in low power mode is struck.
+  Either way the power state is read and recorded before and after every row. With
   <code>--gate-apple-gpu-util-max N</code>, a GPU row also waits for the Apple GPU's
   Device Utilization (<code>ioreg</code>) to be at most N %; unset, the utilisation
   is recorded and does not gate, because no idle level has been calibrated.
@@ -124,7 +161,7 @@ them.
 | <code>--drivers-mode</code> | <code>tree</code> for this repository, else <code>copy</code> | <code>copy</code> puts these drivers into <code>&lt;run&gt;/drivers</code> with their sha256 |
 | <code>--routes</code> | <code>default,cuda</code> on Linux, <code>metal</code> on macOS | <code>default</code> asks the Triton table; <code>cuda</code> exports <code>MEEP_GPU_BACKEND_PREFERENCE=cuda</code>; <code>none</code> times MEEP only |
 | <code>--expect-launched ROUTE:CASE=TABLES</code> | none | Absent, the preflight row pins what every later row of that route and case must launch |
-| <code>--allow-uncertified</code> | 0 | 1 exports <code>MEEP_GPU_ALLOW_UNCERTIFIED=1</code> to the GPU rows; such rows are uncertified and say so. 0 exports <code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code> to the NVIDIA rows, so a supported device that is not certified is refused rather than timed uncertified, and unsets it for every other row |
+| <code>--allow-uncertified</code> | 0 | 1 exports <code>MEEP_GPU_HARDWARE=any</code> to the GPU rows; such rows are uncertified and say so. 0 exports <code>MEEP_GPU_HARDWARE=certified</code> to the NVIDIA rows, so a supported device that is not certified is refused rather than timed uncertified, and unsets it for every other row |
 | <code>--cases</code> | <code>pml_3d</code> | Cases of <code>timing_cases.py</code> |
 | <code>--priority-sizes</code>, <code>--rest-sizes</code>, <code>--largest-sizes</code>, <code>--probe-size</code>, <code>--preflight-size</code> | the 2026-09-28 cell counts | Cells; or <code>--priority-res</code> etc. as resolutions of the first case. A size a case cannot hit exactly is refused |
 | <code>--ranks "A\|B\|C"</code> | from the physical cores P | A = P/3, P/2, 2P/3, P; B = 8 (when below P/3) and 1; C = 4P/3 on an SMT host, or every logical CPU when the host has more of them than P without SMT. P = 48 with 96 logical gives 16, 24, 32, 48 \| 8, 1 \| 64; an M1 Max (P = 8 performance cores, 10 logical) gives 3, 4, 5, 8 \| 1 \| 10 |
@@ -132,15 +169,16 @@ them.
 | <code>--physical-cores</code>, <code>--logical-cpus</code> | detected | Linux: unique (package, core) over the online CPUs in this process's affinity; macOS: <code>hw.perflevel0.physicalcpu</code> and <code>hw.logicalcpu</code> |
 | <code>--sockets</code>, <code>--threads-per-core</code> | detected | <code>srun</code>'s bound modes balance ranks across the sockets and are refused when the count is unknown |
 | <code>--controls</code> | <code>native,threads2,threads4,hwthread,split</code> | <code>none</code> for a 2026-09-28 reproduction (below) |
-| <code>--gate-cpu-max</code>, <code>--gate-mem-min-gb</code> | 10 % of logical CPUs, 25 % of memory | |
+| <code>--gate-cpu-max</code>, <code>--gate-mem-min-gb</code> | 10 % of logical CPUs on Linux, <code>auto</code> on macOS; 25 % of memory | <code>auto</code> takes 18 busy readings 10 s apart before the first row: the 10 % default stands when their 80th percentile is below it, otherwise the gate opens below 25 % of the logical CPUs (2.5 of 10 on an M1 Max, whose owner's session idles at 1.2-2.0). Written to <code>gate_calibration.json</code> and read back on <code>--resume</code> |
 | <code>--gate-gpu-metric</code> | <code>load1</code> on Linux; <code>busy</code> on macOS and with <code>--gate-scope allocation</code> | |
 | <code>--gate-darwin-daemons</code>, <code>--gate-apple-gpu-util-max</code> | 1, unset | macOS gate conditions, above |
 | <code>--gpu-flags</code> | the 2026-09-28 flags; on macOS with <code>--memory-budget-bytes</code> 0.6 × the host's memory | Must include <code>--monitors attached</code>, or the plan is refused: every MEEP row accumulates its flux monitor |
 | <code>--gate-hold-gpu-s</code>, <code>--gate-hold-meep-s</code> | 120, 30 | |
 | <code>--account</code>, <code>--account-max</code>, <code>--cap</code> | this user, 0, off | |
-| <code>--passes</code>, <code>--tiers</code>, <code>--array-control</code> | 3, every tier, <code>extract</code> | <code>--array-control row</code> drives the NVIDIA tables only and is refused with the metal route |
+| <code>--passes</code>, <code>--tiers</code>, <code>--array-control</code> | 3, every tier, <code>extract</code> | <code>--array-control row</code> drives the NVIDIA tables only and is refused with the metal route; <code>none</code> plans no array control |
+| <code>--gpu-legs</code> | <code>all</code> | <code>gpu-only</code>: the timed GPU rows lift the dispatched route alone (<code>bench_fused_products.py --legs gpu-only</code>), behind the <code>identity</code> tier; refused with <code>--array-control extract</code> (no array leg to read) or without the identity tier |
 | <code>--allow-nice</code> | 0 | A ladder running at a nice level other than 0 is refused |
-| <code>--require-ac-power</code> | 1 | macOS: refused on battery or in low power mode |
+| <code>--require-ac-power</code> | 0 | macOS: 1 refuses to start on battery or in low power mode, waits those out between rows and strikes a row taken in either. Off by default: no run is gated on the power source |
 
 Binding flags are chosen by the MPI implementation of each build's launcher, read
 from the files beside it (<code>ompi_info</code>, <code>mpichversion</code>, ...) and,
@@ -154,7 +192,7 @@ hardware threads per core:
 | bound (<code>bound-core-by-package</code>) | <code>--map-by package --bind-to core</code> | <code>--cpu-bind=cores --ntasks-per-core=1 --ntasks-per-socket=⌈N/S⌉ --distribution=block:block</code> |
 | unbound | <code>--bind-to none</code> | <code>--cpu-bind=none</code> |
 | above the physical cores (<code>unbound-hwthreads</code>) | <code>--use-hwthread-cpus --bind-to none</code> | <code>--cpu-bind=none --ntasks-per-core=H</code> |
-| <code>bound-hwthread</code> | <code>--use-hwthread-cpus --map-by package --bind-to hwthread</code> | <code>--cpu-bind=threads --ntasks-per-core=H --ntasks-per-socket=⌈N/S⌉ --distribution=block:block:cyclic</code> |
+| <code>bound-hwthread</code> | <code>--use-hwthread-cpus --map-by pe-list=L:ORDERED --bind-to hwthread</code>, L every core's first hardware thread (packages alternating) before any second, as hwloc logical indices | <code>--cpu-bind=threads --ntasks-per-core=H --ntasks-per-socket=⌈N/S⌉ --distribution=block:block:cyclic</code> |
 | T threads per rank | <code>--map-by package:PE=T --bind-to core</code> | <code>--cpus-per-task=T·H --cpu-bind=cores --ntasks-per-core=1 --ntasks-per-socket=⌈N/S⌉ --distribution=block:block</code> |
 
 Open MPI rows add <code>--report-bindings</code>; <code>srun</code> rows add
@@ -193,16 +231,21 @@ process, such as an OpenMP build of OpenBLAS, does not count; on the reference
 Mac builds it is the only runtime there. The ladder probes every build's record
 itself at start, writes it to <code>meep_builds/&lt;build&gt;.json</code>, passes
 it to every threaded row, and refuses to start when a threaded control is planned
-for a build that links no OpenMP. A threaded row is struck when, on the slowest
+for a build that links no OpenMP. The bench also requires an OpenMP runtime mapped
+into the row's process, read once MEEP is imported (before the import MEEP's own
+library is not loaded yet, which refused every hybrid row of the 1.0 round). A
+threaded row is struck when, on the slowest
 rank, the process gained fewer than T − 1 threads between MPI initialisation and
 the end of its windows (MPI's helper threads are in the baseline), or when its CPU
 seconds per wall second fall below 0.75 T.
 
 **Hardware threads.** A bound row whose ranks used fewer distinct physical cores
-than min(ranks, P) is struck: Open MPI's <code>--map-by package --bind-to
-hwthread</code> can fill both threads of some cores while others idle, and such a
-row cannot test what the control is for. Give a mapping that spreads over cores
-first with <code>--flags-bound-hwthread</code> if the default is struck.
+than min(ranks, P) is struck. Every Open MPI 5 mapping policy fills a mapped
+object's hardware threads in order, so <code>--map-by package --bind-to
+hwthread</code> put 64 ranks on 32 of the GPU host's 48 cores; the template names
+each rank's hardware thread instead (the table above), which puts 64 ranks on all
+48 cores, 32 per package, and needs the socket count: without it the control is
+omitted by name. Give other flags with <code>--flags-bound-hwthread</code>.
 
 **The native build.** <code>bash parity/meep_gpu/build_meep_133_native.sh</code>
 builds MEEP 1.33.0 through the platform's reference script with
@@ -210,7 +253,11 @@ builds MEEP 1.33.0 through the platform's reference script with
 (macOS arm64) and writes <code>&lt;prefix&gt;/share/meep-gpu-build/build_record.json</code>:
 the configure line, the Makefile flags, the compiler, what the native target
 resolved to, the libraries' sha256 and the OpenMP runtime they link. It is a
-timing control, never a certification reference.
+timing control, never a certification reference, so no reference environment carries
+one. Without <code>--meep-build native=...</code> the control is omitted by name ("no
+--meep-build native=PYTHON[,LAUNCHER[,RECORD]] was given"), as it was in every ladder of
+the 1.0 round on both hosts: the MEEP column of such a ladder is the portable reference
+build alone, and a table cut from it says so.
 <code>timing_records.py meep-build-record --python &lt;interpreter&gt;</code> writes
 the same record for a build that already exists.
 
@@ -277,16 +324,27 @@ other <code>MEEP_GPU_*</code> variable of the launching shell that the ladder do
 not set itself (<code>MEEP_GPU_METAL_RESIDENCY</code>,
 <code>MEEP_GPU_KERNEL_TABLE</code>, <code>MEEP_GPU_WARM</code>, the probe switches)
 are unset, and Metal rows unset <code>PYTORCH_ENABLE_MPS_FALLBACK</code> and
-<code>PYTORCH_MPS_*</code>. Each row's environment delta is in the ledger.
+<code>PYTORCH_MPS_*</code>. Each row's environment delta is in the ledger. Everything
+else a row holds comes from the launching shell, the user site directory included:
+launch the ladder with <code>PYTHONNOUSERSITE=1</code> exported, as below, so no
+distribution under <code>~/.local</code> sits ahead of the reference environment's own in
+a GPU row or a MEEP rank (<code>environments/locks/README.md</code>). The round's child
+environments, the timing legs among them, are tabulated in
+<code>parity/meep_gpu/rounds/1.0/RUNBOOK.md</code>, section 3.
 
 **Linux, directly.** Launch it un-niced and detached, with its output to a log,
 from bash (zsh starts a background job at nice 5, which the ladder refuses, unless
-<code>setopt no_bg_nice</code>):
+<code>setopt no_bg_nice</code>). Export the environment's own C compiler as
+<code>CC</code>: Triton compiles the launcher of every timed kernel with
+<code>$CC</code>, else the host's <code>gcc</code>, which is outside the environment
+(<code>cert8.py run</code> exports it for every unit itself). The libcuda directory is the
+link the environment's build made:
 
 ```bash
-setsid nohup python -u parity/meep_gpu/timing_ladder.py --stamp <stamp> \
+PYTHONNOUSERSITE=1 CC=<env>/bin/x86_64-conda-linux-gnu-cc \
+  setsid nohup python -u parity/meep_gpu/timing_ladder.py --stamp <stamp> \
   --python <env>/bin/python --gpu 0 --meep-config-log <meep source>/config.log \
-  --libcuda-stub <dir> > ladder_<stamp>.launch.log 2>&1 < /dev/null &
+  --libcuda-stub <env>/lib/meep-gpu-libcuda > ladder_<stamp>.launch.log 2>&1 < /dev/null &
 tail -f ~/meep_gpu_validation/timing/ladder_<stamp>/progress.log
 ```
 
@@ -305,16 +363,17 @@ holding the whole allocation is not recorded as bound.
 
 **macOS (Apple silicon).** Ranks are not bound (Open MPI cannot bind there), the
 rank basis is the performance cores, and rows above them are labelled
-<code>unbound-ecores</code>. The ladder refuses to start on battery, in low power
-mode, at a nice level other than 0, or at a background darwin priority (which
-would confine every rank to the efficiency cores), and its gate waits out the same
-conditions and busy background daemons between rows. It holds the Mac awake with
+<code>unbound-ecores</code>. The ladder refuses to start at a nice level other
+than 0 or at a background darwin priority (which would confine every rank to the
+efficiency cores), and its gate waits out busy background daemons between rows; on
+battery or in low power mode it refuses and waits only under
+<code>--require-ac-power 1</code>. It holds the Mac awake with
 <code>caffeinate -i -s -w &lt;its pid&gt;</code> for its own life and records it.
 From zsh:
 
 ```zsh
 setopt no_bg_nice
-nohup python -u parity/meep_gpu/timing_ladder.py --stamp <stamp> \
+PYTHONNOUSERSITE=1 nohup python -u parity/meep_gpu/timing_ladder.py --stamp <stamp> \
   --python <env>/bin/python --meep-config-log <prefix>/share/meep-gpu-build/config.log \
   > ladder_<stamp>.launch.log 2>&1 < /dev/null &
 ```
@@ -362,6 +421,11 @@ every tree it reads and outside every root <code>cut_timing_record.py</code> rea
 
 ## Building the tables
 
+The tables of record of a release are cut from its row store
+([The release round, one row at a time](#the-release-round-one-row-at-a-time));
+the builders below read one ladder's ledger by their own rules, as the 1.0
+round's tables were built.
+
 ```bash
 python parity/meep_gpu/build_identical_case_table.py --pull <ladder dir> \
   --out-md TABLE.md --out-json table.json [--manifest <sha256 listing>]
@@ -395,6 +459,233 @@ are tied to the MEEP rows by the ladder's code digest instead), and a MEEP best 
 count that fails the 5 % gate (<code>meep-best-fails-gate</code>). MEEP rows the
 bench struck, or whose monitor was not stepped, enter no median.
 
+## The release round, one row at a time
+
+Timing follows the certification's modular pattern. The unit is a **row**; any subset of
+rows can be timed, or timed again, at any time; each row's record is self-contained; and
+every table, ladder and dispatch-preference record is **cut by tool from the newest valid
+row of each key**, never assembled by hand. <code>parity/meep_gpu/rounds/1.0/cert8.py</code>
+runs the rows and <code>parity/meep_gpu/timing_rows.py</code> keeps, validates and cuts
+them. Neither times anything itself: every unit is a fresh process of the ladder or the
+fused-product bench described above.
+
+### Rows and keys
+
+| Kind | Key | What one record holds |
+|---|---|---|
+| <code>ladder</code> | <code>ladder\|&lt;architecture&gt;\|&lt;case&gt;\|&lt;cells&gt;\|&lt;tier&gt;</code> | One case and size of the identical-case ladder with every leg it is compared against: each GPU route, the array-path control and every MEEP leg, all from one ladder session (R5) |
+| <code>fused</code> | <code>fused\|&lt;architecture&gt;\|&lt;table&gt;\|&lt;case&gt;\|&lt;drive or res&lt;r&gt;&gt;\|p&lt;pass&gt;</code> | One <code>bench_fused_products.py</code> unit, its row's line kept verbatim for the cutter. The pass is in the key because a band edge of a preference record needs two rows |
+| <code>check</code> | <code>check\|&lt;key&gt;</code> | A dispatch check of another key: its GPU legs at its case and size on short windows, kept for the launch counters |
+
+The architecture is an NVIDIA compute capability (<code>8.6</code>) or an Apple GPU family
+(<code>applegpu_g13s</code>), as the rows stamp it. A record carries its session (id,
+start, end), the unit's command, the in-harness import record of every process (below),
+the launch counters of every GPU leg (per slot: arm, kernel table, dispatches, and the
+family and gate the plan cites), the reference environment's build record (R27) and the
+MEEP build records, the host gates it passed (the quiet window read twice, the variance
+precondition, the watcher's readings and intrusions, power recorded and never gated), the
+command, environment and exit status this driver gave the unit, its legs' medians with
+their gate status (R20), and a digest of its own body. The store keeps one file per key
+and attempt (the session's id and end), written once. It lives under
+<code>parity/meep_gpu/results/&lt;name&gt;/</code>, which the ladder's snapshot leaves out,
+so a record cut from it names its rows <code>results/...</code> as the shipped records do;
+the units' run root (<code>--run-root</code>, by default
+<code>$MGPU_SITE_STAGING_ROOT/cert8</code>) stays outside every tree the ladder reads.
+
+**The import record is the benches' own.** <code>bench_fused_products.py</code> stamps
+every row with <code>imported_source_sha256</code> (the sha256 of every repository module
+its process holds, keyed as every gate artifact keys it) and
+<code>bench_meep_identical_case.py</code> stamps every MEEP measurement row the same way,
+which shows the package was not in that process. Beside it a fused-product row records
+what the 1.0 round's hook and its joiner kept with the record: the sha256 of the ledgers
+its kernel tables read to admit arms (<code>data_sha256</code>), the versions of the
+libraries it loaded (<code>imported_libraries</code>), and the package, device and
+compiler switches of its environment (<code>process_environment</code>; a path is
+recorded by its last component). No exit hook is put on any path. The ladder's array
+control is read off the GPU rows' own array legs, whose processes these records cover;
+a standalone control (<code>--array-control row</code>) is a process of its own whose
+driver, <code>gpu_array_control.py</code>, writes no import record, so a row timed with
+one is refused by name.
+
+### Running rows
+
+The catalog names an architecture's rows: <code>rounds/1.0/cert8_catalog_nvidia.json</code>
+and <code>cert8_catalog_apple.json</code> are the 1.0 round's. Site values (the MEEP build
+record, a library stub, the corpus, the account) stay out of the tree, in a
+<code>timing_ladder.py --params</code> file given with <code>--ladder-params</code> and in
+<code>--bench-env KEY=VALUE</code>.
+
+```bash
+python parity/meep_gpu/rounds/1.0/cert8.py plan --catalog <catalog> \
+  --store parity/meep_gpu/results/timing_rows --run-root <runs> \
+  --rows 'ladder|8.6|pml_3d|2097152|priority'          # or --owed, or nothing: every row
+python -u parity/meep_gpu/rounds/1.0/cert8.py run --catalog <catalog> \
+  --store parity/meep_gpu/results/timing_rows --run-root <runs> --session <id> \
+  --python <env>/bin/python --gpu 0 \
+  --environment-record <the reference environment's build record> \
+  --ladder-params <site params> --rows ...
+```
+
+On Linux, <code>run</code> first exports the Triton launcher's toolchain to every unit:
+<code>CC</code> and <code>TRITON_LIBCUDA_PATH</code> as the launching shell set them, else
+the compiler (<code>bin/x86_64-conda-linux-gnu-cc</code>) and the libcuda link
+(<code>lib/meep-gpu-libcuda</code>) of the reference environment <code>--python</code> runs
+in; a reference environment without either is refused by name before the session starts.
+A site's <code>LIBCUDA_STUB</code> and <code>--bench-env</code> still override the
+directory in their units.
+
+A session runs, in order, writing one flushed line per step to
+<code>&lt;runs&gt;/&lt;session&gt;/progress.log</code> and one marker per finished unit.
+The same command resumes it at its first unfinished unit; a unit is never resumed inside
+(an earlier output of it is set aside and the unit runs whole), so every leg of a row is
+timed in one process under one watcher (R5).
+
+1. **The quiet window**, before every unit, read twice two minutes apart and recorded in
+   the unit's rows: no foreign process on the device, no other GPU process of the
+   account, no other work of the account (a harness, test, round or MPI process outside
+   the session, a busy Python process, a busy build, compiler or bulk tool, and on Linux
+   any busy process of the account; a process's share is the CPU time it used between
+   two readings, not the lifetime average <code>ps</code> prints on Linux), no
+   neighbour busy; on Linux the load average
+   below 10 % of the logical CPUs and available memory above 25 % of the total, the
+   ladder's own GPU-row thresholds; on macOS available memory and the background
+   daemons, the ladder gating each of its rows on its calibrated CPU threshold. An idle
+   resident process of another account on another GPU is recorded and not waited on
+   (R18).
+2. **The variance precondition**, once per session that times a ladder row: the catalog's
+   point repeated five times on one GPU route and at one MEEP rank count. GO when the GPU
+   route's repeat spread is within 5 %. MEEP's repeat spread is recorded and never gated.
+   A session run with <code>--no-variance</code> records why, and none of its ratios
+   enters a table.
+3. **The units**: the ladder rows of one case and tier share one ladder (its passes
+   interleave its sizes; a row alone is one size), then the fused DRIVE units, the sweep
+   (odd passes ascending, even passes descending), then the dispatch checks. Every ladder
+   unit is given <code>--require-ac-power 0</code>: no stage is gated on power.
+4. **The watcher**, every 15 s while a unit runs: two readings in a row that see a
+   foreign process on the device, another GPU process of the account, other work of the
+   account, or a neighbour turned busy stop the unit; its output is set aside (renamed,
+   never deleted, never collected) and it runs again once the window is quiet.
+5. **Collect**: each unit's rows become records in the store, with the unit's exit
+   status. A ladder unit that exited non-zero stopped before its plan finished: its
+   records are kept and never cut.
+
+<code>cert8.py collect ladder|fused</code> records a unit that was run by hand; such a
+record carries no quiet window and no watcher, so it is kept for
+<code>status</code> and <code>bill</code> and never cut.
+<code>cert8.py selftest</code> exercises the watcher's rule on stand-ins.
+
+**The A/B base** is the previous release, staged by <code>git archive &lt;tag&gt;</code>
+and run with <code>--tree &lt;staged base&gt; --role ab</code>: its rows are kept beside
+the release's and never enter a cut of the release.
+
+### Valid, stale, or owed a dispatch check
+
+<code>timing_rows.py status --store S --release-root R</code> reads every key's newest
+row against the release tree. The files a row's import records name that the tree holds
+at other bytes have moved (the rule of <code>artifact_drift.py</code>). No moved file:
+the row is valid. Otherwise each moved file is one of four kinds:
+
+1. **Step-path files re-time every row that loaded them**: every file outside a kernel
+   table directory (the driver, the planners, the deposit repair, the host-write doors,
+   the lift, the benches), the fused-pair emitters and the shared fusion block
+   (<code>dispatch_preference.SUBJECT_FILES</code>), each table's package init and arm
+   table, <code>triton_kernels/launch.py</code>, and every file a table's
+   <code>driver_dispatch</code> record pins that no arm's entry pins. The 1.0 round's
+   150 NVIDIA import records held the planners, <code>deposit_repair.py</code>,
+   <code>host_writes.py</code>, <code>fused_pairs.py</code> and
+   <code>fused_polarization_pair.py</code> in every row of both tables: there the re-time
+   stays per table, because pooling rows timed on both sides of such a change would
+   compare two programs.
+2. **An arm's kernel file re-times exactly the keys whose launch counters show that arm
+   dispatched.** The arm's ledger entry (the gate its plan cites) pins its own modules,
+   and every kernel file they can import belongs to it too. An arm no ledger entry
+   attributes (the 1.0 Triton single arms cite a recertification sweep) takes its
+   table's whole kernel slice (27 of the 83 arms the 1.0 rows launched). On the Metal
+   table the re-time stays per table: through what its pinned modules import, each of
+   the 61 Metal arm entries that pins a kernel file reaches 90 of the 92 Metal kernel
+   modules (the family modules register their arms at import), so a Metal kernel change
+   re-times every Metal row that loaded it.
+3. **A kernel file no launched arm carries owes the row a dispatch check**, because a
+   predicate in it may admit another arm. The row is valid again once a
+   <code>check</code> record of its key, cut wholly on the release tree, shows the same
+   arms launched on the same slots.
+4. **A ledger owes the row a dispatch check**: the four ledgers are what the dispatch
+   path reads to admit arms, no arm's kernel text, so a change to one (a run recorded, an
+   arm admitted) is checked as rule 3 is, never left unseen.
+
+A row that records no launched slot (an <code>ERROR</code> row) is never narrowed: every
+moved file re-times it. A row is refused by name, whatever the tree, when a process that
+ran package code recorded no import record, no package module in it or no ledger
+digests; when its unit was not opened on a quiet window of two clear readings or not
+watched (a row collected by hand); when the watcher saw an intrusion; when a ladder
+entry of it was written outside the session that records it (R5); when its ladder unit
+exited non-zero; when it names no reference environment build record; when its rows
+stamp another architecture than its key; or when its body does not match its digest.
+
+**The environment is no file of the import record** (R27). A rebuilt reference
+environment (another compiler, Triton, CuPy or MEEP build) runs another program behind
+the same import records, so every command that selects rows takes
+<code>--environment-record &lt;the round's build record&gt;</code>: a row that ran in
+another environment, or recorded none, is then stale and owed a re-time, and a dispatch
+check witnesses a row only from the same environment. A table, record or report whose
+selected rows ran in two environments (possible only without the flag), or whose
+processes loaded two versions of one library, is refused by name rather than pooled.
+
+Before a change lands, <code>timing_rows.py bill --store S FILE ...</code> lists the keys
+it will re-time, the keys it will owe a dispatch check and the keys it leaves alone; after
+it lands, <code>cert8.py run --owed</code> (given the session's
+<code>--environment-record</code>, which <code>plan --owed</code> reads the same way)
+times exactly those. On the 1.0 round's 113
+fused rows, a change to the CUDA complex fused electric pair's module re-times 5 and owes
+5 a check (103 untouched); one to <code>fused_pairs.py</code> or <code>driver.py</code>
+re-times all 113.
+
+### The cuts
+
+```bash
+python parity/meep_gpu/timing_rows.py table --store S --release-root R --catalog C \
+  --environment-record E --architecture 8.6 --out-md TABLE.md --out-json table.json
+python parity/meep_gpu/timing_rows.py records --store S --release-root R --catalog C \
+  --environment-record E --out-root meep_gpu
+python parity/meep_gpu/timing_rows.py report --store S --release-root R --catalog C \
+  --environment-record E --architecture 8.6 --out-dir <dir>
+```
+
+- **The identical-case table** takes each key's newest valid row that carries a
+  measurement (a later attempt that failed does not shadow an earlier timing). A GPU
+  route or the array control carries the 5 % gate (every pass timed and unstruck by the bench's own
+  floors, the between-pass spread within 5 %). A MEEP leg carries its between-pass spread,
+  recorded and never gated, and is struck only for what is not spread (its geometry
+  digest, its precision, its threads, its monitor). A ratio is the route's median over
+  the best unstruck MEEP reference median of the same row and says whether it enters:
+  it enters when the route passed the gate and the session's variance precondition read
+  GO. Every median is printed with its gate status. The table is accounted against the
+  catalog: every catalog key without a valid measured row, one never timed included, is
+  listed with what it is owed.
+- **The dispatch-preference records** are cut by <code>cut_timing_record.py</code> from
+  the selected fused rows' own lines, one record per table **per architecture**, at the
+  name <code>dispatch_preference.record_path</code> gives it:
+  <code>&lt;table&gt;_kernels/timing_cc86.json</code>, and for the Metal table
+  <code>metal_kernels/timing_applegpu_g13s.json</code>. A new architecture's record is
+  added beside the others; a record of an architecture whose rows are absent is never
+  touched; a record cut on another device is refused, with no override. The release is
+  accounted for: a record cut from part of a campaign names every released (product,
+  case) it lacks under <code>missing</code>, with the rows' own reason (the 1.0 round's
+  eleven <code>ERROR</code> rows), instead of failing. Every catalog fused key of the
+  table and architecture without a valid measured row (a sweep point never timed
+  included) is named in the cut's output and in the report beside the record, and a
+  table the catalog names that no valid row reaches is named as not cut (a table whose
+  DRIVE cases are the release's and that has no sweep included).
+- **The fused-product report** is <code>build_fused_timing_report.py</code> on the selected
+  fused rows, staged as that builder reads them, with the catalog's keys it lacks, and
+  its tables no valid row reaches, in <code>missing_keys.txt</code> beside it. The
+  release's DRIVE cases are known only by running the bench's estimate, so a table that
+  takes them is named there with a pointer to its record's <code>missing</code> block,
+  which names every released (product, case) without a row.
+
+<code>cut_timing_record.py --check</code> recomputes a record from the row files it names;
+the store is written once per key and attempt, so every file a record names stays there.
+
 ## What a row licenses
 
 One host, one GPU, the precision both sides ran, the case and size the row names,
@@ -426,10 +717,12 @@ placeholders and the box string by its key set (<code>busy_cores</code> renamed
 6. The repository root is found by name.
 7. Neither the ladder nor the bench sets <code>KMP_DUPLICATE_LIB_OK</code>: the
    reproduction's launching shell exports it.
-8. Every row unsets <code>MEEP_GPU_ALLOW_UNCERTIFIED</code> unless
-   <code>--allow-uncertified 1</code>, except the NVIDIA rows, which export
-   <code>0</code>; that ladder inherited it unrecorded, and on NVIDIA unset then
-   meant what <code>0</code> means now.
+8. Every row unsets <code>MEEP_GPU_HARDWARE</code> unless
+   <code>--allow-uncertified 1</code>, which exports <code>any</code>, except the
+   NVIDIA rows, which export <code>certified</code>; and every row unsets the
+   retired <code>MEEP_GPU_ALLOW_UNCERTIFIED</code>, which the package refuses by
+   name. That ladder inherited <code>MEEP_GPU_ALLOW_UNCERTIFIED</code> unrecorded,
+   and on NVIDIA unset then meant what <code>certified</code> means now.
 9. A MEEP row no longer inherits the GPU rows' cache directories, and an empty
    library path no longer leaves a trailing <code>:</code> in a GPU row's
    <code>LD_LIBRARY_PATH</code>.

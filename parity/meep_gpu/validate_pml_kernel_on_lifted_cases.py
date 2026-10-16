@@ -182,9 +182,13 @@ def one_case(name: str, kwargs: Dict[str, Any], probe,
     # grid (``real_curl_boundary_codes``) rather than of the kind strings.
     codes = kernels.real_curl_boundary_codes(grid)
     dtdx = grid.dt / grid.dx
+    # THE DRIVER'S OWN CHUNK RECORD: the kernels choose each cell's form from it, and the
+    # array leg chose by the region plan the driver built from the same division.
+    record = cupy.asarray(np.ascontiguousarray(driver.chunk_bounds_record(),
+                                               dtype=np.int32))
     for _ in range(STEPS):
-        kernels._step_B_fused_pml_real(fields, tables_b, codes, dtdx)
-        kernels._step_D_fused_pml_real(fields, tables_d, codes, dtdx)
+        kernels._step_B_fused_pml_real(fields, tables_b, codes, dtdx, record)
+        kernels._step_D_fused_pml_real(fields, tables_d, codes, dtdx, record)
     cupy.cuda.runtime.deviceSynchronize()
 
     parts = {n: probe.bit_compare(getattr(fields, n), array_result[n])

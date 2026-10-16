@@ -442,3 +442,87 @@ def test_the_tight_guards_are_not_inherited_only_band_membership_is():
     # ...and it still inherited the magnitude ceiling; that is not what refused it.
     assert rows["fields.Dy"]["judged_as"] == (
         "field_downstream_of_its_pml_intermediate")
+
+
+# ---------------------------------------------------------------------------
+# The host flush replay: an array over a ceiling licensed by reproduction
+# ---------------------------------------------------------------------------
+
+#: ``pml_3d`` at 24 steps on the 0.10 series (01..106), keeping host against flushing
+#: device: ``fields.Dz`` and ``fields.Ez`` differ at 1.875e-28, over the field ceiling
+#: and ABOVE their own intermediate ``fields.fu_Dz`` (3.892e-31), so neither ceiling
+#: admits them; the host flush replay reproduces every one of the 20 differing arrays.
+PML_3D_OVER = [
+    {"array": "fields.Dz", "largest_differing_magnitude": 1.875e-28,
+     "max_abs_diff": 1.204e-35, "max_rel_diff": 1.97e-32,
+     "elements_one_side_exactly_zero": 436},
+    {"array": "fields.Ez", "largest_differing_magnitude": 1.875e-28,
+     "max_abs_diff": 1.204e-35, "max_rel_diff": 1.97e-32,
+     "elements_one_side_exactly_zero": 462},
+    {"array": "fields.fu_Dz", "largest_differing_magnitude": 3.892e-31,
+     "max_abs_diff": 2.351e-38, "max_rel_diff": 3.36e-32,
+     "elements_one_side_exactly_zero": 112},
+]
+
+
+def _states():
+    import numpy
+
+    fused = {name: numpy.arange(8, dtype=numpy.float32) * numpy.float32(index + 1)
+             for index, name in enumerate(("fields.Dz", "fields.Ez", "fields.fu_Dz"))}
+    replay = {name: value.copy() for name, value in fused.items()}
+    return fused, replay
+
+
+def test_an_array_over_its_ceiling_is_refused_without_a_replay():
+    confinement = route.band_confinement(PML_3D_OVER)
+    assert not confinement["confined"]
+    over = sorted(row["array"] for row in confinement["per_array"] if row["over_ceiling"])
+    assert over == ["fields.Dz", "fields.Ez"]
+    fused, _replay = _states()
+    assert not route.replay_licensed(confinement, fused, None)["confined"]
+
+
+def test_the_host_flush_replay_licenses_the_arrays_it_reproduces_word_for_word():
+    fused, replay = _states()
+    licensed = route.replay_licensed(route.band_confinement(PML_3D_OVER), fused, replay)
+    assert licensed["confined"]
+    assert licensed["licensed_by_the_host_flush_replay"] == ["fields.Dz", "fields.Ez"]
+    # An array within its ceilings is not asked for a replay at all.
+    intermediate = next(row for row in licensed["per_array"]
+                        if row["array"] == "fields.fu_Dz")
+    assert "reproduced_by_the_host_flush_replay" not in intermediate
+
+
+def test_one_word_off_the_replay_is_not_a_licence():
+    import numpy
+
+    fused, replay = _states()
+    words = replay["fields.Ez"].view(numpy.uint32)
+    words[3] ^= numpy.uint32(1)
+    licensed = route.replay_licensed(route.band_confinement(PML_3D_OVER), fused, replay)
+    assert not licensed["confined"]
+    assert licensed["licensed_by_the_host_flush_replay"] == ["fields.Dz"]
+
+
+def test_a_replay_of_another_dtype_shape_or_missing_array_licenses_nothing():
+    import numpy
+
+    confinement = route.band_confinement(PML_3D_OVER)
+    for mutate in (lambda r: r.__setitem__("fields.Dz", r["fields.Dz"].astype(numpy.float64)),
+                   lambda r: r.__setitem__("fields.Dz", r["fields.Dz"].reshape(2, 4)),
+                   lambda r: r.pop("fields.Dz")):
+        fused, replay = _states()
+        mutate(replay)
+        assert not route.replay_licensed(confinement, fused, replay)["confined"]
+
+
+def test_a_normal_magnitude_disagreement_the_replay_does_not_reproduce_stays_outside():
+    """A kernel that departs from the flushing array path is refused as before."""
+    fused, replay = _states()
+    defect = [{"array": "fields.Dz", "largest_differing_magnitude": 4.19e-05,
+               "max_abs_diff": 4.73e-11, "max_rel_diff": 8.94e-07,
+               "elements_one_side_exactly_zero": 0}]
+    replay["fields.Dz"] = replay["fields.Dz"] + 1.0
+    licensed = route.replay_licensed(route.band_confinement(defect), fused, replay)
+    assert not licensed["confined"]

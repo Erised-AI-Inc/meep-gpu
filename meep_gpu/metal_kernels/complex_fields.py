@@ -2,137 +2,99 @@
 
 THE LARGEST CORPUS FAMILY ON EITHER TRACK: sixteen rows, and the sole admitter on
 all four sub-steps for every one of them. Complex64 is stepped as ``float2``
-volumes with the Bloch wrap phase applied as a complex rotation on the single
-wrapped plane of each shifted operand.
+volumes, each part by the array path's own float32 arithmetic.
 
-NO ENTRY IN ``fingerprints.json``'s ``kernel_source_sha256``, deliberately. This
-module's sources are a function of the PROBE-BOUND expansion arm, so a checked-in
-hash would have to pick an arm and would then be a record of a choice rather than of
-a measurement. ``gate_metal_complex.py`` hashes every specialisation of the arm it
-actually bound, into its own results directory, beside the probe artifact that bound
-it. This module's own bytes ARE hashed, under ``host_sha256``, because
+NO ENTRY IN ``fingerprints.json``'s ``kernel_source_sha256``, deliberately: this
+module's sources are a family of specialisations, and ``gate_metal_complex``
+hashes every specialisation it launches into its own results directory. This
+module's own bytes ARE hashed, under ``host_sha256``, because
 ``launch._host_modules()`` enumerates the package.
 
-WIRED AS OF TRANCHE 2, AFTER THE SWEEP AND NOT BEFORE. The arms below register with
-``wired=True``, so ``plan_step`` composes them; ``fastpath.plan_fast_path`` still
-returns ``None`` on every branch and nothing here touches dispatch, which is a
-different question. The order matters and is the point: the family was registered
-``wired=False`` for a tranche precisely so the composition sweep could call its
-predicates over the whole configuration matrix and MEASURE that no other family
-co-admits anything it admits, and the flag flipped only once that measurement
-existed. The separation is two clauses, each stated here rather than inherited:
-``coverage._grid_reasons`` clause 2 refuses complex storage (so the shipped real
-kernels refuse this module's whole domain) and this module's clause 8 refuses
-``grid.beta`` by name (so a complex BETA run goes to :mod:`.special_kz` instead of
-being taken here).
+WIRED: the four arms register ``wired=True``; the separation from the real kernels is
+clause 2 (complex storage required here, refused there) and from :mod:`.special_kz` is
+clause 8 (``grid.beta`` refused here by name).
 
-TWO KERNELS, one per sub-step family:
+TWO KERNELS, one per sub-step family, each transcribing ``stepping.py``:
 
-* :func:`bloch_curl_source` — complex ``stepping.step_B`` (:261) / ``step_D``
-  (:379) under split-field PML, with the Bloch phase on the wrapped lane of each
-  shifted operand;
-* :func:`bloch_constitutive_source` — complex ``update_H`` (:907) / ``update_E``
-  (:926), the ``dsigw`` accumulation. The constitutive sub-step never sees a wrap
-  and therefore takes NO phase.
+* :func:`bloch_curl_source` -- complex ``step_B`` / ``step_D``: the curl
+  (``_curl_operands``, ``_curl_from_operands``) and its two PML forms
+  (``_apply_curl_regions``);
+* :func:`bloch_constitutive_source` -- complex ``update_H`` / ``update_E``: the
+  ``dsigw`` accumulation and the plain ``f = src`` (``_apply_constitutive_regions``).
+
+EVERY PRODUCT IS FORMED PART BY PART, as MEEP forms it (``meep_gpu.part_products``):
+a realnum coefficient times a field is one float32 product per part
+(:func:`.templates.complex_helpers`), and complex add and subtract are per part by
+definition. So each part of every word is the real kernel's arithmetic
+(:mod:`.shaders`), and the forms are the real kernel's:
+
+* the PML form is chosen PER STRUCTURE CHUNK from the bound chunk record
+  (:mod:`.chunk_bounds`, read through the same anchored blocks the real kernels
+  emit): on a cell whose chunk carries the target's dsigu layer the split-field
+  recurrence ``n = ((fu*kms) - curl)*sinv; f = (((f*kms_u) + n) - fu)*sinv_u; fu =
+  n``, everywhere else the dsig-only form ``((f*kms) - curl)*sinv`` with ``fu``
+  neither read nor written;
+* the constitutive is ``f + ((kps*src) - (kms*prev))`` with ``f_w = src`` on a cell
+  whose chunk carries the component's own layer and the OUTPUT SELECT ``f = src``
+  everywhere else, ``f_w`` untouched;
+* the stencil is MEEP's left-to-right bracket ``((g1s - g1) + g2) - g2s``, with the
+  absent-partner forms from the record's presence word (step_generic.cpp:72-76,
+  :104-108).
+
+THE BLOCH CONNECTION IS ON THE UNSHIFTED OPERAND, AT PLANE 0. On a phased axis the
+engine stores MEEP's owned window (``Grid.stored_window_low``): a shifted read one
+stored cell over is always an owned word, so the ghost rule is the plain periodic
+wrap, and the reads that leave the window are the SAME-INDEX reads across the half
+cell on plane 0 (``stepping._bloch_ghost_operand``). Per curl term, the unshifted
+partner differenced along a phased axis is replaced there by MEEP's connected word:
+``conj(eikna)`` times stored cell 0 on the B side (the word below the window) and
+``eikna`` times it on the D side (the word above). The connection is MEEP's three
+spellings, decided on the host from ``thephase = 1.0 * factor`` in double
+(boundaries.cpp:203-226, :359-366; ``part_products.connect_parts``): within 1e-13 of
++1 a copy, of -1 a unary minus per part, otherwise ``complex<realnum>(thephase) *
+word`` with every product and sum rounded on its own (:func:`.templates.complex_helpers`
+``c_mul``). Which spelling an axis takes is baked into the source
+(:data:`CONNECT_NONE` / :data:`CONNECT_NEGATE` / :data:`CONNECT_PHASE`); the phase
+words are bound.
 
 WHY float2 IS FORCED AND NOT PREFERRED. Metal's buffer attribute indices run 0..30,
 so a kernel binds at most 31 buffers; a 32nd is a COMPILE ERROR, measured on this
-toolchain. The curl binds 23 as ``float2`` volumes (9 field + 6 coefficient + 5
-scalars + 3 phases). The same kernel with re/im planes bound SEPARATELY needs 35
-and cannot be built at all. The gate compiles that signature and requires the
-failure rather than leaving a future edit to rediscover the ceiling.
+toolchain. The curl binds :data:`CURL_BINDINGS` = 24 (9 ``float2`` volumes, 6
+coefficient vectors, 5 scalars, 3 phases, the chunk record). The same kernel with
+re/im planes bound SEPARATELY needs 36 and cannot be built at all; the gate compiles
+that signature and requires the failure.
 
-WHY THE PLANE TRANSCRIPTION IS LEGAL (from source): every recurrence on the complex
-step path has REAL coefficients — curl (stepping.py:1648-1683), split-field PML
-(:1952-1982), constitutive dsigw (:2112-2143) — and the imaginary plane enters ONLY
-through the Bloch wrap multiply (:1767-1771 up, :1818-1822 down, both via
-``_apply_bloch_phase`` :1846-1862) and through a complex source amplitude, which is
-a ``sources``-side fact outside these kernels. stepping.py:41-50 states this and
-adds the load-bearing invariant: ``inv_eps`` and every PML coefficient are float32
-in BOTH storage modes.
+WHAT IS TRANSCRIBED, and from where (``stepping``):
 
-WHY IT IS NOT BYTE-TRIVIAL, and this is where the Metal question INVERTS relative
-to Triton's. On the Triton track the kernel could not force its own association and
-the ``EXPANSION`` constexpr existed to match whatever CuPy did. Here the shader
-spells the expansion EXPLICITLY under the file-scope contraction directive, so the
-open question is the other one: **which arm does the HOST ORACLE take?** The engine
-holds NumPy on this host, so the probe measures ``numpy``'s own complex64 multiply
-per call-site orientation, and the answer is bound from that artifact — never
-guessed. Measured 2026-08-15 (numpy 2.4.3, arm64):
+* term table            ``B_CURL_TERMS`` / ``D_CURL_TERMS``
+* ghost rule            ``_shift_up`` / ``_shift_down``, PERIODIC and METALLIC
+* Bloch connection      ``_bloch_ghost_operand`` and ``part_products.connect``
+* curl                  ``_curl_from_operands``, presence from ``curl_presence``
+* ownership mask        ``_mask_non_owned_cells`` -- a complex zero to BOTH planes
+* PML forms             ``_apply_curl_regions`` (``_apply_pml_update`` /
+                        ``_apply_dsig_only_update``)
+* constitutive          ``_apply_constitutive_regions`` (``_apply_constitutive_pml``
+                        / the plain select)
+* coefficient pairing   ``_curl_coefficients`` / ``_constitutive_coefficients``;
+                        host-bound, never chosen in-kernel
+* phase legality        ``_bloch_phases``: a phased axis must resolve PERIODIC; PML
+                        on a phased axis is admitted
+* phase value           ``grid.bloch_phase``: exp(2*pi*i*k*L), the Brillouin edge
+                        EXACTLY -1+0j
 
-    c8_mul_c8                    FMA_V1     naive misses 4095/16384 on random data
-    c8_mul_c8_scalar_right       FMA_V1     the shape S:1862 actually uses
-    c8_mul_f4_field_left         AMBIGUOUS_BOTH   (real operand: the arms coincide)
-    f4_mul_c8_coefficient_left   AMBIGUOUS_BOTH
-    python_float_left            AMBIGUOUS_BOTH
-
-AMBIGUOUS_BOTH is ACCEPTED and is not a shrug: with ``c_im = +0.0`` the fma's
-addend is an exact zero and both arms are exact, so the pattern cannot discriminate
-and says so. A pattern matching NEITHER arm is a REFUSAL BY NAME with example
-words, because one specialisation cannot represent a platform whose orientations
-disagree.
-
-THE ARM IS LOAD-BEARING FOR THE CURL ONLY, AND ONLY THROUGH THE BLOCH ROTATION —
-measured 2026-08-15, not reasoned. Every other multiply either kernel performs has a
-REAL coefficient (``dtdx``, ``kms``, ``sinv``, ``kps``, ``inv_eps``), so its
-imaginary operand is an exact ``+0.0``, the fma's addend is exact, and the two arms
-coincide bit for bit. ``gate_metal_complex`` leg ``contraction`` compiles BOTH arms
-in BOTH contraction modes for all four sub-steps: the curl separates them (6 words on
-``step_B``, 1 on ``step_D``, with two axes phased) and the CONSTITUTIVE KERNEL DOES
-NOT — all four builds are bitwise equal there, which is why mutation ``m12`` has no
-constitutive twin and why the constitutive rows are recorded as a predicted null with
-that reason. The same fact explains why the contraction directive is inert on the
-shipped arm: with the products spelled as explicit ``fma()`` calls there is no
-implicit ``a*b + c`` left anywhere.
-
-THREE SPELLINGS ARE LOAD-BEARING AND ALL THREE WERE MEASURED, NOT INHERITED:
-
-1. **the zero cross terms** must be spelled literally. Folding ``z_im * 0.0f`` to a
-   literal misses 12/128 words on the EXHAUSTIVE 64-pattern signed-zero table, in
-   EITHER orientation — 12/128 with the field on the left and 12/128 with the
-   coefficient on the left, re-measured 2026-08-15 through the gate's own
-   ``folded_zero_cross_terms`` / ``folded_coefficient_left`` arms. (An earlier
-   revision of this line said 24/128 for the coefficient-left orientation; that is
-   the PLANE-WISE number, and no leg had ever measured a folded coefficient-left
-   arm. The gate now carries one, so both figures come from the artifact.) Random
-   data misses none of it (0/16,384) — which is why the gate's zero legs are
-   exhaustive tables rather than sampled rows;
-2. **the plane-wise fast path is wrong**: ``{re*c, im*c}`` misses 24/128 on the
-   same table. This is the headline risk the folded-complex tranche names, and it
-   is classified here explicitly rather than assumed away;
-3. **negation is ``-x``.** The Triton track spells negated addends ``(a*b) * -1.0``
-   because *Triton* lowers unary minus as ``0.0 - x`` and canonicalizes signed
-   zeros. THAT REASON DOES NOT REPRODUCE ON METAL: measured on the exhaustive
-   256-pattern table, ``-x`` and ``x * -1.0f`` are both exact (0/512) while
-   ``0.0f - x`` misses 36/512. The workaround is NOT carried, and the refuted
-   spelling is a must-catch gate mutation instead of a comment.
-
-WHAT IS TRANSCRIBED, and from where (stepping.py unless noted):
-
-* term table            ``B_CURL_TERMS`` / ``D_CURL_TERMS`` (:213-223)
-* ghost rule            ``_shift_up`` (:1723) / ``_shift_down`` (:1787), PERIODIC
-                        and METALLIC branches only
-* Bloch wrap multiply   ``_apply_bloch_phase`` (:1846-1862): up-shift wrapped plane
-                        ``*= phase`` (:1767-1771), down-shift plane 0
-                        ``*= conj(phase)`` (:1818-1822); SKIPPED ENTIRELY when the
-                        phase is None (:1768-1770 / :1819-1821), which is what keeps
-                        k = 0 bit-identical to the plain complex engine
-* curl grouping         ``_curl_from_operands`` (:1601-1636)
-* ownership mask        ``_mask_non_owned_cells`` (:1865-1902) — writes a complex
-                        zero to BOTH planes (:1896, :1902)
-* PML recurrence        ``_apply_pml_update`` (:1905-1935)
-* constitutive dsigw    ``_apply_constitutive_pml`` (:2065-2096)
-* coefficient pairing   ``_curl_coefficients`` (:2418) / ``_constitutive_coefficients``
-                        (:2428); host-bound, never chosen in-kernel
-* phase legality        ``_bloch_phases`` (:2313-2367): a phased axis must resolve
-                        PERIODIC; PML ON A PHASED AXIS IS ADMITTED (settled there by
-                        measurement, 2.82e-07 against CPU MEEP)
-* phase value           ``grid.bloch_phase`` (grid.py:1011-1017): exp(2*pi*i*k*L),
-                        Brillouin edge EXACTLY -1+0j
+The run's first ``update_H`` starts H and ``f_w`` from B on the dsigw cells
+(``stepping.separate_h_from_b``); the constitutive kernel steps the forms alone, so
+:class:`ComplexConstitutivePlan` declares that it does not start H and the composer
+keeps that slot on the array path where the start can change a word
+(``launch.h_start_reasons``).
 
 Import contract: importable WITHOUT torch. The predicates and the plan builders
 (to ``None``) must answer on a host with no GPU, which is the merge bar.
 """
+
+# Derived from MEEP (https://github.com/NanoComp/meep).
+# Copyright (C) 2005-2025 Massachusetts Institute of Technology and MEEP contributors.
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 from __future__ import annotations
 
@@ -150,6 +112,9 @@ from ..triton_kernels.coverage import (
     _inverse_epsilon_reasons,
     _susceptibility_reasons,
 )
+from ..part_products import CONNECT_TOLERANCE
+from ..readback import cmul
+from . import chunk_bounds as _chunk_bounds
 from . import shaders, templates
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import MAX_BUFFER_BINDINGS, compile_source
@@ -159,12 +124,13 @@ from .plans import KernelPlan
 FAMILY = "complex_fields"
 
 #: How many buffers the shipped curl binds: 9 float2 volumes + 6 coefficient vectors
-#: + 5 scalars + 3 phases. CHECKED AGAINST THE PLATFORM CEILING AT IMPORT, because
+#: + 5 scalars + 3 phases + the chunk record. CHECKED AGAINST THE PLATFORM CEILING AT
+#: IMPORT, because
 #: the whole ``float2`` design rests on this margin and the number was previously a
 #: literal in three places (this module's docstring, the gate's ``bindings`` leg and
 #: a test). One home, checked, so a binding added to the signature is refused here by
 #: name rather than discovered as a compile error a reader has to attribute.
-CURL_BINDINGS = 23
+CURL_BINDINGS = 24
 if CURL_BINDINGS > MAX_BUFFER_BINDINGS:  # pragma: no cover - a design invariant
     raise RuntimeError(
         f"the complex curl binds {CURL_BINDINGS} buffers and Metal's ceiling on this "
@@ -172,51 +138,32 @@ if CURL_BINDINGS > MAX_BUFFER_BINDINGS:  # pragma: no cover - a design invariant
         f"See `split_plane_curl_signature` for the measurement that established the "
         f"ceiling")
 
-#: Environment variable naming the expansion probe artifact (see the module docstring).
-PROBE_PATH_ENVIRONMENT = "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE"
+#: The chunk record's binding index on the curl: one past the last phase.
+CURL_RECORD_BUFFER = 23
 
-#: The backend the probe must have measured. The ENGINE holds NumPy on this host and
-#: the kernel must reproduce the ENGINE's bytes, so the binding is to numpy's result
-#: — the exact inversion of the Triton track, whose engine holds CuPy.
-PROBE_BACKEND = "numpy"
+#: The chunk record's binding index on the constitutive: one past ``n_elem``.
+CONSTITUTIVE_RECORD_BUFFER = 22
 
-#: The call-site patterns the probe must classify, one per operand orientation the
-#: transcription carries. ``c8_mul_c8_scalar_right`` is separate from ``c8_mul_c8``
-#: on purpose: stepping.py:1909 multiplies an ARRAY PLANE by a complex64 SCALAR, and
-#: a backend that took a scalar fast path there would collapse the rotation to
-#: plane-wise and evaporate the whole delta.
-#:
-#: THESE PATTERNS ARE ORIENTATIONS, NOT MEMORY SHAPES, AND THE DIFFERENCE WAS AN
-#: ASSUMPTION UNTIL 2026-08-15. Every one of them is evaluated here on a contiguous,
-#: out-of-place, equal-length 1-D array; every real call site is something else —
-#: S:1862 is IN PLACE on a face view that is NON-CONTIGUOUS on y and z, S:1929 and
-#: S:1635 are in place, S:1929/S:2086 broadcast a ``(n,1,1)`` coefficient. Contiguity,
-#: broadcasting and output aliasing all steer numpy's loop selection, so "the probe's
-#: arm is the engine's arm" needed measuring rather than asserting. Leg
-#: ``call_site_shapes`` in ``gate_metal_complex.py`` now evaluates all eleven real
-#: shapes and REFUSES a binding that does not survive them; measured on this host the
-#: three face multiplies discriminate FMA_V1 (43 / 46 / 59 naive misses, 0 fused) and
-#: the eight coefficient shapes are AMBIGUOUS_BOTH, which agrees with this table.
-PROBE_PATTERNS: Tuple[str, ...] = (
-    "c8_mul_c8",                    # generic complex product
-    "c8_mul_c8_scalar_right",       # the phase rotation as S:1862 spells it
-    "c8_mul_f4_field_left",         # fu *= kms (S:1929-1935); D * inv_eps (S:982-984)
-    "f4_mul_c8_coefficient_left",   # kps*fw / kms*fw_previous (S:2086-2095)
-    "python_float_left",            # xp.multiply(dtdx, total) (S:1635)
-)
+#: MEEP's three connection spellings on a phased axis (boundaries.cpp:359-366), as the
+#: per-axis code a curl source is specialised on. NONE is an unphased axis or a phase
+#: within 1e-13 of +1 (a copy: the word itself); NEGATE a phase within 1e-13 of -1 (a
+#: unary minus per part, the Brillouin edge); PHASE every other phase, the unfused
+#: ``complex<realnum>(thephase) * word``.
+CONNECT_NONE = 0
+CONNECT_NEGATE = 1
+CONNECT_PHASE = 2
+CONNECT_KINDS = (CONNECT_NONE, CONNECT_NEGATE, CONNECT_PHASE)
 
-#: A pattern whose two arms are BOTH exact cannot discriminate and is accepted as
-#: such. Every real-coefficient orientation lands here by construction: the fma's
-#: addend is an exact zero, so the fused and separately-rounded forms coincide.
-AMBIGUOUS_BOTH = "AMBIGUOUS_BOTH"
 
 __all__ = [
+    "CONNECT_KINDS",
+    "CONNECT_NEGATE",
+    "CONNECT_NONE",
+    "CONNECT_PHASE",
+    "CONSTITUTIVE_RECORD_BUFFER",
     "CURL_BINDINGS",
+    "CURL_RECORD_BUFFER",
     "FAMILY",
-    "PROBE_BACKEND",
-    "PROBE_PATH_ENVIRONMENT",
-    "PROBE_PATTERNS",
-    "AMBIGUOUS_BOTH",
     "ComplexConstitutivePlan",
     "ComplexPmlCurlPlan",
     "bloch_constitutive_source",
@@ -225,8 +172,6 @@ __all__ = [
     "complex_constitutive_coverage",
     "complex_pml_curl_coverage",
     "enumerate_complex_sources",
-    "expansion_from_probe",
-    "load_expansion_probe",
     "phase_arguments",
     "plan_complex_constitutive",
     "plan_complex_constitutive_from_arrays",
@@ -241,9 +186,9 @@ __all__ = [
 # The curl kernel
 # ---------------------------------------------------------------------------
 #
-# TWENTY-THREE BINDINGS: 9 float2 volumes + 6 coefficient vectors + 5 scalars + 3
-# phases. The re/im-split form of the same kernel needs 35 and is a compile error;
-# see `split_plane_curl_signature`.
+# TWENTY-FOUR BINDINGS: 9 float2 volumes + 6 coefficient vectors + 5 scalars + 3
+# phases + the chunk record. The re/im-split form of the same kernel needs 36 and is
+# a compile error; see `split_plane_curl_signature`.
 
 _CURL_TEMPLATE = r"""
 #include <metal_stdlib>
@@ -252,6 +197,8 @@ using namespace metal;
 __CONTRACT__
 
 __HELPERS__
+
+__RECORD_STRUCT__
 
 kernel void bloch_pml_curl_step(
     device float2*       f0      [[buffer(0)]],
@@ -277,6 +224,7 @@ kernel void bloch_pml_curl_step(
     constant float2&     px      [[buffer(20)]],
     constant float2&     py      [[buffer(21)]],
     constant float2&     pz      [[buffer(22)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
 __GUARD__
@@ -285,7 +233,12 @@ __DECODE__
     int nxi = int(nx);
     int nyz = nyi * nzi;
 
-    // --- the ghost rule, per axis (stepping._shift_up:1723 / _shift_down:1787) --
+    // --- the chunk record: membership at this cell, partner presence ------------
+__BOUNDS__
+
+    // --- the ghost rule, per axis (stepping._shift_up / _shift_down) -------------
+    // A phased axis wraps plainly: the stored window makes every read one cell over
+    // an owned word (stepping._bloch_ghost_operand).
     int si = i __SHIFT__, sj = j __SHIFT__, sk = k __SHIFT__;
     bool vx = true, vy = true, vz = true;
 __GHOST_X__
@@ -297,7 +250,7 @@ __GHOST_Z__
     int oz = i * nyz + j * nzi + sk;
 
     // METALLIC serves an exact complex 0 past the wall: a (+0.0, +0.0) word pair
-    // IS the complex metallic ghost (S:1781-1783, S:1827-1829).
+    // IS the complex metallic ghost.
     float2 a   = g0[ii];
     float2 b   = g1[ii];
     float2 c   = g2[ii];
@@ -308,98 +261,114 @@ __GHOST_Z__
     float2 c_x = vx ? g2[ox] : float2(0.0f, 0.0f);
     float2 c_y = vy ? g2[oy] : float2(0.0f, 0.0f);
 
-    // --- the Bloch phase, on the WRAPPED LANE ONLY, BEFORE the difference -------
-    // Which operand crossed which face follows the stencil: b_x/c_x crossed x,
-    // a_y/c_y crossed y, a_z/b_z crossed z. FIELD LEFT (S:1862); the host already
-    // conjugated for the BACKWARD sub-step (S:1818-1822). An unphased axis emits
-    // NO multiply at all — that skip, not a multiply by 1+0j, is what keeps k = 0
-    // bit-identical to the plain complex engine (S:1768-1770 / S:1819-1821).
+    // --- the Bloch connection (stepping._bloch_ghost_operand) ---------------------
+    // Each term's UNSHIFTED partner, as read along the axis that term differences it
+    // on: target 0 reads c along y and b along z, target 1 a along z and c along x,
+    // target 2 b along x and a along y. On plane 0 of a phased axis that read is the
+    // not-owned word across the half cell -- conj(eikna) times the stored word on
+    // the B side, eikna times it on the D side, in MEEP's connection spelling.
+    float2 c_dy = c, b_dz = b;
+    float2 a_dz = a, c_dx = c;
+    float2 b_dx = b, a_dy = a;
 __PHASE_X__
 __PHASE_Y__
 __PHASE_Z__
 
-    // --- the curl (stepping._curl_from_operands:1601): DO NOT flatten these parens
-    // Complex add/sub is component-wise; the dtdx multiply is the zero-imaginary
-    // complex product with the SCALAR ON THE LEFT (S:1635).
-    float2 t0 = ((c_y - c) + (b - b_z));
-    float2 t1 = ((a_z - a) + (c - c_x));
-    float2 t2 = ((b_x - b) + (a - a_y));
-    float2 curl0 = c_mul_coefficient_left(dtdx, t0);
-    float2 curl1 = c_mul_coefficient_left(dtdx, t1);
-    float2 curl2 = c_mul_coefficient_left(dtdx, t2);
+    // --- the curl (stepping._curl_from_operands): MEEP's left-to-right bracket
+    // ((g1s - g1) + g2) - g2s with both partners; (g1s - g1) without g2; and
+    // (-dtdx) * (g2s - g2) without g1 (step_generic.cpp:72-76, :104-108). DO NOT
+    // regroup: each operation rounds once, per part.
+    float2 curl0 = has_y ? (has_z ? c_mul_coefficient_left(dtdx, ((c_y - c_dy) + b_dz) - b_z)
+                                  : c_mul_coefficient_left(dtdx, c_y - c_dy))
+                         : (has_z ? c_mul_coefficient_left(-dtdx, b_z - b_dz) : float2(0.0f, 0.0f));
+    float2 curl1 = has_z ? (has_x ? c_mul_coefficient_left(dtdx, ((a_z - a_dz) + c_dx) - c_x)
+                                  : c_mul_coefficient_left(dtdx, a_z - a_dz))
+                         : (has_x ? c_mul_coefficient_left(-dtdx, c_x - c_dx) : float2(0.0f, 0.0f));
+    float2 curl2 = has_x ? (has_y ? c_mul_coefficient_left(dtdx, ((b_x - b_dx) + a_dy) - a_y)
+                                  : c_mul_coefficient_left(dtdx, b_x - b_dx))
+                         : (has_y ? c_mul_coefficient_left(-dtdx, a_y - a_dy) : float2(0.0f, 0.0f));
 
-    // --- ownership mask (stepping._mask_non_owned_cells:1865) -------------------
-    // Writes +0.0 to BOTH planes: the array path assigns a complex zero (S:1896, :1902).
+    // --- ownership mask (stepping._mask_non_owned_cells) ------------------------
+    // Writes +0.0 to BOTH planes: the array path assigns a complex zero.
     bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);
 __MASK__
 
-    // --- split-field recurrence (stepping._apply_pml_update:1905) ---------------
+    // --- the two PML forms, per structure chunk (stepping._apply_curl_regions) --
     // dsig/dsigu follow vec.hpp's cycle_direction and are the same triple on both
-    // sides: target 0 takes (y, z), target 1 (z, x), target 2 (x, y). Every
-    // multiply is the zero-imaginary complex product with the FIELD ON THE LEFT
-    // (S:1929-1935); the loaded p registers ARE S:1928's fprev copy.
+    // sides: target 0 takes (y, z), target 1 (z, x), target 2 (x, y). A target
+    // whose dsigu membership holds steps the split-field recurrence; any other
+    // steps the dsig-only form, which is the recurrence's first stage with fu := f,
+    // and leaves fu unread and unwritten. Every product is one per part.
     float km_x = kmx[i], si_x = sinvx[i];
     float km_y = kmy[j], si_y = sinvy[j];
     float km_z = kmz[k], si_z = sinvz[k];
+    const bool du0 = __DU0__, du1 = __DU1__, du2 = __DU2__;
 
-    float2 p0 = u0[ii];
+    float2 p0 = du0 ? u0[ii] : f0[ii];
     float2 n0 = c_mul_field_left(c_mul_field_left(p0, km_y) - curl0, si_y);
-    float2 v0 = c_mul_field_left((c_mul_field_left(f0[ii], km_z) + n0) - p0, si_z);
+    float2 v0 = du0 ? c_mul_field_left((c_mul_field_left(f0[ii], km_z) + n0) - p0, si_z) : n0;
 
-    float2 p1 = u1[ii];
+    float2 p1 = du1 ? u1[ii] : f1[ii];
     float2 n1 = c_mul_field_left(c_mul_field_left(p1, km_z) - curl1, si_z);
-    float2 v1 = c_mul_field_left((c_mul_field_left(f1[ii], km_x) + n1) - p1, si_x);
+    float2 v1 = du1 ? c_mul_field_left((c_mul_field_left(f1[ii], km_x) + n1) - p1, si_x) : n1;
 
-    float2 p2 = u2[ii];
+    float2 p2 = du2 ? u2[ii] : f2[ii];
     float2 n2 = c_mul_field_left(c_mul_field_left(p2, km_x) - curl2, si_x);
-    float2 v2 = c_mul_field_left((c_mul_field_left(f2[ii], km_y) + n2) - p2, si_y);
+    float2 v2 = du2 ? c_mul_field_left((c_mul_field_left(f2[ii], km_y) + n2) - p2, si_y) : n2;
 
-    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;
+    if (du0) { u0[ii] = n0; }
+    if (du1) { u1[ii] = n1; }
+    if (du2) { u2[ii] = n2; }
     f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;
 }
 """
 
-#: Which shifted operands crossed which face, and therefore carry that axis's phase.
-_PHASED_OPERANDS: Dict[str, Tuple[str, str]] = {"x": ("b_x", "c_x"),
-                                                "y": ("a_y", "c_y"),
-                                                "z": ("a_z", "b_z")}
+#: Per axis, the unshifted operands a term differences along it, as (connected
+#: register, stored register): the B/D curl terms' (g1, g1 axis) and (g2, g2 axis)
+#: pairs, ``shaders.CURL_OPERANDS`` regrouped by axis.
+_PHASED_OPERANDS: Dict[str, Tuple[Tuple[str, str], ...]] = {
+    "x": (("c_dx", "c"), ("b_dx", "b")),
+    "y": (("c_dy", "c"), ("a_dy", "a")),
+    "z": (("b_dz", "b"), ("a_dz", "a")),
+}
 
 
-def _phase_block(axis: str, phased: bool, backward: bool) -> str:
-    """One axis's wrap rotation, or the SKIP that keeps k = 0 bit-identical.
+def _phase_block(axis: str, kind: int) -> str:
+    """One axis's Bloch connection of the unshifted operands, on plane 0.
 
-    The wrapped lane is where the unwrapped neighbour index left the array: an
-    up-shift wraps at ``i == n-1`` (it read slot ``n``), a down-shift at ``i == 0``
-    (it read ``-1``). One plane per phased axis, matching the single-plane multiply
-    of ``_apply_bloch_phase`` (stepping.py:1909). On a collapsed (n = 1) axis every
-    lane is the wrap lane, which is exactly ``xp.roll``'s behaviour there.
+    ``kind`` is :data:`CONNECT_NONE` (no line: the read is the stored word),
+    :data:`CONNECT_NEGATE` (``-x``, a sign-bit operation per part) or
+    :data:`CONNECT_PHASE` (``c_mul(word, phase)``, MEEP's unfused product). The same
+    plane serves both sub-steps -- stored cell 0 -- and the host chose the factor
+    (``conj(eikna)`` for B, ``eikna`` for D) in :func:`phase_arguments`.
     """
-    index, extent, phase = {"x": ("i", "nxi", "px"),
-                            "y": ("j", "nyi", "py"),
-                            "z": ("k", "nzi", "pz")}[axis]
-    if not phased:
-        return (f"    // axis {axis} carries no Bloch phase: the multiply is "
-                f"SKIPPED, not done\n    // against 1+0j — that skip is the "
-                f"bit-identity of k = 0 (S:1768-1770).")
-    predicate = f"({index} == 0)" if backward else f"({index} == {extent} - 1)"
-    lines = [f"    {{ bool w{axis} = {predicate};"]
-    for operand in _PHASED_OPERANDS[axis]:
-        lines.append(f"      {operand} = w{axis} ? c_mul({operand}, {phase}) : {operand};")
+    index, phase = {"x": ("i", "px"), "y": ("j", "py"), "z": ("k", "pz")}[axis]
+    kind = int(kind)
+    if kind == CONNECT_NONE:
+        return (f"    // axis {axis}: no connection (unphased, or a phase within "
+                f"1e-13 of +1: a copy)")
+    if kind not in CONNECT_KINDS:
+        raise ValueError(f"connection kind must be one of {CONNECT_KINDS}, got {kind!r}")
+    lines = [f"    if ({index} == 0) {{"]
+    for connected, stored in _PHASED_OPERANDS[axis]:
+        value = (f"-{stored}" if kind == CONNECT_NEGATE
+                 else f"c_mul({stored}, {phase})")
+        lines.append(f"        {connected} = {value};")
     lines.append("    }")
     return "\n".join(lines)
 
 
 def bloch_curl_source(codes: Sequence[int], backward: bool,
-                      phased: Sequence[int], expansion: str,
+                      phased: Sequence[int],
                       contract: str = shaders.CONTRACT_OFF) -> str:
     """The specialised complex ``bloch_pml_curl_step`` source.
 
     ``codes`` is the per-axis PERIODIC/METALLIC triple, ``backward`` selects
     ``step_D``'s negated strides over ``step_B``'s forward ones, ``phased`` is the
-    per-axis 0/1 "this axis carries a Bloch factor" triple, and ``expansion`` is the
-    PROBE-MEASURED arm name. All four are baked into the string, as Triton bakes its
-    constexprs — a distinct source per specialisation, and therefore a distinct
-    compile memo key and a distinct fingerprint.
+    per-axis connection kind (:data:`CONNECT_KINDS`, :func:`phase_arguments`). All
+    three are baked into the string;
+    the chunk division is NOT, it is the bound record, so the specialisation set does
+    not grow with the grid.
     """
     codes = tuple(int(code) for code in codes)
     phased = tuple(int(flag) for flag in phased)
@@ -407,25 +376,35 @@ def bloch_curl_source(codes: Sequence[int], backward: bool,
         raise ValueError(f"codes and phased must be per-axis triples, got "
                          f"{codes!r} / {phased!r}")
     for axis, (code, flag) in enumerate(zip(codes, phased)):
+        if flag not in CONNECT_KINDS:
+            raise ValueError(f"axis {axis} connection kind {flag!r} is not one of "
+                             f"{CONNECT_KINDS}")
         if flag and code != templates.PERIODIC:
             raise ValueError(
                 f"axis {axis} carries a Bloch phase but its ghost rule is "
                 f"METALLIC; only a periodic wrap can carry a phase "
-                f"(stepping._bloch_phases raises on the same pairing, S:2346-2360)")
+                f"(stepping._bloch_phases raises on the same pairing)")
+    flags = shaders.curl_membership_flags(backward)
     return templates.substitute(_CURL_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(CURL_RECORD_BUFFER),
         "__GUARD__": templates.GUARD,
         "__DECODE__": templates.DECODE_IJK,
+        "__BOUNDS__": shaders.curl_bounds_block(backward),
         "__SHIFT__": "- 1" if backward else "+ 1",
         "__GHOST_X__": templates.ghost("x", codes[0], backward),
         "__GHOST_Y__": templates.ghost("y", codes[1], backward),
         "__GHOST_Z__": templates.ghost("z", codes[2], backward),
-        "__PHASE_X__": _phase_block("x", bool(phased[0]), backward),
-        "__PHASE_Y__": _phase_block("y", bool(phased[1]), backward),
-        "__PHASE_Z__": _phase_block("z", bool(phased[2]), backward),
+        "__PHASE_X__": _phase_block("x", phased[0]),
+        "__PHASE_Y__": _phase_block("y", phased[1]),
+        "__PHASE_Z__": _phase_block("z", phased[2]),
         "__MASK__": templates.ownership_mask(codes, backward,
                                              zero=templates.COMPLEX_ZERO),
+        "__DU0__": flags[0],
+        "__DU1__": flags[1],
+        "__DU2__": flags[2],
     })
 
 
@@ -440,6 +419,8 @@ using namespace metal;
 __CONTRACT__
 
 __HELPERS__
+
+__RECORD_STRUCT__
 
 kernel void bloch_constitutive_step(
     device float2*       f0      [[buffer(0)]],
@@ -464,76 +445,62 @@ kernel void bloch_constitutive_step(
     constant uint&       ny      [[buffer(19)]],
     constant uint&       nz      [[buffer(20)]],
     constant uint&       n_elem  [[buffer(21)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
 __GUARD__
 
 __DECODE__
 
-    // NO GHOST RULE, NO OWNERSHIP MASK AND NO PHASE: the constitutive sub-step
-    // reads no neighbour and never sees a wrap (S:907-993). The coefficient index
-    // is on the component's OWN axis — kps_x/kms_x for target 0, _y for 1, _z for
-    // 2 (H_CONSTITUTIVE_TERMS / E_CONSTITUTIVE_TERMS, stepping.py:226-227). That
-    // is MEEP's dsigw, NOT the dsig/dsigu cycle the curl recurrence uses.
+    // --- the chunk record: each component's own-axis membership at this cell -----
+__BOUNDS__
+
+    // NO GHOST RULE, NO OWNERSHIP MASK AND NO PHASE: the constitutive sub-step reads
+    // no neighbour and never sees a wrap. The coefficient index is on the
+    // component's OWN axis -- kps_x/kms_x for target 0, _y for 1, _z for 2
+    // (H_CONSTITUTIVE_TERMS / E_CONSTITUTIVE_TERMS). That is MEEP's dsigw, NOT the
+    // dsig/dsigu cycle the curl recurrence uses.
     float kp_0 = kp0[i], km_0 = km0[i];
     float kp_1 = kp1[j], km_1 = km1[j];
     float kp_2 = kp2[k], km_2 = km2[k];
+    const bool dw0 = __DW0__, dw1 = __DW1__, dw2 = __DW2__;
 
     // --- component 0 -----------------------------------------------------------
-    // `prev` is read BEFORE `fw` is written (S:2083-2085). Reversed, this is wrong
-    // only where kms != 0 -- INSIDE THE PML ONLY -- and looks like a slightly worse
-    // absorber, not like a bug. inv_eps is a float32 volume indexed by the COMPLEX
-    // CELL index (one real coefficient per cell, both planes), never word-doubled.
-    float2 prev0 = w0[ii];
+    // On a dsigw cell `prev` is read BEFORE `fw` is written (the array path copies
+    // fw first) and the right-hand side is formed first: f + ((kps*src) -
+    // (kms*prev)), MEEP's step_update_EDHB (step_generic.cpp:689, :697), each product
+    // one per part. Elsewhere the word is src itself, an output select, and fw is not
+    // touched. inv_eps is a float32 volume indexed by the COMPLEX CELL index.
+    float2 prev0 = dw0 ? w0[ii] : float2(0.0f, 0.0f);
     float2 src0 = __SRC0__;
-    w0[ii] = src0;
-    float2 a0 = f0[ii];
-    // Two SEPARATE accumulations, left to right: ((f + kps*src) - kms*prev). Each
-    // product is the zero-imaginary complex form with the COEFFICIENT ON THE LEFT
-    // (S:2086-2087, S:2093-2095).
-    a0 = a0 + c_mul_coefficient_left(kp_0, src0);
-    a0 = a0 - c_mul_coefficient_left(km_0, prev0);
+    if (dw0) { w0[ii] = src0; }
+    float2 a0 = src0;
+    if (dw0) { a0 = f0[ii] + (c_mul_coefficient_left(kp_0, src0) - c_mul_coefficient_left(km_0, prev0)); }
     f0[ii] = a0;
 
     // --- component 1 -----------------------------------------------------------
-    float2 prev1 = w1[ii];
+    float2 prev1 = dw1 ? w1[ii] : float2(0.0f, 0.0f);
     float2 src1 = __SRC1__;
-    w1[ii] = src1;
-    float2 a1 = f1[ii];
-    a1 = a1 + c_mul_coefficient_left(kp_1, src1);
-    a1 = a1 - c_mul_coefficient_left(km_1, prev1);
+    if (dw1) { w1[ii] = src1; }
+    float2 a1 = src1;
+    if (dw1) { a1 = f1[ii] + (c_mul_coefficient_left(kp_1, src1) - c_mul_coefficient_left(km_1, prev1)); }
     f1[ii] = a1;
 
     // --- component 2 -----------------------------------------------------------
-    float2 prev2 = w2[ii];
+    float2 prev2 = dw2 ? w2[ii] : float2(0.0f, 0.0f);
     float2 src2 = __SRC2__;
-    w2[ii] = src2;
-    float2 a2 = f2[ii];
-    a2 = a2 + c_mul_coefficient_left(kp_2, src2);
-    a2 = a2 - c_mul_coefficient_left(km_2, prev2);
+    if (dw2) { w2[ii] = src2; }
+    float2 a2 = src2;
+    if (dw2) { a2 = f2[ii] + (c_mul_coefficient_left(kp_2, src2) - c_mul_coefficient_left(km_2, prev2)); }
     f2[ii] = a2;
 }
-"""  # stepping.py live lines for the frozen device-text citation(s) in this string: 226-227->227-228
+"""
 
 #: The constitutive product per side. The H side reads B directly (mu = 1 is baked
 #: into the array path too: ``stepping.update_H`` passes ``fields.Bx``); the E side
-#: reads ``D * inv_eps`` with **D ON THE LEFT**, because the array path writes
-#: ``source * fields.inverse_epsilon_for(component)`` (stepping.py:1011-1013).
-#:
-#: THE ORIENTATION IS KEPT BECAUSE IT IS THE ARRAY PATH'S, AND IT IS RECORDED HERE
-#: THAT IT IS NOT LOAD-BEARING FOR A REAL COEFFICIENT. Measured on the exhaustive
-#: 64-pattern signed-zero table (``gate_metal_complex`` leg ``zero_cross_terms``,
-#: arm ``coefficient_left_orientation``): swapping to the coefficient-left spelling
-#: moves 0/128 words. The real parts are commutative products with commutative
-#: addends, and the imaginary parts are both a single rounding of the same exact
-#: product plus a signed zero, whose addition is itself sign-commutative. The
-#: corresponding mutation is therefore ``must_catch=False`` and is named as an
-#: equivalence rather than left as an untested belief inherited from Triton.
-#:
-#: FOR A FULL COMPLEX PRODUCT THE ORIENTATION IS LOAD-BEARING and that IS measured:
-#: the imaginary part fuses ``z_re*p_im`` in one spelling and ``p_re*z_im`` in the
-#: other, which round differently. Mutation ``m13_phase_multiply_operands_swapped``
-#: plants exactly that on the Bloch rotation and is caught.
+#: reads ``D * inv_eps``, the array path's ``part_products.scale(inverse_epsilon,
+#: source)``: one float32 product per part. Multiplication is commutative, so the
+#: helper's operand order moves no bit.
 _CONSTITUTIVE_PRODUCTS: Dict[str, Tuple[str, str, str]] = {
     "H": ("g0[ii]", "g1[ii]", "g2[ii]"),
     "E": ("c_mul_field_left(g0[ii], e0[ii])",
@@ -542,7 +509,7 @@ _CONSTITUTIVE_PRODUCTS: Dict[str, Tuple[str, str, str]] = {
 }
 
 
-def bloch_constitutive_source(side: str, expansion: str,
+def bloch_constitutive_source(side: str,
                               contract: str = shaders.CONTRACT_OFF) -> str:
     """The specialised complex ``bloch_constitutive_step`` source for one side.
 
@@ -553,17 +520,25 @@ def bloch_constitutive_source(side: str, expansion: str,
 
     The three inverse-epsilon buffers stay in the signature on both sides so the
     buffer layout is one layout. On the H side the plan binds float32 placeholders
-    and the substituted product never reads them.
+    and the substituted product never reads them. The chunk record binds last, at
+    :data:`CONSTITUTIVE_RECORD_BUFFER`.
     """
     if side not in _CONSTITUTIVE_PRODUCTS:
         raise ValueError(f"side must be one of {tuple(_CONSTITUTIVE_PRODUCTS)}, "
                          f"got {side!r}")
     products = _CONSTITUTIVE_PRODUCTS[side]
+    flags = shaders.constitutive_membership_flags(side)
     return templates.substitute(_CONSTITUTIVE_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(CONSTITUTIVE_RECORD_BUFFER),
         "__GUARD__": templates.GUARD,
         "__DECODE__": templates.DECODE_IJK,
+        "__BOUNDS__": shaders.constitutive_bounds_block(side),
+        "__DW0__": flags[0],
+        "__DW1__": flags[1],
+        "__DW2__": flags[2],
         "__SRC0__": products[0],
         "__SRC1__": products[1],
         "__SRC2__": products[2],
@@ -571,7 +546,7 @@ def bloch_constitutive_source(side: str, expansion: str,
 
 
 def split_plane_curl_signature() -> str:
-    """The re/im-SPLIT curl signature, which must FAIL to compile. 35 bindings.
+    """The re/im-SPLIT curl signature, which must FAIL to compile. 36 bindings.
 
     This is not a strawman and it is not dead code: it is the evidence that
     ``float2`` volumes are FORCED by the 31-binding ceiling rather than chosen. The
@@ -593,7 +568,9 @@ def split_plane_curl_signature() -> str:
     scalars.append(f"    constant float& dtdx [[buffer({tail_start})]]")
     tail_start += 1
     phases = [f"    constant float& p{n} [[buffer({tail_start + n})]]" for n in range(6)]
-    arguments = ",\n".join(planes + coefficients + scalars + phases)
+    tail_start += 6
+    record = [f"    constant int* cb [[buffer({tail_start})]]"]
+    arguments = ",\n".join(planes + coefficients + scalars + phases + record)
     return ("#include <metal_stdlib>\nusing namespace metal;\n"
             "kernel void split_plane_curl(\n" + arguments +
             ",\n    uint idx [[thread_position_in_grid]])\n"
@@ -601,31 +578,29 @@ def split_plane_curl_signature() -> str:
 
 
 def split_plane_binding_count() -> int:
-    """How many buffers the split form needs — 35, above the measured ceiling."""
-    return 9 * 2 + 6 + 5 + 6
+    """How many buffers the split form needs -- 36, above the measured ceiling."""
+    return 9 * 2 + 6 + 5 + 6 + 1
 
 
 def compile_bloch_curl(codes: Sequence[int], backward: bool, phased: Sequence[int],
-                       expansion: str,
                        contract: str = shaders.CONTRACT_OFF) -> Any:
-    return compile_source(bloch_curl_source(codes, backward, phased, expansion,
+    return compile_source(bloch_curl_source(codes, backward, phased,
                                             contract)).bloch_pml_curl_step
 
 
-def compile_bloch_constitutive(side: str, expansion: str,
+def compile_bloch_constitutive(side: str,
                                contract: str = shaders.CONTRACT_OFF) -> Any:
     return compile_source(bloch_constitutive_source(
-        side, expansion, contract)).bloch_constitutive_step
+        side, contract)).bloch_constitutive_step
 
 
-def enumerate_complex_sources(expansion: str,
-                              contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
+def enumerate_complex_sources(contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
     """Every specialisation a shipped plan can emit, keyed by a stable label.
 
-    The phase triple is enumerated only over the axes a given boundary triple can
-    legally phase — a metallic axis cannot carry one — so the count is the REACHABLE
-    set rather than the Cartesian product, and a label that cannot be built is not
-    fingerprinted as if it could.
+    The connection triple is enumerated only over the axes a given boundary triple
+    can legally phase -- a metallic axis cannot carry one -- so the count is the
+    REACHABLE set rather than the Cartesian product, and a label that cannot be built
+    is not fingerprinted as if it could.
     """
     out: Dict[str, str] = {}
     for backward, name in ((False, "step_B"), (True, "step_D")):
@@ -635,93 +610,18 @@ def enumerate_complex_sources(expansion: str,
                     codes = (cx, cy, cz)
                     for phased in _reachable_phase_flags(codes):
                         label = (f"bloch_pml_curl_step/{name}/{cx}{cy}{cz}/"
-                                 f"ph{phased[0]}{phased[1]}{phased[2]}/{expansion}")
-                        out[label] = bloch_curl_source(codes, backward, phased,
-                                                       expansion, contract)
+                                 f"ph{phased[0]}{phased[1]}{phased[2]}")
+                        out[label] = bloch_curl_source(codes, backward, phased, contract)
     for side in ("H", "E"):
-        out[f"bloch_constitutive_step/{side}/{expansion}"] = (
-            bloch_constitutive_source(side, expansion, contract))
+        out[f"bloch_constitutive_step/{side}"] = (
+            bloch_constitutive_source(side, contract))
     return out
 
 
 def _reachable_phase_flags(codes: Sequence[int]) -> Tuple[Tuple[int, int, int], ...]:
-    options = [(0, 1) if code == templates.PERIODIC else (0,) for code in codes]
+    options = [CONNECT_KINDS if code == templates.PERIODIC else (CONNECT_NONE,)
+               for code in codes]
     return tuple((x, y, z) for x in options[0] for y in options[1] for z in options[2])
-
-
-# ---------------------------------------------------------------------------
-# The expansion probe — how the arm is bound
-# ---------------------------------------------------------------------------
-
-def load_expansion_probe(path: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Read the probe artifact JSON, or None when it is absent or unreadable.
-
-    Unreadable is treated exactly like missing: both are refusals downstream, never
-    a silent default arm.
-    """
-    import json  # noqa: PLC0415
-    import os  # noqa: PLC0415
-
-    candidate = path if path is not None else os.environ.get(PROBE_PATH_ENVIRONMENT)
-    if not candidate:
-        return None
-    try:
-        with open(candidate, "r", encoding="utf-8") as handle:
-            record = json.load(handle)
-    except Exception:  # noqa: BLE001 - unreadable probe == missing probe
-        return None
-    return record if isinstance(record, dict) else None
-
-
-def expansion_from_probe(record: Any) -> Optional[str]:
-    """The single expansion arm a probe record licenses, or None.
-
-    The record must name the backend the ENGINE holds (:data:`PROBE_BACKEND`),
-    classify every pattern of :data:`PROBE_PATTERNS`, and leave exactly one arm
-    standing once :data:`AMBIGUOUS_BOTH` patterns are removed. Three outcomes and
-    all three are deliberate:
-
-    * every pattern AMBIGUOUS_BOTH -> ``None``. A platform on which nothing
-      discriminates has not been measured, and picking an arm from a probe that
-      could not tell them apart is a guess wearing an artifact's clothes;
-    * one arm among the discriminating patterns -> that arm;
-    * two or more, or any pattern classified ``NEITHER`` -> ``None``. One
-      specialisation cannot represent a platform whose orientations disagree, and a
-      future disagreeing platform earns a new arm rather than a shrug.
-    """
-    if not isinstance(record, dict) or record.get("backend") != PROBE_BACKEND:
-        return None
-    patterns = record.get("patterns")
-    if not isinstance(patterns, dict):
-        return None
-    decided: List[str] = []
-    for name in PROBE_PATTERNS:
-        value = patterns.get(name)
-        if value == AMBIGUOUS_BOTH:
-            continue
-        if value not in templates.EXPANSIONS:
-            return None
-        decided.append(value)
-    if len(set(decided)) != 1:
-        return None
-    return decided[0]
-
-
-def _expansion_reasons(probe: Any = None) -> List[str]:
-    """The clause that makes the arm binding a MEASUREMENT rather than a choice."""
-    record = probe if probe is not None else load_expansion_probe()
-    if record is None:
-        return [f"no complex-multiply expansion probe artifact is available (set "
-                f"{PROBE_PATH_ENVIRONMENT} or pass probe=); which arm the "
-                f"{PROBE_BACKEND} reference takes is a measured platform fact and "
-                f"may not be guessed"]
-    if expansion_from_probe(record) is None:
-        return [f"the expansion probe artifact is missing, ambiguous, disagreeing, "
-                f"or not for the {PROBE_BACKEND} backend (it needs "
-                f"backend={PROBE_BACKEND!r}, every pattern of {PROBE_PATTERNS} "
-                f"classified, and exactly one arm standing among the "
-                f"discriminating ones)"]
-    return []
 
 
 # ---------------------------------------------------------------------------
@@ -776,8 +676,7 @@ def _complex_layout_reasons(fields: Any, shape: Sequence[int],
     return out
 
 
-def _complex_grid_reasons(fields: Any, pml: Any, grid: Any, residency: Any,
-                          probe: Any = None) -> List[str]:
+def _complex_grid_reasons(fields: Any, pml: Any, grid: Any, residency: Any) -> List[str]:
     """The clauses both complex predicates share."""
     reasons: List[str] = []
 
@@ -913,15 +812,11 @@ def _complex_grid_reasons(fields: Any, pml: Any, grid: Any, residency: Any,
     if not getattr(fields, "stores_E", False):
         reasons.append("E is recomputed from D rather than stored")
 
-    # 10. The expansion arm must come from a measured artifact.
-    reasons.extend(_expansion_reasons(probe))
-
     return reasons
 
 
 def complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                              residency: Any = None,
-                              probe: Any = None) -> Coverage:
+                              residency: Any = None) -> Coverage:
     """May the complex split-field PML curl kernel step this (fields, pml, sub_step)?
 
     Off-diagonal epsilon is ADMITTED here — it is constitutive-only, its whole
@@ -935,7 +830,7 @@ def complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
 
-    reasons = _complex_grid_reasons(fields, pml, grid, residency, probe)
+    reasons = _complex_grid_reasons(fields, pml, grid, residency)
 
     spec = SUB_STEPS[sub_step]
     names = (tuple(spec["targets"])
@@ -956,8 +851,7 @@ def complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
 
 
 def complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                  residency: Any = None,
-                                  probe: Any = None) -> Coverage:
+                                  residency: Any = None) -> Coverage:
     """May the complex constitutive kernel step ``update_H`` ('H') / ``update_E``?
 
     The E side additionally refuses everything that changes what ``source`` is: a
@@ -975,7 +869,7 @@ def complex_constitutive_coverage(fields: Any, pml: Any, side: str,
         return Coverage(False, ("fields carries no grid",))
 
     spec = CONSTITUTIVE_SIDES[side]
-    reasons = _complex_grid_reasons(fields, pml, grid, residency, probe)
+    reasons = _complex_grid_reasons(fields, pml, grid, residency)
 
     if side == "E" and getattr(fields, "has_offdiagonal_epsilon", False):
         reasons.append("an off-diagonal chi1inv row is installed (the row product "
@@ -1008,15 +902,14 @@ def complex_constitutive_coverage(fields: Any, pml: Any, side: str,
 def bloch_phase_table(grid: Any, kinds: Sequence[str]) -> Tuple[Optional[complex],
                                                                Optional[complex],
                                                                Optional[complex]]:
-    """Per-axis Bloch wrap factor, None on an unphased axis — never ``1+0j``.
+    """Per-axis Bloch factor ``eikna``, None on an unphased axis -- never ``1+0j``.
 
     Resolved through ``grid.bloch_phase`` exactly as ``stepping._bloch_phases``
-    resolves it (S:2343-2361): the grid value is exp(2*pi*i*k*L) with the Brillouin
-    edge EXACTLY -1+0j (grid.py:1011-1017), and None means the multiply is SKIPPED —
-    the skip IS the bit-identity of k = 0. The non-periodic check mirrors the array
+    resolves it: the grid value is exp(2*pi*i*k*L) with the Brillouin edge EXACTLY
+    -1+0j, and None means no connection. The non-periodic check mirrors the array
     path's raise and is unreachable behind an admitting predicate; it is kept so a
     caller who skips the predicate is refused loudly rather than handed a mis-baked
-    phase flag.
+    connection.
     """
     if not getattr(grid, "has_bloch", False):
         return (None, None, None)
@@ -1032,34 +925,47 @@ def bloch_phase_table(grid: Any, kinds: Sequence[str]) -> Tuple[Optional[complex
     return (phases[0], phases[1], phases[2])
 
 
-def phase_arguments(phases: Sequence[Optional[complex]], backward: bool,
-                    ) -> Tuple[Tuple[int, int, int], Tuple[Tuple[float, float], ...]]:
-    """Encode the phase table as (per-axis flags, three float2 pairs).
+def connection(phase: Optional[complex], backward: bool) -> Tuple[int, Tuple[float, float]]:
+    """``(kind, (re, im))`` of one axis's connection on one curl side.
 
-    The phase is rounded to complex64 BEFORE splitting — the array path's
-    ``shifted.dtype.type(phase)`` (S:1862) — and for the BACKWARD sub-step the
-    imaginary part is NEGATED, which is the conjugate ``_shift_down`` applies
-    (S:1818-1822). Negation is exact, so the order of conjugation and rounding is
-    immaterial. An unphased axis passes (1.0, 0.0) under flag 0, and the kernel
-    emits no multiply for it at all.
+    ``stepping._bloch_ghost_operand``: the B side (forward differences) reads the word
+    BELOW the stored window, ``thephase = 1.0 * conj(eikna)``; the D side (backward
+    differences) the word ABOVE it, ``thephase = 1.0 * eikna``; both formed in double
+    (``readback.cmul``, boundaries.cpp:203-226). MEEP's ``connect_phase`` then copies
+    within 1e-13 of +1, negates within 1e-13 of -1, and otherwise multiplies by the
+    phase rounded to the part dtype (boundaries.cpp:359-366, :495), which is the
+    float32 pair returned for :data:`CONNECT_PHASE`. The other kinds return the
+    placeholder ``(1.0, 0.0)``, which no emitted line reads.
     """
+    if phase is None:
+        return CONNECT_NONE, (1.0, 0.0)
     import numpy  # noqa: PLC0415
 
-    flags: List[int] = []
+    eikna = complex(phase)
+    factor = (eikna.real, eikna.imag) if backward else (eikna.real, -eikna.imag)
+    pr, pi = cmul((1.0, 0.0), factor)
+    if abs(pi) < CONNECT_TOLERANCE and abs(pr - 1.0) < CONNECT_TOLERANCE:
+        return CONNECT_NONE, (1.0, 0.0)
+    if abs(pi) < CONNECT_TOLERANCE and abs(pr + 1.0) < CONNECT_TOLERANCE:
+        return CONNECT_NEGATE, (1.0, 0.0)
+    return CONNECT_PHASE, (float(numpy.float32(pr)), float(numpy.float32(pi)))
+
+
+def phase_arguments(phases: Sequence[Optional[complex]], backward: bool,
+                    ) -> Tuple[Tuple[int, int, int], Tuple[Tuple[float, float], ...]]:
+    """Encode the phase table as (per-axis connection kinds, three float2 pairs).
+
+    One :func:`connection` per axis, for the curl side ``backward`` names. The kinds
+    are what a curl source is specialised on (:func:`bloch_curl_source`); the pairs
+    are what the plan binds as ``px``/``py``/``pz``.
+    """
+    kinds: List[int] = []
     values: List[Tuple[float, float]] = []
     for phase in phases:
-        if phase is None:
-            flags.append(0)
-            values.append((1.0, 0.0))
-            continue
-        rounded = numpy.complex64(phase)
-        real = float(numpy.float32(rounded.real))
-        imag = float(numpy.float32(rounded.imag))
-        if backward:
-            imag = -imag
-        flags.append(1)
-        values.append((real, imag))
-    return (flags[0], flags[1], flags[2]), tuple(values)
+        kind, value = connection(phase, backward)
+        kinds.append(kind)
+        values.append(value)
+    return (kinds[0], kinds[1], kinds[2]), tuple(values)
 
 
 # ---------------------------------------------------------------------------
@@ -1083,14 +989,14 @@ class ComplexPmlCurlPlan(KernelPlan):
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc", "phased",
-                 "phase_values", "expansion", "residency", "volumes")
+                 "phase_values", "residency", "volumes", "chunk_bounds")
 
-    REPR_FIELDS = ("sub_step", "shape", "bc", "phased", "expansion")
+    REPR_FIELDS = ("sub_step", "shape", "bc", "phased")
 
-    def __init__(self, sub_step: str, shape, dtdx: float, bc, phased, phase_values,
-                 expansion: str, residency: Any, targets, auxiliaries, sources,
+    def __init__(self, sub_step: str, shape, dtdx: float, bc, phased, phase_values, residency: Any,
+                 targets, auxiliaries, sources,
                  coefficients, functions: Dict[str, Any],
-                 volumes: Sequence[str]) -> None:
+                 volumes: Sequence[str], *, chunk_bounds: Any) -> None:
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
@@ -1103,40 +1009,47 @@ class ComplexPmlCurlPlan(KernelPlan):
         self.bc = tuple(int(code) for code in bc)
         self.phased = tuple(int(flag) for flag in phased)
         self.phase_values = tuple((float(re), float(im)) for re, im in phase_values)
-        self.expansion = str(expansion)
         self.residency = residency
         self.volumes = tuple(volumes)
+        # THE CHUNK RECORD BINDS LAST (CURL_RECORD_BUFFER), checked against the plan's
+        # shape and uploaded once as a plan-owned int32 vector, as the real curl plan
+        # binds it (launch.PmlCurlPlan).
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, f"ComplexPmlCurlPlan({sub_step})")
         super().__init__(functions, (
             tuple(targets) + tuple(auxiliaries) + tuple(sources)
             + tuple(coefficients)
             + (self.shape[0], self.shape[1], self.shape[2], self.n_elem, self.dtdx)
-            + self.phase_values))
+            + self.phase_values
+            + (_chunk_bounds.tensor(self.chunk_bounds, _plan_device(residency)),)))
 
 
-def _curl_functions(codes, backward: bool, phased, expansion: str,
+def _plan_device(residency: Any) -> str:
+    """The device the plan's residency DECLARES, which the record tensor joins."""
+    return str(getattr(residency, "device", "mps"))
+
+
+def _curl_functions(codes, backward: bool, phased,
                     contract_variants: Sequence[str]) -> Dict[str, Any]:
-    return {mode: compile_bloch_curl(codes, backward, phased, expansion, mode)
+    return {mode: compile_bloch_curl(codes, backward, phased, mode)
             for mode in contract_variants}
 
 
 def plan_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
                           residency: Any = None,
-                          contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-                          probe: Any = None) -> Optional[ComplexPmlCurlPlan]:
+                          contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,), *,
+                          chunk_bounds: Any) -> Optional[ComplexPmlCurlPlan]:
     """Build a plan from the engine's own objects, or None when out of coverage.
 
     None is the only refusal: a configuration this kernel does not carry must fall
     back to the array path, never raise into a caller that would otherwise have
-    stepped correctly.
+    stepped correctly. ``chunk_bounds`` is the record of the division the run steps
+    with (the composer's ``StepContext.chunk_bounds``) and has no default.
     """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, "
                          f"got {sub_step!r}")
-    if not complex_pml_curl_coverage(fields, pml, sub_step, residency, probe).covered:
-        return None
-    expansion = expansion_from_probe(
-        probe if probe is not None else load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not complex_pml_curl_coverage(fields, pml, sub_step, residency).covered:
         return None
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
 
@@ -1160,26 +1073,28 @@ def plan_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
     volumes = (tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
                + tuple(spec["sources"]))
     return ComplexPmlCurlPlan(
-        sub_step, grid.shape, grid.dt / grid.dx, codes, flags, values, expansion,
+        sub_step, grid.shape, grid.dt / grid.dx, codes, flags, values,
         residency, targets, auxiliaries, sources, coefficients,
-        _curl_functions(codes, spec["backward"], flags, expansion, contract_variants),
-        volumes)
+        _curl_functions(codes, spec["backward"], flags, contract_variants),
+        volumes, chunk_bounds=chunk_bounds)
 
 
 def plan_complex_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
                                       flat: Dict[str, Any], codes,
                                       phases: Sequence[Optional[complex]],
-                                      dtdx: float, expansion: str, residency: Any,
+                                      dtdx: float, residency: Any,
                                       functions: Optional[Dict[str, Any]] = None,
                                       contract_variants: Sequence[str] = (
                                           shaders.CONTRACT_OFF,),
-                                      ) -> ComplexPmlCurlPlan:
+                                      *, chunk_bounds: Any) -> ComplexPmlCurlPlan:
     """Build a plan from bare host arrays — the gate's and benchmark's route.
 
-    ``phases`` is the per-axis ``Optional[complex]`` table; the conjugation for
-    ``step_D`` is applied HERE, per sub-step, exactly as the engine route applies
-    it. No predicate runs: the caller is a harness that constructed the
-    configuration deliberately, including the deliberately wrong ones.
+    ``phases`` is the per-axis ``Optional[complex]`` table of ``eikna``; the side's
+    factor and connection kind are chosen HERE, per sub-step, exactly as the engine
+    route chooses them (:func:`phase_arguments`). No predicate runs: the caller is a
+    harness that constructed the configuration deliberately, including the
+    deliberately wrong ones. ``chunk_bounds`` is REQUIRED: the record of the division
+    the harness's reference steps with.
 
     ``functions`` is the MUTATION SEAM. The gate compiles a deliberately broken copy
     of the shipped source and hands it here; dropping the argument is not a silent
@@ -1199,12 +1114,12 @@ def plan_complex_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
     volumes = (tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
                + tuple(spec["sources"]))
     return ComplexPmlCurlPlan(
-        sub_step, shape, dtdx, codes, flags, values, expansion, residency,
+        sub_step, shape, dtdx, codes, flags, values, residency,
         targets, auxiliaries, sources, coefficients,
         functions if functions is not None
-        else _curl_functions(codes, spec["backward"], flags, expansion,
+        else _curl_functions(codes, spec["backward"], flags,
                              contract_variants),
-        volumes)
+        volumes, chunk_bounds=chunk_bounds)
 
 
 class ComplexConstitutivePlan(KernelPlan):
@@ -1217,17 +1132,23 @@ class ComplexConstitutivePlan(KernelPlan):
     — converged, smooth, and wrong. The gate carries a mutation for exactly it.
     """
 
-    __slots__ = ("side", "shape", "n_elem", "expansion", "residency", "volumes")
+    __slots__ = ("side", "shape", "n_elem", "residency", "volumes",
+                 "chunk_bounds")
 
-    REPR_FIELDS = ("side", "shape", "expansion")
+    REPR_FIELDS = ("side", "shape")
 
-    def __init__(self, side: str, shape, expansion: str, residency: Any, targets,
+    #: The kernel steps the forms alone and does not start H and ``f_w`` from B on a
+    #: run's first ``update_H`` (``stepping.separate_h_from_b``); the composer reads
+    #: this to keep that slot on the array path where the start can move a word.
+    starts_h_from_b = False
+
+    def __init__(self, side: str, shape, residency: Any, targets,
                  auxiliaries, sources, inverse_epsilon, coefficients,
-                 functions: Dict[str, Any], volumes: Sequence[str]) -> None:
+                 functions: Dict[str, Any], volumes: Sequence[str], *,
+                 chunk_bounds: Any) -> None:
         self.side = side
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
-        self.expansion = str(expansion)
         self.residency = residency
         self.volumes = tuple(volumes)
         # The H side has no inverse epsilon. The three buffers stay in the signature
@@ -1237,31 +1158,33 @@ class ComplexConstitutivePlan(KernelPlan):
         # rather than merely an unread one.
         placeholders = tuple(coefficients[:3] if inverse_epsilon is None
                              else inverse_epsilon)
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, f"ComplexConstitutivePlan({side})")
         super().__init__(functions, (
             tuple(targets) + tuple(auxiliaries) + tuple(sources) + placeholders
             + tuple(coefficients)
-            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem)))
+            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem,
+               _chunk_bounds.tensor(self.chunk_bounds, _plan_device(residency)))))
 
 
-def _constitutive_functions(side: str, expansion: str,
+def _constitutive_functions(side: str,
                             contract_variants: Sequence[str]) -> Dict[str, Any]:
-    return {mode: compile_bloch_constitutive(side, expansion, mode)
+    return {mode: compile_bloch_constitutive(side, mode)
             for mode in contract_variants}
 
 
 def plan_complex_constitutive(fields: Any, pml: Any, side: str, residency: Any = None,
                               contract_variants: Sequence[str] = (
-                                  shaders.CONTRACT_OFF,),
-                              probe: Any = None) -> Optional[ComplexConstitutivePlan]:
-    """Build a complex constitutive plan from the engine's objects, or None."""
+                                  shaders.CONTRACT_OFF,), *,
+                              chunk_bounds: Any) -> Optional[ComplexConstitutivePlan]:
+    """Build a complex constitutive plan from the engine's objects, or None.
+
+    ``chunk_bounds`` as :func:`plan_complex_pml_curl` takes it.
+    """
     if side not in CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, "
                          f"got {side!r}")
-    if not complex_constitutive_coverage(fields, pml, side, residency, probe).covered:
-        return None
-    expansion = expansion_from_probe(
-        probe if probe is not None else load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not complex_constitutive_coverage(fields, pml, side, residency).covered:
         return None
 
     spec = CONSTITUTIVE_SIDES[side]
@@ -1282,22 +1205,24 @@ def plan_complex_constitutive(fields: Any, pml: Any, side: str, residency: Any =
         for axis in "xyz" for stem in ("kps", "kms")]
     volumes = tuple(spec["targets"]) + tuple(spec["aux"]) + tuple(spec["sources"])
     return ComplexConstitutivePlan(
-        side, fields.grid.shape, expansion, residency, targets, auxiliaries,
+        side, fields.grid.shape, residency, targets, auxiliaries,
         sources, inverse_epsilon, coefficients,
-        _constitutive_functions(side, expansion, contract_variants), volumes)
+        _constitutive_functions(side, contract_variants), volumes,
+        chunk_bounds=chunk_bounds)
 
 
 def plan_complex_constitutive_from_arrays(
-        side: str, arrays: Dict[str, Any], flat: Dict[str, Any], expansion: str,
+        side: str, arrays: Dict[str, Any], flat: Dict[str, Any],
         residency: Any, functions: Optional[Dict[str, Any]] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        suffix_key: str = "") -> ComplexConstitutivePlan:
+        suffix_key: str = "", *, chunk_bounds: Any) -> ComplexConstitutivePlan:
     """Build a complex constitutive plan from bare host arrays — the gate's route.
 
     ``suffix_key`` only namespaces the coefficient mirrors so a harness can bind the
     OTHER Yee sub-lattice under a different name in the same residency; it does not
     choose a lattice. Choosing is the caller's, which is what makes the half-cell
-    swap a HOST mutation rather than a kernel one.
+    swap a HOST mutation rather than a kernel one. ``chunk_bounds`` is required, as
+    :func:`plan_complex_pml_curl_from_arrays` requires it.
     """
     spec = CONSTITUTIVE_SIDES[side]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
@@ -1313,10 +1238,11 @@ def plan_complex_constitutive_from_arrays(
         for axis in "xyz" for stem in ("kps", "kms")]
     volumes = tuple(spec["targets"]) + tuple(spec["aux"]) + tuple(spec["sources"])
     return ComplexConstitutivePlan(
-        side, shape, expansion, residency, targets, auxiliaries, sources,
+        side, shape, residency, targets, auxiliaries, sources,
         inverse_epsilon, coefficients,
         functions if functions is not None
-        else _constitutive_functions(side, expansion, contract_variants), volumes)
+        else _constitutive_functions(side, contract_variants), volumes,
+        chunk_bounds=chunk_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -1329,27 +1255,25 @@ _CONSTITUTIVE_SLOT_SIDES: Dict[str, str] = {"update_H": "H", "update_E": "E"}
 
 def _curl_arm_coverage(context: Any, slot: str) -> Coverage:
     return complex_pml_curl_coverage(context.fields, context.pml, slot,
-                                     context.residency,
-                                     context.extra.get("complex_probe"))
+                                     context.residency)
 
 
 def _curl_arm_plan(context: Any, slot: str) -> Any:
     return plan_complex_pml_curl(context.fields, context.pml, slot,
                                  context.residency, context.contract_variants,
-                                 context.extra.get("complex_probe"))
+                                 chunk_bounds=context.chunk_bounds)
 
 
 def _constitutive_arm_coverage(context: Any, slot: str) -> Coverage:
     return complex_constitutive_coverage(
         context.fields, context.pml, _CONSTITUTIVE_SLOT_SIDES[slot],
-        context.residency, context.extra.get("complex_probe"))
+        context.residency)
 
 
 def _constitutive_arm_plan(context: Any, slot: str) -> Any:
     return plan_complex_constitutive(
         context.fields, context.pml, _CONSTITUTIVE_SLOT_SIDES[slot],
-        context.residency, context.contract_variants,
-        context.extra.get("complex_probe"))
+        context.residency, context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

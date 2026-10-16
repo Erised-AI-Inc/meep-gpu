@@ -7,7 +7,13 @@ from typing import Any, Dict
 import numpy as np
 import pytest
 
-from meep_gpu import stepping
+from meep_gpu import part_products, stepping
+from meep_gpu.chunk_map import (
+    ChunkLayout,
+    ChunkLayoutRefusal,
+    chunk_bounds_record,
+    membership_from_record,
+)
 from meep_gpu.dispersion import LORENTZIAN, PolarizationState, Susceptibility
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
@@ -19,6 +25,8 @@ from meep_gpu.pml import PML
 
 
 class HostResidency:
+    device = "cpu"
+
     def __init__(self):
         self.arrays: Dict[str, Any] = {}
 
@@ -28,13 +36,6 @@ class HostResidency:
             raise ValueError(f"{name} rebound")
         self.arrays[name] = host
         return host
-
-
-def probe():
-    return {"backend": "numpy", "patterns": {
-        name: "FMA_V1" for name in (
-            "c8_mul_c8", "c8_mul_c8_scalar_right", "c8_mul_f4_field_left",
-            "f4_mul_c8_coefficient_left", "python_float_left")}}
 
 
 def build(*, poles=2, seed=761):
@@ -71,62 +72,97 @@ def backend_ready(monkeypatch):
     monkeypatch.setattr(shared_predicate, "_metal_backend_reasons", lambda grid: [])
 
 
+def _record(fields, pml):
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
+
+
 def _host_function(count, axis):
+    """The kernel's arithmetic on the host: every product one per part, the select on
+    the bound record."""
     def run(out, fw, displacement, inverse, *args):
-        *poles, kps, kms, nx, ny, nz, n_elem = args
+        *poles, kps, kms, nx, ny, nz, n_elem, record = args
         assert out.shape == (nx, ny, nz) and out.size == n_elem
+        line = membership_from_record(np.asarray(record), True, axis, out.shape[axis])
+        shape = [1, 1, 1]
+        shape[axis] = -1
+        dw = np.broadcast_to(line.reshape(shape), out.shape)
         source = displacement.copy()
         for pole in poles[:count]:
             source = source - pole
-        src = source * inverse
+        src = part_products.scale(inverse, source)
         previous = fw.copy()
-        fw[...] = src
-        coefficient_shape = [1, 1, 1]
-        coefficient_shape[axis] = -1
-        value = out.copy()
-        value = value + kps.reshape(coefficient_shape) * src
-        value = value - kms.reshape(coefficient_shape) * previous
-        out[...] = value
+        accumulated = out + (part_products.scale(kps.reshape(shape), src)
+                             - part_products.scale(kms.reshape(shape), previous))
+        fw[dw] = src[dw]
+        out[...] = np.where(dw, accumulated, src)
     return run
 
 
-def test_source_uses_both_measured_complex_by_real_orientations():
-    source = family.complex_dispersive_e_source(2, 2, "FMA_V1")
+def test_source_selects_meeps_form_per_chunk_with_part_wise_products():
+    source = family.complex_dispersive_e_source(2, 2)
     body = source[source.index("kernel void complex_dispersive_e_component"):]
-    assert "float2 prev = fw[idx];" in body
-    assert "c_mul_field_left(source, inv_e[idx])" in body
-    assert "c_mul_coefficient_left(kps[k], src)" in body
-    assert "c_mul_coefficient_left(kms[k], prev)" in body
-    assert "source = source - p1[idx];" in body
+    for line in ("    const bool dw = in_h_z;",
+                 "    float2 prev = dw ? fw[idx] : float2(0.0f, 0.0f);",
+                 "    float2 src = c_mul_field_left(source, inv_e[idx]);",
+                 "    if (dw) { fw[idx] = src; }",
+                 "    float2 value = src;",
+                 "    if (dw) { value = e_out[idx] + (c_mul_coefficient_left(kps[k], src) "
+                 "- c_mul_coefficient_left(kms[k], prev)); }",
+                 "    e_out[idx] = value;",
+                 "    source = source - p1[idx];"):
+        assert line in body, line
+    assert "value = value + c_mul_coefficient_left" not in body
+    assert body.count("[[buffer(") == family.BINDING_COUNT
+    assert f"constant ChunkBounds& cb [[buffer({family.RECORD_BUFFER})]]" in body
+
+
+def test_the_tail_is_the_complex_base_constitutive_kernels_own_lines():
+    """The per-component lines of complex_fields' E constitutive, renamed."""
+    certified = shared_predicate.bloch_constitutive_source("E")
+    for axis, coordinate in ((0, "i"), (1, "j"), (2, "k")):
+        line = (f"    if (dw{axis}) {{ a{axis} = f{axis}[ii] + (c_mul_coefficient_left("
+                f"kp_{axis}, src{axis}) - c_mul_coefficient_left(km_{axis}, prev{axis})); }}")
+        assert line in certified
+        renamed = (line.replace(f"dw{axis}", "dw").replace(f"a{axis} =", "value =")
+                   .replace(f"f{axis}[ii]", "e_out[idx]")
+                   .replace(f"kp_{axis}", f"kps[{coordinate}]")
+                   .replace(f"km_{axis}", f"kms[{coordinate}]")
+                   .replace(f"src{axis}", "src").replace(f"prev{axis}", "prev"))
+        assert renamed in family.complex_dispersive_e_source(1, axis)
+
+
+def test_the_builder_takes_the_record_as_a_required_keyword(backend_ready):
+    fields, pml, _ = build()
+    with pytest.raises(TypeError):
+        family.plan_metal_complex_dispersive_e(fields, pml, HostResidency(), functions={})
+    with pytest.raises(ChunkLayoutRefusal, match="plan_metal_complex_dispersive_e"):
+        family.plan_metal_complex_dispersive_e(fields, pml, HostResidency(), functions={},
+                                               chunk_bounds=None)
 
 
 def test_complex_bloch_pml_product_is_admitted(backend_ready):
     fields, pml, _ = build()
     verdict = family.metal_complex_dispersive_e_coverage(
-        fields, pml, HostResidency(), probe())
+        fields, pml, HostResidency())
     assert verdict.covered, verdict.reasons
 
 
 @pytest.mark.parametrize("mutation, needle", [
     ("inactive", "active PML"), ("offdiag", "off-diagonal"),
-    ("missing_probe", "probe artifact"), ("no_poles", "no susceptibility"),
+    ("no_poles", "no susceptibility"),
     ("conductive", "conductivity"),
 ])
-def test_distinct_products_refuse_by_name(backend_ready, monkeypatch, mutation, needle):
+def test_distinct_products_refuse_by_name(backend_ready, mutation, needle):
     fields, pml, _ = build()
-    record = probe()
     if mutation == "inactive":
         pml = PML(grid=fields.grid, thickness=0)
     elif mutation == "offdiag":
         fields._chi1inv_offdiagonal = {"Ex": {"Ey": np.ones(fields.grid.shape, np.float32)}}
-    elif mutation == "missing_probe":
-        record = None
-        monkeypatch.delenv(shared_predicate.PROBE_PATH_ENVIRONMENT, raising=False)
     elif mutation == "conductive":
         fields.set_d_conductivity(np.full(fields.grid.shape, np.float32(0.2)))
     else:
         fields.polarizations.clear()
-    verdict = family.metal_complex_dispersive_e_coverage(fields, pml, HostResidency(), record)
+    verdict = family.metal_complex_dispersive_e_coverage(fields, pml, HostResidency())
     assert not verdict.covered
     assert any(needle in reason for reason in verdict.reasons), verdict.reasons
 
@@ -134,11 +170,13 @@ def test_distinct_products_refuse_by_name(backend_ready, monkeypatch, mutation, 
 def test_plan_matches_complex_reference_across_ade_rotation(backend_ready):
     reference, pml, _ = build()
     actual, actual_pml, states = build()
-    functions = {(shaders.CONTRACT_OFF, count, axis, "FMA_V1"): _host_function(count, axis)
+    functions = {(shaders.CONTRACT_OFF, count, axis): _host_function(count, axis)
                  for count in (0, 2) for axis in range(3)}
     plan = family.plan_metal_complex_dispersive_e(
-        actual, actual_pml, HostResidency(), probe=probe(), functions=functions)
+        actual, actual_pml, HostResidency(), functions=functions,
+        chunk_bounds=_record(actual, actual_pml))
     assert plan is not None
+    stepping._region_plan(actual, actual_pml)  # the plan the polarizations read
     for _ in range(3):
         stepping.update_E(reference, pml)
         for state in reference.polarizations:
@@ -157,15 +195,15 @@ def test_pole_aware_complex_pml_product_wires_e_and_its_three_slot_spine(
     fields, pml, _ = build()
     for slot in ("step_B", "step_D"):
         verdict = spine.metal_complex_dispersive_pml_curl_coverage(
-            fields, pml, slot, HostResidency(), probe())
+            fields, pml, slot, HostResidency())
         assert verdict.covered, (slot, verdict.reasons)
     magnetic = spine.metal_complex_dispersive_pml_magnetic_coverage(
-        fields, pml, HostResidency(), probe())
+        fields, pml, HostResidency())
     assert magnetic.covered, magnetic.reasons
 
     fields.set_d_conductivity(np.full(fields.grid.shape, np.float32(0.2)))
     verdict = spine.metal_complex_dispersive_pml_curl_coverage(
-        fields, pml, "step_D", HostResidency(), probe())
+        fields, pml, "step_D", HostResidency())
     assert not verdict.covered
     assert any("conductivity" in reason for reason in verdict.reasons), verdict.reasons
 

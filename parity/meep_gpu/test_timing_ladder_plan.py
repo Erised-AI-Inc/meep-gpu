@@ -25,6 +25,7 @@ if HERE not in sys.path:
 
 import timing_host  # noqa: E402
 import timing_ladder as ladder  # noqa: E402
+import timing_records  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "fixtures", "timing")
 PARAMS = os.path.join(FIXTURES, "a6000_2026-09-28_b.params")
@@ -34,14 +35,15 @@ COMMANDS = os.path.join(FIXTURES, "ladder_2026-09-28_b_commands.json")
 LAUNCHING_ENV = {"PATH": "/usr/bin:/bin", "HOME": "/home/user",
                  "KMP_DUPLICATE_LIB_OK": "TRUE"}
 #: Variables the released ladder unsets that the 2026-09-28 ladder did not (named
-#: differences: the uncertified opt-in is never inherited; a MEEP row no longer
-#: inherits a GPU row's caches or an OpenMP placement).
-ADDED_UNSETS = {"MEEP_GPU_ALLOW_UNCERTIFIED", "TRITON_CACHE_DIR", "CUPY_CACHE_DIR",
-                "OMP_PROC_BIND", "OMP_PLACES"}
+#: differences: the hardware scope is never inherited, and neither is the name it
+#: replaced, which the package refuses; a MEEP row no longer inherits a GPU row's
+#: caches or an OpenMP placement).
+ADDED_UNSETS = {"MEEP_GPU_HARDWARE", "MEEP_GPU_ALLOW_UNCERTIFIED", "TRITON_CACHE_DIR",
+                "CUPY_CACHE_DIR", "OMP_PROC_BIND", "OMP_PLACES"}
 #: Variables the released ladder SETS that the 2026-09-28 ladder left unset (named
 #: difference: an NVIDIA row restricts the kernels to certified identities, which is
 #: what unset meant on NVIDIA before supported-uncertified devices ran by default).
-ADDED_SETS = {"MEEP_GPU_ALLOW_UNCERTIFIED": "0"}
+ADDED_SETS = {"MEEP_GPU_HARDWARE": "certified"}
 
 
 def config_of(argv, environ=None):
@@ -192,22 +194,31 @@ def test_default_rank_blocks():
     assert ladder.default_rank_blocks(8, 8, False) == ([3, 4, 5, 8], [1], [])
 
 
-@pytest.mark.parametrize("allow,nvidia,metal", [("0", "0", None), ("1", "1", "1")])
+@pytest.mark.parametrize("allow,nvidia,metal", [("0", "certified", None),
+                                                ("1", "any", "any")])
 def test_an_nvidia_row_runs_certified_identities_only_unless_asked(allow, nvidia, metal):
-    """``0`` exports MEEP_GPU_ALLOW_UNCERTIFIED=0 to the NVIDIA rows and leaves the
-    Metal rows the Metal default; ``1`` exports 1 to both; no MEEP row inherits it."""
+    """``0`` exports MEEP_GPU_HARDWARE=certified to the NVIDIA rows and leaves the
+    Metal rows the Metal default; ``1`` exports ``any`` to both; no MEEP row inherits
+    it, and no row of any kind inherits or exports the retired MEEP_GPU_ALLOW_UNCERTIFIED."""
     _config, record = plan_of(A6000_PROFILE + ["--allow-uncertified", allow])
     gpu = [r for r in record["rows"] if r["kind"] == "gpu"]
-    assert gpu and all(r["env"]["set"].get("MEEP_GPU_ALLOW_UNCERTIFIED") == nvidia
+    assert gpu and all(r["env"]["set"].get("MEEP_GPU_HARDWARE") == nvidia
                        for r in gpu), [r["key"] for r in gpu]
+    rows = list(record["rows"])
     _config, record = plan_of(MAC + ["--allow-uncertified", allow])
     gpu = [r for r in record["rows"] if r["kind"] == "gpu"]
-    assert gpu and all(r["env"]["set"].get("MEEP_GPU_ALLOW_UNCERTIFIED") == metal
+    assert gpu and all(r["env"]["set"].get("MEEP_GPU_HARDWARE") == metal
                        for r in gpu), [r["key"] for r in gpu]
     if metal is None:
-        assert all("MEEP_GPU_ALLOW_UNCERTIFIED" in r["env"]["unset"] for r in gpu)
+        assert all("MEEP_GPU_HARDWARE" in r["env"]["unset"] for r in gpu)
     meep = [r for r in record["rows"] if r["kind"] == "meep"]
-    assert meep and all("MEEP_GPU_ALLOW_UNCERTIFIED" in r["env"]["unset"] for r in meep)
+    assert meep and all("MEEP_GPU_HARDWARE" in r["env"]["unset"] for r in meep)
+    rows += list(record["rows"])
+    assert all("MEEP_GPU_ALLOW_UNCERTIFIED" not in r["env"]["set"]
+               and "MEEP_GPU_ALLOW_UNCERTIFIED" in r["env"]["unset"]
+               for r in rows if r["kind"] in ("gpu", "meep")), \
+        [r["key"] for r in rows if r["kind"] in ("gpu", "meep")
+         and "MEEP_GPU_ALLOW_UNCERTIFIED" not in r["env"]["unset"]]
 
 
 def test_mac_profile_plans_unbound_rows_and_omits_bound_controls():
@@ -262,7 +273,8 @@ def test_linux_controls_carry_their_configuration():
     environ = dict(LAUNCHING_ENV)
     config, record = plan_of(LINUX + ["--tiers", "priority", "--passes", "1",
                                       "--priority-sizes", "512000", "--meep-build",
-                                      "native=/opt/native/bin/python"], environ)
+                                      "native=/opt/native/bin/python", "--sockets", "2"],
+                             environ)
     controls = {}
     for row in record["rows"]:
         if row["kind"] == "meep" and row["control"]:
@@ -281,6 +293,8 @@ def test_linux_controls_carry_their_configuration():
     assert "/opt/native/bin/python" in native["argv"]
     assert native["argv"][native["argv"].index("--build-label") + 1] == "native"
     assert controls["hwthread"][0]["binding"] == "bound-hwthread"
+    hw = controls["hwthread"][0]["argv"]
+    assert hw[hw.index("--map-by") + 1].startswith("pe-list=0,48,2,50,")
     outs = {r["out"] for rows in controls.values() for r in rows}
     assert all(os.path.basename(o).startswith("meep_") for o in outs)
 
@@ -454,6 +468,92 @@ def test_a_recorder_that_raises_does_not_stop_the_ladder(tmp_path):
     assert noted[-1]["ledger"] == "recorder_error" and noted[-1]["run_dir"] == run.out
 
 
+def test_the_mac_gate_is_calibrated_at_the_start_and_linux_keeps_its_default(tmp_path):
+    """CERT-8 F6: the macOS default CPU gate (1 of 10 busy CPUs) could not open with the
+    owner's session idling at 1.2-2.0. On macOS it is calibrated before the first row,
+    written down, and read back on a resume; Linux keeps 10 % of its logical CPUs."""
+    linux = config_of(LINUX)
+    assert linux.cpu_calibration is None and linux.gate.cpu_max == 10
+    explicit = config_of(MAC + ["--gate-cpu-max", "2"])
+    assert explicit.cpu_calibration is None and explicit.gate.cpu_max == 2.0
+    config = config_of(MAC + ["--run-root", str(tmp_path / "runs")])
+    assert config.values["GATE_CPU_MAX"] == "auto"
+    assert config.cpu_calibration == {"readings": 18, "every_s": 10.0, "logical_cpus": 10}
+    assert config.gate.cpu_max == 1.0                  # until the readings are taken
+    run = ladder.Ladder(config, ladder.build_plan(config), resume=False)
+    os.makedirs(run.out)
+    readings = iter([1.2, 1.5, 1.9, 2.0, 1.4, 1.7] * 3)
+    slept = []
+    run.calibrate_gate(reader=lambda: next(readings), sleep=slept.append)
+    assert config.gate.cpu_max == 2.5 and config.sources["GATE_CPU_MAX"] == \
+        "calibrated at start"
+    assert slept == [10.0] * 17
+    stored = json.load(open(os.path.join(run.out, "gate_calibration.json")))
+    assert stored["value"] == 2.5 and len(stored["readings"]) == 18
+    # a resume reads the threshold back; it does not calibrate again
+    again = config_of(MAC + ["--run-root", str(tmp_path / "runs")])
+    resumed = ladder.Ladder(again, ladder.build_plan(again), resume=True)
+    resumed.calibrate_gate(reader=lambda: pytest.fail("calibrated twice"))
+    assert again.gate.cpu_max == 2.5
+
+
+def test_a_gpu_only_ladder_times_one_leg_behind_one_identity_row_per_size():
+    """The GPU-only row (CERT-8): the timed GPU rows lift the fused leg alone; each route,
+    case and size is first proved bit-identical by one three-leg identity row with the
+    preflight's short windows; the array control is its own row or none."""
+    base = LINUX + ["--tiers", "preflight identity priority", "--passes", "3",
+                    "--priority-sizes", "512000,2097152", "--controls", "none",
+                    "--routes", "default,cuda", "--gpu-legs", "gpu-only"]
+    config, record = plan_of(base + ["--array-control", "none"])
+    assert config.gpu_legs == "gpu-only"
+    gpu = [r for r in record["rows"] if r["kind"] == "gpu"]
+    identity = [r for r in gpu if r["tier"] == "identity"]
+    assert sorted((r["route"], r["cells"]) for r in identity) == [
+        ("cuda", 512000), ("cuda", 2097152), ("default", 512000), ("default", 2097152)]
+    timed = [r for r in gpu if r["tier"] == "priority"]
+    assert len(timed) == 2 * 2 * 3
+    for row in timed:
+        argv = row["argv"]
+        assert argv[argv.index("--legs") + 1] == "gpu-only"
+    for row in identity + [r for r in gpu if r["tier"] == "preflight"]:
+        assert "--legs" not in row["argv"] and "0.5" in row["argv"]
+        assert "/identity/" in row["log"] or "/preflight/" in row["log"]
+    assert not [r for r in record["rows"] if r["kind"] == "control"]
+    _c, rows_control = plan_of(base + ["--array-control", "row"])
+    assert [r for r in rows_control["rows"] if r["kind"] == "control"]
+    assert "no array leg to read the control off" in refusal(base)
+    assert "keep 'identity' in --tiers" in refusal(
+        [a if a != "preflight identity priority" else "preflight priority" for a in base]
+        + ["--array-control", "none"])
+    # the default ladder is untouched: no identity rows, three-leg GPU rows
+    _c, default = plan_of(LINUX + ["--tiers", "preflight identity priority", "--passes",
+                                   "1", "--priority-sizes", "512000", "--controls", "none"])
+    assert not [r for r in default["rows"] if r["tier"] == "identity"]
+    assert all("--legs" not in r["argv"] for r in default["rows"] if r["kind"] == "gpu")
+
+
+def test_a_gpu_only_row_reads_its_identity_row_off_the_ledger(tmp_path):
+    config = config_of(LINUX + ["--run-root", str(tmp_path / "runs"), "--tiers",
+                                "identity priority", "--passes", "1", "--priority-sizes",
+                                "512000", "--controls", "none", "--gpu-legs", "gpu-only",
+                                "--array-control", "none"])
+    plan = ladder.build_plan(config)
+    run = ladder.Ladder(config, plan, resume=False)
+    os.makedirs(run.out)
+    timed = next(r for r in plan if r.kind == "gpu" and r.tier == "priority")
+    assert run.identity_entry(timed) is None
+    for entry in ({"ledger": "gpu", "tier": "identity", "route": "default", "case": "pml_3d",
+                   "res": timed.res, "key": "first"},
+                  {"ledger": "gpu", "tier": "identity", "route": "cuda", "case": "pml_3d",
+                   "res": timed.res, "key": "other route"},
+                  {"ledger": "gpu", "tier": "priority", "route": "default", "case": "pml_3d",
+                   "res": timed.res, "key": "a timed row"},
+                  {"ledger": "gpu", "tier": "identity", "route": "default", "case": "pml_3d",
+                   "res": timed.res, "key": "resumed"}):
+        timing_records.append(run.ledger, entry)
+    assert run.identity_entry(timed)["key"] == "resumed"
+
+
 def test_box_keys_match_the_box_string_keys():
     text = ("load=1.0 2.0 3.0 busy_cpus=0.5 free_gb=981 gpu0=3 MiB, 0 % "
             "others=0,0, account=0")
@@ -522,12 +622,27 @@ def test_gpu_gate_metric_follows_the_scope():
 
 def test_hwthread_key_is_not_doubled():
     _c, record = plan_of(LINUX + ["--tiers", "priority", "--passes", "1",
-                                  "--priority-sizes", "512000", "--controls", "hwthread"])
+                                  "--priority-sizes", "512000", "--controls", "hwthread",
+                                  "--sockets", "2"])
     keys = [r["key"] for r in record["rows"] if r.get("control") == "hwthread"]
     assert keys == ["priority_meep_r64_bound-hwthread_res20_p1",
                     "priority_meep_r96_bound-hwthread_res20_p1"]
     outs = {r["out"] for r in record["rows"] if r.get("control") == "hwthread"}
     assert all(o.endswith("meep_bound-hwthread") for o in outs)
+
+
+def test_the_hwthread_control_without_a_topology_is_omitted_by_name(monkeypatch):
+    """CERT-8 H3: the control names each rank's hardware thread, so it needs the socket
+    count; without it the control is left out, by name, instead of run doubled up."""
+    # On a Linux host the ladder reads that host's own topology, which would supply the
+    # count: the topology is withheld here, as in test_srun_launcher_and_its_flags.
+    monkeypatch.setattr(ladder, "detect_topology", lambda _p: {"method": None})
+    config, record = plan_of(LINUX + ["--tiers", "priority", "--passes", "1",
+                                      "--priority-sizes", "512000", "--controls",
+                                      "hwthread,split"])
+    assert config.controls == ["split"]
+    assert "named hardware thread" in config.controls_omitted["hwthread"]
+    assert not [r for r in record["rows"] if r.get("control") == "hwthread"]
 
 
 def test_a_restricted_affinity_passes_its_scope_to_the_bench(monkeypatch):

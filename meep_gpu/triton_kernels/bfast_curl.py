@@ -25,28 +25,27 @@ BFAST is refused by name and queued with the complex family.
 
 WHAT BFAST IS (stepping.py:826-931, grid.py:698-753). The time-sheared
 substitution ``t -> t - k.r/c``: dB/dt = -curl E + d/dt(k x E), dD/dt =
-+curl H - d/dt(k x H) (stepping.py:830-836). MEEP runs it as a second additive
-pass over the SAME shifted operands the curl gathers (step_db.cpp:129-142);
-this engine folds it into the curl before ``_apply_curl``:
++curl H - d/dt(k x H). MEEP runs it as a second additive pass over the SAME
+shifted operands the curl gathers, per component right after its curl
+(step_db.cpp:124-142), and so does the array path (``stepping._bfast_term``, then
+``stepping._apply_folded_increment``'s ladder):
 
-* call sites: step_B — flag read at stepping.py:364, fold at :392-396, AFTER
-  the beta terms (:384-391), BEFORE ``_mask_non_owned_cells`` (:397) and
-  ``_apply_curl`` (:374); step_D mirrors it (flag :422, fold :446-449, mask
-  :450, apply :455). The beta-then-bfast fold ORDER is byte-significant if
-  both were active, which is why clause 12 (beta refused) is KEPT below;
-* arithmetic per term (:896-904), with ``operands = CurlOperands`` (first =
-  MEEP g1 = f_p, shifted_first = g1[i+s], second = g2 = f_m, shifted_second;
-  :1544-1557)::
+* call sites: step_B and step_D, per component after its curl form. The beta
+  and BFAST passes would interleave if both were active, and their ORDER is
+  byte-significant, which is why clause 12 (beta refused) is KEPT below;
+* arithmetic per component (``stepping._bfast_term``, :func:`.forms.bfast_advance`),
+  with first = MEEP g1 = f_p, shifted_first = g1[i+s], second = g2 = f_m::
 
-      k1 = bfast[_bfast_axis(term.second)] if have_m else 0.0     (:884)
-      k2 = bfast[_bfast_axis(term.first)]  if have_p else 0.0     (:885)
-      if D side: k1, k2 = -k1, -k2   in host f64                  (:886-887)
-      total   = k1_f32*(shifted_first + first)
-                - k2_f32*(shifted_second + second)                (:896-897)
-      advance = total - dtype.type(2.0)*state                     (:901)
-      _mask_non_owned_cells(advance, grid, term.iyee)             (:902)
-      state  += advance   (IN PLACE)                              (:903)
-      return -advance     (curl sign convention)                  (:904)
+      k1 = bfast[_bfast_axis(term.second)] if have_m else 0.0
+      k2 = bfast[_bfast_axis(term.first)]  if have_p else 0.0
+      if D side: k1, k2 = -k1, -k2   in host f64, then rounded once
+      F   = (k1*(shifted_first + first) - k2*(shifted_second + second)) - F_prev
+      raw = F - F_prev                  (a second rounding)
+      state <- F on owned cells         (IN PLACE)
+      increment = raw * -1.0, +0 on unowned cells, through the ladder
+
+  With one partner the surviving term alone (MEEP's NULL swap below), and in
+  MEEP's plain branch (no dsig or dsigu layer in the chunk) no ``- F_prev``;
 
   It is the Tustin filter (1 - z^-1)/(1 + z^-1): NO dtdx and NO dt anywhere —
   MEEP passes dtdx to step_bfast and never reads it (:836-837). MARGINALLY
@@ -66,41 +65,31 @@ this engine folds it into the curl before ``_apply_curl``:
   (grid.py:1165-1183) — the marquee is dimensions=3 with one-cell x/y axes,
   so all flags are TRUE there and the live cross terms survive.
 
-  THE GUARD IS NOT MEEP'S, AND THE GAP IS THIS TRANCHE'S TO FENCE. MEEP does
-  TWO things when a flag is false, not one: it zeroes the COEFFICIENT
-  (step_db.cpp:130-133) *and* it NULLS THE OPERAND ARRAY
+  MEEP DOES TWO THINGS WHEN A FLAG IS FALSE, not one: it zeroes the
+  COEFFICIENT (step_db.cpp:130-133) *and* it NULLS THE OPERAND ARRAY
   (step_db.cpp:62-63, ``f_p = have_p ? f[c_p][cmp] : NULL``). ``step_bfast``
   then swaps a null g1 to the g2 slot (step_generic.cpp:342-346, k1 and k2
   swapped with it) and takes its single-operand branch when g2 is null — in
   every split-field-PML branch spelled ``F[i] = k1*(g1[i+s1] + g1[i]) - F[i]``
-  (:449, :469, :499 and :525 — :525 is THIS tranche's branch, PML in f plus an
-  fu stage, no conductivity; only the no-PML no-fu no-cnd branch at :376 drops
-  the ``- F[i]``, which is the inconsistency ``Grid._resolve_bfast`` cites for
-  cylindrical). Because the surviving coefficient after the swap is the ZEROED
-  one, EITHER false flag makes MEEP's whole increment ``F_new = -F_prev``, the
-  other term dropped with its null pointer. ``stepping.py`` zeroes the
-  coefficient (:911-912) but keeps the other product computed from the stored
-  array (:896-897), so the two agree only while the surviving k is itself
-  zero. MEASURED (test_triton_bfast.py, dims=2, z invariant, PML x+y, Courant
-  0.4375, seeded fields and states, one ``stepping.step_B``): at bfast =
-  (0.4, 0, 0) the guarded targets land on MEEP's ``-F_prev`` with max|diff| =
-  0; at bfast = (0.4, 0, 0.3) they do not (max|diff| ~ 0.6 on Bx and By),
-  because stepping keeps ``-k2*(Ey_shift + Ey)`` with k2 = kz where MEEP has a
-  null operand. The divergent class is exactly "a nonzero k component on a
-  DECLARED-invariant axis" (each term's condition reduces to it), it is
-  reachable — ``Grid._resolve_bfast`` refuses only cylindrical
-  (grid.py:698-742) — so clause 11a below REFUSES it by name. The fix for
-  ``stepping.py`` itself is upstream of this tranche and is not made here;
-  the kernel, the coefficients and all three transcriptions reproduce
-  ``stepping.py:909-931``, which is what the byte gate arbitrates;
+  (:449, :469, :499 and :525), and in the plain no-PML no-fu no-cnd branch at
+  :376 without the ``- F[i]`` (the inconsistency ``Grid._resolve_bfast`` cites
+  for cylindrical). The array path takes those one-partner forms
+  (``stepping._bfast_term``): the absent partner is not read, the surviving k
+  multiplies the surviving partner's sum, and outside a layer chunk (MEEP's
+  plain branch) the state drops ``- F``. So does this kernel
+  (``forms.bfast_advance``), which is why clause 11a below ADMITS a nonzero k
+  on a DECLARED-invariant axis and refuses only an unreadable k assignment: such
+  a k multiplies a partner MEEP does not read, and the run stores the k = 0
+  run's words (measured in test_triton_bfast.py on a declared-2-D grid, states,
+  auxiliaries and fields, both sub-steps);
 * D1 (dimensions=1) CARRIES A SECOND MEEP ASYMMETRY, benign and stated: MEEP's
   other reason for a false flag is ``gv.has_field``, which leaves Bx/Bz/Dy/Dz
   unallocated in D1 so ``step_db``'s ``if (f[cc][cmp])`` never steps them,
-  where this engine steps all six. With clause 11a in force the only D1 k that
-  survives is along z, and then all six (k1, k2) are zero, so from the physical
-  all-zero state every f_bfast advance is ``-2*0`` and the run is byte-identical
-  to a non-BFAST one on every component — the components MEEP omits stay
-  exactly zero (pinned in the laptop tests). Only an artificially seeded state
+  where this engine steps all six. For a k along z all six (k1, k2) are zero,
+  so from the physical all-zero state every state holds a signed zero (the D
+  side's negated k makes a -0 of a positive partner sum) and every field and
+  auxiliary word equals the non-BFAST run's or differs from it only in the sign
+  of a zero (pinned in the laptop tests). Only an artificially seeded state
   makes them move, which is a harness configuration, not a run;
 * NEW I/O: six IIR states ``f_bfast_{Dx..Bz}`` (fields.py:470-483),
   grid.shape, storage dtype, zero-initialized, allocated whenever
@@ -120,11 +109,12 @@ this engine folds it into the curl before ``_apply_curl``:
   bfast-dependent (fields.py:227-230) — the pass is on step_db only.
 
 ONE KERNEL: :func:`bfast_pml_curl_step` — ``kernels.pml_curl_step``'s body
-(certified; ENABLE_FP_FUSION=False at kernels.py:70 — the tail is
-multiply-subtract, so fusion-off is load-bearing) plus the constexpr-gated
-BFAST tail: per target, ``total = k1*(g1s+g1c) - k2*(g2s+g2c)``; ``adv =
-total - 2.0*state``; adv masked by the body's owned-cell predicate; state
-stored as ``state + adv``; ``curl = curl - adv``.
+(fusion off at the launch guard — the pass is multiply-subtract, so fusion-off
+is load-bearing) plus the constexpr-gated BFAST pass after the forms: per target
+:func:`.forms.bfast_advance` on the record's presence and layer bits, the
+increment masked to ``+0`` and the state kept on the cells the body's owned-cell
+predicate drops, the state stored in place, and the increment subtracted through
+:func:`.forms.fold_ladder`.
 
 GROUPING CHOICES the gate must hold (stepping.py forces none of these):
 
@@ -137,33 +127,30 @@ GROUPING CHOICES the gate must hold (stepping.py forces none of these):
 2. ``total``'s grouping is ``(k1 * (g1s + g1c)) - (k2 * (g2s + g2c))`` with
    the SHIFTED operand first in each sum — the array path's operand order at
    :896-897. The subtraction IS the array path's single binary subtract.
-3. ``advance = total - (2.0 * state)`` — the literal :901 spelling;
-   ``2.0*state`` vs ``state + state`` is exact (recorded null, not armed).
-4. The curl fold is spelled ``curl - adv``. IEEE-754 defines subtraction AS
-   addition of the negation, so this carries the array path's
-   ``curl + (-advance)`` on every input including signed zeros — and it never
-   leans on Triton's unary-minus lowering (``0.0 - x`` canonicalizes signed
-   zeros, measured; NO unary minus appears anywhere in the tail).
-5. The state store is ``state + adv`` under ``mask=live`` — the array path's
-   whole-array in-place ``state += advance`` (:903), every cell written, the
-   masked rows receiving ``state + 0.0`` exactly as the array path computes
-   them. The store lands BEFORE the summed-curl mask, the array path's order;
-   no aliasing exists among f/u/g/s pointers so the order is byte-neutral,
-   and it is kept literal anyway.
-6. The advance mask (choice 5's precondition) replicates, per target, exactly
-   the ownership predicate the body's curl mask applies below it — metallic
-   cell 0 on each axis where the target's Yee shift is 0 (:1865-1902). The
-   summed curl is then masked AGAIN by the shared mask section (idempotent,
-   the array path's :369/:450).
+3. The state takes MEEP's two roundings — ``F = S - F_prev`` stored, then
+   ``raw = F - F_prev`` — never the one-rounding ``S - 2*F_prev`` (byte-visible;
+   armed as ``f_one_rounding_advance``).
+4. The increment is ``raw * -1.0`` and the ladder SUBTRACTS it, the array path's
+   spelling (``x - (-y)`` is ``x + y`` in IEEE-754, signed zeros included;
+   recorded as a predicted null, not armed). It never leans on Triton's
+   unary-minus lowering (``0.0 - x`` canonicalizes signed zeros, measured; NO
+   unary minus appears anywhere in the pass).
+5. The state is stored in place (pointer-identical) and keeps its word on the
+   cells the owned-cell predicate drops, as MEEP writes ``F`` inside its owned
+   loop only (armed as ``f_state_stored_on_unowned_cells``).
+6. The increment mask replicates, per target, exactly the ownership predicate
+   the body's curl mask applies — metallic cell 0 on each axis where the
+   target's Yee shift is 0 (armed as ``f_increment_unmasked``).
 7. ``HAS_BFAST`` is a constexpr: engine-route plans always bind 1 (the
    predicate requires bfast_active; a k = 0 run belongs to the certified
    plain kernels, stepping.py:364/:451 never enter the fold); the 0 arm
    exists so the gate's identity leg can pin the HAS_BFAST=0 build
    byte-identical to ``kernels.pml_curl_step``.
-8. NO per-target skip when a target's (k1, k2) are both zero: stepping
-   executes the tail for all six targets whenever ANY component of k is
-   nonzero (grid.py:744-753), and with seeded state the zero-k advance
-   ``-2*state`` is byte-visible. No kernel arm specializes it away.
+8. NO per-target skip when a target's (k1, k2) are both zero: the array path
+   runs the pass for every component with a partner whenever ANY component of k
+   is nonzero, and with seeded state a zero-k target's ``F = -F_prev`` is
+   byte-visible. No kernel arm specializes it away; a component with neither
+   partner keeps its state and takes a ``+0`` increment.
 9. Constitutive sub-steps on BFAST runs are NOT a new kernel: the restated
    predicate (:func:`bfast_run_constitutive_coverage`) inverts only the BFAST
    clause and delegates arithmetic to the certified
@@ -176,9 +163,9 @@ GROUPING CHOICES the gate must hold (stepping.py forces none of these):
 
 REFUSAL ENUMERATION (Phase A predicate = ``coverage._grid_reasons`` clauses
 with clause 11 INVERTED to require bfast_active, plus clause 11a which is this
-family's OWN): REQUIRE bfast_active; NO nonzero k component on a declared
-invariant axis (11a — the MEEP operand-nulling gap above; the one class where
-the array path this kernel transcribes is not MEEP's answer); real
+family's OWN): REQUIRE bfast_active; a READABLE k assignment (11a —
+``bfast_scaled_k`` and a callable ``is_invariant`` on every axis; a nonzero k on
+a declared-invariant axis is admitted, the one-partner forms above); real
 storage only (force_complex_fields AND any nonzero k_point refused — Grid
 deliberately allows bfast+Bloch, grid.py:719-724, but the complex composition
 is the complex family's queue); active split-field PML (no-PML bfast refused
@@ -258,7 +245,15 @@ from .coverage import (  # READ-ONLY imports; nothing here mutates coverage.py
     _layout_reasons,
     _susceptibility_reasons,
 )
-from .launch import SUB_STEPS, ConstitutivePlan, CupyPointer, _flat
+from .launch import SUB_STEPS, ConstitutivePlan, CupyPointer, _flat, chunk_bounds_for
+
+# The forms, the BFAST pass and the chunk record's word offsets, read by the kernel
+# below. Imported only when Triton is (both modules import it at module scope), so the
+# predicates and the plan builders still answer on a host without it.
+if _TRITON_IMPORT_ERROR is None:
+    from .forms import (axis_present, bfast_advance, curl_form,  # noqa: E402
+                        curl_stencil, fold_ladder, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
 
 # Same constexpr codes as ``kernels.PERIODIC``/``kernels.METALLIC``. Restated
 # (not imported from kernels.py) because importing kernels.py would import
@@ -363,8 +358,9 @@ def bfast_pml_curl_step(
     f0, f1, f2,                       # targets: Bx,By,Bz  or  Dx,Dy,Dz
     u0, u1, u2,                       # auxiliaries: fu_B*  or  fu_D*
     g0, g1, g2,                       # sources: Ex,Ey,Ez  or  Hx,Hy,Hz
-    s0, s1, s2,                       # f_bfast IIR states, one per target
+    s0, s1, s2,                       # f_bfast states, one per target
     kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, one Yee sub-lattice
+    cb,                               # chunk record: the forms' membership and presence
     nx, ny, nz, n_elem, dtdx,
     k1_0, k2_0, k1_1, k2_1, k1_2, k2_2,   # f32 (k1,k2) per target, host-rounded once
     BACKWARD: tl.constexpr,           # 0 = B (forward differences), 1 = D
@@ -372,23 +368,20 @@ def bfast_pml_curl_step(
     HAS_BFAST: tl.constexpr,          # compiled-in only for bfast_active runs
     BLOCK: tl.constexpr,
 ):
-    """One REAL curl sub-step of all three components, PML recurrence included,
-    with the BFAST second additive pass — ``kernels.pml_curl_step``'s certified
-    body plus the constexpr-gated tail between the curl and the ownership
-    mask, which is exactly where the array path folds it (stepping.py:392-396
-    after :370, before :397; :475-478 after :458, before :479).
+    """One REAL curl sub-step of all three components with MEEP's BFAST pass.
 
-    The tail's operands are the loads the curl already made — BFAST sums the
-    SAME shifted/center pairs the curl differences (stepping.py:1594-1598 —
-    the shared gather is the engine's deliberate advantage over MEEP's two
-    loops). Per target: ``total = k1*(g1s + g1c) - k2*(g2s + g2c)``;
-    ``adv = total - 2.0*state``; adv masked by this body's own owned-cell
-    predicate BEFORE the state store (:902); ``state <- state + adv`` in
-    place; ``curl <- curl - adv`` (the caller-subtracts sign convention,
-    :904, spelled as IEEE subtraction — addition of the negation — never
-    Triton unary minus). No dtdx anywhere in the tail (:836-837). All three
-    targets always run the tail (grid.py:744-753); with seeded state the
-    zero-k advance ``-2*state`` is byte-visible, so no arm skips it.
+    ``kernels.pml_curl_step``'s body, character for character, plus ONE constexpr-gated
+    insert after the three curl forms and before the stores: the BFAST pass
+    (``stepping._bfast_term`` then ``stepping._apply_folded_increment``), which MEEP
+    runs on each component right after its curl (step_db.cpp:124-142) on the same
+    gathered partners. Per target, :func:`.forms.bfast_advance` forms the new state
+    (MEEP's two roundings, the one-partner forms by the record's presence bits, the
+    plain branch on cells in neither the dsig nor the dsigu chunk) and the increment;
+    the increment is masked to ``+0`` and the state kept on the cells the curl's
+    ownership mask drops; the state is stored, and the increment goes through the
+    BFAST ladder (:func:`.forms.fold_ladder`) into the registers the forms returned.
+    ``HAS_BFAST = 0`` builds ``kernels.pml_curl_step`` exactly (the gate's identity
+    arm).
     """
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     live = idx < n_elem
@@ -399,6 +392,8 @@ def bfast_pml_curl_step(
     i = plane // ny
 
     # --- the ghost rule, per axis (stepping._shift_up / _shift_down) ------------
+    # PERIODIC wraps; METALLIC serves an exact 0.0 past the wall, which `tl.load`'s
+    # `other=` delivers without dereferencing anything.
     if BACKWARD:
         si, sj, sk = i - 1, j - 1, k - 1
     else:
@@ -432,58 +427,23 @@ def bfast_pml_curl_step(
     c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
     # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-    curl0 = dtdx * ((c_y - c) + (b - b_z))
-    curl1 = dtdx * ((a_z - a) + (c - c_x))
-    curl2 = dtdx * ((b_x - b) + (a - a_y))
-
-    # The ownership predicates, shared by the BFAST advance mask and the curl
-    # mask below (stepping._mask_non_owned_cells — the SAME predicate, applied
-    # to the advance at :902 and to the summed curl at :369/:450).
-    at_x, at_y, at_z = i == 0, j == 0, k == 0
-
-    # --- the BFAST tail (stepping._bfast_term :896-904), SHARED operands --------
-    # AFTER the dtdx curl, BEFORE the ownership mask — the array path's fold
-    # order. The sums pair each SHIFTED load with its center in the operand
-    # order of :896-897; no dtdx (:836-837); no unary minus anywhere.
-    if HAS_BFAST:
-        st0 = tl.load(s0 + idx, mask=live, other=0.0)
-        st1 = tl.load(s1 + idx, mask=live, other=0.0)
-        st2 = tl.load(s2 + idx, mask=live, other=0.0)
-        total0 = (k1_0 * (c_y + c)) - (k2_0 * (b_z + b))
-        total1 = (k1_1 * (a_z + a)) - (k2_1 * (c_x + c))
-        total2 = (k1_2 * (b_x + b)) - (k2_2 * (a_y + a))
-        adv0 = total0 - (2.0 * st0)
-        adv1 = total1 - (2.0 * st1)
-        adv2 = total2 - (2.0 * st2)
-        # --- advance ownership mask, BEFORE the state store (S:902) ---------
-        if BACKWARD:
-            if BCY == METALLIC:
-                adv0 = tl.where(at_y, 0.0, adv0)
-            if BCZ == METALLIC:
-                adv0 = tl.where(at_z, 0.0, adv0)
-            if BCX == METALLIC:
-                adv1 = tl.where(at_x, 0.0, adv1)
-            if BCZ == METALLIC:
-                adv1 = tl.where(at_z, 0.0, adv1)
-            if BCX == METALLIC:
-                adv2 = tl.where(at_x, 0.0, adv2)
-            if BCY == METALLIC:
-                adv2 = tl.where(at_y, 0.0, adv2)
-        else:
-            if BCX == METALLIC:
-                adv0 = tl.where(at_x, 0.0, adv0)
-            if BCY == METALLIC:
-                adv1 = tl.where(at_y, 0.0, adv1)
-            if BCZ == METALLIC:
-                adv2 = tl.where(at_z, 0.0, adv2)
-        tl.store(s0 + idx, st0 + adv0, mask=live)
-        tl.store(s1 + idx, st1 + adv1, mask=live)
-        tl.store(s2 + idx, st2 + adv2, mask=live)
-        curl0 = curl0 - adv0
-        curl1 = curl1 - adv1
-        curl2 = curl2 - adv2
+    # One call per target: MEEP's left-to-right association with both partners, the
+    # one-partner form where the record says the other partner's derivative axis is
+    # invariant, and an exact +0 with neither. The presence word is the record's
+    # (stepping.curl_presence, MEEP's have_plus_deriv / have_minus_deriv).
+    presence = tl.load(cb + RECORD_PRESENCE)
+    px = axis_present(presence, 0)
+    py = axis_present(presence, 1)
+    pz = axis_present(presence, 2)
+    curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+    curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+    curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
     # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
+    # Cell 0 of a metallic axis, for every target whose Yee shift there is 0. The
+    # B targets have a single zero shift each (Bx:x, By:y, Bz:z); the D targets
+    # have two (Dx:y,z  Dy:x,z  Dz:x,y). Masked, then the recurrence runs on zero.
+    at_x, at_y, at_z = i == 0, j == 0, k == 0
     if BACKWARD:
         if BCY == METALLIC:
             curl0 = tl.where(at_y, 0.0, curl0)
@@ -506,6 +466,8 @@ def bfast_pml_curl_step(
             curl2 = tl.where(at_z, 0.0, curl2)
 
     # --- split-field recurrence (stepping._apply_pml_update) -------------------
+    # dsig/dsigu follow vec.hpp's cycle_direction and are the same triple on both
+    # sides: target 0 takes (y, z), target 1 (z, x), target 2 (x, y).
     km_x = tl.load(kmx + i, mask=live, other=0.0)
     si_x = tl.load(sinvx + i, mask=live, other=0.0)
     km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -513,21 +475,91 @@ def bfast_pml_curl_step(
     km_z = tl.load(kmz + k, mask=live, other=0.0)
     si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-    p0 = tl.load(u0 + idx, mask=live, other=0.0)
-    n0 = ((p0 * km_y) - curl0) * si_y
-    v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+    # Which cells take the recurrence: the component's dsigu layer, on the component's
+    # own sub-lattice. The dsigu axis is z for target 0, x for 1 and y for 2 (vec.hpp
+    # cycle_direction); the sub-lattice is half-integer for every B target and integer
+    # for every D one (the iyee table), so each target's record line is a compile-time
+    # word index, chunk_map.record_index(half_integer, axis, 0).
+    if BACKWARD:
+        lattice = 0
+    else:
+        lattice = RECORD_HALF_INTEGER
+    du0 = record_in(cb, lattice + 8, k)
+    du1 = record_in(cb, lattice + 0, i)
+    du2 = record_in(cb, lattice + 4, j)
 
-    p1 = tl.load(u1 + idx, mask=live, other=0.0)
-    n1 = ((p1 * km_z) - curl1) * si_z
-    v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+    p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+    v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                       km_y, si_y, km_z, si_z, du0)
 
-    p2 = tl.load(u2 + idx, mask=live, other=0.0)
-    n2 = ((p2 * km_x) - curl2) * si_x
-    v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+    p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+    v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                       km_z, si_z, km_x, si_x, du1)
 
-    tl.store(u0 + idx, n0, mask=live)
-    tl.store(u1 + idx, n1, mask=live)
-    tl.store(u2 + idx, n2, mask=live)
+    p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+    v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                       km_x, si_x, km_y, si_y, du2)
+
+    # --- the BFAST pass (stepping._bfast_term, then stepping._apply_folded_increment)
+    # MEEP's STEP_BFAST on each component right after its STEP_CURL
+    # (step_db.cpp:124-142), on the SAME gathered partners, applied to the registers
+    # the forms returned (forms.bfast_advance: the state's two roundings, the
+    # one-partner forms by the record's presence bits, MEEP's plain branch on cells
+    # in neither the dsig nor the dsigu chunk). The increment is masked to +0, and
+    # the state kept, on the cells the curl's own mask drops (MEEP writes F inside
+    # its owned loop only); the BFAST ladder subtracts it (forms.fold_ladder). No
+    # dtdx anywhere: MEEP passes it to step_bfast and never reads it.
+    if HAS_BFAST:
+        ds0 = record_in(cb, lattice + 4, j)
+        ds1 = record_in(cb, lattice + 8, k)
+        ds2 = record_in(cb, lattice + 0, i)
+        st0 = tl.load(s0 + idx, mask=live, other=0.0)
+        st1 = tl.load(s1 + idx, mask=live, other=0.0)
+        st2 = tl.load(s2 + idx, mask=live, other=0.0)
+        bf0, q0 = bfast_advance(st0, c_y, c, b_z, b, k1_0, k2_0, py, pz, ds0 | du0)
+        bf1, q1 = bfast_advance(st1, a_z, a, c_x, c, k1_1, k2_1, pz, px, ds1 | du1)
+        bf2, q2 = bfast_advance(st2, b_x, b, a_y, a, k1_2, k2_2, px, py, ds2 | du2)
+        if BACKWARD:
+            if BCY == METALLIC:
+                q0 = tl.where(at_y, 0.0, q0)
+                bf0 = tl.where(at_y, st0, bf0)
+            if BCZ == METALLIC:
+                q0 = tl.where(at_z, 0.0, q0)
+                bf0 = tl.where(at_z, st0, bf0)
+            if BCX == METALLIC:
+                q1 = tl.where(at_x, 0.0, q1)
+                bf1 = tl.where(at_x, st1, bf1)
+            if BCZ == METALLIC:
+                q1 = tl.where(at_z, 0.0, q1)
+                bf1 = tl.where(at_z, st1, bf1)
+            if BCX == METALLIC:
+                q2 = tl.where(at_x, 0.0, q2)
+                bf2 = tl.where(at_x, st2, bf2)
+            if BCY == METALLIC:
+                q2 = tl.where(at_y, 0.0, q2)
+                bf2 = tl.where(at_y, st2, bf2)
+        else:
+            if BCX == METALLIC:
+                q0 = tl.where(at_x, 0.0, q0)
+                bf0 = tl.where(at_x, st0, bf0)
+            if BCY == METALLIC:
+                q1 = tl.where(at_y, 0.0, q1)
+                bf1 = tl.where(at_y, st1, bf1)
+            if BCZ == METALLIC:
+                q2 = tl.where(at_z, 0.0, q2)
+                bf2 = tl.where(at_z, st2, bf2)
+        tl.store(s0 + idx, bf0, mask=live)
+        tl.store(s1 + idx, bf1, mask=live)
+        tl.store(s2 + idx, bf2, mask=live)
+        v0, n0 = fold_ladder(v0, n0, q0, si_y, si_z, du0)
+        v1, n1 = fold_ladder(v1, n1, q1, si_z, si_x, du1)
+        v2, n2 = fold_ladder(v2, n2, q2, si_x, si_y, du2)
+
+    # fu is written on the recurrence's cells ONLY: outside them the dsig-only form
+    # reads and writes the field alone and fu keeps its word (the auxiliary contract).
+    tl.store(u0 + idx, n0, mask=live & du0)
+    tl.store(u1 + idx, n1, mask=live & du1)
+    tl.store(u2 + idx, n2, mask=live & du2)
     tl.store(f0 + idx, v0, mask=live)
     tl.store(f1 + idx, v1, mask=live)
     tl.store(f2 + idx, v2, mask=live)
@@ -624,52 +656,28 @@ def _bfast_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
                        "for BFAST runs; a k = 0 run belongs to the certified "
                        "plain kernels")
 
-    # 11a (THIS FAMILY'S OWN — no counterpart in coverage._grid_reasons).
-    #     A nonzero k component on a DECLARED-invariant axis is the one
-    #     reachable class where stepping.py's BFAST pass is not MEEP's answer,
-    #     so this product refuses to reproduce it faster.
-    #
-    #     WHY THIS EXACT PREDICATE. MEEP nulls the OPERAND as well as zeroing
-    #     the coefficient (step_db.cpp:62-63 vs :130-133); step_bfast swaps a
-    #     null g1 into the g2 slot carrying k1 := k2 (step_generic.cpp:342-346)
-    #     and then runs its single-operand branch, so either false flag gives
-    #     F_new = -F_prev with the other term DROPPED. stepping.py:911-912
-    #     zeroes only the coefficient and keeps the other product (:923-924).
-    #     Per term the two therefore differ exactly when the SURVIVING k is
-    #     nonzero, and that condition collapses to a single grid-level test:
-    #     for Bx, !have_m means invariant[z] while the surviving k2 = k_z; for
-    #     By, !have_m means invariant[x] while k1 = k_z... — enumerating all
-    #     six targets on both sides, every case reads "axis a is invariant AND
-    #     bfast_scaled_k[a] != 0". A missing/unanswerable is_invariant is
-    #     refused outright rather than read as "not invariant": inferring
-    #     admission from an absent reader is the attribute-absence trap
-    #     _curl_conductivity_reasons already names.
+    # 11a. The k assignment reads ``bfast_scaled_k`` and the declared invariance of
+    #     every axis (``bfast_curl_coefficients``, stepping._bfast_term). A missing or
+    #     unanswerable reader is refused outright rather than read as "not
+    #     invariant": inferring admission from an absent reader is the
+    #     attribute-absence trap _curl_conductivity_reasons already names. A nonzero
+    #     k on a declared-invariant axis is ADMITTED: the array path now takes MEEP's
+    #     one-partner forms there (the absent partner is not read, step_db.cpp:62-63
+    #     and step_generic.cpp:342-346), and so does this kernel.
     bfast_k = getattr(grid, "bfast_scaled_k", None)
     reader = getattr(grid, "is_invariant", None)
     if bfast_k is None or not callable(reader):
         reasons.append("grid does not expose both bfast_scaled_k and a "
-                       "callable is_invariant; the invariant-axis clause "
-                       "cannot be answered, and an unanswerable question is "
-                       "not coverage")
+                       "callable is_invariant; the k assignment cannot be "
+                       "formed, and an unanswerable question is not coverage")
     else:
         for axis in range(3):
             try:
-                invariant = bool(reader(axis))
-                component = float(bfast_k[axis])
+                bool(reader(axis))
+                float(bfast_k[axis])
             except Exception as exc:  # noqa: BLE001 - unreadable is not covered
-                reasons.append(f"the invariant-axis clause could not be "
-                               f"answered on axis {axis}: {exc!r}")
-                continue
-            if invariant and component != 0.0:
-                reasons.append(
-                    f"bfast_scaled_k[{axis}] = {component!r} on "
-                    f"DECLARED-invariant axis {axis}: MEEP nulls the partner "
-                    f"OPERAND as well as zeroing the coefficient "
-                    f"(step_db.cpp:62-63 + step_generic.cpp:342-346), so its "
-                    f"increment there is F_new = -F_prev; stepping.py:911-924 "
-                    f"zeroes only the coefficient and keeps the other product "
-                    f"— this kernel transcribes stepping.py, so the pairing is "
-                    f"refused rather than accelerated")
+                reasons.append(f"the k assignment could not be read on axis "
+                               f"{axis}: {exc!r}")
 
     # 12. Beta KEPT refused: the beta-then-bfast fold ORDER (stepping.py
     #     :384-391 before :392-396) is byte-significant, so the composition
@@ -825,31 +833,36 @@ class BfastPmlCurlPlan:
     """A launchable, allocation-free REAL BFAST PML curl sub-step.
 
     ``launch.PmlCurlPlan`` plus the three state pointers, the six host-rounded
-    scalars and the ``HAS_BFAST`` constexpr. Same two construction routes and
-    one launch route: :func:`plan_bfast_pml_curl` from the engine's objects
-    through the predicate, :func:`plan_bfast_pml_curl_from_arrays` from bare
-    device arrays for the gate (including the deliberately wrong ones), both
-    launched through :meth:`run`.
+    scalars and the ``HAS_BFAST`` constexpr. Same two construction routes and one
+    launch route: :func:`plan_bfast_pml_curl` from the engine's objects through the
+    predicate, :func:`plan_bfast_pml_curl_from_arrays` from bare device arrays for the
+    gate (including the deliberately wrong ones), both launched through :meth:`run`.
+    ``chunk_bounds`` is the chunk record, required (``launch.bind_chunk_bounds``).
 
-    The state pointers wrap the engine's OWN ``f_bfast_*`` arrays — the
-    in-place, pointer-identical mutation the driver's flux backup/restore
-    depends on (driver.py:4126-4135); the gate's m9 leg holds that identity.
+    The state pointers wrap the engine's OWN ``f_bfast_*`` arrays — the in-place,
+    pointer-identical mutation the driver's flux backup/restore depends on; the gate
+    holds that identity.
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "ks", "has_bfast",
-                 "backward", "bc", "block", "num_warps", "_targets", "_aux",
-                 "_sources", "_states", "_coefficients", "_grid", "_kernel")
+                 "backward", "bc", "block", "num_warps", "chunk_bounds", "_targets",
+                 "_aux", "_sources", "_states", "_coefficients", "_cb", "_grid",
+                 "_kernel")
 
     def __init__(self, sub_step: str, shape, dtdx: float, bc,
                  ks: Sequence[float], block: int,
                  targets, auxiliaries, sources, states, coefficients,
                  kernel=None, num_warps: Optional[int] = None,
-                 has_bfast: int = 1) -> None:
+                 has_bfast: int = 1, *, chunk_bounds: Any) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
+        from .launch import bind_chunk_bounds  # noqa: PLC0415
+
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "BfastPmlCurlPlan")
         self.dtdx = float(dtdx)
         # Already f32-rounded by the host (bfast_curl_coefficients); float()
         # keeps the bits, and Triton types a Python float argument as fp32.
@@ -879,7 +892,7 @@ class BfastPmlCurlPlan:
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
         kernel[self._grid](
             *self._targets, *self._aux, *self._sources, *self._states,
-            *self._coefficients,
+            *self._coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
             *self.ks,
             BACKWARD=self.backward,
@@ -893,21 +906,23 @@ class BfastPmlCurlPlan:
     def __repr__(self) -> str:
         return (f"BfastPmlCurlPlan({self.sub_step}, shape={self.shape}, "
                 f"bc={self.bc}, ks={self.ks!r}, has_bfast={self.has_bfast}, "
-                f"block={self.block}, num_warps={self.num_warps})")
+                f"block={self.block}, num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_bfast_pml_curl(fields: Any, pml: Any, sub_step: str,
                         block: Optional[int] = None,
-                        num_warps: Optional[int] = None
+                        num_warps: Optional[int] = None,
+                        chunk_layout: Any = None
                         ) -> Optional[BfastPmlCurlPlan]:
     """Build a BFAST curl plan from the engine's objects, or None.
 
     None is the only refusal (Y-style). The six scalars come from
     :func:`bfast_curl_coefficients` with the grid's OWN declared-dimensionality
-    invariance flags (grid.py:1165-1183 — never a shape test) and the
-    sub-step's side — identical arithmetic to the array path's per-call-site
-    computation. The state arrays bound are ``fields.f_bfast_*`` themselves,
-    pointer-identical (the driver-sync requirement).
+    invariance flags (never a shape test) and the sub-step's side — identical
+    arithmetic to the array path's. The state arrays bound are ``fields.f_bfast_*``
+    themselves, pointer-identical (the driver-sync requirement). ``chunk_layout`` is
+    the run's chunk division, ``None`` for the one-rank default.
     """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
@@ -933,6 +948,7 @@ def plan_bfast_pml_curl(fields: Any, pml: Any, sub_step: str,
         [getattr(pml, f"{stem}_{axis}{spec['suffix']}")
          for axis in "xyz" for stem in ("kms", "sinv")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
@@ -942,15 +958,17 @@ def plan_bfast_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
                                     block: Optional[int] = None,
                                     kernel: Any = None,
                                     num_warps: Optional[int] = None,
-                                    has_bfast: int = 1) -> BfastPmlCurlPlan:
+                                    has_bfast: int = 1, *,
+                                    chunk_bounds: Any) -> BfastPmlCurlPlan:
     """Build a BFAST curl plan from bare device arrays — the gate's route.
 
-    No predicate runs: the caller is a harness that constructed the
-    configuration deliberately, including the deliberately wrong ones;
-    ``kernel=`` carries the mutation override, ``ks`` the (possibly
-    deliberately wrong) six scalars, and ``has_bfast=0`` the identity leg's
-    certified-kernel arm. ``arrays`` must carry the sub-step's three
-    ``f_bfast_*`` states beside its targets, auxiliaries and sources.
+    No predicate runs: the caller is a harness that constructed the configuration
+    deliberately, including the deliberately wrong ones; ``kernel=`` carries the
+    mutation override, ``ks`` the (possibly deliberately wrong) six scalars, and
+    ``has_bfast=0`` the identity leg's root-kernel arm. ``arrays`` must carry the
+    sub-step's three ``f_bfast_*`` states beside its targets, auxiliaries and sources.
+    ``chunk_bounds`` has NO default: a harness plan built without a record is refused
+    by name (``launch.bind_chunk_bounds``).
     """
     spec = SUB_STEPS[sub_step]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
@@ -963,20 +981,22 @@ def plan_bfast_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
         [arrays[name] for name in BFAST_STATE_NAMES[sub_step]],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
         kernel=kernel, num_warps=num_warps, has_bfast=has_bfast,
+        chunk_bounds=chunk_bounds,
     )
 
 
 def plan_bfast_run_constitutive(fields: Any, pml: Any, side: str,
                                 block: Optional[int] = None,
-                                num_warps: Optional[int] = None
+                                num_warps: Optional[int] = None,
+                                chunk_layout: Any = None
                                 ) -> Optional[ConstitutivePlan]:
-    """A CERTIFIED real constitutive plan for a BFAST run, or None.
+    """A root real constitutive plan for a BFAST run, or None.
 
-    The arithmetic and the plan class are ``launch.ConstitutivePlan``'s,
-    untouched; only the ADMISSION is this module's
-    (:func:`bfast_run_constitutive_coverage`, the shipped predicate with the
-    BFAST clause inverted). The binding below restates
-    ``launch.plan_constitutive``'s.
+    The arithmetic and the plan class are ``launch.ConstitutivePlan``'s, untouched;
+    only the ADMISSION is this module's (:func:`bfast_run_constitutive_coverage`, the
+    root predicate with the BFAST clause inverted). The binding restates
+    ``launch.plan_constitutive``'s: the run's chunk record (``chunk_layout``, ``None``
+    for the one-rank default), and on the H side MEEP's start of H from ``fields``.
     """
     if side not in CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, got {side!r}")
@@ -994,6 +1014,8 @@ def plan_bfast_run_constitutive(fields: Any, pml: Any, side: str,
         [getattr(pml, f"{stem}_{axis}{suffix}")
          for axis in "xyz" for stem in ("kps", "kms")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        h_state=fields,
     )
 
 

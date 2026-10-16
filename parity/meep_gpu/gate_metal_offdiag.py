@@ -52,6 +52,30 @@ THE TEN LEGS:
                     docstring for why re-pointing that assertion is a strictly
                     stronger check and not a relaxation)
 
+RULING R7: SOFTWARE BINARY64. The array path forms the off-diagonal row in float64
+and rounds once (``stepping._offdiagonal_terms``, ``_rounded_row``): ``gs*us`` in
+float32 widened, each term's float32 pair sum wall-masked and scaled by MEEP's double
+0.25, added left to right where the cell's chunk keeps the term, one rounding. The
+kernel forms it with :mod:`meep_gpu.metal_kernels.softfp64`, so every leg above
+compares the kernel with ``stepping.py`` on GENERIC states, where a float32 row would
+differ in about 1.6 % of words, and the in-gate transcription forms the same double
+row. Two legs are added:
+
+  b_select  the per-chunk tail (KERNELS.md §7.2 B battery) on EXACT-ROW states:
+            dyadic words, so every differing word is the tail's, with the battery's
+            must-catch mutations and its declared null
+  presence  the 27-bit presence words (KERNELS.md §2): a row zero in the PML chunks
+            on metallic walls, D = -0 on the row component so a dropped term and an
+            added +0 differ; the kernel 0 words from ``stepping.py``, the words not
+            all-kept and expanding back to the array path's presence, and the
+            presence-ignored and presence-cleared mutants caught
+
+The mutation leg carries the float32 row (the pre-R7 spelling) as must-catch on
+two-term masks, the terms-grouped-first double row as must-catch on a planted
+cancelling-terms state (the only state class where binary64's association reaches a
+float32 word: random states, wide-exponent rows included, measured it null), and the
+quarter formed in float32 as a declared null under the subnormal-free precondition.
+
 CASE DISCIPLINE, inherited and non-negotiable: uint32 compares never ``allclose``;
 a non-power-of-two Courant in every sweep; every case proves the step MOVED STATE
 **and** that its reference bytes DIFFER from a coefficient-dropped diagonal control
@@ -107,7 +131,7 @@ if API_ROOT not in sys.path:
 # certified under.
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 
-from meep_gpu import stepping  # noqa: E402
+from meep_gpu import chunk_map, stepping  # noqa: E402
 from meep_gpu.dispersion import PolarizationState, Susceptibility  # noqa: E402
 from meep_gpu.fields import IYEE_SHIFTS, Fields  # noqa: E402
 from meep_gpu.grid import Grid  # noqa: E402
@@ -142,6 +166,7 @@ from metal_gate_kit import (  # noqa: E402
     summarize,
     wanted_legs,
 )
+from gate_chunk_records import layer_record  # noqa: E402
 
 
 def allclose_passes(left: Any, right: Any, rtol: float = 1e-5,
@@ -491,27 +516,77 @@ def _shifted(array: Any, axis: int, up: bool, code: int) -> Any:
     return out
 
 
+def gate_presence(grid: Any, pml: Any, slots: Sequence[Optional[Any]],
+                  codes: Sequence[int], record: Any) -> Tuple[List[Any], Tuple[int, ...]]:
+    """``(per-slot presence volumes, the six words)`` for one run, as the array path
+    reads them: ``ChunkLayout.offdiag_presence`` on the one-rank division
+    (``stepping._chunk_layout`` of a ``Fields`` with no installed division), and the
+    words through the kernel's own host builder (refused by name if the record
+    cannot carry them). ``None`` volumes add the term everywhere."""
+    layout = chunk_map.ChunkLayout.one_rank(grid, pml)
+    masks: List[Any] = []
+    words: List[int] = []
+    for (row, partner), value in zip(offdiag.ROW_SLOTS, slots):
+        if value is None:
+            masks.append(None)
+            words.append(offdiag.ALL_CHUNKS_KEPT)
+            continue
+        present = layout.offdiag_presence(value, IYEE_SHIFTS[row])
+        masks.append(None if present is None else np.asarray(present, dtype=bool))
+        chunk_codes = (None if present is None else offdiag.cell_chunk_codes(
+            record, IYEE_SHIFTS[row], tuple(grid.shape), codes))
+        words.append(offdiag.presence_word(present, chunk_codes,
+                                           f"chi1inv_offdiag[{row}][{partner}]"))
+    return masks, tuple(words)
+
+
 def reference_offdiag(targets: Sequence[Any], aux: Sequence[Any],
                       sources: Sequence[Any], inverse_epsilon: Sequence[Any],
                       rows: Sequence[Optional[Any]], coefficients: Dict[str, Any],
                       codes: Sequence[int], walls: Sequence[int],
+                      record: Any, presence: Optional[Sequence[Any]] = None,
                       hoist: bool = False, same_direction: bool = False,
-                      distribute_quarter: bool = False,
+                      quarter_in_float32: bool = False,
                       drop_wall_mask: bool = False,
                       overapply_wall_mask: bool = False,
                       commute_row_sum: bool = False,
-                      store_before_load: bool = False) -> None:
+                      store_before_load: bool = False,
+                      previous_grouping: bool = False,
+                      select_removed: bool = False,
+                      float32_row: bool = False,
+                      group_terms_first: bool = False,
+                      drop_presence: bool = False) -> None:
     """``stepping.update_E``'s off-diagonal branch, transcribed elementwise, in place.
 
     The keyword flags are the HOST-SIDE mutations: they let the mutation leg plant a
     defect in the ORACLE and confirm the harness would have caught it, which is what
     separates "the kernel matches the reference" from "the reference is right".
     Every flag defaults to the transcribed behaviour.
+
+    THE ROW IS THE DOUBLE ROW (``stepping._offdiagonal_terms``, ``_rounded_row``):
+    ``gs*us`` in float32, widened; per live term the float32 pair sum
+    ``(g + g_down)*u + shift_up((g + g_down)*u)``, wall-masked, scaled by the double
+    0.25 and added left to right where ``presence`` (one volume or ``None`` per
+    slot) keeps it; one rounding to float32. ``float32_row`` plants the pre-R7
+    float32 row, ``group_terms_first`` the double row with the two terms summed
+    first, ``quarter_in_float32`` the quarter applied to the float32 sum before
+    widening (a null under the subnormal-free precondition), ``drop_presence`` the
+    term added everywhere.
+
+    THE TAIL IS THE PER-CHUNK SELECT (``stepping._apply_constitutive_regions``):
+    on a cell whose chunk carries the component's own layer (``record``'s
+    half-integer line on its own axis) ``prev`` is read before ``f_w`` is written and
+    ``E = E + ((kps*src) - (kms*prev))``; elsewhere ``E = src`` and ``f_w`` is left
+    alone. ``previous_grouping`` plants the package's previous
+    ``((E + kps*src) - kms*prev)`` and ``select_removed`` the previous whole-grid
+    accumulation.
     """
+    quarter32 = np.float32(0.25)
     for component, (_name, _source, own_axis) in enumerate(offdiag.E_TERMS):
         gs = sources[component]
         us = inverse_epsilon[component]
-        total = None
+        diagonal = gs * us
+        terms: List[Tuple[Any, Any]] = []
         for offset in (0, 1):
             coefficient = rows[2 * component + offset]
             if coefficient is None:
@@ -526,16 +601,12 @@ def reference_offdiag(targets: Sequence[Any], aux: Sequence[Any],
                 # THE DEFECT: a plain four-point average times u[i]. Same algebra
                 # only for a uniform coefficient, and bitwise different even then.
                 four = pair + _shifted(pair, own_axis, up=True, code=codes[own_axis])
-                term = 0.25 * (four * coefficient)
+                summed = four * coefficient
             else:
                 product = pair * coefficient
-                shifted = _shifted(product, own_axis, up=True, code=codes[own_axis])
-                if distribute_quarter:
-                    term = 0.25 * product + 0.25 * shifted
-                else:
-                    term = 0.25 * (product + shifted)
-            total = term if total is None else total + term
-        if total is not None:
+                summed = product + _shifted(product, own_axis, up=True,
+                                            code=codes[own_axis])
+            summed = np.array(summed, dtype=np.float32, copy=True)
             if not drop_wall_mask:
                 axes = (range(3) if overapply_wall_mask
                         else offdiag.WALL_MASK_AXES[component])
@@ -543,21 +614,59 @@ def reference_offdiag(targets: Sequence[Any], aux: Sequence[Any],
                     if walls[axis]:
                         index: List[Any] = [slice(None)] * 3
                         index[axis] = 0
-                        total[tuple(index)] = 0
-            constitutive = (total + gs * us) if commute_row_sum else (gs * us + total)
+                        summed[tuple(index)] = 0
+            present = (None if presence is None or drop_presence
+                       else presence[2 * component + offset])
+            terms.append((summed, present))
+        if not terms:
+            constitutive = diagonal
+        elif float32_row:
+            total = None
+            for summed, _present in terms:
+                term = quarter32 * summed
+                total = term if total is None else total + term
+            constitutive = (total + diagonal) if commute_row_sum else (diagonal + total)
         else:
-            constitutive = gs * us
+            row = diagonal.astype(np.float64)
+            scaled = [((quarter32 * summed).astype(np.float64) if quarter_in_float32
+                       else 0.25 * summed.astype(np.float64), present)
+                      for summed, present in terms]
+            if group_terms_first and len(scaled) == 2:
+                assert all(present is None for _t, present in scaled), (
+                    "group_terms_first is planted only on all-kept rows")
+                row = row + (scaled[0][0] + scaled[1][0])
+            else:
+                for term, present in scaled:
+                    added = (term + row) if commute_row_sum else (row + term)
+                    row = added if present is None else np.where(present, added, row)
+            constitutive = row.astype(np.float32)
         axis_name = "xyz"[own_axis]
         kps = coefficients["kps_" + axis_name]
         kms = coefficients["kms_" + axis_name]
+        inside = own_axis_membership(record, targets[component].shape, own_axis)
+        if select_removed:
+            inside = np.ones(targets[component].shape, dtype=bool)
         if store_before_load:
-            aux[component][...] = constitutive
+            aux[component][...] = np.where(inside, constitutive, aux[component])
             previous = aux[component].copy()
         else:
             previous = aux[component].copy()
-            aux[component][...] = constitutive
-        targets[component] += kps * aux[component]
-        targets[component] -= kms * previous
+            aux[component][...] = np.where(inside, constitutive, aux[component])
+        if previous_grouping:
+            accumulated = (targets[component] + kps * constitutive) - kms * previous
+        else:
+            accumulated = targets[component] + ((kps * constitutive)
+                                                - (kms * previous))
+        targets[component][...] = np.where(inside, accumulated, constitutive)
+
+
+def own_axis_membership(record: Any, shape: Sequence[int], own_axis: int) -> Any:
+    """The component's ``dsigw`` membership: the record's half-integer own-axis line."""
+    line = chunk_map.membership_from_record(record, True, own_axis,
+                                            int(shape[own_axis]))
+    view = [1, 1, 1]
+    view[own_axis] = int(shape[own_axis])
+    return np.broadcast_to(line.reshape(view), tuple(int(n) for n in shape))
 
 
 def reference_state(state: Dict[str, Any], pml, rows: Sequence[Optional[Any]],
@@ -565,12 +674,14 @@ def reference_state(state: Dict[str, Any], pml, rows: Sequence[Optional[Any]],
                     **flags: Any) -> Dict[str, Any]:
     """Run the transcription over a copy of one state and return the result."""
     arrays = {name: np.array(state[name], copy=True) for name in state}
+    record = layer_record(pml.grid, pml)
+    masks, _words = gate_presence(pml.grid, pml, rows, codes, record)
     reference_offdiag(
         [arrays[t[0]] for t in offdiag.E_TERMS],
         [arrays["f_w_" + t[0]] for t in offdiag.E_TERMS],
         [arrays[t[1]] for t in offdiag.E_TERMS],
         inverse_epsilon, rows, constitutive_coefficients(pml), codes, walls,
-        **flags)
+        record, masks, **flags)
     return arrays
 
 
@@ -583,8 +694,14 @@ def run_on_device(state: Dict[str, Any], pml, rows_map: Dict[str, Dict[str, Any]
                   source: Optional[str] = None,
                   contract: str = shaders.CONTRACT_OFF,
                   suffix: str = "_h",
-                  counter: Optional[List[Counter]] = None) -> Dict[str, Any]:
+                  counter: Optional[List[Counter]] = None,
+                  record: Any = None,
+                  residency: Any = None,
+                  presence: Any = None) -> Dict[str, Any]:
     """One launch through the SHIPPED plan object, returning the host results.
+
+    ``presence`` is the six words the plan binds; ``None`` builds them as the array
+    path reads its presence (:func:`gate_presence`, against the one-rank record).
 
     Everything goes through ``plan_offdiag_constitutive_from_arrays`` ->
     ``KernelPlan.run`` so the bytes this gate certifies are the bytes the engine
@@ -602,7 +719,7 @@ def run_on_device(state: Dict[str, Any], pml, rows_map: Dict[str, Dict[str, Any]
     flat = {key: np.asarray(value).reshape(-1)
             for key, value in constitutive_coefficients(pml, suffix).items()}
 
-    residency = device.Residency()
+    residency = device.Residency() if residency is None else residency
     functions = None
     if source is not None or contract != shaders.CONTRACT_OFF:
         row_values = tuple((rows_map.get(row) or {}).get(partner)
@@ -615,8 +732,13 @@ def run_on_device(state: Dict[str, Any], pml, rows_map: Dict[str, Dict[str, Any]
             function = Counter(function)
             counter.append(function)
         functions = {shaders.CONTRACT_OFF: function}
+    if presence is None:
+        _masks, presence = gate_presence(pml.grid, pml, rows_as_slots(rows_map), codes,
+                                         layer_record(pml.grid, pml))
     plan = offdiag.plan_offdiag_constitutive_from_arrays(
-        arrays, flat, rows_map, codes, walls, residency, functions=functions)
+        arrays, flat, rows_map, codes, walls, residency, functions=functions,
+        chunk_bounds=layer_record(pml.grid, pml) if record is None else record,
+        presence=presence)
     plan.run()
     residency.sync_out()
     assert plan.launches == 1, (
@@ -644,7 +766,8 @@ def run_certified_constitutive(state: Dict[str, Any], pml,
     flat = {key: np.asarray(value).reshape(-1)
             for key, value in constitutive_coefficients(pml, "_h").items()}
     residency = device.Residency()
-    plan = metal_launch.plan_constitutive_from_arrays("E", arrays, flat, residency)
+    plan = metal_launch.plan_constitutive_from_arrays(
+        "E", arrays, flat, residency, chunk_bounds=layer_record(pml.grid, pml))
     plan.run()
     residency.sync_out()
     return arrays
@@ -697,11 +820,13 @@ def leg_transcription(payload: Dict[str, Any], out: str, cycles: int = 3) -> Non
                           for key, value in mirror.items()}
                 stepping.update_E(fields, pml)
                 oracle = snapshot(fields)
+                record = layer_record(pml.grid, pml)
                 reference_offdiag(
                     [mirror[t[0]] for t in offdiag.E_TERMS],
                     [mirror["f_w_" + t[0]] for t in offdiag.E_TERMS],
                     [mirror[t[1]] for t in offdiag.E_TERMS],
-                    inverse, slots, constitutive_coefficients(pml), codes, walls)
+                    inverse, slots, constitutive_coefficients(pml), codes, walls,
+                    record, gate_presence(pml.grid, pml, slots, codes, record)[0])
                 worst = max(worst, sum(differing(mirror[n], oracle[n])
                                        for n in COMPARED))
                 moved_total += assert_state_moved(before, oracle, COMPARED,
@@ -745,7 +870,9 @@ def leg_transcription(payload: Dict[str, Any], out: str, cycles: int = 3) -> Non
                                "registration error"),
             ("drop_wall_mask", "the metallic wall-coupling mask dropped"),
             ("overapply_wall_mask", "the mask applied to the component's OWN axis"),
-            ("store_before_load", "f_w written before prev is read")):
+            ("store_before_load", "f_w written before prev is read"),
+            ("float32_row", "the row summed in float32 with 0.25f, the pre-R7 "
+                            "spelling: the array path's row is a double one")):
         broken = reference_state(base, pml, slots, inverse, codes, walls,
                                  **{flag: True})
         delta = sum(differing(broken[n], oracle[n]) for n in COMPARED)
@@ -764,9 +891,11 @@ def leg_transcription(payload: Dict[str, Any], out: str, cycles: int = 3) -> Non
     # kernel-side mutation leg carries. Measured here as well because a null that
     # holds only in one implementation is a coincidence rather than a derivation.
     for flag, why in (
-            ("distribute_quarter", "0.25 is an exact power of two, so scaling by "
-                                   "it commutes with round-to-nearest"),
-            ("commute_row_sum", "f32 addition is bitwise commutative")):
+            ("quarter_in_float32", "0.25 is an exact power of two, so 0.25f * sum "
+                                   "is exact in float32 wherever the result is "
+                                   "normal, and widening it equals scaling the "
+                                   "widened sum"),
+            ("commute_row_sum", "binary64 addition is bitwise commutative")):
         null = reference_state(base, pml, slots, inverse, codes, walls,
                                **{flag: True})
         delta = sum(differing(null[n], oracle[n]) for n in COMPARED)
@@ -832,7 +961,8 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
         after = snapshot(oracle_fields)
 
         residency = device.Residency()
-        plan = offdiag.plan_offdiag_constitutive(fields, pml, residency)
+        plan = offdiag.plan_offdiag_constitutive(
+            fields, pml, residency, chunk_bounds=layer_record(grid, pml))
         assert plan is not None, offdiag.offdiag_constitutive_coverage(
             fields, pml, residency).reasons
 
@@ -862,8 +992,9 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
         cpu_residency = device.Residency(device="cpu")
         cpu_grid, cpu_fields, cpu_pml = build(cell, boundaries, 0.35, SEED,
                                               form="varying_full")
-        cpu_plan = offdiag.plan_offdiag_constitutive(cpu_fields, cpu_pml,
-                                                     cpu_residency)
+        cpu_plan = offdiag.plan_offdiag_constitutive(
+            cpu_fields, cpu_pml, cpu_residency,
+            chunk_bounds=layer_record(cpu_grid, cpu_pml))
         assert cpu_plan is not None, (
             "the CPU-resident registry was refused at PLAN time, so this leg never "
             "reached the question it exists to ask")
@@ -952,7 +1083,8 @@ def leg_reference(payload: Dict[str, Any], out: str) -> None:
 
                     restore(fields, before)
                     residency = device.Residency()
-                    plan = offdiag.plan_offdiag_constitutive(fields, pml, residency)
+                    plan = offdiag.plan_offdiag_constitutive(
+                        fields, pml, residency, chunk_bounds=layer_record(grid, pml))
                     assert plan is not None, offdiag.offdiag_constitutive_coverage(
                         fields, pml, residency).reasons
                     plan.run()
@@ -1694,9 +1826,9 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
                     "integer node (anisotropic_averaging.cpp:248-257)"),
             "apply": lambda s: needle(
                 s,
-                "    float term_00 = 0.25f * ((near_00 * unear_00)"
-                " + (far_00 * ufar_00));",
-                "    float term_00 = 0.25f * ((near_00 + far_00) * unear_00);"),
+                "    float sum_00 = (near_00 * unear_00)"
+                " + (far_00 * ufar_00);",
+                "    float sum_00 = (near_00 + far_00) * unear_00;"),
         },
         "m2_both_shifts_same_direction": {
             "must_catch": True,
@@ -1737,8 +1869,8 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
             "why": ("the coupling reads LIVE partner volumes beside a metallic "
                     "wall whose tangential E is never stepped (measured 2.6e-02 "
                     "unmasked against a 2.0e-07 floor masked)"),
-            "apply": lambda s: needle(s, "    total0 = at_y ? 0.0f : total0;",
-                                      "    // wall mask dropped on component 0/y"),
+            "apply": lambda s: needle(s, "    sum_00 = at_y ? 0.0f : sum_00;",
+                                      "    // wall mask dropped on term 00/y"),
             "codes": (METALLIC, METALLIC, PERIODIC),
         },
         "m7_overapply_the_wall_mask": {
@@ -1746,9 +1878,9 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
             "why": ("only the axes where the component's Yee shift is 0 are masked; "
                     "masking its OWN axis zeroes a plane MEEP steps"),
             "apply": lambda s: needle(
-                s, "    total0 = at_y ? 0.0f : total0;",
-                "    total0 = at_y ? 0.0f : total0;\n"
-                "    total0 = at_x ? 0.0f : total0;"),
+                s, "    sum_00 = at_y ? 0.0f : sum_00;",
+                "    sum_00 = at_y ? 0.0f : sum_00;\n"
+                "    sum_00 = at_x ? 0.0f : sum_00;"),
             "codes": (METALLIC, METALLIC, PERIODIC),
         },
         "m8_store_before_load": {
@@ -1756,9 +1888,9 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
             "why": ("`prev` must be read BEFORE f_w is written (stepping.py:2137); "
                     "reversed it is wrong only where kms != 0, i.e. INSIDE THE PML "
                     "ONLY, and looks like a slightly worse absorber"),
-            "apply": lambda s: needle(s, "    float prev0 = w0[ii];",
-                                      "    w0[ii] = 0.0f;\n"
-                                      "    float prev0 = w0[ii];"),
+            "apply": lambda s: needle(s, "    float prev0 = dw0 ? w0[ii] : 0.0f;",
+                                      "    if (dw0) { w0[ii] = 0.0f; }\n"
+                                      "    float prev0 = dw0 ? w0[ii] : 0.0f;"),
         },
         "m9_contract_on": {
             "must_catch": True,
@@ -1767,13 +1899,15 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
             "apply": lambda s: needle(s, shaders.contraction_pragma("off"),
                                       shaders.contraction_pragma("fast")),
         },
-        "m10_flatten_the_pml_accumulation": {
+        "m10_previous_accumulation_grouping": {
             "must_catch": True,
-            "why": ("`((f + kps*src) - kms*prev)` flattened to "
-                    "`f + (kps*src - kms*prev)` is a different float32 number"),
+            "why": ("INVERTED (KERNELS.md §7.1): the shipped tail is MEEP's "
+                    "`f + ((kps*src) - (kms*prev))` (step_generic.cpp:689, :697); the "
+                    "package's previous `((f + kps*src) - kms*prev)` is a different "
+                    "float32 number, planted here and must-catch"),
             "apply": lambda s: needle(
-                s, "    a0 = a0 + kp_0 * src0;\n    a0 = a0 - km_0 * prev0;",
-                "    a0 = a0 + (kp_0 * src0 - km_0 * prev0);"),
+                s, "    if (dw0) { a0 = f0[ii] + ((kp_0 * src0) - (km_0 * prev0)); }",
+                "    if (dw0) { a0 = (f0[ii] + kp_0 * src0) - km_0 * prev0; }"),
         },
         # --- THE INDEX AND AXIS ARMS, added 2026-08-15 ----------------------
         # Six assembled flat-index expressions and a per-component coefficient
@@ -1833,16 +1967,16 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
                     "f_w (stepping.py:2137-2143); crossing the three auxiliaries "
                     "mixes polarizations inside the absorber. Measured 1,080 "
                     "differing words"),
-            "apply": lambda s: needle(s, "    float prev0 = w0[ii];",
-                                      "    float prev0 = w1[ii];"),
+            "apply": lambda s: needle(s, "    float prev0 = dw0 ? w0[ii] : 0.0f;",
+                                      "    float prev0 = dw0 ? w1[ii] : 0.0f;"),
         },
         "m20_null_partner_axis_metallic_near_ghost_wrapped": {
             "must_catch": False,
             "why": ("RECORDED NULL, AND NOW MEASURED — it used to be recorded as "
                     "'NOT MEASURED BY MUTATION'. The partner-axis metallic NEAR "
                     "ghost's entire support is the partner-axis face-0 plane, and "
-                    "the wall-coupling mask zeroes the whole total on that plane "
-                    "BEFORE the row sum (a metallic partner axis is always a "
+                    "the wall-coupling mask zeroes each term's pair sum on that "
+                    "plane BEFORE its scale (a metallic partner axis is always a "
                     "Yee-shift-0 transverse axis of the component, so the mask "
                     "covers exactly it). Wrapping the ghost instead of zeroing it "
                     "therefore moves 0 words. Its sensitivity control is m21: the "
@@ -1864,31 +1998,118 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
                 s, "    dvx = (di >= 0);\n    uvx = (ui < nxi);",
                 "    dvx = (di >= 0);\n    ui = (ui == nxi) ? 0 : ui;"),
         },
-        "m11_null_distribute_the_quarter": {
+        "m11_null_quarter_in_float32": {
             "must_catch": False,
             "why": ("RECORDED NULL with a derivation: 0.25 is an exact power of "
-                    "two, so scaling by it commutes with round-to-nearest (the "
-                    "rounding grid scales exactly) and 0.25*(A+B) == 0.25*A + "
-                    "0.25*B bitwise wherever nothing is subnormal. The transcribed "
-                    "association is fidelity, not a pinned grouping"),
+                    "two, so 0.25f * sum is exact in float32 wherever the result is "
+                    "normal (the subnormal-free precondition), and widening it is "
+                    "the same binary64 word as scaling the widened sum. The double "
+                    "scale is MEEP's spelling (a double literal) and is kept for "
+                    "fidelity, and because below 4 * 2**-126 the float32 product "
+                    "flushes where the double scale does not"),
             "apply": lambda s: needle(
                 s,
-                "    float term_00 = 0.25f * ((near_00 * unear_00)"
-                " + (far_00 * ufar_00));",
-                "    float term_00 = (0.25f * (near_00 * unear_00))"
-                " + (0.25f * (far_00 * ufar_00));"),
+                "sd_scale_pow2(sd_widen_f(sum_00, true), -2, true)",
+                "sd_widen_f(0.25f * sum_00, true)"),
         },
         "m12_null_commute_the_row_sum": {
             "must_catch": False,
-            "why": ("RECORDED NULL: f32 addition is bitwise commutative, so "
-                    "`total + gs*us` equals `gs*us + total`. The diagonal-first "
-                    "order is the array path's (stepping.py:1007-1008) and is kept "
-                    "for fidelity, not because it is observable"),
+            "why": ("RECORDED NULL: binary64 addition is bitwise commutative, so "
+                    "`term + row` equals `row + term`. The row-first order is the "
+                    "array path's (``row[index] + term``) and is kept for fidelity, "
+                    "not because it is observable"),
             "apply": lambda s: needle(
-                s, "    float src0 = (gs0 * us0) + total0;",
-                "    float src0 = total0 + (gs0 * us0);"),
+                s, "od_row0 = sd_add(od_row0, sd_scale_pow2(sd_widen_f(sum_00, true), "
+                   "-2, true), true);",
+                "od_row0 = sd_add(sd_scale_pow2(sd_widen_f(sum_00, true), -2, true), "
+                "od_row0, true);"),
+        },
+        "m22_float32_row": {
+            "must_catch": True,
+            "why": ("RULING R7'S MUTATION: component 0's row formed in float32 -- "
+                    "0.25f * each pair sum, the terms summed and added to gs*us in "
+                    "float32 -- the pre-R7 spelling. The array path sums the row in "
+                    "float64 and rounds once; on a two-term mask the float32 sums "
+                    "round (a one-term row is one rounding of an exact sum, so the "
+                    "mutation is armed on the two-term mask only)"),
+            "apply": _float32_row_component_0,
+        },
+        "m23_terms_grouped_first": {
+            "must_catch": True,
+            "why": ("the double row is summed LEFT TO RIGHT, (gs*us + term1) + "
+                    "term2; summing the two terms first is a different double "
+                    "rounding. It is visible only where the two terms cancel and "
+                    "dominate the diagonal by more than binary64 carries beyond "
+                    "float32 (2**29), so it runs on a PLANTED state "
+                    "(:func:`_plant_cancelling_terms`): term1 = -term2 = 2**-5 "
+                    "exactly and gs*us near 2**-40, where the array path's row keeps "
+                    "gs*us rounded to the terms' binary64 grid and the grouped row "
+                    "keeps it whole. Random states, wide-exponent rows included, "
+                    "measured it null (0 of 1 caught)"),
+            "apply": _terms_grouped_first_component_0,
+            "codes": (PERIODIC, PERIODIC, PERIODIC),
+            "rows": "cancelling_ex",
+            "plant": "_plant_cancelling_terms",
         },
     }
+
+
+def _float32_row_component_0(source: str) -> str:
+    """Component 0's double row replaced by the pre-R7 float32 row (both terms live)."""
+    old = ("    ulong od_row0 = sd_widen_f(gs0 * us0, true);\n"
+           "    if (od_kept_00) { od_row0 = sd_add(od_row0, sd_scale_pow2(sd_widen_f("
+           "sum_00, true), -2, true), true); }\n"
+           "    if (od_kept_01) { od_row0 = sd_add(od_row0, sd_scale_pow2(sd_widen_f("
+           "sum_01, true), -2, true), true); }\n"
+           "    float src0 = sd_narrow_f(od_row0, true);")
+    new = ("    float total0 = (0.25f * sum_00) + (0.25f * sum_01);\n"
+           "    float src0 = (gs0 * us0) + total0;")
+    return needle(source, old, new)
+
+
+def _terms_grouped_first_component_0(source: str) -> str:
+    """Component 0's double row with its two terms summed before the diagonal."""
+    old = ("    ulong od_row0 = sd_widen_f(gs0 * us0, true);\n"
+           "    if (od_kept_00) { od_row0 = sd_add(od_row0, sd_scale_pow2(sd_widen_f("
+           "sum_00, true), -2, true), true); }\n"
+           "    if (od_kept_01) { od_row0 = sd_add(od_row0, sd_scale_pow2(sd_widen_f("
+           "sum_01, true), -2, true), true); }\n")
+    new = ("    ulong od_t0 = sd_add(sd_scale_pow2(sd_widen_f(sum_00, true), -2, true), "
+           "sd_scale_pow2(sd_widen_f(sum_01, true), -2, true), true);\n"
+           "    ulong od_row0 = sd_add(sd_widen_f(gs0 * us0, true), od_t0, true);\n")
+    return needle(source, old, new)
+
+
+#: The term magnitude of :func:`_plant_cancelling_terms`: an exact power of two, so
+#: each term's float32 pair sum ``(1 + 1)*r + (1 + 1)*r`` and its double quarter are
+#: exact and the two terms cancel to an exact zero.
+CANCELLING_TERM = 2.0 ** -5
+
+
+def _cancelling_rows(shape) -> Dict[str, Dict[str, Any]]:
+    """Ex's two row slots, ``+r`` and ``-r`` on every cell (``r`` = :data:`CANCELLING_TERM`)."""
+    value = np.float32(CANCELLING_TERM)
+    return {"Ex": {"Ey": np.full(shape, value, dtype=np.float32),
+                   "Ez": np.full(shape, -value, dtype=np.float32)}}
+
+
+def _plant_cancelling_terms(fields, seed: int) -> None:
+    """The state on which the row's association is byte-visible.
+
+    ``Dy = Dz = 1`` on every cell, so on a periodic grid with :func:`_cancelling_rows`
+    Ex's term1 is ``+r`` and term2 ``-r`` exactly; ``Dx`` near ``2**-40`` (normal, a
+    random 24-bit mantissa), so ``gs*us`` sits 35 binary exponents below the terms.
+    ``(gs*us + term1) + term2`` rounds ``gs*us`` to the terms' binary64 grid
+    (``2**-57``) and ``gs*us + (term1 + term2)`` keeps it whole: the two rows differ
+    on every cell whose ``gs*us`` carries a bit below ``2**-57``, and the output
+    select writes the row itself on every cell outside the layers.
+    """
+    rng = np.random.default_rng(seed)
+    shape = fields.Dx.shape
+    fields.Dy[...] = np.float32(1.0)
+    fields.Dz[...] = np.float32(1.0)
+    mantissa = rng.uniform(1.0, 2.0, size=shape).astype(np.float32)
+    fields.Dx[...] = (mantissa * np.float32(2.0 ** -40)).astype(np.float32)
 
 
 def leg_mutations(payload: Dict[str, Any], out: str) -> None:
@@ -1906,8 +2127,17 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         codes = entry.get("codes", default_codes)
         boundaries = tuple("metallic" if c == METALLIC else "periodic"
                            for c in codes)
+        planted_rows = None
+        if entry.get("rows") == "cancelling_ex":
+            planted_rows = _cancelling_rows(
+                Grid(resolution=10.0, cell_size=(1.2, 1.0, 0.9), boundaries=boundaries,
+                     dimensions=3, courant=0.35, k_point=(0.0, 0.0, 0.0),
+                     xp=np).shape)
         grid, fields, pml = build((1.2, 1.0, 0.9), boundaries, 0.35, SEED,
-                                  form="varying_full")
+                                  form=entry.get("form", "varying_full"),
+                                  rows=planted_rows)
+        if entry.get("plant") == "_plant_cancelling_terms":
+            _plant_cancelling_terms(fields, SEED)
         walls = offdiag.wall_mask_axes(grid)
         rows_map = installed_rows(fields)
         inverse = inverse_map(fields)
@@ -2361,7 +2591,8 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
              for row, partners in rows_map.items()})
         refuse(label, alias_fields, alias_pml, needle_text)
         assert offdiag.plan_offdiag_constitutive(
-            alias_fields, alias_pml, device.Residency()) is None, (
+            alias_fields, alias_pml, device.Residency(),
+            chunk_bounds=layer_record(alias_fields.grid, alias_pml)) is None, (
             f"{label}: the predicate refused but the builder did not return None")
 
     _g, inv_alias_fields, inv_alias_pml = build(base_cell, base_bounds, 0.35, SEED)
@@ -2393,8 +2624,9 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
         after = snapshot(admitted)
         moved = assert_state_moved(before, after, COMPARED, label)
         restore(admitted, before)
-        plan = offdiag.plan_offdiag_constitutive(admitted, admitted_pml,
-                                                 residency_here)
+        plan = offdiag.plan_offdiag_constitutive(
+            admitted, admitted_pml, residency_here,
+            chunk_bounds=layer_record(admitted.grid, admitted_pml))
         assert plan is not None, verdict.reasons
         plan.run()
         residency_here.sync_out()
@@ -2482,7 +2714,8 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
         for form in ("varying_full", "single_ez_ex"):
             grid, fields, pml = build(cell, boundaries, 0.35, SEED, form=form)
             residency = device.Residency()
-            plan = offdiag.plan_offdiag_constitutive(fields, pml, residency)
+            plan = offdiag.plan_offdiag_constitutive(
+                fields, pml, residency, chunk_bounds=layer_record(grid, pml))
             assert plan is not None
             step = metal_launch.plan_step(fields, pml, residency=residency,
                                           sources=())
@@ -2519,6 +2752,411 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
     save(payload, out)
 
 
+
+# ---------------------------------------------------------------------------
+# The per-chunk tail on exact-row states, and the presence words
+# ---------------------------------------------------------------------------
+
+def exact_state(fields, seed: int) -> None:
+    """Dyadic words on which every float32 operation of the row is exact, in place.
+
+    D, E and f_w at most seven significant bits, inverse epsilon four, every row four
+    and never zero (so every chunk keeps its chi1inv array and MEEP's presence drops
+    no term): the row is exact before its one rounding, so every differing word is
+    the tail's. The tail's products (``kps*src``, ``kms*prev``) are NOT exact, so the
+    tail's grouping and form stay byte-visible.
+    """
+    rng = np.random.default_rng(seed)
+    shape = fields.grid.shape
+    for name in ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez", "Dx", "Dy", "Dz"):
+        getattr(fields, name)[...] = (
+            rng.integers(-64, 65, size=shape) / 64.0).astype(np.float32)
+    seen = set()
+    for component in ("Ex", "Ey", "Ez"):
+        inverse = fields.inverse_epsilon_for(component)
+        if id(inverse) in seen:
+            continue
+        seen.add(id(inverse))
+        inverse[...] = (rng.integers(4, 9, size=shape) / 8.0).astype(np.float32)
+    for row, partner in offdiag.ROW_SLOTS:
+        value = (fields.chi1inv_offdiagonal_for(row) or {}).get(partner)
+        if value is None:
+            continue
+        sign = np.where(rng.integers(0, 2, size=shape) == 0, 1.0, -1.0)
+        value[...] = (sign * rng.integers(1, 9, size=shape) / 64.0).astype(np.float32)
+
+
+def _b_battery() -> Dict[str, Dict[str, Any]]:
+    """KERNELS.md §7.2's B battery for the constitutive tail, in shipped-source terms.
+
+    ``record`` entries are HOST mutations of the bound record (the kernel unchanged);
+    ``state`` names a planted state. Each must-catch row is caught when any compared
+    word differs from ``stepping.py``; the declared null must move none.
+    """
+    flags = shaders.constitutive_membership_flags("E")
+
+    def every_component(old: str, new: str) -> Callable[[str], str]:
+        def apply(source: str) -> str:
+            for t in range(3):
+                source = needle(source, old.format(t=t), new.format(t=t))
+            return source
+        return apply
+
+    def shift_bound(record: Any, word: int, by: int) -> Any:
+        out = np.array(record, copy=True)
+        for axis in range(3):
+            index = chunk_map.record_index(True, axis, word)
+            if out[index] + by >= 0:
+                out[index] += by
+        return out
+
+    def lattices_swapped(record: Any) -> Any:
+        out = np.array(record, copy=True)
+        for axis in range(3):
+            for word in range(4):
+                out[chunk_map.record_index(True, axis, word)] = record[
+                    chunk_map.record_index(False, axis, word)]
+        return out
+
+    return {
+        "b1_select_removed_whole_grid_accumulation": {
+            "must_catch": True,
+            "why": "the previous form: every cell accumulates and stores f_w",
+            "apply": lambda s: needle(
+                s, f"const bool dw0 = {flags[0]}, dw1 = {flags[1]}, dw2 = {flags[2]};",
+                "const bool dw0 = true, dw1 = true, dw2 = true;"),
+        },
+        "b2_predicate_on_coefficient_identity": {
+            "must_catch": True,
+            "why": ("kps != 1 instead of chunk membership: a sigma = 0 cell inside "
+                    "the chunk span takes the plain form"),
+            "apply": lambda s: needle(
+                s, f"const bool dw0 = {flags[0]}, dw1 = {flags[1]}, dw2 = {flags[2]};",
+                "const bool dw0 = (kp_0 != 1.0f), dw1 = (kp_1 != 1.0f), "
+                "dw2 = (kp_2 != 1.0f);"),
+        },
+        "b3_bound_off_by_one_a1": {
+            "must_catch": True, "why": "the low run's boundary plane changes form",
+            "record": lambda r: shift_bound(r, 1, 1),
+        },
+        "b3_bound_off_by_one_b0": {
+            "must_catch": True, "why": "the high run's boundary plane changes form",
+            "record": lambda r: shift_bound(r, 2, -1),
+        },
+        "b4_integer_record_for_the_half_integer_side": {
+            "must_catch": True, "why": "the boundary plane moves by one cell",
+            "record": lattices_swapped,
+        },
+        "b5_auxiliary_stored_on_a_plain_cell": {
+            "must_catch": True,
+            "why": "f_w is untouched off the accumulation's cells (C2)",
+            "apply": every_component("    if (dw{t}) {{ w{t}[ii] = src{t}; }}",
+                                     "    w{t}[ii] = src{t};"),
+        },
+        "b6_plain_form_as_unit_coefficient_accumulation": {
+            "must_catch": True,
+            "why": ("`0 + ((1*src) - (0*prev))` instead of the output select: wrong "
+                    "only on a -0 source, so it is planted (D = -0 on a component "
+                    "with no live row, E = +0): MEEP gives -0, the spelling +0"),
+            "apply": every_component("    float a{t} = src{t};",
+                                     "    float a{t} = 0.0f + ((1.0f * src{t}) - "
+                                     "(0.0f * prev{t}));"),
+            "state": "planted_negative_zero",
+        },
+        "b7_auxiliary_load_unconditional": {
+            "must_catch": False,
+            "why": ("DECLARED NULL: the load moves out from behind its guard, the "
+                    "value is unused off the accumulation's cells, so no word moves; "
+                    "pinned by the static needle in test_metal_offdiag instead"),
+            "apply": every_component("    float prev{t} = dw{t} ? w{t}[ii] : 0.0f;",
+                                     "    float prev{t} = w{t}[ii];"),
+        },
+        "m10_previous_accumulation_grouping": _mutations()[
+            "m10_previous_accumulation_grouping"],
+    }
+
+
+def _planted_negative_zero(fields) -> None:
+    """D = -0 and E = +0 on the components with no live row (the select's -0 case)."""
+    slots = rows_as_slots(installed_rows(fields))
+    for component, (target, source, _axis) in enumerate(offdiag.E_TERMS):
+        if slots[2 * component] is None and slots[2 * component + 1] is None:
+            getattr(fields, source)[...] = np.float32(-0.0)
+            getattr(fields, target)[...] = np.float32(0.0)
+
+
+def leg_b_select(payload: Dict[str, Any], out: str) -> None:
+    """The per-chunk tail against ``stepping.py`` itself, on exact-row states.
+
+    Every boundary triple, two row forms (all six rows; one row, so two components
+    take the pure diagonal), both inverse-epsilon forms. Per case: the step MOVED
+    STATE, both forms ran (``f_w`` moved on some cells and not on others), the
+    shipped kernel and the in-gate transcription are 0 words from the oracle. Then
+    the B battery on two triples, launch-counted, and the execution proofs.
+    """
+    rows: List[Dict[str, Any]] = []
+    started = time.time()
+    compared = 0
+    for index, (name, cell, boundaries) in enumerate(CONFIGS):
+        for form in ("varying_full", "single_ex_ey"):
+            for aliased in (False, True):
+                grid, fields, pml = build(cell, boundaries, 0.35, SEED, form=form,
+                                          aliased_inverse_epsilon=aliased)
+                exact_state(fields, SEED + 31 * index)
+                codes = boundary_codes(grid, pml)
+                walls = offdiag.wall_mask_axes(grid)
+                rows_map = installed_rows(fields)
+                slots = rows_as_slots(rows_map)
+                inverse = inverse_map(fields)
+                before = snapshot(fields)
+                stepping.update_E(fields, pml)
+                oracle = snapshot(fields)
+                moved = assert_state_moved(before, oracle, COMPARED,
+                                           f"b_select/{name}/{form}")
+                fw_moved = [differing(before[n], oracle[n])
+                            for n in ("f_w_Ex", "f_w_Ey", "f_w_Ez")]
+                cells = int(np.prod(grid.shape))
+                residency = device.Residency()
+                got = run_on_device(before, pml, rows_map, inverse, codes, walls,
+                                    residency=residency)
+                bad = sum(differing(got[n], oracle[n]) for n in COMPARED)
+                transcribed = reference_state(
+                    before, pml, slots, [inverse[n] for n in ("Ex", "Ey", "Ez")],
+                    codes, walls)
+                substrate = sum(differing(transcribed[n], oracle[n]) for n in COMPARED)
+                devices = sorted({str(residency.tensor(m).device)
+                                  for m in residency.names})
+                compared += 1
+                row = {"case": name, "row_form": form,
+                       "aliased_inverse_epsilon": aliased, "bc": list(codes),
+                       "walls": list(walls),
+                       "row_mask": [int(v is not None) for v in slots],
+                       "moved_words": moved, "f_w_moved_words": fw_moved,
+                       "cells": cells, "kernel_differing_words": bad,
+                       "transcription_differing_words": substrate,
+                       "mirror_devices": devices}
+                rows.append(row)
+                log(f"[b_select] {name:<13} {form:<13} aliased={int(aliased)} "
+                    f"kernel={bad} transcription={substrate} moved={moved} "
+                    f"f_w_moved={fw_moved} ({time.time() - started:.1f}s)")
+                payload["legs"]["b_select"] = {"cases": rows}
+                save(payload, out)
+                assert all(0 < count < cells for count in fw_moved), (
+                    f"{name}/{form}: f_w moved on {fw_moved} of {cells} cells; both "
+                    f"forms must run for the select to be measured")
+                assert devices == ["mps:0"] or all(d.startswith("mps")
+                                                   for d in devices), devices
+                assert bad == 0, row
+                assert substrate == 0, row
+
+    # --- the entry point is a compiled Metal kernel --------------------------
+    grid, fields, pml = build(CONFIGS[1][1], CONFIGS[1][2], 0.35, SEED)
+    exact_state(fields, SEED)
+    record = layer_record(grid, pml)
+    codes = boundary_codes(grid, pml)
+    walls = offdiag.wall_mask_axes(grid)
+    arrays = snapshot(fields)
+    for target in ("Ex", "Ey", "Ez"):
+        arrays["inv_eps_" + target] = fields.inverse_epsilon_for(target)
+    flat = {key: np.asarray(value).reshape(-1)
+            for key, value in constitutive_coefficients(pml).items()}
+    plan = offdiag.plan_offdiag_constitutive_from_arrays(
+        arrays, flat, installed_rows(fields), codes, walls, device.Residency(),
+        chunk_bounds=record,
+        presence=gate_presence(grid, pml, rows_as_slots(installed_rows(fields)),
+                               codes, record)[1])
+    entry = plan._functions[shaders.CONTRACT_OFF]
+    entry_type = f"{type(entry).__module__}.{type(entry).__name__}"
+    assert entry_type == "torch._C._mps_MetalKernel", entry_type
+
+    # --- the B battery ---------------------------------------------------------
+    battery: List[Dict[str, Any]] = []
+    for label, entry_spec in _b_battery().items():
+        for name, cell, boundaries in (CONFIGS[0], CONFIGS[1]):
+            form = ("single_ex_ey" if entry_spec.get("state") == "planted_negative_zero"
+                    else "varying_full")
+            grid, fields, pml = build(cell, boundaries, 0.35, SEED, form=form)
+            exact_state(fields, SEED + 7)
+            if entry_spec.get("state") == "planted_negative_zero":
+                _planted_negative_zero(fields)
+            codes = boundary_codes(grid, pml)
+            walls = offdiag.wall_mask_axes(grid)
+            rows_map = installed_rows(fields)
+            inverse = inverse_map(fields)
+            before = snapshot(fields)
+            stepping.update_E(fields, pml)
+            oracle = snapshot(fields)
+            row_mask = tuple(int(v is not None) for v in rows_as_slots(rows_map))
+            shipped = offdiag.offdiag_source(row_mask, codes, walls)
+            control = run_on_device(before, pml, rows_map, inverse, codes, walls)
+            control_bad = sum(differing(control[n], oracle[n]) for n in COMPARED)
+            counters: List[Counter] = []
+            record = layer_record(grid, pml)
+            if "record" in entry_spec:
+                mutated_record = entry_spec["record"](record)
+                got = run_on_device(before, pml, rows_map, inverse, codes, walls,
+                                    source=shipped, counter=counters,
+                                    record=mutated_record)
+            else:
+                got = run_on_device(before, pml, rows_map, inverse, codes, walls,
+                                    source=entry_spec["apply"](shipped),
+                                    counter=counters)
+            launches = sum(counter.launches for counter in counters)
+            delta = sum(differing(got[n], oracle[n]) for n in COMPARED)
+            row = {"mutation": label, "case": name, "must_catch": entry_spec["must_catch"],
+                   "why": entry_spec["why"], "launches": launches,
+                   "differing_words": delta, "shipped_control_differing": control_bad,
+                   "caught": bool(delta)}
+            battery.append(row)
+            log(f"[b_select battery] {label:<46} {name:<13} launches={launches} "
+                f"differing={delta} control={control_bad} "
+                f"{'CAUGHT' if delta else 'null'} ({time.time() - started:.1f}s)")
+            payload["legs"]["b_select"] = {"cases": rows, "battery": battery,
+                                           "entry_point_type": entry_type}
+            save(payload, out)
+            assert launches == 1, (label, "the mutant did not RUN; the leg is DISARMED")
+            assert control_bad == 0, (label, name, control_bad)
+            if entry_spec["must_catch"]:
+                assert delta > 0, (label, name, "must-catch mutation NOT caught")
+            else:
+                assert delta == 0, (label, name, "declared null moved words")
+    payload["counts"]["b_select"] = compared + len(battery)
+    save(payload, out)
+
+
+#: The presence cases: a row zero in every PML chunk (MEEP deletes it there), on
+#: metallic walls, so the record's labels name every chunk the presence varies over.
+PRESENCE_CASES: Tuple[Tuple[str, Tuple[float, float, float], Any,
+                            Dict[str, Tuple[str, ...]]], ...] = (
+    ("metallic_all_ex_two_terms", (1.6, 1.6, 1.6), "metallic", {"Ex": ("Ey", "Ez")}),
+    ("metallic_all_ez_ey", (1.6, 1.4, 1.6), "metallic", {"Ez": ("Ey",)}),
+    ("metallic_xz_ey_two_terms", (1.6, 1.0, 1.6), ("metallic", "periodic", "metallic"),
+     {"Ey": ("Ez", "Ex")}),
+)
+
+
+def _presence_build(cell, boundaries, rows: Dict[str, Tuple[str, ...]], seed: int):
+    """A presence case: rows zero outside the interior chunk, D = -0 on every row
+    component and positive partner pairs, so a term the chunk dropped keeps a -0 row
+    where adding its +0 would give +0."""
+    shape_grid = Grid(resolution=10.0, cell_size=cell, boundaries=boundaries,
+                      dimensions=3, courant=0.35, k_point=(0.0, 0.0, 0.0), xp=np)
+    shape = shape_grid.shape
+    rng = np.random.default_rng(seed)
+    kinds = ((boundaries,) * 3 if isinstance(boundaries, str) else tuple(boundaries))
+    keep = np.zeros(shape, dtype=bool)
+    # Zero only along metallic axes: there the record's labels name the PML chunks
+    # one to one (a wrapping axis's row 0 joins the low run, KERNELS.md §2).
+    keep[tuple(slice(3, -3) if kind == "metallic" and n > 8 else slice(None)
+               for kind, n in zip(kinds, shape))] = True
+    built = {row: {partner: np.where(keep, (UNIFORM_ROWS[(row, partner)] * (
+        1.0 + 0.4 * rng.standard_normal(shape))), 0.0).astype(np.float32)
+        for partner in partners} for row, partners in rows.items()}
+    grid, fields, pml = build(cell, boundaries, 0.35, seed, rows=built)
+    for row in rows:
+        getattr(fields, "D" + row[1])[...] = np.float32(-0.0)
+    for name in ("Dx", "Dy", "Dz"):
+        if name[1] not in {row[1] for row in rows}:
+            array = getattr(fields, name)
+            array[...] = np.abs(array) + np.float32(0.01)
+    return grid, fields, pml
+
+
+def leg_presence(payload: Dict[str, Any], out: str) -> None:
+    """THE PER-CHUNK PRESENCE WORDS against ``stepping.py`` (KERNELS.md §2).
+
+    Per case: the word of every live slot is NOT all-kept (MEEP deleted the row in
+    the PML chunks) and expands back to the array path's own presence on every
+    stored cell; the shipped kernel is 0 words from the oracle; the oracle carries
+    ``-0`` words a dropped term kept (the case exercises presence); and two mutants
+    must be caught: the kernel IGNORING presence (every flag true) and the words
+    CLEARED on the host (every term dropped). A third, the words set all-kept, is
+    the presence-ignored spelling through the binding rather than the source.
+    """
+    rows: List[Dict[str, Any]] = []
+    started = time.time()
+    for index, (name, cell, boundaries, live) in enumerate(PRESENCE_CASES):
+        grid, fields, pml = _presence_build(cell, boundaries, live, SEED + 101 * index)
+        codes = boundary_codes(grid, pml)
+        walls = offdiag.wall_mask_axes(grid)
+        rows_map = installed_rows(fields)
+        slots = rows_as_slots(rows_map)
+        inverse = inverse_map(fields)
+        record = layer_record(grid, pml)
+        masks, words = gate_presence(grid, pml, slots, codes, record)
+        engine_words = offdiag.presence_for(fields, pml, codes, record)
+        before = snapshot(fields)
+        stepping.update_E(fields, pml)
+        oracle = snapshot(fields)
+        assert_state_moved(before, oracle, COMPARED, f"presence/{name}")
+        kept_negative_zero = sum(int(np.count_nonzero(
+            np.ascontiguousarray(oracle[n]).reshape(-1).view(np.uint32)
+            == np.uint32(0x80000000))) for n in ("Ex", "Ey", "Ez"))
+        got = run_on_device(before, pml, rows_map, inverse, codes, walls,
+                            presence=words)
+        bad = sum(differing(got[n], oracle[n]) for n in COMPARED)
+        row_mask = tuple(int(v is not None) for v in slots)
+        shipped = offdiag.offdiag_source(row_mask, codes, walls)
+        ignored_source = shipped
+        for component in range(3):
+            for offset in (0, 1):
+                if row_mask[2 * component + offset]:
+                    slot = 2 * component + offset
+                    ignored_source = needle(
+                        ignored_source,
+                        f"    const bool od_kept_{component}{offset} = "
+                        f"((kw.{offdiag.PRESENCE_MEMBERS[slot]} >> od_chunk{component})"
+                        f" & 1u) != 0u;",
+                        f"    const bool od_kept_{component}{offset} = true;")
+        counters: List[Counter] = []
+        ignored = run_on_device(before, pml, rows_map, inverse, codes, walls,
+                                source=ignored_source, counter=counters,
+                                presence=words)
+        ignored_delta = sum(differing(ignored[n], oracle[n]) for n in COMPARED)
+        cleared = run_on_device(before, pml, rows_map, inverse, codes, walls,
+                                presence=(0,) * 6)
+        cleared_delta = sum(differing(cleared[n], oracle[n]) for n in COMPARED)
+        all_kept = run_on_device(before, pml, rows_map, inverse, codes, walls,
+                                 presence=offdiag.ALL_KEPT)
+        all_kept_delta = sum(differing(all_kept[n], oracle[n]) for n in COMPARED)
+        from meep_gpu.fields import IYEE_SHIFTS as _yee  # noqa: PLC0415
+        expanded = []
+        for slot, (value, mask, word) in enumerate(zip(slots, masks, words)):
+            if value is None:
+                continue
+            row_name = offdiag.ROW_SLOTS[slot][0]
+            chunk_codes = offdiag.cell_chunk_codes(record, _yee[row_name],
+                                                   tuple(grid.shape), codes)
+            expanded.append(bool(mask is not None and np.array_equal(
+                offdiag.expand_presence_word(word, chunk_codes), mask)))
+        live_words = [word for value, word in zip(slots, words) if value is not None]
+        row = {"case": name, "bc": list(codes), "row_mask": list(row_mask),
+               "words": [int(w) for w in words],
+               "engine_words_equal": tuple(engine_words) == tuple(words),
+               "words_expand_to_the_array_paths_presence": expanded,
+               "oracle_negative_zero_rows": kept_negative_zero,
+               "differing_words": bad,
+               "presence_ignored_differing": ignored_delta,
+               "presence_ignored_launches": sum(c.launches for c in counters),
+               "presence_cleared_differing": cleared_delta,
+               "presence_all_kept_differing": all_kept_delta}
+        rows.append(row)
+        log(f"[presence] {name:<26} words={[hex(w) for w in live_words]} "
+            f"kernel={bad} ignored={ignored_delta} cleared={cleared_delta} "
+            f"all_kept={all_kept_delta} -0={kept_negative_zero} "
+            f"({time.time() - started:.1f}s)")
+        payload["legs"]["presence"] = rows
+        save(payload, out)
+        assert all(word not in (0, offdiag.ALL_CHUNKS_KEPT) for word in live_words), row
+        assert all(expanded) and row["engine_words_equal"], row
+        assert kept_negative_zero > 0, row
+        assert bad == 0, row
+        assert row["presence_ignored_launches"] == 1, row
+        assert ignored_delta > 0 and cleared_delta > 0 and all_kept_delta > 0, row
+    payload["counts"]["presence"] = len(rows)
+    save(payload, out)
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
@@ -2534,6 +3172,8 @@ LEGS: Tuple[Tuple[str, Callable[[Dict[str, Any], str], None]], ...] = (
     ("mutations", leg_mutations),
     ("refusals", leg_refusals),
     ("engine", leg_engine),
+    ("b_select", leg_b_select),
+    ("presence", leg_presence),
 )
 
 
@@ -2624,15 +3264,14 @@ def main() -> int:
         "artifact says so rather than sweeping a dead parameter and calling it "
         "coverage")
     payload["predicted_nulls"] = [
-        {"name": "m11_null_distribute_the_quarter",
-         "reason": "0.25 is an exact power of two, so scaling by it commutes with "
-                   "round-to-nearest away from underflow: 0.25*(A+B) == 0.25*A + "
-                   "0.25*B bitwise. The transcribed association is fidelity, not a "
-                   "pinned grouping. MEASURED by the mutation leg as must_catch "
-                   "False"},
+        {"name": "m11_null_quarter_in_float32",
+         "reason": "0.25 is an exact power of two, so 0.25f * sum is exact in "
+                   "float32 wherever the result is normal, and widening it equals "
+                   "scaling the widened sum. MEASURED by the mutation leg as "
+                   "must_catch False"},
         {"name": "m12_null_commute_the_row_sum",
-         "reason": "f32 addition is bitwise commutative. MEASURED by the mutation "
-                   "leg as must_catch False"},
+         "reason": "binary64 addition is bitwise commutative. MEASURED by the "
+                   "mutation leg as must_catch False"},
         {"name": "partner_axis_metallic_NEAR_zero_ghost",
          "reason": "MEASURED BY MUTATION as of 2026-08-15 — this entry used to say "
                    "'NOT MEASURED BY MUTATION, recorded rather than claimed', and "
@@ -2668,8 +3307,10 @@ def main() -> int:
 
     return summarize(
         payload, arguments.out,
-        claim=("byte-identity to stepping.py on this host, under a CHECKED "
-               "subnormal-free precondition (leg 5) — not a stated tolerance"),
+        claim=("byte-identity to stepping.py under the declared subnormal-free "
+               "precondition: the software-binary64 row (ruling R7), the per-chunk "
+               "presence words and the per-chunk tail, with the B battery, the "
+               "float32-row mutation and the presence mutants armed"),
         scope=("the off-diagonal (tensor) chi1inv electric constitutive sub-step "
                "under an active split-field PML: real float32 storage, periodic "
                "and metallic ghost rules, volume inverse epsilon (three distinct "
@@ -2684,14 +3325,9 @@ def main() -> int:
         started=started, legs_run=ran,
         compared=sum(payload["counts"].values()), certified=certified,
         extra={"dispatch": (
-            "WIRED as of tranche 2: the arm is registered wired=True and leg 8 "
-            "asserts plan_step selects it BY LABEL for update_E on every "
-            "off-diagonal configuration, while the plain E-side arm still "
-            "refuses. Composition was measured by the whole-step gate "
-            "(results/metal_whole_step_2026-08-16/whole_step.json: 15 cases x 12 "
-            "cycles, 20200320 uint32 comparisons, 0 divergences, case "
-            "'offdiag_real_one_row'). meep_gpu.fastpath.plan_fast_path is a "
-            "separate question and is NOT measured here"),
+            "WIRED: the engine leg asserts plan_step selects the offdiag arm by "
+            "label for update_E on every off-diagonal configuration while the "
+            "plain E-side arm still refuses"),
             "arm_registration": payload.get("arm_registration")})
 
 

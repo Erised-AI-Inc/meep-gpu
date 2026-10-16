@@ -49,8 +49,9 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   FAMILY EXISTS FOR. If the Pade factor is the identity everywhere, every one of
   the nine nonlinear source mutations is invisible and the case measures the
   certified linear kernel under a new name. Hard floor on the two ``uniform``
-  amplitude classes; recorded on the others, where a degenerate ``u`` is the
-  MEASUREMENT rather than a defect (see the subnormal classes below).
+  amplitude classes and the planted ``dsqr_band``; recorded on the others, where a
+  degenerate ``u`` is the MEASUREMENT rather than a defect (see the subnormal
+  classes below).
 * ``expansion`` -- ``max(|c2| + |c3|)`` from ``stepping.nonlinear_margin``
   (:1315-1357). Must be strictly inside ``(0, 1/3)``: zero means no live
   nonlinearity, and past 1/3 the run has left the domain
@@ -68,7 +69,7 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   degenerated into failing everything.
 
 =============================================================================
-THE FOUR CLASSES, AND WHY THE DIVISION NEEDS ITS OWN
+THE FIVE CLASSES, AND WHY THE DIVISION AND THE DOUBLE DSQR NEED THEIR OWN
 =============================================================================
 
 ``constitutive_kernels.py``'s header records the one PTX exception this package
@@ -95,6 +96,25 @@ than argued:
   ``num``, ``den`` and the quotient are subnormal (expected: zero, because both
   operands are anchored at 1.0) and ``chi_term_census`` records how many ``c2`` /
   ``c3`` words are (must be non-zero under ``keep``, or the class is vacuous).
+* ``dsqr_band / dsqr_band`` -- the PLANTED band of the double ``Dsqr``. MEEP forms
+  ``gs*gs + 0.0625*(g1s*g1s + g2s*g2s)`` with a double ``0.0625`` and rounds once
+  (``nonlinear_constitutive`` note 7, ``stepping._nonlinear_dsqr``); against the
+  float32 form that moves ``Dsqr`` only where the exact ``0.0625*t`` is below
+  float32's normal range, which no other class reaches. WHERE the forms differ is
+  the policy's: under ``keep`` the float32 product rounds ``0.0625*t`` onto the
+  subnormal grid; under ``flush`` it flushes it to zero, and that changes ``Dsqr``
+  only where ``gs*gs`` itself is still normal (below ``2^-126`` both forms flush to
+  the same zero). A band drawn below ``2^-63`` makes every ``gs*gs`` subnormal and
+  so reaches the ``keep`` difference alone (MEASURED on the GPU host, bit_parity_0_10
+  lane KC1n: the ``flush`` leg read 0 differing cells and ``dsqr_in_float32`` 0 of
+  5). Here every source volume is drawn in ``(-2^-62.75, 2^-62.75)``
+  (``DSQR_BAND_SCALE``), so about one cell in six has a normal ``gs*gs`` while
+  ``0.0625*t`` often lies below ``2^-126``, which reaches both, and ``chi3 = 6e36``
+  carries that ``Dsqr`` into ``c3`` (``Dsqr <= 3 * 2^-125.5`` bounds ``c3`` below
+  0.28 on every spec, inside the pole guard). ``dsqr_forms_differ`` counts the
+  cells where the two forms differ under the run's own policy, and the summary
+  refuses a full product whose band cases reached none; ``dsqr_in_float32`` is
+  scored on this class alone.
 
 =============================================================================
 THE DIVISION SPELLING PROBE
@@ -159,6 +179,7 @@ except ImportError:  # laptop: the NumPy backend still runs
     cp = None
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import gate_needles  # noqa: E402
 import gate_provenance  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
@@ -278,6 +299,7 @@ CLASSES: Tuple[Tuple[str, str], ...] = (
     ("uniform", "near_pole"),
     ("subnormal_band", "moderate"),
     ("uniform", "subnormal_chi"),
+    ("dsqr_band", "dsqr_band"),
 )
 
 #: The ``(value_class, amplitude)`` pairs on which ``pade_departure`` is a HARD
@@ -289,7 +311,7 @@ CLASSES: Tuple[Tuple[str, str], ...] = (
 #: ``subnormal_chi`` does the same to the chi terms alone, which is the class that
 #: answers the ``div.rn`` FTZ question with a census.
 PADE_FLOOR_CLASSES: Tuple[Tuple[str, str], ...] = (
-    ("uniform", "moderate"), ("uniform", "near_pole"))
+    ("uniform", "moderate"), ("uniform", "near_pole"), ("dsqr_band", "dsqr_band"))
 
 #: chi magnitudes per amplitude class, chosen against the pole guard's derived
 #: bound ``|c2| + |c3| < 1/3`` (stepping.py:1356-1359) and MEASURED per case --
@@ -302,7 +324,17 @@ CHI_BY_AMPLITUDE: Dict[str, Tuple[float, float]] = {
     # c2 = gs*chi2*us^2 and c3 = dsqr*chi3*us^3 land IN the subnormal band for
     # normal-magnitude fields: float32's smallest normal is 1.18e-38.
     "subnormal_chi": (3e-40, 3e-40),
+    # The planted band of the double Dsqr (header): with every source in
+    # (-2^-62.75, 2^-62.75), Dsqr <= gs^2 + 0.0625*t <= 2^-125.5 + 2^-124.5 =
+    # 3 * 2^-125.5, so chi3 = 6e36 (times at most 1.6 on the volume spec) and
+    # chi1inv^3 <= (1/1.2)^3 hold c3 below 0.28. chi2 = 0 is MEEP's stored partner of
+    # a chi3-only medium.
+    "dsqr_band": (0.0, 6.0e36),
 }
+
+#: The source magnitude of the ``dsqr_band`` value class (header): the band that reaches
+#: the double-vs-float32 Dsqr difference under both subnormal policies.
+DSQR_BAND_SCALE = np.float32(2.0 ** -62.75)
 
 GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("fmad_false", ("--fmad=false",)),
@@ -320,21 +352,23 @@ GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
 # Everything below is this family's own, and every one is a defect a reader could
 # plausibly write.
 
-def _four_point_left_to_right(source: str) -> Tuple[str, int]:
-    """MEEP C's summation order in place of stepping's shifted-pair association.
+def _four_point_pair_association(source: str) -> Tuple[str, int]:
+    """The 0.9.2 array path's paired corners in place of MEEP C's left-to-right sum.
 
-    ``stepping._nonlinear_transverse_sums`` (:1155-1163) forms the near pair, then
-    that pair shifted; MEEP C sums left to right (step_generic.cpp:646-648). The
-    BYTE ARBITER is stepping.py, so this is a defect here even though it is MEEP's
-    own spelling. MUST BE CAUGHT -- and if it is not, the two associations agree
-    on this fixture and the transcription note is decorative.
+    ``stepping._nonlinear_transverse_sums`` adds the corners in the order MEEP C
+    reads them, ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]``
+    (step_generic.cpp:646-648); until 16-AP6h it formed the near pair and then that
+    pair shifted, ``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])``. This puts that
+    pairing back (the KERNELS.md section 7.1 inversion of the former
+    ``four_point_left_to_right``). MUST BE CAUGHT -- and if it is not, the two
+    associations agree on this fixture and the transcription note is decorative.
     """
-    needle = ("    float near_pair = g[o_c] + (v_d ? g[o_d] : 0.0f);\n"
-              "    float far_pair = (v_u ? g[o_u] : 0.0f) + (v_ud ? g[o_ud] : 0.0f);\n"
-              "    return near_pair + far_pair;\n")
-    replacement = ("    float near_pair = g[o_c] + (v_u ? g[o_u] : 0.0f);\n"
-                   "    float far_pair = (v_d ? g[o_d] : 0.0f);\n"
-                   "    return (near_pair + far_pair) + (v_ud ? g[o_ud] : 0.0f);\n")
+    needle = ("    float own_pair = g[o_c] + (v_u ? g[o_u] : 0.0f);\n"
+              "    float with_down = own_pair + (v_d ? g[o_d] : 0.0f);\n"
+              "    return with_down + (v_ud ? g[o_ud] : 0.0f);\n")
+    replacement = ("    float near_pair = g[o_c] + (v_d ? g[o_d] : 0.0f);\n"
+                   "    float far_pair = (v_u ? g[o_u] : 0.0f) + (v_ud ? g[o_ud] : 0.0f);\n"
+                   "    return near_pair + far_pair;\n")
     return source.replace(needle, replacement), source.count(needle)
 
 
@@ -386,10 +420,31 @@ def _dsqr_drop_transverse(source: str) -> Tuple[str, int]:
     ``0.0625 = (1/4)^2`` is what turns each unnormalized four-point sum back into
     a mean before it is squared (stepping.py:1131-1147); without the term ``Dsqr``
     is the component's own square and the interpolation onto its Yee position is
-    gone. MUST BE CAUGHT.
+    gone. MUST BE CAUGHT. Spelled on ``nonlinear_dsqr``'s one return, which every
+    component calls.
     """
-    needle = " + 0.0625f * (g1s * g1s + g2s * g2s)"
-    return source.replace(needle, ""), source.count(needle)
+    needle = "    return __double2float_rn(own_sq + 0.0625 * transverse_sq);\n"
+    replacement = "    return __double2float_rn(own_sq);\n"
+    return source.replace(needle, replacement), source.count(needle)
+
+
+def _dsqr_in_float32(source: str) -> Tuple[str, int]:
+    """The 0.9.2 float32 ``Dsqr``: ``gs*gs + 0.0625f*(...)``, every step one float rounding.
+
+    MEEP's ``0.0625`` is a double literal, so the scale and the add are double
+    operations rounded once (``nonlinear_constitutive`` note 7). The float32 form
+    differs only where the exact ``0.0625*t`` lies below float32's normal range,
+    so this is scored on the planted ``dsqr_band`` class alone
+    (``SOURCE_MUTATION_CLASSES``), where it MUST BE CAUGHT; on every other class it
+    cannot change a stored word.
+    """
+    needle = ("    double own_sq = gs * gs;\n"
+              "    double transverse_sq = g1s * g1s + g2s * g2s;\n"
+              "    return __double2float_rn(own_sq + 0.0625 * transverse_sq);\n")
+    replacement = ("    float own_sq = gs * gs;\n"
+                   "    float transverse_sq = g1s * g1s + g2s * g2s;\n"
+                   "    return own_sq + 0.0625f * transverse_sq;\n")
+    return source.replace(needle, replacement), source.count(needle)
 
 
 def _drop_pade_factor(source: str) -> Tuple[str, int]:
@@ -521,8 +576,8 @@ def _commute_dsqr_transverse_sum(source: str) -> Tuple[str, int]:
     partner ORDER itself is pinned as TEXT by the slice test, because ``Dsqr``'s
     sum forgives it exactly. MUST BE UNCAUGHT.
     """
-    needle = "0.0625f * (g1s * g1s + g2s * g2s)"
-    replacement = "0.0625f * (g2s * g2s + g1s * g1s)"
+    needle = "    double transverse_sq = g1s * g1s + g2s * g2s;\n"
+    replacement = "    double transverse_sq = g2s * g2s + g1s * g1s;\n"
     return source.replace(needle, replacement), source.count(needle)
 
 
@@ -563,9 +618,10 @@ def _pade_scale_the_H_source(source: str) -> Tuple[str, int]:
 
 #: This family's own device-text defects. ``True`` means MUST BE CAUGHT.
 E_SOURCE_MUTATIONS: Dict[str, Tuple[Any, bool]] = {
-    "four_point_left_to_right": (_four_point_left_to_right, True),
+    "four_point_pair_association": (_four_point_pair_association, True),
     "dsqr_same_direction_shifts": (_dsqr_same_direction_shifts, True),
     "dsqr_drop_transverse": (_dsqr_drop_transverse, True),
+    "dsqr_in_float32": (_dsqr_in_float32, True),
     "drop_pade_factor": (_drop_pade_factor, True),
     "regroup_pade_numerator": (_regroup_pade_numerator, True),
     "swap_epsilon_powers": (_swap_epsilon_powers, True),
@@ -600,8 +656,19 @@ H_SOURCE_MUTATIONS: Dict[str, bool] = {
     "commute_constitutive_scale": False,
 }
 
-#: MUTATIONS THAT ARE PROVABLY INERT ON SOME SPECS, with the reason and the specs
-#: they ARE scored on. A leg on which a defect cannot change a byte scores
+#: THIS GATE'S NEEDLE TABLE for the two batteries above: ``pade_scale_the_H_source``
+#: is its own, and the rest are borrowed from the probe's shared default until this
+#: gate's kernels need a spelling of their own, which is then an ``own=`` entry here
+#: and moves no other gate (``gate_needles.py``).
+_ARMED: Tuple[str, ...] = tuple(dict.fromkeys(
+    list(SHARED_E_SOURCE_MUTATIONS) + list(H_SOURCE_MUTATIONS)))
+SHARED_NEEDLES = gate_needles.gate_table(
+    "gate_cuda_nonlinear", probe.SOURCE_MUTATIONS, _ARMED,
+    own={"pade_scale_the_H_source": _pade_scale_the_H_source})
+
+#: MUTATIONS THAT ARE PROVABLY INERT, OR MEASURED INVISIBLE, ON SOME SPECS, with the
+#: reason and the specs they ARE scored on. A leg on which a defect cannot change a
+#: byte scores
 #: UNCAUGHT and drags the verdict to PARTIAL for a reason about the fixture, which
 #: is a harness defect that reads exactly like a kernel defect -- the folded gate
 #: hit the mirror image of this and its note is why these are written out rather
@@ -613,6 +680,32 @@ SOURCE_MUTATION_SPECS: Dict[str, Dict[str, Any]] = {
         "why": ("the METALLIC branch is never taken on an all-periodic grid, so "
                 "deleting it cannot change a byte there"),
     },
+    # THE (1, 1, nz) CORPUS SHAPE IS TOO SMALL FOR A DSQR-ROUNDING DEFECT. Two axes of
+    # one cell make two of each four-point sum's corners coincide, and 40 cells give
+    # 120 E words whose c3 weight rounds a one-ulp Dsqr difference away. MEASURED on
+    # the host (bit_parity_0_10 lane KC1n, the gate's NumPy transcription with the
+    # defect put back, the battery's own legs): the pairing changes 6 to 8 of the 40
+    # sums of each partner on the live axis (none on an invariant one) and 0 stored
+    # words at the single launch and after 60 launches. The float32 Dsqr on its
+    # dsqr_band leg reaches 11 of 120 cells and 1 stored word at the single launch
+    # under keep (9 and 9 under flush), 0 after 60 launches under both: at the edge of
+    # visibility, so not a must-catch leg. The 2026-08-21 record caught the opposite
+    # swap there through 2 multi-step words only.
+    "four_point_pair_association": {
+        "specs": ("all_periodic", "all_metallic", "mixed_pmp", "partly_nonlinear",
+                  "volume_chi"),
+        "why": ("on the (1, 1, nz) corpus shape the pairing changes a few of 40 sums "
+                "and the c3 weight rounds every one away (MEASURED: 0 words at the "
+                "single launch and after 60 launches)"),
+    },
+    "dsqr_in_float32": {
+        "specs": ("all_periodic", "all_metallic", "mixed_pmp", "partly_nonlinear",
+                  "volume_chi"),
+        "why": ("on the (1, 1, nz) corpus shape the planted band reaches a few of 120 "
+                "cells and the c3 weight carries at most one or two into a stored word "
+                "(MEASURED on the host: 1 word at the single launch under keep, 9 under "
+                "flush, 0 after 60 launches under both), the edge of visibility"),
+    },
     "fortran_order_index_decomposition": {
         "specs": ("all_periodic", "all_metallic", "mixed_pmp", "mixed_mpm",
                   "partly_nonlinear", "volume_chi"),
@@ -623,13 +716,33 @@ SOURCE_MUTATION_SPECS: Dict[str, Dict[str, Any]] = {
 }
 
 
+#: MUTATIONS SCORED ON ANOTHER CLASS than the battery's ``uniform/near_pole``, with
+#: the reason: a defect that lives in a band no other class reaches would score
+#: UNCAUGHT there for a reason about the fixture.
+SOURCE_MUTATION_CLASSES: Dict[str, Dict[str, Any]] = {
+    "dsqr_in_float32": {
+        "class": ("dsqr_band", "dsqr_band"),
+        "why": ("the float32 and double Dsqr differ only where 0.0625*t is below "
+                "float32's normal range (under flush, only where gs*gs is still "
+                "normal); only the planted dsqr_band class puts cells there under "
+                "both policies and carries them into c3"),
+    },
+}
+
+
 def specs_for_source_mutation(name: str, plan):
-    """The legs one device-text defect is scored on, with the inert ones dropped."""
+    """The legs one device-text defect is scored on: the inert specs dropped, and the
+    value and amplitude class swapped where ``SOURCE_MUTATION_CLASSES`` names one."""
     entry = SOURCE_MUTATION_SPECS.get(name)
-    if entry is None:
-        return plan
-    allowed = set(entry["specs"])
-    return [leg for leg in plan if leg[0]["label"] in allowed]
+    if entry is not None:
+        allowed = set(entry["specs"])
+        plan = [leg for leg in plan if leg[0]["label"] in allowed]
+    swap = SOURCE_MUTATION_CLASSES.get(name)
+    if swap is not None:
+        value_class, amplitude = swap["class"]
+        plan = [(spec, side, courant, value_class, amplitude)
+                for spec, side, courant, _value, _amplitude in plan]
+    return plan
 
 
 #: HOST mutations: they corrupt the TABLES and the operand BINDINGS rather than
@@ -752,10 +865,20 @@ def seed_state(fields, grid, side: str, value_class: str, rng) -> Dict[str, np.n
                 for name in names}
     elif value_class == "subnormal_band":
         host = subnormal_band_hosts(names, tuple(grid.shape), rng)
+    elif value_class == "dsqr_band":
+        host = {name: rng.uniform(-1.0, 1.0, size=grid.shape).astype(np.float32)
+                for name in names}
+        for name in SIDE_ARRAYS[side]["sources"]:
+            host[name] = (host[name] * DSQR_BAND_SCALE).astype(np.float32)
     else:
         raise ValueError(f"value class {value_class!r} is not one of the swept ones")
     for name, values in host.items():
         getattr(fields, name)[...] = xp.asarray(np.ascontiguousarray(values))
+    # A seeded state is a mid-run one: MEEP's start of H from B
+    # (``stepping.separate_h_from_b``) belongs to a run's first ``update_H`` and has
+    # happened long before this state. Without this the oracle's ``update_H`` would run
+    # that start and the kernel, launched through its entry point, would not.
+    fields.h_separated = True
     return host
 
 
@@ -867,12 +990,19 @@ def run_kernel_cuda(side: str, fields, tables, bindings, codes) -> None:
     deliberately corrupted ones. Passing the layer instead would derive them
     correctly and disarm every host mutation.
     """
+    # Since 0.10 the oracle (``stepping.update_H``/``update_E``) chooses each cell's form
+    # by the region plan it installs on ``fields``, and the kernels by the record of
+    # that division.
+    from gate_chunk_records import region_plan_record  # noqa: PLC0415
+
+    record = cp.asarray(region_plan_record(fields))
     if side == "H":
         from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
-        constitutive_kernels.update_fused_pml_real("H", fields, tables=tables)
+        constitutive_kernels.update_fused_pml_real("H", fields, tables=tables,
+                                                   chunk_bounds=record)
     else:
         nlc.update_E_fused_pml_real_nonlinear(
-            fields, tables=tables, codes=codes, bindings=bindings)
+            fields, tables=tables, codes=codes, bindings=bindings, chunk_bounds=record)
     cp.cuda.runtime.deviceSynchronize()
 
 
@@ -894,7 +1024,7 @@ def _neighbour(n: int, code: int, delta: int):
 def four_point_sum_numpy(g, own_axis: int, partner_axis: int, codes, shape):
     """``four_point_sum`` from the device string, in float32 NumPy.
 
-    THE SHIFTED-PAIR ASSOCIATION: ``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])``.
+    MEEP C's order, LEFT TO RIGHT: ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]``.
     """
     identity = [np.arange(shape[axis]) for axis in range(3)]
     up_index, up_valid = _neighbour(shape[own_axis], codes[own_axis], +1)
@@ -915,8 +1045,21 @@ def four_point_sum_numpy(g, own_axis: int, partner_axis: int, codes, shape):
             mask = mask & down_valid.reshape(bshape)
         return np.where(mask, g[np.ix_(*picks)], np.float32(0.0)).astype(np.float32)
 
-    return ((corner(False, False) + corner(False, True))
-            + (corner(True, False) + corner(True, True))).astype(np.float32)
+    return (((corner(False, False) + corner(True, False))
+             + corner(False, True)) + corner(True, True)).astype(np.float32)
+
+
+def dsqr_numpy(gs, g1s, g2s):
+    """``nonlinear_dsqr`` from the device string: the float32 squares widened, scaled
+    by 0.0625 and added in double, rounded once to float32."""
+    own = (gs * gs).astype(np.float32)
+    transverse = (g1s * g1s + g2s * g2s).astype(np.float32)
+    return (own.astype(np.float64) + 0.0625 * transverse.astype(np.float64)).astype(np.float32)
+
+
+def dsqr_numpy_float32(gs, g1s, g2s):
+    """The 0.9.2 float32 ``Dsqr`` (the ``dsqr_in_float32`` mutation's form)."""
+    return (gs * gs + np.float32(0.0625) * (g1s * g1s + g2s * g2s)).astype(np.float32)
 
 
 def pade_pieces(fields, bindings, codes) -> Dict[str, Any]:
@@ -939,7 +1082,9 @@ def pade_pieces(fields, bindings, codes) -> Dict[str, Any]:
         first, second = nlc.TRANSVERSE_PARTNERS[axis]
         g1s = four_point_sum_numpy(displacement[first], axis, first, codes, shape)
         g2s = four_point_sum_numpy(displacement[second], axis, second, codes, shape)
-        dsqr = (gs * gs + np.float32(0.0625) * (g1s * g1s + g2s * g2s)).astype(np.float32)
+        dsqr = dsqr_numpy(gs, g1s, g2s)
+        forms_differ = int(np.count_nonzero(
+            dsqr.view(np.uint32) != dsqr_numpy_float32(gs, g1s, g2s).view(np.uint32)))
         chi2 = (to_host(bindings["chi2"][axis]) if bindings["chi2_is_volume"][axis]
                 else bindings["chi2_scalar"][axis])
         chi3 = (to_host(bindings["chi3"][axis]) if bindings["chi3_is_volume"][axis]
@@ -952,6 +1097,7 @@ def pade_pieces(fields, bindings, codes) -> Dict[str, Any]:
         den = ((one + two * c2) + three * c3).astype(np.float32)
         out[component] = {"u": (num / den).astype(np.float32), "c2": c2, "c3": c3,
                           "num": num, "den": den, "dsqr": dsqr,
+                          "dsqr_forms_differ": forms_differ,
                           "gs_squared": (gs * gs).astype(np.float32)}
     return out
 
@@ -980,8 +1126,7 @@ def run_kernel_numpy(side: str, fields, tables, bindings, codes) -> None:
                 first, second = nlc.TRANSVERSE_PARTNERS[axis]
                 g1s = four_point_sum_numpy(displacement[first], axis, first, codes, shape)
                 g2s = four_point_sum_numpy(displacement[second], axis, second, codes, shape)
-                dsqr = (gs * gs
-                        + np.float32(0.0625) * (g1s * g1s + g2s * g2s)).astype(np.float32)
+                dsqr = dsqr_numpy(gs, g1s, g2s)
                 chi2 = (np.asarray(bindings["chi2"][axis])
                         if bindings["chi2_is_volume"][axis]
                         else bindings["chi2_scalar"][axis])
@@ -999,15 +1144,29 @@ def run_kernel_numpy(side: str, fields, tables, bindings, codes) -> None:
     else:
         sources = [np.asarray(getattr(fields, name)).astype(np.float32)
                    for name in spec["sources"]]
+    # The constitutive tail per structure chunk, as the kernels read it from the chunk
+    # record: on a cell whose chunk carries the component's own layer, MEEP's
+    # accumulation with the right-hand side formed first and ``f_w`` taking the source;
+    # elsewhere ``f = src`` with ``f_w`` untouched (``stepping._apply_constitutive_regions``).
+    from gate_chunk_records import region_plan_record  # noqa: PLC0415
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+    from meep_gpu.fields import IYEE_SHIFTS  # noqa: PLC0415
+
+    record = region_plan_record(fields)
     for axis, name in enumerate("xyz"):
-        target = np.asarray(getattr(fields, spec["targets"][axis]))
+        component = spec["targets"][axis]
+        target = np.asarray(getattr(fields, component))
         auxiliary = np.asarray(getattr(fields, spec["aux"][axis]))
         kps = _broadcast(tables[f"kps_{name}"], axis)
         kms = _broadcast(tables[f"kms_{name}"], axis)
+        line = np.asarray(membership_from_record(
+            record, IYEE_SHIFTS[component][axis] == 1, axis, shape[axis]), dtype=bool)
+        inside = np.broadcast_to(_broadcast(line, axis), shape)
         previous = auxiliary.copy()
-        auxiliary[...] = sources[axis]
-        accumulated = (target + kps * sources[axis]).astype(np.float32)
-        target[...] = (accumulated - kms * previous).astype(np.float32)
+        accumulated = (target + ((kps * sources[axis])
+                                 - (kms * previous))).astype(np.float32)
+        auxiliary[...] = np.where(inside, sources[axis], auxiliary)
+        target[...] = np.where(inside, accumulated, sources[axis]).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -1084,9 +1243,11 @@ def pade_facts(pieces: Dict[str, Any]) -> Dict[str, Any]:
                 "transverse_departure": 0.0, "meets_floor": False}
     departure = 0.0
     transverse = 0.0
+    forms_differ = 0
     quotient = []
     terms = []
     for _component, part in pieces.items():
+        forms_differ += part["dsqr_forms_differ"]
         departure = max(departure, float(np.max(np.abs(
             part["u"].astype(np.float64) - 1.0))))
         transverse = max(transverse, float(np.max(np.abs(
@@ -1097,6 +1258,7 @@ def pade_facts(pieces: Dict[str, Any]) -> Dict[str, Any]:
         "live_components": sorted(pieces),
         "pade_departure": departure,
         "transverse_departure": transverse,
+        "dsqr_forms_differ": forms_differ,
         "pade_operand_census": _subnormal_census(np.concatenate(
             [q.ravel() for q in quotient])),
         "chi_term_census": _subnormal_census(np.concatenate(
@@ -1342,9 +1504,12 @@ def mutation_plan(product: str, side_filter: Optional[str] = None):
     through ``c3 = (Dsqr * chi3) * chi1inv^3`` -- a weight of order
     ``0.0625 * chi3 * chi1inv^3``, which at the moderate amplitude is ~3e-4, small
     enough to round a one-ulp stencil difference away entirely. MEASURED on
-    the GPU host: at ``moderate``, ``four_point_left_to_right`` came back 0 differing
-    words on the (1, 1, nz) corpus shape under the keep policy and NONZERO under
-    flush -- the same defect sitting exactly on the edge of float32 visibility.
+    the GPU host: at ``moderate``, the association mutation (then
+    ``four_point_left_to_right``, installing MEEP's order against the paired array
+    path) came back 0 differing words on the (1, 1, nz) corpus shape under the keep
+    policy and NONZERO under flush -- the same defect sitting exactly on the edge of
+    float32 visibility. ``SOURCE_MUTATION_CLASSES`` moves one mutation off this
+    class, to the planted band it lives in.
     ``near_pole`` raises that weight by 3.2x and is where the question "can this
     gate see this defect" is actually asked.
 
@@ -1476,13 +1641,12 @@ def run_source_mutations(results: Dict[str, Any], out_path: str,
         save(results, out_path)
     for name, must_be_caught in SHARED_E_SOURCE_MUTATIONS.items():
         out[f"E:{name}"] = _score_source_mutation(
-            f"E:{name}", nlc, e_attribute, probe.SOURCE_MUTATIONS[name],
+            f"E:{name}", nlc, e_attribute, SHARED_NEEDLES[name],
             must_be_caught, specs_for_source_mutation(name, e_plan), compile_cache)
         results["source_mutations"] = out
         save(results, out_path)
     for name, must_be_caught in H_SOURCE_MUTATIONS.items():
-        transform = (_pade_scale_the_H_source if name == "pade_scale_the_H_source"
-                     else probe.SOURCE_MUTATIONS[name])
+        transform = SHARED_NEEDLES[name]
         out[f"H:{name}"] = _score_source_mutation(
             f"H:{name}", constitutive_kernels, h_attribute, transform,
             must_be_caught, specs_for_source_mutation(name, h_plan), compile_cache)
@@ -1630,6 +1794,26 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
                             "LIVE on this expression and the identity above is what "
                             "settles it")
 
+    band = [c for c in electric if c["value_class"] == "dsqr_band"]
+    band_reach = {
+        "cases": len(band),
+        "cells_where_the_dsqr_forms_differ": sum(
+            c["pade"].get("dsqr_forms_differ", 0) for c in band),
+        "reading": None,
+    }
+    if not band:
+        band_reach["reading"] = ("NOT MEASURED: no dsqr_band case was scored (the "
+                                 "reduced product does not carry the class)")
+    elif band_reach["cells_where_the_dsqr_forms_differ"] == 0:
+        band_reach["reading"] = ("the dsqr_band class reached no cell where the double "
+                                 "and float32 Dsqr differ, so it measured nothing about "
+                                 "the double form")
+        reasons.append("the dsqr_band class never reached the band where the double and "
+                       "float32 Dsqr differ")
+    else:
+        band_reach["reading"] = ("MEASURED: the planted band put cells where the double "
+                                 "and float32 Dsqr differ into the scored cases")
+
     annihilated = sorted({
         f"{c['label']}/{c['value_class']}/{c['amplitude']}"
         for c in primary
@@ -1652,6 +1836,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         "division_spelling": {"verdict": division.get("verdict"),
                               "reading": division_reading},
         "subnormal_reach_into_the_divide": reach,
+        "dsqr_band_reach": band_reach,
         "scored_cases": len(scored),
         "electric_cases": len(electric),
         "magnetic_cases": len(magnetic),
@@ -1681,6 +1866,9 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
             "every defect is visible at every amplitude the family admits -- one "
             "of them was measured invisible on the (1, 1, nz) shape at the "
             "moderate amplitude under the keep policy",
+            "dsqr_in_float32 is scored on the planted dsqr_band class alone (D in "
+            "(-2^-62.75, 2^-62.75), chi3 = 6e36); on every other class the double and "
+            "float32 Dsqr give the same stored words by construction",
             "no throughput claim is made or possible",
         ],
     }

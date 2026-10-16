@@ -37,17 +37,6 @@ from meep_gpu.metal_kernels import shaders, subnormal  # noqa: E402
 from meep_gpu.metal_kernels.device import Residency, compile_source, metal_frontend_version  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
 
-PROBE = {
-    "backend": "numpy",
-    "patterns": {
-        name: "FMA_V1"
-        for name in (
-            "c8_mul_c8", "c8_mul_c8_scalar_right", "c8_mul_f4_field_left",
-            "f4_mul_c8_coefficient_left", "python_float_left",
-        )
-    },
-}
-
 
 def words(value: Any) -> np.ndarray:
     array = np.ascontiguousarray(value)
@@ -130,7 +119,7 @@ def subnormal_words(fields: Fields, names: Iterable[str]) -> int:
 
 def execute_case(*, shape: Sequence[int], poles: int, kind: str, seed: int,
                  phase: Sequence[float], components: Sequence[str], cycles: int,
-                 e_functions: Mapping[Tuple[str, int, str], Any] | None = None,
+                 e_functions: Mapping[Tuple[str, int], Any] | None = None,
                  ) -> Dict[str, Any]:
     """Run stored E, plus ADE when a live pole exists, beside the strict oracle."""
     reference, reference_pml = build(
@@ -141,8 +130,10 @@ def execute_case(*, shape: Sequence[int], poles: int, kind: str, seed: int,
     before = {name: np.array(get_named(actual, name), copy=True) for name in names}
     residency = Residency()
     e_plan = family.plan_metal_complex_stored_e(
-        actual, actual_pml, residency, probe=PROBE, functions=e_functions)
-    p_plan = ade_update_p.plan_metal_ade_update_p(actual, actual_pml, residency)
+        actual, actual_pml, residency, functions=e_functions)
+    # No absorber: the ADE drive is the stored E and no chunk record binds.
+    p_plan = ade_update_p.plan_metal_ade_update_p(actual, actual_pml, residency,
+                                                  chunk_bounds=None)
     if e_plan is None or (poles and p_plan is None):
         return {"passed": False,
                 "reason": "a declared stored-E/ADE product was refused"}
@@ -183,9 +174,11 @@ def execute_case(*, shape: Sequence[int], poles: int, kind: str, seed: int,
     }
 
 
-def mutation_functions() -> Dict[str, Mapping[Tuple[str, int, str], Any]]:
-    """Compile independently wrong two-pole stored-E bodies for the same ABI."""
-    base = family.complex_stored_e_source(2, "FMA_V1")
+def mutation_functions() -> Dict[str, Mapping[Tuple[str, int], Any]]:
+    """Compile independently wrong two-pole stored-E bodies for the same ABI, keyed
+    as the plan reads its map, (mode, poles): a key the plan does not read never
+    reaches a launch (the builder compiles the shipped body for that key instead)."""
+    base = family.complex_stored_e_source(2)
     dropped_pole = base.replace("source = source - p1[idx];", "// dropped p1", 1)
     wrong_order = base.replace(
         "float2 source = d_in[idx];\n    source = source - p0[idx];\n    source = source - p1[idx];",
@@ -194,8 +187,8 @@ def mutation_functions() -> Dict[str, Mapping[Tuple[str, int, str], Any]]:
         "e_out[idx] = c_mul_field_left(source, inv_e[idx]);",
         "e_out[idx] = source;", 1)
     normal = {
-        (shaders.CONTRACT_OFF, count, "FMA_V1"):
-            compile_source(family.complex_stored_e_source(count, "FMA_V1"))
+        (shaders.CONTRACT_OFF, count):
+            compile_source(family.complex_stored_e_source(count))
             .complex_stored_e_component
         for count in (0, 1, 2)
     }
@@ -204,7 +197,7 @@ def mutation_functions() -> Dict[str, Mapping[Tuple[str, int, str], Any]]:
                           ("ordered_subtraction_reversed", wrong_order),
                           ("inverse_epsilon_omitted", omitted_inverse)):
         functions = dict(normal)
-        functions[(shaders.CONTRACT_OFF, 2, "FMA_V1")] = (
+        functions[(shaders.CONTRACT_OFF, 2)] = (
             compile_source(source).complex_stored_e_component)
         out[label] = functions
     return out
@@ -213,7 +206,7 @@ def mutation_functions() -> Dict[str, Mapping[Tuple[str, int, str], Any]]:
 def source_provenance() -> Dict[str, Any]:
     sources = {}
     for count in (0, 1, 2):
-        source = family.complex_stored_e_source(count, "FMA_V1")
+        source = family.complex_stored_e_source(count)
         sources[str(count)] = sha256_bytes(source.encode("utf-8"))
     mutations = mutation_functions()
     return {

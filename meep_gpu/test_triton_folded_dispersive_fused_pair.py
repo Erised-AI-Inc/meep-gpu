@@ -323,12 +323,12 @@ def test_the_builder_refuses_every_configuration_the_predicate_refuses():
 # ---------------------------------------------------------------------------
 
 CURL_LINES = (
-    "curl0 = dtdx * ((c_y - c) + (b - b_z))",
-    "curl1 = dtdx * ((a_z - a) + (c - c_x))",
-    "curl2 = dtdx * ((b_x - b) + (a - a_y))",
-    "n0 = ((p0 * km_y) - curl0) * si_y",
-    "n1 = ((p1 * km_z) - curl1) * si_z",
-    "n2 = ((p2 * km_x) - curl2) * si_x",
+    "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)",
+    "curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)",
+    "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)",
+    "du0 = record_in(cb, lattice + 8, k)",
+    "du1 = record_in(cb, lattice + 0, i)",
+    "du2 = record_in(cb, lattice + 4, j)",
 )
 
 
@@ -347,7 +347,8 @@ def plain_kernel_text() -> str:
 
 @pytest.mark.parametrize("line", CURL_LINES)
 def test_every_curl_line_is_the_released_bodys_own(line):
-    """The parenthesisation decides float32 bits; a reformat is a different number."""
+    """The curl expression and the recurrence's cells are the folded pair's (KT3): the
+    record's presence word through ``forms.curl_stencil`` and its dsigu lines."""
     assert line in shipped("folded_dispersive_fused_curl_constitutive_D")
     assert line in plain_kernel_text()
 
@@ -400,7 +401,7 @@ def test_the_carry_is_the_certified_one_with_only_its_source_line_split():
             continue    # the ONE licensed difference, and the signature
         assert line in mine, line
         checked += 1
-    assert checked == 7, checked
+    assert checked == 6, checked
 
 
 def test_the_pole_chain_is_the_certified_eight_arms_in_order():
@@ -497,6 +498,11 @@ def test_the_declared_passes_are_the_five_the_driver_calls_in_this_seam():
 # The plan
 # ---------------------------------------------------------------------------
 
+#: A valid record for a (6, 6, 6) plan with no layer: every run empty, every axis
+#: present. These two plans refuse before they bind it.
+_SIX_CUBED_RECORD = numpy.array([0] * 24 + [7], dtype=numpy.int32)
+
+
 def test_the_plan_refuses_a_fold_that_also_carries_a_wall_or_a_bad_phase():
     counts = (2, 1, 1)
     fields, pml = build(counts=counts)
@@ -511,7 +517,7 @@ def test_the_plan_refuses_a_fold_that_also_carries_a_wall_or_a_bad_phase():
                   e_aux=[numpy.zeros((6, 6, 6), dtype=numpy.float32)] * 3,
                   inverse_epsilon=[numpy.zeros((6, 6, 6), dtype=numpy.float32)] * 3,
                   e_coefficients=[numpy.zeros(6, dtype=numpy.float32)] * 6,
-                  poles=binding)
+                  poles=binding, chunk_bounds=_SIX_CUBED_RECORD)
     with pytest.raises(ValueError, match="no axis is folded"):
         product.FoldedDispersiveFusedPairPlan(
             bc=(0, 0, 0), zero_metal=(False,) * 3, phases=(0, 0, 0), **common)
@@ -553,7 +559,7 @@ def test_the_plan_refuses_a_pole_count_past_the_compiled_slots():
             e_aux=[numpy.zeros((6, 6, 6), dtype=numpy.float32)] * 3,
             inverse_epsilon=[numpy.zeros((6, 6, 6), dtype=numpy.float32)] * 3,
             e_coefficients=[numpy.zeros(6, dtype=numpy.float32)] * 6,
-            poles=_Over())
+            poles=_Over(), chunk_bounds=_SIX_CUBED_RECORD)
 
 
 def test_the_plan_binds_a_LIVE_pole_binding_and_never_a_snapshot():
@@ -715,7 +721,9 @@ def test_the_gates_transcription_leg_traces_every_line_to_its_source():
     row = load_gate().transcription_leg()
     assert row["passed"], row["findings"]
     assert row["pole_arms_checked"] == 8
-    assert row["curl_lines_checked"] == 6
+    assert row["curl_lines_checked"] == 15
+    assert row["constitutive_lines_checked"] == 9
+    assert row["carry_ghost_lines_checked"] == 7
 
 
 def test_the_gates_predicate_leg_admits_every_case_it_will_score():

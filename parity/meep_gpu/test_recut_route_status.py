@@ -32,10 +32,13 @@ sys.path.insert(0, str(HERE))
 
 import recut_driver_dispatch_record as recut  # noqa: E402
 
-from meep_gpu import fastpath, fastpath_cuda  # noqa: E402
+from meep_gpu import fastpath, fastpath_cuda, route_stamps  # noqa: E402
 from meep_gpu import test_cuda_weld_contract as contract  # noqa: E402
 
 CAPABILITY = "8.6"
+#: The stamp these campaigns run under: pinned, so this file does not move with the
+#: registry's state (the placeholder until a freeze sets it), and never spent.
+STAMP = "2099-01-01_test"
 CUDA_LEGS = recut.BACKENDS["cuda"]["required_legs"]
 
 
@@ -44,8 +47,8 @@ def _live(name: str) -> str:
 
 
 def _campaign(results: pathlib.Path) -> str:
-    """A released five-leg CUDA route campaign on the live bytes, as the gate writes it."""
-    name = fastpath.route_campaign(fastpath_cuda.CUDA_DRIVER_ROUTE_FUSED_GATE, CAPABILITY)
+    """A released four-leg CUDA route campaign on the live bytes, as the gate writes it."""
+    name = fastpath.route_campaign(route_stamps.route_gate("cuda"), CAPABILITY)
     released = fastpath_cuda.CUDA_RELEASED_FUSED_ARMS
     cases = sorted({case for arm_cases in released.values() for case in arm_cases})
     arms_driven = {case: {f"slot{index}": arm
@@ -103,6 +106,8 @@ def tree(tmp_path, monkeypatch):
     # certification state of the tree it runs on. The CUDA cut then neither needs nor
     # takes a licence.
     monkeypatch.setattr(fastpath, "primary_table", lambda capability: "triton")
+    monkeypatch.setattr(route_stamps, "ROUND", STAMP)
+    monkeypatch.setattr(route_stamps, "REROUTED", {})
     return results, ledger
 
 
@@ -167,3 +172,105 @@ def test_every_cut_refuses_a_record_carrying_an_entry_level_status(
     assert "record_carries_route_run_fields_at_entry_level" in error
     assert "'status'" in error
     assert ledger.read_text() == before
+
+
+# THE CAMPAIGN NAME IS THE REGISTRY'S, and the cut keys on it (meep_gpu/route_stamps.py).
+# Each refusal below is of a campaign the legs would otherwise file cleanly (the first
+# test of this file cuts the same campaign), and each writes nothing.
+
+
+def test_a_cut_under_the_placeholder_stamp_is_refused_by_name(tree, monkeypatch, capsys):
+    results, ledger = tree
+    _ledger(ledger)
+    monkeypatch.setattr(route_stamps, "ROUND", route_stamps.PLACEHOLDER)
+    name = _campaign(results)
+    before = ledger.read_text()
+    assert _cut(name) == 2
+    assert "route_stamp_is_unset" in capsys.readouterr().err
+    assert ledger.read_text() == before
+
+
+def test_a_spent_campaign_is_refused_by_name(tree, monkeypatch, capsys):
+    results, ledger = tree
+    _ledger(ledger)
+    name = _campaign(results)
+    monkeypatch.setitem(route_stamps.SPENT, "cuda", route_stamps.SPENT["cuda"] + (name,))
+    before = ledger.read_text()
+    assert _cut(name) == 2
+    assert "route_campaign_is_spent" in capsys.readouterr().err
+    assert ledger.read_text() == before
+
+
+def test_a_campaign_of_an_earlier_stamp_is_refused_once_the_stamp_moves(
+        tree, monkeypatch, capsys):
+    results, ledger = tree
+    _ledger(ledger)
+    name = _campaign(results)
+    monkeypatch.setattr(route_stamps, "ROUND", "2099-01-02_test")
+    before = ledger.read_text()
+    assert _cut(name) == 2
+    assert "run_is_not_this_capability_campaign" in capsys.readouterr().err
+    assert ledger.read_text() == before
+
+
+def _ledger_with_licence(path: pathlib.Path, directory: str) -> None:
+    """The CUDA ledger with a live route run for the capability carrying a licence whose
+    ship leg ran in ``results/<directory>/ship/``, on the bytes the campaign runs."""
+    _ledger(path)
+    document = json.loads(path.read_text())
+    record = document["driver_dispatch"]
+    record["runs"][CAPABILITY] = {
+        "bound_sha256": fastpath.bound_digest(record), "status": "PASS",
+        "dispatch_by_default_licence": {
+            "gate": recut.LICENCE_GATE,
+            "run": f"apps/api/parity/meep_gpu/results/{directory}/ship/"}}
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
+
+
+def test_a_carried_licence_of_this_round_travels_forward(tree, monkeypatch):
+    """The control for the refusal below: the same carry, the round's own name."""
+    results, ledger = tree
+    monkeypatch.setattr(fastpath, "primary_table", lambda capability: "cuda")
+    _ledger_with_licence(ledger, route_stamps.licence_campaign("cuda"))
+    assert _cut(_campaign(results)) == 0
+    licence = _dispatch(ledger)["runs"][CAPABILITY]["dispatch_by_default_licence"]
+    directory = recut._licence_directory(licence)  # noqa: SLF001
+    assert directory == f"dispatch_end_to_end_{STAMP}"
+
+
+def test_a_carried_licence_of_another_campaign_is_refused_by_name(
+        tree, monkeypatch, capsys):
+    """A re-route moves no package byte, so the slot still binds the bytes the campaign
+    ran and the keep rule's bound cannot see the difference: the name does."""
+    results, ledger = tree
+    monkeypatch.setattr(fastpath, "primary_table", lambda capability: "cuda")
+    _ledger_with_licence(ledger, "dispatch_end_to_end_2026-10-13_10")
+    before = ledger.read_text()
+    assert _cut(_campaign(results)) == 1
+    assert "licence_is_for_another_campaign" in capsys.readouterr().err
+    assert ledger.read_text() == before
+
+
+def _ship_leg(results: pathlib.Path, directory: str) -> str:
+    """A minimal ship leg and null control under ``results/<directory>/``."""
+    for leg in ("ship", "null"):
+        (results / directory / leg).mkdir(parents=True)
+        (results / directory / leg / "summary.json").write_text(json.dumps(
+            {"provenance": {"device": {"compute_capability": CAPABILITY}},
+             "null_control": leg == "null"}))
+    return directory
+
+
+@pytest.mark.parametrize("directory, refused", [
+    (f"dispatch_end_to_end_{STAMP}", False),
+    (f"dispatch_end_to_end_{STAMP}_cc86", False),
+    ("dispatch_end_to_end_2026-10-13_10", True),
+    (f"dispatch_end_to_end_{STAMP}_cc90", True),
+])
+def test_a_transcribed_licence_is_the_rounds_by_name(tree, directory, refused):
+    """Whatever else the ship leg lacks, its directory alone decides this reason."""
+    results, _ledger_path = tree
+    _block, problems = recut.transcribe_end_to_end(
+        _ship_leg(results, directory), {}, [], "cuda", CAPABILITY)
+    named = [line for line in problems if "licence_is_for_another_campaign" in line]
+    assert bool(named) is refused, problems

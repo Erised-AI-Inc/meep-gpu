@@ -69,18 +69,3 @@ def test_every_drive_row_states_what_it_expects(route, table_name):
               if not {"arms", "expect", "why"} <= set(spec)}
     assert not broken, f"{table_name} rows missing required keys: {broken}"
 
-
-def test_a_probe_licensed_row_names_the_leg_that_carries_the_licence(route):
-    """A row that needs a licence must say which leg exports it.
-
-    ``run_case``'s skip message names ``spec['leg']`` when it refuses a case for a
-    missing licence. Without it the campaign reports that some other leg drives the
-    case while naming no leg at all, and the reader cannot tell whether the case is
-    covered elsewhere or simply never runs.
-    """
-    for table_name in ("DRIVE", "DRIVE_CUDA"):
-        table = getattr(route, table_name)
-        unnamed = sorted(name for name, spec in table.items()
-                         if spec.get("needs_probe") and not spec.get("leg"))
-        assert not unnamed, (
-            f"{table_name} rows needing a licence but naming no leg: {unnamed}")

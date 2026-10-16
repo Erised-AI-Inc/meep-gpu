@@ -1,52 +1,47 @@
-"""Byte gate for the Metal COMPLEX radial prefix scan — ``cyl_complex_rderiv_prefix``
-against ``stepping.cylindrical_rderiv_prefix`` on complex64 storage.
+"""Byte gate for the Metal COMPLEX radial scan — ``cyl_complex_rderiv_difference``
+against ``stepping.cylindrical_rderiv_difference`` on complex64 storage.
 
 THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: at every radial extent of the sixteen
 ``cylindrical complex`` H->D corpus rows on the Metal board, at both ``ir0`` values the
-array path uses (0.0 with the zero wall row on the B side, 0.5 raw on the D side), over
-four value classes, ONE dispatch of the device column-serial complex scan writes a
-prefix volume that is BIT-IDENTICAL, as uint32 words, to
-``stepping.cylindrical_rderiv_prefix`` CALLED on the same complex64 input — never
-re-derived, never approximated, ``allclose`` nowhere.
+array path uses (0.0 with the zero wall row and a forward difference on the B side, 0.5
+raw with a backward difference on the D side), over four value classes and two chunk
+divisions (one radial chunk, and two with the cut where an r layer would start), ONE
+dispatch of the device column-serial complex scan writes a radial-difference volume
+that is BIT-IDENTICAL, as uint32 words, to ``stepping.cylindrical_rderiv_difference``
+CALLED on the same complex64 input with the same chunk starts — never re-derived,
+never approximated, ``allclose`` nowhere.
 
-WHAT IS NEW, and why this gate exists before the product that consumes the kernel: the
-sixteen complex rows pay a host round trip on every ``step_D`` because the complex
-family scans on the host; the two-launch H->D product removes it ONLY if a device
-complex scan reproduces the oracle. And the port from the real scan carries one trap —
-the divide spelling INVERTS (``/`` on float32, the reciprocal multiply on complex64,
-because ``numpy``'s ``complex64 / float32`` is its complex divide loop) — which this
-gate arms as a mutation that MUST be caught, beside the equivalences it measures.
+WHAT THE KERNEL IS: MEEP's ``f_rderiv_int`` summed per part in every structure chunk
+from that chunk's first row, ``rinv`` multiplied (the double quotient stored as a
+realnum), and the stencil's difference of two partial sums stored. The complex loop is
+the real scan's with ``float2`` registers (``cylindrical_complex_scan.FLOAT2_EDITS``);
+``float2 * float`` is one rounded product per part, which is what the array path's
+per-part forms compute. No complex product and no divide remain.
 
 THE LEGS
 
-  1  bindings        the emitted source binds exactly eight buffers, compiles on both
-                     sub-steps, spells the reciprocal multiply and never ``/`` on the
-                     complex increment, multiplies with the field on the left, and
-                     carries the contraction guard exactly once
+  1  bindings        nine buffers, compiles on both sub-steps, the rinv multiply on the
+                     increment and no divide of a value, the per-chunk restart, the
+                     contraction guard exactly once, the same text at every arm
   2  corpus_shapes   the thirteen (nr, nz) extents here ARE the sixteen rows' extents in
                      the census record, read from the record when it is present
-  3  prefix          13 extents x 2 sub-steps x 4 value classes = 104 cases, the device
-                     scan against the array path's own function, at BOTH expansion arms
-                     (the probe-bound one is the shipped one; the other is a measured
-                     equivalence for a real coefficient), with the subnormal-free
-                     precondition CHECKED on every case and a movement floor
-  4  absorption      the +-0 lattice: the oracle's prefix is +0.0 in EVERY word, and so
-                     is the device's — the fact that makes the signed-zero refinement of
-                     the divide spelling unobservable on the prefix. Recorded as a
-                     predicted null-sign case, not as a discriminating comparison
-  5  increment_sign  HOST measurement: numpy's complex-by-real divide and multiply
-                     differ from the componentwise spellings on the INCREMENT's
-                     signed-zero words and agree on the PREFIX, over the signed-zero
-                     class at every extent
-  6  extra_extents   the two withdraw_seam rows' extents (100, 1335), measured for the
+  3  radial          13 extents x 2 sub-steps x 4 value classes x 2 divisions = 208
+                     cases, the device scan against the array path's own function, the
+                     subnormal-free precondition CHECKED on every case, a movement floor,
+                     and on the two-chunk division the one-sum control (the reference
+                     with one sum from the axis), which must differ
+  4  absorption      the +-0 lattice: the oracle's difference is +0.0 in EVERY word, and
+                     so is the device's. Recorded as a predicted null-sign case, not as a
+                     discriminating comparison
+  5  extra_extents   the two withdraw_seam rows' extents (100, 1335), measured for the
                      ladder and NOT credited to any row
-  7  mutations       ten armed defects through the launch-counted harness — the ``/``
-                     spelling, a blocked scan, a -0.0 row zero, both off-by-ones, the
-                     dropped wall row (must be caught); the literal numpy divide loop,
-                     the componentwise multiply, the coefficient-left orientation and
-                     the commuted accumulator (must NOT be caught, measured equivalences);
-                     the fast-contraction variant (recorded)
-  8  disarm          the shipped bytes through the same harness path must not diverge
+  6  mutations       armed defects through the launch-counted harness — the restart
+                     dropped or one row late, the quotient divided in the kernel, the
+                     rounded increment stored, the parts swapped, both off-by-ones, the
+                     short loop, the wall row given a value (must be caught); the
+                     commuted add (must NOT be caught); a -0 start and the
+                     fast-contraction variant (recorded)
+  7  disarm          the shipped bytes through the same harness path must not diverge
 
 WHAT THE GATE REFUSES TO INFER
 
@@ -54,7 +49,6 @@ WHAT THE GATE REFUSES TO INFER
   floor of nonzero output words, and the +-0 lattice — whose output is all zeros by the
   oracle's own arithmetic — is recorded as predicted-null rather than counted as a
   discriminating pass.
-* **"The other expansion arm is the same bits" is a measurement**, 104 cases of it.
 * **A value class that entered the subnormal band is a REFUSAL**, not a comparison: MPS
   flushes natively, the oracle keeps, and this claim rides a checked precondition.
 * **A mutation that never launched is DISARMED and fails; one whose needle matched
@@ -96,7 +90,6 @@ ENVIRONMENT = matrix.prepare_environment()
 
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.metal_kernels import (  # noqa: E402
-    cylindrical_complex as cylc,
     cylindrical_complex_scan as scan,
     cylindrical_real as cyl,
     shaders,
@@ -155,6 +148,12 @@ SHAPES: Tuple[Tuple[int, int], ...] = tuple(dict.fromkeys(
 
 SUB_STEPS: Tuple[str, ...] = ("step_B", "step_D")
 
+#: The two chunk divisions every case runs under: one radial chunk from the axis, and
+#: two with the cut where an r layer would start (:func:`division_starts`).
+ONE_CHUNK = "one_chunk"
+TWO_CHUNK = "two_chunk"
+DIVISIONS: Tuple[str, ...] = (ONE_CHUNK, TWO_CHUNK)
+
 #: The four compared value classes, in scoring order. ``pm_zero_lattice`` is NOT one of
 #: them: its oracle output is all +0.0 (leg ``absorption``), so it discriminates no
 #: sign and moves no word.
@@ -163,10 +162,6 @@ WIDE_DYNAMIC = "wide_dynamic"
 CANCELLING = "cancelling"
 SIGNED_ZERO_MIX = "signed_zero_mix"
 VALUE_CLASSES: Tuple[str, ...] = (UNIFORM, WIDE_DYNAMIC, CANCELLING, SIGNED_ZERO_MIX)
-
-#: The expansion arm measured beside the probe-bound one.
-EXPANSION_ARMS: Tuple[str, ...] = tuple(templates.EXPANSION_ARMS)
-
 
 # ---------------------------------------------------------------------------
 # Inputs: value classes and the oracle
@@ -193,8 +188,7 @@ def make_input(shape: Tuple[int, int, int], value_class: str, seed: int) -> np.n
         im = rng.standard_normal(shape) * sign * 1e6
     elif value_class == SIGNED_ZERO_MIX:
         # Per plane: a quarter +0.0, a quarter -0.0, half physical. Exactly-zero
-        # increments of BOTH signs arise, which is where the divide and multiply
-        # spellings differ on the increment.
+        # increments of BOTH signs arise, which a +0 sum must absorb.
         def plane() -> np.ndarray:
             pick = rng.integers(0, 4, shape)
             phys = rng.standard_normal(shape).astype(np.float32)
@@ -224,49 +218,73 @@ def scanned_source(sub_step: str, source: np.ndarray) -> np.ndarray:
     return extended
 
 
-def reference_prefix(sub_step: str, source: np.ndarray) -> np.ndarray:
-    """``stepping``'s own prefix — CALLED, never re-derived."""
-    return stepping.cylindrical_rderiv_prefix(
-        np, scanned_source(sub_step, source), cyl.PREFIX_IR0[sub_step])
+def division_starts(nr: int, division: str, sub_step: str) -> Optional[np.ndarray]:
+    """The chunk starts of one division, as ``stepping._cylindrical_scan_starts`` gives
+    them for the sub-step's target: ``None`` for one chunk, else one start per row,
+    ``(nr, 1, 1)``. A chunk box ``[lo, hi]`` in doubled r owns ``lo < p <= hi``, so the
+    cut row belongs to the UPPER chunk for Bz (half-integer, ``p = 2g + 1``) and to the
+    LOWER chunk for Dz (integer, ``p = 2g``)."""
+    if division == ONE_CHUNK:
+        return None
+    cut = nr - max(2, nr // 8)
+    rows = np.arange(nr)
+    upper = rows >= cut if sub_step == "step_B" else rows > cut
+    return np.where(upper, cut, 0).astype(np.int64).reshape(-1, 1, 1)
+
+
+def reference_radial(sub_step: str, source: np.ndarray,
+                     starts: Optional[np.ndarray]) -> np.ndarray:
+    """``stepping``'s own radial difference — CALLED, never re-derived."""
+    return stepping.cylindrical_rderiv_difference(
+        np, scanned_source(sub_step, source), cyl.PREFIX_IR0[sub_step], starts,
+        int(source.shape[0]), backward=bool(cyl.SUB_STEPS[sub_step]["backward"]))
 
 
 class Case:
-    """One (extent, sub-step, class) input with its oracle and its device tensors."""
+    """One (extent, sub-step, class, division) input with its oracle and tensors."""
 
-    __slots__ = ("label", "shape", "sub_step", "value_class", "source", "expected",
-                 "scan_shape", "weights", "divisor", "src_t", "w_t", "d_t")
+    __slots__ = ("label", "shape", "sub_step", "value_class", "division", "source",
+                 "starts", "expected", "one_sum", "weights", "rinv", "src_t", "w_t",
+                 "r_t", "s_t")
 
     def __init__(self, shape: Tuple[int, int], sub_step: str, value_class: str,
-                 seed: int) -> None:
+                 seed: int, division: str = TWO_CHUNK,
+                 source: Optional[np.ndarray] = None) -> None:
         import torch  # noqa: PLC0415
 
         nr, nz = shape
-        self.label = f"nr{nr}_nz{nz}/{sub_step}/{value_class}"
+        self.label = f"nr{nr}_nz{nz}/{sub_step}/{value_class}/{division}"
         self.shape = (nr, 1, nz)
         self.sub_step = sub_step
         self.value_class = value_class
-        self.source = make_input(self.shape, value_class, seed)
-        self.expected = reference_prefix(sub_step, self.source)
-        self.scan_shape = (cyl.scan_rows(sub_step, nr), 1, nz)
-        self.weights, self.divisor = scan.prefix_row_vectors(sub_step, nr)
+        self.division = division
+        self.source = (make_input(self.shape, value_class, seed) if source is None
+                       else source)
+        self.starts = division_starts(nr, division, sub_step)
+        self.expected = reference_radial(sub_step, self.source, self.starts)
+        self.one_sum = (self.expected if self.starts is None
+                        else reference_radial(sub_step, self.source, None))
+        self.weights, self.rinv = scan.prefix_row_vectors(sub_step, nr)
+        line = cyl.scan_starts(sub_step, self.starts, nr)
         self.src_t = torch.from_numpy(np.ascontiguousarray(self.source).reshape(-1)
                                       ).to("mps")
         self.w_t = torch.from_numpy(np.ascontiguousarray(self.weights, dtype=np.float32)
                                     ).to("mps")
-        self.d_t = torch.from_numpy(np.ascontiguousarray(self.divisor, dtype=np.float32)
+        self.r_t = torch.from_numpy(np.ascontiguousarray(self.rinv, dtype=np.float32)
                                     ).to("mps")
+        self.s_t = torch.from_numpy(np.ascontiguousarray(line, dtype=np.int32)).to("mps")
 
     def launch(self, function: Callable[..., Any]) -> np.ndarray:
         """One dispatch into a SENTINEL-filled output, so a kernel that never ran
         cannot compare equal."""
         import torch  # noqa: PLC0415
 
-        sentinel = np.full(self.scan_shape, np.complex64(-7.5 - 7.5j), dtype=np.complex64)
+        sentinel = np.full(self.shape, np.complex64(-7.5 - 7.5j), dtype=np.complex64)
         out = torch.from_numpy(sentinel.reshape(-1)).to("mps")
-        function(*scan.scan_arguments(out, self.src_t, self.w_t, self.d_t,
-                                      self.scan_shape))
+        function(*scan.scan_arguments(out, self.src_t, self.w_t, self.r_t, self.s_t,
+                                      self.shape))
         torch.mps.synchronize()
-        got = out.cpu().numpy().reshape(self.scan_shape)
+        got = out.cpu().numpy().reshape(self.shape)
         assert got.shape == self.expected.shape, (self.label, got.shape,
                                                   self.expected.shape)
         return got
@@ -277,26 +295,21 @@ def build_cases(seed_base: int = 71000) -> List[Case]:
     for offset, (shape, sub_step, value_class) in enumerate(
             (shape, sub_step, value_class) for shape in SHAPES
             for sub_step in SUB_STEPS for value_class in VALUE_CLASSES):
-        cases.append(Case(shape, sub_step, value_class, seed_base + offset))
+        for division in DIVISIONS:
+            cases.append(Case(shape, sub_step, value_class, seed_base + offset,
+                              division))
     return cases
 
 
-def bound_expansion() -> Tuple[Optional[str], str]:
-    """``(probe-bound arm or None, the arm this gate ships its measurement at)``."""
-    probe = cylc.load_expansion_probe()
-    arm = cylc.expansion_from_probe(probe) if probe else None
-    return arm, (arm or "FMA_V1")
+_FUNCTIONS: Dict[Tuple[str, str], Any] = {}
 
 
-_FUNCTIONS: Dict[Tuple[str, str, str], Any] = {}
-
-
-def shipped_function(sub_step: str, expansion: str,
+def shipped_function(sub_step: str,
                      contract: str = shaders.CONTRACT_OFF) -> Any:
-    key = (sub_step, expansion, contract)
+    key = (sub_step, contract)
     if key not in _FUNCTIONS:
-        _FUNCTIONS[key] = scan.compile_cylindrical_complex_prefix(sub_step, expansion,
-                                                                  contract)
+        _FUNCTIONS[key] = scan.compile_cylindrical_complex_scan(sub_step,
+                                                                contract)
     return _FUNCTIONS[key]
 
 
@@ -322,17 +335,20 @@ def _compiles(source: str) -> Tuple[bool, str]:
 # LEG bindings — the signature and the spelling, compiled and pinned
 # ---------------------------------------------------------------------------
 
+#: The increment line of each sub-step's loop: rinv MULTIPLIED, one product per part.
+_INCREMENT = {"step_B": "float2 inc = rinv[g] * (w - w_prev);",
+              "step_D": "float2 inc = rinv[g - 1] * (w - w_prev);"}
+
+
 def leg_bindings(payload: Dict[str, Any], out: str) -> None:
-    _probe, expansion = bound_expansion()
     rows: List[Dict[str, Any]] = []
     for sub_step in SUB_STEPS:
-        source = scan.cylindrical_complex_prefix_source(sub_step, expansion)
+        source = scan.cylindrical_complex_scan_source(sub_step)
         indices = [int(part.split(")")[0]) for part in source.split("[[buffer(")[1:]]
         code = _code_lines(source)
         ok, error = _compiles(source)
         row = {
             "sub_step": sub_step,
-            "expansion": expansion,
             "buffer_indices": indices,
             "bindings": len(indices),
             "declared_bindings": scan.BINDINGS,
@@ -342,31 +358,32 @@ def leg_bindings(payload: Dict[str, Any], out: str) -> None:
             "compile_error": error,
             "float2_volumes": (code.count("device float2*") + code.count(
                 "device const float2*")),
-            "reciprocal_multiply_spelled": "return z * (1.0f / d);" in code,
-            "true_divide_absent": ("/ divisor" not in code and "z / d" not in code),
-            "fast_divide_absent": "fast::" not in code,
-            # ONE definition (the certified helper) and TWO call sites (row 0, row i);
-            # the coefficient-left helper is defined by the same helper block but is
-            # never called on the weight.
-            "field_left_multiply": (code.count("c_mul_field_left(") == 3
-                                    and "c_mul_coefficient_left(w" not in code
-                                    and "c_mul_coefficient_left(src" not in code),
+            "rinv_multiplied": _INCREMENT[sub_step] in code,
+            # The one `/` the compiler sees is the integer column decode.
+            "no_divide_of_a_value": code.count("/") == 1 and "int j = int(idx) / nzi;"
+                                    in code,
+            "fast_math_absent": "fast::" not in code,
+            "per_chunk_restart": ("if (s != owner) { acc = float2(0.0f, 0.0f); "
+                                  "owner = s; }") in code,
+            "difference_of_partial_sums": (
+                "out[g * nyz + base] = nxt - acc;" if sub_step == "step_B"
+                else "out[g * nyz + base] = acc - nxt;") in code,
             "contraction_guard_once": source.count(
                 shaders.contraction_pragma(shaders.CONTRACT_OFF)) == 1,
             "no_math_mode_pragma": "math_mode" not in source and "denorm" not in source,
-            "row_zero_positive": "float2 acc = float2(0.0f, 0.0f);" in code,
-            "wall_row_read": ("float2(0.0f, 0.0f))" in code
+            "sum_starts_positive": "float2 acc = float2(0.0f, 0.0f);" in code,
+            "wall_row_read": ("float2(0.0f, 0.0f)) * weights[g + 1]" in code
                              if cyl.PREFIX_WALL_ROW[sub_step]
-                             else "i < nxi - 1" not in code),
+                             else "weights[g + 1]" not in code),
             "source_sha256": templates.source_sha256(source),
         }
         row["passed"] = bool(
             ok and indices == list(range(scan.BINDINGS))
-            and row["float2_volumes"] == 2 and row["reciprocal_multiply_spelled"]
-            and row["true_divide_absent"] and row["fast_divide_absent"]
-            and row["field_left_multiply"] and row["contraction_guard_once"]
-            and row["no_math_mode_pragma"] and row["row_zero_positive"]
-            and row["wall_row_read"])
+            and row["float2_volumes"] == 2 and row["rinv_multiplied"]
+            and row["no_divide_of_a_value"] and row["fast_math_absent"]
+            and row["per_chunk_restart"] and row["difference_of_partial_sums"]
+            and row["contraction_guard_once"] and row["no_math_mode_pragma"]
+            and row["sum_starts_positive"] and row["wall_row_read"])
         rows.append(row)
         log(f"[bindings] {sub_step} bindings={len(indices)} compiled={ok} "
             f"passed={row['passed']}")
@@ -428,7 +445,7 @@ def leg_corpus_shapes(payload: Dict[str, Any], out: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# LEG prefix — the device scan against the array path's own function
+# LEG radial — the device scan against the array path's own function
 # ---------------------------------------------------------------------------
 
 def _compare_case(case: Case, function: Callable[..., Any]) -> Tuple[int, int, np.ndarray]:
@@ -436,9 +453,7 @@ def _compare_case(case: Case, function: Callable[..., Any]) -> Tuple[int, int, n
     return differing(got, case.expected), int(words(case.expected).size), got
 
 
-def leg_prefix(payload: Dict[str, Any], out: str, cases: Sequence[Case]) -> None:
-    probe_arm, expansion = bound_expansion()
-    other = tuple(arm for arm in EXPANSION_ARMS if arm != expansion)
+def leg_radial(payload: Dict[str, Any], out: str, cases: Sequence[Case]) -> None:
     rows: List[Dict[str, Any]] = []
     started = time.time()
     for index, case in enumerate(cases, start=1):
@@ -448,38 +463,43 @@ def leg_prefix(payload: Dict[str, Any], out: str, cases: Sequence[Case]) -> None
             f"{case.label}: the value class entered the subnormal band "
             f"(input {band_in}, reference {band_ref} words); a banded case is a "
             f"refusal on this executor, not a comparison")
-        differ, compared, got = _compare_case(case, shipped_function(case.sub_step,
-                                                                    expansion))
+        differ, compared, got = _compare_case(case, shipped_function(case.sub_step))
         moved = differing(got, np.zeros_like(got))
         kit.assert_moved(moved, f"{case.label} scan output is all zero",
                          floor=max(1, min(64, compared // 4)))
-        others = {arm: _compare_case(case, shipped_function(case.sub_step, arm))[0]
-                  for arm in other}
+        control = differing(case.expected, case.one_sum)
+        if case.division == TWO_CHUNK:
+            kit.assert_moved(control, f"{case.label} one-sum control: one radial sum "
+                             f"from the axis equals the two chunks' sums", floor=1)
         row = {
             "case": case.label, "index": index, "total": len(cases),
-            "shape": list(case.shape), "scan_shape": list(case.scan_shape),
-            "sub_step": case.sub_step, "ir0": cyl.PREFIX_IR0[case.sub_step],
+            "shape": list(case.shape), "sub_step": case.sub_step,
+            "ir0": cyl.PREFIX_IR0[case.sub_step],
             "wall_row": bool(cyl.PREFIX_WALL_ROW[case.sub_step]),
-            "value_class": case.value_class, "expansion": expansion,
+            "value_class": case.value_class, "division": case.division,
+            "chunk_starts": (sorted({int(s) for s in case.starts.reshape(-1)})
+                             if case.starts is not None else [0]),
             "compared": compared, "differing": differ, "nonzero_words": moved,
-            "differing_other_arms": others,
+            "one_sum_differing": control,
             "subnormal_words_input": band_in, "subnormal_words_reference": band_ref,
             "reference_zero_sign_census": values.zero_sign_census([case.expected]),
-            "digest": kit.state_digest({"prefix": case.expected}),
+            "digest": kit.state_digest({"radial": case.expected}),
         }
         rows.append(row)
-        payload["legs"]["prefix"] = rows
+        payload["legs"]["radial"] = rows
         save(payload, out)
-        log(f"[prefix] case {index}/{len(cases)} {case.label:<40} compared={compared} "
-            f"differing={differ} other_arms={others} ({time.time() - started:.1f}s)")
-    payload["legs"]["prefix_summary"] = {
-        "probe_bound_expansion": probe_arm, "measured_expansion": expansion,
+        log(f"[radial] case {index}/{len(cases)} {case.label:<52} compared={compared} "
+            f"differing={differ} one_sum_differing={control} "
+            f"({time.time() - started:.1f}s)")
+    payload["legs"]["radial_summary"] = {
         "cases": len(rows), "compared": sum(row["compared"] for row in rows),
         "differing": sum(row["differing"] for row in rows),
-        "differing_other_arms": {
-            arm: sum(row["differing_other_arms"][arm] for row in rows) for arm in other},
+        "two_chunk_cases": sum(1 for row in rows if row["division"] == TWO_CHUNK),
+        "one_sum_differing_min_two_chunk": min(
+            (row["one_sum_differing"] for row in rows if row["division"] == TWO_CHUNK),
+            default=0),
         "extents": len(SHAPES), "sub_steps": list(SUB_STEPS),
-        "value_classes": list(VALUE_CLASSES),
+        "value_classes": list(VALUE_CLASSES), "divisions": list(DIVISIONS),
     }
     save(payload, out)
 
@@ -489,32 +509,15 @@ def leg_prefix(payload: Dict[str, Any], out: str, cases: Sequence[Case]) -> None
 # ---------------------------------------------------------------------------
 
 def leg_absorption(payload: Dict[str, Any], out: str) -> None:
-    _probe, expansion = bound_expansion()
     rows: List[Dict[str, Any]] = []
     for shape in SHAPES:
         for sub_step in SUB_STEPS:
             nr, nz = shape
             source = values.pm_zero_lattice_complex((nr, 1, nz))
-            expected = reference_prefix(sub_step, source)
+            case = Case(shape, sub_step, "pm_zero_lattice", 0, TWO_CHUNK, source=source)
             census_in = values.zero_sign_census([source])
-            census_out = values.zero_sign_census([expected])
-            case = Case.__new__(Case)
-            case.label = f"nr{nr}_nz{nz}/{sub_step}/pm_zero_lattice"
-            case.shape = (nr, 1, nz)
-            case.sub_step = sub_step
-            case.value_class = "pm_zero_lattice"
-            case.source = source
-            case.expected = expected
-            case.scan_shape = (cyl.scan_rows(sub_step, nr), 1, nz)
-            case.weights, case.divisor = scan.prefix_row_vectors(sub_step, nr)
-            import torch  # noqa: PLC0415
-            case.src_t = torch.from_numpy(source.reshape(-1).copy()).to("mps")
-            case.w_t = torch.from_numpy(np.ascontiguousarray(case.weights,
-                                                             dtype=np.float32)).to("mps")
-            case.d_t = torch.from_numpy(np.ascontiguousarray(case.divisor,
-                                                             dtype=np.float32)).to("mps")
-            differ, compared, got = _compare_case(case, shipped_function(sub_step,
-                                                                        expansion))
+            census_out = values.zero_sign_census([case.expected])
+            differ, compared, got = _compare_case(case, shipped_function(sub_step))
             all_positive_zero = (census_out["positive_zero_words"] == compared
                                  and census_out["negative_zero_words"] == 0)
             row = kit.predicted_null({
@@ -523,14 +526,15 @@ def leg_absorption(payload: Dict[str, Any], out: str) -> None:
                 "input_zero_sign_census": census_in,
                 "reference_zero_sign_census": census_out,
                 "reference_all_positive_zero": all_positive_zero,
-            }, ("the accumulator starts at an exact +0.0 and IEEE addition never yields "
-                "-0.0 from a +0.0 accumulator, so every signed-zero increment is "
-                "absorbed: the oracle's prefix over a +-0 lattice is +0.0 in every word "
-                "and the comparison discriminates no sign and moves no word"))
+            }, ("every sum starts at an exact +0.0 on its chunk's first row and IEEE "
+                "addition never yields -0.0 from a +0.0 accumulator, so each partial sum "
+                "is +0.0 and so is the difference of two of them: the oracle's radial "
+                "difference over a +-0 lattice is +0.0 in every word and the comparison "
+                "discriminates no sign and moves no word"))
             rows.append(row)
             payload["legs"]["absorption"] = rows
             save(payload, out)
-            log(f"[absorption] {case.label:<44} compared={compared} differing={differ} "
+            log(f"[absorption] {case.label:<52} compared={compared} differing={differ} "
                 f"reference +0={census_out['positive_zero_words']} "
                 f"-0={census_out['negative_zero_words']}")
             assert all_positive_zero, row
@@ -539,96 +543,16 @@ def leg_absorption(payload: Dict[str, Any], out: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# LEG increment_sign — the refinement, measured on the host
-# ---------------------------------------------------------------------------
-
-def _increments(source: np.ndarray, ir0: float) -> Dict[str, np.ndarray]:
-    """The increment three ways, with the array path's own row vectors."""
-    weights, divisor = stepping._cylindrical_rderiv_weights(np, source.shape[0], ir0,
-                                                            np.float32)
-    # THE ARRAY PATH'S OWN SPELLING (stepping.py:1313-1315), numpy loops throughout.
-    weighted = source * weights
-    numpy_inc = np.zeros_like(source)
-    numpy_inc[1:] = (weighted[1:] - weighted[:-1]) / divisor
-    # THE PLAIN RECIPROCAL MULTIPLY, componentwise — what the kernel spells.
-    recip = np.float32(1) / divisor
-    recip_inc = np.zeros_like(source)
-    diff = weighted[1:] - weighted[:-1]
-    recip_inc.real[1:] = (diff.real * recip).astype(np.float32)
-    recip_inc.imag[1:] = (diff.imag * recip).astype(np.float32)
-    # THE COMPONENTWISE MULTIPLY feeding the reciprocal divide.
-    comp_weighted = np.zeros_like(source)
-    comp_weighted.real = (source.real * weights).astype(np.float32)
-    comp_weighted.imag = (source.imag * weights).astype(np.float32)
-    comp_inc = np.zeros_like(source)
-    cdiff = comp_weighted[1:] - comp_weighted[:-1]
-    comp_inc.real[1:] = (cdiff.real * recip).astype(np.float32)
-    comp_inc.imag[1:] = (cdiff.imag * recip).astype(np.float32)
-    return {"numpy": numpy_inc, "reciprocal": recip_inc,
-            "componentwise_multiply": comp_inc}
-
-
-def leg_increment_sign(payload: Dict[str, Any], out: str) -> None:
-    rows: List[Dict[str, Any]] = []
-    for shape in SHAPES:
-        nr, nz = shape
-        source = make_input((nr, 1, nz), SIGNED_ZERO_MIX, 83000 + nr)
-        for sub_step in SUB_STEPS:
-            scanned = scanned_source(sub_step, source)
-            ir0 = cyl.PREFIX_IR0[sub_step]
-            forms = _increments(scanned, ir0)
-            prefixes = {name: np.cumsum(inc, axis=0) for name, inc in forms.items()}
-            expected = reference_prefix(sub_step, source)
-            row = {
-                "shape": [nr, 1, nz], "sub_step": sub_step, "ir0": ir0,
-                "words": int(words(forms["numpy"]).size),
-                "increment_differing": {
-                    name: differing(inc, forms["numpy"])
-                    for name, inc in forms.items() if name != "numpy"},
-                "prefix_differing": {
-                    name: differing(prefix, expected) for name, prefix in prefixes.items()},
-                "numpy_cumsum_is_the_oracle": differing(prefixes["numpy"], expected) == 0,
-            }
-            rows.append(row)
-            payload["legs"]["increment_sign"] = rows
-            save(payload, out)
-            log(f"[increment_sign] nr{nr}_nz{nz} {sub_step} increment differs "
-                f"{row['increment_differing']} prefix differs {row['prefix_differing']}")
-            assert row["numpy_cumsum_is_the_oracle"], row
-            assert all(count == 0 for count in row["prefix_differing"].values()), row
-    total_inc = {name: sum(row["increment_differing"][name] for row in rows)
-                 for name in ("reciprocal", "componentwise_multiply")}
-    payload["legs"]["increment_sign_summary"] = {
-        "cases": len(rows), "words": sum(row["words"] for row in rows),
-        "increment_differing": total_inc,
-        "prefix_differing": {name: sum(row["prefix_differing"][name] for row in rows)
-                             for name in ("reciprocal", "componentwise_multiply")},
-        "finding": (
-            "numpy's complex64-by-float32 divide and multiply are its complex loops "
-            "and differ from the componentwise spellings on the SIGN of exactly-zero "
-            "increment words; the running sum from an exact +0.0 absorbs every one of "
-            "them, so the two spellings are bit-identical on the PREFIX at every corpus "
-            "extent. The kernel ships the reciprocal multiply the verdict named; the "
-            "refinement is recorded here so a consumer of the INCREMENT would know"),
-    }
-    save(payload, out)
-    # NON-VACUITY: the refinement must be REAL on the increment, or this leg says
-    # nothing about the absorption.
-    assert all(count > 0 for count in total_inc.values()), total_inc
-
-
-# ---------------------------------------------------------------------------
 # LEG extra_extents — the two withdraw rows' ladders, uncredited
 # ---------------------------------------------------------------------------
 
 def leg_extra_extents(payload: Dict[str, Any], out: str) -> None:
-    _probe, expansion = bound_expansion()
     rows: List[Dict[str, Any]] = []
     for offset, (_leg, name, shape) in enumerate(WITHDRAW_ROWS):
         for sub_step in SUB_STEPS:
-            case = Case((shape[0], shape[2]), sub_step, UNIFORM, 91000 + offset)
-            differ, compared, got = _compare_case(case, shipped_function(sub_step,
-                                                                        expansion))
+            case = Case((shape[0], shape[2]), sub_step, UNIFORM, 91000 + offset,
+                        TWO_CHUNK)
+            differ, compared, got = _compare_case(case, shipped_function(sub_step))
             moved = differing(got, np.zeros_like(got))
             kit.assert_moved(moved, f"{name}/{sub_step} scan output is all zero", 64)
             row = {"row": name, "bucket": "withdraw_seam", "credited": False,
@@ -646,157 +570,120 @@ def leg_extra_extents(payload: Dict[str, Any], out: str) -> None:
 # LEG mutations — armed, launch-counted, each with its expected fate
 # ---------------------------------------------------------------------------
 
-_LITERAL_LOOP = """static inline float2 c_div_real(float2 z, float d) {
-    float rat = 0.0f / d;
-    float scl = 1.0f / (d + 0.0f * rat);
-    return float2((z.x + z.y * rat) * scl, (z.y - z.x * rat) * scl);
-}"""
-
-_SHIPPED_DIVIDE = """static inline float2 c_div_real(float2 z, float d) {
-    return z * (1.0f / d);
-}"""
-
-_BLOCKED = """    float2 carry = float2(0.0f, 0.0f);
-    float2 local = float2(0.0f, 0.0f);
-    for (int i = 1; i < nxi; ++i) {
-        int o = i * nyz + base;
-        float2 w = c_mul_field_left(__SRCI__, weights[i]);
-        float2 inc = c_div_real(w - prev, divisor[i - 1]);
-        local = local + inc;
-        out[o] = carry + local;
-        if ((i % 32) == 31) { carry = carry + local; local = float2(0.0f, 0.0f); }
-        prev = w;
-    }"""
-
-_SERIAL = """    for (int i = 1; i < nxi; ++i) {
-        int o = i * nyz + base;
-        float2 w = c_mul_field_left(__SRCI__, weights[i]);
-        // stepping.py:1286/:1301-1302 — the difference of two ALREADY-WEIGHTED rows,
-        // then numpy's complex-by-real divide, which is the reciprocal multiply.
-        float2 inc = c_div_real(w - prev, divisor[i - 1]);
-        // STRICTLY SERIAL: numpy.cumsum is out[i] = out[i-1] + in[i], both planes.
-        acc = acc + inc;
-        out[o] = acc;
-        prev = w;
-    }"""  # stepping.py live lines for the frozen device-text citation(s) in this string: 1286->1315, 1301-1302->1330-1331
+def _per_step(b_old: str, b_new: str, d_old: str, d_new: str
+              ) -> Callable[[str, str], str]:
+    """A transform whose needle differs by sub-step."""
+    def transform(text: str, sub_step: str) -> str:
+        if sub_step == "step_B":
+            return kit.needle(text, b_old, b_new)
+        return kit.needle(text, d_old, d_new)
+    return transform
 
 
-def _with_reads(text: str, sub_step: str) -> str:
-    src0, srci = scan.source_reads(sub_step)
-    return text.replace("__SRC0__", src0).replace("__SRCI__", srci)
+def _both(old: str, new: str) -> Callable[[str, str], str]:
+    return lambda text, _sub_step: kit.needle(text, old, new)
 
 
-def mutation_table(sub_step: str) -> Tuple[Tuple[str, Callable[[str], str],
-                                                 Optional[bool], str,
-                                                 Optional[Tuple[str, ...]]], ...]:
-    """``(label, transform, must_catch, why, classes)``.
+#: ``(label, transform(text, sub_step), sub_steps, must_catch, why, classes,
+#: divisions)``. ``classes`` and ``divisions`` are the SCOPE the verdict is taken over
+#: (``None``: all). A mutation is scoped where a case can ABSORB its edit; the cases
+#: outside the scope are still RUN and their counts recorded beside the verdict.
+#: :data:`MULTI_COLUMN_ONLY` scopes by extent the same way.
+MUTATIONS: Tuple[Tuple[str, Callable[[str, str], str], Tuple[str, ...],
+                       Optional[bool], str, Optional[Tuple[str, ...]],
+                       Optional[Tuple[str, ...]]], ...] = (
+    ("sum_never_restarts",
+     _both("{ acc = float2(0.0f, 0.0f); owner = s; }", "{ owner = s; }"), SUB_STEPS,
+     True, "ONE radial sum from the axis instead of MEEP's f_rderiv_int per structure "
+     "chunk: every row from the cut up reads another chunk's sum. Scoped to the "
+     "two-chunk division, where it exists", None, (TWO_CHUNK,)),
+    ("restart_one_row_late",
+     _both("int s = starts[g];", "int s = starts[g > 0 ? g - 1 : 0];"), SUB_STEPS, True,
+     "the restart one row after the chunk's first row (the bound-off-by-one class on "
+     "the radial walk)", None, (TWO_CHUNK,)),
+    ("quotient_divided_in_kernel",
+     _per_step("float2 inc = rinv[g] * (w - w_prev);",
+               "float2 inc = (w - w_prev) / (float(g + 1) - 0.5f);",
+               "float2 inc = rinv[g - 1] * (w - w_prev);",
+               "float2 inc = (w - w_prev) / ((float(g) + 0.5f) - 0.5f);"),
+     SUB_STEPS, True,
+     "the float32 divide where MEEP multiplies by rinv, the double quotient stored as a "
+     "realnum: algebraically equal, a different float32 number", None, None),
+    ("rounded_increment_stored",
+     _per_step("out[g * nyz + base] = nxt - acc;", "out[g * nyz + base] = inc;",
+               "out[g * nyz + base] = acc - nxt;", "out[g * nyz + base] = -inc;"),
+     SUB_STEPS, True,
+     "the increment stored where the stencil's difference of two partial sums is: "
+     "(acc + inc) - acc is not inc once acc is not +0", None, None),
+    ("difference_reversed",
+     _per_step("out[g * nyz + base] = nxt - acc;", "out[g * nyz + base] = acc - nxt;",
+               "out[g * nyz + base] = acc - nxt;", "out[g * nyz + base] = nxt - acc;"),
+     SUB_STEPS, True, "forward on B and backward on D, each reversed", None, None),
+    ("parts_swapped",
+     _per_step("rinv[g] * (w - w_prev);", "rinv[g] * (w - w_prev).yx;",
+               "rinv[g - 1] * (w - w_prev);", "rinv[g - 1] * (w - w_prev).yx;"),
+     SUB_STEPS, True, "the real and imaginary parts of the increment exchanged",
+     None, None),
+    ("weights_off_by_one",
+     _per_step("* weights[g + 1];", "* weights[g];",
+               "float2 w = src[g * nyz + base] * weights[g];",
+               "float2 w = src[g * nyz + base] * weights[g - 1];"),
+     SUB_STEPS, True, "the radial weight one row down: a half-cell error in (ir + ir0)",
+     None, None),
+    ("rinv_off_by_one",
+     _per_step("float2 inc = rinv[g] *", "float2 inc = rinv[g > 0 ? g - 1 : 0] *",
+               "float2 inc = rinv[g - 1] *", "float2 inc = rinv[g > 1 ? g - 2 : 0] *"),
+     SUB_STEPS, True, "rinv one row down, clamped in bounds", None, None),
+    ("loop_stops_one_row_short",
+     _per_step("for (int g = 0; g < nxi; ++g)", "for (int g = 0; g < nxi - 1; ++g)",
+               "for (int g = 1; g < nxi; ++g)", "for (int g = 1; g < nxi - 1; ++g)"),
+     SUB_STEPS, True, "the last row left holding the sentinel", None, None),
+    ("column_decomposition_swapped",
+     _both("int k = int(idx) % nzi;\n    int j = int(idx) / nzi;",
+           "int j = int(idx) % nzi;\n    int k = int(idx) / nzi;"), SUB_STEPS, True,
+     "the (phi, z) column decomposition swapped: ny is 1, so every thread but one "
+     "returns at the `j >= nyi` guard (single-column extents are a structural null)",
+     None, None),
+    ("wall_row_carries_a_value",
+     _both(": float2(0.0f, 0.0f)) * weights[g + 1];",
+           ": float2(1.0f, 1.0f)) * weights[g + 1];"), ("step_B",), True,
+     "the B side's zero wall row given a value (a literal, deterministic). SCOPED to the "
+     "physical classes: the edit touches one word pair per column, and a wide-dynamic "
+     "last row far above the literal absorbs it in the subtraction",
+     (UNIFORM, CANCELLING), None),
+    ("commuted_add", _both("float2 nxt = acc + inc;", "float2 nxt = inc + acc;"),
+     SUB_STEPS, False, "float addition IS commutative; the control that shows the leg "
+     "does not flag every edit", None, None),
+    ("sum_starts_at_negative_zero",
+     _both("    float2 acc = float2(0.0f, 0.0f);",
+           "    float2 acc = float2(-0.0f, -0.0f);"), SUB_STEPS, None,
+     "RECORDED ONLY: a -0 start reaches a stored word only where the first increment "
+     "of a chunk is an exact +0 on the D side", None, None),
+)
 
-    ``classes`` is the value-class SCOPE the verdict is taken over — ``None`` for all
-    four. A mutation is scoped where a value class can ABSORB its edit: the dropped
-    wall row touches one word pair per column, and on a single-column extent a
-    wide-dynamic last row twenty-four decades below its neighbour vanishes in the
-    subtraction, while a signed-zero-mix last row that is exactly zero makes the edit
-    a no-op. Those classes are still RUN and their counts recorded beside the verdict,
-    so a scoped mutation cannot hide a class it was not caught on.
-    """
-    src0, srci = scan.source_reads(sub_step)
 
-    def componentwise(text: str) -> str:
-        # The two CALL SITES only, spelled inline as (re*w, im*w); the certified helper
-        # definition stays untouched so the mutant is a change of arithmetic and not
-        # of names.
-        text = kit.needle(text, f"c_mul_field_left({srci}, weights[i])",
-                          f"float2(({srci}).x * weights[i], ({srci}).y * weights[i])")
-        return kit.needle(text, f"c_mul_field_left({src0}, weights[0])",
-                          f"float2(({src0}).x * weights[0], ({src0}).y * weights[0])")
+#: Mutations whose edit is a STRUCTURAL NULL on a single-column extent (nz = 1, so
+#: the (phi, z) decomposition has one column and the swap maps it onto itself): three
+#: corpus rows have one. Scored over the multi-column extents only, as the classes and
+#: divisions are; the single-column cases are still run and recorded.
+MULTI_COLUMN_ONLY = frozenset({"column_decomposition_swapped"})
 
-    table: List[Tuple[str, Callable[[str], str], Optional[bool], str,
-                      Optional[Tuple[str, ...]]]] = [
-        ("true_divide_spelling",
-         lambda s: kit.needle(s, "return z * (1.0f / d);", "return z / d;"), True,
-         "the real scan's `/` carried onto the complex increment: numpy's complex64 / "
-         "float32 is the reciprocal multiply, and the componentwise true divide is a "
-         "different float32 number on ~25% of increments and, through the running "
-         "sum, on most prefix words", None),
-        ("literal_numpy_divide_loop",
-         lambda s: kit.needle(s, _SHIPPED_DIVIDE, _LITERAL_LOOP), False,
-         "numpy's complex divide loop spelled literally (rat/scl): differs from the "
-         "reciprocal multiply only on the sign of exactly-zero increments, which the "
-         "+0.0 accumulator absorbs — a MEASURED equivalence on the prefix", None),
-        ("componentwise_weight_multiply", componentwise, False,
-         "(re*w, im*w) in place of the certified field-left complex product: differs "
-         "only on the sign of exactly-zero weighted words, absorbed by the running sum "
-         "— a MEASURED equivalence on the prefix", None),
-        ("coefficient_left_orientation",
-         lambda s: kit.needle(kit.needle(
-             s, f"c_mul_field_left({srci}, weights[i])",
-             f"c_mul_coefficient_left(weights[i], {srci})"),
-             f"c_mul_field_left({src0}, weights[0])",
-             f"c_mul_coefficient_left(weights[0], {src0})"), False,
-         "the weight on the left of the field: for a REAL coefficient the two "
-         "orientations are the same four products and the same two adds, so this is "
-         "an equivalence — kept field-left because that is the array path's order", None),
-        ("blocked_scan_32",
-         lambda s: kit.needle(s, _with_reads(_SERIAL, sub_step),
-                              _with_reads(_BLOCKED, sub_step)), True,
-         "a 32-row tiled scan with a carry: a legitimate alternative association of "
-         "the same increments, and a different float32 number — the null control that "
-         "makes 'column-serial' a licence rather than taste", None),
-        ("commuted_accumulator",
-         lambda s: kit.needle(s, "acc = acc + inc;", "acc = inc + acc;"), False,
-         "float addition IS commutative; the control that shows the leg does not flag "
-         "every edit", None),
-        ("weights_off_by_one",
-         lambda s: kit.needle(s, "weights[i]);", "weights[i - 1]);"), True,
-         "the radial weight one row down: a half-cell error in (ir + ir0), in bounds "
-         "for every i >= 1", None),
-        ("divisor_off_by_one",
-         lambda s: kit.needle(s, "divisor[i - 1]);", "divisor[max(i - 2, 0)]);"), True,
-         "the divisor one row down, clamped in bounds: the row-constant (ir + ir0) - "
-         "0.5 the difference lands on, shifted", None),
-        ("negative_zero_row_zero",
-         lambda s: kit.needle(s, "float2 acc = float2(0.0f, 0.0f);",
-                              "float2 acc = float2(-0.0f, -0.0f);"), True,
-         "row 0 written as -0.0: the array path's zeros_like row is +0.0 and this "
-         "family compares words", None),
-    ]
-    if cyl.PREFIX_WALL_ROW[sub_step]:
-        table.append((
-            "wall_row_dropped",
-            lambda s: kit.needle(s, srci, "src[min(i, nxi - 2) * nyz + base]"), True,
-            "the B side's zero wall row replaced by the LAST VALID source row (in "
-            "bounds, so the needle is deterministic): the wall row's own prefix entry "
-            "is what Bz's last-row forward difference reads. SCOPED to the physical "
-            "classes: the edit touches ONE word pair per column, and on a single-column "
-            "extent a wide-dynamic last row twenty-four decades below its neighbour is "
-            "absorbed by the subtraction while a signed-zero-mix last row that is "
-            "exactly zero makes the edit a no-op (measured 49/52 unscoped in the "
-            "_cyl3 cut, the three misses all on nz = 1 extents)",
-            (UNIFORM, CANCELLING)))
-    return tuple(table)
+
+def _columns(case: Case) -> int:
+    return int(case.shape[1]) * int(case.shape[2])
 
 
 def leg_mutations(payload: Dict[str, Any], out: str, cases: Sequence[Case]) -> None:
-    _probe, expansion = bound_expansion()
     harness = kit.MutationHarness(payload, out, key="mutations")
-    labels = [label for label, *_rest in mutation_table("step_B")]
-    labels += [label for label, *_rest in mutation_table("step_D") if label not in labels]
-    for label in labels:
-        per_step = {sub_step: dict(zip(("transform", "must_catch", "why", "classes"),
-                                       entry[1:]))
-                    for sub_step in SUB_STEPS
-                    for entry in mutation_table(sub_step) if entry[0] == label}
-        first = next(iter(per_step.values()))
-        must_catch = first["must_catch"]
-        why = first["why"]
-        classes = first["classes"]
-        scope = tuple(VALUE_CLASSES if classes is None else classes)
+    for label, transform, sub_steps, must_catch, why, classes, divisions in MUTATIONS:
+        class_scope = tuple(VALUE_CLASSES if classes is None else classes)
+        division_scope = tuple(DIVISIONS if divisions is None else divisions)
         functions: Dict[str, kit.Counter] = {}
         missed = False
-        for sub_step, spec in per_step.items():
-            shipped = scan.cylindrical_complex_prefix_source(sub_step, expansion)
+        for sub_step in sub_steps:
+            shipped = scan.cylindrical_complex_scan_source(sub_step)
             try:
-                mutant = spec["transform"](shipped)
+                mutant = transform(shipped, sub_step)
             except LookupError:
                 missed = True
                 continue
@@ -819,7 +706,8 @@ def leg_mutations(payload: Dict[str, Any], out: str, cases: Sequence[Case]) -> N
             if differ:
                 by_class[case.value_class] += 1
                 by_step[case.sub_step] = by_step.get(case.sub_step, 0) + 1
-            if case.value_class in scope:
+            if (case.value_class in class_scope and case.division in division_scope
+                    and (label not in MULTI_COLUMN_ONLY or _columns(case) > 1)):
                 ran += 1
                 caught += int(bool(differ))
             elif not differ:
@@ -827,18 +715,19 @@ def leg_mutations(payload: Dict[str, Any], out: str, cases: Sequence[Case]) -> N
         launches = sum(counter.launches for counter in functions.values())
         verdict = kit.MutationHarness.verdict(missed, ran, launches, caught)
         harness.record(label, verdict, launches, caught, ran, must_catch, why, extra={
-            "sub_steps": sorted(per_step), "scope_classes": list(scope),
+            "sub_steps": list(sub_steps), "scope_classes": list(class_scope),
+            "scope_divisions": list(division_scope),
+            "scope_multi_column_only": label in MULTI_COLUMN_ONLY,
             "caught_by_class": by_class, "ran_by_class": ran_by_class,
             "caught_by_sub_step": by_step, "differing_words": total_differing,
             "compared_words": total_words,
-            "unscoped_cases_not_caught": uncaught_out_of_scope})
+            "out_of_scope_cases_not_caught": uncaught_out_of_scope})
 
     # THE CONTRACTION GUARD, recorded: the shipped source rebuilt with the fast mode.
-    # `acc + (w - prev) * r` is a multiply-add the compiler may fuse under fast
-    # contraction, so unlike the real scan's measured-identical fast arm this one is
-    # expected to move; whichever way it lands is recorded, not asserted.
+    # `acc + rinv * (w - w_prev)` is a multiply-add the compiler may fuse under fast
+    # contraction; whichever way it lands is recorded, not asserted.
     fast: Dict[str, kit.Counter] = {
-        sub_step: kit.Counter(shipped_function(sub_step, expansion, shaders.CONTRACT_FAST))
+        sub_step: kit.Counter(shipped_function(sub_step, shaders.CONTRACT_FAST))
         for sub_step in SUB_STEPS}
     caught = ran = 0
     total_differing = 0
@@ -855,7 +744,7 @@ def leg_mutations(payload: Dict[str, Any], out: str, cases: Sequence[Case]) -> N
                                                                   caught),
                    launches, caught, ran, None,
                    "the shipped source with the contraction guard removed; the multiply-"
-                   "add acc + (w - prev) * r may fuse, so this measures whether the "
+                   "add acc + rinv * (w - w_prev) may fuse, so this measures whether the "
                    "guard is load-bearing on THIS kernel",
                    extra={"caught_by_class": by_class, "differing_words": total_differing})
 
@@ -865,8 +754,7 @@ def leg_mutations(payload: Dict[str, Any], out: str, cases: Sequence[Case]) -> N
 # ---------------------------------------------------------------------------
 
 def leg_disarm(payload: Dict[str, Any], out: str, cases: Sequence[Case]) -> None:
-    _probe, expansion = bound_expansion()
-    counters = {sub_step: kit.Counter(shipped_function(sub_step, expansion))
+    counters = {sub_step: kit.Counter(shipped_function(sub_step))
                 for sub_step in SUB_STEPS}
     total = 0
     for case in cases:
@@ -896,7 +784,7 @@ def main(argv: Sequence[str]) -> int:
         "gate": "metal_cylindrical_complex_scan",
         "family": scan.FAMILY,
         "kernel": scan.KERNEL,
-        "oracle": "meep_gpu.stepping.cylindrical_rderiv_prefix, called",
+        "oracle": "meep_gpu.stepping.cylindrical_rderiv_difference, called",
         "corpus_rows": [{"leg": leg, "row": row, "label": label, "shape": list(shape)}
                         for leg, row, label, shape in CORPUS_ROWS],
         "environment": kit.environment_stamp(),
@@ -913,26 +801,20 @@ def main(argv: Sequence[str]) -> int:
     if reasons:
         return kit.cannot_certify(payload, out, reasons)
 
-    probe_arm, expansion = bound_expansion()
-    payload["expansion"] = {"probe_bound": probe_arm, "measured": expansion,
-                            "other_arms": [arm for arm in EXPANSION_ARMS
-                                           if arm != expansion]}
-    save(payload, out)
-
     wanted = kit.wanted_legs(args.legs)
     cases: List[Case] = []
-    if not wanted or {"prefix", "mutations", "disarm"} & set(wanted):
-        log(f"[cases] building {len(SHAPES) * len(SUB_STEPS) * len(VALUE_CLASSES)} "
+    if not wanted or {"radial", "mutations", "disarm"} & set(wanted):
+        log(f"[cases] building "
+            f"{len(SHAPES) * len(SUB_STEPS) * len(VALUE_CLASSES) * len(DIVISIONS)} "
             f"cases: {len(SHAPES)} extents x {len(SUB_STEPS)} sub-steps x "
-            f"{len(VALUE_CLASSES)} classes")
+            f"{len(VALUE_CLASSES)} classes x {len(DIVISIONS)} divisions")
         cases = build_cases()
 
     legs: List[Tuple[str, Callable[[Dict[str, Any], str], None]]] = [
         ("bindings", leg_bindings),
         ("corpus_shapes", leg_corpus_shapes),
-        ("prefix", lambda payload, out: leg_prefix(payload, out, cases)),
+        ("radial", lambda payload, out: leg_radial(payload, out, cases)),
         ("absorption", leg_absorption),
-        ("increment_sign", leg_increment_sign),
         ("extra_extents", leg_extra_extents),
         ("mutations", lambda payload, out: leg_mutations(payload, out, cases)),
         ("disarm", lambda payload, out: leg_disarm(payload, out, cases)),
@@ -953,17 +835,17 @@ def main(argv: Sequence[str]) -> int:
          "meep_gpu/stepping.py": os.path.join(API_ROOT, "meep_gpu", "stepping.py"),
          "parity/meep_gpu/gate_metal_cylindrical_complex_scan.py":
              os.path.abspath(__file__)},
-        kernel_sources={label: source for arm in EXPANSION_ARMS
+        kernel_sources={label: source
                         for label, source in
-                        scan.enumerate_cylindrical_complex_scan_sources(arm).items()},
+                        scan.enumerate_cylindrical_complex_scan_sources().items()},
         name="provenance.json")
 
     compared = 0
     certified = True
-    prefix_rows = payload["legs"].get("prefix", ())
-    for row in prefix_rows:
-        compared += int(row["compared"]) * (1 + len(row["differing_other_arms"]))
-        if row["differing"] or any(row["differing_other_arms"].values()):
+    radial_rows = payload["legs"].get("radial", ())
+    for row in radial_rows:
+        compared += int(row["compared"])
+        if row["differing"]:
             certified = False
     for row in payload["legs"].get("absorption", ()):
         compared += int(row["compared"])
@@ -994,30 +876,29 @@ def main(argv: Sequence[str]) -> int:
     return kit.summarize(
         payload, out,
         claim=("ONE dispatch of the device column-serial complex scan reproduces "
-               "stepping.cylindrical_rderiv_prefix on complex64 storage, as uint32 words, "
-               "at every radial extent of the sixteen cylindrical complex H->D corpus "
-               "rows, at both ir0 values, over four value classes and both expansion "
-               "arms, with the reciprocal-multiply divide spelling that numpy's "
-               "complex64 / float32 IS and the true divide caught as a defect"),
+               "stepping.cylindrical_rderiv_difference on complex64 storage, as uint32 "
+               "words, at every radial extent of the sixteen cylindrical complex H->D "
+               "corpus rows, at both ir0 values, over four value classes and two chunk "
+               "divisions: MEEP's f_rderiv_int summed per part in each chunk, rinv "
+               "multiplied, the difference of two partial sums stored"),
         scope=(f"{len(SHAPES)} extents x {len(SUB_STEPS)} sub-steps x "
-               f"{len(VALUE_CLASSES)} classes = {len(prefix_rows)} device cases at the "
-               f"probe-bound arm plus the other arm on every case; the +-0 lattice as "
-               f"a predicted null-sign case; the two withdraw rows' extents uncredited"),
+               f"{len(VALUE_CLASSES)} classes x {len(DIVISIONS)} divisions = "
+               f"{len(radial_rows)} device cases; the +-0 lattice as a predicted null-sign case; the "
+               f"two withdraw rows' extents uncredited"),
         stated_weakness=(
             "this certifies the SCAN alone: no curl, no constitutive, no complete step, "
             "no launch saved and no timing. The product that consumes it (the two-launch "
             "complex H->D pair) carries its own gate. The subnormal band is a REFUSAL on "
-            "this executor, checked per case, never a comparison. The signed-zero "
-            "refinement of the divide spelling is unobservable on the prefix and is "
-            "recorded, not certified, for the increment"),
+            "this executor, checked per case, never a comparison. The chunk divisions "
+            "are constructed (one cut per extent), not read from a lifted run; the "
+            "run's own starts are the consuming products' gates' to bind"),
         started=started, legs_run=ran, compared=compared, certified=certified,
-        extra={"cases": len(prefix_rows),
+        extra={"cases": len(radial_rows),
                "mutations_armed": len(armed),
                "mutations_caught_of_armed": sum(1 for row in armed
                                                 if row["caught"] == row["ran"]),
                "mutations_null_controls": len(nulls),
-               "mutation_verdicts": {row["mutation"]: row["verdict"] for row in mutations},
-               "expansion": payload.get("expansion")})
+               "mutation_verdicts": {row["mutation"]: row["verdict"] for row in mutations}})
 
 
 if __name__ == "__main__":

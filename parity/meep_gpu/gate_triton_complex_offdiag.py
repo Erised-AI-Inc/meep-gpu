@@ -3,8 +3,12 @@
 The five product rows are the residual corpus shapes: three folded/PML rows and
 two no-PML Bloch rows.  Each is stepped through the shipped predicate and
 builder for eight perturbed cycles and compared over the complete stored
-inventory as uint32 words.  Mutation rows drop a live tensor slot, disable a
-live phase, flip mirror parity, or select the wrong storage tail.
+inventory as uint32 words.  Mutation rows drop a live tensor slot, drop the
+live Bloch connections (MEEP's not-owned words of the stored window), flip
+mirror parity, or select the wrong storage tail.  The PML tail substituted on an
+absorber-free run is a declared null: the tail takes MEEP's accumulation only on
+the cells whose chunk carries the component's layer, and no chunk of such a run
+carries one.
 
 The run is incremental: every case is printed unbuffered and fsync'd to JSONL.
 Use one Slurm allocation and one idle GPU; this script never selects a device.
@@ -44,14 +48,6 @@ def emit(handle, row: Dict[str, Any]) -> None:
     handle.write(json.dumps(row, default=str) + "\n")
     handle.flush()
     os.fsync(handle.fileno())
-
-
-def load_probe(path: str | None) -> Any:
-    from meep_gpu.triton_kernels import complex_fields
-
-    if path:
-        return json.loads(Path(path).read_text())
-    return complex_fields.load_expansion_probe()
 
 
 def makers():
@@ -99,42 +95,44 @@ def makers():
     }
 
 
-def shipped_plan(fields: Any, pml: Any, probe: Any, folded: bool):
+def shipped_plan(fields: Any, pml: Any, folded: bool):
     from meep_gpu.triton_kernels import complex_offdiag_update_e as arm
 
     builder = (arm.plan_complex_folded_offdiag_update_e if folded else
                arm.plan_complex_no_pml_offdiag_update_e)
-    plan = builder(fields, pml, probe=probe)
+    plan = builder(fields, pml)
     if plan is None:
         predicate = (arm.complex_folded_offdiag_update_e_coverage if folded else
                      arm.complex_no_pml_offdiag_update_e_coverage)
         raise RuntimeError(f"shipped builder refused: "
-                           f"{predicate(fields, pml, probe).reasons}")
+                           f"{predicate(fields, pml).reasons}")
     return plan
 
 
-def mutate_drop_row(fields, pml, probe, folded):
-    plan = shipped_plan(fields, pml, probe, folded)
+def mutate_drop_row(fields, pml, folded):
+    plan = shipped_plan(fields, pml, folded)
     mask = list(plan.row_mask)
     mask[next(index for index, live in enumerate(mask) if live)] = 0
     plan.row_mask = tuple(mask)
     return plan
 
 
-def mutate_wrong_tail(fields, pml, probe, folded):
-    plan = shipped_plan(fields, pml, probe, folded)
+def mutate_wrong_tail(fields, pml, folded):
+    plan = shipped_plan(fields, pml, folded)
     plan.pml = not plan.pml
     return plan
 
 
-def mutate_phase_off(fields, pml, probe, folded):
-    plan = shipped_plan(fields, pml, probe, folded)
-    plan.phase_flags = (0, 0, 0)
+def mutate_phase_off(fields, pml, folded):
+    plan = shipped_plan(fields, pml, folded)
+    if not any(plan.connections):
+        raise RuntimeError("the case connects no axis: the mutation would be inert")
+    plan.connections = (0, 0, 0)
     return plan
 
 
-def mutate_mirror_sign(fields, pml, probe, folded):
-    plan = shipped_plan(fields, pml, probe, folded)
+def mutate_mirror_sign(fields, pml, folded):
+    plan = shipped_plan(fields, pml, folded)
     weights = list(plan.ghost_weights)
     axis = next(index for index, live in enumerate(plan.mirror_axes) if live)
     weights[axis] *= -1.0
@@ -142,7 +140,7 @@ def mutate_mirror_sign(fields, pml, probe, folded):
     return plan
 
 
-def build_cases(probe: Any) -> List[Dict[str, Any]]:
+def build_cases() -> List[Dict[str, Any]]:
     make = makers()
     rows: List[Dict[str, Any]] = []
     for name, folded in (("folded_3d", True), ("folded_twofold", True),
@@ -154,39 +152,47 @@ def build_cases(probe: Any) -> List[Dict[str, Any]]:
             "clause": "shared complex tensor row plus the correct storage tail",
             "make": make[name], "array_path": stepping.update_E,
             "kernel_plan": lambda f, p, folded=folded: shipped_plan(
-                f, p, probe, folded),
+                f, p, folded),
         })
     rows.extend([
         {"name": "MUTATION_drop_live_row", "group": "complex_offdiag",
          "sub_step": "update_E", "prediction": "DIVERGENT",
          "clause": "one live tensor coefficient slot is omitted",
          "make": make["folded_3d"], "array_path": stepping.update_E,
-         "kernel_plan": lambda f, p: mutate_drop_row(f, p, probe, True)},
+         "kernel_plan": lambda f, p: mutate_drop_row(f, p, True)},
         {"name": "MUTATION_wrong_folded_tail", "group": "complex_offdiag",
          "sub_step": "update_E", "prediction": "DIVERGENT",
          "clause": "direct-store tail substituted for PML accumulation",
          "make": make["folded_3d"], "array_path": stepping.update_E,
-         "kernel_plan": lambda f, p: mutate_wrong_tail(f, p, probe, True)},
+         "kernel_plan": lambda f, p: mutate_wrong_tail(f, p, True)},
+        # A DECLARED NULL since the per-chunk forms. The PML tail takes MEEP's
+        # accumulation only on the cells whose chunk carries the component's layer
+        # (forms.constitutive_form on the record's dsigw line) and stores src
+        # elsewhere; an absorber-free division carries no layer, so the substituted
+        # tail stores the direct tail's words. Measured identical on an RTX A6000
+        # (2026-10-08). Its twin, the direct tail on a PML run
+        # (MUTATION_wrong_folded_tail), stays must-catch.
         {"name": "MUTATION_wrong_no_pml_tail", "group": "complex_offdiag",
-         "sub_step": "update_E", "prediction": "DIVERGENT",
-         "clause": "PML accumulation substituted for direct storage",
+         "sub_step": "update_E", "prediction": "IDENTICAL",
+         "clause": "PML accumulation substituted for direct storage: a declared null, "
+                   "no chunk of an absorber-free run carries a layer",
          "make": make["no_pml_3d"], "array_path": stepping.update_E,
-         "kernel_plan": lambda f, p: mutate_wrong_tail(f, p, probe, False)},
+         "kernel_plan": lambda f, p: mutate_wrong_tail(f, p, False)},
         {"name": "MUTATION_phase_off", "group": "complex_offdiag",
          "sub_step": "update_E", "prediction": "DIVERGENT",
-         "clause": "Bloch rotations compiled out on both shift directions",
+         "clause": "Bloch connections compiled out in both directions",
          "make": make["no_pml_3d"], "array_path": stepping.update_E,
-         "kernel_plan": lambda f, p: mutate_phase_off(f, p, probe, False)},
+         "kernel_plan": lambda f, p: mutate_phase_off(f, p, False)},
         {"name": "MUTATION_mirror_sign", "group": "complex_offdiag",
          "sub_step": "update_E", "prediction": "DIVERGENT",
          "clause": "partner-axis mirror parity sign flipped",
          "make": make["folded_3d"], "array_path": stepping.update_E,
-         "kernel_plan": lambda f, p: mutate_mirror_sign(f, p, probe, True)},
+         "kernel_plan": lambda f, p: mutate_mirror_sign(f, p, True)},
     ])
     return rows
 
 
-def refusal_leg(probe: Any) -> Dict[str, Any]:
+def refusal_leg() -> Dict[str, Any]:
     import cupy as cp
     from meep_gpu.triton_kernels import complex_offdiag_update_e as arm
 
@@ -210,8 +216,8 @@ def refusal_leg(probe: Any) -> Dict[str, Any]:
     for name, config, tail, expected in configurations:
         fields, pml, _ = P.build(cp, **config)
         verdict = (arm.complex_folded_offdiag_update_e_coverage(
-            fields, pml, probe) if tail == "folded" else
-            arm.complex_no_pml_offdiag_update_e_coverage(fields, pml, probe))
+            fields, pml) if tail == "folded" else
+            arm.complex_no_pml_offdiag_update_e_coverage(fields, pml))
         cases.append({"case": name, "tail": tail, "covered": verdict.covered,
                       "expected": expected, "agrees": verdict.covered == expected,
                       "reasons": list(verdict.reasons)})
@@ -241,8 +247,10 @@ def validate(payload: Dict[str, Any]) -> Dict[str, Any]:
     # the kernels differ in the subnormal range from a flush run, and the weld cut
     # from this artifact takes its policy from this stamp.
     stamp = payload.get("subnormal_policy") or {}
-    if not (stamp.get("installed") and stamp.get("resolved") == "keep"):
-        reasons.append(f"the subnormal policy stamp does not record keep installed: "
+    wanted = payload.get("subnormal_policy_installed")
+    if not (stamp.get("installed") and wanted in ("keep", "flush")
+            and stamp.get("resolved") == wanted):
+        reasons.append(f"the subnormal policy stamp does not record {wanted!r} installed: "
                        f"installed={stamp.get('installed')!r} "
                        f"resolved={stamp.get('resolved')!r}")
     return {"released": not reasons, "reasons": reasons}
@@ -251,8 +259,9 @@ def validate(payload: Dict[str, Any]) -> Dict[str, Any]:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
-    parser.add_argument("--probe")
     parser.add_argument("--cycles", type=int, default=CYCLES)
+    parser.add_argument("--subnormal-policy", default="keep", choices=("keep", "flush"),
+                        help="the float32 subnormal policy to install before the first device compile (keep, the default, or flush: the certification round gates every family under both on the NVIDIA tables)")
     args = parser.parse_args(argv)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -261,17 +270,13 @@ def main(argv=None) -> int:
     payload: Dict[str, Any] = {
         "gate": "triton_complex_offdiag", "cycles": args.cycles,
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "probe": args.probe,
     }
     from meep_gpu.subnormal_policy import install_subnormal_policy, policy_stamp
-    install_subnormal_policy("keep")
-    payload["subnormal_policy_installed"] = "keep"
-    probe = load_probe(args.probe)
-    if probe is None:
-        raise RuntimeError("no complex expansion probe was supplied or configured")
+    install_subnormal_policy(args.subnormal_policy)
+    payload["subnormal_policy_installed"] = args.subnormal_policy
 
     rows = []
-    cases = build_cases(probe)
+    cases = build_cases()
     for index, spec in enumerate(cases, 1):
         log(run_log, f"case {index}/{len(cases)} {spec['name']} "
                      f"predict={spec['prediction']}")
@@ -287,7 +292,7 @@ def main(argv=None) -> int:
                      f"diff={row.get('differing_max', '?')} "
                      f"seconds={row.get('seconds', '?')}")
     payload["cases"] = rows
-    payload["refusals"] = refusal_leg(probe)
+    payload["refusals"] = refusal_leg()
     # THE WELD'S TWO IDENTITY FIELDS, written by the run rather than typed into the
     # ledger afterwards. Until 2026-09-15 this artifact carried neither -- the
     # batch_D run of 2026-09-13 has no `environment` and no `subnormal_policy` key --
@@ -310,4 +315,3 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

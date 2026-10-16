@@ -48,13 +48,6 @@ from meep_gpu.triton_kernels.symmetry import (  # noqa: E402
     TARGET_IYEE,
 )
 
-#: The expansion arm every source in this suite is emitted under. A LITERAL rather
-#: than a probe read: these tests are about what the emitter DECIDES, not about which
-#: arm this host's NumPy takes, and reading a probe here would make the suite skip
-#: silently on a machine with no artifact. The gate's ``expansion`` leg is where the
-#: probe binding is measured.
-EXPANSION = "FMA_V1"
-
 #: Two folded axes with MIXED parities, one wall, no phased axis — the smallest
 #: configuration that emits every kind of line the family can emit except a rotation.
 CODES = (CODE_MIRROR_METALLIC, CODE_MIRROR_METALLIC, CODE_METALLIC)
@@ -62,10 +55,10 @@ PHASED = (0, 0, 0)
 WALLS = (False, False, True)
 
 
-def source(codes=CODES, phased=PHASED, walls=WALLS, expansion=EXPANSION,
+def source(codes=CODES, phased=PHASED, walls=WALLS,
            contract=shaders.CONTRACT_OFF) -> str:
     return family.folded_complex_fused_magnetic_pair_source(
-        codes, phased, walls, expansion, contract)
+        codes, phased, walls, contract)
 
 
 def _mask_lines(text: str) -> str:
@@ -85,7 +78,7 @@ def _mask_lines(text: str) -> str:
 
 @pytest.mark.parametrize("codes,phased", (
     ((CODE_MIRROR_METALLIC, CODE_PERIODIC, CODE_PERIODIC), (0, 0, 0)),
-    ((CODE_MIRROR_METALLIC, CODE_PERIODIC, CODE_PERIODIC), (0, 1, 1)),
+    ((CODE_MIRROR_METALLIC, CODE_PERIODIC, CODE_PERIODIC), (0, 2, 1)),
     ((CODE_MIRROR_METALLIC, CODE_MIRROR_METALLIC, CODE_METALLIC), (0, 0, 0)),
     ((CODE_MIRROR_METALLIC, CODE_MIRROR_METALLIC, CODE_MIRROR_METALLIC), (0, 0, 0)),
 ))
@@ -101,9 +94,9 @@ def test_the_curl_head_is_the_certified_folded_bloch_curl_bodys_own_bytes(codes,
     rather than one against ``1+0j``, so a lift that dropped the rotation block would
     still be a prefix on the ``(0, 0, 0)`` rows alone.
     """
-    head = family.certified_curl_head(codes, phased, EXPANSION)
+    head = family.certified_curl_head(codes, phased)
     certified = folded_complex.folded_bloch_curl_source(
-        codes, family.BACKWARD, phased, EXPANSION)
+        codes, family.BACKWARD, phased)
     body = certified.split("uint idx [[thread_position_in_grid]])\n{\n", 1)[1]
     assert head.strip()
     assert body.startswith(head), (
@@ -119,8 +112,8 @@ def test_the_lifted_head_stops_before_the_recurrence():
     component inside an ownership carve-out. A head that carried the recurrence would
     step every cell twice.
     """
-    head = family.certified_curl_head(CODES, PHASED, EXPANSION)
-    assert "--- split-field recurrence" not in head
+    head = family.certified_curl_head(CODES, PHASED)
+    assert "--- the two PML forms" not in head
     assert "u0[ii] =" not in head and "f0[ii] =" not in head
 
 
@@ -134,21 +127,14 @@ def test_the_constitutive_statements_reproduce_the_certified_complex_h_body(cont
     with the CERTIFIED spellings and requiring the result to be that body's own
     statements, and it must hold in BOTH contraction modes.
     """
-    record = family.constitutive_transcription(EXPANSION, contract)
+    record = family.constitutive_transcription(contract)
     assert record["identical"], (record["emitted"], record["certified"])
-    assert [len(block) for block in record["certified"]] == [7, 7, 7]
+    assert [len(block) for block in record["certified"]] == [6, 6, 6]
 
 
 def test_the_constitutive_multiply_is_the_coefficient_left_complex_form():
-    """The accumulation is ``c_mul_coefficient_left``, not a real multiply.
-
-    THE ONE ARITHMETIC DIFFERENCE from the real fold's identical-shaped template, and
-    it is a different rounding rather than a spelling: ``stepping``'s complex path
-    spells the dsigw products as the zero-imaginary complex form with the COEFFICIENT
-    ON THE LEFT (S:2086-2087, :2093-2095). A template that carried the real twin's
-    ``acc + kp * src`` would compile — ``float2 * float`` is legal Metal — and be a
-    different number wherever a cross term is not exactly zero.
-    """
+    """The accumulation is ``c_mul_coefficient_left`` -- one product per part, the
+    array path's ``part_products.scale`` -- inside the dsigw select."""
     text = source()
     assert "c_mul_coefficient_left(kp_0, o0_src)" in text
     assert "c_mul_coefficient_left(km_0, o0_prev)" in text
@@ -164,10 +150,10 @@ def test_the_ghost_write_is_the_certified_folded_complex_fills_own_line(axis):
     rename — the coefficient register, the source operand and the destination index —
     because the lifted curl head already owns the name ``c``.
     """
-    record = family.near_fill_transcription(axis, EXPANSION)
+    record = family.near_fill_transcription(axis)
     assert record["identical"], record["rows"]
     for row in record["rows"]:
-        assert "c_mul(" in row["emitted"], row
+        assert "c_mul_coefficient_left(" in row["emitted"], row
         # THE COEFFICIENT IS ON THE LEFT, which is the array path's `phase * plane`.
         # The destination index carries the transcription's own SYNTHETIC tag — a
         # placeholder that exists only inside the comparison, so it is read off the
@@ -186,7 +172,7 @@ def test_the_ghost_write_is_the_certified_folded_complex_fills_own_line(axis):
             # the FIRST link declares it.
             assert prefix == (("float2 " if row["role"] == "earlier" else "")
                               + f"{tag}_v"), (row["role"], prefix)
-        assert call.startswith(f"c_mul(mp{axis},"), call
+        assert call.startswith(f"c_mul_coefficient_left(mp{axis},"), call
 
     # THE THREE ROLES ARE ALL PRESENT, or the loop above measured one shape and
     # reported on three.
@@ -205,20 +191,20 @@ def test_the_far_ghost_write_is_the_certified_FAR_fills_own_line(axis):
     the register NAME is what separates the two: a carry that reused ``mp`` would be a
     plane of wrong signs and would still be a valid complex multiply.
     """
-    record = family.far_fill_transcription(axis, EXPANSION)
+    record = family.far_fill_transcription(axis)
     assert record["identical"], record["rows"]
     assert record["rows"], record
     for row in record["rows"]:
         call = row["emitted"].split(" = ", 1)[1]
-        assert call.startswith(f"c_mul(fp{axis},"), call
-        assert f"c_mul(mp{axis}," not in row["emitted"], row
+        assert call.startswith(f"c_mul_coefficient_left(fp{axis},"), call
+        assert f"(mp{axis}," not in row["emitted"], row
 
     # AND THE TWO PASSES TOUCH DISJOINT COMPONENTS ON ONE AXIS. A B component's Yee
     # shift on a given axis is 0 or 1, never both, so no component is a near and a far
     # destination along the SAME axis — which is why the chain's entries are distinct
     # axes and `parity_chain` can order them at all.
     near = {row["target"] for row in family.near_fill_transcription(
-        axis, EXPANSION)["rows"]}
+        axis)["rows"]}
     far = {row["target"] for row in record["rows"]}
     assert near and far and not (near & far), (near, far)
 
@@ -248,7 +234,7 @@ def test_an_empty_near_pass_is_refused_by_the_certified_emitter_not_measured_emp
     monkeypatch.setitem(module.GHOST_FILL_FAMILIES, "B",
                         {"targets": ("By", "Bz", "Dx")})
     with pytest.raises(ValueError, match="an empty fill launch is a no-op"):
-        family.near_fill_transcription(0, EXPANSION)
+        family.near_fill_transcription(0)
 
 
 # ---------------------------------------------------------------------------
@@ -289,8 +275,14 @@ def test_the_imaged_ghost_reads_its_own_coefficient_pair_at_index_zero():
     take DIFFERENT entries. Reusing the source thread's pair applies the absorber
     profile of stored cell 2 to stored cell 0: smooth, converged and wrong inside the
     PML, invisible outside it. On the shared fixture's 2-cell layer the two entries are
-    the SAME WORD, so no byte gate on that fixture can see the defect at all; this
-    assertion and the gate's ``moved_coefficient`` leg are what keep it honest.
+    the SAME WORD, so no byte gate on that fixture can see the defect at all.
+
+    Under the per-chunk forms the pair is read only where the ghost row's own
+    membership selects the accumulation. The one-rank record never puts the mirror
+    ghost inside a layer; MEEP's division does where the layer reaches stored row 2, so
+    the gate's ``moved_coefficient`` leg catches the reuse on its deep case under the
+    ``meep_boxes`` division and predicts it unobservable under one-rank. This assertion
+    and that leg are what keep it honest.
     """
     text = source()
     # ``_n`` is the NEAR carry's tag since the far carry landed: a ghost is named for
@@ -364,9 +356,9 @@ def test_two_parities_compile_to_the_same_source_here_and_differ_on_the_real_fol
     :mod:`.folded_fused_magnetic_pair` bakes the parity into the SOURCE, because
     ``symmetry._parity_spelling`` measured that a runtime float multiply flushes every
     subnormal on this backend at both signs. This family passes it as a host-rounded
-    complex word, because the certified folded complex fill does — the parity is
-    already inside a ``c_mul`` that flushes anyway, and passing it keeps the word
-    host-rounded rather than synthesised in-kernel.
+    word, because the certified folded complex fill does -- the parity is a product
+    per part (the array path's ``part_products.scale``) that flushes anyway, and
+    passing it keeps the word host-rounded rather than synthesised in-kernel.
 
     The consequence is that ``phases`` is NOT a parameter of this family's source
     builder at all, which is what this test pins.
@@ -384,24 +376,17 @@ def test_two_parities_compile_to_the_same_source_here_and_differ_on_the_real_fol
         "re-stating")
 
 
-@pytest.mark.parametrize("phase,expected", ((1, (1.0, 0.0)), (-1, (-1.0, 0.0))))
-def test_the_parity_word_is_host_rounded_and_has_a_bitwise_zero_imaginary(phase, expected):
-    """``complex64(+-1)`` is exactly ``+-1.0`` with an imaginary word of ``+0.0``.
-
-    Everything this family says about the ghost's complex product resting on the two
-    expansion arms agreeing depends on that pattern: with ``c_im`` an exact ``+0.0``
-    the fused arm's extra product is EXACT, so the two arms produce identical bytes
-    there. The words come from :func:`.folded_complex.mirror_parity_coefficients`, the
-    one place in the package where a mirror parity becomes a complex word.
-    """
+@pytest.mark.parametrize("phase,expected", ((1, 1.0), (-1, -1.0)))
+def test_the_parity_word_is_the_host_rounded_float32_scale(phase, expected):
+    """The parity word is ``float32(+-1)``, the array path's ``part_products.scale``
+    coefficient, from :func:`.folded_complex.mirror_parity_coefficients`."""
     import numpy
 
     codes = (CODE_MIRROR_METALLIC, CODE_PERIODIC, CODE_PERIODIC)
     words = family.parity_words(codes, (phase, 0, 0))
-    assert words[0] == expected
-    assert numpy.float32(words[0][1]).tobytes() == numpy.float32(0.0).tobytes()
+    assert words[0] == expected and numpy.float32(words[0]) == expected
     # An unfolded axis carries a word no emitted line reads.
-    assert words[1] == (0.0, 0.0) and words[2] == (0.0, 0.0)
+    assert words[1] == 0.0 and words[2] == 0.0
 
 
 def test_an_undeclarable_parity_is_refused_rather_than_defaulted():
@@ -496,10 +481,10 @@ def test_the_signature_is_the_unfolded_complex_pairs_exactly():
     assert "constant Params&     prm     [[buffer(27)]]" in text
 
 
-def test_the_params_record_is_one_hundred_and_four_bytes_with_the_complex_first():
-    """Metal aligns ``float2`` to 8 bytes; NINE of them, then four uints, a float, and
-    the three int reflect rows: 72 + 20 + 12 = 104, already 8-byte aligned so Metal
-    adds no tail padding.
+def test_the_params_record_is_one_hundred_and_eighty_four_bytes_with_the_float2_first():
+    """Metal aligns ``float2`` to 8 bytes; three of them, six float parity words, four
+    uints, a float, the three int reflect rows and the 100-byte chunk record:
+    24 + 24 + 32 + 100 = 180, padded by Metal to 184.
 
     IT WAS 72 BEFORE THE FAR CARRY. The three FAR parity words and the three runtime
     reflect rows are what grew it, and they are what let the carry cost NO BINDING —
@@ -510,15 +495,14 @@ def test_the_params_record_is_one_hundred_and_four_bytes_with_the_complex_first(
     shape.
     """
     dtype = family.params_record_dtype()
-    assert dtype.itemsize == family.PARAMS_ITEMSIZE == 104
+    assert dtype.itemsize == family.PARAMS_ITEMSIZE == 184
     assert dtype.names == ("px", "py", "pz", "m0", "m1", "m2", "d0", "d1", "d2",
-                           "nx", "ny", "nz", "n_elem", "dtdx", "rx", "ry", "rz")
+                           "nx", "ny", "nz", "n_elem", "dtdx", "rx", "ry", "rz", "cb")
     assert [dtype.fields[name][1] for name in dtype.names] == [
-        0, 8, 16, 24, 32, 40, 48, 56, 64, 72, 76, 80, 84, 88, 92, 96, 100]
-    # THE COMPLEX MEMBERS COME FIRST AND THE SCALARS LAST — the packing rule the
-    # unfolded sibling measured on this toolchain, restated as a boundary rather than
-    # as a comment: no scalar may sit before the last float2.
-    assert dtype.fields["d2"][1] < dtype.fields["nx"][1]
+        0, 8, 16, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80]
+    # THE float2 MEMBERS COME FIRST -- the packing rule the unfolded sibling measured
+    # on this toolchain: no scalar may sit before the last float2.
+    assert dtype.fields["pz"][1] < dtype.fields["m0"][1]
 
     # AND THE CARRY IS FREE AT THE CEILING. The reflect rows and far parities ride in
     # this record, so the shipped signature is the unfolded pair's exactly.

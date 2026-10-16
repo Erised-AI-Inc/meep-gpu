@@ -1,9 +1,8 @@
 """Recover per-point susceptibility sigma from MEEP's public ``get_chi1inv`` API.
 
-THE COMPATIBILITY PATH. ``fields.get_susceptibility_sigma`` — the reader added by
-``parity/meep_gpu/meep-sigma-reader.patch`` — returns each susceptibility's sigma
-at a Yee point exactly, but it exists only on a patched MEEP. This module
-recovers the same quantity from a STOCK MEEP of any version, so a structured
+THE FALLBACK PATH. MEEP keeps each susceptibility's per-point sigma in its
+structure chunks and has no public call that returns it at a point. This module
+recovers the same quantity from a stock MEEP of any version, so a structured
 dispersive cell lifts against whatever MEEP the caller already has installed.
 
 MEEP evaluates ``eps(w) = eps_inf + SUM_n sigma_n * chi_n(w)`` at every point
@@ -51,9 +50,8 @@ The matrix depends only on the poles, so it is factored ONCE and applied to
 every point as a matrix product — the per-point cost is the ``get_chi1inv``
 calls, not a solve.
 
-Accuracy against the exact reader, measured point by point: see
-``test_sigma_recovery.py``. This path is 4-6 significant digits where the reader
-is exact, which is why the reader stays preferred when it is present.
+Accuracy against MEEP's stored sigma words, measured point by point on
+2026-08-04: 4-6 significant digits (``test_sigma_recovery.py``).
 """
 
 from __future__ import annotations
@@ -249,7 +247,7 @@ def plan_recovery(
             f"{condition:.3e}, limit {CONDITION_LIMIT:.0e}) over the sampled band "
             f"[{grid[0]:g}, {grid[-1]:g}]. Two poles are indistinguishable there, or the band "
             f"does not resolve them. Recovering sigma from chi1inv is not possible for this "
-            f"material; use a MEEP carrying fields.get_susceptibility_sigma instead."
+            f"material; run this simulation on CPU MEEP."
         )
     return SigmaRecoveryPlan(
         poles=poles,

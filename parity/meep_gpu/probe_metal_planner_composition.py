@@ -14,15 +14,25 @@ slot call EVERY registered predicate — wired or not — and count. Three numbe
 out and all three are reported:
 
 * **evaluations** — rows x slots x arms-on-that-slot. The size of the measurement.
-* **admissions** — how many (row, slot, arm) triples returned covered.
+* **admissions** — how many (row, slot, arm) triples returned covered, peers only
+  (welds are counted apart as ``weld_admissions``).
 * **overlaps** — how many (row, slot) pairs had two or more admitters. Every one is
   listed by name, with its claimants, and every one must be a PLANTED row.
 
-THE SWEEP CONSULTS UNWIRED ARMS TOO. As of tranche 2 every certified family is
-wired, so the two sets coincide and the distinction costs nothing — but the loop is
-written over ``arms.registered()`` rather than ``arms.arms_for()`` deliberately, so
-that the next family to be built-and-gated-before-wiring is swept the moment it
-registers instead of the moment somebody remembers to add it here.
+THE SWEEP CONSULTS UNWIRED ARMS TOO. The loop is written over ``arms.registered()``
+rather than ``arms.arms_for()`` deliberately, so that the next family to be
+built-and-gated-before-wiring is swept the moment it registers instead of the moment
+somebody remembers to add it here.
+
+A WELD IS TALLIED APART FROM A PEER (``ArmSpec.is_weld``). A fused product registers
+on the first slot of the seam it replaces and its predicate CONTAINS the wired arm's,
+so it always co-admits with the arm it welds; the composer installs it after
+selection, never as a slot's second claimant. Its admissions are recorded per row
+(``weld_admitters``) and counted (``weld_admissions``), and only the peers feed the
+admissions, the overlaps and the agreement with the composer. ``wired`` cannot stand
+in for this: it would also drop a deferred single-slot peer, which is the case this
+sweep exists to catch. No matrix row expects a weld label in ``selected``, so the
+peer-only agreement rule is exact.
 
 WHAT THIS IS NOT. It is not a byte claim: no kernel launches here and no field moves.
 It is not a coverage number either — that is the corpus battery, on lifted rows. It
@@ -103,28 +113,6 @@ def table_snapshot() -> List[Dict[str, Any]]:
     return rows
 
 
-def probe_kwargs() -> Dict[str, Any]:
-    """The measured expansion records, read once and passed to every arm."""
-    from meep_gpu.metal_kernels import (  # noqa: PLC0415
-        complex_fields,
-        cylindrical_complex,
-        folded_complex,
-        special_kz,
-    )
-
-    return {
-        "complex_probe": complex_fields.load_expansion_probe(),
-        "beta_probe": special_kz.load_expansion_probe(),
-        "folded_complex_probe": folded_complex.load_expansion_probe(),
-        # PASSED EXPLICITLY rather than left to the arm's env-var fallback. The
-        # fallback works and is why this family composed before the argument
-        # existed, but "the sweep handed the composer the artifact it measured
-        # against" and "the arm found one somewhere" are different claims, and only
-        # the first can be recorded.
-        "cylindrical_complex_probe": cylindrical_complex.load_expansion_probe(),
-    }
-
-
 def sweep(out_path: str) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "provenance": provenance(),
@@ -132,32 +120,10 @@ def sweep(out_path: str) -> Dict[str, Any]:
         "rows": [],
         "totals": {},
     }
-    probes = probe_kwargs()
-    if probes["folded_complex_probe"] is None:
-        raise SystemExit(
-            "no folded-complex expansion probe artifact; the folded complex arms "
-            "would refuse by name on all six of their slots and the sweep would "
-            "measure their absence rather than their disjointness")
-    if probes["cylindrical_complex_probe"] is None:
-        raise SystemExit(
-            "no cylindrical-complex expansion probe artifact; that family's four "
-            "arms would refuse by name and the sweep would record their absence "
-            "as disjointness")
-    if probes["complex_probe"] is None or probes["beta_probe"] is None:
-        # A missing artifact is a REFUSAL for four of the eight products, so the
-        # sweep would report disjointness it never tested. Fail here rather than
-        # produce a clean-looking record of an untested tree.
-        raise SystemExit(
-            "no expansion probe artifact for "
-            f"{'complex' if probes['complex_probe'] is None else ''}"
-            f"{' and ' if not any(probes.values()) else ''}"
-            f"{'beta' if probes['beta_probe'] is None else ''}"
-            "; the complex and beta arms would refuse by name and the sweep would "
-            "measure their absence rather than their disjointness")
-
     slots = tuple(arms.registered_slots())
     evaluations = 0
     admissions = 0
+    weld_admissions = 0
     overlaps: List[Dict[str, Any]] = []
     winners: Dict[str, int] = {}
     started = time.time()
@@ -168,14 +134,10 @@ def sweep(out_path: str) -> Dict[str, Any]:
         residency = device.Residency()
         context = arms.StepContext(
             fields, pml, residency, (launch.shaders.CONTRACT_OFF,),
-            sources=(), synced=(),
-            extra={"complex_probe": probes["complex_probe"],
-                   "beta_probe": probes["beta_probe"],
-                   "folded_complex_probe": probes["folded_complex_probe"],
-                   "cylindrical_complex_probe":
-                       probes["cylindrical_complex_probe"]})
+            sources=(), synced=())
 
         per_slot: Dict[str, List[str]] = {}
+        weld_admitters: Dict[str, List[str]] = {}
         refusals: Dict[str, Dict[str, List[str]]] = {}
         for slot in slots:
             admitted: List[str] = []
@@ -186,7 +148,10 @@ def sweep(out_path: str) -> Dict[str, Any]:
                 except Exception as exc:  # noqa: BLE001 - a raise is a refusal
                     refusals.setdefault(slot, {})[spec.label] = [f"RAISED {exc!r}"]
                     continue
-                if getattr(verdict, "covered", False):
+                if getattr(verdict, "covered", False) and spec.is_weld:
+                    weld_admitters.setdefault(slot, []).append(spec.label)
+                    weld_admissions += 1
+                elif getattr(verdict, "covered", False):
                     admitted.append(spec.label)
                     admissions += 1
                 else:
@@ -200,11 +165,7 @@ def sweep(out_path: str) -> Dict[str, Any]:
         # The SHIPPED composer on the same objects, so the sweep's own bookkeeping
         # is checked against the thing that actually decides.
         plan = launch.plan_step(
-            fields, pml, residency=residency, sources=(),
-            complex_probe=probes["complex_probe"],
-            beta_probe=probes["beta_probe"],
-            folded_complex_probe=probes["folded_complex_probe"],
-            cylindrical_complex_probe=probes["cylindrical_complex_probe"])
+            fields, pml, residency=residency, sources=())
         ambiguous = tuple(sorted(
             slot for slot, reasons in plan.reasons.items()
             if any("admit this configuration" in reason for reason in reasons)))
@@ -219,6 +180,7 @@ def sweep(out_path: str) -> Dict[str, Any]:
         row = {
             "row": label,
             "admitters": per_slot,
+            "weld_admitters": weld_admitters,
             "selected": dict(plan.selected),
             "expected_selected": dict(expected),
             "ambiguous": list(ambiguous),
@@ -235,6 +197,7 @@ def sweep(out_path: str) -> Dict[str, Any]:
             "slots_per_configuration": len(slots),
             "predicate_evaluations": evaluations,
             "admissions": admissions,
+            "weld_admissions": weld_admissions,
             "overlaps": len(overlaps),
             "overlap_detail": overlaps,
             "winners": dict(winners),
@@ -305,7 +268,8 @@ def main() -> int:
     log(f"  registered arms          : {totals['registered_arms']} over "
         f"{len(totals['registered_families'])} families")
     log(f"  PREDICATE EVALUATIONS    : {totals['predicate_evaluations']}")
-    log(f"  admissions               : {totals['admissions']}")
+    log(f"  admissions (peers)       : {totals['admissions']}")
+    log(f"  weld admissions          : {totals['weld_admissions']}")
     log(f"  OVERLAPS (2+ admitters)  : {totals['overlaps']}")
     for entry in totals["overlap_detail"]:
         log(f"      {entry['row']:<34} {entry['slot']:<10} "

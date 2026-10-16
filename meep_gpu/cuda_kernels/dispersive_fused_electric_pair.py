@@ -542,6 +542,15 @@ def certified_dispersive_constitutive_body(counts: Sequence[int]) -> str:
         raise AssertionError(
             "the certified dispersive body no longer decodes i on its own line; the "
             "duplicate decomposition cannot be identified")
+    # Its chunk-record block goes with the decode: the real twin's union block above
+    # decodes the same three half-integer entries (DESIGN.md D10), and the dispersive
+    # arm reads exactly update_E's.
+    if tuple(dispersive_kernels.PML_BOUNDS_ENTRIES) != tuple(real.CONSTITUTIVE_BLOCK[0]):
+        raise AssertionError(
+            "the dispersive arm decodes different record entries from update_E's; the "
+            "union block would not carry the flags its constitutive statements pass")
+    body = real.bounds_block.strip_bounds_block(
+        body, "dispersive_source('pml', ...)", *real.CONSTITUTIVE_BLOCK)
     tail = body.split(real._DECODE_END, 1)[1]
 
     # THE SEAM, per component and per arity. ONE TOKEN PER LINE is substituted and the
@@ -589,7 +598,8 @@ def certified_dispersive_constitutive_body(counts: Sequence[int]) -> str:
         prefix = f"    constitutive_apply(E{letter}, f_w_E{letter}, idx, src_{letter}, "
         call = real._line_starting(tail, prefix, f"E{letter}'s constitutive_apply")
         expected = (f"{prefix}kps_{letter}[{coordinate}], "
-                    f"kms_{letter}[{coordinate}]);")
+                    f"kms_{letter}[{coordinate}], "
+                    f"{real.constitutive_flags()[target]});")
         if call != expected:
             raise AssertionError(
                 f"E{letter}'s constitutive_apply is {call!r}, not the certified "
@@ -601,7 +611,7 @@ def certified_dispersive_constitutive_body(counts: Sequence[int]) -> str:
             + dispersive_fill_carry_blocks(target, counts[target])
             + ["    }"]), 1)
     for letter, coordinate in zip(real._CARRIED, real._COORDINATE):
-        if f"kms_{letter}[{coordinate}])" in tail:
+        if f"kms_{letter}[{coordinate}]," in tail:
             raise AssertionError(
                 f"kms_{letter} survived the sub-lattice rename; it is the INTEGER "
                 f"vector in the curl body and the HALF-INTEGER one here, and the two "
@@ -869,7 +879,7 @@ def launch_dispersive_fused_electric_pair(
         boundary_codes: Sequence[Any], walls: Sequence[int],
         fills: Dict[str, Tuple[Any, ...]], dtdx: float,
         poles: Sequence[Any], counts: Sequence[int],
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
+        kernel: Optional[Any] = None, *, chunk_bounds: Any) -> Dict[str, Any]:
     """All five of :data:`REPLACES` in ONE launch, at this run's pole arity.
 
     THE ARGUMENT ORDER IS THE SIGNATURE'S and the pole group sits immediately after the
@@ -879,7 +889,13 @@ def launch_dispersive_fused_electric_pair(
     ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is: a gate
     compiles a deliberately broken copy of the shipped source and hands it here. A
     launcher that could not be handed its own kernel could not arm a single mutation.
+
+    ``chunk_bounds`` IS THE RUN'S CHUNK RECORD ON THE DEVICE, required and keyword-only,
+    exactly as the real twin takes it: the curl half and the constitutive half both
+    choose each cell's PML form from it.
     """
+    from . import step_curl_kernels  # noqa: PLC0415 - a device import
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
     counts = dispersive_kernels.normalized_pole_counts(counts)
     if len(tuple(poles)) != sum(counts):
         raise ValueError(
@@ -904,7 +920,7 @@ def launch_dispersive_fused_electric_pair(
     ) + tuple(
         np.int32(int(fills["reflect"][axis])) for axis in range(3)
     ) + tuple(
-        np.float32(float(fills["phase"][axis])) for axis in range(3))
+        np.float32(float(fills["phase"][axis])) for axis in range(3)) + (cb,)
     (kernel or _get_kernel(counts))((blocks,), (_FUSED_THREADS,), arguments)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
@@ -916,7 +932,7 @@ def launch_dispersive_fused_electric_pair(
 
 def run_dispersive_fused_electric_pair(
         fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
-        sources: Any = None,
+        chunk_bounds: Any, sources: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
         plan: Optional[Dict[str, List[Any]]] = None,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
@@ -947,4 +963,4 @@ def run_dispersive_fused_electric_pair(
     return launch_dispersive_fused_electric_pair(
         fields, tables, step_curl_kernels.real_curl_boundary_codes(grid),
         zero_metal_axes(grid), real.fused_electric_pair_fills(grid), dtdx,
-        poles, counts, kernel)
+        poles, counts, kernel, chunk_bounds=chunk_bounds)

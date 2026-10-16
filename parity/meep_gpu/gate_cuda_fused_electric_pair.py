@@ -482,6 +482,16 @@ def build(spec: Dict[str, Any], value_class: str, rng):
     return fields, grid, pml, host
 
 
+def chunk_record(grid: Any, pml: Any) -> Any:
+    """The chunk record a launch binds as ``cb``, on the device: the one-rank division of
+    ``grid`` and ``pml`` (``gate_chunk_records.layer_record``), which is the division the
+    oracle's region plan steps with here (no driver installs another; stepping's first
+    PML sub-step plans the one-rank layout). Every kernel leg of this gate reads it."""
+    from gate_chunk_records import layer_record  # noqa: PLC0415
+
+    return cp.asarray(layer_record(grid, pml), dtype=cp.int32)
+
+
 def words(array: Any) -> np.ndarray:
     """One array as raw uint32 WORDS. Byte compares, never ``allclose``: ``-0.0 ==
     0.0`` and ``NaN != NaN`` both lie, and the band class puts signed zeros in the
@@ -703,14 +713,15 @@ def _warm_memo(specs: Sequence[Dict[str, Any]]) -> None:
     for warm in specs:
         fields, grid, pml, _ = build(warm, "uniform", np.random.default_rng(1))
         dtdx = float(grid.dt / grid.dx)
+        record = chunk_record(grid, pml)
         report = fused_electric_pair.run_fused_electric_pair(
-            fields, grid, pml, dtdx, sources=())
+            fields, grid, pml, dtdx, chunk_bounds=record, sources=())
         if not report.get("launched"):
             raise SystemExit(f"the memo warm-up could not launch on {warm['label']}: "
                              f"{report.get('reason')}")
         step_curl_kernels._step_D_fused_pml_real(  # noqa: SLF001
             fields, step_curl_kernels.real_pml_curl_tables(pml, False),
-            step_curl_kernels.real_curl_boundary_codes(grid), dtdx)
+            step_curl_kernels.real_curl_boundary_codes(grid), dtdx, record)
         # The certified in-seam passes the separate-composition control launches
         # beside the two halves. A COLD MEMO IS NOT A MISSING LAUNCH BUT IT IS A
         # MISSING COUNT: MemoLaunchCounter wraps what is already stored, so a kernel
@@ -723,7 +734,8 @@ def _warm_memo(specs: Sequence[Dict[str, Any]]) -> None:
         for pass_name in ("zero_metal", "fill_symmetry", "fill_folded_far"):
             if in_seam_coverage.plan(pass_name, grid):
                 in_seam_passes.run_pass(pass_name, fields, "D", grid=grid)
-        constitutive_kernels.update_fused_pml_real("E", fields, pml=pml)
+        constitutive_kernels.update_fused_pml_real("E", fields, pml=pml,
+                                                   chunk_bounds=record)
     cp.cuda.runtime.deviceSynchronize()
 
 
@@ -809,6 +821,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
     case["zero_metal_axes_used"] = [bool(w) for w in walls]
     case["fills_used"] = {key: list(fills[key])
                           for key in ("near", "reflect", "phase")}
+    record = chunk_record(grid, pml)
 
     before = frozen(actual)
     read_only = read_only_snapshot(actual, pml)
@@ -821,7 +834,8 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
             for name in DRIVER_ORDER:
                 if name == "step_D":
                     report = family.launch_fused_electric_pair(
-                        actual, tables, codes, walls, fills, case["dtdx"], kernel)
+                        actual, tables, codes, walls, fills, case["dtdx"], kernel,
+                        chunk_bounds=record)
                     launched += int(bool(report.get("launched")))
                 elif name not in FUSED_PASSES:
                     run_pass(name, actual, pml)
@@ -908,6 +922,8 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     codes = step_curl_kernels.real_curl_boundary_codes(sep_grid)
     walls = in_seam_coverage.zero_metal_axes(sep_grid)
     fused_tables = family.fused_electric_pair_tables(pml)
+    separate_record = chunk_record(sep_grid, sep_pml)
+    fused_record = chunk_record(grid, pml)
 
     separate_counter = MemoLaunchCounter()
     fused_counter = MemoLaunchCounter()
@@ -918,7 +934,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
             for name in DRIVER_ORDER:
                 if name == "step_D":
                     step_curl_kernels._step_D_fused_pml_real(  # noqa: SLF001
-                        separate, curl_tables, codes, dtdx)
+                        separate, curl_tables, codes, dtdx, separate_record)
                 elif name == "zero_metal_D":
                     if any(walls):
                         in_seam_passes.run_pass("zero_metal", separate, "D",
@@ -937,8 +953,8 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                         in_seam_passes.run_pass("fill_folded_far", separate, "D",
                                                 grid=sep_grid)
                 elif name == "update_E":
-                    constitutive_kernels.update_fused_pml_real("E", separate,
-                                                               pml=sep_pml)
+                    constitutive_kernels.update_fused_pml_real(
+                        "E", separate, pml=sep_pml, chunk_bounds=separate_record)
                 else:
                     run_pass(name, separate, sep_pml)
         with fused_counter:
@@ -948,7 +964,8 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                         fused, fused_tables,
                         step_curl_kernels.real_curl_boundary_codes(grid),
                         in_seam_coverage.zero_metal_axes(grid),
-                        family.fused_electric_pair_fills(grid), dtdx)
+                        family.fused_electric_pair_fills(grid), dtdx,
+                        chunk_bounds=fused_record)
                 elif name not in FUSED_PASSES:
                     run_pass(name, fused, pml)
         cp.cuda.runtime.deviceSynchronize()
@@ -1011,9 +1028,14 @@ def leg_lift() -> Dict[str, Any]:
     3. the certified curl prelude must differ in EXACTLY the ``pml_apply`` signature
        and its store, and the certified constitutive prelude must be carried with ZERO
        edits;
-    4. ``LIFT_EDITS`` must have exactly NINE entries -- six until 2026-08-31, plus the
-       three the fill carry added -- and it is data so that a silent tenth edit is a
-       visible diff;
+    4. ``LIFT_EDITS`` must have exactly ELEVEN entries -- six until 2026-08-31, plus the
+       three the fill carry added, plus the two of MEEP's per-chunk forms
+       (bit_parity_0_10 KC2: the one chunk-record decode over both halves, and each
+       carried ghost keyed on its destination's membership row) -- and it is data so
+       that a silent twelfth edit is a visible diff. The one decode moves update_E's
+       chunk-record block out of the constitutive body and its decode lines into the
+       curl body's union block, and that move is measured: exactly that block leaves,
+       and exactly its decode lines arrive;
     5. the carried ``zero_metal_D`` must be the OFF-DIAGONAL table: two components per
        wall, never the component whose own axis is walled, and ``+0.0f``;
     6. the two carried fills must image each component on the axes ``IYEE_SHIFTS``
@@ -1062,9 +1084,18 @@ def leg_lift() -> Dict[str, Any]:
         step_curl_kernels._REAL_PML_PRELUDE  # noqa: SLF001
         + constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE, prelude)  # noqa: SLF001
 
+    # THE ONE RECORD DECODE (D10): update_E's block leaves its body, and exactly its
+    # decode lines arrive in the curl body's union block.
+    from meep_gpu.cuda_kernels import bounds_block  # noqa: PLC0415
+
+    constitutive_block = [line for line in bounds_block.bounds_block(
+        *family.CONSTITUTIVE_BLOCK).splitlines() if line.strip()]
+    moved_decode = [line for line in constitutive_block
+                    if not line.strip().startswith("//")]
     # THE OWNERSHIP DECLARATIONS ARE ADDED, NOT SUBSTITUTED, so the curl's dropped set
     # is still the three pml_apply calls and the added set carries the three flags.
     curl_ok = (len(curl_dropped) == 3
+               and all(line in curl_added for line in moved_decode)
                and all("pml_apply(D" in line for line in curl_dropped)
                and all(f"d_{a} = pml_apply_reg(D{a}" in "".join(curl_added)
                        for a in "xyz")
@@ -1090,7 +1121,9 @@ def leg_lift() -> Dict[str, Any]:
         line for line in const_added
         if line.strip() not in carry_lines
         and not line.strip().startswith(("float src_", "constitutive_apply(", "//"))]
-    const_ok = (len(const_dropped) == 6
+    const_block_dropped = [line for line in const_dropped if line in constitutive_block]
+    const_ok = (len(const_dropped) - len(const_block_dropped) == 6
+                and sorted(set(const_block_dropped)) == sorted(set(constitutive_block))
                 and sum(1 for line in const_dropped
                         if line.strip().startswith("float src_")) == 3
                 and sum(1 for line in const_dropped
@@ -1100,11 +1133,11 @@ def leg_lift() -> Dict[str, Any]:
                 and len(call_lines) == 3
                 and all("kms_half_" in line for line in call_lines)
                 and not const_unexpected)
-    prelude_ok = (len(prelude_dropped) == 3
+    # The rewrite keeps the certified store line (the value is returned after it), so
+    # only the signature and its parameter list leave the curl prelude.
+    prelude_ok = (len(prelude_dropped) == 2
                   and any("void pml_apply(" in line for line in prelude_dropped)
                   and any("float kms, float sinv, float kms_u, float sinv_u"
-                          in line for line in prelude_dropped)
-                  and any("f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;"
                           in line for line in prelude_dropped)
                   and any("if (!owned) return 0.0f;" in line
                           for line in prelude_added)
@@ -1161,8 +1194,11 @@ def leg_lift() -> Dict[str, Any]:
     # thread's -- the mirror image of the B family, where the near fill moved the
     # indexed axis.
     coefficient_ok = all(
-        f"kps_{a}[n{a} - 1], kms_half_{a}[n{a} - 1]);" in source for a in "xyz")
-    stencil = source.count("dtdx * ((sf - f1) + (f2 - ss))")
+        f"kps_{a}[n{a} - 1], kms_half_{a}[n{a} - 1], g" in source for a in "xyz")
+    # MEEP's stencil grouping, once, in the lifted curl_stencil helper, called by the
+    # three components (bit_parity_0_10 A1).
+    stencil = (source.count("dtdx * (((sf - f1) + f2) - ss)") == 1
+               and source.count("float curl = curl_stencil(dtdx, ") == 3)
     binding_ok = (all(source.count(f"float* __restrict__ D{a}") == 1 for a in "xyz")
                   and "const float* __restrict__ Dx" not in source
                   and all(f"const float* inv_eps_E{a}" in source for a in "xyz")
@@ -1185,11 +1221,11 @@ def leg_lift() -> Dict[str, Any]:
                      f"{{ d_{a} = 0.0f; D{a}[idx] = d_{a}; }}") == 1 for a in "xyz")
     return {
         "passed": bool(curl_ok and const_ok and prelude_ok and binding_ok
-                       and off_diagonal_ok and pairs_ok and stencil == 3
+                       and off_diagonal_ok and pairs_ok and stencil
                        and carry_geometry_ok and guards_ok and order_ok
                        and coefficient_ok
                        and "-0.0f" not in source
-                       and len(family.LIFT_EDITS) == 9),
+                       and len(family.LIFT_EDITS) == 11),
         "curl_lines_replaced": curl_dropped,
         "curl_lines_introduced": curl_added,
         "curl_lift_ok": curl_ok,
@@ -1199,7 +1235,7 @@ def leg_lift() -> Dict[str, Any]:
         "constitutive_lift_ok": const_ok,
         "prelude_lines_replaced": prelude_dropped,
         "prelude_lift_ok": prelude_ok,
-        "parenthesised_stencils_verbatim": stencil,
+        "meep_stencil_lifted_once_called_thrice": stencil,
         "shared_volume_bound_once": binding_ok,
         "zero_metal_table_is_the_d_off_diagonal": bool(off_diagonal_ok and pairs_ok),
         "fill_carry_axis_sets": carry_axis_sets,
@@ -2053,19 +2089,21 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # HALF-INTEGER; letting the certified name shadow is a half-cell error in the
     # absorber profile -- converged, smooth and wrong.
     ("constitutive_sublattice_shadow",
-     ("constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i]);",
-      "constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);", 1),
+     ("constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i], in_h_x);",
+      "constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);", 1),
      True, _always),
     # The dsigw index is the component's OWN axis (stepping.py:1015).
     ("constitutive_coefficient_index_moved",
-     ("constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_half_y[j]);",
-      "constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[i], kms_half_y[i]);", 1),
+     ("constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_half_y[j], in_h_y);",
+      "constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[i], kms_half_y[i], in_h_y);", 1),
      True, _always),
-    # The two accumulations are LEFT-TO-RIGHT and SEPARATE; reassociating them is a
-    # different float32 number.
-    ("constitutive_accumulations_reversed",
-     ("    float a = f[idx] + kps * src;\n    f[idx] = a - kms * prev;",
-      "    float a = f[idx] - kms * prev;\n    f[idx] = a + kps * src;", 1),
+    # THE ACCUMULATION IN MEEP'S GROUPING, f + ((kps*src) - (kms*prev)) (bit_parity_0_10
+    # KERNELS.md section 1, A2). INVERTED 2026-10-08 (KERNELS.md section 7.1): the
+    # shipped form IS MEEP's, so the must-catch mutation installs the PACKAGE's old
+    # grouping, (f + kps*src) - kms*prev, which is a different float32 number. One site:
+    # the owned statement and every ghost call the one certified helper.
+    ("constitutive_regrouped_to_the_old_package_order",
+     ("(f[idx] + ((kps * src) - (kms * prev)))", "((f[idx] + (kps * src)) - (kms * prev))", 1),
      True, _always),
     # THE D CURL'S BACKWARD SHIFT. step_D differences DOWN and step_B UP; a pair
     # ported from the magnetic sibling without changing this is a different engine.
@@ -2077,15 +2115,24 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # PAIR, not on the line: `bc_y == BC_METALLIC && j == 0` appears in the Dx block
     # too, and a needle that matched twice would arm whichever the replace happened to
     # reach first -- a mutation leg reporting a verdict about a line nobody chose.
+    # A DECLARED NULL SINCE 2026-10-08 (bit_parity_0_10 KC2), and the auxiliary contract
+    # is the arithmetic reason. The masked plane is stored row 0 of a metallic axis,
+    # which MEEP does not own and which is in no membership run (chunk_map: an unowned
+    # row reads False; the one-rank integer low run starts at row 1), so the curl there
+    # feeds only the dsig-only form's D -- fu_D is not stored off the run -- and Dz at
+    # j == 0 is a component tangential to the y wall, which zero_metal_D clears in the
+    # same seam. No stored word sees the masked curl. Under the 0.9.2 whole-grid
+    # recurrence fu_D carried it, which is why this was must-catch. Measured 0/2 on the
+    # GPU host (2026-10-08).
     ("curl_metallic_mask_dropped",
      ("        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;\n"
       "        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;\n",
       "        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;\n", 1),
-     True, _wall("y")),
+     False, _wall("y")),
     # The recurrence's own order: fu is stored BEFORE the flux density reads fprev.
     ("pml_recurrence_reads_the_fresh_auxiliary",
-     ("    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;",
-      "    float value = (((f[idx] * kms_u) + fu_new) - fu_new) * sinv_u;", 1),
+     ("((((fcur * kms_u) + fu_new) - fprev) * sinv_u)",
+      "((((fcur * kms_u) + fu_new) - fu_new) * sinv_u)", 1),
      True, _always),
     # THE CAPTURE ITSELF. A weld that stored the flux density and let the
     # constitutive half read a stale register is the defect the whole product is
@@ -2205,7 +2252,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # plane's pair. The count is stated so a change in the destination table is NOT
     # ARMED rather than a partial edit.
     ("far_ghost_reuses_the_source_coefficient_pair",
-     ("kps_x[nx - 1], kms_half_x[nx - 1]);", "kps_x[i], kms_half_x[i]);", 4), True,
+     ("kps_x[nx - 1], kms_half_x[nx - 1], ", "kps_x[i], kms_half_x[i], ", 4), True,
      lambda spec: _far_fill(spec) and any(
          axis == "X" for axis, _phase in spec.get("symmetry", ()))),
     # THE GHOST'S FLUX-DENSITY STORE DROPPED, and this one is not hypothetical: it is
@@ -2240,6 +2287,60 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      ("float gz_nxy_v = phase_x * phase_y * pre_z;",
       "float gz_nxy_v = phase_y * phase_x * pre_z;", 1), False,
      lambda spec: {"X", "Y"} <= {axis for axis, _p in spec.get("symmetry", ())}),
+
+    # --- MEEP's per-chunk forms (bit_parity_0_10 KERNELS.md section 7.2, the B battery).
+    # Every one is live on every row with a layer: the states are random over the whole
+    # volume, so every chunk-boundary plane is exercised at the first launch.
+    #
+    # The select removed on Dx's dsigu axis: the recurrence on every cell, today's 0.9.2
+    # form. Off the run the dsig-only form is a different word.
+    ("recurrence_on_every_cell",
+     ("const int in_i_z = (k >= cbi_z_a0 && k < cbi_z_a1) || (k >= cbi_z_b0 && k < cbi_z_b1);",
+      "const int in_i_z = 1;", 1), True, _always),
+    # The form chosen by coefficient identity instead of chunk membership: a sigma = 0
+    # cell inside the layer's chunk takes the dsig-only form where MEEP steps the
+    # recurrence.
+    ("predicate_on_coefficient_identity",
+     ("kms_z[k], sinv_z[k], in_i_z, own_x);", "kms_z[k], sinv_z[k], (kms_z[k] != 1.0f), own_x);",
+      1), True, _always),
+    # The low run's end moved one row: the boundary plane changes form.
+    ("membership_bound_off_by_one",
+     ("const int in_i_z = (k >= cbi_z_a0 && k < cbi_z_a1)",
+      "const int in_i_z = (k >= cbi_z_a0 && k < cbi_z_a1 + 1)", 1), True, _always),
+    # The half-integer record read for the D curl's integer lattice: the boundary plane
+    # moves by one cell.
+    ("half_integer_record_on_the_integer_lattice",
+     ("const int cbi_z_a0 = cb[8], cbi_z_a1 = cb[9], cbi_z_b0 = cb[10], cbi_z_b1 = cb[11];",
+      "const int cbi_z_a0 = cb[20], cbi_z_a1 = cb[21], cbi_z_b0 = cb[22], cbi_z_b1 = cb[23];",
+      1), True, _always),
+    # update_E's membership read on the wrong lattice: the integer record along x.
+    ("update_E_reads_the_integer_record",
+     ("constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i], in_h_x);",
+      "constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i], in_i_x);", 1),
+     True, _always),
+    # The auxiliary stored on a plain cell (the auxiliary contract, C2): the array path
+    # leaves fu and f_w untouched off the run and this gate compares both.
+    ("split_field_auxiliary_stored_on_a_plain_cell",
+     ("    if (dsigu) fu[idx] = fu_new;\n", "    fu[idx] = fu_new;\n", 1), True, _always),
+    ("constitutive_auxiliary_stored_on_a_plain_cell",
+     ("    if (dsigw) fw[idx] = src;\n", "    fw[idx] = src;\n", 1), True, _always),
+    # The far ghost's membership row negated: the ghost takes the other form.
+    ("far_ghost_membership_negated",
+     ("int gx_x_w = (nx - 1 >= cbh_x_a0 && nx - 1 < cbh_x_a1) || "
+      "(nx - 1 >= cbh_x_b0 && nx - 1 < cbh_x_b1);",
+      "int gx_x_w = !((nx - 1 >= cbh_x_a0 && nx - 1 < cbh_x_a1) || "
+      "(nx - 1 >= cbh_x_b0 && nx - 1 < cbh_x_b1));", 1), True,
+     lambda spec: _far_fill(spec) and any(
+         axis == "X" for axis, _phase in spec.get("symmetry", ()))),
+    # float32 multiply is bitwise commutative (KERNELS.md section 1, C3): a NULL.
+    ("constitutive_product_commuted",
+     ("(kps * src)", "(src * kps)", -1), False, _always),
+    # The auxiliary load issued unconditionally, the store still guarded: the loaded
+    # word feeds only the recurrence arm, which runs on the run's cells, so no stored
+    # word changes (KERNELS.md section 7.2's declared null).
+    ("split_field_auxiliary_load_unguarded",
+     ("    float fprev = dsigu ? fu[idx] : 0.0f;\n", "    float fprev = fu[idx];\n", 1),
+     False, _always),
 )
 
 

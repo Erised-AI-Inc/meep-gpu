@@ -76,7 +76,12 @@ import timing_cases  # noqa: E402
 import timing_host  # noqa: E402
 import timing_records  # noqa: E402
 
-TIERS = ("preflight", "digests", "bindprobe", "priority", "bindcheck", "rest", "largest")
+TIERS = ("preflight", "digests", "identity", "bindprobe", "priority", "bindcheck", "rest",
+         "largest")
+#: The tiers whose GPU rows are timed: what a ``--gpu-legs gpu-only`` ladder times with
+#: one leg, and what its ``identity`` tier vouches for.
+TIMED_TIERS = ("priority", "rest", "largest")
+GPU_LEGS = ("all", "gpu-only")
 CONTROLS = ("native", "threads2", "threads4", "hwthread", "split")
 ROUTE_TABLES = {"default": "triton", "cuda": "cuda", "metal": "metal"}
 NVIDIA_ROUTES = ("default", "cuda")
@@ -194,9 +199,11 @@ PARAMS: Tuple[Param, ...] = (
           "$MGPU_SITE_MEEP_SOURCE/python when it exists"),
     Param("EXTRA_PYTHONPATH", "list", "", "directories added after the harness on the "
           "GPU rows' PYTHONPATH; {harness} and {api} name the tree that runs"),
-    Param("ALLOW_UNCERTIFIED", "int", 0, "1 exports MEEP_GPU_ALLOW_UNCERTIFIED=1 to the "
-          "GPU rows; 0 exports MEEP_GPU_ALLOW_UNCERTIFIED=0 to the NVIDIA rows (certified "
-          "devices and toolchains only) and unsets it for every other row",
+    Param("ALLOW_UNCERTIFIED", "int", 0, "1 exports MEEP_GPU_HARDWARE=any to the GPU "
+          "rows; 0 exports MEEP_GPU_HARDWARE=certified to the NVIDIA rows (certified "
+          "devices and toolchains only) and unsets it for every other row. The name is "
+          "this ladder's, recorded on every row as allow_uncertified, and is not a "
+          "package switch",
           choices=("0", "1")),
     Param("SUBNORMAL_POLICY", "str", None, "MEEP_GPU_SUBNORMAL_POLICY for the GPU rows "
           "('keep' on Linux, the package default on macOS; 'default' leaves it unset)"),
@@ -245,7 +252,9 @@ PARAMS: Tuple[Param, ...] = (
     Param("GATE_MEM_MIN_GB", "float", None, "available memory a row needs, GiB; 25 % of "
           "total by default"),
     Param("GATE_CPU_MAX", "float", None, "CPU metric below which a row may start; 10 % of "
-          "the logical CPUs in scope by default"),
+          "the logical CPUs in scope by default on Linux; 'auto' (the macOS default) "
+          "calibrates it from idle readings before the first row "
+          "(timing_host.calibrated_cpu_max)"),
     Param("GATE_GPU_METRIC", "str", None, "load1 on a Linux host; busy on macOS and with "
           "--gate-scope allocation (a host-wide load average sees other jobs)",
           choices=("load1", "busy")),
@@ -266,13 +275,20 @@ PARAMS: Tuple[Param, ...] = (
     Param("CPU_TRACE_S", "float", 1.0, "CPU state sampling interval during rows"),
     Param("PASSES", "int", 3, ""),
     Param("TIERS", "list", " ".join(TIERS), ""),
-    Param("ARRAY_CONTROL", "str", "extract", "", choices=("extract", "row")),
+    Param("ARRAY_CONTROL", "str", "extract", "extract: read off each GPU row's own array "
+          "leg; row: gpu_array_control.py as its own row (NVIDIA); none: no array control",
+          choices=("extract", "row", "none")),
+    Param("GPU_LEGS", "str", "all", "all: every GPU row lifts the fused leg, its singles "
+          "and the array leg; gpu-only: the timed GPU rows lift the fused leg alone (one "
+          "lift, no array control), and the identity tier proves each route, case and "
+          "size bit-identical in one three-leg row first", choices=GPU_LEGS),
     Param("GPU_FLAGS", "str", None, "bench_fused_products.py flags; must time with "
           "--monitors attached. Linux: the 2026-09-28 flags; macOS: the same with a memory "
           "budget of 0.6 x the host's memory"),
     Param("ALLOW_NICE", "int", 0, "", choices=("0", "1")),
-    Param("REQUIRE_AC_POWER", "int", 1, "macOS: refuse on battery or in low power mode",
-          choices=("0", "1")),
+    Param("REQUIRE_AC_POWER", "int", 0, "macOS: 1 refuses to start, and strikes a row, on "
+          "battery or in low power mode; off by default, so no run is gated on the power "
+          "source (the power state is still read and recorded)", choices=("0", "1")),
 )
 PARAM_BY_NAME = {p.name: p for p in PARAMS}
 
@@ -495,6 +511,12 @@ class Config:
     corpus_root: Optional[str]
     base_env: Dict[str, str]
     memory_budget: Optional[int] = None
+    #: ``GPU_LEGS``: ``gpu-only`` times the fused leg alone (``bench_fused_products.py
+    #: --legs gpu-only``) behind a three-leg identity row per route, case and size.
+    gpu_legs: str = "all"
+    #: ``GATE_CPU_MAX`` ``auto`` (the macOS default): the readings the live ladder takes
+    #: before its first row to set the gate's CPU threshold (:meth:`Ladder.calibrate_gate`).
+    cpu_calibration: Optional[Dict[str, Any]] = None
 
     def res(self, case: str, cells: int) -> int:
         return timing_cases.res_for_cells(case, cells)
@@ -504,7 +526,8 @@ class Config:
 
     def flag_values(self) -> Dict[str, Any]:
         """What :func:`timing_host.binding_flags` needs beyond the mode."""
-        return {"sockets": self.sockets, "threads_per_core": self.threads_per_core}
+        return {"sockets": self.sockets, "threads_per_core": self.threads_per_core,
+                "physical_cores": self.physical}
 
     @property
     def metal_only(self) -> bool:
@@ -679,7 +702,8 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
     if per_core is None:
         values["THREADS_PER_CORE"] = threads_per_core
         sources["THREADS_PER_CORE"] = "derived"
-    flag_values = {"sockets": sockets, "threads_per_core": threads_per_core}
+    flag_values = {"sockets": sockets, "threads_per_core": threads_per_core,
+                   "physical_cores": physical}
     if values["RANKS"]:
         blocks = parse_rank_blocks(values["RANKS"])
     else:
@@ -862,13 +886,24 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
             omitted[control] = why
         else:
             kept.append(control)
-    for control in kept:
+    for control in list(kept):
         mode = {"threads2": "bound-pe", "threads4": "bound-pe",
                 "hwthread": "bound-hwthread"}.get(control)
-        if mode:
+        if not mode:
+            continue
+        try:
             timing_host.binding_flags(mpi_impl if kind != "srun" else "srun", mode, 2,
                                       platform, explicit, ranks=largest_ranks,
                                       **flag_values)
+        except SystemExit as error:
+            if control != "hwthread":
+                raise
+            # THE HWTHREAD CONTROL NAMES EACH RANK'S HARDWARE THREAD
+            # (``timing_host.hwthread_pe_list``), which needs the topology. Without it
+            # the control is omitted BY NAME rather than run in a placement that would
+            # double ranks up on some cores while others idle (CERT-8 H3).
+            kept.remove(control)
+            omitted[control] = str(error).replace("REFUSING: ", "", 1)
 
     # ---- gates ---------------------------------------------------------------------
     memory_total = values["MEMORY_TOTAL_GB"]
@@ -878,7 +913,20 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
             values["MEMORY_TOTAL_GB"] = memory_total
             sources["MEMORY_TOTAL_GB"] = "detected"
     cpu_max = values["GATE_CPU_MAX"]
-    if cpu_max is None:
+    cpu_calibration = None
+    if (cpu_max is None and platform == "darwin") or str(cpu_max).strip().lower() == "auto":
+        # CALIBRATED AT THE START, by a rule fixed in advance
+        # (``timing_host.calibrated_cpu_max``): the 10 % default cannot open on a laptop
+        # whose owner's session idles above it (CERT-8 F6). Until the readings are taken
+        # the gate holds the default, which is what a dry run prints beside "auto".
+        cpu_calibration = {"readings": timing_host.CPU_CALIBRATION_READINGS,
+                           "every_s": timing_host.CPU_CALIBRATION_EVERY_S,
+                           "logical_cpus": logical}
+        values["GATE_CPU_MAX"] = "auto"
+        if sources["GATE_CPU_MAX"] == "default":
+            sources["GATE_CPU_MAX"] = "derived"
+        cpu_max = timing_host.default_cpu_max(logical)
+    elif cpu_max is None:
         cpu_max = timing_host.default_cpu_max(logical)
         values["GATE_CPU_MAX"] = cpu_max
         sources["GATE_CPU_MAX"] = "derived"
@@ -953,6 +1001,21 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
         raise refuse("--array-control row with the metal route: gpu_array_control.py "
                      "drives the NVIDIA tables only; on macOS the control is read off "
                      "each GPU row's own array leg (--array-control extract)")
+    gpu_legs = values["GPU_LEGS"]
+    if gpu_legs == "gpu-only" and routes:
+        # ONE LIFT A ROW, AND WHAT IT CANNOT SAY IS SAID: a GPU-only row has no array leg
+        # to extract a control from, and no array leg to be bit-identical to, so its
+        # identity comes from the identity tier's three-leg row of the same route, case
+        # and size (``timing_records.identity_source``).
+        if values["ARRAY_CONTROL"] == "extract":
+            raise refuse("--gpu-legs gpu-only with --array-control extract: a GPU-only row "
+                         "carries no array leg to read the control off; use --array-control "
+                         "row (NVIDIA) or none")
+        if "identity" not in tiers and any(t in tiers for t in TIMED_TIERS):
+            raise refuse("--gpu-legs gpu-only without the identity tier: a GPU-only row is "
+                         "bit-identical only by its identity row; keep 'identity' in --tiers")
+        if "--legs" in shlex.split(values["GPU_FLAGS"]):
+            raise refuse("--gpu-flags names --legs: the ladder sets it from --gpu-legs")
 
     subnormal = derived("SUBNORMAL_POLICY", "keep" if platform != "darwin" else "default")
     corpus = values["CORPUS_ROOT"]
@@ -985,7 +1048,7 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
         sockets=sockets, threads_per_core=threads_per_core,
         topology=topology if topology.get("method") else {},
         restricted=bool(topology.get("restricted_by_affinity")),
-        memory_budget=memory_budget)
+        memory_budget=memory_budget, cpu_calibration=cpu_calibration, gpu_legs=gpu_legs)
     return config
 
 
@@ -1069,15 +1132,17 @@ def gpu_env(config: Config, route: str, keep_cache: str) -> EnvDelta:
         pythonpath.append(base_pythonpath)
     sets["PYTHONPATH"] = ":".join(pythonpath)
     # AN NVIDIA ROW TIMES A CERTIFIED DEVICE AND TOOLCHAIN OR NOTHING. The package
-    # runs a supported, uncertified NVIDIA identity by default; ``0`` keeps such a row
-    # on the refusal it got before that default, so it cannot enter a figure as
-    # though certified. A Metal row keeps the Metal default (unset), as before.
+    # runs a supported, uncertified NVIDIA identity by default; ``certified`` keeps
+    # such a row on the refusal it got before that default, so it cannot enter a
+    # figure as though certified. A Metal row keeps the Metal default (unset), as
+    # before. The retired name is never exported: the package refuses it by name.
+    unset.append("MEEP_GPU_ALLOW_UNCERTIFIED")
     if config.allow_uncertified:
-        sets["MEEP_GPU_ALLOW_UNCERTIFIED"] = "1"
+        sets["MEEP_GPU_HARDWARE"] = "any"
     elif route in NVIDIA_ROUTES:
-        sets["MEEP_GPU_ALLOW_UNCERTIFIED"] = "0"
+        sets["MEEP_GPU_HARDWARE"] = "certified"
     else:
-        unset.append("MEEP_GPU_ALLOW_UNCERTIFIED")
+        unset.append("MEEP_GPU_HARDWARE")
     if route in NVIDIA_ROUTES:
         sets["CUDA_VISIBLE_DEVICES"] = str(config.gpu)
         sets["CUPY_ACCELERATORS"] = ""
@@ -1116,7 +1181,8 @@ def meep_env(config: Config, threads: int = 1) -> EnvDelta:
         sets.update({"OMP_PROC_BIND": "close", "OMP_PLACES": "cores"})
     unset = list(PACKAGE_SWITCHES) + ["TRITON_LIBCUDA_PATH", "MEEP_GPU_SUBNORMAL_POLICY",
                                       "MEEP_GPU_CORPUS_ROOT", "CUPY_ACCELERATORS",
-                                      "MEEP_GPU_ALLOW_UNCERTIFIED", "TRITON_CACHE_DIR",
+                                      "MEEP_GPU_HARDWARE", "MEEP_GPU_ALLOW_UNCERTIFIED",
+                                      "TRITON_CACHE_DIR",
                                       "CUPY_CACHE_DIR"]
     if threads == 1:
         unset += ["OMP_PROC_BIND", "OMP_PLACES"]
@@ -1183,7 +1249,7 @@ def build_plan(config: Config) -> List[Row]:
             plan.append(Row(tier, "gpu", case, cells, res, pass_index, route=route))
         for n in b:
             meep(n)
-        if routes:
+        if routes and config.array_control != "none":
             plan.append(Row(tier, "control", case, cells, res, pass_index))
         for n in c:
             meep(n)
@@ -1231,6 +1297,23 @@ def build_plan(config: Config) -> List[Row]:
                         seen.add((case, cells))
                         plan.append(Row("digests", "lift", case, cells,
                                         config.res(case, cells), 0))
+        elif tier == "identity":
+            # ONE THREE-LEG ROW PER ROUTE, CASE AND TIMED SIZE, with the preflight's short
+            # windows: the bit identity every GPU-only row of that size cites.
+            if config.gpu_legs != "gpu-only":
+                continue
+            seen_identity = set()
+            for name in TIMED_TIERS:
+                if name not in config.tiers:
+                    continue
+                for cells in config.sizes[name]:
+                    for case in config.cases:
+                        for route in config.routes:
+                            if (route, case, cells) in seen_identity:
+                                continue
+                            seen_identity.add((route, case, cells))
+                            plan.append(Row("identity", "gpu", case, cells,
+                                            config.res(case, cells), 0, route=route))
         elif tier == "bindprobe":
             if config.binding != "probe" or config.platform == "darwin":
                 continue
@@ -1409,8 +1492,8 @@ def row_key(config: Config, row: Row, label: Optional[str] = None) -> str:
 
 def gpu_out(config: Config, row: Row, route: Optional[str] = None) -> str:
     route = route or row.route
-    if row.tier == "preflight":
-        return os.path.join(config.out, "preflight", f"gpu_{route}", f"{row.case}_res{row.res}")
+    if row.tier in ("preflight", "identity"):
+        return os.path.join(config.out, row.tier, f"gpu_{route}", f"{row.case}_res{row.res}")
     return os.path.join(config.out, f"gpu_{route}", f"pass{row.pass_index}",
                         f"{row.case}_res{row.res}")
 
@@ -1453,7 +1536,11 @@ def preflight_gpu_flags(config: Config) -> str:
 
 def gpu_command(config: Config, row: Row, keep_cache: str, utc_stamp: str) -> Command:
     out = gpu_out(config, row)
-    flags = preflight_gpu_flags(config) if row.tier == "preflight" else config.gpu_flags
+    if row.tier in ("preflight", "identity"):
+        flags = preflight_gpu_flags(config)
+    else:
+        flags = config.gpu_flags + (" --legs gpu-only" if config.gpu_legs == "gpu-only"
+                                    else "")
     table = config.table(row.route or "default")
     common = ["--drive-table", table, "--out", out, "--gpu", "0", "--case", str(row.case),
               "--res", str(row.res)] + shlex.split(flags)
@@ -1697,6 +1784,7 @@ def plan_record(config: Config, plan: List[Row]) -> Dict[str, Any]:
             "expect_launched": {f"{r}:{c}": t for (r, c), t in
                                 config.expect_launched.items()},
             "gate": dataclasses.asdict(config.gate),
+            "gate_cpu_calibration": config.cpu_calibration,
             "box_keys": darwin_box if config.platform == "darwin" else linux_box,
             "kmp_duplicate_lib_ok": (
                 "GPU rows set TRUE (torch beside NumPy), MEEP rows unset it"
@@ -1742,6 +1830,11 @@ def print_plan(record: Dict[str, Any], say: Callable[[str], None]) -> None:
         f"{gate['mem_min_gib']} GiB; account GPU processes <= {gate['account_max']}"
         + (f", cap {gate['cap']}" if gate["cap"] is not None else "")
         + ("; device free" if gate["check_device"] else ""))
+    calibration = resolved.get("gate_cpu_calibration")
+    if calibration:
+        say(f"  gate CPU threshold: auto -- {calibration['readings']} idle readings "
+            f"{calibration['every_s']:g} s apart before the first row set it "
+            f"(timing_host.calibrated_cpu_max); {gate['cpu_max']} until then")
     say("=== BUDGET (estimates, seconds) ===")
     for key, size in record["budget_by_size"].items():
         say(f"  size {key}: {size['rows']} rows, rows {size['row_s']} s + gates "
@@ -2054,6 +2147,7 @@ class Ladder:
                 raise self.die(f"the preflight GPU {row.route} row never started: {never}",
                                EXIT_PREFLIGHT)
             return
+        gpu_only = config.gpu_legs == "gpu-only" and row.tier in TIMED_TIERS
         entry, summary = self.record(
             timing_records.record_gpu, row, self.ledger, command.out or "", command.log,
             expect, timing_cases.expected_repair(str(row.case)), True,
@@ -2062,14 +2156,23 @@ class Ladder:
                 budget_s=row_budget(config, row), elapsed_s=int(time.time() - started),
                 gate_waited_s=int(waited), code_digest=code, box_before=before,
                 preference="cuda" if row.route == "cuda" else "unset", gpu=config.gpu,
-                flags=command.flags, key=key),
+                flags=command.flags, key=key, legs=config.gpu_legs if gpu_only else "all"),
             {"gpu_state_before": state_before,
              "gpu_state_after": timing_host.gpu_state(config.gpu, config.platform),
              "cpu_state_before": cpu_before,
              "cpu_state_after": timing_host.cpu_state(config.platform),
              "allow_uncertified": config.allow_uncertified,
-             "argv": command.argv, "env": command.env.as_dict()})
+             "argv": command.argv, "env": command.env.as_dict()},
+            identity_from=self.identity_entry(row) if gpu_only else None)
         self.finish(key, row, started, rc, timed_out, waited, summary)
+        if row.tier == "identity":
+            ok, _launched = preflight_gpu_verdict(entry, summary, expect)
+            if not ok:
+                raise self.die(f"the identity GPU {row.route} row on {row.case} at "
+                               f"{row.cells} cells did not launch {expect or 'a kernel table'} "
+                               f"bit-identically with the declared deposit-repair route, so "
+                               f"no GPU-only row of that size can cite it: {summary} (see "
+                               f"{command.log})", EXIT_PREFLIGHT)
         if row.tier == "preflight":
             ok, launched = preflight_gpu_verdict(entry, summary, expect)
             if not ok:
@@ -2085,6 +2188,17 @@ class Ladder:
                           encoding="utf-8") as handle:
                     json.dump({f"{r}:{c}": t for (r, c), t in self.pinned.items()},
                               handle, indent=2, sort_keys=True)
+
+    def identity_entry(self, row: Row) -> Optional[Dict[str, Any]]:
+        """The identity tier's ledger entry for this GPU row's route, case and size: the
+        three-leg row a GPU-only row's bit identity is read from (last one wins)."""
+        found = None
+        for entry in timing_records.rows_of(self.ledger):
+            if (entry.get("ledger") == "gpu" and entry.get("tier") == "identity"
+                    and entry.get("route") == row.route and entry.get("case") == row.case
+                    and entry.get("res") == row.res):
+                found = entry
+        return found
 
     def do_meep(self, row: Row) -> None:
         config = self.config
@@ -2474,6 +2588,46 @@ class Ladder:
                            "from one host and one device -- start a new stamp",
                            EXIT_REFUSED)
 
+    def calibrate_gate(self, reader: Optional[Callable[[], Optional[float]]] = None,
+                       sleep: Callable[[float], None] = time.sleep) -> None:
+        """``GATE_CPU_MAX`` ``auto``: read the idle box, then fix the gate's CPU threshold
+        by :func:`timing_host.calibrated_cpu_max`, before any row.
+
+        Written to ``gate_calibration.json``. A ``--resume`` reads that file back rather
+        than calibrating again: one ladder, one threshold, chosen before its first row.
+        """
+        config = self.config
+        plan = config.cpu_calibration
+        if not plan:
+            return
+        path = os.path.join(self.out, "gate_calibration.json")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as handle:
+                found = json.load(handle)
+            source = "calibrated at the first start (gate_calibration.json)"
+        else:
+            if reader is None:
+                def reader() -> Optional[float]:
+                    return timing_host.reading(config.gate, "meep").get("cpu")
+            readings: List[Optional[float]] = []
+            for index in range(int(plan["readings"])):
+                if index:
+                    sleep(float(plan["every_s"]))
+                readings.append(reader())
+                self.say(f"gate calibration {index + 1}/{plan['readings']}: busy "
+                         f"{readings[-1]}")
+            found = timing_host.calibrated_cpu_max(readings, plan.get("logical_cpus"))
+            found["utc"] = utc()
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(found, handle, indent=2, sort_keys=True)
+            source = "calibrated at start"
+        config.gate = dataclasses.replace(config.gate, cpu_max=float(found["value"]))
+        config.values["GATE_CPU_MAX"] = float(found["value"])
+        config.sources["GATE_CPU_MAX"] = source
+        self.say(f"gate calibration: cpu_max {found['value']:g} ({found.get('why')}; "
+                 f"rule: {found.get('rule')})"
+                 + (f"; WARNING {found['warning']}" if found.get("warning") else ""))
+
     def keep_awake(self) -> None:
         """macOS: hold the Mac awake for the life of this process (``caffeinate -i -s
         -w <pid>``: no idle sleep, no system sleep on AC power), and record it."""
@@ -2496,6 +2650,7 @@ class Ladder:
                  f"gpu={config.gpu}")
         self.check_identity()
         self.keep_awake()
+        self.calibrate_gate()
         record = plan_record(config, self.plan)
         with open(os.path.join(self.out, "plan.json"), "w", encoding="utf-8") as handle:
             json.dump(record, handle, indent=1, sort_keys=True, default=str)

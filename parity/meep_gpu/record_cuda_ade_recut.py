@@ -64,6 +64,8 @@ from record_cuda_regate import (  # noqa: E402
     _API, ARTIFACT_PREFIX, RECORD, RESULTS, _record, _stamps,
     record_disagrees_with_its_own_directories,
 )
+import artifact_drift  # noqa: E402
+import neutral_labels  # noqa: E402
 from rebind_cuda_welds import manifest_digest  # noqa: E402
 
 #: The two policy legs a CUDA family is certified under, and the only two this
@@ -164,6 +166,25 @@ def _declarations(pairs: list[str], subjects: dict,
     return revisions, entries, refusals
 
 
+def import_drift(campaign: Path, payloads: dict, declared: dict) -> list[str]:
+    """Each policy leg whose import record no longer describes the tree being released.
+
+    The subject manifest is not the whole claim: a chunked round certifies chunks on
+    earlier tips, so every file a leg's import record names must be byte-equal in the
+    tree, or the leg is refused by name (``artifact_drift.py``, the rule the rebind tools
+    apply too). A subject ``--declare`` names is the one move the record states, so it
+    is not refused twice.
+    """
+    out = []
+    for leg, payload in sorted(payloads.items()):
+        moved = [path for path in artifact_drift.artifact_moved(payload, _API)
+                 if path not in declared]
+        if moved:
+            out.append(artifact_drift.refusal(f"{campaign.name}/{leg}/gate.json",
+                                              moved, _API))
+    return out
+
+
 def _leg_payload(campaign: Path, leg: str) -> dict | None:
     path = campaign / leg / "gate.json"
     if not path.is_file():
@@ -258,8 +279,10 @@ def build_block(campaign: Path, payloads: dict, subjects: dict,
             f"this record: when the first policy leg began. The last began "
             f"{started[-1]}."),
         "started_utc": started[0],
-        "host": sorted(stamps["hostname"])[0] if len(stamps["hostname"]) == 1
-                else sorted(stamps["hostname"]),
+        # The machine by its neutral label (neutral_labels.py): the stamps are read,
+        # one machine is required (main refuses several), and the name stays in the
+        # artifact, because this record ships.
+        "host": neutral_labels.one_host(stamps["hostname"]),
         "policies_cut_under": sorted(stamps["subnormal_policy"]),
         "artifacts": f"{ARTIFACT_PREFIX}{campaign.name} (gitignored)",
         "artifact_sha256": manifest_digest(campaign),
@@ -377,6 +400,8 @@ def main(argv=None) -> int:
                 continue
             refusals.append(f"subject moved since the run -- {line}")
 
+    refusals.extend(import_drift(campaign, payloads, revisions))
+
     if len(payloads) == len(POLICY_LEGS):
         kernel_sets = {leg: tuple(sorted(payload.get("kernels") or ()))
                        for leg, payload in sorted(payloads.items())}
@@ -403,6 +428,10 @@ def main(argv=None) -> int:
     key = arguments.block or campaign.name
     if key in record:
         refusals.append(f"certification.json already has a block named {key!r}")
+    try:
+        neutral_labels.one_host(_stamps(campaign)["hostname"])
+    except neutral_labels.LabelRefusal as exc:
+        refusals.append(str(exc))
 
     for why in refusals:
         print(f"  REFUSED   {why}", flush=True)

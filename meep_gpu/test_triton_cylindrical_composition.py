@@ -42,7 +42,8 @@ def install_cylindrical_routing_stubs(monkeypatch, *, ordinary=REFUSED,
     monkeypatch.setattr(launch_module, "cylindrical_curl_coverage",
                         lambda *args: cylindrical, raising=False)
     monkeypatch.setattr(launch_module, "plan_cylindrical_curl",
-                        lambda fields, pml, sub_step, block=None: f"cyl:{sub_step}",
+                        lambda fields, pml, sub_step, block=None, chunk_layout=None:
+                            f"cyl:{sub_step}",
                         raising=False)
 
     monkeypatch.setattr(launch_module, "constitutive_coverage",
@@ -52,7 +53,8 @@ def install_cylindrical_routing_stubs(monkeypatch, *, ordinary=REFUSED,
     monkeypatch.setattr(launch_module, "cylindrical_constitutive_coverage",
                         lambda *args: cylindrical, raising=False)
     monkeypatch.setattr(launch_module, "plan_cylindrical_constitutive",
-                        lambda fields, pml, side, block=None: f"cyl:{side}",
+                        lambda fields, pml, side, block=None, chunk_layout=None:
+                            f"cyl:{side}",
                         raising=False)
 
 
@@ -75,7 +77,8 @@ def test_cylindrical_overlap_fails_closed_instead_of_selecting_by_order(monkeypa
     monkeypatch.setattr(launch_module, "plan_pml_curl",
                         lambda *args, **kwargs: "ordinary")
     monkeypatch.setattr(launch_module, "plan_constitutive",
-                        lambda fields, pml, side, block=None: f"ordinary:{side}")
+                        lambda fields, pml, side, block=None, chunk_layout=None:
+                            f"ordinary:{side}")
 
     plan = launch_module.plan_step(cylindrical_fields(), object())
 

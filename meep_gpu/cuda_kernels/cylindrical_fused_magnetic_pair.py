@@ -1,91 +1,53 @@
 """The Dcyl COMPLEX hand-CUDA fused pair: ``step_B`` -> ``zero_metal_B`` -> ``update_H``.
 
-THE BOARD'S RANK-1 UNSERVED CELL, and the largest one on this seam that no product
-occupies: ``B_to_H (cuda_cyl_complex/cylindrical complex, cuda_complex/complex)``,
-16 seam-instances of demand and 16 of them clearing the source seam
-(``parity/meep_gpu/results/fusion_matrix_cuda_2026-08-30_regate/fusion_matrix_cuda.json``,
-``cells_ranked_by_demand[1]``). 13 of the 16 drive ``zero_metal_B`` inside the seam,
-which is the most of any cell on this board bar the served one.
+THE CELL: ``B_to_H (cuda_cyl_complex/cylindrical complex, cuda_complex/complex)``. Both
+halves are lifted from the emitted texts of their singles -- the cylindrical complex curl
+(``cylindrical_complex_kernels.cylindrical_complex_source("step_B")``) and the complex
+constitutive (``complex_emitter.complex_source("update_H")``) -- and this module
+introduces no arithmetic of its own: every edit is a register capture, a seam, a rename or
+the own-cell hoist, listed in :data:`LIFT_EDITS`.
 
-IT IS ALSO THE CELL METAL CANNOT TAKE. The Metal board's 21
-``cannot_be_bound_on_metal`` instances are a pointer-count verdict against
-``MAX_BUFFER_BINDINGS = 31``, and the cylindrical complex curl alone binds eleven
-volumes before the constitutive half adds six more. CUDA HAS NO SUCH CEILING: the
-kernel parameter space is 32,764 bytes on sm_70+ and this signature spends 296 of
-them, so the fusion is refused here on nothing.
+WHAT ONE LAUNCH PERFORMS. :data:`REPLACES` is ``step_B`` -> ``zero_metal_B`` ->
+``update_H``. The radial scan is the curl's own first launch (``cylindrical_prefix``): it
+runs before this one over the current Ep and hands the difference in as ``rad``. The two
+mirror fills are absent by refusal (the predicate refuses every folded grid, and ``Grid``
+refuses a mirror on a Dcyl cell).
 
-=============================================================================
-WHAT ONE LAUNCH PERFORMS
-=============================================================================
+THE REGISTER FOLLOWS EVERY STORE OF B. The curl half's value of each component is not the
+value of its PML form alone:
 
-:data:`REPLACES` is ``step_B`` (driver.py:3291) -> ``zero_metal_B`` (:3295) ->
-``update_H`` (:3298), declared rather than inferred from the two slots.
+* targets 0 and 2 take the i*m/r pass after the form (``stepping._cylindrical_imr_increment``
+  through ``_apply_folded_increment``), so the register is captured again at the pass's
+  store (``fold_apply_reg``);
+* the |m| >= 2 axis rule zeroes the three components (and their ``fu``) on rows
+  ``[0, zero_rows)``, and the m = 0 rule zeroes Br on the axis row, after the pass;
+* ``zero_metal_B`` (the driver's pass after ``step_B``) is carried after those.
 
-THE TWO MIRROR FILLS ARE ABSENT BY REFUSAL. ``fill_symmetry_bc_B`` (:3294) and
-``fill_folded_far_ghosts_B`` (:3296) do nothing on an unfolded grid, and this pair
-refuses every folded one -- twice over, once through
-``covers_pml_cylindrical_complex_curl``'s own clause ("a mirror plane is active:
-symmetry folding is not carried") and once in this file, so the guarantee that makes
-:data:`REPLACES` honest does not rest on a clause in another module. Grid refuses a
-mirror on a Dcyl cell in the first place; the refusal is written anyway, because a
-fused product's REPLACES is a claim about what the launch did and a claim may not
-depend on a fact nobody restated.
+Each is a register clear or capture BESIDE the certified store, so ``update_H`` reads the
+word ``step_B`` and the wall pass left.
 
-``zero_metal_B`` IS carried, as a register clear beside a store, so the constitutive
-half reads the wiped value inside the same launch.
+THE OWN-CELL HOIST. Every own-cell word the kernel reads -- ``f_w_H*``, ``H*``, ``fu_B*``,
+``B*`` -- is issued before its first store, each behind the certified load's own guard
+(``fu`` behind the component's dsigu flag, ``f_w_H`` and ``H`` behind its dsigw flag, the
+one form that reads them; ``B`` unguarded, as every curl form reads it). The two helpers
+that would have loaded them take the words as arguments and are DERIVED from the certified
+text, their statements asserted equal to the certified helper's under the argument-to-load
+map (:func:`derive`). The i*m/r pass's ladder reads ``B`` and ``fu`` back after the form
+stored them: reloads of this lane's own writes.
 
-THE RADIAL PREFIX IS NOT PART OF THE WELD AND IS NOT MEANT TO BE.
-``cylindrical_prefix`` ends in ``xp.cumsum`` on the array path, deliberately: CuPy's
-float32 cumsum is not a sequential accumulation, so a hand-written column-serial scan
-would be a DIFFERENT float32 number and this family's whole claim is bytewise
-identity. It is computed before the launch exactly as the certified stand-alone
-``cyl_step_B_pml_complex`` computes it, and the fusion neither adds nor removes it.
+THE START OF H. The run's first ``update_H`` starts H and ``f_w_H`` from B
+(``stepping.separate_h_from_b``); B is final only after this launch, so on that launch
+:func:`start_of_h` re-steps ``update_H`` on the array path over the stored B, as the
+Cartesian pairs do.
 
-=============================================================================
-THE AXIS TAIL IS PART OF THE SEAM, WHICH IS THE ONE THING THIS PAIR ADDS
-=============================================================================
-
-The certified cylindrical curl does not end at ``pml_apply``. At |m| >= 2 it runs
-``stepping._cylindrical_axis_zero_B`` (:648-671) AFTER the recurrence, zeroing all
-three B components and their three ``fu`` volumes on rows ``[0:zero_rows]``. A weld
-that captured the register at ``pml_apply`` and stopped would hand ``update_H`` the
-PRE-ZEROING displacement on every one of those rows -- a converged, smooth, entirely
-wrong field near the axis, on exactly the rows a Dcyl run cares most about.
-
-So the carry follows the certified store rather than the certified recurrence: each
-of the three ``cf_store(B*, idx, cf_zero())`` lines becomes a register clear beside
-the same store, anchored on the certified line so a change to that block is a named
-failure rather than a silent divergence.
-
-=============================================================================
-THE ALIASING HAZARD
-=============================================================================
-
-The curl half writes B in place and the constitutive half reads it. Binding that one
-allocation twice -- once writable for the curl, once ``const __restrict__`` for the
-constitutive source -- is undefined behaviour NVRTC miscompiles without a diagnostic.
-So B appears EXACTLY ONCE in :data:`_SIGNATURE` and the constitutive half has no
-source pointers at all.
-
-=============================================================================
-THE ONE NAME COLLISION THE SPLICE MUST RESOLVE
-=============================================================================
-
-The two certified bodies do not collide on their volume names -- the cylindrical curl
-spells its own ``Bx/By/Bz`` and ``Ex/Ey/Ez`` while the complex constitutive template
-uses ``f*``/``g*``/``w*`` -- so those are lifted untouched. They DO collide on
-``kms_x/kms_y/kms_z``, which is the HALF-INTEGER sub-lattice for the B curl
-(``stepping._curl_coefficients``, :2418) and the INTEGER one for ``update_H``
-(:2428 through stepping.py:948). That pair compiles perfectly and differs by half a
-cell in the absorber profile, which is why the constitutive group is renamed
-``kms_int_*`` in the signature and in the spliced body both.
-
-=============================================================================
-NOTHING HERE IS DISPATCH
-=============================================================================
-
-``meep_gpu.fastpath.plan_fast_path`` still returns ``None`` on every branch.
+ALIASING. B is bound EXACTLY ONCE; the constitutive half reads the registers and has no
+source pointers. The two halves collide on ``kms_x/y/z`` (half-integer for the B curl,
+integer for ``update_H``), so the constitutive group is ``kms_int_*``.
 """
+
+# Derived from MEEP (https://github.com/NanoComp/meep).
+# Copyright (C) 2005-2025 Massachusetts Institute of Technology and MEEP contributors.
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 from __future__ import annotations
 
@@ -94,6 +56,7 @@ try:  # a host with no CuPy: the emitter and the predicate still run
 except ImportError:
     cp = None
 import numpy as np
+import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 if TYPE_CHECKING:
@@ -101,104 +64,38 @@ if TYPE_CHECKING:
     from ..grid import Grid
     from ..pml import PML
 
-# THE CERTIFIED TEXT, and the predicates. ``complex_emitter``,
-# ``cylindrical_coverage``, ``coverage``, ``cylindrical_prefix`` and
-# ``in_seam_coverage`` are all CuPy-free, so the emitter and the predicate run at the
-# merge bar. ``cylindrical_complex_kernels`` imports CuPy at module scope, so its
-# device text is reached through a defensive import and the emitter refuses BY NAME
-# where it is absent (:func:`_certified_source`).
-try:
-    from . import complex_emitter
-    from .coverage import covers_real_pml_complex_constitutive
-    from .cylindrical_coverage import covers_pml_cylindrical_complex_curl
-    from .cylindrical_prefix import cylindrical_prefix
-    from .in_seam_coverage import zero_metal_axes
-    from . import compile_cache
-except ImportError:  # loaded by path, outside the package: the bit-identity probe
-    import importlib.util as _importlib_util
-    import os as _os
-
-    def _load(stem):
-        here = _os.path.dirname(_os.path.abspath(__file__))
-        spec = _importlib_util.spec_from_file_location(
-            f"cuda_kernels_{stem}", _os.path.join(here, f"{stem}.py"))
-        module = _importlib_util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-
-    complex_emitter = _load("complex_emitter")
-    covers_real_pml_complex_constitutive = _load(
-        "coverage").covers_real_pml_complex_constitutive
-    covers_pml_cylindrical_complex_curl = _load(
-        "cylindrical_coverage").covers_pml_cylindrical_complex_curl
-    cylindrical_prefix = _load("cylindrical_prefix").cylindrical_prefix
-    zero_metal_axes = _load("in_seam_coverage").zero_metal_axes
-    compile_cache = _load("compile_cache")
-
-try:
-    from . import cylindrical_complex_kernels
-except ImportError:  # a host with no CuPy: only the emitter is unavailable
-    cylindrical_complex_kernels = None
+from . import bounds_block
+from . import compile_cache
+from . import complex_emitter
+from . import cylindrical_complex_kernels
+from .coverage import covers_real_pml_complex_constitutive
+from .cylindrical_coverage import covers_pml_cylindrical_complex_curl
+from .cylindrical_prefix import radial_difference
+from .in_seam_coverage import zero_metal_axes
 
 try:
     from . import complex_pml_kernels
-except ImportError:  # a host with no CuPy: only the launcher is unavailable
+except ImportError:  # a host with no CuPy: only the table builder is unavailable
     complex_pml_kernels = None
 
-# The source-seam clause, shared with every other fused-pair predicate on all three
-# tracks. Imported rather than re-spelled: writing it out per product produced a real
-# bug once.
-try:
-    from .. import deposit_repair as _deposit_repair
-except ImportError:  # loaded by path, outside the package
-    import importlib.util as _importlib_util
-    import os as _os
-
-    _spec = _importlib_util.spec_from_file_location(
-        "meep_gpu_deposit_repair",
-        _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-                      "deposit_repair.py"))
-    _deposit_repair = _importlib_util.module_from_spec(_spec)
-    _spec.loader.exec_module(_deposit_repair)
+from .. import deposit_repair as _deposit_repair
 
 
 # =============================================================================
-# THE PARTITION — PLAIN ASSIGNMENTS, NO ANNOTATION
+# THE PARTITION -- PLAIN ASSIGNMENTS, NO ANNOTATION (the partition readers walk the
+# syntax tree without importing the module)
 # =============================================================================
-#
-# The partition readers walk the syntax tree WITHOUT importing the module (they have
-# to — these modules import cupy) and an annotated assignment is an ``ast.AnnAssign``
-# those readers do not match.
 
-#: Byte-identical to the array path with a gate verdict AND a ``certification.json``
-#: record behind it. A fused product's bit-identity is a claim about the WELD, which
-#: no verdict on either half establishes.
-#: RELEASED 2026-09-04 under BOTH float32 subnormal policies, at EVERY m class --
-#: m = 0 (the third arm, landed the same day), |m| = 1 and |m| >= 2 -- by
-#: ``parity/meep_gpu/gate_cuda_fused_complex_pairs.py --family cylindrical``
-#: on one RTX A6000: byte-identical per COMPLETE driver step over 60 steps against
-#: BOTH the array path and the separately certified halves on every fixture in
-#: CYLINDRICAL_SPECS (including the corpus row's own (150, 1, 300) m = 0 shape),
-#: the launch counted by two instruments, the deposit legs carrying a real in-seam
-#: source with the unrepaired null control diverging, and every mutation leg --
-#: the m = 0 tail's own included -- scored as declared. The block is
-#: ``cuda_cylindrical_fused_magnetic_pair_2026-09-04`` in ``certification.json``; the flip was made BEFORE
-#: the run so the gate measured the bytes that ship.
+#: The entry point. The record that certified its 0.9.2 text is re-cut in the combined
+#: certification round (bit_parity_0_10 CERT-3).
 CERTIFIED_KERNELS = (
     "fused_magnetic_pair_pml_cyl_complex",
 )
-#: EMPTY since 2026-09-04; what emptied it was the run above.
 UNCERTIFIED_KERNELS = {}
 
-#: Does this product bracket its fused launch with the deposit repair? TRUE, wired
-#: through ``fused_pairs._install_fused_pair`` -- the flag and the wiring change
-#: together or not at all (``deposit_repair.py:221-226``).
-#:
-#: THE FOLD CLAUSES IN ``deposit_repair._folded_seam_reasons`` ARE VACUOUS ON EVERY
-#: ROW THIS ADMITS, including the one that names the cylindrical r = 0 axis: that
-#: clause fires only on a FOLDED grid, and this predicate refuses every folded grid
-#: outright. What the repair inverts here is ``(f + kps*fw_fresh) - kms*fw_prev`` over
-#: complex64 storage, which is word for word what ``constitutive_apply`` computes.
+#: The bracket that repairs an in-seam magnetic deposit (``fused_pairs._install_fused_pair``
+#: wires it; the flag and the wiring change together). The constitutive half is
+#: ``complex_emitter``'s, which the repair inverts.
 CARRIES_DEPOSIT_REPAIR = True
 
 FAMILY = "cuda_cylindrical_fused_magnetic_pair"
@@ -212,114 +109,76 @@ REPLACES: Tuple[str, ...] = ("step_B", "zero_metal_B", "update_H")
 #: The sub-step slot the planner holds this on.
 SLOT = "step_B"
 
-#: Every line of certified device text this file did not lift verbatim, with the
-#: reason. DATA, not prose, so a gate can assert the list.
+#: Every line of certified device text this file did not lift verbatim, with the reason.
 LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "__device__ __forceinline__ void pml_apply(",
-     "became": "__device__ __forceinline__ cf pml_apply_reg(",
-     "why": "the constitutive half consumes the value in a register; the helper "
-            "names and returns the word pair it already computed. The expression, "
-            "its parenthesisation and the store to f are unchanged."},
-    {"line": "    cf_store(f, idx, mul_field_left(cf_sub(cf_add(a, fu_new), fprev), "
-             "sinv_u));",
-     "became": "    cf value = mul_field_left(cf_sub(cf_add(a, fu_new), fprev), "
-               "sinv_u);\n    cf_store(f, idx, value);\n    return value;",
-     "why": "same right-hand side, same tree, same store; the result is "
-            "additionally named so it can be returned."},
+     "became": "__device__ __forceinline__ cf pml_apply_reg_pre(",
+     "why": "the constitutive half consumes the value in a register: the helper returns "
+            "the word pair it stored, and takes its two own-cell words (fprev, fcur) as "
+            "arguments the hoist preloaded under the same guards. DERIVED by anchored "
+            "replacement; its statements equal the certified helper's under the "
+            "argument-to-load map."},
+    {"line": "__device__ __forceinline__ void fold_apply(",
+     "became": "__device__ __forceinline__ cf fold_apply_reg(",
+     "why": "the i*m/r pass stores the target again after its PML form; the helper "
+            "returns the word pair it stored so the register follows it."},
+    {"line": "__device__ __forceinline__ void constitutive_apply(",
+     "became": "__device__ __forceinline__ void constitutive_apply_pre(",
+     "why": "the own-cell hoist: prev and the old H are arguments the hoist preloaded "
+            "under the dsigw flag. DERIVED and checked as pml_apply_reg_pre is."},
+    {"line": "    cf updated = dsigw ? cf_add(cf_load(f, idx), cf_sub(mul_coefficient_left("
+             "kps, src), mul_coefficient_left(kms, prev)))",
+     "became": "    cf updated = dsigw ? cf_add(fcur, cf_sub(mul_coefficient_left("
+               "kps, src), mul_coefficient_left(kms, prev)))",
+     "why": "the accumulation's one load of the old H is the argument the hoist "
+            "preloaded under the dsigw flag (CONSTITUTIVE_LOADS: fcur is "
+            "cf_load(f, idx)); the expression is otherwise the certified one."},
+    {"line": "    <the curl body's chunk-record block> + <update_H's>",
+     "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
+     "why": "one decode of the record for both halves (DESIGN.md D10); "
+            "bounds_block.strip_bounds_block refuses unless each is exactly the block "
+            "its body carries."},
     {"line": "        pml_apply(Bx, fu_Bx, idx, curl, ...);",
-     "became": "        b0 = pml_apply_reg(Bx, fu_Bx, idx, curl, ...);",
-     "why": "capture the register. Three lines, one per component; the argument "
-            "lists are untouched. Three 'cf b* = cf_zero();' declarations are "
-            "hoisted above the certified braced blocks because a value declared "
-            "inside one does not outlive it."},
-    {"line": "        cf_store(Bx, idx, cf_zero());   "
-             "(stepping._cylindrical_axis_zero_B)",
+     "became": "        b0 = pml_apply_reg_pre(Bx, fu_Bx, idx, curl, ..., pre_fu_0, pre_b_0);",
+     "why": "capture the register and take the preloaded words; three lines, the "
+            "argument lists otherwise untouched."},
+    {"line": "            fold_apply(Bx, fu_Bx, idx, inc, ...);",
+     "became": "            b0 = fold_apply_reg(Bx, fu_Bx, idx, inc, ...);",
+     "why": "the register follows the i*m/r pass's store (targets 0 and 2)."},
+    {"line": "        cf_store(Bx, idx, cf_zero());   (the |m| >= 2 and m = 0 axis rules)",
      "became": "        b0 = cf_zero(); cf_store(Bx, idx, b0);",
-     "why": "THE AXIS TAIL, CARRIED. The |m| >= 2 rule runs AFTER the recurrence "
-            "and zeroes B on rows [0:zero_rows]; a weld that captured at pml_apply "
-            "and stopped would hand update_H the pre-zeroing displacement on those "
-            "rows. The guard, the row test and the six certified stores are "
-            "untouched -- the register is cleared beside the three B stores it "
-            "already makes."},
+     "why": "the register follows the axis rules' stores; the guards, the rows and the "
+            "fu stores are untouched."},
+    {"line": "        array[_face(axis, 0)] = 0   (stepping._zero_metal)",
+     "became": "    if (wall_x && i == 0) { b0 = cf_zero(); cf_store(Bx, idx, b0); }",
+     "why": "zero_metal_B carried on the registers, after the axis rules (the driver's "
+            "order). Same diagonal, same stored cell 0, same (+0, +0)."},
     {"line": "    cf s0 = cf_load(g0, idx);",
      "became": "    cf s0 = b0;",
-     "why": "THE SEAM. The certified constitutive body opens each component with a "
-            "reload of the flux density the curl just stored; this reads the "
-            "register instead, which is also what lets B be bound exactly once."},
-    {"line": "    constitutive_apply(f0, w0, idx, s0, kps_x[i], kms_x[i]);",
-     "became": "    constitutive_apply(f0, w0, idx, s0, kps_x[i], kms_int_x[i]);",
-     "why": "THE SUB-LATTICE RENAME AND NOTHING ELSE. Both halves ship a vector "
-            "spelled kms_a on DIFFERENT Yee sub-lattices -- half-integer for the B "
-            "curl, integer for the H constitutive -- and letting one shadow the "
-            "other is a half-cell error in the absorber profile, not a compile "
-            "failure. The two bodies do NOT collide on f*/g*/w*, so those keep "
-            "their certified spelling."},
-    {"line": "        array[_face(axis, 0)] = 0   (stepping._zero_metal, :2206)",
-     "became": "    if (wall_x && i == 0) { b0 = cf_zero(); cf_store(Bx, idx, b0); }",
-     "why": "THE ONE RE-SPELLING, and it is launch geometry rather than "
-            "arithmetic. The array path assigns the integer 0 to a plane; this "
-            "launch walks the VOLUME and already holds i/j/k. Same diagonal, same "
-            "stored cell 0, same (+0.0f, +0.0f) word pair."},
-    {"line": "    if (m_class == 0 && i == 0) { cf_store(Bx, idx, cf_zero()); }   "
-             "(stepping._cylindrical_axis_zero_B, the m = 0 branch, 2026-09-04)",
-     "became": "    if (m_class == 0 && i == 0) { b0 = cf_zero(); cf_store(Bx, idx, b0); }",
-     "why": "THE m = 0 AXIS TAIL, CARRIED. It runs AFTER the recurrence and zeroes "
-            "Br -- THE FIELD ONLY, never fu_Bx (stepping.py:686-688) -- on the axis "
-            "row. A weld that captured at pml_apply and stopped would hand update_H "
-            "the pre-zeroing Bx there. The guard, the row test and the store are "
-            "untouched; the register is cleared beside the store."},
+     "why": "THE SEAM: the register instead of a reload of B, which is also what lets B "
+            "be bound exactly once."},
+    {"line": "    constitutive_apply(f0, w0, idx, s0, kps_x[i], kms_x[i], in_i_x);",
+     "became": "    constitutive_apply_pre(f0, w0, idx, s0, pre_w_0, pre_h_0, kps_x[i], "
+               "kms_int_x[i], in_i_x);",
+     "why": "the sub-lattice rename (kms_int_*) and the preloaded words."},
     {"line": "    cf b2 = cf_zero();",
-     "became": "    cf b2 = cf_zero();\n"
-               "    cf pre_w_0 = cf_load(w0, idx);   // ... twelve lines, 24 words",
-     "why": "THE OWN-CELL HOIST. Every word this thread reads at its own idx -- "
-            "w*, f* (H), fu_B*, B* -- is issued before the kernel's first store. "
-            "UNGUARDED, because the certified loads are: this family refuses every "
-            "folded grid, so no fill images a cell and no other block writes any "
-            "word at this thread's idx in this launch. The only stores this thread "
-            "makes to those words before their certified load points are none: the "
-            "axis tails and the wall clears store B/fu_B AFTER pml_apply_reg_pre "
-            "has consumed them. hoisted_loads()."},
-    {"line": "__device__ __forceinline__ cf pml_apply_reg(\n    ...)",
-     "became": "__device__ __forceinline__ cf pml_apply_reg_pre(\n"
-               "    ...,\n    cf fprev, cf fcur\n)",
-     "why": "DERIVED, not typed: pml_apply_reg_pre_source() rewrites the helper's "
-            "two own-cell loads into parameters by anchored replacement and "
-            "refuses unless its statements equal the certified helper's under "
-            "fprev -> cf_load(fu, idx), fcur -> cf_load(f, idx). pml_apply_reg "
-            "itself is RETIRED from the prelude: no call is left, and a dead copy "
-            "is where a first-site mutation needle lands vacuously."},
-    {"line": "__device__ __forceinline__ void constitutive_apply(\n    ...)",
-     "became": "__device__ __forceinline__ void constitutive_apply_pre(\n"
-               "    ..., cf src,\n    cf prev, cf fcur, float kps, float kms\n)",
-     "why": "DERIVED from complex_emitter's constitutive_apply the same way (prev -> "
-            "cf_load(fw, idx), fcur -> cf_load(f, idx)). The certified helper is "
-            "RETIRED from this product's prelude, unlike fused_magnetic_pair's: this "
-            "family carries no ghost cell, so all three of its calls take the "
-            "derived twin and a kept copy would be dead text."},
-    {"line": "        b0 = pml_apply_reg(Bx, fu_Bx, idx, curl, ...);",
-     "became": "        b0 = pml_apply_reg_pre(Bx, fu_Bx, idx, curl, ..., "
-               "pre_fu_0, pre_b_0);",
-     "why": "the three own-cell curl calls take their preloaded words; the "
-            "argument list is otherwise the certified one."},
-    {"line": "    constitutive_apply(f0, w0, idx, s0, kps_x[i], kms_int_x[i]);",
-     "became": "    constitutive_apply_pre(f0, w0, idx, s0, pre_w_0, pre_h_0, "
-               "kps_x[i], kms_int_x[i]);",
-     "why": "the three constitutive statements take their preloaded words, in the "
-            "composer (hoisted_constitutive_body), not in "
-            "certified_constitutive_body(), which stays the certified lift."},
+     "became": "    cf b2 = cf_zero();\n    cf pre_w_0 = in_i_x ? cf_load(w0, idx) : cf_zero();"
+               "   // ... twelve guarded lines",
+     "why": "THE OWN-CELL HOIST: every word this thread reads at its own idx is issued "
+            "before the kernel's first store, behind the certified load's own guard. "
+            "No other thread writes a word at this idx in this launch (no fill: every "
+            "folded grid is refused)."},
 )
 
 __all__ = [
     "CARRIES_DEPOSIT_REPAIR", "CERTIFIED_KERNELS", "FAMILY", "KERNEL_NAME",
     "LIFT_EDITS", "REPLACES", "SLOT", "UNCERTIFIED_KERNELS",
-    "assert_disjoint_bindings", "certified_constitutive_body",
-    "certified_curl_body", "constitutive_apply_pre_source",
-    "covers_cylindrical_fused_magnetic_pair",
-    "cylindrical_fused_magnetic_pair_prelude",
-    "cylindrical_fused_magnetic_pair_source", "device_sources",
-    "hoisted_constitutive_body", "hoisted_loads", "pml_apply_reg_pre_source",
-    "launch_cylindrical_fused_magnetic_pair",
-    "run_cylindrical_fused_magnetic_pair", "zero_metal_carry",
+    "assert_disjoint_bindings", "certified_constitutive_body", "certified_curl_body",
+    "covers_cylindrical_fused_magnetic_pair", "cylindrical_fused_magnetic_pair_prelude",
+    "cylindrical_fused_magnetic_pair_source", "cylindrical_fused_magnetic_pair_tables",
+    "derive", "device_sources", "hoisted_loads", "launch_cylindrical_fused_magnetic_pair",
+    "resolve_launch_arguments", "run_cylindrical_fused_magnetic_pair", "start_of_h",
+    "union_bounds_block", "zero_metal_carry",
 ]
 
 
@@ -330,187 +189,137 @@ __all__ = [
 _BODY_ANCHOR = "\n) {\n"
 _DECODE_END = "    int i = idx / (ny * nz);\n"
 
+#: The certified helpers' signatures and the anchors the derivations edit.
 _PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
-_PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ cf pml_apply_reg(\n"
-_PML_APPLY_STORE = (
-    "    cf_store(f, idx, mul_field_left(cf_sub(cf_add(a, fu_new), fprev), sinv_u));\n")
-_PML_APPLY_STORE_REG = (
-    "    // THE ONE EDIT TO THIS HELPER: the right-hand side, its\n"
-    "    // parenthesisation and the store are the certified ones; the value is\n"
-    "    // additionally NAMED so the constitutive half can read it from a\n"
-    "    // register instead of reloading the word pair from global memory.\n"
-    "    cf value = mul_field_left(cf_sub(cf_add(a, fu_new), fprev), sinv_u);\n"
+_FOLD_APPLY_SIGNATURE = "__device__ __forceinline__ void fold_apply(\n"
+_CONSTITUTIVE_SIGNATURE = "__device__ __forceinline__ void constitutive_apply(\n"
+_STORE_VALUE = "    cf_store(f, idx, value);\n"
+_STORE_VALUE_RETURNED = (
     "    cf_store(f, idx, value);\n"
+    "    // The value is additionally RETURNED, so the next half reads it from a\n"
+    "    // register instead of reloading the word pair; the arithmetic and the store\n"
+    "    // are the certified ones.\n"
     "    return value;\n")
 
-#: The three carried registers, and the certified curl's own name for each target.
+#: The three carried registers and the B targets they follow, in target order.
 _CARRIED: Tuple[str, ...] = ("0", "1", "2")
 _TARGETS: Tuple[str, ...] = ("Bx", "By", "Bz")
 
 #: ``stepping._zero_metal``'s diagonal for the B side, as (register, target, flag,
-#: coordinate). SPELLED HERE rather than imported from anything D-shaped: the D
-#: family's table is the off-diagonal complement, and a pair that reused it would
-#: clear the wrong two components on every walled run. ``fields.IYEE_SHIFTS`` gives
-#: Bx (0,1,1), By (1,0,1), Bz (1,1,0) whatever the coordinate system, so each B
-#: component is wiped on its OWN axis and only there -- on a Dcyl grid that is r for
-#: Br, phi for Bp and z for Bz.
+#: coordinate): each B component is wiped on its OWN axis (``fields.IYEE_SHIFTS``).
 _ZERO_METAL_ROWS: Tuple[Tuple[str, str, str, str], ...] = (
     ("b0", "Bx", "wall_x", "i"),
     ("b1", "By", "wall_y", "j"),
     ("b2", "Bz", "wall_z", "k"),
 )
 
-#: ``stepping._cylindrical_axis_zero_B``'s m = 0 branch (2026-09-04), exactly as the
-#: certified curl emits it, and its carried rewrite. Anchored as a WHOLE BLOCK because
-#: its one store also appears in the |m| >= 2 branch.
+#: ``stepping._cylindrical_axis_zero_B``'s m = 0 branch, as the curl emits it, and its
+#: carried rewrite. Anchored as a WHOLE BLOCK: its one store also appears in the
+#: |m| >= 2 branch.
 _AXIS_TAIL_M0 = (
     "    if (m_class == 0 && i == 0) {\n"
     "        cf_store(Bx, idx, cf_zero());\n"
     "    }\n")
 _AXIS_TAIL_M0_CARRIED = (
-    "    // THE m = 0 AXIS TAIL, CARRIED (2026-09-04). stepping._cylindrical_axis_zero_B\n"
-    "    // (:657-659) zeroes Br on the axis row -- THE FIELD ONLY, never fu_Bx -- after\n"
-    "    // the recurrence, so the register has to follow the store or update_H would\n"
-    "    // read the pre-zeroing Bx there.\n"
+    "    // THE m = 0 AXIS TAIL, CARRIED. stepping._cylindrical_axis_zero_B zeroes Br on\n"
+    "    // the axis row -- THE FIELD ONLY, never fu_Bx -- after the recurrence, so the\n"
+    "    // register has to follow the store or update_H would read the pre-zeroing Bx.\n"
     "    if (m_class == 0 && i == 0) {\n"
     "        b0 = cf_zero(); cf_store(Bx, idx, b0);\n"
     "    }\n")
 
-#: The fused entry point. The ONLY hand-written device text in this module, and it is
-#: a signature. B appears EXACTLY ONCE -- see the module docstring's aliasing section.
+#: The fused entry point. The ONLY hand-written device text in this module, and it is a
+#: signature. B appears EXACTLY ONCE.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_magnetic_pair_pml_cyl_complex(
     // THE SHARED VOLUME, BOUND ONCE, as the float32 word view of complex64 B.
-    // The curl half writes it and the constitutive half reads it from a register;
-    // binding it a second time as a const __restrict__ source would be two
-    // restrict pointers to one allocation, which is UB NVRTC miscompiles silently.
     float* __restrict__ Bx, float* __restrict__ By, float* __restrict__ Bz,
     float* __restrict__ fu_Bx, float* __restrict__ fu_By, float* __restrict__ fu_Bz,
     const float* __restrict__ Ex, const float* __restrict__ Ey,
     const float* __restrict__ Ez,
-    // The radial prefix (nx + 1 rows) and the two bound i*m/r coefficient rows.
-    const float* __restrict__ pfx,
+    // The radial difference the scan wrote, and the two i*m/r rinv rows.
+    const float* __restrict__ rad,
     const float* __restrict__ imr0, const float* __restrict__ imr2,
-    // H and its constitutive history. The certified constitutive template's own
-    // names: the two bodies do not collide on these.
+    // H and its constitutive history, the constitutive template's own names.
     float* __restrict__ f0, float* __restrict__ f1, float* __restrict__ f2,
     float* __restrict__ w0, float* __restrict__ w1, float* __restrict__ w2,
     // Extents are in COMPLEX CELLS; cf_load/cf_store do the word doubling.
-    int nx, int ny, int nz, float dtdx,
-    float minus_dtdx, float inc_re, float inc_im,
-    // The B curl's HALF-INTEGER split-field coefficients, certified names kept.
+    int nx, int ny, int nz, float dtdx, float m_word, double minus_courant,
+    // The B curl's HALF-INTEGER split-field coefficients.
     const float* __restrict__ kms_x, const float* __restrict__ sinv_x,
     const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
     const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
-    // The H constitutive's INTEGER coefficients. Its kms is renamed kms_int_*:
-    // the two sub-lattices collide on the bare name in one scope, and a shadow
-    // there is a half-cell error in the absorber profile, not a compile failure.
+    // The H constitutive's INTEGER coefficients, its kms renamed kms_int_*.
     const float* __restrict__ kps_x, const float* __restrict__ kms_int_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_int_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_int_z,
     int bc_x, int bc_y, int bc_z,
-    // This family carries NO Bloch phase -- the predicate refuses one -- so every
-    // flag is 0 and cshift_* never multiplies. The trio is passed anyway because
-    // it is the certified helper's own signature.
-    int ph_x, int ph_y, int ph_z,
     int m_class, int zero_rows,
     // zero_metal_B's three walled-axis flags, from in_seam_coverage.zero_metal_axes.
-    int wall_x, int wall_y, int wall_z
+    int wall_x, int wall_y, int wall_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25].
+    const int* __restrict__ cb
 ) {
 '''
 
 
-def _split_body(source: str, prelude: str, name: str) -> str:
-    """One emitted kernel string, reduced to its body.
-
-    Raises rather than returning a truncated body: a splice that silently dropped a
-    component would produce a kernel that steps two fields and reports success.
-    """
+def split_body(source: str, prelude: str, name: str) -> str:
+    """One emitted kernel string reduced to its body, or a named failure."""
     if not source.startswith(prelude):
         raise AssertionError(
-            f"{name} no longer begins with the prelude this module lifts "
-            f"separately; the splice would emit it twice")
+            f"{name} no longer begins with the prelude this module lifts separately; "
+            f"the splice would emit it twice")
     tail = source[len(prelude):]
     if tail.count(_BODY_ANCHOR) != 1:
         raise AssertionError(
-            f"{name} carries {tail.count(_BODY_ANCHOR)} signature terminators, "
-            f"not 1; the body anchor no longer identifies the signature")
+            f"{name} carries {tail.count(_BODY_ANCHOR)} signature terminators, not 1; "
+            f"the body anchor no longer identifies the signature")
     body = tail.split(_BODY_ANCHOR, 1)[1]
     if not body.endswith("}\n"):
         raise AssertionError(f"{name} does not end with a closing brace")
     return body[: -len("}\n")]
 
 
-def _line_starting(body: str, prefix: str, what: str) -> str:
+def line_starting(body: str, prefix: str, what: str) -> str:
     """The one line of ``body`` starting with ``prefix``, or a named failure."""
     matches = [line for line in body.splitlines() if line.startswith(prefix)]
     if not matches:
         raise AssertionError(
-            f"the certified body no longer carries {what} (looked for a line "
-            f"starting {prefix!r}); this family LIFTS that line rather than "
-            f"retyping it and cannot splice around its absence")
+            f"the certified body no longer carries {what} (looked for a line starting "
+            f"{prefix!r}); this family LIFTS that line and cannot splice around its "
+            f"absence")
     if len(matches) > 1:
         raise AssertionError(
-            f"{prefix!r} matches {len(matches)} lines in the certified body; the "
-            f"lift of {what} would take an arbitrary one")
+            f"{prefix!r} matches {len(matches)} lines in the certified body; the lift "
+            f"of {what} would take an arbitrary one")
     return matches[0]
 
 
-def _certified_source() -> Any:
-    """Refuse the emitter BY NAME on a host where the cylindrical text is unreachable.
-
-    THE SPLICE IS THE LIFT, so a missing half is not a degraded emit -- there is
-    nothing to emit. Raising here keeps that fact one frame from the caller instead
-    of surfacing as ``'NoneType' object has no attribute`` inside a string operation.
-    :func:`covers_cylindrical_fused_magnetic_pair` needs none of it and still answers.
-    """
-    if cylindrical_complex_kernels is None:
-        raise RuntimeError(
-            "cylindrical_complex_kernels is not importable on this host (it imports "
-            "CuPy at module scope), so there is no certified cylindrical text to "
-            "splice. covers_cylindrical_fused_magnetic_pair needs none of it and "
-            "still answers")
-    return cylindrical_complex_kernels
+def replace_once(text: str, old: str, new: str, what: str) -> str:
+    """``text`` with ``old`` replaced exactly once, or a named failure."""
+    if text.count(old) != 1:
+        raise AssertionError(
+            f"the certified text carries {what} ({old!r}) {text.count(old)} times, not "
+            f"once; the lift has no anchor")
+    return text.replace(old, new, 1)
 
 
-def _curl_prelude(arm) -> str:
+def curl_prelude() -> str:
     """The prelude ``cylindrical_complex_source`` builds, before its own template."""
-    module = _certified_source()
-    code = complex_emitter.normalized_expansion(arm)
-    return (complex_emitter._HEAD + complex_emitter._ARM_SOURCE[code]
-            + complex_emitter._TAIL + module._CYLINDRICAL_HELPERS)
+    return complex_emitter.prelude() + cylindrical_complex_kernels._CYLINDRICAL_HELPERS
 
 
-def _constitutive_prelude(arm) -> str:
-    """The prelude ``complex_source`` builds -- the curl's, minus the cyl helpers."""
-    code = complex_emitter.normalized_expansion(arm)
-    return (complex_emitter._HEAD + complex_emitter._ARM_SOURCE[code]
-            + complex_emitter._TAIL)
+def constitutive_prelude() -> str:
+    """The prelude ``complex_emitter.complex_source`` builds."""
+    return complex_emitter.prelude()
 
 
-# -----------------------------------------------------------------------------
-# THE OWN-CELL HOIST (S3d, ported from fused_magnetic_pair to the cf word pair). The
-# fused kernel issues every own-cell word it reads -- fu_B*, B*, w*, f* -- before its
-# first store, and the two helpers that would have loaded them take the words as
-# arguments. Both helpers are DERIVED from the certified text by anchored replacement,
-# and their statements are asserted equal to the certified helper's under the
-# argument-to-load map, so a certified edit that moves the arithmetic refuses here by
-# name.
-# -----------------------------------------------------------------------------
-
-#: The certified complex helpers' signatures, as complex_emitter._TAIL spells them.
-_CONSTITUTIVE_SIGNATURE = "__device__ __forceinline__ void constitutive_apply(\n"
-_CONSTITUTIVE_PARAMETERS = (
-    "    float* f, float* fw, int idx, cf src, float kps, float kms\n)")
-_PML_APPLY_PARAMETERS = (
-    "    float kms, float sinv, float kms_u, float sinv_u\n)")
-
-
-def _hoist_function_text(prelude: str, signature: str, what: str) -> str:
+def function_text(prelude: str, signature: str, what: str) -> str:
+    """One helper's whole text in ``prelude``: its signature to its closing brace."""
     if prelude.count(signature) != 1:
         raise AssertionError(
             f"the prelude declares {what} {prelude.count(signature)} times, not once; "
-            f"the hoisted helper has nothing to be derived from")
+            f"the derived helper has nothing to be derived from")
     text = prelude[prelude.index(signature):]
     end = text.find("\n}\n")
     if end < 0:
@@ -518,30 +327,35 @@ def _hoist_function_text(prelude: str, signature: str, what: str) -> str:
     return text[: end + len("\n}\n")]
 
 
-def _hoist_statements(text: str, loads: Dict[str, str], what: str) -> List[str]:
-    """The helper's statements with every PARAMETERISED name replaced by its load.
+def _statements(text: str, loads: Dict[str, str], what: str) -> List[str]:
+    """The helper's statements, every name of ``loads`` replaced by its load.
 
-    Only a ``cf NAME = cf_load(P, idx);`` line whose NAME the derivation turns into a
-    parameter is a binding, and it must bind exactly the load the map names; every
-    other line is a statement and stays in the stream.
+    A ``cf NAME = cf_load(P, idx);`` line or its guarded form ``cf NAME = FLAG ?
+    cf_load(P, idx) : cf_zero();`` whose NAME the map names is a BINDING: it must bind
+    exactly the map's load, and is dropped from the stream. Every other line is a
+    statement and stays.
     """
-    import re  # noqa: PLC0415
     if text.count(") {\n") != 1:
         raise AssertionError(f"{what}: the parameter list no longer closes on one line")
     body = text.split(") {\n", 1)[1][: -len("}\n")]
-    names: Dict[str, str] = {}
     out: List[str] = []
     for line in body.splitlines():
         code = line.split("//", 1)[0].strip()
         if not code:
             continue
-        bound = re.fullmatch(r"cf (\w+) = (cf_load\(\w+, idx\));", code)
+        bound = (re.fullmatch(r"cf (\w+) = (cf_load\(\w+, idx\));", code)
+                 or re.fullmatch(r"cf (\w+) = (\w+ \? cf_load\(\w+, idx\) : cf_zero\(\));",
+                                 code))
         if bound and bound.group(1) in loads:
-            if bound.group(2) != loads[bound.group(1)]:
+            spelled = bound.group(2)
+            if spelled.startswith("cf_load"):
+                want = loads[bound.group(1)]
+            else:
+                want = loads[bound.group(1)][1:-1]
+            if spelled != want:
                 raise AssertionError(
-                    f"{what}: {bound.group(1)} is bound to {bound.group(2)}, not to "
+                    f"{what}: {bound.group(1)} is bound to {spelled}, not to "
                     f"{loads[bound.group(1)]}; the load map names the wrong word")
-            names[bound.group(1)] = bound.group(2)
             continue
         for name, load in loads.items():
             code = re.sub(rf"\b{name}\b", load, code)
@@ -549,315 +363,265 @@ def _hoist_statements(text: str, loads: Dict[str, str], what: str) -> List[str]:
     return out
 
 
-def _hoist_derive(helper: str, edits, loads: Dict[str, str], what: str) -> str:
+def derive(helper: str, edits, loads: Dict[str, str], what: str) -> str:
+    """``helper`` with ``edits`` applied, refused unless the derived statements equal the
+    certified ones under the argument-to-load map ``loads``."""
     derived = helper
     for old, new, anchor in edits:
-        if derived.count(old) != 1:
-            raise AssertionError(
-                f"the certified {what} no longer carries {anchor} ({old!r}) exactly once "
-                f"(found {derived.count(old)}); the hoisted helper cannot be derived from it")
-        derived = derived.replace(old, new, 1)
-    certified = _hoist_statements(helper, loads, what)
-    hoisted = _hoist_statements(derived, loads, what + " (hoisted)")
+        derived = replace_once(derived, old, new, f"{what}'s {anchor}")
+    certified = _statements(helper, loads, what)
+    hoisted = _statements(derived, loads, what + " (derived)")
     if certified != hoisted:
         raise AssertionError(
-            f"the hoisted {what} does not carry the certified arithmetic: "
+            f"the derived {what} does not carry the certified arithmetic: "
             f"{certified!r} != {hoisted!r}")
     return derived
 
 
-def constitutive_apply_pre_source(arm) -> str:
-    """``complex_emitter``'s ``constitutive_apply`` taking ``prev = cf_load(fw, idx)``
-    and ``fcur = cf_load(f, idx)`` as arguments -- derived from the certified text."""
-    helper = _hoist_function_text(
-        _constitutive_prelude(arm), _CONSTITUTIVE_SIGNATURE, "constitutive_apply")
-    return _hoist_derive(helper, (
-        ("void constitutive_apply(\n", "void constitutive_apply_pre(\n", "its signature"),
-        (_CONSTITUTIVE_PARAMETERS,
-         "    float* f, float* fw, int idx, cf src,\n"
-         "    cf prev, cf fcur, float kps, float kms\n)", "its parameter list"),
-        ("    cf prev = cf_load(fw, idx);\n", "", "its load of fw"),
-        ("    cf a = cf_load(f, idx);\n", "    cf a = fcur;\n", "its load of f"),
-    ), {"prev": "cf_load(fw, idx)", "fcur": "cf_load(f, idx)"}, "constitutive_apply")
+#: The own-cell load maps: each name a derivation turns into a parameter, bound to the
+#: word its caller must preload (the guarded expression where the certified helper loads
+#: under its membership flag).
+PML_APPLY_LOADS: Dict[str, str] = {"fprev": "(dsigu ? cf_load(fu, idx) : cf_zero())",
+                                   "fcur": "cf_load(f, idx)"}
+CONSTITUTIVE_LOADS: Dict[str, str] = {"prev": "(dsigw ? cf_load(fw, idx) : cf_zero())",
+                                      "fcur": "cf_load(f, idx)"}
+
+
+def pml_apply_reg_source(prelude: str) -> str:
+    """The certified complex ``pml_apply`` returning the value it stored: the signature and
+    the closing store, the arithmetic untouched."""
+    helper = function_text(prelude, _PML_APPLY_SIGNATURE, "pml_apply")
+    helper = replace_once(helper, _PML_APPLY_SIGNATURE,
+                          "__device__ __forceinline__ cf pml_apply_reg(\n",
+                          "pml_apply's signature")
+    return replace_once(helper, _STORE_VALUE, _STORE_VALUE_RETURNED,
+                        "pml_apply's closing store")
 
 
 def pml_apply_reg_pre_source(prelude: str) -> str:
-    """The rewritten ``pml_apply_reg`` taking ``fprev = cf_load(fu, idx)`` and
-    ``fcur = cf_load(f, idx)`` as arguments -- derived from the rewritten prelude."""
-    helper = _hoist_function_text(prelude, _PML_APPLY_SIGNATURE_REG, "pml_apply_reg")
-    return _hoist_derive(helper, (
-        (_PML_APPLY_SIGNATURE_REG,
-         _PML_APPLY_SIGNATURE_REG.replace("pml_apply_reg(", "pml_apply_reg_pre("),
-         "its signature"),
-        (_PML_APPLY_PARAMETERS,
-         "    float kms, float sinv, float kms_u, float sinv_u,\n"
-         "    cf fprev, cf fcur\n)", "its parameter list"),
-        ("    cf fprev = cf_load(fu, idx);\n", "", "its load of fu"),
-        ("    cf a = mul_field_left(cf_load(f, idx), kms_u);\n",
-         "    cf a = mul_field_left(fcur, kms_u);\n", "its load of f"),
-    ), {"fprev": "cf_load(fu, idx)", "fcur": "cf_load(f, idx)"}, "pml_apply_reg")
+    """:func:`pml_apply_reg_source` taking ``fprev`` / ``fcur`` as arguments -- derived from
+    the text and checked against it under :data:`PML_APPLY_LOADS`."""
+    helper = pml_apply_reg_source(prelude)
+    return derive(helper, (
+        ("__device__ __forceinline__ cf pml_apply_reg(\n",
+         "__device__ __forceinline__ cf pml_apply_reg_pre(\n", "signature"),
+        ("    float kms, float sinv, float kms_u, float sinv_u, int dsigu\n)",
+         "    float kms, float sinv, float kms_u, float sinv_u, int dsigu,\n"
+         "    cf fprev, cf fcur\n)", "parameter list"),
+        ("    cf fprev = dsigu ? cf_load(fu, idx) : cf_zero();\n", "",
+         "guarded load of fu"),
+        ("    cf fcur = cf_load(f, idx);\n", "", "load of f"),
+    ), PML_APPLY_LOADS, "pml_apply_reg")
 
 
-def _retire(prelude: str, signature: str, what: str) -> str:
-    """Remove one helper's function text from ``prelude``, exactly once."""
-    helper = _hoist_function_text(prelude, signature, what)
-    if prelude.count(helper) != 1:
-        raise AssertionError(
-            f"the prelude carries {what} {prelude.count(helper)} times, not once; the "
-            f"retired helper has no single anchor")
-    return prelude.replace(helper, "", 1)
+def fold_apply_reg_source(prelude: str) -> str:
+    """The family's ``fold_apply`` returning the value it stored: the signature and the
+    closing store, the arithmetic untouched."""
+    helper = function_text(prelude, _FOLD_APPLY_SIGNATURE, "fold_apply")
+    helper = replace_once(helper, _FOLD_APPLY_SIGNATURE,
+                          "__device__ __forceinline__ cf fold_apply_reg(\n",
+                          "fold_apply's signature")
+    return replace_once(helper, _STORE_VALUE, _STORE_VALUE_RETURNED,
+                        "fold_apply's closing store")
+
+
+def constitutive_apply_pre_source(prelude: str) -> str:
+    """``complex_emitter``'s ``constitutive_apply`` taking ``prev`` / ``fcur`` as
+    arguments -- derived from the text."""
+    helper = function_text(prelude, _CONSTITUTIVE_SIGNATURE, "constitutive_apply")
+    return derive(helper, (
+        (_CONSTITUTIVE_SIGNATURE, "__device__ __forceinline__ void constitutive_apply_pre(\n",
+         "signature"),
+        ("    float* f, float* fw, int idx, cf src, float kps, float kms, int dsigw\n)",
+         "    float* f, float* fw, int idx, cf src,\n"
+         "    cf prev, cf fcur, float kps, float kms, int dsigw\n)", "parameter list"),
+        ("    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();\n", "", "guarded load of fw"),
+        ("cf_add(cf_load(f, idx), ", "cf_add(fcur, ", "load of f"),
+    ), CONSTITUTIVE_LOADS, "constitutive_apply")
+
+
+def fused_prelude() -> str:
+    """The curl prelude with its three helpers replaced by their derived twins.
+
+    ``pml_apply``, ``fold_apply`` and ``constitutive_apply`` are each replaced IN PLACE by
+    the derived text: every call takes the derived twin, so a kept copy would be dead text
+    -- and a dead copy of a helper is where a first-site mutation needle lands vacuously.
+    """
+    prelude = curl_prelude()
+    for signature, what, derived in (
+            (_PML_APPLY_SIGNATURE, "pml_apply", pml_apply_reg_pre_source(prelude)),
+            (_FOLD_APPLY_SIGNATURE, "fold_apply", fold_apply_reg_source(prelude)),
+            (_CONSTITUTIVE_SIGNATURE, "constitutive_apply",
+             constitutive_apply_pre_source(prelude))):
+        prelude = replace_once(prelude, function_text(prelude, signature, what), derived,
+                               f"{what}'s text")
+    return prelude
+
+
+def cylindrical_fused_magnetic_pair_prelude() -> str:
+    """The fused kernel's prelude."""
+    return fused_prelude()
+
+
+#: The chunk-record entries each lifted body decodes, as ``(entries, presence)``.
+CURL_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.curl_entries(("Bx", "By", "Bz"))), (0, 1, 2))
+CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.constitutive_entries(("Hx", "Hy", "Hz"))), ())
+
+
+def union_bounds_block() -> str:
+    """The fused kernel's ONE chunk-record block: both bodies' entries, one decode."""
+    return bounds_block.bounds_block(CURL_BLOCK[0] + CONSTITUTIVE_BLOCK[0],
+                                     CURL_BLOCK[1] + CONSTITUTIVE_BLOCK[1])
+
+
+def curl_flags() -> Tuple[str, ...]:
+    """Each B target's dsigu membership flag, in target order (the curl's own)."""
+    return complex_emitter.CURL_FLAGS[False]
+
+
+def constitutive_flags() -> Tuple[str, ...]:
+    """Each H component's dsigw membership flag, x/y/z."""
+    return complex_emitter.CONSTITUTIVE_FLAGS["H"]
 
 
 def hoisted_loads() -> str:
-    """The twelve own-cell loads (24 words), unguarded as the certified loads are."""
+    """The twelve own-cell loads (24 words), each behind the certified load's guard."""
     lines = [
         "    // --- the own-cell hoist: every word this thread reads at idx, issued",
-        "    // before the kernel's first store. Unguarded, as the certified loads",
-        "    // are: this family refuses every folded grid, so no other block writes",
-        "    // a word at this idx in this launch. ---",
+        "    // before the kernel's first store, behind the certified load's guard",
+        "    // (f_w_H and H behind the dsigw flag; fu behind the dsigu flag). ---",
     ]
-    for register in _CARRIED:
-        lines.append(f"    cf pre_w_{register} = cf_load(w{register}, idx);")
-        lines.append(f"    cf pre_h_{register} = cf_load(f{register}, idx);")
-    for register, target in zip(_CARRIED, _TARGETS):
-        lines.append(f"    cf pre_fu_{register} = cf_load(fu_{target}, idx);")
+    for register, flag in zip(_CARRIED, constitutive_flags()):
+        lines.append(f"    cf pre_w_{register} = {flag} ? cf_load(w{register}, idx) : cf_zero();")
+        lines.append(f"    cf pre_h_{register} = {flag} ? cf_load(f{register}, idx) : cf_zero();")
+    for register, target, flag in zip(_CARRIED, _TARGETS, curl_flags()):
+        lines.append(f"    cf pre_fu_{register} = {flag} ? cf_load(fu_{target}, idx) : cf_zero();")
         lines.append(f"    cf pre_b_{register} = cf_load({target}, idx);")
     return "\n".join(lines) + "\n"
 
 
-def cylindrical_fused_magnetic_pair_prelude(arm) -> str:
-    """The certified prelude with ``pml_apply`` turned into a value.
+def _certified_source() -> Any:
+    """Refuse the emitter BY NAME where the cylindrical text is unreachable.
 
-    ONE prelude for both halves, and that is a fact about the two families rather
-    than a convenience: ``cylindrical_complex_source`` builds its source from the
-    CERTIFIED complex family's ``_HEAD``/``_ARM_SOURCE``/``_TAIL`` plus its own
-    ``_CYLINDRICAL_HELPERS``, so the constitutive half's prelude is a strict prefix
-    of the curl half's. ``mul_complex_left`` is an ALIAS of ``rotate_field_left``
-    and adds no arithmetic.
+    THE SPLICE IS THE LIFT, so a missing half is not a degraded emit -- there is nothing
+    to emit. Raising here keeps that fact one frame from the caller instead of surfacing
+    as ``'NoneType' object has no attribute`` inside a string operation.
+    :func:`covers_cylindrical_fused_magnetic_pair` needs none of it and still answers.
     """
-    prelude = _curl_prelude(arm)
-    if prelude.count(_PML_APPLY_SIGNATURE) != 1:
-        raise AssertionError(
-            f"the certified prelude declares pml_apply "
-            f"{prelude.count(_PML_APPLY_SIGNATURE)} times, not once; the value "
-            f"rewrite has no anchor")
-    if prelude.count(_PML_APPLY_STORE) != 1:
-        raise AssertionError(
-            "the certified pml_apply no longer closes with the store this module "
-            "turns into a named value; the arithmetic may have moved")
-    prelude = prelude.replace(_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, 1)
-    prelude = prelude.replace(_PML_APPLY_STORE, _PML_APPLY_STORE_REG, 1)
-    # THE HOIST RETIRES BOTH HELPERS it derives from: every call takes the derived
-    # twin, so a kept copy would be dead text -- and a dead copy of a helper is where a
-    # first-site needle lands vacuously. Derived first, then removed, exactly once.
-    hoisted = pml_apply_reg_pre_source(prelude)
-    prelude = _retire(prelude, _PML_APPLY_SIGNATURE_REG, "pml_apply_reg")
-    prelude = _retire(prelude, _CONSTITUTIVE_SIGNATURE, "constitutive_apply")
-    return prelude + constitutive_apply_pre_source(arm) + hoisted
+    if cylindrical_complex_kernels is None:
+        raise RuntimeError(
+            "cylindrical_complex_kernels is not available, so there is no certified "
+            "cylindrical text to splice. covers_cylindrical_fused_magnetic_pair needs "
+            "none of it and still answers")
+    return cylindrical_complex_kernels
 
 
-def certified_curl_body(arm) -> str:
-    """``cyl_step_B_pml_complex``'s body, lifted, with the three registers captured.
-
-    TWO CAPTURES PER COMPONENT, not one, and the second is the whole reason this
-    family needs a paragraph the Cartesian one does not: the recurrence's value is
-    taken at ``pml_apply``, and the |m| >= 2 axis tail then OVERWRITES B on rows
-    ``[0:zero_rows]`` after it. Both are followed -- and since 2026-09-04 so is the
-    m = 0 tail, which zeroes ``Bx`` alone on the axis row (stepping.py:686-688).
-    """
-    module = _certified_source()
-    body = _split_body(module.cylindrical_complex_source("step_B", arm),
-                       _curl_prelude(arm), "cylindrical_complex_source('step_B')")
-    if _DECODE_END not in body:
-        raise AssertionError(
-            "the certified curl body no longer decodes i on its own line; the "
-            "carried registers have nowhere to be declared")
+def certified_curl_body() -> str:
+    """``cyl_step_B_pml_complex``'s body, lifted: registers captured at every store of B,
+    the union record block, the hoist."""
+    body = split_body(_certified_source().cylindrical_complex_source("step_B"),
+                      curl_prelude(), "cylindrical_complex_source('step_B')")
+    body = bounds_block.strip_bounds_block(body, "the certified curl body", *CURL_BLOCK)
     head, tail = body.split(_DECODE_END, 1)
     body = "".join((
-        head, _DECODE_END,
-        "\n    // The three carried registers. Declared HERE because each\n"
-        "    // certified component below is a braced scope, and a value declared\n"
-        "    // inside one does not outlive it.\n"
+        head, _DECODE_END, "\n",
+        union_bounds_block(),
+        "    // The three carried registers, declared here: each component below is a\n"
+        "    // braced scope, and a value declared inside one does not outlive it.\n"
         "    cf b0 = cf_zero();\n"
         "    cf b1 = cf_zero();\n"
-        "    cf b2 = cf_zero();\n"
-        "\n",
+        "    cf b2 = cf_zero();\n",
         hoisted_loads(),
         tail,
     ))
     for register, target in zip(_CARRIED, _TARGETS):
-        old = f"pml_apply({target}, fu_{target}, "
-        if body.count(old) != 1:
-            raise AssertionError(
-                f"the certified curl body calls {old.strip()!r} "
-                f"{body.count(old)} times, not once; the capture has no anchor")
-        body = body.replace(
-            old, f"b{register} = pml_apply_reg({target}, fu_{target}, ", 1)
-        prefix = f"        b{register} = pml_apply_reg({target}, fu_{target}, "
-        call = _line_starting(body, prefix,
-                              f"target {target}'s captured pml_apply")
+        prefix = f"        pml_apply({target}, fu_{target}, idx, curl, "
+        call = line_starting(body, prefix, f"{target}'s pml_apply")
         if not call.endswith(");"):
-            raise AssertionError(
-                f"the certified curl body no longer closes {target}'s pml_apply on "
-                f"one line ({call!r})")
-        # THE HOIST: the same statement, taking its two preloaded own-cell words.
+            raise AssertionError(f"{target}'s pml_apply no longer closes on one line")
         body = body.replace(call, call.replace(
-            f"b{register} = pml_apply_reg(", f"b{register} = pml_apply_reg_pre(", 1)[:-2]
+            f"pml_apply({target},", f"b{register} = pml_apply_reg_pre({target},", 1)[:-2]
             + f", pre_fu_{register}, pre_b_{register});", 1)
-    if "pml_apply(" in body or "pml_apply_reg(" in body:
-        raise AssertionError(
-            "a pml_apply call survived the capture rewrite; its value would be "
-            "written to global memory and never read into the seam")
-
-    # THE m = 0 AXIS TAIL FIRST, anchored as a WHOLE BLOCK: ``cf_store(Bx, idx,
-    # cf_zero());`` appears in BOTH the m = 0 block and the |m| >= 2 block, so the
-    # per-line anchor below could not name which one it had rewritten until this
-    # block's store has been rewritten out from under it.
-    if body.count(_AXIS_TAIL_M0) != 1:
-        raise AssertionError(
-            f"the certified curl body carries the m = 0 branch of "
-            f"stepping._cylindrical_axis_zero_B {body.count(_AXIS_TAIL_M0)} times, not "
-            f"once; the register clear has no anchor and update_H would read the "
-            f"pre-zeroing Bx on the axis row")
-    body = body.replace(_AXIS_TAIL_M0, _AXIS_TAIL_M0_CARRIED, 1)
-
-    # THE |m| >= 2 AXIS TAIL. The guard and the six stores are certified; the
-    # register is cleared beside each of the three B stores, anchored on the
-    # certified line.
+    for register, target in (("0", "Bx"), ("2", "Bz")):
+        body = replace_once(body, f"            fold_apply({target}, fu_{target}, idx, inc, ",
+                            f"            b{register} = fold_apply_reg({target}, fu_{target}, "
+                            f"idx, inc, ", f"{target}'s i*m/r ladder call")
+    body = replace_once(body, _AXIS_TAIL_M0, _AXIS_TAIL_M0_CARRIED,
+                        "the m = 0 branch of stepping._cylindrical_axis_zero_B")
     for register, target in zip(_CARRIED, _TARGETS):
-        old = f"        cf_store({target}, idx, cf_zero());\n"
-        if body.count(old) != 1:
-            raise AssertionError(
-                f"the certified curl body's |m| >= 2 axis tail stores zero into "
-                f"{target} {body.count(old)} times, not once; the register clear "
-                f"has no anchor and update_H would read the pre-zeroing "
-                f"displacement on rows [0:zero_rows]")
-        body = body.replace(
-            old,
-            f"        b{register} = cf_zero(); cf_store({target}, idx, "
-            f"b{register});   // THE AXIS TAIL, CARRIED\n", 1)
+        body = replace_once(body, f"        cf_store({target}, idx, cf_zero());\n",
+                            f"        b{register} = cf_zero(); cf_store({target}, idx, "
+                            f"b{register});   // THE AXIS TAIL, CARRIED\n",
+                            f"the |m| >= 2 rule's store into {target}")
+    if re.search(r"\b(pml_apply|fold_apply)\(", body):
+        raise AssertionError("a certified curl-helper call survived the capture rewrite")
     return body
 
 
 def zero_metal_carry() -> str:
-    """``zero_metal_B`` (driver.py:3295), carried between the two halves.
-
-    ``stepping._zero_metal`` writes the integer 0 into stored cell 0 of every
-    component whose Yee shift on a walled axis is 0 -- for B that is the DIAGONAL.
-    The register is cleared BESIDE the store, because the constitutive half below
-    reads the register and not the volume.
-
-    IT RUNS AFTER THE AXIS TAIL, which is the driver's order and not a choice: the
-    axis tail is part of ``step_B`` (stepping.py:403-404, inside the sub-step) and
-    ``zero_metal_B`` is a separate driver pass at :3295. A wall on the r axis and the
-    |m| >= 2 axis rows both write the same cells to zero, so the composition is
-    order-independent there; stating the order anyway is what keeps that a fact
-    rather than an accident.
-    """
+    """``zero_metal_B`` carried between the halves, after the axis rules (driver order)."""
     lines = [
-        "\n    // stepping._zero_metal (:2206-2245) / in_seam_passes.zero_metal_B,\n"
-        "    // CARRIED, and AFTER the certified axis tail above -- which is the\n"
-        "    // driver's order (the tail is inside step_B, this is the pass at\n"
-        "    // driver.py:3295). The diagonal only: a B component sits ON the wall\n"
-        "    // of the axis whose Yee shift is 0, which is its own.\n"
+        "\n    // stepping._zero_metal / in_seam_passes.zero_metal_B, CARRIED, after the\n"
+        "    // axis rules above (they are inside step_B; the wall pass follows it). The\n"
+        "    // diagonal only: a B component sits ON the wall of its own axis.\n"
     ]
     for register, target, flag, coordinate in _ZERO_METAL_ROWS:
-        lines.append(
-            f"    if ({flag} && {coordinate} == 0) {{ {register} = cf_zero(); "
-            f"cf_store({target}, idx, {register}); }}\n")
+        lines.append(f"    if ({flag} && {coordinate} == 0) {{ {register} = cf_zero(); "
+                     f"cf_store({target}, idx, {register}); }}\n")
     return "".join(lines)
 
 
-def certified_constitutive_body(arm) -> str:
-    """``update_H_pml_complex_bloch``'s body, lifted, reading the registers.
-
-    Drops the second index decomposition (the curl body above already declares
-    ``idx``, ``i``, ``j`` and ``k`` and its bounds guard has already returned), turns
-    the three source reloads into the seam, and renames the constitutive
-    coefficients' sub-lattice.
-    """
-    body = _split_body(complex_emitter.complex_source("update_H", arm),
-                       _constitutive_prelude(arm), "complex_source('update_H')")
-    if _DECODE_END not in body:
-        raise AssertionError(
-            "the certified constitutive body no longer decodes i on its own line; "
-            "the duplicate decomposition cannot be identified")
+def certified_constitutive_body() -> str:
+    """``update_H_pml_complex_bloch``'s body, lifted, reading the registers, hoisted."""
+    body = split_body(complex_emitter.complex_source("update_H"),
+                      constitutive_prelude(), "complex_source('update_H')")
+    body = bounds_block.strip_bounds_block(body, "the certified constitutive body",
+                                           *CONSTITUTIVE_BLOCK)
     tail = body.split(_DECODE_END, 1)[1]
-
     for register in _CARRIED:
-        old = f"    cf s{register} = cf_load(g{register}, idx);\n"
-        if tail.count(old) != 1:
-            raise AssertionError(
-                f"the certified constitutive body loads s{register} "
-                f"{tail.count(old)} times, not once; the seam has no anchor")
-        tail = tail.replace(
-            old,
-            f"    cf s{register} = b{register};   // THE SEAM: the register the "
-            f"curl half just stored\n", 1)
+        tail = replace_once(tail, f"    cf s{register} = cf_load(g{register}, idx);\n",
+                            f"    cf s{register} = b{register};   // THE SEAM\n",
+                            f"s{register}'s load")
     if "cf_load(g" in tail:
-        raise AssertionError(
-            "a source reload survived the seam rewrite; the constitutive half would "
-            "need B bound a second time, which is the aliasing hazard this "
-            "signature exists to avoid")
-
-    for register, axis in zip(_CARRIED, ("x", "y", "z")):
-        prefix = f"    constitutive_apply(f{register}, w{register}, idx, s{register}, "
-        call = _line_starting(tail, prefix,
-                              f"target {register}'s constitutive_apply")
+        raise AssertionError("a source reload survived the seam rewrite")
+    for register, axis, flag in zip(_CARRIED, ("x", "y", "z"), constitutive_flags()):
         coordinate = "ijk"[int(register)]
-        expected = (f"{prefix}kps_{axis}[{coordinate}], kms_{axis}[{coordinate}]);")
-        if call != expected:
-            raise AssertionError(
-                f"target {register}'s constitutive_apply is {call!r}, not the "
-                f"certified {expected!r}; the sub-lattice rename would be applied "
-                f"to an argument list this module has not read")
-        tail = tail.replace(
-            call, call.replace(f"kms_{axis}[", f"kms_int_{axis}[", 1), 1)
+        old = (f"    constitutive_apply(f{register}, w{register}, idx, s{register}, "
+               f"kps_{axis}[{coordinate}], kms_{axis}[{coordinate}], {flag});")
+        tail = replace_once(
+            tail, old,
+            f"    constitutive_apply_pre(f{register}, w{register}, idx, s{register}, "
+            f"pre_w_{register}, pre_h_{register}, kps_{axis}[{coordinate}], "
+            f"kms_int_{axis}[{coordinate}], {flag});",
+            f"target {register}'s constitutive_apply")
+    if re.search(r"\bconstitutive_apply\(", tail):
+        raise AssertionError("a certified constitutive call survived the hoist rewrite")
     return tail
 
 
-def hoisted_constitutive_body(arm) -> str:
-    """:func:`certified_constitutive_body` with the three statements taking their
-    preloaded words (:func:`hoisted_loads`). The certified function is unchanged."""
-    body = certified_constitutive_body(arm)
-    for register in _CARRIED:
-        prefix = f"    constitutive_apply(f{register}, w{register}, idx, s{register}, "
-        call = _line_starting(body, prefix, f"target {register}'s constitutive_apply")
-        body = body.replace(call, call.replace(
-            prefix, f"    constitutive_apply_pre(f{register}, w{register}, idx, "
-                    f"s{register}, pre_w_{register}, pre_h_{register}, ", 1), 1)
-    if "constitutive_apply(" in body:
-        raise AssertionError(
-            "a constitutive_apply call survived the hoist rewrite; the retired helper "
-            "would be called with no declaration")
-    return body
-
-
-def cylindrical_fused_magnetic_pair_source(arm) -> str:
-    """The whole fused kernel for one expansion arm: prelude, signature, body."""
+def cylindrical_fused_magnetic_pair_source() -> str:
+    """The whole fused kernel: prelude, signature, body. PURE ASCII."""
     source = "".join((
-        cylindrical_fused_magnetic_pair_prelude(arm),
+        fused_prelude(),
         _SIGNATURE,
-        certified_curl_body(arm),
+        certified_curl_body(),
         zero_metal_carry(),
-        hoisted_constitutive_body(arm),
+        "\n    // --- update_H, its sources the registers above ---\n",
+        certified_constitutive_body(),
         "}\n",
     ))
-    # PURE ASCII IS A COMPILE REQUIREMENT on this family, not a style rule; checked
-    # here so a mutation leg that inserts a non-ASCII character is refused at
-    # emission with the reason instead of at NVRTC three frames away.
     source.encode("ascii")
     return source
 
 
 def device_sources() -> Dict[str, str]:
-    """Every source this family can emit, keyed by arm name -- for a digest."""
-    return {name: cylindrical_fused_magnetic_pair_source(name)
-            for name in sorted(complex_emitter.EXPANSIONS)}
+    """The source this family emits, keyed by kernel name -- for a digest."""
+    return {KERNEL_NAME: cylindrical_fused_magnetic_pair_source()}
 
 
-#: NVRTC compile options -- CORRECTNESS, not performance, and identical to both
-#: certified halves'.
+#: NVRTC compile options -- CORRECTNESS, identical to both halves'.
 _COMPILE_OPTIONS: Tuple[str, ...] = ('--fmad=false',)
 
 #: Lanes per block, one COMPLEX CELL per lane.
@@ -869,21 +633,15 @@ def _clear_kernel_cache() -> int:
     return compile_cache.clear_kernel_cache()
 
 
-def _get_kernel(arm, name: str = KERNEL_NAME):
-    """Compile the fused kernel under one arm, memoized on (name, options, policy, source).
-
-    THE SOURCE IS EMITTED PER CALL AND THAT IS LOAD-BEARING: the source is part of
-    the memo key, and a gate mutates this family by monkeypatching the emitter. A
-    source memoized at first call would hand back the pre-mutation string forever.
-    """
+def _get_kernel(name: str = KERNEL_NAME):
+    """Compile the fused kernel, memoized on (name, options, policy,
+    source). The source is emitted per call: a gate mutates this family through it."""
     if cp is None:
         raise RuntimeError(
-            "CuPy is not importable on this host, so this kernel cannot be "
-            "compiled; the predicate and the emitter need no device and still run")
-    code = cylindrical_fused_magnetic_pair_source(arm)
-    key = compile_cache.kernel_cache_key(
-        f"{name}_arm{complex_emitter.normalized_expansion(arm)}", True,
-        _COMPILE_OPTIONS, code)
+            "CuPy is not importable on this host, so this kernel cannot be compiled; "
+            "the predicate and the emitter need no device and still run")
+    code = cylindrical_fused_magnetic_pair_source()
+    key = compile_cache.kernel_cache_key(name, True, _COMPILE_OPTIONS, code)
     return compile_cache.get_or_compile(
         key, lambda: cp.RawKernel(code, name, options=_COMPILE_OPTIONS))
 
@@ -893,9 +651,7 @@ def _get_kernel(arm, name: str = KERNEL_NAME):
 # =============================================================================
 
 def covers_cylindrical_fused_magnetic_pair(fields: Any, pml: Any, grid: Any,
-                                           sources: Any = None,
-                                           license: Any = None,
-                                           subnormal_policy: Any = None
+                                           sources: Any = None
                                            ) -> Tuple[bool, str]:
     """May ONE launch span ``step_B`` -> ``zero_metal_B`` -> ``update_H``?
 
@@ -908,11 +664,11 @@ def covers_cylindrical_fused_magnetic_pair(fields: Any, pml: Any, grid: Any,
     which axes are walled.
     """
     covered, reason = covers_pml_cylindrical_complex_curl(
-        fields, pml, grid, "step_B", license, subnormal_policy)
+        fields, pml, grid, "step_B")
     if not covered:
         return False, f"curl half: {reason}"
     covered, reason = covers_real_pml_complex_constitutive(
-        fields, pml, grid, "H", license, subnormal_policy)
+        fields, pml, grid, "H")
     if not covered:
         return False, f"constitutive half: {reason}"
 
@@ -966,8 +722,9 @@ def covers_cylindrical_fused_magnetic_pair(fields: Any, pml: Any, grid: Any,
                        f"{type(exc).__name__}: {exc}")
 
     # THE STORED SHAPE THE KERNEL INDEXES MUST BE THE ONE THE WALL PLANE AND THE
-    # PREFIX ARE DERIVED FROM. `nx, ny, nz` come from `fields.Bx.shape`; the wall is
-    # stored cell 0 of a `grid.stored_cells` axis and the prefix has `nx + 1` rows.
+    # RADIAL DIFFERENCE ARE DERIVED FROM. `nx, ny, nz` come from `fields.Bx.shape`; the
+    # wall is stored cell 0 of a `grid.stored_cells` axis and the difference is
+    # target-shaped.
     try:
         stored = tuple(int(grid.stored_cells(axis)) for axis in range(3))
         extents = tuple(int(n) for n in fields.Bx.shape)
@@ -976,7 +733,7 @@ def covers_cylindrical_fused_magnetic_pair(fields: Any, pml: Any, grid: Any,
                        f"{type(exc).__name__}: {exc}")
     if stored != extents:
         return False, (f"grid.stored_cells is {stored} but the launch walks "
-                       f"Bx.shape {extents}; the wall plane and the radial prefix "
+                       f"Bx.shape {extents}; the wall plane and the radial difference "
                        f"are derived from the first and indexed into the second")
     return True, "covered"
 
@@ -985,9 +742,7 @@ def covers_cylindrical_fused_magnetic_pair(fields: Any, pml: Any, grid: Any,
 # THE LAUNCH
 # =============================================================================
 
-#: The fifteen complex volumes bound from ``Fields``, in SIGNATURE ORDER. The prefix
-#: and the two i*m/r rows are derived per launch and per configuration respectively,
-#: so they are bound separately.
+#: The volumes bound from ``Fields``, in SIGNATURE ORDER.
 _FIELD_BINDINGS: Tuple[str, ...] = (
     "Bx", "By", "Bz",
     "fu_Bx", "fu_By", "fu_Bz",
@@ -1005,35 +760,18 @@ _CONSTITUTIVE_TABLE_KEYS: Tuple[str, ...] = (
 
 
 def cylindrical_fused_magnetic_pair_tables(pml: "PML") -> Dict[str, Dict[str, Any]]:
-    """Both coefficient groups, each from the sub-lattice its half reads.
-
-    THE SUB-LATTICE IS DECIDED HERE, not by the caller: while it was an argument,
-    every call site was one more place the pairing could be got backwards, and
-    backwards is a half-cell error rather than a crash.
-    """
-    if cylindrical_complex_kernels is None or complex_pml_kernels is None:
-        raise RuntimeError(
-            "the CuPy-backed table builders are not importable on this host")
-    return {"curl": cylindrical_complex_kernels.cylindrical_complex_curl_tables(
-                pml, True),
-            "constitutive": complex_pml_kernels.complex_constitutive_tables(
-                pml, False)}
+    """Both coefficient groups, each from the sub-lattice its half reads: the B curl
+    HALF-INTEGER, the H constitutive INTEGER."""
+    if complex_pml_kernels is None:
+        raise RuntimeError("the CuPy-backed table builders are not importable on this host")
+    return {"curl": cylindrical_complex_kernels.cylindrical_complex_curl_tables(pml, True),
+            "constitutive": complex_pml_kernels.complex_constitutive_tables(pml, False)}
 
 
 def assert_disjoint_bindings(fields: "Fields", tables: Dict[str, Dict[str, Any]],
-                             prefix: Any, imr_rows: Sequence[Any]) -> int:
-    """Check the promise every ``__restrict__`` in the signature makes.
-
-    ONCE PER FROZEN CONFIGURATION, OFF THE LAUNCH PATH. The shared flux density is
-    bound once by construction -- the signature has no second B group -- so what is
-    left to check is that no OTHER two arguments are the same allocation. THE PREFIX
-    AND THE TWO i*m/r ROWS ARE INCLUDED, and they are the reason this check takes
-    arguments the Cartesian sibling's does not: the prefix is derived from Ep and a
-    scratch buffer aliasing a field volume would be UB reached through a route no
-    signature inspection would find.
-
-    Returns the number of distinct allocations checked.
-    """
+                             radial: Any, imr_rows: Sequence[Any]) -> int:
+    """Check the promise every ``__restrict__`` in the signature makes, the radial
+    difference and the two i*m/r rows included. Returns the allocations checked."""
     bound: Dict[int, str] = {}
     collisions = []
 
@@ -1046,7 +784,7 @@ def assert_disjoint_bindings(fields: "Fields", tables: Dict[str, Dict[str, Any]]
 
     for name in _FIELD_BINDINGS + _CONSTITUTIVE_BINDINGS:
         visit(name, getattr(fields, name))
-    visit("prefix", prefix)
+    visit("rad", radial)
     for index, row in enumerate(imr_rows):
         visit(f"imr{index}", row)
     for key in _CURL_TABLE_KEYS:
@@ -1055,89 +793,114 @@ def assert_disjoint_bindings(fields: "Fields", tables: Dict[str, Dict[str, Any]]
         visit(f"constitutive:{key}", tables["constitutive"][key])
     if collisions:
         raise ValueError(
-            "the cylindrical fused magnetic pair binds every argument "
-            "__restrict__, and these arguments alias, which is undefined behaviour "
-            "NVRTC miscompiles silently rather than diagnosing: "
-            + "; ".join(collisions))
+            "the cylindrical fused magnetic pair binds every argument __restrict__, and "
+            "these arguments alias, which is undefined behaviour NVRTC miscompiles "
+            "silently rather than diagnosing: " + "; ".join(collisions))
     return len(bound)
 
 
+def start_of_h(fields: "Fields", layer: Any) -> None:
+    """MEEP's start of H after the run's first fused magnetic launch, on the array path:
+    ``stepping.update_H`` over the B the launch stored (``separate_h_from_b``)."""
+    from ..stepping import update_H  # noqa: PLC0415 - NumPy/CuPy array path
+
+    update_H(fields, layer)
+
+
+def resolve_launch_arguments(fields: "Fields", grid: "Grid", pml: "PML",
+                             chunk_bounds: Any) -> Dict[str, Any]:
+    """Everything one launch binds that is a reading of the frozen grid and layer:
+    held by a plan, built once. ``chunk_bounds`` is the composition's record."""
+    from .cylindrical_prefix import radial_scan_device_tables, radial_scan_tables  # noqa: PLC0415
+
+    xp = grid.xp
+    m = int(grid.m)
+    return {"tables": cylindrical_fused_magnetic_pair_tables(pml),
+            "boundary_codes": cylindrical_complex_kernels.cylindrical_complex_boundary_codes(grid),
+            "imr_rows": cylindrical_complex_kernels.device_rows(
+                cylindrical_complex_kernels.imr_rows_for("step_B", grid,
+                                                         int(fields.Bx.shape[0])), xp),
+            "courant": cylindrical_complex_kernels.axis_courant_words("step_B", grid),
+            "m": m, "m_class": cylindrical_complex_kernels.m_class(m),
+            "zero_rows": cylindrical_complex_kernels.zero_rows(
+                m, bool(grid.accurate_fields_near_cylorigin)),
+            "walls": zero_metal_axes(grid), "dtdx": float(grid.dt / grid.dx),
+            "chunk_bounds": chunk_bounds, "layer": pml,
+            "scan": radial_scan_device_tables(radial_scan_tables(fields, pml, "step_B"), xp)}
+
+
 def launch_cylindrical_fused_magnetic_pair(
-        fields: "Fields", tables: Dict[str, Dict[str, Any]], prefix: Any,
-        imr_rows: Sequence[Any], boundary_codes: Sequence[Any],
-        increment_scalars: Sequence[Any], m_class_code: int, zero_rows_count: int,
-        walls: Sequence[int], dtdx: float, arm: Any,
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """All three of :data:`REPLACES` in ONE launch.
+        fields: "Fields", arguments: Dict[str, Any], radial: Any = None,
+        kernel: Optional[Any] = None, scan_kernel: Optional[Any] = None) -> Dict[str, Any]:
+    """The scan, then all three of :data:`REPLACES` in ONE launch.
 
-    ``kernel`` IS THE GATE'S DOOR, keyword-optional: a gate compiles a deliberately
-    broken copy of the shipped source and hands it here. A launcher that could not be
-    handed its own kernel could not arm a single mutation.
-
-    Returns the launch geometry rather than ``None`` so a gate can assert that
-    something was actually launched.
+    ``arguments`` are :func:`resolve_launch_arguments`'. ``radial`` may be handed in by a
+    gate that already computed it; otherwise the scan runs here over the CURRENT Ep (a
+    cached difference would be a stale field one step later). ``kernel`` and
+    ``scan_kernel`` are the gate's doors. The run's first launch starts H on the array
+    path (:func:`start_of_h`) and refuses by name when handed no layer.
     """
-    word_view = _certified_source().word_view
+    word_view = cylindrical_complex_kernels.word_view
+    cb = cylindrical_complex_kernels.chunk_record_argument(arguments["chunk_bounds"])
+    first = not bool(getattr(fields, "h_separated", True))
+    if first and arguments.get("layer") is None:
+        raise RuntimeError(
+            "the run's first update_H starts H from B (stepping.separate_h_from_b) and "
+            "this fused magnetic launch was handed no layer to start it with")
+    if radial is None:
+        radial = radial_difference(fields, arguments["layer"], "step_B",
+                                   tables=arguments["scan"],
+                                   scratch=getattr(fields, "scratch", None),
+                                   kernel=scan_kernel)
     nx, ny, nz = (int(n) for n in fields.Bx.shape)
+    if tuple(int(n) for n in radial.shape) != (nx, ny, nz):
+        raise ValueError(f"the radial difference is {tuple(radial.shape)}, the target "
+                         f"{(nx, ny, nz)}")
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
-    minus_dtdx, (inc_re, inc_im) = increment_scalars
-    curl = tables["curl"]
-    constitutive = tables["constitutive"]
-    arguments = tuple(
+    curl = arguments["tables"]["curl"]
+    constitutive = arguments["tables"]["constitutive"]
+    walls = arguments["walls"]
+    launch_arguments = tuple(
         word_view(getattr(fields, name)) for name in _FIELD_BINDINGS
-    ) + (word_view(prefix),) + tuple(word_view(row) for row in imr_rows) + tuple(
+    ) + (word_view(radial),) + tuple(arguments["imr_rows"]) + tuple(
         word_view(getattr(fields, name)) for name in _CONSTITUTIVE_BINDINGS
     ) + (
-        np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx),
-        np.float32(minus_dtdx), np.float32(inc_re), np.float32(inc_im),
+        np.int32(nx), np.int32(ny), np.int32(nz), np.float32(arguments["dtdx"]),
+        np.float32(float(arguments["m"])), np.float64(arguments["courant"][0]),
     ) + tuple(curl[key] for key in _CURL_TABLE_KEYS) + tuple(
         constitutive[key] for key in _CONSTITUTIVE_TABLE_KEYS
-    ) + tuple(np.int32(code) for code in boundary_codes) + (
-        # NO BLOCH PHASE: this family refuses one, so all three flags are 0 and the
-        # certified helper never reaches its rotation.
-        np.int32(0), np.int32(0), np.int32(0),
-        np.int32(int(m_class_code)), np.int32(int(zero_rows_count)),
-    ) + tuple(np.int32(int(bool(walls[axis]))) for axis in range(3))
-    (kernel or _get_kernel(arm))((blocks,), (_FUSED_THREADS,), arguments)
+    ) + tuple(np.int32(code) for code in arguments["boundary_codes"]) + (
+        np.int32(int(arguments["m_class"])), np.int32(int(arguments["zero_rows"])),
+    ) + tuple(np.int32(int(bool(walls[axis]))) for axis in range(3)) + (cb,)
+    (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), launch_arguments)
+    if first:
+        start_of_h(fields, arguments["layer"])
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
-            "elements": nx * ny * nz, "replaces": REPLACES,
+            "elements": nx * ny * nz, "replaces": REPLACES, "h_started": first,
             "walls": tuple(int(bool(walls[axis])) for axis in range(3)),
-            "m_class": int(m_class_code), "zero_rows": int(zero_rows_count),
-            "arm": complex_emitter.normalized_expansion(arm)}
+            "m_class": int(arguments["m_class"]), "zero_rows": int(arguments["zero_rows"])}
 
 
 def run_cylindrical_fused_magnetic_pair(
-        fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, arm: Any, *,
-        sources: Any = None, license: Any = None, subnormal_policy: Any = None,
-        tables: Optional[Dict[str, Dict[str, Any]]] = None,
-        imr_rows: Optional[Sequence[Any]] = None, prefix: Any = None,
-        scratch: Any = None, kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """Gate on the predicate, resolve everything from the grid, launch once.
+        fields: "Fields", grid: "Grid", pml: "PML", *, chunk_bounds: Any,
+        sources: Any = None,
+        arguments: Optional[Dict[str, Any]] = None, radial: Any = None,
+        kernel: Optional[Any] = None) -> Dict[str, Any]:
+    """Gate on the predicate, resolve everything from the grid, scan, launch once.
 
-    THE PREDICATE IS ASKED FIRST AND A REFUSAL IS RETURNED, NOT RAISED, because the
-    caller's correct response to a configuration this product does not carry is the
-    array path.
-
-    ``tables``, ``imr_rows``, ``prefix`` and ``kernel`` are the gate's doors,
-    keyword-only, and each is a mutation this family's gate arms.
+    A refusal is RETURNED, not raised: the caller's answer to a configuration this
+    product does not carry is the array path.
     """
-    module = _certified_source()
     covered, reason = covers_cylindrical_fused_magnetic_pair(
-        fields, pml, grid, sources, license, subnormal_policy)
+        fields, pml, grid, sources)
     if not covered:
         return {"launched": False, "reason": reason}
-    if tables is None:
-        tables = cylindrical_fused_magnetic_pair_tables(pml)
-    m = int(grid.m)
-    if imr_rows is None:
-        imr_rows = module.imr_rows_for("step_B", grid.xp, m, dtdx,
-                                       int(fields.Bx.shape[0]), fields.Bx.dtype)
-    if prefix is None:
-        prefix = cylindrical_prefix(fields, "step_B", scratch=scratch)
-    assert_disjoint_bindings(fields, tables, prefix, imr_rows)
-    return launch_cylindrical_fused_magnetic_pair(
-        fields, tables, prefix, imr_rows,
-        module.cylindrical_complex_boundary_codes(grid),
-        module.axis_increment_scalars(m, dtdx), module.m_class(m),
-        module.zero_rows(m, bool(grid.accurate_fields_near_cylorigin)),
-        zero_metal_axes(grid), dtdx, arm, kernel)
+    if arguments is None:
+        arguments = resolve_launch_arguments(fields, grid, pml, chunk_bounds)
+    if radial is None:
+        radial = radial_difference(fields, arguments["layer"], "step_B",
+                                   tables=arguments["scan"],
+                                   scratch=getattr(fields, "scratch", None))
+    assert_disjoint_bindings(fields, arguments["tables"], radial, arguments["imr_rows"])
+    return launch_cylindrical_fused_magnetic_pair(fields, arguments, radial=radial,
+                                                  kernel=kernel)

@@ -205,15 +205,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     import cupy as cp  # noqa: PLC0415
+    from composition_policy import (  # noqa: PLC0415
+        confirm_campaign_policy, stamp_campaign_policy)
     from meep_gpu import backends  # noqa: PLC0415
 
-    backends.guard_kernel_compilation(cp)
     payload: Dict[str, Any] = {"environment": environment(cp), "cases": []}
+    # THE CAMPAIGN'S SUBNORMAL POLICY, installed and measured before the first lift and
+    # stamped into the artifact (owner ruling R16; composition_policy.py). MEEP is
+    # imported first because every case lifts a MEEP simulation, and importing MEEP
+    # flushes the host: after a keep install it would leave the run flushing.
+    refused = stamp_campaign_policy(payload, cp, import_meep=True)
     save(payload, args.out)
+    if refused:
+        log(f"COMPOSITION GATE REFUSED: {refused}")
+        return 2
+    backends.guard_kernel_compilation(cp)
     for name, kwargs, steps, expected in CASES:
         log(f"starting {name}: expected={expected}")
         payload["cases"].append(run_case(cp, name, kwargs, steps, expected))
         save(payload, args.out)
+    refused = confirm_campaign_policy(payload)
+    if refused:
+        save(payload, args.out)
+        log(f"COMPOSITION GATE REFUSED: {refused}")
+        return 2
     payload["summary"] = {
         "status": "passed",
         "cases_exact": f"{len(payload['cases'])}/{len(CASES)}",

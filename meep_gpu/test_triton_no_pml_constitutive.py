@@ -3,8 +3,8 @@
 THIS FAMILY SHIPS NO KERNEL, and that changes what a laptop suite is FOR here.
 For every other module in this package the laptop holds the predicate while a CUDA
 host holds the arithmetic. There is no arithmetic to hold: ``stepping.update_H``
-returns at stepping.py:944-945 and ``stepping.update_E`` returns at
-stepping.py:983-984, before any statement that reads an array. So this file carries
+returns at stepping.py:1229-1230 and ``stepping.update_E`` returns at
+stepping.py:1274-1275, before any statement that reads an array. So this file carries
 BOTH halves — the predicate AND the numerical claim — and the numerical claim is
 checkable here precisely because the product is the absence of a computation:
 
@@ -439,7 +439,7 @@ def test_the_target_configuration_is_covered_with_zero_reasons(family, side):
 
 
 def test_pml_is_none_is_covered_as_well_as_an_all_zero_face_layer(family):
-    """``_pml_is_active`` (stepping.py:2498-2506) treats the two identically.
+    """``_pml_is_active`` (stepping.py:3374-3382) treats the two identically.
 
     ``PML.is_active``'s own docstring (pml.py:427-434) says a zero-thickness table
     "steps bit-identically to ``pml=None``", so a driver that installed one must land
@@ -477,14 +477,14 @@ def test_a_fields_without_a_grid_is_refused(family):
 @pytest.mark.parametrize("side", ["H", "E"])
 def test_an_active_layer_is_refused_on_both_sides_and_names_the_dsigw_accumulation(
         family, side):
-    """Clause 2 — the ONE clause both sides rest on (stepping.py:944, :982)."""
+    """Clause 2 — the ONE clause both sides rest on (stepping.py:1229, :1273)."""
     fields, pml = _build(pml_thickness=2, storage=True)
     reasons = _reasons(family, fields, pml, side)
     assert any("active PML layer" in r and "dsigw" in r for r in reasons), reasons
 
 
 def test_stores_e_refuses_the_E_side_and_leaves_the_H_side_covered(family):
-    """Clause 3 — stepping.py:983 branches on exactly this, and only for E.
+    """Clause 3 — stepping.py:1274 branches on exactly this, and only for E.
 
     The asymmetry is the family's most valuable property: H is NEVER stored without
     PML (fields.py:664-666), so ``update_H`` stays covered on all 14 no-PML corpus
@@ -513,7 +513,7 @@ def test_a_zero_sigma_polarization_is_STILL_covered_on_both_sides(family):
     driver.py:1538-1542 refuses to switch storage on for a term whose sigma is
     identically zero, "what makes the zero-strength case byte-identical rather than
     merely close". A predicate that refused on registration would refuse a
-    configuration where the array path really does return at stepping.py:983 — a
+    configuration where the array path really does return at stepping.py:1274 — a
     coverage loss with no defect behind it. Mutation m6 in the gate is this test's
     device-side twin.
     """
@@ -566,7 +566,7 @@ def test_a_magnetic_susceptibility_refuses_the_H_side_only(family):
     """Clause 4 — vacuous against today's engine, and written anyway.
 
     ``update_H`` returns regardless of what is registered, so this clause cannot be
-    protecting the arithmetic. It protects the CLAIM: stepping.py:1406-1407 records
+    protecting the arithmetic. It protects the CLAIM: stepping.py:1973-1974 records
     that MEEP's H-side polarization slot is deliberately empty here, and a null must
     not report coverage of a sub-step that has grown a term. The needle is duck-typed
     because the driver refuses magnetic susceptibilities outright — which is exactly
@@ -584,7 +584,7 @@ def test_a_magnetic_susceptibility_refuses_the_H_side_only(family):
     fields.polarizations.append(_MagneticState())
     h_reasons = _reasons(family, fields, pml, "H")
     assert any("drives magnetic component" in r for r in h_reasons), h_reasons
-    assert any("stepping.py:1406-1407" in r for r in h_reasons), h_reasons
+    assert any("stepping.py:1973-1974" in r for r in h_reasons), h_reasons
     # And it must NOT leak onto E: that side's clause is stores_E, not this.
     assert family.null_constitutive_coverage(fields, pml, "E").covered is True
 
@@ -1068,7 +1068,7 @@ def test_the_stored_e_refusal_record_is_always_non_empty(family):
 
 
 def test_the_no_pml_store_really_is_D_times_inv_eps_to_the_word():
-    """The transcription of stepping.py:1010-1013 + :1022, measured not quoted.
+    """The transcription of stepping.py:1305-1307 + :1317, measured not quoted.
 
     This is the product Arm S would have to reproduce, so the claim that it is a
     PLAIN STORE — and not the certified accumulation — starts here.
@@ -2012,7 +2012,7 @@ def test_the_identity_leg_cannot_carry_the_polarization_pin_and_says_so(family):
 def test_update_E_consumes_a_polarization_without_advancing_it(family):
     """The pin itself, measured where the arrays exist: on the refused arm.
 
-    stepping.py:969-973 is the contract. A control leg that measured "bytes moved"
+    stepping.py:1260-1264 is the contract. A control leg that measured "bytes moved"
     alone would pass on an ``update_E`` that advanced the polarization instead.
     """
     from meep_gpu import stepping
@@ -2248,7 +2248,7 @@ def test_the_probe_enumerates_every_slot_of_a_whole_step():
     """A whole-step claim that quietly omits a slot is not a whole-step claim.
 
     ``update_P`` is in the list even though this family does not serve it: on the rows
-    it closes, ``stepping.update_P`` returns at stepping.py:1425-1426 because nothing
+    it closes, ``stepping.update_P`` returns at stepping.py:1992-1993 because nothing
     is registered.
 
     THE RECORD AND THE ARITHMETIC NOW AGREE ABOUT IT. The probe used to say that no-op

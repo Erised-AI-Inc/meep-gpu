@@ -53,9 +53,16 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
 * The mutation battery, including legs that MUST BE UNCAUGHT. A battery of
   only-must-be-caught legs scores identically whether the comparator works or has
   degenerated into failing everything. The two beta nulls are the family's own:
-  ``curl + (-(c*g))`` for ``curl - (c*g)`` (IEEE-754 defines subtraction as
+  ``fcur + (-df)`` for the ladder's ``fcur - df`` (IEEE-754 defines subtraction as
   addition of the negation) and ``(g * c)`` for ``(c * g)`` (float multiply
   commutes exactly). Each is paired with a must-catch leg on the same expression.
+
+THE KERNEL IS MEEP'S TWO PASSES. Per component the curl kernel's own curl and
+absorber, then -- on x and y only -- MEEP's beta pass as a pass of its own
+(step_db.cpp:161-175): ``-(c * g)`` on MEEP's owned cells, ``+0`` elsewhere, added
+through the pass's additive ladder, each form selected per cell from the chunk record
+the launcher binds. The gate hands the kernel the record of the division the array
+path stepped with (``gate_chunk_records.layer_record``).
 
 RUNNING IT
 ----------
@@ -102,9 +109,16 @@ except ImportError:  # laptop: the NumPy backend still runs
     cp = None
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import gate_chunk_records  # noqa: E402
+# The chunk-record host mutations (KERNELS.md section 7.2) are the complex gates' own,
+# imported rather than copied.
+import gate_cuda_complex as complex_gate  # noqa: E402
+import gate_cuda_complex_folded as fold_gate  # noqa: E402
+import gate_needles  # noqa: E402
 import gate_provenance  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
+from meep_gpu.chunk_map import membership_from_record  # noqa: E402
 from meep_gpu.fields import Fields, IYEE_SHIFTS  # noqa: E402
 from meep_gpu.grid import Grid, Mirror  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
@@ -220,10 +234,14 @@ GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
 # mutation that matched nothing and a mutation that cannot bite look identical in
 # a verdict.
 
+#: The beta pass's two increment lines, ``folded_pass.beta_insert``'s spelling: the
+#: line, the coefficient it reads, and its partner register.
 _BETA_LINES = (
-    ("        curl = curl - (beta_plus * f2);\n", "plus", "f2"),
-    ("        curl = curl - (beta_minus * f1);\n", "minus", "f1"),
+    ("        float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;\n", "plus", "f2"),
+    ("        float inc_beta = owned_cell ? (-(beta_minus * f1)) : 0.0f;\n", "minus", "f1"),
 )
+#: The ladder that adds each increment to its target, one per beta component.
+_BETA_LADDER_PREFIX = "        fold_apply("
 
 
 def _replace_all(source: str, pairs: Sequence[Tuple[str, str]]) -> Tuple[str, int]:
@@ -236,8 +254,15 @@ def _replace_all(source: str, pairs: Sequence[Tuple[str, str]]) -> Tuple[str, in
 
 
 def _drop_beta_term(source: str) -> Tuple[str, int]:
-    """The whole feature deleted: the certified kernel, on a beta run."""
-    return _replace_all(source, [(line, "") for line, _s, _o in _BETA_LINES])
+    """The whole feature deleted: the certified kernel, on a beta run. The two ladders
+    that add the increments are removed; the increments are still formed."""
+    out, sites = [], 0
+    for line in source.splitlines(keepends=True):
+        if line.startswith(_BETA_LADDER_PREFIX) and "inc_beta" in line:
+            sites += 1
+            continue
+        out.append(line)
+    return "".join(out), sites
 
 
 def _beta_partner_shifted(source: str) -> Tuple[str, int]:
@@ -265,8 +290,8 @@ def _beta_partner_shifted(source: str) -> Tuple[str, int]:
     :func:`_beta_partner_wrong_component`, which IS caught.
     """
     return _replace_all(source, [
-        ("curl = curl - (beta_plus * f2);", "curl = curl - (beta_plus * ss);"),
-        ("curl = curl - (beta_minus * f1);", "curl = curl - (beta_minus * sf);"),
+        ("(-(beta_plus * f2))", "(-(beta_plus * ss))"),
+        ("(-(beta_minus * f1))", "(-(beta_minus * sf))"),
     ])
 
 
@@ -280,102 +305,93 @@ def _beta_partner_wrong_component(source: str) -> Tuple[str, int]:
     genuinely different volumes, so the swap survives ``nz == 1``.
     """
     return _replace_all(source, [
-        ("curl = curl - (beta_plus * f2);", "curl = curl - (beta_plus * f1);"),
-        ("curl = curl - (beta_minus * f1);", "curl = curl - (beta_minus * f2);"),
+        ("(-(beta_plus * f2))", "(-(beta_plus * f1))"),
+        ("(-(beta_minus * f1))", "(-(beta_minus * f2))"),
     ])
 
 
 def _beta_swap_signs(source: str) -> Tuple[str, int]:
     """``sign = (d_c == X ? +1 : -1)`` read backwards (step_db.cpp:148-176)."""
     return _replace_all(source, [
-        ("curl = curl - (beta_plus * f2);", "curl = curl - (beta_MINUS * f2);"),
-        ("curl = curl - (beta_minus * f1);", "curl = curl - (beta_plus * f1);"),
+        ("(-(beta_plus * f2))", "(-(beta_MINUS * f2))"),
+        ("(-(beta_minus * f1))", "(-(beta_plus * f1))"),
         ("beta_MINUS", "beta_minus"),
     ])
 
 
 def _beta_added_not_subtracted(source: str) -> Tuple[str, int]:
-    """``stepping`` negates the PRODUCT (:784) and the caller ADDS (:361); a
-    kernel that adds the unnegated product has the term at the wrong sign."""
+    """The pass forms ``-(c * g)`` and its ladder SUBTRACTS it; an increment formed
+    without the negation has the term at the wrong sign."""
     return _replace_all(source, [
-        ("curl = curl - (beta_plus * f2);", "curl = curl + (beta_plus * f2);"),
-        ("curl = curl - (beta_minus * f1);", "curl = curl + (beta_minus * f1);"),
+        ("(-(beta_plus * f2))", "(beta_plus * f2)"),
+        ("(-(beta_minus * f1))", "(beta_minus * f1)"),
     ])
 
 
 def _beta_scaled_by_dtdx(source: str) -> Tuple[str, int]:
-    """The term treated as a finite difference. stepping.py:758-762 says it is an
-    ANALYTIC derivative and carries no 1/dx; scaling it is a plausible, smooth,
-    entirely wrong answer."""
+    """The term treated as a finite difference. The beta term is an ANALYTIC
+    derivative and carries no 1/dx (``stepping._special_kz_beta_term``); scaling it
+    is a plausible, smooth, entirely wrong answer."""
     return _replace_all(source, [
-        ("curl = curl - (beta_plus * f2);",
-         "curl = curl - (dtdx * (beta_plus * f2));"),
-        ("curl = curl - (beta_minus * f1);",
-         "curl = curl - (dtdx * (beta_minus * f1));"),
+        ("(-(beta_plus * f2))", "(-(dtdx * (beta_plus * f2)))"),
+        ("(-(beta_minus * f1))", "(-(dtdx * (beta_minus * f1)))"),
     ])
 
 
 def _beta_on_z_component(source: str) -> Tuple[str, int]:
-    """A term on the z component, which MEEP's ``cc`` loop never gives it.
+    """A pass on the z component, which MEEP's ``cc`` loop never gives it.
 
-    Inserted into the THIRD block only, matched on that block's own stencil line
-    (``sf`` there is the first source shifted along x), so the two blocks that do
-    carry a term are untouched.
+    Inserted into the THIRD block only, after that block's own absorber line and on
+    that line's own ladder tables and flag, so the two blocks that do carry a pass are
+    untouched.
     """
     for target in ("Bz", "Dz"):
-        anchor = source.find(f"pml_apply({target}, fu_{target},")
+        head = f"        pml_apply({target}, fu_{target}, idx, curl, "
+        anchor = source.find(head)
         if anchor < 0:
             continue
-        stencil = "        float curl = dtdx * ((sf - f1) + (f2 - ss));\n"
-        position = source.rfind(stencil, 0, anchor)
-        if position < 0:
-            continue
-        cut = position + len(stencil)
-        return (source[:cut] + "        curl = curl - (beta_plus * f2);\n"
+        cut = source.index("\n", anchor) + 1
+        # pml_apply(f, fu, idx, curl, kms, sinv, kms_u, sinv_u, flag);
+        arguments = source[anchor + len(head):cut].rstrip().rstrip(");").split(", ")
+        _kms, sinv, _kms_u, sinv_u, flag = arguments
+        return (source[:cut]
+                + f"        fold_apply({target}, fu_{target}, idx, -(beta_plus * f2), "
+                  f"{sinv}, {sinv_u}, {flag});\n"
                 + source[cut:]), 1
     return source, 0
 
 
-def _beta_after_mask(source: str) -> Tuple[str, int]:
-    """The term added AFTER the ownership mask instead of before it.
+def _beta_on_an_unowned_cell(source: str) -> Tuple[str, int]:
+    """The increment formed on every cell, MEEP's unowned cells included.
 
-    ``stepping`` adds at :361/:363 and masks at :369 (the D side at :443/:445
-    against :450), so a masked cell's curl is exactly zero. Move the term below
-    the mask and the masked plane carries a beta increment MEEP never wrote.
-    Scored only on legs whose grid carries a mask code -- on an all-periodic
-    unfolded grid no mask line fires and this is not a defect at all.
+    MEEP's beta loop visits owned cells only, so an unowned cell (a masked wall or
+    fold plane) takes no beta increment; drop the guard and the masked plane carries
+    one MEEP never wrote. Scored only on legs whose grid carries a mask code -- on an
+    all-periodic unfolded grid no mask line fires and this is not a defect at all.
     """
-    out = source
-    sites = 0
-    for line, sign, operand in _BETA_LINES:
-        if line not in out:
-            continue
-        # Delete it from above the mask block and re-insert it below, immediately
-        # before the pml_apply for the same component.
-        head, _sep, tail = out.partition(line)
-        marker = "        pml_apply("
-        position = tail.find(marker)
-        if position < 0:
-            continue
-        out = head + tail[:position] + line + tail[position:]
-        sites += 1
-    return out, sites
+    return _replace_all(source, [
+        ("owned_cell ? (-(beta_plus * f2)) : 0.0f;", "(-(beta_plus * f2));"),
+        ("owned_cell ? (-(beta_minus * f1)) : 0.0f;", "(-(beta_minus * f1));"),
+    ])
+
+
+def _beta_ladder_without_the_recurrence(source: str) -> Tuple[str, int]:
+    """The ladder's ``fu`` stage dropped: inside the dsigu chunks MEEP adds the
+    increment to ``fu`` as well as to the field."""
+    return _replace_all(source, [("    if (dsigu) fu[idx] = fu[idx] - df;\n", "")])
 
 
 def _beta_subtract_as_add_negative(source: str) -> Tuple[str, int]:
     """NULL. IEEE-754 defines ``a - b`` as ``a + (-b)``, so the two spellings are
-    the same bits on every input including signed zeros. This is grouping choice 2
-    stated as an experiment: if it is CAUGHT, the identity this family rests on is
-    false on this platform and the transcription has to be respelled."""
-    return _replace_all(source, [
-        ("curl = curl - (beta_plus * f2);", "curl = curl + (-(beta_plus * f2));"),
-        ("curl = curl - (beta_minus * f1);", "curl = curl + (-(beta_minus * f1));"),
-    ])
+    the same bits on every input including signed zeros. Measured on the ladder's
+    dsig-only form; if it is CAUGHT, the identity this family rests on is false on
+    this platform and the transcription has to be respelled."""
+    return _replace_all(source, [(": (fcur - df);", ": (fcur + (-df));")])
 
 
 def _beta_product_operands_commuted(source: str) -> Tuple[str, int]:
     """NULL. float32 multiply commutes exactly, so ``g * c`` and ``c * g`` are the
-    same word. stepping.py:811 puts the coefficient on the LEFT; this leg measures
+    same word. The array path puts the coefficient on the LEFT; this leg measures
     that the choice is a transcription convention rather than an arithmetic fact."""
     return _replace_all(source, [
         ("(beta_plus * f2)", "(f2 * beta_plus)"),
@@ -391,7 +407,8 @@ BETA_SOURCE_MUTATIONS: Dict[str, Any] = {
     "beta_added_not_subtracted": _beta_added_not_subtracted,
     "beta_scaled_by_dtdx": _beta_scaled_by_dtdx,
     "beta_on_z_component": _beta_on_z_component,
-    "beta_after_mask": _beta_after_mask,
+    "beta_on_an_unowned_cell": _beta_on_an_unowned_cell,
+    "beta_ladder_without_the_recurrence": _beta_ladder_without_the_recurrence,
     "beta_subtract_as_add_negative": _beta_subtract_as_add_negative,
     "beta_product_operands_commuted": _beta_product_operands_commuted,
 }
@@ -404,7 +421,7 @@ BETA_NULL_MUTATIONS: Tuple[str, ...] = ("beta_subtract_as_add_negative",
                                         "beta_partner_shifted")
 
 #: Legs whose grid must carry a mask code for the mutation's lines to fire.
-SOURCE_MUTATION_REQUIRES_MASK: Dict[str, bool] = {"beta_after_mask": True}
+SOURCE_MUTATION_REQUIRES_MASK: Dict[str, bool] = {"beta_on_an_unowned_cell": True}
 
 #: The shared curl defects, borrowed rather than respelled so this gate cannot own
 #: a second spelling of a defect the certified record was cut against.
@@ -414,6 +431,11 @@ SHARED_SOURCE_MUTATIONS: Tuple[str, ...] = (
     "read_fprev_after_store", "fortran_order_index_decomposition",
     "commute_dtdx_scale", "reload_fu_from_memory",
 )
+#: THIS GATE'S NEEDLE TABLE for the shared defects above, every one borrowed from the
+#: probe's shared default, which is spelled on the root pair's text -- this family's
+#: kernels are the root kernels with the beta pass inserted (``gate_needles.py``).
+SHARED_NEEDLES = gate_needles.gate_table(
+    "gate_cuda_special_kz", probe.SOURCE_MUTATIONS, SHARED_SOURCE_MUTATIONS)
 SHARED_NULL_MUTATIONS: Tuple[str, ...] = probe.PML_NULL_MUTATIONS
 SHARED_REQUIRES_CODE: Dict[str, int] = {
     "drop_metallic_mask": BC_METALLIC,
@@ -430,6 +452,10 @@ HOST_MUTATIONS: Tuple[str, ...] = (
     "beta_coefficient_rounded_twice",
     "swap_curl_sublattice",
     "beta_coefficient_negated_from_plus",
+    # KERNELS.md section 7.2: the chunk record a launch binds, corrupted (the oracle's
+    # division is untouched; ``gate_cuda_complex.host_mutated_record``).
+    "record_bound_off_by_one",
+    "record_lattices_swapped",
 )
 #: MUST BE UNCAUGHT: float64 negation and float32 rounding commute exactly, so
 #: computing the minus coefficient as ``-plus`` in float64 and rounding once is
@@ -513,6 +539,11 @@ def seed_state(fields, grid, names: Sequence[str], value_class: str,
         raise ValueError(f"value class {value_class!r} is not one of {VALUE_CLASSES}")
     for name, values in host.items():
         getattr(fields, name)[...] = xp.asarray(np.ascontiguousarray(values))
+    # A seeded state is a mid-run one: MEEP's start of H from B
+    # (``stepping.separate_h_from_b``) belongs to a run's first ``update_H``, long
+    # before this state. Without this the oracle's ``update_H`` would run that start
+    # and the certified constitutive kernel, launched directly, would not.
+    fields.h_separated = True
     return host
 
 
@@ -562,7 +593,7 @@ def host_mutated_inputs(name: Optional[str], sub_step: str, layer, grid,
     """``(tables, (plus, minus))`` with one host-level defect applied, or neither."""
     tables = tables_for(sub_step, layer)
     plus, minus = family.beta_curl_coefficients(grid.beta, grid.dt)
-    if name is None:
+    if name is None or name in complex_gate.RECORD_HOST_MUTATIONS:
         return tables, (plus, minus)
     if name == "swap_curl_sublattice":
         return wrong_sub_lattice_tables(sub_step, layer), (plus, minus)
@@ -592,9 +623,12 @@ def host_mutated_inputs(name: Optional[str], sub_step: str, layer, grid,
 # ---------------------------------------------------------------------------
 
 def run_kernel_cuda(sub_step: str, fields, tables, codes, dtdx: float,
-                    beta: Tuple[float, float]) -> None:
+                    beta: Tuple[float, float], record) -> None:
+    """The SHIPPED kernel through its own launcher, the case's chunk record uploaded as
+    the one contiguous ``int32[25]`` device vector the launcher requires."""
     family.step_special_kz(sub_step, fields, tables,
-                           tuple(np.int32(c) for c in codes), dtdx, beta)
+                           tuple(np.int32(c) for c in codes), dtdx, beta,
+                           chunk_bounds=cp.asarray(np.ascontiguousarray(record, dtype=np.int32)))
     cp.cuda.runtime.deviceSynchronize()
 
 
@@ -624,17 +658,36 @@ def _broadcast(vector, axis: int) -> np.ndarray:
     return np.asarray(vector, dtype=np.float32).reshape(shape)
 
 
+def _membership(record, target: str, axis: int, shape) -> np.ndarray:
+    """``target``'s membership flag of ``axis``'s layer, as the kernel decodes it: on its
+    own Yee sub-lattice along ``axis``, from the record's runs, broadcast to the field."""
+    half = IYEE_SHIFTS[target][axis] == 1
+    line = membership_from_record(record, half, axis, int(shape[axis]))
+    view = [1, 1, 1]
+    view[axis] = int(shape[axis])
+    return np.broadcast_to(np.asarray(line, dtype=bool).reshape(view), tuple(shape))
+
+
+def _record_presence(record) -> Tuple[bool, bool, bool]:
+    """The three partner-presence bits of a chunk record, as the kernels decode them."""
+    word = int(np.asarray(record)[24])
+    return tuple(bool((word >> axis) & 1) for axis in range(3))
+
+
 def run_kernel_numpy(sub_step: str, fields, tables, codes, dtdx: float,
-                     beta: Tuple[float, float]) -> None:
+                     beta: Tuple[float, float], record) -> None:
     """The device tree, transcribed, in float32 -- the laptop backend.
 
-    THE GROUPING IS THE SHIPPED ONE and it is load-bearing::
+    Per component the root kernel's curl and absorber, then MEEP's beta pass on the
+    two components that carry one, each form selected per cell from the chunk record
+    the kernel reads::
 
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        curl = curl - (beta_plus * f2);          // Bx / Dx  (centre, sign +1)
-        curl = curl - (beta_minus * f1);         // By / Dy  (centre, sign -1)
-        <the three mask lines>
-        pml_apply(...)
+        curl  = curl_stencil(dtdx, sf, f1, f2, ss, pr1, pr2)   MEEP's left-to-right
+        <the mask lines on curl>
+        pml_apply: the recurrence where dsigu, ((f*kms) - curl)*sinv elsewhere
+        inc   = -(beta_plus * f2)   Bx / Dx    (centre, sign +1), +0 on unowned cells
+              = -(beta_minus * f1)  By / Dy    (centre, sign -1)
+        ladder: f -= sinv*inc outside dsigu; fu -= (df = sinv*inc), f -= sinv_u*df inside
 
     THIS COMPILES NOTHING AND CERTIFIES NOTHING. It cannot see a defect the NVRTC
     contraction guard exists for and it is not the shipped bytes; what it settles
@@ -645,35 +698,60 @@ def run_kernel_numpy(sub_step: str, fields, tables, codes, dtdx: float,
     scale = np.float32(dtdx)
     coefficients = {"second": np.float32(beta[0]), "first": np.float32(beta[1])}
     names = "xyz"
+    presence = _record_presence(record)
+    zero = np.float32(0.0)
     for (target, aux, first, first_axis, second, second_axis, dsig, dsigu,
          beta_operand, _sign) in CURL_TERMS[sub_step]:
-        f = getattr(fields, target)
-        fu = getattr(fields, aux)
-        f1 = getattr(fields, first)
-        f2 = getattr(fields, second)
+        f = np.asarray(to_host(getattr(fields, target)), dtype=np.float32).copy()
+        fu = np.asarray(to_host(getattr(fields, aux)), dtype=np.float32).copy()
+        f1 = np.asarray(to_host(getattr(fields, first)), dtype=np.float32)
+        f2 = np.asarray(to_host(getattr(fields, second)), dtype=np.float32)
         sf = shift(f1, first_axis, codes[first_axis])
         ss = shift(f2, second_axis, codes[second_axis])
-        curl = (scale * ((sf - f1) + (f2 - ss))).astype(np.float32)
-        if beta_operand is not None:
-            partner = f2 if beta_operand == "second" else f1
-            curl = (curl - (coefficients[beta_operand] * partner)).astype(np.float32)
+        pr1, pr2 = presence[first_axis], presence[second_axis]
+        if pr1 and pr2:
+            curl = (scale * (((sf - f1) + f2) - ss)).astype(np.float32)
+        elif pr1:
+            curl = (scale * (sf - f1)).astype(np.float32)
+        elif pr2:
+            curl = ((-scale) * (ss - f2)).astype(np.float32)
+        else:
+            curl = np.zeros_like(f, dtype=np.float32)
         iyee = IYEE_SHIFTS[target]
+        owned = np.ones(f.shape, dtype=bool)
         for axis in range(3):
             if iyee[axis] == 0:
                 if codes[axis] in (BC_METALLIC, BC_MIRROR_PERIODIC):
-                    curl[_plane(axis, 0, curl.shape)] = np.float32(0.0)
+                    curl[_plane(axis, 0, curl.shape)] = zero
+                    owned[_plane(axis, 0, curl.shape)] = False
             elif codes[axis] == BC_MIRROR_PERIODIC:
-                curl[_plane(axis, -1, curl.shape)] = np.float32(0.0)
-        kms = _broadcast(tables[f"kms_{names[dsig]}"], dsig)
-        sinv = _broadcast(tables[f"sinv_{names[dsig]}"], dsig)
-        kms_u = _broadcast(tables[f"kms_{names[dsigu]}"], dsigu)
-        sinv_u = _broadcast(tables[f"sinv_{names[dsigu]}"], dsigu)
-        fprev = fu.copy()
-        fu_new = (((fprev * kms).astype(np.float32) - curl).astype(np.float32)
+                curl[_plane(axis, -1, curl.shape)] = zero
+                owned[_plane(axis, -1, curl.shape)] = False
+        kms = _broadcast(to_host(tables[f"kms_{names[dsig]}"]), dsig)
+        sinv = _broadcast(to_host(tables[f"sinv_{names[dsig]}"]), dsig)
+        kms_u = _broadcast(to_host(tables[f"kms_{names[dsigu]}"]), dsigu)
+        sinv_u = _broadcast(to_host(tables[f"sinv_{names[dsigu]}"]), dsigu)
+        inside = _membership(record, target, dsigu, f.shape)
+        fu_new = (((fu * kms).astype(np.float32) - curl).astype(np.float32)
                   * sinv).astype(np.float32)
-        fu[...] = fu_new
-        a = ((f * kms_u).astype(np.float32) + fu_new).astype(np.float32)
-        f[...] = ((a - fprev).astype(np.float32) * sinv_u).astype(np.float32)
+        recurrence = (((((f * kms_u).astype(np.float32) + fu_new).astype(np.float32)
+                        - fu).astype(np.float32)) * sinv_u).astype(np.float32)
+        dsig_only = ((((f * kms).astype(np.float32) - curl).astype(np.float32))
+                     * sinv).astype(np.float32)
+        f = np.where(inside, recurrence, dsig_only).astype(np.float32)
+        fu = np.where(inside, fu_new, fu).astype(np.float32)
+        if beta_operand is not None:
+            partner = f2 if beta_operand == "second" else f1
+            increment = np.where(
+                owned, -(coefficients[beta_operand] * partner).astype(np.float32),
+                zero).astype(np.float32)
+            df = (sinv * increment).astype(np.float32)
+            fu = np.where(inside, (fu - df).astype(np.float32), fu).astype(np.float32)
+            f = np.where(inside, (f - (sinv_u * df).astype(np.float32)).astype(np.float32),
+                         (f - df).astype(np.float32)).astype(np.float32)
+        xp = fields.grid.xp
+        getattr(fields, target)[...] = xp.asarray(f)
+        getattr(fields, aux)[...] = xp.asarray(fu)
 
 
 # ---------------------------------------------------------------------------
@@ -902,8 +980,20 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, courant: float,
     restore(fields, frozen)
     tables, beta = host_mutated_inputs(host_mutation, sub_step, layer, grid, dtdx)
     case["beta_coefficients"] = [float(beta[0]), float(beta[1])]
+    # THE CHUNK RECORD of the division the array path stepped with (the one-rank
+    # division of the grid and layer), handed to the kernel as the launcher binds it.
+    record = np.ascontiguousarray(gate_chunk_records.layer_record(grid, layer),
+                                  dtype=np.int32)
+    case["chunk_record"] = [int(v) for v in record]
+    bound = complex_gate.host_mutated_record(host_mutation, record, grid)
+    if (host_mutation in complex_gate.RECORD_HOST_MUTATIONS
+            and not fold_gate._membership_moves(record, bound, grid)):
+        case["skipped"] = ("the record mutation moves no cell's membership on this "
+                           "division (its moved run end lies past the stored rows)")
+        case["seconds"] = time.time() - started
+        return case
     runner = run_kernel_cuda if backend == "cuda" else run_kernel_numpy
-    runner(sub_step, fields, tables, codes, dtdx, beta)
+    runner(sub_step, fields, tables, codes, dtdx, beta, bound)
 
     parts = {name: bit_compare(reference[name], getattr(fields, name))
              for name in outputs(sub_step)}
@@ -924,7 +1014,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, courant: float,
 
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
-            runner(sub_step, fields, tables, codes, dtdx, beta)
+            runner(sub_step, fields, tables, codes, dtdx, beta, record)
             advance_sources(fields, SUB_STEP_ARRAYS[sub_step]["sources"])
         multi = {name: bit_compare(oracle_multi[name], getattr(fields, name))
                  for name in outputs(sub_step)}
@@ -994,8 +1084,13 @@ def one_constitutive_case(backend: str, spec: Dict[str, Any], side: str,
         case["seconds"] = time.time() - started
         return case
 
+    # THE CHUNK RECORD of the division the array path stepped with, as the
+    # certified launcher binds it.
+    record = cp.asarray(np.ascontiguousarray(
+        gate_chunk_records.layer_record(grid, layer), dtype=np.int32))
     restore(fields, frozen)
-    constitutive_kernels.update_fused_pml_real(side, fields, layer)
+    constitutive_kernels.update_fused_pml_real(side, fields, layer,
+                                               chunk_bounds=record)
     cp.cuda.runtime.deviceSynchronize()
     parts = {name: bit_compare(reference[name], getattr(fields, name))
              for name in constitutive_outputs(side)}
@@ -1012,7 +1107,8 @@ def one_constitutive_case(backend: str, spec: Dict[str, Any], side: str,
     oracle_multi = snapshot(fields, constitutive_state_names(side))
     restore(fields, frozen)
     for _ in range(MULTI_STEP_BUDGET):
-        constitutive_kernels.update_fused_pml_real(side, fields, layer)
+        constitutive_kernels.update_fused_pml_real(side, fields, layer,
+                                               chunk_bounds=record)
         advance_sources(fields, CONSTITUTIVE_ARRAYS[side]["sources"])
     cp.cuda.runtime.deviceSynchronize()
     multi = {name: bit_compare(oracle_multi[name], getattr(fields, name))
@@ -1191,7 +1287,7 @@ def run_source_mutations(results, out_path, product, scorable):
                  for name in family.SPECIAL_KZ_KERNELS}
     transforms = dict(BETA_SOURCE_MUTATIONS)
     for name in SHARED_SOURCE_MUTATIONS:
-        transforms[name] = probe.SOURCE_MUTATIONS[name]
+        transforms[name] = SHARED_NEEDLES[name]
     nulls = set(BETA_NULL_MUTATIONS) | set(SHARED_NULL_MUTATIONS)
     out: Dict[str, Any] = {}
     plan = mutation_plan(product, scorable)

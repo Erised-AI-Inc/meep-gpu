@@ -50,13 +50,18 @@ stepping.py:907-923 and :2130-2143). The stepped value at any cell is therefore 
 function of state this launch does not write, and evaluating it twice gives the same
 bits by construction rather than by a tolerance.
 
-THE BLOCH PHASE IS NOT IN THE RECOMPUTE AND MUST NOT BE. The certified complex curl
-applies :func:`.complex_fields._phase_block` to the LOADED REGISTER after the gather,
-on the wrapped lane only; this weld redirects the LOAD and leaves the phase block
-standing character for character. So a wrapped neighbour is still
-``c_mul(<the neighbour's stepped H>, p_axis)`` in that order, which is the field-left
-orientation the array path uses (stepping.py:1909) and the one the expansion arm was
-probed for.
+THE CHUNK RECORD IS READ WHERE THE CELL IS. The recomputed ``update_H`` selects its
+form on the dsigw membership of the cell it is evaluated at -- the thread's own or
+the neighbour's -- because :func:`h_cell_function` lifts the certified body WITH its
+anchored bounds block and takes the cell as parameters; the record itself is a
+parameter (``cb``). On a cell outside the layer's chunks the recompute is ``H = B``
+and ``f_w`` keeps its pre-launch word, which the caller copies into the scratch.
+
+THE BLOCH CONNECTION IS NOT IN THE RECOMPUTE AND MUST NOT BE. The certified complex
+curl applies :func:`.complex_fields._phase_block` to the UNSHIFTED registers on plane
+0 after the gather; this weld redirects the LOADS and leaves the connection standing
+character for character, so on plane 0 of a phased axis the thread's own stepped H
+is connected exactly as the array path connects the stored word.
 
 =============================================================================
 THE SIGNATURE -- 30 POINTERS PLUS ONE PACKED STRUCT, AND THE CEILING IS AN EQUALITY
@@ -110,12 +115,6 @@ table), the plane-wise ``{re*c, im*c}`` fast path is wrong (24/128), and negatio
 ``-x`` (``0.0f - x`` misses 36/512). All three ride in through
 :func:`.templates.complex_helpers`, unchanged, and the gate arms each as a mutation
 on THIS kernel rather than inheriting the other family's verdict.
-
-THE EXPANSION ARM IS A MEASURED PLATFORM FACT, NEVER A DEFAULT. It is read from the
-complex expansion probe (:func:`.complex_fields.load_expansion_probe`) and an absent
-or non-discriminating probe is a REFUSAL, not a fallback -- the clause is inherited
-from both halves' own predicates and restated by :func:`plan_metal_complex_fused_hd_pair`
-returning ``None``.
 
 A COMPLEX-BY-REAL DIVIDE DOES NOT OCCUR IN THIS KERNEL, AND THAT IS A MEASUREMENT
 RATHER THAN AN OMISSION. The neighbouring Dcyl product had to settle the spelling of
@@ -191,6 +190,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .. import withdraw_hoist as _withdraw_hoist
 from ..triton_kernels.coverage import CONSTITUTIVE_SIDES, Coverage
+from . import chunk_bounds as _chunk_bounds
 from . import complex_fields
 from . import offdiag_weld_common as _weld
 from . import shaders, templates
@@ -296,8 +296,8 @@ SPLIT_PLANE_BINDINGS = 62
 #: the measured reason :mod:`.complex_fused_magnetic_pair` gives: Metal aligns
 #: ``float2`` to 8 bytes, so with the scalars first the natural 44-byte host record
 #: puts every phase one word early and reads back as a plausible complex number rather
-#: than as garbage.
-PARAMS_ITEMSIZE = 48
+#: than as garbage. The 100-byte chunk record follows at offset 44: 144 in all.
+PARAMS_ITEMSIZE = 144
 
 if PACKED_BINDINGS > MAX_BUFFER_BINDINGS:  # pragma: no cover - a design invariant
     raise RuntimeError(
@@ -368,10 +368,15 @@ H_CELL_POINTERS: Tuple[Tuple[str, str], ...] = tuple(
     + [("device const float*", name) for name in
        ("kp0", "kp1", "kp2", "kmx", "kmy", "kmz")])
 
-#: What one call site forwards after the three coordinates. Built from the table above
-#: so the declaration and every call cannot drift apart.
+#: ``h_cell``'s non-pointer parameter: the chunk record, so the lifted bounds block
+#: evaluates the dsigw membership at the cell the function is called for.
+H_CELL_SCALARS: Tuple[Tuple[str, str], ...] = (("constant ChunkBounds&", "cb"),)
+
+#: What one call site forwards after the three coordinates. Built from the tables
+#: above so the declaration and every call cannot drift apart.
 H_CELL_TAIL_ARGS = ", ".join(("nxi", "nyi", "nzi")
-                             + tuple(name for _kind, name in H_CELL_POINTERS))
+                             + tuple(name for _kind, name in H_CELL_POINTERS)
+                             + tuple(name for _kind, name in H_CELL_SCALARS))
 
 #: Every line of certified CONSTITUTIVE text this weld does not lift verbatim, with
 #: the reason. DATA, not prose, so the host suite and the gate can assert the list and
@@ -391,8 +396,8 @@ CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "binds it once. Unshared the kernel needs 34 bindings and does not "
             "compile; binding the half-integer set instead DOES compile and is a "
             "half-cell error in the absorber profile."},
-    {"line": "    float2 prevN = wN[ii];",
-     "became": "    float2 prevN = wiN[ii];",
+    {"line": "    float2 prevN = dwN ? wN[ii] : float2(0.0f, 0.0f);",
+     "became": "    float2 prevN = dwN ? wiN[ii] : float2(0.0f, 0.0f);",
      "why": "the split-field history is read from the PRE-LAUNCH buffer, which "
             "nothing in this launch writes. On this side f_w_H_new[ii] == B[ii] "
             "exactly, so an in-place write would hand a racing neighbour B where it "
@@ -403,14 +408,16 @@ CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "field, so the constitutive source keeps its own name. The value is the "
             "same flux-density read the certified body makes (mu = 1 is baked into "
             "the array path too: stepping.update_H passes fields.Bx)."},
-    {"line": "    wN[ii] = srcN;",
-     "became": "(removed -- the caller stores own.srcN to the SCRATCH volume)",
+    {"line": "    if (dwN) { wN[ii] = srcN; }",
+     "became": "    float2 wnN = dwN ? srcN : wiN[ii];",
      "why": "the weld writes a scratch volume, so the helper must not store. The "
-            "value and the expression that produced it are untouched; only the "
-            "destination moves, and only for the thread's OWN cell (a foreign "
-            "recompute stores nothing at all)."},
-    {"line": "    float2 aN = fN[ii];",
-     "became": "    float2 aN = hiN[ii];",
+            "value and the select that chose it are untouched; only the "
+            "destination moves -- the caller stores own.wnN to the scratch for the "
+            "thread's OWN cell (a foreign recompute stores nothing at all), and on a "
+            "cell outside the dsigw chunks that word is the PRE-LAUNCH f_w, which the "
+            "rotation would otherwise replace with a stale scratch word."},
+    {"line": "    if (dwN) { aN = fN[ii] + (...); }",
+     "became": "    if (dwN) { aN = hiN[ii] + (...); }",
      "why": "the accumulator is read from the PRE-LAUNCH H, which is const for the "
             "whole dispatch. This is what makes the foreign recompute a pure function "
             "of unwritten memory."},
@@ -432,7 +439,7 @@ CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
 
 
 def certified_complex_constitutive_tail(
-        expansion: str, contract: str = shaders.CONTRACT_OFF) -> str:
+        contract: str = shaders.CONTRACT_OFF) -> str:
     """The complex ``update_H`` body BELOW the decode prologue, stores removed.
 
     Not a transcription: this is
@@ -442,7 +449,7 @@ def certified_complex_constitutive_tail(
     :func:`.offdiag_weld_common.needle`, so a spelling that drifted raises here rather
     than emitting a kernel that reads the wrong volume.
     """
-    source = complex_fields.bloch_constitutive_source("H", expansion, contract)
+    source = complex_fields.bloch_constitutive_source("H", contract)
     edits: List[Tuple[str, str]] = [
         ("    float kp_0 = kp0[i], km_0 = km0[i];\n",
          "    float kp_0 = kp0[i], km_0 = kmx[i];\n"),
@@ -451,15 +458,17 @@ def certified_complex_constitutive_tail(
         ("    float kp_2 = kp2[k], km_2 = km2[k];\n",
          "    float kp_2 = kp2[k], km_2 = kmz[k];\n"),
     ]
+    zero = templates.COMPLEX_ZERO
     for target in range(3):
         edits.extend((
-            (f"    float2 prev{target} = w{target}[ii];\n",
-             f"    float2 prev{target} = wi{target}[ii];\n"),
+            (f"    float2 prev{target} = dw{target} ? w{target}[ii] : {zero};\n",
+             f"    float2 prev{target} = dw{target} ? wi{target}[ii] : {zero};\n"),
             (f"    float2 src{target} = g{target}[ii];\n",
              f"    float2 src{target} = b{target}[ii];\n"),
-            (f"    w{target}[ii] = src{target};\n", ""),
-            (f"    float2 a{target} = f{target}[ii];\n",
-             f"    float2 a{target} = hi{target}[ii];\n"),
+            (f"    if (dw{target}) {{ w{target}[ii] = src{target}; }}\n",
+             f"    float2 wn{target} = dw{target} ? src{target} : wi{target}[ii];\n"),
+            (f"    if (dw{target}) {{ a{target} = f{target}[ii] + ",
+             f"    if (dw{target}) {{ a{target} = hi{target}[ii] + "),
             (f"    f{target}[ii] = a{target};\n", ""),
         ))
     tail = _weld.lift_curl_tail(source, store_edits=tuple(edits),
@@ -479,7 +488,7 @@ def certified_complex_constitutive_tail(
     return tail
 
 
-def h_cell_function(expansion: str, contract: str = shaders.CONTRACT_OFF) -> str:
+def h_cell_function(contract: str = shaders.CONTRACT_OFF) -> str:
     """Complex ``update_H`` at an arbitrary cell, as one inline function.
 
     ONE code path serves the thread's own cell and every foreign recompute, so the two
@@ -489,9 +498,10 @@ def h_cell_function(expansion: str, contract: str = shaders.CONTRACT_OFF) -> str
     ``ii = i*nyz + j*nzi + k`` is written once for the whole package.
     """
     return _weld.step_cell_function(
-        "h_cell", certified_complex_constitutive_tail(expansion, contract),
+        "h_cell", certified_complex_constitutive_tail(contract),
         value_type="float2", pointer_parameters=H_CELL_POINTERS,
-        scalar_parameters=(), returns=("a0", "a1", "a2", "src0", "src1", "src2"))
+        scalar_parameters=H_CELL_SCALARS,
+        returns=("a0", "a1", "a2", "wn0", "wn1", "wn2"))
 
 
 # ---------------------------------------------------------------------------
@@ -557,7 +567,7 @@ def offset_coordinates(tail: str) -> Dict[str, Tuple[str, str, str]]:
     return out
 
 
-def welded_curl_tail(codes: Sequence[int], phased: Sequence[int], expansion: str,
+def welded_curl_tail(codes: Sequence[int], phased: Sequence[int],
                      contract: str = shaders.CONTRACT_OFF) -> Tuple[str, str]:
     """``(prologue, body)`` of the complex ``step_D`` curl, every H read redirected.
 
@@ -569,7 +579,7 @@ def welded_curl_tail(codes: Sequence[int], phased: Sequence[int], expansion: str
     below it, with the three own-cell loads taken from the register and the six
     shifted loads recomputed.
     """
-    source = complex_fields.bloch_curl_source(codes, True, phased, expansion, contract)
+    source = complex_fields.bloch_curl_source(codes, True, phased, contract)
     if _BODY_ANCHOR not in source:
         raise AssertionError(
             "the certified complex curl source no longer carries the body anchor; the "
@@ -633,13 +643,17 @@ __CONTRACT__
 
 __HELPERS__
 
+__RECORD_STRUCT__
+
 // THE THREE float2 MEMBERS COME FIRST. Metal aligns float2 to 8 bytes, so with the
 // scalars first this struct needs internal padding and the natural host record puts
 // every phase one word early — measured on this toolchain, and it reads as a
 // plausible complex number rather than as garbage. Phases first, no internal padding.
+// The chunk record follows the scalars (offset 44), costing no binding.
 struct Params {
     float2 px; float2 py; float2 pz;
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
+__RECORD_MEMBER__
 };
 
 __H_CELL__
@@ -686,6 +700,7 @@ kernel void complex_fused_hd_pair_step(
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
     float2 px = prm.px, py = prm.py, pz = prm.pz;
+__RECORD_ALIAS__
 __PROLOGUE__
     // --- THE WELD: complex update_H, computed into registers and stored to SCRATCH -
     // Nothing written here is read by this launch. The curl half below takes its OWN
@@ -694,7 +709,7 @@ __PROLOGUE__
     // thread's store; the launcher rotates H/f_w_H afterwards.
     h_cell_result own = h_cell(i, j, k, __H_CELL_ARGS__);
     ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;
-    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;
+    wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;
 
     // --- complex step_D (stepping.step_D / _apply_pml_update:1905) ----------------
     // D and fu_D update IN PLACE and that is safe by construction: the curl reads and
@@ -706,7 +721,6 @@ __CURL__
 
 
 def complex_fused_hd_pair_source(codes: Sequence[int], phased: Sequence[int],
-                                 expansion: str,
                                  contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (boundaries, phases, arm, contraction).
 
@@ -732,11 +746,14 @@ def complex_fused_hd_pair_source(codes: Sequence[int], phased: Sequence[int],
         raise ValueError(f"codes must be a per-axis triple, got {codes!r}")
     if len(phased) != 3:
         raise ValueError(f"phased must be a per-axis triple, got {phased!r}")
-    prologue, curl = welded_curl_tail(codes, phased, expansion, contract)
+    prologue, curl = welded_curl_tail(codes, phased, contract)
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
-        "__H_CELL__": h_cell_function(expansion, contract),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
+        "__H_CELL__": h_cell_function(contract),
         "__PROLOGUE__": prologue,
         "__H_CELL_ARGS__": H_CELL_TAIL_ARGS,
         "__CURL__": curl,
@@ -744,11 +761,10 @@ def complex_fused_hd_pair_source(codes: Sequence[int], phased: Sequence[int],
 
 
 def compile_complex_fused_hd_pair(codes: Sequence[int], phased: Sequence[int],
-                                  expansion: str,
                                   contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised entry point for one (boundaries, phases, arm, mode)."""
     return getattr(
-        compile_source(complex_fused_hd_pair_source(codes, phased, expansion,
+        compile_source(complex_fused_hd_pair_source(codes, phased,
                                                     contract)),
         KERNEL)
 
@@ -756,9 +772,10 @@ def compile_complex_fused_hd_pair(codes: Sequence[int], phased: Sequence[int],
 def _phase_triples(codes: Sequence[int]) -> Tuple[Tuple[int, int, int], ...]:
     """Every phase triple legal against one boundary triple. A metallic axis cannot."""
     legal: List[Tuple[int, int, int]] = []
-    for px in (0, 1):
-        for py in (0, 1):
-            for pz in (0, 1):
+    kinds = complex_fields.CONNECT_KINDS
+    for px in kinds:
+        for py in kinds:
+            for pz in kinds:
                 triple = (px, py, pz)
                 if any(triple[axis] and codes[axis] == templates.METALLIC
                        for axis in range(3)):
@@ -767,8 +784,7 @@ def _phase_triples(codes: Sequence[int]) -> Tuple[Tuple[int, int, int], ...]:
     return tuple(legal)
 
 
-def enumerate_sources(expansion: str,
-                      contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
+def enumerate_sources(contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
     """Every specialisation a shipped plan can emit, keyed by a stable label.
 
     The phase triple is enumerated only over the axes a given boundary triple can
@@ -783,8 +799,8 @@ def enumerate_sources(expansion: str,
                 codes = (cx, cy, cz)
                 for phased in _phase_triples(codes):
                     label = (f"{KERNEL}/{cx}{cy}{cz}/"
-                             f"ph{phased[0]}{phased[1]}{phased[2]}/{expansion}")
-                    out[label] = complex_fused_hd_pair_source(codes, phased, expansion,
+                             f"ph{phased[0]}{phased[1]}{phased[2]}")
+                    out[label] = complex_fused_hd_pair_source(codes, phased,
                                                               contract)
     return out
 
@@ -866,13 +882,13 @@ def _touch_kernel(name: str, complex_volumes: Sequence[str],
     ))
 
 
-def shipped_signature_bindings(expansion: str) -> int:
+def shipped_signature_bindings() -> int:
     """How many bindings the SHIPPED kernel declares, counted off its own source.
 
     Read from the emitted text rather than from :data:`PACKED_BINDINGS`, so the
     constant is a claim the source can falsify.
     """
-    source = complex_fused_hd_pair_source((0, 0, 0), (0, 0, 0), expansion)
+    source = complex_fused_hd_pair_source((0, 0, 0), (0, 0, 0))
     signature = source.split(f"kernel void {KERNEL}(", 1)[1]
     signature = signature.split("uint idx [[thread_position_in_grid]])", 1)[0]
     return signature.count("[[buffer(")
@@ -950,16 +966,15 @@ def split_plane_pair_signature() -> str:
 # ---------------------------------------------------------------------------
 
 def metal_complex_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = None,
-                                         residency: Any = None,
-                                         probe: Any = None) -> Coverage:
+                                         residency: Any = None) -> Coverage:
     """May ONE dispatch span complex ``update_H`` -> the withdraw -> complex ``step_D``?
 
     A conjunction of the two halves' OWN certified predicates plus the seam clauses.
     Nothing is weakened: a configuration either half refuses is refused here with that
     half's reasons, prefixed so a reader can tell which side said it. That construction
-    is what makes the expansion-probe clause, the complex-storage clause, the beta and
-    BFAST clauses, the off-diagonal clause, the polarization clause and the fold clause
-    INHERITED rather than restated.
+    is what makes the complex-storage clause, the beta and BFAST clauses, the
+    off-diagonal clause, the polarization clause and the fold clause INHERITED rather
+    than restated.
 
     THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
     first (driver.py:3311), so the first refusal a reader sees names the half the
@@ -968,11 +983,10 @@ def metal_complex_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = N
     reasons: List[str] = []
 
     magnetic = complex_fields.complex_constitutive_coverage(fields, pml, "H",
-                                                            residency, probe)
+                                                            residency)
     if not magnetic.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in magnetic.reasons)
-    curl = complex_fields.complex_pml_curl_coverage(fields, pml, "step_D", residency,
-                                                    probe)
+    curl = complex_fields.complex_pml_curl_coverage(fields, pml, "step_D", residency)
     if not curl.covered:
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
 
@@ -1029,6 +1043,11 @@ def metal_complex_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = N
             reasons.append(
                 f"{name} is not allocated; this weld rotates it against a plan-owned "
                 f"scratch twin after every launch")
+    # THE RUN'S FIRST update_H, refused on the base single's rule and in its words:
+    # the array path starts H and f_w from B on the dsigw cells there and this weld
+    # does not (launch.h_start_reasons).
+    from .launch import h_start_reasons  # noqa: PLC0415 - launch imports this family's peers
+    reasons.extend(f"constitutive half: {reason}" for reason in h_start_reasons(fields, sources))
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
@@ -1043,8 +1062,8 @@ class MetalComplexFusedHdPairPlan(_weld.ScratchWeldPairPlan):
     family's post-launch buffer rotation is the same code the four D->E welds and the
     real Cartesian H->D product execute. What the subclass adds is the specialisation a
     harness must not re-derive: the per-axis phase flags the source was baked for, the
-    rounded and conjugated phase values in the packed record, and the PROBE-MEASURED
-    expansion arm. A base with ``__slots__`` refuses to carry them, and re-deriving
+    rounded and conjugated phase values in the packed record. A base with
+    ``__slots__`` refuses to carry them, and re-deriving
     them at a call site is how a mutation harness ends up compiling a different
     specialisation from the one it launches.
     """
@@ -1052,41 +1071,39 @@ class MetalComplexFusedHdPairPlan(_weld.ScratchWeldPairPlan):
     #: ``family`` is the BASE's slot and is set from the constructor argument; it is
     #: deliberately NOT shadowed by a class attribute here, which on a slotted base
     #: would hide the descriptor and make the base's own assignment raise.
-    __slots__ = ("phased", "phase_values", "expansion")
+    __slots__ = ("phased", "phase_values")
 
     def __init__(self, *arguments: Any, phased: Sequence[int],
-                 phase_values: Sequence[Tuple[float, float]],
-                 expansion: str) -> None:
+                 phase_values: Sequence[Tuple[float, float]]) -> None:
         super().__init__(*arguments)
         self.phased = tuple(int(flag) for flag in phased)
         self.phase_values = tuple((float(re), float(im)) for re, im in phase_values)
-        self.expansion = str(expansion)
 
 
 def params_record_dtype() -> Any:
-    """The host record's dtype -- THE THREE ``float2`` MEMBERS FIRST, itemsize 48.
+    """The host record's dtype -- THE THREE ``float2`` MEMBERS FIRST, itemsize 144.
 
     ONE HOME FOR THE LAYOUT, because getting it wrong is a silent wrong answer rather
     than a crash: see :mod:`.complex_fused_magnetic_pair` for the measurement. The
     offsets are stated EXPLICITLY even though the phases-first order makes them the
     natural ones, so that the record cannot drift into agreeing with Metal only by
-    accident; ``itemsize`` is stated because the natural record is 44 bytes and
-    Metal's struct is 48.
+    accident. The chunk record (:func:`.chunk_bounds.record_dtype`) sits at offset 44.
     """
     import numpy as np  # noqa: PLC0415
 
     return np.dtype({
-        "names": ["px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx"],
+        "names": ["px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx", "cb"],
         "formats": [("<f4", 2), ("<f4", 2), ("<f4", 2),
-                    "<u4", "<u4", "<u4", "<u4", "<f4"],
-        "offsets": [0, 8, 16, 24, 28, 32, 36, 40],
+                    "<u4", "<u4", "<u4", "<u4", "<f4", _chunk_bounds.record_dtype()],
+        "offsets": [0, 8, 16, 24, 28, 32, 36, 40, 44],
         "itemsize": PARAMS_ITEMSIZE,
     })
 
 
 def _params_tensor(shape: Sequence[int], dtdx: float,
-                   phase_values: Sequence[Tuple[float, float]], device: str) -> Any:
-    """The five scalars and three phases as one 48-byte device record.
+                   phase_values: Sequence[Tuple[float, float]], device: str,
+                   chunk_words: Any) -> Any:
+    """The five scalars, three phases and the chunk record as one 144-byte record.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused pair's
     ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and complex64
@@ -1104,6 +1121,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
     record["dtdx"] = np.float32(dtdx)
     for name, (real, imag) in zip(("px", "py", "pz"), tuple(phase_values)):
         record[name] = (np.float32(real), np.float32(imag))
+    record["cb"] = _chunk_bounds.pack(chunk_words)[0]
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -1112,8 +1130,7 @@ def plan_metal_complex_fused_hd_pair(
         fields: Any, pml: Any, sources: Any = None,
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        functions: Optional[Mapping[str, Any]] = None,
-        probe: Any = None,
+        functions: Optional[Mapping[str, Any]] = None, *, chunk_bounds: Any,
         ) -> Optional["_weld.ScratchWeldPairPlan"]:
     """Build the complex fused H/D plan, or ``None`` when the seam is refused.
 
@@ -1125,14 +1142,14 @@ def plan_metal_complex_fused_hd_pair(
     the shipped source and hands it here; dropping the argument is not a silent
     slowdown, it is a silent DISARMING -- every mutation leg would then launch the
     shipped kernel and report the defect as uncaught.
+
+    ``chunk_bounds`` is the record of the division the run steps with; it rides in
+    ``Params`` and is checked against the grid's shape.
     """
-    if not metal_complex_fused_hd_pair_coverage(fields, pml, sources, residency,
-                                                probe).covered:
+    if not metal_complex_fused_hd_pair_coverage(fields, pml, sources, residency).covered:
         return None
-    expansion = complex_fields.expansion_from_probe(
-        probe if probe is not None else complex_fields.load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
-        return None
+    chunk_words = _chunk_bounds.plan_words(
+        chunk_bounds, fields.grid.shape, "MetalComplexFusedHdPairPlan")
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
@@ -1203,13 +1220,14 @@ def plan_metal_complex_fused_hd_pair(
     selected = dict(functions or {})
     for mode in contract_variants:
         if mode not in selected:
-            selected[mode] = compile_complex_fused_hd_pair(codes, flags, expansion,
+            selected[mode] = compile_complex_fused_hd_pair(codes, flags,
                                                            mode)
 
     dtdx = grid.dt / grid.dx
     static = (flux + displacement + auxiliary
               + curl_coefficients + constitutive_coefficients
-              + [_params_tensor(grid.shape, dtdx, values, residency.device)])
+              + [_params_tensor(grid.shape, dtdx, values, residency.device,
+                                chunk_words)])
     assert (2 * len(ROTATED_NAMES) + len(static)) == PACKED_BINDINGS, (
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     assert PACKED_BINDINGS == MAX_BUFFER_BINDINGS, (PACKED_BINDINGS,
@@ -1220,7 +1238,7 @@ def plan_metal_complex_fused_hd_pair(
         FAMILY, residency, fields, dict(twins), dict(selected), ROTATED_NAMES,
         tuple(static), tuple(volumes), tuple(grid.shape), tuple(codes),
         (0, 0, 0), (), REPLACES,
-        phased=flags, phase_values=values, expansion=expansion)
+        phased=flags, phase_values=values)
 
 
 # ---------------------------------------------------------------------------
@@ -1231,8 +1249,7 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
     if slot != SLOT:
         return Coverage(False, (f"complex fused H/D pair cannot fill {slot}",))
     return metal_complex_fused_hd_pair_coverage(
-        context.fields, context.pml, context.sources, context.residency,
-        context.extra.get("complex_probe"))
+        context.fields, context.pml, context.sources, context.residency)
 
 
 def _arm_plan(context: Any, slot: str) -> Optional[MetalComplexFusedHdPairPlan]:
@@ -1240,7 +1257,8 @@ def _arm_plan(context: Any, slot: str) -> Optional[MetalComplexFusedHdPairPlan]:
         return None
     return plan_metal_complex_fused_hd_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants, probe=context.extra.get("complex_probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

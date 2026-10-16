@@ -114,6 +114,8 @@ if API_ROOT not in sys.path:
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+import fold_pass_mutations as fold_passes  # noqa: E402
+
 PRODUCT_MODULE = "meep_gpu.triton_kernels.bfast_fused_magnetic_pair"
 KERNEL_NAME = "bfast_fused_curl_constitutive_B"
 PACKAGE_DIR = os.path.join(API_ROOT, "meep_gpu", "triton_kernels")
@@ -231,6 +233,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/bfast_fused_magnetic_pair.py",
         "meep_gpu/triton_kernels/bfast_curl.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/stepping.py",
@@ -382,6 +385,19 @@ def transcription_leg() -> Dict[str, Any]:
     if invented:
         findings.append(f"statements in NEITHER shipped body: "
                         f"{[s[:80] for s in invented]}")
+
+    # THE PASS FOLLOWS THE FORMS. MEEP's BFAST pass runs on each component right
+    # after its curl (step_db.cpp:124-142); the seam's wall clear and update_H follow
+    # the whole sub-step.
+    if len(tail) == 1:
+        before, after = fold_passes.insert_neighbours(KERNEL_FILE, KERNEL_NAME,
+                                                      "HAS_BFAST")
+        if not before.startswith("v2, n2 = curl_form("):
+            findings.append(f"the BFAST pass does not follow the last curl form: it "
+                            f"follows {before!r}")
+        if after != "if ZM_X:":
+            findings.append(f"the BFAST pass does not precede the wall clear: it "
+                            f"precedes {after!r}")
 
     return {"leg": "transcription", "device": False,
             "statements_in_the_product": len(fused),
@@ -1115,6 +1131,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
             raise AssertionError("the product refused the reduction case")
         reduced_plan.has_bfast = 0
 
+        from gate_chunk_records import layer_record  # noqa: PLC0415
+
         fields, pml = shipped.fields, shipped.pml
         grid = fields.grid
         arrays = {name: getattr(fields, name) for name in
@@ -1128,7 +1146,13 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         shipped_plan = plan_fused_pair_from_arrays(
             "B", arrays, curl_flat, constitutive_flat,
             [1 if kind == "metallic" else 0 for kind in resolve(grid, pml)],
-            zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1)
+            zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1,
+            chunk_bounds=layer_record(grid, pml))
+        # MEEP'S START OF H, as the product's plan carries it (h_state is the
+        # driver's Fields): the from-arrays route builds a plan that has already
+        # started, and the reduction would compare a started kernel with an
+        # unstarted one at step 1.
+        shipped_plan._h_state = fields  # noqa: SLF001 - the harness owns the route
 
         roles = {id(reference.fields): "array", id(shipped.fields): "shipped",
                  id(reduced.fields): "reduced"}
@@ -1213,7 +1237,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
 def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant. The rename is what keeps the JIT cache honest."""
     header = ("import triton\nimport triton.language as tl\n"
-              "PERIODIC = tl.constexpr(0)\n"
+              + fold_passes.MUTANT_IMPORTS
+              + "PERIODIC = tl.constexpr(0)\n"
               "METALLIC = tl.constexpr(1)\n\n")
     text = header + source.replace(KERNEL_NAME, kernel_name)
     ast.parse(text)   # a mutation that does not parse is not a mutation
@@ -1251,83 +1276,59 @@ def _rewrite_block(source: str, before: Sequence[str],
     return source, 0
 
 
+#: What each case's grid carries (by ``CASES`` index), in ``fold_pass_mutations.NEEDS``
+#: words. Every case is 3-D with a PML layer on all three axes (``build_driver``).
+CASE_CARRIES: Dict[int, Tuple[str, ...]] = {
+    0: ("layer",), 1: ("wall", "layer"), 2: ("wall", "layer"), 3: ("layer",),
+}
+
+#: The BFAST pass's own mutations and the root forms' (KERNELS.md 7.1's inversions and
+#: 7.2's chunk-form battery): ``fold_pass_mutations``' shared spellings, the same text
+#: in every carrier of the pass. The two one-partner entries need a 2-D grid this
+#: probe's 3-D cases are not; ``gate_triton_bfast`` scores them on the curl, whose pass
+#: this product's is statement for statement (the transcription leg).
+SHARED_MUTATIONS = (
+    [entry for entry in fold_passes.bfast_mutations()
+     if set(entry[4]) <= {"wall", "layer"}]
+    + fold_passes.form_mutations(True))
+_SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
+
+
 def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
-    """(id, why it is armed, expectation, rewrite)."""
+    """(id, why it is armed, expectation, rewrite).
 
-    def m1_advance_history_term_dropped(source: str) -> Tuple[str, int]:
-        """``adv = total - 2.0*state`` becomes ``adv = total``: the IIR history gone.
+    The pass's call-site mutations and the seam's own (the wall table, the register
+    carry, the ``f_w`` order) come first; the BFAST pass's shared mutations and the
+    root forms' follow, from :data:`SHARED_MUTATIONS`. No commuted-multiply null is
+    left on this body: the H half forms no product outside ``forms.constitutive_form``.
+    """
+    ladders = ("v0, n0 = fold_ladder(v0, n0, q0, si_y, si_z, du0)",
+               "v1, n1 = fold_ladder(v1, n1, q1, si_z, si_x, du1)",
+               "v2, n2 = fold_ladder(v2, n2, q2, si_x, si_y, du2)")
 
-        Only visible because the harness SEEDS the states — with a zero state this
-        rewrite changes nothing, which is why ``seed_values`` writes them and says
-        so. Unguarded within the tail, and every case here has ``HAS_BFAST = 1``."""
-        return _rewrite_block(
-            source,
-            ["adv0 = total0 - (2.0 * st0)",
-             "adv1 = total1 - (2.0 * st1)",
-             "adv2 = total2 - (2.0 * st2)"],
-            ["adv0 = total0", "adv1 = total1", "adv2 = total2"])
+    def _on_ladders(source: str, spell) -> Tuple[str, int]:
+        hits = 0
+        for index, line in enumerate(ladders):
+            hits += source.count(line)
+            source = source.replace(line, line.replace(f", q{index},",
+                                                       f", {spell(f'q{index}')},"))
+        return source, hits
 
     def m2_bfast_sums_become_differences(source: str) -> Tuple[str, int]:
-        """BFAST SUMS the pairs the curl DIFFERENCES (stepping.py:1594-1598).
-
-        Turning the sums into differences is the single most natural wrong
-        transcription of a tail whose operands are the curl's own loads."""
-        return _rewrite_block(
-            source,
-            ["total0 = (k1_0 * (c_y + c)) - (k2_0 * (b_z + b))",
-             "total1 = (k1_1 * (a_z + a)) - (k2_1 * (c_x + c))",
-             "total2 = (k1_2 * (b_x + b)) - (k2_2 * (a_y + a))"],
-            ["total0 = (k1_0 * (c_y - c)) - (k2_0 * (b_z - b))",
-             "total1 = (k1_1 * (a_z - a)) - (k2_1 * (c_x - c))",
-             "total2 = (k1_2 * (b_x - b)) - (k2_2 * (a_y - a))"])
+        """BFAST SUMS the pairs the curl DIFFERENCES (step_generic.cpp:335-533): the
+        centre partners handed to target 0's advance negated are those differences,
+        planted at the call site."""
+        needle = "bfast_advance(st0, c_y, c, b_z, b,"
+        return (source.replace(needle, "bfast_advance(st0, c_y, c * -1.0, b_z, b * -1.0,"),
+                source.count(needle))
 
     def m3_tail_scaled_by_dtdx(source: str) -> Tuple[str, int]:
-        """``dtdx`` applied to the tail. There is none in the array path (S:836-837)."""
-        return _rewrite_block(
-            source,
-            ["curl0 = curl0 - adv0",
-             "curl1 = curl1 - adv1",
-             "curl2 = curl2 - adv2"],
-            ["curl0 = curl0 - (dtdx * adv0)",
-             "curl1 = curl1 - (dtdx * adv1)",
-             "curl2 = curl2 - (dtdx * adv2)"])
-
-    def m4_state_stored_before_the_advance_mask(source: str) -> Tuple[str, int]:
-        """The advance masked AFTER the state store instead of before (S:902).
-
-        On a walled axis the array path stores the MASKED advance; storing the raw
-        one leaves the history carrying a term the curl never saw. Guarded on a
-        METALLIC axis being present — scored on ``wall_xyz``, which has three."""
-        source, hits = _rewrite_block(
-            source,
-            ["tl.store(s0 + idx, st0 + adv0, mask=live)",
-             "tl.store(s1 + idx, st1 + adv1, mask=live)",
-             "tl.store(s2 + idx, st2 + adv2, mask=live)"],
-            ["tl.store(s0 + idx, st0 + raw0, mask=live)",
-             "tl.store(s1 + idx, st1 + raw1, mask=live)",
-             "tl.store(s2 + idx, st2 + raw2, mask=live)"])
-        if not hits:
-            return source, 0
-        return _rewrite_block(
-            source,
-            ["adv0 = total0 - (2.0 * st0)",
-             "adv1 = total1 - (2.0 * st1)",
-             "adv2 = total2 - (2.0 * st2)"],
-            ["adv0 = total0 - (2.0 * st0)",
-             "adv1 = total1 - (2.0 * st1)",
-             "adv2 = total2 - (2.0 * st2)",
-             "raw0 = adv0", "raw1 = adv1", "raw2 = adv2"])
+        """``dtdx`` applied to the increment. The pass carries none."""
+        return _on_ladders(source, lambda q: f"{q} * dtdx")
 
     def m5_tail_added_instead_of_subtracted(source: str) -> Tuple[str, int]:
-        """The caller-subtracts sign convention (S:904) inverted."""
-        return _rewrite_block(
-            source,
-            ["curl0 = curl0 - adv0",
-             "curl1 = curl1 - adv1",
-             "curl2 = curl2 - adv2"],
-            ["curl0 = curl0 + adv0",
-             "curl1 = curl1 + adv1",
-             "curl2 = curl2 + adv2"])
+        """The ladder's subtraction of the negated raw word inverted."""
+        return _on_ladders(source, lambda q: f"{q} * -1.0")
 
     def m6_wall_table_is_the_d_side(source: str) -> Tuple[str, int]:
         """The DIAGONAL wall table rotated onto the OFF-DIAGONAL pairing.
@@ -1345,8 +1346,8 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
     def m7_zero_metal_only_on_the_store(source: str) -> Tuple[str, int]:
         """Cleared into ``B``, but the constitutive half reads the UNCLEARED value.
 
-        Same guard note as ``m6``; scored on ``wall_xyz``, where all three flags
-        were True on the pristine kernel too."""
+        Scored on ``wall_xyz``, where all three flags are True on the pristine kernel
+        too."""
         source, hits = _rewrite_block(
             source,
             ["if ZM_X:", "v0 = tl.where(at_x, 0.0, v0)",
@@ -1364,72 +1365,38 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source, hits
 
     def m8_history_read_after_write(source: str) -> Tuple[str, int]:
-        """``f_w`` read AFTER it is written: wrong wherever ``kms != 0``. Unguarded."""
+        """``f_w`` read AFTER it is written: wrong wherever ``kms != 0``, on the
+        accumulation's cells, where both the read and the store live."""
         return _rewrite_block(
             source,
-            ["prev0 = tl.load(w0 + idx, mask=live, other=0.0)",
+            ["prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)",
              "src0 = v0",
-             "tl.store(w0 + idx, src0, mask=live)"],
+             "tl.store(w0 + idx, src0, mask=live & dw0)"],
             ["src0 = v0",
-             "tl.store(w0 + idx, src0, mask=live)",
-             "prev0 = tl.load(w0 + idx, mask=live, other=0.0)"])
-
-    def m9_curl_parentheses_flattened(source: str) -> Tuple[str, int]:
-        """``stepping._curl_from_operands``' grouping flattened. Unguarded."""
-        needle = "curl0 = dtdx * ((c_y - c) + (b - b_z))"
-        return source.replace(needle, "curl0 = dtdx * (c_y - c + b - b_z)"), \
-            source.count(needle)
-
-    def m10_constitutive_association(source: str) -> Tuple[str, int]:
-        """Right-associated accumulation: same algebra, different float32 rounding."""
-        return _rewrite_block(
-            source,
-            ["a0 = a0 + kp_0 * src0", "a0 = a0 - km_0 * prev0"],
-            ["a0 = a0 + (kp_0 * src0 - km_0 * prev0)"])
-
-    def m11_advance_mask_dropped(source: str) -> Tuple[str, int]:
-        """The BFAST advance's OWN ownership mask undone on the forward arm.
-
-        A SEPARATE block from the curl's mask, applied to ``adv`` BEFORE the state
-        store (S:902). Guarded on ``BCX/BCY/BCZ == METALLIC`` and on the ``else``
-        (forward) arm, all of which ``wall_xyz`` enters."""
-        return _rewrite_block(
-            source,
-            ["if BCX == METALLIC:", "adv0 = tl.where(at_x, 0.0, adv0)",
-             "if BCY == METALLIC:", "adv1 = tl.where(at_y, 0.0, adv1)",
-             "if BCZ == METALLIC:", "adv2 = tl.where(at_z, 0.0, adv2)"],
-            ["adv0 = adv0", "adv1 = adv1", "adv2 = adv2"])
-
-    def m12_commuted_multiply(source: str) -> Tuple[str, int]:
-        """PREDICTED NULL: IEEE multiplication commutes; only the PTX may move."""
-        needle = "kp_0 * src0"
-        return source.replace(needle, "src0 * kp_0"), source.count(needle)
+             "tl.store(w0 + idx, src0, mask=live & dw0)",
+             "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)"])
 
     return (
-        ("m1_advance_history_term_dropped", "the IIR history", "caught",
-         m1_advance_history_term_dropped),
         ("m2_bfast_sums_become_differences", "sums vs differences", "caught",
          m2_bfast_sums_become_differences),
-        ("m3_tail_scaled_by_dtdx", "the tail's missing dtdx", "caught",
+        ("m3_tail_scaled_by_dtdx", "the increment's missing dtdx", "caught",
          m3_tail_scaled_by_dtdx),
-        ("m4_state_stored_before_the_advance_mask", "the advance mask's position",
-         "caught", m4_state_stored_before_the_advance_mask),
-        ("m5_tail_added_instead_of_subtracted", "the caller-subtracts convention",
-         "caught", m5_tail_added_instead_of_subtracted),
+        ("m5_tail_added_instead_of_subtracted", "the ladder's sign", "caught",
+         m5_tail_added_instead_of_subtracted),
         ("m6_wall_table_is_the_d_side", "the DIAGONAL vs the OFF-DIAGONAL table",
          "caught", m6_wall_table_is_the_d_side),
         ("m7_zero_metal_only_on_the_store", "the register-vs-memory carry",
          "caught", m7_zero_metal_only_on_the_store),
         ("m8_history_read_after_write", "the f_w ordering", "caught",
          m8_history_read_after_write),
-        ("m9_curl_parentheses_flattened", "the curl grouping", "caught",
-         m9_curl_parentheses_flattened),
-        ("m10_constitutive_association", "float32 association", "caught",
-         m10_constitutive_association),
-        ("m11_advance_mask_dropped", "the advance's own ownership mask", "caught",
-         m11_advance_mask_dropped),
-        ("m12_commuted_multiply", "commuted multiply", "null", m12_commuted_multiply),
-    )
+    ) + _SHARED_ROWS
+
+
+def mutation_case_check(name: str) -> None:
+    """Raise unless the case ``name`` is scored on carries what its branch needs."""
+    index = MUTATION_CASE.get(name, MUTATION_CASE_INDEX)
+    fold_passes.check_needs(name, MUTATION_NEEDS.get(name, ()), CASE_CARRIES[index],
+                            CASES[index][0])
 
 
 MUTATION_CASE: Dict[str, int] = {}
@@ -1457,6 +1424,10 @@ def mutation_arming_leg() -> Dict[str, Any]:
             findings.append(f"{name}: the rewrite matched nothing")
         if not parses:
             findings.append(f"{name}: the mutant does not parse ({error})")
+        try:
+            mutation_case_check(name)
+        except AssertionError as exc:
+            findings.append(f"{name}: {exc}")
     return {"leg": "mutation_arming", "device": False, "mutations": rows,
             "findings": findings, "passed": not findings}
 
@@ -1474,6 +1445,7 @@ def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, An
             rows.append(row)
             log(f"  mutation {name}: NOT ARMED")
             continue
+        mutation_case_check(name)
         mutant = compile_mutant(mutated, f"mutant_{index}_bfast_fused_B")
         case_index = MUTATION_CASE.get(name, MUTATION_CASE_INDEX)
         case = CASES[case_index]

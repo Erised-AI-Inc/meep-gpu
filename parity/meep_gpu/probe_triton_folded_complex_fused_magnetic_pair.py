@@ -20,10 +20,6 @@ DEVICE STATUS: **RELEASED 2026-08-21**, the GPU host RTX A6000 (physical GPU 1, 
       forever, and on every single-step leg, where ``fu_B`` does not move. The floor
       is now RELATIVE to the array path's own census plus a positive seam-output
       requirement — strictly stronger where it matters;
-    * ``armed:unlicensed_expansion_arm`` reported the two arms byte-identical
-      because it was scored on an UNPHASED case, where the only body that can tell
-      them apart — the per-axis Bloch block calling ``_rotate_field_left`` — is
-      compiled out. Moved to a Bloch case under ``subnormal_band``; it now diverges;
     * ``m6`` and ``m10`` replaced an ``if`` header with ``pass`` at the header's own
       indent and failed to IMPORT, which scores as UNARMED rather than as a catch;
     * ``m8`` (the ownership AND, the defect the real board's 2026-08-20 device run
@@ -36,6 +32,11 @@ DEVICE STATUS: **RELEASED 2026-08-21**, the GPU host RTX A6000 (physical GPU 1, 
       off-diagonal leg down with it.
 
     STILL NOT WIRED. A weld licenses a claim, not a dispatch.
+
+    THE RELEASE ABOVE PREDATES THE PER-PART ALIGNMENT. The kernel now steps the
+    chunk record's forms per stored part and applies each parity word as a real
+    scale per part; the release record describes the previous kernel and the gate
+    is re-run on the aligned one at certification.
 
 THE CLAIM THIS GATE IS ALLOWED TO SUPPORT, once it runs: for every configuration
 :func:`~meep_gpu.triton_kernels.folded_complex_fused_magnetic_pair.folded_complex_fused_magnetic_pair_coverage`
@@ -61,26 +62,25 @@ THE ONE THING THIS GATE MEASURES THAT NO SIBLING DOES
 ===========================================================================
 
 **THE PARITY CHAIN ORDER.** :mod:`.folded_fused_magnetic_pair` composes a
-destination's parities into one compile-time ``±1`` and states the result is
-independent of the order the array path applies its axes in — true under real
-storage, where every fill is an exact sign flip. Under complex storage the parity is
-a FULL complex multiply by ``(±1.0, +0.0)`` and complex float multiplication is not
-associative, so the order and the grouping both move bytes.
+destination's parities into one compile-time ``+-1``; this kernel applies them one
+at a time, in the driver's order, because that is what the array path does. Each
+application is the host-rounded ``+-1.0`` word times each stored part
+(``part_products.scale``, MEEP's per-``realnum`` connection multiply), which is
+exact on every word, signed zeros and subnormals included. So the order and the
+grouping move no byte, and this gate records that as two declared NULLS rather than
+assuming it:
 
-This gate does not take that on the Metal board's word. Two device legs measure it
-here, on this kernel:
+* ``m1_parity_chain_reordered`` applies the far axes DESCENDING instead of
+  ascending;
+* ``m2_parity_chain_folded`` multiplies the two parity words together and applies
+  the product once.
 
-* ``armed:parity_chain_reordered`` applies the far axes DESCENDING instead of
-  ascending. If the bytes still agree, the ordering claim is decorative on this
-  platform and the artifact must say so — the leg passes only when it DIVERGES;
-* ``armed:parity_chain_folded`` multiplies the two coefficient words together on
-  the host and applies the product once. Same rule.
-
-Both are scored on a case with a doubly-unowned corner at MIXED phases, because
-with equal phases the composition commutes bit-exactly and the question does not
-exist (the Triton fill tranche measured 0/128 diverging words at ``(+1,+1)`` and
-``(-1,-1)``, 8/128 at ``(+1,-1)``). ``parity_chain_reachability`` — a no-device leg
-— asserts that reachability rather than leaving it to the case name.
+``parity_chain_associativity`` measures both at the word layer (zero words move),
+and both are scored on a case with a doubly-unowned corner at MIXED phases, the
+only shape on which the question exists at all; ``parity_chain_reachability`` — a
+no-device leg — asserts that reachability rather than leaving it to the case name.
+The previous kernel's whole-complex parity product (a ``(+-1, +0)`` coefficient
+with its zero cross terms) is what made the order observable at signed zeros.
 
 ===========================================================================
 WHAT THE GATE REFUSES TO INFER
@@ -125,10 +125,7 @@ does not time.
 
 THE SUBNORMAL POLICY IS AN ARGUMENT, NOT A DEFAULT DECISION. ``--subnormal-policy``
 drives every executor before the first device compile and the artifact records the
-stamp. The EXPANSION licence is policy-conditional: a keep-cut probe read by a flush
-run licenses nothing, and this gate refuses before its first leg rather than
-measuring against a broken comparison. Run it ONCE PER POLICY, each with the probe
-artifact cut under that policy, and keep both artifacts.
+stamp. Run it ONCE PER POLICY and keep both artifacts.
 
 Usage::
 
@@ -139,7 +136,6 @@ Usage::
 
     # CUDA host, verified-empty device
     CUDA_VISIBLE_DEVICES=<UUID of a verified-empty device> \\
-    MEEP_GPU_COMPLEX_EXPANSION_PROBE=<probe cut under the same policy> \\
     python -u parity/meep_gpu/probe_triton_folded_complex_fused_magnetic_pair.py \\
         --subnormal-policy keep --out parity/meep_gpu/results/<fresh-dir>/gate.json
 """
@@ -170,6 +166,8 @@ API_ROOT = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir))
 for _path in (HERE, API_ROOT):
     if _path not in sys.path:
         sys.path.insert(0, _path)
+
+import flush_vacuity  # noqa: E402 - the flush not-applicable rule, beside this file
 
 #: THE PER-CASE SEED IS A SHA-256 DIGEST OF THE CASE NAME, never ``hash()``.
 #: ``hash()`` of a str is salted per process (PYTHONHASHSEED), so a record naming a
@@ -313,8 +311,8 @@ MUTATION_STEPS = 3
 #: ``test_triton_folded_complex_fused_magnetic_pair`` checks each entry's guard
 #: against its scored case's constexprs.
 MUTATION_CASE: Dict[str, str] = {
-    # the ordering pair: two folded PERIODIC axes at DIFFERING phases, or the
-    # composition commutes bit-exactly and both are nulls by construction
+    # the ordering pair, declared nulls: two folded PERIODIC axes at DIFFERING
+    # phases, the one shape on which a null is a measurement rather than vacuous
     "m1_parity_chain_reordered": "xy_mixed_phase_periodic",
     "m2_parity_chain_folded": "xy_mixed_phase_periodic",
     # the triple composite exists only under three folded PERIODIC axes
@@ -323,16 +321,21 @@ MUTATION_CASE: Dict[str, str] = {
     "m4_far_parity_is_the_near_one": "y_fold_periodic",
     # an ODD full count, where `ny - 2` is a whole cell wrong
     "m5_reflect_row_baked": "y_fold_periodic_odd",
-    # the top-plane mask is emitted only under MIRROR_PERIODIC
+    # the top-plane mask is emitted only under MIRROR_PERIODIC, and it reaches a
+    # compared word only through a split-field auxiliary the case's layer keeps
     "m6_top_plane_mask_dropped": "y_fold_periodic",
     # any fold; the near fill runs on either mirror code
     "m7_near_source_index_three": "y_fold_metallic",
-    # a lane that is the SOURCE of one fill and the DESTINATION of the other
-    "m8_ownership_mask_not_ANDed": "xy_mixed_phase_periodic",
+    # a lane that is the SOURCE of one fill and the DESTINATION of the other, on a
+    # destination inside a layer
+    "m8_ownership_mask_not_ANDed": "xyz_mixed_phase_periodic_3d",
     "m9_destination_coefficient_reused": "y_fold_periodic",
     # a live wall
     "m10_wall_clear_dropped": "y_fold_periodic_wall_x",
-    "m11_curl_parens_flattened": "y_fold_periodic",
+    "m11_curl_pairwise_grouping": "y_fold_periodic",
+    # the chunk forms: a folded grid with a layer on y
+    "a2_whole_grid_recurrence": "y_fold_periodic",
+    "a3_constitutive_old_grouping": "y_fold_periodic",
     "m12_prev_read_after_the_store": "y_fold_periodic",
     "m13_far_fill_dropped": "y_fold_periodic",
     "m14_near_fill_dropped": "y_fold_metallic",
@@ -342,23 +345,12 @@ DEFAULT_MUTATION_CASE = "y_fold_periodic"
 
 #: Which VALUE CLASS each mutation is scored under. Default ``uniform``.
 #:
-#: THE TWO ORDERING MUTATIONS ARE SCORED UNDER ``zero_lattice``, and the class was
-#: chosen BY MEASUREMENT rather than by preference — twice.
-#:
-#: :func:`parity_chain_associativity_leg` sweeps the shipped multiply's two arms over
-#: signed zeros, the subnormal needles and ordinary values and counts **32 of 2048
-#: words moved by a RE-ORDER and 34 by a FOLD**, identically on both arms. Reading
-#: WHICH words move settles the class: with ``c_im`` bitwise ``+0.0`` the product
-#: ``(c_im * z_im) * -1.0`` is a SIGNED ZERO whose sign follows ``z_im``, and
-#: ``fma(c_re, z_re, that)`` canonicalizes ``-0 + +0`` to ``+0``. On every NORMAL
-#: operand the multiply is an exact sign flip and the composition commutes to the
-#: bit. So the defect lives at signed zeros and nowhere else.
-#:
-#: ``uniform(-0.25, 0.25)`` provably draws no signed zero. ``subnormal_band`` draws
-#: them only through its needles, one cell in sixteen, and the 2026-08-21 run scored
-#: both mutations there and measured both UNCAUGHT over three complete steps. That
-#: is a statement about the seeding, not about the kernel. ``zero_lattice`` is every
-#: cell a ``(±0, ±0)`` pair — the class the defect is reachable from.
+#: THE TWO ORDERING MUTATIONS ARE SCORED UNDER ``zero_lattice``: every cell a
+#: ``(+-0, +-0)`` pair, the class at which the previous whole-complex parity product
+#: made the order observable (signed zeros canonicalised by the zero cross terms).
+#: Per part each application is exact, so both are declared nulls, and the null is
+#: measured where a defect of that kind would live rather than on ``uniform``
+#: operands, which provably draw no signed zero.
 MUTATION_VALUE_CLASS: Dict[str, str] = {
     "m1_parity_chain_reordered": "zero_lattice",
     "m2_parity_chain_folded": "zero_lattice",
@@ -367,12 +359,11 @@ DEFAULT_MUTATION_VALUE_CLASS = "uniform"
 
 #: Per-mutation step budget, where :data:`MUTATION_STEPS` is not enough. Three
 #: complete steps is the default because a defect that needs more than that is
-#: usually a reachability problem rather than a horizon one — but two classes of
-#: defect here really are horizon questions and are given room rather than declared
-#: unreachable at the first budget that missed them:
+#: usually a reachability problem rather than a horizon one — but two classes are
+#: given room:
 #:
-#: * the parity CHAIN ORDER, whose word-layer sweep says the defect is real (32 of
-#:   2048 words) but which needs a signed zero to arrive at the ghost SOURCE lane;
+#: * the parity CHAIN ORDER, declared null: thirty steps under the +-0 lattice is the
+#:   horizon the null is claimed over;
 #: * the ownership AND, whose violation is a DATA RACE — non-manifestation over a
 #:   short horizon is not absence, and a longer one is the only thing a byte gate
 #:   can offer against it.
@@ -382,37 +373,20 @@ MUTATION_STEPS_FOR: Dict[str, int] = {
     "m8_ownership_mask_not_ANDed": 30,
 }
 
-#: What establishes that a mutation declared ``unreached`` is a REAL defect.
+#: What establishes that a mutation declared ``unreached`` is a REAL defect. Empty
+#: since the per-part alignment: the two parity-chain mutations it named are nulls
+#: now (``+-1.0`` parity words commute and fold exactly, part by part).
 #:
 #: ``unreached`` is a third expectation beside ``caught`` and ``null``, and it exists
 #: because collapsing the two is how a gate lies in both directions. A ``null`` says
 #: THE REWRITE CHANGES NOTHING — the defect is not a defect. ``unreached`` says the
 #: defect IS real, names what proves it, and records that THIS gate's device legs do
-#: not reach it. Calling the second a null would retire a hazard without carrying
-#: it; calling it a catch would be false.
+#: not reach it.
 #:
 #: THE VERDICT RULE IS NOT SOFTER FOR IT. An ``unreached`` mutation must come back
 #: UNCAUGHT — a catch means the declaration is stale and the entry must move to
 #: ``caught`` — and it must name its evidence here, or the gate fails.
-MUTATION_EVIDENCE: Dict[str, str] = {
-    "m1_parity_chain_reordered":
-        "parity_chain_associativity_leg measures the defect REAL at the word layer: "
-        "re-ordering a two-parity chain moves 32 of 2048 uint32 words, identically "
-        "on BOTH expansion arms, and every moved word is at a signed zero. What this "
-        "gate could not do is get such a word to a ghost SOURCE lane: 30 complete "
-        "steps on xy_mixed_phase_periodic under the +-0 lattice (937 negative-zero "
-        "words seeded) left every compared volume byte-identical. The ORDER is held "
-        "by construction — parity_chain_leg compares the shipped sequence against "
-        "folded_complex_fused_magnetic_pair.parity_chain block by block — and NOT by "
-        "a whole-step device leg. A synthetic bare-array leg with planted words at "
-        "the source lane is what would close it.",
-    "m2_parity_chain_folded":
-        "the same sweep measures 34 of 2048 words moved by FOLDING the chain into "
-        "one coefficient, on both arms, again all at signed zeros; and the same 30 "
-        "complete steps did not reach one. Held by construction in parity_chain_leg "
-        "(which asserts no two parity coefficients are ever multiplied together in "
-        "the shipped body) rather than by measurement here.",
-}
+MUTATION_EVIDENCE: Dict[str, str] = {}
 
 #: THE METAL BOARD REACHED THE SAME POSITION INDEPENDENTLY, and that is worth having
 #: beside the two entries above rather than only in a report.
@@ -425,9 +399,8 @@ MUTATION_EVIDENCE: Dict[str, str] = {
 #: released, and both needles report diff=0 — same finding, different backend,
 #: different ``c_mul`` spelling and a different negation lowering.
 #:
-#: The two boards' word-layer numbers differ (Metal 8 of 128 on its table, Triton 32
-#: of 2048 on this one) because the tables differ; what agrees is the SHAPE of the
-#: result — real at the word layer, unreached at the whole-step layer.
+#: Both boards now record the two rewrites as nulls; the Metal board's residual on
+#: its engineered table belonged to its previous ``c_mul`` spelling.
 CROSS_BOARD_CORROBORATION: str = (
     "gate_metal_folded_complex_fused_magnetic_pair.py:1078-1089 records the same "
     "two rewrites as NULL_EDITS with 0 differing words over 12 device launches; "
@@ -545,6 +518,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/complex_fused_magnetic_pair.py",
         "meep_gpu/triton_kernels/special_kz.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/stepping.py",
@@ -568,7 +542,6 @@ _SOURCE_OF = {
     "folded_complex_fused_curl_constitutive_B":
         "folded_complex_fused_magnetic_pair.py",
     "_carry_ghost_complex": "folded_complex_fused_magnetic_pair.py",
-    "_mul_imag_coefficient_left": "special_kz.py",
 }
 
 
@@ -665,22 +638,20 @@ def _statements(text: str) -> List[str]:
 #: folded complex curl. Not a paraphrase: each of these is asserted present in BOTH
 #: texts, and the certified text is read from the file rather than quoted here.
 CURL_LINES: Tuple[str, ...] = (
-    "t0_re = ((c_y_re - c_re) + (b_re - b_z_re))",
-    "t0_im = ((c_y_im - c_im) + (b_im - b_z_im))",
-    "t1_re = ((a_z_re - a_re) + (c_re - c_x_re))",
-    "t1_im = ((a_z_im - a_im) + (c_im - c_x_im))",
-    "t2_re = ((b_x_re - b_re) + (a_re - a_y_re))",
-    "t2_im = ((b_x_im - b_im) + (a_im - a_y_im))",
-    "curl0_re, curl0_im = _mul_coefficient_left(dtdx, t0_re, t0_im, EXPANSION)",
-    "curl1_re, curl1_im = _mul_coefficient_left(dtdx, t1_re, t1_im, EXPANSION)",
-    "curl2_re, curl2_im = _mul_coefficient_left(dtdx, t2_re, t2_im, EXPANSION)",
-    "q_re, q_im = _mul_field_left(p0_re, p0_im, km_y, EXPANSION)",
-    "n0_re, n0_im = _mul_field_left(q_re, q_im, si_y, EXPANSION)",
-    "r_re = (r_re + n0_re) - p0_re",
-    "r_im = (r_im + n0_im) - p0_im",
-    "v0_re, v0_im = _mul_field_left(r_re, r_im, si_z, EXPANSION)",
-    "v1_re, v1_im = _mul_field_left(r_re, r_im, si_x, EXPANSION)",
-    "v2_re, v2_im = _mul_field_left(r_re, r_im, si_y, EXPANSION)",
+    "r_re, r_im = _connect(c_re, c_im, cxr, cxi, CNX)",
+    "r_re, r_im = _connect(a_re, a_im, czr, czi, CNZ)",
+    "presence = tl.load(cb + RECORD_PRESENCE)",
+    "curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)",
+    "curl0_im = curl_stencil(c_y_im, c0_im, b0_im, b_z_im, dtdx, py, pz)",
+    "curl1_re = curl_stencil(a_z_re, a1_re, c1_re, c_x_re, dtdx, pz, px)",
+    "curl1_im = curl_stencil(a_z_im, a1_im, c1_im, c_x_im, dtdx, pz, px)",
+    "curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)",
+    "curl2_im = curl_stencil(b_x_im, b2_im, a2_im, a_y_im, dtdx, px, py)",
+    "du0 = record_in(cb, lattice + 8, k)",
+    "du1 = record_in(cb, lattice + 0, i)",
+    "du2 = record_in(cb, lattice + 4, j)",
+    "p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)",
+    "tl.store(u0 + 2 * idx, n0_re, mask=live & du0)",
     "ox = si * nyz + j * nz + k",
     "oy = i * nyz + sj * nz + k",
     "oz = i * nyz + j * nz + sk",
@@ -688,24 +659,35 @@ CURL_LINES: Tuple[str, ...] = (
     "at_x, at_y, at_z = i == 0, j == 0, k == 0",
 )
 
-#: Every arithmetic line the fused body must reproduce VERBATIM from the certified
-#: UNFOLDED complex pair, which is itself ``bloch_constitutive_step``'s ``SCALE = 0``
-#: arm with ``src`` bound to a register.
+#: Every arithmetic line the fused body must reproduce from the certified UNFOLDED
+#: complex pair, which is itself ``bloch_constitutive_step``'s H arm per part. The one
+#: substitution is the register: the unfolded pair binds ``src`` to the curl half's
+#: ``v?``; this body passes ``v?`` itself, so each line is checked here with ``src``
+#: read as the component's register (:func:`_bound_to_register`).
 CONSTITUTIVE_LINES: Tuple[str, ...] = (
-    "t_re, t_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)",
-    "t_re, t_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)",
-    "t_re, t_im = _mul_coefficient_left(kp_1, src_re, src_im, EXPANSION)",
-    "t_re, t_im = _mul_coefficient_left(km_1, prev_re, prev_im, EXPANSION)",
-    "t_re, t_im = _mul_coefficient_left(kp_2, src_re, src_im, EXPANSION)",
-    "t_re, t_im = _mul_coefficient_left(km_2, prev_re, prev_im, EXPANSION)",
+    "constitutive_form(a_re, prev_re, src_re, kp_0, km_0, dw0)",
+    "constitutive_form(a_im, prev_im, src_im, kp_0, km_0, dw0)",
+    "constitutive_form(a_re, prev_re, src_re, kp_1, km_1, dw1)",
+    "constitutive_form(a_im, prev_im, src_im, kp_1, km_1, dw1)",
+    "constitutive_form(a_re, prev_re, src_re, kp_2, km_2, dw2)",
+    "constitutive_form(a_im, prev_im, src_im, kp_2, km_2, dw2)",
+    "prev_re = tl.where(start, src_re, prev_re)",
+    "a_re = tl.where(start, src_re, a_re)",
 )
+
+
+def _bound_to_register(line: str, component: int) -> str:
+    """One unfolded constitutive line with ``src`` read as component ``m``'s register."""
+    return (line.replace("src_re", f"v{component}_re")
+            .replace("src_im", f"v{component}_im"))
+
 
 #: Spellings the kernel must NOT contain. Each is a measured platform fact rather
 #: than a style rule.
 FORBIDDEN_SPELLINGS: Tuple[Tuple[str, str], ...] = (
-    ("PHASE *", "the parity is a full complex multiply under complex storage, not "
-                "a scalar sign flip (folded_mirror_ghost_fill_complex's own "
-                "measurement: 8/128 engineered words at BOTH parities)"),
+    ("PHASE *", "the parity enters as the host-rounded word passed per axis "
+                "(folded_complex.mirror_parity_coefficients), never as a constexpr "
+                "scale the kernel would have to be specialised on"),
     ("= -(", "Triton lowers unary `-x` as `0.0 - x` and canonicalizes signed "
              "zeros; the licensed spelling is `* -1.0` (special_kz.py:305-313)"),
     ("np.complex64", "the parity words are host-rounded ONCE by "
@@ -740,15 +722,19 @@ def transcription_leg() -> Dict[str, Any]:
         if line not in constitutive:
             findings.append(
                 f"the certified complex pair no longer carries {line!r}")
-        if line not in ours:
-            findings.append(f"the fused body does not carry the certified "
-                            f"constitutive line {line!r}")
+        components = ([int(line.split("kp_")[1][0])] if "kp_" in line
+                      else [0, 1, 2])
+        for component in components:
+            bound = _bound_to_register(line, component)
+            if bound not in ours:
+                findings.append(f"the fused body does not carry the certified "
+                                f"constitutive line {line!r} as {bound!r}")
 
     # THE ONE EDIT TO THE CURL, in both directions.
     for component in range(3):
-        certified_load = (f"e_re = tl.load(f{component} + 2 * idx, mask=live, "
+        certified_load = (f"curl_form(tl.load(f{component} + 2 * idx, mask=live, "
                           f"other=0.0)")
-        ours_load = (f"e_re = tl.load(f{component} + 2 * idx, mask=own{component}, "
+        ours_load = (f"curl_form(tl.load(f{component} + 2 * idx, mask=own{component}, "
                      f"other=0.0)")
         if certified_load not in curl:
             findings.append(f"the certified curl's B load moved: {certified_load!r}")
@@ -762,12 +748,13 @@ def transcription_leg() -> Dict[str, Any]:
                 f"writes, which is the race the ownership move exists to remove")
 
     # THE GHOST CONSTITUTIVE IS THE OWNED CELL'S SEQUENCE, MOVED.
-    order = ("prev_re = tl.load(w + 2 * dst",
-             "tl.store(w + 2 * dst, ghost_re",
-             "acc_re = tl.load(h + 2 * dst",
-             "_mul_coefficient_left(kp_d, ghost_re, ghost_im, EXPANSION)",
-             "_mul_coefficient_left(km_d, prev_re, prev_im, EXPANSION)",
-             "tl.store(h + 2 * dst, acc_re",
+    order = ("prev_re = tl.load(w + 2 * dst, mask=mask & dw_d",
+             "tl.store(w + 2 * dst, ghost_re, mask=mask & dw_d",
+             "acc_re = tl.load(h + 2 * dst, mask=mask & dw_d",
+             "prev_re = tl.where(start, ghost_re, prev_re)",
+             "acc_re = tl.where(start, ghost_re, acc_re)",
+             "constitutive_form(acc_re, prev_re, ghost_re, kp_d, km_d, dw_d)",
+             "constitutive_form(acc_im, prev_im, ghost_im, kp_d, km_d, dw_d)",
              "tl.store(f + 2 * dst, ghost_re")
     positions = []
     for fragment in order:
@@ -786,21 +773,22 @@ def transcription_leg() -> Dict[str, Any]:
         if spelling in ours:
             findings.append(f"the fused body contains {spelling!r}: {why}")
 
-    # ONLY the licensed multiply helpers.
+    # ONLY the declared multiply helpers.
     from meep_gpu.triton_kernels import folded_complex_fused_magnetic_pair as module  # noqa: PLC0415
 
     tree = ast.parse("def _f():\n" + textwrap.indent(ours, "    "))
     called = {node.func.id for node in ast.walk(tree)
               if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
     multiplies = sorted(name for name in called
-                        if name.startswith("_mul") or name.startswith("_rotate"))
-    unlicensed = [name for name in multiplies
-                  if name not in module.LICENSED_MULTIPLY_HELPERS]
-    if unlicensed:
+                        if name.startswith("_mul") or name.startswith("_rotate")
+                        or name == "_connect")
+    undeclared = [name for name in multiplies
+                  if name not in module.MULTIPLY_HELPERS]
+    if undeclared:
         findings.append(
-            f"the fused body calls {unlicensed}, which are not in "
-            f"LICENSED_MULTIPLY_HELPERS: a new operand orientation needs its own "
-            f"probe pattern before it can be licensed")
+            f"the fused body calls {undeclared}, which are not in "
+            f"MULTIPLY_HELPERS: a new operand orientation is a new helper "
+            f"and needs its own declaration")
 
     return {
         "leg": "transcription",
@@ -808,7 +796,7 @@ def transcription_leg() -> Dict[str, Any]:
         "curl_lines": len(CURL_LINES),
         "constitutive_lines": len(CONSTITUTIVE_LINES),
         "multiply_helpers_called": multiplies,
-        "licensed_multiply_helpers": list(module.LICENSED_MULTIPLY_HELPERS),
+        "multiply_helpers": list(module.MULTIPLY_HELPERS),
         "fused_statements": len(_statements(ours)),
         "findings": findings,
         "passed": not findings,
@@ -838,13 +826,28 @@ def _kernel_node():
     raise AssertionError("the shipped kernel is not defined at module scope")
 
 
+def _chain_of(expression) -> Tuple[List[Tuple[int, str]], str]:
+    """The ``(axis, pass)`` chain an expression applies, innermost first, and the
+    operand it is applied to.
+
+    A carry's ghost is a product chain of parity WORDS (``n?r`` near, ``d?r`` far) on
+    the owned register, spelled ``d1r * (n0r * v0_re)``.
+    """
+    if (isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Mult)
+            and isinstance(expression.left, ast.Name)
+            and expression.left.id in COEFFICIENT_ARGUMENTS):
+        chain, operand = _chain_of(expression.right)
+        return chain + [COEFFICIENT_ARGUMENTS[expression.left.id]], operand
+    return [], ast.unparse(expression)
+
+
 def carry_blocks() -> List[Dict[str, Any]]:
     """Every emitted carry block, PARSED off the shipped body.
 
-    ``chain`` is the ORDERED ``(axis, pass)`` list taken from the
-    ``_mul_imag_coefficient_left`` calls' first argument — the kernel's own
-    sequence. Nothing here computes a parity or a ghost value: a leg that
-    re-implemented the kernel would mirror its defects instead of executing them.
+    ``chain`` is the ORDERED ``(axis, pass)`` list read off the ghost expression's
+    product chain — the kernel's own sequence, innermost first. Nothing here
+    computes a parity or a ghost value: a leg that re-implemented the kernel would
+    mirror its defects instead of executing them.
     """
     out: List[Dict[str, Any]] = []
     for statement in _kernel_node().body:
@@ -859,22 +862,19 @@ def carry_blocks() -> List[Dict[str, Any]]:
             raise AssertionError(
                 f"the block `if {ast.unparse(statement.test)}:` emits "
                 f"{len(calls)} carries; this parser assumes one per block")
-        chain: List[Tuple[int, str]] = []
-        for inner in statement.body:
-            if not isinstance(inner, ast.Assign):
-                continue
-            value = inner.value
-            if (isinstance(value, ast.Call)
-                    and getattr(value.func, "id", "") == "_mul_imag_coefficient_left"):
-                chain.append(COEFFICIENT_ARGUMENTS[value.args[0].id])
         call = calls[0]
+        chain, operand = _chain_of(call.args[4])
+        chain_im, operand_im = _chain_of(call.args[5])
         out.append({
             "guard": ast.unparse(statement.test),
             "target": call.args[0].id,
             "destination": ast.unparse(call.args[3]),
             "coefficient": ast.unparse(call.args[6]),
-            "mask": ast.unparse(call.args[8]),
+            "membership": ast.unparse(call.args[8]),
+            "mask": ast.unparse(call.args[10]),
             "chain": tuple(chain),
+            "chain_im": tuple(chain_im),
+            "operands": (operand, operand_im),
         })
     return out
 
@@ -928,6 +928,25 @@ def parity_chain_leg() -> Dict[str, Any]:
                 continue
             matched.add(id(hits[0]))
             block = hits[0]
+            # BOTH PARTS TAKE THE SAME CHAIN, ON THE COMPONENT'S OWN REGISTER.
+            if block["chain_im"] != block["chain"]:
+                findings.append(
+                    f"component {component}, far {subset}, near {carries_near}: the "
+                    f"imaginary part applies {block['chain_im']}, the real part "
+                    f"{block['chain']}")
+            if block["operands"] != (f"v{component}_re", f"v{component}_im"):
+                findings.append(
+                    f"component {component}, far {subset}, near {carries_near}: the "
+                    f"chain is applied to {block['operands']}, not to the "
+                    f"component's own register")
+            # THE MEMBERSHIP MOVES WITH THE COEFFICIENT.
+            wanted_membership = (f"dw_d{component}" if carries_near
+                                 else f"dw{component}")
+            if block["membership"] != wanted_membership:
+                findings.append(
+                    f"component {component}, far {subset}, near {carries_near}: the "
+                    f"destination takes membership {block['membership']!r}, expected "
+                    f"{wanted_membership!r}")
             # THE COEFFICIENT INDEX MOVES ONLY FOR THE NEAR HALF.
             wanted = f"kp_d{component}" if carries_near else f"kp_{component}"
             if block["coefficient"] != wanted:
@@ -956,8 +975,8 @@ def parity_chain_leg() -> Dict[str, Any]:
             if f"{left} * {right}" in ours:
                 findings.append(
                     f"the kernel multiplies two parity coefficients together "
-                    f"({left} * {right}); folding a chain into one word moves "
-                    f"bytes under complex storage")
+                    f"({left} * {right}); it transcribes the driver's applications "
+                    f"one at a time, not their product")
     return {
         "leg": "parity_chain",
         "device": False,
@@ -1040,7 +1059,6 @@ def parity_chain_reachability_leg() -> Dict[str, Any]:
             "rows": rows, "findings": findings, "passed": not findings}
 
 
-
 # ---------------------------------------------------------------------------
 # NO-DEVICE LEG — is the parity chain's ORDER observable AT ALL on this backend?
 # ---------------------------------------------------------------------------
@@ -1069,30 +1087,12 @@ def _fma32(a: float, b: float, c: float) -> np.float32:
 
 
 def _parity_multiply(c_re, c_im, z_re, z_im, arm: int):
-    """``special_kz._mul_imag_coefficient_left``'s two arms, transcribed.
-
-    FMA_V1 (arm 1)::
-
-        out_re = tl.math.fma(c_re, z_re, (c_im * z_im) * -1.0)
-        out_im = tl.math.fma(c_re, z_im, c_im * z_re)
-
-    NAIVE (arm 0)::
-
-        out_re = (c_re * z_re) - (c_im * z_im)
-        out_im = (c_re * z_im) + (c_im * z_re)
-
-    The lines above are the shipped ones (special_kz.py:328-334) and the leg asserts
-    they are still there before it trusts this transcription.
-    """
-    c_re = np.float32(c_re); c_im = np.float32(c_im)
-    z_re = np.float32(z_re); z_im = np.float32(z_im)
-    if arm == 1:
-        out_re = _fma32(c_re, z_re, np.float32(np.float32(c_im * z_im) * np.float32(-1.0)))
-        out_im = _fma32(c_re, z_im, np.float32(c_im * z_re))
-    else:
-        out_re = np.float32(np.float32(c_re * z_re) - np.float32(c_im * z_im))
-        out_im = np.float32(np.float32(c_re * z_im) + np.float32(c_im * z_re))
-    return out_re, out_im
+    """The carry's parity product, transcribed: the real parity word times each
+    stored part (``d1r * v0_re``, ``d1r * v0_im``). ``arm`` and ``c_im`` are
+    accepted and ignored: the per-part product has one body, and the imaginary
+    coefficient word is bitwise ``+0`` and never launched."""
+    c = np.float32(c_re)
+    return np.float32(c * np.float32(z_re)), np.float32(c * np.float32(z_im))
 
 
 def _words(pair) -> Tuple[int, int]:
@@ -1101,22 +1101,20 @@ def _words(pair) -> Tuple[int, int]:
 
 
 def parity_chain_associativity_leg() -> Dict[str, Any]:
-    """IS THE ORDERING OBSERVABLE? Measured, on the shipped multiply's own arms.
+    """IS THE ORDERING OBSERVABLE? Measured, on the shipped per-part product.
 
     THE MEASUREMENT THIS LEG EXISTS FOR. Two armed device mutations re-order and
-    fold this kernel's parity chain, and on 2026-08-21 BOTH came back UNCAUGHT —
-    byte-identical over three complete steps on a mixed-phase two-fold grid seeded
-    in the subnormal band. A null is only honest if the question behind it is
-    settled rather than hidden, so it is settled here, at the word layer, on the
-    arithmetic itself rather than on the whole-step state.
+    fold this kernel's parity chain, and both are declared NULLS. A null is only
+    honest if the question behind it is settled rather than hidden, so it is settled
+    here, at the word layer, on the arithmetic itself rather than on the whole-step
+    state.
 
-    THE ARITHMETIC. The parity coefficients are
-    :func:`.folded_complex.mirror_parity_coefficients`' output: ``c_re`` exactly
-    ``±1.0`` and ``c_im`` BITWISE ``+0.0`` at both mirror phases and for the near and
-    far coefficient alike. Under both arms the multiply then reduces to a sign flip
-    plus a signed-zero addend, which is exact on every finite operand — so composing
-    two of them commutes and folds to the bit. This leg sweeps
-    :data:`PARITY_WORDS` x the four ``(±1, ±1)`` coefficient pairs and COUNTS.
+    THE ARITHMETIC. The parity words are
+    :func:`.folded_complex.mirror_parity_coefficients`' real words: exactly
+    ``+-1.0`` at both mirror phases and for the near and far coefficient alike, each
+    multiplied into each stored part. ``x * (+-1.0)`` is exact on every word, so
+    composing two of them commutes and folds to the bit. This leg sweeps
+    :data:`PARITY_WORDS` x the four ``(+-1, +-1)`` coefficient pairs and COUNTS.
 
     WHAT IT DOES NOT LICENSE. A zero count here says the ORDER is unobservable for
     THIS coefficient class on THIS backend — it does not say the kernel may apply
@@ -1129,17 +1127,15 @@ def parity_chain_associativity_leg() -> Dict[str, Any]:
     NULL — a declared null must agree with the arithmetic, or one of the two is
     wrong.
     """
-    shipped = _shipped_text("_mul_imag_coefficient_left")
+    shipped = _shipped_text("folded_complex_fused_curl_constitutive_B")
     findings: List[str] = []
-    for line in ("out_re = tl.math.fma(c_re, z_re, (c_im * z_im) * -1.0)",
-                 "out_im = tl.math.fma(c_re, z_im, c_im * z_re)",
-                 "out_re = (c_re * z_re) - (c_im * z_im)",
-                 "out_im = (c_re * z_im) + (c_im * z_re)"):
+    for line in ("d1r * (d0r * v2_re)", "d1r * (d0r * v2_im)",
+                 "d1r * (n0r * v0_re)", "d1r * (n0r * v0_im)"):
         if line not in shipped:
             findings.append(
-                f"special_kz._mul_imag_coefficient_left no longer carries {line!r}; "
-                f"this leg transcribes that body and cannot vouch for a copy of "
-                f"something that moved")
+                f"the kernel no longer spells the per-part parity product {line!r}; "
+                f"this leg transcribes it and cannot vouch for a copy of something "
+                f"that moved")
 
     from meep_gpu.triton_kernels.folded_complex import (  # noqa: PLC0415
         mirror_parity_coefficients,
@@ -1290,7 +1286,7 @@ def case_constexprs(case) -> Dict[str, Any]:
     from meep_gpu.stepping import _boundary_kinds  # noqa: PLC0415
     from meep_gpu.triton_kernels import folded_complex_fused_magnetic_pair as module  # noqa: PLC0415
     from meep_gpu.triton_kernels.complex_fields import (  # noqa: PLC0415
-        _phase_arguments, bloch_phase_table,
+        bloch_phase_table, connection_arguments,
     )
     from meep_gpu.triton_kernels.coverage import zero_metal_axes  # noqa: PLC0415
     from meep_gpu.triton_kernels.folded_complex import (  # noqa: PLC0415
@@ -1306,7 +1302,7 @@ def case_constexprs(case) -> Dict[str, Any]:
             raise AssertionError(f"{case[0]}: folded_axis_kinds refused: {reasons}")
         codes = tuple(int(value) for value in codes)
         walls = tuple(bool(value) for value in zero_metal_axes(grid))
-        phased, _values = _phase_arguments(
+        connections, _values = connection_arguments(
             bloch_phase_table(grid, _boundary_kinds(grid, driver.pml)),
             backward=bool(module.BACKWARD))
         near = tuple(code in module.MIRROR_CODES for code in codes)
@@ -1320,7 +1316,8 @@ def case_constexprs(case) -> Dict[str, Any]:
             "NEAR_X": near[0], "NEAR_Y": near[1], "NEAR_Z": near[2],
             "FAR_X": far[0], "FAR_Y": far[1], "FAR_Z": far[2],
             "ZM_X": walls[0], "ZM_Y": walls[1], "ZM_Z": walls[2],
-            "PHX": int(phased[0]), "PHY": int(phased[1]), "PHZ": int(phased[2]),
+            "CNX": int(connections[0]), "CNY": int(connections[1]),
+            "CNZ": int(connections[2]),
             "shape": tuple(int(value) for value in grid.shape),
             "parity": module.parity_coefficient_words(grid),
             "ghost_destinations": ghost_destinations(near, far),
@@ -1394,15 +1391,7 @@ def predicate_leg() -> Dict[str, Any]:
     from meep_gpu.fields import Fields  # noqa: PLC0415
     from meep_gpu.grid import Grid, Mirror  # noqa: PLC0415
     from meep_gpu.pml import PML  # noqa: PLC0415
-    from meep_gpu.triton_kernels import folded_complex  # noqa: PLC0415
     from meep_gpu.triton_kernels import folded_complex_fused_magnetic_pair as module  # noqa: PLC0415
-
-    def probe_record(patterns=None):
-        from meep_gpu.test_triton_complex_fields import stamp_probe_record  # noqa: PLC0415
-
-        names = module.PRODUCT_PROBE_PATTERNS if patterns is None else patterns
-        return stamp_probe_record(
-            {"backend": "cupy", "patterns": {name: "FMA_V1" for name in names}})
 
     def build(boundaries="periodic", mirrors=(("Y", 1),), complex_storage=True,
               thickness=None, extent=2.0, offdiagonal=False):
@@ -1459,20 +1448,10 @@ def predicate_leg() -> Dict[str, Any]:
     findings: List[str] = []
 
     def ask(name, expect_covered, needle=None, **kwargs):
-        # THE RUN POLICY IS DECLARED, NOT LEFT IMPLICIT. Every record built here is
-        # stamped 'keep', and the complex families' policy clause FAILS CLOSED when
-        # the policy in force can be neither read nor declared — which is what a
-        # laptop with no CuPy is. Declaring it states the premise this leg's
-        # questions are about; it does not soften any clause.
-        from meep_gpu.expansion_refusal import declaring_run_policy  # noqa: PLC0415
-
         sources = kwargs.pop("sources", ())
-        probe = kwargs.pop("probe", None)
         fields, pml = build(**kwargs)
-        with declaring_run_policy("keep"):
-            verdict = module.folded_complex_fused_magnetic_pair_coverage(
-                fields, pml, sources,
-                probe=probe if probe is not None else probe_record())
+        verdict = module.folded_complex_fused_magnetic_pair_coverage(
+            fields, pml, sources)
         residual = [r for r in verdict.reasons if "array module" not in r]
         covered = not residual
         rows.append({"case": name, "expected_covered": expect_covered,
@@ -1510,10 +1489,6 @@ def predicate_leg() -> Dict[str, Any]:
         complex_storage=False)
     ask("unfolded_refused", False, needle="no mirror plane is active", mirrors=())
     ask("no_pml_refused", False, needle="no active PML", thickness=0.0)
-    ask("base_probe_only_refused", False,
-        needle=folded_complex.PARITY_PROBE_PATTERN,
-        probe=probe_record(folded_complex.PROBE_PATTERNS))
-    ask("no_probe_refused", False, needle="expansion probe artifact", probe={})
 
     return {"leg": "predicate", "device": False, "rows": rows,
             "findings": findings, "passed": not findings}
@@ -1566,12 +1541,12 @@ def seam_binding_leg() -> Dict[str, Any]:
     # uses. TRAP, paid for on this track: a module carried the far fill while its
     # REPLACES tuple said it did not, and a passing test pinned the stale tuple.
     carried = {
-        "step_B": "curl0_re, curl0_im = _mul_coefficient_left(dtdx" in body,
+        "step_B": "curl0_re = curl_stencil(" in body,
         "fill_B": all(f"if NEAR_{axis}:" in body for axis in "XYZ"),
         "zero_metal_B": all(f"if ZM_{axis}:" in body for axis in "XYZ"),
         "fill_folded_far_ghosts_B": all(f"if FAR_{axis}:" in body for axis in "XYZ"),
         "update_H": "_carry_ghost_complex" in body
-                    and "_mul_coefficient_left(kp_0, src_re" in body,
+                    and "constitutive_form(a_re, prev_re, v0_re, kp_0, km_0, dw0)" in body,
     }
     for name, present in carried.items():
         if name in module.REPLACES and not present:
@@ -1586,49 +1561,6 @@ def seam_binding_leg() -> Dict[str, Any]:
     return {"leg": "seam_binding", "device": False,
             "replaces": list(module.REPLACES), "carried": carried,
             "findings": findings, "passed": not findings}
-
-
-# ---------------------------------------------------------------------------
-# NO-DEVICE LEG 6 — the expansion licence
-# ---------------------------------------------------------------------------
-
-def expansion_licence_leg() -> Dict[str, Any]:
-    """The EXTENDED pattern set is required, and each way a record can fail it."""
-    from meep_gpu.test_triton_complex_fields import stamp_probe_record  # noqa: PLC0415
-    from meep_gpu.triton_kernels import folded_complex  # noqa: PLC0415
-    from meep_gpu.triton_kernels import folded_complex_fused_magnetic_pair as module  # noqa: PLC0415
-
-    findings: List[str] = []
-    rows: List[Dict[str, Any]] = []
-
-    def record(patterns, value="FMA_V1"):
-        return stamp_probe_record(
-            {"backend": "cupy", "patterns": {name: value for name in patterns}})
-
-    full = record(module.PRODUCT_PROBE_PATTERNS)
-    base = record(folded_complex.PROBE_PATTERNS)
-    for name, artifact, expect in (
-        ("extended_record_licenses", full, True),
-        ("base_only_record_refuses", base, False),
-        ("neither_arm_refuses",
-         record(module.PRODUCT_PROBE_PATTERNS, "NEITHER"), False),
-        ("wrong_backend_refuses",
-         stamp_probe_record({"backend": "numpy", "patterns": {
-             name: "FMA_V1" for name in module.PRODUCT_PROBE_PATTERNS}}), False),
-    ):
-        expansion = folded_complex.parity_expansion_from_probe(artifact)
-        rows.append({"record": name, "expansion": expansion,
-                     "licensed": expansion is not None})
-        if (expansion is not None) != expect:
-            findings.append(f"{name}: expansion={expansion}, expected "
-                            f"licensed={expect}")
-    if set(module.PRODUCT_PROBE_PATTERNS) != set(folded_complex.PARITY_PROBE_PATTERNS):
-        findings.append(
-            "the product's pattern set is not folded_complex.PARITY_PROBE_PATTERNS; "
-            "the carry calls the fill's own multiply and must bind the fill's set")
-    return {"leg": "expansion_licence", "device": False,
-            "pattern_set": list(module.PRODUCT_PROBE_PATTERNS),
-            "rows": rows, "findings": findings, "passed": not findings}
 
 
 # ---------------------------------------------------------------------------
@@ -1948,7 +1880,7 @@ def install(driver_module, routes, counter: Dict[str, int], roles: Dict[int, str
                     for name, function in originals.items()]
 
 
-def separate_route(driver, probe):
+def separate_route(driver):
     """The three separately certified Triton products this launch replaces."""
     from meep_gpu.triton_kernels import folded_complex  # noqa: PLC0415
 
@@ -1959,20 +1891,20 @@ def separate_route(driver, probe):
     # exists to serve and would take the whole leg down with it — which is exactly
     # what it did on 2026-08-21 before this branch was written.
     curl = folded_complex.plan_folded_complex_pml_curl(
-        driver.fields, driver.pml, "step_B", probe=probe)
+        driver.fields, driver.pml, "step_B")
     constitutive = folded_complex.plan_folded_complex_constitutive(
-        driver.fields, driver.pml, "H", probe=probe)
+        driver.fields, driver.pml, "H")
     admission = "plain"
     if curl is None or constitutive is None:
         offdiag_curl = folded_complex.plan_folded_complex_offdiag_pml_curl(
-            driver.fields, driver.pml, "step_B", probe=probe)
+            driver.fields, driver.pml, "step_B")
         offdiag_constitutive = folded_complex.plan_folded_complex_offdiag_constitutive(
-            driver.fields, driver.pml, "H", probe=probe)
+            driver.fields, driver.pml, "H")
         if offdiag_curl is not None and offdiag_constitutive is not None:
             curl, constitutive = offdiag_curl, offdiag_constitutive
             admission = "offdiag"
     fill = folded_complex.plan_folded_mirror_ghost_fill_complex(
-        driver.fields, "B", probe=probe)
+        driver.fields, "B")
     missing = [name for name, plan in
                (("folded complex curl", curl), ("folded complex ghost fill", fill),
                 ("folded complex constitutive", constitutive)) if plan is None]
@@ -2025,10 +1957,10 @@ def fused_route(plan, driver=None, sources=(), bracket: bool = True):
 # The three-route leg
 # ---------------------------------------------------------------------------
 
-def run_leg(cp, name: str, case, steps: int, product, probe,
+def run_leg(cp, name: str, case, steps: int, product,
             value_class: str = "uniform", mutant: Any = None,
             install_fused: bool = True, freeze_magnetic: bool = False,
-            electric: bool = True, expansion: Optional[int] = None,
+            electric: bool = True,
             parity_override: Optional[Sequence[Tuple[float, float]]] = None,
             magnetic: bool = False, bracket: bool = True) -> Dict[str, Any]:
     """Three routes in lockstep; stop at the FIRST byte divergence.
@@ -2060,10 +1992,10 @@ def run_leg(cp, name: str, case, steps: int, product, probe,
         "magnetic_source": bool(magnetic), "bracketed": bool(bracket),
         "fused_substituted": bool(install_fused),
         "magnetic_frozen": bool(freeze_magnetic),
-        "expansion_override": expansion,
         "parity_override": (None if parity_override is None
                             else [list(pair) for pair in parity_override]),
         "operand_census": operand_census(seeded),
+        "seed_conditions": flush_vacuity.seed_conditions(),
         "offdiagonal_chi1inv": bool(
             getattr(reference.fields, "has_offdiagonal_epsilon", False)),
         "first_divergence": None, "control_divergence": None,
@@ -2071,21 +2003,15 @@ def run_leg(cp, name: str, case, steps: int, product, probe,
     try:
         plan = product.plan_folded_complex_fused_magnetic_pair(
             fused.fields, fused.pml, tuple(fused._sources), num_warps=1,
-            kernel=kernel, probe=probe)
+            kernel=kernel)
         if plan is None:
             verdict = product.folded_complex_fused_magnetic_pair_coverage(
-                fused.fields, fused.pml, tuple(fused._sources), probe=probe)
+                fused.fields, fused.pml, tuple(fused._sources))
             raise AssertionError(f"the product refused the case: {verdict.reasons}")
-        if expansion is not None:
-            # THE ARM, OVERRIDDEN. Not a source rewrite: the constexpr IS the
-            # licence, so flipping it here measures whether the licence is
-            # load-bearing rather than decorative.
-            plan.expansion = int(expansion)
         if parity_override is not None:
             plan.parity = tuple((float(a), float(b)) for a, b in parity_override)
         row["plan"] = repr(plan)
         row["plan_replaces"] = list(plan.replaces)
-        row["licensed_expansion"] = plan.expansion
         row["near"] = [bool(value) for value in plan.near]
         row["far"] = [bool(value) for value in plan.far]
         row["reflect_rows"] = list(plan.reflect)
@@ -2099,7 +2025,7 @@ def run_leg(cp, name: str, case, steps: int, product, probe,
                                          bracket=bracket)
         else:
             route = Route({})
-        separate_plans = separate_route(separate, probe)
+        separate_plans = separate_route(separate)
         row["separate_products"] = {key: type(value).__name__
                                     for key, value in separate_plans.plans.items()}
         row["oracle_admission"] = separate_plans.admission
@@ -2215,6 +2141,16 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
     census = row.get("operand_census") or {}
     for key, minimum in floor.items():
         if int(census.get(key, 0)) < minimum:
+            # UNDER FLUSH THE SUBNORMAL CLASS CANNOT OCCUR, and that is MEASURED
+            # (flush_vacuity: the installed policy, the host FPU at seed time and this
+            # census) rather than assumed from the policy's name. Every other floor,
+            # and every byte comparison, stands.
+            not_applicable = (key == "subnormals"
+                              and flush_vacuity.subnormal_class_not_applicable(
+                                  census.get(key, 0), row.get("seed_conditions")))
+            if not_applicable:
+                row["not_applicable"] = not_applicable
+                continue
             failures.append(
                 f"VACUOUS OPERAND CLASS: value_class={row.get('value_class')!r} "
                 f"seeded {census.get(key, 0)} {key}, below the floor {minimum}; "
@@ -2382,10 +2318,15 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
 
     THE CONSTEXPR CODES COME FROM ``folded_complex``'S OWN CONSTANTS, not from
     literals: a renumbering there would give the mutant a different boundary
-    vocabulary than the kernel it stands for, with no error at all. The four
-    multiply helpers are IMPORTED rather than copied, for the reason the shipped
+    vocabulary than the kernel it stands for, with no error at all. The forms and
+    the connection are IMPORTED rather than copied, for the reason the shipped
     module imports them — a mutant carrying its own copy would no longer be testing
-    the shipped multiply.
+    the shipped arithmetic.
+
+    The module name does not start with ``triton``: Triton's dependency finder
+    leaves every callee whose ``__module__`` starts with its package name out of the
+    kernel's cache key, so a helper-only mutant could be served another mutant's
+    binary (measured on the off-diagonal gate, 2026-10-08).
     """
     from meep_gpu.triton_kernels.folded_complex import (  # noqa: PLC0415
         CODE_MIRROR_METALLIC, CODE_MIRROR_PERIODIC, CODE_PERIODIC,
@@ -2393,10 +2334,11 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
 
     header = ("import triton\n"
               "import triton.language as tl\n"
-              "from meep_gpu.triton_kernels.complex_fields import (\n"
-              "    _rotate_field_left, _mul_field_left, _mul_coefficient_left)\n"
-              "from meep_gpu.triton_kernels.special_kz import (\n"
-              "    _mul_imag_coefficient_left)\n"
+              "from meep_gpu.triton_kernels.complex_fields import _connect\n"
+              "from meep_gpu.triton_kernels.forms import (\n"
+              "    axis_present, constitutive_form, curl_form, curl_stencil, record_in)\n"
+              "RECORD_HALF_INTEGER = tl.constexpr(12)\n"
+              "RECORD_PRESENCE = tl.constexpr(24)\n"
               f"PERIODIC = tl.constexpr({CODE_PERIODIC})\n"
               f"MIRROR_METALLIC = tl.constexpr({CODE_MIRROR_METALLIC})\n"
               f"MIRROR_PERIODIC = tl.constexpr({CODE_MIRROR_PERIODIC})\n\n")
@@ -2408,7 +2350,7 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
     handle.close()
     _TEMPORARY.append(handle.name)
     spec = importlib.util.spec_from_file_location(
-        "triton_mutated_folded_complex_pair_" + str(len(_TEMPORARY)), handle.name)
+        "folded_complex_magnetic_pair_mutant_" + str(len(_TEMPORARY)), handle.name)
     module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     sys.modules[spec.name] = module  # type: ignore[union-attr]
     spec.loader.exec_module(module)  # type: ignore[union-attr]
@@ -2420,50 +2362,37 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
     MEASURED, never what was hoped."""
 
     def m1_parity_chain_reordered(source: str) -> Tuple[str, int]:
-        """THE ORDER, reversed on one two-parity chain.
+        """THE ORDER, reversed on one two-parity chain. DECLARED NULL.
 
-        The far axes ascend in the driver (``_fill_folded_far_ghosts``:1518); this
-        applies them descending. THE BLOCK IS COMPONENT 2's ``FAR_X and FAR_Y``, and
-        the choice is not free: this mutation is scored on a fold-X + fold-Y grid,
-        so a rewrite landing in the ``FAR_X and FAR_Z`` block would be DEAD CODE
-        there and would report UNCAUGHT while measuring nothing. (That is exactly
-        what the first cut of this table did, and
-        ``test_every_mutation_is_scored_on_a_case_that_ENTERS_the_branch_it_rewrites``
-        is what caught it.)
+        The far axes ascend in the driver (``_fill_folded_far_ghosts``); this applies
+        them descending. Per part each application is ``+-1.0`` times the word, which
+        commutes exactly (``parity_chain_associativity_leg`` measures 0 words). THE
+        BLOCK IS COMPONENT 2's ``FAR_X and FAR_Y``, the one this mutation's fold-X +
+        fold-Y case compiles, so the null is measured rather than dead code.
         """
-        return _rewrite_block(
-            source,
-            ["gc_re, gc_im = _mul_imag_coefficient_left(d0r, d0i, v2_re, v2_im,",
-             "EXPANSION)",
-             "gc_re, gc_im = _mul_imag_coefficient_left(d1r, d1i, gc_re, gc_im,",
-             "EXPANSION)"],
-            ["gc_re, gc_im = _mul_imag_coefficient_left(d1r, d1i, v2_re, v2_im, EXPANSION)",
-             "gc_re, gc_im = _mul_imag_coefficient_left(d0r, d0i, gc_re, gc_im, EXPANSION)"])
+        source, hits = _replace_all(source, "d1r * (d0r * v2_re),",
+                                    "d0r * (d1r * v2_re),")
+        source, more = _replace_all(source, "d1r * (d0r * v2_im),",
+                                    "d0r * (d1r * v2_im),")
+        return source, hits + more
 
     def m2_parity_chain_folded(source: str) -> Tuple[str, int]:
-        """THE GROUPING, folded: two complex multiplies collapsed into one.
-
-        The real-storage twin's spelling — one compile-time sign — applied here.
-        Under complex storage the product of the coefficient words is not the
-        composition of the two multiplies.
-        """
-        return _rewrite_block(
-            source,
-            ["gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, v0_re, v0_im,",
-             "EXPANSION)",
-             "gc_re, gc_im = _mul_imag_coefficient_left(d1r, d1i, gc_re, gc_im,",
-             "EXPANSION)"],
-            ["gc_re, gc_im = _mul_imag_coefficient_left(",
-             "    n0r * d1r - n0i * d1i, n0r * d1i + n0i * d1r,",
-             "    v0_re, v0_im, EXPANSION)"])
+        """THE GROUPING, folded: two parity words multiplied together and applied
+        once. DECLARED NULL: ``(+-1) * (+-1)`` is exact, so folding moves no word."""
+        source, hits = _replace_all(source, "d1r * (n0r * v0_re),",
+                                    "(d1r * n0r) * v0_re,")
+        source, more = _replace_all(source, "d1r * (n0r * v0_im),",
+                                    "(d1r * n0r) * v0_im,")
+        return source, hits + more
 
     def m3_triple_composite_dropped(source: str) -> Tuple[str, int]:
         """The deepest destination never written. Needs three folded PERIODIC axes."""
         return _rewrite_block(
             source,
             ["_carry_ghost_complex(f0, w0, h0, idx + dn_x + df_y + df_z,",
-             "gc_re, gc_im, kp_d0, km_d0,",
-             "own0 & near_i & far_j & far_k, EXPANSION)"],
+             "d2r * (d1r * (n0r * v0_re)),",
+             "d2r * (d1r * (n0r * v0_im)),",
+             "kp_d0, km_d0, dw_d0, start, own0 & near_i & far_j & far_k)"],
             ["pass"])
 
     def m4_far_parity_is_the_near_one(source: str) -> Tuple[str, int]:
@@ -2472,10 +2401,9 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         ``mirror_parity(c, axis, phase) == phase * (1 - 2*iyee)`` (fields.py:117):
         the far fill touches shift-1 components alone and takes the NEGATED phase.
         """
-        return _replace_all(
-            source,
-            "gy_re, gy_im = _mul_imag_coefficient_left(d1r, d1i, v0_re, v0_im,",
-            "gy_re, gy_im = _mul_imag_coefficient_left(n1r, n1i, v0_re, v0_im,")
+        source, hits = _replace_all(source, "d1r * v0_re,", "n1r * v0_re,")
+        source, more = _replace_all(source, "d1r * v0_im,", "n1r * v0_im,")
+        return source, hits + more
 
     def m5_reflect_row_baked(source: str) -> Tuple[str, int]:
         """``n - 2`` instead of the runtime row.
@@ -2497,10 +2425,15 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         # BODY ONLY. Replacing the `if` header too writes `pass` at the header's
         # indent, which is an IndentationError and an UNARMED mutation — measured
         # 2026-08-21, when this rewrite and m10 both failed to import.
+        # COMPONENT 2 ON Y. The far fill rewrites the masked plane's FIELD, so the
+        # mask reaches a compared word only through the split-field auxiliary, which
+        # is stored on the recurrence's cells: Bz's recurrence runs on the y layer
+        # the scoring case carries, Bx's on a z layer a 2-D grid does not have
+        # (measured on the host interpreter: the Bx rewrite moves no word).
         return _rewrite_block(
             source,
-            ["curl0_re = tl.where(last_y, 0.0, curl0_re)",
-             "curl0_im = tl.where(last_y, 0.0, curl0_im)"],
+            ["curl2_re = tl.where(last_y, 0.0, curl2_re)",
+             "curl2_im = tl.where(last_y, 0.0, curl2_im)"],
             ["pass"])
 
     def m7_near_source_index_three(source: str) -> Tuple[str, int]:
@@ -2515,31 +2448,35 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         other; dropping ``own?`` from the carry mask lets it write a composite cell
         from a ``v`` its own mask zeroed.
         """
-        # THE BLOCK IS COMPONENT 1's FAR-ONLY DESTINATION ON X, and the choice is
-        # measured rather than free. `own1` is `live & (j != 0) & (i != nx - 1)`; on
-        # the composite destination (`near_j & far_i`, i.e. j == 2) the `j != 0`
-        # clause is TRUE anyway, so dropping `own1` there changes no lane and the
-        # mutation is a value-level NO-OP — measured UNCAUGHT on 2026-08-21. The
-        # lane the real defect was about is the one at `(i == rx, j == 0)`: the far
-        # source for By on x, and itself the NEAR fill's destination on y. That lane
-        # is excluded by `own1` and by nothing else in this mask.
+        # THE BLOCK IS COMPONENT 2's FAR-ONLY DESTINATION ON X, and the choice is
+        # measured rather than free. The lane the defect is about is `(rx, ny - 1,
+        # k)`: the far source for Bz on x and itself the far fill's destination on y,
+        # excluded by `own2` and by nothing else in this mask. Its stray carry writes
+        # `(nx - 1, ny - 1, k)` BEFORE the composite carry that owns that cell, so the
+        # field it writes is overwritten in statement order; what survives is the
+        # workspace word, which the composite then reads as `prev` — and only where
+        # the destination's chunk carries the z layer. Hence a 3-D case layered on
+        # z. Component 1's far-x block on a 2-D grid (the previous target) leaves
+        # the stray write no surviving word: y row 0 is never inside a layer on a
+        # folded axis (measured on the host interpreter: no word moves).
         return _replace_all(
             source,
-            "kp_1, km_1, own1 & far_i, EXPANSION)",
-            "kp_1, km_1, far_i, EXPANSION)")
+            "kp_2, km_2, dw2, start, own2 & far_i)",
+            "kp_2, km_2, dw2, start, far_i)")
 
     def m9_destination_coefficient_reused(source: str) -> Tuple[str, int]:
-        """The near destination takes the SOURCE lane's coefficient pair.
+        """The near destination takes the SOURCE lane's coefficient pair and
+        membership.
 
         ``update_H`` indexes component m on axis m and the near fill images along
-        that same axis, so the destination's pair is at index 0 and is NOT the
-        source's. On a folded axis whose absorber sits on the HIGH face alone the
-        two entries are the same word to the bit, so this is predicted a NULL —
-        recorded WITH that reason rather than as a catch.
+        that same axis, so the destination's pair and membership are at index 0 and
+        are NOT the source's. On a folded axis whose absorber sits on the HIGH face
+        alone the two rows carry the same words and the same membership, so this is
+        predicted a NULL — recorded WITH that reason rather than as a catch.
         """
         return _replace_all(
-            source, "kp_d1, km_d1, own1 & near_j, EXPANSION)",
-            "kp_1, km_1, own1 & near_j, EXPANSION)")
+            source, "kp_d1, km_d1, dw_d1, start, own1 & near_j)",
+            "kp_1, km_1, dw1, start, own1 & near_j)")
 
     def m10_wall_clear_dropped(source: str) -> Tuple[str, int]:
         """``zero_metal_B`` not carried: MEEP's ``step_boundaries(B_stuff)``, undone."""
@@ -2550,43 +2487,66 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
              "v0_im = tl.where(at_x, 0.0, v0_im)"],
             ["pass"])
 
-    def m11_curl_parens_flattened(source: str) -> Tuple[str, int]:
-        """``stepping._curl_from_operands``' grouping, re-associated."""
-        return _rewrite_block(
-            source, ["t0_re = ((c_y_re - c_re) + (b_re - b_z_re))"],
-            ["t0_re = (c_y_re - c_re + b_re) - b_z_re"])
+    def m11_curl_pairwise_grouping(source: str) -> Tuple[str, int]:
+        """INVERSION: the previous pairwise grouping in place of MEEP's
+        left-to-right stencil, on the curl whose two partners a 2-D grid keeps."""
+        return _replace_all(
+            source, "curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)",
+            "curl2_re = dtdx * ((b_x_re - b2_re) + (a2_re - a_y_re))")
+
+    def a2_whole_grid_recurrence(source: str) -> Tuple[str, int]:
+        """INVERSION: the split-field recurrence on every cell rather than on the
+        cells whose chunk carries the layer."""
+        hits = 0
+        for needle in ("du0 = record_in(cb, lattice + 8, k)",
+                       "du1 = record_in(cb, lattice + 0, i)",
+                       "du2 = record_in(cb, lattice + 4, j)"):
+            source, count = _replace_all(source, needle,
+                                         needle.split(" = ")[0] + " = live")
+            hits += count
+        return source, hits
+
+    def a3_constitutive_old_grouping(source: str) -> Tuple[str, int]:
+        """INVERSION: ``(f + kps*src) - kms*prev`` in place of MEEP's
+        ``f + ((kps*src) - (kms*prev))``, on the owned cell of component 1 (whose own
+        axis, y, the scoring case layers)."""
+        return _replace_all(
+            source,
+            "tl.store(h1 + 2 * idx, constitutive_form(a_re, prev_re, v1_re, kp_1, km_1, dw1),",
+            "tl.store(h1 + 2 * idx, tl.where(dw1, (a_re + (kp_1 * v1_re)) - "
+            "(km_1 * prev_re), v1_re),")
 
     def m12_prev_read_after_the_store(source: str) -> Tuple[str, int]:
         """The one ordering the constitutive cannot survive being wrong about."""
         return _rewrite_block(
             source,
-            ["prev_re = tl.load(w + 2 * dst, mask=mask, other=0.0)",
-             "prev_im = tl.load(w + 2 * dst + 1, mask=mask, other=0.0)",
-             "tl.store(w + 2 * dst, ghost_re, mask=mask)",
-             "tl.store(w + 2 * dst + 1, ghost_im, mask=mask)"],
-            ["tl.store(w + 2 * dst, ghost_re, mask=mask)",
-             "tl.store(w + 2 * dst + 1, ghost_im, mask=mask)",
-             "prev_re = tl.load(w + 2 * dst, mask=mask, other=0.0)",
-             "prev_im = tl.load(w + 2 * dst + 1, mask=mask, other=0.0)"])
+            ["prev_re = tl.load(w + 2 * dst, mask=mask & dw_d, other=0.0)",
+             "prev_im = tl.load(w + 2 * dst + 1, mask=mask & dw_d, other=0.0)",
+             "tl.store(w + 2 * dst, ghost_re, mask=mask & dw_d)",
+             "tl.store(w + 2 * dst + 1, ghost_im, mask=mask & dw_d)"],
+            ["tl.store(w + 2 * dst, ghost_re, mask=mask & dw_d)",
+             "tl.store(w + 2 * dst + 1, ghost_im, mask=mask & dw_d)",
+             "prev_re = tl.load(w + 2 * dst, mask=mask & dw_d, other=0.0)",
+             "prev_im = tl.load(w + 2 * dst + 1, mask=mask & dw_d, other=0.0)"])
 
     def m13_far_fill_dropped(source: str) -> Tuple[str, int]:
         """``fill_folded_far_ghosts_B`` not carried on one component."""
         return _rewrite_block(
             source,
-            ["gy_re, gy_im = _mul_imag_coefficient_left(d1r, d1i, v0_re, v0_im,",
-             "EXPANSION)",
-             "_carry_ghost_complex(f0, w0, h0, idx + df_y, gy_re, gy_im,",
-             "kp_0, km_0, own0 & far_j, EXPANSION)"],
+            ["_carry_ghost_complex(f0, w0, h0, idx + df_y,",
+             "d1r * v0_re,",
+             "d1r * v0_im,",
+             "kp_0, km_0, dw0, start, own0 & far_j)"],
             ["pass"])
 
     def m14_near_fill_dropped(source: str) -> Tuple[str, int]:
         """``fill_symmetry_bc_B`` not carried on one component."""
         return _rewrite_block(
             source,
-            ["gn_re, gn_im = _mul_imag_coefficient_left(n1r, n1i, v1_re, v1_im,",
-             "EXPANSION)",
-             "_carry_ghost_complex(f1, w1, h1, idx + dn_y, gn_re, gn_im,",
-             "kp_d1, km_d1, own1 & near_j, EXPANSION)"],
+            ["_carry_ghost_complex(f1, w1, h1, idx + dn_y,",
+             "n1r * v1_re,",
+             "n1r * v1_im,",
+             "kp_d1, km_d1, dw_d1, start, own1 & near_j)"],
             ["pass"])
 
     def m15_ghost_B_store_dropped(source: str) -> Tuple[str, int]:
@@ -2603,33 +2563,21 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             ["pass"])
 
     return (
-        # THE ORDERING IS ARITHMETICALLY REAL, MEASURED, and the operand class
-        # these two are scored under is what that measurement decided.
-        # `parity_chain_associativity_leg` sweeps `_mul_imag_coefficient_left`'s two
-        # arms over signed zeros, the subnormal needles and ordinary values and
-        # counts 32 of 2048 words moved by a RE-ORDER and 34 by a FOLD, identically
-        # on both arms. It is the SIGNED ZEROS that do it: with `c_im` bitwise +0.0,
-        # `(c_im * z_im) * -1.0` is a signed zero whose sign depends on `z_im`, and
-        # `fma(c_re, z_re, that)` canonicalizes `-0 + +0` to `+0` — so a flip
-        # composed with a flip is NOT the composed flip at a zero word.
-        # The 2026-08-21 run scored both under `subnormal_band` and both came back
-        # UNCAUGHT, which is a statement about that seeding and not about the
-        # kernel: a band-seeded state carries subnormals, and this defect needs
-        # SIGNED ZEROS at the ghost source lane. `zero_lattice` is the class that
-        # puts them there.
-        # UNREACHED, not null. The word-layer sweep says both defects are REAL; 30
-        # complete steps under the +-0 lattice say this gate's whole-step legs do not
-        # reach them. Both halves of that are recorded, in MUTATION_EVIDENCE.
+        # THE ORDERING IS DECLARED NULL, MEASURED. `parity_chain_associativity_leg`
+        # sweeps the per-part product over signed zeros, the subnormal needles and
+        # ordinary values and counts 0 words moved by a RE-ORDER or a FOLD: every
+        # application is +-1.0 times a stored part. The previous whole-complex
+        # product moved 32 and 34 of 2048, all at signed zeros, which is why both are
+        # still scored under the +-0 lattice for thirty steps.
         ("m1_parity_chain_reordered",
-         "the far axes applied DESCENDING; the driver applies them ascending. The "
-         "word-layer sweep moves 32 of 2048 words on this rewrite, all of them at "
-         "signed zeros; 30 complete steps under the +-0 lattice did not put one at "
-         "a ghost source lane",
-         "unreached", m1_parity_chain_reordered),
+         "the far axes applied DESCENDING; the driver applies them ascending. Per "
+         "part the +-1 words commute exactly, so no word moves "
+         "(parity_chain_associativity_leg)",
+         "null", m1_parity_chain_reordered),
         ("m2_parity_chain_folded",
-         "two complex multiplies collapsed into one coefficient product; 34 of 2048 "
-         "words at the word layer, same class, same 30-step non-reach",
-         "unreached", m2_parity_chain_folded),
+         "two parity words multiplied together and applied once; (+-1) * (+-1) is "
+         "exact, so no word moves (parity_chain_associativity_leg)",
+         "null", m2_parity_chain_folded),
         ("m3_triple_composite_dropped",
          "the deepest destination never written",
          "caught", m3_triple_composite_dropped),
@@ -2649,16 +2597,22 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
          "the ownership defect the 2026-08-20 device run found, re-planted",
          "caught", m8_ownership_mask_not_ANDed),
         ("m9_destination_coefficient_reused",
-         "the near destination takes the source lane's kps/kms pair; PREDICTED "
-         "NULL because a folded axis absorbs on its HIGH face alone, so the two "
-         "entries are the same word to the bit",
+         "the near destination takes the source lane's kps/kms pair and "
+         "membership; PREDICTED NULL because a folded axis absorbs on its HIGH face "
+         "alone, so the two rows carry the same words and membership",
          "null", m9_destination_coefficient_reused),
         ("m10_wall_clear_dropped",
          "zero_metal_B not carried, on a case with a live wall",
          "caught", m10_wall_clear_dropped),
-        ("m11_curl_parens_flattened",
-         "the curl's float32 grouping re-associated",
-         "caught", m11_curl_parens_flattened),
+        ("m11_curl_pairwise_grouping",
+         "the previous pairwise curl grouping in place of MEEP's left-to-right one",
+         "caught", m11_curl_pairwise_grouping),
+        ("a2_whole_grid_recurrence",
+         "the split-field recurrence on every cell rather than the chunk's own form",
+         "caught", a2_whole_grid_recurrence),
+        ("a3_constitutive_old_grouping",
+         "the previous constitutive grouping in place of MEEP's",
+         "caught", a3_constitutive_old_grouping),
         ("m12_prev_read_after_the_store",
          "the ghost constitutive reads its workspace AFTER writing it",
          "caught", m12_prev_read_after_the_store),
@@ -2680,7 +2634,7 @@ def mutation_case_for(name: str) -> Tuple[str, Tuple[Any, ...]]:
     return case_name, CASES_BY_NAME[case_name]
 
 
-def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]) -> List[Dict[str, Any]]:
+def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, Any]]:
     source = shipped_source(product)
     rows: List[Dict[str, Any]] = []
     for index, (name, why, expectation, rewrite) in enumerate(mutation_table()):
@@ -2711,7 +2665,7 @@ def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]) -> List[Dict[
         steps = MUTATION_STEPS_FOR.get(name, MUTATION_STEPS)
         row["value_class"] = value_class
         row["steps"] = steps
-        leg = run_leg(cp, f"mutation:{name}", case, steps, product, probe,
+        leg = run_leg(cp, f"mutation:{name}", case, steps, product,
                       value_class=value_class, mutant=mutant)
         row["caught"] = leg.get("first_divergence") is not None
         row["first_divergence"] = leg.get("first_divergence")
@@ -2729,7 +2683,7 @@ def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]) -> List[Dict[
 # Refusals — the predicate, on the device's own objects
 # ---------------------------------------------------------------------------
 
-def run_refusals(cp, product, probe) -> List[Dict[str, Any]]:
+def run_refusals(cp, product) -> List[Dict[str, Any]]:
     """Configurations the product must refuse — and one it must now ADMIT.
 
     THE 2026-08-31 SPLIT, in the same edit as the ``CARRIES_DEPOSIT_REPAIR``
@@ -2751,20 +2705,19 @@ def run_refusals(cp, product, probe) -> List[Dict[str, Any]]:
 
     base = CASES_BY_NAME["y_fold_periodic"]
     rows: List[Dict[str, Any]] = []
-    for name, case, needle, sources, use_probe, admit in (
+    for name, case, needle, sources, admit in (
         ("magnetic_source_with_an_index_admitted", base, None,
-         (_MagneticIndexed(),), probe, True),
+         (_MagneticIndexed(),), True),
         ("magnetic_source_without_an_index", base, "does not publish the index",
-         (_Magnetic(),), probe, False),
-        ("undeclared_sources", base, "was not declared", None, probe, False),
-        ("no_probe_artifact", base, "expansion probe artifact", (), {}, False),
+         (_Magnetic(),), False),
+        ("undeclared_sources", base, "was not declared", None, False),
     ):
         driver, _ = build_driver(cp, case, "uniform", electric=False)
         try:
             verdict = product.folded_complex_fused_magnetic_pair_coverage(
-                driver.fields, driver.pml, sources, probe=use_probe)
+                driver.fields, driver.pml, sources)
             plan = product.plan_folded_complex_fused_magnetic_pair(
-                driver.fields, driver.pml, sources, probe=use_probe)
+                driver.fields, driver.pml, sources)
             if admit:
                 passed = bool(verdict.covered) and plan is not None
             else:
@@ -2795,8 +2748,6 @@ def environment(cp: Any = None) -> Dict[str, Any]:
         "argv": list(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
-        "expansion_probe_environment_variable": os.environ.get(
-            "MEEP_GPU_COMPLEX_EXPANSION_PROBE"),
     }
     try:
         import triton  # noqa: PLC0415
@@ -2814,7 +2765,7 @@ def environment(cp: Any = None) -> Dict[str, Any]:
 
 NO_DEVICE_LEGS = (transcription_leg, parity_chain_leg, parity_chain_reachability_leg,
                   parity_chain_associativity_leg, mutation_vocabulary_leg,
-                  seam_binding_leg, expansion_licence_leg, predicate_leg,
+                  seam_binding_leg, predicate_leg,
                   branch_reachability_leg)
 
 
@@ -2829,9 +2780,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="the float32 subnormal policy to DRIVE EVERY EXECUTOR TO before the "
              "first device compile. A run that installs NOTHING is a MIXED "
              "configuration (CuPy appends -ftz=true unconditionally; Triton "
-             "natively keeps) attributable to no policy at all, and a keep-cut "
-             "licence read by such a run is a broken comparison. Run this gate "
-             "ONCE PER POLICY with the probe artifact cut under that policy.")
+             "natively keeps) attributable to no policy at all. Run this gate "
+             "ONCE PER POLICY.")
     parser.add_argument(
         "--laptop-branch-reachability", action="store_true",
         help="include the branch-reachability and predicate legs on a host with no "
@@ -2892,9 +2842,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
     # BEFORE THE FIRST DEVICE COMPILE. strict=True: a process that asked to keep and
-    # quietly did not is a process whose bytes mean nothing — and on this family it
-    # is worse than that, because the EXPANSION licence it consumes is
-    # policy-conditional and a keep-cut record read under flush licenses nothing.
+    # quietly did not is a process whose bytes mean nothing.
     subnormal_policy.install_subnormal_policy(args.subnormal_policy, cupy=cp,
                                               strict=True)
     payload["subnormal_policy"] = subnormal_policy.policy_stamp()
@@ -2903,32 +2851,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"(requested {args.subnormal_policy!r}, "
         f"CUPY_CACHE_DIR={os.environ.get('CUPY_CACHE_DIR')!r})")
 
-    from meep_gpu.triton_kernels import complex_fields, folded_complex  # noqa: PLC0415
     from meep_gpu.triton_kernels import folded_complex_fused_magnetic_pair as product  # noqa: PLC0415
-
-    # THE PROBE THE DEVICE LEGS CONSUME, resolved once and RECORDED. The device bytes
-    # are a function of the arm, so an artifact that does not name the record that
-    # licensed it cannot be read.
-    probe = complex_fields.load_expansion_probe()
-    licence = folded_complex.parity_expansion_license(probe)
-    payload["expansion"] = {
-        "probe_path": os.environ.get("MEEP_GPU_COMPLEX_EXPANSION_PROBE"),
-        "pattern_set": list(product.PRODUCT_PROBE_PATTERNS),
-        "arm": licence["arm"], "basis": licence["basis"],
-        "expansion": licence["expansion"], "refusals": list(licence["refusals"]),
-        "policy_resolved": licence.get("policy_resolved"),
-        "candidate_policy": licence.get("candidate_policy"),
-    }
-    if licence["expansion"] is None:
-        payload["device_status"] = "REFUSED BEFORE THE FIRST LEG"
-        payload["passed"] = False
-        payload["release"] = {"released": False, "reasons": [
-            "no EXPANSION arm is licensed for this run, so no device leg could "
-            "measure anything: " + "; ".join(licence["refusals"])]}
-        save(payload, args.out)
-        log(f"\nREFUSED: {licence['refusals']}")
-        return 1
-    log(f"expansion arm licensed: {licence['arm']} (basis {licence['basis']})")
 
     backends.guard_kernel_compilation(cp)
     payload["environment"] = triton_device_identity.record(environment(cp))
@@ -2951,8 +2874,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if case[0].endswith("long_horizon") and value_class != "uniform":
                 continue
             steps = case[7]
-            row = run_leg(cp, f"{case[0]}/{value_class}", case, steps, product,
-                          probe, value_class=value_class)
+            row = run_leg(cp, f"{case[0]}/{value_class}", case, steps, product, value_class=value_class)
             passed, failures = verdict_of(row, require_launches=steps)
             row["passed"], row["failures"] = passed, failures
             payload["device_legs"].append(row)
@@ -2970,7 +2892,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         carry_case = CASES_BY_NAME[case_name]
         for value_class in VALUE_CLASSES:
             row = run_leg(cp, f"carry:{case_name}/{value_class}", carry_case,
-                          CARRY_STEPS, product, probe, value_class=value_class,
+                          CARRY_STEPS, product, value_class=value_class,
                           magnetic=True)
             passed, failures = verdict_of(row, require_launches=CARRY_STEPS,
                                           require_repairs=True)
@@ -2982,7 +2904,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for case_name in CARRY_CASES:
         carry_case = CASES_BY_NAME[case_name]
         row = run_leg(cp, f"null_control:{case_name}", carry_case, CARRY_STEPS,
-                      product, probe, magnetic=True, bracket=False)
+                      product, magnetic=True, bracket=False)
         passed, failures = verdict_of(row, require_identical=False,
                                       require_launches_at_least=1,
                                       require_moved=False)
@@ -2997,7 +2919,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     base = CASES_BY_NAME["y_fold_periodic"]
     # The substitution removed: the bytes still agree (the array path is what ran)
     # and ONLY the launch counter can refuse it.
-    row = run_leg(cp, "armed:no_substitution", base, 3, product, probe,
+    row = run_leg(cp, "armed:no_substitution", base, 3, product,
                   install_fused=False)
     passed, _ = verdict_of(row, require_launches=3)
     row["armed"] = True
@@ -3007,7 +2929,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["device_legs"].append(row)
     save(payload, args.out)
 
-    row = run_leg(cp, "armed:frozen_magnetic_seam", base, 3, product, probe,
+    row = run_leg(cp, "armed:frozen_magnetic_seam", base, 3, product,
                   freeze_magnetic=True)
     passed, _ = verdict_of(row)
     row["armed"] = True
@@ -3017,46 +2939,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["device_legs"].append(row)
     save(payload, args.out)
 
-    # THE LICENCE IS LOAD-BEARING, measured.
-    other = 1 - int(licence["expansion"])
-    # UNDER ``subnormal_band``, and that is a reachability decision measured on
-    # 2026-08-21: the same leg under ``uniform`` reported the two arms BYTE-IDENTICAL
-    # over three complete steps. That is not a finding about the licence, it is the
-    # known property that FMA_V1 and NAIVE agree on normal operands — the probe's own
-    # record says the arms are 74 words apart under keep only once an operand class
-    # able to separate them is present, and uniform(-0.25, 0.25) provably has none.
-    # ON A BLOCH CASE, and that is the second half of the same correction. The arms
-    # differ by ONE rounding only where a full complex-by-complex multiply runs:
-    # `_mul_field_left` and `_mul_coefficient_left` carry a ZERO operand, so
-    # `fma(a, b, +-0)` and `(a*b) - +-0` agree on every finite input, and the only
-    # body that calls `_rotate_field_left` is the per-axis Bloch block — which is
-    # compiled out entirely on an unphased case. Scored on `y_fold_periodic` the leg
-    # was measuring a kernel with no discriminating multiply in it at all.
-    row = run_leg(cp, "armed:unlicensed_expansion_arm",
-                  CASES_BY_NAME["y_fold_periodic_bloch_x"], 3, product, probe,
-                  value_class="subnormal_band", expansion=other)
-    passed, _ = verdict_of(row, require_launches=3)
-    row["armed"] = True
-    row["passed"] = not passed and row.get("first_divergence") is not None
-    row["why"] = (f"the EXPANSION constexpr is forced to arm {other} while the "
-                  f"platform measured {licence['expansion']}; the bytes must "
-                  f"diverge, or the licence constrains nothing here")
-    payload["device_legs"].append(row)
-    save(payload, args.out)
-
-    # THE PARITY WORDS ARE READ, NOT SYNTHESISED. The kernel is handed a NONZERO
-    # imaginary word; if the bytes do not move, the kernel is not reading the word
-    # it is passed.
+    # THE IMAGINARY PARITY WORD IS NEVER LAUNCHED. The plan keeps each axis's
+    # ``(re, im)`` pair and launches the real word alone (a real scale per part), so
+    # a NONZERO imaginary word must change no byte: a declared null, confirmed.
     mixed = CASES_BY_NAME["xy_mixed_phase_periodic"]
     poisoned = list(case_constexprs(mixed)["parity"])
     poisoned[1] = (poisoned[1][0], 0.5)
-    row = run_leg(cp, "armed:parity_imaginary_word_is_read", mixed, 3, product,
-                  probe, parity_override=poisoned)
+    row = run_leg(cp, "armed:parity_imaginary_word_is_not_launched", mixed, 3,
+                  product, parity_override=poisoned)
     passed, _ = verdict_of(row, require_launches=3)
     row["armed"] = True
-    row["passed"] = not passed and row.get("first_divergence") is not None
-    row["why"] = ("a NONZERO imaginary parity word is passed; the bytes must move "
-                  "or the kernel synthesises the word rather than reading it")
+    row["declared_null"] = True
+    row["passed"] = passed and row.get("first_divergence") is None
+    row["why"] = ("a NONZERO imaginary parity word is passed; the kernel takes the "
+                  "real word alone, so the bytes must NOT move")
     payload["device_legs"].append(row)
     save(payload, args.out)
 
@@ -3077,11 +2973,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         log("\nREFUSED: the two readers of the shipped source disagree")
         return 1
     pristine = kernel_ptx(product.folded_complex_fused_curl_constitutive_B)
-    payload["mutations"] = run_mutations(cp, product, probe, pristine)
+    payload["mutations"] = run_mutations(cp, product, pristine)
     save(payload, args.out)
 
     log("\n=== refusals ===")
-    payload["refusals"] = run_refusals(cp, product, probe)
+    payload["refusals"] = run_refusals(cp, product)
     save(payload, args.out)
 
     device_ok = all(row.get("passed") for row in payload["device_legs"])

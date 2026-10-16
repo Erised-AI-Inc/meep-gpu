@@ -37,7 +37,8 @@ WHAT IT REFUSES TO DO.
 * It never widens a curated key set. ``source_sha256`` on an existing entry is
   rebound key-for-key; a key the fresh artifact does not record is a refusal for
   that entry, not a key to drop. Which files a weld pins is a claim someone
-  made.
+  made. The one exception is a reviewed one, named pin by pin in
+  :data:`RETIRED_PINS` (below).
 * It never backfills ``code_sha256`` over drift. ``code_identity.py`` licenses
   one clause and states its precondition in the same breath: a weld whose
   ``source_sha256`` no longer matches the file may still stand on an unchanged
@@ -107,6 +108,29 @@ describes bytes that no longer ship -- re-run them on these bytes (bind last and
 nothing goes stale) or drop them out loud with ``--supersede``. An entry still in
 the pre-migration shape is refused by name, never read both ways.
 
+A PIN THE GATE STOPPED IMPORTING IS RETIRED BY NAME. The curated set is kept, so
+a file a weld's gate no longer imports would make the entry unbindable forever: no
+fresh run records it, and the entry is skipped with "the artifact does not record"
+in every round although its gate released. :data:`RETIRED_PINS` names each such pin
+by ``(weld, path)`` with why it left; the file itself may still ship, and other welds
+may still pin it. When that weld REBINDS, the path leaves its curated set (both
+digest maps) and is reported as ``RETIRED-PIN``; every other pin is compared exactly
+as before. A drop happens only inside a rebind, never on a skipped entry, so no run
+is left bound to digests nobody re-measured. An entry whose legs record a retired
+path (the gate imports it again) is skipped by name and left as it stands: the row
+is wrong for that run and has to be reviewed. This is the Metal rebind's
+``RETIRED_PINS`` rule, keyed by weld because these files still exist.
+
+:data:`RETIRED_UNIMPORTED_PINS` is the generated companion the three rebind tools share
+(``import_closure.py unimported-pins cuda``): a pin that is a module of the old eager
+package root and lies outside its gate's run closure. It is empty on this tree; a row would
+also refuse the run if its file is back in the gate's run closure, and skip an entry whose
+legs disagree with the checkout.
+
+A RERUN CHANGES NO BYTE. A rebind whose result differs from the entry already in the
+ledger only in this capability's ``recorded_utc`` keeps the entry as it stands, so a
+second ``--write`` against the same campaign leaves the ledger byte-identical.
+
 EXIT CODE. Non-zero whenever anything was skipped, the same as the Metal tool.
 Blocks are skipped every run and will be until each is re-cut, so a non-zero exit
 here is the standing statement that device runs are owed, not a transient failure
@@ -116,6 +140,7 @@ narrowing what is enumerated would be the wrong repair.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import sys
@@ -142,8 +167,10 @@ if str(_API) not in sys.path:
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+import artifact_drift  # noqa: E402
 import gate_provenance  # noqa: E402
-from meep_gpu import fastpath  # noqa: E402
+import neutral_labels  # noqa: E402
+from meep_gpu import fastpath, subnormal_policy  # noqa: E402
 from meep_gpu.code_identity import code_digest_of_path  # noqa: E402
 
 KERNELS = _API / "meep_gpu" / "cuda_kernels"
@@ -213,6 +240,98 @@ SHARED_HARNESS_FILES = ("parity/meep_gpu/probe_fused_kernel_bit_identity.py",)
 #: so the main loop names it and moves on rather than reporting it absent from
 #: the ledger forever.
 RE_GATE_KEY = "re_gated"
+
+#: ``(weld key, repository-relative pinned path) -> why the pin is retired``.
+#:
+#: A RETIRED PIN IS NOT A MISSING ONE. "the artifact does not record <path>" is the
+#: right refusal for a file the weld's gate still imports and this run did not (the
+#: weld cannot claim bytes the run did not execute), and the wrong one for a file the
+#: gate stopped importing: no round can record it again, so the entry would stay
+#: unbindable and its arms without evidence forever. A row here drops that path from
+#: THAT weld's curated set when the weld rebinds, and only then, reported as
+#: ``RETIRED-PIN``. Keyed by weld, not by path: both files below still ship, and a
+#: weld whose gate still imports one keeps it and is compared as strictly as ever.
+#: Reviewed by hand, like ``rebind_triton_welds.RETIRED_WELDS``; nothing else drops a
+#: curated pin, and a row whose gate imports the path again refuses its entry by name.
+RETIRED_PINS = {
+    # 2 of the 34 CUDA arms cite this weld. Its gate imported the complex no-PML gate
+    # for the expansion licence's arm choice; 89-X1 (5b73a00) deleted the licence and
+    # the import together. Both legs of the 2026-10-11 re-gate import 50 files, every
+    # other pin among them.
+    ("cuda_complex_offdiag_stencil_welds_2026-09-17",
+     "parity/meep_gpu/gate_cuda_complex_no_pml.py"):
+        "gate_cuda_complex_offdiag_stencil_welds.py stopped importing it in entry "
+        "89-X1, which deleted the complex-multiply expansion licence",
+    # Cited by no arm. 76-KC8 (171e510) re-derived the cylindrical families on the
+    # 0.10 forms and dropped the gate's import of the real-storage gate. Both legs of
+    # the 2026-10-11 re-gate import 123 files, every other pin among them.
+    ("cuda_cylindrical_fused_hd_pair_2026-09-07",
+     "parity/meep_gpu/gate_cuda_cylindrical_real_fused_hd_pair.py"):
+        "gate_cuda_cylindrical_fused_hd_pair.py stopped importing it in entry 76-KC8, "
+        "which re-derived the cylindrical families on the 0.10 forms",
+}
+assert all(isinstance(key, tuple) and len(key) == 2 and all(key)
+           and not key[1].startswith("/") and why
+           for key, why in RETIRED_PINS.items()), RETIRED_PINS
+
+
+def retired_pins_of(weld: str) -> dict:
+    """``path -> why`` over the :data:`RETIRED_PINS` rows of one weld."""
+    return {path: why for (key, path), why in RETIRED_PINS.items() if key == weld}
+
+
+#: ``(weld key, repository-relative pinned path) -> the gate script(s)`` for a pin that is
+#: a module the package root used to load eagerly and that the weld's gate no longer
+#: imports (owner ruling R17: since the root binds its names on first use, a gate's record
+#: is its strict dependency set). The Metal and Triton tools carry the same table.
+#:
+#: GENERATED, NOT TYPED: ``import_closure.py unimported-pins cuda`` prints the rows from the
+#: checkout and ``test_rebind_unimported_pins.py`` holds this literal to it both ways. It is
+#: EMPTY on this tree: the CUDA welds pin ``cuda_kernels/`` files and harness scripts, and
+#: the one ledger row that pins core modules, ``driver_dispatch``, is the route gate's and
+#: not this tool's. :data:`RETIRED_PINS` above is a different table (harness scripts a gate
+#: stopped importing, reviewed by hand) and is unchanged by this one. A row would act as the
+#: other tools' rows do: inside a rebind only; the run refused if its file is back in its
+#: gate's run closure; the entry skipped if a leg records the file or a leg disagrees with
+#: the checkout on any file it recorded.
+RETIRED_UNIMPORTED_PINS: dict = {}
+assert all(isinstance(key, tuple) and len(key) == 2 and all(key)
+           and not key[1].startswith("/") and gates and isinstance(gates, tuple)
+           for key, gates in RETIRED_UNIMPORTED_PINS.items()), RETIRED_UNIMPORTED_PINS
+assert not set(RETIRED_UNIMPORTED_PINS) & set(RETIRED_PINS)
+
+
+def unimported_pins_of(weld: str) -> dict:
+    """``path -> gate scripts`` over the :data:`RETIRED_UNIMPORTED_PINS` rows of one weld."""
+    return {name: gates for (key, name), gates in RETIRED_UNIMPORTED_PINS.items()
+            if key == weld}
+
+
+def unimported_rows_back(ledger: dict) -> list:
+    """``(key, path, why)`` for each :data:`RETIRED_UNIMPORTED_PINS` row whose weld is in
+    ``ledger`` (pinning the file still, or rebound without it already) and that the rule no
+    longer licenses on this checkout. Empty is the only state in which the tool may run: a
+    row cannot rot silently once its pin is gone."""
+    live = {(key, name): gates for (key, name), gates in RETIRED_UNIMPORTED_PINS.items()
+            if isinstance(ledger.get(key), dict)}
+    if not live:
+        return []
+    import import_closure  # noqa: PLC0415 - stdlib only, read when a row can act
+
+    return import_closure.unimported_pins_back(live, _API)
+
+
+def _unchanged_but_the_clock(before: dict, after: dict, capability: str) -> bool:
+    """True when ``after`` differs from ``before`` at most in ``runs[capability]``'s
+    ``recorded_utc``: the rebind restated a run the ledger already holds."""
+    copies = []
+    for side in (before, after):
+        side = copy.deepcopy(side)
+        run = (side.get(fastpath.RUNS) or {}).get(capability)
+        if isinstance(run, dict):
+            run.pop("recorded_utc", None)
+        copies.append(json.dumps(side, sort_keys=True))
+    return copies[0] == copies[1]
 
 
 def _record() -> dict:
@@ -406,6 +525,24 @@ def agreed_imports(payloads: list[dict]) -> dict:
             if len({m[name] for m in maps}) == 1}
 
 
+def weld_host(payloads: list[dict], legs: list, block: dict, name: str) -> str:
+    """The weld's ``host``: the machine by its NEUTRAL LABEL (:mod:`neutral_labels`).
+
+    Which source names the machine is still read and written -- one leg's stamp, or
+    the certification block's declaration when the legs stamp none or several -- but
+    the name itself stays in the artifact under ``results/``: this ledger ships.
+    """
+    hosts = _stamp(payloads, "host")
+    if hosts and len(hosts) == 1:
+        return neutral_labels.machine_stamped(f"{legs[0]}:host")
+    declared = block.get("host")
+    environment = block.get("environment")
+    if not declared and isinstance(environment, dict):
+        declared = environment.get("hostname")
+    return (neutral_labels.declared_not_stamped(f"certification.json:{name}")
+            if declared else "unknown - no leg stamps a host and the block declares none")
+
+
 def _stamp(payloads: list[dict], *keys: str) -> list:
     """Distinct values of a machine-written leg field, in first-seen order."""
     seen = []
@@ -452,7 +589,38 @@ ENTRY_FIELDS = ("code_sha256", "kernel_module", "kernels", "legs", "purpose",
 #: the fields that would otherwise describe the last architecture rebound and read as
 #: though they described all of them.
 SLOT_FIELDS = ("artifact_sha256", "campaign", "gate_started_utc", "host",
-               "recorded_utc", "records", "subnormal_policy", "verdict_read_from")
+               "recorded_utc", "records", "subnormal_policy", "verdict_read_from",
+               fastpath.CERTIFIED_POLICIES)
+
+#: The policy each canonical leg's installed-policy stamp names, mapped onto the
+#: policy names dispatch admits (``fastpath.TABLE_DISPATCH_POLICIES``). The stamp
+#: spellings are ``subnormal_policy``'s own constants; a bare ``keep``/``flush`` is
+#: what a gate that records the requested policy writes.
+STAMPED_POLICY = {
+    subnormal_policy.CUPY_KEEP_POLICY_NAME: subnormal_policy.KEEP,
+    subnormal_policy.FLUSH_POLICY_NAME: subnormal_policy.FLUSH,
+    subnormal_policy.KEEP: subnormal_policy.KEEP,
+    subnormal_policy.FLUSH: subnormal_policy.FLUSH,
+}
+
+
+def certified_policies(legs: list[str], payloads: list[dict]) -> dict:
+    """``policy -> [legs]`` over RELEASED legs, read from each leg's own install stamp.
+
+    Called only after :func:`read_verdict` released every leg, so each leg listed
+    here is evidence that its gate released under that policy. A leg whose stamp
+    names no known policy contributes nothing: dispatch admits a policy other than
+    the install default only on this field (``fastpath.policy_evidence_reasons``),
+    so an unreadable stamp must narrow the licence, never widen it.
+    """
+    found: dict = {}
+    for leg, payload in zip(legs, payloads):
+        stamp = payload.get("subnormal_policy_install")
+        name = stamp.get("policy") if isinstance(stamp, dict) else None
+        policy = STAMPED_POLICY.get(name)
+        if policy is not None:
+            found.setdefault(policy, []).append(leg)
+    return {policy: sorted(found[policy]) for policy in sorted(found)}
 
 
 def leg_capability(payloads: list[dict]) -> tuple[str | None, str]:
@@ -594,6 +762,16 @@ def main(argv=None) -> int:
 
     record = _record()
     ledger = json.loads(LEDGER.read_text(encoding="utf-8")) if LEDGER.is_file() else {}
+    # A ROW THE RULE NO LONGER LICENSES refuses the whole run, before any entry is read:
+    # a file back in its gate's run closure is a pin to keep, so the table is wrong until
+    # someone reviews it.
+    stale_rows = unimported_rows_back(ledger)
+    if stale_rows:
+        raise SystemExit(
+            "RETIRED_UNIMPORTED_PINS no longer holds on this checkout: "
+            + "; ".join(f"{key}: {path} ({why})" for key, path, why in stale_rows)
+            + ". Regenerate it with import_closure.py unimported-pins cuda and review it. "
+              "Nothing written")
     blocks = device_blocks(record)
     # THE ``driver_dispatch`` BLOCK IS NOT THIS TOOL'S TO WRITE, and saying so here
     # rather than relying on it never matching is the point. It is cut ONLY by
@@ -653,10 +831,17 @@ def main(argv=None) -> int:
         re_gated = {row["block"]: row for row in campaign_declaration[RE_GATE_KEY]}
 
     created, rebound, skipped, drifted, superseded = [], [], [], [], []
+    keys_before = set(ledger)
+    pin_retirements = []    # (key, path, why) per pin a rebind dropped
+    unchanged = set()       # keys whose rebind restated the run already recorded
 
     for name in sorted(blocks):
         block = blocks[name]
         entry = ledger.get(name)
+        # A COPY, not a reference: ``bind_capability`` writes the new run into the
+        # entry's ``runs`` mapping, which the shallow copy below still shares with the
+        # ledger, and the rerun rule needs the entry exactly as it was read.
+        before = copy.deepcopy(entry) if entry is not None else None
         if only and name not in only:
             skipped.append((name, "not selected by --only"))
             continue
@@ -757,8 +942,59 @@ def main(argv=None) -> int:
                                   f"run and this tool cannot say which"))
             continue
 
-        curated = list(entry["source_sha256"]) if entry else \
+        # RETIRED PINS LEAVE THE CURATED SET BY NAME, and only by name. Checked against
+        # EVERY leg's import record, and whether or not the entry still carries the
+        # pin: a leg that recorded one means the gate imports it again, so the row is
+        # wrong for this run and the entry is left exactly as it stands. Every other
+        # pin goes through the comparison below, as strict as before the table.
+        retiring = retired_pins_of(name)
+        unimported = unimported_pins_of(name)
+        retiring.update({path: f"not imported by {', '.join(gates)}"
+                         for path, gates in unimported.items()})
+        again = sorted(path for path in retiring
+                       if any(path in (payload.get("imported_source_sha256") or {})
+                              for payload in payloads))
+        if again:
+            skipped.append((name, f"RETIRED_PINS retires {again} from this weld because "
+                                  f"its gate stopped importing them, and the legs record "
+                                  f"importing them: the gate imports them again, so the "
+                                  f"row is wrong for this run. Review the table; the "
+                                  f"entry is left as it stands"))
+            continue
+        pinned = list(entry["source_sha256"]) if entry else \
             seed_key_set(record, name, block, imports)
+        dropping = [key for key in pinned if key in retiring]
+        curated = [key for key in pinned if key not in retiring]
+        # A RETIREMENT BY RETIRED_UNIMPORTED_PINS needs the legs to be this checkout's
+        # bytes: the closure that licenses it was read off the checkout's gate.
+        not_imported = [key for key in dropping if key in unimported]
+        if not_imported:
+            disagreeing = sorted(
+                path for path in {p for payload in payloads
+                                  for p in (payload.get("imported_source_sha256") or {})}
+                if (_API / path).is_file() and any(
+                    (payload.get("imported_source_sha256") or {}).get(path) not in
+                    (None, hashlib.sha256((_API / path).read_bytes()).hexdigest())
+                    for payload in payloads))
+            if disagreeing:
+                skipped.append((name, f"retiring {not_imported} needs the legs to be this "
+                                      f"checkout's bytes, and they disagree with the "
+                                      f"checkout on {disagreeing[:3]}"
+                                      + (f" and {len(disagreeing) - 3} more"
+                                         if len(disagreeing) > 3 else "")))
+                continue
+        # A RE-GATE'S LEGS MUST DESCRIBE THE RELEASE TREE (a chunked round certifies
+        # chunks on earlier tips): one file a leg's record names at other bytes, or gone,
+        # and the legs describe a tree that does not ship (artifact_drift.py). Asked of a
+        # --campaign rebind only: a dated block's own directory is the record of its day,
+        # whose drift this tool records honestly.
+        if campaign is not None:
+            moved = sorted({path for payload in payloads
+                            for path in artifact_drift.artifact_moved(payload, _API)})
+            if moved:
+                skipped.append((name, artifact_drift.refusal(
+                    f"{directory.name}/ legs {legs}", moved, _API)))
+                continue
         unknown = [key for key in curated if key not in imports]
         if unknown:
             skipped.append((name, f"the artifact does not record {unknown}"))
@@ -771,17 +1007,7 @@ def main(argv=None) -> int:
                  if hashlib.sha256((_API / key).read_bytes()).hexdigest() != imports[key]]
         code = {key: code_digest_of_path(_API / key) for key in curated if key not in moved}
 
-        hosts = _stamp(payloads, "host")
-        if hosts and len(hosts) == 1:
-            host = f"{hosts[0]} (machine-stamped: {legs[0]}:host)"
-        else:
-            declared = block.get("host")
-            environment = block.get("environment")
-            if not declared and isinstance(environment, dict):
-                declared = environment.get("hostname")
-            host = (f"{declared} (NOT machine-stamped by this gate; from "
-                    f"certification.json:{name})" if declared
-                    else "unknown - no leg stamps a host and the block declares none")
+        host = weld_host(payloads, legs, block, name)
 
         policies = _stamp(payloads, "subnormal_policy_install", "policy")
         # THE RUN THIS WELD READ, spelled so a reader can walk to it. Under
@@ -832,6 +1058,15 @@ def main(argv=None) -> int:
             raise SystemExit(f"the entry-level write and ENTRY_FIELDS disagree about "
                              f"{disagree}; one of the two was edited alone")
         entry.update({field: refreshed[field] for field in ENTRY_FIELDS})
+        # THE PIN SET MOVES ONLY BY THE RETIREMENT: the entry pins exactly what it
+        # pinned before less this weld's retired paths, and the code tier leaves out
+        # only the drifted files, which it withholds on every rebind.
+        kept = set(pinned) - set(dropping)
+        if (set(entry["source_sha256"]) != kept
+                or set(entry["code_sha256"]) != kept - set(moved)):
+            raise SystemExit(f"{name}: the rebind pins {sorted(entry['source_sha256'])} "
+                             f"(code {sorted(entry['code_sha256'])}), not the curated "
+                             f"set less the retired {dropping}; nothing written")
 
         # THE RUN: everything that describes THIS execution on THIS device, keyed by
         # the capability the legs stamped. Beside the digests these fields read as
@@ -850,6 +1085,13 @@ def main(argv=None) -> int:
             "verdict_read_from": (f"{relative.as_posix()}/{{{','.join(legs)}}}"
                                   ":canonical_verdict.released"),
         }
+        # WHICH POLICIES RELEASED, from the legs' own stamps: the field dispatch reads
+        # to admit a caller-installed policy other than the install default. Written
+        # only when some leg names one, so a run whose legs stamp nothing reads as
+        # certifying the install default alone, which is what it was cut under.
+        evidence = certified_policies(legs, payloads)
+        if evidence:
+            run[fastpath.CERTIFIED_POLICIES] = evidence
         # A run cut from the block's OWN dated directory records no campaign at all,
         # and nothing is cleared for it: ``campaign`` is a run field now, so one left
         # by an earlier ``--campaign`` bind describes THAT capability's run and is
@@ -873,6 +1115,14 @@ def main(argv=None) -> int:
             continue
         if staled:
             superseded.append((name, staled))
+        # A RERUN CHANGES NO BYTE: a rebind that only restated the recorded run keeps
+        # the entry as it was read, recording time included.
+        if before is not None and _unchanged_but_the_clock(before, entry, capability):
+            entry = before
+            unchanged.add(name)
+        pin_retirements.extend(
+            (name, path, retiring[path] if path in unimported
+             else f"{retiring[path]}; its gate no longer imports it") for path in dropping)
         if name not in ledger:
             # Written once, at creation, and never again. Everything a human
             # later adds under _notes is invisible to this tool.
@@ -895,8 +1145,10 @@ def main(argv=None) -> int:
         print(f"  created  {key}: runs[{capability}] (live: {', '.join(live)})",
               flush=True)
     for key, capability, live in rebound:
-        print(f"  rebound  {key}: runs[{capability}] (live: {', '.join(live)})",
-              flush=True)
+        print(f"  rebound  {key}: runs[{capability}] (live: {', '.join(live)})"
+              + ("  (unchanged)" if key in unchanged else ""), flush=True)
+    for key, path, why in pin_retirements:
+        print(f"  RETIRED-PIN  {key}: {path} ({why})", flush=True)
     for key, why in skipped:
         print(f"  SKIPPED  {key}: {why}", flush=True)
     for key, moved in drifted:
@@ -909,7 +1161,15 @@ def main(argv=None) -> int:
               f"what --supersede asked for", flush=True)
     print(f"\n  {len(created)} created, {len(rebound)} rebound, {len(skipped)} skipped, "
           f"{len(drifted)} carrying source drift, {len(superseded)} superseding another "
-          f"capability's record", flush=True)
+          f"capability's record, {len(pin_retirements)} pin(s) retired, "
+          f"{len(unchanged)} unchanged", flush=True)
+
+    # THE KEY SET MOVES ONLY BY WHAT --seed CREATED: a rebind neither adds nor drops a
+    # key, and a retirement drops a pin, never an entry.
+    grown = keys_before | {key for key, _capability, _live in created}
+    if set(ledger) != grown:
+        raise SystemExit(f"the ledger's keys moved ({sorted(set(ledger) ^ grown)}); "
+                         f"nothing written")
 
     if args.write and (created or rebound):
         LEDGER.write_text(json.dumps(ledger, indent=2, sort_keys=True) + "\n",

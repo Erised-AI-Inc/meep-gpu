@@ -38,21 +38,26 @@ THE SEAM, PASS BY PASS — the conductive sibling's disposition, minus the resca
 * **the two fills — INERT**: both halves refuse a mirror plane, restated by name.
 
 EVERYTHING IS TRANSCRIBED: the curl half from
-:data:`.no_pml_curl._PLAIN_CURL_TEMPLATE`'s own decode, ghost, load, curl and mask
-text (``no_pml_curl.py:47-141``), one target per dispatch, every emitted line
-asserted to be a line of the certified all-component emitter's own output; the
-constitutive half from :func:`.no_pml_stored_e.stored_e_source`
-(``no_pml_stored_e.py:76-88``). What moves is :data:`LIFT_EDITS` — the certified
-``float source = d_in[idx];`` reload becomes the register — plus the one split the
-lossless tail needs: the certified ``f0[ii] = f0[ii] - curl0;`` is named into a
-register before its store so the constitutive half and the wall clear can read it.
+:data:`.no_pml_curl._PLAIN_CURL_TEMPLATE`'s own decode, bounds block, ghost, load,
+curl and mask text, one target per dispatch, every emitted line asserted to be a
+line of the certified all-component emitter's own output; the constitutive half
+from :func:`.no_pml_stored_e.stored_e_source`. The curl statement is
+:data:`.no_pml_curl.CURL_STATEMENTS`' — MEEP's left-to-right stencil with its
+partner-presence forms — so the pair reads the partner-presence word of the chunk
+record exactly as the certified curl does, through the same anchored bounds block,
+and binds the record last (:data:`RECORD_BUFFER`). What moves is :data:`LIFT_EDITS`
+— the certified ``float source = d_in[idx];`` reload becomes the register — plus
+the one split the lossless tail needs: the certified ``f0[ii] = f0[ii] - curl0;``
+is named into a register before its store so the constitutive half and the wall
+clear can read it.
 A float32 stored to a ``device float*`` and reloaded is bit-identical to the
 register, so the split is byte-neutral by construction, and the gate's equivalence
 leg measures it anyway.
 
 PER COMPONENT for symmetry with the sibling and the certified stored-E family
-(:data:`BINDINGS_PER_COMPONENT` = 19 of the 31-binding ceiling with all eight pole
-slots declared); one dispatch per component IS the fusion.
+(:data:`BINDINGS_PER_COMPONENT` = 20 of the 31-binding ceiling with all eight pole
+slots declared, the chunk record included); one dispatch per component IS the
+fusion.
 
 NOT WIRED, composed only through ``launch.FUSED_PAIR_ARMS``. MEASURED through
 ``plan_step`` with ``fuse=False`` under ``MEEP_GPU_SUBNORMAL_POLICY=flush`` on
@@ -73,15 +78,21 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..triton_kernels.coverage import Coverage
 from ..triton_kernels.no_pml import SUB_STEPS as _NO_PML_SUB_STEPS
+from . import chunk_bounds as _chunk_bounds
 from . import shaders, templates
 from .ade_update_p import _physical_name
 from .coverage import zero_metal_axes
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
-from .fused_dispersive_pair import _TARGETS, _ZERO_METAL_ROWS
+from .fused_dispersive_pair import _ZERO_METAL_ROWS
 from .no_pml_conductive_fused_electric_pair import (
     _scaled_conductive_injection_reasons,
 )
-from .no_pml_curl import metal_plain_curl_coverage, plain_curl_source
+from .no_pml_curl import (
+    CURL_STATEMENTS,
+    bounds_block,
+    metal_plain_curl_coverage,
+    plain_curl_source,
+)
 from .no_pml_stored_e import (
     E_TERMS,
     MAX_POLES,
@@ -116,9 +127,30 @@ CURL_TARGETS: Tuple[str, ...] = tuple(_CURL_SPEC["targets"])
 CURL_SOURCES: Tuple[str, ...] = tuple(_CURL_SPEC["sources"])
 
 #: The per-component signature as data: 14 pointers (D target, three B sources, the
-#: E target, the inverse epsilon, eight pole slots) plus five separate scalars.
+#: E target, the inverse epsilon, eight pole slots), five separate scalars, and the
+#: chunk record last.
 POINTERS_PER_COMPONENT = 14
-BINDINGS_PER_COMPONENT = POINTERS_PER_COMPONENT + 5
+RECORD_BUFFER = POINTERS_PER_COMPONENT + 5
+BINDINGS_PER_COMPONENT = RECORD_BUFFER + 1
+
+#: Per D target, the four operand loads its curl reads, as the certified plain
+#: emitter spells them (``no_pml_curl._PLAIN_CURL_TEMPLATE`` with ``derive`` off:
+#: step_D differences the B volumes). Dx reads c (along y) and b (along z), Dy a
+#: (along z) and c (along x), Dz b (along x) and a (along y): :data:`CURL_STATEMENTS`.
+_CURL_LOADS: Tuple[Tuple[str, ...], ...] = (
+    ("    float b   = g1[ii];",
+     "    float c   = g2[ii];",
+     "    float b_z = vz ? g1[oz] : 0.0f;",
+     "    float c_y = vy ? g2[oy] : 0.0f;"),
+    ("    float a   = g0[ii];",
+     "    float c   = g2[ii];",
+     "    float a_z = vz ? g0[oz] : 0.0f;",
+     "    float c_x = vx ? g2[ox] : 0.0f;"),
+    ("    float a   = g0[ii];",
+     "    float b   = g1[ii];",
+     "    float b_x = vx ? g1[ox] : 0.0f;",
+     "    float a_y = vy ? g0[oy] : 0.0f;"),
+)
 
 #: The lift, as data. The second row is the lossless tail's REGISTER SPLIT — not an
 #: arithmetic change: the certified line's right-hand side is computed once, named,
@@ -139,7 +171,7 @@ LIFT_EDITS: Tuple[Tuple[str, str, str], ...] = (
 __all__ = [
     "BINDINGS_PER_COMPONENT", "CARRIES_DEPOSIT_REPAIR", "CURL_SOURCES",
     "CURL_TARGETS", "FAMILY", "LIFT_EDITS", "POINTERS_PER_COMPONENT",
-    "REPAIR_PATHS", "REPLACES", "SLOT",
+    "RECORD_BUFFER", "REPAIR_PATHS", "REPLACES", "SLOT",
     "MetalNoPmlFusedElectricPairPlan",
     "compile_no_pml_fused_electric_pair",
     "no_pml_fused_electric_pair_coverage",
@@ -158,6 +190,8 @@ _TEMPLATE = r"""
 using namespace metal;
 
 __CONTRACT__
+
+__RECORD_STRUCT__
 
 kernel void no_pml_fused_electric_pair_component(
     device float*       f__T__  [[buffer(0)]],
@@ -179,6 +213,7 @@ kernel void no_pml_fused_electric_pair_component(
     constant uint&      nz      [[buffer(16)]],
     constant uint&      n_elem  [[buffer(17)]],
     constant float&     dtdx    [[buffer(18)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
 __BODY__
@@ -196,9 +231,14 @@ def zero_metal_mask(axis: int, zero_metal: Sequence[bool]) -> str:
 
 def _per_component_curl(codes: Sequence[int], axis: int,
                         zero_metal: Sequence[bool]) -> List[str]:
-    """The certified plain curl text, restricted to ONE target, every line anchored."""
-    spec = _TARGETS[axis]
+    """The certified plain curl text, restricted to ONE target, every line anchored.
+
+    The bounds block is the certified curl's own (:func:`.no_pml_curl.bounds_block`):
+    the curl statement reads the partner-presence locals it declares.
+    """
     certified = plain_curl_source(codes, True, False)
+    block = bounds_block()
+    assert block in certified, "the certified curl no longer carries its bounds block"
     lines = [
         templates.GUARD,
         "",
@@ -210,6 +250,8 @@ def _per_component_curl(codes: Sequence[int], axis: int,
         "    int j = plane % nyi;",
         "    int i = plane / nyi;",
         "",
+        *block.splitlines(),
+        "",
         "    int si = i - 1, sj = j - 1, sk = k - 1;",
         "    bool vx = true, vy = true, vz = true;",
         templates.ghost("x", codes[0], True),
@@ -220,9 +262,9 @@ def _per_component_curl(codes: Sequence[int], axis: int,
         "    int oy = i * nyz + sj * nzi + k;",
         "    int oz = i * nyz + j * nzi + sk;",
         "",
-        *spec["loads"],
+        *_CURL_LOADS[axis],
         "",
-        spec["curl"],
+        CURL_STATEMENTS[axis],
         "",
         "    bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);",
     ]
@@ -281,10 +323,12 @@ def no_pml_fused_electric_pair_source(
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
     body = _per_component_curl(codes, axis, zero_metal)
     body.append("")
-    body.append("    // --- stored-E update_E (stepping.py:981-984, :993) ---------")  # stepping.py live lines for the frozen device-text citation(s) in this string: 981-984->1010-1013, 993->1022
+    body.append("    // --- stored-E update_E (stepping.update_E) ---------")
     body.extend(_constitutive_chain(axis, int(pole_count)))
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(RECORD_BUFFER),
         "__T__": str(axis),
         "__BODY__": "\n".join(body),
     })
@@ -400,14 +444,15 @@ class MetalNoPmlFusedElectricPairPlan:
     repair_paths = REPAIR_PATHS
 
     __slots__ = ("entries", "residency", "volumes", "codes", "zero_metal", "shape",
-                 "dtdx", "_functions", "_tensors", "_magnetic", "launches", "runs")
+                 "dtdx", "_functions", "_tensors", "_magnetic", "launches", "runs",
+                 "chunk_bounds", "_record")
 
     def __init__(self, entries: Sequence[_Entry], residency: Residency,
                  volumes: Sequence[str], codes: Sequence[int],
                  zero_metal: Sequence[bool], shape: Sequence[int], dtdx: float,
                  magnetic: Sequence[Any],
                  functions: Mapping[Tuple[str, int], Any],
-                 tensors: Mapping[int, Any]) -> None:
+                 tensors: Mapping[int, Any], *, chunk_bounds: Any) -> None:
         self.entries = tuple(entries)
         self.residency = residency
         self.volumes = tuple(dict.fromkeys(volumes))
@@ -418,6 +463,11 @@ class MetalNoPmlFusedElectricPairPlan:
         self._magnetic = tuple(magnetic)
         self._functions = dict(functions)
         self._tensors = dict(tensors)
+        # The record binds last, checked against the plan's shape and uploaded once,
+        # outside the residency registry, as every base plan binds it.
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, "MetalNoPmlFusedElectricPairPlan")
+        self._record = _chunk_bounds.tensor(self.chunk_bounds)
         self.launches = 0
         self.runs = 0
 
@@ -450,7 +500,7 @@ class MetalNoPmlFusedElectricPairPlan:
                 self._tensors[id(entry.inverse_epsilon)],
                 *(self._tensors[id(value)] for value in slots),
                 self.shape[0], self.shape[1], self.shape[2],
-                int(entry.displacement.size), self.dtdx,
+                int(entry.displacement.size), self.dtdx, self._record,
             )
             self.launches += 1
         self.runs += 1
@@ -466,14 +516,23 @@ def plan_metal_no_pml_fused_electric_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[Tuple[str, int], Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalNoPmlFusedElectricPairPlan]:
-    """Build the fused plan, or ``None`` when the seam is refused."""
+    """Build the fused plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the
+    composer's ``StepContext.chunk_bounds``) and has no default, as on the curl it
+    lifts; a missing or malformed record is refused by name before anything is
+    mirrored or compiled.
+    """
     if not no_pml_fused_electric_pair_coverage(
             fields, pml, sources, residency).covered:
         return None
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
+    _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                             "plan_metal_no_pml_fused_electric_pair")
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, None))
     walls = zero_metal_axes(grid)
@@ -518,7 +577,7 @@ def plan_metal_no_pml_fused_electric_pair(
 
     return MetalNoPmlFusedElectricPairPlan(
         entries, residency, volumes, codes, walls, grid.shape,
-        grid.dt / grid.dx, magnetic, selected, tensors)
+        grid.dt / grid.dx, magnetic, selected, tensors, chunk_bounds=chunk_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +596,7 @@ def _arm_plan(context: Any, slot: str) -> Optional[MetalNoPmlFusedElectricPairPl
         return None
     return plan_metal_no_pml_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

@@ -21,11 +21,11 @@ give). ``VolumeSource.withdraw`` (sources.py:2092-2121) reads ``self.envelope
 .is_integrated``, ``self._n_source_points`` and ``self._applied_dipole``, resolves ONE
 array with ``_array_for(fields, self.component)`` (sources.py:236-237 — an electric
 component maps to ``Dx``/``Dy``/``Dz`` and to nothing else, ``_ARRAY_FOR_COMPONENT``
-at sources.py:120-133), and hands it to ``_inject_points`` (sources.py:1297-1305),
-whose whole body is ``D[ix, iy, iz] -= _step_source_values(...)``. It then writes
-``self._applied_dipole = 0j``. So the withdraw READS AND WRITES the component's D
-array at its own deposit points, and nothing else; the ``f_u`` mirror
-(``_inject_fu_mirror``) is on the NON-integrated path only (sources.py:2149-2150).
+at sources.py:120-133), and hands it to ``sources._deposit``, which subtracts
+``real(amp * offset)`` in double at exactly those cells (``host_writes.subtract_double``).
+It then writes ``self._applied_dipole = 0j``. So the withdraw READS AND WRITES the component's D
+array at its own deposit points, and nothing else (no source class writes an
+auxiliary).
 ``stepping.update_H`` (stepping.py:907-923) reads B, the PML's integer-position
 constitutive coefficients and ``f_w_H*``, writes ``H*`` and ``f_w_H*``, and takes a
 pooled ``fields.scratch`` buffer. The two touch disjoint arrays, which is why the
@@ -408,7 +408,7 @@ def _material_facts(driver: Any) -> Dict[str, Any]:
     }
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:  # noqa: ARG001 — the expansion probe is unused
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The census driver's battery hook: measure the ordering on ONE lifted row."""
     import numpy  # noqa: PLC0415
 
@@ -641,7 +641,6 @@ def main() -> int:
     log(f"subject: {digest['file_count']} files, "
         f"manifest_sha256={digest['manifest_sha256']}")
 
-    probe_path = _API / census.PROBE
     environment = dict(os.environ)
     environment["KMP_DUPLICATE_LIB_OK"] = "TRUE"
     environment["MPLBACKEND"] = "Agg"
@@ -671,7 +670,7 @@ def main() -> int:
                            str(Path(census.__file__).resolve()), "--leg", "examples",
                            "--child-script",
                            str(Path(census.EXAMPLES_DIR) / row["row"]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(step_log),
                            "--battery", "probe_h_to_d_withdraw_order"]
             else:
@@ -683,7 +682,7 @@ def main() -> int:
                            str(Path(census.__file__).resolve()), "--leg", "tests",
                            "--child-module", str(Path(census.TESTS_DIR) / row["module"]),
                            "--child-cases", json.dumps([row["row"]]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(step_log),
                            "--battery", "probe_h_to_d_withdraw_order"]
             log(f"{index}/{len(rows)} {row['label']} start "
@@ -791,7 +790,7 @@ def _summary(measured: List[dict], digest: dict, seam: Path) -> dict:
             "cited": ["meep_gpu/sources.py:2092-2121 (withdraw)",
                       "meep_gpu/sources.py:236-237 (_array_for)",
                       "meep_gpu/sources.py:120-133 (_ARRAY_FOR_COMPONENT)",
-                      "meep_gpu/sources.py:1297-1305 (_inject_points)",
+                      "meep_gpu/sources.py (_deposit, host_writes.subtract_double)",
                       "meep_gpu/stepping.py:907-923 (update_H)",
                       "meep_gpu/driver.py:3311-3316 (the seam)",
                       "meep_gpu/driver.py:530-531 (_no_withdraw)"],

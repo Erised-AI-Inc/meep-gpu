@@ -266,6 +266,8 @@ from ..triton_kernels.coverage import (
 )
 from ..triton_kernels.launch import SUB_STEPS
 from . import shaders, templates
+# Bound as `_chunk_bounds`: the plan builders take the RECORD as `chunk_bounds`.
+from . import chunk_bounds as _chunk_bounds
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import Residency, compile_source
 from .plans import KernelPlan
@@ -318,23 +320,34 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 #: The certified curl body with ONE addition and no other change: the
-#: ``__TOP_MASK__`` slot between the cell-0 mask and the split-field recurrence.
-#: Every other line — the guard, the index decode, the ghost gather, the curl
-#: grouping, the cell-0 mask, the dsig/dsigu cycle and the six stores — is
-#: character-for-character ``shaders._CURL_TEMPLATE``'s, and the two blocks that
-#: LOOK fold-aware are emitted by ``shaders``' OWN emitters through reduced codes
-#: (see :func:`folded_curl_source`).
+#: ``__TOP_MASK__`` slot between the cell-0 mask and the PML forms. Every other
+#: code line — the record binding and its bounds block, the guard, the index
+#: decode, the ghost gather, the curl and its absent-partner forms, the cell-0
+#: mask, the dsig/dsigu cycle, the per-chunk form select and the stores — is
+#: character-for-character ``shaders._CURL_TEMPLATE``'s (``test_metal_symmetry``
+#: compares the two with comments removed), and the two blocks that LOOK
+#: fold-aware are emitted by ``shaders``' OWN emitters through reduced codes (see
+#: :func:`folded_curl_source`).
 #:
-#: 20 BINDINGS, identical to the certified curl's: 9 volume pointers, 6 coefficient
-#: vectors, 4 uints and dtdx. The fold adds no argument at all — the stored extent
-#: is what carries it, and the PML coefficient vectors are built at that extent
-#: already (measured on the Triton track: ``kms_y.shape == (1, 22, 1)`` on a grid
-#: storing 22), which is why the coefficient index needs no fold-aware change.
+#: THE FORMS UNDER A FOLD NEED NOTHING NEW. The record's membership line is
+#: ghost-adjusted (``chunk_map.ChunkLayout.membership``): the near ghost row of a
+#: mirrored axis and the far ghost slot of a folded periodic one read the row they
+#: image, as the array path's line does, so evaluating it at the stored index is
+#: the array path's own select (DESIGN D5).
+#:
+#: 21 BINDINGS, identical to the certified curl's: 9 volume pointers, 6
+#: coefficient vectors, 4 uints, dtdx and the chunk record. The fold adds no
+#: argument at all — the stored extent is what carries it, and the PML coefficient
+#: vectors are built at that extent already (measured on the Triton track:
+#: ``kms_y.shape == (1, 22, 1)`` on a grid storing 22), which is why the
+#: coefficient index needs no fold-aware change.
 _FOLDED_CURL_TEMPLATE = r"""
 #include <metal_stdlib>
 using namespace metal;
 
 __CONTRACT__
+
+__RECORD_STRUCT__
 
 kernel void folded_pml_curl_step(
     device float*       f0      [[buffer(0)]],
@@ -357,6 +370,7 @@ kernel void folded_pml_curl_step(
     constant uint&      nz      [[buffer(17)]],
     constant uint&      n_elem  [[buffer(18)]],
     constant float&     dtdx    [[buffer(19)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
     // The dispatch is sized from the first tensor argument's element count, so a
@@ -372,7 +386,10 @@ kernel void folded_pml_curl_step(
     int j   = plane % nyi;
     int i   = plane / nyi;
 
-    // --- the ghost rule, per axis (stepping._shift_up:1723 / _shift_down:1787) --
+    // --- the chunk record: membership at this cell, partner presence ------------
+__BOUNDS__
+
+    // --- the ghost rule, per axis (stepping._shift_up / _shift_down) -------------
     // BOTH MIRROR CODES TAKE THE METALLIC BRANCH, serving an exact 0.0 past the
     // face. That is NOT the array path's ghost VALUE on a fold (`_shift_down`
     // serves `parity * field[2]`, `_shift_up` serves `parity * field[reflect_row]`
@@ -401,12 +418,18 @@ __GHOST_Z__
     float c_x = vx ? g2[ox] : 0.0f;
     float c_y = vy ? g2[oy] : 0.0f;
 
-    // --- the curl (stepping._curl_from_operands:1601): DO NOT flatten these parens
-    float curl0 = dtdx * ((c_y - c) + (b - b_z));
-    float curl1 = dtdx * ((a_z - a) + (c - c_x));
-    float curl2 = dtdx * ((b_x - b) + (a - a_y));
+    // --- the curl (stepping._curl_from_operands): MEEP's left-to-right bracket
+    // ((g1s - g1) + g2) - g2s with both partners; (g1s - g1) without g2; and
+    // (-dtdx) * (g2s - g2) without g1 (step_generic.cpp:72-76, :104-108). DO NOT
+    // regroup: each operation rounds once.
+    float curl0 = has_y ? (has_z ? (dtdx * (((c_y - c) + b) - b_z)) : (dtdx * (c_y - c)))
+                        : (has_z ? ((-dtdx) * (b_z - b)) : 0.0f);
+    float curl1 = has_z ? (has_x ? (dtdx * (((a_z - a) + c) - c_x)) : (dtdx * (a_z - a)))
+                        : (has_x ? ((-dtdx) * (c_x - c)) : 0.0f);
+    float curl2 = has_x ? (has_y ? (dtdx * (((b_x - b) + a) - a_y)) : (dtdx * (b_x - b)))
+                        : (has_y ? ((-dtdx) * (a_y - a)) : 0.0f);
 
-    // --- ownership mask, cell 0 (stepping._mask_non_owned_cells:1865) -----------
+    // --- ownership mask, cell 0 (stepping._mask_non_owned_cells) ----------------
     // Every target whose Yee shift is 0 on a NON-PERIODIC axis. `_mask_non_owned_
     // cells` asks `is_mirrored or is_metallic or is_axis` (stepping.py:1898-1902),
     // and `_boundary_kinds` resolves exactly those three to a non-periodic kind
@@ -428,26 +451,32 @@ __MASK__
     bool last_x = (i == nxi - 1), last_y = (j == nyi - 1), last_z = (k == nzi - 1);
 __TOP_MASK__
 
-    // --- split-field recurrence (stepping._apply_pml_update:1905) ---------------
+    // --- the two PML forms, per structure chunk (stepping._apply_curl_regions) --
     // dsig/dsigu follow vec.hpp's cycle_direction and are the same triple on both
-    // sides: target 0 takes (y, z), target 1 (z, x), target 2 (x, y).
+    // sides: target 0 takes (y, z), target 1 (z, x), target 2 (x, y). A target
+    // whose dsigu membership holds steps the split-field recurrence; any other
+    // steps the dsig-only form, which is the recurrence's first stage with fu := f,
+    // and leaves fu unread and unwritten.
     float km_x = kmx[i], si_x = sinvx[i];
     float km_y = kmy[j], si_y = sinvy[j];
     float km_z = kmz[k], si_z = sinvz[k];
+    const bool du0 = __DU0__, du1 = __DU1__, du2 = __DU2__;
 
-    float p0 = u0[ii];
+    float p0 = du0 ? u0[ii] : f0[ii];
     float n0 = ((p0 * km_y) - curl0) * si_y;
-    float v0 = (((f0[ii] * km_z) + n0) - p0) * si_z;
+    float v0 = du0 ? ((((f0[ii] * km_z) + n0) - p0) * si_z) : n0;
 
-    float p1 = u1[ii];
+    float p1 = du1 ? u1[ii] : f1[ii];
     float n1 = ((p1 * km_z) - curl1) * si_z;
-    float v1 = (((f1[ii] * km_x) + n1) - p1) * si_x;
+    float v1 = du1 ? ((((f1[ii] * km_x) + n1) - p1) * si_x) : n1;
 
-    float p2 = u2[ii];
+    float p2 = du2 ? u2[ii] : f2[ii];
     float n2 = ((p2 * km_x) - curl2) * si_x;
-    float v2 = (((f2[ii] * km_y) + n2) - p2) * si_y;
+    float v2 = du2 ? ((((f2[ii] * km_y) + n2) - p2) * si_y) : n2;
 
-    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;
+    if (du0) { u0[ii] = n0; }
+    if (du1) { u1[ii] = n1; }
+    if (du2) { u2[ii] = n2; }
     f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;
 }
 """  # stepping.py live lines for the frozen device-text citation(s) in this string: 1781-1783->1828-1830, 1741-1744->1788-1791, 1898-1902->1945-1949, 1887-1897->1934-1944
@@ -569,8 +598,15 @@ def folded_curl_source(codes: Sequence[int], backward: bool,
     if len(codes) != 3:
         raise ValueError(f"codes must be a per-axis triple, got {codes!r}")
     reduced = _reduced_codes(codes)
+    flags = shaders.curl_membership_flags(backward)
     return templates.substitute(_FOLDED_CURL_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(shaders.CURL_RECORD_BUFFER),
+        "__BOUNDS__": shaders.curl_bounds_block(backward),
+        "__DU0__": flags[0],
+        "__DU1__": flags[1],
+        "__DU2__": flags[2],
         "__SHIFT__": "- 1" if backward else "+ 1",
         "__GHOST_X__": templates.ghost("x", reduced[0], backward),
         "__GHOST_Y__": templates.ghost("y", reduced[1], backward),
@@ -1333,7 +1369,7 @@ class FoldedPmlCurlPlan(KernelPlan):
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc",
-                 "residency", "volumes")
+                 "residency", "volumes", "chunk_bounds")
 
     family = "real-field folded PML curl"
 
@@ -1341,7 +1377,8 @@ class FoldedPmlCurlPlan(KernelPlan):
 
     def __init__(self, sub_step: str, shape, dtdx: float, bc, residency: Residency,
                  targets, auxiliaries, sources, coefficients,
-                 functions: Dict[str, Any], volumes: Sequence[str]) -> None:
+                 functions: Dict[str, Any], volumes: Sequence[str], *,
+                 chunk_bounds: Any) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(
                 f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
@@ -1353,12 +1390,14 @@ class FoldedPmlCurlPlan(KernelPlan):
         self.bc = tuple(int(code) for code in bc)
         self.residency = residency
         self.volumes = tuple(volumes)
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, f"FoldedPmlCurlPlan({sub_step})")
         super().__init__(
             functions,
             tuple(targets) + tuple(auxiliaries) + tuple(sources)
             + tuple(coefficients)
             + (self.shape[0], self.shape[1], self.shape[2],
-               self.n_elem, self.dtdx))
+               self.n_elem, self.dtdx, _chunk_bounds.tensor(self.chunk_bounds)))
 
 
 def _folded_curl_functions(codes, backward: bool,
@@ -1370,7 +1409,7 @@ def _folded_curl_functions(codes, backward: bool,
 def plan_folded_pml_curl(fields: Any, pml: Any, sub_step: str,
                          residency: Optional[Residency] = None,
                          contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-                         ) -> Optional[FoldedPmlCurlPlan]:
+                         *, chunk_bounds: Any) -> Optional[FoldedPmlCurlPlan]:
     """Build a folded curl plan from the engine's own objects, or None when refused.
 
     None is the only refusal: a configuration this kernel does not carry must fall
@@ -1379,7 +1418,8 @@ def plan_folded_pml_curl(fields: Any, pml: Any, sub_step: str,
 
     The codes come from :func:`folded_axis_kinds` and from nowhere else — building
     them from ``_boundary_kinds`` alone would lose the MIRROR_METALLIC /
-    MIRROR_PERIODIC split, which decides the top-plane mask.
+    MIRROR_PERIODIC split, which decides the top-plane mask. ``chunk_bounds`` is
+    the record of the run's division, as ``launch.plan_pml_curl`` takes it.
     """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
@@ -1405,7 +1445,8 @@ def plan_folded_pml_curl(fields: Any, pml: Any, sub_step: str,
     return FoldedPmlCurlPlan(
         sub_step, grid.shape, grid.dt / grid.dx, codes, residency,
         targets, auxiliaries, sources, coefficients,
-        _folded_curl_functions(codes, spec["backward"], contract_variants), volumes)
+        _folded_curl_functions(codes, spec["backward"], contract_variants), volumes,
+        chunk_bounds=chunk_bounds)
 
 
 def plan_folded_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
@@ -1414,14 +1455,15 @@ def plan_folded_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
                                      functions: Optional[Dict[str, Any]] = None,
                                      contract_variants: Sequence[str] = (
                                          shaders.CONTRACT_OFF,),
-                                     ) -> FoldedPmlCurlPlan:
+                                     *, chunk_bounds: Any) -> FoldedPmlCurlPlan:
     """Build a folded curl plan from bare host arrays — the gate's route.
 
     No predicate runs: the caller is a harness that constructed the configuration
     deliberately, including the deliberately wrong ones. ``functions`` is the
     mutation seam — dropping it is not a silent slowdown but a silent DISARMING,
     since every mutation leg would then launch the shipped kernel and report the
-    defect as uncaught.
+    defect as uncaught. ``chunk_bounds`` is REQUIRED, with no default, as
+    ``launch.plan_from_arrays`` requires it.
     """
     spec = SUB_STEPS[sub_step]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
@@ -1439,7 +1481,7 @@ def plan_folded_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
         coefficients,
         functions if functions is not None
         else _folded_curl_functions(codes, spec["backward"], contract_variants),
-        volumes)
+        volumes, chunk_bounds=chunk_bounds)
 
 
 class MirrorGhostFillPlan:
@@ -1662,7 +1704,8 @@ def plan_mirror_ghost_fill_from_arrays(family: str, slot: str,
 def plan_folded_constitutive(fields: Any, pml: Any, side: str,
                              residency: Any = None,
                              contract_variants: Sequence[str] = (
-                                 shaders.CONTRACT_OFF,)) -> Any:
+                                 shaders.CONTRACT_OFF,),
+                             *, chunk_bounds: Any) -> Any:
     """A CERTIFIED constitutive plan for a folded run, or None.
 
     The arithmetic, the source and the plan class are the certified ones; only the
@@ -1699,7 +1742,8 @@ def plan_folded_constitutive(fields: Any, pml: Any, side: str,
     return ConstitutivePlan(
         side, fields.grid.shape, residency, targets, auxiliaries, sources,
         inverse_epsilon, coefficients,
-        _constitutive_functions(side, contract_variants), volumes)
+        _constitutive_functions(side, contract_variants), volumes,
+        chunk_bounds=chunk_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -1744,7 +1788,8 @@ def _curl_arm_coverage(context: Any, slot: str) -> Coverage:
 
 def _curl_arm_plan(context: Any, slot: str) -> Optional[FoldedPmlCurlPlan]:
     return plan_folded_pml_curl(context.fields, context.pml, slot,
-                                context.residency, context.contract_variants)
+                                context.residency, context.contract_variants,
+                                chunk_bounds=context.chunk_bounds)
 
 
 #: Which constitutive side each slot names, so one pair of callables serves both.
@@ -1763,7 +1808,8 @@ def _constitutive_arm_coverage(context: Any, slot: str) -> Coverage:
 def _constitutive_arm_plan(context: Any, slot: str) -> Any:
     return plan_folded_constitutive(
         context.fields, context.pml, _CONSTITUTIVE_SLOT_SIDES[slot],
-        context.residency, context.contract_variants)
+        context.residency, context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def _fill_arm_coverage(context: Any, slot: str) -> Coverage:

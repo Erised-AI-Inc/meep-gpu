@@ -1,41 +1,45 @@
-"""Bit-identity gate for the conductivity + PML Triton kernel.
+"""Bit-identity gate for the conductivity + PML Triton kernel (MEEP's per-chunk forms).
 
-WHY THIS IS A SEPARATE FILE AND NOT A BRANCH OF THE SHARED PROBE. The shared
-probe (``probe_fused_kernel_bit_identity.py``) and the shared track adapter
-(``track_triton_pml.py``) are being edited RIGHT NOW by concurrent workflows, so
-this round does not touch either — the same call ``gate_triton_symmetry.py`` made
-for the same reason. Everything reusable is IMPORTED from the shared probe and
-nothing is re-implemented: the byte comparator, the ULP key, the ghost rule, the
-curl grouping, the ownership mask, the real PML layer, the field seeding, the
-shape/boundary/Courant sweep axes and the artifact writer. What is added here is
-only what does not exist there — MEEP's FOUR-CASE conductive recurrence, a
-coefficient table with an EXACTLY-1.0 inactive run (the shared synthetic tables
-never touch 1.0, so under them every cell is case A and three of the four cases
-are never exercised), the conductivity volumes, and the decay leg. Folding these
-into ``reference_recurrence`` and adding a ``conductive`` axis to the shared case
-key is a short edit once those files are free; it is listed with the rest of the
-deferred integration in ``meep_gpu/triton_kernels/conductivity.py``'s docstring.
+WHY THIS IS A SEPARATE FILE AND NOT A BRANCH OF THE SHARED PROBE. The shared probe
+(``probe_fused_kernel_bit_identity.py``) and the shared track adapter
+(``track_triton_pml.py``) serve every Triton family and are a serialisation point, so
+this gate does not edit them — the same call ``gate_triton_symmetry.py`` made. What is
+reusable is IMPORTED from the shared probe: the byte comparator, the ULP key, the ghost
+rule, the ownership mask, the real PML layer, the shape/boundary/Courant sweep axes and
+the artifact writer. What is added here is what does not exist there in MEEP's forms:
+the curl in MEEP's grouping with the record's partner presence, the record-keyed
+lossless and conductive forms, the coefficient tables fitted to a record, the
+conductivity and conductive-chunk volumes, and the planted and decay legs.
 
-THE COEFFICIENT TABLE IS THE WHOLE DIFFICULTY. ``stepping._apply_conductive_pml_update``
-partitions every cell by ``dsig = (kms != 1.0) | (sinv != 1.0)`` and
-``dsigu`` likewise, into four cases that are NOT substitutions of one another
-(the array path's own docstring: "simply substituting identity coefficients into
-the general recurrence is not equivalent after a source has been injected into
-D"). On the real ``2d_cond_pml`` layout case A — both directions active — is
-6241 of 409600 cells, the four PML corners, 1.5%. A kernel that gets it wrong
-produces a corner artefact that looks like a slightly worse absorber. So every
-case here records its OWN case mix, and a case that exercised fewer than the
-cases it claims to is visible in the artifact rather than assumed away.
+THE FORMS ARE KEYED ON THE CHUNK DIVISION, NOT ON A COEFFICIENT.
+``stepping._apply_conductive_pml_update`` selects MEEP's conductive forms per
+structure chunk, from the chunk's dsig and dsigu membership (the record,
+``chunk_map.chunk_bounds_record``) and from whether the chunk keeps the component's
+conductivity (a per-chunk fact, the conductive-chunk volume); a chunk that keeps none
+steps the lossless forms. The forms are NOT substitutions of one another, and a
+kernel that keys them on the wrong fact produces a corner artefact that looks like a
+slightly worse absorber. So every case here binds a record, records its OWN form mix
+from that record, and a case that exercised fewer forms than it claims to is visible
+in the artifact rather than assumed away. The synthetic tables are fitted to a
+``split`` record (two runs per axis, different on the two lattices, unit coefficients
+outside the runs and on cells inside them) with an ``interior`` conductive-chunk
+volume; the real tables step the one-rank division of their own layer with every
+chunk keeping the conductivity.
 
 Legs, in order:
 
 * ``validate``  — this file's reference against ``stepping.py`` itself, bytewise,
-  on NumPy. Runs on a laptop with no GPU; it is what makes "the kernel matches
-  the reference" mean "the kernel matches the array path".
+  on NumPy: one component's forms against ``_apply_conductive_pml_update``, and whole
+  conductive sub-steps on a real ``Fields`` against ``stepping.step_B`` / ``step_D``.
+  Runs on a laptop with no GPU; it is what makes "the kernel matches the reference"
+  mean "the kernel matches the array path".
 * ``synthetic`` — the sweep. Shapes x boundary sets x dtdx {0.5, **0.35**} x
   {step_B, step_D} x conductivity pattern {all three, mixed (1,0,1)} x
   coefficient source {synthetic, real}, guarded and unguarded, comparing the
   target, its ``fu`` AND its ``f_cond`` as bytes.
+* ``planted``   — no drive and every target word ``-0``: every curl is an exact
+  ``+0``, so MEEP's ``-0`` survives on the dsig cells and a form that rides a ``+0``
+  through an add instead stores ``+0``. The signed-zero mutations are scored here.
 * ``multi``     — consecutive sub-steps with the sources held fixed, byte-compared
   at every step, to the stated budget.
 * ``decay``     — the same recurrence with the sources ZEROED, which is the only
@@ -46,8 +50,11 @@ Legs, in order:
   is worse than measuring it.
 * ``controls``  — the three rows without which ``multi``'s and ``decay``'s
   first-divergence step numbers are uninterpretable. See below.
-* ``mutations`` — defects injected into the shipped kernel's SOURCE, each of which
-  must be caught.
+* ``mutations`` — defects injected into the shipped kernel's SOURCE or its plan,
+  each of which must be caught (the previous groupings planted back, KERNELS.md
+  7.1, and the B battery, 7.2), and two declared nulls that must not move a word.
+  The previous forms' near-one tolerance leg is retired with the coefficient
+  predicate it tested (DESIGN D13).
 
 THE LONG-RUN DIVERGENCE, AND WHAT IS ALLOWED TO ATTRIBUTE IT. Measured twice, on
 2026-08-10 and again on 2026-08-19 with identical step numbers: every ``cond =
@@ -149,6 +156,7 @@ import inspect
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import tempfile
@@ -174,6 +182,12 @@ except Exception:  # noqa: BLE001 - absence is the norm off the measurement host
 # any of it — a second byte comparator or a second curl would make this gate's
 # verdict about this file rather than about the contract.
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+# The records the harness hands a plan built from bare arrays (no default division).
+from gate_chunk_records import layer_record  # noqa: E402
+
+from meep_gpu.chunk_map import (  # noqa: E402
+    RECORD_PRESENCE_WORD, RECORD_WORDS, membership_from_record, record_index,
+)
 
 SEED = probe.SEED
 PERIODIC = probe.PERIODIC
@@ -227,66 +241,145 @@ def log(message: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The reference — a SECOND transcription of the four cases, not an import
+# The reference — a SECOND transcription of the forms, not an import
 # ---------------------------------------------------------------------------
 #
-# Transcribed from `stepping._apply_conductive_pml_update` (stepping.py:2001-2109),
-# reached from `_apply_curl` (:508-534). The `validate` leg compares it against
-# that function itself, so "the kernel matches this" means "the kernel matches the
-# array path" rather than "the kernel reproduces whatever was written twice".
+# Transcribed from `stepping._apply_conductive_pml_update`, reached from
+# `stepping._apply_curl`, with the curl of `stepping._curl_from_operands`. The
+# `validate` leg compares it against those functions themselves, so "the kernel
+# matches this" means "the kernel matches the array path" rather than "the kernel
+# reproduces whatever was written twice".
+#
+# THE FORMS ARE KEYED ON THE CHUNK RECORD, never on a coefficient: every function
+# below takes the record (``chunk_map.chunk_bounds_record``; REQUIRED, because it
+# decides which cells take which form) and, where some chunk keeps no conductivity
+# for a component, that component's conductive-chunk volume (``kept``).
+
+def record_presence(record: Sequence[int]) -> Tuple[bool, bool, bool]:
+    """The record's partner-presence word, one flag per axis."""
+    word = int(record[RECORD_PRESENCE_WORD])
+    return tuple(bool((word >> axis) & 1) for axis in range(3))  # type: ignore[return-value]
+
+
+def membership(xp: Any, record: Sequence[int], half_integer: bool, axis: int,
+               shape: Sequence[int]) -> Any:
+    """One record line as a broadcastable bool volume along ``axis``."""
+    n = int(shape[axis])
+    line = membership_from_record(record, half_integer, axis, n)
+    return xp.asarray(np.ascontiguousarray(line.reshape(probe.broadcast_shape(axis, n))))
+
+
+def reference_curl(xp: Any, first: Any, second: Any, first_axis: int,
+                   second_axis: int, dtdx: Any, backward: bool,
+                   boundaries: Sequence[str], presence: Sequence[bool],
+                   grouping: str = "meep_order") -> Any:
+    """dtdx * the discrete curl, in the contract's grouping or the previous one.
+
+    ``meep_order`` is ``stepping._curl_from_operands``, which is MEEP's
+    (step_generic.cpp:72-76, :104, :108): with both partners present the sum
+    associates left to right, ``dtdx * (((g1s - g1) + g2) - g2s)``; a partner whose
+    derivative axis is invariant is ABSENT (the record's presence word) and the
+    one-partner form is taken, ``dtdx * (g1s - g1)`` or ``(-dtdx) * (g2s - g2)``;
+    with neither the curl is an exact ``+0``.
+
+    ``pairwise_order`` is the package's grouping before the alignment,
+    ``dtdx * ((g1s - g1) + (g2 - g2s))`` over both partners whatever the presence:
+    a control the kernel must NOT reproduce.
+    """
+    shifted_first = probe.reference_shift(xp, first, first_axis,
+                                          boundaries[first_axis], backward)
+    shifted_second = probe.reference_shift(xp, second, second_axis,
+                                           boundaries[second_axis], backward)
+    if grouping == "pairwise_order":
+        return dtdx * ((shifted_first - first) + (second - shifted_second))
+    if grouping != "meep_order":
+        raise ValueError(f"unknown grouping {grouping!r}")
+    first_present, second_present = bool(presence[first_axis]), bool(presence[second_axis])
+    if first_present and second_present:
+        return dtdx * (((shifted_first - first) + second) - shifted_second)
+    if first_present:
+        return dtdx * (shifted_first - first)
+    if second_present:
+        return (-dtdx) * (shifted_second - second)
+    return xp.zeros_like(first)
+
+
+def reference_plain_recurrence(xp: Any, field: Any, fu: Any, curl: Any, kms: Any,
+                               sinv: Any, kms_u: Any, sinv_u: Any, *,
+                               dsigu: Any) -> None:
+    """A lossless component's two forms, in place (``stepping._apply_curl_regions``).
+
+    On a dsigu cell the split-field recurrence (``stepping._apply_pml_update``)::
+
+        n = ((fu * kms) - curl) * sinv;  f = (((f * kms_u) + n) - fu) * sinv_u;  fu = n
+
+    everywhere else the dsig-only form ``((f * kms) - curl) * sinv`` on the field
+    alone, with ``fu`` left untouched (the auxiliary contract). Both forms computed
+    whole-volume and SELECTED, which is the same word per cell as the array path's
+    split, select or mask route.
+    """
+    n = ((fu * kms) - curl) * sinv
+    recurrence = (((field * kms_u) + n) - fu) * sinv_u
+    dsig_only = ((field * kms) - curl) * sinv
+    new_field = xp.where(dsigu, recurrence, dsig_only)
+    new_fu = xp.where(dsigu, n, fu)
+    field[...] = new_field
+    fu[...] = new_fu
+
 
 def reference_conductive_recurrence(xp: Any, field: Any, fu: Any, f_cond: Any,
                                     curl: Any, condfac: Any, condinv: Any,
                                     kms: Any, sinv: Any, kms_u: Any,
-                                    sinv_u: Any) -> None:
-    """MEEP's four subchunk cases, in place on ``field``, ``fu`` and ``f_cond``.
+                                    sinv_u: Any, *, dsig: Any, dsigu: Any,
+                                    kept: Any = None) -> None:
+    """MEEP's conductive forms, in place on ``field``, ``fu`` and ``f_cond``.
 
-    The case table, with the parenthesisation the array path's in-place sequence
-    imposes (``km1``/``si1`` on the ``dsig`` axis, ``km2``/``si2`` on ``dsigu``)::
+    ``dsig`` / ``dsigu`` are the component's chunk memberships of its two layers
+    (record lines, broadcastable); ``kept`` is the volume of cells whose chunk keeps
+    the component's conductivity, ``None`` when every chunk keeps it. ``km1``/``si1``
+    are on the dsig axis, ``km2``/``si2`` on the dsigu axis, ``X`` the curl::
 
-        A  dsig & dsigu   c <- ((c*cf) - cu) * ci
-                          u <- (((u*km1) + c_new) - c) * si1
-                          f <- (((f*km2) + u_new) - u) * si2
-        B  dsigu only     u <- ((u*cf) - cu) * ci
-                          f <- (((f*km2) + u_new) - u) * si2      c UNCHANGED
-        C  dsig only      c <- ((c*cf) - cu) * ci
-                          f <- (((f*km1) + c_new) - c) * si1      u UNCHANGED
-        D  neither        f <- ((f*cf) - cu) * ci                 u AND c UNCHANGED
+        conductive, dsig and dsigu    c' = ((c*cf) - X) * ci
+                                      u' = ((u*km1) + (c' - c)) * si1
+                                      f' = (((f*km2) + u') - u) * si2
+        conductive, dsigu only        u' = ((u*cf) - X) * ci
+                                      f' = (((f*km2) + u') - u) * si2     c kept
+        conductive, dsig only         c' = ((c*cf) - X) * ci
+                                      f' = ((f*km1) + (c' - c)) * si1     u kept
+        conductive, neither           f' = ((f*cf) - X) * ci              u, c kept
+        no conductivity in the chunk  :func:`reference_plain_recurrence`
 
-    Written as five whole-volume branch expressions and two nested selections
-    because that is the KERNEL's shape — one branch per cell — rather than the
-    array path's compute-all-then-``copyto``. The two agree bitwise because the
-    branches are mutually independent: nothing a discarded branch computes feeds a
-    retained one. That independence is the claim the ``validate`` leg tests.
+    The increment ``(c' - c)`` is formed FIRST and then added: MEEP's grouping
+    (step_generic.cpp:167, :209). ``fu`` changes only on dsigu cells and ``f_cond``
+    only on the dsig cells of conductive chunks. Written as whole-volume form
+    expressions and nested selections because that is the KERNEL's shape -- one form
+    per cell -- rather than the array path's compute-all-then-``copyto``; the two
+    agree bitwise because the forms are mutually independent, which is the claim the
+    ``validate`` leg tests.
     """
-    dsig = (kms != np.float32(1.0)) | (sinv != np.float32(1.0))
-    dsigu = (kms_u != np.float32(1.0)) | (sinv_u != np.float32(1.0))
-
     c_new = ((f_cond * condfac) - curl) * condinv
+    increment = c_new - f_cond
+    u_split = ((fu * kms) + increment) * sinv
     u_cond = ((fu * condfac) - curl) * condinv
-    u_split = (((fu * kms) + c_new) - f_cond) * sinv
     u_new = xp.where(dsig, u_split, u_cond)
     f_split = (((field * kms_u) + u_new) - fu) * sinv_u
-    f_first = (((field * kms) + c_new) - f_cond) * sinv
+    f_first = ((field * kms) + increment) * sinv
     f_direct = ((field * condfac) - curl) * condinv
 
     new_field = xp.where(dsigu, f_split, xp.where(dsig, f_first, f_direct))
     new_fu = xp.where(dsigu, u_new, fu)
-    new_f_cond = xp.where(dsig, c_new, f_cond)
+    if kept is None:
+        new_f_cond = xp.where(dsig, c_new, f_cond)
+    else:
+        n = ((fu * kms) - curl) * sinv
+        recurrence = (((field * kms_u) + n) - fu) * sinv_u
+        dsig_only = ((field * kms) - curl) * sinv
+        new_field = xp.where(kept, new_field, xp.where(dsigu, recurrence, dsig_only))
+        new_fu = xp.where(kept, new_fu, xp.where(dsigu, n, fu))
+        new_f_cond = xp.where(kept & dsig, c_new, f_cond)
     field[...] = new_field
     fu[...] = new_fu
     f_cond[...] = new_f_cond
-
-
-def reference_plain_recurrence(field: Any, fu: Any, curl: Any, kms: Any,
-                               sinv: Any, kms_u: Any, sinv_u: Any) -> None:
-    """The lossless component's recurrence — the shared probe's, unchanged.
-
-    A mixed launch steps its lossless component through ``kernels.pml_curl_step``'s
-    two-line recurrence (the kernel compiles the conductive branch out), so the
-    reference has to as well or the mixed leg would compare two different physics.
-    """
-    probe.reference_recurrence(field, fu, curl, kms, sinv, kms_u, sinv_u)
 
 
 def reference_conductive_pml_step(xp: Any, sources: Dict[str, Any],
@@ -298,51 +391,155 @@ def reference_conductive_pml_step(xp: Any, sources: Dict[str, Any],
                                   coefficients: Dict[str, Any], dtdx: Any,
                                   sub_step: str, boundaries: Sequence[str],
                                   cond: Sequence[int],
-                                  grouping: str = "array_order") -> None:
+                                  grouping: str = "meep_order", *,
+                                  record: Sequence[int],
+                                  kept: Optional[Dict[str, Any]] = None) -> None:
     """One conductive curl sub-step, in place, over all three components.
 
-    The curl, the ghost rule and the ownership mask come from the shared probe
-    (``probe.reference_curl`` / ``probe.reference_mask``) unchanged: conductivity
-    enters ``_apply_curl`` only AFTER the curl is formed, so this sub-step differs
-    from the plain one in the recurrence and in nothing else.
+    The ghost rule and the ownership mask come from the shared probe
+    (``probe.reference_shift`` / ``probe.reference_mask``) unchanged, the curl from
+    :func:`reference_curl` with the record's presence word: conductivity enters
+    ``_apply_curl`` only AFTER the curl is formed. Each component's dsig and dsigu
+    memberships are the record's lines on the sub-step's lattice (half-integer for B,
+    integer for D); ``kept`` maps a conductive target to its conductive-chunk volume
+    (absent: every chunk keeps it).
     """
     terms = probe.B_PML_TERMS if sub_step == "step_B" else probe.D_PML_TERMS
     backward = sub_step == "step_D"
+    half_integer = not backward
+    presence = record_presence(record)
+    shape = tuple(int(n) for n in targets[terms[0][0]].shape)
+    kept = kept or {}
     for index, (target, g1, a1, g2, a2, dsig, dsigu, iyee) in enumerate(terms):
-        curl = probe.reference_curl(xp, sources[g1], sources[g2], a1, a2, dtdx,
-                                    backward, boundaries, grouping)
+        curl = reference_curl(xp, sources[g1], sources[g2], a1, a2, dtdx,
+                              backward, boundaries, presence, grouping)
         probe.reference_mask(curl, iyee, boundaries)
+        in_dsig = membership(xp, record, half_integer, "xyz".index(dsig), shape)
+        in_dsigu = membership(xp, record, half_integer, "xyz".index(dsigu), shape)
         if cond[index]:
             reference_conductive_recurrence(
                 xp, targets[target], auxiliaries["fu_" + target],
                 histories["f_cond_" + target], curl,
                 condfac["condfac_" + target], condinv["condinv_" + target],
                 coefficients["kms_" + dsig], coefficients["sinv_" + dsig],
-                coefficients["kms_" + dsigu], coefficients["sinv_" + dsigu])
+                coefficients["kms_" + dsigu], coefficients["sinv_" + dsigu],
+                dsig=in_dsig, dsigu=in_dsigu, kept=kept.get(target))
         else:
             reference_plain_recurrence(
-                targets[target], auxiliaries["fu_" + target], curl,
+                xp, targets[target], auxiliaries["fu_" + target], curl,
                 coefficients["kms_" + dsig], coefficients["sinv_" + dsig],
-                coefficients["kms_" + dsigu], coefficients["sinv_" + dsigu])
+                coefficients["kms_" + dsigu], coefficients["sinv_" + dsigu],
+                dsigu=in_dsigu)
+
+
+def reference_plain_pml_step(xp: Any, sources: Dict[str, Any],
+                             targets: Dict[str, Any], auxiliaries: Dict[str, Any],
+                             coefficients: Dict[str, Any], dtdx: Any, sub_step: str,
+                             boundaries: Sequence[str], *,
+                             record: Sequence[int]) -> None:
+    """The ordinary PML curl sub-step, every component lossless, on ``record``.
+
+    The oracle of the ``substitution`` control's plain plan
+    (``launch.plan_from_arrays``, ``kernels.pml_curl_step``).
+    """
+    terms = probe.B_PML_TERMS if sub_step == "step_B" else probe.D_PML_TERMS
+    backward = sub_step == "step_D"
+    presence = record_presence(record)
+    shape = tuple(int(n) for n in targets[terms[0][0]].shape)
+    for target, g1, a1, g2, a2, dsig, dsigu, iyee in terms:
+        curl = reference_curl(xp, sources[g1], sources[g2], a1, a2, dtdx,
+                              backward, boundaries, presence)
+        probe.reference_mask(curl, iyee, boundaries)
+        reference_plain_recurrence(
+            xp, targets[target], auxiliaries["fu_" + target], curl,
+            coefficients["kms_" + dsig], coefficients["sinv_" + dsig],
+            coefficients["kms_" + dsigu], coefficients["sinv_" + dsigu],
+            dsigu=membership(xp, record, not backward, "xyz".index(dsigu), shape))
 
 
 # ---------------------------------------------------------------------------
-# Coefficient tables and conductivity volumes
+# Records, coefficient tables and conductivity volumes
 # ---------------------------------------------------------------------------
+#
+# TWO DIVISIONS, because each answers what the other cannot.
+#
+# * ``split`` (the synthetic tables): two runs per resolved axis, DIFFERENT on the
+#   two sub-lattices, with coefficients exactly 1.0 outside every run (the region
+#   plan's unit-coefficient precondition) and on each run's inner face row and on
+#   the inactive half of :func:`conductive_coefficients`' table (cells inside a
+#   chunk whose sigma is zero, where membership and not the coefficient decides).
+#   It is the record on which the form select, the record's bounds, the sub-lattice,
+#   the dsig/dsigu pairing and the coefficient predicate each change some word.
+# * ``layer`` (the real tables): the one-rank division of the real layer's grid
+#   (``gate_chunk_records.layer_record``), the division a driver built without MEEP
+#   steps with, on the true graded profile.
+#
+# AND TWO CONDUCTIVE-CHUNK KINDS: ``interior`` (the synthetic source), where the
+# chunks of an outer shell keep no conductivity and step the lossless forms, and
+# ``every_chunk`` (the real source), the array path's ``conductive=None``.
+
+def _runs(n: int, low: int, high: int) -> Tuple[int, int, int, int]:
+    """``[0, low) U [n - high, n)``, or the low run alone when they would touch."""
+    if low + high < n:
+        return 0, low, n - high, n
+    return 0, low, 0, 0
+
+
+def split_record(shape: Sequence[int]) -> np.ndarray:
+    """Two runs per resolved axis, one row deeper on the half-integer lattice."""
+    record = np.zeros(RECORD_WORDS, dtype=np.int32)
+    presence = 0
+    for axis, n in enumerate(int(v) for v in shape):
+        if n <= 1:
+            continue
+        presence |= 1 << axis
+        low, high = max(1, n // 3), max(1, n // 4)
+        for half, runs in ((False, _runs(n, low, high)),
+                           (True, _runs(n, max(1, low - 1), high + 1))):
+            for word, value in enumerate(runs):
+                record[record_index(half, axis, word)] = value
+    record[RECORD_PRESENCE_WORD] = presence
+    return record
+
+
+def fit_coefficients(xp: Any, coefficients: Dict[str, Any], record: Sequence[int],
+                     half_integer: bool, shape: Sequence[int]) -> Dict[str, Any]:
+    """The ``split`` record's coefficients: 1.0 outside every run and on its inner face.
+
+    Each axis's ``kms``/``sinv`` vector is kept where the record line (on the
+    coefficients' own sub-lattice) holds the row and set to exactly 1.0 elsewhere,
+    and on the row of each run that faces the interior. An invariant axis carries no
+    run and every coefficient there is 1.0.
+    """
+    out = dict(coefficients)
+    for axis, name in enumerate(probe.AXIS_NAMES):
+        n = int(shape[axis])
+        line = membership_from_record(record, half_integer, axis, n)
+        unit = ~line
+        a0, a1, b0, b1 = (int(record[record_index(half_integer, axis, word)])
+                          for word in range(4))
+        if a1 > a0:
+            unit[a1 - 1] = True
+        if b1 > b0:
+            unit[b0] = True
+        for stem in ("kms", "sinv"):
+            values = np.array(probe.to_host(coefficients[f"{stem}_{name}"]),
+                              dtype=np.float32).reshape(-1)
+            values[unit] = np.float32(1.0)
+            out[f"{stem}_{name}"] = xp.asarray(np.ascontiguousarray(
+                values.reshape(probe.broadcast_shape(axis, n))))
+    return out
+
 
 def conductive_coefficients(xp: Any, shape: Tuple[int, int, int],
                             half_integer: bool,
                             active_fraction: float = 0.5) -> Dict[str, Any]:
     """Seeded kms/sinv with an EXACTLY-1.0 inactive run and a graded active one.
 
-    THE SHARED PROBE'S TABLE CANNOT BE USED HERE. ``probe.synthetic_coefficients``
-    draws from [0.5, 1.0) and "never touch[es] 1.0" — deliberately, because for
-    the PLAIN kernel a table of ones hides the coefficient indexing. For THIS
-    kernel the same choice makes ``dsig`` and ``dsigu`` true everywhere, so every
-    cell takes case A and three of the four cases are never exercised. The
-    inactive run below is exactly 1.0, which is what ``stepping.py:2055-2058``
-    tests for, and the active run carries non-representable float32 values so a
-    contracted FMA is visible.
+    The active run carries non-representable float32 values so a contracted FMA is
+    visible; the inactive run is exactly 1.0, so once :func:`fit_coefficients` keys
+    the table on a record whose second run lies there, that run's cells are inside a
+    chunk with sigma exactly zero.
     """
     rng = np.random.default_rng(SEED + (31 if half_integer else 32))
     coefficients: Dict[str, Any] = {}
@@ -359,30 +556,33 @@ def conductive_coefficients(xp: Any, shape: Tuple[int, int, int],
     return coefficients
 
 
-def near_one_coefficients(xp: Any, shape: Tuple[int, int, int],
-                          half_integer: bool) -> Dict[str, Any]:
-    """:func:`conductive_coefficients` with one plane per axis a HAIR off 1.0.
-
-    Drives mutation ``tolerance_partition``. On the real tables that mutation is a
-    measured no-op — ``kms_x`` has 561 entries exactly 1.0 and 561 within 1e-7 of
-    1.0, the same 561 — so a gate run only against real or ordinary synthetic
-    tables would report it UNCAUGHT and mean nothing by it. Here one plane sits at
-    ``1.0 - 6e-8``, which ``!= 1.0`` calls active and any tolerance calls inactive.
-    """
-    coefficients = conductive_coefficients(xp, shape, half_integer)
-    near = np.float32(1.0) - np.float32(6e-8)
-    for axis, name in enumerate(probe.AXIS_NAMES):
-        n = shape[axis]
-        if n < 3:
+def interior_volume(shape: Sequence[int]) -> np.ndarray:
+    """True on cells at least a quarter of each resolved axis from both faces."""
+    mask = np.ones(tuple(int(n) for n in shape), dtype=bool)
+    for axis, n in enumerate(int(v) for v in shape):
+        if n <= 1:
             continue
-        host = probe.to_host(coefficients[f"kms_{name}"]).copy()
-        flat = host.reshape(-1)
-        flat[n - 1] = near
-        coefficients[f"kms_{name}"] = xp.asarray(np.ascontiguousarray(host))
-        host = probe.to_host(coefficients[f"sinv_{name}"]).copy()
-        host.reshape(-1)[n - 1] = np.float32(1.0)
-        coefficients[f"sinv_{name}"] = xp.asarray(np.ascontiguousarray(host))
-    return coefficients
+        margin = max(1, n // 4)
+        line = (np.arange(n) >= margin) & (np.arange(n) < n - margin)
+        mask &= line.reshape(probe.broadcast_shape(axis, n))
+    return mask
+
+
+def kept_volumes(xp: Any, shape: Sequence[int], targets: Sequence[str],
+                 cond: Sequence[int], kind: str) -> Dict[str, Any]:
+    """Per conductive target, the cells whose chunk keeps its conductivity.
+
+    ``every_chunk``: none bound (the array path's ``conductive=None``).
+    ``interior``: :func:`interior_volume`, so the outer shell's dsig cells take the
+    lossless forms -- the conductive forms' third test.
+    """
+    if kind == "every_chunk":
+        return {}
+    if kind != "interior":
+        raise ValueError(f"unknown conductive-chunk kind {kind!r}")
+    volume = interior_volume(shape)
+    return {target: xp.asarray(np.ascontiguousarray(volume))
+            for index, target in enumerate(targets) if cond[index]}
 
 
 def conductivity_volumes(xp: Any, shape: Tuple[int, int, int],
@@ -390,14 +590,11 @@ def conductivity_volumes(xp: Any, shape: Tuple[int, int, int],
                          dt: float = 0.0125) -> Dict[str, Any]:
     """``condfac``/``condinv`` volumes, derived the way ``Fields`` derives them.
 
-    ``fields.py:821-822`` (MEEP structure.cpp:693-706)::
-
-        condfac = 1 - sigma*dt/2      condinv = 1/(1 + sigma*dt/2)
-
-    Both are FULL VOLUMES of ``grid.shape``, per component, and a graded sigma is
-    the realistic case (``mp.Absorber`` ramps one). A component the pattern marks
-    lossless gets neither — the plan binds a placeholder for it and the kernel
-    compiles the loads away, which is the property the mixed leg measures.
+    ``condfac = 1 - sigma*dt/2`` (MEEP's float32 word) and ``condinv = 1/(1 +
+    sigma*dt/2)``, both FULL VOLUMES of ``grid.shape``, per component; a graded
+    sigma is the realistic case. A component the pattern marks lossless gets neither
+    -- the plan binds a placeholder for it and the kernel compiles the loads away,
+    which is the property the mixed leg measures.
     """
     rng = np.random.default_rng(SEED + 41)
     half_dt = np.float32(dt / 2.0)
@@ -413,27 +610,27 @@ def conductivity_volumes(xp: Any, shape: Tuple[int, int, int],
     return out
 
 
-def case_mix(xp: Any, shape: Tuple[int, int, int], coefficients: Dict[str, Any],
-             dsig: str, dsigu: str) -> Dict[str, int]:
-    """How many cells of this case took each of the four branches.
+def case_mix(record: Sequence[int], shape: Tuple[int, int, int], sub_step: str,
+             dsig: str, dsigu: str, kept: Any = None) -> Dict[str, int]:
+    """How many cells of this case took each conductive form, and the lossless pair.
 
-    RECORDED PER CASE, not asserted. Case A is 1.5% of cells on the real
-    ``2d_cond_pml`` layout and ZERO on two of its three curl targets (the
-    invariant z axis makes one direction inactive everywhere), so a sweep that
-    never says which branches it exercised cannot claim to have gated four cases.
+    RECORDED PER CASE, not asserted, from the RECORD (the forms' own predicate):
+    ``A`` dsig and dsigu, ``B`` dsigu only, ``C`` dsig only, ``D`` neither, each in a
+    chunk that keeps the conductivity, and ``plain`` the cells whose chunk keeps none.
+    A sweep that never says which forms it exercised cannot claim to have gated them.
     """
-    active = {}
-    for label in (dsig, dsigu):
-        km = probe.to_host(coefficients["kms_" + label]).reshape(-1)
-        si = probe.to_host(coefficients["sinv_" + label]).reshape(-1)
-        active[label] = (km != np.float32(1.0)) | (si != np.float32(1.0))
-    axis_of = {"x": 0, "y": 1, "z": 2}
-    a = np.broadcast_to(active[dsig].reshape(
-        probe.broadcast_shape(axis_of[dsig], shape[axis_of[dsig]])), shape)
-    b = np.broadcast_to(active[dsigu].reshape(
-        probe.broadcast_shape(axis_of[dsigu], shape[axis_of[dsigu]])), shape)
-    return {"A": int(np.count_nonzero(a & b)), "B": int(np.count_nonzero(~a & b)),
-            "C": int(np.count_nonzero(a & ~b)), "D": int(np.count_nonzero(~a & ~b))}
+    half = sub_step == "step_B"
+    a = np.broadcast_to(np.asarray(membership(np, record, half, "xyz".index(dsig), shape)),
+                        shape)
+    b = np.broadcast_to(np.asarray(membership(np, record, half, "xyz".index(dsigu), shape)),
+                        shape)
+    keep = (np.ones(shape, dtype=bool) if kept is None
+            else np.asarray(probe.to_host(kept), dtype=bool))
+    return {"A": int(np.count_nonzero(a & b & keep)),
+            "B": int(np.count_nonzero(~a & b & keep)),
+            "C": int(np.count_nonzero(a & ~b & keep)),
+            "D": int(np.count_nonzero(~a & ~b & keep)),
+            "plain": int(np.count_nonzero(~keep))}
 
 
 def subnormal_count(arrays: Dict[str, Any], names: Sequence[str]) -> int:
@@ -514,10 +711,14 @@ def divergence_forensics(left: Dict[str, Any], right: Dict[str, Any],
 TARGETS = {"step_B": ("Bx", "By", "Bz"), "step_D": ("Dx", "Dy", "Dz")}
 SOURCES = {"step_B": ("Ex", "Ey", "Ez"), "step_D": ("Hx", "Hy", "Hz")}
 
+#: The conductive-chunk kind each coefficient source is swept with (see above).
+KEPT_KIND = {"synthetic": "interior", "real": "every_chunk"}
+
 
 def make_arrays(xp: Any, shape: Tuple[int, int, int], sub_step: str,
                 cond: Sequence[int], offset: int = 7,
-                quiet_sources: bool = False) -> Dict[str, Any]:
+                quiet_sources: bool = False,
+                kept_kind: str = "every_chunk") -> Dict[str, Any]:
     """Seeded device arrays for one sub-step: fields, ``fu``, ``f_cond``, sigma pair.
 
     The auxiliaries and the histories start NONZERO for the shared probe's reason:
@@ -525,6 +726,8 @@ def make_arrays(xp: Any, shape: Tuple[int, int, int], sub_step: str,
     mis-indexed coefficient would only show from step two. ``quiet_sources``
     zeroes the six source volumes, which is the decay leg's whole mechanism —
     with no drive the recurrence is a pure product of factors below one.
+    ``kept_kind`` adds each conductive target's conductive-chunk volume as
+    ``conductive_chunks_<target>``, the key ``plan_conductive_from_arrays`` reads.
     """
     rng = np.random.default_rng(SEED + offset)
     targets = TARGETS[sub_step]
@@ -540,7 +743,15 @@ def make_arrays(xp: Any, shape: Tuple[int, int, int], sub_step: str,
             arrays["f_cond_" + target] = xp.asarray(np.ascontiguousarray(
                 rng.uniform(-1.0, 1.0, size=shape).astype(np.float32)))
     arrays.update(conductivity_volumes(xp, shape, targets, cond))
+    for target, volume in kept_volumes(xp, shape, targets, cond, kept_kind).items():
+        arrays["conductive_chunks_" + target] = volume
     return arrays
+
+
+def kept_of(arrays: Dict[str, Any], sub_step: str) -> Dict[str, Any]:
+    """The conductive-chunk volumes ``make_arrays`` bound, keyed by target."""
+    return {target: arrays["conductive_chunks_" + target] for target in TARGETS[sub_step]
+            if "conductive_chunks_" + target in arrays}
 
 
 def compare_state(kernel: Dict[str, Any], reference: Dict[str, Any],
@@ -570,33 +781,52 @@ def case_key(source: str, shape, boundaries, dtdx, sub_step, cond) -> str:
 
 
 def build_coefficients(xp: Any, shape, boundaries, sub_step: str, source: str,
-                       repo_root: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    """The six broadcast coefficient tables, or the reason there are none."""
+                       repo_root: str
+                       ) -> Tuple[Optional[Dict[str, Any]], Optional[np.ndarray],
+                                  Optional[str]]:
+    """The six broadcast coefficient tables and the record, or the reason there are none."""
     half_integer = sub_step == "step_B"
     if source == "synthetic":
-        return conductive_coefficients(xp, shape, half_integer), None
-    if source == "near_one":
-        return near_one_coefficients(xp, shape, half_integer), None
+        record = split_record(shape)
+        return (fit_coefficients(xp, conductive_coefficients(xp, shape, half_integer),
+                                 record, half_integer, shape), record, None)
     walled_invariant = [axis for axis in range(3)
                         if shape[axis] == 1 and boundaries[axis] == METALLIC]
     if walled_invariant:
-        return None, (f"axis {walled_invariant[0]} has one cell and a metallic "
-                      f"wall; Grid refuses that configuration, so no real layer "
-                      f"exists for it")
+        return None, None, (f"axis {walled_invariant[0]} has one cell and a metallic "
+                            f"wall; Grid refuses that configuration, so no real layer "
+                            f"exists for it")
     try:
-        _, layer = probe.real_pml_layer(xp, shape, boundaries, repo_root)
+        grid, layer = probe.real_pml_layer(xp, shape, boundaries, repo_root)
+        record = np.ascontiguousarray(layer_record(grid, layer), dtype=np.int32)
     except Exception as exc:  # noqa: BLE001 - the refusal IS the result
-        return None, f"{type(exc).__name__}: {exc}"[:400]
-    return probe.layer_coefficients(layer, half_integer), None
+        return None, None, f"{type(exc).__name__}: {exc}"[:400]
+    return probe.layer_coefficients(layer, half_integer), record, None
 
 
 # ---------------------------------------------------------------------------
 # The synthetic sweep
 # ---------------------------------------------------------------------------
 
+def grow_first_runs(record: Sequence[int]) -> np.ndarray:
+    """``record`` with every line's first run one row longer, where the runs stay apart."""
+    out = np.array(record, dtype=np.int32).copy()
+    for half in (False, True):
+        for axis in range(3):
+            a0, a1, b0, b1 = (int(out[record_index(half, axis, word)])
+                              for word in range(4))
+            if a1 <= a0:
+                continue
+            limit = b0 if (b0, b1) != (0, 0) else None
+            if limit is None or a1 + 1 < limit:
+                out[record_index(half, axis, 1)] = a1 + 1
+    return out
+
+
 def one_case(shape, boundaries, dtdx, sub_step, cond, source, repo_root,
              guarded: bool, kernel=None,
-             host_mutation: Optional[str] = None) -> Dict[str, Any]:
+             host_mutation: Optional[str] = None,
+             planted_kind: Optional[str] = None) -> Dict[str, Any]:
     """One launch of one sub-step against the reference, bytewise.
 
     ``guarded=True`` means the CONTRACTION GUARD IS APPLIED, i.e. the launch
@@ -617,30 +847,52 @@ def one_case(shape, boundaries, dtdx, sub_step, cond, source, repo_root,
         "guarded": bool(guarded), "enable_fp_fusion": not bool(guarded),
         "host_mutation": host_mutation,
     }
-    coefficients, skipped = build_coefficients(cp, shape, boundaries, sub_step,
-                                               source, repo_root)
+    coefficients, record, skipped = build_coefficients(cp, shape, boundaries, sub_step,
+                                                       source, repo_root)
     if coefficients is None:
         case["skipped"] = skipped
         return case
 
     kernel_coefficients = coefficients
+    kernel_record = record
     if host_mutation == "integer_coefficients_on_B":
         # The D-side (integer) table handed to the B side — a half-cell error, not
         # a crash. Fed to the KERNEL ONLY: swapping it under both legs is not a
         # mutation at all, because the reference would step the same wrong table.
-        kernel_coefficients, _ = build_coefficients(
+        kernel_coefficients, _, _ = build_coefficients(
             cp, shape, boundaries, "step_D", source, repo_root)
         if kernel_coefficients is None:
             case["skipped"] = "no integer table for this configuration"
             return case
+    if host_mutation == "record_bound_off_by_one":
+        # The B battery's bound mutation: the record the KERNEL binds has every first
+        # run one row longer (where that keeps the runs disjoint); the reference keeps
+        # the true record. A boundary plane changes form.
+        kernel_record = grow_first_runs(record)
 
     targets = TARGETS[sub_step]
-    arrays = make_arrays(cp, shape, sub_step, cond)
+    kept_kind = ("interior" if planted_kind is not None
+                 else KEPT_KIND.get(source, "every_chunk"))
+    arrays = make_arrays(cp, shape, sub_step, cond, kept_kind=kept_kind,
+                         quiet_sources=planted_kind is not None)
+    if planted_kind is not None:
+        # THE PLANTED CASE: no drive, so every curl is an exact +0, and every target
+        # word -0. A dsig cell then keeps MEEP's -0 (``((-0 * km) - +0) * si``), and a
+        # form that rides a +0 through an add instead -- the lossless curl collapsed
+        # into the recurrence with ``fu := 0``, or a chunk without conductivity stepped
+        # through the conductive forms at ``cf = ci = 1`` -- stores +0 there.
+        for target in targets:
+            arrays[target] = cp.full(shape, np.float32(-0.0), dtype=cp.float32)
+        case["planted"] = planted_kind
+    kept = kept_of(arrays, sub_step)
+    case["record"] = [int(v) for v in record]
+    case["kept_kind"] = kept_kind
     names = state_names(sub_step, cond)
     terms = probe.B_PML_TERMS if sub_step == "step_B" else probe.D_PML_TERMS
     case["case_mix"] = {
-        target: case_mix(cp, shape, coefficients, term[5], term[6])
-        for target, term in zip(targets, terms)}
+        target: case_mix(record, shape, sub_step, term[5], term[6],
+                         kept.get(target) if cond[index] else np.zeros(shape, bool))
+        for index, (target, term) in enumerate(zip(targets, terms))}
 
     reference = {name: arrays[name].copy() for name in names}
     reference_conductive_pml_step(
@@ -651,7 +903,12 @@ def one_case(shape, boundaries, dtdx, sub_step, cond, source, repo_root,
          for index, t in enumerate(targets) if cond[index]},
         {k: v for k, v in arrays.items() if k.startswith("condfac_")},
         {k: v for k, v in arrays.items() if k.startswith("condinv_")},
-        coefficients, np.float32(dtdx), sub_step, boundaries, cond)
+        coefficients, np.float32(dtdx), sub_step, boundaries, cond,
+        record=record, kept=kept)
+    if planted_kind is not None:
+        case["planted_negative_zeros"] = int(sum(
+            np.count_nonzero(probe.to_host(reference[t]).view(np.uint32)
+                             == np.uint32(0x80000000)) for t in targets))
 
     kernel_arrays = dict(arrays)
     for name in names:
@@ -674,11 +931,17 @@ def one_case(shape, boundaries, dtdx, sub_step, cond, source, repo_root,
                 extra = conductivity_volumes(cp, shape, (target,), (1,))
                 kernel_arrays.update(extra)
 
+    if host_mutation == "conductive_chunks_unbound":
+        # The plan binds no conductive-chunk volume: every chunk taken to keep the
+        # conductivity (the third test removed, on the host side).
+        for target in targets:
+            kernel_arrays.pop("conductive_chunks_" + target, None)
+
     error: Optional[str] = None
     try:
         plan = conductivity.plan_conductive_from_arrays(
             sub_step, kernel_arrays, probe.flatten_coefficients(kernel_coefficients),
-            codes, plan_cond, dtdx, kernel=kernel)
+            codes, plan_cond, dtdx, kernel=kernel, chunk_bounds=kernel_record)
         plan.run(guard=not guarded)
         cp.cuda.runtime.deviceSynchronize()
     except Exception as exc:  # noqa: BLE001
@@ -696,7 +959,8 @@ def run_synthetic(results: Dict[str, Any], out_path: str, repo_root: str,
                   label: str = "gate", guards: Sequence[bool] = (True, False),
                   shapes=None, sources=("synthetic", "real"),
                   kernel=None, host_mutation: Optional[str] = None,
-                  patterns=COND_PATTERNS) -> Dict[str, Any]:
+                  patterns=COND_PATTERNS,
+                  planted_kind: Optional[str] = None) -> Dict[str, Any]:
     """The sweep. ``guards`` is (guarded, unguarded) — the pair, always.
 
     ``True`` means the contraction guard is APPLIED (``enable_fp_fusion=False``).
@@ -722,7 +986,7 @@ def run_synthetic(results: Dict[str, Any], out_path: str, repo_root: str,
             started = time.time()
             case = one_case(shape, boundaries, dtdx, sub_step, cond, source,
                             repo_root, guarded, kernel=kernel,
-                            host_mutation=host_mutation)
+                            host_mutation=host_mutation, planted_kind=planted_kind)
             case["seconds"] = round(time.time() - started, 3)
             cases.append(case)
             key = case_key(source, shape, boundaries, dtdx, sub_step, cond)
@@ -753,7 +1017,8 @@ def summarize(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """N/N per guard, never the word 'matches'; plus which branches were exercised."""
     out = {"guarded_ran": 0, "guarded_identical": 0,
            "unguarded_ran": 0, "unguarded_identical": 0, "skipped": 0,
-           "branches_exercised": {"A": 0, "B": 0, "C": 0, "D": 0}}
+           "branches_exercised": {"A": 0, "B": 0, "C": 0, "D": 0, "plain": 0},
+           "planted_negative_zeros": 0}
     for case in cases:
         if case.get("skipped"):
             out["skipped"] += 1
@@ -761,6 +1026,7 @@ def summarize(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         key = "guarded" if case["guarded"] else "unguarded"
         out[key + "_ran"] += 1
         out[key + "_identical"] += int(case["verdict"]["bit_identical"])
+        out["planted_negative_zeros"] += int(case.get("planted_negative_zeros") or 0)
         for mix in (case.get("case_mix") or {}).values():
             for branch, count in mix.items():
                 if count:
@@ -793,11 +1059,13 @@ def run_multi(results: Dict[str, Any], out_path: str, steps: int,
     for shape in SHAPES:
         for sub_step in ("step_B", "step_D"):
             for cond in COND_PATTERNS:
-                coefficients = conductive_coefficients(cp, shape,
-                                                       sub_step == "step_B")
+                coefficients, record, _ = build_coefficients(
+                    cp, shape, boundaries, sub_step, "synthetic", _REPO_API)
                 flat = probe.flatten_coefficients(coefficients)
                 arrays = make_arrays(cp, shape, sub_step, cond, offset=9,
-                                     quiet_sources=quiet_sources)
+                                     quiet_sources=quiet_sources,
+                                     kept_kind=KEPT_KIND["synthetic"])
+                kept = kept_of(arrays, sub_step)
                 names = state_names(sub_step, cond)
                 targets = TARGETS[sub_step]
                 reference = {name: arrays[name].copy() for name in names}
@@ -807,7 +1075,8 @@ def run_multi(results: Dict[str, Any], out_path: str, steps: int,
                 codes = [np.int32(0 if kind == PERIODIC else 1)
                          for kind in boundaries]
                 plan = conductivity.plan_conductive_from_arrays(
-                    sub_step, kernel_state, flat, codes, cond, dtdx)
+                    sub_step, kernel_state, flat, codes, cond, dtdx,
+                    chunk_bounds=record)
                 sources = {name: arrays[name] for name in SOURCES[sub_step]}
                 identical_steps = 0
                 first_divergence: Optional[int] = None
@@ -827,7 +1096,8 @@ def run_multi(results: Dict[str, Any], out_path: str, steps: int,
                          for index, t in enumerate(targets) if cond[index]},
                         {k: v for k, v in arrays.items() if k.startswith("condfac_")},
                         {k: v for k, v in arrays.items() if k.startswith("condinv_")},
-                        coefficients, np.float32(dtdx), sub_step, boundaries, cond)
+                        coefficients, np.float32(dtdx), sub_step, boundaries, cond,
+                        record=record, kept=kept)
                     plan.run()
                     cp.cuda.runtime.deviceSynchronize()
                     verdict = compare_state(kernel_state, reference, names)
@@ -1027,15 +1297,16 @@ def _control_setup(shape, sub_step: str, quiet: bool):
     """
     boundaries = BOUNDARY_SETS[3]
     dtdx = 0.35
-    coefficients = conductive_coefficients(cp, shape, sub_step == "step_B")
+    coefficients, record, _ = build_coefficients(cp, shape, boundaries, sub_step,
+                                                 "synthetic", _REPO_API)
     arrays = make_arrays(cp, shape, sub_step, MIXED_PATTERN, offset=9,
-                         quiet_sources=quiet)
-    return boundaries, dtdx, coefficients, arrays
+                         quiet_sources=quiet, kept_kind=KEPT_KIND["synthetic"])
+    return boundaries, dtdx, coefficients, arrays, record
 
 
 def _step_oracle(state: Dict[str, Any], arrays: Dict[str, Any],
                  coefficients: Dict[str, Any], dtdx: float, sub_step: str,
-                 boundaries, cond) -> None:
+                 boundaries, cond, record: Sequence[int]) -> None:
     """One conductive oracle sub-step in place on ``state``. CuPy only."""
     targets = TARGETS[sub_step]
     reference_conductive_pml_step(
@@ -1046,7 +1317,8 @@ def _step_oracle(state: Dict[str, Any], arrays: Dict[str, Any],
          for index, t in enumerate(targets) if cond[index]},
         {k: v for k, v in arrays.items() if k.startswith("condfac_")},
         {k: v for k, v in arrays.items() if k.startswith("condinv_")},
-        coefficients, np.float32(dtdx), sub_step, boundaries, cond)
+        coefficients, np.float32(dtdx), sub_step, boundaries, cond,
+        record=record, kept=kept_of(arrays, sub_step))
 
 
 def _flip_one_ulp(volume: Any) -> Optional[Dict[str, Any]]:
@@ -1085,7 +1357,8 @@ def one_oracle_control(shape, sub_step: str, quiet: bool, steps: int,
     simply wrong.
     """
     cond = MIXED_PATTERN
-    boundaries, dtdx, coefficients, arrays = _control_setup(shape, sub_step, quiet)
+    boundaries, dtdx, coefficients, arrays, record = _control_setup(shape, sub_step,
+                                                                    quiet)
     names = state_names(sub_step, cond)
     targets = TARGETS[sub_step]
     lossless = targets[cond.index(0)]
@@ -1103,7 +1376,7 @@ def one_oracle_control(shape, sub_step: str, quiet: bool, steps: int,
     for step in range(1, steps + 1):
         for state in (left, right):
             _step_oracle(state, arrays, coefficients, dtdx, sub_step, boundaries,
-                         cond)
+                         cond, record)
         if control == "one_ulp" and step == 1:
             row["seed_flip"] = _flip_one_ulp(right["fu_" + lossless])
             if row["seed_flip"] is not None:
@@ -1137,7 +1410,7 @@ def one_substitution_control(shape, sub_step: str, quiet: bool,
     ``conductive_oracle``  :func:`reference_conductive_pml_step` at the same cond
     ``plain_kernel``       ``launch.plan_from_arrays`` — the ORDINARY PML curl,
                            a different kernel with its own weld, all lossless
-    ``plain_oracle``       ``probe.reference_pml_step``
+    ``plain_oracle``       :func:`reference_plain_pml_step`
 
     and four comparisons are taken at EVERY step. Two are the ordinary
     kernel-against-oracle ones. The other two are what make this a control:
@@ -1149,8 +1422,8 @@ def one_substitution_control(shape, sub_step: str, quiet: bool,
       path numerically, and a divergence there is not this kernel's to own.
     * ``oracles_agree_on_lossless`` — the same check on the two oracle sides,
       which must hold by construction (``reference_conductive_pml_step`` routes a
-      lossless component into ``probe.reference_recurrence``, which is exactly
-      what ``probe.reference_pml_step`` calls). It is measured anyway: it is the
+      lossless component into :func:`reference_plain_recurrence`, which is exactly
+      what :func:`reference_plain_pml_step` calls). It is measured anyway: it is the
       row's own self-check, and if it ever fails the other three comparisons are
       comparing two different physics and mean nothing.
     """
@@ -1158,7 +1431,8 @@ def one_substitution_control(shape, sub_step: str, quiet: bool,
     from meep_gpu.triton_kernels import conductivity  # noqa: PLC0415
 
     cond = MIXED_PATTERN
-    boundaries, dtdx, coefficients, arrays = _control_setup(shape, sub_step, quiet)
+    boundaries, dtdx, coefficients, arrays, record = _control_setup(shape, sub_step,
+                                                                    quiet)
     flat = probe.flatten_coefficients(coefficients)
     codes = [np.int32(0 if kind == PERIODIC else 1) for kind in boundaries]
     targets = TARGETS[sub_step]
@@ -1178,10 +1452,12 @@ def one_substitution_control(shape, sub_step: str, quiet: bool,
         plain_kernel[name] = arrays[name].copy()
 
     conductive_plan = conductivity.plan_conductive_from_arrays(
-        sub_step, conductive_kernel, flat, codes, cond, dtdx)
+        sub_step, conductive_kernel, flat, codes, cond, dtdx, chunk_bounds=record)
     # The ordinary welded curl, ALL LOSSLESS. `cond` is not passed because this
-    # plan has no notion of it: that is the point of the substitution.
-    plain_plan = launch.plan_from_arrays(sub_step, plain_kernel, flat, codes, dtdx)
+    # plan has no notion of it: that is the point of the substitution. It binds the
+    # same record, and its oracle (reference_plain_pml_step) keys the same forms.
+    plain_plan = launch.plan_from_arrays(sub_step, plain_kernel, flat, codes, dtdx,
+                                         chunk_bounds=record)
     sources = {name: arrays[name] for name in SOURCES[sub_step]}
 
     row: Dict[str, Any] = {
@@ -1200,12 +1476,12 @@ def one_substitution_control(shape, sub_step: str, quiet: bool,
     }
     for step in range(1, steps + 1):
         _step_oracle(conductive_oracle, arrays, coefficients, dtdx, sub_step,
-                     boundaries, cond)
+                     boundaries, cond, record)
         conductive_plan.run()
-        probe.reference_pml_step(
+        reference_plain_pml_step(
             cp, sources, {t: plain_oracle[t] for t in targets},
             {"fu_" + t: plain_oracle["fu_" + t] for t in targets},
-            coefficients, np.float32(dtdx), sub_step, boundaries, "array_order")
+            coefficients, np.float32(dtdx), sub_step, boundaries, record=record)
         plain_plan.run()
         cp.cuda.runtime.deviceSynchronize()
 
@@ -1274,68 +1550,158 @@ def one_substitution_control(shape, sub_step: str, quiet: bool,
 # The `validate` leg — this file's reference against stepping.py, on NumPy
 # ---------------------------------------------------------------------------
 
-def run_validate(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
-    """The reference against ``stepping._apply_conductive_pml_update``, bytewise.
-
-    Runs on any host, GPU or not. Without this leg the gate would only say the
-    kernel reproduces this file; with it, the chain reaches the array path.
-    """
+def _validate_record_case(shape, dtdx, target_index, kept_kind) -> Dict[str, Any]:
+    """The forms of one component against ``stepping._apply_conductive_pml_update``."""
     from meep_gpu.stepping import _apply_conductive_pml_update  # noqa: PLC0415
 
+    a1, a2 = ((1, 2), (2, 0), (0, 1))[target_index]
+    half = target_index == 0
+    record = split_record(shape)
+    coefficients = fit_coefficients(np, conductive_coefficients(np, shape, half),
+                                    record, half, shape)
+    axis_names = probe.AXIS_NAMES
+    kms = coefficients["kms_" + axis_names[a1]]
+    sinv = coefficients["sinv_" + axis_names[a1]]
+    kms_u = coefficients["kms_" + axis_names[a2]]
+    sinv_u = coefficients["sinv_" + axis_names[a2]]
+    dsig = membership(np, record, half, a1, shape)
+    dsigu = membership(np, record, half, a2, shape)
+    kept = interior_volume(shape) if kept_kind == "interior" else None
+    rng = np.random.default_rng(SEED + 3 * target_index)
+    volume = lambda: (rng.standard_normal(shape) * 0.5).astype(np.float32)  # noqa: E731
+    field, fu, f_cond = volume(), volume(), volume()
+    field.reshape(-1)[::13] = np.float32(-0.0)
+    curl = (volume() * np.float32(dtdx)).astype(np.float32)
+    curl.reshape(-1)[::17] = np.float32(0.0)
+    sigma = (0.4 * (0.3 + rng.random(shape))).astype(np.float32)
+    half_dt = np.float32(0.0125 / 2.0)
+    condfac = (np.float32(1.0) - sigma * half_dt).astype(np.float32)
+    condinv = (np.float32(1.0) / (np.float32(1.0) + sigma * half_dt)).astype(np.float32)
+    got = {"field": field.copy(), "fu": fu.copy(), "f_cond": f_cond.copy()}
+    _apply_conductive_pml_update(
+        np, got["field"], curl, condfac, condinv, kms, sinv, kms_u, sinv_u,
+        got["fu"], got["f_cond"], dsig_active=dsig, dsigu_active=dsigu,
+        conductive=kept, scratch=None)
+    want = {"field": field.copy(), "fu": fu.copy(), "f_cond": f_cond.copy()}
+    reference_conductive_recurrence(
+        np, want["field"], want["fu"], want["f_cond"], curl, condfac, condinv,
+        kms, sinv, kms_u, sinv_u, dsig=dsig, dsigu=dsigu, kept=kept)
+    detail = {name: int(np.count_nonzero(got[name].view(np.uint32)
+                                         != want[name].view(np.uint32)))
+              for name in got}
+    return {"kind": "forms", "shape": list(shape), "dtdx": repr(dtdx),
+            "target": target_index, "kept": kept_kind,
+            "bit_identical": not any(detail.values()), "differing": detail,
+            "case_mix": case_mix(record, shape, "step_B" if half else "step_D",
+                                 axis_names[a1], axis_names[a2], kept)}
+
+
+def _validate_sub_step_case(shape, boundaries, sub_step, sigma_kind,
+                            repo_root) -> Dict[str, Any]:
+    """A whole conductive sub-step against ``stepping.step_B`` / ``step_D`` on ``Fields``.
+
+    The real layer of the shape (``probe.real_pml_layer``), a conductivity on the
+    sub-step's side (``whole``: every cell; ``interior``: zero within five cells of
+    every resolved face, so the layer chunks keep none), random fields with planted
+    signed zeros. The reference steps the record of the region plan the array path
+    installed (``gate_chunk_records.region_plan_record``) and the plan's conductive
+    chunks -- the division and the third test the array path used.
+    """
+    from gate_chunk_records import region_plan_record  # noqa: PLC0415
+
+    from meep_gpu import stepping  # noqa: PLC0415
+    from meep_gpu.fields import Fields  # noqa: PLC0415
+
+    grid, pml = probe.real_pml_layer(np, shape, boundaries, repo_root)
+    fields = Fields(grid=grid, force_complex_fields=False)
+    fields.enable_pml_storage()
+    rng = np.random.default_rng(SEED + 53)
+    sigma = (0.2 + 0.6 * rng.random(shape)).astype(np.float32)
+    if sigma_kind == "interior":
+        inside = np.ones(shape, dtype=bool)
+        for axis, n in enumerate(shape):
+            if n > 1:
+                line = (np.arange(n) >= 5) & (np.arange(n) < n - 5)
+                inside &= line.reshape(probe.broadcast_shape(axis, n))
+        sigma = np.where(inside, sigma, np.float32(0.0)).astype(np.float32)
+    if sub_step == "step_B":
+        fields.set_b_conductivity(sigma)
+    else:
+        fields.set_d_conductivity(sigma)
+    targets = TARGETS[sub_step]
+    for name in (*targets, *SOURCES[sub_step], *("fu_" + t for t in targets),
+                 *("f_cond_" + t for t in targets)):
+        array = getattr(fields, name)
+        values = rng.uniform(-1.0, 1.0, size=array.shape).astype(np.float32)
+        values.reshape(-1)[::11] = np.float32(-0.0)
+        array[...] = values
+    before = {name: getattr(fields, name).copy()
+              for name in (*targets, *SOURCES[sub_step],
+                           *("fu_" + t for t in targets),
+                           *("f_cond_" + t for t in targets))}
+    (stepping.step_B if sub_step == "step_B" else stepping.step_D)(fields, pml)
+    record = region_plan_record(fields)
+    plan = fields.region_plan
+    kept = {}
+    for target in targets:
+        volume = fields.conductivity_for(target)
+        if not all(plan.conductive_chunks(target, volume)):
+            kept[target] = np.asarray(plan.conductive_mask(target, volume))
+    want = {name: array.copy() for name, array in before.items()}
+    kinds = stepping._boundary_kinds(grid, pml)
+    reference_conductive_pml_step(
+        np, {name: want[name] for name in SOURCES[sub_step]},
+        {t: want[t] for t in targets}, {"fu_" + t: want["fu_" + t] for t in targets},
+        {"f_cond_" + t: want["f_cond_" + t] for t in targets},
+        {"condfac_" + t: fields.condfac_for(t) for t in targets},
+        {"condinv_" + t: fields.condinv_for(t) for t in targets},
+        probe.layer_coefficients(pml, sub_step == "step_B"),
+        np.float32(grid.dt / grid.dx), sub_step,
+        tuple(PERIODIC if kind == "periodic" else METALLIC for kind in kinds),
+        (1, 1, 1), record=record, kept=kept)
+    detail = {name: int(np.count_nonzero(getattr(fields, name).view(np.uint32)
+                                         != want[name].view(np.uint32)))
+              for name in want if name not in SOURCES[sub_step]}
+    return {"kind": "sub_step", "shape": list(shape), "boundaries": list(boundaries),
+            "sub_step": sub_step, "sigma": sigma_kind,
+            "conductive_chunk_volumes": sorted(kept),
+            "bit_identical": not any(detail.values()), "differing": detail}
+
+
+def run_validate(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
+    """The reference against the array path itself, bytewise, on NumPy.
+
+    Two kinds of row. ``forms``: one component's forms against
+    ``stepping._apply_conductive_pml_update``, keyed on the ``split`` record's
+    membership volumes, with every chunk keeping the conductivity and with the
+    ``interior`` conductive-chunk volume. ``sub_step``: a whole conductive sub-step
+    on a real ``Fields`` against ``stepping.step_B`` / ``step_D`` -- the curl, the
+    ownership mask, the record and the forms together. Runs on any host, GPU or not.
+    Without this leg the gate would only say the kernel reproduces this file; with
+    it, the chain reaches the array path.
+    """
     cases: List[Dict[str, Any]] = []
+
+    def record(row: Dict[str, Any]) -> None:
+        cases.append(row)
+        label = {k: v for k, v in row.items() if k not in ("kind", "differing", "case_mix")}
+        log(f"[validate] {row['kind']} {json.dumps(label)}: "
+            f"identical={row['bit_identical']} differing={row['differing']}")
+        results["validate"] = {"cases": cases, "ran": len(cases),
+                               "identical": sum(int(c["bit_identical"]) for c in cases)}
+        save(results, out_path)
+
     for shape in ((7, 5, 3), (13, 11, 9), (9, 8, 1), (5, 5, 5)):
         for dtdx in DTDX:
-            for target_index, (a1, a2) in enumerate(
-                    ((1, 2), (2, 0), (0, 1))):
-                for table in ("synthetic", "near_one"):
-                    builder = (conductive_coefficients if table == "synthetic"
-                               else near_one_coefficients)
-                    coefficients = builder(np, shape, target_index == 0)
-                    axis_names = probe.AXIS_NAMES
-                    kms = coefficients["kms_" + axis_names[a1]]
-                    sinv = coefficients["sinv_" + axis_names[a1]]
-                    kms_u = coefficients["kms_" + axis_names[a2]]
-                    sinv_u = coefficients["sinv_" + axis_names[a2]]
-                    rng = np.random.default_rng(SEED + 3 * target_index)
-                    volume = lambda: (rng.standard_normal(shape) * 0.5  # noqa: E731
-                                      ).astype(np.float32)
-                    field, fu, f_cond = volume(), volume(), volume()
-                    curl = (volume() * np.float32(dtdx)).astype(np.float32)
-                    sigma = (0.4 * (0.3 + rng.random(shape))).astype(np.float32)
-                    half_dt = np.float32(0.0125 / 2.0)
-                    condfac = (np.float32(1.0) - sigma * half_dt).astype(np.float32)
-                    condinv = (np.float32(1.0) /
-                               (np.float32(1.0) + sigma * half_dt)).astype(np.float32)
-
-                    got = {"field": field.copy(), "fu": fu.copy(),
-                           "f_cond": f_cond.copy()}
-                    _apply_conductive_pml_update(
-                        np, got["field"], curl, condfac, condinv, kms, sinv,
-                        kms_u, sinv_u, got["fu"], got["f_cond"], scratch=None)
-                    want = {"field": field.copy(), "fu": fu.copy(),
-                            "f_cond": f_cond.copy()}
-                    reference_conductive_recurrence(
-                        np, want["field"], want["fu"], want["f_cond"], curl,
-                        condfac, condinv, kms, sinv, kms_u, sinv_u)
-                    detail = {name: {
-                        "bit_identical": got[name].tobytes() == want[name].tobytes(),
-                        "differing_floats": int(np.count_nonzero(
-                            got[name].view(np.uint32) != want[name].view(np.uint32))),
-                    } for name in ("field", "fu", "f_cond")}
-                    identical = all(v["bit_identical"] for v in detail.values())
-                    mix = case_mix(np, shape, coefficients,
-                                   probe.AXIS_NAMES[a1], probe.AXIS_NAMES[a2])
-                    cases.append({"shape": list(shape), "dtdx": repr(dtdx),
-                                  "target": target_index, "table": table,
-                                  "bit_identical": identical, "detail": detail,
-                                  "case_mix": mix})
-                    log(f"[validate] shape={shape} dtdx={dtdx} target={target_index} "
-                        f"table={table}: identical={identical} mix={mix}")
-                    results["validate"] = {
-                        "cases": cases,
-                        "ran": len(cases),
-                        "identical": sum(int(c["bit_identical"]) for c in cases)}
-                    save(results, out_path)
+            for target_index in range(3):
+                for kept_kind in ("every_chunk", "interior"):
+                    record(_validate_record_case(shape, dtdx, target_index, kept_kind))
+    for shape, boundaries in (((16, 14, 12), (METALLIC, METALLIC, PERIODIC)),
+                              ((16, 14, 1), (METALLIC, PERIODIC, PERIODIC))):
+        for sub_step in ("step_B", "step_D"):
+            for sigma_kind in ("whole", "interior"):
+                record(_validate_sub_step_case(shape, boundaries, sub_step, sigma_kind,
+                                               _REPO_API))
     summary = {"cases": cases, "ran": len(cases),
                "identical": sum(int(c["bit_identical"]) for c in cases)}
     summary["pass"] = summary["ran"] == summary["identical"]
@@ -1350,15 +1716,16 @@ def run_validate(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
 # Mutations — each defect must change the answer
 # ---------------------------------------------------------------------------
 
-def flatten_split_grouping(source: str) -> Tuple[str, int]:
-    """m1 ``(((f*km2) + u_new) - u)`` -> ``((f*km2) + (u_new - u))``.
+def _replacing(needle: str, replacement: str) -> Callable[[str], Tuple[str, int]]:
+    def apply(source: str) -> Tuple[str, int]:
+        return source.replace(needle, replacement), source.count(needle)
+    return apply
 
-    The associativity family, and the one the recon already measured on NumPy
-    alone: 0/18 identical.
-    """
-    needle = "f_split = (((f * km2) + u_new) - u) * si2"
-    replacement = "f_split = ((f * km2) + (u_new - u)) * si2"
-    return source.replace(needle, replacement), source.count(needle)
+
+def flatten_split_grouping(source: str) -> Tuple[str, int]:
+    """m1 ``(((f*km2) + u_new) - u)`` -> ``((f*km2) + (u_new - u))``."""
+    return _replacing("f_split = (((f * km2) + u_new) - u) * si2",
+                      "f_split = ((f * km2) + (u_new - u)) * si2")(source)
 
 
 def swap_condfac_condinv(source: str) -> Tuple[str, int]:
@@ -1367,102 +1734,202 @@ def swap_condfac_condinv(source: str) -> Tuple[str, int]:
     return source.replace("* cf) - curl) * ci", "* ci) - curl) * cf"), hits
 
 
-def tolerance_partition(source: str) -> Tuple[str, int]:
-    """m3 ``!= 1.0`` becomes a tolerance. A MEASURED NO-OP on the real tables.
-
-    ``kms_x`` on the real ``2d_cond_pml`` layout has 561 entries exactly 1.0 and
-    561 within 1e-7 of 1.0 — the same 561 — so this defect is invisible there and
-    a gate that only ran real or ordinary synthetic tables would report it
-    uncaught and mean nothing. It is driven against ``near_one`` tables, which
-    carry one plane at ``1.0 - 6e-8``.
-    """
-    hits = source.count("!= 1.0)")
-    mutated = source.replace(
-        "dsig = (km1 != 1.0) | (si1 != 1.0)",
-        "dsig = (tl.abs(km1 - 1.0) > 1e-7) | (tl.abs(si1 - 1.0) > 1e-7)")
-    mutated = mutated.replace(
-        "dsigu = (km2 != 1.0) | (si2 != 1.0)",
-        "dsigu = (tl.abs(km2 - 1.0) > 1e-7) | (tl.abs(si2 - 1.0) > 1e-7)")
-    return mutated, hits
-
-
 def case_b_as_case_a(source: str) -> Tuple[str, int]:
-    """m4 case B collapsed into case A — the substitution the array path forbids.
-
-    ``u_cond`` becomes the split recurrence with identity coefficients instead of
-    conductivity applied to ``f_u`` directly. That is exactly the equivalence
-    ``_apply_conductive_pml_update``'s docstring denies (stepping.py:2044-2046).
-    """
-    needle = "u_cond = ((u * cf) - curl) * ci"
-    replacement = "u_cond = (((u * 1.0) + c_new) - c) * 1.0"
-    return source.replace(needle, replacement), source.count(needle)
+    """m4 the dsigu-only ``fu`` form collapsed into the dsig-and-dsigu one at unit
+    coefficients -- the substitution the array path's docstring denies."""
+    return _replacing("u_cond = ((u * cf) - curl) * ci",
+                      "u_cond = ((u * 1.0) + increment) * 1.0")(source)
 
 
 def store_f_cond_everywhere(source: str) -> Tuple[str, int]:
-    """m5 the ``dsig`` store mask dropped: the history is written in the interior.
+    """m5 the ``f_cond`` store mask dropped: the history is written outside its cells.
 
     Invisible for one launch on ``field``; it corrupts ``f_cond`` immediately and
     ``field`` from the step after. The single-launch leg catches it only because
     ``f_cond`` is compared — which is the point of comparing it.
     """
-    needle = "tl.store(c_ptr + idx, c_new, mask=live & dsig)"
-    replacement = "tl.store(c_ptr + idx, c_new, mask=live)"
-    return source.replace(needle, replacement), source.count(needle)
+    return _replacing("tl.store(c_ptr + idx, c_new, mask=live & ds & kept)",
+                      "tl.store(c_ptr + idx, c_new, mask=live)")(source)
 
 
 def store_fu_everywhere(source: str) -> Tuple[str, int]:
-    """m5b the ``dsigu`` store mask dropped — the same defect on the auxiliary."""
-    needle = "tl.store(u_ptr + idx, u_new, mask=live & dsigu)"
-    replacement = "tl.store(u_ptr + idx, u_new, mask=live)"
-    return source.replace(needle, replacement), source.count(needle)
+    """m5b the ``fu`` store mask dropped — the auxiliary stored on plain cells."""
+    return _replacing("tl.store(u_ptr + idx, u_new, mask=live & du)",
+                      "tl.store(u_ptr + idx, u_new, mask=live)")(source)
 
 
-def swap_dsig_dsigu(source: str) -> Tuple[str, int]:
-    """m7 the recurrence reads dsigu's coefficients where dsig's belong.
+def swap_coefficient_pairs(source: str) -> Tuple[str, int]:
+    """m7 target 0's forms read dsigu's coefficients where dsig's belong.
 
     The needle carries NO indentation on purpose. ``inspect.getsource`` plus
     ``textwrap.dedent`` re-indents a nested function's continuation lines by an
-    amount that depends on how deeply the ``def`` was nested, so a needle spelled
-    with the file's own leading whitespace misses — measured, first run: this leg
-    reported "NEEDLE MISSED" while every other mutation was caught, which is a leg
-    that measures nothing wearing the same shape as one that passed.
+    amount that depends on how deeply the ``def`` was nested.
     """
-    needle = "km_y, si_y, km_z, si_z, COND0)"
-    replacement = "km_z, si_z, km_y, si_y, COND0)"
-    return source.replace(needle, replacement), source.count(needle)
+    return _replacing("km_y, si_y, km_z, si_z, ds0, du0,",
+                      "km_z, si_z, km_y, si_y, ds0, du0,")(source)
+
+
+def swap_dsig_dsigu(source: str) -> Tuple[str, int]:
+    """B battery: each component's dsig and dsigu memberships exchanged."""
+    hits = 0
+    for t in range(3):
+        needle = f", ds{t}, du{t}, COND{t}, CMASK{t})"
+        hits += source.count(needle)
+        source = source.replace(needle, f", du{t}, ds{t}, COND{t}, CMASK{t})")
+    return source, hits
+
+
+_STENCIL = re.compile(r"curl(?P<t>\d) = curl_stencil\((?P<g1s>\w+), (?P<g1>\w+), "
+                      r"(?P<g2>\w+), (?P<g2s>\w+), dtdx, (?P<p1>\w+), (?P<p2>\w+)\)")
 
 
 def regroup_stencil(source: str) -> Tuple[str, int]:
-    """m8 ``dtdx*((a-b)+(c-d))`` -> ``((a-b)+c)-d`` — the shared curl's own defect."""
+    """m8, INVERTED (KERNELS.md 7.1): the pairwise ``dtdx*((a-b)+(c-d))`` at the call site.
+
+    That is the curl grouping this kernel carried before the alignment; MEEP's C
+    associates the stencil left to right (step_generic.cpp:104), which
+    ``forms.curl_stencil`` carries. Must be caught.
+    """
+    def pairwise(match: "re.Match[str]") -> str:
+        return (f"curl{match['t']} = dtdx * (({match['g1s']} - {match['g1']})"
+                f" + ({match['g2']} - {match['g2s']}))")
+    return _STENCIL.sub(pairwise, source), len(_STENCIL.findall(source))
+
+
+def old_increment_grouping_fu(source: str) -> Tuple[str, int]:
+    """INVERTED (KERNELS.md 7.1): the dsig-and-dsigu ``fu`` form with the increment
+    added in two operations, ``((u*km1) + c_new) - c`` -- the previous grouping."""
+    return _replacing("u_split = ((u * km1) + increment) * si1",
+                      "u_split = (((u * km1) + c_new) - c) * si1")(source)
+
+
+def old_increment_grouping_f(source: str) -> Tuple[str, int]:
+    """INVERTED (KERNELS.md 7.1): the dsig-only ``f`` form's previous grouping."""
+    return _replacing("f_first = ((f * km1) + increment) * si1",
+                      "f_first = (((f * km1) + c_new) - c) * si1")(source)
+
+
+def whole_grid_recurrence(source: str) -> Tuple[str, int]:
+    """B battery: the lossless component's select removed -- the recurrence everywhere."""
+    return _replacing("v, n = curl_form(f, u, curl, km1, si1, km2, si2, du)",
+                      "v, n = curl_form(f, u, curl, km1, si1, km2, si2, live)")(source)
+
+
+def coefficient_predicate(source: str) -> Tuple[str, int]:
+    """B battery: the forms keyed on coefficient identity, not chunk membership."""
+    table = {"ds0": "y", "du0": "z", "ds1": "z", "du1": "x", "ds2": "x", "du2": "y"}
     hits = 0
-    mutated = source
-    for a, b, c, d in (("c_y", "c", "b", "b_z"), ("a_z", "a", "c", "c_x"),
-                       ("b_x", "b", "a", "a_y")):
-        needle = f"dtdx * (({a} - {b}) + ({c} - {d}))"
-        replacement = f"dtdx * ((({a} - {b}) + {c}) - {d})"
-        hits += mutated.count(needle)
-        mutated = mutated.replace(needle, replacement)
-    return mutated, hits
+    for name, axis in table.items():
+        pattern = rf"{name} = record_in\(cb, lattice \+ \d, [ijk]\)"
+        source, count = re.subn(pattern,
+                                f"{name} = (km_{axis} != 1.0) | (si_{axis} != 1.0)",
+                                source)
+        hits += count
+    return source, hits
 
 
+def lattice_swapped(source: str) -> Tuple[str, int]:
+    """B battery: the record lines read on the other Yee sub-lattice."""
+    pattern = (r"(?P<pad>[ ]*)if BACKWARD:\n(?P=pad)    lattice = 0\n(?P=pad)else:\n"
+               r"(?P=pad)    lattice = RECORD_HALF_INTEGER\n")
+    return re.subn(pattern, lambda m: (f"{m['pad']}if BACKWARD:\n{m['pad']}    lattice = "
+                                       f"RECORD_HALF_INTEGER\n{m['pad']}else:\n"
+                                       f"{m['pad']}    lattice = 0\n"), source)
+
+
+def conductive_chunks_ignored(source: str) -> Tuple[str, int]:
+    """B battery: every chunk taken to keep the conductivity (the third test removed)."""
+    return _replacing("kept = tl.load(m_ptr + idx, mask=live, other=0) != 0",
+                      "kept = live")(source)
+
+
+def plain_curl_collapse(source: str) -> Tuple[str, int]:
+    """B battery: the lossless forms collapsed into the recurrence with ``fu := 0``.
+
+    The dsig-only form written as the recurrence on a zeroed auxiliary
+    (``p := 0``): the same word on most finite values and different on a planted
+    ``f = -0`` beside a ``+0`` curl, which is why the planted leg scores it too.
+    """
+    return _replacing(
+        "v, n = curl_form(f, u, curl, km1, si1, km2, si2, du)",
+        "v, n = curl_form(f, tl.where(du, u, 0.0), curl, km1, si1, km2, si2, "
+        "live)")(source)
+
+
+def plain_forms_via_unit_coefficients(source: str) -> Tuple[str, int]:
+    """B battery, PLANTED ONLY: a chunk that keeps no conductivity stepped through the
+    conductive forms at ``cf = ci = 1`` instead of the lossless pair.
+
+    The same word on every finite value; on a planted ``f = -0`` at a dsig cell with
+    a ``+0`` curl it stores ``(-0 + (0 - +0))`` = +0 where MEEP stores -0.
+    """
+    block = ("if CMASK != 0:\n"
+             "            # A chunk that keeps no conductivity steps the lossless pair.\n"
+             "            v_plain, n_plain = curl_form(f, u, curl, km1, si1, km2, si2, du)\n"
+             "            v = tl.where(kept, v, v_plain)\n"
+             "            u_new = tl.where(kept, u_new, n_plain)\n")
+    head = "c_new = ((c * cf) - curl) * ci"
+    hits = min(source.count(block), source.count(head))
+    if hits:
+        source = source.replace(block, "").replace(
+            head, "cf = tl.where(kept, cf, 1.0)\n        ci = tl.where(kept, ci, 1.0)\n"
+                  "        " + head)
+    return source, hits
+
+
+def aux_load_unmasked(source: str) -> Tuple[str, int]:
+    """DECLARED NULL (KERNELS.md 7.2): ``fu`` loaded on every cell, stores guarded."""
+    return _replacing("u = tl.load(u_ptr + idx, mask=live & du, other=0.0)",
+                      "u = tl.load(u_ptr + idx, mask=live, other=0.0)")(source)
+
+
+def f_cond_load_unmasked(source: str) -> Tuple[str, int]:
+    """DECLARED NULL: ``f_cond`` loaded on every cell, its store still guarded."""
+    return _replacing("c = tl.load(c_ptr + idx, mask=live & ds & kept, other=0.0)",
+                      "c = tl.load(c_ptr + idx, mask=live, other=0.0)")(source)
+
+
+#: Must be caught on the guarded synthetic sweep.
 SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "flatten_split_grouping": flatten_split_grouping,
     "swap_condfac_condinv": swap_condfac_condinv,
     "case_b_as_case_a": case_b_as_case_a,
     "store_f_cond_everywhere": store_f_cond_everywhere,
     "store_fu_everywhere": store_fu_everywhere,
+    "swap_coefficient_pairs": swap_coefficient_pairs,
     "swap_dsig_dsigu": swap_dsig_dsigu,
     "regroup_stencil": regroup_stencil,
+    "old_increment_grouping_fu": old_increment_grouping_fu,
+    "old_increment_grouping_f": old_increment_grouping_f,
+    "whole_grid_recurrence": whole_grid_recurrence,
+    "coefficient_predicate": coefficient_predicate,
+    "lattice_swapped": lattice_swapped,
+    "conductive_chunks_ignored": conductive_chunks_ignored,
+    "plain_curl_collapse": plain_curl_collapse,
 }
 
-#: Driven against the near-one table only; see :func:`tolerance_partition`.
-NEAR_ONE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
-    "tolerance_partition": tolerance_partition,
+#: Must be caught on the PLANTED leg (no drive, every target word -0).
+PLANTED_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
+    "plain_forms_via_unit_coefficients": plain_forms_via_unit_coefficients,
+    "plain_curl_collapse": plain_curl_collapse,
+}
+
+#: DECLARED NULLS: no stored word may move on the guarded synthetic sweep. Each is
+#: pinned instead by a static needle (``test_triton_conductivity``).
+NULL_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
+    "aux_load_unmasked": aux_load_unmasked,
+    "f_cond_load_unmasked": f_cond_load_unmasked,
 }
 
 #: Host-side defects: the kernel is the shipped one, the PLAN lies to it.
 HOST_MUTATIONS = ("integer_coefficients_on_B", "metallic_as_periodic",
-                  "all_three_conductive")
+                  "all_three_conductive", "record_bound_off_by_one",
+                  "conductive_chunks_unbound")
+
+#: The previous forms' coefficient-predicate leg (a tolerance against ``!= 1.0``,
+#: driven on a near-one table) is RETIRED with the predicate (DESIGN D13): the
+#: kernel no longer tests a coefficient, and ``coefficient_predicate`` above is the
+#: B battery's mutation of the membership test instead.
 
 _TEMPORARY: List[str] = []
 
@@ -1475,9 +1942,27 @@ def compile_mutated(source: str):
     first launch. BOTH functions go in, because the outer kernel resolves
     ``_conductive_component`` through its own module globals — a file carrying
     only the outer one would call the SHIPPED helper and every recurrence mutation
-    would report itself uncaught.
+    would report itself uncaught. The shared forms and the record's word offsets are
+    imported under the names the shipped bodies use.
+
+    EACH MUTANT IS COMPILED UNDER ITS OWN NAMES (the kernel and the helper both take a
+    per-mutant suffix; the module exposes the kernel under its shipped name as well).
+    MEASURED 2026-10-08 on one RTX A6000, Triton 3.1.0: with the names unchanged, the
+    second and every later mutant compiled in one process LAUNCHED THE FIRST MUTANT'S
+    BINARY -- an unrewritten copy compiled after ``flatten_split_grouping`` differed from
+    the shipped kernel exactly as that mutant does, and a declared null scored "caught" --
+    because the outer kernel's text was the same in every mutant (most rewrites touch the
+    helper only) and the on-disk cache entry the first compile wrote was reused. A
+    mutation leg run that way reports the first mutant's verdict for every row.
     """
+    tag = f"_m{len(_TEMPORARY) + 1}"
+    source = (source.replace("conductive_pml_curl_step", "conductive_pml_curl_step" + tag)
+              .replace("_conductive_component", "_conductive_component" + tag))
     header = ("import triton\nimport triton.language as tl\n"
+              "from meep_gpu.triton_kernels.forms import (axis_present, curl_form, "
+              "curl_stencil, record_in)\n"
+              "from meep_gpu.triton_kernels.kernels import RECORD_HALF_INTEGER, "
+              "RECORD_PRESENCE\n"
               "PERIODIC = tl.constexpr(0)\nMETALLIC = tl.constexpr(1)\n\n")
     handle = tempfile.NamedTemporaryFile("w", suffix="_mutated_cond.py",
                                          delete=False, encoding="utf-8")
@@ -1489,6 +1974,7 @@ def compile_mutated(source: str):
     module = importlib.util.module_from_spec(spec)       # type: ignore[arg-type]
     sys.modules[spec.name] = module                       # type: ignore[union-attr]
     spec.loader.exec_module(module)                       # type: ignore[union-attr]
+    module.conductive_pml_curl_step = getattr(module, "conductive_pml_curl_step" + tag)
     return module
 
 
@@ -1501,20 +1987,29 @@ def shipped_source() -> str:
                 conductivity.conductive_pml_curl_step.fn)))
 
 
+#: The mutation leg's sweep: ``full`` (the certification sweep) or ``smoke`` (one shape and
+#: the synthetic source, for a short device window; every mutation keeps a case that
+#: enters the branch it rewrites, since the synthetic source carries the split record,
+#: the interior conductive-chunk volume, both patterns and every boundary set).
+MUTATION_SWEEPS = {"full": (2, ("synthetic", "real")), "smoke": (1, ("synthetic",))}
+
+
 def run_mutations(results: Dict[str, Any], out_path: str,
-                  repo_root: str) -> Dict[str, Any]:
-    """Each defect must change the answer. A leg that reports a pass is a failure."""
+                  repo_root: str, sweep: str = "full") -> Dict[str, Any]:
+    """Each defect must change the answer, and each declared null must not."""
+    n_shapes, kernel_sources = MUTATION_SWEEPS[sweep]
+    results["mutation_sweep"] = sweep
     shipped = shipped_source()
     out: Dict[str, Any] = {}
-    legs = [(name, transform, ("synthetic", "real"))
-            for name, transform in SOURCE_MUTATIONS.items()]
-    legs += [(name, transform, ("near_one",))
-             for name, transform in NEAR_ONE_MUTATIONS.items()]
-    for name, transform, sources in legs:
+    legs = [(name, transform, "caught", None) for name, transform in SOURCE_MUTATIONS.items()]
+    legs += [("planted:" + name, transform, "caught", "zero_drive")
+             for name, transform in PLANTED_MUTATIONS.items()]
+    legs += [(name, transform, "null", None) for name, transform in NULL_MUTATIONS.items()]
+    for name, transform, expected, planted in legs:
         mutated, hits = transform(shipped)
         if hits == 0 or mutated == shipped:
             out[name] = {"error": "the mutation matched nothing; the needle has "
-                                  "drifted away from the kernel"}
+                                  "drifted away from the kernel", "expected": expected}
             log(f"[mut] {name}: NEEDLE MISSED — nothing exercised")
             results["mutations"] = out
             save(results, out_path)
@@ -1522,26 +2017,32 @@ def run_mutations(results: Dict[str, Any], out_path: str,
         module = compile_mutated(mutated)
         summary = run_synthetic(
             results, out_path, repo_root, label="mutation:" + name,
-            guards=(True,), shapes=SHAPES[:2], sources=sources,
-            kernel=module.conductive_pml_curl_step)
+            guards=(True,),
+            shapes=SHAPES[:n_shapes] if (planted is None or sweep == "smoke") else SHAPES,
+            sources=kernel_sources if planted is None else ("synthetic",),
+            kernel=module.conductive_pml_curl_step, planted_kind=planted)
         caught = summary["guarded_identical"] < summary["guarded_ran"]
         out[name] = {"sites": hits, "ran": summary["guarded_ran"],
-                     "identical": summary["guarded_identical"], "caught": caught}
+                     "identical": summary["guarded_identical"], "caught": caught,
+                     "expected": expected,
+                     "as_expected": caught if expected == "caught" else not caught}
         log(f"[mut] {name}: sites={hits} identical={summary['guarded_identical']}"
-            f"/{summary['guarded_ran']} CAUGHT={caught}")
+            f"/{summary['guarded_ran']} CAUGHT={caught} (expected {expected})")
         results["mutations"] = out
         save(results, out_path)
     for name in HOST_MUTATIONS:
         patterns = ((1, 0, 1),) if name == "all_three_conductive" else COND_PATTERNS
-        sub_sources = ("synthetic",) if name == "integer_coefficients_on_B" else \
-            ("synthetic", "real")
+        sub_sources = (("synthetic",) if name in ("integer_coefficients_on_B",
+                                                  "conductive_chunks_unbound")
+                       else kernel_sources)
         summary = run_synthetic(
             results, out_path, repo_root, label="mutation:" + name,
-            guards=(True,), shapes=SHAPES[:2], sources=sub_sources,
+            guards=(True,), shapes=SHAPES[:n_shapes], sources=sub_sources,
             host_mutation=name, patterns=patterns)
         caught = summary["guarded_identical"] < summary["guarded_ran"]
         out[name] = {"host": True, "ran": summary["guarded_ran"],
-                     "identical": summary["guarded_identical"], "caught": caught}
+                     "identical": summary["guarded_identical"], "caught": caught,
+                     "expected": "caught", "as_expected": caught}
         log(f"[mut] {name}: identical={summary['guarded_identical']}/"
             f"{summary['guarded_ran']} CAUGHT={caught}")
         results["mutations"] = out
@@ -1549,6 +2050,21 @@ def run_mutations(results: Dict[str, Any], out_path: str,
     results["mutations"] = out
     save(results, out_path)
     return out
+
+
+def run_planted(results: Dict[str, Any], out_path: str, repo_root: str) -> Dict[str, Any]:
+    """The planted signed-zero case on the shipped kernel: every word must be MEEP's.
+
+    No drive and every target word -0, on the ``split`` record with the ``interior``
+    conductive-chunk volume, both patterns, both sub-steps, every shape: the state on
+    which the two planted-only mutations above are scored. It must be identical, and
+    the reference must keep some -0 (``planted_negative_zeros``), or the planted
+    mutations would be scored on a state that cannot separate them.
+    """
+    summary = run_synthetic(results, out_path, repo_root, label="planted",
+                            guards=(True,), shapes=SHAPES, sources=("synthetic",),
+                            planted_kind="zero_drive")
+    return summary
 
 
 # ---------------------------------------------------------------------------
@@ -1574,11 +2090,11 @@ def run_mutations(results: Dict[str, Any], out_path: str,
 #: The legs a release rests on. ``multi`` and ``decay`` are not here: they report
 #: a budget, and :func:`attribute_long_run` is what turns that budget into a
 #: clause — through ``controls``, which IS here.
-CERTIFYING_LEGS: Tuple[str, ...] = ("validate", "synthetic", "controls",
+CERTIFYING_LEGS: Tuple[str, ...] = ("validate", "synthetic", "planted", "controls",
                                     "mutations")
 
 #: Everything ``main`` runs by default.
-DEFAULT_LEGS: Tuple[str, ...] = ("validate", "synthetic", "multi", "decay",
+DEFAULT_LEGS: Tuple[str, ...] = ("validate", "synthetic", "planted", "multi", "decay",
                                  "controls", "mutations")
 
 #: The three readings :func:`attribute_long_run` may return. ``UNATTRIBUTED`` is
@@ -1942,16 +2458,26 @@ def verdict(results: Dict[str, Any], legs: Sequence[str]) -> Dict[str, Any]:
                 f"{record.get('unguarded_identical')}/{record.get('unguarded_ran')}"}
 
     def _mutations() -> Tuple[bool, Any]:
+        """Every must-catch mutation caught, every declared null identical."""
         record = results.get("mutations") or {}
-        names = (tuple(SOURCE_MUTATIONS) + tuple(NEAR_ONE_MUTATIONS)
-                 + tuple(HOST_MUTATIONS))
+        names = (tuple(SOURCE_MUTATIONS)
+                 + tuple("planted:" + name for name in PLANTED_MUTATIONS)
+                 + tuple(NULL_MUTATIONS) + tuple(HOST_MUTATIONS))
         absent = [n for n in names if n not in record]
         errored = [n for n in names if (record.get(n) or {}).get("error")]
-        uncaught = [n for n in names
-                    if n in record and not (record[n] or {}).get("caught")]
-        return not (absent or errored or uncaught), {
-            "caught": f"{len(names) - len(absent) - len(uncaught)}/{len(names)}",
-            "missing": absent, "errored": errored, "not_caught": uncaught}
+        off = [n for n in names
+               if n in record and not (record[n] or {}).get("as_expected")]
+        return not (absent or errored or off), {
+            "as_expected": f"{len(names) - len(absent) - len(off)}/{len(names)}",
+            "missing": absent, "errored": errored, "not_as_expected": off}
+
+    def _planted() -> Tuple[bool, Any]:
+        """The planted signed-zero case: identical, and some -0 kept to separate."""
+        record = (results.get("synthetic") or {}).get("planted") or {}
+        kept = int(record.get("planted_negative_zeros") or 0)
+        return bool(record.get("guarded_pass")) and kept > 0, {
+            "guarded": f"{record.get('guarded_identical')}/{record.get('guarded_ran')}",
+            "negative_zeros_kept": kept}
 
     def _null() -> Tuple[bool, Any]:
         record = results.get("controls") or {}
@@ -2005,6 +2531,7 @@ def verdict(results: Dict[str, Any], legs: Sequence[str]) -> Dict[str, Any]:
     clause("validate_reference_matches_stepping", "validate", _validate)
     clause("synthetic_guarded_all_identical", "synthetic", _guarded)
     clause("unguarded_control_bites", "synthetic", _control_bites)
+    clause("planted_case_identical", "planted", _planted)
     clause("every_mutation_caught", "mutations", _mutations)
     clause("null_control_is_clean", "controls", _null)
     clause("one_ulp_amplifies_where_the_kernel_diverges", "controls", _one_ulp)
@@ -2129,6 +2656,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--multi-steps", type=int, default=MULTI_STEP_COUNT)
     parser.add_argument("--decay-steps", type=int, default=DECAY_STEP_COUNT)
     parser.add_argument("--control-steps", type=int, default=CONTROL_STEP_COUNT)
+    parser.add_argument("--mutation-sweep", default="full", choices=tuple(MUTATION_SWEEPS),
+                        help="the mutation leg's sweep: 'full' (certification) or 'smoke' "
+                             "(one shape, the synthetic source)")
     parser.add_argument("--subnormal-policy", default="none",
                         choices=("none", "keep", "flush", "env"),
                         help="drive BOTH executors to one float32 subnormal "
@@ -2192,13 +2722,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         save(results, args.out)
         return 0
     run_leg("synthetic", lambda: run_synthetic(results, args.out, _REPO_API))
+    run_leg("planted", lambda: run_planted(results, args.out, _REPO_API))
     run_leg("multi", lambda: run_multi(results, args.out, args.multi_steps,
                                        False, "multi_step"))
     run_leg("decay", lambda: run_multi(results, args.out, args.decay_steps,
                                        True, "decay"))
     run_leg("controls", lambda: run_controls(results, args.out,
                                              args.control_steps))
-    run_leg("mutations", lambda: run_mutations(results, args.out, _REPO_API))
+    run_leg("mutations", lambda: run_mutations(results, args.out, _REPO_API,
+                                               args.mutation_sweep))
 
     results["finished"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     results["verdict"] = verdict(results, legs)

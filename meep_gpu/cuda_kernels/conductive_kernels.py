@@ -89,52 +89,54 @@ from the sibling are the kernel name, the added pointer parameters, and the thre
 tail lines -- and ``test_conductive_kernels`` re-derives the sibling's text from
 this file's mask-0 build to pin that.
 
-THE FOUR-CASE RECURRENCE, TRANSCRIBED
-=====================================
+MEEP'S CONDUCTIVE FORMS, PER STRUCTURE CHUNK
+============================================
 Under an active layer the tail is ``stepping._apply_conductive_pml_update``
-(stepping.py:2001-2109), which the module calls "the engine's most expensive
-curl". The array path evaluates ALL FOUR of MEEP's subchunk cases over the whole
-volume and selects with ``xp.copyto(..., where=)``; a kernel evaluates the
-expressions and selects per cell. Those are the same bits only because the four
-branch expressions are mutually independent -- ``first_only`` is copied off
-``field_previous`` BEFORE ``direct`` mutates it in place (stepping.py:2091-2099)
--- which the sibling track measured rather than argued (18/18 over three shapes x
-two courants x three targets, with a flattened-grouping control at 0/18;
-``triton_kernels/conductivity.py`` module docstring).
+(stepping.py:2514-2658), which the module calls "the engine's most expensive
+curl". MEEP's ``step_curl`` picks the form of a conductive component per structure
+chunk (step_db.cpp:56-59) from three per-chunk facts, and each is DATA here, not a
+property of the coefficients:
 
-The cases, with ``f`` = target, ``u`` = ``fu_<target>``, ``c`` =
+* ``dsig`` / ``dsigu`` -- does the cell's chunk carry the layer of the component's
+  dsig / dsigu axis. The chunk record ``cb`` (``chunk_map.chunk_bounds_record``)
+  says, through the membership flags the certified pair's decode block already
+  declares on the component's own Yee sub-lattice (``in_h_*`` on the B side,
+  ``in_i_*`` on the D side; ``RegionPlan.axis_mask`` / ``RegionPlan.mask``). A sigma
+  = 0 cell inside a layer's chunk takes that chunk's form.
+* ``kept`` -- does the chunk keep a conductivity array for the component
+  (``RegionPlan.conductive_chunks``; MEEP deletes a chunk's array when every sample it
+  allocates is zero, structure.cpp:883-900). A chunk without one steps the
+  NON-conductive forms -- the certified ``pml_apply`` -- even where the component is
+  lossy elsewhere. Where every chunk keeps it (``KEEP<n>`` 1) nothing is read; where
+  some chunk does not, the kernel reads the plan's per-cell ``conductive_mask`` volume
+  for that component (``ck<n>``). The chunk record carries no conductivity, so this
+  is the family's own binding.
+
+The forms, with ``f`` = target, ``u`` = ``fu_<target>``, ``c`` =
 ``f_cond_<target>``, ``cu`` = the curl (already carrying dtdx), ``cf``/``ci`` =
 ``condfac``/``condinv``, ``(km1, si1)`` the ``dsig`` axis's pair and
-``(km2, si2)`` the ``dsigu`` axis's::
+``(km2, si2)`` the ``dsigu`` axis's, each operation rounding to float32::
 
-    dsig  = (km1 != 1.0f) || (si1 != 1.0f)        # EXACT, not a tolerance
-    dsigu = (km2 != 1.0f) || (si2 != 1.0f)
+    kept, dsig && dsigu   c <- ((c*cf) - cu) * ci;  u <- ((u*km1) + (c' - c)) * si1
+                          f <- (((f*km2) + u') - u) * si2
+    kept, dsigu only      u <- ((u*cf) - cu) * ci;  f <- (((f*km2) + u') - u) * si2
+    kept, dsig only       c <- ((c*cf) - cu) * ci;  f <- ((f*km1) + (c' - c)) * si1
+    kept, neither         f <- ((f*cf) - cu) * ci
+    not kept              pml_apply: the recurrence where dsigu, else
+                          ((f*km1) - cu) * si1
 
-    A  dsig && dsigu   c <- ((c*cf) - cu) * ci
-                       u <- (((u*km1) + c_new) - c) * si1
-                       f <- (((f*km2) + u_new) - u) * si2
-    B  dsigu only      u <- ((u*cf) - cu) * ci
-                       f <- (((f*km2) + u_new) - u) * si2      c UNCHANGED
-    C  dsig only       c <- ((c*cf) - cu) * ci
-                       f <- (((f*km1) + c_new) - c) * si1      u UNCHANGED
-    D  neither         f <- ((f*cf) - cu) * ci                 u AND c UNCHANGED
-
-"UNCHANGED" is a requirement, not a don't-care: the array path restores ``u`` and
-``c`` in their inactive regions (stepping.py:2107-2109) so a diagnostic read
-cannot mistake unused arithmetic for state. In the kernel that is "do not store",
-which is stronger and identical.
+THE INCREMENT ``(c' - c)`` IS FORMED FIRST AND THEN ADDED: MEEP's grouping
+(step_generic.cpp:167, :209). ``((u*km1) + c') - c``, which this family carried until
+0.10, is a different float32 number. ``u`` is read and written only where the cell's
+chunk carries dsigu, ``c`` only where it carries dsig (and keeps the conductivity),
+and both keep their words everywhere else -- the auxiliary contract (KERNELS.md
+section 1, C2), which the array path spells as a restore of the prior value
+(stepping.py:2650-2658). In the kernel that is "do not load, do not store".
 
 DO NOT FLATTEN THOSE PARENTHESES and do not let a multiply contract into an FMA.
 ``--fmad=false`` is carried for that reason, and the gate runs an UNGUARDED
 control at the inexact courant and REPORTS whether it changed an answer rather
 than asserting that it must.
-
-THE PARTITION IS EXACT, AND IT IS THE SAME COMPARISON THE ARRAY PATH MAKES.
-``dsig_active`` is a bare ``!= 1.0`` (stepping.py:2055-2058), so a kernel using
-``>=`` or a tolerance is a defect the real tables cannot expose -- on the sibling
-track's real ``2d_cond_pml`` layout, ``kms_x`` has 561/640 entries EXACTLY 1.0 and
-561 within 1e-7 of 1.0, i.e. no near-one band. The gate drives that mutation with
-a SYNTHETIC table carrying a near-one entry, for the same reason.
 
 WHAT IS NOT HERE
 ================
@@ -180,9 +182,11 @@ __all__ = (
     "UNCERTIFIED_KERNELS",
     "conductive_targets",
     "conductive_arm",
+    "conductive_keeps",
     "covers_conductive_curl",
     "kernel_source",
     "kernel_template",
+    "membership_flags",
     "set_kernel_template",
     "clear_kernel_cache",
     "step_conductive_curl",
@@ -266,13 +270,18 @@ def _replace_exactly(source: str, needle: str, replacement: str,
     time instead means a rename in ``step_curl_kernels.py`` or ``no_pml_curl.py``
     breaks this module loudly.
     """
+    _require_exactly(source, needle, expected, what)
+    return source.replace(needle, replacement)
+
+
+def _require_exactly(source: str, needle: str, expected: int, what: str) -> None:
+    """The count check of :func:`_replace_exactly`, for a line read rather than edited."""
     found = source.count(needle)
     if found != expected:
         raise RuntimeError(
             f"building the conductive kernels: expected {expected} occurrence(s) of "
             f"{what} in the sibling's device text, found {found}. The sibling has "
             f"been restructured and this file must be re-derived, not patched.")
-    return source.replace(needle, replacement)
 
 
 def _pml_sibling_source(name: str) -> str:
@@ -341,49 +350,78 @@ __device__ __forceinline__ void cond_apply(
 #: site reachable from some launch.
 _COND_PML_APPLY_PRELUDE = r'''
 #if COND0 || COND1 || COND2
-// stepping._apply_conductive_pml_update (stepping.py:1954-2062): MEEP's four
-// subchunk cases, selected per cell instead of over the whole volume.
+// stepping._apply_conductive_pml_update (stepping.py:2514-2658): MEEP's step_curl for
+// a component that carries a conductivity, under a PML, with its form chosen per
+// structure chunk (step_db.cpp:56-59) from three per-chunk facts, all of them data:
+//   dsig, dsigu -- the cell's chunk carries the dsig / dsigu axis's layer: the chunk
+//     record's membership flags on the component's own sub-lattice;
+//   kept -- the chunk keeps a conductivity array for the component
+//     (RegionPlan.conductive_chunks; structure.cpp:883-900).
+// Each operation rounds to float32 in this order (step_generic.cpp):
+//   kept, dsig and dsigu (:200-210)   c' = ((c * cf) - curl) * ci
+//                                     u' = ((u * km1) + (c' - c)) * si1
+//                                     f' = (((f * km2) + u') - u) * si2
+//   kept, dsig only (:160-168)        c' as above; f' = ((f * km1) + (c' - c)) * si1
+//   kept, dsigu only (:112-119)       u' = ((u * cf) - curl) * ci; f' as in the first
+//   kept, neither (:84-90)            f' = ((f * cf) - curl) * ci
+//   not kept (:104, :138-141, :182-183, :231-234): the non-conductive forms, pml_apply.
+// THE INCREMENT (c' - c) IS FORMED FIRST AND THEN ADDED (:167, :209);
+// ((u * km1) + c') - c is a different float32 number.
 //
-// THE PREDICATES ARE EXACT COMPARISONS, transcribed from stepping.py:2008-2011
-//   dsig_active  = (kms   != 1.0) | (sinv   != 1.0)
-//   dsigu_active = (kms_u != 1.0) | (sinv_u != 1.0)
-// A tolerance here is a defect the REAL coefficient tables cannot expose, so the
-// gate drives it with a synthetic table carrying a near-one entry.
-//
-// THE STORE PREDICATES ARE THE 'UNCHANGED' COLUMN of the case table: u is written
-// only where dsigu, c only where dsig, f always. The array path spells the same
-// thing as a restore of the prior value (stepping.py:2060-2062).
+// THE AUXILIARY CONTRACT: u is read and written only where the chunk carries dsigu,
+// c only where it carries dsig, and both keep their words everywhere else -- the
+// array path restores them there (stepping.py:2650-2658). cf and ci are read only on
+// the conductive forms' cells. The conditional operator evaluates only the arm it
+// selects, so no unselected form issues a load.
 //
 // DO NOT FLATTEN THESE PARENTHESES. The array path accumulates in place, one
 // operation at a time, and each grouping below is one of those steps.
 __device__ __forceinline__ void cond_pml_apply(
     float* __restrict__ f, float* __restrict__ u, float* __restrict__ c,
     const float* __restrict__ cf, const float* __restrict__ ci,
-    int idx, float curl, float km1, float si1, float km2, float si2
+    int idx, float curl, float km1, float si1, float km2, float si2,
+    int dsig, int dsigu, int kept
 ) {
-    float fv = f[idx];
-    float uv = u[idx];
-    float cv = c[idx];
+    if (!kept) {
+        pml_apply(f, u, idx, curl, km1, si1, km2, si2, dsigu);
+        return;
+    }
     float cfv = cf[idx];
     float civ = ci[idx];
-
-    bool dsig = (km1 != 1.0f) || (si1 != 1.0f);
-    bool dsigu = (km2 != 1.0f) || (si2 != 1.0f);
-
-    float c_new    = ((cv * cfv) - curl) * civ;            // cases A and C
-    float u_cond   = ((uv * cfv) - curl) * civ;            // case B
-    float u_split  = (((uv * km1) + c_new) - cv) * si1;    // case A
-    float u_new    = dsig ? u_split : u_cond;
-    float f_split  = (((fv * km2) + u_new) - uv) * si2;    // cases A and B
-    float f_first  = (((fv * km1) + c_new) - cv) * si1;    // case C
-    float f_direct = ((fv * cfv) - curl) * civ;            // case D
-
-    f[idx] = dsigu ? f_split : (dsig ? f_first : f_direct);
+    float cv = dsig ? c[idx] : 0.0f;
+    float uv = dsigu ? u[idx] : 0.0f;
+    float c_new = ((cv * cfv) - curl) * civ;
+    float inc = c_new - cv;
+    float u_new = dsig ? (((uv * km1) + inc) * si1) : (((uv * cfv) - curl) * civ);
     if (dsigu) u[idx] = u_new;
     if (dsig) c[idx] = c_new;
+    float fv = f[idx];
+    float value = dsigu ? ((((fv * km2) + u_new) - uv) * si2)
+                : (dsig ? (((fv * km1) + inc) * si1)
+                        : (((fv * cfv) - curl) * civ));
+    f[idx] = value;
 }
+
+// WHICH CHUNKS KEEP EACH TARGET'S CONDUCTIVITY. KEEP<n> is 1 when every chunk keeps
+// target n's (RegionPlan.conductive_chunks all true): nothing is read. Otherwise the
+// kernel reads the plan's per-cell conductive_mask volume of that target, ck<n>.
+#if KEEP0
+#define KEPT0 1
+#else
+#define KEPT0 (ck0[idx] != 0)
 #endif
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 1954-2062->2001-2109, 2008-2011->2055-2058, 2060-2062->2107-2109
+#if KEEP1
+#define KEPT1 1
+#else
+#define KEPT1 (ck1[idx] != 0)
+#endif
+#if KEEP2
+#define KEPT2 1
+#else
+#define KEPT2 (ck2[idx] != 0)
+#endif
+#endif
+'''
 
 #: The six (no-PML) or twelve (PML) extra pointers every conductive kernel takes,
 #: inserted at the one line every certified curl body shares. ``cf``/``ci`` are the
@@ -401,6 +439,13 @@ _COND_PARAMS = (
 _FCOND_PARAMS = (
     "    float* __restrict__ fc0, float* __restrict__ fc1,\n"
     "    float* __restrict__ fc2,\n"
+)
+
+#: The PML pair's three per-target conductive-chunk masks (``RegionPlan.conductive_mask``,
+#: one byte per cell). Read only where ``KEEP<n>`` is 0; a placeholder otherwise.
+_KEEP_PARAMS = (
+    "    const unsigned char* __restrict__ ck0, const unsigned char* __restrict__ ck1,\n"
+    "    const unsigned char* __restrict__ ck2,\n"
 )
 
 
@@ -437,27 +482,57 @@ def _pml_template(literal: str, sibling: str, name: str,
     ``vec.hpp``'s cycle. They are matched as TEXT rather than rebuilt, so a
     half-cell error in the sibling cannot be silently "fixed" here into a
     disagreement with the certified kernel.
+
+    The certified call passes the dsigu axis's membership flag; the conductive call
+    passes the dsig axis's too (:func:`membership_flags`), both of which the
+    certified body's chunk-record block already declares, and ``KEPT<n>``.
     """
     source = (_REAL_PML_PRELUDE + _COND_PML_APPLY_PRELUDE
               + _pml_sibling_source(literal))
     source = _replace_exactly(source, f"void {sibling}(", f"void {name}(", 1,
                               "the kernel's name")
     source = _replace_exactly(source, _ANCHOR,
-                              _COND_PARAMS + _FCOND_PARAMS + _ANCHOR, 1,
-                              "the scalar-parameter line")
+                              _COND_PARAMS + _FCOND_PARAMS + _KEEP_PARAMS + _ANCHOR,
+                              1, "the scalar-parameter line")
     for index, (target, (first, second)) in enumerate(zip(targets, pairs)):
         coefficients = (f"kms_{first}, sinv_{first}, kms_{second}, sinv_{second}")
+        dsig, dsigu = membership_flags(target)
+        for flag in (dsig, dsigu):
+            _require_exactly(source, f"const int {flag} = ", 1,
+                             f"the decode of {target}'s membership flag {flag}")
         plain = (f"        pml_apply({target}, fu_{target}, idx, curl, "
-                 f"{coefficients});\n")
+                 f"{coefficients}, {dsigu});\n")
         guarded = (f"#if COND{index}\n"
                    f"        cond_pml_apply({target}, fu_{target}, fc{index}, "
-                   f"cf{index}, ci{index}, idx, curl, {coefficients});\n"
+                   f"cf{index}, ci{index}, idx, curl, {coefficients}, "
+                   f"{dsig}, {dsigu}, KEPT{index});\n"
                    f"#else\n"
                    f"{plain}"
                    f"#endif\n")
         source = _replace_exactly(source, plain, guarded, 1,
                                   f"{target}'s plain pml_apply tail")
     return source
+
+
+def membership_flags(target: str) -> Tuple[str, str]:
+    """``(dsig flag, dsigu flag)``: the names of ``target``'s two layer-membership flags.
+
+    The flags the certified pair's chunk-record block declares
+    (``bounds_block.flag_name``), on ``target``'s own Yee sub-lattice along each axis
+    (``fields.IYEE_SHIFTS``) -- the lattice ``RegionPlan.axis_mask`` and
+    ``RegionPlan.mask`` read for the oracle. The dsig and dsigu axes are
+    ``stepping``'s curl terms', read rather than restated.
+    """
+    from ..fields import IYEE_SHIFTS  # noqa: PLC0415 - NumPy only
+    from ..stepping import B_CURL_TERMS, D_CURL_TERMS  # noqa: PLC0415 - NumPy only
+    from .bounds_block import flag_name  # noqa: PLC0415 - NumPy only
+
+    term = {term.target: term for term in (*B_CURL_TERMS, *D_CURL_TERMS)}[target]
+    names = []
+    for letter in (term.dsig, term.dsigu):
+        axis = "xyz".index(letter)
+        names.append(flag_name(IYEE_SHIFTS[target][axis] == 1, axis))
+    return names[0], names[1]
 
 
 #: ``vec.hpp``'s cycle, as the certified bodies spell it: target 0 takes (y, z),
@@ -473,6 +548,34 @@ _COEFFICIENT_PAIRS: Tuple[Tuple[str, str], ...] = (("y[j]", "z[k]"),
 #: :func:`_get_kernel` re-reads this map on every call so a rewritten string is
 #: seen. A map memoized at first call would hand back the pre-mutation bytes
 #: forever -- "a leg reporting a pass for a mutation it never applied".
+def _pml_pair_or_refusal() -> Tuple[Dict[str, str], Optional[str]]:
+    """The two PML templates, or the reason they cannot be derived from today's bytes.
+
+    The pair is derived from the certified PML curl pair's text, which takes MEEP's
+    per-chunk forms since 0.10 (bit_parity_0_10 DESIGN.md D1: ``pml_apply``'s ``dsigu``
+    flag, the chunk record ``cb`` and its decode block), and this pair's conductive forms
+    are re-derived onto that text. A derivation that fails here -- the certified text
+    moved again -- is HELD, by name, rather than raised at import: the no-absorber pair
+    and every predicate in this file stay importable (the arm table registers every
+    family at once, ``registry.register_all``), an active-layer row is refused with this
+    reason (:func:`covers_conductive_curl`), and any use of the two PML templates raises
+    it (:func:`kernel_template`).
+    """
+    try:
+        return {
+            "step_B_pml_conductive": _pml_template(
+                "_step_B_pml_real_kernel_code", "step_B_pml_real",
+                "step_B_pml_conductive", ("Bx", "By", "Bz"), _COEFFICIENT_PAIRS),
+            "step_D_pml_conductive": _pml_template(
+                "_step_D_pml_real_kernel_code", "step_D_pml_real",
+                "step_D_pml_conductive", ("Dx", "Dy", "Dz"), _COEFFICIENT_PAIRS),
+        }, None
+    except RuntimeError as exc:
+        return {}, str(exc)
+
+
+_PML_TEMPLATES, PML_PAIR_REFUSAL = _pml_pair_or_refusal()
+
 _TEMPLATES: Dict[str, str] = {
     "step_B_no_pml_conductive": _no_pml_template(
         "step_B_no_pml_real", "step_B_no_pml_conductive",
@@ -483,12 +586,7 @@ _TEMPLATES: Dict[str, str] = {
     "step_D_no_pml_conductive": _no_pml_template(
         "step_D_no_pml_real", "step_D_no_pml_conductive",
         ("Dx", "Dy", "Dz")),
-    "step_B_pml_conductive": _pml_template(
-        "_step_B_pml_real_kernel_code", "step_B_pml_real",
-        "step_B_pml_conductive", ("Bx", "By", "Bz"), _COEFFICIENT_PAIRS),
-    "step_D_pml_conductive": _pml_template(
-        "_step_D_pml_real_kernel_code", "step_D_pml_real",
-        "step_D_pml_conductive", ("Dx", "Dy", "Dz"), _COEFFICIENT_PAIRS),
+    **_PML_TEMPLATES,
 }
 
 #: ``--fmad=false`` is CORRECTNESS here, not tuning. The conductive tails are
@@ -505,8 +603,16 @@ _COMPILE_OPTIONS: Tuple[str, ...] = ("--fmad=false",)
 _THREADS = 256
 
 
+def _require_pml_pair(name: str) -> None:
+    if name in _PML_KERNELS and PML_PAIR_REFUSAL is not None:
+        raise RuntimeError(
+            f"the conductive PML kernel {name} is not derived on this tree: "
+            f"{PML_PAIR_REFUSAL}")
+
+
 def kernel_template(name: str) -> str:
     """The device text for one kernel WITHOUT its ``COND`` defines."""
+    _require_pml_pair(name)
     if name not in _TEMPLATES:
         raise ValueError(
             f"no such conductive kernel {name!r}; have {sorted(_TEMPLATES)}")
@@ -521,13 +627,15 @@ def set_kernel_template(name: str, source: str) -> None:
     is what makes the accounting ("how many constructions came from the mutated
     bytes") exact.
     """
+    _require_pml_pair(name)
     if name not in _TEMPLATES:
         raise ValueError(
             f"no such conductive kernel {name!r}; have {sorted(_TEMPLATES)}")
     _TEMPLATES[name] = source
 
 
-def kernel_source(name: str, cond: Tuple[bool, bool, bool]) -> str:
+def kernel_source(name: str, cond: Tuple[bool, bool, bool],
+                  keep: Tuple[bool, bool, bool] = (True, True, True)) -> str:
     """The device text for one kernel at one per-component conductivity mask.
 
     ``cond`` is ``(COND0, COND1, COND2)`` -- whether this sub-step's first, second
@@ -535,7 +643,14 @@ def kernel_source(name: str, cond: Tuple[bool, bool, bool]) -> str:
     from :func:`conductive_targets`, which is also what the predicate reads, so the
     compile-time choice and the admission cannot disagree.
 
-    THE ONLY THING THIS ADDS TO THE TEMPLATE IS THREE ``#define`` LINES. The two
+    ``keep`` is ``(KEEP0, KEEP1, KEEP2)`` -- whether every structure chunk keeps that
+    target's conductivity (:func:`conductive_keeps`), and is emitted for the two PML
+    kernels only: the no-absorber tail has one form wherever a conductivity exists (a
+    chunk that drops it holds ``cf = ci = 1`` there, and ``((f * 1) - curl) * 1`` is
+    ``f - curl``), so its text never reads it.
+
+    THE ONLY THING THIS ADDS TO THE TEMPLATE IS THREE ``#define`` LINES (six on the
+    PML pair). The two
     conductive tail helpers live IN the template, behind
     ``#if COND0 || COND1 || COND2``, so a fully lossless build still preprocesses
     them away AND a gate that mutates the template reaches them. They were outside
@@ -547,6 +662,11 @@ def kernel_source(name: str, cond: Tuple[bool, bool, bool]) -> str:
     template = kernel_template(name)
     defines = "".join(f"#define COND{index} {int(bool(flag))}\n"
                       for index, flag in enumerate(cond))
+    if name in _PML_KERNELS:
+        if len(tuple(keep)) != 3:
+            raise ValueError(f"keep must be a triple of per-target flags, got {keep!r}")
+        defines += "".join(f"#define KEEP{index} {int(bool(flag))}\n"
+                           for index, flag in enumerate(keep))
     return defines + template
 
 
@@ -555,11 +675,12 @@ def clear_kernel_cache() -> int:
     return _clear_cache()
 
 
-def _get_kernel(name: str, cond: Tuple[bool, bool, bool]):
+def _get_kernel(name: str, cond: Tuple[bool, bool, bool],
+                keep: Tuple[bool, bool, bool] = (True, True, True)):
     """Compile (or fetch) one kernel. ``cupy`` is imported HERE, never at scope."""
     import cupy as cp  # noqa: PLC0415 - a device-only import in a laptop-importable module
 
-    code = kernel_source(name, cond)
+    code = kernel_source(name, cond, keep)
     key = _kernel_cache_key(name, False, _COMPILE_OPTIONS, code)
     return _get_or_compile(
         key, lambda: cp.RawKernel(code, name, options=_COMPILE_OPTIONS))
@@ -615,6 +736,42 @@ def conductive_arm(fields: Any, pml: Any, sub_step: str) -> Tuple[str, str]:
         # otherwise rather than launching a kernel that binds a None.
         return layer, "stored_E"
     return layer, "stored_E" if getattr(fields, "stores_E", False) else "derived_E"
+
+
+def conductive_keeps(fields: Any, pml: Any,
+                     sub_step: str) -> Tuple[Tuple[bool, bool, bool], Tuple[Any, Any, Any]]:
+    """``(keep, masks)``: per target, does every structure chunk keep its conductivity?
+
+    THE ARRAY PATH'S OWN QUESTION, asked of the same object: ``stepping._apply_curl``
+    reads ``RegionPlan.conductive_chunks`` of the run's region plan
+    (``stepping._region_plan``) and steps the non-conductive forms in a chunk that
+    drops the component's conductivity (MEEP deletes a chunk's array when every sample
+    it allocates is zero, structure.cpp:883-900). ``keep[n]`` is True where target n
+    is lossless or every chunk keeps its conductivity, and ``masks[n]`` is then None;
+    elsewhere ``masks[n]`` is the plan's per-cell volume of the chunks that keep it
+    (``RegionPlan.conductive_mask``, on the grid's array module, one byte per cell) --
+    the volume the array path selects with. Defined under an active layer only: the
+    no-absorber tail has one form wherever a conductivity exists.
+    """
+    from .. import stepping  # noqa: PLC0415 - NumPy only
+
+    if pml is None or not bool(getattr(pml, "is_active", False)):
+        raise ValueError("which chunks keep a conductivity decides a form only under an "
+                         "active layer")
+    cond = conductive_targets(fields, sub_step)
+    plan = stepping._region_plan(fields, pml)  # noqa: SLF001 - the array path's own plan
+    xp = fields.grid.xp
+    keep, masks = [], []
+    for component, flag in zip(CONDUCTIVE_SUB_STEPS[sub_step], cond):
+        if not flag:
+            keep.append(True)
+            masks.append(None)
+            continue
+        sigma = fields.conductivity_for(component)
+        every = all(plan.conductive_chunks(component, sigma))
+        keep.append(bool(every))
+        masks.append(None if every else plan.conductive_mask(component, sigma, xp))
+    return (tuple(keep), tuple(masks))  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
@@ -788,6 +945,9 @@ def covers_conductive_curl(fields: Any, pml: Any, grid: Any,
                        f"and admitting it here would be an overlap")
 
     layer, _arm = conductive_arm(fields, pml, sub_step)
+    if layer == "active" and PML_PAIR_REFUSAL is not None:
+        return False, (f"the conductive PML pair is not derived on this tree: "
+                       f"{PML_PAIR_REFUSAL}")
     problem = _conductivity_problem(fields, grid, sub_step, layer, cond)
     if problem is not None:
         return False, problem
@@ -795,7 +955,17 @@ def covers_conductive_curl(fields: Any, pml: Any, grid: Any,
     if layer == "active":
         covered, reason = _coverage.covers_real_pml_curl(
             _LosslessFieldsProxy(fields), pml, grid, sub_step)
-        return (True, "") if covered else (False, reason)
+        if not covered:
+            return False, reason
+        # WHICH CHUNKS KEEP THE CONDUCTIVITY is the launch's to bind (KEEP<n>, ck<n>),
+        # and a division that cannot answer it is refused here rather than at launch.
+        try:
+            conductive_keeps(fields, pml, sub_step)
+        except Exception as exc:  # noqa: BLE001 - a raise is not a refusal unless caught
+            return False, (f"which structure chunks keep this sub-step's conductivity "
+                           f"could not be read from the run's region plan: "
+                           f"{type(exc).__name__}: {exc}")
+        return True, ""
 
     covered, reason = _no_pml_curl.covers_no_pml_curl(
         _NoConductiveHistoryProxy(fields), pml, grid, sub_step)
@@ -810,7 +980,10 @@ def step_conductive_curl(fields: Any, pml: Any, sub_step: str, boundary_codes,
                          dtdx: float, tables: Optional[Dict[str, Any]] = None,
                          arm: Optional[Tuple[str, str]] = None,
                          inverse_epsilon: Optional[Tuple[Any, Any, Any]] = None,
-                         conductivity: Optional[Dict[str, Any]] = None) -> str:
+                         conductivity: Optional[Dict[str, Any]] = None,
+                         chunk_bounds: Any = None,
+                         keeps: Optional[Tuple[Tuple[bool, bool, bool],
+                                               Tuple[Any, Any, Any]]] = None) -> str:
     """Launch the conductive curl for one sub-step. Returns the kernel launched.
 
     ``boundary_codes`` is the triple ``coverage.real_curl_boundary_codes`` builds
@@ -827,6 +1000,20 @@ def step_conductive_curl(fields: Any, pml: Any, sub_step: str, boundary_codes,
     values are used unless a host-mutation leg substitutes corrupted ones, so the
     defect it plants is on the POINTERS a launch binds rather than on the fields
     object every other leg shares.
+
+    ``chunk_bounds`` is the run's chunk record on the device (one contiguous
+    ``int32[25]`` vector, ``chunk_map.chunk_bounds_record``), and every kernel here
+    requires it: the templates are ``no_pml_curl``'s and the certified pair's bytes,
+    which since 0.10 take the record as their last argument -- the no-absorber kernels
+    read its partner-presence word to choose MEEP's stencil form per component, the PML
+    pair also its membership runs to choose MEEP's form per structure chunk. A launch
+    without it is refused by name before anything compiles, rather than launched one
+    argument short.
+
+    ``keeps`` is :func:`conductive_keeps`' answer for the PML pair, read from the run
+    when not given: which targets every chunk keeps the conductivity of (compiled in as
+    ``KEEP<n>``), and the per-cell mask bound as ``ck<n>`` where not. It is a GATE SEAM
+    too, so a host-mutation leg can bind a corrupted mask.
     """
     import numpy as np  # noqa: PLC0415 - only the scalar types are needed
 
@@ -834,7 +1021,21 @@ def step_conductive_curl(fields: Any, pml: Any, sub_step: str, boundary_codes,
     name = ARM_KERNELS[(sub_step, layer, arm_name)]
     targets_names = CONDUCTIVE_SUB_STEPS[sub_step]
     cond = conductive_targets(fields, sub_step)
-    kernel = _get_kernel(name, cond)
+    if chunk_bounds is None:
+        raise ValueError(
+            f"the conductive curl {name} takes the run's chunk record "
+            f"(chunk_map.chunk_bounds_record) and was handed none")
+    keep: Tuple[bool, bool, bool] = (True, True, True)
+    masks: Tuple[Any, ...] = (None, None, None)
+    if name in _PML_KERNELS:
+        keep, masks = keeps if keeps is not None else conductive_keeps(fields, pml,
+                                                                       sub_step)
+        for index, (flag, mask) in enumerate(zip(keep, masks)):
+            if not flag and mask is None:
+                raise ValueError(
+                    f"target {targets_names[index]} is not kept by every chunk and no "
+                    f"conductive-chunk mask was bound for it")
+    kernel = _get_kernel(name, cond, keep)
 
     targets = tuple(getattr(fields, component) for component in targets_names)
 
@@ -887,12 +1088,19 @@ def step_conductive_curl(fields: Any, pml: Any, sub_step: str, boundary_codes,
         coefficients = tuple(tables[f"{label}_{axis}"]
                              for axis in ("x", "y", "z")
                              for label in ("kms", "sinv"))
+        # A target every chunk keeps the conductivity of binds its own field array in
+        # its mask slot: KEEP<n> is 1 for it, so the pointer is never dereferenced.
+        kept_masks = tuple(target if flag else mask
+                           for flag, mask, target in zip(keep, masks, targets))
         head: Tuple[Any, ...] = targets + auxiliaries + sources
-        extra = tuple(condfac) + tuple(condinv) + histories
+        extra = tuple(condfac) + tuple(condinv) + histories + kept_masks
         tail: Tuple[Any, ...] = coefficients
     else:
         head = targets + sources + derived
         tail = ()
+    from .step_curl_kernels import chunk_record_argument  # noqa: PLC0415 - imports cupy at scope
+
+    record = (chunk_record_argument(chunk_bounds),)
 
     nx, ny, nz = targets[0].shape
     blocks = (nx * ny * nz + _THREADS - 1) // _THREADS
@@ -902,6 +1110,7 @@ def step_conductive_curl(fields: Any, pml: Any, sub_step: str, boundary_codes,
         np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx),
         *tail,
         boundary_codes[0], boundary_codes[1], boundary_codes[2],
+        *record,
     ))
     return name
 

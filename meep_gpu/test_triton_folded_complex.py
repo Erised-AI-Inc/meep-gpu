@@ -48,20 +48,6 @@ from meep_gpu.fields import IYEE_SHIFTS, Fields, mirror_parity
 from meep_gpu.grid import Grid, Mirror
 from meep_gpu.pml import PML
 from meep_gpu.triton_kernels import symmetry
-from meep_gpu.test_triton_complex_fields import (
-
-    AMBIGUOUS,
-    set_contradictory_ambiguity,
-    set_pattern,
-    stamp_probe_record,
-)
-
-# Every probe record this module builds is stamped 'keep'; the complex
-# families' policy clause fails closed when the run policy can be neither
-# read nor declared, so the premise is declared rather than left implicit.
-# See ``run_policy_declared_keep`` in conftest.py.
-pytestmark = pytest.mark.usefixtures("run_policy_declared_keep")
-
 MODULE_NAME = "meep_gpu.triton_kernels.folded_complex"
 PACKAGE_DIR = pathlib.Path(symmetry.__file__).parent
 PARITY_DIR = pathlib.Path(__file__).resolve().parents[1] / "parity" / "meep_gpu"
@@ -85,23 +71,6 @@ def fc():
     return importlib.import_module(MODULE_NAME)
 
 
-def _probe_record(value: str = "FMA_V1", backend: str = "cupy",
-                  patterns: str = "parity"):
-    module = importlib.import_module(MODULE_NAME)
-    names = {"base": module.PROBE_PATTERNS,
-             "parity": module.PARITY_PROBE_PATTERNS,
-             "beta": module.FOLDED_BETA_PROBE_PATTERNS}[patterns]
-    return stamp_probe_record(
-        {"backend": backend, "patterns": {name: value for name in names}})
-
-
-def _all_patterns_record(value: str = "FMA_V1"):
-    """One artifact carrying every pattern set this tranche can ask for."""
-    module = importlib.import_module(MODULE_NAME)
-    names = set(module.PARITY_PROBE_PATTERNS) | set(module.FOLDED_BETA_PROBE_PATTERNS)
-    return stamp_probe_record(
-        {"backend": "cupy",
-         "patterns": {name: value for name in sorted(names)}})
 
 
 def _fold_grid(axis: str = "Y", extent: float = 2.0, phase: int = 1,
@@ -441,7 +410,7 @@ def test_the_classification_refuses_an_illegal_mirror_phase(fc, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# THE HEADLINE: the parity multiply is a full complex product, measured
+# THE HEADLINE: the parity multiply is per part, measured
 # ---------------------------------------------------------------------------
 
 ENGINEERED_WORDS = (0.0, -0.0, 1e-45, -1e-45, 7e-45, 1.5, -1.5, 3.4e38)
@@ -472,46 +441,45 @@ def _engineered_complex_plane():
     return plane
 
 
-#: LAPTOP-MEASURED (NumPy 2.x, this engineered set): words in which a plane-wise
-#: ``±1 * word`` fill diverges from the array path's complex product. The
-#: even-mirror row is the load-bearing one — it is the mirror EVERY corpus row
-#: uses, and plane-wise looks like the identity there. This is the module's own
-#: headline number (folded_complex.py:64-66) and the device gate's needle
-#: prediction (gate_triton_folded_complex.py, plane_wise_parity_fill), so the
-#: three agree by construction rather than by coincidence.
+#: LAPTOP-MEASURED (NumPy 2.x, this engineered set): words in which the previous
+#: whole-complex fill (``phase * plane`` with the coefficient promoted to ``(+-1,
+#: +0)``) diverges from the array path's per-part product. This is the module's
+#: own headline number and the device gate's inverted needle
+#: (gate_triton_folded_complex.py, full_complex_parity_fill), so the three agree by
+#: construction rather than by coincidence.
 PLANE_WISE_DIVERGENCE = {1: 8, -1: 8}
 
 
 @pytest.mark.parametrize("phase", [1, -1])
-def test_the_parity_multiply_is_a_full_complex_product_not_a_sign_flip(phase):
-    """THE measurement the whole phase turns on, on the reference NumPy.
+def test_the_parity_multiply_is_per_part_not_a_full_complex_product(phase):
+    """THE measurement the fill turns on, on the reference NumPy.
 
-    ``stepping._write_mirror_ghost`` spells ``phase * plane`` with a PYTHON INT,
-    and NumPy carries only 'FF->F' complex loops — so on complex64 that is the
-    FULL multiply by ``(±1.0, +0.0)`` including its zero cross terms. The
-    plane-wise emulation below is ``symmetry.mirror_ghost_fill``'s certified REAL
-    spelling ported word-for-word to a complex volume, which is exactly the
-    ``plane_wise_parity_fill`` gate mutation, and it is byte-different at BOTH
-    parities — INCLUDING at the even mirror, where it looks like the identity and
-    the array path is not.
-
-    The counts are the LAPTOP's, on this word set, and are pinned as a regression
-    rather than quoted from elsewhere: the CuPy answer is the arbiter and the
-    gate re-cuts it on device under the stripped IEEE-keep policy.
+    ``stepping._write_mirror_ghost`` writes ``parity * plane`` through
+    ``host_writes.copy_face``, which forms it with ``part_products.scale`` — each
+    stored part times the rounded Python int, MEEP's per-part connection. The
+    previous whole-complex product (NumPy's ``phase * plane``, the multiply by
+    ``(+-1.0, +0.0)`` with its zero cross terms) is byte-different from it at BOTH
+    parities on the engineered signed-zero set, which is what the gate's inverted
+    headline mutation needs to be visible.
     """
+    from meep_gpu import part_products, stepping
+
     plane = _engineered_complex_plane()
-    array_path = np.ascontiguousarray(phase * plane)      # what stepping.py does
-    words = plane.view(np.float32).copy()                 # the word-pair view
-    plane_wise = (np.float32(phase) * words).astype(np.float32)
+    array_path = np.ascontiguousarray(part_products.scale(phase, plane))
+    shifted = np.zeros((3,) + plane.shape, dtype=np.complex64)
+    shifted[stepping.MIRROR_SOURCE_INDEX] = plane
+    stepping._write_mirror_ghost(shifted, 0, phase)
+    assert np.array_equal(np.ascontiguousarray(shifted[0]).view(np.uint32),
+                          array_path.view(np.uint32)), "the fill is not part_products.scale"
+    full = np.ascontiguousarray(phase * plane)            # the previous form
     a = array_path.view(np.uint32).ravel()
-    b = np.ascontiguousarray(plane_wise).view(np.uint32).ravel()
+    b = full.view(np.uint32).ravel()
     differing = int((a != b).sum())
     assert a.size == 128
     assert differing == PLANE_WISE_DIVERGENCE[phase], (
-        f"the plane-wise fill must diverge from the array path in "
+        f"the whole-complex fill must diverge from the per-part one in "
         f"{PLANE_WISE_DIVERGENCE[phase]}/128 engineered words at phase "
         f"{phase:+d}; measured {differing}")
-    assert differing > 0
 
 
 def test_the_python_int_float_and_complex64_spellings_of_the_phase_agree():
@@ -525,16 +493,19 @@ def test_the_python_int_float_and_complex64_spellings_of_the_phase_agree():
             assert np.array_equal(reference, got), (phase, spelling)
 
 
-def test_the_even_mirror_is_not_the_identity_under_complex_storage():
-    """An ``if phase == +1: copy`` shortcut is wrong on the mirror every corpus
-    row uses — this is the ``identity_shortcut_on_even_mirror`` gate mutation's
-    host-side justification."""
+def test_the_even_mirror_is_the_identity_per_part():
+    """Per part, ``x * (+1.0)`` IS ``x`` on every engineered word: the
+    ``identity_shortcut_on_even_mirror`` gate mutation (the multiply dropped) is a
+    structural null on the +1 rows and is caught on the -1 rows only, where the
+    copy keeps the sign the parity flips."""
+    from meep_gpu import part_products
+
     plane = _engineered_complex_plane()
-    a = np.ascontiguousarray(1 * plane).view(np.uint32).ravel()
-    b = np.ascontiguousarray(plane).view(np.uint32).ravel()
-    assert int((a != b).sum()) == 8, (
-        "an `if phase == +1: copy` shortcut must be byte-different from the "
-        "array path on the engineered signed-zero set")
+    even = np.ascontiguousarray(part_products.scale(1, plane)).view(np.uint32).ravel()
+    odd = np.ascontiguousarray(part_products.scale(-1, plane)).view(np.uint32).ravel()
+    words = np.ascontiguousarray(plane).view(np.uint32).ravel()
+    assert np.array_equal(even, words)
+    assert int((odd != words).sum()) == 128
 
 
 def test_the_parity_coefficient_words_are_the_hosts_rounded_bits(fc):
@@ -557,8 +528,9 @@ def test_an_illegal_declared_phase_is_refused_by_the_coefficient_builder(fc):
 
 
 def test_the_parity_coefficients_imaginary_word_is_bitwise_zero(fc):
-    """THE PREMISE the ``synthesize_zero_imag`` RETIREMENT rests on, asserted
-    directly rather than inferred from one device run's divergence count.
+    """The entries' imaginary coefficient word is bitwise ``+0``: what lets the
+    per-part fill launch the real word alone. (It was also the premise the retired
+    ``synthesize_zero_imag`` null rested on, asserted directly.)
 
     ``mirror_parity_coefficients`` (folded_complex.py:2100) rounds ``+phase``
     and ``-phase`` through ``numpy.complex64`` on the host and passes both WORDS
@@ -658,7 +630,6 @@ def test_the_fill_entries_refuse_a_grid_whose_fold_cannot_be_classified(
 # ---------------------------------------------------------------------------
 
 
-
 @pytest.mark.parametrize("name", ["folded_bloch_pml_curl_step",
                                   "folded_beta_pml_curl_step",
                                   "folded_beta_bloch_pml_curl_step"])
@@ -673,14 +644,15 @@ def test_the_cell_zero_mask_is_widened_to_non_periodic_on_every_curl(fc, name):
         "the folded kernels must not carry the unwidened cell-0 mask")
 
 
-@pytest.mark.parametrize("name", ["folded_bloch_pml_curl_step",
-                                  "folded_beta_pml_curl_step",
-                                  "folded_beta_bloch_pml_curl_step"])
-def test_the_top_plane_mask_exists_and_is_gated_on_mirror_periodic(fc, name):
-    """Nine (side, target, axis) clauses on the complex kernels, nine on the real
-    one: the B side masks two axes per target, the D side one."""
+@pytest.mark.parametrize("name,clauses", [("folded_bloch_pml_curl_step", 9),
+                                          ("folded_beta_pml_curl_step", 15),
+                                          ("folded_beta_bloch_pml_curl_step", 15)])
+def test_the_top_plane_mask_exists_and_is_gated_on_mirror_periodic(fc, name, clauses):
+    """Nine (side, target, axis) clauses on every curl: the B side masks two axes per
+    target, the D side one. The beta bodies carry six more on the pass's own
+    increment, which reaches targets 0 and 1 only (four on the B side, two on D)."""
     source = kernel_source(name)
-    assert source.count("== MIRROR_PERIODIC") == 9
+    assert source.count("== MIRROR_PERIODIC") == clauses
     assert "last_x, last_y, last_z" in source
 
 
@@ -699,49 +671,68 @@ def test_only_the_periodic_branch_wraps_the_ghost_index(fc, name):
     assert source.count("if BCZ == PERIODIC:") == 1
 
 
-@pytest.mark.parametrize("name,partner_first,partner_second", [
-    ("folded_beta_pml_curl_step", "beta_plus * b", "beta_minus * a"),
-    ("folded_beta_bloch_pml_curl_step", "bp_re, bp_im, b_re, b_im",
-     "bm_re, bm_im, a_re, a_im"),
+@pytest.mark.parametrize("name,increments", [
+    ("folded_beta_pml_curl_step",
+     ("q0 = (beta_plus * b) * -1.0", "q1 = (beta_minus * a) * -1.0")),
+    ("folded_beta_bloch_pml_curl_step",
+     ("q0_re = beta_plus * b_im", "q0_im = (beta_plus * b_re) * -1.0",
+      "q1_re = beta_minus * a_im", "q1_im = (beta_minus * a_re) * -1.0")),
 ])
-def test_the_beta_insert_sits_after_the_curl_and_before_both_masks(
-        fc, name, partner_first, partner_second):
-    """THE fold-order needle. The array path adds the increment after
-    ``_curl_from_operands`` and before ``_mask_non_owned_cells`` (S:356-363 then
-    :369; S:438-445 then :450), and a fold WIDENS that mask — so an insert below
-    the masks leaves a live increment on the mirror plane and on the far ghost
-    plane, invisible in the interior."""
+def test_the_beta_pass_follows_the_forms_and_masks_its_own_increment(
+        fc, name, increments):
+    """THE fold-order needle. MEEP runs the beta pass after every component's curl
+    (step_db.cpp:161-175): after the curl, its cell-zero and top-plane masks and the
+    curl forms, and before the stores. A fold WIDENS the curl's ownership mask, and the
+    pass's increment carries the same clauses (an exact +0 on every cell the curl
+    drops), so no live increment reaches the mirror plane or the far ghost plane; it
+    enters targets 0 and 1 through the ladder."""
     source = kernel_source(name)
-    beta_at = source.index("if HAS_BETA:")
-    curl_at = source.index("curl0" if "beta_plus" in partner_first else "curl0_re")
-    cell_zero_mask_at = source.index("at_x, at_y, at_z")
     top_mask_at = source.index("last_x, last_y, last_z")
-    assert curl_at < beta_at < cell_zero_mask_at < top_mask_at
-    assert partner_first in source and partner_second in source
+    forms_at = source.index("curl_form(")
+    beta_at = source.index("if HAS_BETA:")
+    ladder_at = source.index("fold_ladder(")
+    store_at = source.index("tl.store(")
+    assert top_mask_at < forms_at < beta_at < ladder_at < store_at
+    pass_text = source[beta_at:store_at]
+    for increment in increments:
+        assert increment in pass_text, increment
+    assert "tl.where(at_" in pass_text and "tl.where(last_" in pass_text
+    assert pass_text.count("fold_ladder(") == len(increments)
+    assert "f2 " not in pass_text and "v2" not in pass_text
 
 
 def test_the_complex_beta_partners_are_the_unrotated_centre_words(fc):
-    """The Bloch rotation applies to SHIFTED operands only; the beta partner is
-    the CENTER pair loaded before the phase section and never rotated."""
+    """The Bloch connection applies to SHIFTED operands only; the beta partner is the
+    CENTER pair loaded before the connection section, never reassigned, and turned a
+    quarter by one real word per part (no complex product, no multiply helper)."""
+    import re  # noqa: PLC0415
+
     source = kernel_source("folded_beta_bloch_pml_curl_step")
-    rotate_at = source.index("if PHX:")
+    connect_at = source.index("_connect(")
     beta_at = source.index("if HAS_BETA:")
-    assert rotate_at < beta_at
-    for rotated in ("b_x_re", "c_y_re", "a_z_re"):
-        assert f"{rotated}, {rotated.replace('_re', '_im')}, b_re" not in source
-    assert "_mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im" in source
-    assert "_mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im" in source
+    assert connect_at < beta_at
+    for word in ("a_re", "a_im", "b_re", "b_im"):
+        bound = re.findall(rf"^\s*(?:\w+, )*{word}\b(?:, \w+)* = ", source, re.M)
+        assert len(bound) == 1, (word, bound)
+    pass_text = source[beta_at:source.index("tl.store(", beta_at)]
+    for connected in ("b0_re", "b2_re", "a2_re", "r_re"):
+        assert connected not in pass_text, connected
+    assert "_mul_imag_coefficient_left" not in source
 
 
-def test_the_fill_uses_the_passed_coefficient_words_not_a_bare_multiply(fc):
-    """``PHASE * word`` is the headline gate needle; the shipped kernel must
-    reach the parity through the full complex product helper, and the coefficient
-    words must be PASSED, never synthesised as a literal ``+0.0`` in-kernel."""
+def test_the_fill_multiplies_each_part_by_the_passed_parity_word(fc):
+    """The parity reaches the fill as one host-rounded float32 word per pass and
+    multiplies each stored part (``part_products.scale``): six products per pass,
+    no complex product helper, no ``PHASE`` constexpr and no imaginary coefficient
+    word."""
     source = kernel_source("folded_mirror_ghost_fill_complex")
-    assert source.count("_mul_imag_coefficient_left(near_re, near_im") == 3
-    assert source.count("_mul_imag_coefficient_left(far_re, far_im") == 3
+    assert source.count("near_c * tl.load(") == 6
+    assert source.count("far_c * tl.load(") == 6
+    assert "_mul_imag_coefficient_left" not in source
     assert "PHASE" not in source
-    assert "0.0, z_re" not in source and "0.0, z_im" not in source
+    parameters = kernel_parameters("folded_mirror_ghost_fill_complex")
+    assert "near_c" in parameters and "far_c" in parameters
+    assert not any(name.endswith("_im") for name in parameters)
 
 
 def test_the_fill_keeps_the_reflect_row_a_runtime_scalar(fc):
@@ -924,8 +915,7 @@ def test_the_folded_complex_configuration_is_refused_only_for_the_backend(
     """K1's target class: complex64 storage, a live PML, a folded PERIODIC Y at
     k = 0, beta = 0. Only the CuPy clause may fire on NumPy."""
     fields, pml = _fold_grid()
-    verdict = fc.folded_complex_pml_curl_coverage(fields, pml, sub_step,
-                                                  probe=_all_patterns_record())
+    verdict = fc.folded_complex_pml_curl_coverage(fields, pml, sub_step)
     assert _reasons(verdict) == []
 
 
@@ -939,8 +929,7 @@ def test_every_cell_of_the_termination_parity_phase_matrix_is_admitted(
     other seven exist only synthetically and must be admitted here, or the gate
     can never measure them."""
     fields, pml = _fold_grid(boundaries=boundaries, phase=phase, extent=extent)
-    verdict = fc.folded_complex_pml_curl_coverage(fields, pml, sub_step,
-                                                  probe=_all_patterns_record())
+    verdict = fc.folded_complex_pml_curl_coverage(fields, pml, sub_step)
     assert _reasons(verdict) == []
 
 
@@ -948,8 +937,7 @@ def test_every_cell_of_the_termination_parity_phase_matrix_is_admitted(
 def test_a_fold_on_each_axis_is_admitted(fc, axis):
     """A folded Z must classify exactly as a folded X does."""
     fields, pml = _fold_grid(axis=axis, dimensions=3, other=1.2)
-    verdict = fc.folded_complex_pml_curl_coverage(fields, pml, "step_B",
-                                                  probe=_all_patterns_record())
+    verdict = fc.folded_complex_pml_curl_coverage(fields, pml, "step_B")
     assert _reasons(verdict) == []
 
 
@@ -963,26 +951,25 @@ def test_zero_folded_axes_is_admitted_by_the_standalone_verdict_and_refused_by_c
     fields = Fields(grid=grid, force_complex_fields=True)
     fields.enable_pml_storage()
     pml = PML(grid=grid, thickness=((2, 2), (2, 2), (0, 0)))
-    record = _all_patterns_record()
     assert _reasons(fc.folded_complex_pml_curl_coverage(
-        fields, pml, "step_B", probe=record)) == []
+        fields, pml, "step_B")) == []
     assert any("equivalence product" in r for r in _reasons(
         fc.folded_complex_composition_curl_coverage(
-            fields, pml, "step_B", probe=record)))
+            fields, pml, "step_B")))
 
 
 def test_real_storage_is_refused_by_the_complex_curl(fc):
     fields, pml = _fold_grid(complex_storage=False)
     assert any("storage is real float32" in r
                for r in _reasons(fc.folded_complex_pml_curl_coverage(
-                   fields, pml, "step_B", probe=_all_patterns_record())))
+                   fields, pml, "step_B")))
 
 
 def test_a_nonzero_beta_is_refused_by_the_plain_folded_complex_curl(fc):
     fields, pml = _fold_grid(beta=BETA_EIGSRC)
     assert any("belongs to the folded beta kernels" in r
                for r in _reasons(fc.folded_complex_pml_curl_coverage(
-                   fields, pml, "step_B", probe=_all_patterns_record())))
+                   fields, pml, "step_B")))
 
 
 def test_a_zero_beta_is_refused_by_both_beta_curls(fc):
@@ -991,7 +978,7 @@ def test_a_zero_beta_is_refused_by_both_beta_curls(fc):
     fields, pml = _fold_grid(beta=0.0)
     assert any("grid.beta is zero" in r
                for r in _reasons(fc.folded_beta_bloch_pml_curl_coverage(
-                   fields, pml, "step_B", probe=_all_patterns_record())))
+                   fields, pml, "step_B")))
     real_fields, real_pml = _fold_grid(beta=0.0, complex_storage=False)
     assert any("grid.beta is zero" in r
                for r in _reasons(fc.folded_beta_pml_curl_coverage(
@@ -1002,7 +989,7 @@ def test_no_active_pml_is_refused(fc):
     fields, pml = _fold_grid(pml=0)
     assert any("no active PML layer" in r
                for r in _reasons(fc.folded_complex_pml_curl_coverage(
-                   fields, pml, "step_B", probe=_all_patterns_record())))
+                   fields, pml, "step_B")))
 
 
 def test_a_pml_on_the_low_face_of_a_folded_axis_never_reaches_the_predicate():
@@ -1033,7 +1020,7 @@ def test_a_bloch_k_on_the_folded_axis_is_refused_zone_edge_included(fc, k):
         _fold_grid(k_point=(0.0, k, 0.0))
     shim = FieldsShim(fields, grid=GridShim(fields.grid, k_point=(0.0, k, 0.0)))
     reasons = _reasons(fc.folded_complex_pml_curl_coverage(
-        shim, pml, "step_B", probe=_all_patterns_record()))
+        shim, pml, "step_B"))
     assert any("folded with k component" in r for r in reasons), reasons
 
 
@@ -1042,7 +1029,7 @@ def test_a_bloch_k_on_an_UNFOLDED_periodic_axis_is_admitted(fc):
     beside a folded Y — the phases compose across DIFFERENT axes."""
     fields, pml = _fold_grid(k_point=(0.21, 0.0, 0.0))
     assert _reasons(fc.folded_complex_pml_curl_coverage(
-        fields, pml, "step_B", probe=_all_patterns_record())) == []
+        fields, pml, "step_B")) == []
 
 
 def test_real_storage_with_a_nonzero_k_point_is_refused_by_the_real_beta_curl(fc):
@@ -1059,7 +1046,7 @@ def test_a_k_component_on_the_invariant_axis_is_refused_by_the_beta_curls(fc):
     shim = FieldsShim(fields,
                       grid=GridShim(fields.grid, k_point=(0.0, 0.0, 0.37)))
     reasons = _reasons(fc.folded_beta_bloch_pml_curl_coverage(
-        shim, pml, "step_B", probe=_all_patterns_record()))
+        shim, pml, "step_B"))
     assert any("invariant axis" in r for r in reasons), reasons
 
 
@@ -1071,8 +1058,7 @@ def test_a_k_component_on_the_invariant_axis_is_refused_by_the_beta_curls(fc):
 def test_the_media_refusals_fire_by_name(fc, flag, needle):
     fields, pml = _fold_grid()
     reasons = _reasons(fc.folded_complex_pml_curl_coverage(
-        FieldsShim(fields, **{flag: True}), pml, "step_B",
-        probe=_all_patterns_record()))
+        FieldsShim(fields, **{flag: True}), pml, "step_B"))
     assert any(needle in r for r in reasons), reasons
 
 
@@ -1082,7 +1068,7 @@ def test_a_conductivity_on_a_curl_target_is_refused(fc):
                       condfac_for=lambda name: object() if name == "Dx" else None)
     assert any("conductivity is installed on Dx" in r
                for r in _reasons(fc.folded_complex_pml_curl_coverage(
-                   shim, pml, "step_B", probe=_all_patterns_record())))
+                   shim, pml, "step_B")))
 
 
 def test_an_unreadable_conductivity_table_is_refused_outright(fc):
@@ -1092,8 +1078,7 @@ def test_an_unreadable_conductivity_table_is_refused_outright(fc):
     fields, pml = _fold_grid()
     assert any("does not expose condfac_for" in r
                for r in _reasons(fc.folded_complex_pml_curl_coverage(
-                   FieldsShim(fields, condfac_for=None), pml, "step_B",
-                   probe=_all_patterns_record())))
+                   FieldsShim(fields, condfac_for=None), pml, "step_B")))
 
 
 def test_bfast_is_refused(fc):
@@ -1101,23 +1086,21 @@ def test_bfast_is_refused(fc):
     shim = FieldsShim(fields, grid=GridShim(fields.grid, bfast_active=True))
     assert any("BFAST is active" in r
                for r in _reasons(fc.folded_complex_pml_curl_coverage(
-                   shim, pml, "step_B", probe=_all_patterns_record())))
+                   shim, pml, "step_B")))
 
 
 def test_a_registered_susceptibility_is_refused_under_complex_storage(fc):
     fields, pml = _fold_grid()
     assert any("susceptibility is registered" in r
                for r in _reasons(fc.folded_complex_pml_curl_coverage(
-                   FieldsShim(fields, has_polarizations=True), pml, "step_B",
-                   probe=_all_patterns_record())))
+                   FieldsShim(fields, has_polarizations=True), pml, "step_B")))
 
 
 def test_recomputed_E_is_refused(fc):
     fields, pml = _fold_grid()
     assert any("recomputed from D" in r
                for r in _reasons(fc.folded_complex_pml_curl_coverage(
-                   FieldsShim(fields, stores_E=False), pml, "step_B",
-                   probe=_all_patterns_record())))
+                   FieldsShim(fields, stores_E=False), pml, "step_B")))
 
 
 def test_a_cylindrical_grid_is_refused_by_name(fc):
@@ -1129,7 +1112,7 @@ def test_a_cylindrical_grid_is_refused_by_name(fc):
     fields.enable_pml_storage()
     pml = PML(grid=grid, thickness=((0, 2), (0, 0), (2, 2)))
     reasons = _reasons(fc.folded_complex_pml_curl_coverage(
-        fields, pml, "step_B", probe=_all_patterns_record()))
+        fields, pml, "step_B"))
     assert any("cylindrical" in r for r in reasons), reasons
     assert any("r = 0 axis" in r for r in reasons), reasons
 
@@ -1155,7 +1138,7 @@ def test_an_unknown_sub_step_raises_rather_than_refusing(fc):
 def test_the_fill_is_admitted_on_a_folded_complex_grid(fc, family, boundaries):
     fields, _pml = _fold_grid(boundaries=boundaries)
     assert _reasons(fc.folded_mirror_ghost_fill_complex_coverage(
-        fields, family, probe=_all_patterns_record())) == []
+        fields, family)) == []
 
 
 def test_the_fill_is_refused_with_no_mirror_plane(fc):
@@ -1165,7 +1148,7 @@ def test_the_fill_is_refused_with_no_mirror_plane(fc):
     fields.enable_pml_storage()
     assert any("no mirror plane is active" in r
                for r in _reasons(fc.folded_mirror_ghost_fill_complex_coverage(
-                   fields, "B", probe=_all_patterns_record())))
+                   fields, "B")))
 
 
 def test_the_fill_is_refused_on_real_storage_and_says_why(fc):
@@ -1174,7 +1157,7 @@ def test_the_fill_is_refused_on_real_storage_and_says_why(fc):
     fields, _pml = _fold_grid(complex_storage=False)
     assert any("exact sign flip" in r or "EXACT" in r
                for r in _reasons(fc.folded_mirror_ghost_fill_complex_coverage(
-                   fields, "B", probe=_all_patterns_record())))
+                   fields, "B")))
 
 
 def test_the_fill_checks_the_reflect_row_bounds_rather_than_assuming_them(
@@ -1186,199 +1169,30 @@ def test_the_fill_checks_the_reflect_row_bounds_rather_than_assuming_them(
     monkeypatch.setattr(stepping, "_far_reflect_rows",
                         lambda g: (None, int(grid.shape[1]) - 1, None))
     reasons = _reasons(fc.folded_mirror_ghost_fill_complex_coverage(
-        fields, "B", probe=_all_patterns_record()))
+        fields, "B"))
     assert any("reflect row" in r and "outside" in r for r in reasons), reasons
 
 
 # ---------------------------------------------------------------------------
-# The probe contract
+# The two folded complex predicates admit a folded complex grid
 # ---------------------------------------------------------------------------
 
-def test_the_parity_pattern_is_a_new_required_pattern(fc):
-    """Inheriting the base four patterns' verdict would admit an ambiguous
-    platform silently — ``special_kz`` set the precedent that a new operand
-    ORIENTATION earns its own pattern."""
-    assert fc.PARITY_PROBE_PATTERN not in fc.PROBE_PATTERNS
-    assert set(fc.PROBE_PATTERNS) < set(fc.PARITY_PROBE_PATTERNS)
-    assert fc.parity_expansion_from_probe(_probe_record(patterns="base")) is None
-    assert fc.parity_expansion_from_probe(_probe_record(patterns="parity")) == 1
 
-
-# ---------------------------------------------------------------------------
-# The non-discriminating clause, over the EXTENDED pattern set
-# ---------------------------------------------------------------------------
-#
-# THE CLAUSE, and the two situations it must never conflate. A pattern that
-# CANNOT tell the licensable arms apart constrains nothing and is EXCLUDED from
-# the agreement test; a pattern that CAN tell them apart and names a different
-# arm is evidence against a licence and must VETO it. Until 2026-08-15 this
-# tranche implemented its own loop, which accepted AMBIGUOUS_BOTH for
-# PARITY_PROBE_PATTERN alone and let any BASE pattern gone blind veto — the
-# pre-clause behaviour the base family had already retired. It now calls
-# ``complex_fields.expansion_license`` over PARITY_PROBE_PATTERNS.
-
-def test_a_pattern_that_cannot_discriminate_is_excluded_from_the_agreement_test(fc):
-    """The parity pattern is the expected blind one: with ``c_re = ±1`` exactly
-    and ``c_im = +0.0`` the fused arm's extra product is exact, so both arms
-    produce identical bytes (measured on the reference NumPy: 0 mismatch words
-    on both arms, arms 0 words apart over 4608 vectors). It is excluded and the
-    base four name the arm — and the SAME treatment now reaches a base pattern
-    gone blind, which used to veto."""
-    record = set_pattern(_probe_record(patterns="parity"),
-                         fc.PARITY_PROBE_PATTERN, AMBIGUOUS, apart=0)
-    verdict = fc.parity_expansion_license(record)
-    assert verdict["expansion"] == 1
-    assert verdict["basis"] == "measured"
-    assert verdict["non_discriminating"] == [fc.PARITY_PROBE_PATTERN]
-    assert verdict["refusals"] == []
-
-    both_blind = set_pattern(record, "c8_mul_c8", AMBIGUOUS, apart=0)
-    verdict = fc.parity_expansion_license(both_blind)
-    assert verdict["expansion"] == 1, verdict["refusals"]
-    assert verdict["basis"] == "measured"
-    assert verdict["non_discriminating"] == ["c8_mul_c8",
-                                             fc.PARITY_PROBE_PATTERN]
-
-
-def test_a_pattern_that_discriminates_but_disagrees_still_refuses(fc):
-    """THE OPPOSITE SITUATION, and the one a loosened clause would swallow — the
-    parity pattern naming the other arm, naming no arm at all, and claiming
-    ambiguity its own detail block measures 128 words of disagreement against."""
-    disagreeing = set_pattern(_probe_record(patterns="parity"),
-                              fc.PARITY_PROBE_PATTERN, "NAIVE")
-    verdict = fc.parity_expansion_license(disagreeing)
-    assert verdict["expansion"] is None
-    assert any("disagree" in reason for reason in verdict["refusals"]), verdict
-    assert fc.PARITY_PROBE_PATTERN not in verdict["non_discriminating"]
-
-    contradictory = set_contradictory_ambiguity(_probe_record(patterns="parity"),
-                                                fc.PARITY_PROBE_PATTERN)
-    verdict = fc.parity_expansion_license(contradictory)
-    assert verdict["expansion"] is None
-    assert any("words APART" in reason for reason in verdict["refusals"]), verdict
-    assert verdict["non_discriminating"] == [], (
-        "a pattern whose ambiguity claim its own detail contradicts must never "
-        "be recorded as excluded: excluded means MEASURABLY blind")
-    assert verdict["ambiguity_refused"] == [fc.PARITY_PROBE_PATTERN]
-
-    only_bad_one_left = set_contradictory_ambiguity(
-        _probe_record(patterns="parity"), fc.PARITY_PROBE_PATTERN)
-    for name in fc.PROBE_PATTERNS:
-        set_pattern(only_bad_one_left, name, AMBIGUOUS, apart=0)
-    assert fc.parity_expansion_from_probe(only_bad_one_left) is None
-
-
-def test_a_parity_ambiguity_the_plane_wise_arm_also_passes_refuses(fc):
-    """PLANE-WISE is a LIVE alternative on this pattern, not a theoretical one:
-    the gate records ``parity_is_planewise`` as a platform finding precisely
-    because a unit-real scalar multiply can reproduce it. A comparison the
-    known-wrong transcription passes discriminates nothing and licenses
-    nothing — it is a refusal, never an exclusion."""
-    record = set_pattern(_probe_record(patterns="parity"),
-                         fc.PARITY_PROBE_PATTERN, AMBIGUOUS, apart=0,
-                         diagnostic_matched=True)
-    verdict = fc.parity_expansion_license(record)
-    assert verdict["expansion"] is None
-    assert any("known-wrong transcription" in reason
-               for reason in verdict["refusals"]), verdict["refusals"]
-
-
-def test_a_record_on_which_nothing_discriminates_is_not_a_measurement(fc):
-    record = _probe_record(patterns="parity")
-    for name in fc.PARITY_PROBE_PATTERNS:
-        set_pattern(record, name, AMBIGUOUS, apart=0)
-    verdict = fc.parity_expansion_license(record)
-    assert verdict["expansion"] is None
-    assert verdict["arms_coincide_on_every_pattern"] is True
-    assert any("matches no measured row" in reason
-               for reason in verdict["refusals"]), verdict["refusals"]
-
-
-def test_the_licence_names_the_pattern_set_and_the_patterns_it_excluded(fc):
-    record = set_pattern(_probe_record(patterns="parity"),
-                         fc.PARITY_PROBE_PATTERN, AMBIGUOUS, apart=0)
-    verdict = fc.parity_expansion_license(record)
-    assert verdict["probe_patterns"] == list(fc.PARITY_PROBE_PATTERNS)
-    assert verdict["basis"] == "measured"
-    assert verdict["non_discriminating"] == [fc.PARITY_PROBE_PATTERN]
-    assert fc.parity_expansion_from_probe(record) == verdict["expansion"]
-
-
-def test_the_folded_beta_licence_carries_the_same_clause(fc):
-    """K3b delegates to ``special_kz``; the delegation is what is pinned here, so
-    the two entry points cannot drift into different rules."""
-    record = set_pattern(_probe_record(patterns="beta"),
-                         "c8_mul_c8_imaginary_coefficient_left", AMBIGUOUS,
-                         apart=0)
-    verdict = fc.folded_beta_expansion_license(record)
-    assert verdict["expansion"] == 1
-    assert verdict["basis"] == "measured"
-    assert verdict["non_discriminating"] == [
-        "c8_mul_c8_imaginary_coefficient_left"]
-    assert fc.folded_beta_expansion_from_probe(record) == 1
-
-    contradictory = set_contradictory_ambiguity(
-        _probe_record(patterns="beta"), "c8_mul_c8_imaginary_coefficient_left")
-    assert fc.folded_beta_expansion_from_probe(contradictory) is None
-
-
-def test_a_neither_verdict_on_the_parity_pattern_refuses(fc):
-    record = _probe_record(patterns="parity")
-    record["patterns"][fc.PARITY_PROBE_PATTERN] = "NEITHER"
-    assert fc.parity_expansion_from_probe(record) is None
-
-
-@pytest.mark.parametrize("record", [None, {"backend": "numpy", "patterns": {}},
-                                    {"backend": "cupy"}, "not a record"])
-def test_a_missing_or_wrong_backend_probe_refuses(fc, record):
-    assert fc.parity_expansion_from_probe(record) is None
-
-
-def test_disagreeing_base_patterns_refuse(fc):
-    record = _probe_record(patterns="parity")
-    record["patterns"]["python_float_left"] = "NAIVE"
-    assert fc.parity_expansion_from_probe(record) is None
-
-
-def test_the_fill_refuses_without_the_parity_pattern_in_the_artifact(fc):
-    fields, _pml = _fold_grid()
-    reasons = _reasons(fc.folded_mirror_ghost_fill_complex_coverage(
-        fields, "B", probe=_probe_record(patterns="base")))
-    assert any(fc.PARITY_PROBE_PATTERN in r for r in reasons), reasons
-
-
-def test_the_complex_beta_curl_requires_the_extended_beta_pattern_set(fc):
-    fields, pml = _fold_grid(beta=BETA_EIGSRC)
-    reasons = _reasons(fc.folded_beta_bloch_pml_curl_coverage(
-        fields, pml, "step_B", probe=_probe_record(patterns="base")))
-    assert any("c8_mul_c8_imaginary_coefficient_left" in r for r in reasons), reasons
-
-
-def test_the_plain_folded_complex_curl_binds_the_BASE_pattern_set(fc):
-    """K1 launches no new product orientation, so the base contract is exactly
-    right — asking for more would refuse a licensing artifact for no reason."""
+def test_the_plain_folded_complex_curl_admits_a_folded_complex_grid(fc):
+    """K1 admits the folded complex grid; no reason is left but the backend's."""
     fields, pml = _fold_grid()
     assert _reasons(fc.folded_complex_pml_curl_coverage(
-        fields, pml, "step_B", probe=_probe_record(patterns="base"))) == []
+        fields, pml, "step_B")) == []
 
 
-def test_the_complex_constitutive_delegate_binds_the_BASE_pattern_set(fc):
+def test_the_complex_constitutive_delegate_admits_a_folded_complex_grid(fc):
     """The kernel launched there is the certified ``bloch_constitutive_step``,
-    whose contract is the base set — reached by RESTATING the element-wise
+    whose admission is reached by RESTATING the element-wise
     contract, never by subtracting reasons from another predicate's output."""
     fields, pml = _fold_grid()
     for side in ("H", "E"):
         assert _reasons(fc.folded_complex_constitutive_coverage(
-            fields, pml, side, probe=_probe_record(patterns="base"))) == []
-
-
-def test_a_missing_probe_refuses_every_complex_predicate(fc, monkeypatch):
-    monkeypatch.delenv("MEEP_GPU_COMPLEX_EXPANSION_PROBE", raising=False)
-    fields, pml = _fold_grid()
-    for verdict in (fc.folded_complex_pml_curl_coverage(fields, pml, "step_B"),
-                    fc.folded_mirror_ghost_fill_complex_coverage(fields, "B"),
-                    fc.folded_complex_constitutive_coverage(fields, pml, "E")):
-        assert any("probe artifact" in r for r in verdict.reasons)
+            fields, pml, side)) == []
 
 
 # ---------------------------------------------------------------------------
@@ -1390,14 +1204,6 @@ def test_the_folded_real_beta_configuration_is_refused_only_for_the_backend(
         fc, sub_step):
     fields, pml = _fold_grid(complex_storage=False, beta=BETA_GRATING_13_2)
     assert _reasons(fc.folded_beta_pml_curl_coverage(fields, pml, sub_step)) == []
-
-
-def test_the_real_beta_family_needs_no_probe_artifact(fc, monkeypatch):
-    """Real storage carries no complex-multiply expansion; demanding a probe
-    there would be a refusal with no measurement behind it."""
-    monkeypatch.delenv("MEEP_GPU_COMPLEX_EXPANSION_PROBE", raising=False)
-    fields, pml = _fold_grid(complex_storage=False, beta=BETA_GRATING_13_2)
-    assert _reasons(fc.folded_beta_pml_curl_coverage(fields, pml, "step_B")) == []
 
 
 def test_symmetrys_own_fill_predicate_still_admits_a_folded_REAL_beta_grid():
@@ -1440,7 +1246,8 @@ def test_the_beta_coefficients_come_from_the_beta_tranche_unchanged(fc):
     assert plus == -minus and plus != 0.0
     words = fc.beta_curl_coefficients(BETA_EIGSRC, 0.05, magnetic=True,
                                       complex_storage=True)
-    assert len(words) == 2 and all(len(pair) == 2 for pair in words)
+    assert len(words) == 2 and all(isinstance(word, float) for word in words)
+    assert words[0] == -words[1] and words[0] != 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -1449,14 +1256,13 @@ def test_the_beta_coefficients_come_from_the_beta_tranche_unchanged(fc):
 
 def test_every_plan_builder_refuses_to_None_and_never_raises(fc):
     fields, pml = _fold_grid()                    # NumPy: never covered
-    assert fc.plan_folded_complex_pml_curl(fields, pml, "step_B",
-                                           probe=_all_patterns_record()) is None
+    assert fc.plan_folded_complex_pml_curl(fields, pml, "step_B") is None
     assert fc.plan_folded_mirror_ghost_fill_complex(
-        fields, "B", probe=_all_patterns_record()) is None
+        fields, "B") is None
     assert fc.plan_folded_complex_constitutive(
-        fields, pml, "E", probe=_all_patterns_record()) is None
+        fields, pml, "E") is None
     assert fc.plan_folded_beta_bloch_pml_curl(
-        fields, pml, "step_B", probe=_all_patterns_record()) is None
+        fields, pml, "step_B") is None
     real_fields, real_pml = _fold_grid(complex_storage=False, beta=BETA_EIGSRC)
     assert fc.plan_folded_beta_pml_curl(real_fields, real_pml, "step_B") is None
     assert fc.plan_folded_beta_run_constitutive(real_fields, real_pml, "E") is None
@@ -1475,10 +1281,11 @@ def test_the_from_arrays_builders_bind_the_engines_own_argument_order(fc):
             for index, axis in enumerate("xyz") for stem in ("kms", "sinv")}
     plan = fc.plan_folded_complex_pml_curl_from_arrays(
         "step_B", arrays, flat, (0, fc.CODE_MIRROR_PERIODIC, 0),
-        (None, None, None), 0.35, 1)
+        (None, None, None), 0.35, chunk_bounds=_every_cell(shape))
     assert plan.sub_step == "step_B" and plan.backward == 0
     assert plan.bc == (0, fc.CODE_MIRROR_PERIODIC, 0)
-    assert plan.phased == (0, 0, 0)
+    assert plan.connections == (0, 0, 0)
+    assert plan.chunk_bounds.tolist() == _every_cell(shape).tolist()
     assert plan.n_elem == 30
     assert repr(plan).startswith("FoldedComplexPmlCurlPlan")
 
@@ -1486,9 +1293,8 @@ def test_the_from_arrays_builders_bind_the_engines_own_argument_order(fc):
                 "near_words": (1.0, 0.0), "far_words": (-1.0, 0.0),
                 "shifts": (1, 0, 1)}]
     fill = fc.plan_folded_mirror_ghost_fill_complex_from_arrays(
-        "B", arrays, entries, 1)
+        "B", arrays, entries)
     assert fill.family == "B" and [e["axis"] for e in fill.axes] == [1]
-    assert fill.expansion == 1
 
 
 def test_the_word_view_binding_refuses_a_real_volume(fc):
@@ -1503,7 +1309,22 @@ def test_the_word_view_binding_refuses_a_real_volume(fc):
     with pytest.raises(ValueError, match="complex64"):
         fc.plan_folded_complex_pml_curl_from_arrays(
             "step_B", arrays, flat, (0, fc.CODE_MIRROR_PERIODIC, 0),
-            (None, None, None), 0.35, 1)
+            (None, None, None), 0.35, chunk_bounds=_every_cell(shape))
+
+
+def test_the_folded_curl_plan_refuses_a_connection_on_a_folded_axis(fc):
+    """The connection exists only on a wrapping axis; on a folded one plane 0 is a
+    stored, stepped plane the array path never connects."""
+    shape = (6, 5, 1)
+    arrays = {name: np.zeros(shape, dtype=np.complex64)
+              for name in ("Bx", "By", "Bz", "Ex", "Ey", "Ez",
+                           "fu_Bx", "fu_By", "fu_Bz")}
+    flat = {f"{stem}_{axis}": np.ones(shape[index], dtype=np.float32)
+            for index, axis in enumerate("xyz") for stem in ("kms", "sinv")}
+    with pytest.raises(ValueError, match="only a periodic wrap"):
+        fc.plan_folded_complex_pml_curl_from_arrays(
+            "step_B", arrays, flat, (0, fc.CODE_MIRROR_PERIODIC, 0),
+            (None, complex(0.6, 0.8), None), 0.35, chunk_bounds=_every_cell(shape))
 
 
 def test_the_real_beta_plan_carries_two_host_rounded_scalars_and_has_beta(fc):
@@ -1517,12 +1338,12 @@ def test_the_real_beta_plan_carries_two_host_rounded_scalars_and_has_beta(fc):
                                             magnetic=True, complex_storage=False)
     plan = fc.plan_folded_beta_pml_curl_from_arrays(
         "step_B", arrays, flat, (0, fc.CODE_MIRROR_METALLIC, 0), 0.35,
-        plus, minus)
+        plus, minus, chunk_bounds=_every_cell(shape))
     assert plan.beta_plus == plus and plan.beta_minus == minus
     assert plan.has_beta == 1
     identity = fc.plan_folded_beta_pml_curl_from_arrays(
         "step_B", arrays, flat, (0, fc.CODE_MIRROR_METALLIC, 0), 0.35,
-        plus, minus, has_beta=0)
+        plus, minus, has_beta=0, chunk_bounds=_every_cell(shape))
     assert identity.has_beta == 0
 
 
@@ -1558,10 +1379,10 @@ def test_the_three_corpus_anchors_are_admitted_and_sit_in_one_matrix_cell(
     assert grid.mirror_phase(1) == 1
 
     verdict = fc.folded_beta_bloch_pml_curl_coverage(
-        fields, pml, "step_B", probe=_all_patterns_record())
+        fields, pml, "step_B")
     assert _reasons(verdict) == [], (name, verdict.reasons)
     assert _reasons(fc.folded_mirror_ghost_fill_complex_coverage(
-        fields, "B", probe=_all_patterns_record())) == []
+        fields, "B")) == []
 
 
 def test_the_eigsrc_anchor_puts_a_live_absorber_on_the_folded_axis():
@@ -1588,6 +1409,19 @@ def test_the_eigsrc_anchor_puts_a_live_absorber_on_the_folded_axis():
 # detects it at the merge bar, where a rename or a re-indent actually happens.
 
 
+def _every_cell(shape):
+    """Every cell of every resolved axis inside a layer chunk, both lattices."""
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, RECORD_WORDS, record_index
+
+    record = np.zeros(RECORD_WORDS, dtype=np.int32)
+    for axis, n in enumerate(shape):
+        if n > 1:
+            record[RECORD_PRESENCE_WORD] |= 1 << axis
+            for half in (False, True):
+                record[record_index(half, axis, 1)] = n
+    return record
+
+
 def _mutation_sources():
     """The shipped bodies the gate's transforms operate on, from the FILES."""
     package = PACKAGE_DIR
@@ -1601,8 +1435,8 @@ def _mutation_sources():
                      for node in ast.parse(helpers).body
                      if isinstance(node, ast.FunctionDef)}
     shared = [helper_bodies[name] for name in
-              ("_rotate_field_left", "_mul_field_left", "_mul_coefficient_left",
-               "_mul_imag_coefficient_left")]
+              ("_connect", "_rotate_field_left", "_mul_field_left",
+               "_mul_coefficient_left", "_mul_imag_coefficient_left")]
     return {
         "curl": "\n\n".join(shared + [bodies["folded_bloch_pml_curl_step"]]),
         "fill": "\n\n".join(shared
@@ -1662,88 +1496,80 @@ def test_every_gate_source_mutation_is_ARMED_and_still_compiles():
     assert disarmed == [], disarmed
 
 
-def test_the_headline_mutation_targets_the_parity_product_on_both_arms():
-    """``plane_wise_parity_fill`` must remove EVERY complex product from the
-    fill — three near and three far — or it leaves a half-mutated kernel whose
-    verdict means nothing."""
+def test_the_headline_inversion_rewrites_every_parity_product():
+    """``full_complex_parity_fill`` must replace EVERY per-part product of the fill
+    — six near and six far — or it leaves a half-mutated kernel whose verdict
+    means nothing."""
     gate = _gate_module()
-    transform = gate.SOURCE_MUTATIONS["plane_wise_parity_fill"][0]
+    transform = gate.SOURCE_MUTATIONS["full_complex_parity_fill"][0]
     mutated, hits = transform(_mutation_sources()["fill"])
-    assert hits == 6, hits
+    assert hits == 12, hits
     body = mutated.split("def folded_mirror_ghost_fill_complex")[-1]
-    assert "_mul_imag_coefficient_left" not in body
+    assert body.count("(0.0 * tl.load(") == 12
 
 
 def test_the_gate_names_every_mutation_the_spec_requires():
-    """The EXACT armed set, and the count the docstring and the slurm banner
-    advertise. A subset assertion cannot see drift: the gate said "fourteen" for
-    sixteen mutations and no test could tell."""
+    """The EXACT armed set, and the count the docstring advertises. A subset
+    assertion cannot see drift: the gate once said "fourteen" for sixteen
+    mutations and no test could tell."""
     gate = _gate_module()
     named = set(gate.SOURCE_MUTATIONS) | set(gate.HOST_MUTATIONS)
     required = {
-        "plane_wise_parity_fill", "identity_shortcut_on_even_mirror",
-        "synthesize_zero_imag", "fold_ghost_wraps", "drop_top_plane_mask",
-        "mask_only_metallic", "reflect_row_n_minus_two", "beta_after_mask",
-        "rotate_beta_partner", "phase_on_folded_axis", "unary_minus_addend",
-        "fold_zero_cross_terms", "reverse_axis_order",
-        "far_fill_uses_plus_phase",
+        "full_complex_parity_fill", "identity_shortcut_on_even_mirror",
+        "fold_ghost_wraps", "drop_top_plane_mask", "mask_only_metallic",
+        "pairwise_stencil", "whole_grid_recurrence", "membership_one_row_off",
+        "fu_store_unmasked", "presence_ignored", "connection_dropped",
+        "reflect_row_n_minus_two", "far_fill_uses_plus_phase", "fuse_fill_passes",
+        "reverse_axis_order", "phase_on_folded_axis",
     }
-    assert required <= named, sorted(required - named)
-    total = len(gate.SOURCE_MUTATIONS) + len(gate.HOST_MUTATIONS)
-    assert total == 17, total
-    # The advertised split, not just the advertised total: one SOURCE mutation is
-    # retired as a recorded structural null, and the denominator still says 17.
-    spelled = ("ten armed SOURCE mutations, one RECORDED STRUCTURAL NULL and\n"
-               "  six HOST ones (seventeen")
+    # Each beta body's rows: the beta pass's shared mutations and the stencil inversion.
+    shared = ("b_pass_dropped", "b_partners_swapped", "b_sign_flipped",
+              "b_scaled_by_dtdx", "b_pass_inside_the_curl", "b_increment_unmasked",
+              "b_ladder_without_dsigu", "b_ladder_axes_swapped",
+              "b_auxiliary_not_advanced", "b_top_plane_mask_dropped",
+              "a1_pairwise_stencil")
+    required |= {f"beta_real:{name}" for name in shared}
+    required |= {f"beta_complex:{name}" for name in shared + ("b_quarter_turn_reversed",)}
+    assert named == required, sorted(named ^ required)
+    assert (len(gate.SOURCE_MUTATIONS), len(gate.HOST_MUTATIONS)) == (34, 5)
+    spelled = ("thirty-four armed SOURCE mutations (two on the fill, nine on\n"
+               "  K1's forms and connection, eleven on K3a and twelve on K3b: the beta "
+               "pass's shared\n  mutations and the stencil inversion, "
+               "``fold_pass_mutations``) and five HOST ones\n  (thirty-nine;")
     assert spelled in (gate.__doc__ or ""), "the gate docstring's count drifted"
-    armed_source = len(gate.SOURCE_MUTATIONS) - len(gate.SOURCE_MUTATION_NULLS)
-    assert (armed_source, len(gate.SOURCE_MUTATION_NULLS),
-            len(gate.HOST_MUTATIONS)) == (10, 1, 6)
-    # The two host legs that were provably no-ops, or absent, until 2026-08-12.
-    assert "imaginary_words_are_read_not_synthesised" in gate.HOST_MUTATIONS
-    assert "synthesize_zero_imag_host" not in gate.HOST_MUTATIONS
-    assert "fuse_fill_passes" in gate.HOST_MUTATIONS
+    # the per-part fill commutes: two RECORDED host nulls, no source null
+    assert set(gate.HOST_MUTATION_NULLS) == {"fuse_fill_passes", "reverse_axis_order"}
+    assert gate.SOURCE_MUTATION_NULLS == {}
+    # the imaginary coefficient word is gone, and so are the two legs about it
+    assert "synthesize_zero_imag" not in gate.SOURCE_MUTATIONS
+    assert "imaginary_words_are_read_not_synthesised" not in gate.HOST_MUTATIONS
 
 
-def test_reverse_axis_order_is_a_measurement_not_a_predicted_null():
-    """``symmetry.py``'s commute null is a REAL-storage measurement and does not
-    transfer: complex float multiplication is not associative.
-
-    The LABEL is not the arming. A grid whose folded axes carry the same declared
-    phase makes the composition commute bit-exactly, so the leg needs a
-    MIXED-PHASE two-folded-axis row to be a measurement at all — and the entry
-    mutation needs an armed-row count so "nothing was varied" cannot read as
-    "diverged: 0".
-    """
+def test_reverse_axis_order_is_a_recorded_null_and_the_mixed_phase_grid_stays():
+    """Per part, two planes' parity words commute bitwise, so reversing the axis
+    order is a STRUCTURAL null, recorded with its reason — and the MIXED-PHASE
+    two-folded-axis row that made it a measurement under the whole-complex fill
+    stays in the grid list, so the null is judged on the row that used to diverge."""
     gate = _gate_module()
-    assert gate.HOST_MUTATIONS["reverse_axis_order"] is None
+    assert "commute bitwise" in gate.HOST_MUTATION_NULLS["reverse_axis_order"]
     mixed = [spec for spec in gate.FILL_GRIDS
              if len(spec["axis"]) > 1
              and isinstance(spec["phase"], (tuple, list))
              and len(set(spec["phase"])) > 1]
-    assert mixed, "no mixed-phase two-folded-axis fill grid: the leg is a null"
+    assert mixed, "no mixed-phase two-folded-axis fill grid"
     quick = [gate.FILL_GRIDS[i] for i in gate.QUICK_FILL_GRID_INDICES]
-    assert any(spec in mixed for spec in quick), (
-        "--quick builds no mixed-phase grid, so reverse_axis_order is a literal "
-        "no-op on every row it runs there")
+    assert any(spec in mixed for spec in quick)
 
 
-def test_the_order_mutations_needle_diverges_on_the_grid_the_gate_builds():
-    """The ARMING, executed — not the label, and not the grid list.
-
-    MEASURED here on NumPy through the gate's own ``build_folded_fields`` /
-    ``seed_fill_state`` / reference fills: reversing the entry list on the
-    MIXED-phase two-folded-axis grid diverges from the array path in 5 words of
-    ``Bz`` and 5 of ``Dz`` on ``engineered_rows``, while the SAME-phase grid — a
-    row the leg counts as armed — diverges in 0 words. ``Bz`` is far on both
-    folded axes and ``Dz`` near on both, so those are the doubly-written corners.
-    """
+def test_reversing_the_axis_order_moves_no_word_per_part():
+    """THE PREMISE of the ``reverse_axis_order`` null, executed on NumPy through
+    the gate's own grids, state and reference fills: on BOTH the same-phase and the
+    MIXED-phase two-folded-axis grids the reversed order stores the same words
+    (under the whole-complex fill the mixed one diverged in 5 words of Bz / Dz)."""
     gate = _gate_module()
     fold = importlib.import_module(MODULE_NAME)
-    same = [s for s in gate.FILL_GRIDS
-            if s["axis"] == "XY" and not isinstance(s["phase"], tuple)][0]
-    mixed = [s for s in gate.FILL_GRIDS
-             if s["axis"] == "XY" and isinstance(s["phase"], tuple)][0]
+    grids = [s for s in gate.FILL_GRIDS if s["axis"] == "XY"]
+    assert len(grids) == 2
 
     def diverging(spec, family):
         grid, fields, pml = gate.build_folded_fields(spec, np, thin_pml=True)
@@ -1756,36 +1582,32 @@ def test_the_order_mutations_needle_diverges_on_the_grid_the_gate_builds():
         for label, order in (("forward", entries),
                              ("reversed", list(reversed(entries)))):
             arrays = {n: np.array(v, copy=True) for n, v in base.items()}
-            with np.errstate(over="ignore", invalid="ignore"):
-                gate.reference_ghost_fill_near(np, arrays, family, order)
-                gate.reference_ghost_fill_far(np, arrays, family, order)
+            gate.reference_ghost_fill_near(np, arrays, family, order)
+            gate.reference_ghost_fill_far(np, arrays, family, order)
             out[label] = arrays
-        return {n: int((np.ascontiguousarray(out["forward"][n])
-                        .view(np.uint32).ravel()
-                        != np.ascontiguousarray(out["reversed"][n])
-                        .view(np.uint32).ravel()).sum()) for n in names}
+        return sum(int((np.ascontiguousarray(out["forward"][n]).view(np.uint32).ravel()
+                        != np.ascontiguousarray(out["reversed"][n]).view(np.uint32)
+                        .ravel()).sum()) for n in names)
 
-    assert sum(diverging(same, "B").values()) == 0, "the same-phase grid is a null"
-    assert sum(diverging(same, "D").values()) == 0, "the same-phase grid is a null"
-    assert diverging(mixed, "B")["Bz"] > 0, diverging(mixed, "B")
-    assert diverging(mixed, "D")["Dz"] > 0, diverging(mixed, "D")
+    for spec in grids:
+        for family in ("B", "D"):
+            assert diverging(spec, family) == 0, (spec["phase"], family)
 
 
 def test_a_host_mutation_that_is_armed_but_cannot_differ_is_DISARMED():
     """``armed_rows > 0`` was the only gate, and it admits a provable no-op.
 
-    A ``predicted is None`` leg reached ``verdict: MEASURED`` before any
-    divergence or vacuity check, so a run in which every armed row was a no-op
-    recorded MEASURED with a coverage note behind it. Both halves are pinned:
-    armed-with-no-discriminating-row DISARMS, and discriminating-rows-with-zero-
-    divergence is NEEDLE-MISSED even for a leg whose predicted verdict is
-    "record the measurement".
+    Pinned: armed-with-no-discriminating-row DISARMS, discriminating-rows-with-
+    zero-divergence is NEEDLE-MISSED even for a leg whose predicted verdict is
+    "record the measurement", a RECORDED host null is judged as a null (zero
+    divergence is its verdict, any divergence invalidates it), and the folded-axis
+    connection is a refusal the plan must make.
     """
     gate = _gate_module()
 
     def verdict(armed, discriminating, diverged, predicted=None,
-                name="reverse_axis_order"):
-        summary = {"ran": 96, "identical": 96 - diverged}
+                name="a_measured_leg", **extra):
+        summary = {"ran": 96, "identical": 96 - diverged, **extra}
         if armed is not None:
             summary["armed_rows"] = armed
             summary["discriminating_rows"] = discriminating
@@ -1793,8 +1615,7 @@ def test_a_host_mutation_that_is_armed_but_cannot_differ_is_DISARMED():
 
     # nothing varied at all
     assert verdict(0, 0, 0)["verdict"] == "DISARMED"
-    # armed on 16 rows, every one of them a provable no-op — the case that used
-    # to record MEASURED with a coverage note behind it
+    # armed on 16 rows, every one of them a provable no-op
     record = verdict(16, 0, 0)
     assert record["verdict"] == "DISARMED"
     assert "provable no-op" in record["failure"]
@@ -1805,13 +1626,21 @@ def test_a_host_mutation_that_is_armed_but_cannot_differ_is_DISARMED():
     # and only a reachable class WITH divergence is the measurement
     record = verdict(16, 8, 4)
     assert record["verdict"] == "MEASURED"
-    assert "discriminating_rows" in record["note"]
     assert record["discriminating_rows"] == 8
 
-    # a leg with no entry-list counts at all (phase_on_folded_axis) is untouched
-    record = verdict(None, None, 2, name="phase_on_folded_axis")
-    assert record["verdict"] == "MEASURED"
-    assert record["armed_rows"] is None
+    # a recorded null: judged, never skipped, and self-invalidating
+    record = verdict(16, 0, 0, name="reverse_axis_order")
+    assert record["verdict"] == "PREDICTED-NULL"
+    assert "commute bitwise" in record["null_reason"]
+    record = verdict(16, 8, 3, name="fuse_fill_passes")
+    assert record["verdict"] == "NULL-INVALIDATED"
+    assert verdict(0, 0, 0, name="fuse_fill_passes")["verdict"] == "DISARMED"
+
+    # the folded-axis connection: refused by the plan on every case, or DISARMED
+    assert verdict(None, None, 0, name="phase_on_folded_axis",
+                   refused=96)["verdict"] == "REFUSED-BY-PLAN"
+    assert verdict(None, None, 0, name="phase_on_folded_axis",
+                   refused=3)["verdict"] == "DISARMED"
     # ...and a PREDICTED-caught value mutation still fails on zero divergence
     assert verdict(22, 22, 0, predicted=True,
                    name="far_fill_uses_plus_phase")["verdict"] == "NEEDLE-MISSED"
@@ -1819,88 +1648,43 @@ def test_a_host_mutation_that_is_armed_but_cannot_differ_is_DISARMED():
                    name="far_fill_uses_plus_phase")["verdict"] == "CAUGHT"
 
 
-def test_the_retired_source_mutation_is_a_recorded_null_not_a_deletion():
-    """``synthesize_zero_imag`` is VACUOUS BY CONSTRUCTION and is retired as a
-    RECORDED STRUCTURAL NULL — kept in the run, judged, and carrying its reason,
-    its live twin and the numbers behind it.
+def test_the_retired_imaginary_word_legs_have_no_subject_left():
+    """``synthesize_zero_imag`` and its host twin were about the fill's imaginary
+    coefficient word; the per-part fill takes one real word per pass, so both are
+    RETIRED outright (there is nothing to synthesise or to read). Pinned as the
+    structural fact itself: the kernel's signature carries no imaginary word, the
+    plan launches the real one, and the gate no longer names either leg."""
+    gate = _gate_module()
+    fold = importlib.import_module(MODULE_NAME)
+    parameters = kernel_parameters("folded_mirror_ghost_fill_complex")
+    assert [name for name in parameters if name in ("near_c", "far_c")] == [
+        "near_c", "far_c"]
+    assert not any("_im" in name for name in parameters)
+    source = (PACKAGE_DIR / "folded_complex.py").read_text(encoding="utf-8")
+    assert 'entry["near_words"][0]' in source and 'entry["far_words"][0]' in source
+    assert "synthesize_zero_imag" not in gate.SOURCE_MUTATIONS
+    assert "imaginary_words_are_read_not_synthesised" not in gate.HOST_MUTATIONS
+    with pytest.raises(ValueError, match="unknown entry mutation"):
+        gate.apply_entry_mutation([], "nonzero_imaginary_words", None)
 
-    The three ways this retirement could have been dishonest, each refused here:
-    DELETING it (the table would show sixteen and a disappearance), flipping it
-    to "predicted not-caught" without saying why (an assertion in place of a
-    measurement), and stating a reason that is about the GATE's states rather
-    than the shipped code (that is a blind configuration — NEEDLE-MISSED — and
-    the repair is a better needle, not a retirement).
 
-    The evidence is also checked for STALENESS, not just for presence: the
-    recorded ``hits`` must still be what the transform produces on today's
-    shipped source, so editing the fill body invalidates the record instead of
-    leaving a number from a run that measured different code.
+def test_a_predicted_null_is_judged_not_skipped_and_self_invalidates(monkeypatch):
+    """The SOURCE-mutation verdict's clause order, executed on the laptop with a
+    declared null installed for the duration (the table carries none today).
+
+    All three DISARMED paths run BEFORE the null clause, so a declared null whose
+    mutant never matched, never launched, or compiled to a shipped specialization
+    is DISARMED; a null that DIVERGES is NULL-INVALIDATED and FAILS.
     """
     gate = _gate_module()
-    name = "synthesize_zero_imag"
-    record = gate.SOURCE_MUTATION_NULLS[name]
+    null = "a_declared_null"
+    live = "full_complex_parity_fill"
+    monkeypatch.setitem(gate.SOURCE_MUTATION_NULLS, null, {
+        "reason": "a stated structural reason", "twin": live,
+        "twin_claim": "carried by the live twin", "measured": {"launches": 192},
+        "premise_test": "meep_gpu/test_triton_folded_complex.py::"
+                        "test_the_even_mirror_is_the_identity_per_part"})
 
-    # kept, not deleted — still transformed, still compiled, still launched
-    assert name in gate.SOURCE_MUTATIONS
-    transform, body, entry, note = gate.SOURCE_MUTATIONS[name]
-    assert entry == "folded_mirror_ghost_fill_complex"
-    assert "RECORDED STRUCTURAL NULL" in note
-
-    # the reason is about the SHIPPED code and names where it lives
-    assert "folded_complex.py:2100" in record["reason"]
-    assert "BITWISE" in record["reason"] and "0x00000000" in record["reason"]
-    assert "BIT-IDENTICAL operands" in record["reason"]
-
-    # the live claim moved rather than vanished, and the twin is a REAL leg
-    twin = record["twin"]
-    assert twin == "imaginary_words_are_read_not_synthesised"
-    assert gate.HOST_MUTATIONS[twin] is True
-    for number in ("96", "82"):
-        assert number in record["twin_claim"], record["twin_claim"]
-
-    # the numbers the retirement rests on, off a named run
-    measured = record["measured"]
-    assert measured["run"] == "direct_20260813T084108Z"
-    assert measured["ptx_differs"] is True
-    assert measured["launches"] == 192
-    assert measured["diverged_cases"] == 0
-    assert measured["fill_ran"] == measured["fill_identical"] == 96
-    assert measured["overlapping_specializations"] == 0
-
-    # ...and they are not stale: the recorded hit count is re-derived here.
-    _mutated, hits = transform(_mutation_sources()[body])
-    assert hits == measured["hits"], (
-        "the shipped fill body changed under the recorded null: its evidence "
-        "was measured against different code and the retirement must be re-run")
-
-    # THE SELF-INVALIDATION HOOK: the named premise test must exist in this file.
-    path, _sep, test_name = record["premise_test"].partition("::")
-    assert path.endswith(pathlib.Path(__file__).name), path
-    tree = ast.parse(pathlib.Path(__file__).read_text(encoding="utf-8"))
-    assert test_name in {node.name for node in tree.body
-                         if isinstance(node, ast.FunctionDef)}, (
-        "the gate's null points at a premise test that does not exist; the "
-        "retirement no longer re-opens itself")
-
-
-def test_a_predicted_null_is_judged_not_skipped_and_self_invalidates():
-    """The SOURCE-mutation verdict's clause order, executed on the laptop.
-
-    A null is not a skip. All three DISARMED paths run BEFORE the null clause,
-    so a declared null whose mutant never matched, never launched, or compiled to
-    a shipped specialization is DISARMED — being unmeasured must never launder
-    itself into being provably unmeasurable.
-
-    And the null is self-invalidating at the gate layer too: a predicted null
-    that DIVERGES is NULL-INVALIDATED and FAILS, because divergence falsifies the
-    recorded reason. Relabelling it CAUGHT would leave a false reason standing in
-    the coverage table, which is the failure mode the retirement exists to avoid.
-    """
-    gate = _gate_module()
-    null = "synthesize_zero_imag"
-    live = "plane_wise_parity_fill"
-
-    # the three DISARMED paths, on the NULL itself
     assert gate.source_mutation_verdict(null, 0, None, None, None)["verdict"] \
         == "DISARMED"
     assert gate.source_mutation_verdict(null, 6, 0, True, 0)["verdict"] \
@@ -1909,221 +1693,59 @@ def test_a_predicted_null_is_judged_not_skipped_and_self_invalidates():
     assert stale["verdict"] == "DISARMED"
     assert "stale binary" in stale["failure"]
 
-    # armed, launched, PTX-distinct and unable to move a byte — the null
     recorded = gate.source_mutation_verdict(null, 6, 192, True, 0)
     assert recorded["verdict"] == "PREDICTED-NULL"
-    assert "failure" not in recorded
-    assert "0x00000000" in recorded["null_reason"]
-    assert recorded["live_claim_carried_by"] == \
-        "imaginary_words_are_read_not_synthesised"
-    assert recorded["retirement_evidence"]["launches"] == 192
-    assert recorded["premise_test"].endswith(
-        "test_the_parity_coefficients_imaginary_word_is_bitwise_zero")
+    assert recorded["live_claim_carried_by"] == live
 
-    # the premise broke: FAIL, do not quietly upgrade to CAUGHT
     broken = gate.source_mutation_verdict(null, 6, 192, True, 7)
     assert broken["verdict"] == "NULL-INVALIDATED"
     assert "is now FALSE" in broken["failure"]
-    assert "do not relabel this caught" in broken["failure"].lower()
 
-    # a mutation that is NOT declared a null keeps the old, stricter reading
-    assert gate.source_mutation_verdict(live, 6, 192, True, 0)["verdict"] \
+    assert gate.source_mutation_verdict(live, 12, 192, True, 0)["verdict"] \
         == "NEEDLE-MISSED"
-    assert gate.source_mutation_verdict(live, 6, 192, True, 64)["verdict"] \
+    assert gate.source_mutation_verdict(live, 12, 192, True, 64)["verdict"] \
         == "CAUGHT"
 
 
-def test_the_summary_reports_seventeen_mutations_with_an_honest_split():
-    """The artifact must show 17 mutations and how each answered — never 16 and
-    a disappearance.
+def test_the_summary_reports_every_mutation_with_an_honest_split():
+    """The artifact must show every mutation asked and how each answered.
 
-    Four refusals are pinned: a PREDICTED-NULL does not fail the gate but does
-    carry its reason into the summary; a NULL-INVALIDATED does fail; a declared
-    null the mutation leg never ran is a failure (the third way a null could go
-    quiet); and a null whose live twin did not itself come back established is a
-    failure, because the retirement's whole argument is that the coverage MOVED.
+    Pinned: a PREDICTED-NULL (the two recorded host nulls) does not fail the gate
+    but carries its reason into the summary; a NULL-INVALIDATED does fail; a
+    declared host null the mutation leg never ran is a failure; and the folded-axis
+    connection's REFUSED-BY-PLAN is a passing verdict.
     """
     gate = _gate_module()
-    licence = {"licensed": True, "reasons": []}
 
-    def mutations(null_verdict="PREDICTED-NULL", twin_verdict="CAUGHT",
-                  drop_null=False):
+    def mutations(null_verdict="PREDICTED-NULL", drop_null=False):
         records = {}
         for name in list(gate.SOURCE_MUTATIONS) + list(gate.HOST_MUTATIONS):
             records[name] = {"verdict": "CAUGHT"}
-        for name in ("reverse_axis_order", "phase_on_folded_axis"):
-            records[name] = {"verdict": "MEASURED"}
-        records["imaginary_words_are_read_not_synthesised"] = {
-            "verdict": twin_verdict, "failure": "…"}
+        records["phase_on_folded_axis"] = {"verdict": "REFUSED-BY-PLAN"}
+        for name, reason in gate.HOST_MUTATION_NULLS.items():
+            records[name] = {"verdict": null_verdict, "failure": "...",
+                             "null_reason": reason}
         if drop_null:
-            records.pop("synthesize_zero_imag")
-        else:
-            declared = gate.SOURCE_MUTATION_NULLS["synthesize_zero_imag"]
-            records["synthesize_zero_imag"] = {
-                "verdict": null_verdict,
-                "failure": "…",
-                "null_reason": declared["reason"],
-                "live_claim_carried_by": declared["twin"],
-                "twin_claim": declared["twin_claim"],
-                "retirement_evidence": declared["measured"],
-                "premise_test": declared["premise_test"]}
+            records.pop("fuse_fill_passes")
         return {"mutations": records}
 
-    built = gate.build_summary(mutations(), licence)
+    built = gate.build_summary(mutations())
     counts = built["mutation_counts"]
-    assert counts["asked"] == counts["ran"] == 17
-    assert counts["PREDICTED-NULL"] == 1
-    assert counts["MEASURED"] == 2
-    assert counts["CAUGHT"] == 14
-    assert sum(value for key, value in counts.items()
-               if key not in ("asked", "ran")) == 17
-    null = built["mutation_nulls"]["synthesize_zero_imag"]
-    assert "0x00000000" in null["reason"]
-    assert null["twin_verdict"] == "CAUGHT"
-    assert null["retirement_evidence"]["diverged_cases"] == 0
-    assert not [f for f in built["failures"] if "synthesize_zero_imag" in f]
+    assert counts["asked"] == counts["ran"] == 39
+    assert counts["PREDICTED-NULL"] == 2
+    assert counts["REFUSED-BY-PLAN"] == 1
+    assert counts["CAUGHT"] == 36
+    null = built["mutation_nulls"]["reverse_axis_order"]
+    assert "commute bitwise" in null["reason"]
+    assert not [f for f in built["failures"] if "reverse_axis_order" in f]
 
-    # the premise broke on the device
-    broken = gate.build_summary(mutations(null_verdict="NULL-INVALIDATED"),
-                                licence)
+    broken = gate.build_summary(mutations(null_verdict="NULL-INVALIDATED"))
     assert [f for f in broken["failures"]
-            if "synthesize_zero_imag" in f and "NULL-INVALIDATED" in f]
+            if "fuse_fill_passes" in f and "NULL-INVALIDATED" in f]
 
-    # declared here, never executed there
-    missing = gate.build_summary(mutations(drop_null=True), licence)
-    assert missing["mutation_counts"]["ran"] == 16
-    assert [f for f in missing["failures"] if "a null is judged, not skipped" in f]
-
-    # the twin stopped carrying the claim
-    orphaned = gate.build_summary(mutations(twin_verdict="NEEDLE-MISSED"),
-                                  licence)
-    assert [f for f in orphaned["failures"]
-            if "established by nothing" in f]
-
-
-def test_the_gate_carries_the_planewise_diagnostic_arm_explicitly():
-    """THE headline risk: if CuPy's complex64 unit-real scalar multiply takes a
-    real-scalar fast path, the parity product COLLAPSES to plane-wise and K2's
-    delta evaporates. The probe must be able to say so out loud."""
-    gate = _gate_module()
-    rng = np.random.default_rng(11)
-    operands = gate._parity_operands(rng)
-    candidates = gate._parity_candidates(*operands)
-    assert "PLANEWISE_diagnostic" in candidates
-    # And the two licensed arms must AGREE here — c_re = +-1, c_im = +0.0 makes
-    # the fused arm's extra product exact — which is why this pattern is the one
-    # EXPECTED to go blind and be excluded from the agreement test. It is not
-    # excluded because it is this pattern: the exclusion clause reads the
-    # measured arms-apart count of whichever pattern claims ambiguity.
-    fma_re, fma_im = candidates["FMA_V1"]
-    naive_re, naive_im = candidates["NAIVE"]
-    assert np.array_equal(fma_re.view(np.uint32), naive_re.view(np.uint32))
-    assert np.array_equal(fma_im.view(np.uint32), naive_im.view(np.uint32))
-    # ...and the plane-wise arm must NOT agree, or there is no needle at all.
-    plane_re, plane_im = candidates["PLANEWISE_diagnostic"]
-    differing = (int(np.count_nonzero(fma_re.view(np.uint32)
-                                      != plane_re.view(np.uint32)))
-                 + int(np.count_nonzero(fma_im.view(np.uint32)
-                                        != plane_im.view(np.uint32))))
-    assert differing > 0, "the parity probe's vectors cannot see the needle"
-
-
-def test_the_record_the_gate_emits_can_satisfy_the_licence_rule_on_every_pattern(fc):
-    """THE TWO HALVES MUST FIT, and the exclusion clause is what makes the second
-    half load-bearing here.
-
-    Since both licences became ``complex_fields.expansion_license`` over a longer
-    pattern list, an ``AMBIGUOUS_BOTH`` claim is believed only when the record's
-    OWN ``vectors[name]`` and ``detail[name]`` back it. This tranche's earlier
-    loop took the word on trust, so nothing forced the gate to WRITE that
-    evidence for the two patterns it adds — and an honest record that refuses on
-    a bookkeeping gap is as much a defect as a wrong licence. The base gate had
-    exactly that gap on ``python_float_left`` (detail a LIST, no ``vectors``
-    entry at all), and the beta pattern this record folds in carries the same
-    list shape, one entry per corpus coefficient.
-
-    Measured on this host rather than asserted: the loop below rewrites each
-    pattern's detail to a CONSISTENT ambiguity and checks the evidence carries
-    it, which is host-independent; the verdict assertions read what the record
-    says rather than pinning an arm, because which patterns discriminate is a
-    platform fact and this suite runs wherever the merge bar does.
-    """
-    complex_fields = importlib.import_module(
-        "meep_gpu.triton_kernels.complex_fields")
-    gate = _gate_module()
-    record = gate.measure_folded_expansion_record(np, "numpy")
-    required = tuple(dict.fromkeys(fc.PARITY_PROBE_PATTERNS
-                                   + fc.FOLDED_BETA_PROBE_PATTERNS))
-    for name in required:
-        assert record["vectors"].get(name), f"no vector count for {name!r}"
-        assert record["detail"].get(name), f"no detail block for {name!r}"
-
-    for name in required:
-        probe = json.loads(json.dumps(record, default=str))
-        probe["backend"] = "cupy"
-        probe["patterns"][name] = complex_fields.AMBIGUOUS_BOTH
-        entries = (probe["detail"][name] if isinstance(probe["detail"][name], list)
-                   else [probe["detail"][name]])
-        for entry in entries:
-            entry["licensable_arms_disagreement_words"] = 0
-            entry["discriminates"] = False
-            entry["matches"] = {"FMA_V1": True, "NAIVE": True,
-                                "PLANEWISE_diagnostic": False}
-            entry["mismatch_words"] = {"FMA_V1": 0, "NAIVE": 0,
-                                       "PLANEWISE_diagnostic": 17}
-        reasons = complex_fields._ambiguity_evidence_reasons(probe, name)
-        assert reasons == [], (name, reasons)
-
-    # ...and the record AS MEASURED must reach a verdict whose refusals, if any,
-    # name a PATTERN rather than a bookkeeping gap. Both branches are asserted,
-    # because the resolved subnormal policy is PROCESS-GLOBAL: a session driven
-    # to a policy this host's FPU does not implement cuts the candidate arms for
-    # one convention while the platform's bytes come off the other, and the
-    # honest verdict there is a NEITHER-class pattern refused BY NAME — which is
-    # a different fact from an ambiguity the rule had to reject, and must not be
-    # mistaken for one. Whichever patterns went blind are recorded as EXCLUDED.
-    measured = json.loads(json.dumps(record, default=str))
-    measured["backend"] = "cupy"  # the rule binds CuPy's bytes; this is a fixture
-    for label, verdict in (("parity", fc.parity_expansion_license(measured)),
-                           ("beta", fc.folded_beta_expansion_license(measured))):
-        assert verdict["ambiguity_refused"] == [], (label, verdict["refusals"])
-        blind = [name for name in verdict["probe_patterns"]
-                 if measured["patterns"][name] == complex_fields.AMBIGUOUS_BOTH]
-        assert verdict["non_discriminating"] == blind, (label, verdict)
-        unlicensable = sorted(
-            name for name in verdict["probe_patterns"]
-            if measured["patterns"][name] not in complex_fields.EXPANSIONS
-            and measured["patterns"][name] != complex_fields.AMBIGUOUS_BOTH)
-        if unlicensable:
-            assert verdict["expansion"] is None, (label, unlicensable, verdict)
-            for name in unlicensable:
-                assert any(repr(name) in reason
-                           for reason in verdict["refusals"]), (
-                    label, name, verdict["refusals"])
-        else:
-            assert verdict["basis"] == "measured", (label, verdict)
-            assert verdict["expansion"] is not None, (label, verdict["refusals"])
-
-
-def test_both_artifact_cutters_record_the_basis_and_the_exclusions_by_name():
-    """An arm and a word is not a readable licence.
-
-    'measured' against 'environment_default' is the difference between this run
-    having DISCRIMINATED the arm and having inherited it from a prior one, and
-    the patterns a verdict EXCLUDED are what a reader needs to weigh either — an
-    arm carried by one live pattern with four excluded is a weaker claim than one
-    carried by six, and an artifact printing only ``licensed: true`` cannot be
-    told apart from the weaker case. BOTH licences are recorded, K2's parity and
-    K3b's beta, because the two bind different pattern sets. Pinned by source
-    text because the write happens on a CuPy host and this suite has none; the
-    verdict's own shape is pinned by behaviour above.
-    """
-    for path in (GATE_PATH, COMPOSITION_PATH):
-        text = path.read_text(encoding="utf-8")
-        assert "parity_expansion_license(" in text, path
-        assert "folded_beta_expansion_license(" in text, path
-        assert "non_discriminating" in text, path
-        assert "basis" in text, path
+    missing = gate.build_summary(mutations(drop_null=True))
+    assert [f for f in missing["failures"]
+            if "fuse_fill_passes" in f and "judged, not skipped" in f]
 
 
 # ---------------------------------------------------------------------------
@@ -2160,9 +1782,9 @@ def test_the_headline_count_agrees_with_the_module_and_the_gate():
     nothing said so."""
     assert PLANE_WISE_DIVERGENCE == {1: 8, -1: 8}
     text = (PACKAGE_DIR / "folded_complex.py").read_text(encoding="utf-8")
-    assert "diverges in 8/128 words at BOTH parities" in text
+    assert "in 8/128 engineered words at BOTH parities" in text
     gate_text = GATE_PATH.read_text(encoding="utf-8")
-    assert "8/128 engineered words" in gate_text
+    assert "the 8/128 words at both parities" in gate_text
 
 
 def test_the_gates_coefficient_tables_are_broadcast_shaped_and_the_reference_runs():
@@ -2207,7 +1829,8 @@ def test_the_gates_coefficient_tables_are_broadcast_shaped_and_the_reference_run
                             np, state, coefficients, np.float32(0.35), sub_step,
                             config["boundaries"], (None, None, None), (1, 1, 1),
                             rows, beta=gate.BETA_GRATING_13_2,
-                            dt=gate.BETA_DT, complex_storage=complex_storage)
+                            dt=gate.BETA_DT, complex_storage=complex_storage,
+                            record=gate.two_run_record(shape))
 
 
 def test_the_gate_asserts_the_fusion_OFF_rows_not_the_fusion_ON_ones():
@@ -2226,15 +1849,13 @@ def test_the_gate_asserts_the_fusion_OFF_rows_not_the_fusion_ON_ones():
     assert summary["fusion_off_asserted_total"] == 1
     assert summary["fusion_off_asserted_identical"] == 0
     assert summary["fusion_on_measured_total"] == 1
-    built = gate.build_summary({"synthetic": {"summary": summary}},
-                               {"licensed": True, "reasons": []})
+    built = gate.build_summary({"synthetic": {"summary": summary}})
     assert not built["passed"]
     assert any("fusion-OFF" in f for f in built["failures"]), built["failures"]
     # ...and an EMPTY asserted set is a failure too, not a vacuous pass.
     empty = gate._summarize([{"guard": True,
                               "verdict": {"bit_identical": True}}])
-    built = gate.build_summary({"synthetic": {"summary": empty}},
-                               {"licensed": True, "reasons": []})
+    built = gate.build_summary({"synthetic": {"summary": empty}})
     assert not built["passed"]
 
 
@@ -2261,14 +1882,12 @@ def test_the_gate_READS_the_shipped_fusion_default_rather_than_stating_it():
     # ones. Without this the mutation is unobservable.
     clean = gate._summarize([{"guard": False, "verdict": {"bit_identical": True}},
                              {"guard": True, "verdict": {"bit_identical": True}}])
-    passing = gate.build_summary({"synthetic": {"summary": clean}},
-                                 {"licensed": True, "reasons": []})
+    passing = gate.build_summary({"synthetic": {"summary": clean}})
     assert passing["passed"], passing["failures"]
     original = gate.shipped_fusion_default
     gate.shipped_fusion_default = lambda: True
     try:
-        flipped = gate.build_summary({"synthetic": {"summary": clean}},
-                                     {"licensed": True, "reasons": []})
+        flipped = gate.build_summary({"synthetic": {"summary": clean}})
     finally:
         gate.shipped_fusion_default = original
     assert not flipped["passed"]
@@ -2293,37 +1912,43 @@ def test_a_leg_that_RAISES_is_recorded_and_the_remaining_legs_still_run(
     def exploding(*_args, **_kwargs):
         raise RuntimeError("armed leg failure")
 
-    def reference(results, out_path, _xp):
-        ran.append("reference")
-        results["reference"] = {"ran": 3, "identical": 3}
+    def synthetic(results, out_path, quick=False):
+        ran.append("synthetic")
+        results["synthetic"] = {"summary": gate._summarize(
+            [{"guard": False, "verdict": {"bit_identical": True}}])}
         gate.save(results, out_path)
-        return results["reference"]
+        return results["synthetic"]
 
-    # The laptop configuration this models: no CuPy anywhere. Pinned rather than
-    # assumed, so the same assertions hold on a device host — every module that
-    # reads ``cp is not None`` would otherwise take a device path, the -ftz
-    # cache-policy refusal and ``probe.device_info``, both real behaviours that
-    # belong in a device run and not in this test's path.
+    # The configuration this models has no device: every module that reads
+    # ``cp is not None`` would otherwise take a device path (the -ftz cache-policy
+    # refusal and ``probe.device_info``), real behaviours that belong in a device
+    # run and not in this test's path. The gate's own ``cp`` is a sentinel only so
+    # that its device legs are scheduled; the strip and the policy stamp, the two
+    # things ``main`` does with it, are stubbed, and the leg it runs is a recorder.
     base = importlib.import_module("gate_triton_complex")
     probe = importlib.import_module("probe_fused_kernel_bit_identity")
-    for module in (gate, base, probe):
+    for module in (base, probe):
         monkeypatch.setattr(module, "cp", None)
-    monkeypatch.setattr(gate, "run_expansion", exploding)
-    monkeypatch.setattr(gate, "run_reference_validation", reference)
-    code = gate.main(["--out", str(out), "--legs", "expansion,reference"])
+    monkeypatch.setattr(gate, "cp", object())
+    monkeypatch.setattr(gate, "_TRITON_AVAILABLE", True)
+    monkeypatch.setattr(base, "install_ftz_strip", lambda *_a, **_k: None)
+    monkeypatch.setattr(base, "policy_stamp", lambda _backend: {"stubbed": True})
+    monkeypatch.setattr(gate, "run_reference_validation", exploding)
+    monkeypatch.setattr(gate, "run_synthetic", synthetic)
+    code = gate.main(["--out", str(out), "--legs", "reference,synthetic"])
 
     import json as _json
     record = _json.loads(out.read_text())
     # The leg AFTER the raising one still ran and still wrote its result.
-    assert ran == ["reference"]
-    assert record["reference"] == {"ran": 3, "identical": 3}
+    assert ran == ["synthetic"]
+    assert record["synthetic"]["summary"]["fusion_off_asserted_identical"] == 1
     # The raise is recorded with its traceback, not swallowed...
-    assert record["leg_errors"]["expansion"]["type"] == "RuntimeError"
-    assert record["leg_errors"]["expansion"]["message"] == "armed leg failure"
-    assert "RuntimeError" in record["leg_errors"]["expansion"]["traceback"]
+    assert record["leg_errors"]["reference"]["type"] == "RuntimeError"
+    assert record["leg_errors"]["reference"]["message"] == "armed leg failure"
+    assert "RuntimeError" in record["leg_errors"]["reference"]["traceback"]
     # ...and it is a NAMED failure, not a skip.
     assert not record["summary"]["passed"]
-    assert any("leg expansion RAISED" in f
+    assert any("leg reference RAISED" in f
                for f in record["summary"]["failures"]), record["summary"]
     assert code == 1
 
@@ -2338,16 +1963,15 @@ def test_a_device_leg_that_vanishes_without_a_result_or_an_error_FAILS():
     """
     gate = _gate_module()
     clean = gate._summarize([{"guard": False, "verdict": {"bit_identical": True}}])
-    requested = {"legs": ["expansion", "synthetic", "fill"],
+    requested = {"legs": ["synthetic", "fill"],
                  "synthetic": {"summary": clean}}
-    built = gate.build_summary(requested, {"licensed": True, "reasons": []})
+    built = gate.build_summary(requested)
     assert not built["passed"]
     assert any("leg fill was requested" in f for f in built["failures"]), \
         built["failures"]
     # A cleanly skipped device leg is NOT this failure.
     skipped = dict(requested, device_legs_skipped="no cupy on this host")
-    assert gate.build_summary(skipped,
-                              {"licensed": True, "reasons": []})["passed"]
+    assert gate.build_summary(skipped)["passed"]
 
 
 def test_the_planted_fill_words_cover_every_needle_class():
@@ -2625,13 +2249,13 @@ def test_the_curl_mutation_leg_BUILDS_NO_ROW_the_array_path_cannot_build(
     asked: list = []
 
     def recorder(shape, config, phase_set, dtdx, mirror_phase, offsets, sub_step,
-                 guard, expansion, beta, storage, kernel=None):
+                 guard, beta, storage, kernel=None):
         asked.append((tuple(shape), config["name"], phase_set["phases"]))
         return {"config": config["name"],
                 "verdict": {"bit_identical": True, "differing_floats": 0}}
 
     monkeypatch.setattr(gate, "one_curl_case", recorder)
-    result = gate.run_mutation_curl(1, object(), "curl", False)
+    result = gate.run_mutation_curl(object(), "curl", False)
 
     assert asked, "the leg asked for no row at all"
     for shape, config_name, phases in asked:
@@ -2809,10 +2433,13 @@ def test_armed_is_not_arming_for_the_order_mutation():
         assert (armed, discriminating) == (1, 1), (family, armed, discriminating)
 
     # A VALUE mutation that rewrites a word the plan READS has both counts at 1.
+    periodic = Grid(resolution=10.0, cell_size=(1.6, 2.0, 0.0), dimensions=2,
+                    courant=0.35, boundaries="periodic",
+                    symmetry=(Mirror("Y", 1),), xp=np)
     entries = [dict(e) for e in
-               gate.folded_complex.ghost_fill_axis_entries(same, "B")]
+               gate.folded_complex.ghost_fill_axis_entries(periodic, "B")]
     _e, armed, discriminating = gate.apply_entry_mutation(
-        entries, "nonzero_imaginary_words", same)
+        entries, "far_fill_uses_plus_phase", periodic)
     assert (armed, discriminating) == (1, 1)
 
     # ...and one that rewrites a DEAD word does not. A folded METALLIC axis runs
@@ -2880,15 +2507,13 @@ def test_a_fill_cell_blind_in_every_state_family_is_a_FAILURE():
     assert gate.blind_fill_cells(predicted_null) == []
     built = gate.build_summary(
         {"fill": {"gate": {"ran": 4, "identical": 4,
-                           "cases": predicted_null}}},
-        {"licensed": True, "reasons": []})
+                           "cases": predicted_null}}})
     assert built["passed"], built["failures"]
 
     blind = [dict(case, census=0) for case in predicted_null]
     assert len(gate.blind_fill_cells(blind)) == 1
     built = gate.build_summary(
-        {"fill": {"gate": {"ran": 4, "identical": 4, "cases": blind}}},
-        {"licensed": True, "reasons": []})
+        {"fill": {"gate": {"ran": 4, "identical": 4, "cases": blind}}})
     assert not built["passed"]
     assert any("blind in every state family" in f
                for f in built["failures"]), built["failures"]
@@ -2897,14 +2522,13 @@ def test_a_fill_cell_blind_in_every_state_family_is_a_FAILURE():
 def test_the_recorded_reason_for_a_zero_census_is_the_measured_one():
     """A predicted null is only a predicted null if its REASON is true.
 
-    The recorded reason said a census of 0 belongs to the folded METALLIC phase
-    = +1 rows, "while the periodic and phase = -1 rows read 16..650". MEASURED
-    over the whole 12 x 2 x 4 matrix on this laptop, that is false for one of the
-    four families: ``live_post_step`` reads 0 on EVERY row, periodic ones
-    included, because four driven steps from a random seed leave generic nonzero
-    floats. It is the realistic-state arm, not a signed-zero arm, and the two
-    reasons are now recorded separately. ``engineered_rows`` is what actually
-    carries the metallic +1 cells — it is the only family that never reads 0.
+    MEASURED over the whole 12 x 2 x 4 matrix on this laptop (2026-10-08, the
+    per-part array path): ``live_post_step`` reads 0 on every row but one,
+    periodic ones included, because four driven steps from a random seed leave
+    generic nonzero floats — the realistic-state arm, not a signed-zero arm.
+    ``zero_init_absorber`` reads 0 on the folded METALLIC phase = +1 rows only
+    (near coefficient +1, no far fill). The two engineered families never read 0
+    and carry the metallic +1 cells.
     """
     gate = _gate_module()
     fold = importlib.import_module(MODULE_NAME)
@@ -2931,14 +2555,15 @@ def test_the_recorded_reason_for_a_zero_census_is_the_measured_one():
         # live_post_step is 0 on BOTH terminations — not a metallic-only null.
         assert census(metallic, family, "live_post_step") == 0
         assert census(periodic, family, "live_post_step") == 0
-        # the metallic +1 cell rests entirely on engineered_rows
+        # the metallic +1 cell rests on the two engineered families (the per-part
+        # products keep the planted zeros' signs through the step)
         assert census(metallic, family, "zero_init_absorber") == 0
-        assert census(metallic, family, "engineered_rows_post_step") == 0
+        assert census(metallic, family, "engineered_rows_post_step") > 0
         assert census(metallic, family, "engineered_rows") > 0
         # ...and the periodic row reaches the class from the quiet absorber too
         assert census(periodic, family, "zero_init_absorber") > 0
     text = GATE_PATH.read_text(encoding="utf-8")
-    assert "reads 0 on EVERY row of the matrix" in text
+    assert "reads 0 on every row but one" in text
     assert "16..650" not in text, "the refuted census range is still recorded"
 
 
@@ -2955,9 +2580,8 @@ def test_the_zero_init_leg_byte_compares_a_kernel():
     assert "plan_folded_mirror_ghost_fill_complex_from_arrays" in body
     verdict = {"census": [1, 1], "passed": False,
                "bit_identity": {"ran": 0, "identical": 0, "passed": False},
-               "failure": "no licensed EXPANSION; the leg could launch nothing"}
-    built = gate.build_summary({"zero_init": verdict},
-                               {"licensed": True, "reasons": []})
+               "failure": "the leg could launch nothing"}
+    built = gate.build_summary({"zero_init": verdict})
     assert not built["passed"]
 
 
@@ -2983,53 +2607,6 @@ def test_the_zero_init_census_expectation_is_the_one_this_laptop_produces():
     assert tuple(census) == tuple(gate.ZERO_INIT_LAPTOP_CENSUS), census
 
 
-def test_unary_minus_addend_arms_both_expansion_arms():
-    """The claim under audit was that ``fold_zero_cross_terms`` and
-    ``unary_minus_addend`` rewrite BOTH arms. It was true for the first and FALSE
-    for the second: all three sites sat inside ``if EXPANSION == FMA_V1``, so on
-    a NAIVE-binding platform the mutant's source differed (no DISARMED) while its
-    compiled body did not, ``_ptx_differs`` reported overlap, and the leg failed
-    for a non-defect. The NAIVE arm spells the term as a SUBTRACT, so arming it
-    means ``a - b`` -> ``a + (-b)`` — the same lowering by another route.
-    """
-    gate = _gate_module()
-    sources = _mutation_sources()
-    for name in ("unary_minus_addend", "fold_zero_cross_terms"):
-        transform, body, _entry, _note = gate.SOURCE_MUTATIONS[name]
-        shipped = sources[body]
-        fma_only = "\n".join(_expansion_arm(shipped, "FMA_V1"))
-        naive_only = "\n".join(_expansion_arm(shipped, "NAIVE"))
-        _text, fma_hits = transform(fma_only)
-        _text, naive_hits = transform(naive_only)
-        assert fma_hits > 0, (name, "no FMA_V1 site")
-        assert naive_hits > 0, (name, "no NAIVE site — DISARMED on a NAIVE "
-                                      "platform, and silently so")
-
-
-def _expansion_arm(source: str, arm: str):
-    """The lines of ``source`` that belong to one EXPANSION arm.
-
-    ``if EXPANSION == FMA_V1:`` opens the fused arm and its ``else:`` the naive
-    one; both are indented one level deeper than the ``if``.
-    """
-    out, state, depth = [], None, 0
-    for line in source.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("if EXPANSION == FMA_V1:"):
-            state, depth = "FMA_V1", len(line) - len(line.lstrip())
-            continue
-        if state is not None and stripped == "else:" and (
-                len(line) - len(line.lstrip())) == depth:
-            state = "NAIVE"
-            continue
-        if state is not None and stripped and (
-                len(line) - len(line.lstrip())) <= depth:
-            state = None
-        if state == arm and stripped:
-            out.append(stripped)
-    return out
-
-
 def test_an_unfolded_beta_grid_is_refused_by_both_beta_curls(fc):
     """OVER-COVERAGE. ``special_kz``'s beta predicates refuse a fold but do not
     REQUIRE one, so they stay live on an unfolded beta grid — and both of this
@@ -3044,7 +2621,7 @@ def test_an_unfolded_beta_grid_is_refused_by_both_beta_curls(fc):
         pml = PML(grid=grid, thickness=((2, 2), (2, 2), (0, 0)))
         if complex_storage:
             reasons = _reasons(fc.folded_beta_bloch_pml_curl_coverage(
-                fields, pml, "step_B", probe=_all_patterns_record()))
+                fields, pml, "step_B"))
         else:
             reasons = _reasons(fc.folded_beta_pml_curl_coverage(
                 fields, pml, "step_B"))
@@ -3052,7 +2629,7 @@ def test_an_unfolded_beta_grid_is_refused_by_both_beta_curls(fc):
     # ...and a FOLDED beta grid is still admitted, in both storages.
     fields, pml = _fold_grid(beta=BETA_EIGSRC)
     assert _reasons(fc.folded_beta_bloch_pml_curl_coverage(
-        fields, pml, "step_B", probe=_all_patterns_record())) == []
+        fields, pml, "step_B")) == []
     real_fields, real_pml = _fold_grid(beta=BETA_EIGSRC, complex_storage=False)
     assert _reasons(fc.folded_beta_pml_curl_coverage(
         real_fields, real_pml, "step_B")) == []
@@ -3079,33 +2656,8 @@ def test_the_real_beta_curl_checks_all_six_curl_targets_for_conductivity(
         complex_fields_,
         condfac_for=lambda name: object() if name == target else None)
     twin = _reasons(fc.folded_beta_bloch_pml_curl_coverage(
-        complex_shim, complex_pml, sub_step, probe=_all_patterns_record()))
+        complex_shim, complex_pml, sub_step))
     assert any(f"conductivity is installed on {target}" in r for r in twin), twin
-
-
-def test_the_parity_probe_measures_the_scalar_operand_shape():
-    """The array path's fill is a SCALAR times an array (``phase * plane`` with a
-    PYTHON INT, S:1450-1451), and the headline risk is a real-scalar fast path on
-    exactly that multiply. The probe classified an ARRAY times an array, which
-    forces the ``'FF->F'`` loop by construction and so cannot see it."""
-    gate = _gate_module()
-    rng = np.random.default_rng(gate.SEED + 913)
-    c_re, c_im, z_re, z_im = gate._parity_operands(rng)
-    assert c_re.size == 2 * gate.PARITY_BLOCK
-    z = gate.gate._interleave_c8(z_re, z_im)
-    c = gate.gate._interleave_c8(c_re, c_im)
-    spellings = gate._parity_spellings(np, z, c)
-    assert set(spellings) == {"python_int_scalar_left", "numpy_scalar_left",
-                              "array_left"}
-    detail = gate.measure_parity_pattern(np)
-    assert "python_int scalar" in detail["operand_shape"]
-    assert detail["spelling_deltas"]["python_int_scalar_left"] == 0
-    # On NumPy the three agree; a platform where they do not is a named finding,
-    # and the licence refuses rather than picking one silently.
-    assert detail["spellings_agree"] is True
-    gate_text = GATE_PATH.read_text(encoding="utf-8")
-    assert "parity_spellings_agree" in gate_text
-    assert "three spellings of the parity" in gate_text
 
 
 def test_the_fill_state_families_are_four_and_the_quiet_one_steps():
@@ -3161,28 +2713,6 @@ def test_the_two_pass_fill_split_has_a_needle_and_the_needle_is_reachable():
                      != np.ascontiguousarray(fused[n]).view(np.uint32).ravel()
                      ).sum()) for n in names)
     assert all(count > 0 for count in caught.values()), caught
-
-
-def test_the_nonzero_imaginary_word_entry_mutation_is_actually_armed():
-    """``synthesize_zero_imag_host`` set the entry's imaginary word to ``+0.0``,
-    which is what ``mirror_parity_coefficients`` already returns — a PROVABLE
-    no-op recorded as a predicted CAUGHT, so the leg could only ever report
-    diverged = 0. Passing a NONZERO word is the armed form of the same claim."""
-    gate = _gate_module()
-    fold = importlib.import_module(MODULE_NAME)
-    grid = Grid(resolution=10.0, cell_size=(1.6, 2.0, 0.0), dimensions=2,
-                courant=0.35, boundaries="periodic",
-                symmetry=(Mirror("Y", 1),), xp=np)
-    entries = [dict(e) for e in fold.ghost_fill_axis_entries(grid, "B")]
-    assert all(entry["near_words"][1] == 0.0 and entry["far_words"][1] == 0.0
-               for entry in entries), "the shipped imaginary word is not +0.0"
-    _same, armed, discriminating = gate.apply_entry_mutation(
-        [dict(e) for e in entries], "nonzero_imaginary_words", grid)
-    assert (armed, discriminating) == (1, 1)
-    assert all(entry["near_words"][1] != 0.0 for entry in _same)
-    with pytest.raises(ValueError, match="unknown entry mutation"):
-        gate.apply_entry_mutation([dict(e) for e in entries],
-                                  "synthesize_zero_imag", grid)
 
 
 # ---------------------------------------------------------------------------
@@ -3312,48 +2842,45 @@ def test_the_CONTROL_update_E_does_differ_with_an_offdiagonal_row():
 def test_the_new_predicates_admit_what_the_incumbents_refuse():
     module = importlib.import_module(MODULE_NAME)
     fields, pml = _offdiag_fixture(rows=True)
-    probe = _probe_record(patterns="base")
     for sub_step in ("step_B", "step_D"):
         assert _reasons(module.folded_complex_offdiag_pml_curl_coverage(
-            fields, pml, sub_step, probe=probe)) == [], sub_step
+            fields, pml, sub_step)) == [], sub_step
         assert any("off-diagonal" in r for r in
                    module.folded_complex_pml_curl_coverage(
-                       fields, pml, sub_step, probe=probe).reasons)
+                       fields, pml, sub_step).reasons)
     assert _reasons(module.folded_complex_offdiag_constitutive_coverage(
-        fields, pml, "H", probe=probe)) == []
+        fields, pml, "H")) == []
     assert any("off-diagonal" in r for r in
                module.folded_complex_constitutive_coverage(
-                   fields, pml, "H", probe=probe).reasons)
+                   fields, pml, "H").reasons)
 
 
 def test_the_two_families_are_disjoint_with_no_row_installed():
     module = importlib.import_module(MODULE_NAME)
     fields, pml = _offdiag_fixture(rows=False)
-    probe = _probe_record(patterns="base")
     reasons = _reasons(module.folded_complex_offdiag_pml_curl_coverage(
-        fields, pml, "step_B", probe=probe))
+        fields, pml, "step_B"))
     assert any("no off-diagonal chi1inv row is installed" in r for r in reasons), reasons
     reasons = _reasons(module.folded_complex_offdiag_constitutive_coverage(
-        fields, pml, "H", probe=probe))
+        fields, pml, "H"))
     assert any("no off-diagonal chi1inv row is installed" in r for r in reasons), reasons
     # And the incumbents take it.
     assert _reasons(module.folded_complex_pml_curl_coverage(
-        fields, pml, "step_B", probe=probe)) == []
+        fields, pml, "step_B")) == []
     assert _reasons(module.folded_complex_constitutive_coverage(
-        fields, pml, "H", probe=probe)) == []
+        fields, pml, "H")) == []
 
 
 def test_side_E_is_refused_by_name_with_its_measurement():
     module = importlib.import_module(MODULE_NAME)
     fields, pml = _offdiag_fixture(rows=True)
-    probe = _probe_record(patterns="base")
     joined = " ".join(module.folded_complex_offdiag_constitutive_coverage(
-        fields, pml, "E", probe=probe).reasons)
+        fields, pml, "E").reasons)
     assert "side='E'" in joined
     assert "25041/110592" in joined, "the refusal must carry its measurement"
     assert "_offdiagonal_terms" in joined
     assert module.plan_folded_complex_offdiag_constitutive(
-        fields, pml, "E", probe=probe) is None
+        fields, pml, "E") is None
 
 
 def test_an_unfolded_grid_is_refused_by_both_new_predicates():
@@ -3370,20 +2897,17 @@ def test_an_unfolded_grid_is_refused_by_both_new_predicates():
                                 for c in ("Ex", "Ey", "Ez")},
                                {"Ex": {"Ey": row}})
     pml = PML(grid=grid, thickness=((2, 2), (2, 2), (0, 0)))
-    probe = _probe_record(patterns="base")
     assert any("no mirror plane is active" in r for r in _reasons(
-        module.folded_complex_offdiag_pml_curl_coverage(fields, pml, "step_B",
-                                                        probe=probe)))
+        module.folded_complex_offdiag_pml_curl_coverage(fields, pml, "step_B")))
     assert any("no mirror plane is active" in r for r in _reasons(
-        module.folded_complex_offdiag_constitutive_coverage(fields, pml, "H",
-                                                            probe=probe)))
+        module.folded_complex_offdiag_constitutive_coverage(fields, pml, "H")))
 
 
 def test_real_storage_is_refused_toward_the_real_folded_families():
     module = importlib.import_module(MODULE_NAME)
     fields, pml = _offdiag_fixture(rows=True, complex_storage=False)
     joined = " ".join(module.folded_complex_offdiag_pml_curl_coverage(
-        fields, pml, "step_B", probe=_probe_record(patterns="base")).reasons)
+        fields, pml, "step_B").reasons)
     assert "folded_offdiag_update_e.py" in joined
 
 
@@ -3391,26 +2915,23 @@ def test_beta_with_an_offdiagonal_row_is_refused_in_both_directions():
     """This IS the pairing MEEP itself refuses, and the refusal must say so."""
     module = importlib.import_module(MODULE_NAME)
     fields, pml = _offdiag_fixture(rows=True, beta=0.25)
-    probe = _probe_record(patterns="base")
     for verdict in (module.folded_complex_offdiag_pml_curl_coverage(
-                        fields, pml, "step_B", probe=probe),
+                        fields, pml, "step_B"),
                     module.folded_complex_offdiag_constitutive_coverage(
-                        fields, pml, "H", probe=probe)):
+                        fields, pml, "H")):
         assert any("beta" in r for r in verdict.reasons), verdict.reasons
     joined = " ".join(module.folded_complex_offdiag_pml_curl_coverage(
-        fields, pml, "step_B", probe=probe).reasons)
+        fields, pml, "step_B").reasons)
     assert "fields.cpp:548-549" in joined
 
 
 def test_chi2_chi3_and_a_susceptibility_and_bfast_stay_refused():
     module = importlib.import_module(MODULE_NAME)
-    probe = _probe_record(patterns="base")
 
     fields, pml = _offdiag_fixture(rows=True)
     fields.set_nonlinear_volumes({"Ez": 0.0}, {"Ez": 0.05})
     assert any("chi2/chi3 is installed" in r for r in _reasons(
-        module.folded_complex_offdiag_pml_curl_coverage(fields, pml, "step_B",
-                                                        probe=probe)))
+        module.folded_complex_offdiag_pml_curl_coverage(fields, pml, "step_B")))
 
     from types import SimpleNamespace as _NS
     fields, pml = _offdiag_fixture(rows=True)
@@ -3418,17 +2939,16 @@ def test_chi2_chi3_and_a_susceptibility_and_bfast_stay_refused():
         susceptibility=_NS(kind="lorentzian"),
         driven=lambda: ("Ez",), drives=lambda name: name == "Ez"))
     assert any("complex-storage ADE" in r for r in _reasons(
-        module.folded_complex_offdiag_constitutive_coverage(fields, pml, "H",
-                                                            probe=probe)))
+        module.folded_complex_offdiag_constitutive_coverage(fields, pml, "H")))
 
 
 def test_a_missing_probe_artifact_is_refused():
     module = importlib.import_module(MODULE_NAME)
     fields, pml = _offdiag_fixture(rows=True)
     assert not module.folded_complex_offdiag_pml_curl_coverage(
-        fields, pml, "step_B", probe={"backend": "cupy", "patterns": {}}).covered
+        fields, pml, "step_B").covered
     assert not module.folded_complex_offdiag_constitutive_coverage(
-        fields, pml, "H", probe={"backend": "cupy", "patterns": {}}).covered
+        fields, pml, "H").covered
 
 
 def test_a_missing_volume_is_refused_by_name():
@@ -3437,7 +2957,7 @@ def test_a_missing_volume_is_refused_by_name():
     fields.fu_Bz = None
     assert any("fu_Bz is not allocated" in r for r in
                module.folded_complex_offdiag_pml_curl_coverage(
-                   fields, pml, "step_B", probe=_probe_record(patterns="base")).reasons)
+                   fields, pml, "step_B").reasons)
 
 
 def test_unknown_sub_step_and_side_raise():
@@ -3459,13 +2979,12 @@ def test_mutation_dropping_the_inverted_offdiag_clause_breaks_disjointness(monke
 
     monkeypatch.setattr(module, "_offdiag_media_reasons", mutated)
     fields, pml = _offdiag_fixture(rows=False)
-    probe = _probe_record(patterns="base")
     assert _reasons(module.folded_complex_offdiag_pml_curl_coverage(
-        fields, pml, "step_B", probe=probe)) == [], (
+        fields, pml, "step_B")) == [], (
         "the mutation is DISARMED: the inverted clause was not what kept the "
         "row-free run out")
     assert _reasons(module.folded_complex_pml_curl_coverage(
-        fields, pml, "step_B", probe=probe)) == [], (
+        fields, pml, "step_B")) == [], (
         "and the incumbent admits it too, which is the overlap the clause exists "
         "to prevent")
 

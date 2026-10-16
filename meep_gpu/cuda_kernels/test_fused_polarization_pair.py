@@ -90,20 +90,20 @@ def test_a_drifted_certified_recurrence_raises_instead_of_emitting(monkeypatch):
     broken = dict(strings)
     broken["_update_P_pml_real_kernel_code"] = strings[
         "_update_P_pml_real_kernel_code"].replace(
-        "(c_drive * (s * w))", "((c_drive * s) * w)")
+        "(omega0dtsqr * (s * w))", "((omega0dtsqr * s) * w)")
     monkeypatch.setattr(family, "_certified_ade_strings", lambda: broken)
     with pytest.raises(AssertionError):
         family.fused_polarization_pair_source("pml", 0, 1, (True,))
 
 
 def test_the_recurrence_keeps_the_certified_grouping_per_pole():
-    """The left-associated ((p*c_now) + (c_prev*q)) + (c_drive*(s*w)) grouping,
-    per pole, under the per-pole names -- float32 addition is not associative and
-    the grouping is the array path's two ``+=`` statements."""
+    """MEEP's grouping gamma1inv * (((p*two_minus_od) - (gamma1*q)) +
+    (omega0dtsqr*(s*w))), per pole, under the per-pole names -- float32 addition is
+    not associative and the grouping is PolarizationState.update's sequence."""
     source = family.fused_polarization_pair_source("pml", 0, 2, (True, False))
     for i in range(2):
-        assert (f"p_out_{i}[idx] = ((p_{i} * c_now_{i}) + (c_prev_{i} * q_{i})) "
-                f"+ (c_drive_{i} * (s_{i} * w));") in source
+        assert (f"p_out_{i}[idx] = gamma1inv_{i} * (((p_{i} * two_minus_od_{i}) - "
+                f"(gamma1_{i} * q_{i})) + (omega0dtsqr_{i} * (s_{i} * w)));") in source
 
 
 @pytest.mark.parametrize("arm", ("pml", "no_pml"))
@@ -140,7 +140,8 @@ def test_the_zero_arity_body_is_the_e_half_alone():
     source = family.fused_polarization_pair_source("pml", 2, 0, ())
     assert "float w" not in source
     assert "p_out" not in source
-    assert "constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k]);" in source
+    assert ("constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k], in_h_z);"
+            in source)
 
 
 def test_an_arity_past_the_measured_cap_is_refused_by_name():
@@ -201,28 +202,31 @@ def test_a_halves_refusal_arrives_prefixed_with_the_side_that_said_it():
     assert "no susceptibility is registered" in reason
 
 
-def test_the_drive_identity_clause_is_load_bearing_and_shadowed_not_absent():
-    """The register hand-off IS the certified drive only while drive_field names
-    the array the E half writes.
+def test_the_drive_identity_clause_is_load_bearing_on_both_arms():
+    """The register hand-off IS MEEP's drive only while the E half writes the words
+    the drive is selected from.
 
-    TWO LAYERS ANSWER, AND BOTH ARE MEASURED. The ADE half's own predicate
-    refuses a wrong drive first (this predicate is a conjunction that asks it
-    first), so the conjunction's refusal is the half's -- and the seam's OWN
-    clause is then defence in depth, pinned directly so a later reordering of
-    the conjunction cannot quietly turn the shadowing into a gap: the fused
-    kernel binds NO drive pointer at all, so this product's soundness rests on
-    the identity even where the half's clause were licensed away.
+    PML ARM: MEEP's ``w`` is ``f_w`` on the layer's chunks and the stored E elsewhere,
+    and the E half stores ``src`` into exactly that word on each form -- so what must
+    hold is that the two arrays are two allocations. NO-LAYER ARM: ``drive_field``
+    must name the stored E the store writes. The fused kernel binds NO drive pointer
+    at all, so the clause is the soundness of the seam, and the launcher re-asks it.
     """
     fields, layer, grid = build(poles=2, pml_on=True)
+    fields.f_w_Ex = fields.Ex  # the dsigw form's two stores would land on one word
+    problem = family._drive_identity_problem(fields, "pml", "Ex")
+    assert problem is not None and "one allocation" in problem
+    covered, _reason = family.covers_fused_polarization_pair(fields, layer, grid)
+    assert not covered
+
+    fields, layer, grid = build(poles=2, pml_on=False)
     fields.drive_field = lambda component: getattr(
         fields, "D" + component[1])  # the wrong-drive control's own binding
-    covered, reason = family.covers_fused_polarization_pair(fields, layer, grid)
-    assert not covered
-    assert "drive_field" in reason
-
-    problem = family._drive_identity_problem(fields, "pml", "Ex")
+    problem = family._drive_identity_problem(fields, "no_pml", "Ex")
     assert problem is not None
     assert "register hand-off" in problem and "different number" in problem
+    covered, reason = family.covers_no_pml_fused_polarization_pair(fields, layer, grid)
+    assert not covered
     # ... and the launcher re-asks it, so a run reaching the launch with a
     # drive the predicate never saw is refused there too.
     with pytest.raises(ValueError, match="register hand-off"):
@@ -576,8 +580,9 @@ def test_the_lift_edits_are_five_and_the_seam_is_among_them():
     """An extra departure from the certified text may not arrive quietly."""
     assert len(family.LIFT_EDITS) == 5
     lines = {edit["line"] for edit in family.LIFT_EDITS}
-    assert "    float w = drive[idx];" in lines
+    assert "    float w = dsigw ? drive_w[idx] : drive_e[idx];" in lines
     assert any("p_now" in line for line in lines)
     seam = next(edit for edit in family.LIFT_EDITS
-                if edit["line"] == "    float w = drive[idx];")
+                if edit["line"] == "    float w = dsigw ? drive_w[idx] : drive_e[idx];")
     assert "identity on the bits" in seam["why"]
+    assert "BOTH constitutive forms" in seam["why"]

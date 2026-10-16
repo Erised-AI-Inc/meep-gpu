@@ -32,8 +32,9 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 API_ROOT = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir))
-if API_ROOT not in sys.path:
-    sys.path.insert(0, API_ROOT)
+for _path in (HERE, API_ROOT):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 
 def source(component: str) -> Dict[str, Any]:
@@ -488,16 +489,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     import cupy as cp  # noqa: PLC0415
+    from composition_policy import (  # noqa: PLC0415
+        confirm_campaign_policy, stamp_campaign_policy)
     from meep_gpu import backends  # noqa: PLC0415
 
-    backends.guard_kernel_compilation(cp)
     payload: Dict[str, Any] = {"environment": environment(cp), "cases": []}
+    # THE CAMPAIGN'S SUBNORMAL POLICY, installed and measured before the first driver
+    # is built and stamped into the artifact (owner ruling R16; composition_policy.py).
+    refused = stamp_campaign_policy(payload, cp)
     save(payload, args.out)
+    if refused:
+        log(f"SYMMETRY COMPOSITION GATE REFUSED: {refused}")
+        return 2
+    backends.guard_kernel_compilation(cp)
     for case in CASES:
         log(f"starting {case[0]}: mirrors={case[3]} sources="
             f"{[item['component'] for item in case[4]]}")
         payload["cases"].append(run_case(cp, *case))
         save(payload, args.out)
+    refused = confirm_campaign_policy(payload)
+    if refused:
+        save(payload, args.out)
+        log(f"SYMMETRY COMPOSITION GATE REFUSED: {refused}")
+        return 2
     total_steps = sum(row["steps"] for row in payload["cases"])
     payload["summary"] = {
         "status": "passed",

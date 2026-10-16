@@ -159,7 +159,7 @@ class _MagneticState:
 
     The engine refuses magnetic susceptibilities at the driver, so this cannot be
     built from ``add_susceptibility``. It is the needle for the one H-side feature
-    clause, and the clause is CONSERVATIVE: ``update_H`` returns at stepping.py:944
+    clause, and the clause is CONSERVATIVE: ``update_H`` returns at stepping.py:999-1000
     whatever is registered, so the null is byte-exact here and refused anyway.
     """
 
@@ -203,16 +203,16 @@ _COVERED = (True, "covered")
 
 _ACTIVE_LAYER_REFUSAL = (
     "an active PML layer is installed: update_H/update_E run the dsigw "
-    "accumulation (stepping.py:946-951, :1014-1018), which is not a no-op")
+    "accumulation (stepping.py:1005-1010, :1077-1081), which is not a no-op")
 _UNREADABLE_LAYER_REFUSAL = (
     "the layer does not report is_active: stepping._pml_is_active "
-    "(stepping.py:2498-2506) branches on exactly that attribute")
+    "(stepping.py:2952-2960) branches on exactly that attribute")
 _STORED_E_REFUSAL = (
     "fields.stores_E is True: update_E writes E[...] = (D - sum P) * inv_eps "
-    "(stepping.py:1022) instead of returning at :983 -- that is the STORE arm, "
+    "(stepping.py:1085) instead of returning at :1044-1045 -- that is the STORE arm, "
     "which this package has not built (STORED_E_ARM_STATUS)")
 _UNREADABLE_STORES_E_REFUSAL = (
-    "fields does not report stores_E: stepping.py:983 branches on exactly that "
+    "fields does not report stores_E: stepping.py:1044 branches on exactly that "
     "attribute")
 _PML_STORAGE_REFUSAL = (
     "Fields has PML storage enabled while the layer is inert: get_H would serve a "
@@ -295,7 +295,7 @@ _GOLDEN = {
         "magnetic_susceptibility": (
             False, "polarization 0 drives magnetic component Hx: the H-side "
                    "polarization slot is empty in this engine "
-                   "(stepping.py:1406-1407) and a null cannot report coverage of a "
+                   "(stepping.py:1567-1568) and a null cannot report coverage of a "
                    "sub-step that grew a term"),
         "mute_polarization": (
             False, "polarization 0 (_MuteState) does not report drives(); an "
@@ -331,12 +331,12 @@ _GOLDEN = {
                    "unreadable susceptibility is not a covered one"),
         "nonlinearity": (
             False, "instantaneous chi2/chi3 is installed: update_E's product for "
-                   "those components is the Pade factor (stepping.py:999-1000). "
+                   "those components is the Pade factor (stepping.py:1063). "
                    "CONSERVATIVE where it fires alone -- driver.set_chi2/set_chi3 "
                    "force stored E (driver.py:2023-2029) so a driver-built run has "
                    "already been refused above, but Fields.set_nonlinear_volumes "
                    "does not, and on that object update_E returns at "
-                   "stepping.py:983 and the null is byte-exact"),
+                   "stepping.py:1044 and the null is byte-exact"),
         # SHADOWED, and the shadow is what the table records: set_epsilon_volumes
         # switched storage on, so the stores_E clause answers first. The off-diagonal
         # refusal is unreachable from a real Fields and is pinned on a duck-typed one
@@ -362,7 +362,7 @@ def test_every_clause_by_its_own_refusal_string(xp, side, case):
 #: every ``return False`` in the shipped source without a reader keeping a list.
 _OFFDIAG_REFUSAL = (
     "an off-diagonal chi1inv row is installed: the row product reads the other "
-    "components' volumes (stepping.py:1001-1008) and belongs to "
+    "components' volumes (stepping.py:1065-1071) and belongs to "
     "covers_real_pml_offdiag_constitutive")
 _UNREADABLE_OFFDIAG_REFUSAL = (
     "fields does not report has_offdiagonal_epsilon; a run that cannot say whether "
@@ -425,7 +425,7 @@ def test_a_fields_that_cannot_answer_anything_splits_by_side(xp):
 
     ``update_H`` returns before it touches ``fields`` at all, so a bare object is a
     run on which it genuinely does nothing; ``update_E`` reads ``stores_E`` at
-    stepping.py:983 and raises. Admitting the first and refusing the second is not an
+    stepping.py:1044 and raises. Admitting the first and refusing the second is not an
     inconsistency -- it is the predicate agreeing with the array path twice.
     """
     _, _, grid = build(xp)
@@ -532,8 +532,8 @@ def test_every_cited_return_site_is_read_back_out_of_stepping():
         assert guard.startswith("if not"), (side, guard)
         assert statement.startswith("return"), (side, statement)
     # And each guard is the sub-step's OWN, not the other's.
-    assert "_pml_is_active(pml)" in lines[943]
-    assert "not pml_active and not fields.stores_E" in lines[982]
+    assert "_pml_is_active(pml)" in lines[998]
+    assert "not pml_active and not fields.stores_E" in lines[1043]
 
 
 def test_the_inactive_layer_test_is_the_one_stepping_branches_on():
@@ -784,7 +784,7 @@ _SIBLING_CONSTITUTIVE = {
                                if side == "E" else (False, "H side has no offdiag kernel")),
     "covers_real_pml_complex_constitutive":
         lambda f, p, g, side: coverage.covers_real_pml_complex_constitutive(
-            f, p, g, side, "NAIVE"),
+            f, p, g, side),
 }
 
 
@@ -892,7 +892,7 @@ def _drop(marker, replacement=""):
 
 _MUTATIONS = {
     # The load-bearing pair. Each of these, uncaught, is silent corruption: a
-    # sub-step the composer skips while the array path had 2715 or 1287 words of
+    # sub-step the composer skips while the array path had 2362 or 1287 words of
     # work to do.
     "admit_an_active_layer": (
         _drop("        if active:\n", "        if False:\n"),

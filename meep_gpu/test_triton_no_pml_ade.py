@@ -90,7 +90,14 @@ def build(absorber=False, storage="field", counts=(1, 1, 1), kind="lorentzian",
                 getattr(state, slot)[component][...] = rng.uniform(
                     -0.2, 0.2, size=grid.shape).astype(numpy.float32)
     thickness = 2 if storage == "pml" else 0
-    return fields, PML(grid=grid, thickness=thickness), states
+    pml = PML(grid=grid, thickness=thickness)
+    if storage == "pml":
+        # The region plan the driver installs with an active layer: drive_field is
+        # MEEP's per-chunk w and needs it (fields.py drive_field).
+        from meep_gpu import stepping
+
+        stepping._region_plan(fields, pml)
+    return fields, pml, states
 
 
 def reasons(npa, fields, pml, state, component="Ez"):
@@ -165,7 +172,7 @@ def test_the_module_reaches_into_no_other_sessions_file_and_names_its_arm(npa):
 # ---------------------------------------------------------------------------
 
 def test_drive_field_is_the_stored_E_without_a_layer_and_f_w_with_one():
-    """Pinned against ``Fields.drive_field`` itself (fields.py:1158-1162).
+    """Pinned against ``Fields.drive_field`` itself: MEEP's ``w`` per chunk.
 
     This is the fact the inverted clause rests on. If ``drive_field`` ever stops
     branching this way, the restatement below becomes a wrong admission rather
@@ -175,27 +182,42 @@ def test_drive_field_is_the_stored_E_without_a_layer_and_f_w_with_one():
     for component in ("Ex", "Ey", "Ez"):
         assert fields.drive_field(component) is getattr(fields, component)
 
-    fields, _pml, _states = build(storage="pml")
+    # With a layer, MEEP's w is f_w on the cells whose chunk carries the component's
+    # own layer and the stored E everywhere else (update_pols.cpp:44, per chunk).
+    from meep_gpu import stepping
+
+    fields, pml, _states = build(storage="pml")
+    plan = stepping._region_plan(fields, pml)
     for component in ("Ex", "Ey", "Ez"):
-        assert fields.drive_field(component) is getattr(fields, "f_w_" + component)
+        getattr(fields, "f_w_" + component)[...] = 1.0
+        getattr(fields, component)[...] = 2.0
+        drive = numpy.asarray(fields.drive_field(component))
+        inside = numpy.broadcast_to(
+            numpy.asarray(plan.mask("constitutive", component, numpy)), drive.shape)
+        assert inside.any() and (~inside).any(), component
+        assert (drive[inside] == 1.0).all() and (drive[~inside] == 2.0).all()
 
 
-def _reference_update_p(state, drive, sigma, coefficients):
-    """``PolarizationState.update`` (dispersion.py:679-691), transcribed.
+def _reference_update_p(state, drive, sigma, constants):
+    """``PolarizationState.update``, transcribed: MEEP's isotropic ``update_P``.
 
-    Including the three-buffer rotation, which is the part a cached plan gets
-    wrong: this step's result lands in ``_scratch``, ``_scratch`` takes over the
-    array that held ``P_prev``, and ``P``/``P_prev`` shift down.
+    ``gamma1inv * (((p * two_minus_od) - (gamma1 * pp)) + (omega0dtsqr * (s * w)))``
+    on the four realnum words (susceptibility.cpp:251-256), every operation float32;
+    a uniform sigma is a realnum. Including the three-buffer rotation, which is the
+    part a cached plan gets wrong: this step's result lands in ``_scratch``,
+    ``_scratch`` takes over the array that held ``P_prev``, and ``P``/``P_prev`` shift
+    down.
     """
-    c_now, c_prev, c_drive = coefficients
+    two_minus_od, gamma1, omega0dtsqr, gamma1inv = (numpy.float32(c) for c in constants)
     for component in state["driven"]:
         w = drive(component)
         p = state["P"][component]
         p_prev = state["P_prev"][component]
         scratch = state["_scratch"]
-        numpy.multiply(p, c_now, out=scratch)
-        scratch += c_prev * p_prev
-        scratch += c_drive * (sigma[component] * w)
+        s = sigma[component]
+        s = s if getattr(s, "shape", ()) else numpy.float32(s)
+        scratch[...] = gamma1inv * (((p * two_minus_od) - (gamma1 * p_prev))
+                                    + (omega0dtsqr * (s * w)))
         state["P"][component] = scratch
         state["P_prev"][component] = p
         state["_scratch"] = p_prev
@@ -220,7 +242,7 @@ def test_the_reference_matches_PolarizationState_update_on_the_admitted_class(np
     for cycle in range(4):
         state.update(fields.drive_field, fields.grid.dt)
         _reference_update_p(mirror, fields.drive_field, state.sigma,
-                            state._coefficients)
+                            state.constants)
         for component in mirror["driven"]:
             assert mirror["P"][component].tobytes() == state.P[component].tobytes(), (
                 f"P[{component}] diverged at cycle {cycle + 1}: max abs delta "
@@ -238,11 +260,12 @@ def test_each_term_of_that_reference_is_load_bearing(npa):
     """Drop one term at a time; each mutation must make the reference FAIL.
 
     A transcription that agrees with its source no matter what it says is not a
-    transcription check. Three armed mutations, each launched and each caught.
+    transcription check. Four armed mutations, one per realnum word, each launched
+    and each caught.
     """
     fields, pml, states = build(absorber=True)
     caught = 0
-    for dropped in ("c_now", "c_prev", "c_drive"):
+    for dropped in range(4):
         local_fields, _pml, local_states = build(absorber=True)
         state = local_states[0]
         mirror = {
@@ -251,17 +274,15 @@ def test_each_term_of_that_reference_is_load_bearing(npa):
             "P_prev": {c: state.P_prev[c].copy() for c in state.driven()},
             "_scratch": state._scratch.copy(),
         }
-        c_now, c_prev, c_drive = state._coefficients
-        mutated = {"c_now": (0.0, c_prev, c_drive),
-                   "c_prev": (c_now, 0.0, c_drive),
-                   "c_drive": (c_now, c_prev, 0.0)}[dropped]
+        mutated = tuple(0.0 if index == dropped else word
+                        for index, word in enumerate(state.constants))
         state.update(local_fields.drive_field, local_fields.grid.dt)
         _reference_update_p(mirror, local_fields.drive_field, state.sigma, mutated)
         if any(mirror["P"][c].tobytes() != state.P[c].tobytes()
                for c in mirror["driven"]):
             caught += 1
-    assert caught == 3, (
-        f"only {caught} of 3 coefficient mutations changed the answer: the "
+    assert caught == 4, (
+        f"only {caught} of 4 word mutations changed the answer: the "
         f"reference is insensitive to its own terms")
     del fields, pml, states
 
@@ -376,10 +397,9 @@ def test_an_uncovered_susceptibility_kind_is_refused(npa):
 
 def test_a_non_finite_coefficient_is_refused_by_name(npa):
     fields, pml, states = build()
-    c_now, c_prev, c_drive = states[0]._coefficients
-    states[0]._coefficients = (float("nan"), c_prev, c_drive)
+    states[0].constants = (float("nan"),) + tuple(states[0].constants[1:])
     verdict = reasons(npa, fields, pml, states[0])
-    assert any("c_now" in r and "not finite" in r for r in verdict), verdict
+    assert any("two_minus_od" in r and "not finite" in r for r in verdict), verdict
 
 
 def test_coefficients_built_for_another_dt_are_refused(npa):

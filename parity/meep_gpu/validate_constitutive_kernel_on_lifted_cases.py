@@ -283,15 +283,19 @@ def one_case(name: str, kwargs: Dict[str, Any], probe,
     kernels.cp = probe.CupyShim(guard)
     kernels._clear_kernel_cache()
 
+    # THE DRIVER'S OWN CHUNK RECORD: the kernels choose each cell's form from it, and the
+    # array leg chose by the region plan the driver built from the same division.
+    record = cupy.asarray(np.ascontiguousarray(driver.chunk_bounds_record(),
+                                               dtype=np.int32))
     per_step: List[Dict[str, Any]] = []
     first_divergence: Optional[Dict[str, Any]] = None
     launch_error: Optional[str] = None
     try:
         for step in range(1, STEPS + 1):
             stepping.step_B(fields, pml)
-            kernels.update_fused_pml_real("H", fields, pml)
+            kernels.update_fused_pml_real("H", fields, pml, chunk_bounds=record)
             stepping.step_D(fields, pml)
-            kernels.update_fused_pml_real("E", fields, pml)
+            kernels.update_fused_pml_real("E", fields, pml, chunk_bounds=record)
             cupy.cuda.runtime.deviceSynchronize()
             expected = array_steps[step - 1]
             parts = {key: probe.bit_compare(getattr(fields, key), expected[key])

@@ -195,14 +195,18 @@ def test_the_shipped_ledger_cites_a_readable_entry_for_every_gate():
 
 
 @pytest.mark.parametrize("value,restricted", [
-    (None, False), ("1", False), ("0", True), ("true", False), ("", False)])
-def test_only_zero_restricts_the_metal_kernels_to_certified_environments(
+    (None, False), ("supported", False), ("any", False), ("certified", True),
+    ("0", False), ("1", False), ("Certified", False), ("", False)])
+def test_only_certified_restricts_the_metal_kernels_to_certified_environments(
         monkeypatch, value, restricted):
+    """The Metal record's ``certified_only`` reads the one scope reader; a value rung 3b
+    refuses (the retired ``0`` included) restricts nothing, because it never runs."""
+    monkeypatch.delenv(fastpath.RETIRED_HARDWARE_SWITCH, raising=False)
     if value is None:
-        monkeypatch.delenv(fastpath.UNCERTIFIED_SWITCH, raising=False)
+        monkeypatch.delenv(fastpath.HARDWARE_SWITCH, raising=False)
     else:
-        monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, value)
-    assert metal_dispatch.certified_only() is restricted
+        monkeypatch.setenv(fastpath.HARDWARE_SWITCH, value)
+    assert metal_dispatch.environment_block(None, {})["certified_only"] is restricted
 
 
 @pytest.mark.parametrize("value,certified", [
@@ -287,22 +291,23 @@ def _admitted(*entries):
     return record
 
 
-def test_an_opted_in_admission_records_and_says_what_it_always_did():
+def test_an_admission_under_any_records_and_says_what_it_always_did():
     record = _admitted(("triton", None))
     assert record["uncertified"]["admitted"] == [
         {"table": "triton", "what": "torch", "read": "0.0.0", "certified": ["2.10.0"]}]
     note = fastpath._uncertified_note(record)  # noqa: SLF001
-    assert note.endswith(f". They were dispatched because {fastpath.UNCERTIFIED_SWITCH}=1; "
+    assert note.endswith(f". They were dispatched because {fastpath.HARDWARE_SWITCH}=any; "
                          "compare the results with a prefer_gpu=False run of the same "
                          "simulation before relying on them"), note
 
 
 @pytest.mark.parametrize("reason", ["SUPPORTED_BECAUSE", "UNCERTIFIED_BECAUSE"])
 def test_a_table_that_admits_by_default_says_why_in_the_note(reason):
-    because = getattr(metal_dispatch, reason).format(switch=fastpath.UNCERTIFIED_SWITCH)
+    because = getattr(metal_dispatch, reason).format(switch=fastpath.HARDWARE_SWITCH)
     note = fastpath._uncertified_note(_admitted(("metal", because)))  # noqa: SLF001
     assert f"They were dispatched because {because};" in note, note
-    assert f"{fastpath.UNCERTIFIED_SWITCH}=1" not in note, note
+    assert f"{fastpath.HARDWARE_SWITCH}=certified" in because, because
+    assert f"{fastpath.HARDWARE_SWITCH}=any" not in note, note
 
 
 @pytest.mark.parametrize("device_certified,verdict", [

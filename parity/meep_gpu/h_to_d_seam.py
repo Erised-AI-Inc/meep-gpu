@@ -11,11 +11,16 @@ verdict, and receives the bucket, the sentence and the detail to file.
 
 WHAT SITS IN THE SEAM is not transcribed: :func:`driver_seam_fact` locates the two
 consults inside ``FdtdDriver.step`` by ast and RAISES unless the only statements
-between them are the electric integrated-source withdraw loop. A driver that grew a
-pass there would stop every board rather than be priced against a seam it no longer
-runs.
+between them are the magnetic ``f_minus_p`` restore (``sources.f_minus_p_end``, run
+there only where H is stored), which writes B alone and which ``step_D`` does not
+read (``withdraw_hoist.SEAM_PASS``). An integrated source enters at the constitutive
+update through ``f_minus_p`` and no longer stands a withdraw in this seam. A driver
+that grew a pass there would stop every board rather than be priced against a seam it
+no longer runs.
 
-WHETHER THE WITHDRAW RUNS ON A ROW is measured, not read off a name:
+WHETHER A WITHDRAW RUNS ON A ROW is measured, not read off a name (on this driver no
+engine source carries one, so a probe cut on it measures none; a cut on the driver
+before ``f_minus_p`` measured the integrated electric sources' withdraw):
 ``probe_h_to_d_seam.py`` lifts every row of the basis under the census machinery and
 records each source's ``is_integrated`` flag, its ``withdraw`` attribute and its
 deposit-point count; :func:`probe_rows` reads that artifact and :func:`join` refuses
@@ -45,8 +50,9 @@ THE BUCKETS, in the taxonomy's precedence:
                           (``fusion_taxonomy.credit_withheld_sub_reason``) the
                           Triton three-seam walk files, so withholding moves an
                           instance served -> buildable_not_built and nothing else.
-``withdraw_seam``        the row carries an integrated electric source owning a
-                          deposit point, so the withdraw runs between the halves.
+``withdraw_seam``        the probe measured an integrated electric source owning a
+                          deposit point whose ``withdraw`` does work on the row, so a
+                          withdraw ran between the halves on the driver it was cut on.
                           Not attainable until a device probe byte-compares a fused
                           launch across or after it — which this module does not run.
 ``missing_half``         the composer selects no arm at one of the two slots.
@@ -114,11 +120,15 @@ PROBE_DIR = RESULTS / (os.environ.get("MEEP_GPU_H_TO_D_PROBE") or "h_to_d_seam_2
 
 #: The statements the driver runs between the two consults, as they must read once
 #: comments are stripped. Anything else between them is a pass this pricing does not
-#: know about, and :func:`driver_seam_fact` refuses rather than prices around it.
+#: know about, and :func:`driver_seam_fact` refuses rather than prices around it. The
+#: restore writes B alone and ``step_D`` reads no B array (``withdraw_hoist.SEAM_PASS``),
+#: so a launch spanning the two halves reads what the two halves read in the driver's
+#: order.
 EXPECTED_BETWEEN: Tuple[str, ...] = (
     "update_H(self.fields, self.pml)",
-    "for source in electric:",
-    'getattr(source, "withdraw", _no_withdraw)(self.fields)',
+    "if self._stores_H():",
+    "f_minus_p_end(self.fields, f_minus_p_B)",
+    "f_minus_p_B = None",
 )
 
 __all__ = ["SEAM", "HALVES", "PROBE_DIR", "driver_seam_fact", "probe_rows", "join",
@@ -130,7 +140,7 @@ __all__ = ["SEAM", "HALVES", "PROBE_DIR", "driver_seam_fact", "probe_rows", "joi
 
 def driver_seam_fact(driver_path: Path = DRIVER) -> Dict[str, Any]:
     """Locate the update_H and step_D consults inside ``step`` and return what sits
-    between them; RAISE unless it is exactly the electric withdraw loop.
+    between them; RAISE unless it is exactly the magnetic ``f_minus_p`` restore.
 
     Located by ast inside the ONE method named ``step`` (the driver carries a second
     dispatch-guarded update_H in ``synchronize_magnetic_fields``, whose seam has no
@@ -170,8 +180,8 @@ def driver_seam_fact(driver_path: Path = DRIVER) -> Dict[str, Any]:
     if statements != EXPECTED_BETWEEN:
         raise SystemExit(
             f"between the update_H consult (:{h_at}) and the step_D consult (:{d_at}) "
-            f"{driver_path.name} runs {list(statements)}, not the electric withdraw "
-            f"loop alone {list(EXPECTED_BETWEEN)}. The H->D seam holds a pass this "
+            f"{driver_path.name} runs {list(statements)}, not the magnetic f_minus_p "
+            f"restore alone {list(EXPECTED_BETWEEN)}. The H->D seam holds a pass this "
             f"pricing does not know about; it cannot be priced until the rule is "
             f"re-derived.")
     return {
@@ -180,10 +190,11 @@ def driver_seam_fact(driver_path: Path = DRIVER) -> Dict[str, Any]:
         "update_H_consult": f"driver.py:{h_at}",
         "step_D_consult": f"driver.py:{d_at}",
         "between": [{"line": n, "statement": t} for n, t in between],
-        "between_summary": ("the array-path update_H call under its consult, then "
-                            "`for source in electric: getattr(source, 'withdraw', "
-                            "_no_withdraw)(self.fields)` — the integrated electric "
-                            "sources' withdraw and nothing else"),
+        "between_summary": ("the array-path update_H call under its consult, then, "
+                            "where H is stored, `f_minus_p_end(self.fields, "
+                            "f_minus_p_B)` — the integrated magnetic sources' "
+                            "f_minus_p restore, which writes B alone and which step_D "
+                            "does not read — and nothing else"),
     }
 
 
@@ -320,14 +331,16 @@ def classify(row: str, update_h_arm: Optional[str], step_d_arm: Optional[str],
                  "served_is_a_predicate_verdict_not_an_installation": True})
     if block["withdraw_in_seam"]:
         return ("withdraw_seam",
-                "the electric integrated-source withdraw sits between the halves — "
-                "driver.py step(): `for source in electric: getattr(source, "
-                "'withdraw', _no_withdraw)(self.fields)` — MEASURED on the lifted row: "
-                f"{len(withdraws)} integrated electric source(s) owning deposit points "
-                "return their standing dipole to D before step_D reads it. A fused "
-                "update_H+step_D launch would have to run after that withdraw or "
-                "carry it; whether either is byte-identical is the device probe this "
-                "cut does not run, so the instance is priced as not attainable",
+                "an integrated electric withdraw sits between the halves — MEASURED on "
+                f"the lifted row: {len(withdraws)} integrated electric source(s) owning "
+                "deposit points carry a withdraw that returns a standing dipole to D "
+                "before step_D reads it (the driver the probe was cut on ran it between "
+                "the two consults; this driver runs none, an integrated source entering "
+                "through f_minus_p, so only a probe cut before that change or a source "
+                "class from outside the package reports one). A fused update_H+step_D "
+                "launch would have to run after that withdraw or carry it; whether "
+                "either is byte-identical is the device probe this cut does not run, "
+                "so the instance is priced as not attainable",
                 {"integrated_electric_sources": len(withdraws),
                  "sources": [{"type": s["type"], "component": s["component"],
                               "envelope": s["envelope"],
@@ -358,9 +371,9 @@ def classify(row: str, update_h_arm: Optional[str], step_d_arm: Optional[str],
                  "partner_arm": partner})
     return ("buildable_not_built",
             f"reachable and NOT BUILT — both halves are admitted ({update_h_arm!r} at "
-            f"update_H, {step_d_arm!r} at step_D), nothing runs between them on this "
-            f"row (no integrated electric source: the withdraw is the no-op on every "
-            f"electric source here), and no product on any backend spans "
+            f"update_H, {step_d_arm!r} at step_D), nothing step_D reads runs between "
+            f"them on this row (no electric source carries a working withdraw; the "
+            f"magnetic f_minus_p restore writes B alone), and no product on any backend spans "
             f"update_H+step_D. The weld is not an in-place splice: step_D's curl reads "
             f"H at neighbouring cells that update_H writes in the same launch, so the "
             f"buildable shape is the halo recompute of the pointwise H the "
@@ -488,7 +501,7 @@ def price(taxonomy, backend: str, kernel_package: str, entries: Iterable[dict],
             f"`served_over_the_withdraw` licence. Serving one of these takes it out of "
             f"the withdraw_seam bucket and out of ATTAINABLE's subtraction for it, so "
             f"the board must name what byte-measured a fused update_H+step_D launch "
-            f"across or after `for source in electric: withdraw(...)` on a device. "
+            f"across or after the electric sources' withdraw on a device. "
             f"The array-path hoist campaign does not license it.")
     instances: List[dict] = []
     counts: Dict[str, int] = {}

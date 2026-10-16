@@ -14,10 +14,12 @@ import numpy as np
 import pytest
 
 from meep_gpu import stepping
+from meep_gpu.chunk_map import ChunkLayout, ChunkLayoutRefusal, chunk_bounds_record
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
-from meep_gpu.metal_kernels import arms
+from meep_gpu.metal_kernels import arms, chunk_bounds
 from meep_gpu.metal_kernels import no_pml_conductive as family
+from meep_gpu.metal_kernels import no_pml_curl
 from meep_gpu.metal_kernels import shaders
 from meep_gpu.pml import PML
 
@@ -61,6 +63,15 @@ def build(*, sides=("B", "D"), stored_e=False, seed=36):
 @pytest.fixture
 def backend_ready(monkeypatch):
     monkeypatch.setattr(family, "_metal_backend_reasons", lambda grid: [])
+    # The plan uploads its chunk record as a device vector; these host contracts keep
+    # the validated host words instead, so no device is asked for.
+    monkeypatch.setattr(family._chunk_bounds, "tensor",  # noqa: SLF001
+                        lambda record, device="mps": chunk_bounds.words(record))
+
+
+def record_of(fields, pml):
+    """The engine's own chunk record for this grid: what the composer hands the arm."""
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
 
 
 def _reference_function(reference, actual, pml, sub_step, expected_targets):
@@ -86,7 +97,9 @@ def _reference_function(reference, actual, pml, sub_step, expected_targets):
 def test_shader_preserves_three_ordered_conductive_passes_per_lossy_target():
     source = family.conductive_plain_curl_source(
         (0, 0, 0), backward=False, derive=True, conductive=(True, False, True))
-    assert "dtdx * ((c_y - c) + (b - b_z))" in source
+    for statement in no_pml_curl.CURL_STATEMENTS:
+        assert statement in source
+    assert "dtdx * ((c_y - c) + (b - b_z))" not in source
     assert "value0 = value0 * cf0[ii];" in source
     assert "value0 = value0 - curl0;" in source
     assert "value0 = value0 * ci0[ii];" in source
@@ -94,7 +107,8 @@ def test_shader_preserves_three_ordered_conductive_passes_per_lossy_target():
     assert "f1[ii] = f1[ii] - curl1;" in source
     assert "value2 = value2 * cf2[ii];" in source
     assert "[[buffer(19)]]" in source
-    assert "[[buffer(20)]]" not in source
+    assert chunk_bounds.binding(family.RECORD_BUFFER) + "," in source
+    assert "[[buffer(21)]]" not in source
 
 
 @pytest.mark.parametrize(("sides", "expected"), [
@@ -111,7 +125,8 @@ def test_each_substep_gets_its_own_conductivity_flags(backend_ready, sides, expe
         assert verdict.covered, verdict.reasons
         plan = family.plan_metal_conductive_plain_curl(
             fields, pml, slot, residency,
-            functions={shaders.CONTRACT_OFF: lambda *args: None})
+            functions={shaders.CONTRACT_OFF: lambda *args: None},
+            chunk_bounds=record_of(fields, pml))
         assert plan is not None
         assert plan.conductive == expected[slot]
 
@@ -120,7 +135,8 @@ def test_d_only_conductivity_does_not_bind_or_apply_a_b_coefficient(backend_read
     fields, pml = build(sides=("D",))
     plan = family.plan_metal_conductive_plain_curl(
         fields, pml, "step_B", HostResidency(),
-        functions={shaders.CONTRACT_OFF: lambda *args: None})
+        functions={shaders.CONTRACT_OFF: lambda *args: None},
+        chunk_bounds=record_of(fields, pml))
     assert plan is not None
     assert plan.conductive == (False, False, False)
     assert plan._args[9:12] == plan._args[:3]
@@ -134,10 +150,12 @@ def test_mixed_target_flags_do_not_turn_lossless_neighbours_conductive(backend_r
     fields.set_d_conductivity({"Dx": None, "Dy": None, "Dz": sigma})
     b = family.plan_metal_conductive_plain_curl(
         fields, pml, "step_B", HostResidency(),
-        functions={shaders.CONTRACT_OFF: lambda *args: None})
+        functions={shaders.CONTRACT_OFF: lambda *args: None},
+        chunk_bounds=record_of(fields, pml))
     d = family.plan_metal_conductive_plain_curl(
         fields, pml, "step_D", HostResidency(),
-        functions={shaders.CONTRACT_OFF: lambda *args: None})
+        functions={shaders.CONTRACT_OFF: lambda *args: None},
+        chunk_bounds=record_of(fields, pml))
     assert b is not None and d is not None
     assert b.conductive == (True, False, False)
     assert d.conductive == (False, False, True)
@@ -154,10 +172,13 @@ def test_two_curl_cycles_match_the_array_path_with_shared_live_host_arrays(
     functions_d = {shaders.CONTRACT_OFF: _reference_function(
         reference, actual, reference_pml, "step_D",
         [actual.Dx, actual.Dy, actual.Dz])}
+    record = record_of(actual, actual_pml)
     plan_b = family.plan_metal_conductive_plain_curl(
-        actual, actual_pml, "step_B", residency, functions=functions_b)
+        actual, actual_pml, "step_B", residency, functions=functions_b,
+        chunk_bounds=record)
     plan_d = family.plan_metal_conductive_plain_curl(
-        actual, actual_pml, "step_D", residency, functions=functions_d)
+        actual, actual_pml, "step_D", residency, functions=functions_d,
+        chunk_bounds=record)
     assert plan_b is not None and plan_d is not None
     for _ in range(2):
         plan_b.run()
@@ -195,7 +216,45 @@ def test_builder_refuses_before_compilation_when_the_conductivity_pair_is_broken
     monkeypatch.setattr(family, "compile_source",
                         lambda source: pytest.fail("refused builder compiled"))
     assert family.plan_metal_conductive_plain_curl(
-        fields, pml, "step_B", HostResidency()) is None
+        fields, pml, "step_B", HostResidency(),
+        chunk_bounds=record_of(fields, pml)) is None
+
+
+@pytest.mark.parametrize("builder", ["plan_metal_conductive_plain_curl",
+                                     "plan_metal_conductive_plain_curl_from_arrays"])
+def test_both_builders_take_the_record_as_a_required_keyword(builder):
+    import inspect
+
+    parameter = inspect.signature(getattr(family, builder)).parameters["chunk_bounds"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty
+
+
+def test_the_engine_route_refuses_a_plan_without_the_record_before_compiling(
+        backend_ready, monkeypatch):
+    fields, pml = build(sides=("B", "D"))
+    monkeypatch.setattr(family, "compile_source",
+                        lambda source: pytest.fail("a plan without a record compiled"))
+    with pytest.raises(ChunkLayoutRefusal, match="no chunk record"):
+        family.plan_metal_conductive_plain_curl(fields, pml, "step_B", HostResidency(),
+                                                chunk_bounds=None)
+
+
+def test_the_arm_hands_the_composers_record_to_the_builder(monkeypatch):
+    seen = {}
+
+    def builder(fields, pml, slot, residency, variants, *, chunk_bounds):
+        seen["chunk_bounds"] = chunk_bounds
+
+    monkeypatch.setattr(family, "plan_metal_conductive_plain_curl", builder)
+
+    class _Context:
+        fields = pml = residency = None
+        contract_variants = ()
+        chunk_bounds = object()
+
+    family._arm_plan(_Context, "step_B")  # noqa: SLF001
+    assert seen["chunk_bounds"] is _Context.chunk_bounds
 
 
 def test_arm_is_wired_after_complete_no_pml_residency_composition():
@@ -216,4 +275,5 @@ def test_native_gate_is_incremental_and_arms_conductive_failure_modes():
     assert "flush=True" in source and "os.fsync" in source
     assert "condfac_condinv_swapped" in source
     assert "target_store_dropped" in source
-    assert "curl_grouping_flattened" in source
+    assert "pairwise_grouping" in source
+    assert "z_partner_forced_present" in source

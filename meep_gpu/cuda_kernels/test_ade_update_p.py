@@ -14,11 +14,11 @@ splits the family's claims cleanly in two:
     of the 38 were pinned by nothing at all and 2 of the 19 that had a case were
     caught by a NEIGHBOURING clause whose text happened to contain the fragment
     being matched;
-  * the ARITHMETIC is asserted only as a TRANSCRIPTION: the expression this file
-    ships is compared character for character against the two certified siblings
-    it was copied from. That is not a bit-identity claim. Nothing in this
-    directory has launched this kernel, ``CERTIFIED_KERNELS`` is empty, and the
-    module docstring names what a device gate still owes.
+  * the ARITHMETIC is asserted here as the STORE LINE: MEEP's grouping in the four
+    realnum words. Its word-for-word equivalence with ``dispersion.PolarizationState
+    .update`` -- per-chunk drive included -- is measured on the host by executing the
+    device text (``test_dispersive_chunk_forms.py``); the device verdict is the
+    gate's (``parity/meep_gpu/gate_cuda_ade.py``).
 
 The shape is the one ``test_offdiag_constitutive_pml_real.py`` converged on,
 ported to a family whose device code is two fixed strings rather than an emitter.
@@ -67,9 +67,15 @@ METAL_ADE = HERE.parent / "metal_kernels" / "ade_update_p.py"
 
 KERNEL_DECLARATION = re.compile(r'extern "C" __global__ void (\w+)\(')
 
-#: The one expression that decides bit-identity, as it must appear in all three
-#: tracks. Kept as data so a reader sees the claim without running anything.
-ADE_EXPRESSION = "((p * c_now) + (c_prev * q)) + (c_drive * (s * w))"
+#: The one expression that decides bit-identity: MEEP's isotropic update
+#: (susceptibility.cpp:251-256) in the four realnum words, the grouping
+#: ``dispersion.PolarizationState.update`` forms. Kept as data so a reader sees the
+#: claim without running anything.
+ADE_EXPRESSION = ("gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + "
+                  "(omega0dtsqr * (s * w)))")
+
+#: MEEP's drive per chunk, one load of the two arrays.
+DRIVE_SELECT = "float w = dsigw ? drive_w[idx] : drive_e[idx];"
 
 
 def module_source() -> str:
@@ -119,33 +125,37 @@ def device_sources(source: str) -> dict:
 # THE TRANSCRIPTION
 # --------------------------------------------------------------------------
 
-def test_the_arithmetic_is_character_identical_to_both_certified_siblings():
-    """The whole correctness claim available without a device.
+def test_the_store_is_meeps_grouping_in_the_four_realnum_words():
+    """The store line of both kernels is MEEP's expression, and the drive its select.
 
-    ``ade_kernels`` did not derive this expression; it copied one that two
-    independently certified tracks already ship. Triton's
-    ``kernels.ade_update_p`` is pinned by ``triton_kernels/fingerprints.json``
-    and Metal's ``ade_source`` by ``metal_kernels/fingerprints.json``. If either
-    reference moves, the transcription stops being one and this fails.
-
-    float32 addition is not associative, so the PARENTHESES are the claim -- not
-    the operand names, which differ across the three languages only in spelling.
+    float32 addition is not associative, so the PARENTHESES are the claim: the
+    difference ``(p * two_minus_od) - (gamma1 * q)`` first, the drive term added to
+    it, the sum scaled once by ``gamma1inv`` -- the array path's own sequence
+    (``PolarizationState.update``). The Triton and Metal siblings this family was
+    once copied from are not its reference any more: they keep the 0.9.2 folded form
+    until their own ADE lanes take MEEP's.
     """
-    triton = TRITON_KERNELS.read_text(encoding="utf-8")
-    metal = METAL_ADE.read_text(encoding="utf-8")
-    cuda = device_sources(module_source())
-
-    assert ADE_EXPRESSION in triton, (
-        "triton_kernels/kernels.py no longer contains the reference expression; "
-        "the CUDA family was transcribed from something that has moved")
-    assert ADE_EXPRESSION in metal, (
-        "metal_kernels/ade_update_p.py no longer contains the reference "
-        "expression")
-    for name, source in cuda.items():
+    for name, source in device_sources(module_source()).items():
         found = [line.strip() for line in source.splitlines()
                  if "p_out[idx] =" in line]
         assert found == [f"p_out[idx] = {ADE_EXPRESSION};"], (
-            f"{name} does not write the reference expression: {found}")
+            f"{name} does not write MEEP's expression: {found}")
+        drives = [line.strip() for line in source.splitlines()
+                  if line.strip().startswith("float w =")]
+        assert drives == [DRIVE_SELECT], (name, drives)
+
+
+def test_the_drive_flag_is_the_half_integer_record_entry_of_the_own_axis():
+    """The kernel decodes the record with the emitter's block and keys the drive on
+    the component's own axis, half-integer lattice -- update_E's dsigw entry."""
+    from . import bounds_block
+    block = bounds_block.bounds_block(((True, 0), (True, 1), (True, 2)))
+    for name, source in device_sources(module_source()).items():
+        assert (bounds_block.DECODE_END + "\n" + block) in source, name
+        assert ("const int dsigw = own_axis == 0 ? in_h_x : "
+                "(own_axis == 1 ? in_h_y : in_h_z);") in source, name
+        assert "int nx, int ny, int nz, int own_axis,\n    const int* __restrict__ cb\n) {" \
+            in source, name
 
 
 def test_the_two_variants_differ_only_in_the_sigma_binding():
@@ -189,16 +199,21 @@ def test_no_unary_minus_and_no_division_on_any_float_path():
     """The two platform facts this family leans on, checked rather than recalled.
 
     CUDA lowers ``-x`` to ``neg.f32`` and does NOT canonicalize signed zeros, so
-    the sibling track's ``(a*b)*-1.0`` idiom is unsafe here and is absent. And a
-    divide-free family cannot meet the one PTX exception on record, where ptxas
-    expands ``div.rn.f32`` into a sequence carrying ``.FTZ`` in SASS whatever the
-    PTX modifier said.
+    the sibling track's ``(a*b)*-1.0`` idiom is unsafe here and is absent: every
+    ``-`` is a BINARY subtraction (MEEP's ``- gamma1 * pp[i]``). And a divide-free
+    float path cannot meet the one PTX exception on record, where ptxas expands
+    ``div.rn.f32`` into a sequence carrying ``.FTZ`` in SASS whatever the PTX
+    modifier said. The only divisions are the integer index decode's.
     """
+    decode = ("int j = (idx / nz) % ny;", "int i = idx / (ny * nz);")
     for name, source in device_sources(module_source()).items():
-        body = "\n".join(line.split("//")[0] for line in source.splitlines())
-        assert "/" not in body.replace("//", ""), f"{name} contains a division"
-        assert not re.search(r"[-]\s*[a-zA-Z0-9_(]", body.replace("->", "")
-                             .replace("--", "")), f"{name} contains a negation"
+        lines = [line.split("//")[0].strip() for line in source.splitlines()]
+        body = "\n".join(line for line in lines if line not in decode)
+        assert "/" not in body, f"{name} contains a division off the index decode"
+        for match in re.finditer(r"-", body):
+            before = body[:match.start()].rstrip()
+            assert before and before[-1] not in "(=,?:*/+-", (
+                f"{name} contains a unary minus at {body[match.start() - 20:match.start() + 5]!r}")
 
 
 # --------------------------------------------------------------------------
@@ -607,7 +622,7 @@ def _shim(**over):
 
         def __init__(self):
             self.grid = Grid()
-            self._coefficients = over.get("coefficients", (0.97, -0.41, 0.13))
+            self.constants = over.get("constants", (1.9375, 0.96875, 0.0625, 0.5))
             buffer_dtype = over.get("p_dtype", np.float32)
             if "p_buffer" in over:
                 self.P = {"Ez": over["p_buffer"]}
@@ -653,16 +668,15 @@ def _shim(**over):
                 self.f_w_Ez = self.polarizations[0].P["Ez"]
             elif not over.get("no_drive"):
                 self.f_w_Ez = volume(over.get("drive_dtype", np.float32))
-            self.Ez = volume()
-            if over.get("no_drive_field"):
-                self.drive_field = None
+            if over.get("stored_aliases_p"):
+                self.Ez = self.polarizations[0].P["Ez"]
+            elif not over.get("no_stored"):
+                self.Ez = volume(over.get("stored_dtype", np.float32))
 
         def drive_field(self, component):
-            if over.get("drive_raises"):
-                raise _BOOM
-            if over.get("wrong_drive"):
-                return self.Ez
-            return getattr(self, "f_w_" + component)
+            # Never consulted by the predicate: drive_field composes from the region
+            # plan, which a planner does not have, and the kernel selects itself.
+            raise AssertionError("the ADE predicate called drive_field")
 
     class Layer:
         is_active = over.get("pml", True)
@@ -713,28 +727,28 @@ def test_a_mirror_fold_is_admitted_and_that_is_the_point():
 #: text. Equality on the whole string is what makes a clause answer for itself,
 #: so a REWORDED refusal must be re-transcribed here rather than re-fragmented.
 CLAUSE_CASES = [
-    # -- the drive, the clause a no-PML test can never catch -----------------
-    ("wrong drive bound", dict(wrong_drive=True),
-     "drive_field('Ez') is not f_w_Ez; the kernel binds what drive_field "
-     "returns and this run would drive P from the wrong array"),
-    ("drive_field raised", dict(drive_raises=True),
-     "drive_field('Ez') raised RuntimeError('no')"),
-    ("drive_field is not callable", dict(no_drive_field=True),
-     "fields does not expose drive_field()"),
+    # -- the drive pair, the clause a no-PML test can never catch ------------
     ("the drive field is not allocated", dict(no_drive=True),
      "f_w_Ez is not allocated (the drive field under PML)"),
     ("Fields not in PML storage", dict(pml_storage=False),
      "the layer is active but Fields is not in PML storage mode; drive_field "
      "would hand back the stored Ez, which is the constitutive product only "
      "OUTSIDE the absorber"),
+    ("the stored E is not allocated", dict(no_stored=True),
+     "Ez is not allocated (the drive off the layer's chunks, where update_E "
+     "stores the constitutive product)"),
     ("the drive is float64", dict(drive_dtype=np.float64),
      "f_w_Ez is float64, not float32"),
+    ("the stored E is float64", dict(stored_dtype=np.float64),
+     "Ez is float64, not float32"),
     ("the drive aliases P", dict(drive_aliases_p=True),
      "f_w_Ez aliases P['Ez']; the drive is read while the scratch is written"),
+    ("the stored E aliases P", dict(stored_aliases_p=True),
+     "Ez aliases P['Ez']; the drive is read while the scratch is written"),
     # -- storage and layer ---------------------------------------------------
     ("no active layer", dict(pml=False),
-     "no active PML layer: this family binds f_w as the drive and drive_field "
-     "returns the stored E without one"),
+     "no active PML layer: this family selects f_w on the layer's chunks, and "
+     "the no-absorber family serves a run without one"),
     ("complex64 storage", dict(complex=True),
      "complex64 storage: the recurrence is the same but the storage is not"),
     # -- the grid ------------------------------------------------------------
@@ -770,16 +784,20 @@ CLAUSE_CASES = [
      "drives('Ez') raised RuntimeError('no')"),
     ("component outside E", dict(component="Bx"),
      "component 'Bx' is outside ('Ex', 'Ey', 'Ez')"),
-    ("the coefficient triple is unreadable", dict(coefficients=_Raising()),
-     "the coefficient triple is unreadable (RuntimeError: no)"),
-    ("short coefficient tuple", dict(coefficients=(1.0, 2.0)),
-     "the (c_now, c_prev, c_drive) triple has 2 entries, not 3"),
-    ("non-numeric coefficient", dict(coefficients=(1.0, "x", 3.0)),
-     "c_prev='x' is not a float"),
-    ("NaN coefficient", dict(coefficients=(1.0, 2.0, float("nan"))),
-     "c_drive is NaN"),
-    ("infinite coefficient", dict(coefficients=(1.0, 2.0, float("inf"))),
-     "c_drive=inf is not finite"),
+    ("the constants are unreadable", dict(constants=_Raising()),
+     "the recurrence constants are unreadable (RuntimeError: no)"),
+    ("short constant tuple", dict(constants=(1.0, 2.0, 3.0)),
+     "the ('two_minus_od', 'gamma1', 'omega0dtsqr', 'gamma1inv') constants have 3 "
+     "entries, not 4"),
+    ("non-numeric constant", dict(constants=(1.0, "x", 3.0, 0.5)),
+     "gamma1='x' is not a float"),
+    ("NaN constant", dict(constants=(1.0, 2.0, float("nan"), 0.5)),
+     "omega0dtsqr is NaN"),
+    ("infinite constant", dict(constants=(1.0, 2.0, 0.5, float("inf"))),
+     "gamma1inv=inf is not finite"),
+    ("a constant that is not a float32 word", dict(constants=(0.1, 2.0, 0.5, 0.5)),
+     "two_minus_od=0.1 is not a float32 word; the kernel takes MEEP's realnum "
+     "constants as float32 scalars and would round it"),
     # -- the three rotating buffers ------------------------------------------
     ("P is not allocated", dict(p_buffer=None),
      "P['Ez'] is not allocated"),
@@ -934,6 +952,7 @@ def test_the_sub_step_verdict_is_all_or_nothing_over_every_component():
         state.P_prev[component] = zeros()
         state.sigma[component] = 0.5
         setattr(fields, "f_w_" + component, zeros())
+        setattr(fields, component, zeros())
     state.driven = lambda: ("Ex", "Ey", "Ez")
     state.drives = lambda c: c in ("Ex", "Ey", "Ez")
     assert coverage.covers_real_pml_ade_update_p(fields, layer, grid) == (
@@ -1010,12 +1029,16 @@ def test_the_launcher_resolves_pointers_after_the_rotation_not_before():
     # whether "state.P[component]" appears anywhere is satisfied by the ROTATION
     # that writes it, so a launcher that cached the views and only wrote them back
     # would pass -- measured, on 2026-08-19: that mutation was MISSED by the
-    # substring form of this assertion and is caught by this one.
-    for read in ("w = drive(component)",
+    # substring form of this assertion and is caught by this one. Each expected
+    # statement goes through the same parse and unparse as the loop body, so the
+    # comparison does not depend on how this interpreter spells a tuple target
+    # (Python 3.10 writes "(a, b) = f()", later releases "a, b = f()").
+    for read in ("drive_w, drive_e = drives(component)",
                  "p = state.P[component]",
                  "p_prev = state.P_prev[component]",
                  "scratch = state._scratch",
                  "sigma = state.sigma[component]"):
+        read = ast.unparse(ast.parse(read))
         assert read in statements, (
             f"{read!r} is not a statement of the per-component loop; the "
             f"semantic pointers must be resolved after the previous component's "
@@ -1054,7 +1077,8 @@ def test_the_launcher_resolves_pointers_after_the_rotation_not_before():
 
 _ADE_EXPRESSION_NOTE = (
     "transcribed from the device string in ade_kernels.py, association intact: "
-    "p_out[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w))")
+    "p_out[idx] = gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + "
+    "(omega0dtsqr * (s * w)))")
 
 
 def _executing_kernel(launches):
@@ -1062,27 +1086,37 @@ def _executing_kernel(launches):
 
     Every defect in ``_launch`` reaches this function as a different argument
     tuple or a different launch geometry, so the numbers move. The association is
-    transcribed, not re-derived: ``((p*c_now) + (c_prev*q)) + (c_drive*(s*w))``.
+    transcribed, not re-derived. The drive select reads the record as the device
+    text does: ``in_h`` of the own axis, from the half-integer entries.
     """
     def kernel(grid, block, args):
-        p_out, p_now, p_prev, sigma, drive, c_now, c_prev, c_drive, n_elem = args
+        (p_out, p_now, p_prev, sigma, drive_w, drive_e, two_minus_od, gamma1,
+         omega0dtsqr, gamma1inv, nx, ny, nz, own_axis, cb) = args
         blocks, = grid
         threads, = block
-        n = int(n_elem)
+        n = int(nx) * int(ny) * int(nz)
         launches.append({"blocks": int(blocks), "threads": int(threads),
                          "reach": int(blocks) * int(threads), "n_elem": n,
+                         "shape": (int(nx), int(ny), int(nz)), "own_axis": int(own_axis),
                          "wrote_into_input": p_out is p_now or p_out is p_prev})
         flat_out = np.asarray(p_out).reshape(-1)
         p = np.asarray(p_now).reshape(-1)
         q = np.asarray(p_prev).reshape(-1)
-        w = np.asarray(drive).reshape(-1)
-        s = (np.asarray(sigma).reshape(-1) if np.ndim(sigma) else
-             np.full(p.shape, np.float32(sigma), np.float32))
         reach = min(int(blocks) * int(threads), n)   # the guard, honoured here
         idx = np.arange(reach)
-        flat_out[idx] = (((p[idx] * np.float32(c_now))
-                          + (np.float32(c_prev) * q[idx]))
-                         + (np.float32(c_drive) * (s[idx] * w[idx])))
+        coordinate = (idx // (int(ny) * int(nz)), (idx // int(nz)) % int(ny),
+                      idx % int(nz))[int(own_axis)]
+        a0, a1, b0, b1 = (int(v) for v in np.asarray(cb)[12 + 4 * int(own_axis):
+                                                          16 + 4 * int(own_axis)])
+        inside = ((coordinate >= a0) & (coordinate < a1)) | ((coordinate >= b0)
+                                                            & (coordinate < b1))
+        w = np.where(inside, np.asarray(drive_w).reshape(-1)[idx],
+                     np.asarray(drive_e).reshape(-1)[idx])
+        s = (np.asarray(sigma).reshape(-1)[idx] if np.ndim(sigma) else
+             np.full(reach, np.float32(sigma), np.float32))
+        flat_out[idx] = np.float32(gamma1inv) * (
+            ((p[idx] * np.float32(two_minus_od)) - (np.float32(gamma1) * q[idx]))
+            + (np.float32(omega0dtsqr) * (s * w)))
     return kernel
 
 
@@ -1103,6 +1137,7 @@ def ade_module(monkeypatch):
     """
     fake = types.ModuleType("cupy")
     fake.float32 = np.float32
+    fake.int32 = np.int32
     fake.ndarray = np.ndarray
     fake.RawKernel = object
     cuda = types.ModuleType("cupy.cuda")
@@ -1133,36 +1168,59 @@ def test_the_launch_argument_list_is_pinned_by_execution(ade_module):
     shape = (3, 4, 5)
     p_now = rng.standard_normal(shape, dtype=np.float32)
     p_prev = rng.standard_normal(shape, dtype=np.float32)
-    drive = rng.standard_normal(shape, dtype=np.float32)
+    drive_w = rng.standard_normal(shape, dtype=np.float32)
+    drive_e = rng.standard_normal(shape, dtype=np.float32)
     out = np.zeros(shape, dtype=np.float32)
     sigma = np.float32(0.375)
-    coefficients = (np.float32(1.5), np.float32(-0.25), np.float32(0.125))
+    constants = (np.float32(1.5), np.float32(0.75), np.float32(0.125), np.float32(0.5))
+    # A record whose half-integer y entry holds rows 0 and 3 only: Ey reads f_w on
+    # those rows and the stored E on rows 1 and 2.
+    record = np.zeros(25, dtype=np.int32)
+    record[16:20] = (0, 1, 3, 4)
 
     launches = []
     ade_kernels._launch(_executing_kernel(launches), out, p_now, p_prev,
-                        sigma, drive, coefficients, sigma_is_volume=False)
+                        sigma, drive_w, drive_e, constants, False, 1, record)
 
     assert len(launches) == 1, launches
-    record = launches[0]
+    record_ = launches[0]
 
     # THE GEOMETRY MUST COVER EVERY ELEMENT. A dropped ceiling leaves a tail
     # unwritten, which is silent in any test that does not count.
-    assert record["reach"] >= record["n_elem"], (
-        f"launch geometry reaches {record['reach']} of {record['n_elem']} "
-        f"elements — the block count lost its ceiling")
-    assert record["n_elem"] == out.size
+    assert record_["reach"] >= record_["n_elem"], (
+        f"launch geometry reaches {record_['reach']} of {record_['n_elem']} "
+        f"elements -- the block count lost its ceiling")
+    assert record_["n_elem"] == out.size and record_["shape"] == shape
+    assert record_["own_axis"] == 1
 
     # P MUST NOT BE WRITTEN IN PLACE: the recurrence reads P and P_prev while
     # writing the result, so aliasing the destination onto either input
     # corrupts the read for every later element in the same launch.
-    assert not record["wrote_into_input"], (
-        "the destination aliases one of the inputs — P was written in place")
+    assert not record_["wrote_into_input"], (
+        "the destination aliases one of the inputs -- P was written in place")
 
-    expected = (((p_now * coefficients[0]) + (coefficients[1] * p_prev))
-                + (coefficients[2] * (sigma * drive)))
+    rows = np.arange(shape[1]).reshape(1, -1, 1)
+    w = np.where((rows == 0) | (rows == 3), drive_w, drive_e)
+    two_minus_od, gamma1, omega0dtsqr, gamma1inv = constants
+    expected = gamma1inv * (((p_now * two_minus_od) - (gamma1 * p_prev))
+                            + (omega0dtsqr * (sigma * w)))
     assert np.array_equal(out.view(np.uint32), expected.view(np.uint32)), (
         f"launcher produced different bytes than the reference recurrence "
         f"({_ADE_EXPRESSION_NOTE})")
+
+
+def test_the_launcher_refuses_a_record_that_is_not_a_device_int32_25(ade_module):
+    """No default division: a launch handed nothing, or the wrong shape, raises."""
+    out = np.zeros((2, 2, 2), dtype=np.float32)
+    args = (out, out.copy(), out.copy(), np.float32(1.0), out.copy(), out.copy(),
+            (1.0, 1.0, 1.0, 1.0), False, 0)
+    with pytest.raises(ValueError, match="takes the run's chunk record"):
+        ade_module._launch(lambda *a: None, *args, None)
+    with pytest.raises(ValueError, match="int32\\[25\\]"):
+        ade_module._launch(lambda *a: None, *args, np.zeros(24, dtype=np.int32))
+    assert ade_module._CHUNK_RECORD_WORDS == 25
+    from ..chunk_map import RECORD_WORDS
+    assert RECORD_WORDS == ade_module._CHUNK_RECORD_WORDS
 
 
 def test_both_device_strings_carry_the_bounds_guard():
@@ -1195,6 +1253,6 @@ def test_both_device_strings_carry_the_bounds_guard():
     assert len(sources) >= 2, (
         f"expected both sigma variants to be discoverable, found {len(sources)}")
     for source in sources:
-        assert "n_elem) return;" in source, (
+        assert "if (idx >= nx * ny * nz) return;" in source, (
             "a device string lost its bounds guard; with the guard gone from "
             "BOTH variants no other test in this file notices")

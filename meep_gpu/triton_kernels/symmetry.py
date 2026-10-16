@@ -165,6 +165,12 @@ except Exception:  # noqa: BLE001 - a missing optional dependency is not an erro
 
 if triton is not None:  # pragma: no cover - device code, gated by the shared probe
 
+    # The forms of the root kernels (forms.py) and the chunk record's two word offsets,
+    # bound under the names kernels.py uses: the folded curl reads the record and calls
+    # the forms exactly as kernels.pml_curl_step does, so one spelling serves both.
+    from .forms import axis_present, curl_form, curl_stencil, record_in  # noqa: E402
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
+
     PERIODIC = tl.constexpr(CODE_PERIODIC)
     METALLIC = tl.constexpr(CODE_METALLIC)
     MIRROR_METALLIC = tl.constexpr(CODE_MIRROR_METALLIC)
@@ -176,6 +182,7 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
         u0, u1, u2,                       # auxiliaries: fu_B*  or  fu_D*
         g0, g1, g2,                       # sources: Ex,Ey,Ez  or  Hx,Hy,Hz
         kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, one sub-lattice
+        cb,                               # chunk record: forms and presence
         nx, ny, nz, n_elem, dtdx,
         BACKWARD: tl.constexpr,           # 0 = B (forward differences), 1 = D
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
@@ -210,6 +217,15 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
         ``_mask_non_owned_cells`` asks ``is_mirrored or is_metallic or is_axis``,
         and ``_boundary_kinds`` resolves exactly those three to a non-periodic
         kind (the cylindrical one is refused by the predicate).
+
+        THE CURL AND THE FORMS ARE THE ROOT KERNEL'S, read through the same record.
+        The presence word picks the curl expression (:func:`.forms.curl_stencil`) and
+        the membership line of the target's dsigu axis, on the target's own
+        sub-lattice, picks the form (:func:`.forms.curl_form`): the split-field
+        recurrence inside, the dsig-only form outside, ``fu`` read and written inside
+        only. A ghost row of a folded axis reads the line its image row reads
+        (``chunk_map.ChunkLayout.membership``), so the select at a ghost cell is the
+        array path's there too.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -256,9 +272,16 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
         c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
         # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        # kernels.pml_curl_step's three calls: MEEP's left-to-right association with
+        # both partners, the one-partner form where the record says the other
+        # partner's derivative axis is invariant, an exact +0 with neither.
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
         # --- ownership mask, cell 0 (stepping._mask_non_owned_cells) ------------
         # Every target whose Yee shift is 0 on a non-periodic axis. Byte-copied
@@ -314,10 +337,11 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
             if BCY == MIRROR_PERIODIC:
                 curl2 = tl.where(last_y, 0.0, curl2)
 
-        # --- split-field recurrence (stepping._apply_pml_update) ----------------
-        # Byte-copied. The PML coefficient vectors are built at the STORED extent
-        # on a folded axis (measured: kms_y.shape == (1, 22, 1) on a grid storing
-        # 22), so the `n_a` indexing needs no fold-aware change.
+        # --- the PML forms (stepping._apply_curl_regions) ----------------------
+        # Byte-copied from kernels.pml_curl_step. The PML coefficient vectors are
+        # built at the STORED extent on a folded axis (measured: kms_y.shape ==
+        # (1, 22, 1) on a grid storing 22), so the `n_a` indexing needs no
+        # fold-aware change.
         km_x = tl.load(kmx + i, mask=live, other=0.0)
         si_x = tl.load(sinvx + i, mask=live, other=0.0)
         km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -325,21 +349,33 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0 = tl.load(u0 + idx, mask=live, other=0.0)
-        n0 = ((p0 * km_y) - curl0) * si_y
-        v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+        # Which cells take the recurrence: the component's dsigu layer on its own
+        # sub-lattice (dsigu axis z for target 0, x for 1, y for 2; half-integer for
+        # every B target, integer for every D one), a compile-time record word.
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1 = tl.load(u1 + idx, mask=live, other=0.0)
-        n1 = ((p1 * km_z) - curl1) * si_z
-        v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+        v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                           km_y, si_y, km_z, si_z, du0)
 
-        p2 = tl.load(u2 + idx, mask=live, other=0.0)
-        n2 = ((p2 * km_x) - curl2) * si_x
-        v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+        p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+        v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                           km_z, si_z, km_x, si_x, du1)
 
-        tl.store(u0 + idx, n0, mask=live)
-        tl.store(u1 + idx, n1, mask=live)
-        tl.store(u2 + idx, n2, mask=live)
+        p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+        v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                           km_x, si_x, km_y, si_y, du2)
+
+        # fu is written on the recurrence's cells ONLY (the auxiliary contract).
+        tl.store(u0 + idx, n0, mask=live & du0)
+        tl.store(u1 + idx, n1, mask=live & du1)
+        tl.store(u2 + idx, n2, mask=live & du2)
         tl.store(f0 + idx, v0, mask=live)
         tl.store(f1 + idx, v1, mask=live)
         tl.store(f2 + idx, v2, mask=live)
@@ -351,11 +387,23 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
         reflect_row,                      # RUNTIME: stepping._far_reflect_rows
         AXIS: tl.constexpr,               # 0 = x, 1 = y, 2 = z
         PHASE: tl.constexpr,              # the plane's declared phase, +1 or -1
-        FAR: tl.constexpr,                # 1 on a folded PERIODIC axis only
+        NEAR: tl.constexpr,               # 1 writes the near plane
+        FAR: tl.constexpr,                # 1 writes the far plane (folded PERIODIC only)
         S0: tl.constexpr, S1: tl.constexpr, S2: tl.constexpr,   # Yee shift on AXIS
         BLOCK: tl.constexpr,
     ):
-        """The two mirror ghost planes of ONE family on ONE axis, in one launch.
+        """A mirror ghost plane of ONE family on ONE axis: the near one, the far one.
+
+        ``NEAR`` and ``FAR`` pick which of the two planes a launch writes. The plan
+        launches the near planes and the far planes SEPARATELY
+        (:meth:`MirrorGhostFillPlan.run_near` / :meth:`~MirrorGhostFillPlan.run_far`),
+        because the driver runs the wall clear (``stepping.zero_metal_*``) BETWEEN
+        the two passes, and the two orders do not store the same words: where a far
+        ghost plane meets a wall plane of another axis, the driver's order images the
+        already-cleared source, ``-PHASE * (+0)``, which is ``-0`` on an even plane,
+        while a far plane written before the clear is cleared to ``+0`` (measured on
+        the array path: 13 words of Bz and of Dx on a grid folding x over a periodic
+        declaration with a z wall, every one a signed zero).
 
         Replaces, for that (family, axis) pair, the whole-plane assignments in
         ``stepping._fill_symmetry_ghost_cells`` (:1426) and
@@ -379,11 +427,11 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
         baking ``n - 2`` reflects about the window top instead of about the second
         mirror, which is a whole cell wrong on every odd-count run.
 
-        ONE LAUNCH PER AXIS. The array path applies the axes in X, Y, Z order so
-        a corner unowned on two planes carries the product of both parities
-        (``_fill_symmetry_ghost_cells``' docstring), and ordering inside a launch
-        is not something a grid of programs can promise — so the plan holds a list
-        of launches and walks it in that order.
+        ONE LAUNCH PER AXIS AND PASS. The array path applies the axes in X, Y, Z
+        order so a corner unowned on two planes carries the product of both
+        parities (``_fill_symmetry_ghost_cells``' docstring), and ordering inside a
+        launch is not something a grid of programs can promise — so the plan holds
+        a list of axes and walks it in that order, once for each pass.
 
         WHETHER THE ORDER CHANGES THE BYTES WAS MEASURED, NOT ASSUMED, and the
         answer is no: every fill is a multiply by exactly +/-1 from a plane no
@@ -418,15 +466,16 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
         # --- near face: cell 0 = +PHASE * cell MIRROR_SOURCE_INDEX --------------
         # Only the components with Yee shift 0 on this axis have an unowned cell 0
         # (MEEP's little_owned_corner0(c) = little_corner + 2 - iyee_shift(c)).
-        if S0 == 0:
-            tl.store(f0 + base, PHASE * tl.load(f0 + base + 2 * stride, mask=live,
-                                                other=0.0), mask=live)
-        if S1 == 0:
-            tl.store(f1 + base, PHASE * tl.load(f1 + base + 2 * stride, mask=live,
-                                                other=0.0), mask=live)
-        if S2 == 0:
-            tl.store(f2 + base, PHASE * tl.load(f2 + base + 2 * stride, mask=live,
-                                                other=0.0), mask=live)
+        if NEAR:
+            if S0 == 0:
+                tl.store(f0 + base, PHASE * tl.load(f0 + base + 2 * stride, mask=live,
+                                                    other=0.0), mask=live)
+            if S1 == 0:
+                tl.store(f1 + base, PHASE * tl.load(f1 + base + 2 * stride, mask=live,
+                                                    other=0.0), mask=live)
+            if S2 == 0:
+                tl.store(f2 + base, PHASE * tl.load(f2 + base + 2 * stride, mask=live,
+                                                    other=0.0), mask=live)
 
         # --- far face: last cell = -PHASE * cell reflect_row --------------------
         # Only on a folded PERIODIC axis, and only for shift-1 components: a
@@ -927,11 +976,14 @@ class FoldedPmlCurlPlan:
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc", "block",
-                 "_targets", "_aux", "_sources", "_coefficients", "_grid", "_kernel")
+                 "chunk_bounds", "_targets", "_aux", "_sources", "_coefficients", "_cb",
+                 "_grid", "_kernel")
 
     def __init__(self, sub_step: str, shape, dtdx: float, bc, block: int,
-                 targets, auxiliaries, sources, coefficients, kernel=None) -> None:
-        from .launch import SUB_STEPS, CupyPointer, _flat  # noqa: PLC0415
+                 targets, auxiliaries, sources, coefficients, kernel=None, *,
+                 chunk_bounds: Any) -> None:
+        from .launch import (SUB_STEPS, CupyPointer, _flat,  # noqa: PLC0415
+                             bind_chunk_bounds)
 
         if sub_step not in SUB_STEPS:
             raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, "
@@ -943,6 +995,11 @@ class FoldedPmlCurlPlan:
         self.backward = int(SUB_STEPS[sub_step]["backward"])
         self.bc = tuple(int(code) for code in bc)
         self.block = int(block)
+        # The chunk record, required and checked against this extent, bound as
+        # launch.PmlCurlPlan binds it: the kernel reads its forms' membership and the
+        # curl's partner presence from it.
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "FoldedPmlCurlPlan")
         self._targets = tuple(CupyPointer(a) for a in targets)
         self._aux = tuple(CupyPointer(a) for a in auxiliaries)
         self._sources = tuple(CupyPointer(a) for a in sources)
@@ -961,7 +1018,7 @@ class FoldedPmlCurlPlan:
         nx, ny, nz = self.shape
         kernel = self._kernel if self._kernel is not None else pml_curl_step_folded
         kernel[self._grid](
-            *self._targets, *self._aux, *self._sources, *self._coefficients,
+            *self._targets, *self._aux, *self._sources, *self._coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
             BACKWARD=self.backward,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
@@ -971,18 +1028,23 @@ class FoldedPmlCurlPlan:
 
     def __repr__(self) -> str:
         return (f"FoldedPmlCurlPlan({self.sub_step}, shape={self.shape}, "
-                f"bc={self.bc}, block={self.block})")
+                f"bc={self.bc}, block={self.block}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_folded_pml_curl(fields: Any, pml: Any, sub_step: str,
-                         block: Optional[int] = None) -> Optional[FoldedPmlCurlPlan]:
+                         block: Optional[int] = None,
+                         chunk_layout: Any = None) -> Optional[FoldedPmlCurlPlan]:
     """Build a folded curl plan from the engine's own objects, or None when refused.
 
     None is the only refusal: a configuration this kernel does not carry must fall
     back to the array path, never raise into a caller that would have stepped
     correctly.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default
+    (``launch.chunk_bounds_for``); its record is what the kernel's forms key on.
     """
-    from .launch import SUB_STEPS  # noqa: PLC0415
+    from .launch import SUB_STEPS, chunk_bounds_for  # noqa: PLC0415
 
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
@@ -1003,16 +1065,24 @@ def plan_folded_pml_curl(fields: Any, pml: Any, sub_step: str,
         [getattr(fields, n) for n in spec["sources"]],
         [getattr(pml, f"{stem}_{axis}{spec['suffix']}")
          for axis in "xyz" for stem in ("kms", "sinv")],
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
 def plan_folded_constitutive(fields: Any, pml: Any, side: str,
-                             block: Optional[int] = None) -> Optional[Any]:
+                             block: Optional[int] = None,
+                             chunk_layout: Any = None) -> Optional[Any]:
     """Build the existing constitutive kernel against a validated folded extent.
 
     The central :func:`launch.plan_constitutive` must keep its ordinary predicate,
     so this builder binds :class:`launch.ConstitutivePlan` directly after the
     fold-specific predicate succeeds.  It does not introduce a second kernel.
+
+    It binds what :func:`launch.plan_constitutive` binds: the run's chunk record
+    (``chunk_layout``, ``None`` for the one-rank default) and, on the H side,
+    ``h_state=fields``, so the run's first H launch starts H and ``f_w`` from B on
+    the cells whose chunk carries H's layer (``stepping.separate_h_from_b``), as the
+    array path's ``update_H`` does on a folded grid too.
     """
     if side not in CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, "
@@ -1020,7 +1090,7 @@ def plan_folded_constitutive(fields: Any, pml: Any, side: str,
     if not folded_constitutive_coverage(fields, pml, side).covered:
         return None
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
-    from .launch import ConstitutivePlan  # noqa: PLC0415
+    from .launch import ConstitutivePlan, chunk_bounds_for  # noqa: PLC0415
 
     spec = CONSTITUTIVE_SIDES[side]
     suffix = "_h" if spec["half_integer"] else ""
@@ -1033,17 +1103,25 @@ def plan_folded_constitutive(fields: Any, pml: Any, side: str,
          if side == "E" else None),
         [getattr(pml, f"{stem}_{axis}{suffix}")
          for axis in "xyz" for stem in ("kps", "kms")],
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        h_state=fields,
     )
 
 
 def plan_folded_from_arrays(sub_step: str, arrays: Dict[str, Any],
                             flat: Dict[str, Any], codes, dtdx: float,
                             block: Optional[int] = None,
-                            kernel: Any = None) -> FoldedPmlCurlPlan:
+                            kernel: Any = None, *,
+                            chunk_bounds: Any) -> FoldedPmlCurlPlan:
     """Build a folded curl plan from bare device arrays — the gate's route.
 
     No coverage predicate runs: the caller is a harness that constructed the
     configuration deliberately, including the deliberately wrong ones.
+
+    ``chunk_bounds`` is REQUIRED and has no default, as in
+    :func:`launch.plan_from_arrays`: the caller hands over the record of the division
+    it built, and a plan without one is refused by name. A default would decide, on
+    the gate's behalf, which cells take which form.
     """
     from .launch import SUB_STEPS  # noqa: PLC0415
 
@@ -1057,17 +1135,29 @@ def plan_folded_from_arrays(sub_step: str, arrays: Dict[str, Any],
         [arrays["fu_" + n] for n in spec["targets"]],
         [arrays[n] for n in spec["sources"]],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
-        kernel=kernel,
+        kernel=kernel, chunk_bounds=chunk_bounds,
     )
 
 
 class MirrorGhostFillPlan:
-    """One family's mirror ghost fills, as one launch PER FOLDED AXIS.
+    """One family's mirror ghost fills, as launches PER FOLDED AXIS, near then far.
 
-    Holds a launch per axis in X, Y, Z order — the order
-    ``_fill_symmetry_ghost_cells`` applies them in, so a corner unowned on two
-    planes carries the product of both parities. ``run`` walks that list; there
-    is no single-launch form, deliberately (see :func:`mirror_ghost_fill`).
+    Holds an entry per folded axis in X, Y, Z order — the order
+    ``_fill_symmetry_ghost_cells`` and ``_fill_folded_far_ghosts`` apply them in, so
+    a corner unowned on two planes carries the product of both parities. There is no
+    single-launch form, deliberately (see :func:`mirror_ghost_fill`).
+
+    THE NEAR PASS AND THE FAR PASS ARE SEPARATE CALLS, :meth:`run_near` and
+    :meth:`run_far`, as the driver's two consults of the fill sub-step are: the fill
+    slot's consult runs the near pass (``fill_symmetry_bc_*``), the driver then runs
+    the wall clear behind no consult, and the folded-far consult runs the far pass
+    (``fill_folded_far_ghosts_*``) — MEEP's order, which the dispatcher keeps for any
+    plan exposing both (``fastpath.FastPathPlan._dispatch_far_fill``). A plan that
+    wrote the far planes inside the near launch would move the far pass in front of
+    the clear, which stores ``+0`` where MEEP stores ``-0`` on every cell where a far
+    ghost plane meets a wall plane. :meth:`run` is the two passes back to back, with
+    no clear between them: the gate's fill leg, which compares with the two array
+    passes run the same way.
     """
 
     __slots__ = ("family", "shape", "block", "axes", "_targets", "_kernel")
@@ -1087,12 +1177,26 @@ class MirrorGhostFillPlan:
         self._kernel = kernel
 
     def run(self, guard: Optional[bool] = None) -> None:
-        """Write every folded axis's ghost planes, in X, Y, Z order, in place."""
+        """Both passes, near then far, with no wall clear between them."""
+        self.run_near(guard)
+        self.run_far(guard)
+
+    def run_near(self, guard: Optional[bool] = None) -> None:
+        """Every folded axis's NEAR ghost plane, in X, Y, Z order, in place."""
+        self._launch(near=True, guard=guard)
+
+    def run_far(self, guard: Optional[bool] = None) -> None:
+        """Every folded PERIODIC axis's FAR ghost plane, in X, Y, Z order, in place."""
+        self._launch(near=False, guard=guard)
+
+    def _launch(self, near: bool, guard: Optional[bool]) -> None:
         from .kernels import ENABLE_FP_FUSION  # noqa: PLC0415
 
         nx, ny, nz = self.shape
         kernel = self._kernel if self._kernel is not None else mirror_ghost_fill
         for entry in self.axes:
+            if not near and not entry["far"]:
+                continue   # no far plane on this axis: nothing to launch
             axis = int(entry["axis"])
             n_plane = (ny * nz, nx * nz, nx * ny)[axis]
             grid = ((n_plane + self.block - 1) // self.block,)
@@ -1101,7 +1205,8 @@ class MirrorGhostFillPlan:
                 nx, ny, nz, n_plane, int(entry["reflect_row"]),
                 AXIS=axis,
                 PHASE=int(entry["phase"]),
-                FAR=1 if entry["far"] else 0,
+                NEAR=1 if near else 0,
+                FAR=0 if near else 1,
                 S0=int(entry["shifts"][0]), S1=int(entry["shifts"][1]),
                 S2=int(entry["shifts"][2]),
                 BLOCK=self.block,

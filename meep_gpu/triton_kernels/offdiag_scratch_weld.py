@@ -247,11 +247,18 @@ class ScratchWeldPairPlan:
     nothing written is read; a plan whose scratch and live buffer were the same
     allocation would be the 2026-08-20 in-place weld again, wearing this class's
     name, and would race exactly as that one did.
+
+    THE CHUNK RECORD IS BOUND HERE, ONCE, FOR EVERY WELD. ``chunk_bounds`` is
+    required (``launch.bind_chunk_bounds``): the base keeps the read-only host copy
+    as :attr:`chunk_bounds` and the device copy as ``_cb``, which a subclass's
+    :meth:`_launch` passes as its kernel's ``cb`` argument once that kernel keys its
+    forms on the chunk division. A weld plan built without a record is refused by
+    name, so no subclass can reach a launch with none.
     """
 
     __slots__ = ("family", "fields", "rotated", "rotated_names", "launches",
                  "shape", "n_elem", "block", "num_warps", "replaces_sub_steps",
-                 "_grid")
+                 "chunk_bounds", "_cb", "_grid")
 
     #: The driver call sites one launch performs. Subclasses override.
     replaces: Tuple[str, ...] = ()
@@ -259,7 +266,9 @@ class ScratchWeldPairPlan:
     def __init__(self, family: str, fields: Any, rotated: Mapping[str, Any],
                  rotated_names: Sequence[str], shape: Sequence[int],
                  block: int, replaces: Sequence[str],
-                 num_warps: Optional[int] = 1) -> None:
+                 num_warps: Optional[int] = 1, *, chunk_bounds: Any) -> None:
+        from .launch import bind_chunk_bounds  # noqa: PLC0415
+
         self.family = str(family)
         self.fields = fields
         self.rotated = dict(rotated)
@@ -273,6 +282,9 @@ class ScratchWeldPairPlan:
         if len(self.shape) != 3:
             raise ValueError("a scratch weld plan needs a three-axis shape")
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, self.rotated[self.rotated_names[0]],
+            f"the {self.family} weld plan")
         self.block = int(block)
         self.num_warps = None if num_warps is None else int(num_warps)
         self.replaces_sub_steps = tuple(replaces)

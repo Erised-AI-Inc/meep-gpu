@@ -99,7 +99,11 @@ def test_the_curl_stencil_is_reused_unchanged(source):
     would be a second copy free to drift.
     """
     text = source((True, True, True), (5, 5, 5))
-    assert text.count("        float curl = dtdx * ((sf - f1) + (f2 - ss));") == 3
+    for partners in ("pr_y, pr_z", "pr_z, pr_x", "pr_x, pr_y"):
+        assert text.count(f"        float curl = curl_stencil(dtdx, sf, f1, f2, ss, "
+                          f"{partners});") == 1
+    # ... and the stencil is the template's own MEEP-grouped helper, lifted whole.
+    assert text.count("    if (pr1 && pr2) return dtdx * (((sf - f1) + f2) - ss);") == 1
 
 
 def test_both_branches_of_the_certified_conditional_are_captured(source):

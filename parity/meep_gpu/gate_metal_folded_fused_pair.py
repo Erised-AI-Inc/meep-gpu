@@ -30,8 +30,12 @@ THE FIVE THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    oracle is the array path this walk would otherwise take. So every case asserts
    the exact LAUNCH COUNT (``launches_per_run`` x steps) and a nonzero ``runs``,
    and every case asserts every compared array MOVED from its seeded value.
-2. **A hollow pass.** THIRTEEN shader mutations and TWO host-binding mutations are
-   ARMED, and each must be CAUGHT. Leg ``disarm`` reruns the identical case with
+2. **A hollow pass.** TWENTY-ONE shader mutations and FOUR host mutations are
+   ARMED, and each must be CAUGHT: the transcription slips, the two INVERTED
+   grouping rows (the package's previous curl and constitutive groupings, KERNELS.md
+   §7.1), and the per-chunk B battery (§7.2) — the select removed, keyed on the
+   wrong lattice or axis, an auxiliary stored on a plain cell, and the chunk record
+   one row wide or with its two lattices exchanged. Leg ``disarm`` reruns the identical case with
    the shipped bytes and no host patch and requires zero, so a mutation reported as
    caught cannot be a harness that diverges anyway.
 3. **A vacuous claim.** On MPS the float32 subnormal flush is native and has no
@@ -79,8 +83,12 @@ LEGS
   4  refusal           the deposit is carried and what cannot be carried is refused
                        by name, in both directions on the flag; the retired fold
                        clause is still retired and the far pass still declared
-  5  mutation          fifteen armed defects, each of which MUST diverge
-  6  disarm            the same harness, shipped bytes, must not diverge
+  5  keyed_at_destination
+                       the far ghost's select keyed at its source must be caught
+                       exactly where the record says the ghost and its reflect row
+                       take different forms; the shipped kernel must not diverge
+  6  mutation          twenty-five armed defects, each of which MUST diverge
+  7  disarm            the same harness, shipped bytes, must not diverge
 
 Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 """
@@ -116,8 +124,10 @@ from meep_gpu.metal_kernels import (  # noqa: E402
 from meep_gpu.metal_kernels.device import (  # noqa: E402
     Residency, compile_source, metal_frontend_version,
 )
+from meep_gpu.pml import PML  # noqa: E402
 from meep_gpu.sources import GaussianPulsedSource  # noqa: E402
 from meep_gpu.triton_kernels.coverage import zero_metal_axes  # noqa: E402
+from gate_chunk_records import every_cell_record, layer_record  # noqa: E402
 
 #: The budget every case runs. Twelve, matching the whole-step arbiter's and the
 #: first fused pair's, and for its reason: the classes this gate exists for
@@ -224,6 +234,7 @@ def differing(left: Any, right: Any) -> int:
 
 def build(keywords: Mapping[str, Any], seed: int,
           value_class: str = values.UNIFORM, scale: float = 1.0,
+          pml_faces: Optional[Any] = None,
           ) -> Tuple[Any, Any]:
     """One seeded engine. Called twice (or three times) per case, identically.
 
@@ -232,8 +243,13 @@ def build(keywords: Mapping[str, Any], seed: int,
     is the fixture that family was certified on. Only the field state is reseeded
     here, and identically on every side — the epsilon volume must stay bit-equal or
     the comparison measures the material rather than the kernel.
+
+    ``pml_faces`` REPLACES the matrix's absorber, per face in cells, for the one leg
+    that needs a layer of a chosen depth (:data:`KEYED_CASES`).
     """
     fields, pml = matrix.folded(**dict(keywords))
+    if pml_faces is not None:
+        pml = PML(grid=fields.grid, thickness=pml_faces)
     if value_class == values.PM_ZERO_LATTICE:
         lattice = values.pm_zero_lattice(fields.grid.shape)
         for name in STATE_NAMES:
@@ -259,6 +275,25 @@ def state_of(fields: Any) -> Dict[str, Any]:
 def frozen(fields: Any) -> Dict[str, np.ndarray]:
     return {name: np.array(value, copy=True)
             for name, value in state_of(fields).items()}
+
+
+#: The auxiliary volumes the per-chunk forms leave untouched off their forms' cells
+#: (KERNELS.md §1, C2): ``fu_*`` off the recurrence's cells, ``f_w_*`` off the
+#: accumulation's. On a configuration where a component's layer is absent (an invariant
+#: axis, an axis with no absorber) the ORACLE never moves that volume either.
+AUXILIARY_PREFIXES: Tuple[str, ...] = ("fu_", "f_w_")
+
+
+def movement_floor(still: Sequence[str], reference_still: Sequence[str]) -> bool:
+    """Every compared array MOVED, except an auxiliary the array path left untouched too.
+
+    The floor exists so a no-op cannot agree with a no-op. Under the auxiliary contract
+    an auxiliary volume the oracle never touches is not a no-op but the contract, so
+    the floor is: nothing stood still that the oracle moved, and nothing stood still
+    that is not an auxiliary.
+    """
+    return (set(still) <= set(reference_still)
+            and all(str(name).startswith(AUXILIARY_PREFIXES) for name in still))
 
 
 def compare(left: Any, right: Any) -> Dict[str, int]:
@@ -360,17 +395,19 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
              functions: Optional[Mapping[str, Any]] = None,
              patch: Optional[Callable[[Any, Any, Residency], None]] = None,
              value_class: str = values.UNIFORM,
+             pml_faces: Optional[Any] = None,
              ) -> Dict[str, Any]:
     """Step the two engines side by side and compare per COMPLETE step."""
-    reference, reference_pml = build(keywords, seed, value_class)
-    actual, actual_pml = build(keywords, seed, value_class)
+    reference, reference_pml = build(keywords, seed, value_class, pml_faces=pml_faces)
+    actual, actual_pml = build(keywords, seed, value_class, pml_faces=pml_faces)
 
     drift = compare(reference, actual)
     assert not drift, f"the two builds are not identical: {drift}"
 
     residency = Residency()
     plan = family.plan_metal_folded_fused_pair(
-        actual, actual_pml, sources=(), residency=residency, functions=functions)
+        actual, actual_pml, sources=(), residency=residency, functions=functions,
+        chunk_bounds=layer_record(actual.grid, actual_pml))
     if plan is None:
         reasons = family.metal_folded_fused_pair_coverage(
             actual, actual_pml, (), residency).reasons
@@ -382,6 +419,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     live = live_passes(actual, actual_pml)
     assert live == live_passes(reference, reference_pml)
     before = frozen(actual)
+    reference_before = frozen(reference)
     residency.sync_in()
 
     per_step: List[Dict[str, Any]] = []
@@ -403,6 +441,10 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     after = state_of(actual)
     moved = {name: differing(before[name], after[name]) for name in before}
     still = sorted(name for name, count in moved.items() if count == 0)
+    reference_after = state_of(reference)
+    reference_still = sorted(
+        name for name in reference_before
+        if differing(reference_before[name], reference_after[name]) == 0)
     identical = (len(per_step) == steps
                  and all(row["differing_words"] == 0 for row in per_step))
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
@@ -418,7 +460,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     if value_class == values.PM_ZERO_LATTICE:
         floor_ok = bool(signs["positive_zero_words"] and signs["negative_zero_words"])
     else:
-        floor_ok = not still
+        floor_ok = movement_floor(still, reference_still)
     return {
         "passed": bool(identical and clean and launches_ok and floor_ok),
         "value_class": value_class,
@@ -434,6 +476,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
         "reference_subnormals": per_step[-1]["reference_subnormals"],
         "arrays_compared": len(before),
         "arrays_that_never_moved": still,
+        "reference_arrays_that_never_moved": reference_still,
         "moved_words": int(sum(moved.values())),
         "runs": plan.runs, "launches": plan.launches,
         "launches_per_run": plan.launches_per_run,
@@ -473,12 +516,15 @@ def run_separate_control(keywords: Mapping[str, Any], seed: int, steps: int,
 
     separate_residency = Residency()
     curl = symmetry.plan_folded_pml_curl(separate, separate_pml, "step_D",
-                                         separate_residency)
+                                         separate_residency,
+                                         chunk_bounds=layer_record(separate.grid, separate_pml))
     electric = symmetry.plan_folded_constitutive(separate, separate_pml, "E",
-                                                 separate_residency)
+                                                 separate_residency,
+                                                 chunk_bounds=layer_record(separate.grid, separate_pml))
     fused_residency = Residency()
     plan = family.plan_metal_folded_fused_pair(
-        fused, fused_pml, sources=(), residency=fused_residency)
+        fused, fused_pml, sources=(), residency=fused_residency,
+        chunk_bounds=layer_record(fused.grid, fused_pml))
     if curl is None or electric is None or plan is None:
         return {"passed": False, "reason": "a declared product was refused",
                 "curl": curl is not None, "constitutive": electric is not None,
@@ -561,7 +607,24 @@ def needle(source: str, old: str, new: str, count: int = 1) -> str:
 
 def shader_mutations(codes: Sequence[int], phases: Sequence[int],
                      walls: Sequence[bool]) -> Dict[str, Dict[str, Any]]:
-    """Thirteen source defects, each a plausible transcription slip.
+    """:func:`shader_edits`, each compiled into the plan builder's ``functions`` seam."""
+    return {name: {shaders.CONTRACT_OFF: compile_source(source).folded_fused_pair_step}
+            for name, source in shader_edits(codes, phases, walls).items()}
+
+
+def shader_edits(codes: Sequence[int], phases: Sequence[int],
+                 walls: Sequence[bool]) -> Dict[str, str]:
+    """The armed source defects as edited sources, each a plausible transcription slip.
+
+    Host-only: every needle is applied (and refused if absent) without compiling, so
+    ``test_gate_metal_folded_fused_pairs_host.py`` checks the table on a laptop.
+
+    THE GROUPINGS ARE INVERTED (KERNELS.md §7.1): the shipped curl and constitutive
+    ARE MEEP's groupings now, so the two grouping rows plant the package's PREVIOUS
+    groupings and stay must-catch. THE B BATTERY (§7.2) follows them: the per-chunk
+    select removed or keyed on the wrong lattice or axis, and an auxiliary stored on
+    a plain cell. Every one is caught on the random full-volume state, where both
+    forms occur on every axis at step 1.
 
     Every needle is anchored on text that only the mutated line carries, and every
     one is verified present before it is applied — an absent needle raises here
@@ -618,26 +681,52 @@ def shader_mutations(codes: Sequence[int], phases: Sequence[int],
             needle(base, "        v0 = at_z ? 0.0f : v0;\n", ""),
         "ownership_mask_dropped":
             needle(base, "    curl0 = at_y ? 0.0f : curl0;\n", ""),
-        # shaders.py rule 2: flattening these parens is a different float32 number.
-        "curl_parens_flattened":
-            needle(base, "dtdx * ((c_y - c) + (b - b_z))",
-                   "dtdx * (c_y - c + b - b_z)"),
+        # INVERTED (KERNELS.md §7.1): the package's PREVIOUS pairwise curl grouping
+        # planted where MEEP's left-to-right bracket now ships.
+        "curl_previous_grouping":
+            needle(base, "dtdx * (((c_y - c) + b) - b_z)",
+                   "dtdx * ((c_y - c) + (b - b_z))"),
+        # INVERTED: the previous constitutive grouping, (f + kps*src) - kms*prev.
+        "constitutive_previous_grouping":
+            needle(base, "oacc = e0[ii] + ((kp_0 * osrc) - (km_0 * oprev));",
+                   "oacc = (e0[ii] + (kp_0 * osrc)) - (km_0 * oprev);"),
         "fu_store_dropped":
-            needle(base, "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;",
-                   "    u1[ii] = n1; u2[ii] = n2;"),
+            needle(base, "    if (du0) { u0[ii] = n0; }\n", ""),
         "fw_store_dropped":
-            needle(base, "        w0[ii] = osrc;", "        // stale f_w_Ex"),
+            needle(base, "        if (dw0) { w0[ii] = osrc; }",
+                   "        // stale f_w_Ex"),
         "constitutive_accumulations_reversed":
-            needle(base, "        oacc = oacc + kp_0 * osrc;\n"
-                         "        oacc = oacc - km_0 * oprev;",
-                   "        oacc = oacc - km_0 * osrc;\n"
-                   "        oacc = oacc + kp_0 * oprev;"),
+            needle(base, "oacc = e0[ii] + ((kp_0 * osrc) - (km_0 * oprev));",
+                   "oacc = e0[ii] + ((km_0 * osrc) - (kp_0 * oprev));"),
+        # --- THE B BATTERY (KERNELS.md §7.2) ----------------------------------
+        # The select removed: every cell steps the recurrence (today's whole-grid
+        # form), and fu is written everywhere.
+        "b1_curl_select_removed":
+            needle(base, "    const bool du0 = in_i_z, du1 = in_i_x, du2 = in_i_y;",
+                   "    const bool du0 = true, du1 = true, du2 = true;"),
+        # The curl's membership read on the E half's (half-integer) lattice: the
+        # boundary plane changes form.
+        "b2_curl_select_on_the_half_integer_lattice":
+            needle(base, "    const bool du0 = in_i_z, du1 = in_i_x, du2 = in_i_y;",
+                   "    const bool du0 = in_h_z, du1 = in_h_x, du2 = in_h_y;"),
+        # dsig and dsigu swapped on target 0: its dsig axis's membership selects.
+        "b3_dsig_and_dsigu_swapped":
+            needle(base, "    const bool du0 = in_i_z, du1 = in_i_x, du2 = in_i_y;",
+                   "    const bool du0 = in_i_y, du1 = in_i_x, du2 = in_i_y;"),
+        # fu stored on a plain cell: C2 leaves it untouched in the oracle.
+        "b4_fu_stored_on_a_plain_cell":
+            needle(base, "    if (du0) { u0[ii] = n0; }", "    u0[ii] = n0;"),
+        "b5_constitutive_select_removed":
+            needle(base, "    const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_z;",
+                   "    const bool dw0 = true, dw1 = true, dw2 = true;"),
+        "b6_constitutive_select_on_the_integer_lattice":
+            needle(base, "    const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_z;",
+                   "    const bool dw0 = in_i_x, dw1 = in_i_y, dw2 = in_i_z;"),
+        "b7_fw_stored_on_a_plain_cell":
+            needle(base, "        if (dw0) { w0[ii] = osrc; }",
+                   "        w0[ii] = osrc;"),
     }
-    mutants: Dict[str, Dict[str, Any]] = {}
-    for name, source in edits.items():
-        mutants[name] = {shaders.CONTRACT_OFF:
-                         compile_source(source).folded_fused_pair_step}
-    return mutants
+    return edits
 
 
 #: Where each binding group starts in the plan's argument tuple. Spelled once, so
@@ -680,9 +769,73 @@ def swap_curl_lattice(plan: Any, pml: Any, residency: Residency) -> None:
              for axis in "xyz" for stem in ("kms", "sinv")])
 
 
+def _rebind_record(plan: Any, record: Any) -> None:
+    """Rebuild the plan's packed ``Params`` around ``record`` and rebind it."""
+    params = family._params_tensor(plan.shape, plan.dtdx, plan.reflect, record,
+                                   plan.residency.device)
+    args = list(plan._args)
+    args[-1] = params
+    plan._args = tuple(args)
+
+
+#: The lattice whose runs :func:`widened_record` tries first: the curl half's, so the
+#: widened row changes a curl form (the constitutive lattice is tried after it).
+WIDEN_ORDER: Tuple[bool, bool] = (False, True)
+
+
+def widened_record(record: Any, shape: Sequence[int]) -> np.ndarray:
+    """The record with one run's upper bound one row too far (host-only).
+
+    The first (lattice, axis) entry in :data:`WIDEN_ORDER` whose first run ends inside
+    the axis is widened by one row, so the boundary plane takes the other form.
+    Refused if no entry can be widened: an unarmed host mutation is a defect reported
+    as uncaught.
+    """
+    from meep_gpu.chunk_map import record_index  # noqa: PLC0415
+
+    widened = np.array(record, copy=True)
+    for half in WIDEN_ORDER:
+        for axis in range(3):
+            a0, a1, b0, b1 = (int(widened[record_index(half, axis, word)])
+                              for word in range(4))
+            limit = b0 if b1 > b0 else int(shape[axis])
+            if a1 > a0 and a1 < limit:
+                widened[record_index(half, axis, 1)] = a1 + 1
+                return widened
+    raise AssertionError("no record run can be widened by one row on this case")
+
+
+def swapped_record(record: Any) -> np.ndarray:
+    """The record with its integer and half-integer entries exchanged (host-only)."""
+    from meep_gpu.chunk_map import record_index  # noqa: PLC0415
+
+    original = np.array(record, copy=True)
+    swapped = original.copy()
+    for axis in range(3):
+        for word in range(4):
+            swapped[record_index(False, axis, word)] = original[record_index(True, axis, word)]
+            swapped[record_index(True, axis, word)] = original[record_index(False, axis, word)]
+    if np.array_equal(swapped, original):
+        raise AssertionError("the two lattices hold the same runs on this case; the "
+                             "swap would arm nothing")
+    return swapped
+
+
+def record_bound_off_by_one(plan: Any, pml: Any, residency: Residency) -> None:
+    """HOST DEFECT (B battery): one run's upper bound one row too far."""
+    _rebind_record(plan, widened_record(plan.chunk_bounds, plan.shape))
+
+
+def record_lattices_swapped(plan: Any, pml: Any, residency: Residency) -> None:
+    """HOST DEFECT (B battery): the integer and half-integer entries exchanged."""
+    _rebind_record(plan, swapped_record(plan.chunk_bounds))
+
+
 HOST_MUTATIONS: Dict[str, Callable[[Any, Any, Residency], None]] = {
     "e_half_takes_the_integer_lattice": swap_e_lattice,
     "curl_takes_the_half_integer_lattice": swap_curl_lattice,
+    "b8_record_bound_off_by_one": record_bound_off_by_one,
+    "b9_record_lattices_swapped": record_lattices_swapped,
 }
 
 
@@ -746,7 +899,8 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     # reflect rows ride in it rather than as bindings. This probe binds the real
     # packer, so a signature that stopped matching the plan builder's record fails
     # here rather than silently reading a shifted field.
-    params = family._params_tensor(shape, dtdx, (-1, -1, -1), "mps")
+    params = family._params_tensor(shape, dtdx, (-1, -1, -1),
+                                   every_cell_record(shape), "mps")
     # n_elem in the record is the product of the shape, which is 60 here and NOT
     # the eight-element probe buffers; the guard is exercised by binding the real
     # packer rather than a hand-built record, so the field the kernel reads is the
@@ -764,6 +918,83 @@ def leg_binding_ceiling() -> Dict[str, Any]:
                packed_fields_correct=fields_ok,
                passed=bool(row["separate_refused_for_the_right_reason"] and fields_ok))
     return row
+
+
+#: THE FAR GHOST KEYED AT ITS SOURCE (KERNELS.md §7.2's last row), and the fixtures
+#: that decide whether that is observable. The E half's membership is on the
+#: component's own axis, which the far fill moves to stored ``last``; the kernel
+#: evaluates the flag there. Keying it at the reflect row is a DIFFERENT form wherever
+#: the record's half-integer line differs between the two rows — which it does on an
+#: odd full count with a one-cell high-face layer (the reflect row is ``stored - 3``,
+#: outside the layer, and ``last`` is inside it). So it is not a declared null: leg
+#: ``keyed_at_destination`` predicts it from the record and requires agreement, and
+#: requires the shipped kernel to be bit-identical on both fixtures. The fixtures step
+#: the ONE-RANK division (``layer_record``), whose lines keep the one-rank rule on
+#: ghost rows too; a lifted division gives an unowned ghost row its image row's line
+#: (``chunk_map.ChunkLayout.membership``), and there the edit is a null by
+#: construction.
+FAR_KEYED_EDIT = ("const bool in_h_y_gf = (((nyi - 1)) >= cbh_y_a0 && ((nyi - 1)) < "
+                  "cbh_y_a1) || (((nyi - 1)) >= cbh_y_b0 && ((nyi - 1)) < cbh_y_b1);",
+                  "const bool in_h_y_gf = in_h_y;")
+
+#: (name, keywords, explicit absorber faces in cells or None). The first is the
+#: observable fixture; the second is the matrix default, where the two rows agree.
+KEYED_CASES: Tuple[Tuple[str, Dict[str, Any], Optional[Any]], ...] = (
+    ("y_periodic_odd_thin_layer_3d", dict(extent=2.1, depth=1.2),
+     ((2, 2), (0, 1), (2, 2))),
+    ("y_periodic_even_3d", dict(depth=1.2), None),
+)
+
+
+def far_ghost_in_run(fields: Any, pml: Any, axis: int = 1) -> Dict[str, Any]:
+    """Component ``axis``'s far ghost and its reflect row, on the E half's lattice."""
+    from meep_gpu.metal_kernels import chunk_bounds  # noqa: PLC0415
+
+    record = layer_record(fields.grid, pml)
+    line = chunk_bounds.decode(record, family.CONSTITUTIVE_HALF_INTEGER, axis,
+                               fields.grid.shape[axis])
+    row = stepping._far_reflect_rows(fields.grid)[axis]
+    return {"destination": bool(line[-1]), "source": bool(line[int(row)]),
+            "reflect_row": int(row), "stored": int(fields.grid.shape[axis])}
+
+
+def leg_keyed_at_destination(steps: int) -> Dict[str, Any]:
+    """The far ghost's select keyed where the cell is, against keying it at the source.
+
+    Per fixture: the shipped kernel must be bit-identical to the array path, and the
+    keyed-at-source edit must be caught exactly where the record predicts the two
+    rows differ. At least one fixture must be observable, or the leg is blind.
+    """
+    rows: Dict[str, Any] = {}
+    ok = True
+    observed_any = False
+    seed = 95000
+    for name, keywords, faces in KEYED_CASES:
+        fields, pml = build(keywords, seed, pml_faces=faces)
+        codes, phases, walls = _specialisation(fields, pml)
+        membership = far_ghost_in_run(fields, pml)
+        observable = membership["destination"] != membership["source"]
+        observed_any = observed_any or observable
+        source = family.folded_fused_pair_source(codes, phases, walls)
+        functions = {shaders.CONTRACT_OFF: compile_source(
+            needle(source, *FAR_KEYED_EDIT)).folded_fused_pair_step}
+        seed += 1
+        shipped = run_case(keywords, seed, steps, pml_faces=faces)
+        mutated = run_case(keywords, seed, steps, functions=functions,
+                           pml_faces=faces)
+        caught = not mutated.get("bit_identical", False)
+        agree = caught == observable
+        ok = ok and bool(shipped.get("passed")) and agree and bool(mutated.get("launches"))
+        rows[name] = {"far_ghost_membership": membership, "observable": observable,
+                      "shipped_passed": bool(shipped.get("passed")),
+                      "shipped_differing_words": shipped.get("differing_words"),
+                      "caught": caught, "prediction_holds": agree,
+                      "first_divergence": mutated.get("first_divergence"),
+                      "differing_words": mutated.get("differing_words"),
+                      "differing_arrays": mutated.get("differing_arrays"),
+                      "pml_faces": faces}
+    return {"passed": bool(ok and observed_any), "some_row_observable": observed_any,
+            "rows": rows}
 
 
 #: The two DEPOSIT cases' fixtures and the component each drives. THE COMPONENT IS THE
@@ -886,7 +1117,8 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
         reference_source, actual_source = source_on(reference), source_on(actual)
         residency = Residency()
         plan = family.plan_metal_folded_fused_pair(
-            actual, actual_pml, sources=(actual_source,), residency=residency)
+            actual, actual_pml, sources=(actual_source,), residency=residency,
+            chunk_bounds=layer_record(actual.grid, actual_pml))
         if plan is None:
             reasons = family.metal_folded_fused_pair_coverage(
                 actual, actual_pml, (actual_source,), residency).reasons
@@ -899,6 +1131,7 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
         live = live_passes(actual, actual_pml)
         assert live == live_passes(reference, reference_pml)
         before = frozen(actual)
+        reference_before = frozen(reference)
         dt = float(actual.grid.dt)
         residency.sync_in()
 
@@ -933,6 +1166,10 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
         after = state_of(actual)
         moved = {name: differing(before[name], after[name]) for name in before}
         still = sorted(name for name, count in moved.items() if count == 0)
+        reference_after = state_of(reference)
+        reference_still = sorted(
+            name for name in reference_before
+            if differing(reference_before[name], reference_after[name]) == 0)
         identical = (len(per_step) == steps
                      and all(row["differing_words"] == 0 for row in per_step))
         clean = all(row["reference_subnormals"] == 0 for row in per_step)
@@ -942,7 +1179,8 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
             # A CONTROL PASSES BY DIVERGING. Reading `bit_identical` for both
             # directions off one field would make "the control worked" and "the
             # product worked" the same sentence.
-            "passed": bool(identical and clean and launches_ok and not still
+            "passed": bool(identical and clean and launches_ok
+                           and movement_floor(still, reference_still)
                            if (repair and carry_images) else not identical),
             "repair": repair, "carries_images": carry_images,
             "component": component,
@@ -957,6 +1195,7 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
             "differing_arrays": per_step[-1]["differing_arrays"],
             "arrays_compared": len(before),
             "arrays_that_never_moved": still,
+            "reference_arrays_that_never_moved": reference_still,
             "runs": plan.runs, "launches": plan.launches,
             "launches_per_run": plan.launches_per_run,
             "live_passes": list(live), "replaces": list(plan.replaces_sub_steps),
@@ -1018,8 +1257,9 @@ def leg_refusal() -> Dict[str, Any]:
     fields, pml = build(REFUSAL_CASE, 91000)
     residency = Residency()
     coverage = family.metal_folded_fused_pair_coverage(fields, pml, (), residency)
-    plan = family.plan_metal_folded_fused_pair(fields, pml, sources=(),
-                                               residency=residency)
+    plan = family.plan_metal_folded_fused_pair(
+        fields, pml, sources=(), residency=residency,
+        chunk_bounds=layer_record(fields.grid, pml))
     live = live_passes(fields, pml)
     # THE ADMISSION. A REAL electric deposit, placed on a row a fill images, is now
     # covered -- this is the clause the 2026-08-28 closure retired, and it is asserted
@@ -1109,7 +1349,7 @@ def main() -> int:
 
     controls = ("y_metallic_wall_z_3d", "xy_mixed_wall_z_3d")
     total = (1 + len(CASES) + len(CASES) + 1 + len(controls)
-             + len(DEPOSIT_CASES) + 1
+             + len(DEPOSIT_CASES) + 1 + 1
              + len(mutants) + len(HOST_MUTATIONS) + 1)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     jsonl = args.out.with_suffix(".jsonl")
@@ -1169,6 +1409,12 @@ def main() -> int:
         rows.append({"index": index, "total": total, "leg": "refusal",
                      "label": "the_deposit_is_carried_and_what_it_cannot_carry_is_named",
                      **leg_refusal()})
+        emit(handle, rows[-1])
+
+        index += 1
+        rows.append({"index": index, "total": total, "leg": "keyed_at_destination",
+                     "label": "the_far_ghost_selects_where_the_cell_is",
+                     **leg_keyed_at_destination(args.steps)})
         emit(handle, rows[-1])
 
         for name, functions in mutants.items():

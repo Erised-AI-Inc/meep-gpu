@@ -2,7 +2,7 @@
 
 This is the complex64 sibling of :mod:`.no_pml_stored_e`.  It preserves ordered
 complex ``D - P0 - P1 ...`` and multiplies the resulting field by real inverse
-epsilon through the probe-licensed ``float2`` expansion.  Bloch is admitted: the
+epsilon through the part-wise ``float2`` helper.  Bloch is admitted: the
 operation is pointwise and therefore has no phase-bearing neighbor access.
 
 The native gate establishes the ordered stored-E update and its handoff to the
@@ -25,8 +25,7 @@ from ..triton_kernels.coverage import (
 from . import shaders, templates
 from .ade_update_p import _physical_name
 from .complex_fields import (
-    _complex_volume_reasons, _expansion_reasons, expansion_from_probe,
-    load_expansion_probe,
+    _complex_volume_reasons,
 )
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import Residency, compile_source
@@ -66,7 +65,7 @@ __BODY__
 """
 
 
-def complex_stored_e_source(pole_count: int, expansion: str,
+def complex_stored_e_source(pole_count: int,
                             contract: str = shaders.CONTRACT_OFF) -> str:
     if not 0 <= int(pole_count) <= MAX_POLES:
         raise ValueError(f"pole_count must be in [0, {MAX_POLES}], got {pole_count!r}")
@@ -74,17 +73,17 @@ def complex_stored_e_source(pole_count: int, expansion: str,
                       for index in range(int(pole_count)))
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
         "__BODY__": "\n".join((templates.GUARD, "    float2 source = d_in[idx];",
                                   chain,
                                   "    e_out[idx] = c_mul_field_left(source, inv_e[idx]);")),
     })
 
 
-def compile_complex_stored_e(pole_count: int, expansion: str,
+def compile_complex_stored_e(pole_count: int,
                              contract: str = shaders.CONTRACT_OFF) -> Any:
     return compile_source(complex_stored_e_source(
-        pole_count, expansion, contract)).complex_stored_e_component
+        pole_count, contract)).complex_stored_e_component
 
 
 def _poles(fields: Any) -> Dict[str, Tuple[Any, ...]]:
@@ -94,8 +93,7 @@ def _poles(fields: Any) -> Dict[str, Tuple[Any, ...]]:
             for component in ELECTRIC_COMPONENTS}
 
 
-def metal_complex_stored_e_coverage(fields: Any, pml: Any, residency: Any = None,
-                                    probe: Any = None) -> Coverage:
+def metal_complex_stored_e_coverage(fields: Any, pml: Any, residency: Any = None) -> Coverage:
     grid = getattr(fields, "grid", None)
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
@@ -162,7 +160,6 @@ def metal_complex_stored_e_coverage(fields: Any, pml: Any, residency: Any = None
     for component, states in _poles(fields).items():
         if len(states) > MAX_POLES:
             reasons.append(f"{component} is driven by {len(states)} poles, more than MAX_POLES={MAX_POLES}")
-    reasons.extend(_expansion_reasons(probe))
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
@@ -180,11 +177,11 @@ class MetalComplexStoredEPlan:
     replaces_sub_steps = ("update_E",)
 
     def __init__(self, entries: Sequence[_Entry], residency: Residency,
-                 volumes: Sequence[str], functions: Mapping[Tuple[str, int, str], Any],
-                 tensors: Mapping[int, Any], expansion: str) -> None:
+                 volumes: Sequence[str], functions: Mapping[Tuple[str, int], Any],
+                 tensors: Mapping[int, Any]) -> None:
         self.entries, self.residency = tuple(entries), residency
         self.volumes = tuple(dict.fromkeys(volumes))
-        self._functions, self._tensors, self.expansion = dict(functions), dict(tensors), expansion
+        self._functions, self._tensors = dict(functions), dict(tensors)
         self.launches = self.runs = 0
         self.launches_per_run = len(self.entries)
 
@@ -196,7 +193,7 @@ class MetalComplexStoredEPlan:
         mode = shaders.CONTRACT_OFF if contract is None else contract
         for entry in self.entries:
             poles = tuple(state.P[entry.component] for state in entry.states)
-            function = self._functions[(mode, len(poles), self.expansion)]
+            function = self._functions[(mode, len(poles))]
             slots = poles + (entry.displacement,) * (MAX_POLES - len(poles))
             function(self._tensors[id(entry.target)], self._tensors[id(entry.displacement)],
                      self._tensors[id(entry.inverse_epsilon)],
@@ -207,19 +204,16 @@ class MetalComplexStoredEPlan:
 
 def plan_metal_complex_stored_e(
         fields: Any, pml: Any, residency: Optional[Residency] = None,
-        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,), probe: Any = None,
-        functions: Optional[Mapping[Tuple[str, int, str], Any]] = None,
+        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
+        functions: Optional[Mapping[Tuple[str, int], Any]] = None,
         ) -> Optional[MetalComplexStoredEPlan]:
-    if not metal_complex_stored_e_coverage(fields, pml, residency, probe).covered:
+    if not metal_complex_stored_e_coverage(fields, pml, residency).covered:
         return None
     assert residency is not None
-    expansion = expansion_from_probe(probe if probe is not None else load_expansion_probe())
-    if expansion is None:
-        return None
     tensors: Dict[int, Any] = {}
     volumes: List[str] = []
     entries: List[_Entry] = []
-    required: set[Tuple[str, int, str]] = set()
+    required: set[Tuple[str, int]] = set()
     order = _poles(fields)
     for component, displacement_name in E_TERMS:
         target, displacement = getattr(fields, component), getattr(fields, displacement_name)
@@ -231,7 +225,7 @@ def plan_metal_complex_stored_e(
             volumes.append(name)
         states = order[component]
         entries.append(_Entry(component, target, displacement, inverse, states))
-        required.update((mode, len(states), expansion) for mode in contract_variants)
+        required.update((mode, len(states)) for mode in contract_variants)
     for state_index, state in enumerate(tuple(getattr(fields, "polarizations", ()) or ())):
         for component in tuple(_call(state, "driven", default=()) or ()):
             for label, host in ((f"P:{component}", state.P[component]),
@@ -246,19 +240,19 @@ def plan_metal_complex_stored_e(
     selected = dict(functions or {})
     for key in required:
         if key not in selected:
-            selected[key] = compile_complex_stored_e(key[1], key[2], key[0])
-    return MetalComplexStoredEPlan(entries, residency, volumes, selected, tensors, expansion)
+            selected[key] = compile_complex_stored_e(key[1], key[0])
+    return MetalComplexStoredEPlan(entries, residency, volumes, selected, tensors)
 
 
 def _arm_coverage(context: Any, slot: str) -> Coverage:
     return (metal_complex_stored_e_coverage(context.fields, context.pml,
-                                             context.residency, context.extra.get("complex_probe"))
+                                             context.residency)
             if slot == "update_E" else Coverage(False, (f"complex stored E cannot fill {slot}",)))
 
 
 def _arm_plan(context: Any, slot: str) -> Optional[MetalComplexStoredEPlan]:
     return (plan_metal_complex_stored_e(context.fields, context.pml, context.residency,
-                                        context.contract_variants, context.extra.get("complex_probe"))
+                                        context.contract_variants)
             if slot == "update_E" else None)
 
 

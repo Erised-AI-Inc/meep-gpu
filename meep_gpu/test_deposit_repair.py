@@ -453,12 +453,23 @@ def test_the_fold_is_really_folded_and_the_two_deposits_land_where_claimed():
     assert deposit_repair.repairable(fields, "D")[0], (
         "the repair refuses this configuration for some OTHER reason, so a divergence "
         "below would not be the mirror image")
-    on_row = sorted(set(numpy.atleast_1d(
-        _folded_source(grid, MIRROR_ROW_Y)._point_iy).tolist()))
-    off_row = sorted(set(numpy.atleast_1d(
-        _folded_source(grid, MID_DOMAIN_Y)._point_iy).tolist()))
+    on_row = _deposit_rows(_folded_source(grid, MIRROR_ROW_Y))
+    off_row = _deposit_rows(_folded_source(grid, MID_DOMAIN_Y))
     assert on_row == [MIRROR_SOURCE_INDEX], on_row
     assert MIRROR_SOURCE_INDEX not in off_row, off_row
+
+
+def _deposit_rows(source):
+    """The y rows a source's deposit changes: the rows of its nonzero amplitudes.
+
+    MEEP lists every point ``loop_in_chunks`` visits in the source's ``src_vol``, a
+    zero weight included (src_vol_chunkloop, sources.cpp:243-312), and so does the
+    package: the point source on the mirror row also lists the next row with amplitude
+    0, which ``step_source`` walks without changing a value.
+    """
+    rows = numpy.atleast_1d(source._point_iy)
+    amps = numpy.atleast_1d(source._point_amps)
+    return sorted(set(rows[amps != 0].tolist()))
 
 
 def test_a_deposit_on_the_mirror_row_IS_carried_once_the_images_are_repaired():
@@ -552,6 +563,94 @@ def test_a_deposit_off_the_mirror_row_on_the_same_folded_grid_is_carried_exactly
     assert not differing, (rows, differing)
 
 
+# ---------------------------------------------------------------------------
+# A PERIODIC SEAM: ONE CELL IN TWO src_vol ENTRIES
+# ---------------------------------------------------------------------------
+#
+# A full-height line on a periodic axis is placed as MEEP's loop_in_chunks places it:
+# the ishift = 0 piece and the lattice image piece both reach the seam row, and
+# fields_chunk::add_source keeps them as two entries (their index vectors differ,
+# sources.cpp:179-181), so the seam cell is deposited twice (step.cpp:309-314). The
+# repair saves and restores CELLS, and the driver's own inject deposits both entries
+# on either leg; these cases measure that the bracket carries a cell deposited twice
+# byte-exactly, folded and unfolded, real and complex, on both seams.
+
+_SEAM_CELL = (1.6, 2.0, 0.0)
+
+
+def _seam_build(folded, complex_storage, seed=20261009):
+    """Periodic y, the absorber on x only, folded on y or not."""
+    from .grid import Mirror
+
+    grid = Grid(resolution=10.0, cell_size=_SEAM_CELL, dimensions=2, courant=0.35,
+                symmetry=(Mirror("Y", 1),) if folded else ())
+    fields = Fields(grid=grid, force_complex_fields=complex_storage)
+    pml = PML(grid=grid, thickness=((2, 2), (0, 0), (0, 0)))
+    fields.enable_pml_storage()
+    generator = numpy.random.default_rng(seed)
+    for name in SEEDED:
+        array = getattr(fields, name, None)
+        if array is not None:
+            _seed(array, generator)
+    return grid, fields, pml
+
+
+def _seam_source(grid, pml, pair, component, x):
+    """A full-height line bound to MEEP's src_vol list on the one-rank division."""
+    from .chunk_map import ChunkLayout
+    from .sources import bind_src_vols
+
+    source = _make_source(grid, pair, component, (x, 0.0, 0.0), (0.0, _SEAM_CELL[1], 0.0))
+    bind_src_vols([source], ChunkLayout.one_rank(grid, pml), grid)
+    return source
+
+
+def _seam_run(folded, complex_storage, pair, component, x, steps, repair=True):
+    grid_a, fields_a, pml_a = _seam_build(folded, complex_storage)
+    grid_b, fields_b, pml_b = _seam_build(folded, complex_storage)
+    src_a = [_seam_source(grid_a, pml_a, pair, component, x)]
+    src_b = [_seam_source(grid_b, pml_b, pair, component, x)]
+    dt = grid_a.dt
+    for step in range(steps):
+        _reference(fields_a, pml_a, src_a, step * dt, dt, pair)
+        if folded:
+            _folded_fused_then_repair(fields_b, pml_b, src_b, step * dt, dt, repair=repair)
+        else:
+            _fused_then_repair(fields_b, pml_b, src_b, step * dt, dt, pair, repair=repair)
+    return src_a[0], _differing(_words(fields_a), _words(fields_b))
+
+
+SEAM_CASES = [(folded, complex_storage, pair, component, x)
+              for folded in (False, True) for complex_storage in (False, True)
+              for pair, component, x in (("D", "Ez", 0.25), ("D", "Ez", 0.0), ("B", "Hz", 0.25))
+              if not (folded and pair == "B")]
+
+
+@pytest.mark.parametrize("folded,complex_storage,pair,component,x", SEAM_CASES,
+                         ids=[f"{'folded' if c[0] else 'unfolded'}-{'complex' if c[1] else 'real'}-"
+                              f"{c[3]}-x{c[4]}" for c in SEAM_CASES])
+@pytest.mark.parametrize("steps", (6, 24))
+def test_a_seam_cell_deposited_twice_is_carried_by_the_repair(folded, complex_storage, pair,
+                                                               component, x, steps):
+    source, differing = _seam_run(folded, complex_storage, pair, component, x, steps)
+    cells = [cell for table in _entry_tables(source)
+             for cell in zip(numpy.atleast_1d(table.ix).tolist(),
+                             numpy.atleast_1d(table.iy).tolist(),
+                             numpy.atleast_1d(table.iz).tolist())]
+    assert len(cells) > len(set(cells)), (
+        "no cell is in two entries; the case does not reach the seam it is about")
+    assert not differing, differing
+    _source, control = _seam_run(folded, complex_storage, pair, component, x, steps,
+                                 repair=False)
+    assert control, "the unrepaired leg matched; this case cannot see the repair"
+
+
+def _entry_tables(source):
+    from .sources import _deposit_tables
+
+    return _deposit_tables(source)
+
+
 def test_an_offdiagonal_row_is_refused_by_name(monkeypatch):
     """The stencil case must be refused, not approximated."""
     _grid, fields, _pml = _build()
@@ -599,7 +698,7 @@ def test_an_unfolded_grid_gains_no_fold_refusal():
 # The absorber the repair inverts, and the fail-open it used to have
 # ---------------------------------------------------------------------------
 #
-# `apply` recomputes `field + kps*fresh - kms*fw_prev`, which is the SPLIT-FIELD
+# `apply` recomputes `field + ((kps*fresh) - (kms*fw_prev))`, which is the SPLIT-FIELD
 # constitutive recurrence and nothing else. `stepping._pml_is_active` sends a layer
 # absorbing on none of its six faces down the PLAIN path instead -- `update_H` returns
 # without touching H (stepping.py:944-945) and `update_E` writes E = constitutive with no
@@ -659,6 +758,15 @@ def test_the_inactive_absorber_the_guard_refuses_really_does_diverge(monkeypatch
     _reference(fields_a, pml_a, src_a, 0.0, dt, pair)
     _fused_then_repair(fields_b, pml_b, src_b, 0.0, dt, pair)
     differing = _differing(_words(fields_a), _words(fields_b))
+    if pair == "D":
+        # MEASURED since the constitutive took MEEP's per-chunk forms: a layer absorbing
+        # nowhere has no chunk carrying any layer, so the repair's form at every deposit
+        # cell is the plain ``E = fresh`` -- the word the plain path writes -- and the
+        # bypass is harmless on this seam. The refusal stands by name
+        # (``test_an_inactive_absorber_is_refused_by_name``); the B seam below is the
+        # case it is still measured on.
+        assert not differing, differing
+        return
     assert differing, (
         f"seam {pair}: the bypassed repair matched the driver on an inactive absorber, "
         f"so this case cannot tell the guard from its absence")
@@ -858,7 +966,7 @@ def test_the_magnetic_branch_repairs_what_update_H_actually_computes():
 # `E[...] = (D - sum P) * inv_eps` straight to storage (stepping.py:1019-1022).
 #
 # WHY IT NEEDED A SECOND REPAIR RATHER THAN A RELAXED FIRST ONE. The split-field
-# repair recomputes `field_old + kps*fresh - kms*fw_prev` from state captured before
+# repair recomputes `field_old + ((kps*fresh) - (kms*fw_prev))` from state captured before
 # the launch. On the plain branch none of those three exists: `f_w_E*` is not
 # allocated at all, there are no kps/kms tables, and the previous field value is not
 # read. `test_an_inactive_absorber_is_refused_by_name` and
@@ -994,9 +1102,9 @@ PLAIN_CASES = [
     ("point, no poles at all", 0, None, "Ez", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 6),
     # A MATERIAL CONDUCTIVITY, which is what `mp.Absorber` installs and what two of the
     # three corpus rows carry. It changes the CURL (stepping._apply_conductive_update)
-    # and the INJECTION (driver._inject_electric_through_conductivity, :3305) and
+    # and the INJECTION (each deposit scales by condinv, sources._deposit) and
     # leaves `update_E` alone -- so this case is about the repair reading a D the
-    # driver rescaled, not about a different constitutive.
+    # conductive deposit wrote, not about a different constitutive.
     ("point, conductive", 2, 0.20, "Ez", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 6),
     ("line, conductive", 2, 0.20, "Ex", (0.0, 0.0, 0.0), (0.6, 0.0, 0.0), 6),
 ]

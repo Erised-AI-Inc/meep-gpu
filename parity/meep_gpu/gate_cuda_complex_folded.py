@@ -59,7 +59,6 @@ because CuPy's disk-cache key is computed above the strip seam)::
 
     CUDA_VISIBLE_DEVICES=$GPU CUPY_CACHE_DIR=$OUT/cupy_cache/ftz_stripped \\
         python -u gate_cuda_complex_folded.py --backend cupy \\
-        --probe parity/meep_gpu/results/expansion_probe_2026-08-17/expansion_probe_keep.json \\
         --subnormal-policy keep --out $OUT/keep/gate.json
 
 Laptop, NO GPU: the HOST backend compiles the SAME emitted characters with the host
@@ -105,7 +104,7 @@ import gate_provenance  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 
 # The certified complex gate is this family's PARENT and its machinery is imported
-# rather than copied: the licence reader, the host-compiled backend's shim and
+# rather than copied: the host-compiled backend's shim and
 # signature parser, the word census and the word comparator are the same questions
 # asked of the same emitter, and two spellings of them is one too many.
 import gate_cuda_complex as parent  # noqa: E402
@@ -250,6 +249,9 @@ def build(xp, spec: Dict[str, Any], courant: float, rng):
     fields = Fields(grid=grid, force_complex_fields=True)
     fields.enable_field_storage()
     fields.enable_pml_storage()
+    # MID-RUN: H is already separated from B, so the oracle and the kernel both step
+    # the seeded state and neither performs the run's first-update_H start.
+    fields.h_separated = True
     epsilon, inverse = {}, {}
     for component in ("Ex", "Ey", "Ez"):
         values = rng.uniform(1.2, 3.4, size=grid.shape).astype(np.float32)
@@ -420,7 +422,7 @@ class CupyBackend:
         family._clear_kernel_cache()
         self.constitutive_module._clear_kernel_cache()
 
-    def set_source_transform(self, transform, arm) -> int:
+    def set_source_transform(self, transform) -> int:
         """Install a text mutation on the emitted source; returns the site count.
 
         Mutating through ``family.set_kernel_source`` is the ONE seam the module
@@ -434,12 +436,12 @@ class CupyBackend:
             return 0
         sites = 0
         for sub_step in family.FOLDED_KERNELS:
-            text, count = transform(family.folded_source(sub_step, arm))
+            text, count = transform(family.folded_source(sub_step))
             sites = max(sites, count)
-            family.set_kernel_source(sub_step, arm, text)
+            family.set_kernel_source(sub_step, text)
         return sites
 
-    def launch_curl(self, sub_step, fields, layer, grid, arm, **overrides) -> None:
+    def launch_curl(self, sub_step, fields, layer, grid, **overrides) -> None:
         # THE LAUNCHER'S EXACTLY-ONE CONTRACT, honoured rather than argued with:
         # ``step_folded_complex`` refuses a grid AND a boundary-code override in
         # one call, and a layer AND a table override likewise -- "passing a layer
@@ -465,18 +467,22 @@ class CupyBackend:
             grid = None
         if "tables" in kwargs:
             layer = None
-        family.step_folded_complex(sub_step, fields, arm, grid=grid, pml=layer,
+        record = kwargs.pop("record")
+        family.step_folded_complex(sub_step, fields, grid=grid, pml=layer,
+                                   chunk_bounds=cp.asarray(
+                                       np.ascontiguousarray(record, dtype=np.int32)),
                                    **kwargs)
         cp.cuda.runtime.deviceSynchronize()
 
-    def launch_constitutive(self, side, fields, layer, grid, arm, *,
+    def launch_constitutive(self, side, fields, layer, grid, *, record,
                             tables=None) -> None:
+        cb = cp.asarray(np.ascontiguousarray(record, dtype=np.int32))
         if tables is None:
             self.constitutive_module.update_fused_pml_complex(
-                side, fields, arm, pml=layer)
+                side, fields, pml=layer, chunk_bounds=cb)
         else:
             self.constitutive_module.update_fused_pml_complex(
-                side, fields, arm, tables=tables)
+                side, fields, tables=tables, chunk_bounds=cb)
         cp.cuda.runtime.deviceSynchronize()
 
     def restore(self) -> None:
@@ -519,25 +525,25 @@ class HostBackend:
         # compiles with contraction off, and the guard CONTROL is device-only.
         self._cache.clear()
 
-    def set_source_transform(self, transform, arm) -> int:
+    def set_source_transform(self, transform) -> int:
         self._transform = transform
         self._cache.clear()
         if transform is None:
             return 0
         sites = 0
         for sub_step in family.FOLDED_KERNELS:
-            _, count = transform(family.folded_source(sub_step, arm))
+            _, count = transform(family.folded_source(sub_step))
             sites = max(sites, count)
         return sites
 
-    def _entry(self, sub_step: str, arm):
+    def _entry(self, sub_step: str):
         import ctypes  # noqa: PLC0415
         import subprocess  # noqa: PLC0415
 
-        key = f"{sub_step}|{complex_emitter.normalized_expansion(arm)}"
+        key = sub_step
         if key in self._cache:
             return self._cache[key]
-        source = family.folded_source(sub_step, arm)
+        source = family.folded_source(sub_step)
         if self._transform is not None:
             source, _ = self._transform(source)
         name, parameters = parent.parse_signature(source)
@@ -592,7 +598,7 @@ class HostBackend:
             raise ValueError("the host leg needs C-contiguous complex volumes")
         return array.view(np.float32).ctypes.data_as(ctypes.c_void_p)
 
-    def curl_arguments(self, sub_step, fields, layer, grid, *, tables=None,
+    def curl_arguments(self, sub_step, fields, layer, grid, *, record, tables=None,
                        boundary_codes=None, phase_flags=None, phase_values=None,
                        dtdx=None):
         import ctypes  # noqa: PLC0415
@@ -627,18 +633,20 @@ class HostBackend:
         arguments += [int(code) for code in boundary_codes]
         arguments += [int(flag) for flag in phase_flags]
         arguments += [ctypes.c_float(float(value)) for value in phase_values]
+        self._record = np.ascontiguousarray(record, dtype=np.int32)  # kept alive
+        arguments += [self._record.ctypes.data_as(ctypes.c_void_p)]
         return arguments, int(nx) * int(ny) * int(nz)
 
-    def launch_curl(self, sub_step, fields, layer, grid, arm, **overrides) -> None:
-        function, _ = self._entry(sub_step, arm)
+    def launch_curl(self, sub_step, fields, layer, grid, **overrides) -> None:
+        function, _ = self._entry(sub_step)
         arguments, cells = self.curl_arguments(sub_step, fields, layer, grid,
                                                **overrides)
         function((cells + 255) // 256, 256, *arguments)
 
-    def launch_constitutive(self, side, fields, layer, grid, arm, *,
+    def launch_constitutive(self, side, fields, layer, grid, *, record,
                             tables=None) -> None:
-        self._parent_host.launch_constitutive(side, fields, layer, grid, arm,
-                                              tables=tables)
+        self._parent_host.launch_constitutive(side, fields, layer, grid,
+                                              record=record, tables=tables)
 
     def restore(self) -> None:
         import shutil  # noqa: PLC0415
@@ -771,7 +779,8 @@ def m_mask_the_metallic_top_plane(text: str) -> Tuple[str, int]:
 
 #: THE NULLS. A battery of only must-be-caught legs scores identically whether the
 #: comparator works or has degenerated into failing everything.
-NULL_MUTATIONS: Tuple[str, ...] = ("fold_ghost_wraps", "reload_the_target",)
+NULL_MUTATIONS: Tuple[str, ...] = ("fold_ghost_wraps", "reload_the_target",
+                                   "auxiliary_load_unguarded")
 
 
 def n_reload_the_target(text: str) -> Tuple[str, int]:
@@ -793,26 +802,32 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "reload_the_target": n_reload_the_target,
     # THE CERTIFIED FAMILY'S OWN DEFECT CLASSES, re-armed here because this family
     # emits its bytes: a fold delta that broke one of them would otherwise be
-    # invisible to a battery that only tested the fold.
-    "fold_the_zero_cross_terms": parent.m_fold_the_zero_cross_terms,
-    "plane_wise_scaling": parent.m_plane_wise_scaling,
-    "left_to_right_curl": parent.m_left_to_right_curl,
-    "phase_on_every_lane": parent.m_phase_on_every_lane,
+    # invisible to a battery that only tested the fold. The two grouping legs are
+    # the INVERTED ones (KERNELS.md section 7.1): the previous package forms are the
+    # mutants now.
+    "full_complex_coefficient_products": parent.m_full_complex_coefficient_products,
+    "old_package_curl_grouping": parent.m_old_package_curl_grouping,
+    "connection_on_every_plane": parent.m_connection_on_every_plane,
     "conjugate_the_rotation": parent.m_conjugate_the_rotation,
     "word_pair_transposed": parent.m_word_pair_transposed,
     "column_major_index": parent.m_column_major_index,
+    # KERNELS.md section 7.2, the B battery on the per-chunk curl forms this family
+    # lifts from the emitter (the auxiliary-load leg is a declared null).
+    "select_removed": parent.b_select_removed,
+    "predicate_on_coefficient_identity": parent.b_predicate_on_coefficient_identity,
+    "swap_dsig_and_dsigu": parent.b_swap_dsig_and_dsigu,
+    "auxiliary_stored_on_a_plain_cell": parent.b_auxiliary_stored_on_a_plain_cell,
+    "auxiliary_load_unguarded": parent.b_auxiliary_load_unguarded,
 }
 
 #: WHICH FOLD CODE A LEG NEEDS TO BE ABLE TO BITE. A leg run only on grids that
 #: cannot express its defect scores UNCAUGHT for a reason that has nothing to do
 #: with the kernel.
-#: Legs whose defect needs a PHASED axis to be able to bite. A rotation mutation on
-#: an unphased grid is a no-op: the kernel emits no multiply at all when every phase
-#: flag is 0, which is the bit-identity of k = 0. Measured 2026-08-20 on the host
-#: leg: both legs caught 6/6 on the three phased fixtures and 0/10 on the unphased
-#: ones, exactly. Scoring them over the unphased fixtures reported PARTIAL for a
-#: reason about the FIXTURE rather than about the kernel.
-MUTATION_REQUIRES_A_PHASE: Tuple[str, ...] = ("phase_on_every_lane",
+#: Legs whose defect needs a PHASED axis to be able to bite. A connection mutation on
+#: an unphased grid is a no-op: no axis carries a connection when every kind is 0,
+#: which is the bit-identity of k = 0. Scoring them over the unphased fixtures would
+#: report PARTIAL for a reason about the FIXTURE rather than about the kernel.
+MUTATION_REQUIRES_A_PHASE: Tuple[str, ...] = ("connection_on_every_plane",
                                               "conjugate_the_rotation")
 
 #: THE CERTIFIED COMPLEX FAMILY'S OWN SIGNED-ZERO DEFECT CLASSES, re-armed here as a
@@ -822,14 +837,11 @@ MUTATION_REQUIRES_A_PHASE: Tuple[str, ...] = ("phase_on_every_lane",
 #: So the bar is "caught on at least one fixture", and the per-fixture table stays in
 #: the artifact rather than being collapsed into a fraction.
 #:
-#: WHY THEY DO NOT FIRE EVERYWHERE, measured rather than guessed: both need a word
-#: that is EXACTLY zero for the cross term's sign to reach an output, and under
-#: uniform random operands the only exact zeros in the step are the ones the kernel
-#: itself writes -- the zero ghost and the masked planes. On the 2026-08-20 host run
-#: they were caught on every ``step_B`` case with a wrapping axis and on no
-#: ``step_D`` case at all, which is where those zeros land.
-INHERITED_MUTATIONS: Tuple[str, ...] = ("fold_the_zero_cross_terms",
-                                        "plane_wise_scaling")
+#: WHY IT DOES NOT FIRE EVERYWHERE: it needs a part that is EXACTLY zero for the
+#: literal cross term's sign to reach an output, and under uniform random operands
+#: the only exact zeros in the step are the ones the kernel itself writes -- the zero
+#: ghost and the masked planes.
+INHERITED_MUTATIONS: Tuple[str, ...] = ("full_complex_coefficient_products",)
 
 MUTATION_REQUIRES_CODE: Dict[str, int] = {
     "drop_the_top_plane_mask": BC_MIRROR_PERIODIC,
@@ -845,13 +857,33 @@ HOST_MUTATIONS: Tuple[str, ...] = (
     "fold_code_read_as_periodic",
     "fold_code_read_as_metallic",
     "unconjugated_backward_phase",
+    # KERNELS.md section 7.2: the chunk record a launch binds, corrupted.
+    "record_bound_off_by_one",
+    "record_lattices_swapped",
 )
 HOST_NULL_MUTATIONS: Tuple[str, ...] = ()
 
 
+def _membership_moves(record, bound, grid) -> bool:
+    """Whether two chunk records give any stored cell a different membership."""
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+
+    for axis in range(3):
+        n_cells = int(grid.shape[axis])
+        for half in (False, True):
+            if not np.array_equal(membership_from_record(record, half, axis, n_cells),
+                                  membership_from_record(bound, half, axis, n_cells)):
+                return True
+    return False
+
+
 def host_mutated_curl_inputs(name: Optional[str], sub_step: str, layer, grid):
-    """The keyword overrides one HOST mutation installs; ``{}`` when there is none."""
-    if name is None:
+    """The keyword overrides one HOST mutation installs; ``{}`` when there is none.
+
+    The two record mutations install no override here: ``curl_case`` corrupts the
+    record it binds (``gate_cuda_complex.host_mutated_record``).
+    """
+    if name is None or name in parent.RECORD_HOST_MUTATIONS:
         return {}
     codes, refusal = family.folded_complex_boundary_codes(grid)
     if refusal is not None:
@@ -874,6 +906,8 @@ def host_mutated_curl_inputs(name: Optional[str], sub_step: str, layer, grid):
         return {"boundary_codes": tuple(
             BC_METALLIC if c == BC_MIRROR_PERIODIC else c for c in codes)}
     if name == "unconjugated_backward_phase":
+        # The other direction's connection: the D curl handed conj(eikna), the B
+        # curl eikna -- the word on the wrong side of the stored window.
         flags, values = parent.host_phase_arguments(
             grid, not CURL_ARRAYS[sub_step]["backward"])
         return {"phase_flags": flags, "phase_values": values}
@@ -894,7 +928,7 @@ def spec_codes(spec: Dict[str, Any]) -> Tuple[int, ...]:
 # One curl case
 # ---------------------------------------------------------------------------
 
-def curl_case(backend, xp, spec, sub_step, courant, value_class, guard, arm,
+def curl_case(backend, xp, spec, sub_step, courant, value_class, guard,
               host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
@@ -913,24 +947,20 @@ def curl_case(backend, xp, spec, sub_step, courant, value_class, guard, arm,
     case: Dict[str, Any] = {
         "label": spec["label"], "sub_step": sub_step, "courant": courant,
         "value_class": value_class, "guard": guard, "backend": backend.name,
-        "arm": complex_emitter.EXPANSION_NAMES[
-            complex_emitter.normalized_expansion(arm)],
         "host_mutation": host_mutation, "fold_axes": spec["axes"],
         "structure": structure_facts(grid),
         "word_census": parent.word_census(host),
     }
     asked = _GridWithCupysName(grid)
     covered, reason = family.covers_complex_folded_curl(
-        fields, layer, asked, sub_step, license=LICENCE_SHAPE,
-        subnormal_policy=POLICY_SHAPE)
+        fields, layer, asked, sub_step)
     case["predicate"] = {"covered": bool(covered), "reason": reason}
     if not covered:
         case["skipped"] = f"the predicate refuses this configuration: {reason}"
         case["seconds"] = time.time() - started
         return case
     certified, certified_reason = coverage.covers_real_pml_complex_curl(
-        fields, layer, asked, sub_step, license=LICENCE_SHAPE,
-        subnormal_policy=POLICY_SHAPE)
+        fields, layer, asked, sub_step)
     case["certified_predicate"] = {"covered": bool(certified),
                                    "reason": certified_reason}
     if certified:
@@ -971,9 +1001,21 @@ def curl_case(backend, xp, spec, sub_step, courant, value_class, guard, arm,
 
     overrides = host_mutated_curl_inputs(host_mutation, sub_step, layer, grid)
     case["host_overrides"] = sorted(overrides)
+    record = parent.case_record(grid, layer)
+    bound = parent.host_mutated_record(host_mutation, record, grid)
+    if (host_mutation in parent.RECORD_HOST_MUTATIONS
+            and not _membership_moves(record, bound, grid)):
+        # A RECORD MUTATION THAT MOVES NO CELL'S MEMBERSHIP scores nothing: the
+        # off-by-one moves the first run's end, and on a division whose layered axes
+        # are all folded that run is the far-face layer ending at the last stored row,
+        # so the moved end lies past the grid.
+        case["skipped"] = ("the record mutation moves no cell's membership on this "
+                           "division (its moved run end lies past the stored rows)")
+        case["seconds"] = time.time() - started
+        return case
 
     restore(fields, frozen)
-    backend.launch_curl(sub_step, fields, layer, grid, arm, **overrides)
+    backend.launch_curl(sub_step, fields, layer, grid, record=bound, **overrides)
     parts = {name: bit_compare(reference[name], getattr(fields, name))
              for name in outputs}
     case["single_launch"] = combine(parts)
@@ -990,7 +1032,7 @@ def curl_case(backend, xp, spec, sub_step, courant, value_class, guard, arm,
                       else (BC_PERIODIC if int(c) == BC_METALLIC else int(c))
                       for c in codes)
         restore(fields, frozen)
-        backend.launch_curl(sub_step, fields, layer, grid, arm,
+        backend.launch_curl(sub_step, fields, layer, grid, record=record,
                             boundary_codes=blind)
         # ``to_host`` FIRST: ``reference`` is a host snapshot and the fields are
         # device arrays on this backend, and ``parent.words_differ`` views NumPy
@@ -1018,7 +1060,7 @@ def curl_case(backend, xp, spec, sub_step, courant, value_class, guard, arm,
         oracle_multi = snapshot(fields)
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
-            backend.launch_curl(sub_step, fields, layer, grid, arm)
+            backend.launch_curl(sub_step, fields, layer, grid, record=record)
             advance_sources(fields, CURL_ARRAYS[sub_step]["sources"])
         multi = {name: bit_compare(oracle_multi[name], getattr(fields, name))
                  for name in outputs}
@@ -1029,8 +1071,7 @@ def curl_case(backend, xp, spec, sub_step, courant, value_class, guard, arm,
     return case
 
 
-def constitutive_case(backend, xp, spec, side, courant, value_class, guard,
-                      arm) -> Dict[str, Any]:
+def constitutive_case(backend, xp, spec, side, courant, value_class, guard) -> Dict[str, Any]:
     """The CERTIFIED complex constitutive kernel against the array path, on a FOLD.
 
     THE CURLS RUN FIRST, both of them, so the state this sub-step reads is a state
@@ -1048,13 +1089,10 @@ def constitutive_case(backend, xp, spec, side, courant, value_class, guard,
     case: Dict[str, Any] = {
         "label": spec["label"], "side": side, "courant": courant,
         "value_class": value_class, "guard": guard, "backend": backend.name,
-        "arm": complex_emitter.EXPANSION_NAMES[
-            complex_emitter.normalized_expansion(arm)],
         "structure": structure_facts(grid),
     }
     covered, reason = family.covers_complex_folded_constitutive(
-        fields, layer, _GridWithCupysName(grid), side, license=LICENCE_SHAPE,
-        subnormal_policy=POLICY_SHAPE)
+        fields, layer, _GridWithCupysName(grid), side)
     case["predicate"] = {"covered": bool(covered), "reason": reason}
     if not covered:
         case["skipped"] = f"the predicate refuses this configuration: {reason}"
@@ -1079,8 +1117,9 @@ def constitutive_case(backend, xp, spec, side, courant, value_class, guard,
         case["seconds"] = time.time() - started
         return case
 
+    record = parent.case_record(grid, layer)
     restore(fields, frozen)
-    backend.launch_constitutive(side, fields, layer, grid, arm)
+    backend.launch_constitutive(side, fields, layer, grid, record=record)
     parts = {name: bit_compare(reference[name], getattr(fields, name))
              for name in outputs}
     case["single_launch"] = combine(parts)
@@ -1095,7 +1134,7 @@ def constitutive_case(backend, xp, spec, side, courant, value_class, guard,
     oracle_multi = snapshot(fields)
     restore(fields, frozen)
     for _ in range(MULTI_STEP_BUDGET):
-        backend.launch_constitutive(side, fields, layer, grid, arm)
+        backend.launch_constitutive(side, fields, layer, grid, record=record)
         advance_sources(fields, CONSTITUTIVE_ARRAYS[side]["sources"])
     multi = {name: bit_compare(oracle_multi[name], getattr(fields, name))
              for name in outputs}
@@ -1109,16 +1148,6 @@ def constitutive_case(backend, xp, spec, side, courant, value_class, guard,
 # The sweeps
 # ---------------------------------------------------------------------------
 
-#: The shape the predicate's licence clause checks. On a device run this is
-#: REPLACED by the verdict the probe artifact licenses; the placeholder exists so a
-#: host run (which compiles no NVRTC and binds no arm from an artifact) can still
-#: ask the predicate its other clauses. ``main`` overwrites both.
-LICENCE_SHAPE: Dict[str, Any] = {"arm": "FMA_V1", "expansion": 1,
-                                 "basis": "measured", "refusals": [],
-                                 "policy_resolved": "keep"}
-POLICY_SHAPE: str = "keep"
-
-
 def case_product(product: str):
     specs = FOLD_SPECS if product == "full" else FOLD_SPECS[:3]
     courants = COURANTS if product == "full" else (INEXACT_COURANT,)
@@ -1128,11 +1157,11 @@ def case_product(product: str):
             for courant in courants for value_class in classes]
 
 
-def run_sweep(results, out_path, backend, xp, product, guard, arm):
+def run_sweep(results, out_path, backend, xp, product, guard):
     cases = []
     plan = case_product(product)
     for index, (spec, sub_step, courant, value_class) in enumerate(plan, start=1):
-        case = curl_case(backend, xp, spec, sub_step, courant, value_class, guard, arm)
+        case = curl_case(backend, xp, spec, sub_step, courant, value_class, guard)
         cases.append(case)
         results.setdefault("sweep", {})[guard] = cases
         save(results, out_path)
@@ -1153,7 +1182,7 @@ def run_sweep(results, out_path, backend, xp, product, guard, arm):
     return cases
 
 
-def run_constitutive(results, out_path, backend, xp, product, guard, arm):
+def run_constitutive(results, out_path, backend, xp, product, guard):
     cases = []
     specs = FOLD_SPECS if product == "full" else FOLD_SPECS[:3]
     courants = COURANTS if product == "full" else (INEXACT_COURANT,)
@@ -1163,7 +1192,7 @@ def run_constitutive(results, out_path, backend, xp, product, guard, arm):
             for courant in courants for value_class in classes]
     for index, (spec, side, courant, value_class) in enumerate(plan, start=1):
         case = constitutive_case(backend, xp, spec, side, courant, value_class,
-                                 guard, arm)
+                                 guard)
         cases.append(case)
         results.setdefault("constitutive", {})[guard] = cases
         save(results, out_path)
@@ -1242,7 +1271,7 @@ def _score(legs, must_be_caught: bool) -> Dict[str, Any]:
             "must_be_caught": must_be_caught, "verdict": verdict}
 
 
-def run_host_mutations(results, out_path, backend, xp, product, scorable, arm):
+def run_host_mutations(results, out_path, backend, xp, product, scorable):
     out: Dict[str, Any] = {}
     plan = mutation_plan(product, scorable)
     for name in HOST_MUTATIONS:
@@ -1254,7 +1283,7 @@ def run_host_mutations(results, out_path, backend, xp, product, scorable, arm):
             if name == "unconjugated_backward_phase" and not any(spec["k"]):
                 continue
             legs.append(curl_case(backend, xp, spec, sub_step, courant,
-                                  value_class, "fmad_false", arm,
+                                  value_class, "fmad_false",
                                   host_mutation=name))
         out[name] = dict(_score(legs, name not in HOST_NULL_MUTATIONS), cases=legs)
         log(f"[host-mut] {name}: caught {out[name]['caught']}/{out[name]['ran']} "
@@ -1264,7 +1293,7 @@ def run_host_mutations(results, out_path, backend, xp, product, scorable, arm):
     return out
 
 
-def run_source_mutations(results, out_path, backend, xp, product, scorable, arm):
+def run_source_mutations(results, out_path, backend, xp, product, scorable):
     """Every device-text defect, applied to the EMITTED strings and recompiled."""
     out: Dict[str, Any] = {}
     plan = mutation_plan(product, scorable)
@@ -1276,20 +1305,20 @@ def run_source_mutations(results, out_path, backend, xp, product, scorable, arm)
                 leg_plan = [e for e in leg_plan if required in spec_codes(e[0])]
             if name in MUTATION_REQUIRES_A_PHASE:
                 leg_plan = [e for e in leg_plan if any(e[0]["k"])]
-            sites = backend.set_source_transform(transform, arm)
+            sites = backend.set_source_transform(transform)
             if sites == 0:
                 out[name] = {"armed": False,
                              "why": (f"matched {sites} site(s); the mutation and "
                                      f"the emitted source have drifted apart")}
                 log(f"[src-mut] {name}: NOT ARMED")
-                backend.set_source_transform(None, arm)
+                backend.set_source_transform(None)
                 results["source_mutations"] = out
                 save(results, out_path)
                 continue
             legs = [curl_case(backend, xp, spec, sub_step, courant, value_class,
-                              "fmad_false", arm)
+                              "fmad_false")
                     for spec, sub_step, courant, value_class in leg_plan]
-            backend.set_source_transform(None, arm)
+            backend.set_source_transform(None)
             scored = _score(legs, name not in NULL_MUTATIONS)
             if name in INHERITED_MUTATIONS:
                 # THE NARROWER QUESTION, asked and labelled as such: this leg
@@ -1312,7 +1341,7 @@ def run_source_mutations(results, out_path, backend, xp, product, scorable, arm)
             results["source_mutations"] = out
             save(results, out_path)
     finally:
-        backend.set_source_transform(None, arm)
+        backend.set_source_transform(None)
     return out
 
 
@@ -1475,13 +1504,9 @@ def save(results, out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    global LICENCE_SHAPE, POLICY_SHAPE
-
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cupy", "host"), default="cupy")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
-    parser.add_argument("--probe", default=None,
-                        help="the expansion probe artifact that licenses the arm")
     parser.add_argument("--subnormal-policy", choices=("keep", "flush"),
                         default=None)
     parser.add_argument("--out", required=True)
@@ -1504,28 +1529,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "emitter_corpus_digest": complex_emitter.corpus_digest(),
         "deltas": [label for label, _o, _n, _s in family._deltas_for("step_B")],
     }
-
-    licence = parent.load_licence(args.probe, args.subnormal_policy)
-    results["expansion_licence"] = licence
-    if licence["usable"]:
-        LICENCE_SHAPE = dict(licence["verdict"])
-        LICENCE_SHAPE["policy_resolved"] = args.subnormal_policy
-        POLICY_SHAPE = args.subnormal_policy
-        arm = licence["arm"]
-    else:
-        # A HOST run binds no arm from an artifact and says so; a DEVICE run
-        # without a usable licence is refused outright, because the arm is a
-        # measured platform fact and compiling one anyway is guessing.
-        if args.backend == "cupy":
-            log("[fatal] no usable expansion licence; the arm may not be guessed")
-            results["status"] = "refused: no usable expansion licence"
-            save(results, args.out)
-            return 2
-        arm = "FMA_V1"
-        results["arm_note"] = ("the host backend binds FMA_V1 by default and "
-                               "certifies nothing about which arm this platform "
-                               "reproduces; that is the device gate's question")
-    results["arm"] = arm
 
     if args.backend == "cupy":
         if cp is None:
@@ -1559,8 +1562,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 continue
             backend.set_guard(options)
             log(f"[guard] {guard} options={options}")
-            run_sweep(results, args.out, backend, xp, args.product, guard, arm)
-            run_constitutive(results, args.out, backend, xp, args.product, guard, arm)
+            run_sweep(results, args.out, backend, xp, args.product, guard)
+            run_constitutive(results, args.out, backend, xp, args.product, guard)
         backend.set_guard(("--fmad=false",))
 
         if not args.skip_mutations:
@@ -1576,9 +1579,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 f"{len(excluded)} excluded")
             save(results, args.out)
             run_host_mutations(results, args.out, backend, xp, args.product,
-                               scorable, arm)
+                               scorable)
             run_source_mutations(results, args.out, backend, xp, args.product,
-                                 scorable, arm)
+                                 scorable)
     finally:
         backend.restore()
 

@@ -34,14 +34,6 @@ DRIVER_PATH = API_ROOT / "meep_gpu" / "driver.py"
 #: refl-angular-kz2d.py's own beta, to five places.
 BETA_CORPUS = 0.3321611318837033
 
-#: The three lines the beta term adds, and the ONLY thing that may separate this
-#: kernel from ``kernels.fused_curl_constitutive_B``.
-BETA_INSERT = (
-    "if HAS_BETA:",
-    "curl0 = curl0 - (beta_plus * b)",
-    "curl1 = curl1 - (beta_minus * a)",
-)
-
 #: The wall clear plus the whole constitutive half — the ONLY thing that may
 #: separate this kernel from ``special_kz.beta_pml_curl_step``. Derived below
 #: rather than listed: it is whatever ``fused_curl_constitutive_B`` has and
@@ -156,17 +148,37 @@ def _reasons(product, fields, pml, sources=()):
 # ---------------------------------------------------------------------------
 
 def test_removing_the_beta_insert_reproduces_the_shipped_fused_pair(bodies):
-    """``this kernel`` minus the three beta lines IS ``fused_curl_constitutive_B``.
+    """``this kernel`` minus its ``if HAS_BETA:`` pass IS ``fused_curl_constitutive_B``.
 
-    An EXACT statement-list equality, in order. This is the diff a reviewer would
-    do by hand, made mechanical: if any other line moved, this fails and names it.
+    An EXACT statement-list equality, in order, against the shipped body read from the
+    file (``test_triton_special_kz.kernel_body_and_insert``). If any statement of the
+    root moved, this fails and names the first difference.
     """
-    without_beta = [line for line in bodies["fused"] if line not in BETA_INSERT]
-    assert without_beta == bodies["ordinary_fused"], (
-        "the beta fused pair is not fused_curl_constitutive_B plus the beta "
-        "insert; first difference at index "
-        + str(next((i for i, (a, b) in enumerate(
-            zip(without_beta, bodies["ordinary_fused"])) if a != b), "length")))
+    from meep_gpu.test_triton_special_kz import kernel_body_and_insert
+
+    body, insert = kernel_body_and_insert(PACKAGE_DIR / "beta_fused_magnetic_pair.py", "beta_fused_curl_constitutive_B")
+    root, root_insert = kernel_body_and_insert(PACKAGE_DIR / "kernels.py",
+                                               "fused_curl_constitutive_B")
+    assert insert and not root_insert, "the beta pass is missing, or the root has one"
+    assert body == root, (
+        "first difference at index "
+        + str(next((i for i, (a, b) in enumerate(zip(body, root)) if a != b),
+                   "length")))
+
+
+def test_the_beta_insert_is_exactly_the_shipped_curls_delta(bodies):
+    """The pass is ``beta_pml_curl_step``'s own, statement for statement, and that curl is
+    ``pml_curl_step`` plus exactly that pass: the lifter adds nothing of its own
+    to the beta pass (the increment, its ownership mask and the ladder)."""
+    from meep_gpu.test_triton_special_kz import kernel_body_and_insert
+
+    _body, insert = kernel_body_and_insert(PACKAGE_DIR / "beta_fused_magnetic_pair.py", "beta_fused_curl_constitutive_B")
+    curl_body, curl_insert = kernel_body_and_insert(PACKAGE_DIR / "special_kz.py",
+                                                    "beta_pml_curl_step")
+    root_curl, _ = kernel_body_and_insert(PACKAGE_DIR / "kernels.py",
+                                          "pml_curl_step")
+    assert curl_insert and insert == curl_insert, (insert[:3], curl_insert[:3])
+    assert curl_body == root_curl
 
 
 def test_removing_the_weld_reproduces_the_shipped_beta_curl(bodies):
@@ -186,13 +198,6 @@ def test_removing_the_weld_reproduces_the_shipped_beta_curl(bodies):
         "difference at index "
         + str(next((i for i, (a, b) in enumerate(
             zip(without_weld, bodies["beta_curl"])) if a != b), "length")))
-
-
-def test_the_beta_insert_is_exactly_the_shipped_curls_delta(bodies):
-    """The three lines are ``beta_pml_curl_step``'s own delta over ``pml_curl_step``."""
-    delta = [line for line in bodies["beta_curl"]
-             if line not in bodies["ordinary_curl"]]
-    assert delta == list(BETA_INSERT), delta
 
 
 def test_every_statement_comes_from_a_shipped_body(bodies):

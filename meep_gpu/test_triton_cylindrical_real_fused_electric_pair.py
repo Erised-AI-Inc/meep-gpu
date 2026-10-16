@@ -185,23 +185,22 @@ def test_every_row_of_the_cell_carries_an_electric_deposit():
 # ---------------------------------------------------------------------------
 
 CURL_LINES = (
-    "curl0 = dtdx * ((c_p - c) + (b - b_z))",
-    "curl1 = dtdx * ((a_z - a) + (c - c_r))",
-    "curl2 = dtdx * ((b_r - b) + (a - a_p))",
-    "n0 = ((p0 * km_y) - curl0) * si_y",
-    "n1 = ((p1 * km_z) - curl1) * si_z",
-    "n2 = ((p2 * km_x) - curl2) * si_x",
+    "curl0 = curl_stencil(c_p, c, b, b_z, dtdx, pp, pz)",
+    "curl1 = curl_stencil(a_z, a, c, c_r, dtdx, pz, pr)",
+    "curl2 = dtdx * tl.load(rad + idx, mask=live, other=0.0)",
+    "du0 = record_in(cb, lattice + 8, k)",
+    "du1 = record_in(cb, lattice + 0, i)",
+    "du2 = record_in(cb, lattice + 4, j)",
 )
 
 #: The lines that are COMPILE-TIME ABSENT at ``BACKWARD = 0``, and are therefore
 #: executed for the first time by this product. Its magnetic twin CARRIES every one
 #: of them and compiles none.
 BACKWARD_ONE_LINES = (
-    "p_here = tl.load(pfx + idx, mask=live, other=0.0)",
-    "p_down = tl.load(pfx + o_r, mask=vr, other=0.0)",
-    "curl2 = dtdx * ((p_down - p_here) + (a - a_p))",
     "curl1 = tl.where(at_r, 0.0, curl1)",
     "v1 = tl.where(at_r, 0.0, v1)",
+    "dfcnd = tl.cast(tl.cast(b, tl.float64) * tl.load(courant + COURANT_FOUR),",
+    "v2 = tl.where(at_r, v2 + dfcnd, v2)",
 )
 
 
@@ -244,52 +243,46 @@ def test_the_constitutive_half_is_the_SCALE_1_arm_with_D_on_the_left():
 
 
 def test_the_axis_rules_are_the_D_sides_and_both_halves_are_present():
-    """``Dz[0] += (4*Courant)*Hp[0]`` then ``Dp[0] = 0`` — and the add is a POST-add
-    on the updated field, deliberately not folded into the curl."""
+    """``Dz[0] += realnum(double(4*Courant) * double(Hp[0]))`` then ``Dp[0] = 0`` --
+    a DOUBLE product rounded once, and a POST-add on the updated field, not folded into
+    the curl."""
     mine = MINE()
     assert "v1 = tl.where(at_r, 0.0, v1)" in mine
-    assert ("v2 = tl.where(at_r, v2 + four_dtdx * "
-            "tl.load(hp + idx, mask=live, other=0.0),") in mine
+    assert ("dfcnd = tl.cast(tl.cast(b, tl.float64) * "
+            "tl.load(courant + COURANT_FOUR),") in mine
+    assert "v2 = tl.where(at_r, v2 + dfcnd, v2)" in mine
     # The B side's own rule must NOT run here: it is in the other arm.
     assert mine.count("v0 = tl.where(at_r, 0.0, v0)") == 1  # the else arm only
 
 
-def test_the_body_differs_from_the_RELEASED_twin_by_exactly_four_things():
-    """THE WHOLE TRANSCRIPTION CLAIM, as a mechanical diff rather than a review.
+def test_the_twins_share_the_curl_half_and_take_the_root_pairs_constitutive_halves():
+    """THE WHOLE TRANSCRIPTION CLAIM, as a mechanical comparison rather than a review.
 
-    The magnetic twin released 2026-08-20 and carries BOTH ``BACKWARD`` arms. This
-    body is that one with (1) the kernel renamed, (2) three inverse-permittivity
-    pointers added, (3) the wall clear swapped from the B family's three rows to the
-    D family's six, and (4) the three constitutive products gaining the ``SCALE = 1``
-    multiply. Anything else in the diff is a drift between a GATED body and an
-    ungated one, and a reader should not have to notice it.
+    The two twins carry the SAME curl half (``cyl_pml_curl_step``'s body, both
+    ``BACKWARD`` arms) up to the seam, and each one's wall clear and constitutive half
+    are the root pair's: ``kernels.fused_curl_constitutive_B`` for the magnetic twin,
+    ``kernels.fused_curl_constitutive_D`` for this one. Anything else is a drift
+    between a body and the source it was copied from.
     """
-    import difflib
+    seam = "at_x, at_y = at_r, j == 0"
+
+    def curl_half(lines):
+        start = next(i for i, line in enumerate(lines) if line.startswith("idx = "))
+        return lines[start:lines.index(seam)]
+
+    def constitutive_half(lines):
+        return lines[lines.index("kp_0 = tl.load(kp0 + i, mask=live, other=0.0)"):]
 
     mine, other = MINE().splitlines(), TWIN().splitlines()
-    added, removed = [], []
-    for line in difflib.unified_diff(other, mine, lineterm="", n=0):
-        if line.startswith("+++") or line.startswith("---") or line.startswith("@@"):
-            continue
-        (added if line.startswith("+") else removed).append(line[1:])
-
-    assert removed == [
-        "def cyl_real_fused_curl_constitutive_B(",
-        "v0 = tl.where(at_x, 0.0, v0)",
-        "v1 = tl.where(at_y, 0.0, v1)",
-        "v2 = tl.where(at_z, 0.0, v2)",
-        "src0 = v0", "src1 = v1", "src2 = v2",
-    ], removed
-    assert added == [
-        "def cyl_real_fused_curl_constitutive_D(",
-        "ie0, ie1, ie2,",
-        "v1 = tl.where(at_x, 0.0, v1)", "v2 = tl.where(at_x, 0.0, v2)",
-        "v0 = tl.where(at_y, 0.0, v0)", "v2 = tl.where(at_y, 0.0, v2)",
-        "v0 = tl.where(at_z, 0.0, v0)", "v1 = tl.where(at_z, 0.0, v1)",
-        "src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)",
-        "src1 = v1 * tl.load(ie1 + idx, mask=live, other=0.0)",
-        "src2 = v2 * tl.load(ie2 + idx, mask=live, other=0.0)",
-    ], added
+    assert curl_half(mine) == curl_half(other)
+    curl = shipped(PACKAGE_DIR / "cylindrical_triton.py", "cyl_pml_curl_step").splitlines()
+    stores = curl.index("tl.store(u0 + idx, n0, mask=live & du0)")
+    assert curl_half(mine) == curl[curl.index("idx = tl.program_id(0) * BLOCK + "
+                                              "tl.arange(0, BLOCK)"):stores]
+    root_d = shipped(PACKAGE_DIR / "kernels.py", "fused_curl_constitutive_D").splitlines()
+    root_b = shipped(PACKAGE_DIR / "kernels.py", "fused_curl_constitutive_B").splitlines()
+    assert constitutive_half(mine) == constitutive_half(root_d)
+    assert constitutive_half(other) == constitutive_half(root_b)
 
 
 def test_the_body_carries_no_boundary_constexpr():
@@ -454,7 +447,8 @@ def test_the_plan_refuses_a_grid_that_stores_more_than_one_phi_cell():
 
     with pytest.raises(ValueError, match="one phi cell"):
         product.CylindricalRealFusedElectricPairPlan(
-            shape=(6, 3, 6), dtdx=0.3, zero_metal=(False, False, True), block=64,
+            shape=(6, 3, 6), dtdx=0.3, courant=0.3, zero_metal=(False, False, True),
+            block=64,
             targets=[numpy.zeros((6, 3, 6), dtype=numpy.float32)] * 3,
             auxiliaries=[numpy.zeros((6, 3, 6), dtype=numpy.float32)] * 3,
             sources=[numpy.zeros((6, 3, 6), dtype=numpy.float32)] * 3,
@@ -463,7 +457,7 @@ def test_the_plan_refuses_a_grid_that_stores_more_than_one_phi_cell():
             e_aux=[numpy.zeros((6, 3, 6), dtype=numpy.float32)] * 3,
             inverse_epsilon=[numpy.zeros((6, 3, 6), dtype=numpy.float32)] * 3,
             e_coefficients=[numpy.zeros(6, dtype=numpy.float32)] * 6,
-            xp=numpy)
+            xp=numpy, chunk_bounds=None, scan_starts=None)
 
 
 def test_the_plan_refuses_a_placeholder_inverse_epsilon_binding():
@@ -474,7 +468,8 @@ def test_the_plan_refuses_a_placeholder_inverse_epsilon_binding():
 
     with pytest.raises(ValueError, match="inv_eps"):
         product.CylindricalRealFusedElectricPairPlan(
-            shape=(6, 1, 6), dtdx=0.3, zero_metal=(False, False, True), block=64,
+            shape=(6, 1, 6), dtdx=0.3, courant=0.3, zero_metal=(False, False, True),
+            block=64,
             targets=[numpy.zeros((6, 1, 6), dtype=numpy.float32)] * 3,
             auxiliaries=[numpy.zeros((6, 1, 6), dtype=numpy.float32)] * 3,
             sources=[numpy.zeros((6, 1, 6), dtype=numpy.float32)] * 3,
@@ -483,7 +478,7 @@ def test_the_plan_refuses_a_placeholder_inverse_epsilon_binding():
             e_aux=[numpy.zeros((6, 1, 6), dtype=numpy.float32)] * 3,
             inverse_epsilon=None,
             e_coefficients=[numpy.zeros(6, dtype=numpy.float32)] * 6,
-            xp=numpy)
+            xp=numpy, chunk_bounds=None, scan_starts=None)
 
 
 def test_the_builder_refuses_every_configuration_the_predicate_refuses():
@@ -703,9 +698,8 @@ def test_the_dead_branch_check_CATCHES_a_rewrite_of_a_dead_branch():
     # ...and a rewrite that only SHIFTS the block must NOT be reported, which is the
     # false positive an index-based comparison produced on m4.
     shifted, hits = gate._rewrite_block(
-        source,
-        ["v2 = tl.where(at_r, v2 + four_dtdx * tl.load(hp + idx, mask=live, other=0.0),",
-         "v2)"], ["v2 = v2"])
+        source, ["v2 = tl.where(at_r, v2 + dfcnd, v2)"],
+        ["v2 = tl.where(at_r, v2 + dfcnd, v2)", "v2 = v2 + 0.0"])
     assert hits == 1
     moved_lines = [line.strip() for line in shifted.splitlines() if line.strip()]
     assert gate._contains_run(moved_lines, blocks["ZM_X"])

@@ -9,13 +9,13 @@ source shapes are provided: `ContinuousSource` (CW point source),
 spatial machinery with a Gaussian temporal envelope), and `VolumeSource` — the
 general form, which takes any electric *or* magnetic component and any temporal
 envelope object. All four place their current through one function,
-`_build_source_points`: a translation of MEEP's `loop_in_chunks` including
-Simpson boundary weights, symmetry-chunk clipping, the lattice fold that
-carries a request past a periodic face back onto the cell with its Bloch phase,
-and — on a mirror-folded axis whose outer boundary is periodic — MEEP's
-lattice-shift image passes, which land a full-width request's far edge weight
-on the top of the stored window (loop_in_chunks.cpp:390-415 keys that loop on
-the boundary being Periodic, not on the symmetry).
+`_source_geometry`: a translation of MEEP's `add_volume_source` and
+`loop_in_chunks` -- Simpson boundary weights, owned-corner clipping, and one
+pass per lattice shift wherever the request reaches a periodic face, each with
+its Bloch factor (loop_in_chunks.cpp:390-418 keys that loop on the boundary
+being Periodic, so a mirror-folded axis with a periodic outer face takes it too).
+`_src_vol_pieces` cuts each shift's points per chunk of a division into MEEP's
+`src_vol` pieces; `_summed_table` is the source's own table, every cell once.
 `create_gaussian_beam_source` is a factory that dresses an `ExtendedSource` with
 a converging Gaussian-beam amplitude function.
 
@@ -24,11 +24,38 @@ field families and replaced wholesale: `ContinuousEnvelope`, `GaussianEnvelope`
 and `CustomEnvelope` translate MEEP's `continuous_src_time`, `gaussian_src_time`
 and `custom_src_time`. Each carries MEEP's `is_integrated` flag.
 
+WHERE THE CURRENT COMES FROM. A lifted run forms every current and dipole through
+the MEEP simulation's OWN `src_time` object: the lift binds it to the source (or to
+a `VolumeSource`'s envelope) with `bind_meep_src_time`, and `dipole(t)` /
+`current(t, dt)` then return `src_time::dipole` / `src_time::current` (meep.hpp,
+sources.cpp) as MEEP's build evaluates them. The words of a carrier depend on which
+libm entry the C++ compiler lands on (`__sincos_stret` on Darwin, glibc `sincos` /
+`cexp` on Linux) and on the C++ runtime's complex division, none of which this
+package can see; MEEP's own object answers for all three. The package's own
+evaluators (`_continuous_dipole`, `_gaussian_dipole`, `_custom_dipole`) serve a
+driver built without MEEP, in MEEP's operation order, and carry no claim of
+identity with MEEP's words. `current` is MEEP's forward difference
+`(dipole(t + dt) - dipole(t)) / dt` (meep.hpp:983-985), formed per part.
+
+THE DEPOSIT LIST IS MEEP'S `src_vol` LIST. MEEP splits each source into one piece
+per (lattice shift, chunk) it touches and appends the piece to that chunk's list,
+unless an entry of the list has the same component, the same shared `src_time`
+instance and the same index vector, in which case the amplitudes are summed into it
+in double (`fields_chunk::add_source`, fields.cpp:576-585; `src_vol::combinable` /
+`add_amplitudes_from`, sources.cpp:179-188; equal src_times share one instance,
+`src_time::add_to` / `src_times_equal`, sources.cpp:33-52). The merged pair then
+deposits once, rounding once; two pieces that share a cell without sharing their
+index vector -- the two ends of a request across a periodic seam -- deposit that cell
+twice, rounding twice. :func:`bind_src_vols` builds the list from the driver's sources
+and its chunk division and gives each source the entries it created, with the summed
+amplitudes; the source deposits them in order.
+
 Inputs: a `Grid` (which supplies the array module `xp`, resolution, dt, cell
 counts and symmetry flags) plus the source specification. Output: a set of grid
-points with precomputed complex amplitudes, plus `dipole(t)` / `current(t, dt)`
-waveforms; `inject(fields, time)` applies `D -= dt * current(t) * amp` at those
-points, which is MEEP's `step_source` (step.cpp:295-298).
+points with precomputed complex128 amplitudes, plus `dipole(t)` / `current(t, dt)`
+waveforms; `inject(fields, time)` applies `f -= real((amp * current(t)) * dt)` at
+those points in double precision, rounding each stored word once, which is MEEP's
+`step_source` (step.cpp:295-317; `_deposit` carries the arithmetic).
 
 Role in the step sequence — MEEP drives the two field families at different
 half-steps (step.cpp:64-100), and `field_type` says which slot a source belongs
@@ -44,27 +71,29 @@ The `amp_factor = 1/(-2*pi*i*f)` convention makes the user-supplied amplitude a
 *current* amplitude, since `current()` is the forward difference of `dipole()`
 (MEEP `src_time::current`).
 
-An `is_integrated` source injects the time-integrated current instead. MEEP
-excludes it from `step_source` and subtracts the dipole inside `update_eh`
-(update_eh.cpp:126-140, `f_minus_p = D - dipole`); this module reaches the same
-E and H by subtracting the whole fresh `dipole` into D or B in the injection
-slot and WITHDRAWING it again before the next curl ladder runs
-(`VolumeSource.withdraw`, called by the driver ahead of step_D / step_B), so the
-array holds exactly `f - dipole` when the constitutive update reads it and
-exactly MEEP's f everywhere else. It used to subtract the *increment*
-`dipole(t) - dipole(t_previous)` and leave the offset standing, which telescopes
-to the same thing ONLY while nothing rescales the array between injections — the
-split PML recurrence's dsigu damping and a D conductivity both do, and both
-measured broken (4.59e-01 and 6.38e-02 against CPU MEEP) before the withdraw
-slot existed, at the floor (9e-07, 2e-07) after. The equivalence still needs the
-mirror-plane repair pass not to copy offset-bearing cells, so an integrated
-source on a symmetric grid raises rather than running slightly wrong.
+An `is_integrated` source is MEEP's polarization source. MEEP's `step_source` skips
+it (step.cpp:300), and `update_eh` builds `f_minus_p`, a copy of D (or B), subtracts
+`real(amp[j] * dipole)` from it per point in double, in list order, and computes E
+(or H) from that copy; D and B themselves never hold the dipole
+(update_eh.cpp:66-140). The dipole time is `time() + dt` for E and `time() + dt/2`
+for H (step.cpp:74, :105). :func:`f_minus_p_begin` and :func:`f_minus_p_end` are that
+copy, done in place around the driver's constitutive consult: the words at the
+integrated points are saved, replaced by `f_minus_p`'s words (and imaged into the
+ghost and wall cells by the same boundary passes the driver ran, so a pointwise
+constitutive update at a ghost reads the image of `f_minus_p`), and restored after
+the update, with the boundary passes run again so every ghost holds MEEP's D. An
+integrated source's `inject` deposits nothing. This replaces a standing offset that
+was subtracted into D/B in the injection slot and withdrawn before the next curl:
+`(f - d) + d` is not `f` in float32, and MEEP never rounds D through the dipole
+(phase 0 measured the offset form against MEEP's own formula at 137 of 280
+point-steps where MEEP's formula holds at 280 of 280).
 
 Real-valued fields — MEEP's default — are injected into as well. MEEP's
 `step_source` writes `f[c][0][i] -= real(A)` and only touches the imaginary plane
-`f[c][1][i]` when the run is complex (step.cpp:295-312), so the real-field
-current is the real part of the SAME complex product `amp[j] * current(t) * dt`
-this module already forms. That is not an approximation of the complex run: the
+`f[c][1][i]` when the run is complex (step.cpp:295-317), so the real-field
+current is the real part of the SAME product `(amp[j] * current(t)) * dt`
+this module already forms, on the same float64 operands. That is not an
+approximation of the complex run: the
 curl, the constitutive relation and the PML recurrence all carry real
 coefficients, so a real run reproduces the real part of the complex one exactly
 — measured 0.0 (bitwise) between CPU MEEP's own two modes, and 0.0 here (see
@@ -78,7 +107,7 @@ That holds for a *spatial* amplitude with phase too — a complex `amplitude`, a
 `amp_func` returning complex values, a Gaussian beam's wavefront curvature, an
 oblique mode's in-plane ramp. `real(A)` is taken there with no condition
 attached, which is MEEP's own step.cpp:307 and, measured, MEEP's own answer:
-`_step_source_values` carries the table. This module used to refuse that pairing
+`_deposit` carries the table. This module used to refuse that pairing
 on the grounds that `Re(a)Re(s) - Im(a)Im(s)` re-reads a spatial phase as a
 per-point time shift; it does, and the resulting field is still exactly the real
 part of the complex run, so the refusal only declined runs MEEP completes. The
@@ -86,8 +115,9 @@ temporal current stays complex in both modes and its real part is taken by
 design: that IS the real-field convention, not a dropped term.
 
 Units are MEEP natural units throughout (c = 1, frequency = 1/wavelength); the
-micrometre conversion belongs to the bridge layer above. Real arrays are
-float32, complex arrays complex64. No array is created here except through
+micrometre conversion belongs to the bridge layer above. Real field arrays are
+float32, complex field arrays complex64; the deposition amplitudes and the deposit
+arithmetic are double, as MEEP's are. No array is created here except through
 `grid.xp`, so the module runs unchanged on NumPy and CuPy.
 """
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -96,10 +126,10 @@ float32, complex arrays complex64. No array is created here except through
 
 from __future__ import annotations
 
-import itertools
 import math
+import weakref
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
 
@@ -109,10 +139,6 @@ from . import host_writes
 if TYPE_CHECKING:
     from .fields import Fields
     from .grid import Grid
-
-# Debug flag: when True, source setup re-checks the linear-index uniqueness
-# invariant that vectorized injection relies on (see _setup_index_arrays).
-DEBUG_VALIDATE_SOURCE_INDICES = False
 
 # Electric components, mapped to the D array they write into. `ContinuousSource`,
 # `ExtendedSource` and `GaussianPulsedSource` drive the D update only and reject
@@ -231,13 +257,30 @@ def _field_type_for(component: str) -> str:  # 'D' or 'B' — which half-step sl
 
 
 def _d_array_for(fields: 'Fields', component: str) -> Any:  # Resolve the D array a component drives; unknown names raise.
-    # RAW: every caller hands this array to :func:`_sparse_subtract`, which moves
+    # RAW: every caller hands this array to :func:`_deposit`, which moves
     # only the source cells. A barriered fetch would sync the whole volume first.
     return host_writes.raw(fields, _validate_component(component))
 
 
 def _array_for(fields: 'Fields', component: str) -> Any:  # Resolve the D or B array a component drives.
     return host_writes.raw(fields, _validate_any_component(component))
+
+
+def _condinv_at(fields: 'Fields', array_name: str) -> Any:  # MEEP's s->condinv[c][d] for the deposit, or None.
+    """The ``condinv`` volume of ``array_name``, the array a non-integrated source deposits into.
+
+    MEEP's ``step_source`` reads ``s->condinv[c][component_direction(sv.c)]`` for the
+    deposited component of EITHER family -- D for an electric source, B for a magnetic
+    one (step.cpp:299-307) -- and scales the current by it inside the one double
+    expression :func:`_deposit` forms. ``array_name`` is the name the caller resolved
+    its array by, so the scale is read for exactly the array written. ``None`` is MEEP's
+    NULL: no conductivity on that component, no multiply. A ``Fields`` stand-in without
+    conductivity support (the unit tests' stub) is lossless.
+    """
+    getter = getattr(fields, "condinv_for", None)
+    if getter is None:
+        return None
+    return getter(array_name)
 
 
 def _axis_is_mirrored(grid: 'Grid', axis: int) -> bool:  # Is this axis mirror-folded?
@@ -574,12 +617,15 @@ def _gaussian_dipole(time: float, omega: float, amp_factor: complex, peak_time: 
     """MEEP sources.cpp:98-107 gaussian_src_time::dipole — Gaussian envelope about the peak.
 
     The carrier phase is referenced to `time - peak_time`, not to absolute time,
-    and the envelope is cut hard outside `cutoff_time`.
+    and the envelope is cut hard outside `cutoff_time`. The envelope's argument is
+    MEEP's expression in MEEP's order, `-tt * tt / (2 * width * width)`
+    (sources.cpp:106), evaluated in double: `-0.5 * (tt / width) ** 2` is the same
+    function and a different double.
     """
     t_rel = time - peak_time
     if np.float32(abs(t_rel)) > cutoff_time:
         return 0.0 + 0j
-    envelope = math.exp(-0.5 * (t_rel / width) ** 2)
+    envelope = math.exp(-t_rel * t_rel / (2 * width * width))
     phase = complex(np.exp(-1j * omega * t_rel))
     return phase * envelope * amp_factor
 
@@ -669,42 +715,134 @@ def _ivec_loop_weight_1d(i: int, n: int, s0: float, s1: float, e0: float, e1: fl
         return 1.0
 
 
-def _build_source_points(grid: 'Grid', component: str, center: Tuple[float, float, float],
-                         size: Tuple[float, float, float], amplitude: complex,
-                         amp_func: Optional[Callable[[float, float, float], complex]],
-                         ) -> Tuple[List[Tuple[int, int, int]], List[complex]]:
-    """Translate a source volume into (index, amplitude) pairs, following MEEP's loop_in_chunks.
+class _SourcePass(NamedTuple):
+    """One lattice shift of a source request: one ``ishift`` of MEEP's loop_in_chunks.
 
-    Line-by-line from sources.cpp:478-489 (add_volume_source), loop_in_chunks.cpp:349-359
-    (bounds), :418-489 (chunk intersection and weight adjustment), sources.cpp:243-312
-    (src_vol_chunkloop) and vec.hpp:151-168, 365-383 (LOOP_OVER_IVECS, IVEC_LOOP_LOC,
-    IVEC_LOOP_WEIGHT).
-
-    Every step is driven by the component's Yee shift, so this serves magnetic
-    components unchanged; the callers decide which components they accept.
+    ``ishift`` is the lattice shift and ``shifti`` its doubled translation
+    (loop_in_chunks.cpp:409-418). ``amp`` is MEEP's ``data->amp * conj(shift_phase)``
+    (sources.cpp:259) as (real, imag). ``points`` lists every point the shifted request
+    places on the window's owned lattice, in ``LOOP_OVER_IVECS`` order (x outermost, z
+    innermost): its CHUNK-frame doubled coordinate per axis (``None`` on an axis MEEP
+    does not loop over), the stored cell it lands on (``None`` where MEEP's own deposit
+    is inert, the metallic wall plane), and ``A(rel_loc)`` as (real, imag).
     """
+
+    ishift: Tuple[int, int, int]
+    shifti: Tuple[int, int, int]
+    amp: Tuple[float, float]
+    points: Tuple[Tuple[Tuple[Optional[int], Optional[int], Optional[int]],
+                        Optional[Tuple[int, int, int]], Tuple[float, float]], ...]
+
+
+class _SourceGeometry(NamedTuple):
+    """Everything ``loop_in_chunks`` needs to cut a source request into MEEP's ``src_vol`` pieces.
+
+    Built once, when the source is placed (:func:`_source_geometry`), from the grid alone;
+    :func:`_src_vol_pieces` cuts it per chunk of a division without calling the source's
+    amplitude function again, so a capsule replay asks it only the questions the
+    construction asked. ``directions`` is MEEP's ``LOOP_OVER_DIRECTIONS`` as package axes,
+    ``yucky`` its three ``LOOP_OVER_IVECS`` directions (outer to inner) with ``None`` for a
+    direction the dimension does not carry. ``is_``/``ie`` are the doubled bounds and
+    ``s0``/``s1``/``e0``/``e1`` the boundary weights of :func:`_compute_boundary_weights`,
+    per axis (unused off ``directions``). ``user_low`` is
+    ``user_volume.little_owned_corner(c)`` per axis, and ``window`` the grid's
+    ``(little_corner, big_corner)``, doubled: the box of the one-chunk division.
+    """
+
+    component: str
+    directions: Tuple[int, ...]
+    yucky: Tuple[Optional[int], Optional[int], Optional[int]]
+    iyee: Tuple[int, int, int]
+    is_: Tuple[int, int, int]
+    ie: Tuple[int, int, int]
+    s0: Tuple[float, float, float]
+    s1: Tuple[float, float, float]
+    e0: Tuple[float, float, float]
+    e1: Tuple[float, float, float]
+    user_low: Tuple[int, int, int]
+    window: Tuple[Tuple[int, int, int], Tuple[int, int, int]]
+    cylindrical: bool
+    passes: Tuple[_SourcePass, ...]
+
+
+def _meep_directions(grid: 'Grid') -> Tuple[Tuple[int, ...], Tuple[Optional[int], Optional[int], Optional[int]]]:
+    """MEEP's ``LOOP_OVER_DIRECTIONS`` and ``yucky_dir`` order for this grid, as package axes.
+
+    vec.hpp ``LOOP_OVER_DIRECTIONS`` walks the ``direction`` enum (X, Y, Z, R, P) from
+    ``start_at_direction`` to ``stop_at_direction``: D1 is Z; D2 is X, Y; D3 is X, Y, Z;
+    Dcyl is Z then R (package z, then package x). vec.cpp ``yucky_dir`` gives the three
+    nested loop directions, outermost first: D2 is (Z, X, Y), Dcyl is (P, R, Z), D1 and D3
+    are (X, Y, Z); a direction the dimension does not carry loops once.
+    """
+    if bool(getattr(grid, "cylindrical", False)):
+        return (2, 0), (None, 0, 2)
+    dimensions = int(getattr(grid, "dimensions", 3))
+    if dimensions == 1:
+        return (2,), (None, None, 2)
+    if dimensions == 2:
+        return (0, 1), (None, 0, 1)
+    return (0, 1, 2), (0, 1, 2)
+
+
+def _source_geometry(grid: 'Grid', component: str, center: Tuple[float, float, float],
+                     size: Tuple[float, float, float], amplitude: complex,
+                     amp_func: Optional[Callable[[float, float, float], complex]],
+                     ) -> _SourceGeometry:
+    """MEEP's ``add_volume_source`` up to the chunk loop, every lattice shift's points evaluated once.
+
+    Line by line from sources.cpp:456-489 (``add_volume_source``), loop_in_chunks.cpp:349-418
+    (the bounds, the boundary weights and the lattice-shift loop) and sources.cpp:243-312
+    (``src_vol_chunkloop``: the location, the amplitude function and the owned test). What
+    depends on the chunk division -- the owned-corner clip of each (shift, chunk) pair,
+    the boundary weights it keeps and the narrow-range minima -- is left to
+    :func:`_src_vol_pieces`; this function enumerates each shift's points over the whole
+    window, which is the union of the chunks' owned ranges.
+
+    THE SHIFTS STAY SEPARATE. A request that reaches a periodic face is placed once per
+    lattice shift, and each (shift, chunk) pair is its own ``src_vol`` (sources.cpp:311);
+    two of them meet on one cell exactly at a periodic seam (the request's two ends, one
+    lattice vector apart) and MEEP deposits each separately, rounding twice
+    (step.cpp:309-314), unless their index vectors are equal and ``add_source`` merges
+    them. Summing the two amplitudes into one deposit, as this module did, rounds once:
+    the one-ulp seam row of every full-width source across a periodic axis.
+
+    THE LOCATION IS MEEP'S. ``IVEC_LOOP_LOC`` forms ``(0.5 * is + i) * inva`` in the chunk
+    frame and ``src_vol_chunkloop`` then adds ``shift * (0.5 * inva)`` (vec.hpp:365-369,
+    sources.cpp:270): two roundings on an image, where the source-frame form rounds once.
+    An axis the dimension does not carry has no coordinate at all: the Python amplitude
+    function receives 0 there (python/typemap_utils.cpp ``vec2py``), and the axis is one
+    point of weight 1 (``s0c``'s ``vec(gv.dim, 1.0)``, loop_in_chunks.cpp:451).
+
+    THE PRODUCTS ARE MEEP'S. ``data.amp *= gv.a`` and ``IVEC_LOOP_WEIGHT * amp`` scale per
+    part; ``data->amp * conj(shift_phase)`` and the product with ``A`` are the C++
+    ``complex<double>`` multiply, ``(ac - bd, ad + bc)`` with every product rounded
+    (:func:`readback.cmul`), and the shift phase's power is the host C++ runtime's
+    (:func:`readback.cpow_int`). A Python complex multiply is not that: CPython's on
+    Apple silicon contracts it to a fused multiply-add (measured: 87,460 of 200,000
+    random products differ from the separately rounded form).
+
+    EVERY OWNED POINT IS KEPT, its amplitude zero or not: MEEP's ``src_vol`` lists them all
+    and its deposit is not word-neutral on a stored ``-0`` (see :func:`_deposit`).
+    """
+    from . import readback  # noqa: PLC0415 - readback imports fields, which imports nothing from here
+
     _validate_any_component(component)
     a = grid.resolution  # MEEP: gv.a
     inva = grid.dx       # MEEP: gv.inva = 1/a
+    directions, yucky = _meep_directions(grid)
+    resolved = tuple(d in directions for d in range(3))
 
-    cx, cy, cz = center
-    sx, sy, sz = size
+    where_min = [center[d] - size[d] / 2 for d in range(3)]
+    where_max = [center[d] + size[d] / 2 for d in range(3)]
 
-    # Source bounds (the MEEP "where" volume)
-    where_min = [cx - sx / 2, cy - sy / 2, cz - sz / 2]
-    where_max = [cx + sx / 2, cy + sy / 2, cz + sz / 2]
-
-    # MEEP sources.cpp:467-476 add_volume_source — the request is measured against the
-    # cell BEFORE anything else happens to it. Wider than one cell plus one pixel and
-    # MEEP aborts; wider than one cell by less than a pixel and MEEP snaps it back to
-    # exactly one cell. Neither is cosmetic here: the ladder below folds every rung onto
-    # the cell modulo the lattice, so a request spanning more than one period lands two
-    # or more lattice images on the same cells and SUMS them, which is a silently
-    # over-driven source that still returns a smooth field. `Lx`/`Ly`/`Lz` are the full
-    # cell lengths on a folded axis too, which is the length MEEP compares against
-    # (its user_volume spans the whole cell, not the stored quadrant).
+    # MEEP sources.cpp:467-476 add_volume_source -- the request is measured against the
+    # cell before anything else happens to it. Wider than one cell plus one pixel and
+    # MEEP aborts; wider by less than a pixel and MEEP snaps it back to exactly one cell,
+    # the minimum moving DOWN by half the excess and the maximum placed one cell length
+    # above the new minimum. `Lx`/`Ly`/`Lz` are the full cell lengths on a folded axis
+    # too, which is the length MEEP compares against (its user_volume spans the cell).
     lengths = (grid.Lx, grid.Ly, grid.Lz)
-    for d in range(3):
+    for d in directions:
         span = where_max[d] - where_min[d]
         if span > lengths[d] + inva:
             raise ValueError(
@@ -712,579 +850,370 @@ def _build_source_points(grid: 'Grid', component: str, center: Tuple[float, floa
                 f"{lengths[d]} by more than one cell ({inva}); MEEP's add_volume_source aborts on "
                 f"exactly this request (sources.cpp:469, \"Source width > cell width\"). A source "
                 f"wider than one lattice period deposits several of its own lattice images onto "
-                f"the same cells and sums them, so it would run and be over-driven rather than "
-                f"fail. Clamp the size to the cell."
+                f"the same cells, so it would run and be over-driven rather than fail. Clamp the "
+                f"size to the cell."
             )
         if span > lengths[d]:
-            # MEEP sources.cpp:471-474, transcribed with its asymmetry intact: the minimum
-            # moves DOWN by half the excess and the maximum is then placed one cell length
-            # above the NEW minimum, so the window shrinks to exactly one period and slides
-            # down by the full excess rather than staying centred on the request.
             excess = span - lengths[d]
             where_min[d] = where_min[d] - excess * 0.5
             where_max[d] = where_min[d] + lengths[d]
 
-    # MEEP sources.cpp:481-484 — delta-function scaling: amp *= gv.a per zero-size
-    # direction, EXCEPT one that MEEP's `nosize_direction` reports:
-    #
-    #     if (where.in_direction(d) == 0.0 && !nosize_direction(d)) data.amp *= gv.a;
-    #
-    # A one-pixel PERIODIC axis is MEEP's own lower-dimensional emulation, so a zero
-    # extent there means "the whole of this direction", not "a delta function at this
-    # point", and no 1/length correction is due. Dropping that clause scales every
-    # source in a 2-D or 1-D run by the resolution — a factor of 10 at res=10 — and
-    # the field it produces is smooth, stable and exactly ten times too large.
-    # `Grid.nosize_direction` is the transcription; it is a no-op on any axis with
-    # more than one cell, so a 3-D run reaches the same product it always did.
-    amp = amplitude
-    for d in range(3):
-        if size[d] == 0.0 and not _nosize_direction(grid, d):
-            amp = amp * a
+    # MEEP sources.cpp:481-484: `data.amp *= gv.a` per zero-size direction the dimension
+    # carries, except a one-pixel periodic one (`nosize_direction`, Grid.nosize_direction:
+    # MEEP's lower-dimensional emulation, where a zero extent means the whole direction).
+    # complex<double> *= double scales each part.
+    amp = (float(complex(amplitude).real), float(complex(amplitude).imag))
+    for d in directions:
+        if where_max[d] - where_min[d] == 0.0 and not _nosize_direction(grid, d):
+            amp = (amp[0] * a, amp[1] * a)
 
-    # MEEP loop_in_chunks.cpp:352-353
-    #   vec yee_c(gv.yee_shift(Centered) - gv.yee_shift(cgrid));
-    #   ivec iyee_c(gv.iyee_shift(Centered) - gv.iyee_shift(cgrid));
-    iyee_c = [_iyee_shift('Centered', d) - _iyee_shift(component, d) for d in range(3)]
-    yee_c = [iyee_c[d] * 0.5 * inva for d in range(3)]
+    # MEEP loop_in_chunks.cpp:352-359: the bounds on the component's lattice and the
+    # boundary weights of the ORIGINAL where.
+    iyee = tuple(_iyee_shift(component, d) for d in range(3))
+    iyee_c = [_iyee_shift('Centered', d) - iyee[d] for d in range(3)]
+    is_ = [0, 0, 0]
+    ie = [0, 0, 0]
+    s0 = [1.0, 1.0, 1.0]
+    s1 = [1.0, 1.0, 1.0]
+    e0 = [1.0, 1.0, 1.0]
+    e1 = [1.0, 1.0, 1.0]
+    for d in directions:
+        yee_c = iyee_c[d] * 0.5 * inva
+        is_[d] = _vec2diel_floor(where_min[d] + yee_c, a) - iyee_c[d]
+        ie[d] = _vec2diel_ceil(where_max[d] + yee_c, a) - iyee_c[d]
+        s0[d], s1[d], e0[d], e1[d] = _compute_boundary_weights(
+            where_min[d], where_max[d], is_[d], ie[d], a)
 
-    # MEEP loop_in_chunks.cpp:354-356
-    #   volume wherec(where + yee_c);
-    #   ivec is(vec2diel_floor(wherec.get_min_corner(), gv.a, ...) - iyee_c);
-    #   ivec ie(vec2diel_ceil(wherec.get_max_corner(), gv.a, ...) - iyee_c);
-    wherec_min = [where_min[d] + yee_c[d] for d in range(3)]
-    wherec_max = [where_max[d] + yee_c[d] for d in range(3)]
-    is_orig = [_vec2diel_floor(wherec_min[d], a) - iyee_c[d] for d in range(3)]
-    ie_orig = [_vec2diel_ceil(wherec_max[d], a) - iyee_c[d] for d in range(3)]
-
-    # MEEP loop_in_chunks.cpp:359 — compute_boundary_weights uses the ORIGINAL where, not wherec
-    s0_orig = [0.0, 0.0, 0.0]
-    s1_orig = [0.0, 0.0, 0.0]
-    e0_orig = [0.0, 0.0, 0.0]
-    e1_orig = [0.0, 0.0, 0.0]
-    for d in range(3):
-        s0, s1, e0, e1 = _compute_boundary_weights(
-            where_min[d], where_max[d], is_orig[d], ie_orig[d], a
-        )
-        s0_orig[d] = s0
-        s1_orig[d] = s1
-        e0_orig[d] = e0
-        e1_orig[d] = e1
-
-    # MEEP loop_in_chunks.cpp:418-446 — chunk intersection.
-    # Sources are added with use_symmetry=false (sources.cpp:487), so a symmetric
-    # run stores only the positive quadrant and the source volume is clipped to it:
-    #   symmetric axis  -> little_corner = io = -2 (MEEP vec.cpp halve(), icenter-2),
-    #                      big_corner = n_full (doubled coords)
-    #   full axis       -> little_corner = io = -n_full, big_corner = +n_full
-    # vec.hpp:1102-1107:
-    #   little_owned_corner(c) = little_corner + 2 - iyee_shift(c)
-    #   big_owned_corner(c)    = big_corner - iyee_shift(c)
-    # MEEP's little corner rounds the cell count DOWN TO EVEN (vec.cpp icenter(),
-    # applied by Simulation._create_grid_volume's center_origin), so a centred axis
-    # starts at -(n_full - n_full % 2) — -L/2 only for an even count. `Grid.
-    # origin_doubled` is the one definition and carries the measured cost of the
-    # parity; the fallback serves the stub grids in test_sources.py.
-    iyee_comp = [_iyee_shift(component, d) for d in range(3)]
-    symmetric = tuple(_axis_is_mirrored(grid, d) for d in range(3))
-    full_counts = (grid.nx_full, grid.ny_full, grid.nz_full)
+    # The window: MEEP's little_corner / big_corner (vec.hpp, `Grid.origin_doubled` and
+    # `Grid.big_corner_doubled` -- `owned_cells`, not the stored count, so a folded periodic
+    # axis's far ghost slot is never deposited into). Its owned range is
+    # `[little_corner + 2 - iyee, big_corner - iyee]` (vec.hpp:1102-1107), with the
+    # cylindrical axis row clawed back to 0 (vec.cpp:432-436). The user volume is the full
+    # cell (a folded axis's full little corner lies below the halved window, so the
+    # `max` against it in loop_in_chunks.cpp:425 never binds there).
     origin_reader = getattr(grid, "origin_doubled", None)
     corner_reader = getattr(grid, "big_corner_doubled", None)
+    axis_reader = getattr(grid, "is_axis", None)
+    full_counts = (grid.nx_full, grid.ny_full, grid.nz_full)
+    stored_counts = (grid.nx, grid.ny, grid.nz)
     io = [0, 0, 0]
-    big_corner = [0, 0, 0]
+    big = [0, 0, 0]
+    user_low = [0, 0, 0]
     for d in range(3):
         if callable(origin_reader):
-            io[d] = origin_reader(d)
-        elif symmetric[d]:
+            io[d] = int(origin_reader(d))
+        elif _axis_is_mirrored(grid, d):
             io[d] = -2
         else:
             io[d] = -(full_counts[d] - full_counts[d] % 2)
-        # MEEP vec.hpp big_corner(): io + 2 * halve()'s num. That is Grid.
-        # owned_cells, NOT the stored count: a folded PERIODIC axis at an even
-        # full count stores one cell past MEEP's corner (the second-mirror plane
-        # and its ghost slot), and depositing into that ghost slot would double
-        # the current the far-plane fill then images there. The fallback serves
-        # the stub grids in test_sources.py, whose stored counts are MEEP's.
         if callable(corner_reader):
-            big_corner[d] = corner_reader(d)
+            big[d] = int(corner_reader(d))
         else:
-            big_corner[d] = io[d] + 2 * (grid.nx, grid.ny, grid.nz)[d]
+            big[d] = io[d] + 2 * stored_counts[d]
+        user_io = -(full_counts[d] - full_counts[d] % 2) if _axis_is_mirrored(grid, d) else io[d]
+        user_low[d] = user_io + 2 - iyee[d]
+        if callable(axis_reader) and axis_reader(d) and user_low[d] == 2:
+            user_low[d] = 0
+    window_low = [_chunk_little_owned(io[d], iyee[d], d, grid) for d in range(3)]
+    window_high = [big[d] - iyee[d] for d in range(3)]
 
-    little_owned = [io[d] + 2 - iyee_comp[d] for d in range(3)]
-    big_owned = [big_corner[d] - iyee_comp[d] for d in range(3)]
-    # MEEP vec.cpp:432-436 little_owned_corner — in Dcyl with the r origin at 0,
-    # an owned corner that lands at doubled r=2 claws back to 0: the axis row of
-    # an integer-r component (Ez, Ep, Hz) IS owned there, which is the ownership
-    # statement behind the per-m axis rules that step it. The generic corner
-    # (little_owned_corner0) excludes it, and with only that rule a source at
-    # r=0 on Ez or Ep clips to nothing and injects zero — a silent no-op run
-    # (measured rel L2 1.0, every component identically zero, before this).
-    axis_reader = getattr(grid, "is_axis", None)
-    if callable(axis_reader):
-        for d in range(3):
-            if axis_reader(d) and little_owned[d] == 2:
-                little_owned[d] = 0
-
-    # MEEP loop_in_chunks.cpp:392-446 — the lattice-shift loop. A source volume that
-    # reaches a PERIODIC face is NOT clipped there: MEEP loops over the lattice shifts
-    # whose translated cell still intersects the request, deposits each translated copy
-    # on the cell it folds onto, and scales it by ``conj(eikna ** ishift)``
-    # (sources.cpp:259, `amp = data->amp * conj(shift_phase)` — the source is specified
-    # in the unfolded frame, so representing it inside the fundamental cell divides by
-    # the Bloch factor rather than multiplying).
-    #
-    # Clipping instead — the whole request ladder truncated at the owned corner, with
-    # the overhanging points clamped back onto the last cell — silently lost the
-    # wrapped plane AND produced duplicate indices, which the fancy-index subtraction
-    # in `_inject_points` drops all but one of. Measured against CPU MEEP on the
-    # standard grating source (an Ey sheet spanning the full periodic cross section of
-    # a 1 x 1 x 4 cell at resolution 15, PML in z only, transmitted flux at five
-    # frequencies): 1.29e-01 at k = 0, where the missing plane is a full 1/15 of the
-    # injected current, and 9.5e-03 at kx = 0.4, where the wrapped plane's own Bloch
-    # factor happens to cancel most of what was dropped. Both complete and return a
-    # plausible transmission spectrum; only the absolute power is wrong, and by an
-    # amount that depends on k.
-    #
-    # An unfolded face the ladder can reach is necessarily periodic: an absorber
-    # removes no wrap (it is a material, not a boundary condition — the wrapped-seam
-    # deposit is measured, test_from_meep's `source_on_the_wrapped_pml_seam`).
-    # `Grid.axis_wraps` is the one definition of which axes have a lattice vector; the
-    # fallback expression is the same rule spelled out for the stub grids in
-    # test_sources.py, which model the registration conventions and nothing else.
-    #
-    # A FOLDED axis is clipped to MEEP's owned corners — MEEP's own shift-0 pass,
-    # `max/min` against the chunk's owned corners (loop_in_chunks.cpp:440,446) —
-    # but when its outer boundary is PERIODIC the fold does not end the story:
-    # `loop_in_chunks` keys the shift range on `boundaries[High][d] == Periodic`
-    # (loop_in_chunks.cpp:393), NOT on the symmetry, so a mirror-folded periodic
-    # axis still loops over lattice images of the request, each clipped to the
-    # same owned window with its boundary weights read in the SOURCE frame
-    # (`iscS += shifti` before the weight comparison, loop_in_chunks.cpp:452-469).
-    # That image pass is how a full-width source stays uniform up to the second
-    # mirror at +L/2: the direct pass leaves the top row its edge weight (0.5
-    # with the volume endpoint ON the sample, 7/8 one rung inside), and the
-    # ishift = -1 image of the volume's OTHER end lands exactly there carrying
-    # the rest. Dropping the image pass was this engine's folded-live-face
-    # divergence family: measured on the binary_grating configuration {PML on X,
-    # Mirror(Y), Y periodic at k = 0, full-width Ez/Hz source}, the deposit
-    # profile read [1, ..., 1, 0.5] against MEEP's uniform 1.0, the missing
-    # half-row surfaced as spurious energy on the mirror-odd component (Hx up to
-    # 3.8e+05 relative on a component MEEP leaves at roundoff), and whole-volume
-    # parity sat at 1e-02..6e-02 where the windowed-source control holds 1e-06
-    # (the `full_width_source_on_folded_live_face_*` parity cases in
-    # test_from_meep.py; the per-row totals are pinned MEEP-free in
-    # test_sources.py).
+    # Which axes MEEP loops lattice shifts over: `boundaries[High][d] == Periodic`
+    # (loop_in_chunks.cpp:391), which is every wrapping axis and also a mirror-folded
+    # axis whose outer face is periodic (the second mirror at +L/2 is a lattice image).
     wraps_reader = getattr(grid, "axis_wraps", None)
-    if callable(wraps_reader):
-        lattice = tuple(bool(wraps_reader(d)) for d in range(3))
-    else:
-        lattice = tuple(not _axis_is_mirrored(grid, d) for d in range(3))
-    # The folded axes whose far face is LIVE (outer boundary periodic, so a second
-    # mirror at +L/2 rather than a wall): exactly the axes whose lattice images
-    # must be deposited. `is_metallic` is read defensively for the stub grids in
-    # test_sources.py, which keep the historical clip-only behaviour.
     metallic_reader = getattr(grid, "is_metallic", None)
+    wraps = tuple(bool(wraps_reader(d)) if callable(wraps_reader) else not _axis_is_mirrored(grid, d)
+                  for d in range(3))
     folded_live = tuple(
-        _axis_is_mirrored(grid, d)
-        and callable(metallic_reader) and not metallic_reader(d)
+        _axis_is_mirrored(grid, d) and callable(metallic_reader) and not metallic_reader(d)
         and callable(corner_reader)
-        for d in range(3)
-    )
-    iscS = [is_orig[d] if lattice[d] else max(is_orig[d], little_owned[d]) for d in range(3)]
-    iecS = [ie_orig[d] if lattice[d] else min(ie_orig[d], big_owned[d]) for d in range(3)]
-
-    # MEEP loop_in_chunks.cpp:448-489 — adjust boundary weights where the chunk
-    # boundary does not coincide with the source boundary.
-    s0c = [1.0, 1.0, 1.0]
-    s1c = [1.0, 1.0, 1.0]
-    e0c = [1.0, 1.0, 1.0]
-    e1c = [1.0, 1.0, 1.0]
-    for d in range(3):
-        # MEEP lines 454-462: chunk start at the source start keeps the source weights
-        if iscS[d] == is_orig[d]:
-            s0c[d] = s0_orig[d]
-            s1c[d] = s1_orig[d]
-        elif iscS[d] == is_orig[d] + 2:
-            s0c[d] = s1_orig[d]  # first boundary cell skipped: s1 becomes the new s0
-        # MEEP lines 463-469: chunk end at the source end keeps the source weights
-        if iecS[d] == ie_orig[d]:
-            e0c[d] = e0_orig[d]
-            e1c[d] = e1_orig[d]
-        elif iecS[d] == ie_orig[d] - 2:
-            e0c[d] = e1_orig[d]  # last boundary cell dropped: e1 becomes the new e0
-        # MEEP lines 470-489: narrow ranges
-        if iecS[d] == iscS[d]:
-            w = min(s0c[d], e0c[d])  # single point
-            s0c[d] = w
-            e0c[d] = w
-            s1c[d] = w
-            e1c[d] = w
-        elif iecS[d] == iscS[d] + 2:
-            w = min(s0c[d], e1c[d])  # two points: cross-adjust
-            s0c[d] = w
-            e1c[d] = w
-            w = min(s1c[d], e0c[d])
-            s1c[d] = w
-            e0c[d] = w
-        elif iecS[d] == iscS[d] + 4:
-            w = min(s1c[d], e1c[d])  # three points: adjust the inner weights
-            s1c[d] = w
-            e1c[d] = w
-
-    # MEEP vec.hpp:153 — loop_n = (ie - is) / 2 + 1, computed per pass inside
-    # `deposit_pass` below: the direct pass and a lattice-image pass clip to
-    # different windows, and an empty one skips itself rather than the whole
-    # request (a request that intersects nothing returns no points naturally).
-
-    # Per-axis stored cell count and wrap factor, for folding a ladder point that sits
-    # outside the cell onto its lattice image. `grid.bloch_phase` is None at k = 0,
-    # where every factor is exactly 1 and the fold is a plain modulo.
-    # `bloch_phase` is read defensively: the source tests drive this through stub grids
-    # that model the registration conventions and nothing else, and a grid without one
-    # is plain-periodic, where every wrap factor is 1.
-    cell_counts = (grid.nx, grid.ny, grid.nz)
-    phase_reader = getattr(grid, "bloch_phase", None)
-    wrap_phases = [
-        phase_reader(d) if (lattice[d] and callable(phase_reader)) else None for d in range(3)
-    ]
-
-    # MEEP stores one more sample per axis than this engine's cell-count arrays,
-    # so the plane ON a metallic high wall is a real array entry there — and an
-    # OWNED one: `grid_volume::owns` (vec.cpp:445-462) includes the big corner,
-    # and `big_owned_corner(c) = big_corner() - iyee_shift(c)` (vec.hpp) equals
-    # the wall plane for an integer-stencil component, so `src_vol_chunkloop`
-    # deposits its Simpson edge weight onto that entry (sources.cpp:264-267, the
-    # `owns(iloc)` skip passes). The deposit is then INERT: `find_metals`
-    # registers every owned point satisfying `on_metal_boundary` — the High test
-    # is `here == big_corner` on a Metallic face (boundaries.cpp:187-201,
-    # :311-340) — and `step_boundaries` zeroes them FIRST (step.cpp:245, "Do the
-    # metals first!") in the same half-step in which `step_source` deposited
-    # (step.cpp:100-103), before any curl or constitutive update reads the array.
-    # This engine keeps the wall as the unstored zero ghost, so the exact image
-    # of MEEP's store-then-zero is to DROP a ladder point landing on the wall
-    # plane. It used to clamp that point onto the last interior cell instead,
-    # which SUMS the wall's edge weight into a live ring: measured on the Dcyl
-    # 3x6 cell at res 10 (CW, until 20, no absorber, whole-volume complex rel L2
-    # against CPU MEEP 1.33.0) a full-radius Ep plane read 7.1e-02, Ez 1.28e-01,
-    # Hr 1.6e-02, and a POINT Ep in the last half-open cell read 1.00e+00 — its
-    # w0 + w1 = 1 collapsed onto one ring, exactly double MEEP's effective w0 —
-    # and on a Cartesian PEC box a full-width Ey line read 3.2e-02; with the
-    # drop, every one of those sits at its interior control's floor (6.8e-07 …
-    # 1.0e-06). Half-integer-stencil components have big_owned_corner one short
-    # of the wall and can never reach this branch, which is why they measured
-    # exact all along. `boundaries` is read defensively for the stub grids in
-    # test_sources.py, which model periodic/folded registration and no walls.
+        for d in range(3))
+    periodic = tuple(resolved[d] and (wraps[d] or folded_live[d]) for d in range(3))
+    # The plane ON a metallic high wall is an owned entry MEEP deposits into and then
+    # zeroes before anything reads it (`find_metals` registers it, `step_boundaries` zeroes
+    # metals first, boundaries.cpp:187-201, step.cpp:245): the exact image here is no
+    # deposit at all. `boundaries` is read defensively for the stub grids in test_sources.py.
     boundaries_reader = getattr(grid, "boundaries", None)
-    metal_high = [
-        (not lattice[d]) and boundaries_reader is not None
-        and boundaries_reader[d][1] == METALLIC
-        for d in range(3)
-    ]
+    metal_high = tuple(
+        (not wraps[d]) and boundaries_reader is not None and boundaries_reader[d][1] == METALLIC
+        for d in range(3))
 
-    accumulated: dict[Tuple[int, int, int], complex] = {}
-    center_vec = [(where_min[d] + where_max[d]) * 0.5 for d in range(3)]  # MEEP sources.cpp:486
+    def cell_of(d: int, p: int) -> Optional[int]:  # The stored cell of an owned doubled coordinate.
+        ladder = (p - io[d]) // 2
+        count = stored_counts[d]
+        if wraps[d]:
+            return ladder % count
+        if metal_high[d] and ladder >= count:
+            return None  # the metallic wall plane: MEEP's deposit there is zeroed unread
+        if not 0 <= ladder < count:
+            raise RuntimeError(
+                f"source deposition on axis {('x', 'y', 'z')[d]}: owned doubled coordinate {p} "
+                f"is stored row {ladder}, outside the {count} stored rows -- a registration "
+                f"slip between the window [{window_low[d]}, {window_high[d]}] and the grid, not "
+                f"a caller error")
+        return ladder
 
-    def deposit_pass(pass_iscS: List[int], pass_iecS: List[int],
-                     pass_s0: List[float], pass_s1: List[float],
-                     pass_e0: List[float], pass_e1: List[float],
-                     shifti: Tuple[int, int, int]) -> None:
-        """One (lattice shift, chunk) ladder — MEEP sources.cpp:265-273 src_vol_chunkloop.
-
-        ``pass_iscS``/``pass_iecS`` are CHUNK-frame doubled bounds; ``shifti`` is
-        the doubled lattice translation, so the source-frame location — where the
-        amplitude function is sampled — is the chunk-frame loc plus
-        ``shifti * dx/2`` (sources.cpp:270, ``loc += shift * (0.5 * inva)``).
-        """
-        pass_n = [(pass_iecS[d] - pass_iscS[d]) // 2 + 1 for d in range(3)]
-        if any(n <= 0 for n in pass_n):
-            return
-        for i1 in range(pass_n[0]):
-            for i2 in range(pass_n[1]):
-                for i3 in range(pass_n[2]):
-                    # MEEP vec.hpp:365-369 IVEC_LOOP_LOC: loc = (0.5*loop_is + loop_i) * inva,
-                    # then sources.cpp:270 restores the source frame with the shift.
-                    loc = [
-                        (0.5 * (pass_iscS[0] + shifti[0]) + i1) * inva,
-                        (0.5 * (pass_iscS[1] + shifti[1]) + i2) * inva,
-                        (0.5 * (pass_iscS[2] + shifti[2]) + i3) * inva,
-                    ]
-                    # MEEP vec.hpp:372-383 IVEC_LOOP_WEIGHT with the adjusted weights
-                    weight = (
-                        _ivec_loop_weight_1d(i1, pass_n[0], pass_s0[0], pass_s1[0], pass_e0[0], pass_e1[0]) *
-                        _ivec_loop_weight_1d(i2, pass_n[1], pass_s0[1], pass_s1[1], pass_e0[1], pass_e1[1]) *
-                        _ivec_loop_weight_1d(i3, pass_n[2], pass_s0[2], pass_s1[2], pass_e0[2], pass_e1[2])
-                    )
-                    # MEEP sources.cpp:272-273 — amplitude sampled at the point's offset
-                    # from the source center. The offset is passed in full: unlike the
-                    # bundle, which computed z and dropped it, amp_func receives all
-                    # three components so z-varying volume sources are expressible.
-                    rel_loc = [loc[d] - center_vec[d] for d in range(3)]
-                    if amp_func is not None:
-                        A = amp_func(rel_loc[0], rel_loc[1], rel_loc[2])
-                    else:
-                        A = 1.0
-                    amp_val = weight * amp * A
-
-                    # MEEP vec.hpp:161-163 — idx = (ivec - little_corner) / 2, then the
-                    # lattice fold: ladder cell j + n sits one lattice vector above cell j,
-                    # so it deposits on cell j mod n carrying conj(bloch_phase ** shift).
-                    cell = [0, 0, 0]
-                    dropped = False
-                    for d, ladder_index in enumerate(
-                            ((pass_iscS[0] + 2 * i1 - io[0]) // 2,
-                             (pass_iscS[1] + 2 * i2 - io[1]) // 2,
-                             (pass_iscS[2] + 2 * i3 - io[2]) // 2)):
-                        count = cell_counts[d]
-                        if lattice[d]:
-                            shift = ladder_index // count
-                            cell[d] = ladder_index - shift * count
-                            if shift and wrap_phases[d] is not None:
-                                amp_val = amp_val * np.conj(wrap_phases[d] ** shift)
-                        elif metal_high[d] and ladder_index >= count:
-                            # The metallic wall plane — MEEP's zero_metal makes this
-                            # deposit inert (the metal_high comment above carries the
-                            # transcription and the measured cost of clamping it).
-                            dropped = True
-                            break
-                        elif folded_live[d] and not 0 <= ladder_index < count:
-                            # Unreachable, and stated rather than absorbed. A
-                            # folded-live axis clips its ladder to MEEP's owned
-                            # corners above (`little_owned` / `big_owned`), and
-                            # `Grid.stored_cells` now covers every one of them at
-                            # both count parities — MEEP's num + 1 allocation,
-                            # whose top shift-0 sample sits AT `big_corner` and is
-                            # owned (vec.cpp:445-462). Dropping the rung was this
-                            # engine's answer while that slot went unstored at an
-                            # odd count; clamping it onto the top stored row was
-                            # the other wrong answer (it double-counts once the
-                            # image pass below deposits the row's own
-                            # lattice-shift contribution). Either would now be a
-                            # silently lost current, so say so instead.
-                            raise RuntimeError(
-                                f"source deposition on folded axis {('x', 'y', 'z')[d]}: ladder "
-                                f"rung {ladder_index} is outside the {count} stored cells "
-                                f"after clipping to MEEP's owned corners "
-                                f"[{little_owned[d]}, {big_owned[d]}] — a registration slip, "
-                                f"not a caller error."
-                            )
-                        else:
-                            # A folded METALLIC axis is clipped, not continued; the
-                            # owned-corner bounds above already keep it in range, so
-                            # this only guards against an off-by-one reaching the
-                            # array.
-                            cell[d] = max(0, min(count - 1, ladder_index))
-                    if dropped:
-                        continue
-
-                    key = (cell[0], cell[1], cell[2])
-                    # Two ladder points can fold onto one cell (a source spanning the whole
-                    # cell contributes at both faces). MEEP's step_source subtracts them one
-                    # after another, so they add; `D[ix, iy, iz] -= amps` would keep only the
-                    # last, so they are summed here and each cell appears exactly once —
-                    # the uniqueness invariant `_index_arrays` depends on.
-                    accumulated[key] = accumulated.get(key, 0j) + amp_val
-
-    # The direct pass — MEEP's ishift = 0.
-    deposit_pass(iscS, iecS, s0c, s1c, e0c, e1c, (0, 0, 0))
-
-    # MEEP loop_in_chunks.cpp:390-415 — the nonzero lattice shifts of a folded
-    # PERIODIC axis. The range is MEEP's own: every ishift for which the shifted
-    # chunk surroundings still intersect the request (:396-398, floor/ceil over
-    # the physical volumes; the reduced grid's surroundings run from the origin
-    # to `big_corner`, vec.cpp `surroundings()`). Each image is clipped to the
-    # owned window and its boundary weights are read in the SOURCE frame
-    # (:452-469), so the far end of a full-width request hands its edge weight to
-    # the top of the stored window — the deposit MEEP's shift pass makes and the
-    # clip-only path lost. The phase factor is `conj(eikna ** ishift)` = 1: a
-    # folded axis refuses a nonzero Bloch phase outright
-    # (`FdtdDriver._require_bloch_is_representable`).
-    #
-    # UNFOLDED periodic axes deliberately keep their shift list at {0}: their
-    # images are already served inside `deposit_pass` by the modulo fold with
-    # `conj(bloch_phase ** shift)`, the equivalent of MEEP's shift passes when
-    # the chunk spans the whole lattice period (measured, test_from_meep's
-    # `source_on_the_wrapped_pml_seam`).
-    shift_lists: List[List[int]] = [[0], [0], [0]]
-    for d in range(3):
-        if not folded_live[d] or lengths[d] <= 0.0:
+    # MEEP loop_in_chunks.cpp:391-404: the shift range over which the window's surroundings
+    # intersect the request, `gv[ivec] = ivec * (0.5 * inva)` and the lattice vector
+    # `gv[ilattice_vector(d)]` (boundaries.cpp:121-148), whose length is the FULL cell's.
+    half_inva = 0.5 * inva
+    min_ishift = [0, 0, 0]
+    max_ishift = [0, 0, 0]
+    period = [0, 0, 0]
+    for d in directions:
+        if not periodic[d]:
             continue
-        gvs_min = io[d] * 0.5 * inva
-        gvs_max = big_corner[d] * 0.5 * inva
-        low = int(math.floor((where_min[d] - gvs_max) / lengths[d]))
-        high = int(math.ceil((where_max[d] - gvs_min) / lengths[d]))
-        shift_lists[d] = list(range(low, high + 1))
-        if 0 not in shift_lists[d]:
-            shift_lists[d].append(0)
-    for combo in itertools.product(*shift_lists):
-        if combo == (0, 0, 0):
-            continue  # The direct pass above.
-        shifti = tuple(combo[d] * 2 * full_counts[d] for d in range(3))
-        pass_iscS: List[int] = []
-        pass_iecS: List[int] = []
-        pass_s0: List[float] = []
-        pass_s1: List[float] = []
-        pass_e0: List[float] = []
-        pass_e1: List[float] = []
-        empty = False
+        period[d] = 2 * full_counts[d]
+        lattice = abs(period[d] * half_inva)
+        min_ishift[d] = int(math.floor((where_min[d] - big[d] * half_inva) / lattice))
+        max_ishift[d] = int(math.ceil((where_max[d] - io[d] * half_inva) / lattice))
+
+    centre = [(where_min[d] + where_max[d]) * 0.5 for d in range(3)]  # sources.cpp:486
+    passes: List[_SourcePass] = []
+    ishift = list(min_ishift)
+    while True:
+        shifti = tuple(period[d] * ishift[d] for d in range(3))
+        # loop_in_chunks.cpp:412-417: ph = 1; ph *= pow(eikna[d], ishift[d]) per direction,
+        # libc++'s pow(complex, int) = exp(n * log(z)); sources.cpp:259 amp * conj(ph).
+        ph = (1.0, 0.0)
+        for d in directions:
+            ph = readback.cmul(ph, readback.cpow_int(readback.eikna(grid, d), ishift[d]))
+        pass_amp = readback.cmul(amp, (ph[0], -ph[1]))
+        ranges = []
         for d in range(3):
-            if combo[d] == 0:
-                pass_iscS.append(iscS[d])
-                pass_iecS.append(iecS[d])
-                pass_s0.append(s0c[d])
-                pass_s1.append(s1c[d])
-                pass_e0.append(e0c[d])
-                pass_e1.append(e1c[d])
+            if not resolved[d]:
+                ranges.append([None])
                 continue
-            # MEEP loop_in_chunks.cpp:440,446 — the shifted request against the
-            # owned corners: iscS = max(is - shifti, iscoS), iecS = min(ie - shifti, iecoS).
-            low_bound = max(is_orig[d] - shifti[d], little_owned[d])
-            high_bound = min(ie_orig[d] - shifti[d], big_owned[d])
-            if high_bound < low_bound:
-                empty = True
+            low = max(is_[d] - shifti[d], window_low[d], user_low[d])
+            high = min(ie[d] - shifti[d], window_high[d])
+            ranges.append(list(range(low, high + 1, 2)) if low <= high else [])
+        points = []
+        for px in ranges[0]:
+            for py in ranges[1]:
+                for pz in ranges[2]:
+                    coords = (px, py, pz)
+                    rel = [0.0 if resolved[d] else _invariant_sample_offset(component, d, inva)
+                           for d in range(3)]
+                    cell = [0, 0, 0]
+                    inert = False
+                    for d in directions:
+                        # IVEC_LOOP_LOC then `loc += shift * (0.5 * inva)`, then rel_loc.
+                        loc = (0.5 * coords[d]) * inva
+                        loc = loc + shifti[d] * half_inva
+                        rel[d] = loc - centre[d]
+                        stored = cell_of(d, coords[d])
+                        if stored is None:
+                            inert = True
+                        else:
+                            cell[d] = stored
+                    if amp_func is None:
+                        value = (1.0, 0.0)  # sources.cpp:219-222, `one`
+                    else:
+                        result = complex(amp_func(rel[0], rel[1], rel[2]))
+                        value = (float(result.real), float(result.imag))
+                    points.append((coords, None if inert else (cell[0], cell[1], cell[2]), value))
+        if points:
+            passes.append(_SourcePass(tuple(ishift), shifti, pass_amp, tuple(points)))
+        # loop_in_chunks.cpp:525-532: the odometer, first direction fastest.
+        for d in directions:
+            if ishift[d] + 1 <= max_ishift[d]:
+                ishift[d] += 1
                 break
-            # MEEP loop_in_chunks.cpp:452-489 — weights compared in the source
-            # frame (`iscS += shifti` precedes the comparisons), then the
-            # narrow-range minima on the clipped extent.
-            source_start = low_bound + shifti[d]
-            source_end = high_bound + shifti[d]
-            ws0 = ws1 = we0 = we1 = 1.0
-            if source_start == is_orig[d]:
-                ws0 = s0_orig[d]
-                ws1 = s1_orig[d]
-            elif source_start == is_orig[d] + 2:
-                ws0 = s1_orig[d]
-            if source_end == ie_orig[d]:
-                we0 = e0_orig[d]
-                we1 = e1_orig[d]
-            elif source_end == ie_orig[d] - 2:
-                we0 = e1_orig[d]
-            if high_bound == low_bound:
-                w = min(ws0, we0)
-                ws0 = ws1 = we0 = we1 = w
-            elif high_bound == low_bound + 2:
-                w = min(ws0, we1)
-                ws0 = we1 = w
-                w = min(ws1, we0)
-                ws1 = we0 = w
-            elif high_bound == low_bound + 4:
-                w = min(ws1, we1)
-                ws1 = we1 = w
-            pass_iscS.append(low_bound)
-            pass_iecS.append(high_bound)
-            pass_s0.append(ws0)
-            pass_s1.append(ws1)
-            pass_e0.append(we0)
-            pass_e1.append(we1)
-        if empty:
-            continue
-        deposit_pass(pass_iscS, pass_iecS, pass_s0, pass_s1, pass_e0, pass_e1, shifti)
+            ishift[d] = min_ishift[d]
+        else:
+            break
 
-    indices: List[Tuple[int, int, int]] = []
-    amplitudes: List[complex] = []
-    for key, value in accumulated.items():
-        if abs(value) > 1e-20:
-            indices.append(key)
-            amplitudes.append(value)
-    return indices, amplitudes
+    return _SourceGeometry(
+        component=component, directions=directions, yucky=yucky, iyee=iyee,
+        is_=tuple(is_), ie=tuple(ie), s0=tuple(s0), s1=tuple(s1), e0=tuple(e0), e1=tuple(e1),
+        user_low=tuple(user_low), window=(tuple(io), tuple(big)),
+        cylindrical=bool(getattr(grid, "cylindrical", False)), passes=tuple(passes))
+
+
+def _invariant_sample_offset(component: str, axis: int, inva: float) -> float:  # vec2py's 0.
+    """The coordinate an amplitude function is handed on an axis the dimension does not carry: 0.
+
+    ``src_vol_chunkloop`` builds ``rel_loc`` as a ``vec`` of the run's dimension, and
+    ``vec2py`` (python/typemap_utils.cpp) gives the Python function 0 on every axis that
+    dimension lacks -- z in 2-D, phi in Dcyl, x and y in 1-D -- whatever the component's
+    Yee offset along it. A module-level function so the lift's mutation battery can plant
+    the offset back (``full_3d_sample_point`` in test_from_meep.py): sampling a
+    half-integer-z component at its own +-dx/2 costs a mode carrying kz a factor of
+    ``cos(pi * kz * dx)`` and is invisible at kz = 0.
+    """
+    return 0.0
+
+
+def _chunk_little_owned(lo: int, iyee: int, axis: int, grid: Any) -> int:
+    """``grid_volume::little_owned_corner`` on one axis of a box starting at doubled ``lo``.
+
+    ``little_corner + 2 - iyee_shift(c)`` (vec.hpp:1102-1104), and on the cylindrical
+    axis a box whose origin is r = 0 owns its axis row: a value of 2 becomes 0
+    (vec.cpp:432-436).
+    """
+    value = lo + 2 - iyee
+    axis_reader = getattr(grid, "is_axis", None)
+    if callable(axis_reader) and axis_reader(axis) and lo == 0 and value == 2:
+        return 0
+    return value
+
+
+def _src_vol_pieces(geometry: _SourceGeometry, boxes: Any, grid: Any,
+                    ) -> List[Tuple[int, List[Tuple[int, int, int]], List[complex]]]:
+    """MEEP's ``src_vol`` pieces of one source, in ``add_source`` order: (chunk, cells, amplitudes).
+
+    The chunk half of loop_in_chunks.cpp:420-516 and sources.cpp:243-312: for every
+    lattice shift (the odometer order the geometry kept) and every chunk in index order,
+    the request shifted into the chunk frame is clipped to the chunk's owned corners
+    (:func:`_chunk_little_owned`, ``big_owned_corner = big_corner - iyee``), the boundary
+    weights are kept where the clipped ends meet the request's ends IN THE SOURCE FRAME
+    (``iscS += shifti`` precedes the comparisons) and the narrow-range minima are taken;
+    each point's amplitude is ``(IVEC_LOOP_WEIGHT * amp) * A`` -- the weight nested as the
+    macro nests it, ``w3 * (w2 * (1 * w1))`` over the yucky directions, scaling ``amp``
+    per part, then libc++'s complex multiply by ``A``. A non-empty intersection is one
+    piece. ``boxes`` is ``ChunkLayout.boxes`` (doubled ``(lo, hi)`` per chunk), or ``None``
+    for one chunk spanning the window. A point on a metallic wall plane is placed and
+    dropped (its deposit is inert); a piece left empty by that is not returned.
+    """
+    from . import readback  # noqa: PLC0415
+
+    directions = geometry.directions
+    if boxes is None:
+        boxes = (geometry.window,)
+    pieces: List[Tuple[int, List[Tuple[int, int, int]], List[complex]]] = []
+    for source_pass in geometry.passes:
+        shifti = source_pass.shifti
+        for chunk, (lo, hi) in enumerate(boxes):
+            isc = [0, 0, 0]
+            iec = [0, 0, 0]
+            empty = False
+            for d in directions:
+                low = max(geometry.user_low[d], _chunk_little_owned(int(lo[d]), geometry.iyee[d], d, grid))
+                isc[d] = max(geometry.is_[d] - shifti[d], low)
+                iec[d] = min(geometry.ie[d] - shifti[d], int(hi[d]) - geometry.iyee[d])
+                if isc[d] > iec[d]:
+                    empty = True
+                    break
+            if empty:
+                continue
+            weights = {}
+            for d in directions:
+                start, end = isc[d] + shifti[d], iec[d] + shifti[d]
+                ws0 = ws1 = we0 = we1 = 1.0
+                if start == geometry.is_[d]:
+                    ws0, ws1 = geometry.s0[d], geometry.s1[d]
+                elif start == geometry.is_[d] + 2:
+                    ws0 = geometry.s1[d]
+                if end == geometry.ie[d]:
+                    we0, we1 = geometry.e0[d], geometry.e1[d]
+                elif end == geometry.ie[d] - 2:
+                    we0 = geometry.e1[d]
+                if end == start:
+                    w = min(ws0, we0)
+                    ws0 = we0 = ws1 = we1 = w
+                elif end == start + 2:
+                    w = min(ws0, we1)
+                    ws0 = we1 = w
+                    w = min(ws1, we0)
+                    ws1 = we0 = w
+                elif end == start + 4:
+                    w = min(ws1, we1)
+                    ws1 = we1 = w
+                weights[d] = (ws0, ws1, we0, we1, (iec[d] - isc[d]) // 2 + 1)
+            cells: List[Tuple[int, int, int]] = []
+            amps: List[complex] = []
+            for coords, cell, value in source_pass.points:
+                if any(not isc[d] <= coords[d] <= iec[d] for d in directions):
+                    continue
+                factors = []
+                for d in geometry.yucky:
+                    if d is None or d not in weights:
+                        factors.append(1.0)
+                        continue
+                    ws0, ws1, we0, we1, n = weights[d]
+                    factors.append(_ivec_loop_weight_1d((coords[d] - isc[d]) // 2, n, ws0, ws1, we0, we1))
+                weight = factors[2] * (factors[1] * (1.0 * factors[0]))  # vec.hpp:381-383
+                if cell is None:
+                    continue
+                scaled = (weight * source_pass.amp[0], weight * source_pass.amp[1])
+                product = readback.cmul(scaled, value)
+                cells.append(cell)
+                amps.append(complex(product[0], product[1]))
+            if cells:
+                pieces.append((chunk, cells, amps))
+    return pieces
+
+
+def _summed_table(geometry: _SourceGeometry, grid: 'Grid',
+                  ) -> Tuple[List[Tuple[int, int, int]], List[complex]]:
+    """Every cell the source deposits into, once, with its pieces' amplitudes summed in order.
+
+    The source's own table: the cells of every piece of the one-chunk division (which are
+    the cells of every piece of any division), each listed once in first-placement order,
+    its amplitude the sum of its pieces' in placement order. It is what the deposit-repair
+    bracket reads for the cells a source writes (``_point_ix``) and the deposit a source
+    makes before it is bound to a division; :func:`bind_src_vols` replaces the deposit by
+    MEEP's list, where a cell two pieces reach is deposited twice.
+    """
+    accumulated: Dict[Tuple[int, int, int], complex] = {}
+    for _chunk, cells, amps in _src_vol_pieces(geometry, None, grid):
+        for cell, value in zip(cells, amps):
+            previous = accumulated.get(cell)
+            accumulated[cell] = value if previous is None else complex(
+                previous.real + value.real, previous.imag + value.imag)
+    return list(accumulated), list(accumulated.values())
+
+
+def _build_source_points(grid: 'Grid', component: str, center: Tuple[float, float, float],
+                         size: Tuple[float, float, float], amplitude: complex,
+                         amp_func: Optional[Callable[[float, float, float], complex]],
+                         ) -> Tuple[List[Tuple[int, int, int]], List[complex]]:
+    """A source request's own table (:func:`_summed_table` of :func:`_source_geometry`)."""
+    return _summed_table(_source_geometry(grid, component, center, size, amplitude, amp_func), grid)
 
 
 def _index_arrays(grid: 'Grid', indices: List[Tuple[int, int, int]],
                   amplitudes: List[complex]) -> Tuple[Any, Any, Any, Any]:
-    """Pack (index, amplitude) pairs into backend arrays for vectorized injection.
+    """Pack (index, amplitude) pairs into backend arrays for the deposit.
 
-    Injection uses a fancy-index subtraction `D[ix, iy, iz] -= values`, which is
-    correct only because the points are unique: they come from a loop over
-    distinct doubled ivecs, and the index map `(ivec - little_corner) / 2` is
-    injective over the clipped range. Duplicate indices would silently drop all
-    but one contribution (NumPy fancy-index assignment does not accumulate), so
-    `DEBUG_VALIDATE_SOURCE_INDICES` re-checks the invariant.
+    The amplitudes are packed in COMPLEX128: they are MEEP's ``amp[j]``, which is a
+    ``complex<double>`` (``src_vol::amp``, meep_internals.hpp:52-69), and
+    :func:`_deposit` multiplies them by the current in double. Packing them in
+    complex64, as this module did before the deposit moved to double, rounded each one
+    to float before the product MEEP forms in double.
     """
     ix, iy, iz = _point_index_arrays(grid, indices)
-    return ix, iy, iz, grid.xp.asarray(amplitudes, dtype=grid.xp.complex64)
+    return ix, iy, iz, grid.xp.asarray(amplitudes, dtype=grid.xp.complex128)
 
 
 def _point_index_arrays(grid: 'Grid', indices: List[Tuple[int, int, int]]) -> Tuple[Any, Any, Any]:
-    """The three backend index arrays of a deposition table, uniqueness re-checked.
+    """The three backend index arrays of a deposition table, refused if a cell repeats.
 
-    Split out of :func:`_index_arrays` because the point source packs its amplitudes
-    in DOUBLE precision (see ``ContinuousSource._pack_points``) while every extended
-    source packs them in complex64; the index half is the same for both.
+    MEEP's deposit loop (step.cpp:309-314) subtracts point by point, so a cell listed
+    twice is subtracted twice and rounded twice; the vectorized deposit gathers each
+    cell once and would keep only one of the two differences. Every table this module
+    builds lists each cell once -- ``_build_source_points`` sums the amplitudes of the
+    rungs that fold onto one cell -- and a table that does not is refused here, by
+    name, rather than deposited differently from MEEP.
     """
     xp = grid.xp
+    linear = [(x * grid.ny + y) * grid.nz + z for (x, y, z) in indices]
+    if len(set(linear)) != len(linear):
+        raise ValueError(
+            "a source's deposition table lists the same cell more than once; MEEP "
+            "subtracts each listed point separately (step.cpp:309-314, one rounding per "
+            "point), which a vectorized deposit cannot reproduce, so the table is refused")
     ix = xp.asarray([p[0] for p in indices], dtype=xp.int64)
     iy = xp.asarray([p[1] for p in indices], dtype=xp.int64)
     iz = xp.asarray([p[2] for p in indices], dtype=xp.int64)
-    if DEBUG_VALIDATE_SOURCE_INDICES:
-        linear = [(x * grid.ny + y) * grid.nz + z for (x, y, z) in indices]
-        assert len(set(linear)) == len(linear), "source points must have unique linear indices"
     return ix, iy, iz
 
 
-def _step_source_values(array: Any, amps: Any, scale: complex,
-                        component: str) -> Any:  # What step_source subtracts, in the array's dtype.
-    """MEEP step.cpp:295-312 — the current to subtract, matched to the storage dtype.
-
-    Complex storage takes the whole product `amp * current * dt`; real storage takes
-    its real part, which is MEEP's own `f[c][0][i] -= real(A)` with the imaginary
-    plane `f[c][1][i]` absent. The product is formed identically either way, so the
-    real path is bit-for-bit the real part of the complex one and the complex path
-    is byte-unchanged from before real mode existed.
-
-    THE REAL PART IS TAKEN UNCONDITIONALLY, INCLUDING WHEN THE PER-POINT AMPLITUDE
-    CARRIES PHASE. This engine used to refuse that input instead — the argument being
-    that `Re(a*s) = Re(a)Re(s) - Im(a)Im(s)` re-reads a spatial phase as a per-point
-    time shift, which the stored real field cannot record. The argument is true and
-    the refusal was still wrong, for the reason this package exists: MEEP takes
-    `real(A)` here with no condition attached (step.cpp:307), so a run that refuses is
-    not stricter than MEEP, it is a run MEEP completes and this one does not. A
-    Gaussian beam's amplitude is complex BY CONSTRUCTION (wavefront curvature and the
-    Gouy phase), so the refusal declined essentially every real-field beam script —
-    including MEEP's own ``gaussian-beam.py`` — and every oblique eigenmode launch,
-    whose obliquity IS an in-plane phase ramp.
-
-    MEASURED against CPU MEEP stepping the same ``mp.Simulation``, complex relative L2
-    over the whole volume, with the refusal stubbed out:
-
-    ============================  ==========  ============  ===========
-    real-field run                parity      |A| launch    complex twin
-    ============================  ==========  ============  ===========
-    gaussian-beam.py cell, CW     1.9e-07 …   7.5e-01       —
-                                  7.1e-07
-    the same cell, GaussianSource 1.8e-07 …   7.5e-01 …     —
-                                  5.0e-07     9.2e-01
-    2-D TM / TE beam              1.6e-07 …   1.0e+00 …     —
-                                  2.0e-06     1.5e+00
-    3-D beam (`beam_three_d`)     1.5e-07,    —             1.4e-07,
-                                  2.8e-07                   2.8e-07
-    oblique-source.py's cell      1.2e-06     —             1.2e-06
-    ============================  ==========  ============  ===========
-
-    Sampled at t = 0.5 upward, so the early times where the "per-point time shift"
-    reading is at its weakest — the run is nowhere near monochromatic steady state —
-    are covered, and they are the TIGHTEST numbers in the table rather than the
-    loosest. The last two columns are what settles it: on the same cell the real run
-    and the complex run agree with CPU MEEP equally well, and the real array is
-    ``Re(`` the complex array ``)`` to EXACTLY 0.0 — for this engine and for MEEP
-    itself alike. So a real-field run with a phased amplitude is not a corrupted
-    complex run; it is the real part of one, which is what real-field mode means.
-
-    The control column is what a run that DID lose the phase looks like: launching
-    |A| in place of A sits at 0.75…1.5. The suite carries the subtler spelling of the
-    same mistake, ``drop_beam_phase`` — ``Re(a)*s`` in place of ``Re(a*s)``, which is
-    the one-line "real storage cannot carry a complex amplitude" fix — at 6.6e-01 and
-    7.0e-01 (``test_from_meep.py``, cases ``beam_real_fields`` /
-    ``beam_real_fields_pulse`` / ``eigenmode_oblique_waveguide_real_fields``).
-    """
-    keep_real = _injects_real(array, component)
-    product = amps * np.complex64(scale)
-    return product.real if keep_real else product  # MEEP step.cpp:307 f[c][0][i] -= real(A).
-
-
 def _injects_real(array: Any, component: str) -> bool:  # Real storage? Validated.
-    """True when this array takes `real(A)`, False when it takes the whole complex product.
+    """True when this array takes only ``real(A)``, False when it also takes ``imag(A)``.
 
-    Resolves the same three dtype cases as :func:`_step_source_values` — complex64,
-    float32, anything else — for the scalar loop `ContinuousSource` uses, so both
-    injection paths refuse an unsupported dtype with one message.
+    Resolves the two supported storage widths, complex64 and float32, and refuses any
+    other with one message for every source class.
     """
     if array.dtype == np.complex64:
         return False
@@ -1306,11 +1235,11 @@ _POINT_LINEAR: Dict[Tuple[int, int, int], Tuple[Any, Any, Any, Any]] = {}
 def _linear_points(array: Any, ix: Any, iy: Any, iz: Any) -> Any:
     """C-order flat indices of ``array[ix, iy, iz]``, cached, checked unique once.
 
-    UNIQUENESS IS THE ONE PLACE A SPARSE WRITE COULD DIFFER FROM NUMPY. Fancy
-    assignment with a repeated index is last-wins on NumPy and unordered on a
-    device ``index_copy_``. MEEP's source tables list each cell once, and every
-    table this engine builds does too; this checks it the first time a table is
-    seen rather than trusting it.
+    The deposit gathers, subtracts and scatters each listed cell once, so a repeated
+    index would keep one of its differences where MEEP's loop subtracts both; and a
+    device scatter with a repeated index is unordered. Every table this engine builds
+    lists each cell once (:func:`_point_index_arrays` refuses one that does not); this
+    re-checks it the first time a table reaches an array rather than trusting it.
     """
     key = (id(ix), id(iy), id(iz))
     hit = _POINT_LINEAR.get(key)
@@ -1319,172 +1248,578 @@ def _linear_points(array: Any, ix: Any, iy: Any, iz: Any) -> Any:
     linear = host_writes.ravel_points(ix, iy, iz, array.shape)
     if host_writes.index_module(linear).unique(linear).size != linear.size:
         raise ValueError(
-            "a source deposits into the same cell more than once; a sparse write "
-            "cannot reproduce NumPy's last-wins fancy assignment there, so it is "
-            "refused rather than left to the device's ordering")
+            "a source deposits into the same cell more than once; MEEP subtracts each "
+            "listed point separately (one rounding per point) and the vectorized deposit "
+            "would keep only one of them, so it is refused")
     _POINT_LINEAR[key] = (ix, iy, iz, linear)
     return linear
 
 
-def _sparse_subtract(array: Any, ix: Any, iy: Any, iz: Any, values: Any) -> None:
-    """``array[ix, iy, iz] -= values``, moving only those cells.
+def _is_plus_zero(value: float) -> bool:
+    """``value`` is ``+0.0``: equal to zero AND its sign bit clear (``-0.0 == 0.0`` too)."""
+    return value == 0.0 and math.copysign(1.0, value) > 0.0
 
-    Bit-for-bit what the fancy in-place subtraction does: one float32 subtraction per
-    word at the deposit cells, formed on whichever side owns the words. Under a held
-    residency that is the device (``Residency.subtract_index``, a few cells, not the
-    volume, and no host wait); on the array path it is the plain NumPy operation.
+
+#: Per deposition table, keyed by the identity of its amplitude array: whether every
+#: amplitude times the current ``(+0, +0)`` forms ``+0`` parts, on real storage and on
+#: complex storage (:func:`_silent_amplitude_planes`). A weak reference to the array
+#: guards the key against reuse and keeps nothing alive.
+_SILENT_AMPLITUDES: Dict[int, Tuple[Any, bool, bool]] = {}
+
+#: Per (``condinv`` volume, deposition cells), under the same weak-reference guard:
+#: whether every ``condinv`` word the deposit reads at those cells is finite with its
+#: sign bit clear. A volume the fields replace is read again; none is kept alive.
+_SILENT_CONDINV: Dict[Tuple[int, int, int, int], Tuple[Tuple[Any, ...], bool]] = {}
+
+
+def _host_values(values: Any) -> np.ndarray:  # A NumPy copy of a device array; NumPy passes through.
+    get = getattr(values, "get", None)
+    return np.asarray(get() if callable(get) else values)
+
+
+def _silent_amplitude_planes(amplitudes: Any) -> Tuple[bool, bool]:
+    """Does each amplitude times the current ``(+0, +0)`` give ``+0`` parts?
+
+    For a finite amplitude ``a`` the products of :func:`_deposit` are zeros carrying the
+    sign of their amplitude part, and IEEE 754 (6.3, round to nearest) gives a sum of two
+    zeros their common sign and ``+0`` otherwise. So ``re = (a_re * +0) - (a_im * +0)`` is
+    ``-0`` exactly where ``a_re`` has its sign bit set and ``a_im`` does not (the point is
+    FLAGGED in the real plane), and ``im = (a_re * +0) + (a_im * +0)`` is ``-0`` exactly
+    where both have it (flagged in the imaginary plane). An infinite or NaN part gives
+    NaN. Returns (real storage, complex storage): True when every amplitude is finite and
+    no point is flagged in a plane that storage takes.
     """
-    flags = getattr(array, "flags", None)
-    if flags is None or not flags.c_contiguous:
-        # A flat index is a C-order index only on a C-contiguous array; on any other
-        # layout ``reshape(-1)`` copies and a scatter through it lands nowhere. The
-        # engine allocates every primary C-contiguous, so this is the guard
-        # ``deposit_repair._sparse_linear`` carries, not a route: the fancy in-place
-        # subtraction, declared as the whole-volume write it is.
-        host_writes.acquire(array)[ix, iy, iz] -= values
-        return
+    parts = _host_values(amplitudes).astype(np.complex128).reshape(-1)
+    re, im = parts.real, parts.imag
+    if not bool(np.all(np.isfinite(re) & np.isfinite(im))):
+        return False, False
+    negative_re, negative_im = np.signbit(re), np.signbit(im)
+    real_plane = not bool(np.any(negative_re & ~negative_im))
+    return real_plane, real_plane and not bool(np.any(negative_re & negative_im))
+
+
+def _silent_amplitudes(amps: Any, keep_real: bool) -> bool:
+    """:func:`_silent_amplitude_planes` of this table, read once (one host copy) and kept."""
+    hit = _SILENT_AMPLITUDES.get(id(amps))
+    if hit is None or hit[0]() is not amps:
+        try:
+            reference = weakref.ref(amps)
+        except TypeError:  # no weak reference to it: keep nothing, and the table deposits
+            return False
+        hit = (reference, *_silent_amplitude_planes(amps))
+        _SILENT_AMPLITUDES[id(amps)] = hit
+    return hit[1] if keep_real else hit[2]
+
+
+def _silent_condinv(cndinv: Any, ix: Any, iy: Any, iz: Any) -> bool:
+    """Is every ``condinv`` word read at the cells finite, with its sign bit clear?
+
+    Then ``(+-0) * double(condinv)`` keeps the zero's sign (``+0`` included: ``(+0) * (+0)
+    = +0``). Read once per (volume, cells) and kept: a ``condinv`` volume is formed once
+    per conductivity and never written in place (``Fields._set_conductivity_side``
+    installs a new array each time), so a replaced conductivity is a new key.
+    """
+    if cndinv is None:
+        return True
+    held = (cndinv, ix, iy, iz)
+    key = (id(cndinv), id(ix), id(iy), id(iz))
+    hit = _SILENT_CONDINV.get(key)
+    if hit is not None and all(ref() is obj for ref, obj in zip(hit[0], held)):
+        return hit[1]
+    try:
+        references = tuple(weakref.ref(obj) for obj in held)
+    except TypeError:  # no weak reference to one of them: keep nothing, and the table deposits
+        return False
+    words = _host_values(cndinv[ix, iy, iz])
+    verdict = bool(np.all(np.isfinite(words) & ~np.signbit(words)))
+    _SILENT_CONDINV[key] = (references, verdict)
+    return verdict
+
+
+def _silent_deposit_is_identity(amps: Any, ix: Any, iy: Any, iz: Any, dt: Optional[float],
+                                cndinv: Any, keep_real: bool) -> bool:
+    """Does this table's deposit of the current ``(+0, +0)`` subtract ``+0`` at every point?
+
+    True exactly when ``dt`` is None or finite and positive, every amplitude is finite
+    and none is flagged in a plane the storage takes (:func:`_silent_amplitude_planes`),
+    and every ``condinv`` word at the cells is finite with its sign bit clear
+    (:func:`_silent_condinv`): then ``* dt`` and ``* double(condinv)`` keep each ``+0``,
+    and every subtrahend :func:`_deposit` would form is ``+0``. The verdicts are static
+    per table and read once, from host copies, so a step reads no device word for them.
+    """
+    if dt is not None:
+        step = float(dt)
+        if not (math.isfinite(step) and step > 0.0):
+            return False
+    return _silent_amplitudes(amps, keep_real) and _silent_condinv(cndinv, ix, iy, iz)
+
+
+def _deposit(array: Any, ix: Any, iy: Any, iz: Any, amps: Any, factor: complex,
+             dt: Optional[float], component: str, cndinv: Any = None) -> None:
+    """MEEP's source deposit at a source's points, in MEEP's double precision.
+
+    The statement transcribed is ``fields_chunk::step_source`` (step.cpp:295-317)::
+
+        A = sv.current(j) * dt                      // * double(cndinv[i]) with a conductivity
+        f[c][0][i] -= real(A);  if (!is_real) f[c][1][i] -= imag(A);
+
+    with ``sv.current(j) = amp[j] * src_t->current()`` (meep_internals.hpp:69), all
+    ``complex<double>``. Per point, in MEEP's order and as separate float64 ufuncs:
+
+    * the complex product first, as libc++ forms it on its finite branch:
+      ``re = (amp_re * c_re) - (amp_im * c_im)`` and, for complex storage,
+      ``im = (amp_re * c_im) + (amp_im * c_re)``;
+    * then ``* dt``, then ``* double(cndinv[i])`` when ``cndinv`` is given;
+    * then :func:`host_writes.subtract_double`: the stored word widened to double,
+      ``real(A)`` subtracted once, rounded once to float32 (and the imaginary word
+      against ``imag(A)``).
+
+    NEVER A COMPLEX UFUNC MULTIPLY. A complex128 multiply is one ufunc with two
+    products and an add inside it, and a host that contracts it fuses them: NumPy on an
+    x86 host with AVX-512 matches ``fma(ar, br, -(ai*bi))`` in 0 of 2,000,000 words
+    and the separately rounded form in 491,977 (phase-0 complex family,
+    ``numpy_cmul_check_gpu_host.txt``). MEEP's coff and portable builds round every
+    product. Real-by-real float64 multiplies and adds are one operation each and cannot
+    fuse on any host.
+
+    ONE EARLY RETURN, ONLY WHERE IT IS AN IDENTITY. MEEP's loop has none
+    (step.cpp:309-314), and a zero deposit is not word-neutral in general:
+    ``(-0) - (-0) = +0``, so a stored ``-0`` meets a ``real(A)`` of ``-0`` (a negative
+    real amplitude and a silent current) and becomes ``+0`` in MEEP. It is neutral
+    exactly when every subtrahend is ``+0``: ``float(double(f) - (+0))`` is ``f`` for
+    every float32 word, both zeros included (``(-0) - (+0) = -0``). So the deposit
+    returns before forming anything only when the current is bitwise ``(+0, +0)`` --
+    both sign bits read, never ``== 0``, which a ``-0`` part passes -- the array is the
+    C-contiguous array the door accepts (so a refusal by name stays one), and
+    :func:`_silent_deposit_is_identity` holds for the table: ``dt`` finite and positive
+    (or None), every amplitude finite, the ``condinv`` words at its cells finite with
+    the sign bit clear, and no FLAGGED point. With ``J = (+0, +0)`` the real line is
+    ``(a_re * +0) - (a_im * +0)``, which is ``-0`` where ``a_re`` has its sign bit set
+    and ``a_im`` does not, and the imaginary line is ``(a_re * +0) + (a_im * +0)``,
+    ``-0`` where both have it. Every other deposit, a flagged table's silent one
+    included, runs the statement below, in list order. Under flush the widening also
+    reads a subnormal ``f`` as a zero of its sign, so there the identity also needs no
+    subnormal at the table's cells; a flushing run stores none (every arithmetic result
+    is flushed, and the fills and wall clears copy, negate or zero; pinned on a run
+    that decays through signed zeros, ``test_source_deposit.py``). A threshold
+    (``abs(current) < eps``) or the source's ``last_time()`` is never the predicate: a
+    tail current of ~1e-100 is not zero, and its deposit gives a stored zero the sign
+    of ``-real(A)``.
+
+    ``factor`` is the time factor the amplitudes multiply: the current for MEEP's
+    ``step_source``, with ``dt`` the step; for an integrated source's ``f_minus_p``
+    (:func:`f_minus_p_begin`) it is the dipole, with ``dt`` and ``cndinv`` None, which
+    forms ``real(amp[j] * dipole)`` as ``update_eh.cpp:131-134`` subtracts it from
+    ``f_minus_p``. ``cndinv`` is the target component's ``condinv`` volume
+    (``s->condinv[c][d]``, read at the deposit cells and widened exactly), or None
+    where the component is lossless -- MEEP's NULL pointer, which skips the multiply.
+    Where a conductive component's sigma is zero its ``condinv`` word is exactly 1.0,
+    so the multiply is exact there and reading the volume at every point is MEEP's
+    per-chunk choice cell for cell.
+
+    THE REAL PART IS TAKEN UNCONDITIONALLY, INCLUDING WHEN THE PER-POINT AMPLITUDE
+    CARRIES PHASE. MEEP takes ``real(A)`` with no condition attached (step.cpp:307),
+    and a run that refused a phased amplitude on real storage would not be stricter
+    than MEEP, only a run MEEP completes and this one does not. A Gaussian beam's
+    amplitude is complex BY CONSTRUCTION (wavefront curvature and the Gouy phase), and
+    every oblique eigenmode launch carries an in-plane phase ramp. MEASURED against CPU
+    MEEP stepping the same ``mp.Simulation``, complex relative L2 over the whole
+    volume, before the deposit moved to double:
+
+    ============================  ==========  ============  ===========
+    real-field run                parity      |A| launch    complex twin
+    ============================  ==========  ============  ===========
+    gaussian-beam.py cell, CW     1.9e-07 …   7.5e-01       —
+                                  7.1e-07
+    the same cell, GaussianSource 1.8e-07 …   7.5e-01 …     —
+                                  5.0e-07     9.2e-01
+    2-D TM / TE beam              1.6e-07 …   1.0e+00 …     —
+                                  2.0e-06     1.5e+00
+    3-D beam (`beam_three_d`)     1.5e-07,    —             1.4e-07,
+                                  2.8e-07                   2.8e-07
+    oblique-source.py's cell      1.2e-06     —             1.2e-06
+    ============================  ==========  ============  ===========
+
+    The real run's ``real(A)`` line is the complex run's first line word for word (the
+    same float64 operations on the same operands), so a real run is the real part of
+    the complex run. The suite carries the subtler spelling of the mistake,
+    ``drop_beam_phase`` -- ``Re(a)*s`` in place of ``Re(a*s)`` -- at 6.6e-01 and
+    7.0e-01 (``test_from_meep.py``, cases ``beam_real_fields`` /
+    ``beam_real_fields_pulse`` / ``eigenmode_oblique_waveguide_real_fields``).
+    """
+    keep_real = _injects_real(array, component)
     linear = _linear_points(array, ix, iy, iz)
-    # THE DIFFERENCE IS FORMED WHERE THE WORDS LIVE. Gathering the cells to the host
-    # and scattering ``current - values`` back was word-identical but was the one
-    # blocking device->host read a held step made (``profile_held_step_res40_patched``,
-    # 2026-09-24: 2.6-2.7 ms of a 4.6 ms step at 4.1M cells); the door subtracts on the
-    # device under a hold and is NumPy's own in-place fancy subtraction otherwise.
-    host_writes.subtract(array, linear, values)
+    current = complex(factor)
+    c_re, c_im = current.real, current.imag
+    if (_is_plus_zero(c_re) and _is_plus_zero(c_im)
+            and bool(getattr(getattr(array, "flags", None), "c_contiguous", False))
+            and _silent_deposit_is_identity(amps, ix, iy, iz, dt, cndinv, keep_real)):
+        return
+    amp_re, amp_im = amps.real, amps.imag
+    real_part = amp_re * c_re
+    real_part -= amp_im * c_im
+    if dt is not None:
+        real_part *= float(dt)
+    scale = None
+    if cndinv is not None:
+        scale = cndinv[ix, iy, iz].astype(host_writes.index_module(real_part).float64)
+        real_part *= scale
+    if keep_real:
+        host_writes.subtract_double(array, linear, real_part)
+        return
+    imag_part = amp_re * c_im
+    imag_part += amp_im * c_re
+    if dt is not None:
+        imag_part *= float(dt)
+    if scale is not None:
+        imag_part *= scale
+    host_writes.subtract_double(array, linear, real_part, imag_part)
 
 
-def _inject_points(D: Any, ix: Any, iy: Any, iz: Any, amps: Any, scale: complex,
-                   component: str) -> None:
-    """MEEP step.cpp:295-298 step_source — `f[c][0][i] -= current * dt` at the source points.
+# ---------------------------------------------------------------------------
+# MEEP's src_vol list: per chunk, merged in double
+# ---------------------------------------------------------------------------
 
-    `D` is the primary array the component drives: the D array for an electric
-    component, the B array for a magnetic one (MEEP subtracts with the same sign
-    in both families).
+
+class SrcVolTable(NamedTuple):
+    """One entry of MEEP's ``src_vol`` list that a source deposits.
+
+    ``ix`` / ``iy`` / ``iz`` / ``amps`` as :func:`_index_arrays` packs them; ``points``
+    is their length. A source deposits a tuple of these in order (:func:`_deposit_tables`).
     """
-    _sparse_subtract(D, ix, iy, iz, _step_source_values(D, amps, scale, component))
+
+    ix: Any
+    iy: Any
+    iz: Any
+    amps: Any
+    points: int
 
 
-# --- deposits that must also land in f_u ------------------------------------------
-#
-# MEEP does not run one PML curl recurrence everywhere: step_db selects a branch PER
-# STRUCTURE CHUNK from sigsize (step_db.cpp:56-59), and the domain is split at the
-# PML boundaries (measured 3x3 chunks for a 2-D cell with PML on all faces), so an
-# edge-strip chunk that absorbs only on a component's dsig axis runs the UNSPLIT
-# recurrence — f itself carries the damping, f_u is never touched
-# (step_generic.cpp:86-240). This engine runs the both-active split recurrence over
-# the whole grid. The two are algebraically identical while ``f == f_u`` — the
-# invariant step_db.cpp:71-75 establishes by memcpy — and step_source is what breaks
-# it: MEEP deposits into f alone, and in the unsplit chunk that deposit is damped by
-# (kappa-sigma)/(kappa+sigma) every step, while the split recurrence damps f only on
-# the dsigu axis and leaves the deposit standing. Mirroring the deposit into f_u
-# wherever MEEP's chunking would run the unsplit branch restores the invariant and
-# with it the recurrence MEEP actually runs there. Measured (12x12 um cell, res 20,
-# CW Ez half-buried in a 2 um x-face layer, whole-volume complex relative L2 against
-# CPU MEEP): 4.9581e-01 as shipped -> 5.6106e-07 mirrored, with the corner, y-PML
-# and interior controls bit-unchanged (the design notes (absorber-placement-evidence)
-# §1.5-1.6). The integrated path never runs through step_source in MEEP (step.cpp:300)
-# and never mirrors here.
-#
-# CYLINDRICAL grids run the same mirror since the Dcyl sweep measured that the
-# mechanism transfers unchanged. MEEP's Dcyl step_db selects its branch from the
-# same per-chunk sigsize read (step_db.cpp:44-59 serves every dimensionality), and
-# under this engine's axis mapping (x = R, y = P, z = Z) the curl tables' dsig/dsigu
-# labels EQUAL the Dcyl cycle_direction start = 2 binding (vec.hpp:583-589): for
-# Ez, dsig = R and dsigu = P — and P never carries sigma, so an Ez deposit under
-# the r layer always lands in an unsplit chunk, Dcyl CORNERS included (unlike the
-# Cartesian corner row of the truth table). Measured on a 3x6 Dcyl cell, res 10/20,
-# CW, until ~20, whole-volume complex relative L2, m in {0, 1, 2}: Ez mid-r-layer
-# 4.08e+00 -> 3.12e-06, corner 7.05e+01 -> 2.04e-05, Ep mid-z-layer 1.26e+00 ->
-# 4.50e-06, a buried z line 5.65e+00 -> 1.77e-06, a partial radial span 6.36e-01 ->
-# 2.36e-06; every interior/edge/decoupled-axis control bit-unchanged, and res 20
-# reads 8.17e+00 -> 8.52e-06 on the mid-layer case.
-
-# Ladder axes per primary array, from stepping's curl tables (the one home of the
-# dsig/dsigu binding, MEEP vec.hpp cycle_direction with start = 1 resp. 2).
-AXIS_INDEX = {'x': 0, 'y': 1, 'z': 2}
+def _own_table(source: Any) -> Tuple[List[Tuple[int, int, int]], List[complex]]:
+    """A source's own (indices, amplitudes): every point it places, its amplitude each."""
+    if hasattr(source, "_point_indices"):
+        return list(source._point_indices or ()), list(source._point_weights or ())
+    return list(getattr(source, "_indices", None) or ()), list(getattr(source, "_amplitudes", None) or ())
 
 
-def _pml_ladder_axes(target: str) -> Tuple[str, str]:  # (dsig, dsigu) for one primary array.
-    from .stepping import B_CURL_TERMS, D_CURL_TERMS  # Deferred: stepping imports fields at module load.
-    for term in (*D_CURL_TERMS, *B_CURL_TERMS):
-        if term.target == target:
-            return term.dsig, term.dsigu
-    raise ValueError(f"No curl term drives {target!r}")
+def _deposit_tables(source: Any) -> Tuple[SrcVolTable, ...]:
+    """What ``source`` deposits now, in order: its bound entries, else its own table.
 
-
-def _unsplit_deposit_flags(pml: Any, grid: 'Grid', component: str,
-                           indices: List[Tuple[int, int, int]]) -> Optional[List[bool]]:
-    """Which deposition points MEEP's chunking hands to the UNSPLIT dsig-only recurrence.
-
-    Per point: sigma bites on the component's dsig axis AND the cell is outside every
-    chunk that carries the dsigu-axis layer (``sigsize[dsigu] == 1`` there,
-    step_db.cpp:56-59). Sigma is read at the Yee offset the component's curl
-    coefficients use (integer for D, half-integer for B), from the same grading pass
-    that filled them (:meth:`~.pml.PML.sigma_bites`); chunk membership is
-    :meth:`~.pml.PML.in_pml_chunk`, which is NOT "sigma bites on dsigu": the layer's
-    chunk owns one cell past its inner edge, whose own sigma is exactly zero and
-    which MEEP still steps with the both-active branch. Measured on the 12x12 case:
-    mirroring that boundary cell reads 4.59e-01 where leaving it split reads 7.3e-07.
-
-    Returns None when nothing needs mirroring: no absorber, or every flag False.
-
-    CYLINDRICAL grids take the same path with no special case: the curl tables'
-    dsig/dsigu labels under the x = R, y = P, z = Z mapping equal MEEP's Dcyl
-    ``cycle_direction`` ``start = 2`` binding (vec.hpp:583-589), and the phi axis
-    (y) never carries a layer, so ``in_pml_chunk('y')`` is all-False and an Ez
-    deposit under the r layer is mirrored everywhere sigma bites — corners
-    included, which is what the Dcyl sweep measured (module comment above:
-    7.05e+01 -> 2.04e-05 on the corner, controls bit-unchanged).
+    The bound entries are the ones :func:`bind_src_vols` gave it -- possibly none, when
+    every piece was absorbed into an earlier source's entry. A source never bound (built
+    and injected without a driver) deposits its own table. Empty when there is nothing
+    to deposit.
     """
-    if pml is None or not getattr(pml, "is_active", False):
+    bound = getattr(source, "_src_vol", None)
+    if bound is not None:
+        return tuple(table for table in bound if table.points)
+    ix = getattr(source, "_point_ix", None)
+    if ix is None:
+        return ()
+    # ``size``, not ``shape[0]``: a table whose index parts are scalars is one point.
+    return (SrcVolTable(ix, source._point_iy, source._point_iz, source._point_amps,
+                        int(getattr(ix, "size", 1))),)
+
+
+def _point_chunks(layout: Any, grid: 'Grid', component: str,
+                  indices: List[Tuple[int, int, int]]) -> np.ndarray:
+    """MEEP's chunk of each point of one component: ``grid_volume::owns`` (vec.cpp:445-462).
+
+    The stored row ``i`` of a component with Yee shift ``s`` is the doubled coordinate
+    ``origin + 2*i + s`` (``chunk_map.AxisFrame``); a wrapping axis translates a
+    coordinate on or below the window's low face by the period, as ``ChunkLayout``
+    resolves its own rows. ``-1`` where no chunk owns the point.
+    """
+    coordinates = []
+    for axis, frame in enumerate(layout.frames):
+        rows = np.asarray([point[axis] for point in indices], dtype=np.int64)
+        points = frame.origin + 2 * rows + _iyee_shift(component, axis)
+        if frame.wraps:
+            low, high = frame.window
+            period = high - low
+            points = np.where(points <= low, points + period, points)
+            points = np.where(points > high, points - period, points)
+        coordinates.append(points)
+    return np.asarray(layout.chunk_of(coordinates, cylindrical=bool(getattr(grid, "cylindrical", False))))
+
+
+def source_time_key(source: Any) -> Tuple[Any, ...]:
+    """Which shared MEEP ``src_time`` instance a source deposits through, as data.
+
+    MEEP keeps one instance per class of equal src_times (``src_time::add_to`` and
+    ``src_times_equal``: ``is_equal`` both ways and the same ``is_integrated``,
+    sources.cpp:33-52), and two pieces combine only through the same instance. The
+    key is computed from the source's own parameters, never from a bound MEEP object,
+    so a driver rebuilt from a capsule merges exactly as the lifted one did. A source
+    class this module does not define is a src_time of its own.
+    """
+    method = getattr(source, "src_time_key", None)
+    if method is None:
+        return ("object", id(source))
+    return method()
+
+
+def _source_pieces(source: Any, layout: Any, grid: 'Grid',
+                   ) -> List[Tuple[int, List[Tuple[int, int, int]], List[complex]]]:
+    """One source's MEEP ``src_vol`` pieces on ``layout``: (chunk, cells, amplitudes), in order.
+
+    A source placed by :func:`_source_geometry` is cut per (lattice shift, chunk) by
+    :func:`_src_vol_pieces`. One that carries only a table (a class this module does not
+    define, or a stub) is cut per chunk, its cells in table order.
+    """
+    geometry = getattr(source, "_src_geometry", None)
+    if geometry is not None:
+        return _src_vol_pieces(geometry, layout.boxes, grid)
+    indices, amps = _own_table(source)
+    if not indices:
+        return []
+    component = str(source.component)
+    chunks = _point_chunks(layout, grid, component, indices)
+    order: Dict[int, List[int]] = {}
+    for position, chunk in enumerate(chunks.tolist()):
+        order.setdefault(int(chunk), []).append(position)
+    return [(chunk, [indices[j] for j in positions], [complex(amps[j]) for j in positions])
+            for chunk, positions in order.items()]
+
+
+def bind_src_vols(sources: Any, layout: Any, grid: 'Grid') -> Dict[str, int]:
+    """Give every source the entries it deposits in MEEP's ``src_vol`` lists.
+
+    MEEP adds a source as one piece per (lattice shift, chunk) its request reaches
+    (``loop_in_chunks`` with ``src_vol_chunkloop``, sources.cpp:243-312), and
+    ``fields_chunk::add_source`` (fields.cpp:576-585) appends the piece to that chunk's
+    list unless an entry already in the list has the same component (the D and B
+    spellings fold onto E and H, sources.cpp:167-173), the same shared src_time and the
+    same index vector; then the piece's amplitudes are summed into the entry,
+    ``amp[i] += other.amp[i]`` in ``complex<double>`` (sources.cpp:183-188), and the pair
+    deposits once. Pieces that share a cell without sharing their index vector -- the
+    two ends of a request across a periodic seam -- stay two entries, and the cell is
+    deposited twice (step.cpp:309-314).
+
+    ``step_source`` walks each chunk's list in order. Every entry is created by a source
+    no later than any source merged into it, the cells of different chunks are disjoint,
+    and a source's own entries are created in its piece order; so the package's step,
+    which deposits the sources in their order and each source's entries in creation
+    order, subtracts every cell's terms in MEEP's order. Each source's ``_src_vol``
+    becomes the tuple of entries it created, with the merged amplitudes (empty when an
+    earlier source absorbed all of its pieces). The integrated sources are listed and
+    merged the same way; their entries are what :func:`f_minus_p_begin` subtracts.
+
+    ``layout`` is the run's ``chunk_map.ChunkLayout``. Returns counts: ``pieces``,
+    ``merged`` (pieces absorbed into an earlier entry), ``entries`` and ``sources_rebound``.
+    """
+    sources = tuple(sources or ())
+    chunk_entries: Dict[Tuple[int, Tuple[Any, ...]], Dict[str, Any]] = {}
+    created: List[Dict[str, Any]] = []
+    pieces = merged = 0
+    for index, source in enumerate(sources):
+        component = str(getattr(source, "component", ""))
+        if component not in _ARRAY_FOR_COMPONENT:
+            continue
+        array = _ARRAY_FOR_COMPONENT[component]
+        time_key = source_time_key(source)
+        for chunk, cells, amps in _source_pieces(source, layout, grid):
+            pieces += 1
+            key = (chunk, (array, time_key, tuple(cells)))
+            entry = chunk_entries.get(key)
+            if entry is None:
+                entry = {"owner": index, "cells": cells, "amps": list(amps)}
+                chunk_entries[key] = entry
+                created.append(entry)
+                continue
+            entry["amps"] = [complex(a.real + b.real, a.imag + b.imag)
+                             for a, b in zip(entry["amps"], amps)]
+            merged += 1
+    owned: Dict[int, List[SrcVolTable]] = {}
+    for entry in created:
+        ix, iy, iz, packed = _index_arrays(grid, entry["cells"], entry["amps"])
+        owned.setdefault(entry["owner"], []).append(SrcVolTable(ix, iy, iz, packed, len(entry["cells"])))
+    rebound = 0
+    for index, source in enumerate(sources):
+        if not hasattr(source, "_src_vol"):
+            continue
+        source._src_vol = tuple(owned.get(index, ()))
+        rebound += 1
+    return {"pieces": pieces, "merged": merged, "entries": len(created), "sources_rebound": rebound}
+
+
+# ---------------------------------------------------------------------------
+# f_minus_p: the integrated sources' dipole, at the constitutive update
+# ---------------------------------------------------------------------------
+
+
+class FMinusP(NamedTuple):
+    """The words :func:`f_minus_p_begin` replaced: per array, the flat cells and their words."""
+
+    field_type: str
+    saved: Tuple[Tuple[str, Any, Any], ...]
+
+
+def _integrated_tables(sources: Any, field_type: str) -> List[Tuple[Any, SrcVolTable]]:
+    """The integrated sources' entries of one field family, in deposit order."""
+    chosen = []
+    for source in tuple(sources or ()):
+        if str(getattr(source, "field_type", "")) != field_type:
+            continue
+        if not bool(getattr(source, "is_integrated", False)):
+            continue
+        for table in _deposit_tables(source):
+            chosen.append((source, table))
+    return chosen
+
+
+def has_integrated(sources: Any, field_type: str) -> bool:
+    """Does any integrated source of this field family deposit into the run?"""
+    return bool(_integrated_tables(sources, field_type))
+
+
+def _boundary_passes(fields: 'Fields', field_type: str) -> None:
+    """``step_boundaries`` of one family as the driver runs it after the deposit.
+
+    The mirror fill, the wall clear and the folded far fill, in the driver's order
+    (``FdtdDriver.step``). Each writes a component's ghost or wall cells from that
+    component's own owned cells (or zeroes them), so running them again changes only
+    the cells that image, or lie on, a cell written since they last ran.
+    """
+    from . import stepping  # noqa: PLC0415 - stepping imports nothing from here
+
+    if field_type == FIELD_TYPE_B:
+        stepping.fill_symmetry_bc_B(fields)
+        stepping.zero_metal_B(fields)
+        stepping.fill_folded_far_ghosts_B(fields)
+    else:
+        stepping.fill_symmetry_bc_D(fields)
+        stepping.zero_metal_D(fields)
+        stepping.fill_folded_far_ghosts_D(fields)
+
+
+def f_minus_p_begin(fields: 'Fields', sources: Any, field_type: str,
+                    time: float) -> Optional[FMinusP]:
+    """Write MEEP's ``f_minus_p`` words at the integrated sources' points; return what they replaced.
+
+    MEEP (update_eh.cpp:66-140) copies D (B) into ``f_minus_p`` and, for every
+    integrated ``src_vol`` entry of the family in list order, subtracts
+    ``real(amp[j] * dipole)`` per point (and ``imag`` from the imaginary part of complex
+    storage): a ``realnum -= double``, so one subtraction in double and one rounding,
+    with no ``dt`` and no conductivity. The constitutive update then reads
+    ``f_minus_p`` in place of D at every cell. ``time`` is the slot ``calc_sources``
+    evaluated: ``time() + dt`` for E and ``time() + dt/2`` for H (step.cpp:74, :105).
+
+    Here the copy is made in place: the words at the integrated cells are saved, then
+    each entry's dipole is subtracted from them through :func:`_deposit` (``dt`` None),
+    and the family's boundary passes run again so every ghost and wall cell the driver
+    images from, or clears at, an integrated cell holds what it would hold had D been
+    ``f_minus_p`` when they ran: the pointwise constitutive update at a ghost then
+    reads the image of ``f_minus_p``, and a wall cell stays the wall's zero. Call it
+    after the family's boundary passes and immediately before the constitutive
+    consult; :func:`f_minus_p_end` undoes it. ``None`` when no integrated source of the
+    family deposits (nothing was written).
+
+    NOT FOR A RUN WITH A LIVE POLARIZATION: MEEP subtracts P first and the dipole after
+    (update_eh.cpp:120-134), while the package's constitutive update subtracts P from
+    the replaced word, ``(D - dipole) - P``. The words then differ from MEEP's in the
+    last bit, as they did with the standing offset this replaces.
+    """
+    entries = _integrated_tables(sources, field_type)
+    if not entries:
         return None
-    target = _ARRAY_FOR_COMPONENT[component]
-    dsig, dsigu = _pml_ladder_axes(target)
-    half_integer = target[0] == 'B'
-    bites_dsig = pml.sigma_bites(dsig, half_integer)
-    chunked_dsigu = pml.in_pml_chunk(dsigu, half_integer)
-    a_sig, a_sigu = AXIS_INDEX[dsig], AXIS_INDEX[dsigu]
-    flags = [
-        bool(bites_dsig[point[a_sig]]) and not bool(chunked_dsigu[point[a_sigu]])
-        for point in indices
-    ]
-    return flags if any(flags) else None
+    grouped: Dict[str, List[Any]] = {}
+    for source, table in entries:
+        name = _ARRAY_FOR_COMPONENT[str(source.component)]
+        array = host_writes.raw(fields, name)
+        grouped.setdefault(name, []).append(host_writes.ravel_points(table.ix, table.iy, table.iz,
+                                                                     array.shape))
+    saved = []
+    for name, parts in grouped.items():
+        array = host_writes.raw(fields, name)
+        xp = host_writes.index_module(parts[0])
+        linear = xp.unique(xp.concatenate(parts)) if len(parts) > 1 else parts[0]
+        saved.append((name, linear, host_writes.gather(array, linear)))
+    # MEEP's src_t->dipole() is the step's one cached value (src_time::update, called once
+    # per step by calc_sources), whatever the number of entries reading it.
+    dipoles: Dict[int, complex] = {}
+    for source, table in entries:
+        array = _array_for(fields, source.component)
+        if id(source) not in dipoles:
+            dipoles[id(source)] = source.dipole(time)
+        _deposit(array, table.ix, table.iy, table.iz, table.amps, dipoles[id(source)], None,
+                 source.component)
+    _boundary_passes(fields, field_type)
+    return FMinusP(field_type, tuple(saved))
 
 
-def _bind_fu_mirror(source: Any, pml: Any) -> None:
-    """(Re)compute one index-array source's packed f_u mirror selection, or clear it.
+def f_minus_p_end(fields: 'Fields', held: Optional[FMinusP]) -> None:
+    """Restore the words :func:`f_minus_p_begin` replaced, and image them again.
 
-    Called by the driver whenever the absorber changes (``setup_pml``) or a source
-    is added under an existing one (``add_source``), so the selection always
-    describes the layer the run will actually step. An integrated source never
-    mirrors: MEEP's step_source skips it (step.cpp:300) and its dipole reaches the
-    field at the constitutive read instead.
+    MEEP's D (B) never held ``f_minus_p``: the integrated cells take their saved words
+    back and the family's boundary passes run again, so every ghost and wall cell holds
+    MEEP's D (B) too. ``None`` is a no-op.
     """
-    source._fu_ix = source._fu_iy = source._fu_iz = source._fu_amps = None
-    if source._n_source_points == 0 or getattr(source, "is_integrated", False):
+    if held is None:
         return
-    flags = _unsplit_deposit_flags(pml, source.grid, source.component, source._indices)
-    if flags is None:
-        return
-    xp = source.grid.xp
-    selection = xp.asarray([i for i, keep in enumerate(flags) if keep], dtype=xp.int64)
-    source._fu_ix = source._point_ix[selection]
-    source._fu_iy = source._point_iy[selection]
-    source._fu_iz = source._point_iz[selection]
-    source._fu_amps = source._point_amps[selection]
+    for name, linear, words in held.saved:
+        host_writes.scatter(host_writes.raw(fields, name), linear, words)
+    _boundary_passes(fields, held.field_type)
 
 
-def _inject_fu_mirror(source: Any, fields: 'Fields', scale: complex) -> None:
-    """Mirror this step's deposit into f_u at the selected points, same value, same sign."""
-    if source._fu_amps is None:
-        return
-    # RAW, not the barriered attribute: under a held residency the barrier acquired
-    # the WHOLE ``fu_*`` volume every step for a deposit that touches a few cells
-    # (1.0 copies out and 0.3 in per step on ``pml_3d`` at res 12, 2026-09-24).
-    fu = host_writes.raw(fields, "fu_" + _ARRAY_FOR_COMPONENT[source.component])
-    if fu is None:
-        return  # PML storage not allocated: nothing steps the split recurrence yet.
-    _inject_points(fu, source._fu_ix, source._fu_iy, source._fu_iz,
-                   source._fu_amps, scale, source.component)
+def _forward_difference(dipole: Callable[[float], complex], time: float, dt: float) -> complex:
+    """MEEP's ``src_time::current`` (meep.hpp:983-985): ``(dipole(t + dt) - dipole(t)) / dt``.
+
+    ``complex<double> - complex<double>`` and ``complex<double> / double`` act per part,
+    so each part is one subtraction and one division. Spelled per part here because a
+    Python ``complex / float`` promotes the divisor to a complex and runs Smith's
+    quotient, which adds ``imag * 0.0`` to the real part (a ``-0`` real part comes back
+    ``+0``).
+    """
+    late = complex(dipole(time + dt))
+    early = complex(dipole(time))
+    return complex((late.real - early.real) / dt, (late.imag - early.imag) / dt)
+
+
+def _f32(value: float) -> float:  # MEEP stores some window bounds as float(x) in a double.
+    return float(np.float32(value))
+
+
+class _MeepSrcTimeBinding:
+    """The lifted simulation's own MEEP ``src_time``, when the lift bound one.
+
+    Mixed into every class whose ``dipole`` / ``current`` a deposit calls: the dedicated
+    electric source classes and the three envelopes (a :class:`VolumeSource` binds its
+    envelope). A class using it declares the dataclass field ``_meep_src_time``: the
+    MEEP object (``src.swigobj``, or the clone ``add_eigenmode_source`` retunes), which
+    a capsule does not carry. A capsule of a lifted run therefore loads only with the
+    currents its lift recorded (``capsule._require_evaluable_sources``), never with the
+    package's own waveform in their place.
+
+    Bound, ``dipole(t)`` and ``current(t, dt)`` return MEEP's own
+    ``src_time::dipole`` / ``src_time::current``, the values ``calc_sources`` caches
+    for ``step_source`` and ``update_eh`` (step.cpp:278-283; meep.hpp:968-975). The
+    carrier's words depend on the libm entry and the complex division the C++ build
+    landed on, which only MEEP's own object knows (phase 0, P0-d3: on Linux the
+    package's ``math.cos`` / ``math.sin`` carrier misses 11 of 8,833 rows that glibc's
+    ``sincos`` / ``cexp`` reproduce).
+    """
+
+    def bind_meep_src_time(self, src_time: Any) -> None:
+        """Form every dipole and current through ``src_time`` from now on."""
+        if not (callable(getattr(src_time, "dipole", None))
+                and callable(getattr(src_time, "current", None))):
+            raise ValueError(
+                f"bind_meep_src_time takes MEEP's src_time (dipole(t) and current(t, dt)), "
+                f"got {type(src_time).__name__}")
+        integrated = getattr(src_time, "is_integrated", None)
+        if integrated is not None and bool(integrated) != bool(self.is_integrated):
+            raise ValueError(
+                f"the bound src_time has is_integrated={bool(integrated)} and this "
+                f"{type(self).__name__} has is_integrated={bool(self.is_integrated)}; MEEP's "
+                f"step_source and update_eh select the slot on that flag")
+        self._meep_src_time = src_time
+
+    def _meep_dipole(self, time: float) -> complex:
+        return complex(self._meep_src_time.dipole(float(time)))
+
+    def _meep_current(self, time: float, dt: float) -> complex:
+        return complex(self._meep_src_time.current(float(time), float(dt)))
 
 
 class SourceEnvelope:
@@ -1507,11 +1842,11 @@ class SourceEnvelope:
         raise NotImplementedError("A SourceEnvelope subclass must implement dipole(time)")
 
     def current(self, time: float, dt: float) -> complex:  # MEEP meep.hpp src_time::current — forward difference.
-        return (self.dipole(time + dt) - self.dipole(time)) / dt
+        return _forward_difference(self.dipole, time, dt)
 
 
 @dataclass
-class ContinuousEnvelope(SourceEnvelope):
+class ContinuousEnvelope(_MeepSrcTimeBinding, SourceEnvelope):
     """
     CW carrier with MEEP's tanh turn-on/turn-off ramp — `continuous_src_time`.
 
@@ -1529,20 +1864,32 @@ class ContinuousEnvelope(SourceEnvelope):
 
     _omega: float = field(default=0.0, repr=False, init=False)
     _amp_factor: complex = field(default=1j, repr=False, init=False)
+    _meep_src_time: Any = field(default=None, repr=False, init=False, compare=False)
 
     def __post_init__(self):  # Resolve the carrier constants; a zero/non-finite frequency raises.
         self._omega = 2 * np.pi * self.frequency
         self._amp_factor = _amp_factor(self.frequency)  # MEEP sources.cpp:104
 
     def dipole(self, time: float) -> complex:  # MEEP sources.cpp:128-140 continuous_src_time::dipole.
+        if self._meep_src_time is not None:
+            return self._meep_dipole(time)
         return _continuous_dipole(
             time, self._omega, self._amp_factor,
             self.start_time, self.end_time, self.width, self.slowness,
         )
 
+    def current(self, time: float, dt: float) -> complex:  # MEEP meep.hpp src_time::current.
+        if self._meep_src_time is not None:
+            return self._meep_current(time, dt)
+        return _forward_difference(self.dipole, time, dt)
+
+    def src_time_key(self) -> Tuple[Any, ...]:  # MEEP's src_times_equal, as data (sources.cpp:33-36, :145-151).
+        return _continuous_key(self.frequency, self.width, self.start_time, self.end_time,
+                               self.slowness, self.is_integrated)
+
 
 @dataclass
-class GaussianEnvelope(SourceEnvelope):
+class GaussianEnvelope(_MeepSrcTimeBinding, SourceEnvelope):
     """
     Gaussian pulse about a peak — MEEP's `gaussian_src_time`.
 
@@ -1563,6 +1910,7 @@ class GaussianEnvelope(SourceEnvelope):
     _width: float = field(default=0.0, repr=False, init=False)
     _peak_time: float = field(default=0.0, repr=False, init=False)
     _cutoff_time: float = field(default=0.0, repr=False, init=False)
+    _meep_src_time: Any = field(default=None, repr=False, init=False, compare=False)
 
     def __post_init__(self):  # Resolve width, peak and cut; a zero frequency or non-positive fwidth raises.
         if self.fwidth <= 0.0:
@@ -1574,8 +1922,19 @@ class GaussianEnvelope(SourceEnvelope):
         self._cutoff_time = _gaussian_cutoff_time(self.cutoff, self._width)
 
     def dipole(self, time: float) -> complex:  # MEEP sources.cpp:98-107 gaussian_src_time::dipole.
+        if self._meep_src_time is not None:
+            return self._meep_dipole(time)
         return _gaussian_dipole(time, self._omega, self._amp_factor,
                                 self._peak_time, self._width, self._cutoff_time)
+
+    def current(self, time: float, dt: float) -> complex:  # MEEP meep.hpp src_time::current.
+        if self._meep_src_time is not None:
+            return self._meep_current(time, dt)
+        return _forward_difference(self.dipole, time, dt)
+
+    def src_time_key(self) -> Tuple[Any, ...]:  # MEEP's src_times_equal, as data (sources.cpp:33-36, :117-124).
+        return _gaussian_key(self.frequency, self._width, self._peak_time, self._cutoff_time,
+                             self.is_integrated)
 
     @property
     def peak_time(self) -> float:  # Time of the envelope peak.
@@ -1587,7 +1946,7 @@ class GaussianEnvelope(SourceEnvelope):
 
 
 @dataclass
-class CustomEnvelope(SourceEnvelope):
+class CustomEnvelope(_MeepSrcTimeBinding, SourceEnvelope):
     """
     Caller-supplied waveform — MEEP's `custom_src_time` / Python `CustomSource`.
 
@@ -1598,15 +1957,17 @@ class CustomEnvelope(SourceEnvelope):
     differenced; with `is_integrated=True` it is the dipole moment and the
     current becomes its forward difference.
 
-    A function that returns zero injects exactly zero: the scale reaches the
-    field as an exact 0 and the write is skipped entirely, so a silent envelope
-    cannot leave round-off behind and score as a working source.
+    A function that returns zero deposits a zero, which MEEP's loop subtracts like
+    any other value (step.cpp:309-314); the field changes only where a stored ``-0``
+    meets it.
     """
 
     func: Callable[[float], complex]
     start_time: float = _MEEP_CUSTOM_START
     end_time: float = _MEEP_CUSTOM_END
     is_integrated: bool = False
+
+    _meep_src_time: Any = field(default=None, repr=False, init=False, compare=False)
 
     def __post_init__(self):  # A non-callable waveform is a caller bug, not a zero source.
         if not callable(self.func):
@@ -1615,16 +1976,50 @@ class CustomEnvelope(SourceEnvelope):
             )
 
     def dipole(self, time: float) -> complex:  # MEEP meep.hpp:1072-1078 custom_src_time::dipole.
+        if self._meep_src_time is not None:
+            return self._meep_dipole(time)
         return _custom_dipole(time, self.func, self.start_time, self.end_time)
 
     def current(self, time: float, dt: float) -> complex:  # MEEP meep.hpp:1066-1071 custom_src_time::current.
+        if self._meep_src_time is not None:
+            return self._meep_current(time, dt)
         if self.is_integrated:
-            return super().current(time, dt)
+            return _forward_difference(self.dipole, time, dt)
         return self.dipole(time)
+
+    def src_time_key(self) -> Tuple[Any, ...]:
+        """MEEP's ``custom_src_time::is_equal`` (sources.cpp:154-161), as data.
+
+        MEEP compares the function by identity and the window as stored, plus the
+        ``center_frequency`` and ``fwidth`` a Python ``CustomSource`` carries; this
+        envelope carries neither, so two custom sources that share a function and a
+        window but declare different centre frequencies would merge here and not in
+        MEEP. A lift passes each ``CustomSource``'s own function, so sharing one is
+        the caller's explicit choice.
+        """
+        return ("custom", id(self.func), _f32(self.start_time), _f32(self.end_time),
+                bool(self.is_integrated))
+
+
+def _continuous_key(frequency: float, width: float, start_time: float, end_time: float,
+                    slowness: float, integrated: bool) -> Tuple[Any, ...]:
+    """``continuous_src_time::is_equal`` (sources.cpp:145-151) plus ``is_integrated``.
+
+    MEEP stores the window as ``float(st)`` / ``float(et)`` (meep.hpp:1038-1039).
+    """
+    return ("continuous", complex(frequency), float(width), _f32(start_time), _f32(end_time),
+            float(slowness), bool(integrated))
+
+
+def _gaussian_key(frequency: float, width: float, peak_time: float, cutoff_time: float,
+                  integrated: bool) -> Tuple[Any, ...]:
+    """``gaussian_src_time::is_equal`` (sources.cpp:117-124) plus ``is_integrated``."""
+    return ("gaussian", float(frequency), float(width), float(peak_time), float(cutoff_time),
+            bool(integrated))
 
 
 @dataclass
-class ContinuousSource:
+class ContinuousSource(_MeepSrcTimeBinding):
     """
     Continuous-wave point source.
 
@@ -1666,75 +2061,51 @@ class ContinuousSource:
     end_time: float = _MEEP_ENDLESS
 
     # Internal state — the deposition table, in MEEP's src_vol form: one entry per
-    # touched cell, each amplitude carrying its interpolation weight, the delta-function
-    # scaling `a` per zero-size axis, and any Bloch factor the lattice fold picked up.
+    # touched cell, each amplitude carrying the user amplitude, its interpolation weight,
+    # the delta-function scaling `a` per zero-size axis, and any Bloch factor the
+    # lattice fold picked up.
     _omega: float = field(default=0.0, repr=False, init=False)
     _amp_factor: complex = field(default=1j, repr=False, init=False)
     _point_indices: list = field(default=None, repr=False, init=False)
     _point_weights: list = field(default=None, repr=False, init=False)
-    _fu_flags: Optional[List[bool]] = field(default=None, repr=False, init=False)
-    # The same table packed for the fancy-index deposit, built once (`_pack_points`).
+    # The same table packed for the deposit, built once (`_pack_points`).
     _point_ix: Any = field(default=None, repr=False, init=False)
     _point_iy: Any = field(default=None, repr=False, init=False)
     _point_iz: Any = field(default=None, repr=False, init=False)
-    _point_dt_weights: Any = field(default=None, repr=False, init=False)
-    _fu_ix: Any = field(default=None, repr=False, init=False)
-    _fu_iy: Any = field(default=None, repr=False, init=False)
-    _fu_iz: Any = field(default=None, repr=False, init=False)
-    _fu_dt_weights: Any = field(default=None, repr=False, init=False)
+    _point_amps: Any = field(default=None, repr=False, init=False)
+    # The table this source deposits in MEEP's merged src_vol list (`bind_src_vols`),
+    # or None for its own table; and the lift's MEEP src_time (`bind_meep_src_time`).
+    _src_vol: Any = field(default=None, repr=False, init=False, compare=False)
+    # The request as MEEP's loop_in_chunks cuts it (`_source_geometry`), kept so a
+    # division can be bound later without evaluating the amplitude function again.
+    _src_geometry: Any = field(default=None, repr=False, init=False, compare=False)
+    _meep_src_time: Any = field(default=None, repr=False, init=False, compare=False)
 
     def __post_init__(self):  # Resolve the waveform constants and the deposition stencil.
         self._omega = 2 * np.pi * self.frequency
         self._amp_factor = _amp_factor(self.frequency)  # MEEP sources.cpp:104
         self._setup_distribution()
 
-    def bind_pml(self, pml: Any) -> None:  # Which stencil cells mirror into f_u (module comment above).
-        self._fu_flags = (
-            _unsplit_deposit_flags(pml, self.grid, self.component, self._point_indices)
-            if self._point_indices else None
-        )
-        self._pack_points()
+    def _pack_points(self) -> None:  # Pack the deposition table for the deposit.
+        """Build the backend index/amplitude arrays :meth:`inject` deposits through.
 
-    def _pack_points(self) -> None:  # Pack the deposition table for the fancy-index deposit.
-        """Build the backend index/amplitude arrays :meth:`inject` subtracts through.
-
-        This replaces a per-cell Python loop that indexed the primary array with three
-        SCALARS per point. On NumPy that loop was genuinely cheap — measured 0.004 s of
-        a 2.474 s profiled run, 0.2%, and the comment it carried ("a plain loop is
-        cheaper than packing index arrays") was true there. On a device it is not: each
-        scalar read-modify-write is its own kernel launch, so a source touching eight
-        cells issued eight to sixteen launches per timestep, plus a host-side
-        ``np.complex64`` per point. Every other source class already deposits through
-        :func:`_inject_points`; this was the odd one out.
-
-        THE WEIGHTS ARE STORED PRE-MULTIPLIED BY dt, IN DOUBLE PRECISION, and that is
-        what makes the change bit-identical rather than merely close. The loop formed
-        ``np.complex64(dt * weight * J)`` — the whole product in Python's complex
-        double, rounded to complex64 ONCE at the end. Packing ``dt * weight`` here (the
-        same expression, evaluated once instead of every step) and multiplying by ``J``
-        in complex128 before the single cast reproduces that rounding exactly; packing
-        the weights as complex64 the way the extended sources do would have rounded
-        twice and moved the last bit.
+        The weights are packed as they are, in complex128, and :func:`_deposit` forms
+        MEEP's ``(amp[j] * current) * dt`` from them: the product first, then ``dt``.
+        The user ``amplitude`` is inside each weight, as MEEP folds it into ``amp[j]``
+        (sources.cpp:243-312: ``IVEC_LOOP_WEIGHT * (amplitude * a) * A``), and the
+        current is the unit waveform's. Carrying it in :meth:`dipole` instead, as this
+        class once did, forms ``w * (amplitude * J)`` where MEEP forms
+        ``(w * amplitude) * J``, which differs in the last bit of the double product
+        (phase 0: 119 of 800 rows of one CW source in the sources family).
         """
         indices = self._point_indices
         if not indices:
             self._point_ix = self._point_iy = self._point_iz = None
-            self._point_dt_weights = None
-            self._fu_ix = self._fu_iy = self._fu_iz = self._fu_dt_weights = None
+            self._point_amps = None
             return
         xp = self.grid.xp
-        dt = self.grid.dt
-        scaled = [dt * weight for weight in self._point_weights]
         self._point_ix, self._point_iy, self._point_iz = _point_index_arrays(self.grid, indices)
-        self._point_dt_weights = xp.asarray(scaled, dtype=xp.complex128)
-        keep = [index for index, flag in enumerate(self._fu_flags or ()) if flag]
-        if not keep:
-            self._fu_ix = self._fu_iy = self._fu_iz = self._fu_dt_weights = None
-            return
-        self._fu_ix, self._fu_iy, self._fu_iz = _point_index_arrays(
-            self.grid, [indices[index] for index in keep])
-        self._fu_dt_weights = xp.asarray([scaled[index] for index in keep],
-                                         dtype=xp.complex128)
+        self._point_amps = xp.asarray(self._point_weights, dtype=xp.complex128)
 
     def _setup_distribution(self):  # Point sources only; extended geometry has its own class.
         if all(s == 0.0 for s in self.size):
@@ -1745,13 +2116,12 @@ class ContinuousSource:
     def _setup_point_source(self):  # MEEP loop_in_chunks deposition for a zero-size volume.
         """Place the point through MEEP's own machinery, lattice fold included.
 
-        `_build_source_points` is called with a unit amplitude because this class
-        keeps the user amplitude in `dipole()`; everything else it returns — the
-        Simpson weights (which for a zero-extent direction are the two linear
-        interpolation weights, or a single 1.0 when the request lands exactly on a
-        sample), the `a` per zero-size axis of MEEP sources.cpp:481-484, and
-        `conj(bloch_phase ** shift)` on any cell reached by wrapping — belongs in the
-        per-point amplitude.
+        `_build_source_points` is called with the user amplitude, which MEEP folds into
+        every per-point amplitude; everything else it returns — the Simpson weights
+        (which for a zero-extent direction are the two linear interpolation weights,
+        or a single 1.0 when the request lands exactly on a sample), the `a` per
+        zero-size axis of MEEP sources.cpp:481-484, and `conj(bloch_phase ** shift)`
+        on any cell reached by wrapping — belongs in the per-point amplitude too.
 
         The symmetry check is the same pair every other source class runs. A point
         source used to skip the on-the-plane half of it, so a CW point requested off
@@ -1764,19 +2134,28 @@ class ContinuousSource:
         # nonzero `size` here is a UNIFORM sheet — the profile the parity rule refuses by
         # inspection. Passing `size` is what tells it which of the two cases this is.
         _validate_symmetry_parity(self.grid, self.component, self.center, self.size)
-        self._point_indices, self._point_weights = _build_source_points(
-            self.grid, self.component, self.center, self.size, 1.0 + 0j, None,
+        self._src_geometry = _source_geometry(
+            self.grid, self.component, self.center, self.size, complex(self.amplitude), None,
         )
-        self._pack_points()  # Re-packed by bind_pml once the f_u mirror set is known.
+        self._point_indices, self._point_weights = _summed_table(self._src_geometry, self.grid)
+        self._pack_points()
 
-    def dipole(self, time: float) -> complex:  # MEEP sources.cpp:128-140 continuous_src_time::dipole.
-        return self.amplitude * _continuous_dipole(
+    def dipole(self, time: float) -> complex:  # MEEP sources.cpp:128-140 — the user amplitude is in the point amps.
+        if self._meep_src_time is not None:
+            return self._meep_dipole(time)
+        return _continuous_dipole(
             time, self._omega, self._amp_factor,
             self.start_time, self.end_time, self.width, self.slowness,
         )
 
     def current(self, time: float, dt: float) -> complex:  # MEEP meep.hpp src_time::current — forward difference.
-        return (self.dipole(time + dt) - self.dipole(time)) / dt
+        if self._meep_src_time is not None:
+            return self._meep_current(time, dt)
+        return _forward_difference(self.dipole, time, dt)
+
+    def src_time_key(self) -> Tuple[Any, ...]:  # MEEP's src_times_equal, as data.
+        return _continuous_key(self.frequency, self.width, self.start_time, self.end_time,
+                               self.slowness, False)
 
     @property
     def field_type(self) -> str:  # Electric source: injected between step_D and update_E.
@@ -1787,41 +2166,18 @@ class ContinuousSource:
         return False
 
     def inject(self, fields: 'Fields', time: float):  # MEEP step.cpp step_source — subtract the current from D.
-        if self._point_dt_weights is None:
+        tables = _deposit_tables(self)
+        if not tables:
             return
         dt = self.grid.dt
         J = self.current(time, dt)
         D = _d_array_for(fields, self.component)
-        # A zero-size volume touches at most 8 cells, each exactly once (two ladder
-        # rungs that fold onto the same cell were summed at setup), so one fancy-index
-        # subtraction covers the whole stencil. The delta-function scaling is already
-        # inside each weight — MEEP folds it into the amplitude too. Real storage takes
-        # the real part of the same complex product, which is MEEP's
-        # `f[c][0][i] -= real(A)`.
-        keep_real = _injects_real(D, self.component)
-        values = self._deposit_values(self._point_dt_weights, J, keep_real)
-        _sparse_subtract(D, self._point_ix, self._point_iy, self._point_iz, values)
-        if self._fu_dt_weights is None:
-            return
-        # RAW, then the sparse door -- the same route the primary deposit above takes.
-        # Fetching ``fu_*`` through the read barrier under a held residency acquired the
-        # WHOLE volume every step (a source point inside the PML at res 8/12/48 of
-        # ``pml_3d``: 3.35 ms/step of the 14.5 at 7.1M cells, measured 2026-09-24,
-        # ``results/round_2026-09-24_night_drivers/profile_held_step.log``), and the
-        # in-place fancy subtraction was the one host write of a held array that
-        # bypassed the doors. ``_sparse_subtract`` forms the same difference in the
-        # same dtype and moves only the deposit cells.
-        mirror = host_writes.raw(fields, "fu_" + _ARRAY_FOR_COMPONENT[self.component])
-        if mirror is None:
-            return  # PML storage not allocated: nothing steps the split recurrence yet.
-        _sparse_subtract(mirror, self._fu_ix, self._fu_iy, self._fu_iz,
-                         self._deposit_values(self._fu_dt_weights, J, keep_real))
-
-    def _deposit_values(self, dt_weights: Any, J: complex, keep_real: bool) -> Any:
-        """``complex64(dt * weight * J)`` per point — see :meth:`_pack_points` for the rounding."""
-        xp = self.grid.xp
-        values = (dt_weights * complex(J)).astype(xp.complex64)
-        return values.real if keep_real else values
+        cndinv = _condinv_at(fields, _validate_component(self.component))
+        # One deposit per entry of MEEP's src_vol list, in its order: a point that two
+        # pieces reach (a periodic seam) is subtracted twice. The delta-function scaling
+        # is already inside each amplitude -- MEEP folds it in too.
+        for table in tables:
+            _deposit(D, table.ix, table.iy, table.iz, table.amps, J, dt, self.component, cndinv)
 
     def __repr__(self) -> str:
         return (f"ContinuousSource(freq={self.frequency:.4f}, "
@@ -1829,7 +2185,7 @@ class ContinuousSource:
 
 
 @dataclass
-class ExtendedSource:
+class ExtendedSource(_MeepSrcTimeBinding):
     """
     Continuous-wave sheet or volume source.
 
@@ -1865,10 +2221,11 @@ class ExtendedSource:
     _point_iz: Any = field(default=None, repr=False, init=False)
     _point_amps: Any = field(default=None, repr=False, init=False)
     _n_source_points: int = field(default=0, repr=False, init=False)
-    _fu_ix: Any = field(default=None, repr=False, init=False)
-    _fu_iy: Any = field(default=None, repr=False, init=False)
-    _fu_iz: Any = field(default=None, repr=False, init=False)
-    _fu_amps: Any = field(default=None, repr=False, init=False)
+    _src_vol: Any = field(default=None, repr=False, init=False, compare=False)
+    # The request as MEEP's loop_in_chunks cuts it (`_source_geometry`), kept so a
+    # division can be bound later without evaluating the amplitude function again.
+    _src_geometry: Any = field(default=None, repr=False, init=False, compare=False)
+    _meep_src_time: Any = field(default=None, repr=False, init=False, compare=False)
 
     def __post_init__(self):  # MEEP sources.cpp:456-489 add_volume_source.
         _validate_component(self.component)  # Electric components only; magnetic ones go through VolumeSource.
@@ -1877,17 +2234,15 @@ class ExtendedSource:
         self._validate_symmetry()
         self._setup_source_points()
 
-    def bind_pml(self, pml: Any) -> None:  # Which stencil cells mirror into f_u (module comment above).
-        _bind_fu_mirror(self, pml)
-
     def _validate_symmetry(self):  # A source must sit in the stored half, and carry the fold's parity.
         _validate_symmetry(self.grid, self.center)
         _validate_symmetry_parity(self.grid, self.component, self.center, self.size, self.amp_func)
 
     def _setup_source_points(self):  # Build the per-point index/amplitude tables.
-        self._indices, self._amplitudes = _build_source_points(
+        self._src_geometry = _source_geometry(
             self.grid, self.component, self.center, self.size, self.amplitude, self.amp_func
         )
+        self._indices, self._amplitudes = _summed_table(self._src_geometry, self.grid)
         self._setup_index_arrays()
 
     def _setup_index_arrays(self):  # Pack the tables into backend arrays for vectorized injection.
@@ -1899,13 +2254,21 @@ class ExtendedSource:
          self._point_iz, self._point_amps) = _index_arrays(self.grid, self._indices, self._amplitudes)
 
     def dipole(self, time: float) -> complex:  # MEEP sources.cpp:128-140 — the user amplitude is folded into the point amps.
+        if self._meep_src_time is not None:
+            return self._meep_dipole(time)
         return _continuous_dipole(
             time, self._omega, self._amp_factor,
             self.start_time, self.end_time, self.width, self.slowness,
         )
 
     def current(self, time: float, dt: float) -> complex:  # MEEP meep.hpp src_time::current — forward difference.
-        return (self.dipole(time + dt) - self.dipole(time)) / dt
+        if self._meep_src_time is not None:
+            return self._meep_current(time, dt)
+        return _forward_difference(self.dipole, time, dt)
+
+    def src_time_key(self) -> Tuple[Any, ...]:  # MEEP's src_times_equal, as data.
+        return _continuous_key(self.frequency, self.width, self.start_time, self.end_time,
+                               self.slowness, False)
 
     @property
     def field_type(self) -> str:  # Electric source: injected between step_D and update_E.
@@ -1915,15 +2278,16 @@ class ExtendedSource:
     def is_integrated(self) -> bool:  # This class only implements MEEP's non-integrated path.
         return False
 
-    def inject(self, fields: 'Fields', time: float):  # MEEP step.cpp:295-298 — D -= dt * current * stored amplitude.
+    def inject(self, fields: 'Fields', time: float):  # MEEP step.cpp:295-317 — f -= real((amp * current) * dt).
         D = _d_array_for(fields, self.component)
-        if self._n_source_points == 0:
+        tables = _deposit_tables(self)
+        if not tables:
             return
         dt = self.grid.dt
-        curr = self.current(time, dt)
-        _inject_points(D, self._point_ix, self._point_iy, self._point_iz,
-                       self._point_amps, dt * curr, self.component)
-        _inject_fu_mirror(self, fields, dt * curr)
+        J = self.current(time, dt)
+        cndinv = _condinv_at(fields, _validate_component(self.component))
+        for table in tables:  # MEEP's src_vol entries, in list order.
+            _deposit(D, table.ix, table.iy, table.iz, table.amps, J, dt, self.component, cndinv)
 
     def __repr__(self) -> str:
         return (f"ExtendedSource(freq={self.frequency:.4f}, "
@@ -1931,7 +2295,7 @@ class ExtendedSource:
 
 
 @dataclass
-class GaussianPulsedSource:
+class GaussianPulsedSource(_MeepSrcTimeBinding):
     """
     Gaussian-pulsed sheet or volume source, for broadband runs.
 
@@ -1971,13 +2335,11 @@ class GaussianPulsedSource:
     _point_iz: Any = field(default=None, repr=False, init=False)
     _point_amps: Any = field(default=None, repr=False, init=False)
     _n_source_points: int = field(default=0, repr=False, init=False)
-    _fu_ix: Any = field(default=None, repr=False, init=False)
-    _fu_iy: Any = field(default=None, repr=False, init=False)
-    _fu_iz: Any = field(default=None, repr=False, init=False)
-    _fu_amps: Any = field(default=None, repr=False, init=False)
-
-    def bind_pml(self, pml: Any) -> None:  # Which stencil cells mirror into f_u (module comment above).
-        _bind_fu_mirror(self, pml)
+    _src_vol: Any = field(default=None, repr=False, init=False, compare=False)
+    # The request as MEEP's loop_in_chunks cuts it (`_source_geometry`), kept so a
+    # division can be bound later without evaluating the amplitude function again.
+    _src_geometry: Any = field(default=None, repr=False, init=False, compare=False)
+    _meep_src_time: Any = field(default=None, repr=False, init=False, compare=False)
 
     def __post_init__(self):  # Resolve the pulse constants and the spatial tables.
         if self.fwidth <= 0.0:
@@ -1999,9 +2361,10 @@ class GaussianPulsedSource:
         _validate_symmetry_parity(self.grid, self.component, self.center, self.size, self.amp_func)
 
     def _setup_source_points(self):  # Same spatial machinery as ExtendedSource.
-        self._indices, self._amplitudes = _build_source_points(
+        self._src_geometry = _source_geometry(
             self.grid, self.component, self.center, self.size, self.amplitude, self.amp_func
         )
+        self._indices, self._amplitudes = _summed_table(self._src_geometry, self.grid)
         self._setup_index_arrays()
 
     def _setup_index_arrays(self):  # Pack the tables into backend arrays for vectorized injection.
@@ -2013,11 +2376,18 @@ class GaussianPulsedSource:
          self._point_iz, self._point_amps) = _index_arrays(self.grid, self._indices, self._amplitudes)
 
     def dipole(self, time: float) -> complex:  # MEEP sources.cpp:109-120 gaussian_src_time::dipole.
+        if self._meep_src_time is not None:
+            return self._meep_dipole(time)
         return _gaussian_dipole(time, self._omega, self._amp_factor,
                                 self._peak_time, self._width, self._cutoff_time)
 
     def current(self, time: float, dt: float) -> complex:  # MEEP meep.hpp src_time::current — forward difference.
-        return (self.dipole(time + dt) - self.dipole(time)) / dt
+        if self._meep_src_time is not None:
+            return self._meep_current(time, dt)
+        return _forward_difference(self.dipole, time, dt)
+
+    def src_time_key(self) -> Tuple[Any, ...]:  # MEEP's src_times_equal, as data.
+        return _gaussian_key(self.frequency, self._width, self._peak_time, self._cutoff_time, False)
 
     @property
     def field_type(self) -> str:  # Electric source: injected between step_D and update_E.
@@ -2027,17 +2397,18 @@ class GaussianPulsedSource:
     def is_integrated(self) -> bool:  # This class only implements MEEP's non-integrated path.
         return False
 
-    def inject(self, fields: 'Fields', time: float):  # MEEP step.cpp:295-298 — D -= dt * current * stored amplitude.
+    def inject(self, fields: 'Fields', time: float):  # MEEP step.cpp:295-317 — f -= real((amp * current) * dt).
         D = _d_array_for(fields, self.component)
-        if self._n_source_points == 0:
+        tables = _deposit_tables(self)
+        if not tables:
             return
         dt = self.grid.dt
-        curr = self.current(time, dt)
-        if abs(curr) < 1e-30:
-            return  # Outside the pulse: nothing to add, and the fancy-index write is not free.
-        _inject_points(D, self._point_ix, self._point_iy, self._point_iz,
-                       self._point_amps, dt * curr, self.component)
-        _inject_fu_mirror(self, fields, dt * curr)
+        J = self.current(time, dt)
+        cndinv = _condinv_at(fields, _validate_component(self.component))
+        # Every table is handed to `_deposit` outside the pulse too: it returns early only
+        # where MEEP's subtraction would leave every word, never on a stored -0 it flips.
+        for table in tables:  # MEEP's src_vol entries, in list order.
+            _deposit(D, table.ix, table.iy, table.iz, table.amps, J, dt, self.component, cndinv)
 
     @property
     def peak_time(self) -> float:  # Time of the envelope peak.
@@ -2083,8 +2454,8 @@ class VolumeSource:
     amplitude: complex = 1.0 + 0j
     amp_func: Optional[Callable[[float, float, float], complex]] = None
 
-    # Internal state — the analog of MEEP's src_vol index_array / amps_array,
-    # plus the running dipole offset the integrated path has already applied.
+    # Internal state — the analog of MEEP's src_vol index_array / amps_array, and the
+    # table this source deposits in MEEP's merged src_vol list (`bind_src_vols`).
     _field_type: str = field(default=FIELD_TYPE_D, repr=False, init=False)
     _indices: List[Tuple[int, int, int]] = field(default=None, repr=False, init=False)
     _amplitudes: List[complex] = field(default=None, repr=False, init=False)
@@ -2093,11 +2464,10 @@ class VolumeSource:
     _point_iz: Any = field(default=None, repr=False, init=False)
     _point_amps: Any = field(default=None, repr=False, init=False)
     _n_source_points: int = field(default=0, repr=False, init=False)
-    _applied_dipole: complex = field(default=0j, repr=False, init=False)
-    _fu_ix: Any = field(default=None, repr=False, init=False)
-    _fu_iy: Any = field(default=None, repr=False, init=False)
-    _fu_iz: Any = field(default=None, repr=False, init=False)
-    _fu_amps: Any = field(default=None, repr=False, init=False)
+    _src_vol: Any = field(default=None, repr=False, init=False, compare=False)
+    # The request as MEEP's loop_in_chunks cuts it (`_source_geometry`), kept so a
+    # division can be bound later without evaluating the amplitude function again.
+    _src_geometry: Any = field(default=None, repr=False, init=False, compare=False)
 
     def __post_init__(self):  # MEEP sources.cpp:456-489 add_volume_source, for either field family.
         _validate_any_component(self.component)
@@ -2111,26 +2481,23 @@ class VolumeSource:
             )
         _validate_symmetry(self.grid, self.center)
         _validate_symmetry_parity(self.grid, self.component, self.center, self.size, self.amp_func)
-        # An is_integrated source runs UNDER MIRROR SYMMETRY too. The suspicion that
-        # stood here — the mirror-plane repair copies cells while they hold f - dipole
-        # — is not a defect: the repair writes ghost D = parity * (f - dipole) at the
-        # source's own image cells, which is exactly MEEP's f_minus_p there (the ghost
-        # E the constitutive update then produces equals parity * E of the image row,
-        # the same value MEEP's E-side step_boundaries copies), and `withdraw` restores
-        # the owned source points before the next curl while the ghost rows are
-        # refreshed by the next repair pass before anything reads them. MEEP itself
-        # folds the combination exactly — measured folded vs unfolded MEEP, an
-        # integrated full-height Ez sheet through a Mirror(Y) with PML: 1.7e-07 (PML on
-        # x) and 1.8e-07 (PML everywhere) — and this engine now reproduces the folded
-        # run at its ordinary fold floor (test_sources.py pins the number). The blanket
-        # refusal cost finite_grating.py, absorbed_power_density.py and
+        # An is_integrated source runs UNDER MIRROR SYMMETRY too. Its f_minus_p words are
+        # written at the owned points and imaged into the ghost rows by the driver's own
+        # fill passes (`f_minus_p_begin`), so the ghost E a pointwise constitutive update
+        # produces is the parity image of the owned E, the value MEEP's E-side
+        # step_boundaries copies; the restore runs the passes again, so every ghost D
+        # then holds MEEP's D. MEEP itself folds the combination exactly (measured
+        # folded vs unfolded MEEP, an integrated full-height Ez sheet through a
+        # Mirror(Y) with PML: 1.7e-07 with PML on x, 1.8e-07 with PML everywhere). A
+        # blanket refusal cost finite_grating.py, absorbed_power_density.py and
         # mie_scattering.py their lifts.
         self._setup_source_points()
 
     def _setup_source_points(self):  # Build the per-point index/amplitude tables.
-        self._indices, self._amplitudes = _build_source_points(
+        self._src_geometry = _source_geometry(
             self.grid, self.component, self.center, self.size, self.amplitude, self.amp_func
         )
+        self._indices, self._amplitudes = _summed_table(self._src_geometry, self.grid)
         self._n_source_points = len(self._indices)
         if self._n_source_points == 0:
             self._point_ix = self._point_iy = self._point_iz = self._point_amps = None
@@ -2152,75 +2519,47 @@ class VolumeSource:
     def current(self, time: float, dt: float) -> complex:  # Envelope current (MEEP src_time::current or an override).
         return self.envelope.current(time, dt)
 
-    def reset(self):  # Forget the applied dipole offset, for a driver that restarts the clock.
-        self._applied_dipole = 0j
+    def bind_meep_src_time(self, src_time: Any) -> None:  # The lift's MEEP src_time, on the envelope.
+        """Form this source's dipole and current through MEEP's own ``src_time``.
 
-    def bind_pml(self, pml: Any) -> None:  # Which stencil cells mirror into f_u (module comment above).
-        _bind_fu_mirror(self, pml)
-
-    def withdraw(self, fields: 'Fields') -> None:
-        """Return the standing integrated-source dipole to D/B before the curl ladder runs.
-
-        MEEP's integrated source never sits in the primary array while ``step_db``
-        runs: the dipole is subtracted from ``f_minus_p`` inside ``update_eh``
-        (update_eh.cpp:126-138), downstream of the whole ladder, fresh and undamped
-        every step. This engine stores the offset IN the array between the injection
-        slot and the constitutive read, so any per-cell rescale the ladder applies —
-        the split PML recurrence's ``(kappa-sigma)/(kappa+sigma)`` on the component's
-        dsigu axis, a D conductivity's ``condfac*condinv`` — would decay an offset
-        MEEP never exposes to it. Measured before this method existed: a CW Ez
-        ``is_integrated`` source in a y-face layer read 4.59e-01 against CPU MEEP
-        where its x-face twin (dsigu sigma zero) read 6.6e-07, corners 1.28e-01
-        (the design notes (absorber-placement-evidence) §1.6, Defect A).
-
-        The driver calls this immediately before ``step_D`` (or ``step_B`` for a
-        magnetic component): the offset is added back, the array re-enters the
-        ladder holding exactly MEEP's f everywhere, and :meth:`inject` afterwards
-        subtracts the fresh whole ``dipole`` — so between injection and the
-        constitutive read the array holds ``f - dipole``, which is what MEEP's
-        ``update_eh`` computes, and outside that window it holds MEEP's f exactly.
+        Bound on the envelope, which is the object this class asks: see
+        :class:`_MeepSrcTimeBinding`.
         """
-        if not self.envelope.is_integrated or self._n_source_points == 0:
-            return
-        if self._applied_dipole == 0:
-            return
-        array = _array_for(fields, self.component)
-        _inject_points(array, self._point_ix, self._point_iy, self._point_iz,
-                       self._point_amps, -self._applied_dipole, self.component)
-        self._applied_dipole = 0j
+        if not isinstance(self.envelope, _MeepSrcTimeBinding):
+            raise ValueError(
+                f"this VolumeSource's envelope ({type(self.envelope).__name__}) cannot take "
+                f"a MEEP src_time")
+        self.envelope.bind_meep_src_time(src_time)
 
-    def inject(self, fields: 'Fields', time: float):  # Subtract this step's contribution from D or B.
-        """Apply one timestep of this source.
+    def src_time_key(self) -> Tuple[Any, ...]:  # MEEP's src_times_equal, as data (the envelope's).
+        key = getattr(self.envelope, "src_time_key", None)
+        if key is None:
+            # An envelope class this module does not define: one instance per source,
+            # as MEEP's add_to would find no equal src_time to share.
+            return ("envelope", id(self.envelope), bool(self.is_integrated))
+        return key()
 
-        Non-integrated (MEEP step.cpp:295-312): ``f -= dt * current(time)``, with
-        ``time`` the slot time of the component's field family.
+    def inject(self, fields: 'Fields', time: float):  # Subtract this step's current from D or B.
+        """Apply one timestep of this source: MEEP's ``step_source`` (step.cpp:295-317).
 
-        Integrated (MEEP update_eh.cpp:126-140): MEEP forms ``f_minus_p = f -
-        dipole`` and feeds that to the constitutive update, half a step after the
-        injection slot; the dipole time lands on ``calc_sources(time() + dt)`` for
-        the electric family and ``time() + dt/2`` for the magnetic one, which both
-        equal this slot's ``time + 0.5*dt``. The driver's ``withdraw`` call before
-        the curl ladder has already returned the previous offset, so
-        ``_applied_dipole`` is zero here and the whole fresh dipole is subtracted;
-        the array then holds exactly ``f - dipole(t)`` when the constitutive update
-        reads it.
+        ``f -= real((amp[j] * current(time)) * dt)`` per point, with ``time`` the slot
+        time of the component's field family. An integrated source deposits NOTHING
+        here: ``step_source`` skips it (step.cpp:300) and its dipole enters at the
+        constitutive update through ``f_minus_p`` (:func:`f_minus_p_begin`).
         """
         array = _array_for(fields, self.component)
-        if self._n_source_points == 0:
+        if self.envelope.is_integrated:
+            return
+        tables = _deposit_tables(self)
+        if not tables:
             return
         dt = self.grid.dt
-        if self.envelope.is_integrated:
-            offset = self.envelope.dipole(time + 0.5 * dt)
-            scale = offset - self._applied_dipole
-            self._applied_dipole = offset
-        else:
-            scale = dt * self.envelope.current(time, dt)
-        if scale == 0:
-            return  # A silent envelope writes nothing at all, so the fields stay exactly zero.
-        _inject_points(array, self._point_ix, self._point_iy, self._point_iz,
-                       self._point_amps, scale, self.component)
-        if not self.envelope.is_integrated:
-            _inject_fu_mirror(self, fields, scale)
+        J = self.envelope.current(time, dt)
+        cndinv = _condinv_at(fields, _validate_any_component(self.component))
+        # MEEP's step_source: every entry of its src_vol list, in list order, handed to
+        # `_deposit` on a silent envelope too (it skips only a word-neutral table).
+        for table in tables:
+            _deposit(array, table.ix, table.iy, table.iz, table.amps, J, dt, self.component, cndinv)
 
     def __repr__(self) -> str:
         return (f"VolumeSource(component={self.component}, center={self.center}, "

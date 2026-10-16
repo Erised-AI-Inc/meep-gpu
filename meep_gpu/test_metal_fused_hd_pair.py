@@ -215,31 +215,125 @@ def test_the_constitutive_lift_moves_exactly_the_declared_lines(mode):
         expected_added.append(
             f"    float kp_{target} = kp{target}[{axis}], "
             f"km_{target} = {coefficient}[{axis}];")
-        expected_removed += [f"    float prev{target} = w{target}[ii];",
+        accumulation = (f" + ((kp_{target} * src{target}) - "
+                        f"(km_{target} * prev{target})); }}")
+        expected_removed += [f"    float prev{target} = dw{target} ? w{target}[ii] : 0.0f;",
                              f"    float src{target} = g{target}[ii];",
-                             f"    w{target}[ii] = src{target};",
-                             f"    float a{target} = f{target}[ii];",
+                             f"    if (dw{target}) {{ w{target}[ii] = src{target}; }}",
+                             f"    if (dw{target}) {{ a{target} = f{target}[ii]"
+                             + accumulation,
                              f"    f{target}[ii] = a{target};"]
-        expected_added += [f"    float prev{target} = wi{target}[ii];",
+        expected_added += [f"    float prev{target} = dw{target} ? wi{target}[ii] : 0.0f;",
                            f"    float src{target} = b{target}[ii];",
-                           f"    float a{target} = hi{target}[ii];"]
+                           f"    float wnext{target} = dw{target} ? src{target} : "
+                           f"wi{target}[ii];",
+                           f"    if (dw{target}) {{ a{target} = hi{target}[ii]"
+                           + accumulation]
     assert sorted(removed) == sorted(expected_removed), sorted(removed)
     assert sorted(added) == sorted(expected_added), sorted(added)
 
 
 @pytest.mark.parametrize("mode", MODES)
 def test_the_two_accumulations_survive_the_lift_character_for_character(mode):
-    """``((f + kps*src) - kms*prev)`` as two separate statements, left to right.
+    """MEEP's ``f + ((kps*src) - (kms*prev))``, on the dsigw cells only, and ``f = src``
+    elsewhere.
 
-    Flattening it is a different float32 number and neither multiply may contract into
-    an fma; the pragma stops the second and this stops the first. Asserted on the LIFTED
-    text, where a rename could plausibly have reached the right-hand side.
+    Any other grouping is a different float32 number and neither multiply may contract
+    into an fma; the pragma stops the second and this stops the first. Asserted on the
+    LIFTED text, where a rename could plausibly have reached the right-hand side.
     """
     lifted = hd.certified_constitutive_tail(mode)
     for target in range(3):
-        assert f"    a{target} = a{target} + kp_{target} * src{target};\n" in lifted
-        assert f"    a{target} = a{target} - km_{target} * prev{target};\n" in lifted
-    assert lifted.count(" = a0 + ") == 1 and lifted.count(" = a0 - ") == 1
+        assert (f"    if (dw{target}) {{ a{target} = hi{target}[ii] + "
+                f"((kp_{target} * src{target}) - (km_{target} * prev{target})); }}\n"
+                in lifted), target
+        assert f"    float a{target} = src{target};\n" in lifted, target
+    assert lifted.count(" = hi0[ii] + ") == 1 and lifted.count(" + ((kp_0 * ") == 1
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_every_auxiliary_access_sits_behind_its_membership(mode):
+    """The static needles the gate's two DECLARED NULLS rest on (KERNELS.md §7.2).
+
+    An unguarded auxiliary load changes no word -- the gate scores b7 and b12 on
+    agreeing -- so the guard is pinned here instead: ``prev`` is read only on the
+    accumulation's cells and ``fu_D`` only on the recurrence's, and ``fu_D`` is stored
+    only there. The f_w SCRATCH is the one auxiliary written everywhere, because the
+    plan rotates it against a twin that starts at zero: off the accumulation's cells it
+    takes the pre-launch word, unchanged.
+    """
+    source = hd.fused_hd_pair_source((1, 1, 1), mode)
+    flags = shaders.constitutive_membership_flags("H")
+    assert (f"        const bool dw0 = {flags[0]}, dw1 = {flags[1]}, "
+            f"dw2 = {flags[2]};\n") in source
+    for target in range(3):
+        assert f"        float prev{target} = dw{target} ? wi{target}[ii] : 0.0f;\n" \
+            in source
+        assert (f"        float wnext{target} = dw{target} ? src{target} : "
+                f"wi{target}[ii];\n") in source
+        assert f"    float p{target} = du{target} ? u{target}[ii] : f{target}[ii];\n" \
+            in source
+        assert f"    if (du{target}) {{ u{target}[ii] = n{target}; }}\n" in source
+        assert f"wo{target}[ii] = own.wnext{target};" in source
+    assert source.count("wi0[ii]") == 2, "one guarded read of prev, one carried word"
+
+
+def test_the_record_rides_in_params_and_reaches_every_h_cell_call():
+    """31 of 31 bindings leave the chunk record no buffer of its own (DESIGN D10).
+
+    ``Params`` embeds ``ChunkBounds cb`` after the five scalars, the kernel aliases it
+    before any lifted text, and ``h_cell`` takes it as its last parameter, so the
+    select inside a recompute reads the same record the own-cell call reads.
+    """
+    from meep_gpu.metal_kernels import chunk_bounds
+
+    source = hd.fused_hd_pair_source((0, 0, 0))
+    assert chunk_bounds.struct_source() in source
+    assert ("struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx; "
+            "ChunkBounds cb; };") in source
+    alias = chunk_bounds.params_alias()
+    assert source.count(alias) == 1
+    assert source.index(alias) < source.index(chunk_bounds.BLOCK_BEGIN,
+                                              source.index("kernel void"))
+    assert "[[buffer(" not in alias and source.count("[[buffer(") == hd.PACKED_BINDINGS
+    assert hd.H_CELL_TAIL_ARGS.endswith(", cb")
+    assert "constant ChunkBounds& cb) {" in hd.h_cell_function()
+    assert source.count(f"{hd.H_CELL_TAIL_ARGS})") == 7, "the own cell and six taps"
+    dtype = hd.params_record_dtype()
+    assert dtype.itemsize == 20 + 4 * len(chunk_bounds.MEMBERS) == 120
+    assert dtype.fields["cb"][1] == 20
+
+
+def test_the_packed_params_carry_the_record_word_for_word_and_refuse_a_missing_one():
+    """The host packing round-trips: the five scalars, then the record's 25 words."""
+    from meep_gpu.chunk_map import ChunkLayout, ChunkLayoutRefusal, chunk_bounds_record
+
+    fields, pml = _covered_case()
+    record = chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
+    shape = fields.grid.shape
+    packed = hd.params_words(shape, 0.035, record)
+    assert packed.dtype == np.int32 and packed.size == 30
+    assert list(packed[:3]) == [int(n) for n in shape]
+    assert int(packed[3]) == int(np.prod(shape))
+    assert packed[4:5].view(np.float32)[0] == np.float32(0.035)
+    assert list(packed[5:]) == [int(word) for word in record]
+    with pytest.raises(ChunkLayoutRefusal, match="no chunk record"):
+        hd.params_words(shape, 0.035, None)
+
+
+def test_the_plan_builders_take_the_record_by_keyword_with_no_default():
+    """As the base plans: a default would decide on the caller's behalf which cells
+    take which form, so every caller names the division it binds."""
+    import inspect
+
+    from meep_gpu.metal_kernels import folded_fused_hd_pair as folded
+
+    for builder in (hd.plan_metal_fused_hd_pair, folded.plan_metal_folded_fused_hd_pair):
+        parameter = inspect.signature(builder).parameters["chunk_bounds"]
+        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY, builder
+        assert parameter.default is inspect.Parameter.empty, builder
+    for function in (hd._arm_plan, folded._arm_plan):
+        assert "chunk_bounds=context.chunk_bounds" in inspect.getsource(function)
 
 
 @pytest.mark.parametrize("mode", MODES)
@@ -387,6 +481,30 @@ def test_both_halves_read_one_sub_lattice_which_is_what_makes_thirty_pointers():
         + signature.count("* kmz") == 3, "one kms group, shared by both halves"
     assert sum(signature.count(f"* kp{n}") for n in range(3)) == 3
     assert "km0" not in signature and "km1" not in signature
+
+
+def test_every_recompute_selects_on_an_axis_its_tap_does_not_shift():
+    """Why keying the carried select at the thread's cell would change no word here.
+
+    ``h_cell`` evaluates each H component's membership on that component's OWN axis,
+    at the recomputed coordinate. Every tap of component ``t`` is shifted along an axis
+    other than ``t``, so its coordinate on axis ``t`` IS the thread's -- the gate's
+    predicted null ``carried_select_keyed_at_the_thread_not_the_recomputed_cell`` rests
+    on this, and the construction does not.
+    """
+    from meep_gpu.metal_kernels import chunk_bounds
+
+    flags = shaders.constitutive_membership_flags("H")
+    assert flags == tuple(chunk_bounds.membership_name(False, axis) for axis in range(3))
+    certified = _certified_curl_tail((0, 0, 0), shaders.CONTRACT_OFF)
+    offsets = hd.offset_coordinates(certified)
+    thread = ("i", "j", "k")
+    for line in certified.splitlines():
+        if " ? g" not in line:
+            continue
+        target = int(line.split(" ? g", 1)[1][0])
+        offset = line.split(f" ? g{target}[", 1)[1].split("]", 1)[0]
+        assert offsets[offset][target] == thread[target], (line, offsets[offset])
 
 
 def test_a_curl_never_differences_a_component_along_its_own_axis():
@@ -630,12 +748,38 @@ class _Source:
 def test_a_magnetic_source_is_not_this_seams_business(flush_policy):
     """The driver injects it one seam EARLIER (driver.py:3283-3284) and withdraws it
     over ``step_B`` (:3289-3290). A product that refused it would be refusing a row for
-    a pass that is not in its span."""
+    a pass that is not in its span -- once H has been started from B (a mid-run
+    state); the run's first update_H is the next test's."""
     fields, pml = _covered_case()
+    fields.h_separated = True
     verdict = hd.metal_fused_hd_pair_coverage(
         fields, pml, (_Source(field_type="B", is_integrated=True, component="Hx"),),
         _Residency())
     assert verdict.covered, verdict.reasons
+
+
+def test_the_runs_first_update_H_is_refused_where_the_start_could_move_a_word():
+    """The array path starts H and f_w from B on the dsigw cells at the run's first
+    update_H (``stepping.separate_h_from_b``) and this weld does not, so the predicate
+    refuses on ``launch.h_start_reasons``' rule, in its words, on both halves' side:
+    a magnetic source that deposits before that update, or a nonzero word in B, fu_B
+    or E. A fresh all-zero run with no magnetic source is admitted."""
+    fields, pml = _covered_case()
+    magnetic = (_Source(field_type="B", is_integrated=True, component="Hx"),)
+    for verdict in (hd.metal_fused_hd_pair_coverage(fields, pml, magnetic, _Residency()),):
+        assert not verdict.covered
+        named = [reason for reason in verdict.reasons
+                 if reason.startswith("constitutive half:")
+                 and "separate_h_from_b" in reason]
+        assert named and "magnetic source(s) [0]" in named[0], verdict.reasons
+    fields.Ex[0, 0, 0] = np.float32(1.0)
+    verdict = hd.metal_fused_hd_pair_coverage(fields, pml, (), _Residency())
+    assert not verdict.covered
+    assert any("Ex holds a word other than +0" in reason for reason in verdict.reasons)
+    fields.h_separated = True
+    assert not any("separate_h_from_b" in reason for reason in
+                   hd.metal_fused_hd_pair_coverage(fields, pml, magnetic,
+                                                   _Residency()).reasons)
 
 
 def test_a_non_integrated_electric_source_is_not_refused(flush_policy):
@@ -983,11 +1127,15 @@ def test_the_nonlinear_run_kernels_are_the_ordinary_text_byte_for_byte(
 
     for tag, nonlinear, plan_h, plan_d in (
             ("ordinary", False,
-             lambda f, p, r: metal_launch.plan_constitutive(f, p, "H", r),
-             lambda f, p, r: metal_launch.plan_pml_curl(f, p, "step_D", r)),
+             lambda f, p, r: metal_launch.plan_constitutive(
+                 f, p, "H", r, chunk_bounds=_one_rank_record(f, p)),
+             lambda f, p, r: metal_launch.plan_pml_curl(
+                 f, p, "step_D", r, chunk_bounds=_one_rank_record(f, p))),
             ("spine", True,
-             lambda f, p, r: nl.plan_nonlinear_run_constitutive(f, p, "H", r),
-             lambda f, p, r: nl.plan_nonlinear_run_pml_curl(f, p, "step_D", r))):
+             lambda f, p, r: nl.plan_nonlinear_run_constitutive(
+                 f, p, "H", r, chunk_bounds=_one_rank_record(f, p)),
+             lambda f, p, r: nl.plan_nonlinear_run_pml_curl(
+                 f, p, "step_D", r, chunk_bounds=_one_rank_record(f, p)))):
         fields, pml = _covered_case()
         if nonlinear:
             _nonlinear(fields)
@@ -1227,11 +1375,15 @@ def test_every_mutation_needle_still_resolves_exactly_once():
     the assertion. A needle that stopped matching would arm nothing and the gate would
     report the defect as caught by a kernel that was never mutated."""
     gate = _gate_module()
-    armed = gate.shader_mutations(gate.MUTATION_CODES)
-    inert = gate.inert_mutations(gate.MUTATION_CODES)
-    periodic = gate.periodic_wrap_mutations(gate.PERIODIC_CODES)
-    assert armed and inert and periodic
     base = hd.fused_hd_pair_source(gate.MUTATION_CODES)
+    armed = gate.shader_mutations(gate.MUTATION_CODES)
+    battery = gate.b_battery(base)
+    inert = gate.inert_mutations(gate.MUTATION_CODES)
+    inert.update(gate.b_battery_inert(base))
+    periodic = gate.periodic_wrap_mutations(gate.PERIODIC_CODES)
+    assert armed and battery and inert and periodic
+    assert set(armed).isdisjoint(battery), "a battery row reuses a mutation's name"
+    armed.update(battery)
     for name, (source, _why) in armed.items():
         assert source != base, name
     for name, (source, _reason, _control) in inert.items():
@@ -1249,11 +1401,14 @@ def test_every_defect_that_cannot_fire_names_a_control_that_can():
     reached somewhere that DOES diverge. Each one names that row, and the name has to
     resolve to an armed, firing mutation rather than to prose."""
     gate = _gate_module()
+    base = hd.fused_hd_pair_source(gate.MUTATION_CODES)
     firing = set(gate.shader_mutations(gate.MUTATION_CODES))
+    firing |= set(gate.b_battery(base))
     firing |= set(gate.periodic_wrap_mutations(gate.PERIODIC_CODES))
     firing |= set(gate.HOST_MUTATIONS)
-    for name, (_source, reason, control) in gate.inert_mutations(
-            gate.MUTATION_CODES).items():
+    inert = dict(gate.inert_mutations(gate.MUTATION_CODES))
+    inert.update(gate.b_battery_inert(base))
+    for name, (_source, reason, control) in inert.items():
         assert control in firing, (name, control)
         assert reason.strip(), name
     for entry in gate.PREDICTED_NULL:
@@ -1261,6 +1416,49 @@ def test_every_defect_that_cannot_fire_names_a_control_that_can():
         assert entry["reason"].strip(), entry
         assert entry["name"] not in firing, (
             f"{entry['name']} is declared unarmable and is also armed")
+
+
+def test_the_battery_covers_every_must_catch_row_of_the_form_contract():
+    """KERNELS.md §7.2, row for row: the six must-catch rows armed on BOTH halves, the
+    two record rows as host defects, the two declared nulls scored on agreeing, the
+    two planted-zero rows in their own leg, and the carried select's keying as a
+    predicted null. The grouping mutations are INVERTED (§7.1): each plants the
+    package's previous grouping, under a name that says so."""
+    gate = _gate_module()
+    base = hd.fused_hd_pair_source(gate.MUTATION_CODES)
+    assert set(gate.b_battery(base)) == {
+        "b1_select_removed", "b2_predicate_on_coefficient_identity",
+        "b5_dsig_dsigu_swapped", "b6_auxiliary_stored_on_a_plain_cell",
+        "b8_plain_curl_through_the_recurrence", "b9_constitutive_select_removed",
+        "b10_constitutive_predicate_on_coefficient_identity",
+        "b11_f_w_stored_on_a_plain_cell"}
+    assert set(gate.b_battery_inert(base)) == {"b7_auxiliary_load_unconditional",
+                                               "b12_constitutive_load_unconditional"}
+    assert {"b3_bound_off_by_one", "b4_lattices_swapped"} <= set(gate.HOST_MUTATIONS)
+    assert "planted_zero" in gate.LEG_GROUPS["device"]
+    assert any(entry["name"] == "carried_select_keyed_at_the_thread_not_the_recomputed_cell"
+               for entry in gate.PREDICTED_NULL)
+    armed = gate.shader_mutations(gate.MUTATION_CODES)
+    assert {"curl_previous_grouping",
+            "constitutive_previous_accumulation_grouping"} <= set(armed)
+    source, _why = armed["curl_previous_grouping"]
+    assert "dtdx * ((c_y - c) + (b - b_z))" in source
+    source, _why = armed["constitutive_previous_accumulation_grouping"]
+    assert "a0 = (hi0[ii] + (kp_0 * src0)) - (km_0 * prev0);" in source
+
+
+def test_a_record_mutation_changes_only_the_record_words_of_the_params():
+    """The host record rows rebind the plan's own ``Params`` with only the 25 record
+    words changed, so the five scalars stay the shipped ones."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    gate = _gate_module()
+    fields, pml = _covered_case()
+    record = np.asarray(chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml)))
+    for mutate in (gate._bound_off_by_one, gate._lattices_swapped):
+        planted = np.asarray(mutate(record))
+        assert planted.shape == record.shape and not np.array_equal(planted, record)
+    assert gate.PARAMS_RECORD_WORD == 5
 
 
 def test_the_two_mutation_cases_are_the_specialisations_their_defects_need():
@@ -1327,13 +1525,14 @@ def test_the_seed_scale_is_a_power_of_two_and_the_source_carries_the_same_one():
 
     The seed is scaled so the 60-step budget clears the float32 denormal band. A
     POWER OF TWO is what makes that a shift of every exponent rather than a change of
-    any mantissa. And the withdraw leg's source must carry the SAME factor: an O(1)
-    dipole added to a 2^80 field rounds away entirely, which silently disarms both of
-    that leg's null controls while leaving its hoisted arrangement green.
+    any mantissa. And the withdraw leg's two integrated sources must carry the SAME
+    factor: an O(1) dipole subtracted from a 2^80 field rounds away entirely, which
+    silently disarms both of that leg's null controls while leaving its weld green.
     """
     gate = _gate_module()
     assert gate.SEED_SCALE_BITS > 0
     assert float(gate.INTEGRATED_SOURCE["amplitude"]) == 2.0 ** gate.SEED_SCALE_BITS
+    assert float(gate.INTEGRATED_MAGNETIC_SOURCE["amplitude"]) == 2.0 ** gate.SEED_SCALE_BITS
     scale = np.float32(2.0) ** gate.SEED_SCALE_BITS
     assert np.isfinite(scale) and scale > 0
     # The scaled peak must stay finite in float32 with room to spare: the fixture's
@@ -1544,3 +1743,10 @@ def test_the_product_leg_scores_the_settled_rotation():
     source = open(_GATE, "r", encoding="utf-8").read()
     assert "every_arrangement_gave_the_engine_its_volumes_back" in source
     assert "and settled and result[\"step_error\"] is None" in source
+
+
+def _one_rank_record(fields, pml):
+    """The record of the one-rank division ``stepping`` steps these ``Fields`` with."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))

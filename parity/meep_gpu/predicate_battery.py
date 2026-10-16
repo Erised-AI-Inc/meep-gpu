@@ -72,21 +72,6 @@ hard-codes ``admitted["update_P"] = []`` after the predicate loop, so this entry
 DISCARDED unless that function is patched in step. Both changes are in this
 directory and neither is sufficient alone.
 
-A FIFTH PROBE ARTIFACT IS SET, for the cylindrical complex family, on the same
-argument the other four rest on: that family multiplies by a complex ROW on the
-LEFT and by a complex SCALAR on the left whose real word is a SIGNED ZERO, and
-neither pattern was ever classified by the unfolded complex, beta or folded-complex
-artifacts. Reading one of theirs would licence an arm from a record that never
-measured this call. With it absent the family refuses by name on all four of its
-slots and the number would silently be a number about fifteen products.
-
-A THIRD PROBE ARTIFACT IS SET HERE for the same reason the first two are: with
-``MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE`` unset the folded complex family
-refuses BY NAME on every slot, and its absence would be recorded as a coverage
-verdict rather than as a missing measurement. It is a SEPARATE candidate list, not
-an alias of the complex one, because the folded fill multiplies by a complex
-coefficient on the LEFT — a pattern the unfolded artifact never classified.
-
 THE TWO SEAM SLOTS ARE RECORDED AND ARE NOT IN THE DENOMINATOR. ``fill_B`` and
 ``fill_D`` are real slots the composer fills, but the 759-slot denominator is
 ``186 x 4 + 15`` and was fixed by the Triton rounds; adding them would make this
@@ -114,42 +99,6 @@ the resolved default ``keep`` is NOT OFFERABLE and every Metal predicate refuses
 name. This module sets it at import — before any ``meep_gpu`` module is reached —
 and RECORDS what it set, because a coverage number measured under a policy the
 artifact does not name is a number about an unknown machine.
-
-THE TWO EXPANSION PROBES ARE LOADED HERE, not passed in. The harness's ``probe``
-argument carries the TRITON round's artifact (a CuPy measurement); it is recorded
-for provenance and deliberately not used, because which complex-multiply arm this
-host's reference takes is a different platform's fact. The Metal artifacts are
-this host's own, measured by ``gate_metal_complex`` and ``gate_metal_special_kz``.
-With either missing, four of the eight products refuse by name and the coverage
-number would silently be a number about four families; :func:`evaluate` records
-``probe_available`` per row so that can never be read off as coverage.
-
-NO SIXTH ARTIFACT IS ADDED, and that is a measurement rather than an economy. Every
-one of the sixteen new complex families takes its expansion from a record one of the
-existing four already carries: ``complex_folded_offdiag_update_e`` routes through
-``folded_complex._folded_complex_grid_reasons`` and therefore needs the FOLDED
-complex artifact; the other seven import ``load_expansion_probe`` from
-``complex_fields`` and need the unfolded one. None introduces an operand orientation
-the four artifacts have not classified, which is the whole test a new artifact has to
-fail before it is added.
-
-A KEY MISMATCH IS RECORDED HERE BECAUSE IT IS LOAD-BEARING FOR THE ARGUMENT ABOVE,
-not because this file can fix it. ``launch.plan_step`` builds its context with
-``extra`` holding exactly four keys — ``complex_probe``, ``beta_probe``,
-``folded_complex_probe``, ``cylindrical_complex_probe`` (launch.py:669, the only
-assignment in the module). FOUR of the new arms read ``context.extra.get("probe")``,
-a key ``plan_step`` never sets: ``complex_no_pml_curl``,
-``complex_no_pml_conductive``, ``complex_no_pml_offdiag_update_e`` and
-``complex_folded_offdiag_update_e``. They therefore receive ``None`` from the
-composer and fall back to their module's own environment variable inside
-``_expansion_reasons`` (complex_fields.py:710-717), which is why they compose at all
-on this corpus. The verdict is IDENTICAL either way ONLY while the environment
-variable names the same artifact the caller passed — which this module guarantees,
-because it sets those variables itself. A caller that passes ``complex_probe=`` to
-``plan_step`` and sets no environment variable gets four families refusing by name
-for a missing measurement they were handed. Entered below at the record the module
-would load, so ADMITTED and COMPOSED stay commensurable; the mismatch belongs in the
-package, not in a coverage harness.
 
 WHAT IS COUNTED. Per row and per sub-step:
 
@@ -180,7 +129,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 _HERE = Path(__file__).resolve().parent
 def _find_api_root(start):
@@ -239,62 +188,10 @@ def runtime_reasons() -> List[str]:
 # refuse, which would report 0/759 and read as "the port covers nothing".
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 
-#: This host's own measured expansion artifacts, newest first.
-COMPLEX_PROBE_CANDIDATES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/metal_complex_audit_2026-08-16/complex_expansion_probe.json",
-    "parity/meep_gpu/results/metal_complex_2026-08-15/complex_expansion_probe.json",
-)
-BETA_PROBE_CANDIDATES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/metal_special_kz_2026-08-16_audit/expansion.json",
-    "parity/meep_gpu/results/metal_special_kz_2026-08-15_certify/expansion.json",
-    "parity/meep_gpu/results/metal_special_kz_2026-08-15/expansion.json",
-)
-#: The folded complex family's own artifact. SEPARATE, not an alias — see the module
-#: docstring: the folded fill multiplies by a complex coefficient on the LEFT, a
-#: pattern neither of the two above ever classified, so reading one of theirs would
-#: license an arm from a record that never measured this call.
-FOLDED_COMPLEX_PROBE_CANDIDATES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/metal_folded_complex_2026-08-16/expansion.json",
-)
-#: The cylindrical complex family's own artifact. SEPARATE for the reason the
-#: folded-complex one is: it carries two operand orientations none of the others
-#: classified — the i*m/r coefficient as a complex ROW on the left, and the
-#: |m| = 1 axis-increment scalar as a complex SCALAR on the left with a signed-zero
-#: real word.
-CYLINDRICAL_COMPLEX_PROBE_CANDIDATES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/metal_cylindrical_complex_2026-08-16/expansion.json",
-)
-
 SUB_STEPS: Tuple[str, ...] = ("step_B", "step_D", "update_H", "update_E")
 #: The two seam slots the folded families fill. OUTSIDE the 759 denominator by
 #: construction — see the module docstring — and counted separately.
 FILL_SLOTS: Tuple[str, ...] = ("fill_B", "fill_D")
-
-
-def _first_existing(candidates: Tuple[str, ...]) -> Optional[str]:
-    for relative in candidates:
-        path = _API / relative
-        if path.exists():
-            return str(path)
-    return None
-
-
-COMPLEX_PROBE_PATH = _first_existing(COMPLEX_PROBE_CANDIDATES)
-BETA_PROBE_PATH = _first_existing(BETA_PROBE_CANDIDATES)
-FOLDED_COMPLEX_PROBE_PATH = _first_existing(FOLDED_COMPLEX_PROBE_CANDIDATES)
-CYLINDRICAL_COMPLEX_PROBE_PATH = _first_existing(
-    CYLINDRICAL_COMPLEX_PROBE_CANDIDATES)
-if COMPLEX_PROBE_PATH:
-    os.environ.setdefault("MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE",
-                          COMPLEX_PROBE_PATH)
-if BETA_PROBE_PATH:
-    os.environ.setdefault("MEEP_GPU_METAL_EXPANSION_PROBE", BETA_PROBE_PATH)
-if FOLDED_COMPLEX_PROBE_PATH:
-    os.environ.setdefault("MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
-                          FOLDED_COMPLEX_PROBE_PATH)
-if CYLINDRICAL_COMPLEX_PROBE_PATH:
-    os.environ.setdefault("MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE",
-                          CYLINDRICAL_COMPLEX_PROBE_PATH)
 
 
 def _verdict(call: Callable[[], Any]) -> Dict[str, Any]:
@@ -310,26 +207,8 @@ def _verdict(call: Callable[[], Any]) -> Dict[str, Any]:
                         (getattr(verdict, "reasons", ()) or ())][:6]}
 
 
-def _probes() -> Dict[str, Any]:
-    from meep_gpu.metal_kernels import (  # noqa: PLC0415
-        complex_fields,
-        cylindrical_complex,
-        folded_complex,
-        special_kz,
-    )
-
-    return {"complex": complex_fields.load_expansion_probe(),
-            "beta": special_kz.load_expansion_probe(),
-            "folded_complex": folded_complex.load_expansion_probe(),
-            "cylindrical_complex": cylindrical_complex.load_expansion_probe()}
-
-
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
-    """Every shipped Metal predicate, on the real lifted objects.
-
-    ``probe`` is the harness's (Triton, CuPy-measured) artifact. It is recorded and
-    NOT used — see the module docstring.
-    """
+def evaluate(driver: Any) -> Dict[str, Any]:
+    """Every shipped Metal predicate, on the real lifted objects."""
     from meep_gpu.metal_kernels import arms, device, launch, subnormal  # noqa: PLC0415
     from meep_gpu.metal_kernels.ade_update_p import (  # noqa: PLC0415
         metal_ade_component_coverage,
@@ -445,11 +324,6 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     sources = getattr(driver, "_sources", None)
     states = tuple(getattr(fields, "polarizations", ()) or ())
 
-    records = _probes()
-    complex_probe, beta_probe = records["complex"], records["beta"]
-    folded_complex_probe = records["folded_complex"]
-    cylindrical_complex_probe = records["cylindrical_complex"]
-
     # THE RESIDENCY DECLARATION IS PART OF EVERY METAL PREDICATE, and passing None
     # would make every one of them refuse for a reason that has nothing to do with
     # this corpus. A fresh, empty Residency is exactly what `plan_step` builds for a
@@ -466,13 +340,11 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
         add("pml_curl", "pml_curl", name,
             lambda n=name: pml_curl_coverage(fields, pml, n, residency))
         add("complex_fields", "complex_pml_curl", name,
-            lambda n=name: complex_pml_curl_coverage(fields, pml, n, residency,
-                                                     complex_probe))
+            lambda n=name: complex_pml_curl_coverage(fields, pml, n, residency))
         add("special_kz_real", "beta_pml_curl", name,
             lambda n=name: beta_pml_curl_coverage(fields, pml, n, residency))
         add("special_kz_complex", "beta_bloch_pml_curl", name,
-            lambda n=name: beta_bloch_pml_curl_coverage(fields, pml, n, residency,
-                                                        beta_probe))
+            lambda n=name: beta_bloch_pml_curl_coverage(fields, pml, n, residency))
         add("bfast_curl", "bfast_pml_curl", name,
             lambda n=name: bfast_pml_curl_coverage(fields, pml, n, residency))
         # THE ROUTING VERDICTS, not the wide ones. Both folded curl families expose
@@ -487,7 +359,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
                                                             residency))
         add("folded_complex", "folded_complex_pml_curl", name,
             lambda n=name: folded_complex_composition_curl_coverage(
-                fields, pml, n, residency, folded_complex_probe))
+                fields, pml, n, residency))
         # TRANCHE 4. Both folded-beta arms take the ROUTING verdict, with the fold
         # MANDATORY, for the reason the comment above gives: the wide verdict
         # admits an unfolded beta run, which the composer routes to `special_kz`.
@@ -496,10 +368,10 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
                 fields, pml, n, residency))
         add("folded_beta_complex", "folded_beta_bloch_pml_curl", name,
             lambda n=name: folded_beta_composition_bloch_curl_coverage(
-                fields, pml, n, residency, beta_probe))
+                fields, pml, n, residency))
         add("cylindrical_complex", "cylindrical_complex_pml_curl", name,
             lambda n=name: cylindrical_complex_pml_curl_coverage(
-                fields, pml, n, residency, cylindrical_complex_probe))
+                fields, pml, n, residency))
         add("cylindrical_real", "cylindrical_real_curl", name,
             lambda n=name: cylindrical_real_curl_coverage(fields, pml, n,
                                                           residency))
@@ -517,21 +389,18 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
         add("no_pml_conductive", "conductive_plain_curl", name,
             lambda n=name: metal_conductive_plain_curl_coverage(fields, pml, n,
                                                                 residency))
-        # The four complex no-PML/conductive/dispersive curls take the UNFOLDED
-        # complex artifact: each imports `load_expansion_probe` from
-        # `complex_fields`, so that record is the one their own fallback reads.
         add("complex_no_pml_curl", "complex_plain_curl", name,
             lambda n=name: metal_complex_no_pml_curl_coverage(
-                fields, pml, n, residency, complex_probe))
+                fields, pml, n, residency))
         add("complex_no_pml_conductive", "complex_conductive_plain_curl", name,
             lambda n=name: metal_complex_conductive_no_pml_curl_coverage(
-                fields, pml, n, residency, complex_probe))
+                fields, pml, n, residency))
         add("complex_conductive_pml", "complex_conductive_pml_curl", name,
             lambda n=name: metal_complex_conductive_pml_curl_coverage(
-                fields, pml, n, residency, complex_probe))
+                fields, pml, n, residency))
         add("complex_dispersive_spine", "complex_dispersive_pml_curl", name,
             lambda n=name: metal_complex_dispersive_pml_curl_coverage(
-                fields, pml, n, residency, complex_probe))
+                fields, pml, n, residency))
         # THE NONLINEAR SPINE, and the reason the family now spans four slots
         # rather than one: `step_B`/`step_D` reuse the certified ordinary PML curl
         # body through a nonlinear-only predicate, because the engine does not read
@@ -548,8 +417,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             lambda s=side: metal_null_constitutive_coverage(fields, pml, s,
                                                             residency))
         add("complex_fields", "complex_constitutive", sub_step,
-            lambda s=side: complex_constitutive_coverage(fields, pml, s, residency,
-                                                         complex_probe))
+            lambda s=side: complex_constitutive_coverage(fields, pml, s, residency))
         add("special_kz_real", "beta_run_constitutive", sub_step,
             lambda s=side: beta_run_constitutive_coverage(fields, pml, s, residency))
         add("special_kz_complex", "beta_run_complex_constitutive", sub_step,
@@ -562,16 +430,16 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             lambda s=side: folded_constitutive_coverage(fields, pml, s, residency))
         add("folded_complex", "folded_complex_constitutive", sub_step,
             lambda s=side: folded_complex_constitutive_coverage(
-                fields, pml, s, residency, folded_complex_probe))
+                fields, pml, s, residency))
         add("folded_beta_real", "folded_beta_constitutive", sub_step,
             lambda s=side: folded_beta_constitutive_coverage(fields, pml, s,
                                                               residency))
         add("folded_beta_complex", "folded_beta_complex_constitutive", sub_step,
             lambda s=side: folded_beta_complex_constitutive_coverage(
-                fields, pml, s, residency, beta_probe))
+                fields, pml, s, residency))
         add("cylindrical_complex", "cylindrical_complex_constitutive", sub_step,
             lambda s=side: cylindrical_complex_constitutive_coverage(
-                fields, pml, s, residency, cylindrical_complex_probe))
+                fields, pml, s, residency))
         add("cylindrical_real", "cylindrical_real_constitutive", sub_step,
             lambda s=side: cylindrical_real_constitutive_coverage(fields, pml, s,
                                                                    residency))
@@ -581,7 +449,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
         add("complex_conductive_pml", "complex_conductive_pml_constitutive",
             sub_step,
             lambda s=side: metal_complex_conductive_pml_constitutive_coverage(
-                fields, pml, s, residency, complex_probe))
+                fields, pml, s, residency))
 
     # TRANCHE 6, update_H ONLY, and the asymmetry is the arm table's rather than a
     # choice made here: both families register a magnetic arm on `update_H` and
@@ -591,7 +459,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     # verdict about `update_H`.
     add("complex_dispersive_spine", "complex_dispersive_pml_magnetic", "update_H",
         lambda: metal_complex_dispersive_pml_magnetic_coverage(
-            fields, pml, residency, complex_probe))
+            fields, pml, residency))
     add("nonlinear_constitutive", "nonlinear_run_constitutive", "update_H",
         lambda: nonlinear_run_constitutive_coverage(fields, pml, "H", residency))
 
@@ -615,8 +483,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     add("dispersive_update_e", "dispersive_e", "update_E",
         lambda: metal_dispersive_e_coverage(fields, pml, residency))
     add("complex_dispersive_update_e", "complex_dispersive_e", "update_E",
-        lambda: metal_complex_dispersive_e_coverage(fields, pml, residency,
-                                                    complex_probe))
+        lambda: metal_complex_dispersive_e_coverage(fields, pml, residency))
     add("folded_dispersive_update_e", "folded_dispersive_e", "update_E",
         lambda: folded_dispersive_e_coverage(fields, pml, residency))
     add("folded_offdiag_dispersive_update_e", "folded_offdiag_dispersive_e",
@@ -625,19 +492,16 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     add("no_pml_stored_e", "stored_e", "update_E",
         lambda: metal_stored_e_coverage(fields, pml, residency))
     add("complex_no_pml_stored_e", "complex_stored_e", "update_E",
-        lambda: metal_complex_stored_e_coverage(fields, pml, residency,
-                                                complex_probe))
+        lambda: metal_complex_stored_e_coverage(fields, pml, residency))
     add("complex_no_pml_offdiag_update_e", "complex_no_pml_offdiag", "update_E",
-        lambda: metal_complex_no_pml_offdiag_coverage(fields, pml, residency,
-                                                      complex_probe))
+        lambda: metal_complex_no_pml_offdiag_coverage(fields, pml, residency))
     # THE ONE NEW FAMILY THAT TAKES THE FOLDED COMPLEX ARTIFACT, not the unfolded
     # one: its predicate routes through `folded_complex._folded_complex_grid_
     # reasons`, so the record that licences its multiply is the folded fill's. The
     # fold is MANDATORY inside this single predicate (`_requires_a_fold`), so there
     # is no wide sibling to enter here by mistake.
     add("complex_folded_offdiag_update_e", "complex_folded_offdiag", "update_E",
-        lambda: metal_complex_folded_offdiag_coverage(fields, pml, residency,
-                                                      folded_complex_probe))
+        lambda: metal_complex_folded_offdiag_coverage(fields, pml, residency))
     # TRANCHE 6, update_P. `ade_update_p` registers a WIRED arm on this slot, so it
     # is asked like any other. See the docstring: the analyzer's `roll_up` discards
     # this entry unless it is patched in step.
@@ -656,8 +520,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             lambda s=side: mirror_ghost_fill_coverage(fields, s, residency)))
         fill_entries.append((
             "folded_complex", "folded_complex_fill", slot,
-            lambda s=side: folded_complex_fill_coverage(fields, s, residency,
-                                                        folded_complex_probe)))
+            lambda s=side: folded_complex_fill_coverage(fields, s, residency)))
 
     results: Dict[str, Any] = {}
     for family, label, sub_step, call in entries:
@@ -766,23 +629,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
         "fill_predicates": fill_results,
         "polarization": polarization,
         "configuration": configuration,
-        "plan_step": plan_step_admission(fields, pml, sources, complex_probe,
-                                         beta_probe, folded_complex_probe,
-                                         cylindrical_complex_probe),
-        "probe_available": {"complex": complex_probe is not None,
-                            "beta": beta_probe is not None,
-                            "folded_complex": folded_complex_probe is not None,
-                            "cylindrical_complex": (
-                                cylindrical_complex_probe is not None),
-                            "complex_path": COMPLEX_PROBE_PATH,
-                            "beta_path": BETA_PROBE_PATH,
-                            "folded_complex_path": FOLDED_COMPLEX_PROBE_PATH,
-                            "cylindrical_complex_path":
-                                CYLINDRICAL_COMPLEX_PROBE_PATH,
-                            "harness_probe_backend": (
-                                probe.get("backend") if isinstance(probe, dict)
-                                else None),
-                            "harness_probe_used": False},
+        "plan_step": plan_step_admission(fields, pml, sources),
         "subnormal_policy": subnormal.mps_policy_report(),
         "arm_table": [{"slot": slot, "family": spec.family, "label": spec.label,
                        "wired": bool(spec.wired)}
@@ -791,10 +638,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     }
 
 
-def plan_step_admission(fields: Any, pml: Any, sources: Any,
-                        complex_probe: Any, beta_probe: Any,
-                        folded_complex_probe: Any = None,
-                        cylindrical_complex_probe: Any = None
+def plan_step_admission(fields: Any, pml: Any, sources: Any
                         ) -> Dict[str, Any]:
     """Run the SHIPPED ``launch.plan_step`` and record what it did, per slot.
 
@@ -816,10 +660,7 @@ def plan_step_admission(fields: Any, pml: Any, sources: Any,
                               "residency_covered": None, "error": None}
     try:
         plan = launch.plan_step(
-            fields, pml, residency=device.Residency(), sources=sources,
-            complex_probe=complex_probe, beta_probe=beta_probe,
-            folded_complex_probe=folded_complex_probe,
-            cylindrical_complex_probe=cylindrical_complex_probe)
+            fields, pml, residency=device.Residency(), sources=sources)
     except BaseException as exc:  # noqa: BLE001 - plan_step must never raise
         record["error"] = f"{type(exc).__name__}: {exc}"[:400]
         return record

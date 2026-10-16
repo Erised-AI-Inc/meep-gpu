@@ -277,7 +277,7 @@ from . import fused_hd_pair as _plain
 from . import offdiag_weld_common as _weld
 from . import shaders, symmetry
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
-from .launch import SUB_STEPS
+from .launch import SUB_STEPS, h_start_reasons
 from .. import withdraw_hoist as _withdraw_hoist
 
 FAMILY = "folded_fused_hd_pair"
@@ -506,6 +506,7 @@ def folded_fused_hd_pair_source(codes: Sequence[int],
                 .split(_plain.DECODE_END, 1)[0] + _plain.DECODE_END)
     return shaders.substitute(_plain._TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
+        **_plain.record_substitutions(),
         "__H_CELL__": _plain.h_cell_function(contract),
         "__PROLOGUE__": prologue,
         "__H_CELL_ARGS__": _plain.H_CELL_TAIL_ARGS,
@@ -569,6 +570,11 @@ def metal_folded_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = No
     if not magnetic.covered:
         reasons.extend(f"folded constitutive half: {reason}"
                        for reason in magnetic.reasons)
+    # THE RUN'S FIRST update_H, refused on the plain product's rule and in its words:
+    # the array path starts H and f_w from B on the dsigw cells there and this weld
+    # does not (see fused_hd_pair's docstring).
+    reasons.extend(f"folded constitutive half: {reason}"
+                   for reason in h_start_reasons(fields, sources))
     curl = symmetry.folded_composition_curl_coverage(fields, pml, "step_D", residency)
     if not curl.covered:
         reasons.extend(f"folded curl half: {reason}" for reason in curl.reasons)
@@ -638,12 +644,18 @@ def plan_metal_folded_fused_hd_pair(
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
         codes: Optional[Sequence[int]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional["_weld.ScratchWeldPairPlan"]:
     """Build the folded fused H/D plan, or ``None`` when the seam is refused.
 
-    ``None`` is the only refusal, for the reason :func:`.launch.plan_pml_curl` gives:
-    a configuration this kernel does not carry must fall back to the array path,
-    never raise into a caller that would otherwise have stepped correctly.
+    ``None`` is the only refusal of a CONFIGURATION, for the reason
+    :func:`.launch.plan_pml_curl` gives: a configuration this kernel does not carry
+    must fall back to the array path, never raise into a caller that would otherwise
+    have stepped correctly. ``chunk_bounds`` is the record of the run's division, as
+    :func:`.fused_hd_pair.plan_metal_fused_hd_pair` takes it: required, checked
+    against the folded STORED extent, and packed into the same ``Params``. Its
+    membership lines are ghost-adjusted (``chunk_map.ChunkLayout.membership``), so a
+    ghost row selects its image row's form at its own stored index.
 
     ``functions`` is the SHADER mutation seam and ``codes`` the STRUCTURAL one. The
     gate compiles a deliberately broken copy of the shipped source and hands it
@@ -730,7 +742,8 @@ def plan_metal_folded_fused_hd_pair(
     dtdx = grid.dt / grid.dx
     static = (flux + displacement + auxiliary
               + curl_coefficients + constitutive_coefficients
-              + [_plain._params_tensor(grid.shape, dtdx, residency.device)])
+              + [_plain._params_tensor(grid.shape, dtdx, residency.device,
+                                       chunk_bounds)])
     assert (2 * len(ROTATED_NAMES) + len(static)) == PACKED_BINDINGS, (
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     assert PACKED_BINDINGS == MAX_BUFFER_BINDINGS, (
@@ -758,7 +771,7 @@ def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
         return None
     return plan_metal_folded_fused_hd_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

@@ -10,10 +10,9 @@ object.
 MEEP developers. It installs beside an unmodified MEEP and does not replace or
 modify the `meep` module.
 
-**Status: alpha (0.9.2).** This is an early release. Significant changes are
-planned before version 1.0, the version the accompanying paper will cite, and
-interfaces and record formats may change until then. See
-[Certification status](#certification-status-of-this-preview). The import name
+**Status: beta (1.0.0).** This is the version the accompanying paper cites.
+Interfaces and record formats may still change in later releases. See
+[Certification status](#certification-status-of-this-release). The import name
 is `meep_gpu`. Licence: GPL-2.0-or-later.
 
 **Start here.**
@@ -38,10 +37,10 @@ Coding agents helping someone use or change this package: read
 It is aimed at large three-dimensional problems on one GPU, for users without a
 cluster. Expect no gain over MEEP on two-dimensional problems, on small
 three-dimensional grids, on short runs, or on an NVIDIA GPU outside the
-supported range (compute capability 7.0 to 9.0); most of these cases have not
-been timed against MEEP (the list below says what each rests on).
+certified set; most of these cases have not been timed against MEEP (the list
+below says what each rests on).
 
-One comparison with MEEP has been made on the identical problem, on
+A comparison with MEEP on the identical problem was made on
 2026-09-28. On one 3-D case, from 512,000 to 7,077,888 cells, the GPU stepped
 1.80 to 3.67 times as fast as MEEP on the Triton route (what a default run
 takes on a certified NVIDIA host with Triton installed), and 1.68 to 3.24 times
@@ -50,13 +49,9 @@ as fast on the CUDA-only route. Read those numbers with their conditions:
 - one NVIDIA RTX A6000 against one host with 48 physical cores, in the same
   machine;
 - single precision on both sides (MEEP 1.33.0 built from source with
-  `--enable-single`, `-O2`, as a portable binary, one thread per rank with
-  `OMP_NUM_THREADS=1`; no `-march=native` build or MPI×OpenMP run was tried as
-  a control);
+  `--enable-single`);
 - this one 3-D case (a dielectric sphere under PML) with one flux monitor, the
-  same simulation on both sides; 78 % of its cells are PML and its source sits
-  off the fused seams, so it pays no deposit-repair cost, and a case with a thin
-  PML or a source on a fused seam may gain less;
+  same simulation on both sides;
 - steady-state stepping, not counting the one-off lift before the first step,
   which took about 19 s at 512,000 cells and 216 s at 7,077,888 cells: on the
   Triton route the GPU run finishes first only after about 19,000 to 35,000
@@ -64,27 +59,24 @@ as fast on the CUDA-only route. Read those numbers with their conditions:
 - MEEP at the fastest of the seven rank counts tried (1, 8, 16, 24, 32, 48 and
   64);
 - the CUDA-only route is the hand-written CUDA kernel table serving alone, the
-  table a host without Triton uses (timed on a host that also had Triton); its
-  off-diagonal electric kernel changed in 0.9.1, and these figures have not
-  been re-timed since that change.
+  table a host without Triton uses (timed on a host that also had Triton); it
+  is being improved for the next release, and these figures will be updated
+  then.
 
 [Will it help?](docs/guides/will-it-help.md) has the table, every condition
 and the break-even step count at each size. The figures were measured on the
-development tree this release was prepared from; a timing campaign from the
-release tag is still to be run. The run records behind them are not in this
-repository.
+development tree this release was prepared from; the 1.0 timing (CERT-8) follows
+in a documentation update after the release.
 
 Where it does not help, or has not been measured:
 
-- **Two-dimensional problems and small three-dimensional problems are expected
-  to be slower than on MEEP** (inferred; not timed). None has been timed
-  against MEEP on a matched problem: the ratio falls as the grid gets smaller
-  (1.80 times at 512,000 cells), and the dispatched step has a fixed cost per
-  step. Measure your own case.
-- **Apple hardware.** No comparison with MEEP on the identical problem has been
-  made on a Mac. On the one Mac measured (one pass, on a loaded host), a
-  default run is slower than the package's own NumPy reference below about
-  125,000 cells in 3-D.
+- **Two-dimensional problems and small three-dimensional problems are slower
+  than on MEEP.** None has been timed against MEEP on a matched problem: the
+  ratio falls as the grid gets smaller (1.80 times at 512,000 cells), and the
+  dispatched step has a fixed cost per step. Measure your own case.
+- **Apple hardware.** No comparison with MEEP on the identical problem on a Mac
+  has produced a figure of record. On the one Mac measured, a default run is
+  slower than the package's own NumPy reference below about 125,000 cells in 3-D.
 - **Short runs.** Below the break-even step count, MEEP finishes first. Run to
   its own end time (1,400 to 3,360 steps), the timed case finishes first on
   MEEP at every size.
@@ -268,7 +260,7 @@ supported and uncertified.
 - **NVIDIA.** Every NVIDIA GPU of compute capability 7.0 to 9.0 is supported by
   both kernel tables, with Triton 3.1 on the Triton table: the kernels run on
   such a device by default and say whether it is certified. Outside that range
-  the kernel tables are refused by name unless `MEEP_GPU_ALLOW_UNCERTIFIED=1`.
+  the kernel tables are refused by name unless `MEEP_GPU_HARDWARE=any`.
 
 One NVIDIA compute capability and one Apple environment are certified.
 
@@ -308,7 +300,7 @@ the run is labelled uncertified. Its status line marks the device
 `supported, UNCERTIFIED`, and the run prints one line per process, on standard
 error, naming what was read and what is certified:
 
-    meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU compute capability 8.9 (certified: 8.6). They were dispatched because this NVIDIA GPU and toolchain are supported but not certified bit-identical (the supported range is compute capability 7.0 to 9.0, with Triton >=3.1,<3.2 or with the NVRTC of either CuPy build, CUDA 11.8 for cupy-cuda11x or the host's CUDA 12 for cupy-cuda12x), and MEEP_GPU_ALLOW_UNCERTIFIED=0 would restrict the kernels to certified ones; the gates with no run on this GPU are counted in the dispatch record under uncertified.served[], which names the first five in welds_without_a_live_run_here; compare the results with a prefer_gpu=False run of the same simulation before relying on them
+    meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU compute capability 8.9 (certified: 8.6). They were dispatched because this NVIDIA GPU and toolchain are supported but not certified bit-identical (the supported range is compute capability 7.0 to 9.0, with Triton >=3.1,<3.2 or with the NVRTC of either CuPy build, CUDA 11.8 for cupy-cuda11x or the host's CUDA 12 for cupy-cuda12x), and MEEP_GPU_HARDWARE=certified would restrict the kernels to certified ones; the gates with no run on this GPU are counted in the dispatch record under uncertified.served[], which names the first five in welds_without_a_live_run_here; compare the results with a prefer_gpu=False run of the same simulation before relying on them
 
 `driver.fast_path_report()` carries `certified: False` with what was read under
 `uncertified.served`. Where one NVIDIA kernel table is certified for the device
@@ -330,16 +322,16 @@ and the certified GPU `certified` whatever else is uncertified. The run prints
 one line per process, on standard error, naming what was read and what is
 certified:
 
-    meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU architecture applegpu_g15p (certified: applegpu_g13s). They were dispatched because this Apple GPU is supported, and MEEP_GPU_ALLOW_UNCERTIFIED=0 would restrict the Metal kernels to certified environments; compare the results with a prefer_gpu=False run of the same simulation before relying on them
+    meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU architecture applegpu_g15p (certified: applegpu_g13s). They were dispatched because this Apple GPU is supported, and MEEP_GPU_HARDWARE=certified would restrict the Metal kernels to certified environments; compare the results with a prefer_gpu=False run of the same simulation before relying on them
 
 `driver.fast_path_report()` carries `certified: False`, with each fact that is
 not certified under `uncertified.served`, and `environment.device_supported`:
 `True` on an Apple GPU, `False` on a GPU that is not Apple's, `None` when
 neither its architecture nor its name was read. A GPU that is not Apple's is not
 supported; the Metal kernels run on it too unless
-`MEEP_GPU_ALLOW_UNCERTIFIED=0`, its status line carries no `supported`, and the
+`MEEP_GPU_HARDWARE=certified`, its status line carries no `supported`, and the
 note gives as the reason
-`the Metal table runs on environments outside the certified set unless MEEP_GPU_ALLOW_UNCERTIFIED=0`.
+`the Metal table runs on environments outside the certified set unless MEEP_GPU_HARDWARE=certified`.
 A fact that could not be read, or that the records do not name, runs too; when
 no other fact is uncertified the report carries `certified: None` and no note is
 printed.
@@ -354,29 +346,38 @@ one M1 Max (2026-09-28) the kernels ran on it uncertified, and their results on
 the 3 examples were identical, byte for byte, to the array path
 ([INSTALL.md](INSTALL.md#the-newest-pytorch-on-a-mac)).
 
-**`MEEP_GPU_ALLOW_UNCERTIFIED`.** The switch is strict: it takes `1` or `0`,
-and any other value (`true`, `yes`, an empty string) is refused by name and the
-run takes the array path, on every kernel table and on a certified host as
-well.
+**`MEEP_GPU_HARDWARE`.** The switch names which hardware the compiled kernels
+may run on, by value: `certified`, `supported` (the default, when unset) or
+`any`. It is strict: any other value (`1`, `0`, `true`, `Any`, an empty string)
+is refused by name and the run takes the array path, on every kernel table and
+on a certified host as well.
 
-    MEEP_GPU_ALLOW_UNCERTIFIED=1 python my_simulation.py   # NVIDIA: the kernels on an unsupported device too
-    MEEP_GPU_ALLOW_UNCERTIFIED=0 python my_simulation.py   # every table: the kernels on certified identities only
+    MEEP_GPU_HARDWARE=certified python my_simulation.py   # every table: the kernels on certified identities only
+    MEEP_GPU_HARDWARE=supported python my_simulation.py   # the default: certified and supported identities
+    MEEP_GPU_HARDWARE=any python my_simulation.py         # NVIDIA: the kernels on an unsupported device too
 
-What the two values do depends on the table:
+What the three values do depends on the table:
 
-- **NVIDIA tables.** Unset runs a supported identity uncertified and refuses an
-  unsupported one, as above. `0` restricts the compiled kernels to certified
-  devices and toolchains: anything else, a device whose compute capability could
-  not be read included, is refused by name and the run takes the array path,
-  CuPy on the GPU. `1` also dispatches on a device or library version outside
-  the supported range, recorded `supported: False`, and composes a supported,
-  uncertified table beside a certified one. It admits identities and nothing
-  else; every other rule of dispatch applies as before. The refusal of an
-  unsupported identity names the switch.
-- **Metal table.** Unset or `1` runs an uncertified environment, as above. `0`
-  restricts the Metal kernels to the certified environment: a fact that is not
-  certified is refused by name, and so is one that could not be judged, and the
-  run takes the array path, NumPy on the host CPU.
+- **NVIDIA tables.** `supported` runs a supported identity uncertified and
+  refuses an unsupported one, as above. `certified` restricts the compiled
+  kernels to certified devices and toolchains: anything else, a device whose
+  compute capability could not be read included, is refused by name and the run
+  takes the array path, CuPy on the GPU. `any` also dispatches on a device or
+  library version outside the supported range, recorded `supported: False`, and
+  composes a supported, uncertified table beside a certified one. It admits
+  identities and nothing else; every other rule of dispatch applies as before.
+  The refusal of an unsupported identity names the switch.
+- **Metal table.** `supported` and `any` run an uncertified environment, as
+  above. `certified` restricts the Metal kernels to the certified environment: a
+  fact that is not certified is refused by name, and so is one that could not be
+  judged, and the run takes the array path, NumPy on the host CPU.
+
+`MEEP_GPU_HARDWARE` replaced `MEEP_GPU_ALLOW_UNCERTIFIED`, whose `0` and `1`
+did not say what they did. The old name is refused by name, set to anything,
+and the refusal names the value that does what it did:
+`MEEP_GPU_ALLOW_UNCERTIFIED=0` is `MEEP_GPU_HARDWARE=certified`,
+`MEEP_GPU_ALLOW_UNCERTIFIED=1` is `MEEP_GPU_HARDWARE=any`, and unset is
+`supported`.
 
 A run on an uncertified identity prints one line per process, on standard
 error, saying that the kernels are not certified on this host and naming what
@@ -455,35 +456,34 @@ measured on the NumPy reference on 2026-08-09, not through the kernels and not
 at the timed sizes. No identity between NVIDIA and Apple results is claimed.
 [Floating-point contract](docs/design/floating-point.md) has the detail.
 
-## Certification status of this preview
+## Certification status of this release
 
 Stated plainly:
 
-- The certification round ran on the files this release ships: the Triton and
-  hand-written CUDA tables on compute capability 8.6 (one RTX A6000), and the
-  Metal table on the Apple M1 Max (`applegpu_g13s`). Every certification entry
-  in the shipped ledgers is bound to the published files except the two
-  fused-product timing records.
-- Kernel dispatch is on by default. Its go/no-go from the default and the route
-  campaigns of the three kernel tables ran on these files, in the rounds
-  stamped 2026-10-05, and released, and they are recorded in the ledgers
-  ([Certification status](docs/development/certification.md#certification-status-of-this-release)).
-- **Two tests are pending**:
-  `test_dispatch_preference::test_at_the_top_of_the_sweep_the_two_pair_plans_are_faster`,
-  for `[cuda]` and `[triton]`. The timing records they read were cut from rows
-  timed on an earlier deposit-repair route, and no timing campaign has run on
-  these files yet. Dispatch does not read those records, and correctness does
-  not rest on them ([CHANGELOG](CHANGELOG.md), "Pending: fused-product
-  timing").
-- The two tests belong to the certification suite (pytest marker
+- **Two GPUs are certified**: one NVIDIA RTX A6000 (compute capability 8.6) for
+  both NVIDIA kernel tables, under `keep` and under `flush`, and one Apple M1 Max
+  (`applegpu_g13s`) for the Metal table, under `flush`. Every other supported GPU
+  runs the kernels by default, recorded as uncertified.
+- **The 1.0 certification round ran on this release's bytes**, in one reference
+  environment per platform built by the repository's own script, on 2026-10-14
+  and 2026-10-15: every device gate unit holds (123 of 123 NVIDIA, 62 of 62
+  Metal), the route campaigns of the three kernel tables released, residency held
+  on the Metal table, and the go/no-go for dispatch on by default read GO. The
+  ledgers shipped here were bound from those runs.
+- **The ledger-contract tests** form the certification suite (pytest marker
   `certification`), which a run without `-m` does not select and
-  `python -m pytest meep_gpu parity/meep_gpu -m certification` runs; there
-  they are reported as failed, not skipped or removed.
-  `tools/ci/pending_certification.txt` lists them, and
-  [Running the tests](docs/development/testing.md) explains them.
+  `python -m pytest meep_gpu parity/meep_gpu -m certification` runs. The tests it
+  still fails on are listed in `tools/ci/pending_certification.txt`, each under
+  the step that removes it, and [Running the tests](docs/development/testing.md)
+  explains them; none is skipped or removed.
+- **Timing is not part of certification.** The 1.0 timing (CERT-8) follows in a
+  documentation update after the release; the speeds above are measurements on
+  the development tree this release was prepared from.
 
-[Running the tests](docs/development/testing.md#what-a-run-of-the-suites-shows-in-this-preview) records what a run of the suites shows
-on these files.
+[Certification status](docs/development/certification.md#certification-status-of-this-release)
+has every figure of the round, and
+[Running the tests](docs/development/testing.md#what-a-run-of-the-suites-showed-in-the-090-preview)
+what a run of the suites showed in three environments at the 0.9.0 preview.
 
 ## Limits
 
@@ -508,8 +508,7 @@ on these files.
   of the whole process, and on the Apple host measured the policy was still
   installed after `close()`.
 
-[CHANGELOG](CHANGELOG.md), "Known limits", has a longer list as of 0.9.0;
-where it and this section differ, this section is current.
+[CHANGELOG](CHANGELOG.md), "Known limits", has the full list.
 
 ## Relation to MEEP's planned GPU backend and to other projects
 
@@ -563,7 +562,7 @@ serves a user with one GPU, NVIDIA or Apple, and the MEEP they already have.
 ## How to cite
 
 Cite this software through [`CITATION.cff`](CITATION.cff) (Ivan Biggs, Alicia
-Zeng and Yanlin Dou, meep-gpu, version 0.9.2, 2026), and cite MEEP, which
+Zeng and Yanlin Dou, meep-gpu, version 1.0.0, 2026), and cite MEEP, which
 builds every simulation this package steps:
 
 > A. F. Oskooi, D. Roundy, M. Ibanescu, P. Bermel, J. D. Joannopoulos and
@@ -577,7 +576,7 @@ In BibTeX:
 @software{meep_gpu_2026,
   author  = {Biggs, Ivan and Zeng, Alicia and Dou, Yanlin},
   title   = {{meep-gpu: single-GPU time stepping for MEEP simulations on NVIDIA and Apple hardware}},
-  version = {0.9.2},
+  version = {1.0.0},
   year    = {2026},
   url     = {https://github.com/Erised-AI-Inc/meep-gpu},
   license = {GPL-2.0-or-later}

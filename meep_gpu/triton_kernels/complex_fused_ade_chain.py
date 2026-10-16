@@ -15,19 +15,25 @@ cell for the same four rows, and the two backends' reach at this seam is then
 equal.
 
 ===========================================================================
-THE SEAM IS EMPTY, AND THAT IS THE WHOLE REASON THIS PRODUCT EXISTS
+THE SEAM CARRIES NOTHING THE RECURRENCE READS, AND THAT IS WHY THIS PRODUCT EXISTS
 ===========================================================================
 
 ``FdtdDriver.step`` runs::
 
     if fast is None or not fast.dispatch("update_E", self.fields):
-        update_E(self.fields, self.pml)                       # driver.py:3303-3304
+        update_E(self.fields, self.pml)
+    f_minus_p_end(self.fields, f_minus_p_D)
     if fast is None or not fast.dispatch("update_P", self.fields):
-        update_P(self.fields, self.pml)                       # driver.py:3305-3306
+        update_P(self.fields, self.pml)
 
-Nothing sits between them: no source injection, no mirror fill, no wall clear, no
-far-ghost pass. Every other seam on this board has a driver pass inside it that a
-fused kernel must carry inline or refuse; this one has none, which is why the
+The one statement between them is the electric ``f_minus_p`` restore
+(``sources.f_minus_p_end``): it puts back the D words an integrated electric source
+replaced and re-runs D's boundary passes, so it writes D (and D's ghost and wall cells)
+ALONE. ``update_P`` reads the polarizations, sigma and MEEP's drive ``w`` (the stored E
+or ``f_w``, ``Fields.drive_field``) and never D, so a launch that forms E and then P
+before the restore leaves every word the driver's order leaves: no injection, no mirror
+fill of E, no wall clear of E, no far-ghost pass of E sits in the seam. Every other seam
+on this board has a driver pass inside it that a fused kernel must carry inline or refuse; this one has none, which is why the
 fusion matrices record ``E->P: 15 instances, 0 blocked by the source seam,
 CEILING 15``.
 
@@ -76,31 +82,6 @@ copy of "the load-bearing lines" is one more place to drift.
 ``test_triton_complex_fused_ade_chain`` reads the certified kernels' own text with
 ``ast`` and requires each arithmetic line to appear in this kernel modulo the
 documented renames, and the device gate re-runs that check beside the bytes.
-
-===========================================================================
-THE ONE FACT THIS FAMILY MUST NOT INHERIT: WHICH COMPLEX EXPANSION ARM
-===========================================================================
-
-Both halves multiply complex numbers, and WHICH EXPANSION the platform's reference
-takes is a MEASURED fact rather than a choice
-(:func:`complex_fields.expansion_from_probe`). The two certified halves ask the
-SAME probe record for DIFFERENT pattern sets:
-
-* ``complex_no_pml_stored_e`` needs the shared four
-  (:data:`complex_fields.PROBE_PATTERNS`) — its only complex multiply is
-  ``c8_mul_f4_field_left`` (complex_no_pml_stored_e.py:27-30);
-* ``complex_ade`` needs those four PLUS ``c8_mul_python_float_field_left``, the
-  fifth orientation ``P * c_now`` introduces (complex_ade.py:11-24).
-
-ONE FUSED SOURCE CARRIES ONE ``EXPANSION`` CONSTEXPR. A platform whose probe
-licensed different arms for the two pattern sets would need the two halves to
-disagree inside a single scope, which is unspellable. On the certified host both
-resolve to ``FMA_V1`` — but agreeing today is a coincidence and not an invariant,
-so this module does not assume it: :func:`complex_fused_ade_chain_coverage` calls
-BOTH resolvers and REFUSES BY NAME when they disagree, and
-:func:`resolve_chain_expansion` is the single place the launched constexpr comes
-from. A platform that split the two arms earns a new product rather than a silent
-downgrade of one half.
 
 ===========================================================================
 THE ROTATION, AND WHY THE SHAPE IS ONE SCRATCH PER DRIVEN COMPONENT
@@ -216,25 +197,17 @@ shown to FLIP against a planted defect. Readable entries:
 ``results/triton_complex_fused_ade_chain_2026-08-21/``. This is a correctness
 result, not a throughput claim.
 
-TWO MEASURED NULLS ARE THIS PRODUCT'S OWN CLAIM, and both were scored on a case
-that COULD have seen them. Reversing the operand orientation
-(``_mul_field_left`` -> ``_mul_coefficient_left``) and pinning ``EXPANSION`` to the
-other licensable arm each compiled to different PTX and changed NO byte, on the
+A MEASURED NULL IS THIS PRODUCT'S OWN CLAIM, scored on a case that COULD have
+seen it. Reversing the operand orientation (``_mul_field_left`` ->
+``_mul_coefficient_left``) compiled to different PTX and changed NO byte, on the
 physical band AND on the subnormal band with the census live (11 and 7 subnormal
 words in the reference). The reason is structural: every complex multiply in this
-kernel has a REAL operand, and the two arms separate only where the fused
-product's extra precision changes a rounded word. **The ``EXPANSION`` clause is
-therefore a LICENCE requirement rather than something these cases can falsify**,
-and the predicate refuses without a probe for that reason and not because a
-divergence was observed.
+kernel has a REAL operand and is formed one float32 product per part, and IEEE
+multiplication is commutative.
 
-ONE SUBNORMAL POLICY, AND THE BOUND IS INHERITED. The complex ADE half needs a
-seventh probe orientation (``c8_mul_python_float_field_left``) and the only writer
-of a record carrying it, ``gate_triton_unified_expansion.py``, calls
-``install_ftz_strip()`` unconditionally — so no FLUSH-cut artifact that licenses
-this family exists and the flush leg is a NAMED refusal rather than a missing row.
-Every complex Triton family on this board is certified keep-only, including BOTH
-of this product's halves (``triton_complex_ade_device_gate``: "keep";
+ONE SUBNORMAL POLICY, AND THE BOUND IS INHERITED. Every complex Triton family on
+this board is certified keep-only, including BOTH of this product's halves
+(``triton_complex_ade_device_gate``: "keep";
 ``triton_complex_no_pml_stored_e_device_gate``: "keep"). A fused product cannot be
 certified under a policy its halves were not.
 
@@ -278,7 +251,6 @@ __all__ = [
     "complex_fused_ade_chain_step",
     "explain_complex_fused_ade_chain",
     "plan_complex_fused_ade_chain",
-    "resolve_chain_expansion",
 ]
 
 #: This family has ONE arm and the name is data rather than a literal so the
@@ -288,7 +260,7 @@ __all__ = [
 ARM = "complex_no_pml"
 
 #: The driver passes one run of this plan performs, in driver order
-#: (driver.py:3303-3306). Declared rather than inferred from a slot name — a
+#: (FdtdDriver.step). Declared rather than inferred from a slot name — a
 #: module whose REPLACES disagrees with what its kernel carries is a defect class
 #: this package has already paid for once.
 REPLACES: Tuple[str, ...] = ("update_E", "update_P")
@@ -328,12 +300,13 @@ POLICY: Dict[str, Any] = {
 
 #: Runtime (non-constexpr) parameters :func:`complex_fused_ade_chain_step`
 #: declares: three targets, three sources, three inverse epsilons, the E half's
-#: pole slots, six ADE arguments per live slot per component, and ``n_elem``.
+#: pole slots, seven ADE arguments per slot per component (output, history, sigma
+#: and MEEP's four update_P words), and ``n_elem``.
 #: Asserted against the kernel's OWN signature by the laptop test and against the
 #: assembled argument list at EVERY launch, so a signature edit the launcher does
 #: not follow fails at the call rather than binding the wrong pointer to the wrong
 #: slot.
-RUNTIME_ARGUMENTS = (3 + 3 + 3 + 3 * MAX_POLES + 3 * 6 * CHAIN_MAX_POLES + 1)
+RUNTIME_ARGUMENTS = (3 + 3 + 3 + 3 * MAX_POLES + 3 * 7 * CHAIN_MAX_POLES + 1)
 
 
 # ---------------------------------------------------------------------------
@@ -366,14 +339,16 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         a0, a1, a2, a3, a4, a5, a6, a7,   # component 0's poles, IN ORDER
         b0, b1, b2, b3, b4, b5, b6, b7,   # component 1's poles, IN ORDER
         c0, c1, c2, c3, c4, c5, c6, c7,   # component 2's poles, IN ORDER
-        # one ADE arm per component: p_out / p_prev / sigma / the coefficient triple
-        p_out_a0, p_prev_a0, sigma_a0, cnow_a0, cprev_a0, cdrive_a0,
-        p_out_b0, p_prev_b0, sigma_b0, cnow_b0, cprev_b0, cdrive_b0,
-        p_out_c0, p_prev_c0, sigma_c0, cnow_c0, cprev_c0, cdrive_c0,
+        # one ADE arm per component: p_out / p_prev / sigma / MEEP's four update_P words
+        p_out_a0, p_prev_a0, sigma_a0,
+        two_minus_od_a0, gamma1_a0, omega0dtsqr_a0, gamma1inv_a0,
+        p_out_b0, p_prev_b0, sigma_b0,
+        two_minus_od_b0, gamma1_b0, omega0dtsqr_b0, gamma1inv_b0,
+        p_out_c0, p_prev_c0, sigma_c0,
+        two_minus_od_c0, gamma1_c0, omega0dtsqr_c0, gamma1inv_c0,
         n_elem,
         NP0: tl.constexpr, NP1: tl.constexpr, NP2: tl.constexpr,
         SV_a0: tl.constexpr, SV_b0: tl.constexpr, SV_c0: tl.constexpr,
-        EXPANSION: tl.constexpr,
         BLOCK: tl.constexpr,
     ):
         """Complex ``update_E`` welded to complex ``update_P``: both driver passes,
@@ -387,9 +362,9 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         subtracted instead of being subtracted anonymously. Naming it is the whole
         point — that register IS ``complex_ade_update_p``'s ``p_now``.
 
-        THE ADE HALF IS ``complex_ade.complex_ade_update_p`` (complex_ade.py:
-        103-139), its body verbatim, with exactly two loads replaced by registers
-        this kernel already holds:
+        THE ADE HALF IS ``complex_ade.complex_ade_update_p``, its body verbatim --
+        MEEP's expression per part on the four realnum words -- with exactly two
+        loads replaced by registers this kernel already holds:
 
         * ``w_re/w_im`` — the drive. The certified body loads it from
           ``drive + word``; this family's predicate REQUIRES ``drive_field`` to be
@@ -448,7 +423,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             s0_re = s0_re - tl.load(a7 + word, mask=live, other=0.0)
             s0_im = s0_im - tl.load(a7 + word + 1, mask=live, other=0.0)
         o0_re, o0_im = _mul_field_left(
-            s0_re, s0_im, tl.load(e0 + idx, mask=live, other=0.0), EXPANSION)
+            s0_re, s0_im, tl.load(e0 + idx, mask=live, other=0.0))
         tl.store(f0 + word, o0_re, mask=live)
         tl.store(f0 + word + 1, o0_im, mask=live)
 
@@ -461,20 +436,21 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             w_re = o0_re
             w_im = o0_im
 
-            # dispersion.py:686-688, including operand orientation and grouping.
-            a_re, a_im = _mul_field_left(p_re, p_im, cnow_a0, EXPANSION)
-            b_re, b_im = _mul_coefficient_left(cprev_a0, q_re, q_im, EXPANSION)
-            out_re = a_re + b_re
-            out_im = a_im + b_im
+            # PolarizationState.update, per part: p * (2 - od), minus gamma1 * pp.
+            a_re, a_im = _mul_field_left(p_re, p_im, two_minus_od_a0)
+            b_re, b_im = _mul_coefficient_left(gamma1_a0, q_re, q_im)
+            out_re = a_re - b_re
+            out_im = a_im - b_im
 
             if SV_a0:
                 s = tl.load(sigma_a0 + idx, mask=live, other=0.0)
             else:
                 s = sigma_a0
-            sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im, EXPANSION)
-            d_re, d_im = _mul_coefficient_left(cdrive_a0, sw_re, sw_im, EXPANSION)
+            sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im)
+            d_re, d_im = _mul_coefficient_left(omega0dtsqr_a0, sw_re, sw_im)
             out_re = out_re + d_re
             out_im = out_im + d_im
+            out_re, out_im = _mul_coefficient_left(gamma1inv_a0, out_re, out_im)
 
             tl.store(p_out_a0 + word, out_re, mask=live)
             tl.store(p_out_a0 + word + 1, out_im, mask=live)
@@ -509,7 +485,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             s1_re = s1_re - tl.load(b7 + word, mask=live, other=0.0)
             s1_im = s1_im - tl.load(b7 + word + 1, mask=live, other=0.0)
         o1_re, o1_im = _mul_field_left(
-            s1_re, s1_im, tl.load(e1 + idx, mask=live, other=0.0), EXPANSION)
+            s1_re, s1_im, tl.load(e1 + idx, mask=live, other=0.0))
         tl.store(f1 + word, o1_re, mask=live)
         tl.store(f1 + word + 1, o1_im, mask=live)
 
@@ -522,20 +498,21 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             w_re = o1_re
             w_im = o1_im
 
-            # dispersion.py:686-688, including operand orientation and grouping.
-            a_re, a_im = _mul_field_left(p_re, p_im, cnow_b0, EXPANSION)
-            b_re, b_im = _mul_coefficient_left(cprev_b0, q_re, q_im, EXPANSION)
-            out_re = a_re + b_re
-            out_im = a_im + b_im
+            # PolarizationState.update, per part: p * (2 - od), minus gamma1 * pp.
+            a_re, a_im = _mul_field_left(p_re, p_im, two_minus_od_b0)
+            b_re, b_im = _mul_coefficient_left(gamma1_b0, q_re, q_im)
+            out_re = a_re - b_re
+            out_im = a_im - b_im
 
             if SV_b0:
                 s = tl.load(sigma_b0 + idx, mask=live, other=0.0)
             else:
                 s = sigma_b0
-            sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im, EXPANSION)
-            d_re, d_im = _mul_coefficient_left(cdrive_b0, sw_re, sw_im, EXPANSION)
+            sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im)
+            d_re, d_im = _mul_coefficient_left(omega0dtsqr_b0, sw_re, sw_im)
             out_re = out_re + d_re
             out_im = out_im + d_im
+            out_re, out_im = _mul_coefficient_left(gamma1inv_b0, out_re, out_im)
 
             tl.store(p_out_b0 + word, out_re, mask=live)
             tl.store(p_out_b0 + word + 1, out_im, mask=live)
@@ -570,7 +547,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             s2_re = s2_re - tl.load(c7 + word, mask=live, other=0.0)
             s2_im = s2_im - tl.load(c7 + word + 1, mask=live, other=0.0)
         o2_re, o2_im = _mul_field_left(
-            s2_re, s2_im, tl.load(e2 + idx, mask=live, other=0.0), EXPANSION)
+            s2_re, s2_im, tl.load(e2 + idx, mask=live, other=0.0))
         tl.store(f2 + word, o2_re, mask=live)
         tl.store(f2 + word + 1, o2_im, mask=live)
 
@@ -583,20 +560,21 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             w_re = o2_re
             w_im = o2_im
 
-            # dispersion.py:686-688, including operand orientation and grouping.
-            a_re, a_im = _mul_field_left(p_re, p_im, cnow_c0, EXPANSION)
-            b_re, b_im = _mul_coefficient_left(cprev_c0, q_re, q_im, EXPANSION)
-            out_re = a_re + b_re
-            out_im = a_im + b_im
+            # PolarizationState.update, per part: p * (2 - od), minus gamma1 * pp.
+            a_re, a_im = _mul_field_left(p_re, p_im, two_minus_od_c0)
+            b_re, b_im = _mul_coefficient_left(gamma1_c0, q_re, q_im)
+            out_re = a_re - b_re
+            out_im = a_im - b_im
 
             if SV_c0:
                 s = tl.load(sigma_c0 + idx, mask=live, other=0.0)
             else:
                 s = sigma_c0
-            sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im, EXPANSION)
-            d_re, d_im = _mul_coefficient_left(cdrive_c0, sw_re, sw_im, EXPANSION)
+            sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im)
+            d_re, d_im = _mul_coefficient_left(omega0dtsqr_c0, sw_re, sw_im)
             out_re = out_re + d_re
             out_im = out_im + d_im
+            out_re, out_im = _mul_coefficient_left(gamma1inv_c0, out_re, out_im)
 
             tl.store(p_out_c0 + word, out_re, mask=live)
             tl.store(p_out_c0 + word + 1, out_im, mask=live)
@@ -616,61 +594,26 @@ def complex_fused_ade_chain_kernel() -> Any:
 
 
 # ---------------------------------------------------------------------------
-# The expansion, resolved ONCE for both halves
-# ---------------------------------------------------------------------------
-
-
-def resolve_chain_expansion(probe: Any = None) -> Tuple[Optional[int], List[str]]:
-    """The ONE ``EXPANSION`` constexpr both halves must accept, or the refusals.
-
-    THE TWO CERTIFIED HALVES ASK THE SAME PROBE RECORD FOR DIFFERENT PATTERN SETS
-    (see the module docstring). This is the single place the fused constexpr comes
-    from, and it takes the arm only when BOTH resolvers return one AND they agree.
-    A disagreement is a refusal by name, never a silent choice of one half's arm.
-    """
-    reasons: List[str] = []
-    reasons.extend(f"E half: {reason}"
-                   for reason in _complex_e._expansion_reasons(probe))
-    reasons.extend(f"ADE half: {reason}"
-                   for reason in _complex_ade._complex_ade_expansion_reasons(probe))
-    if reasons:
-        return None, reasons
-
-    electric = _complex_e._resolve_expansion(probe)
-    ade = _complex_ade._resolve_complex_ade_expansion(probe)
-    if electric is None or ade is None:  # pragma: no cover - the reasons above
-        return None, ["the expansion probe licensed no arm for one of the halves"]
-    if int(electric) != int(ade):
-        return None, [
-            f"the probe licenses EXPANSION={electric} for the complex E half "
-            f"(complex_fields.PROBE_PATTERNS) and EXPANSION={ade} for the complex "
-            f"ADE half (complex_ade.COMPLEX_ADE_PROBE_PATTERNS); one fused source "
-            f"carries ONE arm, so a platform that splits them earns a new product "
-            f"rather than a silent downgrade of one half"]
-    return int(electric), []
-
-
-# ---------------------------------------------------------------------------
 # The predicate
 # ---------------------------------------------------------------------------
 
 
-def complex_fused_ade_chain_coverage(fields: Any, pml: Any,
-                                     probe: Any = None) -> Coverage:
+def complex_fused_ade_chain_coverage(fields: Any, pml: Any) -> Coverage:
     """May ONE launch span complex ``update_E`` -> complex ``update_P`` here?
 
     THERE IS NO SOURCE CLAUSE, AND THE ABSENCE IS DELIBERATE. Every other fused
     product on this backend must be told the source inventory, because the driver
     injects INSIDE its seam and ignorance is not an empty set. This seam has no
-    injection in it at all — ``driver.step`` runs ``update_E`` at :3304 and
-    ``update_P`` at :3306 with nothing between — so requiring a declaration would
-    refuse configurations the driver cannot break. The fusion matrices measure the
+    injection in it at all — ``driver.step`` runs ``update_E``, then the electric
+    ``f_minus_p`` restore, which writes D alone and which ``update_P`` does not read,
+    then ``update_P`` — so requiring a declaration would refuse configurations the
+    driver cannot break. The fusion matrices measure the
     same fact from the other end: ``E->P: 15 instances, 0 blocked by the source
     seam``.
     """
     reasons: List[str] = []
 
-    electric = _complex_e.complex_stored_e_coverage(fields, pml, probe=probe)
+    electric = _complex_e.complex_stored_e_coverage(fields, pml)
     if not electric.covered:
         reasons.extend(f"E half: {reason}" for reason in electric.reasons)
 
@@ -695,7 +638,7 @@ def complex_fused_ade_chain_coverage(fields: Any, pml: Any,
             continue
         for component in tuple(driven):
             verdict = _complex_ade.complex_ade_update_p_coverage(
-                fields, pml, state, component, probe=probe)
+                fields, pml, state, component)
             if not verdict.covered:
                 reasons.extend(f"ADE half {index}.{component}: {reason}"
                                for reason in verdict.reasons)
@@ -744,18 +687,12 @@ def complex_fused_ade_chain_coverage(fields: Any, pml: Any,
             "than the stored E (fields.py:1160-1162), and the register this kernel "
             "passes the recurrence is the value it stored in E")
 
-    # ONE EXPANSION ARM FOR ONE FUSED SOURCE. This is the clause that is genuinely
-    # this product's own and not either half's; see the module docstring.
-    _arm, expansion_reasons = resolve_chain_expansion(probe)
-    reasons.extend(expansion_reasons)
-
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
-def explain_complex_fused_ade_chain(fields: Any, pml: Any,
-                                    probe: Any = None) -> Coverage:
+def explain_complex_fused_ade_chain(fields: Any, pml: Any) -> Coverage:
     """The verdict with its reasons, for reports. Needs no Triton."""
-    return complex_fused_ade_chain_coverage(fields, pml, probe=probe)
+    return complex_fused_ade_chain_coverage(fields, pml)
 
 
 # ---------------------------------------------------------------------------
@@ -799,14 +736,13 @@ class ComplexFusedAdeChainPlan:
     launches_per_run = 1
 
     __slots__ = ("fields", "arm", "shape", "n_elem", "block", "num_warps", "counts",
-                 "expansion", "extra_scratch_volumes", "launches", "runs",
+                 "extra_scratch_volumes", "launches", "runs",
                  "alias_checks", "_pointer", "_targets", "_sources", "_inv_eps",
                  "_poles", "_order", "_states", "_index_of", "_scratch",
                  "_first_driven", "_sigma", "_coeff", "_sv", "_kernel", "_grid",
                  "_read_ids")
 
-    def __init__(self, fields: Any, pml: Any, block: int,
-                 expansion: int, num_warps: Optional[int] = 1,
+    def __init__(self, fields: Any, pml: Any, block: int, num_warps: Optional[int] = 1,
                  kernel: Any = None, pointer: Any = None) -> None:
         from .launch import CupyPointer  # noqa: PLC0415
 
@@ -818,7 +754,6 @@ class ComplexFusedAdeChainPlan:
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
         self.block = int(block)
         self.num_warps = num_warps
-        self.expansion = int(expansion)
         self._pointer = pointer
         self._kernel = kernel
         self._grid = ((self.n_elem + self.block - 1) // self.block,)
@@ -883,7 +818,7 @@ class ComplexFusedAdeChainPlan:
         self.extra_scratch_volumes = extra
 
         self._sigma: Dict[Tuple[str, int], Any] = {}
-        self._coeff: Dict[Tuple[str, int], Tuple[float, float, float]] = {}
+        self._coeff: Dict[Tuple[str, int], Tuple[float, float, float, float]] = {}
         self._sv: Dict[str, int] = {}
         for index, name in enumerate(components):
             letter = LETTERS[index]
@@ -902,9 +837,10 @@ class ComplexFusedAdeChainPlan:
                                              else float(sigma))
                 if volume:
                     read_ids.add(id(sigma))
-                c_now, c_prev, c_drive = state._coefficients
-                self._coeff[(name, slot)] = (float(c_now), float(c_prev),
-                                             float(c_drive))
+                # MEEP's four realnum words (PolarizationState.constants), each a
+                # float32 word, so the Python float passed is that word exactly.
+                self._coeff[(name, slot)] = tuple(float(word)
+                                                  for word in state.constants)
                 self._sv[f"SV_{letter}{slot}"] = 1 if volume else 0
         self._read_ids = frozenset(read_ids)
 
@@ -1005,7 +941,7 @@ class ComplexFusedAdeChainPlan:
                     ade.append(self._sigma[(component, slot)])
                     ade.extend(self._coeff[(component, slot)])
                 else:
-                    ade.extend([padding, padding, 0.0, 0.0, 0.0, 0.0])
+                    ade.extend([padding, padding, 0.0, 0.0, 0.0, 0.0, 0.0])
         arguments = [*self._targets, *self._sources, *self._inv_eps,
                      *slots, *ade, self.n_elem]
         if len(arguments) != RUNTIME_ARGUMENTS:
@@ -1063,7 +999,7 @@ class ComplexFusedAdeChainPlan:
         kernel[self._grid](
             *arguments,
             NP0=self.counts[0], NP1=self.counts[1], NP2=self.counts[2],
-            EXPANSION=self.expansion, BLOCK=self.block, **self._sv,
+            BLOCK=self.block, **self._sv,
             enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
             **extra,
         )
@@ -1073,7 +1009,7 @@ class ComplexFusedAdeChainPlan:
 
     def __repr__(self) -> str:
         return (f"ComplexFusedAdeChainPlan(shape={self.shape}, "
-                f"poles={self.counts}, expansion={self.expansion}, "
+                f"poles={self.counts}, "
                 f"extra_scratch={self.extra_scratch_volumes}, "
                 f"block={self.block}, num_warps={self.num_warps})")
 
@@ -1081,8 +1017,7 @@ class ComplexFusedAdeChainPlan:
 def plan_complex_fused_ade_chain(fields: Any, pml: Any,
                                  block: Optional[int] = None,
                                  num_warps: Optional[int] = 1,
-                                 kernel: Any = None,
-                                 probe: Any = None
+                                 kernel: Any = None
                                  ) -> Optional[ComplexFusedAdeChainPlan]:
     """Build the complex fused E->P plan, or return ``None`` on any refusal.
 
@@ -1095,13 +1030,10 @@ def plan_complex_fused_ade_chain(fields: Any, pml: Any,
     through it, and a builder that dropped it would launch the SHIPPED kernel and
     report a pass for a defect it never introduced.
     """
-    if not complex_fused_ade_chain_coverage(fields, pml, probe=probe).covered:
-        return None
-    expansion, _reasons = resolve_chain_expansion(probe)
-    if expansion is None:  # pragma: no cover - coverage refused the same record
+    if not complex_fused_ade_chain_coverage(fields, pml).covered:
         return None
     return ComplexFusedAdeChainPlan(
-        fields, pml, DEFAULT_BLOCK if block is None else block, expansion,
+        fields, pml, DEFAULT_BLOCK if block is None else block,
         num_warps=num_warps, kernel=kernel)
 
 

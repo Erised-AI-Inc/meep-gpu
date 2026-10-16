@@ -158,9 +158,14 @@ def needle_leg(kernels, cupy) -> Dict[str, Any]:
 
     # ALL PERIODIC and no wall mask: the needle's fate is decided by the
     # arithmetic, never by a ghost. codes/walls come through the gate door, so no
-    # Grid object is needed and none is built.
+    # Grid object is needed and none is built. The chunk record has no membership
+    # run (every cell takes the plain form, E = src) and every chunk keeps the row.
+    from meep_gpu.chunk_map import RECORD_WORDS  # noqa: PLC0415
+    from meep_gpu.cuda_kernels.offdiag_emitter import ALL_CHUNKS_KEPT  # noqa: PLC0415
     kernels.update_E_offdiag_fused_pml_real(
-        fields, tables=tables, codes=(0, 0, 0), walls=(0, 0, 0))
+        fields, tables=tables, codes=(0, 0, 0), walls=(0, 0, 0),
+        chunk_bounds=cupy.zeros(RECORD_WORDS, dtype=cupy.int32),
+        kept=(ALL_CHUNKS_KEPT,) * len(coverage.OFFDIAG_ROW_SLOTS))
     cupy.cuda.runtime.deviceSynchronize()
 
     def first_bits(name: str) -> int:

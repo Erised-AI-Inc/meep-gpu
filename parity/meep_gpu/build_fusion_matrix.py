@@ -220,6 +220,10 @@ import fusion_taxonomy  # noqa: E402
 # THE FOURTH SEAM, update_H -> step_D (2026-09-04): one pricing rule for the three
 # boards, off the probe artifact and the driver's own text. See h_to_d_seam.py.
 import h_to_d_seam  # noqa: E402
+# THE CREDIT RULES THE SEAM WALK AND THE DISJOINTNESS FLOOR FOLLOW (2026-10-11): the
+# composer-absorb credit, the credit withheld by name and the per-product floor. Torch-free
+# and in their own module so the floor's tests run on any host; see its docstring.
+import metal_board_credit  # noqa: E402
 
 #: With every scalar packed into one ``constant Params&``, a kernel may bind this many
 #: POINTERS. Measured, fused_dispersive_pair.py:52-58.
@@ -367,7 +371,6 @@ _MIRROR_METALLIC = (2, 0, 0)   # triton_kernels/symmetry.py:111-114
 #: mask. On an unfolded triple the folded emitter reduces to the certified one
 #: and the digest would be the plain product's plus a comment.
 _FOLDED_PERIODIC = (0, 3, 0)   # triton_kernels/symmetry.py:111-114
-_EXPANSION = "FMA_V1"
 _LIVE_ROWS = (1, 1, 1, 1, 1, 1)
 _ZEROS = (0, 0, 0)
 _ONES = (1, 1, 1)
@@ -422,18 +425,16 @@ def _generators() -> Dict[str, Callable[[], str]]:
         "symmetry.folded_curl":
             lambda: symmetry.folded_curl_source(_MIRROR_METALLIC, False),
         "complex_fields.bloch_curl":
-            lambda: complex_fields.bloch_curl_source(_PERIODIC, False, _ZEROS,
-                                                     _EXPANSION),
+            lambda: complex_fields.bloch_curl_source(_PERIODIC, False, _ZEROS),
         "folded_complex.bloch_curl":
             lambda: folded_complex.folded_bloch_curl_source(_MIRROR_METALLIC, False,
-                                                            _ZEROS, _EXPANSION),
+                                                            _ZEROS),
         "cylindrical_complex.curl":
-            lambda: cylindrical_complex.cylindrical_curl_source(1, False, 1,
-                                                                _EXPANSION),
+            lambda: cylindrical_complex.cylindrical_curl_source(1, False, 1),
         "cylindrical_real.curl":
             lambda: cylindrical_real.cylindrical_curl_source("step_B", (1, 0, 1)),
-        "cylindrical_real.prefix":
-            lambda: cylindrical_real.cylindrical_prefix_source("step_B"),
+        "cylindrical_real.scan":
+            lambda: cylindrical_real.scan_source("step_B"),
         "no_pml_curl.plain_curl":
             lambda: no_pml_curl.plain_curl_source(_PERIODIC, False, False),
         "no_pml_conductive.curl":
@@ -444,31 +445,30 @@ def _generators() -> Dict[str, Callable[[], str]]:
                                                               (True, True, True)),
         "complex_no_pml_curl.curl":
             lambda: complex_no_pml_curl.complex_no_pml_curl_source(
-                _PERIODIC, False, _ZEROS, _EXPANSION),
+                _PERIODIC, False, _ZEROS),
         "complex_no_pml_conductive.curl":
             lambda: complex_no_pml_conductive.complex_conductive_no_pml_curl_source(
-                _PERIODIC, False, _ZEROS, (True, True, True), _EXPANSION),
+                _PERIODIC, False, _ZEROS, (True, True, True)),
         "complex_conductive_pml.curl":
             lambda: complex_conductive_pml.complex_conductive_pml_curl_source(
-                _PERIODIC, False, _ZEROS, (True, True, True), _EXPANSION),
+                _PERIODIC, False, _ZEROS, (True, True, True)),
         "special_kz.beta_curl":
             lambda: special_kz.beta_curl_source(_PERIODIC, False),
         "special_kz.beta_bloch_curl":
-            lambda: special_kz.beta_bloch_curl_source(_PERIODIC, False, _ZEROS,
-                                                      _EXPANSION),
+            lambda: special_kz.beta_bloch_curl_source(_PERIODIC, False, _ZEROS),
         "folded_beta.curl":
             lambda: folded_beta.folded_beta_curl_source(_MIRROR_METALLIC, False),
         "folded_beta.bloch_curl":
             lambda: folded_beta.folded_beta_bloch_curl_source(
-                _MIRROR_METALLIC, False, _ZEROS, _EXPANSION),
+                _MIRROR_METALLIC, False, _ZEROS),
         "bfast_curl.curl": lambda: bfast_curl.bfast_curl_source(_PERIODIC, False),
         # --- constitutive bodies ---------------------------------------------
         "shaders.constitutive_H": lambda: shaders.constitutive_source("H"),
         "shaders.constitutive_E": lambda: shaders.constitutive_source("E"),
         "complex_fields.bloch_constitutive_H":
-            lambda: complex_fields.bloch_constitutive_source("H", _EXPANSION),
+            lambda: complex_fields.bloch_constitutive_source("H"),
         "complex_fields.bloch_constitutive_E":
-            lambda: complex_fields.bloch_constitutive_source("E", _EXPANSION),
+            lambda: complex_fields.bloch_constitutive_source("E"),
         "offdiag_update_e.offdiag":
             lambda: offdiag_update_e.offdiag_source(_LIVE_ROWS, _PERIODIC, _ZEROS),
         "folded_offdiag_update_e.offdiag":
@@ -476,20 +476,20 @@ def _generators() -> Dict[str, Callable[[], str]]:
                 _LIVE_ROWS, _MIRROR_METALLIC, _ZEROS, _ZEROS),
         "complex_folded_offdiag_update_e.offdiag":
             lambda: complex_folded_offdiag_update_e.complex_folded_offdiag_source(
-                _LIVE_ROWS, _MIRROR_METALLIC, _ZEROS, _ZEROS, _ZEROS, _EXPANSION),
+                _LIVE_ROWS, _MIRROR_METALLIC, _ZEROS, _ZEROS, _ZEROS),
         "complex_no_pml_offdiag_update_e.offdiag":
             lambda: complex_no_pml_offdiag_update_e.complex_no_pml_offdiag_source(
-                _LIVE_ROWS, _PERIODIC, _ZEROS, _ZEROS, _EXPANSION),
+                _LIVE_ROWS, _PERIODIC, _ZEROS, _ZEROS),
         "dispersive_update_e.e": lambda: dispersive_update_e.dispersive_e_source(1, 0),
         "complex_dispersive_update_e.e":
             lambda: complex_dispersive_update_e.complex_dispersive_e_source(
-                1, 0, _EXPANSION),
+                1, 0),
         "folded_offdiag_dispersive_update_e.e":
             lambda: folded_offdiag_dispersive_update_e.folded_offdiag_dispersive_source(
                 _LIVE_ROWS, _MIRROR_METALLIC, _ZEROS, _ZEROS, _ONES),
         "no_pml_stored_e.e": lambda: no_pml_stored_e.stored_e_source(1),
         "complex_no_pml_stored_e.e":
-            lambda: complex_no_pml_stored_e.complex_stored_e_source(1, _EXPANSION),
+            lambda: complex_no_pml_stored_e.complex_stored_e_source(1),
         "nonlinear_update_e.e":
             lambda: nonlinear_update_e.nonlinear_source(_ONES, _ZEROS, _ZEROS,
                                                         _PERIODIC),
@@ -533,7 +533,7 @@ def _generators() -> Dict[str, Callable[[], str]]:
         "FUSED.beta_complex_fused_hd_pair":
             lambda: (beta_complex_fused_hd_pair
                      .beta_complex_fused_hd_pair_source(
-                         "plain", _PERIODIC, _ONES, _EXPANSION)),
+                         "plain", _PERIODIC, _ONES)),
         "FUSED.beta_real_fused_hd_pair":
             lambda: (beta_real_fused_hd_pair
                      .beta_real_fused_hd_pair_source("plain", _PERIODIC)),
@@ -543,7 +543,7 @@ def _generators() -> Dict[str, Callable[[], str]]:
                          # NO BLOCH PHASE ON A FOLDED AXIS: a mirror plane reflects
                          # rather than repeating, so stepping._bloch_phases raises.
                          # The folded-complex siblings above specialise the same way.
-                         _FOLDED_PERIODIC, _ZEROS, _EXPANSION)),
+                         _FOLDED_PERIODIC, _ZEROS)),
         "FUSED.conductive_fused_hd_pair":
             lambda: (conductive_fused_hd_pair
                      .conductive_fused_hd_pair_source(_PERIODIC, (True, True, True))),
@@ -577,10 +577,10 @@ def _generators() -> Dict[str, Callable[[], str]]:
         # excluded from the pointer-sharing calibration below because its two
         # launches share no signature (TWO_LAUNCH_NOT_A_SPLICE).
         "FUSED.cylindrical_complex_fused_hd_pair":
-            lambda: cylindrical_complex_fused_hd_pair.lead_source(_EXPANSION),
+            lambda: cylindrical_complex_fused_hd_pair.lead_source(),
         "FUSED.complex_fused_magnetic_pair":
             lambda: complex_fused_magnetic_pair.complex_fused_magnetic_pair_source(
-                _PERIODIC, _ZEROS, _UNWALLED, _EXPANSION),
+                _PERIODIC, _ZEROS, _UNWALLED),
         "FUSED.folded_fused_pair":
             lambda: folded_fused_pair.folded_fused_pair_source(
                 _MIRROR_METALLIC, _ONES, _UNWALLED),
@@ -645,7 +645,7 @@ def _generators() -> Dict[str, Callable[[], str]]:
             lambda: (cylindrical_fused_electric_pair
                      .cylindrical_fused_electric_pair_source(
                          templates.PERIODIC, cylindrical_complex.M_ONE,
-                         _UNWALLED, _EXPANSION)),
+                         _UNWALLED)),
         # The Dcyl |m| >= 1 COMPLEX pair (module cylindrical_fused_magnetic_pair.py,
         # arm family cylindrical_complex_fused_magnetic_pair). Carried verbatim from
         # ../fusion_matrix_metal_2026-08-20c/. bcz PERIODIC pairs with the UNWALLED
@@ -655,13 +655,13 @@ def _generators() -> Dict[str, Callable[[], str]]:
             lambda: (cylindrical_fused_magnetic_pair
                      .cylindrical_fused_magnetic_pair_source(
                          templates.PERIODIC, cylindrical_complex.M_ONE,
-                         _UNWALLED, _EXPANSION)),
+                         _UNWALLED)),
         # The folded COMPLEX B/H pair, carried verbatim from
         # ../fusion_matrix_metal_2026-08-20_foldedcomplex/.
         "FUSED.folded_complex_fused_magnetic_pair":
             lambda: (folded_complex_fused_magnetic_pair
                      .folded_complex_fused_magnetic_pair_source(
-                         _MIRROR_METALLIC, _ZEROS, _UNWALLED, _EXPANSION)),
+                         _MIRROR_METALLIC, _ZEROS, _UNWALLED)),
         # THE FOLDED BETA COMPLEX B/H pair, added 2026-08-27. Same specialisation
         # arguments as the folded COMPLEX parent above (this weld is that module with
         # one emitter swapped), so a divergence in the measured count would mean the
@@ -669,7 +669,7 @@ def _generators() -> Dict[str, Callable[[], str]]:
         "FUSED.folded_beta_complex_fused_magnetic_pair":
             lambda: (folded_beta_complex_fused_magnetic_pair
                      .folded_beta_complex_fused_magnetic_pair_source(
-                         _MIRROR_METALLIC, _ZEROS, _UNWALLED, _EXPANSION)),
+                         _MIRROR_METALLIC, _ZEROS, _UNWALLED)),
         # --- THE SEVEN PRODUCTS OF THE 2026-08-30 TRANCHE ---------------------
         # EVERY SPECIALISATION BELOW IS THE ONE ITS OWN GATE COMPILED. Not chosen
         # by resemblance to a sibling entry: `gate_metal_tranche7_fused_pairs.py`
@@ -699,17 +699,17 @@ def _generators() -> Dict[str, Callable[[], str]]:
         # EQUALITY and its gate bisects on the host.
         "FUSED.complex_fused_hd_pair":
             lambda: complex_fused_hd_pair.complex_fused_hd_pair_source(
-                _PERIODIC, _ONES, _EXPANSION),
+                _PERIODIC, _ONES),
         "FUSED.complex_fused_electric_pair":         # D-side complex twin
             lambda: complex_fused_electric_pair.complex_fused_electric_pair_source(
-                _PERIODIC, _ZEROS, _UNWALLED, _EXPANSION),
+                _PERIODIC, _ZEROS, _UNWALLED),
         "FUSED.folded_complex_fused_pair":           # D-side folded-complex twin
             lambda: folded_complex_fused_pair.folded_complex_fused_pair_source(
-                _MIRROR_METALLIC, _ZEROS, _UNWALLED, _EXPANSION),
+                _MIRROR_METALLIC, _ZEROS, _UNWALLED),
         "FUSED.folded_beta_complex_fused_pair":      # D-side folded-beta-complex twin
             lambda: (folded_beta_complex_fused_pair
                      .folded_beta_complex_fused_pair_source(
-                         _MIRROR_METALLIC, _ZEROS, _UNWALLED, _EXPANSION)),
+                         _MIRROR_METALLIC, _ZEROS, _UNWALLED)),
         "FUSED.folded_beta_real_fused_magnetic_pair":  # beta head in folded_fused_magnetic_pair
             lambda: (folded_beta_real_fused_magnetic_pair
                      .folded_beta_real_fused_magnetic_pair_source(
@@ -768,15 +768,14 @@ def _generators() -> Dict[str, Callable[[], str]]:
         "FUSED.complex_conductive_fused_pair":
             lambda: (complex_conductive_fused_pair
                      .complex_conductive_fused_pair_source(
-                         _PERIODIC, _ONES, (True, True, True), (1, 1, 1),
-                         _EXPANSION)),
+                         _PERIODIC, _ONES, (True, True, True), (1, 1, 1))),
         # The COMPLEX E->P chain, at ONE POLE with a VOLUME sigma — the same
         # specialisation `complex_no_pml_stored_e.e` and `ade_update_p.p` are
         # measured at above, so the sharing number this feeds is taken at one
         # specialisation across all three bodies rather than at three.
         "FUSED.complex_fused_ade_chain":
             lambda: (complex_fused_ade_chain
-                     .complex_fused_ade_chain_source(1, (True,), _EXPANSION)),
+                     .complex_fused_ade_chain_source(1, (True,))),
         # --- THE FOUR PRODUCTS OF THE RESIDUE ROUND -------------------------
         # The two packed D->E welds close the board's last two CANNOT-BIND cells;
         # their emitted signatures carry the pack (28 pointers where the halves
@@ -794,11 +793,11 @@ def _generators() -> Dict[str, Callable[[], str]]:
         "FUSED.beta_complex_fused_electric_pair":
             lambda: (beta_complex_fused_electric_pair
                      .beta_complex_fused_electric_pair_source(
-                         _PERIODIC, (1, 0, 0), _UNWALLED, _EXPANSION)),
+                         _PERIODIC, (1, 0, 0), _UNWALLED)),
         "FUSED.beta_complex_fused_magnetic_pair":
             lambda: (beta_complex_fused_magnetic_pair
                      .beta_complex_fused_magnetic_pair_source(
-                         _PERIODIC, (1, 0, 0), _UNWALLED, _EXPANSION)),
+                         _PERIODIC, (1, 0, 0), _UNWALLED)),
         # THE FOUR SCRATCH-OUTPUT STENCIL WELDS. Their emitted signatures carry
         # the SCRATCH pointers (pre-launch D/fu and their twins are different
         # buffers, so the unshared count is six over the halves' sum) and, on
@@ -816,12 +815,12 @@ def _generators() -> Dict[str, Callable[[], str]]:
         "FUSED.complex_no_pml_offdiag_fused_electric_pair":
             lambda: (complex_no_pml_offdiag_fused_electric_pair
                      .complex_no_pml_offdiag_fused_electric_pair_source(
-                         _LIVE_ROWS, _PERIODIC, _ZEROS, _ZEROS, _EXPANSION)),
+                         _LIVE_ROWS, _PERIODIC, _ZEROS, _ZEROS)),
         "FUSED.folded_complex_offdiag_fused_electric_pair":
             lambda: (folded_complex_offdiag_fused_electric_pair
                      .folded_complex_offdiag_fused_electric_pair_source(
                          _LIVE_ROWS, _MIRROR_METALLIC, _ZEROS, _ZEROS, _ZEROS,
-                         {0: 1}, {}, _EXPANSION)),
+                         {0: 1}, {})),
     }
 
 
@@ -1928,9 +1927,6 @@ PRODUCTS: Dict[str, dict] = {
             ("no_polarization", _no_polarization),
         ),
         "not_evaluable": _DEPOSIT_NOT_EVALUABLE + (
-            "the complex-multiply EXPANSION probe artifact is present and loads — "
-            "which arm the numpy reference takes is a measured platform fact both "
-            "halves already refuse to guess",
             "which of the six chi1inv ROW SLOTS are live",
         ),
     },
@@ -1953,7 +1949,6 @@ PRODUCTS: Dict[str, dict] = {
             ("no_polarization", _no_polarization),
         ),
         "not_evaluable": _DEPOSIT_NOT_EVALUABLE + (
-            "the FOLDED-COMPLEX expansion probe artifact is present and loads",
             "the far arm's grid inputs, as for the real folded weld above",
             "which of the six chi1inv ROW SLOTS are live",
         ),
@@ -2186,10 +2181,6 @@ PRODUCTS: Dict[str, dict] = {
             "build (58, cells 3..60) with ZERO reasons "
             "(../fusion_matrix_metal_2026-08-26_canonical/../"
             "fusion_matrix_metal_2026-08-21_farcarry/d_side_far_carry_law.json)",
-            "the two expansion artifacts (_expansion_reasons): this product needs "
-            "BOTH folded_beta's and folded_complex's, because the fill arithmetic it "
-            "carries inline is folded_complex's while the curl is folded_beta's; the "
-            "census block carries neither probe",
         ),
     },
     # ---- carried verbatim from ../fusion_matrix_metal_2026-08-20_belowcut/ ----
@@ -2330,7 +2321,7 @@ PRODUCTS: Dict[str, dict] = {
              "row_clauses": (
                  ("no_standing_electric_withdraw", _no_standing_electric_withdraw),
              ),
-             "binding": ("gate", "metal_fused_hd_pair_nonlinear_2026-10-04_g13s"),
+             "binding": ("gate", "metal_fused_hd_pair_nonlinear_2026-10-15_10_applegpu_g13s_m2"),
              "driven_rows": ("lift/rows.jsonl", "metal_fused_hd_pair_nonlinear_gate"),
              "fingerprint": "metal_fused_hd_pair_nonlinear_device_gate"},
         ),
@@ -2412,7 +2403,7 @@ PRODUCTS: Dict[str, dict] = {
              "row_clauses": (
                  ("no_standing_electric_withdraw", _no_standing_electric_withdraw),
              ),
-             "binding": ("gate", "metal_beta_complex_fused_hd_pair_2026-10-04_g13s"),
+             "binding": ("gate", "metal_beta_complex_fused_hd_pair_2026-10-15_10_applegpu_g13s_m2"),
              "driven_rows": ("lift/rows.jsonl", "gate"),
              "fingerprint": "metal_beta_complex_fused_hd_pair_device_gate"},
         ),
@@ -2443,7 +2434,7 @@ PRODUCTS: Dict[str, dict] = {
              "row_clauses": (
                  ("no_standing_electric_withdraw", _no_standing_electric_withdraw),
              ),
-             "binding": ("gate", "metal_beta_real_fused_hd_pair_2026-10-04_g13s"),
+             "binding": ("gate", "metal_beta_real_fused_hd_pair_2026-10-15_10_applegpu_g13s_m1"),
              "driven_rows": ("lift/rows.jsonl", "gate"),
              "fingerprint": "metal_beta_real_fused_hd_pair_device_gate"},
         ),
@@ -2767,9 +2758,6 @@ PRODUCTS: Dict[str, dict] = {
             "grid.mirror_phase(axis) and the far carry's own clauses -- both carried "
             "by the folded beta curl half this ladder reads as a column",
             "grid exposes has_metallic / is_metallic / is_mirrored",
-            "the two expansion artifacts (_expansion_reasons): this product needs "
-            "BOTH folded_beta's and folded_complex's, and the census block carries "
-            "neither probe",
         ),
     },
     "beta_fused_electric_pair": {
@@ -3074,9 +3062,6 @@ PRODUCTS: Dict[str, dict] = {
             ("no_polarization", _no_polarization),
         ),
         "not_evaluable": _DEPOSIT_NOT_EVALUABLE + (
-            "the beta expansion artifact (_beta_complex_grid_reasons): the census "
-            "block carries no probe, and both halves already read it on the "
-            "lifted object — the census columns carry their verdicts",
             "grid exposes has_metallic / is_metallic / is_mirrored so zero_metal_D "
             "can be carried inline (the wall-readability clause)",
         ),
@@ -3094,7 +3079,6 @@ PRODUCTS: Dict[str, dict] = {
             ("no_folded_axis", _no_folded_axis),
         ),
         "not_evaluable": _DEPOSIT_NOT_EVALUABLE + (
-            "the beta expansion artifact — as on the electric twin",
             "grid exposes has_metallic / is_metallic / is_mirrored so zero_metal_B "
             "can be carried inline (the wall-readability clause)",
         ),
@@ -3109,13 +3093,7 @@ PRODUCTS: Dict[str, dict] = {
             ("no_chi2_chi3", _no_chi2_chi3),
             ("fits_the_binding_ceiling", _fits_the_complex_chain_ceiling),
         ),
-        "not_evaluable": _ADE_CHAIN_NOT_EVALUABLE + (
-            "the expansion ARM the probe licenses equals the arm the certified ADE "
-            "half bakes in (ade_update_p.py:105) — a PLATFORM fact, not a row one; "
-            "the predicate refuses by name when they disagree and "
-            "gate_metal_complex_fused_ade_chain leg `arm_binding` measures both "
-            "the agreement and the refusal",
-        ),
+        "not_evaluable": _ADE_CHAIN_NOT_EVALUABLE,
     },
     "folded_fused_ade_chain": {
         "seam": "E_to_P",
@@ -3861,22 +3839,32 @@ E_TO_P_RELEASE_FINGERPRINT = "metal_fused_ade_chain_device_gate"
 # no_pml_constitutive.py, and barrier.py added), and the board was cut on the fresh
 # census `metal_coverage_2026-09-24_round3`: 327 of 597 in dispatch, 531 served, the
 # same as `_2026-09-20_restrict` -- a transport change moves no dispatch decision.
+# REPOINTED 2026-10-13 from `_2026-10-02_arch3` to `_2026-10-13_10` (tree `73d04e99`),
+# 45 references over 28 gate directories, by `repoint_board_bindings.py metal` from the
+# measured binding table, never by hand: each directory of the round exists, records its
+# release true and re-hashes to the tree with zero drift.
+# REPOINTED 2026-10-15 from `_2026-10-13_10` to the chunk stamps
+# `_2026-10-15_10_applegpu_g13s_m0`, `_2026-10-15_10_applegpu_g13s_m1`,
+# `_2026-10-15_10_applegpu_g13s_m2`, `_2026-10-15_10_applegpu_g13s_m3` (tree
+# `213713d6`), 45 references over 28 gate directories, by `repoint_board_bindings.py
+# metal` from the measured binding table, never by hand: each directory of the round
+# exists, records its release true and re-hashes to the tree with zero drift.
 RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
-    "fused_magnetic_pair": ("gate", "metal_fused_magnetic_pair_2026-10-04_g13s"),
+    "fused_magnetic_pair": ("gate", "metal_fused_magnetic_pair_2026-10-15_10_applegpu_g13s_m2"),
     "nonlinear_fused_magnetic_pair":
-        ("gate", "metal_below_the_cut_fused_pairs_2026-10-04_g13s"),
+        ("gate", "metal_below_the_cut_fused_pairs_2026-10-15_10_applegpu_g13s_m1"),
     "beta_fused_magnetic_pair":
-        ("gate", "metal_below_the_cut_fused_pairs_2026-10-04_g13s"),
+        ("gate", "metal_below_the_cut_fused_pairs_2026-10-15_10_applegpu_g13s_m1"),
     "bfast_fused_magnetic_pair":
-        ("gate", "metal_below_the_cut_fused_pairs_2026-10-04_g13s"),
+        ("gate", "metal_below_the_cut_fused_pairs_2026-10-15_10_applegpu_g13s_m1"),
     "complex_fused_magnetic_pair":
-        ("gate", "metal_complex_fused_magnetic_pair_2026-10-04_g13s"),
+        ("gate", "metal_complex_fused_magnetic_pair_2026-10-15_10_applegpu_g13s_m2"),
     # BOUND TO THE ROUTING ROUND'S OWN GATE, which ran AFTER the routing edits
     # (results/folded_routing_metal_2026-08-27/, verdict PASS, released=True,
     # 122/122 rows, 0 stale of 92 recorded sources). No re-run was needed for this
     # family or for `folded_fused_pair`.
     "folded_fused_magnetic_pair": (
-        "gate", "metal_folded_fused_magnetic_pair_2026-10-04_g13s"),
+        "gate", "metal_folded_fused_magnetic_pair_2026-10-15_10_applegpu_g13s_m2"),
     "folded_complex_fused_magnetic_pair":
         ("fingerprint", "metal_folded_complex_fused_magnetic_pair_device_gate"),
     "cylindrical_complex_fused_magnetic_pair":
@@ -3893,20 +3881,20 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # `gate_reported_source_sha256.gate` in that artifact IS cb1a646cbfb8 — the value
     # the floor named as unmatched — so the re-run is bound to the moved script.
     "cylindrical_real_fused_magnetic_pair":
-        ("gate", "metal_cylindrical_real_fused_magnetic_pair_2026-10-05_092_g13s"),
+        ("gate", "metal_cylindrical_real_fused_magnetic_pair_2026-10-15_10_applegpu_g13s_m1"),
     # ADDED 2026-08-31 WITH THE PRODUCT, bound through its GATE ARTIFACT rather than
     # through fingerprints.json for the reason the rows above give: the gate artifact
     # records every module the gate PROCESS imported, which is a LARGER set of bytes
     # than a fingerprint entry -- and on this product that matters, because the claim
     # rests on TWO modules (the family and `coefficient_pack.py`) rather than one.
     "cylindrical_real_fused_electric_pair":
-        ("gate", "metal_cylindrical_real_fused_electric_pair_2026-10-04_g13s"),
+        ("gate", "metal_cylindrical_real_fused_electric_pair_2026-10-15_10_applegpu_g13s_m1"),
     # ADDED 2026-08-31 WITH THE PRODUCT, bound through its GATE ARTIFACT for the same
     # reason: the claim rests on TWO modules (the family and `coefficient_pack.py`)
     # and on the cylindrical-complex EXPANSION PROBE the gate's leg 0 binds, and a
     # gate artifact records every module the process imported.
     "cylindrical_complex_fused_electric_pair":
-        ("gate", "metal_cylindrical_fused_electric_pair_2026-10-04_g13s"),
+        ("gate", "metal_cylindrical_fused_electric_pair_2026-10-15_10_applegpu_g13s_m2"),
     # ADDED 2026-08-27 and bound through its GATE ARTIFACT rather than through
     # fingerprints.json, because writing that weld record is reserved in this round.
     # The gate artifact records every module the gate PROCESS imported, so this binds
@@ -3925,17 +3913,17 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # release against a `source_sha256.txt` that disagrees with the gate script it
     # just executed, and editing the script is exactly that disagreement.
     "folded_beta_complex_fused_magnetic_pair": (
-        "gate", "metal_folded_beta_complex_fused_magnetic_pair_2026-10-04_g13s"),
+        "gate", "metal_folded_beta_complex_fused_magnetic_pair_2026-10-15_10_applegpu_g13s_m1"),
     "folded_fused_pair": (
-        "gate", "metal_folded_fused_pair_2026-10-04_g13s"),
+        "gate", "metal_folded_fused_pair_2026-10-15_10_applegpu_g13s_m2"),
     "fused_dispersive_pair": (
-        "gate", "metal_fused_dispersive_pair_2026-10-04_g13s"),
+        "gate", "metal_fused_dispersive_pair_2026-10-15_10_applegpu_g13s_m1"),
     # ADDED 2026-08-28 WITH THE PRODUCT, bound through its GATE ARTIFACT rather than
     # through `fingerprints.json`: writing a weld record is reserved this round, and
     # the gate artifact binds a LARGER set of bytes anyway -- every module the gate
     # PROCESS imported, 91 paths.
     "fused_electric_pair": (
-        "gate", "metal_fused_electric_pair_2026-10-04_g13s"),
+        "gate", "metal_fused_electric_pair_2026-10-15_10_applegpu_g13s_m2"),
     "fused_ade_chain": ("fingerprint", E_TO_P_RELEASE_FINGERPRINT),
     "fused_ade_chain_dispersive": ("fingerprint", E_TO_P_RELEASE_FINGERPRINT),
     "folded_fused_ade_chain": ("fingerprint", E_TO_P_RELEASE_FINGERPRINT),
@@ -3950,7 +3938,7 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # because these gates name their artifact after the product rather than
     # `gate.json`.
     "complex_fused_ade_chain": (
-        "gate", "metal_complex_fused_ade_chain_2026-10-04_g13s"),
+        "gate", "metal_complex_fused_ade_chain_2026-10-15_10_applegpu_g13s_m2"),
     # RE-GATED 2026-08-21, and the re-gate is what this cut's credit rests on.
     # The 2026-08-20T5 artifact no longer binds: a sibling round added a
     # `_boundary_kinds is None` refusal to `complex_no_pml_conductive._base_reasons`
@@ -3963,7 +3951,7 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # `conductive_tail_drops_the_condinv_pass` defect on the SAME bytes
     # (`../metal_complex_conductive_fused_pair_2026-08-21_flip/pair.json`).
     "complex_conductive_fused_pair": (
-        "gate", "metal_complex_conductive_fused_pair_2026-10-05_092_g13s"),
+        "gate", "metal_complex_conductive_fused_pair_2026-10-15_10_applegpu_g13s_m1"),
     # THE SEVEN PRODUCTS OF THE 2026-08-30 TRANCHE, all bound to the ONE gate that
     # measures them. `gate_metal_tranche7_fused_pairs.py` runs four legs per family
     # -- identity, mutation, deposit and the binding ceiling -- so a single artifact
@@ -3983,19 +3971,19 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # board could not be cut. The gate was given the two lines every sibling gate
     # has and RE-RUN; no record was edited to make this bind.
     "beta_fused_electric_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-15_10_applegpu_g13s_m1"),
     "complex_fused_electric_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-15_10_applegpu_g13s_m1"),
     "folded_complex_fused_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-15_10_applegpu_g13s_m1"),
     "folded_beta_complex_fused_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-15_10_applegpu_g13s_m1"),
     "folded_beta_real_fused_magnetic_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-15_10_applegpu_g13s_m1"),
     "folded_beta_real_fused_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-15_10_applegpu_g13s_m1"),
     "folded_fused_dispersive_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-15_10_applegpu_g13s_m1"),
     # THE TWO PRODUCTS OF THE 2026-09-01 CUT, bound through the ONE gate that
     # measures both (`gate_metal_no_pml_fused_electric_pairs.py`, six legs per the
     # module docstring: identity, separate_control, mutation, deposit,
@@ -4006,9 +3994,9 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # `fingerprints.json` (`metal_no_pml_fused_electric_pairs_device_gate`), so
     # the two routes together check both path sets.
     "no_pml_fused_electric_pair": (
-        "gate", "metal_no_pml_fused_electric_pairs_2026-10-04_g13s"),
+        "gate", "metal_no_pml_fused_electric_pairs_2026-10-15_10_applegpu_g13s_m1"),
     "no_pml_conductive_fused_electric_pair": (
-        "gate", "metal_no_pml_fused_electric_pairs_2026-10-04_g13s"),
+        "gate", "metal_no_pml_fused_electric_pairs_2026-10-15_10_applegpu_g13s_m1"),
     # THE FOUR PRODUCTS OF THE RESIDUE ROUND, bound to the ONE gate that measures
     # them (`gate_metal_residue_fused_pairs.py`, re-cut at residue2 after the
     # no_pml gate script's final edit invalidated the first cut's manifest —
@@ -4020,13 +4008,13 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # family modules, `coefficient_pack.py`, both certified curl emitters and
     # `launch.py`.
     "bfast_fused_electric_pair": (
-        "gate", "metal_residue_fused_pairs_2026-10-04_g13s"),
+        "gate", "metal_residue_fused_pairs_2026-10-15_10_applegpu_g13s_m2"),
     "conductive_fused_electric_pair": (
-        "gate", "metal_residue_fused_pairs_2026-10-04_g13s"),
+        "gate", "metal_residue_fused_pairs_2026-10-15_10_applegpu_g13s_m2"),
     "beta_complex_fused_electric_pair": (
-        "gate", "metal_residue_fused_pairs_2026-10-04_g13s"),
+        "gate", "metal_residue_fused_pairs_2026-10-15_10_applegpu_g13s_m2"),
     "beta_complex_fused_magnetic_pair": (
-        "gate", "metal_residue_fused_pairs_2026-10-04_g13s"),
+        "gate", "metal_residue_fused_pairs_2026-10-15_10_applegpu_g13s_m2"),
     # THE FOUR STENCIL WELDS, bound to the ONE gate that measures them
     # (`gate_metal_offdiag_stencil_welds.py`): identity against the array path,
     # identity against the CERTIFIED DEVICE KERNELS each weld replaces, mutation
@@ -4036,13 +4024,13 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # modules, `offdiag_weld_common.py`, `coefficient_pack.py`, both certified
     # curl emitters, both certified off-diagonal emitters and `launch.py`.
     "offdiag_fused_electric_pair": (
-        "gate", "metal_offdiag_stencil_welds_2026-10-04_g13s"),
+        "gate", "metal_offdiag_stencil_welds_2026-10-15_10_applegpu_g13s_m2"),
     "folded_offdiag_fused_electric_pair": (
-        "gate", "metal_offdiag_stencil_welds_2026-10-04_g13s"),
+        "gate", "metal_offdiag_stencil_welds_2026-10-15_10_applegpu_g13s_m2"),
     "complex_no_pml_offdiag_fused_electric_pair": (
-        "gate", "metal_offdiag_stencil_welds_2026-10-04_g13s"),
+        "gate", "metal_offdiag_stencil_welds_2026-10-15_10_applegpu_g13s_m2"),
     "folded_complex_offdiag_fused_electric_pair": (
-        "gate", "metal_offdiag_stencil_welds_2026-10-04_g13s"),
+        "gate", "metal_offdiag_stencil_welds_2026-10-15_10_applegpu_g13s_m2"),
     # THE FOURTH SEAM'S FIRST PRODUCT, added 2026-09-06 with its release and bound
     # through its GATE ARTIFACT rather than through fingerprints.json, for the reason
     # every `gate` row above gives: the artifact records every module the gate PROCESS
@@ -4051,16 +4039,16 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # `ScratchWeldPairPlan` choreography it reuses), both certified emitters in
     # `shaders.py` and `launch.py`. It is ALSO welded in `fingerprints.json`
     # (`metal_fused_hd_pair_device_gate`), so the two routes check both path sets.
-    "fused_hd_pair": ("gate", "metal_fused_hd_pair_2026-10-04_g13s"),
+    "fused_hd_pair": ("gate", "metal_fused_hd_pair_2026-10-15_10_applegpu_g13s_m0"),
     "folded_fused_hd_pair": ("gate",
-                             "metal_folded_fused_hd_pair_2026-10-04_g13s"),
+                             "metal_folded_fused_hd_pair_2026-10-15_10_applegpu_g13s_m3"),
     # ADDED 2026-09-06 WITH THE PRODUCT, bound through its GATE ARTIFACT: the claim
     # rests on the family module, `fused_hd_pair.py` (whose `h_cell_function` it
     # lifts), `cylindrical_real.py` (whose scan text and curl it lifts and launches)
     # and `offdiag_weld_common.py` (whose scratch-twin registration it reuses), and a
     # gate artifact records every module the process imported.
     "cylindrical_real_fused_hd_pair":
-        ("gate", "metal_cylindrical_real_fused_hd_pair_2026-10-04_g13s"),
+        ("gate", "metal_cylindrical_real_fused_hd_pair_2026-10-15_10_applegpu_g13s_m1"),
     # ADDED 2026-09-06 WITH THE PRODUCT, bound through its GATE ARTIFACT from the
     # post-wire fleet re-cut: the wiring edited bytes the pre-wire gate imported
     # (launch.py, the product module's WELD_OWED), so the pre-wire stamp
@@ -4071,9 +4059,9 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # WELD_OWED and its register_arms), so the recorded digests disagree with the
     # tree until the gate is re-run.
     "complex_fused_hd_pair":
-        ("gate", "metal_complex_fused_hd_pair_2026-10-04_g13s"),
+        ("gate", "metal_complex_fused_hd_pair_2026-10-15_10_applegpu_g13s_m2"),
     "cylindrical_complex_fused_hd_pair":
-        ("gate", "metal_cylindrical_complex_fused_hd_pair_2026-10-04_g13s"),
+        ("gate", "metal_cylindrical_complex_fused_hd_pair_2026-10-15_10_applegpu_g13s_m2"),
     # EVERY H->D FAMILY IS BOUND TO `metal_<family>_2026-09-10_cells`, a DIRECTORY
     # whose `gate.json` is the artifact. Those eleven runs were cut on 2026-09-10
     # because the withheld-credit answer landed in parity/meep_gpu/h_to_d_seam.py, a
@@ -4084,18 +4072,18 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # here. (The 2026-09-08_close round they replace had run both policies and bound
     # the flush leg by file; the keep leg recorded the refusal.)
     "conductive_fused_hd_pair": (
-        "gate", "metal_conductive_fused_hd_pair_2026-10-04_g13s"),
+        "gate", "metal_conductive_fused_hd_pair_2026-10-15_10_applegpu_g13s_m2"),
     # THE THREE FAMILIES FIRST EARNED ON 2026-09-08, re-cut with the rest on
     # 2026-09-10. Two of them (beta complex, beta real) also price a SECOND cell from
     # the same artifact's lift records -- see their `cells` tables in PRODUCTS.
     "beta_complex_fused_hd_pair": (
-        "gate", "metal_beta_complex_fused_hd_pair_2026-10-04_g13s"),
+        "gate", "metal_beta_complex_fused_hd_pair_2026-10-15_10_applegpu_g13s_m2"),
     "beta_real_fused_hd_pair": (
-        "gate", "metal_beta_real_fused_hd_pair_2026-10-04_g13s"),
+        "gate", "metal_beta_real_fused_hd_pair_2026-10-15_10_applegpu_g13s_m1"),
     "folded_complex_fused_hd_pair": (
-        "gate", "metal_folded_complex_fused_hd_pair_2026-10-04_g13s"),
+        "gate", "metal_folded_complex_fused_hd_pair_2026-10-15_10_applegpu_g13s_m1"),
     "bfast_fused_hd_pair": (
-        "gate", "metal_bfast_fused_hd_pair_2026-10-04_g13s"),
+        "gate", "metal_bfast_fused_hd_pair_2026-10-15_10_applegpu_g13s_m2"),
 }
 
 
@@ -4706,6 +4694,81 @@ def main() -> int:
                 for cell in cells}
         served[family] = product_detail[family]["rows"]
 
+    # THE COMPOSER-ABSORB CREDIT AND THE CREDIT WITHHELD BY NAME (2026-10-11). The
+    # census records the BASE composition (`launch.plan_step` with fuse=False), and
+    # since series entry 18 that call pops `update_H` on the start clause
+    # (`launch.h_start_reasons`) after the fusion block, "so a pair that absorbs the
+    # slot keeps it". Read by the selected pair alone, a row the base composer popped
+    # credits nothing while the B/H pair's ladder still admits it, and the floor below
+    # refused the first census cut on the 1.0 frozen bytes on exactly that (354
+    # admitted, 322 credited: 31 B_to_H instances, plus the one D_to_E row
+    # CREDIT_WITHHELD names). Each piece of the rule is the composer's own object --
+    # its start-clause wording, its arm registry, FUSED_PAIR_SEAMS, FUSED_PAIR_ARMS
+    # and its extras, `_pair_may_absorb`, `_declared_uninstallable` and the pair
+    # plan's own `starts_h_from_b` -- and `metal_board_credit.absorb_credit` applies
+    # it; nothing here lists a row.
+    from meep_gpu.metal_kernels import arms as _arms  # noqa: PLC0415
+    from meep_gpu.metal_kernels import launch as _launch  # noqa: PLC0415
+    start_clause = metal_board_credit.derive_start_clause(
+        _launch.h_start_reasons, _launch.H_START_VOLUMES)
+    seam_absorbs = {curl: update for curl, (update, _name)
+                    in _launch.FUSED_PAIR_SEAMS.items()}
+    absorb_candidates: Dict[str, Dict[str, Tuple[Tuple[str, str], ...]]] = {}
+    absorb_modules: Dict[str, Tuple[str, Any]] = {}
+    for seam, curl_slot, const_slot, _between in SEAMS:
+        if seam_absorbs.get(curl_slot) != const_slot:
+            continue
+        here: Dict[str, Tuple[Tuple[str, str], ...]] = {}
+        for spec in _arms.registered(curl_slot):
+            # THE COMPOSER'S CANDIDATE FILTER, in `_install_fused_pairs` order: a weld
+            # replacing the absorbed slot, with an absorb declaration, installable.
+            if (not spec.is_weld or const_slot not in spec.replaces
+                    or PRODUCTS.get(spec.family, {}).get("seam") != seam):
+                continue
+            pair_arms = _launch.FUSED_PAIR_ARMS.get(spec.family)
+            if pair_arms is None or _launch._declared_uninstallable(spec) is not None:  # noqa: SLF001
+                continue
+            here[spec.family] = ((tuple(pair_arms),) + tuple(
+                tuple(extra) for extra in
+                _launch.FUSED_PAIR_EXTRA_ARMS.get(spec.family, ())))
+            absorb_modules[spec.family] = (
+                const_slot, sys.modules.get(getattr(spec.coverage, "__module__", "") or ""))
+        absorb_candidates[seam] = here
+
+    def pair_plan_starts_h(family: str) -> Optional[bool]:
+        """What the absorbing pair's plan declares for ``starts_h_from_b``.
+
+        WHAT THE START CLAUSE READS: once a pair absorbs the slot, the slot's declaring
+        plan is the pair's own (`launch.declaring_plan` through the repair wrappers), so
+        that class's `starts_h_from_b` decides whether the composer pops the slot back.
+        Read off the classes the registering module defines that replace the absorbed
+        slot; ``None`` where none declares it (the composer's default, True), and a
+        module that defines no such class REFUSES the credit it was asked about.
+        """
+        const_slot, module = absorb_modules[family]
+        plan_classes = [
+            value for value in vars(module).values()
+            if isinstance(value, type) and value.__module__ == module.__name__
+            and const_slot in tuple(getattr(value, "replaces_sub_steps", ()) or ())
+        ] if module is not None else []
+        if not plan_classes:
+            raise SystemExit(
+                f"{family}: no plan class in its registering module replaces "
+                f"{const_slot}, so this board cannot read whether the composer's start "
+                f"clause keeps the slot when the pair absorbs it")
+        declared = {getattr(cls, "starts_h_from_b", None) for cls in plan_classes}
+        return False if False in declared else None if declared == {None} else True
+    absorb_credits: List[Dict[str, Any]] = []
+    withheld_credits: List[Dict[str, Any]] = []
+    census_labels = {f"{r['leg']}:{r['row']}" for r in record}
+    stale_withheld = sorted(f"{label} @ {seam}" for (label, seam)
+                            in metal_board_credit.CREDIT_WITHHELD
+                            if label not in census_labels)
+    if stale_withheld:
+        raise SystemExit(
+            f"CREDIT_WITHHELD names {stale_withheld}, which this census does not "
+            f"measure; a withheld credit on a row nobody measured is a stale label")
+
     for index, row in enumerate(record, start=1):
         label = f"{row['leg']}:{row['row']}"
         configuration = row["configuration"]
@@ -4717,14 +4780,38 @@ def main() -> int:
             seam_instances += 1
             curl_arm = selected.get(curl_slot)
             const_arm = selected.get(const_slot)
-            by_pair[(seam, curl_arm, const_arm)].append(label)
             product = next(
                 (f for f, s in PRODUCTS.items()
                  if s["seam"] == seam and tuple(s["pair"]) == (curl_arm, const_arm)),
                 None)
             admitted = bool(product and label in served[product])
+            absorbed = withheld = None
+            if product is None and seam in absorb_candidates:
+                absorbed = metal_board_credit.absorb_credit(
+                    row, label, seam, curl_slot, const_slot, start_clause,
+                    seam_absorbs, absorb_candidates[seam], _launch._pair_may_absorb,  # noqa: SLF001
+                    served, pair_plan_starts_h)
+                if absorbed is not None:
+                    product, admitted = absorbed["pair"], True
+                    absorb_credits.append(dict(absorbed, row=label))
+            if (label, seam) in metal_board_credit.CREDIT_WITHHELD:
+                # Asked whatever the walk found: an entry the composer now selects a
+                # pair for, or one an absorbing pair now credits, refuses the cut.
+                held = metal_board_credit.CREDIT_WITHHELD[(label, seam)]
+                withheld = metal_board_credit.withheld_disagreement(
+                    row, label, seam, curl_slot, held,
+                    tuple(PRODUCTS.get(held["product"], {}).get("pair", ())) or None,
+                    served.get(held["product"], ()))
+                withheld_credits.append(dict(withheld, row=label, seam=seam))
+            # AN ABSORBED INSTANCE IS FILED UNDER THE CELL ITS PAIR SERVES, the arms
+            # the table selected before the start clause popped one; every other
+            # instance under the base composition's own selection.
+            by_pair[(seam, curl_arm,
+                     absorbed["arm"] if absorbed else const_arm)].append(label)
             if not product:
-                if curl_arm is None or const_arm is None:
+                if withheld is not None:
+                    unfused_reason[seam]["a product's predicate ADMITS and the composer refuses the arm it implements: credit WITHHELD by name"] += 1
+                elif curl_arm is None or const_arm is None:
                     unfused_reason[seam]["a slot is UNSELECTED (array path)"] += 1
                 elif CONSTITUTIVE_BODY.get((const_slot, const_arm)) is None:
                     unfused_reason[seam]["NOT A FUSION CANDIDATE — the constitutive sub-step launches nothing, so there is no second kernel to weld"] += 1
@@ -4737,10 +4824,47 @@ def main() -> int:
                 "between": between, "product": product, "served": admitted,
                 # READ off plan_step.live, not derived — see live_in_seam_passes.
                 "live_in_seam_passes": list(live_in_seam_passes(row, seam))}
+            if absorbed is not None:
+                # `constitutive_arm` stays the census's base selection (None); the
+                # arm the pair absorbed and the pair that absorbs it are named here.
+                entry["seams"][seam]["absorbed"] = {
+                    key: absorbed[key] for key in ("pair", "slot", "arm", "rule")}
+            if withheld is not None:
+                entry["seams"][seam]["credit_withheld"] = {
+                    key: withheld[key] for key in ("product", "slot", "arm", "reason")}
         per_row.append(entry)
         if index % 20 == 0 or index == len(record):
             print(f"  row {index:3d}/{len(record)}  {label[:56]:56s} "
                   f"({time.time() - started:5.1f} s)", flush=True)
+
+    unvisited = sorted(f"{label} @ {seam}" for (label, seam)
+                       in metal_board_credit.CREDIT_WITHHELD
+                       if not any(w["row"] == label and w["seam"] == seam
+                                  for w in withheld_credits))
+    if unvisited:
+        raise SystemExit(
+            f"CREDIT_WITHHELD names {unvisited}, a seam-instance this census does not "
+            f"price; a withheld credit on an instance that does not exist is a stale "
+            f"label")
+    print(f"\n--- THE COMPOSER-ABSORB CREDIT AND THE CREDIT WITHHELD BY NAME ---------",
+          flush=True)
+    print(f"  start clause: the composer's lead {start_clause.lead[:72]!r}...; "
+          f"{len(start_clause.pair_refusing)} reasons the absorbing pair refuses too",
+          flush=True)
+    curl_slot_of = {name: curl for name, curl, _const, _between in SEAMS}
+    for seam, candidates in absorb_candidates.items():
+        print(f"  {seam}: {len(candidates)} installable product(s) with an absorb "
+              f"declaration may absorb {seam_absorbs[curl_slot_of[seam]]}: "
+              f"{sorted(candidates)}", flush=True)
+    for credit in absorb_credits:
+        print(f"  ABSORB  {credit['row'][:58]:58s} {credit['seam']} "
+              f"({credit['curl_arm']}, {credit['arm']}) -> {credit['pair']}", flush=True)
+    print(f"  {len(absorb_credits)} seam-instance(s) credited to the pair that absorbs "
+          f"the slot the base composer popped", flush=True)
+    for held in withheld_credits:
+        print(f"  WITHHELD {held['row'][:57]:57s} {held['seam']} from "
+              f"{held['product']}: {held['reason'][:150]}...", flush=True)
+    print(f"  {len(withheld_credits)} seam-instance(s) withheld by name", flush=True)
 
     total_served = sum(1 for e in per_row for s in e["seams"].values() if s["served"])
 
@@ -4774,6 +4898,12 @@ def main() -> int:
     # Until then the cross-check RAISES on the disagreement rather than mis-publishing
     # it, because the taxonomy's served ledger it compares against would already
     # exclude the withheld rows.
+    #
+    # THE THREE-SEAM WALK HAS A WITHHELD TABLE SINCE 2026-10-11, AND THIS SEAM STILL
+    # HAS NONE. `metal_board_credit.CREDIT_WITHHELD` withholds a credit where a
+    # product's predicate admits and the composer refuses the arm it implements (one
+    # D_to_E row on the 1.0 census); it names no H->D instance, so every H->D entry
+    # below still carries no `credit_withheld` and the two sites above are unchanged.
     h_to_d_spanning = sorted(f for f, s in PRODUCTS.items()
                              if s["seam"] == h_to_d_seam.SEAM)
     h_to_d_entries = [
@@ -4893,14 +5023,30 @@ def main() -> int:
     # asking. Split, each side answers for its own walk and the two can no longer
     # offset one another: an over-admission on one seam and an under-credit on another
     # used to cancel in the pooled sum.
+    #
+    # AND PER PRODUCT, AS ROW SETS, FOLLOWING THE COMPOSER SINCE ENTRY 18 (2026-10-11).
+    # A row a product's ladder admits is accounted for in exactly one of two ways: it
+    # is CREDITED to that product (the census's selected pair, or the pair that
+    # absorbs the slot the base composer popped, named per instance), or it is
+    # WITHHELD from that product by name (metal_board_credit.CREDIT_WITHHELD, each
+    # entry re-read off the census above). Any other admitted row is a predicate
+    # overlap and refuses the cut, naming product and row; so does a credit the
+    # ladder does not admit. The totals check is kept beside it.
     three_seam_ladder = sum(detail["admitted"] for family, detail
                             in product_detail.items()
                             if PRODUCTS[family]["seam"] != h_to_d_seam.SEAM)
-    if three_seam_ladder != total_served:
+    three_seam_floor = metal_board_credit.three_seam_floor(
+        {family: detail["rows"] for family, detail in product_detail.items()
+         if PRODUCTS[family]["seam"] != h_to_d_seam.SEAM},
+        [dict(seam_block, row=e["row"]) for e in per_row
+         for seam_block in e["seams"].values()])
+    three_seam_withheld = three_seam_floor["credit_withheld_by_name"]
+    if three_seam_ladder != total_served + three_seam_withheld:
         raise SystemExit(
             f"the three-seam clause ladders admit {three_seam_ladder} rows but only "
-            f"{total_served} seam-instances credit a product: some row is admitted by "
-            f"a product whose pair plan_step does not select, so the arm predicates "
+            f"{total_served} seam-instances credit a product and "
+            f"{three_seam_withheld} are withheld by name: some row is admitted by a "
+            f"product whose pair plan_step does not select, so the arm predicates "
             f"are no longer disjoint and this matrix cannot be trusted")
     h_to_d_ladder = sum(detail["admitted"] for family, detail
                         in product_detail.items()
@@ -4914,8 +5060,11 @@ def main() -> int:
             f"served count is derived from the second")
     ladder_total = three_seam_ladder + h_to_d_ladder
     print(f"\n  DISJOINTNESS CROSS-CHECK: three-seam clause ladders "
-          f"{three_seam_ladder} == seam credits {total_served}; H->D ladders "
-          f"{h_to_d_ladder} == H->D credits {h_to_d_credits}", flush=True)
+          f"{three_seam_ladder} == seam credits {total_served} "
+          f"({three_seam_floor['credited_by_the_selected_pair']} by the selected pair "
+          f"+ {three_seam_floor['credited_by_an_absorbing_pair']} by an absorbing pair) "
+          f"+ {three_seam_withheld} withheld by name, per product as row sets; H->D "
+          f"ladders {h_to_d_ladder} == H->D credits {h_to_d_credits}", flush=True)
 
     def disjointness_cross_check(taxonomy_block: dict) -> dict:
         """The JSON block, DERIVED from the taxonomy's served ledger — and a floor.
@@ -4932,19 +5081,31 @@ def main() -> int:
         credits were not. It now reads the credit side off the same instance ledger
         the headline derives from, compares every product's ladder rows to its
         credited rows as SETS rather than counts, and raises rather than records.
+
+        THE WITHHELD SIDE (2026-10-11). A row withheld by name is admitted and not
+        credited by design, so each product's ladder rows are compared with its
+        credited rows PLUS its withheld rows, and the withheld instances the taxonomy
+        filed must be exactly the ones the seam walk withheld.
         """
         credited = taxonomy_block["buckets"]["served"]
         by_product = {product: sorted({row for _seam, row in items})
                       for product, items in taxonomy_block["served_by_product"].items()}
+        withheld_by_product = three_seam_floor["withheld_by_product"]
+        filed = sorted((item["seam"], item["row"], item["product"])
+                       for item in withheld_filed)
+        walked = sorted((item["seam"], item["row"], item["product"])
+                        for item in withheld_credits)
         row_set_disagreements = {}
         for family, detail in product_detail.items():
             ladder_rows = sorted(detail["rows"])
-            if ladder_rows != by_product.get(family, []):
+            took = set(by_product.get(family, []))
+            held = set(withheld_by_product.get(family, []))
+            if ladder_rows != sorted(took | held) or took & held:
                 row_set_disagreements[family] = {
-                    "ladder_admits_not_credited":
-                        sorted(set(ladder_rows) - set(by_product.get(family, []))),
-                    "credited_not_admitted":
-                        sorted(set(by_product.get(family, [])) - set(ladder_rows))}
+                    "ladder_admits_not_credited_nor_withheld":
+                        sorted(set(ladder_rows) - took - held),
+                    "credited_not_admitted": sorted(took - set(ladder_rows)),
+                    "credited_and_withheld": sorted(took & held)}
         unknown = sorted(set(by_product) - set(product_detail))
         block = {
             "clause_ladder_total": ladder_total,
@@ -4954,31 +5115,39 @@ def main() -> int:
             "seam_credited_per_seam": {"three_seam_ledger": total_served,
                                        "H_to_D": h_to_d_credits},
             "credited_read_from": "taxonomy.buckets.served / taxonomy.served_by_product",
+            "credited_by_an_absorbing_pair":
+                three_seam_floor["credited_by_an_absorbing_pair"],
+            "credit_withheld_total": three_seam_withheld,
+            "credit_withheld_by_product": withheld_by_product,
             "products_whose_ladder_rows_differ_from_their_credited_rows":
                 row_set_disagreements,
             "products_credited_but_not_in_the_product_table": unknown,
-            "agree": (ladder_total == credited and three_seam_ladder == total_served
-                      and h_to_d_ladder == h_to_d_credits
+            "agree": (ladder_total == credited + three_seam_withheld
+                      and three_seam_ladder == total_served + three_seam_withheld
+                      and h_to_d_ladder == h_to_d_credits and filed == walked
                       and not row_set_disagreements and not unknown),
             "what_it_proves": (
-                "every row a product admits is a row whose (curl, constitutive) pair "
-                "plan_step independently selects, which is the arm table's "
-                "disjointness contract holding on this corpus — asked per seam AND per "
-                "product as row sets, over all four seams"),
+                "every row a product admits is either a row the composer installs that "
+                "product's pair on -- the pair plan_step selects, or the pair that "
+                "absorbs the slot the base composition popped on the start clause -- "
+                "or a row withheld from that product by name with its reason; asked "
+                "per seam AND per product as row sets, over all four seams"),
         }
         if not block["agree"]:
             raise SystemExit(
                 f"DISJOINTNESS CROSS-CHECK FAILED: clause ladders admit "
                 f"{ladder_total} rows ({three_seam_ladder} three-seam + "
-                f"{h_to_d_ladder} H->D) and the instance ledger credits {credited} "
-                f"({total_served} + {h_to_d_credits}); products whose ladder rows are "
-                f"not their credited rows: {row_set_disagreements}; credited products "
-                f"the table does not list: {unknown}. Some row is admitted by a "
-                f"product whose pair plan_step does not select, or credited by one "
-                f"whose ladder refuses it, and this matrix cannot be trusted.")
+                f"{h_to_d_ladder} H->D), the instance ledger credits {credited} "
+                f"({total_served} + {h_to_d_credits}) and {three_seam_withheld} are "
+                f"withheld by name (taxonomy filed {filed}, the walk withheld "
+                f"{walked}); products whose ladder rows are not their credited and "
+                f"withheld rows: {row_set_disagreements}; credited products the table "
+                f"does not list: {unknown}. Some row is admitted by a product whose "
+                f"pair the composer does not install, or credited by one whose ladder "
+                f"refuses it, and this matrix cannot be trusted.")
         print(f"  DISJOINTNESS CROSS-CHECK (derived): ladders {ladder_total} == "
-              f"credited {credited} over {len(product_detail)} products, row sets "
-              f"identical", flush=True)
+              f"credited {credited} + withheld {three_seam_withheld} over "
+              f"{len(product_detail)} products, row sets identical", flush=True)
         return block
 
     # ------------------------------------------------------------------ gaps
@@ -5382,6 +5551,7 @@ def main() -> int:
                         h_to_d_seam.SEAM: len(h_to_d_entries)})
     verdict_of = {(g["seam"], g["curl_arm"], g["constitutive_arm"]): g["verdict"]
                   for g in gaps}
+    withheld_filed: List[Dict[str, str]] = []
     for entry in per_row:
         configuration = configuration_of[entry["row"]]
         for seam, cell in entry["seams"].items():
@@ -5409,7 +5579,26 @@ def main() -> int:
             elif cell["served"]:
                 taxonomy.add("served", seam, entry["row"],
                              f"SERVED by a shipped product ({cell['product']})",
-                             {"product": cell["product"]})
+                             {"product": cell["product"],
+                              **({"absorbed": cell["absorbed"]}
+                                 if cell.get("absorbed") else {})})
+            elif cell.get("credit_withheld"):
+                # A RECORDED DISAGREEMENT, filed where the shared contract files a
+                # withheld credit (buildable_not_built, the product named), under this
+                # board's own sentence: the reason is not a stale release binding.
+                held = cell["credit_withheld"]
+                taxonomy.add(
+                    "buildable_not_built", seam, entry["row"],
+                    f"a product exists on this cell ({held['product']}) and its "
+                    f"predicate ADMITS, but the composer REFUSES the {held['slot']} arm "
+                    f"it implements ({held['arm']}) — credit withheld by name, a "
+                    f"recorded disagreement between the product predicate and the "
+                    f"composer for a later release",
+                    {"product": held["product"], "credit_withheld": True,
+                     "credit_withheld_reason": held["reason"],
+                     "predicate_admits": True})
+                withheld_filed.append({"seam": seam, "row": entry["row"],
+                                       "product": held["product"]})
             elif clause is not None and not clause(configuration):
                 taxonomy.add(
                     "source_seam_unbracketable", seam, entry["row"],
@@ -5642,11 +5831,44 @@ def main() -> int:
             ("every_fold_is_mirror_metallic", _every_fold_is_mirror_metallic),
             ("no_electric_source", _no_electric_source)),
     }
+    # A STANDING ROW THIS CENSUS CANNOT MEASURE IS NAMED, NOT COUNTED (2026-10-11). The
+    # 1.0 census on the frozen bytes measures 192 of the 194 basis rows: the frozen lift
+    # refuses tests:TestSimulation.test_infer_dimensions and test_require_dimensions by
+    # name (MeepSimulationNotLiftable, a BinaryPartition chunk_layout with mirror
+    # symmetry; ruling R10), and both sit in the folded B->H standing record. So the
+    # comparison is made over the standing rows the census MEASURES, as a row SET, and
+    # each standing row it does not measure must be on the census as a row the lift
+    # refused, with its reason, or the cut refuses: a standing row the census never
+    # attempted, or skipped without a lift refusal, is a hole, not an exclusion.
+    unmeasured = {f"{r.get('leg')}:{r.get('row')}": r
+                  for r in load(CENSUS / "examples.jsonl") + load(CENSUS / "tests.jsonl")
+                  if not r.get("measured")}
+    measured_labels = {f"{r['leg']}:{r['row']}" for r in record}
     reproduced = {}
     for family, (path, keys) in standing.items():
         prior = json.loads(path.read_text())
         for key in keys:
-            expected = prior[key]["admitted"]
+            # `key` is re-bound by the halves loop below (the printed and filed label
+            # keeps that spelling); the standing record is read through this name.
+            standing_key = key
+            standing_rows = list(prior[standing_key]["rows"])
+            if len(standing_rows) != prior[standing_key]["admitted"]:
+                raise SystemExit(
+                    f"{path}: {standing_key} lists {len(standing_rows)} rows and counts "
+                    f"{prior[standing_key]['admitted']}; the standing record does not "
+                    f"list what it counts")
+            not_here = [label for label in standing_rows if label not in measured_labels]
+            refused_by_lift = {}
+            for label in not_here:
+                lift_error = str((unmeasured.get(label) or {}).get("lift_error") or "")
+                if not lift_error.strip():
+                    raise SystemExit(
+                        f"{family}: the standing row {label} is not measured by "
+                        f"{CENSUS.name} and the census records no lift refusal for it; "
+                        f"a standing row the census did not attempt cannot be excluded")
+                refused_by_lift[label] = lift_error.splitlines()[0][:300]
+            standing_here = sorted(set(standing_rows) - set(not_here))
+            expected = len(standing_here)
             got = product_detail[family]["admitted"]
             retired = WIDENED.get(family)
             clause = None if retired is None else "+".join(n for n, _ in retired)
@@ -5677,8 +5899,10 @@ def main() -> int:
             shipped_rows = [r for r in base
                             if all(test(r["configuration"])
                                    for _, test in primary["seam_clauses"])]
-            before = sum(1 for r in shipped_rows
-                         if all(test(r["configuration"]) for _, test in retired))
+            before_rows = sorted(f"{r['leg']}:{r['row']}" for r in shipped_rows
+                                 if all(test(r["configuration"])
+                                        for _, test in retired))
+            before = len(before_rows)
             delta = got - before
             only_this_clause = sum(
                 1 for r in shipped_rows
@@ -5693,9 +5917,19 @@ def main() -> int:
                 "measured": got, "delta": delta,
                 "rows_the_retired_clause_alone_refused": only_this_clause,
                 "rows_each_retired_clause_refused": per_clause,
-                "retired_clause": clause}
-            ok = (before == expected and delta == only_this_clause and delta > 0
+                "retired_clause": clause,
+                "standing_record_as_written": prior[standing_key]["admitted"],
+                "standing_rows_this_census_cannot_measure": refused_by_lift,
+                "pre_carry_rows_equal_the_standing_rows_measured_here":
+                    before_rows == standing_here}
+            ok = (before == expected and before_rows == standing_here
+                  and delta == only_this_clause and delta > 0
                   and all(count > 0 for count in per_clause.values()))
+            if refused_by_lift:
+                print(f"  {path.parent.name}/{standing_key}: {len(refused_by_lift)} of "
+                      f"the standing record's {prior[standing_key]['admitted']} rows are "
+                      f"refused by the lift on this census and compared out by name: "
+                      f"{sorted(refused_by_lift)}", flush=True)
             print(f"  {path.parent.name}/{key}: standing {expected}, pre-carry "
                   f"ladder {before}, this walk {got} (+{delta} on the retired "
                   f"{clause}; per clause {per_clause})  "
@@ -5912,6 +6146,26 @@ def main() -> int:
         "carry_gap_totals": {name: len(v) for name, v in carry_gap.items()},
         "carry_gap": {name: v for name, v in carry_gap.items()},
         "per_row": per_row,
+        # EVERY ABSORB CREDIT NAMES THE PAIR THAT ABSORBS, and every withheld credit
+        # its product and reason; the per-row blocks carry the same, these are the
+        # lists a reader diffs between two cuts.
+        "composer_absorb_credits": {
+            "rule": ("launch.plan_step applies h_start_reasons after the fusion block, "
+                     "so a pair that absorbs the slot keeps it; see "
+                     "parity/meep_gpu/metal_board_credit.py"),
+            "start_clause_lead": start_clause.lead,
+            "start_reasons_the_pair_refuses_too": sorted(start_clause.pair_refusing),
+            "candidates_per_seam": {seam: sorted(c) for seam, c
+                                    in absorb_candidates.items()},
+            "credits": absorb_credits,
+            "count": len(absorb_credits),
+        },
+        "credit_withheld_by_name": {
+            "table": "parity/meep_gpu/metal_board_credit.py CREDIT_WITHHELD",
+            "instances": withheld_credits,
+            "count": len(withheld_credits),
+        },
+        "three_seam_disjointness_floor": three_seam_floor,
         "is_an_upper_bound": True,
         "clauses_not_evaluable_from_the_census_block": sorted({
             clause for spec in PRODUCTS.values() for clause in spec["not_evaluable"]

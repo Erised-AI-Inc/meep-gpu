@@ -1,9 +1,9 @@
 """Merge-bar tests for :mod:`meep_gpu.triton_kernels.complex_no_pml_curl`.
 
 WHAT A LAPTOP CAN AND CANNOT SETTLE FOR THIS FAMILY. The family ships no kernel:
-it re-uses ``complex_fields.bloch_pml_curl_step`` under a degenerate binding. So
-the byte-identity claim belongs to a device and is OWED — ``parity/meep_gpu/
-gate_triton_complex_no_pml_curl.py`` is written and no leg has been run. What is
+it re-uses ``complex_fields.bloch_pml_curl_step`` under a no-absorber binding (the
+absorber-free chunk record and unit columns). So the byte-identity claim belongs to
+a device — ``parity/meep_gpu/gate_triton_complex_no_pml_curl.py``. What is
 settleable here, and is settled here, is everything the 2026-08-16 group-(J)
 artifact said the closing round still owed:
 
@@ -19,10 +19,12 @@ artifact said the closing round still owed:
   without a builder raises ``ValueError: expected a complex64 volume, got dtype
   None`` behind an inert layer and ``AttributeError: 'NoneType' object has no
   attribute 'kms_x_h'`` behind no layer at all;
-* the BINDING's collapse — that the shipped split-field recurrence under unit
-  coefficients and a zeroed auxiliary lands on ``stepping.py:539``'s
-  ``target -= curl``, measured on physical bands with a vacuity floor, and that
-  its ONE divergent pattern is exactly the one recorded and no other;
+* the BINDING — that the plan binds the absorber-free record (no membership run,
+  the grid's presence word), so the kernel's dsig-only form steps every cell, and
+  that this form on unit coefficients IS ``stepping._apply_curl``'s
+  ``target -= curl`` on physical bands with a vacuity floor and on all 36 special
+  pairs; the previous binding (the recurrence everywhere with a zeroed auxiliary)
+  is pinned as the mutation it now is, losing exactly ``(-0, +0)``;
 * that ``update_E`` on group (J)'s shape STILL REFUSES.
 
 Every assertion here fails on the pre-change tree — the module does not exist
@@ -43,7 +45,6 @@ from meep_gpu import stepping
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
 from meep_gpu.pml import PML
-from meep_gpu.test_triton_complex_fields import _probe_record
 from meep_gpu.triton_kernels import complex_fields as complex_module
 from meep_gpu.triton_kernels.launch import SUB_STEPS
 
@@ -119,17 +120,6 @@ def _build(*, cell_size=(2.5, 2.5, 2.5), dimensions=3, boundaries="periodic",
     return fields, PML(grid=grid, thickness=pml_thickness)
 
 
-def _probe():
-    """The well-formed EXPANSION artifact the sibling suite already defines.
-
-    Clause 13 refuses without one, and a refusal for a HARNESS reason wearing a
-    coverage reason's clothes is the exact trap the 2026-08-16 group-(J) leg
-    documented. Shared rather than re-spelled: a locally hand-built record is how
-    a suite ends up testing a licence rule it has quietly diverged from.
-    """
-    return _probe_record()
-
-
 def _complex_from_halves(real, imaginary):
     """``real + 1j*imaginary`` WITHOUT losing a signed zero in either half.
 
@@ -153,7 +143,7 @@ def _policy():
 
 def _reasons(family, fields, pml, sub_step):
     return list(family.complex_no_pml_curl_coverage(
-        fields, pml, sub_step, probe=_probe()).reasons)
+        fields, pml, sub_step).reasons)
 
 
 def _words(array):
@@ -177,7 +167,7 @@ def test_group_j_slots_are_covered_with_zero_reasons(family, row, sub_step,
     """
     fields, pml = _build(**row)
     coverage = family.complex_no_pml_curl_coverage(
-        fields, None if drop_layer else pml, sub_step, probe=_probe())
+        fields, None if drop_layer else pml, sub_step)
     assert coverage.covered, coverage.reasons
     assert coverage.reasons == ()
 
@@ -189,8 +179,7 @@ def test_the_builder_returns_a_plan_and_raises_on_neither_shape(family, row,
     """The regression test for the measured raise. None is the only refusal."""
     fields, pml = _build(**row)
     for layer in (pml, None):
-        plan = family.plan_complex_no_pml_curl(fields, layer, sub_step,
-                                               probe=_probe())
+        plan = family.plan_complex_no_pml_curl(fields, layer, sub_step)
         assert plan is not None
         assert plan.sub_step == sub_step
         assert plan.shape == tuple(fields.grid.shape)
@@ -210,7 +199,7 @@ def test_the_shipped_split_field_builder_still_refuses_these_slots(row, sub_step
     fields, pml = _build(**row)
     for layer in (pml, None):
         verdict = complex_module.complex_pml_curl_coverage(
-            fields, layer, sub_step, probe=_probe())
+            fields, layer, sub_step)
         assert not verdict.covered
         assert any("no active PML layer" in r for r in verdict.reasons), \
             verdict.reasons
@@ -225,7 +214,7 @@ def test_an_active_layer_is_refused_here_and_admitted_by_the_incumbent(family,
     reasons = _reasons(family, fields, pml, sub_step)
     assert any("an active PML layer is installed" in r for r in reasons), reasons
     assert complex_module.complex_pml_curl_coverage(
-        fields, pml, sub_step, probe=_probe()).covered
+        fields, pml, sub_step).covered
 
 
 @pytest.mark.parametrize("sub_step", CURLS)
@@ -234,10 +223,8 @@ def test_exactly_one_of_the_two_complex_curl_families_admits(family, sub_step,
                                                              thickness):
     """The partition, measured as a partition: never both, never neither."""
     fields, pml = _build(pml_thickness=thickness)
-    inverted = family.complex_no_pml_curl_coverage(fields, pml, sub_step,
-                                                   probe=_probe())
-    incumbent = complex_module.complex_pml_curl_coverage(fields, pml, sub_step,
-                                                         probe=_probe())
+    inverted = family.complex_no_pml_curl_coverage(fields, pml, sub_step)
+    incumbent = complex_module.complex_pml_curl_coverage(fields, pml, sub_step)
     assert sum((inverted.covered, incumbent.covered)) == 1, \
         (inverted.reasons, incumbent.reasons)
     # ... and the ABSORBER clause is what separates them, in whichever direction.
@@ -269,7 +256,7 @@ def test_no_other_curl_family_in_the_package_admits_group_j(family):
     assert len(others) >= 3, [n for n, _ in others]
     for sub_step in CURLS:
         assert family.complex_no_pml_curl_coverage(
-            fields, pml, sub_step, probe=_probe()).covered
+            fields, pml, sub_step).covered
         for name, call in others:
             try:
                 verdict = call(sub_step)
@@ -288,7 +275,7 @@ def test_update_e_on_group_j_stays_refused_by_every_constitutive_family():
 
     fields, pml = _build()
     complex_side = complex_module.complex_constitutive_coverage(
-        fields, pml, "E", probe=_probe())
+        fields, pml, "E")
     assert not complex_side.covered
     assert any("off-diagonal chi1inv row" in r for r in complex_side.reasons)
     assert not no_pml_constitutive.null_constitutive_coverage(
@@ -399,41 +386,7 @@ def test_the_synthesized_unit_columns_are_bit_identical_to_an_inert_layers(famil
                 assert numpy.array_equal(_words(synthesized), _words(engine))
 
 
-@pytest.mark.parametrize("band", [(1e-6, 1e-3), (1e-3, 1.0), (1.0, 1e3)],
-                         ids=["1e-6..1e-3", "1e-3..1e0", "1e0..1e3"])
-def test_the_degenerate_recurrence_collapses_to_target_minus_curl(band):
-    """stepping.py:1975-1982 under unit coefficients and fu=0 IS stepping.py:539.
-
-    A PHYSICAL BAND fill with a VACUITY FLOOR: zero-init is a fixed point of this
-    recurrence, and a no-op agreeing with a no-op measures nothing.
-    """
-    low, high = band
-    rng = numpy.random.default_rng(SEED)
-    shape = (12, 11, 10)
-    parts = (numpy.exp(rng.uniform(numpy.log(low), numpy.log(high), (4,) + shape))
-             * rng.choice([-1.0, 1.0], (4,) + shape)).astype(numpy.float32)
-    field = (parts[0] + 1j * parts[1]).astype(numpy.complex64)
-    curl = (parts[2] + 1j * parts[3]).astype(numpy.complex64)
-
-    plain = field.copy()
-    plain -= curl                                        # stepping.py:539
-    moved = int((_words(field) != _words(plain)).sum())
-    assert moved == field.size * 2, f"VACUOUS: only {moved} words moved"
-
-    degenerate = field.copy()
-    one = numpy.float32(1.0)
-    stepping._apply_pml_update(degenerate, curl, one, one, one, one,
-                               numpy.zeros(shape, numpy.complex64))
-    differing = int((_words(plain) != _words(degenerate)).sum())
-    assert differing == 0, f"{differing} / {field.size * 2} words differ"
-
-
-def test_the_binding_has_exactly_one_divergent_pattern_and_it_is_the_recorded_one():
-    """The substitution's one caveat, pinned as an EXACT set.
-
-    Recorded so a later change cannot widen it quietly: if a second pattern
-    appears, or this one disappears, the module docstring is wrong and this fails.
-    """
+def _special_pairs():
     specials = {"-0.0": numpy.float32(-0.0), "+0.0": numpy.float32(0.0),
                 "subnormal+": numpy.float32(1e-45),
                 "subnormal-": numpy.float32(-1e-45),
@@ -444,29 +397,76 @@ def test_the_binding_has_exactly_one_divergent_pattern_and_it_is_the_recorded_on
     zeros = numpy.zeros(len(pairs), numpy.float32)
     field = _complex_from_halves(target_re, zeros).reshape(-1, 1, 1)
     curl = _complex_from_halves(curl_re, zeros).reshape(-1, 1, 1)
+    return pairs, field, curl
+
+
+@pytest.mark.parametrize("band", [(1e-6, 1e-3), (1e-3, 1.0), (1.0, 1e3)],
+                         ids=["1e-6..1e-3", "1e-3..1e0", "1e0..1e3"])
+def test_the_dsig_only_form_on_unit_columns_is_target_minus_curl(band):
+    """The kernel's form on every cell of this binding IS ``target -= curl``.
+
+    ``stepping._apply_dsig_only_update`` is the array path's dsig-only form, the one
+    the kernel selects on a cell outside every membership run. A PHYSICAL BAND fill
+    with a VACUITY FLOOR: a no-op agreeing with a no-op measures nothing.
+    """
+    low, high = band
+    rng = numpy.random.default_rng(SEED)
+    shape = (12, 11, 10)
+    parts = (numpy.exp(rng.uniform(numpy.log(low), numpy.log(high), (4,) + shape))
+             * rng.choice([-1.0, 1.0], (4,) + shape)).astype(numpy.float32)
+    field = (parts[0] + 1j * parts[1]).astype(numpy.complex64)
+    curl = (parts[2] + 1j * parts[3]).astype(numpy.complex64)
 
     plain = field.copy()
-    plain -= curl
-    degenerate = field.copy()
-    one = numpy.float32(1.0)
-    stepping._apply_pml_update(degenerate, curl, one, one, one, one,
-                               numpy.zeros(field.shape, numpy.complex64))
+    plain -= curl                                        # stepping._apply_curl
+    moved = int((_words(field) != _words(plain)).sum())
+    assert moved == field.size * 2, f"VACUOUS: only {moved} words moved"
 
-    a, b = _words(plain).ravel(), _words(degenerate).ravel()
+    dsig_only = field.copy()
+    one = numpy.float32(1.0)
+    stepping._apply_dsig_only_update(dsig_only, curl, one, one)
+    differing = int((_words(plain) != _words(dsig_only)).sum())
+    assert differing == 0, f"{differing} / {field.size * 2} words differ"
+
+
+def test_the_dsig_only_form_on_unit_columns_keeps_every_special_pair():
+    """All 36 (target, curl) pairs of the special values, the signed zeros included:
+    the binding has no residual, so the gate's planted leg requires identity."""
+    pairs, field, curl = _special_pairs()
+    plain = field.copy()
+    plain -= curl
+    dsig_only = field.copy()
+    one = numpy.float32(1.0)
+    stepping._apply_dsig_only_update(dsig_only, curl, one, one)
+    a, b = _words(plain).ravel(), _words(dsig_only).ravel()
+    divergent = {pairs[n] for n in range(len(pairs))
+                 if a[2 * n] != b[2 * n] or a[2 * n + 1] != b[2 * n + 1]}
+    assert divergent == set(), sorted(divergent)
+
+
+def test_the_previous_binding_loses_exactly_the_pattern_the_gate_plants():
+    """The previous binding — the recurrence on every cell with a zeroed auxiliary —
+    is the gate's ``previous_binding`` mutation, and it is caught ONLY by the planted
+    leg, so its divergent set is pinned exactly: ``(-0.0, +0.0)`` and nothing else.
+    The auxiliary reaches ``+0.0 - (+0.0) = +0.0`` and ``-0.0 + (+0.0)`` is ``+0.0``.
+    """
+    pairs, field, curl = _special_pairs()
+    plain = field.copy()
+    plain -= curl
+    previous = field.copy()
+    one = numpy.float32(1.0)
+    stepping._apply_pml_update(previous, curl, one, one, one, one,
+                               numpy.zeros(field.shape, numpy.complex64))
+    a, b = _words(plain).ravel(), _words(previous).ravel()
     divergent = {pairs[n] for n in range(len(pairs)) if a[2 * n] != b[2 * n]}
     assert divergent == {("-0.0", "+0.0")}, sorted(divergent)
 
 
-def test_no_choice_of_auxiliary_zero_sign_repairs_the_divergent_pattern():
-    """The caveat is FORCED, and that is the claim the docstring makes.
-
-    Measured rather than argued, because it is the reason this family documents a
-    residual instead of fixing one: seeding the auxiliary at ``-0.0`` moves the
-    sign loss from ``field += fu`` to ``field -= fu_previous`` and leaves the
-    divergent set exactly where it was. A mutation leg that seeds ``-0.0`` and
-    expects the set to MOVE therefore survives — this is that survival, inverted
-    into an assertion so it is pinned rather than merely observed.
-    """
+def test_no_choice_of_auxiliary_zero_sign_repairs_the_previous_binding():
+    """Why the previous binding could not be repaired by seeding, and the form select
+    was the fix: seeding the auxiliary at ``-0.0`` moves the sign loss from
+    ``field += fu`` to ``field -= fu_previous`` and leaves the divergent set where it
+    was."""
     specials = (numpy.float32(-0.0), numpy.float32(0.0), numpy.float32(0.375))
     pairs = list(itertools.product(range(len(specials)), repeat=2))
     target_re = numpy.array([specials[a] for a, _ in pairs], numpy.float32)
@@ -485,29 +485,46 @@ def test_no_choice_of_auxiliary_zero_sign_repairs_the_divergent_pattern():
             ("-0.0", _complex_from_halves(
                 numpy.full(field.shape, numpy.float32(-0.0)),
                 numpy.full(field.shape, numpy.float32(-0.0))))):
-        degenerate = field.copy()
-        stepping._apply_pml_update(degenerate, curl, one, one, one, one,
-                                   auxiliary)
-        a, b = _words(plain).ravel(), _words(degenerate).ravel()
+        previous = field.copy()
+        stepping._apply_pml_update(previous, curl, one, one, one, one, auxiliary)
+        a, b = _words(plain).ravel(), _words(previous).ravel()
         divergent[label] = {(specials[pairs[n][0]].item(), specials[pairs[n][1]].item())
                             for n in range(len(pairs)) if a[2 * n] != b[2 * n]}
     assert divergent["+0.0"] == divergent["-0.0"], divergent
     assert len(divergent["+0.0"]) == 1, divergent
 
 
+@J_ROWS
 @pytest.mark.parametrize("sub_step", CURLS)
-def test_the_auxiliary_is_zeroed_before_EVERY_launch_not_only_the_first(family,
-                                                                       sub_step):
-    """After one launch the auxiliary holds -curl; a second launch must not see it.
+def test_the_plan_binds_the_absorber_free_record(family, row, sub_step):
+    """No membership run on either sub-lattice of any axis, and the grid's presence.
 
-    The inner plan is replaced by a recorder, so what is measured is the state the
-    auxiliary is IN at launch — the property — rather than the presence of a
-    ``fill`` call.
+    That record is what makes the kernel's dsig-only form the only one; a run would
+    put the recurrence (and a read of the placeholder auxiliary) on its cells.
     """
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD
+
+    fields, pml = _build(**row)
+    grid = fields.grid
+    plan = family.plan_complex_no_pml_curl(fields, pml, sub_step)
+    record = numpy.asarray(plan._inner.chunk_bounds)
+    assert not record[:RECORD_PRESENCE_WORD].any(), record.tolist()
+    expected = sum(1 << axis for axis in range(3) if not grid.is_invariant(axis))
+    assert int(record[RECORD_PRESENCE_WORD]) == expected
+    assert expected == (7 if row is J3 else 3)
+
+
+@pytest.mark.parametrize("sub_step", CURLS)
+def test_the_auxiliary_is_never_touched_at_launch(family, sub_step):
+    """The placeholder auxiliary is the kernel's argument only: ``run`` neither zeroes
+    nor reads it (the record has no recurrence cell), so a value a launch could not
+    have left there survives every launch of the recorder."""
     fields, pml = _build()
-    plan = family.plan_complex_no_pml_curl(fields, pml, sub_step, probe=_probe())
+    plan = family.plan_complex_no_pml_curl(fields, pml, sub_step)
     auxiliaries = plan._auxiliaries
     assert len(auxiliaries) == 3
+    for auxiliary in auxiliaries:
+        auxiliary[...] = numpy.complex64(-1.5 - 0.25j)
 
     seen = []
 
@@ -515,9 +532,8 @@ def test_the_auxiliary_is_zeroed_before_EVERY_launch_not_only_the_first(family,
         sub_step = "recorder"
 
         def run(self, guard=None):
-            seen.append([int(numpy.count_nonzero(_words(a))) for a in auxiliaries])
-            for auxiliary in auxiliaries:      # what one real launch leaves behind
-                auxiliary[...] = numpy.complex64(-1.5 - 0.25j)
+            seen.append([int(numpy.count_nonzero(a != numpy.complex64(-1.5 - 0.25j)))
+                         for a in auxiliaries])
 
     plan._inner = _Recorder()
     for _ in range(3):
@@ -536,11 +552,11 @@ def test_the_auxiliary_is_this_products_own_and_never_the_engines(family, sub_st
     for name in ("fu_" + t for t in SUB_STEPS[sub_step]["targets"]):
         planted[name] = numpy.full(tuple(fields.grid.shape), numpy.complex64(9 + 9j))
         setattr(fields, name, planted[name])
-    plan = family.plan_complex_no_pml_curl(fields, pml, sub_step, probe=_probe())
+    plan = family.plan_complex_no_pml_curl(fields, pml, sub_step)
     assert plan is not None
     for auxiliary in plan._auxiliaries:
         assert all(auxiliary is not array for array in planted.values())
-        assert not numpy.any(auxiliary)          # this product's own, and zeroed
+        assert not numpy.any(auxiliary)          # this product's own, zero at build
 
 
 @J_ROWS
@@ -570,9 +586,8 @@ def test_the_default_of_require_active_pml_reproduces_the_incumbent(thickness,
     """The parameter added to the shared clause list is inert by default."""
     fields, pml = _build(pml_thickness=thickness)
     explicit = complex_module._complex_grid_reasons(
-        fields, pml, fields.grid, _probe(), require_active_pml=True)
-    default = complex_module._complex_grid_reasons(fields, pml, fields.grid,
-                                                   _probe())
+        fields, pml, fields.grid, require_active_pml=True)
+    default = complex_module._complex_grid_reasons(fields, pml, fields.grid)
     assert explicit == default
 
 
@@ -581,9 +596,9 @@ def test_clause_three_is_the_only_clause_the_inversion_moves(thickness):
     """Exactly ONE numbered question separates the two arms, measured as a set diff."""
     fields, pml = _build(pml_thickness=thickness)
     active = set(complex_module._complex_grid_reasons(
-        fields, pml, fields.grid, _probe(), require_active_pml=True))
+        fields, pml, fields.grid, require_active_pml=True))
     inert = set(complex_module._complex_grid_reasons(
-        fields, pml, fields.grid, _probe(), require_active_pml=False))
+        fields, pml, fields.grid, require_active_pml=False))
     assert active ^ inert <= {
         "no active PML layer (this product implements the complex "
         "split-field path only)",
@@ -625,17 +640,32 @@ def _released_payload():
                  "J3_step_B_STALESOURCE_CONTROL"):
         cases.append({"case": name, "prediction": "DIVERGENT",
                       "verdict": "DIVERGENT"})
-    for name in ("J3_step_B_MUTATION_aux_zeroed_once",
-                 "J3_step_D_MUTATION_aux_zeroed_once",
+    for name in ("J3_step_B_MUTATION_record_with_a_run",
+                 "J2_step_B_MUTATION_presence_all_present",
+                 "J3_step_D_MUTATION_record_with_a_run",
+                 "J2_step_D_MUTATION_presence_all_present",
                  "J3_step_B_MUTATION_unit_column_one_ulp"):
         cases.append({"case": name, "prediction": "DIVERGENT",
                       "verdict": "DIVERGENT"})
+    for name in ("J3_step_B_NULL_aux_poisoned", "J3_step_D_NULL_aux_poisoned"):
+        cases.append({"case": name, "prediction": "IDENTICAL",
+                      "verdict": "IDENTICAL"})
+    planted = []
+    for tag in ("J3", "J2"):
+        for sub_step in CURLS:
+            planted.append({"case": f"{tag}_{sub_step}_minus_zero_target_zero_curl:shipped",
+                            "binding": "shipped", "prediction": "IDENTICAL",
+                            "verdict": "IDENTICAL", "differing": 0, "compared": 11250,
+                            "negative_zero_words_stored": 2352})
+            planted.append({"case": f"{tag}_{sub_step}_minus_zero_target_zero_curl:"
+                                    f"previous_binding",
+                            "binding": "previous_binding", "prediction": "DIVERGENT",
+                            "verdict": "DIVERGENT", "differing": 1152, "compared": 11250,
+                            "negative_zero_words_stored": 2352})
     return {
         "subnormal_policy_installed": "keep",
-        "expansion": 1,
         "cases": cases,
-        "adversarial": {"cases": [{"case": "J3_step_B_minus_zero_target_zero_curl",
-                                   "differing": 0, "compared": 281250}]},
+        "planted": {"cases": planted},
         "refusals": {"disjoint": True, "all_agree": True},
     }
 
@@ -647,7 +677,6 @@ def test_a_fully_successful_run_is_released(gate):
 
 @pytest.mark.parametrize("break_it, needle", [
     (lambda p: p.update(subnormal_policy_installed="flush"), "keep"),
-    (lambda p: p.update(expansion=None), "EXPANSION"),
     (lambda p: p.update(cases=[]), "no cases ran"),
     (lambda p: p["cases"].__setitem__(0, dict(p["cases"][0], verdict="DIVERGENT")),
      "verdict"),
@@ -655,9 +684,22 @@ def test_a_fully_successful_run_is_released(gate):
      "control did not diverge"),
     (lambda p: p["cases"].__setitem__(11, dict(p["cases"][11], verdict="IDENTICAL")),
      "mutation was NOT caught"),
-    (lambda p: p.update(adversarial={"cases": []}), "adversarial"),
-    (lambda p: p["adversarial"]["cases"].__setitem__(
-        0, {"case": "x"}), "no differing count"),
+    (lambda p: p["cases"].__setitem__(16, dict(p["cases"][16], verdict="DIVERGENT")),
+     "declared null moved a byte"),
+    (lambda p: p.update(planted={"cases": []}), "planted"),
+    (lambda p: p["planted"]["cases"].__setitem__(
+        0, {"case": "x", "binding": "shipped"}), "no differing count"),
+    (lambda p: p["planted"]["cases"].__setitem__(
+        0, dict(p["planted"]["cases"][0], verdict="DIVERGENT", differing=4)),
+     "planted verdict"),
+    (lambda p: p["planted"]["cases"].__setitem__(
+        1, dict(p["planted"]["cases"][1], verdict="IDENTICAL", differing=0)),
+     "planted verdict"),
+    (lambda p: p["planted"]["cases"].__setitem__(
+        0, dict(p["planted"]["cases"][0], negative_zero_words_stored=0)),
+     "no -0 word was stored"),
+    (lambda p: p["planted"].update(cases=p["planted"]["cases"][:3]),
+     "it requires 4 each"),
     (lambda p: p.update(refusals={"disjoint": False, "all_agree": True}),
      "UNSELECTED"),
     (lambda p: p.update(refusals={"disjoint": True, "all_agree": False}),
@@ -666,6 +708,8 @@ def test_a_fully_successful_run_is_released(gate):
                                if "CONTROL" not in c["case"]]), "controls ran"),
     (lambda p: p.update(cases=[c for c in p["cases"]
                                if "MUTATION" not in c["case"]]), "mutations ran"),
+    (lambda p: p.update(cases=[c for c in p["cases"]
+                               if "NULL" not in c["case"]]), "declared nulls ran"),
 ])
 def test_the_release_contract_refuses_each_way_it_can_be_broken(gate, break_it,
                                                                 needle):
@@ -677,23 +721,24 @@ def test_the_release_contract_refuses_each_way_it_can_be_broken(gate, break_it,
     assert any(needle in reason for reason in verdict["reasons"]), verdict["reasons"]
 
 
-def test_the_contract_reports_the_adversarial_count_rather_than_requiring_it_zero(
-        gate):
-    """The known residual is RECORDED, never asserted away.
-
-    A contract that demanded ``differing == 0`` there would either be a lie or
-    would block a release for a divergence the module documents. It demands the
-    number be present.
-    """
+def test_the_contract_requires_the_shipped_planted_rows_identical(gate):
+    """The pattern the previous binding lost is now REQUIRED identical: a shipped
+    planted row that differs refuses the release, by name."""
     payload = _released_payload()
-    payload["adversarial"]["cases"][0]["differing"] = 93750
-    assert gate.validate_payload(payload)["released"]
+    payload["planted"]["cases"][2]["differing"] = 86425
+    payload["planted"]["cases"][2]["verdict"] = "DIVERGENT"
+    verdict = gate.validate_payload(payload)
+    assert not verdict["released"]
+    assert any("planted verdict" in reason for reason in verdict["reasons"])
 
 
 def test_the_gate_header_reports_the_device_result_and_known_residual(gate):
-    """The harness header must agree with the readable certification record."""
+    """The harness header must agree with the readable certification record: the
+    2026-08-17 release ran on the PREVIOUS binding, and its residual is that
+    binding's, which the present gate arms as a mutation."""
     text = GATE_PATH.read_text(encoding="utf-8")
-    assert "DEVICE RESULT (2026-08-17)" in text
+    assert "DEVICE RESULT (2026-08-17), ON THE PREVIOUS BINDING" in text
     assert "triton_complex_no_pml_curl_device_gate" in text
     assert "86,450/281,250" in text and "3,552/11,250" in text
     assert "NO LEG HAS BEEN RUN" not in text
+    assert "previous_binding" in text and "leg_planted" in text

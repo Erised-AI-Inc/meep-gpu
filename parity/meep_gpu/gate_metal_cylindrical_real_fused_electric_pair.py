@@ -115,6 +115,7 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
     MAX_BUFFER_BINDINGS, Residency, compile_source, metal_frontend_version,
 )
 from meep_gpu.triton_kernels.coverage import zero_metal_axes  # noqa: E402
+from gate_chunk_records import every_cell_record, layer_record  # noqa: E402
 
 #: The budget every case runs. Twelve, matching the sibling fused pairs' and for
 #: their reason: the classes this gate exists for COMPOUND. ``fu_D`` and ``f_w_E``
@@ -163,14 +164,25 @@ STATE_NAMES: Tuple[str, ...] = tuple(
 #:   matrix_row          one case is built by the SHARED composition matrix, so the
 #:                       fixture this certifies is the fixture the two halves' own
 #:                       gates were certified on rather than a grid that resembles it.
+def _f32(value: float) -> float:
+    """The float32 word of ``value``, as the Python float the grid carries."""
+    return float(np.float32(value))
+
+
+#: EVERY COURANT HERE IS A FLOAT32 WORD. The m = 0 D side's axis rule is MEEP's double
+#: product ``4 * Courant * Hp[r=0]`` rounded once, which this backend forms in float32
+#: only for such a word, and any other Courant is refused by name. The composition
+#: matrix's default 0.37 is not one; its rows take its word.
+MATRIX_COURANT = _f32(0.37)
+
 CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     ("square_metallic", dict(shape=(20, 1, 20), courant=0.5, z_kind="metallic")),
     ("square_metallic_odd_courant",
-     dict(shape=(20, 1, 20), courant=0.3141592653589793, z_kind="metallic")),
+     dict(shape=(20, 1, 20), courant=_f32(0.3141592653589793), z_kind="metallic")),
     ("tall_metallic_odd_courant",
-     dict(shape=(32, 1, 13), courant=0.4142135623730951, z_kind="metallic")),
+     dict(shape=(32, 1, 13), courant=_f32(0.4142135623730951), z_kind="metallic")),
     ("wide_metallic_odd_courant",
-     dict(shape=(13, 1, 32), courant=0.37, z_kind="metallic")),
+     dict(shape=(13, 1, 32), courant=MATRIX_COURANT, z_kind="metallic")),
     ("square_periodic", dict(shape=(20, 1, 20), courant=0.5, z_kind="periodic")),
     ("composition_matrix_row", dict(matrix_row=True)),
 )
@@ -200,6 +212,32 @@ def words(array: Any) -> np.ndarray:
     return np.frombuffer(np.ascontiguousarray(array).tobytes(), dtype=np.uint32)
 
 
+def floor_violations(moved: Mapping[str, int], pml: Any) -> List[str]:
+    """The vacuity floor under the auxiliary contract (KERNELS.md §1, C2).
+
+    ``f_w_{H,E}c`` is touched only where c's own axis (its dsigw) carries a layer and
+    ``fu_{B,D}c`` only where its dsigu axis, ``(c + 2) % 3``, does, by the array path
+    and by every kernel alike. On a Dcyl grid phi carries none, so ``f_w_Hy``,
+    ``f_w_Ey``, ``fu_Bz`` and ``fu_Dz`` keep their seeds for the whole run, except
+    where the |m| >= 2 near-axis rule zeroes every array on its rows. The floor
+    exempts exactly the set derived here from the layer, never the set a run happened
+    to leave still: every other compared array must move, and below |m| = 2 an exempt
+    one that moved is a violation too.
+    """
+    silent = set()
+    for index, c in enumerate("xyz"):
+        if not pml.axis_has_pml(index):
+            silent.update((f"f_w_H{c}", f"f_w_E{c}"))
+        if not pml.axis_has_pml((index + 2) % 3):
+            silent.update((f"fu_B{c}", f"fu_D{c}"))
+    zeroing = abs(int(getattr(getattr(pml, "grid", None), "m", 0) or 0)) >= 2
+    return (sorted(name for name, count in moved.items()
+                   if count == 0 and name not in silent)
+            + sorted(f"{name} (moved, untouched by the contract)"
+                     for name, count in moved.items()
+                     if count and name in silent and not zeroing))
+
+
 def differing(left: Any, right: Any) -> int:
     a, b = words(left), words(right)
     if a.shape != b.shape:
@@ -210,6 +248,7 @@ def differing(left: Any, right: Any) -> int:
 # ---------------------------------------------------------------------------
 # The configuration
 # ---------------------------------------------------------------------------
+
 
 def build(label: str, seed: int, value_class: str = values.UNIFORM,
           scale: float = 1.0) -> Tuple[Any, Any]:
@@ -228,7 +267,7 @@ def build(label: str, seed: int, value_class: str = values.UNIFORM,
     options = dict(CASES)[label]
     if options.get("matrix_row"):
         fields, pml = matrix.cylindrical(m=0, complex_storage=False,
-                                         z_kind="metallic")
+                                         z_kind="metallic", courant=MATRIX_COURANT)
         shape = tuple(int(n) for n in fields.grid.shape)
     else:
         shape = tuple(int(n) for n in options["shape"])
@@ -244,6 +283,11 @@ def build(label: str, seed: int, value_class: str = values.UNIFORM,
         pml = PML(grid=grid, thickness={"x": (0, max(2, shape[0] // 4)),
                                         "z": max(2, shape[2] // 4)})
 
+    # A SEEDED STATE IS A MID-RUN ONE: the run's first update_H, which starts H and
+    # f_w from B on the dsigw cells (stepping.separate_h_from_b), is behind it, as the
+    # composition matrix records for its own fixtures. This pair never takes update_H,
+    # but the refusal leg asks its magnetic twin about the same fixture.
+    fields.h_separated = True
     if value_class == values.PM_ZERO_LATTICE:
         lattice = values.pm_zero_lattice(shape)
         for name in STATE_NAMES:
@@ -369,12 +413,14 @@ def run_case(label: str, seed: int, steps: int,
         # with it — the defect is in the OFFSETS, so it cannot be reached from the
         # kernel source at all.
         probe = family.plan_metal_cylindrical_real_fused_electric_pair(
-            actual, actual_pml, sources=(), residency=Residency())
+            actual, actual_pml, sources=(), residency=Residency(),
+            chunk_bounds=layer_record(actual.grid, actual_pml))
         assert probe is not None, "the params mutation has no shipped plan to read"
         record = params(probe)
     plan = family.plan_metal_cylindrical_real_fused_electric_pair(
         actual, actual_pml, sources=(), residency=residency,
-        fused_function=fused_function, params=record)
+        fused_function=fused_function, params=record,
+        chunk_bounds=layer_record(actual.grid, actual_pml))
     if plan is None:
         reasons = family.metal_cylindrical_real_fused_electric_pair_coverage(
             actual, actual_pml, (), residency).reasons
@@ -407,13 +453,13 @@ def run_case(label: str, seed: int, steps: int,
 
     after = state_of(actual)
     moved = {name: differing(before[name], after[name]) for name in before}
-    still = sorted(name for name, count in moved.items() if count == 0)
+    still = floor_violations(moved, actual_pml)
     identical = (len(per_step) == steps
                  and all(row["differing_words"] == 0 for row in per_step))
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
     launches_ok = (plan.runs == len(per_step)
                    and plan.launches == plan.launches_per_run * len(per_step)
-                   and plan.prefix_launches == plan.fused_launches == len(per_step))
+                   and plan.scan_launches == plan.fused_launches == len(per_step))
     signs = values.zero_sign_census(state_of(reference).values())
     if value_class == values.PM_ZERO_LATTICE:
         floor_ok = bool(signs["positive_zero_words"] and signs["negative_zero_words"])
@@ -436,7 +482,7 @@ def run_case(label: str, seed: int, steps: int,
         "arrays_that_never_moved": still,
         "moved_words": int(sum(moved.values())),
         "runs": plan.runs, "launches": plan.launches,
-        "prefix_launches": plan.prefix_launches,
+        "scan_launches": plan.scan_launches,
         "fused_launches": plan.fused_launches,
         "launches_per_run": plan.launches_per_run,
         "launches_expected": plan.launches_per_run * len(per_step),
@@ -471,13 +517,16 @@ def run_separate_control(label: str, seed: int, steps: int) -> Dict[str, Any]:
     fused, fused_pml = build(label, seed)
 
     separate_residency = Residency()
-    curl = cyl.plan_cylindrical_real_curl(separate, separate_pml, "step_D",
-                                          separate_residency)
+    curl = cyl.plan_cylindrical_real_curl(
+        separate, separate_pml, "step_D", separate_residency,
+        chunk_bounds=layer_record(separate.grid, separate_pml))
     electric = cyl.plan_cylindrical_real_constitutive(separate, separate_pml, "E",
-                                                      separate_residency)
+                                                      separate_residency,
+                                                      chunk_bounds=layer_record(separate.grid, separate_pml))
     fused_residency = Residency()
     plan = family.plan_metal_cylindrical_real_fused_electric_pair(
-        fused, fused_pml, sources=(), residency=fused_residency)
+        fused, fused_pml, sources=(), residency=fused_residency,
+        chunk_bounds=layer_record(fused.grid, fused_pml))
     if curl is None or electric is None or plan is None:
         return {"passed": False, "reason": "a declared product was refused",
                 "curl": curl is not None, "constitutive": electric is not None,
@@ -540,7 +589,7 @@ def _volume_source(fields: Any, component: str = "Ez") -> Any:
 
     ``amplitude=1j`` IS A MEASUREMENT, NOT A DECORATION, and it is the difference
     between this leg measuring the repair and measuring nothing. A real-storage run
-    injects ``real(amp * dt * current(t))`` (sources.py, ``_inject_points``), and
+    injects ``real((amp * current(t)) * dt)`` (``sources._deposit``), and
     ``ContinuousEnvelope``'s current carries the CW source's ``1/(-i*omega)`` factor —
     so with a REAL amplitude the current is PURELY IMAGINARY at every t and the real
     part deposited is ~1e-16. Measured on this fixture before the amplitude was
@@ -660,7 +709,7 @@ def run_deposit_case(label: str, seed: int, steps: int,
 
     after = state_of(actual)
     moved = {name: differing(before[name], after[name]) for name in before}
-    still = sorted(name for name, count in moved.items() if count == 0)
+    still = floor_violations(moved, actual_pml)
     identical = (len(per_step) == steps
                  and all(row["differing_words"] == 0 for row in per_step))
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
@@ -791,62 +840,63 @@ def shader_mutations(codes: Sequence[int],
                    "    curl2 = at_x ? (curl2 + (axis_coef * g1[ii])) : curl2;"),
         "axis_dp_zero_dropped":
             needle(base, "    v1 = at_x ? 0.0f : v1;\n", ""),
-        # --- Dz's PREFIX CURL --------------------------------------------------
-        # stepping.step_D:425-426 — the BACKWARD difference of the prefix inside the
-        # four-operand grouping, not Bz's two-operand forward difference.
+        # --- Dz's RADIAL CURL ------------------------------------------------
+        # stepping.step_D: Dz's whole curl is dtdx times the per-chunk radial
+        # difference of Hp, not the generic stencil.
         "dz_curl_is_the_generic_one":
-            needle(base, "float curl2 = dtdx * ((pb_x - pb) + (a - a_y));",
-                   "float curl2 = dtdx * ((b_x - b) + (a - a_y));"),
-        "dz_prefix_difference_is_forward":
-            needle(base, "float curl2 = dtdx * ((pb_x - pb) + (a - a_y));",
-                   "float curl2 = dtdx * ((pb - pb_x) + (a - a_y));"),
+            needle(base, "    float curl2 = dtdx * rad[ii];",
+                   "    float curl2 = dtdx * (((b_x - b) + a) - a_y);"),
+        "dz_radial_term_negated":
+            needle(base, "    float curl2 = dtdx * rad[ii];",
+                   "    float curl2 = (-dtdx) * rad[ii];"),
         # --- THE OWNERSHIP MASK AND THE CURL ----------------------------------
-        # THE OWNERSHIP MASK ON THE r AXIS, both components, and the pair is the
-        # point. `cylindrical_real`'s docstring MEASURED that dropping the r mask on
-        # Dz changes nothing (0/8): that curl's radial operand pair is
-        # (prefix[0], the metallic zero ghost) and prefix row 0 is an exact +0.0 by
-        # construction, while its phi pair is a self-difference on the one-cell
-        # invariant axis -- so the row is already +0.0 before the mask runs. On Dy
-        # the same edit diverges (11-40 words per case). Both are armed; the Dz one
-        # is DECLARED a null below and the Dy one must be caught, which is what
-        # stops the null reading as "the mask does not matter here".
+        # THE OWNERSHIP MASK ON THE r AXIS, both components, each DECLARED a null
+        # below. Dropping the r mask on Dz changes nothing: the array path's radial
+        # sum writes row 0 of the D side's radial difference as +0, so curl2 is +0
+        # there before the mask runs. On Dy it changes nothing either under MEEP's
+        # forms: the m = 0 axis rule stores Dp[r = 0] = +0 over whatever the form
+        # gave, and fu_Dy is stored only on Dy's dsigu (r) layer, which row 0 is
+        # outside of (KERNELS.md §1, C2).
         "ownership_mask_dropped_on_r_for_dz":
             needle(base, "    curl2 = at_x ? 0.0f : curl2;\n", ""),
         "ownership_mask_dropped_on_r_for_dy":
             needle(base, "    curl1 = at_x ? 0.0f : curl1;\n", ""),
-        # shaders rule 2: flattening these parens is a different float32 number —
-        # BUT ONLY WHERE BOTH DIFFERENCES ARE LIVE. Target 1's pair is (z, r).
-        "curl_parens_flattened_on_a_live_pair":
-            needle(base, "dtdx * ((a_z - a) + (c - c_x))",
-                   "dtdx * (a_z - a + c - c_x)"),
-        # THE SAME EDIT ON TARGET 0, whose first pair is the invariant phi axis.
-        # Declared a NULL — see the expectation table.
-        "curl_parens_flattened_on_the_invariant_pair":
-            needle(base, "dtdx * ((c_y - c) + (b - b_z))",
-                   "dtdx * (c_y - c + b - b_z)"),
+        # INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping planted
+        # in place of MEEP's left-to-right bracket on target 1, whose pair (z, r) is
+        # live.
+        "curl_previous_package_grouping_on_a_live_pair":
+            needle(base, "dtdx * (((a_z - a) + c) - c_x)",
+                   "dtdx * ((a_z - a) + (c - c_x))"),
+        # THE INVARIANT-AXIS TERM (Appendix A): target 0's phi partner is absent and
+        # MEEP's one-partner form is (-dtdx) * (g2s - g2); the package's previous
+        # spelling kept it as a self-difference. Declared a NULL.
+        "curl_invariant_term_kept_as_a_self_difference":
+            needle(base, "(has_z ? ((-dtdx) * (b_z - b)) : 0.0f)",
+                   "(has_z ? (dtdx * ((c_y - c) + (b - b_z))) : 0.0f)"),
         "recurrence_axis_pair_swapped":
             needle(base, "float n0 = ((p0 * km_y) - curl0) * si_y;",
                    "float n0 = ((p0 * km_z) - curl0) * si_z;"),
         # --- THE STORES -------------------------------------------------------
         "fu_store_dropped":
-            needle(base, "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;",
-                   "    u1[ii] = n1; u2[ii] = n2;"),
+            needle(base, "    if (du0) { u0[ii] = n0; }\n", ""),
         "flux_store_dropped":
             needle(base, "    f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;",
                    "    f1[ii] = v1; f2[ii] = v2;"),
         "fw_store_dropped":
-            needle(base, "    w0[ii] = src0;", "    // stale f_w_Ex"),
+            needle(base, "    if (dw0) { w0[ii] = src0; }", "    // stale f_w_Ex"),
         # --- THE CONSTITUTIVE HALF --------------------------------------------
         # The dsigw index is the component's OWN axis. Moving it to the z index is
         # in bounds on a SQUARE case and is a wrong value.
         "constitutive_coefficient_index_moved":
             needle(base, "float kp_0 = kp0[i], km_0 = km0[i];",
                    "float kp_0 = kp0[k], km_0 = km0[k];"),
-        "constitutive_accumulations_reversed":
-            needle(base, "    a0 = a0 + kp_0 * src0;\n"
-                         "    a0 = a0 - km_0 * prev0;",
-                   "    a0 = a0 - km_0 * src0;\n"
-                   "    a0 = a0 + kp_0 * prev0;"),
+        "constitutive_coefficients_exchanged":
+            needle(base, "a0 = e0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
+                   "a0 = e0[ii] + ((km_0 * src0) - (kp_0 * prev0));"),
+        # INVERTED (KERNELS.md §7.1): the package's previous constitutive grouping.
+        "constitutive_previous_package_grouping":
+            needle(base, "a0 = e0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
+                   "a0 = (e0[ii] + (kp_0 * src0)) - (km_0 * prev0);"),
     }
     mutants: Dict[str, Dict[str, Any]] = {}
     for name, source in edits.items():
@@ -863,10 +913,10 @@ def shader_mutations(codes: Sequence[int],
 #:
 #: THE THREE ENTRIES, and each has a live sibling beside it in the armed set:
 #:
-#: * ``curl_parens_flattened_on_the_invariant_pair`` — phi has n = 1 on a Dcyl grid,
-#:   so the rolled operand IS the original and ``(c_y - c)`` is an exact ``+0.0``; the
-#:   flattened form then differs only where ``(b - b_z)`` is ``-0.0``. Its sibling on
-#:   target 1, whose pair is (z, r) and both live, is armed as must-catch.
+#: * ``curl_invariant_term_kept_as_a_self_difference`` — phi has n = 1 on a Dcyl
+#:   grid, so ``(c_y - c)`` is an exact ``+0.0`` and the package's previous spelling
+#:   equals MEEP's one-partner form on every word but a zero curl's sign. Its sibling
+#:   on target 1, whose pair is (z, r) and both live, is armed as must-catch.
 #: * the two PHI OFFSET swaps — MEASURED on this host before they were armed:
 #:   ``kms_y`` and ``sinv_y`` are each ONE element on a Dcyl grid and both hold
 #:   exactly ``1.0f`` (0x3F800000), because the phi axis carries no PML at all. So
@@ -875,12 +925,12 @@ def shader_mutations(codes: Sequence[int],
 #:   neighbouring vector — are armed as must-catch and diverge, which is what stops
 #:   these nulls reading as "the offsets do not matter".
 #: * ``ownership_mask_dropped_on_r_for_dz`` — the r mask on Dz is redundant, because
-#:   that curl's radial pair is (prefix[0], the metallic zero ghost) and prefix row 0
-#:   is an exact ``+0.0``. Measured 0/8 by ``cylindrical_real``'s own probe and
-#:   re-measured here; its sibling on Dy is armed as must-catch.
+#:   the D side's radial difference is written +0 on row 0, so curl2 is already +0
+#:   there; its sibling on Dy is armed as must-catch.
 MUTATION_EXPECTATION: Dict[str, str] = {
-    "curl_parens_flattened_on_the_invariant_pair": "null",
+    "curl_invariant_term_kept_as_a_self_difference": "null",
     "ownership_mask_dropped_on_r_for_dz": "null",
+    "ownership_mask_dropped_on_r_for_dy": "null",
     "offset_kmy_plus_one_reads_sinvy": "null",
     "offset_sinvy_minus_one_reads_kmy": "null",
 }
@@ -972,7 +1022,8 @@ def _offset_mutation(index: int, delta: int) -> Callable[[Any], Any]:
                 f"than a wrong value and this leg would measure the platform")
         offsets[index] = moved
         return family._params_tensor(plan.shape, plan.dtdx, plan.axis_coef,
-                                     offsets, plan.residency.device)
+                                     offsets, plan.residency.device,
+                                     chunk_bounds=plan.chunk_bounds)
     return make
 
 
@@ -1133,7 +1184,8 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     # The REAL packer, not a hand-built record: the field the kernel reads is then
     # the field the plan builder writes. n_elem is the product of the shape (60),
     # deliberately not the eight-element probe buffers, so the guard is exercised.
-    params = family._params_tensor(shape, dtdx, axis_coef, offsets, "mps")
+    params = family._params_tensor(shape, dtdx, axis_coef, offsets, "mps",
+                                   chunk_bounds=every_cell_record(shape))
     function(*buffers, params)
     torch.mps.synchronize()
     read = [float(buffer.cpu().numpy()[0]) for buffer in buffers]
@@ -1387,7 +1439,8 @@ def leg_refusal() -> Dict[str, Any]:
     electric_coverage = family.metal_cylindrical_real_fused_electric_pair_coverage(
         fields, pml, (electric,), residency)
     electric_plan = family.plan_metal_cylindrical_real_fused_electric_pair(
-        fields, pml, sources=(electric,), residency=residency)
+        fields, pml, sources=(electric,), residency=residency,
+        chunk_bounds=layer_record(fields.grid, pml))
 
     wired_fields, wired_pml = build(REFUSAL_CASE, 91001)
     wired_source = _volume_source(wired_fields, "Ez")
@@ -1404,7 +1457,8 @@ def leg_refusal() -> Dict[str, Any]:
     indexless_named = [r for r in indexless_coverage.reasons
                        if "does not publish the index it writes" in r]
     indexless_plan = family.plan_metal_cylindrical_real_fused_electric_pair(
-        fields, pml, sources=(indexless,), residency=residency)
+        fields, pml, sources=(indexless,), residency=residency,
+        chunk_bounds=layer_record(fields.grid, pml))
 
     magnetic = _volume_source(fields, "Hy")
     magnetic_coverage = family.metal_cylindrical_real_fused_electric_pair_coverage(

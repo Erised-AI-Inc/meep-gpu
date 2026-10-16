@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import re
 
 import pytest
 
+from . import folded_pass
 from . import fused_hd_pair
 from . import special_kz_curl
 from . import special_kz_fused_hd_pair as family
@@ -139,10 +141,10 @@ def test_both_beta_partners_are_the_welds_own_register():
     """The clause this family owns and no sibling H->D weld has."""
     _head, tail = family.welded_curl_tail()
     beta_lines = [line.strip() for line in tail.splitlines()
-                  if line.strip().startswith("curl = curl - (beta_")]
+                  if line.strip().startswith("float inc_beta = owned_cell ? (-(beta_")]
     assert len(beta_lines) == family.BETA_INSERT_LINES
     for line, register in zip(beta_lines, ("f2", "f1")):
-        assert line.endswith(f"* {register});"), line
+        assert line.endswith(f"* {register})) : 0.0f;"), line
         assert f"float {register} = own_h[" in tail
 
 
@@ -152,8 +154,9 @@ def test_a_beta_partner_the_weld_did_not_redirect_is_refused():
     # must be the UNSHIFTED centre, never an sf/ss shifted operand". Welded, ``ss`` is
     # a recompute rather than a weld register, so the pairing check must refuse it.
     corrupted = family._certified_curl_source().replace(  # noqa: SLF001
-        "        curl = curl - (beta_plus * f2);",
-        "        curl = curl - (beta_plus * ss);", 1)
+        "        float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;",
+        "        float inc_beta = owned_cell ? (-(beta_plus * ss)) : 0.0f;", 1)
+    assert corrupted != family._certified_curl_source()  # noqa: SLF001
     with pytest.raises(AssertionError, match="beta partner"):
         family.welded_curl_tail(corrupted)
 
@@ -170,7 +173,7 @@ def test_a_beta_partner_declared_from_the_pre_launch_volume_is_refused():
              "        float f1 = own_h[2];\n"
              "        float f2 = Hy[idx];\n"
              "        float curl = 0.0f;\n"
-             "        curl = curl - (beta_plus * f2);\n"
+             "        float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;\n"
              "    }\n")
     with pytest.raises(AssertionError, match="PRE-launch magnetic field"):
         family._assert_the_beta_partner_is_the_weld_register(block, True)  # noqa: SLF001
@@ -178,7 +181,8 @@ def test_a_beta_partner_declared_from_the_pre_launch_volume_is_refused():
 
 def test_a_body_that_lost_a_beta_increment_is_refused():
     corrupted = family._certified_curl_source().replace(  # noqa: SLF001
-        "        curl = curl - (beta_plus * f2);\n", "", 1)
+        "        float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;\n", "", 1)
+    assert corrupted != family._certified_curl_source()  # noqa: SLF001
     with pytest.raises(AssertionError, match="beta increments"):
         family.welded_curl_tail(corrupted)
 
@@ -187,9 +191,10 @@ def test_a_body_that_lost_a_beta_increment_is_refused():
 def test_the_certified_special_kz_body_is_the_certified_real_one_plus_the_insert():
     """WHY ONE TRANSFORM SERVES BOTH, measured rather than asserted.
 
-    The two ``step_D`` texts differ in the kernel NAME, two parameters, two beta
-    statements and three comments -- and in nothing structural. That is what lets this
-    family reuse the released transform whole.
+    The two ``step_D`` texts differ in the kernel NAME, two parameters, the fold ladder
+    helper and MEEP's two beta passes (the ownership flag, the increment, the ladder)
+    -- and in nothing structural. That is what lets this family reuse the released
+    transform whole.
     """
     _cupy_or_skip()
     from . import step_curl_kernels
@@ -201,13 +206,20 @@ def test_the_certified_special_kz_body_is_the_certified_real_one_plus_the_insert
         return [line.strip() for line in text.splitlines()
                 if line.strip() and not line.strip().startswith("//")]
     added = [line for line in statements(beta) if line not in statements(certified)]
-    assert sorted(added) == sorted([
-        'extern "C" __global__ void step_D_special_kz_real(',
-        "float beta_plus, float beta_minus",
-        "curl = curl - (beta_plus * f2);",
-        "curl = curl - (beta_minus * f1);",
-        "int bc_x, int bc_y, int bc_z,",
-    ]), added
+    removed = [line for line in statements(certified) if line not in statements(beta)]
+    helpers = set(statements(folded_pass.REAL_FOLD_HELPERS))
+    passes = (re.compile(r"int owned_cell = 1;"),
+              re.compile(r"if \(.*\) owned_cell = 0;"),
+              re.compile(r"float inc_beta = owned_cell \? \(-\(beta_(plus \* f2|minus "
+                         r"\* f1)\)\) : 0\.0f;"),
+              re.compile(r"fold_apply\(D[xy], fu_D[xy], idx, inc_beta, .*\);"))
+    unexplained = [line for line in added
+                   if line not in helpers
+                   and line not in ('extern "C" __global__ void step_D_special_kz_real(',
+                                    "float beta_plus, float beta_minus,")
+                   and not any(pattern.fullmatch(line) for pattern in passes)]
+    assert not unexplained, unexplained
+    assert removed == ['extern "C" __global__ void step_D_pml_real('], removed
 
 
 # ---------------------------------------------------------------------------
@@ -226,17 +238,20 @@ def test_the_emitted_text_carries_no_complex_type_and_no_float_divide():
                for line in divides)
 
 
-@pytest.mark.parametrize("planted,expected", [
-    ("        float curl = ((sf - f1) + (f2 - ss)) / dtdx;", "divides outside"),
-    ("    cf own_h[3];", "complex type"),
-])
+@pytest.mark.parametrize("needle,planted,expected", [
+    ("        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_y, pr_z);",
+     "        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_y, pr_z) / dtdx;",
+     "divides outside"),
+    ("    float own_h[3];", "    cf own_h[3];", "complex type"),
+], ids=["float_divide", "complex_type"])
 @_emitter
-def test_the_absence_assertions_bite(planted, expected):
-    """Each absence has a control that must be REFUSED -- a zero beside a bite."""
+def test_the_absence_assertions_bite(needle, planted, expected):
+    """Each absence has a control that must be REFUSED -- a zero beside a bite. The
+    plant's anchor is asserted present first: an anchor that moved would hand the
+    assertion the shipped text and the control would read "not refused"."""
     _cupy_or_skip()
     source = family.kernel_source()
-    needle = ("        float curl = dtdx * ((sf - f1) + (f2 - ss));"
-              if "/" in planted else "    float own_h[3];")
+    assert source.count(needle) == 1, needle
     with pytest.raises(AssertionError, match=expected):
         family._assert_the_measured_absences(  # noqa: SLF001
             source.replace(needle, planted, 1))

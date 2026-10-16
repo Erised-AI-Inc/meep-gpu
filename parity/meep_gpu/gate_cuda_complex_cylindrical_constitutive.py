@@ -49,8 +49,8 @@ checked line by line before this file was written):
 6. THE REAL PAIR WAS MEASURED ON THIS EXACT QUESTION AND ADMITTED
    (:data:`coverage.CONSTITUTIVE_CYLINDRICAL_ADMISSION`, 96/96 on the GPU host,
    2026-08-20). THAT IS NOT TRANSFERABLE. These are different kernel bytes --
-   complex64 word pairs, the zero cross terms, the arm -- emitted by a different
-   template and compiled under an expansion licence the real pair does not take.
+   complex64 word pairs and the zero cross terms -- emitted by a different
+   template.
    The sibling Triton track measured its own complex Dcyl constitutive at 480/480
    identity rows with 0 differing uint32 words
    (``triton_kernels/cylindrical_complex.py``). That is a reason to measure this
@@ -88,12 +88,10 @@ USAGE
 
     python -u gate_cuda_complex_cylindrical_constitutive.py \
         --backend cupy --product full --subnormal-policy keep \
-        --expansion-probe <probe>.json \
         --out results/cuda_complex_cylindrical_constitutive_<date>/gate.json
 
     python -u gate_cuda_complex_cylindrical_constitutive.py --backend host \
-        --product full --expansion-probe \
-        results/expansion_probe_2026-08-17/expansion_probe_keep.json \
+        --product full \
         --out /tmp/complex_cyl_local.json
 
 One flushed line per case (the progress-reporting rule); the artifact is rewritten after
@@ -258,8 +256,7 @@ COURANTS: Tuple[float, ...] = (0.5, 0.35)
 INEXACT_COURANT = 0.35
 
 #: ``uniform`` is the physical band. ``subnormal_band`` is what a float32 subnormal
-#: policy decides the fate of, and it is the class the complex family's own round
-#: measured to separate the two expansion arms on a zero-imaginary orientation.
+#: policy decides the fate of.
 #: ``signed_zero`` is the class the ZERO CROSS TERMS exist for, and it is a real
 #: operand class rather than a contrivance: a complex word whose real plane is an
 #: exact zero and whose imaginary plane is not is what a flushed subnormal, a
@@ -269,15 +266,15 @@ VALUE_CLASSES: Tuple[str, ...] = ("uniform", "subnormal_band", "signed_zero")
 
 SIDES: Tuple[str, ...] = ("H", "E")
 
-#: ``--fmad=false`` is CORRECTNESS on this sub-step in principle -- both
-#: accumulations and the E side's ``D*inv_eps`` are contraction candidates the
-#: array path rounds twice. The control is REPORTED, NOT GATED, for the reason the
-#: family's own release records: under the licensed ``FMA_V1`` arm every product
-#: in the emitted source is already an explicit ``__fmaf_rn``, which no contraction
-#: flag reaches, so the flag has nothing here to do and the images come out
-#: identical. An identical control is a FINDING on this family and a failure on
-#: the real one; the artifact says which it measured rather than implying evidence
-#: it does not have.
+#: ``--fmad=false`` is CORRECTNESS on this sub-step -- both accumulations and the
+#: E side's ``D*inv_eps`` are contraction candidates the array path rounds twice,
+#: and the part-wise body spells each product and each sum on
+#: its own, as MEEP's contraction-off build does. The control is REPORTED, NOT
+#: GATED, as the family's release recorded it (that release's FMA_V1 arm spelled
+#: every product as an explicit ``__fmaf_rn``, which no contraction flag reaches,
+#: and its images came out identical). On the part-wise body a divergent control is
+#: the expected reading and an identical one is the finding; the artifact says which
+#: it measured rather than implying evidence it does not have.
 GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
     ("fmad_false", ("--fmad=false",), True),
     ("default_no_options", (), False),
@@ -343,6 +340,9 @@ def build(xp, spec: Dict[str, Any], courant: float, rng):
     fields = Fields(grid=grid, force_complex_fields=True)
     fields.enable_field_storage()
     fields.enable_pml_storage()
+    # MID-RUN: H is already separated from B, so the oracle and the kernel both step
+    # the seeded state and neither performs the run's first-update_H start.
+    fields.h_separated = True
     epsilon, inverse = {}, {}
     for component in ("Ex", "Ey", "Ez"):
         values = rng.uniform(1.2, 3.4, size=grid.shape).astype(np.float32)
@@ -530,11 +530,9 @@ def m_half_plane_field_store(text: str) -> Tuple[str, int]:
     catches it and the reach is universal.
     """
     return base._sub(
-        r"    a = cf_sub\(a, mul_coefficient_left\(kms, prev\)\);\n"
-        r"    cf_store\(f, idx, a\);",
-        "    a = cf_sub(a, mul_coefficient_left(kms, prev));\n"
-        "    a.im = cf_load(f, idx).im;\n"
-        "    cf_store(f, idx, a);", text)
+        r"                       : src;\n    cf_store\(f, idx, updated\);",
+        "                       : src;\n    updated.im = cf_load(f, idx).im;\n"
+        "    cf_store(f, idx, updated);", text)
 
 
 def m_half_plane_auxiliary_store(text: str) -> Tuple[str, int]:
@@ -544,13 +542,15 @@ def m_half_plane_auxiliary_store(text: str) -> Tuple[str, int]:
     ``f_w`` is state, so a half-written auxiliary is a defect the field does not
     show until the next launch reads it back, which is what the 60-launch leg is
     for. On the FIRST launch it shows immediately because ``f_w`` is compared on
-    every case -- the sibling track measured a dropped auxiliary store at 120/120
-    UNCAUGHT when the auxiliary was not compared.
+    every case. It can bite only on the cells whose chunk carries the dsigw layer,
+    which every case's layer provides.
     """
     return base._sub(
-        r"    cf prev = cf_load\(fw, idx\);\n    cf_store\(fw, idx, src\);",
-        "    cf prev = cf_load(fw, idx);\n"
-        "    { cf half = src; half.im = prev.im; cf_store(fw, idx, half); }", text)
+        r"    cf prev = dsigw \? cf_load\(fw, idx\) : cf_zero\(\);\n"
+        r"    if \(dsigw\) cf_store\(fw, idx, src\);",
+        "    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();\n"
+        "    if (dsigw) { cf half = src; half.im = prev.im; cf_store(fw, idx, half); }",
+        text)
 
 
 def n_reload_the_constitutive_store(text: str) -> Tuple[str, int]:
@@ -563,26 +563,34 @@ def n_reload_the_constitutive_store(text: str) -> Tuple[str, int]:
     would not match here at all -- which is why this one exists rather than being
     borrowed and reported NOT ARMED.
     """
-    return base._sub(r"    cf_store\(f, idx, a\);\n\}",
-                     "    cf_store(f, idx, a);\n"
+    return base._sub(r"    cf_store\(f, idx, updated\);\n\}",
+                     "    cf_store(f, idx, updated);\n"
                      "    cf_store(f, idx, cf_load(f, idx));\n}", text)
 
 
 #: The device-text defects. Every one must MATCH the constitutive template on BOTH
 #: sides -- a mutation whose needle only appears in the curl would report a pass
 #: for a leg that exercised the shipped bytes, which is worse than no leg, and
-#: :func:`constitutive_sites` is what refuses to score such a leg.
+#: :func:`constitutive_sites` is what refuses to score such a leg. The two grouping
+#: and product legs are the INVERTED ones (KERNELS.md section 7.1), and the B battery
+#: (section 7.2) is armed on the per-chunk constitutive form.
 SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
-    "fold_the_zero_cross_terms": base.SOURCE_MUTATIONS["fold_the_zero_cross_terms"],
-    "plane_wise_scaling": base.SOURCE_MUTATIONS["plane_wise_scaling"],
-    "flatten_the_constitutive_tail":
-        base.SOURCE_MUTATIONS["flatten_the_constitutive_tail"],
+    "full_complex_coefficient_products":
+        base.SOURCE_MUTATIONS["full_complex_coefficient_products"],
+    "old_package_constitutive_grouping":
+        base.SOURCE_MUTATIONS["old_package_constitutive_grouping"],
     "store_fw_before_reading_prev":
         base.SOURCE_MUTATIONS["store_fw_before_reading_prev"],
     "word_pair_transposed": base.SOURCE_MUTATIONS["word_pair_transposed"],
     "column_major_index": base.SOURCE_MUTATIONS["column_major_index"],
     "half_plane_field_store": m_half_plane_field_store,
     "half_plane_auxiliary_store": m_half_plane_auxiliary_store,
+    "select_removed": base.SOURCE_MUTATIONS["select_removed"],
+    "predicate_on_coefficient_identity":
+        base.SOURCE_MUTATIONS["predicate_on_coefficient_identity"],
+    "auxiliary_stored_on_a_plain_cell":
+        base.SOURCE_MUTATIONS["auxiliary_stored_on_a_plain_cell"],
+    "auxiliary_load_unguarded": base.SOURCE_MUTATIONS["auxiliary_load_unguarded"],
     "commute_the_plane_sum": base.SOURCE_MUTATIONS["commute_the_plane_sum"],
     "reload_the_constitutive_store": n_reload_the_constitutive_store,
 }
@@ -599,20 +607,17 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
 # "measure"           -> a number is reported, not a bar
 
 MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
-    {"leg": "s1_fold_the_zero_cross_terms", "mutation": "fold_the_zero_cross_terms",
+    {"leg": "s1_full_complex_coefficient_products",
+     "mutation": "full_complex_coefficient_products",
      "kind": "source", "expect": "caught_where_live", "reach": "signed_zero",
-     "why": "the zero cross terms carry the sign of the other plane into an "
-            "addend that is exactly zero; folding them to a literal is the "
-            "transformation the compiler must NOT be doing for us"},
-    {"leg": "s2_plane_wise_scaling", "mutation": "plane_wise_scaling",
-     "kind": "source", "expect": "caught_where_live", "reach": "signed_zero",
-     "why": "np.multiply carries no scalar-times-complex loop, so a real "
-            "coefficient IS a full complex multiply on the array path"},
-    {"leg": "s3_flatten_the_constitutive_tail",
-     "mutation": "flatten_the_constitutive_tail", "kind": "source",
+     "why": "INVERTED: the previous family's full complex product against (c + 0j) "
+            "carries the other part's sign into an addend that is exactly zero; "
+            "part_products.scale forms one product per part"},
+    {"leg": "s3_old_package_constitutive_grouping",
+     "mutation": "old_package_constitutive_grouping", "kind": "source",
      "expect": "caught",
-     "why": "two separate accumulations, left to right, is what the array path's "
-            "two += statements fix"},
+     "why": "INVERTED (KERNELS.md section 7.1): MEEP's f + ((kps*src) - (kms*prev)) "
+            "is shipped; two accumulations are a different float32 number"},
     {"leg": "s4_store_fw_before_reading_prev",
      "mutation": "store_fw_before_reading_prev", "kind": "source",
      "expect": "caught",
@@ -637,6 +642,24 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
      "why": "the same defect on the AUXILIARY, which is STATE: a half-written f_w "
             "is wrong forever after, and is invisible to a gate that compares "
             "only the field"},
+    {"leg": "b1_select_removed", "mutation": "select_removed", "kind": "source",
+     "expect": "caught",
+     "why": "KERNELS.md section 7.2: the whole-grid accumulation on every cell, the "
+            "form the family stepped before the chunk forms"},
+    {"leg": "b2_predicate_on_coefficient_identity",
+     "mutation": "predicate_on_coefficient_identity", "kind": "source",
+     "expect": "caught",
+     "why": "KERNELS.md section 7.2: the form chosen by the coefficient's value "
+            "rather than by the chunk's membership"},
+    {"leg": "b4_auxiliary_stored_on_a_plain_cell",
+     "mutation": "auxiliary_stored_on_a_plain_cell", "kind": "source",
+     "expect": "caught",
+     "why": "KERNELS.md section 7.2: f_w is untouched on a plain cell, and it is "
+            "compared"},
+    {"leg": "b5_auxiliary_load_unguarded", "mutation": "auxiliary_load_unguarded",
+     "kind": "source", "expect": "uncaught",
+     "why": "A DECLARED NULL (KERNELS.md section 7.2): the loaded word feeds only the "
+            "layered form"},
     {"leg": "h1_reverse_radial_axis_coefficients",
      "mutation": "reverse_radial_axis_coefficients", "kind": "host",
      "expect": "caught_where_live", "reach": "cylindrical",
@@ -653,13 +676,6 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
     {"leg": "h3_swap_kps_kms", "mutation": "swap_kps_kms", "kind": "host",
      "expect": "caught",
      "why": "(kap+sig) and (kap-sig) exchanged: the absorber runs backwards"},
-    {"leg": "h4_the_other_expansion_arm", "mutation": "the_other_expansion_arm",
-     "kind": "host", "expect": "measure",
-     "why": "the arm this platform was NOT licensed for. Where the two arms are "
-            "measurably apart this must DIVERGE; where they coincide the "
-            "coincidence is the finding, and the number of cases in each bucket "
-            "is what the licence's discrimination claim is worth on THIS "
-            "sub-step and THIS coordinate system"},
     {"leg": "n1_reload_the_constitutive_store",
      "mutation": "reload_the_constitutive_store", "kind": "source",
      "expect": "uncaught",
@@ -691,12 +707,8 @@ MUTATION_SPEC_LABELS: Tuple[str, ...] = (
 
 #: The value classes a mutation leg is scored on. ALL THREE, and each earns its
 #: place: ``signed_zero`` is the reach of the two zero-cross-term legs and a plan
-#: without it would score them 0/0; ``subnormal_band`` is the class the family's
-#: own certified round measured to separate the two EXPANSION ARMS on a
-#: zero-imaginary orientation, and a plan without it sends the arm leg back
-#: COINCIDENT EVERYWHERE for a reason about the plan rather than about the
-#: platform -- measured on this gate's first reduced run, which is why the class
-#: is here and this sentence is with it.
+#: without it would score them 0/0; ``subnormal_band`` is the class a float32
+#: subnormal policy decides the fate of.
 MUTATION_VALUE_CLASSES: Tuple[str, ...] = ("uniform", "signed_zero", "subnormal_band")
 
 
@@ -774,7 +786,7 @@ def structure_facts(grid) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
-             value_class: str, guard: str, expansion, policy: Optional[str],
+             value_class: str, guard: str, policy: Optional[str],
              host_mutation: Optional[str] = None,
              multi_step: bool = True) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
@@ -792,12 +804,6 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
     fields, layer, grid = build(xp, spec, courant, rng)
     host = seed_state(fields, grid, side, value_class, rng)
 
-    arm_override = None
-    if host_mutation == "the_other_expansion_arm":
-        arm_override = base.other_arm(
-            complex_emitter.EXPANSION_NAMES[
-                complex_emitter.normalized_expansion(expansion)])
-
     case: Dict[str, Any] = {
         "label": spec["label"], "side": side, "courant": courant,
         "value_class": value_class, "guard": guard, "backend": backend.name,
@@ -807,8 +813,6 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
         "boundaries": list(spec.get("boundaries") or ()),
         "structure": structure_facts(grid),
         "operand_census": word_census(host),
-        "arm": complex_emitter.EXPANSION_NAMES[
-            complex_emitter.normalized_expansion(arm_override or expansion)],
     }
 
     # THE PREDICATE'S CURRENT ANSWER, recorded rather than acted on. This gate
@@ -816,8 +820,7 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
     # thing that gates the measurement -- but a record that did not carry it could
     # not show WHICH clause the run was taken against.
     covered, reason = coverage.covers_real_pml_complex_constitutive(
-        fields, layer, grid, side, license=_licence_stub(expansion, policy),
-        subnormal_policy=policy)
+        fields, layer, grid, side)
     case["predicate_today"] = {"covered": bool(covered), "reason": reason}
 
     absorbs = radial_axis_absorbs(side, layer, grid)
@@ -848,10 +851,11 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
 
     # Leg 2: the kernel, from the SAME frozen state.
     restore(fields, frozen)
-    tables = (tables_for(side, layer) if host_mutation in (None, "the_other_expansion_arm")
+    tables = (tables_for(side, layer) if host_mutation is None
               else host_mutated_tables(host_mutation, side, layer, grid))
-    launch_arm = arm_override if arm_override is not None else expansion
-    backend.launch_constitutive(side, fields, layer, grid, launch_arm, tables=tables)
+    record = base.case_record(grid, layer)
+    backend.launch_constitutive(side, fields, layer, grid, record=record,
+                                tables=tables)
     if backend.name == "cupy":
         cp.cuda.runtime.deviceSynchronize()
 
@@ -879,8 +883,8 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
 
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
-            backend.launch_constitutive(side, fields, layer, grid, launch_arm,
-                                        tables=tables)
+            backend.launch_constitutive(side, fields, layer, grid,
+                                        record=record, tables=tables)
             advance_sources(fields, side)
         if backend.name == "cupy":
             cp.cuda.runtime.deviceSynchronize()
@@ -891,22 +895,6 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
 
     case["seconds"] = time.time() - started
     return case
-
-
-def _licence_stub(expansion, policy: Optional[str]) -> Dict[str, Any]:
-    """The verdict shape ``complex_expansion_refusal`` checks, for the record leg.
-
-    NOT A LICENCE AND NOT USED TO BIND AN ARM. The arm comes from
-    ``complex_fields.expansion_license`` over a probe artifact, upstream of here
-    (:func:`main`); this is only what the predicate is HANDED so its answer is
-    about the corpus clause under test rather than about the harness. Passing a
-    placeholder string instead is refused with "the expansion licence is str, not
-    the verdict dict", which is a refusal about the harness reported as one about
-    the corpus.
-    """
-    arm = complex_emitter.normalized_expansion(expansion)
-    return {"arm": complex_emitter.EXPANSION_NAMES[arm], "expansion": arm,
-            "basis": "measured", "refusals": [], "policy_resolved": policy}
 
 
 # ---------------------------------------------------------------------------
@@ -927,12 +915,11 @@ def case_product(product: str) -> List[Tuple[Dict[str, Any], str, float, str]]:
 
 
 def run_sweep(backend, xp, results: Dict[str, Any], out_path: str,
-              product: str, guard: str, expansion, policy) -> List[Dict[str, Any]]:
+              product: str, guard: str, policy) -> List[Dict[str, Any]]:
     cases: List[Dict[str, Any]] = []
     plan = case_product(product)
     for index, (spec, side, courant, value_class) in enumerate(plan, start=1):
-        case = one_case(backend, xp, spec, side, courant, value_class, guard,
-                        expansion, policy)
+        case = one_case(backend, xp, spec, side, courant, value_class, guard, policy)
         cases.append(case)
         results.setdefault("sweep", {})[guard] = cases
         save(results, out_path)
@@ -991,10 +978,8 @@ def _reaches(leg: Dict[str, Any], case: Dict[str, Any]) -> bool:
       A Cartesian control has no radial axis and the mutation is the identity
       there, so the dead half is a bar: it must be silent, or the mutation is
       editing something it does not claim to.
-    * ``signed_zero`` -- the ONE class on which the zero cross terms can change a
-      stored word: ``fma(c, z.re, -0.0f)`` differs from ``fma(c, z.re, +0.0f)``
-      exactly when ``c * z.re`` is ``-0.0f``, and the class is what puts negative
-      zeros in the plane the cross term reads.
+    * ``signed_zero`` -- the class on which a literal zero cross term changes a
+      stored word: a part that is a signed zero, which this class plants.
     """
     reach = leg.get("reach")
     if reach is None:
@@ -1054,10 +1039,9 @@ def adjudicate(leg: Dict[str, Any], cases: Sequence[Dict[str, Any]]) -> Dict[str
             for c in scored if not leg_caught(c)})
         out["max_differing_words"] = max(
             (c["single_launch"]["differing_floats"] for c in scored), default=0)
-        # A measurement leg passes when it MEASURED something -- and, for the arm
-        # swap specifically, when at least one case could tell the arms apart. A
-        # leg on which nothing ever diverges has not shown the arm matters here,
-        # and that is a finding rather than a pass.
+        # A measurement leg passes when it MEASURED something: at least one case
+        # diverged. A leg on which nothing ever diverges is a finding rather than
+        # a pass.
         out["as_required"] = bool(caught)
         out["verdict"] = ("SEPARATED" if caught else "COINCIDENT EVERYWHERE")
     else:
@@ -1065,8 +1049,7 @@ def adjudicate(leg: Dict[str, Any], cases: Sequence[Dict[str, Any]]) -> Dict[str
     return out
 
 
-def constitutive_sites(transform: Callable[[str], Tuple[str, int]],
-                       expansion) -> Dict[str, int]:
+def constitutive_sites(transform: Callable[[str], Tuple[str, int]]) -> Dict[str, int]:
     """How many sites the rewrite matches in EACH constitutive source, per side.
 
     THE BACKEND'S OWN SITE COUNT IS NOT ENOUGH HERE and this is not pedantry.
@@ -1076,22 +1059,18 @@ def constitutive_sites(transform: Callable[[str], Tuple[str, int]],
     reporting "uncaught" for a reason about the harness. This counts each
     constitutive side separately, and a side that matches nothing is excluded from
     scoring by name rather than being silently counted as a miss.
-
-    THE ARM IS PASSED THROUGH because the two arms are different text: the
-    zero-cross-term needles exist in both but spelled differently, and counting on
-    one arm would arm a leg for a binary the other arm compiles.
     """
     out: Dict[str, int] = {}
     for side in SIDES:
         sub_step = "update_H" if side == "H" else "update_E"
-        source = complex_emitter.complex_source(sub_step, expansion)
+        source = complex_emitter.complex_source(sub_step)
         _, count = transform(source)
         out[side] = int(count)
     return out
 
 
 def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
-                  product: str, expansion, policy) -> Dict[str, Any]:
+                  product: str, policy) -> Dict[str, Any]:
     """Every leg, source and host. A gate that cannot fail certifies nothing.
 
     THE COMPILE MEMO IS KEYED THROUGH THE SOURCE
@@ -1110,7 +1089,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
         live_sides = set(SIDES)
         if leg["kind"] == "source":
             transform = SOURCE_MUTATIONS[name]
-            sites = constitutive_sites(transform, expansion)
+            sites = constitutive_sites(transform)
             live_sides = {side for side, count in sites.items() if count > 0}
             if not live_sides:
                 out[key] = {"armed": False, "mutation": name, "sites": sites,
@@ -1130,7 +1109,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
                     continue
                 host_mutation = name if leg["kind"] == "host" else None
                 legs.append(one_case(backend, xp, spec, side, courant, value_class,
-                                     "fmad_false", expansion, policy,
+                                     "fmad_false", policy,
                                      host_mutation=host_mutation))
         finally:
             if leg["kind"] == "source":
@@ -1221,22 +1200,17 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
                            f"({leg.get('caught')}/{leg.get('ran')}), "
                            f"expected {leg.get('expect')}")
 
-    licence = results.get("expansion_licence") or {}
-    if not licence.get("usable"):
-        reasons.append("no usable expansion licence: the complex multiply's arm "
-                       "is a measured platform fact and may not be guessed")
-
     if not backend_certifies:
         reasons.append("this backend compiles nothing through NVRTC and certifies "
                        "nothing; a laptop leg measures the transcription only")
 
-    # THE GUARD CONTROL, REPORTED RATHER THAN GATED ON, for the reason the complex
-    # family's own release records: under the licensed FMA_V1 arm every product in
-    # the emitted source is an explicit __fmaf_rn, which no contraction flag
-    # reaches, so identical images are the EXPECTED reading here and a divergent
-    # control would be the surprise. The byte comparison in
-    # ``guard_effect`` is what separates "inert because there is nothing to do"
-    # from "inert because the gate cannot see"; it is recorded beside this.
+    # THE GUARD CONTROL, REPORTED RATHER THAN GATED ON, as the complex family's
+    # release recorded it. That release's kernel spelled every product as an
+    # explicit __fmaf_rn, so its images came out identical; the part-wise body
+    # now leaves the flag contraction candidates, so a divergent
+    # control is the expected reading. The byte comparison in ``guard_effect`` is
+    # what separates "inert because there is nothing to do" from "inert because the
+    # gate cannot see"; it is recorded beside this.
     control = [c for c in sweep.get("default_no_options", [])
                if not c.get("skipped") and c["courant"] == INEXACT_COURANT]
     control_diverged = [c for c in control if not c["single_launch"]["bit_identical"]]
@@ -1306,8 +1280,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         default="cupy")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
     parser.add_argument("--subnormal-policy", choices=("keep", "flush"), default=None)
-    parser.add_argument("--expansion-probe", default=None,
-                        help="the probe artifact the expansion licence is cut from")
     parser.add_argument("--import-meep-for-host-policy", action="store_true",
                         help=("import MEEP first so the HOST half of a 'flush' "
                               "policy can be attained; strict install refuses "
@@ -1334,8 +1306,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                      "describe a divergence in the CONSTITUTIVE arithmetic, or is "
                      "it inherited from the complex CURL through the one clause "
                      "_complex_grid_refusal shares with it?"),
-        "licence_subject": probe.source_digest(os.path.join(
-            _REPO_API, "meep_gpu", "cuda_kernels", "complex_emitter.py")),
     }
 
     if args.backend == "cupy":
@@ -1364,28 +1334,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                      "nothing about the device")}
     save(results, args.out)
 
-    licence = base.load_licence(args.expansion_probe, args.subnormal_policy)
-    results["expansion_licence"] = licence
-    if not licence["usable"]:
-        # A REFUSAL RATHER THAN A DEFAULT. The arm is a measured platform fact and
-        # this family derives it from nothing; a run without one would be a
-        # guessed constexpr compiled into a binary.
-        results["status"] = "refused: no usable expansion licence"
-        results["summary"] = {"released": False, "reasons": [
-            "no usable expansion licence: cut a probe artifact with "
-            "cut_expansion_probe.py under the SAME subnormal policy this run "
-            "installs, and pass it with --expansion-probe"],
-            "licence_refusals": (licence.get("verdict") or {}).get("refusals", []),
-            "policy_reasons": licence.get("policy_reasons", [])}
-        save(results, args.out)
-        log("[done] REFUSED: no usable expansion licence")
-        return 2
-    expansion = licence["arm"]
-    results["expansion_arm"] = expansion
-    results["expansion_arm_basis"] = licence.get("basis")
-    log(f"[licence] arm={expansion} basis={licence.get('basis')} "
-        f"record={(licence.get('record_sha256') or '')[:12]}")
-
     backend = base.build_backend(args.backend)
     xp = cp if args.backend == "cupy" else _NumpyWearingCupysName()
     results["backend_certifies"] = bool(backend.certifies)
@@ -1398,7 +1346,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             # defect is planted for the whole run, sweep included, so a run under
             # --falsify that still reported released=True would mean the summary
             # is not reading the cases it claims to.
-            sites = constitutive_sites(SOURCE_MUTATIONS[args.falsify], expansion)
+            sites = constitutive_sites(SOURCE_MUTATIONS[args.falsify])
             backend.set_source_transform(SOURCE_MUTATIONS[args.falsify])
             results["falsification"] = {
                 "planted": args.falsify, "sites": sites,
@@ -1412,15 +1360,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 continue  # there is no NVRTC on this leg to guard
             backend.set_guard(options)
             log(f"[guard] {guard} options={options}")
-            run_sweep(backend, xp, results, args.out, args.product, guard,
-                      expansion, args.subnormal_policy)
+            run_sweep(backend, xp, results, args.out, args.product, guard, args.subnormal_policy)
 
         backend.set_guard(("--fmad=false",))
         if args.backend == "cupy":
             # THE COMPILED-IMAGE COMPARISON, which is what makes an identical
             # output control readable: two bit-identical NVRTC images cannot
             # produce different words, so "inert" and "unmeasured" come apart.
-            results["guard_effect"] = backend.guard_effect(expansion)
+            results["guard_effect"] = backend.guard_effect()
             save(results, args.out)
 
         if not args.skip_mutations and not args.falsify:
@@ -1428,8 +1375,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             # its own ``finally``, which would silently disarm the planted defect
             # partway through the run and leave an artifact that measured two
             # different programs.
-            run_mutations(backend, xp, results, args.out, args.product,
-                          expansion, args.subnormal_policy)
+            run_mutations(backend, xp, results, args.out, args.product, args.subnormal_policy)
     finally:
         backend.restore()
 

@@ -1,5 +1,37 @@
-"""Hoist the electric integrated-source withdraw over ``update_H``, for a product that
-fuses the ``update_H -> step_D`` seam.
+"""The ``update_H -> step_D`` seam's source pass, for a product that fuses the seam.
+
+===========================================================================
+WHAT STANDS IN THE SEAM NOW: NO WITHDRAW, AND ONE RESTORE THAT WRITES ONLY B
+===========================================================================
+
+An integrated source no longer stands a dipole in D or B. MEEP subtracts the dipole
+from a copy of D (B), ``f_minus_p``, inside ``update_eh`` (update_eh.cpp:66-140), and
+the package now does the same around each constitutive consult
+(``sources.f_minus_p_begin`` before it, ``sources.f_minus_p_end`` after it), so no
+source carries a ``withdraw`` and nothing is returned to D before ``step_D``. For every
+run of this tree :func:`standing_withdraws` answers ``()``, :func:`seam_withdraw_reasons`
+answers ``()`` and :func:`hoist` withdraws nothing; the predicates below still fail
+closed on a source class that does carry a ``withdraw`` (none in this package), because
+the body whose idempotence the 2026-09-04 licence rested on no longer exists.
+
+The one driver statement between the ``update_H`` consult and the ``step_D`` consult is
+the MAGNETIC ``f_minus_p`` restore (``FdtdDriver.step``), and only in a run whose H is
+stored (an active PML; without one the curl reads H as B, so B keeps ``f_minus_p``'s
+words through ``step_D`` and the restore runs after it, outside the seam). It writes B
+alone: the integrated cells' saved words, then B's own boundary passes (mirror fill, wall
+clear, folded far fill). ``step_D`` reads H, D and D's auxiliaries, and no B array, so a
+launch that runs ``update_H`` and ``step_D`` together reads exactly what the two halves
+read in the driver's order: the replace precedes the ``update_H`` consult, and the
+restore commutes with ``step_D`` (:data:`SEAM_PASS`;
+``meep_gpu/test_withdraw_hoist.py`` drives the fused order against the driver's for 30
+complete steps, with the two orders the commutation does not license as null controls).
+
+The 2026-09-04 licence below is kept as the record it was: it measured the hoist of a
+pass that has since been removed, and licenses nothing about the restore.
+
+===========================================================================
+THE 2026-09-04 DESIGN (HISTORY): HOISTING THE ELECTRIC WITHDRAW OVER ``update_H``
+===========================================================================
 
 WHY THIS IS A SIBLING OF ``deposit_repair`` AND NOT A BRANCH OF IT. The two modules
 answer the same-shaped question about two opposite passes, and the difference is not a
@@ -67,13 +99,11 @@ THE MECHANISM, WHICH A BYTE COMPARISON CANNOT GIVE
 
 ``VolumeSource.withdraw`` (``sources.py:2092-2121``) reads ``envelope.is_integrated``,
 ``_n_source_points`` and ``_applied_dipole``, resolves ONE array with ``_array_for``
-(``sources.py:236-237``; an electric component maps to ``Dx``/``Dy``/``Dz`` and to
-nothing else, ``_ARRAY_FOR_COMPONENT`` at ``sources.py:119-133``) and hands it to
-``_inject_points`` (``sources.py:1297-1305``), whose whole body is
-``D[ix, iy, iz] -= _step_source_values(...)``. It then writes ``_applied_dipole = 0j``.
-So it reads and writes the component's own D array at its own deposit points and nothing
-else; the ``f_u`` mirror is on the NON-integrated inject path only
-(``sources.py:2153-2154``, under ``if not self.envelope.is_integrated``).
+(an electric component maps to ``Dx``/``Dy``/``Dz`` and to nothing else,
+``sources._ARRAY_FOR_COMPONENT``) and hands it to ``sources._deposit``, which gathers
+those cells, subtracts ``real(amp * offset)`` in double and scatters them back
+(``host_writes.subtract_double``). It then writes ``_applied_dipole = 0j``. So it reads
+and writes the component's own D array at its own deposit points and nothing else.
 
 ``stepping.update_H`` (``stepping.py:907-923``) reads B, ``f_w_H*``, the PML's
 integer-position constitutive coefficients and a pooled ``fields.scratch``, and writes
@@ -135,6 +165,16 @@ MAGNETIC_FIELD_TYPE = "B"
 #: The seam this module serves, as the boards spell it
 #: (``parity/meep_gpu/h_to_d_seam.py``).
 SEAM = "H_to_D"
+
+#: The one pass that stands between the seam's two consults, and why a fused launch may
+#: take both halves past it. See the module docstring's first section.
+SEAM_PASS: Dict[str, Any] = {
+    "pass": "sources.f_minus_p_end(fields, <the B family's FMinusP>)",
+    "runs": "only where H is stored (an active PML); otherwise after step_D",
+    "writes": ("Bx", "By", "Bz"),
+    "step_D_reads_none_of_it": True,
+    "replace_runs": "before the update_H consult (sources.f_minus_p_begin)",
+}
 
 #: The driver slots a product must own for the seam's withdraw to need hoisting at all:
 #: both halves, and nothing else. A product owning one of them leaves the driver's own
@@ -202,6 +242,9 @@ MEASUREMENT: Dict[str, Any] = {
     "null_controls_first_divergence_step": 2,
     "path": "the NumPy array path",
     "placement": BEFORE_UPDATE_H,
+    "superseded_by": ("f_minus_p (sources.f_minus_p_begin / sources.f_minus_p_end): no "
+                      "integrated source stands a dipole in D or B, so no withdraw stands "
+                      "in the seam"),
 }
 
 #: Said once, here, so every artifact that quotes this module quotes the same sentence.
@@ -343,11 +386,13 @@ def _idempotence_reasons(index: int, source: Any) -> Tuple[str, ...]:
     if measured is None or body is not measured:
         reasons.append(
             f"FOREIGN WITHDRAW: source {index} ({type(source).__name__}) does not use "
-            f"sources.VolumeSource.withdraw. The hoist rests on that body's idempotence "
-            f"-- it returns when _applied_dipole == 0 and zeroes the offset after "
-            f"applying it (sources.py:2116-2121) -- which is what lets the driver's own "
-            f"loop no-op after a hoisted call. Another implementation has never been "
-            f"driven twice in one step and cannot be assumed to")
+            f"the body the 2026-09-04 licence measured, sources.VolumeSource.withdraw, "
+            f"which no longer exists (integrated sources enter through f_minus_p). The "
+            f"hoist rested on that body's idempotence -- it returned when "
+            f"_applied_dipole == 0 and zeroed the offset after applying it -- which is "
+            f"what let the driver's own loop no-op after a hoisted call. Another "
+            f"implementation has never been driven twice in one step and cannot be "
+            f"assumed to")
     if not hasattr(source, "_applied_dipole"):
         reasons.append(
             f"NO STANDING OFFSET: source {index} ({type(source).__name__}) publishes no "

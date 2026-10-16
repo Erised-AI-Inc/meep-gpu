@@ -29,9 +29,12 @@ THE THREE SHAPES OF ACCESS, and the rule for each:
   fetch would sync the whole volume before the sparse operation ever ran.
 * :func:`gather` / :func:`scatter` move exactly the flat indices named, from or to
   whichever side is current.
+* :func:`subtract_double` is the source deposit, MEEP's double-precision
+  ``f -= real(A)`` at a few cells; under a hold it gathers and scatters those cells.
 * :func:`zero` fills one slab of a 3-D array with zero, on the device when the
   device owns it -- no transfer at all. :func:`zero_faces` does a whole wall-clear
-  pass of them, one device launch per owner.
+  pass of them, one device launch per owner, and :func:`zero_cells` the same for
+  arbitrary flat index sets.
 * :func:`acquire` is the whole-volume declaration, kept for a site that really does
   rewrite a volume (the bench's ``thaw``); it is not the fast path.
 
@@ -44,6 +47,8 @@ from __future__ import annotations
 
 import weakref
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from . import part_products
 
 #: Live residencies, held WEAKLY. A process holds one per dispatched driver, and
 #: the timing bench lifts three legs per case over forty-odd cases without ever
@@ -132,13 +137,80 @@ def scatter(array: Any, linear: Any, values: Any) -> None:
     owner.scatter(array, linear, values)
 
 
-def subtract(array: Any, linear: Any, values: Any) -> None:
-    """``array.reshape(-1)[linear] -= values`` -- the difference formed where the words live."""
+def subtract_double(array: Any, linear: Any, real64: Any, imag64: Any = None) -> None:
+    """MEEP's source deposit at flat indices ``linear``: ``f = float(double(f) - x)``.
+
+    ``f[c][0][i] -= real(A)`` (step.cpp:309-314, and :302-307 under a conductivity) has a
+    ``realnum`` on the left and a ``double`` on the right, so C++ promotes the stored
+    word to double, subtracts ONCE and rounds ONCE back to float. This door is that
+    statement, as four single-operation ufuncs: gather the words, widen them to
+    float64, subtract ``real64`` (one float64 per index, already formed by the caller),
+    round to float32, scatter. Each is one IEEE operation, so nothing can contract,
+    and the NumPy and CuPy branches are the same statements.
+
+    Complex64 storage takes MEEP's second line, ``f[c][1][i] -= imag(A)``: the real and
+    imaginary words are widened, subtracted and rounded separately, ``imag64`` against
+    the imaginary word. Real storage refuses an ``imag64`` (it has no plane to take it).
+
+    ``linear`` must not repeat an index: MEEP's loop subtracts a repeated point twice,
+    rounding each time, and a gather-subtract-scatter would keep only the last.
+    ``sources._linear_points`` refuses a repeated table by name before it gets here.
+
+    Under a held residency the words live on the device. There is no float64 on the
+    Apple GPU, so the difference is formed on the HOST: the cells are gathered from
+    whichever side owns them, the same four operations run in NumPy, and the words
+    are scattered back through the residency's own door -- both moves are exact
+    copies, so the words equal the array path's. That costs one device-to-host read
+    per deposit per step; a residency that offers ``subtract_double_index`` (the
+    Metal lane's software float64 door) is handed the deposit instead.
+    """
+    flags = getattr(array, "flags", None)
+    if flags is None or not flags.c_contiguous:
+        raise ValueError(
+            "the double-precision source deposit addresses its cells by C-order flat "
+            "index, and this array is not C-contiguous; the engine allocates every "
+            "primary C-contiguous, so this is a caller defect, refused rather than "
+            "written through a copy")
     owner = _owner(array)
-    if owner is None:
-        array.reshape(-1)[linear] -= values
+    if owner is not None:
+        door = getattr(owner, "subtract_double_index", None)
+        if door is not None:
+            door(array, linear, real64, imag64)
+            return
+        current = owner.gather(array, linear)
+        owner.scatter(array, linear, _rounded_difference(current, real64, imag64))
         return
-    owner.subtract_index(array, linear, values)
+    flat = array.reshape(-1)
+    flat[linear] = _rounded_difference(flat[linear], real64, imag64)
+
+
+def _rounded_difference(current: Any, real64: Any, imag64: Any) -> Any:
+    """``float32(float64(current) - real64)`` per word; complex64 per part.
+
+    ``current`` is a gathered NumPy or CuPy array of float32 or complex64 words; the
+    result has its dtype and module. Every operation is a separate ufunc, so each
+    rounds once and none can fuse.
+    """
+    xp = index_module(current)
+    if current.dtype == xp.float32:
+        if imag64 is not None:
+            raise ValueError("real float32 storage has no imaginary plane to subtract imag(A) from")
+        wide = current.astype(xp.float64)
+        wide -= real64
+        return wide.astype(xp.float32)
+    if current.dtype == xp.complex64:
+        if imag64 is None:
+            raise ValueError("complex64 storage needs imag(A) as well as real(A)")
+        parts = xp.ascontiguousarray(current).view(xp.float32).reshape(-1, 2)
+        wide_re = parts[:, 0].astype(xp.float64)
+        wide_im = parts[:, 1].astype(xp.float64)
+        wide_re -= real64
+        wide_im -= imag64
+        out = xp.empty(parts.shape, dtype=xp.float32)
+        out[:, 0] = wide_re.astype(xp.float32)
+        out[:, 1] = wide_im.astype(xp.float32)
+        return out.reshape(-1).view(xp.complex64)
+    raise ValueError(f"the source deposit writes float32 or complex64 storage, not {current.dtype}")
 
 
 def index_module(index: Any) -> Any:
@@ -223,6 +295,35 @@ def zero_faces(requests: Sequence[Tuple[Any, int, int]]) -> None:
         array[(slice(None),) * axis + (index,)] = 0
 
 
+def zero_cells(requests: Sequence[Tuple[Any, Any]]) -> None:
+    """``array.reshape(-1)[linear] = 0`` for every ``(array, linear)`` -- one launch per owner.
+
+    The cell form of :func:`zero_faces`, for index sets that are not wall faces: the
+    conductor cells of an absent field component (``fastpath.AbsentComponentClear``).
+    The arrays must be C-contiguous, so that the flat view writes them in place. With
+    nothing holding an array this is that assignment, request by request in the order
+    given; the requests an owner holds are handed to it together
+    (``Residency.zero_index_sets``), which clears them in one device launch, and they
+    go first, as in :func:`zero_faces`. A caller keeps each call within the owner's
+    launch (three arrays on the Metal residency) by sending one component at a time.
+    """
+    held: Dict[int, Tuple[Any, List[Tuple[Any, Any]]]] = {}
+    plain: List[Tuple[Any, Any]] = []
+    for array, linear in requests:
+        owner = _owner(array)
+        if owner is None:
+            plain.append((array, linear))
+            continue
+        group = held.get(id(owner))
+        if group is None:
+            group = held[id(owner)] = (owner, [])
+        group[1].append((array, linear))
+    for owner, pairs in held.values():
+        owner.zero_index_sets(pairs)
+    for array, linear in plain:
+        array.reshape(-1)[linear] = 0
+
+
 #: Flat indices of a RANGE of slabs along one axis, keyed like the face cache.
 _SPAN_CACHE: Dict[Tuple[Tuple[int, ...], int, int, int], Any] = {}
 
@@ -298,8 +399,8 @@ def copy_face(destination: Any, axis: int, dst_index: int, source: Any, src_inde
     dst_index = dst_index % destination.shape[axis]
     src_index = src_index % source.shape[axis]
     if owner is None and _owner(source) is None:
-        destination[(slice(None),) * axis + (dst_index,)] = (
-            scale * source[(slice(None),) * axis + (src_index,)])
+        destination[(slice(None),) * axis + (dst_index,)] = part_products.scale(
+            scale, source[(slice(None),) * axis + (src_index,)])
         return
     (owner or _owner(source)).copy_index(
         destination, face_index(destination.shape, axis, dst_index),
@@ -308,11 +409,11 @@ def copy_face(destination: Any, axis: int, dst_index: int, source: Any, src_inde
 
 def add_scaled_face(destination: Any, axis: int, dst_index: int, source: Any,
                     src_index: int, scale: Any) -> None:
-    """``destination[face dst] += scale * source[face src]``."""
+    """``destination[face dst] += scale * source[face src]``, the product per part (``part_products``)."""
     owner = _owner(destination) or _owner(source)
     if owner is None:
-        destination[(slice(None),) * axis + (dst_index,)] += (
-            scale * source[(slice(None),) * axis + (src_index,)])
+        destination[(slice(None),) * axis + (dst_index,)] += part_products.scale(
+            scale, source[(slice(None),) * axis + (src_index,)])
         return
     owner.add_scaled_index(destination, face_index(destination.shape, axis, dst_index),
                            source, face_index(source.shape, axis, src_index), scale)

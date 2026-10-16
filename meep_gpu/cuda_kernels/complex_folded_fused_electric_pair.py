@@ -95,11 +95,18 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 # refuses by name when they are absent.
 try:
     from .complex_pml_kernels import (bloch_phase_arguments,
+                                      chunk_record_argument,
                                       complex_constitutive_tables,
                                       complex_curl_tables, word_view)
 except ImportError:  # a host with no CuPy: only the launch is unavailable
-    bloch_phase_arguments = complex_constitutive_tables = None
+    bloch_phase_arguments = complex_constitutive_tables = chunk_record_argument = None
     complex_curl_tables = word_view = None
+
+# The chunk-record decode's one spelling on this table (NumPy through chunk_map).
+try:
+    from . import bounds_block as _bounds_block
+except ImportError:  # loaded by path, outside the package: the bit-identity probe
+    from meep_gpu.cuda_kernels import bounds_block as _bounds_block
 
 try:
     from .. import deposit_repair as _deposit_repair
@@ -159,22 +166,29 @@ SLOT = "step_D"
 #: beta electric weld. The store entry is restated here because the lift leg
 #: checks each module's own declaration against its own emitted source.
 LIFT_EDITS: Tuple[Dict[str, str], ...] = (
-    {"line": "    cf_store(f, idx, mul_field_left(cf_sub(cf_add(a, fu_new), "
-             "fprev), sinv_u));",
-     "became": "    if (!owned) return cf_zero();\n    cf a = ...;\n    cf value "
-               "= mul_field_left(cf_sub(cf_add(a, fu_new), fprev), sinv_u);\n"
-               "    cf_store(f, idx, value);\n    return value;",
-     "why": "same right-hand side, same tree, same store; the value is "
-            "additionally NAMED so the constitutive half can read it from a "
-            "register, and the ownership guard sits ABOVE the field load so a "
-            "destination thread never reads a word another block writes."},
+    {"line": "    cf fcur = cf_load(f, idx);  ...  cf_store(f, idx, value);",
+     "became": "    if (!owned) return cf_zero();\n    cf fcur = cf_load(f, idx);\n"
+               "    ...\n    cf_store(f, idx, value);\n    return value;",
+     "why": "the ownership guard directly before the one load of the field (DESIGN.md "
+            "D11), so a destination thread never reads a word another block writes; "
+            "the value is additionally RETURNED so the constitutive half reads it "
+            "from a register."},
     {"line": "(the other shared rewrites)",
      "became": "see complex_electric_fill_carry's emitters",
      "why": "the two D-side complex welds splice one carry: the pre-clear "
             "registers, the named off-diagonal wall flags, the near-ascending/"
             "clear/far parity chain and the destination-coefficient rule are "
             "spelled once there, with the real electric pair's measured "
-            "ordering and the B-side complex carry's measured cf arithmetic."},
+            "ordering and the B-side complex carry's cf arithmetic."},
+    # ----- THE PER-CHUNK FORMS, 0.10 (bit_parity_0_10 DESIGN.md D1, D10, D11) -------
+    {"line": "    <the folded curl's chunk-record block>\n"
+             "    <the complex constitutive's chunk-record block>",
+     "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
+     "why": "ONE DECODE OF THE RECORD PER KERNEL (D10). Both bodies' blocks are removed "
+            "by bounds_block.strip_bounds_block (refused unless each is exactly the "
+            "emitter's block for its body) and ONE block over the union is emitted "
+            "directly after the decode. A ghost the carry steps takes the membership "
+            "of the row its coefficient entry is read at (the destination's)."},
 )
 
 __all__ = [
@@ -245,9 +259,10 @@ extern "C" __global__ void fused_electric_pair_pml_complex_folded(
     const float* __restrict__ kps_x, const float* __restrict__ kms_half_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_half_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_half_z,
-    // Fold-aware boundary codes; Bloch table (a folded axis never carries a
-    // phase). THE IMAGINARY PARTS ARE THE CONJUGATE ONES -- this is the
-    // BACKWARD sub-step and bloch_phase_arguments(grid, True) negates them.
+    // Fold-aware boundary codes; the Bloch connection per axis (a folded axis
+    // never carries a phase): its kind and the parts of eikna, the D curl's
+    // connection to the word ABOVE the stored window
+    // (bloch_phase_arguments(grid, True)).
     int bc_x, int bc_y, int bc_z,
     int ph_x, int ph_y, int ph_z,
     float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,
@@ -256,20 +271,40 @@ extern "C" __global__ void fused_electric_pair_pml_complex_folded(
     // The two fills' runtime plan -- complex_electric_fill_carry.fills_plan.
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
-    float phase_x, float phase_y, float phase_z
+    float phase_x, float phase_y, float phase_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // which PML form, decoded once, after the index decode.
+    const int* __restrict__ cb
 ) {
 '''
 
 
-def complex_folded_fused_electric_pair_prelude(arm) -> str:
+#: The chunk-record entries each lifted body decodes, as ``(entries, presence)``: the
+#: D curl reads its lattice along each component's dsigu axis plus the
+#: partner-presence word, update_E its lattice along each component's own axis
+#: (the region plan's rule).
+CURL_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(_bounds_block.curl_entries(('Dx', 'Dy', 'Dz'))), (0, 1, 2))
+CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(_bounds_block.constitutive_entries(('Ex', 'Ey', 'Ez'))), ())
+
+
+def union_bounds_block() -> str:
+    """The fused kernel's ONE chunk-record block: both bodies' entries, one decode
+    (DESIGN.md D10). The names are tagged by lattice, so the union redeclares none."""
+    return _bounds_block.bounds_block(CURL_BLOCK[0] + CONSTITUTIVE_BLOCK[0],
+                                      CURL_BLOCK[1] + CONSTITUTIVE_BLOCK[1])
+
+
+def complex_folded_fused_electric_pair_prelude() -> str:
     """The certified FOLDED prelude with ``pml_apply`` owned and valued, via the
     shared rewrite."""
     prelude, _body = _split_emitted(
-        _folded.folded_source("step_D", arm), "folded_source('step_D')")
+        _folded.folded_source("step_D"), "folded_source('step_D')")
     return _carry.pml_apply_reg_prelude(prelude, FAMILY)
 
 
-def certified_curl_body(arm) -> str:
+def certified_curl_body() -> str:
     """``step_D_pml_complex_folded``'s body, captured OWNED via the shared carry.
 
     The fold masks are INSIDE the lifted body and ride through untouched; the
@@ -278,36 +313,41 @@ def certified_curl_body(arm) -> str:
     name.
     """
     _prelude, body = _split_emitted(
-        _folded.folded_source("step_D", arm), "folded_source('step_D')")
-    return _carry.captured_curl_body(body, FAMILY)
+        _folded.folded_source("step_D"), "folded_source('step_D')")
+    return _carry.captured_curl_body(
+        body, FAMILY, bounds=(CURL_BLOCK[0], CURL_BLOCK[1], union_bounds_block()))
 
 
-def certified_constitutive_body(arm) -> str:
+def certified_constitutive_body() -> str:
     """The certified complex ``update_E`` statements, seamed, renamed, guarded,
     with the ghost carry beside them -- the shared carry's own lift."""
     _prelude, body = _split_emitted(
-        complex_emitter.complex_source("update_E", arm),
+        complex_emitter.complex_source("update_E"),
         "complex_source('update_E')")
     if _DECODE_END not in body:
         raise AssertionError(
             "the certified constitutive body no longer decodes i on its own "
             "line; the duplicate decomposition cannot be identified")
+    # Its chunk-record block goes with the decode: the union block decodes update_E's
+    # entries too (D10).
+    body = _bounds_block.strip_bounds_block(body, "the certified constitutive body",
+                                            *CONSTITUTIVE_BLOCK)
     tail = body.split(_DECODE_END, 1)[1]
     return _carry.constitutive_body_with_carry(tail, FAMILY)
 
 
-def complex_folded_fused_electric_pair_source(arm) -> str:
-    """The whole fused kernel for one expansion arm. PURE ASCII."""
+def complex_folded_fused_electric_pair_source() -> str:
+    """The whole fused kernel. PURE ASCII."""
     source = "".join((
-        complex_folded_fused_electric_pair_prelude(arm),
+        complex_folded_fused_electric_pair_prelude(),
         _SIGNATURE,
-        certified_curl_body(arm),
+        certified_curl_body(),
         "\n",
         _carry.zero_metal_carry(),
         "\n    // --- update_E (the certified complex constitutive; its sources\n"
         "    // are the registers above, not a reload of D, and each runs again\n"
         "    // at every ghost cell this thread owns) -------------------------\n",
-        certified_constitutive_body(arm),
+        certified_constitutive_body(),
         "}\n",
     ))
     try:
@@ -321,9 +361,8 @@ def complex_folded_fused_electric_pair_source(arm) -> str:
 
 
 def device_sources() -> Dict[str, str]:
-    """Every source this family can emit, keyed by arm name -- for a digest."""
-    return {name: complex_folded_fused_electric_pair_source(name)
-            for name in sorted(complex_emitter.EXPANSIONS)}
+    """The shipped device text by kernel name -- what a record block would pin."""
+    return {KERNEL_NAME: complex_folded_fused_electric_pair_source()}
 
 
 _COMPILE_OPTIONS: Tuple[str, ...] = ('--fmad=false',)
@@ -335,17 +374,16 @@ def _clear_kernel_cache() -> int:
     return compile_cache.clear_kernel_cache()
 
 
-def _get_kernel(arm, name: str = KERNEL_NAME):
-    """Compile under one arm, memoized on (name, options, policy, source); the
+def _get_kernel(name: str = KERNEL_NAME):
+    """Compile, memoized on (name, options, policy, source); the
     source is emitted per call because a gate mutates the emitters it splices."""
     if cp is None:
         raise RuntimeError(
             "CuPy is not importable on this host, so this kernel cannot be "
             "compiled; the predicate and the emitter need no device and still run")
-    code = complex_folded_fused_electric_pair_source(arm)
+    code = complex_folded_fused_electric_pair_source()
     key = compile_cache.kernel_cache_key(
-        f"{name}_arm{complex_emitter.normalized_expansion(arm)}", True,
-        _COMPILE_OPTIONS, code)
+        name, True, _COMPILE_OPTIONS, code)
     return compile_cache.get_or_compile(
         key, lambda: cp.RawKernel(code, name, options=_COMPILE_OPTIONS))
 
@@ -355,8 +393,7 @@ def _get_kernel(arm, name: str = KERNEL_NAME):
 # =============================================================================
 
 def covers_complex_folded_fused_electric_pair(
-        fields: Any, pml: Any, grid: Any, sources: Any = None,
-        license: Any = None, subnormal_policy: Any = None) -> Tuple[bool, str]:
+        fields: Any, pml: Any, grid: Any, sources: Any = None) -> Tuple[bool, str]:
     """May ONE launch span the five passes of :data:`REPLACES`?
 
     A CONJUNCTION over ``covers_complex_folded_curl(step_D)`` (which REQUIRES a
@@ -367,11 +404,11 @@ def covers_complex_folded_fused_electric_pair(
     slot (carried) and the shared D-side complex fill clauses.
     """
     covered, reason = _folded.covers_complex_folded_curl(
-        fields, pml, grid, "step_D", license, subnormal_policy)
+        fields, pml, grid, "step_D")
     if not covered:
         return False, f"curl half: {reason}"
     covered, reason = covers_real_pml_complex_constitutive(
-        fields, pml, grid, "E", license, subnormal_policy)
+        fields, pml, grid, "E")
     if not covered:
         return False, f"constitutive half: {reason}"
 
@@ -509,9 +546,11 @@ def launch_complex_folded_fused_electric_pair(
         fields: "Fields", tables: Dict[str, Dict[str, Any]],
         boundary_codes: Sequence[Any], phase_flags: Sequence[Any],
         phase_values: Sequence[Any], walls: Sequence[int],
-        fills: Dict[str, Sequence[Any]], dtdx: float,
-        arm: Any, kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """All five of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door."""
+        fills: Dict[str, Sequence[Any]], dtdx: float, kernel: Optional[Any] = None, *,
+        chunk_bounds: Any) -> Dict[str, Any]:
+    """All five of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door;
+    ``chunk_bounds`` is the run's chunk record on the device, required."""
+    cb = chunk_record_argument(chunk_bounds)
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
@@ -527,25 +566,25 @@ def launch_complex_folded_fused_electric_pair(
         np.int32(int(bool(walls[axis]))) for axis in range(3)
     ) + tuple(np.int32(int(fills["near"][axis])) for axis in range(3)) + tuple(
         np.int32(int(fills["reflect"][axis])) for axis in range(3)
-    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3))
-    (kernel or _get_kernel(arm))((blocks,), (_FUSED_THREADS,), arguments)
+    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3)) + (cb,)
+    (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), arguments)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
             "walls": tuple(int(bool(walls[axis])) for axis in range(3)),
             "near": tuple(int(v) for v in fills["near"]),
             "reflect": tuple(int(v) for v in fills["reflect"]),
-            "phase": tuple(float(v) for v in fills["phase"]),
-            "arm": complex_emitter.normalized_expansion(arm)}
+            "phase": tuple(float(v) for v in fills["phase"])}
 
 
 def run_complex_folded_fused_electric_pair(
-        fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, arm: Any, *,
-        sources: Any = None, license: Any = None, subnormal_policy: Any = None,
+        fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
+        chunk_bounds: Any,
+        sources: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once."""
     covered, reason = covers_complex_folded_fused_electric_pair(
-        fields, pml, grid, sources, license, subnormal_policy)
+        fields, pml, grid, sources)
     if not covered:
         return {"launched": False, "reason": reason}
     if tables is None:
@@ -554,8 +593,8 @@ def run_complex_folded_fused_electric_pair(
     codes, refusal = _folded.folded_complex_boundary_codes(grid)
     if refusal is not None:
         return {"launched": False, "reason": refusal}
-    # THE BACKWARD PHASE TABLE: `True` is the step_D sub-step's own conjugation.
+    # THE BACKWARD CONNECTION TABLE: `True` is the step_D sub-step's own (eikna).
     flags, values = bloch_phase_arguments(grid, True)
     return launch_complex_folded_fused_electric_pair(
         fields, tables, codes, flags, values, zero_metal_axes(grid),
-        _carry.fills_plan(grid), dtdx, arm, kernel)
+        _carry.fills_plan(grid), dtdx, kernel, chunk_bounds=chunk_bounds)

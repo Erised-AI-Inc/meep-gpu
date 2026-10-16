@@ -16,24 +16,20 @@ ONE LAUNCH PERFORMS THE SAME FIVE DRIVER PASSES as
 :mod:`.complex_folded_fused_electric_pair`, THROUGH THE SAME SHARED D-SIDE
 COMPLEX CARRY (:mod:`.complex_electric_fill_carry`), and that sharing is exact
 rather than analogous: ``complex_beta_kernels.beta_source`` IS
-``complex_folded_kernels.folded_source`` with the beta insert applied, and the
-insert -- one ``cf_sub(curl, ...)`` per beta target, above the masks --
-touches no fill, no ``pml_apply`` call and no constitutive statement, so every
-anchor the carry splices on is byte-identical across the two families.
+``complex_folded_kernels.folded_source`` with MEEP's beta pass inserted after the curl
+of targets 0 and 1 (``folded_pass.complex_beta_insert``), and the pass touches no fill,
+no ``pml_apply`` call and no constitutive statement, so every anchor the carry splices
+on is byte-identical across the two families. The pass rides through the capture:
+targets 0 and 1's registers are the values the LADDER returns (``cfold_apply_reg``),
+because the fills and ``update_E`` read D after both passes.
 
-WHAT IS DIFFERENT, AND ONLY THIS: the curl body carries the two beta
-statements and the signature carries the two host-rounded complex coefficients
-(``bp``/``bm``, the D side's own sign table -- ``beta_curl_coefficients(...,
-MAGNETIC['step_D'])``); the predicate conjoins the BETA family's two certified
-predicates, whose beta clause keeps this product disjoint from the folded
-electric pair and from every real-storage product.
-
-THE BETA ROWS SPLIT ON THE FOLD AND THE WELD SERVES BOTH SIDES: the fold
-branches are runtime plan arguments, dead on ``test_special_kz``'s
-all-periodic grid (where both fills are no-ops and every ownership flag is 1)
-and live on the folded rows.
-
-NOTHING HERE IS DISPATCH; :mod:`.fused_pairs` can plan it opt-in only.
+WHAT IS DIFFERENT, AND ONLY THIS: the curl body carries the two beta passes and the
+signature carries the two host-rounded beta coefficients (``bp``/``bm``, real float32
+words, the D side's own sign table -- ``beta_curl_coefficients(..., MAGNETIC['step_D'])``);
+the predicate conjoins the BETA family's two certified predicates, whose beta clause
+keeps this product disjoint from the folded electric pair and from every real-storage
+product. The chunk record ``cb`` is decoded ONCE for both halves (bit_parity_0_10
+DESIGN.md D10).
 """
 
 from __future__ import annotations
@@ -55,6 +51,7 @@ try:
     from . import complex_electric_fill_carry as _carry
     from . import complex_emitter
     from . import complex_folded_kernels as _folded
+    from . import folded_pass as _folded_pass
     from .in_seam_coverage import zero_metal_axes
     from . import compile_cache
 except ImportError:  # loaded by path, outside the package: the bit-identity probe
@@ -87,17 +84,25 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
     _carry = _load("complex_electric_fill_carry")
     complex_emitter = _load("complex_emitter")
     _folded = _load("complex_folded_kernels")
+    _folded_pass = _load("folded_pass")
     zero_metal_axes = _load("in_seam_coverage").zero_metal_axes
     compile_cache = _load("compile_cache")
 
 # The CuPy-BOUND launch helpers, taken separately and defensively.
 try:
     from .complex_pml_kernels import (bloch_phase_arguments,
+                                      chunk_record_argument,
                                       complex_constitutive_tables,
                                       complex_curl_tables, word_view)
 except ImportError:  # a host with no CuPy: only the launch is unavailable
-    bloch_phase_arguments = complex_constitutive_tables = None
+    bloch_phase_arguments = complex_constitutive_tables = chunk_record_argument = None
     complex_curl_tables = word_view = None
+
+# The chunk-record decode's one spelling on this table (NumPy through chunk_map).
+try:
+    from . import bounds_block as _bounds_block
+except ImportError:  # loaded by path, outside the package: the bit-identity probe
+    from meep_gpu.cuda_kernels import bounds_block as _bounds_block
 
 try:
     from .. import deposit_repair as _deposit_repair
@@ -154,24 +159,30 @@ REPLACES = ("step_D", "fill_symmetry_bc_D", "zero_metal_D",
 SLOT = "step_D"
 
 #: The edits are :mod:`.complex_electric_fill_carry`'s, shared verbatim with the
-#: folded electric weld -- what this family adds over them is NOTHING: the beta
-#: statements ride through the capture untouched, exactly as the fold masks do.
+#: folded electric weld -- see :mod:`.complex_folded_fused_electric_pair`'s
+#: ``LIFT_EDITS`` -- plus the two this family's folded ladder adds.
 LIFT_EDITS: Tuple[Dict[str, str], ...] = (
-    {"line": "    cf_store(f, idx, mul_field_left(cf_sub(cf_add(a, fu_new), "
-             "fprev), sinv_u));",
-     "became": "    if (!owned) return cf_zero();\n    cf a = ...;\n    cf value "
-               "= mul_field_left(cf_sub(cf_add(a, fu_new), fprev), sinv_u);\n"
-               "    cf_store(f, idx, value);\n    return value;",
-     "why": "same right-hand side, same tree, same store; the value is "
-            "additionally NAMED so the constitutive half can read it from a "
-            "register, and the ownership guard sits ABOVE the field load."},
+    {"line": "    cf fcur = cf_load(f, idx);  ...  cf_store(f, idx, value);   (pml_apply)",
+     "became": "    if (!owned) return cf_zero();\n    cf fcur = cf_load(f, idx);\n"
+               "    ...\n    cf_store(f, idx, value);\n    return value;",
+     "why": "the ownership guard directly before the one load of the field; the value "
+            "is additionally RETURNED. Applied to pml_apply's own text: the folded "
+            "ladder ends on the same store line."},
+    {"line": "__device__ __forceinline__ void cfold_apply(",
+     "became": "__device__ __forceinline__ cf cfold_apply_reg(... , int owned)",
+     "why": "the folded ladder, derived the same way from its own text "
+            "(folded_pass.cfold_apply_reg_source). The plain helper leaves the "
+            "prelude: no call is left."},
+    {"line": "        cfold_apply(f0, u0, idx, inc_beta, ...);",
+     "became": "        d0 = cfold_apply_reg(f0, u0, idx, inc_beta, ..., own_0);",
+     "why": "capture the register after the beta pass, under the ownership flag; "
+            "targets 0 and 1 (target 2 has no beta pass)."},
     {"line": "(the other shared rewrites)",
      "became": "see complex_folded_fused_electric_pair.LIFT_EDITS",
-     "why": "the two D-side complex welds splice one carry; the beta insert is "
-            "inside the lifted curl body and is not edited by the splice at "
-            "all. The store entry above is restated VERBATIM because the lift "
-            "leg checks each module's own declaration against its own emitted "
-            "source."},
+     "why": "the two D-side complex welds splice one carry; the beta pass is inside "
+            "the lifted curl body and its ladder is captured, nothing else of it is "
+            "edited. The union chunk-record block is "
+            "complex_folded_fused_electric_pair's."},
 )
 
 __all__ = [
@@ -185,7 +196,7 @@ __all__ = [
     "complex_beta_fused_electric_pair_tables",
     "covers_complex_beta_fused_electric_pair", "device_sources",
     "inverse_epsilon_bindings", "launch_complex_beta_fused_electric_pair",
-    "run_complex_beta_fused_electric_pair",
+    "run_complex_beta_fused_electric_pair", "union_bounds_block",
 ]
 
 
@@ -216,7 +227,7 @@ def _split_emitted(source: str, name: str) -> Tuple[str, str]:
 
 
 #: The fused entry point: the folded electric weld's signature plus the two
-#: host-rounded beta coefficients, bound as four floats exactly where the
+#: host-rounded beta coefficients, bound as two floats exactly where the
 #: certified beta curl binds them (after the Bloch words). D appears EXACTLY
 #: ONCE.
 _SIGNATURE = r'''
@@ -249,78 +260,105 @@ extern "C" __global__ void fused_electric_pair_pml_complex_beta(
     int bc_x, int bc_y, int bc_z,
     int ph_x, int ph_y, int ph_z,
     float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,
-    // The two complex64-rounded beta coefficients, one per call-site sign,
-    // host-rounded ONCE and passed through -- the real word's signed zero
-    // included, never synthesised in-kernel. THE D SIDE'S OWN SIGN TABLE
-    // (beta_curl_coefficients(..., MAGNETIC['step_D'])).
-    float bp_re, float bp_im, float bm_re, float bm_im,
+    // The two host-rounded beta coefficients, one per call-site sign, float32
+    // words. THE D SIDE'S OWN SIGN TABLE (beta_curl_coefficients(...,
+    // MAGNETIC['step_D'])).
+    float bp, float bm,
     // zero_metal_D's walled-axis flags.
     int wall_x, int wall_y, int wall_z,
     // The two fills' runtime plan -- complex_electric_fill_carry.fills_plan.
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
-    float phase_x, float phase_y, float phase_z
+    float phase_x, float phase_y, float phase_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded once.
+    const int* __restrict__ cb
 ) {
 '''
 
 
-def complex_beta_fused_electric_pair_prelude(arm) -> str:
-    """The certified BETA prelude (folded prelude + the coefficient-left helper)
-    with ``pml_apply`` owned and valued, via the shared rewrite."""
+def complex_beta_fused_electric_pair_prelude() -> str:
+    """The certified BETA prelude (folded prelude + the complex fold helpers) with
+    ``pml_apply`` and the folded ladder owned and valued. The carry's rewrites apply to
+    ``pml_apply``'s own text: the ladder closes on the same store line."""
     prelude, _body = _split_emitted(
-        _beta.beta_source("step_D", arm), "beta_source('step_D')")
-    return _carry.pml_apply_reg_prelude(prelude, FAMILY)
+        _beta.beta_source("step_D"), "beta_source('step_D')")
+    prelude = _folded_pass.rewrite_helper(prelude, _carry._PML_APPLY_SIGNATURE, (
+        (_carry._PML_APPLY_SIGNATURE, _carry._PML_APPLY_SIGNATURE_REG, "its signature"),
+        (_carry._PML_APPLY_PARAMETERS, _carry._PML_APPLY_PARAMETERS_OWNED,
+         "its parameter list"),
+        (_carry._PML_APPLY_FCUR, _carry._PML_APPLY_FCUR_OWNED,
+         "its one load of the field"),
+        (_carry._PML_APPLY_STORE, _carry._PML_APPLY_STORE_REG, "its closing store"),
+    ), "pml_apply")
+    return _folded_pass.with_fold_reg(prelude, complex_storage=True, owned=True)
 
 
-def certified_curl_body(arm) -> str:
-    """``step_D_pml_complex_beta``'s body, captured OWNED via the shared carry.
+def union_bounds_block() -> str:
+    """The fused kernel's ONE chunk-record block -- the folded electric weld's own
+    (the beta curl is the folded curl plus the beta passes; DESIGN.md D10)."""
+    from . import complex_folded_fused_electric_pair as _folded_pair  # noqa: PLC0415
 
-    The two beta statements and the beta registers are INSIDE the lifted body
-    and ride through untouched; the splice asserts they arrived, because a curl
-    body without them would compile and be the folded electric kernel under
-    this family's name.
-    """
+    return _folded_pair.union_bounds_block()
+
+
+def certified_curl_body() -> str:
+    """``step_D_pml_complex_beta``'s body, captured OWNED via the shared carry, with the
+    two beta passes captured into the target 0 and 1 registers; the splice asserts they
+    arrived, because a curl body without them would compile and be the folded electric
+    kernel under this family's name."""
+    from . import complex_folded_fused_electric_pair as _folded_pair  # noqa: PLC0415
+
     _prelude, body = _split_emitted(
-        _beta.beta_source("step_D", arm), "beta_source('step_D')")
-    captured = _carry.captured_curl_body(body, FAMILY)
-    if captured.count("mul_imag_coefficient_left(") != 2:
+        _beta.beta_source("step_D"), "beta_source('step_D')")
+    captured = _carry.captured_curl_body(
+        body, FAMILY, bounds=(_folded_pair.CURL_BLOCK[0], _folded_pair.CURL_BLOCK[1],
+                              union_bounds_block()))
+    captured = _folded_pass.capture_fold_calls(
+        captured, {f"f{target}, u{target}, ": (f"d{target}", f"own_{target}")
+                   for target in range(3)},
+        "cfold_apply", "cfold_apply_reg", "the complex-beta fused electric pair")
+    if (captured.count("cf inc_beta = ") != 2
+            or captured.count("d0 = cfold_apply_reg(") != 1
+            or captured.count("d1 = cfold_apply_reg(") != 1):
         raise AssertionError(
-            f"the captured beta curl body carries "
-            f"{captured.count('mul_imag_coefficient_left(')} beta terms, not 2; "
-            f"the lift would ship the folded electric kernel under the beta "
-            f"family's name")
+            "the captured beta curl body no longer carries both beta passes captured "
+            "into the target 0 and 1 registers; the lift would ship the folded electric "
+            "kernel under the beta family's name")
     return captured
 
 
-def certified_constitutive_body(arm) -> str:
+def certified_constitutive_body() -> str:
     """The certified complex ``update_E`` statements, seamed, renamed, guarded,
     with the ghost carry beside them -- the shared carry's own lift.
-    ``update_E`` reads nothing beta-dependent (beta enters the step loop's
-    curls only), so the constitutive half is the certified complex pair's under
-    the beta family's own admission."""
+    ``update_E`` reads nothing beta-dependent, so the constitutive half is the
+    certified complex pair's under the beta family's own admission."""
+    from . import complex_folded_fused_electric_pair as _folded_pair  # noqa: PLC0415
+
     _prelude, body = _split_emitted(
-        complex_emitter.complex_source("update_E", arm),
+        complex_emitter.complex_source("update_E"),
         "complex_source('update_E')")
     if _DECODE_END not in body:
         raise AssertionError(
             "the certified constitutive body no longer decodes i on its own "
             "line; the duplicate decomposition cannot be identified")
+    body = _bounds_block.strip_bounds_block(body, "the certified constitutive body",
+                                            *_folded_pair.CONSTITUTIVE_BLOCK)
     tail = body.split(_DECODE_END, 1)[1]
     return _carry.constitutive_body_with_carry(tail, FAMILY)
 
 
-def complex_beta_fused_electric_pair_source(arm) -> str:
-    """The whole fused kernel for one expansion arm. PURE ASCII."""
+def complex_beta_fused_electric_pair_source() -> str:
+    """The whole fused kernel. PURE ASCII."""
     source = "".join((
-        complex_beta_fused_electric_pair_prelude(arm),
+        complex_beta_fused_electric_pair_prelude(),
         _SIGNATURE,
-        certified_curl_body(arm),
+        certified_curl_body(),
         "\n",
         _carry.zero_metal_carry(),
         "\n    // --- update_E (the certified complex constitutive; its sources\n"
         "    // are the registers above, not a reload of D, and each runs again\n"
         "    // at every ghost cell this thread owns) -------------------------\n",
-        certified_constitutive_body(arm),
+        certified_constitutive_body(),
         "}\n",
     ))
     try:
@@ -334,9 +372,8 @@ def complex_beta_fused_electric_pair_source(arm) -> str:
 
 
 def device_sources() -> Dict[str, str]:
-    """Every source this family can emit, keyed by arm name -- for a digest."""
-    return {name: complex_beta_fused_electric_pair_source(name)
-            for name in sorted(complex_emitter.EXPANSIONS)}
+    """The shipped device text by kernel name -- what a record block would pin."""
+    return {KERNEL_NAME: complex_beta_fused_electric_pair_source()}
 
 
 _COMPILE_OPTIONS: Tuple[str, ...] = ('--fmad=false',)
@@ -348,17 +385,16 @@ def _clear_kernel_cache() -> int:
     return compile_cache.clear_kernel_cache()
 
 
-def _get_kernel(arm, name: str = KERNEL_NAME):
-    """Compile under one arm, memoized on (name, options, policy, source); the
+def _get_kernel(name: str = KERNEL_NAME):
+    """Compile, memoized on (name, options, policy, source); the
     source is emitted per call because a gate mutates the emitters it splices."""
     if cp is None:
         raise RuntimeError(
             "CuPy is not importable on this host, so this kernel cannot be "
             "compiled; the predicate and the emitter need no device and still run")
-    code = complex_beta_fused_electric_pair_source(arm)
+    code = complex_beta_fused_electric_pair_source()
     key = compile_cache.kernel_cache_key(
-        f"{name}_arm{complex_emitter.normalized_expansion(arm)}", True,
-        _COMPILE_OPTIONS, code)
+        name, True, _COMPILE_OPTIONS, code)
     return compile_cache.get_or_compile(
         key, lambda: cp.RawKernel(code, name, options=_COMPILE_OPTIONS))
 
@@ -368,8 +404,7 @@ def _get_kernel(arm, name: str = KERNEL_NAME):
 # =============================================================================
 
 def covers_complex_beta_fused_electric_pair(
-        fields: Any, pml: Any, grid: Any, sources: Any = None,
-        license: Any = None, subnormal_policy: Any = None) -> Tuple[bool, str]:
+        fields: Any, pml: Any, grid: Any, sources: Any = None) -> Tuple[bool, str]:
     """May ONE launch span the five passes of :data:`REPLACES`?
 
     A CONJUNCTION over the BETA family's two certified predicates --
@@ -385,11 +420,11 @@ def covers_complex_beta_fused_electric_pair(
     the Dcyl refusal (inherited) from the cylindrical ones.
     """
     covered, reason = _beta.covers_complex_beta_curl(
-        fields, pml, grid, "step_D", license, subnormal_policy)
+        fields, pml, grid, "step_D")
     if not covered:
         return False, f"curl half: {reason}"
     covered, reason = _beta.covers_complex_beta_constitutive(
-        fields, pml, grid, "E", license, subnormal_policy)
+        fields, pml, grid, "E")
     if not covered:
         return False, f"constitutive half: {reason}"
 
@@ -478,14 +513,14 @@ def complex_beta_fused_electric_pair_fills(grid: "Grid") -> Dict[str, Tuple[Any,
     return _carry.fills_plan(grid)
 
 
-def beta_coefficients(grid: "Grid") -> Tuple[Tuple[float, float], Tuple[float, float]]:
-    """The two host-rounded complex coefficients for the ELECTRIC side.
+def beta_coefficients(grid: "Grid") -> Tuple[float, float]:
+    """The two host-rounded beta coefficients for the ELECTRIC side.
 
     ``complex_beta_kernels.beta_curl_coefficients(grid.beta, grid.dt,
-    MAGNETIC['step_D'])`` -- ONE rounding to complex64 on the host, the real
-    word's signed zero passed through. Resolved here so the launcher and the
-    certified single-kernel launcher cannot round differently, and the D side's
-    OWN sign table so a copy of the magnetic sibling cannot be silently wrong.
+    MAGNETIC['step_D'])`` -- ONE rounding to float32 on the host per call site.
+    Resolved here so the launcher and the certified single-kernel launcher cannot round
+    differently, and the D side's OWN sign table so a copy of the magnetic sibling
+    cannot be silently wrong.
     """
     return _beta.beta_curl_coefficients(
         float(grid.beta), float(grid.dt), _beta.MAGNETIC["step_D"])
@@ -538,13 +573,15 @@ def launch_complex_beta_fused_electric_pair(
         boundary_codes: Sequence[Any], phase_flags: Sequence[Any],
         phase_values: Sequence[Any], beta_words: Sequence[Sequence[float]],
         walls: Sequence[int], fills: Dict[str, Sequence[Any]], dtdx: float,
-        arm: Any, kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """All five of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door."""
+        kernel: Optional[Any] = None, *, chunk_bounds: Any) -> Dict[str, Any]:
+    """All five of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door;
+    ``chunk_bounds`` is the run's chunk record on the device, required."""
+    cb = chunk_record_argument(chunk_bounds)
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
     constitutive = tables["constitutive"]
-    (bp_re, bp_im), (bm_re, bm_im) = beta_words
+    bp, bm = beta_words
     arguments = tuple(word_view(getattr(fields, name)) for name in _FIELD_BINDINGS
                       ) + tuple(inverse_epsilon_bindings(fields)) + (
         np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx),
@@ -553,31 +590,29 @@ def launch_complex_beta_fused_electric_pair(
     ) + tuple(np.int32(code) for code in boundary_codes) + tuple(
         np.int32(flag) for flag in phase_flags
     ) + tuple(np.float32(value) for value in phase_values) + (
-        np.float32(bp_re), np.float32(bp_im), np.float32(bm_re), np.float32(bm_im),
+        np.float32(bp), np.float32(bm),
     ) + tuple(np.int32(int(bool(walls[axis]))) for axis in range(3)
     ) + tuple(np.int32(int(fills["near"][axis])) for axis in range(3)) + tuple(
         np.int32(int(fills["reflect"][axis])) for axis in range(3)
-    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3))
-    (kernel or _get_kernel(arm))((blocks,), (_FUSED_THREADS,), arguments)
+    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3)) + (cb,)
+    (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), arguments)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
             "walls": tuple(int(bool(walls[axis])) for axis in range(3)),
             "near": tuple(int(v) for v in fills["near"]),
             "reflect": tuple(int(v) for v in fills["reflect"]),
             "phase": tuple(float(v) for v in fills["phase"]),
-            "beta_words": [[float(bp_re), float(bp_im)],
-                           [float(bm_re), float(bm_im)]],
-            "arm": complex_emitter.normalized_expansion(arm)}
+            "beta_words": [float(bp), float(bm)]}
 
 
 def run_complex_beta_fused_electric_pair(
-        fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, arm: Any, *,
-        sources: Any = None, license: Any = None, subnormal_policy: Any = None,
+        fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
+        chunk_bounds: Any, sources: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once."""
     covered, reason = covers_complex_beta_fused_electric_pair(
-        fields, pml, grid, sources, license, subnormal_policy)
+        fields, pml, grid, sources)
     if not covered:
         return {"launched": False, "reason": reason}
     if tables is None:
@@ -590,4 +625,5 @@ def run_complex_beta_fused_electric_pair(
     flags, values = bloch_phase_arguments(grid, True)
     return launch_complex_beta_fused_electric_pair(
         fields, tables, codes, flags, values, beta_coefficients(grid),
-        zero_metal_axes(grid), _carry.fills_plan(grid), dtdx, arm, kernel)
+        zero_metal_axes(grid), _carry.fills_plan(grid), dtdx, kernel,
+        chunk_bounds=chunk_bounds)

@@ -132,10 +132,13 @@ from meep_gpu.metal_kernels import (  # noqa: E402
     fused_electric_pair as family, fused_magnetic_pair as sibling,
     launch as metal_launch, shaders, subnormal,
 )
+from meep_gpu.metal_kernels import chunk_bounds as _chunk_bounds  # noqa: E402
 from meep_gpu.metal_kernels.device import (  # noqa: E402
     MAX_BUFFER_BINDINGS, Residency, compile_source, metal_frontend_version,
 )
 from meep_gpu.triton_kernels.coverage import zero_metal_axes  # noqa: E402
+from gate_chunk_records import every_cell_record, layer_record  # noqa: E402
+import metal_fused_battery as battery  # noqa: E402
 
 #: The budget every case runs. Twelve, matching every other Metal fused-pair gate
 #: and the whole-step arbiter's, and for their reason: the classes this gate exists
@@ -205,6 +208,11 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     ("wall_xy_thin_pml_3d",
      dict(boundaries={"x": "metallic", "y": "metallic"}, pml=1)),
 )
+
+#: The components this product steps, whose per-chunk forms each product row
+#: reports (the D curl's recurrence / dsig-only and the E constitutive's
+#: accumulate / plain).
+FORM_COMPONENTS: Tuple[str, ...] = ("Dx", "Dy", "Dz", "Ex", "Ey", "Ez")
 
 #: The case the mutations are armed on. ALL THREE axes walled, so every line the
 #: shipped kernel can emit is present: all six wall-clear rows, the full ownership
@@ -341,8 +349,14 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
              functions: Optional[Mapping[str, Any]] = None,
              patch: Optional[Callable[[Any, Any, Residency], None]] = None,
              value_class: str = values.UNIFORM,
+             record: Optional[Callable[[Any], Any]] = None,
              ) -> Dict[str, Any]:
-    """Step the two engines side by side and compare per COMPLETE step."""
+    """Step the two engines side by side and compare per COMPLETE step.
+
+    ``record`` is the chunk-record mutation seam (the battery's ``b3``/``b4``): the
+    kernel is the shipped one and the record it binds is the true one transformed.
+    The oracle always steps the true division.
+    """
     reference, reference_pml = build(keywords, seed, value_class)
     actual, actual_pml = build(keywords, seed, value_class)
 
@@ -351,7 +365,8 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
 
     residency = Residency()
     plan = family.plan_metal_fused_electric_pair(
-        actual, actual_pml, sources=(), residency=residency, functions=functions)
+        actual, actual_pml, sources=(), residency=residency, functions=functions,
+        chunk_bounds=battery.record_for(actual.grid, actual_pml, record))
     if plan is None:
         reasons = family.metal_fused_electric_pair_coverage(
             actual, actual_pml, (), residency).reasons
@@ -435,6 +450,11 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
         "zero_metal": list(plan.zero_metal),
         "mirrors": len(residency.names),
         "shape": list(plan.shape),
+        # THE FORMS THIS CASE STEPPED (DESIGN.md D13): cells per (component, form)
+        # under the true division, so a case drawn wholly inside or outside a layer
+        # cannot pass while certifying nothing about one of its forms.
+        "forms": {name: counts for name, counts in battery.form_census(
+            actual.grid, actual_pml).items() if name in FORM_COMPONENTS},
     }
 
 
@@ -466,12 +486,15 @@ def run_separate_control(keywords: Mapping[str, Any], seed: int, steps: int,
 
     separate_residency = Residency()
     curl = metal_launch.plan_pml_curl(separate, separate_pml, "step_D",
-                                      separate_residency)
+                                      separate_residency,
+                                      chunk_bounds=layer_record(separate.grid, separate_pml))
     electric = metal_launch.plan_constitutive(separate, separate_pml, "E",
-                                              separate_residency)
+                                              separate_residency,
+                                              chunk_bounds=layer_record(separate.grid, separate_pml))
     fused_residency = Residency()
     plan = family.plan_metal_fused_electric_pair(
-        fused, fused_pml, sources=(), residency=fused_residency)
+        fused, fused_pml, sources=(), residency=fused_residency,
+        chunk_bounds=layer_record(fused.grid, fused_pml))
     if curl is None or electric is None or plan is None:
         return {"passed": False, "reason": "a declared product was refused",
                 "curl": curl is not None, "constitutive": electric is not None,
@@ -552,7 +575,7 @@ def needle(source: str, old: str, new: str, count: int = 1) -> str:
 
 def shader_mutations(codes: Sequence[int],
                      walls: Sequence[bool]) -> Dict[str, Dict[str, Any]]:
-    """Sixteen source defects, each a plausible transcription slip.
+    """Seventeen source defects, each a plausible transcription slip.
 
     Every needle is anchored on text that only the mutated line carries, and every
     one is verified present before it is applied -- an absent needle raises here
@@ -599,8 +622,8 @@ def shader_mutations(codes: Sequence[int],
         # THE AUXILIARY IS NOT CLEARED. `zero_metal_D` passes D_COMPONENTS only
         # (stepping.py:2250); masking fu_D as well is a plausible over-carry.
         "zero_metal_also_masks_the_auxiliary":
-            needle(base, "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;",
-                   "    u0[ii] = at_y ? 0.0f : n0; u1[ii] = n1; u2[ii] = n2;"),
+            needle(base, "    if (du0) { u0[ii] = n0; }",
+                   "    if (du0) { u0[ii] = at_y ? 0.0f : n0; }"),
         # THE OWNERSHIP MASK, dropped. A different pass from the wall clear, on the
         # same component and the same axis -- which is exactly why both are armed.
         "ownership_mask_dropped":
@@ -609,32 +632,38 @@ def shader_mutations(codes: Sequence[int],
         "curl_direction_reversed":
             needle(base, "int si = i - 1, sj = j - 1, sk = k - 1;",
                    "int si = i + 1, sj = j + 1, sk = k + 1;"),
-        # shaders.py rule 2: flattening these parens is a different float32 number.
-        "curl_parens_flattened":
-            needle(base, "dtdx * ((c_y - c) + (b - b_z))",
-                   "dtdx * (c_y - c + b - b_z)"),
+        # INVERTED (KERNELS.md §7.1): the shipped curl IS MEEP's left-to-right
+        # bracket now, so this plants the package's PREVIOUS pairwise grouping and
+        # stays must-catch.
+        "curl_previous_grouping":
+            needle(base, "dtdx * (((c_y - c) + b) - b_z)",
+                   "dtdx * ((c_y - c) + (b - b_z))"),
         # THE RECURRENCE PAIRS are vec.hpp's cycle_direction: target 0 takes (y, z).
         "recurrence_axis_pair_swapped":
             needle(base, "float n0 = ((p0 * km_y) - curl0) * si_y;",
                    "float n0 = ((p0 * km_z) - curl0) * si_z;"),
         "fu_store_dropped":
-            needle(base, "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;",
-                   "    u1[ii] = n1; u2[ii] = n2;"),
+            needle(base, "    if (du0) { u0[ii] = n0; }\n", ""),
         "flux_store_dropped":
             needle(base, "    f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;",
                    "    f1[ii] = v1; f2[ii] = v2;"),
         "fw_store_dropped":
-            needle(base, "    w0[ii] = src0;", "    // stale f_w_Ex"),
+            needle(base, "    if (dw0) { w0[ii] = src0; }", "    // stale f_w_Ex"),
         # The dsigw index is the component's OWN axis (stepping.py:227-228), not
         # the curl's cycle. Moving it one axis over is a silent half-cell error.
         "constitutive_coefficient_index_moved":
             needle(base, "float kp_0 = kp0[i], km_0 = km0[i];",
                    "float kp_0 = kp0[j], km_0 = km0[j];"),
+        # The two products of the accumulation trade operands: kps*prev - kms*src.
         "constitutive_accumulations_reversed":
-            needle(base, "    a0 = a0 + kp_0 * src0;\n"
-                         "    a0 = a0 - km_0 * prev0;",
-                   "    a0 = a0 - km_0 * src0;\n"
-                   "    a0 = a0 + kp_0 * prev0;"),
+            needle(base, "a0 = e0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
+                   "a0 = e0[ii] + ((kp_0 * prev0) - (km_0 * src0));"),
+        # INVERTED (KERNELS.md §7.1): the shipped accumulation is MEEP's
+        # f + ((kps*src) - (kms*prev)); this plants the package's previous
+        # ((f + kps*src) - kms*prev) and stays must-catch.
+        "constitutive_previous_grouping":
+            needle(base, "a0 = e0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
+                   "a0 = (e0[ii] + (kp_0 * src0)) - (km_0 * prev0);"),
     }
     mutants: Dict[str, Dict[str, Any]] = {}
     for name, source in edits.items():
@@ -705,6 +734,49 @@ HOST_MUTATIONS: Dict[str, Callable[[Any, Any, Residency], None]] = {
 }
 
 
+def battery_rows(codes: Sequence[int], walls: Sequence[bool]) -> Dict[str, Dict[str, Any]]:
+    """The per-chunk form battery (KERNELS.md §7.2) compiled against this source.
+
+    The base gate's own rows (:mod:`metal_fused_battery`): the fused source carries
+    both certified bodies verbatim, so their needles are this source's needles.
+    """
+    rows = battery.source_rows(family.fused_electric_pair_source(codes, walls))
+    for row in rows.values():
+        row["functions"] = {shaders.CONTRACT_OFF:
+                            compile_source(row.pop("source")).fused_electric_pair_step}
+    return rows
+
+
+def leg_battery_row(keywords: Mapping[str, Any], seed: int, steps: int,
+                    name: str, row: Mapping[str, Any]) -> Dict[str, Any]:
+    """One battery row on the mutation case, scored against its declaration."""
+    result = run_case(keywords, seed, steps, functions=row["functions"],
+                      value_class=row["value_class"])
+    caught = not result.get("bit_identical", False)
+    launched = bool(result.get("launches"))
+    return {"caught": caught, "must_catch": row["must_catch"], "why": row["why"],
+            "value_class": row["value_class"],
+            "passed": battery.scored(row["must_catch"], caught, launched),
+            "first_divergence": result.get("first_divergence"),
+            "differing_words": result.get("differing_words"),
+            "differing_arrays": result.get("differing_arrays"),
+            "launches": result.get("launches")}
+
+
+def leg_record_row(keywords: Mapping[str, Any], seed: int, steps: int,
+                   name: str) -> Dict[str, Any]:
+    """One record row: the shipped kernel handed a wrong record must diverge."""
+    mutate, why = battery.RECORD_ROWS[name]
+    result = run_case(keywords, seed, steps, record=mutate)
+    caught = not result.get("bit_identical", False)
+    launched = bool(result.get("launches"))
+    return {"caught": caught, "must_catch": True, "why": why,
+            "passed": battery.scored(True, caught, launched),
+            "first_divergence": result.get("first_divergence"),
+            "differing_words": result.get("differing_words"),
+            "launches": result.get("launches")}
+
+
 # ---------------------------------------------------------------------------
 # Legs
 # ---------------------------------------------------------------------------
@@ -720,7 +792,9 @@ def _probe_source(pointers: int, packed_slot: int) -> str:
                       for n in range(pointers))
     return "\n".join((
         "#include <metal_stdlib>", "using namespace metal;", "",
-        "struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx; };", "",
+        _chunk_bounds.struct_source(), "",
+        "struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx;",
+        _chunk_bounds.params_member(indent="                ") + " };", "",
         "kernel void packed_probe(", lines,
         f"    constant Params&    prm     [[buffer({packed_slot})]],",
         "    uint idx [[thread_position_in_grid]])", "{",
@@ -728,6 +802,8 @@ def _probe_source(pointers: int, packed_slot: int) -> str:
         "    b0[idx] = float(prm.nx);", "    b1[idx] = float(prm.ny);",
         "    b2[idx] = float(prm.nz);", "    b3[idx] = float(prm.n_elem);",
         "    b4[idx] = prm.dtdx;", f"    b5[idx] = b{pointers - 1}[idx] + 1.0f;",
+        "    b6[idx] = float(prm.cb.cb_presence);",
+        "    b7[idx] = float(prm.cb.cbh_z_a1);",
         "}", ""))
 
 
@@ -793,14 +869,18 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     # The real packer, not a hand-built record: the field the kernel reads is then
     # the field the plan builder writes. n_elem is the product of the shape (60),
     # deliberately not the eight-element probe buffers, so the guard is exercised.
-    params = family._params_tensor(shape, dtdx, "mps")
+    # The record is the every-cell one of the probe shape: presence 7 (no axis is
+    # invariant) and every run [0, n), so the half-integer z run ends at nz = 5.
+    params = family._params_tensor(shape, dtdx, "mps",
+                                   chunk_bounds=every_cell_record(shape))
     function(*buffers, params)
     torch.mps.synchronize()
-    read = [buffers[index].cpu().numpy() for index in range(6)]
+    read = [buffers[index].cpu().numpy() for index in range(8)]
     expected = (float(shape[0]), float(shape[1]), float(shape[2]),
-                float(shape[0] * shape[1] * shape[2]), float(np.float32(dtdx)), 8.0)
+                float(shape[0] * shape[1] * shape[2]), float(np.float32(dtdx)), 8.0,
+                7.0, float(shape[2]))
     fields_ok = all(bool(np.all(read[index] == expected[index]))
-                    for index in range(6))
+                    for index in range(8))
     row.update(packed_launched=True,
                packed_pointer_slots=slots,
                packed_fields_read_back=[float(value[0]) for value in read],
@@ -862,67 +942,33 @@ def leg_subnormal_ladder(keywords: Mapping[str, Any], seed: int, budget: int = 4
 #: defect that only ever scales, reorders or re-indexes a MAGNITUDE multiplies zero
 #: by a different number and gets zero.
 #:
-#: THE +-0 LATTICE IS A MUCH WEAKER SECOND CLASS ON THIS SEAM THAN ON THE MAGNETIC
-#: ONE, AND THAT IS A MEASUREMENT RATHER THAN A DISAPPOINTMENT.
+#: WHAT THE PER-CHUNK FORMS CHANGED HERE, MEASURED. Before the alignment the curl
+#: differenced a signed-zero state into +0 almost everywhere and every cell took the
+#: recurrence, so on ``wall_xyz_3d`` the oracle's D, E and ``f_w_E`` held no -0 at all
+#: and ``fu_D`` was the only channel this class could see through (6 of 16 armed
+#: defects caught). The forms are now MEEP's per chunk: a dsig-only cell steps
+#: ``((f*kms) - curl)*sinv``, which carries the sign of ``f`` through a zero curl
+#: (``-0 - (+0)`` is ``-0``), and a plain E cell stores ``src`` itself rather than an
+#: accumulation onto it. Measured on the oracle after twelve steps of
+#: ``wall_xyz_3d``: 22,089 of this seam's 60,480 output words are -0 (44,050 of the
+#: whole engine's 120,960), and the class catches 12 of 17 armed defects.
 #:
-#: MEASURED on ``wall_xyz_3d``, on the ORACLE alone, per volume rather than in
-#: aggregate -- and the aggregate is exactly what would have hidden this. After one
-#: complete step, and still after twelve:
+#: THE FIVE IT CANNOT SEE are each a magnitude-only edit on zeros (below).
 #:
-#:     Dx  Dy  Dz        5040 of 5040 words are +0, not one -0
-#:     Ex  Ey  Ez        5040 of 5040 words are +0, not one -0
-#:     f_w_Ex/y/z        5040 of 5040 words are +0, not one -0
-#:     fu_Dx/y/z         2520 +0 and 2520 -0 (fu_Dy drifts to 2100 / 2940 by step 12)
-#:
-#: So the collapse is REAL but PARTIAL, and where it bites is decided by the
-#: arithmetic rather than the seeding: the curl differences a signed-zero state as
-#: ``(+-0) - (+-0)``, which is ``+0`` in three of the four sign combinations under
-#: round-to-nearest, so the CURL output and everything the constitutive half derives
-#: from it is +0 -- while ``fu_D``, which is the recurrence's ``n0 = ((p0 * km_y) -
-#: curl0) * si_y``, keeps the sign of ``p0`` and does not.
-#:
-#: THE CONSEQUENCE, stated rather than left to be inferred: ``fu_D`` IS THE ONLY
-#: CHANNEL THROUGH WHICH THIS CLASS CAN SEE ANYTHING on this family. A defect is
-#: observable here only if it changes a ``fu_D`` word or DROPS A WRITE (leaving the
-#: previous step's still-signed lattice value standing). Every defect whose effect
-#: is confined to WHICH +0 the seam or the constitutive half computes lands on the
-#: same word. Ten of the sixteen armed defects are of that kind.
-#:
-#: THE SIX IT STILL CATCHES ARE NOT NOTHING, and they are the reason the rows are
-#: kept: ``fu_store_dropped``, ``zero_metal_also_masks_the_auxiliary`` and
-#: ``recurrence_axis_pair_swapped`` reach ``fu_D`` directly;
-#: ``flux_store_dropped``, ``fw_store_dropped`` and
-#: ``constitutive_accumulations_reversed`` leave a stale word where the shipped
-#: kernel writes a fresh one. Between them the class executes the seam, both stores,
-#: the recurrence and the wall clear.
-#:
-#: AND THE WHOLE-ENGINE SIGN FLOOR THOSE ROWS ANSWER TO IS NOT A CLAIM ABOUT THIS
-#: KERNEL. ``reference_zero_sign_census_over_this_seams_output`` is reported beside
-#: it so a reader can see that of this family's twelve output volumes only the three
-#: ``fu_D`` carry a negative zero at all.
-#:
-#: The leg requires the miss set to be EXACTLY this tuple: an eleventh miss would
-#: mean the class went blind to something it should still see, and a miss
-#: disappearing would mean this table drifted from the kernel.
+#: The leg requires the miss set to be EXACTLY this tuple: a sixth miss would mean
+#: the class went blind to something it should still see, and a miss disappearing
+#: would mean this table drifted from the kernel.
 LATTICE_BLIND_MUTATIONS: Tuple[str, ...] = (
-    # A different absorber entry multiplying zero.
-    "constitutive_coefficient_index_moved",
-    # A different neighbour's zero is still a zero, and the difference of two
-    # signed zeros is +0 either way.
-    "curl_direction_reversed",
     # float32 reassociation of a sum of zeros: (0+0)+(0+0) == 0+0+0+0 exactly.
-    "curl_parens_flattened",
+    "curl_previous_grouping",
+    # The same for the accumulation: a sum of zeros is -0 exactly when every
+    # addend is, in either grouping.
+    "constitutive_previous_grouping",
     # Masking cell 0 to +0, on a state whose cell 0 is already +0.
     "ownership_mask_dropped",
-    # Below here: the four seam edits and the two wall-table edits, all of which
-    # change WHICH +0 is written rather than WHETHER one is.
+    # A zero times a positive inverse permittivity, or none, keeps its sign.
     "seam_drops_the_inverse_epsilon",
-    "seam_takes_pre_recurrence_curl",
-    "seam_takes_the_wrong_component",
     "seam_takes_the_wrong_inverse_epsilon",
-    # Writing +0 where the shipped kernel writes the +0 the recurrence produced.
-    "zero_metal_dropped",
-    "zero_metal_uses_the_b_side_table",
 )
 
 
@@ -951,12 +997,10 @@ def leg_value_class_mutation_score(keywords: Mapping[str, Any], seed: int,
             f"diff={result.get('differing_words')}")
     missed = sorted(row["label"] for row in rows if not row["caught"])
     launched = all(row["launches"] for row in rows)
-    # THE COLLAPSE, MEASURED HERE RATHER THAN ASSERTED IN A COMMENT, AND PER VOLUME.
-    # An aggregate census over this family's twelve output volumes comes back with
-    # negative zeros in it and would read as "the class is fine"; the per-volume
-    # split is what shows that all of them live in the three `fu_D` and that the nine
-    # field and workspace volumes are uniformly +0. That is the difference between
-    # naming a blind spot and hiding it behind a true aggregate.
+    # THE REACH, MEASURED HERE RATHER THAN ASSERTED IN A COMMENT, AND PER VOLUME.
+    # An aggregate census over this family's twelve output volumes can carry negative
+    # zeros while most volumes hold none; the per-volume split says which volumes the
+    # class actually reaches on this seam, and which (if any) it never signs.
     reference, reference_pml = build(keywords, seed - 1, values.PM_ZERO_LATTICE)
     live = live_passes(reference, reference_pml)
     for _ in range(steps):
@@ -983,13 +1027,10 @@ def leg_value_class_mutation_score(keywords: Mapping[str, Any], seed: int,
         "seam_output_volumes_collapsed_to_positive_zero": collapsed,
         "seam_output_volumes_that_keep_a_negative_zero": signed,
         "what_the_class_reaches_on_this_seam": (
-            f"of this family's {len(per_volume)} output volumes only {signed} keep a "
-            f"negative zero; {collapsed} are uniformly +0 after one step. So a "
-            f"defect is observable in this class only where it moves a fu_D word or "
-            f"DROPS a write, and every defect confined to WHICH +0 the seam or the "
-            f"constitutive half computes lands on the same word. The whole-engine "
-            f"sign floor these rows answer to is met largely by the B/H half this "
-            f"kernel never writes"),
+            f"of this family's {len(per_volume)} output volumes, {len(signed)} keep a "
+            f"negative zero after {steps} steps ({signed}) and {len(collapsed)} are "
+            f"uniformly +0 ({collapsed}); a defect is observable in this class only "
+            f"where it changes a sign in one of the former or drops a write"),
         "rows": rows,
     }
 
@@ -1321,7 +1362,8 @@ def leg_refusal() -> Dict[str, Any]:
     electric_coverage = family.metal_fused_electric_pair_coverage(
         fields, pml, (electric,), residency)
     electric_plan = family.plan_metal_fused_electric_pair(
-        fields, pml, sources=(electric,), residency=residency)
+        fields, pml, sources=(electric,), residency=residency,
+        chunk_bounds=layer_record(fields.grid, pml))
 
     # THE WIRING, ASKED OF THE SHIPPED COMPOSER. A separate Residency, because the
     # one above already carries this family's mirrors and plan_step registers its
@@ -1345,7 +1387,8 @@ def leg_refusal() -> Dict[str, Any]:
     indexless_named = [r for r in indexless_coverage.reasons
                        if "does not publish the index it writes" in r]
     indexless_plan = family.plan_metal_fused_electric_pair(
-        fields, pml, sources=(indexless,), residency=residency)
+        fields, pml, sources=(indexless,), residency=residency,
+        chunk_bounds=layer_record(fields.grid, pml))
 
     magnetic = _volume_source(fields, "Hy")
     magnetic_coverage = family.metal_fused_electric_pair_coverage(
@@ -1438,6 +1481,7 @@ def main() -> int:
         f"{MUTATION_CASE} does not wall every axis; the wall mutations would be "
         f"armed on lines the shipped kernel does not emit")
     mutants = shader_mutations(codes, walls)
+    batteries = battery_rows(codes, walls)
     neutral = {shaders.CONTRACT_OFF:
                compile_source(byte_neutral_source(codes, walls)
                               ).fused_electric_pair_step}
@@ -1455,7 +1499,8 @@ def main() -> int:
                          MUTATION_CASE, EXTENDED_SIZE),)
     total = (1 + 1 + len(CASES) + len(lattice_cases) + 1 + 1 + len(controls)
              + len(deposit_cases) + len(deposit_extended) + len(deposit_null_cases)
-             + 1 + 1 + len(mutants) + len(HOST_MUTATIONS) + 1)
+             + 1 + 1 + len(mutants) + len(HOST_MUTATIONS) + 1
+             + len(batteries) + len(battery.RECORD_ROWS) + 1)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     jsonl = args.out.with_suffix(".jsonl")
     started = time.perf_counter()
@@ -1593,6 +1638,42 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
+        # THE PER-CHUNK FORM BATTERY (KERNELS.md §7.2), each row scored against its
+        # declaration: must-catch rows must diverge, the two declared nulls must not.
+        for name, entry in batteries.items():
+            index += 1
+            row = {"index": index, "total": total, "leg": "battery", "label": name,
+                   **leg_battery_row(cases[MUTATION_CASE], 73000 + index, args.steps,
+                                     name, entry)}
+            rows.append(row)
+            emit(handle, row)
+        for name in battery.RECORD_ROWS:
+            index += 1
+            row = {"index": index, "total": total, "leg": "battery", "label": name,
+                   "record_defect": True,
+                   **leg_record_row(cases[MUTATION_CASE], 73000 + index, args.steps,
+                                    name)}
+            rows.append(row)
+            emit(handle, row)
+
+        # THE FORM-COVERAGE FLOOR (DESIGN.md D13), over the product rows: every
+        # (component x form) class this product steps has a nonzero cell count.
+        index += 1
+        classes: Dict[str, int] = {}
+        for product in (r for r in rows if r["leg"] == "product"):
+            for component, forms in (product.get("forms") or {}).items():
+                for form, count in forms.items():
+                    key = f"{component}/{form}"
+                    classes[key] = classes.get(key, 0) + int(count)
+        empty = sorted(key for key, count in classes.items() if not count)
+        row = {"index": index, "total": total, "leg": "forms",
+               "label": "every_component_steps_both_of_its_forms",
+               "classes": classes, "empty_classes": empty,
+               "passed": bool(classes) and len(classes) == 2 * len(FORM_COMPONENTS)
+               and not empty}
+        rows.append(row)
+        emit(handle, row)
+
         # THE DISARM CHECK. The identical harness, the identical case, the SHIPPED
         # bytes and no host patch. A nonzero here would mean every "caught" above
         # is a harness that diverges on its own.
@@ -1617,6 +1698,7 @@ def main() -> int:
                    "deposit_null_controls": len(deposit_null_cases),
                    "shader_mutations": len(mutants),
                    "host_mutations": len(HOST_MUTATIONS),
+                   "battery_rows": len(batteries) + len(battery.RECORD_ROWS),
                    "byte_neutral_controls": 1,
                    "pm_zero_lattice_rows": len(lattice_cases),
                    "subnormal_ladder_rungs": len(values.PRECONDITION_SCALES)},

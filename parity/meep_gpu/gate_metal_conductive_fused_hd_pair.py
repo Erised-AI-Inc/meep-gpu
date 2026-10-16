@@ -17,8 +17,8 @@ pre-launch state, steps ``D``/``fu_D``/``f_cond_D`` in place, and rotates the
 ``H``/``f_w_H`` bindings afterwards.
 
 THE CLAIM IS PER COMPLETE DRIVER STEP -- ``FdtdDriver.step``'s own consult order, with
-the injection slot, the withdraw loop and the wall clears exactly where the driver runs
-them -- over a stated budget, as uint32 WORDS over every stored volume the engine
+the injection slot, the f_minus_p brackets and the wall clears exactly where the driver
+runs them -- over a stated budget, as uint32 WORDS over every stored volume the engine
 allocates (never ``allclose``: ``-0.0 == 0.0`` lies), against FOUR reference engines
 from one seed:
 
@@ -55,12 +55,21 @@ member is indexed -- which is what turns "the lossless tail never reads ``cf0``"
 memory into a measurement -- and the partly-conductive fixture is in the product leg's
 own case set so the four-branch tail is exercised beside the three-branch one.
 
-**The three-way conductive tail is where an operand order can hide.** Its four
-branches are selected by exact ``!= 1.0f`` comparisons on the PML coefficients, so a
-fixture must carry cells inside the absorber and cells outside it for every branch to
-run. Leg ``branch_census`` counts, on the array path, how many cells take each branch
-on each fixture and requires every branch to be non-empty somewhere, because a mutation
-in a branch no cell takes is a mutation nothing can catch.
+**The four-way conductive tail is where an operand order can hide.** Its four forms
+are selected per structure chunk from the chunk record the plan binds (in ``Params``),
+on the D side's integer lattice, so a fixture must carry cells inside each layer chunk
+and cells outside it for every form to run. Leg ``branch_census`` counts, on that
+record, how many cells take each form on each fixture and requires every form to be
+non-empty somewhere, because a mutation in a form no cell takes is a mutation nothing
+can catch.
+
+**The groupings are MEEP's, so the grouping mutations are inverted** (KERNELS.md §7.1):
+``curl_previous_grouping``, ``constitutive_previous_accumulation_grouping`` and
+``conductive_previous_increment_grouping`` each plant the package's PREVIOUS grouping
+and stay must-catch. The §7.2 rows armed on the conductive tail (``b1``, ``b2``,
+``b5``, ``b6``) key the forms wrongly or touch an auxiliary off its cells. The fixture
+is a MID-RUN state (``Fields.h_separated``): the weld does not start H from B, and the
+predicate refuses a run's first ``update_H`` on ``launch.h_start_reasons``' rule.
 
 =============================================================================
 THE FIVE THINGS THIS GATE REFUSES TO LET PASS SILENTLY
@@ -89,7 +98,7 @@ THE FIVE THINGS THIS GATE REFUSES TO LET PASS SILENTLY
 LEGS
   host
   driver_order      REPLACES is the driver's two adjacent consults; the only statement
-                    between them is the electric withdraw loop -- read off the tree
+                    between them is the magnetic f_minus_p restore -- read off the tree
   arm_pairing       the shipped composer's own two labels on this fixture, and the
                     two halves' predicates re-asked one at a time
   transcription     the emitted source differs from the two certified emitters in
@@ -99,7 +108,7 @@ LEGS
   seed_scale        the 2^80 seed changes no mantissa and clears the budget
   purity            the foreign-tap race ledger: how many taps land on a moved cell
   ghost_observability which ghost defects a specialisation can observe at all
-  branch_census     every conductive tail branch is taken by some cell somewhere
+  branch_census     every conductive form is taken by some cell somewhere, on the record
   sentinel_members  no omitted conductivity pack member is indexed by the emitted text
   compile
   binding_ceiling   three refuted signatures FAIL, the ceiling is bisected, the shipped
@@ -112,8 +121,13 @@ LEGS
   rotation          the post-launch rotation dropped must diverge
   sync              the product force-installed with flux_in_box driven mid-run
   launch_structure  launches per step at the seam and over the whole step
-  withdraw          an integrated electric source in the seam: hoisted and both nulls
-  lift              every corpus row the standing census puts in this cell, driven
+  withdraw          integrated electric and magnetic sources through f_minus_p: the
+                    weld identical, the restore moved and the bracket dropped diverge
+  lift              every corpus row the standing census puts in this cell, driven;
+                    the rows carrying a magnetic source refused by name
+                    (launch.h_start_reasons, beside the per-chunk conductivity
+                    refusal), every other row admitted; a cell refused whole
+                    records no_row_drove
   byte_neutral      the one armed edit required NOT to diverge
   mutation          every armed shader and host defect, each of which MUST diverge
   disarm            the identical harness, shipped bytes, must not diverge
@@ -162,6 +176,7 @@ import numpy as np  # noqa: E402
 import gate_metal_fused_hd_pair as _shared  # noqa: E402
 
 from meep_gpu import stepping, withdraw_hoist  # noqa: E402
+from meep_gpu.chunk_map import membership_from_record  # noqa: E402
 from meep_gpu.metal_kernels import (  # noqa: E402
     coefficient_pack, conductive_fused_hd_pair as family, conductive_pml,
     fused_hd_pair as plain, launch as metal_launch, shaders, subnormal,
@@ -239,6 +254,16 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = tuple(
     ("partly_conductive_mmm",
      {"boundaries": {axis: "metallic" for axis in "xyz"},
       "conductive": (True, False, True)}),
+    # THE PER-CHUNK PRESENCE: every target lossy on the low x layer's rows only, so
+    # the 9 low-x chunks of 27 keep the conductivity and every other chunk deletes it
+    # (structure.cpp:883-900); the lifted curl tail steps the lossless forms there
+    # through the presence words riding in Params (``conductive_pml.presence_words``).
+    # The low-x chunks carry each target's dsig layer (Dx's y, Dy's z, Dz's x) on some
+    # cells, so every f_cond moves and the movement floor stays whole -- an interior
+    # slab would leave f_cond_Dz unwritable, its dsig axis being x.
+    ("partial_presence_mmm",
+     {"boundaries": {axis: "metallic" for axis in "xyz"},
+      "conductive": (True, True, True), "partial": True}),
 )
 
 #: The case the mutations are armed on: every axis walled and every target lossy, so
@@ -257,6 +282,10 @@ PERIODIC_MUTATION_CASE = "bc_ppp"
 #: THE THIRD, and it is the pack's: the partly-conductive fixture is where an omitted
 #: member, a mixed specialisation and the lossless tail are reachable.
 MIXED_MUTATION_CASE = "partly_conductive_mmm"
+
+#: THE FOURTH, the presence words': only where some chunk keeps no conductivity does
+#: the presence flag decide a word.
+PARTIAL_MUTATION_CASE = "partial_presence_mmm"
 
 #: The fixture geometry -- ``metal_composition_matrix.cart``'s own constants.
 CELL: Tuple[float, float, float] = (2.0, 2.1, 1.2)
@@ -280,9 +309,19 @@ LEG_GROUPS: Dict[str, Tuple[str, ...]] = {
 ALL_LEGS: Tuple[str, ...] = tuple(leg for group in LEG_GROUPS.values() for leg in group)
 
 #: The census this gate lifts its corpus rows from, the seam record whose
-#: ``withdraw_in_seam`` flag names the rows the predicate must refuse, and the cell.
+#: ``withdraw_in_seam`` flag named the rows the 0.9.2 predicate refused by their standing
+#: withdraw (admitted since entry 25; ``_shared.lift_refusal_accounting``), and the cell.
 CENSUS = "metal_coverage_2026-09-04_m0complex"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
+
+#: The curl half's per-chunk conductivity refusal
+#: (``metal_kernels.conductive_pml``'s coverage), which a lifted row may carry beside
+#: the magnetic ``h_start_reasons`` refusal.
+PER_CHUNK_CONDUCTIVITY = "structure chunks keep the conductivity of"
+#: The curl half's refusal of a presence its words cannot carry
+#: (``conductive_pml.presence_reasons``), and of one it cannot read.
+PRESENCE_REFUSED = "conductivity presence is refused"
+PRESENCE_UNREADABLE = "per-chunk conductivity presence could not be read"
 CELL_ARMS: Tuple[str, str] = ("ordinary", "conductive PML curl")
 
 #: HOW MANY TIMES ``h_cell(`` APPEARS IN THE SHIPPED SOURCE: one declaration, the
@@ -342,7 +381,12 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
         {name: np.full(shape, np.float32(1.0 / value), np.float32)
          for name, value in EPSILON.items()})
     flags = tuple(keywords.get("conductive", (True, True, True)))
-    volumes = {name: np.full(shape, np.float32(CONDUCTIVITY))
+    loss = np.full(shape, np.float32(CONDUCTIVITY))
+    if keywords.get("partial"):
+        # The low x layer's rows only: a per-chunk presence (see CASES).
+        loss = np.zeros(shape, dtype=np.float32)
+        loss[:int(keywords.get("pml", PML_CELLS))] = np.float32(CONDUCTIVITY)
+    volumes = {name: loss.copy()
                for name, on in zip(("Dx", "Dy", "Dz"), flags) if on}
     if keywords.get("magnetic_conductivity"):
         driver.fields.set_b_conductivity(
@@ -357,6 +401,11 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
     for array in stored_volumes(driver.fields).values():
         array[...] = (0.37 * rng.standard_normal(array.shape)).astype(array.dtype)
         array *= scale
+    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # ``stepping.separate_h_from_b`` must not run again on it -- the array path would
+    # copy B into H and f_w on the dsigw cells at the first update_H, and neither the
+    # weld nor any reference arrangement does.
+    driver.fields.h_separated = True
     driver.invalidate_fast_path()
     pin_array_path(driver)
     return driver
@@ -370,9 +419,11 @@ def arrangement_singles(driver: Any) -> Arrangement:
     """Reference 2: the two certified singles, FROM THEIR TWO DIFFERENT FAMILIES."""
     residency = Residency()
     fields, pml = driver.fields, driver.pml
-    constitutive = metal_launch.plan_constitutive(fields, pml, "H", residency)
-    curl = conductive_pml.plan_metal_conductive_pml_curl(fields, pml, "step_D",
-                                                         residency)
+    constitutive = metal_launch.plan_constitutive(fields, pml, "H", residency,
+                                                  chunk_bounds=driver.chunk_bounds_record())
+    curl = conductive_pml.plan_metal_conductive_pml_curl(
+        fields, pml, "step_D", residency, chunk_bounds=driver.chunk_bounds_record(),
+        chunk_layout=driver.chunk_layout)
     if constitutive is None or curl is None:
         raise RuntimeError(
             f"a certified single was refused on a fixture this gate expects it to "
@@ -389,10 +440,12 @@ def build_weld(driver: Any, residency: Residency,
                sources: Any = ()) -> Any:
     plan = family.plan_metal_conductive_fused_hd_pair(
         driver.fields, driver.pml, sources=sources, residency=residency,
-        functions=functions)
+        functions=functions, chunk_bounds=driver.chunk_bounds_record(),
+        chunk_layout=driver.chunk_layout)
     if plan is None:
         reasons = family.metal_conductive_fused_hd_pair_coverage(
-            driver.fields, driver.pml, sources, residency).reasons
+            driver.fields, driver.pml, sources, residency,
+            chunk_layout=driver.chunk_layout).reasons
         raise RuntimeError("the conductive fused H/D pair was refused: "
                            + "; ".join(reasons))
     return plan
@@ -527,7 +580,7 @@ def run_product(driver: Any, steps: int,
 # The flush precondition's second half, EXTENDED to the conductive recurrence
 # ---------------------------------------------------------------------------
 
-class ConductiveIntermediateCensus(_shared.IntermediateCensus):
+class ConductiveIntermediateCensus(_shared.BaseIntermediateCensus):
     """The sibling census, plus the conductive PML recurrence it deliberately omits.
 
     WHY THIS SUBCLASS EXISTS, and it is a measured gap rather than a preference.
@@ -553,7 +606,7 @@ class ConductiveIntermediateCensus(_shared.IntermediateCensus):
     """
 
     #: The conductive PML recurrence joins the modelled set; the no-PML one does not.
-    MODELLED: Tuple[str, ...] = (_shared.IntermediateCensus.MODELLED
+    MODELLED: Tuple[str, ...] = (_shared.BaseIntermediateCensus.MODELLED
                                  + ("_apply_conductive_pml_update",))
     COUNTED_ONLY: Tuple[str, ...] = ("_apply_conductive_update",)
 
@@ -562,56 +615,77 @@ class ConductiveIntermediateCensus(_shared.IntermediateCensus):
         from meep_gpu import stepping as _stepping  # noqa: PLC0415
 
         original = self._originals["_apply_conductive_pml_update"]
+        # A census wrapper left installed would be saved, wrapped and restored, one
+        # level deeper per use (``_shared.BaseIntermediateCensus``).
+        if getattr(original, "__name__", "") == "conductive":
+            self.__exit__()
+            raise RuntimeError("the conductive census found its own wrapper installed on "
+                               "stepping._apply_conductive_pml_update at entry; a census "
+                               "would chain one wrapper per use")
         f32 = np.float32
         note = self._note
 
         def conductive(xp: Any, field: Any, curl: Any, condfac: Any, condinv: Any,
                        kms: Any, sinv: Any, kms_u: Any, sinv_u: Any, fu: Any,
-                       f_cond: Any, scratch: Any = None) -> Any:
+                       f_cond: Any, *, dsig_active: Any, dsigu_active: Any,
+                       conductive: Any, scratch: Any = None) -> Any:
             self.calls += 1
             field_in = np.array(field, copy=True)
             fu_in = np.array(fu, copy=True)
             cond_in = np.array(f_cond, copy=True)
             curl_in = np.array(curl, copy=True)
             result = original(xp, field, curl, condfac, condinv, kms, sinv, kms_u,
-                              sinv_u, fu, f_cond, scratch=scratch)
+                              sinv_u, fu, f_cond, dsig_active=dsig_active,
+                              dsigu_active=dsigu_active, conductive=conductive,
+                              scratch=scratch)
             if field_in.dtype != np.float32:
                 return result
-            # THE HELPER'S OWN STATEMENT SEQUENCE, REPLAYED IN float32 ON COPIES.
-            # Every named intermediate is censused for the band as it is formed.
-            dsig = (kms != 1.0) | (sinv != 1.0)
-            dsigu = (kms_u != 1.0) | (sinv_u != 1.0)
+            # THE HELPER'S OWN FORMS, REPLAYED IN float32 ON COPIES, per structure
+            # chunk on the memberships it was handed. Every named intermediate is
+            # censused for the band as it is formed.
+            shape = field_in.shape
+            dsig = np.broadcast_to(np.asarray(dsig_active, dtype=bool), shape)
+            dsigu = np.broadcast_to(np.asarray(dsigu_active, dtype=bool), shape)
+            kept = (np.ones(shape, dtype=bool) if conductive is None
+                    else np.broadcast_to(np.asarray(conductive, dtype=bool), shape))
             cond = note("cond:f_cond*condfac", (cond_in * condfac).astype(f32))
             cond = note("cond:-curl", (cond - curl_in).astype(f32))
             cond = note("cond:*condinv", (cond * condinv).astype(f32))
+            step = note("cond:f_cond-f_cond_prev", (cond - cond_in).astype(f32))
             fu_cond = note("cond:fu*condfac", (fu_in * condfac).astype(f32))
             fu_cond = note("cond:fu-curl", (fu_cond - curl_in).astype(f32))
             fu_cond = note("cond:fu*condinv", (fu_cond * condinv).astype(f32))
             fu_new = note("cond:fu*kms", (fu_in * kms).astype(f32))
-            fu_new = note("cond:fu+f_cond", (fu_new + cond).astype(f32))
-            fu_new = note("cond:fu-f_cond_prev", (fu_new - cond_in).astype(f32))
+            fu_new = note("cond:fu+increment", (fu_new + step).astype(f32))
             fu_new = note("cond:fu*sinv", (fu_new * sinv).astype(f32))
-            fu_new = np.where(np.broadcast_to(dsig, fu_new.shape), fu_new, fu_cond)
+            fu_new = np.where(dsig, fu_new, fu_cond)
             field_new = note("cond:field*kms_u", (field_in * kms_u).astype(f32))
             field_new = note("cond:field+fu", (field_new + fu_new).astype(f32))
             field_new = note("cond:field-fu_prev", (field_new - fu_in).astype(f32))
             field_new = note("cond:field*sinv_u", (field_new * sinv_u).astype(f32))
             first_only = note("cond:first_only*kms", (field_in * kms).astype(f32))
-            first_only = note("cond:first_only+f_cond",
-                              (first_only + cond).astype(f32))
-            first_only = note("cond:first_only-f_cond_prev",
-                              (first_only - cond_in).astype(f32))
+            first_only = note("cond:first_only+increment",
+                              (first_only + step).astype(f32))
             first_only = note("cond:first_only*sinv", (first_only * sinv).astype(f32))
             direct = note("cond:direct*condfac", (field_in * condfac).astype(f32))
             direct = note("cond:direct-curl", (direct - curl_in).astype(f32))
             direct = note("cond:direct*condinv", (direct * condinv).astype(f32))
-            shape = field_new.shape
-            dsig_b = np.broadcast_to(dsig, shape)
-            dsigu_b = np.broadcast_to(dsigu, shape)
-            field_new = np.where(dsigu_b, field_new,
-                                 np.where(dsig_b, first_only, direct))
-            cond_final = np.where(dsig_b, cond, cond_in)
-            fu_final = np.where(dsigu_b, fu_new, fu_in)
+            # A chunk that keeps no conductivity: the two lossless forms.
+            plain_fu = note("cond:plain_fu*kms", (fu_in * kms).astype(f32))
+            plain_fu = note("cond:plain_fu-curl", (plain_fu - curl_in).astype(f32))
+            plain_fu = note("cond:plain_fu*sinv", (plain_fu * sinv).astype(f32))
+            plain_rec = note("cond:plain*kms_u", (field_in * kms_u).astype(f32))
+            plain_rec = note("cond:plain+fu", (plain_rec + plain_fu).astype(f32))
+            plain_rec = note("cond:plain-fu_prev", (plain_rec - fu_in).astype(f32))
+            plain_rec = note("cond:plain*sinv_u", (plain_rec * sinv_u).astype(f32))
+            plain_one = note("cond:plain_dsig*kms", (field_in * kms).astype(f32))
+            plain_one = note("cond:plain_dsig-curl", (plain_one - curl_in).astype(f32))
+            plain_one = note("cond:plain_dsig*sinv", (plain_one * sinv).astype(f32))
+            field_new = np.where(dsigu, field_new, np.where(dsig, first_only, direct))
+            field_new = np.where(kept, field_new,
+                                 np.where(dsigu, plain_rec, plain_one))
+            cond_final = np.where(kept & dsig, cond, cond_in)
+            fu_final = np.where(dsigu, np.where(kept, fu_new, plain_fu), fu_in)
             _shared._agrees("_apply_conductive_pml_update:f_cond",  # noqa: SLF001
                             cond_final, f_cond)
             _shared._agrees("_apply_conductive_pml_update:fu",  # noqa: SLF001
@@ -629,7 +703,10 @@ class ConductiveIntermediateCensus(_shared.IntermediateCensus):
 # loop, so the ONLY seam a gate has for extending the instrument is the attribute the
 # name resolves to -- and extending it is exactly what this fixture needs, because the
 # sibling's census refuses to take half the precondition on a conductive step. This
-# rebinds a HARNESS attribute in this process, never a product one.
+# rebinds a HARNESS attribute in this process, never a product one. A direct run
+# executes this module twice (``__main__``, then the runner's copy); each copy's class
+# extends ``_shared.BaseIntermediateCensus``, so the second rebinding replaces the
+# first rather than stacking on it.
 _shared.IntermediateCensus = ConductiveIntermediateCensus
 
 
@@ -645,8 +722,34 @@ def _a_y_fragment() -> str:
     return f"a_y = vy ? {_tap_call('i, sj, k', 0)} : 0.0f"
 
 
-_ACCUMULATION_0 = ("        a0 = a0 + kp_0 * src0;\n"
-                   "        a0 = a0 - km_0 * prev0;\n")
+#: The constitutive half's accumulation on component 0, inside ``h_cell``: the plain
+#: weld's, so the spelling is read from its gate rather than retyped.
+_ACCUMULATION_0 = _shared._ACCUMULATION_0  # noqa: SLF001
+
+#: The curl half's membership flags on target 0 (step_D: the integer lattice), as
+#: :func:`.conductive_pml.membership_flags` names them.
+_DSIG_0, _DSIGU_0 = conductive_pml.membership_flags(True)[0]
+_CONDUCTIVE_FLAGS: Tuple[Tuple[str, str], ...] = conductive_pml.membership_flags(True)
+_CURL_COEFFICIENTS: Tuple[Tuple[str, str, str, str], ...] = (
+    ("km_y", "si_y", "km_z", "si_z"), ("km_z", "si_z", "km_x", "si_x"),
+    ("km_x", "si_x", "km_y", "si_y"))
+
+
+def _conductive_flags_line(index: int) -> str:
+    dsig, dsigu = _CONDUCTIVE_FLAGS[index]
+    return f"    const bool ds{index} = {dsig}, du{index} = {dsigu};\n"
+
+
+def _set_conductive_flags(source: str, conductive: Sequence[bool],
+                          values: Sequence[Tuple[str, str]]) -> str:
+    """Every LOSSY target's ``(dsig, dsigu)`` flags replaced by C expressions."""
+    for index, on in enumerate(conductive):
+        if not on:
+            continue
+        dsig, dsigu = values[index]
+        source = needle(source, _conductive_flags_line(index),
+                        f"    const bool ds{index} = {dsig}, du{index} = {dsigu};\n")
+    return source
 
 
 def shader_mutations(codes: Sequence[int],
@@ -689,17 +792,20 @@ def shader_mutations(codes: Sequence[int],
                "    float a = hi0[ii], b = own.a1, c = own.a2;\n"),
         "the curl takes the pre-launch H at its own cell: the seam undone")
     # THE CONSTITUTIVE HALF, inside h_cell (8-space indent: the lifted body).
-    arm("constitutive_accumulations_regrouped",
+    # INVERTED (KERNELS.md §7.1): the shipped grouping is MEEP's, so the mutation
+    # plants the package's PREVIOUS grouping and stays must-catch.
+    arm("constitutive_previous_accumulation_grouping",
         needle(base, _ACCUMULATION_0,
-               "        a0 = a0 + (kp_0 * src0 - km_0 * prev0);\n"),
-        "((f + kps*src) - kms*prev) regrouped is a different float32 number")
+               "        if (dw0) { a0 = (hi0[ii] + (kp_0 * src0)) - (km_0 * prev0); }\n"),
+        "the package's previous grouping ((f + kps*src) - kms*prev) planted in place "
+        "of MEEP's f + ((kps*src) - (kms*prev)): a different float32 number")
     arm("constitutive_accumulations_reversed",
         needle(base, _ACCUMULATION_0,
-               "        a0 = a0 - km_0 * prev0;\n        a0 = a0 + kp_0 * src0;\n"),
+               "        if (dw0) { a0 = (hi0[ii] - (km_0 * prev0)) + (kp_0 * src0); }\n"),
         "the two accumulations in the other order")
     arm("prev_reads_the_value_the_store_writes",
-        needle(base, "        float prev0 = wi0[ii];\n",
-               "        float prev0 = b0[ii];\n"),
+        needle(base, "        float prev0 = dw0 ? wi0[ii] : 0.0f;\n",
+               "        float prev0 = dw0 ? b0[ii] : 0.0f;\n"),
         "the split-field history read AFTER the store that overwrote it with B; "
         "fires inside the PML only, where kms != 0")
     arm("kps_kms_swapped",
@@ -711,13 +817,15 @@ def shader_mutations(codes: Sequence[int],
                "    ho1[ii] = own.a1; ho2[ii] = own.a2;\n"),
         "one magnetic component never reaches the scratch; the next step reads stale")
     arm("fw_store_dropped",
-        needle(base, "    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;\n",
-               "    wo1[ii] = own.src1; wo2[ii] = own.src2;\n"),
+        needle(base,
+               "    wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n",
+               "    wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n"),
         "one split-field history never advances")
-    # THE CURL HALF.
-    arm("curl_parens_flattened",
-        needle(base, "dtdx * ((c_y - c) + (b - b_z))", "dtdx * (c_y - c + b - b_z)"),
-        "shaders.py rule 2: reassociation is a different float32 number")
+    # THE CURL HALF. INVERTED (KERNELS.md §7.1), as the constitutive grouping is.
+    arm("curl_previous_grouping",
+        needle(base, "dtdx * (((c_y - c) + b) - b_z)", "dtdx * ((c_y - c) + (b - b_z))"),
+        "the package's previous pairwise grouping (g1s - g1) + (g2 - g2s) planted in "
+        "place of MEEP's left-to-right ((g1s - g1) + g2) - g2s: shaders.py rule 2")
     # THE PACK: an offset that is one member out is a smooth wrong absorber.
     arm("vector_pack_offset_swapped",
         needle(base, "    device const float* kmx = cpack + prm.off_kmx;\n",
@@ -746,33 +854,58 @@ def conductive_mutations(codes: Sequence[int],
                "        u0[ii] = u0_new; f0[ii] = f0_new;\n"),
         "the f_cond IIR never advances on one component; marginally stable, so it "
         "never decays back into agreement")
-    arm("conductive_branch_test_disabled",
-        needle(base, "    bool dsig0 = (km_y != 1.0f) || (si_y != 1.0f);\n",
-               "    bool dsig0 = (km_y > 1.0f) || (si_y > 1.0f);\n"),
-        "THE CONTROL FOR THE PREDICTED NULL BELOW. On this absorber profile kms "
-        "ranges [-1.27, 1.0] and sinv [0.31, 1.0], so `> 1.0f` is FALSE on every "
-        "cell of both: dsig0 becomes identically false and every cell takes a branch "
-        "it does not take. What this shows is that the branch selection is reachable "
-        "at all, which is what makes the null below a fact about the two SPELLINGS "
-        "rather than about an unreached line")
+    arm("conductive_dsig_membership_disabled",
+        needle(base, _conductive_flags_line(0),
+               f"    const bool ds0 = false, du0 = {_DSIGU_0};\n"),
+        "target 0's dsig layer never selected: its both-layer cells step the "
+        "dsigu-only form and its dsig-only cells the neither form")
     arm("condfac_condinv_swapped",
         needle(base,
                "        float c0_new = ((c0_previous * cf0[ii]) - curl0) * ci0[ii];\n"
-               "        float u0_new = (((u0_previous * km_y) + c0_new) - c0_previous) * si_y;\n",
+               "        float c0_step = c0_new - c0_previous;\n"
+               "        float u0_new = ",
                "        float c0_new = ((c0_previous * ci0[ii]) - curl0) * cf0[ii];\n"
-               "        float u0_new = (((u0_previous * km_y) + c0_new) - c0_previous) * si_y;\n"),
-        "the conductivity factor and its inverse exchanged in the four-branch tail")
+               "        float c0_step = c0_new - c0_previous;\n"
+               "        float u0_new = "),
+        "the conductivity factor and its inverse exchanged in the both-layer form")
     arm("volume_pack_offset_swapped",
         needle(base, "    device const float* cf0 = vpack + prm.off_cf0;\n",
                "    device const float* cf0 = vpack + prm.off_ci0;\n"),
         "the conductivity factor read at the inverse's offset: the second pack's own "
         "silent wrong answer")
-    arm("conductive_recurrence_regrouped",
+    # INVERTED (KERNELS.md §7.1): MEEP forms the increment (fcnd' - fcnd) first
+    # (step_generic.cpp:167, :209); this plants the package's previous grouping.
+    arm("conductive_previous_increment_grouping",
         needle(base,
-               "        float u0_new = (((u0_previous * km_y) + c0_new) - c0_previous) * si_y;\n",
-               "        float u0_new = ((u0_previous * km_y) + (c0_new - c0_previous)) * si_y;\n"),
-        "((u*km + c_new) - c_prev) regrouped to (u*km + (c_new - c_prev)) is a "
-        "different float32 number")
+               "        float u0_new = ((u0_previous * km_y) + c0_step) * si_y;\n",
+               "        float u0_new = (((u0_previous * km_y) + c0_new) - c0_previous) * si_y;\n"),
+        "((u*km + fcnd') - fcnd) in place of (u*km + (fcnd' - fcnd)) is a different "
+        "float32 number")
+    # THE §7.2 BATTERY ON THE CONDUCTIVE TAIL (KERNELS.md), every row must-catch.
+    arm("b1_select_removed",
+        _set_conductive_flags(base, conductive, [("true", "true")] * 3),
+        "every lossy cell steps the both-layer form: f_cond and fu written everywhere")
+    arm("b2_predicate_on_coefficient_identity",
+        _set_conductive_flags(base, conductive, [
+            (f"(({k1} != 1.0f) || ({s1} != 1.0f))", f"(({k2} != 1.0f) || ({s2} != 1.0f))")
+            for k1, s1, k2, s2 in _CURL_COEFFICIENTS]),
+        "the forms keyed on coefficient identity (the previous package predicate) "
+        "instead of chunk membership: a sigma = 0 row inside a layer chunk takes "
+        "another form")
+    arm("b5_dsig_dsigu_swapped",
+        _set_conductive_flags(base, conductive,
+                              [(dsigu, dsig) for dsig, dsigu in _CONDUCTIVE_FLAGS]),
+        "each lossy target's dsig and dsigu memberships exchanged")
+    arm("b6_f_cond_stored_off_the_dsig_cells",
+        needle(base, "        u0[ii] = u0_new; f0[ii] = f0_new;\n",
+               "        c0[ii] = ((c0[ii] * cf0[ii]) - curl0) * ci0[ii]; "
+               "u0[ii] = u0_new; f0[ii] = f0_new;\n"),
+        "f_cond advanced on the dsigu-only cells, where the array path leaves it")
+    arm("b6_fu_stored_off_the_dsigu_cells",
+        needle(base, "        c0[ii] = c0_new; f0[ii] = f0_new;\n",
+               "        c0[ii] = c0_new; u0[ii] = ((u0[ii] * km_y) + c0_step) * si_y; "
+               "f0[ii] = f0_new;\n"),
+        "fu advanced on the dsig-only cells, where the array path leaves it")
     return out
 
 
@@ -787,25 +920,9 @@ def predicted_null_mutations(codes: Sequence[int],
     """
     base = family.conductive_fused_hd_pair_source(codes, conductive)
     out: Dict[str, Tuple[str, str, str]] = {}
-    # THE EXACTNESS OF THE BRANCH TEST, ARMED AND MEASURED INERT ON THIS PROFILE.
-    # `conductive_pml.py` states the rule: the masks use exact `!= 1.0f` because an
-    # approximate test partitions near-unity PML coefficients differently. Relaxing
-    # the FIRST disjunct to `> 1.0f` is the natural way to arm it -- and it does not
-    # fire, for a reason this gate measured rather than guessed: on this absorber
-    # profile `sinv != 1.0f` holds on exactly the cells where `kms != 1.0f` does (3
-    # of each per axis, the same three), so the `||` makes the two spellings agree
-    # everywhere. The claim the rule protects is therefore about a profile this
-    # fixture does not build, and saying so with a row that RAN is the honest record.
-    out["conductive_branch_first_disjunct_relaxed"] = (
-        needle(base, "    bool dsig0 = (km_y != 1.0f) || (si_y != 1.0f);\n",
-               "    bool dsig0 = (km_y > 1.0f) || (si_y != 1.0f);\n"),
-        "INERT ON THIS PROFILE, measured: kms != 1.0f on exactly 3 cells per axis "
-        "and sinv != 1.0f on the SAME 3, so `(kms > 1) || (sinv != 1)` selects the "
-        "same cells as `(kms != 1) || (sinv != 1)` and no branch changes. The rule "
-        "the exact test protects needs a profile with a near-unity kms beside a unit "
-        "sinv, which this absorber does not produce; the control shows the selection "
-        "is reachable and observable",
-        "conductive_branch_test_disabled")
+    # The former exact-``!= 1.0f`` branch-test null is RETIRED with the predicate it
+    # measured (DESIGN.md D13): the forms are keyed on chunk membership, and keying them
+    # on coefficient identity is the must-catch ``b2_predicate_on_coefficient_identity``.
     if all(codes):
         # THE EDIT MOVES THE GHOST BRANCH, NEVER THE TAKEN ONE. An edit written as
         # `vy ? 1.0f : 0.0f` replaces the RECOMPUTE on every cell where `vy` holds,
@@ -859,11 +976,29 @@ def mixed_mutations(codes: Sequence[int],
     return {
         "lossless_tail_reads_an_omitted_pack_member": (
             needle(base,
-                   "    float u1_new = ((u1_previous * km_z) - curl1) * si_z;\n",
-                   "    float u1_new = ((u1_previous * cf1[ii]) - curl1) * ci1[ii];\n"),
+                   "    float n1 = ((p1 * km_z) - curl1) * si_z;\n",
+                   "    float n1 = ((p1 * cf1[ii]) - curl1) * ci1[ii];\n"),
             "the LOSSLESS target's recurrence made to read the conductivity members "
             "this plan stores nothing for; the plan's own assertion refuses this "
             "source, and launched anyway it must move bytes"),
+    }
+
+
+def presence_mutations(codes: Sequence[int],
+                       conductive: Sequence[bool]) -> Dict[str, Tuple[str, str]]:
+    """The defect only a per-chunk presence can carry: the presence flag inverted.
+
+    On the partial fixture the chunks that keep the conductivity then step the lossless
+    forms and the chunks that deleted it the conductive ones (advancing ``f_cond``
+    there), so the lifted tail's read of the words is armed rather than argued.
+    """
+    base = family.conductive_fused_hd_pair_source(codes, conductive)
+    return {
+        "presence_flag_inverted": (
+            needle(base, "    if (!kc0) {\n", "    if (kc0) {\n"),
+            "target 0's presence flag inverted in the lifted conductive tail: the "
+            "kept chunks step the lossless forms and the deleted ones the "
+            "conductive forms"),
     }
 
 
@@ -874,9 +1009,9 @@ def byte_neutral_source(codes: Sequence[int], conductive: Sequence[bool]) -> str
     report every mutation caught; this is the control that shows it does not.
     """
     base = family.conductive_fused_hd_pair_source(codes, conductive)
-    return needle(base, "    float curl0 = dtdx * ",
+    return needle(base, "    float curl0 = has_y ? ",
                   "    // byte-neutral control: a comment, no arithmetic\n"
-                  "    float curl0 = dtdx * ")
+                  "    float curl0 = has_y ? ")
 
 
 # ---------------------------------------------------------------------------
@@ -884,41 +1019,30 @@ def byte_neutral_source(codes: Sequence[int], conductive: Sequence[bool]) -> str
 # ---------------------------------------------------------------------------
 
 def leg_driver_order() -> Dict[str, Any]:
-    """``REPLACES`` is the driver's two ADJACENT consults, read off the tree."""
-    source = Path(_shared.stepping.__file__).with_name("driver.py").read_text(
-        encoding="utf-8")
-    lines = source.splitlines()
-    consults = [(index + 1, line.strip()) for index, line in enumerate(lines)
-                if 'dispatch("update_H"' in line or 'dispatch("step_D"' in line]
-    update_h = [row for row in consults if "update_H" in row[1]]
-    step_d = [row for row in consults if "step_D" in row[1]]
-    between: List[str] = []
-    fallback: List[str] = []
-    if update_h and step_d:
-        lo = min(row[0] for row in update_h)
-        hi = min(row[0] for row in step_d if row[0] > lo)
-        # THE CONSULT'S OWN ARRAY-PATH BODY IS NOT "BETWEEN" THE TWO CONSULTS. The
-        # driver's call site is `if fast is None or not fast.dispatch(...): <array
-        # call>`, so the statement immediately under the update_H consult is that
-        # slot's fallback -- the pass this product REPLACES, not a pass it would have
-        # to carry across its launch. Counting it as in-seam would report the seam as
-        # carrying a constitutive update that is in fact the seam's first half.
-        body = [line.strip() for line in lines[lo:hi - 1]
-                if line.strip() and not line.strip().startswith("#")]
-        fallback = [line for line in body if line.startswith("update_H(")]
-        between = [line for line in body if line not in fallback]
-    withdraw_only = bool(between) and all(
-        line == "for source in electric:" or line.startswith("getattr(source")
-        for line in between)
+    """``REPLACES`` is the driver's two ADJACENT consults, read off the tree.
+
+    Through the seam module's own locator (``h_to_d_seam.driver_seam_fact``), which
+    RAISES unless the statements between the two consults are the ones the seam allows:
+    the array-path ``update_H`` under its consult, then the magnetic ``f_minus_p``
+    restore where H is stored (``h_to_d_seam.EXPECTED_BETWEEN``), which writes B alone
+    and which ``step_D`` does not read. The one reading of ``driver.py`` the plain and
+    the BFAST welds' gates use too.
+    """
+    import h_to_d_seam  # noqa: PLC0415
+
+    fact = h_to_d_seam.driver_seam_fact()
+    between = tuple(entry["statement"] for entry in fact["between"])
+    span_ok = (tuple(family.REPLACES) == tuple(h_to_d_seam.HALVES)
+               == tuple(withdraw_hoist.SEAM_SPAN))
+    restore_only = between == h_to_d_seam.EXPECTED_BETWEEN
     return {
-        "passed": bool(update_h and step_d and family.REPLACES == ("update_H", "step_D")
-                       and withdraw_only),
+        "passed": bool(span_ok and family.REPLACES == ("update_H", "step_D")
+                       and family.SEAM == withdraw_hoist.SEAM and restore_only),
+        "driver_seam": fact,
         "replaces": list(family.REPLACES),
-        "update_H_consults": update_h,
-        "step_D_consults": step_d,
-        "the_update_H_consults_own_array_path_fallback": fallback,
-        "statements_between_the_two_consults": between,
-        "only_the_electric_withdraw_sits_between_them": withdraw_only,
+        "seam_halves": list(h_to_d_seam.HALVES),
+        "statements_between_the_two_consults": list(between),
+        "only_the_magnetic_f_minus_p_restore_sits_between_them": restore_only,
         "carries_deposit_repair": family.CARRIES_DEPOSIT_REPAIR,
         "hoists_the_withdraw": family.HOISTS_THE_WITHDRAW,
         "seam": family.SEAM,
@@ -1011,8 +1135,9 @@ def leg_transcription(codes: Sequence[int],
     # THE CONSTITUTIVE HALF: the lift edits, verified by re-deriving them.
     h_cell = plain.h_cell_function()
     lifted_ok = all(spelling in h_cell for spelling in
-                    ("float prev0 = wi0[ii];", "float src0 = b0[ii];",
-                     "float a0 = hi0[ii];", "kp_0 = kp0[i], km_0 = kmx[i];"))
+                    ("float prev0 = dw0 ? wi0[ii] : 0.0f;", "float src0 = b0[ii];",
+                     "a0 = hi0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
+                     "kp_0 = kp0[i], km_0 = kmx[i];"))
     stores_removed = ("w0[ii] = src0;" not in h_cell
                       and "f0[ii] = a0;" not in h_cell)
 
@@ -1107,11 +1232,26 @@ def leg_refusal() -> Dict[str, Any]:
         driver.fields, driver.pml, None, Residency())
     record("an_undeclared_source_set_is_refused", verdict.covered, verdict.reasons,
            False, ["the source set was not declared"])
-    withdrawing = _volume_source(driver.fields, "Ez", integrated=True)
+    # An ENGINE integrated source enters through f_minus_p and stands no withdraw in
+    # the seam, so it is admitted; a source class bringing a withdraw of its
+    # own is still refused, naming the flag that would lift the refusal.
+    integrated = _volume_source(driver.fields, "Ez", integrated=True)
     verdict = family.metal_conductive_fused_hd_pair_coverage(
-        driver.fields, driver.pml, (withdrawing,), Residency())
-    record("a_standing_integrated_electric_withdraw_is_refused", verdict.covered,
-           verdict.reasons, False, ["HOISTS_THE_WITHDRAW = False"])
+        driver.fields, driver.pml, (integrated,), Residency())
+    record("an_integrated_electric_source_stands_no_withdraw", verdict.covered,
+           verdict.reasons, True)
+    standing = len(withdraw_hoist.standing_withdraws((integrated,)))
+    rows["an_integrated_electric_source_stands_no_withdraw"]["standing_withdraws"] = standing
+    rows["an_integrated_electric_source_stands_no_withdraw"]["ok"] &= standing == 0
+    foreign = _shared.ForeignStandingWithdraw()
+    verdict = family.metal_conductive_fused_hd_pair_coverage(
+        driver.fields, driver.pml, (foreign,), Residency())
+    record("a_foreign_standing_withdraw_is_refused", verdict.covered,
+           verdict.reasons, False,
+           ["standing integrated", "HOISTS_THE_WITHDRAW = False"])
+    standing = len(withdraw_hoist.standing_withdraws((foreign,)))
+    rows["a_foreign_standing_withdraw_is_refused"]["standing_withdraws"] = standing
+    rows["a_foreign_standing_withdraw_is_refused"]["ok"] &= standing == 1
     plainly = _volume_source(driver.fields, "Ez", integrated=False)
     verdict = family.metal_conductive_fused_hd_pair_coverage(
         driver.fields, driver.pml, (plainly,), Residency())
@@ -1395,23 +1535,20 @@ def leg_ghost_observability() -> Dict[str, Any]:
 
 
 def leg_branch_census() -> Dict[str, Any]:
-    """Every branch of the four-way conductive tail is taken by some cell somewhere.
+    """Every form of the four-way conductive tail is taken by some cell somewhere.
 
-    A mutation planted in a branch no cell takes is a mutation nothing can catch, so
-    the branch partition is counted on the array path -- from the SAME exact
-    ``!= 1.0f`` tests the kernel compiles -- before any mutation is scored.
+    A mutation planted in a form no cell takes is a mutation nothing can catch, so the
+    partition is counted on the chunk record the plan binds -- the SAME membership the
+    kernel reads, on the D side's integer lattice -- before any mutation is scored.
     """
     rows: Dict[str, Any] = {}
     totals = {"both": 0, "dsigu_only": 0, "dsig_only": 0, "neither": 0}
     for name, keywords in CASES:
         driver = build_driver(keywords, 313)
-        pml = driver.pml
         shape = tuple(driver.grid.shape)
-        suffix = metal_launch.SUB_STEPS["step_D"]["suffix"]
-        km = {axis: np.asarray(getattr(pml, f"kms_{axis}{suffix}"), dtype=np.float32)
-              for axis in "xyz"}
-        si = {axis: np.asarray(getattr(pml, f"sinv_{axis}{suffix}"), dtype=np.float32)
-              for axis in "xyz"}
+        record = driver.chunk_bounds_record()
+        line = {axis: membership_from_record(record, False, index, shape[index])
+                for index, axis in enumerate("xyz")}
         # target 0 takes (y, z), 1 takes (z, x), 2 takes (x, y) -- vec.hpp's cycle.
         pairs = (("y", "z"), ("z", "x"), ("x", "y"))
         counts = {"both": 0, "dsigu_only": 0, "dsig_only": 0, "neither": 0}
@@ -1423,9 +1560,8 @@ def leg_branch_census() -> Dict[str, Any]:
                 view = [1, 1, 1]
                 view[axis_index[axis]] = shape[axis_index[axis]]
                 return np.broadcast_to(vector.reshape(view), shape)
-            dsig = (spread(km[first], first) != 1.0) | (spread(si[first], first) != 1.0)
-            dsigu = ((spread(km[second], second) != 1.0)
-                     | (spread(si[second], second) != 1.0))
+            dsig = spread(line[first], first)
+            dsigu = spread(line[second], second)
             counts["both"] += int(np.count_nonzero(dsig & dsigu))
             counts["dsigu_only"] += int(np.count_nonzero(~dsig & dsigu))
             counts["dsig_only"] += int(np.count_nonzero(dsig & ~dsigu))
@@ -1599,20 +1735,26 @@ def _probe_params_readback() -> Dict[str, Any]:
     """
     import torch  # noqa: PLC0415
 
+    from meep_gpu.metal_kernels import chunk_bounds as _cb  # noqa: PLC0415
+
     names = family.PACKED_VECTORS + family.PACKED_VOLUMES
-    fields = ([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
-               ("dtdx", "<f4")]
-              + coefficient_pack.record_dtype_fields(family.PACKED_VECTORS)
-              + coefficient_pack.record_dtype_fields(family.PACKED_VOLUMES))
-    record = np.zeros(1, dtype=np.dtype(fields))
+    record = np.zeros(1, dtype=family.params_record_dtype())
+    scalars = ["nx", "ny", "nz", "n_elem", "dtdx"] + [f"off_{name}" for name in names]
     expected = [3, 5, 7, 105, np.float32(0.5)] + list(range(11, 11 + len(names)))
-    record[0] = tuple(expected)
+    for field, value in zip(scalars, expected):
+        record[field] = value
+    # THE CHUNK RECORD RIDES IN Params: 25 distinct words, read back member by member.
+    bounds = np.arange(200, 200 + len(_cb.MEMBERS), dtype=np.int32)
+    record["cb"] = np.frombuffer(bounds.tobytes(), dtype=_cb.record_dtype())
+    expected = expected + [int(word) for word in bounds]
     payload = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     source = "\n".join((
         "#include <metal_stdlib>", "using namespace metal;", "",
+        _cb.struct_source(), "",
         "struct Params {", "    uint nx; uint ny; uint nz; uint n_elem; float dtdx;",
         coefficient_pack.params_fields(family.PACKED_VECTORS),
-        coefficient_pack.params_fields(family.PACKED_VOLUMES), "};", "",
+        coefficient_pack.params_fields(family.PACKED_VOLUMES),
+        _cb.params_member(), "};", "",
         "kernel void params_readback(",
         "    device float*    out [[buffer(0)]],",
         "    constant Params& prm [[buffer(1)]],",
@@ -1623,15 +1765,17 @@ def _probe_params_readback() -> Dict[str, Any]:
         "    out[4] = prm.dtdx;",
         *[f"    out[{5 + index}] = float(prm.off_{name});"
           for index, name in enumerate(names)],
+        *[f"    out[{5 + len(names) + index}] = float(prm.cb.{member});"
+          for index, member in enumerate(_cb.MEMBERS)],
         "}", ""))
     library = compile_source(source)
-    out = torch.zeros(5 + len(names), dtype=torch.float32, device="mps:0")
+    out = torch.zeros(len(expected), dtype=torch.float32, device="mps:0")
     params = torch.from_numpy(payload).to(torch.device("mps:0"))
     library.params_readback(out, params)
     got = out.cpu().numpy().tolist()
     want = [float(v) for v in expected]
     return {"passed": got == want, "expected": want, "read_back": got,
-            "fields": ["nx", "ny", "nz", "n_elem", "dtdx", *names]}
+            "fields": ["nx", "ny", "nz", "n_elem", "dtdx", *names, *_cb.MEMBERS]}
 
 
 def leg_pack_bytes() -> Dict[str, Any]:
@@ -1671,11 +1815,10 @@ def leg_pack_bytes() -> Dict[str, Any]:
 
         # THE OFFSETS, off the Params record the plan actually built.
         params = plan.static_args[-1].cpu().numpy().tobytes()
-        struct = ([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
-                   ("dtdx", "<f4")]
-                  + coefficient_pack.record_dtype_fields(family.PACKED_VECTORS)
-                  + coefficient_pack.record_dtype_fields(family.PACKED_VOLUMES))
-        decoded = np.frombuffer(params, dtype=np.dtype(struct))[0]
+        decoded = np.frombuffer(params, dtype=family.params_record_dtype())[0]
+        # THE CHUNK RECORD the plan embedded is the driver's own, word for word.
+        record_ok = (np.frombuffer(decoded["cb"].tobytes(), dtype=np.int32).tolist()
+                     == np.asarray(driver.chunk_bounds_record(), dtype=np.int32).tolist())
         running = 0
         vector_ok = True
         for member, vector in zip(family.PACKED_VECTORS, vectors):
@@ -1702,6 +1845,7 @@ def leg_pack_bytes() -> Dict[str, Any]:
             "n_elem": int(decoded["n_elem"]),
             "n_elem_is_the_grid": int(decoded["n_elem"])
             == int(np.prod(driver.grid.shape)),
+            "the_embedded_chunk_record_is_the_drivers": bool(record_ok),
         }
         log(f"    pack_bytes {name}: cpack={cpack_words} vpack={vpack_words} "
             f"omitted={list(omitted)}")
@@ -1711,6 +1855,7 @@ def leg_pack_bytes() -> Dict[str, Any]:
                       and row["vector_offsets_are_the_layouts"]
                       and row["volume_offsets_are_the_layouts_and_omitted_members_are_zero"]
                       and row["n_elem_is_the_grid"]
+                      and row["the_embedded_chunk_record_is_the_drivers"]
                       for row in rows.values()),
         "cases": rows,
         "comparator": "uint32 words, never allclose",
@@ -1884,56 +2029,32 @@ def leg_launch_structure(steps: int) -> Dict[str, Any]:
     }
 
 
-#: THE SOURCE IS SCALED WITH THE SEED, and leaving it unscaled DISARMS the withdraw
-#: leg: an O(1) dipole added to a 2^80 field rounds away entirely, so both null
-#: controls come back not diverging and the leg proves nothing while reporting green.
+#: THE SOURCES ARE SCALED WITH THE SEED, and leaving them unscaled DISARMS the
+#: withdraw leg: an O(1) dipole subtracted from a 2^80 field rounds away entirely, so
+#: neither null control could diverge and the leg would prove nothing while reporting
+#: green. An integrated electric AND an integrated magnetic source: the magnetic one's
+#: ``f_minus_p`` restore is the one pass between the seam's two consults.
 INTEGRATED_SOURCE: Dict[str, Any] = {
-    "component": "Ez", "center": (0.15, -0.1, 0.05), "size": (0.0, 0.0, 0.0),
-    "frequency": 1.0, "source_type": "gaussian", "fwidth": 0.5,
-    "is_integrated": True, "amplitude": 2.0 ** SEED_SCALE_BITS,
+    **_shared.INTEGRATED_SOURCE, "amplitude": 2.0 ** SEED_SCALE_BITS,
+}
+INTEGRATED_MAGNETIC_SOURCE: Dict[str, Any] = {
+    **_shared.INTEGRATED_MAGNETIC_SOURCE, "amplitude": 2.0 ** SEED_SCALE_BITS,
 }
 
 
 def leg_withdraw(steps: int) -> Dict[str, Any]:
-    """An integrated electric source in the seam: hoisted, un-hoisted, after_step_D.
+    """Integrated sources in the seam, through f_minus_p (``_shared.seam_restore_leg``).
 
-    THE PREDICATE REFUSES THIS CONFIGURATION TODAY, by name, because the product
-    declares ``HOISTS_THE_WITHDRAW = False``; that refusal is recorded here. What this
-    leg then measures is the WIRING the installer would give a product that declared
-    True -- ``LeadingWithdrawPlan`` around the launch -- with the two null controls
-    that must diverge.
+    No withdraw stands in this seam any more: the predicate admits the run, the
+    weld (the magnetic restore after both halves) must be identical to the driver's
+    order, and the restore moved before ``update_H`` and the magnetic bracket dropped
+    must both diverge.
     """
     keywords = dict(CASES)[MUTATION_CASE]
-    driver = build_driver(keywords, 5151, sources=(INTEGRATED_SOURCE,))
-    sources = tuple(driver._sources)  # noqa: SLF001
-    refusal = family.metal_conductive_fused_hd_pair_coverage(
-        driver.fields, driver.pml, sources, Residency())
-    hoisted = arrangement_weld(driver, hoist=True, name="weld_hoisted")
-    not_hoisted = arrangement_weld(driver, hoist=False, name="weld_not_hoisted")
-    arrangements = {"array": Arrangement("array", None, None),
-                    "weld_hoisted": hoisted, "weld_not_hoisted": not_hoisted}
-    result = drive(driver, arrangements, steps, stop_on_divergence=False)
-    legs = result["arrangements"]
-    return {
-        "passed": bool(not refusal.covered
-                       and any("HOISTS_THE_WITHDRAW = False" in reason
-                               for reason in refusal.reasons)
-                       and legs["weld_hoisted"]["identical"]
-                       and not legs["weld_not_hoisted"]["identical"]
-                       and result["step_error"] is None),
-        "predicate_refuses_this_row": not refusal.covered,
-        "refusal_reasons": list(refusal.reasons)[:4],
-        "hoisted_identical": legs["weld_hoisted"]["identical"],
-        "not_hoisted_identical": legs["weld_not_hoisted"]["identical"],
-        "not_hoisted_first_divergence": legs["weld_not_hoisted"]["first_divergence"],
-        "steps_compared": result["steps_compared"],
-        "what_this_licenses": (
-            "the WIRING, not the flag. A product declaring HOISTS_THE_WITHDRAW True "
-            "would be installed inside LeadingWithdrawPlan and would be byte-identical "
-            "on this row; without that wrapper it diverges. This product declares "
-            "False and its predicate refuses the row by name, which is what the "
-            "board's withdraw_seam bucket records"),
-    }
+    driver = build_driver(keywords, 5151,
+                          sources=(INTEGRATED_SOURCE, INTEGRATED_MAGNETIC_SOURCE))
+    return _shared.seam_restore_leg(driver, family.metal_conductive_fused_hd_pair_coverage,
+                                    arrangement_weld(driver), steps)
 
 
 def leg_mutation(steps: int, codes: Sequence[int], conductive: Sequence[bool],
@@ -1969,6 +2090,10 @@ def leg_mutation(steps: int, codes: Sequence[int], conductive: Sequence[bool],
         armed.append((name, source, why, PERIODIC_MUTATION_CASE))
     for name, (source, why) in sorted(mixed_mutations(*mixed).items()):
         armed.append((name, source, why, MIXED_MUTATION_CASE))
+    for name, (source, why) in sorted(presence_mutations(
+            codes_of(PARTIAL_MUTATION_CASE),
+            conductive_flags(PARTIAL_MUTATION_CASE)).items()):
+        armed.append((name, source, why, PARTIAL_MUTATION_CASE))
 
     for index, (name, source, why, case) in enumerate(armed, start=1):
         row = run_one(case, 6000 + index, source)
@@ -2070,7 +2195,7 @@ def runtime_reasons() -> List[str]:
     return _shared.runtime_reasons()
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:  # noqa: ARG001
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The census driver's battery hook: the identity on ONE lifted row."""
     steps = int(os.environ.get("MEEP_GPU_COND_HD_GATE_STEPS", 12))
     max_cells = os.environ.get("MEEP_GPU_COND_HD_GATE_MAX_CELLS")
@@ -2125,10 +2250,13 @@ def _load_jsonl(path: Path) -> List[dict]:
 def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
     """The rows the standing census puts in this product's cell, DERIVED from the
     census's own ``plan_step.selected``."""
+    import lift_host  # noqa: PLC0415
+
     census = results / CENSUS
     seam = results / SEAM_RECORD
-    if not census.is_dir() or not seam.is_dir():
-        raise SystemExit(f"the lift leg needs {census} and {seam}")
+    missing = lift_host.missing_inputs(results, CENSUS, SEAM_RECORD)
+    if missing:
+        raise SystemExit(lift_host.missing_reason(results, missing))
     seam_rows = {row["label"]: row for row in _load_jsonl(seam / "h_to_d_seam.jsonl")}
     rows: List[dict] = []
     for leg in ("examples", "tests", "tests_param_matched"):
@@ -2157,8 +2285,9 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
                 # the census recorded one, and the LABEL stays the upstream row's.
                 "case": record.get("case") or record["row"],
                 "module": record.get("module") or seam_row.get("module"),
-                "interpreter": (record.get("interpreter") or record.get("python")
-                                or seam_row.get("interpreter") or sys.executable),
+                # WHERE THE CHILD RUNS: this gate's interpreter. The path the census
+                # recorded is kept as recorded_interpreter and never launched.
+                **lift_host.row_fields(record, seam_row),
                 "grid_cells": record.get("grid_cells"),
                 "grid_shape": record.get("grid_shape"),
                 "withdraw_in_seam": bool((seam_row.get("h_to_d_seam") or {})
@@ -2181,16 +2310,19 @@ BLOCK = "metal_conductive_fused_hd_pair_gate"
 
 def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float,
              resume: bool, only: Optional[Sequence[str]]) -> Dict[str, Any]:
-    """Every corpus row in this cell, re-lifted in its own interpreter and driven.
+    """Every corpus row in this cell, re-lifted under this gate's interpreter and driven.
 
     The census driver's OWN mechanism, not a second one: the row is a MEEP script or
-    test case, so ``measure_predicate_coverage`` lifts it in the interpreter the
-    census recorded and calls :func:`evaluate` inside that process.
+    test case, so ``measure_predicate_coverage`` lifts it in a child under this gate's
+    interpreter (``lift_host``; the path the census recorded is provenance) and calls
+    :func:`evaluate` inside that process. A row whose declared needs this host lacks
+    is not launched: it is named under ``unlifted_on_this_host`` and counted out.
     """
     import contextlib  # noqa: PLC0415
     import subprocess  # noqa: PLC0415
 
     import gate_provenance  # noqa: PLC0415
+    import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
     # ABSOLUTE, BEFORE ANYTHING IS BUILT FROM IT: the child runs with ``cwd`` set to
@@ -2212,7 +2344,6 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                 "reason": (f"the MEEP corpus is not at {examples_dir} / {tests_dir}; "
                            f"set MEEP_GPU_CORPUS_ROOT to the checkout the census was "
                            f"cut over. Refused rather than measured on nothing")}
-    probe_path = API_ROOT / census.PROBE
     environment = dict(os.environ)
     environment.update({"KMP_DUPLICATE_LIB_OK": "TRUE", "MPLBACKEND": "Agg",
                         "PYTHONPATH": str(API_ROOT),
@@ -2243,8 +2374,20 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                 encoding="utf-8", errors="replace"):
             needs_shim.add(module_name)
 
+    # WHAT THIS HOST CANNOT LIFT, asked once before any child: the needs the rows
+    # declare, probed under this interpreter (lift_host).
+    host = lift_host.host_check(rows, environment, work)
+    if host["unreadable"]:
+        return {"passed": False, "facts": facts, "host_capabilities": host,
+                "reason": host["unreadable"]}
+    unlifted = host["unlifted_on_this_host"]
     measured: List[dict] = []
     for index, row in enumerate(rows, start=1):
+        if row["label"] in unlifted:
+            log(f"lift {index}/{len(rows)} {row['label']}: UNLIFTED ON THIS HOST, "
+                f"{unlifted[row['label']]}")
+            measured.append(lift_host.unlifted_entry(row, unlifted[row["label"]]))
+            continue
         record_path = per_row / (
             row["label"].replace(":", "__").replace(".", "_") + ".json")
         environment["MEEP_GPU_COND_HD_GATE_LABEL"] = row["label"]
@@ -2254,11 +2397,11 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         started = time.time()
         if not (resume and record_path.exists()):
             if row["leg"] == "examples":
-                command = [row["interpreter"], "-u",
+                command = [sys.executable, "-u",
                            str(Path(census.__file__).resolve()),
                            "--leg", "examples", "--child-script",
                            str(examples_dir / row["row"]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", Path(__file__).stem]
             elif not row["module"]:
@@ -2268,13 +2411,13 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                                  "note": "no module recorded"})
                 continue
             else:
-                command = [row["interpreter"], "-u",
+                command = [sys.executable, "-u",
                            str(Path(census.__file__).resolve()),
                            "--leg", "tests", "--child-module",
                            str(tests_dir / row["module"]),
                            "--child-cases", json.dumps([row.get("case")
                                                         or row["row"]]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", Path(__file__).stem]
             log(f"lift {index}/{len(rows)} {row['label']} start "
@@ -2327,19 +2470,32 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     refused = sorted(label for label, b in blocks.items()
                      if b.get("predicate_admits") is False)
     unmeasured = sorted(label for label, b in blocks.items()
-                        if "predicate_admits" not in b)
+                        if "predicate_admits" not in b and label not in unlifted)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
-    expected_refused = sorted(facts["rows_with_a_standing_withdraw"])
-    if only:
-        expected_refused = sorted(set(expected_refused) & set(blocks))
+    # THE 0.10 REFUSALS (``_shared.lift_refusal_accounting``): the seam record's
+    # ``withdraw_in_seam`` rows are admitted since entry 25; a row carrying a magnetic
+    # source is refused by ``launch.h_start_reasons``, derived from the row's own
+    # sources, and may carry this product's per-chunk conductivity refusal beside it.
+    accounting = _shared.lift_refusal_accounting(
+        blocks, facts["rows_with_a_standing_withdraw"],
+        further_reasons=(PER_CHUNK_CONDUCTIVITY, PRESENCE_REFUSED, PRESENCE_UNREADABLE))
+    expected_refused = accounting["expected_refused_from_the_row_sources"]
     return {
         # THE DENOMINATOR IS THE CELL'S: every row the standing census puts in this
-        # cell must be admitted unless the seam record says it carries a standing
-        # withdraw, every admitted row must drive, and every driven row must be
-        # byte-identical over every step its own precondition held for.
-        "passed": bool(blocks and not unmeasured
-                       and refused == expected_refused
+        # cell must be admitted unless its own sources say the predicate refuses it by
+        # name, every admitted row must drive, and every driven row must be
+        # byte-identical over every step its own precondition held for. A CELL WHOSE
+        # EVERY ROW IS REFUSED BY NAME MEASURES NOTHING, and says so: the standing
+        # census puts one row here (``TestAdjointSolver.test_damping``), and the
+        # predicate refuses it on both halves -- its magnetic source
+        # (``launch.h_start_reasons``) and the per-chunk conductivity -- each derived
+        # from the row itself, so the leg passes on the accounting and records
+        # ``no_row_drove``, and licenses no corpus row (the base gate's rule for a cell
+        # refused by name). Every admitted row still drives. AT LEAST ONE ROW IS ASKED:
+        # a cell whose every row is unlifted on this host measured nothing.
+        "passed": bool(len(blocks) > len(unlifted) and not unmeasured
+                       and accounting["passed"]
                        and driven == admitted
                        and passed_rows == driven
                        and all(blocks[label].get("steps_compared", 0)
@@ -2349,7 +2505,12 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         "refused": len(refused),
         "refused_labels": refused,
         "expected_refused": expected_refused,
+        "refusal_accounting": accounting,
+        "no_row_drove": not driven,
         "unmeasured": unmeasured,
+        "unlifted_on_this_host": unlifted,
+        "rows_the_engine_was_asked_about": len(blocks) - len(unlifted),
+        "host_capabilities": host,
         "driven": len(driven),
         "driven_and_identical": len(passed_rows),
         "clean_step_floor": LIFT_CLEAN_STEP_FLOOR,
@@ -2610,12 +2771,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "jsonl": str(jsonl),
         "what_this_does_not_license": (
             "installing the product (the composer refuses it by name and the "
-            "arbitration leg pins that), flipping HOISTS_THE_WITHDRAW (the withdraw "
-            "leg licenses the WIRING, not the flag), any throughput claim (launch "
-            "counts are not time, no timing exists for this shape, and another Metal "
-            "lane shared this GPU during the run), a MAGNETIC conductivity, complex "
-            "conductive storage, an inactive absorber, a folded or cylindrical or "
-            "beta or BFAST run, or any step past a row's own first banded step"),
+            "arbitration leg pins that), flipping HOISTS_THE_WITHDRAW (no engine "
+            "source stands a withdraw in this seam since entry 25; the withdraw leg "
+            "measures where the magnetic f_minus_p restore sits, not the flag), any "
+            "throughput claim (launch counts are not time, no timing exists for this "
+            "shape, and another Metal lane shared this GPU during the run), a MAGNETIC "
+            "conductivity, complex conductive storage, an inactive absorber, a folded "
+            "or cylindrical or beta or BFAST run, any corpus row while the lift leg "
+            "records no_row_drove (its cell's every row refused by name, so the leg "
+            "measured none), or any step past a row's own first banded step"),
         "source_sha256": {
             "family": hashlib.sha256(Path(family.__file__).read_bytes()).hexdigest(),
             "gate": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),

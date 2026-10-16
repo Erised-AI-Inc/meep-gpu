@@ -1,0 +1,54 @@
+{
+ "about": "Emitted device texts of BASE fa59c2f33c478c7667a173d699b50b8980098471, cut by parity_board_emit.py with no device. The board's witnesses must read 0 chunk-record reads and 0 MEEP-order sites on them, and find the 0.9.2 grouping (the calibration the whole-BASE run measured on every table).",
+ "base": "fa59c2f33c478c7667a173d699b50b8980098471",
+ "texts": [
+  {
+   "chars": 4586,
+   "file": "cuda_step_B_pml_real.cu",
+   "module": "step_curl_kernels",
+   "route": "_get_kernel('step_B_pml_real'): the source cp.RawKernel is handed",
+   "sha256": "362d6420b05c20483cc5255b5ccd7a82e989f0e1809a2d6cbf46b51077e8fac7",
+   "table": "cuda"
+  },
+  {
+   "chars": 2707,
+   "file": "cuda_update_H_pml_real.cu",
+   "module": "constitutive_kernels",
+   "route": "_get_kernel('update_H_pml_real'): the source cp.RawKernel is handed",
+   "sha256": "6dfe6937cdfa8aed2cb88a02e6f07861ef3ab282ef45c44c5dd62aeba0eb98e2",
+   "table": "cuda"
+  },
+  {
+   "chars": 3553,
+   "file": "metal_pml_curl_step_B_111.metal",
+   "module": "shaders",
+   "route": "enumerate_sources(): label pml_curl_step/step_B/111",
+   "sha256": "ef35ff9dc638893ef3e927ec5a32d65578a6e2506d1968bc36bad71580b509f0",
+   "table": "metal"
+  },
+  {
+   "chars": 3048,
+   "file": "metal_constitutive_step_H.metal",
+   "module": "shaders",
+   "route": "enumerate_sources(): label constitutive_step/H",
+   "sha256": "d19e6dca4b140caa2abe76b1e52ff61597c077df587bcfb53aac5bfbd202240b",
+   "table": "metal"
+  },
+  {
+   "chars": 4660,
+   "file": "triton_pml_curl_step.py.txt",
+   "module": "kernels",
+   "route": "the @jit program pml_curl_step with its helpers inlined, as written in the source",
+   "sha256": "045972dea5a8439ce5cfabe0a5e8011942cbaa4ea7f3699c63b595636b75df42",
+   "table": "triton"
+  },
+  {
+   "chars": 5690,
+   "file": "triton_constitutive_step.py.txt",
+   "module": "kernels",
+   "route": "the @jit program constitutive_step with its helpers inlined, as written in the source",
+   "sha256": "02541210d78c316210cc82f953dae100d27784fc0104a3ef6447189e0ea26849",
+   "table": "triton"
+  }
+ ]
+}

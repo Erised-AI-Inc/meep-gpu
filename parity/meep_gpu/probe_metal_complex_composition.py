@@ -25,7 +25,7 @@ wrong there that no single-sub-step gate can see:
 
 NOT A GATE. It writes an artifact and asserts, but its subject is the COMPOSITION
 rather than the arithmetic; the bytes were certified next door. It shares the gate's
-kit and its expansion probe artifact.
+kit.
 
 Progress is one flushed line per case, the artifact is rewritten atomically after
 every case, and the exit code is 0 / 1 / 75 exactly as the gate's.
@@ -36,7 +36,7 @@ from __future__ import annotations
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
@@ -56,6 +56,7 @@ from meep_gpu.metal_kernels import device, preconditions, shaders, subnormal  # 
 from meep_gpu.pml import PML  # noqa: E402
 
 import metal_gate_kit as kit  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
 log, save, differing = kit.log, kit.save, kit.differing
 
@@ -82,9 +83,6 @@ CASES: Tuple[Tuple[str, Any, Tuple[float, float, float]], ...] = (
     ("periodic_edge", "periodic", (0.5, 0.0, 0.0)),
     ("metallic_xy_kz", ("metallic", "metallic", "periodic"), (0.0, 0.0, 0.4)),
 )
-
-EXPANSION: Optional[str] = None
-
 
 def complex_from_planes(real: Any, imag: Any) -> Any:
     """``real + 1j*imag`` destroys the sign of zeros in ``imag``. Word view instead."""
@@ -139,20 +137,23 @@ def restore(fields, state: Dict[str, Any]) -> None:
         getattr(fields, name)[...] = value
 
 
-def build_plans(fields, pml, residency, probe):
+def build_plans(fields, pml, residency):
     """One residency, four plans — the sharing this probe exists to measure."""
     plans: Dict[str, Any] = {}
+    record = layer_record(fields.grid, pml)
     for sub_step in CURL:
         plan = cx.plan_complex_pml_curl(fields, pml, sub_step, residency,
-                                        (shaders.CONTRACT_OFF,), probe=probe)
+                                        (shaders.CONTRACT_OFF,),
+                                        chunk_bounds=record)
         assert plan is not None, cx.complex_pml_curl_coverage(
-            fields, pml, sub_step, residency, probe).reasons
+            fields, pml, sub_step, residency).reasons
         plans[sub_step] = plan
     for side in SIDES:
         plan = cx.plan_complex_constitutive(fields, pml, side, residency,
-                                            (shaders.CONTRACT_OFF,), probe=probe)
+                                            (shaders.CONTRACT_OFF,),
+                                            chunk_bounds=record)
         assert plan is not None, cx.complex_constitutive_coverage(
-            fields, pml, side, residency, probe).reasons
+            fields, pml, side, residency).reasons
         plans["update_" + side] = plan
     return plans
 
@@ -161,7 +162,7 @@ def build_plans(fields, pml, residency, probe):
 # CASE 1 — a whole cycle on ONE residency
 # ---------------------------------------------------------------------------
 
-def case_cycle(payload: Dict[str, Any], out: str, probe: Any, cycles: int = 4) -> None:
+def case_cycle(payload: Dict[str, Any], out: str, cycles: int = 4) -> None:
     rows: List[Dict[str, Any]] = []
     started = time.time()
     for name, boundaries, k_point in CASES:
@@ -176,7 +177,7 @@ def case_cycle(payload: Dict[str, Any], out: str, probe: Any, cycles: int = 4) -
 
         restore(fields, base)
         residency = device.Residency()
-        plans = build_plans(fields, pml, residency, probe)
+        plans = build_plans(fields, pml, residency)
         assert residency.names, "the mirror registry is EMPTY; verify() would pass"
         for _ in range(cycles):
             for slot in ("step_B", "update_H", "step_D", "update_E"):
@@ -210,7 +211,7 @@ def case_cycle(payload: Dict[str, Any], out: str, probe: Any, cycles: int = 4) -
 # CASE 2 — the seam, measured BOTH ways
 # ---------------------------------------------------------------------------
 
-def case_seam(payload: Dict[str, Any], out: str, probe: Any) -> None:
+def case_seam(payload: Dict[str, Any], out: str) -> None:
     """A host write between two device sub-steps: declared-and-synced vs not.
 
     THIS IS WHERE THE RESIDENCY PREDICATE EARNS ITS REFUSAL. The undeclared run must
@@ -237,7 +238,7 @@ def case_seam(payload: Dict[str, Any], out: str, probe: Any) -> None:
     for declared in (True, False):
         restore(fields, base)
         residency = device.Residency()
-        plans = build_plans(fields, pml, residency, probe)
+        plans = build_plans(fields, pml, residency)
         plans["step_B"].run()
         if declared:
             # The caller BRACKETS the seam: device -> host, seam, host -> device.
@@ -283,8 +284,7 @@ def case_seam(payload: Dict[str, Any], out: str, probe: Any) -> None:
 # CASE 3 — the zero-init census, and the subnormal window over the composition
 # ---------------------------------------------------------------------------
 
-def case_zero_init(payload: Dict[str, Any], out: str, probe: Any,
-                   cycles: int = 3) -> None:
+def case_zero_init(payload: Dict[str, Any], out: str, cycles: int = 3) -> None:
     """From an all-zero state, with a THIN absorber whose deepest kms is negative.
 
     THE CLASS THIS MEASURES: a negative coefficient times a quiet ``+0.0`` stores a
@@ -317,7 +317,7 @@ def case_zero_init(payload: Dict[str, Any], out: str, probe: Any,
 
         restore(fields, base)
         residency = device.Residency()
-        plans = build_plans(fields, pml, residency, probe)
+        plans = build_plans(fields, pml, residency)
         for _ in range(cycles):
             for slot in ("step_B", "update_H", "step_D", "update_E"):
                 plans[slot].run()
@@ -350,7 +350,7 @@ def case_zero_init(payload: Dict[str, Any], out: str, probe: Any,
 # CASE 4 — the live set, and the residency verdict this family earns
 # ---------------------------------------------------------------------------
 
-def case_residency_model(payload: Dict[str, Any], out: str, probe: Any) -> None:
+def case_residency_model(payload: Dict[str, Any], out: str) -> None:
     """Which sub-steps are LIVE, and what the verdict is for each declaration.
 
     ``None`` for the live set is a REFUSAL and not an empty set: which seam work runs
@@ -364,7 +364,7 @@ def case_residency_model(payload: Dict[str, Any], out: str, probe: Any) -> None:
     for name, boundaries, k_point in CASES:
         grid, fields, pml = build(boundaries, k_point, 20260815)
         residency = device.Residency()
-        build_plans(fields, pml, residency, probe)
+        build_plans(fields, pml, residency)
         walls = any(metal_coverage.zero_metal_axes(grid))
         planned = ("step_B", "update_H", "step_D", "update_E")
         wall_passes = ("zero_metal_B", "zero_metal_D") if walls else ()
@@ -419,8 +419,6 @@ def case_residency_model(payload: Dict[str, Any], out: str, probe: Any) -> None:
 
 def main() -> int:
     parser = kit.argument_parser(__doc__)
-    parser.add_argument("--probe", default="",
-                        help="expansion probe artifact (defaults to the environment)")
     arguments = parser.parse_args()
     out_dir = os.path.dirname(os.path.abspath(arguments.out)) or "."
     os.makedirs(out_dir, exist_ok=True)
@@ -439,19 +437,9 @@ def main() -> int:
         reasons.append("no MPS device is available on this host")
     if not payload["subnormal_policy"]["admitted"]:
         reasons.extend(payload["subnormal_policy"]["reasons"])
-    probe = cx.load_expansion_probe(arguments.probe or None)
-    if probe is None or cx.expansion_from_probe(probe) is None:
-        reasons.append(
-            f"no usable complex-expansion probe artifact (pass --probe or set "
-            f"{cx.PROBE_PATH_ENVIRONMENT}); the arm is a MEASURED platform fact and "
-            f"this probe will not guess it. Run gate_metal_complex.py --legs "
-            f"expansion to write one")
     if reasons:
         return kit.cannot_certify(payload, arguments.out, reasons)
 
-    global EXPANSION
-    EXPANSION = cx.expansion_from_probe(probe)
-    payload["expansion_arm"] = EXPANSION
     payload["provenance"] = kit.provenance(out_dir, {
         "stepping.py": os.path.join(API_ROOT, "meep_gpu", "stepping.py"),
         "metal_kernels/complex_fields.py": os.path.join(
@@ -467,10 +455,10 @@ def main() -> int:
         # results/metal_complex_2026-08-15/, where the surviving provenance.json
         # holds these five sources and not the gate's ten. That is the exact loss
         # the kit's `name` parameter was added for.
-    }, kernel_sources=cx.enumerate_complex_sources(EXPANSION),
+    }, kernel_sources=cx.enumerate_complex_sources(),
         name="provenance_composition.json")
     save(payload, arguments.out)
-    log(f"[env] arm={EXPANSION} torch={payload['environment'].get('torch')} "
+    log(f"[env] torch={payload['environment'].get('torch')} "
         f"policy={payload['subnormal_policy']['resolved']}")
 
     cases = (("cycle", case_cycle), ("seam", case_seam),
@@ -483,7 +471,7 @@ def main() -> int:
             log(f"[skip] case {name} (not in --legs)")
             continue
         log(f"=== CASE {name} ===")
-        function(payload, arguments.out, probe)
+        function(payload, arguments.out)
         ran.append(name)
         payload["counts"][name] = len(payload["cases"].get(name, []))
     compared = sum(int(v) for v in payload["counts"].values())

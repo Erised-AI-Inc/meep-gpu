@@ -217,6 +217,8 @@ import sys
 import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
+import numpy
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_API = os.path.abspath(os.path.join(HERE, "..", ".."))
 for _path in (HERE, REPO_API):
@@ -225,6 +227,7 @@ for _path in (HERE, REPO_API):
 
 import gate_dispatch_end_to_end as e2e  # noqa: E402
 import gate_dispatch_fused_route as route  # noqa: E402
+import gate_provenance  # noqa: E402
 from bench_cuda_kernels_vs_array import (  # noqa: E402
     append_jsonl, box_state, save, size_window, spread, timed_window)
 
@@ -356,11 +359,32 @@ def freeze(driver: Any) -> Dict[str, Any]:
     array it fails to reach is already a hole in the project's strictest
     correctness instrument, not a gap this file opened. Dispersive cases are
     covered: ``fields.polarizations[i]`` sits at depth 3 of a walk that goes to 5.
+
+    A NUMPY SCALAR IS A VALUE, NOT STORAGE, and is frozen as one (``scalars``). The
+    walk admits anything with a dtype, a shape and a size, and since the bit-parity
+    recurrence constants (``dispersion.realnum_constants``) a dispersive leg's
+    ``fields.polarizations[i].constants`` holds four ``numpy.float32`` words. Such a
+    word cannot be written through -- the first thaw raised ``'numpy.float32' object
+    does not support item assignment`` on 11 of 74 DRIVE rows -- and it does not need
+    to be: it is immutable, so the only way a step can move it is by rebinding the
+    attribute, which :func:`thaw` checks for and refuses by name.
     """
     xp = driver.xp
-    return {"arrays": {name: xp.array(array, copy=True)
-                       for name, array in live_arrays(driver).items()},
+    arrays: Dict[str, Any] = {}
+    scalars: Dict[str, Any] = {}
+    for name, value in live_arrays(driver).items():
+        if isinstance(value, numpy.generic):
+            scalars[name] = value
+        else:
+            arrays[name] = xp.array(value, copy=True)
+    return {"arrays": arrays, "scalars": scalars,
             "step_count": int(driver.step_count)}
+
+
+def _same_scalar(live: Any, frozen: Any) -> bool:
+    """The live entry is still the frozen scalar's value, word for word."""
+    return (isinstance(live, numpy.generic) and live.dtype == frozen.dtype
+            and live.tobytes() == frozen.tobytes())
 
 
 def _residency_of(driver: Any) -> Any:
@@ -384,6 +408,16 @@ def thaw(driver: Any, frozen: Dict[str, Any]) -> None:
     # driver a bare namespace), and on it a plain host write is exactly right.
     acquire = getattr(_residency_of(driver), "acquire_write", None)
     live = live_arrays(driver)
+    # THE SCALARS ARE CHECKED, NEVER WRITTEN (:func:`freeze`). One a step rebound to
+    # another value cannot be restored through the walk, so the window would start
+    # from a state the frozen one is not: refused by name, before any array is written.
+    rebound = sorted(name for name, value in (frozen.get("scalars") or {}).items()
+                     if not _same_scalar(live.get(name), value))
+    if rebound:
+        raise RuntimeError(
+            f"cannot restore the frozen state: {len(rebound)} NumPy scalar(s) changed "
+            f"since the freeze ({', '.join(rebound[:4])}); a scalar is immutable, so a "
+            "step rebound it and a restore through the walk cannot put it back")
     for name, values in frozen["arrays"].items():
         array = live[name]
         if acquire is not None:
@@ -415,6 +449,12 @@ def moved_words(driver: Any, frozen: Dict[str, Any]) -> int:
         a = xp.ascontiguousarray(values).reshape(-1).view(xp.uint8)
         b = xp.ascontiguousarray(live[name]).reshape(-1).view(xp.uint8)
         total += int(xp.count_nonzero(a != b))
+    for name, value in (frozen.get("scalars") or {}).items():
+        # ON THE HOST: a scalar is a host value whatever ``xp`` is.
+        a = numpy.asarray(value).reshape(-1).view(numpy.uint8)
+        b = numpy.asarray(live.get(name, value)).reshape(-1).view(numpy.uint8)
+        total += (int(numpy.count_nonzero(a != b)) if a.shape == b.shape
+                  else int(max(a.size, b.size)))
     return total
 
 
@@ -424,7 +464,9 @@ def non_finite(driver: Any) -> int:
     for array in live_arrays(driver).values():
         if array.dtype.kind != "f" and array.dtype.kind != "c":
             continue
-        total += int(xp.count_nonzero(~xp.isfinite(array)))
+        # A NumPy scalar is read on the host, whatever ``xp`` is.
+        module = numpy if isinstance(array, numpy.generic) else xp
+        total += int(module.count_nonzero(~module.isfinite(array)))
     return total
 
 
@@ -611,14 +653,19 @@ def foreign_device_processes(ps_text: str, own_pid: int) -> List[str]:
             and _DEVICE_NEIGHBOURS.search(command)]
 
 
+#: ``sysctl`` lives in ``/usr/sbin``, which the reference environment's ``PATH``
+#: (``<prefix>/bin:/usr/bin:/bin``) does not hold: called by absolute path.
+SYSCTL = "/usr/sbin/sysctl"
+
+
 @functools.lru_cache(maxsize=1)
 def _static_host_facts() -> Tuple[Optional[str], Optional[str]]:
     """The machine model and CPU: facts that do not move during a campaign."""
     if sys.platform != "darwin":
         return None, None
     facts: List[Optional[str]] = []
-    for command in (("sysctl", "-n", "hw.model"),
-                    ("sysctl", "-n", "machdep.cpu.brand_string")):
+    for command in ((SYSCTL, "-n", "hw.model"),
+                    (SYSCTL, "-n", "machdep.cpu.brand_string")):
         try:
             facts.append(_read_command(command).strip() or None)
         except Exception:  # noqa: BLE001
@@ -713,6 +760,10 @@ TABLE_PINNED_SOURCES: Dict[str, Tuple[Tuple[str, Optional[str], str], ...]] = {
 }
 
 
+#: This file, relative to the tree root: what a checkout of this tree tracks.
+BENCH_RELATIVE = "parity/meep_gpu/bench_fused_products.py"
+
+
 def _sha256(path: str) -> Optional[str]:
     try:
         with open(path, "rb") as handle:
@@ -763,9 +814,24 @@ def provenance(table: Optional[str] = None) -> Dict[str, Any]:
         paths[key] = os.path.relpath(path, REPO_API) if inside else path
     git: Dict[str, Any] = {"head": None, "dirty": {}, "porcelain": {}, "error": None}
     try:
-        git["head"] = _git("rev-parse", "HEAD").strip() or None
+        # THE CHECKOUT MUST BE THIS TREE'S OWN. ``git -C`` walks up to the first
+        # repository above it, so a tree copied INTO another checkout -- a timing
+        # ladder's snapshot under a results directory -- answered with the enclosing
+        # repository's HEAD and ran ``git status`` there (the 1.0 round's Mac ladder
+        # recorded an unrelated commit on its step-0 row). That repository does not
+        # track this tree's copy of the bench, which is the test: an untracked bench
+        # means the HEAD found is not the code that ran, and none is recorded.
+        _git("ls-files", "--error-unmatch", "--", os.path.join(REPO_API, BENCH_RELATIVE))
     except Exception as error:  # noqa: BLE001
-        git["error"] = f"{type(error).__name__}: {error}"
+        git["error"] = (f"no checkout of this tree: no repository found from here "
+                        f"tracks {BENCH_RELATIVE} (none encloses the tree, or one that "
+                        f"does is another checkout; {type(error).__name__}); no HEAD is "
+                        f"recorded")
+    if git["error"] is None:
+        try:
+            git["head"] = _git("rev-parse", "HEAD").strip() or None
+        except Exception as error:  # noqa: BLE001
+            git["error"] = f"{type(error).__name__}: {error}"
     for key, _module, _relative in pinned:
         if git["error"] is not None:
             git["dirty"][key] = None
@@ -1067,6 +1133,46 @@ def slot_map_substitution(fused: Dict[str, Any], unfused: Dict[str, Any],
                        "a_named_arm_holds_more_than_one_slot": bool(welded)}}
 
 
+#: ``--legs``: ``all`` lifts the three legs (the fused product against its singles,
+#: proved identical to the array path); ``gpu-only`` lifts the fused leg alone.
+LEGS_MODES = {"all": ("fused", "unfused", "array"), "gpu-only": ("fused",)}
+
+
+def solo_slot_map(spec: Dict[str, Any], fused: Dict[str, Any]) -> Dict[str, Any]:
+    """The structural instrument of a ``--legs gpu-only`` row: the fused leg alone.
+
+    With no singles leg there is no slot map to diff, so this says only what the fused
+    leg's own plan shows: the tables that served it, and that it holds fused products,
+    as many as the drive row declares. It proves WHAT DISPATCHED, never that fusing
+    replaced anything: a GPU-only row carries no ratio against the singles and no
+    bit-identity verdict.
+
+    A FUSED PRODUCT HOLDS A SEAM: two slots ADJACENT in the step (:data:`SLOTS`). One
+    arm named on two slots is not enough by itself -- a single arm serves several,
+    ``PML`` on ``step_B`` and ``step_D`` -- and the comparative proof could exclude it
+    because the singles leg named it too; with no singles leg, adjacency is the rule.
+    """
+    fused_arms = dict(fused["plan"].get("arms") or {})
+    by_arm: Dict[str, List[str]] = {}
+    for slot, arm in fused_arms.items():
+        by_arm.setdefault(arm, []).append(slot)
+    seams = set(zip(SLOTS, SLOTS[1:]))
+    order = {name: index for index, name in enumerate(SLOTS)}
+    welded = {arm: sorted(slots, key=lambda n: (order.get(n, len(order)), n))
+              for arm, slots in by_arm.items()
+              if any((a, b) in seams for a in slots for b in slots)}
+    tables = sorted((fused["plan"].get("composition") or {}).get("tables_dispatched")
+                    or [])
+    pairs = spec.get("pairs")
+    checks = {"a_named_arm_holds_more_than_one_slot": bool(welded)}
+    if pairs is not None:
+        checks["fused_products_match_the_rows_pairs"] = len(welded) == int(pairs)
+    return {"mode": "gpu-only", "comparative": False,
+            "fused_arms": fused_arms, "welded_arms": welded,
+            "tables_dispatched": tables, "tables_by_leg": {"fused": tables},
+            "witnesses_installed": list(WITNESSES), "checks": checks}
+
+
 def substitution(fused: Dict[str, Any], unfused: Dict[str, Any],
                  array: Dict[str, Any]) -> Dict[str, Any]:
     """Did the fused product actually replace the singles? Two instruments, both binding.
@@ -1319,6 +1425,22 @@ class NvidiaWitness:
     def substitution(self, spec: Dict[str, Any], fused: Dict[str, Any],
                      unfused: Dict[str, Any], array: Dict[str, Any]) -> Dict[str, Any]:
         return substitution(fused, unfused, array)
+
+    def solo_dispatch(self, spec: Dict[str, Any], fused: Dict[str, Any]) -> Dict[str, Any]:
+        """A ``--legs gpu-only`` row's dispatch proof (:func:`solo_slot_map`), plus the
+        launch counters: the fused leg launched, when a witness of its table attached."""
+        out = solo_slot_map(spec, fused)
+        served = set(out["tables_dispatched"])
+        witnessed = bool(served & {"triton", "cuda"} & set(WITNESSES))
+        lps = fused.get("warm_launches_per_step")
+        if witnessed:
+            out["checks"]["fused_leg_launched"] = bool(lps) and lps > 0
+        out.update({"launch_witness_available": witnessed,
+                    "instruments": (["slot_arm_map", "launch_counters"] if witnessed
+                                    else ["slot_arm_map"]),
+                    "launches_per_step": {"fused": lps},
+                    "proved": all(out["checks"].values())})
+        return out
 
     def extra_floors(self, legs: Dict[str, Dict[str, Any]],
                      windows: Sequence[Dict[str, Any]]) -> Dict[str, bool]:
@@ -1595,6 +1717,37 @@ class MetalWitness:
             "proved": all(checks.values())})
         return out
 
+    def solo_dispatch(self, spec: Dict[str, Any], fused: Dict[str, Any]) -> Dict[str, Any]:
+        """A ``--legs gpu-only`` row's dispatch proof: the slot map
+        (:func:`solo_slot_map`) and the route gate's own ``fused_leg_is_real``, which
+        reads the fused leg alone. ``substitution_proof`` needs the singles and is not
+        evaluated: a GPU-only row says what dispatched, not what fusing saved."""
+        gate = self.module
+        out = solo_slot_map(spec, fused)
+        evidence = gate.fused_leg_is_real(fused, spec)
+        rate = gate.steady_state_rate(fused)
+        unwitnessed = list(fused.get("unwitnessed_owners") or [])
+        foreign = list(fused.get("non_kernel_leaves") or [])
+        witnessed = ("metal" in WITNESSES and bool(fused.get("counter_attached"))
+                     and not unwitnessed and not foreign)
+        checks = out["checks"]
+        checks["launch_witness_saw_every_owner"] = witnessed
+        checks["fused_leg_is_real"] = bool(evidence.get("real"))
+        kept = ("real", "failures", "table", "driven", "driven_slot_count",
+                "dispatched_slots", "arms", "counters", "decision", "refused_because",
+                "far_fill_consults")
+        out.update({
+            "launch_witness_available": witnessed,
+            "instruments": (["slot_arm_map", "metal_launch_counter",
+                             "gate_fused_leg_is_real"] if witnessed else ["slot_arm_map"]),
+            "launches_per_step": {"fused": rate.get("launches_per_step")},
+            "compiled_calls_per_step": {"fused": rate.get("function_calls_per_step")},
+            "unwitnessed_owners": {"fused": unwitnessed},
+            "non_kernel_leaves": {"fused": foreign},
+            "gate_evidence": {key: evidence[key] for key in kept if key in evidence},
+            "proved": all(checks.values())})
+        return out
+
     def extra_floors(self, legs: Dict[str, Dict[str, Any]],
                      windows: Sequence[Dict[str, Any]]) -> Dict[str, bool]:
         return {"windows_launched_at_the_proved_rate":
@@ -1615,28 +1768,83 @@ def as_witness(counter: Any) -> Any:
 # Windows
 # ---------------------------------------------------------------------------
 
-#: Steps the chunk calibration runs. Three windows of this, from the frozen
-#: state each time, and the median is what the chunk size is extrapolated from --
-#: ``size_window``'s own shape, re-spelt here only because its calibration steps
-#: the leg three times WITHOUT restoring, and a chunk sized from a drifting state
-#: is sized from arithmetic the timed windows will not repeat.
+#: The smallest timed probe, and the floor under every window's step count.
 CALIBRATION_STEPS = 4
+
+#: Steps each probe runs UNTIMED between the restore and its timed steps. A restore is
+#: not free and is not paid by the steps it precedes evenly: on a held Metal residency
+#: :func:`thaw` marks every restored mirror host-owned, so the first launch after it
+#: copies them all up (33 copies on ``pml_3d``), and on every table the first launches
+#: after a restore find cold caches. The 1.0 round sized windows from three 4-step
+#: calibrations that each carried that cost, and over-read the device step 3.2-4.9x on
+#: the Mac (12 s windows asked, 2.5-3.7 s run). The discard keeps it out of the probe.
+PROBE_DISCARD_STEPS = 4
+
+#: A probe is long enough when it lasts this share of the target window, and never
+#: less than :data:`PROBE_MIN_SECONDS`: a few milliseconds of timer is the regime the
+#: spread gate was drawn to keep windows out of.
+PROBE_MIN_FRACTION = 0.1
+PROBE_MIN_SECONDS = 0.05
+
+#: Probes a leg may take to reach :data:`PROBE_MIN_SECONDS` before the last one is
+#: used as it stands.
+PROBE_MAX_ROUNDS = 8
+
+#: Probes timed at the final step count; the window is sized from their MEDIAN. One is
+#: not enough: on the GPU host the first leg's first long run after its freeze read
+#: 25 ms/step against 6 ms/step in every run after it (``pml_3d``, 512,000 cells), and a
+#: window sized from that one probe ran 0.5 s of the 2 s asked.
+PROBE_REPEATS = 3
+
+#: The default ``--step-cap``: a bound against a probe that read nothing, not the
+#: bound a window meets. The 1.0 round's 4,000 bound windows at 2.6 s where 12 s was
+#: asked (110,592 cells on the Mac); a window's length is the target's to set.
+DEFAULT_STEP_CAP = 2_000_000
 
 
 def size_chunk(leg: Dict[str, Any], frozen: Dict[str, Any], sync: Callable[[], None],
                target_seconds: float, cap: int) -> Dict[str, Any]:
+    """Steps per window, from a TIMED PROBE run after the restore and its discard.
+
+    Each probe restores the frozen state, steps :data:`PROBE_DISCARD_STEPS` untimed,
+    then times its own steps; the step count grows from :data:`CALIBRATION_STEPS` until
+    a probe lasts :data:`PROBE_MIN_FRACTION` of ``target_seconds`` (at least
+    :data:`PROBE_MIN_SECONDS`) or reaches ``cap``. That count is then probed until
+    :data:`PROBE_REPEATS` probes hold it, and the window is sized from their median
+    seconds per step. The probe states drift by the discard's few steps from the
+    frozen one; the windows themselves still start from it exactly.
+    """
     driver = leg["driver"]
-    samples = []
-    for _ in range(3):
+    floor = max(PROBE_MIN_SECONDS, PROBE_MIN_FRACTION * float(target_seconds))
+    steps = max(1, min(int(cap), CALIBRATION_STEPS))
+    probes: List[Dict[str, Any]] = []
+
+    def probe(count: int) -> float:
         thaw(driver, frozen)
-        samples.append(timed_window(lambda: driver.run(num_steps=CALIBRATION_STEPS),
-                                    1, sync))
-    per_step = statistics.median(samples) / float(CALIBRATION_STEPS)
+        driver.run(num_steps=PROBE_DISCARD_STEPS)
+        seconds = timed_window(lambda: driver.run(num_steps=count), 1, sync)
+        probes.append({"steps": count, "seconds": seconds})
+        return seconds
+
+    for _round in range(PROBE_MAX_ROUNDS):
+        seconds = probe(steps)
+        if seconds >= floor or steps >= cap:
+            break
+        grow = (floor / seconds) * 1.25 if seconds > 0 else 1e9
+        steps = int(min(int(cap), max(2 * steps, int(round(steps * grow)))))
+    while sum(1 for p in probes if p["steps"] == steps) < PROBE_REPEATS:
+        probe(steps)
+    per_step = statistics.median(p["seconds"] for p in probes
+                                 if p["steps"] == steps) / float(steps)
     chunk = cap if per_step <= 0 else int(round(target_seconds / per_step))
     chunk = max(CALIBRATION_STEPS, min(cap, chunk))
-    return {"calibration_seconds": samples,
+    return {"calibration_seconds": [p["seconds"] for p in probes],
             "calibration_per_step_seconds": per_step,
-            "steps_per_window": chunk}
+            "steps_per_window": chunk,
+            "probe": {"method": "median of timed probes after restore and discard",
+                      "discard_steps": PROBE_DISCARD_STEPS, "probe_steps": steps,
+                      "repeats": PROBE_REPEATS, "min_seconds": floor, "rounds": probes,
+                      "capped": chunk >= cap}}
 
 
 def window(case: str, leg: Dict[str, Any], frozen: Dict[str, Any], counter: Any,
@@ -1743,11 +1951,20 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
              res: Optional[int], repeats: int, target_seconds: float,
              step_cap: int, warm_steps: int,
              memory_budget: int,
-             monitors_mode: str = "detached") -> Dict[str, Any]:
-    labels = ("fused", "unfused", "array")
+             monitors_mode: str = "detached",
+             discard_windows: int = 1,
+             legs_mode: str = "all") -> Dict[str, Any]:
+    if legs_mode not in LEGS_MODES:
+        raise ValueError(f"legs_mode {legs_mode!r}: one of {sorted(LEGS_MODES)}")
+    labels = LEGS_MODES[legs_mode]
+    solo = legs_mode == "gpu-only"
     witness = as_witness(counter)
     row: Dict[str, Any] = {
         "case": case, "drive_table": table,
+        # WHAT THIS ROW CAN SAY. A ``gpu-only`` row lifts the fused leg alone: it times
+        # the route a user takes and proves what dispatched, and carries no ratio
+        # against the singles and no bit-identity verdict, which need the other legs.
+        "legs_mode": legs_mode, "legs_timed": list(labels),
         "arms_requested": spec["arms"], "pairs_expected": spec.get("pairs"),
         # THE ROUTE THE LEG WILL TAKE, from the same place the leg's environment takes
         # it (:func:`default_reached_by`), so the row cannot name one and run the other.
@@ -1761,15 +1978,6 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
         row["host_before"] = host_state()
         if spec.get(COLLAPSED_SINGLES_KEY):
             row["collapsed_single_launches_per_step"] = dict(spec[COLLAPSED_SINGLES_KEY])
-
-    needs = spec.get("needs_probe")
-    if needs and not os.environ.get(needs):
-        row["verdict"] = "SKIP-NOT-THIS-LEG"
-        row["why"] = (f"this case's expansion licence comes from the record {needs} "
-                      f"names and this leg exports no such path; the arms cannot be "
-                      f"admitted here, so there is nothing to time")
-        say(f"{case}: {needs} unset -> SKIP-NOT-THIS-LEG")
-        return row
 
     builder = module.CASES[case]
     say(f"{case}: lifting three legs")
@@ -1821,21 +2029,25 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
     row["grid_shape"] = legs["fused"]["grid_shape"]
     try:
         # RUNG 2, FIRST HALF. The legs must START from the same bytes or no later
-        # comparison is about the fused route at all.
-        states = {label: e2e.collect_state(leg["driver"])
-                  for label, leg in legs.items()}
-        fa = e2e.compare_state(states["fused"], states["array"])
-        ua = e2e.compare_state(states["unfused"], states["array"])
-        row["precondition"] = {"fused_vs_array": fa["identical"],
-                               "unfused_vs_array": ua["identical"],
-                               "arrays": fa["arrays"],
-                               "words": fa["words_compared"]}
-        if not (fa["identical"] and ua["identical"]):
-            row["verdict"] = "HARNESS-FAILURE"
-            row["why"] = "the legs lifted to different initial states"
-            return row
-        say(f"{case}: precondition OK — {fa['arrays']} arrays, "
-            f"{fa['words_compared']} words identical on all three legs")
+        # comparison is about the fused route at all. One leg has nothing to compare.
+        if solo:
+            row["precondition"] = {"measured": False,
+                                   "why": "a gpu-only row lifts one leg"}
+        else:
+            states = {label: e2e.collect_state(leg["driver"])
+                      for label, leg in legs.items()}
+            fa = e2e.compare_state(states["fused"], states["array"])
+            ua = e2e.compare_state(states["unfused"], states["array"])
+            row["precondition"] = {"fused_vs_array": fa["identical"],
+                                   "unfused_vs_array": ua["identical"],
+                                   "arrays": fa["arrays"],
+                                   "words": fa["words_compared"]}
+            if not (fa["identical"] and ua["identical"]):
+                row["verdict"] = "HARNESS-FAILURE"
+                row["why"] = "the legs lifted to different initial states"
+                return row
+            say(f"{case}: precondition OK — {fa['arrays']} arrays, "
+                f"{fa['words_compared']} words identical on all three legs")
 
         for label in labels:
             if label == "fused" and ONLY_ARMS:
@@ -1846,8 +2058,9 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
             else:
                 prime(case, legs[label], counter, warm_steps)
         row["plans"] = {label: leg["plan"] for label, leg in legs.items()}
-        row["substitution"] = witness.substitution(spec, legs["fused"],
-                                                   legs["unfused"], legs["array"])
+        row["substitution"] = (witness.solo_dispatch(spec, legs["fused"]) if solo else
+                               witness.substitution(spec, legs["fused"],
+                                                    legs["unfused"], legs["array"]))
         if not row["substitution"]["proved"]:
             say(f"{case}: SUBSTITUTION NOT PROVED "
                 f"{row['substitution']['checks']} — timing anyway, not reported")
@@ -1929,6 +2142,24 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
                     f"(~{1e3 * sizing[label]['calibration_per_step_seconds']:.3f} "
                     f"ms/step)")
 
+            # THE FIRST FULL-LENGTH WINDOW OF EACH LEG IS RUN AND DISCARDED. Measured on
+            # the 1.0 round (the GPU host, Triton route, 512,000 cells): window 0 of the
+            # fused leg read 0.715-0.734 ms/step against 0.683-0.699 in windows 1-5 on
+            # all three passes, enough to fail the 5 % within-leg gate by itself, and
+            # 51 % on the base commit. Every window after the first, whichever leg
+            # preceded it, read the steady rate, so the cost belongs to a leg's first
+            # long run, not to the order. The discarded windows are run exactly as the
+            # timed ones (same restore, same chunk, same AB order), recorded under
+            # ``windows_discarded``, and enter no statistic.
+            discarded: List[Dict[str, Any]] = []
+            for burn in range(max(0, int(discard_windows))):
+                for label in labels:
+                    entry = window(case, legs[label], frozen[label], counter,
+                                   chunks[label], -1 - burn)
+                    entry["discarded"] = True
+                    discarded.append(entry)
+            row["windows_discarded"] = discarded
+
             windows: List[Dict[str, Any]] = []
             for index in range(repeats):
                 # RUNG 5. AB/BA: a box drifting monotonically through the repeat
@@ -2003,30 +2234,38 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
         # the difference a fusion defect. So identity is measured deliberately:
         # all three legs restored to the one frozen state and advanced the SAME
         # number of steps, outside every timer.
-        identity_steps = max(CALIBRATION_STEPS, min(chunks.values()))
-        for label in labels:
-            thaw(legs[label]["driver"], frozen[label])
-            e2e._apply_env(legs[label])
-            legs[label]["driver"].run(num_steps=identity_steps)
-            sync_for(legs[label]["driver"])()
-        after = {label: e2e.collect_state(leg["driver"])
-                 for label, leg in legs.items()}
-        identity = e2e.compare_state(after["fused"], after["array"])
-        row["bit_identity"] = {
-            "fused_vs_array_identical": identity["identical"],
-            "arrays": identity["arrays"], "words": identity["words_compared"],
-            "arrays_differing": identity["arrays_differing"],
-            "differences": identity["differences"][:6],
-            "steps_compared": identity_steps,
-        }
+        if solo:
+            # NO IDENTITY PASS: there is no second leg to compare with. The floors read
+            # the fused leg where the last timed window left it.
+            row["bit_identity"] = {
+                "fused_vs_array_identical": None, "measured": False,
+                "why": "a gpu-only row lifts the fused leg alone; its bit identity is "
+                       "the three-leg row's that the ladder pairs with it"}
+        else:
+            identity_steps = max(CALIBRATION_STEPS, min(chunks.values()))
+            for label in labels:
+                thaw(legs[label]["driver"], frozen[label])
+                e2e._apply_env(legs[label])
+                legs[label]["driver"].run(num_steps=identity_steps)
+                sync_for(legs[label]["driver"])()
+            after = {label: e2e.collect_state(leg["driver"])
+                     for label, leg in legs.items()}
+            identity = e2e.compare_state(after["fused"], after["array"])
+            row["bit_identity"] = {
+                "fused_vs_array_identical": identity["identical"],
+                "arrays": identity["arrays"], "words": identity["words_compared"],
+                "arrays_differing": identity["arrays_differing"],
+                "differences": identity["differences"][:6],
+                "steps_compared": identity_steps,
+            }
         row["moved_words"] = {label: moved_words(leg["driver"], frozen[label])
                               for label, leg in legs.items()}
         row["non_finite"] = {label: non_finite(leg["driver"])
                              for label, leg in legs.items()}
 
-        row["floors"] = {
+        floors: Dict[str, Any] = {
             "substitution_proved": row["substitution"]["proved"],
-            "bit_identical": bool(identity["identical"]),
+            "bit_identical": None if solo else bool(identity["identical"]),
             "moved_words_positive": all(v > 0 for v in row["moved_words"].values()),
             "non_finite_zero": all(v == 0 for v in row["non_finite"].values()),
             # WHAT A COMPILE IS belongs to the device family: a kernel name first
@@ -2040,14 +2279,17 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
             # control fell through to the OTHER table reports a table comparison
             # under a fusion heading, with every other floor green -- which is
             # exactly what the first CUDA rows of this campaign did.
-            "singles_are_the_same_table": row["substitution"][
+            "singles_are_the_same_table": None if solo else row["substitution"][
                 "fused_and_singles_used_the_same_table"],
         }
+        # A GPU-ONLY ROW HAS NO SECOND LEG: the two comparative floors are absent from
+        # it, not passed, and its ``bit_identity`` says so.
+        row["floors"] = {k: v for k, v in floors.items() if v is not None or not solo}
         row["floors"].update(witness.extra_floors(legs, windows))
         # PER STEP, so a ratio is not an artefact of two legs having been given
         # different chunks.
         fused_step = per_leg["fused"]["median_seconds_per_step"]
-        row["ratios"] = {
+        row["ratios"] = None if solo else {
             "unfused_over_fused": (per_leg["unfused"]["median_seconds_per_step"]
                                    / fused_step),
             "array_over_fused": (per_leg["array"]["median_seconds_per_step"]
@@ -2061,8 +2303,9 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
         row["reportable"] = all(row["floors"].values())
         row["verdict"] = "TIMED" if row["reportable"] else "TIMED-NOT-REPORTABLE"
         say(f"{case}: {row['verdict']} — fused {1e3 * fused_step:.3f} ms/step, "
-            f"vs singles {row['ratios']['unfused_over_fused']:.3f}x, "
-            f"vs array {row['ratios']['array_over_fused']:.3f}x"
+            + ("gpu-only (no singles or array leg)" if solo else
+               f"vs singles {row['ratios']['unfused_over_fused']:.3f}x, "
+               f"vs array {row['ratios']['array_over_fused']:.3f}x")
             + ("" if row["reportable"] else
                f"  FLOORS FAILED: {[k for k, v in row['floors'].items() if not v]}"))
         return row
@@ -2155,46 +2398,45 @@ def measured_step_costs(path: str) -> Dict[str, Dict[str, float]]:
 def estimate(cases: Sequence[str], table_rows: Dict[str, Dict[str, Any]],
              repeats: int, target_seconds: float, warm_steps: int,
              measured: Optional[Dict[str, Dict[str, float]]] = None,
-             family: str = "metal", step_cap: int = 4000) -> Dict[str, Any]:
+             family: str = "metal", step_cap: int = DEFAULT_STEP_CAP,
+             discard_windows: int = 1, legs_mode: str = "all") -> Dict[str, Any]:
     """Wall seconds a campaign over ``cases`` should take, itemised per case.
 
-    Per case: three lifts, the warm pass, three calibration windows a leg, ``repeats``
-    timed windows a leg (each ``target_seconds`` unless the chunk floor or cap binds),
-    the identity pass, and a fixed overhead. A case whose expansion licence this
-    process does not carry is skipped by ``run_case`` in well under a second and is
-    priced at nothing, by name.
+    Per case and leg: a lift, the warm pass, the sizing probes (about twice the
+    longest probe, each after its discard), ``discard_windows`` + ``repeats`` windows
+    (each ``target_seconds`` unless the chunk floor or cap binds), the identity pass
+    (three-leg rows only), and a fixed overhead.
     """
     model = ESTIMATE_STEP_SECONDS[family]
+    labels = LEGS_MODES[legs_mode]
     per_case: Dict[str, float] = {}
     source: Dict[str, str] = {}
-    skipped: List[str] = []
     for case in cases:
-        needs = (table_rows.get(case) or {}).get("needs_probe")
-        if needs and not os.environ.get(needs):
-            skipped.append(case)
-            per_case[case] = 0.0
-            source[case] = "skipped"
-            continue
         cost = (measured or {}).get(case)
         source[case] = "measured" if cost else "model"
-        cost = cost or model
+        cost = {leg: (cost or model)[leg] for leg in labels}
         chunks = {leg: max(CALIBRATION_STEPS,
                            min(step_cap, int(round(target_seconds / cost[leg]))))
                   for leg in cost}
-        windows = sum(repeats * max(min(target_seconds, step_cap * cost[leg]),
-                                    CALIBRATION_STEPS * cost[leg]) for leg in cost)
-        stepping = sum((warm_steps + 3 * CALIBRATION_STEPS
-                        + max(CALIBRATION_STEPS, min(chunks.values()))) * cost[leg]
+        windows = sum((repeats + max(0, discard_windows))
+                      * max(min(target_seconds, step_cap * cost[leg]),
+                            CALIBRATION_STEPS * cost[leg]) for leg in cost)
+        probe = max(PROBE_MIN_SECONDS, PROBE_MIN_FRACTION * target_seconds)
+        identity = (0 if legs_mode == "gpu-only"
+                    else max(CALIBRATION_STEPS, min(chunks.values())))
+        stepping = sum((warm_steps + identity) * cost[leg]
+                       + (1 + PROBE_REPEATS) * probe
+                       + (2 + PROBE_REPEATS) * PROBE_DISCARD_STEPS * cost[leg]
                        for leg in cost)
-        per_case[case] = (windows + stepping + 3 * ESTIMATE_LIFT_SECONDS
+        per_case[case] = (windows + stepping + len(labels) * ESTIMATE_LIFT_SECONDS
                           + ESTIMATE_OVERHEAD_SECONDS)
     return {"cases": len(cases), "seconds": float(sum(per_case.values())),
             "per_case_seconds": per_case, "cost_source": source,
-            "skipped_without_probe": skipped, "repeats": repeats,
+            "repeats": repeats,
             "target_seconds": target_seconds, "model_step_seconds": dict(model)}
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     # WHICH TABLE'S DRIVE ROWS TO TIME, WHICH IS NOT WHICH TABLE SERVES. The first
     # host smoke run made the distinction concrete: it read the Triton DRIVE rows
@@ -2220,7 +2462,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--repeats", type=int, default=6,
                         help="AB/BA passes (must be even); one window per leg each")
     parser.add_argument("--target-seconds", type=float, default=2.0)
-    parser.add_argument("--step-cap", type=int, default=4000)
+    parser.add_argument("--step-cap", type=int, default=DEFAULT_STEP_CAP,
+                        help="upper bound on a window's steps; a guard against a probe "
+                             "that read nothing, not the bound a window is sized by")
+    parser.add_argument("--discard-windows", type=int, default=1, dest="discard_windows",
+                        help="full-length windows each leg runs, untimed for the "
+                             "statistics, before the timed AB/BA passes (recorded "
+                             "under windows_discarded)")
+    parser.add_argument("--legs", default="all", choices=sorted(LEGS_MODES),
+                        help="all (default): the fused leg, its certified singles and "
+                             "the array path, proved identical; gpu-only: the fused "
+                             "leg alone, one lift, no ratio and no identity verdict")
     parser.add_argument("--warm-steps", type=int, default=6)
     parser.add_argument("--res", type=int, default=None)
     parser.add_argument("--only-arm", action="append", default=[], dest="only_arm",
@@ -2269,7 +2521,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help="a route gate's cases.jsonl to price each case from "
                              "(its per-leg wall seconds and steps); the built-in "
                              "per-step model otherwise")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
 
     if args.repeats % 2:
         raise SystemExit(f"--repeats must be even for the AB/BA pass to balance; "
@@ -2306,17 +2562,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                           measured=(measured_step_costs(args.estimate_from)
                                     if args.estimate_from else None),
                           family="metal" if metal else "nvidia",
-                          step_cap=args.step_cap)
+                          step_cap=args.step_cap,
+                          discard_windows=args.discard_windows, legs_mode=args.legs)
         say(f"ESTIMATE drive_table={args.drive_table} cases={priced['cases']} "
             f"repeats={args.repeats} target_seconds={args.target_seconds}: "
             f"{priced['seconds'] / 60.0:.0f} min ({priced['seconds']:.0f} s)")
         for case in cases:
             say(f"ESTIMATE   {case}: {priced['per_case_seconds'][case]:.0f} s "
                 f"({priced['cost_source'][case]})")
-        if priced["skipped_without_probe"]:
-            say(f"ESTIMATE {len(priced['skipped_without_probe'])} of {len(cases)} cases "
-                f"carry no expansion licence in this environment and will be "
-                f"SKIP-NOT-THIS-LEG: {', '.join(priced['skipped_without_probe'])}")
         return 0
     # THE HOST MUST OWN THE TABLE IT TIMES, checked before a row is written (an
     # estimate, above, lifts nothing and is answered on any host). ``prefer_gpu=True``
@@ -2363,6 +2616,63 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         counter.uninstall()
 
 
+#: Beside the import record (``timing_rows.DATA_KEY`` and its neighbours): the ledgers
+#: each kernel table's dispatch path reads to admit an arm, recorded for every table
+#: whose modules the process imported, so a ledger change is seen by the rows it can
+#: move; the libraries whose versions a row records when its process loaded them; and
+#: the switches of its environment that change what runs.
+DATA_KEY = "data_sha256"
+LIBRARIES_KEY = "imported_libraries"
+ENVIRONMENT_KEY = "process_environment"
+TABLE_LEDGERS = {"triton_kernels": ("fingerprints.json",),
+                 "cuda_kernels": ("certification.json", "fingerprints.json"),
+                 "metal_kernels": ("fingerprints.json",)}
+RECORDED_LIBRARIES = ("numpy", "cupy", "triton", "torch", "scipy", "meep", "mpi4py")
+#: A value that is a path is recorded by its last component, which names the cache or
+#: the library directory without naming the machine.
+RECORDED_ENVIRONMENT = ("MEEP_GPU_", "CUDA_", "CUPY_", "TRITON_", "PYTORCH_", "OMP_",
+                        "KMP_")
+RECORDED_PATH_LISTS = ("LD_LIBRARY_PATH",)
+
+
+def admission_data(imported: Dict[str, str]) -> Dict[str, str]:
+    """sha256 of the ledgers of every kernel table ``imported`` holds a module of, keyed
+    repo-relative as the import record is."""
+    out: Dict[str, str] = {}
+    for directory, names in sorted(TABLE_LEDGERS.items()):
+        if not any(key.startswith(f"meep_gpu/{directory}/") for key in imported):
+            continue
+        for name in names:
+            relative = f"meep_gpu/{directory}/{name}"
+            try:
+                with open(os.path.join(gate_provenance.REPO_ROOT, relative), "rb") as handle:
+                    out[relative] = hashlib.sha256(handle.read()).hexdigest()
+            except OSError:
+                continue
+    return out
+
+
+def loaded_libraries() -> Dict[str, str]:
+    out = {"python": platform.python_version()}
+    for name in RECORDED_LIBRARIES:
+        module = sys.modules.get(name)
+        if module is not None:
+            out[name] = str(getattr(module, "__version__", "loaded, no __version__"))
+    return out
+
+
+def process_environment() -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for name, value in sorted(os.environ.items()):
+        if name in RECORDED_PATH_LISTS:
+            out[name] = [os.path.basename(part.rstrip(os.sep))
+                         for part in value.split(os.pathsep) if part]
+        elif name.startswith(RECORDED_ENVIRONMENT):
+            out[name] = (os.path.basename(value.rstrip(os.sep)) if os.sep in value
+                         else value)
+    return out
+
+
 def _campaign(args: Any, cases: Sequence[str], module: Any,
               rows_table: Dict[str, Dict[str, Any]], counter: Any,
               rows_path: str) -> int:
@@ -2383,7 +2693,9 @@ def _campaign(args: Any, cases: Sequence[str], module: Any,
                            args.gpu, counter, args.res, args.repeats,
                            args.target_seconds, args.step_cap, args.warm_steps,
                            args.memory_budget_bytes,
-                           monitors_mode=args.monitors)
+                           monitors_mode=args.monitors,
+                           discard_windows=args.discard_windows,
+                           legs_mode=args.legs)
         except Exception as error:  # noqa: BLE001
             # A CASE THAT DIES DOES NOT TAKE THE CAMPAIGN WITH IT. Progress reporting's other
             # half: every row lands as it is measured, so a failure eight cases in
@@ -2405,19 +2717,34 @@ def _campaign(args: Any, cases: Sequence[str], module: Any,
         # the report reads this where it is present.
         row["smoke"] = bool(args.smoke)
         row.update(counter.row_stamp())
+        # THE IMPORT RECORD, IN THE HARNESS: the sha256 of every repository module this
+        # process holds when the row is written, keyed repo-relative by the rule every
+        # gate artifact uses (``gate_provenance.IMPORTED_KEY``), so ``artifact_drift``
+        # and ``timing_rows.py`` read a timing row as they read a gate. It replaces the
+        # external exit hook the 1.0 round put on the rows' path. A campaign of several
+        # cases holds every module an earlier case loaded too: a superset, which can
+        # only re-time more, never less. Beside it, what the hook and its joiner kept
+        # with it: the ledgers the tables read, the libraries loaded, the switches set.
+        row[gate_provenance.IMPORTED_KEY] = gate_provenance.provenance()
+        row[DATA_KEY] = admission_data(row[gate_provenance.IMPORTED_KEY])
+        row[LIBRARIES_KEY] = loaded_libraries()
+        row[ENVIRONMENT_KEY] = process_environment()
         append_jsonl(rows_path, row)
         rows.append(row)
         say(f"=== case {index}/{len(cases)} done in {row['elapsed_s']} s "
             f"-> {row['verdict']} ===")
 
+    # A GPU-ONLY ROW CARRIES NO RATIO (``ratios`` None) and enters no fusion median;
+    # it is counted among the reportable rows, which is what its floors say it is.
     reportable = [r for r in rows if r.get("reportable")]
+    compared = [r for r in reportable if r.get("ratios")]
     # THE MEDIANS ARE OVER WITNESSED ROWS ONLY. ``launch_witness_available`` False
     # means the launch clauses were never evaluated -- the slot map proved the plans
     # differ and no counter saw a launch -- so the row keeps its own ratio, which is a
     # real measurement of seconds, and enters no median, which would otherwise be a
     # median over a substitution nobody witnessed. Both lists are written out so the
     # denominator is in the artifact rather than in this file.
-    witnessed = [r for r in reportable if launch_witnessed(r)]
+    witnessed = [r for r in compared if launch_witnessed(r)]
     summary = {
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "drive_table": args.drive_table, "gpu": args.gpu,
@@ -2428,12 +2755,13 @@ def _campaign(args: Any, cases: Sequence[str], module: Any,
         "verdicts": {v: sum(1 for r in rows if r.get("verdict") == v)
                      for v in sorted({r.get("verdict") for r in rows})},
         "fused_vs_singles": {
-            r["case"]: r["ratios"]["unfused_over_fused"] for r in reportable},
+            r["case"]: r["ratios"]["unfused_over_fused"] for r in compared},
         "fused_vs_array": {
-            r["case"]: r["ratios"]["array_over_fused"] for r in reportable},
+            r["case"]: r["ratios"]["array_over_fused"] for r in compared},
         "medians_over": [r["case"] for r in witnessed],
-        "reportable_without_a_launch_witness": [r["case"] for r in reportable
+        "reportable_without_a_launch_witness": [r["case"] for r in compared
                                                 if not launch_witnessed(r)],
+        "reportable_gpu_only": [r["case"] for r in reportable if not r.get("ratios")],
         "median_fused_vs_singles": (
             statistics.median([r["ratios"]["unfused_over_fused"] for r in witnessed])
             if witnessed else None),

@@ -35,6 +35,22 @@ MOVED cannot be additive -- it leaves the other architectures' records
 certifying bytes that no longer ship -- so it refuses and names them, and
 ``--supersede`` is how a round says those certifications are being dropped.
 
+RETIREMENT BY NAME. An entry whose gate was DELETED cannot be re-gated, so a campaign
+can never rebind it, and without a rule it would stay in the ledger as a stale weld
+that every contract test reads, reported UNCOVERED with the wrong remedy ("needs a
+device re-run"). :data:`RETIRED_WELDS` names each such key with its deleted gate, and
+the campaign pass drops the entry: reported in report mode, removed from the ledger
+under ``--write``. Nothing else retires an entry, and a retired key never returns.
+
+A PIN THE GATE NO LONGER IMPORTS IS RETIRED BY ROW. :data:`RETIRED_UNIMPORTED_PINS`, generated
+by ``import_closure.py unimported-pins triton`` and reviewed, names each ``(weld, path)``
+whose file is a module the package root used to load eagerly and lies outside the weld's
+gate's run closure. Inside a rebind only, the pin leaves the curated set (both digest maps)
+and is reported as ``RETIRED-PIN``; the run is refused if a row's file is back in its gate's
+run closure, and the entry is skipped if its artifact records the file or disagrees with the
+checkout on any file it recorded. A weld's own test file stays pinned and is still filled
+from the checkout as below.
+
     python rebind_triton_welds.py --campaign results/triton_regate_2026-08-27_routing
     python rebind_triton_welds.py --campaign results/triton_regate_2026-08-27_routing --write
     python rebind_triton_welds.py --campaign results/<fresh> --supersede 8.6 --write
@@ -61,7 +77,11 @@ def _find_api_root(start: Path) -> Path:
 _API = _find_api_root(_HERE)
 if str(_API) not in sys.path:
     sys.path.insert(0, str(_API))
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
 
+import artifact_drift                                    # noqa: E402
+import neutral_labels                                    # noqa: E402
 from meep_gpu import fastpath                            # noqa: E402
 from meep_gpu.code_identity import code_digest_of_path  # noqa: E402
 from meep_gpu.device_identity import device_digests      # noqa: E402
@@ -135,7 +155,6 @@ CAMPAIGN_DIRS = {
     "triton_nonlinear_device_gate": "nonlinear",
     "triton_offdiag_device_gate": "offdiag",
     "triton_symmetry_device_gate": "symmetry",
-    "triton_unified_expansion_device_gate": "unified_expansion",
 
     # TRANCHE 2+, 2026-08-28. The families the 2026-08-27 campaign did not run and
     # this tool reported as UNCOVERED. Their artifacts live in the tranche2/5/6
@@ -243,6 +262,125 @@ CAMPAIGN_DIRS = {
     "triton_special_kz_device_gate": "special_kz",
 }
 
+#: Ledger key -> (the deleted gate that measured it, why it is retired).
+#:
+#: A RETIRED KEY IS NOT AN UNCOVERED ONE. ``UNCOVERED`` means "no row here yet -- re-run
+#: the gate", which is the right remedy for a family that still ships and the wrong one
+#: for a gate that left the tree: no round can re-run it, so the entry would stay as a
+#: stale weld forever. A key listed here is dropped from the ledger by the campaign pass
+#: (:func:`retire_welds`), reported by name in report mode and removed under
+#: ``--write``. The table is typed for the same reason :data:`CAMPAIGN_DIRS` is, and the
+#: two are disjoint: a key cannot be both rebound and retired.
+RETIRED_WELDS = {
+    # The expansion licence, its arms and its gate were deleted from the package and
+    # the harness (owner ruling 2026-10-10; the CHANGELOG's expansion-licence section),
+    # and nothing brings them back. No arm cites this weld (retire_welds checks it).
+    "triton_unified_expansion_device_gate": (
+        "parity/meep_gpu/gate_triton_unified_expansion.py",
+        "the expansion licence and its arms are deleted, and its gate file with them; "
+        "the entry cannot be re-gated, so it is retired rather than rebound"),
+}
+assert not set(RETIRED_WELDS) & set(CAMPAIGN_DIRS), (
+    sorted(set(RETIRED_WELDS) & set(CAMPAIGN_DIRS)))
+
+
+def retire_welds(ledger: dict, selected=None) -> list:
+    """Drop every :data:`RETIRED_WELDS` entry ``ledger`` still carries, IN PLACE.
+
+    Returns ``(key, why)`` per entry dropped, in key order. With ``selected`` (the
+    ``--only`` set) only the keys it names are dropped, because ``--only`` promises to
+    leave every other entry exactly as it is. A key already absent is not an error:
+    the retirement is idempotent, so a bind that runs this tool twice drops it once.
+
+    IT REFUSES, editing nothing, in the two cases where dropping the entry would be
+    wrong rather than tidy: the gate it names is back in the checkout (then the entry
+    is a weld to re-gate, not to retire), or an arm of the Triton table still cites it
+    (then dropping it would change what dispatch admits, which is a ruling, not a
+    rebind).
+    """
+    cited = {key: arm for arm, (_family, key) in fastpath.ARM_CERTIFICATION.items()}
+    dropped = []
+    for key in sorted(RETIRED_WELDS):
+        if key not in ledger or (selected is not None and key not in selected):
+            continue
+        gate, why = RETIRED_WELDS[key]
+        if (_API / gate).exists():
+            raise SystemExit(
+                f"RETIRED_WELDS names {key}, but its gate {gate} is in the checkout; a "
+                f"weld whose gate exists is re-gated and rebound, never retired")
+        if key in cited:
+            raise SystemExit(
+                f"RETIRED_WELDS names {key}, but the Triton arm {cited[key]!r} still "
+                f"cites it in fastpath.ARM_CERTIFICATION; retire the citation first")
+        dropped.append((key, f"{why} ({gate} is not in the checkout)"))
+    for key, _why in dropped:
+        del ledger[key]
+    return dropped
+
+
+#: ``(weld key, repository-relative pinned path) -> the gate script(s)`` for a pin the
+#: weld's gate no longer imports.
+#:
+#: WHY THE ROWS EXIST. ``seed_triton_welds.curated_for`` pins a ``SHARED`` package file
+#: "when the gate imported" it, and these three welds were seeded while the package root
+#: imported the driver eagerly, so every record held ``driver.py``. Their gates build no
+#: driver (the probe for the cylindrical pair, the stencil-weld gate for both stencil
+#: welds); since the root binds its names on first use (entry 128, owner ruling R17)
+#: ``driver.py`` lies outside their run closures, so a driver-only edit would still void
+#: these welds by curated pin. The tree fallback below would fill the pin from the
+#: checkout, which is what keeps the coupling; a row removes it. The folded off-diagonal
+#: ADE chain weld was a fourth row until the run closure followed the package root's lazy
+#: names (``import_closure.Resolver.lazy_names``): that gate's optional corpus-lift leg
+#: calls ``meep_gpu.lift_simulation``, so ``driver.py`` is inside its closure and the rule
+#: no longer licenses the row. The weld was rebound without the pin in the 1.0 round, so
+#: there is nothing left for the row to retire.
+#:
+#: GENERATED, NOT TYPED: ``import_closure.py unimported-pins triton`` prints these rows
+#: from the checkout, and ``test_rebind_unimported_pins.py`` holds this literal to it both
+#: ways. A row needs BOTH halves of the rule: the file is a module the eager root loaded
+#: (``import_closure.eager_root_modules``), and it lies outside the run closure of the
+#: gate the weld pins. A weld's own test file, or a kernel module its gate loads by
+#: computed name (the stencil-weld gate's two families), is outside the closure too and
+#: is a deliberate pin: it stays, and the tree fallback still fills it.
+#:
+#: HOW A ROW ACTS, the same as ``rebind_metal_welds.RETIRED_UNIMPORTED_PINS``: only inside
+#: a rebind, reported as ``RETIRED-PIN (not imported by <gate>)``, every other pin compared
+#: as strictly as before; the run is refused if a row's file is back in its gate's run
+#: closure, and an entry is skipped if its artifact (or its second policy's artifact)
+#: records a retired file, or if the run disagrees with the checkout on any file it
+#: recorded.
+RETIRED_UNIMPORTED_PINS = {
+    ("triton_cylindrical_fused_magnetic_pair_device_gate", "meep_gpu/driver.py"):
+        ("parity/meep_gpu/probe_triton_cylindrical_fused_magnetic_pair.py",),
+    ("triton_folded_offdiag_fused_electric_pair_device_gate", "meep_gpu/driver.py"):
+        ("parity/meep_gpu/gate_triton_offdiag_stencil_welds.py",),
+    ("triton_offdiag_fused_electric_pair_device_gate", "meep_gpu/driver.py"):
+        ("parity/meep_gpu/gate_triton_offdiag_stencil_welds.py",),
+}
+assert all(isinstance(key, tuple) and len(key) == 2 and all(key)
+           and not key[1].startswith("/") and gates and isinstance(gates, tuple)
+           for key, gates in RETIRED_UNIMPORTED_PINS.items()), RETIRED_UNIMPORTED_PINS
+assert not {key for key, _name in RETIRED_UNIMPORTED_PINS} & set(RETIRED_WELDS)
+
+
+def unimported_pins_of(weld: str) -> dict:
+    """``path -> gate scripts`` over the :data:`RETIRED_UNIMPORTED_PINS` rows of one weld."""
+    return {name: gates for (key, name), gates in RETIRED_UNIMPORTED_PINS.items()
+            if key == weld}
+
+
+def unimported_rows_back(ledger: dict) -> list:
+    """``(key, path, why)`` for each :data:`RETIRED_UNIMPORTED_PINS` row whose weld is in
+    ``ledger`` (pinning the file still, or rebound without it already) and that the rule no
+    longer licenses on this checkout. Empty is the only state in which the tool may run: a
+    row cannot rot silently once its pin is gone."""
+    import import_closure  # noqa: PLC0415 - stdlib only, read when a row can act
+
+    live = {(key, name): gates for (key, name), gates in RETIRED_UNIMPORTED_PINS.items()
+            if isinstance(ledger.get(key), dict)}
+    return import_closure.unimported_pins_back(live, _API) if live else []
+
+
 #: The ENTRY-level fields this tool owns -- the digests that say which BYTES the
 #: weld certifies, plus the status that admits it. Everything else outside
 #: ``fastpath.RUNS`` survives untouched, and the survival proof below shows it did.
@@ -263,7 +401,8 @@ ENTRY_REFRESHED = ("source_sha256", "code_sha256", "device_sha256", "status")
 #: reported.
 SLOT_FIELDS = ("artifact_sha256", "records", "recorded_utc", "verdict_read_from",
                "host", "subnormal_policy", "cupy_version", "triton_version",
-               "_digests_taken_from_the_checkout", "step_budget")
+               "_digests_taken_from_the_checkout", "step_budget",
+               fastpath.CERTIFIED_POLICIES)
 
 #: The one field carried from the record being REPLACED, and only within the same
 #: capability. 5 of the 55 PASS entries carry a ``step_budget``
@@ -475,7 +614,9 @@ def _host_line(identity: dict) -> str | None:
     existing weld's host string carries, and each is load-bearing rather than
     decorative:
 
-    * the machine, so a later reader can go back to it;
+    * the machine, written as the neutral label ``the GPU host``
+      (:mod:`neutral_labels`): the run must stamp a hostname, and the artifact under
+      ``results/``, which never ships, keeps the raw stamp a later reader goes back to;
     * the device AND its compute capability -- ``test_triton_weld_contract.py``
       binds both to the record's ``validated_triton_versions`` and to the admitted
       capabilities, because Triton generates PTX for an ARCHITECTURE and a weld cut
@@ -516,8 +657,21 @@ def _host_line(identity: dict) -> str | None:
             return None
     gpu = (identity.get("cuda_visible_devices")
            or (identity.get("env") or {}).get("CUDA_VISIBLE_DEVICES"))
-    return (f"{host}: {device}, cc {capability}; CuPy {cupy}; Triton {triton}"
-            + (f" (GPU {gpu})" if gpu else ""))
+    # THE MACHINE IS REQUIRED AND NOT WRITTEN. ``host`` above is the run's own stamp,
+    # and a run without one composes no line; the line names it by the neutral label,
+    # because a ledger ships and its machine stamp could not be scrubbed at export.
+    return neutral_labels.host_line(
+        f"{device}, cc {capability}; CuPy {cupy}; Triton {triton}"
+        + (f" (GPU {gpu})" if gpu else ""))
+
+
+def campaign_host_note(manifest: dict) -> str:
+    """The machine a fleet campaign's manifest names, for a weld's ``records`` line:
+    its NEUTRAL LABEL and the GPU index (``the GPU host GPU 1``), ``?`` when the
+    manifest names none. The manifest's raw stamp stays in ``results/``."""
+    gpu = manifest.get("gpu")
+    return ((neutral_labels.host_label(manifest.get("host")) or "?")
+            + (f" GPU {gpu}" if gpu is not None else ""))
 
 
 def recorded_cupy_versions(ledger: dict) -> tuple[str, ...]:
@@ -605,6 +759,74 @@ def _verdict(fresh: dict) -> tuple[dict, str]:
     return (fresh.get("release") or {}), "release"
 
 
+def attained_policy(fresh: dict, entry: dict | None = None) -> str | None:
+    """``keep`` or ``flush``: the policy this run ATTAINED, or ``None``.
+
+    Read through ``seed_triton_welds.policy_line``, the reader every Triton record's
+    ``subnormal_policy`` line is written by, whose line begins with the resolved
+    policy; a declared mixed-policy exception or an unreadable stamp answers ``None``.
+    """
+    from seed_triton_welds import PolicyStampConflict, policy_line  # noqa: PLC0415
+    try:
+        line = policy_line(fresh, entry)
+    except PolicyStampConflict:
+        return None
+    head = line.split(" ", 1)[0] if isinstance(line, str) else None
+    return head if head in ("keep", "flush") else None
+
+
+def second_policy_evidence(key: str, entry: dict, roots: list, rel_by_root: dict,
+                           capability: str, imported: dict, curated: list,
+                           policy: str, retired: tuple = ()) -> tuple[dict | None, str]:
+    """Evidence that ``key``'s gate also RELEASED under ``policy`` on these bytes.
+
+    The run record keeps ONE run per capability; a second policy's run of the same
+    gate on the same bytes is evidence about that run's licence, not a second record,
+    so it is written into ``fastpath.CERTIFIED_POLICIES`` beside the first. Refused,
+    with the reason, unless the second artifact is released, attained ``policy``, ran
+    on the same capability and recorded the same digest for every pinned file both
+    runs recorded, and unless it records none of ``retired`` (the pins this rebind drops
+    as not imported by the gate). A refusal leaves the key bound under its first policy
+    only.
+    """
+    directory = None
+    for root in roots:
+        candidate = root / CAMPAIGN_DIRS[key]
+        if candidate.is_dir() and any(candidate.glob("*.json")):
+            directory, chosen = candidate, root
+            break
+    if directory is None:
+        return None, f"no {policy} campaign holds {CAMPAIGN_DIRS[key]}/"
+    artifact = _artifact_for(directory)
+    if artifact is None:
+        return None, f"{CAMPAIGN_DIRS[key]}/ in the {policy} campaign holds no artifact"
+    fresh = json.loads(artifact.read_text(encoding="utf-8"))
+    verdict, source_field = _verdict(fresh)
+    if verdict.get("released") is not True:
+        return None, (f"the {policy} artifact is not released ({source_field}): "
+                      f"{verdict.get('reasons') or 'no reason given'}")
+    attained = attained_policy(fresh, entry)
+    if attained != policy:
+        return None, f"the {policy} campaign's artifact attained {attained!r}"
+    second_capability, identity = run_capability(fresh, [directory, chosen])
+    if second_capability != capability:
+        return None, (f"the {policy} artifact ran on {second_capability!r}, the "
+                      f"bound run on {capability!r}")
+    second = fresh.get("imported_source_sha256") or fresh.get("source_sha256") or {}
+    again = sorted(name for name in retired if name in second)
+    if again:
+        return None, (f"the {policy} artifact records {again}, which "
+                      f"RETIRED_UNIMPORTED_PINS retires as not imported by the gate")
+    moved = sorted(name for name in curated
+                   if name in second and name in imported and second[name] != imported[name])
+    if moved:
+        return None, (f"the {policy} artifact ran other bytes for {moved[:3]}; the "
+                      f"two policies' runs must describe one tree")
+    return ({"artifact_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+             "verdict_read_from": (f"{rel_by_root[chosen]}/{CAMPAIGN_DIRS[key]}/"
+                                   f"{artifact.name}:{source_field}.released")}, "")
+
+
 #: The one ledger entry bound by :func:`bind_bit_identity` — the sibling-pin
 #: shape (``adapter``/``adapter_sha256``, ``probe``/``probe_sha256``) that the
 #: campaign loop cannot reach: the entry carries no ``status: PASS``, no
@@ -635,7 +857,8 @@ BIT_IDENTITY_EXPERIMENTS = frozenset({
 
 
 def bind_bit_identity(artifact_argument: str, write: bool,
-                      supersede: tuple[str, ...] = ()) -> int:
+                      supersede: tuple[str, ...] = (),
+                      flush_argument: str | None = None) -> int:
     """Refresh ``bit_identity_gate``'s pins from a RELEASED re-run, per capability.
 
     THE BINDER THE 2026-08-30 CONTRACT ROUND SAID WAS MISSING
@@ -824,6 +1047,49 @@ def bind_bit_identity(artifact_argument: str, write: bool,
     # were unchanged is a statement about one tree, so an edit to the pinned files
     # drops it rather than carrying it onto a record about different bytes.
     run.update(carried_run_facts(entry, capability, ("_this_recut",)))
+    # THE POLICIES THAT RELEASED (``fastpath.CERTIFIED_POLICIES``): this run's, and a
+    # second policy's run of the same identity legs on the same bytes when one is
+    # given. Without it dispatch admits only the install default for the arms this
+    # entry certifies.
+    first = attained_policy(fresh, entry)
+    if first is not None:
+        run[fastpath.CERTIFIED_POLICIES] = {first: {
+            "artifact_sha256": run["artifact_sha256"],
+            "verdict_read_from": f"{relative}:{source_field}.released"}}
+    if flush_argument is not None:
+        other = Path(flush_argument)
+        if not other.is_absolute():
+            other = (_HERE / other).resolve()
+        if other.is_dir():
+            other = _artifact_for(other) or other
+        if not other.is_file() or _API not in other.parents:
+            raise SystemExit(f"--bit-identity-flush: no in-tree artifact at {other}")
+        second = json.loads(other.read_text(encoding="utf-8"))
+        second_verdict, second_field = _verdict(second)
+        problems = []
+        if second_verdict.get("released") is not True:
+            problems.append(f"not released ({second_field})")
+        if attained_policy(second, entry) != "flush":
+            problems.append(f"attained {attained_policy(second, entry)!r}, not 'flush'")
+        if sorted(BIT_IDENTITY_EXPERIMENTS - set(second.get("experiments") or ())):
+            problems.append("did not run every identity family")
+        second_capability, _ = run_capability(second, [other.parent])
+        if second_capability != capability:
+            problems.append(f"ran on {second_capability!r}, not {capability!r}")
+        second_imports = second.get("imported_source_sha256") or {}
+        moved = sorted(name for name in package
+                       if second_imports.get(name) != imported[name])
+        if moved:
+            problems.append(f"ran other bytes for {moved[:3]}")
+        if problems:
+            raise SystemExit(f"--bit-identity-flush {other.name}: " + "; ".join(problems))
+        if first == "flush":
+            raise SystemExit("the bound artifact already attained flush; the second "
+                             "artifact must be the other policy's run")
+        run.setdefault(fastpath.CERTIFIED_POLICIES, {})["flush"] = {
+            "artifact_sha256": hashlib.sha256(other.read_bytes()).hexdigest(),
+            "verdict_read_from": (f"{other.relative_to(_API).as_posix()}:"
+                                  f"{second_field}.released")}
     # ``device_policy`` is NOT carried. It read "one device
     # (CUDA_VISIBLE_DEVICES=6), every leg serial": the first half is the GPU mask,
     # which the host line above now names from the run itself, and the second is a
@@ -915,15 +1181,28 @@ def main(argv=None) -> int:
                              "it is understood that the architecture loses its "
                              "certification until it is re-run. A rebind on "
                              "UNCHANGED bytes needs none of this and is additive.")
+    parser.add_argument("--flush-campaign", action="append", default=None,
+                        help="a campaign directory holding the SAME gates run under "
+                             "the flush policy; repeat to search several in order. "
+                             "A key whose flush artifact released on the same bytes "
+                             "and capability gains 'flush' in its run's "
+                             "certified_policies; otherwise it is bound under its "
+                             "--campaign policy only, and the report says why")
+    parser.add_argument("--bit-identity-flush", default=None, metavar="ARTIFACT",
+                        help="with --bind-bit-identity: the identity legs re-run "
+                             "under the flush policy on the same bytes")
     parser.add_argument("--write", action="store_true", help="apply (default: report)")
     args = parser.parse_args(argv)
     supersede = tuple(s.strip() for s in args.supersede.split(",") if s.strip())
 
     if args.bind_bit_identity is not None:
-        if args.campaign:
+        if args.campaign or args.flush_campaign:
             raise SystemExit("--bind-bit-identity and --campaign are separate "
                              "modes; run them separately")
-        return bind_bit_identity(args.bind_bit_identity, args.write, supersede)
+        return bind_bit_identity(args.bind_bit_identity, args.write, supersede,
+                                 flush_argument=args.bit_identity_flush)
+    if args.bit_identity_flush is not None:
+        raise SystemExit("--bit-identity-flush belongs to --bind-bit-identity")
     if not args.campaign:
         raise SystemExit("one of --campaign or --bind-bit-identity is required")
 
@@ -970,16 +1249,24 @@ def main(argv=None) -> int:
     # have found the wrong run rather than no run. Both lines are cleared by
     # re-running this tool against the trees the artifacts are in; they are NOT
     # cleared by editing the strings.
-    rel_by_root = {root: root.relative_to(_API).as_posix() for root in campaigns}
+    flush_roots = []
+    for raw in args.flush_campaign or ():
+        root = Path(raw)
+        if not root.is_absolute():
+            root = (_HERE / root).resolve()
+        if not root.is_dir() or _API not in root.parents:
+            raise SystemExit(f"no in-tree flush campaign directory: {root}")
+        flush_roots.append(root)
+    rel_by_root = {root: root.relative_to(_API).as_posix()
+                   for root in campaigns + flush_roots}
+    flush_notes: list = []
     host_by_root = {}
     for root in campaigns:
         host_by_root[root] = ""
         manifest = root / "campaign.json"
         if manifest.is_file():
-            loaded = json.loads(manifest.read_text(encoding="utf-8"))
-            gpu = loaded.get("gpu")
-            host_by_root[root] = (f"{loaded.get('host', '?')}"
-                                  + (f" GPU {gpu}" if gpu is not None else ""))
+            host_by_root[root] = campaign_host_note(
+                json.loads(manifest.read_text(encoding="utf-8")))
 
     ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
     # THE TYPED DECLARATION IS GONE AND MAY NOT COME BACK. The capabilities this
@@ -1002,16 +1289,36 @@ def main(argv=None) -> int:
         unknown = selected - set(ledger)
         if unknown:
             raise SystemExit(f"--only names {sorted(unknown)}, absent from the ledger")
+    # THE RETIRED KEYS GO FIRST, so the pass below never meets them: a retired key
+    # would otherwise read UNCOVERED, with the remedy of a gate that no longer exists.
+    retirements = retire_welds(ledger, selected)
+    # A ROW THE RULE NO LONGER LICENSES refuses the whole run, before any entry is read:
+    # a file back in its gate's run closure is a pin to keep, so the table is wrong until
+    # someone reviews it.
+    stale_rows = unimported_rows_back(ledger)
+    if stale_rows:
+        raise SystemExit(
+            "RETIRED_UNIMPORTED_PINS no longer holds on this checkout: "
+            + "; ".join(f"{key}: {name} ({why})" for key, name, why in stale_rows)
+            + ". Regenerate it with import_closure.py unimported-pins triton and review it. "
+              "Nothing written")
+    pin_retirements = []   # (key, path, gates) per pin a rebind dropped
     for key in sorted(ledger):
         entry = ledger[key]
         if not isinstance(entry, dict) or entry.get("status") != "PASS":
             continue
         if selected is not None and key not in selected:
             continue
-        curated = list(entry.get("source_sha256") or {})
-        if not curated:
+        pinned = list(entry.get("source_sha256") or {})
+        if not pinned:
             skipped.append((key, "PASS but pins no source_sha256"))
             continue
+        # A PIN THE GATE NO LONGER IMPORTS leaves the curated set by row, and only by
+        # row (RETIRED_UNIMPORTED_PINS); every other pin goes through the comparison and
+        # the tree fallback below exactly as before.
+        unimported = unimported_pins_of(key)
+        dropping = [name for name in pinned if name in unimported]
+        curated = [name for name in pinned if name not in unimported]
         # The entry must weld SHIPPED package bytes. A weld over harness scripts
         # alone certifies nothing a user runs.
         if not any(name.startswith("meep_gpu/") for name in curated):
@@ -1091,6 +1398,40 @@ def main(argv=None) -> int:
         imported = fresh.get("imported_source_sha256") or {}
         if not imported:
             imported = fresh.get("source_sha256") or {}
+        # A PIN RETIRED AS NOT IMPORTED MAY NOT BE IN THE RUN'S RECORD (whether the entry
+        # still pins it or an earlier bind dropped it), and a run that drops one must be
+        # this checkout's bytes: the closure that licenses the drop was read off the
+        # checkout's gate, so it speaks for the run only where the run executed the same
+        # files. Either refusal leaves the entry as it stands.
+        imported_again = sorted(name for name in unimported if name in imported)
+        if imported_again:
+            skipped.append((key, f"{CAMPAIGN_DIRS[key]}/{artifact.name} records "
+                                 f"{imported_again}, which RETIRED_UNIMPORTED_PINS "
+                                 f"retires as not imported by "
+                                 f"{sorted({g for n in imported_again for g in unimported[n]})}: "
+                                 f"the gate imports them again; review the table. The "
+                                 f"entry is left as it stands"))
+            continue
+        if dropping:
+            disagreeing = [name for name, digest in imported.items()
+                           if (_API / name).is_file()
+                           and hashlib.sha256((_API / name).read_bytes()).hexdigest() != digest]
+            if disagreeing:
+                skipped.append((key, f"retiring {dropping} needs the run to be this "
+                                     f"checkout's bytes, and {CAMPAIGN_DIRS[key]}/"
+                                     f"{artifact.name} disagrees with the checkout on "
+                                     f"{disagreeing[:3]}"
+                                     + (f" and {len(disagreeing) - 3} more"
+                                        if len(disagreeing) > 3 else "")))
+                continue
+        # THE RUN MUST DESCRIBE THE RELEASE TREE (a chunked round certifies chunks on
+        # earlier tips): one file its record names at other bytes, or gone, and the
+        # artifact describes a tree that does not ship (artifact_drift.py).
+        moved = artifact_drift.artifact_moved(fresh, _API)
+        if moved:
+            skipped.append((key, artifact_drift.refusal(
+                f"{CAMPAIGN_DIRS[key]}/{artifact.name}", moved, _API)))
+            continue
         unknown = [name for name in curated if name not in imported]
 
         # A WELD MAY PIN A FILE THE GATE NEVER IMPORTS -- its own test file is the
@@ -1256,6 +1597,24 @@ def main(argv=None) -> int:
         # previous record is not live on these bytes it is dropped, and ``fastpath``
         # names the absence rather than quoting a figure nothing measured here.
         run.update(carried_run_facts(entry, capability, CARRIED_WITHIN_CAPABILITY))
+        # THE POLICIES THAT RELEASED, the field dispatch reads to admit a
+        # caller-installed policy other than the install default
+        # (``fastpath.policy_evidence_reasons``): this run's own, plus the flush
+        # campaign's run of the same gate on the same bytes when one is given.
+        first = attained_policy(fresh, entry)
+        if first is not None:
+            run[fastpath.CERTIFIED_POLICIES] = {first: {
+                "artifact_sha256": run["artifact_sha256"],
+                "verdict_read_from": f"{campaign_rel}/{CAMPAIGN_DIRS[key]}/"
+                                     f"{artifact.name}:{source_field}.released"}}
+        if flush_roots and first != "flush":
+            evidence, why = second_policy_evidence(
+                key, entry, flush_roots, rel_by_root, capability, imported, curated,
+                "flush", tuple(dropping))
+            if evidence is None:
+                flush_notes.append((key, why))
+            else:
+                run.setdefault(fastpath.CERTIFIED_POLICIES, {})["flush"] = evidence
         if taken_from_tree.get(key):
             run["_digests_taken_from_the_checkout"] = (
                 f"{sorted(taken_from_tree[key])} are pinned by this weld but are not in "
@@ -1283,7 +1642,10 @@ def main(argv=None) -> int:
         old = before[key]
         assert set(entry) - set(old) == set(), (key, sorted(set(entry) - set(old)))
         assert set(old) - set(entry) == set(), (key, sorted(set(old) - set(entry)))
-        assert set(entry["source_sha256"]) == set(old["source_sha256"]), key
+        # The pin set moves only by the rows of RETIRED_UNIMPORTED_PINS, in both maps.
+        for field in ("source_sha256", "code_sha256"):
+            assert set(entry[field]) == set(old["source_sha256"]) - set(dropping), (
+                key, field)
         for field in old:
             if field in ENTRY_REFRESHED or field == fastpath.RUNS:
                 continue
@@ -1297,6 +1659,7 @@ def main(argv=None) -> int:
             assert json.dumps(entry[fastpath.RUNS][name],
                               sort_keys=True) == json.dumps(
                 record, sort_keys=True), (key, "other capability moved", name)
+        pin_retirements.extend((key, name, unimported[name]) for name in dropping)
         rebound.append((key, rel_by_root[chosen_root], capability, staled))
 
     # THE REPORT NAMES THE TREE, not just the family directory. With several
@@ -1313,10 +1676,27 @@ def main(argv=None) -> int:
     for key in uncovered:
         print(f"  UNCOVERED {key}: no row in CAMPAIGN_DIRS -- needs a device re-run, "
               "not a guessed directory", flush=True)
+    for key, why in flush_notes:
+        print(f"  NO FLUSH  {key}: bound under its --campaign policy only ({why})",
+              flush=True)
+    for key, name, gates in pin_retirements:
+        print(f"  RETIRED-PIN  {key}: {name} (not imported by {', '.join(gates)})",
+              flush=True)
+    for key, why in retirements:
+        print(f"  RETIRED   {key}: {why}", flush=True)
     print(f"\n  {len(rebound)} rebound, {len(skipped)} skipped, "
-          f"{len(uncovered)} PASS entries the table does not cover", flush=True)
+          f"{len(uncovered)} PASS entries the table does not cover"
+          + (f", {len(flush_notes)} without flush evidence" if flush_roots else "")
+          + f", {len(retirements)} retired, {len(pin_retirements)} pin(s) retired",
+          flush=True)
 
-    if args.write and rebound:
+    # THE KEY SET MOVES ONLY BY THE RETIREMENT: no entry is added, and the entries
+    # removed are exactly the ones reported RETIRED.
+    assert set(ledger) - set(before) == set(), sorted(set(ledger) - set(before))
+    assert set(before) - set(ledger) == {key for key, _why in retirements}, (
+        sorted(set(before) - set(ledger)))
+
+    if args.write and (rebound or retirements):
         LEDGER.write_text(json.dumps(ledger, indent=2, sort_keys=True) + "\n",
                           encoding="utf-8")
         print(f"  wrote {LEDGER}", flush=True)

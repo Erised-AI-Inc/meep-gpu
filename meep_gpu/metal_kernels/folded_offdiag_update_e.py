@@ -12,7 +12,8 @@ reached by CALLING them:
 
 * the kernel TEMPLATE is ``offdiag_update_e._TEMPLATE`` itself — not a copy, the
   module attribute — so the fold adds no binding, no argument and no line of
-  scaffolding (28 bindings, the certified count);
+  scaffolding (30 bindings, the certified count: the chunk record, then the
+  presence words last);
 * the ghost block of a PERIODIC or METALLIC axis is
   ``offdiag_update_e._two_way_ghost``'s text, character for character;
 * the whole component block of a component whose LIVE row slots take no negated
@@ -78,7 +79,7 @@ both halves matter:
 CONSEQUENCE FOR THE BINDINGS, and it is the reason this family adds no argument:
 because (2) needs no reflect row and because the parity of (1) is a COMPILE-TIME
 specialisation on this backend (see below), the folded kernel's signature is the
-certified kernel's — 28 bindings, same order, same meaning. Contrast the Triton
+certified kernel's — 30 bindings, same order, same meaning. Contrast the Triton
 twin, which passes three runtime ``gw*`` scalars.
 
 BOTH MIRROR CODES BEHAVE IDENTICALLY IN THIS KERNEL, and that is a PREDICTED NULL
@@ -294,8 +295,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from . import arms, offdiag_update_e as _offdiag, shaders, symmetry as _symmetry
-from . import templates
+from . import arms, chunk_bounds as _chunk_bounds, offdiag_update_e as _offdiag
+from . import shaders, symmetry as _symmetry, templates
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import compile_source
 from .plans import KernelPlan
@@ -343,7 +344,7 @@ WALL_MASK_AXES: Tuple[Tuple[int, int], ...] = _offdiag.WALL_MASK_AXES
 #: The Yee sub-lattice this side reads: half-integer (stepping.py:1015).
 HALF_INTEGER: bool = _offdiag.HALF_INTEGER
 
-#: 24 buffers + 4 scalars. THE FOLD ADDS NONE — no reflect row (the own-axis up
+#: 24 buffers + 4 scalars + the record + the presence words. THE FOLD ADDS NONE — no reflect row (the own-axis up
 #: shift is not parity-weighted) and no ghost weight (it is baked into the source).
 BINDING_COUNT: int = _offdiag.BINDING_COUNT
 
@@ -544,11 +545,12 @@ def _folded_two_way_ghost(axis: str, code: int) -> str:
 
 def _folded_term(component: int, partner_axis: int, coefficient: str,
                  tag: str) -> str:
-    """One partner's OFFDIAG term with a NEGATED mirror ghost on the partner axis.
+    """One partner's OFFDIAG pair sum with a NEGATED mirror ghost on the partner axis.
 
-    ``offdiag_update_e._term``'s expression with the ghost lane's sign flipped::
+    ``offdiag_update_e._term``'s float32 expression with the ghost lane's sign
+    flipped::
 
-        0.25*((g[i] + w*g[i-sx])*u[i] + (g[i+s] + w*g[(i+s)-sx])*u[i+s])
+        (g[i] + w*g[i-sx])*u[i] + (g[i+s] + w*g[(i+s)-sx])*u[i+s]
 
     where ``w`` is ``-1`` on the partner axis's face-0 lane and ``1`` everywhere
     else. BOTH ghosted loads take the SAME lane predicate: the own-axis shift does
@@ -567,10 +569,12 @@ def _folded_term(component: int, partner_axis: int, coefficient: str,
 
     The guarded loads are hoisted into named temporaries so the sign applies to the
     LOADED VALUE. Everything else — the coefficient multiply sitting BETWEEN the two
-    shifts, the two shifts going in OPPOSITE directions, ``0.25`` scaling the sum
-    last, the coefficient never being ghosted (stepping.py:1243-1249 shifts the FIELD
+    shifts, the two shifts going in OPPOSITE directions, the double ``0.25``
+    scaling the widened sum, the coefficient never being ghosted (stepping.py:1243-1249 shifts the FIELD
     before the multiply and shifts the own axis AWAY from the fold) — is the
-    certified term's, unchanged, because the array path's is unchanged.
+    certified term's, unchanged, because the array path's is unchanged. Like the
+    certified term it is the float32 pair sum ``sum_{tag}``; the double quarter and
+    the row are :func:`.offdiag_update_e._row_assembly`'s.
     """
     own_axis = E_TERMS[component][2]
     down, _up, dvalid, _uvalid, _extent = _offdiag._TWO_WAY_NAMES["xyz"[partner_axis]]
@@ -592,8 +596,8 @@ def _folded_term(component: int, partner_axis: int, coefficient: str,
         f"        + ({at_partner} ? -cn_{tag} : cn_{tag});",
         f"    float unear_{tag} = {coefficient}[{home}];",
         f"    float ufar_{tag} = {ouvalid} ? {coefficient}[{up_index}] : 0.0f;",
-        f"    float term_{tag} = 0.25f * ((near_{tag} * unear_{tag})"
-        f" + (far_{tag} * ufar_{tag}));",
+        f"    float sum_{tag} = (near_{tag} * unear_{tag})"
+        f" + (far_{tag} * ufar_{tag});",
     ])
 
 
@@ -627,7 +631,7 @@ def _component_source(component: int, row_mask: Sequence[int],
     gs = f"    float gs{component} = g{component}[ii];"
     us = f"    float us{component} = e{component}[ii];"
     lines = [gs, us]
-    accumulated: List[str] = []
+    tags: List[str] = []
     for offset in (0, 1):
         if not row_mask[2 * component + offset]:
             continue
@@ -636,17 +640,11 @@ def _component_source(component: int, row_mask: Sequence[int],
         emit = _folded_term if negate[partner_axis] else _offdiag._term
         lines.append(emit(component, partner_axis,
                           _offdiag._ROW_BUFFERS[2 * component + offset], tag))
-        accumulated.append(tag)
+        tags.append(tag)
 
-    # `total` accumulates offset 1 then offset 2 (stepping.py:1250) and the wall mask
-    # runs BEFORE the row sum (:1252 precedes the add at :1007-1008). Both are the
+    # The per-term wall masks, the double row and its one rounding are the
     # certified emitter's own text, reached by calling it.
-    lines.append(f"    float total{component} = term_{accumulated[0]};")
-    for tag in accumulated[1:]:
-        lines.append(f"    total{component} = total{component} + term_{tag};")
-    lines.append(_offdiag._wall_mask(component, walls))
-    lines.append(f"    float src{component} = (gs{component} * us{component})"
-                 f" + total{component};")
+    lines.append(_offdiag._row_assembly(component, tags, walls))
     return "\n".join(lines)
 
 
@@ -656,7 +654,7 @@ def folded_offdiag_source(row_mask: Sequence[int], codes: Sequence[int],
     """The specialised ``offdiag_constitutive_step`` source for a folded grid.
 
     THE TEMPLATE IS ``offdiag_update_e._TEMPLATE`` ITSELF, the module attribute — so
-    the kernel name, the 28 bindings, the index decode, the ``at_*`` predicates, the
+    the kernel name, the 30 bindings, the index decode, the ``at_*`` predicates, the
     coefficient reads and the three PML tails are the certified kernel's by
     construction and cannot drift. Only the four substituted blocks can differ.
 
@@ -704,6 +702,8 @@ def folded_offdiag_source(row_mask: Sequence[int], codes: Sequence[int],
     return templates.substitute(_offdiag._TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
         "__GUARD__": templates.GUARD,
+        **_offdiag.record_substitutions(),
+        **_offdiag.presence_substitutions(row_mask, codes),
         "__GHOST_X__": _folded_two_way_ghost("x", codes[0]),
         "__GHOST_Y__": _folded_two_way_ghost("y", codes[1]),
         "__GHOST_Z__": _folded_two_way_ghost("z", codes[2]),
@@ -898,7 +898,8 @@ def _folded_offdiag_grid_reasons(fields: Any, pml: Any, grid: Any,
 
 
 def folded_offdiag_constitutive_coverage(fields: Any, pml: Any,
-                                         residency: Any = None) -> Coverage:
+                                         residency: Any = None,
+                                         chunk_bounds: Any = None) -> Coverage:
     """May the Metal folded off-diagonal kernel step ``update_E``? THE WIDE VERDICT.
 
     POSITIVE CLAUSES ONLY; a failing clause appends its reason and the scan
@@ -944,6 +945,10 @@ def folded_offdiag_constitutive_coverage(fields: Any, pml: Any,
     h. the RESIDENCY declaration (the Metal-only clause: two sub-steps that mirror
        one volume separately each hold a private copy, and the second launch reads
        the first one's stale bytes).
+    p. **the per-chunk presence words reproduce the array path's presence**
+       (``offdiag_update_e.presence_reasons`` on the folded codes, through
+       ``chunk_bounds``, the record the composer binds), imported from the certified
+       family rather than restated.
 
     Conductivity is NOT a clause, deliberately: it changes the CURL sub-steps only.
     """
@@ -1010,11 +1015,17 @@ def folded_offdiag_constitutive_coverage(fields: Any, pml: Any,
                     f"axis {axis} is folded with {int(shape[axis])} stored cells; "
                     f"the mirror ghost images stored row {MIRROR_SOURCE_INDEX}")
 
+    # (p) The per-chunk presence words, on the codes the kernel bakes, only on an
+    #     otherwise admitted run (the clause reads the rows and the division the
+    #     clauses above vet).
+    if not reasons and codes is not None:
+        reasons.extend(_offdiag.presence_reasons(fields, pml, codes, chunk_bounds))
     return Coverage(not reasons, tuple(reasons))
 
 
 def folded_offdiag_composition_coverage(fields: Any, pml: Any,
-                                        residency: Any = None) -> Coverage:
+                                        residency: Any = None,
+                                        chunk_bounds: Any = None) -> Coverage:
     """THE ROUTING VERDICT — the wide one with a fold MANDATORY.
 
     The clause that separates this family from ``offdiag_update_e`` on ``update_E``,
@@ -1033,7 +1044,7 @@ def folded_offdiag_composition_coverage(fields: Any, pml: Any,
     grid = getattr(fields, "grid", None)
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
-    base = folded_offdiag_constitutive_coverage(fields, pml, residency)
+    base = folded_offdiag_constitutive_coverage(fields, pml, residency, chunk_bounds)
     reasons = list(base.reasons)
     codes, _ = _symmetry.folded_axis_kinds(
         grid, pml if (pml is not None and getattr(pml, "is_active", False)) else None)
@@ -1083,7 +1094,8 @@ class MetalFoldedOffdiagConstitutivePlan(KernelPlan):
     """
 
     __slots__ = ("shape", "n_elem", "row_mask", "boundary_codes", "wall_axes",
-                 "ghost_weights", "negate", "residency", "volumes")
+                 "ghost_weights", "negate", "residency", "volumes", "chunk_bounds",
+                 "presence")
 
     REPR_FIELDS = ("shape", "row_mask", "boundary_codes", "wall_axes", "negate")
 
@@ -1093,9 +1105,18 @@ class MetalFoldedOffdiagConstitutivePlan(KernelPlan):
                  inverse_epsilon, rows, coefficients, boundary_codes, wall_axes,
                  ghost_weights, functions: Dict[str, Any], volumes: Sequence[str],
                  host_rows: Sequence[Any] = (),
-                 host_arrays: Sequence[Any] = ()) -> None:
+                 host_arrays: Sequence[Any] = (), *, chunk_bounds: Any,
+                 presence: Any) -> None:
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        # The chunk record binds at offdiag_update_e.RECORD_BUFFER, checked against
+        # the stored shape; on a folded axis the record's runs are the stored rows'
+        # (chunk_map's ghost-adjusted line), as the folded curl's are. The presence
+        # words bind last (offdiag_update_e.PRESENCE_BUFFER).
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, "MetalFoldedOffdiagConstitutivePlan")
+        self.presence = _offdiag.presence_plan_words(
+            presence, "MetalFoldedOffdiagConstitutivePlan")
 
         self.boundary_codes = tuple(int(code) for code in boundary_codes)
         if len(self.boundary_codes) != 3 or any(
@@ -1178,7 +1199,11 @@ class MetalFoldedOffdiagConstitutivePlan(KernelPlan):
             functions,
             tuple(targets) + tuple(auxiliaries) + tuple(sources)
             + tuple(inverse_epsilon) + bound_rows + tuple(coefficients)
-            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem))
+            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem,
+               _chunk_bounds.tensor(self.chunk_bounds,
+                                    getattr(residency, "device", "mps")),
+               _offdiag.presence_tensor(self.presence,
+                                        getattr(residency, "device", "mps"))))
 
 
 def _functions(row_mask, codes, walls, negate,
@@ -1190,11 +1215,14 @@ def _functions(row_mask, codes, walls, negate,
 def plan_folded_offdiag_constitutive(
         fields: Any, pml: Any, residency: Any = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
+        *, chunk_bounds: Any,
         ) -> Optional[MetalFoldedOffdiagConstitutivePlan]:
     """Build the folded off-diagonal ``update_E`` plan from the engine's own objects.
 
     None means REFUSED, and the reasons come from
-    :func:`folded_offdiag_constitutive_coverage`. The codes come from
+    :func:`folded_offdiag_constitutive_coverage`. ``chunk_bounds`` is the record of
+    the division the run steps with and has no default; the presence words are built
+    against it (``offdiag_update_e.presence_for``). The codes come from
     :func:`symmetry.folded_axis_kinds` and from nowhere else — building them from
     ``_boundary_kinds`` alone would lose the MIRROR_METALLIC / MIRROR_PERIODIC split,
     and while that split cannot reach THIS kernel (the docstring's predicted null) it
@@ -1205,11 +1233,13 @@ def plan_folded_offdiag_constitutive(
     accessor the array path itself reads (stepping.py:996, :1004) — which with no
     poles admitted hands back the aliased D primaries (fields.py:1107-1138).
     """
-    if not folded_offdiag_constitutive_coverage(fields, pml, residency).covered:
+    if not folded_offdiag_constitutive_coverage(fields, pml, residency,
+                                                chunk_bounds).covered:
         return None
     codes, _reasons = _symmetry.folded_axis_kinds(fields.grid, pml)
     if codes is None:  # pragma: no cover - the predicate already refused
         return None
+    presence = _offdiag.presence_for(fields, pml, codes, chunk_bounds)
     weights = mirror_ghost_weights(fields.grid)
     walls = _offdiag.wall_mask_axes(fields.grid)
     negate = negated_axes(codes, weights)
@@ -1254,7 +1284,8 @@ def plan_folded_offdiag_constitutive(
         volume_names,
         host_rows=rows,
         host_arrays=(host_targets, host_aux, host_sources, host_inv,
-                     host_coefficients))
+                     host_coefficients),
+        chunk_bounds=chunk_bounds, presence=presence)
 
 
 def plan_folded_offdiag_constitutive_from_arrays(
@@ -1263,6 +1294,7 @@ def plan_folded_offdiag_constitutive_from_arrays(
         wall_axes: Sequence[int], ghost_weights: Sequence[float], residency: Any,
         functions: Optional[Dict[str, Any]] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
+        *, chunk_bounds: Any, presence: Any,
         ) -> MetalFoldedOffdiagConstitutivePlan:
     """Build it from bare host arrays — the gate's and the sibling tests' route.
 
@@ -1277,6 +1309,10 @@ def plan_folded_offdiag_constitutive_from_arrays(
     ``functions=`` IS LOAD-BEARING: the mutation legs route a mutated kernel through
     it, and a builder that drops it launches the SHIPPED kernel and reports a pass
     for a defect it never introduced.
+
+    ``chunk_bounds`` is the record of the division the caller's reference steps with
+    and ``presence`` the six words its rows are added with
+    (``offdiag_update_e.ALL_KEPT`` for rows no chunk deletes); both required.
     """
     targets = tuple(term[0] for term in E_TERMS)
     shape = tuple(int(n) for n in arrays[targets[0]].shape)
@@ -1322,7 +1358,8 @@ def plan_folded_offdiag_constitutive_from_arrays(
         volume_names,
         host_rows=row_values,
         host_arrays=(host_targets, host_aux, host_sources, host_inv,
-                     host_coefficients))
+                     host_coefficients),
+        chunk_bounds=chunk_bounds, presence=presence)
 
 
 # ---------------------------------------------------------------------------
@@ -1331,14 +1368,16 @@ def plan_folded_offdiag_constitutive_from_arrays(
 
 def _arm_coverage(context: Any, slot: str) -> Coverage:
     return folded_offdiag_composition_coverage(context.fields, context.pml,
-                                               context.residency)
+                                               context.residency,
+                                               getattr(context, "chunk_bounds", None))
 
 
 def _arm_plan(context: Any,
               slot: str) -> Optional[MetalFoldedOffdiagConstitutivePlan]:
     return plan_folded_offdiag_constitutive(context.fields, context.pml,
                                             context.residency,
-                                            context.contract_variants)
+                                            context.contract_variants,
+                                            chunk_bounds=context.chunk_bounds)
 
 
 def _has_fold_and_rows(context: Any) -> bool:

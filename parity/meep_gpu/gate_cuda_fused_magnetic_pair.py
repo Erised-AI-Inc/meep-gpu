@@ -68,9 +68,11 @@ THE NINE THINGS THIS GATE REFUSES TO LET PASS SILENTLY
    identical would mean this comparison cannot see a rounding change at all,
    and it is scored, not merely reported.
 
-6. **A hollow pass.** SIXTEEN source defects and FOUR host defects are armed and
-   MUST be caught; THREE source defects and ONE host defect are declared NULL in
-   advance, with the arithmetic reason, and must come back UNCAUGHT. Leg
+6. **A hollow pass.** THIRTY-THREE source defects and SEVEN host defects are armed
+   and MUST be caught; SEVEN source defects and ONE host defect are declared NULL in
+   advance, with the arithmetic reason, and must come back UNCAUGHT; two source
+   defects (data races) are reported rather than scored. The table is
+   :data:`SOURCE_MUTATIONS`, and these counts are its own. Leg
    ``disarm`` reruns the identical harness with the shipped bytes and requires
    zero divergence, so a "caught" cannot be a harness that diverges anyway. A
    needle that matches nothing is reported NOT ARMED rather than passing
@@ -482,6 +484,24 @@ def build(spec: Dict[str, Any], value_class: str, rng):
     return fields, grid, pml, host
 
 
+def chunk_record(grid: Any, pml: Any) -> Any:
+    """The chunk record a launch binds as ``cb``, on the device: the one-rank division of
+    ``grid`` and ``pml`` (``gate_chunk_records.layer_record``), which is the division the
+    oracle's region plan steps with here (no driver installs another; stepping's first
+    PML sub-step plans the one-rank layout). Every kernel leg of this gate reads it."""
+    from gate_chunk_records import layer_record  # noqa: PLC0415
+
+    return cp.asarray(layer_record(grid, pml), dtype=cp.int32)
+
+
+def separate_h_before_a_single(fields: Any, pml: Any) -> None:
+    """MEEP's start of H before a SINGLE update_H launch (``stepping.separate_h_from_b``):
+    the shipped composition's launcher runs it (``arms._RealPmlConstitutiveLauncher``)
+    and ``constitutive_kernels.update_fused_pml_real`` does not, so a leg that launches
+    the single directly runs it here, once per run, as the launcher would."""
+    stepping.separate_h_from_b(fields, pml)
+
+
 def words(array: Any) -> np.ndarray:
     """One array as raw uint32 WORDS. Byte compares, never ``allclose``:
     ``-0.0 == 0.0`` and ``NaN != NaN`` both lie, and the band class puts signed
@@ -685,14 +705,15 @@ def _warm_memo(specs: Sequence[Dict[str, Any]]) -> None:
     for warm in specs:
         fields, grid, pml, _ = build(warm, "uniform", np.random.default_rng(1))
         dtdx = float(grid.dt / grid.dx)
+        record = chunk_record(grid, pml)
         report = fused_magnetic_pair.run_fused_magnetic_pair(
-            fields, grid, pml, dtdx, sources=())
+            fields, grid, pml, dtdx, chunk_bounds=record, sources=())
         if not report.get("launched"):
             raise SystemExit(f"the memo warm-up could not launch on {warm['label']}: "
                              f"{report.get('reason')}")
         step_curl_kernels._step_B_fused_pml_real(  # noqa: SLF001
             fields, step_curl_kernels.real_pml_curl_tables(pml, True),
-            step_curl_kernels.real_curl_boundary_codes(grid), dtdx)
+            step_curl_kernels.real_curl_boundary_codes(grid), dtdx, record)
         # ALL THREE IN-SEAM PASSES, because the separate-composition control
         # launches all three and a cold memo there would be counted as a launch of
         # this kernel by the proxy that watches the shared compile cache.
@@ -702,7 +723,8 @@ def _warm_memo(specs: Sequence[Dict[str, Any]]) -> None:
             in_seam_passes.run_pass("fill_symmetry", fields, "B", grid=grid)
         if in_seam_coverage.plan("fill_folded_far", grid):
             in_seam_passes.run_pass("fill_folded_far", fields, "B", grid=grid)
-        constitutive_kernels.update_fused_pml_real("H", fields, pml=pml)
+        constitutive_kernels.update_fused_pml_real("H", fields, pml=pml,
+                                                   chunk_bounds=record)
     cp.cuda.runtime.deviceSynchronize()
 
 
@@ -771,6 +793,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
     case["boundary_codes_used"] = [int(c) for c in codes]
     case["zero_metal_axes_used"] = [bool(w) for w in walls]
     case["fill_plan_used"] = {key: list(value) for key, value in fills.items()}
+    record = chunk_record(grid, pml)
 
     before = frozen(actual)
     read_only = read_only_snapshot(actual, pml)
@@ -781,7 +804,8 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
         for step in range(1, steps + 1):
             array_step(reference, ref_pml)
             report = family.launch_fused_magnetic_pair(
-                actual, tables, codes, walls, fills, case["dtdx"], kernel)
+                actual, tables, codes, walls, fills, case["dtdx"], kernel,
+                chunk_bounds=record, layer=pml)
             launched += int(bool(report.get("launched")))
             for name in DRIVER_ORDER:
                 if name not in FUSED_PASSES:
@@ -881,6 +905,8 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     near_plan = in_seam_coverage.plan("fill_symmetry", sep_grid)
     far_plan = in_seam_coverage.plan("fill_folded_far", sep_grid)
 
+    separate_record = chunk_record(sep_grid, sep_pml)
+    fused_record = chunk_record(fused_grid, fused_pml)
     separate_calls = 0
     fused_calls = 0
     separate_counter = MemoLaunchCounter()
@@ -891,7 +917,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
 
         with separate_counter:
             step_curl_kernels._step_B_fused_pml_real(  # noqa: SLF001
-                separate, curl_tables, codes, dtdx)
+                separate, curl_tables, codes, dtdx, separate_record)
             separate_calls += 1
             # THE DRIVER'S OWN ORDER (driver.py:3294, :3295, :3296). The near fill
             # runs BEFORE the wall clear and the far fill AFTER it, and on a row
@@ -906,7 +932,9 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                 in_seam_passes.run_pass("fill_folded_far", separate, "B",
                                         grid=sep_grid)
                 separate_calls += len(far_plan)
-            constitutive_kernels.update_fused_pml_real("H", separate, pml=sep_pml)
+            separate_h_before_a_single(separate, sep_pml)
+            constitutive_kernels.update_fused_pml_real("H", separate, pml=sep_pml,
+                                                       chunk_bounds=separate_record)
             separate_calls += 1
         for name in DRIVER_ORDER:
             if name not in FUSED_PASSES:
@@ -914,7 +942,8 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
 
         with fused_counter:
             report = family.run_fused_magnetic_pair(fused, fused_grid, fused_pml,
-                                                    dtdx, sources=())
+                                                    dtdx, chunk_bounds=fused_record,
+                                                    sources=())
             fused_calls += int(bool(report.get("launched")))
         for name in DRIVER_ORDER:
             if name not in FUSED_PASSES:
@@ -1067,9 +1096,12 @@ def leg_synchronize(spec: Dict[str, Any], value_class: str, steps: int
     carried = tuple(name for name in order if name in FUSED_PASSES)
     on_the_host = tuple(name for name in order if name not in FUSED_PASSES)
 
+    record = chunk_record(grid, pml)
+
     def fused_step(fields, layer) -> int:
         report = family.launch_fused_magnetic_pair(
-            fields, tables, codes, walls, fills, dtdx, None)
+            fields, tables, codes, walls, fills, dtdx, None, chunk_bounds=record,
+            layer=layer)
         for name in DRIVER_ORDER:
             if name not in FUSED_PASSES:
                 run_pass(name, fields, layer)
@@ -1094,7 +1126,7 @@ def leg_synchronize(spec: Dict[str, Any], value_class: str, steps: int
         run_pass(name, reference, ref_pml)
     _sync_average(reference, reference_backup)
     report = family.launch_fused_magnetic_pair(
-        actual, tables, codes, walls, fills, dtdx, None)
+        actual, tables, codes, walls, fills, dtdx, None, chunk_bounds=record, layer=pml)
     for name in on_the_host:
         run_pass(name, actual, pml)
     cp.cuda.runtime.deviceSynchronize()
@@ -1170,9 +1202,16 @@ def leg_lift() -> Dict[str, Any]:
     3. the certified curl prelude must differ in EXACTLY the ``pml_apply``
        signature and its store, and the certified constitutive prelude must be
        carried with ZERO edits;
-    4. ``LIFT_EDITS`` must have exactly five entries -- it is data so that a
-       silent sixth edit is a visible diff, and a gate that did not count them
+    4. ``LIFT_EDITS`` must have exactly fourteen entries -- it is data so that a
+       silent fifteenth edit is a visible diff, and a gate that did not count them
        would leave that promise unkept.
+
+    The per-chunk forms (bit_parity_0_10 KC2) move the record decode: each certified
+    body carries its own chunk-record block, and the pair emits ONE block over both
+    entry sets after the curl half's decode, so update_H's block leaves the
+    constitutive body and its decode lines arrive in the curl body. That move is
+    measured too: exactly update_H's block leaves, and exactly its decode lines
+    arrive.
 
     And one correctness question that is not about the lift at all: ``Bx``,
     ``By`` and ``Bz`` must be bound EXACTLY ONCE each in the signature, and
@@ -1224,17 +1263,39 @@ def leg_lift() -> Dict[str, Any]:
     # certified load's own guard, and the three captures now take them.
     hoisted_loads = [line.strip() for line in curl_added
                      if line.strip().startswith("float pre_")]
+    # Each load behind the certified load's own guard: fu behind the dsigu flag its
+    # curl call passes, B behind own_*, f_w_H and H behind own_* and then the dsigw flag.
+    dsigu = dict(zip("xyz", family.curl_flags()))
+    dsigw = dict(zip("xyz", family.constitutive_flags()))
     expected_loads = sorted(
-        [f"float pre_w_{a} = own_{a} ? f_w_H{a}[idx] : 0.0f;" for a in "xyz"]
-        + [f"float pre_h_{a} = own_{a} ? H{a}[idx] : 0.0f;" for a in "xyz"]
-        + [f"float pre_fu_{a} = fu_B{a}[idx];" for a in "xyz"]
+        [f"float pre_w_{a} = own_{a} ? ({dsigw[a]} ? f_w_H{a}[idx] : 0.0f) : 0.0f;"
+         for a in "xyz"]
+        + [f"float pre_h_{a} = own_{a} ? ({dsigw[a]} ? H{a}[idx] : 0.0f) : 0.0f;"
+           for a in "xyz"]
+        + [f"float pre_fu_{a} = {dsigu[a]} ? fu_B{a}[idx] : 0.0f;" for a in "xyz"]
         + [f"float pre_b_{a} = own_{a} ? B{a}[idx] : 0.0f;" for a in "xyz"])
+    # THE ONE RECORD DECODE (D10): update_H's block leaves its body, and exactly its
+    # decode lines arrive in the curl body's union block.
+    from meep_gpu.cuda_kernels import bounds_block  # noqa: PLC0415
+
+    constitutive_block = [line for line in bounds_block.bounds_block(
+        *family.CONSTITUTIVE_BLOCK).splitlines() if line.strip()]
+    moved_decode = [line for line in constitutive_block
+                    if not line.strip().startswith("//")]
+    curl_kinds = ("//", "float b_", "int own_", "float pre_")
+    curl_unexpected = [line for line in curl_added
+                       if not line.strip().startswith(curl_kinds)
+                       and "= pml_apply_reg_pre(B" not in line
+                       and line not in moved_decode]
     curl_ok = (len(curl_dropped) == 3
                and all("pml_apply(B" in line for line in curl_dropped)
                and all(f"b_{a} = pml_apply_reg_pre(B{a}" in "".join(curl_added)
-                       and f"own_{a}, pre_fu_{a}, pre_b_{a});" in "".join(curl_added)
+                       and f"{dsigu[a]}, own_{a}, pre_fu_{a}, pre_b_{a});"
+                       in "".join(curl_added)
                        for a in "xyz")
-               and sorted(hoisted_loads) == expected_loads)
+               and sorted(hoisted_loads) == expected_loads
+               and all(line in curl_added for line in moved_decode)
+               and not curl_unexpected)
     # THE CONSTITUTIVE SIDE GAINED A SECOND KIND OF EDIT ON 2026-08-28 and the
     # question changed with it. Three lines still leave (the certified reloads of
     # B) and three still arrive in their place (the seam plus the sub-lattice
@@ -1251,8 +1312,11 @@ def leg_lift() -> Dict[str, Any]:
     seam_calls = [line for line in const_added
                   if line.strip().startswith("constitutive_apply(")
                   and ", idx, b_" in line]
-    const_ok = (len(const_dropped) == 3
-                and all("constitutive_apply(" in line for line in const_dropped)
+    const_calls_dropped = [line for line in const_dropped if line not in constitutive_block]
+    const_ok = (len(const_calls_dropped) == 3
+                and all("constitutive_apply(" in line for line in const_calls_dropped)
+                and sorted(set(const_dropped) - set(const_calls_dropped))
+                == sorted(set(constitutive_block))
                 and len(seam_calls) == 3
                 and all("kms_int_" in line for line in seam_calls)
                 and len(ghost_blocks) == 21
@@ -1274,7 +1338,9 @@ def leg_lift() -> Dict[str, Any]:
     const_ok = const_ok and hoist_ok
     prelude_ok = (len(prelude_dropped) == 4
                   and any("void pml_apply(" in line for line in prelude_dropped)
-                  and any(line.strip() == "float fprev = fu[idx];" for line in prelude_dropped)
+                  and any(line.strip() == "float fprev = dsigu ? fu[idx] : 0.0f;"
+                          for line in prelude_dropped)
+                  and any(line.strip() == "float fcur = f[idx];" for line in prelude_dropped)
                   and "pml_apply_reg(" not in prelude
                   and prelude.count("float pml_apply_reg_pre(") == 1
                   and prelude.count("void constitutive_apply_pre(") == 1
@@ -1283,7 +1349,10 @@ def leg_lift() -> Dict[str, Any]:
                   and any("if (!owned) return 0.0f;" in line
                           for line in prelude_added)
                   and constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE in prelude)  # noqa: SLF001
-    stencil = source.count("dtdx * ((sf - f1) + (f2 - ss))")
+    # MEEP's stencil grouping, once, in the lifted curl_stencil helper, called by the
+    # three components (bit_parity_0_10 A1).
+    stencil = (source.count("dtdx * (((sf - f1) + f2) - ss)") == 1
+               and source.count("float curl = curl_stencil(dtdx, ") == 3)
     binding_ok = (source.count("float* __restrict__ Bx") == 1
                   and "const float* __restrict__ Bx" not in source
                   and all(source.count(f"float* __restrict__ B{a}") == 1
@@ -1295,16 +1364,18 @@ def leg_lift() -> Dict[str, Any]:
     # THE OWNERSHIP INVERSION, as a property of the emitted text rather than of
     # prose: three flags, 21 carried destinations, and the fu store ABOVE the guard
     # while the flux store is below it.
-    guard = prelude.index("if (!owned) return 0.0f;")
+    helper = prelude[prelude.index("__device__ __forceinline__ float pml_apply_reg_pre("):]
+    helper = helper[:helper.index("\n}\n")]
+    guard = helper.index("if (!owned) return 0.0f;")
     ownership_ok = (source.count("int own_") == 3
                     and prelude.count("if (!owned) return 0.0f;") == 1
                     and source.count("_i = idx ") == 21
-                    and prelude.index("fu[idx] = fu_new;") < guard
-                    < prelude.index("f[idx] = value;"))
+                    and helper.index("    if (dsigu) fu[idx] = fu_new;") < guard
+                    < helper.index("f[idx] = value;"))
     return {
         "passed": bool(curl_ok and const_ok and prelude_ok and binding_ok
-                       and diagonal_ok and ownership_ok and stencil == 3
-                       and len(family.LIFT_EDITS) == 12),
+                       and diagonal_ok and ownership_ok and stencil
+                       and len(family.LIFT_EDITS) == 14),
         "curl_lines_replaced": curl_dropped,
         "curl_lines_introduced": curl_added,
         "curl_lift_ok": curl_ok,
@@ -1313,7 +1384,8 @@ def leg_lift() -> Dict[str, Any]:
         "constitutive_lift_ok": const_ok,
         "prelude_lines_replaced": prelude_dropped,
         "prelude_lift_ok": prelude_ok,
-        "parenthesised_stencils_verbatim": stencil,
+        "meep_stencil_lifted_once_called_thrice": stencil,
+        "curl_lines_unexpected": curl_unexpected,
         "shared_volume_bound_once": binding_ok,
         "zero_metal_table_is_the_b_diagonal": diagonal_ok,
         "constitutive_lines_unexpected": const_unexpected,
@@ -1732,7 +1804,8 @@ def leg_refusal() -> Dict[str, Any]:
     indexless_verdict = family.covers_fused_magnetic_pair(
         fields, pml, grid, (indexless,))
     indexless_run = family.run_fused_magnetic_pair(
-        fields, grid, pml, float(grid.dt / grid.dx), sources=(indexless,))
+        fields, grid, pml, float(grid.dt / grid.dx), chunk_bounds=chunk_record(grid, pml),
+        sources=(indexless,))
 
     electric = source_on("Ez")
     electric_verdict = family.covers_fused_magnetic_pair(fields, pml, grid, (electric,))
@@ -2002,6 +2075,17 @@ def _folded_periodic_axis(axis: str) -> Callable[[Dict[str, Any]], bool]:
                          and spec["boundaries"][index] != "metallic")
 
 
+def _far_fill_live(spec: Dict[str, Any]) -> bool:
+    """Does the FAR fill run on some axis here (a folded, periodic-terminated axis)?
+
+    The carried ghosts' constitutive helper steps the accumulation only on a ghost in
+    update_H's run. A near ghost never is on the one-rank division (row 0 of a folded
+    axis; see near_ghost_reuses_the_source_coefficient_pair), so a defect in that
+    helper's accumulation is live only where a far ghost carries a run row.
+    """
+    return any(_folded_periodic_axis(axis)(spec) for axis in "xyz")
+
+
 def _bx_has_a_destination(spec: Dict[str, Any]) -> bool:
     """Does either fill image a cell of Bx here -- i.e. is ``own_x`` ever 0?
 
@@ -2107,18 +2191,26 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # constitutive's INTEGER; letting the certified name shadow is a half-cell
     # error in the absorber profile -- converged, smooth and wrong.
     ("constitutive_sublattice_shadow",
-     ("kms_int_x[i]);", "kms_x[i]);", 1), True, _always),
+     ("kms_int_x[i], in_i_x);", "kms_x[i], in_i_x);", 1), True, _always),
     # The dsigw index is the component's OWN axis (stepping.py:947-948).
     ("constitutive_coefficient_index_moved",
-     ("constitutive_apply_pre(Hy, f_w_Hy, idx, b_y, pre_w_y, pre_h_y, kps_y[j], kms_int_y[j]);",
-      "constitutive_apply_pre(Hy, f_w_Hy, idx, b_y, pre_w_y, pre_h_y, kps_y[i], kms_int_y[i]);", 1),
+     ("constitutive_apply_pre(Hy, f_w_Hy, idx, b_y, pre_w_y, pre_h_y, kps_y[j], kms_int_y[j], "
+      "in_i_y);",
+      "constitutive_apply_pre(Hy, f_w_Hy, idx, b_y, pre_w_y, pre_h_y, kps_y[i], kms_int_y[i], "
+      "in_i_y);", 1),
      True, _always),
-    # The two accumulations are LEFT-TO-RIGHT and SEPARATE; reassociating them is
-    # a different float32 number.
-    ("constitutive_accumulations_reversed",
-     (" + kps * src;\n    f[idx] = a - kms * prev;",
-      " - kms * prev;\n    f[idx] = a + kps * src;", -1),
+    # THE ACCUMULATION IN MEEP'S GROUPING, f + ((kps*src) - (kms*prev)) -- the right-hand
+    # side formed first (step_generic.cpp's f[i] += ...; bit_parity_0_10 KERNELS.md section
+    # 1, A2). INVERTED 2026-10-08 (KERNELS.md section 7.1): the shipped form IS MEEP's, so
+    # the must-catch mutation installs the PACKAGE's old grouping, (f + kps*src) - kms*prev,
+    # which is a different float32 number. Once on the owned helper (every row) and once on
+    # the ghost carries' helper (folded rows).
+    ("constitutive_regrouped_to_the_old_package_order",
+     ("(fcur + ((kps * src) - (kms * prev)))", "((fcur + (kps * src)) - (kms * prev))", 1),
      True, _always),
+    ("constitutive_regrouped_to_the_old_package_order_at_a_ghost",
+     ("(f[idx] + ((kps * src) - (kms * prev)))", "((f[idx] + (kps * src)) - (kms * prev))", 1),
+     True, _far_fill_live),
     # --- the two mirror fills, carried by the ownership inversion -----------
     #
     # EVERY ONE OF THESE IS NEW ON 2026-08-28 and every one is scored only where
@@ -2129,8 +2221,16 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # its own cell: it forms v from a B another block is writing, stores B there,
     # and runs update_H there -- so the ghost is written twice and the value that
     # survives is undefined. On the array path that cell holds the fill's image.
+    # REPORTED RATHER THAN REQUIRED SINCE 2026-10-08 (bit_parity_0_10 KC2), for the
+    # reason ownership_guard_dropped_in_pml_apply gives below: it is a data race with no
+    # deterministic verdict. Under MEEP's per-chunk forms a destination off the dsigw
+    # run steps H = src from a register that is 0 there, while its source thread writes
+    # the imaged value; whichever store lands last survives. Measured 4/5 on the GPU host
+    # (2026-10-08), one row resolving in the shipped kernel's favour. The deterministic
+    # twin is ownership_guard_inverted_on_the_constitutive below (9/9), and the write
+    # enumeration in test_fused_magnetic_pair_fill_carry.py pins the guard by name.
     ("ownership_guard_dropped_on_the_constitutive",
-     ("    if (own_x) {\n", "    if (1) {\n", 1), True, _bx_has_a_destination),
+     ("    if (own_x) {\n", "    if (1) {\n", 1), None, _bx_has_a_destination),
     # THE SAME GUARD, INVERTED, AND THE DETERMINISTIC ONE. Dropping a guard makes
     # two threads write one word, and which wins is undefined -- so the entry above
     # is a race that HAPPENS to be caught (3/3 on this device, 2026-08-28) rather
@@ -2194,11 +2294,25 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # THE NEAR GHOST TAKES THE DESTINATION'S COEFFICIENT PAIR, at stored index 0,
     # because the near fill images along the very axis update_H indexes on.
     # Reusing the source thread's applies stored cell 2's absorber profile to
-    # stored cell 0.
+    # stored cell 0 -- WHERE THE GHOST STEPS THE ACCUMULATION. A DECLARED NULL SINCE
+    # 2026-10-08 (bit_parity_0_10 KC2) on this gate's one-rank division: the near ghost
+    # is stored row 0 of a FOLDED axis, which has no low face, and the one-rank line's
+    # high run starts at n - span + 1 >= 1 (chunk_map.one_rank_line), so the ghost is
+    # never in update_H's run there and steps H = src, which reads no coefficient. The
+    # pair is observable only on a division whose line copies the image row onto the
+    # ghost row (a lift's); test_fused_pair_chunk_forms.py measures the keying on both.
+    # Measured 0/1 on the GPU host (2026-10-08).
     ("near_ghost_reuses_the_source_coefficient_pair",
-     ("gx_n_i, gx_n_v, kps_x[0], kms_int_x[0]);",
-      "gx_n_i, gx_n_v, kps_x[i], kms_int_x[i]);", 1), True,
+     ("gx_n_i, gx_n_v, kps_x[0], kms_int_x[0], gx_n_w);",
+      "gx_n_i, gx_n_v, kps_x[i], kms_int_x[i], gx_n_w);", 1), False,
      _near_ghost_pair_is_observable("x")),
+    # THE NEAR GHOST'S MEMBERSHIP ROW, read where its coefficient entry is (stored 0),
+    # negated: the ghost takes the other form. Live wherever the near ghost's row sits
+    # in a layer chunk or out of one, which every folded-x row's layer decides.
+    ("near_ghost_membership_negated",
+     ("int gx_n_w = (0 >= cbi_x_a0 && 0 < cbi_x_a1) || (0 >= cbi_x_b0 && 0 < cbi_x_b1);",
+      "int gx_n_w = !((0 >= cbi_x_a0 && 0 < cbi_x_a1) || (0 >= cbi_x_b0 && 0 < cbi_x_b1));",
+      1), True, _folded_axis("x")),
     # THE COMPOSITION. A corner at the top of two far planes carries the PRODUCT
     # of both parities; dropping one factor is exact wherever that phase is +1,
     # which is why the mixed-phase spec is in MUTATION_SPEC_LABELS.
@@ -2213,11 +2327,16 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # plane keep the previous step's value while B carries the new image.
     ("ghost_constitutive_dropped",
      ("            constitutive_apply(Hx, f_w_Hx, gx_n_i, gx_n_v, "
-      "kps_x[0], kms_int_x[0]);\n", "", 1), True, _folded_axis("x")),
+      "kps_x[0], kms_int_x[0], gx_n_w);\n", "", 1), True, _folded_axis("x")),
 
     # --- the curl half ------------------------------------------------------
-    ("curl_parens_flattened",
-     ("dtdx * ((sf - f1) + (f2 - ss))", "dtdx * (sf - f1 + f2 - ss)", -1),
+    # THE STENCIL IN MEEP'S GROUPING, dtdx * (((g1s - g1) + g2) - g2s) (step_generic.cpp:104,
+    # A1). INVERTED 2026-10-08 (KERNELS.md section 7.1; this gate is Appendix A's one curl
+    # line): the shipped bracket is the one the old "parens flattened" mutation installed,
+    # so the must-catch mutation now installs the PACKAGE's old pairing,
+    # (sf - f1) + (f2 - ss).
+    ("curl_regrouped_to_the_old_package_order",
+     ("dtdx * (((sf - f1) + f2) - ss)", "dtdx * ((sf - f1) + (f2 - ss))", 1),
      True, _always),
     ("curl_gathers_the_lower_neighbour",
      ("float sf = shift_up(Ez, idx, j, ny, sy, bc_y);",
@@ -2225,12 +2344,14 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # The recurrence pairs are vec.hpp's cycle_direction: Bx takes (y, z).
     ("recurrence_axis_pair_swapped",
      ("pml_apply_reg_pre(Bx, fu_Bx, idx, curl, kms_y[j], sinv_y[j], "
-      "kms_z[k], sinv_z[k], own_x, pre_fu_x, pre_b_x);",
+      "kms_z[k], sinv_z[k], in_h_z, own_x, pre_fu_x, pre_b_x);",
       "pml_apply_reg_pre(Bx, fu_Bx, idx, curl, kms_z[k], sinv_z[k], "
-      "kms_y[j], sinv_y[j], own_x, pre_fu_x, pre_b_x);", 1), True, _always),
-    ("fu_store_dropped", ("    fu[idx] = fu_new;\n", "", 1), True, _always),
-    ("flux_store_dropped", ("    f[idx] = value;\n", "", 1), True, _always),
-    ("fw_store_dropped", ("    fw[idx] = src;\n", "", -1), True, _always),
+      "kms_y[j], sinv_y[j], in_h_z, own_x, pre_fu_x, pre_b_x);", 1), True, _always),
+    ("fu_store_dropped", ("    if (dsigu) fu[idx] = fu_new;\n", "", 1), True, _always),
+    ("flux_store_dropped",
+     ("                        : (((fcur * kms) - curl) * sinv);\n    f[idx] = value;\n",
+      "                        : (((fcur * kms) - curl) * sinv);\n", 1), True, _always),
+    ("fw_store_dropped", ("    if (dsigw) fw[idx] = src;\n", "", -1), True, _always),
     ("metallic_curl_mask_dropped",
      ("        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;\n", "", 1),
      True, _wall("x")),
@@ -2240,8 +2361,41 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      ("    return (bc == BC_PERIODIC) ? g[idx - ia * stride] : 0.0f;",
       "    return g[idx - ia * stride];", 1), True, _wall("x")),
     ("curl_drops_the_courant_factor",
-     ("float curl = dtdx * ((sf - f1) + (f2 - ss));",
-      "float curl = ((sf - f1) + (f2 - ss));", -1), True, _always),
+     ("float curl = curl_stencil(dtdx, ", "float curl = curl_stencil(1.0f, ", -1),
+     True, _always),
+
+    # --- MEEP's per-chunk forms (bit_parity_0_10 KERNELS.md section 7.2, the B battery).
+    # Every one is live on every row with a layer: the gate's states are random over the
+    # whole volume, so every chunk-boundary plane is exercised at the first launch.
+    #
+    # The select removed on Bx's dsigu axis: the recurrence on every cell, today's 0.9.2
+    # form. Off the run the dsig-only form is a different word.
+    ("recurrence_on_every_cell",
+     ("const int in_h_z = (k >= cbh_z_a0 && k < cbh_z_a1) || (k >= cbh_z_b0 && k < cbh_z_b1);",
+      "const int in_h_z = 1;", 1), True, _always),
+    # The form chosen by coefficient identity instead of chunk membership: a sigma = 0
+    # cell inside the layer's chunk (the effort volume spans int(T + 1.5) cells, past the
+    # sigma extent) takes the dsig-only form where MEEP steps the recurrence.
+    ("predicate_on_coefficient_identity",
+     ("kms_z[k], sinv_z[k], in_h_z, own_x, pre_fu_x, pre_b_x);",
+      "kms_z[k], sinv_z[k], (kms_z[k] != 1.0f), own_x, pre_fu_x, pre_b_x);", 1),
+     True, _always),
+    # The low run's end moved one row: the boundary plane changes form.
+    ("membership_bound_off_by_one",
+     ("const int in_h_z = (k >= cbh_z_a0 && k < cbh_z_a1)",
+      "const int in_h_z = (k >= cbh_z_a0 && k < cbh_z_a1 + 1)", 1), True, _always),
+    # The integer record read for the B curl's half-integer lattice: the boundary plane
+    # moves by one cell.
+    ("integer_record_on_the_half_integer_lattice",
+     ("const int cbh_z_a0 = cb[20], cbh_z_a1 = cb[21], cbh_z_b0 = cb[22], cbh_z_b1 = cb[23];",
+      "const int cbh_z_a0 = cb[8], cbh_z_a1 = cb[9], cbh_z_b0 = cb[10], cbh_z_b1 = cb[11];",
+      1), True, _always),
+    # The auxiliary stored on a plain cell (the auxiliary contract, C2): the array path
+    # leaves fu and f_w untouched off the run and this gate compares both.
+    ("split_field_auxiliary_stored_on_a_plain_cell",
+     ("    if (dsigu) fu[idx] = fu_new;\n", "    fu[idx] = fu_new;\n", 1), True, _always),
+    ("constitutive_auxiliary_stored_on_a_plain_cell",
+     ("    if (dsigw) fw[idx] = src;\n", "    fw[idx] = src;\n", -1), True, _always),
 
     # --- THE NULLS. Each must come back UNCAUGHT, and each has an arithmetic
     # --- reason, not an expectation.
@@ -2255,7 +2409,14 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      ("idx, b_x, pre_w_x", "idx, Bx[idx], pre_w_x", 1), False, _always),
     # float32 multiply is bitwise commutative.
     ("constitutive_product_commuted",
-     (" + kps * src;", " + src * kps;", -1),
+     ("(kps * src)", "(src * kps)", -1),
+     False, _always),
+    # THE AUXILIARY LOAD ISSUED UNCONDITIONALLY, the store still guarded: the loaded word
+    # feeds only the recurrence arm, which runs on the run's cells, so no stored word
+    # changes (KERNELS.md section 7.2's declared null; the static form of the guard is
+    # pinned in test_fused_pair_chunk_forms.py).
+    ("hoisted_fu_load_unguarded",
+     ("float pre_fu_x = in_h_z ? fu_Bx[idx] : 0.0f;", "float pre_fu_x = fu_Bx[idx];", 1),
      False, _always),
     # The certified track's own null: fu_new was stored to fu[idx] one line above
     # and a 32-bit float in a 32-bit slot round-trips exactly.
@@ -2272,8 +2433,8 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # The far ghost sits at the SAME coordinate on the indexed axis as the thread
     # that owns it, so re-reading the pair there reads the identical word.
     ("far_ghost_reloads_its_own_coefficient_pair",
-     ("gx_y_i, gx_y_v, kps_x[i], kms_int_x[i]);",
-      "gx_y_i, gx_y_v, kps_x[i + 0], kms_int_x[i + 0]);", 1), False,
+     ("gx_y_i, gx_y_v, kps_x[i], kms_int_x[i], gx_y_w);",
+      "gx_y_i, gx_y_v, kps_x[i + 0], kms_int_x[i + 0], gx_y_w);", 1), False,
      _folded_periodic_axis("y")),
 )
 

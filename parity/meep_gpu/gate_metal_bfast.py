@@ -7,12 +7,13 @@ precondition never demonstrated to fire is decorative.
 
 THE ORACLE IS IN PROCESS. ``stepping.step_B(fields, pml)`` and the Metal launch run
 in ONE process against ONE seed, on real ``Grid``/``Fields``/``PML`` objects, on the
-machine that is both target and oracle. The in-gate transcription STAYS, in a
-reduced role: it is the mutation substrate and the only way to attribute a defect to
-a sub-step or to exercise a deliberately wrong configuration. **LEG 0 PINS IT
-AGAINST ``stepping.py`` OVER MULTIPLE FULL CYCLES BEFORE ANY SHADER IS TRUSTED**,
-which is what stops "bit-identical" from meaning the kernel reproduced whatever this
-file wrote, twice.
+machine that is both target and oracle. The array path IS the reference: it steps
+MEEP's per-chunk forms and runs BFAST as MEEP's own pass after each component's curl
+(``_bfast_term`` and ``_apply_folded_increment``), which the kernel transcribes in
+register (:mod:`meep_gpu.metal_kernels.folded_pass`). There is no in-gate stepping
+transcription: every mutation row compares the mutant with ``stepping`` itself. The
+one host reconstruction left (:func:`bfast_intermediates`) recomputes the pass's
+un-storable intermediates for the subnormal census and steps nothing.
 
 WHAT IS COMPARED: uint32 word equality on float32 storage, never ``allclose``. The
 compared arrays are the sub-step's TARGETS, its PML AUXILIARIES (``fu_*``) **and its
@@ -25,21 +26,29 @@ out. Omitting them is precisely how that defect hides.
 
 THE LEGS:
 
-  0  transcription   the in-gate NumPy reference vs ``stepping.py``, full cycles
   0b execution       proof the bytes came off the GPU: mirror residency, the entry
                      point's type, the launch counter, an unlaunched control, and
                      the MEASURED refusal of a host tensor at a Metal entry point
-  1  reference       the Metal kernel vs ``stepping.py``, real engine objects
+  1  reference       the Metal kernel vs ``stepping.py``, real engine objects, the
+                     eight boundary triples in 3-D and the one-partner 2-D cases
+                     that reach MEEP's plain one-partner branch, one of them with
+                     a k on the invariant z axis
   2  identity        the HAS_BFAST=0 build vs the CERTIFIED ``pml_curl_step``,
                      with a HAS_BFAST=1 control on the same seeds and the same six
                      scalars proving they COULD have moved the states
   3  multi_step      B -> H -> D -> E cycles, the FULL stored inventory compared
                      after EVERY complete driver step, IIR states included
   4  pointer         the state mirrors write ``fields.f_bfast_*`` IN PLACE
-  5  refusal         clause 11a: the over-coverage defect, RE-MEASURED here
+  5  refusal         clause 11a: a k on a DECLARED-invariant axis is admitted,
+                     the premise (it moves no word of the array path's step)
+                     re-measured, and the admitted run byte-compared on the
+                     device, both sub-steps
   6  signed_zero     +-0 lattice seeding, census-floored
   7  precondition    the subnormal window, the f_bfast reachability census, control
-  8  mutations       armed, launch-counted, three-valued
+  8  mutations       armed, launch-counted, three-valued: the pass's own defects
+                     (its two roundings, the plain branch, the mask, the state
+                     store, the ladder), the previous package form folded into the
+                     curl, the certified curl's per-chunk battery and the record
   9  composition     the engine route, and the two halves of the wiring rule: no
                      FOREIGN arm admits on step_B/step_D, and the shipped composer
                      SELECTS this family there — plus the constitutive pair it now
@@ -111,6 +120,7 @@ import metal_gate_kit as kit  # noqa: E402
 
 import hashlib  # noqa: E402
 import platform  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
 log, save, differing = kit.log, kit.save, kit.differing
 needle = kit.needle
@@ -310,9 +320,10 @@ def summarize(legs_run: Sequence[str], compared: int, claim: str, scope: str,
             "has_bfast_on_sources_launched_against_the_oracle":
                 len(CONFIGS) * len(SUB_STEPS),
             "reduced_dimension": ("dimensions=2 with a DECLARED-invariant z axis is "
-                                  "byte-compared in leg 5 on the case clause 11a "
-                                  "ADMITS; it was previously admitted by predicate "
-                                  "verdict alone and never launched"),
+                                  "byte-compared in leg 1 (one-partner cases, a k "
+                                  "on z among them) and in leg 5 on both of its "
+                                  "cases, the k on the invariant axis included, "
+                                  "which clause 11a admits"),
         },
         # THE PRECONDITION IS NOT HYPOTHETICAL, AND SAYING SO IS A MEASUREMENT.
         # Leg 7 measures that a DRIVEN run does not reach the band. That is one
@@ -480,8 +491,27 @@ BFAST_KS: Tuple[Tuple[str, Tuple[float, float, float]], ...] = (
 SUB_STEPS = bfast.SUB_STEPS
 STATES = bfast.BFAST_STATE_NAMES
 
+#: THE ONE-PARTNER CASES. Every 3-D row above gives every component both partners,
+#: so MEEP's one-partner forms -- the plain branch's ``F = k1*(g1s + g1)`` with no
+#: ``- F`` (step_generic.cpp:373-379), and the ``S - F`` of every other branch --
+#: never run there. A z-invariant 2-D grid gives the x and y components one partner,
+#: and the layer on x and y gives each of them plain, dsig and dsigu cells. The third
+#: k carries a z component, on the invariant axis: clause 11a admits it, and every
+#: product it scales multiplies a partner MEEP does not read (see leg 5).
+ONE_PARTNER_CONFIGS: Tuple[Tuple[str, Tuple[float, float, float], Any], ...] = (
+    ("one_partner_2d_metallic_x", (1.6, 1.2, 0.0), ("metallic", "periodic", "periodic")),
+    ("one_partner_2d_periodic", (1.6, 1.2, 0.0), "periodic"),
+)
+ONE_PARTNER_KS: Tuple[Tuple[str, Tuple[float, float, float]], ...] = (
+    ("inplane", (0.21, -0.13, 0.0)),
+    ("marquee_x", (0.816958, 0.0, 0.0)),
+    ("invariant_z", (0.21, -0.13, 0.17)),
+)
+
 #: Leg 1's case count, DERIVED from the matrices it sweeps.
-REFERENCE_CASES = len(CONFIGS) * len(COURANTS) * len(BFAST_KS) * len(SUB_STEPS)
+REFERENCE_CASES = (len(CONFIGS) * len(BFAST_KS)
+                   + len(ONE_PARTNER_CONFIGS) * len(ONE_PARTNER_KS)) * len(COURANTS) * len(
+                       SUB_STEPS)
 
 SIDES = {
     "H": {"targets": ("Hx", "Hy", "Hz"), "aux": ("f_w_Hx", "f_w_Hy", "f_w_Hz"),
@@ -537,6 +567,11 @@ def build(cell, boundaries, courant: float, seed: int,
             host.reshape(-1)[::17] = np.float32(-0.0)
             host.reshape(-1)[7::23] = np.float32(0.0)
         array[...] = host
+    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # ``stepping.separate_h_from_b`` must not run on it again -- the array path would
+    # copy B into H and f_w on the dsigw cells at the first update_H, and no kernel
+    # this gate launches does (``launch.h_start_reasons``).
+    fields.h_separated = True
     return grid, fields, pml
 
 
@@ -572,19 +607,15 @@ def plan_ks(grid, sub_step: str) -> Tuple[float, ...]:
 
 
 # ---------------------------------------------------------------------------
-# The in-gate transcription: the MUTATION SUBSTRATE, pinned by leg 0
+# The pass's intermediates, reconstructed for the subnormal census
 # ---------------------------------------------------------------------------
-#
-# NOT the reference for the identity question — stepping.py itself is, in process.
-# This exists because a whole-step comparison cannot attribute a defect to a
-# sub-step and cannot exercise a deliberately wrong configuration at all.
 
 def _shifted(array: Any, axis: int, backward: bool, code: int) -> Any:
     """``stepping._shift_up`` / ``_shift_down`` for one axis, as a gather.
 
     ``np.roll`` is a pure gather and preserves every bit including signed zeros;
-    the metallic wall is then overwritten with an exact ``+0.0``, which is what
-    ``other=0.0`` and the kernel's ternary both deliver.
+    the metallic wall is then overwritten with an exact ``+0.0``, which is what the
+    kernel's ternary delivers.
     """
     out = np.roll(array, 1 if backward else -1, axis=axis)
     if code == METALLIC:
@@ -594,90 +625,57 @@ def _shifted(array: Any, axis: int, backward: bool, code: int) -> Any:
     return out
 
 
-def _owned_pairs(backward: bool):
-    return (((0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1)) if backward
-            else ((0, 0), (1, 1), (2, 2)))
+def bfast_intermediates(sources: Sequence[Any], states: Sequence[Any],
+                        codes: Sequence[int], backward: bool, ks: Sequence[float],
+                        invariant: Sequence[bool]) -> Dict[str, Any]:
+    """The BFAST pass's un-storable words, per target, as the kernel forms them.
 
-
-def reference_bfast_curl(targets: Sequence[Any], aux: Sequence[Any],
-                         sources: Sequence[Any], states: Sequence[Any],
-                         coefficients: Dict[str, Any], codes: Sequence[int],
-                         backward: bool, dtdx: float, ks: Sequence[float],
-                         has_bfast: bool = True) -> Dict[str, Any]:
-    """``stepping.step_B`` / ``step_D`` WITH the BFAST fold, transcribed, in place.
-
-    Returns the reconstructed intermediates the subnormal window censuses — the
-    three ``total`` and three ``advance`` volumes, which exist only inside the
-    kernel and which no operand or result census would see.
+    The two scaled partner sums, the state's two roundings (``F = S - F_prev``, and
+    on a one-partner target the plain branch's ``S`` itself) and ``raw = F - F_prev``.
+    No operand and no result census would see these, and ``raw`` is a cancellation
+    that can sit decades below either operand. Steps nothing: the reference is
+    ``stepping`` itself.
     """
     a, b, c = sources
-    a_y = _shifted(a, 1, backward, codes[1])
-    a_z = _shifted(a, 2, backward, codes[2])
-    b_x = _shifted(b, 0, backward, codes[0])
-    b_z = _shifted(b, 2, backward, codes[2])
-    c_x = _shifted(c, 0, backward, codes[0])
-    c_y = _shifted(c, 1, backward, codes[1])
-
-    curls = [dtdx * ((c_y - c) + (b - b_z)),
-             dtdx * ((a_z - a) + (c - c_x)),
-             dtdx * ((b_x - b) + (a - a_y))]
-
-    intermediates: Dict[str, Any] = {}
-    if has_bfast:
-        # stepping._bfast_term:896-897 — the shifted operand first in each sum,
-        # both sums in the SAME orientation (unlike the curl's differences).
-        pairs = (((c_y, c), (b_z, b)), ((a_z, a), (c_x, c)), ((b_x, b), (a_y, a)))
-        for target, ((sf, f), (ss, s)) in enumerate(pairs):
-            k1 = np.float32(ks[2 * target])
-            k2 = np.float32(ks[2 * target + 1])
-            total = k1 * (sf + f) - k2 * (ss + s)
-            advance = total - np.float32(2.0) * states[target]
-            # :902 — the SAME ownership predicate the curl gets, BEFORE the store.
-            for masked_target, axis in _owned_pairs(backward):
-                if masked_target == target and codes[axis] == METALLIC:
-                    index = [slice(None)] * 3
-                    index[axis] = 0
-                    advance[tuple(index)] = np.float32(0.0)
-            intermediates[f"total{target}"] = np.array(total, copy=True)
-            intermediates[f"advance{target}"] = np.array(advance, copy=True)
-            states[target] += advance                     # :903, in place
-            curls[target] = curls[target] - advance       # :904 + :364-368
-
-    # stepping._mask_non_owned_cells on the SUMMED curl (:369 / :450).
-    for target, axis in _owned_pairs(backward):
-        if codes[axis] == METALLIC:
-            index = [slice(None)] * 3
-            index[axis] = 0
-            curls[target][tuple(index)] = np.float32(0.0)
-
-    # stepping._apply_pml_update, term by term. Target 0 takes (y, z), 1 (z, x),
-    # 2 (x, y) — vec.hpp's cycle_direction, the same triple on both sides.
-    cycle = (("y", "z"), ("z", "x"), ("x", "y"))
-    for target, (first, second) in enumerate(cycle):
-        kms, sinv = coefficients["kms_" + first], coefficients["sinv_" + first]
-        kms_u, sinv_u = coefficients["kms_" + second], coefficients["sinv_" + second]
-        previous = aux[target].copy()
-        aux[target] *= kms
-        aux[target] -= curls[target]
-        aux[target] *= sinv
-        targets[target] *= kms_u
-        targets[target] += aux[target]
-        targets[target] -= previous
-        targets[target] *= sinv_u
-    return intermediates
+    shifted = {"a_y": _shifted(a, 1, backward, codes[1]),
+               "a_z": _shifted(a, 2, backward, codes[2]),
+               "b_x": _shifted(b, 0, backward, codes[0]),
+               "b_z": _shifted(b, 2, backward, codes[2]),
+               "c_x": _shifted(c, 0, backward, codes[0]),
+               "c_y": _shifted(c, 1, backward, codes[1])}
+    centre = {"a": a, "b": b, "c": c}
+    out: Dict[str, Any] = {}
+    for target in range(3):
+        g1, a1, g2, a2 = shaders.CURL_OPERANDS[target]
+        first, second = "abc"[g1], "abc"[g2]
+        k1, k2 = np.float32(ks[2 * target]), np.float32(ks[2 * target + 1])
+        plus = k1 * (shifted[f"{first}_{'xyz'[a1]}"] + centre[first])
+        minus = k2 * (shifted[f"{second}_{'xyz'[a2]}"] + centre[second])
+        have_p, have_m = not invariant[a1], not invariant[a2]
+        previous = states[target]
+        if have_p and have_m:
+            total = plus - minus
+        elif have_p or have_m:
+            total = plus if have_p else minus
+        else:
+            continue
+        state = total - previous
+        out[f"plus{target}"] = plus
+        out[f"minus{target}"] = minus
+        out[f"total{target}"] = total
+        out[f"state{target}"] = state
+        out[f"raw{target}"] = state - previous
+    return out
 
 
-def reference_constitutive(targets, aux, sources, inverse_epsilon,
-                           coefficients: Dict[str, Any]) -> None:
-    """``stepping._apply_constitutive_pml`` on the component's OWN axis, in place."""
-    for target, axis in enumerate("xyz"):
-        kps, kms = coefficients["kps_" + axis], coefficients["kms_" + axis]
-        product = (sources[target] if inverse_epsilon is None
-                   else sources[target] * inverse_epsilon[target])
-        previous = aux[target].copy()
-        aux[target][...] = product
-        targets[target] += kps * aux[target]
-        targets[target] -= kms * previous
+def _intermediates_of(before: Dict[str, Any], pml, sub_step: str, codes,
+                      ks: Sequence[float]) -> Dict[str, Any]:
+    spec = SUB_STEPS[sub_step]
+    grid = pml.grid
+    return bfast_intermediates(
+        [before[n] for n in spec["sources"]], [before[n] for n in STATES[sub_step]],
+        codes, spec["backward"], ks,
+        tuple(bool(grid.is_invariant(axis)) for axis in range(3)))
 
 
 # ---------------------------------------------------------------------------
@@ -691,8 +689,11 @@ def run_bfast_on_device(state: Dict[str, Any], pml, sub_step: str, codes,
                         suffix: Optional[str] = None,
                         has_bfast: bool = True,
                         counter: Optional[List[kit.Counter]] = None,
+                        record: Any = None,
                         ) -> Dict[str, Any]:
     """One BFAST curl launch through the SHIPPED plan object, returning host results.
+
+    ``record`` replaces the one-rank chunk record of the case (a record mutation).
 
     Everything goes through ``plan_bfast_pml_curl_from_arrays`` ->
     ``BfastPmlCurlPlan.run`` so the bytes this gate certifies are the bytes the
@@ -730,7 +731,8 @@ def run_bfast_on_device(state: Dict[str, Any], pml, sub_step: str, codes,
         functions = {shaders.CONTRACT_OFF: function}
     plan = bfast.plan_bfast_pml_curl_from_arrays(
         sub_step, arrays, flat, codes, dtdx, ks, residency,
-        functions=functions, has_bfast=has_bfast)
+        functions=functions, has_bfast=has_bfast,
+        chunk_bounds=layer_record(pml.grid, pml) if record is None else record)
     plan.run()
     residency.sync_out()
     return arrays
@@ -741,86 +743,6 @@ def compared_names(sub_step: str) -> Tuple[str, ...]:
     spec = SUB_STEPS[sub_step]
     return (tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
             + STATES[sub_step])
-
-
-# ---------------------------------------------------------------------------
-# LEG 0 — the transcription, pinned against stepping.py over full cycles
-# ---------------------------------------------------------------------------
-
-def leg_transcription(payload: Dict[str, Any], out: str,
-                      cycles: int = TRANSCRIPTION_CYCLES) -> None:
-    """The in-gate reference vs ``stepping.py`` itself, over multiple full cycles.
-
-    THIS RUNS FIRST AND NOTHING ELSE IS TRUSTED UNTIL IT PASSES.
-    """
-    rows: List[Dict[str, Any]] = []
-    started = time.time()
-    for name, cell, boundaries in CONFIGS:
-        for courant in COURANTS[:2]:
-            for k_label, bfast_k in BFAST_KS:
-                grid, fields, pml = build(cell, boundaries, courant, 20260815,
-                                          bfast_k=bfast_k)
-                initial = snapshot(fields)
-                codes = boundary_codes(grid, pml)
-                dtdx = float(grid.dt / grid.dx)
-                ks_b, ks_d = plan_ks(grid, "step_B"), plan_ks(grid, "step_D")
-
-                for _ in range(cycles):
-                    stepping.step_B(fields, pml)
-                    stepping.update_H(fields, pml)
-                    stepping.step_D(fields, pml)
-                    stepping.update_E(fields, pml)
-                oracle = snapshot(fields)
-
-                work = {k: np.array(v, copy=True) for k, v in initial.items()}
-                inverse = {n: fields.inverse_epsilon_for(n)
-                           for n in ("Ex", "Ey", "Ez")}
-                for _ in range(cycles):
-                    reference_bfast_curl(
-                        [work[n] for n in ("Bx", "By", "Bz")],
-                        [work["fu_" + n] for n in ("Bx", "By", "Bz")],
-                        [work[n] for n in ("Ex", "Ey", "Ez")],
-                        [work[n] for n in STATES["step_B"]],
-                        curl_coefficients(pml, "_h"), codes, False, dtdx, ks_b)
-                    reference_constitutive(
-                        [work[n] for n in ("Hx", "Hy", "Hz")],
-                        [work["f_w_" + n] for n in ("Hx", "Hy", "Hz")],
-                        [work[n] for n in ("Bx", "By", "Bz")],
-                        None, constitutive_coefficients(pml, ""))
-                    reference_bfast_curl(
-                        [work[n] for n in ("Dx", "Dy", "Dz")],
-                        [work["fu_" + n] for n in ("Dx", "Dy", "Dz")],
-                        [work[n] for n in ("Hx", "Hy", "Hz")],
-                        [work[n] for n in STATES["step_D"]],
-                        curl_coefficients(pml, ""), codes, True, dtdx, ks_d)
-                    reference_constitutive(
-                        [work[n] for n in ("Ex", "Ey", "Ez")],
-                        [work["f_w_" + n] for n in ("Ex", "Ey", "Ez")],
-                        [work[n] for n in ("Dx", "Dy", "Dz")],
-                        [inverse[n] for n in ("Ex", "Ey", "Ez")],
-                        constitutive_coefficients(pml, "_h"))
-
-                bad = {n: differing(work[n], oracle[n]) for n in oracle}
-                moved = sum(differing(oracle[n], initial[n]) for n in oracle)
-                state_moved = sum(differing(oracle[n], initial[n])
-                                  for n in STATES["step_B"] + STATES["step_D"])
-                row = {"case": name, "courant": courant, "k": k_label,
-                       "cycles": cycles, "moved": moved,
-                       "bfast_state_moved": state_moved,
-                       "differing": {k: v for k, v in bad.items() if v}}
-                rows.append(row)
-                log(f"[leg0 transcription] {name:<13} C={courant} k={k_label:<9} "
-                    f"moved={moved:<7} f_bfast_moved={state_moved:<6} "
-                    f"{'IDENTICAL' if not row['differing'] else 'DIFFERS ' + str(row['differing'])}"
-                    f" ({time.time() - started:.1f}s)")
-                payload["legs"]["transcription"] = rows
-                save(payload, out)
-                assert_moved(moved, f"{name}/{k_label}")
-                assert state_moved > 0, (
-                    f"VACUOUS: {name}/{k_label} never moved an f_bfast state, so "
-                    f"the IIR recurrence this family exists for was not exercised")
-                assert not row["differing"], (
-                    f"the in-gate transcription is not stepping.py: {row['differing']}")
 
 
 # ---------------------------------------------------------------------------
@@ -877,7 +799,8 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
         compared = compared_names(sub_step)
 
         residency = device.Residency()
-        plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step, residency)
+        plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step, residency,
+                                         chunk_bounds=layer_record(fields.grid, pml))
         assert plan is not None, "the engine route refused a covered configuration"
 
         devices = {mirror: str(residency.tensor(mirror).device)
@@ -912,8 +835,9 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
         cpu_residency = device.Residency(device="cpu")
         cpu_grid, cpu_fields, cpu_pml = build(cell, boundaries, 0.105679, 20260815,
                                               bfast_k=BFAST_KS[1][1])
-        cpu_plan = bfast.plan_bfast_pml_curl(cpu_fields, cpu_pml, sub_step,
-                                             cpu_residency)
+        cpu_plan = bfast.plan_bfast_pml_curl(
+            cpu_fields, cpu_pml, sub_step, cpu_residency,
+            chunk_bounds=layer_record(cpu_fields.grid, cpu_pml))
         try:
             cpu_plan.run()
         except Exception as exc:  # noqa: BLE001
@@ -979,13 +903,7 @@ def case_census(before: Dict[str, Any], after: Dict[str, Any], pml,
     and ``advance`` intermediates, which no census of stored arrays would see.
     """
     spec = SUB_STEPS[sub_step]
-    work = {name: np.array(value, copy=True) for name, value in before.items()}
-    intermediates = reference_bfast_curl(
-        [work[n] for n in spec["targets"]],
-        [work["fu_" + n] for n in spec["targets"]],
-        [work[n] for n in spec["sources"]],
-        [work[n] for n in STATES[sub_step]],
-        curl_coefficients(pml, spec["suffix"]), codes, spec["backward"], dtdx, ks)
+    intermediates = _intermediates_of(before, pml, sub_step, codes, ks)
     window = preconditions.SubnormalWindow(0, 0, per_intermediate_words=1)
     compared = compared_names(sub_step)
     for name in tuple(spec["sources"]) + compared:
@@ -1004,12 +922,16 @@ def leg_reference(payload: Dict[str, Any], out: str) -> None:
     rows: List[Dict[str, Any]] = []
     started = time.time()
     total = 0
-    for name, cell, boundaries in CONFIGS:
+    matrix = ([(name, cell, boundaries, 3, BFAST_KS)
+               for name, cell, boundaries in CONFIGS]
+              + [(name, cell, boundaries, 2, ONE_PARTNER_KS)
+                 for name, cell, boundaries in ONE_PARTNER_CONFIGS])
+    for name, cell, boundaries, dimensions, ks_table in matrix:
         for courant in COURANTS:
-            for k_label, bfast_k in BFAST_KS:
+            for k_label, bfast_k in ks_table:
                 for sub_step in SUB_STEPS:
                     grid, fields, pml = build(cell, boundaries, courant, 20260815,
-                                              bfast_k=bfast_k)
+                                              bfast_k=bfast_k, dimensions=dimensions)
                     before = snapshot(fields)
                     getattr(stepping, sub_step)(fields, pml)
                     after = snapshot(fields)
@@ -1115,7 +1037,8 @@ def leg_identity(payload: Dict[str, Any], out: str) -> None:
                     for k, v in curl_coefficients(pml, spec["suffix"]).items()}
             residency = device.Residency()
             plain = metal_launch.plan_from_arrays(sub_step, arrays, flat, codes,
-                                                  dtdx, residency)
+                                                  dtdx, residency,
+                                                  chunk_bounds=layer_record(pml.grid, pml))
             plain.run()
             residency.sync_out()
 
@@ -1334,7 +1257,8 @@ def leg_pointer(payload: Dict[str, Any], out: str) -> None:
         grid, fields, pml = build(CONFIGS[1][1], CONFIGS[1][2], 0.35, 20260815)
         codes = boundary_codes(grid, pml)
         residency = device.Residency()
-        plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step, residency)
+        plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step, residency,
+                                         chunk_bounds=layer_record(fields.grid, pml))
         assert plan is not None, bfast.bfast_pml_curl_coverage(
             fields, pml, sub_step, residency).reasons
 
@@ -1371,110 +1295,64 @@ def leg_pointer(payload: Dict[str, Any], out: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# LEG 5 — clause 11a, the over-coverage defect, RE-MEASURED on this host
+# LEG 5 — clause 11a: a k on a DECLARED-invariant axis, admitted and byte-compared
 # ---------------------------------------------------------------------------
 
 def leg_refusal(payload: Dict[str, Any], out: str) -> None:
-    """The predicate refuses nonzero k on a DECLARED-invariant axis — and the
-    divergence that justifies the refusal is measured HERE, not inherited.
+    """Clause 11a: a nonzero k on a DECLARED-invariant axis is admitted and byte-compared.
 
-    The Triton gate found this by calling the predicate with constructed objects
-    and measured max|diff| ~ 0.598 between ``stepping.py``'s answer and MEEP's on a
-    z-invariant grid at ``bfast = (0.4, 0, 0.3)``. A refusal clause whose
-    justification is a number from another backend's artifact is a clause nobody
-    re-checked, so this leg reconstructs MEEP's own increment — ``F_new = -F_prev``
-    with the partner term DROPPED (step_generic.cpp:449/:469/:499/:525 after the
-    null-operand swap at :342-346) — and measures the gap on this host.
+    An earlier array path zeroed only the coefficient of an absent partner and kept the
+    other product, which differed from MEEP's one-partner forms, and the predicate
+    refused the class by name. The array path now takes MEEP's one-partner forms
+    (``stepping._bfast_term``): an absent partner is not read and the surviving k is
+    the one its presence zeroes, so a k on the invariant axis multiplies nothing MEEP
+    reads -- the array path's separate-pass change measured that class (case ``bfz``)
+    at 0 differing words against MEEP (CHANGELOG). The Triton predicate admits it since
+    its fold lane, and this one with it (the two clause lists are pinned equal,
+    ``test_metal_bfast``).
 
-    IT ALSO MEASURES THE CONTROL: at ``bfast = (0.4, 0, 0)`` the two agree exactly,
-    which is what makes the refusal SPECIFIC rather than a blanket refusal of
-    reduced-dimension runs.
-
-    AND THE CONTROL IS NOW BYTE-CERTIFIED, WHICH IT WAS NOT. The control asserts the
-    predicate ADMITS a ``dimensions=2`` run — and no leg in this gate ever launched
-    the kernel on a reduced-dimension grid, so the one configuration class this gate
-    positively admits outside 3-D was carried by a predicate verdict alone. "Admitted
-    but never certified" is the same shape of hole as "refused but never measured",
-    and it is the more dangerous one: a predicate that admits is what puts a kernel on
-    the step path. The admitted case now runs both sub-steps against ``stepping.py``
-    and compares words, with the usual moved and IIR-state floors.
+    This leg measures, on this host: the premise (on a z-invariant grid the array
+    path's step at ``k = (0.4, 0, 0.3)`` stores EXACTLY its step at ``k = (0.4, 0, 0)``);
+    that the predicate admits both cases with no invariant-axis reason; and the
+    kernel's words against the array path's on the device, both sub-steps, for both
+    cases.
     """
     rows: List[Dict[str, Any]] = []
     started = time.time()
+    cell, boundaries = (1.2, 1.0, 0.0), ("metallic", "metallic", "periodic")
 
-    for label, bfast_k, expect_admitted, expect_divergent in (
-            ("k_on_live_axis_only", (0.4, 0.0, 0.0), True, False),
-            ("k_on_invariant_axis", (0.4, 0.0, 0.3), False, True)):
-        # dimensions=2 makes z DECLARED-invariant, which is the only way to reach
-        # clause 11a: `Grid.is_invariant` reads declared dimensionality and never
-        # extent == 1 (grid.py:1165-1183), so a one-cell z axis at dimensions=3
-        # would NOT be invariant and the clause could not fire. An invariant axis
-        # is infinite and uniform, so its cell extent must be 0.
-        grid, fields, pml = build((1.2, 1.0, 0.0),
-                                  ("metallic", "metallic", "periodic"),
-                                  0.4375, 20260815, bfast_k=bfast_k, dimensions=2)
+    def stepped(bfast_k, sub_step):
+        grid, fields, pml = build(cell, boundaries, 0.4375, 20260815, bfast_k=bfast_k,
+                                  dimensions=2)
+        before = snapshot(fields)
+        getattr(stepping, sub_step)(fields, pml)
+        return grid, fields, pml, before, snapshot(fields)
+
+    for label, bfast_k, expect_admitted in (
+            ("k_on_live_axis_only", (0.4, 0.0, 0.0), True),
+            ("k_on_invariant_axis", (0.4, 0.0, 0.3), True)):
+        grid, fields, pml = build(cell, boundaries, 0.4375, 20260815, bfast_k=bfast_k,
+                                  dimensions=2)
         invariant = [bool(grid.is_invariant(a)) for a in range(3)]
         residency = device.Residency()
         verdict = bfast.bfast_pml_curl_coverage(fields, pml, "step_B", residency)
-        clause = [r for r in verdict.reasons if "DECLARED-invariant" in r]
+        clause = [r for r in verdict.reasons if "invariant" in r]
 
-        # WHICH TARGETS MEEP GUARDS. ``have_p``/``have_m`` are cross-gated on the
-        # PARTNERS' derivative axes (stepping.py:909-910), so a target is guarded
-        # exactly when one of its two partner axes is declared invariant. Only
-        # those take MEEP's single-operand branch; the unguarded ones legitimately
-        # differ from ``-F_prev`` and comparing them would make this leg measure
-        # the wrong thing.
-        guarded = []
-        for target, (_, first_axis, _, second_axis) in enumerate(
-                bfast.BFAST_TERMS["step_B"]):
-            if invariant[first_axis] or invariant[second_axis]:
-                guarded.append(STATES["step_B"][target])
+        # The premise, re-measured: the invariant-axis k changes no stored word.
+        dropped_k = (bfast_k[0], bfast_k[1], 0.0)
+        premise: Dict[str, int] = {}
+        for sub_step in SUB_STEPS:
+            _g, _f, _p, _b, with_k = stepped(bfast_k, sub_step)
+            _g, _f, _p, _b, without_k = stepped(dropped_k, sub_step)
+            for name in compared_names(sub_step):
+                premise[f"{sub_step}:{name}"] = differing(with_k[name], without_k[name])
 
-        before = snapshot(fields)
-        stepping.step_B(fields, pml)
-        stepping_states = {n: np.array(getattr(fields, n), copy=True)
-                           for n in STATES["step_B"]}
-
-        # MEEP's answer on a guarded target: after the null-operand swap
-        # (step_db.cpp:62-63 + step_generic.cpp:342-346) the surviving coefficient
-        # is the ZEROED one, so its whole increment reduces to F_new = -F_prev with
-        # the other term DROPPED (step_generic.cpp:525, this tranche's branch).
-        #
-        # THE OWNERSHIP MASK APPLIES TO MEEP TOO, and leaving it out was worth
-        # measuring: MEEP writes F only inside ``sub_gv.little_owned_corner0(cc)``,
-        # so on the unowned plane its F is UNCHANGED rather than negated. A
-        # reconstruction that negated everywhere reported a 1.781 gap on the
-        # CONTROL — where the two must agree exactly — which would have made the
-        # refusal look justified on a configuration it must not refuse.
-        codes_2d = boundary_codes(grid, pml)
-        meep_states = {}
-        for target, name in enumerate(STATES["step_B"]):
-            if name not in guarded:
-                continue
-            previous = np.array(before[name], copy=True)
-            advance = np.float32(-2.0) * previous
-            for masked_target, axis in _owned_pairs(False):
-                if masked_target == target and codes_2d[axis] == METALLIC:
-                    index = [slice(None)] * 3
-                    index[axis] = 0
-                    advance[tuple(index)] = np.float32(0.0)
-            meep_states[name] = previous + advance
-        gap = max(float(np.max(np.abs(stepping_states[n] - meep_states[n])))
-                  for n in guarded) if guarded else 0.0
-
-        # THE ADMITTED CLASS IS CERTIFIED HERE, not merely admitted. `fields` has
-        # already been advanced by the step_B above, so the byte comparison rebuilds
-        # the case from the same seed rather than reusing a mutated one.
         reduced: Optional[Dict[str, Any]] = None
         if verdict.covered:
             reduced = {}
             for sub_step in SUB_STEPS:
-                sub_grid, sub_fields, sub_pml = build(
-                    (1.2, 1.0, 0.0), ("metallic", "metallic", "periodic"),
-                    0.4375, 20260815, bfast_k=bfast_k, dimensions=2)
-                sub_before = snapshot(sub_fields)
-                getattr(stepping, sub_step)(sub_fields, sub_pml)
-                sub_after = snapshot(sub_fields)
+                sub_grid, _fields, sub_pml, sub_before, sub_after = stepped(bfast_k,
+                                                                            sub_step)
                 sub_codes = boundary_codes(sub_grid, sub_pml)
                 got = run_bfast_on_device(
                     sub_before, sub_pml, sub_step, sub_codes,
@@ -1491,24 +1369,19 @@ def leg_refusal(payload: Dict[str, Any], out: str) -> None:
 
         row = {"case": label, "bfast_scaled_k": list(bfast_k),
                "invariant_axes": invariant,
-               "guarded_targets": guarded,
                "admitted": bool(verdict.covered),
-               "clause_11a_fired": bool(clause),
-               "max_abs_stepping_minus_meep": gap,
+               "invariant_axis_reason": bool(clause),
+               "words_the_invariant_axis_k_moves_on_the_array_path":
+                   sum(premise.values()),
                "reduced_dimension_bytes": reduced,
-               # HOISTED so `certified_from_rows` can see it. That function reads a
-               # TOP-LEVEL `differing` key; a divergence buried one level down in
-               # `reduced_dimension_bytes` would be asserted in-leg but invisible to
-               # the summary's independent second read, which is the whole point of
-               # having one.
                "differing": ({} if reduced is None else
                              {f"{s}:{n}": c for s, r in reduced.items()
                               for n, c in r["differing"].items()}),
                "reasons": list(verdict.reasons)[:6]}
         rows.append(row)
         log(f"[leg5 refusal] {label:<22} invariant={invariant} "
-            f"guarded={guarded} admitted={verdict.covered} 11a={bool(clause)} "
-            f"max|stepping-MEEP|={gap:.4g} "
+            f"admitted={verdict.covered} invariant_reason={bool(clause)} "
+            f"k_z_moves={sum(premise.values())} "
             f"reduced_dim_bytes="
             f"{'n/a (refused)' if reduced is None else ('IDENTICAL' if not any(r['differing'] for r in reduced.values()) else 'DIFFERS')}"
             f" ({time.time() - started:.1f}s)")
@@ -1525,24 +1398,13 @@ def leg_refusal(payload: Dict[str, Any], out: str) -> None:
                     f"{label}/{sub_step}: the predicate ADMITS a dimensions=2 BFAST "
                     f"run and the kernel is not byte-identical there: "
                     f"{record['differing']}")
-
-        assert guarded, (
-            f"{label}: no target is guarded on this grid, so the clause this leg "
-            f"exists to exercise cannot fire either way — the case is vacuous")
         assert bool(verdict.covered) == expect_admitted, row
-        if expect_divergent:
-            assert clause, (
-                f"{label}: clause 11a did NOT fire on a configuration where "
-                f"stepping.py and MEEP disagree — the predicate over-covers")
-            assert gap > 1e-3, (
-                f"{label}: the divergence this refusal exists for was NOT "
-                f"reproduced here (max|diff|={gap:.4g}). A refusal whose "
-                f"justification cannot be measured is a clause nobody re-checked")
-        else:
-            assert not clause, (
-                f"{label}: clause 11a fired on a configuration where stepping.py "
-                f"and MEEP AGREE — the refusal is too broad and would send correct "
-                f"runs to the array path")
+        assert not clause, row
+        assert reduced is not None, row
+        assert sum(premise.values()) == 0, (
+            f"{label}: the invariant-axis k moved {sum(premise.values())} words on "
+            f"the array path, which MEEP's one-partner forms never read: "
+            f"{ {k: v for k, v in premise.items() if v} }")
 
 
 # ---------------------------------------------------------------------------
@@ -1708,14 +1570,7 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
 
             # Reconstruct the kernel's INTERMEDIATES on the host so they can be
             # censused: no operand and no result census would see them.
-            work = {k: np.array(v, copy=True) for k, v in before.items()}
-            intermediates = reference_bfast_curl(
-                [work[n] for n in spec["targets"]],
-                [work["fu_" + n] for n in spec["targets"]],
-                [work[n] for n in spec["sources"]],
-                [work[n] for n in STATES[sub_step]],
-                curl_coefficients(pml, spec["suffix"]), codes,
-                spec["backward"], dtdx, ks)
+            intermediates = _intermediates_of(before, pml, sub_step, codes, ks)
 
             window = preconditions.SubnormalWindow(0, 0)
             for n in tuple(spec["sources"]) + compared:
@@ -1790,10 +1645,9 @@ def _reachability(payload: Dict[str, Any], out: str, started: float) -> Dict[str
     this tail's ``advance = total - 2*state`` is a CANCELLATION: ``total`` can
     approach ``2*state`` and leave an advance many decades below either operand,
     which no census of ``f_bfast`` alone would ever see. Neither is readable from the
-    device, so they are reconstructed on the host by the in-gate transcription (leg 0
-    pins it against ``stepping.py``) from a COPY of the live state, for both
-    sub-steps, at every sample step — the same expression and the same operand order
-    the kernel evaluates. Reconstruction is weaker than reading the device's
+    device, so they are reconstructed on the host (:func:`bfast_intermediates`) from a
+    COPY of the live state, for both sub-steps, at every sample step -- the same
+    expression and the same operand order the kernel evaluates. Reconstruction is weaker than reading the device's
     registers and the artifact says so; it is strictly stronger than censusing only
     what was stored.
     """
@@ -1801,7 +1655,6 @@ def _reachability(payload: Dict[str, Any], out: str, started: float) -> Dict[str
                               0.105679, 20260815, bfast_k=(0.816958, 0.0, 0.0),
                               signed_zeros=False)
     codes = boundary_codes(grid, pml)
-    dtdx = float(grid.dt / grid.dx)
     reach_ks = {s: plan_ks(grid, s) for s in SUB_STEPS}
     # Start from rest: a driven run, not a seeded one.
     for name in STATE:
@@ -1843,13 +1696,8 @@ def _reachability(payload: Dict[str, Any], out: str, started: float) -> Dict[str
         inner_floor = float("inf")
         work = snapshot(fields)
         for sub_step, spec in SUB_STEPS.items():
-            produced = reference_bfast_curl(
-                [work[n] for n in spec["targets"]],
-                [work["fu_" + n] for n in spec["targets"]],
-                [work[n] for n in spec["sources"]],
-                [work[n] for n in STATES[sub_step]],
-                curl_coefficients(pml, spec["suffix"]), codes,
-                spec["backward"], dtdx, reach_ks[sub_step])
+            produced = _intermediates_of(work, pml, sub_step, codes,
+                                         reach_ks[sub_step])
             for label, value in produced.items():
                 inner += window.observe_intermediate(
                     f"{sub_step}:{label}@{step}", value, step)
@@ -1951,9 +1799,9 @@ def _reachability(payload: Dict[str, Any], out: str, started: float) -> Dict[str
                   None if smallest_inner == float("inf") else smallest_inner,
               "intermediates_censused": True,
               "intermediate_reconstruction": (
-                  "host-side, by the in-gate transcription leg 0 pins against "
-                  "stepping.py; the kernel's own registers are not readable, and "
-                  "the artifact states that rather than implying otherwise"),
+                  "host-side, by bfast_intermediates (the kernel's own expressions "
+                  "and operand order); the kernel's own registers are not readable, "
+                  "and the artifact states that rather than implying otherwise"),
               "marginally_stable_pole": True,
               "claim_shape": shape,
               "window": window.report()}
@@ -1976,128 +1824,180 @@ def _reachability(payload: Dict[str, Any], out: str, started: float) -> Dict[str
 # LEG 8 — mutations: armed, launch-counted, three-valued
 # ---------------------------------------------------------------------------
 
+def _drop_pass(source: str) -> str:
+    """The whole BFAST pass removed (its two marker lines and everything between)."""
+    from meep_gpu.metal_kernels import folded_pass  # noqa: PLC0415
+
+    start = source.find(folded_pass.FOLDED_PASS_BEGIN)
+    end = source.find(folded_pass.FOLDED_PASS_END)
+    if start < 0 or end < 0:
+        raise LookupError("the folded pass block")
+    end += len(folded_pass.FOLDED_PASS_END) + 1
+    return source[:start] + "    // BFAST pass dropped\n" + source[end:]
+
+
+def _previous_package_form(source: str) -> str:
+    """The PREVIOUS package form: the one-rounding advance ``total - 2*state`` folded
+    into the curl before the mask and the forms, the state advanced in place."""
+    lines = []
+    for target in range(3):
+        g1, a1, g2, a2 = shaders.CURL_OPERANDS[target]
+        first, second = "abc"[g1], "abc"[g2]
+        lines += [
+            f"    float st{target} = s{target}[ii];",
+            f"    float adv{target} = ((k1_{target} * ({first}_{'xyz'[a1]} + {first})) "
+            f"- (k2_{target} * ({second}_{'xyz'[a2]} + {second}))) - (2.0f * st{target});",
+            f"    s{target}[ii] = st{target} + adv{target};",
+            f"    curl{target} = curl{target} - adv{target};"]
+    anchor = "    // --- ownership mask"
+    return needle(_drop_pass(source), anchor, "\n".join(lines) + "\n\n" + anchor)
+
+
 MUTATIONS: Dict[str, Dict[str, Any]] = {
     "m1_k_assignment_swapped": {
         "must_catch": True,
-        "why": "k1 and k2 exchanged on target 0 — the CROSS-assignment "
-               "(stepping.py:911-912, MEEP vec.hpp:445) that stepping.py itself "
-               "calls the single easiest mistake in the whole pass, and which is "
-               "SILENT: on a k along one axis it merely moves the term to the "
-               "wrong pair of components",
+        "why": "k1 and k2 exchanged on target 0 -- the CROSS-assignment (MEEP "
+               "vec.hpp:445) stepping itself calls the single easiest mistake in the "
+               "whole pass, and which is SILENT on a k along one axis",
         "apply": lambda s: needle(
-            s, "float total0 = (k1_0 * (c_y + c)) - (k2_0 * (b_z + b));",
-            "float total0 = (k2_0 * (c_y + c)) - (k1_0 * (b_z + b));"),
+            needle(s, "float sp0 = k1_0 * (c_y + c);", "float sp0 = k2_0 * (c_y + c);"),
+            "float sm0 = k2_0 * (b_z + b);", "float sm0 = k1_0 * (b_z + b);"),
     },
     "m2_sum_becomes_difference": {
         "must_catch": True,
-        "why": "the BFAST SUM written as the curl's DIFFERENCE. The whole reason "
-               "the invariant-axis guard exists is that a difference vanishes "
-               "where the sum is 2*g (stepping.py:889-898)",
+        "why": "the BFAST SUM written as the curl's DIFFERENCE",
         "apply": lambda s: needle(
-            s, "float total1 = (k1_1 * (a_z + a)) - (k2_1 * (c_x + c));",
-            "float total1 = (k1_1 * (a_z - a)) - (k2_1 * (c_x - c));"),
+            needle(s, "float sp1 = k1_1 * (a_z + a);", "float sp1 = k1_1 * (a_z - a);"),
+            "float sm1 = k2_1 * (c_x + c);", "float sm1 = k2_1 * (c_x - c);"),
     },
-    "m3_two_state_factor_dropped": {
+    "m3_one_rounding_increment": {
         "must_catch": True,
-        "why": "`advance = total - 2*state` written as `total - state`: the "
-               "Tustin filter's pole moves and the recurrence stops being "
-               "F_new = S - F_prev",
-        "apply": lambda s: needle(s, "float adv0 = total0 - (2.0f * st0);",
-                                      "float adv0 = total0 - st0;"),
-    },
-    "m4_state_store_before_mask": {
-        "must_catch": True,
-        "why": "the state stored from the UNMASKED advance — stepping.py masks at "
-               ":902 and stores at :930, so an unowned cell's f_bfast would hold a "
-               "value MEEP's owned-cell loop never writes",
+        "why": "the increment formed as the previous package's ONE rounding of "
+               "S - 2*F_prev instead of MEEP's raw = (S - F_prev) - F_prev (the "
+               "array path's separate-pass change measured the second rounding "
+               "necessary: 458,721 of 1,113,272 words)",
         "apply": lambda s: needle(
-            s, "    adv0 = at_x ? 0.0f : adv0;", "    // advance mask dropped"),
+            s, "float fi0 = (has_y || has_z) ? (-(F0 - fp0)) : 0.0f;",
+            "float fi0 = (has_y || has_z) ? (-((sp0 - sm0) - (2.0f * fp0))) : 0.0f;"),
+    },
+    "m4_state_stored_on_an_unowned_cell": {
+        "must_catch": True,
+        "why": "the state stored on every cell; MEEP writes F only inside its "
+               "owned-cell loop, and the array path stores it on owned cells only",
+        "apply": lambda s: needle(s, "if (own0 && (has_y || has_z)) { s0[ii] = F0; }",
+                                  "s0[ii] = F0;"),
         "codes": (METALLIC, METALLIC, PERIODIC),
         "sub_steps": ("step_B",),
     },
-    "m5_curl_fold_sign_flipped": {
+    "m4b_increment_not_masked": {
         "must_catch": True,
-        "why": "`curl - adv` written as `curl + adv`: stepping.py returns "
-               "-advance (:931) and the caller ADDS it (:392-396), so the fold is "
-               "a subtraction and the sign of the whole feature inverts",
-        "apply": lambda s: needle(s, "    curl0 = curl0 - adv0;",
-                                      "    curl0 = curl0 + adv0;"),
+        "why": "the increment kept on the cell the curl's mask drops",
+        "apply": lambda s: needle(s, "    fi0 = at_x ? 0.0f : fi0;\n", ""),
+        "codes": (METALLIC, METALLIC, PERIODIC),
+        "sub_steps": ("step_B",),
     },
-    "m6_dtdx_applied_to_the_tail": {
+    "m5_increment_sign_flipped": {
         "must_catch": True,
-        "why": "the tail scaled by dtdx. MEEP passes dtdx to step_bfast and the "
-               "body NEVER reads it (stepping.py:863-864) — this is the Tustin "
-               "derivative, which already carries the dt",
+        "why": "the increment not negated: the pass would subtract raw, inverting "
+               "the sign of the whole feature",
         "apply": lambda s: needle(
-            s, "float adv1 = total1 - (2.0f * st1);",
-            "float adv1 = dtdx * total1 - (2.0f * st1);"),
+            s, "float fi0 = (has_y || has_z) ? (-(F0 - fp0)) : 0.0f;",
+            "float fi0 = (has_y || has_z) ? (F0 - fp0) : 0.0f;"),
     },
-    "m7_state_not_accumulated": {
+    "m6_dtdx_applied_to_the_pass": {
         "must_catch": True,
-        "why": "`state = state + adv` written as `state = adv`: the IIR loses its "
-               "memory. Marginally stable means this never decays back",
-        "apply": lambda s: needle(s, "    s0[ii] = st0 + adv0;",
-                                      "    s0[ii] = adv0;"),
+        "why": "the pass scaled by dtdx. MEEP passes dtdx to step_bfast and the body "
+               "NEVER reads it -- the Tustin derivative already carries the dt",
+        "apply": lambda s: needle(s, "float sp1 = k1_1 * (a_z + a);",
+                                  "float sp1 = dtdx * (k1_1 * (a_z + a));"),
+    },
+    "m7_state_not_stored": {
+        "must_catch": True,
+        "why": "the state store dropped: the IIR loses its memory, and marginally "
+               "stable means this never decays back",
+        "apply": lambda s: needle(s, "if (own0 && (has_y || has_z)) { s0[ii] = F0; }",
+                                  "// state store dropped"),
     },
     "m8_contract_on": {
         "must_catch": True,
-        "why": "removes the one compile option. The tail's `k1*(sum) - k2*(sum)` "
-               "is a multiply-subtract and contracts into an fma without it, so "
-               "fusion-off is load-bearing for the tail as well as the recurrence",
+        "why": "removes the one compile option. The pass's `k1*(sum) - k2*(sum)` and "
+               "the ladder's `v - (si * df)` are multiply-subtracts",
         "apply": lambda s: needle(s, shaders.contraction_pragma("off"),
-                                      shaders.contraction_pragma("fast")),
+                                  shaders.contraction_pragma("fast")),
     },
-    "m9_tail_reads_unshifted_pair": {
+    "m9_pass_reads_unshifted_pair": {
         "must_catch": True,
-        "why": "the shifted operand replaced by its centre — `(c + c)` instead of "
-               "`(c_y + c)`. The tail must read the SAME shifted/centre pairs the "
-               "curl differences (stepping.py:1594-1598, the shared gather)",
-        "apply": lambda s: needle(
-            s, "float total2 = (k1_2 * (b_x + b)) - (k2_2 * (a_y + a));",
-            "float total2 = (k1_2 * (b + b)) - (k2_2 * (a + a));"),
+        "why": "the shifted operand replaced by its centre -- `(b + b)` instead of "
+               "`(b_x + b)`; the pass reads the curl's own shifted/centre pairs",
+        "apply": lambda s: needle(s, "float sp2 = k1_2 * (b_x + b);",
+                                  "float sp2 = k1_2 * (b + b);"),
     },
-    # --- THREE DEFECT CLASSES THAT WERE BYTE-VISIBLE AND UNARMED ---------------
-    #
-    # All three were measured on this host before being added (m12: 81-90 words;
-    # m13: 874-971; m14: 801-971), so each is a demonstrated gap in the mutation set
-    # rather than a speculative one. They matter more here than on the Triton track
-    # for the reason this gate's header states: there is NO PTX-EQUIVALENT AUDIT on
-    # this executor, so a defect that no mutation plants is a defect nothing in the
-    # tranche can see. m12 and m13/m14 are exactly the two things this family adds to
-    # the certified curl — a SECOND ownership mask on a different variable, and THREE
-    # extra buffer pointers — and the only things holding them were a source-text
-    # equality test and the binding order in one tuple.
-    "m12_advance_mask_retargeted": {
+    "m12_increment_mask_retargeted": {
         "must_catch": True,
-        "why": "the advance's ownership mask applied to the WRONG target — "
-               "`adv1 = at_x ? 0` where stepping.py:929 masks target 0 on x. This "
-               "is the failure mode of restating the pair table locally (the "
-               "restatement exists because shaders.ownership_mask generalises on "
-               "the zero literal, not on the masked variable), and it was held only "
-               "by a source-text test. Measured 81-90 differing words",
-        "apply": lambda s: needle(s, "    adv0 = at_x ? 0.0f : adv0;",
-                                      "    adv1 = at_x ? 0.0f : adv1;"),
+        "why": "the increment's ownership mask applied to the WRONG target",
+        "apply": lambda s: needle(s, "    fi0 = at_x ? 0.0f : fi0;",
+                                  "    fi1 = at_x ? 0.0f : fi1;"),
         "codes": (METALLIC, METALLIC, PERIODIC),
         "sub_steps": ("step_B",),
     },
     "m13_state_pointers_swapped": {
         "must_catch": True,
-        "why": "two of the three IIR state pointers exchanged. The three states are "
-               "bound by POSITION in one argument tuple "
-               "(BfastPmlCurlPlan.__init__), and a permutation there gives every "
-               "target the wrong history — silent, and because the IIR is "
-               "marginally stable it never decays back. Measured 874-971 words",
+        "why": "two of the three IIR state pointers exchanged; the IIR is marginally "
+               "stable, so a permuted history never decays back",
         "apply": lambda s: needle(
-            needle(s, "float st0 = s0[ii];", "float st0 = s1[ii];"),
-            "float st1 = s1[ii];", "float st1 = s0[ii];"),
+            needle(s, "float fp0 = s0[ii];", "float fp0 = s1[ii];"),
+            "float fp1 = s1[ii];", "float fp1 = s0[ii];"),
     },
     "m14_state_pointer_duplicated": {
         "must_catch": True,
-        "why": "one state pointer bound twice — target 2 reading target 0's "
-               "history. Distinct from a swap: a swap permutes, a duplicate DROPS "
-               "an array, which is what a copy-paste in a three-line binding block "
-               "produces. Measured 801-971 words",
-        "apply": lambda s: needle(s, "float st2 = s2[ii];", "float st2 = s0[ii];"),
+        "why": "one state pointer read twice -- target 2 reading target 0's history",
+        "apply": lambda s: needle(s, "float fp2 = s2[ii];", "float fp2 = s0[ii];"),
+    },
+    "m15_previous_package_form": {
+        "must_catch": True,
+        "why": "the PREVIOUS package form: the one-rounding advance folded into the "
+               "curl before the mask and the per-chunk forms, instead of MEEP's pass "
+               "after them with its own ladder (with the passes folded into the "
+               "curl, the array path differed from MEEP on case bf in 120,035 of "
+               "278,318 words; CHANGELOG)",
+        "apply": _previous_package_form,
+    },
+    "m16_ladder_ignores_dsigu": {
+        "must_catch": True,
+        "why": "the dsigu chunks take the outside stage: fu not advanced and f not "
+               "scaled by sinv_u",
+        "apply": lambda s: needle(
+            needle(s, "    n2 = du2 ? (n2 - fd2) : n2;", "    n2 = n2;"),
+            "    v2 = du2 ? (v2 - (si_y * fd2)) : (v2 - fd2);", "    v2 = (v2 - fd2);"),
+    },
+    "m17_ladder_skips_the_dsig_coefficient": {
+        "must_catch": True,
+        "why": "df = raw instead of raw * siginv: wrong in a dsig chunk",
+        "apply": lambda s: needle(s, "    float fd0 = (si_y * fi0);",
+                                  "    float fd0 = fi0;"),
+    },
+}
+
+#: The rows MEEP's one-partner forms decide, run on the one-partner 2-D case: on every
+#: 3-D configuration each component has both partners and these lines never select.
+ONE_PARTNER_MUTATIONS: Dict[str, Dict[str, Any]] = {
+    "m18_plain_branch_keeps_the_state": {
+        "must_catch": True,
+        "why": "MEEP's plain one-partner line F = k1*(g1s + g1) (no `- F`, "
+               "step_generic.cpp:373-379) spelled as the other branches' S - F",
+        "apply": lambda s: needle(s, "(pl0 ? sp0 : (sp0 - fp0))", "(sp0 - fp0)"),
+    },
+    "m19_plain_branch_everywhere": {
+        "must_catch": True,
+        "why": "the plain branch taken on every cell, the layer chunks included",
+        "apply": lambda s: needle(s, "(pl0 ? sp0 : (sp0 - fp0))", "sp0"),
+    },
+    "m20_absent_partner_read": {
+        "must_catch": True,
+        "why": "the one-partner target given both partners' terms: MEEP hands "
+               "step_bfast NULL for the absent one and never reads it",
+        "apply": lambda s: needle(s, "(pl0 ? sp0 : (sp0 - fp0))",
+                                  "(pl0 ? (sp0 - sm0) : ((sp0 - sm0) - fp0))"),
     },
 }
 
@@ -2143,6 +2043,80 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         record_mutation(rows, payload, out, label,
                         classify(missed, ran, launches, caught), launches, caught,
                         ran, entry["must_catch"], entry["why"], started)
+
+    # --- the one-partner rows, on a z-invariant 2-D case ------------------------
+    one_name, one_cell, one_boundaries = ONE_PARTNER_CONFIGS[0]
+    one_grid, one_fields, one_pml = build(one_cell, one_boundaries, 0.35, 20260815,
+                                          bfast_k=ONE_PARTNER_KS[0][1], dimensions=2)
+    one_codes = boundary_codes(one_grid, one_pml)
+    one_dtdx = float(one_grid.dt / one_grid.dx)
+    one_base = snapshot(one_fields)
+    one_oracle: Dict[str, Dict[str, Any]] = {}
+    for sub_step in SUB_STEPS:
+        restore(one_fields, one_base)
+        getattr(stepping, sub_step)(one_fields, one_pml)
+        one_oracle[sub_step] = snapshot(one_fields)
+    for label, entry in ONE_PARTNER_MUTATIONS.items():
+        counters = []
+        caught = ran = 0
+        missed = False
+        for sub_step in SUB_STEPS:
+            spec = SUB_STEPS[sub_step]
+            try:
+                mutated = entry["apply"](bfast.bfast_curl_source(one_codes,
+                                                                 spec["backward"]))
+            except LookupError:
+                missed = True
+                continue
+            got = run_bfast_on_device(one_base, one_pml, sub_step, one_codes, one_dtdx,
+                                      plan_ks(one_grid, sub_step), source=mutated,
+                                      counter=counters)
+            ran += 1
+            caught += int(any(differing(got[n], one_oracle[sub_step][n])
+                              for n in compared_names(sub_step)))
+        launches = sum(counter.launches for counter in counters)
+        record_mutation(rows, payload, out, label,
+                        classify(missed, ran, launches, caught), launches, caught,
+                        ran, entry["must_catch"], entry["why"], started)
+
+    # --- the certified curl's per-chunk form battery, on the derived source ----
+    import metal_fused_battery as battery  # noqa: PLC0415
+
+    sources_by_side = {sub_step: battery.source_rows(
+        bfast.bfast_curl_source(codes, spec["backward"]), curl=True,
+        constitutive=False) for sub_step, spec in SUB_STEPS.items()}
+    for label in battery.CURL_ROWS:
+        counters = []
+        caught = ran = 0
+        entry = sources_by_side["step_B"][label]
+        for sub_step in SUB_STEPS:
+            got = run_bfast_on_device(base, pml, sub_step, codes, dtdx,
+                                      plan_ks(grid, sub_step),
+                                      source=sources_by_side[sub_step][label]["source"],
+                                      counter=counters)
+            ran += 1
+            caught += int(any(differing(got[n], oracle[sub_step][n])
+                              for n in compared_names(sub_step)))
+        launches = sum(counter.launches for counter in counters)
+        record_mutation(rows, payload, out, label,
+                        classify(False, ran, launches, caught), launches, caught,
+                        ran, entry["must_catch"], entry["why"], started)
+
+    # --- the record mutations: the kernel right, the record wrong --------------
+    for label, (mutate, why) in battery.RECORD_ROWS.items():
+        counters = []
+        caught = ran = 0
+        for sub_step in SUB_STEPS:
+            got = run_bfast_on_device(base, pml, sub_step, codes, dtdx,
+                                      plan_ks(grid, sub_step), counter=counters,
+                                      record=mutate(layer_record(grid, pml)))
+            ran += 1
+            caught += int(any(differing(got[n], oracle[sub_step][n])
+                              for n in compared_names(sub_step)))
+        launches = sum(counter.launches for counter in counters)
+        record_mutation(rows, payload, out, label,
+                        classify(False, ran, launches, caught), launches, caught,
+                        ran, True, why, started)
 
     # --- HOST mutations: the plan's own choices, not the kernel's source -----
     #
@@ -2241,7 +2215,8 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
     residency = device.Residency()
 
     for sub_step in SUB_STEPS:
-        plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step, residency)
+        plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step, residency,
+                                         chunk_bounds=layer_record(fields.grid, pml))
         shipped = metal_coverage.pml_curl_coverage(fields, pml, sub_step, residency)
         bfast_clause = [r for r in shipped.reasons if "BFAST" in r]
         row = {"sub_step": sub_step, "bfast_plan_built": plan is not None,
@@ -2373,7 +2348,8 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
         # makes the question answerable: the E side must carry the `_h` sub-lattice
         # (stepping.py:1015) and the H side must not (stepping.py:948).
         alone = device.Residency()
-        solo = bfast.plan_bfast_run_constitutive(fields, pml, side, alone)
+        solo = bfast.plan_bfast_run_constitutive(fields, pml, side, alone,
+                                                 chunk_bounds=layer_record(fields.grid, pml))
         sub_lattice[slot] = sorted(n for n in alone.names
                                    if n.startswith(("pml:kps_", "pml:kms_")))
         wrong = [n for n in sub_lattice[slot]
@@ -2425,7 +2401,6 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
 # ---------------------------------------------------------------------------
 
 LEGS = (
-    ("transcription", leg_transcription),
     ("execution", leg_execution),
     ("reference", leg_reference),
     ("identity", leg_identity),
@@ -2444,31 +2419,16 @@ LEGS = (
 #: audit on this executor, which is why the substitute pin is a text assertion and
 #: why saying so matters.
 PREDICTED_NULLS = (
-    ("tail_position_between_curl_and_mask",
-     "moving the tail from before the ownership mask to after it changes nothing "
-     "in bits: the mask writes an exact 0.0 into the same cells either way, and "
-     "the advance is masked by the same predicate, so both orders produce "
-     "identical words on every input",
-     "test_metal_bfast.test_the_tail_sits_between_the_curl_and_the_mask"),
     ("shifted_plus_centre_sum_order",
      "`(c_y + c)` versus `(c + c_y)` is the same float32 number for every input "
-     "including signed zeros — IEEE addition is commutative in bits — so no "
+     "including signed zeros -- IEEE addition is commutative in bits -- so no "
      "operand can distinguish them",
      "test_metal_bfast.test_the_sums_put_the_shifted_operand_first"),
-    ("curl_minus_adv_versus_plus_negation",
-     "IEEE-754 defines subtraction AS addition of the negation, so `curl - adv` "
-     "and `curl + (-adv)` agree on every input including signed zeros; the array "
-     "path's spelling cannot be distinguished from the kernel's by any seed",
-     "test_metal_bfast.test_the_curl_fold_is_spelled_as_a_subtraction"),
     ("d_side_negation_rounded_once",
      "negating in host float64 and then rounding to float32 gives the same word "
-     "as rounding and then negating — f64 negation and f32 rounding commute "
-     "exactly — so binding either cannot be told apart",
+     "as rounding and then negating -- f64 negation and f32 rounding commute "
+     "exactly -- so binding either cannot be told apart",
      "test_metal_bfast.test_the_d_side_negates_before_rounding"),
-    ("two_times_state_versus_state_plus_state",
-     "`2.0f * state` and `state + state` are exactly equal in binary floating "
-     "point for every finite input, so the literal spelling is unobservable",
-     "test_metal_bfast.test_the_advance_uses_the_two_times_spelling"),
 )
 
 
@@ -2550,7 +2510,8 @@ def main() -> int:
                "metallic ghost rules; no fold, no cylindrical axis, no Bloch "
                "phase, no beta, no conductivity, no chi2/chi3, real float32 "
                "storage only; a nonzero k component on a DECLARED-invariant axis "
-               "is REFUSED by name (clause 11a). THE FAMILY ALSO CLAIMS "
+               "is admitted (clause 11a) and byte-compared in legs 1 and 5. THE "
+               "FAMILY ALSO CLAIMS "
                "update_H/update_E as of tranche 2, with NO NEW ARITHMETIC — the "
                "CERTIFIED constitutive kernel under a restated predicate; leg 9 "
                "checks that the source compiled there is the certified text and "

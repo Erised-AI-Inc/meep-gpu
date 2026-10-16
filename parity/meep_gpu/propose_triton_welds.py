@@ -61,13 +61,9 @@ G = "parity/meep_gpu/"
 #: script — which is ``__main__`` in the run, so it is always in the imported set
 #: and is the one file that decides what was measured.
 BINDS: Dict[str, Sequence[str]] = {
-    "unified_expansion": (
-        K + "complex_fields.py", K + "folded_complex.py", K + "complex_ade.py",
-        G + "gate_triton_complex.py", G + "gate_triton_folded_complex.py",
-        G + "gate_triton_complex_ade.py", G + "gate_triton_unified_expansion.py"),
-    "complex": (K + "complex_fields.py", K + "kernels.py", K + "launch.py",
+    "complex": (K + "complex_fields.py", K + "kernels.py", K + "forms.py", K + "launch.py",
                 G + "gate_triton_complex.py"),
-    "fused_electric": (K + "kernels.py", K + "launch.py", K + "coverage.py",
+    "fused_electric": (K + "kernels.py", K + "forms.py", K + "launch.py", K + "coverage.py",
                        G + "gate_triton_fused_electric.py"),
     "no_pml": (K + "no_pml.py", K + "launch.py", K + "coverage.py",
                G + "gate_triton_no_pml.py"),
@@ -78,13 +74,13 @@ BINDS: Dict[str, Sequence[str]] = {
                      G + "gate_triton_conductivity.py"),
     "symmetry": (K + "symmetry.py", K + "launch.py",
                  G + "gate_triton_symmetry.py"),
-    "cylindrical": (K + "cylindrical_triton.py", K + "kernels.py",
+    "cylindrical": (K + "cylindrical_triton.py", K + "kernels.py", K + "forms.py",
                     K + "launch.py", G + "gate_triton_cylindrical.py"),
-    "offdiag": (K + "offdiag_update_e.py", K + "kernels.py", K + "launch.py",
-                G + "gate_triton_offdiag.py"),
-    "nonlinear": (K + "nonlinear_update_e.py", K + "kernels.py", K + "launch.py",
-                  G + "gate_triton_nonlinear.py"),
-    "bfast": (K + "bfast_curl.py", K + "kernels.py", K + "launch.py",
+    "offdiag": (K + "offdiag_update_e.py", K + "kernels.py", K + "forms.py",
+                K + "launch.py", G + "gate_triton_offdiag.py"),
+    "nonlinear": (K + "nonlinear_update_e.py", K + "kernels.py", K + "forms.py",
+                  K + "launch.py", G + "gate_triton_nonlinear.py"),
+    "bfast": (K + "bfast_curl.py", K + "kernels.py", K + "forms.py", K + "launch.py",
               G + "gate_triton_bfast.py"),
     "special_kz": (K + "special_kz.py", K + "complex_fields.py", K + "launch.py",
                    G + "gate_triton_special_kz.py"),
@@ -106,7 +102,7 @@ BINDS: Dict[str, Sequence[str]] = {
     # three of the eight device legs measure nothing without it.
     "complex_fused_electric_pair": (
         K + "complex_fused_electric_pair.py", K + "complex_fields.py",
-        K + "kernels.py", K + "coverage.py", K + "launch.py",
+        K + "kernels.py", K + "forms.py", K + "coverage.py", K + "launch.py",
         "meep_gpu/deposit_repair.py",
         G + "probe_triton_complex_fused_electric_pair.py"),
     # THE FOLDED OFF-DIAGONAL E->P CHAIN, 2026-09-10. The launched bytes are this
@@ -126,7 +122,7 @@ BINDS: Dict[str, Sequence[str]] = {
         K + "folded_offdiag_dispersive_update_e.py",
         K + "folded_offdiag_update_e.py", K + "offdiag_update_e.py",
         K + "dispersive_update_e.py", K + "symmetry.py", K + "coverage.py",
-        K + "kernels.py", K + "launch.py",
+        K + "kernels.py", K + "forms.py", K + "launch.py",
         G + "gate_triton_folded_offdiag_fused_ade_chain.py"),
 }
 

@@ -90,6 +90,9 @@ RESULTS = _HERE / "results"
 #: ``test_certification_metadata.py`` do it, so the three agree by construction.
 ARTIFACT_PREFIX = "parity/meep_gpu/results/"
 
+import artifact_drift  # noqa: E402
+import neutral_labels  # noqa: E402
+
 #: The payload names a CUDA gate writes its verdict into, and the two policy
 #: directories one has to sit under. Kept identical to
 #: ``rebind_cuda_welds.CANONICAL_LEG_NAMES`` / ``POLICY_DIRECTORIES`` -- imported
@@ -243,6 +246,26 @@ def survey(campaign: Path, record: dict) -> tuple[list[dict], list[str]]:
     return rows, refusals
 
 
+def drift_refusals(campaign: Path, rows: list[dict]) -> list[str]:
+    """Each surveyed subdirectory whose legs no longer describe the tree being released.
+
+    A chunked round certifies chunks on earlier tips, so a campaign RECORDED now must be
+    a run of the bytes that ship: one file a leg's import record names at other bytes, or
+    gone, refuses that subdirectory by name (``artifact_drift.py``, the rule the rebind
+    tools apply too). Asked when a campaign is recorded, not by :func:`survey`: a block
+    already in the record is the record of its day, re-surveyed on a later tree.
+    """
+    out = []
+    for row in rows:
+        payloads = leg_payloads(campaign / row["directory"], row["legs"])
+        moved = sorted({path for payload in payloads
+                        for path in artifact_drift.artifact_moved(payload, _API)})
+        if moved:
+            out.append(artifact_drift.refusal(
+                f"{row['directory']}/ legs {row['legs']} (for {row['block']})", moved, _API))
+    return out
+
+
 #: The narrative half. Facts are derived; this is the reasoning a reader needs to
 #: know what the block MEANS, which is the job certification.json exists for. It
 #: lives here rather than in the file so a later campaign gets the same statement
@@ -317,8 +340,10 @@ def build_block(campaign: Path, rows: list[dict], stamps: dict, why: str) -> dic
             f"of this record: when the campaign's first device leg began. The last "
             f"leg began {started[-1]}."),
         "started_utc": started[0],
-        "host": sorted(stamps["hostname"])[0] if len(stamps["hostname"]) == 1
-                else sorted(stamps["hostname"]),
+        # The machine by its neutral label (neutral_labels.py): the stamps are read,
+        # one machine is required (main refuses several), and the name stays in the
+        # artifact, because this record ships.
+        "host": neutral_labels.one_host(stamps["hostname"]),
         "policies_cut_under": sorted(stamps["subnormal_policy"]),
         "artifacts": f"{ARTIFACT_PREFIX}{campaign.name} (gitignored)",
         "artifact_sha256": manifest_digest(campaign),
@@ -394,6 +419,7 @@ def main(argv=None) -> int:
         return 1
 
     rows, refusals = survey(campaign, record)
+    refusals += drift_refusals(campaign, rows)
     stamps = _stamps(campaign)
     for row in rows:
         print(f"  re-gated  {row['block']:42s} <- {row['directory']}/ "
@@ -411,6 +437,12 @@ def main(argv=None) -> int:
         print(f"  REFUSED   the campaign stamps no {missing}; a block that cannot "
               f"say when, where or under which policy it ran is not describable",
               flush=True)
+        return 1
+
+    if len(stamps["hostname"]) > 1:
+        print(f"  REFUSED   the legs stamp {len(stamps['hostname'])} machines; a block "
+              f"names one GPU host (neutral_labels.py), so a campaign that ran on "
+              f"several is not describable by one", flush=True)
         return 1
 
     block = build_block(campaign, rows, stamps, args.why)

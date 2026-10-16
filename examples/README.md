@@ -30,7 +30,7 @@ The four legs are the same simulation stepped four ways:
 
 | Leg | Call | What steps it |
 |---|---|---|
-| `gpu` | `run_on_gpu(sim, until=...)` | this host's GPU: compiled kernels where one covers the configuration on a supported GPU (an uncertified GPU says so), the array path elsewhere |
+| `gpu` | `run_on_gpu(sim, until=...)` | this host's GPU: compiled kernels where a certified one covers the configuration, the array path elsewhere |
 | `array` | the same call with `MEEP_GPU_DISPATCH=0` | the array path of the same GPU route: CuPy on the device on NVIDIA hardware, NumPy on the host on Apple hardware |
 | `reference` | `run_on_gpu(sim, until=..., prefer_gpu=False)` | the NumPy reference, on any host |
 | `meep` | `sim.run(until=...)` | MEEP |
@@ -105,11 +105,9 @@ result.
   `parity/meep_gpu/bench_fused_products.py` is the instrument for that.
 
 `[host]` lines state which path served each run. `step path: fused` means
-compiled kernels served the step; `step path: array` means the array path did. A
-supported NVIDIA GPU outside the certified identities (compute capability 7.0 to
-9.0) runs the kernels, uncertified, and says so; one outside the supported range
-is refused by name and steps on the array path, which is a correct run. Every
-Apple GPU is supported, so on a Mac
+compiled kernels served the step; `step path: array` means the array path did. An
+NVIDIA host outside the certified identities is refused by name and steps on the
+array path, which is a correct run. Every Apple GPU is supported, so on a Mac
 outside the certified environment the Metal kernels serve the step, the status
 line marks another Apple GPU `supported, UNCERTIFIED`, and a
 `meep_gpu: NOTE the kernels are NOT CERTIFIED` line names each fact of the

@@ -11,13 +11,16 @@ the ELECTRIC TWIN of :mod:`.special_kz_fused_magnetic_pair`, landed in the
 electric-twin instances), with the Metal electric twins as the CARRIES=True
 shape precedent.
 
-WHAT THE CURL HALF IS: the certified ``step_D_special_kz_real`` -- the real PML
-backward curl body with the two beta statements above the masks (``grid.beta !=
-0`` under REAL storage, MEEP's "implicitly store i*(TM fields)" trick, the
-coefficient host-rounded once by ``special_kz_curl.beta_curl_coefficients``).
-The beta statements ride through the register capture untouched; the splice
-asserts they arrived, because a curl body without them would compile and be
-the plain real electric pair under this family's name.
+WHAT THE CURL HALF IS: the certified ``step_D_special_kz_real`` -- the root real PML
+backward curl body with MEEP's beta pass after the x and y components' curls
+(``folded_pass.beta_insert``; ``grid.beta != 0`` under REAL storage, MEEP's "implicitly
+store i*(TM fields)" trick, the coefficient host-rounded once by
+``special_kz_curl.beta_curl_coefficients``). The pass rides through the register
+capture: the x and y registers are the values the LADDER returns (``fold_apply_reg``),
+because the fills and ``update_E`` must read D after both passes; the splice asserts
+both arrived, because a curl body without them would compile and be the plain real
+electric pair under this family's name. The chunk record ``cb`` is decoded ONCE for
+both halves (bit_parity_0_10 DESIGN.md D10).
 
 THE TWO MIRROR FILLS ARE CARRIED, BY THE REAL ELECTRIC PAIR'S OWN MACHINERY
 (:mod:`.fused_electric_pair`): the D-side ownership inversion -- near set = the
@@ -57,6 +60,8 @@ if TYPE_CHECKING:
 try:
     from . import special_kz_curl as _special_kz
     from . import fused_electric_pair as _real_pair
+    from . import bounds_block
+    from . import folded_pass as _folded_pass
     from .coverage import real_curl_boundary_codes
     from .in_seam_coverage import (covers_fill_folded_far, covers_fill_symmetry,
                                    zero_metal_axes)
@@ -89,6 +94,8 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 
     _special_kz = _load("special_kz_curl")
     _real_pair = _load("fused_electric_pair")
+    bounds_block = _load("bounds_block")
+    _folded_pass = _load("folded_pass")
     real_curl_boundary_codes = _load("coverage").real_curl_boundary_codes
     _in_seam_coverage = _load("in_seam_coverage")
     covers_fill_folded_far = _in_seam_coverage.covers_fill_folded_far
@@ -160,31 +167,34 @@ SLOT = "step_D"
 #: spelling of the D-side ownership inversion, two real-storage electric welds.
 LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "__device__ __forceinline__ void pml_apply(",
-     "became": "__device__ __forceinline__ float pml_apply_reg(",
-     "why": "the constitutive half consumes the value in a register; the helper "
-            "names and returns the float it already computed."},
-    {"line": "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;",
-     "became": "    if (!owned) return 0.0f;\n    float value = ...;\n"
-               "    f[idx] = value;\n    return value;",
-     "why": "THE OWNERSHIP GUARD, shared with fused_electric_pair: on a cell "
-            "one of the two fills images, the SOURCE thread writes D -- so "
-            "this thread must not read f[idx] either. The fu recurrence stays "
-            "ABOVE the guard (step_D writes fu at every cell and neither fill "
-            "touches it, stepping.py:1451)."},
-    {"line": "        pml_apply(Dx, fu_Dx, idx, curl, ...);",
-     "became": "        d_x = pml_apply_reg(Dx, fu_Dx, idx, curl, ..., own_x);",
-     "why": "capture the register OWNED; three lines, argument lists otherwise "
-            "untouched, the beta statements above them untouched."},
-    {"line": "    float src_x = Dx[idx] * inv_eps_Ex[idx];   // stepping.py:982: "  # stepping.py live lines for the frozen device-text citation(s) in this string: 982->1011
-             "source * inv_eps",
-     "became": "    float src_x = d_x * inv_eps_Ex[idx];   // stepping.py:982: "  # stepping.py live lines for the frozen device-text citation(s) in this string: 982->1011
-               "source * inv_eps",
+     "became": "__device__ __forceinline__ float pml_apply_reg(... , int owned)",
+     "why": "the constitutive half consumes the value in a register, and on a cell "
+            "one of the two fills images the SOURCE thread writes D -- so this "
+            "thread must not read f[idx] either. The guard sits directly before the "
+            "one load of f; the fu stage stays ABOVE it (step_D steps fu on every "
+            "recurrence cell and neither fill touches it). Both forms below the "
+            "guard and the store are the certified ones; the value is returned."},
+    {"line": "__device__ __forceinline__ void fold_apply(",
+     "became": "__device__ __forceinline__ float fold_apply_reg(... , int owned)",
+     "why": "the folded ladder, derived the same way from its own text "
+            "(folded_pass.fold_apply_reg_source). The plain helper leaves the "
+            "prelude: no call is left."},
+    {"line": "        pml_apply(Dx, fu_Dx, idx, curl, ...);\n"
+             "        ...\n        fold_apply(Dx, fu_Dx, idx, inc_beta, ...);",
+     "became": "        d_x = pml_apply_reg(Dx, fu_Dx, idx, curl, ..., own_x);\n"
+               "        ...\n        d_x = fold_apply_reg(Dx, fu_Dx, idx, inc_beta, ..., "
+               "own_x);",
+     "why": "capture the register OWNED; argument lists otherwise untouched, the "
+            "beta pass between them untouched (Dz has no beta pass)."},
+    {"line": "    float src_x = Dx[idx] * inv_eps_Ex[idx];",
+     "became": "    float src_x = d_x * inv_eps_Ex[idx];",
      "why": "THE SEAM, the real electric pair's own: the register instead of "
             "the reload, which is what lets D be bound exactly once."},
-    {"line": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);",
-     "became": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], "
-               "kms_half_x[i]);",
-     "why": "ONE RENAME, NO ARITHMETIC -- the D seam's sub-lattice pairing."},
+    {"line": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);",
+     "became": "    if (own_x) { constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], "
+               "kms_half_x[i], in_h_x); <ghost blocks> }",
+     "why": "ONE RENAME, NO ARITHMETIC -- the D seam's sub-lattice pairing -- plus the "
+            "real electric pair's ownership guard and D-side ghost carry."},
     {"line": "        Dy[base] = 0.0f; Dz[base] = 0.0f;   "
              "(in_seam_passes._zero_metal_D_kernel_code)",
      "became": "    int clr_y = 0; ... if (wall_x && i == 0) { clr_y = 1; "
@@ -194,18 +204,24 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "table, the flag NAMED because the near fill carry reads it, "
             "guarded on own_*."},
     {"line": "    field[_face(axis, 0)] = phase * field[_face(axis, 2)]   "
-             "(stepping._write_mirror_ghost:1450-1451)",
+             "(stepping._write_mirror_ghost)",
      "became": "the SOURCE thread at stored 2 writes stored 0 from the "
                "PRE-clear register",
      "why": "THE OWNERSHIP INVERSION, imported from fused_electric_pair -- "
-            "fill_symmetry_bc_D (driver.py:3309) runs BEFORE zero_metal_D "
-            "(:3310), so the near product is formed from pre_* and the clear "
-            "is applied to the result, the driver's own order."},
+            "fill_symmetry_bc_D runs BEFORE zero_metal_D, so the near product is "
+            "formed from pre_* and the clear is applied to the result, the driver's "
+            "own order."},
     {"line": "    array[_face(axis, -1)] = parity * array[_face(axis, reflect)]   "
-             "(stepping._fill_folded_far_ghosts:1524-1534)",
+             "(stepping._fill_folded_far_ghosts)",
      "became": "the SOURCE thread at the reflect row writes the top plane",
      "why": "the same inversion for the far fill, weight -phase, applied LAST "
             "because the driver runs it after the clear."},
+    {"line": "    <step_D_special_kz_real's chunk-record block>\n"
+             "    <update_E_pml_real's chunk-record block>",
+     "became": "    <ONE block, fused_electric_pair.union_bounds_block()>",
+     "why": "ONE DECODE OF THE RECORD PER KERNEL (DESIGN.md D10): both lifted bodies' "
+            "blocks are removed and the real electric pair's union block is emitted "
+            "directly after the decode."},
 )
 
 __all__ = [
@@ -227,32 +243,20 @@ __all__ = [
 _GLOBAL_MARKER = 'extern "C" __global__ void '
 _BODY_ANCHOR = "\n) {\n"
 _DECODE_END = "    int i = idx / (ny * nz);\n"
-#: The certified helper's anchors and the OWNED rewrites -- the real electric
-#: pair's own three, restated so loading this file by path cannot pick up a
-#: different guard than the one the gate compiled.
-_PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
-_PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
-_PML_APPLY_PARAMETERS = (
-    "    float kms, float sinv, float kms_u, float sinv_u\n)")
-_PML_APPLY_PARAMETERS_OWNED = (
-    "    float kms, float sinv, float kms_u, float sinv_u, int owned\n)")
-_PML_APPLY_STORE = "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
-_PML_APPLY_STORE_REG = (
-    "    // THE OWNERSHIP GUARD, AND IT IS ABOUT MEMORY TRAFFIC RATHER THAN\n"
-    "    // ABOUT A DEAD REGISTER. On a cell a fill images, the SOURCE thread\n"
-    "    // writes f -- so this thread must not read f[idx] either: that word is\n"
-    "    // written by another block in this same launch and an ordinary CUDA\n"
-    "    // launch has no grid-wide barrier at which the load would be defined.\n"
-    "    // fu above is UNGUARDED: step_D writes it at every cell and neither\n"
-    "    // fill touches it (stepping.py:1451).\n"
-    "    if (!owned) return 0.0f;\n"
-    "    // THE ONE EDIT TO THIS HELPER: the right-hand side, its\n"
-    "    // parenthesisation and the store are the certified ones; the value is\n"
-    "    // additionally NAMED so the constitutive half can read it from a\n"
-    "    // register instead of reloading it from global memory.\n"
-    "    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
-    "    f[idx] = value;\n"
-    "    return value;\n")
+#: The certified helper's anchors and the OWNED rewrites -- the real electric pair's
+#: own four, read from :mod:`.fused_electric_pair` so the two real-storage electric
+#: welds cannot drift apart on the guard. Applied to ``pml_apply``'s own text only: the
+#: folded ladder ends on the same store line.
+_PML_APPLY_SIGNATURE = _real_pair._PML_APPLY_SIGNATURE
+_PML_APPLY_OWNED_EDITS: Tuple[Tuple[str, str, str], ...] = (
+    (_real_pair._PML_APPLY_SIGNATURE, _real_pair._PML_APPLY_SIGNATURE_REG,
+     "its signature"),
+    (_real_pair._PML_APPLY_PARAMETERS, _real_pair._PML_APPLY_PARAMETERS_OWNED,
+     "its parameter list"),
+    (_real_pair._PML_APPLY_FCUR, _real_pair._PML_APPLY_FCUR_OWNED,
+     "its one load of the field"),
+    (_real_pair._PML_APPLY_STORE, _real_pair._PML_APPLY_STORE_REG, "its closing store"),
+)
 
 _CARRIED: Tuple[str, ...] = ("x", "y", "z")
 _TARGETS: Tuple[str, ...] = ("Dx", "Dy", "Dz")
@@ -287,17 +291,19 @@ extern "C" __global__ void fused_electric_pair_special_kz_real(
     const float* __restrict__ kps_y, const float* __restrict__ kms_half_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_half_z,
     int bc_x, int bc_y, int bc_z,
-    // The two host-rounded beta coefficients, one per call-site sign
-    // (stepping.py:770/:784) -- the certified special_kz signature's own append.
+    // The two host-rounded beta coefficients, one per call-site sign -- the
+    // certified special_kz signature's own insert.
     float beta_plus, float beta_minus,
     // zero_metal_D's three walled-axis flags, from in_seam_coverage.zero_metal_axes.
     int wall_x, int wall_y, int wall_z,
     // THE TWO FILLS' RUNTIME PLAN -- the real electric pair's own tail.
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
-    float phase_x, float phase_y, float phase_z
+    float phase_x, float phase_y, float phase_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded once.
+    const int* __restrict__ cb
 ) {
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 770->797, 784->811
+'''
 
 
 def _split_certified(source: str, name: str) -> Tuple[str, str]:
@@ -318,9 +324,9 @@ def _split_certified(source: str, name: str) -> Tuple[str, str]:
 
 
 def special_kz_fused_electric_pair_prelude() -> str:
-    """The certified real prelude (read through the special_kz family's own
-    string) with ``pml_apply`` turned into an OWNED value -- the real electric
-    pair's three rewrites -- plus the untouched real constitutive prelude."""
+    """The certified special_kz prelude (read through the family's own string) with
+    ``pml_apply`` and the folded ladder turned into OWNED values -- the real electric
+    pair's four rewrites -- plus the untouched real constitutive prelude."""
     if constitutive_kernels is None:
         raise RuntimeError(
             "constitutive_kernels is not importable on this host (it imports "
@@ -329,24 +335,15 @@ def special_kz_fused_electric_pair_prelude() -> str:
     prelude, _body = _split_certified(
         _special_kz.kernel_source("step_D_special_kz_real"),
         "step_D_special_kz_real")
-    for anchor, what in ((_PML_APPLY_SIGNATURE, "pml_apply's signature"),
-                         (_PML_APPLY_PARAMETERS, "pml_apply's parameter list"),
-                         (_PML_APPLY_STORE, "pml_apply's closing store")):
-        if prelude.count(anchor) != 1:
-            raise AssertionError(
-                f"the certified real prelude carries {what} "
-                f"{prelude.count(anchor)} times, not once; the ownership rewrite "
-                f"has no anchor")
-    prelude = prelude.replace(_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, 1)
-    prelude = prelude.replace(_PML_APPLY_PARAMETERS,
-                              _PML_APPLY_PARAMETERS_OWNED, 1)
-    prelude = prelude.replace(_PML_APPLY_STORE, _PML_APPLY_STORE_REG, 1)
+    prelude = _folded_pass.rewrite_helper(prelude, _PML_APPLY_SIGNATURE,
+                                          _PML_APPLY_OWNED_EDITS, "pml_apply")
+    prelude = _folded_pass.with_fold_reg(prelude, owned=True)
     return prelude + constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE
 
 
 def certified_curl_body() -> str:
     """``step_D_special_kz_real``'s body, captured OWNED via the real electric
-    pair's carry, with the two beta statements asserted present."""
+    pair's carry, with the two beta passes asserted present and captured."""
     _prelude, body = _split_certified(
         _special_kz.kernel_source("step_D_special_kz_real"),
         "step_D_special_kz_real")
@@ -354,10 +351,13 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "the certified curl body no longer decodes i on its own line; the "
             "carried registers have nowhere to be declared")
+    body = bounds_block.strip_bounds_block(body, "step_D_special_kz_real",
+                                           *_real_pair.CURL_BLOCK)
     head, tail = body.split(_DECODE_END, 1)
     body = "".join((
-        head, _DECODE_END,
-        "\n    // The three carried registers. Declared HERE because each\n"
+        head, _DECODE_END, "\n",
+        _real_pair.union_bounds_block(),
+        "    // The three carried registers. Declared HERE because each\n"
         "    // certified component below is a braced scope, and a value declared\n"
         "    // inside one does not outlive it.\n"
         "    float d_x = 0.0f;\n"
@@ -387,11 +387,17 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "a pml_apply call survived the capture rewrite; its value would be "
             "written to global memory and never read into the seam")
-    if body.count("beta_plus") + body.count("beta_minus") < 2:
+    body = _folded_pass.capture_fold_calls(
+        body, {f"{target}, fu_{target}, ": (f"d_{axis}", f"own_{axis}")
+               for axis, target in zip(_CARRIED, _TARGETS)},
+        "fold_apply", "fold_apply_reg", "the special_kz fused electric pair")
+    if (body.count("float inc_beta = ") != 2
+            or body.count("d_x = fold_apply_reg(") != 1
+            or body.count("d_y = fold_apply_reg(") != 1):
         raise AssertionError(
-            "the captured special_kz curl body no longer carries both beta "
-            "statements; the lift would ship the plain real electric pair under "
-            "this family's name")
+            "the captured special_kz curl body no longer carries both beta passes "
+            "captured into the x and y registers; the lift would ship the plain real "
+            "electric pair under this family's name")
     return body
 
 
@@ -670,8 +676,13 @@ def launch_special_kz_fused_electric_pair(
         fields: "Fields", tables: Dict[str, Dict[str, Any]],
         boundary_codes: Sequence[Any], walls: Sequence[int],
         beta: Sequence[float], fills: Dict[str, Sequence[Any]], dtdx: float,
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """All five of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door."""
+        kernel: Optional[Any] = None, *, chunk_bounds: Any) -> Dict[str, Any]:
+    """All five of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door.
+    ``chunk_bounds`` is the run's chunk record on the device, required
+    (``step_curl_kernels.chunk_record_argument``)."""
+    from . import step_curl_kernels  # noqa: PLC0415 - device-only module
+
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
@@ -689,7 +700,7 @@ def launch_special_kz_fused_electric_pair(
     ) + tuple(np.int32(int(bool(walls[axis]))) for axis in range(3)
     ) + tuple(np.int32(int(fills["near"][axis])) for axis in range(3)) + tuple(
         np.int32(int(fills["reflect"][axis])) for axis in range(3)
-    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3))
+    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3)) + (cb,)
     (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), arguments)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
@@ -702,7 +713,7 @@ def launch_special_kz_fused_electric_pair(
 
 def run_special_kz_fused_electric_pair(
         fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
-        sources: Any = None,
+        chunk_bounds: Any, sources: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once."""
@@ -719,4 +730,5 @@ def run_special_kz_fused_electric_pair(
     return launch_special_kz_fused_electric_pair(
         fields, tables, tuple(np.int32(code) for code in codes),
         zero_metal_axes(grid), beta_scalars(grid),
-        special_kz_fused_electric_pair_fills(grid), dtdx, kernel)
+        special_kz_fused_electric_pair_fills(grid), dtdx, kernel,
+        chunk_bounds=chunk_bounds)

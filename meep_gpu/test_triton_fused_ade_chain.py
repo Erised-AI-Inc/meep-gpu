@@ -43,6 +43,7 @@ from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid, Mirror
 from meep_gpu.pml import PML
 from meep_gpu.triton_kernels import dispersive_update_e as dispersive_module
+from meep_gpu.triton_kernels.coverage import POLARIZATION_CONSTANTS
 from meep_gpu.triton_kernels import fused_ade_chain as module
 from meep_gpu.triton_kernels import no_pml_stored_e as stored_e_module
 
@@ -249,18 +250,18 @@ def test_the_folded_arm_is_the_dispersive_body_under_a_different_admission():
 def test_the_pml_arms_name_the_drive_field_identity_themselves(arm):
     """Not inherited: the ADE predicate only asks that ``f_w`` EXISTS.
 
-    The hazard this clause exists for is ``drive_field`` handing back the STORED E
-    under an absorber — "the single most likely silent wrong answer in dispersion"
-    (fields.py:1152-1155), which agrees everywhere except inside the PML. The
-    register this kernel passes the recurrence is what it stored to ``f_w``, so a
-    ``Fields`` whose reader disagrees is refused BY NAME rather than admitted.
+    The register this kernel passes the recurrence is ``src``, which is MEEP's ``w``
+    on every cell (``f_w`` on the layer's chunks, the stored E elsewhere) -- exactly
+    what ``Fields.drive_field`` composes. A ``Fields`` whose reader is replaced, for
+    instance by one handing back the stored E under an absorber ("the single most
+    likely silent wrong answer in dispersion"), is refused BY NAME.
     """
     fields, pml = engine(arm)
     assert reasons(fields, pml, arm) == []
     fields.drive_field = lambda component: getattr(fields, component)
     verdict = reasons(fields, pml, arm)
-    assert any("is not f_w_Ey" in reason for reason in verdict), verdict
-    assert len([r for r in verdict if "is not f_w_" in r]) == 3
+    assert [r for r in verdict if "is not Fields.drive_field" in r], verdict
+    assert len(verdict) == 1, verdict
 
 
 @pytest.mark.parametrize("arm", module.ARMS)
@@ -455,16 +456,16 @@ def test_the_assembled_arguments_land_on_the_slots_they_are_named_for():
             if position >= len(states):
                 assert held(f"p_out_{letter}{position}") is getattr(
                     fields, displacement)
-                assert slot[f"cnow_{letter}{position}"] == 0.0
+                for word in POLARIZATION_CONSTANTS:
+                    assert slot[f"{word}_{letter}{position}"] == 0.0
                 continue
             state = states[position]
             assert held(f"p_out_{letter}{position}") is plan._scratch[
                 (position, component)]
             assert held(f"p_prev_{letter}{position}") is state.P_prev[component]
-            c_now, c_prev, c_drive = state._coefficients
-            assert slot[f"cnow_{letter}{position}"] == float(c_now)
-            assert slot[f"cprev_{letter}{position}"] == float(c_prev)
-            assert slot[f"cdrive_{letter}{position}"] == float(c_drive)
+            # MEEP's four realnum words, in RealnumConstants order, exactly.
+            for word, value in zip(POLARIZATION_CONSTANTS, state.constants):
+                assert slot[f"{word}_{letter}{position}"] == float(value)
             sigma = state.sigma[component]
             if getattr(sigma, "shape", ()):
                 assert held(f"sigma_{letter}{position}") is sigma
@@ -474,6 +475,9 @@ def test_the_assembled_arguments_land_on_the_slots_they_are_named_for():
                 assert plan._sv[f"SV_{letter}{position}"] == 0
     assert (arguments[-4], arguments[-3], arguments[-2]) == tuple(plan.shape)
     assert arguments[-1] == plan.n_elem
+    # The chunk record, directly after the PML coefficient pointers.
+    assert slot["cb"] is plan._cb
+    assert names.index("cb") == names.index("km2") + 1
 
 
 def test_a_signature_the_launcher_does_not_follow_fails_at_the_call(monkeypatch):
@@ -535,19 +539,26 @@ def test_the_constitutive_product_is_the_dispersive_bodys_own_line():
 
 
 def test_the_pml_tail_is_the_dispersive_bodys_own_lines():
+    """The per-chunk constitutive form, read off the certified body and found here."""
     certified = _normalised(_function_text(
         pathlib.Path(dispersive_module.__file__), "constitutive_step_dispersive"))
     fused = _normalised(kernel_text())
-    for index in range(3):
+    for index, (axis_word, coordinate) in enumerate((("0", "i"), ("4", "j"), ("8", "k"))):
         for line in (
-                f"prev{index} = tl.load(w{index} + idx, mask=live, other=0.0)",
-                f"tl.store(w{index} + idx, src{index}, mask=live)",
-                f"v{index} = tl.load(f{index} + idx, mask=live, other=0.0)",
-                f"v{index} = v{index} + kp_{index} * src{index}",
-                f"v{index} = v{index} - km_{index} * prev{index}",
+                f"dw{index} = record_in(cb, RECORD_HALF_INTEGER + {axis_word}, "
+                f"{coordinate})",
+                f"prev{index} = tl.load(w{index} + idx, mask=live & dw{index}, other=0.0)",
+                f"tl.store(w{index} + idx, src{index}, mask=live & dw{index})",
+                f"v{index} = constitutive_form(tl.load(f{index} + idx, mask=live & "
+                f"dw{index}, other=0.0), prev{index}, src{index}, kp_{index}, "
+                f"km_{index}, dw{index})",
                 f"tl.store(f{index} + idx, v{index}, mask=live)"):
             assert line in certified, line
             assert line in fused, line
+        # The package's previous two accumulations are gone from both.
+        for retired in (f"v{index} = v{index} + kp_{index} * src{index}",
+                        f"v{index} = v{index} - km_{index} * prev{index}"):
+            assert retired not in certified and retired not in fused
     for line in ("kp_0 = tl.load(kp0 + i, mask=live, other=0.0)",
                  "km_2 = tl.load(km2 + k, mask=live, other=0.0)",
                  "k = idx % nz", "plane = idx // nz", "j = plane % ny",
@@ -561,7 +572,7 @@ def test_the_recurrence_is_spelled_exactly_as_ade_update_p_spells_it():
     certified = _normalised(_function_text(
         PACKAGE_DIR / "kernels.py", "ade_update_p"))
     fused = _normalised(kernel_text())
-    expression = "((p * c_now) + (c_prev * q)) + (c_drive * (s * w))"
+    expression = "gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)))"
     assert f"tl.store(p_out + idx, {expression}, mask=live)" in certified
     assert "q = tl.load(p_prev + idx, mask=live, other=0.0)" in certified
     assert "s = tl.load(sigma + idx, mask=live, other=0.0)" in certified
@@ -580,9 +591,8 @@ def test_the_recurrence_is_spelled_exactly_as_ade_update_p_spells_it():
             # THE TWO FUSIONS, and they are the only substitutions:
             assert f"p = p{letter}{slot}" in fused     # p_now[idx] -> the register
             assert f"w = src{index}" in fused          # drive[idx] -> the register
-            assert f"c_now = cnow_{letter}{slot}" in fused
-            assert f"c_prev = cprev_{letter}{slot}" in fused
-            assert f"c_drive = cdrive_{letter}{slot}" in fused
+            for word in POLARIZATION_CONSTANTS:
+                assert f"{word} = {word}_{letter}{slot}" in fused
             arms += 1
     assert arms == 3 * module.CHAIN_MAX_POLES
     # ...and the drive is NEVER re-loaded from a buffer.
@@ -629,14 +639,27 @@ def test_the_slot_counts_and_terms_are_pinned_to_the_certified_bodies():
 # ---------------------------------------------------------------------------
 
 def test_the_seam_carries_no_driver_pass_and_the_predicate_takes_no_sources():
-    """Measured from ``driver.py``, not asserted: nothing sits between the two."""
+    """Measured from ``driver.py``: the one statement between the two is the electric
+    ``f_minus_p`` restore, which writes D alone (``sources.f_minus_p_end``: the saved D
+    words back, then D's boundary passes) and which ``update_P`` does not read -- it
+    reads the polarizations, sigma and MEEP's w (E or f_w). So one launch that forms E
+    and then P before the restore leaves the words the driver's order leaves; the host
+    emulation's seam leg measures exactly that swap with an integrated electric source.
+    """
     driver = (API_ROOT / "meep_gpu" / "driver.py").read_text(encoding="utf-8")
     match = re.search(
         r'if fast is None or not fast\.dispatch\("update_E", self\.fields\):\n'
         r"\s+update_E\(self\.fields, self\.pml\)\n"
+        r"\s+f_minus_p_end\(self\.fields, f_minus_p_D\)\n"
         r'\s+if fast is None or not fast\.dispatch\("update_P", self\.fields\):\n'
         r"\s+update_P\(self\.fields, self\.pml\)\n", driver)
-    assert match, "the E->P seam is no longer two adjacent dispatch blocks"
+    assert match, "the E->P seam no longer holds exactly the electric f_minus_p restore"
+    from meep_gpu import sources as sources_module
+
+    restore = inspect.getsource(sources_module.f_minus_p_end)
+    assert "host_writes.scatter" in restore and "_boundary_passes" in restore
+    passes = inspect.getsource(sources_module._boundary_passes)
+    assert "fill_symmetry_bc_D" in passes and "zero_metal_D" in passes
     signature = inspect.signature(module.fused_ade_chain_coverage)
     assert "sources" not in signature.parameters
     assert list(module.REPLACES) == ["update_E", "update_P"]

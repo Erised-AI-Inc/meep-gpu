@@ -88,6 +88,7 @@ class ConductiveBfastProduct(kit.Product):
         "meep_gpu/triton_kernels/conductivity.py",
         "meep_gpu/triton_kernels/bfast_curl.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/stepping.py",
@@ -115,6 +116,19 @@ class ConductiveBfastProduct(kit.Product):
         ("bfast_ppp", {"variant": "bfast", "boundaries": {}}),
         ("bfast_mmm", {"variant": "bfast",
                        "boundaries": {axis: "metallic" for axis in "xyz"}}),
+        # A CONDUCTIVITY ONLY SOME CHUNKS KEEP: sigma on the two low-x planes, which
+        # lie inside the low-x layer's chunks, so every other chunk keeps none and the
+        # certified curl's third test reads the conductive-chunk volume (CMASK 1) on
+        # every conductive target.
+        ("cond_partial", {"variant": "conductive",
+                          "boundaries": {axis: "metallic" for axis in "xyz"},
+                          "sigma_low_x_planes": 2}),
+        # THE RUN'S FIRST update_H on the mutation fixture's grid: unseparated, so
+        # every arrangement performs MEEP's start of H at step 1. Every fixture above
+        # is seeded mid-run.
+        ("cond_mmm_first_update", {"variant": "conductive",
+                                   "boundaries": {axis: "metallic" for axis in "xyz"},
+                                   "h_started": False}),
     )
     #: The case the mutations are armed on: every axis walled, so the metallic ghost
     #: rule is live on every axis and every line the shipped kernel can emit is
@@ -143,7 +157,8 @@ class ConductiveBfastProduct(kit.Product):
             "target": "kernel", "expected": "CAUGHT", "hits": 2,
             "old": ("        a_y = _h_tap(0, i, sj, k, vy, hi0, hi1, hi2, wi0, wi1, "
                     "wi2, b0, b1, b2,\n"
-                    "                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)\n"),
+                    "                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, "
+                    "ny, nz)\n"),
             "new": ("        a_y = tl.load(hi0 + oy, mask=vy, other=0.0)\n"),
             "why": "one foreign tap reads the PRE-LAUNCH H instead of recomputing it "
                    "-- exactly the value an in-place weld would have read at a "
@@ -184,12 +199,94 @@ class ConductiveBfastProduct(kit.Product):
         },
         "m_f_w_H_written_in_place": {
             "target": "kernel", "expected": "CAUGHT", "hits": 2,
-            "old": "        tl.store(wo0 + idx, src0, mask=live)\n",
-            "new": "        tl.store(wi0 + idx, src0, mask=live)\n",
+            "old": "        tl.store(wo0 + idx, tl.where(dw0, src0, tl.load(\n",
+            "new": "        tl.store(wi0 + idx, tl.where(dw0, src0, tl.load(\n",
             "why": "the split-field history is written into the PRE-LAUNCH buffer. On "
                    "this side the newly written f_w_H IS B exactly, so a foreign "
                    "recompute reads B where it needs B_prev -- the easily missed half "
                    "of the hazard",
+        },
+        "a1_pairwise_curl_grouping": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "old": "        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)\n",
+            "new": "        curl0 = dtdx * ((c_y - c) + (b - b_z))\n",
+            "why": "INVERTED (KERNELS.md 7.1): Dx's curl takes the PREVIOUS package "
+                   "grouping, the pairwise `(g1s - g1) + (g2 - g2s)`, in place of MEEP's "
+                   "left-to-right `((g1s - g1) + g2) - g2s` that forms.curl_stencil spells",
+        },
+        "b1_whole_grid_recurrence": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "old": "        du0 = record_in(cb, lattice + 8, k)\n",
+            "new": "        du0 = idx >= 0\n",
+            "why": "the select is removed for Dx: the split-field recurrence runs at EVERY "
+                   "cell and fu_Dx is read and written everywhere, as the 0.9.2 kernels ran it",
+        },
+        "b3_membership_one_row_off": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "old": "        du0 = record_in(cb, lattice + 8, k)\n",
+            "new": "        du0 = record_in(cb, lattice + 8, k + 1)\n",
+            "why": "Dx's membership is read one row off along its dsigu axis (z), so the "
+                   "boundary plane of each chunk run changes form",
+        },
+        "b6_fu_store_unmasked": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1, "case": "bfast_mmm",
+            "old": "        tl.store(u0 + idx, n0, mask=live & du0)\n",
+            "new": "        tl.store(u0 + idx, n0, mask=live)\n",
+            "why": "fu_Dx is stored on a plain cell, which the auxiliary contract leaves "
+                   "untouched; every fixture volume is seeded at every cell",
+        },
+        "b7_fw_scratch_stored_unmasked": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "old": ("        tl.store(wo0 + idx, tl.where(dw0, src0, tl.load(\n"
+                    "            wi0 + idx, mask=live & (dw0 == 0), other=0.0)), "
+                    "mask=live)\n"),
+            "new": "        tl.store(wo0 + idx, src0, mask=live)\n",
+            "why": "the scratch f_w_Hx takes B at every cell, as the 0.9.2 kernels wrote it, "
+                   "instead of B on the dsigw cells and the pre-launch word everywhere else; "
+                   "the rotation publishes the moved history",
+        },
+        "b11_start_of_H_not_forwarded": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "case": "cond_mmm_first_update",
+            "old": ("            kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)\n"
+                    "        tl.store(ho0 + idx, own0, mask=live)\n"),
+            "new": ("            kp0, kp1, kp2, kmx, kmy, kmz, cb, 0, ny, nz)\n"
+                    "        tl.store(ho0 + idx, own0, mask=live)\n"),
+            "why": "the own cell's constitutive is handed 0 for MEEP's start of H, so the "
+                   "run's first update_H accumulates onto the stored H at the program's own "
+                   "cell while every foreign recompute starts it from B. Scored on the "
+                   "first-update fixture",
+        },
+        "n1_fu_load_unmasked": {
+            "target": "kernel", "expected": "NULL", "hits": 1, "case": "bfast_mmm",
+            "old": "        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)\n",
+            "new": "        p0 = tl.load(u0 + idx, mask=live, other=0.0)\n",
+            "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): off "
+                   "the dsigu chunk the selected form never consumes fu_Dx and its store "
+                   "stays masked; the guard is pinned by the lift",
+        },
+        "c1_conductive_chunks_ignored": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "case": "cond_partial",
+            "old": ("        _conductive_component(f0, u0, c0, cf0, ci0, m0, idx, live, "
+                    "curl0,\n"
+                    "                              km_y, si_y, km_z, si_z, ds0, du0, "
+                    "COND0, CMASK0)\n"),
+            "new": ("        _conductive_component(f0, u0, c0, cf0, ci0, m0, idx, live, "
+                    "curl0,\n"
+                    "                              km_y, si_y, km_z, si_z, ds0, du0, "
+                    "COND0, 0)\n"),
+            "why": "Dx's conductive forms ignore the conductive-chunk volume, so a "
+                   "chunk that keeps no conductivity steps the conductive form there "
+                   "(and moves f_cond_Dx) where MEEP steps the lossless one. Scored on "
+                   "the fixture whose conductivity only the low-x chunks keep",
+        },
+        "f1_bfast_pass_dropped": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1, "case": "bfast_mmm",
+            "old": "            v0, n0 = fold_ladder(v0, n0, q0, si_y, si_z, du0)\n",
+            "new": "",
+            "why": "Dx's BFAST pass is dropped from the welded curl: MEEP runs it on each "
+                   "component right after its curl (step_db.cpp:124-142)",
         },
         "m_rotation_skipped": {
             "target": "host", "expected": "CAUGHT",
@@ -244,7 +341,11 @@ class ConductiveBfastProduct(kit.Product):
             return
         shape = tuple(int(n) for n in driver.grid.shape)
         xp = driver.xp
-        volume = xp.asarray(np.full(shape, np.float32(SIGMA_D), np.float32))
+        host = np.full(shape, np.float32(SIGMA_D), np.float32)
+        planes = int(spec.get("sigma_low_x_planes", 0))
+        if planes:
+            host[planes:, :, :] = np.float32(0.0)
+        volume = xp.asarray(host)
         components = spec.get("sigma_components")
         if components:
             driver.fields.set_d_conductivity(

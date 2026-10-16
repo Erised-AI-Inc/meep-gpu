@@ -211,6 +211,7 @@ from . import complex_fused_hd_pair as _plain
 from . import folded_complex
 from . import offdiag_weld_common as _weld
 from . import shaders, symmetry, templates
+from . import chunk_bounds as _chunk_bounds
 from .device import MAX_BUFFER_BINDINGS, Residency
 
 FAMILY = "folded_complex_fused_hd_pair"
@@ -325,8 +326,7 @@ SEPARATE_SCALAR_BINDINGS = _plain.SEPARATE_SCALAR_BINDINGS
 SPLIT_PLANE_BINDINGS = _plain.SPLIT_PLANE_BINDINGS
 
 #: The host record's total size in bytes -- the plain complex product's, because the
-#: struct is the plain complex product's. Stated because the natural numpy record is
-#: 44 bytes and Metal's struct is 48.
+#: struct is the plain complex product's (phases and scalars, then the chunk record).
 PARAMS_ITEMSIZE = _plain.PARAMS_ITEMSIZE
 
 #: The rotating volumes, in SIGNATURE ORDER. The plain complex product's, imported:
@@ -382,7 +382,6 @@ params_record_dtype = _plain.params_record_dtype
 # ---------------------------------------------------------------------------
 
 def folded_welded_curl_tail(codes: Sequence[int], phased: Sequence[int],
-                            expansion: str,
                             contract: str = shaders.CONTRACT_OFF
                             ) -> Tuple[str, str]:
     """``(prologue, body)`` of the FOLDED complex ``step_D`` curl, H reads redirected.
@@ -409,15 +408,16 @@ def folded_welded_curl_tail(codes: Sequence[int], phased: Sequence[int],
     offset are PARSED OUT of the emitter's own line rather than retyped, so a folded
     axis's exact complex zero stays exact and no recompute is evaluated past the face.
 
-    THE BLOCH PHASE IS NOT IN THE RECOMPUTE AND MUST NOT BE. The folded complex curl
-    applies ``complex_fields._phase_block`` to the LOADED REGISTER after the gather,
-    on the wrapped lane only; this weld redirects the LOAD and leaves the phase block
-    standing character for character.
+    THE BLOCH CONNECTION IS NOT IN THE RECOMPUTE AND MUST NOT BE. The folded complex
+    curl applies ``complex_fields._phase_block`` to the UNSHIFTED registers on plane 0
+    after the gather; this weld redirects the LOADS and leaves the connection standing
+    character for character. The recompute's dsigw form is evaluated at the cell it is
+    called for (the record is an ``h_cell`` parameter).
 
     ``codes`` is the four-code folded quadruple :func:`.symmetry.folded_axis_kinds`
     resolves, NEVER a hand-built PERIODIC/METALLIC triple -- see the module docstring.
     """
-    source = folded_complex.folded_bloch_curl_source(codes, True, phased, expansion,
+    source = folded_complex.folded_bloch_curl_source(codes, True, phased,
                                                      contract)
     if _plain._BODY_ANCHOR not in source:
         raise AssertionError(
@@ -471,9 +471,9 @@ def folded_welded_curl_tail(codes: Sequence[int], phased: Sequence[int],
 
 
 def folded_complex_fused_hd_pair_source(
-        codes: Sequence[int], phased: Sequence[int], expansion: str,
+        codes: Sequence[int], phased: Sequence[int],
         contract: str = shaders.CONTRACT_OFF) -> str:
-    """One specialised source: (folded quadruple, phases, expansion arm, mode).
+    """One specialised source: (folded quadruple, phases, mode).
 
     The plain complex product's :data:`.complex_fused_hd_pair._TEMPLATE` with the
     FOLDED complex curl's prologue and the FOLDED welded tail. The kernel entry point
@@ -493,11 +493,14 @@ def folded_complex_fused_hd_pair_source(
         raise ValueError(f"codes must be a per-axis triple, got {codes!r}")
     if len(phased) != 3:
         raise ValueError(f"phased must be a per-axis triple, got {phased!r}")
-    prologue, curl = folded_welded_curl_tail(codes, phased, expansion, contract)
+    prologue, curl = folded_welded_curl_tail(codes, phased, contract)
     return templates.substitute(_plain._TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
-        "__H_CELL__": _plain.h_cell_function(expansion, contract),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
+        "__H_CELL__": _plain.h_cell_function(contract),
         "__PROLOGUE__": prologue,
         "__H_CELL_ARGS__": _plain.H_CELL_TAIL_ARGS,
         "__CURL__": curl,
@@ -505,18 +508,18 @@ def folded_complex_fused_hd_pair_source(
 
 
 def compile_folded_complex_fused_hd_pair(
-        codes: Sequence[int], phased: Sequence[int], expansion: str,
+        codes: Sequence[int], phased: Sequence[int],
         contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised entry point for one (folded codes, phases, arm, mode)."""
     from .device import compile_source  # noqa: PLC0415
 
     return getattr(
-        compile_source(folded_complex_fused_hd_pair_source(codes, phased, expansion,
+        compile_source(folded_complex_fused_hd_pair_source(codes, phased,
                                                            contract)),
         KERNEL)
 
 
-def shipped_signature_bindings(expansion: str) -> int:
+def shipped_signature_bindings() -> int:
     """How many bindings the SHIPPED folded kernel declares, off its own source.
 
     Read from the emitted text rather than from :data:`PACKED_BINDINGS`, so the
@@ -526,7 +529,7 @@ def shipped_signature_bindings(expansion: str) -> int:
     """
     source = folded_complex_fused_hd_pair_source(
         (symmetry.CODE_PERIODIC, symmetry.CODE_MIRROR_PERIODIC,
-         symmetry.CODE_PERIODIC), (0, 0, 0), expansion)
+         symmetry.CODE_PERIODIC), (0, 0, 0))
     signature = source.split(f"kernel void {KERNEL}(", 1)[1]
     signature = signature.split("uint idx [[thread_position_in_grid]])", 1)[0]
     return signature.count("[[buffer(")
@@ -541,9 +544,10 @@ def _phase_triples(codes: Sequence[int]) -> Tuple[Tuple[int, int, int], ...]:
     :func:`enumerate_sources` from fingerprinting a label that cannot be built.
     """
     legal: List[Tuple[int, int, int]] = []
-    for px in (0, 1):
-        for py in (0, 1):
-            for pz in (0, 1):
+    kinds = complex_fields.CONNECT_KINDS
+    for px in kinds:
+        for py in kinds:
+            for pz in kinds:
                 triple = (px, py, pz)
                 if any(triple[axis] and codes[axis] != symmetry.CODE_PERIODIC
                        for axis in range(3)):
@@ -552,8 +556,7 @@ def _phase_triples(codes: Sequence[int]) -> Tuple[Tuple[int, int, int], ...]:
     return tuple(legal)
 
 
-def enumerate_sources(expansion: str,
-                      contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
+def enumerate_sources(contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
     """Every specialisation a shipped plan can emit, keyed by a stable label.
 
     Enumerated over the FOUR folded codes on every axis with at least one MIRROR
@@ -574,9 +577,9 @@ def enumerate_sources(expansion: str,
                     continue
                 for phased in _phase_triples(codes):
                     label = (f"{KERNEL}/folded/{cx}{cy}{cz}/"
-                             f"ph{phased[0]}{phased[1]}{phased[2]}/{expansion}")
+                             f"ph{phased[0]}{phased[1]}{phased[2]}")
                     out[label] = folded_complex_fused_hd_pair_source(
-                        codes, phased, expansion, contract)
+                        codes, phased, contract)
     return out
 
 
@@ -585,16 +588,15 @@ def enumerate_sources(expansion: str,
 # ---------------------------------------------------------------------------
 
 def metal_folded_complex_fused_hd_pair_coverage(
-        fields: Any, pml: Any, sources: Any = None, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, sources: Any = None, residency: Any = None) -> Coverage:
     """May ONE dispatch span folded complex ``update_H`` -> withdraw -> ``step_D``?
 
     A conjunction of the two FOLDED COMPLEX halves' own certified predicates plus the
     seam clauses. Nothing is weakened: a configuration either half refuses is refused
     here with that half's reasons, prefixed so a reader can tell which side said it.
-    That construction is what makes the expansion-probe clause, the complex-storage
-    clause, the beta and BFAST clauses, the off-diagonal clause, the polarization
-    clause and the fold clause INHERITED rather than restated.
+    That construction is what makes the complex-storage clause, the beta and BFAST
+    clauses, the off-diagonal clause, the polarization clause and the fold clause
+    INHERITED rather than restated.
 
     THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
     first (driver.py:3311), so the first refusal a reader sees names the half the
@@ -610,12 +612,12 @@ def metal_folded_complex_fused_hd_pair_coverage(
     reasons: List[str] = []
 
     magnetic = folded_complex.folded_complex_constitutive_coverage(
-        fields, pml, "H", residency, probe)
+        fields, pml, "H", residency)
     if not magnetic.covered:
         reasons.extend(f"folded complex constitutive half: {reason}"
                        for reason in magnetic.reasons)
     curl = folded_complex.folded_complex_composition_curl_coverage(
-        fields, pml, "step_D", residency, probe)
+        fields, pml, "step_D", residency)
     if not curl.covered:
         reasons.extend(f"folded complex curl half: {reason}"
                        for reason in curl.reasons)
@@ -672,6 +674,11 @@ def metal_folded_complex_fused_hd_pair_coverage(
             reasons.append(
                 f"{name} is not allocated; this weld rotates it against a plan-owned "
                 f"scratch twin after every launch")
+    # THE RUN'S FIRST update_H, refused on the base single's rule and in its words:
+    # the array path starts H and f_w from B on the dsigw cells there and this weld
+    # does not (launch.h_start_reasons).
+    from .launch import h_start_reasons  # noqa: PLC0415 - launch imports this family's peers
+    reasons.extend(f"folded complex constitutive half: {reason}" for reason in h_start_reasons(fields, sources))
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
@@ -686,8 +693,8 @@ class MetalFoldedComplexFusedHdPairPlan(_weld.ScratchWeldPairPlan):
     this family's post-launch buffer rotation is the same code the four D->E welds and
     the three other H->D products execute. What the subclass adds is the
     specialisation a harness must not re-derive: the per-axis phase flags the source
-    was baked for, the rounded and conjugated phase values in the packed record, and
-    the PROBE-MEASURED expansion arm. A base with ``__slots__`` refuses to carry them,
+    was baked for and the rounded and conjugated phase values in the packed record. A
+    base with ``__slots__`` refuses to carry them,
     and re-deriving them at a call site is how a mutation harness ends up compiling a
     different specialisation from the one it launches.
     """
@@ -695,15 +702,13 @@ class MetalFoldedComplexFusedHdPairPlan(_weld.ScratchWeldPairPlan):
     #: ``family`` is the BASE's slot and is set from the constructor argument; it is
     #: deliberately NOT shadowed by a class attribute here, which on a slotted base
     #: would hide the descriptor and make the base's own assignment raise.
-    __slots__ = ("phased", "phase_values", "expansion")
+    __slots__ = ("phased", "phase_values")
 
     def __init__(self, *arguments: Any, phased: Sequence[int],
-                 phase_values: Sequence[Tuple[float, float]],
-                 expansion: str) -> None:
+                 phase_values: Sequence[Tuple[float, float]]) -> None:
         super().__init__(*arguments)
         self.phased = tuple(int(flag) for flag in phased)
         self.phase_values = tuple((float(re), float(im)) for re, im in phase_values)
-        self.expansion = str(expansion)
 
 
 def plan_metal_folded_complex_fused_hd_pair(
@@ -711,8 +716,7 @@ def plan_metal_folded_complex_fused_hd_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
-        probe: Any = None,
-        codes: Optional[Sequence[int]] = None,
+        codes: Optional[Sequence[int]] = None, *, chunk_bounds: Any,
         ) -> Optional["_weld.ScratchWeldPairPlan"]:
     """Build the folded complex fused H/D plan, or ``None`` when the seam is refused.
 
@@ -730,12 +734,10 @@ def plan_metal_folded_complex_fused_hd_pair(
     report the defect as uncaught.
     """
     if not metal_folded_complex_fused_hd_pair_coverage(
-            fields, pml, sources, residency, probe).covered:
+            fields, pml, sources, residency).covered:
         return None
-    expansion = folded_complex.expansion_from_probe(
-        probe if probe is not None else folded_complex.load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
-        return None
+    chunk_words = _chunk_bounds.plan_words(
+        chunk_bounds, fields.grid.shape, "MetalFoldedComplexFusedHdPairPlan")
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
@@ -819,12 +821,13 @@ def plan_metal_folded_complex_fused_hd_pair(
     for mode in contract_variants:
         if mode not in selected:
             selected[mode] = compile_folded_complex_fused_hd_pair(
-                codes, flags, expansion, mode)
+                codes, flags, mode)
 
     dtdx = grid.dt / grid.dx
     static = (flux + displacement + auxiliary
               + curl_coefficients + constitutive_coefficients
-              + [_plain._params_tensor(grid.shape, dtdx, values, residency.device)])
+              + [_plain._params_tensor(grid.shape, dtdx, values, residency.device,
+                                       chunk_words)])
     assert (2 * len(ROTATED_NAMES) + len(static)) == PACKED_BINDINGS, (
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     assert PACKED_BINDINGS == MAX_BUFFER_BINDINGS, (PACKED_BINDINGS,
@@ -835,7 +838,7 @@ def plan_metal_folded_complex_fused_hd_pair(
         FAMILY, residency, fields, dict(twins), dict(selected), ROTATED_NAMES,
         tuple(static), tuple(volumes), tuple(grid.shape), tuple(codes),
         (0, 0, 0), (), REPLACES,
-        phased=flags, phase_values=values, expansion=expansion)
+        phased=flags, phase_values=values)
 
 
 # ---------------------------------------------------------------------------
@@ -848,8 +851,7 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
         return Coverage(
             False, (f"folded complex fused H/D pair cannot fill {slot}",))
     return metal_folded_complex_fused_hd_pair_coverage(
-        context.fields, context.pml, context.sources, context.residency,
-        context.extra.get("folded_complex_probe"))
+        context.fields, context.pml, context.sources, context.residency)
 
 
 def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
@@ -858,7 +860,7 @@ def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
     return plan_metal_folded_complex_fused_hd_pair(
         context.fields, context.pml, context.sources, context.residency,
         context.contract_variants,
-        probe=context.extra.get("folded_complex_probe"))
+        chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

@@ -166,16 +166,17 @@ def test_the_kernel_keeps_the_curl_grouping_pole_order_and_constitutive_grouping
     assert "options=" not in code
     assert code.count("enable_fp_fusion=") == 1
     for line in (
-        "curl0 = dtdx * ((c_y - c) + (b - b_z))",
-        "curl1 = dtdx * ((a_z - a) + (c - c_x))",
-        "curl2 = dtdx * ((b_x - b) + (a - a_y))",
-        "n0 = ((p0 * km_y) - curl0) * si_y",
-        "v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z",
+        "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)",
+        "curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)",
+        "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)",
         "src0 = s0 * tl.load(ie0 + idx, mask=live, other=0.0)",
-        "a0v = a0v + kp_0 * src0",
-        "a0v = a0v - km_0 * prev0",
+        "tl.store(w0 + idx, src0, mask=live & dw0)",
+        "a0v = constitutive_form(tl.load(e0 + idx, mask=live & dw0, other=0.0),",
     ):
         assert line in source, line
+    for retired in ("curl0 = dtdx * ((c_y - c) + (b - b_z))",
+                    "a0v = a0v + kp_0 * src0", "a0v = a0v - km_0 * prev0"):
+        assert retired not in source, retired
     body = source.split("def fused_curl_dispersive_E(", 1)[1]
     for letter, displacement in (("a", "v0"), ("b", "v1"), ("c", "v2")):
         assert f"s{ord(letter) - ord('a')} = {displacement}" in body
@@ -189,7 +190,8 @@ def _install_composition_stubs(monkeypatch, *, ordinary_fused, specialized_fused
     monkeypatch.setattr(launch_module, "pml_curl_coverage",
                         lambda fields, pml, name: admitted)
     monkeypatch.setattr(launch_module, "plan_pml_curl",
-                        lambda fields, pml, name, block=None: f"curl:{name}")
+                        lambda fields, pml, name, block=None, chunk_layout=None:
+                            f"curl:{name}")
     monkeypatch.setattr(launch_module, "conductive_pml_curl_coverage",
                         lambda *args, **kwargs: refused)
     monkeypatch.setattr(launch_module, "plain_curl_coverage",
@@ -197,7 +199,8 @@ def _install_composition_stubs(monkeypatch, *, ordinary_fused, specialized_fused
     monkeypatch.setattr(launch_module, "constitutive_coverage",
                         lambda fields, pml, side: admitted if side == "H" else refused)
     monkeypatch.setattr(launch_module, "plan_constitutive",
-                        lambda fields, pml, side, block=None: f"constitutive:{side}")
+                        lambda fields, pml, side, block=None, chunk_layout=None:
+                            f"constitutive:{side}")
     monkeypatch.setattr(launch_module, "dispersive_constitutive_coverage",
                         lambda *args, **kwargs: admitted)
     monkeypatch.setattr(launch_module, "plan_dispersive_constitutive",
@@ -363,3 +366,57 @@ def test_the_fused_dispersive_record_is_welded_to_every_live_dependency():
     for name in ("dispersive_fused_pair_coverage",
                  "plan_dispersive_fused_pair"):
         assert name in public.__all__ and callable(getattr(public, name))
+
+
+# ---------------------------------------------------------------------------
+# The per-chunk forms (bit_parity_0_10 WP KT6), read off the parse tree
+# ---------------------------------------------------------------------------
+
+def _kt6_function(path, name):
+    import ast as _ast
+
+    source = pathlib.Path(path).read_text(encoding="utf-8")
+    for node in _ast.walk(_ast.parse(source)):
+        if isinstance(node, _ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"{name} is not defined in {path}")
+
+
+def _kt6_masks(function, method, pointer):
+    """The ``mask=`` text of every ``tl.<method>(pointer + ...)`` call in the body."""
+    import ast as _ast
+
+    found = []
+    for node in _ast.walk(function):
+        if (isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
+                and node.func.attr == method and node.args
+                and _ast.unparse(node.args[0]).startswith(pointer + " ")):
+            masks = [_ast.unparse(k.value) for k in node.keywords if k.arg == "mask"]
+            found.append(masks[0] if masks else None)
+    return found
+
+
+def test_the_curl_half_is_the_root_fused_D_bodys_statement_for_statement():
+    """Everything through the six curl stores is ``kernels.fused_curl_constitutive_D``'s
+    (KT1): the record's presence word and ``forms.curl_stencil``, the recurrence on the
+    dsigu cells through ``forms.curl_form``, ``fu`` read and written there only."""
+    import ast as _ast
+
+    root = _kt6_function(PACKAGE_DIR / "kernels.py", "fused_curl_constitutive_D")
+    pair = _kt6_function(module.__file__, "fused_curl_dispersive_E")
+
+    def curl_half(function):
+        body = [s for s in function.body
+                if not (isinstance(s, _ast.Expr) and isinstance(s.value, _ast.Constant))]
+        end = next(i for i, s in enumerate(body)
+                   if _ast.unparse(s) == "tl.store(f2 + idx, v2, mask=live)")
+        return [_ast.dump(s) for s in body[:end + 1]]
+
+    assert curl_half(pair) == curl_half(root)
+    names = [a.arg for a in pair.args.args]
+    assert names[names.index("km2") + 1] == "cb"
+    for index in range(3):
+        assert _kt6_masks(pair, "store", f"u{index}") == [f"live & du{index}"]
+        assert _kt6_masks(pair, "load", f"w{index}") == [f"live & dw{index}"]
+        assert _kt6_masks(pair, "store", f"w{index}") == [f"live & dw{index}"]
+        assert _kt6_masks(pair, "store", f"e{index}") == ["live"]

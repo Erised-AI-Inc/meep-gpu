@@ -147,6 +147,10 @@ SCHEDULE_REPEATS = 4
 #: The block sizes S2 sweeps. 32 is one warp, 1024 the maximum, and the shipped
 #: launcher's own 256 sits between them; they put wildly different numbers of blocks
 #: on the grid, which is what makes the sweep a schedule sweep rather than a shape one.
+#: A size above the shipped one that the compiled kernel cannot launch for want of
+#: registers is recorded NOT LAUNCHABLE by name rather than scored, and the shipped size
+#: must launch on every fixture. On compute capability 8.6 the folded weld compiles to 72
+#: registers a thread, which allows at most 896 threads a block, so its 1024 is refused.
 BLOCK_SIZES: Tuple[int, ...] = (32, 64, 128, 256, 512, 1024)
 
 #: Every stored volume a complete step can touch. All of them are compared: the B/H
@@ -1053,11 +1057,11 @@ def leg_lift() -> Dict[str, Any]:
                 token in source.split("\n) {\n", 1)[-1]
                 for token in ("Dx[idx]", "Dy[idx]", "Dz[idx]")),
             "constitutive_tail_is_verbatim": (
-                "float prev = fw[idx];" in constitutive
-                and "float prev = fw[idx];" in source),
+                "float prev = dsigw ? fw[idx] : 0.0f;" in constitutive
+                and "float prev = dsigw ? fw[idx] : 0.0f;" in source),
             "term_association_is_verbatim": (
-                "return 0.25f * ((near_pair * u[home]) + (far_pair * "
-                "ghosted(u, up)));" in source),
+                "return (near_pair * u[home]) + (far_pair * "
+                "ghosted(u, up));" in source),
         }
         entry["passed"] = (not missing and entry["no_direct_flux_density_load"]
                            and entry["constitutive_tail_is_verbatim"]
@@ -1215,8 +1219,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "question": ("do ONE launch of offdiag_fused_electric_pair_pml_real and one "
                      "of folded_offdiag_fused_electric_pair_pml_real leave every "
                      "stored volume byte-identical to stepping's own D-seam pass "
-                     "sequence inside a complete driver step -- at every block size, "
-                     "on every repeat, under both float32 subnormal policies?"),
+                     "sequence inside a complete driver step -- at every block size "
+                     "it can launch, on every repeat, under both float32 subnormal "
+                     "policies?"),
         "what_it_does_not_claim": [
             "throughput: the box is shared and nothing here is timed",
             "dispatch: fastpath.plan_fast_path still returns None on every branch",
@@ -1278,14 +1283,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # ------------------------------------------------------------------ S2
     s2: List[Dict[str, Any]] = []
     for spec in specs:
+        shipped = int(products()[spec["product"]]._FUSED_THREADS)  # noqa: SLF001
         for threads in BLOCK_SIZES:
-            record = run_case(spec, "uniform", steps=min(args.steps, 12),
-                              threads=threads, label_suffix=f"/b{threads}")
+            label = f"{spec['label']}/uniform/b{threads}"
+            try:
+                record = run_case(spec, "uniform", steps=min(args.steps, 12),
+                                  threads=threads, label_suffix=f"/b{threads}")
+            except cp.cuda.driver.CUDADriverError as refused:
+                # ONLY a refusal for want of resources, and only above the block
+                # size dispatch launches: any other error, or this one at a size
+                # dispatch uses, is a failure and propagates.
+                if ("CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES" not in str(refused)
+                        or threads <= shipped):
+                    raise
+                record = {"label": label, "spec": spec["label"],
+                          "product": spec["product"], "bit_identical": None,
+                          "launchable": False, "launch_refusal": str(refused)}
+                log(f"[S2] {label:52s} NOT LAUNCHABLE ({refused})")
+            else:
+                record["launchable"] = True
+                log(f"[S2] {record['label']:52s} "
+                    f"{'IDENTICAL' if record['bit_identical'] else 'DIVERGED'}")
+            record["threads"], record["shipped_threads"] = threads, shipped
             s2.append(record)
-            log(f"[S2] {record['label']:52s} "
-                f"{'IDENTICAL' if record['bit_identical'] else 'DIVERGED'}")
         save({**results, "S2_block_sizes": s2}, args.out)
     results["S2_block_sizes"] = s2
+    s2_launched = [r for r in s2 if r["launchable"]]
 
     results["guard_control"] = [leg_guard_control(by_label[label], args.steps)
                                 for label in ("flat_walls_all_rows",
@@ -1312,8 +1335,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "S1 nothing read-only drifted": all(not r["read_only_drift"] for r in s1),
         "S1 every case moved the state it must move":
             all(r["non_vacuous"] for r in s1),
-        "S2 identical at every block size":
-            bool(s2) and all(r["bit_identical"] for r in s2),
+        "S2 identical at every block size the kernel can launch":
+            bool(s2_launched) and all(r["bit_identical"] for r in s2_launched),
+        "S2 the block size dispatch launches is launchable for every fixture":
+            all(any(r["spec"] == spec["label"] and r["launchable"]
+                    and r["threads"] == r["shipped_threads"] for r in s2)
+                for spec in specs),
         "the subnormal band really contains subnormals":
             bool(band) and all(r["operand_census"]["subnormals"] > 0 for r in band),
         "the uniform class contains none":
@@ -1330,6 +1357,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "clauses": clauses, "passed": all(clauses.values()),
         "denominators": {
             "S1_cases": len(s1), "S2_cases": len(s2),
+            "S2_not_launchable": len(s2) - len(s2_launched),
             "fixtures": len(specs), "block_sizes": len(BLOCK_SIZES),
             "repeats": args.repeats, "steps_per_case": args.steps,
         },
@@ -1344,7 +1372,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "reasons": [clause for clause, value in clauses.items() if not value],
         "what_it_licenses": (
             "two CUDA kernels measured byte-identical to the array path's D-seam "
-            "pass sequence over complete driver steps, at every block size, under "
+            "pass sequence over complete driver steps, at every block size it can "
+            "launch, under "
             "both float32 subnormal policies, with the mutation battery two-sided. "
             "It licenses NO throughput claim and NO dispatch claim"),
     }

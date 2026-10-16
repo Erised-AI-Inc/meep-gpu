@@ -105,6 +105,8 @@ for _path in (HERE, API_ROOT):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import fold_pass_mutations as fold_passes  # noqa: E402
+
 PACKAGE_DIR = os.path.join(API_ROOT, "meep_gpu", "triton_kernels")
 PRODUCT_MODULE = "meep_gpu.triton_kernels.beta_fused_electric_pair"
 KERNEL_FILE = os.path.join(PACKAGE_DIR, "beta_fused_electric_pair.py")
@@ -113,13 +115,15 @@ KERNEL_NAME = "beta_fused_curl_constitutive_D"
 #: refl-angular-kz2d.py's own beta — the single row this cell has.
 BETA_CORPUS = 0.3321611318837033
 
-#: The three lines the beta term adds, and the ONLY thing that may separate this
-#: kernel from ``kernels.fused_curl_constitutive_D``.
-BETA_INSERT = (
-    "if HAS_BETA:",
-    "curl0 = curl0 - (beta_plus * b)",
-    "curl1 = curl1 - (beta_minus * a)",
-)
+#: The flag that gates the beta pass. The pass itself is DERIVED from the shipped curl
+#: (``special_kz.beta_pml_curl_step``'s top-level ``if HAS_BETA:`` statement), never
+#: listed here: the transcription leg checks that this kernel splices that exact
+#: statement after its three curl forms (``fold_pass_mutations.body_and_insert``).
+BETA_FLAG = "HAS_BETA"
+
+#: Target 2's curl-stencil line, the last of the curl half's stencils: the previous
+#: placement of the beta term (inside the curl, before the forms) is planted after it.
+CURL_ANCHOR = "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)"
 
 #: The device cases. ``(name, cell, boundaries, steps)``.
 #:
@@ -265,6 +269,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/beta_fused_magnetic_pair.py",
         "meep_gpu/triton_kernels/special_kz.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/deposit_repair.py",
@@ -345,57 +350,64 @@ def shipped_source() -> str:
 def transcription_leg() -> Dict[str, Any]:
     """The claim this whole product rests on, made mechanical.
 
-    Two equalities, both EXACT and both in order:
+    Three equalities, all EXACT and in order, and one position:
 
-    * the kernel minus the three beta lines IS ``kernels.fused_curl_constitutive_D``;
-    * the kernel minus the WELD (whatever ``fused_curl_constitutive_D`` has that
-      ``kernels.pml_curl_step`` does not — DERIVED, not listed) IS
-      ``special_kz.beta_pml_curl_step``.
+    * the kernel minus its beta pass IS ``kernels.fused_curl_constitutive_D``;
+    * its beta pass IS ``special_kz.beta_pml_curl_step``'s, statement for statement;
+    * that curl minus the same pass IS ``kernels.pml_curl_step``;
+    * the pass follows the three curl forms and precedes the wall clear -- MEEP's beta
+      pass runs after every component's curl (step_db.cpp:161-175), and the seam's
+      clear and update_E follow the whole sub-step.
 
-    Together they say: nothing in this body was written here. The third check states
-    that positively, over the union of the two shipped bodies. The fourth says this
-    is the ELECTRIC weld and not a copy of the magnetic twin.
+    Together they say: nothing in this body was written here. The invented-statement
+    check states that positively over the union of the shipped bodies. The last checks
+    say this is the ELECTRIC weld and not a copy of the magnetic twin.
     """
     kernels_py = os.path.join(PACKAGE_DIR, "kernels.py")
     special_py = os.path.join(PACKAGE_DIR, "special_kz.py")
     twin_py = os.path.join(PACKAGE_DIR, "beta_fused_magnetic_pair.py")
     fused = body_statements(KERNEL_FILE, KERNEL_NAME)
+    body, insert = fold_passes.body_and_insert(KERNEL_FILE, KERNEL_NAME, BETA_FLAG)
     ordinary_fused = body_statements(kernels_py, "fused_curl_constitutive_D")
     ordinary_curl = body_statements(kernels_py, "pml_curl_step")
-    beta_curl = body_statements(special_py, "beta_pml_curl_step")
+    curl_body, curl_insert = fold_passes.body_and_insert(
+        special_py, "beta_pml_curl_step", BETA_FLAG)
     twin = body_statements(twin_py, "beta_fused_curl_constitutive_B")
 
-    findings: List[str] = []
-    without_beta = [line for line in fused if line not in BETA_INSERT]
-    if without_beta != ordinary_fused:
-        index = next((i for i, (a, b) in enumerate(zip(without_beta, ordinary_fused))
-                      if a != b), min(len(without_beta), len(ordinary_fused)))
-        findings.append(
-            f"minus the beta insert this is NOT fused_curl_constitutive_D; first "
-            f"difference at statement {index}: "
-            f"{without_beta[index:index + 1]} vs {ordinary_fused[index:index + 1]}")
+    def first_difference(left: List[str], right: List[str]) -> str:
+        index = next((i for i, (a, b) in enumerate(zip(left, right)) if a != b),
+                     min(len(left), len(right)))
+        return (f"first difference at statement {index}: "
+                f"{left[index:index + 1]} vs {right[index:index + 1]}")
 
+    findings: List[str] = []
+    if not insert:
+        findings.append("the kernel carries no top-level `if HAS_BETA:` pass")
+    if body != ordinary_fused:
+        findings.append("minus its beta pass this is NOT fused_curl_constitutive_D; "
+                        + first_difference(body, ordinary_fused))
+    if insert != curl_insert:
+        findings.append("the beta pass is NOT beta_pml_curl_step's; "
+                        + first_difference(insert, curl_insert))
+    if curl_body != ordinary_curl:
+        findings.append("beta_pml_curl_step minus its pass is NOT pml_curl_step; "
+                        + first_difference(curl_body, ordinary_curl))
     weld = [line for line in ordinary_fused if line not in ordinary_curl]
     if not weld:
-        findings.append("the weld is empty; the second equality compares nothing")
-    without_weld = [line for line in fused if line not in weld]
-    if without_weld != beta_curl:
-        index = next((i for i, (a, b) in enumerate(zip(without_weld, beta_curl))
-                      if a != b), min(len(without_weld), len(beta_curl)))
-        findings.append(
-            f"minus the weld this is NOT beta_pml_curl_step; first difference at "
-            f"statement {index}: "
-            f"{without_weld[index:index + 1]} vs {beta_curl[index:index + 1]}")
-
-    delta = [line for line in beta_curl if line not in ordinary_curl]
-    if delta != list(BETA_INSERT):
-        findings.append(f"beta_pml_curl_step's own delta over pml_curl_step is "
-                        f"{delta}, not {list(BETA_INSERT)}")
+        findings.append("the weld is empty; the comparison compares nothing")
+    if insert:
+        before, after = fold_passes.insert_neighbours(KERNEL_FILE, KERNEL_NAME, BETA_FLAG)
+        if not before.startswith("v2, n2 = curl_form("):
+            findings.append(f"the beta pass does not follow the last curl form: it "
+                            f"follows {before!r}")
+        if after != "if ZM_X:":
+            findings.append(f"the beta pass does not precede the wall clear: it "
+                            f"precedes {after!r}")
 
     invented = [line for line in fused
-                if line not in set(beta_curl) | set(ordinary_fused)]
+                if line not in set(curl_body) | set(curl_insert) | set(ordinary_fused)]
     if invented:
-        findings.append(f"statements that appear in NEITHER shipped body: {invented}")
+        findings.append(f"statements that appear in NO shipped body: {invented}")
 
     # THIS IS THE ELECTRIC WELD. A body copied from the magnetic twin would pass
     # every equality above against the WRONG pair of shipped sources, so the
@@ -419,7 +431,7 @@ def transcription_leg() -> Dict[str, Any]:
     return {"leg": "transcription", "device": False,
             "statements_in_the_product": len(fused),
             "the_weld_derived_from_the_shipped_pair": weld,
-            "beta_insert_measured": delta,
+            "beta_insert_measured": insert,
             "findings": findings, "passed": not findings}
 
 
@@ -1310,6 +1322,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
             raise AssertionError("the product refused the reduction case")
         reduced_plan.has_beta = 0
 
+        from gate_chunk_records import layer_record  # noqa: PLC0415
+
         fields, pml = shipped.fields, shipped.pml
         grid = fields.grid
         arrays = {name: getattr(fields, name) for name in
@@ -1325,7 +1339,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         shipped_plan = plan_fused_pair_from_arrays(
             "D", arrays, curl_flat, constitutive_flat,
             [1 if kind == "metallic" else 0 for kind in resolve(grid, pml)],
-            zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1)
+            zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1,
+            chunk_bounds=layer_record(grid, pml))
 
         roles = {id(reference.fields): "array", id(shipped.fields): "shipped",
                  id(reduced.fields): "reduced"}
@@ -1334,6 +1349,7 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         undo = install(driver_module, routes, counter, roles)
 
         opening = snapshot(cp, reduced)
+        reference_opening = snapshot(cp, reference)
         row["per_step"] = []
         for step in range(1, steps + 1):
             reference.step()
@@ -1362,8 +1378,16 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         final = snapshot(cp, reduced)
         ever_moved = moved(opening, final)
         material = [key for key in final if key in MATERIAL]
-        row["arrays_never_moved"] = sorted(
-            set(final) - set(ever_moved) - set(material))
+        # THE AUXILIARY CONTRACT'S EXEMPTION, as in run_leg. fu_* and f_w_* move
+        # only on their layer's cells (KERNELS.md section 1, C2), so on a 2-D grid
+        # the invariant axis's auxiliaries are inert on EVERY route. An auxiliary the
+        # array path also leaves inert is exempt; every other unmoved array refuses.
+        reference_moved = moved(reference_opening, snapshot(cp, reference))
+        unmoved = set(final) - set(ever_moved) - set(material)
+        row["inert_on_every_route"] = sorted(
+            name for name in unmoved - set(reference_moved)
+            if name.startswith(("fu_", "f_w_")))
+        row["arrays_never_moved"] = sorted(unmoved - set(row["inert_on_every_route"]))
         row["launches"] = dict(counter)
         failures: List[str] = []
         if row["first_divergence"] is not None:
@@ -1401,7 +1425,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
 def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant. The rename is what keeps the JIT cache honest."""
     header = ("import triton\nimport triton.language as tl\n"
-              "PERIODIC = tl.constexpr(0)\n"
+              + fold_passes.MUTANT_IMPORTS
+              + "PERIODIC = tl.constexpr(0)\n"
               "METALLIC = tl.constexpr(1)\n\n")
     text = header + source.replace(KERNEL_NAME, kernel_name)
     # A MUTATION THAT DOES NOT PARSE IS NOT A MUTATION. Checked before any device
@@ -1467,75 +1492,40 @@ def _replace_all(source: str, before: str, after: str) -> Tuple[str, int]:
     return source.replace(before, after), hits
 
 
+#: The beta pass's own mutations and the root forms' (KERNELS.md 7.1's inversions and
+#: 7.2's chunk-form battery): ``fold_pass_mutations``' shared spellings, the same text
+#: in every carrier of the pass. Each entry's ``needs`` is checked against the case it
+#: is scored on (:func:`mutation_case_for`).
+SHARED_MUTATIONS = fold_passes.declare(
+    fold_passes.beta_mutations(False, False, CURL_ANCHOR)
+    + fold_passes.form_mutations(True),
+    {"b_increment_unmasked": (
+        "null",
+        "DECLARED NULL on the D seam: every plane the increment's mask drops (Dx at a "
+        "y or z wall, Dy at an x or z wall) is a plane zero_metal_D clears in the same "
+        "launch, and fu_D is not stored there because cell 0 of the integer "
+        "sub-lattice is in no chunk on a non-wrapping axis; the unmasked increment "
+        "reaches no stored word. The B seam's twin is must-catch.")})
+_SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
+
+#: What each case's grid carries, in ``fold_pass_mutations.NEEDS`` words. Every case
+#: has a PML layer on x and y (``build_driver``); the walled ones carry metallic axes.
+CASE_CARRIES: Dict[str, Tuple[str, ...]] = {
+    "corpus_periodic": ("layer",),
+    "wall_xy": ("wall", "layer"),
+    "wall_x": ("wall", "layer"),
+    "corpus_periodic_single_launch": ("layer",),
+}
+
+
 def mutation_table() -> Tuple[Tuple[str, str, str,
                                     Callable[[str], Tuple[str, int]]], ...]:
-    """(id, why it is armed, expectation, rewrite)."""
+    """(id, why it is armed, expectation, rewrite).
 
-    def m_beta_term_dropped(source: str) -> Tuple[str, int]:
-        """No beta term at all — the ordinary fused pair on a beta run."""
-        return _replace_all(source, "if HAS_BETA:", "if HAS_BETA and False:")
-
-    def m_beta_partners_swapped(source: str) -> Tuple[str, int]:
-        """Target 0 takes the FIRST source's centre and target 1 the second's.
-
-        ``step_db.cpp:148-176`` pairs Dx with Hy and Dy with Hx; swapping them is a
-        smooth, plausible, wrong field.
-        """
-        return _rewrite_block(
-            source,
-            ["curl0 = curl0 - (beta_plus * b)",
-             "curl1 = curl1 - (beta_minus * a)"],
-            ["curl0 = curl0 - (beta_plus * a)",
-             "curl1 = curl1 - (beta_minus * b)"])
-
-    def m_beta_sign_flipped(source: str) -> Tuple[str, int]:
-        """``curl + (c * g)`` instead of ``curl - (c * g)``."""
-        return _replace_all(source, "curl0 = curl0 - (beta_plus * b)",
-                            "curl0 = curl0 + (beta_plus * b)")
-
-    def m_beta_scaled_by_dtdx(source: str) -> Tuple[str, int]:
-        """The term multiplied by ``dtdx``; it is an analytic derivative and is not
-        (S:733-735)."""
-        return _replace_all(source, "curl1 = curl1 - (beta_minus * a)",
-                            "curl1 = curl1 - (dtdx * (beta_minus * a))")
-
-    def m_beta_after_the_ownership_mask(source: str) -> Tuple[str, int]:
-        """The term added AFTER the OWNERSHIP MASK instead of before it.
-
-        The array path inserts it after the ``dtdx`` curl and BEFORE the mask
-        (S:438-445 after :429, before :450), so on a walled grid the masked plane
-        would keep a beta contribution the array path zeroes.
-
-        PAST THE WHOLE MASK BLOCK, not merely past the ``at_x`` line — measured
-        2026-08-31: the first spelling of this rewrite moved the term to just after
-        ``at_x, at_y, at_z = ...``, which is still BEFORE the ``if BACKWARD:`` mask
-        suite, so the mutant was byte-identical to the shipped kernel and the leg
-        reported a real defect as UNCAUGHT. It is re-anchored on the first line of
-        the split-field recurrence, which is the statement immediately after the
-        mask block.
-
-        WHAT MAKES IT VISIBLE is that the partner is a CENTER load: on a metallic y
-        wall ``curl0``'s mask fires at ``j == 0`` and its partner is ``Hy`` at that
-        same cell, which ``zero_metal_B`` clears in ``B`` but which ``update_H``
-        leaves at its accumulated value (``H += kps*0 - kms*0`` is a no-op, not a
-        clear). So the moved term contributes a nonzero ``beta_plus * b`` on a plane
-        the array path leaves at exactly zero."""
-        source, first = _rewrite_block(
-            source,
-            ["if HAS_BETA:",
-             "curl0 = curl0 - (beta_plus * b)",
-             "curl1 = curl1 - (beta_minus * a)"],
-            ["if HAS_BETA:",
-             "    curl0 = curl0",
-             "    curl1 = curl1"])
-        source, second = _rewrite_block(
-            source,
-            ["km_x = tl.load(kmx + i, mask=live, other=0.0)"],
-            ["if HAS_BETA:",
-             "    curl0 = curl0 - (beta_plus * b)",
-             "    curl1 = curl1 - (beta_minus * a)",
-             "km_x = tl.load(kmx + i, mask=live, other=0.0)"])
-        return source, min(first, second)
+    The seam's own mutations (the wall clear, the inverse permittivity, the ``f_w``
+    order, the stores) come first; the beta pass's and the root forms' follow, from
+    :data:`SHARED_MUTATIONS`.
+    """
 
     def m_wall_clear_dropped(source: str) -> Tuple[str, int]:
         """``zero_metal_D`` not carried on the x wall."""
@@ -1555,41 +1545,27 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         """The clear applied after the D store, so the stored D keeps the wall value.
 
         ``update_E`` would still read the cleared register, so this is a defect in
-        the D volume alone — which is exactly why the comparison is over EVERY
-        allocated volume rather than over E.
+        the D volume alone -- which is exactly why the comparison is over EVERY
+        allocated volume rather than over E. The auxiliary stores keep their region
+        masks; only the clear moves.
         """
-        return _rewrite_block(
-            source,
-            ["if ZM_X:",
-             "v1 = tl.where(at_x, 0.0, v1)",
-             "v2 = tl.where(at_x, 0.0, v2)",
-             "if ZM_Y:",
-             "v0 = tl.where(at_y, 0.0, v0)",
-             "v2 = tl.where(at_y, 0.0, v2)",
-             "if ZM_Z:",
-             "v0 = tl.where(at_z, 0.0, v0)",
-             "v1 = tl.where(at_z, 0.0, v1)",
-             "tl.store(u0 + idx, n0, mask=live)",
-             "tl.store(u1 + idx, n1, mask=live)",
-             "tl.store(u2 + idx, n2, mask=live)",
-             "tl.store(f0 + idx, v0, mask=live)",
-             "tl.store(f1 + idx, v1, mask=live)",
-             "tl.store(f2 + idx, v2, mask=live)"],
-            ["tl.store(u0 + idx, n0, mask=live)",
-             "tl.store(u1 + idx, n1, mask=live)",
-             "tl.store(u2 + idx, n2, mask=live)",
-             "tl.store(f0 + idx, v0, mask=live)",
-             "tl.store(f1 + idx, v1, mask=live)",
-             "tl.store(f2 + idx, v2, mask=live)",
-             "if ZM_X:",
-             "    v1 = tl.where(at_x, 0.0, v1)",
-             "    v2 = tl.where(at_x, 0.0, v2)",
-             "if ZM_Y:",
-             "    v0 = tl.where(at_y, 0.0, v0)",
-             "    v2 = tl.where(at_y, 0.0, v2)",
-             "if ZM_Z:",
-             "    v0 = tl.where(at_z, 0.0, v0)",
-             "    v1 = tl.where(at_z, 0.0, v1)"])
+        stores = ["tl.store(u0 + idx, n0, mask=live & du0)",
+                  "tl.store(u1 + idx, n1, mask=live & du1)",
+                  "tl.store(u2 + idx, n2, mask=live & du2)",
+                  "tl.store(f0 + idx, v0, mask=live)",
+                  "tl.store(f1 + idx, v1, mask=live)",
+                  "tl.store(f2 + idx, v2, mask=live)"]
+        clear = ["if ZM_X:",
+                 "v1 = tl.where(at_x, 0.0, v1)",
+                 "v2 = tl.where(at_x, 0.0, v2)",
+                 "if ZM_Y:",
+                 "v0 = tl.where(at_y, 0.0, v0)",
+                 "v2 = tl.where(at_y, 0.0, v2)",
+                 "if ZM_Z:",
+                 "v0 = tl.where(at_z, 0.0, v0)",
+                 "v1 = tl.where(at_z, 0.0, v1)"]
+        nested = [line if line.startswith("if ") else "    " + line for line in clear]
+        return _rewrite_block(source, clear + stores, stores + nested)
 
     def m_inv_eps_dropped(source: str) -> Tuple[str, int]:
         """``update_E`` without the inverse-permittivity multiply."""
@@ -1604,16 +1580,17 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
             "src0 = v0 * tl.load(ie1 + idx, mask=live, other=0.0)")
 
     def m_prev_read_after_the_store(source: str) -> Tuple[str, int]:
-        """``f_w`` read AFTER it is overwritten — the one ordering the constitutive
-        cannot survive being wrong about (S:2083-2085)."""
+        """``f_w`` read AFTER it is overwritten -- the one ordering the constitutive
+        cannot survive being wrong about (S:2083-2085). On the accumulation's cells
+        only, where both the read and the store live."""
         return _rewrite_block(
             source,
-            ["prev0 = tl.load(w0 + idx, mask=live, other=0.0)",
+            ["prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)",
              "src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)",
-             "tl.store(w0 + idx, src0, mask=live)"],
+             "tl.store(w0 + idx, src0, mask=live & dw0)"],
             ["src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)",
-             "tl.store(w0 + idx, src0, mask=live)",
-             "prev0 = tl.load(w0 + idx, mask=live, other=0.0)"])
+             "tl.store(w0 + idx, src0, mask=live & dw0)",
+             "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)"])
 
     def m_constitutive_axis_swapped(source: str) -> Tuple[str, int]:
         """Component 0's constitutive coefficient indexed on axis y.
@@ -1628,11 +1605,6 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
             ["kp_0 = tl.load(kp0 + j, mask=live, other=0.0)",
              "km_0 = tl.load(km0 + j, mask=live, other=0.0)"])
 
-    def m_curl_parens_flattened(source: str) -> Tuple[str, int]:
-        """``dtdx * (c_y - c + b - b_z)`` — a different float32 grouping."""
-        return _replace_all(source, "curl0 = dtdx * ((c_y - c) + (b - b_z))",
-                            "curl0 = dtdx * (c_y - c + b - b_z)")
-
     def m_d_store_dropped(source: str) -> Tuple[str, int]:
         """The stepped displacement never written back; the next step's curl reads
         it."""
@@ -1640,16 +1612,6 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
                             "tl.store(f0 + idx, v0, mask=live & (idx < 0))")
 
     return (
-        ("m_beta_term_dropped", "no beta term at all", "caught", m_beta_term_dropped),
-        ("m_beta_partners_swapped", "Dx paired with Hx and Dy with Hy", "caught",
-         m_beta_partners_swapped),
-        ("m_beta_sign_flipped", "curl + (c*g) instead of curl - (c*g)", "caught",
-         m_beta_sign_flipped),
-        ("m_beta_scaled_by_dtdx", "the analytic derivative multiplied by dtdx",
-         "caught", m_beta_scaled_by_dtdx),
-        ("m_beta_after_the_ownership_mask",
-         "the beta term added after the ownership mask instead of before it",
-         "caught", m_beta_after_the_ownership_mask),
         ("m_wall_clear_dropped", "zero_metal_D not carried on the x wall", "caught",
          m_wall_clear_dropped),
         ("m_wall_clear_is_the_magnetic_familys_one_row",
@@ -1668,11 +1630,9 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         ("m_constitutive_axis_swapped",
          "component 0's constitutive coefficient indexed on axis y", "caught",
          m_constitutive_axis_swapped),
-        ("m_curl_parens_flattened", "a different float32 grouping in the curl",
-         "caught", m_curl_parens_flattened),
         ("m_d_store_dropped", "the stepped displacement never written back",
          "caught", m_d_store_dropped),
-    )
+    ) + _SHARED_ROWS
 
 
 def mutation_case_for(name: str) -> Tuple[str, Tuple[Any, ...]]:
@@ -1693,6 +1653,8 @@ def mutation_case_for(name: str) -> Tuple[str, Tuple[Any, ...]]:
                 f"{case_name!r} declares {declaration(axis_letter)!r} there: the "
                 f"rewritten lines would be a DEAD BRANCH and the leg would report "
                 f"'uncaught' while measuring nothing")
+    fold_passes.check_needs(name, MUTATION_NEEDS.get(name, ()), CASE_CARRIES[case_name],
+                            case_name)
     return case_name, case
 
 

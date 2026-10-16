@@ -683,7 +683,9 @@ def arm_ghost_parity_flipped(driver, plans: Dict[str, Any]) -> str:
         odmod.row_volumes_for(fields),
         [getattr(pml, f"{stem}_{axis}_h")
          for axis in "xyz" for stem in ("kps", "kms")],
-        codes, odmod.wall_mask_axes(fields.grid), weights)
+        codes, odmod.wall_mask_axes(fields.grid), weights,
+        chunk_bounds=plan.chunk_bounds,
+        presence=odmod.PresenceRecord(plan.presence, plan.presence_varies))
     return (f"ghost weights {list(plan.ghost_weights)} -> {weights} on axes "
             f"{axes}")
 

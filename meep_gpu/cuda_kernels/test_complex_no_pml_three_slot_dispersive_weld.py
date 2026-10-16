@@ -27,12 +27,10 @@ import pytest
 
 from ..triton_kernels.launch import NoopPlan
 from . import arms, fused_pairs, registry
-from .registry import LICENSE_COMPLEX, LICENSE_COMPLEX_NO_PML
 from . import complex_no_pml_fused_polarization_pair as ep
 from . import complex_no_pml_three_slot_dispersive_weld as family
 from . import no_pml_complex_fused_electric_pair as de
-from .test_no_pml_complex_fused_electric_pair import (LICENCE, POLICY,  # noqa: F401
-                                                       build, xp)
+from .test_no_pml_complex_fused_electric_pair import build, xp  # noqa: F401,F811
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +39,7 @@ from .test_no_pml_complex_fused_electric_pair import (LICENCE, POLICY,  # noqa: 
 
 def test_every_digest_source_is_ascii_and_declares_one_entry_point():
     sources = family.device_sources()
-    assert len(sources) == 60, "the digest sweep collapsed"
+    assert len(sources) == 30, "the digest sweep collapsed"
     for key, source in sources.items():
         assert source.isascii(), key
         assert source.count('extern "C" __global__') == 1, key
@@ -55,12 +53,12 @@ def test_exactly_one_component_block_is_lifted_and_it_is_the_certified_one(
         conductive, component):
     """The D->E weld's curl body has three braced component blocks; this launch
     carries ONE, character for character, and never another's capture."""
-    source = family.three_slot_no_pml_complex_source("FMA_V1", conductive, component,
+    source = family.three_slot_no_pml_complex_source(conductive, component,
                                                      1, (True,))
-    header, block = family.certified_curl_block("FMA_V1", conductive, component)
+    header, block = family.certified_curl_block(conductive, component)
     assert block in source
     assert source.count("\n    // Target ") == 1
-    whole = de.certified_curl_body("FMA_V1", conductive)
+    whole = de.certified_curl_body(conductive)
     assert block in whole and header in whole
     tail = "conductive_apply_reg" if conductive else "no_pml_apply_reg"
     assert source.count(f"d{component} = {tail}(f{component}, idx, curl") == 1
@@ -75,62 +73,65 @@ def test_exactly_one_component_block_is_lifted_and_it_is_the_certified_one(
 def test_the_constitutive_store_is_the_d_to_e_welds_line_value_named():
     """Same expression tree, same store; the value is NAMED so the recurrence can
     read it from a register -- the E->P weld's one edit, on the D->E weld's line."""
-    source = family.three_slot_no_pml_complex_source("NAIVE", True, 1, 2, (True, False))
+    source = family.three_slot_no_pml_complex_source(True, 1, 2, (True, False))
     assert ("    cf ev = mul_field_left(\n"
             "        minus_poles_reg(d1, b0, b1, b2, b3, b4, b5, b6, b7, idx, np1),"
             "   // THE SEAM\n"
             "        inv_eps_1[idx]);\n"
             "    cf_store(h1, idx, ev);\n") in source
     # ...and the certified body really does carry the unnamed form.
-    body = de.certified_constitutive_body("NAIVE")
+    body = de.certified_constitutive_body()
     assert "    cf_store(h1, idx, mul_field_left(\n" in body
 
 
 def test_the_recurrence_is_the_e_to_p_welds_seam_per_pole():
     """The drive load is the register ``ev`` and ``p_now`` is the bank slot the
     constitutive already reads through -- the E->P weld's own substitutions."""
-    source = family.three_slot_no_pml_complex_source("FMA_V1", False, 2, 2,
+    source = family.three_slot_no_pml_complex_source(False, 2, 2,
                                                      (True, False))
     assert ("    cf_store(p_out_0, idx, ade_step(\n"
             "        cf_load(c0, idx), cf_load(p_prev_0, idx), ev,\n"
-            "        sigma_0[idx], c_now_0, c_prev_0, c_drive_0));") in source
+            "        sigma_0[idx], two_minus_od_0, gamma1_0, omega0dtsqr_0, "
+            "gamma1inv_0));") in source
     assert ("    cf_store(p_out_1, idx, ade_step(\n"
             "        cf_load(c1, idx), cf_load(p_prev_1, idx), ev,\n"
-            "        sigma_1, c_now_1, c_prev_1, c_drive_1));") in source
+            "        sigma_1, two_minus_od_1, gamma1_1, omega0dtsqr_1, gamma1inv_1));") in source
     assert "cf_load(drive, idx)" not in source and "p_now" not in source.split(
         ") {", 1)[1]
-    twin = ep.fused_polarization_pair_no_pml_complex_source("FMA_V1", 2, 2,
+    twin = ep.fused_polarization_pair_no_pml_complex_source(2, 2,
                                                            (True, False))
     assert source.split("// pole 0")[1] == twin.split("// pole 0")[1]
 
 
 def test_a_zero_pole_component_emits_the_curl_and_the_constitutive_only():
-    source = family.three_slot_no_pml_complex_source("FMA_V1", True, 0, 0, ())
+    source = family.three_slot_no_pml_complex_source(True, 0, 0, ())
     assert "// pole 0" not in source and "p_out_" not in source
     assert "cf_store(h0, idx, ev);" in source
-    assert "int np0\n" in source
+    assert "    int np0,\n" in source
+    signature = source.split('extern "C"', 1)[1].split("\n) {", 1)[0]
+    assert signature.rstrip().endswith("const int* __restrict__ cb")
 
 
 def test_a_drifted_certified_body_raises_instead_of_emitting(monkeypatch):
     """A certified string that moves must fail HERE, on a laptop."""
     original = de.certified_constitutive_body
 
-    def drifted(arm):
-        return original(arm).replace("   // THE SEAM", "")
+    def drifted():
+        return original().replace("   // THE SEAM", "")
     monkeypatch.setattr(de, "certified_constitutive_body", drifted)
     with pytest.raises(AssertionError, match="LIFTS that line"):
-        family.three_slot_no_pml_complex_source("FMA_V1", True, 0, 1, (True,))
+        family.three_slot_no_pml_complex_source(True, 0, 1, (True,))
 
 
 def test_a_curl_body_with_the_wrong_block_count_is_refused(monkeypatch):
     original = de.certified_curl_body
 
-    def extra(arm, conductive):
-        body = original(arm, conductive)
+    def extra(conductive):
+        body = original(conductive)
         return body + "\n    // Target 3: nothing\n    {\n    }\n"
     monkeypatch.setattr(de, "certified_curl_body", extra)
     with pytest.raises(AssertionError, match="component blocks"):
-        family.certified_curl_block("FMA_V1", True, 0)
+        family.certified_curl_block(True, 0)
 
 
 def test_the_kernel_symbols_and_the_partition_agree():
@@ -153,10 +154,7 @@ def test_the_lift_edits_are_three_and_name_the_two_seams():
 
 def _plan(fields, layer, grid, *, fuse):
     """``arms.plan_step`` with the two licences the complex arms bind through."""
-    return arms.plan_step(fields, layer, grid,
-                          licenses={LICENSE_COMPLEX_NO_PML: LICENCE,
-                                    LICENSE_COMPLEX: LICENCE},
-                          subnormal_policy=POLICY, sources=(), fuse=fuse)
+    return arms.plan_step(fields, layer, grid, sources=(), fuse=fuse)
 
 
 def _fixture(xp, **kwargs):
@@ -171,7 +169,7 @@ def test_the_weld_admits_its_cells_configuration(xp):
     D and a B conductivity, one pole on every component, an EMPTY electric seam."""
     fields, layer, grid = _fixture(xp, conductive=True)
     covered, why = family.covers_three_slot_complex_no_pml_dispersive_weld(
-        fields, layer, grid, (), LICENCE, POLICY)
+        fields, layer, grid, ())
     assert covered, why
 
 
@@ -179,18 +177,18 @@ def test_the_weld_admits_its_cells_configuration(xp):
 def test_the_admission_set_is_a_subset_of_both_halves(xp, conductive):
     fields, layer, grid = _fixture(xp, conductive=conductive)
     ours = family.covers_three_slot_complex_no_pml_dispersive_weld(
-        fields, layer, grid, (), LICENCE, POLICY)[0]
+        fields, layer, grid, ())[0]
     d_to_e = de.covers_no_pml_complex_fused_electric_pair(
-        fields, layer, grid, (), LICENCE, POLICY)[0]
+        fields, layer, grid, ())[0]
     e_to_p = ep.covers_complex_no_pml_fused_polarization_pair(
-        fields, layer, grid, (), LICENCE, POLICY)[0]
+        fields, layer, grid, ())[0]
     assert ours is True and d_to_e is True and e_to_p is True
 
 
 def test_a_halves_refusal_arrives_prefixed_with_the_side_that_said_it(xp):
     fields, layer, grid = _fixture(xp, conductive=True)
     covered, why = family.covers_three_slot_complex_no_pml_dispersive_weld(
-        fields, layer, grid, None, LICENCE, POLICY)
+        fields, layer, grid, None)
     assert not covered and why.startswith("step_D->update_E half: ")
     assert "not declared" in why
 
@@ -202,20 +200,20 @@ def test_an_electric_in_seam_source_is_refused_by_the_d_to_e_half(xp):
     class _Electric:
         field_type = "D"
     covered, why = family.covers_three_slot_complex_no_pml_dispersive_weld(
-        fields, layer, grid, (_Electric(),), LICENCE, POLICY)
+        fields, layer, grid, (_Electric(),))
     assert not covered and "electric" in why and "step_D->update_E half" in why
 
     class _Magnetic:
         field_type = "B"
     covered, why = family.covers_three_slot_complex_no_pml_dispersive_weld(
-        fields, layer, grid, (_Magnetic(),), LICENCE, POLICY)
+        fields, layer, grid, (_Magnetic(),))
     assert covered, why
 
 
 def test_a_run_with_no_polarization_is_refused_by_the_e_to_p_half(xp):
     fields, layer, grid = _fixture(xp, conductive=True, poles=0)
     covered, why = family.covers_three_slot_complex_no_pml_dispersive_weld(
-        fields, layer, grid, (), LICENCE, POLICY)
+        fields, layer, grid, ())
     assert not covered and why.startswith("update_E->update_P half: ")
 
 
@@ -294,11 +292,6 @@ def test_the_trailing_half_answers_the_consult_without_launching():
 
 class _Context:
     fields = pml = grid = sources = None
-    subnormal_policy = POLICY
-
-    @staticmethod
-    def license_for(_name):
-        return LICENCE
 
 
 def test_fusion_is_opt_in_and_the_default_composition_is_unchanged(xp):

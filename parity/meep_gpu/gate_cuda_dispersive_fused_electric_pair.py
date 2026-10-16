@@ -486,6 +486,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
     case["fills_used"] = {key: list(fills[key])
                           for key in ("near", "reflect", "phase")}
 
+    record = base.chunk_record(grid, pml)
     before = frozen(actual, arity)
     launched = 0
     counter = MemoLaunchCounter()
@@ -507,7 +508,8 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
                 if name == "step_D":
                     report = family.launch_dispersive_fused_electric_pair(
                         actual, tables, codes, walls, fills, case["dtdx"],
-                        step_poles, dispersive_kernels.pole_counts_of(live), kernel)
+                        step_poles, dispersive_kernels.pole_counts_of(live), kernel,
+                        chunk_bounds=record)
                     launched += int(bool(report.get("launched")))
                     cp.cuda.runtime.deviceSynchronize()
                     # ACROSS THE LAUNCH, before update_P writes P: the pole buffers
@@ -600,6 +602,8 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     codes = step_curl_kernels.real_curl_boundary_codes(sep_grid)
     walls = in_seam_coverage.zero_metal_axes(sep_grid)
     fused_tables = real.fused_electric_pair_tables(pml)
+    separate_record = base.chunk_record(sep_grid, sep_pml)
+    fused_record = base.chunk_record(grid, pml)
 
     separate_counter = MemoLaunchCounter()
     fused_counter = MemoLaunchCounter()
@@ -610,7 +614,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
             for name in DRIVER_ORDER:
                 if name == "step_D":
                     step_curl_kernels._step_D_fused_pml_real(  # noqa: SLF001
-                        separate, curl_tables, codes, dtdx)
+                        separate, curl_tables, codes, dtdx, separate_record)
                 elif name == "zero_metal_D":
                     if any(walls):
                         in_seam_passes.run_pass("zero_metal", separate, "D",
@@ -632,7 +636,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                     # certified products compute" is a MEASUREMENT rather than a
                     # restatement of the array-path comparison.
                     dispersive_kernels.update_E_fused_pml_real_dispersive(
-                        separate, sep_pml)
+                        separate, sep_pml, chunk_bounds=separate_record)
                 else:
                     run_pass(name, separate, sep_pml)
         with fused_counter:
@@ -643,7 +647,8 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                         fused, fused_tables,
                         step_curl_kernels.real_curl_boundary_codes(grid),
                         in_seam_coverage.zero_metal_axes(grid),
-                        real.fused_electric_pair_fills(grid), dtdx, poles, counts)
+                        real.fused_electric_pair_fills(grid), dtdx, poles, counts,
+                        chunk_bounds=fused_record)
                 elif name not in FUSED_PASSES:
                     run_pass(name, fused, pml)
         cp.cuda.runtime.deviceSynchronize()
@@ -891,20 +896,47 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # lines would arm whichever the replace reached first -- a leg reporting a verdict
     # about a line nobody chose.
     ("constitutive_sublattice_shadow",
-     ("constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i]);",
-      "constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);", 1),
+     ("constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i], in_h_x);",
+      "constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);", 1),
      True, _always),
     # THE GHOST'S COEFFICIENT ROW is the DESTINATION's: a far ghost sits at stored
     # n - 1 on the axis update_E indexes the component on, so reusing the source's
     # pair applies the reflect row's absorber profile to the top plane.
     ("far_ghost_takes_the_source_coefficient_row",
      ("constitutive_apply(Ex, f_w_Ex, gx_x_i, gx_x_s, "
-      "kps_x[nx - 1], kms_half_x[nx - 1]);",
-      "constitutive_apply(Ex, f_w_Ex, gx_x_i, gx_x_s, kps_x[i], kms_half_x[i]);", 1),
+      "kps_x[nx - 1], kms_half_x[nx - 1], gx_x_w);",
+      "constitutive_apply(Ex, f_w_Ex, gx_x_i, gx_x_s, kps_x[i], kms_half_x[i], gx_x_w);",
+      1),
      True, _folded_axis("X")),
     ("curl_shift_direction_flipped",
      ("float sf = shift_dn(Hz, idx, j, ny, sy, bc_y);",
       "float sf = shift_up(Hz, idx, j, ny, sy, bc_y);", 1), True, _always),
+    # --- MEEP'S PER-CHUNK FORMS on the dispersive constitutive half -------------
+    # THE INVERTED MUTATION: the 0.9.2 package grouping where MEEP's ships.
+    ("constitutive_regrouped_to_the_package_form",
+     ("(f[idx] + ((kps * src) - (kms * prev)))",
+      "((f[idx] + (kps * src)) - (kms * prev))", 1), True, _always),
+    # The select removed on Ex's own cell: the accumulation on every cell, the 0.9.2
+    # whole-grid form. Off the layer's chunks the plain store is a different word.
+    ("constitutive_accumulates_on_every_cell",
+     ("kms_half_x[i], in_h_x);", "kms_half_x[i], 1);", 1), True, _always),
+    # update_E's membership read on the integer lattice: the boundary plane moves.
+    ("update_E_reads_the_integer_record",
+     ("constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i], in_h_x);",
+      "constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i], in_i_x);", 1),
+     True, _always),
+    # The auxiliary stored on a plain cell (the auxiliary contract, C2).
+    ("constitutive_auxiliary_stored_on_a_plain_cell",
+     ("    if (dsigw) fw[idx] = src;\n", "    fw[idx] = src;\n", 1), True, _always),
+    # The far ghost's membership row negated: the ghost takes the other form.
+    ("far_ghost_membership_negated",
+     ("int gx_x_w = (nx - 1 >= cbh_x_a0 && nx - 1 < cbh_x_a1) || "
+      "(nx - 1 >= cbh_x_b0 && nx - 1 < cbh_x_b1);",
+      "int gx_x_w = !((nx - 1 >= cbh_x_a0 && nx - 1 < cbh_x_a1) || "
+      "(nx - 1 >= cbh_x_b0 && nx - 1 < cbh_x_b1));", 1), True, _folded_axis("X")),
+    # float32 multiply is bitwise commutative (KERNELS.md section 1, C3): a NULL.
+    ("constitutive_product_commuted",
+     ("(kps * src)", "(src * kps)", 1), False, _always),
 )
 
 
@@ -1053,6 +1085,12 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                            for slot in ("step_D", "update_E")}
         expected = (("LeadingRepairPlan", "TrailingRepairPlan") if repair
                     else ("CudaFusedPairPlan", "NoopPlan"))
+        # THE THREE-SLOT WELD SUPERSEDES THIS PAIR wherever it admits
+        # (fused_pairs._superseded_by_a_longer_span) and opens on this pair's own
+        # D->E launch, so the composer hands the seam to it: unbracketed, its two
+        # halves are the weld's step_D half and the emptied update_E slot.
+        if not repair and composed.selected.get("step_D") == "three-slot dispersive weld":
+            expected = ("_TripleHalfPlan", "NoopPlan")
         row["installed_as_expected"] = installed == expected
         if leading is None or trailing is None:
             row.update(passed=False, why="the composer did not fuse the seam",

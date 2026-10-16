@@ -205,6 +205,7 @@ from . import folded_beta, special_kz
 from . import fused_hd_pair as _plain
 from . import offdiag_weld_common as _weld
 from . import shaders, symmetry
+from . import chunk_bounds as _chunk_bounds
 from .device import MAX_BUFFER_BINDINGS, Residency
 from .launch import SUB_STEPS
 
@@ -317,7 +318,7 @@ SEPARATE_SCALAR_BINDINGS = 37
 #: The host record's total size in bytes: seven 4-byte members at 4-byte alignment,
 #: no padding. Stated rather than left implicit, because every sibling states it and
 #: a reader comparing them should see why this one is the only unpadded record here.
-PARAMS_ITEMSIZE = 28
+PARAMS_ITEMSIZE = 128
 
 #: The rotating volumes, in SIGNATURE ORDER. The plain real product's, imported.
 ROTATED_NAMES: Tuple[str, ...] = _plain.ROTATED_NAMES
@@ -392,8 +393,9 @@ def beta_real_curl_source(variant: str, codes: Sequence[int],
 
     ONE TRANSFORM, TWO DEVICE STRINGS, and the selection is the whole of what the
     variant means: ``plain`` is :func:`.special_kz.beta_curl_source` and ``folded`` is
-    :func:`.folded_beta.folded_beta_curl_source`, which is that same parent template
-    with ``__TOP_MASK__`` inserted after the cell-0 mask anchor.
+    :func:`.folded_beta.folded_beta_curl_source` -- the certified plain and folded
+    curls, each with :func:`.special_kz.beta_pass` inserted after the per-chunk forms
+    on its own mask rows.
 
     ``has_beta`` is not a parameter: this product's predicate REQUIRES ``beta != 0``
     on both variants. ``backward`` is True and never a parameter either -- this pair is
@@ -421,10 +423,10 @@ def welded_curl_tail(variant: str, codes: Sequence[int],
     WHAT IS NOT TOUCHED: the ghost ternary's GUARD and OFFSET are parsed out of the
     emitter's own line rather than retyped, so a metallic ghost that read an exact
     ``0.0f`` still reads one and the periodic wrap is still the emitter's own integer
-    expression; the BETA term multiplies the unshifted centre registers ``a`` and
-    ``b``, which the own-cell edits have already replaced with ``own.a0``/``own.a1``;
-    and on the folded variant both mask blocks write ``curlN = ... : curlN;`` and
-    touch no ``gN[``.
+    expression; the BETA pass multiplies the unshifted centre registers ``a`` and
+    ``b``, which the own-cell edits have already replaced with ``own.a0``/``own.a1`` --
+    the H this launch's own ``update_H`` produced, which is the array path's order;
+    and on the folded variant both mask blocks touch no ``gN[``.
     """
     source = beta_real_curl_source(variant, codes, contract)
     if _plain._BODY_ANCHOR not in source:
@@ -441,15 +443,13 @@ def welded_curl_tail(variant: str, codes: Sequence[int],
             "would splice a truncated body")
     prologue, tail = body.split(_plain.DECODE_END, 1)
     prologue = prologue + _plain.DECODE_END
-    # THE CUT IS AT THE DECODE, NOT AT `int nyz`, AND THAT IS THE REAL TEMPLATE'S OWN
-    # SHAPE RATHER THAN A CHOICE. `special_kz._BETA_CURL_TEMPLATE` declares
-    # `int nxi = int(nx);` ABOVE `__DECODE__` and `int nyz = nyi * nzi;` below it,
-    # where the COMPLEX template puts both below -- which is why the complex sibling
-    # cuts at `int nyz` and this one cuts here. `h_cell` is called with nxi/nyi/nzi
-    # and never with nyz, so the prologue this cut produces declares everything the
-    # call needs; the assertion below requires exactly that, because a template that
-    # moved `int nxi` under the decode would emit a call to an undeclared name.
-    for needed in ("int nxi = int(nx);", "int nyi = int(ny), nzi = int(nz);"):
+    # THE CUT IS AT THE DECODE. The certified curl the beta source is derived from
+    # declares `int nxi = int(nx), nyi = int(ny), nzi = int(nz);` above the decode's
+    # last line, and `h_cell` is called with nxi/nyi/nzi, so the prologue this cut
+    # produces declares everything the call needs; the assertion below requires
+    # exactly that, because a template that moved the declaration under the decode
+    # would emit a call to an undeclared name.
+    for needed in ("int nxi = int(nx), nyi = int(ny), nzi = int(nz);",):
         if needed not in prologue:
             raise AssertionError(
                 f"the real beta curl no longer declares {needed!r} above the decode; "
@@ -499,13 +499,16 @@ using namespace metal;
 
 __CONTRACT__
 
-// SEVEN 4-BYTE MEMBERS AT 4-BYTE ALIGNMENT: 28 bytes, no padding, and the only
-// unpadded Params record among the four H->D welds. The two beta words are the
+// SEVEN 4-BYTE MEMBERS AND THE CHUNK RECORD AT 4-BYTE ALIGNMENT: 128 bytes, no
+// padding. The two beta words are the
 // certified curl's buffers 20-21, packed; packed they cost nothing, which is the only
 // reason a beta curl fits inside the 31-binding ceiling with a weld on top of it.
+__RECORD_STRUCT__
+
 struct Params {
     uint nx; uint ny; uint nz; uint n_elem;
     float dtdx; float beta_plus; float beta_minus;
+__RECORD_MEMBER__
 };
 
 __H_CELL__
@@ -552,16 +555,20 @@ kernel void beta_real_fused_hd_pair_step(
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
     float beta_plus = prm.beta_plus, beta_minus = prm.beta_minus;
+    // The chunk record rides in Params (31 of 31 bindings leave it no buffer of its
+    // own); both lifted bounds blocks and every h_cell call read it as `cb`.
+__RECORD_ALIAS__
 __PROLOGUE__
     // --- THE WELD: update_H, computed into registers and stored to SCRATCH --------
     // Nothing written here is read by this launch. The curl half below takes its OWN
     // cell's magnetic field from these registers and recomputes every foreign tap
     // from PRE-LAUNCH state through the same `h_cell`, so no thread observes another
-    // thread's store; the launcher rotates H/f_w_H afterwards. The BETA term's two
-    // partners are `a` and `b`, which are exactly these registers.
+    // thread's store; the launcher rotates H/f_w_H afterwards. Every scratch word is
+    // written: off the dsigw cells `wnext` is the pre-launch f_w word. The BETA pass's
+    // two partners are `a` and `b`, which are exactly these registers.
     h_cell_result own = h_cell(i, j, k, __H_CELL_ARGS__);
     ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;
-    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;
+    wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;
 
     // --- the real beta step_D curl (stepping.step_D / _apply_pml_update:1905) -----
     // D and fu_D update IN PLACE and that is safe by construction: the curl reads and
@@ -586,6 +593,7 @@ def beta_real_fused_hd_pair_source(variant: str, codes: Sequence[int],
     prologue, curl = welded_curl_tail(variant, codes, contract)
     return shaders.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
+        **_plain.record_substitutions(),
         "__H_CELL__": certified_h_cell(contract),
         "__PROLOGUE__": prologue,
         "__H_CELL_ARGS__": _plain.H_CELL_TAIL_ARGS,
@@ -823,6 +831,13 @@ def metal_beta_real_fused_hd_pair_coverage(
             reasons.append(
                 f"{name} is not allocated; this weld rotates it against a plan-owned "
                 f"scratch twin after every launch")
+
+    # THE RUN'S FIRST update_H, on the composer's rule for the base constitutive kernel
+    # this half lifts (launch.h_start_reasons): the array path starts H and f_w from B
+    # on the dsigw cells at that update and this weld does not.
+    from .launch import h_start_reasons  # noqa: PLC0415 - launch imports this family's peers
+    reasons.extend(f"constitutive half: {reason}"
+                   for reason in h_start_reasons(fields, sources))
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
@@ -850,7 +865,8 @@ class MetalBetaRealFusedHdPairPlan(_weld.ScratchWeldPairPlan):
 
 
 def params_record_dtype() -> Any:
-    """The host record's dtype -- seven 4-byte members, itemsize 28, no padding.
+    """The host record's dtype -- seven 4-byte members, then the chunk record at byte
+    28; itemsize 128, no padding.
 
     ONE HOME FOR THE LAYOUT. The offsets are stated EXPLICITLY even though they are
     the natural ones, so the record cannot drift into agreeing with Metal only by
@@ -859,16 +875,20 @@ def params_record_dtype() -> Any:
     import numpy as np  # noqa: PLC0415
 
     return np.dtype({
-        "names": ["nx", "ny", "nz", "n_elem", "dtdx", "beta_plus", "beta_minus"],
-        "formats": ["<u4", "<u4", "<u4", "<u4", "<f4", "<f4", "<f4"],
-        "offsets": [0, 4, 8, 12, 16, 20, 24],
+        "names": ["nx", "ny", "nz", "n_elem", "dtdx", "beta_plus", "beta_minus",
+                  "cb"],
+        "formats": ["<u4", "<u4", "<u4", "<u4", "<f4", "<f4", "<f4",
+                    _chunk_bounds.record_dtype()],
+        "offsets": [0, 4, 8, 12, 16, 20, 24, 28],
         "itemsize": PARAMS_ITEMSIZE,
     })
 
 
 def _params_tensor(shape: Sequence[int], dtdx: float, beta_words: Sequence[float],
-                   device: str) -> Any:
-    """The five scalars and two beta words as one 28-byte device record.
+                   device: str, chunk_bounds: Any) -> Any:
+    """The five scalars, two beta words and the chunk record as one 128-byte device
+    record; the record is checked against the shape first
+    (:func:`.chunk_bounds.plan_words`).
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY: :meth:`.Residency.mirror` binds
     float32 and complex64 volumes and refuses anything else BY NAME, because a wider
@@ -886,6 +906,8 @@ def _params_tensor(shape: Sequence[int], dtdx: float, beta_words: Sequence[float
     plus, minus = tuple(beta_words)
     record["beta_plus"] = np.float32(plus)
     record["beta_minus"] = np.float32(minus)
+    record["cb"] = _chunk_bounds.pack(
+        _chunk_bounds.plan_words(chunk_bounds, tuple(shape), f"{FAMILY} Params"))[0]
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -897,8 +919,12 @@ def plan_metal_beta_real_fused_hd_pair(
         functions: Optional[Mapping[str, Any]] = None,
         codes: Optional[Sequence[int]] = None,
         beta_words: Optional[Sequence[float]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional["_weld.ScratchWeldPairPlan"]:
     """Build the real beta fused H/D plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``) and has no default; it rides in ``Params``.
 
     ``None`` is the only refusal, for the reason :func:`.launch.plan_pml_curl` gives:
     a configuration this kernel does not carry must fall back to the array path, never
@@ -981,7 +1007,8 @@ def plan_metal_beta_real_fused_hd_pair(
     dtdx = grid.dt / grid.dx
     static = (flux + displacement + auxiliary
               + curl_coefficients + constitutive_coefficients
-              + [_params_tensor(grid.shape, dtdx, beta_words, residency.device)])
+              + [_params_tensor(grid.shape, dtdx, beta_words, residency.device,
+                                chunk_bounds)])
     assert (2 * len(ROTATED_NAMES) + len(static)) == PACKED_BINDINGS, (
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     assert PACKED_BINDINGS == MAX_BUFFER_BINDINGS, (PACKED_BINDINGS,
@@ -1020,7 +1047,7 @@ def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
         return None
     return plan_metal_beta_real_fused_hd_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

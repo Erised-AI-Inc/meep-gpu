@@ -290,3 +290,75 @@ def test_the_plan_refuses_rather_than_raises_on_a_numpy_host(product):
     fields, pml = _build()
     assert product.plan_nonlinear_fused_magnetic_pair(fields, pml, ()) is None
     assert product.plan_nonlinear_fused_magnetic_pair(fields, pml, None) is None
+
+
+def _admit_host(monkeypatch):
+    """Drop only the array-module clause: the shared one and the two the spine restates.
+
+    ``triton_kernels.kernels`` imports Triton, which this host does not have; the
+    builder reads only ``DEFAULT_BLOCK`` from it, so a stand-in module carries that.
+    """
+    import types
+
+    from meep_gpu.triton_kernels import coverage as shared
+    from meep_gpu.triton_kernels import nonlinear_update_e as spine
+
+    stand_in = types.ModuleType("meep_gpu.triton_kernels.kernels")
+    stand_in.DEFAULT_BLOCK = 256
+    stand_in.ENABLE_FP_FUSION = False
+    monkeypatch.setitem(sys.modules, "meep_gpu.triton_kernels.kernels", stand_in)
+
+    for module, name in ((shared, "_grid_reasons"), (spine, "_nonlinear_grid_reasons"),
+                         (spine, "_nonlinear_run_grid_reasons")):
+        original = getattr(module, name)
+        monkeypatch.setattr(module, name, lambda *args, _o=original: [
+            reason for reason in _o(*args) if not reason.startswith("array module is")])
+
+
+def test_the_plan_starts_h_on_the_real_fields_and_binds_the_runs_division(
+        product, monkeypatch):
+    """The plan's H state is the wrapped ``Fields``, never the scope view.
+
+    ``launch.FusedPairPlan`` starts H from B on its first launch and then records
+    ``h_separated`` on its ``h_state``. The builder hands ``plan_fused_pair`` the
+    view, whose only slot is the wrapped fields; left there, the record would raise on
+    the first launch of every run. The run's chunk division reaches the plan.
+    """
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record, grid_frames
+
+    _admit_host(monkeypatch)
+    fields, pml = _build(cell_size=(1.6, 0.8, 0.8))
+    plan = product.plan_nonlinear_fused_magnetic_pair(fields, pml, ())
+    assert plan is not None, "the host-admitted builder refused"
+    assert plan._h_state is fields  # noqa: SLF001 - the documented re-binding
+    assert plan.start_h() == 1
+    plan._h_state.h_separated = True  # noqa: SLF001 - what run() records
+    assert fields.h_separated is True and plan.start_h() == 0
+    one_rank = chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml)).tolist()
+    assert plan.chunk_bounds.tolist() == one_rank
+    base = ChunkLayout.one_rank(fields.grid, pml)
+    xs = sorted({lo[0] for lo, _ in base.boxes} | {hi[0] for _, hi in base.boxes})
+    remap = {xs[1]: xs[1] + 4, xs[2]: xs[2] - 4}
+    layout = ChunkLayout([((remap.get(lo[0], lo[0]), lo[1], lo[2]),
+                           (remap.get(hi[0], hi[0]), hi[1], hi[2]))
+                          for lo, hi in base.boxes], base.pml_flags,
+                         grid_frames(fields.grid), faces=base.faces, source="record")
+    deep = product.plan_nonlinear_fused_magnetic_pair(fields, pml, (),
+                                                      chunk_layout=layout)
+    assert deep.chunk_bounds.tolist() == chunk_bounds_record(layout).tolist() != one_rank
+
+
+def test_the_product_installer_hands_this_builder_the_runs_division(product):
+    """``launch._install_certified_fused_products`` calls each certified product's
+    builder with the run's division when the builder takes ``chunk_layout``
+    (``launch._division_keyword``). This builder takes it, and its pair reads the record,
+    so a lookup that answered no would bind the one-rank record without a word."""
+    from meep_gpu.triton_kernels import launch
+
+    entry = launch.CERTIFIED_FUSED_PRODUCTS["nonlinear_fused_magnetic_pair"]
+    assert entry["module"] == "nonlinear_fused_magnetic_pair"
+    builder = getattr(product, entry["builder"])
+    layout = object()
+    assert launch._division_keyword(builder, layout) == {"chunk_layout": layout}
+    assert launch._division_keyword(lambda fields, pml, sources, block, num_warps: None,
+                                    layout) == {}

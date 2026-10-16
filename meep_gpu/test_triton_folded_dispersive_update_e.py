@@ -180,20 +180,29 @@ def _folded_dispersive_reasons(fields, pml):
 
 
 def _reference_dispersive_update_E(fields, pml, state):
-    """The certified body, transcribed: (D - sum P) * inv_eps, then the dsigw tail.
+    """The certified body, transcribed: (D - sum P) * inv_eps, then the per-chunk tail.
 
-    ``stepping.update_E`` at S:983-989 with a pole registered — the source is
-    ``Fields.displacement_minus_polarization`` (fields.py:1096-1105) and the tail
-    is ``_apply_constitutive_pml`` (S:2065-2096), MEEP's ``step_update_EDHB``::
+    ``stepping.update_E`` with a pole registered — the source is
+    ``Fields.displacement_minus_polarization`` — and the tail is
+    ``_apply_constitutive_regions``: on the cells whose chunk carries the component's
+    own (dsigw) layer MEEP's ``step_update_EDHB``::
 
         fwprev = fw[i]; fw[i] = g[i] * u[i];
-        f[i] += (kap+sig)*fw[i] - (kap-sig)*fwprev
+        f[i] += (kap+sig)*fw[i] - (kap-sig)*fwprev      # f + ((kps*fw) - (kms*fwprev))
+
+    and everywhere else ``E = src`` with ``f_w`` untouched (update_eh.cpp:162-170).
+    The cells are the record's half-integer line on the component's own axis
+    (``chunk_map.membership_from_record``), the line the kernel reads.
 
     Nothing in it reads a neighbour, which is the whole reason a FOLD cannot
     change it: the fold's only contribution to an element-wise sub-step is the
     stored extent, and every array here already has it.
     """
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record, membership_from_record
+
+    record = chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
     for component, source_name, axis in stepping.E_CONSTITUTIVE_TERMS:
+        index = "xyz".index(axis)
         source = state[source_name].copy()
         for pole in state["poles"]:
             if component in pole:
@@ -201,11 +210,14 @@ def _reference_dispersive_update_E(fields, pml, state):
         constitutive = source * state["inv_eps"][component]
         kps = getattr(pml, f"kps_{axis}_h")
         kms = getattr(pml, f"kms_{axis}_h")
+        line = numpy.asarray(membership_from_record(record, True, index,
+                                                    fields.grid.shape[index]))
+        inside = numpy.broadcast_to(
+            line.reshape([-1 if a == index else 1 for a in range(3)]), source.shape)
         fw = state["f_w_" + component]
-        fw_previous = fw.copy()
-        fw[...] = constitutive
-        state[component] += kps * fw
-        state[component] -= kms * fw_previous
+        accumulated = state[component] + ((kps * constitutive) - (kms * fw))
+        state[component][...] = numpy.where(inside, accumulated, constitutive)
+        fw[...] = numpy.where(inside, constitutive, fw)
 
 
 def test_the_reference_matches_stepping_on_the_folded_dispersive_configuration():

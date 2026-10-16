@@ -185,6 +185,7 @@ except ImportError:  # laptop: the NumPy backend still runs
     cp = None
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import gate_needles  # noqa: E402
 import gate_provenance  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
@@ -460,6 +461,12 @@ SOURCE_MUTATION_REQUIRES_CODE: Dict[str, int] = {
 #: and was CAUGHT 5/5. Recorded here because a mutation silently absent from a
 #: battery and a mutation that cannot bite look identical in a verdict.
 SOURCE_MUTATIONS_WITH_NO_CURL_SITE: Tuple[str, ...] = ("own_axis_to_x_for_all_three",)
+#: THIS GATE'S NEEDLE TABLE for the battery above: each one borrowed from the
+#: probe's shared default until this gate's kernels need a spelling of their
+#: own, which is then an ``own=`` entry here and moves no other gate
+#: (``gate_needles.py``).
+SHARED_NEEDLES = gate_needles.gate_table(
+    "gate_cuda_folded_curl", probe.SOURCE_MUTATIONS, SOURCE_MUTATIONS)
 NULL_SOURCE_MUTATIONS: Tuple[str, ...] = probe.PML_NULL_MUTATIONS
 
 #: HOST mutations: they corrupt the TABLES rather than the device text, so they
@@ -778,11 +785,15 @@ def host_mutated_tables(name: str, sub_step: str, layer, grid) -> Dict[str, Any]
 def run_kernel_cuda(sub_step: str, fields, tables: Dict[str, Any],
                     codes: Tuple[int, int, int], dtdx: float) -> None:
     """The SHIPPED kernel, through its own launch wrapper, with codes handed in."""
+    from gate_chunk_records import region_plan_record  # noqa: PLC0415
     from meep_gpu.cuda_kernels import step_curl_kernels  # noqa: PLC0415
 
     entry = (step_curl_kernels._step_B_fused_pml_real if sub_step == "step_B"
              else step_curl_kernels._step_D_fused_pml_real)
-    entry(fields, tables, tuple(np.int32(c) for c in codes), dtdx)
+    # The division of the region plan the oracle stepped with: since 0.10 the kernel
+    # chooses each cell's form per structure chunk from its record.
+    entry(fields, tables, tuple(np.int32(c) for c in codes), dtdx,
+          cp.asarray(region_plan_record(fields)))
     cp.cuda.runtime.deviceSynchronize()
 
 
@@ -817,24 +828,33 @@ def run_kernel_numpy(sub_step: str, fields, tables: Dict[str, Any],
                      codes: Tuple[int, int, int], dtdx: float) -> None:
     """The device tree, transcribed, in float32 -- the laptop backend.
 
-    THE GROUPING IS THE SHIPPED ONE and it is load-bearing::
+    THE GROUPING IS THE SHIPPED ONE, MEEP's, and it is load-bearing::
 
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr1, pr2);
+            // both partners: dtdx * (((sf - f1) + f2) - ss)
+            // g2 absent: dtdx * (sf - f1); g1 absent: (-dtdx) * (ss - f2)
         if (bc == BC_METALLIC && index == 0) curl = 0.0f;
         if (bc == BC_MIRROR_PERIODIC && index == 0) curl = 0.0f;        // shift 0
         if (bc == BC_MIRROR_PERIODIC && index == n - 1) curl = 0.0f;    // shift 1
-        float fprev = fu[idx];
-        float fu_new = ((fprev * kms) - curl) * sinv;
-        fu[idx] = fu_new;
-        f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;
+        pml_apply(f, fu, idx, curl, kms, sinv, kms_u, sinv_u, in_dsigu);
+            // dsigu cell: fu_new = ((fprev * kms) - curl) * sinv; fu = fu_new;
+            //             f = (((f * kms_u) + fu_new) - fprev) * sinv_u
+            // elsewhere:  f = ((f * kms) - curl) * sinv, fu untouched
 
-    NOT ``dtdx * (sf - f1 + f2 - ss)``, which C associates left-to-right; float
-    addition is not associative and the two differ in the last bits.
+    NOT the pairwise ``(sf - f1) + (f2 - ss)`` the kernels carried until 0.10: float
+    addition is not associative and the two differ in the last bits. Which cells take
+    the recurrence is the oracle's division (``gate_chunk_records.region_plan_record``),
+    the record the kernel reads.
 
     THIS COMPILES NOTHING AND CERTIFIES NOTHING. It cannot see a defect the NVRTC
     contraction guard exists for and it is not the shipped bytes. What it settles
     is whether the harness can localize a divergence and whether it can fail.
     """
+    from gate_chunk_records import region_plan_record  # noqa: PLC0415
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, membership_from_record  # noqa: PLC0415
+
+    record = region_plan_record(fields)
+    presence = int(record[RECORD_PRESENCE_WORD])
     spec = SUB_STEP_ARRAYS[sub_step]
     shift = _shift_dn_numpy if spec["backward"] else _shift_up_numpy
     scale = np.float32(dtdx)
@@ -847,7 +867,16 @@ def run_kernel_numpy(sub_step: str, fields, tables: Dict[str, Any],
         f2 = getattr(fields, second)
         sf = shift(f1, first_axis, codes[first_axis])
         ss = shift(f2, second_axis, codes[second_axis])
-        curl = (scale * ((sf - f1) + (f2 - ss))).astype(np.float32)
+        first_present = bool((presence >> first_axis) & 1)
+        second_present = bool((presence >> second_axis) & 1)
+        if first_present and second_present:
+            curl = (scale * (((sf - f1) + f2) - ss)).astype(np.float32)
+        elif first_present:
+            curl = (scale * (sf - f1)).astype(np.float32)
+        elif second_present:
+            curl = ((-scale) * (ss - f2)).astype(np.float32)
+        else:
+            curl = np.zeros_like(f)
         iyee = IYEE_SHIFTS[target]
         for axis in range(3):
             if iyee[axis] == 0:
@@ -859,12 +888,19 @@ def run_kernel_numpy(sub_step: str, fields, tables: Dict[str, Any],
         sinv = _broadcast(tables[f"sinv_{names[dsig]}"], dsig)
         kms_u = _broadcast(tables[f"kms_{names[dsigu]}"], dsigu)
         sinv_u = _broadcast(tables[f"sinv_{names[dsigu]}"], dsigu)
+        line = membership_from_record(record, IYEE_SHIFTS[target][dsigu] == 1, dsigu,
+                                      f.shape[dsigu])
+        inside = np.broadcast_to(np.asarray(line, dtype=bool).reshape(
+            [line.size if a == dsigu else 1 for a in range(3)]), f.shape)
         fprev = fu.copy()
         fu_new = (((fprev * kms).astype(np.float32) - curl).astype(np.float32)
                   * sinv).astype(np.float32)
-        fu[...] = fu_new
         a = ((f * kms_u).astype(np.float32) + fu_new).astype(np.float32)
-        f[...] = ((a - fprev).astype(np.float32) * sinv_u).astype(np.float32)
+        recurrence = ((a - fprev).astype(np.float32) * sinv_u).astype(np.float32)
+        dsig_only = ((((f * kms).astype(np.float32) - curl).astype(np.float32))
+                     * sinv).astype(np.float32)
+        fu[...] = np.where(inside, fu_new, fu)
+        f[...] = np.where(inside, recurrence, dsig_only)
 
 
 # ---------------------------------------------------------------------------
@@ -1328,7 +1364,7 @@ def run_source_mutations(results: Dict[str, Any], out_path: str,
         for sub_step in SUB_STEPS:
             attribute = attribute_for[sub_step]
             for name in SOURCE_MUTATIONS:
-                transform = probe.SOURCE_MUTATIONS[name]
+                transform = SHARED_NEEDLES[name]
                 mutated, sites = transform(originals[sub_step])
                 key = f"{sub_step}:{name}"
                 # Legs whose grid carries the code this mutation's lines test on.

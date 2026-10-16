@@ -70,12 +70,14 @@ every other 08-31 electric cell, where the wall clear had to be exercised on a c
 the corpus does not itself contain. The all-periodic case is kept anyway, as the
 control in which the flags compile to False.
 
-WHY THE RECURRENCE IS THE INTERESTING PART. ``_conductive_component`` selects among
-FOUR cases with two EXACT float comparisons (``km != 1.0``, ``sinv != 1.0``), and
-writes ``fu_D`` only where ``dsigu`` and ``f_cond_D`` only where ``dsig``. A weld
-that widened either store, or that flattened one of the five branch expressions'
-parentheses, is smooth and plausible and wrong; the mutation table below arms one
-rewrite per branch and per store mask.
+WHY THE RECURRENCE IS THE INTERESTING PART. ``_conductive_component`` selects MEEP's
+conductive forms per structure chunk -- the chunk record's dsig and dsigu membership
+lines and the component's conductive-chunk volume -- and reads and writes ``fu_D``
+only where ``dsigu`` and ``f_cond_D`` only on the dsig cells of conductive chunks (the
+auxiliary contract). A weld that widened either store, regrouped one of the branch
+expressions, or keyed a form on a coefficient instead of the record is smooth and
+plausible and wrong; the mutation table below arms one rewrite per branch, per mask
+and per B-battery defect, and plants the previous groupings back as inversions.
 
 Usage::
 
@@ -173,6 +175,16 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], Any, int, Any, Any], ...] = 
     # to an accumulation.
     ("wall_xy_single_launch", (1.4, 1.0, 0.0),
      {"x": "metallic", "y": "metallic", "z": "periodic"}, 1, None, {"x": 2, "y": 2}),
+    # A CONDUCTIVITY ON AN INTERIOR BLOCK ONLY, the forms' third test. MEEP keeps no
+    # conductivity array in a chunk whose every sample is zero (structure.cpp:883-900),
+    # so the layer chunks here step the LOSSLESS forms while the interior chunk steps
+    # the conductive ones, and the kernel reads the component's conductive-chunk
+    # volume (CMASK = 1). ``sigma_margin`` (popped by :func:`build_driver` before the
+    # layer is set up) zeroes sigma within that many cells of every resolved face,
+    # which clears the one-rank layer chunks' owned-plus-one samples.
+    ("interior_sigma", (3.0, 3.0, 0.0),
+     {"x": "metallic", "y": "metallic", "z": "periodic"}, 20, None,
+     {"x": 3, "y": 3, "sigma_margin": 8}),
 )
 
 CASES_BY_NAME: Dict[str, Tuple[Any, ...]] = {case[0]: case for case in CASES}
@@ -194,6 +206,13 @@ MUTATION_CASE: Dict[str, str] = {
     # SCORED ON THE DEEP LAYER, because the region it rewrites is nine cells on the
     # default case and 225 there. See the `deep_pml` entry in CASES.
     "m_case_a_regrouped": "deep_pml",
+    # THE THIRD TEST is live only where some chunk keeps no conductivity.
+    "m_conductive_chunks_ignored": "interior_sigma",
+    # THE LOSSLESS COMPONENT'S SELECT, live only beside a lossless component.
+    "m_lossless_select_removed": "mixed_cond_z",
+    # Cells inside a layer chunk whose own coefficients are exactly 1: counted by the
+    # `unit_coefficients` leg, which needs them on this case.
+    "m_forms_keyed_on_coefficients": "deep_pml",
 }
 
 #: Mutations that rewrite a line reached ONLY in case A of the four-case table, with
@@ -221,28 +240,48 @@ MUTATION_REQUIRES_CONDUCTIVE: Dict[str, Tuple[str, ...]] = {}
 #: of the table above, for a rewrite of the ``COND == 0`` arm.
 MUTATION_REQUIRES_LOSSLESS: Dict[str, Tuple[str, ...]] = {
     "m_lossless_arm_takes_the_conductive_one": ("Dx", "Dy"),
+    "m_lossless_select_removed": ("Dx", "Dy"),
 }
 
-#: The two mutations this gate scores as CONFIRMED NULLS, with the measurement that
-#: confirms each. A null is a rewrite whose defect is real at the WORD layer and
-#: whose effect on this engine's coefficients is provably empty -- not a rewrite
-#: nobody could be bothered to make bite. The ``coefficient_predicates`` no-device
-#: leg re-measures both on every run, so a change to `pml._split_field_coefficients`
-#: that made either one live would turn this gate red rather than quietly widen it.
+#: The mutations this gate scores as DECLARED NULLS, with the reason each is one. A null
+#: is a rewrite whose defect is real at the TRAFFIC layer and whose effect on stored
+#: words is provably empty -- not a rewrite nobody could be bothered to make bite. The
+#: previous forms' two coefficient-predicate nulls (a tolerance, ``|`` narrowed to
+#: ``&``) are retired with the predicate itself (DESIGN D13).
 MUTATION_EVIDENCE: Dict[str, str] = {
-    "m_dsig_becomes_a_tolerance":
-        "`kms` and `sinv` are both 1.0 EXACTLY where sigma is zero and both below 1 "
-        "everywhere else -- measured over every axis of every case grid by the "
-        "`coefficient_predicates` leg: max(kms) == 1.0, no entry above 1, and the "
-        "tolerance form `(km < 0.999999) | (si < 0.999999)` selects the SAME set as "
-        "`(km != 1.0) | (si != 1.0)` at every entry. A tolerance can only differ "
-        "where a coefficient sits within it of 1 without being 1, and this engine "
-        "constructs none",
-    "m_dsig_uses_or_instead_of_and":
-        "`kms != 1.0` and `sinv != 1.0` are the SAME SET on every axis of every case "
-        "grid -- both are derived from the one graded sigma, so neither departs from "
-        "1 without the other. `|` and `&` therefore select identically, measured "
-        "entry by entry by the `coefficient_predicates` leg",
+    "m_aux_load_unmasked":
+        "KERNELS.md section 7.2's declared null: `u` is read only by the dsigu forms "
+        "(the recurrence's `fu * km1` and `f_split`'s `- u`, and the conductive "
+        "`u_split` / `u_cond` that only `f_split` consumes), every one of which is "
+        "selected on a dsigu cell, where the masked and the unmasked load deliver the "
+        "same word; off dsigu the loaded word reaches no store. The guard is pinned "
+        "by the transcription leg's masked-load needle instead",
+}
+
+#: Mutations scored WITHOUT the electric carry (a magnetic source, which the driver
+#: injects in the B/H seam), with the reason. Every other kernel mutation is scored with
+#: the integrated electric source on, as the product claims it.
+#:
+#: The rewrite this table exists for moves the wall clear after the D store, a defect in
+#: the stored D alone (``update_E`` still reads the cleared register). Under an
+#: integrated electric source the driver brackets the ``update_E`` consult with
+#: ``sources.f_minus_p_begin`` / ``f_minus_p_end`` (MEEP's ``f_minus_p``,
+#: update_eh.cpp:66-140), and each half re-runs the D family's boundary passes
+#: (``sources._boundary_passes``: ``stepping.zero_metal_D`` called directly, not through
+#: the driver module's name this harness absorbs on the fused route). So every wall word
+#: is cleared again after the fused launch whatever the kernel stored there, and the
+#: rewrite changes no word on the carry configuration: MEASURED on the bisect of this
+#: gate's own leg (``mutation:m_wall_clear_after_the_store`` on ``wall_xy``, 4 steps,
+#: keep): caught on series entries 23 and 24 with the lane's patch (17 Dx words differ
+#: at step 1), a null from ``25-AP6g`` (which introduced the bracket) through 53. Without
+#: an electric source nothing re-runs the D boundary passes, the wall clear is the
+#: kernel's alone, and the stored D is what the rewrite moves.
+MUTATION_WITHOUT_ELECTRIC_CARRY: Dict[str, str] = {
+    "m_wall_clear_after_the_store":
+        "the integrated electric source's f_minus_p bracket re-runs zero_metal_D after "
+        "the fused launch (sources._boundary_passes), which clears every wall word the "
+        "rewrite leaves standing; scored with the magnetic source, where the clear is "
+        "the kernel's alone",
 }
 
 #: The CARRY family: the same grids with a real ELECTRIC deposit IN THIS SEAM.
@@ -377,6 +416,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/conductive_fused_electric_pair.py",
         "meep_gpu/triton_kernels/conductivity.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/deposit_repair.py",
@@ -515,12 +555,13 @@ def transcription_leg() -> Dict[str, Any]:
       docstring claims, checked rather than asserted, so a change upstream that
       broke it would surface here and not in a reader's assumption;
     * the MIDDLE is exactly three calls to :data:`HELPER_NAME`, with the SAME
-      ``(km, si)`` pairs and the SAME per-component pointer rows that
-      ``conductive_pml_curl_step``'s own three calls use;
+      ``(km, si)`` pairs, the SAME ``(ds, du)`` record memberships and the SAME
+      per-component pointer rows that ``conductive_pml_curl_step``'s own three calls
+      use;
     * the TAIL (the wall clear, the D store and the constitutive half) IS
       ``kernels.fused_curl_constitutive_D``'s tail, minus its three ``fu_D`` stores,
       which did not disappear: they moved INTO the helper, where the shipped
-      function already performs them under the four-case table's masks.
+      function already performs them under the auxiliary contract's masks.
 
     And one more, about the helper itself: it is ``_conductive_component`` minus
     exactly :data:`MOVED_STORE` and plus exactly :data:`ADDED_RETURN`.
@@ -558,7 +599,7 @@ def transcription_leg() -> Dict[str, Any]:
             "is wrong about the chain")
 
     mine_tail = fused[_anchor(fused, tail_start):]
-    u_stores = {f"tl.store(u{n} + idx, n{n}, mask=live)" for n in (0, 1, 2)}
+    u_stores = {f"tl.store(u{n} + idx, n{n}, mask=live & du{n})" for n in (0, 1, 2)}
     theirs_tail = [s for s in ordinary_fused[_anchor(ordinary_fused, tail_start):]
                    if s not in u_stores]
     if mine_tail != theirs_tail:
@@ -577,18 +618,26 @@ def transcription_leg() -> Dict[str, Any]:
             f"{len(theirs_calls)} times in the shipped curl; three components need "
             f"three")
     else:
-        pairs = [call[-5:-1] for call in mine_calls]
-        if pairs != [call[-5:-1] for call in theirs_calls]:
+        pairs = [call[-8:-4] for call in mine_calls]
+        if pairs != [call[-8:-4] for call in theirs_calls]:
             findings.append(
                 f"the (km, si) pairs are {pairs}, not the shipped curl's "
-                f"{[call[-5:-1] for call in theirs_calls]}: a rotated pair is a "
+                f"{[call[-8:-4] for call in theirs_calls]}: a rotated pair is a "
                 f"wrong absorber profile that no shape check would see")
-        if [call[-6] for call in mine_calls] != ["curl0", "curl1", "curl2"]:
+        flags = [call[-4:] for call in mine_calls]
+        expected_flags = [[f"ds{n}", f"du{n}", f"COND{n}", f"CMASK{n}"] for n in range(3)]
+        if flags != expected_flags or flags != [call[-4:] for call in theirs_calls]:
+            findings.append(
+                f"the membership flags and constexprs are {flags}, not the shipped "
+                f"curl's {[call[-4:] for call in theirs_calls]}: a swapped dsig/dsigu "
+                f"pair selects the wrong form on every boundary plane")
+        if [call[-9] for call in mine_calls] != ["curl0", "curl1", "curl2"]:
             findings.append(
                 f"a component consumes another's curl: "
-                f"{[call[-6] for call in mine_calls]}")
-        rows = [call[:5] for call in mine_calls]
-        expected = [[f"f{n}", f"u{n}", f"c{n}", f"cf{n}", f"ci{n}"] for n in range(3)]
+                f"{[call[-9] for call in mine_calls]}")
+        rows = [call[:6] for call in mine_calls]
+        expected = [[f"f{n}", f"u{n}", f"c{n}", f"cf{n}", f"ci{n}", f"m{n}"]
+                    for n in range(3)]
         if rows != expected:
             findings.append(f"the pointer rows are {rows}, not {expected}")
 
@@ -613,12 +662,16 @@ def transcription_leg() -> Dict[str, Any]:
             f"{SHIPPED_HELPER} no longer performs {MOVED_STORE!r}, so the statement "
             f"this weld claims to have MOVED is not there to move")
 
-    # THE TWO MASKED STORES KEEP THEIR MASKS. They are the "unchanged" column of the
-    # four-case table; widening either writes a component the array path leaves
-    # alone, in a volume no E comparison reads on the step it happens.
-    for line in ("tl.store(u_ptr + idx, u_new, mask=live & dsigu)",
-                 "tl.store(c_ptr + idx, c_new, mask=live & dsig)",
-                 "tl.store(u_ptr + idx, n, mask=live)"):
+    # THE MASKED LOADS AND STORES KEEP THEIR MASKS. They are the auxiliary contract:
+    # ``fu`` on dsigu cells, ``f_cond`` on the dsig cells of conductive chunks.
+    # Widening a store writes a component the array path leaves alone, in a volume no
+    # E comparison reads on the step it happens; widening a load is a declared null
+    # (no word moves) pinned here instead.
+    for line in ("tl.store(u_ptr + idx, u_new, mask=live & du)",
+                 "tl.store(c_ptr + idx, c_new, mask=live & ds & kept)",
+                 "tl.store(u_ptr + idx, n, mask=live & du)",
+                 "u = tl.load(u_ptr + idx, mask=live & du, other=0.0)",
+                 "c = tl.load(c_ptr + idx, mask=live & ds & kept, other=0.0)"):
         if line not in helper:
             findings.append(f"the helper no longer performs {line!r}")
 
@@ -717,11 +770,10 @@ class _IntegratedElectric(_Electric):
 
 
 class _ScaledElectricNoTable:
-    """A scaled source with NO deposit table at all — the driver's dense fallback.
+    """A scaled source with NO deposit table at all — cells no point repair can name.
 
-    ``hasattr(source, "_point_ix")`` is False, the partition
-    ``_inject_electric_through_conductivity`` uses; the surviving clause refuses
-    exactly this duck-typed stranger, and no in-tree source class is one.
+    ``hasattr(source, "_point_ix")`` is False; the surviving clause refuses exactly
+    this duck-typed stranger, and no in-tree source class is one.
     """
 
     field_type = "D"
@@ -952,10 +1004,11 @@ def corpus_admission_leg() -> Dict[str, Any]:
             "this gate exists to measure is not what makes the cell reachable")
     # WHAT THIS PRODUCT SERVES OF THE CELL, recorded so the artifact carries the
     # number rather than leaving a reader to infer it. Since the 2026-09-01 lift the
-    # electric rows are SERVED, not refused: the driver replays its condinv rescale
-    # sparsely at the published deposit cells, and the retired whole-volume
-    # composition — whose signed-zero arithmetic the `whole_volume_rescale` leg
-    # still executes — survives only as the dense fallback for a tableless source.
+    # electric rows are SERVED, not refused: the condinv scale reaches only the
+    # published deposit cells (inside each source's own double-precision deposit since
+    # the deposit moved to double), and the retired whole-volume composition — whose
+    # signed-zero arithmetic the `whole_volume_rescale` leg still executes — survives
+    # only as this gate's armed control.
     served = sorted(in_cell)
     return {"leg": "corpus_admission", "device": False, "rows_scanned": len(record),
             "cell": list(CELL), "rows_in_the_cell": sorted(in_cell),
@@ -964,8 +1017,9 @@ def corpus_admission_leg() -> Dict[str, Any]:
                 "the driver used to rescale a NON-INTEGRATED electric injection "
                 "over the WHOLE volume by difference, which rewrote -0.0 to +0.0 at "
                 "every cell of the target component at cells no deposit repair can "
-                "name; since 2026-09-01 it replays the same composition per "
-                "PUBLISHED deposit cell (identity everywhere else), the clause was "
+                "name; since 2026-09-01 the scale reaches only the PUBLISHED deposit "
+                "cells (identity everywhere else; inside each source's own "
+                "double-precision deposit since the deposit moved to double), the clause was "
                 "lifted on the re-measured signed-zero walk (`lifted_refusal` leg), "
                 "and the `whole_volume_rescale` leg keeps the retired arithmetic "
                 "in the artifact"),
@@ -1000,82 +1054,79 @@ def mutation_arming_leg() -> Dict[str, Any]:
             "findings": findings, "passed": not findings}
 
 
-def coefficient_predicates_leg() -> Dict[str, Any]:
-    """Are ``km != 1.0`` and ``sinv != 1.0`` the same predicate on this engine?
+def unit_coefficients_leg() -> Dict[str, Any]:
+    """Where do chunk membership and coefficient identity part, on each case grid?
 
-    THE EVIDENCE BEHIND TWO CONFIRMED NULLS, re-measured on every run rather than
-    written down once. ``_conductive_component`` selects among its four cases with
+    THE EVIDENCE BEHIND THE B BATTERY'S PREDICATE MUTATION, re-measured on every run.
+    The kernel keys every form on the chunk record's membership lines (the one-rank
+    division of each case grid, ``chunk_map.ChunkLayout.one_rank``), never on a
+    coefficient. Two facts are measured per axis and Yee sub-lattice:
 
-        dsig  = (km1 != 1.0) | (si1 != 1.0)
-        dsigu = (km2 != 1.0) | (si2 != 1.0)
+    * the region plan's UNIT-COEFFICIENT PRECONDITION: on every OWNED row outside its
+      membership run every ``kms`` and ``sinv`` is exactly 1.0, so the dsig-only form
+      there IS MEEP's plain ``f - curl`` (``chunk_map.check_unit_coefficients``; a wall
+      row is stepped by neither form). An owned row outside the run with a graded
+      coefficient is a finding;
+    * the cells INSIDE the run whose own coefficients are exactly 1.0 -- a chunk
+      carries a layer whose sigma is zero on some of its cells -- which is the only
+      place ``m_forms_keyed_on_coefficients`` can change a word. The case that
+      mutation is scored on must have some on the D curl's (integer) sub-lattice, or
+      an UNCAUGHT verdict there would be a statement about the case.
 
-    and two obvious rewrites of that -- softening the exact comparison to a
-    tolerance, and narrowing ``|`` to ``&`` -- are real defects at the word layer
-    that this engine's coefficients cannot express. Both are scored ``null``, and
-    both entries in :data:`MUTATION_EVIDENCE` cite THIS leg. If
-    ``pml._split_field_coefficients`` ever produced a ``kms`` above 1, or a graded
-    ``sinv`` where ``kms`` is exactly 1, this leg fails and the two mutations must be
-    re-scored -- which is the whole point of measuring rather than asserting.
-
-    NO DEVICE AND NO TRITON: the PML's coefficient arrays are NumPy on this host.
+    NO DEVICE AND NO TRITON: the layer and the record are NumPy on this host.
     """
+    from meep_gpu.chunk_map import ChunkLayout  # noqa: PLC0415
     from meep_gpu.fields import Fields  # noqa: PLC0415
     from meep_gpu.grid import Grid  # noqa: PLC0415
     from meep_gpu.pml import PML  # noqa: PLC0415
 
     findings: List[str] = []
     rows: List[Dict[str, Any]] = []
+    scored = MUTATION_CASE.get("m_forms_keyed_on_coefficients", DEFAULT_MUTATION_CASE)
     for case_name, cell, boundaries, _steps, _components, pml_cells in CASES:
         grid = Grid(resolution=12.0, cell_size=cell, dimensions=2, courant=0.35,
                     boundaries=boundaries)
         fields = Fields(grid=grid, force_complex_fields=False)
         fields.enable_pml_storage()
         depth = dict(pml_cells or {"x": 2, "y": 2})
+        depth.pop("sigma_margin", None)
         thickness = tuple(
             (depth.get("xyz"[axis], 0), depth.get("xyz"[axis], 0))
             if grid.shape[axis] >= 6 else (0, 0) for axis in range(3))
         pml = PML(grid=grid, thickness=thickness)
-        for axis in "xyz":
-            km = np.asarray(getattr(pml, f"kms_{axis}")).ravel()
-            si = np.asarray(getattr(pml, f"sinv_{axis}")).ravel()
-            exact_km, exact_si = km != 1.0, si != 1.0
-            tolerance = (km < 0.999999) | (si < 0.999999)
-            row = {
-                "case": case_name, "axis": axis, "entries": int(km.size),
-                "km_not_one": int(exact_km.sum()),
-                "sinv_not_one": int(exact_si.sum()),
-                "same_set": bool((exact_km == exact_si).all()),
-                "or_selects": int((exact_km | exact_si).sum()),
-                "and_selects": int((exact_km & exact_si).sum()),
-                "max_km": float(km.max()), "any_km_above_one": bool((km > 1).any()),
-                "tolerance_matches_exact": bool(
-                    (tolerance == (exact_km | exact_si)).all()),
-                "tolerance_disagrees_at": int(
-                    (tolerance != (exact_km | exact_si)).sum()),
-            }
-            rows.append(row)
-            if not row["same_set"]:
-                findings.append(
-                    f"{case_name}/{axis}: kms != 1 and sinv != 1 select DIFFERENT "
-                    f"sets, so m_dsig_uses_or_instead_of_and is no longer a null and "
-                    f"must be re-scored as a live mutation")
-            if not row["tolerance_matches_exact"]:
-                findings.append(
-                    f"{case_name}/{axis}: the tolerance form disagrees with the exact "
-                    f"one at {row['tolerance_disagrees_at']} entries, so "
-                    f"m_dsig_becomes_a_tolerance is no longer a null")
-            if row["any_km_above_one"]:
-                findings.append(
-                    f"{case_name}/{axis}: kms exceeds 1 (max {row['max_km']}), which "
-                    f"a `< 0.999999` tolerance cannot see")
-    # A leg that measured NOTHING would agree with itself. At least one axis must
-    # actually be graded, or every equality above is between two empty sets.
-    if not any(row["or_selects"] for row in rows):
+        layout = ChunkLayout.one_rank(grid, pml)
+        for axis_index, axis in enumerate("xyz"):
+            for half in (False, True):
+                line = layout.membership(axis_index, half)
+                suffix = "_h" if half else ""
+                km = np.asarray(getattr(pml, f"kms_{axis}{suffix}")).ravel()
+                si = np.asarray(getattr(pml, f"sinv_{axis}{suffix}")).ravel()
+                unit = (km == 1.0) & (si == 1.0)
+                inside = (np.zeros(km.size, dtype=bool) if line is None
+                          else np.asarray(line, dtype=bool))
+                owned = np.asarray(layout.owned(axis_index, half), dtype=bool)
+                row = {"case": case_name, "axis": axis,
+                       "lattice": "half-integer" if half else "integer",
+                       "entries": int(km.size), "inside": int(inside.sum()),
+                       "graded_outside": int((~unit & ~inside & owned).sum()),
+                       "unit_inside": int((unit & inside & owned).sum())}
+                rows.append(row)
+                if row["graded_outside"]:
+                    findings.append(
+                        f"{case_name}/{axis}/{row['lattice']}: {row['graded_outside']} "
+                        f"graded coefficients outside the membership run; the "
+                        f"region plan's unit-coefficient precondition does not hold")
+    live = [row for row in rows if row["case"] == scored
+            and row["lattice"] == "integer" and row["unit_inside"]]
+    if not live:
         findings.append(
-            "NO axis of any case grid is graded at all: every predicate above "
-            "selects the empty set and the two nulls rest on nothing")
-    return {"leg": "coefficient_predicates", "device": False, "axes": rows,
-            "findings": findings, "passed": not findings}
+            f"case {scored!r}, which m_forms_keyed_on_coefficients is scored on, has "
+            f"no membership cell with unit coefficients on the integer lattice: the "
+            f"mutation cannot change a word there")
+    if not any(row["inside"] for row in rows):
+        findings.append("NO axis of any case grid carries a membership run")
+    return {"leg": "unit_coefficients", "device": False, "axes": rows,
+            "scored_case": scored, "findings": findings, "passed": not findings}
 
 
 def whole_volume_rescale_leg() -> Dict[str, Any]:
@@ -1084,9 +1135,9 @@ def whole_volume_rescale_leg() -> Dict[str, Any]:
     THE MEASUREMENT BEHIND THE REFUSAL THIS PRODUCT SHIPPED WITH — and, since the
     2026-09-01 lift, behind the two clauses that survive it. The driver used to
     snapshot the target D component, inject, and rescale BY DIFFERENCE over the
-    whole volume; it now replays that composition per PUBLISHED deposit cell
-    (identity everywhere else) and keeps the whole-volume form only as the dense
-    fallback for a scaled source publishing no deposit table::
+    whole volume; the scale now reaches only the published deposit cells, inside each
+    source's own double-precision deposit, and the whole-volume form survives only as
+    this gate's armed control::
 
         array -= before[name]
         array *= condinv
@@ -1146,7 +1197,7 @@ def whole_volume_rescale_leg() -> Dict[str, Any]:
 
 
 NO_DEVICE_LEGS = (transcription_leg, equivalence_leg, corpus_admission_leg,
-                  mutation_arming_leg, coefficient_predicates_leg,
+                  mutation_arming_leg, unit_coefficients_leg,
                   whole_volume_rescale_leg)
 
 
@@ -1234,8 +1285,11 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
     driver.set_epsilon_components({name: cp.asarray(values)
                                    for name, values in epsilon.items()})
     # PER AXIS, NOT SCALAR. On a 2-D cell z is translationally invariant and the
-    # driver refuses a layer there BY NAME (driver.py:2206).
-    driver.setup_pml(dict(pml_cells or {"x": 2, "y": 2}))
+    # driver refuses a layer there BY NAME (driver.py:2206). A case's
+    # ``sigma_margin`` is not a layer depth and is taken out first.
+    depth = dict(pml_cells or {"x": 2, "y": 2})
+    sigma_margin = depth.pop("sigma_margin", None)
+    driver.setup_pml(depth)
     # THE CONDUCTIVITY, and it is INSTALLED AFTER THE LAYER deliberately: the
     # absorber's own graded sigma and a material sigma are the two independent
     # sources the engine keeps apart (driver.py:1010-1028), and a material
@@ -1247,6 +1301,19 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
         values = np.ascontiguousarray(
             (float(sigma) * (0.6 + 0.4 * np.sin(index * np.float32(0.023)))
              ).astype(np.float32))
+        if sigma_margin is not None:
+            # Zero within ``sigma_margin`` cells of every resolved face: the layer
+            # chunks keep no conductivity, the interior chunk keeps it.
+            inside = np.ones(shape, dtype=bool)
+            for axis, n in enumerate(shape):
+                if n <= 1:
+                    continue
+                line = (np.arange(n) >= sigma_margin) & (np.arange(n) < n - sigma_margin)
+                view = [1, 1, 1]
+                view[axis] = n
+                inside &= line.reshape(view)
+            values = np.ascontiguousarray(
+                np.where(inside, values, np.float32(0.0)).astype(np.float32))
         payload = ({name: cp.asarray(values) for name in components}
                    if components is not None else cp.asarray(values))
         driver.set_conductivity(payload)
@@ -1869,6 +1936,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         row["cond_of_record"] = list(cond_of_record)
         reduced_plan.cond = (0, 0, 0)
 
+        from gate_chunk_records import layer_record  # noqa: PLC0415
+
         fields, pml = shipped.fields, shipped.pml
         grid = fields.grid
         arrays = {name: getattr(fields, name) for name in
@@ -1884,7 +1953,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         shipped_plan = plan_fused_pair_from_arrays(
             "D", arrays, curl_flat, constitutive_flat,
             [1 if kind == "metallic" else 0 for kind in resolve(grid, pml)],
-            zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1)
+            zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1,
+            chunk_bounds=layer_record(grid, pml))
 
         roles = {id(reference.fields): "array", id(shipped.fields): "shipped",
                  id(reduced.fields): "reduced"}
@@ -1997,8 +2067,12 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
                 "VACUOUS: no component of this configuration can write its "
                 "conductive history at all, so the reduced route's stillness could "
                 "not be a measurable difference on ANY value class")
+        # A SUBSET, NOT AN EQUALITY: on a zero lattice the array path's history may move
+        # on some of the volumes its memberships allow and hold its words on others
+        # (each conductive form on +-0 inputs lands on a zero, of either sign). What the
+        # clause guards is a volume the memberships FORBID.
         if (row["history_lever"]
-                and set(row["history_moved_on_the_array_path"]) != set(expected_movers)):
+                and not set(row["history_moved_on_the_array_path"]) <= set(expected_movers)):
             failures.append(
                 f"the ARRAY PATH moved {row['history_moved_on_the_array_path']} of "
                 f"the history, and this configuration's coefficients say it can move "
@@ -2062,8 +2136,18 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
 # ---------------------------------------------------------------------------
 
 def compile_mutant(source: str, kernel_name: str) -> Any:
-    """Compile a renamed mutant. The rename is what keeps the JIT cache honest."""
+    """Compile a renamed mutant. The rename is what keeps the JIT cache honest.
+
+    The shipped bodies call the shared ``@triton.jit`` forms of
+    ``triton_kernels/forms.py`` by their imported names and read the record's two word
+    offsets as ``tl.constexpr`` globals of ``kernels.py``; the mutant imports exactly
+    the same names, so a mutant differs from the shipped text only by its rewrite.
+    """
     header = ("import triton\nimport triton.language as tl\n"
+              "from meep_gpu.triton_kernels.forms import (axis_present, "
+              "constitutive_form, curl_form, curl_stencil, record_in)\n"
+              "from meep_gpu.triton_kernels.kernels import RECORD_HALF_INTEGER, "
+              "RECORD_PRESENCE\n"
               "PERIODIC = tl.constexpr(0)\n"
               "METALLIC = tl.constexpr(1)\n\n")
     text = header + source.replace(KERNEL_NAME, kernel_name)
@@ -2134,94 +2218,135 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
                                     Callable[[str], Tuple[str, int]]], ...]:
     """(id, why it is armed, expectation, rewrite).
 
-    THE FIRST ELEVEN REWRITE THE FOUR-CASE RECURRENCE, which is the only arithmetic
-    decision this product makes that the ordinary fused pair does not. Each of the
-    five branch expressions gets one, each of the two exact float comparisons gets
-    one, and each of the two masked stores gets one -- because those masks are the
-    "unchanged" column of the case table and a widened one is invisible in D and E
-    on the step it happens.
+    THE FIRST GROUP REWRITES THE CONDUCTIVE FORMS, which are the only arithmetic
+    decision this product makes that the ordinary fused pair does not: each branch
+    expression, each masked load and store of the auxiliary contract, and the B
+    battery of KERNELS.md section 7.2 -- the forms keyed on coefficient identity
+    instead of chunk membership, the record read on the other Yee sub-lattice, the
+    dsig and dsigu memberships exchanged, the conductive-chunk test removed, and the
+    lossless component's select removed. The previous package groupings are planted
+    back as INVERSIONS (section 7.1): the increment added in two operations
+    (``m_case_a_regrouped``) and the pairwise curl (``m_curl_parens_flattened``),
+    each must be caught. The two coefficient-predicate rewrites the previous forms
+    carried (a tolerance, ``|`` narrowed to ``&``) are retired with the predicate
+    (DESIGN D13): the kernel no longer tests a coefficient.
 
     THE REST rewrite the wall clear and the constitutive half, and are the same
     rewrites the sibling electric welds carry, on the same lines.
     """
 
     def m_history_load_dropped(source: str) -> Tuple[str, int]:
-        """``f_cond`` read as zero -- cases A and C lose their leading term."""
-        return _replace_all(source, "c = tl.load(c_ptr + idx, mask=live, other=0.0)",
-                            "c = tl.load(c_ptr + idx, mask=live & (idx < 0), "
+        """``f_cond`` read as zero -- the dsig forms lose their history."""
+        return _replace_all(source,
+                            "c = tl.load(c_ptr + idx, mask=live & ds & kept, other=0.0)",
+                            "c = tl.load(c_ptr + idx, mask=live & ds & kept & (idx < 0), "
                             "other=0.0)")
 
     def m_history_store_dropped(source: str) -> Tuple[str, int]:
         """``f_cond`` never written; the next step reads a stale history."""
         return _replace_all(source,
-                            "tl.store(c_ptr + idx, c_new, mask=live & dsig)",
-                            "tl.store(c_ptr + idx, c_new, mask=live & dsig & "
+                            "tl.store(c_ptr + idx, c_new, mask=live & ds & kept)",
+                            "tl.store(c_ptr + idx, c_new, mask=live & ds & kept & "
                             "(idx < 0))")
 
     def m_history_store_mask_widened(source: str) -> Tuple[str, int]:
-        """``f_cond`` written EVERYWHERE, not only where ``dsig``.
+        """``f_cond`` written EVERYWHERE, not only on the conductive dsig cells.
 
-        The four-case table's "unchanged" column: outside ``dsig`` the array path
-        leaves ``f_cond`` at exactly its previous value, and a widened store puts
-        ``c_new`` there. Invisible in D and E on the step it happens, which is why
-        the comparison is over every allocated volume.
+        The auxiliary contract: outside them the array path leaves ``f_cond`` at
+        exactly its previous value, and a widened store puts ``c_new`` there.
+        Invisible in D and E on the step it happens, which is why the comparison is
+        over every allocated volume.
         """
         return _replace_all(source,
-                            "tl.store(c_ptr + idx, c_new, mask=live & dsig)",
+                            "tl.store(c_ptr + idx, c_new, mask=live & ds & kept)",
                             "tl.store(c_ptr + idx, c_new, mask=live)")
 
     def m_aux_store_mask_widened(source: str) -> Tuple[str, int]:
         """``fu_D`` written everywhere, not only where ``dsigu``."""
         return _replace_all(source,
-                            "tl.store(u_ptr + idx, u_new, mask=live & dsigu)",
+                            "tl.store(u_ptr + idx, u_new, mask=live & du)",
                             "tl.store(u_ptr + idx, u_new, mask=live)")
 
-    def m_dsig_becomes_a_tolerance(source: str) -> Tuple[str, int]:
-        """``km != 1.0`` softened to a tolerance.
+    def m_aux_load_unmasked(source: str) -> Tuple[str, int]:
+        """``fu_D`` loaded on every live cell, its stores still guarded.
 
-        stepping.py:2055-2058 is an EXACT float comparison. A tolerance takes the
-        graded cells nearest the layer's inner face down the WRONG case -- smooth,
-        plausible, and a different recurrence.
+        A DECLARED NULL (KERNELS.md section 7.2): the loaded word is read only by
+        forms selected on dsigu cells, so no stored word can move. The guard is
+        pinned instead by the transcription leg's masked-load needle.
         """
-        return _replace_all(source, "dsig = (km1 != 1.0) | (si1 != 1.0)",
-                            "dsig = (km1 < 0.999999) | (si1 < 0.999999)")
+        return _replace_all(source,
+                            "u = tl.load(u_ptr + idx, mask=live & du, other=0.0)",
+                            "u = tl.load(u_ptr + idx, mask=live, other=0.0)")
 
-    def m_dsig_and_dsigu_swapped(source: str) -> Tuple[str, int]:
-        """The two predicates exchanged; each case then tests the other axis."""
+    def m_forms_keyed_on_coefficients(source: str) -> Tuple[str, int]:
+        """The forms keyed on coefficient identity (``kms != 1 | sinv != 1``).
+
+        The B battery's predicate mutation: a cell inside a layer chunk whose own
+        sigma is exactly zero takes the chunk's form in MEEP and the array path, and
+        a coefficient test sends it down the other one. The ``unit_coefficients``
+        no-device leg counts such cells on the scored case.
+        """
+        table = {"ds0": "y", "du0": "z", "ds1": "z", "du1": "x", "ds2": "x", "du2": "y"}
+        hits = 0
+        for name, axis in table.items():
+            for index_name, offset in (("i", "0"), ("j", "4"), ("k", "8")):
+                before = f"{name} = record_in(cb, lattice + {offset}, {index_name})"
+                if before in source:
+                    source = source.replace(
+                        before, f"{name} = (km_{axis} != 1.0) | (si_{axis} != 1.0)")
+                    hits += 1
+        return source, hits
+
+    def m_record_lattice_swapped(source: str) -> Tuple[str, int]:
+        """The curl's record lines read on the half-integer sub-lattice, B's."""
         return _rewrite_block(
             source,
-            ["dsig = (km1 != 1.0) | (si1 != 1.0)",
-             "dsigu = (km2 != 1.0) | (si2 != 1.0)"],
-            ["dsig = (km2 != 1.0) | (si2 != 1.0)",
-             "dsigu = (km1 != 1.0) | (si1 != 1.0)"])
+            ["if BACKWARD:", "lattice = 0", "else:", "lattice = RECORD_HALF_INTEGER",
+             "ds0 = record_in(cb, lattice + 4, j)"],
+            ["if BACKWARD:", "    lattice = RECORD_HALF_INTEGER", "else:",
+             "    lattice = 0", "ds0 = record_in(cb, lattice + 4, j)"])
 
-    def m_dsig_uses_or_instead_of_and(source: str) -> Tuple[str, int]:
-        """``|`` narrowed to ``&``: a cell whose km is graded but whose sinv is 1
-        falls out of the split-field case the array path puts it in."""
-        return _replace_all(source, "dsig = (km1 != 1.0) | (si1 != 1.0)",
-                            "dsig = (km1 != 1.0) & (si1 != 1.0)")
+    def m_dsig_and_dsigu_swapped(source: str) -> Tuple[str, int]:
+        """The two memberships exchanged; each form then tests the other axis."""
+        hits = 0
+        for t in range(3):
+            before = f", ds{t}, du{t}, COND{t}, CMASK{t})"
+            hits += source.count(before)
+            source = source.replace(before, f", du{t}, ds{t}, COND{t}, CMASK{t})")
+        return source, hits
+
+    def m_conductive_chunks_ignored(source: str) -> Tuple[str, int]:
+        """Every chunk taken to keep the conductivity: the forms' third test removed."""
+        return _replace_all(source,
+                            "kept = tl.load(m_ptr + idx, mask=live, other=0) != 0",
+                            "kept = live")
+
+    def m_lossless_select_removed(source: str) -> Tuple[str, int]:
+        """A lossless component steps the recurrence on every cell (no dsigu select)."""
+        return _replace_all(source,
+                            "v, n = curl_form(f, u, curl, km1, si1, km2, si2, du)",
+                            "v, n = curl_form(f, u, curl, km1, si1, km2, si2, live)")
 
     def m_case_a_regrouped(source: str) -> Tuple[str, int]:
-        """Case A regrouped as ``(u*km1) + (c_new - c)``.
+        """The INVERSION (KERNELS.md 7.1): the dsig-and-dsigu ``fu`` form with the
+        increment added in two operations, ``((u*km1) + c_new) - c``.
 
-        A GENUINELY DIFFERENT float32 grouping, and the second spelling of this
-        mutation. The first simply DROPPED the parentheses --
-        ``u * km1 + c_new - c`` -- which Python parses as ``((u*km1) + c_new) - c``,
-        the shipped expression exactly; it was measured UNCAUGHT on run b because it
-        was not a mutation at all. Recorded rather than replaced silently: the same
-        left-associativity makes ``c_new = ((c * cf) - curl) * ci`` and
-        ``u_cond = ((u * cf) - curl) * ci`` un-flattenable too, so the curl's
-        ``dtdx * ((c_y - c) + (b - b_z))`` is the only place in this kernel where
-        dropping parentheses changes the arithmetic, and `m_curl_parens_flattened`
-        is where that is armed.
+        That is the grouping this kernel carried before the alignment; MEEP forms the
+        increment ``(c_new - c)`` first (step_generic.cpp:209), and so do the array
+        path and the shipped body. Must be caught.
         """
-        return _replace_all(source, "u_split = (((u * km1) + c_new) - c) * si1",
-                            "u_split = ((u * km1) + (c_new - c)) * si1")
+        return _replace_all(source, "u_split = ((u * km1) + increment) * si1",
+                            "u_split = (((u * km1) + c_new) - c) * si1")
+
+    def m_case_c_regrouped(source: str) -> Tuple[str, int]:
+        """The INVERSION's twin on the dsig-only ``f`` form: ``((f*km1) + c_new) - c``."""
+        return _replace_all(source, "f_first = ((f * km1) + increment) * si1",
+                            "f_first = (((f * km1) + c_new) - c) * si1")
 
     def m_case_c_takes_the_second_axis(source: str) -> Tuple[str, int]:
         """Case C built from ``(km2, si2)`` instead of its own ``(km1, si1)``."""
-        return _replace_all(source, "f_first = (((f * km1) + c_new) - c) * si1",
-                            "f_first = (((f * km2) + c_new) - c) * si2")
+        return _replace_all(source, "f_first = ((f * km1) + increment) * si1",
+                            "f_first = ((f * km2) + increment) * si2")
 
     def m_case_d_uses_the_history(source: str) -> Tuple[str, int]:
         """Case D -- the no-PML arm -- built from ``c`` instead of ``f``.
@@ -2236,8 +2361,8 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         """``dsig`` tested before ``dsigu``; the nesting order IS the case table."""
         return _replace_all(
             source,
-            "v = tl.where(dsigu, f_split, tl.where(dsig, f_first, f_direct))",
-            "v = tl.where(dsig, f_first, tl.where(dsigu, f_split, f_direct))")
+            "v = tl.where(du, f_split, tl.where(ds, f_first, f_direct))",
+            "v = tl.where(ds, f_first, tl.where(du, f_split, f_direct))")
 
     def m_condfac_and_condinv_exchanged(source: str) -> Tuple[str, int]:
         """``(1 - sigma*dt/2)`` and ``1/(1 + sigma*dt/2)`` exchanged in case B."""
@@ -2273,7 +2398,9 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
 
         ``update_E`` would still read the cleared register, so this is a defect in
         the D volume alone -- which is exactly why the comparison is over EVERY
-        allocated volume rather than over E.
+        allocated volume rather than over E. Scored without the electric carry: an
+        integrated electric source's ``f_minus_p`` bracket clears the walls again
+        after the launch (:data:`MUTATION_WITHOUT_ELECTRIC_CARRY`).
         """
         return _rewrite_block(
             source,
@@ -2319,12 +2446,12 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         cannot survive being wrong about (S:2083-2085)."""
         return _rewrite_block(
             source,
-            ["prev0 = tl.load(w0 + idx, mask=live, other=0.0)",
+            ["prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)",
              "src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)",
-             "tl.store(w0 + idx, src0, mask=live)"],
+             "tl.store(w0 + idx, src0, mask=live & dw0)"],
             ["src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)",
-             "tl.store(w0 + idx, src0, mask=live)",
-             "prev0 = tl.load(w0 + idx, mask=live, other=0.0)"])
+             "tl.store(w0 + idx, src0, mask=live & dw0)",
+             "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)"])
 
     def m_constitutive_axis_swapped(source: str) -> Tuple[str, int]:
         """Component 0's constitutive coefficient indexed on axis y.
@@ -2340,9 +2467,28 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
              "km_0 = tl.load(km0 + j, mask=live, other=0.0)"])
 
     def m_curl_parens_flattened(source: str) -> Tuple[str, int]:
-        """``dtdx * (c_y - c + b - b_z)`` -- a different float32 grouping."""
-        return _replace_all(source, "curl0 = dtdx * ((c_y - c) + (b - b_z))",
-                            "curl0 = dtdx * (c_y - c + b - b_z)")
+        """The INVERSION (KERNELS.md 7.1): the pairwise ``dtdx * ((b_x - b) + (a - a_y))``.
+
+        That is the curl grouping this kernel carried before the alignment, planted at
+        the call site. MEEP's C associates ``g1[i+s1] - g1[i] + g2[i] - g2[i+s2]`` left
+        to right (step_generic.cpp:104), which ``forms.curl_stencil`` carries. Must be
+        caught. Planted on TARGET 2, whose two partners (x and y) are both present on
+        every case grid: target 0's second partner differences along the invariant z
+        axis of these 2-D cells, where the pairwise form adds an exact zero to the
+        one-partner word and differs from it on signed zeros only (measured: uncaught
+        on ``wall_xy`` under the uniform class when it was planted on target 0).
+        """
+        return _replace_all(source, "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)",
+                            "curl2 = dtdx * ((b_x - b) + (a - a_y))")
+
+    def m_curl_presence_ignored(source: str) -> Tuple[str, int]:
+        """The full left-to-right bracket over BOTH partners whatever the presence.
+
+        On a 2-D cell z is invariant, so target 0's second partner is ABSENT and MEEP
+        takes the one-partner form; ``(a + g2) - g2`` rounds twice more than ``a``.
+        """
+        return _replace_all(source, "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)",
+                            "curl0 = dtdx * (((c_y - c) + b) - b_z)")
 
     def m_d_store_dropped(source: str) -> Tuple[str, int]:
         """The stepped displacement never written back; the next step's curl reads
@@ -2359,10 +2505,13 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         """
         return _rewrite_block(
             source,
-            ["v0 = _conductive_component_registers(f0, u0, c0, cf0, ci0, idx, live, curl0,",
-             "km_y, si_y, km_z, si_z, COND0)"],
-            ["v0 = _conductive_component_registers(f0, u1, c1, cf1, ci1, idx, live, curl0,",
-             "                                     km_y, si_y, km_z, si_z, COND0)"])
+            ["v0 = _conductive_component_registers(f0, u0, c0, cf0, ci0, m0, idx, live, "
+             "curl0,",
+             "km_y, si_y, km_z, si_z, ds0, du0, COND0, CMASK0)"],
+            ["v0 = _conductive_component_registers(f0, u1, c1, cf1, ci1, m1, idx, live, "
+             "curl0,",
+             "                                     km_y, si_y, km_z, si_z, ds0, du0, "
+             "COND0, CMASK0)"])
 
     return (
         ("m_history_load_dropped", "f_cond read as zero", "caught",
@@ -2375,16 +2524,29 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         ("m_aux_store_mask_widened",
          "fu_D written outside dsigu, where the array path leaves it alone",
          "caught", m_aux_store_mask_widened),
-        ("m_dsig_becomes_a_tolerance",
-         "an EXACT float comparison softened to a tolerance", "null",
-         m_dsig_becomes_a_tolerance),
-        ("m_dsig_and_dsigu_swapped", "the two case predicates exchanged", "caught",
+        ("m_aux_load_unmasked",
+         "fu_D loaded outside dsigu with its stores still guarded", "null",
+         m_aux_load_unmasked),
+        ("m_forms_keyed_on_coefficients",
+         "the forms keyed on coefficient identity instead of chunk membership",
+         "caught", m_forms_keyed_on_coefficients),
+        ("m_record_lattice_swapped",
+         "the curl's record lines read on the other Yee sub-lattice", "caught",
+         m_record_lattice_swapped),
+        ("m_dsig_and_dsigu_swapped", "the two memberships exchanged", "caught",
          m_dsig_and_dsigu_swapped),
-        ("m_dsig_uses_or_instead_of_and",
-         "the case predicate narrowed from OR to AND", "null",
-         m_dsig_uses_or_instead_of_and),
-        ("m_case_a_regrouped", "a different float32 grouping in case A", "caught",
-         m_case_a_regrouped),
+        ("m_conductive_chunks_ignored",
+         "every chunk taken to keep the conductivity", "caught",
+         m_conductive_chunks_ignored),
+        ("m_lossless_select_removed",
+         "a lossless component steps the recurrence on every cell", "caught",
+         m_lossless_select_removed),
+        ("m_case_a_regrouped",
+         "the previous grouping of the dsig-and-dsigu fu form (the inversion)",
+         "caught", m_case_a_regrouped),
+        ("m_case_c_regrouped",
+         "the previous grouping of the dsig-only f form (the inversion)", "caught",
+         m_case_c_regrouped),
         ("m_case_c_takes_the_second_axis",
          "case C built from the second axis's coefficients", "caught",
          m_case_c_takes_the_second_axis),
@@ -2417,8 +2579,12 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         ("m_constitutive_axis_swapped",
          "component 0's constitutive coefficient indexed on axis y", "caught",
          m_constitutive_axis_swapped),
-        ("m_curl_parens_flattened", "a different float32 grouping in the curl",
-         "caught", m_curl_parens_flattened),
+        ("m_curl_parens_flattened",
+         "the previous pairwise curl grouping (the inversion)", "caught",
+         m_curl_parens_flattened),
+        ("m_curl_presence_ignored",
+         "the full bracket over an absent curl partner", "caught",
+         m_curl_presence_ignored),
         ("m_d_store_dropped", "the stepped displacement never written back",
          "caught", m_d_store_dropped),
         ("m_recurrence_component_rotated",
@@ -2539,9 +2705,14 @@ def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, An
         row["case"] = case_name
         # THE CARRY IS ON. A mutation scored without the deposit would leave the
         # repair's interaction with the mutated register unmeasured on every leg but
-        # the carry ones.
+        # the carry ones. The exceptions, each with its reason, are
+        # MUTATION_WITHOUT_ELECTRIC_CARRY's.
+        electric = name not in MUTATION_WITHOUT_ELECTRIC_CARRY
+        row["electric_carry"] = electric
+        if not electric:
+            row["electric_carry_off_because"] = MUTATION_WITHOUT_ELECTRIC_CARRY[name]
         leg = run_leg(cp, f"mutation:{name}", case[1], case[2], MUTATION_STEPS,
-                      product, value_class="uniform", mutant=mutant, electric=True,
+                      product, value_class="uniform", mutant=mutant, electric=electric,
                       components=case[4], pml_cells=case[5])
         row["leg"] = leg
         row["caught"] = leg.get("first_divergence") is not None
@@ -2661,39 +2832,52 @@ def _deposit(driver, component: str, integrated: bool = False):
 # The lifted refusal — measured in both directions, not asserted
 # ---------------------------------------------------------------------------
 
-def _retired_whole_volume_inject(self, electric, source_time):
-    """The RETIRED composition of ``_inject_electric_through_conductivity``, verbatim.
+def _retired_whole_volume_inject(cp, driver) -> int:
+    """Re-arm the RETIRED whole-volume passes around ``driver``'s shipped deposits.
 
-    The whole-volume difference passes the driver replaced on 2026-09-01: snapshot
-    the target component, inject, then ``array -= before; array *= condinv;
-    array += before`` over the WHOLE volume. Kept HERE, in the gate that measures
-    the lift, as the armed control's body — the composition whose ``-0.0``
-    canonicalisation (and, on device, whose subnormal flushing) the retired refusal
-    priced at 14 Ez + 74 f_w_Ez words on this product's own wall_xy grid. The
+    The composition the driver replaced on 2026-09-01 was: snapshot the target
+    component, inject, then ``array -= before; array *= condinv; array += before`` over
+    the WHOLE volume. The double-precision deposit has since moved the ``condinv``
+    scale inside each source's own expression, at its own cells, and the driver has no
+    pass over the component left to rebind. So the armed control is spelled on the
+    SOURCES of this one driver (instance attributes only): each scaled electric
+    source's shipped ``inject`` runs, then the three passes run over every cell it does
+    NOT deposit into -- the part of the retired composition no deposit repair can name,
+    whose ``-0.0`` canonicalisation (and, on device, subnormal flushing) the retired
+    refusal priced at 14 Ez + 74 f_w_Ez words on this product's own wall_xy grid. The
     control MUST reproduce a divergence or the lift measured nothing. Integrated
-    sources are injected point-wise first, exactly as both driver generations do.
+    sources are left as shipped. Returns how many sources were armed.
     """
-    integrated = [source for source in electric if source.is_integrated]
-    scaled = [source for source in electric if not source.is_integrated]
-    for source in integrated:
-        source.inject(self.fields, source_time)
-    if not scaled:
-        return
-    by_target: Dict[str, list] = {}
-    for source in scaled:
-        by_target.setdefault("D" + source.component[1], []).append(source)
-    before = {}
-    for name in sorted(by_target):
-        if self.fields.condinv_for(name) is None:
+    from meep_gpu import deposit_repair  # noqa: PLC0415
+
+    armed = 0
+    for source in driver._sources:  # noqa: SLF001 - the control rebinds this driver's own
+        if source.field_type == "B" or source.is_integrated:
             continue
-        before[name] = getattr(self.fields, name).copy()
-    for source in scaled:
-        source.inject(self.fields, source_time)
-    for name, prev in before.items():
-        array = getattr(self.fields, name)
-        array -= prev
-        array *= self.fields.condinv_for(name)
-        array += prev
+        shipped = source.inject
+
+        def retired(fields, time_value, _shipped=shipped, _source=source):
+            name = "D" + _source.component[1]
+            condinv = fields.condinv_for(name)
+            if condinv is None:
+                return _shipped(fields, time_value)
+            before = getattr(fields, name).copy()
+            _shipped(fields, time_value)
+            array = getattr(fields, name)
+            outside = cp.ones(array.shape, dtype=bool)
+            index = deposit_repair._deposit_index(_source)  # noqa: SLF001
+            if index is not None:
+                outside[index] = False
+            values = array[outside]
+            values -= before[outside]
+            values *= condinv[outside]
+            values += before[outside]
+            array[outside] = values
+            return None
+
+        source.inject = retired
+        armed += 1
+    return armed
 
 
 def _retired_passes_control(cp) -> Dict[str, Any]:
@@ -2705,8 +2889,6 @@ def _retired_passes_control(cp) -> Dict[str, Any]:
     (signed-zero pairs, and on device the subnormals the whole-volume passes
     flush), so the artifact says WHAT the retired composition destroyed.
     """
-    import types  # noqa: PLC0415
-
     _name, cell, boundaries, _steps, components, pml_cells = CASES_BY_NAME["wall_xy"]
     seed = case_seed("lifted_refusal_control", str(cell))
     made = [build_driver(cp, cell, boundaries, seed, "signed_zero_lattice",
@@ -2716,8 +2898,7 @@ def _retired_passes_control(cp) -> Dict[str, Any]:
     reference, retired = made
     row: Dict[str, Any] = {"leg": "retired_control", "device": True, "armed": True}
     try:
-        retired._inject_electric_through_conductivity = types.MethodType(
-            _retired_whole_volume_inject, retired)
+        row["armed_sources"] = _retired_whole_volume_inject(cp, retired)
         row["per_step"] = []
         for step in range(1, CARRY_STEPS + 1):
             reference.step()

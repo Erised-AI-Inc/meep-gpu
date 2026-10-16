@@ -100,7 +100,7 @@ Then run the [first lifted simulation](first-lift.md).
   environment: GPU architecture `applegpu_g13s` (Apple M1 Max), PyTorch 2.10.0,
   Metal frontend `metalfe-32023.850.10`, fast math off. Any other Apple GPU,
   PyTorch version or macOS build runs them uncertified and says so.
-  `MEEP_GPU_ALLOW_UNCERTIFIED=0` restricts every table to its certified identities
+  `MEEP_GPU_HARDWARE=certified` restricts every table to its certified identities
   ([GPUs that are not on the certified list](https://github.com/Erised-AI-Inc/meep-gpu/blob/main/INSTALL.md#gpus-that-are-not-on-the-certified-list)).
 - **The harness is not needed.** Using the package needs nothing under
   `parity/`: that directory is the certification and benchmark harness, and it is
@@ -135,7 +135,7 @@ question specifically.
 dispatch will run, which kernels would serve, or whether they are certified: a
 Mac outside the certified environment resolves <code>"metal"</code> here as the
 certified one does, and its kernels then run uncertified or, under
-<code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code>, are refused by name at the first
+<code>MEEP_GPU_HARDWARE=certified</code>, are refused by name at the first
 step, leaving the run on the host CPU. For that, run a step and read what ran —
 see [Reading what ran](reading-what-ran.md).
 

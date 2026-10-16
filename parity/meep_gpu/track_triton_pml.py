@@ -45,6 +45,9 @@ _REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 
 from meep_gpu.triton_kernels import kernels as _kernels  # noqa: E402
 from meep_gpu.triton_kernels import dispersive_update_e as _dispersive  # noqa: E402
@@ -53,6 +56,7 @@ from meep_gpu.triton_kernels.launch import (  # noqa: E402
     plan_from_arrays,
     plan_fused_pair_from_arrays,
 )
+from gate_chunk_records import every_cell_record  # noqa: E402
 
 #: The shipped kernels' sources, for the mutation leg to rewrite. One entry per
 #: kernel the gate can drive; ``apply_source_mutation`` requires a mutation to
@@ -131,29 +135,49 @@ def launch(sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any],
     ``num_warps`` CHANGES THE COMPILED KERNEL, so it is a gate axis and not a
     tuning knob: a value that was never swept is a value the byte gate never
     certified. ``None`` means Triton's default.
+
+    THE CHUNK RECORD IS :func:`gate_chunk_records.every_cell_record`, for every leg:
+    the probe's hand references step the split-field recurrence on every cell, and
+    its synthetic coefficient tables hold a non-unit coefficient on every cell, so
+    the division its cases describe is every cell inside a layer chunk. A probe
+    case whose reference keys the forms on a layer's own division hands its record
+    over instead.
     """
+    record = every_cell_record(_volume_shape(arrays))
     if sub_step == "fused_pair_B":
         bindings = extra or {}
         plan = plan_fused_pair_from_arrays(
             "B", arrays, flat, bindings["h_flat"], [int(c) for c in codes],
             tuple(bool(f) for f in bindings["zero_metal"]), float(dtdx),
-            kernel=_MUTATED_FUSED_PAIR, num_warps=bindings.get("num_warps"))
+            kernel=_MUTATED_FUSED_PAIR, num_warps=bindings.get("num_warps"),
+            chunk_bounds=record)
         plan.run(guard=_GUARD)
         return
     if sub_step == "update_E_dispersive":
         bindings = extra or {}
         plan = _dispersive.plan_dispersive_constitutive_from_arrays(
-            arrays, flat, bindings["poles"], kernel=_MUTATED_DISPERSIVE)
+            arrays, flat, bindings["poles"], kernel=_MUTATED_DISPERSIVE,
+            chunk_bounds=record)
         plan.run(guard=_GUARD)
         return
     if sub_step in ("update_H", "update_E"):
         plan = plan_constitutive_from_arrays(
-            sub_step.split("_", 1)[1], arrays, flat, kernel=_MUTATED_CONSTITUTIVE)
+            sub_step.split("_", 1)[1], arrays, flat, kernel=_MUTATED_CONSTITUTIVE,
+            chunk_bounds=record)
         plan.run(guard=_GUARD)
         return
     plan = plan_from_arrays(sub_step, arrays, flat, [int(c) for c in codes],
-                            float(dtdx), kernel=_MUTATED_KERNEL)
+                            float(dtdx), kernel=_MUTATED_KERNEL, chunk_bounds=record)
     plan.run(guard=_GUARD)
+
+
+def _volume_shape(arrays: Dict[str, Any]) -> Tuple[int, ...]:
+    """The stored extent every volume of one launch shares (the first three-axis one)."""
+    for value in arrays.values():
+        shape = tuple(int(n) for n in getattr(value, "shape", ()))
+        if len(shape) == 3:
+            return shape
+    raise ValueError("the launch was handed no three-axis volume to size its chunk record")
 
 
 # ---------------------------------------------------------------------------
@@ -165,20 +189,33 @@ def launch(sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any],
 # the gate refuses a mutation that matched nothing — a mutation that has drifted
 # away from the kernel is not exercising anything.
 
+#: The curl call (``forms.curl_stencil``), whose grouping is MEEP's left-to-right
+#: ``dtdx * (((g1s - g1) + g2) - g2s)``. The mutation puts the pairwise grouping the
+#: kernels carried before the forms moved into ``forms.py`` back AT THE CALL SITE,
+#: which is a source mutation of the kernel itself and the same defect.
 _STENCIL = re.compile(
-    r"dtdx \* \(\((\w+) - (\w+)\) \+ \((\w+) - (\w+)\)\)")
+    r"curl(?P<t>\d) = curl_stencil\((?P<g1s>\w+), (?P<g1>\w+), (?P<g2>\w+), "
+    r"(?P<g2s>\w+), dtdx, (?P<p1>\w+), (?P<p2>\w+)\)")
 _MASK = re.compile(r"tl\.where\(at_[xyz], 0\.0, (curl\d)\)")
+#: The two curl forms' call (``forms.curl_form``): the dsig pair, then the dsigu pair,
+#: then the record line that keys the select. The kernel decides which pair is which,
+#: which is what the swap mutation below attacks.
 _RECURRENCE = re.compile(
-    r"n(?P<t>\d) = \(\(p(?P=t) \* km_(?P<s>[xyz])\) - curl(?P=t)\) \* si_(?P=s)\n"
-    r"(?P<pad>\s+)v(?P=t) = \(\(\(tl\.load\(f(?P=t) \+ idx, mask=live, other=0\.0\)"
-    r" \* km_(?P<u>[xyz])\) \+ n(?P=t)\) - p(?P=t)\) \* si_(?P=u)")
-_FU_STORE = re.compile(r"\n *tl\.store\(u\d \+ idx, n\d, mask=live\)")
+    r"km_(?P<s>[xyz]), si_(?P=s), km_(?P<u>[xyz]), si_(?P=u), du(?P<t>\d)\)")
+_FU_STORE = re.compile(r"\n *tl\.store\(u(\d) \+ idx, n\1, mask=live & du\1\)")
 
 
 def _regroup_stencil(source: str) -> Tuple[str, int]:
-    """Mutation 3: ``dtdx*((a-b)+(c-d))`` -> ``dtdx*(a-b+c-d)``, i.e. ``((a-b)+c)-d``."""
-    return _STENCIL.sub(r"dtdx * (\1 - \2 + \3 - \4)", source), \
-        len(_STENCIL.findall(source))
+    """Mutation 3: MEEP's ``((a-b)+c)-d`` -> the pairwise ``(a-b)+(c-d)``.
+
+    Written as the pre-forms expression at the call site, so the whole mutation is a
+    rewrite of the kernel's own source — which is what the leg compiles — and the
+    partner-presence select goes with it, exactly as it did before the forms existed.
+    """
+    def pairwise(match: "re.Match[str]") -> str:
+        return (f"curl{match['t']} = dtdx * (({match['g1s']} - {match['g1']})"
+                f" + ({match['g2']} - {match['g2s']}))")
+    return _STENCIL.sub(pairwise, source), len(_STENCIL.findall(source))
 
 
 def _drop_metallic_mask(source: str) -> Tuple[str, int]:
@@ -192,12 +229,10 @@ def _drop_metallic_mask(source: str) -> Tuple[str, int]:
 
 
 def _swap_dsig_dsigu(source: str) -> Tuple[str, int]:
-    """Mutation 5: the recurrence reads dsigu's coefficients where dsig's belong."""
+    """Mutation 5: the forms read dsigu's coefficients where dsig's belong."""
     def swap(match: "re.Match[str]") -> str:
-        t, s, u, pad = match["t"], match["s"], match["u"], match["pad"]
-        return (f"n{t} = ((p{t} * km_{u}) - curl{t}) * si_{u}\n"
-                f"{pad}v{t} = (((tl.load(f{t} + idx, mask=live, other=0.0) "
-                f"* km_{s}) + n{t}) - p{t}) * si_{s}")
+        t, s, u = match["t"], match["s"], match["u"]
+        return f"km_{u}, si_{u}, km_{s}, si_{s}, du{t})"
     return _RECURRENCE.sub(swap, source), len(_RECURRENCE.findall(source))
 
 
@@ -215,10 +250,14 @@ def _drop_fu_store(source: str) -> Tuple[str, int]:
 # which is why the gate's drift check is on the TOTAL across attributes rather
 # than per attribute.
 
+#: The constitutive form's call (``forms.constitutive_form``), whose grouping is
+#: MEEP's ``f + ((kps*src) - (kms*prev))``. The mutation puts the two separate
+#: accumulations the kernels carried before the forms moved out back at the call site.
 _CONST_ACCUMULATE = re.compile(
-    r"a(?P<t>\d) = a(?P=t) \+ kp_(?P=t) \* src(?P=t)\n"
-    r"(?P<pad>\s+)a(?P=t) = a(?P=t) - km_(?P=t) \* prev(?P=t)")
-_CONST_FW_STORE = re.compile(r"\n *tl\.store\(w(\d) \+ idx, src\1, mask=live\)")
+    r"a(?P<t>\d) = constitutive_form\(a(?P=t), prev(?P=t), src(?P=t), "
+    r"kp_(?P=t), km_(?P=t), dw(?P=t)\)")
+_CONST_FW_STORE = re.compile(
+    r"\n *tl\.store\(w(\d) \+ idx, src\1, mask=live & dw\1\)")
 _CONST_INV_EPS = re.compile(
     r"src(?P<t>\d) = tl\.load\(g(?P=t) \+ idx, mask=live, other=0\.0\)"
     r" \* tl\.load\(e(?P=t) \+ idx, mask=live,\n\s+other=0\.0\)")
@@ -232,9 +271,9 @@ def _regroup_constitutive(source: str) -> Tuple[str, int]:
     curl's regroup: a different float32 number, no error, no crash.
     """
     return (_CONST_ACCUMULATE.sub(
-        lambda m: (f"a{m['t']} = a{m['t']} + (kp_{m['t']} * src{m['t']} "
-                   f"- km_{m['t']} * prev{m['t']})\n"
-                   f"{m['pad']}a{m['t']} = a{m['t']}"), source),
+        lambda m: (f"a{m['t']} = tl.where(dw{m['t']}, "
+                   f"(a{m['t']} + kp_{m['t']} * src{m['t']}) "
+                   f"- km_{m['t']} * prev{m['t']}, src{m['t']})"), source),
         len(_CONST_ACCUMULATE.findall(source)))
 
 
@@ -263,7 +302,8 @@ def _store_fw_before_reading_prev(source: str) -> Tuple[str, int]:
         # the store is about to write, without reordering statements — the same
         # wrong number, expressed as a substitution the mutation leg can count.
         pattern = re.compile(
-            rf"prev{index} = tl\.load\(w{index} \+ idx, mask=live, other=0\.0\)")
+            rf"prev{index} = tl\.load\(w{index} \+ idx, mask=live & dw{index}, "
+            rf"other=0\.0\)")
         out, hits = pattern.subn(
             f"prev{index} = tl.load(g{index} + idx, mask=live, other=0.0)",
             out, count=1)
@@ -288,14 +328,15 @@ def _drop_inverse_epsilon(source: str) -> Tuple[str, int]:
 # the other three kernels, which is why the gate's drift check is on the TOTAL across
 # attributes rather than per attribute.
 #
-# TWO OF THEM ALSO HIT THE NON-DISPERSIVE KERNELS, and the site counts in the
+# ONE OF THEM ALSO HITS THE NON-DISPERSIVE KERNELS, and the site counts in the
 # artifact say so rather than the prose claiming otherwise:
-# ``drop_fw_store_dispersive``'s needle is the same statement shape
-# ``constitutive_step`` and ``fused_curl_constitutive_B`` write (3 sites each), and
-# ``store_fw_before_reading_prev_dispersive``'s likewise. That is harmless — the
-# dispersive leg launches only the dispersive kernel — and it is worth having in the
-# record: a needle that matched only the intended kernel because it was written
-# around a rename would be a weaker anchor, not a stronger one.
+# ``drop_fw_store_dispersive``'s needle is the same masked statement shape
+# ``constitutive_step`` and ``fused_curl_constitutive_B`` write (3 sites each). That
+# is harmless — the dispersive leg launches only the dispersive kernel — and it is
+# worth having in the record: a needle that matched only the intended kernel because
+# it was written around a rename would be a weaker anchor, not a stronger one.
+# ``store_fw_before_reading_prev_dispersive`` is anchored on the dispersive form's
+# own call (its target ``v``, its ``f`` load), so it hits that kernel alone.
 #
 # The kernel's subtraction chain is a run of statements guarded by ``tl.constexpr``
 # conditions, one per compiled pole slot::
@@ -307,6 +348,9 @@ def _drop_inverse_epsilon(source: str) -> Tuple[str, int]:
 #         s0 = s0 - tl.load(a1 + idx, mask=live, other=0.0)
 #     ...
 #     src0 = s0 * tl.load(e0 + idx, mask=live, other=0.0)
+#     tl.store(w0 + idx, src0, mask=live & dw0)
+#     v0 = constitutive_form(tl.load(f0 + idx, mask=live & dw0, other=0.0),
+#                              prev0, src0, kp_0, km_0, dw0)
 #
 # so every needle below is anchored on that shape and reports its site count.
 
@@ -318,10 +362,14 @@ _DISP_SRC_LINE = re.compile(
     r"(?P<pad>\n(?P<ind> *))src(?P<t>\d) = s(?P=t)"
     r" \* tl\.load\(e(?P=t) \+ idx, mask=live, other=0\.0\)")
 _DISP_ACCUMULATE = re.compile(
-    r"v(?P<t>\d) = v(?P=t) \+ kp_(?P=t) \* src(?P=t)\n"
-    r"(?P<pad>\s+)v(?P=t) = v(?P=t) - km_(?P=t) \* prev(?P=t)")
-_DISP_FW_STORE = re.compile(r"\n *tl\.store\(w(\d) \+ idx, src\1, mask=live\)")
-_DISP_PREV_USE = re.compile(r"v(?P<t>\d) = v(?P=t) - km_(?P=t) \* prev(?P=t)")
+    r"v(?P<t>\d) = constitutive_form\((?P<old>tl\.load\(f(?P=t) \+ idx, "
+    r"mask=live & dw(?P=t), other=0\.0\)),\n"
+    r"(?P<pad>\s+)prev(?P=t), src(?P=t), kp_(?P=t), km_(?P=t), dw(?P=t)\)")
+_DISP_FW_STORE = re.compile(
+    r"\n *tl\.store\(w(\d) \+ idx, src\1, mask=live & dw\1\)")
+_DISP_PREV_USE = re.compile(
+    r"(?P<head>v(?P<t>\d) = constitutive_form\(tl\.load\(f(?P=t) \+ idx, "
+    r"mask=live & dw(?P=t), other=0\.0\),\n\s+)prev(?P=t), src(?P=t),")
 _DISP_FIRST_GUARD = re.compile(r"if NP(?P<t>\d) > 0:")
 
 
@@ -353,17 +401,20 @@ def _sum_then_subtract(source: str) -> Tuple[str, int]:
 
 
 def _regroup_constitutive_dispersive(source: str) -> Tuple[str, int]:
-    """``((E + kps*src) - kms*prev)`` -> ``E + (kps*src - kms*prev)``.
+    """INVERTED: the package's previous two accumulations planted back.
 
-    The array path spells the update as two accumulations (``field += kps * fw``
-    then ``field -= kms * fw_previous``), so this is the constitutive regroup with
-    the dispersive source. Caught 30/30 on the real engine, at BOTH Courant numbers —
-    the non-representable multiplicands are the PML coefficients themselves.
+    The shipped form is MEEP's ``E + ((kps*src) - (kms*prev))`` (``f[i] += X - Y``
+    forms the right-hand side first; ``forms.constitutive_form``) on the component's
+    dsigw cells and ``src`` elsewhere. The mutant keeps the same cells and the same
+    select and spells the accumulation as the kernel did before the alignment,
+    ``(E + kps*src) - kms*prev``: the same algebra and a different float32 number on
+    most PML cells, because the non-representable multiplicands are the PML
+    coefficients themselves (KERNELS.md section 7.1).
     """
     return (_DISP_ACCUMULATE.sub(
-        lambda m: (f"v{m['t']} = v{m['t']} + (kp_{m['t']} * src{m['t']} "
-                   f"- km_{m['t']} * prev{m['t']})\n"
-                   f"{m['pad']}v{m['t']} = v{m['t']}"), source),
+        lambda m: (f"v{m['t']} = tl.where(dw{m['t']}, ({m['old']} + kp_{m['t']} * "
+                   f"src{m['t']})\n{m['pad']}- km_{m['t']} * prev{m['t']}, "
+                   f"src{m['t']})"), source),
         len(_DISP_ACCUMULATE.findall(source)))
 
 
@@ -384,12 +435,12 @@ def _store_fw_before_reading_prev_dispersive(source: str) -> Tuple[str, int]:
 
     The array path copies ``fw`` BEFORE overwriting it. A kernel that reads it after
     the store gets ``src`` where ``fw_previous`` belongs — which is what this
-    substitutes, without reordering statements, so the mutation leg can count it.
-    Wrong only where ``kms != 0``, i.e. INSIDE THE PML ONLY, so it looks like a
-    slightly worse absorber rather than like a bug.
+    substitutes into the form's ``prev`` argument, without reordering statements, so
+    the mutation leg can count it. Wrong only where ``kms != 0``, i.e. INSIDE THE PML
+    ONLY, so it looks like a slightly worse absorber rather than like a bug.
     """
     return (_DISP_PREV_USE.sub(
-        lambda m: f"v{m['t']} = v{m['t']} - km_{m['t']} * src{m['t']}", source),
+        lambda m: f"{m['head']}src{m['t']}, src{m['t']},", source),
         len(_DISP_PREV_USE.findall(source)))
 
 
@@ -439,9 +490,12 @@ _FUSED_WIPE = re.compile(
     r"v(?P<t>\d) = tl\.where\(at_(?P<ax>[xyz]), 0\.0, v(?P=t)\)")
 _FUSED_STORE_F = re.compile(
     r"tl\.store\(f(?P<t>\d) \+ idx, v(?P=t), mask=live\)")
+#: The curl half's six stores: three auxiliaries on the recurrence's cells (the
+#: auxiliary contract's region mask) and three fields on every live cell.
 _FUSED_STORE_BLOCK = re.compile(
-    r"(?P<pad>\n    )tl\.store\(u0 \+ idx, n0, mask=live\)"
-    r"(?:\n    tl\.store\(\w\d \+ idx, \w\d, mask=live\)){5}")
+    r"(?P<pad>\n    )tl\.store\(u0 \+ idx, n0, mask=live & du0\)"
+    r"(?:\n    tl\.store\(u\d \+ idx, n\d, mask=live & du\d\)){2}"
+    r"(?:\n    tl\.store\(f\d \+ idx, v\d, mask=live\)){3}")
 #: Which v-register each axis's wall wipe belongs to, for the two ZM mutations.
 _ZM_AXIS_OF = {"0": "x", "1": "y", "2": "z"}
 
@@ -519,6 +573,11 @@ def _hoist_constitutive_above_curl_store(source: str) -> Tuple[str, int]:
     reordering hazard" stops being an assertion. A leg that reports this CAUGHT is
     reporting a defect in the kernel or in the harness.
     """
+    # Only the fused kernels have a constitutive block to hoist above. In the
+    # separate curl kernel the six stores ARE the tail, so moving them there is a
+    # no-op that would report a site and no byte change -- a hollow leg.
+    if "prev0 = tl.load(w0 + idx" not in source:
+        return source, 0
     match = _FUSED_STORE_BLOCK.search(source)
     if match is None:
         return source, 0
@@ -549,6 +608,16 @@ SOURCE_MUTATIONS = {
     "drop_inverse_epsilon_dispersive": _drop_inverse_epsilon_dispersive,
     "inv_eps_left": _inv_eps_left,
 }
+
+
+def _constant(name: str) -> int:
+    """One of ``kernels.py``'s ``tl.constexpr`` globals as a plain int.
+
+    ``tl.constexpr`` wraps its value on a Triton host and returns it unwrapped under
+    the NumPy shim the host derivation tests install, so the attribute is optional.
+    """
+    value = getattr(_kernels, name)
+    return int(getattr(value, "value", value))
 
 
 def source_attributes() -> Tuple[str, ...]:
@@ -585,10 +654,22 @@ def set_source_mutation(mutated: Dict[str, str]) -> None:
         source = mutated.get(attribute)
         if source is None:
             continue
-        # The curl kernel reads PERIODIC/METALLIC as tl.constexpr globals; the
-        # mutated copy must declare them the same way or Triton refuses the name.
+        # The kernels read PERIODIC/METALLIC and the record's two word offsets as
+        # tl.constexpr globals, and call the shared @triton.jit forms of
+        # triton_kernels/forms.py by their imported names; the mutated copy must
+        # declare and import exactly the same way or Triton refuses the name. The
+        # constants are restated from kernels.py rather than spelled again, so a
+        # change there cannot leave a stale copy here.
         header = ("import triton\nimport triton.language as tl\n"
-                  "PERIODIC = tl.constexpr(0)\nMETALLIC = tl.constexpr(1)\n\n")
+                  "from meep_gpu.triton_kernels.forms import ("
+                  "axis_present, constitutive_form, curl_form, curl_stencil, "
+                  "record_in)\n"
+                  f"PERIODIC = tl.constexpr({_constant('PERIODIC')})\n"
+                  f"METALLIC = tl.constexpr({_constant('METALLIC')})\n"
+                  "RECORD_HALF_INTEGER = tl.constexpr("
+                  f"{_constant('RECORD_HALF_INTEGER')})\n"
+                  "RECORD_PRESENCE = tl.constexpr("
+                  f"{_constant('RECORD_PRESENCE')})\n\n")
         handle = tempfile.NamedTemporaryFile("w", suffix="_mutated_pml.py",
                                              delete=False)
         handle.write(header + source)

@@ -1,30 +1,23 @@
 """
 Tests for the STOCK-MEEP susceptibility-sigma recovery, and its lift into the converter.
 
-Three layers, in the order a defect would reach them:
+Two layers, in the order a defect would reach them:
 
 1. **The numerics alone**, with no MEEP at all — the basis against MEEP's own
    ``chi1`` closed form retyped from susceptibility.cpp:297-307, an exact recovery
    from a synthetic permittivity, the sampling band, and each of the three
    refusals :mod:`~.sigma_recovery` exists to make (a singular basis, a
-   zero-frequency pole, a pole list the held-out frequency disagrees with).
-2. **The recovery against the EXACT reader**, point by point. This is the
-   comparison the patched environment exists for: on a MEEP carrying
-   ``fields.get_susceptibility_sigma`` both routes run over the same cell and the
-   same Yee points, and their sigma volumes are subtracted. Measured worst
-   disagreement, relative to each term's own largest sigma:
-
-       two-block Lorentz+Drude, res 10   cond 5.71e+00, 6 samples    5.7e-08
-       meep.materials.Au, 6 poles, res 20  cond 8.57e+02, 14 samples   1.4e-06
-
-   SKIPS on a stock MEEP, where there is no exact reader to compare against.
-3. **The lift end to end on whatever MEEP is installed**, against CPU MEEP
-   stepping the same cell — with the capability probe forced False AND the
-   declared-geometry lookup forced to decline, so that the INVERSION is the route
-   under test in both environments. Since the lookup became the default
-   compatibility route (``sigma_lookup.py``), forcing only the reader probe would
-   silently exercise the lookup instead; the route each lift took is asserted
-   rather than assumed.
+   zero-frequency pole, a pole list the held-out frequency disagrees with), and
+   the converter's clamp and refusal of a recovered gain.
+2. **The lift end to end on stock MEEP**, against CPU MEEP stepping the same
+   cell — with the declared-geometry lookup forced to decline, so that the
+   INVERSION is the route under test. The lookup is the default route
+   (``sigma_lookup.py``), so without that the lift would exercise it instead; the
+   route each lift took is asserted rather than assumed. Measured on 2026-08-04
+   against MEEP's stored sigma words, point by point, the inversion agrees to
+   5.7e-08 on the two-block Lorentz+Drude cell (resolution 10, cond 5.71e+00, 6
+   samples) and to 1.4e-06 on ``meep.materials.Au`` (6 poles, resolution 20, cond
+   8.57e+02, 14 samples).
 
 THE NEGATIVE CONTROL, and why it is not optional. The whole recovery turns on
 solving for ``c_n = sigma_n * w0_n**2`` rather than for ``sigma_n``. That choice
@@ -202,6 +195,7 @@ def test_two_indistinguishable_poles_are_refused_rather_than_split():
         plan_recovery(poles)
     assert "singular" in str(refusal.value)
     assert f"{CONDITION_LIMIT:.0e}" in str(refusal.value)
+    assert str(refusal.value).endswith("run this simulation on CPU MEEP."), str(refusal.value)
 
 
 def test_a_zero_frequency_pole_is_refused_because_sigma_is_c_over_w0_squared():
@@ -286,6 +280,38 @@ def test_a_drude_frequency_is_not_observable_from_chi1inv_and_need_not_be():
     )
 
 
+def test_a_recovered_gain_is_clamped_inside_the_noise_and_refused_beyond_it():
+    """A negative recovered sigma is clamped to MEEP's zero, or refused with what to do instead.
+
+    ``from_meep._settle_recovered_sigma`` runs after every inversion. A least-squares
+    residue of either sign at a point where MEEP holds sigma = 0 is clamped to exactly
+    zero; a negative sigma worth more permittivity than ``_RECOVERED_GAIN_TOLERANCE``
+    is gain, and the lift refuses it with the number and an instruction the user can
+    follow on any MEEP. Driven with no MEEP: one Lorentz pole, the plan the recovery
+    would have used, and a volume holding the value under test. The two values carry
+    7.6e-12 and 7.6e-01 of permittivity (scale 1, largest basis magnitude 7.56 over the
+    four sampled frequencies 0.5 .. 1.5), five orders below and six above the 1e-06
+    limit, so no change of the limit by less than five orders flips either assertion.
+    """
+    from .dispersion import LORENTZIAN, Susceptibility
+    from .from_meep import _settle_recovered_sigma
+
+    plan = plan_recovery([SusceptibilityPole(frequency=1.0, gamma=0.1, drude=False)])
+    term = Susceptibility(frequency=1.0, gamma=0.1, kind=LORENTZIAN)
+    volumes = {name: np.full((1, 2, 2, 1), 0.4) for name in ("Ex", "Ey", "Ez")}
+    volumes["Ez"][0, 0, 0, 0] = -1e-12
+    _settle_recovered_sigma(volumes, (term,), plan)
+    assert volumes["Ez"][0, 0, 0, 0] == 0.0, volumes["Ez"]
+    assert float(volumes["Ex"].min()) == 0.4, volumes["Ex"]
+
+    volumes["Ez"][0, 1, 1, 0] = -0.1
+    with pytest.raises(SigmaRecoveryRefused) as refusal:
+        _settle_recovered_sigma(volumes, (term,), plan)
+    message = str(refusal.value)
+    assert "A negative sigma is gain" in message, message
+    assert message.endswith("Run this simulation on CPU MEEP."), message
+
+
 @requires_meep
 @skip_without_meep
 def test_the_naive_sigma_basis_is_singular_where_the_product_basis_is_not():
@@ -361,15 +387,11 @@ def test_the_naive_sigma_basis_is_singular_where_the_product_basis_is_not():
     )
 
 
-# --- against the exact reader (patched MEEP only) ----------------------------------
+# --- cells -------------------------------------------------------------------------
 
 
 def _two_block_cell(mp, resolution: int = 10):
-    """A Lorentz block and a Drude block in vacuum: three media, dispersion structured.
-
-    The cell ``test_from_meep.py::test_structured_dispersive_media_lift_through_the_sigma_reader``
-    already uses, repeated here so the two paths are measured on the same structure.
-    """
+    """A Lorentz block and a Drude block in vacuum: three media, dispersion structured."""
     geometry = [
         mp.Block(center=mp.Vector3(-1.0, 0, 0), size=mp.Vector3(1.46, 1.46, mp.inf),
                  material=mp.Medium(epsilon=4.0, E_susceptibilities=[
@@ -383,22 +405,6 @@ def _two_block_cell(mp, resolution: int = 10):
                          sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4),
                                             component=mp.Ez,
                                             center=mp.Vector3(0, -1.2, 0))])
-
-
-def _gold_cell(mp, resolution: int = 20):
-    """A ``meep.materials.Au`` block in vacuum — six poles, the hard case.
-
-    Resolution 20 rather than 10 because Au's 10.74 pole needs ``f < 1/(pi*dt)``
-    (Materials.md:75) before :meth:`~.dispersion.Susceptibility.require_stable` will
-    let the driver hold it: dt = 0.025 gives a limit of 12.7.
-    """
-    from meep.materials import Au
-    return mp.Simulation(cell_size=mp.Vector3(1.0, 1.0, 0.0), resolution=resolution,
-                         geometry=[mp.Block(center=mp.Vector3(-0.25, 0, 0),
-                                            size=mp.Vector3(0.5, 0.5, mp.inf), material=Au)],
-                         force_complex_fields=True,
-                         sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4),
-                                            component=mp.Ez, center=mp.Vector3(0.3, 0.3, 0))])
 
 
 def _shared_pole_cell(mp, resolution: int = 10):
@@ -424,111 +430,19 @@ def _shared_pole_cell(mp, resolution: int = 10):
                                             center=mp.Vector3(0, -1.2, 0))])
 
 
-def _match_term(term, candidates) -> int:
-    """Index of ``term`` in ``candidates``, matched on physics rather than on identity.
-
-    MEEP's ``get_susceptibility_params`` returns ``realnum``, which is float32 in a
-    single-precision build, so a declared gamma of 0.1 comes back as 0.10000000149;
-    an exact key would never match. The chain order is not assumed either — the
-    reader takes MEEP's order and the recovery takes declaration order, and neither
-    promises to be the other's.
-    """
-    best = None
-    for index, other in enumerate(candidates):
-        if other.kind != term.kind:
-            continue
-        distance = (abs(other.frequency - term.frequency) / max(abs(term.frequency), 1e-30)
-                    + abs(other.gamma - term.gamma) / max(abs(term.gamma), 1e-30))
-        if best is None or distance < best[1]:
-            best = (index, distance)
-    assert best is not None and best[1] < 1e-5, (
-        f"no chain entry matches {term} among {candidates} (closest {best})"
-    )
-    return best[0]
-
-
-@requires_meep
-@skip_without_meep
-@pytest.mark.parametrize("case", ["two_block", "gold"])
-def test_the_recovered_sigma_matches_the_exact_reader_point_by_point(case):
-    """The recovery against ``fields.get_susceptibility_sigma``, over every Yee point.
-
-    The reason the patched environment exists. Both routes are run over the SAME
-    initialized simulation and the same driver, so nothing but the route differs, and
-    the volumes are subtracted term by term, component by component. Measured worst
-    disagreement relative to each term's own largest sigma:
-
-        two_block  2 poles  cond 5.71e+00   6 samples   **5.7e-08**
-        gold       6 poles  cond 8.57e+02  14 samples   **1.4e-06**
-
-    Both are far above the reader's exactness and far below anything that changes a
-    field, which is exactly the trade the compatibility path makes: the reader stays
-    preferred where it exists, and the recovery serves every other MEEP.
-
-    SKIPPED on a stock MEEP — there is no exact reader to compare against, which is a
-    statement about the oracle, not a silent pass. The stock environment's own bar is
-    the end-to-end test below.
-    """
-    import meep as mp
-
-    from . import from_meep
-    from .from_meep import (
-        _materials_of,
-        _recover_sigma_volumes,
-        _sigma_volumes_through_the_reader,
-        lift_simulation,
-    )
-
-    if not from_meep._has_sigma_reader(mp):
-        pytest.skip("this MEEP lacks the sigma reader; build one with MEEP_SIGMA_PATCH=1 "
-                    "via parity/meep_gpu/build_meep_133_macos.sh")
-
-    sim = _two_block_cell(mp) if case == "two_block" else _gold_cell(mp)
-    driver = lift_simulation(sim, prefer_gpu=False)
-    try:
-        materials = _materials_of(mp, sim)
-        exact_terms, exact = _sigma_volumes_through_the_reader(mp, sim, driver)
-        terms, recovered = _recover_sigma_volumes(mp, sim, driver, materials)
-        assert len(terms) == len(exact_terms), (
-            f"{case}: the recovery enumerated {len(terms)} susceptibilities where MEEP's chain "
-            f"holds {len(exact_terms)}; the dedup no longer agrees with susceptibility_equiv"
-        )
-        worst = 0.0
-        for index, term in enumerate(terms):
-            reference = _match_term(term, exact_terms)
-            for name in ("Ex", "Ey", "Ez"):
-                mine = recovered[name][index]
-                theirs = exact[name][reference]
-                scale = max(float(np.abs(theirs).max()), 1e-300)
-                error = float(np.max(np.abs(mine - theirs))) / scale
-                worst = max(worst, error)
-                assert error < 5e-6, (
-                    f"{case}: recovered sigma for the {term.kind} term f0={term.frequency:g} on "
-                    f"{name} differs from the exact reader by {error:.3e} of its own largest "
-                    f"value ({scale:.4e})"
-                )
-        print(f"[sigma_recovery] reader-vs-recovery {case:10} terms={len(terms)} "
-              f"worst={worst:.3e}", flush=True)
-    finally:
-        driver.close()
-
-
 # --- the lift, end to end ----------------------------------------------------------
 
 
 @requires_meep
 @skip_without_meep
 @pytest.mark.parametrize("case", ["two_block", "shared_pole"])
-def test_a_structured_dispersive_cell_lifts_and_steps_without_the_sigma_reader(monkeypatch, case):
+def test_a_structured_dispersive_cell_lifts_and_steps_through_the_inversion(monkeypatch, case):
     """A cell whose media differ in dispersion runs on a STOCK MEEP, through the INVERSION.
 
-    ``_has_sigma_reader`` is the single seam both the gate and the lift consult, so
-    forcing it False is precisely "pretend this MEEP has no reader" — and on the
-    stock environment it is already False, which makes the patch a no-op there and
-    the test the real thing. ``_why_the_lookup_cannot_run`` is the second seam, and
-    it is forced too: the declared-geometry lookup is the DEFAULT compatibility
-    route now, so without this the test would exercise it and quietly stop covering
-    the inversion at all. The route taken is asserted, not assumed. Measured
+    ``_why_the_lookup_cannot_run`` is the seam that is forced: the declared-geometry
+    lookup is the DEFAULT route, so without this the test would exercise it and
+    quietly stop covering the inversion at all. The route taken is asserted, not
+    assumed. Measured
     against CPU MEEP stepping the same cell (MEEP 1.29.0, the stock ``reference``
     environment):
 
@@ -556,7 +470,6 @@ def test_a_structured_dispersive_cell_lifts_and_steps_without_the_sigma_reader(m
         run_on_gpu,
     )
 
-    monkeypatch.setattr(from_meep, "_has_sigma_reader", lambda module: False)
     monkeypatch.setattr(
         from_meep, "_why_the_lookup_cannot_run",
         lambda mp_module, simulation, media: "forced off so this test covers the inversion")
@@ -606,7 +519,7 @@ def test_a_structured_dispersive_cell_lifts_and_steps_without_the_sigma_reader(m
 
 @requires_meep
 @skip_without_meep
-def test_the_gate_refuses_a_zero_frequency_susceptibility_in_any_medium(monkeypatch):
+def test_the_gate_refuses_a_zero_frequency_susceptibility_in_any_medium():
     """The recovery's own precondition, verified rather than trusted.
 
     ``sigma`` comes back as ``c/w0**2``, so a zero-frequency pole has no recovery at
@@ -619,10 +532,7 @@ def test_the_gate_refuses_a_zero_frequency_susceptibility_in_any_medium(monkeypa
     """
     import meep as mp
 
-    from . import from_meep
     from .from_meep import gpu_compatibility
-
-    monkeypatch.setattr(from_meep, "_has_sigma_reader", lambda module: False)
 
     geometry = [
         mp.Block(center=mp.Vector3(-1.0, 0, 0), size=mp.Vector3(1.46, 1.46, mp.inf),
@@ -645,20 +555,16 @@ def test_the_gate_refuses_a_zero_frequency_susceptibility_in_any_medium(monkeypa
 
 @requires_meep
 @skip_without_meep
-def test_a_conductivity_is_refused_on_the_recovery_path_and_only_there(monkeypatch):
+def test_a_conductivity_shared_by_media_that_differ_in_dispersion_is_refused():
     """``D_conductivity`` scales the sampled permittivity by a factor the basis has no column for.
 
     monitor.cpp:340-344 multiplies eps by ``1 + i*sigma_D/f`` AFTER summing the
     susceptibilities, so every recovery sample is off by that factor. The held-out
     cross-check would refuse it, but for the wrong stated reason, so the gate names it
-    instead — and only on the recovery path: with the exact reader present the same
-    cell is accepted, because sigma is read rather than inferred and the epsilon lift
-    samples chi1inv at frequency 0, where monitor.cpp never reaches the conductivity
-    branch.
+    instead, and the refusal ends with an instruction the user can follow on any MEEP.
     """
     import meep as mp
 
-    from . import from_meep
     from .from_meep import gpu_compatibility
 
     def build():
@@ -676,14 +582,8 @@ def test_a_conductivity_is_refused_on_the_recovery_path_and_only_there(monkeypat
             sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4), component=mp.Ez,
                                center=mp.Vector3(0, -1.2, 0))])
 
-    if from_meep._has_sigma_reader(mp):
-        assert gpu_compatibility(build()).supported, (
-            "the conductivity refusal reached the READER path, which reads sigma directly and is "
-            "unaffected by monitor.cpp's frequency branch"
-        )
-
-    monkeypatch.setattr(from_meep, "_has_sigma_reader", lambda module: False)
     verdict = gpu_compatibility(build())
     joined = "\n".join(verdict.reasons)
     assert not verdict.supported, "a conductivity was accepted on the recovery path"
     assert "D_conductivity_diag" in joined and "monitor.cpp" in joined, joined
+    assert "Drop the conductivity, or run this simulation on CPU MEEP." in joined, joined

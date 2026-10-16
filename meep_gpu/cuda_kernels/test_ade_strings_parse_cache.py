@@ -33,12 +33,12 @@ from . import fused_polarization_pair as family
 #: The volume recurrence's store line, anchored on its leading newline so the
 #: module docstring's deeper-indented copy of the same arithmetic does not match.
 #: It appears once in each of the two kernel strings.
-_STORE_LINE = ("\n    p_out[idx] = ((p * c_now) + (c_prev * q)) + "
-               "(c_drive * (s * w));\n")
+_STORE_LINE = ("\n    p_out[idx] = gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + "
+               "(omega0dtsqr * (s * w)));\n")
 #: The same line regrouped -- the SAME LENGTH, so a size- or stat-keyed memo would
 #: not see the edit.
-_REGROUPED = ("\n    p_out[idx] = ((p * c_now) + (c_prev * q)) + "
-              "((c_drive * s) * w);\n")
+_REGROUPED = ("\n    p_out[idx] = gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + "
+              "((omega0dtsqr * s) * w));\n")
 
 
 class _CountingAst:
@@ -107,7 +107,7 @@ def test_a_different_text_of_the_same_length_is_parsed_anew(cold):
     # Exactly the string the edit landed in moved; the other two did not.
     assert edited["_update_P_pml_real_kernel_code"] != real[
         "_update_P_pml_real_kernel_code"]
-    assert "((c_drive * s) * w)" in edited["_update_P_pml_real_kernel_code"]
+    assert "((omega0dtsqr * s) * w)" in edited["_update_P_pml_real_kernel_code"]
     for name in ("_ADE_UPDATE_P_PROLOGUE", "_update_P_pml_real_uniform_kernel_code"):
         assert edited[name] == real[name]
     # And the real text is still served from its own entry.
@@ -124,7 +124,7 @@ def test_an_edit_reaching_the_reader_reaches_the_certified_body_check(cold,
     family._verified_ade_bodies()  # warm the memo on the real text
     altered = text.replace(_STORE_LINE, _REGROUPED, 1)
     monkeypatch.setattr(family, "_read_ade_kernels_text", lambda: altered)
-    assert "((c_drive * s) * w)" in family._certified_ade_strings()[
+    assert "((omega0dtsqr * s) * w)" in family._certified_ade_strings()[
         "_update_P_pml_real_kernel_code"]
     with pytest.raises(AssertionError, match="no longer carries the recurrence"):
         family._verified_ade_bodies()

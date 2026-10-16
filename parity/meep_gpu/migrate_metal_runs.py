@@ -171,7 +171,7 @@ def _migrate_dispatch(entry: Dict[str, Any], stamp: str) -> Tuple[Dict[str, Any]
         "that the per-architecture admission edit moved. Kept as the provenance of the "
         "dispatch shape this record still states. The next Metal route campaign writes "
         f"{metal_runs.RUNS}[<architecture>] from the architecture its legs record, under "
-        "the campaign metal_runs.route_campaign(metal_dispatch.METAL_DRIVER_ROUTE_GATE, "
+        "the campaign metal_runs.route_campaign(route_stamps.route_gate('metal'), "
         "<architecture>).")
     entry[metal_runs.RUNS] = {}
     entry[f"{HISTORY_PREFIX}{stamp}"] = history

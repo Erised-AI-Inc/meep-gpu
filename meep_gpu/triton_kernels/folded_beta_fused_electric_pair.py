@@ -5,8 +5,8 @@ The ``folded real beta PML`` -> ``folded beta run`` cell's D->E product. Both
 halves are already certified and neither is re-derived here:
 
 * the curl half is :func:`.folded_complex.folded_beta_pml_curl_step` (K3a) —
-  ``symmetry.pml_curl_step_folded``'s certified body plus THE SAME three-line
-  beta insert ``special_kz.beta_pml_curl_step`` adds to ``kernels.pml_curl_step``,
+  ``symmetry.pml_curl_step_folded``'s body plus THE SAME beta pass
+  ``special_kz.beta_pml_curl_step`` adds to ``kernels.pml_curl_step``,
   taken through its ``BACKWARD == 1`` arm;
 * the fills, the wall clear and the constitutive half are
   :func:`.folded_fused_pair.folded_fused_curl_constitutive_D`'s, byte-copied —
@@ -17,16 +17,19 @@ halves are already certified and neither is re-derived here:
   already makes between the folded curl and ``update_E`` on a beta = 0 run.
 
 SO THIS KERNEL IS ``folded_fused_curl_constitutive_D``, CHARACTER FOR CHARACTER,
-PLUS THE SAME THREE LINES ``folded_beta_pml_curl_step`` ADDS TO
-``pml_curl_step_folded``::
+PLUS THE PASS ``folded_beta_pml_curl_step`` ADDS TO ``pml_curl_step_folded``,
+after the three curl forms and before the stores — MEEP's order (the pass runs after
+every component's curl, step_db.cpp:161-175), the array path's
+(``stepping._apply_folded_increment``) and K3a's own placement::
 
     if HAS_BETA:
-        curl0 = curl0 - (beta_plus * b)
-        curl1 = curl1 - (beta_minus * a)
+        q0 = (beta_plus * b) * -1.0
+        q1 = (beta_minus * a) * -1.0
+        ...  (q0, q1 masked by the curl's own ownership clauses, both mask arms)
+        v0, n0 = fold_ladder(v0, n0, q0, si_y, si_z, du0)
+        v1, n1 = fold_ladder(v1, n1, q1, si_z, si_x, du1)
 
-placed AFTER the ``dtdx`` curl and BEFORE BOTH ownership masks — the array
-path's order (S:438-445 after :429, before :450), and K3a's own placement. A
-reader must be able to diff this body against those two and see nothing else
+A reader must be able to diff this body against those two and see nothing else
 moved; the gate's transcription leg asserts exactly that, statement by
 statement, against both shipped sources.
 
@@ -34,9 +37,9 @@ WHY THE BETA SLOT IS LOAD-BEARING UNDER A FOLD — ``folded_complex.py``'s modul
 docstring carries the measurement: the fold WIDENS the ownership mask from
 METALLIC-only at cell 0 to non-PERIODIC at cell 0 PLUS ``MIRROR_PERIODIC`` at
 the top plane, and beta touches targets 0 and 1 on both sub-steps, so one folded
-axis makes BOTH mask arms fire on BOTH beta targets. A kernel inserting beta
-below the masks leaves a live increment on the mirror plane and on the far ghost
-plane, invisible in the interior. THE FILLS THEN IMAGE THE STEPPED VALUE, beta
+axis makes BOTH mask arms fire on BOTH beta targets. An increment the pass left
+unmasked would be live on the mirror plane and on the far ghost plane, invisible in
+the interior. THE FILLS THEN IMAGE THE STEPPED VALUE, beta
 included: the carries below read ``v0``/``v1``/``v2`` after the recurrence, so a
 ghost cell's beta content is its source lane's, exactly as
 ``stepping._write_mirror_ghost`` images the array the beta term was added to.
@@ -239,7 +242,13 @@ __all__ = [
 
 if triton is not None:
 
-    from .folded_fused_pair import _carry_ghost_E  # noqa: E402 - certified, shared
+    # The forms, the fold ladder and the chunk record's word offsets, under the names
+    # the folded pair binds them; its ghost carries are its own device functions.
+    from .forms import (axis_present, constitutive_form, curl_form,  # noqa: E402
+                        curl_stencil, fold_ladder, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
+    from .folded_fused_pair import _carry_ghost_E  # noqa: E402 - shared
+
 
     PERIODIC = tl.constexpr(CODE_PERIODIC)
     MIRROR_METALLIC = tl.constexpr(CODE_MIRROR_METALLIC)
@@ -255,37 +264,29 @@ if triton is not None:
         w0, w1, w2,                       # constitutive aux: f_w_Ex, f_w_Ey, f_w_Ez
         ie0, ie1, ie2,                    # inverse epsilon, per target
         kp0, km0, kp1, km1, kp2, km2,     # constitutive kps/kms, HALF-INTEGER lattice
+        cb,                               # chunk record: both halves' forms
         nx, ny, nz, n_elem, dtdx,
-        beta_plus, beta_minus,            # f32(sign*2*pi*beta*dt), host-rounded once
         rx, ry, rz,                       # RUNTIME: stepping._far_reflect_rows
+        beta_plus, beta_minus,            # f32(sign*2*pi*beta*dt), host-rounded once
         BACKWARD: tl.constexpr,           # bound to 1 by every builder; see below
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         NEAR_X: tl.constexpr, NEAR_Y: tl.constexpr, NEAR_Z: tl.constexpr,
         FAR_X: tl.constexpr, FAR_Y: tl.constexpr, FAR_Z: tl.constexpr,
         ZM_X: tl.constexpr, ZM_Y: tl.constexpr, ZM_Z: tl.constexpr,
         PHX: tl.constexpr, PHY: tl.constexpr, PHZ: tl.constexpr,
-        HAS_BETA: tl.constexpr,           # compiled in only for beta != 0 runs
+        HAS_BETA: tl.constexpr,           # 1 on every admitted configuration
         BLOCK: tl.constexpr,
     ):
-        """beta ``step_D`` + ``fill_D`` + ``zero_metal_D`` + far fill + ``update_E``.
+        """Folded beta ``step_D`` + the fills + ``zero_metal_D`` + ``update_E``, one launch.
 
-        :func:`.folded_fused_pair.folded_fused_curl_constitutive_D`'s body with
-        :func:`.folded_complex.folded_beta_pml_curl_step`'s constexpr-gated insert
-        placed where the array path places it — after the ``dtdx`` curl and before
-        BOTH ownership masks (S:438-445 after :429, before :450). Nothing else
-        moves.
-
-        ``BACKWARD`` IS CARRIED AND MUST BE 1: both carries below are transcribed
-        for the D family's Yee shifts. ``HAS_BETA`` MUST BE 1 on any admitted
-        configuration — the beta family's clause is inverted and requires a nonzero
-        ``grid.beta``. It is carried rather than hard-coded so the gate has a
-        certified-kernel arm: at ``HAS_BETA = 0`` this body must reproduce
-        :func:`.folded_fused_pair.folded_fused_curl_constitutive_D` bit for bit,
-        which is a leg rather than an argument.
-
-        The remaining constexprs and runtime rows are exactly the plain folded
-        product's; see that kernel's docstring for the ownership restructure and
-        the chained near/far composition.
+        ``folded_fused_pair.folded_fused_curl_constitutive_D``'s body, character for character, plus the
+        beta pass of ``special_kz.beta_pml_curl_step``
+        after the curl forms and before the wall clear and the ghost carries -- the array
+        path's order (the curl, its beta pass, then the seam passes, then update_E). The
+        pass's increment carries the folded curl's two ownership blocks, so a cell the
+        curl leaves to a fill keeps its word through the pass, and every carried ghost
+        images the registers the pass leaves. The carries are the folded pair's own
+        device functions. ``HAS_BETA = 0`` builds ``folded_fused_curl_constitutive_D`` exactly.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -296,11 +297,13 @@ if triton is not None:
         i = plane // ny
 
         # ======================= the curl half ================================
-        # Verbatim from symmetry.pml_curl_step_folded via
-        # folded_fused_pair.folded_fused_curl_constitutive_D; the beta insert is
-        # the ONLY added statement group.
+        # Verbatim from symmetry.pml_curl_step_folded; the only edits below its
+        # stores are the ownership masks the near-fill carry needs.
 
         # --- the ghost rule, per axis (stepping._shift_up / _shift_down) -------
+        # PERIODIC wraps; every other rule serves an exact 0.0 past the face. On a
+        # folded axis that zero stands in for a value nothing reads: its only
+        # consumer is the plane the cell-0 mask below zeroes.
         if BACKWARD:
             si, sj, sk = i - 1, j - 1, k - 1
         else:
@@ -334,20 +337,22 @@ if triton is not None:
         c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
         # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
-
-        # --- the beta term (stepping._special_kz_beta_term), CENTER partners only
-        # AFTER the dtdx curl, BEFORE BOTH ownership masks — the array path's
-        # order, and folded_beta_pml_curl_step's own placement. No dtdx on the
-        # term (analytic derivative, S:733-735); the subtraction IS the array
-        # path's `curl + (-(c*g))` by IEEE-754's definition of subtraction.
-        if HAS_BETA:
-            curl0 = curl0 - (beta_plus * b)
-            curl1 = curl1 - (beta_minus * a)
+        # kernels.pml_curl_step's three calls: MEEP's left-to-right association with
+        # both partners, the one-partner form where the record says the other
+        # partner's derivative axis is invariant, an exact +0 with neither.
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
         # --- ownership mask, cell 0 (stepping._mask_non_owned_cells :1865) -----
+        # Every target whose Yee shift is 0 on a non-periodic axis. `!= PERIODIC`
+        # rather than `== METALLIC`: _mask_non_owned_cells asks `is_mirrored or
+        # is_metallic or is_axis`, and _boundary_kinds resolves exactly those to a
+        # non-periodic kind.
         at_x, at_y, at_z = i == 0, j == 0, k == 0
         if BACKWARD:
             if BCY != PERIODIC:
@@ -371,6 +376,12 @@ if triton is not None:
                 curl2 = tl.where(at_z, 0.0, curl2)
 
         # --- ownership mask, the TOP plane of a folded PERIODIC axis -----------
+        # symmetry.pml_curl_step_folded's second added block, BYTE-COPIED from its
+        # BACKWARD == 1 arm (symmetry.py:294-301). It was absent while this family
+        # refused MIRROR_PERIODIC; carrying fill_folded_far_ghosts_D brings the axis
+        # in, so the block comes with it. Dx:(1,0,0) Dy:(0,1,0) Dz:(0,0,1) — shift 1
+        # on its OWN axis only, which is exactly the set the far carry writes, and
+        # three lines against the B arm's six.
         last_x, last_y, last_z = i == nx - 1, j == ny - 1, k == nz - 1
         if BCX == MIRROR_PERIODIC:
             curl0 = tl.where(last_x, 0.0, curl0)
@@ -380,6 +391,13 @@ if triton is not None:
             curl2 = tl.where(last_z, 0.0, curl2)
 
         # --- ownership of the fill destinations --------------------------------
+        # Component m is a NEAR destination at stored cell 0 of every folded axis
+        # that is NOT its own and a FAR destination at the top plane of its own axis
+        # when that axis is folded PERIODIC (IYEE_SHIFTS: Dx (1,0,0), Dy (0,1,0),
+        # Dz (0,0,1) — shift 0 on the two others, 1 on its own). Those lanes do NOT
+        # load or store D, E or f_w_E: the source lane writes all three for them.
+        # The masks are what make the carry race-free — a lane that merely discarded
+        # the value would still have READ a word another lane writes.
         own0, own1, own2 = live, live, live
         if NEAR_Y:
             own0 = own0 & (j != 0)
@@ -397,7 +415,9 @@ if triton is not None:
         if FAR_Z:
             own2 = own2 & (k != nz - 1)
 
-        # --- split-field recurrence (stepping._apply_pml_update) ---------------
+        # --- the PML forms (stepping._apply_curl_regions) ---------------------
+        # The PML coefficient vectors are built at the STORED extent on a folded
+        # axis, so the n_a indexing needs no fold-aware change.
         km_x = tl.load(kmx + i, mask=live, other=0.0)
         si_x = tl.load(sinvx + i, mask=live, other=0.0)
         km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -405,19 +425,81 @@ if triton is not None:
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0 = tl.load(u0 + idx, mask=live, other=0.0)
-        n0 = ((p0 * km_y) - curl0) * si_y
-        v0 = (((tl.load(f0 + idx, mask=own0, other=0.0) * km_z) + n0) - p0) * si_z
+        # Which cells take the recurrence: the component's dsigu layer on its own
+        # sub-lattice, verbatim from the folded curl (integer here, BACKWARD = 1).
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1 = tl.load(u1 + idx, mask=live, other=0.0)
-        n1 = ((p1 * km_z) - curl1) * si_z
-        v1 = (((tl.load(f1 + idx, mask=own1, other=0.0) * km_x) + n1) - p1) * si_x
+        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+        v0, n0 = curl_form(tl.load(f0 + idx, mask=own0, other=0.0), p0, curl0,
+                           km_y, si_y, km_z, si_z, du0)
 
-        p2 = tl.load(u2 + idx, mask=live, other=0.0)
-        n2 = ((p2 * km_x) - curl2) * si_x
-        v2 = (((tl.load(f2 + idx, mask=own2, other=0.0) * km_y) + n2) - p2) * si_y
+        p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+        v1, n1 = curl_form(tl.load(f1 + idx, mask=own1, other=0.0), p1, curl1,
+                           km_z, si_z, km_x, si_x, du1)
+
+        p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+        v2, n2 = curl_form(tl.load(f2 + idx, mask=own2, other=0.0), p2, curl2,
+                           km_x, si_x, km_y, si_y, du2)
+
+        # --- the special-kz beta pass (stepping._special_kz_beta_term, then
+        # stepping._apply_folded_increment) ----------------------------------------
+        # MEEP's pass of its own after every component's curl (step_db.cpp:161-175),
+        # applied to the registers the forms returned. The partners are the CENTER
+        # loads: target 0 takes the second source at sign +1 (Bx <- Ey, Dx <- Hy),
+        # target 1 the first at sign -1 (By <- Ex, Dy <- Hx); target 2 gets nothing.
+        # The increment is the NEGATED product (no dtdx: an analytic derivative),
+        # masked to +0 on the cells the curl's own mask drops, and the beta ladder
+        # subtracts it (forms.fold_ladder).
+        if HAS_BETA:
+            q0 = (beta_plus * b) * -1.0
+            q1 = (beta_minus * a) * -1.0
+            if BACKWARD:
+                if BCY != PERIODIC:
+                    q0 = tl.where(at_y, 0.0, q0)
+                if BCZ != PERIODIC:
+                    q0 = tl.where(at_z, 0.0, q0)
+                if BCX != PERIODIC:
+                    q1 = tl.where(at_x, 0.0, q1)
+                if BCZ != PERIODIC:
+                    q1 = tl.where(at_z, 0.0, q1)
+                if BCX == MIRROR_PERIODIC:
+                    q0 = tl.where(last_x, 0.0, q0)
+                if BCY == MIRROR_PERIODIC:
+                    q1 = tl.where(last_y, 0.0, q1)
+            else:
+                if BCX != PERIODIC:
+                    q0 = tl.where(at_x, 0.0, q0)
+                if BCY != PERIODIC:
+                    q1 = tl.where(at_y, 0.0, q1)
+                if BCY == MIRROR_PERIODIC:
+                    q0 = tl.where(last_y, 0.0, q0)
+                if BCZ == MIRROR_PERIODIC:
+                    q0 = tl.where(last_z, 0.0, q0)
+                if BCX == MIRROR_PERIODIC:
+                    q1 = tl.where(last_x, 0.0, q1)
+                if BCZ == MIRROR_PERIODIC:
+                    q1 = tl.where(last_z, 0.0, q1)
+            v0, n0 = fold_ladder(v0, n0, q0, si_y, si_z, du0)
+            v1, n1 = fold_ladder(v1, n1, q1, si_z, si_x, du1)
 
         # --- the seam: stepping.zero_metal_D (driver.py:3301) ------------------
+        # Byte-copied from dispersive_fused_pair's ZM block — the same six rows
+        # _zero_metal writes for the D family (Dy/Dz on an x wall, Dx/Dz on y,
+        # Dx/Dy on z). Applied to the REGISTER, before both the store and the
+        # constitutive read, so the two consumers see the one value the array path
+        # leaves in D. A walled axis is never a folded axis (_zero_metal
+        # :2237-2239), so a wall's cleared plane (cell 0 of a walled axis) is never
+        # a fold's destination plane; the predicate CHECKS that rather than leaning
+        # on it. It does NOT follow that the clear and the near fill are unrelated
+        # on this family — a component folded on y is still cleared on a z wall, and
+        # that is why each near-ghost block below re-applies these lines AFTER its
+        # parity, in the driver's order.
         if ZM_X:
             v1 = tl.where(at_x, 0.0, v1)
             v2 = tl.where(at_x, 0.0, v2)
@@ -428,56 +510,112 @@ if triton is not None:
             v0 = tl.where(at_z, 0.0, v0)
             v1 = tl.where(at_z, 0.0, v1)
 
-        # fu is written at EVERY cell, destinations included: the array path's
-        # step_D writes it everywhere and fill_symmetry_bc_D does not touch it.
-        tl.store(u0 + idx, n0, mask=live)
-        tl.store(u1 + idx, n1, mask=live)
-        tl.store(u2 + idx, n2, mask=live)
+        # fu is written on the recurrence's cells ONLY (the auxiliary contract),
+        # destinations included: the array path's step_D writes it on every such
+        # cell, a ghost row reading its image row's membership, and neither fill
+        # touches it (the fills write `field`, never `fu_field`).
+        tl.store(u0 + idx, n0, mask=live & du0)
+        tl.store(u1 + idx, n1, mask=live & du1)
+        tl.store(u2 + idx, n2, mask=live & du2)
         tl.store(f0 + idx, v0, mask=own0)
         tl.store(f1 + idx, v1, mask=own1)
         tl.store(f2 + idx, v2, mask=own2)
 
         # ==================== the constitutive half ===========================
+        # Verbatim from kernels.constitutive_step's SCALE=1 arm, with
+        # `tl.load(g + idx)` replaced by the register the curl half just produced
+        # and `live` by the component's ownership mask. The form is keyed on the
+        # dsigw line of the component's own axis on the half-integer lattice.
+        # Component 0 takes its coefficient from axis x, 1 from y, 2 from z
+        # (stepping.E_CONSTITUTIVE_TERMS :227) — the component's OWN axis, which
+        # is exactly the axis the NEAR fill never images along and exactly the one
+        # the FAR fill does. That is what lets a near-only destination reuse these
+        # six registers unchanged and what makes the far half load its own pair.
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
         km_0 = tl.load(km0 + i, mask=live, other=0.0)
         kp_1 = tl.load(kp1 + j, mask=live, other=0.0)
         km_1 = tl.load(km1 + j, mask=live, other=0.0)
         kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
 
         # --- component 0 -------------------------------------------------------
-        prev0 = tl.load(w0 + idx, mask=own0, other=0.0)   # BEFORE the store.
+        prev0 = tl.load(w0 + idx, mask=own0 & dw0, other=0.0)   # BEFORE the store.
         src0 = v0 * tl.load(ie0 + idx, mask=own0, other=0.0)
-        tl.store(w0 + idx, src0, mask=own0)
-        a0v = tl.load(e0 + idx, mask=own0, other=0.0)
-        a0v = a0v + kp_0 * src0
-        a0v = a0v - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=own0 & dw0)
+        a0v = tl.load(e0 + idx, mask=own0 & dw0, other=0.0)
+        a0v = constitutive_form(a0v, prev0, src0, kp_0, km_0, dw0)
         tl.store(e0 + idx, a0v, mask=own0)
 
         # --- component 1 -------------------------------------------------------
-        prev1 = tl.load(w1 + idx, mask=own1, other=0.0)
+        prev1 = tl.load(w1 + idx, mask=own1 & dw1, other=0.0)
         src1 = v1 * tl.load(ie1 + idx, mask=own1, other=0.0)
-        tl.store(w1 + idx, src1, mask=own1)
-        a1v = tl.load(e1 + idx, mask=own1, other=0.0)
-        a1v = a1v + kp_1 * src1
-        a1v = a1v - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=own1 & dw1)
+        a1v = tl.load(e1 + idx, mask=own1 & dw1, other=0.0)
+        a1v = constitutive_form(a1v, prev1, src1, kp_1, km_1, dw1)
         tl.store(e1 + idx, a1v, mask=own1)
 
         # --- component 2 -------------------------------------------------------
-        prev2 = tl.load(w2 + idx, mask=own2, other=0.0)
+        prev2 = tl.load(w2 + idx, mask=own2 & dw2, other=0.0)
         src2 = v2 * tl.load(ie2 + idx, mask=own2, other=0.0)
-        tl.store(w2 + idx, src2, mask=own2)
-        a2v = tl.load(e2 + idx, mask=own2, other=0.0)
-        a2v = a2v + kp_2 * src2
-        a2v = a2v - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=own2 & dw2)
+        a2v = tl.load(e2 + idx, mask=own2 & dw2, other=0.0)
+        a2v = constitutive_form(a2v, prev2, src2, kp_2, km_2, dw2)
         tl.store(e2 + idx, a2v, mask=own2)
 
         # ========= the mirror fills, carried by the SOURCE lane ================
-        # Byte-copied from folded_fused_curl_constitutive_D — the chained
-        # composition, the moved coefficient index on the FAR half, and the
-        # ownership AND on every carry mask. The values imaged already carry the
-        # beta increment: the fills run AFTER step_D on the array path and image
-        # the array the beta term was added to.
+        # stepping._write_mirror_ghost (:1451):  D[..0..]  = +phase * D[..2..]
+        # stepping._fill_folded_far_ghosts (:1529-1532): D[..-1..] = -phase * D[..r..]
+        # and every COMPOSITION of the two, which is what a cell that is a near
+        # destination on one axis and a far one on another carries.
+        #
+        # THE COMPOSITION IS CHAINED, NOT A PRODUCT OF PARITIES, and on this family
+        # that is a byte-level distinction rather than a stylistic one. The driver
+        # runs fill_symmetry_bc_D (:3300), then zero_metal_D (:3301), then
+        # fill_folded_far_ghosts_D (:3302), so
+        #
+        #     a NEAR ghost is  clear(parity * v)  — the clear applied AFTER the
+        #                                           parity, which is why each block
+        #                                           below re-applies the ZM lines;
+        #     a FAR  ghost is  parity * (the value already standing at its source),
+        #                                           with NO clear after it, because
+        #                                           :3302 is the last pass before
+        #                                           update_E;
+        #     a FAR-over-NEAR cell is the far parity times THE NEAR GHOST THIS LANE
+        #                                           JUST COMPOSED — not the raw
+        #                                           product -PH_m * PH_a * v.
+        #
+        # MEASURED, NOT ARGUED. parity/meep_gpu/measure_d_side_composition_law.py
+        # scores this rule and four transcription errors against the array path's
+        # own three passes over 156 grid declarations: this rule 156/156, and the
+        # four alternatives caught on 84, 36, 36 and 70 cases respectively, with no
+        # vacuous case. Reversing either order, or flattening the composite, is one
+        # of those four.
+        #
+        # THE PARITY IS +PHASE ON A SHIFT-0 COMPONENT AND -PHASE ON A SHIFT-1 ONE
+        # (fields.mirror_parity :117 is `phase * (1 - 2 * iyee)`), so the near carry
+        # takes `PH?` and the far carry `-PH?`, and +-1.0 is exact in float32.
+        #
+        # THE COEFFICIENT INDEX MOVES ONLY FOR THE FAR HALF. update_E indexes
+        # component m on axis m (stepping.E_CONSTITUTIVE_TERMS :227); the near fill
+        # images along an axis that is NOT m, so its destination sits at the SAME
+        # coefficient index as the lane that owns it and reuses that lane's pair —
+        # a reload there would reload the identical word. The far fill images along
+        # exactly axis m, so its destination reads kps/kms at the TOP row rather
+        # than reusing the source lane's at the reflect row.
+        #
+        # THE NEAR SOURCE INDEX IS THE LITERAL 2, as it is in
+        # symmetry.mirror_ghost_fill (`base + 2 * stride`), rather than the named
+        # MIRROR_SOURCE_INDEX: a jit body that closes over a module-level Python int
+        # is a Triton-version question this file has no way to measure without a
+        # device. The literal is pinned to the name by test, so the two cannot drift.
+        #
+        # The destination coefficient pair for the FAR half, per component, at the
+        # top row of that component's own axis. A scalar `nx - 1` would not
+        # broadcast against a masked vector load, so it is built as a per-lane
+        # tensor the same way the magnetic twin builds its `origin`.
         top_x = idx * 0 + (nx - 1)
         top_y = idx * 0 + (ny - 1)
         top_z = idx * 0 + (nz - 1)
@@ -487,7 +625,26 @@ if triton is not None:
         km_f1 = tl.load(km1 + top_y, mask=live, other=0.0)
         kp_f2 = tl.load(kp2 + top_z, mask=live, other=0.0)
         km_f2 = tl.load(km2 + top_z, mask=live, other=0.0)
+        # ... and its membership there, for the same reason: the FAR destination's
+        # own-axis row is the top row, so its select is keyed on the top row's word.
+        # A NEAR-only destination keeps the source lane's coordinate on that axis,
+        # and so its flag (dw0, dw1, dw2 above).
+        dw_f0 = record_in(cb, RECORD_HALF_INTEGER + 0, top_x)
+        dw_f1 = record_in(cb, RECORD_HALF_INTEGER + 4, top_y)
+        dw_f2 = record_in(cb, RECORD_HALF_INTEGER + 8, top_z)
 
+        # The per-axis source lane and destination offset, once. Each is read only
+        # under a mask its own axis's constexpr gates, so an axis that carries no
+        # fill contributes no lane and no load.
+        #
+        # EVERY CARRY MASK IS ANDED WITH THE COMPONENT'S OWN OWNERSHIP MASK, and
+        # that is a DEFECT THE MAGNETIC TWIN'S DEVICE GATE FOUND rather than a
+        # precaution (its results/run_farcarry2/, 2026-08-20). With two fills a lane
+        # can be the SOURCE of one and the DESTINATION of the other: on a grid
+        # folding x PERIODIC and y, the lane at (i = rx, j = 0) is the far source
+        # for Dx on x and is itself the near fill's destination on y. It would then
+        # write the composite cell with a `v` built from an `f0` load its own
+        # ownership mask zeroed, racing the lane that legitimately owns it.
         near_i = live & (i == 2)
         near_j = live & (j == 2)
         near_k = live & (k == 2)
@@ -501,7 +658,19 @@ if triton is not None:
         df_y = (ny - 1 - ry) * nz
         df_z = (nz - 1 - rz)
 
+        # THE THREE-TERM GUARDS ARE PARENTHESISED, AND THAT IS A MEASURED PLATFORM
+        # FACT rather than a style choice: Triton 3.1.0's frontend refuses a chained
+        # boolean outright — "chained boolean operators (A or B or C) are not
+        # supported; use parentheses to split the chain" — and it refuses at COMPILE
+        # time on the device, so `if NEAR_Y and NEAR_Z and FAR_X:` is a kernel that
+        # does not build rather than one that builds wrong.
+
         # --- component 0 (Dx): near on y and z, far on x -----------------------
+        # The near ghosts are composed FIRST and kept in registers, because the
+        # far-over-near cells below are the far parity applied to exactly these
+        # values. The ZM lines re-applied to each are zero_metal_D's six rows for
+        # this component (Dx clears on a y wall and on a z wall), in the driver's
+        # parity-then-clear order.
         if NEAR_Y:
             gv_0y = PHY * v0
             if ZM_Y:
@@ -509,7 +678,7 @@ if triton is not None:
             if ZM_Z:
                 gv_0y = tl.where(at_z, 0.0, gv_0y)
             _carry_ghost_E(f0, w0, e0, ie0, idx + dn_y, gv_0y,
-                           kp_0, km_0, own0 & near_j)
+                           kp_0, km_0, dw0, own0 & near_j)
         if NEAR_Z:
             gv_0z = PHZ * v0
             if ZM_Y:
@@ -517,27 +686,34 @@ if triton is not None:
             if ZM_Z:
                 gv_0z = tl.where(at_z, 0.0, gv_0z)
             _carry_ghost_E(f0, w0, e0, ie0, idx + dn_z, gv_0z,
-                           kp_0, km_0, own0 & near_k)
+                           kp_0, km_0, dw0, own0 & near_k)
         if NEAR_Y and NEAR_Z:
+            # The doubly-unowned corner. Y is applied before Z
+            # (_fill_symmetry_ghost_cells :1441-1447), so the value is
+            # phase_z * (phase_y * v) — two exact +-1.0 multiplies, in the array
+            # path's own order, then the clear.
             gv_0yz = PHZ * (PHY * v0)
             if ZM_Y:
                 gv_0yz = tl.where(at_y, 0.0, gv_0yz)
             if ZM_Z:
                 gv_0yz = tl.where(at_z, 0.0, gv_0yz)
             _carry_ghost_E(f0, w0, e0, ie0, idx + dn_y + dn_z, gv_0yz,
-                           kp_0, km_0, own0 & near_j & near_k)
+                           kp_0, km_0, dw0, own0 & near_j & near_k)
         if FAR_X:
+            # NO ZM AFTER THE PARITY: :3302 is the last pass before update_E, so
+            # the far ghost is -phase times the value standing at its source, which
+            # is `v0` read after the clear lines above.
             _carry_ghost_E(f0, w0, e0, ie0, idx + df_x, -PHX * v0,
-                           kp_f0, km_f0, own0 & far_i)
+                           kp_f0, km_f0, dw_f0, own0 & far_i)
         if FAR_X and NEAR_Y:
             _carry_ghost_E(f0, w0, e0, ie0, idx + df_x + dn_y, -PHX * gv_0y,
-                           kp_f0, km_f0, own0 & far_i & near_j)
+                           kp_f0, km_f0, dw_f0, own0 & far_i & near_j)
         if FAR_X and NEAR_Z:
             _carry_ghost_E(f0, w0, e0, ie0, idx + df_x + dn_z, -PHX * gv_0z,
-                           kp_f0, km_f0, own0 & far_i & near_k)
+                           kp_f0, km_f0, dw_f0, own0 & far_i & near_k)
         if FAR_X and (NEAR_Y and NEAR_Z):
             _carry_ghost_E(f0, w0, e0, ie0, idx + df_x + dn_y + dn_z, -PHX * gv_0yz,
-                           kp_f0, km_f0, own0 & far_i & near_j & near_k)
+                           kp_f0, km_f0, dw_f0, own0 & far_i & near_j & near_k)
 
         # --- component 1 (Dy): near on x and z, far on y -----------------------
         if NEAR_X:
@@ -547,7 +723,7 @@ if triton is not None:
             if ZM_Z:
                 gv_1x = tl.where(at_z, 0.0, gv_1x)
             _carry_ghost_E(f1, w1, e1, ie1, idx + dn_x, gv_1x,
-                           kp_1, km_1, own1 & near_i)
+                           kp_1, km_1, dw1, own1 & near_i)
         if NEAR_Z:
             gv_1z = PHZ * v1
             if ZM_X:
@@ -555,27 +731,28 @@ if triton is not None:
             if ZM_Z:
                 gv_1z = tl.where(at_z, 0.0, gv_1z)
             _carry_ghost_E(f1, w1, e1, ie1, idx + dn_z, gv_1z,
-                           kp_1, km_1, own1 & near_k)
+                           kp_1, km_1, dw1, own1 & near_k)
         if NEAR_X and NEAR_Z:
+            # X is applied before Z: phase_z * (phase_x * v).
             gv_1xz = PHZ * (PHX * v1)
             if ZM_X:
                 gv_1xz = tl.where(at_x, 0.0, gv_1xz)
             if ZM_Z:
                 gv_1xz = tl.where(at_z, 0.0, gv_1xz)
             _carry_ghost_E(f1, w1, e1, ie1, idx + dn_x + dn_z, gv_1xz,
-                           kp_1, km_1, own1 & near_i & near_k)
+                           kp_1, km_1, dw1, own1 & near_i & near_k)
         if FAR_Y:
             _carry_ghost_E(f1, w1, e1, ie1, idx + df_y, -PHY * v1,
-                           kp_f1, km_f1, own1 & far_j)
+                           kp_f1, km_f1, dw_f1, own1 & far_j)
         if FAR_Y and NEAR_X:
             _carry_ghost_E(f1, w1, e1, ie1, idx + df_y + dn_x, -PHY * gv_1x,
-                           kp_f1, km_f1, own1 & far_j & near_i)
+                           kp_f1, km_f1, dw_f1, own1 & far_j & near_i)
         if FAR_Y and NEAR_Z:
             _carry_ghost_E(f1, w1, e1, ie1, idx + df_y + dn_z, -PHY * gv_1z,
-                           kp_f1, km_f1, own1 & far_j & near_k)
+                           kp_f1, km_f1, dw_f1, own1 & far_j & near_k)
         if FAR_Y and (NEAR_X and NEAR_Z):
             _carry_ghost_E(f1, w1, e1, ie1, idx + df_y + dn_x + dn_z, -PHY * gv_1xz,
-                           kp_f1, km_f1, own1 & far_j & near_i & near_k)
+                           kp_f1, km_f1, dw_f1, own1 & far_j & near_i & near_k)
 
         # --- component 2 (Dz): near on x and y, far on z -----------------------
         if NEAR_X:
@@ -585,7 +762,7 @@ if triton is not None:
             if ZM_Y:
                 gv_2x = tl.where(at_y, 0.0, gv_2x)
             _carry_ghost_E(f2, w2, e2, ie2, idx + dn_x, gv_2x,
-                           kp_2, km_2, own2 & near_i)
+                           kp_2, km_2, dw2, own2 & near_i)
         if NEAR_Y:
             gv_2y = PHY * v2
             if ZM_X:
@@ -593,27 +770,28 @@ if triton is not None:
             if ZM_Y:
                 gv_2y = tl.where(at_y, 0.0, gv_2y)
             _carry_ghost_E(f2, w2, e2, ie2, idx + dn_y, gv_2y,
-                           kp_2, km_2, own2 & near_j)
+                           kp_2, km_2, dw2, own2 & near_j)
         if NEAR_X and NEAR_Y:
+            # X is applied before Y: phase_y * (phase_x * v).
             gv_2xy = PHY * (PHX * v2)
             if ZM_X:
                 gv_2xy = tl.where(at_x, 0.0, gv_2xy)
             if ZM_Y:
                 gv_2xy = tl.where(at_y, 0.0, gv_2xy)
             _carry_ghost_E(f2, w2, e2, ie2, idx + dn_x + dn_y, gv_2xy,
-                           kp_2, km_2, own2 & near_i & near_j)
+                           kp_2, km_2, dw2, own2 & near_i & near_j)
         if FAR_Z:
             _carry_ghost_E(f2, w2, e2, ie2, idx + df_z, -PHZ * v2,
-                           kp_f2, km_f2, own2 & far_k)
+                           kp_f2, km_f2, dw_f2, own2 & far_k)
         if FAR_Z and NEAR_X:
             _carry_ghost_E(f2, w2, e2, ie2, idx + df_z + dn_x, -PHZ * gv_2x,
-                           kp_f2, km_f2, own2 & far_k & near_i)
+                           kp_f2, km_f2, dw_f2, own2 & far_k & near_i)
         if FAR_Z and NEAR_Y:
             _carry_ghost_E(f2, w2, e2, ie2, idx + df_z + dn_y, -PHZ * gv_2y,
-                           kp_f2, km_f2, own2 & far_k & near_j)
+                           kp_f2, km_f2, dw_f2, own2 & far_k & near_j)
         if FAR_Z and (NEAR_X and NEAR_Y):
             _carry_ghost_E(f2, w2, e2, ie2, idx + df_z + dn_x + dn_y, -PHZ * gv_2xy,
-                           kp_f2, km_f2, own2 & far_k & near_i & near_j)
+                           kp_f2, km_f2, dw_f2, own2 & far_k & near_i & near_j)
 
 else:  # pragma: no cover - laptop path
     folded_beta_fused_curl_constitutive_D = None  # type: ignore[assignment]
@@ -808,19 +986,14 @@ def folded_beta_fused_electric_pair_coverage(fields: Any, pml: Any,
 # ---------------------------------------------------------------------------
 
 class FoldedBetaFusedElectricPairPlan:
-    """One allocation-free launch for FIVE of the driver's electric passes.
-
-    :class:`.folded_fused_pair.FoldedFusedPairPlan`'s bindings plus the two
-    host-rounded beta scalars and the ``HAS_BETA`` constexpr, which is exactly the
-    delta :class:`.special_kz.BetaPmlCurlPlan` carries over
-    :class:`.launch.PmlCurlPlan`.
-    """
+    """One allocation-free launch for FIVE of the driver's electric passes."""
 
     __slots__ = (
-        "shape", "n_elem", "dtdx", "beta_plus", "beta_minus", "has_beta",
-        "backward", "bc", "zero_metal", "phases", "reflect", "near", "far",
+        "beta_words", "has_beta",
+        "shape", "n_elem", "dtdx", "backward", "bc", "zero_metal", "phases",
+        "reflect", "near", "far", "chunk_bounds",
         "block", "num_warps", "_targets", "_aux", "_sources", "_curl_coefficients",
-        "_e_targets", "_e_aux", "_inverse_epsilon", "_e_coefficients", "_grid",
+        "_e_targets", "_e_aux", "_inverse_epsilon", "_e_coefficients", "_cb", "_grid",
         "_kernel",
     )
 
@@ -828,38 +1001,39 @@ class FoldedBetaFusedElectricPairPlan:
     #: inspected rather than inferred from the curl slot's name.
     replaces = REPLACES
 
-    def __init__(self, shape, dtdx: float, bc, zero_metal, phases,
-                 beta_plus: float, beta_minus: float, block: int,
+    def __init__(self, shape, dtdx: float, bc, zero_metal, phases, block: int,
                  targets, auxiliaries, sources, curl_coefficients,
                  e_targets, e_aux, inverse_epsilon, e_coefficients,
                  reflect: Any = (None, None, None),
-                 kernel: Any = None, num_warps: Optional[int] = 1,
-                 has_beta: int = 1) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 beta_words: Any = None, has_beta: int = 1,
+                 kernel: Any = None, num_warps: Optional[int] = 1, *,
+                 chunk_bounds: Any) -> None:
+        from .launch import CupyPointer, _flat, bind_chunk_bounds  # noqa: PLC0415
 
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
         self.dtdx = float(dtdx)
-        # Already f32-rounded by the host (special_kz.beta_curl_coefficients);
-        # float() keeps the bits, and Triton types a Python float argument as fp32.
-        self.beta_plus = float(beta_plus)
-        self.beta_minus = float(beta_minus)
-        self.has_beta = int(has_beta)
         self.backward = BACKWARD
         self.bc = tuple(int(value) for value in bc)
         self.zero_metal = tuple(bool(value) for value in zero_metal)
         self.phases = tuple(int(value) for value in phases)
-        # DERIVED FROM `bc`, NEVER TAKEN AS AN ARGUMENT — the same rule as the
-        # plain folded plan, for the same reason.
+        # DERIVED FROM `bc`, NEVER TAKEN AS AN ARGUMENT. The kernel branches its
+        # curl half on the four codes and its two carries on these booleans; if
+        # they could be passed independently they could disagree, and a kernel that
+        # masked the top plane on one axis set and imaged the far ghost on another
+        # is a plane of wrong values rather than a crash.
         self.near = tuple(code in MIRROR_CODES for code in self.bc)
         self.far = tuple(code == CODE_MIRROR_PERIODIC for code in self.bc)
+        # -1 where no far ghost exists. A sentinel rather than 0: no lane reads it
+        # (the guard that would is emitted only under FAR_a), and an out-of-range
+        # index is loud where imaging row 0 would be plausible and wrong.
         self.reflect = tuple(-1 if value is None else int(value)
                              for value in reflect)
         if not any(self.near):
             raise ValueError(
                 "no axis is folded: this product exists to carry the mirror fills "
-                "inside the D seam of a beta run, and an unfolded beta grid belongs "
-                "to beta_fused_electric_pair")
+                "inside the D seam, and an unfolded grid belongs to the certified "
+                "curl and constitutive pair")
         for axis, code in enumerate(self.bc):
             folded = code in MIRROR_CODES
             if folded and self.phases[axis] not in (1, -1):
@@ -882,8 +1056,20 @@ class FoldedBetaFusedElectricPairPlan:
                     f"axis {axis} is not folded PERIODIC but carries reflect row "
                     f"{self.reflect[axis]}; stepping._far_reflect_rows answers None "
                     f"there and the kernel would read a row nothing wrote")
+        # (plus, minus): the two host-rounded beta words (special_kz.beta_curl_coefficients);
+        # float() keeps the bits.
+        words = tuple(beta_words) if beta_words is not None else ()
+        if len(words) != 2 or any(isinstance(word, (tuple, list)) for word in words):
+            raise ValueError(f"beta_words must be the two real beta words of "
+                             f"special_kz.beta_curl_coefficients, got {beta_words!r}")
+        self.beta_words = tuple(float(word) for word in words)
+        self.has_beta = int(has_beta)
         self.block = int(block)
         self.num_warps = None if num_warps is None else int(num_warps)
+        # The chunk record, required and checked against this extent; ONE record
+        # serves both halves, as in launch.FusedPairPlan.
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "FoldedBetaFusedElectricPairPlan")
         self._targets = tuple(CupyPointer(array) for array in targets)
         self._aux = tuple(CupyPointer(array) for array in auxiliaries)
         self._sources = tuple(CupyPointer(array) for array in sources)
@@ -891,17 +1077,14 @@ class FoldedBetaFusedElectricPairPlan:
             CupyPointer(_flat(array)) for array in curl_coefficients)
         self._e_targets = tuple(CupyPointer(array) for array in e_targets)
         self._e_aux = tuple(CupyPointer(array) for array in e_aux)
-        if inverse_epsilon is None:
-            raise ValueError(
-                "the fused pair loads inv_eps on every launch; a placeholder "
-                "binding would be read as a coefficient")
         self._inverse_epsilon = tuple(CupyPointer(array) for array in inverse_epsilon)
         self._e_coefficients = tuple(
             CupyPointer(_flat(array)) for array in e_coefficients)
         self._grid = ((self.n_elem + self.block - 1) // self.block,)
-        # An override for exactly one caller: the gate's mutation legs, which
-        # compile deliberately broken copies of this kernel. Dropping it is not a
-        # slowdown, it is a DISARMING.
+        # An override for exactly one caller: the gate's source-mutation leg,
+        # which compiles a deliberately broken copy of this kernel. Dropping it is
+        # not a slowdown, it is a DISARMING — every mutation leg would then launch
+        # the shipped kernel and report the defect as uncaught.
         self._kernel = kernel
 
     def run(self, guard: Optional[bool] = None) -> None:
@@ -915,10 +1098,10 @@ class FoldedBetaFusedElectricPairPlan:
         kernel[self._grid](
             *self._targets, *self._aux, *self._sources, *self._curl_coefficients,
             *self._e_targets, *self._e_aux, *self._inverse_epsilon,
-            *self._e_coefficients,
+            *self._e_coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
-            self.beta_plus, self.beta_minus,
             self.reflect[0], self.reflect[1], self.reflect[2],
+            *self.beta_words,
             BACKWARD=self.backward,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
             NEAR_X=self.near[0], NEAR_Y=self.near[1], NEAR_Z=self.near[2],
@@ -936,19 +1119,24 @@ class FoldedBetaFusedElectricPairPlan:
         return (f"FoldedBetaFusedElectricPairPlan(shape={self.shape}, bc={self.bc}, "
                 f"phases={self.phases}, zero_metal={self.zero_metal}, "
                 f"near={self.near}, far={self.far}, reflect={self.reflect}, "
-                f"beta_plus={self.beta_plus!r}, has_beta={self.has_beta}, "
-                f"block={self.block}, num_warps={self.num_warps})")
+                f"beta_words={self.beta_words!r}, has_beta={self.has_beta}, "
+                f"block={self.block}, num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
-def plan_folded_beta_fused_electric_pair(
-        fields: Any, pml: Any, sources: Any = None,
-        block: Optional[int] = None, num_warps: Optional[int] = 1,
-        kernel: Any = None) -> Optional[FoldedBetaFusedElectricPairPlan]:
+def plan_folded_beta_fused_electric_pair(fields: Any, pml: Any, sources: Any = None,
+                           block: Optional[int] = None,
+                           num_warps: Optional[int] = 1,
+                           kernel: Any = None,
+                           chunk_layout: Any = None) -> Optional[FoldedBetaFusedElectricPairPlan]:
     """Build the plan from the engine's own objects, or ``None`` when refused.
 
     ``None`` is the only refusal: a configuration this kernel does not carry must
     fall back to the array path, never raise into a caller that would otherwise
     have stepped correctly.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default
+    (``launch.chunk_bounds_for``); its record is what both halves' forms key on.
     """
     if not folded_beta_fused_electric_pair_coverage(fields, pml, sources).covered:
         return None
@@ -956,22 +1144,16 @@ def plan_folded_beta_fused_electric_pair(
     if codes is None:  # pragma: no cover - the predicate already refused
         return None
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
-    from .launch import SUB_STEPS  # noqa: PLC0415
+    from .launch import SUB_STEPS, chunk_bounds_for  # noqa: PLC0415
 
     curl_spec = SUB_STEPS[CURL_SUB_STEP]
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
     grid = fields.grid
-    # THE SAME FUNCTION THE CURL PLAN CALLS, with `magnetic` from the sub-step —
-    # identical arithmetic to the array path's per-call-site computation. On REAL
-    # storage the two flag values are MEASURED IDENTICAL (the ±i lives only on the
-    # complex path); it is written this way because that is what the array path
-    # computes per call site.
-    plus, minus = beta_curl_coefficients(grid.beta, grid.dt,
-                                         magnetic=(CURL_SUB_STEP == "step_B"),
-                                         complex_storage=False)
+    words = beta_curl_coefficients(fields.grid.beta, fields.grid.dt,
+                                   magnetic=False, complex_storage=False)
     return FoldedBetaFusedElectricPairPlan(
         grid.shape, grid.dt / grid.dx, codes, zero_metal_axes(grid),
-        mirror_phases(grid), plus, minus,
+        mirror_phases(grid),
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in curl_spec["targets"]],
         [getattr(fields, "fu_" + name) for name in curl_spec["targets"]],
@@ -983,30 +1165,41 @@ def plan_folded_beta_fused_electric_pair(
         [fields.inverse_epsilon_for(name) for name in side_spec["targets"]],
         # The curl takes the INTEGER lattice on step_D and the constitutive the
         # HALF-INTEGER one on E (stepping.py:948 vs :1015). The kernel takes both
-        # and never asks which is which; the gate carries a mutation for the swap.
+        # and never asks which is which, so a swap here is a silent half-cell
+        # error in the absorber profile; the gate carries a mutation for exactly
+        # it.
         [getattr(pml, f"{stem}_{axis}"
                       f"{'_h' if side_spec['half_integer'] else ''}")
          for axis in "xyz" for stem in ("kps", "kms")],
+        # The far carry's image rows, from the engine's own function rather than
+        # recomputed: `n_full - stored + 2` is `stored - 2` at an even full count
+        # and `stored - 3` at an odd one (stepping._far_reflect_rows:1661).
         reflect=_far_reflect_rows(grid) or (None, None, None),
+        beta_words=words,
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
 def plan_folded_beta_fused_electric_pair_from_arrays(
         arrays: Dict[str, Any], curl_flat: Dict[str, Any],
         constitutive_flat: Dict[str, Any], codes, zero_metal, phases,
-        dtdx: float, beta_plus: float, beta_minus: float,
-        block: Optional[int] = None, kernel: Any = None,
-        num_warps: Optional[int] = 1, has_beta: int = 1,
-        reflect: Any = (None, None, None)) -> FoldedBetaFusedElectricPairPlan:
+        dtdx: float, block: Optional[int] = None, kernel: Any = None,
+        num_warps: Optional[int] = 1,
+        reflect: Any = (None, None, None), beta_words: Any = None, has_beta: int = 1, *,
+        chunk_bounds: Any) -> FoldedBetaFusedElectricPairPlan:
     """Build from bare device arrays — the gate's route.
 
+    ``beta_words`` is ``(plus, minus)``, normally
+    :func:`.special_kz.beta_curl_coefficients`'s output or a deliberately wrong pair
+    on a mutation leg; ``has_beta=0`` is the identity leg's folded-pair arm.
+
     No coverage predicate runs: the caller is a harness that constructed the
-    configuration deliberately, including the deliberately wrong ones. ``arrays``
-    additionally carries ``inv_eps_Ex``...; ``kernel=`` carries the mutation
-    override and ``has_beta=0`` the reduction leg's certified-kernel arm, which
-    must reproduce ``folded_fused_pair.folded_fused_curl_constitutive_D`` bit for
-    bit.
+    configuration deliberately, including the deliberately wrong ones.
+
+    ``chunk_bounds`` is REQUIRED and has no default, as in
+    ``launch.plan_from_arrays``: a plan without the record of the division the
+    caller built is refused by name.
     """
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
     from .launch import SUB_STEPS  # noqa: PLC0415
@@ -1015,7 +1208,7 @@ def plan_folded_beta_fused_electric_pair_from_arrays(
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
     shape = tuple(int(n) for n in arrays[curl_spec["targets"][0]].shape)
     return FoldedBetaFusedElectricPairPlan(
-        shape, dtdx, codes, zero_metal, phases, beta_plus, beta_minus,
+        shape, dtdx, codes, zero_metal, phases,
         DEFAULT_BLOCK if block is None else block,
         [arrays[name] for name in curl_spec["targets"]],
         [arrays["fu_" + name] for name in curl_spec["targets"]],
@@ -1027,5 +1220,6 @@ def plan_folded_beta_fused_electric_pair_from_arrays(
         [constitutive_flat[f"{stem}_{axis}"]
          for axis in "xyz" for stem in ("kps", "kms")],
         reflect=reflect,
-        kernel=kernel, num_warps=num_warps, has_beta=has_beta,
+        beta_words=beta_words, has_beta=has_beta,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )

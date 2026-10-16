@@ -113,7 +113,6 @@ from meep_gpu import stepping  # noqa: E402
 # rather than copying is what guarantees the four audited defects stay repaired.
 from probe_residual_group_bodies import (  # noqa: E402
     CYCLES,
-    _load_expansion_probe,
     build,
     cp,
     inventory,
@@ -177,8 +176,7 @@ def _zero_aux_wrapper(plan: Any, auxiliaries: List[Any], label: str) -> Any:
     return _ZeroAuxPlan()
 
 
-def _complex_curl_plan(fields: Any, pml: Any, sub_step: str, probe: Any,
-                       phase_off: bool = False,
+def _complex_curl_plan(fields: Any, pml: Any, sub_step: str, phase_off: bool = False,
                        stale_sources: bool = False) -> Any:
     """The shipped complex curl BODY and PLAN CLASS on a no-absorber configuration.
 
@@ -198,10 +196,6 @@ def _complex_curl_plan(fields: Any, pml: Any, sub_step: str, probe: Any,
     if phase_off:
         phased = (0, 0, 0)
         values = (1.0, 0.0, 1.0, 0.0, 1.0, 0.0)
-    expansion = cx._resolve_expansion(probe)
-    if expansion is None:
-        raise RuntimeError("no licensable expansion probe: the complex body cannot "
-                           "be bound, and a guess would not be a measurement")
 
     shape = tuple(grid.shape)
     auxiliaries = [cp.zeros(shape, dtype=cp.complex64) for _ in spec["targets"]]
@@ -215,7 +209,7 @@ def _complex_curl_plan(fields: Any, pml: Any, sub_step: str, probe: Any,
     plan = cx.ComplexPmlCurlPlan(
         sub_step, shape, grid.dt / grid.dx,
         [1 if kind == "metallic" else 0 for kind in kinds],
-        phased, values, expansion,
+        phased, values,
         DEFAULT_BLOCK,
         [getattr(fields, name) for name in spec["targets"]],
         auxiliaries,
@@ -226,7 +220,7 @@ def _complex_curl_plan(fields: Any, pml: Any, sub_step: str, probe: Any,
     return _zero_aux_wrapper(plan, auxiliaries, f"complex_curl:{sub_step}")
 
 
-def _complex_constitutive_plan(fields: Any, pml: Any, probe: Any) -> Any:
+def _complex_constitutive_plan(fields: Any, pml: Any) -> Any:
     """The shipped complex constitutive BODY at ``update_E`` on a no-absorber row.
 
     The census's closest predicate for this slot is ``null_constitutive``, whose
@@ -239,14 +233,10 @@ def _complex_constitutive_plan(fields: Any, pml: Any, probe: Any) -> Any:
     from meep_gpu.triton_kernels.kernels import DEFAULT_BLOCK
 
     spec = CONSTITUTIVE_SIDES["E"]
-    expansion = cx._resolve_expansion(probe)
-    if expansion is None:
-        raise RuntimeError("no licensable expansion probe: the complex body cannot "
-                           "be bound, and a guess would not be a measurement")
     shape = tuple(fields.grid.shape)
     auxiliaries = [cp.zeros(shape, dtype=cp.complex64) for _ in spec["targets"]]
     plan = cx.ComplexConstitutivePlan(
-        "E", shape, expansion, DEFAULT_BLOCK,
+        "E", shape, DEFAULT_BLOCK,
         [getattr(fields, name) for name in spec["targets"]],
         auxiliaries,
         [getattr(fields, name) for name in spec["sources"]],
@@ -261,7 +251,7 @@ def _complex_constitutive_plan(fields: Any, pml: Any, probe: Any) -> Any:
 # The cases
 # ---------------------------------------------------------------------------
 
-def build_cases(probe: Any) -> List[Dict[str, Any]]:
+def build_cases() -> List[Dict[str, Any]]:
     cases: List[Dict[str, Any]] = []
 
     curl_clause = ("no active PML layer (this product implements the complex "
@@ -288,7 +278,7 @@ def build_cases(probe: Any) -> List[Dict[str, Any]]:
                 "clause": curl_clause,
                 "make": make, "array_path": fn,
                 "kernel_plan": (lambda f, p, s=sub_step:
-                                _complex_curl_plan(f, p, s, probe)),
+                                _complex_curl_plan(f, p, s)),
             })
         cases.append({
             "name": f"{tag}_update_E", "group": "J", "sub_step": "update_E",
@@ -300,7 +290,7 @@ def build_cases(probe: Any) -> List[Dict[str, Any]]:
             "prediction": "DIVERGENT",
             "clause": store_clause,
             "make": make, "array_path": stepping.update_E,
-            "kernel_plan": (lambda f, p: _complex_constitutive_plan(f, p, probe)),
+            "kernel_plan": (lambda f, p: _complex_constitutive_plan(f, p)),
         })
 
     # ---- the controls, on the 3-D row shape --------------------------------
@@ -315,7 +305,7 @@ def build_cases(probe: Any) -> List[Dict[str, Any]]:
                        "MUST reach the wrapped lane"),
             "make": make3, "array_path": fn,
             "kernel_plan": (lambda f, p, s=sub_step:
-                            _complex_curl_plan(f, p, s, probe, phase_off=True)),
+                            _complex_curl_plan(f, p, s, phase_off=True)),
         })
     cases.append({
         "name": "J3_step_B_STALESOURCE_CONTROL", "group": "J", "sub_step": "step_B",
@@ -323,8 +313,7 @@ def build_cases(probe: Any) -> List[Dict[str, Any]]:
         "clause": ("control: sources bound as a plan-time SNAPSHOT — group (G)'s "
                    "false-pass mechanism, re-armed"),
         "make": make3, "array_path": stepping.step_B,
-        "kernel_plan": (lambda f, p: _complex_curl_plan(f, p, "step_B", probe,
-                                                        stale_sources=True)),
+        "kernel_plan": (lambda f, p: _complex_curl_plan(f, p, "step_B", stale_sources=True)),
     })
     return cases
 
@@ -364,25 +353,14 @@ def main(argv) -> int:
     # THE POLICY IS INSTALLED, NOT MERELY NAMED IN THE ENVIRONMENT, and it is
     # installed HERE — before the first CuPy elementwise op or Triton kernel
     # compiles, because neither executor can recall bytes it has already written.
-    # It also has to be an INSTALL rather than a declaration: the complex family's
-    # expansion licence is policy-conditional and `_policy_in_force` (complex_
-    # fields.py:1182-1204) fails closed, so with nothing installed
-    # `_resolve_expansion` returns None and every complex plan below would refuse
-    # for a harness reason wearing a coverage reason's clothes (measured on the
-    # laptop: MEEP_GPU_SUBNORMAL_POLICY=keep alone leaves it None).
+    # It has to be an INSTALL rather than a declaration: an env var declares a policy
+    # and installs nothing.
     from meep_gpu.subnormal_policy import install_subnormal_policy  # noqa: PLC0415
     results["subnormal_policy_stamp"] = install_subnormal_policy("keep", strict=True)
     results["subnormal_policy"] = results["subnormal_policy_stamp"].get("policy")
     log(progress, f"subnormal policy installed: {results['subnormal_policy']!r} "
                   f"attained={results['subnormal_policy_stamp'].get('attained')}")
 
-    probe = _load_expansion_probe()
-    results["expansion_probe_loaded"] = probe is not None
-    from meep_gpu.triton_kernels import complex_fields as _cx  # noqa: PLC0415
-    results["expansion_constexpr"] = _cx._resolve_expansion(probe)
-    results["expansion_refusals"] = [r[:200] for r in _cx._expansion_reasons(probe)]
-    log(progress, f"expansion constexpr = {results['expansion_constexpr']!r} "
-                  f"(refusals: {len(results['expansion_refusals'])})")
 
     # (1) REACHABILITY, VERIFIED NOT INHERITED. Both row shapes must carry all four
     #     of (J)'s features simultaneously on the fixture itself.
@@ -429,7 +407,7 @@ def main(argv) -> int:
     del field, curl, plain, split
 
     wanted = {n.strip() for n in args.only.split(",") if n.strip()}
-    cases = build_cases(probe)
+    cases = build_cases()
     if wanted:
         cases = [c for c in cases if c["name"] in wanted]
     log(progress, f"groupj: {len(cases)} cases on {results['device']} "

@@ -174,7 +174,8 @@ def test_the_auxiliary_is_never_masked():
     """``zero_metal_B`` passes ``B_COMPONENTS`` (stepping.py:2250); ``fu_B`` is not
     in it, so masking the split-field auxiliary would be an over-carry."""
     source = family.fused_magnetic_pair_source((1, 1, 1), (True, True, True))
-    assert "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;" in source
+    for target in range(3):
+        assert f"    if (du{target}) {{ u{target}[ii] = n{target}; }}" in source
     assert "u0[ii] = at_x" not in source
 
 
@@ -363,3 +364,114 @@ def test_the_device_gate_is_present_and_routes_through_the_runner():
         "a Metal gate must run through metal_gate_runner so its artifact records "
         "the sources the PROCESS imported")
     assert "gate_provenance" in text
+
+# ---------------------------------------------------------------------------
+# 7. The chunk record: it rides in Params, and the lifted bodies read it
+# ---------------------------------------------------------------------------
+
+def _declared_locals(source):
+    import re
+
+    return re.findall(r"^\s*const (?:int|bool) ([A-Za-z_0-9]+) =", source, re.M)
+
+
+def test_the_params_struct_embeds_the_record_and_one_alias_binds_it():
+    """No binding to spare, so the record rides in ``Params`` (DESIGN.md D10).
+
+    The struct is declared once, ``Params`` carries it as its last member, and ONE
+    line before the lifted text gives the bodies' anchored bounds blocks the ``cb``
+    they read -- so the lifted text needs no edit for it.
+    """
+    from meep_gpu.metal_kernels import chunk_bounds
+
+    source = family.fused_magnetic_pair_source((1, 0, 1), (True, False, True))
+    assert source.count(chunk_bounds.struct_source()) == 1
+    params = source.split("struct Params", 1)[1].split("};", 1)[0]
+    assert params.rstrip().endswith(chunk_bounds.params_member().strip())
+    alias = chunk_bounds.params_alias()
+    assert source.count(alias) == 1
+    assert source.index(alias) < source.index(chunk_bounds.BLOCK_BEGIN)
+
+
+def test_the_two_lifted_bounds_blocks_declare_no_local_twice():
+    """The curl half reads one Yee sub-lattice and the constitutive half the other.
+
+    Each certified body brings its own anchored bounds block, so the fused kernel
+    carries two; the names are tagged by sub-lattice (``cbh_``/``cbi_``,
+    ``in_h_``/``in_i_``), which is what lets both stand in one scope.
+    """
+    from meep_gpu.metal_kernels import chunk_bounds
+
+    source = family.fused_magnetic_pair_source((1, 1, 1), (True, True, True))
+    assert source.count(chunk_bounds.BLOCK_BEGIN) == 2
+    names = _declared_locals(source)
+    assert len(names) == len(set(names)), sorted(n for n in names if names.count(n) > 1)
+    curl, constitutive = source.split(chunk_bounds.BLOCK_BEGIN)[1:]
+    curl = curl.split(chunk_bounds.BLOCK_END, 1)[0]
+    constitutive = constitutive.split(chunk_bounds.BLOCK_END, 1)[0]
+    assert "cbh_" in curl and "cbi_" not in curl
+    assert "cbi_" in constitutive and "cbh_" not in constitutive
+    assert "has_x" in curl and "has_x" not in constitutive
+
+
+def test_the_params_record_carries_the_chunk_words_after_the_five_scalars():
+    """Byte 20 onwards is the record, word for word: the struct has no padding."""
+    import numpy as np
+
+    # The sentinel declares the resource (the root conftest.py's no-silent-skip policy).
+    pytest.importorskip("torch", reason="[requires_resource][torch] PyTorch is not installed")
+    from meep_gpu.chunk_map import RECORD_WORDS
+
+    record = np.arange(RECORD_WORDS, dtype=np.int32)
+    record[-1] = 0b101
+    # A valid record: two separate ascending runs per entry, presence bits 0 and 2.
+    for entry in range(6):
+        record[4 * entry:4 * entry + 4] = (0, 1, 3, 5)
+    shape = (6, 1, 7)
+    record[4 * 1:4 * 1 + 4] = (0, 0, 0, 0)       # integer y: invariant, no run
+    record[4 * 4:4 * 4 + 4] = (0, 0, 0, 0)       # half-integer y: invariant, no run
+    words = family._params_tensor(shape, 0.125, "cpu", chunk_bounds=record).numpy()
+    assert words.dtype == np.int32 and words.size == 5 + RECORD_WORDS
+    assert list(words[:4]) == [6, 1, 7, 42]
+    assert words[4:5].view(np.float32)[0] == np.float32(0.125)
+    assert list(words[5:]) == [int(value) for value in record]
+
+
+def test_the_builder_takes_the_record_as_a_required_keyword():
+    """The composer hands over ``StepContext.chunk_bounds``; a default would decide,
+    on the caller's behalf, which cells take which form."""
+    import inspect
+
+    parameter = inspect.signature(family.plan_metal_fused_magnetic_pair).parameters["chunk_bounds"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty
+
+
+def test_the_runs_first_update_h_is_refused_where_the_start_could_change_a_word():
+    """The array path starts H and f_w from B at the run's first ``update_H``
+    (``stepping.separate_h_from_b``); the lifted H body does not. So, as the base
+    single does, the pair refuses that update unless B, fu_B and E hold only +0 then
+    -- or the run has started H already. A magnetic deposit is its bracket's to start.
+    """
+    import types
+
+    import numpy as np
+
+    def fields(separated, value):
+        volume = np.full((2, 2, 2), value, dtype=np.float32)
+        return types.SimpleNamespace(
+            grid=types.SimpleNamespace(), h_separated=separated,
+            **{name: volume.copy() for name in ("Bx", "By", "Bz", "fu_Bx", "fu_By",
+                                                  "fu_Bz", "Ex", "Ey", "Ez")})
+
+    def start_reasons(coverage):
+        return [r for r in coverage.reasons if "starts H and f_w from B" in r]
+
+    seeded = family.metal_fused_magnetic_pair_coverage(fields(False, 0.5), None, ())
+    assert start_reasons(seeded), seeded.reasons
+    negative = family.metal_fused_magnetic_pair_coverage(fields(False, -0.0), None, ())
+    assert start_reasons(negative), negative.reasons
+    fresh = family.metal_fused_magnetic_pair_coverage(fields(False, 0.0), None, ())
+    assert not start_reasons(fresh), fresh.reasons
+    started = family.metal_fused_magnetic_pair_coverage(fields(True, 0.5), None, ())
+    assert not start_reasons(started), started.reasons

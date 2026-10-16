@@ -1,0 +1,32 @@
+{
+  "schema": "meep_gpu.public_export",
+  "version": 1,
+  "_what": "What tools/release/export_public.py exports from the development repository to the public one (RELEASING.md). The public tree is the release commit's tree with the files under 'excluded' removed and nothing else changed. Every entry carries its reason; add one only with its reason.",
+  "release_time": "12:00:00 -0700",
+  "excluded": [
+    {
+      "path": "parity/meep_gpu/rounds/h200_2026-10-03/certification_runbook.html",
+      "reason": "A hand-off runbook for the person who runs the H200 round on a Slurm cluster. The round's driver, its CUDA-leg script and its input manifest beside it are public."
+    },
+    {
+      "path": "parity/meep_gpu/rounds/h200_2026-10-03/timing_runbook.html",
+      "reason": "A hand-off runbook for the person who runs the identical-case timing ladder on an H200 after the round's bind."
+    },
+    {
+      "path": "parity/meep_gpu/rounds/h200_2026-10-03/run_a6000_round_516026f.sh",
+      "reason": "A driver written for the directory layout and environment of the one RTX A6000 host that ran the H200 round as a control. The round's result is stated in the README beside it."
+    }
+  ],
+  "required_public_files": [
+    {
+      "path": ".github/workflows/publish.yml",
+      "reason": "The PyPI trusted publisher registered for the public repository is bound to this file's name; a release without it cannot publish its tag."
+    }
+  ],
+  "guard": {
+    "path": "tools/ci/check_hygiene.py",
+    "arguments": [],
+    "names_file_option": "--names-file",
+    "_what": "The release commit's own hygiene guard, run with the exported tree as its working directory and the export's index as its git index, with every leg it has. Exit status 0 is green; anything else refuses the export. names_file_option is how export_public.py --guard-names-file passes an untracked local names file, which only adds names."
+  }
+}

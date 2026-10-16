@@ -159,32 +159,37 @@ _COMPILE_OPTIONS: Tuple[str, ...] = ("--fmad=false",)
 
 #: The certified off-diagonal dispersive signature's closing line, which this weld
 #: splices the ADE parameters in front of.
-_SIGNATURE_TAIL = "    float gw_x, float gw_y, float gw_z\n) {\n"
+_SIGNATURE_TAIL = "    const int* __restrict__ cb\n) {\n"
 
 LIFT_EDITS: Tuple[Dict[str, str], ...] = (
-    {"line": "    float w = drive[idx];",
+    {"line": "    float w = dsigw ? drive_w[idx] : drive_e[idx];",
      "became": "    float w = src_E<c>;",
-     "why": "THE SEAM. update_P's drive is fields.drive_field(c), which under an "
-            "active layer is f_w_<c> -- the very word the update_E half of this "
-            "same thread just stored from its src register (constitutive_apply "
-            "stores fw[idx] = src). A float32 word stored to global and reloaded is "
-            "the identity on the bits. Emitted ONCE per component rather than once "
-            "per pole, because every pole reads the same array and nothing in this "
-            "seam writes it between the certified launches."},
+     "why": "THE SEAM. update_P's drive is fields.drive_field(c), MEEP's w per "
+            "chunk: f_w_<c> on the cells whose chunk carries the component's own "
+            "layer, the stored E<c> elsewhere -- on both forms the very word the "
+            "update_E half of this same thread just stored from its src register "
+            "(constitutive_apply stores fw[idx] = src on the dsigw form and "
+            "f[idx] = src on the plain one). A float32 word stored to global and "
+            "reloaded is the identity on the bits, so the select goes with the "
+            "load. Emitted ONCE per component rather than once per pole, because "
+            "every pole reads the same word and nothing in this seam writes it "
+            "between the certified launches."},
     {"line": "    const float* __restrict__ p_now,",
      "became": "(not a parameter: the pole pointer P_<c>_<i> is bound once)",
      "why": "the E half's dmp_<c> chain reads state.P[c] and the recurrence's p_now "
             "IS state.P[c] -- one allocation. Binding it twice with __restrict__ on "
             "both is undefined behaviour, so the signature binds it once (the E "
             "half already declares it) and both halves read through that parameter."},
-    {"line": "    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n"
-             "    if (idx >= n_elem) return;   (the ADE kernel's own guard)",
-     "became": "(dropped: the E half's guard has already returned)",
-     "why": "the update_E body above declares idx and guarded the extent; splicing "
-            "the ADE guard would redeclare idx. n_elem is therefore not a parameter "
-            "at all, and the predicate requires every P/P_prev/scratch/sigma volume "
-            "to carry exactly the stored extent the E half walks, so the dropped "
-            "bound is the same number the certified kernel would have used."},
+    {"line": "    int idx = blockIdx.x * blockDim.x + threadIdx.x; ... "
+             "const int dsigw = own_axis == 0 ? in_h_x : ...; (the ADE kernel's own "
+             "guard, index decode, chunk-record block and drive flag)",
+     "became": "(dropped: the E half's guard, decode and record block come first)",
+     "why": "the update_E body above declares idx, i, j and k, guarded the extent "
+            "and decoded the whole record; splicing the ADE prefix would redeclare "
+            "all of them, and its drive flag selects a load the seam no longer "
+            "issues. The predicate requires every P/P_prev/scratch/sigma volume to "
+            "carry exactly the stored extent the E half walks, so the dropped bound "
+            "is the same number the certified kernel would have used."},
     {"line": 'extern "C" __global__ void '
              "update_E_pml_real_folded_offdiag_dispersive(",
      "became": 'extern "C" __global__ void '
@@ -194,8 +199,8 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "partition test and any NVRTC binary observation ambiguous about which "
             "body it saw -- the same reason folded_offdiag_kernels states for its "
             "own name."},
-    {"line": "    float gw_x, float gw_y, float gw_z\n) {",
-     "became": "    float gw_x, float gw_y, float gw_z,\n<the ADE parameters>\n) {",
+    {"line": "    const int* __restrict__ cb\n) {",
+     "became": "    const int* __restrict__ cb,\n<the ADE parameters>\n) {",
      "why": "THE SIGNATURE SPLICE, and the only device text this module writes. The "
             "certified off-diagonal signature is lifted whole and the recurrence's "
             "outputs, histories, sigmas and scalar coefficients are appended -- one "
@@ -271,7 +276,8 @@ def _ade_parameters(component_index: int, count: int,
                  else f"float sigma_{i},")
         lines.append(f"    float* __restrict__ p_out_{i}, "
                      f"const float* __restrict__ p_prev_{i}, {sigma}")
-        lines.append(f"    float c_now_{i}, float c_prev_{i}, float c_drive_{i},")
+        lines.append(f"    float two_minus_od_{i}, float gamma1_{i}, "
+                     f"float omega0dtsqr_{i}, float gamma1inv_{i},")
     # THE LAST GROUP CLOSES THE LIST. The certified signature this splices into
     # ended on its own final parameter, so a trailing comma here is a parameter
     # declarator NVRTC expects and never finds.
@@ -319,7 +325,7 @@ def kernel_source(row_mask: Sequence[int], counts: Sequence[int],
         entry, f'extern "C" __global__ void {KERNEL_NAME}(\n', 1)
     spliced = certified.replace(
         _SIGNATURE_TAIL,
-        "    float gw_x, float gw_y, float gw_z,\n"
+        "    const int* __restrict__ cb,\n"
         "    // THE RECURRENCE'S OWN PARAMETERS, one group per driving state.\n"
         "    // p_now is ABSENT: the E half already binds P_<c>_<i> and both halves\n"
         "    // read it through that one parameter, because binding one allocation\n"
@@ -337,9 +343,10 @@ def kernel_source(row_mask: Sequence[int], counts: Sequence[int],
         "    // driver.py:3313 then :3315 with nothing between the two consults, so",
         "    // the array path would read exactly what this thread just wrote.",
         "    // ------------------------------------------------------------------",
-        f"    // THE SEAM: the drive is fields.drive_field({target!r}), which under",
-        "    // an active layer is f_w_<c> -- the word constitutive_apply above",
-        "    // stored from this same register (fw[idx] = src).",
+        f"    // THE SEAM: the drive is fields.drive_field({target!r}), MEEP's w per",
+        "    // chunk -- f_w_<c> on the layer's chunks, the stored E<c> elsewhere: on",
+        "    // both forms the word constitutive_apply above stored from this same",
+        "    // register.",
         f"    float w = src_{target};",
     ]
     for i, volume in enumerate(sigma_kinds):
@@ -415,6 +422,9 @@ def covers_dispersive_offdiag_fused_polarization_pair(
     in full. What this weld ADDS is three clauses: something must be driven, the
     drive identity behind the register hand-off must hold against the arrays this
     launch binds, and the extent the dropped ADE guard assumed must be one number.
+    Last, the chunk-division clause the composer asks of the update_E arm (the run's
+    own division must be a record that names its chunks on every axis), so the
+    predicate admits no run the composer refuses that arm on.
 
     ``sources`` is accepted and NOT consulted, and that is the driver's own answer
     rather than an omission: nothing is injected between driver.py:3313 and :3315,
@@ -467,6 +477,25 @@ def covers_dispersive_offdiag_fused_polarization_pair(
                                f"the launch walks {walked}; this weld drops the "
                                f"certified update_P guard and may only do so where "
                                f"the two are one number")
+
+    # THE CHUNK-DIVISION CLAUSE, the arm table's own (``arms.coverage_adapter`` with
+    # ``CHUNK_AXES_OFFDIAG``, the ``dispersive off-diagonal`` row's axes), asked of the
+    # run's own division (``arms.StepContext`` handed none reads the division the fields
+    # carry). The update_E half indexes MEEP's chunks on every axis through the record,
+    # and the composer refuses that arm wherever the record does not name them; the
+    # composer installs this weld only over the two arms it selected, so without the
+    # clause the predicate admitted a run the composer can never hand it:
+    # examples/absorbed_power_density.py on the 1.0 census, whose division is not a
+    # {low, interior, high} product along x (the wrapped row 0 reads the low run's
+    # label while its chunk is the high one), and whose update_E steps on the array path
+    # under dispatch. Whether that clause is stricter than this row needs (its presence
+    # words do build on the record) is the clause's question, not this weld's.
+    from .arms import StepContext  # noqa: PLC0415 - the composer's own clause
+    from .chunk_coverage import CHUNK_AXES_OFFDIAG  # noqa: PLC0415
+
+    refusal = StepContext(fields, pml, grid).chunk_division_refusal(CHUNK_AXES_OFFDIAG)
+    if refusal is not None:
+        return False, refusal
     return True, "covered"
 
 
@@ -489,7 +518,7 @@ def launch_dispersive_offdiag_fused_polarization_pair(
         fields: Any, grid: Any, pml: Any, target: str, states: Sequence[Any],
         row_mask: Sequence[int], counts: Sequence[int],
         tables: Dict[str, Any], codes: Sequence[int], wall_mask: Sequence[int],
-        weights: Sequence[float],
+        weights: Sequence[float], kept: Sequence[int], chunk_bounds: Any,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """The whole ``update_E`` and ONE component's ``update_P``, in ONE launch.
 
@@ -498,8 +527,13 @@ def launch_dispersive_offdiag_fused_polarization_pair(
     leaves the state as it found it.
 
     ``kernel`` IS THE GATE'S DOOR: a gate compiles a deliberately broken copy of the
-    shipped source and hands it here.
+    shipped source and hands it here. ``kept`` is the six presence words in slot
+    order (0 for a dead slot) and ``chunk_bounds`` the device record, both the
+    certified off-diagonal dispersive launcher's own arguments.
     """
+    from .constitutive_kernels import chunk_record_argument  # noqa: PLC0415 - imports cupy
+
+    cb = chunk_record_argument(chunk_bounds)
     spec = {t: i for i, (t, _s, _a) in enumerate(ELECTRIC_TERMS)}
     component_index = spec[target]
     kinds = tuple(bool(ade_sigma_is_volume(state, target))
@@ -521,12 +555,17 @@ def launch_dispersive_offdiag_fused_polarization_pair(
                   for name, _s, _a in ELECTRIC_TERMS]
     arguments += poles
     arguments += rows
+    if len(kept) != len(_coverage.OFFDIAG_ROW_SLOTS):
+        raise ValueError(f"kept carries {len(kept)} presence words, not one per row slot "
+                         f"({len(_coverage.OFFDIAG_ROW_SLOTS)}, 0 for a dead slot)")
+    arguments += [np.int32(int(word)) for word, flag in zip(kept, row_mask) if flag]
     arguments += [np.int32(nx), np.int32(ny), np.int32(nz)]
     for axis in ("x", "y", "z"):
         arguments += [tables[f"kps_{axis}"], tables[f"kms_{axis}"]]
     arguments += [np.int32(int(code)) for code in codes]
     arguments += [np.int32(int(bool(flag))) for flag in wall_mask]
     arguments += [np.float32(float(value)) for value in weights]
+    arguments.append(cb)
     for index, state in enumerate(states):
         scratch = state._scratch
         if int(scratch.size) != n_elem:
@@ -534,16 +573,16 @@ def launch_dispersive_offdiag_fused_polarization_pair(
                 f"state {index}'s scratch holds {int(scratch.size)} cells and the "
                 f"launch walks {n_elem}; the certified update_P guard this weld "
                 f"drops was that size")
-        coefficients = tuple(state._coefficients)
-        if len(coefficients) != 3:
+        constants = tuple(state.constants)
+        if len(constants) != 4:
             raise ValueError(
-                f"a polarization carries {len(coefficients)} recurrence "
-                f"coefficients, not the (c_now, c_prev, c_drive) triple this kernel "
-                f"bakes as scalars")
+                f"a polarization carries {len(constants)} recurrence constants, not "
+                f"the four realnum words (two_minus_od, gamma1, omega0dtsqr, "
+                f"gamma1inv) this kernel takes as scalars")
         sigma = state.sigma[target]
         arguments += [scratch, state.P_prev[target],
                       sigma if kinds[index] else np.float32(sigma)]
-        arguments += [np.float32(value) for value in coefficients]
+        arguments += [np.float32(value) for value in constants]
 
     blocks = (n_elem + _FUSED_THREADS - 1) // _FUSED_THREADS
     launcher = kernel or _get_kernel(row_mask, counts, component_index, kinds)
@@ -576,7 +615,8 @@ def _rotate(state: Any, component: str) -> None:
 
 def run_dispersive_offdiag_fused_polarization_pair(
         fields: Any, grid: Any, pml: Any, *, sources: Any = None,
-        tables: Optional[Dict[str, Any]] = None,
+        tables: Optional[Dict[str, Any]] = None, chunk_bounds: Any = None,
+        kept: Optional[Sequence[int]] = None,
         kernel: Optional[Any] = None, rotate: bool = True) -> Dict[str, Any]:
     """Both of :data:`REPLACES`: ONE fused launch, then the remaining recurrences.
 
@@ -592,6 +632,8 @@ def run_dispersive_offdiag_fused_polarization_pair(
     computes".
 
     ``rotate=False`` is the gate's door for the ``rotation_skipped`` mutation.
+    ``chunk_bounds`` and ``kept`` are the composition's device record and presence
+    words (derived from the layer and the run's division when omitted).
     """
     covered, reason = covers_dispersive_offdiag_fused_polarization_pair(
         fields, pml, grid, sources)
@@ -609,11 +651,17 @@ def run_dispersive_offdiag_fused_polarization_pair(
     counts = pole_counts(fields)
     row_mask = _offdiag_e.normalized_row_mask(_coverage.offdiag_row_mask(fields))
     states = list(_polar.component_specs(fields)[target]["states"])
+    codes = _offdiag_e.dispersive_offdiag_boundary_codes(grid, pml)
+    if chunk_bounds is None or kept is None:
+        import cupy as cp  # noqa: PLC0415 - device-only
+
+        division, kept = _offdiag_e.dispersive_offdiag_chunk_arguments(fields, pml,
+                                                                       codes)
+        chunk_bounds = cp.asarray(np.asarray(division, dtype=np.int32))
     record = launch_dispersive_offdiag_fused_polarization_pair(
-        fields, grid, pml, target, states, row_mask, counts, tables,
-        _offdiag_e.dispersive_offdiag_boundary_codes(grid, pml),
+        fields, grid, pml, target, states, row_mask, counts, tables, codes,
         _coverage.offdiag_wall_mask_flags(grid),
-        _offdiag_e.mirror_ghost_weights(grid), kernel)
+        _offdiag_e.mirror_ghost_weights(grid), kept, chunk_bounds, kernel)
     if rotate:
         for state in states:
             _rotate(state, target)
@@ -625,17 +673,19 @@ def run_dispersive_offdiag_fused_polarization_pair(
         for component in tuple(state.driven()):
             if component == target and state in states:
                 continue
-            w = fields.drive_field(component)
+            drive_w, drive_e = ade_kernels.drive_pair(fields, pml, component)
             p = state.P[component]
             p_prev = state.P_prev[component]
             scratch = state._scratch
             sigma = state.sigma[component]
             volume = bool(ade_sigma_is_volume(state, component))
             ade_kernels._require_no_aliasing(  # noqa: SLF001 - the certified check
-                scratch, p, p_prev, w, sigma if volume else None, component)
+                scratch, p, p_prev, drive_w, drive_e, sigma if volume else None,
+                component)
             ade_kernels._launch(  # noqa: SLF001 - the certified launch
-                ade_kernels._get_kernel(volume), scratch, p, p_prev, sigma, w,
-                tuple(state._coefficients), volume)
+                ade_kernels._get_kernel(volume), scratch, p, p_prev, sigma, drive_w,
+                drive_e, tuple(state.constants), volume,
+                ade_kernels.ADE_ELECTRIC_COMPONENTS.index(component), chunk_bounds)
             tail.append({"component": component, "sigma_is_volume": volume})
             if rotate:
                 _rotate(state, component)

@@ -92,9 +92,8 @@ NOT A RE-LIFT. Two standing records are read:
 THE STALENESS AUDIT IS MEASURED, NOT ASSERTED. Every predicate function whose
 verdict this derivation reads is AST-hashed (docstrings stripped) at the census's
 commit and in the worktree, and each is reported SAME or CHANGED. A CHANGED
-function is not silently trusted: the one that matters — the complex expansion
-licence, rewritten between the two — is RE-MEASURED here by handing today's
-``complex_fields`` the exact probe artifact the census ran under.
+function is not silently trusted: it is named, with both digests, in the board's
+``staleness_audit`` block.
 
 **COVERAGE IS READ OFF ``covered_modulo_backend``.** The census lifted on NumPy,
 so every Triton predicate carries "array module is 'numpy', not cupy" and the raw
@@ -351,30 +350,6 @@ if NEAR_SOURCE_INDEX != _SYMMETRY_NEAR_SOURCE_INDEX:
         f"triton_kernels.symmetry.MIRROR_SOURCE_INDEX is "
         f"{_SYMMETRY_NEAR_SOURCE_INDEX}; the array path's near fill and the kernels' "
         f"carry image different rows, so no single board clause is right for both")
-
-#: The expansion probe artifact the census declared, re-read here for the EXTENDED
-#: pattern set the folded complex weld binds. Named rather than inferred so the
-#: record says which artifact answered.
-#: THE CENSUS'S OWN ARTIFACT, re-cut 2026-09-01 as the BETA EXTENSION of the
-#: 2026-08-16 standing artifact: the base four patterns (character-for-character
-#: identical tables — the keep control) PLUS `c8_mul_c8_imaginary_coefficient_left`.
-#: It still does NOT classify the PARITY pattern, so its answer for the folded
-#: complex weld's extended set is recorded below rather than skipped.
-CENSUS_PROBE_ARTIFACT = (RESULTS / "complex_expansion_beta_extension_2026-09-01"
-                         / "probe_keep" / "probe.json")
-
-#: THE ARTIFACT THE RELEASED DEVICE GATE CONSUMED, and the one the extended pattern
-#: set is measured against. Same host, same 'keep' policy, and it carries
-#: ``c8_mul_c8_parity_coefficient_left`` — which the census artifact does not,
-#: because that pattern arrived with the tranche that added the parity multiply.
-#:
-#: WHY NOT THE CENSUS'S. Its refusal would be about the RECORD'S DATE, not about the
-#: platform or the corpus: "pattern 'c8_mul_c8_parity_coefficient_left' is not
-#: classified". Pricing a product at zero for that would be the same error as
-#: pricing it at zero for a missing column. Both answers are recorded below so a
-#: reader can see which artifact answered and what the other said.
-PROBE_ARTIFACT = (RESULTS / "expansion_probe_2026-08-17"
-                  / "expansion_probe_keep.json")
 
 
 def log(message: str = "") -> None:
@@ -1327,11 +1302,8 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     # test_eigsrc_kz_0_complex) as no-admitting-arm with ``curl_admitters: []``;
     # the same probe extension that unlocked the unfolded pair unlocks K3b
     # ("folded complex beta PML", launch.py:2744), and these two products occupy
-    # the cells it opens. Their PRODUCT_PROBE_PATTERNS is the SIX-pattern union
-    # (parity + beta on top of the base four), which the census probe does not
-    # carry — the credit reads the ``@unified_expansion`` census verdicts, the
-    # folded_complex twins' own mechanism, with the census-probe verdict carried
-    # beside it per instance.
+    # the cells it opens. Credited from their shipped predicates' census verdicts,
+    # as the folded_complex twins are.
     "folded_beta_complex_fused_magnetic_pair": {
         "seam": "B->H",
         # folded_beta_complex_fused_magnetic_pair.py conjoins K3b
@@ -1353,22 +1325,6 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-#: The products whose `shipped` row reads an ``@unified_expansion`` census
-#: verdict, mapped to the CENSUS-PROBE key for the same predicate — the pair of
-#: columns every such instance carries (`credited_under_a_different_expansion_
-#: licence` / `same_product_under_the_census_probe`). One predicate can own two
-#: cells (the folded_complex magnetic pair and its `_offdiag` label), so this is
-#: keyed by PRODUCT name, not by module.
-UNIFIED_CREDITED_PRODUCTS: Dict[str, str] = {
-    "folded_complex_fused_magnetic_pair": "folded_complex_fused_magnetic_pair_B",
-    "folded_complex_fused_magnetic_pair_offdiag":
-        "folded_complex_fused_magnetic_pair_B",
-    "folded_complex_fused_pair": "folded_complex_fused_pair_D",
-    "folded_beta_complex_fused_pair": "folded_beta_complex_fused_pair_D",
-    "folded_beta_complex_fused_magnetic_pair":
-        "folded_beta_complex_fused_magnetic_pair_B",
-}
-
 #: The E->P products, in the order the report consults them. ``fused_dispersive_chain``
 #: is NOT here: it is scored by its own D->E cell (the pair it fuses) and credited into
 #: this seam separately, because one launch of it performs ``update_P`` as well.
@@ -1385,27 +1341,19 @@ E_TO_P_PRODUCTS: Tuple[str, ...] = ("fused_ade_chain", "complex_fused_ade_chain"
 #: (:func:`assert_the_chain_arms_do_not_overlap`), so "any" and "the one" agree on
 #: every measured row.
 #:
-#: ``complex_fused_ade_chain`` is credited from the UNIFIED-EXPANSION verdict, not
-#: from the census-probe one, and the reason is measured rather than chosen. Its ADE
-#: half needs ``c8_mul_python_float_field_left`` on top of the four base patterns and
-#: NO per-family probe carries it: scored on 2026-08-30, this census's own probe
-#: returns ``expansion=None`` ("pattern ... is not classified") and
-#: results/unified_expansion_2026-08-27/keep/gate.json returns ``expansion=1`` with no
-#: refusals. That is the same artifact the family's RELEASED gate requires, stated in
-#: its own gate entry (drive_triton_weld_gates.py:255-265). BOTH verdicts are carried
-#: in the census row and BOTH are reported below: crediting the family against the
-#: licence its gate did not hold would be a wrong answer, and reporting zero because a
-#: DIFFERENT family's probe was passed in would be a different wrong answer.
+#: ``complex_fused_ade_chain`` is credited from its one census verdict. Until the
+#: expansion licence was deleted it was credited from the ``@unified_expansion`` key
+#: (the verdict under the unified expansion record), because no per-family probe
+#: classified the pattern its ADE half needs; with no record left the two keys were
+#: the same call, and the census carries one.
 #: ``folded_offdiag_fused_ade_chain`` is asked ONCE, under ONE key, and both facts
 #: are the product's own rather than a convention: its predicate takes no ``arm``
-#: argument (there is one body and one admission) and it consumes NO expansion
-#: record at all — the E half it composes is real float32 storage, so neither the
-#: census probe nor the unified record enters its verdict and there is nothing for
-#: a second key to distinguish.
+#: argument (there is one body and one admission) and the E half it composes is real
+#: float32 storage.
 E_TO_P_VERDICT_KEYS: Dict[str, Tuple[str, ...]] = {
     "fused_ade_chain": ("fused_ade_chain@no_pml", "fused_ade_chain@dispersive",
                         "fused_ade_chain@folded"),
-    "complex_fused_ade_chain": ("complex_fused_ade_chain@unified_expansion",),
+    "complex_fused_ade_chain": ("complex_fused_ade_chain",),
     "folded_offdiag_fused_ade_chain": ("folded_offdiag_fused_ade_chain",),
 }
 
@@ -1467,10 +1415,8 @@ def folded_complex_magnetic_clauses(row: dict) -> Dict[str, bool]:
 
     The FILL half's own predicate is not in the census — the battery carries no
     ``folded_mirror_ghost_fill_complex`` column — and every clause it adds beyond
-    these two is either shared with them (the fold classification, the phase rules,
-    the layout) or is the EXTENDED expansion pattern set, which is a property of the
-    probe artifact rather than of a row. That artifact clause is measured once,
-    globally, in :func:`parity_licence_holds`, and is therefore not a per-row term.
+    these two is shared with them (the fold classification, the phase rules, the
+    layout).
     """
     configuration = row["configuration"]
     metallic, mirrored = configuration["metallic"], configuration["mirrored"]
@@ -1506,9 +1452,6 @@ def folded_complex_magnetic_clauses(row: dict) -> Dict[str, bool]:
             and (bool(configuration.get("has_metallic")) and bool(metallic[a])
                  and not bool(mirrored[a]))
             for a in range(3)),
-        # the EXTENDED expansion pattern set, measured once against the artifact the
-        # census declared rather than re-asked per row
-        "parity_licence": parity_licence_holds(),
     }
 
 
@@ -1528,60 +1471,6 @@ def complex_magnetic_clauses(row: dict) -> Dict[str, bool]:
                                     and not any(bool(v)
                                                 for v in configuration["mirrored"])),
     }
-
-
-_PARITY_LICENCE: Dict[str, Any] = {}
-
-
-def parity_licence_holds() -> bool:
-    """Does the census's own probe artifact license the EXTENDED pattern set?
-
-    ``folded_complex_fused_magnetic_pair`` calls the fill's parity multiply, so it
-    binds ``folded_complex.PARITY_PROBE_PATTERNS`` — the base four plus
-    ``c8_mul_c8_parity_coefficient_left`` — where every other complex product here
-    binds the base four. That is a property of the ARTIFACT, not of a corpus row, so
-    it is measured ONCE against the record the census declared and cached.
-
-    A record that licenses the base four and NOT the parity pattern would admit
-    every other complex product and refuse this one; the answer is recorded in the
-    artifact so the reader can see which it was.
-    """
-    if not _PARITY_LICENCE:
-        import sys as _sys  # noqa: PLC0415
-        if str(API) not in _sys.path:
-            _sys.path.insert(0, str(API))
-        from meep_gpu.triton_kernels import folded_complex as _fc  # noqa: PLC0415
-        artifact = json.loads(PROBE_ARTIFACT.read_text())
-        verdict = _fc.parity_expansion_license(artifact)
-        census_verdict = _fc.parity_expansion_license(
-            json.loads(CENSUS_PROBE_ARTIFACT.read_text()))
-        _PARITY_LICENCE.update({
-            "artifact": str(PROBE_ARTIFACT.relative_to(API)),
-            "patterns": list(_fc.PARITY_PROBE_PATTERNS),
-            "arm": verdict["arm"], "expansion": verdict["expansion"],
-            "refusals": list(verdict["refusals"]),
-            "licensed": verdict["expansion"] is not None,
-            "census_artifact": str(CENSUS_PROBE_ARTIFACT.relative_to(API)),
-            "census_artifact_licensed": census_verdict["expansion"] is not None,
-            "census_artifact_refusals": list(census_verdict["refusals"]),
-            "why_not_the_census_artifact":
-                "the census artifact (the 2026-09-01 beta extension of the "
-                "2026-08-16 standing cut) classifies the base four plus the beta "
-                "tranche's imaginary-coefficient-left pattern, and NOT "
-                "c8_mul_c8_parity_coefficient_left, which arrived with the tranche "
-                "that added the parity multiply. Its refusal is about the record's "
-                "pattern set, not the platform. The artifact used here is the one "
-                "the RELEASED device gate consumed, on the same host under the same "
-                "'keep' policy.",
-        })
-        log(f"  PARITY LICENCE (extended pattern set): "
-            f"arm={_PARITY_LICENCE['arm']!r} "
-            f"licensed={_PARITY_LICENCE['licensed']} "
-            f"artifact={_PARITY_LICENCE['artifact']}")
-        log(f"    the CENSUS's own artifact answers "
-            f"licensed={_PARITY_LICENCE['census_artifact_licensed']}: "
-            f"{_PARITY_LICENCE['census_artifact_refusals']}")
-    return bool(_PARITY_LICENCE["licensed"])
 
 
 def folded_electric_clauses(row: dict) -> Dict[str, bool]:
@@ -1761,8 +1650,8 @@ def cylindrical_complex_magnetic_clauses(row: dict) -> Dict[str, bool]:
     ../fusion_matrix_triton_2026-08-20c/.
 
     THE |m| >= 1 Dcyl CELL. The predicate is a conjunction of the two halves' own
-    verdicts plus two seam clauses; the Dcyl geometry clauses, the |m| >= 1 clause,
-    the ``nr >= 2`` clause and the EXPANSION licence are all INHERITED from the
+    verdicts plus two seam clauses; the Dcyl geometry clauses, the |m| >= 1 clause
+    and the ``nr >= 2`` clause are all INHERITED from the
     halves (:738-741) and are therefore already inside ``curl_half`` here rather
     than restated as separate rungs.
 
@@ -2191,7 +2080,6 @@ AUDITED: Tuple[Tuple[str, str], ...] = (
     ("complex_fields.py", "complex_constitutive_coverage"),
     ("complex_fields.py", "_complex_grid_reasons"),
     ("complex_fields.py", "_complex_layout_reasons"),
-    ("complex_fields.py", "_expansion_reasons"),
     # Added 2026-08-20c with the cylindrical-complex product. The 08-20b cut READ
     # the two cylindrical m = 0 predicates for its own new product without adding
     # them here, so its staleness audit did not in fact cover every predicate its
@@ -2365,45 +2253,6 @@ def staleness_audit() -> Dict[str, Any]:
     verdicts["_dated_by"] = ("the census's own tree snapshot" if use_snapshot
                              else f"git {CENSUS_COMMIT}")
     return verdicts
-
-
-def recheck_the_expansion_licence() -> Dict[str, Any]:
-    """The one CHANGED clause that could move a number: re-measure it today.
-
-    ``_expansion_reasons`` and the whole ``expansion_license`` ladder were
-    rewritten between the census and now. The census's complex verdicts are only
-    usable if TODAY's code still licenses the artifact the census ran under, so
-    that is measured here rather than argued.
-    """
-    log("\n=== RE-MEASURING THE COMPLEX EXPANSION LICENCE ON TODAY'S CODE ===")
-    probe_path = None
-    for row in rows(CENSUS):
-        if row.get("probe_artifact"):
-            probe_path, declared = row["probe_artifact"], row.get("run_policy_declared")
-            break
-    if probe_path is None:
-        log("  the census recorded no probe artifact path")
-        return {"probe_artifact": None}
-    log(f"  artifact  : {probe_path}")
-    log(f"  policy the census declared: {declared!r}")
-    from meep_gpu import expansion_refusal                        # noqa: PLC0415
-    from meep_gpu.triton_kernels import complex_fields as cf      # noqa: PLC0415
-    record = cf.load_expansion_probe(str(API / probe_path))
-    licence = cf.expansion_license(record)
-    with expansion_refusal.declaring_run_policy(str(declared)):
-        reasons = cf._expansion_reasons(record)
-    log(f"  expansion_license(record) refusals : {licence.get('refusals')}")
-    log(f"  expansion arm                      : {licence.get('arm')!r}")
-    log(f"  _expansion_reasons under {declared!r}      : "
-        f"{reasons if reasons else 'NONE — still licensed'}")
-    return {
-        "probe_artifact": probe_path,
-        "policy_declared_by_the_census": declared,
-        "licence_refusals_today": list(licence.get("refusals") or ()),
-        "arm_today": licence.get("arm"),
-        "expansion_reasons_today_under_that_policy": [str(r) for r in reasons],
-        "still_licensed": not reasons,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -2701,9 +2550,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                  "folded_dispersive_fused_pair_D",
                  "cylindrical_real_fused_electric_pair_D",
                  "folded_complex_fused_magnetic_pair_B",
-                 "folded_complex_fused_magnetic_pair_B@unified_expansion",
                  "folded_complex_fused_pair_D",
-                 "folded_complex_fused_pair_D@unified_expansion",
                  "beta_fused_electric_pair_D",
                  "bfast_fused_electric_pair_D",
                  "conductive_fused_electric_pair_D",
@@ -2723,11 +2570,19 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                  "complex_beta_fused_electric_pair_D",
                  "complex_beta_fused_magnetic_pair_B",
                  "folded_beta_complex_fused_pair_D",
-                 "folded_beta_complex_fused_pair_D@unified_expansion",
                  "folded_beta_complex_fused_magnetic_pair_B",
-                 "folded_beta_complex_fused_magnetic_pair_B@unified_expansion",
-                 "complex_fused_ade_chain", "complex_fused_ade_chain@unified_expansion"}
+                 "complex_fused_ade_chain"}
                 | {key for keys in E_TO_P_VERDICT_KEYS.values() for key in keys})
+    # THE RETIRED ``@unified_expansion`` KEYS ARE REFUSED BY NAME. They were the verdicts
+    # under the unified expansion record; with the licence deleted the battery asks each
+    # predicate once, and a census still carrying them was cut by an older battery.
+    retired = sorted({key for r in record for key in (r.get("seam") or {})
+                      if key.endswith("@unified_expansion")})
+    if retired:
+        raise SystemExit(
+            f"{CENSUS.name} carries the retired @unified_expansion seam keys {retired}: "
+            f"it was cut by a battery from before the expansion licence was deleted. "
+            f"Re-cut the census with triton_predicate_battery as it stands.")
     missing_keys = sorted(required - set((record[0].get("seam") or {}).keys()))
     if missing_keys:
         raise SystemExit(
@@ -2835,32 +2690,19 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
             # rows are electric-only, so no repair is consulted at all.
             "cylindrical_real_fused_electric_pair":
                 seam_covered(row, "cylindrical_real_fused_electric_pair_D"),
-            # UNDER THE UNIFIED RECORD, and the swap is measured rather than
-            # preferred. This product's PRODUCT_PROBE_PATTERNS add
-            # `c8_mul_c8_parity_coefficient_left`, which no per-family probe
-            # classifies: under this census's own probe the fill half refuses on
-            # every row, and under results/unified_expansion_2026-08-27/keep/gate.json
-            # it admits. That artifact is the one its RELEASED gate requires — run
-            # with the complex family's probe the gate refuses before its first
-            # device leg. The census-probe verdict is carried beside it and reported,
-            # so the licence this credit rests on is visible per row.
-            #
-            # ITS SIBLING NEEDS NO SWAP: complex_fused_magnetic_pair admits under
-            # BOTH artifacts, measured the same way, so it is read from the census
-            # probe like every other product here.
+            # Read from its shipped predicate's census verdict. Until the expansion
+            # licence was deleted this product was credited under the unified
+            # expansion record (an ``@unified_expansion`` key), the only record that
+            # classified its extended pattern set; with no record the predicate is
+            # asked once.
             "folded_complex_fused_magnetic_pair": seam_covered(
-                row, "folded_complex_fused_magnetic_pair_B@unified_expansion"),
-            # THE ELECTRIC TWIN, 2026-08-31, UNDER THE SAME UNIFIED RECORD AND FOR
-            # THE SAME MEASURED REASON: its PRODUCT_PROBE_PATTERNS is the same
-            # extended set (`folded_complex.PARITY_PROBE_PATTERNS`), which no
-            # per-family probe classifies. The census-probe verdict is carried beside
-            # it in the record and reported, so the licence this credit rests on is
-            # visible per row. NO LADDER: the clause that decides both of its rows
-            # consults `deposit_repair.repairable` on the live run, and both declare
-            # an electric source, so a transcription guessing False would price the
-            # cell at zero.
+                row, "folded_complex_fused_magnetic_pair_B"),
+            # THE ELECTRIC TWIN, 2026-08-31, read the same way. NO LADDER: the clause
+            # that decides both of its rows consults `deposit_repair.repairable` on the
+            # live run, and both declare an electric source, so a transcription
+            # guessing False would price the cell at zero.
             "folded_complex_fused_pair": seam_covered(
-                row, "folded_complex_fused_pair_D@unified_expansion"),
+                row, "folded_complex_fused_pair_D"),
             # THE REAL-BETA ELECTRIC WELD, 2026-08-31. Read from its shipped
             # predicate. NO LADDER, and its MAGNETIC twin above IS scored from one —
             # that asymmetry is the point: the clause that decides this cell's only
@@ -2911,28 +2753,24 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
             "folded_beta_fused_magnetic_pair":
                 seam_covered(row, "folded_beta_fused_magnetic_pair_B"),
             # THE TWO COMPLEX-BETA WELDS, 2026-09-01. Read from their shipped
-            # predicates UNDER THE CENSUS PROBE — which works only because the
-            # census probe now carries the beta tranche's fifth pattern (the
-            # 2026-09-01 extension artifact; see the PRODUCTS entry). NO LADDER:
-            # the electric twin's deciding clause consults
-            # `deposit_repair.repairable` on the live run, and both halves'
-            # expansion clauses read the live probe artifact.
+            # predicates' census verdicts (the census of record was cut under a probe
+            # record carrying the beta tranche's fifth pattern, first classified by the
+            # 2026-09-01 extension artifact, see the PRODUCTS entry; the predicates read
+            # no probe since the expansion licence was deleted). NO LADDER: the
+            # electric twin's deciding clause consults `deposit_repair.repairable`
+            # on the live run.
             "complex_beta_fused_electric_pair":
                 seam_covered(row, "complex_beta_fused_electric_pair_D"),
             "complex_beta_fused_magnetic_pair":
                 seam_covered(row, "complex_beta_fused_magnetic_pair_B"),
-            # THE TWO FOLDED COMPLEX-BETA WELDS, 2026-09-02, UNDER THE UNIFIED
-            # RECORD like the beta-less folded complex twins and for their reason
-            # extended by one pattern: PRODUCT_PROBE_PATTERNS is the SIX-pattern
-            # union (parity + beta), the census probe classifies five (no
-            # parity), and the unified record classifies all six with both
-            # extended licences answering FMA_V1. The census-probe verdict is
-            # carried beside each instance. NO LADDER: the deciding clauses
-            # consult `deposit_repair.repairable` on the live run.
+            # THE TWO FOLDED COMPLEX-BETA WELDS, 2026-09-02, read from their shipped
+            # predicates' census verdicts like the beta-less folded complex twins.
+            # NO LADDER: the deciding clauses consult `deposit_repair.repairable` on
+            # the live run.
             "folded_beta_complex_fused_pair": seam_covered(
-                row, "folded_beta_complex_fused_pair_D@unified_expansion"),
+                row, "folded_beta_complex_fused_pair_D"),
             "folded_beta_complex_fused_magnetic_pair": seam_covered(
-                row, "folded_beta_complex_fused_magnetic_pair_B@unified_expansion"),
+                row, "folded_beta_complex_fused_magnetic_pair_B"),
             # THE TWO SCRATCH-OUTPUT OFF-DIAGONAL WELDS, 2026-09-02. Read from
             # their shipped predicates and NOT from a census ladder, for two
             # reasons that are both live-run facts: the source clause consults
@@ -3069,20 +2907,6 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                 "in_seam_source_blocks": in_seam_source_blocks(row, seam),
                 # READ off the Metal census's plan_step.live, not derived.
                 "live_in_seam_passes": list(_live_passes(metal.get(name), seam)),
-                # THE LICENCE THIS INSTANCE'S CREDIT RESTS ON, where it is not the
-                # census's own probe. Carried on every instance so the swap is a
-                # COLUMN rather than a remark in a docstring; None where no swap
-                # applies. Widened 2026-09-02 from the single magnetic special
-                # case to every product whose `shipped` row reads an
-                # `@unified_expansion` key — the electric folded_complex twin
-                # and the two folded beta products were credited under the swap
-                # while the column printed None for them.
-                "credited_under_a_different_expansion_licence": (
-                    "unified_expansion_2026-08-27/keep/gate.json"
-                    if product in UNIFIED_CREDITED_PRODUCTS else None),
-                "same_product_under_the_census_probe": (
-                    seam_covered(row, UNIFIED_CREDITED_PRODUCTS[product])
-                    if product in UNIFIED_CREDITED_PRODUCTS else None),
                 "planner_reachable": False, "planner_refusal": None,
             }
             if product and admits[product]:
@@ -3228,11 +3052,6 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                 "chain_verdicts": {
                     key: seam_covered(row, key)
                     for keys in E_TO_P_VERDICT_KEYS.values() for key in keys},
-                # The census-probe verdict for the complex chain, carried BESIDE the
-                # unified one it is credited from, so the licence swap is visible on
-                # every instance rather than only in this file's prose.
-                "complex_chain_under_the_census_probe":
-                    seam_covered(row, "complex_fused_ade_chain"),
             }
             instances.append(entry)
 
@@ -4719,6 +4538,78 @@ BUILDABLE_GAP_RECIPES: Dict[Tuple[str, str, str], str] = {}
 #: wrote a FRESH directory rather than reusing ``keep/``: these gates APPEND to
 #: ``gate.rows.jsonl``, so the refused run's rows are still in ``keep/`` beside it and
 #: would have been mixed into the released run's record.
+def verdict_prose_policy_reasons(gate: Dict[str, Any]) -> List[str]:
+    """Why a verdict-prose gate artifact's policy stamps do not show a device run.
+
+    The run's own policy (top-level ``subnormal_policy.resolved``, keep or flush) must be
+    the ONE policy whose install attained ``cupy`` and ``triton``
+    (``environment.subnormal_policy_stamps``), and every stamp must have resolved to the
+    policy it is labelled with. A host-only run attains ``host`` alone; a stamp labelled
+    ``flush`` that resolved ``keep`` is a run that did not cut what it names (the memoised
+    install of ``probe_triton_cylindrical_fused_magnetic_pair``'s two-cut loop, MEASURED on
+    its released runs of 2026-09-04 .. 09-07). Empty when the stamps are sound.
+    """
+    stamps = ((gate.get("environment") or {}).get("subnormal_policy_stamps") or {})
+    attained = {
+        policy: {name: bool(block.get("attained"))
+                 for name, block in
+                 (((stamp.get("install") or {}).get("executors")) or {}).items()}
+        for policy, stamp in stamps.items()}
+    on_device = sorted(policy for policy, executors in attained.items()
+                       if executors.get("cupy") and executors.get("triton"))
+    mislabelled = sorted(policy for policy, stamp in stamps.items()
+                         if (stamp.get("install") or {}).get("resolved") != policy)
+    own = (gate.get("subnormal_policy") or {}).get("resolved")
+    reasons: List[str] = []
+    if mislabelled:
+        reasons.append(f"the policy stamps labelled {mislabelled} resolved to another "
+                       f"policy, so the run did not cut what it names")
+    if own not in ("keep", "flush") or on_device != [own]:
+        reasons.append(f"cupy+triton executors attained under {on_device} rather than "
+                       f"under the run's own policy {own!r} alone ({attained})")
+    return reasons
+
+
+#: REPOINTED 2026-10-13 TO THE RUNS OF ROUND ``2026-10-13_10`` (tree ``73d04e99``), by
+#: ``repoint_board_bindings.py triton`` from the measured binding table, never by hand:
+#: 39 of 39 entries moved from 14 root(s) to 14 root(s) of the round
+#: (triton_beta_complex_fused_hd_pair_2026-10-13_10,
+#: triton_beta_real_fused_hd_pair_2026-10-13_10,
+#: triton_complex_fused_hd_pair_2026-10-13_10,
+#: triton_conductive_bfast_fused_hd_pair_2026-10-13_10,
+#: triton_cylindrical_fused_hd_pair_2026-10-13_10,
+#: triton_cylindrical_real_fused_hd_pair_2026-10-13_10, triton_fleet_2026-10-13_10,
+#: triton_fleet_2026-10-13_10_env_probe, triton_fleet_2026-10-13_10_t2_rest,
+#: triton_folded_complex_fused_hd_pair_2026-10-13_10,
+#: triton_folded_fused_hd_pair_2026-10-13_10, triton_fused_hd_pair_2026-10-13_10,
+#: triton_nonlinear_fused_hd_pair_2026-10-13_10,
+#: triton_offdiag_stencil_welds_2026-10-13_10), each to the one run of its gate there
+#: that the release-binding floor admits (a passed device release of the keep policy, the
+#: credited module recorded, 0 recorded files moved); 0 already named such a run.
+#: REPOINTED 2026-10-15 TO THE RUNS OF ROUND
+#: ``2026-10-15_10_cc86_c0,2026-10-15_10_cc86_c2,2026-10-15_10_cc86_c5,2026-10-15_10_cc86_c6,2026-10-15_10_cc86_c10,2026-10-15_10_cc86_c8,2026-10-15_10_cc86_c7,2026-10-15_10_cc86_c9,2026-10-15_10_cc86_c11,2026-10-15_10_cc86_c12``
+#: (tree ``213713d6``), by ``repoint_board_bindings.py triton`` from the measured binding
+#: table, never by hand: 39 of 39 entries moved from 14 root(s) to 21 root(s) of the
+#: round (triton_beta_complex_fused_hd_pair_2026-10-15_10_cc86_c0,
+#: triton_beta_real_fused_hd_pair_2026-10-15_10_cc86_c5,
+#: triton_complex_fused_hd_pair_2026-10-15_10_cc86_c5,
+#: triton_conductive_bfast_fused_hd_pair_2026-10-15_10_cc86_c5,
+#: triton_cylindrical_fused_hd_pair_2026-10-15_10_cc86_c0,
+#: triton_cylindrical_real_fused_hd_pair_2026-10-15_10_cc86_c9,
+#: triton_fleet_2026-10-15_10_cc86_c0, triton_fleet_2026-10-15_10_cc86_c0_env_probe,
+#: triton_fleet_2026-10-15_10_cc86_c11, triton_fleet_2026-10-15_10_cc86_c12,
+#: triton_fleet_2026-10-15_10_cc86_c12_t2_rest, triton_fleet_2026-10-15_10_cc86_c5,
+#: triton_fleet_2026-10-15_10_cc86_c5_env_probe, triton_fleet_2026-10-15_10_cc86_c8,
+#: triton_fleet_2026-10-15_10_cc86_c8_env_probe,
+#: triton_folded_complex_fused_hd_pair_2026-10-15_10_cc86_c5,
+#: triton_folded_fused_hd_pair_2026-10-15_10_cc86_c6,
+#: triton_fused_hd_pair_2026-10-15_10_cc86_c7,
+#: triton_nonlinear_fused_hd_pair_2026-10-15_10_cc86_c7,
+#: triton_offdiag_stencil_welds_2026-10-15_10_cc86_c5,
+#: triton_offdiag_stencil_welds_2026-10-15_10_cc86_c9), each to the one run of its gate
+#: there that the release-binding floor admits (a passed device release of the keep
+#: policy, the credited module recorded, 0 recorded files moved); 0 already named such a
+#: run.
 GATE_BOUND: Dict[str, str] = {
     # THE E->P CHAIN, released on its first device run (2026-09-11, the GPU host GPU 7,
     # cc 8.6): PASS, release.released true, no reasons. Bound to the gate ARTIFACT
@@ -4726,7 +4617,7 @@ GATE_BOUND: Dict[str, str] = {
     # the wider one -- it pins both E-half modules, the ADE kernel and the gate
     # script, and the board re-hashes every one of them on each cut.
     "folded_offdiag_fused_ade_chain":
-        "results/triton_fleet_2026-09-25_roundb/folded_offdiag_fused_ade_chain/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c12_t2_rest/folded_offdiag_fused_ade_chain/gate.json",
     # THE THREE 08-21 GAP-CELL FAMILIES, RE-POINTED 2026-08-28 TO A FRESH DEVICE
     # CAMPAIGN. Their 08-21 artifacts each drifted on FOUR of eleven files -- the
     # three the 08-27 routing round rewrote under every Triton weld (``driver.py``,
@@ -4805,18 +4696,18 @@ GATE_BOUND: Dict[str, str] = {
     # Nothing was edited to make anything match; the pointer is written BEFORE the
     # run, so no artifact here certifies bytes that no longer exist.
     "offdiag_fused_electric_pair":
-        "results/triton_offdiag_stencil_welds_2026-09-25_roundb/offdiag_fused_electric_pair/gate.json",
+        "results/triton_offdiag_stencil_welds_2026-10-15_10_cc86_c9/offdiag_fused_electric_pair/gate.json",
     "folded_offdiag_fused_electric_pair":
-        "results/triton_offdiag_stencil_welds_2026-09-25_roundb/folded_offdiag_fused_electric_pair/gate.json",
+        "results/triton_offdiag_stencil_welds_2026-10-15_10_cc86_c5/folded_offdiag_fused_electric_pair/gate.json",
     "bfast_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-09-25_roundb/bfast_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c8/bfast_fused_magnetic_pair/gate.json",
     "nonlinear_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-09-25_roundb_env_probe/nonlinear_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c8_env_probe/nonlinear_fused_magnetic_pair/gate.json",
     "beta_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-09-25_roundb/beta_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c5/beta_fused_magnetic_pair/gate.json",
     # ONE GATE, TWO PRICED CELLS. The arm label decides which cell an instance lands
     # in; the module, the kernel and the gate are the same object, so both entries
     # bind to the same artifact and both are checked against the tree.
@@ -4865,7 +4756,7 @@ GATE_BOUND: Dict[str, str] = {
     # REPOINTED 2026-09-13 to the batch fleet (shard C), the run that re-measured the
     # probe after it learned to record the device identity (phase A).
     "folded_complex_fused_magnetic_pair":
-        "results/triton_fleet_2026-09-25_roundb_env_noprobe/probe_triton_folded_complex_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c5_env_probe/probe_triton_folded_complex_fused_magnetic_pair/gate.json",
     "folded_complex_fused_magnetic_pair_offdiag":
         # REPOINTED 2026-09-17 to this round's env-probe lane, and to the SAME
         # artifact its base row cites: the derivative shares the base family's
@@ -4888,8 +4779,7 @@ GATE_BOUND: Dict[str, str] = {
         # patterns, keep) equal the 09-23 env-probe run's, and a second run in the
         # env-probe environment (`triton_fleet_2026-09-25_roundb_env_probe_r3`, released)
         # reads the same -- kept as corroboration, not bound.
-        "results/triton_fleet_2026-09-25_roundb_env_noprobe/"
-        "probe_triton_folded_complex_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c5_env_probe/probe_triton_folded_complex_fused_magnetic_pair/gate.json",
     # THE TWO 2026-08-30 D->E CELLS, bound to their OWN first device runs rather
     # than to a ``fingerprints.json`` entry. That file is a release ledger for the
     # shipped kernel set and a matrix cut may not add to it, so the binding reads
@@ -4912,7 +4802,7 @@ GATE_BOUND: Dict[str, str] = {
     # REPOINTED 2026-09-13 to the batch fleet (shard A; the probe now records the
     # device identity and the policy keys the ledger reads).
     "cylindrical_fused_electric_pair":
-        "results/triton_fleet_2026-09-25_roundb/cylindrical_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c12/cylindrical_fused_electric_pair/gate.json",
     # THE Dcyl MAGNETIC TWIN, MOVED HERE FROM ``AST_BOUND`` ON 2026-09-04 — a
     # STRICTLY STRONGER BINDING, not a relaxed one. Through 2026-09-03 this module
     # was bound by docstring-stripped AST equivalence against a copy of its gated
@@ -4923,7 +4813,7 @@ GATE_BOUND: Dict[str, str] = {
     # the older verdict-prose shape, read by the second condition set in
     # ``assert_every_credit_is_bound_to_released_bytes``.
     "cylindrical_fused_magnetic_pair":
-        "results/triton_fleet_2026-09-25_roundb/cylindrical_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c12/cylindrical_fused_magnetic_pair/gate.json",
     # REPOINTED 2026-09-17. This round's fleet artifact carries NO `release`
     # block -- its verdict is in `canonical_verdict` ({"released": true,
     # "read_from": "verdict(prose)"}), which is the shape composition and shape
@@ -4936,7 +4826,7 @@ GATE_BOUND: Dict[str, str] = {
     # run the ledger entry was seeded from. (Comment moved above the key 2026-09-19 so the
     # row is one anchorable key/value pair for repoint_triton_gate_bound.py.)
     "complex_conductive_fused_pair":
-        "results/triton_fleet_2026-09-25_roundb/complex_conductive_fused_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c5/complex_conductive_fused_pair/gate.json",
     # THE 2026-08-31 FOLDED DISPERSIVE CELL, bound to its OWN first device run for
     # the reason the two above are: `fingerprints.json` is a release ledger for the
     # shipped kernel set and a matrix cut may not add to it, so the binding reads the
@@ -4952,7 +4842,7 @@ GATE_BOUND: Dict[str, str] = {
     # current bytes -- 33 recorded files, 0 drift, verified before this repoint.
     "folded_dispersive_fused_pair":
         
-        "results/triton_fleet_2026-09-25_roundb/folded_dispersive_fused_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c5/folded_dispersive_fused_pair/gate.json",
     # THE 2026-08-31 Dcyl m = 0 ELECTRIC CELL, bound the same way and for the same
     # reason. 13 of 13 recorded files match the tree with zero drift.
     # RE-POINTED to the RE-RUN, and the re-run is the rule rather than a repair: the
@@ -4963,7 +4853,7 @@ GATE_BOUND: Dict[str, str] = {
     # hand. 13 of 13 recorded files match the tree with zero drift.
     "cylindrical_real_fused_electric_pair":
         
-        "results/triton_fleet_2026-09-25_roundb/cylindrical_real_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c8/cylindrical_real_fused_electric_pair/gate.json",
     # THE 2026-08-31 REAL-BETA D->E CELL — a cell the MAGNETIC twin's own docstring
     # wrote off as worth zero before the deposit repair existed, and the first
     # Triton weld whose HAS_BETA reduction arm was measured DISCRIMINATING on all
@@ -4974,7 +4864,7 @@ GATE_BOUND: Dict[str, str] = {
     # host mutations caught, 5/5 refusals.
     "beta_fused_electric_pair":
         
-        "results/triton_fleet_2026-09-25_roundb/beta_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c12/beta_fused_electric_pair/gate.json",
     # THE 2026-08-31 FOLDED COMPLEX D->E CELL — the largest cell left unbuilt on the
     # 08-31 board and the deepest carry any Triton weld performs: 63 device legs
     # (15 configurations x 3 value classes plus the carry, null-control and armed
@@ -4994,7 +4884,7 @@ GATE_BOUND: Dict[str, str] = {
     # released, 18 pins, 0 drift against this tree, verified before this repoint.
     "folded_complex_fused_pair":
         
-        "results/triton_fleet_2026-09-25_roundb_env_probe/folded_complex_fused_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c8_env_probe/folded_complex_fused_pair/gate.json",
     # THE 2026-08-31 BFAST D->E CELL — the third of the 08-31 electric cells, and the
     # one whose ARM is a single `if HAS_BFAST:` statement appended to the shipped
     # `kernels.fused_curl_constitutive_D`, so its transcription is checked at
@@ -5013,7 +4903,7 @@ GATE_BOUND: Dict[str, str] = {
     # correct kernel on run c; the run c artifact is kept beside this one.
     "bfast_fused_electric_pair":
         
-        "results/triton_fleet_2026-09-25_roundb/bfast_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c8/bfast_fused_electric_pair/gate.json",
     # THE 2026-08-31 CONDUCTIVE PML D->E CELL — released, and serving NOTHING. The
     # binding is recorded anyway because the product is real and the artifact is what
     # says why the cell stays a gap: its one corpus row's electric source is not
@@ -5025,7 +4915,7 @@ GATE_BOUND: Dict[str, str] = {
     # confirmed nulls re-measured every run, 5/5 host mutations, 7/7 refusals.
     "conductive_fused_electric_pair":
         
-        "results/triton_fleet_2026-09-25_roundb/conductive_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c11/conductive_fused_electric_pair/gate.json",
     # THE 2026-08-31 NO-ABSORBER STORED-E D->E CELLS — released, and the FIRST
     # product on `deposit_repair.PLAIN_PATH`, the second repair. ONE artifact binds
     # BOTH cells because one kernel is both curl arms: `conductive_plain_curl_step`'s
@@ -5048,10 +4938,10 @@ GATE_BOUND: Dict[str, str] = {
     # compared only at the last step reads identical.
     "no_pml_fused_electric_pair":
         
-        "results/triton_fleet_2026-09-25_roundb/no_pml_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c0/no_pml_fused_electric_pair/gate.json",
     "no_pml_fused_electric_pair_lossless":
         
-        "results/triton_fleet_2026-09-25_roundb/no_pml_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c0/no_pml_fused_electric_pair/gate.json",
     # THE TWO 2026-08-31 FOLDED-BETA CELLS — the last two "not built" instances on
     # the plainrepair7 board, bound to their OWN first device runs for the reason
     # every 08-31 weld is: `fingerprints.json` is a release ledger for the shipped
@@ -5061,10 +4951,10 @@ GATE_BOUND: Dict[str, str] = {
     # gates against THIS tree, after every edit in the round.
     "folded_beta_fused_electric_pair":
         
-        "results/triton_fleet_2026-09-25_roundb/folded_beta_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c8/folded_beta_fused_electric_pair/gate.json",
     "folded_beta_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-09-25_roundb/folded_beta_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c5/folded_beta_fused_magnetic_pair/gate.json",
     # THE TWO 2026-09-01 COMPLEX-BETA CELLS, bound to their OWN first device runs
     # for the reason every recent weld is: `fingerprints.json` is a release
     # ledger for the shipped kernel set and a matrix cut may not add to it, so
@@ -5075,20 +4965,20 @@ GATE_BOUND: Dict[str, str] = {
     # (the probe whose fifth pattern is the whole reason these cells exist).
     "complex_beta_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-09-25_roundb_env_probe/complex_beta_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c5_env_probe/complex_beta_fused_magnetic_pair/gate.json",
     "complex_beta_fused_electric_pair":
         
-        "results/triton_fleet_2026-09-25_roundb_env_probe/complex_beta_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c0_env_probe/complex_beta_fused_electric_pair/gate.json",
     # THE TWO 2026-09-02 FOLDED COMPLEX-BETA CELLS, bound the same way and run
     # on the GPU host GPU 3 under the `keep` policy through an ftz-stripped cache,
     # with MEEP_GPU_COMPLEX_EXPANSION_PROBE naming the SIX-pattern unified
     # record their predicates and gates require.
     "folded_beta_complex_fused_pair":
         
-        "results/triton_fleet_2026-09-25_roundb_env_probe/folded_beta_complex_fused_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c8_env_probe/folded_beta_complex_fused_pair/gate.json",
     "folded_beta_complex_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-09-25_roundb_env_probe/folded_beta_complex_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-15_10_cc86_c5_env_probe/folded_beta_complex_fused_magnetic_pair/gate.json",
     # THE H->D WELD, 2026-09-06, bound to its OWN first device run for the reason
     # every recent weld is: `fingerprints.json` is a release ledger for the shipped
     # kernel set and a matrix cut may not add to it, so the binding reads the gate's
@@ -5127,7 +5017,7 @@ GATE_BOUND: Dict[str, str] = {
     # instructions carrying `.ftz`; `flush` children: 12,062 of 12,062).
     "fused_hd_pair":
         
-        "results/triton_fused_hd_pair_2026-09-25_roundb/keep/gate.json",
+        "results/triton_fused_hd_pair_2026-10-15_10_cc86_c7/keep/gate.json",
     # THE TWO CYLINDRICAL H->D PRODUCTS, 2026-09-07, bound the same way to their own
     # first device runs (the GPU host GPU 1, RTX A6000, both policies from EMPTY CuPy and
     # Triton caches, the lift child installing the policy before its first compile).
@@ -5139,10 +5029,10 @@ GATE_BOUND: Dict[str, str] = {
     # in the artifact says which reading applies.
     "cylindrical_real_fused_hd_pair":
         
-        "results/triton_cylindrical_real_fused_hd_pair_2026-09-25_roundb/keep/gate.json",
+        "results/triton_cylindrical_real_fused_hd_pair_2026-10-15_10_cc86_c9/keep/gate.json",
     "cylindrical_fused_hd_pair":
         
-        "results/triton_cylindrical_fused_hd_pair_2026-09-25_roundb/keep/gate.json",
+        "results/triton_cylindrical_fused_hd_pair_2026-10-15_10_cc86_c0/keep/gate.json",
     # THE 2026-09-07 H->D TAIL, five products bound to their own first device runs
     # (the GPU host GPU 3 and GPU 6, RTX A6000, EMPTY policy-separated CuPy and Triton
     # caches, the lift child installing the policy before its first device compile).
@@ -5160,23 +5050,23 @@ GATE_BOUND: Dict[str, str] = {
     # the `flush` record is a NAMED POLICY REFUSAL rather than a release -- kept
     # beside the keep record, released false, and not a binding.
     "conductive_bfast_fused_hd_pair":
-        "results/triton_conductive_bfast_fused_hd_pair_2026-09-25_roundb/keep/gate.json",
+        "results/triton_conductive_bfast_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
     "conductive_bfast_fused_hd_pair_bfast":
-        "results/triton_conductive_bfast_fused_hd_pair_2026-09-25_roundb/keep/gate.json",
+        "results/triton_conductive_bfast_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
     "beta_real_fused_hd_pair":
-        "results/triton_beta_real_fused_hd_pair_2026-09-25_roundb/keep/gate.json",
+        "results/triton_beta_real_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
     "beta_real_fused_hd_pair_folded":
-        "results/triton_beta_real_fused_hd_pair_2026-09-25_roundb/keep/gate.json",
+        "results/triton_beta_real_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
     "folded_complex_fused_hd_pair":
-        "results/triton_folded_complex_fused_hd_pair_2026-09-25_roundb/keep_probe/gate.json",
+        "results/triton_folded_complex_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
     "folded_complex_fused_hd_pair_offdiag":
-        "results/triton_folded_complex_fused_hd_pair_2026-09-25_roundb/keep_probe/gate.json",
+        "results/triton_folded_complex_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
     "beta_complex_fused_hd_pair":
-        "results/triton_beta_complex_fused_hd_pair_2026-09-25_roundb/keep_probe/gate.json",
+        "results/triton_beta_complex_fused_hd_pair_2026-10-15_10_cc86_c0/keep/gate.json",
     "beta_complex_fused_hd_pair_unfolded":
-        "results/triton_beta_complex_fused_hd_pair_2026-09-25_roundb/keep_probe/gate.json",
+        "results/triton_beta_complex_fused_hd_pair_2026-10-15_10_cc86_c0/keep/gate.json",
     "nonlinear_fused_hd_pair":
-        "results/triton_nonlinear_fused_hd_pair_2026-09-25_roundb/keep/gate.json",
+        "results/triton_nonlinear_fused_hd_pair_2026-10-15_10_cc86_c7/keep/gate.json",
     # THE KEEP ARTIFACT IS THE ONE BOUND, for the reason the two cylindrical rows
     # give: the complex arms are certified under `keep` only, so under `flush` the
     # composer selects nothing complex on this seam and the record measures the
@@ -5184,13 +5074,13 @@ GATE_BOUND: Dict[str, str] = {
     # built the same way. `composer_reachable_under_this_policy` in the artifact
     # says which reading applies.
     "complex_fused_hd_pair":
-        "results/triton_complex_fused_hd_pair_2026-09-25_roundb/keep/gate.json",
+        "results/triton_complex_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
     # THE FOLDED H->D PRODUCT, bound to its own first device run (the GPU host GPU 1,
     # RTX A6000, both subnormal policies from EMPTY CuPy and Triton caches, the lift
     # child installing the policy before its first device compile). The `keep`
     # artifact is bound for the reason the template above gives.
     "folded_fused_hd_pair":
-        "results/triton_folded_fused_hd_pair_2026-09-25_roundb/keep/gate.json",
+        "results/triton_folded_fused_hd_pair_2026-10-15_10_cc86_c6/keep/gate.json",
 }
 
 
@@ -5363,6 +5253,146 @@ def _docstring_stripped_ast(path: Path) -> str:
     return ast.dump(tree)
 
 
+def gate_bound_check(family: str, gate_relative: str) -> Dict[str, Any]:
+    """One GATE_BOUND artifact read under the release-binding floor's rules, without raising.
+
+    ``refusal`` is the sentence the floor raises for this artifact (absent, not a passed
+    device release under its shape, a ``gate`` digest no probe in its import map carries,
+    or no digest for the credited module), else ``None``; ``recorded`` is the digest map
+    the floor re-hashes and ``moved`` the paths in it whose bytes the tree no longer holds.
+    :func:`assert_every_credit_is_bound_to_released_bytes` and the records-time re-point
+    (``repoint_board_bindings.py``) both read an artifact through this one function, so the
+    re-point binds only what the floor will credit.
+    """
+    import hashlib  # noqa: PLC0415
+    out: Dict[str, Any] = {"artifact": gate_relative, "exists": False, "refusal": None,
+                           "shape": None, "gate": None, "recorded": {}, "moved": []}
+    gate_path = RESULTS.parent / gate_relative
+    if not gate_path.exists():
+        out["refusal"] = (
+            f"{family} is credited by this matrix but its gate artifact "
+            f"{gate_relative} is absent, so the credit rests on nothing")
+        return out
+    gate = json.loads(gate_path.read_text())
+    out.update(exists=True, gate=gate)
+    release = gate.get("release") or {}
+    # THE THREE CONDITIONS, all of them. See GATE_BOUND's note: a run that
+    # measured no bytes on any device must not be readable as a release.
+    #
+    # TWO ARTIFACT SHAPES SINCE 2026-09-04, AND THE SECOND IS NOT A WEAKER
+    # RULE. The probes in this package write their verdict in two shapes.
+    # The one this branch was written for carries `device_status`, `release`
+    # and `passed` as keys. The OLDER shape — the one
+    # probe_triton_cylindrical_fused_magnetic_pair.py writes — carries none
+    # of the three: its verdict is the prose `verdict` key, which is what
+    # `canonical_verdict.read_from` names, and it is the same shape
+    # rebind_triton_welds._verdict reads when it binds a weld. Refusing that
+    # shape outright would not be strictness, it would be reading the
+    # artifact's FORMAT as its verdict.
+    #
+    # So a second condition set is applied to it, and it is chosen to be at
+    # least as hard to satisfy off a device as the first. `device_status ==
+    # "RUN"` exists to stop a `--no-device` or host-only leg being read as a
+    # release; the substitute for it here is the run's OWN subnormal-policy
+    # install stamps, which record, per policy, which executors were
+    # ATTAINED. A host-only run attains `host` and nothing else; the artifact
+    # this admits records `cupy` AND `triton` attained under the run's OWN
+    # policy (its top-level `subnormal_policy.resolved`), every stamp resolved
+    # to the policy it is labelled with, which no run without a working CUDA
+    # device can write. Until 2026-10-10 this demanded BOTH policies in one
+    # artifact, and the probe met it with two copies of ONE install: its
+    # "flush" stamp resolved `keep` on every released run (MEASURED on
+    # results/triton_regate_2026-09-04_cylm0 .. _2026-09-07_bind), because
+    # install_ftz_strip memoises the first install. The probe now cuts one
+    # policy per process, the campaign's, so the keep fleet's artifact carries
+    # keep alone and the flush fleet's carries flush alone. `passed` is
+    # replaced by the prose verdict PASS plus an EMPTY failure list and every
+    # recorded leg passing — 89 of 89 on that artifact — which is a stronger
+    # statement than the single boolean.
+    reasons = []
+    if any(key in gate for key in ("device_status", "release", "passed")):
+        shape = "device_status/release/passed"
+        if gate.get("device_status") != "RUN":
+            reasons.append(f"device_status={gate.get('device_status')!r}")
+        if release.get("released") is not True:
+            reasons.append(f"release.released={release.get('released')!r}")
+        if gate.get("passed") is not True:
+            reasons.append(f"passed={gate.get('passed')!r}")
+    else:
+        shape = "verdict(prose) + attained-executor stamps"
+        canonical = gate.get("canonical_verdict") or {}
+        legs = gate.get("rows") or []
+        if canonical.get("released") is not True:
+            reasons.append(
+                f"canonical_verdict.released={canonical.get('released')!r}")
+        if str(gate.get("verdict")).upper() != "PASS":
+            reasons.append(f"verdict={gate.get('verdict')!r}")
+        reasons.extend(verdict_prose_policy_reasons(gate))
+        if gate.get("failures") or gate.get("failed_rows"):
+            reasons.append(f"failures={gate.get('failures')!r} "
+                           f"failed_rows={gate.get('failed_rows')!r}")
+        if not legs or any(leg.get("passed") is not True for leg in legs):
+            reasons.append(
+                f"{sum(1 for leg in legs if leg.get('passed') is True)} of "
+                f"{len(legs)} recorded legs passed")
+    if gate.get("planted_defect"):
+        reasons.append(f"planted_defect={gate.get('planted_defect')!r}")
+    out["shape"] = shape
+    if reasons:
+        out["refusal"] = (
+            f"{family}'s gate artifact {gate_relative} is not a passed "
+            f"device release (read under the {shape} shape): {reasons}")
+        return out
+    # THE DIGEST MAP, AND THE ONE NON-PATH KEY IN IT. `source_sha256` is a
+    # map of checkout-relative path -> digest on every artifact this branch
+    # reads, with ONE exception: the verdict-prose shape also carries the key
+    # `gate`, which is the digest of the PROBE SCRIPT rather than a path. It
+    # is not dropped — a key nobody checks is a pin nobody has — it is
+    # RESOLVED: the same run's `imported_source_sha256` records the probe by
+    # its real path, and the two digests must agree before the map is walked.
+    # The prose-shaped artifact's `source_sha256` carries only the module and
+    # that key, so the import map (34 paths on the 2026-09-04 magnetic gate,
+    # every file the run actually imported) is what the re-hash walks.
+    recorded = dict(gate.get("source_sha256") or {})
+    imported = dict(gate.get("imported_source_sha256") or {})
+    gate_digest = recorded.pop("gate", None)
+    if gate_digest is not None:
+        probe = sorted(path for path, digest in imported.items()
+                       if digest == gate_digest
+                       and Path(path).name.startswith("probe_"))
+        if not probe:
+            out["refusal"] = (
+                f"{family}'s gate artifact {gate_relative} records a `gate` "
+                f"digest {gate_digest[:12]} that matches no probe script in "
+                f"its own import map, so the script that produced the "
+                f"verdict cannot be identified or re-hashed")
+            return out
+        recorded.update({path: imported[path] for path in probe})
+    if shape.startswith("verdict(prose)"):
+        # ONLY THIS SHAPE WIDENS TO THE IMPORT MAP, and only because its
+        # `source_sha256` is two keys wide. The other shape records its own
+        # full file list there, and widening it here would silently change
+        # what every other family on this board is checked against.
+        recorded.update(imported)
+    module_relative = ("meep_gpu/triton_kernels/"
+                       + PRODUCTS[family]["module"].split(":")[0])
+    out["recorded"] = recorded
+    if module_relative not in recorded:
+        out["refusal"] = (
+            f"{family}'s gate records no digest for {module_relative}, so "
+            f"the credited bytes are not the ones it ran against")
+        return out
+    moved = []
+    for relative, want in sorted(recorded.items()):
+        target = API / relative
+        got = (hashlib.sha256(target.read_bytes()).hexdigest()
+               if target.exists() else "MISSING")
+        if got != want:
+            moved.append(relative)
+    out["moved"] = moved
+    return out
+
+
 def assert_every_credit_is_bound_to_released_bytes() -> Dict[str, Any]:
     """EVERY product's credited bytes must still BE the bytes its gate certified.
 
@@ -5417,130 +5447,11 @@ def assert_every_credit_is_bound_to_released_bytes() -> Dict[str, Any]:
                 f"{'DRIFT ' + str(moved) if moved else 'bytes match'}")
         elif family in GATE_BOUND:
             gate_relative = GATE_BOUND[family]
-            gate_path = RESULTS.parent / gate_relative
-            if not gate_path.exists():
-                raise SystemExit(
-                    f"{family} is credited by this matrix but its gate artifact "
-                    f"{gate_relative} is absent, so the credit rests on nothing")
-            gate = json.loads(gate_path.read_text())
+            check = gate_bound_check(family, gate_relative)
+            if check["refusal"]:
+                raise SystemExit(check["refusal"])
+            gate, recorded, moved = check["gate"], check["recorded"], check["moved"]
             release = gate.get("release") or {}
-            # THE THREE CONDITIONS, all of them. See GATE_BOUND's note: a run that
-            # measured no bytes on any device must not be readable as a release.
-            #
-            # TWO ARTIFACT SHAPES SINCE 2026-09-04, AND THE SECOND IS NOT A WEAKER
-            # RULE. The probes in this package write their verdict in two shapes.
-            # The one this branch was written for carries `device_status`, `release`
-            # and `passed` as keys. The OLDER shape — the one
-            # probe_triton_cylindrical_fused_magnetic_pair.py writes — carries none
-            # of the three: its verdict is the prose `verdict` key, which is what
-            # `canonical_verdict.read_from` names, and it is the same shape
-            # rebind_triton_welds._verdict reads when it binds a weld. Refusing that
-            # shape outright would not be strictness, it would be reading the
-            # artifact's FORMAT as its verdict.
-            #
-            # So a second condition set is applied to it, and it is chosen to be at
-            # least as hard to satisfy off a device as the first. `device_status ==
-            # "RUN"` exists to stop a `--no-device` or host-only leg being read as a
-            # release; the substitute for it here is the run's OWN subnormal-policy
-            # install stamps, which record, per canonical policy, which executors
-            # were ATTAINED. A host-only run attains `host` and nothing else; the
-            # artifact this admits records `cupy` AND `triton` attained under BOTH
-            # canonical policies (measured on
-            # results/triton_regate_2026-09-04_cylm0/cylindrical_fused_magnetic_pair:
-            # keep and flush, {'cupy': True, 'host': True, 'triton': True} on each),
-            # which no run without a working CUDA device can write. `passed` is
-            # replaced by the prose verdict PASS plus an EMPTY failure list and every
-            # recorded leg passing — 89 of 89 on that artifact — which is a stronger
-            # statement than the single boolean.
-            reasons = []
-            if any(key in gate for key in ("device_status", "release", "passed")):
-                shape = "device_status/release/passed"
-                if gate.get("device_status") != "RUN":
-                    reasons.append(f"device_status={gate.get('device_status')!r}")
-                if release.get("released") is not True:
-                    reasons.append(f"release.released={release.get('released')!r}")
-                if gate.get("passed") is not True:
-                    reasons.append(f"passed={gate.get('passed')!r}")
-            else:
-                shape = "verdict(prose) + attained-executor stamps"
-                canonical = gate.get("canonical_verdict") or {}
-                stamps = ((gate.get("environment") or {})
-                          .get("subnormal_policy_stamps") or {})
-                attained = {
-                    policy: {name: bool(block.get("attained"))
-                             for name, block in
-                             (((stamp.get("install") or {}).get("executors")) or {}
-                              ).items()}
-                    for policy, stamp in stamps.items()}
-                on_device = sorted(
-                    policy for policy, executors in attained.items()
-                    if executors.get("cupy") and executors.get("triton"))
-                legs = gate.get("rows") or []
-                if canonical.get("released") is not True:
-                    reasons.append(
-                        f"canonical_verdict.released={canonical.get('released')!r}")
-                if str(gate.get("verdict")).upper() != "PASS":
-                    reasons.append(f"verdict={gate.get('verdict')!r}")
-                if sorted(on_device) != ["flush", "keep"]:
-                    reasons.append(
-                        f"cupy+triton executors attained under {on_device} rather "
-                        f"than under both canonical policies ({attained})")
-                if gate.get("failures") or gate.get("failed_rows"):
-                    reasons.append(f"failures={gate.get('failures')!r} "
-                                   f"failed_rows={gate.get('failed_rows')!r}")
-                if not legs or any(leg.get("passed") is not True for leg in legs):
-                    reasons.append(
-                        f"{sum(1 for leg in legs if leg.get('passed') is True)} of "
-                        f"{len(legs)} recorded legs passed")
-            if gate.get("planted_defect"):
-                reasons.append(f"planted_defect={gate.get('planted_defect')!r}")
-            if reasons:
-                raise SystemExit(
-                    f"{family}'s gate artifact {gate_relative} is not a passed "
-                    f"device release (read under the {shape} shape): {reasons}")
-            # THE DIGEST MAP, AND THE ONE NON-PATH KEY IN IT. `source_sha256` is a
-            # map of checkout-relative path -> digest on every artifact this branch
-            # reads, with ONE exception: the verdict-prose shape also carries the key
-            # `gate`, which is the digest of the PROBE SCRIPT rather than a path. It
-            # is not dropped — a key nobody checks is a pin nobody has — it is
-            # RESOLVED: the same run's `imported_source_sha256` records the probe by
-            # its real path, and the two digests must agree before the map is walked.
-            # The prose-shaped artifact's `source_sha256` carries only the module and
-            # that key, so the import map (34 paths on the 2026-09-04 magnetic gate,
-            # every file the run actually imported) is what the re-hash walks.
-            recorded = dict(gate.get("source_sha256") or {})
-            imported = dict(gate.get("imported_source_sha256") or {})
-            gate_digest = recorded.pop("gate", None)
-            if gate_digest is not None:
-                probe = sorted(path for path, digest in imported.items()
-                               if digest == gate_digest
-                               and Path(path).name.startswith("probe_"))
-                if not probe:
-                    raise SystemExit(
-                        f"{family}'s gate artifact {gate_relative} records a `gate` "
-                        f"digest {gate_digest[:12]} that matches no probe script in "
-                        f"its own import map, so the script that produced the "
-                        f"verdict cannot be identified or re-hashed")
-                recorded.update({path: imported[path] for path in probe})
-            if shape.startswith("verdict(prose)"):
-                # ONLY THIS SHAPE WIDENS TO THE IMPORT MAP, and only because its
-                # `source_sha256` is two keys wide. The other shape records its own
-                # full file list there, and widening it here would silently change
-                # what every other family on this board is checked against.
-                recorded.update(imported)
-            module_relative = ("meep_gpu/triton_kernels/"
-                               + PRODUCTS[family]["module"].split(":")[0])
-            if module_relative not in recorded:
-                raise SystemExit(
-                    f"{family}'s gate records no digest for {module_relative}, so "
-                    f"the credited bytes are not the ones it ran against")
-            moved = []
-            for relative, want in sorted(recorded.items()):
-                target = API / relative
-                got = (hashlib.sha256(target.read_bytes()).hexdigest()
-                       if target.exists() else "MISSING")
-                if got != want:
-                    moved.append(relative)
             if moved:
                 if family in CREDIT_WITHHELD_STALE_BINDING:
                     withheld.append(f"{family} / {gate_relative}: {moved}")
@@ -5947,7 +5858,6 @@ def main() -> int:
     result["freshness"] = freshness_check()
     result["licensed_vs_unlicensed_predicate_deltas"] = licensed_vs_unlicensed()
     result["staleness_audit"] = staleness_audit()
-    result["expansion_licence_recheck"] = recheck_the_expansion_licence()
 
     result["product_table_is_complete"] = assert_every_built_product_is_asked_about()
     result["release_binding_per_product"] = assert_every_credit_is_bound_to_released_bytes()

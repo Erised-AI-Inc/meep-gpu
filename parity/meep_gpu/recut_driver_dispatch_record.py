@@ -27,7 +27,7 @@ refuses unless
   certify (``plan.environment.device_certified_by_table``) and, for the Triton
   table, a certified Triton version (``plan.environment.triton_certified``), so a
   row admitted uncertified (a supported identity by default, or any identity
-  under ``MEEP_GPU_ALLOW_UNCERTIFIED=1``) cannot enter a record.
+  under ``MEEP_GPU_HARDWARE=any``) cannot enter a record.
 
 Any of those failing prints the disagreement and exits non-zero with nothing
 written. A stale record is then fixed the only way it can be: re-run the gate.
@@ -58,12 +58,19 @@ capabilities it is retiring; without it such a cut is refused.
 ONE RECORD PER GPU ARCHITECTURE ON THE METAL RECORD, by the same rule
 (``meep_gpu.metal_runs``). The architecture is READ from every leg's
 ``provenance.apple_gpu.architecture``, the legs must agree, and the campaign directory
-must be ``metal_runs.route_campaign(metal_dispatch.METAL_DRIVER_ROUTE_GATE,
+must be ``metal_runs.route_campaign(route_stamps.route_gate("metal"),
 <architecture>)``. The route run's facts (``metal_runs.DISPATCH_RUN_FIELDS``: the
 status, legs, records, timestamp, the run's subkeys of ``released_fused_arms``, and the
 ``residency`` and ``lift`` blocks read off the legs) go into
 ``runs[<architecture>]``; ``--supersede applegpu_g13s`` retires an architecture by
 name on a cut whose bytes moved.
+
+THE STAMPS ARE THE REGISTRY'S (``meep_gpu/route_stamps.py``), and a campaign name is
+refused BY NAME where it is derived from the legs, before it is compared with the run:
+the stamp is still the placeholder the freeze replaces (``route_stamp_is_unset``), or
+the campaign it spells has already run (``route_campaign_is_spent``). Every run
+directory and licence directory this tool accepts is the one the registry spells, so
+the record keys on the campaign name.
 
 THE DEFAULT AND ITS LICENCE LIVE IN THE PRIMARY TABLE'S RECORD.
 ``dispatch_by_default`` is written from ``fastpath.DISPATCH_BY_DEFAULT`` on every
@@ -76,7 +83,10 @@ released) on the same device and the same bytes the route campaign ran.
 ``--end-to-end <dir>`` is the only thing that writes one, it is refused on any other
 table, and an existing licence is carried forward only while the slot it sits in
 still binds this cut's bytes — so the default and its evidence move together or the
-cut stops.
+cut stops. A licence is the round's only when its directory is
+``route_stamps.licence_campaign(<table>)`` (alone or followed by ``_cc86``): a licence
+of another campaign, transcribed or carried, is refused by name
+(``licence_is_for_another_campaign``).
 
     python recut_driver_dispatch_record.py --run dispatch_fused_route_2026-10-05_092_cc86
     python recut_driver_dispatch_record.py --run ... --write
@@ -108,9 +118,14 @@ def _find_api_root(start: Path) -> Path:
 _API = _find_api_root(_HERE)
 if str(_API) not in sys.path:
     sys.path.insert(0, str(_API))
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
 
+import artifact_drift                                  # noqa: E402
+import neutral_labels                                  # noqa: E402
 from meep_gpu import fastpath                          # noqa: E402
 from meep_gpu import metal_runs                        # noqa: E402
+from meep_gpu import route_stamps                      # noqa: E402
 
 #: The substitution verdicts that count as a measured drop: the two the route gate
 #: spells in ``gate_dispatch_fused_route.EXACT_SUBSTITUTION_VERDICTS``, and its
@@ -125,22 +140,21 @@ RESULTS = _HERE / "results"
 
 #: The legs a driver-route campaign runs. Named rather than counted so a campaign
 #: that silently dropped one is a refusal instead of a shorter list.
-EXPECTED_LEGS = ("flush", "harness_keep", "shipped", "shipped_expansion_probe")
+EXPECTED_LEGS = ("flush", "harness_keep", "shipped")
 
 #: Per-backend: the record to cut, the legs the campaign must carry, and the files
 #: the block binds.
 #:
 #: ``optional_legs`` EXISTS FOR TWO LEGS A CAMPAIGN MAY OR MAY NOT CARRY and is empty
-#: on Triton, so that backend's behaviour is byte-identical to what it was. The Metal
-#: driver writes a fifth leg — ``band_witness``, the array path alone under a
-#: keeping host, censusing the subnormal band — and an exact four-name comparison
-#: would refuse every real run of it. The CUDA campaign gained ``cuda_alone`` on
+#: on Triton. The Metal driver writes a fourth leg — ``band_witness``, the array path
+#: alone under a keeping host, censusing the subnormal band — and an exact three-name
+#: comparison would refuse every real run of it. The CUDA campaign gained ``cuda_alone`` on
 #: 2026-09-27 (see that table's entry). The floor is not weakened by admitting
 #: either: every REQUIRED leg must carry ``release.released`` true, and so must a
 #: band witness, so one that found an empty band still refuses the record. The one
 #: exception is ``cuda_alone``, which is NON-BLOCKING by release decision (2026-09-27):
 #: present and not released, it is recorded as exactly that, it witnesses nothing
-#: (no arms_driven, no arbitration, no measured drop), and the five standard legs
+#: (no arms_driven, no arbitration, no measured drop), and the four standard legs
 #: are cut without it.
 #:
 #: ``bound`` MIXES TWO ROOTS on Metal and that is deliberate. Eight keys are
@@ -152,8 +166,7 @@ EXPECTED_LEGS = ("flush", "harness_keep", "shipped", "shipped_expansion_probe")
 BACKENDS = {
     "triton": {
         "record": _API / "meep_gpu" / "triton_kernels" / "fingerprints.json",
-        "required_legs": ("flush", "harness_keep", "shipped",
-                          "shipped_expansion_probe"),
+        "required_legs": ("flush", "harness_keep", "shipped"),
         "optional_legs": (),
         "run_prefix": "dispatch_fused_route",
         "bound": None,   # read from the existing block: Triton's is already cut
@@ -163,8 +176,7 @@ BACKENDS = {
         # THE POLARITY INVERSION, named here rather than left to a reader: Triton's
         # harness leg installs FLUSH because that table certifies under keep; this
         # one installs KEEP because this table certifies under flush.
-        "required_legs": ("harness_flush", "harness_keep", "shipped",
-                          "shipped_expansion_probe"),
+        "required_legs": ("harness_flush", "harness_keep", "shipped"),
         "optional_legs": ("band_witness",),
         "run_prefix": "dispatch_metal_route",
         "bound": ("meep_gpu/driver.py", "meep_gpu/fastpath.py",
@@ -179,9 +191,7 @@ BACKENDS = {
     # runs inside the SAME gate driver as the Triton one
     # (``gate_dispatch_fused_route.py --backend cuda``), so its legs carry a
     # ``cuda_`` prefix and cannot be confused with a Triton run's in a shared
-    # results tree. Five of them, and the fifth is the one that makes this table's
-    # complex arms measurable at all: their expansion licence comes from the
-    # unified probe record and nothing else offers it.
+    # results tree. Four of them.
     #
     # ``cuda_default_precedence`` IS NOT AN OPTIONAL LEG. It is the measured
     # statement of the shipped arbitration — "Triton first, hand-CUDA fills its
@@ -192,9 +202,9 @@ BACKENDS = {
     # WENT. It is the composition a host with no validated Triton gets — the
     # preference unset and Triton made unimportable inside the gate's process, so
     # rung 4 drops that table by name — and no campaign before 2026-09-27 drove it.
-    # Optional because the campaigns already on file (five legs) must stay
-    # cuttable; non-blocking because a Triton-less composition no earlier round drove
-    # must not hold back the five standard legs (release decision, 2026-09-27). Recorded
+    # Optional because a campaign need not drive it; non-blocking because a Triton-less
+    # composition must not hold back the four standard legs (release decision,
+    # 2026-09-27). Recorded
     # in ``cuda_alone_leg`` as "absent", "present, released" or "present, not
     # released" (with its reasons), so a reader never infers it from the leg list.
     # Released, it dispatches and is a witness for ``arms_driven``, so it is NOT in
@@ -204,8 +214,7 @@ BACKENDS = {
     "cuda": {
         "record": _API / "meep_gpu" / "cuda_kernels" / "fingerprints.json",
         "required_legs": ("cuda_default_precedence", "cuda_flush",
-                          "cuda_harness_keep", "cuda_shipped",
-                          "cuda_shipped_expansion_probe"),
+                          "cuda_harness_keep", "cuda_shipped"),
         "optional_legs": ("cuda_alone",),
         "run_prefix": "dispatch_fused_route_cuda",
         "bound": None,   # derived below: the released arms' modules move per Tier
@@ -256,6 +265,21 @@ def _cuda_bound_files() -> tuple:
 #: DO dispatch, while the flush leg is the one every dispatch case must be
 #: PASS-POLICY-REFUSED on by name at rung 8b.
 NON_DISPATCHING_LEGS = ("harness_keep", "band_witness", "cuda_flush")
+
+
+def is_dispatching_witness(leg: str, artifact: dict, unreleased_optional=()) -> bool:
+    """Is this leg's artifact asked which arms it drove?
+
+    A refusal leg is not (``uncertified_policy_installed``, or a name in
+    :data:`NON_DISPATCHING_LEGS`), nor is an optional leg that did not release. A leg in
+    :data:`NON_DISPATCHING_LEGS` that the route gate stamped
+    ``admitted_policy_installed`` IS: its table admitted the policy it installed
+    (``fastpath.TABLE_DISPATCH_POLICIES``) and the gate held it to every dispatch
+    requirement, so it drove its arms under that policy.
+    """
+    if artifact.get("uncertified_policy_installed") or leg in unreleased_optional:
+        return False
+    return leg not in NON_DISPATCHING_LEGS or bool(artifact.get("admitted_policy_installed"))
 
 #: The CUDA campaign's optional Triton-less leg (``gate_dispatch_fused_route``'s
 #: ``TRITON_ABSENT_LEG``), named once for the record fields that describe it.
@@ -376,7 +400,7 @@ def _uncertified_dispatch_reasons(case: str, plan: dict, tables) -> list:
 
     THE RECORD MAY NOT REST ON A ROW ADMITTED UNCERTIFIED. A supported device or
     Triton version no cited weld ran on dispatches by default, and
-    ``MEEP_GPU_ALLOW_UNCERTIFIED=1`` takes an unsupported one past rungs 4 and 4b too;
+    ``MEEP_GPU_HARDWARE=any`` takes an unsupported one past rungs 4 and 4b too;
     the plan says so: ``environment.device_certified_by_table[t]`` and, for the Triton
     table, ``environment.triton_certified`` stay False (``fastpath._environment_block``)
     while the kernels dispatch anyway. Without this check a campaign run that way would
@@ -487,9 +511,43 @@ def _gate_cases():
     return tuple(e2e.CASES)
 
 
+def licence_environment(environment: dict, staging_root: str | None = None):
+    """``(environment, residue)``: the ship leg's recorded environment as the licence
+    writes it, every path under the staging root as ``<staging-root>/...``
+    (:func:`neutral_labels.neutral_environment`), and the variables that would still
+    write a local path, which :func:`transcribe_end_to_end` refuses."""
+    neutral, _root, residue = neutral_labels.neutral_environment(environment, staging_root)
+    return neutral, residue
+
+
+def _device_suffix(capability: str) -> str:
+    """The device part of a route campaign name for a capability: ``8.6`` -> ``cc86``."""
+    return fastpath.route_campaign("", capability)[1:]
+
+
+def _licence_directory(licence: dict) -> str:
+    """The results directory a recorded licence ran in: the one holding ``ship/``.
+
+    ``run`` is spelled as :func:`_run_label` writes it,
+    ``apps/api/parity/meep_gpu/results/<directory>/ship/``.
+    """
+    parts = [part for part in str(licence.get("run") or "").split("/") if part]
+    if "results" in parts and parts.index("results") + 1 < len(parts):
+        return parts[parts.index("results") + 1]
+    return str(licence.get("run"))
+
+
 def transcribe_end_to_end(argument: str, ran: dict, bound: list, backend: str,
-                          capability: str):
+                          capability: str, staging_root: str | None = None):
     """``(licence block, problems)`` from a ship leg and its null control.
+
+    WHAT IS TRANSCRIBED ABOUT THE MACHINE is its neutral label and a neutral
+    environment (:mod:`neutral_labels`): ``host`` is ``the GPU host`` for the machine
+    the leg stamped, and every recorded path under the round's staging root reads
+    ``<staging-root>/...``. The root is ``staging_root`` (``--staging-root``) or the
+    directory the recorded local paths share; a recorded path still naming a local
+    directory after that is a refusal, because this record ships. The raw stamps stay
+    in the leg's own artifact.
 
     REFUSES — every reason collected, nothing written — unless the ship leg:
 
@@ -507,8 +565,8 @@ def transcribe_end_to_end(argument: str, ran: dict, bound: list, backend: str,
       is filed under it and a licence cut on another architecture is evidence about
       a device this record does not describe;
     * planned every dispatching case against a device the tables that served it
-      certify, so a run reaching the arms through ``MEEP_GPU_ALLOW_UNCERTIFIED``
-      cannot license the default;
+      certify, so a run reaching the arms through ``MEEP_GPU_HARDWARE`` cannot
+      license the default;
 
     and its null control, beside it, is clean on the same ``fastpath.py`` over the
     SAME case list — a one-case null beside a nine-case ship leg attributes eight of
@@ -547,6 +605,13 @@ def transcribe_end_to_end(argument: str, ran: dict, bound: list, backend: str,
         problems.append(f"{label}: the run recorded no environment_at_start, so a "
                         "plain environment cannot be shown; re-run the current gate")
     else:
+        environment, residue = licence_environment(environment, staging_root)
+        if residue:
+            problems.append(f"{label}: environment_at_start still names a local path in "
+                            f"{residue} once the staging root is written as "
+                            f"{neutral_labels.STAGING_ROOT}; pass --staging-root (the "
+                            "directory the round was staged in on the GPU host), since "
+                            "this record ships and a local path may not enter it")
         shaping = sorted(
             name for name in environment
             if name not in LICENCE_ENVIRONMENT_ALLOWED
@@ -601,6 +666,14 @@ def transcribe_end_to_end(argument: str, ran: dict, bound: list, backend: str,
         problems.extend(f"{label}: licence_row_dispatched_on_an_uncertified_device: "
                         f"{reason}" for reason in
                         _uncertified_dispatch_reasons(case, leg, tables[case]))
+
+    # THE LICENCE IS THE ROUND'S, BY NAME. With the stamp out of the dispatch modules a
+    # ship leg of another round can run the same bytes, so the digests below cannot
+    # tell the two apart; the directory the round writes it under can.
+    refused = route_stamps.licence_refusal(backend, ship.parent.name,
+                                           _device_suffix(capability))
+    if refused:
+        problems.append(f"{label}: {refused}")
 
     # THE CAPABILITY THE LICENCE IS FILED UNDER IS THE ONE IT RAN ON. The licence
     # sits in ``runs[<capability>]``, whose key comes from the ROUTE legs; a ship leg
@@ -704,7 +777,7 @@ def transcribe_end_to_end(argument: str, ran: dict, bound: list, backend: str,
         "script": LICENCE_SCRIPT,
         "run": _run_label(ship),
         "recorded_utc": provenance.get("utc"),
-        "host": provenance.get("host"),
+        "host": neutral_labels.host_label(provenance.get("host")),
         "device": device,
         "toolchain": {name: provenance.get(name)
                       for name in ("python", "numpy", "meep", "cupy", "triton")},
@@ -742,7 +815,6 @@ def transcribe_end_to_end(argument: str, ran: dict, bound: list, backend: str,
             f"a Triton other than {provenance.get('triton')}; a composition of "
             f"tables other than {served or 'the one recorded'} — in particular the "
             "hand-CUDA table composing alone, unless it is the table recorded here; "
-            "complex-storage rows under an expansion licence (the run exported none); "
             "and the Metal table, whose default is licensed by the Metal route "
             "campaign's shipped leg"),
         "transcribed_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -801,7 +873,8 @@ def main(argv=None) -> int:
                         help="results/ directory name of the campaign, e.g. "
                              "dispatch_fused_route_2026-10-05_092_cc86. On the NVIDIA "
                              "tables it must be fastpath.route_campaign(<the table's "
-                             "route gate constant>, <the capability the legs stamped>)")
+                             "stamp in meep_gpu/route_stamps.py>, <the capability the "
+                             "legs stamped>)")
     parser.add_argument("--write", action="store_true", help="apply (default: report)")
     parser.add_argument("--backend", default="triton", choices=sorted(BACKENDS),
                         help="which kernel table's driver_dispatch record to cut")
@@ -814,6 +887,11 @@ def main(argv=None) -> int:
                              "(fastpath.primary_table); required there while "
                              "fastpath.DISPATCH_BY_DEFAULT is True unless the "
                              "capability's existing record still binds these bytes")
+    parser.add_argument("--staging-root", default=None, metavar="DIR",
+                        help="with --end-to-end: the directory the round was staged in "
+                             "on the GPU host, written as <staging-root> in the "
+                             "licence's recorded environment (default: the directory "
+                             "its recorded local paths share)")
     parser.add_argument("--supersede", default="", metavar="KEY[,KEY...]",
                         help="compute capabilities (NVIDIA) or GPU architectures "
                              "(Metal) whose records this cut retires. A cut on bytes "
@@ -838,13 +916,11 @@ def main(argv=None) -> int:
         released_arms = dict(table.METAL_RELEASED_FUSED_ARMS)
         envelope = table.METAL_FUSED_RELEASE_ENVELOPE
         per_arm_axes = table.METAL_FUSED_RELEASE_ARM_AXES
-        route_gate = table.METAL_DRIVER_ROUTE_GATE
     elif arguments.backend == "cuda":
         from meep_gpu import fastpath_cuda as table  # noqa: PLC0415
         released_arms = dict(table.CUDA_RELEASED_FUSED_ARMS)
         envelope = table.CUDA_FUSED_RELEASE_ENVELOPE
         per_arm_axes = table.CUDA_FUSED_RELEASE_ARM_AXES
-        route_gate = table.CUDA_DRIVER_ROUTE_FUSED_GATE
         if backend["bound"] is None:
             backend = dict(backend, bound=_cuda_bound_files())
     else:
@@ -852,21 +928,24 @@ def main(argv=None) -> int:
         released_arms = dict(fastpath.RELEASED_FUSED_ARMS)
         envelope = fastpath.FUSED_RELEASE_ENVELOPE
         per_arm_axes = fastpath.FUSED_RELEASE_ARM_AXES
-        route_gate = fastpath.DRIVER_ROUTE_FUSED_GATE
+    # THE STAMP IS THE REGISTRY'S. It is refused by name where the campaign name is
+    # derived below: no campaign can be filed under a stamp the freeze has not set, or
+    # under a campaign name that has already run.
+    route_gate = route_stamps.route_gate(arguments.backend)
 
     run = RESULTS / arguments.run
     if not run.is_dir():
         print(f"REFUSING: {run} is not a directory", file=sys.stderr)
         return 2
-    # THE CONSTANT AND THE ARTIFACT MUST NAME EACH OTHER. The release table cites a
-    # run directory by name and the campaign writes into one; a record cut from a
-    # directory the table does not cite would be provenance for a measurement the
-    # shipped code never claims.
+    # THE STAMP AND THE ARTIFACT MUST NAME EACH OTHER. The registry names a run
+    # directory and the campaign writes into one; a record cut from a directory the
+    # registry does not name would be provenance for a measurement the tree never
+    # asked for.
     #
-    # THE NVIDIA TABLES ARE CHECKED BELOW INSTEAD, against the per-capability
-    # campaign name their legs' stamp decides
-    # (``run_is_not_this_capability_campaign``); the constant alone cannot be the
-    # whole name once one release is driven on more than one architecture. Triton
+    # THE NVIDIA TABLES ARE CHECKED BELOW, against the per-capability campaign name
+    # their legs' stamp decides (``run_is_not_this_capability_campaign``); the stamp
+    # alone cannot be the whole name once one release is driven on more than one
+    # architecture. Triton
     # used to only PRINT this disagreement, which is how records came to be cut from
     # re-run and superseded directories.
     # THE METAL TABLE IS CHECKED BELOW TOO, against the per-architecture campaign name
@@ -948,6 +1027,13 @@ def main(argv=None) -> int:
     for leg in legs:
         artifact = json.loads(leg.read_text(encoding="utf-8"))
         artifacts[leg.parent.name] = artifact
+        # A LEG MUST DESCRIBE THE RELEASE TREE BY ITS IMPORT RECORD (artifact_drift.py,
+        # the rule every bind tool applies): one file it held at other bytes, or gone,
+        # and the record would cite a run of a tree that does not ship.
+        drift = artifact_drift.artifact_moved(artifact, _API)
+        if drift:
+            problems.append(artifact_drift.refusal(
+                f"{arguments.run}/{leg.parent.name}/gate.json", drift, _API))
         if artifact.get("release", {}).get("released") is not True:
             if arguments.backend == "cuda" and leg.parent.name == CUDA_ALONE_LEG:
                 unreleased_optional[leg.parent.name] = dict(artifact.get("release")
@@ -989,11 +1075,15 @@ def main(argv=None) -> int:
         # name is the only place a reader of the results tree sees which architecture
         # a route campaign drove, so it is derived here rather than compared by eye.
         expected_run = fastpath.route_campaign(route_gate, capability)
+        refused = route_stamps.campaign_refusal(arguments.backend, expected_run)
+        if refused:
+            print(f"REFUSING: {refused}", file=sys.stderr)
+            return 2
         if arguments.run != expected_run:
             print(f"REFUSING: run_is_not_this_capability_campaign: the legs stamp "
                   f"compute capability {capability}, so {arguments.backend}'s release "
                   f"cites {expected_run!r} (fastpath.route_campaign of {route_gate!r}) "
-                  f"and this run is {arguments.run!r}. The constant edit belongs "
+                  f"and this run is {arguments.run!r}. The stamp edit belongs "
                   f"BEFORE the campaign, never after.", file=sys.stderr)
             return 2
 
@@ -1020,11 +1110,15 @@ def main(argv=None) -> int:
             print(f"REFUSING: legs_do_not_name_one_gpu_architecture: {refused}",
                   file=sys.stderr)
             return 1
+        refused = route_stamps.campaign_refusal(arguments.backend, expected_run)
+        if refused:
+            print(f"REFUSING: {refused}", file=sys.stderr)
+            return 2
         if arguments.run != expected_run:
             print(f"REFUSING: run_is_not_this_architecture_campaign: the legs ran on "
                   f"{architecture}, so the Metal release cites {expected_run!r} "
                   f"(metal_runs.route_campaign of {route_gate!r}) and this run is "
-                  f"{arguments.run!r}. The constant edit belongs BEFORE the campaign, "
+                  f"{arguments.run!r}. The stamp edit belongs BEFORE the campaign, "
                   f"never after.", file=sys.stderr)
             return 2
         for name in supersede:
@@ -1065,10 +1159,14 @@ def main(argv=None) -> int:
     # `uncertified_policy_installed`; the Metal campaign additionally carries a
     # `band_witness` leg that installs keep and runs the array path alone, and
     # asking it which arms it drove would find none and refuse every row.
+    #
+    # A POLICY LEG THE TABLE ADMITS IS A WITNESS. Since the NVIDIA tables admit a
+    # caller-installed ``flush`` on per-arm evidence (``fastpath.TABLE_DISPATCH_POLICIES``),
+    # the route gate holds a flush leg it admits to every dispatch requirement and
+    # stamps ``admitted_policy_installed``; such a leg drove its arms and is asked
+    # which. A leg without that stamp keeps the refusal reading it always had.
     dispatching = {leg: artifact for leg, artifact in artifacts.items()
-                   if not artifact.get("uncertified_policy_installed")
-                   and leg not in NON_DISPATCHING_LEGS
-                   and leg not in unreleased_optional}
+                   if is_dispatching_witness(leg, artifact, unreleased_optional)}
     driven_by_case = {}
     driven_by_leg = {}
     for leg_name, artifact in dispatching.items():
@@ -1084,7 +1182,7 @@ def main(argv=None) -> int:
 
     # THE DEVICE EVERY DISPATCHING ROW PLANNED AGAINST, read off that row's own plan.
     # This is what keeps a capability admitted uncertified (a supported one by
-    # default, any one under ``MEEP_GPU_ALLOW_UNCERTIFIED=1``) from producing a
+    # default, any one under ``MEEP_GPU_HARDWARE=any``) from producing a
     # record: the admission takes a run past rung 4b, the kernels launch, and
     # the plan keeps answering ``device_certified_by_table[t]`` False -- so a campaign
     # driven that way would otherwise cut a record for an architecture no cited weld
@@ -1110,12 +1208,8 @@ def main(argv=None) -> int:
                     for reason in screen(row.get("case"), plan, tables))
 
     if arguments.backend == "cuda":
-        # THE WALK IS ``(arm, case, LEG)`` ON THIS TABLE, and the third dimension is
-        # not bookkeeping. A complex-storage arm's expansion licence comes from the
-        # unified probe record, offered on ONE leg; the same arm appearing in the
-        # shipped leg's ``arms_driven`` would mean the licence had been consumed
-        # WITHOUT the probe, which is the one thing that leg exists to keep apart
-        # and the one failure a case-only walk cannot see.
+        # THE WALK IS ``(arm, case, LEG)`` ON THIS TABLE: every released arm must
+        # show in the ``arms_driven`` of one of the legs its release row names.
         for arm, legs in table.CUDA_RELEASED_ARM_LEGS.items():
             for case in released_arms.get(arm, ()):
                 if not any(arm in driven_by_leg.get((leg, case), set())
@@ -1172,6 +1266,15 @@ def main(argv=None) -> int:
     licence = None
     licence_note = None
     previous_run = (record.get(fastpath.RUNS) or {}).get(capability) or {}
+    # A CARRIED LICENCE IS THE ROUND'S ONLY BY NAME, as a transcribed one is: the slot's
+    # bytes can be unchanged across a re-route, so the bound below cannot see a licence
+    # whose ship leg ran under another stamp.
+    carried = previous_run.get("dispatch_by_default_licence")
+    kept_elsewhere = None
+    if (capability and isinstance(carried, dict)
+            and arguments.backend in route_stamps.LICENCE_TABLES):
+        kept_elsewhere = route_stamps.licence_refusal(
+            arguments.backend, _licence_directory(carried), _device_suffix(capability))
     # THE KEEP RULE IS THE BOUND, now that the licence carries no digest map of its
     # own: the existing licence travels forward only while the slot it sits in still
     # binds the bytes this campaign ran, which is exactly what ``bound_sha256`` says.
@@ -1205,7 +1308,8 @@ def main(argv=None) -> int:
                 f"one whose plan composes first) and this cut is {arguments.backend!r}")
         else:
             licence, licence_problems = transcribe_end_to_end(
-                arguments.end_to_end, ran, bound, arguments.backend, capability)
+                arguments.end_to_end, ran, bound, arguments.backend, capability,
+                staging_root=arguments.staging_root)
             problems.extend(licence_problems)
     elif arguments.backend in ("triton", "cuda"):
         if kept and arguments.backend != primary:
@@ -1216,6 +1320,11 @@ def main(argv=None) -> int:
                 f"NOTE: the licence this record carried for {capability} is not "
                 f"carried forward; compute capability {capability} is licensed on the "
                 f"{primary or 'primary'} record")
+            kept = None
+        elif kept and kept_elsewhere:
+            problems.append(
+                f"the licence in {fastpath.RUNS}[{capability!r}] is not carried forward: "
+                f"{kept_elsewhere}; pass --end-to-end")
             kept = None
         elif kept and bound_after is not None and previous_run.get(
                 "bound_sha256") != bound_after:
@@ -1374,14 +1483,17 @@ def main(argv=None) -> int:
         # typed: a record cut with cuda_alone lists it among the keeping legs, and
         # one cut without it does not claim it.
         keeping = [leg for leg in ("cuda_shipped", "cuda_default_precedence",
-                                   "cuda_harness_keep",
-                                   "cuda_shipped_expansion_probe", CUDA_ALONE_LEG)
+                                   "cuda_harness_keep", CUDA_ALONE_LEG)
                    if leg in artifacts]
+        flush_admitted = bool((artifacts.get("cuda_flush") or {}).get(
+            "admitted_policy_installed"))
         route_run["subnormal_policy"] = (
             f"ieee_keep_ftz_stripped ({', '.join(keeping)} — dispatching"
             + ("; cuda_alone governs host and CuPy only, Triton being absent"
                if alone is not None else "")
-            + ") + meep_x86_flush (cuda_flush — refused by name at rung 8b)")
+            + (") + meep_x86_flush (cuda_flush — dispatching under the flush policy "
+               "the caller installed, admitted on per-arm evidence)" if flush_admitted
+               else ") + meep_x86_flush (cuda_flush — refused by name at rung 8b)"))
         # ABSENT, PRESENT AND RELEASED, OR PRESENT AND NOT RELEASED, said in the
         # record. The third is the non-blocking case: the leg ran, it is not evidence
         # for anything above, and its own release reasons are carried so the reader
@@ -1636,9 +1748,7 @@ def main(argv=None) -> int:
             "programs_per_dispatch is None on this table BY CONSTRUCTION (a Metal "
             "KernelPlan spells no launch grid) and is explicitly not the witness.")
         released["artifact"] += (
-            " The two complex cases dispatch ONLY on the shipped_expansion_probe "
-            "leg; the shipped leg must show them refused by name without a licence. "
-            "The band_witness leg installs keep, dispatches nothing, and is the "
+            " The band_witness leg installs keep, dispatches nothing, and is the "
             "vacuity floor: the oracle's own trajectory must enter the subnormal "
             "band, or the flush-equivalence this record rests on is about nothing.")
 

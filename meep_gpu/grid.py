@@ -53,7 +53,6 @@ Hz at (i+0.5, j+0.5, k)*dx.
 
 from __future__ import annotations
 
-import cmath
 import math
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Optional, Union
@@ -1001,20 +1000,34 @@ class Grid:
                 )
 
         counts = (self.nx_full, self.ny_full, self.nz_full)
-        lengths = (self.Lx, self.Ly, self.Lz)
         self.bloch_phases = tuple(
-            self._axis_bloch_phase(self.k_point[axis], counts[axis], lengths[axis])
+            self._axis_bloch_phase(self.k_point[axis], counts[axis])
             for axis in range(3)
         )
         self.has_bloch = any(phase is not None for phase in self.bloch_phases)
 
-    def _axis_bloch_phase(self, k_value: float, n_full: int, length: float) -> Optional[complex]:
-        """Wrap factor for one axis: ``exp(i*2*pi*k*L)``, or None when k is zero."""
+    def _axis_bloch_phase(self, k_value: float, n_full: int) -> Optional[complex]:
+        """Wrap factor for one axis, MEEP's ``eikna`` in MEEP's own arithmetic; None when k is zero.
+
+        boundaries.cpp ``use_bloch``: ``exp(I * kk * ((2 * pi / a) * n))``. In libc++ with
+        ``kk = (k, 0)`` that is ``I * kk = (+-0, k)``, scaled part-wise by
+        ``s = ((2*pi)/a)*n``, and ``exp`` of an imaginary argument ``(cos(k*s),
+        sin(k*s))``. The association matters: ``exp(2j*pi*k*L)`` rounds the argument
+        differently: measured against MEEP's own ``eikna`` read from its memory, the 0.9.2
+        form equals it in double on 247 of 408 axes, this one on 408 of 408. The sine and
+        cosine come from one fused call, as MEEP's compiled ``exp`` takes them
+        (:func:`~.readback.sincos`). The readback's point reader and duplicate plane use the
+        double value; the stepping rounds it to complex64, unchanged on 408 of 408 axes.
+        """
         if k_value == 0.0:
             return None
         if k_value * n_full == 0.5 * self.resolution:  # MEEP's exact Brillouin-zone edge test.
             return complex(-1.0, 0.0)
-        return cmath.exp(2j * math.pi * k_value * length)
+        from .readback import sincos  # noqa: PLC0415 - the libm route MEEP's <complex> takes
+
+        angle = k_value * ((2 * math.pi / self.resolution) * n_full)
+        sin_a, cos_a = sincos(angle)
+        return complex(cos_a, sin_a)
 
     def bloch_phase(self, axis: int) -> Optional[complex]:
         """Factor a field picks up crossing this axis's UPPER boundary, or None at k = 0.
@@ -1023,12 +1036,12 @@ class Grid:
 
             f(x + L_d) = bloch_phase(d) * f(x)
 
-        so a stencil reading one cell up past the far face multiplies the wrapped
-        value by ``bloch_phase(d)``, and one reading one cell down past the near
-        face multiplies by its conjugate. That is MEEP's
-        ``locate_point_in_user_volume``, which translates a point *up* into the cell
-        by a lattice vector and multiplies by ``conj(eikna[d])`` to recover the
-        field at the original, lower point (boundaries.cpp).
+        so the word one lattice vector above a stored point is ``bloch_phase(d)``
+        times it, and the word one lattice vector below is its conjugate times it.
+        That is MEEP's ``locate_point_in_user_volume``, which translates a point *up*
+        into the cell by a lattice vector and multiplies by ``conj(eikna[d])`` to
+        recover the field at the original, lower point (boundaries.cpp). Which point
+        each stored cell holds is :meth:`stored_window_low`'s statement.
 
         Args:
             axis: 0 for X, 1 for Y, 2 for Z.
@@ -1039,6 +1052,45 @@ class Grid:
         if axis not in (0, 1, 2):
             raise ValueError(f"axis must be 0 (X), 1 (Y), or 2 (Z), got {axis!r}")
         return self.bloch_phases[axis]
+
+    def stored_window_low(self, axis: int, iyee_shift: int) -> int:
+        """The first ladder index of one component's stored window on one axis: 0 or 1.
+
+        THE STORED WINDOW. Ladder index ``i`` of a component with Yee shift ``s`` on an
+        axis is the doubled coordinate ``origin + 2*i + s`` (:meth:`origin_doubled`), and
+        the engine stores ``n`` of them (:meth:`stored_cells`). On an axis MEEP makes
+        Bloch-periodic it OWNS, for a Yee-shift-0 component, the points ``lc + 2 ..
+        lc + 2N`` and holds ``lc`` itself as a not-owned word filled from ``lc + 2N``
+        with ``conj(eikna)`` (boundaries.cpp:203-230, step.cpp:171-221). The engine
+        stores MEEP's owned window: there stored cell 0 IS the owned top point, ladder
+        index ``n``, so the window starts at ladder index 1. Everywhere else -- a
+        Yee-shift-1 component (owned at ``lc + 1 .. lc + 2N - 1`` by both), an axis with
+        no phase (where ``lc`` and ``lc + 2N`` hold the same word), a mirrored, metallic
+        or cylindrical axis -- it starts at 0.
+
+        Every reader that maps a position onto a stored cell takes the window from here
+        (:meth:`wrap_count`); the stepping takes the not-owned words it implies from
+        ``stepping._bloch_ghost_operand``. PML coefficients, chunk membership and the
+        lifted materials already sit at ``lc + 2N`` on stored cell 0 of a wrapping axis
+        (``pml.PML._graded_sigma``, ``chunk_map.one_rank_line``, and MEEP's own
+        ``get_chi1inv``, which relocates ``lc`` onto the owned point).
+        """
+        if axis not in (0, 1, 2):
+            raise ValueError(f"axis must be 0 (X), 1 (Y), or 2 (Z), got {axis!r}")
+        if iyee_shift not in (0, 1):
+            raise ValueError(f"iyee_shift must be 0 or 1, got {iyee_shift!r}")
+        return 1 if (iyee_shift == 0 and self.bloch_phases[axis] is not None) else 0
+
+    def wrap_count(self, axis: int, index: Any, iyee_shift: int) -> Any:
+        """Lattice vectors between ladder index ``index`` and the stored cell it folds onto.
+
+        The cell is ``index % n``; the count is ``floor((index - low) / n)`` with ``low``
+        the stored window's first ladder index (:meth:`stored_window_low`), and the field
+        at the ladder point is ``bloch_phase(axis) ** count`` times the stored word.
+        ``index`` is an int or an integer array (NumPy's ``//`` floors like Python's).
+        """
+        low = self.stored_window_low(axis, iyee_shift)
+        return (index - low) // self.stored_cells(axis)
 
     def origin_doubled(self, axis: int) -> int:
         """MEEP's ``little_corner`` for one axis, in doubled integer coordinates.

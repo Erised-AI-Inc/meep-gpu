@@ -23,24 +23,24 @@ so the thing a test has to exercise is a FUNCTION, and a function has to be
 imported to be called. This module is the CuPy half: compile, bind, launch. It is
 the slice's public face and re-exports the other two rather than copying them.
 
-WHAT IS TRANSCRIBED, AND FROM WHERE. ``stepping.update_E`` (stepping.py:954) with
-an active PML, ``fields.has_offdiagonal_epsilon`` True (fields.py:1313-1315) and
-no nonlinearity — the ``elif offdiagonal:`` branch (stepping.py:1001-1008). With no
-poles admitted ``displacement_minus_polarization_volumes`` aliases each source to
-its D primary (fields.py:1107-1138), and all three are alive at once because the
-coupling reads the OTHER components' volumes (stepping.py:991-997). Per component
-``c`` with own axis ``a``::
+WHAT IS TRANSCRIBED, AND FROM WHERE. ``stepping.update_E`` with an active PML,
+``fields.has_offdiagonal_epsilon`` True and no nonlinearity — the ``elif
+offdiagonal:`` branch. With no poles admitted
+``displacement_minus_polarization_volumes`` aliases each source to its D primary,
+and all three are alive at once because the coupling reads the OTHER components'
+volumes. Per component ``c`` with own axis ``a`` (``stepping._offdiagonal_terms``,
+``_rounded_row``, ``_apply_constitutive_regions``)::
 
-    constitutive = D_c * us_c                                # stepping.py:1005
-    per surviving partner (offset 1 then 2, cycle X->Y->Z, :1235-1237):
-        pair    = g + shift_down(g, partner_axis)            # :1214-1216
-        product = pair * coefficient                         # :1217
-        term    = 0.25 * (product + shift_up(product, a))    # :1219-1220
-        total   accumulates term(offset 1) then term(offset 2)  # :1221
-    _mask_metallic_wall_coupling(total)                      # :1223, :1250-1254
-    constitutive = (D_c * us_c) + total                      # :978-979
-    prev = f_w_c ; f_w_c = constitutive                      # :2065-2096
-    E_c += kps_a_h * f_w_c ;  E_c -= kms_a_h * prev          # half-integer, :986
+    row = double(D_c * us_c)                                 # float32 product, widened
+    per surviving partner (offset 1 then 2, cycle X->Y->Z):
+        pair    = g + shift_down(g, partner_axis)            # float32
+        product = pair * coefficient                         # float32
+        summed  = product + shift_up(product, a)             # float32
+        _mask_metallic_wall_coupling(summed)                 # +0 on a wall plane
+        row    += 0.25 * double(summed)    where the cell's chunk keeps the array
+    src = float(row)                                         # rounded once
+    dsigw cell:  prev = f_w_c ; f_w_c = src ; E_c = E_c + ((kps*src) - (kms*prev))
+    otherwise:   E_c = src                                   # f_w_c untouched
 
 The seven properties that decide bit-identity are enumerated in
 ``offdiag_emitter.py``, beside the text they are properties of.
@@ -143,6 +143,12 @@ binaries. A mask outside those is covered by the emitter's own tests and by that
 digest, not by a byte gate. No throughput claim is made or possible: the box was
 shared.
 
+THE 0.10 FORMS MOVED THE EMITTER, so that block describes the previous text until the
+gate is re-run on these bytes: the row is MEEP's double row, each term is added only in
+a chunk that keeps its array, and the tail is the per-chunk constitutive form, all read
+from the run's chunk record and the presence words (``offdiag_emitter``,
+``offdiag_presence``).
+
 Nothing dispatches this. No module in ``meep_gpu/`` imports ``cuda_kernels`` at
 all (``test_package_boundary.py`` pins the absence in both directions); the only
 importers are this directory's tests and the parity probes.
@@ -183,12 +189,16 @@ try:
     from . import coverage as _coverage
     from . import compile_cache
     from . import offdiag_emitter
-    from .constitutive_kernels import real_constitutive_tables
+    from . import offdiag_presence
+    from .constitutive_kernels import chunk_record_argument, real_constitutive_tables
 except ImportError:  # loaded by path, outside the package
     _coverage = _sibling("coverage")
     compile_cache = _sibling("compile_cache")
     offdiag_emitter = _sibling("offdiag_emitter")
-    real_constitutive_tables = _sibling("constitutive_kernels").real_constitutive_tables
+    offdiag_presence = _sibling("offdiag_presence")
+    _constitutive = _sibling("constitutive_kernels")
+    chunk_record_argument = _constitutive.chunk_record_argument
+    real_constitutive_tables = _constitutive.real_constitutive_tables
 
 BC_CODES = _coverage.BC_CODES
 OFFDIAG_ROW_SLOTS = _coverage.OFFDIAG_ROW_SLOTS
@@ -289,6 +299,13 @@ def offdiag_boundary_codes(grid, pml=None) -> tuple:
     return tuple(BC_CODES[kind] for kind in real_pml_boundary_kinds(grid))
 
 
+def offdiag_chunk_arguments(fields: 'Fields', pml: 'PML', codes, record=None) -> tuple:
+    """``(record, kept)``: the chunk record the kernel reads and the six presence words
+    (``offdiag_presence.launch_chunk_arguments``, which refuses by name a record that
+    does not reproduce the array path's presence)."""
+    return offdiag_presence.launch_chunk_arguments(fields, pml, codes, record)
+
+
 def _require_no_aliasing(fields: 'Fields', rows) -> None:
     """Outputs pairwise distinct and disjoint from every input volume.
 
@@ -328,12 +345,16 @@ def _require_no_aliasing(fields: 'Fields', rows) -> None:
                 f"schedule")
 
 
-def _launch(kernel, fields: 'Fields', rows, tables: dict, codes, walls):
-    """One launch. ``rows`` are the LIVE coefficient volumes, in slot order.
+def _launch(kernel, fields: 'Fields', rows, tables: dict, codes, walls, kept,
+            chunk_bounds):
+    """One launch. ``rows`` are the LIVE coefficient volumes, in slot order, and
+    ``kept`` their presence words (one per live slot, the same order).
 
     Only the live ones: the emitted signature declares no parameter for a dead
     slot, so there is no pointer bound to an array the kernel must never touch.
+    ``chunk_bounds`` is the run's chunk record on the device (``cb``).
     """
+    cb = chunk_record_argument(chunk_bounds)
     nx, ny, nz = fields.Ex.shape
     blocks = (nx * ny * nz + _OFFDIAG_THREADS - 1) // _OFFDIAG_THREADS
     arguments = [
@@ -345,6 +366,7 @@ def _launch(kernel, fields: 'Fields', rows, tables: dict, codes, walls):
         fields.inverse_epsilon_for("Ez"),
     ]
     arguments.extend(rows)
+    arguments.extend(np.int32(word) for word in kept)
     arguments.extend([
         np.int32(nx), np.int32(ny), np.int32(nz),
         tables["kps_x"], tables["kms_x"],
@@ -352,31 +374,36 @@ def _launch(kernel, fields: 'Fields', rows, tables: dict, codes, walls):
         tables["kps_z"], tables["kms_z"],
         np.int32(codes[0]), np.int32(codes[1]), np.int32(codes[2]),
         np.int32(walls[0]), np.int32(walls[1]), np.int32(walls[2]),
+        cb,
     ])
     kernel((blocks,), (_OFFDIAG_THREADS,), tuple(arguments))
 
 
 def update_E_offdiag_fused_pml_real(fields: 'Fields', pml: 'PML' = None, *,
-                                    tables: dict = None, codes=None, walls=None):
+                                    tables: dict = None, codes=None, walls=None,
+                                    chunk_bounds=None, kept=None):
     """``stepping.update_E`` with off-diagonal chi1inv rows, in one launch.
 
     SUPPLY ``pml`` AND EVERY DERIVED ARGUMENT IS DECIDED HERE — the half-integer
     tables through :func:`coverage.constitutive_sub_lattice`, the boundary codes
     through ``real_pml_boundary_kinds``, the wall flags through the grid's own
-    declaration. That is what makes "the launcher and the predicate cannot
+    declaration, and the chunk record and the six presence words through
+    :func:`offdiag_chunk_arguments`, the division the array path steps with. That is what makes "the launcher and the predicate cannot
     disagree" an enforced property of this function rather than a convention a
     caller may keep; the certified sibling's docstring claimed exactly that for a
     year while ``tables`` was a positional parameter passed straight through.
 
-    ``tables``/``codes``/``walls`` ARE THE GATE'S DOOR and stay, keyword-only: a
-    byte gate feeds synthetic tables no ``PML`` produces, and its mutations feed
-    DELIBERATELY WRONG ones — a mis-paired sub-lattice, a dropped wall flag, an
-    over-applied one, a swapped ghost rule. A launcher that could not take its own
-    could not arm any of them. Passing ``pml`` together with an override, or
-    neither, is refused: a caller with two answers to a one-answer question has a
-    bug either way.
+    ``tables``/``codes``/``walls``/``chunk_bounds``/``kept`` ARE THE GATE'S DOOR and
+    stay, keyword-only: a byte gate feeds synthetic tables no ``PML`` produces, and its
+    mutations feed DELIBERATELY WRONG ones — a mis-paired sub-lattice, a dropped wall
+    flag, an over-applied one, a swapped ghost rule, a record off by one, a presence
+    word with a bit cleared. A launcher that could not take its own could not arm any
+    of them. ``kept`` is the six words in slot order (0 for a dead slot);
+    ``chunk_bounds`` the device record. Passing ``pml`` together with an override, or
+    neither, is refused: a caller with two answers to a one-answer question has a bug
+    either way.
     """
-    overrides = (tables, codes, walls)
+    overrides = (tables, codes, walls, chunk_bounds, kept)
     supplied = [value is not None for value in overrides]
     if (pml is not None) and any(supplied):
         raise ValueError(
@@ -384,18 +411,28 @@ def update_E_offdiag_fused_pml_real(fields: 'Fields', pml: 'PML' = None, *,
             "supplied one cannot both be the one this launch used")
     if pml is None and not all(supplied):
         raise ValueError(
-            "pass exactly one of pml (tables, codes and walls are all derived "
-            "from it) or ALL THREE of tables, codes and walls (the gate supplies "
-            "its own, including deliberately wrong ones); got "
+            "pass exactly one of pml (tables, codes, walls, the chunk record and the "
+            "presence words are all derived from it) or ALL FIVE of tables, codes, "
+            "walls, chunk_bounds and kept (the gate supplies its own, including "
+            "deliberately wrong ones); got "
             f"tables={'set' if tables is not None else 'None'}, "
             f"codes={'set' if codes is not None else 'None'}, "
-            f"walls={'set' if walls is not None else 'None'}")
+            f"walls={'set' if walls is not None else 'None'}, "
+            f"chunk_bounds={'set' if chunk_bounds is not None else 'None'}, "
+            f"kept={'set' if kept is not None else 'None'}")
     if pml is not None:
         tables = offdiag_constitutive_tables(pml)
         codes = offdiag_boundary_codes(fields.grid, pml)
         walls = offdiag_wall_mask_flags(fields.grid)
+        record, kept = offdiag_chunk_arguments(fields, pml, codes)
+        chunk_bounds = cp.asarray(np.asarray(record, dtype=np.int32))
 
     mask = normalized_row_mask(offdiag_row_mask(fields))
     rows = [volume for volume in offdiag_row_volumes(fields) if volume is not None]
+    if len(kept) != len(OFFDIAG_ROW_SLOTS):
+        raise ValueError(f"kept carries {len(kept)} presence words, not one per row slot "
+                         f"({len(OFFDIAG_ROW_SLOTS)}, 0 for a dead slot)")
+    live_kept = [int(word) for word, flag in zip(kept, mask) if flag]
     _require_no_aliasing(fields, rows)
-    return _launch(_get_kernel(mask), fields, rows, tables, codes, walls)
+    return _launch(_get_kernel(mask), fields, rows, tables, codes, walls, live_kept,
+                   chunk_bounds)

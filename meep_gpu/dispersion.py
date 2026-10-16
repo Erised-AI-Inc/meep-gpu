@@ -8,8 +8,8 @@ the closed forms that make both testable without stepping Maxwell at all.
 here transcribes ``mp.LorentzianSusceptibility`` / ``mp.DrudeSusceptibility``
 argument for argument. It exposes four pure functions and no arrays:
 
-* ``coefficients(dt)`` — the three recurrence constants MEEP computes in
-  ``susceptibility.cpp:192-195``;
+* ``realnum_constants(dt)`` — the four recurrence constants MEEP's ``update_P`` forms
+  (``susceptibility.cpp:191-195``), as the float32 (``realnum``) words it forms them in;
 * ``chi1(f)`` — the CONTINUUM susceptibility MEEP reports through
   ``mp.Medium.epsilon(f)`` (``susceptibility.cpp:297-307``);
 * ``chi1_discrete(f, dt)`` — the EXACT susceptibility of the discrete recurrence,
@@ -24,7 +24,7 @@ why the driver needs no boundary pass for P: a Bloch phase, a mirror ghost and a
 PML all reach the polarization through its drive field and nowhere else.
 
 Units. ``chi1`` is invariant to whether its frequencies carry the 2*pi, because
-the factor cancels between numerator and denominator; ``coefficients`` is NOT,
+the factor cancels between numerator and denominator; ``realnum_constants`` is NOT,
 because it carries a bare dt. Every frequency inside the recurrence is therefore
 angular, and every frequency crossing this module's boundary is MEEP's. A 2*pi
 dropped from one and not the other moves a resonance by 6.28x while leaving every
@@ -52,18 +52,22 @@ a native kind would be a GPU-only capability with no oracle. It ships instead as
 the overdamped-Lorentz mapping in :func:`debye_to_lorentzian`, whose residual is
 computed and returned rather than swallowed.
 
-Array work goes through ``grid.xp``; this module imports neither cupy nor meep,
-and its scalar mathematics is float64 throughout, cast to the field dtype only
-where it meets an array.
+Array work goes through ``grid.xp``; this module imports neither cupy nor meep.
+Its closed forms (``chi1``, ``chi1_discrete``, ``poles``) are float64; the step is
+MEEP's own arithmetic: the four recurrence constants are the float32 words MEEP's
+``update_P`` forms, rounded where it rounds them, and the polarization update is its
+isotropic expression with its grouping, every operation a float32 operation
+(``PolarizationState.update``).
 
 P follows the field dtype: float32 in a real run, complex64 in a complex one
 (``PolarizationState`` takes it from ``Fields._field_dtype``). The recurrence
-coefficients are REAL — ``chi1_discrete`` and ``poles`` are complex, but
-``coefficients`` returns three real numbers — so the update never needs the
-imaginary plane, and a real run's P is the real part of the complex run's P to
-the bit. Allocating P complex64 over real fields would silently double a
-six-term metal fit's memory, which is the largest single allocation such a run
-makes.
+constants are REAL — ``chi1_discrete`` and ``poles`` are complex, but
+``realnum_constants`` returns four real words — so the update never needs the
+imaginary plane: complex storage is stepped part by part with real operands, as
+MEEP's ``DOCMP2`` loop steps ``P[c][0]`` and ``P[c][1]``, and a real run's P is the
+real part of the complex run's P to the bit. Allocating P complex64 over real
+fields would silently double a six-term metal fit's memory, which is the largest
+single allocation such a run makes.
 
 MEEP source references: src/susceptibility.cpp (lorentzian_susceptibility::
 update_P, subtract_P, chi1, the disabled lorentzian_unstable), src/update_eh.cpp
@@ -81,7 +85,11 @@ from __future__ import annotations
 import cmath
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, NamedTuple, Sequence, Tuple
+
+import numpy
+
+from . import part_products
 
 if TYPE_CHECKING:  # Annotations only; the runtime coupling is duck-typed on grid.xp.
     from .grid import Grid
@@ -108,6 +116,22 @@ E_YEE_SHIFTS: Dict[str, Tuple[int, int, int]] = {
 # the physically marginal cases (Drude's z = 1 DC mode, a lossless Lorentzian)
 # sit exactly at 1 and must not be refused.
 POLE_TOLERANCE = 1e-6
+
+
+class RealnumConstants(NamedTuple):
+    """MEEP's ``update_P`` constants for one term at one dt, as float32 (``realnum``) words.
+
+    The isotropic update is
+    ``p = gamma1inv * ((p * two_minus_od - gamma1 * pp) + omega0dtsqr * (s * w))``
+    (susceptibility.cpp:251-256), where ``two_minus_od`` is MEEP's
+    ``2 - omega0dtsqr_denom``: ``2 - omega0dtsqr`` for a Lorentzian term and exactly 2
+    for a Drude term, whose drive keeps the full ``omega0dtsqr``.
+    """
+
+    two_minus_od: Any
+    gamma1: Any
+    omega0dtsqr: Any
+    gamma1inv: Any
 
 
 class DispersionInstability(ValueError):
@@ -216,44 +240,50 @@ class Susceptibility:
     def is_drude(self) -> bool:  # MEEP's no_omega_0_denominator: the restoring force is dropped.
         return self.kind == DRUDE
 
-    def coefficients(self, dt: float) -> Tuple[float, float, float]:
-        """Return (c_now, c_prev, c_drive) for ``P_new = c_now*P + c_prev*P_prev + c_drive*sigma*W``.
+    def realnum_constants(self, dt: float) -> RealnumConstants:
+        """MEEP's ``update_P`` constants, each rounded where MEEP 1.33.0 rounds it.
 
-        Verbatim from MEEP susceptibility.cpp:192-195 and the isotropic loop at
-        :251-258::
+        susceptibility.cpp:191-195 (contraction off)::
 
-            omega2pi = 2*pi*omega_0;  g2pi = gamma*2*pi
-            omega0dtsqr = omega2pi**2 * dt**2
-            gamma1inv = 1/(1 + g2pi*dt/2);  gamma1 = 1 - g2pi*dt/2
-            omega0dtsqr_denom = 0 if Drude else omega0dtsqr
-            p = gamma1inv*(p*(2 - omega0dtsqr_denom) - gamma1*pp + omega0dtsqr*(s*w))
+            const realnum omega2pi = 2 * pi * omega_0, g2pi = gamma * 2 * pi;
+            const realnum omega0dtsqr = omega2pi * omega2pi * dt * dt;
+            const realnum gamma1inv = 1 / (1 + g2pi * dt / 2), gamma1 = (1 - g2pi * dt / 2);
+            const realnum omega0dtsqr_denom = no_omega_0_denominator ? 0 : omega0dtsqr;
 
-        The Drude flag zeroes the restoring force in ``c_now`` and NOTHING else —
-        ``c_drive`` keeps the full omega0dtsqr. Applying it to the drive instead
-        gives P == 0, i.e. a metal that transmits like vacuum, which scores as a
-        pristine transmission spectrum rather than as a failure.
+        * ``lorentzian_susceptibility(realnum omega_0, realnum gamma, ...)`` (meep.hpp:248)
+          stores the user's doubles as float32, and ``update_P(..., realnum dt, ...)``
+          (susceptibility.cpp:188-189) takes dt as float32;
+        * ``omega2pi``: ``2 * pi`` and the product with ``omega_0`` in double (``pi`` is a
+          double, meep.hpp:53), stored as float32;
+        * ``g2pi``: ``gamma * 2`` in float, ``* pi`` in double, stored as float32;
+        * ``omega0dtsqr``, ``gamma1inv``, ``gamma1`` and ``2 - omega0dtsqr_denom``: float32
+          operations, left to right.
 
-        Computed in float64 and returned as Python floats; the caller casts where
-        the constants meet the field arrays. MEEP rounds each intermediate to
-        float32 (``realnum``), which this deliberately does not reproduce — the
-        closed form is the same and evaluating it more accurately can only move the
-        engine towards the continuum answer, not away from it.
+        Every frequency here is angular (the 2*pi is MEEP's own), and the Drude flag
+        zeroes the restoring force in ``two_minus_od`` and NOTHING else: the drive keeps
+        the full ``omega0dtsqr``. Applying it to the drive instead gives P == 0, a metal
+        that transmits like vacuum, which scores as a pristine transmission spectrum
+        rather than as a failure.
+
+        No libm call is made: every operation is an IEEE-754 basic operation, so the
+        words are the same on every host.
         """
         step = float(dt)
         if not math.isfinite(step) or step <= 0.0:
             raise ValueError(f"dt must be finite and positive, got {dt!r}.")
-        omega_rad = 2.0 * math.pi * self.frequency  # Angular: the recurrence carries a bare dt.
-        gamma_rad = 2.0 * math.pi * self.gamma
-        omega0dtsqr = (omega_rad * step) ** 2
-        half_gamma_dt = gamma_rad * step / 2.0
-        gamma1inv = 1.0 / (1.0 + half_gamma_dt)
-        gamma1 = 1.0 - half_gamma_dt
-        restoring = 0.0 if self.is_drude else omega0dtsqr  # MEEP's omega0dtsqr_denom.
-        return (
-            gamma1inv * (2.0 - restoring),
-            -gamma1inv * gamma1,
-            gamma1inv * omega0dtsqr,
-        )
+        f32 = numpy.float32
+        omega_0 = f32(self.frequency)
+        gamma = f32(self.gamma)
+        dt_r = f32(step)
+        omega2pi = f32((2.0 * math.pi) * float(omega_0))
+        g2pi = f32(float(gamma * f32(2)) * math.pi)
+        omega0dtsqr = ((omega2pi * omega2pi) * dt_r) * dt_r
+        half_g2pi_dt = (g2pi * dt_r) / f32(2)
+        gamma1inv = f32(1) / (f32(1) + half_g2pi_dt)
+        gamma1 = f32(1) - half_g2pi_dt
+        omega0dtsqr_denom = f32(0) if self.is_drude else omega0dtsqr
+        return RealnumConstants(two_minus_od=f32(2) - omega0dtsqr_denom, gamma1=gamma1,
+                                omega0dtsqr=omega0dtsqr, gamma1inv=gamma1inv)
 
     def chi1(self, frequency: float) -> complex:
         """Continuum susceptibility at sigma = 1 — MEEP susceptibility.cpp:297-307.
@@ -286,7 +316,7 @@ class Susceptibility:
         """EXACT susceptibility of the discrete recurrence at sigma = 1 — no discretisation error.
 
         Substituting P^m = P z^m, W^m = W z^m with z = exp(-i*omega*dt) into the
-        recurrence of :meth:`coefficients` and solving for P/W::
+        recurrence of :meth:`realnum_constants`, in exact arithmetic, and solving for P/W::
 
             chi_tilde(omega) = w2 / [ w2d - 4 sin^2(omega dt/2) - i (gamma_rad dt) sin(omega dt) ]
 
@@ -641,7 +671,8 @@ class PolarizationState:
         self._driven: Tuple[str, ...] = tuple(
             name for name in E_COMPONENTS if not sigma_is_trivial(self.sigma[name], xp)
         )
-        self._coefficients = susceptibility.coefficients(grid.dt)
+        # MEEP's four realnum words, formed once: dt is fixed for the run.
+        self.constants = susceptibility.realnum_constants(grid.dt)
         shape = grid.shape
         self.P: Dict[str, Any] = {name: xp.zeros(shape, dtype=dtype) for name in self._driven}
         self.P_prev: Dict[str, Any] = {name: xp.zeros(shape, dtype=dtype) for name in self._driven}
@@ -656,12 +687,29 @@ class PolarizationState:
         return component in self._driven
 
     def update(self, drive: Callable[[str], Any], dt: float) -> None:
-        """Advance every driven component one step — MEEP susceptibility.cpp:251-258.
+        """Advance every driven component one step — MEEP susceptibility.cpp:251-256.
+
+        The isotropic branch, taken whenever sigma is diagonal (anisotropic_averaging.cpp:408-411
+        frees a trivial off-diagonal sigma, so ``s1 = s2 = NULL`` at
+        susceptibility.cpp:213, :218)::
+
+            realnum pcur = p[i];
+            p[i] = gamma1inv *
+                   (pcur * (2 - omega0dtsqr_denom) - gamma1 * pp[i] + omega0dtsqr * (s[i] * w[i]));
+            pp[i] = pcur;
+
+        that is ``gamma1inv * (((pcur * A) - (gamma1 * pp)) + (omega0dtsqr * (s * w)))``,
+        every operation a float32 operation on the :attr:`constants` words and ``s[i]``
+        a realnum (a uniform sigma is rounded to float32 once, as MEEP stores it). Complex
+        storage takes each product part by part (:func:`part_products.scale`), as MEEP's
+        ``DOCMP2`` loop steps the two parts as two real passes; the sums of complex arrays
+        are per part already.
 
         ``drive(component)`` must return W = (D - sum P) * inv_eps for that
         component, NOT the stored E: the two differ inside a PML, where the stored E
         has already had the absorbing accumulation applied. MEEP takes the same
-        distinction at update_pols.cpp:44 (``w = f_w ? f_w : f``).
+        distinction PER CHUNK at update_pols.cpp:44 (``w = f_w ? f_w : f``), which is
+        what :meth:`~.fields.Fields.drive_field` composes.
 
         The buffer rotation costs zero copies: this step's result is written into the
         scratch buffer, the scratch slot then takes over the array that held P_prev,
@@ -672,20 +720,25 @@ class PolarizationState:
             return
         if dt != self.grid.dt:
             raise ValueError(
-                f"PolarizationState coefficients were built for dt={self.grid.dt!r} and cannot be "
+                f"PolarizationState constants were built for dt={self.grid.dt!r} and cannot be "
                 f"stepped at dt={dt!r}; a susceptibility's recurrence constants are fixed by the "
                 f"timestep."
             )
-        xp = self.grid.xp
-        c_now, c_prev, c_drive = self._coefficients
+        two_minus_od, gamma1, omega0dtsqr, gamma1inv = self.constants
         for component in self._driven:
             w = drive(component)
             p = self.P[component]
             p_prev = self.P_prev[component]
             scratch = self._scratch
-            xp.multiply(p, c_now, out=scratch)  # c_now * P^n
-            scratch += c_prev * p_prev  # - (1-g2)/(1+g2) * P^(n-1)
-            scratch += c_drive * (self.sigma[component] * w)  # + w2/(1+g2) * sigma * W^n
+            sigma = self.sigma[component]
+            if _is_scalar(sigma):
+                sigma = numpy.float32(sigma)  # s[i] is a realnum (anisotropic_averaging.cpp:379, :396)
+            part_products.scale(two_minus_od, p, out=scratch)  # pcur * (2 - omega0dtsqr_denom)
+            scratch -= part_products.scale(gamma1, p_prev)  # - gamma1 * pp[i]
+            drive_term = part_products.scale(sigma, w)  # s[i] * w[i]
+            part_products.scale(omega0dtsqr, drive_term, out=drive_term)  # omega0dtsqr * (s[i] * w[i])
+            scratch += drive_term
+            part_products.scale(gamma1inv, scratch, out=scratch)  # gamma1inv * ( ... )
             self.P[component] = scratch
             self.P_prev[component] = p
             self._scratch = p_prev  # The retired history buffer becomes next component's scratch.

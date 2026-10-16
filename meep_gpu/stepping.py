@@ -6,14 +6,36 @@ MEEP's owned-cell loop leaves to the boundary pass.
 ``step_B`` and ``step_D`` apply the discrete curl to the primary fields: forward
 differences for B, and MEEP's negated strides (backward differences) for D, so
 that a single ``field -= curl`` expression produces dB/dt = -curl(E) and
-dD/dt = +curl(H). Where a PML layer is present the same pass runs the
-split-field auxiliary recurrence. ``update_H`` and ``update_E`` close the
+dD/dt = +curl(H). Where a PML layer is present the same pass takes MEEP's form
+PER STRUCTURE CHUNK (step_db.cpp:56-59): the split-field auxiliary recurrence on
+the cells whose chunk carries the component's dsigu layer, the dsig-only form on
+the field alone everywhere else, read from the run's
+:class:`~.chunk_map.RegionPlan`. ``update_H`` and ``update_E`` close the
 constitutive relations: without PML they are no-ops, because H = B and
 E = D*inv_eps are served on demand by ``Fields``; with PML they accumulate the
-stored fields through the third PML direction. ``fill_symmetry_bc_D`` is
+stored fields through the third PML direction on the cells whose chunk carries
+that layer (update_eh.cpp:162-163), and store H = B, E = D*inv_eps elsewhere. An
+auxiliary (``fu_*``, ``f_w_*``, ``f_cond_*``) is read and written only on its own
+form's cells. ``fill_symmetry_bc_D`` is
 exported for the driver to call after source injection, matching MEEP's
 step_db -> step_source -> step_boundaries order; the B-side counterpart runs at
 the end of ``step_B``.
+
+The two FOLDED INCREMENTS are MEEP's own passes after the curl, not terms inside it.
+``step_db`` (step_db.cpp:47-175) runs, per component, ``STEP_CURL`` and then
+``STEP_BFAST`` on the same component (:124-142), and only after every component has
+been through both, the special-kz beta pass over Bx and By (or Dx and Dy) (:161-175).
+Each pass adds its increment through its own additive ladder (step_generic.cpp:255-333
+beta, :335-533 BFAST), and two additions into one word do not commute in rounding, so
+the order on every cell is curl form, then BFAST ladder, then beta ladder
+(:func:`_apply_folded_increment`). In a 2-D run, the only one that carries beta, the two
+passes add nonzero increments to disjoint components — BFAST's to the z components, since
+a one-partner component's BFAST k is zero (:func:`_bfast_term`), and beta's to x and y —
+so there the order can reach a signed zero and nothing else. The cylindrical i*m/r
+coupling is a third such pass (step_db.cpp:177-294), after every component's curl and
+through the same ladder (:func:`_cylindrical_imr_increment`), and the cylindrical radial
+derivative is MEEP's prefix sum restarted in every structure chunk
+(:func:`cylindrical_rderiv_difference`).
 
 Inputs are a ``Fields`` container (which owns the arrays, the ``Grid``, and the
 on-demand E/H views) and an optional ``PML`` coefficient table; every entry
@@ -44,10 +66,19 @@ relations, the split-field PML recurrence and the polarization ADE all have real
 coefficients, so nothing in the loop ever needs the imaginary plane. A real-field
 run therefore does not approximate the complex one, it reproduces its real part
 bit for bit — the two differ only where an imaginary input enters, which is a
-Bloch phase (refused in :func:`_bloch_phases`) or a complex source amplitude
+Bloch phase (refused on real storage in :func:`_bloch_phases`), a quarter-turn
+coupling (special-kz beta, cylindrical i*m/r) or a complex source amplitude
 (refused in ``sources``). Keeping the coefficient arrays float32 in BOTH modes is
 what makes that true: a complex64 coefficient would multiply the real part by the
 imaginary part of the field and the equivalence would be gone.
+
+COMPLEX STORAGE IS STEPPED PART BY PART, as MEEP steps its two ``realnum`` arrays
+(the ``DOCMP`` loops): every product on a field goes through :mod:`~.part_products`
+-- a real coefficient times each part, a quarter turn as a swap of parts, a Bloch
+connection as MEEP's separately rounded ``complex<float>`` product. NumPy's and
+CuPy's complex multiply contracts to a fused multiply-add on hosts that have one and
+flips zero signs through its ``(k + 0j)`` cross terms, so the array path forms none
+(``parity/meep_gpu/complex_product_interceptor.py`` checks it at run time).
 
 Boundary conditions. There are exactly three, they are chosen per axis, and a PML
 decides none of them:
@@ -64,21 +95,29 @@ decides none of them:
   the electric currents respectively — holding the wall plane itself at zero against
   anything a source writes there;
 - periodic wrap, on EVERY other axis, absorber or not — plain at k = 0, and
-  Bloch-periodic when ``grid.k_point`` gives that axis a phase, in which case the
-  wrapped value is multiplied by ``grid.bloch_phase(axis)`` going up and by its
-  conjugate going down.
+  Bloch-periodic when ``grid.k_point`` gives that axis a phase. Then the engine
+  stores MEEP's owned window: stored cell 0 of a component with Yee shift 0 on the
+  axis is the owned top point ``lc + 2N`` (``Grid.stored_window_low``), the shifts
+  stay plain rolls, and the reads that leave the window -- the same-index read half
+  a cell below it (``conj(eikna)``) or above it (``eikna``) -- take MEEP's not-owned
+  word (:func:`_bloch_ghost_operand`).
 
-A REDUCED-DIMENSION run adds no fourth rule, and that is the point rather than an
-omission. MEEP 2-D and 1-D are translational invariance along the missing axes: MEEP
-leaves those directions out of ``LOOP_OVER_DIRECTIONS``, which sets ``stride(d) = 0``
-(vec.cpp ``num_changed``), so ``g1[i + s] - g1[i]`` reads the same sample twice and
-the difference is an exact zero rather than a small one. This engine gives such an
-axis ONE cell and the ordinary periodic wrap, where ``roll`` returns the same plane
-and the subtraction is the same exact zero — no branch, no special case, and nothing
-added to the per-timestep loop. That equivalence is MEEP's own: a one-pixel periodic
-direction is what ``fields::nosize_direction`` calls a lower-dimensional emulation,
-and MEEP's genuine 2-D run and the same problem as a 3-D cell one pixel deep in z
-step to **0.0e+00** of each other.
+A REDUCED-DIMENSION run adds no fourth boundary rule. MEEP 2-D and 1-D are
+translational invariance along the missing axes, and this engine gives such an axis
+ONE cell and the ordinary periodic wrap, where ``roll`` returns the same plane. A
+one-pixel periodic direction is what ``fields::nosize_direction`` calls a
+lower-dimensional emulation, and MEEP's genuine 2-D run and the same problem as a 3-D
+cell one pixel deep in z step to **0.0e+00** of each other.
+
+The CURL does take a different form there, because MEEP's does. ``figure_out_step_plan``
+(fields.cpp:428-453) records a curl partner only when its derivative direction is a
+direction of the grid, and ``step_curl`` (step_generic.cpp:72-76, :104, :108) then
+evaluates ``dtdx * (g1[i + s1] - g1[i])`` with ``g2`` absent and
+``(-dtdx) * (g2[i + s2] - g2[i])`` with ``g1`` absent. The full bracket in MEEP's left
+to right order, ``((g1s - g1) + g2) - g2s``, is NOT those forms when ``g2s == g2``:
+``(a + g2) - g2`` rounds. So :func:`_curl_from_operands` takes the partner presence
+(:func:`curl_presence`, ``grid.is_invariant`` of the partner's derivative axis) and
+evaluates the form MEEP evaluates.
 
 What the invariant axis must NOT be is metallic, and ``Grid`` refuses it there rather
 than here. A PEC wall zeroes exactly the samples whose Yee shift on the walled axis is
@@ -118,11 +157,10 @@ the same resolution.
 
 A Bloch phase only means anything on an axis that actually repeats, so a nonzero k
 is refused on a mirrored axis (whose plane forces the field even or odd, i.e.
-k = 0) AND on any axis carrying an absorber, even though that axis still wraps: the
-layer terminates the wave before it reaches the face, so the phase would describe a
-periodicity the run does not have. Bloch also needs complex storage — a real field
-cannot carry the phase — and that too is refused loudly rather than silently
-dropping the imaginary part.
+k = 0) and on a metallic one; an axis carrying an absorber still wraps and carries
+the phase, as MEEP's does (:func:`_bloch_phases`). Bloch also needs complex storage
+— a real field cannot carry the phase — and that too is refused loudly rather than
+silently dropping the imaginary part.
 
 MEEP source references: step_db.cpp (fields_chunk::step_db and its stride
 negation), step_generic.cpp (step_curl, step_update_EDHB), step.cpp (update_eh),
@@ -139,8 +177,9 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING, Any, Dict, NamedTuple, Optional, Sequence, Tuple
 
-from . import host_writes
+from . import host_writes, part_products
 from .fields import IYEE_SHIFTS, mirror_parity
+from .readback import cmul
 
 BlochPhases = Tuple[Optional[complex], Optional[complex], Optional[complex]]
 MirrorPhases = Tuple[Optional[int], Optional[int], Optional[int]]
@@ -221,6 +260,12 @@ D_CURL_TERMS: Tuple[CurlTerm, ...] = (
     CurlTerm("Dy", "Hx", AXIS_Z, "Hz", AXIS_X, "z", "x"),  # curl_y = dHx/dz - dHz/dx
     CurlTerm("Dz", "Hy", AXIS_X, "Hx", AXIS_Y, "x", "y"),  # curl_z = dHy/dx - dHx/dy
 )
+
+# MEEP step_db.cpp:177-294, the cylindrical i*m/r pass: per (target term, partner, sign)
+# with ``c_g = d_c == R ? plus_component : minus_component`` and the sign
+# ``(1-2*(ft==B_stuff)) * (1-2*(d_c==R))`` of ``the_m`` (package x is R, z is Z).
+_CYLINDRICAL_IMR_B = ((B_CURL_TERMS[0], "Ez", +1.0), (B_CURL_TERMS[2], "Ex", -1.0))
+_CYLINDRICAL_IMR_D = ((D_CURL_TERMS[0], "Hz", -1.0), (D_CURL_TERMS[2], "Hx", +1.0))
 
 # update_eh (step_generic.cpp step_update_EDHB): dsigw is the component's own
 # axis. H reads the integer-position coefficients, E the half-integer ones.
@@ -325,8 +370,8 @@ def step_B(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Curl sub-s
     if cylindrical:
         _require_cylindrical_steppable(grid)
         # MEEP step_db.cpp:92-119, the B-side Z case: Bz's radial difference is of
-        # the prefix sum of (1/r)d(r*Ep)/dr. Ep sits at the node (r-shift 0), so
-        # ir0 = 0.0 where the D side's Hp gave 0.5.
+        # the prefix sum of (1/r)d(r*Ep)/dr, summed per structure chunk. Ep sits at the
+        # node (r-shift 0), so ir0 = 0.0 where the D side's Hp gave 0.5.
         #
         # THE PREFIX IS A CUMSUM, NOT A FIELD, so the generic shift machinery's
         # metallic far ghost is wrong for it: a zero ghost turns the last row's
@@ -335,7 +380,7 @@ def step_B(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Curl sub-s
         # with the wall's Ep held at zero by zero_metal — a LOCAL value. The same
         # thing here: the prefix runs over Ep extended by its zero wall row, and
         # Bz's radial difference is taken of consecutive extended rows directly.
-        # Measured before this: the m = 1 run's first divergence was born at the
+        # Measured before the wall row: the m = 1 run's first divergence was born at the
         # LAST TWO ROWS at step 3 (rows 0-17 exactly zero error) and grew inward,
         # with a spurious Hz where MEEP's cancels to 5e-11. The D side never
         # needs the wall row: its backward difference reads rows i and i-1.
@@ -347,7 +392,7 @@ def step_B(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Curl sub-s
         # The ``scratch is None`` branch exists so the POOL CAN BE TURNED OFF here as
         # it can everywhere else on the step path: that switch is what
         # test_step_scratch_is_bit_identical differences against, and without it the
-        # cylindrical path — which holds `prefix_ext`, the one pooled buffer carried
+        # cylindrical path — which holds `radial`, the one pooled buffer carried
         # live across a whole term loop — could not be pinned by that test at all.
         # Only the allocation differs between the branches; the two writes below are
         # shared, so the comparison cannot drift as either side is edited.
@@ -358,48 +403,59 @@ def step_B(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Curl sub-s
                     else scratch.take("cyl_extended", extended_shape, electric["Ey"].dtype))
         extended[_span(0, 0, rows)] = electric["Ey"]
         extended[_face(0, rows)] = 0
-        prefix_ext = cylindrical_rderiv_prefix(xp, extended, 0.0, scratch=scratch)
+        radial = cylindrical_rderiv_difference(
+            xp, extended, 0.0, _cylindrical_scan_starts(fields, pml if pml_active else None, "Bz"),
+            rows, backward=False, scratch=scratch)
         axis_increment = _cylindrical_axis_increment_B(fields, electric, boundaries,
                                                        phases, dtdx)
     bfast = grid.bfast_active
     for term in B_CURL_TERMS:
-        term_sources = electric
-        operands = _curl_operands(grid.xp, term_sources, term, boundaries, phases, parities,
-                                  backward=False, reflect_rows=reflect_rows,
-                                  scratch=scratch)
-        curl = _curl_from_operands(operands, dtdx, scratch=scratch)
+        presence = curl_presence(grid, term)
         if cylindrical and term.target == "Bz":
-            # Bz's whole curl in cylindrical: the phi-derivative partner is the
-            # invariant-axis zero (the i*m/r part is added below), so the curl IS
-            # the radial forward difference of the extended prefix.
-            curl = dtdx * (prefix_ext[1:] - prefix_ext[:-1])
-        if cylindrical and grid.m != 0:
-            # step_db.cpp:177-294 — the B-side i*m/r couplings: Br takes its
-            # dropped plus partner Ez, Bz its dropped minus partner Er; the_m's
-            # (1-2*(ft==B_stuff)) flips both signs relative to the D side.
-            if term.target == "Bx":
-                curl = curl + _cylindrical_imr_term(fields, "Bx", electric["Ez"], +1.0)
-            elif term.target == "Bz":
-                curl = curl + _cylindrical_imr_term(fields, "Bz", electric["Ex"], -1.0)
-        if grid.beta != 0.0:
-            # step_db.cpp:148-176 — the B-side out-of-plane couplings. `cc` runs over
-            # d_c in {X, Y} only and its partner is `direction_component(Ex, other)`:
-            # Bx <- Ey at sign +1, By <- Ex at sign -1. Bz gets nothing.
-            if term.target == "Bx":
-                curl = curl + _special_kz_beta_term(fields, electric["Ey"], +1.0, magnetic=True)
-            elif term.target == "By":
-                curl = curl + _special_kz_beta_term(fields, electric["Ex"], -1.0, magnetic=True)
-        if bfast:
-            # step_db.cpp:129-142 — the second additive pass, on the SAME shifted
-            # operands, the SAME loop bounds and the SAME PML/conductivity slices as
-            # the curl above, which is why it folds in here rather than running again.
-            curl = curl + _bfast_term(fields, term, operands, magnetic=True)
+            # Bz's whole curl in cylindrical: the minus partner is the phi derivative
+            # MEEP drops (step_db.cpp:86-92; its i*m/r part is a pass of its own below),
+            # so the curl IS dtdx times the radial forward difference of the per-chunk
+            # prefix. A cylindrical grid carries no BFAST, so no operands are gathered.
+            operands = None
+            curl = part_products.scale(dtdx, radial, out=radial)
+        else:
+            operands = _curl_operands(grid.xp, electric, term, boundaries, phases, parities,
+                                      backward=False, reflect_rows=reflect_rows,
+                                      scratch=scratch, gather=presence)
+            curl = _curl_from_operands(operands, dtdx, presence, scratch=scratch)
         _mask_non_owned_cells(curl, grid, term.iyee)
         if axis_increment is not None and axis_increment[0] == term.target:
             # The axis-row dfcnd, in curl sign convention (the step subtracts).
             curl[_face(0, 0)] = -axis_increment[1].astype(curl.dtype)
         # B sits at half-integer positions in the transverse directions.
         _apply_curl(fields, term, curl, pml, pml_active, half_integer=True, scratch=scratch)
+        if bfast:
+            # step_db.cpp:129-142 — STEP_BFAST on this component right after its
+            # STEP_CURL, on the SAME (already gathered) partners and the same PML and
+            # conductivity slices, through its own ladder.
+            _apply_folded_increment(
+                fields, term,
+                _bfast_term(fields, term, operands, magnetic=True,
+                            plain=_bfast_plain_cells(fields, term, presence, pml, pml_active)),
+                pml, pml_active, half_integer=True)
+    if grid.beta != 0.0:
+        # step_db.cpp:161-175 — the B-side out-of-plane couplings, a pass of their own
+        # after every component's curl. `cc` runs over d_c in {X, Y} only and its
+        # partner is `direction_component(Ex, other)`: Bx <- Ey at sign +1, By <- Ex at
+        # sign -1. Bz gets nothing. The pass loops over MEEP's owned cells only.
+        for term, partner, sign in ((B_CURL_TERMS[0], "Ey", +1.0), (B_CURL_TERMS[1], "Ex", -1.0)):
+            increment = _special_kz_beta_term(fields, electric[partner], sign, magnetic=True)
+            _mask_non_owned_cells(increment, grid, term.iyee)
+            _apply_folded_increment(fields, term, increment, pml, pml_active, half_integer=True)
+    if cylindrical and grid.m != 0:
+        # step_db.cpp:177-294 — the B-side i*m/r couplings, a pass of their own after every
+        # component's curl: Br takes its dropped plus partner Ez, Bz its dropped minus
+        # partner Er; the_m's (1-2*(ft==B_stuff)) flips both signs relative to the D side.
+        # The pass loops over MEEP's owned cells only (LOOP_OVER_VOL_OWNED0).
+        for term, partner, sign in _CYLINDRICAL_IMR_B:
+            increment = _cylindrical_imr_increment(fields, term.target, electric[partner], sign)
+            _mask_non_owned_cells(increment, grid, term.iyee)
+            _apply_folded_increment(fields, term, increment, pml, pml_active, half_integer=True)
     if cylindrical:
         _cylindrical_axis_zero_B(fields)
 
@@ -441,47 +497,61 @@ def step_D(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Curl sub-s
     if cylindrical:
         _require_cylindrical_steppable(grid)
         # MEEP step_db.cpp:92-119 (Z case): Dz's radial difference is taken of the
-        # prefix sum of (1/r)d(r*Hp)/dr, not of Hp itself; the unmodified curl then
-        # produces the cylindrical derivative. ir0 = 0.5 = half of Hp's r-shift.
-        prefixed = dict(magnetic)
-        prefixed["Hy"] = cylindrical_rderiv_prefix(grid.xp, magnetic["Hy"], 0.5,
-                                                   scratch=scratch)
+        # prefix sum of (1/r)d(r*Hp)/dr, not of Hp itself, summed per structure chunk;
+        # the unmodified curl of that prefix is the cylindrical derivative. ir0 = 0.5 =
+        # half of Hp's r-shift. The D side never needs a wall row: its backward
+        # difference reads rows g and g - 1.
+        radial = cylindrical_rderiv_difference(
+            grid.xp, magnetic["Hy"], 0.5,
+            _cylindrical_scan_starts(fields, pml if pml_active else None, "Dz"),
+            magnetic["Hy"].shape[0], backward=True, scratch=scratch)
         axis_increment = _cylindrical_axis_increment_D(fields, magnetic, boundaries,
                                                        phases, dtdx)
     bfast = grid.bfast_active
     for term in D_CURL_TERMS:
-        term_sources = magnetic
+        presence = curl_presence(grid, term)
         if cylindrical and term.target == "Dz":
-            term_sources = prefixed
-        operands = _curl_operands(grid.xp, term_sources, term, boundaries, phases, parities,
-                                  backward=True, scratch=scratch)
-        curl = _curl_from_operands(operands, dtdx, scratch=scratch)
-        if cylindrical and grid.m != 0:
-            # step_db.cpp:177-294 — the D-side i*m/r couplings: Dr takes +im/r*Hz
-            # (its dropped plus partner), Dz takes -im/r*Hr (its dropped minus
-            # partner); signs from the_m's (1-2*(d_c==R)) with ft = D.
-            if term.target == "Dx":
-                curl = curl + _cylindrical_imr_term(fields, "Dx", magnetic["Hz"], -1.0)
-            elif term.target == "Dz":
-                curl = curl + _cylindrical_imr_term(fields, "Dz", magnetic["Hx"], +1.0)
-        if grid.beta != 0.0:
-            # step_db.cpp:148-176 — the D-side out-of-plane couplings. `cc` runs over
-            # d_c in {X, Y} only and its partner is `direction_component(Hx, other)`:
-            # Dx <- Hy at sign +1, Dy <- Hx at sign -1. Dz gets nothing.
-            if term.target == "Dx":
-                curl = curl + _special_kz_beta_term(fields, magnetic["Hy"], +1.0, magnetic=False)
-            elif term.target == "Dy":
-                curl = curl + _special_kz_beta_term(fields, magnetic["Hx"], -1.0, magnetic=False)
-        if bfast:
-            # step_db.cpp:129-142, D side: the same pass with k1 and k2 both negated,
-            # which is what turns +d/dt(k x E) on the B side into -d/dt(k x H) here.
-            curl = curl + _bfast_term(fields, term, operands, magnetic=False)
+            # Dz's whole curl in cylindrical: the minus partner is the phi derivative
+            # MEEP drops (step_db.cpp:86-92; its i*m/r part is a pass of its own below),
+            # so the curl IS dtdx times the radial backward difference of the
+            # per-chunk prefix, ``dtdx * (F[g-1] - F[g])`` under D's negated stride.
+            operands = None
+            curl = part_products.scale(dtdx, radial, out=radial)
+        else:
+            operands = _curl_operands(grid.xp, magnetic, term, boundaries, phases, parities,
+                                      backward=True, scratch=scratch, gather=presence)
+            curl = _curl_from_operands(operands, dtdx, presence, scratch=scratch)
         _mask_non_owned_cells(curl, grid, term.iyee)
         if axis_increment is not None and axis_increment[0] == term.target:
             # The axis-row dfcnd, in curl sign convention (the step subtracts).
             curl[_face(0, 0)] = -axis_increment[1]
         # D sits at integer positions in the transverse directions.
         _apply_curl(fields, term, curl, pml, pml_active, half_integer=False, scratch=scratch)
+        if bfast:
+            # step_db.cpp:129-142, D side: the same pass with k1 and k2 both negated,
+            # which is what turns +d/dt(k x E) on the B side into -d/dt(k x H) here.
+            _apply_folded_increment(
+                fields, term,
+                _bfast_term(fields, term, operands, magnetic=False,
+                            plain=_bfast_plain_cells(fields, term, presence, pml, pml_active)),
+                pml, pml_active, half_integer=False)
+    if grid.beta != 0.0:
+        # step_db.cpp:161-175 — the D-side out-of-plane couplings, after every
+        # component's curl. `cc` runs over d_c in {X, Y} only and its partner is
+        # `direction_component(Hx, other)`: Dx <- Hy at sign +1, Dy <- Hx at sign -1.
+        # Dz gets nothing.
+        for term, partner, sign in ((D_CURL_TERMS[0], "Hy", +1.0), (D_CURL_TERMS[1], "Hx", -1.0)):
+            increment = _special_kz_beta_term(fields, magnetic[partner], sign, magnetic=False)
+            _mask_non_owned_cells(increment, grid, term.iyee)
+            _apply_folded_increment(fields, term, increment, pml, pml_active, half_integer=False)
+    if cylindrical and grid.m != 0:
+        # step_db.cpp:177-294 — the D-side i*m/r couplings, after every component's curl:
+        # Dr takes +im/r*Hz (its dropped plus partner), Dz takes -im/r*Hr (its dropped
+        # minus partner); signs from the_m's (1-2*(d_c==R)) with ft = D.
+        for term, partner, sign in _CYLINDRICAL_IMR_D:
+            increment = _cylindrical_imr_increment(fields, term.target, magnetic[partner], sign)
+            _mask_non_owned_cells(increment, grid, term.iyee)
+            _apply_folded_increment(fields, term, increment, pml, pml_active, half_integer=False)
     if cylindrical:
         _cylindrical_axis_zero_D(fields)
 
@@ -503,6 +573,19 @@ def _apply_curl(fields: "Fields", term: Any, curl: Any, pml: Optional["PML"],
     transverse positions and D at integer ones. Conductivity is read PER COMPONENT
     (``fields.condfac_for``), so a component with no sigma takes the plain path even
     while its neighbours are lossy — which is MEEP's own allocation granularity.
+
+    UNDER A PML THE FORM IS CHOSEN PER STRUCTURE CHUNK, as MEEP chooses it
+    (step_db.cpp:56-59): the run's :class:`~.chunk_map.RegionPlan` names, per
+    component, the cells whose owning chunk carries the dsigu layer. There the
+    split-field recurrence runs (:func:`_apply_pml_update`); everywhere else the
+    dsig-only form ``f = ((kms*f) - curl)*sinv`` runs on the field alone
+    (:func:`_apply_dsig_only_update`), which IS MEEP's plain ``f - curl`` wherever
+    the dsig coefficients are exactly 1 — the plan's precondition, checked when it
+    is built. ``fu`` is read and written only on the recurrence's cells
+    (:func:`_apply_curl_regions`). With a conductivity all four of MEEP's conductive
+    forms are selected on the dsig and dsigu memberships, in the chunks that keep the
+    component's conductivity, and the two forms above everywhere else
+    (:func:`_apply_conductive_pml_update`).
     """
     target = getattr(fields, term.target)
     condfac = fields.condfac_for(term.target)
@@ -510,6 +593,7 @@ def _apply_curl(fields: "Fields", term: Any, curl: Any, pml: Optional["PML"],
         kms, sinv = _curl_coefficients(pml, term.dsig, half_integer=half_integer)
         kms_u, sinv_u = _curl_coefficients(pml, term.dsigu, half_integer=half_integer)
         fu = getattr(fields, "fu_" + term.target)
+        plan = _region_plan(fields, pml)
         if condfac is not None:
             f_cond = getattr(fields, "f_cond_" + term.target)
             if f_cond is None:
@@ -517,8 +601,11 @@ def _apply_curl(fields: "Fields", term: Any, curl: Any, pml: Optional["PML"],
                     "Conductivity + PML stepping requires Fields to allocate "
                     f"f_cond_{term.target} before the first step."
                 )
+            xp = fields.grid.xp
+            sigma = fields.conductivity_for(term.target)
+            every_chunk = all(plan.conductive_chunks(term.target, sigma))
             _apply_conductive_pml_update(
-                fields.grid.xp,
+                xp,
                 target,
                 curl,
                 condfac,
@@ -529,10 +616,14 @@ def _apply_curl(fields: "Fields", term: Any, curl: Any, pml: Optional["PML"],
                 sinv_u,
                 fu,
                 f_cond,
+                dsig_active=plan.axis_mask(AXIS_NAMES.index(term.dsig), term.target, xp),
+                dsigu_active=plan.mask("curl", term.target, xp),
+                conductive=None if every_chunk else plan.conductive_mask(term.target, sigma, xp),
                 scratch=scratch,
             )
         else:
-            _apply_pml_update(target, curl, kms, sinv, kms_u, sinv_u, fu, scratch=scratch)
+            _apply_curl_regions(plan, term.target, target, curl, kms, sinv, kms_u, sinv_u, fu,
+                                fields.grid.xp, scratch)
     elif condfac is not None:
         _apply_conductive_update(target, curl, condfac, fields.condinv_for(term.target))
     else:
@@ -569,7 +660,14 @@ def _cylindrical_axis_increment_D(fields: "Fields", magnetic: Dict[str, Any],
     every live ladder axis carried zero sigma on the axis row — true for m = 0
     (dsig = R, sigma(r=0) = 0) and FALSE for |m| = 1, whose Dp ladders run along
     Z and R: measured with r+z PML, Ep 4.6e-01 and Hr 2.39 against an exact m=0.
+
+    MEEP forms ``dfcnd = (sd*Courant) * (f_p[i] - f_p[i - sd] - f_m_mult*f_m[i])``
+    (:377): the bracket in ``realnum`` left to right, then a DOUBLE product with the
+    double ``Courant``, rounded once (:func:`_realnum_double_product`). The curl's
+    ``dtdx``, a ``realnum``, is not that factor: it is the same word only where
+    ``Courant`` is a float32 word (0.5 is; 0.3 is not), so it is not read here.
     """
+    del dtdx  # the axis rule multiplies by the double Courant (grid.courant)
     grid = fields.grid
     if grid.m == 0:
         # NOT folded into the curl: measured, the fold breaks m=0 under PML
@@ -579,10 +677,12 @@ def _cylindrical_axis_increment_D(fields: "Fields", magnetic: Dict[str, Any],
         # whose sigma is zero on the axis row. Applied in _cylindrical_axis_zero_D.
         return None
     if abs(grid.m) == 1:
-        hr = magnetic["Hx"]
-        hr_below = _shift_down(grid.xp, hr, 2, boundaries[2], "Hx", phases[2], None)
-        return "Dy", dtdx * (hr[_face(0, 0)] - hr_below[_face(0, 0)]
-                             - 2.0 * magnetic["Hz"][_face(0, 0)])
+        # sd = +1 on the D side: f_p = Hr, f_m = Hz, f_m_mult = 2.
+        hr = _bloch_ghost_operand(grid.xp, magnetic["Hx"], 2, boundaries[2], phases[2], below=False)
+        hr_below = _shift_down(grid.xp, magnetic["Hx"], 2, boundaries[2], "Hx", None)
+        bracket = (hr[_face(0, 0)] - hr_below[_face(0, 0)]) \
+            - part_products.scale(2.0, magnetic["Hz"][_face(0, 0)])
+        return "Dy", _realnum_double_product(+1.0 * float(grid.courant), bracket)
     return None
 
 
@@ -610,11 +710,17 @@ def _cylindrical_axis_zero_D(fields: "Fields") -> None:
     if grid.m == 0:
         # ``get_H("Hy")`` is the stored H under PML and the B array otherwise --
         # its own branch, reproduced here on RAW fetches so the face read does not
-        # sync a whole volume. The correction is a face read-modify-write with a
-        # float scale: ``k * Hy`` then ``+=``, two roundings on both sides.
+        # sync a whole volume. The correction is a face read-modify-write: MEEP's
+        # ``dfcnd = g[i] * (Courant * 4)`` is a DOUBLE product rounded once (:324),
+        # then ``the_f + dfcnd`` in realnum (its kap - sig and siginv are exactly 1
+        # on the axis row, Dz's dsig being R and its dsigu P).
         hy = host_writes.raw(fields, "Hy" if fields._pml_active else "By")
-        host_writes.add_scaled_face(host_writes.raw(fields, "Dz"), 0, 0, hy, 0,
-                                    4.0 * (grid.dt / grid.dx))
+        dz = host_writes.raw(fields, "Dz")
+        source = host_writes.face_index(hy.shape, 0, 0)
+        target = host_writes.face_index(dz.shape, 0, 0)
+        dfcnd = _realnum_double_product(4.0 * float(grid.courant),
+                                        host_writes.gather(hy, source))
+        host_writes.scatter(dz, target, host_writes.gather(dz, target) + dfcnd)
         host_writes.zero(host_writes.raw(fields, "Dy"), 0, 0)
     elif abs(grid.m) == 1:
         host_writes.zero(host_writes.raw(fields, "Dz"), 0, 0)
@@ -662,16 +768,41 @@ def _cylindrical_axis_increment_B(fields: "Fields", electric: Dict[str, Any],
     the (1-2*cmp)*m factor, which is the -i*m multiplication written in complex
     form). Folded into the curl at row 0 by the caller so the PML recurrence
     applies MEEP's ladders — see `_cylindrical_axis_increment_D`.
+
+    MEEP's arithmetic, per part (step_db.cpp:377 with sd = -1): the bracket
+    ``(Ep[i] - Ep[i+1]) - ((1-2*cmp)*m) * Ez_other[row 1]`` in ``realnum``, left to
+    right, then the DOUBLE product with ``-Courant``, rounded once
+    (:func:`_realnum_double_product`). ``((1-2*cmp)*m) * Ez_other`` per part is
+    ``(m*Ez.im, (-m)*Ez.re)``, the negated quarter turn by ``m``. The curl's
+    ``dtdx`` is not read, as on the D side.
     """
+    del dtdx  # the axis rule multiplies by the double Courant (grid.courant)
     grid = fields.grid
     if abs(grid.m) != 1:
         return None
-    ep = electric["Ey"]
-    ep_above = _shift_up(grid.xp, ep, 2, boundaries[2], phases[2])
+    ep = _bloch_ghost_operand(grid.xp, electric["Ey"], 2, boundaries[2], phases[2], below=True)
+    ep_above = _shift_up(grid.xp, electric["Ey"], 2, boundaries[2])
     ez_off_axis = grid.xp.take(electric["Ez"], 1, axis=0)
-    increment = (-dtdx) * (ep[_face(0, 0)] - ep_above[_face(0, 0)]) \
-        - 1j * (grid.m * dtdx) * ez_off_axis
-    return "Bx", increment
+    partner = -part_products.quarter_turn(float(grid.m), ez_off_axis)  # f_m_mult * f_m, per part
+    bracket = (ep[_face(0, 0)] - ep_above[_face(0, 0)]) - partner
+    return "Bx", _realnum_double_product(-1.0 * float(grid.courant), bracket)
+
+
+def _realnum_double_product(factor: float, values: Any) -> Any:
+    """``realnum(double(factor) * double(v))`` per stored part: a double product rounded once.
+
+    The form of MEEP's axis rules (step_db.cpp:324, :377), where a ``realnum`` operand
+    meets the double ``Courant``: C promotes the float to double, multiplies in double and
+    rounds the result to ``realnum`` once. A float32 ``factor`` times the operand rounds
+    the factor first; the two are the same word only where ``factor`` is a float32 word.
+    """
+    xp = part_products.array_module(values)
+    if values.dtype.kind != "c":
+        return (values.astype(xp.float64) * factor).astype(values.dtype)
+    out = xp.empty(values.shape, dtype=values.dtype)
+    out.real[...] = (values.real.astype(xp.float64) * factor).astype(values.real.dtype)
+    out.imag[...] = (values.imag.astype(xp.float64) * factor).astype(values.imag.dtype)
+    return out
 
 
 def _cylindrical_axis_zero_B(fields: "Fields") -> None:
@@ -698,32 +829,40 @@ def _cylindrical_axis_zero_B(fields: "Fields") -> None:
                 host_writes.zero_rows(aux, 0, rows)
 
 
-def _cylindrical_imr_term(fields: "Fields", target: str, partner_values: Any,
-                          sign: float) -> Any:
-    """The i*m/r coupling — MEEP step_db.cpp:177-294, in native-complex form.
+def _cylindrical_imr_increment(fields: "Fields", target: str, partner_values: Any,
+                               sign: float) -> Any:
+    """The i*m/r pass's increment — MEEP step_db.cpp:177-294 — negated, per part.
 
-    MEEP adds, per real/imaginary part ``cmp``, ``the_m / r * g[i]`` with ``g``
-    the OTHER part of the partner (``f[c_g][1 - cmp]``) and::
+    MEEP adds, per real/imaginary part ``cmp``, over its owned cells
+    (``LOOP_OVER_VOL_OWNED0``) and after every component's curl::
 
         the_m = 2*m * (1-2*cmp) * (1-2*(ft==B_stuff)) * (1-2*(d_c==R)) * Courant
+        rinv  = the_m / here.r()
+        raw   = rinv * g[i]          with g = f[c_g][1 - cmp], the partner's OTHER part
 
-    The ``(1-2*cmp)`` swap of parts IS multiplication by -i: writing the two rows
-    as one complex update, delta_f = -i * s * 2m * Courant / r2 * g, where
-    ``s = (1-2*(ft==B)) * (1-2*(d_c==R))`` arrives as ``sign`` and ``r2`` is the
-    doubled ILOC r-coordinate at the target's own sites, ``2*ir + iyee_r`` (the
-    factor 2 in the_m is the doubled-units compensation, kept together with it
-    here). Complex storage is REQUIRED — the coupling has no real-storage form,
-    which is MEEP's own rule (``change_m`` aborts on real fields for m != 0).
+    ``the_m`` is an integer product times the double ``Courant``, rounded once to
+    ``realnum``; ``here.r()`` is the target's doubled ILOC r coordinate, an int, so
+    ``rinv`` is a ``realnum`` QUOTIENT ``the_m / float(2*ir + iyee_r)`` (the factor 2 in
+    ``the_m`` is the doubled-units compensation), not a double ``2m*Courant/r`` rounded
+    once. ``sign`` is ``(1-2*(ft==B)) * (1-2*(d_c==R))``. The ``(1-2*cmp)`` makes the
+    imaginary part's ``rinv`` the exact negation of the real part's, so the two rows are
+    ``re += rinv*g.im`` and ``im += (-rinv)*g.re``: a quarter turn of the parts by the
+    real-part ``rinv`` (:func:`~.part_products.quarter_turn`), never a complex product.
+    Complex storage is REQUIRED — the coupling has no real-storage form, which is MEEP's
+    own rule (``change_m`` aborts on real fields for m != 0).
 
-    Returned in CURL SIGN CONVENTION (the caller subtracts the curl), so the
-    increment is negated once here. Folding it into the curl before the PML /
-    conductivity application reproduces MEEP's separate laddered pass exactly:
-    that pass is increment-only (no second decay of ``the_f``), and every ladder
-    is linear in its increment.
+    Returned in CURL SIGN CONVENTION, ``-raw``, for :func:`_apply_folded_increment`, which
+    SUBTRACTS it through MEEP's additive ladder: the pass is increment-only (no decay of
+    ``the_f``), keyed on the chunk's ``dsig`` and ``dsigu`` layers exactly as the curl of
+    the same component keys. MEEP's eight loops are that ladder's forms: an R target's
+    ``dsig`` is P, which never carries a layer, so it takes ``f += raw`` or, in a dsigu (Z)
+    chunk, ``fu += raw; f += siginvu*raw``; a Z target's ``dsigu`` is P, so it takes
+    ``f += raw`` or, in a dsig (R) chunk, ``f += raw*siginv``; a conductivity scales
+    ``raw`` by ``cndinv`` and, on the dsig cells, adds it to ``f_cond``.
 
-    The axis row of a shift-0 target has r2 = 0; MEEP's OWNED0 loop never visits
-    it (the per-m axis rules own that row) and the caller's mask zeroes it, so
-    the divisor is clamped rather than special-cased.
+    The axis row of a shift-0 target has ``r = 0``; MEEP's owned loop never visits it
+    (the per-m axis rules own that row) and the caller masks it to ``+0``, so the divisor
+    is clamped rather than special-cased.
     """
     grid = fields.grid
     xp = grid.xp
@@ -734,29 +873,29 @@ def _cylindrical_imr_term(fields: "Fields", target: str, partner_values: Any,
             f"carry (MEEP's change_m aborts on the same combination). Build the run with "
             f"force_complex_fields=True."
         )
-    # The row vector is a GRID INVARIANT — Yee shift, radial extent, m, Courant — so
-    # it is built once per (target, sign) rather than rebuilt from an arange, a
-    # maximum, a reshape and a cast on every term of every step.
+    real_dtype = partner_values.real.dtype
+    # The row vector is a GRID INVARIANT — Yee shift, radial extent, m, Courant — so it is
+    # built once per (target, sign) rather than on every pass of every step.
     def _build():
         iyee_r = IYEE_SHIFTS[target][0]
-        r_doubled = 2 * xp.arange(partner_values.shape[0], dtype=xp.float64) + iyee_r
-        divisor = xp.maximum(r_doubled, 1.0).reshape(-1, 1, 1)  # Row 0 of a shift-0 target is masked.
-        return ((-1j) * (sign * 2.0 * grid.m * (grid.dt / grid.dx))
-                / divisor).astype(partner_values.dtype)
+        the_m = real_dtype.type(sign * 2.0 * grid.m * float(grid.courant))
+        r_doubled = 2 * xp.arange(partner_values.shape[0], dtype=xp.int64) + iyee_r
+        here_r = xp.maximum(r_doubled, 1).astype(real_dtype).reshape(-1, 1, 1)
+        return the_m / here_r
 
-    key = ("cyl_imr", target, float(sign), int(partner_values.shape[0]),
-           partner_values.dtype, float(grid.m), float(grid.dt / grid.dx))
-    factor = (_build() if fields.scratch is None
-              else fields.scratch.constant(key, _build))
-    return -(factor * partner_values)
+    key = ("cyl_imr_rinv", target, float(sign), int(partner_values.shape[0]),
+           real_dtype, int(grid.m), float(grid.courant))
+    rinv = (_build() if fields.scratch is None
+            else fields.scratch.constant(key, _build))
+    return part_products.quarter_turn(rinv, partner_values)
 
 
 def _special_kz_beta_term(fields: "Fields", partner_values: Any, sign: float,
                           magnetic: bool) -> Any:
-    """The out-of-plane ``i*2*pi*beta`` coupling — MEEP step_db.cpp:148-176.
+    """The out-of-plane ``i*2*pi*beta`` increment — MEEP step_db.cpp:148-176.
 
     The 2-D run carries ``exp(i*2*pi*beta*z)`` analytically, so ``d/dz`` on the
-    invariant axis is the EXACT factor ``i*2*pi*beta``. Folded into the curl it is an
+    invariant axis is the EXACT factor ``i*2*pi*beta``. In the curl equations it is an
     ``i*beta*zhat x`` cross product, which couples the TE and TM polarizations. There
     is no 1/dx and no finite difference: this is an analytic derivative, so the term
     must not be scaled by ``dtdx``.
@@ -777,6 +916,9 @@ def _special_kz_beta_term(fields: "Fields", partner_values: Any, sign: float,
         D: delta_f = sign * (-1j) * 2*pi*beta*dt * g
         B: delta_f = sign * (+1j) * 2*pi*beta*dt * g
 
+    formed as a quarter turn of the parts by the real ``-+sign * 2*pi*beta*dt``
+    (:func:`~.part_products.quarter_turn`), never as a complex product.
+
     REAL STORAGE. ``f[c_g][1 - cmp]`` is NULL, the extra factor collapses to 1, and
     the same code is a plain real add of ``sign * 2*pi*beta*dt * g`` on BOTH sides.
     That is MEEP's "implicitly store i*(TM fields)" trick (its comment at
@@ -786,18 +928,23 @@ def _special_kz_beta_term(fields: "Fields", partner_values: Any, sign: float,
     has to be paid explicitly is an eigenmode source, where MEEP applies
     ``special_kz_phasefix`` (mpb.cpp:295-304) before injecting.
 
-    Returned in CURL SIGN CONVENTION (the caller subtracts the curl), so the
-    increment is negated once here — the same fold :func:`_cylindrical_imr_term` uses,
-    exact for the same reason: MEEP's beta pass is increment-only, it picks its PML
-    and conductivity slices with the IDENTICAL ``cycle_direction(gv.dim, d_c, 1)`` and
-    ``(..., 2)`` the main curl uses (step_db.cpp:56-59 against :166-169), and every
-    ladder in :func:`_apply_curl` is linear in its increment.
+    ``betadt`` is formed in double and rounded once to ``realnum``, so the increment is
+    ``float32(coefficient) * g`` per part, one rounding.
+
+    Returned NEGATED, in curl sign convention: the caller (``step_B`` / ``step_D``)
+    masks MEEP's unowned cells to ``+0`` and hands it to :func:`_apply_folded_increment`,
+    which SUBTRACTS it through MEEP's beta ladder (step_generic.cpp:255-333) as a pass
+    of its own after every component's curl (step_db.cpp:161-175). The pass picks its
+    PML and conductivity slices with the same ``cycle_direction(gv.dim, d_c, 1)`` and
+    ``(..., 2)`` the curl uses (step_db.cpp:56-59 against :166-169), so it keys on the
+    curl's own region plan.
     """
     grid = fields.grid
     coefficient = sign * 2.0 * math.pi * grid.beta * grid.dt
     if partner_values.dtype.kind == "c":
-        coefficient = coefficient * (1j if magnetic else -1j)
-    elif fields.has_offdiagonal_epsilon:
+        return -part_products.quarter_turn(coefficient if magnetic else -coefficient,
+                                           partner_values)
+    if fields.has_offdiagonal_epsilon:
         # MEEP's own pairing refusal, fields.cpp:548-549: an off-diagonal epsilon
         # ALREADY couples the two polarizations, and then the implicit i on the TM
         # half no longer cancels out of the constitutive product.
@@ -824,8 +971,8 @@ def _bfast_axis(component: str) -> int:  # MEEP's component_index — the compon
 
 
 def _bfast_term(fields: "Fields", term: CurlTerm, operands: CurlOperands,
-                magnetic: bool) -> Any:
-    """The BFAST increment for one component — MEEP step_db.cpp:129-142 + step_generic.cpp:335-471.
+                magnetic: bool, plain: Any = True) -> Any:
+    """The BFAST increment for one component — MEEP step_db.cpp:129-142 + step_generic.cpp:335-533.
 
     BFAST (broadband fixed angle source technique) is the time-sheared substitution
     ``t -> t - k.r/c``, under which a planewave at a FIXED incidence angle is
@@ -835,25 +982,30 @@ def _bfast_term(fields: "Fields", term: CurlTerm, operands: CurlOperands,
         dB/dt = -curl(E) + d/dt (k x E)
         dD/dt = +curl(H) - d/dt (k x H)
 
-    THE ARITHMETIC, transcribed. MEEP's eight branches all compute, per cell,
+    THE ARITHMETIC, transcribed. With both partners MEEP computes, per cell, in this
+    order and with each operation rounded once::
 
-        S      = k1*(g1[i+s1] + g1[i]) - k2*(g2[i+s2] + g2[i])
-        F_prev = F[i];  F[i] = S - F_prev;  raw = F[i] - F_prev
+        F_prev = F[i]
+        F[i]   = (k1*(g1[i+s1] + g1[i]) - k2*(g2[i+s2] + g2[i])) - F[i]
+        raw    = F[i] - F_prev
 
-    and then push ``raw`` through a PURELY ADDITIVE ladder — no ``(kap - sig)*f`` and no
-    ``(1 - dt/2*cnd)*f`` decay factor anywhere, because ``step_curl`` already applied
-    those to the old field on this same timestep. So the whole feature reduces to
-    ``raw``, and folding ``-raw`` into the curl before :func:`_apply_curl` reproduces
-    all four of MEEP's paths exactly, for the reason :func:`_special_kz_beta_term`
-    gives for its own fold: every ladder is AFFINE in the curl and the decay factors
-    multiply only the old field, which the fold leaves alone. Checked branch by branch:
+    so the state is stored (one rounding) and the increment is a SECOND rounding of
+    its difference from the previous state. ``raw`` then goes through the pass's own
+    additive ladder (:func:`_apply_folded_increment`), after the curl of the same
+    component has been applied: MEEP's ``STEP_BFAST`` is a pass of its own after
+    ``STEP_CURL`` (step_db.cpp:124-142), not a term inside the curl.
 
-    * plain (step_generic.cpp:369-370): ``target -= curl`` gives ``f += raw``;
-    * conductive (:353-354): ``f`` changes by ``-delta*condinv`` -> ``f += raw*cndinv``;
-    * PML (:412-414 for the fu stage, :461-462 for the sig stage):
-      ``fu += raw*siginv``, ``f += siginvu * that``;
-    * conductive + PML (:479-489, MEEP's own "MOST GENERAL CASE"):
-      ``fcnd += raw*cndinv``, then the two PML stages.
+    ONE PARTNER. MEEP hands ``step_bfast`` NULL for a partner its step plan lacks and,
+    when that is ``g1``, swaps ``g1`` with ``g2`` and ``k1`` with ``k2``
+    (step_generic.cpp:342-346); the branch then reads ``k1*(g1[i+s1] + g1[i]) - F[i]``.
+    In MEEP's PLAIN branch — no PML layer on either axis in the chunk and no
+    conductivity — the line reads ``F[i] = k1*(g1[i+s1] + g1[i])`` with no ``- F[i]``
+    (step_generic.cpp:373-379), unlike the seven other branches. That is MEEP's
+    arithmetic, so it is reproduced: ``plain`` names the cells (``True``, ``False``, or a
+    mask broadcastable to the field; :func:`_bfast_plain_cells`). The surviving k of a
+    one-partner component is always zero — it is indexed by the ABSENT partner's
+    presence — so the two spellings differ only in signed zeros; the product by the
+    zero k (``-0.0`` on the D side) is still formed, because its sign reaches the store.
 
     WHY THE SUM AND NOT THE DIFFERENCE. ``S`` is twice the two-point average of the
     cross product interpolated onto the target's own Yee position, and ``F_n = S_n -
@@ -889,22 +1041,22 @@ def _bfast_term(fields: "Fields", term: CurlTerm, operands: CurlOperands,
     ``have_p``/``have_m`` are MEEP's ``figure_out_step_plan`` flags (fields.cpp:428-455),
     which are false exactly when the derivative direction is not one the grid resolves
     (``has_direction(gv.dim, cross(dc1, dc2))``) — so this reads
-    ``grid.is_invariant`` on the partner's derivative axis. It is load-bearing in a
-    reduced-dimension run and it is NOT the same test the curl passes silently: an
-    invariant axis makes the curl's DIFFERENCE an exact zero all by itself, but the
-    BFAST SUM of the same two samples is ``2*g``, not zero. MEEP's other reason for a
-    false flag — ``gv.has_field``, which drops all but Ex/Hy/Dx/By in D1 — needs no
-    separate test here: on the two components MEEP does step in D1 the two rules agree
-    exactly, and the components it omits are identically zero on this grid.
+    ``grid.is_invariant`` on the partner's derivative axis (:func:`curl_presence`). An
+    absent partner is not read at all, and its k is zero, as MEEP's NULL pointer makes
+    it. MEEP's other reason for a false flag — ``gv.has_field``, which drops all but
+    Ex/Hy/Dx/By in D1 — needs no separate test here: on the components MEEP does step
+    in D1 the two rules agree, and a component with neither partner (one MEEP does not
+    step) takes a zero increment and keeps its state.
 
-    Returned in CURL SIGN CONVENTION (the caller subtracts the curl), so ``raw`` is
-    negated once here. The state advance is masked with the same predicate the caller
-    applies to the curl, because MEEP writes ``F`` only inside its owned-cell loop
-    (``sub_gv.little_owned_corner0(cc)``): ``F`` has NO spatial stencil, so an unowned
-    cell can never contaminate an owned one, but leaving the advance in would make a
-    diagnostic read of ``f_bfast`` disagree with MEEP's.
+    Returned NEGATED, in curl sign convention, with MEEP's unowned cells at ``+0``:
+    :func:`_apply_folded_increment` subtracts it, so an unowned cell is left exactly as
+    it was. The state is written on owned cells only, because MEEP writes ``F`` only
+    inside its owned-cell loop (``sub_gv.little_owned_corner0(cc)``): ``F`` has NO
+    spatial stencil, so an unowned cell can never contaminate an owned one, but writing
+    it would make a diagnostic read of ``f_bfast`` disagree with MEEP's.
     """
     grid = fields.grid
+    xp = grid.xp
     bfast = grid.bfast_scaled_k
     have_p = not grid.is_invariant(term.first_axis)
     have_m = not grid.is_invariant(term.second_axis)
@@ -919,16 +1071,146 @@ def _bfast_term(fields: "Fields", term: CurlTerm, operands: CurlOperands,
             f"BFAST stepping requires Fields to allocate f_bfast_{term.target} before the "
             f"first step (Fields._ensure_bfast_storage)."
         )
-    dtype = state.dtype
-    total = (dtype.type(k1) * (operands.shifted_first + operands.first)
-             - dtype.type(k2) * (operands.shifted_second + operands.second))
-    # F_new = S - F_prev, so the advance F_new - F_prev is S - 2*F_prev; masking the
-    # advance masks the state and the increment together, which is what keeps an
-    # unowned cell's F at exactly the value MEEP's loop never touches.
-    advance = total - dtype.type(2.0) * state
-    _mask_non_owned_cells(advance, grid, term.iyee)
-    state += advance
-    return -advance
+    realnum = state.real.dtype.type  # k1, k2 are realnum; a part-wise scale on complex storage.
+    if have_p and have_m:
+        total = (part_products.scale(realnum(k1), operands.shifted_first + operands.first)
+                 - part_products.scale(realnum(k2), operands.shifted_second + operands.second))
+        updated = total - state
+    elif have_p or have_m:
+        # step_generic.cpp:342-346: an absent g1 is replaced by g2, k1 by k2.
+        single = (part_products.scale(realnum(k1), operands.shifted_first + operands.first)
+                  if have_p else
+                  part_products.scale(realnum(k2), operands.shifted_second + operands.second))
+        if plain is True:
+            updated = single  # step_generic.cpp:376, MEEP's plain one-partner line.
+        elif plain is False:
+            updated = single - state
+        else:
+            updated = xp.where(plain, single, single - state)
+    else:
+        return xp.zeros_like(state)
+    increment = -(updated - state)
+    _mask_non_owned_cells(increment, grid, term.iyee)
+    owned = xp.ones(state.shape, dtype=bool)
+    _mask_non_owned_cells(owned, grid, term.iyee)
+    xp.copyto(state, updated, where=owned)
+    return increment
+
+
+def _bfast_plain_cells(fields: "Fields", term: CurlTerm, presence: Tuple[bool, bool],
+                       pml: Optional["PML"], pml_active: bool) -> Any:
+    """Where MEEP's BFAST takes its PLAIN branch for one component: ``True``, ``False`` or a mask.
+
+    The plain branch (step_generic.cpp:365-380) is the chunk that carries neither the
+    component's dsig layer nor its dsigu layer (step_db.cpp:56-59) and no conductivity.
+    It matters only to a one-partner component (:func:`_bfast_term`); a component with
+    both partners, or none, reads ``True`` and is never consulted. The conductivity is
+    read per component (``fields.condfac_for``), as the curl reads it.
+    """
+    if presence[0] == presence[1]:
+        return True
+    if fields.condfac_for(term.target) is not None:
+        return False
+    if not pml_active:
+        return True
+    xp = fields.grid.xp
+    plan = _region_plan(fields, pml)
+    dsig = plan.axis_mask(AXIS_NAMES.index(term.dsig), term.target, xp)
+    dsigu = plan.mask("curl", term.target, xp)
+    return xp.logical_not(dsig) & xp.logical_not(dsigu)
+
+
+def _apply_folded_increment(fields: "Fields", term: CurlTerm, increment: Any,
+                            pml: Optional["PML"], pml_active: bool,
+                            half_integer: bool) -> None:
+    """Add one folded pass's increment to its target through MEEP's additive ladder.
+
+    The special-kz beta pass (step_generic.cpp:255-333) and the BFAST pass (:335-533)
+    end in the same ladder on ``raw``, keyed on the chunk's dsig and dsigu layers and
+    the component's conductivity, exactly as the curl of the same component keys
+    (step_db.cpp:56-59, :166-169)::
+
+        neither layer       f += raw                (conductive: f += raw*cndinv)
+        dsig only           f += raw*siginv         (conductive: dfcnd = raw*cndinv;
+                                                     fcnd += dfcnd; f += dfcnd*siginv)
+        dsigu (only, both)  fu += (df = raw*siginv); f += siginvu*df
+                            (conductive: raw*cndinv in place of raw, and fcnd += it on
+                             the dsig cells)
+
+    There is no decay factor anywhere: the curl already applied those to the old field.
+    The ``siginv`` of an axis is exactly 1 outside the chunks that carry its layer (the
+    region plan's precondition, :func:`~.chunk_map.check_unit_coefficients`), so
+    ``raw*siginv`` IS ``raw`` there and two forms cover the four: ``f += raw*siginv``
+    outside the component's dsigu chunks and the ``fu`` stage inside them, dispatched as
+    :func:`_apply_curl_regions` dispatches the curl. ``fu`` is read and written on its
+    own cells only, and ``f_cond`` on the dsig cells of the chunks that keep the
+    component's conductivity only (the auxiliary contract, as the curl writes it).
+
+    ``increment`` is ``-raw`` (curl sign convention), with MEEP's unowned cells already
+    at ``+0``: every stage SUBTRACTS it, which is the same word as adding ``raw``
+    (``x - (-y)`` is ``x + y`` in IEEE-754, signed zeros included, and ``(-a)*b`` is
+    ``-(a*b)`` exactly), while ``x - (+0)`` is ``x`` for every ``x`` — so an unowned
+    cell, which MEEP's loop never visits, keeps its word, ``-0`` included. Adding a
+    masked ``+0`` would turn a stored ``-0`` into ``+0``.
+    """
+    target = getattr(fields, term.target)
+    xp = fields.grid.xp
+    condfac = fields.condfac_for(term.target)
+    if condfac is not None:
+        increment = part_products.scale(fields.condinv_for(term.target), increment)
+    if not pml_active:
+        target -= increment
+        return
+    plan = _region_plan(fields, pml)
+    _, sinv = _curl_coefficients(pml, term.dsig, half_integer=half_integer)
+    _, sinv_u = _curl_coefficients(pml, term.dsigu, half_integer=half_integer)
+    if condfac is not None:
+        f_cond = getattr(fields, "f_cond_" + term.target)
+        if f_cond is None:
+            raise RuntimeError(
+                "Conductivity + PML stepping requires Fields to allocate "
+                f"f_cond_{term.target} before the first step."
+            )
+        dsig = plan.axis_mask(AXIS_NAMES.index(term.dsig), term.target, xp)
+        # f_cond exists only in the chunks that keep the component's conductivity, as the
+        # curl writes it (_apply_conductive_pml_update). In a chunk that keeps none, every
+        # sample is zero, so condinv is exactly 1 there and the field's word is the
+        # lossless ladder's either way.
+        sigma = fields.conductivity_for(term.target)
+        if not all(plan.conductive_chunks(term.target, sigma)):
+            dsig = dsig & plan.conductive_mask(term.target, sigma, xp)
+        xp.copyto(f_cond, f_cond - increment, where=dsig)
+    df = part_products.scale(sinv, increment)
+    fu = getattr(fields, "fu_" + term.target)
+    spec = plan.spec("curl", term.target)
+    mode = spec.mode
+    if mode == "outside_only":
+        target -= df
+        return
+    if mode == "inside_only":
+        fu -= df
+        target -= part_products.scale(sinv_u, df)
+        return
+    axis = spec.axis
+    if mode == "split":
+        for start, stop in spec.inside:
+            index = _span(axis, start, stop)
+            part = _cut(df, index, axis)
+            fu_view = _cut(fu, index, axis)
+            fu_view -= part
+            field_view = _cut(target, index, axis)
+            field_view -= part_products.scale(_cut(sinv_u, index, axis), part)
+        for start, stop in spec.outside:
+            index = _span(axis, start, stop)
+            field_view = _cut(target, index, axis)
+            field_view -= _cut(df, index, axis)
+        return
+    # select / mask: the outside form on the whole grid, the inside form selected.
+    inside = plan.mask("curl", term.target, xp)
+    xp.copyto(fu, fu - df, where=inside)
+    inside_form = target - part_products.scale(sinv_u, df)
+    target -= df
+    xp.copyto(target, inside_form, where=inside)
 
 
 def update_H(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Magnetic constitutive sub-step.
@@ -938,17 +1220,24 @@ def update_H(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Magnetic
     (step_update_EDHB). Without PML this is a no-op — H is numerically identical
     to B and ``Fields.get_H`` serves it on demand, so nothing is stored. With
     PML the stored H accumulates absorption along the component's own axis
-    (MEEP's dsigw) from integer-position coefficients.
+    (MEEP's dsigw) from integer-position coefficients, on the cells whose chunk
+    carries that layer; everywhere else H is B's word, as MEEP's H there is B's
+    storage (:func:`_apply_constitutive_regions`). The run's first call starts H and
+    ``f_w`` as MEEP does (:func:`separate_h_from_b`).
     """
     _acquire_written(fields, H_COMPONENTS + _aux_names(H_COMPONENTS, ("f_w_",)))
     if not _pml_is_active(pml):
         return  # H is served on demand from B; there is no stored state to update.
     _require_pml_storage(fields, H_PML_ARRAYS)
+    separate_h_from_b(fields, pml)
+    plan = _region_plan(fields, pml)
+    xp = fields.grid.xp
     for component, source, axis in H_CONSTITUTIVE_TERMS:
         kps, kms = _constitutive_coefficients(pml, axis, half_integer=False)
-        _apply_constitutive_pml(getattr(fields, component), getattr(fields, source),
-                                kps, kms, getattr(fields, "f_w_" + component),
-                                scratch=fields.scratch)
+        _apply_constitutive_regions(plan, component, getattr(fields, component),
+                                    getattr(fields, source), kps, kms,
+                                    getattr(fields, "f_w_" + component), xp,
+                                    scratch=fields.scratch)
 
 
 def update_E(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Electric constitutive sub-step.
@@ -963,8 +1252,10 @@ def update_E(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Electric
     (MEEP's ``dmp``, update_eh.cpp:143-146). With PML the stored E additionally
     accumulates absorption along the component's own axis from
     half-integer-position coefficients, because an E component is half-integer in
-    its own direction; ``f_w`` keeps the un-absorbed constitutive product, which is
-    what :meth:`~.fields.Fields.drive_field` hands the polarizations.
+    its own direction, on the cells whose chunk carries that layer; there ``f_w``
+    keeps the un-absorbed constitutive product, and everywhere else E IS that
+    product and ``f_w`` is not touched (:func:`_apply_constitutive_regions`). That
+    split is what :meth:`~.fields.Fields.drive_field` hands the polarizations.
 
     P is consumed here and advanced afterwards, so this reads P^n and writes E^n.
     Running :func:`update_P` first is MEASURABLY equivalent rather than wrong — both
@@ -982,8 +1273,10 @@ def update_E(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Electric
     pml_active = _pml_is_active(pml)
     if not pml_active and not fields.stores_E:
         return  # E is served on demand from D * inv_eps; there is no stored state to update.
+    plan = None
     if pml_active:
         _require_pml_storage(fields, E_PML_ARRAYS)
+        plan = _region_plan(fields, pml)
     else:
         _require_field_storage(fields, E_STORAGE_ARRAYS)
     nonlinear = fields.has_nonlinearity
@@ -995,31 +1288,92 @@ def update_E(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Electric
     # made, which is what holds the degenerate case to byte equality, not round-off.
     displacement = (_nonlinear_displacement(fields, pml if pml_active else None)
                     if (nonlinear or offdiagonal) else None)
+    absent = fields.absent_components
     for component, _, axis_name in E_CONSTITUTIVE_TERMS:
+        if component in absent:
+            # MEEP allocated no array for it and update_eh steps only allocated ones
+            # (``if (f[ec][cmp])``, update_eh.cpp:150): its word stays +0, and so do its
+            # f_w words (:meth:`~.fields.Fields.set_absent_components`).
+            continue
         if nonlinear:
             constitutive = _nonlinear_constitutive(fields, component, displacement)
         elif offdiagonal:
-            # MEEP step_update_EDHB (u1 && u2, no chi3): the full row product
-            # fw[i] = gs*us + OFFDIAG(u1, g1, s1) + OFFDIAG(u2, g2, s2).
-            source = displacement["volumes"][component]
-            constitutive = source * fields.inverse_epsilon_for(component)
-            coupling = _offdiagonal_terms(fields, component, displacement)
-            if coupling is not None:
-                constitutive = constitutive + coupling
+            # MEEP step_update_EDHB (u1 and/or u2, no chi3): the full row product
+            # fw[i] = gs*us + OFFDIAG(u1, g1, s1) + OFFDIAG(u2, g2, s2), formed in
+            # double and rounded once by the store (step_generic.cpp:611, :719).
+            row = _offdiagonal_terms(fields, component, displacement)
+            if row is None:
+                constitutive = part_products.scale(fields.inverse_epsilon_for(component),
+                                                   displacement["volumes"][component])
+            else:
+                constitutive = _rounded_row(fields.grid.xp, row)
         else:
             source = fields.displacement_minus_polarization(component)
-            constitutive = source * fields.inverse_epsilon_for(
-                component
-            )  # MEEP step_update_EDHB: fw[i] = gs*us.
+            # MEEP step_update_EDHB: fw[i] = gs*us, per part.
+            constitutive = part_products.scale(fields.inverse_epsilon_for(component), source)
         if pml_active:
             kps, kms = _constitutive_coefficients(pml, axis_name, half_integer=True)
-            _apply_constitutive_pml(getattr(fields, component), constitutive,
-                                    kps, kms, getattr(fields, "f_w_" + component),
-                                    scratch=fields.scratch)
+            _apply_constitutive_regions(plan, component, getattr(fields, component),
+                                        constitutive, kps, kms,
+                                        getattr(fields, "f_w_" + component), fields.grid.xp,
+                                        scratch=fields.scratch)
         else:
             # MEEP update_eh.cpp with dsigw == NO_DIRECTION: E = chi1inv * (D - P),
             # written into storage rather than returned, because P advances next.
             getattr(fields, component)[...] = constitutive
+    if nonlinear and fields.grid.has_symmetry():
+        _image_nonlinear_mirror_ghosts(fields, plan)
+
+
+def _image_nonlinear_mirror_ghosts(fields: "Fields", plan: Any) -> None:  # E and f_w ghosts <- parity image.
+    """Write E, and its ``f_w`` on the accumulation's cells, at every mirror ghost as its image.
+
+    MEEP never evaluates the constitutive update at a mirror ghost: ``update_eh``
+    loops over owned points only (``little_owned_corner0``, update_eh.cpp:191), and
+    ``step_boundaries(WE_stuff)`` and ``step_boundaries(E_stuff)`` (step.cpp:105-121)
+    then write each ghost as the parity image of its owned cell, W and E alike. This
+    engine evaluates the update on the whole stored volume, ghosts included, which is
+    the image while the update is pointwise. The nonlinear ``Dsqr`` reads the
+    neighbouring cells of the transverse partners, so at a ghost it is not: there the
+    ghost is written from its image here, after the update, as
+    :func:`_fill_symmetry_ghost_cells` writes D and B. MEASURED (bit_parity_0_10
+    phase-0 leg P0-h, the folded nonlinear case against MEEP 1.33.0 built without
+    contraction): without it, ghost E words depart from step 68 and owned words
+    from step 90; with it, 0 owned or wall words differ to step 1000. A linear run
+    keeps the pointwise ghost, which reaches no owned or wall word (the same leg's
+    linear control).
+
+    ``f_w`` is written only where the accumulation runs (the auxiliary contract), and
+    a ghost row's membership is its image row's (``chunk_map``'s ghost-adjusted
+    line), so the copy writes exactly the cells the update wrote. Axes are taken in
+    X, Y, Z order, so a corner unowned on two planes carries both parities, as for D.
+    """
+    grid = fields.grid
+    xp = grid.xp
+    parities = _mirror_phases(grid)
+    for component in E_COMPONENTS:
+        shifts = IYEE_SHIFTS[component]
+        axes = [axis for axis in range(3) if parities[axis] is not None and shifts[axis] == 0]
+        if not axes or component in fields.absent_components:
+            continue  # An absent component is not written at all (update_E).
+        field = getattr(fields, component)
+        for axis in axes:
+            _write_mirror_ghost(field, axis, _symmetry_phase(component, axis, parities[axis]))
+        mode = "outside_only" if plan is None else plan.spec("constitutive", component).mode
+        if mode == "outside_only":
+            continue
+        fw = getattr(fields, "f_w_" + component)
+        inside = (None if mode == "inside_only"
+                  else xp.broadcast_to(plan.mask("constitutive", component, xp), fw.shape))
+        for axis in axes:
+            phase = _symmetry_phase(component, axis, parities[axis])
+            if inside is None:
+                _write_mirror_ghost(fw, axis, phase)
+                continue
+            _mirror_source(fw, axis)  # the range check the whole-face copy makes
+            ghost = _face(axis, 0)
+            xp.copyto(fw[ghost], part_products.scale(phase, fw[_face(axis, MIRROR_SOURCE_INDEX)]),
+                      where=inside[ghost])
 
 
 def calc_nonlinear_u(dsqr: Any, di: Any, chi1inv: Any, chi2: Any,
@@ -1074,6 +1428,7 @@ def _nonlinear_displacement(fields: "Fields",
         "parities": _mirror_phases(grid),
         "phases": _bloch_phases(grid, boundaries, volumes["Ex"], pml),
         "sums": {},  # Per-component transverse sums, formed once and reused by both parts.
+        "pml": pml,  # The active layer or None: the off-diagonal presence's chunk division.
     }
 
 
@@ -1092,28 +1447,32 @@ def _nonlinear_constitutive(fields: "Fields", component: str,
     """
     gs = displacement["volumes"][component]
     us = fields.inverse_epsilon_for(component)
+    xp = fields.grid.xp
     # MEEP's MOST GENERAL CASE (step_generic.cpp:590-601) scales the WHOLE row
-    # product by the Pade factor: fw = (gs*us + OFFDIAG + OFFDIAG) * u. The
-    # coefficient is real, so taking a part of the complex coupling term equals
-    # coupling the same part of the partner volumes — the DOCMP split commutes.
-    coupling = _offdiagonal_terms(fields, component, displacement)
+    # product by the Pade factor: fw = (gs*us + OFFDIAG + OFFDIAG) * u. The row is a
+    # double (each OFFDIAG is, :580-581), so the product is formed in double and the
+    # store rounds it once. The coefficient is real, so the row is formed per part
+    # of a complex field — the DOCMP split (update_eh.cpp:149).
+    row = _offdiagonal_terms(fields, component, displacement)
     if not fields.is_nonlinear(component):
         # A linear component in a partly nonlinear run: MEEP's `else if (u)` branch.
-        return gs * us if coupling is None else gs * us + coupling
+        return part_products.scale(us, gs) if row is None else _rounded_row(xp, row)
     chi2 = fields.chi2_for(component)
     chi3 = fields.chi3_for(component)
     transverse = _nonlinear_transverse_sums(fields, component, displacement)
     if gs.dtype.kind != "c":
-        row = gs * us if coupling is None else gs * us + coupling
-        return row * calc_nonlinear_u(_nonlinear_dsqr(gs, transverse, _WHOLE),
-                                      gs, us, chi2, chi3)
-    row_real = gs.real * us if coupling is None else gs.real * us + coupling.real
-    row_imag = gs.imag * us if coupling is None else gs.imag * us + coupling.imag
-    real = row_real * calc_nonlinear_u(_nonlinear_dsqr(gs, transverse, _REAL),
-                                       gs.real, us, chi2, chi3)
-    imaginary = row_imag * calc_nonlinear_u(_nonlinear_dsqr(gs, transverse, _IMAGINARY),
-                                            gs.imag, us, chi2, chi3)
-    return (real + 1j * imaginary).astype(gs.dtype, copy=False)
+        factor = calc_nonlinear_u(_nonlinear_dsqr(gs, transverse, _WHOLE), gs, us, chi2, chi3)
+        if row is None:
+            return (gs * us) * factor
+        return _rounded_row(xp, (row[0] * factor.astype(xp.float64),))
+    factor_real = calc_nonlinear_u(_nonlinear_dsqr(gs, transverse, _REAL), gs.real, us, chi2, chi3)
+    factor_imag = calc_nonlinear_u(_nonlinear_dsqr(gs, transverse, _IMAGINARY), gs.imag, us, chi2, chi3)
+    if row is not None:
+        return _rounded_row(xp, (row[0] * factor_real.astype(xp.float64),
+                                 row[1] * factor_imag.astype(xp.float64)))
+    real = (gs.real * us) * factor_real
+    imaginary = (gs.imag * us) * factor_imag
+    return part_products.from_parts(real, imaginary, gs.dtype)
 
 
 def _WHOLE(values: Any) -> Any:  # A real-storage field has no parts to separate.
@@ -1129,11 +1488,22 @@ def _IMAGINARY(values: Any) -> Any:  # MEEP's cmp == 1 array.
 
 
 def _nonlinear_dsqr(gs: Any, transverse: Tuple[Any, Any], part: Any) -> Any:  # MEEP's Dsqr argument.
-    """``gs*gs + 0.0625*(g1s*g1s + g2s*g2s)`` — MEEP step_generic.cpp:646-654.
+    """``gs*gs + 0.0625*(g1s*g1s + g2s*g2s)`` — MEEP step_generic.cpp:646-654, as its C evaluates it.
 
     ``0.0625 = (1/4)^2`` is what turns each UNNORMALIZED four-point sum
     (:func:`_nonlinear_transverse_sums`) back into a mean before it is squared, so
     ``Dsqr`` really is ``|D|^2`` interpolated to this component's Yee position.
+
+    THE PRECISION IS MEEP's. ``gs * gs`` and ``g1s * g1s + g2s * g2s`` are ``realnum``
+    (float32) operations, but ``0.0625`` is a double literal, so the scaled sum and the
+    addition that follows it are double operations, and the ``const realnum Dsqr``
+    parameter of ``calc_nonlinear_u`` (:542) rounds the result once. Here: the two
+    float32 terms are formed in the field's own precision, widened, scaled and added
+    as float64 ufuncs, and the sum is rounded once back to the field's precision.
+    Against the float32 form this moves Dsqr only where the exact ``0.0625 * t`` lies
+    below float32's normal range (MEASURED, bit_parity_0_10 phase-0 leg P0-h:
+    12,568,559 of 396,821,530 operand pairs differ, 0 outside that band), which on
+    the measured cases reaches no stored E word.
 
     ``part`` selects the real or imaginary half AFTER the sums are formed, never
     before: a Bloch wrap multiplies the whole complex value by ``exp(i k L)`` and so
@@ -1144,7 +1514,9 @@ def _nonlinear_dsqr(gs: Any, transverse: Tuple[Any, Any], part: Any) -> Any:  # 
     scaled = part(gs)
     first_part = part(first)
     second_part = part(second)
-    return scaled * scaled + 0.0625 * (first_part * first_part + second_part * second_part)
+    transverse_squared = first_part * first_part + second_part * second_part
+    widened = (scaled * scaled).astype("float64") + 0.0625 * transverse_squared.astype("float64")
+    return widened.astype(scaled.dtype)
 
 
 def _nonlinear_transverse_sums(fields: "Fields", component: str,
@@ -1163,12 +1535,29 @@ def _nonlinear_transverse_sums(fields: "Fields", component: str,
     way round is a half-cell registration error that survives every scalar test and
     shows up only in the mixed-polarization terms.
 
+    THE ASSOCIATION IS MEEP's, LEFT TO RIGHT: ``((g[i] + g[i+s]) + g[i-s1]) +
+    g[i+(s-s1)]``, each addition one rounding in the field's precision. Pairing the
+    corners instead, ``(g[i] + g[i-s1]) + (g[i+s] + g[i+(s-s1)])``, is the same sum in
+    exact arithmetic and a different float32 word. MEASURED against MEEP 1.33.0 single
+    precision built without contraction (bit_parity_0_10 phase-0 leg P0-h, the four
+    unfolded nonlinear cases): the pair form moved 79,850 to 2,056,001 stored words on
+    three of them, this order none on any.
+
     The partners follow ``cycle_direction`` (vec.hpp:586), X -> Y -> Z, so Ez takes
     Dx then Dy. Neighbour reads go through the same ``_shift_up`` / ``_shift_down``
-    helpers the curl uses, so a periodic wrap, a Bloch phase and a mirror plane
-    behave here exactly as they do there; both shifts are linear in the field, which
-    is what lets the doubly-shifted corner be formed by shifting the already-shifted
-    pair rather than by a third roll.
+    helpers the curl uses, and the same-index reads through
+    :func:`_bloch_ghost_operand`, so a periodic wrap, a Bloch phase and a mirror plane
+    behave here exactly as they do there. The corner ``g[i+(s-s1)]`` is the
+    down-shifted partner shifted up, one stored word, as MEEP reads it. On a
+    reduced-dimension grid's invariant axis MEEP's stride is 0, so ``g[i+s]`` or
+    ``g[i-s1]`` is ``g[i]`` itself; the one-cell periodic roll the shift helpers make
+    there returns the same word. The Bloch phase lands on the operand that is NOT
+    shifted along the phased axis, as it does in the curl: ``g[i]`` and ``g[i-s1]``
+    take it on the own axis, ``g[i]`` and ``g[i+s]`` on the partner's. (On a corner
+    phased on BOTH axes the two connections apply one after the other, where MEEP
+    forms the corner's not-owned word with one product of the accumulated phase; that
+    is the complex-nonlinear family's identity item, reached by neither family's
+    cases, and not a value change.)
     """
     volumes = displacement["volumes"]
     boundaries = displacement["boundaries"]
@@ -1183,44 +1572,72 @@ def _nonlinear_transverse_sums(fields: "Fields", component: str,
     for offset in (1, 2):  # MEEP's cycle_direction(dim, d_ec, 1) then (..., 2).
         partner_axis = (own_axis + offset) % 3
         values = volumes["E" + AXIS_NAMES[partner_axis]]
-        # Half a cell DOWN the partner's own axis: g[i] + g[i-s1].
-        pair = values + _shift_down(xp, values, partner_axis, boundaries[partner_axis],
-                                    "D" + AXIS_NAMES[partner_axis], phases[partner_axis],
-                                    parities[partner_axis])
-        # Then the same pair half a cell UP this component's axis: + g[i+s] + g[i+(s-s1)].
-        sums.append(pair + _shift_up(xp, pair, own_axis, boundaries[own_axis], phases[own_axis]))
+        # The operands not shifted along the partner's axis carry its phase on plane 0.
+        same = _bloch_ghost_operand(xp, values, partner_axis, boundaries[partner_axis],
+                                    phases[partner_axis], below=False)
+        # g[i-s1]: half a cell DOWN the partner's own axis (a plain roll on a phased axis).
+        down = _shift_down(xp, values, partner_axis, boundaries[partner_axis],
+                           "D" + AXIS_NAMES[partner_axis], parities[partner_axis])
+        # g[i] and g[i-s1] are not shifted along this component's axis: its phase lands here.
+        first = _bloch_ghost_operand(xp, same, own_axis, boundaries[own_axis],
+                                     phases[own_axis], below=True)
+        third = _bloch_ghost_operand(xp, down, own_axis, boundaries[own_axis],
+                                     phases[own_axis], below=True)
+        # g[i+s] and g[i+(s-s1)]: half a cell UP this component's axis.
+        up = _shift_up(xp, same, own_axis, boundaries[own_axis])
+        corner = _shift_up(xp, down, own_axis, boundaries[own_axis])
+        sums.append(((first + up) + third) + corner)
     cache[component] = (sums[0], sums[1])
     return cache[component]
 
 
 def _offdiagonal_terms(fields: "Fields", component: str,
-                       displacement: Dict[str, Any]) -> Optional[Any]:  # MEEP's OFFDIAG sum.
-    """The off-diagonal row contribution — MEEP step_generic.cpp:582-583, transcribed::
+                       displacement: Dict[str, Any]) -> Optional[Tuple[Any, ...]]:  # MEEP's row, in double.
+    """The constitutive row with its off-diagonal terms, as MEEP's C evaluates it, unrounded.
+
+    MEEP step_generic.cpp:580-581, :611 (PML) and :719 (no PML), transcribed::
 
         OFFDIAG(u, g, sx) = 0.25*((g[i] + g[i-sx])*u[i] + (g[i+s] + g[(i+s)-sx])*u[i+s])
+        fw[i] = gs*us + OFFDIAG(u1, g1, s1) + OFFDIAG(u2, g2, s2)
 
-    ``s`` is the stride along this component's OWN axis, ``sx`` the partner's.
-    The pairing is MEEP's "stable averaging", and it is exact rather than merely
-    stable: ``structure_chunk::set_chi1inv`` registers the off-diagonal entries at
-    the component's Yee site minus half a cell along its own axis — the integer
-    node (anisotropic_averaging.cpp:248-257, ``here - shift1``) — so ``u[i]``
-    multiplies the two-point partner average AT ITS OWN NODE and ``u[i+s]`` the
-    average at the next node up. A plain four-point average times ``u[i]`` is the
-    same arithmetic only where the coefficient is uniform; on the material
-    interfaces the coefficient exists for, the two forms part company.
-
-    The partner pair is formed exactly as :func:`_nonlinear_transverse_sums`
-    forms its half — a half-cell DOWN the partner's axis, then the product
-    shifted half a cell UP this component's axis — through the same
-    ``_shift_up`` / ``_shift_down`` helpers the curl uses, so a periodic wrap, a
-    Bloch phase and a metallic wall behave here exactly as they do there. The
-    coefficient is periodic and carries no phase of its own; the wrap factor on
-    the shifted PRODUCT is the field's, which is the same scalar-per-plane
-    multiplication either way. (A folded axis never reaches this function:
-    ``Fields.set_epsilon_volumes`` refuses the combination at install.)
-
-    Returns ``None`` for a component with no surviving rows, so the caller's
+    The pair sums, the products and their sum are ``realnum`` (float32) operations,
+    but ``0.25`` is a double literal, so each OFFDIAG is a double (the scale is exact:
+    a power of two). ``gs*us`` is one float32 product, widened, and the row is summed
+    left to right in double; the store rounds it once. This returns that double row,
+    one float64 volume per stored part — ``(row,)`` for real storage, ``(real,
+    imaginary)`` for complex64, whose parts MEEP steps separately with the same real
+    coefficients (``DOCMP``, update_eh.cpp:149) — and the caller rounds it
+    (:func:`_rounded_row`) or, for a nonlinear component, scales it by the Pade factor
+    in double first. ``None`` for a component with no surviving rows, so the caller's
     degenerate arithmetic is the diagonal engine's, not a ``+ 0`` copy of it.
+
+    ``s`` is the stride along this component's OWN axis, ``sx`` the partner's. The
+    pairing is MEEP's "stable averaging", and it is exact rather than merely stable:
+    ``structure_chunk::set_chi1inv`` registers the off-diagonal entries at the
+    component's Yee site minus half a cell along its own axis — the integer node
+    (anisotropic_averaging.cpp:248-257, ``here - shift1``) — so ``u[i]`` multiplies
+    the two-point partner average AT ITS OWN NODE and ``u[i+s]`` the average at the
+    next node up. The partner pair is formed exactly as
+    :func:`_nonlinear_transverse_sums` forms its half — a half-cell DOWN the
+    partner's axis, then the product shifted half a cell UP this component's axis —
+    through the same ``_shift_up`` / ``_shift_down`` helpers the curl uses, and the
+    same-index reads through :func:`_bloch_ghost_operand`, so a periodic wrap, a Bloch
+    phase and a metallic wall behave here exactly as they do there. The coefficient
+    is periodic and carries no phase of its own; the connection on the same-index
+    PRODUCT is the field's, applied after the coefficient (where MEEP connects each
+    word before the product -- the off-diagonal family's identity item, not a value
+    change). (A folded axis never reaches this function: ``Fields.set_epsilon_volumes``
+    refuses the combination at install.) Every product is a real coefficient times one
+    stored part (:mod:`.part_products`). The wall mask
+    (:func:`_mask_metallic_wall_coupling`) zeroes each term's float32 sum before the
+    scale.
+
+    PRESENCE. A term is added only on the cells whose chunk keeps the partner's
+    ``chi1inv`` array, MEEP's NULL pointer elsewhere (:meth:`~.fields.Fields.offdiag_presence`,
+    read from the run's chunk division, :func:`_chunk_layout`): MEEP drops the term
+    there rather than adding a zero, which differs from adding one only when the row
+    so far is ``-0``. The terms are added in MEEP's ``cycle_direction`` order (1, then
+    2); its SWAP (step_generic.cpp:572-576) only moves a lone term into the first slot.
     """
     rows = fields.chi1inv_offdiagonal_for(component)
     if not rows:
@@ -1229,9 +1646,15 @@ def _offdiagonal_terms(fields: "Fields", component: str,
     boundaries = displacement["boundaries"]
     phases = displacement["phases"]
     parities = displacement["parities"]
-    xp = fields.grid.xp
+    grid = fields.grid
+    xp = grid.xp
+    iyee = IYEE_SHIFTS[component]
+    layout = _chunk_layout(fields, displacement.get("pml"))
     own_axis = AXIS_NAMES.index(component[1])
-    total = None
+    inverse = fields.inverse_epsilon_for(component)
+    # gs*us: one float32 product per part (realnum * realnum), then widened.
+    row = [(part * inverse).astype(xp.float64)
+           for part in part_products.parts(volumes[component])]
     for offset in (1, 2):  # MEEP's cycle_direction(dim, d_ec, 1) then (..., 2).
         partner_axis = (own_axis + offset) % 3
         partner = "E" + AXIS_NAMES[partner_axis]
@@ -1240,17 +1663,56 @@ def _offdiagonal_terms(fields: "Fields", component: str,
             continue
         values = volumes[partner]
         # g[i] + g[i-sx]: half a cell DOWN the partner's own axis.
-        pair = values + _shift_down(xp, values, partner_axis, boundaries[partner_axis],
-                                    "D" + AXIS_NAMES[partner_axis], phases[partner_axis],
-                                    parities[partner_axis])
-        product = pair * coefficient
-        # (pair*u)[i] + (pair*u)[i+s]: the same product half a cell UP this axis.
-        term = 0.25 * (product + _shift_up(xp, product, own_axis,
-                                           boundaries[own_axis], phases[own_axis]))
-        total = term if total is None else total + term
-    if total is not None:
-        _mask_metallic_wall_coupling(total, fields.grid, IYEE_SHIFTS[component])
-    return total
+        pair = (_bloch_ghost_operand(xp, values, partner_axis, boundaries[partner_axis],
+                                     phases[partner_axis], below=False)
+                + _shift_down(xp, values, partner_axis, boundaries[partner_axis],
+                              "D" + AXIS_NAMES[partner_axis], parities[partner_axis]))
+        product = part_products.scale(coefficient, pair)
+        # (g[i] + g[i-sx])*u[i] per part, at this cell's own node (read across a phased
+        # window edge as MEEP's not-owned word below it), and the same product half a
+        # cell UP this axis: (g[i+s] + g[(i+s)-sx])*u[i+s].
+        here = _bloch_ghost_operand(xp, product, own_axis, boundaries[own_axis],
+                                    phases[own_axis], below=True)
+        above = _shift_up(xp, product, own_axis, boundaries[own_axis])
+        present = fields.offdiag_presence(component, partner, layout)
+        for index, (low, high) in enumerate(zip(part_products.parts(here),
+                                                part_products.parts(above))):
+            summed = low + high
+            _mask_metallic_wall_coupling(summed, grid, iyee)
+            term = 0.25 * summed.astype(xp.float64)  # The double literal: exact.
+            if present is None:
+                row[index] += term
+            else:
+                row[index] = xp.where(present, row[index] + term, row[index])
+    return tuple(row)
+
+
+def _rounded_row(xp: Any, row: Sequence[Any]) -> Any:  # MEEP's store of a double row.
+    """Round a double row from :func:`_offdiagonal_terms` once to the stored type.
+
+    One part is a float32 volume, two are a complex64 one; each part is rounded on
+    its own (the assignment to ``realnum``) and the two are assembled by
+    :func:`~.part_products.from_parts`, never through a complex conversion.
+    """
+    parts = [part.astype(xp.float32) for part in row]
+    return parts[0] if len(parts) == 1 else part_products.from_parts(parts[0], parts[1],
+                                                                     xp.complex64)
+
+
+def _chunk_layout(fields: "Fields", pml: Optional["PML"]) -> Any:
+    """The chunk division ``update_E``'s off-diagonal presence is read from, or None for one chunk.
+
+    The lifted simulation's own when the driver installed one
+    (:attr:`~.fields.Fields.chunk_layout`); otherwise the one-rank division: the
+    region plan's under an active layer (the one the PML forms step with), and None
+    for an unlayered grid, whose one-rank division is a single chunk.
+    """
+    layout = fields.chunk_layout
+    if layout is not None:
+        return layout
+    if pml is not None and _pml_is_active(pml):
+        return _region_plan(fields, pml).layout
+    return None
 
 
 def _mask_metallic_wall_coupling(term: Any, grid: "Grid", iyee: Tuple[int, int, int]) -> None:
@@ -1283,62 +1745,173 @@ def _mask_metallic_wall_coupling(term: Any, grid: "Grid", iyee: Tuple[int, int, 
             term[_face(axis, 0)] = 0
 
 
-def cylindrical_rderiv_prefix(xp: Any, f_p: Any, ir0: float, scratch: Any = None) -> Any:
-    """MEEP's ``f_rderiv_int``: the prefix sum that turns (1/r)·d(r·Fp)/dr into a plain difference.
+def cylindrical_rderiv_difference(xp: Any, f_p: Any, ir0: float, starts: Any, n_target: int,
+                                  backward: bool, scratch: Any = None) -> Any:
+    """MEEP's radial difference of ``f_rderiv_int``, the per-chunk prefix sum of (1/r)·d(r·Fp)/dr.
 
-    step_db.cpp:99-119, transcribed. The Dz update in cylindrical coordinates
-    needs ``(1/r)·d(r·Fp)/dr`` where the ordinary curl computes ``dFp/dr``.
-    Rather than a second curl kernel, MEEP builds the running sum::
+    step_db.cpp:99-119, transcribed. The Z update in cylindrical coordinates needs
+    ``(1/r)·d(r·Fp)/dr`` where the ordinary curl computes ``dFp/dr``, so MEEP builds, in
+    EVERY structure chunk over that chunk's own rows ``ir = 0 .. nr``, the running sum::
 
         F[0,  :] = 0
-        F[ir, :] = F[ir-1, :] + (1/((ir+ir0)-0.5)) * (f_p[ir]*(ir+ir0) - f_p[ir-1]*((ir-1)+ir0))
+        rinv     = 1.0 / ((ir + ir0) - 0.5)           (double, stored as realnum)
+        F[ir, :] = F[ir-1, :] + rinv * (f_p[ir]*(ir+ir0) - f_p[ir-1]*((ir-1)+ir0))
 
-    whose plain radial difference IS the wanted derivative, and feeds ``F`` to the
-    unmodified curl. ``ir0 = origin_r*a + 0.5*iyee_shift(Fp).in_direction(R)`` —
-    for a cell touching the axis (origin_r = 0) and Fp = Hp (r-shift 1), ir0 = 0.5,
-    so the weights are ``r/dr`` at Hp's own half-integer sites and the divisor is
-    the integer site the difference lands on. Axis order here is the engine's:
-    ``f_p`` is (r, phi, z) with r the leading axis; the sum runs along r.
+    in ``realnum`` arithmetic, left to right, and feeds ``F`` to the unmodified curl, whose
+    radial difference is the wanted derivative. ``ir0 = origin_r*a + 0.5*iyee_shift(Fp)``
+    with the CHUNK's origin, so ``ir + ir0`` is the global row plus half Fp's r-shift and
+    the increment of a row is the same in every chunk; what is per chunk is the SUM, which
+    restarts at ``+0`` on each chunk's first row. A chunk whose first row is ``s`` sums
+    ``F_s[s] = +0``, ``F_s[g] = F_s[g-1] + inc[g]``, and a target cell reads the sum of the
+    chunk that owns it:
 
-    Vectorized as a cumulative sum — bit-equal to MEEP's sequential loop in exact
-    arithmetic, and pinned against an explicitly transcribed loop in
-    test_cylindrical.py rather than trusted (float summation order differs from a
-    fused loop only in rounding; the test measures it).
+    * forward (B side, Bz, half-integer rows ``j``): ``F_s[j+1] - F_s[j]``;
+    * backward (D side, Dz, integer rows ``g``, D's negated stride): ``F_s[g-1] - F_s[g]``;
+
+    the stencil's ``g1[i+s1] - g1[i]`` either way, returned unscaled (the caller multiplies
+    by ``dtdx``). So the cut row between two chunks holds two values, the lower chunk's
+    full sum and the upper chunk's zero, and no single prefix array represents the
+    division.
+
+    ``starts`` is, per target cell, the first stored row of its owning chunk: an integer
+    array broadcastable against the target volume (``(n_target, 1, 1)`` on a division with
+    global r cuts, the full volume on one without), or ``None`` for one chunk starting at
+    the axis (:func:`_cylindrical_scan_starts`). ``f_p`` is ``(r, phi, z)`` with r the
+    leading axis; the B side passes Ep extended by its zero wall row (``n_target = rows -
+    1``), the D side Hp itself (``n_target = rows``). Row 0 of a backward target, the axis,
+    reads ``+0`` (the caller masks it; the per-m axis rules own it).
+
+    ``rinv`` is MULTIPLIED, as MEEP stores and multiplies it; dividing by ``(ir + ir0) -
+    0.5`` is a different float32 word. The sum is sequential along r within a chunk:
+    NumPy's ``cumsum`` along axis 0 accumulates row after row (pinned against the
+    explicit loop in ``test_cylindrical``), and any other array module takes the row loop
+    (CuPy's ``cumsum`` is a parallel scan, another association). Complex storage runs per
+    part (:mod:`~.part_products`; a complex sum or difference is already per part).
     """
+    import numpy  # noqa: PLC0415 - host-side chunk arithmetic on a few integers
+
     real_dtype = f_p.real.dtype
+    rows = f_p.shape[0]
+    rest = f_p.shape[1:]
     if scratch is None:
-        counts = xp.arange(f_p.shape[0], dtype=xp.float64) + ir0  # (ir + ir0) per row.
-        weights = counts.reshape(-1, 1, 1).astype(real_dtype)
-        divisor = (counts[1:] - 0.5).reshape(-1, 1, 1).astype(real_dtype)
-        weighted = f_p * weights
-        increment = xp.zeros_like(f_p)
-        increment[1:] = (weighted[1:] - weighted[:-1]) / divisor
-        return xp.cumsum(increment, axis=0)
-
-    # The two row vectors are GRID INVARIANTS — they depend on the radial extent, on
-    # ir0 and on the storage dtype and on nothing that steps — but this runs twice a
-    # timestep, so rebuilding them (an arange, two reshapes, two casts) was pure
-    # per-step waste. The three full-volume temporaries are pooled for the reason
-    # StepScratch exists.
-    key = ("cyl_rderiv", int(f_p.shape[0]), float(ir0), real_dtype)
-    weights, divisor = scratch.constant(key, lambda: _cylindrical_rderiv_weights(
-        xp, f_p.shape[0], ir0, real_dtype))
-    weighted = scratch.take("cyl_weighted", f_p.shape, f_p.dtype)
-    xp.multiply(f_p, weights, out=weighted)
-    increment = scratch.take("cyl_increment", f_p.shape, f_p.dtype)
-    increment[_face(0, 0)] = 0  # The sum starts at zero; xp.zeros_like used to say so.
+        weights, rinv = _cylindrical_rderiv_rows(xp, rows, ir0, real_dtype)
+        weighted = part_products.scale(weights, f_p)
+        increment = xp.empty_like(f_p)
+        out = xp.empty((n_target,) + rest, dtype=f_p.dtype)
+    else:
+        # The two row vectors are GRID INVARIANTS (radial extent, ir0, storage dtype); the
+        # full-volume temporaries are pooled for the reason StepScratch exists. The
+        # returned buffer is the pool's ``cyl_radial`` slot, valid until the next call.
+        key = ("cyl_rderiv_rows", int(rows), float(ir0), real_dtype)
+        weights, rinv = scratch.constant(key, lambda: _cylindrical_rderiv_rows(
+            xp, rows, ir0, real_dtype))
+        weighted = scratch.take("cyl_weighted", f_p.shape, f_p.dtype)
+        part_products.scale(weights, f_p, out=weighted)
+        increment = scratch.take("cyl_increment", f_p.shape, f_p.dtype)
+        out = scratch.take("cyl_radial", (n_target,) + rest, f_p.dtype)
+    increment[_face(0, 0)] = 0  # Never read: every chunk's first row sums from +0.
     xp.subtract(weighted[1:], weighted[:-1], out=increment[1:])
-    increment[1:] /= divisor
-    return xp.cumsum(increment, axis=0,
-                     out=scratch.take("cyl_prefix", f_p.shape, f_p.dtype))
+    part_products.scale(rinv, increment[1:], out=increment[1:])
+    out[...] = 0
+    if starts is None:
+        segments = (0,)
+    else:
+        segments = sorted({int(v) for v in numpy.unique(_host_ints(starts))})
+    for s in segments:
+        prefix = _cylindrical_segment_scan(xp, increment, s, scratch)
+        if backward:  # F_s[g-1] - F_s[g] for g in (s, n_target)
+            lo, hi = max(s + 1, 1), n_target
+            shifted, unshifted = prefix[lo - 1 - s:hi - 1 - s], prefix[lo - s:hi - s]
+        else:  # F_s[j+1] - F_s[j] for j in [s, rows - 1)
+            lo, hi = s, min(n_target, rows - 1)
+            shifted, unshifted = prefix[lo + 1 - s:hi + 1 - s], prefix[lo - s:hi - s]
+        if hi <= lo:
+            continue
+        if starts is None:
+            xp.subtract(shifted, unshifted, out=out[lo:hi])
+        else:
+            xp.copyto(out[lo:hi], shifted - unshifted, where=xp.asarray(starts[lo:hi] == s))
+    return out
 
 
-def _cylindrical_rderiv_weights(xp: Any, rows: int, ir0: float,
-                                real_dtype: Any) -> Tuple[Any, Any]:  # (r/dr per row, its divisor).
-    """The two invariant row vectors of :func:`cylindrical_rderiv_prefix`."""
+def _cylindrical_segment_scan(xp: Any, increment: Any, s: int, scratch: Any = None) -> Any:
+    """One chunk's ``f_rderiv_int`` from its first row ``s`` on: ``F[0] = +0``, then one add per row.
+
+    Rows ``s .. rows-1`` of the radial increment, the first replaced by ``+0`` (MEEP's
+    ``f_rderiv_int[iz] = 0``; ``+0 + x`` is MEEP's first row, which a sum that starts from
+    ``x`` itself is not when ``x`` is ``-0``). A chunk ends where the next one begins; rows
+    past its end are summed too and never read.
+    """
+    import numpy  # noqa: PLC0415 - which array module owns the increment
+
+    tail = increment[s:]
+    prefix = (xp.empty_like(tail) if scratch is None
+              else scratch.take(f"cyl_prefix_{s}", tail.shape, tail.dtype))
+    if xp is numpy:
+        seed = increment[s].copy()
+        tail[0] = 0
+        numpy.cumsum(tail, axis=0, out=prefix)
+        tail[0] = seed
+        return prefix
+    prefix[0] = 0
+    for g in range(1, tail.shape[0]):
+        xp.add(prefix[g - 1], tail[g], out=prefix[g])
+    return prefix
+
+
+def _host_ints(values: Any) -> Any:  # A host NumPy view of a small integer array.
+    import numpy  # noqa: PLC0415 - host-side
+
+    get = getattr(values, "get", None)
+    return numpy.asarray(get() if callable(get) else values)
+
+
+def _cylindrical_rderiv_rows(xp: Any, rows: int, ir0: float,
+                             real_dtype: Any) -> Tuple[Any, Any]:  # (ir + ir0 per row, its rinv).
+    """The two invariant row vectors of :func:`cylindrical_rderiv_difference`.
+
+    ``weights[g] = realnum(g + ir0)`` and ``rinv[g-1] = realnum(1.0 / ((g + ir0) - 0.5))``
+    for rows ``g >= 1``, the quotient in double as MEEP writes it (``1.0`` is a double
+    literal) and rounded once.
+    """
     counts = xp.arange(rows, dtype=xp.float64) + ir0  # (ir + ir0) per row.
     return (counts.reshape(-1, 1, 1).astype(real_dtype),
-            (counts[1:] - 0.5).reshape(-1, 1, 1).astype(real_dtype))
+            (1.0 / (counts[1:] - 0.5)).reshape(-1, 1, 1).astype(real_dtype))
+
+
+def _cylindrical_scan_starts(fields: "Fields", pml: Optional["PML"], target: str) -> Any:
+    """Per cell of ``target`` (Bz or Dz), the first stored r row of the chunk that owns it.
+
+    MEEP sums ``f_rderiv_int`` over each structure chunk's own rows (step_db.cpp:104-118),
+    so the radial difference a cell reads depends on where its owning chunk begins. The
+    division is the run's (:func:`_chunk_layout`: the lifted simulation's own, else the
+    one-rank division of the active layer); ``None`` when there is one chunk, which starts
+    at the axis. A chunk box ``[lo, hi]`` in doubled r owns ``lo < p <= hi`` (the axis
+    point ``p = 0`` belongs to the chunk starting there, vec.cpp:448-450) and its rows
+    start at stored row ``lo // 2`` for either Yee shift (the r origin is the axis).
+    Global r cuts (:meth:`~.chunk_map.ChunkLayout.boundaries`) give one start per row,
+    shaped ``(n, 1, 1)``; a division whose r cuts differ along z gives one per cell, read
+    from the owner volume.
+    """
+    import numpy  # noqa: PLC0415 - host-side chunk arithmetic on a few integers
+
+    layout = _chunk_layout(fields, pml)
+    if layout is None or len(layout.boxes) == 1:
+        return None
+    iyee = IYEE_SHIFTS[target]
+    rows = fields.grid.stored_cells(0)
+    cuts = layout.boundaries(0)
+    if cuts is not None:
+        lows = numpy.asarray(cuts[:-1], dtype=numpy.int64)
+        doubled = 2 * numpy.arange(rows, dtype=numpy.int64) + iyee[0]
+        owner = numpy.searchsorted(lows, doubled, side="left") - 1
+        starts = lows[numpy.maximum(owner, 0)] // 2
+        line = starts.reshape(-1, 1, 1)
+        if numpy.all(line == 0):
+            return None
+        return fields.grid.xp.asarray(line)
+    lows = numpy.asarray([lo[0] for lo, _ in layout.boxes], dtype=numpy.int64)
+    return fields.grid.xp.asarray(lows[layout.owner_volume(iyee)] // 2)
 
 
 def nonlinear_margin(fields: "Fields",
@@ -1591,24 +2164,44 @@ def _mirror_source(field: Any, axis: int) -> Any:  # The stored cell a mirrored 
 class CurlOperands(NamedTuple):
     """The four arrays one curl stencil reads: each partner and its shifted neighbour.
 
-    Gathered once so the curl's DIFFERENCES and BFAST's SUMS share a single pass over
-    memory. MEEP cannot do this — its ``step_curl`` and ``step_bfast`` are separate
-    loops over the whole grid (step_db.cpp:124-142), so a BFAST run there pays a second
-    full read of every component. Here the extra term is a handful of FLOPs on operands
-    already in registers.
+    Gathered once and read twice: by the curl's DIFFERENCES and, on a BFAST run, by the
+    BFAST pass's SUMS (:func:`_bfast_term`), which MEEP runs as a separate loop over the
+    same partners right after the curl of the same component (step_db.cpp:124-142).
+
+    A shifted operand is None when its partner is absent from MEEP's step plan
+    (:func:`curl_presence`): neither the curl's form nor the BFAST pass reads an absent
+    partner (MEEP hands both a NULL pointer), so the shifted copy is not made.
     """
 
     first: Any           # MEEP's g1 = f_p, at the cell.
-    shifted_first: Any   # g1[i + s1] — one cell up (B) or down (D).
+    shifted_first: Any   # g1[i + s1] — one cell up (B) or down (D); None when not gathered.
     second: Any          # MEEP's g2 = f_m, at the cell.
-    shifted_second: Any  # g2[i + s2].
+    shifted_second: Any  # g2[i + s2]; None when not gathered.
+
+
+def curl_presence(grid: "Grid", term: CurlTerm) -> Tuple[bool, bool]:
+    """``(g1 present, g2 present)`` for one curl term, as MEEP's step plan records them.
+
+    ``fields_chunk::figure_out_step_plan`` (fields.cpp:428-453) sets ``have_plus_deriv``
+    / ``have_minus_deriv`` only when the partner's derivative direction ``cross(dc1,
+    dc2)`` is a direction of the grid, and ``step_db`` hands ``step_curl`` a NULL partner
+    otherwise. The partner's derivative axis here is ``term.first_axis`` /
+    ``term.second_axis``, so the test is ``grid.is_invariant`` on it: z at 2-D, x and y
+    at 1-D, phi (y) under cylindrical coordinates. The last agrees with step_db.cpp's
+    explicit Dcyl rule, which drops ``f_p`` for an R component and ``f_m`` for a Z
+    component (their phi-derivative partners) and keeps both for a P component. At 1-D,
+    MEEP's other reason for a missing partner (``gv.has_field`` keeps only Ex, Hy, Dx
+    and By) agrees with this one on the four components MEEP steps.
+    """
+    return (not grid.is_invariant(term.first_axis), not grid.is_invariant(term.second_axis))
 
 
 def _curl_operands(xp: Any, snapshot: Dict[str, Any], term: CurlTerm,
                    boundaries: Tuple[str, str, str], phases: BlochPhases,
                    parities: MirrorPhases, backward: bool,
                    reflect_rows: FarReflectRows = (None, None, None),
-                   scratch: Any = None) -> CurlOperands:
+                   scratch: Any = None,
+                   gather: Tuple[bool, bool] = (True, True)) -> CurlOperands:
     """Gather one component's two curl partners and their shifted neighbours.
 
     ``backward`` selects MEEP's negated strides (s = -1, the D sub-step) over the
@@ -1616,42 +2209,83 @@ def _curl_operands(xp: Any, snapshot: Dict[str, Any], term: CurlTerm,
     BFAST pass, because MEEP hands ``step_bfast`` the SAME already-negated
     ``stride_p``/``stride_m`` it handed ``step_curl`` (step_db.cpp:80-83 negates them
     once, before both calls).
+
+    ``gather`` names which partners' shifted neighbours are formed (the step passes
+    :func:`curl_presence`); one left out is None in the result.
+
+    On a Bloch-phased axis the shifted neighbours are plain rolls of the STORED
+    arrays and the unshifted operand carries the phase on its plane 0
+    (:func:`_bloch_ghost_operand`): the engine stores MEEP's owned window there. The
+    rolls are taken first, from the stored arrays, and the unshifted operands are
+    replaced after them; rolling an already-connected copy would move MEEP's
+    not-owned word into an owned cell.
     """
     first = snapshot[term.first]
     second = snapshot[term.second]
+    gather_first, gather_second = gather
+    shifted_first = shifted_second = None
     # The two shifted operands are alive at the same time — the curl differences them
     # and BFAST sums them — so they take SEPARATE pool tags. One tag for both would
     # hand the same buffer back twice and silently turn the stencil into g1 - g1.
     if backward:
-        shifted_first = _shift_down(xp, first, term.first_axis,
-                                    boundaries[term.first_axis], term.first,
-                                    phases[term.first_axis], parities[term.first_axis],
-                                    scratch=scratch, scratch_tag="stencil_first")
-        shifted_second = _shift_down(xp, second, term.second_axis,
-                                     boundaries[term.second_axis], term.second,
-                                     phases[term.second_axis], parities[term.second_axis],
-                                     scratch=scratch, scratch_tag="stencil_second")
+        if gather_first:
+            shifted_first = _shift_down(xp, first, term.first_axis,
+                                        boundaries[term.first_axis], term.first,
+                                        parities[term.first_axis],
+                                        scratch=scratch, scratch_tag="stencil_first")
+        if gather_second:
+            shifted_second = _shift_down(xp, second, term.second_axis,
+                                         boundaries[term.second_axis], term.second,
+                                         parities[term.second_axis],
+                                         scratch=scratch, scratch_tag="stencil_second")
     else:
-        shifted_first = _shift_up(xp, first, term.first_axis, boundaries[term.first_axis],
-                                  phases[term.first_axis], term.first,
-                                  parities[term.first_axis],
-                                  reflect_rows[term.first_axis],
-                                  scratch=scratch, scratch_tag="stencil_first")
-        shifted_second = _shift_up(xp, second, term.second_axis, boundaries[term.second_axis],
-                                   phases[term.second_axis], term.second,
-                                   parities[term.second_axis],
-                                   reflect_rows[term.second_axis],
-                                   scratch=scratch, scratch_tag="stencil_second")
+        if gather_first:
+            shifted_first = _shift_up(xp, first, term.first_axis, boundaries[term.first_axis],
+                                      term.first, parities[term.first_axis],
+                                      reflect_rows[term.first_axis],
+                                      scratch=scratch, scratch_tag="stencil_first")
+        if gather_second:
+            shifted_second = _shift_up(xp, second, term.second_axis,
+                                       boundaries[term.second_axis], term.second,
+                                       parities[term.second_axis],
+                                       reflect_rows[term.second_axis],
+                                       scratch=scratch, scratch_tag="stencil_second")
+    # B's forward differences read the unshifted partner one half cell BELOW the
+    # target (MEEP's not-owned word under the window); D's backward differences read
+    # it one half cell ABOVE (the not-owned word over the window).
+    first = _bloch_ghost_operand(xp, first, term.first_axis, boundaries[term.first_axis],
+                                 phases[term.first_axis], below=not backward,
+                                 scratch=scratch, scratch_tag="bloch_first")
+    second = _bloch_ghost_operand(xp, second, term.second_axis, boundaries[term.second_axis],
+                                  phases[term.second_axis], below=not backward,
+                                  scratch=scratch, scratch_tag="bloch_second")
     return CurlOperands(first, shifted_first, second, shifted_second)
 
 
-def _curl_from_operands(operands: CurlOperands, dtdx: float,
+def _curl_from_operands(operands: CurlOperands, dtdx: float, presence: Tuple[bool, bool],
                         scratch: Any = None) -> Any:  # dtdx * the discrete curl.
-    """Return dtdx * (g1[i+s] - g1[i] + g2[i] - g2[i+s]) from an already-gathered stencil.
+    """Return MEEP's ``dtdx``-scaled curl from an already-gathered stencil.
 
-    The expression form allocates FOUR full-volume temporaries per call and runs six
-    times a timestep; with a :class:`~.fields.StepScratch` the same four passes write
-    into two pooled buffers instead. Bit-identical by construction — the ufuncs, their
+    ``step_curl`` (step_generic.cpp) evaluates, with ``presence`` from
+    :func:`curl_presence`:
+
+    * both partners: ``dtdx * (g1[i+s1] - g1[i] + g2[i] - g2[i+s2])`` (:104), which C
+      associates left to right as ``((g1s - g1) + g2) - g2s``;
+    * ``g2`` absent: ``dtdx * (g1s - g1)`` (:108);
+    * ``g1`` absent: MEEP swaps the partners and negates ``dtdx`` (:72-76), so
+      ``(-dtdx) * (g2s - g2)``;
+    * neither: MEEP steps no such component (``gv.has_field`` keeps Ex, Hy, Dx and By
+      at 1-D, the only grid with one), and the curl here is an exact zero, so the
+      target is left as it is.
+
+    Each operation rounds once, as the C does. The pairwise grouping
+    ``(g1s - g1) + (g2 - g2s)`` is a different float32 number, and so is the full
+    bracket over an absent partner: ``(a + g2) - g2`` rounds where the absent form
+    returns ``a``.
+
+    The expression form allocates full-volume temporaries per call and runs six times
+    a timestep; with a :class:`~.fields.StepScratch` the same passes write into the
+    pool's ``curl`` buffer instead. Bit-identical by construction — the ufuncs, their
     operand order and the promoted dtype are the same, only the destination differs —
     and pinned that way by the before/after byte comparison in
     ``test_step_scratch_is_bit_identical``.
@@ -1661,46 +2295,65 @@ def _curl_from_operands(operands: CurlOperands, dtdx: float,
     masks it, may add a coupling term (allocating a fresh array, which releases the
     slot) and hands it to :func:`_apply_curl` before the next iteration.
     """
+    first_present, second_present = presence
+    first, second = operands.first, operands.second
     if scratch is None:
-        return dtdx * ((operands.shifted_first - operands.first)
-                       + (operands.second - operands.shifted_second))
+        if first_present and second_present:
+            return part_products.scale(dtdx, ((operands.shifted_first - first) + second)
+                                       - operands.shifted_second)
+        if first_present:
+            return part_products.scale(dtdx, operands.shifted_first - first)
+        if second_present:
+            return part_products.scale(-dtdx, operands.shifted_second - second)
+        zero = first.copy()
+        zero[...] = 0
+        return zero
     xp = scratch.xp
-    first = operands.first
-    # The four operands share the field storage dtype in every configuration the
-    # engine steps; the promotion call is kept for the case that stops being true, but
-    # it is not paid six times a step to learn that they already agree.
+    used = ((first, operands.shifted_first) if first_present else ()) \
+        + ((second, operands.shifted_second) if second_present else ())
+    # The operands share the field storage dtype in every configuration the engine
+    # steps; the promotion call is kept for the case that stops being true, but it is
+    # not paid six times a step to learn that they already agree.
     dtype = first.dtype
-    if not (operands.shifted_first.dtype == dtype and operands.second.dtype == dtype
-            and operands.shifted_second.dtype == dtype):
-        dtype = xp.result_type(operands.shifted_first, first,
-                               operands.second, operands.shifted_second)
+    if not all(array.dtype == dtype for array in used):
+        dtype = xp.result_type(*used)
     total = scratch.take("curl", first.shape, dtype)
-    partial = scratch.take("curl_partial", first.shape, dtype)
-    xp.subtract(operands.shifted_first, operands.first, out=total)
-    xp.subtract(operands.second, operands.shifted_second, out=partial)
-    xp.add(total, partial, out=total)
-    xp.multiply(dtdx, total, out=total)  # Operand order kept as the expression had it.
+    if first_present and second_present:
+        xp.subtract(operands.shifted_first, first, out=total)
+        xp.add(total, second, out=total)
+        xp.subtract(total, operands.shifted_second, out=total)
+        part_products.scale(dtdx, total, out=total)
+    elif first_present:
+        xp.subtract(operands.shifted_first, first, out=total)
+        part_products.scale(dtdx, total, out=total)
+    elif second_present:
+        xp.subtract(operands.shifted_second, second, out=total)
+        part_products.scale(-dtdx, total, out=total)
+    else:
+        total[...] = 0
     return total
 
 
 def _curl(xp: Any, snapshot: Dict[str, Any], term: CurlTerm, dtdx: float,
           boundaries: Tuple[str, str, str], phases: BlochPhases,
-          parities: MirrorPhases, backward: bool,
+          parities: MirrorPhases, backward: bool, presence: Tuple[bool, bool],
           reflect_rows: FarReflectRows = (None, None, None),
           scratch: Any = None) -> Any:  # One component's dtdx-scaled curl.
-    """Return dtdx * (g1[i+s] - g1[i] + g2[i] - g2[i+s]) for one component.
+    """Return MEEP's dtdx-scaled curl for one component (:func:`_curl_from_operands`).
 
     ``backward`` selects MEEP's negated strides (s = -1, the D sub-step) over
     the forward ones (s = +1, the B sub-step). ``phases`` carries the per-axis
     Bloch wrap factor, None on an axis that wraps unphased; ``parities`` carries
-    the per-axis mirror phase, None on an axis with no plane; ``reflect_rows``
-    the stored row a folded PERIODIC axis's far face reflects from, None on
-    every other axis (:func:`_far_reflect_rows`).
+    the per-axis mirror phase, None on an axis with no plane; ``presence`` the
+    partner presence (:func:`curl_presence`); ``reflect_rows`` the stored row a
+    folded PERIODIC axis's far face reflects from, None on every other axis
+    (:func:`_far_reflect_rows`).
     """
     return _curl_from_operands(
         _curl_operands(xp, snapshot, term, boundaries, phases, parities, backward,
-                       reflect_rows, scratch=scratch),
+                       reflect_rows, scratch=scratch, gather=presence),
         dtdx,
+        presence,
         scratch=scratch,
     )
 
@@ -1768,7 +2421,7 @@ def _rolled(xp: Any, field: Any, shift: int, axis: int,
 
 
 def _shift_up(xp: Any, field: Any, axis: int, boundary: str,
-              phase: Optional[complex] = None, component: Optional[str] = None,
+              component: Optional[str] = None,
               mirror_phase: Optional[int] = None,
               reflect_row: Optional[int] = None,
               scratch: Any = None,
@@ -1804,17 +2457,15 @@ def _shift_up(xp: Any, field: Any, axis: int, boundary: str,
     zero is written anyway so the stencil states the boundary rather than inheriting
     it from an invariant maintained three functions away.
 
-    On a periodic axis the wrapped far face is the field one lattice vector up,
-    ``f(x + L)``, which under Bloch boundaries is ``bloch_phase * f(x)`` — so the
-    wrapped plane, and only that plane, is multiplied by ``phase``. ``phase`` is
-    None at k = 0 and the multiply is then skipped entirely rather than done
-    against ``1 + 0j``, which is what keeps k = 0 bit-identical to the plain
-    periodic engine.
+    On a periodic axis the wrapped far face is a plain roll, Bloch phase or not.
+    The shifted array has Yee shift 0 on the axis, so its stored cell 0 is MEEP's
+    OWNED top point ``lc + 2N`` wherever the axis carries a phase (the stored
+    window, :func:`_bloch_ghost_operand`), and the word one cell up from the top
+    stored cell ``lc + 2N - 2`` is exactly that owned word. The phase lands on the
+    UNSHIFTED operand's plane 0 instead.
     """
     shifted = _rolled(xp, field, -1, axis, scratch, scratch_tag)  # roll(f, -1)[i] = f[i+1].
     if boundary == PERIODIC:
-        if phase is not None:
-            _apply_bloch_phase(shifted, axis, -1, phase)
         return shifted
     if boundary == MIRROR and reflect_row is not None and component is not None:
         # Folded PERIODIC axis: the sample one past the stored top images stored
@@ -1822,8 +2473,8 @@ def _shift_up(xp: Any, field: Any, axis: int, boundary: str,
         # component's own parity about that plane (same plane phase as the
         # declared mirror — the transform is translation-then-reflection, and at
         # k = 0 the translation carries no factor).
-        shifted[_face(axis, -1)] = (_symmetry_phase(component, axis, mirror_phase)
-                                    * field[_face(axis, reflect_row)])
+        shifted[_face(axis, -1)] = part_products.scale(
+            _symmetry_phase(component, axis, mirror_phase), field[_face(axis, reflect_row)])
         return shifted
     if boundary in (MIRROR, METALLIC, CYL_AXIS):
         shifted[_face(axis, -1)] = 0
@@ -1832,7 +2483,6 @@ def _shift_up(xp: Any, field: Any, axis: int, boundary: str,
 
 
 def _shift_down(xp: Any, field: Any, axis: int, boundary: str, component: str,
-                phase: Optional[complex] = None,
                 mirror_phase: Optional[int] = None,
                 scratch: Any = None,
                 scratch_tag: str = "shift_down") -> Any:  # Neighbour below.
@@ -1855,21 +2505,22 @@ def _shift_down(xp: Any, field: Any, axis: int, boundary: str, component: str,
     on its own terms rather than depending on that mask for its validity, exactly as
     the mirror ghost is.
 
-    The periodic near face wraps *down* by one lattice vector, ``f(x - L)``, so it
-    carries the CONJUGATE of the up-going Bloch factor — MEEP's
-    ``locate_point_in_user_volume`` multiplies by ``conj(eikna[d])`` on exactly
-    this translation (boundaries.cpp). Taking the same factor in both directions
-    is the classic sign error: it leaves every magnitude plausible and moves only
-    the phase, which is what a band structure is made of.
+    The periodic near face is a plain roll, Bloch phase or not. Its consumer is a
+    component with Yee shift 0 on the axis, whose stored cell 0 is MEEP's owned top
+    point ``lc + 2N`` wherever the axis carries a phase (the stored window,
+    :func:`_bloch_ghost_operand`): one half cell down from there is the shifted
+    array's top stored cell ``lc + 2N - 1``, an owned word. The phase lands on the
+    UNSHIFTED operand's plane 0 instead, as ``eikna`` (the word above the window),
+    while the B side's reads below the window take ``conj(eikna)``; taking the same
+    factor in both directions is the classic sign error, which leaves every
+    magnitude plausible and moves only the phase.
     """
     shifted = _rolled(xp, field, 1, axis, scratch, scratch_tag)  # roll(f, +1)[i] = f[i-1].
     if boundary == PERIODIC:
-        if phase is not None:
-            _apply_bloch_phase(shifted, axis, 0, phase.conjugate())
         return shifted
     if boundary == MIRROR:
-        shifted[_face(axis, 0)] = (_symmetry_phase(component, axis, mirror_phase)
-                                   * _mirror_source(field, axis))
+        shifted[_face(axis, 0)] = part_products.scale(
+            _symmetry_phase(component, axis, mirror_phase), _mirror_source(field, axis))
         return shifted
     if boundary == METALLIC:
         shifted[_face(axis, 0)] = 0
@@ -1885,28 +2536,54 @@ def _shift_down(xp: Any, field: Any, axis: int, boundary: str, component: str,
         sign = -1.0 if component[1] in ("x", "y") else 1.0
         if mirror_phase is not None:
             sign *= mirror_phase
-        shifted[_face(axis, 0)] = sign * field[_face(axis, 0)]
+        shifted[_face(axis, 0)] = part_products.scale(sign, field[_face(axis, 0)])
         return shifted
     raise ValueError(f"unknown boundary condition {boundary!r} on axis {AXIS_NAMES[axis]}")
 
 
-def _apply_bloch_phase(shifted: Any, axis: int, index: int, phase: complex) -> None:  # Phase one wrapped plane.
-    """Multiply the single wrapped plane of a rolled array by its Bloch factor, in place.
+def _bloch_ghost_operand(xp: Any, field: Any, axis: int, boundary: str,
+                         phase: Optional[complex], below: bool, scratch: Any = None,
+                         scratch_tag: str = "bloch_ghost") -> Any:  # Same-index read across the window edge.
+    """A stencil operand read at the SAME stored index, with plane 0 as MEEP's not-owned word.
 
-    ``shifted`` is always a shift buffer — a fresh ``xp.roll`` or the pooled
-    equivalent (:func:`_rolled`) — so this never touches stored field state, and the
-    buffer is rewritten in full before its next use either way. Real storage cannot
-    carry the phase, and NumPy would
-    signal that as a casting error from the in-place multiply; it is checked here
-    instead so the message names the actual configuration problem.
+    THE STORED WINDOW. On an axis MEEP makes Bloch-periodic it OWNS, for a component
+    with Yee shift 0 there, the points ``lc + 2 .. lc + 2N``, and holds ``lc`` as a
+    not-owned word that ``step_boundaries`` fills from the owned ``lc + 2N``
+    (boundaries.cpp:203-230, step.cpp:171-221). This engine stores the same window:
+    stored cell 0 of a shift-0 component on a phased axis IS the owned top point
+    ``lc + 2N`` (:meth:`~.grid.Grid.wrap_count` states the rule for every positional
+    reader), and the shift-1 cells ``lc + 1 + 2i`` are owned by both. A read one
+    stored cell over is then always an owned word (:func:`_shift_up`,
+    :func:`_shift_down`: plain rolls); the reads that leave the window are the ones at
+    the SAME stored index across the half cell, on plane 0:
+
+    * ``below=True``: a shift-1 target reads its shift-0 neighbour half a cell down
+      (B's forward curl at cell 0 reads E at ``lc``): the not-owned word below the
+      window, ``conj(eikna)`` times stored cell 0;
+    * ``below=False``: a shift-0 target reads its shift-1 neighbour half a cell up
+      (D's backward curl at cell 0, which is ``lc + 2N``, reads H at ``lc + 2N + 1``):
+      the not-owned word above the window, ``eikna`` times stored cell 0.
+
+    The word is MEEP's: ``thephase = 1.0 * conj(eikna)`` (or ``* eikna``) in
+    ``complex<double>`` (``locate_point_in_user_volume``, boundaries.cpp:203-226),
+    connected by ``connect_phase`` -- a copy within 1e-13 of +1, a negation of -1,
+    else ``complex<realnum>(thephase) * word`` with every operation rounded on its own
+    (:func:`~.part_products.connect`). NumPy's complex multiply contracts on this
+    host and on x86-64, so it is not used.
+
+    Returns ``field`` itself when the axis wraps unphased or does not wrap; otherwise
+    a copy (pooled under ``scratch_tag``) -- the stored field is never written. Real
+    storage cannot carry a phase, which :func:`_bloch_phases` refuses before the
+    first curl.
     """
-    if shifted.dtype.kind != "c":
-        raise ValueError(
-            f"Bloch boundaries need complex fields: axis {AXIS_NAMES[axis]} carries phase "
-            f"{phase!r} but the field storage is {shifted.dtype}. Build the run with "
-            f"force_complex_fields=True, or use k_point = 0 on this axis."
-        )
-    shifted[_face(axis, index)] *= shifted.dtype.type(phase)
+    if phase is None or boundary != PERIODIC:
+        return field
+    eikna = complex(phase)
+    factor = (eikna.real, -eikna.imag) if below else (eikna.real, eikna.imag)
+    thephase = cmul((1.0, 0.0), factor)
+    out = field.copy() if scratch is None else scratch.copy_of(scratch_tag, field)
+    out[_face(axis, 0)] = part_products.connect(field[_face(axis, 0)], thephase)
+    return out
 
 
 def _mask_non_owned_cells(curl: Any, grid: "Grid", iyee: Tuple[int, int, int]) -> None:  # Drop unowned cells.
@@ -1973,13 +2650,179 @@ def _apply_pml_update(field: Any, curl: Any, kms: Any, sinv: Any,
     never overlaps this one.
     """
     fu_previous = fu.copy() if scratch is None else scratch.copy_of("previous", fu)
-    fu *= kms
+    part_products.scale(kms, fu, out=fu)
     fu -= curl
-    fu *= sinv
-    field *= kms_u
+    part_products.scale(sinv, fu, out=fu)
+    part_products.scale(kms_u, field, out=field)
     field += fu
     field -= fu_previous
-    field *= sinv_u
+    part_products.scale(sinv_u, field, out=field)
+
+
+def _apply_dsig_only_update(field: Any, curl: Any, kms: Any, sinv: Any) -> None:  # Q: no auxiliary.
+    """Run MEEP's dsig-only curl form in place: ``f = ((kms * f) - curl) * sinv``.
+
+    step_generic.cpp:183, the branch of a chunk that carries the dsig layer and not
+    the dsigu one. Where the chunk carries neither, MEEP runs plain ``f - curl``
+    (:104); with ``kms = sinv = 1.0f`` exactly — every coefficient outside its chunk,
+    the region plan's precondition — this IS that word: ``1*x`` and ``x*1`` are exact
+    in IEEE-754, signed zero and subnormals included. So one form covers every cell
+    outside the dsigu chunks, and it reads and writes the field alone. Multiplication
+    operand order is free (IEEE multiplication is commutative), so ``f *= kms`` is
+    MEEP's ``kms * f``; on complex storage each product runs per part
+    (:func:`~.part_products.scale`).
+    """
+    part_products.scale(kms, field, out=field)
+    field -= curl
+    part_products.scale(sinv, field, out=field)
+
+
+def _region_plan(fields: "Fields", pml: "PML") -> Any:
+    """The :class:`~.chunk_map.RegionPlan` this run steps its PML forms with.
+
+    The one the driver installed (:meth:`~.fields.Fields.install_region_plan`, built
+    from its chunk division: the lifted simulation's own, or the one-rank default)
+    while it was built for this ``pml`` and grid; otherwise the one-rank division of
+    this grid and layer, built once and installed — the plan a caller stepping
+    ``Fields`` directly, with no driver, gets.
+    """
+    plan = fields.region_plan
+    if plan is not None and plan.pml is pml and plan.grid is fields.grid:
+        return plan
+    from .chunk_map import ChunkLayout, RegionPlan, region_backend  # noqa: PLC0415 - cycle
+
+    grid = fields.grid
+    plan = RegionPlan(ChunkLayout.one_rank(grid, pml), grid, pml, backend=region_backend(grid.xp))
+    fields.install_region_plan(plan)
+    return plan
+
+
+def _cut(array: Any, index: Tuple[Any, ...], axis: int) -> Any:
+    """``array[index]`` along ``axis`` — unless the array broadcasts there (a size-1 axis)."""
+    return array if array.shape[axis] == 1 else array[index]
+
+
+def _apply_curl_regions(plan: Any, component: str, field: Any, curl: Any, kms: Any, sinv: Any,
+                        kms_u: Any, sinv_u: Any, fu: Any, xp: Any, scratch: Any = None) -> None:
+    """One curl component's two forms, each on its own cells (the auxiliary contract).
+
+    The recurrence (:func:`_apply_pml_update`) on the cells whose chunk carries the
+    component's dsigu layer, the dsig-only form (:func:`_apply_dsig_only_update`)
+    everywhere else; ``fu`` keeps its word on every cell outside the recurrence's.
+    The plan's route decides how: ``split`` runs each form on views of its runs along
+    the dsigu axis; ``select`` and ``mask`` run both whole-grid, select the field on
+    the line or the full volume, and restore ``fu`` outside. All three store the same
+    word in every array (``test_region_dispatch.py``).
+    """
+    spec = plan.spec("curl", component)
+    mode = spec.mode
+    if mode == "outside_only":
+        _apply_dsig_only_update(field, curl, kms, sinv)
+        return
+    if mode == "inside_only":
+        _apply_pml_update(field, curl, kms, sinv, kms_u, sinv_u, fu, scratch=scratch)
+        return
+    axis = spec.axis
+    if mode == "split":
+        for start, stop in spec.inside:
+            index = _span(axis, start, stop)
+            _apply_pml_update(_cut(field, index, axis), _cut(curl, index, axis),
+                              _cut(kms, index, axis), _cut(sinv, index, axis),
+                              _cut(kms_u, index, axis), _cut(sinv_u, index, axis),
+                              _cut(fu, index, axis), scratch=scratch)
+        for start, stop in spec.outside:
+            index = _span(axis, start, stop)
+            _apply_dsig_only_update(_cut(field, index, axis), _cut(curl, index, axis),
+                                    _cut(kms, index, axis), _cut(sinv, index, axis))
+        return
+    # select / mask: both forms on the whole grid, then the outside cells take the
+    # dsig-only word and fu its previous one.
+    outside = plan.mask("curl", component, xp, outside=True)
+    dsig_only = field.copy() if scratch is None else scratch.copy_of("region_form", field)
+    _apply_dsig_only_update(dsig_only, curl, kms, sinv)
+    kept = fu.copy() if scratch is None else scratch.copy_of("region_aux", fu)
+    _apply_pml_update(field, curl, kms, sinv, kms_u, sinv_u, fu, scratch=scratch)
+    xp.copyto(field, dsig_only, where=outside)
+    xp.copyto(fu, kept, where=outside)
+
+
+def _apply_constitutive_regions(plan: Any, component: str, field: Any, source: Any, kps: Any,
+                                kms: Any, fw: Any, xp: Any, scratch: Any = None) -> None:
+    """One constitutive component's two forms, each on its own cells (the auxiliary contract).
+
+    The accumulation (:func:`_apply_constitutive_pml`) on the cells whose chunk
+    carries the component's own (dsigw) layer; ``f = src`` everywhere else —
+    ``H = B``, ``E = (D - P) * chi1inv`` — MEEP's plain constitutive
+    (update_eh.cpp:162-170; in a chunk without dsigw MEEP's H IS B's storage,
+    fields.cpp:485-494). ``f_w`` keeps its word outside. Routes as
+    :func:`_apply_curl_regions`.
+    """
+    spec = plan.spec("constitutive", component)
+    mode = spec.mode
+    if mode == "outside_only":
+        field[...] = source
+        return
+    if mode == "inside_only":
+        _apply_constitutive_pml(field, source, kps, kms, fw, scratch=scratch)
+        return
+    axis = spec.axis
+    if mode == "split":
+        for start, stop in spec.inside:
+            index = _span(axis, start, stop)
+            _apply_constitutive_pml(_cut(field, index, axis), _cut(source, index, axis),
+                                    _cut(kps, index, axis), _cut(kms, index, axis),
+                                    _cut(fw, index, axis), scratch=scratch)
+        for start, stop in spec.outside:
+            index = _span(axis, start, stop)
+            field[index] = _cut(source, index, axis)
+        return
+    # select / mask. The accumulation leaves f_w == src on every cell, so the outside
+    # cells take their field word from f_w BEFORE f_w is restored: ``source`` itself
+    # may be a pooled buffer the accumulation's own product reused.
+    outside = plan.mask("constitutive", component, xp, outside=True)
+    kept = fw.copy() if scratch is None else scratch.copy_of("region_aux", fw)
+    _apply_constitutive_pml(field, source, kps, kms, fw, scratch=scratch)
+    xp.copyto(field, fw, where=outside)
+    xp.copyto(fw, kept, where=outside)
+
+
+def separate_h_from_b(fields: "Fields", pml: "PML") -> None:
+    """MEEP's start of H and its ``f_w``: copies of B, on the dsigw cells, at the first ``update_H``.
+
+    MEEP allocates no H array at first: ``alloc_f`` points H at B's storage
+    (fields.cpp:485-494). The first ``update_eh(H_stuff)`` in a chunk that carries
+    H's own layer then allocates H as a COPY of B and ``f_w`` as a copy of that H
+    (update_eh.cpp:165-177) — after ``step_db(B)`` and ``step_source(B)``, so a
+    magnetic current deposited inside the layer before that first update is in both.
+    This engine allocates H and ``f_w`` at zero; the two starts agree wherever B is
+    zero at that moment, and differ where a magnetic source has already written B in
+    a dsigw cell whose ``kms`` is not 1 (MEASURED by phase 0's P0-f, the in-layer
+    magnetic cases: the copy start reproduces MEEP's step-1 H word 4 of 4 where the
+    zero start reproduces 0 of 4).
+
+    Runs once per run: :attr:`~.fields.Fields.h_separated` records that it has. A
+    state seeded mid-run (a capsule, a test's random volumes) carries ``True``.
+    Elsewhere H is B's word on every step anyway (:func:`_apply_constitutive_regions`).
+    """
+    if fields.h_separated:
+        return
+    plan = _region_plan(fields, pml)
+    xp = fields.grid.xp
+    for component, source, _axis in H_CONSTITUTIVE_TERMS:
+        mode = plan.spec("constitutive", component).mode
+        if mode == "outside_only":
+            continue
+        field = getattr(fields, component)
+        fw = getattr(fields, "f_w_" + component)
+        magnetic = getattr(fields, source)
+        if mode == "inside_only":
+            field[...] = magnetic
+            fw[...] = magnetic
+            continue
+        inside = plan.mask("constitutive", component, xp)
+        xp.copyto(field, magnetic, where=inside)
+        xp.copyto(fw, magnetic, where=inside)
+    fields.h_separated = True
 
 
 def _apply_conductive_update(field: Any, curl: Any, condfac: Any, condinv: Any) -> None:  # Lossy D, no PML.
@@ -1993,9 +2836,9 @@ def _apply_conductive_update(field: Any, curl: Any, condfac: Any, condinv: Any) 
     rather than the textbook ``sigma * E``, so it differs from the usual electric
     conductivity by a factor of epsilon (doc/docs/Materials.md).
     """
-    field *= condfac
+    part_products.scale(condfac, field, out=field)
     field -= curl
-    field *= condinv
+    part_products.scale(condinv, field, out=field)
 
 
 def _apply_conductive_pml_update(
@@ -2010,102 +2853,138 @@ def _apply_conductive_pml_update(
     sinv_u: Any,
     fu: Any,
     f_cond: Any,
+    *,
+    dsig_active: Any,
+    dsigu_active: Any,
+    conductive: Any,
     scratch: Any = None,
 ) -> None:
-    """Run MEEP's most-general conductivity + two-axis PML curl recurrence.
+    """Run MEEP's ``step_curl`` for a component that carries a conductivity, under a PML.
 
-    ``step_generic.cpp::step_curl`` updates three histories in order::
+    ``step_generic.cpp::step_curl`` picks one of eight forms per structure chunk, from
+    three per-chunk facts: whether the chunk carries the dsig layer and the dsigu layer
+    (``sigsize[d] > 1``, step_db.cpp:56-59) and whether it keeps a conductivity array
+    for the component (``s->conductivity[c][d]`` is NULL in a chunk whose sampled
+    conductivity is all zero, structure.cpp:883-900). ``X`` is the curl as handed in
+    (``dtdx`` applied), ``cf = condfac``, ``ci = condinv``; every operation rounds to
+    float32 in this order:
 
-        f_cond <- (condfac*f_cond - curl) * condinv
-        f_u    <- (kms*f_u + f_cond - f_cond_previous) * sinv
-        f      <- (kms_u*f + f_u - f_u_previous) * sinv_u
+    * conductive, dsig and dsigu (:200-210)::
 
-    ``condinv`` contains the material conductivity only, exactly as the
-    ``step_db.cpp`` call site passes ``s->condinv[component][direction]``.
-    MEEP partitions a chunk according to whether each of the two transverse
-    PML conductivities is active. The four spatial cases below preserve those
-    semantics; simply substituting identity coefficients into the general
-    recurrence is not equivalent after a source has been injected into D.
+          fcnd' = ((cf * fcnd) - X) * ci
+          fu'   = ((kms * fu) + (fcnd' - fcnd)) * sinv
+          f'    = (((kms_u * f) + fu') - fu) * sinv_u
 
-    THIS IS THE ENGINE'S MOST EXPENSIVE CURL and it is reached by any run combining a
-    material conductivity with a PML — an ``mp.Absorber`` beside a layer, a lossy
-    medium anywhere in a PML cell. Measured on a 640x640 cell against the same cell
-    with a lossless medium: 19.2-21.4 Mcell-steps/s against 56.7, i.e. ~2.7x the plain
-    PML recurrence, because it evaluates all four of MEEP's subchunk cases everywhere
-    and selects. Two things paid for that beyond the arithmetic, and both are removed
-    here without changing a single selected value:
+    * conductive, dsig only (:160-168): ``fcnd'`` as above, then
+      ``f' = ((kms * f) + (fcnd' - fcnd)) * sinv``;
+    * conductive, dsigu only (:112-119): ``fu' = ((cf * fu) - X) * ci``, then ``f'`` as in
+      the first form;
+    * conductive, neither (:84-90): ``f' = ((cf * f) - X) * ci``;
+    * a chunk with no conductivity: the non-conductive forms, :func:`_apply_pml_update`
+      where the chunk carries dsigu and :func:`_apply_dsig_only_update` elsewhere
+      (:104, :138-141, :182-183, :231-234) -- the one transcription of each the
+      lossless curl uses.
 
-      * FIVE full-volume ``.copy()`` calls per curl term per step. They now come from
-        the :class:`~.fields.StepScratch` pool, under tags of their own — ``previous``
-        and the curl/stencil tags are live on this path, so they cannot be shared.
-      * THREE ``xp.where`` results, each a fresh full volume read twice and written
-        once, to overwrite a selection of cells in an array that already holds the
-        other branch. ``copyto(dst, src, where=mask)`` states the same selection and
-        allocates nothing. The masks are the same broadcast booleans as before, so
-        every cell takes the value it took, bit for bit.
+    The increment ``(fcnd' - fcnd)`` is formed FIRST and then added: MEEP's grouping
+    (:167, :209). ``((kms * x) + fcnd') - fcnd`` is a different float32 number.
+
+    Where a chunk without conductivity does not carry dsig, its forms and the
+    conductive ones store the same word: every sample of such a chunk is zero, so
+    ``cf = ci = 1.0`` exactly and ``((1 * x) - X) * 1`` is ``x - X``. Where it carries
+    dsig they differ, because the conductive form runs the ``f_cond`` stage --
+    ``(fcnd - X) - fcnd`` is not ``-X`` in float32. So the chunk's conductivity decides
+    the word only on dsig cells, and the selection below follows MEEP's chunk
+    structure on every cell anyway.
+
+    THE MEMBERSHIPS ARE DATA. ``dsig_active`` / ``dsigu_active`` are the chunk
+    memberships of the two layers on this component's lattice (the run's
+    :class:`~.chunk_map.RegionPlan`; broadcastable bool lines or full volumes), and
+    ``conductive`` is the plan's per-cell volume of the chunks that keep the
+    component's conductivity, or ``None`` when every chunk keeps it. A chunk that
+    carries a layer owns cells whose own sigma is exactly zero, and a chunk that keeps
+    a conductivity owns cells whose own conductivity is zero.
+
+    THE AUXILIARY CONTRACT: ``fu`` is written only on the dsigu cells and ``f_cond``
+    only on the dsig cells of the chunks that keep a conductivity -- the cells whose
+    form reads them -- and both keep their words everywhere else.
+
+    THIS IS THE ENGINE'S MOST EXPENSIVE CURL, reached by any run combining a material
+    conductivity with a PML. It evaluates every form on the whole volume and selects
+    with ``copyto(..., where=mask)``, which allocates nothing; the full-volume
+    temporaries come from the :class:`~.fields.StepScratch` pool under tags of their
+    own (``previous`` and the curl/stencil tags are live on this path). Where some
+    chunk keeps no conductivity the two non-conductive forms run as well, on copies.
     """
     def _copy(tag: str, array: Any) -> Any:
         return array.copy() if scratch is None else scratch.copy_of(tag, array)
 
-    # MEEP partitions a chunk by which transverse PML directions are active and
-    # selects one of four special cases. They are not interchangeable after source
-    # injection: the source is written into D, never into f_cond or f_u. The four
-    # masks are broadcast-shaped (one entry per plane of the PML axis), not volumes,
-    # so they are rebuilt per call rather than cached against a PML that may be
-    # replaced under a live Fields.
-    dsig_active = (kms != 1.0) | (sinv != 1.0)
-    dsigu_active = (kms_u != 1.0) | (sinv_u != 1.0)
     dsig_inactive = xp.logical_not(dsig_active)
     dsigu_inactive = xp.logical_not(dsigu_active)
+
+    # The chunks with no conductivity: the non-conductive forms, on copies, before the
+    # conductive ones overwrite anything they read.
+    plain_field = plain_fu = None
+    if conductive is not None:
+        plain_field = _copy("cond_plain_field", field)
+        plain_fu = _copy("cond_plain_fu", fu)
+        _apply_pml_update(plain_field, curl, kms, sinv, kms_u, sinv_u, plain_fu, scratch=scratch)
+        dsig_only = _copy("cond_plain_dsig_only", field)
+        _apply_dsig_only_update(dsig_only, curl, kms, sinv)
+        xp.copyto(plain_field, dsig_only, where=dsigu_inactive)
+
     field_previous = _copy("cond_field_previous", field)
-    f_cond_previous = _copy("cond_f_cond_previous", f_cond)
     fu_previous = _copy("cond_fu_previous", fu)
 
-    # Conductive curl history for cases where the first PML direction is active.
-    f_cond *= condfac
-    f_cond -= curl
-    f_cond *= condinv
+    scale = part_products.scale  # Every product below is a realnum times a field, per part.
 
-    # If only the second PML direction is active, MEEP applies conductivity to f_u
-    # directly. If both are active, f_u absorbs the increment of f_cond.
-    fu_conductive = _copy("cond_fu_conductive", fu_previous)
-    fu_conductive *= condfac
-    fu_conductive -= curl
-    fu_conductive *= condinv
-    fu *= kms
-    fu += f_cond
-    fu -= f_cond_previous
-    fu *= sinv
-    xp.copyto(fu, fu_conductive, where=dsig_inactive)
+    # The conductive stage: fcnd' = ((cf * fcnd) - X) * ci, and its increment
+    # (fcnd' - fcnd_prev), formed before it is added anywhere.
+    f_cond_next = _copy("cond_f_cond_next", f_cond)
+    scale(condfac, f_cond_next, out=f_cond_next)
+    f_cond_next -= curl
+    scale(condinv, f_cond_next, out=f_cond_next)
+    increment = _copy("cond_increment", f_cond_next)
+    increment -= f_cond
 
-    # Cases with the second PML direction active consume the selected f_u update.
-    field *= kms_u
+    # fu: ((kms * fu) + increment) * sinv where dsig is carried, ((cf * fu) - X) * ci
+    # where only dsigu is.
+    fu_dsigu_only = _copy("cond_fu_dsigu_only", fu_previous)
+    scale(condfac, fu_dsigu_only, out=fu_dsigu_only)
+    fu_dsigu_only -= curl
+    scale(condinv, fu_dsigu_only, out=fu_dsigu_only)
+    scale(kms, fu, out=fu)
+    fu += increment
+    scale(sinv, fu, out=fu)
+    xp.copyto(fu, fu_dsigu_only, where=dsig_inactive)
+
+    # f where dsigu is carried: (((kms_u * f) + fu') - fu_prev) * sinv_u.
+    scale(kms_u, field, out=field)
     field += fu
     field -= fu_previous
-    field *= sinv_u
+    scale(sinv_u, field, out=field)
 
-    # With only the first direction active, D absorbs f_cond directly.
-    first_only = _copy("cond_first_only", field_previous)
-    first_only *= kms
-    first_only += f_cond
-    first_only -= f_cond_previous
-    first_only *= sinv
+    # f where only dsig is carried: ((kms * f) + increment) * sinv.
+    dsig_form = _copy("cond_dsig_form", field_previous)
+    scale(kms, dsig_form, out=dsig_form)
+    dsig_form += increment
+    scale(sinv, dsig_form, out=dsig_form)
 
-    # With neither direction active, D itself takes the ordinary conductive step.
+    # f where neither is: ((cf * f) - X) * ci.
     direct = field_previous
-    direct *= condfac
+    scale(condfac, direct, out=direct)
     direct -= curl
-    direct *= condinv
+    scale(condinv, direct, out=direct)
 
-    # The two-way selection the nested `where` expressed: keep the split-recurrence
-    # result wherever dsigu is active, and otherwise take `first_only` or `direct`.
-    # Both sources are read-only here, so writing into `field` in two passes cannot
-    # see its own output.
-    xp.copyto(field, first_only, where=dsigu_inactive & dsig_active)
+    xp.copyto(field, dsig_form, where=dsigu_inactive & dsig_active)
     xp.copyto(field, direct, where=dsigu_inactive & dsig_inactive)
-    # Histories do not exist in MEEP's inactive subchunks. Preserve their prior
-    # values there so a diagnostic read cannot mistake unused arithmetic for state.
-    xp.copyto(f_cond, f_cond_previous, where=dsig_inactive)
+    if conductive is not None:
+        not_conductive = xp.logical_not(conductive)
+        xp.copyto(field, plain_field, where=not_conductive)
+        xp.copyto(fu, plain_fu, where=not_conductive)
+        xp.copyto(f_cond, f_cond_next, where=conductive & dsig_active)
+    else:
+        xp.copyto(f_cond, f_cond_next, where=dsig_active)
+    # fu keeps its word outside the dsigu cells, on either kind of chunk.
     xp.copyto(fu, fu_previous, where=dsigu_inactive)
 
 
@@ -2119,28 +2998,31 @@ def _apply_constitutive_pml(field: Any, source: Any, kps: Any, kms: Any, fw: Any
         fw[i] = g[i] * u[i];                   // B for H, D*inv_eps for E
         f[i] += (kapwkw + sigwkw) * fw[i] - (kapwkw - sigwkw) * fwprev;
 
+    (step_generic.cpp:689, :697). The right-hand side is formed first, so the update is
+    ``f + ((kps * fw) - (kms * fwprev))``: the two products, their difference, then one
+    add into ``f``. ``(f + kps * fw) - kms * fwprev`` is a different float32 number.
+
     The expression form allocates THREE full-volume temporaries per component per
     step — the ``fwprev`` copy and the two coefficient products — and ran second in
     the profile at 22% of a 2-D PML step. With a :class:`~.fields.StepScratch` all
     three come from the pool: ``previous`` for the copy (shared with
-    :func:`_apply_pml_update`, whose sub-step never overlaps this one) and
-    ``constitutive`` for the product, which is formed, consumed and re-formed within
-    this call.
+    :func:`_apply_pml_update`, whose sub-step never overlaps this one), which then
+    takes ``kms * fwprev`` in place, and ``constitutive`` for ``kps * fw`` and the
+    difference.
     """
     if scratch is None:
         fw_previous = fw.copy()
         fw[...] = source
-        field += kps * fw
-        field -= kms * fw_previous
+        field += part_products.scale(kps, fw) - part_products.scale(kms, fw_previous)
         return
     xp = scratch.xp
     fw_previous = scratch.copy_of("previous", fw)
     fw[...] = source
     product = scratch.take("constitutive", fw.shape, xp.result_type(kps, fw))
-    xp.multiply(kps, fw, out=product)
+    part_products.scale(kps, fw, out=product)
+    part_products.scale(kms, fw_previous, out=fw_previous)
+    xp.subtract(product, fw_previous, out=product)
     field += product
-    xp.multiply(kms, fw_previous, out=product)
-    field -= product
 
 
 def _boundary_kinds(grid: "Grid", pml: Optional["PML"]) -> Tuple[str, str, str]:  # Ghost rule per axis.
@@ -2447,7 +3329,7 @@ def _read_component(fields: "Fields", name: str) -> Any:  # Fetch E or H from st
         inverse = fields.inverse_epsilon_for(name)
         target = scratch.take("snapshot_" + name, displacement.shape,
                               scratch.xp.result_type(displacement, inverse))
-        scratch.xp.multiply(displacement, inverse, out=target)
+        part_products.scale(inverse, displacement, out=target)
         return target
     if name in ("Hx", "Hy", "Hz"):
         return fields.get_H(name)

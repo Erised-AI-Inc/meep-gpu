@@ -15,19 +15,25 @@ product that spans that cell, and it is the LAST buildable, unbuilt seam-instanc
 in the Triton column of the fusion board.
 
 ===========================================================================
-THE SEAM IS EMPTY, AND THAT IS THE WHOLE REASON THIS PRODUCT EXISTS
+THE SEAM CARRIES NOTHING THE RECURRENCE READS, AND THAT IS WHY THIS PRODUCT EXISTS
 ===========================================================================
 
 ``FdtdDriver.step`` runs::
 
     if fast is None or not fast.dispatch("update_E", self.fields):
-        update_E(self.fields, self.pml)                       # driver.py:3303-3304
+        update_E(self.fields, self.pml)
+    f_minus_p_end(self.fields, f_minus_p_D)
     if fast is None or not fast.dispatch("update_P", self.fields):
-        update_P(self.fields, self.pml)                       # driver.py:3305-3306
+        update_P(self.fields, self.pml)
 
-Nothing sits between them: no source injection, no mirror fill, no wall clear, no
-far-ghost pass. Every other seam on this board has a driver pass inside it that a
-fused kernel must carry inline or refuse; this one has none, which is why the
+The one statement between them is the electric ``f_minus_p`` restore
+(``sources.f_minus_p_end``): it puts back the D words an integrated electric source
+replaced and re-runs D's boundary passes, so it writes D (and D's ghost and wall cells)
+ALONE. ``update_P`` reads the polarizations, sigma and MEEP's drive ``w`` (the stored E
+or ``f_w``, ``Fields.drive_field``) and never D, so a launch that forms E and then P
+before the restore leaves every word the driver's order leaves: no injection, no mirror
+fill of E, no wall clear of E, no far-ghost pass of E sits in the seam. Every other seam
+on this board has a driver pass inside it that a fused kernel must carry inline or refuse; this one has none, which is why the
 fusion matrices record ``E->P: 15 instances, 0 blocked by the source seam,
 CEILING 15``.
 
@@ -189,7 +195,7 @@ FAMILY = "folded_offdiag_fused_ade_chain"
 KERNEL_NAME = "folded_offdiag_fused_ade_chain_step"
 
 #: The driver passes one run of this plan performs, in driver order
-#: (driver.py:3303-3306). Declared rather than inferred from a slot name.
+#: (FdtdDriver.step). Declared rather than inferred from a slot name.
 REPLACES: Tuple[str, ...] = ("update_E", "update_P")
 
 #: The census cell this product spans: the E-half arm label the planner writes
@@ -248,16 +254,17 @@ INSTALLABLE_REASON = (
     "driven this product end to end through plan_step")
 
 #: Runtime (non-constexpr) parameters :func:`folded_offdiag_fused_ade_chain_step`
-#: declares: the certified body's fifty-five (three targets, three auxiliaries,
+#: declares: the certified body's fifty-seven (three targets, three auxiliaries,
 #: three sources, three inverse epsilons, twenty-four pole slots, six row
-#: slots, six PML coefficient columns, three ghost weights, four geometry
-#: scalars) followed by six ADE arguments per live slot per component. Asserted
+#: slots, six PML coefficient columns, three ghost weights, the chunk record, the
+#: row presence, four geometry scalars) followed by seven ADE arguments per slot
+#: per component (output, history, sigma and MEEP's four update_P words). Asserted
 #: against the kernel's OWN signature by the laptop test and against the
 #: assembled argument list at EVERY launch, so a signature edit that the
 #: launcher does not follow fails at the call rather than binding the wrong
 #: pointer to the wrong slot.
-RUNTIME_ARGUMENTS = (3 + 3 + 3 + 3 + 3 * MAX_POLES + 6 + 6 + 3 + 4
-                     + 3 * 6 * CHAIN_MAX_POLES)
+RUNTIME_ARGUMENTS = (3 + 3 + 3 + 3 + 3 * MAX_POLES + 6 + 6 + 3 + 2 + 4
+                     + 3 * 7 * CHAIN_MAX_POLES)
 
 #: THE SIX EDITS THIS MODULE MAKES TO THE TEXT IT LIFTS, and nothing else. Each
 #: ``line`` is a needle in the certified source it came from (the folded
@@ -273,8 +280,8 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "under one name, so the lifted body is compiled under its own."},
     {"line": "nx, ny, nz, n_elem,\n        NP0: tl.constexpr,",
      "became": "nx, ny, nz, n_elem,\n        p_out_a0,",
-     "why": "THE SIGNATURE SPLICE. The ADE runtime block (p_out, p_prev, sigma, "
-            "cnow, cprev, cdrive per slot per component) is spliced AFTER "
+     "why": "THE SIGNATURE SPLICE. The ADE runtime block (p_out, p_prev, sigma "
+            "and MEEP's four update_P words per slot per component) is spliced AFTER "
             "n_elem and the SV_* constexprs AFTER BLOCK, so the certified "
             "runtime names and the certified constexpr names are each a PREFIX "
             "of the fused lists. No arithmetic lives in a signature, and p_now "
@@ -292,11 +299,12 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "the dropped bound is the same number the certified kernel used."},
     {"line": "w = tl.load(drive + idx, mask=live, other=0.0)",
      "became": "w = src0",
-     "why": "THE SEAM. update_P's drive is fields.drive_field(c), which under an "
-            "active layer IS f_w_<c> (fields.py:1160-1162) -- the word "
-            "tl.store(w{c} + idx, src{c}, mask=live) just stored from this "
-            "register, and a float32 word stored and reloaded is the identity "
-            "on the bits. One register per component: w = src0, src1, src2."},
+     "why": "THE SEAM. update_P's drive is fields.drive_field(c), MEEP's w per "
+            "chunk: f_w_<c> on the layer's chunks, the stored E elsewhere -- the "
+            "words this launch just stored from this register (into f_w on the "
+            "accumulation's cells, as the field everywhere else), and a float32 "
+            "word stored and reloaded is the identity on the bits. One register "
+            "per component: w = src0, src1, src2."},
     {"line": "p = tl.load(p_now + idx, mask=live, other=0.0)",
      "became": "p = tl.load(a0 + idx, mask=live, other=0.0)",
      "why": "A RE-READ THROUGH THE ONCE-BOUND POINTER, not the chain's register "
@@ -306,17 +314,18 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "outputs are scratches), so the re-read sees the pre-step P that "
             "p_now is; the chain gate measured reload-vs-register as a null."},
     {"line": "tl.store(p_out + idx,\n"
-             "             ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)), "
-             "mask=live)",
+             "             gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + "
+             "(omega0dtsqr * (s * w))),\n             mask=live)",
      "became": "tl.store(p_out_a0 + idx,\n"
-               "                     ((p * c_now) + (c_prev * q)) + (c_drive * "
-               "(s * w)),\n                     mask=live)",
+               "                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) "
+               "+ (omega0dtsqr * (s * w))),\n                     mask=live)",
      "why": "THE PER-SLOT RENAMES. p_out/p_prev/sigma become p_out_{L}{k}/"
-            "p_prev_{L}{k}/sigma_{L}{k}, the scalar triple is rebound as "
-            "c_now = cnow_{L}{k} (and c_prev, c_drive) so the arithmetic line is "
-            "character for character ade_update_p's, the SIGMA_IS_VOLUME arm "
-            "becomes if SV_{L}{k}:, and each arm sits under if NP{c} > k: -- one "
-            "arm per (component, slot), the chain's spelling."},
+            "p_prev_{L}{k}/sigma_{L}{k}, MEEP's four words are rebound as "
+            "two_minus_od = two_minus_od_{L}{k} (and gamma1, omega0dtsqr, "
+            "gamma1inv) so the arithmetic line is character for character "
+            "ade_update_p's, the SIGMA_IS_VOLUME arm becomes if SV_{L}{k}:, and "
+            "each arm sits under if NP{c} > k: -- one arm per (component, slot), "
+            "the chain's spelling."},
 )
 
 
@@ -346,37 +355,50 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
     PERIODIC = tl.constexpr(_fod.CODE_PERIODIC)
     METALLIC = tl.constexpr(_fod.CODE_METALLIC)
     MIRROR_ROW = tl.constexpr(_fod.MIRROR_SOURCE_INDEX)
-    # Direct global bindings, the mechanism the E half itself uses for
-    # `_masked_row_sum`: a called JIT function is resolved from the defining
-    # module's globals, and a module-attribute call is not a frontend contract
-    # this package asks Triton to carry.
-    _masked_row_sum = _folded._masked_row_sum
+    PRESENCE_LINES = tl.constexpr(_offdiag.PRESENCE_MASK_WORDS)
+    # Direct global bindings, the mechanism the E half itself uses: a called JIT
+    # function is resolved from the defining module's globals, and a module-
+    # attribute call is not a frontend contract this package asks Triton to carry.
     _load_d_minus_p = _fod._load_d_minus_p
     _folded_dispersive_term = _fod._folded_dispersive_term
+    from .forms import constitutive_form, record_in  # noqa: E402
+    from .kernels import RECORD_HALF_INTEGER  # noqa: E402
+    from .offdiag_update_e import _row_add  # noqa: E402
 
     @triton.jit
     def folded_offdiag_fused_ade_chain_step(
-        f0, f1, f2,
-        w0, w1, w2,
-        g0, g1, g2,
-        e0, e1, e2,
-        a0, a1, a2, a3, a4, a5, a6, a7,
-        b0, b1, b2, b3, b4, b5, b6, b7,
-        c0, c1, c2, c3, c4, c5, c6, c7,
-        u01, u02, u11, u12, u21, u22,
-        kp0, km0, kp1, km1, kp2, km2,
-        gwx, gwy, gwz,
+        f0, f1, f2,                     # targets:      Ex, Ey, Ez             (in/out)
+        w0, w1, w2,                     # auxiliaries:  f_w_Ex, f_w_Ey, f_w_Ez (in/out)
+        g0, g1, g2,                     # sources:      Dx, Dy, Dz             (read-only)
+        e0, e1, e2,                     # inverse-epsilon VOLUMES (three distinct or aliased)
+        a0, a1, a2, a3, a4, a5, a6, a7,   # component 0's poles, IN ORDER
+        b0, b1, b2, b3, b4, b5, b6, b7,   # component 1's poles, IN ORDER
+        c0, c1, c2, c3, c4, c5, c6, c7,   # component 2's poles, IN ORDER
+        u01, u02,                       # row Ex: partner Ey (down y), partner Ez (down z)
+        u11, u12,                       # row Ey: partner Ez (down z), partner Ex (down x)
+        u21, u22,                       # row Ez: partner Ex (down x), partner Ey (down y)
+        kp0, km0, kp1, km1, kp2, km2,   # kps/kms on each component's OWN axis, half-integer
+        gwx, gwy, gwz,                  # RUNTIME mirror ghost weights, exactly +1.0 / -1.0
+        cb,                             # chunk record: each component's dsigw membership
+        op,                             # off-diagonal presence: slot masks, segment lines
         nx, ny, nz, n_elem,
         p_out_a0, p_out_a1, p_prev_a0, p_prev_a1, sigma_a0, sigma_a1,
-        cnow_a0, cnow_a1, cprev_a0, cprev_a1, cdrive_a0, cdrive_a1,
+        two_minus_od_a0, two_minus_od_a1, gamma1_a0, gamma1_a1,
+        omega0dtsqr_a0, omega0dtsqr_a1, gamma1inv_a0, gamma1inv_a1,
         p_out_b0, p_out_b1, p_prev_b0, p_prev_b1, sigma_b0, sigma_b1,
-        cnow_b0, cnow_b1, cprev_b0, cprev_b1, cdrive_b0, cdrive_b1,
+        two_minus_od_b0, two_minus_od_b1, gamma1_b0, gamma1_b1,
+        omega0dtsqr_b0, omega0dtsqr_b1, gamma1inv_b0, gamma1inv_b1,
         p_out_c0, p_out_c1, p_prev_c0, p_prev_c1, sigma_c0, sigma_c1,
-        cnow_c0, cnow_c1, cprev_c0, cprev_c1, cdrive_c0, cdrive_c1,
+        two_minus_od_c0, two_minus_od_c1, gamma1_c0, gamma1_c1,
+        omega0dtsqr_c0, omega0dtsqr_c1, gamma1inv_c0, gamma1inv_c1,
         NP0: tl.constexpr, NP1: tl.constexpr, NP2: tl.constexpr,
         R01: tl.constexpr, R02: tl.constexpr,
         R11: tl.constexpr, R12: tl.constexpr,
         R21: tl.constexpr, R22: tl.constexpr,
+        P01: tl.constexpr, P02: tl.constexpr,
+        P11: tl.constexpr, P12: tl.constexpr,
+        P21: tl.constexpr, P22: tl.constexpr,
+        PRESENCE: tl.constexpr,
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         MG_X: tl.constexpr, MG_Y: tl.constexpr, MG_Z: tl.constexpr,
         WM_X: tl.constexpr, WM_Y: tl.constexpr, WM_Z: tl.constexpr,
@@ -390,39 +412,28 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
 
         THE E HALF IS THE CERTIFIED BODY, CONTIGUOUS AND VERBATIM:
         ``folded_offdiag_dispersive_update_e.folded_offdiag_dispersive_
-        constitutive_step``, every statement in order, calling the same three
-        JIT helpers (``_load_d_minus_p``, ``_folded_dispersive_term``,
-        ``_masked_row_sum``) and comparing against the same three constexprs
-        (``PERIODIC``, ``METALLIC``, ``MIRROR_ROW``), all bound at this module's
-        scope to the certified modules' own objects. The ordered ``D - P0 -
-        P1 - ...`` subtraction happens INSIDE ``_load_d_minus_p`` at every
-        gathered address, which is why no pole register is visible here.
+        constitutive_step``, every statement in order, calling the same JIT helpers
+        (``_load_d_minus_p``, ``_folded_dispersive_term``, ``offdiag_update_e.
+        _row_add``, ``forms.record_in``, ``forms.constitutive_form``) and comparing
+        against the same constexprs (``PERIODIC``, ``METALLIC``, ``MIRROR_ROW``,
+        ``PRESENCE_LINES``, ``RECORD_HALF_INTEGER``), all bound at this module's scope
+        to the certified modules' own objects: MEEP's row in double with per-chunk
+        presence, and the per-chunk constitutive form keyed on the record ``cb``. The
+        ordered ``D - P0 - P1 - ...`` subtraction happens INSIDE ``_load_d_minus_p``
+        at every gathered address, which is why no pole register is visible here.
 
-        THE ADE HALF IS ``kernels.ade_update_p`` (kernels.py:693-727), one arm
-        per (component, pole slot), appended AFTER component 2's store so the
-        certified span is unbroken. Exactly two of its loads are replaced:
+        THE ADE HALF IS ``kernels.ade_update_p``, MEEP's expression on the four
+        realnum words, one arm per (component, pole slot), appended AFTER component
+        2's store so the certified span is unbroken. Exactly two of its loads are
+        replaced:
 
-        * ``w = tl.load(drive + idx, ...)`` becomes ``w = src{c}`` — the
-          register this launch stored to ``f_w_<c>`` one statement earlier,
-          which is what ``drive_field`` returns under an absorber;
+        * ``w = tl.load(drive + idx, ...)`` becomes ``w = src{c}`` — MEEP's ``w`` on
+          every cell: the E half stored it into ``f_w_<c>`` on the layer's chunks and
+          as the field everywhere else, which is what ``Fields.drive_field`` composes;
         * ``p = tl.load(p_now + idx, ...)`` becomes ``p = tl.load({L}{k} + idx,
           ...)`` — the SAME volume through the pointer the E half bound, re-read
           rather than register-reused because the E half's own-cell pole load is
           inside the helper. Nothing in this launch writes that pointer.
-
-        A float32 word stored and re-loaded from the same address is bit-identical
-        to the register, so the drive elimination is byte-neutral BY CONSTRUCTION
-        and the pole re-read is the certified load itself — which is a hypothesis
-        until a comparator agrees, and the device gate measures it per complete
-        seam step against the array path and the separately certified products.
-
-        THE ARMS ARE ORDER-INDEPENDENT AND NOTHING IS HOISTED. Every ADE arm
-        writes ``p_out_{L}{k}``, that susceptibility's scratch FOR THAT
-        COMPONENT, so the launch's write set is disjoint from its read set at
-        every position of the rotation's orbit — including the row volumes and
-        the neighbour-offset P reads the E half adds — and no rotation happens
-        inside the launch. The arms are emitted per component to bound live
-        registers, as the chain emits them.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -431,8 +442,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         plane = idx // nz
         j = plane % ny
         i = plane // ny
+
         at_x, at_y, at_z = i == 0, j == 0, k == 0
 
+        # --- per-axis neighbour indices, both directions, with the ghost rule.
+        # stepping._shift_down (:1787) / _shift_up (:1723): PERIODIC wraps;
+        # METALLIC masks both faces; MIRROR redirects the DOWN ghost to stored
+        # row MIRROR_ROW with the plane's weight and masks the UP ghost.
         di, dj, dk = i - 1, j - 1, k - 1
         ui, uj, uk = i + 1, j + 1, k + 1
         dvx, dvy, dvz = live, live, live
@@ -444,7 +460,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         elif BCX == METALLIC:
             dvx = live & (di >= 0)
             uvx = live & (ui < nx)
-        else:
+        else:  # MIRROR_METALLIC or MIRROR_PERIODIC
             di = tl.where(at_x, MIRROR_ROW, di)
             wx = tl.where(at_x, gwx, 1.0)
             uvx = live & (ui < nx)
@@ -469,6 +485,29 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             wz = tl.where(at_z, gwz, 1.0)
             uvz = live & (uk < nz)
 
+        # Which chunk of the {low, interior, high} product owns the cell, per
+        # component lattice (presence_record's segment lines: integer x, y, z,
+        # then half-integer x, y, z). Read only when some slot's presence varies.
+        cell0, cell1, cell2 = i * 0, i * 0, i * 0
+        if PRESENCE:
+            sxi = tl.load(op + PRESENCE_LINES + i, mask=live, other=0)
+            syi = tl.load(op + PRESENCE_LINES + nx + j, mask=live, other=0)
+            szi = tl.load(op + PRESENCE_LINES + nx + ny + k, mask=live, other=0)
+            half = PRESENCE_LINES + nx + ny + nz
+            sxh = tl.load(op + half + i, mask=live, other=0)
+            syh = tl.load(op + half + nx + j, mask=live, other=0)
+            szh = tl.load(op + half + nx + ny + k, mask=live, other=0)
+            cell0 = (sxh * 9 + syi * 3) + szi     # Ex: half-integer on x
+            cell1 = (sxi * 9 + syh * 3) + szi     # Ey: half-integer on y
+            cell2 = (sxi * 9 + syi * 3) + szh     # Ez: half-integer on z
+
+        # Which cells take the accumulation: each component's own (dsigw) layer on
+        # the half-integer sub-lattice (chunk_map.record_index(True, axis, 0)).
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
+
+        # Component 0 takes its coefficient from axis x, 1 from y, 2 from z.
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
         km_0 = tl.load(km0 + i, mask=live, other=0.0)
         kp_1 = tl.load(kp1 + j, mask=live, other=0.0)
@@ -476,119 +515,135 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
-        # Ex: own x, partners y then z.
-        prev0 = tl.load(w0 + idx, mask=live, other=0.0)
+        # --- component 0: Ex — own axis x; partners Dy (down y) then Dz (down z)
+        prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)   # BEFORE the store.
         gs0 = _load_d_minus_p(
             g0, a0, a1, a2, a3, a4, a5, a6, a7, idx, live, NP0)
         us0 = tl.load(e0 + idx, mask=live, other=0.0)
         if R01:
-            total0 = _folded_dispersive_term(
-                g1, b0, b1, b2, b3, b4, b5, b6, b7, u01,
-                idx, i * nyz + dj * nz + k, ui * nyz + j * nz + k,
-                ui * nyz + dj * nz + k, live, dvy, uvx, uvx & dvy,
-                wy, NP1, MG_Y)
+            row0 = tl.cast(gs0 * us0, tl.float64)
+            row0 = _row_add(row0, _folded_dispersive_term(
+                g1, b0, b1, b2, b3, b4, b5, b6, b7, u01, idx,
+                i * nyz + dj * nz + k,
+                ui * nyz + j * nz + k,
+                ui * nyz + dj * nz + k,
+                live, dvy, uvx, uvx & dvy, wy, NP1, MG_Y),
+                at_y, at_z, op, cell0, 0, WM_Y, WM_Z, P01)
             if R02:
-                total0 = total0 + _folded_dispersive_term(
-                    g2, c0, c1, c2, c3, c4, c5, c6, c7, u02,
-                    idx, i * nyz + j * nz + dk, ui * nyz + j * nz + k,
-                    ui * nyz + j * nz + dk, live, dvz, uvx, uvx & dvz,
-                    wz, NP2, MG_Z)
-            src0 = _masked_row_sum(
-                gs0 * us0, total0, at_y, at_z, WM_Y, WM_Z)
+                row0 = _row_add(row0, _folded_dispersive_term(
+                    g2, c0, c1, c2, c3, c4, c5, c6, c7, u02, idx,
+                    i * nyz + j * nz + dk,
+                    ui * nyz + j * nz + k,
+                    ui * nyz + j * nz + dk,
+                    live, dvz, uvx, uvx & dvz, wz, NP2, MG_Z),
+                    at_y, at_z, op, cell0, 1, WM_Y, WM_Z, P02)
+            src0 = tl.cast(row0, tl.float32)
         else:
             if R02:
-                total0 = _folded_dispersive_term(
-                    g2, c0, c1, c2, c3, c4, c5, c6, c7, u02,
-                    idx, i * nyz + j * nz + dk, ui * nyz + j * nz + k,
-                    ui * nyz + j * nz + dk, live, dvz, uvx, uvx & dvz,
-                    wz, NP2, MG_Z)
-                src0 = _masked_row_sum(
-                    gs0 * us0, total0, at_y, at_z, WM_Y, WM_Z)
+                row0 = tl.cast(gs0 * us0, tl.float64)
+                row0 = _row_add(row0, _folded_dispersive_term(
+                    g2, c0, c1, c2, c3, c4, c5, c6, c7, u02, idx,
+                    i * nyz + j * nz + dk,
+                    ui * nyz + j * nz + k,
+                    ui * nyz + j * nz + dk,
+                    live, dvz, uvx, uvx & dvz, wz, NP2, MG_Z),
+                    at_y, at_z, op, cell0, 1, WM_Y, WM_Z, P02)
+                src0 = tl.cast(row0, tl.float32)
             else:
                 src0 = gs0 * us0
-        tl.store(w0 + idx, src0, mask=live)
-        value0 = tl.load(f0 + idx, mask=live, other=0.0)
-        value0 = value0 + kp_0 * src0
-        value0 = value0 - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=live & dw0)
+        value0 = tl.load(f0 + idx, mask=live & dw0, other=0.0)
+        value0 = constitutive_form(value0, prev0, src0, kp_0, km_0, dw0)
         tl.store(f0 + idx, value0, mask=live)
 
-        # Ey: own y, partners z then x.
-        prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+        # --- component 1: Ey — own axis y; partners Dz (down z) then Dx (down x)
+        prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
         gs1 = _load_d_minus_p(
             g1, b0, b1, b2, b3, b4, b5, b6, b7, idx, live, NP1)
         us1 = tl.load(e1 + idx, mask=live, other=0.0)
         if R11:
-            total1 = _folded_dispersive_term(
-                g2, c0, c1, c2, c3, c4, c5, c6, c7, u11,
-                idx, i * nyz + j * nz + dk, i * nyz + uj * nz + k,
-                i * nyz + uj * nz + dk, live, dvz, uvy, uvy & dvz,
-                wz, NP2, MG_Z)
+            row1 = tl.cast(gs1 * us1, tl.float64)
+            row1 = _row_add(row1, _folded_dispersive_term(
+                g2, c0, c1, c2, c3, c4, c5, c6, c7, u11, idx,
+                i * nyz + j * nz + dk,
+                i * nyz + uj * nz + k,
+                i * nyz + uj * nz + dk,
+                live, dvz, uvy, uvy & dvz, wz, NP2, MG_Z),
+                at_x, at_z, op, cell1, 2, WM_X, WM_Z, P11)
             if R12:
-                total1 = total1 + _folded_dispersive_term(
-                    g0, a0, a1, a2, a3, a4, a5, a6, a7, u12,
-                    idx, di * nyz + j * nz + k, i * nyz + uj * nz + k,
-                    di * nyz + uj * nz + k, live, dvx, uvy, uvy & dvx,
-                    wx, NP0, MG_X)
-            src1 = _masked_row_sum(
-                gs1 * us1, total1, at_x, at_z, WM_X, WM_Z)
+                row1 = _row_add(row1, _folded_dispersive_term(
+                    g0, a0, a1, a2, a3, a4, a5, a6, a7, u12, idx,
+                    di * nyz + j * nz + k,
+                    i * nyz + uj * nz + k,
+                    di * nyz + uj * nz + k,
+                    live, dvx, uvy, uvy & dvx, wx, NP0, MG_X),
+                    at_x, at_z, op, cell1, 3, WM_X, WM_Z, P12)
+            src1 = tl.cast(row1, tl.float32)
         else:
             if R12:
-                total1 = _folded_dispersive_term(
-                    g0, a0, a1, a2, a3, a4, a5, a6, a7, u12,
-                    idx, di * nyz + j * nz + k, i * nyz + uj * nz + k,
-                    di * nyz + uj * nz + k, live, dvx, uvy, uvy & dvx,
-                    wx, NP0, MG_X)
-                src1 = _masked_row_sum(
-                    gs1 * us1, total1, at_x, at_z, WM_X, WM_Z)
+                row1 = tl.cast(gs1 * us1, tl.float64)
+                row1 = _row_add(row1, _folded_dispersive_term(
+                    g0, a0, a1, a2, a3, a4, a5, a6, a7, u12, idx,
+                    di * nyz + j * nz + k,
+                    i * nyz + uj * nz + k,
+                    di * nyz + uj * nz + k,
+                    live, dvx, uvy, uvy & dvx, wx, NP0, MG_X),
+                    at_x, at_z, op, cell1, 3, WM_X, WM_Z, P12)
+                src1 = tl.cast(row1, tl.float32)
             else:
                 src1 = gs1 * us1
-        tl.store(w1 + idx, src1, mask=live)
-        value1 = tl.load(f1 + idx, mask=live, other=0.0)
-        value1 = value1 + kp_1 * src1
-        value1 = value1 - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=live & dw1)
+        value1 = tl.load(f1 + idx, mask=live & dw1, other=0.0)
+        value1 = constitutive_form(value1, prev1, src1, kp_1, km_1, dw1)
         tl.store(f1 + idx, value1, mask=live)
 
-        # Ez: own z, partners x then y.
-        prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+        # --- component 2: Ez — own axis z; partners Dx (down x) then Dy (down y)
+        prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
         gs2 = _load_d_minus_p(
             g2, c0, c1, c2, c3, c4, c5, c6, c7, idx, live, NP2)
         us2 = tl.load(e2 + idx, mask=live, other=0.0)
         if R21:
-            total2 = _folded_dispersive_term(
-                g0, a0, a1, a2, a3, a4, a5, a6, a7, u21,
-                idx, di * nyz + j * nz + k, i * nyz + j * nz + uk,
-                di * nyz + j * nz + uk, live, dvx, uvz, uvz & dvx,
-                wx, NP0, MG_X)
+            row2 = tl.cast(gs2 * us2, tl.float64)
+            row2 = _row_add(row2, _folded_dispersive_term(
+                g0, a0, a1, a2, a3, a4, a5, a6, a7, u21, idx,
+                di * nyz + j * nz + k,
+                i * nyz + j * nz + uk,
+                di * nyz + j * nz + uk,
+                live, dvx, uvz, uvz & dvx, wx, NP0, MG_X),
+                at_x, at_y, op, cell2, 4, WM_X, WM_Y, P21)
             if R22:
-                total2 = total2 + _folded_dispersive_term(
-                    g1, b0, b1, b2, b3, b4, b5, b6, b7, u22,
-                    idx, i * nyz + dj * nz + k, i * nyz + j * nz + uk,
-                    i * nyz + dj * nz + uk, live, dvy, uvz, uvz & dvy,
-                    wy, NP1, MG_Y)
-            src2 = _masked_row_sum(
-                gs2 * us2, total2, at_x, at_y, WM_X, WM_Y)
+                row2 = _row_add(row2, _folded_dispersive_term(
+                    g1, b0, b1, b2, b3, b4, b5, b6, b7, u22, idx,
+                    i * nyz + dj * nz + k,
+                    i * nyz + j * nz + uk,
+                    i * nyz + dj * nz + uk,
+                    live, dvy, uvz, uvz & dvy, wy, NP1, MG_Y),
+                    at_x, at_y, op, cell2, 5, WM_X, WM_Y, P22)
+            src2 = tl.cast(row2, tl.float32)
         else:
             if R22:
-                total2 = _folded_dispersive_term(
-                    g1, b0, b1, b2, b3, b4, b5, b6, b7, u22,
-                    idx, i * nyz + dj * nz + k, i * nyz + j * nz + uk,
-                    i * nyz + dj * nz + uk, live, dvy, uvz, uvz & dvy,
-                    wy, NP1, MG_Y)
-                src2 = _masked_row_sum(
-                    gs2 * us2, total2, at_x, at_y, WM_X, WM_Y)
+                row2 = tl.cast(gs2 * us2, tl.float64)
+                row2 = _row_add(row2, _folded_dispersive_term(
+                    g1, b0, b1, b2, b3, b4, b5, b6, b7, u22, idx,
+                    i * nyz + dj * nz + k,
+                    i * nyz + j * nz + uk,
+                    i * nyz + dj * nz + uk,
+                    live, dvy, uvz, uvz & dvy, wy, NP1, MG_Y),
+                    at_x, at_y, op, cell2, 5, WM_X, WM_Y, P22)
+                src2 = tl.cast(row2, tl.float32)
             else:
                 src2 = gs2 * us2
-        tl.store(w2 + idx, src2, mask=live)
-        value2 = tl.load(f2 + idx, mask=live, other=0.0)
-        value2 = value2 + kp_2 * src2
-        value2 = value2 - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=live & dw2)
+        value2 = tl.load(f2 + idx, mask=live & dw2, other=0.0)
+        value2 = constitutive_form(value2, prev2, src2, kp_2, km_2, dw2)
         tl.store(f2 + idx, value2, mask=live)
 
         # --- component 0: update_P, one arm per pole that drives it ----
         if NP0 > 0:
-            c_now = cnow_a0
-            c_prev = cprev_a0
-            c_drive = cdrive_a0
+            two_minus_od = two_minus_od_a0
+            gamma1 = gamma1_a0
+            omega0dtsqr = omega0dtsqr_a0
+            gamma1inv = gamma1inv_a0
             p = tl.load(a0 + idx, mask=live, other=0.0)
             q = tl.load(p_prev_a0 + idx, mask=live, other=0.0)
             w = src0
@@ -597,12 +652,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_a0
             tl.store(p_out_a0 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP0 > 1:
-            c_now = cnow_a1
-            c_prev = cprev_a1
-            c_drive = cdrive_a1
+            two_minus_od = two_minus_od_a1
+            gamma1 = gamma1_a1
+            omega0dtsqr = omega0dtsqr_a1
+            gamma1inv = gamma1inv_a1
             p = tl.load(a1 + idx, mask=live, other=0.0)
             q = tl.load(p_prev_a1 + idx, mask=live, other=0.0)
             w = src0
@@ -611,14 +667,15 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_a1
             tl.store(p_out_a1 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
 
         # --- component 1: update_P, one arm per pole that drives it ----
         if NP1 > 0:
-            c_now = cnow_b0
-            c_prev = cprev_b0
-            c_drive = cdrive_b0
+            two_minus_od = two_minus_od_b0
+            gamma1 = gamma1_b0
+            omega0dtsqr = omega0dtsqr_b0
+            gamma1inv = gamma1inv_b0
             p = tl.load(b0 + idx, mask=live, other=0.0)
             q = tl.load(p_prev_b0 + idx, mask=live, other=0.0)
             w = src1
@@ -627,12 +684,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_b0
             tl.store(p_out_b0 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP1 > 1:
-            c_now = cnow_b1
-            c_prev = cprev_b1
-            c_drive = cdrive_b1
+            two_minus_od = two_minus_od_b1
+            gamma1 = gamma1_b1
+            omega0dtsqr = omega0dtsqr_b1
+            gamma1inv = gamma1inv_b1
             p = tl.load(b1 + idx, mask=live, other=0.0)
             q = tl.load(p_prev_b1 + idx, mask=live, other=0.0)
             w = src1
@@ -641,14 +699,15 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_b1
             tl.store(p_out_b1 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
 
         # --- component 2: update_P, one arm per pole that drives it ----
         if NP2 > 0:
-            c_now = cnow_c0
-            c_prev = cprev_c0
-            c_drive = cdrive_c0
+            two_minus_od = two_minus_od_c0
+            gamma1 = gamma1_c0
+            omega0dtsqr = omega0dtsqr_c0
+            gamma1inv = gamma1inv_c0
             p = tl.load(c0 + idx, mask=live, other=0.0)
             q = tl.load(p_prev_c0 + idx, mask=live, other=0.0)
             w = src2
@@ -657,12 +716,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_c0
             tl.store(p_out_c0 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP2 > 1:
-            c_now = cnow_c1
-            c_prev = cprev_c1
-            c_drive = cdrive_c1
+            two_minus_od = two_minus_od_c1
+            gamma1 = gamma1_c1
+            omega0dtsqr = omega0dtsqr_c1
+            gamma1inv = gamma1inv_c1
             p = tl.load(c1 + idx, mask=live, other=0.0)
             q = tl.load(p_prev_c1 + idx, mask=live, other=0.0)
             w = src2
@@ -671,14 +731,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_c1
             tl.store(p_out_c1 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
 
 else:  # pragma: no cover - the laptop path
     PERIODIC = None  # type: ignore[assignment]
     METALLIC = None  # type: ignore[assignment]
     MIRROR_ROW = None  # type: ignore[assignment]
-    _masked_row_sum = None  # type: ignore[assignment]
     _load_d_minus_p = None  # type: ignore[assignment]
     _folded_dispersive_term = None  # type: ignore[assignment]
     folded_offdiag_fused_ade_chain_step = None  # type: ignore[assignment]
@@ -713,9 +772,10 @@ def folded_offdiag_fused_ade_chain_coverage(fields: Any, pml: Any) -> Coverage:
     THERE IS NO SOURCE CLAUSE, AND THE ABSENCE IS DELIBERATE. Every other fused
     product on this backend must be told the source inventory, because the driver
     injects INSIDE its seam and ignorance is not an empty set. This seam has no
-    injection in it at all — ``driver.step`` runs ``update_E`` at :3304 and
-    ``update_P`` at :3306 with nothing between — so requiring a declaration would
-    refuse configurations the driver cannot break. The fusion matrices measure
+    injection in it at all — ``driver.step`` runs ``update_E``, then the electric
+    ``f_minus_p`` restore, which writes D alone and which ``update_P`` does not read,
+    then ``update_P`` — so requiring a declaration would refuse configurations the
+    driver cannot break. The fusion matrices measure
     the same fact from the other end: ``E->P: 15 instances, 0 blocked by the
     source seam``.
     """
@@ -789,31 +849,27 @@ def folded_offdiag_fused_ade_chain_coverage(fields: Any, pml: Any) -> Coverage:
                     f"be a different array")
 
     # THE SEAM'S OWN CONDITION, named rather than inherited: the register this
-    # kernel hands the recurrence is what its E half stored to f_w, so
-    # `drive_field` must return THAT array. The ADE predicate only asks that f_w
-    # EXISTS; the hazard is a reader handing back the stored E under an absorber,
-    # which agrees everywhere except inside the layer.
+    # kernel hands the recurrence is ``src``, which is MEEP's ``w`` on every cell
+    # (update_pols.cpp:44, ``w = f_w ? f_w : f`` per chunk): the E half stores it
+    # into f_w on the layer's chunks and as the field everywhere else. That is what
+    # ``Fields.drive_field`` composes, so the reader must be that method and no
+    # other; a Fields whose reader is replaced is refused BY NAME.
     if not bool(getattr(fields, "_pml_active", False)):
         reasons.append(
             "Fields is not in PML storage mode: drive_field would return the "
-            "stored E rather than f_w (fields.py:1160-1162), and the register "
-            "this kernel passes the recurrence is the split-field drive")
+            "stored E everywhere (fields.py drive_field), and this kernel's PML "
+            "tail writes f_w on the layer's chunks")
     reader = getattr(fields, "drive_field", None)
+    own = getattr(type(fields), "drive_field", None)
     if not callable(reader):
         reasons.append("fields does not expose drive_field(); an unreadable "
                        "drive is not a covered one")
-    else:
-        for component, _displacement, _axis in E_TERMS:
-            auxiliary = getattr(fields, "f_w_" + component, None)
-            try:
-                drive = reader(component)
-            except Exception as exc:  # noqa: BLE001
-                reasons.append(f"drive_field({component!r}) raised {exc!r}")
-                continue
-            if auxiliary is None or drive is not auxiliary:
-                reasons.append(
-                    f"drive_field({component!r}) is not f_w_{component}; this "
-                    f"kernel's register is the value it stores THERE")
+    elif own is None or getattr(reader, "__func__", None) is not own:
+        reasons.append(
+            "drive_field is not Fields.drive_field, MEEP's per-chunk w; this "
+            "kernel's register is the w that method composes (f_w on the "
+            "layer's chunks, the stored E elsewhere), so another reader would "
+            "drive the polarization from a different field")
 
     # THE EXTENT THE DROPPED ADE GUARD ASSUMED. This kernel emits ONE bounds
     # guard — the E half's, over the stored extent — so every recurrence volume
@@ -910,8 +966,8 @@ class FoldedOffdiagFusedAdeChainPlan:
 
     def __init__(self, fields: Any, pml: Any, block: int,
                  num_warps: Optional[int] = 1, kernel: Any = None,
-                 pointer: Any = None) -> None:
-        from .launch import CupyPointer  # noqa: PLC0415
+                 pointer: Any = None, chunk_layout: Any = None) -> None:
+        from .launch import CupyPointer, chunk_bounds_for  # noqa: PLC0415
 
         if pointer is None:
             pointer = CupyPointer
@@ -950,7 +1006,9 @@ class FoldedOffdiagFusedAdeChainPlan:
             fields.grid.shape, self.block, targets, auxiliaries, sources,
             inverse, LivePoleBinding(fields, self._order), rows, columns, codes,
             _offdiag.wall_mask_axes(fields.grid),
-            _folded.mirror_ghost_weights(fields.grid))
+            _folded.mirror_ghost_weights(fields.grid),
+            chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+            presence=_offdiag.presence_for(fields, pml))
         self.counts = tuple(len(self._order[name]) for name in components)
         for name, count in zip(components, self.counts):
             if count > CHAIN_MAX_POLES:
@@ -1002,7 +1060,7 @@ class FoldedOffdiagFusedAdeChainPlan:
         self.extra_scratch_volumes = extra
 
         self._sigma: Dict[Tuple[str, int], Any] = {}
-        self._coeff: Dict[Tuple[str, int], Tuple[float, float, float]] = {}
+        self._coeff: Dict[Tuple[str, int], Tuple[float, float, float, float]] = {}
         self._sv: Dict[str, int] = {}
         for index, name in enumerate(components):
             letter = LETTERS[index]
@@ -1021,9 +1079,10 @@ class FoldedOffdiagFusedAdeChainPlan:
                                              else float(sigma))
                 if volume:
                     read_ids.add(id(sigma))
-                c_now, c_prev, c_drive = state._coefficients
-                self._coeff[(name, slot)] = (float(c_now), float(c_prev),
-                                             float(c_drive))
+                # MEEP's four realnum words (PolarizationState.constants), each a
+                # float32 word, so the Python float passed is that word exactly.
+                self._coeff[(name, slot)] = tuple(float(word)
+                                                  for word in state.constants)
                 self._sv[f"SV_{letter}{slot}"] = 1 if volume else 0
         self._read_ids = frozenset(read_ids)
 
@@ -1090,11 +1149,11 @@ class FoldedOffdiagFusedAdeChainPlan:
 
         THE CERTIFIED RUN'S ORDER FIRST — targets, auxiliaries, sources, inverse
         epsilons, the live pole slots (padded by the certified plan), the six row
-        slots, the six coefficient columns, the three ghost weights, the geometry
-        — read off the composed E plan rather than re-derived, THEN the ADE block
-        laid out as the chain lays it: p_out, p_prev, sigma, cnow, cprev, cdrive
-        per component, dead slots padded with the component's own D pointer and
-        ``0.0``.
+        slots, the six coefficient columns, the three ghost weights, the chunk
+        record and the row presence, the geometry — read off the composed E plan
+        rather than re-derived, THEN the ADE block laid out as the chain lays it:
+        p_out, p_prev, sigma and MEEP's four words per component, dead slots padded
+        with the component's own D pointer and ``0.0``.
 
         SEPARATE FROM :meth:`run` so the ORDER is testable on a host with no
         Triton: a launcher that assembles the right pointers in the wrong order
@@ -1116,13 +1175,13 @@ class FoldedOffdiagFusedAdeChainPlan:
             ade.extend([padding] * (CHAIN_MAX_POLES - live))
             ade.extend([self._sigma[(component, slot)] for slot in range(live)])
             ade.extend([0.0] * (CHAIN_MAX_POLES - live))
-            for position in range(3):
+            for position in range(4):
                 ade.extend([self._coeff[(component, slot)][position]
                             for slot in range(live)])
                 ade.extend([0.0] * (CHAIN_MAX_POLES - live))
         arguments = [*base._targets, *base._aux, *base._sources, *base._inv_eps,
                      *self._e._live_pole_slots(), *base._rows,
-                     *base._coefficients, *base.ghost_weights,
+                     *base._coefficients, *base.ghost_weights, base._cb, base._op,
                      nx, ny, nz, base.n_elem, *ade]
         if len(arguments) != RUNTIME_ARGUMENTS:
             raise RuntimeError(
@@ -1171,12 +1230,15 @@ class FoldedOffdiagFusedAdeChainPlan:
         self._check_aliasing(chain)
         arguments = self._arguments(chain)
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
+        varies = base.presence_varies
         kernel[base.launch_grid](
             *arguments,
             NP0=e.counts[0], NP1=e.counts[1], NP2=e.counts[2],
             R01=base.row_mask[0], R02=base.row_mask[1],
             R11=base.row_mask[2], R12=base.row_mask[3],
             R21=base.row_mask[4], R22=base.row_mask[5],
+            P01=varies[0], P02=varies[1], P11=varies[2], P12=varies[3],
+            P21=varies[4], P22=varies[5], PRESENCE=int(any(varies)),
             BCX=base.boundary_codes[0], BCY=base.boundary_codes[1],
             BCZ=base.boundary_codes[2],
             MG_X=base.ghost_axes[0], MG_Y=base.ghost_axes[1],
@@ -1201,7 +1263,8 @@ class FoldedOffdiagFusedAdeChainPlan:
 def plan_folded_offdiag_fused_ade_chain(fields: Any, pml: Any,
                                         block: Optional[int] = None,
                                         num_warps: Optional[int] = 1,
-                                        kernel: Any = None
+                                        kernel: Any = None,
+                                        chunk_layout: Any = None
                                         ) -> Optional[FoldedOffdiagFusedAdeChainPlan]:
     """Build the fused E->P plan for this cell, or return ``None`` on any refusal.
 
@@ -1221,7 +1284,7 @@ def plan_folded_offdiag_fused_ade_chain(fields: Any, pml: Any,
 
     return FoldedOffdiagFusedAdeChainPlan(
         fields, pml, DEFAULT_BLOCK if block is None else block,
-        num_warps=num_warps, kernel=kernel)
+        num_warps=num_warps, kernel=kernel, chunk_layout=chunk_layout)
 
 
 # ---------------------------------------------------------------------------

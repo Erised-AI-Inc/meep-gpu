@@ -74,7 +74,10 @@ if _REPO_API not in sys.path:
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-import cupy as cp  # noqa: E402
+try:
+    import cupy as cp  # noqa: E402
+except ImportError:  # the NumPy reference and the records serve the fold gates' host legs
+    cp = None
 
 # Everything reusable comes from the shared probe. Nothing below re-implements
 # any of it — a second byte comparator or a second recurrence would make this
@@ -87,7 +90,15 @@ import probe_fused_kernel_bit_identity as probe  # noqa: E402
 # cut under one policy and labelled with another.
 import gate_triton_complex as gate  # noqa: E402
 
+# The B battery's planted signed-zero case and the record helpers, shared with every
+# table's gates so they all draw the same words.
+import b_battery_states as battery  # noqa: E402
+from gate_chunk_records import every_cell_record  # noqa: E402
+
 from meep_gpu import stepping  # noqa: E402
+from meep_gpu.chunk_map import (  # noqa: E402
+    RECORD_PRESENCE_WORD, RECORD_WORDS, membership_from_record, record_index,
+)
 from meep_gpu.fields import Fields, mirror_parity  # noqa: E402
 from meep_gpu.grid import Grid, Mirror  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
@@ -169,12 +180,22 @@ def reference_shift(xp: Any, field: Any, axis: int, boundary: str, backward: boo
 
 def reference_curl(xp: Any, sources: Dict[str, Any], term, dtdx: Any,
                    backward: bool, boundaries: Sequence[str], phases: Sequence[int],
-                   reflect_rows: Sequence[Optional[int]], grouping: str) -> Any:
-    """dtdx * the discrete curl, with the shared probe's two groupings.
+                   reflect_rows: Sequence[Optional[int]], grouping: str,
+                   presence: Sequence[bool] = (True, True, True)) -> Any:
+    """dtdx * the discrete curl, in the contract's grouping or the previous one.
 
-    ``array_order`` is ``stepping._curl_from_operands`` (:1601), the contract::
+    ``array_order`` is ``stepping._curl_from_operands``, the contract, which is MEEP's
+    (step_generic.cpp:72-76, :104, :108): with both partners present the sum
+    associates left to right, ``dtdx * (((shifted_first - first) + second) -
+    shifted_second)``; a partner whose derivative axis is invariant is ABSENT
+    (``presence``, the record's presence word) and the one-partner form is taken,
+    ``dtdx * (shifted_first - first)`` or ``(-dtdx) * (shifted_second - second)``;
+    with neither the curl is an exact ``+0``. The full bracket over an absent
+    partner is not the one-partner word: ``(a + g2) - g2`` rounds twice more.
 
-        dtdx * ((shifted_first - first) + (second - shifted_second))
+    ``pairwise_order`` is the package's grouping before the alignment,
+    ``dtdx * ((shifted_first - first) + (second - shifted_second))`` over both
+    partners whatever the presence: a control the kernel must NOT reproduce.
     """
     _target, g1, a1, g2, a2, _dsig, _dsigu, _iyee = term
     first, second = sources[g1], sources[g2]
@@ -182,11 +203,18 @@ def reference_curl(xp: Any, sources: Dict[str, Any], term, dtdx: Any,
                                     g1, phases[a1], reflect_rows[a1])
     shifted_second = reference_shift(xp, second, a2, boundaries[a2], backward,
                                      g2, phases[a2], reflect_rows[a2])
-    if grouping == "array_order":
+    if grouping == "pairwise_order":
         return dtdx * ((shifted_first - first) + (second - shifted_second))
-    if grouping == "kernel_order":
+    if grouping != "array_order":
+        raise ValueError(f"unknown grouping {grouping!r}")
+    first_present, second_present = bool(presence[a1]), bool(presence[a2])
+    if first_present and second_present:
         return dtdx * (((shifted_first - first) + second) - shifted_second)
-    raise ValueError(f"unknown grouping {grouping!r}")
+    if first_present:
+        return dtdx * (shifted_first - first)
+    if second_present:
+        return (-dtdx) * (shifted_second - second)
+    return xp.zeros_like(first)
 
 
 def reference_mask(curl: Any, iyee: Sequence[int],
@@ -210,28 +238,202 @@ def reference_mask(curl: Any, iyee: Sequence[int],
             curl[_face(axis, -1)] = 0
 
 
+def record_presence(record: Sequence[int]) -> Tuple[bool, bool, bool]:
+    """The record's partner-presence word, one flag per axis."""
+    word = int(record[RECORD_PRESENCE_WORD])
+    return tuple(bool((word >> axis) & 1) for axis in range(3))  # type: ignore[return-value]
+
+
 def reference_pml_step(xp: Any, arrays: Dict[str, Any], coefficients: Dict[str, Any],
                        dtdx: Any, sub_step: str, boundaries: Sequence[str],
                        phases: Sequence[int],
                        reflect_rows: Sequence[Optional[int]],
-                       grouping: str = "array_order") -> None:
+                       grouping: str = "array_order", *,
+                       record: Sequence[int]) -> None:
     """One real-field PML curl sub-step, in place, on a possibly folded grid.
 
-    The recurrence itself is ``probe.reference_recurrence`` — the shared
-    transcription of ``stepping._apply_pml_update`` — untouched: a fold changes
-    the ghost rule and the ownership mask and nothing else.
+    ``stepping._apply_curl_regions`` without a conductivity, keyed on ``record``
+    (``chunk_map.chunk_bounds_record``; REQUIRED, because it decides which cells take
+    which form): on a cell whose record line for the target's dsigu axis, on the
+    sub-step's sub-lattice (half-integer for B, integer for D), holds it, the
+    split-field recurrence (``probe.reference_recurrence``, the shared transcription
+    of ``stepping._apply_pml_update``); everywhere else the dsig-only form
+    ``((f * kms) - curl) * sinv``, with ``fu`` left untouched (the auxiliary
+    contract). The two forms are computed whole-volume and SELECTED per cell, which
+    is the same word per cell as the array path's split or masked routes. A fold
+    changes the ghost rule and the ownership mask and nothing else.
     """
     terms = probe.B_PML_TERMS if sub_step == "step_B" else probe.D_PML_TERMS
     backward = sub_step == "step_D"
+    half_integer = not backward
+    presence = record_presence(record)
+    shape = tuple(int(n) for n in arrays[terms[0][0]].shape)
     for term in terms:
         target, _g1, _a1, _g2, _a2, dsig, dsigu, iyee = term
         curl = reference_curl(xp, arrays, term, dtdx, backward, boundaries,
-                              phases, reflect_rows, grouping)
+                              phases, reflect_rows, grouping, presence)
         reference_mask(curl, iyee, boundaries)
+        axis = "xyz".index(dsigu)
+        line = membership_from_record(record, half_integer, axis, shape[axis])
+        inside = xp.asarray(line.reshape(probe.broadcast_shape(axis, shape[axis])))
+        field, fu = arrays[target], arrays["fu_" + target]
+        kms, sinv = coefficients["kms_" + dsig], coefficients["sinv_" + dsig]
+        dsig_only = (field * kms - curl) * sinv
+        recurrence_field = field.copy()
+        recurrence_fu = fu.copy()
         probe.reference_recurrence(
-            arrays[target], arrays["fu_" + target], curl,
-            coefficients["kms_" + dsig], coefficients["sinv_" + dsig],
+            recurrence_field, recurrence_fu, curl, kms, sinv,
             coefficients["kms_" + dsigu], coefficients["sinv_" + dsigu])
+        field[...] = xp.where(inside, recurrence_field, dsig_only)
+        fu[...] = xp.where(inside, recurrence_fu, fu)
+
+
+# ---------------------------------------------------------------------------
+# The records the synthetic legs step with
+# ---------------------------------------------------------------------------
+#
+# TWO DIVISIONS, because each answers what the other cannot.
+#
+# * ``every_cell`` (gate_chunk_records.every_cell_record): every resolved cell in a
+#   layer chunk on both lattices, random coefficients everywhere. The recurrence
+#   on every cell of a resolved axis, and the dsig-only form on the invariant axis
+#   of the 2-D sheet.
+# * ``split``: two runs per resolved axis, DIFFERENT on the two sub-lattices, with
+#   coefficients exactly 1.0 outside every run (the region plan's unit-coefficient
+#   precondition) and on the run's inner face row (a sigma = 0 cell inside a chunk,
+#   which is where membership and not the coefficient decides). It is the record
+#   on which the form select, the record's bounds, the sub-lattice, the dsig/dsigu
+#   pairing and the coefficient predicate each change some word, and on which a
+#   plain cell exists to plant MEEP's two signed-zero forms.
+
+#: The divisions the synthetic legs sweep.
+RECORD_KINDS: Tuple[str, ...] = ("every_cell", "split")
+
+
+def _runs(n: int, low: int, high: int) -> Tuple[int, int, int, int]:
+    """``[0, low) U [n - high, n)``, or the low run alone when they would touch."""
+    if low + high < n:
+        return 0, low, n - high, n
+    return 0, low, 0, 0
+
+
+def split_record(shape: Sequence[int]) -> np.ndarray:
+    """Two runs per resolved axis, one row deeper on the half-integer lattice."""
+    record = np.zeros(RECORD_WORDS, dtype=np.int32)
+    presence = 0
+    for axis, n in enumerate(int(v) for v in shape):
+        if n <= 1:
+            continue
+        presence |= 1 << axis
+        low, high = max(1, n // 3), max(1, n // 4)
+        for half, runs in ((False, _runs(n, low, high)),
+                           (True, _runs(n, max(1, low - 1), high + 1))):
+            for word, value in enumerate(runs):
+                record[record_index(half, axis, word)] = value
+    record[RECORD_PRESENCE_WORD] = presence
+    return record
+
+
+def record_for(kind: str, shape: Sequence[int]) -> np.ndarray:
+    if kind == "every_cell":
+        return every_cell_record(shape)
+    if kind == "split":
+        return split_record(shape)
+    raise ValueError(f"unknown record kind {kind!r}")
+
+
+def fit_coefficients(xp: Any, coefficients: Dict[str, Any], record: Sequence[int],
+                     half_integer: bool, shape: Sequence[int]) -> Dict[str, Any]:
+    """The ``split`` record's coefficients: 1.0 outside every run and on its inner face.
+
+    Each axis's ``kms``/``sinv`` vector is kept where the record line (on the
+    coefficients' own sub-lattice) holds the row and set to exactly 1.0 elsewhere,
+    and on the row of each run that faces the interior.
+    """
+    out = dict(coefficients)
+    for axis, name in enumerate("xyz"):
+        n = int(shape[axis])
+        if n <= 1:
+            continue
+        line = membership_from_record(record, half_integer, axis, n)
+        unit = ~line
+        a0, a1, b0, b1 = (int(record[record_index(half_integer, axis, word)])
+                          for word in range(4))
+        if a1 > a0:
+            unit[a1 - 1] = True
+        if b1 > b0:
+            unit[b0] = True
+        for stem in ("kms", "sinv"):
+            values = np.array(probe.to_host(coefficients[f"{stem}_{name}"]),
+                              dtype=np.float32).reshape(-1)
+            values[unit] = np.float32(1.0)
+            out[f"{stem}_{name}"] = xp.asarray(np.ascontiguousarray(
+                values.reshape(probe.broadcast_shape(axis, n))))
+    return out
+
+
+def plain_curl_cells(record: Sequence[int], half_integer: bool, shape: Sequence[int],
+                     boundaries: Sequence[str], count: int
+                     ) -> List[Tuple[int, int, int]]:
+    """Interior cells outside every run on the sub-step's lattice, pairwise two apart.
+
+    Outside every run, the coefficients there are exactly 1.0 (``fit_coefficients``),
+    so the dsig-only form is MEEP's plain ``f - curl``; two rows clear of a folded
+    face and of a wall, so neither the ghost rule nor an ownership mask reaches the
+    stencil.
+    """
+    rows = []
+    for axis, n in enumerate(int(v) for v in shape):
+        if n <= 1:
+            rows.append([0])
+            continue
+        line = membership_from_record(record, half_integer, axis, n)
+        low = 3 if boundaries[axis] in IS_FOLD else 2
+        high = n - 3
+        rows.append([r for r in range(low, high) if not line[r]])
+    cells: List[Tuple[int, int, int]] = []
+    for i in rows[0]:
+        for j in rows[1]:
+            for k in rows[2]:
+                cell = (i, j, k)
+                if all(max(abs(a - b) for a, b in zip(cell, other)) >= 2
+                       for other in cells):
+                    cells.append(cell)
+                if len(cells) == count:
+                    return cells
+    return cells
+
+
+def plant_negative_zeros(arrays: Dict[str, Any], sub_step: str, record: Sequence[int],
+                         shape: Sequence[int], boundaries: Sequence[str],
+                         dtdx: float) -> List[Dict[str, Any]]:
+    """MEEP's plain curl at ``f = -0, curl = +0``, one target per plain cell.
+
+    ``b_battery_states.plant_curl_negative_zero`` on a host copy, written back. A
+    3-D grid only: on the sheet an invariant partner turns the curl into a
+    one-partner form, whose signed zero does not separate the plain form from the
+    recurrence with its auxiliary read as 0.
+    """
+    if min(int(n) for n in shape) <= 1:
+        return []
+    terms = probe.B_PML_TERMS if sub_step == "step_B" else probe.D_PML_TERMS
+    cells = plain_curl_cells(record, sub_step == "step_B", shape, boundaries,
+                             len(terms))
+    host = {name: np.array(probe.to_host(array), dtype=np.float32)
+            for name, array in arrays.items()}
+    kinds = ["periodic" if kind == PERIODIC else "metallic" for kind in boundaries]
+    planted: List[Dict[str, Any]] = []
+    for term, cell in zip(terms, cells):
+        target, g1, a1, g2, a2 = term[:5]
+        try:
+            planted.append(battery.plant_curl_negative_zero(
+                host, (target, g1, a1, g2, a2), cell,
+                1 if sub_step == "step_B" else -1, kinds, dtdx=float(dtdx)))
+        except (ValueError, AssertionError) as exc:
+            planted.append({"target": target, "refused": repr(exc)})
+    for name, array in arrays.items():
+        array[...] = cp.asarray(host[name])
+    return planted
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +479,10 @@ BOUNDARY_SETS: Tuple[Tuple[str, str, str], ...] = (
     (METALLIC, PERIODIC, METALLIC),            # ...and its walled sibling
 )
 DTDX: Tuple[float, ...] = probe.PML_DTDX          # (0.5, 0.35) — 0.35 is mandatory
+#: The shapes the mutation legs sweep: the two 3-D non-cubes, where every per-axis
+#: and per-plane defect is visible, and the 2-D sheet, the only shape with an
+#: invariant axis, where the partner presence is.
+MUTATION_SHAPES: Tuple[Tuple[int, int, int], ...] = SHAPES[:3]
 PHASES: Tuple[int, ...] = (1, -1)
 ROW_PARITIES: Tuple[str, ...] = ("even_count", "odd_count")
 MULTI_STEP_COUNT = 6
@@ -313,12 +519,13 @@ def viable(shape: Sequence[int], boundaries: Sequence[str]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 def one_case(shape, boundaries, dtdx, phase, row_parity, sub_step, guard,
-             kernel=None, host_mutation: Optional[str] = None) -> Dict[str, Any]:
+             kernel=None, host_mutation: Optional[str] = None,
+             record_kind: str = "split") -> Dict[str, Any]:
     """One launch of one sub-step against both reference groupings, bytewise."""
     case: Dict[str, Any] = {
         "shape": list(shape), "boundaries": list(boundaries),
         "dtdx": repr(dtdx), "phase": phase, "row_parity": row_parity,
-        "sub_step": sub_step, "guard": guard,
+        "sub_step": sub_step, "guard": guard, "record_kind": record_kind,
         "dtdx_float32_exact": bool(float(np.float32(dtdx)) == float(dtdx)),
         "host_mutation": host_mutation,
     }
@@ -330,7 +537,12 @@ def one_case(shape, boundaries, dtdx, phase, row_parity, sub_step, guard,
     rng = np.random.default_rng(SEED)
     arrays = probe.make_pml_fields(tuple(shape), rng)
     half_integer = sub_step == "step_B"
+    record = record_for(record_kind, shape)
     coefficients = probe.synthetic_coefficients(cp, tuple(shape), half_integer)
+    if record_kind == "split":
+        coefficients = fit_coefficients(cp, coefficients, record, half_integer, shape)
+        case["planted"] = plant_negative_zeros(arrays, sub_step, record, shape,
+                                               boundaries, dtdx)
     flat = probe.flatten_coefficients(coefficients)
 
     reference = {name: array.copy() for name, array in arrays.items()}
@@ -338,10 +550,10 @@ def one_case(shape, boundaries, dtdx, phase, row_parity, sub_step, guard,
     rows = reflect_rows_for(shape, boundaries, row_parity)
     ref_array = {name: array.copy() for name, array in reference.items()}
     reference_pml_step(cp, ref_array, coefficients, dtdx, sub_step, boundaries,
-                       phases, rows, "array_order")
-    ref_kernel = {name: array.copy() for name, array in reference.items()}
-    reference_pml_step(cp, ref_kernel, coefficients, dtdx, sub_step, boundaries,
-                       phases, rows, "kernel_order")
+                       phases, rows, "array_order", record=record)
+    ref_pairwise = {name: array.copy() for name, array in reference.items()}
+    reference_pml_step(cp, ref_pairwise, coefficients, dtdx, sub_step, boundaries,
+                       phases, rows, "pairwise_order", record=record)
 
     codes = [CODE_OF[b] for b in boundaries]
     if host_mutation == "fold_as_periodic":
@@ -352,7 +564,8 @@ def one_case(shape, boundaries, dtdx, phase, row_parity, sub_step, guard,
                  else symmetry.CODE_MIRROR_METALLIC if b == MIRROR_PERIODIC
                  else CODE_OF[b] for b in boundaries]
     plan = symmetry.plan_folded_from_arrays(sub_step, arrays, flat, codes,
-                                            float(dtdx), kernel=kernel)
+                                            float(dtdx), kernel=kernel,
+                                            chunk_bounds=record)
     plan.run(guard=guard)
     cp.cuda.runtime.deviceSynchronize()
 
@@ -360,9 +573,17 @@ def one_case(shape, boundaries, dtdx, phase, row_parity, sub_step, guard,
     case["vs_array_order"] = combine(
         {name: bit_compare(arrays[name], ref_array[name])
          for name in targets + aux})
-    case["vs_kernel_order"] = combine(
-        {name: bit_compare(arrays[name], ref_kernel[name])
+    case["vs_pairwise_order"] = combine(
+        {name: bit_compare(arrays[name], ref_pairwise[name])
          for name in targets + aux})
+    # The planted cells, read back: MEEP's plain form stores -0 there.
+    for entry in case.get("planted", ()):
+        if "refused" in entry:
+            continue
+        cell = tuple(entry["cell"])
+        word = int(probe.to_host(arrays[entry["target"]])[cell].reshape(1)
+                   .view(np.uint32)[0])
+        entry["kernel_word"] = word
     return case
 
 
@@ -373,7 +594,7 @@ def _names(sub_step: str) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
 
 
 def multi_step_case(shape, boundaries, dtdx, phase, row_parity,
-                    kernel=None) -> Dict[str, Any]:
+                    kernel=None, record_kind: str = "split") -> Dict[str, Any]:
     """B and D alternating for several sub-steps from one state.
 
     The auxiliary is state: a kernel that gets ``field`` right and ``fu`` wrong is
@@ -382,7 +603,8 @@ def multi_step_case(shape, boundaries, dtdx, phase, row_parity,
     """
     case: Dict[str, Any] = {"shape": list(shape), "boundaries": list(boundaries),
                             "dtdx": repr(dtdx), "phase": phase,
-                            "row_parity": row_parity, "steps": MULTI_STEP_COUNT}
+                            "row_parity": row_parity, "steps": MULTI_STEP_COUNT,
+                            "record_kind": record_kind}
     skip = viable(shape, boundaries)
     if skip:
         case["skipped"] = skip
@@ -390,8 +612,13 @@ def multi_step_case(shape, boundaries, dtdx, phase, row_parity,
     rng = np.random.default_rng(SEED + 7)
     arrays = probe.make_pml_fields(tuple(shape), rng)
     reference = {name: array.copy() for name, array in arrays.items()}
-    tables = {sub: probe.synthetic_coefficients(cp, tuple(shape), sub == "step_B")
-              for sub in ("step_B", "step_D")}
+    record = record_for(record_kind, shape)
+    tables = {}
+    for sub in ("step_B", "step_D"):
+        table = probe.synthetic_coefficients(cp, tuple(shape), sub == "step_B")
+        if record_kind == "split":
+            table = fit_coefficients(cp, table, record, sub == "step_B", shape)
+        tables[sub] = table
     flat = {sub: probe.flatten_coefficients(tables[sub]) for sub in tables}
     codes = [CODE_OF[b] for b in boundaries]
     rows = reflect_rows_for(shape, boundaries, row_parity)
@@ -401,9 +628,10 @@ def multi_step_case(shape, boundaries, dtdx, phase, row_parity,
         for sub_step in ("step_B", "step_D"):
             symmetry.plan_folded_from_arrays(
                 sub_step, arrays, flat[sub_step], codes, float(dtdx),
-                kernel=kernel).run()
+                kernel=kernel, chunk_bounds=record).run()
             reference_pml_step(cp, reference, tables[sub_step], dtdx, sub_step,
-                               boundaries, phases, rows, "array_order")
+                               boundaries, phases, rows, "array_order",
+                               record=record)
     cp.cuda.runtime.deviceSynchronize()
     names = ("Bx", "By", "Bz", "Dx", "Dy", "Dz",
              "fu_Bx", "fu_By", "fu_Bz", "fu_Dx", "fu_Dy", "fu_Dz")
@@ -419,21 +647,23 @@ def multi_step_case(shape, boundaries, dtdx, phase, row_parity,
 #: count against itself, and a leg that died at case 30 would record 30/30 and
 #: read as a pass.
 MULTI_STEP_COMBOS: Tuple[Tuple[Any, ...], ...] = tuple(
-    (shape, boundaries, dtdx, phase, row_parity)
+    (shape, boundaries, dtdx, phase, row_parity, record_kind)
     for shape in SHAPES[:2]
     for boundaries in BOUNDARY_SETS[:6]
     for dtdx in DTDX
     for phase in (1,)
-    for row_parity in ROW_PARITIES)
+    for row_parity in ROW_PARITIES
+    for record_kind in RECORD_KINDS)
 
 
 def run_multi_step(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     """The multi-step sub-sweep: several sub-steps from one state, per combination."""
     cases: List[Dict[str, Any]] = []
-    for index, (shape, boundaries, dtdx, phase, row_parity) in enumerate(
+    for index, (shape, boundaries, dtdx, phase, row_parity, record_kind) in enumerate(
             MULTI_STEP_COMBOS, start=1):
         started = time.time()
-        case = multi_step_case(shape, boundaries, dtdx, phase, row_parity)
+        case = multi_step_case(shape, boundaries, dtdx, phase, row_parity,
+                               record_kind=record_kind)
         case["seconds"] = round(time.time() - started, 3)
         cases.append(case)
         if case.get("skipped"):
@@ -443,7 +673,7 @@ def run_multi_step(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
             log(f"[multi] {index}/{len(MULTI_STEP_COMBOS)} "
                 f"{'x'.join(str(n) for n in shape)} "
                 f"{'/'.join(b[:4] for b in boundaries)} dtdx={dtdx!r} "
-                f"phase={phase:+d} {row_parity} x{MULTI_STEP_COUNT}: "
+                f"phase={phase:+d} {row_parity} {record_kind} x{MULTI_STEP_COUNT}: "
                 f"identical={case['vs_array_order']['bit_identical']} "
                 f"({case['seconds']} s)")
         results["multi_step"] = {
@@ -469,21 +699,24 @@ def run_synthetic(results: Dict[str, Any], out_path: str,
     always runs the full product.
     """
     cases: List[Dict[str, Any]] = []
-    combos = [(shape, boundaries, dtdx, phase, row_parity, sub_step)
+    combos = [(shape, boundaries, dtdx, phase, row_parity, sub_step, record_kind)
               for shape in shapes
               for boundaries in BOUNDARY_SETS
               for dtdx in DTDX
               for phase in PHASES
               for row_parity in ROW_PARITIES
-              for sub_step in ("step_B", "step_D")]
+              for sub_step in ("step_B", "step_D")
+              for record_kind in RECORD_KINDS]
     total = len(guards) * len(combos)
     index = 0
     for guard in guards:
-        for shape, boundaries, dtdx, phase, row_parity, sub_step in combos:
+        for (shape, boundaries, dtdx, phase, row_parity, sub_step,
+             record_kind) in combos:
             index += 1
             started = time.time()
             case = one_case(shape, boundaries, dtdx, phase, row_parity, sub_step,
-                            guard, kernel=kernel, host_mutation=host_mutation)
+                            guard, kernel=kernel, host_mutation=host_mutation,
+                            record_kind=record_kind)
             case["seconds"] = round(time.time() - started, 3)
             cases.append(case)
             if case.get("skipped"):
@@ -491,7 +724,7 @@ def run_synthetic(results: Dict[str, Any], out_path: str,
             else:
                 verdict = case["vs_array_order"]
                 log(f"[{label}] {index}/{total} guard={guard} {sub_step} "
-                    f"{'x'.join(str(n) for n in shape)} "
+                    f"{record_kind} {'x'.join(str(n) for n in shape)} "
                     f"{'/'.join(b[:4] for b in boundaries)} dtdx={dtdx!r} "
                     f"phase={phase:+d} {row_parity}: "
                     f"identical={verdict['bit_identical']} "
@@ -525,8 +758,16 @@ def summarize(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         bucket["ran"] += 1
         bucket["identical"] += int(case["vs_array_order"]["bit_identical"])
     guarded = [c for c in cases if c.get("guard") is False and not c.get("skipped")]
+    planted = [entry for c in guarded for entry in (c.get("planted") or ())
+               if "refused" not in entry]
     return {
         "per_guard": per_guard,
+        # The planted signed-zero cells the guarded launches stepped, and how many
+        # read back MEEP's plain word: non-vacuity for the planted-case mutation.
+        "planted_cells": len(planted),
+        "planted_plain_word": sum(int(entry.get("kernel_word")
+                                      == entry.get("expected_word"))
+                                  for entry in planted),
         "guarded_ran": len(guarded),
         "guarded_identical": sum(int(c["vs_array_order"]["bit_identical"])
                                  for c in guarded),
@@ -546,12 +787,22 @@ _TOP_MASK = re.compile(r"tl\.where\(last_[xyz], 0\.0, (curl\d)\)")
 _CELL0_IF = re.compile(r"if BC([XYZ]) != PERIODIC:")
 _TOP_IF = re.compile(r"if BC([XYZ]) == MIRROR_PERIODIC:")
 _GHOST_IF = re.compile(r"if BC([XYZ]) == PERIODIC:")
-_STENCIL = re.compile(r"dtdx \* \(\((\w+) - (\w+)\) \+ \((\w+) - (\w+)\)\)")
-_FU_STORE = re.compile(r"\n *tl\.store\(u\d \+ idx, n\d, mask=live\)")
+#: The curl call (``forms.curl_stencil``), whose grouping is MEEP's left-to-right
+#: ``dtdx * (((g1s - g1) + g2) - g2s)`` with the partner presence. The regroup puts
+#: the pairwise grouping the kernel carried before the forms back AT THE CALL SITE.
+_STENCIL = re.compile(
+    r"curl(?P<t>\d) = curl_stencil\((?P<g1s>\w+), (?P<g1>\w+), (?P<g2>\w+), "
+    r"(?P<g2s>\w+), dtdx, (?P<p1>\w+), (?P<p2>\w+)\)")
+#: The region-masked auxiliary stores (the auxiliary contract).
+_FU_STORE = re.compile(r"\n *tl\.store\(u(\d) \+ idx, n\1, mask=live & du\1\)")
+#: The forms' coefficient tail: the dsig pair, the dsigu pair, the record line.
 _RECURRENCE = re.compile(
-    r"n(?P<t>\d) = \(\(p(?P=t) \* km_(?P<s>[xyz])\) - curl(?P=t)\) \* si_(?P=s)\n"
-    r"(?P<pad>\s+)v(?P=t) = \(\(\(tl\.load\(f(?P=t) \+ idx, mask=live, other=0\.0\)"
-    r" \* km_(?P<u>[xyz])\) \+ n(?P=t)\) - p(?P=t)\) \* si_(?P=u)")
+    r"km_(?P<s>[xyz]), si_(?P=s), km_(?P<u>[xyz]), si_(?P=u), du(?P<t>\d)\)")
+#: The sub-step's record lattice: integer for D (``BACKWARD``), half-integer for B.
+_LATTICE = re.compile(r"if BACKWARD:\n(\s+)lattice = 0\n(\s+)else:\n"
+                      r"(\s+)lattice = RECORD_HALF_INTEGER\n")
+#: The record lines that key each target's form on its dsigu layer.
+_DSIGU_LINE = re.compile(r"du(?P<t>\d) = record_in\(cb, lattice \+ (?P<w>\d), (?P<c>[ijk])\)")
 
 
 def drop_top_plane_mask(source: str) -> Tuple[str, int]:
@@ -598,9 +849,16 @@ def fold_ghost_wraps(source: str) -> Tuple[str, int]:
 
 
 def regroup_stencil(source: str) -> Tuple[str, int]:
-    """(e) ``dtdx*((a-b)+(c-d))`` -> ``((a-b)+c)-d``. The associativity family."""
-    return _STENCIL.sub(r"dtdx * (\1 - \2 + \3 - \4)", source), \
-        len(_STENCIL.findall(source))
+    """(e) MEEP's ``((a-b)+c)-d`` -> the pairwise ``(a-b)+(c-d)``. The associativity family.
+
+    INVERTED with the alignment: the shipped grouping is MEEP's, and the mutant is
+    the grouping the kernel carried before it, written at the call site so the
+    partner-presence select goes with it.
+    """
+    def pairwise(match: "re.Match[str]") -> str:
+        return (f"curl{match['t']} = dtdx * (({match['g1s']} - {match['g1']})"
+                f" + ({match['g2']} - {match['g2s']}))")
+    return _STENCIL.sub(pairwise, source), len(_STENCIL.findall(source))
 
 
 def drop_fu_store(source: str) -> Tuple[str, int]:
@@ -609,13 +867,92 @@ def drop_fu_store(source: str) -> Tuple[str, int]:
 
 
 def swap_dsig_dsigu(source: str) -> Tuple[str, int]:
-    """(g) The recurrence reads dsigu's coefficients where dsig's belong."""
+    """(g) The forms read dsigu's coefficients where dsig's belong."""
     def swap(match: "re.Match[str]") -> str:
-        t, s, u, pad = match["t"], match["s"], match["u"], match["pad"]
-        return (f"n{t} = ((p{t} * km_{u}) - curl{t}) * si_{u}\n"
-                f"{pad}v{t} = (((tl.load(f{t} + idx, mask=live, other=0.0) "
-                f"* km_{s}) + n{t}) - p{t}) * si_{s}")
+        t, s, u = match["t"], match["s"], match["u"]
+        return f"km_{u}, si_{u}, km_{s}, si_{s}, du{t})"
     return _RECURRENCE.sub(swap, source), len(_RECURRENCE.findall(source))
+
+
+def whole_grid_recurrence(source: str) -> Tuple[str, int]:
+    """(h) The select removed: the recurrence, and its fu traffic, on every cell."""
+    return (_DSIGU_LINE.sub(lambda m: f"du{m['t']} = live", source),
+            len(_DSIGU_LINE.findall(source)))
+
+
+def coefficient_predicate(source: str) -> Tuple[str, int]:
+    """(i) Target 0's form keyed on ``kms != 1`` rather than on its record line.
+
+    Caught on the ``split`` record's inner-face rows, which are inside a run with a
+    unit coefficient: a sigma = 0 cell inside a chunk."""
+    needle = "du0 = record_in(cb, lattice + 8, k)"
+    return (source.replace(needle,
+                           "du0 = tl.load(kmz + k, mask=live, other=1.0) != 1.0"),
+            source.count(needle))
+
+
+def membership_one_row_off(source: str) -> Tuple[str, int]:
+    """(j) Target 1's record line read one row off: a run bound off by one."""
+    needle = "du1 = record_in(cb, lattice + 0, i)"
+    return (source.replace(needle, "du1 = record_in(cb, lattice + 0, i + 1)"),
+            source.count(needle))
+
+
+def lattice_swapped(source: str) -> Tuple[str, int]:
+    """(k) The integer and half-integer record lines exchanged."""
+    return (_LATTICE.sub(r"if BACKWARD:\n\1lattice = RECORD_HALF_INTEGER\n"
+                         r"\2else:\n\3lattice = 0\n", source),
+            len(_LATTICE.findall(source)))
+
+
+def fu_store_unmasked(source: str) -> Tuple[str, int]:
+    """(l) Target 0's fu written on every cell, outside its dsigu layer too."""
+    needle = "tl.store(u0 + idx, n0, mask=live & du0)"
+    return (source.replace(needle, "tl.store(u0 + idx, n0, mask=live)"),
+            source.count(needle))
+
+
+def presence_ignored(source: str) -> Tuple[str, int]:
+    """(m) Every partner taken as present: the full bracket over an invariant axis.
+
+    Caught on the 2-D sheet only, where z is invariant."""
+    needle = "presence = tl.load(cb + RECORD_PRESENCE)"
+    return source.replace(needle, "presence = 7"), source.count(needle)
+
+
+def plain_curl_collapse(source: str) -> Tuple[str, int]:
+    """(n) Target 0's plain form spelled as the recurrence with ``fu := 0``.
+
+    On a cell outside both of target 0's layers (unit coefficients) the word
+    becomes ``(f + (0 - curl)) - 0``, which is MEEP's ``f - curl`` on every pair but
+    ``f = -0, curl = +0``. CAUGHT ONLY BY THE PLANTED CASE: a random state never
+    draws that pair. The statement is inserted after target 0's form call, at that
+    call's own indentation.
+    """
+    needle = "km_y, si_y, km_z, si_z, du0)"
+    statement = ("v0 = tl.where((du0 == 0) & (km_y == 1.0) & (si_y == 1.0), "
+                 "(tl.load(f0 + idx, mask=live, other=0.0) + (0.0 - curl0)) - 0.0, "
+                 "v0)")
+    lines = source.splitlines(keepends=True)
+    out: List[str] = []
+    hits = 0
+    for index, line in enumerate(lines):
+        out.append(line)
+        if line.strip() == needle and index > 0:
+            above = lines[index - 1]
+            out.append(above[:len(above) - len(above.lstrip())] + statement + "\n")
+            hits += 1
+    return "".join(out), hits
+
+
+def fu_load_unmasked(source: str) -> Tuple[str, int]:
+    """(o) DECLARED NULL: target 0's auxiliary read on every cell.
+
+    The word read outside the layer feeds only the discarded form, so no stored
+    word moves; the module's own test pins the load's mask statically."""
+    needle = "p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)"
+    return (source.replace(needle, "p0 = tl.load(u0 + idx, mask=live, other=0.0)"),
+            source.count(needle))
 
 
 SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
@@ -626,7 +963,19 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "regroup_stencil": regroup_stencil,
     "drop_fu_store": drop_fu_store,
     "swap_dsig_dsigu": swap_dsig_dsigu,
+    "whole_grid_recurrence": whole_grid_recurrence,
+    "coefficient_predicate": coefficient_predicate,
+    "membership_one_row_off": membership_one_row_off,
+    "lattice_swapped": lattice_swapped,
+    "fu_store_unmasked": fu_store_unmasked,
+    "presence_ignored": presence_ignored,
+    "plain_curl_collapse": plain_curl_collapse,
+    "fu_load_unmasked": fu_load_unmasked,
 }
+
+#: The source mutations that must NOT change a word: declared nulls, each with its
+#: reason in the rewrite's docstring. The clause reads them as "no word moved".
+SOURCE_MUTATION_NULLS: Tuple[str, ...] = ("fu_load_unmasked",)
 
 #: Host-side mutations: the kernel is the shipped one, the PLAN lies to it.
 HOST_MUTATIONS = ("fold_as_periodic", "swap_fold_termination")
@@ -642,12 +991,26 @@ def compile_mutated(source: str):
     launch. The four boundary constexprs are re-declared in the header because a
     ``@triton.jit`` body may not read a plain module global.
     """
+    # The kernel calls the shared forms by their imported names and reads the
+    # record's two word offsets as tl.constexpr globals; the mutated copy imports
+    # and declares them exactly as symmetry.py binds them (from forms.py and
+    # kernels.py), so a change there cannot leave a stale copy here.
+    from meep_gpu.triton_kernels import kernels as _kernels  # noqa: PLC0415
+
+    def constant(name: str) -> int:
+        value = getattr(_kernels, name)
+        return int(getattr(value, "value", value))
+
     header = (
         "import triton\nimport triton.language as tl\n"
+        "from meep_gpu.triton_kernels.forms import (axis_present, curl_form, "
+        "curl_stencil, record_in)\n"
         f"PERIODIC = tl.constexpr({symmetry.CODE_PERIODIC})\n"
         f"METALLIC = tl.constexpr({symmetry.CODE_METALLIC})\n"
         f"MIRROR_METALLIC = tl.constexpr({symmetry.CODE_MIRROR_METALLIC})\n"
-        f"MIRROR_PERIODIC = tl.constexpr({symmetry.CODE_MIRROR_PERIODIC})\n\n")
+        f"MIRROR_PERIODIC = tl.constexpr({symmetry.CODE_MIRROR_PERIODIC})\n"
+        f"RECORD_HALF_INTEGER = tl.constexpr({constant('RECORD_HALF_INTEGER')})\n"
+        f"RECORD_PRESENCE = tl.constexpr({constant('RECORD_PRESENCE')})\n\n")
     # encoding= is not optional: the kernel's prose carries non-ASCII and the
     # measurement host's default locale is ASCII, so the default open() dies
     # inside the mutation leg — which is a leg that reports nothing rather than
@@ -681,11 +1044,12 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
         summary = run_synthetic(results, out_path,
                                 kernel=module.pml_curl_step_folded,
                                 label="mutation:" + name, guards=(False,),
-                                shapes=SHAPES[:2])
+                                shapes=MUTATION_SHAPES)
         caught = summary["guarded_identical"] < summary["guarded_ran"]
         out[name] = {"sites": hits, "ran": summary["guarded_ran"],
                      "identical": summary["guarded_identical"],
                      "caught": caught,
+                     "must_catch": name not in SOURCE_MUTATION_NULLS,
                      "caught_on": _caught_on(results["synthetic"]
                                              ["mutation:" + name]["cases"])}
         log(f"[mut] {name}: sites={hits} identical="
@@ -696,7 +1060,7 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     for name in HOST_MUTATIONS:
         summary = run_synthetic(results, out_path, host_mutation=name,
                                 label="mutation:" + name, guards=(False,),
-                                shapes=SHAPES[:2])
+                                shapes=MUTATION_SHAPES)
         caught = summary["guarded_identical"] < summary["guarded_ran"]
         out[name] = {"host": True, "ran": summary["guarded_ran"],
                      "identical": summary["guarded_identical"], "caught": caught,
@@ -1121,14 +1485,15 @@ def expected_synthetic_cases(shapes: Sequence[Tuple[int, int, int]] = SHAPES,
     with the same skip rule (:func:`viable`) applied — so a shape added to
     ``SHAPES`` moves both the sweep and the number the verdict holds it to.
     """
-    per_pair = len(DTDX) * len(PHASES) * len(ROW_PARITIES) * 2  # both sub-steps
+    # both sub-steps, both records
+    per_pair = len(DTDX) * len(PHASES) * len(ROW_PARITIES) * 2 * len(RECORD_KINDS)
     return sum(per_pair for shape in shapes for boundaries in boundary_sets
                if viable(shape, boundaries) is None)
 
 
 def expected_multi_step_cases() -> int:
     """How many of :data:`MULTI_STEP_COMBOS` a complete multi-step leg runs."""
-    return sum(1 for shape, boundaries, _, _, _ in MULTI_STEP_COMBOS
+    return sum(1 for shape, boundaries, _, _, _, _ in MULTI_STEP_COMBOS
                if viable(shape, boundaries) is None)
 
 
@@ -1154,10 +1519,17 @@ def _synthetic_clause(results: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
         "unguarded_identical": f"{unguarded.get('identical')}/{unguarded.get('ran')}",
         "expected_per_guard": expected,
     }
+    # THE PLANTED CELLS ARE PART OF THE CLAIM: the split record's plain cells must
+    # have been planted and must read MEEP's plain word back, or the planted-case
+    # mutation below was scored on a sweep that never drew its pair.
+    planted = int(record.get("planted_cells", 0))
+    detail["planted"] = f"{record.get('planted_plain_word')}/{planted}"
     ok = (int(record.get("guarded_ran", 0)) == expected
           and int(record.get("guarded_identical", -1)) == expected
           and int(unguarded.get("ran", 0)) == expected
-          and int(unguarded.get("identical", -1)) == 0)
+          and int(unguarded.get("identical", -1)) == 0
+          and planted > 0
+          and int(record.get("planted_plain_word", -1)) == planted)
     return ok, detail
 
 
@@ -1186,18 +1558,22 @@ def _mutations_clause(results: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
     """
     record = results.get("mutations") or {}
     names = tuple(SOURCE_MUTATIONS) + tuple(HOST_MUTATIONS)
-    expected_cases = expected_synthetic_cases(SHAPES[:2])
+    expected_cases = expected_synthetic_cases(MUTATION_SHAPES)
     missing = [name for name in names if name not in record]
     errored = [name for name in names if (record.get(name) or {}).get("error")]
+    # A declared null must stay a null: a word it moved is a change in the contract.
     not_caught = [name for name in names
-                  if name in record and not (record[name] or {}).get("caught")]
+                  if name in record and bool((record[name] or {}).get("caught"))
+                  == (name in SOURCE_MUTATION_NULLS)]
     short = [name for name in names
              if name in record and "ran" in (record[name] or {})
              and int(record[name]["ran"]) != expected_cases]
     ok = not (missing or errored or not_caught or short)
-    return ok, {"caught": f"{len(names) - len(missing) - len(not_caught)}/{len(names)}",
+    return ok, {"as_declared": f"{len(names) - len(missing) - len(not_caught)}/"
+                               f"{len(names)}",
+                "declared_nulls": list(SOURCE_MUTATION_NULLS),
                 "missing": missing, "errored": errored,
-                "not_caught": not_caught, "short_sweeps": short,
+                "not_as_declared": not_caught, "short_sweeps": short,
                 "cases_each_expected": expected_cases}
 
 

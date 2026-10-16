@@ -116,6 +116,7 @@ import numpy as np
 
 from . import coverage as _coverage
 from . import offdiag_emitter as _flat
+from . import offdiag_presence as _presence
 from . import offdiag_stencil_weld as _weld
 from .compile_cache import (clear_kernel_cache as _clear_cache,
                             get_or_compile as _get_or_compile,
@@ -255,9 +256,10 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = _weld.CURL_LIFT_EDITS + (
     {"line": "    float far_pair = ghosted(g, up) + ghosted(g, corner);",
      "became": "    float far_pair = resolved_ghosted(comp, up, weld) + "
                "resolved_ghosted(comp, corner, weld);",
-     "why": "the same, for the term's other two foreign samples. The 0.25f scale, "
-            "the coefficient multiply BETWEEN the two shifts and the two "
-            "accumulations are untouched -- offdiag_term's return line is verbatim."},
+     "why": "the same, for the term's other two foreign samples. The coefficient "
+            "multiply BETWEEN the two shifts and the float32 sum are untouched -- "
+            "offdiag_term's return line is verbatim -- and so are the double scale, "
+            "the presence-guarded row and its one rounding in the lifted body."},
     {"line": "    float gs_E* = D*[idx];",
      "became": "    float gs_E* = v_*;",
      "why": "THE SEAM, diagonal half. The certified body opens each component by "
@@ -280,9 +282,10 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = _weld.CURL_LIFT_EDITS + (
             "first line below it that closes the call -- rather than by matching a "
             "corner index expression, which differs between row masks and would be "
             "an anchor that silently stopped applying."},
-    {"line": "    constitutive_apply(E*, f_w_E*, idx, src_E*, kps_*[*], kms_*[*]);",
+    {"line": "    constitutive_apply(E*, f_w_E*, idx, src_E*, kps_*[*], kms_*[*], "
+             "in_h_*);",
      "became": "    constitutive_apply(E*, f_w_E*, idx, src_E*, kps_*[*], "
-               "kms_half_*[*]);",
+               "kms_half_*[*], in_h_*);",
      "why": "ONE RENAME, NO ARITHMETIC. kms_* is the INTEGER sub-lattice for the D "
             "curl and the HALF-INTEGER one for update_E, and letting one shadow the "
             "other in a single scope is a half-cell error in the absorber profile "
@@ -352,8 +355,10 @@ def signature(row_mask: Sequence[int]) -> str:
     at an array the kernel must never touch.
     """
     mask = _flat.normalized_row_mask(row_mask)
-    rows = "\n".join(f"    const float* {_flat.ROW_PARAMETERS[slot]},"
-                     for slot, flag in enumerate(mask) if flag)
+    rows = "\n".join([f"    const float* {_flat.ROW_PARAMETERS[slot]},"
+                      for slot, flag in enumerate(mask) if flag]
+                     + [f"    int {_flat.KEPT_PARAMETERS[slot]},"
+                        for slot, flag in enumerate(mask) if flag])
     return f'''
 extern "C" __global__ void {KERNEL_NAME}(
     // THE SCRATCH OUTPUTS. A DIFFERENT ALLOCATION from the D/fu group below --
@@ -383,7 +388,8 @@ extern "C" __global__ void {KERNEL_NAME}(
     // promise the caller cannot keep.
     const float* inv_eps_Ex, const float* inv_eps_Ey, const float* inv_eps_Ez,
     // NOT __restrict__ either: a row volume may legally alias another row's, an
-    // epsilon volume or a D volume (offdiag_emitter's own reason).
+    // epsilon volume or a D volume (offdiag_emitter's own reason). Each live row's
+    // presence word follows the rows (offdiag_presence.presence_words).
 {rows}
     int nx, int ny, int nz, float dtdx,
     // The D curl's INTEGER split-field coefficients, certified names kept.
@@ -414,7 +420,11 @@ extern "C" __global__ void {KERNEL_NAME}(
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
     float near_phase_x, float near_phase_y, float near_phase_z,
-    float far_phase_x, float far_phase_y, float far_phase_z
+    float far_phase_x, float far_phase_y, float far_phase_z,
+    // The run's chunk record (chunk_map.chunk_bounds_record): the curl half's forms,
+    // evaluated at the cell raw_step_D_cell is called for, and the constitutive
+    // half's forms and the presence labels at the thread's own cell.
+    const int* __restrict__ cb
 ) {{
 '''
 
@@ -478,7 +488,7 @@ def constitutive_body(row_mask: Sequence[int]) -> str:
             body, f"    constitutive_apply({name}, f_w_{name}, idx, src_{name},",
             f"{name}'s certified constitutive_apply call")
         wanted = (f"    constitutive_apply({name}, f_w_{name}, idx, src_{name},"
-                  f" kps_{axis}[{index}], kms_{axis}[{index}]);")
+                  f" kps_{axis}[{index}], kms_{axis}[{index}], in_h_{axis});")
         if line != wanted:
             raise AssertionError(
                 f"the certified off-diagonal body spells {name}'s constitutive tail "
@@ -487,7 +497,7 @@ def constitutive_body(row_mask: Sequence[int]) -> str:
         body = body.replace(
             line,
             f"    constitutive_apply({name}, f_w_{name}, idx, src_{name},"
-            f" kps_{axis}[{index}], kms_half_{axis}[{index}]);", 1)
+            f" kps_{axis}[{index}], kms_half_{axis}[{index}], in_h_{axis});", 1)
     return body
 
 
@@ -865,8 +875,13 @@ def launch_offdiag_fused_electric_pair(
         fields: Any, scratch: Dict[str, Any], tables: Dict[str, Dict[str, Any]],
         boundary_codes: Sequence[int], wall_mask: Sequence[int],
         fills: Dict[str, Tuple[Any, ...]], dtdx: float, row_mask: Sequence[int],
-        rows: Sequence[Any], kernel: Optional[Any] = None) -> Dict[str, Any]:
+        rows: Sequence[Any], kept: Sequence[int], chunk_bounds: Any,
+        kernel: Optional[Any] = None) -> Dict[str, Any]:
     """All three of :data:`REPLACES` in ONE launch. THE CALLER ROTATES AFTERWARDS.
+
+    ``kept`` is the six presence words in slot order (0 for a dead slot,
+    ``offdiag_presence.launch_chunk_arguments``) and ``chunk_bounds`` the run's chunk
+    record on the device, the composition's one upload.
 
     ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is: a gate
     compiles a deliberately broken copy of the shipped source and hands it here. A
@@ -877,6 +892,9 @@ def launch_offdiag_fused_electric_pair(
     Returns the launch geometry rather than ``None`` so a gate can assert that
     something was actually launched.
     """
+    if len(kept) != len(_flat.KEPT_PARAMETERS):
+        raise ValueError(f"kept carries {len(kept)} presence words, not one per row slot")
+    cb = constitutive_kernels.chunk_record_argument(chunk_bounds)
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
@@ -887,6 +905,7 @@ def launch_offdiag_fused_electric_pair(
                    "Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez")]
     arguments += [fields.inverse_epsilon_for(component) for component in _ELECTRIC]
     arguments += list(rows)
+    arguments += [np.int32(int(word)) for word, flag in zip(kept, row_mask) if flag]
     arguments += [np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx)]
     for axis in ("x", "y", "z"):
         arguments += [curl[f"kms_{axis}"], curl[f"sinv_{axis}"]]
@@ -899,10 +918,12 @@ def launch_offdiag_fused_electric_pair(
     arguments += [np.int32(int(row)) for row in fills["reflect"]]
     arguments += [np.float32(float(value)) for value in fills["near_phase"]]
     arguments += [np.float32(float(value)) for value in fills["far_phase"]]
+    arguments += [cb]
     (kernel or _get_kernel(row_mask))((blocks,), (_FUSED_THREADS,), tuple(arguments))
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
             "row_mask": tuple(int(flag) for flag in row_mask),
+            "kept": tuple(int(word) for word in kept),
             "walls": tuple(int(flag) for flag in fills["wall"]),
             "coupling_wall_mask": tuple(int(bool(flag)) for flag in wall_mask),
             "fills": {key: tuple(fills[key])
@@ -964,10 +985,13 @@ def run_offdiag_fused_electric_pair(fields: Any, grid: Any, pml: Any, dtdx: floa
     assert_scratch_is_disjoint(fields, scratch, tables)
     mask = _flat.normalized_row_mask(offdiag_row_mask(fields))
     rows = [volume for volume in offdiag_row_volumes(fields) if volume is not None]
+    codes = offdiag_fused_electric_pair_codes(grid, pml)
+    chunk_record, kept = _presence.launch_chunk_arguments(fields, pml, codes)
+    import cupy as cp  # noqa: PLC0415 - device-only, in a laptop-importable module
+    chunk_bounds = cp.asarray(np.asarray(chunk_record, dtype=np.int32))
     record = launch_offdiag_fused_electric_pair(
-        fields, scratch, tables, offdiag_fused_electric_pair_codes(grid, pml),
-        offdiag_wall_mask_flags(grid), _weld.fill_plan(grid), dtdx, mask, rows,
-        kernel)
+        fields, scratch, tables, codes, offdiag_wall_mask_flags(grid),
+        _weld.fill_plan(grid), dtdx, mask, rows, kept, chunk_bounds, kernel)
     record["rotated"] = bool(rotate)
     record["scratch"] = rotate_into_fields(fields, scratch) if rotate else scratch
     return record

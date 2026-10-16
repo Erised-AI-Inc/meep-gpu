@@ -80,132 +80,72 @@ makes that true by construction rather than by care. The Triton sibling
 WHAT IS TRANSCRIBED, AND FROM WHERE
 =============================================================================
 
-``stepping.update_E``'s ``elif offdiagonal:`` branch (stepping.py:1001-1008) with
-complex64 storage. With no poles admitted
-``displacement_minus_polarization_volumes`` aliases each source to its D primary
-(fields.py:1107-1138), and all three are alive at once because the coupling reads
-the OTHER components' volumes. Per component ``c`` with own axis ``a``::
+``stepping.update_E``'s off-diagonal branch with complex64 storage: the row is
+``stepping._offdiagonal_terms`` -- MEEP's ``step_update_EDHB`` row (step_generic.cpp
+:580-583, :611, :719) -- evaluated PER PART, because MEEP steps the real and the
+imaginary part of a complex field separately with the same real coefficients
+(``DOCMP``, update_eh.cpp:149). With no poles admitted the sources alias the D
+primaries, and all three are alive at once because the coupling reads the OTHER
+components' volumes. Per component ``c`` with own axis ``a`` and per part::
 
-    constitutive = D_c * us_c                                # :976, D LEFT
-    per surviving partner (offset 1 then 2, cycle X->Y->Z, :1206-1208):
-        pair    = g + shift_down(g, partner_axis)            # :1214-1216
-        product = pair * coefficient                         # :1217, pair LEFT
-        term    = 0.25 * (product + shift_up(product, a))    # :1219-1220, 0.25 LEFT
-        total   accumulates term(offset 1) then term(offset 2)  # :1221
-    _mask_metallic_wall_coupling(total)                      # :1223, :1250-1254
-    constitutive = (D_c * us_c) + total                      # :978-979
-    PML  : prev = f_w_c ; f_w_c = constitutive ;
-           E_c += kps_a_h * f_w_c ; E_c -= kms_a_h * prev    # :986, :2065-2096
-    STORE: E_c = constitutive                                # :993
+    row = (double)(gs * us)                                  # one float32 product
+    per surviving partner (cycle_direction 1 then 2), where the cell's chunk keeps
+    the partner's array (the presence word):
+        pair    = window(g, partner axis) + shift_down(g, partner axis)
+        near    = connect_own(pair * u[i])                   # u[i] at this node
+        far     = shift_up(pair * u, a)                      # u[i+s], a plain wrap
+        term    = near + far                                 # float32
+        term    = 0 on a masked wall plane (_mask_metallic_wall_coupling)
+        row     = row + 0.25 * (double)term                  # left to right
+    src = (float)row                                         # one rounding
+    dsigw chunk: prev = f_w_c ; f_w_c = src ; E_c = E_c + ((kps*src) - (kms*prev))
+    elsewhere, and the store arm everywhere: E_c = src
 
-THE THREE GHOST RULES, each with the branch of ``stepping`` it is:
+A component with no surviving row keeps the element-wise ``gs * us`` in float32 and
+never forms a double row.
 
-1. ``_shift_down`` on the PARTNER axis (stepping.py:1835), called WITH a component
-   name and the plane's parity (:1243-1245), so all three branches are live:
-   PERIODIC wraps the near face and multiplies it by ``conj(phase)`` (:1818-1822
-   through :1862); MIRROR writes ``parity * field[_face(axis, MIRROR_ROW)]``
-   (:1826-1828) with ``MIRROR_ROW = 2`` (:159); METALLIC writes an exact zero
-   (:1830-1831).
-2. ``_shift_up`` on the component's OWN axis (stepping.py:1770), called with FOUR
-   positional arguments plus the phase (:1248-1249) -- no ``component``, no
-   ``mirror_phase``, no ``reflect_row`` -- so the folded-PERIODIC reflect branch
-   (:1772-1780) CANNOT FIRE and both mirror terminations fall through to
-   ``shifted[_face(axis, -1)] = 0`` (:1781-1783). PERIODIC wraps and multiplies the
-   TOP plane by the FORWARD phase.
-3. ``_mask_metallic_wall_coupling`` (:1250-1254) zeroes face 0 of every axis whose
-   Yee shift is 0 and which is ``is_metallic and not is_mirrored`` -- so it
-   ABSTAINS on a fold, deliberately and with the array path's own measurement
-   beside it (:1237-1248).
+THE GHOST RULES AND THE TWO CONNECTIONS, each with the ``stepping`` branch it is:
 
-FACTS 1 AND 2 ARE THE REAL FAMILY'S, unchanged: ``folded_offdiag_kernels``
-established both against a device on 2026-08-20 (240/240 folded cases per policy),
-and neither is a statement about the STORAGE. What complex storage changes is
-only what the values are and therefore what each multiply is; the branch structure
-is byte-for-byte the real family's.
+1. ``_shift_down`` on the PARTNER axis, called with the component and the plane's
+   parity: PERIODIC wraps the near face PLAINLY (the stored window: no Bloch factor
+   on a shifted operand); MIRROR writes ``parity * field[_face(axis, MIRROR_ROW)]``
+   as one part-wise scale on the ghost lane; METALLIC writes an exact zero.
+2. ``_shift_up`` on the component's OWN axis, called with four positional
+   arguments -- no component, no mirror phase, no reflect row -- so both mirror
+   terminations fall through to the zero ghost, and PERIODIC wraps plainly.
+3. ``_bloch_ghost_operand`` connects the two operands read at the cell ITSELF on
+   plane 0 of a phased axis: the pair's same-index sample on the PARTNER axis takes
+   MEEP's not-owned word ABOVE the window (``eikna``, ``below=False``), and the near
+   product on the OWN axis the word BELOW it (``conj(eikna)``, ``below=True``),
+   applied after the coefficient. Each is ``part_products.connect``'s rule -- a
+   copy, a per-part negation, or the unfused complex product with the phase rounded
+   to float32 parts -- resolved on the host into a kind and two parts per axis
+   (:func:`bloch_connection_table`).
+4. ``_mask_metallic_wall_coupling`` zeroes face 0 of every axis whose Yee shift is 0
+   and which is ``is_metallic and not is_mirrored`` -- it ABSTAINS on a fold.
 
 ONE ``BC_MIRROR`` CODE SERVES BOTH FOLD TERMINATIONS. ``update_E`` has no
-ownership mask (``_mask_non_owned_cells``, stepping.py:1912, has exactly three
-call sites and no constitutive function is among them) and by fact 2 no reflect
-row, so the split ``coverage.REAL_CURL_BC_CODES`` needs for the CURL does not
-arise. That is a prediction about the arithmetic and the gate carries it as a NULL
-CONTROL -- both declared terminations of one fold must be bit-identical -- rather
-than as an assumption.
+ownership mask and by rule 2 no reflect row, so the split
+``coverage.REAL_CURL_BC_CODES`` needs for the CURL does not arise; the gate carries
+that as a NULL CONTROL -- both declared terminations of one fold must be
+bit-identical -- rather than as an assumption.
 
 =============================================================================
-WHAT COMPLEX STORAGE CHANGES: FIVE MULTIPLY SITES, EACH WITH AN ORIENTATION
+WHAT DECIDES BIT-IDENTITY HERE
 =============================================================================
 
-``numpy``/``cupy`` expose no scalar-times-complex loop (``np.multiply`` carries
-only 'FF->F' for complex), so EVERY real-coefficient multiply on the array path is
-a FULL complex multiply with a zero-imaginary operand, and the operand ORDER is
-normative under the fused arm. Transcribed site by site:
+``offdiag_emitter``'s nine items hold per part, and complex storage adds three:
 
-===================================  ==================================  ==========
-array-path expression                orientation                         helper
-===================================  ==================================  ==========
-``source * inverse_epsilon_for(c)``  D on the LEFT (stepping.py:1005)      mul_field_left
-``pair * coefficient``               pair on the LEFT (:1246)             mul_field_left
-``0.25 * (...)``                     python float on the LEFT (:1219)     mul_coefficient_left
-``parity * _mirror_source(...)``     parity on the LEFT (:1826-1828)      mul_coefficient_left
-``shifted[plane] *= phase``          field on the LEFT (:1862)            rotate_field_left
-``kps * fw`` / ``kms * fw_prev``     coefficient on the LEFT (:2086-2095) mul_coefficient_left
-===================================  ==================================  ==========
-
-THE PARITY MULTIPLY NEEDS ITS OWN PROBE PATTERN, and this family therefore takes
-the EXTENDED licence. ``_symmetry_phase`` returns a python int, so
-``parity * complex64_array`` is the ``c8_mul_c8_parity_coefficient_left``
-orientation -- a FIFTH pattern beside the base four
-(``triton_kernels/complex_fields.PROBE_PATTERNS``). The arbiter is
-``triton_kernels.folded_complex.parity_expansion_license`` and this module does
-not re-implement it: the arm arrives as an ARGUMENT and
-:func:`covers_complex_offdiag_pml_update_e` takes the licence VERDICT and checks
-its shape. Measured on the shipped probe artifact
-``results/expansion_probe_2026-08-17/``: BOTH policies classify FMA_V1 on a
-measured basis with no refusals, on the base set and on the parity set alike, and
-``parity_is_planewise`` is False -- so the plane-wise diagnostic is not a live
-alternative here and the full complex product is required.
-
-THE STORE ARM NEEDS ONLY THE BASE FOUR, because no fold reaches it (its predicate
-requires an inert layer and the corpus's two store rows are unfolded), but it is
-gated on the SAME extended licence anyway: the emitted body carries the mirror arm
-either way, and a family whose two arms bound different licences would be two
-certifications wearing one name.
-
-=============================================================================
-SIX THINGS DECIDE BIT-IDENTITY HERE
-=============================================================================
-
-1. THE ZERO CROSS TERMS ARE CARRIED LITERALLY. Plane-wise ``{re*c, im*c}`` is
-   byte-wrong on signed zeros; ``complex_emitter``'s note 1 is the derivation and
-   this family adds a site of its own -- the parity multiply on the mirror ghost.
-2. THE COEFFICIENT MULTIPLY SITS BETWEEN THE TWO SHIFTS. ``u[i]`` multiplies the
-   two-point partner average AT ITS OWN NODE and ``u[i+s]`` the average at the
-   next node up the component's own axis, because MEEP registers the off-diagonal
-   entry at the component's Yee site minus half a cell along its own axis
-   (anisotropic_averaging.cpp:248-257, ``here - shift1``). Hoisting to a plain
-   four-point average times ``u[i]`` is the same ALGEBRA only for a uniform
-   coefficient.
-3. THE UP-AXIS PHASE ROTATES THE PRODUCT, NOT THE FIELD. The array path forms
-   ``product = pair * coefficient`` over the whole volume and only THEN calls
-   ``_shift_up`` on it, so the wrapped plane's Bloch factor multiplies the
-   already-multiplied product. Rotating the pre-coefficient field instead is the
-   same magnitude and a different number.
-4. THE COEFFICIENT AT A ZERO-GHOST UP PLANE IS READ AS ``0.0f``, NOT AS ``u[up]``.
-   Where ``_shift_up`` writes an exact zero the array path's second addend is the
-   complex ``(+0.0f, +0.0f)``; the kernel reaches that only if the coefficient it
-   multiplies the (already zero) far pair by is itself ``+0.0f``. With any other
-   value the fused arm's ``fma(z_re, c, (z_im * 0.0f) * -1.0f)`` returns ``-0.0f``
-   for negative ``c``, which is a different word. ``ghosted`` is what makes it
-   ``0.0f``, and the gate arms the substitution.
-5. THE TAIL IS TWO SEPARATE ACCUMULATIONS, LEFT TO RIGHT, on the PML arm
-   (stepping.py:2133-2134), and ``prev`` is read BEFORE ``fw`` is written. The
-   body is ``complex_emitter``'s certified ``constitutive_apply``, taken from that
-   module's own string rather than retyped.
-6. NO FMA CONTRACTION. ``--fmad=false`` is CORRECTNESS: the row accumulation, the
-   ``D * inv_eps`` product, the two ``pair * coefficient`` products and both tail
-   accumulations are contraction candidates. The arm's transcribed fusions are
-   spelled ``__fmaf_rn``, a single ``fma.rn.f32`` whatever the flag says, so the
-   flag removes the accidental fusions and leaves the transcribed ones.
+1. EVERY REAL-COEFFICIENT PRODUCT IS ONE FLOAT32 PRODUCT PER PART -- ``D * inv_eps``,
+   ``pair * u``, the mirror parity and the tail's ``kps * src`` / ``kms * prev``
+   (``part_products.scale``) -- through ``complex_emitter``'s ``mul_field_left`` /
+   ``mul_coefficient_left``. No complex x complex product is formed except the
+   connection's own (rule 3 above), and none is fused (``--fmad=false``).
+2. THE ROW IS DOUBLE PER PART: ``(double)(gs.re * us)`` and ``(double)(gs.im * us)``
+   each accumulate ``0.25 * (double)term`` in partner order where the chunk keeps the
+   row, and round once.
+3. EVERY ZERO IS ``cf_zero()``, BOTH WORDS: the metallic and the up-axis ghosts and
+   the wall mask assign the integer 0 to a complex64 plane, ``(+0.0f, +0.0f)``.
 
 =============================================================================
 WHAT IS COMPILE-TIME AND WHAT IS NOT
@@ -215,15 +155,13 @@ WHAT IS COMPILE-TIME AND WHAT IS NOT
 reasons:
 
 * the three BOUNDARY codes (now THREE-valued: periodic, metallic, mirror), the
-  three WALL flags, the three PHASE flags and the three PARITY weights are BRANCH
-  axes -- they select an index, a predicated zero, or whether one multiply happens
-  on one plane, and change no float operation and no association -- so they are
-  ordinary runtime arguments. The certified ``step_B_pml_real`` already
-  takes ``bc_x``/``bc_y``/``bc_z`` that way (step_curl_kernels.py:1687);
+  three WALL flags, the two CONNECTION tables, the three PARITY weights, the chunk
+  record and the six PRESENCE words are BRANCH axes -- they select an index, a
+  predicated zero, a chunk's form, or whether one connection happens on one plane,
+  and change no float operation and no association -- so they are ordinary runtime
+  arguments;
 * the six ROW-LIVENESS flags are an ARITY axis (they change how many terms the
   inner sum has and therefore its association) so they stay compile-time;
-* EXPANSION is an ARITHMETIC axis (which products are fused, how the zero cross
-  terms are spelled) so it stays compile-time;
 * the TAIL is STRUCTURAL, so it is two kernels.
 
 THE GHOST LANE AND THE PARITY WEIGHT ARE DERIVED FROM ``bc_*`` IN ONE PLACE, which
@@ -296,9 +234,9 @@ __all__ = (
     "KERNEL_NAMES",
     "LIVE_ROW_MASKS",
     "MIRROR_SOURCE_INDEX",
-    "PARITY_PROBE_PATTERN",
     "UNCERTIFIED_KERNELS",
-    "bloch_phase_table",
+    "bloch_connection_table",
+    "chunk_arguments",
     "clear_kernel_cache",
     "complex_offdiag_boundary_codes",
     "complex_offdiag_source",
@@ -365,12 +303,6 @@ ROW_PARAMETERS: Tuple[str, ...] = _flat.ROW_PARAMETERS
 #: (fields.py:1302-1303).
 LIVE_ROW_MASKS: Tuple[Tuple[int, ...], ...] = _flat.LIVE_ROW_MASKS
 
-#: The FIFTH probe pattern this family's parity multiply needs. Spelled
-#: identically to ``triton_kernels.folded_complex.PARITY_PROBE_PATTERN`` and
-#: pinned equal to it by ``test_complex_offdiag_update_e.py``; the licence itself
-#: is computed by that module's ``parity_expansion_license`` and never here.
-PARITY_PROBE_PATTERN: str = "c8_mul_c8_parity_coefficient_left"
-
 #: NOTHING HERE HAS A GATE VERDICT YET. The two sets partition
 #: :func:`shipped_kernel_names`; a kernel added to this family cannot ship
 #: described by nothing. Spelled as plain assignments WITHOUT type annotations for
@@ -404,45 +336,71 @@ _THREADS = 256
 # THE DEVICE CODE
 # =============================================================================
 
-#: This family's own prelude. Everything here is either NEW or DIFFERENT from a
-#: certified sibling's by exactly the complex word pair, and each piece carries the
-#: ``stepping`` line it transcribes. The three multiply helpers, the word-pair
-#: addressing, the complex add/sub, ``cf_zero`` and ``constitutive_apply`` all come
-#: from ``complex_emitter`` and are NOT respelled here.
-_OWN_PRELUDE = r'''
-#define BC_PERIODIC 0
-#define BC_METALLIC 1
+#: The certified real family's helpers this family reads out of
+#: ``offdiag_emitter.PRELUDE`` rather than respelling: the flat index, the ghosted
+#: coefficient load, and the three chunk-label rules the presence words are indexed by.
+#: Named as data so a test can assert every one is still found and still lands in the
+#: emitted source.
+SIBLING_HELPERS: Tuple[str, ...] = ("flat", "ghosted", "chunk_label", "chunk_row",
+                                    "chunk_keeps")
+
+
+def _certified_helper(name: str) -> str:
+    """One ``__device__`` helper of ``offdiag_emitter.PRELUDE``, with its comment block.
+
+    RAISES if the block cannot be found: a silent fallback to a local copy is the one
+    failure this indirection exists to prevent (``folded_offdiag_kernels`` reads the same
+    helpers the same way).
+    """
+    lines = _flat.PRELUDE.splitlines()
+    start = None
+    for index, line in enumerate(lines):
+        if line.startswith("__device__ __forceinline__") and f" {name}(" in line:
+            start = index
+            break
+    if start is None:
+        raise RuntimeError(
+            f"offdiag_emitter.PRELUDE no longer declares {name!r}; this family reads "
+            f"that helper out of the certified sibling rather than copying it")
+    head = start
+    while head > 0 and lines[head - 1].startswith("//"):
+        head -= 1
+    end = start
+    while end < len(lines) and lines[end] != "}":
+        end += 1
+    if end >= len(lines):
+        raise RuntimeError(f"{name!r} in offdiag_emitter.PRELUDE has no closing brace "
+                           f"on its own line")
+    return "\n".join(lines[head:end + 1])
+
+
+#: This family's own device code. Each piece carries the ``stepping`` function it
+#: transcribes; the word-pair addressing, the part-wise products, ``cconnect`` /
+#: ``cwindow``, ``cf_zero`` and ``constitutive_apply`` come from ``complex_emitter``, and
+#: the chunk helpers from ``offdiag_emitter``, and are NOT respelled here.
+_OWN_PRELUDE = r"""
 #define BC_MIRROR 2
 
-// stepping.MIRROR_SOURCE_INDEX (stepping.py:159). MEEP symmetry.cpp runs the
-// transform on doubled coordinates, so with the halved grid's origin at io = -2
-// the ghost at index -1 maps onto stored cell 2 for the iyee = 1 components the
-// backward differences read. stepping._mirror_source (stepping.py:1535-1541)
-// RAISES below that many stored cells, which is why the predicates refuse a
-// folded axis with <= MIRROR_ROW cells by name.
+// stepping.MIRROR_SOURCE_INDEX. MEEP symmetry.cpp runs the transform on doubled
+// coordinates, so with the halved grid's origin at io = -2 the ghost at index -1
+// maps onto stored cell 2 for the iyee = 1 components the backward differences
+// read. stepping._mirror_source RAISES below that many stored cells, which is why
+// the predicates refuse a folded axis with <= MIRROR_ROW cells by name.
 #define MIRROR_ROW 2
 
-// stepping._shift_up (stepping.py:1723) AS _offdiagonal_terms CALLS IT
-// (stepping.py:1219-1220): four positional arguments plus the phase, with no
+// stepping._shift_up AS _offdiagonal_terms CALLS IT: four positional arguments, no
 // component, no mirror_phase and no reflect_row -- so the folded-PERIODIC reflect
-// branch (:1772-1780) cannot fire and BOTH mirror terminations fall through to
-// shifted[_face(axis, -1)] = 0 (:1781-1783). MIRROR therefore shares METALLIC's
-// arm here, and that is the transcription rather than a shortcut: a folded axis
-// that wrapped instead would move bytes on the last stored plane, which is what
-// the 2026-08-20 real-storage device sweep measured for exactly that substitution
-// (folded_offdiag_kernels.FOLDED_OFFDIAG_ADMISSION).
+// branch cannot fire and BOTH mirror terminations fall through to
+// shifted[_face(axis, -1)] = 0. MIRROR therefore shares METALLIC's arm here. The
+// periodic wrap is a plain one, Bloch phase or not (the stored window).
 __device__ __forceinline__ int coord_up(int a, int n, int bc) {
     if (a + 1 < n) return a + 1;
     return (bc == BC_PERIODIC) ? 0 : -1;
 }
 
-// stepping._shift_down (stepping.py:1788), all three branches.
-//
-// THE MIRROR ARM RETURNS A LIVE INTERIOR ROW. On a folded axis the array path
-// writes _symmetry_phase(component, axis, mirror_phase) * _mirror_source(field,
-// axis) into face 0 (:1826-1828) -- stored row MIRROR_ROW, weighted by the plane's
-// parity. It is neither the periodic wrap nor the metallic zero. The WEIGHT is
-// applied by the caller, on the ghost lane alone; see down_sample.
+// stepping._shift_down, all three branches: the periodic near face is a plain wrap
+// (the stored window), the metallic one an exact zero, the mirror one the stored
+// row MIRROR_ROW, weighted by the plane's parity on the ghost lane (down_sample).
 //
 // An invariant axis (n == 1, always PERIODIC) needs no case of its own: both
 // wraps return the same cell, which is what xp.roll computes there, so the partner
@@ -454,121 +412,86 @@ __device__ __forceinline__ int coord_dn(int a, int n, int bc) {
     return n - 1;
 }
 
-// The flat COMPLEX CELL index of a cell, with a -1 on ANY axis propagating. The
-// two shifts of one term go in opposite directions on DIFFERENT axes, so the
-// corner sample is a ghost when either leg is one; the per-axis rules compose
-// independently, exactly as they do in the array path where the two shift helpers
-// are applied in turn. cf_load does the word doubling and nothing else does.
-__device__ __forceinline__ int flat(int i, int j, int k, int nyz, int nz) {
-    return (i < 0 || j < 0 || k < 0) ? -1 : (i * nyz + j * nz + k);
-}
-
-// The OWN-AXIS UP sample of a partner volume: the value, or the exact complex zero
-// the array path writes into that plane. cf_zero() is BOTH WORDS +0.0f, which is
-// what assigning the INTEGER 0 to a complex64 array produces (stepping.py:1783);
-// a clear that touched only the real plane is a known defect class in this tree
-// and the gate arms it.
-__device__ __forceinline__ cf up_sample(const float* g, int index) {
-    return (index < 0) ? cf_zero() : cf_load(g, index);
-}
-
-// The PARTNER-AXIS DOWN sample, with the near-face rule applied ON THE GHOST LANE
-// AND NOWHERE ELSE. gl is 1 only at face 0 of the partner axis, and it is derived
-// from the coordinate in ONE place so the index redirect in coord_dn and the rule
-// here cannot disagree about which lane is the ghost -- a disagreement would read
-// stored row MIRROR_ROW without the parity, or apply the parity to an ordinary
-// neighbour, and both are a plane of wrong values rather than a crash.
-//
-//   index < 0        METALLIC: shifted[_face(axis,0)] = 0 (stepping.py:1830-1831).
-//   gl && BC_MIRROR  parity * field[_face(axis, MIRROR_ROW)] (:1826-1828) -- the
-//                    PARITY ON THE LEFT, which is the c8_mul_c8_parity_coefficient
-//                    _left orientation and why this family binds the EXTENDED
-//                    expansion licence.
-//   gl && ph         the periodic near face wraps DOWN one lattice vector and
-//                    carries conj(phase) (:1818-1822 through :1862), FIELD on the
-//                    LEFT. The host passes the conjugate in; nothing here negates
-//                    anything, because taking the same factor in both directions
-//                    is the classic sign error -- every magnitude stays plausible
-//                    and only the phase moves.
-//   gl && !ph        k = 0: the multiply is SKIPPED, never done against 1 + 0j
-//                    (:1819), which is what keeps k = 0 bit-identical to the
-//                    unphased engine.
-//   !gl              an interior neighbour: no rule at all.
-//
-// THE MIRROR TEST PRECEDES THE PHASE TEST, and that is the array path's order:
-// _shift_down's MIRROR branch never consults the phase. Grid._resolve_bloch raises
-// on a phased folded axis (grid.py:975) and both predicates refuse it, so the
-// combination is unreachable from a real Grid -- the order is written down so a
-// gate feeding deliberate garbage gets the array path's answer rather than a
-// guess.
-__device__ __forceinline__ cf down_sample(const float* g, int index, int gl,
-                                          int bc, int ph, cf phase, float w) {
+// The PARTNER-AXIS DOWN sample, with the mirror rule applied ON THE GHOST LANE AND
+// NOWHERE ELSE: parity * field[_face(axis, MIRROR_ROW)], one part-wise product
+// (part_products.scale). gl is 1 only at face 0 of the partner axis, derived from
+// the coordinate in ONE place so the index redirect in coord_dn and the rule here
+// cannot disagree about which lane is the ghost. index < 0 is the metallic zero.
+// No Bloch connection: the shifted operand is a plain wrap.
+__device__ __forceinline__ cf down_sample(const float* g, int index, int gl, int bc,
+                                          float w) {
     if (index < 0) return cf_zero();
     cf z = cf_load(g, index);
-    if (!gl) return z;
-    if (bc == BC_MIRROR) return mul_coefficient_left(w, z);
-    return ph ? rotate_field_left(z, phase) : z;
+    if (gl && bc == BC_MIRROR) return mul_coefficient_left(w, z);
+    return z;
 }
 
-// One partner's OFFDIAG term under complex storage -- MEEP step_generic.cpp:582-583
-// as stepping._offdiagonal_terms (stepping.py:1214-1221) associates it:
+// The partner volume read at a cell's SAME partner-axis index -- the same-index
+// operand of the pair, cwindow's read (stepping._bloch_ghost_operand, below=False:
+// on plane 0 of a phased partner axis MEEP's not-owned word ABOVE the window, eikna
+// times the stored word) -- or the exact zero where that cell is the own-axis zero
+// ghost (index < 0).
+__device__ __forceinline__ cf pair_window(const float* g, int index, int pa, int pph,
+                                          cf pphase) {
+    if (index < 0) return cf_zero();
+    return cwindow(g, index, pa, pph, pphase);
+}
+
+// One partner's OFFDIAG sum under complex storage -- MEEP step_generic.cpp:580-583 as
+// stepping._offdiagonal_terms associates it, PER PART:
 //
-//     0.25*((g[i] + g[i-sx])*u[i] + (g[i+s] + g[(i+s)-sx])*u[i+s])
+//     (g[i] + g[i-sx])*u[i] + (g[i+s] + g[(i+s)-sx])*u[i+s]
 //
-// THE COEFFICIENT MULTIPLY SITS BETWEEN THE TWO SHIFTS. u[i] multiplies the
-// two-point partner average AT ITS OWN NODE and u[i+s] the average at the next
-// node up this component's own axis, because MEEP registers the off-diagonal entry
-// at the component's Yee site minus half a cell along its own axis -- the integer
-// node (anisotropic_averaging.cpp:248-257, `here - shift1`). Hoisting to a plain
-// four-point average times u[i] is the same ALGEBRA only for a uniform coefficient.
+// THIS RETURNS THE FLOAT32 SUM INSIDE THE SCALE. The pair sums, the products and their
+// sum are realnum (float32) operations; 0.25 is a double literal, so the scale and
+// everything after it is double (the caller applies the wall mask to this sum, then
+// scales it in double).
 //
-// BOTH GHOSTED DOWN LOADS TAKE THE SAME LANE PREDICATE AND THE SAME RULE: `down`
-// and `corner` differ only in the OWN-axis coordinate, so the two hit the
-// partner-axis ghost plane together.
+// THE COEFFICIENT MULTIPLY SITS BETWEEN THE TWO SHIFTS. u[i] multiplies the two-point
+// partner average AT ITS OWN NODE and u[i+s] the average at the next node up this
+// component's own axis (MEEP registers the off-diagonal entry at the component's Yee
+// site minus half a cell along its own axis, anisotropic_averaging.cpp:248-257).
 //
-// THE UP-AXIS PHASE ROTATES THE PRODUCT, NOT THE FIELD. The array path forms
-// product = pair * coefficient over the WHOLE volume (:1217) and only then calls
-// _shift_up on it (:1219-1220), so the wrapped plane's Bloch factor multiplies the
-// already-multiplied product. uw is the wrap lane: face -1 of the shifted buffer,
-// which is stored cell n-1, and only on a PERIODIC axis.
-//
-// THE COEFFICIENT AT A ZERO-GHOST UP PLANE IS 0.0f AND NOT u[up]. Where _shift_up
-// writes an exact zero the array path's second addend is (+0.0f, +0.0f); the far
-// pair is already that, but mul_field_left((+0,+0), c) under the fused arm is
-// fma(+0, c, (+0 * 0.0f) * -1.0f) = -0.0f for negative c. Only c == 0.0f returns
-// +0.0f, so the coefficient is ghosted too.
-//
-// 0.25f SCALES THE SUM AND IS APPLIED LAST, with the SCALAR ON THE LEFT: the array
-// path writes 0.25 * (...) with a python float (:1219), which is the
-// coefficient-left zero-imaginary product and never a plane-wise scale.
-//
-// NO UNARY MINUS ANYWHERE ON THIS PATH. CUDA lowers -x to neg.f32 rather than to
-// 0.0f - x, so it does NOT canonicalize signed zeros the way the sibling Triton
-// platform does; that track's negation idiom must not be ported here, and this
-// body is written so the answer never matters.
+// THE TWO CONNECTIONS ARE THE ARRAY PATH'S, EACH ON ITS OWN AXIS. The pair's
+// same-index operand takes the partner axis's window (eikna, pair_window); the NEAR
+// PRODUCT takes the own axis's (stepping._bloch_ghost_operand on the product,
+// below=True: conj(eikna), applied after the coefficient). The far product is the
+// array path's _shift_up of the product: a plain wrap, no own-axis connection, and the
+// exact zero (+0, +0) on a metallic or mirrored top plane -- reached here because the
+// pair there is (+0, +0) and the ghosted coefficient is 0.0f.
 __device__ __forceinline__ cf offdiag_term(
     const float* g, const float* u, int home, int down, int up, int corner,
-    int dgl, int dbc, int dph, cf dphase, float w,
-    int uw, int uph, cf uphase
+    int pa, int dgl, int dbc, float w, int pph, cf pphase,
+    int oa, int oph, cf ophase
 ) {
-    cf near_pair = cf_add(cf_load(g, home),
-                          down_sample(g, down, dgl, dbc, dph, dphase, w));
-    cf far_pair = cf_add(up_sample(g, up),
-                         down_sample(g, corner, dgl, dbc, dph, dphase, w));
-    cf near_term = mul_field_left(near_pair, u[home]);
-    cf far_term = mul_field_left(far_pair, (up < 0) ? 0.0f : u[up]);
-    if (uw && uph) far_term = rotate_field_left(far_term, uphase);
-    return mul_coefficient_left(0.25f, cf_add(near_term, far_term));
+    cf near_pair = cf_add(pair_window(g, home, pa, pph, pphase),
+                          down_sample(g, down, dgl, dbc, w));
+    cf far_pair = cf_add(pair_window(g, up, pa, pph, pphase),
+                         down_sample(g, corner, dgl, dbc, w));
+    cf near_term = cconnect(mul_field_left(near_pair, u[home]), oa, oph, ophase);
+    cf far_term = mul_field_left(far_pair, ghosted(u, up));
+    return cf_add(near_term, far_term);
 }
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 159->160, 1535-1541->1582-1588, 1723->1770, 1219-1220->1248-1249, 1788->1835, 1783->1830, 1830-1831->1877-1878, 1826-1828->1873-1875, 1214-1221->1243-1250
+"""
 
-#: The shared kernel body. ``__NAME__``, ``__AUX_PARAMS__``, ``__COEF_PARAMS__``
-#: and ``__ROW_PARAMETERS__`` are the signature's four variable pieces;
-#: ``__SRC_Ex__``/``__SRC_Ey__``/``__SRC_Ez__`` are the per-component blocks, and
-#: THEY are where the two tails differ. Nothing else in this text depends on the
-#: arm, which is what makes "the row product is the same body in both kernels" a
-#: property of the build.
-_CORE = r'''
+
+def _prelude() -> str:
+    """The complex family's prelude, the certified chunk helpers, and this family's own.
+
+    ``complex_emitter.prelude`` is taken WHOLE, so the word-pair addressing, the
+    part-wise products, the window and the per-chunk ``constitutive_apply`` are that
+    module's bytes rather than a second copy of them.
+    """
+    return (complex_emitter.prelude() + "\n"
+            + "\n\n".join(_certified_helper(name) for name in SIBLING_HELPERS) + "\n"
+            + _OWN_PRELUDE)
+
+
+#: The shared kernel body. ``__NAME__``, ``__AUX_PARAMS__``, ``__COEF_PARAMS__`` and
+#: ``__ROW_PARAMETERS__`` are the signature's four variable pieces; ``__SRC_Ex__`` /
+#: ``__SRC_Ey__`` / ``__SRC_Ez__`` are the per-component blocks, and THEY are where the
+#: two tails differ.
+_CORE = r"""
 extern "C" __global__ void __NAME__(
     float* __restrict__ Ex, float* __restrict__ Ey, float* __restrict__ Ez,
 __AUX_PARAMS__    const float* Dx, const float* Dy, const float* Dz,
@@ -576,10 +499,12 @@ __AUX_PARAMS__    const float* Dx, const float* Dy, const float* Dz,
 __ROW_PARAMETERS__    int nx, int ny, int nz,
 __COEF_PARAMS__    int bc_x, int bc_y, int bc_z,
     int wm_x, int wm_y, int wm_z,
-    int ph_x, int ph_y, int ph_z,
     float gw_x, float gw_y, float gw_z,
-    float dpxr, float dpxi, float dpyr, float dpyi, float dpzr, float dpzi,
-    float upxr, float upxi, float upyr, float upyi, float upzr, float upzi
+    int ph_x, int ph_y, int ph_z,
+    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,
+    int oh_x, int oh_y, int oh_z,
+    float oxr, float oxi, float oyr, float oyi, float ozr, float ozi,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= nx * ny * nz) return;
@@ -589,51 +514,32 @@ __COEF_PARAMS__    int bc_x, int bc_y, int bc_z,
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // Both neighbour coordinates on every axis: one term reads an axis DOWN (the
+__RECORD_BLOCK__    // Both neighbour coordinates on every axis: one term reads an axis DOWN (the
     // partner's) and another reads an axis UP (its own), and a component's two
     // terms take different partners, so every axis can be needed either way.
     int di = coord_dn(i, nx, bc_x), ui = coord_up(i, nx, bc_x);
     int dj = coord_dn(j, ny, bc_y), uj = coord_up(j, ny, bc_y);
     int dk = coord_dn(k, nz, bc_z), uk = coord_up(k, nz, bc_z);
 
-    // FACE 0 OF EACH AXIS, spelled ONCE and used for both rules that ask about
-    // it: the DOWN ghost lane (the one plane _shift_down rules, stepping.py:
-    // 1818-1831) and the wall-plane predicate below (the one plane
-    // _mask_metallic_wall_coupling writes, :1254). They are the same plane, so a
-    // second spelling would be a place for the ghost rule and the mask to
-    // disagree about which lane it is -- a plane of wrong values, not a crash.
+    // FACE 0 OF EACH AXIS, spelled ONCE and used for both rules that ask about it:
+    // the partner-axis mirror ghost lane and the wall-plane predicate below. They are
+    // the same plane, so a second spelling would be a place for the two to disagree.
     int at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);
 
-    // The UP wrap lane per axis: face -1 of the shifted buffer, which is stored
-    // cell n-1, and ONLY on a periodic axis -- the single plane _shift_up phases
-    // (:1767-1771). On a metallic or mirrored axis coord_up already returned -1
-    // and the sample is the exact zero, so no phase can reach it.
-    int uw_x = (i + 1 >= nx) && (bc_x == BC_PERIODIC);
-    int uw_y = (j + 1 >= ny) && (bc_y == BC_PERIODIC);
-    int uw_z = (k + 1 >= nz) && (bc_z == BC_PERIODIC);
+__CHUNK_LINES__
+    // The two connection tables. pp*: the partner axis's (eikna, the word ABOVE the
+    // stored window); op*: the own axis's (conj(eikna), the word BELOW it). The host
+    // resolves both kinds and parts (bloch_connection_table); nothing here negates.
+    cf ppx; ppx.re = pxr; ppx.im = pxi;
+    cf ppy; ppy.re = pyr; ppy.im = pyi;
+    cf ppz; ppz.re = pzr; ppz.im = pzi;
+    cf opx; opx.re = oxr; opx.im = oxi;
+    cf opy; opy.re = oyr; opy.im = oyi;
+    cf opz; opz.re = ozr; opz.im = ozi;
 
-    // The two phase tables, as complex pairs. DOWN carries the CONJUGATE and UP
-    // the forward factor; the host computes both and this kernel negates nothing.
-    cf dpx; dpx.re = dpxr; dpx.im = dpxi;
-    cf dpy; dpy.re = dpyr; dpy.im = dpyi;
-    cf dpz; dpz.re = dpzr; dpz.im = dpzi;
-    cf upx; upx.re = upxr; upx.im = upxi;
-    cf upy; upy.re = upyr; upy.im = upyi;
-    cf upz; upz.re = upzr; upz.im = upzi;
-
-    // THE WALL MASK USES at_* ABOVE. FACE 0 ONLY: the high wall is already the
-    // shift-up zero ghost, and stepping._mask_metallic_wall_coupling writes only
-    // _face(axis, 0) (stepping.py:1254).
-    //
-    // A FOLDED AXIS IS NEVER ALSO WALL-MASKED: that function asks is_metallic AND
-    // NOT is_mirrored (:1253), and coverage.offdiag_wall_mask_flags asks the same
-    // question of the same grid, so wm_* is 0 on a folded axis by construction.
-    // The launchers refuse the combination rather than relying on that.
-
-    // The three components are independent, and that is read off the loop rather
-    // than assumed: the coupling reads D and the inverse permittivity, the tail
-    // writes E (and f_w_E on the split-field arm). Disjoint sets, so the order the
-    // array path runs them in (stepping.py:969-989) is not a data dependence --
+    // The three components are independent: the coupling reads D and the inverse
+    // permittivity, the tail writes E (and f_w_E on the split-field arm). Disjoint
+    // sets, so the order the array path runs them in is not a data dependence --
     // which is what makes a NEIGHBOUR read across components safe here.
 __SRC_Ex__
 
@@ -641,7 +547,7 @@ __SRC_Ey__
 
 __SRC_Ez__
 }
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 1818-1831->1865-1878, 1254->1283, 969-989->998-1018
+"""
 
 #: The split-field arm's extra signature pieces. The three auxiliaries are OUTPUTS
 #: and carry ``__restrict__``; the six coefficient vectors are read-only and no
@@ -653,21 +559,19 @@ _COEF_PARAMS = (
     "    const float* __restrict__ kps_y, const float* __restrict__ kms_y,\n"
     "    const float* __restrict__ kps_z, const float* __restrict__ kms_z,\n")
 
-#: The two tails, per component. ``{name}`` is the component, ``{axis}`` its own
-#: axis letter and ``{index}`` that axis's loop variable.
+#: The two tails, per component. ``{name}`` is the component, ``{axis}`` its own axis
+#: letter and ``{index}`` that axis's loop variable.
 #:
-#: THE PML TAIL IS complex_emitter's CERTIFIED ``constitutive_apply``, called and
-#: not respelled: stepping._apply_constitutive_pml (:2065-2096) with dsigw active,
-#: two separate accumulations left to right, ``prev`` read before ``fw`` is
-#: written.
+#: THE PML TAIL IS complex_emitter's per-chunk ``constitutive_apply``, called and not
+#: respelled: the accumulation on the cells whose chunk carries the component's own
+#: (dsigw) layer -- ``in_h_<axis>``, the half-integer record on the component's own
+#: axis -- and ``E = src`` elsewhere (stepping._apply_constitutive_regions).
 #:
-#: THE STORE TAIL IS stepping.py:1022 -- ``getattr(fields, component)[...] =
-#: constitutive``. NO f_w, NO recurrence and NO coefficient: the stored E IS the
-#: constitutive product without a layer (fields.py:1150). Anyone porting the
-#: split-field body into this arm will reach for the auxiliary; it does not belong
-#: here, and its ABSENCE is a predicate clause rather than an omission.
+#: THE STORE TAIL IS ``getattr(fields, component)[...] = constitutive``. NO f_w, NO
+#: recurrence and NO coefficient: the stored E IS the constitutive product without a
+#: layer.
 _TAIL_PML = ("    constitutive_apply({name}, f_w_{name}, idx, src_{name},"
-             " kps_{axis}[{index}], kms_{axis}[{index}]);")
+             " kps_{axis}[{index}], kms_{axis}[{index}], in_h_{axis});")
 _TAIL_STORE = "    cf_store({name}, idx, src_{name});"
 
 
@@ -677,21 +581,19 @@ _TAIL_STORE = "    cf_store({name}, idx, src_{name});"
 #
 # The three index expressions per term are ASSEMBLED from a per-axis table rather
 # than written out eighteen times, and the ghost lane, the parity weight, the
-# boundary code and both phase pairs come from the SAME ``partner_axis`` /
-# ``own_axis`` numbers that pick the index -- so a term cannot phase one axis while
-# shifting another. Eighteen hand-written flat indices is eighteen chances to write
-# ``dj`` where ``dk`` belongs, and that defect is a half-cell registration error:
-# smooth, converged and wrong.
+# boundary code and both connections come from the SAME ``partner_axis`` /
+# ``own_axis`` numbers that pick the index -- so a term cannot connect one axis while
+# shifting another.
 
 _HOME_COORDS = ("i", "j", "k")
 _UP_COORDS = ("ui", "uj", "uk")
 _DOWN_COORDS = ("di", "dj", "dk")
 _DOWN_LANES = ("at_x", "at_y", "at_z")
-_UP_LANES = ("uw_x", "uw_y", "uw_z")
 _BC_NAMES = ("bc_x", "bc_y", "bc_z")
-_PHASE_FLAGS = ("ph_x", "ph_y", "ph_z")
-_DOWN_PHASES = ("dpx", "dpy", "dpz")
-_UP_PHASES = ("upx", "upy", "upz")
+_PAIR_KINDS = ("ph_x", "ph_y", "ph_z")
+_PAIR_PHASES = ("ppx", "ppy", "ppz")
+_OWN_KINDS = ("oh_x", "oh_y", "oh_z")
+_OWN_PHASES = ("opx", "opy", "opz")
 _WALL_FLAGS = ("wm_x", "wm_y", "wm_z")
 _WALL_PREDICATES = ("at_x", "at_y", "at_z")
 _GHOST_WEIGHTS = ("gw_x", "gw_y", "gw_z")
@@ -705,13 +607,13 @@ def _flat_index(shifted: Dict[int, str]) -> str:
 
 
 def _term_lines(component: int, offset: int) -> List[str]:
-    """One partner's term for one component, as source lines.
+    """One partner's term sum for one component, as source lines.
 
-    ``offset`` is 0 for MEEP's ``cycle_direction(dim, d_ec, 1)`` and 1 for
-    ``(..., 2)`` (stepping.py:1235-1237). The partner axis, the coefficient slot,
-    the partner volume, all three shifted indices, the ghost lane, the boundary
-    code, the parity weight and both phase pairs come from that one number, so a
-    mispairing would have to be introduced deliberately rather than by a typo.
+    ``offset`` is 0 for MEEP's ``cycle_direction(dim, d_ec, 1)`` and 1 for ``(..., 2)``.
+    The partner axis, the coefficient slot, the partner volume, all three shifted
+    indices, the ghost lane, the boundary code, the parity weight and both connections
+    come from that one number, so a mispairing would have to be introduced deliberately
+    rather than by a typo.
     """
     own_axis = E_TERMS[component][2]
     partner_axis = _coverage.OFFDIAG_TRANSVERSE_PARTNERS[component][offset]
@@ -723,40 +625,34 @@ def _term_lines(component: int, offset: int) -> List[str]:
     corner = _flat_index({own_axis: _UP_COORDS[own_axis],
                           partner_axis: _DOWN_COORDS[partner_axis]})
     return [
-        f"    // partner {volume}: the pair half a cell DOWN axis {partner_axis},",
-        f"    // then the product half a cell UP axis {own_axis} (its own). The",
-        f"    // near-face rule (mirror parity or the conjugate Bloch factor) is on",
-        f"    // axis {partner_axis}; the forward Bloch factor is on axis {own_axis}.",
+        f"    // partner {volume}: the pair half a cell DOWN axis {partner_axis} (its window",
+        f"    // on axis {partner_axis}), then the product half a cell UP axis {own_axis} (its",
+        f"    // own; the near product's window on axis {own_axis}).",
         f"    cf term_{tag} = offdiag_term(",
         f"        {volume}, {coefficient}, idx,",
         f"        {down},",
         f"        {up},",
         f"        {corner},",
-        f"        {_DOWN_LANES[partner_axis]}, {_BC_NAMES[partner_axis]},"
-        f" {_PHASE_FLAGS[partner_axis]}, {_DOWN_PHASES[partner_axis]},"
-        f" {_GHOST_WEIGHTS[partner_axis]},",
-        f"        {_UP_LANES[own_axis]}, {_PHASE_FLAGS[own_axis]},"
-        f" {_UP_PHASES[own_axis]});",
+        f"        {_HOME_COORDS[partner_axis]}, {_DOWN_LANES[partner_axis]},"
+        f" {_BC_NAMES[partner_axis]}, {_GHOST_WEIGHTS[partner_axis]},"
+        f" {_PAIR_KINDS[partner_axis]}, {_PAIR_PHASES[partner_axis]},",
+        f"        {_HOME_COORDS[own_axis]}, {_OWN_KINDS[own_axis]},"
+        f" {_OWN_PHASES[own_axis]});",
     ]
 
 
-def _wall_mask_lines(component: int) -> List[str]:
-    """``stepping._mask_metallic_wall_coupling`` for one component's total.
+def _wall_mask_lines(component: int, offset: int) -> List[str]:
+    """``stepping._mask_metallic_wall_coupling`` for one term's float32 sum.
 
-    Face 0 of every axis whose Yee shift is 0
-    (:data:`coverage.OFFDIAG_WALL_MASK_AXES`), ascending -- the mask's own loop
-    order (stepping.py:1279-1283). WHICH axes can be masked is fixed by the
-    component and compiled in; WHETHER each one is masked is the runtime ``wm_*``
-    flag, because that is a property of the grid rather than of the arithmetic.
-
-    ``cf_zero()`` IS BOTH WORDS. The array path assigns the INTEGER 0 to a
-    complex64 array (stepping.py:1283), which is the pair (+0.0f, +0.0f); a clear
-    that touched only the real plane would leave the imaginary coupling alive on a
-    metallic wall -- a defect class this tree has paid for, and one the gate arms.
+    Face 0 of every axis whose Yee shift is 0 (:data:`coverage.OFFDIAG_WALL_MASK_AXES`),
+    ascending -- the mask's own loop order, inside the partner loop and before the
+    scale. WHICH axes can be masked is fixed by the component and compiled in; WHETHER
+    each one is masked is the runtime ``wm_*`` flag. ``cf_zero()`` IS BOTH WORDS: the
+    array path assigns the INTEGER 0 to the complex64 sum, the pair (+0.0f, +0.0f).
     """
-    total = f"total_{E_TERMS[component][0]}"
-    return [f"    {total} = ({_WALL_FLAGS[axis]} && {_WALL_PREDICATES[axis]})"
-            f" ? cf_zero() : {total};"
+    term = f"term_{E_TERMS[component][0]}_{offset}"
+    return [f"    {term} = ({_WALL_FLAGS[axis]} && {_WALL_PREDICATES[axis]})"
+            f" ? cf_zero() : {term};"
             for axis in _coverage.OFFDIAG_WALL_MASK_AXES[component]]
 
 
@@ -764,14 +660,13 @@ def _component_source(component: int, row_mask: Sequence[int], arm: str) -> str:
     """One component's whole block, on the arm its two row slots select.
 
     Four row arms: none, offset-1 only, offset-2 only, both. THE NONE ARM IS THE
-    ELEMENT-WISE COMPLEX CONSTITUTIVE BODY -- ``src = D * inv_eps`` and the same
-    tail -- because ``_offdiagonal_terms`` returns None for a component with no
-    surviving row and ``update_E`` then never forms a ``+ 0`` copy
-    (stepping.py:1222-1227, :1007).
+    ELEMENT-WISE COMPLEX CONSTITUTIVE BODY -- ``src = D * inv_eps`` per part and the
+    same tail -- because ``_offdiagonal_terms`` returns None for a component with no
+    surviving row and ``update_E`` then never forms a double row. A live component's
+    row is MEEP's, per part: ``(double)(gs * us)``, each kept term's float32 sum scaled
+    by the double ``0.25`` and added left to right in partner order, rounded once.
 
-    ``arm`` selects the TAIL and nothing else. Every line above the tail is shared
-    text, which is what makes "the row product is the same body in both kernels" a
-    property of this function rather than a claim in a docstring.
+    ``arm`` selects the TAIL and nothing else.
     """
     name, source, own_axis = E_TERMS[component]
     axis_letter = "xyz"[own_axis]
@@ -781,46 +676,50 @@ def _component_source(component: int, row_mask: Sequence[int], arm: str) -> str:
     lines = [f"    // --- {name}: own axis {axis_letter}; source {source}; "
              f"dsigw = {axis_letter}.",
              f"    cf gs_{name} = cf_load({source}, idx);",
-             f"    cf diag_{name} = mul_field_left(gs_{name}, "
-             f"inv_eps_{name}[idx]);"]
+             f"    float us_{name} = inv_eps_{name}[idx];"]
     if not live:
-        lines.append(f"    cf src_{name} = diag_{name};")
+        lines.append(f"    cf src_{name} = mul_field_left(gs_{name}, us_{name});")
     else:
         for offset in live:
             lines.extend(_term_lines(component, offset))
-        # ``total`` accumulates offset 1 then offset 2 (stepping.py:1250). Complex
-        # addition is plane-wise and float32 addition is bitwise commutative, so
-        # this order is transcription fidelity rather than a pinned grouping.
-        lines.append(f"    cf total_{name} = term_{name}_{live[0]};")
-        for offset in live[1:]:
-            lines.append(f"    total_{name} = cf_add(total_{name}, "
-                         f"term_{name}_{offset});")
-        # The mask runs BEFORE the row sum: stepping.py:1252 precedes :1007-1008.
-        lines.extend(_wall_mask_lines(component))
-        lines.append(f"    cf src_{name} = cf_add(diag_{name}, total_{name});")
+            # The mask zeroes the term's float32 sum before its scale.
+            lines.extend(_wall_mask_lines(component, offset))
+        lines.append(f"    double row_{name}_re = (double)(gs_{name}.re * us_{name});")
+        lines.append(f"    double row_{name}_im = (double)(gs_{name}.im * us_{name});")
+        for offset in live:
+            kept = KEPT_PARAMETERS[2 * component + offset]
+            tag = f"{name}_{offset}"
+            lines.append(f"    if (chunk_keeps({kept}, chunk_{name})) {{")
+            lines.append(f"        row_{name}_re = row_{name}_re"
+                         f" + (0.25 * (double)(term_{tag}.re));")
+            lines.append(f"        row_{name}_im = row_{name}_im"
+                         f" + (0.25 * (double)(term_{tag}.im));")
+            lines.append("    }")
+        lines.append(f"    cf src_{name};")
+        lines.append(f"    src_{name}.re = (float)(row_{name}_re);")
+        lines.append(f"    src_{name}.im = (float)(row_{name}_im);")
     tail = _TAIL_PML if arm == "pml" else _TAIL_STORE
     lines.append(tail.format(name=name, axis=axis_letter, index=index_letter))
     return "\n".join(lines)
 
 
+#: The kernel parameter name of each row's PRESENCE WORD, in slot order --
+#: ``offdiag_emitter``'s, imported.
+KEPT_PARAMETERS: Tuple[str, ...] = _flat.KEPT_PARAMETERS
+
+
 def _row_parameter_lines(row_mask: Sequence[int]) -> str:
-    """The live coefficient parameters, in :data:`coverage.OFFDIAG_ROW_SLOTS` order.
+    """The live coefficient parameters, then their presence words, in slot order.
 
-    THE SIGNATURE CARRIES ONLY THE LIVE ONES, ``offdiag_emitter``'s choice and for
-    its reason: binding a dead slot to some other volume leaves a pointer aimed at
-    an array the kernel must never touch, which a later edit can read by accident.
-
-    NOT ``__restrict__``. A row coefficient may legally alias another row's, an
-    inverse-epsilon volume or a D volume (an isotropic install hands the same
-    inverse permittivity three times, fields.py:1321-1326), and restrict on
-    mutually aliasing arguments is a promise the caller cannot keep. They are
-    read-only, so nothing is lost but a load hint. They are float32 VOLUMES indexed
-    by the COMPLEX CELL index and NEVER word-doubled: chi1inv stays float32 under
-    complex storage exactly as inv_eps does (stepping.py:41-50 against
-    fields.py:1203-1204).
+    THE SIGNATURE CARRIES ONLY THE LIVE ONES, ``offdiag_emitter``'s choice and for its
+    reason: binding a dead slot to some other volume leaves a pointer aimed at an array
+    the kernel must never touch. NOT ``__restrict__``: a row coefficient may legally
+    alias another row's, an inverse-epsilon volume or a D volume. They are float32
+    VOLUMES indexed by the COMPLEX CELL index and NEVER word-doubled.
     """
-    return "".join(f"    const float* {ROW_PARAMETERS[slot]},\n"
-                   for slot, flag in enumerate(row_mask) if flag)
+    live = [slot for slot, flag in enumerate(row_mask) if flag]
+    return "".join([f"    const float* {ROW_PARAMETERS[slot]},\n" for slot in live]
+                   + [f"    int {KEPT_PARAMETERS[slot]},\n" for slot in live])
 
 
 def normalized_row_mask(row_mask: Sequence[int]) -> Tuple[int, ...]:
@@ -877,31 +776,13 @@ _FORBIDDEN_IN_STORE_BODY: Tuple[str, ...] = (
 )
 
 
-def _prelude(expansion) -> str:
-    """The sibling's whole prelude plus this family's own helpers.
-
-    ``complex_emitter._HEAD + _ARM_SOURCE[arm] + _TAIL`` is taken WHOLE, so
-    ``cf_load``/``cf_store``/``cf_add``/``cf_sub``/``cf_zero``, the three multiply
-    orientations and the certified ``constitutive_apply`` are that module's bytes
-    rather than a second copy of them.
-    """
-    code = complex_emitter.normalized_expansion(expansion)
-    return (complex_emitter._HEAD + complex_emitter._ARM_SOURCE[code]
-            + complex_emitter._TAIL + _OWN_PRELUDE)
-
-
-def complex_offdiag_source(arm: str, row_mask: Sequence[int], expansion) -> str:
-    """The device source for one tail, one row mask and one expansion arm.
-
-    ``expansion`` is REQUIRED and never defaulted: a wrong arm is a wrong answer
-    rather than a crash -- both arms compile, both run, and they differ in the last
-    bits of about a quarter of the words. ``complex_emitter.normalized_expansion``
-    is the one refusal.
+def complex_offdiag_source(arm: str, row_mask: Sequence[int]) -> str:
+    """The device source for one tail and one row mask.
 
     The BOUNDARY, WALL, PHASE and PARITY axes are NOT baked in; they are runtime
-    arguments, for the reason the module docstring gives. So the row mask and the
-    expansion arm are this family's only source axes per tail, and the 186-row
-    corpus drives two row masks and one arm.
+    arguments, for the reason the module docstring gives. So the row mask is this
+    family's only source axis per tail, and the 186-row corpus drives two row
+    masks.
     """
     tail = normalized_arm(arm)
     mask = normalized_row_mask(row_mask)
@@ -909,11 +790,13 @@ def complex_offdiag_source(arm: str, row_mask: Sequence[int], expansion) -> str:
     body = body.replace("__AUX_PARAMS__", _AUX_PARAMS if tail == "pml" else "")
     body = body.replace("__COEF_PARAMS__", _COEF_PARAMS if tail == "pml" else "")
     body = body.replace("__ROW_PARAMETERS__", _row_parameter_lines(mask))
+    body = body.replace("__RECORD_BLOCK__", _flat.RECORD_BLOCK)
+    body = body.replace("__CHUNK_LINES__", _flat.CHUNK_LINES)
     for component, term in enumerate(E_TERMS):
         body = body.replace(f"__SRC_{term[0]}__",
                             _component_source(component, mask, tail))
     _assert_body_is_clean(body, tail)
-    return _prelude(expansion) + body
+    return _prelude() + body
 
 
 def _assert_body_is_clean(body: str, arm: str) -> None:
@@ -940,8 +823,7 @@ def _assert_body_is_clean(body: str, arm: str) -> None:
                     f"{found.group(0)!r} survived into the direct-store body; the "
                     f"split-field recurrence has no place there")
     stripped = body
-    for token in ("__restrict__", "__global__", "__device__", "__forceinline__",
-                  "__fmaf_rn"):
+    for token in ("__restrict__", "__global__", "__device__", "__forceinline__"):
         stripped = stripped.replace(token, "")
     if "__" in stripped:
         raise RuntimeError("an unsubstituted placeholder survived the build")
@@ -950,7 +832,7 @@ def _assert_body_is_clean(body: str, arm: str) -> None:
 def corpus_digest() -> str:
     """One sha256 over every source this family can emit, canonically ordered.
 
-    Two tails x 63 row masks x 2 expansion arms is 252 sources -- too many to pin
+    Two tails x 63 row masks is 126 sources -- too many to pin
     one digest each without burying the record and not too many to hash, so the
     whole enumeration hashes to one value: a single changed character anywhere in
     this module, or in ``complex_emitter``'s shared prelude, moves it. The
@@ -962,9 +844,8 @@ def corpus_digest() -> str:
     digest = hashlib.sha256()
     for arm in ARMS:
         for mask in LIVE_ROW_MASKS:
-            for name in sorted(complex_emitter.EXPANSIONS):
-                digest.update(f"{arm}|{mask!r}|{name}".encode("ascii"))
-                digest.update(complex_offdiag_source(arm, mask, name).encode("utf-8"))
+            digest.update(f"{arm}|{mask!r}".encode("ascii"))
+            digest.update(complex_offdiag_source(arm, mask).encode("utf-8"))
     return digest.hexdigest()
 
 
@@ -974,10 +855,9 @@ def shipped_kernel_names(source: Optional[str] = None):
         return set(re.findall(r'extern "C" __global__ void (\w+)\(', source))
     found = set()
     for arm in ARMS:
-        for name in sorted(complex_emitter.EXPANSIONS):
-            found |= set(re.findall(
-                r'extern "C" __global__ void (\w+)\(',
-                complex_offdiag_source(arm, (1, 1, 1, 1, 1, 1), name)))
+        found |= set(re.findall(
+            r'extern "C" __global__ void (\w+)\(',
+            complex_offdiag_source(arm, (1, 1, 1, 1, 1, 1))))
     return found
 
 
@@ -1024,64 +904,55 @@ def mirror_ghost_weights(grid: Any) -> Tuple[float, float, float]:
     return _weights(grid)
 
 
-def bloch_phase_table(grid: Any) -> Tuple[Tuple[int, ...],
-                                          Tuple[float, ...],
-                                          Tuple[float, ...]]:
-    """``(flags, down_values, up_values)`` -- the per-axis Bloch table, both ways.
+def bloch_connection_table(grid: Any) -> Tuple[Tuple[int, ...], Tuple[float, ...],
+                                               Tuple[int, ...], Tuple[float, ...]]:
+    """``(pair kinds, pair parts, own kinds, own parts)`` -- the two connection tables.
 
-    Transcribed from ``stepping._bloch_phases`` (:2313-2367) and
-    ``stepping._apply_bloch_phase`` (:1846-1862), and the same table
-    ``complex_pml_kernels.bloch_phase_arguments`` builds -- one call per direction
-    there, both here, because this sub-step needs BOTH: the partner-axis DOWN shift
-    takes the conjugate and the own-axis UP shift the forward factor, and a given
-    axis is a partner for one component and an own axis for another.
+    ``stepping._offdiagonal_terms`` connects TWO operands across a phased axis's stored
+    window (``stepping._bloch_ghost_operand``), and a given axis is a partner for one
+    component and an own axis for another, so this sub-step needs both tables:
 
-    The two spellings are NOT assumed equal: the gate asserts this function's
-    output equal to ``bloch_phase_arguments(grid, backward=True)`` and
-    ``(..., backward=False)`` on every swept grid. It is not asserted at the merge
-    bar because that module imports ``cupy`` at scope and the merge bar has none.
+    * the pair's same-index operand, on the PARTNER axis, ``below=False``: MEEP's
+      not-owned word ABOVE the window, ``eikna`` -- the D curl's table,
+      ``complex_pml_kernels.bloch_phase_arguments(grid, True)``;
+    * the near product, on the component's OWN axis, ``below=True``: the word BELOW it,
+      ``conj(eikna)`` -- the B curl's table, ``bloch_phase_arguments(grid, False)``.
 
-    * the value is ``grid.bloch_phase(axis)`` = exp(2*pi*i*k*L), with the Brillouin
-      edge EXACTLY -1+0j (grid.py:1011-1017);
-    * ``None`` means the multiply is SKIPPED, never done against 1+0j -- that skip
-      IS the bit-identity of k = 0, so an unphased axis passes flag 0 and the
-      kernel emits no multiply for it;
-    * the phase is rounded to complex64 BEFORE splitting, because the array path
-      multiplies by ``shifted.dtype.type(phase)`` (:1862);
-    * the DOWN direction negates the imaginary part -- the conjugate
-      ``_shift_down`` takes (:1818-1822). Negation is exact, so the order of
-      conjugation and rounding is immaterial.
-
-    A PHASED AXIS MUST RESOLVE PERIODIC. ``stepping._bloch_phases`` raises on the
-    pairing and both predicates refuse it; this raises too, so a caller who skipped
-    the predicate is refused loudly rather than handed a mis-bound flag.
+    Both are that function's (one spelling of ``part_products.connect_parts``' rule:
+    a kind per axis -- none, the unfused product, a negation -- and the float32 parts),
+    read from its CuPy-free home (:mod:`.bloch_connection`), so the fused products'
+    predicates resolve these tables on any host and a refusal here is about the run.
     """
-    import numpy as np  # noqa: PLC0415 - only the float32 rounding is needed
+    from .bloch_connection import bloch_phase_arguments  # noqa: PLC0415
 
-    kinds = _coverage.real_pml_boundary_kinds(grid)
-    flags: List[int] = []
-    down: List[float] = []
-    up: List[float] = []
-    for axis in range(3):
-        phase = (grid.bloch_phase(axis)
-                 if getattr(grid, "has_bloch", False) else None)
-        if phase is None:
-            flags.append(0)
-            down.extend((1.0, 0.0))
-            up.extend((1.0, 0.0))
-            continue
-        if kinds[axis] != _coverage.PERIODIC:
-            raise ValueError(
-                f"axis {axis} carries Bloch phase {phase!r} but resolved to "
-                f"{kinds[axis]!r}; only a periodic wrap can carry a phase "
-                f"(stepping._bloch_phases raises on the same configuration)")
-        rounded = np.complex64(phase)
-        real = float(np.float32(rounded.real))
-        imag = float(np.float32(rounded.imag))
-        flags.append(1)
-        down.extend((real, float(np.float32(-imag))))
-        up.extend((real, imag))
-    return tuple(flags), tuple(down), tuple(up)
+    pair_kinds, pair_parts = bloch_phase_arguments(grid, True)
+    own_kinds, own_parts = bloch_phase_arguments(grid, False)
+    return (tuple(int(kind) for kind in pair_kinds), tuple(float(v) for v in pair_parts),
+            tuple(int(kind) for kind in own_kinds), tuple(float(v) for v in own_parts))
+
+
+def chunk_arguments(fields: Any, pml: Any, codes: Sequence[int],
+                    record: Any = None) -> Tuple[List[int], Tuple[int, ...]]:
+    """``(record, kept)`` for one launch: the chunk record and the six presence words.
+
+    ``offdiag_presence.launch_chunk_arguments``, the real family's builder: the words are
+    built from the array path's own presence (``Fields.offdiag_presence`` through
+    ``stepping._chunk_layout``) and refused by name where the record does not reproduce
+    it. The presence is a property of the chunk division and the coefficient, not of the
+    storage width, so one builder serves both families.
+
+    WITH NO ACTIVE LAYER AND NO INSTALLED DIVISION the array path reads one chunk
+    (``stepping._chunk_layout`` returns None) and adds every term; the record is then the
+    one-rank division of the unlayered grid, whose labels are the interior on every
+    axis, and every word keeps that chunk.
+    """
+    from . import offdiag_presence  # noqa: PLC0415 - NumPy
+    from .. import stepping  # noqa: PLC0415 - NumPy/CuPy array path
+    from ..chunk_map import ChunkLayout, chunk_bounds_record  # noqa: PLC0415
+
+    if record is None and stepping._chunk_layout(fields, pml) is None:  # noqa: SLF001
+        record = chunk_bounds_record(ChunkLayout.one_rank(fields.grid, None))
+    return offdiag_presence.launch_chunk_arguments(fields, pml, codes, record)
 
 
 def complex_offdiag_tables(pml: Any) -> Dict[str, Any]:
@@ -1263,8 +1134,6 @@ COMPLEX_OFFDIAG_UPDATE_E_ADMISSION: dict = {
         "a production step. No module in meep_gpu/ imports cuda_kernels at all, "
         "so a predicate returning True licenses a MEASUREMENT and a coverage "
         "claim, not a run.",
-        "the NAIVE expansion arm, which the emitter can still emit and no device "
-        "leg has scored.",
         "any throughput claim: the box was shared and no timing was taken.",
     ),
 }
@@ -1411,59 +1280,6 @@ def _row_and_volume_refusal(fields: Any, grid: Any, facts: dict, arm: str) -> An
     return None
 
 
-def _parity_licence_refusal(license: Any) -> Any:
-    """Why this licence cannot bind the PARITY multiply, or None.
-
-    THE FIFTH ORIENTATION IS THIS FAMILY'S OWN CLAUSE. ``_symmetry_phase`` returns
-    a python int, so ``parity * complex64_array`` is
-    ``c8_mul_c8_parity_coefficient_left`` -- neither of the base four zero-imaginary
-    orientations. A record that does not classify it cannot license the mirror arm,
-    and this refuses by name rather than falling back, exactly as
-    ``complex_no_pml_kernels`` refuses ``update_P`` without
-    ``c8_mul_python_float_field_left``.
-
-    THE ARBITER IS ``triton_kernels.folded_complex.parity_expansion_license`` and is
-    not re-implemented here; this function only checks WHICH PATTERN SET the licence
-    in hand was computed over. Two spellings of an arbiter is one too many.
-
-    ``probe_patterns`` IS THE LICENCE'S OWN RECORD OF ITS EVIDENCE -- the tuple
-    ``expansion_license`` was called with -- so asking it is asking the arbiter what
-    it looked at, not guessing from an attached artifact. ``patterns`` (the record's
-    raw pattern table, which the census legs attach with ``setdefault``) is accepted
-    as a fallback so a caller that carries the record rather than the verdict is not
-    refused for a shape difference.
-
-    THE PARITY PATTERN IS MEASURABLY NON-DISCRIMINATING on the shipped probe, and
-    that is not a reason to drop the clause. With ``c_re = +/-1`` exact and
-    ``c_im = +0.0`` the fused arm's extra product is exact, so both arms produce
-    identical bytes there and ``parity_expansion_license`` excludes the pattern from
-    its agreement test rather than letting it veto. What the clause buys is the
-    OTHER outcome: a record on which the plane-wise spelling ALSO reproduces the
-    bytes has no power to license the mirror arm at all, and only a record that
-    carried the pattern can say which of the two it was.
-    """
-    if license is None:
-        return None  # the shape clause is complex_expansion_refusal's job
-    if not isinstance(license, dict):
-        return None  # likewise: complex_expansion_refusal names the shape
-    patterns = license.get("probe_patterns")
-    if patterns is None:
-        patterns = license.get("patterns")
-    if patterns is None:
-        return (f"the expansion licence names no probe pattern set, so it cannot "
-                f"be asked whether {PARITY_PROBE_PATTERN!r} was classified; the "
-                f"mirror ghost's parity multiply is that orientation and a licence "
-                f"that never looked at it cannot bind the mirror arm")
-    if PARITY_PROBE_PATTERN not in tuple(patterns):
-        return (f"the expansion licence was computed WITHOUT "
-                f"{PARITY_PROBE_PATTERN!r}: stepping._shift_down's MIRROR branch "
-                f"multiplies a complex64 plane by a python int parity "
-                f"(stepping.py:1873-1875), which is none of the base four "
-                f"orientations. Use "
-                f"triton_kernels.folded_complex.parity_expansion_license")
-    return None
-
-
 def _shared_complex_refusal(fields: Any, pml: Any, grid: Any,
                             facts: dict) -> Any:
     """``coverage._complex_grid_refusal`` with this family's two clauses first.
@@ -1502,9 +1318,7 @@ def _shared_complex_refusal(fields: Any, pml: Any, grid: Any,
                                            admit_fold=True)
 
 
-def covers_complex_offdiag_pml_update_e(fields: Any, pml: Any, grid: Any,
-                                        license: Any = None,
-                                        subnormal_policy: Any = None) -> tuple:
+def covers_complex_offdiag_pml_update_e(fields: Any, pml: Any, grid: Any) -> tuple:
     """Whether ``update_E_pml_complex_offdiag`` may serve this run.
 
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal -- the
@@ -1535,12 +1349,10 @@ def covers_complex_offdiag_pml_update_e(fields: Any, pml: Any, grid: Any,
       registered susceptibility outright, so ``update_E``'s source here is D and
       never ``(D - sum P)``.
     """
-    return _covers(fields, pml, grid, "pml", license, subnormal_policy)
+    return _covers(fields, pml, grid, "pml")
 
 
-def covers_complex_no_pml_offdiag_update_e(fields: Any, pml: Any, grid: Any,
-                                           license: Any = None,
-                                           subnormal_policy: Any = None) -> tuple:
+def covers_complex_no_pml_offdiag_update_e(fields: Any, pml: Any, grid: Any) -> tuple:
     """Whether ``update_E_no_pml_complex_offdiag`` may serve this run.
 
     The two slots ``complex_no_pml_kernels`` names in
@@ -1558,19 +1370,12 @@ def covers_complex_no_pml_offdiag_update_e(fields: Any, pml: Any, grid: Any,
     refuses the configuration rather than reproducing it, exactly as
     ``complex_no_pml_kernels._shared_refusal`` does.
     """
-    return _covers(fields, pml, grid, "no_pml", license, subnormal_policy)
+    return _covers(fields, pml, grid, "no_pml")
 
 
-def _covers(fields: Any, pml: Any, grid: Any, arm: str,
-            license: Any, subnormal_policy: Any) -> tuple:
+def _covers(fields: Any, pml: Any, grid: Any, arm: str) -> tuple:
     """The one clause chain, with the absorber question inverted per arm."""
     arm = normalized_arm(arm)
-    refusal = _coverage.complex_expansion_refusal(license, subnormal_policy)
-    if refusal is not None:
-        return False, refusal
-    refusal = _parity_licence_refusal(license)
-    if refusal is not None:
-        return False, refusal
     xp, backend = _coverage._backend(grid)
     if backend != "cupy":
         return False, "backend is not CuPy"
@@ -1643,26 +1448,25 @@ def _covers(fields: Any, pml: Any, grid: Any, arm: str,
 # predicates above are consumed by the coverage census and the census runs on a
 # laptop.
 
-#: The emitted sources a gate has replaced, keyed by ``(arm, row_mask, expansion)``
+#: The emitted sources a gate has replaced, keyed by ``(arm, row_mask)``
 #: -- the mutation seam. A MUTABLE MODULE GLOBAL on purpose: the source-mutation
 #: battery rewrites entries here and re-launches, and :func:`_get_kernel` re-reads
 #: it on every call so a rewritten string is seen. A map memoized at first call
 #: would hand back the pre-mutation bytes forever, which is "a leg reporting a pass
 #: for a mutation it never applied" and which this track has recorded three times.
-_OVERRIDES: Dict[Tuple[str, Tuple[int, ...], int], str] = {}
+_OVERRIDES: Dict[Tuple[str, Tuple[int, ...]], str] = {}
 
 
-def kernel_source(arm: str, row_mask: Sequence[int], expansion) -> str:
+def kernel_source(arm: str, row_mask: Sequence[int]) -> str:
     """The device text a launch would compile -- an installed override, or emitted."""
-    key = (normalized_arm(arm), normalized_row_mask(row_mask),
-           complex_emitter.normalized_expansion(expansion))
+    key = (normalized_arm(arm), normalized_row_mask(row_mask))
     override = _OVERRIDES.get(key)
     if override is not None:
         return override
-    return complex_offdiag_source(key[0], key[1], key[2])
+    return complex_offdiag_source(key[0], key[1])
 
 
-def set_kernel_source(arm: str, row_mask: Sequence[int], expansion,
+def set_kernel_source(arm: str, row_mask: Sequence[int],
                       source: Optional[str]) -> None:
     """Install (or with ``source=None`` remove) one mutated device string.
 
@@ -1675,8 +1479,7 @@ def set_kernel_source(arm: str, row_mask: Sequence[int], expansion,
     what makes the accounting -- how many compiles came from the mutated bytes --
     exact.
     """
-    key = (normalized_arm(arm), normalized_row_mask(row_mask),
-           complex_emitter.normalized_expansion(expansion))
+    key = (normalized_arm(arm), normalized_row_mask(row_mask))
     if source is None:
         _OVERRIDES.pop(key, None)
     else:
@@ -1688,17 +1491,17 @@ def clear_kernel_cache() -> int:
     return _clear_cache()
 
 
-def _get_kernel(arm: str, row_mask: Sequence[int], expansion):
+def _get_kernel(arm: str, row_mask: Sequence[int]):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE ARM, THE ROW MASK AND THE EXPANSION ALL REACH THE KEY THROUGH THE SOURCE,
+    THE ARM AND THE ROW MASK BOTH REACH THE KEY THROUGH THE SOURCE,
     which is already in it, so two specializations cannot be served each other's
     binary -- and neither can a mutation harness that rewrote the emitter's output
     be served the unmutated one.
     """
     import cupy as cp  # noqa: PLC0415 - device-only, in a laptop-importable module
 
-    code = kernel_source(arm, row_mask, expansion)
+    code = kernel_source(arm, row_mask)
     name = kernel_name(arm)
     key = _kernel_cache_key(name, False, _COMPILE_OPTIONS, code)
     return _get_or_compile(
@@ -1769,7 +1572,8 @@ def _require_no_aliasing(fields: Any, rows: Sequence[Any], arm: str) -> None:
 
 def _validate_launch_arguments(shape: Sequence[int], codes: Sequence[int],
                                walls: Sequence[int], weights: Sequence[float],
-                               flags: Sequence[int]) -> None:
+                               flags: Sequence[int],
+                               own_flags: Sequence[int] = (0, 0, 0)) -> None:
     """Everything a launch would otherwise get silently wrong.
 
     Each of these is a WRONG ANSWER rather than a crash if it is not checked here:
@@ -1787,14 +1591,16 @@ def _validate_launch_arguments(shape: Sequence[int], codes: Sequence[int],
     if len(walls) != 3 or any(int(flag) not in (0, 1) for flag in walls):
         raise ValueError(f"wall flags must be three of {{0, 1}}, got "
                          f"{tuple(walls)!r}")
-    if len(flags) != 3 or any(int(flag) not in (0, 1) for flag in flags):
-        raise ValueError(f"phase flags must be three of {{0, 1}}, got "
-                         f"{tuple(flags)!r}")
+    for table in (flags, own_flags):
+        if len(table) != 3 or any(int(flag) not in (0, 1, 2) for flag in table):
+            raise ValueError(f"connection kinds must be three of {{0, 1, 2}}, got "
+                             f"{tuple(table)!r}")
     if len(weights) != 3:
         raise ValueError(f"ghost weights must be three floats, got "
                          f"{tuple(weights)!r}")
     for axis in range(3):
-        if int(flags[axis]) and int(codes[axis]) != FOLDED_BC_CODES["periodic"]:
+        if (int(flags[axis]) or int(own_flags[axis])) \
+                and int(codes[axis]) != FOLDED_BC_CODES["periodic"]:
             raise ValueError(
                 f"axis {axis} carries a Bloch phase flag but resolved to boundary "
                 f"code {codes[axis]!r}; only a periodic wrap can carry a phase "
@@ -1819,12 +1625,12 @@ def _validate_launch_arguments(shape: Sequence[int], codes: Sequence[int],
                 f"mirror ghost images stored row {MIRROR_SOURCE_INDEX}")
 
 
-def _launch(kernel, fields: Any, rows: Sequence[Any], arm: str,
+def _launch(kernel, fields: Any, rows: Sequence[Any], kept: Sequence[int], arm: str,
             tables: Optional[Dict[str, Any]], codes: Sequence[int],
-            walls: Sequence[int], flags: Sequence[int],
-            weights: Sequence[float], down: Sequence[float],
-            up: Sequence[float]) -> str:
-    """One launch. ``rows`` are the LIVE coefficient volumes, in slot order."""
+            walls: Sequence[int], weights: Sequence[float],
+            connections: Sequence[Sequence[Any]], chunk_bounds: Any) -> str:
+    """One launch. ``rows`` are the LIVE coefficient volumes, in slot order, and ``kept``
+    their presence words; ``connections`` is :func:`bloch_connection_table`'s four."""
     import numpy as np  # noqa: PLC0415 - only the scalar types are needed
 
     shape = tuple(fields.Ex.shape)
@@ -1842,6 +1648,7 @@ def _launch(kernel, fields: Any, rows: Sequence[Any], arm: str,
                   fields.inverse_epsilon_for("Ey"),
                   fields.inverse_epsilon_for("Ez")]
     arguments.extend(rows)
+    arguments += [np.int32(word) for word in kept]
     arguments += [np.int32(nx), np.int32(ny), np.int32(nz)]
     if arm == "pml":
         arguments += [tables["kps_x"], tables["kms_x"],
@@ -1849,37 +1656,46 @@ def _launch(kernel, fields: Any, rows: Sequence[Any], arm: str,
                       tables["kps_z"], tables["kms_z"]]
     arguments += [np.int32(code) for code in codes]
     arguments += [np.int32(flag) for flag in walls]
-    arguments += [np.int32(flag) for flag in flags]
     arguments += [np.float32(value) for value in weights]
-    arguments += [np.float32(value) for value in down]
-    arguments += [np.float32(value) for value in up]
+    pair_kinds, pair_parts, own_kinds, own_parts = connections
+    arguments += [np.int32(kind) for kind in pair_kinds]
+    arguments += [np.float32(value) for value in pair_parts]
+    arguments += [np.int32(kind) for kind in own_kinds]
+    arguments += [np.float32(value) for value in own_parts]
+    arguments += [chunk_bounds]
     kernel((blocks,), (_THREADS,), tuple(arguments))
     return kernel_name(arm)
 
 
-def _run(fields: Any, pml: Any, arm: str, expansion, tables, codes, walls,
-         flags, weights, phases) -> str:
+def _run(fields: Any, pml: Any, arm: str, tables, codes, walls,
+         weights, connections, chunk_bounds, kept) -> str:
     """The one launch path, with the derive-or-override contract both arms keep.
 
     SUPPLY ``pml`` AND EVERY DERIVED ARGUMENT IS DECIDED HERE -- the half-integer
     tables through :func:`coverage.constitutive_sub_lattice`, the boundary codes
     through ``real_pml_boundary_kinds`` and :data:`FOLDED_BC_CODES`, the wall flags
     through the grid's own declaration, the parity through ``fields.mirror_parity``,
-    the phase table through :func:`bloch_phase_table`. That is what makes "the
+    the connection tables through :func:`bloch_connection_table`, the record and the
+    presence words through :func:`chunk_arguments`. That is what makes "the
     launcher and the predicate cannot disagree" an enforced property rather than a
     convention a caller may keep.
 
     THE OVERRIDES ARE THE GATE'S DOOR and stay, keyword-only at the public
     entry points: a byte gate feeds synthetic tables no ``PML`` produces, and its
     mutations feed DELIBERATELY WRONG ones -- a mis-paired sub-lattice, a dropped
-    wall flag, a fold handed the metallic code, a flipped parity, an unconjugated
-    down phase. A launcher that could not take its own could not arm any of them.
-    Passing ``pml`` together with an override, or neither, is refused: a caller with
-    two answers to a one-answer question has a bug either way.
+    wall flag, a fold handed the metallic code, a flipped parity, a connection table
+    swapped, a record off by one, a presence bit cleared. A launcher that could not
+    take its own could not arm any of them. Passing ``pml`` together with an
+    override, or neither, is refused: a caller with two answers to a one-answer
+    question has a bug either way.
+
+    THE CHUNK RECORD AND THE PRESENCE WORDS are derived through :func:`chunk_arguments`
+    when ``pml`` is given (the record uploaded here, once per call); a gate hands both
+    (``chunk_bounds`` the device vector, ``kept`` the six words).
     """
     grid = fields.grid
     supplied = [value is not None
-                for value in (codes, walls, flags, weights, phases)]
+                for value in (codes, walls, weights, connections, chunk_bounds, kept)]
     if arm == "pml":
         supplied.append(tables is not None)
     if (pml is not None) and any(supplied):
@@ -1889,46 +1705,51 @@ def _run(fields: Any, pml: Any, arm: str, expansion, tables, codes, walls,
     if pml is None and not all(supplied):
         raise ValueError(
             "pass exactly one of pml (every launch argument is derived from it and "
-            "the grid) or ALL of codes, walls, flags, weights, phases"
+            "the grid) or ALL of codes, walls, weights, connections, chunk_bounds, kept"
             + (", tables" if arm == "pml" else "")
             + " (the gate supplies its own, including deliberately wrong ones)")
     if pml is not None:
+        import cupy as cp  # noqa: PLC0415 - device-only, the record's one upload
+
         tables = complex_offdiag_tables(pml) if arm == "pml" else None
         codes = complex_offdiag_boundary_codes(grid)
         walls = _coverage.offdiag_wall_mask_flags(grid)
         weights = mirror_ghost_weights(grid)
-        flags, down, up = bloch_phase_table(grid)
-    else:
-        down, up = phases
+        connections = bloch_connection_table(grid)
+        record, kept = chunk_arguments(fields, pml, codes)
+        chunk_bounds = cp.asarray(record, dtype=cp.int32)
+    from .complex_pml_kernels import chunk_record_argument  # noqa: PLC0415
+
+    chunk_bounds = chunk_record_argument(chunk_bounds)
     mask = normalized_row_mask(_coverage.offdiag_row_mask(fields))
     rows = [volume for volume in _coverage.offdiag_row_volumes(fields)
             if volume is not None]
+    words = [int(kept[slot]) for slot, flag in enumerate(mask) if flag]
     _validate_launch_arguments(tuple(fields.Ex.shape), codes, walls, weights,
-                               flags)
+                               connections[0], connections[2])
     _require_no_aliasing(fields, rows, arm)
-    return _launch(_get_kernel(arm, mask, expansion), fields, rows, arm, tables,
-                   codes, walls, flags, weights, down, up)
+    return _launch(_get_kernel(arm, mask), fields, rows, words, arm, tables,
+                   codes, walls, weights, connections, chunk_bounds)
 
 
-def update_E_complex_offdiag_fused_pml(fields: Any, expansion, pml: Any = None, *,
+def update_E_complex_offdiag_fused_pml(fields: Any, pml: Any = None, *,
                                        tables: Dict[str, Any] = None, codes=None,
-                                       walls=None, flags=None, weights=None,
-                                       phases=None) -> str:
+                                       walls=None, weights=None, connections=None,
+                                       chunk_bounds=None, kept=None) -> str:
     """``stepping.update_E``'s tensor row product under an ACTIVE layer, one launch.
 
-    ``phases`` is the ``(down_values, up_values)`` pair :func:`bloch_phase_table`
-    returns as its second and third elements; ``flags`` is its first. They are
-    separate arguments because a mutation that flips one flag without touching the
-    values, or negates one value without touching the flags, is a defect this
-    family has to be proof against and a single bundled argument could not arm.
+    ``connections`` is :func:`bloch_connection_table`'s four-tuple (the pair's and the
+    near product's kinds and parts); ``chunk_bounds`` and ``kept`` the record and the
+    six presence words (:func:`chunk_arguments`).
     """
-    return _run(fields, pml, "pml", expansion, tables, codes, walls, flags,
-                weights, phases)
+    return _run(fields, pml, "pml", tables, codes, walls, weights,
+                connections, chunk_bounds, kept)
 
 
-def update_E_complex_no_pml_offdiag(fields: Any, expansion, pml: Any = None, *,
-                                    codes=None, walls=None, flags=None,
-                                    weights=None, phases=None) -> str:
+def update_E_complex_no_pml_offdiag(fields: Any, pml: Any = None, *,
+                                    codes=None, walls=None, weights=None,
+                                    connections=None, chunk_bounds=None,
+                                    kept=None) -> str:
     """``stepping.update_E``'s tensor row product with NO absorber, one launch.
 
     ``pml`` may be an inert ``PML`` or ``None``; either way no coefficient table is
@@ -1937,5 +1758,5 @@ def update_E_complex_no_pml_offdiag(fields: Any, expansion, pml: Any = None, *,
     compute the array path's no-absorber answer, which is the wrong answer for that
     run rather than a crash. The gate arms exactly that as a defect.
     """
-    return _run(fields, pml, "no_pml", expansion, None, codes, walls, flags,
-                weights, phases)
+    return _run(fields, pml, "no_pml", None, codes, walls, weights,
+                connections, chunk_bounds, kept)

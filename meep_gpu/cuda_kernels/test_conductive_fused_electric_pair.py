@@ -2,8 +2,8 @@
 
 WHAT THIS SUITE PINS, and each section says which failure it is the tripwire for:
 
-1. THE LIFT. The emitted kernel is the two CERTIFIED bodies with a named list of six
-   edits and nothing else. Both curl helpers become VALUES and BOTH KEEP THEIR
+1. THE LIFT. The emitted kernel is the two CERTIFIED bodies with a named list of
+   eight edits and nothing else, and ONE decode of the chunk record serves both. Both curl helpers become VALUES and BOTH KEEP THEIR
    AUXILIARY STORES -- ``fu`` and ``f_cond`` are the curl's own histories, and a
    rewrite that swallowed one would leave the recurrence a step behind at every cell,
    which no seam test would notice.
@@ -119,8 +119,27 @@ def source(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_the_curl_stencil_is_reused_unchanged(source):
+    """MEEP's stencil, once, in the lifted ``curl_stencil`` helper; called thrice."""
     text = source((True, True, True))
-    assert text.count("        float curl = dtdx * ((sf - f1) + (f2 - ss));") == 3
+    assert text.count("dtdx * (((sf - f1) + f2) - ss)") == 1
+    assert text.count("        float curl = curl_stencil(dtdx, ") == 3
+
+
+def test_one_decode_of_the_chunk_record_serves_both_halves(source):
+    """D10: each lifted body's block is removed and the real twin's union block emitted.
+
+    The D curl reads the integer record and the presence word, update_E the
+    half-integer record; every record word is decoded exactly once, directly after the
+    index decode, and the kernel takes the record as its last argument.
+    """
+    text = source((True, True, True))
+    block = real.union_bounds_block()
+    assert text.count(block) == 1
+    assert text.index("    int i = idx / (ny * nz);\n") < text.index(block)
+    for word in range(25):
+        assert text.count(f"cb[{word}]") == 1, word
+    signature = text.split('extern "C" __global__ void', 1)[1].split("\n) {\n", 1)[0]
+    assert signature.rstrip().endswith("const int* __restrict__ cb")
 
 
 def test_both_curl_helpers_become_values_and_keep_their_history_stores(source):
@@ -136,23 +155,25 @@ def test_both_curl_helpers_become_values_and_keep_their_history_stores(source):
     text = source((True, True, True))
     assert "__device__ __forceinline__ float pml_apply_reg(" in text
     assert "__device__ __forceinline__ float cond_pml_apply_reg(" in text
-    assert "    fu[idx] = fu_new;" in text
+    assert "    if (dsigu) fu[idx] = fu_new;" in text
     assert "    if (dsigu) u[idx] = u_new;" in text
     assert "    if (dsig) c[idx] = c_new;" in text
     assert "    return value;" in text
 
 
 def test_the_conductive_case_selection_is_the_certified_one(source):
-    """The three-way case choice and its two predicates are lifted, not retyped.
+    """The per-chunk form choice and its flags are lifted, not retyped.
 
-    ``cond_pml_apply`` is MEEP's four subchunk cases selected per cell; the predicates
-    are EXACT comparisons against 1.0, and a tolerance there is a defect the real
-    coefficient tables cannot expose.
+    ``cond_pml_apply`` selects MEEP's conductive forms per cell from the chunk record's
+    membership flags and the keep flag; a chunk that keeps no conductivity steps the
+    certified ``pml_apply``, whose value is carried like the others'. No coefficient
+    identity predicate is left.
     """
     text = source((True, True, True))
-    assert "    bool dsig = (km1 != 1.0f) || (si1 != 1.0f);" in text
-    assert "    bool dsigu = (km2 != 1.0f) || (si2 != 1.0f);" in text
-    assert "    float value = dsigu ? f_split : (dsig ? f_first : f_direct);" in text
+    assert "    int dsig, int dsigu, int kept\n" in text
+    assert "    float value = dsigu ? ((((fv * km2) + u_new) - uv) * si2)" in text
+    assert "        return pml_apply_reg(f, u, idx, curl, km1, si1, km2, si2, dsigu);" in text
+    assert "!= 1.0f" not in text
 
 
 def test_both_branches_of_the_certified_conditional_are_captured(source):
@@ -164,9 +185,9 @@ def test_both_branches_of_the_certified_conditional_are_captured(source):
     """
     text = source((True, False, True))
     assert ("        d_x = cond_pml_apply_reg(Dx, fu_Dx, fc0, cf0, ci0, idx, curl, "
-            "kms_y[j], sinv_y[j], kms_z[k], sinv_z[k]);") in text
+            "kms_y[j], sinv_y[j], kms_z[k], sinv_z[k], in_i_y, in_i_z, KEPT0);") in text
     assert ("        d_x = pml_apply_reg(Dx, fu_Dx, idx, curl, kms_y[j], sinv_y[j], "
-            "kms_z[k], sinv_z[k]);") in text
+            "kms_z[k], sinv_z[k], in_i_z);") in text
 
 
 def test_no_curl_tail_stores_into_the_displacement(source):
@@ -177,7 +198,7 @@ def test_no_curl_tail_stores_into_the_displacement(source):
 
 
 def test_the_lift_edits_are_declared_and_no_more():
-    assert len(family.LIFT_EDITS) == 6
+    assert len(family.LIFT_EDITS) == 8
     for edit in family.LIFT_EDITS:
         assert set(edit) == {"what", "from", "to", "why"}
         assert edit["why"]
@@ -203,7 +224,8 @@ def test_the_two_sigma_sub_lattices_do_not_collide(source):
         assert f"const float* __restrict__ kms_half_{axis}," in signature
     for axis, coordinate in zip("xyz", "ijk"):
         assert (f"    constitutive_apply(E{axis}, f_w_E{axis}, idx, src_{axis}, "
-                f"kps_{axis}[{coordinate}], kms_half_{axis}[{coordinate}]);") in text
+                f"kps_{axis}[{coordinate}], kms_half_{axis}[{coordinate}], "
+                f"in_h_{axis});") in text
 
 
 def test_the_curl_and_constitutive_tables_are_the_two_sub_lattices():
@@ -260,7 +282,7 @@ def test_the_fully_lossless_mask_is_refused_by_name():
 
 def test_every_swept_source_emits_and_is_pure_ascii(source):
     sources = family.device_sources()
-    assert len(sources) == len(family.COND_MASKS_SWEPT)
+    assert len(sources) == len(family.COND_MASKS_SWEPT) * len(family.KEEP_MASKS_SWEPT)
     assert len(set(sources.values())) == len(sources)
     for text in sources.values():
         text.encode("ascii")
@@ -271,13 +293,14 @@ def test_a_moved_certified_anchor_fails_the_emit(monkeypatch, source):
     from . import conductive_kernels
 
     original = conductive_kernels.kernel_template("step_D_pml_conductive")
-    broken = original.replace(
-        "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n",
-        "    f[idx] = ((f[idx] * kms_u) + fu_new - fprev) * sinv_u;\n", 1)
+    head, tail = original.split("void cond_pml_apply(", 1)
+    broken = head + "void cond_pml_apply(" + tail.replace(
+        "    f[idx] = value;\n", "    f[idx] = (value);\n", 1)
+    assert broken != original
     monkeypatch.setattr(conductive_kernels, "_TEMPLATES",
                         dict(conductive_kernels._TEMPLATES,
                              step_D_pml_conductive=broken))
-    with pytest.raises(AssertionError, match="no longer closes with the store"):
+    with pytest.raises(AssertionError, match="its closing store 0 times"):
         family.conductive_fused_electric_pair_source((True, True, True))
 
 
@@ -325,6 +348,28 @@ def build(xp, *, conductivity=0.4, boundaries=("metallic", "metallic", "periodic
         fields.enable_field_storage()
         layer = PML(grid=grid, thickness=0)
     return fields, grid, layer
+
+
+def test_a_conductivity_some_chunk_drops_is_admitted_with_its_keep_mask(xp):
+    """The corpus row's own shape: a conductivity the layer's chunks keep none of.
+
+    ``TestAdjointSolver.test_damping`` and the route case ``conductive_2d`` both carry
+    the conductivity in an interior region, so MEEP's layer chunks step the
+    non-conductive forms there. The family admits it and binds the plan's mask.
+    """
+    fields, grid, layer = build(xp)
+    shape = tuple(int(n) for n in grid.shape)
+    half = numpy.zeros(shape, dtype=bool)
+    half[shape[0] // 2:] = True
+    fields.set_d_conductivity(xp.asarray(
+        numpy.where(half, numpy.float32(0.4), numpy.float32(0.0)).astype(numpy.float32)))
+    covered, why = family.covers_conductive_fused_electric_pair(
+        fields, layer, grid, (electric_source(grid),))
+    assert covered, why
+    keep, masks = family.conductive_keeps(fields, layer)
+    assert keep == (False, False, False)
+    bound = family.keep_bindings(fields, keep, masks)
+    assert all(numpy.asarray(mask).dtype == bool for mask in bound)
 
 
 def test_the_corpus_shape_is_admitted(xp):
@@ -411,32 +456,39 @@ def test_a_source_with_no_deposit_table_is_refused_by_name(xp):
     assert "_inject_electric_through_conductivity" in why
 
 
-def test_the_driver_still_rescales_sparsely():
-    """THE PREMISE OF THIS WHOLE FAMILY, read off the shipped driver.
+def test_the_conductive_deposit_moves_only_its_own_cells():
+    """THE PREMISE OF THIS WHOLE FAMILY, measured on the shipped deposit.
 
-    If ``_inject_electric_through_conductivity`` ever goes back to three unconditional
-    whole-volume passes, this product's cell becomes unserveable again and every
-    byte-identity claim it makes is void. The dense branch must remain reachable ONLY
-    from the no-deposit-table fallback.
+    This product's cell is servable only because a conductive run's electric deposit
+    changes D at the source's own cells and nowhere else. The driver used to scale the
+    current by a replay over the injected increment (whole-volume for a source with no
+    deposit table); the double-precision deposit puts the ``condinv`` scale inside each
+    source's own expression (``sources._deposit``, MEEP step.cpp:299-307) and the
+    driver has no pass over the component at all. If that ever changes -- a pass over
+    the volume, or a deposit that writes a cell off its table -- this product's
+    byte-identity claims are void, so it is MEASURED here on the words: a ``-0.0``
+    far from the deposit survives as ``-0.0``, every cell off the table is unchanged,
+    and the deposit cells moved.
     """
-    driver_source = pathlib.Path(real.__file__).parents[1].joinpath(
-        "driver.py").read_text(encoding="utf-8")
-    tree = ast.parse(driver_source)
-    function = next(
-        node for klass in tree.body
-        if isinstance(klass, ast.ClassDef) and klass.name == "FdtdDriver"
-        for node in klass.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name == "_inject_electric_through_conductivity")
-    body = ast.get_source_segment(driver_source, function)
+    from ..sources import GaussianPulsedSource
 
-    assert "sparse[name] = (ix, iy, iz, array[ix, iy, iz])" in body, (
-        "the driver no longer snapshots at the published deposit indices; this "
-        "product's cell is only servable because it does")
-    assert "dense[name] = array.copy()" in body
-    assert "hasattr(source, \"_point_ix\")" in body, (
-        "the dense fallback is no longer guarded on a missing deposit table, so it "
-        "may run for sources this product admits")
+    fields, grid, _layer = build(numpy)
+    assert fields.condinv_for("Dz") is not None, "the build is not conductive"
+    source = GaussianPulsedSource(grid=grid, component="Ez", center=(0.0, 0.0, 0.0),
+                                  size=(0.0, 0.0, 0.0), frequency=1.0, fwidth=0.2,
+                                  amplitude=1.0)
+    table = numpy.zeros(fields.Dz.shape, dtype=bool)
+    table[source._point_ix, source._point_iy, source._point_iz] = True  # noqa: SLF001
+    far = (1, 1, 0)
+    assert not table[far]
+    fields.Dz[far] = numpy.float32(-0.0)
+    before = fields.Dz.copy()
+    source.inject(fields, source.peak_time)
+    after = fields.Dz
+    assert after[far].view(numpy.uint32) == numpy.uint32(0x80000000), "the far -0.0 was rewritten"
+    assert bool(numpy.all(after[~table].view(numpy.uint32) == before[~table].view(numpy.uint32))), (
+        "the deposit wrote a cell off the source's table")
+    assert bool(numpy.any(after[table].view(numpy.uint32) != before[table].view(numpy.uint32)))
 
 
 # ---------------------------------------------------------------------------
@@ -558,12 +610,14 @@ def test_the_launcher_binds_the_signature_in_order(source):
         list(family._FIELD_BINDINGS)
         + ["cf0", "cf1", "cf2", "ci0", "ci1", "ci2"]
         + ["fc0", "fc1", "fc2"]
+        + ["ck0", "ck1", "ck2"]
         + list(family._ELECTRIC_BINDINGS)
         + ["inv_eps_Ex", "inv_eps_Ey", "inv_eps_Ez"]
         + ["nx", "ny", "nz", "dtdx"]
         + list(family._CURL_TABLE_KEYS)
         + ["kps_x", "kms_half_x", "kps_y", "kms_half_y", "kps_z", "kms_half_z"]
-        + ["bc_x", "bc_y", "bc_z", "wall_x", "wall_y", "wall_z"])
+        + ["bc_x", "bc_y", "bc_z", "wall_x", "wall_y", "wall_z"]
+        + ["cb"])
     assert declared == expected, (
         f"the signature declares\n  {declared}\nand the launcher assembles\n"
         f"  {expected}\nCUDA binds by position, so a difference here is a silent "

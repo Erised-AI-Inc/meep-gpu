@@ -713,7 +713,7 @@ BREADTH_CASES: Tuple[Dict[str, Any], ...] = (
                            "clause. THIS FAMILY ASKS driven() INSTEAD: a pole whose "
                            "sigma is identically zero drives nothing, does not "
                            "switch storage on (driver.py:1542-1547) and reaches the "
-                           "return at stepping.py:983, so refusing on registration "
+                           "return at stepping.py:1274-1275, so refusing on registration "
                            "alone would be a refusal that is FALSE where it fires")},
     # THE CONTROL, and it is now labelled as one. It used to claim
     # "admitted by the curl too", which the row's own `curl_predicate_refused: true`
@@ -1310,7 +1310,7 @@ CLAUSE_MARKERS: Dict[str, str] = {
     # SUBSUMED, NOT OMITTED, and mapped by name rather than given an entry.
     # COVERED_BOUNDARIES is ('periodic','metallic') and the only other kinds
     # stepping._boundary_kinds can return are 'mirror' and 'axis'
-    # (stepping.py:2191-2195), so the ghost clause never fires without the fold or
+    # (stepping.py:3067-3071), so the ghost clause never fires without the fold or
     # cylindrical clause beside it. The leg asserts that co-fire rather than
     # assuming it.
     "boundary 'mirror' is outside": "fold",
@@ -1325,7 +1325,7 @@ CLAUSE_MARKERS: Dict[str, str] = {
     # FOUND BY THIS LEG on the cut that introduced it. The sibling refuses on
     # REGISTRATION; this family asks driven(), because a pole whose sigma is
     # identically zero drives nothing, does not switch storage on
-    # (driver.py:1542-1547) and really does reach the return at stepping.py:983.
+    # (driver.py:1542-1547) and really does reach the return at stepping.py:1274-1275.
     "a susceptibility is registered": "susceptibility_registration",
     "torch is not importable": "metal_backend",
     "torch.backends.mps": "metal_backend",
@@ -1346,7 +1346,7 @@ INVERSE_CLAUSES: Dict[str, str] = {
                            "pml.is_active",
     "E is recomputed from D rather than stored": (
         "the null's clause 3, inverted: the sibling requires stored E and this "
-        "family requires it absent (stepping.py:983)"),
+        "family requires it absent (stepping.py:1274)"),
 }
 
 #: The volumes the poison rebinds. ``scratch`` is in the list deliberately: the PML
@@ -1360,7 +1360,7 @@ class PoisonedVolume:
 
     THE MEASUREMENT THE WHOLE NON-CLAUSE TABLE RESTS ON. "A sub-step that returns
     before its first statement reads no pointer, forms no index and rounds no
-    float" was a READING of stepping.py:944-945 / :983-984 and nothing executed it.
+    float" was a READING of stepping.py:1229-1230 / :1274-1275 and nothing executed it.
     Rebinding every allocated volume to this object and calling the real sub-step
     turns it into a measurement: if the call returns, the sub-step demonstrably
     touched no field array, and every clause about strides, indices, ghost rules
@@ -1508,13 +1508,14 @@ def leg_over_coverage(payload: Dict[str, Any], out: str) -> None:
 
     # ---- 1b. the CITED return sites, READ OUT OF stepping.py -------------
     #
-    # The artifact stamps `family.return_sites` — "stepping.py:944-945" and
-    # ":954-955" — and nothing checked them. This round has already found TWO stale
-    # citations in this tranche (driver.py:3212-3225 pointing into a docstring, and
-    # the same one corrected once already in the family module), so a cited line
-    # number that no leg reads is exactly the class of claim that rots. Read the
-    # cited span out of the oracle and require it to END in a bare `return` inside
-    # the function the side names.
+    # The artifact stamps `family.return_sites` (``NULL_SIDES[side]["return_site"]``)
+    # and nothing checked them. This round has already found TWO stale citations in
+    # this tranche (driver.py:3212-3225 pointing into a docstring, and the same one
+    # corrected once already in the family module), and the 0.10 array path moved
+    # both sites again, so a cited line number that no leg reads is exactly the class
+    # of claim that rots. Read the cited span out of the oracle and require it to be
+    # an ASCENDING range that OPENS on the no-PML guard (``if not ...``) and ENDS in a
+    # bare `return`, inside the function the side names.
     with open(os.path.join(API_ROOT, "meep_gpu", "stepping.py"),
               "r", encoding="utf-8") as handle:
         oracle_lines = handle.read().splitlines()
@@ -1523,6 +1524,7 @@ def leg_over_coverage(payload: Dict[str, Any], out: str) -> None:
         site = spec["return_site"]
         span = site.rsplit(":", 1)[1]
         first, last = (int(part) for part in span.split("-"))
+        assert first <= last, (site, "the cited range is not ascending")
         cited = oracle_lines[first - 1:last]
         enclosing = next(
             (line for line in reversed(oracle_lines[:first])
@@ -1533,6 +1535,9 @@ def leg_over_coverage(payload: Dict[str, Any], out: str) -> None:
         log(f"[over_coverage] citation {site} -> {enclosing.split('(')[0]} :: "
             f"{cited[-1].strip()[:60]}")
         assert cited, (site, "the cited span is empty")
+        assert cited[0].strip().startswith("if not"), (
+            f"{site} is cited as {spec['sub_step']}'s no-PML guard and return, and its "
+            f"first line is {cited[0].strip()!r}, not the guard")
         assert cited[-1].strip().startswith("return"), (
             f"{site} is cited as {spec['sub_step']}'s no-PML return and its last "
             f"line is {cited[-1].strip()!r}. A citation no leg reads is how "
@@ -1638,7 +1643,7 @@ def leg_over_coverage(payload: Dict[str, Any], out: str) -> None:
         "ghost_rule_subsumption": (
             "COVERED_BOUNDARIES is ('periodic','metallic') and the only other kinds "
             "stepping._boundary_kinds can return are 'mirror' and 'axis' "
-            "(stepping.py:2191-2195), so the ghost clause is SUBSUMED by fold / "
+            "(stepping.py:3067-3071), so the ghost clause is SUBSUMED by fold / "
             "cylindrical_axis rather than being a separate omission. Asserted, not "
             "assumed: a ghost clause with neither partner fails this leg"),
         "arm_gate_cases": len(gate_rows),
@@ -1905,7 +1910,7 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
     the band, because the MPS executor flushes natively and cannot be told not to.
 
     THIS FAMILY HAS NO OPERAND, NO RESULT AND NO INTERMEDIATE. The sub-step returns
-    at stepping.py:944-945 / :983-984 before reading an array, so the window over
+    at stepping.py:1229-1230 / :1274-1275 before reading an array, so the window over
     them is EMPTY BY CONSTRUCTION — and an empty window is VACUOUS, not clean, which
     is exactly what ``SubnormalWindow`` refuses to call a pass. So the verdict is
     NOT ``assert_clean_or_refuse``; the honest shape is recorded instead:
@@ -2411,7 +2416,7 @@ def main() -> int:
         "claim": (
             "a PLANNER-LEVEL SUBSTITUTION: on a run with an inactive absorber (and "
             "stores_E False on the E side) stepping.update_H returns at "
-            "stepping.py:944-945 and update_E at :983-984, so the null plan and the "
+            "stepping.py:1229-1230 and update_E at :1274-1275, so the null plan and the "
             "array path leave every live array byte-identical — proved over "
             f"{IDENTITY_CYCLES} full cycles and {ENGINE_STEPS} whole steps, with "
             "the step PROVEN to have moved state, because a null agreeing with a "

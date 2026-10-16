@@ -219,10 +219,10 @@ def test_the_swapped_weld_can_never_degenerate_into_the_ordinary_one(name, modul
     """
     source = source_of(module)
     assert source != shipped.fused_magnetic_pair_source(CODES, WALLS)
-    inserted = {"beta": ("curl0 = curl0 - (beta_plus * b);",
-                         "curl1 = curl1 - (beta_minus * a);"),
-                "bfast": ("float st0 = s0[ii];", "s0[ii] = st0 + adv0;",
-                          "curl0 = curl0 - adv0;")}[name]
+    inserted = {"beta": ("float bi0 = -(beta_plus * b);",
+                         "float bi1 = -(beta_minus * a);"),
+                "bfast": ("float fp0 = s0[ii];", "{ s0[ii] = F0; }",
+                          "float fi0 = ")}[name]
     for statement in inserted:
         assert statement in source
 
@@ -282,7 +282,11 @@ def test_the_auxiliary_is_never_masked(name, module, emitter, _reach):
     """``zero_metal_B`` passes ``B_COMPONENTS`` (stepping.py:2250); ``fu_B`` is not
     in it, so masking the split-field auxiliary would be an over-carry."""
     source = source_of(module)
-    assert "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;" in source
+    # Every weld compiles or lifts the base curl, whose fu store is per target and
+    # guarded by the dsigu chunk (the auxiliary contract); the beta and BFAST passes
+    # update the fu word in register before that store.
+    for target in range(3):
+        assert f"    if (du{target}) {{ u{target}[ii] = n{target}; }}" in source
     assert "u0[ii] = at_x" not in source
 
 

@@ -251,21 +251,21 @@ def test_the_electric_weld_is_not_the_magnetic_one(bodies):
     assert "f_bfast_B" not in ours
 
 
-def test_the_advance_mask_precedes_the_state_store(bodies):
-    """``adv`` is masked BEFORE ``state <- state + adv`` (S:902).
-
-    That ordering is the whole reason ``at_x``/``at_y``/``at_z`` move one statement
-    earlier in this body than in ``kernels.fused_curl_constitutive_D``, and it is
-    read INSIDE the one tail statement rather than across the body.
-    """
+def test_the_state_is_masked_before_its_store(bodies):
+    """The increment and the state are masked BEFORE the state store, inside the one
+    BFAST statement, and the store precedes the ladder; the statement itself sits after
+    the curl forms and before the wall clear (each component's curl, then its BFAST
+    pass, then the seam)."""
+    insert = next(statement for statement in bodies["fused"]
+                  if statement.startswith("if HAS_BFAST:"))
+    increment_mask = insert.index("q0 = tl.where(at_y, 0.0, q0)")
+    state_mask = insert.index("bf0 = tl.where(at_y, st0, bf0)")
+    store = insert.index("tl.store(s0 + idx, bf0, mask=live)")
+    ladder = insert.index("v0, n0 = fold_ladder(v0, n0, q0, si_y, si_z, du0)")
+    assert increment_mask < store and state_mask < store < ladder
     joined = "\n".join(bodies["fused"])
-    predicates = joined.index("at_x, at_y, at_z = i == 0, j == 0, k == 0")
-    tail = joined.index("if HAS_BFAST:")
-    first_mask = joined.index("adv0 = tl.where(at_y, 0.0, adv0)")
-    state_store = joined.index("tl.store(s0 + idx, st0 + adv0, mask=live)")
-    curl_mask = joined.index("curl0 = tl.where(at_y, 0.0, curl0)")
-    assert predicates < tail < first_mask < state_store < curl_mask, (
-        predicates, tail, first_mask, state_store, curl_mask)
+    assert (joined.index("v2, n2 = curl_form(") < joined.index("if HAS_BFAST:")
+            < joined.index("if ZM_X:"))
 
 
 # ---------------------------------------------------------------------------
@@ -645,6 +645,7 @@ def test_the_gate_pins_the_files_this_product_actually_rests_on():
     for required in ("meep_gpu/triton_kernels/bfast_fused_electric_pair.py",
                      "meep_gpu/triton_kernels/bfast_curl.py",
                      "meep_gpu/triton_kernels/kernels.py",
+                     "meep_gpu/triton_kernels/forms.py",
                      "meep_gpu/deposit_repair.py",
                      "meep_gpu/stepping.py",
                      "meep_gpu/driver.py",

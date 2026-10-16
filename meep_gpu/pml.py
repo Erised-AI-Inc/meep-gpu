@@ -545,7 +545,9 @@ class PML:
         the little corner itself — is never owned; it is the non-owned periodic image
         of index 2N. This array stores that lattice point once, at cell 0, so cell 0
         of the integer set must be graded as MEEP's ``2*N``: from the UPPER wall, with
-        the upper face's own thickness and prefac. Grading it from the lower wall
+        the upper face's own thickness and prefac. On a Bloch-phased axis the field
+        storage holds the same point there (``Grid.stored_window_low``); at ``k = 0``
+        the two points hold the same word. Grading it from the lower wall
         instead is invisible whenever both faces are equally deep — u = 1 either way —
         which is every uniform layer and therefore every pinned number this table had.
         It is worth a factor of ``1/(kappa+sigma)`` at that one plane otherwise, and
@@ -742,86 +744,6 @@ class PML:
             y_low, owned[1] - y_high,
             z_low, owned[2] - z_high,
         )
-
-    def sigma_bites(self, axis: str, half_integer: bool = False) -> numpy.ndarray:
-        """Per stored cell: does this axis's graded sigma bite there, at this Yee offset?
-
-        Host boolean array, built by the same :meth:`_graded_sigma` pass that fills
-        the stored coefficient sets — so this predicate and the stepping recurrence
-        cannot disagree about where the layer acts. ``half_integer`` selects the Yee
-        offset exactly as the kernels do: the D-side curl reads the integer sets, the
-        B-side curl the half-integer ones (module docstring, pairing rule).
-
-        MEEP's grading puts sigma EXACTLY zero at the sample sitting at the layer's
-        snapped extent (``u = 0`` there, structure.cpp:682), so a cell "touching the
-        inner edge" reads False here with no tolerance — which is why the source
-        truth table in the absorber-placement evidence packet sorts that row as exact.
-        """
-        if axis not in AXIS_NAMES:
-            raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
-        index = AXIS_NAMES.index(axis)
-        n_cells = (self.grid.nx, self.grid.ny, self.grid.nz)[index]
-        sigma = self._graded_sigma(
-            n_cells, self.thickness_by_face[index], 0.5 if half_integer else 0.0, 1.0,
-            self.axis_wraps(index), self._wall_high(index),
-        )
-        return sigma != 0.0
-
-    def in_pml_chunk(self, axis: str, half_integer: bool = False) -> numpy.ndarray:
-        """Per stored cell: is its sample OWNED by a chunk that CARRIES this axis's layer?
-
-        MEEP selects the PML recurrence per structure chunk from ``sigsize``
-        (step_db.cpp:56-59), and ``sigsize[d] > 1`` for every cell of a chunk that
-        overlaps the layer — including cells whose own sigma is exactly zero. The
-        chunk is the per-side effort volume ``structure::use_pml`` registers
-        (structure.cpp:509-524)::
-
-            pml_volume.set_num_direction(d, int(dx * user_volume.a + 1 + 0.5));
-
-        ``span = int(cells + 1.5)`` array cells measured from the wall, where
-        ``choose_chunkdivision`` splits. Ownership then follows MEEP's owned-corner
-        arithmetic (vec.hpp:1100-1104, ``little_owned_corner0 = little_corner + 2 -
-        iyee_shift``): a chunk spanning doubled indices ``[c0, c1]`` owns the
-        integer samples ``c0 + 2 .. c1`` and the half-integer samples ``c0 + 1 ..
-        c1 - 1``, so the INTEGER lattice plane on the chunk's own upper boundary
-        belongs to it, not to its interior neighbour. Per Yee offset on this axis:
-
-        * integer (shift 0): low face owns cells ``1 .. span``; high face owns the
-          top ``span`` planes — stored cells ``n - span + 1 .. n - 1`` plus, on a
-          wrapping axis, stored cell 0 (the image of the wall plane it owns).
-        * half-integer (shift 1): low face owns cells ``0 .. span - 1``; high face
-          ``n - span .. n - 1``.
-
-        Measured discriminators (12x12 um cell, res 20, PML(2) all faces, CW Ez at
-        x = -5, whole-volume complex relative L2 against CPU MEEP): a deposit at
-        y = -4.0 (cell 40, sigma exactly 0) and one at y = -3.975 (cells 40 + 41)
-        both step the BOTH-ACTIVE recurrence — mirroring either reads 2.3e-01 …
-        4.6e-01 where leaving them split reads ~7e-07 — while y = -3.9 (cell 42)
-        steps the unsplit one: 4.9583e-01 unmirrored, 5.6135e-07 mirrored. This is
-        the boundary :meth:`sigma_bites` cannot see, because those cells' own sigma
-        is zero on every reading.
-        """
-        if axis not in AXIS_NAMES:
-            raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
-        index = AXIS_NAMES.index(axis)
-        n_cells = (self.grid.nx, self.grid.ny, self.grid.nz)[index]
-        low, high = self.thickness_by_face[index]
-        inside = numpy.zeros(n_cells, dtype=bool)
-        if low > 0:
-            span = min(n_cells, int(low + 1.5))
-            if half_integer:
-                inside[0:span] = True
-            else:
-                inside[1: min(n_cells, span + 1)] = True
-        if high > 0:
-            span = min(n_cells, int(high + 1.5))
-            if half_integer:
-                inside[n_cells - span:] = True
-            else:
-                inside[max(0, n_cells - span + 1):] = True
-                if self.axis_wraps(index):
-                    inside[0] = True  # The stored image of the high wall plane.
-        return inside
 
     def get_sigma_profile(self, axis: str) -> numpy.ndarray:
         """Raw sigma profile (prefac * profile(u), without the 0.5*dt factor) for one axis.

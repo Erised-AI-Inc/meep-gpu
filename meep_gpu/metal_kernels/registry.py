@@ -103,8 +103,10 @@ cylindrical_real      all four      all four      the CYLINDRICAL r = 0 AXIS wit
                                                   restated predicate
 nonlinear             B, D, H, E    B, D, H, E    chi2/chi3 INSTALLED — the shared
 _constitutive                                     clause 10 INVERTED. ``update_E``
-                                                  uses the dedicated Pade body;
-                                                  B/D/H reuse their individually
+                                                  uses the dedicated Pade body, its
+                                                  |D|^2 in software binary64
+                                                  (ruling R7); B/D/H reuse their
+                                                  individually
                                                   certified ordinary PML shaders
                                                   through separate nonlinear-only
                                                   spine arms, because the engine

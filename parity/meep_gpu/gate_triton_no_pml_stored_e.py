@@ -228,6 +228,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--cycles", type=int, default=CYCLES)
+    parser.add_argument("--subnormal-policy", default="keep", choices=("keep", "flush"),
+                        help="the float32 subnormal policy to install before the first device compile (keep, the default, or flush: the certification round gates every family under both on the NVIDIA tables)")
     args = parser.parse_args(argv)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -239,8 +241,8 @@ def main(argv=None) -> int:
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     from meep_gpu.subnormal_policy import install_subnormal_policy
-    install_subnormal_policy("keep")
-    payload["subnormal_policy_installed"] = "keep"
+    install_subnormal_policy(args.subnormal_policy)
+    payload["subnormal_policy_installed"] = args.subnormal_policy
 
     rows = []
     built = build_cases()

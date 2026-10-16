@@ -315,8 +315,13 @@ def test_a_live_off_diagonal_row_moves_update_E_to_its_own_family(xp):
     This is the case that shows the table selects PER SLOT rather than per run: the
     off-diagonal row changes ``update_E`` only, and the ordinary constitutive refuses
     it by name rather than being outranked.
+
+    METALLIC walls: with the layer on a wrapping axis the off-diagonal arm refuses the
+    one-rank division by name (the record cannot place the wrapped cell 0 in its
+    chunk), which ``test_chunk_binding.py`` pins; selection per slot is the point here.
     """
-    fields, layer, grid = build(xp, offdiagonal=True)
+    fields, layer, grid = build(xp, offdiagonal=True,
+                                boundaries=("metallic", "metallic", "metallic"))
     plan = arms.plan_step(fields, layer, grid)
 
     assert plan.selected["step_B"] == "PML"
@@ -329,26 +334,6 @@ def test_a_live_off_diagonal_row_moves_update_E_to_its_own_family(xp):
     # its own wrapper performs when handed the layer.
     assert "update_E" in plan.replaces
     assert "update_E" in plan.launchable
-
-
-def test_complex_storage_refuses_by_name_when_no_expansion_licence_is_bound(xp):
-    """``None`` IS NOT A DEFAULT ARM.
-
-    Which arm this host's reference complex multiply takes is a measured platform
-    fact. A composer that guessed it would licence a kernel performing an expansion
-    nothing classified, so an absent licence is a NAMED refusal and the slot falls to
-    the array path.
-    """
-    fields, layer, grid = build(xp, force_complex_fields=True)
-    plan = arms.plan_step(fields, layer, grid)
-
-    for slot in ("step_B", "step_D", "update_H", "update_E"):
-        assert slot not in plan.selected, f"{slot} selected {plan.selected.get(slot)}"
-        assert any("licence" in reason or "license" in reason
-                   for reason in plan.reasons[slot]), plan.reasons[slot]
-    # And the certified real-field arms refused for the storage width, which is the
-    # clause that makes the two families disjoint rather than ordered.
-    assert any("complex64 storage" in reason for reason in plan.reasons["step_B"])
 
 
 def test_the_fill_slots_refuse_an_unfolded_grid_by_name_rather_than_in_silence(xp):

@@ -1,60 +1,56 @@
 """The own-cell hoist on the Dcyl COMPLEX fused electric pair, read off the emitted text.
 
 WHY A LAPTOP TEST AND NOT A GATE LEG. ``gate_cuda_fused_complex_pairs.py`` carries this
-family's needles (``cylindrical_electric``) and its lift leg, and 15 of the 55 CUDA
-fingerprint entries pin that file: a hoist check added there would drift every
-complex-family weld for a check that needs no device. None of that gate's nine needles on
-this family moves under the hoist (every site keeps its live function, count and call
-sites), and its ``leg_lift[cylindrical_electric]`` passes unchanged, so the hoist's own
-claims are asserted here instead:
+family's needles and its lift leg; a hoist check added there would drift every
+complex-family weld for a check that needs no device, so the hoist's own claims are asserted
+here instead:
 
-1. twelve own-cell ``cf`` pre-loads -- w*, f* (E), fu_D*, D* at ``idx`` -- each exactly once,
-   all of them BEFORE the kernel's first store (the first ``cf_store`` call in the entry
-   body), and unguarded as the certified loads are (this family refuses every folded grid);
+1. twelve own-cell ``cf`` pre-loads -- w*, f* (E), fu_D*, D* at ``idx`` -- each
+   exactly once, all of them BEFORE the kernel's first store, each behind the certified
+   load's own guard: ``f_w`` and the old field behind the component's dsigw flag (the one
+   form that reads them), ``fu`` behind its dsigu flag, the flux density unguarded (every
+   curl form reads it) (bit_parity_0_10 DESIGN.md D11);
 2. the three curl calls and the three constitutive calls take exactly their own component's
    preloaded words, in the certified argument order otherwise;
-3. both derived helpers are declared once, and neither certified helper survives as dead
-   text (``pml_apply_reg`` / ``constitutive_apply``): no call to either is left;
-4. ``LIFT_EDITS`` is fourteen rows, the last five being the hoist's.
+3. the three derived helpers are declared once (``pml_apply_reg_pre``, ``fold_apply_reg``,
+   ``constitutive_apply_pre``), and no certified helper survives as dead text: no call to
+   ``pml_apply``, ``fold_apply``, ``pml_apply_reg`` or ``constitutive_apply`` is left;
+4. ``LIFT_EDITS`` names the hoist.
 
-The m = 0 axis tail's certified read of ``Dz`` after the recurrence's store is not a
-pre-load and is not touched by the hoist; item 1 counts only the ``cf pre_`` lines.
-
-The derived helpers' ARITHMETIC is asserted at emit time by the module itself
-(``_hoist_derive``: the derived statements equal the certified ones under the
-argument-to-load map); a certified edit that moves it refuses there by name.
+The i*m/r pass's ladder reads the target and its ``fu`` back after the curl form stored them
+(``fold_apply_reg``): reloads of the lane's own writes, which
+``test_own_cell_hoist_store_sequence`` pins by count. The derived helpers' ARITHMETIC is
+asserted at emit time by the module itself (``cylindrical_fused_magnetic_pair.derive``: the
+derived statements equal the certified ones under the argument-to-load map).
 """
 from __future__ import annotations
 
 import re
 
-import pytest
 
-from . import cylindrical_fused_electric_pair as family
 from . import complex_emitter
+from . import cylindrical_fused_electric_pair as family
 
-pytestmark = pytest.mark.skipif(
-    family.cylindrical_complex_kernels is None,
-    reason="the certified cylindrical text imports CuPy at module scope")
-
-ARMS = sorted(complex_emitter.EXPANSIONS)
+TARGETS = ("Dx", "Dy", "Dz")
+CONSTITUTIVE_FLAGS = complex_emitter.CONSTITUTIVE_FLAGS["E"]
+CURL_FLAGS = complex_emitter.CURL_FLAGS[True]
 
 
 def _entry_body(source: str) -> str:
-    return source.split("extern \"C\" __global__ void fused_electric_pair_pml_cyl_complex(",
+    return source.split('extern "C" __global__ void fused_electric_pair_pml_cyl_complex(',
                         1)[1].split("\n) {\n", 1)[1]
 
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_twelve_own_cell_loads_precede_the_first_store(arm):
-    body = _entry_body(family.cylindrical_fused_electric_pair_source(arm))
+def test_the_twelve_own_cell_loads_precede_the_first_store():
+    body = _entry_body(family.cylindrical_fused_electric_pair_source())
     first_store = min(body.index(call) for call in (
-        "pml_apply_reg_pre(", "cf_store(", "constitutive_apply_pre("))
+        "pml_apply_reg_pre(", "cf_store(", "constitutive_apply_pre(", "fold_apply_reg("))
     expected = []
-    for register, target in zip(("0", "1", "2"), ("Dx", "Dy", "Dz")):
-        expected += [f"cf pre_w_{register} = cf_load(w{register}, idx);",
-                     f"cf pre_e_{register} = cf_load(f{register}, idx);",
-                     f"cf pre_fu_{register} = cf_load(fu_{target}, idx);",
+    for register, target, cflag, uflag in zip(("0", "1", "2"), TARGETS, CONSTITUTIVE_FLAGS,
+                                              CURL_FLAGS):
+        expected += [f"cf pre_w_{register} = {cflag} ? cf_load(w{register}, idx) : cf_zero();",
+                     f"cf pre_e_{register} = {cflag} ? cf_load(f{register}, idx) : cf_zero();",
+                     f"cf pre_fu_{register} = {uflag} ? cf_load(fu_{target}, idx) : cf_zero();",
                      f"cf pre_d_{register} = cf_load({target}, idx);"]
     loads = [line.strip() for line in body.splitlines()
              if line.strip().startswith("cf pre_")]
@@ -64,10 +60,9 @@ def test_the_twelve_own_cell_loads_precede_the_first_store(arm):
         assert body.index(line) < first_store, line
 
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_every_call_takes_its_own_components_words(arm):
-    source = family.cylindrical_fused_electric_pair_source(arm)
-    for register, target in zip(("0", "1", "2"), ("Dx", "Dy", "Dz")):
+def test_every_call_takes_its_own_components_words():
+    source = family.cylindrical_fused_electric_pair_source()
+    for register, target in zip(("0", "1", "2"), TARGETS):
         curl = [line for line in source.splitlines()
                 if f"d{register} = pml_apply_reg_pre({target}, fu_{target}, idx, curl, " in line]
         assert len(curl) == 1 and curl[0].rstrip().endswith(
@@ -78,18 +73,16 @@ def test_every_call_takes_its_own_components_words(arm):
             f"idx, s{register}, pre_w_{register}, pre_e_{register}, " in const[0]), const
 
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_derived_helpers_replace_the_certified_ones(arm):
-    prelude = family.cylindrical_fused_electric_pair_prelude(arm)
+def test_the_derived_helpers_replace_the_certified_ones():
+    prelude = family.cylindrical_fused_electric_pair_prelude()
     assert prelude.count("cf pml_apply_reg_pre(\n") == 1
+    assert prelude.count("cf fold_apply_reg(\n") == 1
     assert prelude.count("void constitutive_apply_pre(\n") == 1
-    source = family.cylindrical_fused_electric_pair_source(arm)
-    assert not re.search(r"\bpml_apply_reg\(", source)
-    assert not re.search(r"\bconstitutive_apply\(", source)
-    assert not re.search(r"\bpml_apply\(", source)
+    source = family.cylindrical_fused_electric_pair_source()
+    for helper in ("pml_apply_reg", "constitutive_apply", "pml_apply", "fold_apply"):
+        assert not re.search(rf"\b{helper}\(", source), helper
 
 
-def test_the_lift_is_fourteen_edits():
-    assert len(family.LIFT_EDITS) == 14
+def test_the_lift_names_the_hoist():
     assert all(set(edit) == {"line", "became", "why"} for edit in family.LIFT_EDITS)
-    assert "THE OWN-CELL HOIST" in family.LIFT_EDITS[9]["why"]
+    assert sum("THE OWN-CELL HOIST" in edit["why"] for edit in family.LIFT_EDITS) == 1

@@ -125,6 +125,15 @@ def build(axes="Y", phases=(1,), boundaries=None, dims=2, extent=2.0,
     Deterministic in ``seed``, so the whole-step leg can build the reference a
     SECOND TIME rather than deep-copying — ``Grid`` holds the array module itself
     and a deepcopy raises.
+
+    A SEEDED STATE IS A MID-RUN ONE, so it carries ``Fields.h_separated``, as
+    ``metal_composition_matrix``'s does: MEEP's start of H and ``f_w`` from B
+    (``stepping.separate_h_from_b``, run by the array path's first ``update_H``) is
+    long past, and the certified constitutive kernel the folded arm re-admits on
+    ``update_H`` never runs it (``ConstitutivePlan.starts_h_from_b`` is False; the
+    composer keeps that kernel off a run's real first ``update_H`` by
+    ``launch.h_start_reasons``). See
+    :func:`test_the_whole_step_fixture_is_a_mid_run_state`.
     """
     size = [1.6, 1.6, 0.0] if dims == 2 else [1.3, 1.2, 1.1]
     for name in axes:
@@ -161,6 +170,7 @@ def build(axes="Y", phases=(1,), boundaries=None, dims=2, extent=2.0,
     for name in NAMES:
         getattr(fields, name)[...] = (rng.standard_normal(shape) * 0.37
                                       ).astype(np.float32)
+    fields.h_separated = True
     return fields, pml
 
 
@@ -173,6 +183,18 @@ def _oracle(fields, pml):
     for name, value in before.items():
         getattr(fields, name)[...] = value
     return after, moved
+
+
+def _plan(fields, pml, residency, functions=None):
+    """The shipped kernel through the ENGINE route, with the chunk record of the
+    division ``stepping`` steps these fields with; ``functions`` replaces the entry
+    point (the mutation seam) on the plan the engine built."""
+    plan = folded.plan_folded_offdiag_constitutive(
+        fields, pml, residency, chunk_bounds=_one_rank_record(fields, pml))
+    assert plan is not None, _verdict(fields, pml, residency).reasons
+    if functions is not None:
+        plan._functions = dict(functions)
+    return plan
 
 
 def _shipped_specialisation(fields, pml):
@@ -223,11 +245,18 @@ def test_an_odd_mirror_plane_emits_the_certified_component_blocks(mirror):
         block = offdiag._component_source(component, row_mask, (0, 0, 0))
         assert block in odd, component
         assert block in certified, component
-    # ...and the ONE line that differs is the ghost redirect.
+    # ...and the lines that differ are the ghost redirect, and the presence
+    # label's row on y's integer lattice: a METALLIC wall row 0 is read at row 1 (no
+    # chunk owns it), a mirror's stored row 0 at its own row.
     assert "    dj = (j == 0) ? 2 : dj;" in odd
     assert "    dvy = (dj >= 0);" in certified
-    assert (set(certified.splitlines()) ^ set(odd.splitlines())
-            == {"    dvy = (dj >= 0);", "    dj = (j == 0) ? 2 : dj;"})
+    differing = set(certified.splitlines()) ^ set(odd.splitlines())
+    ghost = {"    dvy = (dj >= 0);", "    dj = (j == 0) ? 2 : dj;"}
+    assert ghost <= differing
+    rest = differing - ghost
+    assert rest and all("cb.cbi_y_" in line for line in rest), rest
+    assert any("((j == 0) ? 1 : j)" in line
+               for line in rest & set(certified.splitlines()))
 
 
 def test_an_even_plane_negates_only_the_terms_whose_partner_axis_is_folded():
@@ -609,7 +638,8 @@ def test_the_keep_policy_refuses_the_plan_at_build_time(monkeypatch):
     assert not verdict.covered
     assert any("subnormal" in reason for reason in verdict.reasons), verdict.reasons
     assert folded.plan_folded_offdiag_constitutive(
-        fields, pml, device.Residency()) is None
+        fields, pml, device.Residency(),
+        chunk_bounds=_one_rank_record(fields, pml)) is None
 
 
 @requires_mps
@@ -624,7 +654,28 @@ def test_a_covered_verdict_never_meets_a_raising_builder(monkeypatch):
         verdict = _verdict(fields, pml, residency)
         assert verdict.covered, (kwargs, verdict.reasons)
         assert folded.plan_folded_offdiag_constitutive(
-            fields, pml, residency) is not None, kwargs
+            fields, pml, residency,
+            chunk_bounds=_one_rank_record(fields, pml)) is not None, kwargs
+
+
+def test_the_kernel_binds_the_record_and_presence_and_steps_the_per_chunk_tail():
+    """The fold fills the certified template, so it inherits the record and presence
+    bindings, the software-binary64 row and the per-chunk select from it: the same
+    placeholders, from the same home."""
+    source = folded.folded_offdiag_source(*_FOLDED_SPEC)
+    assert (f"constant ChunkBounds& cb [[buffer({offdiag.RECORD_BUFFER})]]"
+            in source)
+    assert (f"constant OffdiagPresence& kw [[buffer({offdiag.PRESENCE_BUFFER})]]"
+            in source)
+    assert "    float src0 = sd_narrow_f(od_row0, true);" in source
+    assert "0.25f" not in source.split("uint idx [[thread_position_in_grid]])", 1)[1]
+    assert shaders.constitutive_bounds_block("E") in source
+    for t in range(3):
+        assert f"if (dw{t}) {{ w{t}[ii] = src{t}; }}" in source, t
+        assert f"float prev{t} = dw{t} ? w{t}[ii] : 0.0f;" in source, t
+
+
+_FOLDED_SPEC = ((1, 0, 0, 0, 0, 1), (P, MP, P), (0, 0, 0), (0, 1, 0))
 
 
 # ---------------------------------------------------------------------------
@@ -677,8 +728,7 @@ def test_the_sub_step_reproduces_stepping_update_E_byte_for_byte(monkeypatch,
     assert moved > 0, "the oracle did nothing; identity here would be vacuous"
 
     residency = device.Residency()
-    plan = folded.plan_folded_offdiag_constitutive(fields, pml, residency)
-    assert plan is not None, _verdict(fields, pml, residency).reasons
+    plan = _plan(fields, pml, residency)
     plan.run()
     residency.sync_out()
 
@@ -694,8 +744,7 @@ def test_asking_for_an_unbuilt_contract_variant_raises(monkeypatch):
     measured the contraction guard through a silent fallback would certify nothing."""
     monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
     fields, pml = build()
-    plan = folded.plan_folded_offdiag_constitutive(fields, pml, device.Residency())
-    assert plan is not None
+    plan = _plan(fields, pml, device.Residency())
     assert plan.variants == (shaders.CONTRACT_OFF,)
     with pytest.raises(KeyError, match="holds no 'fast' variant"):
         plan.run(contract=shaders.CONTRACT_FAST)
@@ -715,6 +764,52 @@ WHOLE_STEP_CASES = (
     ("3d_fold_Z_even", dict(axes="Z", phases=(1,), dims=3, extent=1.4)),
 )
 
+#: The B half of the driver's order, up to and including the first ``update_H``.
+_TO_FIRST_UPDATE_H = (
+    lambda f, p: stepping.step_B(f, p),
+    lambda f, p: stepping.fill_symmetry_bc_B(f),
+    lambda f, p: stepping.fill_folded_far_ghosts_B(f),
+    lambda f, p: stepping.update_H(f, p),
+)
+
+
+@pytest.mark.parametrize("label,kwargs", WHOLE_STEP_CASES,
+                         ids=[c[0] for c in WHOLE_STEP_CASES])
+def test_the_whole_step_fixture_is_a_mid_run_state(label, kwargs):
+    """THE WHOLE-STEP LEG COMPARES A KERNEL THAT NEVER STARTS H, SO ITS STATE IS MID-RUN.
+
+    The array path's first ``update_H`` on a run starts H and ``f_w`` from B on the
+    dsigw cells (``stepping.separate_h_from_b``, MEEP's update_eh.cpp:165-177) and
+    then steps the forms. The certified constitutive kernel ``plan_folded_constitutive``
+    builds steps the forms alone (``ConstitutivePlan.starts_h_from_b`` is False), and
+    the composer refuses it a run's real first ``update_H`` (``launch.h_start_reasons``).
+    A fixture that does not carry ``Fields.h_separated`` therefore compares the start
+    with no start: MEASURED on the array path alone, as built without the flag against
+    the same state with it, 2d_fold_Y_even_periodic moves Hx 72 and Hy 32 words at the
+    first ``update_H`` (B and ``f_w_H*`` equal) and reaches Dz 92, Hx 72, Hy 32 and
+    fu_Dz 32 before ``update_E`` -- word for word the step-0 divergence the whole-step
+    leg reported on the Metal composition.
+
+    Host only: pins that the builder marks the state mid-run, and that the flag is load
+    bearing on every case (the start would move H words and leave B and ``f_w`` alone).
+    """
+    from meep_gpu.metal_kernels import launch
+
+    assert launch.ConstitutivePlan.starts_h_from_b is False
+    mid_run, pml = build(**kwargs)
+    assert mid_run.h_separated is True, (label, "a seeded state is a mid-run one")
+    fresh, fresh_pml = build(**kwargs)
+    fresh.h_separated = False
+    for sub_step in _TO_FIRST_UPDATE_H:
+        sub_step(mid_run, pml)
+        sub_step(fresh, fresh_pml)
+    moved = {name: _differing(getattr(mid_run, name), getattr(fresh, name))
+             for name in SNAPSHOT if getattr(mid_run, name, None) is not None}
+    assert sum(moved[name] for name in ("Hx", "Hy", "Hz")) > 0, (
+        label, "the start moved no H word: the flag would not be load bearing", moved)
+    assert all(moved[name] == 0 for name in moved if not name.startswith("H")), (
+        label, "the start moved a word other than H", moved)
+
 
 @requires_mps
 @pytest.mark.parametrize("label,kwargs", WHOLE_STEP_CASES,
@@ -732,7 +827,10 @@ def test_a_complete_step_composes_with_the_folded_curls_and_fills(monkeypatch,
     Compared per COMPLETE STEP over a stated budget, reporting the FIRST DIVERGENT
     STEP; per-slot launch counters prove each slot actually ran, so no slot can pass
     by not executing. Measured on this host 2026-08-16: 0 differing words at every
-    step of 6, on every case.
+    step of 6, on every case. The state is a mid-run one (:func:`build`); measured
+    2026-10-09 on the Apple GPU, compared after every pass, the folded curls, both
+    fills and ``update_H`` read 0 differing words at every step of 6 on every case,
+    and the whole step does too once ``update_E`` steps the double row.
     """
     monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
     budget = 6
@@ -745,12 +843,15 @@ def test_a_complete_step_composes_with_the_folded_curls_and_fills(monkeypatch,
 
     residency = device.Residency()
     plans = {
-        "step_B": symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency),
+        "step_B": symmetry.plan_folded_pml_curl(
+            fields, pml, "step_B", residency, chunk_bounds=_one_rank_record(fields, pml)),
         "fill_B": symmetry.plan_mirror_ghost_fill(fields, "B", "fill_B", residency),
-        "update_H": symmetry.plan_folded_constitutive(fields, pml, "H", residency),
-        "step_D": symmetry.plan_folded_pml_curl(fields, pml, "step_D", residency),
+        "update_H": symmetry.plan_folded_constitutive(
+            fields, pml, "H", residency, chunk_bounds=_one_rank_record(fields, pml)),
+        "step_D": symmetry.plan_folded_pml_curl(
+            fields, pml, "step_D", residency, chunk_bounds=_one_rank_record(fields, pml)),
         "fill_D": symmetry.plan_mirror_ghost_fill(fields, "D", "fill_D", residency),
-        "update_E": folded.plan_folded_offdiag_constitutive(fields, pml, residency),
+        "update_E": _plan(fields, pml, residency),
     }
     assert all(plan is not None for plan in plans.values()), {
         name for name, plan in plans.items() if plan is None}
@@ -880,8 +981,7 @@ def test_the_subnormal_precondition_reports_a_window_not_a_count(monkeypatch,
     weights = folded.mirror_ghost_weights(fields.grid)
 
     residency = device.Residency()
-    plan = folded.plan_folded_offdiag_constitutive(fields, pml, residency)
-    assert plan is not None
+    plan = _plan(fields, pml, residency)
     residency.sync_in()
 
     fired = []
@@ -935,10 +1035,8 @@ def _run_mutant(fields, pml, source):
     from meep_gpu.metal_kernels.device import compile_source
 
     residency = device.Residency()
-    plan = folded.plan_folded_offdiag_constitutive(fields, pml, residency)
-    assert plan is not None
-    plan._functions = {shaders.CONTRACT_OFF:
-                       compile_source(source).offdiag_constitutive_step}
+    plan = _plan(fields, pml, residency, functions={
+        shaders.CONTRACT_OFF: compile_source(source).offdiag_constitutive_step})
     residency.sync_in()
     plan.run()
     residency.sync_out()
@@ -970,9 +1068,9 @@ MUTATIONS = (
      dict(axes="Y", phases=(1,)), True),
     # The wall mask must ABSTAIN on a fold plane (stepping.py:1282).
     ("fold_plane_masked_the_metallic_way",
-     lambda s: s.replace("    float src0 = (gs0 * us0) + total0;",
-                         "    total0 = at_y ? 0.0f : total0;\n"
-                         "    float src0 = (gs0 * us0) + total0;"),
+     lambda s: s.replace("    ulong od_row0 = sd_widen_f(gs0 * us0, true);",
+                         "    sum_00 = at_y ? 0.0f : sum_00;\n"
+                         "    ulong od_row0 = sd_widen_f(gs0 * us0, true);"),
      dict(axes="Y", phases=(1,)), True),
     # The own-axis UP shift serves an exact 0 on a mirror axis; a wrap is wrong.
     # CAUGHT only where the folded axis is the OWN axis of a LIVE row, which is
@@ -1192,3 +1290,10 @@ def test_an_unreadable_state_gates_the_arm_out_rather_than_raising(attribute):
     fields, _pml = build()
     assert folded._has_fold_and_rows(_Context(fields))
     assert not folded._has_fold_and_rows(_Context(_Raising(fields, attribute)))
+
+
+def _one_rank_record(fields, pml):
+    """The record of the one-rank division ``stepping`` steps these ``Fields`` with."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))

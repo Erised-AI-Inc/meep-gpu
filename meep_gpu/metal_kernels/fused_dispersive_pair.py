@@ -60,11 +60,17 @@ component) plus that packing work, not a platform refusal. Stated as measured
 rather than as a barrier, because "the platform forbids it" would have closed a
 door that is open.
 
-Per component the count is 29 (indices 0..28):
+Per component the count is 30 (indices 0..29):
 
     d_out, fu, e_out, fw, g0, g1, g2, inv_e, q0..q7,
     kmx, sinvx, kmy, sinvy, kmz, sinvz, kps, kms,
-    nx, ny, nz, n_elem, dtdx
+    nx, ny, nz, n_elem, dtdx, cb
+
+where ``cb`` is the chunk record (:mod:`.chunk_bounds`), bound last as the base
+singles bind it. Both halves select their forms per structure chunk from it: the D
+curl's recurrence where the target's dsigu chunk holds (integer lattice), the E
+half's accumulation where its own-axis chunk holds (half-integer lattice), and the
+curl's partner presence from its presence word.
 
 so one dispatch per E component. THAT IS THE FUSION: the D curl arithmetic and the
 E constitutive arithmetic execute in one kernel body with D living in a register.
@@ -80,9 +86,12 @@ seam on identical state and records both sides:
                 ``zero_metal_D`` stays on the array path there
     fused:    3 device dispatches per step, 0 host passes inside the seam
 
-and all three engines — array path, separate, fused — agree word for word at
+and all three engines — array path, separate, fused — agreed word for word at
 every complete step. A correct fusion is byte-neutral by construction, so the
-dispatch counts are the only place the difference is visible at all.
+dispatch counts are the only place the difference is visible at all. Since this
+family steps MEEP's per-chunk forms the gate scores the fused product against the
+array path and records the separate side beside it: the pointwise dispersive E
+single steps the pre-alignment forms until its own lane.
 
 ===========================================================================
 WHAT THIS FAMILY REFUSES, AND WHY EACH REFUSAL IS THE SEAM RATHER THAN TASTE
@@ -134,6 +143,9 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..triton_kernels.coverage import Coverage, MAGNETIC_FIELD_TYPE
 from . import shaders, templates
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as a keyword named
+# `chunk_bounds`, the name the composer's StepContext carries (launch.py does the same).
+from . import chunk_bounds as _chunk_bounds
 from .ade_update_p import _physical_name
 from .coverage import pml_curl_coverage, zero_metal_axes
 from .device import Residency, compile_source
@@ -226,6 +238,8 @@ using namespace metal;
 
 __CONTRACT__
 
+__RECORD_STRUCT__
+
 kernel void fused_dispersive_pair_component(
     device float*       f__T__      [[buffer(0)]],
     device float*       u__T__      [[buffer(1)]],
@@ -256,18 +270,28 @@ kernel void fused_dispersive_pair_component(
     constant uint&      nz       [[buffer(26)]],
     constant uint&      n_elem   [[buffer(27)]],
     constant float&     dtdx     [[buffer(28)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
 __BODY__
 }
 """
 
+#: The chunk record's binding index: one past ``dtdx``, the last scalar.
+RECORD_BUFFER = 29
+
 #: Per target: the two H operands its curl differences, the curl expression, the
 #: two coefficient axes its split-field recurrence takes, and the E coefficient
-#: coordinate. TRANSCRIBED from shaders.py:154-190 — the curl lines are that
-#: block's own text, character for character, and the recurrence pairs are
-#: ``vec.hpp``'s cycle_direction as shaders.py:173-175 records it (target 0 takes
+#: coordinate. The recurrence pairs are ``vec.hpp``'s cycle_direction (target 0 takes
 #: (y, z), target 1 (z, x), target 2 (x, y)).
+#:
+#: THIS FAMILY READS ONLY ``loads`` FROM IT, which are the certified curl's load lines
+#: character for character. Its curl and recurrence lines are cut from the certified
+#: emitter's own output instead (:func:`certified_target_lines`), because the base
+#: curl now steps MEEP's per-chunk forms. The ``curl`` entries keep the package's
+#: previous pairwise spelling for the three families that import this table
+#: (``folded_fused_dispersive_pair``, ``no_pml_fused_electric_pair``,
+#: ``no_pml_conductive_fused_electric_pair``), each of which re-cuts it in its own lane.
 _TARGETS: Tuple[Dict[str, Any], ...] = (
     {   # Dx: curl_x = dHz/dy - dHy/dz  (stepping.py:422)
         "loads": ("    float b   = g1[ii];",
@@ -307,6 +331,60 @@ _ZERO_METAL_ROWS: Tuple[Tuple[int, int, str], ...] = (
     (1, 0, "at_x"), (1, 2, "at_z"),
     (2, 0, "at_x"), (2, 1, "at_y"),
 )
+
+
+#: The kernel's lines that are LIFTED from the certified curl emitter, per target,
+#: by their opening text. Each must be found exactly once in the emitted
+#: ``step_D`` curl (:func:`.shaders.curl_source` with ``backward=True``), so a base
+#: template that moved or re-spelled one is a refusal here, not a silent re-derivation.
+_LIFTED_PREFIXES: Tuple[str, ...] = ("float p{t} = ", "float n{t} = ", "float v{t} = ",
+                                     "if (du{t}) {{ u{t}[ii] = n{t}; }}")
+
+
+def certified_target_lines(codes: Sequence[int], axis: int,
+                           contract: str = shaders.CONTRACT_OFF) -> Dict[str, Any]:
+    """One D target's curl lines, cut from the certified ``step_D`` curl's own output.
+
+    The per-component kernel steps one of the three targets the certified kernel
+    steps, so it takes exactly that target's lines and no others:
+
+    * ``curl``: the two-line presence-aware stencil (step_generic.cpp:72-76) of
+      ``curl{axis}``;
+    * ``coefficients``: the ``km_``/``si_`` loads of the target's dsig and dsigu
+      axes, in the certified order;
+    * ``forms``: ``p``/``n``/``v`` and the guarded ``fu`` store -- the recurrence on
+      the dsigu chunk's cells, the dsig-only form elsewhere
+      (stepping._apply_curl_regions);
+    * ``flag``: the membership local the target's form reads (``in_i_<dsigu>``).
+    """
+    lines = shaders.curl_source(codes, True, contract).splitlines()
+    head = f"    float curl{axis} = "
+    starts = [index for index, line in enumerate(lines) if line.startswith(head)]
+    if len(starts) != 1 or not lines[starts[0] + 1].lstrip().startswith(":"):
+        raise AssertionError(
+            f"the certified step_D curl no longer spells curl{axis} as one two-line "
+            f"presence-aware ternary; this family lifts it and would otherwise retype it")
+    curl = lines[starts[0]:starts[0] + 2]
+    dsig, dsigu = shaders.CURL_CYCLE[axis]
+    wanted = {"xyz"[dsig], "xyz"[dsigu]}
+    coefficients = [line for line in lines
+                    if line.startswith("    float km_")
+                    and line.split("float km_", 1)[1][0] in wanted]
+    if len(coefficients) != 2:
+        raise AssertionError(
+            f"the certified step_D curl does not carry one km_/si_ load per axis for "
+            f"{sorted(wanted)}: {coefficients}")
+    forms: List[str] = []
+    for prefix in _LIFTED_PREFIXES:
+        opening = "    " + prefix.format(t=axis)
+        found = [line for line in lines if line.startswith(opening)]
+        if len(found) != 1:
+            raise AssertionError(
+                f"the certified step_D curl carries {len(found)} lines opening "
+                f"{opening.strip()!r}; this family lifts exactly one")
+        forms.append(found[0])
+    return {"curl": curl, "coefficients": coefficients, "forms": forms,
+            "flag": shaders.curl_membership_flags(True)[axis]}
 
 
 def zero_metal_mask(target: int, zero_metal: Sequence[bool],
@@ -350,12 +428,15 @@ def fused_dispersive_pair_source(codes: Sequence[int], axis: int, pole_count: in
     if len(zero_metal) != 3:
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
     spec = _TARGETS[axis]
+    dsig, dsigu = shaders.CURL_CYCLE[axis]
+    lifted = certified_target_lines(codes, axis, contract)
 
-    # --- the curl half, shaders.py:136-192 with backward=True (step_D) ----------
+    # --- the curl half: the certified step_D body's own lines for this target ----
     # The decode block, the ghost rules and the ownership mask come from the
-    # CERTIFIED emitters, so a change to either rule reaches this family without a
-    # second transcription. `backward` is True and never a parameter: this pair is
-    # the D seam, and step_B's forward strides are a different product entirely.
+    # CERTIFIED emitters, and every arithmetic line from the certified curl's own
+    # output (:func:`certified_target_lines`), so a change to either reaches this
+    # family without a second transcription. `backward` is True and never a
+    # parameter: this pair is the D seam.
     curl = [
         templates.GUARD,
         "",
@@ -366,6 +447,11 @@ def fused_dispersive_pair_source(codes: Sequence[int], axis: int, pole_count: in
         "    int plane = ii / nzi;",
         "    int j   = plane % nyi;",
         "    int i   = plane / nyi;",
+        "",
+        "    // --- the chunk record: the D curl's dsigu membership (integer lattice),",
+        "    //     the E half's own-axis membership (half-integer), partner presence",
+        _chunk_bounds.prologue(((False, dsigu), (True, axis)),
+                               presence=(dsig, dsigu)),
         "",
         "    // --- the ghost rule, per axis (stepping._shift_down:1787) ----------",
         "    int si = i - 1, sj = j - 1, sk = k - 1;",
@@ -381,8 +467,9 @@ def fused_dispersive_pair_source(codes: Sequence[int], axis: int, pole_count: in
         "    // METALLIC serves an exact 0.0 past the wall -- Triton's `other=0.0`.",
         *spec["loads"],
         "",
-        "    // --- the curl (stepping._curl_from_operands:1601): DO NOT flatten these parens",
-        spec["curl"],
+        "    // --- the curl (stepping._curl_from_operands): MEEP's left-to-right",
+        "    // bracket, presence-aware (step_generic.cpp:72-76). DO NOT regroup.",
+        *lifted["curl"],
         "",
         "    // --- ownership mask (stepping._mask_non_owned_cells:1865) ----------",
         "    bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);",
@@ -394,51 +481,52 @@ def fused_dispersive_pair_source(codes: Sequence[int], axis: int, pole_count: in
             if line.strip().startswith(f"curl{axis} ")]
     curl.extend(mask or [f"    // no metallic axis masks curl{axis}"])
 
-    first, second = spec["first"], spec["second"]
     coordinate = ("i", "j", "k")
-    axis_coordinate = {"x": "i", "y": "j", "z": "k"}
     curl.extend([
         "",
-        "    // --- split-field recurrence (stepping._apply_pml_update:1905) ------",
-        f"    float km_{first} = km{first}[{axis_coordinate[first]}], "
-        f"si_{first} = sinv{first}[{axis_coordinate[first]}];",
-        f"    float km_{second} = km{second}[{axis_coordinate[second]}], "
-        f"si_{second} = sinv{second}[{axis_coordinate[second]}];",
+        "    // --- the two PML forms, per structure chunk (stepping._apply_curl_regions):",
+        "    // the split-field recurrence where the dsigu chunk holds, the dsig-only",
+        "    // form (its first stage with fu := f) elsewhere, fu untouched there.",
+        *lifted["coefficients"],
+        f"    const bool du{axis} = {lifted['flag']};",
         "",
-        f"    float p{axis} = u{axis}[ii];",
-        f"    float n{axis} = ((p{axis} * km_{first}) - curl{axis}) * si_{first};",
-        f"    float v{axis} = (((f{axis}[ii] * km_{second}) + n{axis}) - p{axis})"
-        f" * si_{second};",
+        *lifted["forms"][:3],
         "",
-        f"    u{axis}[ii] = n{axis};",
+        lifted["forms"][3],
         "",
         "    // --- zero_metal_D, carried inline (stepping._zero_metal:2232) ------",
         zero_metal_mask(axis, zero_metal),
         f"    f{axis}[ii] = v{axis};",
     ])
 
-    # --- the pole-aware E half, dispersive_update_e.py:74-82 -------------------
-    # ONE line differs from that body and it is THE SEAM: `float source = d_in[idx]`
-    # becomes the live register. Everything after it is character for character.
+    # --- the pole-aware E half: the constitutive select, per structure chunk ------
+    # stepping._apply_constitutive_regions: on a cell whose chunk carries this
+    # component's own (dsigw) layer, f_w takes the constitutive product and E
+    # accumulates f + ((kps*src) - (kms*prev)) (step_generic.cpp:689, :697); everywhere
+    # else E IS the product and f_w is neither read nor written. ONE line is the
+    # seam: the displacement is the live register, not a reload of d_in.
     chain = [f"    source = source - {_POLE_PREFIX}{index}[idx];"
              for index in range(int(pole_count))]
     electric = [
         "",
-        "    // --- pole-aware update_E (stepping.update_E:983-987) ---------------",
-        "    float prev = fw[idx];",
+        "    // --- pole-aware update_E (stepping.update_E, _apply_constitutive_regions)",
+        f"    const bool dw = {_chunk_bounds.membership_name(True, axis)};",
+        "    float prev = dw ? fw[idx] : 0.0f;",
         "    // THE SEAM: the register step_D just wrote, not a reload of d_in[idx].",
         f"    float source = v{axis};",
         *chain,
         "    float src = source * inv_e[idx];",
-        "    fw[idx] = src;",
-        "    float value = e_out[idx];",
-        f"    value = value + kps[{coordinate[axis]}] * src;",
-        f"    value = value - kms[{coordinate[axis]}] * prev;",
+        "    if (dw) { fw[idx] = src; }",
+        "    float value = src;",
+        f"    if (dw) {{ value = e_out[idx] + ((kps[{coordinate[axis]}] * src) - "
+        f"(kms[{coordinate[axis]}] * prev)); }}",
         "    e_out[idx] = value;",
     ]
 
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(RECORD_BUFFER),
         "__T__": str(axis),
         "__BODY__": "\n".join(curl + electric),
     })
@@ -598,14 +686,19 @@ class MetalFusedDispersivePairPlan:
     #: (launch.py:12-14).
     __slots__ = ("entries", "residency", "volumes", "codes", "zero_metal",
                  "shape", "dtdx", "_functions", "_tensors", "_magnetic",
-                 "_curl_coefficients", "launches", "runs")
+                 "_curl_coefficients", "launches", "runs", "chunk_bounds", "_record")
 
     def __init__(self, entries: Sequence[_Entry], residency: Residency,
                  volumes: Sequence[str], codes: Sequence[int],
                  zero_metal: Sequence[bool], shape: Sequence[int], dtdx: float,
                  magnetic: Sequence[Any], curl_coefficients: Sequence[Any],
                  functions: Mapping[Tuple[str, int], Any],
-                 tensors: Mapping[int, Any]) -> None:
+                 tensors: Mapping[int, Any], *, chunk_bounds: Any) -> None:
+        # The record's host words, checked against the shape by the builder, and the
+        # one plan-owned device copy every launch binds last (outside the residency
+        # registry, as every packed scalar block is).
+        self.chunk_bounds = chunk_bounds
+        self._record = _chunk_bounds.tensor(chunk_bounds, residency.device)
         self._magnetic = tuple(magnetic)
         self._curl_coefficients = tuple(curl_coefficients)
         self.entries = tuple(entries)
@@ -675,7 +768,7 @@ class MetalFusedDispersivePairPlan:
                 *(self._tensors[id(value)] for value in self._curl_coefficients),
                 self._tensors[id(entry.kps)], self._tensors[id(entry.kms)],
                 self.shape[0], self.shape[1], self.shape[2],
-                int(entry.displacement.size), self.dtdx,
+                int(entry.displacement.size), self.dtdx, self._record,
             )
             self.launches += 1
         self.runs += 1
@@ -695,8 +788,14 @@ def plan_metal_fused_dispersive_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[Tuple[str, int], Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalFusedDispersivePairPlan]:
     """Build the fused D/E plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the
+    composer's ``StepContext.chunk_bounds``) and has no default, as
+    :func:`.launch.plan_pml_curl` has none: a missing record, or one that disagrees
+    with the grid, is refused by name (:func:`.chunk_bounds.plan_words`).
 
     ``None`` is the only refusal, for the reason :func:`.launch.plan_pml_curl`
     gives: a configuration this kernel does not carry must fall back to the array
@@ -713,6 +812,8 @@ def plan_metal_fused_dispersive_pair(
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
+    record = _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                                      "plan_metal_fused_dispersive_pair")
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, pml))
     walls = zero_metal_axes(grid)
@@ -777,7 +878,8 @@ def plan_metal_fused_dispersive_pair(
 
     return MetalFusedDispersivePairPlan(
         entries, residency, volumes, codes, walls, grid.shape,
-        grid.dt / grid.dx, magnetic, curl_coefficients, selected, tensors)
+        grid.dt / grid.dx, magnetic, curl_coefficients, selected, tensors,
+        chunk_bounds=record)
 
 
 # ---------------------------------------------------------------------------
@@ -796,7 +898,7 @@ def _arm_plan(context: Any, slot: str) -> Optional[MetalFusedDispersivePairPlan]
         return None
     return plan_metal_fused_dispersive_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

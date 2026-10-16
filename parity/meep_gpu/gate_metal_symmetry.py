@@ -158,6 +158,7 @@ from meep_gpu.triton_kernels.coverage import CONSTITUTIVE_SIDES  # noqa: E402
 from meep_gpu.triton_kernels.coverage import zero_metal_axes  # noqa: E402
 
 import metal_composition_matrix as matrix  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 import metal_gate_kit as kit  # noqa: E402
 
 log, save, differing, words = kit.log, kit.save, kit.differing, kit.words
@@ -343,7 +344,8 @@ def run_curl(fields: Any, pml: Any, sub_step: str,
     report its defect as uncaught.
     """
     residency = device.Residency()
-    plan = symmetry.plan_folded_pml_curl(fields, pml, sub_step, residency)
+    plan = symmetry.plan_folded_pml_curl(fields, pml, sub_step, residency,
+                                         chunk_bounds=layer_record(fields.grid, pml))
     if plan is None:
         raise AssertionError(symmetry.folded_composition_curl_coverage(
             fields, pml, sub_step, residency).reasons)
@@ -440,7 +442,8 @@ def run_fill(fields: Any, family: str,
 def run_constitutive(fields: Any, pml: Any, side: str,
                      counters: Optional[List[kit.Counter]] = None) -> Any:
     residency = device.Residency()
-    plan = symmetry.plan_folded_constitutive(fields, pml, side, residency)
+    plan = symmetry.plan_folded_constitutive(fields, pml, side, residency,
+                                             chunk_bounds=layer_record(fields.grid, pml))
     if plan is None:
         raise AssertionError(symmetry.folded_constitutive_coverage(
             fields, pml, side, residency).reasons)
@@ -467,13 +470,18 @@ def reference_step(fields: Any, pml: Any) -> None:
 
 
 def composed_plans(fields: Any, pml: Any, residency: Any) -> Dict[str, Any]:
+    record = layer_record(fields.grid, pml)
     plans = {
-        "step_B": symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency),
+        "step_B": symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency,
+                                                chunk_bounds=record),
         "fill_B": symmetry.plan_mirror_ghost_fill(fields, "B", "fill_B", residency),
-        "update_H": symmetry.plan_folded_constitutive(fields, pml, "H", residency),
-        "step_D": symmetry.plan_folded_pml_curl(fields, pml, "step_D", residency),
+        "update_H": symmetry.plan_folded_constitutive(fields, pml, "H", residency,
+                                                      chunk_bounds=record),
+        "step_D": symmetry.plan_folded_pml_curl(fields, pml, "step_D", residency,
+                                                chunk_bounds=record),
         "fill_D": symmetry.plan_mirror_ghost_fill(fields, "D", "fill_D", residency),
-        "update_E": symmetry.plan_folded_constitutive(fields, pml, "E", residency),
+        "update_E": symmetry.plan_folded_constitutive(fields, pml, "E", residency,
+                                                      chunk_bounds=record),
     }
     missing = [name for name, plan in plans.items() if plan is None]
     if missing:
@@ -512,7 +520,8 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
     for label, _ in CASES[:2]:
         fields, pml = build(label)
         residency = device.Residency()
-        plan = symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency)
+        plan = symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency,
+                                             chunk_bounds=layer_record(fields.grid, pml))
         assert plan is not None, label
         tensor = residency.tensor("Bx")
         entry = plan._functions[shaders.CONTRACT_OFF]
@@ -824,7 +833,9 @@ def leg_reduction(payload: Dict[str, Any], out: str) -> None:
 
         before = snapshot(fields, names)
         residency = device.Residency()
-        certified = launch.plan_pml_curl(fields, pml, sub_step, residency)
+        record = layer_record(fields.grid, pml)
+        certified = launch.plan_pml_curl(fields, pml, sub_step, residency,
+                                         chunk_bounds=record)
         assert certified is not None
         residency.sync_in()
         certified.run()
@@ -839,7 +850,8 @@ def leg_reduction(payload: Dict[str, Any], out: str) -> None:
              if getattr(fields, name, None) is not None},
             {f"{stem}_{axis}": getattr(pml, f"{stem}_{axis}{spec['suffix']}")
              for axis in "xyz" for stem in ("kms", "sinv")},
-            codes, float(fields.grid.dt / fields.grid.dx), residency)
+            codes, float(fields.grid.dt / fields.grid.dx), residency,
+            chunk_bounds=record)
         residency.sync_in()
         folded.run()
         residency.sync_out()
@@ -946,6 +958,16 @@ def seed_signed_zeros(fields: Any, seed: int = 20260816) -> Dict[str, int]:
     return counts
 
 
+#: THE CURLS' NON-VACUITY FLOOR UNDER THE +-0 LATTICE, and it is a measurement. The
+#: array path's own ``step_B`` / ``step_D`` on this lattice move 455 / 491 of the 2-D
+#: case's 1,152 words each, and at least 4,427 on every 3-D case, since the array path
+#: steps the per-chunk region forms; before that change they moved 745-750 / 888 on the
+#: 2-D case, which the earlier floor of 500 was set against (the oracle's own counts,
+#: measured on the host before and after that change). 400 is below the smallest
+#: measured count and above a third of the 2-D case's words.
+SIGNED_ZERO_CURL_FLOOR = 400
+
+
 def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
     """Curl and fill under a +-0 lattice, with a CENSUS FLOOR on both zeros."""
     rows: List[Dict[str, Any]] = []
@@ -981,7 +1003,8 @@ def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
                                   "compared": compared_words(after)}
             bad_total.update({f"{sub_step}:{k}": v for k, v in bad.items()})
             kit.assert_moved(outcomes[sub_step]["moved"],
-                             f"{label} signed-zero {sub_step}", floor=500)
+                             f"{label} signed-zero {sub_step}",
+                             floor=SIGNED_ZERO_CURL_FLOOR)
 
         row = {"case": label, "census": counts, "outcomes": outcomes,
                "compared": sum(o["compared"] for o in outcomes.values()),
@@ -1747,8 +1770,11 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
     residency = device.Residency()
     walls = zero_metal_axes(fields.grid)
     verdict = symmetry.mirror_ghost_fill_coverage(fields, "B", residency)
-    curl = symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency)
-    constitutive = symmetry.plan_folded_constitutive(fields, pml, "H", residency)
+    record = layer_record(fields.grid, pml)
+    curl = symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency,
+                                         chunk_bounds=record)
+    constitutive = symmetry.plan_folded_constitutive(fields, pml, "H", residency,
+                                                     chunk_bounds=record)
     row = {"case": "folded_periodic_with_a_live_wall",
            "zero_metal_axes": [bool(w) for w in walls],
            "codes": [int(c) for c in symmetry.folded_axis_kinds(fields.grid, pml)[0]],

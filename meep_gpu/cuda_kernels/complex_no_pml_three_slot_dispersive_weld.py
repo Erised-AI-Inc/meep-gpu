@@ -281,10 +281,10 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "certified store, applied to the D->E weld's spelling of the same line."},
     {"line": "    cf_store(p_out, idx, ade_step(\n"
              "        cf_load(p_now, idx), cf_load(p_prev, idx), cf_load(drive, idx),\n"
-             "        sigma[idx], c_now, c_prev, c_drive));",
+             "        sigma[idx], two_minus_od, gamma1, omega0dtsqr, gamma1inv));",
      "became": "    cf_store(p_out_i, idx, ade_step(\n"
                "        cf_load(<stem>i, idx), cf_load(p_prev_i, idx), ev,\n"
-               "        sigma_i[idx], c_now_i, c_prev_i, c_drive_i));",
+               "        sigma_i[idx], two_minus_od_i, gamma1_i, omega0dtsqr_i, gamma1inv_i));",
      "why": "the E->P weld's per-pole renames and ITS seam, verbatim: the drive load "
             "becomes the register the constitutive just stored (fields.drive_field(c) "
             "IS the stored E without an absorber) and p_now becomes the bank slot "
@@ -327,7 +327,7 @@ def _replace_once(text: str, old: str, new: str, what: str) -> str:
     return text.replace(old, new, 1)
 
 
-def certified_curl_block(arm, conductive: bool, component_index: int
+def certified_curl_block(conductive: bool, component_index: int
                          ) -> Tuple[str, str]:
     """The D->E weld's certified curl body, reduced to its header and ONE block.
 
@@ -338,7 +338,7 @@ def certified_curl_block(arm, conductive: bool, component_index: int
     """
     if not 0 <= int(component_index) <= 2:
         raise ValueError(f"component_index must be 0..2, got {component_index!r}")
-    body = de.certified_curl_body(arm, bool(conductive))
+    body = de.certified_curl_body(bool(conductive))
     parts = body.split(_BLOCK_MARKER)
     if len(parts) != 4:
         raise AssertionError(
@@ -369,7 +369,7 @@ def certified_curl_block(arm, conductive: bool, component_index: int
     return header, block
 
 
-def _certified_constitutive_value(arm, component_index: int) -> str:
+def _certified_constitutive_value(component_index: int) -> str:
     """The D->E weld's constitutive store for one component, value-named."""
     target, _displacement, stem, count_name = _COMPONENTS[component_index]
     slots = ", ".join(f"{stem}{slot}" for slot in range(MAX_POLES))
@@ -377,7 +377,7 @@ def _certified_constitutive_value(arm, component_index: int) -> str:
             f"        minus_poles_reg(d{component_index}, {slots}, idx, "
             f"{count_name}),   // THE SEAM\n"
             f"        inv_eps_{component_index}[idx]));\n")
-    body = de.certified_constitutive_body(arm)
+    body = de.certified_constitutive_body()
     if body.count(line) != 1:
         raise AssertionError(
             f"the D->E weld's constitutive body carries {target}'s store "
@@ -392,13 +392,13 @@ def _certified_constitutive_value(arm, component_index: int) -> str:
     return value
 
 
-def _certified_poles(arm, component_index: int, count: int,
+def _certified_poles(component_index: int, count: int,
                      kinds: Sequence[bool]) -> str:
     """The E->P weld's per-pole recurrence lines, under ITS renames and ITS seam."""
     _target, _displacement, stem, _count_name = _COMPONENTS[component_index]
     poles: List[str] = []
     for i in range(int(count)):
-        line = ep._certified_recurrence_line(bool(kinds[i]), arm)
+        line = ep._certified_recurrence_line(bool(kinds[i]))
         line = _replace_once(line, "cf_store(p_out, idx,", f"cf_store(p_out_{i}, idx,",
                              "the recurrence's store")
         line = _replace_once(line, "cf_load(p_now, idx)", f"cf_load({stem}{i}, idx)",
@@ -415,9 +415,9 @@ def _certified_poles(arm, component_index: int, count: int,
         else:
             line = _replace_once(line, "        sigma,", f"        sigma_{i},",
                                  "the uniform sigma bind")
-        line = _replace_once(line, "c_now, c_prev, c_drive",
-                             f"c_now_{i}, c_prev_{i}, c_drive_{i}",
-                             "the recurrence coefficients")
+        line = _replace_once(line, "two_minus_od, gamma1, omega0dtsqr, gamma1inv",
+                             f"two_minus_od_{i}, gamma1_{i}, omega0dtsqr_{i}, gamma1inv_{i}",
+                             "the recurrence constants")
         poles.append(
             f"\n    // pole {i}: dispersion.PolarizationState.update, the certified\n"
             f"    // complex recurrence under this launch's per-pole names.\n" + line)
@@ -464,25 +464,28 @@ def _signature(arm_name: str, conductive: bool, component_index: int, count: int
                  else f"float sigma_{i},")
         lines.append(f"    float* __restrict__ p_out_{i}, "
                      f"const float* __restrict__ p_prev_{i}, {sigma}")
-        lines.append(f"    float c_now_{i}, float c_prev_{i}, float c_drive_{i},")
+        lines.append(f"    float two_minus_od_{i}, float gamma1_{i}, "
+                     f"float omega0dtsqr_{i}, float gamma1inv_{i},")
     lines.append("    // Extents in COMPLEX CELLS; the guard is the curl's nx*ny*nz.")
     lines.append("    int nx, int ny, int nz, float dtdx,")
     lines.append("    int bc_x, int bc_y, int bc_z,")
-    lines.append("    // The BACKWARD Bloch table: bloch_phase_arguments(grid, True).")
+    lines.append("    // The D curl's connection table: bloch_phase_arguments(grid, True).")
     lines.append("    int ph_x, int ph_y, int ph_z,")
     lines.append("    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,")
-    lines.append(f"    int {count_name}")
+    lines.append(f"    int {count_name},")
+    lines.append("    // THE RUN'S CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]:")
+    lines.append("    // the lifted curl block reads its partner-presence word.")
+    lines.append("    const int* __restrict__ cb")
     lines.append(") {")
     return "\n".join(lines) + "\n"
 
 
-def three_slot_no_pml_complex_source(arm, conductive: bool, component_index: int,
+def three_slot_no_pml_complex_source(conductive: bool, component_index: int,
                                      count: int, sigma_kinds: Sequence[bool]) -> str:
     """The whole kernel for one curl arm, one component, one specialization.
 
-    ``arm`` is the EXPANSION arm (``complex_emitter``'s); ``conductive`` selects the
-    curl tail; ``count``/``sigma_kinds`` are the driving states of this component and
-    their compile-time sigma forms, in registration order.
+    ``conductive`` selects the curl tail; ``count``/``sigma_kinds`` are the driving
+    states of this component and their compile-time sigma forms, in registration order.
     """
     if not isinstance(conductive, bool):
         raise TypeError(
@@ -500,9 +503,9 @@ def three_slot_no_pml_complex_source(arm, conductive: bool, component_index: int
         raise ValueError(
             f"sigma_kinds carries {len(kinds)} flags for {count} poles; one "
             f"compile-time sigma form per driving state, in registration order")
-    header, block = certified_curl_block(arm, conductive, c)
+    header, block = certified_curl_block(conductive, c)
     source = "".join((
-        de.no_pml_complex_fused_electric_pair_prelude(arm),
+        de.no_pml_complex_fused_electric_pair_prelude(),
         _signature(kernel_name("conductive" if conductive else "plain"),
                    conductive, c, count, kinds),
         header,
@@ -512,13 +515,13 @@ def three_slot_no_pml_complex_source(arm, conductive: bool, component_index: int
         "    // (THE FIRST SEAM) and naming the product so the recurrence reads it\n"
         "    // from a register (THE SECOND SEAM). fields.drive_field(c) IS the\n"
         "    // stored E without an absorber (fields.py:1140-1163).\n",
-        _certified_constitutive_value(arm, c),
-        _certified_poles(arm, c, count, kinds),
+        _certified_constitutive_value(c),
+        _certified_poles(c, count, kinds),
         "}\n",
     ))
     if "__" in (source.replace("__restrict__", "").replace("__global__", "")
                 .replace("__device__", "").replace("__forceinline__", "")
-                .replace("__fmaf_rn", "").replace("blockIdx", "")
+                .replace("blockIdx", "")
                 .replace("blockDim", "").replace("threadIdx", "")):
         raise AssertionError("an unsubstituted placeholder survived the splice")
     source.encode("ascii")
@@ -526,21 +529,18 @@ def three_slot_no_pml_complex_source(arm, conductive: bool, component_index: int
 
 
 def device_sources() -> Dict[str, str]:
-    """Every source a digest pins: both expansion arms, both curl arms, every
-    component, the corpus pole count and its neighbours, both sigma forms."""
+    """Every source a digest pins: both curl arms, every component, the corpus pole
+    count and its neighbours, both sigma forms."""
     out: Dict[str, str] = {}
-    for arm_name in sorted(complex_emitter.EXPANSIONS):
-        for curl_arm in sorted(KERNEL_KEYS):
-            for component in (0, 1, 2):
-                for count in (0, 1, 2):
-                    kind_sets = {tuple([True] * count), tuple([False] * count)}
-                    for kinds in sorted(kind_sets):
-                        key = (f"{KERNEL_KEYS[curl_arm]}|arm{arm_name}|c{component}|"
-                               f"n{count}|"
-                               f"{''.join('v' if kind else 'u' for kind in kinds)}")
-                        out[key] = three_slot_no_pml_complex_source(
-                            arm_name, curl_arm == "conductive", component, count,
-                            kinds)
+    for curl_arm in sorted(KERNEL_KEYS):
+        for component in (0, 1, 2):
+            for count in (0, 1, 2):
+                kind_sets = {tuple([True] * count), tuple([False] * count)}
+                for kinds in sorted(kind_sets):
+                    key = (f"{KERNEL_KEYS[curl_arm]}|c{component}|n{count}|"
+                           f"{''.join('v' if kind else 'u' for kind in kinds)}")
+                    out[key] = three_slot_no_pml_complex_source(
+                        curl_arm == "conductive", component, count, kinds)
     return out
 
 
@@ -556,7 +556,7 @@ _COMPILE_OPTIONS: Tuple[str, ...] = ('--fmad=false',)
 _FUSED_THREADS = 256
 
 #: THE GATE'S DOOR into the emitted text: ``None`` in every shipped path; a probe
-#: assigns a ``(arm, conductive, component, count, kinds, source) -> source`` callable.
+#: assigns a ``(conductive, component, count, kinds, source) -> source`` callable.
 SOURCE_TRANSFORM: Optional[Any] = None
 
 
@@ -565,7 +565,7 @@ def _clear_kernel_cache() -> int:
     return compile_cache.clear_kernel_cache()
 
 
-def _get_kernel(arm, conductive: bool, component_index: int, count: int,
+def _get_kernel(conductive: bool, component_index: int, count: int,
                 sigma_kinds: Sequence[bool]):
     """Compile one specialization, memoized on (name, options, policy, source).
 
@@ -580,12 +580,11 @@ def _get_kernel(arm, conductive: bool, component_index: int, count: int,
             "the predicate and the emitter need no device and still run")
     kinds = tuple(bool(kind) for kind in sigma_kinds)
     name = kernel_name("conductive" if conductive else "plain")
-    code = three_slot_no_pml_complex_source(arm, conductive, component_index, count,
-                                            kinds)
+    code = three_slot_no_pml_complex_source(conductive, component_index, count, kinds)
     if SOURCE_TRANSFORM is not None:
-        code = SOURCE_TRANSFORM(arm, conductive, component_index, count, kinds, code)
+        code = SOURCE_TRANSFORM(conductive, component_index, count, kinds, code)
     key = compile_cache.kernel_cache_key(
-        f"{name}:{complex_emitter.normalized_expansion(arm)}:{component_index}:"
+        f"{name}:{component_index}:"
         f"{count}:" + "".join("v" if kind else "u" for kind in kinds),
         True, _COMPILE_OPTIONS, code)
     return compile_cache.get_or_compile(
@@ -642,16 +641,22 @@ def assert_disjoint_bindings(fields: Any, target: str, states: Sequence[Any]) ->
     return len(seen)
 
 
-def launch_three_slot_component(fields: Any, expansion, curl_arm: str, target: str,
+def launch_three_slot_component(fields: Any, curl_arm: str, target: str,
                                 states: Sequence[Any], boundary_codes: Sequence[Any],
                                 phase_flags: Sequence[Any],
                                 phase_values: Sequence[Any], dtdx: float,
-                                kernel: Optional[Any] = None) -> Dict[str, Any]:
+                                kernel: Optional[Any] = None, *,
+                                chunk_bounds: Any) -> Dict[str, Any]:
     """ONE component's launch: its curl, its constitutive and its recurrences.
 
     ``kernel`` is the gate's door, keyword-optional: a gate compiles a deliberately
-    broken copy of the shipped source and hands it here.
+    broken copy of the shipped source and hands it here. ``chunk_bounds`` is the run's
+    chunk record as one ``int32[25]`` device vector, required: the curl block reads its
+    partner-presence word (``complex_pml_kernels.chunk_record_argument`` checks it).
     """
+    from .complex_pml_kernels import chunk_record_argument  # noqa: PLC0415
+
+    cb = chunk_record_argument(chunk_bounds)
     if curl_arm not in KERNEL_KEYS:
         raise ValueError(f"curl_arm must be one of {sorted(KERNEL_KEYS)}, got {curl_arm!r}")
     spec = {t: i for i, (t, _d, _s, _c) in enumerate(_COMPONENTS)}
@@ -691,23 +696,25 @@ def launch_three_slot_component(fields: Any, expansion, curl_arm: str, target: s
                 f"state {i}'s scratch holds {int(scratch.size)} cells and the launch "
                 f"walks {n_elem}; the certified update_P guard this weld drops was "
                 f"that size")
-        coefficients = tuple(state._coefficients)
-        if len(coefficients) != 3:
+        constants = tuple(state.constants)
+        if len(constants) != 4:
             raise ValueError(
-                f"a polarization carries {len(coefficients)} recurrence "
-                f"coefficients, not the (c_now, c_prev, c_drive) triple")
+                f"a polarization carries {len(constants)} recurrence constants, "
+                f"not the four realnum words (two_minus_od, gamma1, omega0dtsqr, "
+                f"gamma1inv)")
         arguments.append(word_view(scratch))
         arguments.append(word_view(state.P_prev[target]))
         sigma = state.sigma[target]
         arguments.append(sigma if kinds[i] else np.float32(sigma))
-        arguments.extend(np.float32(value) for value in coefficients)
+        arguments.extend(np.float32(value) for value in constants)
     arguments += [np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx)]
     arguments += [np.int32(code) for code in boundary_codes]
     arguments += [np.int32(flag) for flag in phase_flags]
     arguments += [np.float32(value) for value in phase_values]
     arguments.append(np.int32(count))
+    arguments.append(cb)
     blocks = (n_elem + _FUSED_THREADS - 1) // _FUSED_THREADS
-    (kernel or _get_kernel(expansion, curl_arm == "conductive", component_index,
+    (kernel or _get_kernel(curl_arm == "conductive", component_index,
                            count, kinds))(
         (blocks,), (_FUSED_THREADS,), tuple(arguments))
     return {"component": target, "poles": count, "kinds": list(kinds),
@@ -715,13 +722,13 @@ def launch_three_slot_component(fields: Any, expansion, curl_arm: str, target: s
             "kernel": kernel_name(curl_arm)}
 
 
-def run_three_slot_no_pml_complex(fields: Any, grid: Any, expansion, *,
+def run_three_slot_no_pml_complex(fields: Any, grid: Any, *,
                                   curl_arm: Optional[str] = None,
                                   kernel: Optional[Any] = None,
                                   boundary_codes: Optional[Sequence[Any]] = None,
                                   phase_flags: Optional[Sequence[Any]] = None,
-                                  phase_values: Optional[Sequence[Any]] = None
-                                  ) -> Dict[str, Any]:
+                                  phase_values: Optional[Sequence[Any]] = None,
+                                  chunk_bounds: Any) -> Dict[str, Any]:
     """All three of :data:`REPLACES`: three launches, host rotation between.
 
     THE ROTATION IS TRANSCRIBED from dispersion.py:689-691 and run once per driving
@@ -730,7 +737,9 @@ def run_three_slot_no_pml_complex(fields: Any, grid: Any, expansion, *,
     rotation through :func:`component_specs`.
 
     ``curl_arm`` defaults to the certified classifier's answer; the overrides are the
-    gate's doors (a wrong tail, an unconjugated phase table).
+    gate's doors (a wrong tail, the other sub-step's connection table). ``chunk_bounds``
+    is the run's chunk record on the device, required and bound to every component
+    launch.
     """
     from .complex_pml_kernels import (bloch_phase_arguments,  # noqa: PLC0415
                                       complex_boundary_codes)
@@ -740,7 +749,7 @@ def run_three_slot_no_pml_complex(fields: Any, grid: Any, expansion, *,
     if boundary_codes is None:
         boundary_codes = complex_boundary_codes(grid)
     if phase_flags is None or phase_values is None:
-        # THE BACKWARD TABLE: complex_emitter.KERNELS['step_D'][1] is True.
+        # THE D CURL'S TABLE: complex_emitter.KERNELS['step_D'][1] is True.
         derived_flags, derived_values = bloch_phase_arguments(grid, True)
         phase_flags = derived_flags if phase_flags is None else phase_flags
         phase_values = derived_values if phase_values is None else phase_values
@@ -751,8 +760,8 @@ def run_three_slot_no_pml_complex(fields: Any, grid: Any, expansion, *,
     for target, _displacement, _stem, _count in _COMPONENTS:
         states = component_specs(fields)[target]["states"]
         per_component.append(launch_three_slot_component(
-            fields, expansion, curl_arm, target, states, boundary_codes,
-            phase_flags, phase_values, dtdx, kernel))
+            fields, curl_arm, target, states, boundary_codes,
+            phase_flags, phase_values, dtdx, kernel, chunk_bounds=chunk_bounds))
         launches += 1
         recurrences += len(states)
         for state in states:
@@ -794,8 +803,7 @@ def run_three_slot_no_pml_complex(fields: Any, grid: Any, expansion, *,
 # =============================================================================
 
 def covers_three_slot_complex_no_pml_dispersive_weld(
-        fields: Any, pml: Any, grid: Any, sources: Any = None, license: Any = None,
-        subnormal_policy: Any = None) -> Tuple[bool, str]:
+        fields: Any, pml: Any, grid: Any, sources: Any = None) -> Tuple[bool, str]:
     """May three per-component launches span ``step_D`` -> ``update_E`` -> ``update_P``?
 
     A CONJUNCTION OF TWO SHIPPED PREDICATES, AND NOTHING IS WEAKENED. The D->E half is
@@ -814,11 +822,11 @@ def covers_three_slot_complex_no_pml_dispersive_weld(
     three-slot welds on storage alone (their halves refuse complex64 by name).
     """
     covered, reason = de.covers_no_pml_complex_fused_electric_pair(
-        fields, pml, grid, sources, license, subnormal_policy)
+        fields, pml, grid, sources)
     if not covered:
         return False, f"step_D->update_E half: {reason}"
     covered, reason = ep.covers_complex_no_pml_fused_polarization_pair(
-        fields, pml, grid, sources, license, subnormal_policy)
+        fields, pml, grid, sources)
     if not covered:
         return False, f"update_E->update_P half: {reason}"
     return True, "covered"

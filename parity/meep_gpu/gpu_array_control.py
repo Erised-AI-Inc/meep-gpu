@@ -56,7 +56,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--repeats", type=int, default=6)
     parser.add_argument("--target-seconds", type=float, default=2.0,
                         dest="target_seconds")
-    parser.add_argument("--step-cap", type=int, default=4000, dest="step_cap")
+    parser.add_argument("--step-cap", type=int, default=None, dest="step_cap",
+                        help="the harness's own default (bench_fused_products."
+                             "DEFAULT_STEP_CAP) when not given")
+    parser.add_argument("--discard-windows", type=int, default=1, dest="discard_windows",
+                        help="full-length windows run before the timed ones and "
+                             "recorded under windows_discarded, as the GPU rows do")
     parser.add_argument("--warm-steps", type=int, default=6, dest="warm_steps")
     parser.add_argument("--forced-by", default="dispatch", dest="forced_by",
                         choices=("dispatch", "fused"))
@@ -70,6 +75,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     builder, builder_facts = timing_cases.resolve(args.case, harness_root, args.table)
     timing_cases.put_on_path(harness_root)
     import bench_fused_products as harness  # noqa: PLC0415
+
+    if args.step_cap is None:
+        args.step_cap = getattr(harness, "DEFAULT_STEP_CAP", 4000)
 
     e2e, route = harness.e2e, harness.route
     if args.smoke:
@@ -131,6 +139,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                     args.target_seconds, args.step_cap)
         chunk = sizing["steps_per_window"]
         row["sizing"] = sizing
+        row["windows_discarded"] = [
+            dict(harness.window(args.case, leg, frozen, counter, chunk, -1 - burn),
+                 discarded=True) for burn in range(max(0, args.discard_windows))]
         windows = [harness.window(args.case, leg, frozen, counter, chunk, index)
                    for index in range(args.repeats)]
         row["windows"] = windows

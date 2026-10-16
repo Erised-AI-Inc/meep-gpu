@@ -5,6 +5,19 @@ implements the direct branch of ``stepping._apply_curl``: after the shared Yee
 stencil and ownership mask, each target is updated as ``target -= curl``.  There
 is no split-field auxiliary and no PML coefficient.
 
+THE STENCIL IS MEEP'S, character for character the PML curl's
+(:data:`CURL_STATEMENTS`, the lines ``shaders.curl_source`` emits):
+``dtdx * (((g1s - g1) + g2) - g2s)`` with both partners, ``dtdx * (g1s - g1)``
+without ``g2`` and ``(-dtdx) * (g2s - g2)`` without ``g1``
+(``stepping._curl_from_operands``; step_generic.cpp:72-76, :104-108). A partner is
+absent when its derivative axis is invariant (``stepping.curl_presence``). That is
+a fact of the run, not of the stored shape — a 3-D run may store one cell on an
+axis that is not invariant — so the kernel reads it from the partner-presence word
+of the chunk record (:func:`meep_gpu.chunk_map.chunk_bounds_record`), bound last as
+``constant ChunkBounds& cb`` (:data:`RECORD_BUFFER`) and decoded by the anchored
+bounds block of :mod:`.chunk_bounds`. No membership entry is read: no chunk of a
+run without an absorber carries a layer, so the plain form is the only one.
+
 The non-backend predicate is reused from the Triton family through explicit grid
 and fields views whose only changed fact is the array-module name.  This avoids a
 second transcription of the sixteen numerical clauses while leaving the Metal
@@ -25,6 +38,7 @@ from ..triton_kernels.no_pml import (
     SUB_STEPS,
     plain_curl_coverage as shared_plain_curl_coverage,
 )
+from . import chunk_bounds as _chunk_bounds
 from . import shaders, templates
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import Residency, compile_source
@@ -33,9 +47,12 @@ from .plans import KernelPlan
 FAMILY = "no_pml_curl"
 
 __all__ = [
+    "CURL_STATEMENTS",
     "FAMILY",
+    "RECORD_BUFFER",
     "SUB_STEPS",
     "MetalPlainCurlPlan",
+    "bounds_block",
     "compile_plain_curl",
     "metal_plain_curl_coverage",
     "plain_curl_source",
@@ -43,12 +60,36 @@ __all__ = [
     "plan_metal_plain_curl_from_arrays",
 ]
 
+#: The chunk record's binding index: one past the last scalar (``dtdx``).
+RECORD_BUFFER = 14
+
+#: Per target, MEEP's stencil with its partner-presence forms
+#: (``stepping._curl_from_operands``), in the PML curl's own spelling: target 0
+#: differences ``g1 = c`` along y and ``g2 = b`` along z, target 1 ``a`` along z and
+#: ``c`` along x, target 2 ``b`` along x and ``a`` along y (``shaders.CURL_OPERANDS``).
+#: Each operation rounds once; DO NOT regroup.
+CURL_STATEMENTS: Tuple[str, str, str] = (
+    "    float curl0 = has_y ? (has_z ? (dtdx * (((c_y - c) + b) - b_z)) : (dtdx * (c_y - c)))\n"
+    "                        : (has_z ? ((-dtdx) * (b_z - b)) : 0.0f);",
+    "    float curl1 = has_z ? (has_x ? (dtdx * (((a_z - a) + c) - c_x)) : (dtdx * (a_z - a)))\n"
+    "                        : (has_x ? ((-dtdx) * (c_x - c)) : 0.0f);",
+    "    float curl2 = has_x ? (has_y ? (dtdx * (((b_x - b) + a) - a_y)) : (dtdx * (b_x - b)))\n"
+    "                        : (has_y ? ((-dtdx) * (a_y - a)) : 0.0f);",
+)
+
+
+def bounds_block(struct: str = "cb") -> str:
+    """The anchored bounds block: the record's partner-presence bits and nothing else."""
+    return _chunk_bounds.prologue((), struct=struct, presence=(0, 1, 2))
+
 
 _PLAIN_CURL_TEMPLATE = r"""
 #include <metal_stdlib>
 using namespace metal;
 
 __CONTRACT__
+
+__RECORD_STRUCT__
 
 kernel void no_pml_curl_step(
     device float*       f0      [[buffer(0)]],
@@ -65,6 +106,7 @@ kernel void no_pml_curl_step(
     constant uint&      nz      [[buffer(11)]],
     constant uint&      n_elem  [[buffer(12)]],
     constant float&     dtdx    [[buffer(13)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
     if (idx >= n_elem) { return; }
@@ -76,6 +118,8 @@ kernel void no_pml_curl_step(
     int plane = ii / nzi;
     int j = plane % nyi;
     int i = plane / nyi;
+
+__BOUNDS__
 
     int si = i __SHIFT__, sj = j __SHIFT__, sk = k __SHIFT__;
     bool vx = true, vy = true, vz = true;
@@ -97,9 +141,7 @@ __GHOST_Z__
     float c_x = vx ? __C_X__ : 0.0f;
     float c_y = vy ? __C_Y__ : 0.0f;
 
-    float curl0 = dtdx * ((c_y - c) + (b - b_z));
-    float curl1 = dtdx * ((a_z - a) + (c - c_x));
-    float curl2 = dtdx * ((b_x - b) + (a - a_y));
+__CURL__
 
     bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);
 __MASK__
@@ -118,12 +160,20 @@ def _operand(component: int, index: str, derive: bool) -> str:
 
 def plain_curl_source(codes: Sequence[int], backward: bool, derive: bool,
                       contract: str = shaders.CONTRACT_OFF) -> str:
-    """Specialize the direct curl for direction, storage and three boundaries."""
+    """Specialize the direct curl for direction, storage and three boundaries.
+
+    The partner presence is NOT specialised: it is the bound record's word, so one
+    source serves a 3-D, 2-D or 1-D run on the same boundary triple.
+    """
     codes = tuple(int(code) for code in codes)
     if len(codes) != 3:
         raise ValueError(f"codes must be a per-axis triple, got {codes!r}")
     return templates.substitute(_PLAIN_CURL_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(RECORD_BUFFER),
+        "__BOUNDS__": bounds_block(),
+        "__CURL__": "\n".join(CURL_STATEMENTS),
         "__SHIFT__": "- 1" if backward else "+ 1",
         "__GHOST_X__": templates.ghost("x", codes[0], backward),
         "__GHOST_Y__": templates.ghost("y", codes[1], backward),
@@ -198,10 +248,16 @@ def metal_plain_curl_coverage(fields: Any, pml: Any,
 
 
 class MetalPlainCurlPlan(KernelPlan):
-    """Persistent-mirror plan for one direct curl sub-step."""
+    """Persistent-mirror plan for one direct curl sub-step.
+
+    THE CHUNK RECORD BINDS LAST (:data:`RECORD_BUFFER`), checked against the plan's
+    shape (:func:`.chunk_bounds.plan_words`) and uploaded once as a plan-owned
+    ``int32`` vector, as every base plan binds it. ``chunk_bounds`` keeps the host
+    words for inspection.
+    """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "derive",
-                 "bc", "residency", "volumes")
+                 "bc", "residency", "volumes", "chunk_bounds")
 
     REPR_FIELDS = ("sub_step", "shape", "bc", "derive")
 
@@ -209,7 +265,7 @@ class MetalPlainCurlPlan(KernelPlan):
                  codes: Sequence[int], derive: bool, residency: Residency,
                  targets: Sequence[Any], sources: Sequence[Any],
                  inverse: Sequence[Any], functions: Dict[str, Any],
-                 volumes: Sequence[str]) -> None:
+                 volumes: Sequence[str], *, chunk_bounds: Any) -> None:
         self.sub_step = sub_step
         self.shape = tuple(int(value) for value in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
@@ -219,10 +275,13 @@ class MetalPlainCurlPlan(KernelPlan):
         self.bc = tuple(int(code) for code in codes)
         self.residency = residency
         self.volumes = tuple(volumes)
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, f"MetalPlainCurlPlan({sub_step})")
         super().__init__(
             functions,
             tuple(targets) + tuple(sources) + tuple(inverse)
-            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem, self.dtdx),
+            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem, self.dtdx,
+               _chunk_bounds.tensor(self.chunk_bounds)),
         )
 
 
@@ -236,12 +295,21 @@ def plan_metal_plain_curl(fields: Any, pml: Any, sub_step: str,
                           residency: Optional[Residency] = None,
                           contract_variants: Sequence[str] = (
                               shaders.CONTRACT_OFF,),
+                          *, chunk_bounds: Any,
                           ) -> Optional[MetalPlainCurlPlan]:
-    """Build from engine objects, returning ``None`` for every refused case."""
+    """Build from engine objects, returning ``None`` for every refused case.
+
+    ``chunk_bounds`` is the record of the division the run steps with — the
+    composer's ``StepContext.chunk_bounds`` — and has no default: its presence word
+    decides each curl's stencil form. A missing or malformed record is refused by
+    name (:func:`.chunk_bounds.plan_words`) before anything is mirrored or compiled.
+    """
     if not metal_plain_curl_coverage(fields, pml, sub_step, residency).covered:
         return None
     assert residency is not None  # admitted by the predicate above
     grid = fields.grid
+    _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                             f"plan_metal_plain_curl({sub_step})")
     spec = SUB_STEPS[sub_step]
     kinds = _boundary_kinds(grid, None)
     codes = tuple(1 if kind == "metallic" else 0 for kind in kinds)
@@ -267,7 +335,7 @@ def plan_metal_plain_curl(fields: Any, pml: Any, sub_step: str,
         sub_step, grid.shape, grid.dt / grid.dx, codes, derive, residency,
         targets, sources, inverse,
         _functions(codes, bool(spec["backward"]), derive, contract_variants),
-        volumes,
+        volumes, chunk_bounds=chunk_bounds,
     )
 
 
@@ -276,12 +344,20 @@ def plan_metal_plain_curl_from_arrays(
         residency: Residency, derive: bool = False,
         functions: Optional[Dict[str, Any]] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
+        *, chunk_bounds: Any,
         ) -> MetalPlainCurlPlan:
-    """Build from a gate-owned array dictionary without running the predicate."""
+    """Build from a gate-owned array dictionary without running the predicate.
+
+    ``chunk_bounds`` is REQUIRED and has no default: the harness states the
+    division (and so the partner presence) its reference steps with, and a plan
+    built without one is refused by name before anything is mirrored or compiled.
+    """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
     spec = SUB_STEPS[sub_step]
     target_names = tuple(spec["targets"])
+    _chunk_bounds.plan_words(chunk_bounds, arrays[target_names[0]].shape,
+                             f"plan_metal_plain_curl_from_arrays({sub_step})")
     source_names = (tuple(spec["displacement"])
                     if derive else tuple(spec["sources"]))
     targets = [residency.mirror(name, arrays[name]) for name in target_names]
@@ -296,7 +372,7 @@ def plan_metal_plain_curl_from_arrays(
                            contract_variants))
     return MetalPlainCurlPlan(
         sub_step, shape, dtdx, codes, derive, residency, targets, sources,
-        inverse, selected, target_names + source_names,
+        inverse, selected, target_names + source_names, chunk_bounds=chunk_bounds,
     )
 
 
@@ -308,7 +384,7 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
 def _arm_plan(context: Any, slot: str) -> Optional[MetalPlainCurlPlan]:
     return plan_metal_plain_curl(
         context.fields, context.pml, slot, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def _arm_gate(context: Any) -> bool:

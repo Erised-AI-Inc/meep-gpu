@@ -33,7 +33,8 @@ Two lists under ``tools/ci/`` feed this file:
   4. ``declared_resources.txt`` names tests that need a resource this repository
      or this host may not have (the evidence archive of the certification
      campaigns, PyTorch, MEEP, a single-precision MEEP, a certified Metal
-     toolchain). A listed test whose resource is absent is given the marker and
+     toolchain), or a host WITHOUT CuPy or Triton for a test of the arm such a
+     host takes. A listed test whose resource is absent is given the marker and
      a skip that states why; a listed test whose resource is present runs as
      before. The evidence archive is present only when
      ``parity/meep_gpu/results/`` carries the marker file
@@ -267,6 +268,22 @@ def _probe_mps_device():
     return "this PyTorch reports no usable Apple GPU (MPS)"
 
 
+def _probe_cupy_absent():
+    # The CuPy-free arm: present when CuPy is NOT installed. Asked by find_spec, as
+    # the torch probe is, so collection imports no device library.
+    if importlib.util.find_spec("cupy") is None:
+        return None
+    return ("CuPy is installed, so the CuPy-free arm this test exercises cannot be "
+            "reached here; a host without CuPy runs it")
+
+
+def _probe_triton_absent():
+    if importlib.util.find_spec("triton") is None:
+        return None
+    return ("Triton is installed, so the Triton-free arm this test exercises cannot be "
+            "reached here; a host without Triton runs it")
+
+
 def _probe_single_precision_meep():
     # Asked in a child process: this process may import PyTorch, and MEEP is not
     # imported beside it here.
@@ -290,12 +307,57 @@ def _probe_single_precision_meep():
             f"{answer.stderr.strip()[-200:]})")
 
 
+def _probe_meep_identity_fixtures():
+    # The Tier A fixtures of MEEP identity: present in a checkout, absent from an
+    # installed wheel (meep_gpu/meep_identity.py, fixtures_absence).
+    try:
+        from meep_gpu.meep_identity import fixtures_absence  # noqa: PLC0415
+    except Exception as problem:  # noqa: BLE001 - a reason, never a raise
+        return f"meep_gpu.meep_identity could not be imported ({type(problem).__name__}: {problem})"
+    return fixtures_absence()
+
+
+#: Names the build record of the identity-reference MEEP when it is not in the prefix
+#: the loaded libmeep is installed in (tools/check_install.py --identity-build-record).
+IDENTITY_BUILD_RECORD_ENVIRONMENT = "MEEP_IDENTITY_BUILD_RECORD"
+
+
+def _probe_meep_identity_reference():
+    # Measured, in child processes, by tools/check_install.py's identity check in keep
+    # mode: MEEP 1.33.0 single precision, a build record describing the loaded images
+    # with a clean fused multiply-add census (re-run here), subnormals kept after MEEP's
+    # switch, and this host's math library as the record pins.
+    if importlib.util.find_spec("meep") is None:
+        return "MEEP is not installed"
+    try:
+        import argparse  # noqa: PLC0415
+
+        spec = importlib.util.spec_from_file_location(
+            "meep_gpu_tool_check_install", _ROOT / "tools" / "check_install.py")
+        tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tool)
+        arguments = argparse.Namespace(
+            require_identity_reference="keep", gpu_id=0, verbose=False,
+            identity_build_record=os.environ.get(IDENTITY_BUILD_RECORD_ENVIRONMENT) or None)
+        _lines, failure = tool.identity_check(arguments)
+    except Exception as problem:  # noqa: BLE001 - a reason, never a raise
+        return f"the identity reference could not be judged ({type(problem).__name__}: {problem})"
+    if failure is None:
+        return None
+    return (f"this MEEP is not an identity reference in keep mode "
+            f"(tools/check_install.py --require-identity-reference keep): {failure.reason}")
+
+
 _PROBES = {
     "evidence_archive": _probe_evidence_archive,
     "torch": _probe_torch,
     "meep": _probe_meep,
     "mps_device": _probe_mps_device,
     "single_precision_meep": _probe_single_precision_meep,
+    "meep_identity_fixtures": _probe_meep_identity_fixtures,
+    "meep_identity_reference": _probe_meep_identity_reference,
+    "cupy_absent": _probe_cupy_absent,
+    "triton_absent": _probe_triton_absent,
 }
 
 

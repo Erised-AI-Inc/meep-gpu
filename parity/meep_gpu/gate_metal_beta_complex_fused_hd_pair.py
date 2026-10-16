@@ -141,32 +141,16 @@ MUTATION_CASES: Tuple[str, ...] = ("plain_2d", "folded_y_periodic_2d",
 MASK_CASE = "folded_y_periodic_2d"
 
 
-def expansion() -> str:
-    """The PROBE-MEASURED complex-multiply arm -- the BETA probe's, never a default.
-
-    The beta artifact classifies one more call-site orientation than the plain complex
-    one, so it licenses everything that licenses and one pattern more; both
-    :mod:`.special_kz` and :mod:`.folded_beta` bind it this way and this product
-    follows.
-    """
-    arm = special_kz.beta_expansion_from_probe(special_kz.load_expansion_probe())
-    if arm is None:
-        raise SystemExit(
-            "the beta expansion probe is absent or non-discriminating on this host; "
-            "the arm is a PLATFORM FACT and this gate refuses to default it")
-    return arm
-
 
 def emit(variant: str, codes: Sequence[int], phased: Sequence[int],
-         arm: str, contract: str) -> str:
-    return family.beta_complex_fused_hd_pair_source(variant, codes, phased, arm,
+         contract: str) -> str:
+    return family.beta_complex_fused_hd_pair_source(variant, codes, phased,
                                                     contract)
 
 
-def parent_curl(variant: str, codes: Sequence[int], phased: Sequence[int],
-                arm: str) -> str:
+def parent_curl(variant: str, codes: Sequence[int], phased: Sequence[int]) -> str:
     """The CERTIFIED beta complex curl this weld lifts, unwelded, for this variant."""
-    return family.beta_complex_curl_source(variant, codes, phased, arm)
+    return family.beta_complex_curl_source(variant, codes, phased)
 
 
 def singles(driver: Any, residency: Residency) -> Tuple[Any, Any]:
@@ -178,124 +162,141 @@ def singles(driver: Any, residency: Residency) -> Tuple[Any, Any]:
     under different admissions, which is the fact the whole product rests on.
     """
     variant = family.resolve_variant(driver.grid)
+    record = driver.chunk_bounds_record()
     if variant == "plain":
         return (special_kz.plan_beta_run_complex_constitutive(
-                    driver.fields, driver.pml, "H", residency),
+                    driver.fields, driver.pml, "H", residency, chunk_bounds=record),
                 special_kz.plan_beta_bloch_pml_curl(
-                    driver.fields, driver.pml, "step_D", residency))
+                    driver.fields, driver.pml, "step_D", residency,
+                    chunk_bounds=record))
     return (folded_beta.plan_folded_beta_complex_constitutive(
-                driver.fields, driver.pml, "H", residency),
+                driver.fields, driver.pml, "H", residency, chunk_bounds=record),
             folded_beta.plan_folded_beta_bloch_pml_curl(
-                driver.fields, driver.pml, "step_D", residency))
+                driver.fields, driver.pml, "step_D", residency,
+                chunk_bounds=record))
 
 
 # ---------------------------------------------------------------------------
 # The armed defects
 # ---------------------------------------------------------------------------
 
-def _shipped(variant, codes, phased, arm):  # noqa: ANN001
+def _shipped(variant, codes, phased):  # noqa: ANN001
     from meep_gpu.metal_kernels import shaders  # noqa: PLC0415
 
-    return emit(variant, codes, phased, arm, shaders.CONTRACT_OFF)
+    return emit(variant, codes, phased, shaders.CONTRACT_OFF)
 
 
-def _own_load_from_the_input(variant, codes, phased, arm):  # noqa: ANN001
+def _own_load_from_the_input(variant, codes, phased):  # noqa: ANN001
     """The own-cell magnetic load taken from the PRE-launch ``H``.
 
     On a beta curl this is a double defect and the leg records it as one: the curl's
     own-cell operand AND the beta term's centre partner are the same registers, so a
     stale own-cell load moves both the curl and the beta term.
     """
-    return common.needle(_shipped(variant, codes, phased, arm),
+    return common.needle(_shipped(variant, codes, phased),
                          "    float2 a   = own.a0;\n",
                          "    float2 a   = hi0[ii];\n")
 
 
-def _foreign_tap_component_swapped(variant, codes, phased, arm):  # noqa: ANN001
-    source = _shipped(variant, codes, phased, arm)
+def _foreign_tap_component_swapped(variant, codes, phased):  # noqa: ANN001
+    source = _shipped(variant, codes, phased)
     start = source.index("h_cell(", source.index("h_cell_result own"))
     tap = source.index("h_cell(", start + 1)
     hit = source.index(".a0", tap)
     return source[:hit] + ".a1" + source[hit + 3:]
 
 
-def _scratch_history_store_dropped(variant, codes, phased, arm):  # noqa: ANN001
+def _scratch_history_store_dropped(variant, codes, phased):  # noqa: ANN001
     return common.needle(
-        _shipped(variant, codes, phased, arm),
-        "    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;\n", "")
+        _shipped(variant, codes, phased),
+        "    wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;\n", "")
 
 
-def _constitutive_bound_to_the_curl_sinv(variant, codes, phased, arm):  # noqa: ANN001
+def _constitutive_bound_to_the_curl_sinv(variant, codes, phased):  # noqa: ANN001
     """THE SHARED COEFFICIENT GROUP, BROKEN -- the premise of the 30-pointer shape."""
-    return _shipped(variant, codes, phased, arm).replace(
-        "kmx, kmy, kmz)", "sinvx, sinvy, sinvz)")
+    source = _shipped(variant, codes, phased)
+    if "kmx, kmy, kmz, cb)" not in source:
+        raise AssertionError("no h_cell call ends with the shared kms group")
+    return source.replace("kmx, kmy, kmz, cb)", "sinvx, sinvy, sinvz, cb)")
 
 
-def _dtdx_dropped(variant, codes, phased, arm):  # noqa: ANN001
-    return common.needle(_shipped(variant, codes, phased, arm),
-                         "    float2 curl0 = c_mul_coefficient_left(dtdx, t0);\n",
-                         "    float2 curl0 = t0;\n")
-
-
-def _beta_term_dropped(variant, codes, phased, arm):  # noqa: ANN001
-    """The special-kz beta term compiled out of the fused curl."""
-    source = _shipped(variant, codes, phased, arm)
+def _dtdx_dropped(variant, codes, phased):  # noqa: ANN001
+    """The curl's dtdx scale dropped on target 0, on both live-partner branches."""
+    source = _shipped(variant, codes, phased)
     source = common.needle(
-        source, "    curl0 = curl0 - c_mul(float2(bpr, bpi), b);\n", "")
-    return common.needle(
-        source, "    curl1 = curl1 - c_mul(float2(bmr, bmi), a);\n", "")
+        source, "c_mul_coefficient_left(dtdx, ((c_y - c_dy) + b_dz) - b_z)",
+        "(((c_y - c_dy) + b_dz) - b_z)")
+    return common.needle(source, "c_mul_coefficient_left(dtdx, c_y - c_dy)",
+                         "(c_y - c_dy)")
 
 
-def _beta_partners_swapped(variant, codes, phased, arm):  # noqa: ANN001
-    """The beta term's two UNSHIFTED CENTRE partners swapped.
+def _beta_term_dropped(variant, codes, phased):  # noqa: ANN001
+    """The special-kz beta pass's increment compiled out of the fused curl."""
+    source = _shipped(variant, codes, phased)
+    source = common.needle(source, "    float2 bi0 = -bq0;\n",
+                           "    float2 bi0 = float2(0.0f, 0.0f);\n")
+    return common.needle(source, "    float2 bi1 = -bq1;\n",
+                         "    float2 bi1 = float2(0.0f, 0.0f);\n")
 
-    ``step_db.cpp:148-176`` runs ``cc`` over ``d_c`` in ``{X, Y}`` only: target 0 takes
+
+def _beta_partners_swapped(variant, codes, phased):  # noqa: ANN001
+    """The beta pass's two UNSHIFTED CENTRE partners swapped.
+
+    ``step_db.cpp:161-175`` runs ``cc`` over ``d_c`` in ``{X, Y}`` only: target 0 takes
     the SECOND source's centre at sign +1 and target 1 the FIRST source's at sign -1.
     Swapping them compiles, converges and is wrong.
     """
-    source = _shipped(variant, codes, phased, arm)
+    source = _shipped(variant, codes, phased)
     source = common.needle(
-        source, "    curl0 = curl0 - c_mul(float2(bpr, bpi), b);\n",
-        "    curl0 = curl0 - c_mul(float2(bpr, bpi), a);\n")
+        source, "float2(-(beta_plus * b.y), beta_plus * b.x)",
+        "float2(-(beta_plus * a.y), beta_plus * a.x)")
     return common.needle(
-        source, "    curl1 = curl1 - c_mul(float2(bmr, bmi), a);\n",
-        "    curl1 = curl1 - c_mul(float2(bmr, bmi), b);\n")
+        source, "float2(-(beta_minus * a.y), beta_minus * a.x)",
+        "float2(-(beta_minus * b.y), beta_minus * b.x)")
 
 
-def _phase_orientation_swapped(variant, codes, phased, arm):  # noqa: ANN001
-    """The Bloch rotation applied with the COEFFICIENT on the left.
+def _beta_increment_not_negated(variant, codes, phased):  # noqa: ANN001
+    """The pass's increment taken as the quarter turn itself, not its negation."""
+    return common.needle(_shipped(variant, codes, phased),
+                         "    float2 bi0 = -bq0;\n", "    float2 bi0 = bq0;\n")
 
-    ``special_kz._phase_lines`` emits ``b_x = wx ? c_mul(b_x, float2(pxr, pxi)) : b_x;``
-    -- FIELD on the left, which is the array path's orientation (stepping.py:1909) and
-    the one the expansion arm was PROBED for. Complex multiplication is commutative in
-    exact arithmetic and is not in this expansion.
 
-    Generic over the emitted line rather than a fixed needle, so a template that
-    renamed an operand arms ZERO sites and is reported as a no-op rather than as a
-    caught defect.
+def _beta_ladder_ignores_dsigu(variant, codes, phased):  # noqa: ANN001
+    """The additive ladder's dsigu branch dropped: ``f -= df`` on every cell, where
+    MEEP's dsigu chunk takes ``f -= sinv_dsigu * df`` (stepping._apply_folded_increment).
+    Armed on target 1, whose dsigu axis is x: a 2-D fixture has no z layer, so target
+    0's dsigu branch is never taken there.
     """
-    source = _shipped(variant, codes, phased, arm)
-    out: List[str] = []
-    armed = 0
-    for line in source.splitlines(keepends=True):
-        stripped = line.strip()
-        if " ? c_mul(" in stripped and stripped.startswith(("a_", "b_", "c_")):
-            head, rest = line.split(" ? c_mul(", 1)
-            inner, tail = rest.rsplit(")", 1)
-            operand, word = inner.split(", ", 1)
-            out.append(f"{head} ? c_mul({word}, {operand}){tail}")
-            armed += 1
-        else:
-            out.append(line)
-    if not armed:
-        raise AssertionError(
-            "no Bloch phase site was armed; this fixture emits no phase block")
-    return "".join(out)
+    return common.needle(
+        _shipped(variant, codes, phased),
+        "    v1 = du1 ? (v1 - float2(si_x * bd1.x, si_x * bd1.y)) : (v1 - bd1);\n",
+        "    v1 = v1 - bd1;\n")
+
+
+def _previous_fused_connection(variant, codes, phased):  # noqa: ANN001
+    """The Bloch connection's product fused, NumPy's complex64 multiply.
+
+    INVERTED (KERNELS.md §7.1): the connection is MEEP's unfused product
+    (``c_mul``, the array path's ``stepping._bloch_ghost_operand``); this plants the
+    package's previous fused spelling in the one helper every connection calls, so a
+    fixture with a phased axis must diverge.
+    """
+    return common.needle(
+        _shipped(variant, codes, phased),
+        "    return float2((z.x * p.x) - (z.y * p.y),\n"
+        "                  (z.x * p.y) + (z.y * p.x));",
+        "    return float2(fma(z.x, p.x, -(z.y * p.y)),\n"
+        "                  fma(z.x, p.y,  (z.y * p.x)));")
 
 
 def _top_plane_mask_dropped(source: str) -> str:
     return common.needle(source, "    curl1 = last_y ? float2(0.0f, 0.0f) : curl1;\n",
                          "")
+
+
+def _pass_top_plane_mask_dropped(source: str) -> str:
+    """The beta pass's increment left unmasked on the folded top plane."""
+    return common.needle(source, "    bi1 = last_y ? float2(0.0f, 0.0f) : bi1;\n", "")
 
 
 def _cell0_mask_dropped(source: str) -> str:
@@ -324,10 +325,11 @@ def _host_written_in_place(product, case_name, spec, steps):  # noqa: ANN001
 def _host_beta_words_magnetic(product, case_name, spec, steps):  # noqa: ANN001
     """THE BETA COEFFICIENT FROM THE MAGNETIC CONVENTION.
 
-    ``beta_curl_coefficients`` multiplies by ``+1j`` for a magnetic sub-step and
-    ``-1j`` for an electric one (stepping.py:798-799). This seam's curl is ``step_D``,
-    so the electric convention is the right one; the magnetic one compiles, converges
-    and is a smooth wrong answer -- exactly the class of defect a byte gate exists for.
+    Under complex storage ``beta_curl_coefficients`` negates the word for an electric
+    sub-step (the quarter turn by ``-coefficient``, stepping._special_kz_beta_term).
+    This seam's curl is ``step_D``, so the electric convention is the right one; the
+    magnetic one compiles, converges and is a smooth wrong answer -- exactly the class
+    of defect a byte gate exists for.
     """
     driver = common.build_driver(spec, 7, scale_bits=0)
     wrong = special_kz.beta_curl_coefficients(
@@ -356,15 +358,20 @@ SHADER_MUTATIONS: Dict[str, Tuple[Any, ...]] = {
         _dtdx_dropped, "the curl's dtdx scale dropped on target 0", True),
     "beta_term_dropped": (
         _beta_term_dropped,
-        "the special-kz beta term compiled out of the fused curl", True),
+        "the special-kz beta pass's increment compiled out of the fused curl", True),
     "beta_partners_swapped": (
         _beta_partners_swapped,
-        "the beta term's two unshifted centre partners swapped", True),
-    "bloch_phase_orientation_swapped": (
-        _phase_orientation_swapped,
-        "the Bloch rotation applied coefficient-left; the array path is field-left "
-        "and that orientation is what the expansion arm was probed for", True,
-        ("plain_2d_bloch",)),
+        "the beta pass's two unshifted centre partners swapped", True),
+    "beta_increment_not_negated": (
+        _beta_increment_not_negated,
+        "the beta pass's increment taken as the quarter turn, not its negation", True),
+    "beta_ladder_ignores_dsigu": (
+        _beta_ladder_ignores_dsigu,
+        "the additive ladder's dsigu branch dropped on target 1", True),
+    "bloch_previous_fused_connection": (
+        _previous_fused_connection,
+        "the Bloch connection's product fused, where the array path's is MEEP's "
+        "unfused one", True, ("plain_2d_bloch",)),
 }
 
 HOST_MUTATIONS: Dict[str, Tuple[Any, str]] = {
@@ -373,8 +380,11 @@ HOST_MUTATIONS: Dict[str, Tuple[Any, str]] = {
         "the PERIODIC/METALLIC triple the plain variant builds, on a FOLDED grid: the "
         "ghost wraps and the cell-0 mask is not widened. ARMED ON THE FOLDED FIXTURES "
         "ONLY, because on an unfolded one this expression IS the one the plan uses and "
-        "the mutation is a no-op -- an unarmable defect scored as uncaught",
-        ("folded_y_periodic_2d", "folded_y_metallic_x_wall_2d"),
+        "the mutation is a no-op -- an unarmable defect scored as uncaught -- and on the "
+        "folded PERIODIC one only: on a 2-D MIRROR_METALLIC fold the fills restore D at "
+        "the mirror plane and, under the per-chunk forms, no fu_D word sits there (a "
+        "beta run is 2-D, so no fixture of this product meets a dsigu layer at cell 0)",
+        ("folded_y_periodic_2d",),
     ),
     "rotation_skipped": (
         _host_rotation_skipped,
@@ -386,35 +396,46 @@ HOST_MUTATIONS: Dict[str, Tuple[Any, str]] = {
         "the scratch-output shape removes"),
     "beta_words_from_the_magnetic_convention": (
         _host_beta_words_magnetic,
-        "the beta coefficient rounded through the MAGNETIC convention (+1j) when this "
-        "seam's curl is step_D and takes the electric one (-1j)"),
+        "the beta word taken from the MAGNETIC convention (not negated) when this "
+        "seam's curl is step_D and takes the electric one (negated)"),
 }
 
 MASK_MUTATIONS: Dict[str, Tuple[Any, str]] = {
     "top_plane_mask_dropped": (
         _top_plane_mask_dropped,
         "the folded PERIODIC top-plane ownership mask removed"),
-    "cell0_mask_dropped": (
-        _cell0_mask_dropped,
-        "the widened cell-0 ownership mask removed on the folded axis"),
+    "pass_top_plane_mask_dropped": (
+        _pass_top_plane_mask_dropped,
+        "the beta pass's increment left unmasked on the folded PERIODIC top plane"),
 }
 
 
-def _byte_neutral_own_from_scratch(variant, codes, phased, arm):  # noqa: ANN001
-    return common.needle(_shipped(variant, codes, phased, arm),
+def _byte_neutral_own_from_scratch(variant, codes, phased):  # noqa: ANN001
+    return common.needle(_shipped(variant, codes, phased),
                          "    float2 a   = own.a0;\n",
                          "    float2 a   = ho0[ii];\n")
 
 
-def _byte_neutral_store_order(variant, codes, phased, arm):  # noqa: ANN001
-    source = _shipped(variant, codes, phased, arm)
+def _byte_neutral_store_order(variant, codes, phased):  # noqa: ANN001
+    source = _shipped(variant, codes, phased)
     first = "    ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;\n"
-    second = "    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;\n"
+    second = "    wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;\n"
     return common.needle(common.needle(source, first, "__FIRST__\n"),
                          second, first).replace("__FIRST__\n", second)
 
 
+def _cell0_mask_dropped_shipped(variant, codes, phased):  # noqa: ANN001
+    return _cell0_mask_dropped(_shipped(variant, codes, phased))
+
+
 BYTE_NEUTRAL: Tuple[Dict[str, Any], ...] = (
+    {"name": "cell0_mask_dropped_is_unobservable_on_a_2d_fold",
+     "build": _cell0_mask_dropped_shipped, "case": "folded_y_periodic_2d",
+     "why": "DECLARED NULL under the per-chunk forms: on a 2-D fold the cell-0 targets' "
+            "dsigu axes are the invariant z and the folded axis, whose mirror plane "
+            "carries no layer, so no fu_D word is written at cell 0, and the fills "
+            "restore D there. A beta run is 2-D, so no fixture of this product reaches "
+            "it; the top-plane mask on the same case is the control that fires"},
     {"name": "own_cell_load_read_back_from_its_own_scratch",
      "build": _byte_neutral_own_from_scratch, "case": "folded_y_periodic_2d",
      "why": "same thread, same cell, program order: the scratch store must BE the "
@@ -469,65 +490,69 @@ REFUSALS: Tuple[Dict[str, Any], ...] = (
 # ---------------------------------------------------------------------------
 
 def params_probe() -> Dict[str, Any]:
-    """The 64-byte packed record BOUND TO A LAUNCH, with every field read back.
+    """The 152-byte packed record BOUND TO A LAUNCH, with every field read back.
 
-    Five ``float2`` members then five scalars is 60 bytes of payload and Metal rounds
-    the struct up to its 8-byte alignment. A host record of 60 is four bytes short of
-    what the shader may address, and a struct read one word early is a plausible
-    complex number rather than a crash -- so the layout is measured on the device.
+    Three ``float2`` members, five scalars, two beta words and the chunk record, which
+    Metal rounds up to its 8-byte alignment. A host record that is short of the
+    struct, or a member read one word early, is a plausible number rather than a
+    crash -- so the layout is measured on the device, through the shipped struct
+    source (the chunk record's own ``struct_source``).
     """
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
+    from meep_gpu.metal_kernels import chunk_bounds  # noqa: PLC0415
     from meep_gpu.metal_kernels.device import compile_source  # noqa: PLC0415
 
-    source = """
+    source = f"""
 #include <metal_stdlib>
 using namespace metal;
-struct Params {
-    float2 px; float2 py; float2 pz; float2 bp; float2 bm;
+{chunk_bounds.struct_source()}
+struct Params {{
+    float2 px; float2 py; float2 pz;
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
-};
+    float beta_plus; float beta_minus;
+{chunk_bounds.params_member()}
+}};
 kernel void params_probe(device float* out [[buffer(0)]],
                          constant Params& prm [[buffer(1)]],
                          uint idx [[thread_position_in_grid]])
-{
-    if (idx != 0) { return; }
+{{
+    if (idx != 0) {{ return; }}
     out[0] = prm.px.x; out[1] = prm.px.y;
     out[2] = prm.py.x; out[3] = prm.py.y;
     out[4] = prm.pz.x; out[5] = prm.pz.y;
-    out[6] = prm.bp.x; out[7] = prm.bp.y;
-    out[8] = prm.bm.x; out[9] = prm.bm.y;
-    out[10] = float(prm.nx); out[11] = float(prm.ny); out[12] = float(prm.nz);
-    out[13] = float(prm.n_elem); out[14] = prm.dtdx;
-    out[15] = float(sizeof(Params));
-}
+    out[6] = float(prm.nx); out[7] = float(prm.ny); out[8] = float(prm.nz);
+    out[9] = float(prm.n_elem); out[10] = prm.dtdx;
+    out[11] = prm.beta_plus; out[12] = prm.beta_minus;
+    out[13] = float(sizeof(Params));
+}}
 """
     record = np.zeros(1, dtype=family.params_record_dtype())
     record["px"] = (1.5, 2.5)
     record["py"] = (3.5, 4.5)
     record["pz"] = (5.5, 6.5)
-    record["bp"] = (7.5, 8.5)
-    record["bm"] = (9.5, 10.5)
     record["nx"], record["ny"], record["nz"], record["n_elem"] = 11, 12, 13, 1716
     record["dtdx"] = np.float32(0.25)
+    record["beta_plus"] = np.float32(7.5)
+    record["beta_minus"] = np.float32(-9.5)
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     tensor = torch.from_numpy(words).to("mps")
-    out = torch.zeros(16, dtype=torch.float32, device="mps")
+    out = torch.zeros(14, dtype=torch.float32, device="mps")
     getattr(compile_source(source), "params_probe")(out, tensor, threads=1)
     torch.mps.synchronize()
     read = [float(value) for value in out.cpu().numpy()]
-    expected = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5,
-                11.0, 12.0, 13.0, 1716.0, 0.25]
+    expected = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 11.0, 12.0, 13.0, 1716.0, 0.25,
+                7.5, -9.5]
     return {
-        "passed": (read[:15] == expected
-                   and int(read[15]) == family.PARAMS_ITEMSIZE),
-        "read_back": read[:15], "expected": expected,
-        "device_sizeof_Params": int(read[15]),
+        "passed": (read[:13] == expected
+                   and int(read[13]) == family.PARAMS_ITEMSIZE),
+        "read_back": read[:13], "expected": expected,
+        "device_sizeof_Params": int(read[13]),
         "host_record_itemsize": family.PARAMS_ITEMSIZE,
-        "why": ("the five float2 members come FIRST and the record declares itemsize "
-                "64 explicitly: the payload is 60 bytes and Metal's struct is 64, so a "
-                "natural record is four bytes short of what the shader may address"),
+        "why": ("the three float2 members come FIRST and the record declares its "
+                "itemsize explicitly: Metal pads the struct to its 8-byte alignment, "
+                "so a natural record can be short of what the shader may address"),
     }
 
 
@@ -542,7 +567,6 @@ PRODUCT = common.Product(
     source=emit,
     parent_curl_source=parent_curl,
     singles=singles,
-    expansion=expansion,
     complex_storage=True,
     cases=CASES,
     cell_arms=CELL_ARMS,
@@ -570,7 +594,7 @@ def runtime_reasons() -> List[str]:
     return common.runtime_reasons()
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:  # noqa: ARG001
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The census driver's battery hook: the identity claim on ONE lifted corpus row."""
     steps = int(os.environ.get(f"{LIFT_PREFIX}_STEPS", 12))
     block = common.evaluate_row(PRODUCT, driver, steps)
@@ -595,7 +619,6 @@ BUILDERS: Dict[str, Any] = {
     "host": lambda args: {
         **common.host_block(PRODUCT, __file__),
         "probes": PROBES,
-        "expansion_arm": expansion(),
         "cases": [name for name, _spec in CASES],
         "variants": list(family.VARIANTS),
     },

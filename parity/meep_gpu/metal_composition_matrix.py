@@ -27,29 +27,13 @@ BFAST run under an inactive absorber, an off-diagonal row planted past the
 installer. Disjointness has to be measured on configurations CONSTRUCTED to be near
 the boundary between two families, which is what this file is.
 
-TWO ENVIRONMENT FACTS EVERY CONSUMER MUST SET, and both are refusals if unset
-rather than silent defaults:
-
-* ``MEEP_GPU_SUBNORMAL_POLICY=flush`` — on MPS the float32 subnormal flush is
-  native and has no lever, so the resolved default ``keep`` is NOT OFFERABLE and
-  every Metal predicate refuses by name. Setting ``flush`` is what puts the claim
-  under the CHECKED subnormal-free precondition rather than under a pretence.
-* the FOUR expansion probe artifacts — ``MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE``,
-  ``MEEP_GPU_METAL_EXPANSION_PROBE``,
-  ``MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE`` and
-  ``MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE``. Which complex-multiply arm
-  this host's NumPy reference takes is a MEASURED platform fact; with no artifact the
-  complex, beta, folded-complex and cylindrical-complex arms refuse by name and six
-  families vanish from the sweep, which would read as disjointness rather than as
-  absence. EACH IS SEPARATE RATHER THAN SHARED because each family multiplies by an
-  operand orientation the earlier artifacts never classified — the folded complex
-  fill a complex scalar on the LEFT, the cylindrical complex curl a complex ROW on
-  the left and a complex scalar on the left with a SIGNED-ZERO real word — and
-  reading one of the others' would licence an arm from a record that never measured
-  this call.
-
-:func:`prepare_environment` sets all five and RETURNS what is IN FORCE, so an
-artifact records the file its loaders read.
+ONE ENVIRONMENT FACT EVERY CONSUMER MUST SET, a refusal if unset rather than a
+silent default: ``MEEP_GPU_SUBNORMAL_POLICY=flush`` — on MPS the float32 subnormal
+flush is native and has no lever, so the resolved default ``keep`` is NOT OFFERABLE
+and every Metal predicate refuses by name. Setting ``flush`` is what puts the claim
+under the CHECKED subnormal-free precondition rather than under a pretence.
+:func:`prepare_environment` sets it and RETURNS what is IN FORCE, so an artifact
+records the policy its predicates read.
 """
 
 from __future__ import annotations
@@ -60,78 +44,16 @@ from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-API_ROOT = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir))
-
-#: The probe artifacts the evidence archive holds, newest first: the fallback for a
-#: process whose environment names no probe (the package tests, on the host that
-#: holds the archive). A missing file is skipped rather than fatal — the caller
-#: learns which file is in force from the dict :func:`prepare_environment` returns,
-#: and a row that needed an absent probe fails its expectation loudly rather than
-#: passing as "nothing admitted". A certification round never reaches this list:
-#: ``recut_metal_gates.sh`` cuts and exports all four probes before its first gate.
-COMPLEX_PROBE_CANDIDATES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/metal_complex_audit_2026-08-16/complex_expansion_probe.json",
-    "parity/meep_gpu/results/metal_complex_2026-08-15/complex_expansion_probe.json",
-)
-BETA_PROBE_CANDIDATES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/metal_special_kz_2026-08-16_audit/expansion.json",
-    "parity/meep_gpu/results/metal_special_kz_2026-08-15_certify/expansion.json",
-    "parity/meep_gpu/results/metal_special_kz_2026-08-15/expansion.json",
-)
-#: The folded-complex artifact carries a SIXTH pattern the other two do not — the
-#: mirror parity as a complex COEFFICIENT ON THE LEFT — so it is its own candidate
-#: list rather than an alias for the complex one.
-FOLDED_COMPLEX_PROBE_CANDIDATES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/metal_folded_complex_2026-08-16/expansion.json",
-)
-#: The cylindrical-complex artifact carries TWO patterns none of the others do — the
-#: i*m/r coefficient as a complex ROW on the LEFT, and the |m| = 1 axis-increment
-#: scalar as a complex SCALAR on the LEFT whose real word is a signed zero — so it is
-#: its own candidate list rather than an alias for the complex one.
-CYLINDRICAL_COMPLEX_PROBE_CANDIDATES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/metal_cylindrical_complex_2026-08-16/expansion.json",
-)
-
-
-def _first_existing(candidates: Sequence[str]) -> Optional[str]:
-    for relative in candidates:
-        path = os.path.join(API_ROOT, relative)
-        if os.path.exists(path):
-            return path
-    return None
 
 
 def prepare_environment() -> Dict[str, Optional[str]]:
-    """Set the policy and every probe path; return the path IN FORCE for each.
+    """Set the subnormal policy; return the value IN FORCE.
 
-    A probe already named in the environment wins (``setdefault``): that is how a
-    certification round hands each gate the probe it cut. Only an unset variable is
-    filled from the archive candidates. The returned dict names, per variable, the
-    path the environment holds after this call — the file every loader
-    (``complex_fields.load_expansion_probe`` and its siblings) will read — or
-    ``None`` when no probe is available. RETURNING THE CANDIDATE INSTEAD made two
-    defects: a gate's record named a dated archive file while its loaders read the
-    round's own probe, and on a Mac without the archive the gates that refuse on a
-    ``None`` here refused although the round had exported every probe.
+    A policy already named in the environment wins (``setdefault``): that is how a
+    certification round hands each gate the policy it runs under.
     """
     os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
-    candidates = (
-        ("MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE", COMPLEX_PROBE_CANDIDATES),
-        ("MEEP_GPU_METAL_EXPANSION_PROBE", BETA_PROBE_CANDIDATES),
-        ("MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
-         FOLDED_COMPLEX_PROBE_CANDIDATES),
-        ("MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE",
-         CYLINDRICAL_COMPLEX_PROBE_CANDIDATES),
-    )
-    in_force: Dict[str, Optional[str]] = {
-        "MEEP_GPU_SUBNORMAL_POLICY": os.environ.get("MEEP_GPU_SUBNORMAL_POLICY")}
-    for name, paths in candidates:
-        found = _first_existing(paths)
-        if found:
-            os.environ.setdefault(name, found)
-        # An empty value is "no probe" to every loader, so it reads as None here.
-        in_force[name] = os.environ.get(name) or None
-    return in_force
+    return {"MEEP_GPU_SUBNORMAL_POLICY": os.environ.get("MEEP_GPU_SUBNORMAL_POLICY")}
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +68,10 @@ def _fill(fields: Any, seed: int = 5) -> Any:
     launched is a no-op agreeing with a no-op, which is the vacuity the gates
     refuse. The sweep only calls predicates, so this is here so the SAME builders
     can feed the whole-step gate without a second definition drifting from this one.
+
+    A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so the state
+    carries ``Fields.h_separated`` (``stepping.separate_h_from_b`` must not run again
+    on it, and a base ``update_H`` kernel may take its first update).
     """
     rng = np.random.default_rng(seed)
     for name in ("Bx", "By", "Bz", "Dx", "Dy", "Dz",
@@ -154,6 +80,8 @@ def _fill(fields: Any, seed: int = 5) -> Any:
         if array is not None:
             values = rng.uniform(-0.4, 0.4, array.shape)
             array[...] = values.astype(array.dtype)
+    if hasattr(fields, "h_separated"):
+        fields.h_separated = True
     return fields
 
 
@@ -351,6 +279,15 @@ def folded_no_pml(axis: str = "Y", phase: int = 1,
     return _fill(fields), PML(grid=grid, thickness=((0, 0), (0, 0), (0, 0)))
 
 
+#: The float32 word of :func:`cylindrical`'s default Courant (0.37), for the real m = 0
+#: rows of :data:`MATRIX` (see there).
+CYL_REAL_COURANT = float(np.float32(0.37))
+#: The same word, for the cylindrical COMPLEX rows' ``_f32_courant`` twins: the
+#: complex family forms its |m| = 1 and m = 0 axis products with Courant in float32
+#: only for a float32-word Courant, exactly as the real family does.
+CYL_F32_COURANT = CYL_REAL_COURANT
+
+
 def cylindrical(m: int = 1, complex_storage: bool = True,
                 z_kind: str = "metallic", accurate: bool = False,
                 courant: float = 0.37) -> Tuple[Any, Any]:
@@ -498,6 +435,11 @@ def plant_rows(pair: Tuple[Any, Any]) -> Tuple[Any, Any]:
     rather than on an inverted clause. Planting the disagreement is the only way to
     check that the pair FAILS CLOSED (``update_E`` unselected, both claimants named)
     rather than one of them silently winning.
+
+    The planted row is the one deliberate disagreement, so every other question
+    about it is answered as the engine answers it for that row: its per-chunk
+    presence (``offdiag_presence``) is every cell (``None``), because a row nonzero
+    on every cell is deleted by no chunk.
     """
     fields, pml = pair
     row = np.full(tuple(fields.grid.shape), np.float32(0.1))
@@ -511,6 +453,8 @@ def plant_rows(pair: Tuple[Any, Any]) -> Tuple[Any, Any]:
                 return False
             if name == "chi1inv_offdiagonal_for":
                 return lambda target: {"Ey": row} if target == "Ex" else {}
+            if name == "offdiag_presence":
+                return lambda target, partner, layout: None
             return getattr(object.__getattribute__(self, "_wrapped"), name)
 
     return FlagFalse(fields), pml
@@ -651,6 +595,8 @@ MATRIX: Tuple[Row, ...] = (
     ("nopml_complex_bloch_lossless", complex_lossless_stored_e_no_pml,
      dict(step_B="complex no-PML curl", step_D="complex no-PML curl",
           update_H="no-PML null", update_E="complex no-PML stored E"), ()),
+    # The complex no-absorber tensor row owns update_E (its double row per part,
+    # ruling R7's software binary64); the curls and H keep their arms.
     ("nopml_complex_bloch_offdiag", complex_lossless_offdiag_no_pml,
      dict(step_B="complex no-PML curl", step_D="complex no-PML curl",
           update_H="no-PML null", update_E="complex no-PML off-diagonal"), ()),
@@ -835,12 +781,15 @@ MATRIX: Tuple[Row, ...] = (
           update_E="folded offdiag",
           fill_B="mirror fill", fill_D="mirror fill"), ()),
     # A POLE ON TOP: the source becomes (D - sum P) at every tensor-row gather.
-    # The dedicated packed-pole product owns E while the folded B/D/H/fill spine
-    # and ADE recurrence retain their independently verified slots.
+    # The dedicated packed-pole product forms that row (the off-diagonal single's
+    # double row, ruling R7's software binary64) and owns update_E; the folded
+    # B/D/H/fill spine and the ADE recurrence retain their independently verified
+    # slots.
     ("fold_offdiag_2d_dispersive",
      lambda: dispersive(folded(rows={"Ex": ("Ey",)})),
      dict(step_B="folded", step_D="folded", update_H="folded",
-          update_E="folded off-diagonal dispersive PML E", update_P="ADE update_P", fill_B="mirror fill",
+          update_E="folded off-diagonal dispersive PML E",
+          update_P="ADE update_P", fill_B="mirror fill",
           fill_D="mirror fill"), ()),
     # THE SECOND PLANTED DOUBLE-ADMIT, and it is the SAME engine coupling as
     # `offdiag_flag_false_slot_live` one level down: `folded` refuses on the FLAG
@@ -1118,7 +1067,8 @@ MATRIX: Tuple[Row, ...] = (
           update_H="no-PML null"), ()),
 
     # -- the chi2/chi3 Pade product -------------------------------------------
-    # The Pade family owns update_E.  Its new nonlinear spine owns the B/D curls
+    # The Pade family owns update_E (its |D|^2 in software binary64, ruling R7).
+    # Its nonlinear spine owns the B/D curls
     # and magnetic constitutive side through THREE separate, inverted admissions:
     # those sub-steps do not read chi2 or chi3, but the ordinary predicates retain
     # their global clause so a linear and nonlinear arm cannot co-admit.  This is
@@ -1162,12 +1112,24 @@ MATRIX: Tuple[Row, ...] = (
     # -- the cylindrical complex product, |m| >= 1 ----------------------------
     # MOVED OUT OF `UNCARRIED` IN THE SAME CHANGE THAT MADE THE FAMILY REAL, which
     # is the only way a row is allowed to leave that list. ALL FOUR arithmetic
-    # slots are composed, and the two constitutive ones are the CERTIFIED complex
-    # body under a restated predicate rather than new arithmetic — `update_H` and
+    # slots compose, and the two constitutive ones are the CERTIFIED complex body
+    # under a restated predicate rather than new arithmetic — `update_H` and
     # `update_E` carry no cylindrical branch at all.
     #
-    # THE ROWS BELOW ARE THE FAMILY'S OWN SPECIALISATION AXES, one row each, so a
-    # sweep that only ever built m = +1 with a metallic z would not measure the
+    # THE COURANT NUMBER DECIDES THE TWO CURLS. The |m| = 1 axis rule and the m = 0
+    # on-axis Dz increment are MEEP's double products with Courant, rounded once,
+    # which this backend forms as a float32 product only when Courant is a float32
+    # word; any other Courant is refused BY NAME on the curl that carries the rule
+    # ("cylindrical complex: Courant 0.37 is not a float32 word: ...") and that
+    # slot falls to the array path. So each specialisation axis below is pinned
+    # TWICE: at the builder's default Courant (0.37, not a float32 word), where the
+    # pin is the refusal's SCOPE — the curls carrying an axis product fall to the
+    # array path, every other slot still composes — and at its float32 word
+    # (CYL_F32_COURANT, the `_f32_courant` twins), where all four slots compose and
+    # the curl's own arm is what the row measures.
+    #
+    # THE ROWS ARE THE FAMILY'S OWN SPECIALISATION AXES, one row each, so a sweep
+    # that only ever built m = +1 with a metallic z would not measure the
     # composition of the arm the corpus's z-PERIODIC rows or its |m| >= 2 rows take:
     #   BACKWARD  — both sub-steps, every row
     #   BCZ       — `dcyl_m1_complex` (metallic) vs `dcyl_m1_complex_zperiodic`
@@ -1175,7 +1137,11 @@ MATRIX: Tuple[Row, ...] = (
     #   zero_rows — `dcyl_m3_complex` (3) vs `dcyl_m3_complex_accurate` (1); a
     #               RUNTIME UNIFORM, not a specialisation, which is why the two
     #               rows compose identically and only the bound value differs
+    # |m| >= 2 carries no axis product with Courant (the near-axis rows are zeroed),
+    # so `dcyl_m3_complex` composes all four slots at 0.37 and needs no twin.
     ("dcyl_m1_complex", lambda: cylindrical(m=1),
+     dict(update_H="cylindrical complex", update_E="cylindrical complex"), ()),
+    ("dcyl_m1_complex_f32_courant", lambda: cylindrical(m=1, courant=CYL_F32_COURANT),
      dict(step_B="cylindrical complex", step_D="cylindrical complex",
           update_H="cylindrical complex", update_E="cylindrical complex"), ()),
     # NEGATIVE m: seven of the sixteen corpus rows are m = -1, and the sign is not
@@ -1183,9 +1149,15 @@ MATRIX: Tuple[Row, ...] = (
     # the |m| = 1 axis-increment scalar (`1j * X` for X < 0), which is the operand
     # class a plane-wise product gets wrong.
     ("dcyl_m1_complex_negative", lambda: cylindrical(m=-1),
+     dict(update_H="cylindrical complex", update_E="cylindrical complex"), ()),
+    ("dcyl_m1_complex_negative_f32_courant",
+     lambda: cylindrical(m=-1, courant=CYL_F32_COURANT),
      dict(step_B="cylindrical complex", step_D="cylindrical complex",
           update_H="cylindrical complex", update_E="cylindrical complex"), ()),
     ("dcyl_m1_complex_zperiodic", lambda: cylindrical(m=1, z_kind="periodic"),
+     dict(update_H="cylindrical complex", update_E="cylindrical complex"), ()),
+    ("dcyl_m1_complex_zperiodic_f32_courant",
+     lambda: cylindrical(m=1, z_kind="periodic", courant=CYL_F32_COURANT),
      dict(step_B="cylindrical complex", step_D="cylindrical complex",
           update_H="cylindrical complex", update_E="cylindrical complex"), ()),
     ("dcyl_m3_complex", lambda: cylindrical(m=3),
@@ -1207,7 +1179,13 @@ MATRIX: Tuple[Row, ...] = (
     # is the outcome the composer is built to produce. (Until that round the pair's
     # separation was a DOUBLE inversion — clause 14 on m as well — and the complex
     # corner below was a named absence.)
-    ("dcyl_m0_real", lambda: cylindrical(m=0, complex_storage=False),
+    # Both real m = 0 rows take the float32 word of the default Courant: the D side's
+    # m = 0 axis rule is MEEP's double product with Courant, which the Metal kernel
+    # forms in float32 only for a float32-word Courant (cylindrical_real.
+    # courant_reasons refuses any other by name, and step_D would fall to the array
+    # path).
+    ("dcyl_m0_real", lambda: cylindrical(m=0, complex_storage=False,
+                                         courant=CYL_REAL_COURANT),
      dict(step_B="cylindrical m=0", step_D="cylindrical m=0",
           update_H="cylindrical m=0", update_E="cylindrical m=0"), ()),
     # THE FAMILY'S ONE REMAINING SPECIALISATION AXIS, one row so it is driven rather
@@ -1216,7 +1194,8 @@ MATRIX: Tuple[Row, ...] = (
     # sub-step, so z PERIODIC vs METALLIC is the only compiled axis a configuration
     # can move.
     ("dcyl_m0_real_zperiodic",
-     lambda: cylindrical(m=0, complex_storage=False, z_kind="periodic"),
+     lambda: cylindrical(m=0, complex_storage=False, z_kind="periodic",
+                         courant=CYL_REAL_COURANT),
      dict(step_B="cylindrical m=0", step_D="cylindrical m=0",
           update_H="cylindrical m=0", update_E="cylindrical m=0"), ()),
     # A CONDUCTIVITY ON A CYLINDRICAL RUN — the SCOPE row this family did not have.
@@ -1235,12 +1214,21 @@ MATRIX: Tuple[Row, ...] = (
     # m = 0 by name and the real family refused complex64 storage, so this
     # constructible configuration (and the corpus row `dipole_in_vacuum_cyl_off_
     # axis.py`) composed NOTHING and fell to the array path on all four slots. Now
-    # all four come back `cylindrical complex`, and the real family's storage clause
+    # every slot that composes comes back `cylindrical complex` (all four at a
+    # float32-word Courant, the twin below), and the real family's storage clause
     # is what keeps the row unambiguous. `dcyl_m1_real` stays the one dead corner:
     # nobody carries it, and the engine itself refuses to step it (stepping.py:
     # 731-736), so a family that admitted it would be admitting a run that cannot
     # run. Neither row is a plant — the engine builds both without complaint.
+    # At m = 0 only the D side carries an axis product with Courant (the on-axis Dz
+    # increment; the B side's m = 0 rule is Br = 0), so at the default Courant the
+    # refusal takes `step_D` alone and `step_B` still composes; the twin at the
+    # float32 word composes all four (see the |m| >= 1 rows above).
     ("dcyl_m0_complex", lambda: cylindrical(m=0, complex_storage=True),
+     dict(step_B="cylindrical complex",
+          update_H="cylindrical complex", update_E="cylindrical complex"), ()),
+    ("dcyl_m0_complex_f32_courant",
+     lambda: cylindrical(m=0, complex_storage=True, courant=CYL_F32_COURANT),
      dict(step_B="cylindrical complex", step_D="cylindrical complex",
           update_H="cylindrical complex", update_E="cylindrical complex"), ()),
     ("dcyl_m1_real", lambda: cylindrical(m=1, complex_storage=False), {}, ()),

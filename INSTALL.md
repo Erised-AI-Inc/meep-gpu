@@ -17,8 +17,8 @@ message you see.
 | No GPU, or you want the reference only | [Route 3](#route-3-no-gpu-the-numpy-reference-only) |
 | You already have a MEEP environment and want to keep it | [Installing into an existing MEEP environment](#installing-into-an-existing-meep-environment) |
 
-Version 0.9.2 is a preview. It is installed from a checkout of this repository;
-it is not on a package index. What has and has not been run is stated in
+Version 1.0. It is installed from a checkout of this repository; it is not on
+a package index. What has and has not been run is stated in
 [Tested MEEP versions and builds](#tested-meep-versions-and-builds), row by row.
 
 ## What you need
@@ -78,9 +78,9 @@ Compiled kernels are certified on devices of compute capability 8.6 only (for
 example the RTX A6000, on which they were certified). Every NVIDIA GPU of compute
 capability 7.0 to 9.0 is supported: on one that is not certified they run by
 default and the run is labelled uncertified, because supported is not certified.
-`MEEP_GPU_ALLOW_UNCERTIFIED=0` restricts them to the certified devices. On a GPU
+`MEEP_GPU_HARDWARE=certified` restricts them to the certified devices. On a GPU
 outside 7.0 to 9.0 the package runs on its array path unless
-`MEEP_GPU_ALLOW_UNCERTIFIED=1`:
+`MEEP_GPU_HARDWARE=any`:
 [GPUs that are not on the certified list](#gpus-that-are-not-on-the-certified-list).
 
 **Route 2 also needs**
@@ -93,7 +93,7 @@ outside 7.0 to 9.0 the package runs on its array path unless
   be installed; the certified Mac runs macOS 26.2. In any other environment
   (another Apple GPU, another PyTorch, another macOS build) the Metal kernels
   run by default and the run is labelled uncertified: supported is not
-  certified. `MEEP_GPU_ALLOW_UNCERTIFIED=0` restricts them to the certified
+  certified. `MEEP_GPU_HARDWARE=certified` restricts them to the certified
   environment, and the package then runs on its array path, NumPy on the host
   CPU:
   [GPUs that are not on the certified list](#gpus-that-are-not-on-the-certified-list).
@@ -225,17 +225,17 @@ not certified, and this is what it gets:
   `torch 2.14.0 UNCERTIFIED` and still marks the GPU
   `Apple M1 Max (applegpu_g13s) certified`. After it, each process prints one
   line naming what is not certified:
-  `meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: torch 2.14.0 (certified: 2.10.0). They were dispatched because this Apple GPU is supported, and MEEP_GPU_ALLOW_UNCERTIFIED=0 would restrict the Metal kernels to certified environments; compare the results with a prefer_gpu=False run of the same simulation before relying on them`.
+  `meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: torch 2.14.0 (certified: 2.10.0). They were dispatched because this Apple GPU is supported, and MEEP_GPU_HARDWARE=certified would restrict the Metal kernels to certified environments; compare the results with a prefer_gpu=False run of the same simulation before relying on them`.
   `result.driver.fast_path_report()` carries `certified: False`. The check
   prints `PyTorch 2.14.0: NOT certified: the records name another` and
   `compiled kernels served the GPU run: yes (kernel table: metal)`, a `NOTE:`
   line saying that this Mac's environment is supported but not the certified
   one, so the Metal kernels ran uncertified, and ends with
   `OK: MEEP and meep-gpu work together on this host's GPU.`
-- **With `MEEP_GPU_ALLOW_UNCERTIFIED=0`, the array path.** The Metal kernels are
+- **With `MEEP_GPU_HARDWARE=certified`, the array path.** The Metal kernels are
   refused by name and every run steps on the array path, NumPy on the host CPU;
   the GPU is not used. Each run says so once:
-  `meep_gpu: step path array on the host CPU; dispatch refused: torch 2.14.0 is not the one every Metal weld this table cites ran on (certified: ['2.10.0']); MEEP_GPU_ALLOW_UNCERTIFIED=0 restricts the Metal kernels to certified environments`.
+  `meep_gpu: step path array on the host CPU; dispatch refused: torch 2.14.0 is not the one every Metal weld this table cites ran on (certified: ['2.10.0']); MEEP_GPU_HARDWARE=certified restricts the Metal kernels to certified environments`.
   A *Metal weld* is the certification record of one Metal kernel; the list is
   the PyTorch version those records name. The check prints the line twice,
   prints `compiled kernels served the GPU run: NO`, ends with
@@ -250,8 +250,8 @@ not certified, and this is what it gets:
 Measured on 1 Mac (Apple M1 Max, macOS 26.2, Metal frontend 32023.850.10) on
 2026-09-28, with MEEP 1.33.0, Python 3.12 and NumPy 2.4 as in the environment
 file and PyTorch 2.14.0, when an uncertified PyTorch took the array path unless
-`MEEP_GPU_ALLOW_UNCERTIFIED=1` admitted it: with `MEEP_GPU_ALLOW_UNCERTIFIED=1`,
-4 of 4 examples ran on compiled kernels (step path `fused`, table `metal`), the
+`MEEP_GPU_ALLOW_UNCERTIFIED=1` admitted it (the variable `MEEP_GPU_HARDWARE`
+replaced; that value is today's `any`): with it, 4 of 4 examples ran on compiled kernels (step path `fused`, table `metal`), the
 final field and every flux spectrum of 3 of 3 examples were identical, byte for
 byte, to the array path run in its own process with `MEEP_GPU_DISPATCH=0`, and
 `examples/run_examples.py --check` passed. Without the variable, 4 of 4 examples
@@ -305,6 +305,7 @@ OpenMP runtimes can be read before anything imports PyTorch. Run it without
 
 | Part of the output | What it states |
 |---|---|
+| MEEP identity reference | only with `--require-identity-reference keep` or `flush`, and first: whether the imported MEEP is an identity reference in that mode ([The MEEP identity reference](#the-meep-identity-reference)); the check stops here unless every point holds |
 | 1. Python and NumPy | the versions of the interpreter that ran the check |
 | 2. MEEP | version, serial or MPI build and the number of processes, single or double precision; how many of the 148 MEEP names the lift reads are present, and how many of the 10 MEEP constants it relies on have the expected value |
 | 3. meep-gpu | the installed version and where it was imported from |
@@ -320,8 +321,8 @@ to read; the exit status is 1. Lines that start with `NOTE:` are not failures.
 The last line of a passing run says where the default run stepped. Only
 `OK: MEEP and meep-gpu work together on this host's GPU.` means that compiled
 kernels served it. When they did not (an NVIDIA device or toolchain outside the
-supported range, or, with `MEEP_GPU_ALLOW_UNCERTIFIED=0`, outside the certified
-list; on a Mac with `MEEP_GPU_ALLOW_UNCERTIFIED=0`, a fact of the environment
+supported range, or, with `MEEP_GPU_HARDWARE=certified`, outside the certified
+list; on a Mac with `MEEP_GPU_HARDWARE=certified`, a fact of the environment
 that is not certified or cannot be judged; or `MEEP_GPU_DISPATCH=0`), the line
 says so: on an NVIDIA host the run stepped on the array path on the GPU (CuPy),
 and on a Mac on the array path on the CPU (NumPy), where the line states that
@@ -343,10 +344,10 @@ The check fails when
 - compiled kernels were expected to serve the GPU run and it was nevertheless
   served by the array path. They are expected on an NVIDIA host where one
   kernel table can run on what was read: a certified device and toolchain, a
-  supported one unless `MEEP_GPU_ALLOW_UNCERTIFIED=0`, any one under
-  `MEEP_GPU_ALLOW_UNCERTIFIED=1`, or a device that could not be read unless
-  `MEEP_GPU_ALLOW_UNCERTIFIED=0`; and on any Mac unless
-  `MEEP_GPU_ALLOW_UNCERTIFIED=0` is set and a fact of the environment is not
+  supported one unless `MEEP_GPU_HARDWARE=certified`, any one under
+  `MEEP_GPU_HARDWARE=any`, or a device that could not be read unless
+  `MEEP_GPU_HARDWARE=certified`; and on any Mac unless
+  `MEEP_GPU_HARDWARE=certified` is set and a fact of the environment is not
   certified or cannot be judged; `MEEP_GPU_DISPATCH=0` and `MEEP_GPU_FUSED=0`
   expect none. When the reason is that Triton could not link against the NVIDIA
   driver library, the line says so and names step 3 of Route 1
@@ -355,7 +356,10 @@ The check fails when
 - `--require-reference` was given and the environment does not match the
   certification reference of its platform: step 7's verdict is anything but
   "matches", or MEEP is not the reference's build (1.33.0, single precision, MPI
-  build).
+  build);
+- `--require-identity-reference` was given and the imported MEEP is not an identity
+  reference in the mode named; the line lists every point that does not hold
+  ([The MEEP identity reference](#the-meep-identity-reference)).
 
 The end of a passing run, from Route 2. The figures are those of the run of
 2026-09-28; the lines that judge the environment are shown as this release
@@ -646,23 +650,34 @@ and shorter; in the 2 environments with a GPU route it has been run in, the two
 runs were identical. A small difference there is not a failure: the check
 accepts up to 1e-4.
 
+A run with an `EigenModeSource` can also differ from MEEP, and from another run of itself.
+The lift solves the source's mode again with its own `get_eigenmode` call (MPB) instead of
+reading the amplitudes MEEP's own solve stored, and on some hosts that solve, and MEEP's,
+is not bitwise reproducible across processes (owner ruling R24). On the corpus row
+`ex.coupler` the x86-64 Linux references held 12 of 20 runs; a run that did not hold
+differed in 1,683,570 to 5,051,638 of 44,047,776 stored words, and the only lifted inputs
+that varied were the sources' point amplitudes. The Apple M1 Max held 4 of 4. A 1.0.1
+release reads MEEP's stored amplitudes instead
+([Compatibility and refusals](docs/guides/compatibility.md#an-eigenmodesource-can-differ-from-meep)).
+
 ### Building MEEP in single precision
 
 A single-precision MEEP is the configuration every figure in the README and the
 manual was measured against. It is not needed to use the package. It exists only
 as a source build.
 
-The configure flags, as recorded:
+The configure flags and compile flags of the reference builds, as the build scripts in
+this repository carry them:
 
-| Host | Recorded in | Flags |
+| Host | Configure | Compile flags (`CFLAGS`, `CXXFLAGS`) |
 |---|---|---|
-| Linux x86_64 | the build script in this repository, from the Linux host's build log | `--enable-shared --enable-single --enable-portable-binary --with-mpi --with-openmp --without-scheme` |
-| macOS, Apple silicon | the build script in this repository | `--enable-shared --enable-single --enable-portable-binary --with-mpi --without-scheme --with-libctl=<environment>/share/libctl` |
+| Linux x86_64 | `--enable-shared --enable-single --enable-portable-binary --with-mpi --with-openmp --without-scheme --with-libctl=<environment>/share/libctl` | `-O2 -ffp-contract=off -fno-fast-math -march=x86-64 -mtune=generic` |
+| macOS, Apple silicon | `--enable-shared --enable-single --enable-portable-binary --with-mpi --without-scheme --with-libctl=<environment>/share/libctl` | `-O2 -ffp-contract=off -fno-fast-math` |
 
-Both were built from the release tarball `meep-1.33.0.tar.gz` (SHA-256
+Both are built from the release tarball `meep-1.33.0.tar.gz` (SHA-256
 `bdabc0a112f669f2657fbdca22e31a2aeed515372e8ed56dc55197a4cd7ff0ab`), inside the
-source tree, with compilers and libraries from a conda-forge environment, and
-installed into that environment.
+source tree, with compilers and libraries from a conda-forge environment, with
+libGDSII, and installed into that environment.
 
 Three properties of the 1.33.0 tarball that a source builder meets:
 
@@ -681,39 +696,99 @@ Three properties of the 1.33.0 tarball that a source builder meets:
 A Fortran compiler is required although MEEP contains no Fortran: `configure`
 uses it to find out how BLAS names its functions.
 
-**On an Apple silicon Mac**, `parity/meep_gpu/build_meep_133_macos.sh` builds the
-environment the Metal kernels were certified in: it installs a new conda environment
-from the lock `environments/locks/meep-gpu-ref-osx-arm64.conda.txt` without solving
-(Python 3.12.13, NumPy 2.4.3, Open MPI 5.0.10, the OpenMP build of OpenBLAS, and every
-other package at the build the certified environment holds, except the MPI builds of
-HDF5 and h5py), stops unless the new environment holds exactly the lock's packages,
-downloads the tarball and verifies its checksum, applies the one-line change,
-configures with the flags above, builds, installs, adds the certified PyTorch 2.10.0
-and its dependencies, and autograd, which MEEP's adjoint module imports, from
-`meep-gpu-ref-osx-arm64.pip.txt` (each by version and wheel hash), and stops with an
-error unless MEEP reports 1.33.0, single precision and an MPI build, NumPy, PyTorch and
-Metal are what it claims, and
-[the comparison with the reference](#the-certification-reference-environment) matches.
-It refuses to write into an environment that already exists, and expects conda under
-`$HOME/miniforge3` (set `CONDA_ROOT` otherwise). Before this release the script solved
-its environment instead; that build differed from the certified environment in 54 of the
-139 packages they share (libctl, FFTW, harminv, SciPy and the compiler runtimes among
-them), which is why it now installs the lock. The version that installs the lock has been
-run end to end on the Mac the Metal kernels were certified on (2026-10-04, 3 min 10 s):
-the new environment held 138 of 138 of the lock's conda packages, its MEEP linked against
-OpenBLAS as the certified MEEP does, every check passed, the comparison with the
-reference read 29 of 29 same, and `tools/check_install.py --require-gpu
---require-reference` in it served the Metal kernels with the GPU run 0 from the reference
-and the reference 2.5e-6 (final field) and 9.2e-8 (flux) from MEEP, the figures of the
-certified host's own row in the table above
-([environments/locks/README.md](environments/locks/README.md)).
+**The reference environment.** One script per platform builds the whole environment
+the package's tests, a certification round and the timing run in, from the locks under
+`environments/locks/` and the tarball, and nothing else
+([environments/locks/README.md](environments/locks/README.md)):
 
-    bash parity/meep_gpu/build_meep_133_macos.sh 2>&1 | tee ~/build_meep_133.log
+    bash parity/meep_gpu/build_meep_133_macos.sh 2>&1 | tee build_meep_133.log    # Apple silicon
+    bash parity/meep_gpu/build_meep_133_linux.sh 2>&1 | tee build_meep_133.log    # Linux x86_64
     conda activate meep-gpu-ref
 
-For a certification round, stop there: the gates import this package from the
-clone. For everyday use of a single-precision MEEP, switch OpenBLAS to the build
-that loads no OpenMP runtime, so a process holds one
+Each script re-runs itself in a cleared environment (`env -i`: no compile flag, conda
+activation, `PYTHONPATH` or pip configuration of the calling shell reaches the build;
+`PATH` is `/usr/bin:/bin:/usr/sbin:/sbin`; Python runs without the user site directory),
+then:
+
+1. installs the platform's conda lock without solving and stops unless the new
+   environment holds exactly the lock's packages;
+2. downloads the tarball (or copies `MEEP_TARBALL`, a copy fetched before), verifies its
+   checksum, and keeps its `python/examples` and `python/tests` in the environment as the
+   MEEP identity corpus (`<environment>/share/meep-gpu-build/meep-1.33.0/python`, with the
+   SHA-256 of every file in `corpus_sha256.txt`): the corpus a certification round reads
+   as `MEEP_GPU_CORPUS_ROOT`; and beside it, under `meep-1.33.0/`, the files outside
+   `python/` that corpus rows read (`tests/cyl-ellipsoid-eps-ref.h5`, which two
+   `test_simulation.py` rows open from `../../tests`), listed in
+   `corpus_siblings_sha256.txt` and named in the record, which every round reader checks;
+3. applies the one-line change, configures with the flags above, stops unless configure
+   found libGDSII, builds and installs;
+4. installs the pip lock (each package by version and wheel hash, with no dependency
+   resolution) and the PyMieScatt stand-in, and stops unless the environment's PyPI
+   packages are exactly the lock's and the stand-in;
+5. links the `ffmpeg` executable of the pinned imageio-ffmpeg wheel into the
+   environment's `bin` (one corpus row needs `which ffmpeg`; the wheel installs no shared
+   library, and the script checks that `libmeep` and `_meep` keep the load commands they
+   were installed with);
+6. stops with an error unless MEEP reports 1.33.0, single precision and an MPI build and
+   reads a GDSII file, the toolchain reports the certified versions,
+   [the comparison with the reference](#the-certification-reference-environment) matches,
+   the fused multiply-add census of the MEEP it built is clean, MEEP's own words on four
+   cases reproduce the recorded digests, and the identity check passes in keep and in
+   flush (on Apple silicon a check that cannot reach flush refuses it by name, which is
+   recorded as pending: [The MEEP identity reference](#the-meep-identity-reference));
+7. stops unless every program the round runs that the environment carries (`git`,
+   `ffmpeg`, `mpirun`, the census's disassembler and demangler, on Linux the C compiler)
+   is found in the environment's `bin`, and writes the record of the build,
+   `<environment>/share/meep-gpu-build/reference_build.json`.
+
+It refuses to write into an environment that already exists, with one exception:
+`--refresh-corpus` brings the corpus of an environment it built before to what it keeps
+now (the corpus siblings, for an environment built before it kept them) and does nothing
+else. It fetches and verifies the tarball, adds what the environment lacks, refuses a kept
+file whose bytes differ, rewrites only the `corpus` entry of `reference_build.json`, and
+records the change in `corpus_refresh.json`; MEEP, the locks and the packages are not
+touched. A round refuses an environment whose record names no corpus siblings, by name.
+It expects conda under
+`$HOME/miniforge3`: set `CONDA_ROOT` otherwise, `MEEP_ENV_NAME` or `MEEP_ENV_PREFIX` for
+another environment, `CONDA_PKGS_DIRS`, `MEEP_BUILD_ROOT` and `MEEP_BUILD_JOBS` for where
+and how it builds. It refuses by name the knobs it no longer has: `MEEP_SIGMA_PATCH` (no
+reference build carries the sigma-reader patch), `MEEP_REFERENCE_SOLVE` (the environment
+is installed from the locks, never solved), `MEEP_BUILD_ROLE` and `MEEP_FFMPEG`. The host
+supplies three things and nothing else: the GPU driver, on a Mac the macOS SDK (Command
+Line Tools or Xcode), and on Linux glibc 2.28 or later
+([environments/locks/README.md](environments/locks/README.md#what-the-host-supplies)).
+Both scripts were run end to end on 2026-10-14, each from a fresh `HOME`, in the version
+before the corpus siblings joined what they keep: the Linux one on the RTX A6000 host in
+377 s (`MEEP_BUILD_JOBS=8`, an empty package cache), the macOS one on the Apple M1 Max in
+296 s (`MEEP_BUILD_JOBS=4`). Every step and every check of the build passed, on Linux both
+identity verdicts and on the Mac `keep` (its `flush` verdict recorded pending, by name, as
+below). The two environments were then brought to the corpus this version keeps by
+`--refresh-corpus`, which added the one sibling and rewrote only the record's `corpus`
+entry, and they are the 1.0 round's reference environments.
+
+**On an Apple silicon Mac** the lock is the conda environment the Metal kernels were
+certified in (Python 3.12.13, NumPy 2.4.3, Open MPI 5.0.10, the OpenMP build of OpenBLAS,
+and every other package at the build that environment holds, except the MPI builds of
+HDF5 and h5py), with what the build and the round need beside it; the pip lock holds the
+certified PyTorch 2.10.0 and its dependencies, pytest, autograd (MEEP's adjoint module
+imports it), llvmlite (the test suite's LLVM parser) and the corpus's own packages. The
+step-8 check also confirms that Metal is available. Before 2026-10-03 the script solved
+its environment instead; that build differed from the certified environment in 54 of the
+139 packages they share (libctl, FFTW, harminv, SciPy and the compiler runtimes among
+them), which is why it installs the lock. The version that first installed the lock ran
+end to end on the Mac the Metal kernels were certified on (2026-10-04, 3 min 10 s): the
+new environment held 138 of 138 of the lock's conda packages, its MEEP linked against
+OpenBLAS as the certified MEEP does, the comparison with the reference read 29 of 29 same,
+and `tools/check_install.py --require-gpu --require-reference` in it served the Metal
+kernels with the GPU run 0 from the reference and the reference 2.5e-6 (final field) and
+9.2e-8 (flux) from MEEP, the figures of the certified host's own row in the table above.
+A build with the contraction-off flags on that lock's toolchain was made on that Mac on
+2026-10-05, and on 2026-10-06 it passed the census, the identity check and the digest
+check ([The MEEP identity reference](#the-meep-identity-reference)).
+
+For a certification round, stop there: the gates import this package from the clone.
+For everyday use of a single-precision MEEP, switch OpenBLAS to the build that loads no
+OpenMP runtime, so a process holds one
 ([One OpenMP runtime on an Apple silicon Mac](#one-openmp-runtime-on-an-apple-silicon-mac)),
 then install the package:
 
@@ -722,78 +797,77 @@ then install the package:
     python -m pip install ".[apple]"
     python tools/check_install.py --require-gpu
 
-**On Linux x86_64**, `parity/meep_gpu/build_meep_133_linux.sh` performs the
-whole build the same way, and also installs the certified CuPy, PyTorch and Triton
-into the environment it creates, which makes it the environment a certification
-round runs in. It installs the locks `environments/locks/meep-gpu-ref-linux-64.conda.txt`
-and `meep-gpu-ref-linux-64.pip.txt` without solving: the environment the 2026-10-03
-RTX A6000 certification round ran in, package for package, with autograd added on
-2026-10-05 (MEEP's adjoint module imports it; it was installed into that environment
-from the lock too). That environment differs
-from the one the NVIDIA kernels were first certified in at three points. Open MPI and
-h5py: the older versions need the CUDA 12 runtime on conda-forge, which the certified
-CuPy cannot sit beside, so the lock has Open MPI 5.0.8 and h5py 3.15.1; both serve only
-MPI and parallel HDF5 output, which one process does not use. And the CUDA compiler:
-NVRTC 11.8.89, which is what `environments/nvidia-linux.yml` installs, where the records
-cut before 2026-10-02 compiled with NVRTC 11.6.55 from the certifying host's own CUDA
-11.6. The lock's compilers target glibc 2.28, and the script refuses, before it installs
-anything, a host whose glibc is older or cannot be read. It
-stops with an error unless the new environment holds exactly the lock's conda packages,
-MEEP reports 1.33.0, single precision and an MPI build, the toolchain reports the
-certified versions, and
-[the comparison with the reference](#the-certification-reference-environment) matches.
-Before this release the script solved its environment, and the solve depends on the
-host: solved for a glibc 2.35 host (with conda's glibc override, on 2026-10-03), it took
-`sysroot_linux-64` 2.34 and kernel headers 5.14 in place of 2.28 and 4.18.
+**On Linux x86_64** the lock is the environment the 2026-10-03 RTX A6000 certification
+round ran in, package for package, with autograd (2026-10-05), the identity corpus's own
+packages (2026-10-11) and the additions of 2026-10-14 (libGDSII, gdspy, git, binutils'
+unprefixed names, llvmlite, imageio-ffmpeg); it holds the certified CuPy, PyTorch and
+Triton. That environment differs from the one the NVIDIA kernels were first certified in
+at three points. Open MPI and h5py: the older versions need the CUDA 12 runtime on
+conda-forge, which the certified CuPy cannot sit beside, so the lock has Open MPI 5.0.8
+and h5py 3.15.1; both serve only MPI and parallel HDF5 output, which one process does not
+use. And the CUDA compiler: NVRTC 11.8.89, which is what `environments/nvidia-linux.yml`
+installs, where the records cut before 2026-10-02 compiled with NVRTC 11.6.55 from the
+certifying host's own CUDA 11.6. The script refuses, before it installs anything, a host
+whose glibc is older than 2.28 or cannot be read, and, before it compiles, flags under
+which the compilers' `-march` is not `x86-64` (the baseline instruction set has no fused
+multiply-add). It links the GPU driver's `libcuda.so.1` into
+`<environment>/lib/meep-gpu-libcuda/` (Triton links its launcher with `-lcuda`, and a
+driver installs only `libcuda.so.1`) and compiles Triton's launcher once with the
+environment's own C compiler against it; a round passes
+`CC=<environment>/bin/x86_64-conda-linux-gnu-cc` and
+`TRITON_LIBCUDA_PATH=<environment>/lib/meep-gpu-libcuda`. Before this release the script
+solved its environment, and the solve depends on the host: solved for a glibc 2.35 host
+(with conda's glibc override, on 2026-10-03), it took `sysroot_linux-64` 2.34 and kernel
+headers 5.14 in place of 2.28 and 4.18. The solving version ran end to end on the RTX
+A6000 host on 2026-10-02 in about five minutes and made the environment the lock's first
+143 conda lines record. Do not install this package into that environment: a
+certification round imports it from the clone, and an installed copy would be invisible to
+the record of what ran.
 
-    bash parity/meep_gpu/build_meep_133_linux.sh 2>&1 | tee ~/build_meep_133.log
-    conda activate meep-gpu-ref
-
-The solving version ran end to end on the RTX A6000 host on 2026-10-02 in about five
-minutes, with conda's package cache warm, and made the environment the lock records; the
-version that installs the lock has not yet been run end to end. The lock was checked
-against that environment, not built: its 143 package lines are those of the
-environment's own export, every URL answers with conda-forge's MD5 and SHA-256 (143 of
-143), and every wheel hash resolves to one PyPI wheel (21 of 21). Do not install this package into that environment:
-a certification round imports it from the clone, and an installed copy would be
-invisible to the record of what ran.
+**A timing control.** `parity/meep_gpu/build_meep_133_native.sh` runs the platform
+script with `--timing-control` and native flags (`-O3 -march=native`, `-O3 -mcpu=native`)
+into `meep-gpu-ref-native`: the same lock and tarball, a census recorded and not judged,
+and never an identity reference or a certification reference. A timing comparison times
+it beside the reference.
 
 ### The certification reference environment
 
 The certification reference of each platform is a pair of lock files under
 `environments/locks/`: an explicit conda lock, every package by URL and MD5, and a pip
 requirements file, every PyPI package by version and wheel hash.
-[environments/locks/README.md](environments/locks/README.md) says what each reproduces,
-how it was made, what it cannot capture (MEEP itself, the host, the GPU) and when it is
-re-cut. The build scripts above install those files and nothing else; an environment
-made any other way, including from the files under `environments/*.yml`, is not the
-reference, which is fine for using the package and not for certifying it.
+[environments/locks/README.md](environments/locks/README.md) says what each holds, what
+the host supplies (the GPU driver, the macOS SDK, glibc), how the locks are re-cut
+(`environments/locks/recut_locks.py`, which adds to a lock and refuses an addition that
+moves a locked package) and when. The build scripts above install those files and
+nothing else; an environment made any other way, including from the files under
+`environments/*.yml`, is not the reference, which is fine for using the package and not
+for certifying it.
 
 To see how an environment compares, run, with its Python:
 
-    python tools/compare_reference_environment.py
-    python tools/compare_reference_environment.py --require-reference   # exit 1 unless it matches
+    python -s tools/compare_reference_environment.py
+    python -s tools/compare_reference_environment.py --require-reference   # exit 1 unless it matches
 
 `tools/check_install.py` prints the same comparison as its step 7, after a line that
-judges MEEP itself (below). For every numerics-relevant package of the platform (29 on
-Apple silicon, 36 on Linux, listed in `environments/locks/numerics-relevant.json`) it
+judges MEEP itself (below). For every numerics-relevant package of the platform (30 on
+Apple silicon, 37 on Linux, listed in `environments/locks/numerics-relevant.json`) it
 prints the reference's build, this environment's, and one of `same`, `different`,
-`missing`, `differs by design` or `not read`, then a verdict. On the Mac the Metal kernels were certified on, the
-environment they were certified in reads (rows shortened):
+`missing`, `differs by design` or `not read`, then a verdict. An environment built from
+the Apple silicon lock before libGDSII joined it reads (2026-10-14, rows shortened):
 
        package        reference                      this environment                    verdict
        libctl         4.5.1=h5505292_1               4.5.1=h5505292_1                    same
-       fftw           3.3.10=nompi_haf1500d_112      3.3.10=nompi_haf1500d_112           same
        ...
-       hdf5           1.14.6=mpi_openmpi_h8451b09_6  1.14.6=nompi_had3affe_106           differs by design
+       libgdsii       0.21=ha393de7_5                absent                              missing
        ...
        torch          2.10.0, build 2 (PyPI wheel)   2.10.0, build 2 (installed by pip)  same
-       of 29: 28 same, 0 different, 0 missing, 1 differ by design, 0 not read
-       Verdict: this environment matches the certification reference: 28 of 29 numerics-relevant packages are the reference's builds and 1 differs from it by design (hdf5).
+       of 30: 29 same, 0 different, 1 missing, 0 differ by design, 0 not read
+       Verdict: this environment differs from the certification reference in 1 of 30 numerics-relevant packages: libgdsii.
 
-and an environment the build script solved on 2026-10-03, before it installed the lock:
-
-       Verdict: this environment differs from the certification reference in 17 of 29 numerics-relevant packages: libctl, fftw, gsl, harminv, hdf5, libgfortran5, libgcc, libcxx, _openmp_mutex, libfabric, libfabric1, libevent, mpi4py, libgfortran, python, python_abi, scipy.
+and the environment the Metal kernels were certified in, with its nompi HDF5, read 28 of
+29 same and 1 differs by design (hdf5) under the set before libGDSII joined it; an
+environment the build script solved on 2026-10-03, before it installed the lock, differed
+in 17 of 29.
 
 Conda packages are judged by version and build, PyPI packages by version and origin (a
 conda build of PyTorch is not the PyPI wheel the reference holds) and, for PyTorch on a
@@ -806,19 +880,136 @@ SciPy and mpi4py as `different` from the reference's conda builds, and its verdi
 K more could not be read". The host's macOS or glibc version is checked against the
 lock's floor (macOS 11.0, glibc 2.28), a populated user site directory (`~/.local`) is
 named, since it comes before the environment on the import path, and so is a prefix a
-build script solved with `MEEP_REFERENCE_SOLVE=1`.
+build script once solved (the retired `MEEP_REFERENCE_SOLVE=1`).
+
+Before the verdict the report lists, apart, what only the MEEP identity corpus needs:
+shapely, nlopt and imageio-ffmpeg (the pip lock's wheels), gdspy (the conda lock's
+build), the PyMieScatt stand-in (judged by its version and the bytes of its files) and
+the `ffmpeg` the reference `PATH` finds, held only when it is the imageio-ffmpeg wheel's
+executable (a host's own ffmpeg is another build), each `held`, `absent` or `another
+build`. They never count in the verdict, so an environment without them, which is all a
+user who does not re-run the corpus needs, is judged on its numerics exactly as one with
+them. `--require-pip-lock` (with `--prefix`) fails unless the PyPI packages of the
+environment are exactly the pip lock's pins and the stand-in, and the build scripts run
+it after installing them
+([environments/locks/README.md](environments/locks/README.md#corpus-only-packages-added-2026-10-11)).
 
 The comparison judges packages only. MEEP is built from source on top of the lock and is
 not one of its packages, so `tools/check_install.py --require-reference` also requires
 that the MEEP it imports is the build the reference names, 1.33.0 in single precision
-with MPI, and fails otherwise, whatever the packages:
+with MPI and libGDSII, and fails otherwise, whatever the packages (it reads MEEP's own
+`with_libGDSII()`; the build scripts also check that MEEP reads a GDSII file):
 
-       MEEP       1.33.0, single precision, MPI build: the reference's build
+       MEEP       1.33.0, single precision, MPI build, libGDSII: the reference's build
 
 That is the check a host runs before it joins a certification round. Nor does the
-comparison judge the compilers, which decide how MEEP is compiled and are not loaded when
-it runs: the build scripts hold a build to every package of the lock, compilers included,
-before anything is compiled.
+comparison judge the compilers and tools, which decide how MEEP is compiled and are not
+loaded when it runs: the build scripts hold a build to every package of the lock,
+compilers and tools included, before anything is compiled.
+
+### The MEEP identity reference
+
+The package's NumPy array path is being aligned with MEEP 1.33.0 word for word: every
+stored float32 word of the twelve field components equal to the word MEEP stores. The
+MEEP that claim is made against is an **identity reference**: a single-precision MPI
+build of 1.33.0 whose field updates round every operation on its own. A compiler that
+fuses a multiply and an add into one rounding changes the words, and clang does that by
+default: the Mac MEEP the 0.9.x Metal kernels were certified against carries 1,253 fused
+operations in `libmeep`, 634 of them in the 16 field-update kernels (MEASURED by the
+census, 2026-10-06), and its stored words first leave the identity reference's at step 12,
+27 and 64 of three of the four cases below (MEASURED by the bit-identity probe,
+2026-10-05). The Linux reference has none, because its instruction set has none
+(MEASURED 2026-10-06 on the `libmeep` and `_meep` of the RTX A6000 round's environment, by
+an earlier census of the same instructions), and its build now turns contraction off as
+well.
+
+A build is an identity reference when all of these hold, and the build scripts refuse to
+finish otherwise:
+
+1. its environment is the platform's lock, artifact for artifact;
+2. **the fused multiply-add census** of the `libmeep` and `_meep` a process of it loads
+   (`tools/fma_census.py`) finds no fused multiply-add outside the two compiler-rt
+   complex-division builtins (`__divsc3`, `__divdc3`, which the toolchain links from its
+   own runtime, untouched by the build's flags). The census reads the machine code, since
+   the flags are not evidence: it counts `fmadd`, `fmsub`, `fnmadd`, `fnmsub`, `fmla`,
+   `fmls` on arm64 and `vfmadd*`, `vfmsub*`, `vfnmadd*`, `vfnmsub*` on x86-64;
+3. **its build record**, `<environment>/share/meep-gpu-build/build_record.json`
+   (`parity/meep_gpu/timing_records.py meep-build-record --require-identity`), holds the
+   sha256 of those images, that census, the contraction the flags asked for, and the
+   host's math library;
+4. **MEEP's own words** on four small cases (2-D vacuum and dielectric with absorbing
+   boundaries, 3-D with two mirror symmetries; about 40 s on an M1 Max), stepped with MEEP
+   alone, hash to the digests recorded in `parity/meep_gpu/meep_identity_smoke.json`
+   (`parity/meep_gpu/meep_identity_smoke.py`);
+5. **the identity check** below passes in keep and, at `OMP_NUM_THREADS=1`, in flush (the
+   build takes its verdict alone, without the rest of the installation check, which steps
+   a simulation on the GPU); its verdicts are kept beside the record (`identity_keep.*`,
+   `identity_flush.*`) and named in `reference_build.json`.
+
+A host checks the build it runs with, before anything is stepped:
+
+    python -s tools/check_install.py --require-identity-reference keep
+
+It judges, in a process that imports NumPy and MEEP and nothing else: MEEP is 1.33.0,
+single precision, MPI; the build record (beside the MEEP, or the file
+`--identity-build-record` names) describes the very images loaded and its census is
+clean; the census, re-run on those images, is clean; after MEEP's own switch
+(`set_zero_subnormals`) is set for the mode, the processor's subnormal handling,
+measured in float32 and float64, is that mode; and the system math library is the one
+the build record pins (on macOS the UUID of `libsystem_m`, which changes with the macOS
+build; on Linux the glibc version, the sha256 of `libm` and the CPU features glibc picks
+its implementations by), since MEEP's sources call it. A mismatch of the math library
+means: re-record the build on this host and re-run the digest check. On the M1 Max of
+2026-10-06 it read:
+
+    MEEP identity reference (--require-identity-reference keep)
+       MEEP       1.33.0, single precision, MPI build: the reference's build
+       images         libmeep.37.dylib, _meep.37.so
+       build record   .../build_record.json
+          describes the loaded images: 2 of 2 sha256 as recorded
+          fused multiply-add census: no fused multiply-add instruction outside the compiler-rt division builtins in 2 of 2 image(s) (18 inside them, exempt)
+          floating-point contraction: off (informational: the census decides)
+       census here    no fused multiply-add instruction outside the compiler-rt division builtins in 2 of 2 image(s) (18 inside them, exempt)
+       subnormals     keep after MEEP's set_zero_subnormals(False) (measured in float32 and float64; after import alone: keep)
+       OpenMP         OMP_NUM_THREADS=unset (keep holds at any thread count)
+       libm           libsystem_m 42E15F5C-02B8-3B56-9889-5B59CADD45EB (macOS 26.2, build 25C56)
+          as the build record pins
+
+and on the MEEP the Metal kernels of 0.9.x were certified against:
+
+    FAILED: --require-identity-reference keep was given and it has no build record (...); and the census of the loaded images found 1239 fused multiply-add instructions outside the compiler-rt division builtins. Read INSTALL.md, "The MEEP identity reference".
+
+**Two modes.** `keep` keeps subnormal numbers, as IEEE 754 specifies: it is one
+reference on both hosts and at any OpenMP thread count. `flush` flushes them to zero,
+which is what MEEP asks for on x86 when it is imported; it is a reference only at
+`OMP_NUM_THREADS=1`, since MEEP's switch reaches the main thread only. `keep` on Linux
+therefore means calling `set_zero_subnormals(False)` after `import meep`, which the check
+and the digest smoke do. On Apple silicon MEEP's switch has no effect; flush is reached
+there through the processor's flush-to-zero bit (FPCR.FZ), which the package's corpus
+harness sets on the stepping thread and under which MEEP stores the x86 flush reference's
+words (`docs/development/meep-identity-corpus.md`). Where `tools/check_install.py` does
+not set that bit itself, it refuses flush on Apple silicon by name ("no flush
+reference"), and the Mac build records that verdict as pending rather than as a pass;
+every other refusal stops the build.
+
+**An existing build** that was not made by these scripts (for example the Linux
+environment of an earlier round) can be recorded in place and checked when its census is
+clean,
+
+    python parity/meep_gpu/timing_records.py meep-build-record --python <its python> \
+        --config-log <its config.log> --launcher <its mpirun> --require-single \
+        --require-identity --out <its prefix>/share/meep-gpu-build/build_record.json
+    <its python> parity/meep_gpu/meep_identity_smoke.py --mode keep
+    <its python> tools/check_install.py --require-identity-reference keep
+
+which makes its MEEP an identity reference; it does not make the environment the
+reference environment, which only the build scripts make (it lacks the additions, the
+corpus and the record of `reference_build.json`).
+
+A census can also be judged where the binary is not, from a disassembly made on the
+reference host: `objdump -d -C --no-show-raw-insn libmeep.so | gzip > libmeep.dis.gz`
+there, `python tools/fma_census.py --disassembly libmeep.dis.gz --format elf-x86_64
+--require-none` anywhere.
 
 ## One OpenMP runtime on an Apple silicon Mac
 
@@ -987,7 +1178,7 @@ Apple's, and `None` when neither the architecture nor the name was read.
   `supported, UNCERTIFIED` (and such a Triton version
   `triton 3.1.1 supported, UNCERTIFIED`), and one line per process names what
   is not certified, for example
-  `meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU compute capability 8.9 (certified: 8.6). They were dispatched because this NVIDIA GPU and toolchain are supported but not certified bit-identical (the supported range is compute capability 7.0 to 9.0, with Triton >=3.1,<3.2 or with the NVRTC of either CuPy build, CUDA 11.8 for cupy-cuda11x or the host's CUDA 12 for cupy-cuda12x), and MEEP_GPU_ALLOW_UNCERTIFIED=0 would restrict the kernels to certified ones; the gates with no run on this GPU are counted in the dispatch record under uncertified.served[], which names the first five in welds_without_a_live_run_here; compare the results with a prefer_gpu=False run of the same simulation before relying on them`.
+  `meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU compute capability 8.9 (certified: 8.6). They were dispatched because this NVIDIA GPU and toolchain are supported but not certified bit-identical (the supported range is compute capability 7.0 to 9.0, with Triton >=3.1,<3.2 or with the NVRTC of either CuPy build, CUDA 11.8 for cupy-cuda11x or the host's CUDA 12 for cupy-cuda12x), and MEEP_GPU_HARDWARE=certified would restrict the kernels to certified ones; the gates with no run on this GPU are counted in the dispatch record under uncertified.served[], which names the first five in welds_without_a_live_run_here; compare the results with a prefer_gpu=False run of the same simulation before relying on them`.
   `result.driver.fast_path_report()` carries `certified: False` with what was
   read under `uncertified.served`, and, for a compute capability, the
   certification gates that have no run on it. Compare the run with a
@@ -995,42 +1186,42 @@ Apple's, and `None` when neither the architecture nor the name was read.
 - On an NVIDIA host where one kernel table is certified for the device and
   toolchain and the other is only supported, the certified table runs alone and
   the run is certified; the other is refused by name, for example
-  `the triton table is supported but not certified here (GPU compute capability 9.0), and the cuda table is certified for this device and toolchain; set MEEP_GPU_ALLOW_UNCERTIFIED=1 to compose it too`.
+  `the triton table is supported but not certified here (GPU compute capability 9.0), and the cuda table is certified for this device and toolchain; set MEEP_GPU_HARDWARE=any to compose it too`.
   `MEEP_GPU_BACKEND_PREFERENCE` naming the refused table is refused by name with
-  that reason, unless `MEEP_GPU_ALLOW_UNCERTIFIED=1`.
+  that reason, unless `MEEP_GPU_HARDWARE=any`.
 - On an NVIDIA GPU or Triton version outside the supported range, the kernel
   table is refused by name and the run takes the array path, CuPy on the GPU.
   The refusal ends
-  `set MEEP_GPU_ALLOW_UNCERTIFIED=1 to dispatch the kernels on it anyway, without certification or support`;
-  with `1` the kernels run there, labelled uncertified and recorded
+  `set MEEP_GPU_HARDWARE=any to dispatch the kernels on it anyway, without certification or support`;
+  with `any` the kernels run there, labelled uncertified and recorded
   `supported: False`.
-- On an NVIDIA GPU with `MEEP_GPU_ALLOW_UNCERTIFIED=0`, the compiled kernels
+- On an NVIDIA GPU with `MEEP_GPU_HARDWARE=certified`, the compiled kernels
   run on a certified device and toolchain only. Anything else, a device whose
   compute capability could not be read included, is refused by name and the run
   takes the array path, CuPy on the GPU; the refusal ends
-  `MEEP_GPU_ALLOW_UNCERTIFIED=0 restricts the NVIDIA kernels to certified devices and toolchains`.
+  `MEEP_GPU_HARDWARE=certified restricts the NVIDIA kernels to certified devices and toolchains`.
 - On an Apple GPU, which is supported, the Metal kernels run. The status line
   marks an Apple GPU that is not the certified one `supported, UNCERTIFIED`, for
   example `Apple M3 Pro (applegpu_g15p) supported, UNCERTIFIED`, and the
   certified GPU `certified` whatever else is not. A fact that is not certified
   is named in one line per process, printed after the status line, for example
-  `meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU architecture applegpu_g15p (certified: applegpu_g13s). They were dispatched because this Apple GPU is supported, and MEEP_GPU_ALLOW_UNCERTIFIED=0 would restrict the Metal kernels to certified environments; compare the results with a prefer_gpu=False run of the same simulation before relying on them`,
+  `meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU architecture applegpu_g15p (certified: applegpu_g13s). They were dispatched because this Apple GPU is supported, and MEEP_GPU_HARDWARE=certified would restrict the Metal kernels to certified environments; compare the results with a prefer_gpu=False run of the same simulation before relying on them`,
   and `result.driver.fast_path_report()` carries `certified: False` with what
   was read under `uncertified.served`. A fact that is not judged runs as
   well, with `certified: None` and no such line. Compare either run with a
   `prefer_gpu=False` run of the same simulation before relying on it.
 - On a GPU that is not Apple's, the Metal kernels run as well, unsupported and
-  uncertified, unless `MEEP_GPU_ALLOW_UNCERTIFIED=0` refuses its architecture
+  uncertified, unless `MEEP_GPU_HARDWARE=certified` refuses its architecture
   by name. Its status line carries no `supported`, and the line after it
   gives as the reason
-  `the Metal table runs on environments outside the certified set unless MEEP_GPU_ALLOW_UNCERTIFIED=0`.
+  `the Metal table runs on environments outside the certified set unless MEEP_GPU_HARDWARE=certified`.
   A run whose GPU could not be read at all gives the same reason when another
   fact is not certified.
-- On an Apple GPU with `MEEP_GPU_ALLOW_UNCERTIFIED=0`, the Metal kernels run in
+- On an Apple GPU with `MEEP_GPU_HARDWARE=certified`, the Metal kernels run in
   the certified environment only. A fact that is not certified, or not judged,
   is refused by name and the run takes the array path, NumPy on the host CPU.
   The refusal names the fact, for example
-  `GPU architecture applegpu_g15p is not the one every Metal weld this table cites ran on (certified: ['applegpu_g13s']); MEEP_GPU_ALLOW_UNCERTIFIED=0 restricts the Metal kernels to certified environments`.
+  `GPU architecture applegpu_g15p is not the one every Metal weld this table cites ran on (certified: ['applegpu_g13s']); MEEP_GPU_HARDWARE=certified restricts the Metal kernels to certified environments`.
 
 Nothing is wrong with a run on the array path. Whether it is slower than the
 compiled kernels depends on the host and the size of the simulation: on the one
@@ -1042,15 +1233,15 @@ no NVIDIA host has been measured this way.
 
 | Host | Array path |
 |---|---|
-| NVIDIA GPU outside the supported range (compute capability below 7.0 or above 9.0, or a Triton other than 3.1), or outside the certified list with `MEEP_GPU_ALLOW_UNCERTIFIED=0` | CuPy, on the GPU |
-| Apple silicon outside the certified environment, with `MEEP_GPU_ALLOW_UNCERTIFIED=0` | NumPy, on the host CPU. The GPU is not used |
+| NVIDIA GPU outside the supported range (compute capability below 7.0 or above 9.0, or a Triton other than 3.1), or outside the certified list with `MEEP_GPU_HARDWARE=certified` | CuPy, on the GPU |
+| Apple silicon outside the certified environment, with `MEEP_GPU_HARDWARE=certified` | NumPy, on the host CPU. The GPU is not used |
 
 - On an NVIDIA host the check prints, for each kernel table's device and for
   the Triton version, `on the certified list`,
   `supported, NOT on the certified list` or
   `NOT supported and NOT on the certified list`. When the kernels ran
   uncertified it adds a `NOTE:` line naming each identity it ran on and whether
-  it is supported but not certified or (under `MEEP_GPU_ALLOW_UNCERTIFIED=1`)
+  it is supported but not certified or (under `MEEP_GPU_HARDWARE=any`)
   outside the supported range; when they did not serve the run, it prints
   `compiled kernels served the GPU run: NO`, the reason the package gives, and
   an `OK:` line that says where the run stepped instead. On
@@ -1066,7 +1257,7 @@ no NVIDIA host has been measured this way.
   Outside the certified environment the check adds a `NOTE:` line saying that
   this Mac's environment is supported but not the certified one (on a GPU that
   is not Apple's or could not be read, that it is not the certified one), so
-  the Metal kernels ran uncertified, or, with `MEEP_GPU_ALLOW_UNCERTIFIED=0`,
+  the Metal kernels ran uncertified, or, with `MEEP_GPU_HARDWARE=certified`,
   prints `compiled kernels served the GPU run: NO` and the reason. Without the
   switch, when no fact is `NOT certified` and one is `not judged`, the kernels
   serve the run and the `NOTE:` says instead that the run is neither certified
@@ -1076,23 +1267,28 @@ no NVIDIA host has been measured this way.
   the kernels were certified with the PyPI wheel of 2.10.0. conda-forge's newer
   builds (2.13.0 on that date) report their own version and run uncertified.
 - On an NVIDIA GPU, an identity that cannot be read is recorded as unknown and
-  is not refused, unless `MEEP_GPU_ALLOW_UNCERTIFIED=0`, which refuses it by
+  is not refused, unless `MEEP_GPU_HARDWARE=certified`, which refuses it by
   name.
-- `MEEP_GPU_ALLOW_UNCERTIFIED` accepts `1` and `0`; any other value is refused
-  by name and the run takes the array path, on every kernel table. On every
-  table, leaving the variable unset runs a supported identity outside the
-  certified one, and `0` restricts the compiled kernels to certified identities
-  and refuses one it cannot judge. On the NVIDIA tables, `1` also runs a compute
-  capability or a Triton version outside the supported range, recorded
-  `supported: False`, and composes a supported, uncertified table beside a
-  certified one. A run outside the certified identity carries no certification:
+- `MEEP_GPU_HARDWARE` accepts `certified`, `supported` and `any`, exactly; any
+  other value (`1`, `0`, `Any`, an empty string) is refused by name and the run
+  takes the array path, on every kernel table. On every table, `supported` (the
+  default, when the variable is unset) runs a supported identity outside the
+  certified one, and `certified` restricts the compiled kernels to certified
+  identities and refuses one it cannot judge. On the NVIDIA tables, `any` also
+  runs a compute capability or a Triton version outside the supported range,
+  recorded `supported: False`, and composes a supported, uncertified table
+  beside a certified one. `MEEP_GPU_HARDWARE` replaced
+  `MEEP_GPU_ALLOW_UNCERTIFIED`, which is refused by name, set to anything, with
+  the value that does what it did: its `0` is `certified`, its `1` is `any`, and
+  unset is `supported`. A run outside the certified identity carries no certification:
   it prints one line per process naming what is certified, and
   `result.driver.fast_path_report()` carries `certified: False` with the
   identity read. On the NVIDIA tables these rules have been exercised with
   substituted identities only; no NVIDIA device outside the certified list has
   been run. The Metal kernels have run outside the certified environment in
   substituted environments, and in one real one: PyTorch 2.14.0 on one M1 Max,
-  admitted by `MEEP_GPU_ALLOW_UNCERTIFIED=1` on 2026-09-28
+  admitted on 2026-09-28 by `MEEP_GPU_ALLOW_UNCERTIFIED=1`, today
+  `MEEP_GPU_HARDWARE=any`
   ([The newest PyTorch on a Mac](#the-newest-pytorch-on-a-mac)).
 - In your own runs, `result.driver.active_step_path` is `"fused"` when compiled
   kernels served the run and `"array"` otherwise, and
@@ -1196,16 +1392,15 @@ The lift reads the arguments a simulation was declared with, so it needs one
 that MEEP has not initialized or stepped. Lift a newly constructed
 `mp.Simulation`, or call `sim.reset_meep()` first.
 
-**A refusal names the "sigma reader", `MEEP_SIGMA_PATCH=1` and
-`build_meep_133_macos.sh`.** You do not need a patched MEEP to use this package.
-The sigma reader is an optional source patch to MEEP that no MEEP release
-contains; stock MEEP lifts uniform dispersive media and dispersive objects with
-axis-aligned faces without it. 3 kinds of cell need it: a dispersive object with
-a curved surface under `eps_averaging=True`, a rotated dispersive block under
-`eps_averaging=True`, and a conductivity shared by media that differ in their
-susceptibilities. For the first two, `eps_averaging=False` lifts on stock MEEP.
-The patch is `parity/meep_gpu/meep-sigma-reader.patch`; the build script named
-in the message applies it on macOS when `MEEP_SIGMA_PATCH=1` is set.
+**A structured dispersive cell is refused.** Stock MEEP lifts uniform dispersive
+media and dispersive objects with axis-aligned faces. On stock MEEP 1.33.0 a
+cell whose media differ in their `E_susceptibilities` is refused when MEEP's
+chi1inv tensor is not diagonal somewhere in it (subpixel averaging at any curved
+or rotated interface under `eps_averaging=True`, whatever the shape bounds; a
+medium with a nonzero `epsilon_offdiag`; a cylindrical cell), and when any
+medium has a nonzero `D_conductivity`. `eps_averaging=False`, or making every
+shape an axis-aligned `Block`, lifts the smoothed kind; otherwise run the
+simulation on CPU MEEP.
 
 **`mp.is_single_precision()` is `False` after a source build with
 `--enable-single`.** The build was made in a separate build directory. Build
@@ -1229,7 +1424,7 @@ not be read either, the line prints `device` and the reason, with no
 `supported`. `result.driver.fast_path_report()` records why the architecture
 could not be read under `environment.device.unreadable`. The Metal kernels
 still run, with `certified: None` when no other fact is uncertified; with
-`MEEP_GPU_ALLOW_UNCERTIFIED=0` they are refused by name and the run takes the
+`MEEP_GPU_HARDWARE=certified` they are refused by name and the run takes the
 array path, NumPy on the host CPU ([GPUs that are not on the certified list](#gpus-that-are-not-on-the-certified-list),
 [Reading what ran](docs/getting-started/reading-what-ran.md)).
 
@@ -1242,7 +1437,7 @@ the default; the status line before it marks the first three `certified` or
 and on an Apple GPU says the kernels were dispatched because this Apple GPU is
 supported: supported is not certified. Compare the
 results with a `prefer_gpu=False` run of the same simulation, or set
-`MEEP_GPU_ALLOW_UNCERTIFIED=0` to keep the Metal kernels to the certified
+`MEEP_GPU_HARDWARE=certified` to keep the Metal kernels to the certified
 environment ([GPUs that are not on the certified list](#gpus-that-are-not-on-the-certified-list)).
 
 **The check passed and my own simulation runs on the array path.** Compiled

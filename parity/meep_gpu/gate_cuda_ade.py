@@ -2,9 +2,12 @@
 
 The family under test is ``meep_gpu/cuda_kernels/ade_kernels.py`` -- two device
 strings, ``update_P_pml_real`` (a graded sigma volume) and
-``update_P_pml_real_uniform`` (a uniform scalar sigma), behind one
-launcher. Nothing dispatches them; ``CERTIFIED_KERNELS`` is EMPTY and both names
-sit in ``UNCERTIFIED_KERNELS``. This gate is what would move them.
+``update_P_pml_real_uniform`` (a uniform scalar sigma), behind one launcher. Both
+step MEEP's isotropic recurrence in its four float32 words and grouping,
+``gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)))``
+(susceptibility.cpp:251-256), with MEEP's drive selected per chunk from the run's
+chunk record: ``f_w`` on the cells whose chunk carries the component's own layer and
+the stored E elsewhere (update_pols.cpp:44).
 
 =============================================================================
 WHY THIS FAMILY GETS ITS OWN GATE FILE
@@ -26,7 +29,10 @@ this file's legs exist only because of that:
   host defect must be a NULL at one launch with one driven component and a CATCH
   at sixty -- otherwise "the multi-step leg catches things" is a statement about
   the budget rather than about the rotation;
-* the WRONG-DRIVE control, which has no analogue in a stencil family at all.
+* the WRONG-DRIVE controls, which have no analogue in a stencil family at all:
+  the stored E bound on every cell (``h1``), ``f_w`` bound on every cell (``h6``,
+  the select removed), and their shared null where the two arrays are equal
+  (``h2``).
 
 WHICH CALLER EACH LEG DRIVES, because it is not one caller. The two primary legs
 (single-launch and multi-step) drive the SHIPPED ``update_P_fused_pml_real``,
@@ -41,9 +47,12 @@ THE ORACLE IS THE ARRAY PATH ITSELF
 =============================================================================
 
 ``stepping.update_P`` on real ``Grid``/``Fields``/``PML``/``PolarizationState``
-objects -- i.e. ``PolarizationState.update`` (dispersion.py:658-691), reached
-exactly as the engine reaches it, with ``fields.drive_field`` bound as the drive
-exactly as ``stepping.update_P`` binds it (stepping.py:1428).
+objects -- i.e. ``PolarizationState.update``, reached exactly as the engine reaches
+it, with ``fields.drive_field`` bound as the drive exactly as ``stepping.update_P``
+binds it. Each fixture carries the one-rank region plan of its grid and layer
+(``stepping._region_plan``), from which ``drive_field`` composes MEEP's per-chunk
+``w`` and whose record (``gate_chunk_records.region_plan_record``) the kernel
+decodes.
 
 TWO FIXTURES, NOT ONE FIXTURE AND A RESTORE. The sibling gates freeze one state,
 run the oracle, restore, and run the kernel. That does not work here: the sub-step
@@ -70,12 +79,12 @@ passed:
 * ``oracle_moved`` -- the array path changed at least one output word. Zero-init
   is a fixed point of this recurrence, so a fixture that moved nothing would pass
   against a kernel that did nothing.
-* ``drive_term_is_live`` -- ``max |c_drive * (sigma * w)|`` over the frozen state
-  is nonzero. Where the drive term vanishes, ``drop_sigma`` and the WHOLE
-  wrong-drive control are indistinguishable from the shipped kernel.
-* ``history_term_is_live`` -- ``max |c_prev * P_prev|`` is nonzero. Where the
-  history term vanishes the recurrence is first order and ``drop_previous_history``
-  and ``swap_p_and_q`` cannot be seen.
+* ``drive_term_is_live`` -- ``max |gamma1inv * (omega0dtsqr * (sigma * w))|`` over
+  the frozen state is nonzero. Where the drive term vanishes, ``drop_sigma`` and
+  the WHOLE wrong-drive control are indistinguishable from the shipped kernel.
+* ``history_term_is_live`` -- ``max |gamma1inv * (gamma1 * P_prev)|`` is nonzero.
+  Where the history term vanishes the recurrence is first order and
+  ``drop_previous_history`` and ``swap_p_and_q`` cannot be seen.
 * ``oracle_all_finite`` -- an unstable susceptibility that overflows to inf makes
   every word agree for a reason that has nothing to do with the kernel.
 
@@ -112,8 +121,9 @@ token because CuPy's cache key is computed above the strip seam)::
     CUDA_VISIBLE_DEVICES=N CUPY_CACHE_DIR=$OUT/cupy_cache/ftz_stripped \\
         python -u gate_cuda_ade.py --subnormal-policy keep --out $OUT/keep/gate.json
 
-Laptop (no CUDA; the kernel side becomes a NumPy evaluator over the same device
-text, which compiles nothing and therefore certifies nothing)::
+Laptop (no CUDA; the kernel side becomes the shared NumPy kernel-text interpreter
+over the same device text, which compiles nothing and therefore certifies
+nothing)::
 
     python -u gate_cuda_ade.py --backend numpy --product reduced \\
         --out /tmp/ade_local.json
@@ -156,6 +166,9 @@ from meep_gpu.fields import Fields  # noqa: E402
 from meep_gpu.grid import Grid  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
 from meep_gpu.cuda_kernels import coverage  # noqa: E402
+from meep_gpu.cuda_kernels.test_root_chunk_forms import (  # noqa: E402
+    Interpreter, Unmodelled)
+from gate_chunk_records import region_plan_record  # noqa: E402
 
 log = probe.log
 save = probe.save
@@ -191,7 +204,7 @@ _ADVANCE = np.float32(0.97)
 RESOLUTION = 8.0
 
 #: (target shape, label). The MIDDLE one is the point: 13*17*11 = 2431 cells is not
-#: a multiple of the 256-lane block, so the tail guard ``if (idx >= n_elem) return;``
+#: a multiple of the 256-lane block, so the tail guard ``if (idx >= nx * ny * nz) return;``
 #: decides real threads there. 8*8*8 = 512 and 1*16*16 = 256 are exact multiples and
 #: cannot exercise it.
 SHAPES: Tuple[Tuple[Tuple[int, int, int], str], ...] = (
@@ -211,8 +224,9 @@ BOUNDARY_TRIPLES: Tuple[Tuple[str, str, str], ...] = (
 )
 
 #: The two recurrence kinds ``COVERED_SUSCEPTIBILITY_KINDS`` names. The Drude flag
-#: zeroes the restoring force in ``c_now`` ALONE (dispersion.py:643-655), so the two
-#: kinds are two different coefficient triples through one kernel.
+#: zeroes the restoring force in ``two_minus_od`` ALONE
+#: (Susceptibility.realnum_constants), so the two kinds are two different sets of
+#: constants through one kernel.
 KINDS: Tuple[str, ...] = (LORENTZIAN, DRUDE)
 
 #: The compile-time specialization. Both variants must be swept or half the family
@@ -329,6 +343,10 @@ def build(xp, spec: Dict[str, Any], seed: int):
     layer = PML(grid=grid, thickness=tuple(thickness))
     fields = Fields(grid=grid)
     fields.enable_pml_storage()
+    # THE DIVISION BOTH SIDES STEP WITH: the one-rank region plan of this grid and
+    # layer, installed before anything reads the drive. The oracle's drive_field
+    # composes MEEP's per-chunk w from it, and the kernel decodes its record.
+    stepping._region_plan(fields, layer)
 
     driven = tuple(spec["driven"])
     for index in range(int(spec["states"])):
@@ -444,25 +462,25 @@ def advance_drive(fields) -> None:
 def term_magnitudes(fields) -> Dict[str, float]:
     """The two floors, taken on the FROZEN state in float64 on the host.
 
-    ``drive_term`` is ``c_drive * (sigma * w)`` and ``history_term`` is
-    ``c_prev * P_prev``. A case where either is identically zero cannot distinguish
+    ``drive_term`` is ``gamma1inv * (omega0dtsqr * (sigma * w))`` and ``history_term``
+    is ``gamma1inv * (gamma1 * P_prev)``. A case where either is identically zero cannot distinguish
     the defects that live in it, and is refused by name rather than counted.
     """
     drive_max = 0.0
     history_max = 0.0
     for state in fields.polarizations:
-        c_now, c_prev, c_drive = (float(v) for v in state._coefficients)
+        _two_minus_od, gamma1, omega0dtsqr, gamma1inv = (float(v) for v in state.constants)
         for component in state.driven():
             w = to_host(fields.drive_field(component)).astype(np.float64)
             sigma = state.sigma[component]
             sigma_host = (to_host(sigma).astype(np.float64)
                           if coverage.ade_sigma_is_volume(state, component)
                           else float(sigma))
-            drive_max = max(drive_max,
-                            float(np.max(np.abs(c_drive * (sigma_host * w)))))
+            drive_max = max(drive_max, float(np.max(np.abs(
+                gamma1inv * (omega0dtsqr * (sigma_host * w))))))
             history = to_host(state.P_prev[component]).astype(np.float64)
             history_max = max(history_max,
-                              float(np.max(np.abs(c_prev * history))))
+                              float(np.max(np.abs(gamma1inv * (gamma1 * history)))))
     return {"drive_term_max_abs": drive_max,
             "history_term_max_abs": history_max}
 
@@ -480,93 +498,75 @@ def expected_launch_count(fields, steps: int) -> int:
 # there so the whole harness (case product, floors, arming, catch accounting) can
 # be shown to FAIL where it must on a laptop, before a device slot is spent.
 
-_LOAD = re.compile(r"^float (\w+) = (\w+)\[idx\];$")
-_SCALAR_LOAD = re.compile(r"^float (\w+) = (\w+);$")
-_STORE = re.compile(r"^(\w+)\[idx\] = (.+);$")
+def _evaluator_arguments(text: str, arrays: Dict[str, Any],
+                         scalars: Dict[str, Any]) -> Tuple[Interpreter, Dict[str, Any], int]:
+    """The interpreter of one device body and its launch arguments.
 
-#: Template text the evaluator neither executes nor needs to: the signature, the
-#: thread index and the tail guard. The guard is scaffolding HERE and not in
-#: general -- the evaluator is whole-array, so it has no out-of-range lane to
-#: return from; on device the compiler executes that line and a defect in it is an
-#: ordinary catch.
-_SCAFFOLDING: Tuple[str, ...] = (
-    'extern "C" __global__', "float* __restrict__", "const float*",
-    "float c_now, float c_prev, float c_drive,", "int n_elem",
-    "int idx = blockIdx.x", "if (idx >= n_elem) return;",
-    "float sigma,", ") {", "}", "{",
-)
-
-
-def _float32_literals(expression: str) -> str:
-    """``0.0f`` -> ``0.0``. C float literals are not Python."""
-    return re.sub(r"(\d)f\b", r"\1", expression)
-
-
-def body_lines(text: str) -> List[str]:
-    body = text[text.index('extern "C"'):]
-    return [line.strip() for line in body.split("\n")
-            if line.strip() and not line.strip().startswith("//")]
+    ``arrays`` hold the pointer arguments by parameter name (any shape; read and
+    written through flat views), ``scalars`` the by-value ones, including the extent
+    ``nx, ny, nz`` the kernel's guard and index decode read.
+    """
+    interpreter = Interpreter(text)
+    arguments: Dict[str, Any] = dict(scalars)
+    for name, array in arrays.items():
+        flat = np.asarray(array).reshape(-1)
+        if not np.shares_memory(flat, array):
+            raise ValueError(f"{name} does not flatten to a view; a store would be lost")
+        arguments[name] = flat
+    lanes = int(scalars["nx"]) * int(scalars["ny"]) * int(scalars["nz"])
+    return interpreter, arguments, lanes
 
 
 def evaluator_blind_lines(text: str) -> List[str]:
-    """Lines of a device body the NumPy evaluator neither executes nor recognises.
+    """What of a device body the NumPy evaluator cannot execute; empty when it can.
 
-    THE HAZARD THIS EXISTS FOR is the one the sibling gate measured: a mutation
-    that rewrites a statement into a form the evaluator's grammar does not match is
-    SILENTLY NOT APPLIED, and a verdict scored off such a run is a statement about
-    the parser rather than about the kernel. A leg whose mutated text leaves a line
-    here is recorded as NOT MEASURABLE on this backend instead of being scored. On
-    device every line is executed by the compiler and the question does not arise,
-    which is exactly why the two backends' catch tables differ and both are
-    reported.
+    THE HAZARD THIS EXISTS FOR is the one the sibling gate measured: a mutation that
+    rewrites a statement into a form the evaluator does not model must not be scored
+    as if it had been applied. The evaluator is the shared kernel-text interpreter
+    (``meep_gpu.cuda_kernels.test_root_chunk_forms``), which RAISES on any construct
+    it does not execute; this runs the body once on a two-cell probe and returns the
+    refusal. A leg whose mutated text appears here is recorded as NOT MEASURABLE on
+    this backend instead of being scored. On device every line is executed by the
+    compiler and the question does not arise.
     """
-    blind = []
-    for line in body_lines(text):
-        if any(token in line for token in _SCAFFOLDING):
-            continue
-        if _LOAD.match(line) or _SCALAR_LOAD.match(line) or _STORE.match(line):
-            continue
-        blind.append(line)
-    return blind
+    probe_arrays: Dict[str, Any] = {}
+    scalars: Dict[str, Any] = {"nx": 1, "ny": 1, "nz": 2, "own_axis": 2}
+    try:
+        interpreter = Interpreter(text)
+        function = interpreter.functions[interpreter.entry]
+        for name, pointer in function["params"]:
+            if not pointer:
+                scalars.setdefault(name, np.float32(0.5))
+            elif name == "cb":
+                probe_arrays[name] = np.zeros(25, dtype=np.int32)
+            else:
+                probe_arrays[name] = np.full(2, 0.25, dtype=np.float32)
+        for name in ("nx", "ny", "nz", "own_axis"):
+            scalars[name] = int(scalars[name])
+        interpreter, arguments, lanes = _evaluator_arguments(text, probe_arrays, scalars)
+        interpreter.launch(arguments, lanes)
+    except Unmodelled as exc:
+        return [str(exc)]
+    return []
 
 
 def evaluate_device_source(text: str, arrays: Dict[str, Any],
                            scalars: Dict[str, Any]) -> None:
     """Execute one device body in float32 NumPy, from the text itself.
 
-    Loads and the single store are read off the source, so a mutation that swaps
-    two load statements or reassociates the stored expression is really applied
-    here rather than assumed. Everything is float32 on both sides of every
-    operator; NumPy 2's weak promotion keeps a bare Python literal from widening
-    the result, and the dtype is asserted rather than trusted.
+    Every statement is read off the source by the shared kernel-text interpreter --
+    the guard, the index decode, the chunk-record block, the drive select, the loads
+    and the store -- so a mutation that swaps two loads, moves a record bound or
+    reassociates the stored expression is really applied here rather than assumed.
+    Arithmetic is float32 with one rounding per operation, the kernel's
+    ``--fmad=false`` contract. A construct outside the interpreter's grammar raises
+    ``ValueError``.
     """
-    namespace: Dict[str, Any] = dict(scalars)
-    store: Optional[Tuple[str, str]] = None
-    for line in body_lines(text):
-        if any(token in line for token in _SCAFFOLDING):
-            continue
-        match = _LOAD.match(line)
-        if match:
-            namespace[match.group(1)] = arrays[match.group(2)]
-            continue
-        match = _SCALAR_LOAD.match(line)
-        if match:
-            namespace[match.group(1)] = scalars[match.group(2)]
-            continue
-        match = _STORE.match(line)
-        if match:
-            store = (match.group(1), match.group(2))
-            continue
-        raise ValueError(f"the evaluator has no grammar for {line!r}")
-    if store is None:
-        raise ValueError("no store statement in the device body")
-    target, expression = store
-    value = eval(_float32_literals(expression), {"__builtins__": {}}, namespace)  # noqa: S307
-    value = np.asarray(value)
-    if value.dtype != np.float32:
-        raise ValueError(f"the evaluator produced {value.dtype}, not float32; a "
-                         f"widened intermediate is a different number")
-    arrays[target][...] = value
+    try:
+        interpreter, arguments, lanes = _evaluator_arguments(text, arrays, scalars)
+        interpreter.launch(arguments, lanes)
+    except Unmodelled as exc:
+        raise ValueError(f"the evaluator has no grammar for this body: {exc}") from exc
 
 
 class EvaluatorBackend:
@@ -599,12 +599,18 @@ class EvaluatorBackend:
     def is_pristine(self) -> bool:
         return self.sources == self.pristine
 
-    def launch_one(self, scratch, p, q, sigma, w, coefficients,
-                   volume: bool) -> None:
-        c_now, c_prev, c_drive = coefficients
-        arrays = {"p_out": scratch, "p_now": p, "p_prev": q, "drive": w}
-        scalars = {"c_now": np.float32(c_now), "c_prev": np.float32(c_prev),
-                   "c_drive": np.float32(c_drive)}
+    def launch_one(self, scratch, p, q, sigma, drive_w, drive_e, constants,
+                   volume: bool, own_axis: int, record) -> None:
+        two_minus_od, gamma1, omega0dtsqr, gamma1inv = constants
+        nx, ny, nz = (int(n) for n in scratch.shape)
+        arrays = {"p_out": scratch, "p_now": p, "p_prev": q,
+                  "drive_w": drive_w, "drive_e": drive_e,
+                  "cb": np.ascontiguousarray(record, dtype=np.int32)}
+        scalars = {"two_minus_od": np.float32(two_minus_od),
+                   "gamma1": np.float32(gamma1),
+                   "omega0dtsqr": np.float32(omega0dtsqr),
+                   "gamma1inv": np.float32(gamma1inv),
+                   "nx": nx, "ny": ny, "nz": nz, "own_axis": int(own_axis)}
         if volume:
             arrays["sigma"] = sigma
         else:
@@ -675,10 +681,11 @@ class KernelBackend:
         return all(self.source_for(volume) == self.pristine[volume]
                    for volume in (True, False))
 
-    def launch_one(self, scratch, p, q, sigma, w, coefficients,
-                   volume: bool) -> None:
+    def launch_one(self, scratch, p, q, sigma, drive_w, drive_e, constants,
+                   volume: bool, own_axis: int, record) -> None:
         self.kernels._launch(self.kernels._get_kernel(volume), scratch, p, q,
-                             sigma, w, coefficients, volume)
+                             sigma, drive_w, drive_e, constants, volume, own_axis,
+                             cp.asarray(np.ascontiguousarray(record, dtype=np.int32)))
 
     def synchronize(self) -> None:
         cp.cuda.runtime.deviceSynchronize()
@@ -725,31 +732,39 @@ def build_backend(name: str):
 # ``p1`` over one product), so it is measured rather than asserted.
 
 
-def _resolve(fields, state, component, drive):
+def _resolve(fields, state, component, drives):
     volume = bool(coverage.ade_sigma_is_volume(state, component))
-    return {"w": drive(component), "p": state.P[component],
+    drive_w, drive_e = drives(component)
+    return {"drive_w": drive_w, "drive_e": drive_e, "p": state.P[component],
             "q": state.P_prev[component], "scratch": state._scratch,
             "sigma": state.sigma[component], "volume": volume,
-            "coefficients": tuple(state._coefficients)}
+            "own_axis": COMPONENTS.index(component),
+            "constants": tuple(state.constants)}
 
 
 def _rotate(state, component, slot) -> None:
-    """dispersion.py:689-691, verbatim, and only once the launch returned."""
+    """``PolarizationState.update``'s rotation, verbatim, once the launch returned."""
     state.P[component] = slot["scratch"]
     state.P_prev[component] = slot["p"]
     state._scratch = slot["q"]
 
 
-def run_shipped(backend, fields, drive, steps: int) -> int:
+def _launch_slot(backend, slot, record, *, sigma=None, volume=None) -> None:
+    backend.launch_one(slot["scratch"], slot["p"], slot["q"],
+                       slot["sigma"] if sigma is None else sigma,
+                       slot["drive_w"], slot["drive_e"], slot["constants"],
+                       slot["volume"] if volume is None else volume,
+                       slot["own_axis"], record)
+
+
+def run_shipped(backend, fields, drives, record, steps: int) -> int:
     """Pointers resolved IMMEDIATELY BEFORE each launch, rotation after it."""
     launches = 0
     for _ in range(steps):
         for state in tuple(fields.polarizations):
             for component in tuple(state.driven()):
-                slot = _resolve(fields, state, component, drive)
-                backend.launch_one(slot["scratch"], slot["p"], slot["q"],
-                                   slot["sigma"], slot["w"],
-                                   slot["coefficients"], slot["volume"])
+                slot = _resolve(fields, state, component, drives)
+                _launch_slot(backend, slot, record)
                 launches += 1
                 _rotate(state, component, slot)
         advance_drive(fields)
@@ -757,7 +772,7 @@ def run_shipped(backend, fields, drive, steps: int) -> int:
     return launches
 
 
-def run_real_launcher(backend, fields, layer, drive, steps: int) -> int:
+def run_real_launcher(backend, fields, layer, drives, record, steps: int) -> int:
     """The SHIPPED entry point itself, ``update_P_fused_pml_real``.
 
     Present so that ``run_shipped`` above -- which every other leg drives, because
@@ -765,15 +780,16 @@ def run_real_launcher(backend, fields, layer, drive, steps: int) -> int:
     than believed. CuPy only: the launcher imports CuPy at module scope.
     """
     launches = 0
+    device_record = cp.asarray(np.ascontiguousarray(record, dtype=np.int32))
     for _ in range(steps):
         launches += backend.kernels.update_P_fused_pml_real(
-            fields, layer, drive=drive)
+            fields, layer, chunk_bounds=device_record, drives=drives)
         advance_drive(fields)
     backend.synchronize()
     return launches
 
 
-def run_stale_pointers(backend, fields, drive, steps: int) -> int:
+def run_stale_pointers(backend, fields, drives, record, steps: int) -> int:
     """HOST DEFECT: the three buffers resolved ONCE and the views reused.
 
     The hazard the launcher's docstring names in as many words, and the sibling
@@ -786,15 +802,13 @@ def run_stale_pointers(backend, fields, drive, steps: int) -> int:
     caught only where a rotation has happened in between, which is what makes the
     multi-step leg a statement about the rotation.
     """
-    plan = [(state, component, _resolve(fields, state, component, drive))
+    plan = [(state, component, _resolve(fields, state, component, drives))
             for state in tuple(fields.polarizations)
             for component in tuple(state.driven())]
     launches = 0
     for _ in range(steps):
         for state, component, slot in plan:
-            backend.launch_one(slot["scratch"], slot["p"], slot["q"],
-                               slot["sigma"], slot["w"],
-                               slot["coefficients"], slot["volume"])
+            _launch_slot(backend, slot, record)
             launches += 1
             _rotate(state, component, slot)
         advance_drive(fields)
@@ -802,23 +816,21 @@ def run_stale_pointers(backend, fields, drive, steps: int) -> int:
     return launches
 
 
-def run_no_rotation(backend, fields, drive, steps: int) -> int:
+def run_no_rotation(backend, fields, drives, record, steps: int) -> int:
     """HOST DEFECT: the launch is right and the three names never move."""
     launches = 0
     for _ in range(steps):
         for state in tuple(fields.polarizations):
             for component in tuple(state.driven()):
-                slot = _resolve(fields, state, component, drive)
-                backend.launch_one(slot["scratch"], slot["p"], slot["q"],
-                                   slot["sigma"], slot["w"],
-                                   slot["coefficients"], slot["volume"])
+                slot = _resolve(fields, state, component, drives)
+                _launch_slot(backend, slot, record)
                 launches += 1
         advance_drive(fields)
     backend.synchronize()
     return launches
 
 
-def run_scalar_sigma_for_a_volume(backend, fields, drive, steps: int) -> int:
+def run_scalar_sigma_for_a_volume(backend, fields, drives, record, steps: int) -> int:
     """HOST DEFECT: the UNIFORM variant compiled for a graded sigma.
 
     The compile-time specialization and the predicate disagreeing is what
@@ -831,12 +843,11 @@ def run_scalar_sigma_for_a_volume(backend, fields, drive, steps: int) -> int:
     for _ in range(steps):
         for state in tuple(fields.polarizations):
             for component in tuple(state.driven()):
-                slot = _resolve(fields, state, component, drive)
+                slot = _resolve(fields, state, component, drives)
                 sigma = slot["sigma"]
                 if slot["volume"]:
                     sigma = float(to_host(sigma).mean())
-                backend.launch_one(slot["scratch"], slot["p"], slot["q"],
-                                   sigma, slot["w"], slot["coefficients"], False)
+                _launch_slot(backend, slot, record, sigma=sigma, volume=False)
                 launches += 1
                 _rotate(state, component, slot)
         advance_drive(fields)
@@ -844,7 +855,7 @@ def run_scalar_sigma_for_a_volume(backend, fields, drive, steps: int) -> int:
     return launches
 
 
-def run_nothing(backend, fields, drive, steps: int) -> int:
+def run_nothing(backend, fields, drives, record, steps: int) -> int:
     """HARNESS: no launch at all. Must DIVERGE, or bytes prove nothing."""
     for _ in range(steps):
         advance_drive(fields)
@@ -868,7 +879,9 @@ HOST_PLANS: Dict[str, Callable[..., int]] = {
 # polarization with the wrong recurrence in it. None is a crash, and none would be
 # caught by a magnitude comparison at any tolerance a physicist would accept.
 
-_EXPRESSION = "((p * c_now) + (c_prev * q)) + (c_drive * (s * w))"
+_EXPRESSION = ("gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + "
+               "(omega0dtsqr * (s * w)))")
+_SELECT = "dsigw ? drive_w[idx] : drive_e[idx]"
 
 
 def _sub(pattern: str, replacement: str, text: str) -> Tuple[str, int]:
@@ -876,30 +889,43 @@ def _sub(pattern: str, replacement: str, text: str) -> Tuple[str, int]:
     return new, count
 
 
-def m_reassociate_three_terms(text: str) -> Tuple[str, int]:
-    """The left association across the two ``+=`` regrouped to the right.
+def m_add_the_drive_before_the_history(text: str) -> Tuple[str, int]:
+    """The drive term added before the history term is subtracted.
 
-    THE FIRST OF THE FOUR THINGS THAT DECIDE BIT-IDENTITY HERE. The array path's
-    two ``+=`` statements fix the association (dispersion.py:684-686) and float32
-    addition is not associative. Algebraically equal, numerically not.
+    MEEP's ``pcur * (2 - omega0dtsqr_denom) - gamma1 * pp[i] + omega0dtsqr * (s[i] *
+    w[i])`` associates left (susceptibility.cpp:253-254): the difference first, the
+    drive added to it. Algebraically equal, numerically not.
     """
     return _sub(re.escape(_EXPRESSION),
-                "(p * c_now) + ((c_prev * q) + (c_drive * (s * w)))", text)
+                "gamma1inv * (((p * two_minus_od) + (omega0dtsqr * (s * w))) - "
+                "(gamma1 * q))", text)
 
 
-def m_associate_c_drive_with_sigma(text: str) -> Tuple[str, int]:
-    """``c_drive * (s * w)`` regrouped as ``(c_drive * s) * w``.
+def m_folded_three_term_form(text: str) -> Tuple[str, int]:
+    """THE INVERTED MUTATION (KERNELS.md section 7.1): the 0.9.2 package form.
 
-    THE SECOND. ``scratch += c_drive * (sigma * w)`` (dispersion.py:686) builds the
-    inner product first; moving the parenthesis rounds a different intermediate.
+    ``((p * c_now) + (c_prev * q)) + (c_drive * (s * w))`` with ``gamma1inv`` folded
+    into the three constants -- formed here in float32 from MEEP's four words -- which
+    is the grouping this kernel shipped before it took MEEP's.
     """
-    return _sub(re.escape("(c_drive * (s * w))"), "((c_drive * s) * w)", text)
+    return _sub(re.escape(_EXPRESSION),
+                "((p * (gamma1inv * two_minus_od)) - ((gamma1inv * gamma1) * q)) + "
+                "((gamma1inv * omega0dtsqr) * (s * w))", text)
+
+
+def m_associate_the_drive_constant_with_sigma(text: str) -> Tuple[str, int]:
+    """``omega0dtsqr * (s * w)`` regrouped as ``(omega0dtsqr * s) * w``.
+
+    MEEP builds the inner product first (``omega0dtsqr * (s[i] * w[i])``); moving the
+    parenthesis rounds a different intermediate.
+    """
+    return _sub(re.escape("(omega0dtsqr * (s * w))"), "((omega0dtsqr * s) * w)", text)
 
 
 def m_drop_previous_history(text: str) -> Tuple[str, int]:
-    """``c_prev * P^(n-1)`` zeroed: a second-order recurrence reduced to first
+    """``gamma1 * P^(n-1)`` zeroed: a second-order recurrence reduced to first
     order. Stable, smooth, and the wrong material."""
-    return _sub(re.escape("(c_prev * q)"), "(0.0f * q)", text)
+    return _sub(re.escape("(gamma1 * q)"), "(0.0f * q)", text)
 
 
 def m_swap_p_and_q(text: str) -> Tuple[str, int]:
@@ -913,14 +939,14 @@ def m_swap_p_and_q(text: str) -> Tuple[str, int]:
     return out, int(out != text) * 2
 
 
-def m_swap_c_now_and_c_prev(text: str) -> Tuple[str, int]:
-    """The two recurrence coefficients bound to each other's terms.
+def m_swap_the_history_constants(text: str) -> Tuple[str, int]:
+    """``two_minus_od`` and ``gamma1`` bound to each other's terms.
 
     Both are finite, both are order one, and the resulting oscillator is entirely
     plausible -- it simply is not the susceptibility the caller asked for.
     """
-    return _sub(re.escape("(p * c_now) + (c_prev * q)"),
-                "(p * c_prev) + (c_now * q)", text)
+    return _sub(re.escape("(p * two_minus_od) - (gamma1 * q)"),
+                "(p * gamma1) - (two_minus_od * q)", text)
 
 
 def m_drop_sigma(text: str) -> Tuple[str, int]:
@@ -932,20 +958,65 @@ def m_drop_sigma(text: str) -> Tuple[str, int]:
     return _sub(re.escape("(s * w)"), "(1.0f * w)", text)
 
 
-def n_commute_the_history_product(text: str) -> Tuple[str, int]:
-    """NULL: ``c_prev * q`` written ``q * c_prev``. IEEE multiply commutes bitwise.
+def m_drive_f_w_on_every_cell(text: str) -> Tuple[str, int]:
+    """THE SELECT REMOVED: ``f_w`` read as the drive on every cell (the 0.9.2 form).
 
-    Its discriminator is ``swap_c_now_and_c_prev``, which REBINDS the same operands
-    and must be caught -- so the pair says the comparator is sensitive to which
-    coefficient multiplies which term and insensitive to operand order.
+    MEEP's ``w`` is ``f_w`` only in a chunk that carries the component's own layer
+    (update_pols.cpp:44); elsewhere ``update_E`` stored the constitutive product in E
+    and left ``f_w`` untouched, so ``f_w`` there is stale state.
     """
-    return _sub(re.escape("(c_prev * q)"), "(q * c_prev)", text)
+    return _sub(re.escape(_SELECT), "drive_w[idx]", text)
+
+
+def m_drive_flag_bound_off_by_one(text: str) -> Tuple[str, int]:
+    """The high bound of the first membership run moved by one row on every axis."""
+    total = 0
+    for axis, coordinate in zip("xyz", "ijk"):
+        text, count = _sub(re.escape(f"({coordinate} >= cbh_{axis}_a0 && "
+                                     f"{coordinate} < cbh_{axis}_a1)"),
+                           f"({coordinate} >= cbh_{axis}_a0 && "
+                           f"{coordinate} < cbh_{axis}_a1 + 1)", text)
+        total += count
+    return text, total
+
+
+def m_drive_flag_on_the_integer_record(text: str) -> Tuple[str, int]:
+    """The integer-lattice record entries read where the half-integer ones belong.
+
+    An E component is half-integer along its own axis, and the record's two lattices'
+    runs differ by one row at each layer edge.
+    """
+    total = 0
+    for axis, base in zip("xyz", (12, 16, 20)):
+        old = ", ".join(f"cbh_{axis}_{word} = cb[{base + slot}]"
+                        for slot, word in enumerate(("a0", "a1", "b0", "b1")))
+        new = ", ".join(f"cbh_{axis}_{word} = cb[{base - 12 + slot}]"
+                        for slot, word in enumerate(("a0", "a1", "b0", "b1")))
+        text, count = _sub(re.escape(old), new, text)
+        total += count
+    return text, total
+
+
+def m_drive_flag_on_another_axis(text: str) -> Tuple[str, int]:
+    """Each component's drive keyed on the next axis's membership, not its own."""
+    return _sub(re.escape("own_axis == 0 ? in_h_x : (own_axis == 1 ? in_h_y : in_h_z)"),
+                "own_axis == 0 ? in_h_y : (own_axis == 1 ? in_h_z : in_h_x)", text)
+
+
+def n_commute_the_history_product(text: str) -> Tuple[str, int]:
+    """NULL: ``gamma1 * q`` written ``q * gamma1``. IEEE multiply commutes bitwise.
+
+    Its discriminator is ``swap_the_history_constants``, which REBINDS the same
+    operands and must be caught -- so the pair says the comparator is sensitive to
+    which constant multiplies which term and insensitive to operand order.
+    """
+    return _sub(re.escape("(gamma1 * q)"), "(q * gamma1)", text)
 
 
 def n_commute_the_drive_product(text: str) -> Tuple[str, int]:
     """NULL: ``s * w`` written ``w * s``.
 
-    Paired with ``associate_c_drive_with_sigma``, which regroups the SAME
+    Paired with ``associate_the_drive_constant_with_sigma``, which regroups the SAME
     sub-expression and must be caught: grouping matters, order does not.
     """
     return _sub(re.escape("(s * w)"), "(w * s)", text)
@@ -964,12 +1035,17 @@ def n_reorder_the_two_loads(text: str) -> Tuple[str, int]:
 
 
 SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
-    "reassociate_three_terms": m_reassociate_three_terms,
-    "associate_c_drive_with_sigma": m_associate_c_drive_with_sigma,
+    "add_the_drive_before_the_history": m_add_the_drive_before_the_history,
+    "folded_three_term_form": m_folded_three_term_form,
+    "associate_the_drive_constant_with_sigma": m_associate_the_drive_constant_with_sigma,
     "drop_previous_history": m_drop_previous_history,
     "swap_p_and_q": m_swap_p_and_q,
-    "swap_c_now_and_c_prev": m_swap_c_now_and_c_prev,
+    "swap_the_history_constants": m_swap_the_history_constants,
     "drop_sigma": m_drop_sigma,
+    "drive_f_w_on_every_cell": m_drive_f_w_on_every_cell,
+    "drive_flag_bound_off_by_one": m_drive_flag_bound_off_by_one,
+    "drive_flag_on_the_integer_record": m_drive_flag_on_the_integer_record,
+    "drive_flag_on_another_axis": m_drive_flag_on_another_axis,
     "commute_the_history_product": n_commute_the_history_product,
     "commute_the_drive_product": n_commute_the_drive_product,
     "reorder_the_two_loads": n_reorder_the_two_loads,
@@ -1005,11 +1081,28 @@ def case_key(spec: Dict[str, Any], guard_label: str, steps: int) -> str:
         f"C{spec['courant']}", spec["value_class"], guard_label, f"n{steps}"])
 
 
+#: The drive bindings a case may plant, as ``drives(fields, layer)`` factories. The
+#: shipped one is ``ade_kernels.drive_pair``'s (``f_w`` and the stored E under a layer);
+#: the two controls bind one array to both pointers, which is the select removed.
+WRONG_DRIVES = {
+    "stored_E_on_every_cell": lambda fields, component: (getattr(fields, component),
+                                                         getattr(fields, component)),
+    "f_w_on_every_cell": lambda fields, component: (getattr(fields, "f_w_" + component),
+                                                    getattr(fields, "f_w_" + component)),
+}
+
+
+def shipped_drives(fields):
+    """``ade_kernels.drive_pair`` under the gate's active layer, restated CuPy-free."""
+    return lambda component: (getattr(fields, "f_w_" + component),
+                              getattr(fields, component))
+
+
 def one_case(backend, xp, spec: Dict[str, Any], guard_label: str,
              guard: Sequence[str], steps: int,
              source_mutation: Optional[str] = None,
              host_plan: str = "shipped",
-             wrong_drive: bool = False,
+             wrong_drive: Optional[str] = None,
              comparator=None,
              use_real_launcher: bool = False) -> Dict[str, Any]:
     """Oracle and kernel on two identically seeded fixtures; slots compared as words."""
@@ -1043,8 +1136,13 @@ def one_case(backend, xp, spec: Dict[str, Any], guard_label: str,
 
     # --- the kernel, on the twin fixture ---------------------------------
     backend.set_guard(guard)
-    drive = ((lambda component: getattr(actual, component)) if wrong_drive
-             else actual.drive_field)
+    if wrong_drive:
+        planted = WRONG_DRIVES[wrong_drive]
+        drives = (lambda component: planted(actual, component))
+    else:
+        drives = shipped_drives(actual)
+    # The oracle's division: the region plan its first drive_field read installed.
+    record = region_plan_record(actual)
     launch_error = None
     launches = -1
     # The real launcher lives in a CuPy-importing module; on the evaluator backend
@@ -1053,9 +1151,9 @@ def one_case(backend, xp, spec: Dict[str, Any], guard_label: str,
     use_real_launcher = bool(use_real_launcher) and hasattr(backend, "kernels")
     try:
         if use_real_launcher:
-            launches = run_real_launcher(backend, actual, act_layer, drive, steps)
+            launches = run_real_launcher(backend, actual, act_layer, drives, record, steps)
         else:
-            launches = HOST_PLANS[host_plan](backend, actual, drive, steps)
+            launches = HOST_PLANS[host_plan](backend, actual, drives, record, steps)
     except Exception as exc:  # noqa: BLE001 - a refusal is a result, recorded
         launch_error = f"{type(exc).__name__}: {exc}"[:600]
 
@@ -1089,6 +1187,8 @@ def one_case(backend, xp, spec: Dict[str, Any], guard_label: str,
         "host_plan": host_plan,
         "wrong_drive": wrong_drive,
         "used_real_launcher": use_real_launcher,
+        "chunk_record": [int(word) for word in record],
+        "drive_split_components": drive_split_components(actual, spec),
         "bit_identical": bool(verdict["bit_identical"]) and launch_error is None,
         "differing_floats": verdict["differing_floats"],
         "total_floats": verdict["total_floats"],
@@ -1113,6 +1213,22 @@ def one_case(backend, xp, spec: Dict[str, Any], guard_label: str,
     return record
 
 
+def drive_split_components(fields, spec: Dict[str, Any]) -> List[str]:
+    """The driven components whose cells lie on both sides of their membership run.
+
+    Only there can a drive select be wrong in a way the words show: a component
+    wholly inside (or wholly outside) its run takes one array everywhere.
+    """
+    plan = fields.region_plan
+    out = []
+    for component in spec["driven"]:
+        mask = np.asarray(to_host(plan.mask("constitutive", component, np)))
+        mask = np.broadcast_to(mask, tuple(fields.grid.shape))
+        if mask.any() and (~mask).any():
+            out.append(component)
+    return out
+
+
 def case_is_valid(record: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
     """A case that could not distinguish anything is REFUSED, not passed."""
     if not record["fixtures_started_identical"]:
@@ -1125,10 +1241,10 @@ def case_is_valid(record: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         return False, ("the oracle overflowed to inf or NaN; every word would then "
                        "agree for a reason unrelated to the kernel")
     if not record["drive_term_is_live"]:
-        return False, ("c_drive * (sigma * w) is identically zero: this case cannot "
-                       "distinguish the drive binding or the sigma product")
+        return False, ("omega0dtsqr * (sigma * w) is identically zero: this case "
+                       "cannot distinguish the drive binding or the sigma product")
     if not record["history_term_is_live"]:
-        return False, ("c_prev * P_prev is identically zero: the recurrence is "
+        return False, ("gamma1 * P_prev is identically zero: the recurrence is "
                        "first order here and its history term cannot be tested")
     if not record["launch_count_as_expected"] and record["launch_error"] is None:
         return False, (f"{record['launches']} launches where "
@@ -1284,15 +1400,16 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
     {"leg": "p1_pristine", "expect": "pass",
      "why": "the shipped source through the transcribed launcher, so a divergence "
             "on any later leg is attributable to the arming and not to the product."},
-    {"leg": "m1_reassociate_three_terms", "mutation": "reassociate_three_terms",
-     "kind": "source", "expect": "caught",
-     "why": "the left association across the two += regrouped right; float32 "
-            "addition is not associative and this is the family's first claim"},
-    {"leg": "m2_associate_c_drive_with_sigma",
-     "mutation": "associate_c_drive_with_sigma", "kind": "source",
+    {"leg": "m1_add_the_drive_before_the_history",
+     "mutation": "add_the_drive_before_the_history", "kind": "source",
      "expect": "caught",
-     "why": "c_drive * (s * w) regrouped as (c_drive * s) * w: the second claim, "
-            "a differently rounded intermediate"},
+     "why": "MEEP's expression associates left: the difference first, the drive "
+            "added to it. float32 addition is not associative"},
+    {"leg": "m2_associate_the_drive_constant_with_sigma",
+     "mutation": "associate_the_drive_constant_with_sigma", "kind": "source",
+     "expect": "caught",
+     "why": "omega0dtsqr * (s * w) regrouped as (omega0dtsqr * s) * w: a "
+            "differently rounded intermediate"},
     {"leg": "m3_drop_previous_history", "mutation": "drop_previous_history",
      "kind": "source", "expect": "caught",
      "why": "a second-order recurrence reduced to first order: stable, smooth and "
@@ -1300,14 +1417,37 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
     {"leg": "m4_swap_p_and_q", "mutation": "swap_p_and_q", "kind": "source",
      "expect": "caught",
      "why": "P^n and P^(n-1) read from each other's buffers"},
-    {"leg": "m5_swap_c_now_and_c_prev", "mutation": "swap_c_now_and_c_prev",
-     "kind": "source", "expect": "caught",
-     "why": "the two recurrence coefficients bound to each other's terms; an "
-            "entirely plausible oscillator that is not the one asked for"},
+    {"leg": "m5_swap_the_history_constants",
+     "mutation": "swap_the_history_constants", "kind": "source", "expect": "caught",
+     "why": "two_minus_od and gamma1 bound to each other's terms; an entirely "
+            "plausible oscillator that is not the one asked for"},
     {"leg": "m6_drop_sigma", "mutation": "drop_sigma", "kind": "source",
      "expect": "caught",
      "why": "every cell carries sigma = 1: a uniform material where a graded one "
             "was asked for"},
+    {"leg": "m7_folded_three_term_form", "mutation": "folded_three_term_form",
+     "kind": "source", "expect": "caught",
+     "why": "THE INVERTED MUTATION (KERNELS.md section 7.1): the 0.9.2 package "
+            "grouping ((p*c_now) + (c_prev*q)) + (c_drive*(s*w)) with gamma1inv "
+            "folded into the three constants. It must stay must-catch now that the "
+            "shipped form is MEEP's."},
+    {"leg": "b1_drive_f_w_on_every_cell", "mutation": "drive_f_w_on_every_cell",
+     "kind": "source", "expect": "caught",
+     "why": "THE SELECT REMOVED (section 7.2): f_w read as the drive everywhere, "
+            "the 0.9.2 form. Off the layer's chunks f_w is stale state and E is the "
+            "constitutive product."},
+    {"leg": "b2_drive_flag_bound_off_by_one",
+     "mutation": "drive_flag_bound_off_by_one", "kind": "source", "expect": "caught",
+     "why": "a record bound off by one row: the boundary plane takes the other "
+            "array"},
+    {"leg": "b3_drive_flag_on_the_integer_record",
+     "mutation": "drive_flag_on_the_integer_record", "kind": "source",
+     "expect": "caught",
+     "why": "the integer and half-integer records swapped: the run edge moves by "
+            "one row"},
+    {"leg": "b4_drive_flag_on_another_axis",
+     "mutation": "drive_flag_on_another_axis", "kind": "source", "expect": "caught",
+     "why": "each component's drive keyed on the wrong axis's membership"},
     {"leg": "n1_commute_the_history_product",
      "mutation": "commute_the_history_product", "kind": "source",
      "expect": "uncaught",
@@ -1321,19 +1461,23 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
      "kind": "source", "expect": "uncaught",
      "why": "NULL: two independent loads swapped, bindings untouched. Paired with "
             "m4, which swaps the BUFFERS and must be caught."},
-    {"leg": "h1_wrong_drive_stored_E", "kind": "host", "wrong_drive": True,
-     "expect": "caught",
-     "why": "THE CONTROL THIS FAMILY MOST OWES. Fields.drive_field returns f_w "
-            "under an active layer and the stored E without one (fields.py:1140-"
-            "1163); the two agree EXACTLY outside the absorber, so binding the "
-            "wrong one is invisible in every no-PML test. The sibling track "
-            "measured 3072/15360 words differing."},
+    {"leg": "h1_wrong_drive_stored_E", "kind": "host",
+     "wrong_drive": "stored_E_on_every_cell", "expect": "caught",
+     "why": "THE CONTROL THIS FAMILY MOST OWES. MEEP's w is f_w on the cells whose "
+            "chunk carries the component's layer and the stored E elsewhere; the two "
+            "agree EXACTLY off the layer's chunks, so binding E everywhere is "
+            "invisible in every no-PML test."},
     {"leg": "h2_wrong_drive_is_null_when_E_equals_f_w", "kind": "host",
-     "wrong_drive": True, "expect": "uncaught", "drive_equals_stored_E": True,
-     "why": "THE DISCRIMINATOR for h1. Seed the stored E equal to f_w -- the state "
-            "the whole no-PML corpus is in -- and the same planted binding must be "
-            "a NULL. Without this pair, 'the wrong drive is caught' could be a "
-            "statement about any difference between two arrays."},
+     "wrong_drive": "stored_E_on_every_cell", "expect": "uncaught",
+     "drive_equals_stored_E": True,
+     "why": "THE DISCRIMINATOR for h1 and h6. Seed the stored E equal to f_w -- the "
+            "state the whole no-PML corpus is in -- and the same planted binding "
+            "must be a NULL. Without this pair, 'the wrong drive is caught' could "
+            "be a statement about any difference between two arrays."},
+    {"leg": "h6_wrong_drive_f_w", "kind": "host", "wrong_drive": "f_w_on_every_cell",
+     "expect": "caught",
+     "why": "THE SELECT REMOVED ON THE HOST: f_w bound to both drive pointers. "
+            "Caught on the cells off the component's membership run."},
     {"leg": "h3_stale_pointers", "kind": "host", "host_plan": "stale_pointers",
      "expect": "caught_only_multi_step",
      "why": "THE ROTATION LEG. The three buffers resolved once and the views "
@@ -1356,8 +1500,8 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
             "DIVERGE -- two identically seeded fixtures and an oracle that moved "
             "is the only thing standing between this gate and a vacuous pass."},
     {"leg": "x2_allclose_hides_the_reassociation",
-     "mutation": "reassociate_three_terms", "kind": "source", "expect": "measure",
-     "comparator": "allclose",
+     "mutation": "add_the_drive_before_the_history", "kind": "source",
+     "expect": "measure", "comparator": "allclose",
      "why": "HARNESS: relax the byte comparison to np.allclose and COUNT how many "
             "cases of a real defect walk through. The reassociation is "
             "algebraically EQUAL and differs by ~1 ulp relative, far below "
@@ -1462,7 +1606,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
                         backend, xp, spec, "fmad_false", ("--fmad=false",), count,
                         source_mutation=leg.get("mutation"),
                         host_plan=host_plan,
-                        wrong_drive=bool(leg.get("wrong_drive")),
+                        wrong_drive=leg.get("wrong_drive"),
                         comparator=comparator,
                         use_real_launcher=bool(leg.get("real_launcher")))
                     valid, why = case_is_valid(record)

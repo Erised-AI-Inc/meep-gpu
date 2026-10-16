@@ -21,10 +21,9 @@ at launch, because ``PolarizationState.update`` rotates P/P_prev/scratch.
 Conductivity is deliberately admitted without a coefficient or branch.  It is
 read in the B/D curl recurrences, not in ``update_E``.  A nonzero Bloch vector is
 also admitted: this sub-step is pointwise and neither shifts a field nor applies
-a boundary phase.  The only complex multiplication here is the already-probed
-``c8_mul_f4_field_left`` orientation, so the shared four-pattern expansion
-license is necessary and sufficient; the fifth complex-ADE scalar pattern is
-not executed by this body.
+a boundary phase.  The only multiplication here is the real ``inv_eps`` word
+times each stored part (``complex_fields._mul_field_left``), one float32 product
+per part.
 
 The central planner reaches this family through lazy launch/package forwarders.
 Driver/fastpath certification remains separate: the family must pass its CUDA
@@ -43,12 +42,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from . import coverage as _coverage
 from .complex_fields import (
     DEFAULT_BLOCK,
-    PROBE_PATTERNS,
     _UnavailableKernel,
     _complex_volume_reasons,
-    _expansion_reasons,
     _mul_field_left,
-    _resolve_expansion,
     _word_view,
 )
 
@@ -81,7 +77,6 @@ E_TERMS: Tuple[Tuple[str, str], ...] = (
 __all__ = [
     "E_TERMS",
     "MAX_POLES",
-    "PROBE_PATTERNS",
     "ComplexStoredEPlan",
     "LiveComplexPoleBinding",
     "StaticComplexPoleBinding",
@@ -139,7 +134,6 @@ def complex_stored_e_step(
     c0, c1, c2, c3, c4, c5, c6, c7,   # Ez poles, registration order
     n_elem,
     NP0: tl.constexpr, NP1: tl.constexpr, NP2: tl.constexpr,
-    EXPANSION: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     """Store complex ``(D - P0 - P1 ...) * inv_eps`` for all E components."""
@@ -150,21 +144,21 @@ def complex_stored_e_step(
     s0_re, s0_im = _subtract_complex_poles(
         g0, a0, a1, a2, a3, a4, a5, a6, a7, word, live, NP0)
     o0_re, o0_im = _mul_field_left(
-        s0_re, s0_im, tl.load(e0 + idx, mask=live, other=0.0), EXPANSION)
+        s0_re, s0_im, tl.load(e0 + idx, mask=live, other=0.0))
     tl.store(f0 + word, o0_re, mask=live)
     tl.store(f0 + word + 1, o0_im, mask=live)
 
     s1_re, s1_im = _subtract_complex_poles(
         g1, b0, b1, b2, b3, b4, b5, b6, b7, word, live, NP1)
     o1_re, o1_im = _mul_field_left(
-        s1_re, s1_im, tl.load(e1 + idx, mask=live, other=0.0), EXPANSION)
+        s1_re, s1_im, tl.load(e1 + idx, mask=live, other=0.0))
     tl.store(f1 + word, o1_re, mask=live)
     tl.store(f1 + word + 1, o1_im, mask=live)
 
     s2_re, s2_im = _subtract_complex_poles(
         g2, c0, c1, c2, c3, c4, c5, c6, c7, word, live, NP2)
     o2_re, o2_im = _mul_field_left(
-        s2_re, s2_im, tl.load(e2 + idx, mask=live, other=0.0), EXPANSION)
+        s2_re, s2_im, tl.load(e2 + idx, mask=live, other=0.0))
     tl.store(f2 + word, o2_re, mask=live)
     tl.store(f2 + word + 1, o2_im, mask=live)
 
@@ -181,8 +175,7 @@ def poles_per_component(fields: Any) -> Dict[str, Tuple[Any, ...]]:
     }
 
 
-def complex_stored_e_coverage(fields: Any, pml: Any,
-                              probe: Any = None) -> _coverage.Coverage:
+def complex_stored_e_coverage(fields: Any, pml: Any) -> _coverage.Coverage:
     """May the complex, pole-aware, no-PML stored-E body own ``update_E``?"""
     reasons: List[str] = []
     grid = getattr(fields, "grid", None)
@@ -281,7 +274,6 @@ def complex_stored_e_coverage(fields: Any, pml: Any,
             else:
                 reasons.extend(_complex_volume_reasons(name, array, shape))
     reasons.extend(_coverage._inverse_epsilon_reasons(fields, shape))
-    reasons.extend(_expansion_reasons(probe))
     return _coverage.Coverage(not reasons, tuple(reasons))
 
 
@@ -334,13 +326,13 @@ class ComplexStoredEPlan:
     """One launchable complex64 stored-E ``update_E`` plan."""
 
     __slots__ = (
-        "shape", "n_elem", "block", "counts", "expansion", "_targets",
+        "shape", "n_elem", "block", "counts", "_targets",
         "_sources", "_inv_eps", "_poles", "_grid", "_kernel", "_pointer",
     )
 
     def __init__(self, shape: Sequence[int], targets: Sequence[Any],
                  sources: Sequence[Any], inverse_epsilon: Sequence[Any],
-                 poles: Any, expansion: int, block: int = DEFAULT_BLOCK,
+                 poles: Any, block: int = DEFAULT_BLOCK,
                  kernel: Any = None, pointer: Any = None) -> None:
         if pointer is None:
             from .launch import CupyPointer  # noqa: PLC0415
@@ -355,7 +347,6 @@ class ComplexStoredEPlan:
             if count > MAX_POLES:
                 raise ValueError(
                     f"{component} has {count} poles; MAX_POLES={MAX_POLES}")
-        self.expansion = int(expansion)
         self._pointer = pointer
         self._targets = tuple(pointer(_word_view(array)) for array in targets)
         self._sources = tuple(pointer(_word_view(array)) for array in sources)
@@ -386,23 +377,20 @@ class ComplexStoredEPlan:
             *self._targets, *self._sources, *self._inv_eps, *slots,
             self.n_elem,
             NP0=self.counts[0], NP1=self.counts[1], NP2=self.counts[2],
-            EXPANSION=self.expansion, BLOCK=self.block,
+            BLOCK=self.block,
             enable_fp_fusion=fusion,
         )
 
     def __repr__(self) -> str:
         return (
             f"ComplexStoredEPlan(shape={self.shape}, poles={self.counts}, "
-            f"expansion={self.expansion}, block={self.block})")
+            f"block={self.block})")
 
 
-def plan_complex_stored_e(fields: Any, pml: Any, block: Optional[int] = None,
-                          probe: Any = None) -> Optional[ComplexStoredEPlan]:
+def plan_complex_stored_e(fields: Any, pml: Any, block: Optional[int] = None
+                          ) -> Optional[ComplexStoredEPlan]:
     """Build the engine-object plan, or ``None`` with predicate reasons."""
-    if not complex_stored_e_coverage(fields, pml, probe=probe).covered:
-        return None
-    expansion = _resolve_expansion(probe)
-    if expansion is None:  # pragma: no cover - coverage refused the same record
+    if not complex_stored_e_coverage(fields, pml).covered:
         return None
     order = poles_per_component(fields)
     return ComplexStoredEPlan(
@@ -410,13 +398,13 @@ def plan_complex_stored_e(fields: Any, pml: Any, block: Optional[int] = None,
         [getattr(fields, component) for component, _ in E_TERMS],
         [getattr(fields, displacement) for _, displacement in E_TERMS],
         [fields.inverse_epsilon_for(component) for component, _ in E_TERMS],
-        LiveComplexPoleBinding(fields, order), expansion,
+        LiveComplexPoleBinding(fields, order),
         DEFAULT_BLOCK if block is None else block,
     )
 
 
 def plan_complex_stored_e_from_arrays(
-    arrays: Dict[str, Any], poles: Dict[str, Sequence[Any]], expansion: int,
+    arrays: Dict[str, Any], poles: Dict[str, Sequence[Any]],
     block: Optional[int] = None, kernel: Any = None,
 ) -> ComplexStoredEPlan:
     """Build from deliberate gate arrays, retaining an optional mutated kernel."""
@@ -428,5 +416,5 @@ def plan_complex_stored_e_from_arrays(
         [arrays["inv_eps_" + component] for component, _ in E_TERMS],
         StaticComplexPoleBinding(
             [poles[component] for component, _ in E_TERMS]),
-        expansion, DEFAULT_BLOCK if block is None else block, kernel=kernel,
+        DEFAULT_BLOCK if block is None else block, kernel=kernel,
     )

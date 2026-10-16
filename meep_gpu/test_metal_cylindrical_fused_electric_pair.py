@@ -47,7 +47,7 @@ CENSUS = (REPO / "parity" / "meep_gpu" / "results"
           / "metal_coverage_tranche6_2026-08-19")
 
 from meep_gpu.metal_kernels import (  # noqa: E402
-    arms, coefficient_pack,
+    arms, chunk_bounds, coefficient_pack,
     complex_fused_electric_pair as cartesian,
     cylindrical_complex,
     cylindrical_fused_electric_pair as family,
@@ -57,17 +57,12 @@ from meep_gpu.metal_kernels import (  # noqa: E402
 )
 from meep_gpu.metal_kernels.device import MAX_BUFFER_BINDINGS  # noqa: E402
 
-#: The arm every emitted-source assertion below specialises at. ``FMA_V1`` is the
-#: expansion the shipped probe classifies on this host; the SOURCE assertions are
-#: arm-independent (they compare emitted text against the same emitters at the same
-#: arm), so pinning one here keeps them deterministic without a device.
-EXPANSION = "FMA_V1"
 WALLED_Z = (False, False, True)
 UNWALLED = (False, False, False)
 
 
 def emit(bcz=templates.METALLIC, arm=cylindrical_complex.M_ONE, walls=WALLED_Z):
-    return family.cylindrical_fused_electric_pair_source(bcz, arm, walls, EXPANSION)
+    return family.cylindrical_fused_electric_pair_source(bcz, arm, walls)
 
 
 def census_rows():
@@ -131,7 +126,7 @@ def test_it_is_the_largest_cell_on_the_board_and_disjoint_from_the_m0_sibling():
 def test_the_curl_half_is_the_certified_emitters_body_on_both_sides_of_the_splice():
     source = emit()
     curl = family.certified_cylindrical_curl_body(
-        templates.METALLIC, cylindrical_complex.M_ONE, EXPANSION)
+        templates.METALLIC, cylindrical_complex.M_ONE)
     head, tail = curl.split(family._CURL_STORE, 1)
     assert head in source
     assert (family._CURL_STORE + tail) in source
@@ -140,18 +135,18 @@ def test_the_curl_half_is_the_certified_emitters_body_on_both_sides_of_the_splic
 def test_the_curl_half_is_the_BACKWARD_arm_and_never_the_magnetic_one():
     """``backward`` is pinned True: ``step_B``'s forward strides are the twin's."""
     d_side = family.certified_cylindrical_curl_body(
-        templates.METALLIC, cylindrical_complex.M_ONE, EXPANSION)
+        templates.METALLIC, cylindrical_complex.M_ONE)
     b_side = twin.certified_cylindrical_curl_body(
-        templates.METALLIC, cylindrical_complex.M_ONE, EXPANSION)
+        templates.METALLIC, cylindrical_complex.M_ONE)
     assert d_side != b_side
     assert d_side == cylindrical_complex.cylindrical_curl_source(
-        templates.METALLIC, True, cylindrical_complex.M_ONE, EXPANSION
+        templates.METALLIC, True, cylindrical_complex.M_ONE
     ).split("uint idx [[thread_position_in_grid]])\n{\n", 1)[1][: -len("}\n")]
 
 
 def test_the_constitutive_half_differs_in_exactly_the_three_seam_lines():
     source = emit()
-    certified = cartesian.certified_constitutive_body(EXPANSION).splitlines()
+    certified = cartesian.certified_constitutive_body().splitlines()
     marker = "    // --- update_E (stepping.update_E"
     spliced = [line for line in source.split(marker, 1)[1].splitlines()
                if "// THE SEAM:" not in line]
@@ -214,7 +209,7 @@ def test_every_specialisation_a_shipped_plan_can_emit_binds_the_same_count():
     """SIX sources — two z terminations x three m arms — and the count is a property
     of the SIGNATURE, so a specialisation that changed it would be a different kernel
     the module's own arithmetic guard never saw."""
-    sources = family.enumerate_sources(EXPANSION)
+    sources = family.enumerate_sources()
     assert sorted(sources) == ["metallic_z:m0", "metallic_z:m1", "metallic_z:mmany",
                                "periodic_z:m0", "periodic_z:m1", "periodic_z:mmany"]
     assert len(set(sources.values())) == 6
@@ -258,13 +253,13 @@ def test_the_same_pack_clears_the_m0_sibling_which_was_over_by_one():
     assert m0.UNPACKED_POINTERS - m0.PACKED_POINTERS == 5
 
 
-def test_the_prefix_is_NOT_in_the_pack_and_keeps_its_own_binding():
-    """``pfx`` is the one member of the curl half's read-only set the plan REFRESHES
+def test_the_radial_difference_is_NOT_in_the_pack_and_keeps_its_own_binding():
+    """``rad`` is the one member of the curl half's read-only set the plan REFRESHES
     every step. Folding a per-step write in beside constants nothing re-uploads would
     make a wrong offset a permanent, silent absorber corruption."""
-    assert "pfx" not in family.PACKED_VECTORS
+    assert "rad" not in family.PACKED_VECTORS
     source = emit()
-    assert "device const float2* pfx     [[buffer(9)]]," in source
+    assert "device const float2* rad     [[buffer(9)]]," in source
     assert "device const float*  cpml" in source
 
 
@@ -275,7 +270,7 @@ def test_the_pack_did_not_reach_the_arithmetic():
     assert [line for line in source.splitlines()
             if "prm.off_" in line] == prologue.splitlines()
     curl = family.certified_cylindrical_curl_body(
-        templates.METALLIC, cylindrical_complex.M_ONE, EXPANSION)
+        templates.METALLIC, cylindrical_complex.M_ONE)
     head = curl.split(family._CURL_STORE, 1)[0]
     assert source.index(prologue) < source.index(head)
 
@@ -284,30 +279,33 @@ def test_the_params_record_and_the_struct_are_generated_from_one_tuple():
     """The kernel decodes by OFFSET, so a reordered record reinterprets every field."""
     source = emit()
     struct = source.split("struct Params {", 1)[1].split("};", 1)[0]
-    assert struct.splitlines()[1].strip() == "float2 inc_b;"
+    assert struct.splitlines()[1].strip() == "uint nx; uint ny; uint nz; uint n_elem; uint zrows;"
     for name in family.PACKED_VECTORS:
         assert f"uint off_{name};" in struct
+    assert struct.rstrip().endswith("ChunkBounds cb;")
     dtype = family.params_record_dtype()
-    assert dtype.itemsize == family.PARAMS_ITEMSIZE == 64
+    assert dtype.itemsize == family.PARAMS_ITEMSIZE == 156
     assert list(dtype.names) == [
-        "inc_b", "nx", "ny", "nz", "n_elem", "zrows", "dtdx", "minus_dtdx",
-        "axis_coef"] + [f"off_{name}" for name in family.PACKED_VECTORS]
-    # The six offsets are contiguous 4-byte members after the 40-byte prefix, which
-    # is what the MSL struct's natural layout gives (36 before the m = 0 arm's
-    # `axis_coef` became the ninth scalar; the itemsize did not move).
+        "nx", "ny", "nz", "n_elem", "zrows", "dtdx", "axis_factor", "m_word"] + [
+        f"off_{name}" for name in family.PACKED_VECTORS] + ["cb"]
+    # Every member is 4 bytes and the record is a struct of 4-byte members, so the
+    # offsets are contiguous with no padding: eight scalars, six offsets, the record.
     offsets = [dtype.fields[name][1] for name in dtype.names]
-    assert offsets == [0, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60]
-    assert "float dtdx; float minus_dtdx; float axis_coef;" in struct
+    assert offsets == [4 * n for n in range(15)]
+    assert "float dtdx; float axis_factor; float m_word;" in struct
 
 
 def test_the_eight_scalars_are_unpacked_into_the_certified_bodies_own_names():
     source = emit()
-    for name in ("nx", "ny", "nz", "n_elem", "zrows", "dtdx", "minus_dtdx",
-                 "axis_coef", "inc_b"):
+    for name in ("nx", "ny", "nz", "n_elem", "zrows", "dtdx", "axis_factor",
+                 "m_word"):
         assert f"prm.{name}" in source
     lifted = source.split(
         coefficient_pack.prologue("cpml", family.PACKED_VECTORS), 1)[1]
-    assert "prm." not in lifted
+    # The record alias is the one line after the pack that reads the struct.
+    alias = chunk_bounds.params_alias()
+    assert lifted.count(alias) == 1
+    assert "prm." not in lifted.replace(alias, "")
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +389,6 @@ def _executable_text(path) -> str:
 
     return _ast.unparse(strip_docstrings(_ast.parse(
         pathlib.Path(path).read_text(encoding="utf-8"))))
-
 
 
 #: The ONE way ``fastpath.py`` may name the Metal kernel package for itself: as a

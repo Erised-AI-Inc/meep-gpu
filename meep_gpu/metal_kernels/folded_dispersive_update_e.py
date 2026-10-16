@@ -1,8 +1,9 @@
 """Mirror-folded real PML dispersive ``update_E`` for the Metal composer.
 
 A mirror changes the stored extent, not this sub-step's arithmetic: MEEP forms
-``(D - sum(P)) * chi1inv`` at each stored cell and applies the two stored-E PML
-accumulations without any neighbour shift or parity operation.  This module owns
+``(D - sum(P)) * chi1inv`` at each stored cell and applies its per-chunk stored-E
+form (the accumulation on the component's own-layer cells, ``E = src`` elsewhere)
+without any neighbour shift or parity operation.  This module owns
 the *intersection admission*—a real active mirror fold with live supported
 electric poles—and deliberately reuses the ordinary family's one binding builder.
 The shared builder is important: the pole order, half-integer PML tables, and
@@ -142,13 +143,20 @@ def plan_folded_dispersive_e(
         fields: Any, pml: Any, residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[Tuple[str, int, int], Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[_base.MetalDispersiveEPlan]:
-    """Build the shared pointwise plan after the folded predicate has passed."""
+    """Build the shared pointwise plan after the folded predicate has passed.
+
+    ``chunk_bounds`` is the record of the division the run steps with, with no
+    default. On a folded axis the record's membership line is the ghost-adjusted one
+    (``chunk_map``), so the kernel evaluates it at the stored index unchanged.
+    """
     if not folded_dispersive_e_coverage(fields, pml, residency).covered:
         return None
     assert residency is not None and pml is not None
     return _base._plan_metal_dispersive_e_covered(
-        fields, pml, residency, contract_variants, functions)
+        fields, pml, residency, contract_variants, functions,
+        chunk_bounds=chunk_bounds)
 
 
 def _has_fold_and_poles(context: Any) -> bool:
@@ -172,7 +180,8 @@ def _arm_plan(context: Any, slot: str) -> Optional[_base.MetalDispersiveEPlan]:
     if slot != SLOT:
         return None
     return plan_folded_dispersive_e(context.fields, context.pml, context.residency,
-                                    context.contract_variants)
+                                    context.contract_variants,
+                                    chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

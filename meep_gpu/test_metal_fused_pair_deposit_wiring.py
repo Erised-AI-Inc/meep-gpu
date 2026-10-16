@@ -87,18 +87,6 @@ UPDATE_SLOT = "update_H"
 LABEL = "fused magnetic B/H pair"
 
 
-def _probes():
-    from meep_gpu.metal_kernels import (
-        complex_fields, cylindrical_complex, folded_complex, special_kz,
-    )
-
-    return {"complex_probe": complex_fields.load_expansion_probe(),
-            "beta_probe": special_kz.load_expansion_probe(),
-            "folded_complex_probe": folded_complex.load_expansion_probe(),
-            "cylindrical_complex_probe":
-                cylindrical_complex.load_expansion_probe()}
-
-
 def _magnetic_source(grid):
     """A point magnetic source, so the seam carries a deposit the repair can save.
 
@@ -114,7 +102,7 @@ def _magnetic_source(grid):
 def _plan(sources, fuse):
     fields, pml = matrix.cart()
     return fields, launch.plan_step(fields, pml, residency=device.Residency(),
-                                    sources=sources, fuse=fuse, **_probes())
+                                    sources=sources, fuse=fuse)
 
 
 def _fused_reasons(plan):
@@ -388,7 +376,7 @@ def test_the_composer_credits_the_pairs_wall_clear_to_the_kernel_that_performs_i
     fields, pml = matrix.cart(boundaries="metallic")
     source = _magnetic_source(fields.grid)
     plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                            sources=[source], fuse=True, **_probes())
+                            sources=[source], fuse=True)
     assert isinstance(plan.plans[CURL_SLOT], deposit_repair.LeadingRepairPlan)
     assert "zero_metal_B" in plan.live, "the case cannot discriminate without a wall"
     stale = tuple(reason for reason in plan.residency.reasons
@@ -413,7 +401,7 @@ def test_an_in_seam_deposit_is_refused_by_name_while_the_flag_is_false(monkeypat
     source = _magnetic_source(fields.grid)
     assert source._n_source_points, "the case deposits nothing and cannot discriminate"
     plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                            sources=[source], fuse=True, **_probes())
+                            sources=[source], fuse=True)
     reasons = plan.reasons.get(f"fused_pair_{family.FAMILY}", ())
     assert any("is magnetic" in reason and "BETWEEN step_B and update_H" in reason
                for reason in reasons), reasons
@@ -433,7 +421,7 @@ def test_an_in_seam_deposit_lands_the_two_repair_plans_in_the_two_slots():
     source = _magnetic_source(fields.grid)
     assert source._n_source_points, "the case deposits nothing and cannot discriminate"
     plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                            sources=[source], fuse=True, **_probes())
+                            sources=[source], fuse=True)
     assert not _fused_reasons(plan), _fused_reasons(plan)
 
     leading = plan.plans[CURL_SLOT]
@@ -465,7 +453,7 @@ def test_an_electric_source_does_not_make_the_magnetic_seam_carry_a_repair():
                                     frequency=1.0, fwidth=0.2, amplitude=1.0)
     assert str(electric.field_type) != deposit_repair.MAGNETIC_FIELD_TYPE
     plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                            sources=[electric], fuse=True, **_probes())
+                            sources=[electric], fuse=True)
     assert isinstance(plan.plans[UPDATE_SLOT], NoopPlan)
     assert not isinstance(plan.plans[CURL_SLOT], deposit_repair.LeadingRepairPlan)
 
@@ -539,7 +527,7 @@ def test_the_2026_08_28_families_are_bracketed_on_the_seam_they_serve(
     # fusion below would refuse for the right reason and measure nothing.
     fields, pml = build()
     unfused = launch.plan_step(fields, pml, residency=device.Residency(), sources=(),
-                               fuse=False, **_probes())
+                               fuse=False)
     assert (unfused.selected.get(curl_slot),
             unfused.selected.get(update_slot)) == expected_arms
 
@@ -547,7 +535,7 @@ def test_the_2026_08_28_families_are_bracketed_on_the_seam_they_serve(
     source = source_factory(fields.grid)
     assert source._n_source_points, "the case deposits nothing and cannot discriminate"
     plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                            sources=[source], fuse=True, **_probes())
+                            sources=[source], fuse=True)
     reasons = plan.reasons.get(f"fused_pair_{family_name}", ())
     assert not reasons, reasons
     leading = plan.plans[curl_slot]
@@ -579,7 +567,7 @@ def test_the_2026_08_28_families_still_refuse_a_deposit_with_the_flag_held_false
     fields, pml = build()
     source = source_factory(fields.grid)
     plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                            sources=[source], fuse=True, **_probes())
+                            sources=[source], fuse=True)
     reasons = plan.reasons.get(f"fused_pair_{family_name}", ())
     assert any("driver injects it BETWEEN" in reason for reason in reasons), reasons
     # ...and the seam stays on the separate arms, which is the array-path answer.
@@ -593,7 +581,7 @@ def test_a_clean_seam_on_the_new_families_takes_the_sentinel_not_a_repair():
             ROUTED_2026_08_28):
         fields, pml = build()
         plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                                sources=(), fuse=True, **_probes())
+                                sources=(), fuse=True)
         assert not plan.reasons.get(f"fused_pair_{family_name}", ()), family_name
         assert isinstance(plan.plans[update_slot], NoopPlan), family_name
         assert plan.plans[update_slot].absorbed_by is plan.plans[curl_slot], family_name
@@ -617,7 +605,7 @@ def test_a_specialized_family_owning_the_curl_keeps_the_pair_out_by_predicate():
     """
     fields, pml = matrix.conductive(matrix.cart(), magnetic=True)
     plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                            sources=(), fuse=True, **_probes())
+                            sources=(), fuse=True)
     assert plan.selected[CURL_SLOT] == "conductive PML curl"
     assert plan.selected[UPDATE_SLOT] == "ordinary"
     assert not isinstance(plan.plans[UPDATE_SLOT], NoopPlan)
@@ -644,7 +632,7 @@ def test_a_pair_may_not_absorb_a_slot_the_arm_table_left_unselected():
     try:
         fields, pml = matrix.cart()
         plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                                sources=(), fuse=True, **_probes())
+                                sources=(), fuse=True)
         assert UPDATE_SLOT not in plan.plans, "the planted ambiguity did not fire"
         assert any(UPDATE_SLOT in reason and "not selected by any arm" in reason
                    for reason in _fused_reasons(plan)), _fused_reasons(plan)
@@ -690,7 +678,7 @@ def test_every_undeclared_weld_is_refused_by_name_rather_than_absorbing(family_n
     assert family_name not in launch.FUSED_PAIR_ARMS
     fields, pml = matrix.cart()
     plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                            sources=(), fuse=True, **_probes())
+                            sources=(), fuse=True)
     reasons = plan.reasons.get(f"fused_pair_{family_name}", ())
     assert any("no absorb declaration" in reason for reason in reasons), (
         family_name, reasons)
@@ -837,7 +825,7 @@ def test_the_only_h_to_d_bidder_is_registered_and_installs_on_nothing(monkeypatc
 
     fields, pml = matrix.cart()
     shipped = launch.plan_step(fields, pml, residency=device.Residency(),
-                               sources=(), fuse=True, **_probes())
+                               sources=(), fuse=True)
     # The seam stays unfused: whatever holds ``update_H`` also holds ``step_B`` (the
     # released B->H pair) and whatever holds ``step_D`` also holds ``update_E``, so no
     # label spans this seam.
@@ -853,7 +841,7 @@ def test_the_only_h_to_d_bidder_is_registered_and_installs_on_nothing(monkeypatc
     assert launch._declared_uninstallable(bidder) is None
     fields, pml = matrix.cart()
     unflagged = launch.plan_step(fields, pml, residency=device.Residency(),
-                                 sources=(), fuse=True, **_probes())
+                                 sources=(), fuse=True)
     assert unflagged.selected == shipped.selected
     reason = unflagged.reasons.get("fused_pair_fused_hd_pair")
     assert reason and reason[0].startswith(
@@ -876,8 +864,7 @@ def test_the_neighbouring_seam_rule_refuses_a_product_that_would_take_a_released
     """
     fields, pml = matrix.cart()
     context = arms.StepContext(fields, pml, residency=device.Residency(),
-                               contract_variants=(shaders.CONTRACT_OFF,), sources=(),
-                               extra=_probes())
+                               contract_variants=(shaders.CONTRACT_OFF,), sources=())
     found = launch._neighbouring_seam_claimant(
         context, "h_to_d_stub", "update_H", "step_D", ("update_H", "step_D"))
     assert found is not None, "fused_electric_pair admits a plain Cartesian PML grid"
@@ -1018,7 +1005,7 @@ def _plan_on(build, sources=None):
     fields, pml = build()
     src = _one_electric_source(fields) if sources == "one_electric" else ()
     return launch.plan_step(fields, pml, residency=device.Residency(), sources=src,
-                            fuse=True, **_probes())
+                            fuse=True)
 
 
 #: The three row classes of the tie measurement, each as the fixture its cell was
@@ -1056,8 +1043,7 @@ def test_an_end_edge_span_is_never_asked_even_when_an_interior_claimant_admits()
     is interior and DOES yield -- to the D->E pair, through the later half."""
     fields, pml = matrix.cart()
     context = arms.StepContext(fields, pml, residency=device.Residency(),
-                               contract_variants=(shaders.CONTRACT_OFF,), sources=(),
-                               extra=_probes())
+                               contract_variants=(shaders.CONTRACT_OFF,), sources=())
     with _stand_in(admit=True, absorb=("ordinary", "PML")):
         for family_name, curl, update in (("fused_magnetic_pair", "step_B", "update_H"),
                                           ("fused_electric_pair", "step_D", "update_E")):

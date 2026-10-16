@@ -35,6 +35,7 @@ import pytest
 from .driver import FdtdDriver
 from .grid import Mirror
 from . import stepping
+from .test_stepping import FOLD_ROUNDING_BOUND
 
 _HAS_MEEP = importlib.util.find_spec("meep") is not None
 
@@ -476,7 +477,7 @@ def _node_coordinates(driver):
 
 
 @pytest.mark.parametrize("kind", ["even", "odd", "both"])
-def test_tensor_fold_equivalence_is_exact(kind):
+def test_tensor_fold_equivalence_holds_to_rounding(kind):
     """A mirror-folded tensor run reproduces the full domain to storage precision.
 
     Both coefficient parities under Mirror(X), separately and together:
@@ -488,7 +489,12 @@ def test_tensor_fold_equivalence_is_exact(kind):
       vanishing on the plane, as any structure symmetric under the fold must.
     * ``both`` together.
 
-    Measured on landing: 3.1e-12 / 8.3e-13 / 4.7e-12 — float32 storage noise.
+    Measured on landing: 3.1e-12 / 8.3e-13 / 4.7e-12 — float32 storage noise. Since
+    the curl takes MEEP's left-to-right bracket, which is not reflection-symmetric in
+    rounding (``test_stepping.FOLD_ROUNDING_BOUND``), the full domain's two halves
+    differ by rounding and the bound is :data:`FOLD_ROUNDING_BOUND` units of 2**-24 of
+    the run's peak (MEASURED 2026-10-06: 4.7e-08 / 3.6e-08 / 3.3e-08, that is 0.78 /
+    0.60 / 0.55 units).
     The folded driver's rows are the stored-half WINDOW of the full driver's
     arrays, so the comparison carries bitwise-identical coefficients and
     measures fold physics alone. The stencil never ghosts the coefficient (the
@@ -556,7 +562,8 @@ def test_tensor_fold_equivalence_is_exact(kind):
         for name in primaries + ("Ex", "Ey", "Ez")
     )
     full.close(); folded.close()
-    assert worst / scale < 1e-9, (
+    assert worst / scale <= FOLD_ROUNDING_BOUND * 2.0 ** -24, (
         f"{kind}: the folded tensor run diverges from the full domain by "
-        f"{worst / scale:.3e}; the fold must be exact (measured 8.3e-13..4.7e-12)."
+        f"{worst / scale:.3e} ({worst / scale / 2.0 ** -24:.2f} units of 2**-24 of the "
+        f"peak); the fold must hold to rounding ({FOLD_ROUNDING_BOUND} units)."
     )

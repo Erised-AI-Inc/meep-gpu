@@ -37,8 +37,6 @@ from meep_gpu import stepping
 # Every probe record this module builds is stamped 'keep'; the complex
 # families' policy clause fails closed when the run policy can be neither
 # read nor declared, so the premise is declared rather than left implicit.
-# See ``run_policy_declared_keep`` in conftest.py.
-pytestmark = pytest.mark.usefixtures("run_policy_declared_keep")
 
 
 _API = pathlib.Path(__file__).resolve().parents[1]
@@ -266,8 +264,11 @@ def test_the_conductive_gate_covers_both_one_sided_cross_substeps(conductive_gat
     names = {case["name"] for case in conductive_gate.build_cases()}
     assert {"product_D_only_step_B", "product_D_only_step_D",
             "product_B_only_step_B", "product_B_only_step_D"} <= names
-    assert len([name for name in names if name.startswith("product_")]) == 8
-    assert len([name for name in names if "MUTATION" in name]) == 3
+    # The curl's partner presence: an invariant axis and a one-cell resolved one.
+    assert {"product_both_no_poles_2d_step_B", "product_both_no_poles_thin_3d_step_D",
+            "MUTATION_presence_bit_cleared_step_D"} <= names
+    assert len([name for name in names if name.startswith("product_")]) == 12
+    assert len([name for name in names if "MUTATION" in name]) == 4
 
 
 def test_the_stored_e_gate_carries_the_live_rotation_and_its_mutant(stored_e_gate):
@@ -306,7 +307,7 @@ def test_every_new_builder_is_exercised_by_the_new_predicate_probe(newpred):
     claim about the kernel body alone. Every builder this round added must
     therefore appear in a leg of its own.
     """
-    cases = newpred.build_cases(numpy, None)
+    cases = newpred.build_cases(numpy)
     builders = {case["builder"] for case in cases}
     for expected in (
             "nonlinear_update_e.plan_nonlinear_run_pml_curl",
@@ -346,7 +347,7 @@ def test_the_builders_all_answer_none_on_this_laptop(newpred):
     host; what this pins is that no leg raises on the way there, which is how a
     fixture that stopped constructing would otherwise surface only on the device.
     """
-    for case in newpred.build_cases(numpy, None):
+    for case in newpred.build_cases(numpy):
         fields, pml, _notes = case["make"](0)
         assert case["kernel_plan"](fields, pml) is None, case["name"]
 
@@ -354,16 +355,7 @@ def test_the_builders_all_answer_none_on_this_laptop(newpred):
 def test_the_predicate_battery_covers_admissions_and_refusals_for_every_family(
         newpred):
     """An admission alone is not coverage; the neighbours must be refused too."""
-    # The certified complex-multiply EXPANSION probe is a MEASURED device fact the
-    # folded-complex builders require; without it those predicates refuse for a
-    # reason that has nothing to do with the configuration under test.
-    bodies = importlib.import_module(
-        "parity.meep_gpu.probe_residual_group_bodies")
-    record = bodies._load_expansion_probe()
-    assert record is not None, (
-        "the expansion probe artifact is missing; the folded-complex battery "
-        "cannot be asked and a pass here would be vacuous")
-    rows = newpred.predicate_checks(numpy, record)
+    rows = newpred.predicate_checks(numpy)
     assert len(rows) >= 30, f"only {len(rows)} checks"
     admits = [r for r in rows if r["expected_admit"]]
     refuses = [r for r in rows if not r["expected_admit"]]

@@ -23,7 +23,7 @@ import numpy as np
 import pytest
 
 from meep_gpu import withdraw_hoist
-from meep_gpu.metal_kernels import complex_fields
+from meep_gpu.metal_kernels import complex_fused_hd_pair
 from meep_gpu.metal_kernels import cylindrical_complex as cylc
 from meep_gpu.metal_kernels import cylindrical_complex_fused_hd_pair as family
 from meep_gpu.metal_kernels import cylindrical_complex_scan as scan
@@ -40,7 +40,6 @@ GATE = REPO / "parity" / "meep_gpu" / "gate_metal_cylindrical_complex_fused_hd_p
 #: host mutation counted by lead launches it deliberately issues none of).
 ARTIFACT = (REPO / "parity" / "meep_gpu" / "results"
             / "metal_cylindrical_complex_fused_hd_pair_2026-09-06_cyl3" / "gate.json")
-EXPANSIONS = tuple(templates.EXPANSION_ARMS)
 
 
 def _has_mps() -> bool:
@@ -83,19 +82,19 @@ def test_installable_is_false_and_the_reason_names_the_tie_and_the_round_trip():
 
 
 def test_the_binding_counts_are_the_emitted_ones_and_under_the_ceiling():
-    for expansion in EXPANSIONS:
-        assert family.lead_signature_bindings(expansion) == family.LEAD_BINDINGS == 25
-        source = family.lead_source(expansion)
-        signature = source.split("kernel void", 1)[1].split("{", 1)[0]
-        indices = [int(part.split(")")[0]) for part in signature.split("[[buffer(")[1:]]
-        assert indices == list(range(25))
-        assert signature.count("device float2*") == 7          # 6 scratch + the prefix
-        assert signature.count("device const float2*") == 9    # hi, wi, b
-        assert signature.count("device const float*") == 8     # 6 coefficients + 2 rows
-    assert family.LEAD_POINTERS == 24
+    assert family.lead_signature_bindings() == family.LEAD_BINDINGS == 26
+    source = family.lead_source()
+    signature = source.split("kernel void", 1)[1].split("{", 1)[0]
+    indices = [int(part.split(")")[0]) for part in signature.split("[[buffer(")[1:]]
+    assert indices == list(range(26))
+    assert signature.count("device float2*") == 7          # 6 scratch + the difference
+    assert signature.count("device const float2*") == 9    # hi, wi, b
+    assert signature.count("device const float*") == 8     # 6 coefficients + 2 rows
+    assert signature.count("device const int*") == 1       # the chunk starts
+    assert family.LEAD_POINTERS == 25
     assert family.CURL_BINDINGS == cylc.CURL_BINDINGS == 27
     assert max(family.LEAD_BINDINGS, family.CURL_BINDINGS) <= MAX_BUFFER_BINDINGS
-    assert MAX_BUFFER_BINDINGS - family.LEAD_BINDINGS == 6
+    assert MAX_BUFFER_BINDINGS - family.LEAD_BINDINGS == 5
 
 
 @pytest.mark.parametrize("extra", (0, 3, 6, 7))
@@ -105,66 +104,49 @@ def test_the_refuted_lead_plus_signature_adds_exactly_the_extra_pointers(extra):
     assert signature.count("[[buffer(") == family.LEAD_BINDINGS + extra
 
 
-def test_enumerate_sources_is_one_lead_and_six_certified_curls_per_arm():
-    for expansion in EXPANSIONS:
-        sources = family.enumerate_sources(expansion)
-        leads = [label for label in sources if label.startswith(family.LEAD_KERNEL)]
-        curls = [label for label in sources if label.startswith(family.CURL_KERNEL)]
-        assert len(leads) == 1 and len(curls) == 6
-        assert len(set(sources.values())) == 7
+def test_enumerate_sources_is_one_lead_and_six_certified_curls():
+    sources = family.enumerate_sources()
+    leads = [label for label in sources if label.startswith(family.LEAD_KERNEL)]
+    curls = [label for label in sources if label.startswith(family.CURL_KERNEL)]
+    assert len(leads) == 1 and len(curls) == 6
+    assert len(set(sources.values())) == 7
 
 
 # ---------------------------------------------------------------------------
 # 2. The lift
 # ---------------------------------------------------------------------------
 
-def _arithmetic_lines(text: str):
-    return [line.split("//", 1)[0].strip() for line in text.splitlines()
-            if "c_mul_coefficient_left" in line.split("//", 1)[0]
-            or line.split("//", 1)[0].strip().startswith("float kp_")]
+def test_h_cell_is_the_complex_h_to_d_welds_own_function_and_appears_once():
+    """One lift of the certified complex ``update_H`` body in the package: the complex
+    H->D weld's ``h_cell``, imported, not re-lifted here."""
+    assert family.h_cell_function is complex_fused_hd_pair.h_cell_function
+    assert family.H_CELL_POINTERS is complex_fused_hd_pair.H_CELL_POINTERS
+    source = family.lead_source()
+    helper = complex_fused_hd_pair.h_cell_function(shaders.CONTRACT_OFF)
+    assert source.count(helper) == 1
+    assert source.count("static inline h_cell_result h_cell(") == 1
 
 
-@pytest.mark.parametrize("expansion", EXPANSIONS)
-def test_the_lift_is_the_certified_complex_h_body_with_exactly_the_declared_edits(expansion):
-    certified = complex_fields.bloch_constitutive_source("H", expansion)
-    certified_tail = certified.split(family.DECODE_END, 1)[1][: -len("}\n")]
-    tail = family.certified_complex_constitutive_tail(expansion)
-    rederived = certified_tail
-    for target in range(3):
-        for old, new in ((f"    float2 prev{target} = w{target}[ii];\n",
-                          f"    float2 prev{target} = wi{target}[ii];\n"),
-                         (f"    float2 src{target} = g{target}[ii];\n",
-                          f"    float2 src{target} = b{target}[ii];\n"),
-                         (f"    w{target}[ii] = src{target};\n", ""),
-                         (f"    float2 a{target} = f{target}[ii];\n",
-                          f"    float2 a{target} = hi{target}[ii];\n"),
-                         (f"    f{target}[ii] = a{target};\n", "")):
-            assert rederived.count(old) == 1, old
-            rederived = rederived.replace(old, new)
-    assert rederived == tail
-    assert _arithmetic_lines(certified_tail) == _arithmetic_lines(tail)
-    assert len(_arithmetic_lines(tail)) == 9
-    for stem in ("f", "w", "g", "e"):
-        for target in range(3):
-            assert f"{stem}{target}[" not in tail
-
-
-def test_the_declared_edits_touch_no_arithmetic():
-    assert len(family.CONSTITUTIVE_LIFT_EDITS) == 6
-    for entry in family.CONSTITUTIVE_LIFT_EDITS:
-        assert "c_mul" not in entry["became"]
-        assert "+" not in entry["became"].split("=")[-1] or "removed" in entry["became"]
-
-
-@pytest.mark.parametrize("expansion", EXPANSIONS)
-def test_launch_two_is_the_certified_curl_byte_for_byte(expansion):
+def test_launch_two_is_the_certified_curl_byte_for_byte():
     for bcz in (templates.PERIODIC, templates.METALLIC):
         for m_arm in cylc.M_ARMS:
-            ours = family.curl_source(bcz, m_arm, expansion)
-            theirs = cylc.cylindrical_curl_source(bcz, True, m_arm, expansion)
+            ours = family.curl_source(bcz, m_arm)
+            theirs = cylc.cylindrical_curl_source(bcz, True, m_arm)
             assert hashlib.sha256(ours.encode()).hexdigest() == hashlib.sha256(
                 theirs.encode()).hexdigest()
             assert "kernel void cyl_complex_pml_curl_step(" in ours
+
+
+def test_the_declared_scan_edits_touch_no_arithmetic():
+    """Each of the two edits replaces a memory read with the recompute of the same
+    value; neither carries an operator of its own."""
+    assert len(family.SCAN_LIFT_EDITS) == 2
+    assert tuple(edit["line"] for edit in family.SCAN_LIFT_EDITS) == scan.source_reads(
+        "step_D")
+    for entry in family.SCAN_LIFT_EDITS:
+        assert "c_mul" not in entry["became"]
+        for operator in (" + ", " - ", " * ", " / "):
+            assert operator not in entry["became"], (operator, entry["became"])
 
 
 # ---------------------------------------------------------------------------
@@ -172,30 +154,37 @@ def test_launch_two_is_the_certified_curl_byte_for_byte(expansion):
 # ---------------------------------------------------------------------------
 
 def test_the_leader_scans_the_recomputed_post_update_hy_and_its_own_row_zero():
-    code = _code(family.lead_source("FMA_V1"))
-    assert "c_mul_field_left(own.a1, weights[0])" in code
-    assert f"c_mul_field_left(h_cell(i, j, k, {family.H_CELL_TAIL_ARGS}).a1, weights[i])" in code
+    code = _code(family.lead_source())
+    assert "float2 w_prev = own.a1 * weights[0];" in code
+    assert (f"float2 w = h_cell(g, j, k, {family.H_CELL_TAIL_ARGS}).a1 * weights[g];"
+            in code)
     assert "if (i == 0) {" in code
-    assert "hi1[i * nyz + base]" not in code, "the leader must never scan the PRE-update Hy"
+    loop = code.split("if (i == 0) {", 1)[1]
+    assert "hi1[" not in loop, "the leader must never scan the PRE-update Hy"
 
 
-def test_the_lead_carries_the_scan_modules_loop_and_divide_helper_verbatim():
-    source = family.lead_source("FMA_V1")
-    assert scan._DIVIDE_HELPER.strip() in source
-    assert "return z * (1.0f / d);" in source
-    assert "z / d" not in _code(source)
-    for line in scan.COLUMN_SCAN_LOOP.splitlines():
-        if line.strip() and "__SRC" not in line:
-            assert line.strip() in source, line
+def test_the_lead_carries_the_scan_modules_loop_with_exactly_the_two_declared_edits():
+    """The complex D-side column loop (per-chunk restart, rinv multiplied, backward
+    difference) with the two source reads replaced and nothing else."""
+    source = family.lead_source()
+    loop = scan.column_scan_loop("step_D")
+    for edit in family.SCAN_LIFT_EDITS:
+        assert loop.count(edit["line"]) == 1, edit["line"]
+        loop = loop.replace(edit["line"], edit["became"])
+    indented = "\n".join("    " + line if line.strip() else line
+                         for line in loop.splitlines())
+    assert indented in source
+    assert "rinv[g - 1] * (w - w_prev)" in source
+    assert " / " not in _code(source.split("if (i == 0) {", 1)[1])
     assert source.count(shaders.contraction_pragma(shaders.CONTRACT_OFF)) == 1
 
 
 def test_nothing_the_lead_launch_writes_is_read_by_it():
-    source = family.lead_source("FMA_V1")
+    source = family.lead_source()
     body = _code(source.split("kernel void", 1)[1].split("{", 1)[1])
     written = ("ho0", "ho1", "ho2", "wo0", "wo1", "wo2", "out")
     read = ("hi0", "hi1", "hi2", "wi0", "wi1", "wi2", "b0", "b1", "b2",
-            "kp0", "km0", "kp1", "km1", "kp2", "km2", "weights", "divisor")
+            "kp0", "kp1", "kp2", "kmx", "kmy", "kmz", "weights", "rinv", "starts")
     for name in written:
         stores = len(re.findall(rf"\b{name}\[[^\]]*\]\s*=(?!=)", body))
         loads = len(re.findall(rf"\b{name}\[", body)) - stores
@@ -209,7 +198,7 @@ def test_nothing_the_lead_launch_writes_is_read_by_it():
 
 def test_the_rotation_order_is_the_signature_order():
     assert family.ROTATED_NAMES == ("Hx", "Hy", "Hz", "f_w_Hx", "f_w_Hy", "f_w_Hz")
-    signature = family.lead_source("FMA_V1").split("kernel void", 1)[1].split("{", 1)[0]
+    signature = family.lead_source().split("kernel void", 1)[1].split("{", 1)[0]
     names = re.findall(r"\*\s+(\w+)\s+\[\[buffer\((\d+)\)\]\]", signature)
     assert [n for n, _ in names[:6]] == ["ho0", "ho1", "ho2", "wo0", "wo1", "wo2"]
     assert [n for n, _ in names[6:12]] == ["hi0", "hi1", "hi2", "wi0", "wi1", "wi2"]
@@ -219,8 +208,9 @@ def test_the_rotation_order_is_the_signature_order():
 def test_the_h_cell_pointer_table_is_the_signature_order_the_call_sites_forward():
     names = [name for _kind, name in family.H_CELL_POINTERS]
     assert names == ["hi0", "hi1", "hi2", "wi0", "wi1", "wi2", "b0", "b1", "b2",
-                     "kp0", "km0", "kp1", "km1", "kp2", "km2"]
+                     "kp0", "kp1", "kp2", "kmx", "kmy", "kmz"]
     assert family.H_CELL_TAIL_ARGS.startswith("nxi, nyi, nzi, hi0")
+    assert family.H_CELL_TAIL_ARGS.endswith(", cb")
 
 
 # ---------------------------------------------------------------------------
@@ -269,14 +259,16 @@ def test_two_seams_are_bit_identical_and_the_order_control_bites():
     import metal_composition_matrix as matrix  # noqa: E402
 
     from meep_gpu import stepping  # noqa: E402
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record  # noqa: E402
     from meep_gpu.metal_kernels.device import Residency  # noqa: E402
 
     matrix.prepare_environment()
-    if cylc.expansion_from_probe(cylc.load_expansion_probe()) is None:
-        pytest.skip("the cylindrical complex expansion probe is not bound on this host")
 
     def build():
-        fields, pml = matrix.cylindrical(m=1, complex_storage=True, z_kind="metallic")
+        # Courant a float32 word: the |m| = 1 D-side axis rule's product with it is
+        # MEEP's double product, and any other Courant is refused by name.
+        fields, pml = matrix.cylindrical(m=1, complex_storage=True, z_kind="metallic",
+                                         courant=0.375)
         rng = np.random.default_rng(9)
         for name in ("fu_Dx", "fu_Dy", "fu_Dz", "f_w_Hx", "f_w_Hy", "f_w_Hz"):
             array = getattr(fields, name)
@@ -294,7 +286,9 @@ def test_two_seams_are_bit_identical_and_the_order_control_bites():
         dev_fields, dev_pml = build()
         residency = Residency()
         plan = family.plan_metal_cylindrical_complex_fused_hd_pair(
-            dev_fields, dev_pml, sources=(), residency=residency)
+            dev_fields, dev_pml, sources=(), residency=residency,
+            chunk_bounds=chunk_bounds_record(ChunkLayout.one_rank(dev_fields.grid,
+                                                                  dev_pml)))
         assert plan is not None
         residency.sync_in()
         differing = 0
@@ -365,14 +359,15 @@ def test_the_artifact_walked_six_configurations_against_both_references():
 def test_the_artifact_caught_every_armed_defect_and_confirmed_the_nulls():
     record = _artifact()
     verdicts = record["summary"]["mutation_verdicts"]
-    for armed in ("true_divide_spelling", "leader_scans_pre_launch_hy",
-                  "leader_row_zero_pre_launch", "blocked_scan_8", "curl_before_lead",
+    for armed in ("quotient_divided_in_kernel", "rounded_increment_stored",
+                  "sum_never_restarts", "leader_scans_pre_launch_hy",
+                  "leader_row_zero_pre_launch", "curl_before_lead",
                   "curl_without_lead", "rotation_undone"):
         assert verdicts[armed] == "CAUGHT 3/3", armed
-    for null in ("literal_numpy_divide_loop", "commuted_accumulator",
-                 "byte_neutral_store_order"):
+    for null in ("commuted_accumulator", "byte_neutral_store_order"):
         assert verdicts[null] == "CAUGHT 0/3", null
     assert record["legs"]["disarm"]["passed"] is True
     assert record["legs"]["purity"]["passed"] is True
     assert record["legs"]["lift"]["passed"] is True
-    assert record["legs"]["refusal"]["integrated_electric_refused_by_name"] is True
+    assert record["legs"]["refusal"]["integrated_electric_admitted"] is True
+    assert record["legs"]["refusal"]["standing_withdraw_refused_by_name"] is True

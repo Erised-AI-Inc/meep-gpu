@@ -494,9 +494,12 @@ purpose and the gate exists to measure how.
 import triton
 import triton.language as tl
 
-from meep_gpu.triton_kernels.kernels import METALLIC, PERIODIC
+from meep_gpu.triton_kernels.forms import (
+    axis_present, constitutive_form, curl_form, curl_stencil, record_in)
+from meep_gpu.triton_kernels.kernels import (
+    METALLIC, PERIODIC, RECORD_HALF_INTEGER, RECORD_PRESENCE)
 from meep_gpu.triton_kernels.offdiag_update_e import (
-    _masked_row_sum, _offdiag_term)
+    PRESENCE_LINES, _offdiag_term, _row_add)
 
 
 @triton.jit
@@ -510,6 +513,8 @@ def fused_curl_offdiag_constitutive_D(
     ie0, ie1, ie2,                  # inverse-epsilon volumes
     r01, r02, r11, r12, r21, r22,   # the six off-diagonal row coefficients
     kp0, km0, kp1, km1, kp2, km2,   # constitutive kps/kms, HALF-INTEGER
+    cb,                             # chunk record: both halves' forms and the presence word
+    op,                             # off-diagonal presence: slot masks, segment lines
     nx, ny, nz, n_elem, dtdx,
     BACKWARD: tl.constexpr,
     BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
@@ -517,6 +522,10 @@ def fused_curl_offdiag_constitutive_D(
     R01: tl.constexpr, R02: tl.constexpr,
     R11: tl.constexpr, R12: tl.constexpr,
     R21: tl.constexpr, R22: tl.constexpr,
+    P01: tl.constexpr, P02: tl.constexpr,
+    P11: tl.constexpr, P12: tl.constexpr,
+    P21: tl.constexpr, P22: tl.constexpr,
+    PRESENCE: tl.constexpr,
     WM_X: tl.constexpr, WM_Y: tl.constexpr, WM_Z: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
@@ -577,15 +586,15 @@ def build_subject_source(pointwise_variant: bool = False,
                                "report a null while measuring nothing")
 
     if mutation == "flatten_curl_parens":
-        # ``((c_y - c) + (b - b_z))`` -> ``(((c_y - c) + b) - b_z)``, the
-        # association C and Triton alike would choose (kernels.py's note 2). A
-        # DIFFERENT float32 number. Spelling it ``c_y - c + (b - b_z)`` would
-        # re-parse to the original and mutate nothing — measured on the first
-        # device run, where it scored a false NULL.
+        # INVERTED (KERNELS.md section 7.1). The shipped curl is MEEP's left-to-right
+        # ``dtdx * (((c_y - c) + b) - b_z)`` (``forms.curl_stencil``, every partner
+        # present on this gate's grids), so the mutant puts the pairwise grouping the
+        # kernel carried until 0.10, ``dtdx * ((c_y - c) + (b - b_z))``, back at the
+        # call site of component 0: a DIFFERENT float32 number on random H.
         before = curl_half
         curl_half = curl_half.replace(
-            "curl0 = dtdx * ((c_y - c) + (b - b_z))",
-            "curl0 = dtdx * ((c_y - c) + b - b_z)")
+            "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)",
+            "curl0 = dtdx * ((c_y - c) + (b - b_z))")
         if curl_half == before:
             raise RuntimeError("flatten_curl_parens rewrote nothing")
     elif mutation == "mispair_row_coefficients":
@@ -633,9 +642,10 @@ the comparison measures the plant instead of the fusion."""
 import triton
 import triton.language as tl
 
-from meep_gpu.triton_kernels.kernels import METALLIC, PERIODIC
+from meep_gpu.triton_kernels.forms import constitutive_form, record_in
+from meep_gpu.triton_kernels.kernels import METALLIC, PERIODIC, RECORD_HALF_INTEGER
 from meep_gpu.triton_kernels.offdiag_update_e import (
-    _masked_row_sum, _offdiag_term)
+    PRESENCE_LINES, _offdiag_term, _row_add)
 
 
 @triton.jit
@@ -713,8 +723,11 @@ def run_subject(kernel: Any, arrays: Dict[str, Any],
                 rows: Dict[str, Dict[str, Any]], codes: Sequence[int],
                 zero_metal: Sequence[bool], wall_axes: Sequence[int],
                 dtdx: float, block: int, num_warps: int = 1) -> Tuple[int, ...]:
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
+    from meep_gpu.triton_kernels import offdiag_update_e as odmod  # noqa: PLC0415
     from meep_gpu.triton_kernels.kernels import ENABLE_FP_FUSION  # noqa: PLC0415
-    from meep_gpu.triton_kernels.launch import CupyPointer  # noqa: PLC0415
+    from meep_gpu.triton_kernels.launch import (  # noqa: PLC0415
+        CupyPointer, bind_chunk_bounds)
 
     shape = tuple(int(n) for n in arrays["Dx"].shape)
     n_elem = shape[0] * shape[1] * shape[2]
@@ -723,6 +736,15 @@ def run_subject(kernel: Any, arrays: Dict[str, Any],
     if not any(row_mask):
         raise ValueError("no row slot survives; the subject would be the "
                          "diagonal pair")
+    # THE SAME DIVISION AS THE TWO-LAUNCH ROUTE, bound by the shipped binders: every
+    # cell in every layer (both halves take the recurrence and the accumulation on
+    # every cell) and every row term added on every cell (one chunk: no presence
+    # varies, so the segment lines are never read).
+    _record, cb = bind_chunk_bounds(every_cell_record(shape), shape, arrays["Dx"],
+                                    "the assembled refutation subject")
+    varies, _presence, op = odmod.bind_presence(
+        odmod.ALL_PRESENT, shape, row_mask, arrays["Dx"],
+        "the assembled refutation subject")
     component_of_slot = tuple("ExEyEz".find(row) // 2 for row, _ in ROW_SLOTS)
     bound_rows = [row_arrays[i] if row_arrays[i] is not None
                   else arrays[D_NAMES[component_of_slot[i]]]
@@ -741,12 +763,16 @@ def run_subject(kernel: Any, arrays: Dict[str, Any],
         *[p(a) for a in bound_rows],
         *[p(constitutive_flat[f"{stem}_{axis}"]) for axis in "xyz"
           for stem in ("kps", "kms")],
+        cb, op,
         shape[0], shape[1], shape[2], n_elem, dtdx,
         BACKWARD=1,
         BCX=codes[0], BCY=codes[1], BCZ=codes[2],
         ZM_X=int(zero_metal[0]), ZM_Y=int(zero_metal[1]), ZM_Z=int(zero_metal[2]),
         R01=row_mask[0], R02=row_mask[1], R11=row_mask[2],
         R12=row_mask[3], R21=row_mask[4], R22=row_mask[5],
+        P01=varies[0], P02=varies[1], P11=varies[2],
+        P12=varies[3], P21=varies[4], P22=varies[5],
+        PRESENCE=int(any(varies)),
         WM_X=int(wall_axes[0]), WM_Y=int(wall_axes[1]), WM_Z=int(wall_axes[2]),
         BLOCK=block,
         num_warps=num_warps,
@@ -775,37 +801,46 @@ def run_two_launch_offdiag(arrays: Dict[str, Any], curl_flat, constitutive_flat,
     kernel and compare a planted fused kernel against an unplanted reference,
     which is a different question and would report a false non-identity.
     """
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
     from meep_gpu.triton_kernels import offdiag_update_e as odmod  # noqa: PLC0415
     from meep_gpu.triton_kernels.launch import plan_from_arrays  # noqa: PLC0415
 
     plan_from_arrays("step_D", arrays, curl_flat, list(codes), dtdx,
-                     block=block).run(guard=False)
+                     block=block,
+                     chunk_bounds=every_cell_record(arrays[D_NAMES[0]].shape)
+                     ).run(guard=False)
     reference_zero_metal_D(arrays, zero_metal)
     odmod.plan_offdiagonal_constitutive_from_arrays(
         arrays, constitutive_flat, rows, list(codes), list(wall_axes),
-        block=block, kernel=kernel).run(guard=False)
+        block=block, kernel=kernel,
+        chunk_bounds=every_cell_record(arrays[D_NAMES[0]].shape),
+        presence=odmod.ALL_PRESENT).run(guard=False)
 
 
 def run_two_launch_diagonal(arrays, curl_flat, constitutive_flat, codes,
                             zero_metal, dtdx: float, block: int) -> None:
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
     from meep_gpu.triton_kernels.launch import (  # noqa: PLC0415
         plan_constitutive_from_arrays, plan_from_arrays)
 
+    record = every_cell_record(arrays[D_NAMES[0]].shape)
     plan_from_arrays("step_D", arrays, curl_flat, list(codes), dtdx,
-                     block=block).run(guard=False)
+                     block=block, chunk_bounds=record).run(guard=False)
     reference_zero_metal_D(arrays, zero_metal)
     plan_constitutive_from_arrays("E", arrays, constitutive_flat,
-                                  block=block).run(guard=False)
+                                  block=block, chunk_bounds=record).run(guard=False)
 
 
 def run_shipped_fused_diagonal(arrays, curl_flat, constitutive_flat, codes,
                                zero_metal, dtdx: float, block: int) -> None:
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
     from meep_gpu.triton_kernels.launch import (  # noqa: PLC0415
         plan_fused_pair_from_arrays)
 
     plan_fused_pair_from_arrays(
         "D", arrays, curl_flat, constitutive_flat, list(codes),
-        list(zero_metal), dtdx, block=block, num_warps=1).run(guard=False)
+        list(zero_metal), dtdx, block=block, num_warps=1,
+        chunk_bounds=every_cell_record(arrays[D_NAMES[0]].shape)).run(guard=False)
 
 
 # ===========================================================================

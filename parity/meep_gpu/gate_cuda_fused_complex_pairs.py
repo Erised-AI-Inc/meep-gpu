@@ -66,7 +66,7 @@ corrupted B reaches E on the very next step; the first divergent step is reporte
 rather than a final pass/fail.
 
 =============================================================================
-THE EIGHT THINGS THIS GATE REFUSES TO LET PASS SILENTLY
+THE SEVEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY
 =============================================================================
 
 1. **A step this gate invented.** :func:`leg_driver_order` reads ``FdtdDriver.step``'s
@@ -96,27 +96,20 @@ THE EIGHT THINGS THIS GATE REFUSES TO LET PASS SILENTLY
    uniform class must contain none -- a precondition that fires everywhere
    discriminates nothing, and one that never fires is a detector never shown to work.
 
-5. **A guessed arm.** The complex multiply's orientation is a MEASURED platform fact
-   and both arms compile. The licence is read from a probe artifact through
-   ``complex_fields.expansion_license`` -- never re-derived here -- and the run is
-   refused if the artifact was cut under a different float32 subnormal policy than
-   the one this process installs. ``wrong_arm`` is a mutation leg, and it MUST be
-   caught: an arm that made no difference would mean the licence was decorative.
-
-6. **A mutation the harness cannot see.** Every leg is a real defect armed through
+5. **A mutation the harness cannot see.** Every leg is a real defect armed through
    the shipped launcher's own doors (its ``kernel``, ``tables``, ``walls``,
    ``boundary_codes`` arguments), and every one MUST be caught. A leg that is not
    caught is a defect this comparison is blind to, and is reported as such rather
    than dropped.
 
-7. **A predicate that admits what the launch cannot serve.** :func:`leg_refusal`
+6. **A predicate that admits what the launch cannot serve.** :func:`leg_refusal`
    builds the configurations each module refuses BY NAME -- a real-storage run, a
    folded grid, a magnetic source with no publishable index, the wrong coordinate
    system -- and requires the refusal, with the reason recorded. Rule 3 of this
    round: a predicate admitting a row the launch cannot serve is a silent wrong
    answer, the one failure mode no bit-comparison catches.
 
-8. **A deposit computed against a pre-injection field.** All four modules declare
+7. **A deposit computed against a pre-injection field.** All four modules declare
    ``CARRIES_DEPOSIT_REPAIR``. :func:`leg_deposit` runs a real source IN THIS FAMILY'S
    SEAM through ``deposit_repair``'s two plans and compares against the driver's own
    order, with a NULL CONTROL that removes the repair and MUST diverge. The source's
@@ -129,7 +122,7 @@ Usage, on the validation host (from ``parity/meep_gpu``)::
     PYTHONPATH=../.. CUDA_VISIBLE_DEVICES=<one empty index> \\
     CUPY_CACHE_DIR=<fresh, policy-token-carrying> \\
     python -u gate_cuda_fused_complex_pairs.py --family complex \\
-        --subnormal-policy keep --expansion-probe <probe>.json \\
+        --subnormal-policy keep \\
         --out <fresh dir>/gate.json
 
 One flushed line per case (the progress-reporting rule); the artifact is rewritten after every
@@ -166,7 +159,6 @@ import probe_fused_kernel_bit_identity as probe  # noqa: E402
 import gate_provenance  # noqa: E402
 
 from meep_gpu import deposit_repair, stepping  # noqa: E402
-from meep_gpu.triton_kernels import complex_fields  # noqa: E402
 
 log = probe.log
 to_host = probe.to_host
@@ -683,6 +675,12 @@ def build_cylindrical(spec: Dict[str, Any], value_class: str, rng):
         thickness = {"x": (0, max(2, shape[0] // 4)), "z": max(2, shape[2] // 4)}
     pml = PML(grid=grid, thickness=thickness)
     host = _seed_complex_state(fields, grid, value_class, rng)
+    # A SEEDED STATE IS A MID-RUN STATE (``stepping.separate_h_from_b``: "a state seeded
+    # mid-run carries True"): every engine of a case starts from the seeded H and
+    # f_w_H rather than re-starting H from B at its first update_H. MEEP's start of H is
+    # the driver smoke's and the chunk-form tests' to measure; here it would re-step
+    # the first update_H on the array path and hide the register the seam carries.
+    fields.h_separated = True
     return fields, grid, pml, host
 
 
@@ -854,12 +852,12 @@ def _no_pml_complex_electric_family() -> Dict[str, Any]:
     def variant_of(spec: Dict[str, Any]) -> str:
         return "conductive" if spec["conductive"] else "plain"
 
-    def resolve(fields, grid, pml, arm):
+    def resolve(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
-        # ``True`` IS THE BACKWARD FLAG, read off complex_emitter.KERNELS['step_D'][1]
-        # the same way the certified launcher reads it. The forward table is a step_B
-        # launch's and is a wrong phase here.
+        # ``True`` IS THE D CURL'S TABLE, read off complex_emitter.KERNELS['step_D'][1]
+        # the same way the certified launcher reads it. The other table is a step_B
+        # launch's (the conjugate, below the window) and is a wrong phase here.
         flags, values = complex_pml_kernels.bloch_phase_arguments(grid, True)
         return {"boundary_codes": complex_pml_kernels.complex_boundary_codes(grid),
                 "phase_flags": flags, "phase_values": values,
@@ -868,7 +866,10 @@ def _no_pml_complex_electric_family() -> Dict[str, Any]:
                 # classifier says what `_apply_curl` will do with it, and only the
                 # second decides which kernel is correct.
                 "curl_arm": module.no_pml_complex_curl_arm(fields, "step_D"),
-                "dtdx": float(grid.dt / grid.dx), "arm": arm}
+                "dtdx": float(grid.dt / grid.dx),
+                # THE RUN'S CHUNK RECORD: the lifted curl reads its partner-presence
+                # word (the one-rank division of the unlayered or inert-layer grid).
+                "chunk_bounds": _device_record(grid, pml)}
 
     def launch(fields, arguments, kernel=None):
         # THE POLE MUTATION IS RESOLVED HERE, PER LAUNCH, and never baked into the
@@ -894,9 +895,9 @@ def _no_pml_complex_electric_family() -> Dict[str, Any]:
         return module.launch_no_pml_complex_fused_electric_pair(
             fields, arguments["boundary_codes"], arguments["phase_flags"],
             arguments["phase_values"], arguments["dtdx"], arguments["curl_arm"],
-            arguments["arm"], kernel, poles)
+            kernel, poles, chunk_bounds=arguments["chunk_bounds"])
 
-    def separate(fields, grid, pml, arm):
+    def separate(fields, grid, pml):
         """The certified route: curl, the three in-seam passes, constitutive.
 
         THE CURL LAUNCHER TAKES ``fields`` FIRST and its own arm classifier decides
@@ -904,11 +905,12 @@ def _no_pml_complex_electric_family() -> Dict[str, Any]:
         phase table and ``dtdx`` derived by the same functions the predicate asks, so
         this route and the fused one cannot disagree about them by construction.
         """
-        halves.step_complex_no_pml_curl(fields, "step_D", arm, grid=grid)
+        halves.step_complex_no_pml_curl(fields, "step_D", grid=grid,
+                                        chunk_bounds=_device_record(grid, pml))
         stepping.fill_symmetry_bc_D(fields)
         stepping.zero_metal_D(fields)
         stepping.fill_folded_far_ghosts_D(fields)
-        halves.update_E_complex_no_pml_stored(fields, arm)
+        halves.update_E_complex_no_pml_stored(fields)
         return halves  # imported so the reference is visible in a traceback
 
     return {
@@ -927,14 +929,14 @@ def _no_pml_complex_electric_family() -> Dict[str, Any]:
         "separate": separate,
         "variants": ("plain", "conductive"),
         "variant_of": variant_of,
-        "source": lambda arm, variant: (
+        "source": lambda variant: (
             module.no_pml_complex_fused_electric_pair_source(
-                arm, variant == "conductive")),
+                variant == "conductive")),
         "kernel_symbol": module.kernel_name,
-        "certified_curl": lambda arm, variant: halves.kernel_source(
-            "step_D_conductive" if variant == "conductive" else "step_D", arm),
-        "certified_constitutive": lambda arm, variant: halves.kernel_source(
-            "update_E", arm),
+        "certified_curl": lambda variant: halves.kernel_source(
+            "step_D_conductive" if variant == "conductive" else "step_D"),
+        "certified_constitutive": lambda variant: halves.kernel_source(
+            "update_E"),
         "emitter_module": ("meep_gpu.cuda_kernels."
                            "no_pml_complex_fused_electric_pair"),
         "emitter_attribute": "no_pml_complex_fused_electric_pair_source",
@@ -957,7 +959,7 @@ def _no_pml_complex_electric_family() -> Dict[str, Any]:
         # what `leg_driver_order` requires the module's own REPLACES to equal.
         "fused_passes": ("step_D", "update_E"),
         "mutation_labels": ("phased_conductive_2pole", "phased_plain_1pole",
-                            "unphased_plain_0pole"),
+                            "unphased_plain_0pole", "two_d_phased_plain_1pole"),
         # NO DEPOSIT LEG. This product declares CARRIES_DEPOSIT_REPAIR False and
         # refuses every in-seam electric source, so there is no carried deposit to
         # compare; `leg_source_refusal` measures the refusal AND that it is not
@@ -966,6 +968,26 @@ def _no_pml_complex_electric_family() -> Dict[str, Any]:
         "source_refusal_labels": ("phased_conductive_2pole",),
         "reduced_labels": ("phased_conductive_2pole", "phased_plain_1pole"),
     }
+
+
+def _device_record(grid: Any, pml: Any) -> Any:
+    """The chunk record a complex launch binds as ``cb``, on the device: the one-rank
+    division of ``grid`` and ``pml`` (``gate_chunk_records.layer_record``), which is the
+    division the oracle's region plan steps with here (no driver installs another)."""
+    import cupy as cp  # noqa: PLC0415 - device-only
+    from gate_chunk_records import layer_record  # noqa: PLC0415
+
+    return cp.asarray(layer_record(grid, pml), dtype=cp.int32)
+
+
+def _start_h_before_a_real_single(fields: Any, pml: Any) -> None:
+    """MEEP's start of H before a SINGLE real ``update_H`` launch
+    (``stepping.separate_h_from_b``, once per run): the shipped composition's launcher
+    runs it (``arms._RealPmlConstitutiveLauncher``) and
+    ``constitutive_kernels.update_fused_pml_real`` does not, so a separate route that
+    launches the single directly runs it here, as the launcher would. The complex
+    single runs the start itself (``complex_pml_kernels.update_fused_pml_complex``)."""
+    stepping.separate_h_from_b(fields, pml)
 
 
 def _complex_family() -> Dict[str, Any]:
@@ -977,7 +999,7 @@ def _complex_family() -> Dict[str, Any]:
     from meep_gpu.cuda_kernels import complex_fused_magnetic_pair as module  # noqa: PLC0415
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):
+    def resolve(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
         flags, values = complex_pml_kernels.bloch_phase_arguments(grid, False)
@@ -985,28 +1007,32 @@ def _complex_family() -> Dict[str, Any]:
                 "boundary_codes": complex_pml_kernels.complex_boundary_codes(grid),
                 "phase_flags": flags, "phase_values": values,
                 "walls": in_seam_coverage.zero_metal_axes(grid),
-                "dtdx": float(grid.dt / grid.dx), "arm": arm}
+                "dtdx": float(grid.dt / grid.dx),
+                "chunk_bounds": _device_record(grid, pml), "layer": pml}
 
     def launch(fields, arguments, kernel=None):
         return module.launch_complex_fused_magnetic_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
-            arguments["walls"], arguments["dtdx"], arguments["arm"], kernel)
+            arguments["walls"], arguments["dtdx"], kernel,
+            chunk_bounds=arguments["chunk_bounds"], layer=arguments["layer"])
 
-    def separate(fields, grid, pml, arm):
+    def separate(fields, grid, pml):
         """The certified route: curl, the wall pass where live, constitutive."""
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import in_seam_passes  # noqa: PLC0415
 
+        cb = _device_record(grid, pml)
         complex_pml_kernels.step_fused_pml_complex(
-            "step_B", fields, arm, grid=grid, pml=pml)
+            "step_B", fields, grid=grid, pml=pml, chunk_bounds=cb)
         stepping.fill_symmetry_bc_B(fields)
         # The CERTIFIED in-seam kernel refuses complex64 storage by name, so the
         # separate route runs the ARRAY PATH pass here. That is what makes the
         # fused product's carry worth something rather than a re-spelling.
         stepping.zero_metal_B(fields)
         stepping.fill_folded_far_ghosts_B(fields)
-        complex_pml_kernels.update_fused_pml_complex("H", fields, arm, pml=pml)
+        complex_pml_kernels.update_fused_pml_complex("H", fields, pml=pml,
+                                                     chunk_bounds=cb)
         return in_seam_passes  # imported so the reference is visible in a traceback
 
     return {
@@ -1040,13 +1066,14 @@ def _complex_electric_family() -> Dict[str, Any]:
 
     THE SAME SHAPE AS ITS MAGNETIC TWIN and three arguments apart, each of which
     compiles, runs, and is a different engine: the BACKWARD Bloch table
-    (``bloch_phase_arguments(grid, True)``, whose imaginary parts are the conjugates),
+    (``bloch_phase_arguments(grid, True)``: the word above the stored window, ``eikna``,
+    where the magnetic twin's is ``conj(eikna)``),
     the MIRROR-IMAGE sub-lattice pairing, and the OFF-DIAGONAL wall table.
     """
     from meep_gpu.cuda_kernels import complex_fused_electric_pair as module  # noqa: PLC0415
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):
+    def resolve(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
         # ``True`` IS THE BACKWARD FLAG, read off complex_emitter.KERNELS['step_D'][1]
@@ -1057,27 +1084,31 @@ def _complex_electric_family() -> Dict[str, Any]:
                 "boundary_codes": complex_pml_kernels.complex_boundary_codes(grid),
                 "phase_flags": flags, "phase_values": values,
                 "walls": in_seam_coverage.zero_metal_axes(grid),
-                "dtdx": float(grid.dt / grid.dx), "arm": arm}
+                "dtdx": float(grid.dt / grid.dx),
+                "chunk_bounds": _device_record(grid, pml)}
 
     def launch(fields, arguments, kernel=None):
         return module.launch_complex_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
-            arguments["walls"], arguments["dtdx"], arguments["arm"], kernel)
+            arguments["walls"], arguments["dtdx"], kernel,
+            chunk_bounds=arguments["chunk_bounds"])
 
-    def separate(fields, grid, pml, arm):
+    def separate(fields, grid, pml):
         """The certified route: curl, the wall pass where live, constitutive."""
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import in_seam_passes  # noqa: PLC0415
 
+        cb = _device_record(grid, pml)
         complex_pml_kernels.step_fused_pml_complex(
-            "step_D", fields, arm, grid=grid, pml=pml)
+            "step_D", fields, grid=grid, pml=pml, chunk_bounds=cb)
         stepping.fill_symmetry_bc_D(fields)
         # The CERTIFIED in-seam kernel refuses complex64 storage by name, so the
         # separate route runs the ARRAY PATH pass here.
         stepping.zero_metal_D(fields)
         stepping.fill_folded_far_ghosts_D(fields)
-        complex_pml_kernels.update_fused_pml_complex("E", fields, arm, pml=pml)
+        complex_pml_kernels.update_fused_pml_complex("E", fields, pml=pml,
+                                                     chunk_bounds=cb)
         return in_seam_passes  # imported so the reference is visible in a traceback
 
     return {
@@ -1106,56 +1137,61 @@ def _complex_electric_family() -> Dict[str, Any]:
     }
 
 
+def _cylindrical_record(fields: Any, pml: Any) -> Any:
+    """The chunk record a cylindrical launch binds as ``cb``, on the device: the region
+    plan's division (``cylindrical_kernels.device_chunk_record``), which is the division
+    the array path steps these fixtures with -- the one the hd gates and the singles
+    read."""
+    from meep_gpu.cuda_kernels import cylindrical_kernels  # noqa: PLC0415 - device-only
+
+    return cylindrical_kernels.device_chunk_record(fields, pml)
+
+
+def _cylindrical_radial(fields: Any, arguments: Dict[str, Any], sub_step: str) -> Any:
+    """The radial difference the product's own scan writes over the CURRENT Ep / Hp,
+    into a fresh buffer: what the disjointness check binds beside the fields."""
+    from meep_gpu.cuda_kernels.cylindrical_prefix import radial_difference  # noqa: PLC0415
+
+    return radial_difference(fields, arguments["layer"], sub_step, tables=arguments["scan"])
+
+
 def _cylindrical_family() -> Dict[str, Any]:
     # Same rule as the Cartesian family: nothing that needs a device is imported at
-    # family-construction time. ``cylindrical_complex_kernels`` DOES import CuPy at
-    # module scope, so it is reached only inside the closures.
+    # family-construction time. ``cylindrical_complex_kernels`` is reached only inside
+    # the closures.
     from meep_gpu.cuda_kernels import cylindrical_fused_magnetic_pair as module  # noqa: PLC0415
-    from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
-    from meep_gpu.cuda_kernels.cylindrical_prefix import cylindrical_prefix  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):
-        from meep_gpu.cuda_kernels import cylindrical_complex_kernels as certified  # noqa: PLC0415
-
-        dtdx = float(grid.dt / grid.dx)
-        m = int(grid.m)
-        return {"tables": module.cylindrical_fused_magnetic_pair_tables(pml),
-                "boundary_codes": certified.cylindrical_complex_boundary_codes(grid),
-                "imr_rows": certified.imr_rows_for("step_B", grid.xp, m, dtdx,
-                                                   int(fields.Bx.shape[0]),
-                                                   fields.Bx.dtype),
-                "increment_scalars": certified.axis_increment_scalars(m, dtdx),
-                "m_class": certified.m_class(m),
-                "zero_rows": certified.zero_rows(
-                    m, bool(grid.accurate_fields_near_cylorigin)),
-                "walls": in_seam_coverage.zero_metal_axes(grid),
-                "dtdx": dtdx, "arm": arm, "fields": fields}
+    def resolve(fields, grid, pml):
+        # EVERYTHING THE LAUNCH BINDS IS A READING OF THE FROZEN GRID AND LAYER
+        # (``resolve_launch_arguments``, the plan's own resolver): the tables, the
+        # i*m/r rows, the Courant words, the m class, the scan's division readings, the
+        # record, the layer the run's first update_H starts H with.
+        return module.resolve_launch_arguments(fields, grid, pml,
+                                               _cylindrical_record(fields, pml))
 
     def launch(fields, arguments, kernel=None):
-        # THE PREFIX IS RESOLVED PER LAUNCH, never cached beside the tables: it is a
-        # cumulative sum over the CURRENT Ep, so a value taken once would be a stale
-        # field one step later -- the same class of defect as reading a pre-injection
-        # B, arriving through a cache instead of a seam.
-        return module.launch_cylindrical_fused_magnetic_pair(
-            fields, arguments["tables"], cylindrical_prefix(fields, "step_B"),
-            arguments["imr_rows"], arguments["boundary_codes"],
-            arguments["increment_scalars"], arguments["m_class"],
-            arguments["zero_rows"], arguments["walls"], arguments["dtdx"],
-            arguments["arm"], kernel)
+        # THE RADIAL DIFFERENCE IS THE LAUNCHER'S OWN FIRST LAUNCH, over the CURRENT
+        # Ep: a difference taken once would be a stale field one step later -- the
+        # same class of defect as reading a pre-injection B, arriving through a cache
+        # instead of a seam.
+        return module.launch_cylindrical_fused_magnetic_pair(fields, arguments, kernel=kernel)
 
-    def separate(fields, grid, pml, arm):
+    def separate(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import cylindrical_complex_kernels as certified  # noqa: PLC0415
 
-        certified.step_cylindrical_complex("step_B", fields, arm, grid=grid, pml=pml)
+        cb = _cylindrical_record(fields, pml)
+        certified.step_cylindrical_complex("step_B", fields, grid, pml, chunk_bounds=cb)
         stepping.fill_symmetry_bc_B(fields)
         stepping.zero_metal_B(fields)
         stepping.fill_folded_far_ghosts_B(fields)
-        complex_pml_kernels.update_fused_pml_complex("H", fields, arm, pml=pml)
+        complex_pml_kernels.update_fused_pml_complex("H", fields, pml=pml,
+                                                     chunk_bounds=cb)
         return certified
 
     return {
         "name": "cylindrical",
+        "companion_kernels": ("cyl_radial_difference",),
         "shape": "cylindrical",
         "seam": "B",
         "curl_sub_step": "step_B",
@@ -1170,10 +1206,14 @@ def _cylindrical_family() -> Dict[str, Any]:
         "separate": separate,
         "source": module.cylindrical_fused_magnetic_pair_source,
         "emitter_module": "meep_gpu.cuda_kernels.cylindrical_fused_magnetic_pair",
+        # The own-cell hoist's argument-to-load map: the derived helpers take the old
+        # field as ``fcur`` where the certified text loads it, and a declared edit's
+        # expression is compared with that one load named as its register.
+        "lift_loads": {"fcur": "cf_load(f, idx)"},
         "emitter_attribute": "cylindrical_fused_magnetic_pair_source",
         "disjoint": lambda fields, arguments: module.assert_disjoint_bindings(
-            fields, arguments["tables"],
-            cylindrical_prefix(fields, "step_B"), arguments["imr_rows"]),
+            fields, arguments["tables"], _cylindrical_radial(fields, arguments, "step_B"),
+            arguments["imr_rows"]),
         "mutation_labels": ("m2_z_metallic", "m1_z_metallic", "m3_accurate",
                             "m1_z_periodic", "m0_z_metallic"),
         "deposit_labels": ("m2_z_metallic", "m1_z_periodic", "m0_z_metallic"),
@@ -1184,57 +1224,40 @@ def _cylindrical_family() -> Dict[str, Any]:
 def _cylindrical_electric_family() -> Dict[str, Any]:
     """The Dcyl complex product on the ELECTRIC seam.
 
-    EVERY CYLINDRICAL QUANTITY HERE IS THE ``step_D`` ONE. The radial prefix sums Hp
+    EVERY CYLINDRICAL QUANTITY HERE IS THE ``step_D`` ONE. The radial sum runs over Hp
     rather than Ep, the two i*m/r rows carry the OPPOSITE SIGNS
-    (``cylindrical_complex_kernels.IMR_TERMS``), and the axis tail has TWO branches
-    rather than one -- Dz alone at |m| = 1 and all six volumes at |m| >= 2. Each of
-    those compiles and runs with the B side's value substituted.
+    (``cylindrical_complex_kernels.IMR_TERMS``), and the axis tail has THREE branches
+    rather than one -- Dz alone at |m| = 1, all six volumes at |m| >= 2, and the m = 0
+    on-axis Dz post-add. Each of those compiles and runs with the B side's value
+    substituted.
     """
     from meep_gpu.cuda_kernels import cylindrical_fused_electric_pair as module  # noqa: PLC0415
-    from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
-    from meep_gpu.cuda_kernels.cylindrical_prefix import cylindrical_prefix  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):
-        from meep_gpu.cuda_kernels import cylindrical_complex_kernels as certified  # noqa: PLC0415
-
-        dtdx = float(grid.dt / grid.dx)
-        m = int(grid.m)
-        return {"tables": module.cylindrical_fused_electric_pair_tables(pml),
-                "boundary_codes": certified.cylindrical_complex_boundary_codes(grid),
-                "imr_rows": certified.imr_rows_for("step_D", grid.xp, m, dtdx,
-                                                   int(fields.Dx.shape[0]),
-                                                   fields.Dx.dtype),
-                "increment_scalars": certified.axis_increment_scalars(m, dtdx),
-                "m_class": certified.m_class(m),
-                "zero_rows": certified.zero_rows(
-                    m, bool(grid.accurate_fields_near_cylorigin)),
-                "walls": in_seam_coverage.zero_metal_axes(grid),
-                "dtdx": dtdx, "arm": arm, "fields": fields}
+    def resolve(fields, grid, pml):
+        return module.resolve_launch_arguments(fields, grid, pml,
+                                               _cylindrical_record(fields, pml))
 
     def launch(fields, arguments, kernel=None):
-        # THE PREFIX IS RESOLVED PER LAUNCH, never cached beside the tables: it is a
-        # cumulative sum over the CURRENT Hp, so a value taken once would be a stale
-        # field one step later.
-        return module.launch_cylindrical_fused_electric_pair(
-            fields, arguments["tables"], cylindrical_prefix(fields, "step_D"),
-            arguments["imr_rows"], arguments["boundary_codes"],
-            arguments["increment_scalars"], arguments["m_class"],
-            arguments["zero_rows"], arguments["walls"], arguments["dtdx"],
-            arguments["arm"], kernel)
+        # THE RADIAL DIFFERENCE IS THE LAUNCHER'S OWN FIRST LAUNCH, over the CURRENT
+        # Hp: a difference taken once would be a stale field one step later.
+        return module.launch_cylindrical_fused_electric_pair(fields, arguments, kernel=kernel)
 
-    def separate(fields, grid, pml, arm):
+    def separate(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import cylindrical_complex_kernels as certified  # noqa: PLC0415
 
-        certified.step_cylindrical_complex("step_D", fields, arm, grid=grid, pml=pml)
+        cb = _cylindrical_record(fields, pml)
+        certified.step_cylindrical_complex("step_D", fields, grid, pml, chunk_bounds=cb)
         stepping.fill_symmetry_bc_D(fields)
         stepping.zero_metal_D(fields)
         stepping.fill_folded_far_ghosts_D(fields)
-        complex_pml_kernels.update_fused_pml_complex("E", fields, arm, pml=pml)
+        complex_pml_kernels.update_fused_pml_complex("E", fields, pml=pml,
+                                                     chunk_bounds=cb)
         return certified
 
     return {
         "name": "cylindrical_electric",
+        "companion_kernels": ("cyl_radial_difference",),
         "shape": "cylindrical",
         "seam": "D",
         "curl_sub_step": "step_D",
@@ -1249,10 +1272,14 @@ def _cylindrical_electric_family() -> Dict[str, Any]:
         "separate": separate,
         "source": module.cylindrical_fused_electric_pair_source,
         "emitter_module": "meep_gpu.cuda_kernels.cylindrical_fused_electric_pair",
+        # The own-cell hoist's argument-to-load map: the derived helpers take the old
+        # field as ``fcur`` where the certified text loads it, and a declared edit's
+        # expression is compared with that one load named as its register.
+        "lift_loads": {"fcur": "cf_load(f, idx)"},
         "emitter_attribute": "cylindrical_fused_electric_pair_source",
         "disjoint": lambda fields, arguments: module.assert_disjoint_bindings(
-            fields, arguments["tables"],
-            cylindrical_prefix(fields, "step_D"), arguments["imr_rows"]),
+            fields, arguments["tables"], _cylindrical_radial(fields, arguments, "step_D"),
+            arguments["imr_rows"]),
         "mutation_labels": ("m2_z_metallic", "m1_z_metallic", "m3_accurate",
                             "m1_z_periodic", "m0_z_metallic"),
         "deposit_labels": ("m2_z_metallic", "m1_z_periodic", "m0_z_metallic"),
@@ -1281,9 +1308,7 @@ def build_cylindrical_electric(spec: Dict[str, Any], value_class: str, rng):
 # Two are COMPLEX (folded, beta) and ride this harness natively; three are REAL
 # (Dcyl m = 0, special_kz, BFAST) and ride it because nothing in the comparison
 # machinery is dtype-bound -- the state is compared as raw uint32 words either
-# way. The real families' ``covers`` take no licence, so their family dicts wrap
-# them to the six-argument shape the legs call with; the arm is resolved and then
-# unused on them, which is recorded rather than hidden.
+# way.
 #
 # THE TWO FILL-CARRYING FAMILIES DECLARE ALL FIVE PASSES FUSED, so
 # ``unfused_passes`` runs NEITHER mirror fill on the subject side -- the launch
@@ -1518,6 +1543,8 @@ def build_cylindrical_real_pair(spec: Dict[str, Any], value_class: str, rng):
     layer = 1 if spec.get("absorber") == "thin" else 2
     pml = PML(grid=grid, thickness={"x": (0, layer), "z": layer})
     host = _seed_real_state(fields, grid, value_class, rng)
+    # A seeded state is a mid-run state (build_cylindrical says why).
+    fields.h_separated = True
     return fields, grid, pml, host
 
 
@@ -1789,13 +1816,8 @@ def _bfast_refusal_cases(record) -> None:
 
 
 def _real_covers(covers):
-    """A real-storage predicate lifted to the six-argument shape the legs call.
-
-    The licence and the policy are ACCEPTED AND UNUSED: these families bind no
-    expansion arm (their arithmetic is real float32), and a wrapper that refused
-    the extra arguments would fork every leg on the family kind.
-    """
-    def ask(fields, pml, grid, sources=(), license=None, policy=None):  # noqa: ARG001
+    """A real-storage predicate in the shape the legs call."""
+    def ask(fields, pml, grid, sources=()):
         return covers(fields, pml, grid, sources)
     return ask
 
@@ -1808,7 +1830,7 @@ def _folded_complex_family() -> Dict[str, Any]:
     )
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):
+    def resolve(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_folded_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
@@ -1821,27 +1843,31 @@ def _folded_complex_family() -> Dict[str, Any]:
                 "phase_flags": flags, "phase_values": values,
                 "walls": in_seam_coverage.zero_metal_axes(grid),
                 "fills": complex_fill_carry.fills_plan(grid),
-                "dtdx": float(grid.dt / grid.dx), "arm": arm}
+                "dtdx": float(grid.dt / grid.dx),
+                "chunk_bounds": _device_record(grid, pml), "layer": pml}
 
     def launch(fields, arguments, kernel=None):
         return module.launch_complex_folded_fused_magnetic_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
             arguments["walls"], arguments["fills"], arguments["dtdx"],
-            arguments["arm"], kernel)
+            kernel, chunk_bounds=arguments["chunk_bounds"],
+            layer=arguments["layer"])
 
-    def separate(fields, grid, pml, arm):
+    def separate(fields, grid, pml):
         """The certified route: the folded curl single, the driver's own array
         fills and wall pass, the certified complex constitutive."""
         from meep_gpu.cuda_kernels import complex_folded_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
+        cb = _device_record(grid, pml)
         complex_folded_kernels.step_folded_complex(
-            "step_B", fields, arm, grid=grid, pml=pml)
+            "step_B", fields, grid=grid, pml=pml, chunk_bounds=cb)
         stepping.fill_symmetry_bc_B(fields)
         stepping.zero_metal_B(fields)
         stepping.fill_folded_far_ghosts_B(fields)
-        complex_pml_kernels.update_fused_pml_complex("H", fields, arm, pml=pml)
+        complex_pml_kernels.update_fused_pml_complex("H", fields, pml=pml,
+                                                     chunk_bounds=cb)
 
     return {
         "name": "complex_folded",
@@ -1869,9 +1895,9 @@ def _folded_complex_family() -> Dict[str, Any]:
                          "fill_folded_far_ghosts_B", "update_H"),
         "carry_floor": True,
         "refusal_cases": _folded_refusal_cases,
-        "certified_curl": (lambda arm, variant=None: __import__(
+        "certified_curl": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.complex_folded_kernels",
-            fromlist=["folded_source"]).folded_source("step_B", arm)),
+            fromlist=["folded_source"]).folded_source("step_B")),
         "mutation_labels": ("fold_y_periodic_even", "fold_y_periodic_odd",
                             "fold_y_odd_phase", "fold_xy_mixed_phase",
                             "fold_y_wall_x_odd", "fold_x_periodic"),
@@ -1888,7 +1914,7 @@ def _complex_beta_family() -> Dict[str, Any]:
     )
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):
+    def resolve(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_folded_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
@@ -1903,25 +1929,29 @@ def _complex_beta_family() -> Dict[str, Any]:
                 "beta_words": module.beta_coefficients(grid),
                 "walls": in_seam_coverage.zero_metal_axes(grid),
                 "fills": complex_fill_carry.fills_plan(grid),
-                "dtdx": float(grid.dt / grid.dx), "arm": arm}
+                "dtdx": float(grid.dt / grid.dx),
+                "chunk_bounds": _device_record(grid, pml), "layer": pml}
 
     def launch(fields, arguments, kernel=None):
         return module.launch_complex_beta_fused_magnetic_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
             arguments["beta_words"], arguments["walls"], arguments["fills"],
-            arguments["dtdx"], arguments["arm"], kernel)
+            arguments["dtdx"], kernel,
+            chunk_bounds=arguments["chunk_bounds"], layer=arguments["layer"])
 
-    def separate(fields, grid, pml, arm):
+    def separate(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_beta_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
+        cb = _device_record(grid, pml)
         complex_beta_kernels.step_complex_beta(
-            "step_B", fields, arm, grid=grid, pml=pml)
+            "step_B", fields, grid=grid, pml=pml, chunk_bounds=cb)
         stepping.fill_symmetry_bc_B(fields)
         stepping.zero_metal_B(fields)
         stepping.fill_folded_far_ghosts_B(fields)
-        complex_pml_kernels.update_fused_pml_complex("H", fields, arm, pml=pml)
+        complex_pml_kernels.update_fused_pml_complex("H", fields, pml=pml,
+                                                     chunk_bounds=cb)
 
     return {
         "name": "complex_beta",
@@ -1946,9 +1976,9 @@ def _complex_beta_family() -> Dict[str, Any]:
                          "fill_folded_far_ghosts_B", "update_H"),
         "carry_floor": True,
         "refusal_cases": _beta_refusal_cases,
-        "certified_curl": (lambda arm, variant=None: __import__(
+        "certified_curl": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.complex_beta_kernels",
-            fromlist=["beta_source"]).beta_source("step_B", arm)),
+            fromlist=["beta_source"]).beta_source("step_B")),
         "mutation_labels": ("beta_fold_y_periodic_even",
                             "beta_fold_y_periodic_odd", "beta_fold_y_odd_phase",
                             "beta_unfolded_bloch_x", "beta_fold_y_wall_x"),
@@ -1976,43 +2006,58 @@ def _cylindrical_real_family() -> Dict[str, Any]:
     )
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):  # noqa: ARG001 - real family, no arm
+    def resolve(fields, grid, pml):  # noqa: ARG001 - real family
         from meep_gpu.cuda_kernels import coverage as cov  # noqa: PLC0415
         from meep_gpu.cuda_kernels import cylindrical_coverage  # noqa: PLC0415
+        from meep_gpu.cuda_kernels.cylindrical_prefix import (  # noqa: PLC0415
+            radial_scan_device_tables, radial_scan_tables,
+        )
 
         codes = cylindrical_coverage.cylindrical_boundary_codes(
             tuple(cov.real_pml_boundary_kinds(grid)))
         return {"tables": module.cylindrical_real_fused_magnetic_pair_tables(pml),
                 "boundary_codes": tuple(np.int32(code) for code in codes),
                 "walls": in_seam_coverage.zero_metal_axes(grid),
-                "dtdx": float(grid.dt / grid.dx)}
+                "dtdx": float(grid.dt / grid.dx),
+                "chunk_bounds": _cylindrical_record(fields, pml), "layer": pml,
+                "scan": radial_scan_device_tables(
+                    radial_scan_tables(fields, pml, "step_B"), cp)}
 
     def launch(fields, arguments, kernel=None):
+        # TWO LAUNCHES, the plan's: the column-serial scan over the CURRENT
+        # Ep (its division readings held, the difference it writes not),
+        # then the fused kernel.
         from meep_gpu.cuda_kernels.cylindrical_prefix import (  # noqa: PLC0415
-            cylindrical_prefix,
+            radial_difference,
         )
 
         return module.launch_cylindrical_real_fused_magnetic_pair(
             fields, arguments["tables"],
-            cylindrical_prefix(fields, "step_B",
-                               scratch=getattr(fields, "scratch", None)),
+            radial_difference(fields, arguments["layer"], "step_B",
+                              tables=arguments["scan"],
+                              scratch=getattr(fields, "scratch", None)),
             arguments["boundary_codes"], arguments["walls"],
-            arguments["dtdx"], kernel)
+            arguments["dtdx"], kernel, chunk_bounds=arguments["chunk_bounds"],
+            layer=arguments["layer"])
 
-    def separate(fields, grid, pml, arm):  # noqa: ARG001
+    def separate(fields, grid, pml):  # noqa: ARG001
         from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import cylindrical_kernels  # noqa: PLC0415
 
-        stepped = cylindrical_kernels.step_cylindrical(fields, pml, "step_B")
+        cb = _cylindrical_record(fields, pml)
+        stepped = cylindrical_kernels.step_cylindrical(fields, pml, "step_B",
+                                                       chunk_bounds=cb)
         if not stepped:
             raise SystemExit(
                 "the certified Dcyl curl refused the separate route's fixture; "
                 "a silent False here would masquerade as a weld divergence")
         stepping.zero_metal_B(fields)
-        constitutive_kernels.update_fused_pml_real("H", fields, pml=pml)
+        constitutive_kernels.update_fused_pml_real("H", fields, pml=pml,
+                                                   chunk_bounds=cb)
 
     return {
         "name": "cylindrical_real",
+        "companion_kernels": ("cyl_radial_difference",),
         "shape": "cylindrical_real",
         "seam": "B",
         "curl_sub_step": "step_B",
@@ -2025,21 +2070,23 @@ def _cylindrical_real_family() -> Dict[str, Any]:
         "resolve": resolve,
         "launch": launch,
         "separate": separate,
-        "source": lambda arm=None: module.cylindrical_real_fused_magnetic_pair_source(),
+        "source": lambda: module.cylindrical_real_fused_magnetic_pair_source(),
         "emitter_module":
             "meep_gpu.cuda_kernels.cylindrical_real_fused_magnetic_pair",
         "emitter_attribute": "cylindrical_real_fused_magnetic_pair_source",
         "disjoint": lambda fields, arguments: True,
-        "licensed": False,
-        "lift_arms": ("REAL",),
-        "lift_arithmetic_markers": ("= dtdx * (", "shift_up(", "shift_dn("),
+        # THE CURL IS THE ROOT'S HELPER since the 0.10 forms: the stencil is
+        # ``curl_stencil``'s return lines, each component calls it, and Bz / Dz take
+        # dtdx times the radial difference.
+        "lift_arithmetic_markers": ("dtdx * (", "shift_up(", "shift_dn(",
+                                    "curl_stencil(dtdx", "dtdx * rad["),
         "memo_key": True,
         "refusal_cases": _cylindrical_real_refusal_cases,
-        "certified_curl": (lambda arm, variant=None: __import__(
+        "certified_curl": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.cylindrical_kernels",
             fromlist=["_cyl_step_B_pml_real_kernel_code"])
             ._cyl_step_B_pml_real_kernel_code),
-        "certified_constitutive": (lambda arm, variant=None: __import__(
+        "certified_constitutive": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.constitutive_kernels",
             fromlist=["_update_H_pml_real_kernel_code"])
             ._update_H_pml_real_kernel_code),
@@ -2057,7 +2104,7 @@ def _special_kz_family() -> Dict[str, Any]:
     )
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):  # noqa: ARG001 - real family, no arm
+    def resolve(fields, grid, pml):  # noqa: ARG001 - real family
         from meep_gpu.cuda_kernels import coverage as cov  # noqa: PLC0415
 
         codes, refusal = cov.real_curl_boundary_codes(grid)
@@ -2068,15 +2115,17 @@ def _special_kz_family() -> Dict[str, Any]:
                 "walls": in_seam_coverage.zero_metal_axes(grid),
                 "beta": module.beta_scalars(grid),
                 "fills": module.special_kz_fused_magnetic_pair_fills(grid),
-                "dtdx": float(grid.dt / grid.dx)}
+                "dtdx": float(grid.dt / grid.dx),
+                "chunk_bounds": _device_record(grid, pml), "layer": pml}
 
     def launch(fields, arguments, kernel=None):
         return module.launch_special_kz_fused_magnetic_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["beta"], arguments["fills"],
-            arguments["dtdx"], kernel)
+            arguments["dtdx"], kernel,
+            chunk_bounds=arguments["chunk_bounds"], layer=arguments["layer"])
 
-    def separate(fields, grid, pml, arm):  # noqa: ARG001
+    def separate(fields, grid, pml):  # noqa: ARG001
         from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import special_kz_curl  # noqa: PLC0415
         from meep_gpu.cuda_kernels import step_curl_kernels  # noqa: PLC0415
@@ -2084,16 +2133,18 @@ def _special_kz_family() -> Dict[str, Any]:
 
         codes, refusal = cov.real_curl_boundary_codes(grid)
         assert refusal is None, refusal
+        cb = _device_record(grid, pml)
         special_kz_curl.step_special_kz(
             "step_B", fields, step_curl_kernels.real_pml_curl_tables(pml, True),
             tuple(np.int32(code) for code in codes), float(grid.dt / grid.dx),
-            module.beta_scalars(grid))
+            module.beta_scalars(grid), chunk_bounds=cb)
         stepping.fill_symmetry_bc_B(fields)
         stepping.zero_metal_B(fields)
         stepping.fill_folded_far_ghosts_B(fields)
-        constitutive_kernels.update_fused_pml_real("H", fields, pml=pml)
+        _start_h_before_a_real_single(fields, pml)
+        constitutive_kernels.update_fused_pml_real("H", fields, pml=pml, chunk_bounds=cb)
 
-    def separate_without_fills(fields, grid, pml, arm):  # noqa: ARG001
+    def separate_without_fills(fields, grid, pml):  # noqa: ARG001
         from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import special_kz_curl  # noqa: PLC0415
         from meep_gpu.cuda_kernels import step_curl_kernels  # noqa: PLC0415
@@ -2101,12 +2152,14 @@ def _special_kz_family() -> Dict[str, Any]:
 
         codes, refusal = cov.real_curl_boundary_codes(grid)
         assert refusal is None, refusal
+        cb = _device_record(grid, pml)
         special_kz_curl.step_special_kz(
             "step_B", fields, step_curl_kernels.real_pml_curl_tables(pml, True),
             tuple(np.int32(code) for code in codes), float(grid.dt / grid.dx),
-            module.beta_scalars(grid))
+            module.beta_scalars(grid), chunk_bounds=cb)
         stepping.zero_metal_B(fields)
-        constitutive_kernels.update_fused_pml_real("H", fields, pml=pml)
+        _start_h_before_a_real_single(fields, pml)
+        constitutive_kernels.update_fused_pml_real("H", fields, pml=pml, chunk_bounds=cb)
 
     return {
         "name": "special_kz",
@@ -2123,14 +2176,14 @@ def _special_kz_family() -> Dict[str, Any]:
         "launch": launch,
         "separate": separate,
         "separate_without_fills": separate_without_fills,
-        "source": lambda arm=None: module.special_kz_fused_magnetic_pair_source(),
+        "source": lambda: module.special_kz_fused_magnetic_pair_source(),
         "emitter_module": "meep_gpu.cuda_kernels.special_kz_fused_magnetic_pair",
         "emitter_attribute": "special_kz_fused_magnetic_pair_source",
         "disjoint": lambda fields, arguments: module.assert_disjoint_bindings(
             fields, arguments["tables"]),
-        "licensed": False,
-        "lift_arms": ("REAL",),
-        "lift_arithmetic_markers": ("= dtdx * (", "shift_up(", "shift_dn("),
+        # The certified curl's arithmetic: MEEP's presence-gated stencil and the six
+        # neighbour reads (the root kernels form the curl in ``curl_stencil``).
+        "lift_arithmetic_markers": ("curl_stencil(", "shift_up(", "shift_dn("),
         # ALL FIVE PASSES SINCE 2026-09-02: the weld ported the real pair's fill
         # carry, so the two mirror fills are fused rather than refused, and the
         # carry floor is the armed closure on every folded fixture.
@@ -2138,10 +2191,10 @@ def _special_kz_family() -> Dict[str, Any]:
                          "fill_folded_far_ghosts_B", "update_H"),
         "carry_floor": True,
         "refusal_cases": _special_kz_refusal_cases,
-        "certified_curl": (lambda arm, variant=None: __import__(
+        "certified_curl": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.special_kz_curl",
             fromlist=["kernel_source"]).kernel_source("step_B_special_kz_real")),
-        "certified_constitutive": (lambda arm, variant=None: __import__(
+        "certified_constitutive": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.constitutive_kernels",
             fromlist=["_update_H_pml_real_kernel_code"])
             ._update_H_pml_real_kernel_code),
@@ -2166,7 +2219,7 @@ def _bfast_family() -> Dict[str, Any]:
     )
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):  # noqa: ARG001 - real family, no arm
+    def resolve(fields, grid, pml):  # noqa: ARG001 - real family
         from meep_gpu.cuda_kernels import coverage as cov  # noqa: PLC0415
 
         codes, refusal = cov.real_curl_boundary_codes(grid)
@@ -2176,15 +2229,16 @@ def _bfast_family() -> Dict[str, Any]:
                 "boundary_codes": tuple(np.int32(code) for code in codes),
                 "walls": in_seam_coverage.zero_metal_axes(grid),
                 "coefficients": module.bfast_scalars(grid),
-                "dtdx": float(grid.dt / grid.dx)}
+                "dtdx": float(grid.dt / grid.dx),
+                "chunk_bounds": _device_record(grid, pml), "layer": pml}
 
     def launch(fields, arguments, kernel=None):
         return module.launch_bfast_fused_magnetic_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["coefficients"], arguments["dtdx"],
-            kernel)
+            kernel, chunk_bounds=arguments["chunk_bounds"], layer=arguments["layer"])
 
-    def separate(fields, grid, pml, arm):  # noqa: ARG001
+    def separate(fields, grid, pml):  # noqa: ARG001
         from meep_gpu.cuda_kernels import bfast_curl  # noqa: PLC0415
         from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import step_curl_kernels  # noqa: PLC0415
@@ -2192,12 +2246,14 @@ def _bfast_family() -> Dict[str, Any]:
 
         codes, refusal = cov.real_curl_boundary_codes(grid)
         assert refusal is None, refusal
+        cb = _device_record(grid, pml)
         bfast_curl.step_bfast(
             "step_B", fields, step_curl_kernels.real_pml_curl_tables(pml, True),
             tuple(np.int32(code) for code in codes), float(grid.dt / grid.dx),
-            module.bfast_scalars(grid))
+            module.bfast_scalars(grid), chunk_bounds=cb)
         stepping.zero_metal_B(fields)
-        constitutive_kernels.update_fused_pml_real("H", fields, pml=pml)
+        _start_h_before_a_real_single(fields, pml)
+        constitutive_kernels.update_fused_pml_real("H", fields, pml=pml, chunk_bounds=cb)
 
     return {
         "name": "bfast",
@@ -2213,20 +2269,20 @@ def _bfast_family() -> Dict[str, Any]:
         "resolve": resolve,
         "launch": launch,
         "separate": separate,
-        "source": lambda arm=None: module.bfast_fused_magnetic_pair_source(),
+        "source": lambda: module.bfast_fused_magnetic_pair_source(),
         "emitter_module": "meep_gpu.cuda_kernels.bfast_fused_magnetic_pair",
         "emitter_attribute": "bfast_fused_magnetic_pair_source",
         "disjoint": lambda fields, arguments: module.assert_disjoint_bindings(
             fields, arguments["tables"]),
-        "licensed": False,
         "state_names": BFAST_STATE_NAMES,
-        "lift_arms": ("REAL",),
-        "lift_arithmetic_markers": ("= dtdx * (", "shift_up(", "shift_dn("),
+        # The certified curl's arithmetic: MEEP's presence-gated stencil and the six
+        # neighbour reads (the root kernels form the curl in ``curl_stencil``).
+        "lift_arithmetic_markers": ("curl_stencil(", "shift_up(", "shift_dn("),
         "refusal_cases": _bfast_refusal_cases,
-        "certified_curl": (lambda arm, variant=None: __import__(
+        "certified_curl": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.bfast_curl",
             fromlist=["kernel_source"]).kernel_source("step_B_bfast_real")),
-        "certified_constitutive": (lambda arm, variant=None: __import__(
+        "certified_constitutive": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.constitutive_kernels",
             fromlist=["_update_H_pml_real_kernel_code"])
             ._update_H_pml_real_kernel_code),
@@ -2497,48 +2553,53 @@ def _folded_complex_electric_family() -> Dict[str, Any]:
     )
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):
+    def resolve(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_folded_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
         codes, refusal = complex_folded_kernels.folded_complex_boundary_codes(grid)
         if refusal is not None:
             raise SystemExit(f"the fixture has no folded boundary codes: {refusal}")
-        # ``True`` IS THE BACKWARD FLAG -- the step_D sub-step's own conjugation.
+        # ``True`` IS THE BACKWARD FLAG -- the step_D sub-step's own connection.
         flags, values = complex_pml_kernels.bloch_phase_arguments(grid, True)
         return {"tables": module.complex_folded_fused_electric_pair_tables(pml),
                 "boundary_codes": codes,
                 "phase_flags": flags, "phase_values": values,
                 "walls": in_seam_coverage.zero_metal_axes(grid),
                 "fills": module.complex_folded_fused_electric_pair_fills(grid),
-                "dtdx": float(grid.dt / grid.dx), "arm": arm}
+                "dtdx": float(grid.dt / grid.dx),
+                "chunk_bounds": _device_record(grid, pml)}
 
     def launch(fields, arguments, kernel=None):
         return module.launch_complex_folded_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
             arguments["walls"], arguments["fills"], arguments["dtdx"],
-            arguments["arm"], kernel)
+            kernel, chunk_bounds=arguments["chunk_bounds"])
 
-    def separate(fields, grid, pml, arm):
+    def separate(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_folded_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
+        cb = _device_record(grid, pml)
         complex_folded_kernels.step_folded_complex(
-            "step_D", fields, arm, grid=grid, pml=pml)
+            "step_D", fields, grid=grid, pml=pml, chunk_bounds=cb)
         stepping.fill_symmetry_bc_D(fields)
         stepping.zero_metal_D(fields)
         stepping.fill_folded_far_ghosts_D(fields)
-        complex_pml_kernels.update_fused_pml_complex("E", fields, arm, pml=pml)
+        complex_pml_kernels.update_fused_pml_complex("E", fields, pml=pml,
+                                                     chunk_bounds=cb)
 
-    def separate_without_fills(fields, grid, pml, arm):
+    def separate_without_fills(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_folded_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
+        cb = _device_record(grid, pml)
         complex_folded_kernels.step_folded_complex(
-            "step_D", fields, arm, grid=grid, pml=pml)
+            "step_D", fields, grid=grid, pml=pml, chunk_bounds=cb)
         stepping.zero_metal_D(fields)
-        complex_pml_kernels.update_fused_pml_complex("E", fields, arm, pml=pml)
+        complex_pml_kernels.update_fused_pml_complex("E", fields, pml=pml,
+                                                     chunk_bounds=cb)
 
     return {
         "name": "folded_complex_electric",
@@ -2565,9 +2626,9 @@ def _folded_complex_electric_family() -> Dict[str, Any]:
                          "fill_folded_far_ghosts_D", "update_E"),
         "carry_floor": True,
         "refusal_cases": _folded_electric_refusal_cases,
-        "certified_curl": (lambda arm, variant=None: __import__(
+        "certified_curl": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.complex_folded_kernels",
-            fromlist=["folded_source"]).folded_source("step_D", arm)),
+            fromlist=["folded_source"]).folded_source("step_D")),
         "mutation_labels": ("fold_y_periodic_even", "fold_y_periodic_odd",
                             "fold_y_odd_phase", "fold_xy_mixed_phase",
                             "fold_y_wall_x_odd", "fold_x_periodic"),
@@ -2584,7 +2645,7 @@ def _complex_beta_electric_family() -> Dict[str, Any]:
     )
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):
+    def resolve(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_folded_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
@@ -2599,34 +2660,40 @@ def _complex_beta_electric_family() -> Dict[str, Any]:
                 "beta_words": module.beta_coefficients(grid),
                 "walls": in_seam_coverage.zero_metal_axes(grid),
                 "fills": module.complex_beta_fused_electric_pair_fills(grid),
-                "dtdx": float(grid.dt / grid.dx), "arm": arm}
+                "dtdx": float(grid.dt / grid.dx),
+                "chunk_bounds": _device_record(grid, pml)}
 
     def launch(fields, arguments, kernel=None):
         return module.launch_complex_beta_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
             arguments["beta_words"], arguments["walls"], arguments["fills"],
-            arguments["dtdx"], arguments["arm"], kernel)
+            arguments["dtdx"], kernel,
+            chunk_bounds=arguments["chunk_bounds"])
 
-    def separate(fields, grid, pml, arm):
+    def separate(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_beta_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
+        cb = _device_record(grid, pml)
         complex_beta_kernels.step_complex_beta(
-            "step_D", fields, arm, grid=grid, pml=pml)
+            "step_D", fields, grid=grid, pml=pml, chunk_bounds=cb)
         stepping.fill_symmetry_bc_D(fields)
         stepping.zero_metal_D(fields)
         stepping.fill_folded_far_ghosts_D(fields)
-        complex_pml_kernels.update_fused_pml_complex("E", fields, arm, pml=pml)
+        complex_pml_kernels.update_fused_pml_complex("E", fields, pml=pml,
+                                                     chunk_bounds=cb)
 
-    def separate_without_fills(fields, grid, pml, arm):
+    def separate_without_fills(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_beta_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
+        cb = _device_record(grid, pml)
         complex_beta_kernels.step_complex_beta(
-            "step_D", fields, arm, grid=grid, pml=pml)
+            "step_D", fields, grid=grid, pml=pml, chunk_bounds=cb)
         stepping.zero_metal_D(fields)
-        complex_pml_kernels.update_fused_pml_complex("E", fields, arm, pml=pml)
+        complex_pml_kernels.update_fused_pml_complex("E", fields, pml=pml,
+                                                     chunk_bounds=cb)
 
     return {
         "name": "complex_beta_electric",
@@ -2652,9 +2719,9 @@ def _complex_beta_electric_family() -> Dict[str, Any]:
                          "fill_folded_far_ghosts_D", "update_E"),
         "carry_floor": True,
         "refusal_cases": _beta_electric_refusal_cases,
-        "certified_curl": (lambda arm, variant=None: __import__(
+        "certified_curl": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.complex_beta_kernels",
-            fromlist=["beta_source"]).beta_source("step_D", arm)),
+            fromlist=["beta_source"]).beta_source("step_D")),
         "mutation_labels": ("beta_fold_y_periodic_even",
                             "beta_fold_y_periodic_odd", "beta_fold_y_odd_phase",
                             "beta_unfolded_bloch_x", "beta_fold_y_wall_x"),
@@ -2671,43 +2738,60 @@ def _cylindrical_real_electric_family() -> Dict[str, Any]:
     )
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):  # noqa: ARG001 - real family, no arm
+    def resolve(fields, grid, pml):  # noqa: ARG001 - real family
         from meep_gpu.cuda_kernels import coverage as cov  # noqa: PLC0415
         from meep_gpu.cuda_kernels import cylindrical_coverage  # noqa: PLC0415
+        from meep_gpu.cuda_kernels import cylindrical_kernels  # noqa: PLC0415
+        from meep_gpu.cuda_kernels.cylindrical_prefix import (  # noqa: PLC0415
+            radial_scan_device_tables, radial_scan_tables,
+        )
 
         codes = cylindrical_coverage.cylindrical_boundary_codes(
             tuple(cov.real_pml_boundary_kinds(grid)))
         return {"tables": module.cylindrical_real_fused_electric_pair_tables(pml),
                 "boundary_codes": tuple(np.int32(code) for code in codes),
                 "walls": in_seam_coverage.zero_metal_axes(grid),
-                "dtdx": float(grid.dt / grid.dx)}
+                "dtdx": float(grid.dt / grid.dx),
+                "axis_courant": cylindrical_kernels.axis_courant(grid),
+                "chunk_bounds": _cylindrical_record(fields, pml), "layer": pml,
+                "scan": radial_scan_device_tables(
+                    radial_scan_tables(fields, pml, "step_D"), cp)}
 
     def launch(fields, arguments, kernel=None):
+        # TWO LAUNCHES, the plan's: the column-serial scan over the CURRENT
+        # Hp (its division readings held, the difference it writes not),
+        # then the fused kernel.
         from meep_gpu.cuda_kernels.cylindrical_prefix import (  # noqa: PLC0415
-            cylindrical_prefix,
+            radial_difference,
         )
 
         return module.launch_cylindrical_real_fused_electric_pair(
             fields, arguments["tables"],
-            cylindrical_prefix(fields, "step_D",
-                               scratch=getattr(fields, "scratch", None)),
+            radial_difference(fields, arguments["layer"], "step_D",
+                              tables=arguments["scan"],
+                              scratch=getattr(fields, "scratch", None)),
             arguments["boundary_codes"], arguments["walls"],
-            arguments["dtdx"], kernel)
+            arguments["dtdx"], kernel, chunk_bounds=arguments["chunk_bounds"],
+            axis_courant=arguments["axis_courant"])
 
-    def separate(fields, grid, pml, arm):  # noqa: ARG001
+    def separate(fields, grid, pml):  # noqa: ARG001
         from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import cylindrical_kernels  # noqa: PLC0415
 
-        stepped = cylindrical_kernels.step_cylindrical(fields, pml, "step_D")
+        cb = _cylindrical_record(fields, pml)
+        stepped = cylindrical_kernels.step_cylindrical(fields, pml, "step_D",
+                                                       chunk_bounds=cb)
         if not stepped:
             raise SystemExit(
                 "the certified Dcyl curl refused the separate route's fixture; "
                 "a silent False here would masquerade as a weld divergence")
         stepping.zero_metal_D(fields)
-        constitutive_kernels.update_fused_pml_real("E", fields, pml=pml)
+        constitutive_kernels.update_fused_pml_real("E", fields, pml=pml,
+                                                   chunk_bounds=cb)
 
     return {
         "name": "cylindrical_real_electric",
+        "companion_kernels": ("cyl_radial_difference",),
         "shape": "cylindrical_real",
         "seam": "D",
         "curl_sub_step": "step_D",
@@ -2720,20 +2804,22 @@ def _cylindrical_real_electric_family() -> Dict[str, Any]:
         "resolve": resolve,
         "launch": launch,
         "separate": separate,
-        "source": lambda arm=None: module.cylindrical_real_fused_electric_pair_source(),
+        "source": lambda: module.cylindrical_real_fused_electric_pair_source(),
         "emitter_module":
             "meep_gpu.cuda_kernels.cylindrical_real_fused_electric_pair",
         "emitter_attribute": "cylindrical_real_fused_electric_pair_source",
         "disjoint": lambda fields, arguments: True,
-        "licensed": False,
-        "lift_arms": ("REAL",),
-        "lift_arithmetic_markers": ("= dtdx * (", "shift_up(", "shift_dn("),
+        # THE CURL IS THE ROOT'S HELPER since the 0.10 forms: the stencil is
+        # ``curl_stencil``'s return lines, each component calls it, and Bz / Dz take
+        # dtdx times the radial difference.
+        "lift_arithmetic_markers": ("dtdx * (", "shift_up(", "shift_dn(",
+                                    "curl_stencil(dtdx", "dtdx * rad["),
         "refusal_cases": _cylindrical_real_electric_refusal_cases,
-        "certified_curl": (lambda arm, variant=None: __import__(
+        "certified_curl": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.cylindrical_kernels",
             fromlist=["_cyl_step_D_pml_real_kernel_code"])
             ._cyl_step_D_pml_real_kernel_code),
-        "certified_constitutive": (lambda arm, variant=None: __import__(
+        "certified_constitutive": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.constitutive_kernels",
             fromlist=["_update_E_pml_real_kernel_code"])
             ._update_E_pml_real_kernel_code),
@@ -2751,7 +2837,7 @@ def _special_kz_electric_family() -> Dict[str, Any]:
     )
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):  # noqa: ARG001 - real family, no arm
+    def resolve(fields, grid, pml):  # noqa: ARG001 - real family
         from meep_gpu.cuda_kernels import coverage as cov  # noqa: PLC0415
 
         codes, refusal = cov.real_curl_boundary_codes(grid)
@@ -2762,15 +2848,16 @@ def _special_kz_electric_family() -> Dict[str, Any]:
                 "walls": in_seam_coverage.zero_metal_axes(grid),
                 "beta": module.beta_scalars(grid),
                 "fills": module.special_kz_fused_electric_pair_fills(grid),
-                "dtdx": float(grid.dt / grid.dx)}
+                "dtdx": float(grid.dt / grid.dx),
+                "chunk_bounds": _device_record(grid, pml)}
 
     def launch(fields, arguments, kernel=None):
         return module.launch_special_kz_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["beta"], arguments["fills"],
-            arguments["dtdx"], kernel)
+            arguments["dtdx"], kernel, chunk_bounds=arguments["chunk_bounds"])
 
-    def separate(fields, grid, pml, arm):  # noqa: ARG001
+    def separate(fields, grid, pml):  # noqa: ARG001
         from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import special_kz_curl  # noqa: PLC0415
         from meep_gpu.cuda_kernels import step_curl_kernels  # noqa: PLC0415
@@ -2778,16 +2865,17 @@ def _special_kz_electric_family() -> Dict[str, Any]:
 
         codes, refusal = cov.real_curl_boundary_codes(grid)
         assert refusal is None, refusal
+        cb = _device_record(grid, pml)
         special_kz_curl.step_special_kz(
             "step_D", fields, step_curl_kernels.real_pml_curl_tables(pml, False),
             tuple(np.int32(code) for code in codes), float(grid.dt / grid.dx),
-            module.beta_scalars(grid))
+            module.beta_scalars(grid), chunk_bounds=cb)
         stepping.fill_symmetry_bc_D(fields)
         stepping.zero_metal_D(fields)
         stepping.fill_folded_far_ghosts_D(fields)
-        constitutive_kernels.update_fused_pml_real("E", fields, pml=pml)
+        constitutive_kernels.update_fused_pml_real("E", fields, pml=pml, chunk_bounds=cb)
 
-    def separate_without_fills(fields, grid, pml, arm):  # noqa: ARG001
+    def separate_without_fills(fields, grid, pml):  # noqa: ARG001
         from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import special_kz_curl  # noqa: PLC0415
         from meep_gpu.cuda_kernels import step_curl_kernels  # noqa: PLC0415
@@ -2795,12 +2883,13 @@ def _special_kz_electric_family() -> Dict[str, Any]:
 
         codes, refusal = cov.real_curl_boundary_codes(grid)
         assert refusal is None, refusal
+        cb = _device_record(grid, pml)
         special_kz_curl.step_special_kz(
             "step_D", fields, step_curl_kernels.real_pml_curl_tables(pml, False),
             tuple(np.int32(code) for code in codes), float(grid.dt / grid.dx),
-            module.beta_scalars(grid))
+            module.beta_scalars(grid), chunk_bounds=cb)
         stepping.zero_metal_D(fields)
-        constitutive_kernels.update_fused_pml_real("E", fields, pml=pml)
+        constitutive_kernels.update_fused_pml_real("E", fields, pml=pml, chunk_bounds=cb)
 
     return {
         "name": "special_kz_electric",
@@ -2817,22 +2906,22 @@ def _special_kz_electric_family() -> Dict[str, Any]:
         "launch": launch,
         "separate": separate,
         "separate_without_fills": separate_without_fills,
-        "source": lambda arm=None: module.special_kz_fused_electric_pair_source(),
+        "source": lambda: module.special_kz_fused_electric_pair_source(),
         "emitter_module": "meep_gpu.cuda_kernels.special_kz_fused_electric_pair",
         "emitter_attribute": "special_kz_fused_electric_pair_source",
         "disjoint": lambda fields, arguments: module.assert_disjoint_bindings(
             fields, arguments["tables"]),
-        "licensed": False,
-        "lift_arms": ("REAL",),
-        "lift_arithmetic_markers": ("= dtdx * (", "shift_up(", "shift_dn("),
+        # The certified curl's arithmetic: MEEP's presence-gated stencil and the six
+        # neighbour reads (the root kernels form the curl in ``curl_stencil``).
+        "lift_arithmetic_markers": ("curl_stencil(", "shift_up(", "shift_dn("),
         "fused_passes": ("step_D", "fill_symmetry_bc_D", "zero_metal_D",
                          "fill_folded_far_ghosts_D", "update_E"),
         "carry_floor": True,
         "refusal_cases": _special_kz_electric_refusal_cases,
-        "certified_curl": (lambda arm, variant=None: __import__(
+        "certified_curl": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.special_kz_curl",
             fromlist=["kernel_source"]).kernel_source("step_D_special_kz_real")),
-        "certified_constitutive": (lambda arm, variant=None: __import__(
+        "certified_constitutive": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.constitutive_kernels",
             fromlist=["_update_E_pml_real_kernel_code"])
             ._update_E_pml_real_kernel_code),
@@ -2851,7 +2940,7 @@ def _bfast_electric_family() -> Dict[str, Any]:
     )
     from meep_gpu.cuda_kernels import in_seam_coverage  # noqa: PLC0415
 
-    def resolve(fields, grid, pml, arm):  # noqa: ARG001 - real family, no arm
+    def resolve(fields, grid, pml):  # noqa: ARG001 - real family
         from meep_gpu.cuda_kernels import bfast_curl  # noqa: PLC0415
         from meep_gpu.cuda_kernels import coverage as cov  # noqa: PLC0415
 
@@ -2862,15 +2951,16 @@ def _bfast_electric_family() -> Dict[str, Any]:
                 "boundary_codes": tuple(np.int32(code) for code in codes),
                 "walls": in_seam_coverage.zero_metal_axes(grid),
                 "coefficients": bfast_curl.bfast_curl_coefficients(grid, "step_D"),
-                "dtdx": float(grid.dt / grid.dx)}
+                "dtdx": float(grid.dt / grid.dx),
+                "chunk_bounds": _device_record(grid, pml)}
 
     def launch(fields, arguments, kernel=None):
         return module.launch_bfast_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["coefficients"], arguments["dtdx"],
-            kernel)
+            kernel, chunk_bounds=arguments["chunk_bounds"])
 
-    def separate(fields, grid, pml, arm):  # noqa: ARG001
+    def separate(fields, grid, pml):  # noqa: ARG001
         from meep_gpu.cuda_kernels import bfast_curl  # noqa: PLC0415
         from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
         from meep_gpu.cuda_kernels import step_curl_kernels  # noqa: PLC0415
@@ -2878,12 +2968,13 @@ def _bfast_electric_family() -> Dict[str, Any]:
 
         codes, refusal = cov.real_curl_boundary_codes(grid)
         assert refusal is None, refusal
+        cb = _device_record(grid, pml)
         bfast_curl.step_bfast(
             "step_D", fields, step_curl_kernels.real_pml_curl_tables(pml, False),
             tuple(np.int32(code) for code in codes), float(grid.dt / grid.dx),
-            bfast_curl.bfast_curl_coefficients(grid, "step_D"))
+            bfast_curl.bfast_curl_coefficients(grid, "step_D"), chunk_bounds=cb)
         stepping.zero_metal_D(fields)
-        constitutive_kernels.update_fused_pml_real("E", fields, pml=pml)
+        constitutive_kernels.update_fused_pml_real("E", fields, pml=pml, chunk_bounds=cb)
 
     return {
         "name": "bfast_electric",
@@ -2899,20 +2990,20 @@ def _bfast_electric_family() -> Dict[str, Any]:
         "resolve": resolve,
         "launch": launch,
         "separate": separate,
-        "source": lambda arm=None: module.bfast_fused_electric_pair_source(),
+        "source": lambda: module.bfast_fused_electric_pair_source(),
         "emitter_module": "meep_gpu.cuda_kernels.bfast_fused_electric_pair",
         "emitter_attribute": "bfast_fused_electric_pair_source",
         "disjoint": lambda fields, arguments: module.assert_disjoint_bindings(
             fields, arguments["tables"]),
-        "licensed": False,
         "state_names": BFAST_STATE_NAMES,
-        "lift_arms": ("REAL",),
-        "lift_arithmetic_markers": ("= dtdx * (", "shift_up(", "shift_dn("),
+        # The certified curl's arithmetic: MEEP's presence-gated stencil and the six
+        # neighbour reads (the root kernels form the curl in ``curl_stencil``).
+        "lift_arithmetic_markers": ("curl_stencil(", "shift_up(", "shift_dn("),
         "refusal_cases": _bfast_electric_refusal_cases,
-        "certified_curl": (lambda arm, variant=None: __import__(
+        "certified_curl": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.bfast_curl",
             fromlist=["kernel_source"]).kernel_source("step_D_bfast_real")),
-        "certified_constitutive": (lambda arm, variant=None: __import__(
+        "certified_constitutive": (lambda variant=None: __import__(
             "meep_gpu.cuda_kernels.constitutive_kernels",
             fromlist=["_update_E_pml_real_kernel_code"])
             ._update_E_pml_real_kernel_code),
@@ -2965,12 +3056,12 @@ def variant_for_spec(family: Dict[str, Any], spec: Dict[str, Any]) -> Any:
     return chooser(spec) if chooser is not None else None
 
 
-def fused_source(family: Dict[str, Any], arm: str, variant: Any = None) -> str:
+def fused_source(family: Dict[str, Any], variant: Any = None) -> str:
     source = family["source"]
     try:
-        return source(arm, variant)
+        return source(variant)
     except TypeError:
-        return source(arm)
+        return source()
 
 
 def kernel_symbol(family: Dict[str, Any], variant: Any = None) -> str:
@@ -2985,17 +3076,17 @@ def kernel_symbol(family: Dict[str, Any], variant: Any = None) -> str:
     return resolver(variant) if resolver is not None else family["module"].KERNEL_NAME
 
 
-def certified_halves_source(family: Dict[str, Any], arm: str,
+def certified_halves_source(family: Dict[str, Any],
                             variant: Any = None) -> Tuple[str, str]:
     """The two certified sources this family splices, for one variant."""
     from meep_gpu.cuda_kernels import complex_emitter  # noqa: PLC0415
 
     curl = family.get("certified_curl")
     constitutive = family.get("certified_constitutive")
-    return (curl(arm, variant) if curl is not None
-            else _certified_curl_source(family, arm),
-            constitutive(arm, variant) if constitutive is not None
-            else complex_emitter.complex_source(family["constitutive_side"], arm))
+    return (curl(variant) if curl is not None
+            else _certified_curl_source(family),
+            constitutive(variant) if constitutive is not None
+            else complex_emitter.complex_source(family["constitutive_side"]))
 
 
 # ---------------------------------------------------------------------------
@@ -3126,7 +3217,7 @@ class MemoLaunchCounter:
         return {k: v for k, v in sorted(self.counts.items()) if k != "_total"}
 
 
-def _memo_key_for_fused(family: Dict[str, Any], arm: str,
+def _memo_key_for_fused(family: Dict[str, Any],
                         variant: Any = None) -> str:
     """The name the memo proxy reports for the fused kernel.
 
@@ -3141,18 +3232,10 @@ def _memo_key_for_fused(family: Dict[str, Any], arm: str,
     ``KERNEL_NAME`` is the bracket LABEL of two symbols, and its launcher keys the memo
     on whichever one the run's curl arm selected.
     """
-    from meep_gpu.cuda_kernels import complex_emitter  # noqa: PLC0415
-
-    if family.get("licensed", True) is False:
-        # A REAL family's launcher keys the memo on the bare symbol -- its
-        # arithmetic binds no expansion arm, so there is no arm code in the key.
-        return kernel_symbol(family, variant)
-    return (f"{kernel_symbol(family, variant)}_"
-            f"arm{complex_emitter.normalized_expansion(arm)}")
+    return kernel_symbol(family, variant)
 
 
-def warm_memo(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
-              arm: str) -> None:
+def warm_memo(family: Dict[str, Any], specs: Sequence[Dict[str, Any]]) -> None:
     """Compile and launch every kernel this file drives, once, off the counted path.
 
     A REFUSED WARM-UP IS FATAL RATHER THAN SILENT: a spec the predicate does not
@@ -3175,14 +3258,13 @@ def warm_memo(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
     for warm in specs:
         fields, grid, pml, _ = family["build"](warm, "uniform",
                                                np.random.default_rng(1))
-        covered, reason = family["covers"](fields, pml, grid, (), LICENCE["verdict"],
-                                           POLICY["name"])
+        covered, reason = family["covers"](fields, pml, grid, ())
         if not covered:
             raise SystemExit(f"the memo warm-up is refused on {warm['label']}: "
                              f"{reason}")
-        arguments = family["resolve"](fields, grid, pml, arm)
+        arguments = family["resolve"](fields, grid, pml)
         family["launch"](fields, arguments)
-        family["separate"](fields, grid, pml, arm)
+        family["separate"](fields, grid, pml)
     cp.cuda.runtime.deviceSynchronize()
 
 
@@ -3191,9 +3273,9 @@ def warm_memo(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
 # ---------------------------------------------------------------------------
 
 def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
-             steps: int, arm: str, kernel: Optional[Any] = None,
+             steps: int, kernel: Optional[Any] = None,
              patch: Optional[Callable[[Dict[str, Any], Any], Dict[str, Any]]] = None,
-             label_suffix: str = "") -> Dict[str, Any]:
+             label_suffix: str = "", mid_run: bool = False) -> Dict[str, Any]:
     """Step THREE engines side by side and compare per COMPLETE DRIVER STEP.
 
     THE THIRD ENGINE IS THE SEPARATE CERTIFIED ROUTE, and it earned its place on
@@ -3254,6 +3336,14 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
     case["shape"] = [int(n) for n in grid.shape]
     case["dtdx"] = float(grid.dt / grid.dx)
     case["operand_census"] = operand_census(host)
+    # ``mid_run``: the seeded state is a MID-RUN one on all three engines (a capsule, or
+    # a run past its first update_H), so no engine runs MEEP's start of H from B
+    # (``stepping.separate_h_from_b``) at step 1. A leg asks for it when its defect is
+    # observable only where update_H reads a register the launcher does not re-step.
+    case["mid_run"] = bool(mid_run)
+    if mid_run:
+        for engine in (reference, actual, apart):
+            engine.h_separated = True
     # THE COMPARED SET IS THE FAMILY'S, and on a dispersive family it is read off the
     # ENGINE: the pole buffers are part of the state a complete driver step touches.
     names = state_names_for(family, reference)
@@ -3267,15 +3357,14 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
                        f"{drift or drift_apart}")
         return case
 
-    covered, reason = family["covers"](actual, pml, grid, (), LICENCE["verdict"],
-                                       POLICY["name"])
+    covered, reason = family["covers"](actual, pml, grid, ())
     case["predicate"] = {"covered": bool(covered), "reason": reason}
     if not covered:
         case["passed"] = False
         case["why"] = f"the predicate refused this fixture: {reason}"
         return case
 
-    arguments = family["resolve"](actual, grid, pml, arm)
+    arguments = family["resolve"](actual, grid, pml)
     case["distinct_allocations_checked"] = family["disjoint"](actual, arguments)
     # ``walls`` IS ABSENT ON A PRODUCT THAT CARRIES NO WALL PASS, and recorded as the
     # empty tuple rather than as three Falses: three Falses would read as "this launch
@@ -3288,7 +3377,6 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
         arguments = patch(arguments, grid)
     case["walls_used"] = [bool(w) for w in arguments.get("walls", ())]
     case["boundary_codes_used"] = [int(c) for c in arguments["boundary_codes"]]
-    case["arm_used"] = arguments.get("arm")   # absent on the unlicensed families
     case["curl_arm_used"] = arguments.get("curl_arm")
 
     before = frozen(actual, names)
@@ -3316,7 +3404,7 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
             # oracle half a step ahead of it. Empty on the magnetic seam, where this
             # is bit-for-bit the sequence this gate ran before it was parametrised.
             before_passes(family, apart, apart_pml)
-            family["separate"](apart, apart_grid, apart_pml, arm)
+            family["separate"](apart, apart_grid, apart_pml)
             unfused_passes_after_seam(family, apart, apart_pml)
             before_passes(family, actual, pml)
             with fused_counter:
@@ -3345,9 +3433,19 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
     moved = {name: int(np.count_nonzero(before[name] != words(after[name])))
              for name in names}
     still = sorted(name for name, count in moved.items() if count == 0)
+    # THE AUXILIARY CONTRACT (KERNELS.md section 1, C2): ``fu_*`` and ``f_w_*`` are read
+    # and written only on the cells whose chunk carries their form, so on a grid where
+    # no chunk does the array path leaves them at their seed. The floor exempts exactly
+    # those, read off the REFERENCE's own movement (never the subject's), and names them.
+    reference_after = state_of(reference, names)
+    never_stepped = sorted(
+        name for name in names if name.startswith(("fu_", "f_w_"))
+        and int(np.count_nonzero(before[name] != words(reference_after[name]))) == 0)
+    case["auxiliaries_the_array_path_never_steps"] = never_stepped
     excluded = tuple(spec.get("uniform_floor_excludes", ()))
     required = (tuple(n for n in names if n not in excluded)
                 if value_class == "uniform" else band_must_move(family))
+    required = tuple(n for n in required if n not in never_stepped)
     unmoved_required = sorted(name for name in required if moved[name] == 0)
     complete = len(per_step) == steps
     identical = complete and all(row["differing_words"] == 0 for row in per_step)
@@ -3362,16 +3460,24 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
     inherited = complete and not identical and all(
         row["differing_arrays"] == row["half_differing_arrays"] for row in per_step)
     drifted = read_only_drift(read_only, family, actual, pml)
-    memo_name = _memo_key_for_fused(family, arm, variant_for_spec(family, spec))
+    memo_name = _memo_key_for_fused(family, variant_for_spec(family, spec))
     fused_launches = fused_counter.named().get(memo_name, 0)
     # THE TWO COUNTERS MUST AGREE, AND THE PROXY MUST NAME ONLY THIS KERNEL inside the
     # window that holds only the fused launch. A run that launched the certified curl
     # beside the fused kernel added a launch instead of removing two, and
     # `other_kernels` is what says so.
+    # A COMPANION is a kernel the product launches beside the fused one BY DESIGN, once
+    # per step, inside the same window: the cylindrical products' column-serial radial
+    # scan (``cylindrical_prefix.cyl_radial_difference``), which runs before the fused
+    # kernel because MEEP's per-chunk sum is a different word from any parallel scan.
+    # It must be counted exactly once per step, and nothing else may appear.
+    companions = tuple(family.get("companion_kernels", ()))
     other_kernels = {k: v for k, v in fused_counter.named().items()
-                     if k != memo_name}
+                     if k != memo_name and k not in companions}
+    companion_counts = {k: fused_counter.named().get(k, 0) for k in companions}
     launch_ok = (launched == len(per_step)
                  and fused_launches == (len(per_step) if kernel is None else 0)
+                 and all(n == len(per_step) for n in companion_counts.values())
                  and not other_kernels)
     case.update({
         "passed": bool(weld_identical and (identical or inherited)
@@ -3406,6 +3512,7 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
             "memo_proxy_whole_step_total": counter.total,
             "memo_key_watched": memo_name,
             "other_kernels_launched": other_kernels,
+            "companion_kernels_launched": companion_counts,
             "kernel_supplied_by_gate": kernel is not None,
             "agree": bool(launch_ok),
             "expected_per_step": 1,
@@ -3419,8 +3526,7 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
 # The separate composition: what the fusion actually removes, measured
 # ---------------------------------------------------------------------------
 
-def leg_separate_control(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
-                         arm: str) -> Dict[str, Any]:
+def leg_separate_control(family: Dict[str, Any], spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     """THREE engines from one seed: array path, separate certified products, fused.
 
     THE POINT IS NOT THAT THE FUSED ROUTE PASSES -- the product sweep says that. It is
@@ -3438,7 +3544,7 @@ def leg_separate_control(family: Dict[str, Any], spec: Dict[str, Any], steps: in
     fused, grid, pml, _ = family["build"](spec, "uniform", case_rng(label))
     names = state_names_for(family, reference)
 
-    arguments = family["resolve"](fused, grid, pml, arm)
+    arguments = family["resolve"](fused, grid, pml)
     apart_counter, fused_counter = MemoLaunchCounter(), MemoLaunchCounter()
     apart_steps: List[int] = []
     fused_steps: List[int] = []
@@ -3446,7 +3552,7 @@ def leg_separate_control(family: Dict[str, Any], spec: Dict[str, Any], steps: in
         array_step(reference, ref_pml)
         before_passes(family, apart, apart_pml)
         with apart_counter:
-            family["separate"](apart, apart_grid, apart_pml, arm)
+            family["separate"](apart, apart_grid, apart_pml)
             unfused_passes_after_seam(family, apart, apart_pml)
         before_passes(family, fused, pml)
         with fused_counter:
@@ -3495,77 +3601,78 @@ def leg_lift(family: Dict[str, Any]) -> Dict[str, Any]:
     from meep_gpu.cuda_kernels import complex_emitter  # noqa: PLC0415
 
     module = family["module"]
-    out: Dict[str, Any] = {"family": family["name"], "arms": {},
+    out: Dict[str, Any] = {"family": family["name"], "blocks": {},
                            "variants": [str(v) for v in variants_of(family)]}
     ok = True
-    # EVERY (EXPANSION ARM, VARIANT) PAIR, because a product that emits two kernels has
-    # two splices to be right about. On a single-variant family this is the loop it
-    # always was, with the key spelled ``<arm>`` rather than ``<arm>|None``.
-    lift_arms = tuple(family.get("lift_arms")
-                      or sorted(complex_emitter.EXPANSIONS))
-    for arm in lift_arms:
-      for variant in variants_of(family):
-        key = arm if variant is None else f"{arm}|{variant}"
-        fused = fused_source(family, arm, variant)
-        certified_curl, certified_const = certified_halves_source(
-            family, arm, variant)
-        certified_lines = set(certified_curl.splitlines()) | set(
-            certified_const.splitlines())
-        novel = [line for line in fused.splitlines()
-                 if line not in certified_lines and line.strip()]
-        # EVERY CERTIFIED ARITHMETIC STATEMENT MUST SURVIVE THE SPLICE, and a
-        # statement that did not must be one a declared LIFT_EDIT names -- with the
-        # EXPRESSION it computed still present verbatim in the fused source. That
-        # second half is what keeps the edit list from being an excuse: an edit may
-        # rename a value or add a store, and may not move a parenthesis.
-        markers = tuple(family.get("lift_arithmetic_markers")
-                        or ("mul_coefficient_left(dtdx", "cf_sub(", "cshift_"))
-        arithmetic = [line.strip() for line in certified_curl.splitlines()
-                      if any(marker in line for marker in markers)]
-        absent = [line for line in arithmetic if line not in fused]
-        declared = {edit["line"].strip(): edit for edit in module.LIFT_EDITS}
-        missing = []
-        accounted: List[Dict[str, str]] = []
-        for line in absent:
-            edit = declared.get(line)
-            expression = _expression_of(line)
-            if edit is None or expression not in fused:
-                missing.append(line)
-                continue
-            accounted.append({"certified_line": line,
-                              "declared_became": edit["became"],
-                              "expression_still_verbatim": expression})
-        block = {
-            "variant": variant,
-            "fused_sha256": hashlib.sha256(fused.encode("utf-8")).hexdigest(),
-            "certified_curl_sha256": hashlib.sha256(
-                certified_curl.encode("utf-8")).hexdigest(),
-            "certified_constitutive_sha256": hashlib.sha256(
-                certified_const.encode("utf-8")).hexdigest(),
-            "fused_lines": len(fused.splitlines()),
-            "lines_not_in_either_certified_source": len(novel),
-            "certified_arithmetic_lines_checked": len(arithmetic),
-            "certified_arithmetic_lines_missing": missing,
-            "certified_arithmetic_lines_changed_by_a_declared_edit": accounted,
-            "declared_lift_edits": len(module.LIFT_EDITS),
-            "kernel_names_emitted": sorted(
-                complex_emitter.shipped_kernel_names(fused)),
-            "kernel_name_expected": kernel_symbol(family, variant),
-        }
-        block["passed"] = bool(not missing
-                               and block["kernel_names_emitted"]
-                               == [kernel_symbol(family, variant)]
-                               and len(arithmetic) >= 9)
-        ok = ok and block["passed"]
-        out["arms"][key] = block
+    # EVERY VARIANT, because a product that emits two kernels has two splices to be
+    # right about.
+    for variant in variants_of(family):
+      key = str(variant)
+      fused = fused_source(family, variant)
+      certified_curl, certified_const = certified_halves_source(
+          family, variant)
+      certified_lines = set(certified_curl.splitlines()) | set(
+          certified_const.splitlines())
+      novel = [line for line in fused.splitlines()
+               if line not in certified_lines and line.strip()]
+      # EVERY CERTIFIED ARITHMETIC STATEMENT MUST SURVIVE THE SPLICE, and a
+      # statement that did not must be one a declared LIFT_EDIT names -- with the
+      # EXPRESSION it computed still present verbatim in the fused source. That
+      # second half is what keeps the edit list from being an excuse: an edit may
+      # rename a value or add a store, and may not move a parenthesis.
+      markers = tuple(family.get("lift_arithmetic_markers")
+                      or ("mul_coefficient_left(dtdx", "cf_sub(", "cshift_"))
+      arithmetic = [line.strip() for line in certified_curl.splitlines()
+                    if any(marker in line for marker in markers)]
+      absent = [line for line in arithmetic if line not in fused]
+      declared = {edit["line"].strip(): edit for edit in module.LIFT_EDITS}
+      missing = []
+      accounted: List[Dict[str, str]] = []
+      for line in absent:
+          edit = declared.get(line)
+          expression = _expression_of(line)
+          # A family whose derivation hoists an own-cell load declares the map: the
+          # expression must then be verbatim with that load named as its register,
+          # and with nothing else moved.
+          for register, load in dict(family.get("lift_loads") or {}).items():
+              if expression not in fused:
+                  expression = expression.replace(load, register)
+          if edit is None or expression not in fused:
+              missing.append(line)
+              continue
+          accounted.append({"certified_line": line,
+                            "declared_became": edit["became"],
+                            "expression_still_verbatim": expression})
+      block = {
+          "variant": variant,
+          "fused_sha256": hashlib.sha256(fused.encode("utf-8")).hexdigest(),
+          "certified_curl_sha256": hashlib.sha256(
+              certified_curl.encode("utf-8")).hexdigest(),
+          "certified_constitutive_sha256": hashlib.sha256(
+              certified_const.encode("utf-8")).hexdigest(),
+          "fused_lines": len(fused.splitlines()),
+          "lines_not_in_either_certified_source": len(novel),
+          "certified_arithmetic_lines_checked": len(arithmetic),
+          "certified_arithmetic_lines_missing": missing,
+          "certified_arithmetic_lines_changed_by_a_declared_edit": accounted,
+          "declared_lift_edits": len(module.LIFT_EDITS),
+          "kernel_names_emitted": sorted(
+              complex_emitter.shipped_kernel_names(fused)),
+          "kernel_name_expected": kernel_symbol(family, variant),
+      }
+      block["passed"] = bool(not missing
+                             and block["kernel_names_emitted"]
+                             == [kernel_symbol(family, variant)]
+                             and len(arithmetic) >= 9)
+      ok = ok and block["passed"]
+      out["blocks"][key] = block
     # EVERY EMITTED KERNEL IS DISTINCT. A multi-variant family whose two sources
     # collapsed to one string would pass every block above while shipping one kernel
     # under two names -- and on this product that is the plain tail serving a
     # conductive run, which is a wrong answer on every word rather than a crash.
-    digests = {block["fused_sha256"] for block in out["arms"].values()}
+    digests = {block["fused_sha256"] for block in out["blocks"].values()}
     out["distinct_emitted_sources"] = len(digests)
-    out["distinct_emitted_sources_expected"] = (
-        len(lift_arms) * len(variants_of(family)))
+    out["distinct_emitted_sources_expected"] = len(variants_of(family))
     out["passed"] = bool(
         ok and out["distinct_emitted_sources"]
         == out["distinct_emitted_sources_expected"])
@@ -3591,7 +3698,7 @@ def _expression_of(statement: str) -> str:
     return text
 
 
-def _certified_curl_source(family: Dict[str, Any], arm: str) -> str:
+def _certified_curl_source(family: Dict[str, Any]) -> str:
     """The certified curl text this family SPLICES -- its own coordinate system AND
     its own sub-step, both read off the family rather than assumed. A leg that lifted
     ``step_B``'s text for a ``step_D`` product would diff the fused source against a
@@ -3601,15 +3708,15 @@ def _certified_curl_source(family: Dict[str, Any], arm: str) -> str:
     if family["shape"] == "cylindrical":
         from meep_gpu.cuda_kernels import cylindrical_complex_kernels  # noqa: PLC0415
         return cylindrical_complex_kernels.cylindrical_complex_source(
-            family["curl_sub_step"], arm)
-    return complex_emitter.complex_source(family["curl_sub_step"], arm)
+            family["curl_sub_step"])
+    return complex_emitter.complex_source(family["curl_sub_step"])
 
 
 # ---------------------------------------------------------------------------
 # The refusals: rule 3 of this round, measured
 # ---------------------------------------------------------------------------
 
-def leg_refusal(family: Dict[str, Any], arm: str) -> Dict[str, Any]:
+def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
     """Every configuration each module refuses BY NAME, built and refused.
 
     A PREDICATE ADMITTING A ROW THE LAUNCH CANNOT SERVE IS THE ONE FAILURE MODE NO
@@ -3625,11 +3732,8 @@ def leg_refusal(family: Dict[str, Any], arm: str) -> Dict[str, Any]:
     covers = family["covers"]
     checks: List[Dict[str, Any]] = []
 
-    def record(name: str, expectation: str, fields, pml, grid, sources=(),
-               license=None, policy=None) -> None:
-        covered, reason = covers(fields, pml, grid, sources,
-                                 LICENCE["verdict"] if license is None else license,
-                                 POLICY["name"] if policy is None else policy)
+    def record(name: str, expectation: str, fields, pml, grid, sources=()) -> None:
+        covered, reason = covers(fields, pml, grid, sources)
         checks.append({"case": name, "expected": expectation,
                        "covered": bool(covered), "reason": str(reason),
                        "passed": (not covered) if expectation == "refused"
@@ -3786,10 +3890,6 @@ def leg_refusal(family: Dict[str, Any], arm: str) -> Dict[str, Any]:
             "passed": family["module"].no_pml_complex_curl_arm(
                 lossy, "step_D") == "conductive"})
 
-    # 6. NO EXPANSION LICENCE. The arm is a measured platform fact and both arms
-    #    compile; a guessed one is a wrong ANSWER rather than a crash.
-    record("no_licence", "refused", live, live_pml, live_grid, (), license=False)
-
     # 7. THE POSITIVE CONTROL, AND IT IS THIS FAMILY'S OWN FIXTURE. A refusal leg
     #    with no admitted case cannot tell a predicate that refuses correctly from
     #    one that refuses everything -- and the control has to be built by the same
@@ -3941,7 +4041,7 @@ def _sheet_deposit_for(family: Dict[str, Any], shape: Tuple[int, ...],
     return _SheetSource(family["seam"], component, tuple(columns), amplitudes)
 
 
-def leg_deposit(family: Dict[str, Any], spec: Dict[str, Any], steps: int, arm: str,
+def leg_deposit(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
                 repaired: bool = True) -> Dict[str, Any]:
     """A real in-seam source in THIS family's seam, carried by the two repair plans.
 
@@ -4015,15 +4115,14 @@ def leg_deposit(family: Dict[str, Any], spec: Dict[str, Any], steps: int, arm: s
         sources.append(_sheet_deposit_for(family, shape, is_complex))
         out["sheet_deposit_cells"] = int(
             np.asarray(sources[-1].amplitudes).size)
-    covered, reason = family["covers"](actual, pml, grid, sources, LICENCE["verdict"],
-                                       POLICY["name"])
+    covered, reason = family["covers"](actual, pml, grid, sources)
     out["predicate"] = {"covered": bool(covered), "reason": reason}
     if not covered:
         out["passed"] = False
         out["why"] = f"the predicate refused the deposit fixture: {reason}"
         return out
 
-    arguments = family["resolve"](actual, grid, pml, arm)
+    arguments = family["resolve"](actual, grid, pml)
     ok, why = deposit_repair.repairable(actual, seam, pml)
     out["repairable"] = {"ok": bool(ok), "reasons": list(why)}
     if not ok:
@@ -4086,8 +4185,7 @@ def leg_deposit(family: Dict[str, Any], spec: Dict[str, Any], steps: int, arm: s
 # The deposit NOT carried: the refusal, and the divergence behind it
 # ---------------------------------------------------------------------------
 
-def leg_source_refusal(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
-                       arm: str) -> Dict[str, Any]:
+def leg_source_refusal(family: Dict[str, Any], spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     """What :func:`leg_deposit` proves for a product that DOES carry the repair,
     proved for one that deliberately does not.
 
@@ -4150,16 +4248,13 @@ def leg_source_refusal(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
             "is electric", "electric_source", "magnetic_source")
     electric = in_seam  # the injected set below; the name is historical
 
-    covered, reason = family["covers"](actual, pml, grid, in_seam,
-                                       LICENCE["verdict"], POLICY["name"])
+    covered, reason = family["covers"](actual, pml, grid, in_seam)
     out[in_seam_key] = {"covered": bool(covered), "reason": str(reason),
                         "passed": not covered and in_seam_needle in str(reason)}
-    covered, reason = family["covers"](actual, pml, grid, other,
-                                       LICENCE["verdict"], POLICY["name"])
+    covered, reason = family["covers"](actual, pml, grid, other)
     out[other_key] = {"covered": bool(covered), "reason": str(reason),
                       "passed": bool(covered)}
-    covered, reason = family["covers"](actual, pml, grid, None,
-                                       LICENCE["verdict"], POLICY["name"])
+    covered, reason = family["covers"](actual, pml, grid, None)
     out["undeclared_source_set"] = {"covered": bool(covered), "reason": str(reason),
                                     "passed": not covered}
 
@@ -4167,7 +4262,7 @@ def leg_source_refusal(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
     # predicate just refused, and the words are required to differ from the driver's
     # own order. `family["launch"]` is the shipped launcher, so this is the real
     # kernel spanning the real deposit -- not a stand-in.
-    arguments = family["resolve"](actual, grid, pml, arm)
+    arguments = family["resolve"](actual, grid, pml)
     in_seam = tuple(name for name in span if name != span[0] and name != span[-1])
     tail = DRIVER_ORDER[DRIVER_ORDER.index(span[-1]) + 1:]
     dt = float(grid.dt)
@@ -4237,10 +4332,10 @@ def compile_source(source: str, name: str, options: Sequence[str]):
 #
 # "EVERY MUTATION MUST BE CAUGHT EVERYWHERE" IS FALSE BY CONSTRUCTION HERE, and the
 # first full run measured exactly which legs it is false for: a wall mutation on an
-# unwalled grid changes no byte, an arm mutation at k = 0 reaches no complex product,
-# and the seam's own register hand-off is a PURE OPTIMISATION whose whole claim is
-# that reading the word back from global memory instead is the identity. So each leg
-# declares one of three expectations, and the leg's verdict is the match:
+# unwalled grid changes no byte, and the seam's own register hand-off is a PURE
+# OPTIMISATION whose whole claim is that reading the word back from global memory
+# instead is the identity. So each leg declares one of three expectations, and the
+# leg's verdict is the match:
 #
 #   ``caught``      -- must diverge on every fixture it is scored on;
 #   ``caught_where_live`` -- must diverge on every fixture ``live`` admits, must be
@@ -4274,41 +4369,6 @@ def _spec_walls(family: Dict[str, Any], spec: Dict[str, Any]) -> Tuple[bool, ...
         # walls are the metallic boundaries the spec declares.
         return tuple(b == "metallic" for b in spec["boundaries"])
     return (False, False, spec["z_kind"] == "metallic")
-
-
-def _arm_is_live(family: Dict[str, Any], spec: Dict[str, Any]) -> bool:
-    """Is there a COMPLEX-BY-COMPLEX product for the expansion arm to change?
-
-    THE TWO FAMILIES ANSWER DIFFERENTLY AND THE FIRST RUN MEASURED IT. The arms
-    differ only on the full complex product; a real coefficient times a complex
-    field (``mul_coefficient_left``, which is all ``constitutive_apply`` does) is
-    the same bits under either.
-
-    * Cartesian complex: the only full product in this seam is the BLOCH ROTATION on
-      the wrapped lane, so the leg is live exactly where a phase exists. Measured:
-      UNCAUGHT on every k = 0 fixture and caught on every phased one.
-    * Dcyl: NEVER, and this took two runs to establish rather than one reading. The
-      family carries no phase -- the predicate refuses one -- but the curl does carry
-      full complex products: ``mul_complex_left(cf_load(imr0, i), f_1)``, the i*m/r
-      coupling, and the |m| = 1 axis increment's ``mul_complex_left(q, e1)``. The
-      first run declared the leg NEVER LIVE, the second declared it live everywhere,
-      and the device answered UNCAUGHT on all four fixtures both times. The reason is
-      in the OPERANDS, measured off the shipped builders on 2026-08-30: every one of
-      those left operands is PURE IMAGINARY -- ``imr_coefficient_row`` returns
-      ``0 - i*m/r`` (m = 1 gives ``[0-1j, 0-0.5j, 0-0.25j]``) and
-      ``axis_increment_scalars`` returns ``(0.0, m/2)``. With ``c.re`` an exact zero
-      each output word is a SINGLE product rather than a sum of two, so there is no
-      grouping for the arm to change and ``fma(0, x, -(c.im*z.im))`` is the naive
-      expression to the bit. The leg stays, as a null control on the claim that this
-      family's arm argument is inert.
-    """
-    if family["shape"] == "cylindrical":
-        return False
-    if family.get("licensed", True) is False:
-        # A REAL family binds no arm at all; its launcher ignores the argument
-        # entirely, so the leg is a null control there, never live.
-        return False
-    return any(float(k) != 0.0 for k in spec.get("k_point", ()))
 
 
 def _walls_and_codes_can_differ(family: Dict[str, Any],
@@ -4370,7 +4430,8 @@ def _codes_all_periodic_is_live(family: Dict[str, Any],
       through ``cshift_up``, whose bc branch is taken at the TOP row (``ia + 1 == na``,
       complex_emitter's ``_TAIL``). No axis tail ever writes that row, so the change
       survives at every |m|.
-    * **Dcyl, ELECTRIC seam** -- live only where z is walled or |m| = 1. ``step_D``
+    * **Dcyl, ELECTRIC seam** -- live only where z is walled (since the 0.10 per-chunk
+      forms; below, the reading before them). ``step_D``
       reads bc_x through ``cshift_dn``, whose bc branch is taken at ROW 0
       (``ia > 0`` fails), and both of its own ``bc_x == BC_METALLIC`` masks are
       ``i == 0`` -- so the whole r-axis change is confined to row 0. At |m| >= 2
@@ -4380,22 +4441,44 @@ def _codes_all_periodic_is_live(family: Dict[str, Any],
       builder: m = 2 gives 2, m = 2 accurate 1, m = 3 accurate 1, m = -2 gives 2), so
       the mutated row is overwritten with exact zero before anything reads it. At
       |m| = 1 the tail zeroes Dz at row 0 ALONE (:588), leaving Dx and Dy to carry it.
+      SINCE THE PER-CHUNK FORMS the r-axis change is unobservable at every m (MEASURED
+      UNCAUGHT on the periodic-z m = 0 and |m| = 1 fixtures, device, keep): Dx reads no
+      r neighbour (its phi partner is absent and its z partner is a z shift); Dy's
+      row-0 curl reaches only its own row 0, which the m = 0 rule stores +0, the
+      |m| = 1 axis increment replaces and the |m| >= 2 rule zeroes, and no auxiliary
+      is touched on that row (no r layer there; the auxiliary contract, C2); Dz's
+      curl is the radial difference, whose row 0 no segment writes. Only a z wall's
+      code is read where it shows.
+
+    * **The real beta D seam (2-D)** -- live where x is walled or y is folded with a
+      PERIODIC termination, MEASURED on MEEP's per-chunk forms (bit_parity_0_10 lane
+      KC7). On the D seam a code enters through ``shift_dn``'s near face (row 0) and
+      through the masks it keys (row 0 of a metallic axis, the far-ghost row of a
+      periodic fold); forced periodic, those rows' curls run, and since the wall pass
+      and the fills rewrite their f words a change survives only in an AUXILIARY. A y
+      wall's row-0 consumers are Dx, whose auxiliary axis is the invariant z, and Dz,
+      whose auxiliary axis is y itself, whose chunk runs start at row 1 on a metallic
+      y: nothing survives. An x wall's row 0 reaches ``fu_Dz`` in the y layer's rows;
+      a periodic y fold's far-ghost row reaches ``fu_Dy`` in the x layer's columns
+      (every fixture here carries the other axis's layer). Measured: the emitted
+      electric text executed on the host, every code forced periodic, on the seven
+      ``SPECIAL_KZ_SPECS`` grids -- 0 words on ``skz_periodic`` and ``skz_wall_y``,
+      3 words of ``fu_Dz`` on ``skz_wall_xy_thin``, 5/5/5/3 words of ``fu_Dy`` on the
+      four periodic y folds; the device scored ``skz_wall_y`` UNCAUGHT and
+      ``skz_fold_y_even`` CAUGHT.
 
     The leg still RUNS on every fixture: where it is declared not live, ``_score``
     requires INERTNESS, so a divergence there fails rather than passing quietly.
     """
+    if family["shape"] == "real_beta" and family["seam"] == "D":
+        periodic_fold_y = (any(axis == "Y" for axis, _p in spec.get("symmetry", ()))
+                           and tuple(spec["boundaries"])[1] != "metallic")
+        return bool(_spec_walls(family, spec)[0]) or periodic_fold_y
     if family["shape"] not in ("cylindrical", "cylindrical_real"):
         return _spec_has_a_wall(family, spec)
     if _spec_walls(family, spec)[2]:
         return True
-    if family["seam"] == "B":
-        return True
-    # THE m = 0 D SEAM (the 2026-09-02 real electric twin): its certified axis
-    # tail zeroes Dy alone at row 0 and ADDS to Dz there, so the r-axis
-    # metallic code's change at row 0 survives in Dx and inside the Dz add --
-    # unlike |m| >= 2, where the tail overwrites the whole row. The m0 spec
-    # table carries no "m" key; 0 is its one value.
-    return abs(int(spec.get("m", 0))) == 1 or int(spec.get("m", 0)) == 0
+    return family["seam"] == "B"
 
 
 def _wall_x_is_live(family: Dict[str, Any], spec: Dict[str, Any]) -> bool:
@@ -4498,22 +4581,6 @@ HOST_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "why": "tell the kernel no axis is walled. zero_metal_B is CARRIED by all "
             "three residual real welds, so a dropped wall is a plane of un-wiped "
             "B feeding update_H. Inert on a grid with no wall."},
-    {"name": "wrong_arm", "expect": "caught_where_live", "live": _arm_is_live,
-     # WHERE THIS LEG MUST BE LIVE, and it is a per-family declaration because the
-     # answer is: on the Cartesian complex family, whose Bloch rotation is a full
-     # complex product. On the Dcyl family it is a NULL CONTROL -- ``_arm_is_live``
-     # returns False there, so ``_score`` requires INERTNESS rather than a catch, and
-     # the leg still runs on every Dcyl fixture where a divergence would fail it.
-     "live_somewhere_on": ("complex", "complex_electric",
-                           "no_pml_complex_electric"),
-     "why": "compile the arm this platform was NOT licensed for. Both compile, "
-            "both run, and they differ in the last bits of about a quarter of the "
-            "words. Live wherever a FULL complex product exists: the Bloch "
-            "rotation on a phased Cartesian grid, and the i*m/r coupling on every "
-            "Dcyl row. update_H's constitutive_apply is a real coefficient times a "
-            "complex field, which both arms compute identically, so an unphased "
-            "Cartesian fixture has nothing for the arm to change."},
-
     # ------------------------------------------- the NO-ABSORBER family's own legs
     #
     # THREE LEGS THAT EXIST NOWHERE ELSE IN THIS FILE, because they arm the two things
@@ -4553,8 +4620,7 @@ HOST_MUTATIONS: Tuple[Dict[str, Any], ...] = (
 )
 
 
-def _host_patch(family: Dict[str, Any], name: str, pml: Any,
-                arm: str) -> Callable[[Dict[str, Any], Any], Dict[str, Any]]:
+def _host_patch(family: Dict[str, Any], name: str, pml: Any) -> Callable[[Dict[str, Any], Any], Dict[str, Any]]:
     """One host-side defect, armed through the shipped launcher's own doors.
 
     THE TWO SUB-LATTICE SWAPS ARE DERIVED FROM THE FAMILY, never typed, and the first
@@ -4599,8 +4665,6 @@ def _host_patch(family: Dict[str, Any], name: str, pml: Any,
         elif name == "codes_all_periodic":
             out["boundary_codes"] = tuple(type(c)(0)
                                           for c in arguments["boundary_codes"])
-        elif name == "wrong_arm":
-            out["arm"] = "NAIVE" if arm == "FMA_V1" else "FMA_V1"
         elif name == "wrong_curl_arm":
             # THE OTHER ARM, and on this family it is a different KERNEL rather than a
             # different expansion of one. ONE DIRECTION ONLY, deliberately: a lossless
@@ -4646,6 +4710,152 @@ def _host_patch(family: Dict[str, Any], name: str, pml: Any,
 
 
 DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
+    # ------------------------------------------------ the chunk forms, 0.10
+    #
+    # THE TWO INVERTED GROUPINGS (KERNELS.md section 7.1) AND THE SECTION 7.2 B
+    # BATTERY, on the four families whose halves are the chunk-form, part-wise ones.
+    # Every needle below occurs exactly once in each of the four emitted sources
+    # (counted before it was written down).
+    {"name": "old_package_curl_grouping",
+     "old": "cf_sub(cf_add(cf_sub(sf, f1), f2), ss)",
+     "new": "cf_add(cf_sub(sf, f1), cf_sub(f2, ss))",
+     "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "caught",
+     "why": "INVERTED: MEEP's bracket ((g1s - g1) + g2) - g2s is shipped; the previous "
+            "package grouping is a different float32 number."},
+    {"name": "old_package_constitutive_grouping",
+     "old": ("cf_add(cf_load(f, idx), cf_sub(mul_coefficient_left(kps, src), "
+             "mul_coefficient_left(kms, prev)))"),
+     "new": ("cf_sub(cf_add(cf_load(f, idx), mul_coefficient_left(kps, src)), "
+             "mul_coefficient_left(kms, prev))"),
+     "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "caught",
+     "why": "INVERTED: MEEP's f + ((kps*src) - (kms*prev)) is shipped; two "
+            "accumulations are a different float32 number on the dsigw cells."},
+    {"name": "select_removed_curl",
+     "old": "    cf fprev = dsigu ? cf_load(fu, idx) : cf_zero();",
+     "new": "    dsigu = 1;\n    cf fprev = dsigu ? cf_load(fu, idx) : cf_zero();",
+     "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "caught",
+     "why": "KERNELS.md section 7.2: the whole-grid recurrence on every cell of the "
+            "curl half, the form the family stepped before the chunk forms."},
+    {"name": "select_removed_constitutive",
+     "old": "    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();",
+     "new": "    dsigw = 1;\n    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();",
+     "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "caught",
+     "why": "KERNELS.md section 7.2: the whole-grid accumulation on every cell of the "
+            "constitutive half."},
+    {"name": "auxiliary_stored_on_a_plain_cell_curl",
+     "old": "    if (dsigu) cf_store(fu, idx, fu_new);",
+     "new": "    cf_store(fu, idx, fu_new);",
+     "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "caught",
+     "why": "KERNELS.md section 7.2: fu is untouched on a plain cell (the auxiliary "
+            "contract), and every auxiliary is compared."},
+    {"name": "auxiliary_stored_on_a_plain_cell_constitutive",
+     "old": "    if (dsigw) cf_store(fw, idx, src);",
+     "new": "    cf_store(fw, idx, src);",
+     "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "caught",
+     "why": "KERNELS.md section 7.2: f_w is untouched on a plain cell."},
+    {"name": "auxiliary_load_unguarded_curl",
+     "old": "    cf fprev = dsigu ? cf_load(fu, idx) : cf_zero();",
+     "new": "    cf fprev = cf_load(fu, idx);",
+     "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "inert",
+     "why": "A DECLARED NULL (KERNELS.md section 7.2): the loaded word feeds only the "
+            "layered form, so no stored word changes."},
+    {"name": "auxiliary_load_unguarded_constitutive",
+     "old": "    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();",
+     "new": "    cf prev = cf_load(fw, idx);",
+     "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "inert",
+     "why": "A DECLARED NULL (KERNELS.md section 7.2): the loaded word feeds only the "
+            "layered form."},
+    # THE SAME BATTERY ON THE FOUR CYLINDRICAL FAMILIES. The complex pairs lift the
+    # register-view helpers (pml_apply_reg_pre, constitutive_apply_pre), so their
+    # select and constitutive spellings are their own; the real pairs call the root's
+    # certified helpers. Every needle below occurs exactly once in each source it
+    # names (counted on the emitted texts before it was written down).
+    {"name": "old_package_curl_grouping_cyl",
+     "old": "cf_sub(cf_add(cf_sub(sf, f1), f2), ss)",
+     "new": "cf_add(cf_sub(sf, f1), cf_sub(f2, ss))",
+     "family": ("cylindrical", "cylindrical_electric"), "expect": "caught",
+     "why": "INVERTED: MEEP's bracket ((g1s - g1) + g2) - g2s is shipped; the previous "
+            "package grouping is a different float32 number."},
+    {"name": "old_package_constitutive_grouping_cyl",
+     "old": ("cf_add(fcur, cf_sub(mul_coefficient_left(kps, src), "
+             "mul_coefficient_left(kms, prev)))"),
+     "new": ("cf_sub(cf_add(fcur, mul_coefficient_left(kps, src)), "
+             "mul_coefficient_left(kms, prev))"),
+     "family": ("cylindrical", "cylindrical_electric"), "expect": "caught",
+     "why": "INVERTED: MEEP's f + ((kps*src) - (kms*prev)) is shipped; two "
+            "accumulations are a different float32 number on the dsigw cells."},
+    {"name": "select_removed_curl_cyl",
+     "old": "    cf fprev, cf fcur\n) {\n",
+     "new": "    cf fprev, cf fcur\n) {\n    dsigu = 1;\n",
+     "family": ("cylindrical", "cylindrical_electric"), "expect": "caught",
+     "why": "KERNELS.md section 7.2: the recurrence on every cell of the curl half."},
+    {"name": "select_removed_constitutive_cyl",
+     "old": "    cf prev, cf fcur, float kps, float kms, int dsigw\n) {\n",
+     "new": "    cf prev, cf fcur, float kps, float kms, int dsigw\n) {\n    dsigw = 1;\n",
+     "family": ("cylindrical", "cylindrical_electric"), "expect": "caught",
+     "why": "KERNELS.md section 7.2: the accumulation on every cell of the "
+            "constitutive half."},
+    {"name": "auxiliary_stored_on_a_plain_cell_curl_cyl",
+     "old": "    if (dsigu) cf_store(fu, idx, fu_new);",
+     "new": "    cf_store(fu, idx, fu_new);",
+     "family": ("cylindrical", "cylindrical_electric"), "expect": "caught",
+     "why": "C2: fu is written only on the recurrence's cells."},
+    {"name": "auxiliary_stored_on_a_plain_cell_constitutive_cyl",
+     "old": "    if (dsigw) cf_store(fw, idx, src);",
+     "new": "    cf_store(fw, idx, src);",
+     "family": ("cylindrical", "cylindrical_electric"), "expect": "caught",
+     "why": "C2: f_w is written only on the component's own dsigw cells."},
+    {"name": "old_package_curl_grouping_real_cyl",
+     "old": "dtdx * (((sf - f1) + f2) - ss)",
+     "new": "dtdx * ((sf - f1) + (f2 - ss))",
+     "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "caught",
+     "why": "INVERTED: MEEP's bracket is shipped; the previous package grouping is a "
+            "different float32 number."},
+    {"name": "old_package_constitutive_grouping_real_cyl",
+     "old": "(f[idx] + ((kps * src) - (kms * prev)))",
+     "new": "((f[idx] + (kps * src)) - (kms * prev))",
+     "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "caught",
+     "why": "INVERTED: MEEP's one accumulation is shipped; two are a different "
+            "float32 number on the dsigw cells."},
+    {"name": "select_removed_curl_real_cyl",
+     "old": "    float fprev = dsigu ? fu[idx] : 0.0f;",
+     "new": "    dsigu = 1;\n    float fprev = dsigu ? fu[idx] : 0.0f;",
+     "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "caught",
+     "why": "KERNELS.md section 7.2: the whole-grid recurrence on the curl half."},
+    {"name": "select_removed_constitutive_real_cyl",
+     "old": "    float prev = dsigw ? fw[idx] : 0.0f;",
+     "new": "    dsigw = 1;\n    float prev = dsigw ? fw[idx] : 0.0f;",
+     "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "caught",
+     "why": "KERNELS.md section 7.2: the whole-grid accumulation on the constitutive "
+            "half."},
+    {"name": "auxiliary_stored_on_a_plain_cell_curl_real_cyl",
+     "old": "    if (dsigu) fu[idx] = fu_new;",
+     "new": "    fu[idx] = fu_new;",
+     "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "caught",
+     "why": "C2: fu is written only on the recurrence's cells."},
+    {"name": "auxiliary_stored_on_a_plain_cell_constitutive_real_cyl",
+     "old": "    if (dsigw) fw[idx] = src;",
+     "new": "    fw[idx] = src;",
+     "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "caught",
+     "why": "C2: f_w is written only on the component's own dsigw cells."},
+    {"name": "auxiliary_load_unguarded_curl_real_cyl",
+     "old": "    float fprev = dsigu ? fu[idx] : 0.0f;",
+     "new": "    float fprev = fu[idx];",
+     "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "inert",
+     "why": "KERNELS.md section 7.2, a DECLARED NULL: off the dsigu cells the loaded "
+            "word feeds only fu_new, which is neither stored nor selected there."},
+    {"name": "sublattice_shadow_real_cyl",
+     "old": "kms_int_x[i], in_i_x);",
+     "new": "kms_x[i], in_i_x);",
+     "family": ("cylindrical_real",), "expect": "caught",
+     "why": "the fused scope's one name collision, resolved the wrong way: update_H "
+            "reading the B curl's half-integer kms on x."},
+    {"name": "electric_sublattice_shadow_real_cyl",
+     "old": "kms_half_x[i], in_h_x);",
+     "new": "kms_x[i], in_h_x);",
+     "family": ("cylindrical_real_electric",), "expect": "caught",
+     "why": "the fused scope's one name collision, resolved the wrong way: update_E "
+            "reading the D curl's integer kms on x."},
     {"name": "seam_reloads_from_memory",
      "old": "cf s0 = b0;", "new": "cf s0 = cf_load(f0, idx);",
      "family": ("complex", "complex_folded", "complex_beta"), "expect": "inert",
@@ -4813,13 +5023,12 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "update_E the pre-zeroing displacement on rows [0:zero_rows]."},
     {"name": "axis_tail_m0_not_carried_electric",
      "old": ("if (m_class == 0 && i == 0) {\n"
-             "        d2 = cf_add(cf_load(Dz, idx),\n"
-             "                    mul_coefficient_left(axis_coef, cf_load(Hy, idx)));\n"
+             "        // THE AXIS RULE, CARRIED: d2 holds the word this lane stored for Dz.\n"
+             "        d2 = cf_add(d2, double_product(four_courant, cf_load(Hy, idx)));\n"
              "        cf_store(Dz, idx, d2);\n"
              "        d1 = cf_zero(); cf_store(Dy, idx, d1);\n    }"),
      "new": ("if (m_class == 0 && i == 0) {\n"
-             "        cf_store(Dz, idx, cf_add(cf_load(Dz, idx),\n"
-             "                    mul_coefficient_left(axis_coef, cf_load(Hy, idx))));\n"
+             "        cf_store(Dz, idx, cf_add(d2, double_product(four_courant, cf_load(Hy, idx))));\n"
              "        cf_store(Dy, idx, cf_zero());\n    }"),
      "family": ("cylindrical_electric",), "expect": "caught_where_live",
      "live": lambda family, spec: int(spec["m"]) == 0,
@@ -4828,13 +5037,12 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "registers, so update_E reads the pre-add Dz and the pre-zeroing Dy on "
             "the axis row. Live at m = 0 only."},
     {"name": "axis_tail_m0_post_add_dropped_electric",
-     "old": ("        d2 = cf_add(cf_load(Dz, idx),\n"
-             "                    mul_coefficient_left(axis_coef, cf_load(Hy, idx)));\n"
+     "old": ("        d2 = cf_add(d2, double_product(four_courant, cf_load(Hy, idx)));\n"
              "        cf_store(Dz, idx, d2);\n"),
      "new": "",
      "family": ("cylindrical_electric",), "expect": "caught_where_live",
      "live": lambda family, spec: int(spec["m"]) == 0,
-     "why": "the m = 0 on-axis Dz post-add (stepping.py:585) removed outright -- the "
+     "why": "the m = 0 on-axis Dz post-add (stepping._cylindrical_axis_zero_D) removed outright -- the "
             "|m| >= 1 kernel's tail wearing the m = 0 label. Live at m = 0 only."},
     {"name": "axis_tail_m1_not_carried_electric",
      # THE BRANCH THE B SIDE DOES NOT HAVE. stepping._cylindrical_axis_zero_D zeroes
@@ -4898,6 +5106,30 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "the reason minus_poles subtracts one contributor at a time in "
             "REGISTRATION ORDER. Live at two poles only: with one pole the mutated "
             "branch computes the same single subtraction, and with none neither runs."},
+    # THE CURL HALF'S TWO FORMS (bit_parity_0_10 KERNELS.md sections 7.1 and 7.2), on
+    # the lifted ``curl_stencil`` the certified prelude carries once.
+    {"name": "curl_regrouped_to_the_old_package_order_no_pml",
+     "old": "cf_sub(cf_add(cf_sub(sf, f1), f2), ss)",
+     "new": "cf_add(cf_sub(sf, f1), cf_sub(f2, ss))",
+     "family": ("no_pml_complex_electric",), "expect": "caught_where_live",
+     "live": lambda family, spec: int(spec.get("dimensions", 3)) >= 2,
+     "why": "INVERTED (KERNELS.md section 7.1): the previous package grouping of the "
+            "curl bracket, (g1s - g1) + (g2 - g2s), where MEEP brackets "
+            "((g1s - g1) + g2) - g2s. A different float32 number on almost every "
+            "cell whose component has both partners -- every component of a 3-D grid, "
+            "one of a 2-D grid, none of a 1-D grid (where the arm is scored inert)."},
+    {"name": "partner_presence_ignored_no_pml",
+     "old": "    if (pr1 && pr2) return mul_coefficient_left(dtdx, cf_sub(cf_add(cf_sub("
+            "sf, f1), f2), ss));",
+     "new": "    if (1) return mul_coefficient_left(dtdx, cf_sub(cf_add(cf_sub("
+            "sf, f1), f2), ss));",
+     "family": ("no_pml_complex_electric",), "expect": "caught_where_live",
+     "live": lambda family, spec: int(spec.get("dimensions", 3)) < 3,
+     "why": "KERNELS.md section 7.2 (C5, partner presence): the full bracket taken "
+            "over a partner whose derivative axis is invariant. MEEP forms the "
+            "one-partner curl there, and (a + g2) - g2 rounds where a does not. Live "
+            "only on a grid with an invariant axis (the 2-D and 1-D fixtures); on a "
+            "resolved grid every component has both partners and the arm is inert."},
     {"name": "conductive_tail_reassociated_no_pml",
      "old": ("    cf t = mul_field_left(cf_load(f, idx), condfac);\n"
              "    t = cf_sub(t, curl);\n"),
@@ -4906,7 +5138,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "variants": ("conductive",),
      "why": "THE ORDER IS THE ARITHMETIC. `field *= condfac; field -= curl; field *= "
             "condinv` reassociated to `((field - curl) * condfac) * condinv` differs "
-            "on 400000 of 400000 float32 words (measured, test_complex_no_pml.py) -- "
+            "on every float32 word (measured, test_complex_no_pml.py) -- "
             "the same three operations, three roundings in a different order. Scored "
             "on the CONDUCTIVE variant only, because the plain weld has no such tail "
             "and the needle would match nothing there."},
@@ -5021,7 +5253,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      # build: a 2-D beta cell folded on BOTH in-plane axes has no axis left to
      # carry an active absorber, so on the beta family this leg is a permanent
      # null control -- the demand is narrowed to the family that can satisfy
-     # it, exactly as wrong_arm's is.
+     # it.
      "live_somewhere_on": ("complex_folded",),
      "live": lambda family, spec: (
          any(axis == "X" and int(phase) == -1
@@ -5059,9 +5291,9 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "fill, so the thread that wrote the word is the thread reading it. "
             "A divergence here would mean the weld changed the arithmetic."},
     {"name": "real_sublattice_shadow",
-     "old": "kms_int_x[i]);",
-     "new": "kms_x[i]);",
-     "family": ("cylindrical_real", "special_kz", "bfast"), "expect": "caught",
+     "old": "kms_int_x[i], in_i_x);",
+     "new": "kms_x[i], in_i_x);",
+     "family": ("special_kz", "bfast"), "expect": "caught",
      "why": "the fused scope's one name collision, resolved the wrong way: "
             "update_H reading the curl's HALF-INTEGER absorber profile -- "
             "converged, smooth and half a cell wrong."},
@@ -5078,6 +5310,13 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "new": "if (wall_y && j == 0) { By[idx] = 0.0f; }",
      "family": ("bfast",), "expect": "caught_where_live",
      "live": lambda family, spec: tuple(spec["boundaries"])[1] == "metallic",
+     # SCORED ON A MID-RUN STATE (bit_parity_0_10 lane KC7). Under MEEP's per-chunk
+     # forms the wall row of By is unowned and never written again once cleared, so the
+     # register is nonzero only on the first step -- where the launcher's start of H
+     # re-steps update_H on the array path over the cleared memory. A run past that
+     # start (or a magnetic source on the wall plane) is where the register is read:
+     # measured on the host, the text executed on a mid-run y-walled grid moves Hy.
+     "mid_run": True,
      "why": "carry the wall clear to memory but not to the register: update_H "
             "reads the un-wiped displacement on the y wall plane. NARROWED to "
             "the BFAST weld on 2026-09-02: the special_kz weld's clear gained "
@@ -5088,6 +5327,9 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "new": "if (own_y && wall_y && j == 0) { By[idx] = 0.0f; }",
      "family": ("special_kz",), "expect": "caught_where_live",
      "live": lambda family, spec: tuple(spec["boundaries"])[1] == "metallic",
+     # Scored on a mid-run state, for real_zero_metal_clears_no_register's reason:
+     # measured on the host, 9-10 words of Hy on the y-walled grids, mid-run.
+     "mid_run": True,
      "why": "the same defect on the five-pass special_kz weld, whose clear is "
             "GUARDED on own_y since the fill carry (a cell a fill images "
             "belongs to its source thread): memory wiped, register kept, "
@@ -5099,13 +5341,15 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "live": lambda family, spec: spec.get("z_kind") == "metallic",
      "why": "the same defect on the one axis a Dcyl grid can wall: z."},
     {"name": "bfast_substitution_dropped",
-     "old": "curl = curl - advance;",
-     "new": "curl = curl;",
+     "old": "idx, inc_bfast, ",
+     "new": "idx, 0.0f, ",
      "family": ("bfast",), "expect": "caught",
-     "why": "the BFAST state substitution removed from Bx's curl while the IIR "
-            "state keeps advancing: the plain real pair wearing the BFAST "
-            "label. One site (component x), so the state divergence reaches "
-            "every component within a step through the array-path D half."},
+     "why": "the BFAST pass's increment dropped from Bx's ladder (an increment "
+            "of +0 leaves every word as it was) while the IIR state keeps "
+            "advancing: the plain real pair wearing the BFAST label. One site "
+            "replaced (component x; the needle counts all three), so the state "
+            "divergence reaches every component within a step through the "
+            "array-path D half."},
     # ------------------------- the residual ELECTRIC families' device needles
     # Each is its magnetic sibling's defect restated in the D seam's own
     # spellings: the register hand-off is ``src_<a>`` (post inverse-epsilon),
@@ -5134,9 +5378,9 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "own_* guard skips the apply -- so no stored word can move. A "
             "divergence would mean the weld changed the arithmetic."},
     {"name": "real_electric_sublattice_shadow",
-     "old": "kms_half_x[i]);",
-     "new": "kms_x[i]);",
-     "family": ("cylindrical_real_electric", "special_kz_electric",
+     "old": "kms_half_x[i], in_h_x);",
+     "new": "kms_x[i], in_h_x);",
+     "family": ("special_kz_electric",
                 "bfast_electric"),
      "expect": "caught",
      "why": "the fused scope's one name collision, resolved the wrong way: "
@@ -5190,12 +5434,14 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "and a weld that cleared memory but not the register hands "
             "update_E the pre-tail displacement on the axis row."},
     {"name": "bfast_electric_substitution_dropped",
-     "old": "curl = curl - advance;",
-     "new": "curl = curl;",
+     "old": "idx, inc_bfast, ",
+     "new": "idx, 0.0f, ",
      "family": ("bfast_electric",), "expect": "caught",
-     "why": "the BFAST state substitution removed from the D curl while the "
-            "IIR state keeps advancing: the plain real pair wearing the BFAST "
-            "label, on the electric seam (three sites, one per component)."},
+     "why": "the BFAST pass's increment dropped from Dx's ladder (an increment "
+            "of +0 leaves every word as it was) while the IIR state keeps "
+            "advancing: the plain real pair wearing the BFAST label, on the "
+            "electric seam (one site replaced, component x; the needle counts "
+            "all three)."},
     {"name": "cf_electric_seam_reloads_from_memory",
      "old": "cf s0 = d0;", "new": "cf s0 = cf_load(f0, idx);",
      "family": ("folded_complex_electric", "complex_beta_electric"),
@@ -5439,8 +5685,7 @@ def _score(mutation: Dict[str, Any], live: bool, diverged: bool) -> Tuple[bool, 
     return diverged, ("CAUGHT" if diverged else "UNCAUGHT")
 
 
-def leg_carry_floor(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
-                    arm: str) -> Dict[str, Any]:
+def leg_carry_floor(family: Dict[str, Any], spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     """THE ARMED THREE-LEG CLOSURE PROTOCOL for a fill-carrying weld, per fixture.
 
     Leg A is the main sweep (full carry, 0 differing words, measured by
@@ -5473,7 +5718,7 @@ def leg_carry_floor(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
         actual, grid, pml, _ = family["build"](spec, "uniform", case_rng(label))
         names = state_names_for(family, reference)
         per_step: List[int] = []
-        arguments = family["resolve"](actual, grid, pml, arm)
+        arguments = family["resolve"](actual, grid, pml)
         for _step in range(1, steps + 1):
             array_step(reference, ref_pml)
             subject_step(actual, grid, pml, arguments)
@@ -5497,9 +5742,9 @@ def leg_carry_floor(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
 
     def no_carry(actual, grid, pml, arguments):  # noqa: ARG001
         before_passes(family, actual, pml)
-        _separate_without_fills(family, actual, grid, pml, arm)
+        _separate_without_fills(family, actual, grid, pml)
 
-    def _separate_without_fills(family, fields, grid, pml, arm):
+    def _separate_without_fills(family, fields, grid, pml):
         """The certified singles and the wall pass; the two fills SKIPPED."""
         module_separate = family["separate"]
         # A FAMILY MAY CARRY ITS OWN NO-FILLS ROUTE (the residue-round families
@@ -5508,7 +5753,7 @@ def leg_carry_floor(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
         # the 2026-09-02 records ran.
         hook = family.get("separate_without_fills")
         if hook is not None:
-            hook(fields, grid, pml, arm)
+            hook(fields, grid, pml)
             return
         # The separate closure runs the fills through ``stepping``; rather than
         # fork it per family, the two fills are made no-ops for this call by
@@ -5517,17 +5762,21 @@ def leg_carry_floor(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
         if family["name"] == "complex_folded":
             from meep_gpu.cuda_kernels import complex_folded_kernels  # noqa: PLC0415
             from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
+            cb = _device_record(grid, pml)
             complex_folded_kernels.step_folded_complex(
-                "step_B", fields, arm, grid=grid, pml=pml)
+                "step_B", fields, grid=grid, pml=pml, chunk_bounds=cb)
             stepping.zero_metal_B(fields)
-            complex_pml_kernels.update_fused_pml_complex("H", fields, arm, pml=pml)
+            complex_pml_kernels.update_fused_pml_complex("H", fields, pml=pml,
+                                                         chunk_bounds=cb)
         elif family["name"] == "complex_beta":
             from meep_gpu.cuda_kernels import complex_beta_kernels  # noqa: PLC0415
             from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
+            cb = _device_record(grid, pml)
             complex_beta_kernels.step_complex_beta(
-                "step_B", fields, arm, grid=grid, pml=pml)
+                "step_B", fields, grid=grid, pml=pml, chunk_bounds=cb)
             stepping.zero_metal_B(fields)
-            complex_pml_kernels.update_fused_pml_complex("H", fields, arm, pml=pml)
+            complex_pml_kernels.update_fused_pml_complex("H", fields, pml=pml,
+                                                         chunk_bounds=cb)
         else:
             raise SystemExit(f"{family['name']} declares no carry floor")
 
@@ -5552,7 +5801,7 @@ def leg_carry_floor(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
 
 
 def run_mutations(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
-                  steps: int, arm: str) -> List[Dict[str, Any]]:
+                  steps: int) -> List[Dict[str, Any]]:
     """Every mutation, armed on every fixture, and scored against its DECLARATION.
 
     EVERY LEG IS RUN EVERYWHERE, including where it is declared not live: a leg that
@@ -5595,8 +5844,8 @@ def run_mutations(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
         for spec in specs:
             _f, _g, pml, _h = family["build"](spec, "uniform",
                                               np.random.default_rng(7))
-            case = run_case(family, spec, "uniform", steps, arm,
-                            patch=_host_patch(family, mutation["name"], pml, arm),
+            case = run_case(family, spec, "uniform", steps,
+                            patch=_host_patch(family, mutation["name"], pml),
                             label_suffix=f"|{mutation['name']}")
             legs.append(arm_leg(mutation, spec, case, {"kind": "host"}))
     # DEVICE LEGS ARE COMPILED PER VARIANT, because a product may emit more than one
@@ -5619,7 +5868,7 @@ def run_mutations(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
             if scored_variants is not None and variant not in scored_variants:
                 continue
             if variant not in compiled:
-                source, hits = needle(fused_source(family, arm, variant),
+                source, hits = needle(fused_source(family, variant),
                                       mutation["old"], mutation["new"])
                 if not hits:
                     missed.append(variant)
@@ -5631,8 +5880,9 @@ def run_mutations(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
             if compiled[variant] is None:
                 continue
             kernel, hits = compiled[variant]
-            case = run_case(family, spec, "uniform", steps, arm, kernel=kernel,
-                            label_suffix=f"|{mutation['name']}")
+            case = run_case(family, spec, "uniform", steps, kernel=kernel,
+                            label_suffix=f"|{mutation['name']}",
+                            mid_run=bool(mutation.get("mid_run")))
             legs.append(arm_leg(mutation, spec, case,
                                 {"kind": "device", "needle_sites": hits,
                                  "variant": variant}))
@@ -5673,58 +5923,6 @@ def run_mutations(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
 
 
 # ---------------------------------------------------------------------------
-# The licence and the policy
-# ---------------------------------------------------------------------------
-
-LICENCE: Dict[str, Any] = {"verdict": None}
-POLICY: Dict[str, Any] = {"name": None}
-
-
-def load_licence(path: Optional[str], policy: Optional[str]) -> Dict[str, Any]:
-    """Read the probe artifact, run the licence, and report the whole verdict.
-
-    THE ARBITER IS ``complex_fields.expansion_license`` AND IS NOT REIMPLEMENTED.
-    What this adds is the two things a verdict cannot know: which artifact was read,
-    and which policy the consuming run installs.
-    """
-    out: Dict[str, Any] = {"path": path, "policy_required": policy,
-                           "record_sha256": None, "verdict": None,
-                           "policy_reasons": [], "certification_reasons": [],
-                           "arm": None, "usable": False}
-    if not path:
-        path = os.environ.get(complex_fields.PROBE_PATH_ENVIRONMENT)
-        out["path"] = path
-    if not path:
-        out["policy_reasons"] = [
-            "no expansion probe artifact was given and "
-            f"{complex_fields.PROBE_PATH_ENVIRONMENT} is unset; the arm is a "
-            "measured platform fact and may not be guessed"]
-        return out
-    try:
-        with open(path, "rb") as handle:
-            raw = handle.read()
-    except OSError as exc:
-        out["policy_reasons"] = [f"the probe artifact could not be read: {exc}"]
-        return out
-    out["record_sha256"] = hashlib.sha256(raw).hexdigest()
-    try:
-        record = json.loads(raw.decode("utf-8"))
-    except Exception as exc:  # noqa: BLE001 - unreadable is a refusal
-        out["policy_reasons"] = [f"the probe artifact is not readable JSON: {exc}"]
-        return out
-    verdict = complex_fields.expansion_license(record)
-    out["verdict"] = verdict
-    out["policy_reasons"] = list(
-        complex_fields.expansion_policy_reasons(record, policy))
-    out["certification_reasons"] = list(
-        complex_fields.expansion_certification_reasons(policy))
-    out["arm"] = verdict.get("arm")
-    out["basis"] = verdict.get("basis")
-    out["usable"] = bool(verdict.get("arm") and not verdict.get("refusals")
-                         and not out["policy_reasons"])
-    return out
-
-
 # ---------------------------------------------------------------------------
 # Driving
 # ---------------------------------------------------------------------------
@@ -5857,7 +6055,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--steps", type=int, default=STEPS)
     parser.add_argument("--subnormal-policy", default=None)
     parser.add_argument("--import-meep-for-host-policy", action="store_true")
-    parser.add_argument("--expansion-probe", default=None)
     parser.add_argument("--out", required=True)
     parser.add_argument("--skip-mutations", action="store_true")
     args = parser.parse_args(argv)
@@ -5876,7 +6073,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "subnormal_policy": args.subnormal_policy,
     }
     gate_provenance.stamp(results)
-    POLICY["name"] = args.subnormal_policy
 
     # THE POLICY IS INSTALLED HERE, BEFORE ANY COMPILE, and passing it as a NAME
     # would not have been enough. CuPy appends ``-ftz=true`` to every NVRTC compile
@@ -5894,13 +6090,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         results["subnormal_policy_install"] = {
             "installed": False, "policy": args.subnormal_policy,
             "why": "no CuPy on this host: the policy is installed at CuPy's NVRTC "
-                   "seam and there is nothing here to install it at. The NAME is "
-                   "still carried because the licence clause is a policy comparison"}
+                   "seam and there is nothing here to install it at"}
     results["subnormal_policy_stamp"] = probe.subnormal_policy_stamp(_REPO_API)
-
-    licence = load_licence(args.expansion_probe, args.subnormal_policy)
-    results["licence"] = licence
-    LICENCE["verdict"] = licence["verdict"]
 
     family = FAMILIES[args.family]()
     results["module"] = {
@@ -5930,23 +6121,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                               "why": "CuPy is absent; only the source legs ran"}
         save(results, args.out)
         return 1
-    if not licence["usable"]:
-        results["verdict"] = {"released": False,
-                              "why": f"the expansion licence is unusable: "
-                                     f"{licence['policy_reasons'] or licence['verdict']}"}
-        save(results, args.out)
-        return 1
-    arm = licence["arm"]
-    results["arm"] = arm
-    log(f"arm {arm} under policy {args.subnormal_policy}")
-
     specs = family["specs"]
     if args.product == "reduced":
         specs = tuple(s for s in specs if s["label"] in family["reduced_labels"])
-    warm_memo(family, specs, arm)
+    warm_memo(family, specs)
     log(f"memo warm on {len(specs)} specs")
 
-    results["refusal"] = leg_refusal(family, arm)
+    results["refusal"] = leg_refusal(family)
     log(f"refusal: {'PASS' if results['refusal']['passed'] else 'FAIL'}")
     save(results, args.out)
 
@@ -5954,7 +6135,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["cases"] = cases
     for spec in specs:
         for value_class in VALUE_CLASSES:
-            case = run_case(family, spec, value_class, args.steps, arm)
+            case = run_case(family, spec, value_class, args.steps)
             cases.append(case)
             log(f"  case {spec['label']}/{value_class}: "
                 f"{'PASS' if case.get('passed') else 'FAIL'} "
@@ -5967,7 +6148,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     controls: List[Dict[str, Any]] = []
     results["separate_controls"] = controls
     for spec in [s for s in specs if s["label"] in family["reduced_labels"]]:
-        control = leg_separate_control(family, spec, min(12, args.steps), arm)
+        control = leg_separate_control(family, spec, min(12, args.steps))
         controls.append(control)
         log(f"  separate control {spec['label']}: "
             f"{'PASS' if control['passed'] else 'FAIL'} "
@@ -5980,7 +6161,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["carry_floor_expected"] = bool(family.get("carry_floor"))
     if family.get("carry_floor"):
         for spec in specs:
-            leg = leg_carry_floor(family, spec, min(12, args.steps), arm)
+            leg = leg_carry_floor(family, spec, min(12, args.steps))
             floors.append(leg)
             log(f"  carry floor {spec['label']}: "
                 f"{'PASS' if leg['passed'] else 'FAIL'} "
@@ -5993,7 +6174,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["deposit"] = deposits
     for spec in [s for s in specs if s["label"] in family["deposit_labels"]]:
         for repaired in (True, False):
-            leg = leg_deposit(family, spec, min(12, args.steps), arm, repaired)
+            leg = leg_deposit(family, spec, min(12, args.steps), repaired)
             deposits.append(leg)
             log(f"  deposit {spec['label']} repaired={repaired}: "
                 f"{'PASS' if leg['passed'] else 'FAIL'} "
@@ -6010,7 +6191,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["source_refusal_expected"] = bool(family.get("source_refusal_labels"))
     for spec in [s for s in specs
                  if s["label"] in family.get("source_refusal_labels", ())]:
-        leg = leg_source_refusal(family, spec, min(12, args.steps), arm)
+        leg = leg_source_refusal(family, spec, min(12, args.steps))
         refusals.append(leg)
         log(f"  source refusal {spec['label']}: "
             f"{'PASS' if leg['passed'] else 'FAIL'} "
@@ -6023,7 +6204,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         mutation_specs = [s for s in specs
                           if s["label"] in family["mutation_labels"]]
         results["mutations"] = run_mutations(family, mutation_specs,
-                                             min(12, args.steps), arm)
+                                             min(12, args.steps))
         save(results, args.out)
     else:
         results["mutations"] = []

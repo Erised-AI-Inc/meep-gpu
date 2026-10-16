@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "about": "The numerics-relevant set of each certification reference lock: the packages whose builds can change what MEEP or the GPU route computes. tools/compare_reference_environment.py judges every name below against the lock files of its platform (conda packages by version and build, PyPI packages by version, origin and, where pypi_build_tags names one, the wheel's build tag) and does not judge the rest of the lock, the compilers included: the build scripts' step 1b holds the build to every artifact of the lock. Package versions live in the lock files; this file adds only what a lock cannot hold: the MEEP the reference builds from source (meep, judged by tools/check_install.py --require-reference, which imports it), the certified environment's own build of a package the lock takes differently by design (by_design), and wheel build tags.",
+  "about": "The numerics-relevant set of each certification reference lock: the packages whose builds can change what MEEP or the GPU route computes. tools/compare_reference_environment.py judges every name below against the lock files of its platform (conda packages by version and build, PyPI packages by version, origin and, where pypi_build_tags names one, the wheel's build tag) and does not judge the rest of the lock, the compilers and the tools included: the build scripts' step 1b holds the build to every artifact of the lock, and their step 7 to every pin. Package versions live in the lock files; this file adds only what a lock cannot hold: the MEEP the reference builds from source (meep, judged by tools/check_install.py --require-reference, which imports it), the certified environment's own build of a package the lock takes differently by design (by_design), and wheel build tags. Apart from the numerics sets, corpus_only names what the MEEP identity corpus (Table 2) needs and no field update reads: PyPI packages each platform's pip lock pins (shapely, nlopt, imageio-ffmpeg, whose ffmpeg executable the build scripts link into <prefix>/bin), a conda package each conda lock holds (gdspy), and the PyMieScatt stand-in (built from its pinned sdist and patch by the builder it names, which reads its pins from here). The comparison reports them apart and never counts them in its verdict; --require-pip-lock requires the pip lock's packages and the stand-in, exactly.",
   "platforms": {
     "osx-arm64": {
       "conda_lock": "meep-gpu-ref-osx-arm64.conda.txt",
       "pip_lock": "meep-gpu-ref-osx-arm64.pip.txt",
-      "basis": "MEASURED 2026-10-03: the libraries the certified libmeep and its Python module load (otool closure), the BLAS/LAPACK and OpenMP runtimes NumPy and MEEP reach, the MPI stack, and the Python numerics.",
+      "basis": "MEASURED 2026-10-03: the libraries the certified libmeep and its Python module load (otool closure), the BLAS/LAPACK and OpenMP runtimes NumPy and MEEP reach, the MPI stack, and the Python numerics. libgdsii added 2026-10-14 by the same rule: the reference MEEP is built with libGDSII, and a libmeep of MEEP 1.33.0 built against conda-forge's libgdsii 0.21 links @rpath/libGDSII.0.dylib directly (otool -L, MEASURED 2026-10-14).",
       "host_floor": {
         "macos": "11.0"
       },
@@ -18,6 +18,7 @@
           "mpb",
           "hdf5",
           "openmpi",
+          "libgdsii",
           "libopenblas",
           "libgfortran5",
           "libgcc",
@@ -64,7 +65,8 @@
       "meep": {
         "version": "1.33.0",
         "single_precision": true,
-        "mpi": true
+        "mpi": true,
+        "gdsii": true
       },
       "by_design": {
         "hdf5": {
@@ -79,7 +81,7 @@
     "linux-64": {
       "conda_lock": "meep-gpu-ref-linux-64.conda.txt",
       "pip_lock": "meep-gpu-ref-linux-64.pip.txt",
-      "basis": "The Apple silicon set carried over to the Linux packages (libstdcxx for libcxx, libgomp for llvm-openmp, since the Linux MEEP is configured --with-openmp), the UCX/UCC transports of the Linux Open MPI, and the CUDA libraries of the GPU route; checked 2026-10-03 against readelf -d of the round environment's libmeep.so and _meep.so, whose every NEEDED library belongs to a judged package.",
+      "basis": "The Apple silicon set carried over to the Linux packages (libstdcxx for libcxx, libgomp for llvm-openmp, since the Linux MEEP is configured --with-openmp), the UCX/UCC transports of the Linux Open MPI, and the CUDA libraries of the GPU route; checked 2026-10-03 against readelf -d of the round environment's libmeep.so and _meep.so, whose every NEEDED library belongs to a judged package. libgdsii added 2026-10-14 by the same rule: the reference MEEP is built with libGDSII, which configure adds to the libraries libmeep links (AC_CHECK_LIB(GDSII, libGDSIIExists)); the build records the NEEDED list of the images it made (load_commands.json).",
       "host_floor": {
         "glibc": "2.28"
       },
@@ -92,6 +94,7 @@
           "mpb",
           "hdf5",
           "openmpi",
+          "libgdsii",
           "libopenblas",
           "libgfortran5",
           "libgcc",
@@ -145,9 +148,67 @@
       "meep": {
         "version": "1.33.0",
         "single_precision": true,
-        "mpi": true
+        "mpi": true,
+        "gdsii": true
       },
       "by_design": {}
+    }
+  },
+  "corpus_only": {
+    "about": "Needed to re-run the MEEP identity corpus (Table 2), not to compute: a row whose script imports a package, or calls a tool, that the environment lacks is refused by name, never measured. None of them takes part in MEEP's field updates or the GPU route, so none is in a numerics set; importing and calling shapely, nlopt and the stand-in moved no floating-point control flag on either host (MEASURED 2026-10-10). ffmpeg comes from the imageio-ffmpeg wheel, which installs one executable and no shared library; a host's own ffmpeg is not the reference's (the retired host_tools entry).",
+    "pypi": {
+      "shapely": {
+        "rows": [
+          "ex.mie_scattering",
+          "ex.differential_cross_section"
+        ],
+        "why": "the PyMieScatt stand-in's Inverse module imports it"
+      },
+      "nlopt": {
+        "rows": [
+          "ex.waveguide_crossing"
+        ],
+        "why": "the script imports it"
+      },
+      "imageio-ffmpeg": {
+        "rows": [
+          "t.test_visualization.TestVisualization.test_animation_output"
+        ],
+        "why": "the test is skipped, and the corpus row refused, unless `which ffmpeg` succeeds on the reference PATH (<prefix>/bin:/usr/bin:/bin); the capture stops before ffmpeg is called. The wheel's executable (imageio_ffmpeg/binaries/ffmpeg-*) is linked into <prefix>/bin by the build scripts' step 7b",
+        "links": {
+          "ffmpeg": "imageio_ffmpeg/binaries"
+        }
+      }
+    },
+    "conda": {
+      "gdspy": {
+        "rows": [
+          "ex.ring_gds"
+        ],
+        "why": "the script imports gdspy to write the GDSII file it reads back through MEEP's libGDSII; PyPI has no wheel of gdspy for either platform, so each conda lock holds conda-forge's build"
+      }
+    },
+    "standin": {
+      "name": "PyMieScatt",
+      "version": "1.8.1.1",
+      "rows": [
+        "ex.mie_scattering",
+        "ex.differential_cross_section"
+      ],
+      "why": "the scripts import PyMieScatt; its 1.8.1.1 release imports trapz from scipy.integrate, which SciPy 1.14 removed, so the stand-in takes it from NumPy",
+      "builder": "parity/meep_gpu/rounds/1.0/build_pymiescatt_standin.py",
+      "sdist": {
+        "url": "https://files.pythonhosted.org/packages/73/70/92654b4dc399392452b1f016924ac96cefd6cbb60e25cd37fa731d661ee3/PyMieScatt-1.8.1.1.tar.gz",
+        "sha256": "e628096cc0f3560f8170e0280df1d3196731e12bb55be214defc763c46666568"
+      },
+      "patch": "parity/meep_gpu/rounds/1.0/pymiescatt_standin.patch",
+      "files": {
+        "PyMieScatt/CoreShell.py": "8f424a45308d8f338f14c9fcbec4a1b6c1f3b0a6420f716dfb0b5dff26d3f909",
+        "PyMieScatt/Inverse.py": "92d8400e639d7dfdab09803cb6c2358f6c598b48c416a6e8a98439aaa93d02cf",
+        "PyMieScatt/Mie.py": "3513ba19ef711a9e4d8e5213138efba1024cfc4f8f1874eedcd1266a4763bbf4",
+        "PyMieScatt/__init__.py": "0f950a36e5b26fc382d1fc0b7c2087a454af91004af17c6148d0fc0a4f9c9b4e",
+        "PyMieScatt/_version.py": "f15f6be2b1276ac19f31bd90912c2d87fffc18fbdc671acad19539abd390a3cd"
+      }
     }
   }
 }

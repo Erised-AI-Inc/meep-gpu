@@ -84,6 +84,13 @@ def build(z_kind: str = "metallic", shape=(20, 1, 20), courant: float = 0.5,
                                              "z": max(2, shape[2] // 4)})
 
 
+def _record(fields, pml):
+    """The one-rank chunk record of the run's grid and layer."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
+
+
 def _source(fields, component: str, integrated: bool):
     from meep_gpu.sources import GaussianEnvelope, VolumeSource
 
@@ -102,7 +109,7 @@ def test_launch_1_carries_the_certified_update_H_cell_function_verbatim():
 
 
 def test_the_scan_is_the_certified_text_with_exactly_the_two_declared_edits():
-    certified = cyl.cylindrical_prefix_source("step_D")
+    certified = cyl.scan_source("step_D")
     tail = certified.split("    int base = j * nzi + k;\n", 1)[1][: -len("}\n")]
     lifted = family.certified_scan_tail()
     a, b = tail.splitlines(), lifted.splitlines()
@@ -113,19 +120,15 @@ def test_the_scan_is_the_certified_text_with_exactly_the_two_declared_edits():
     assert lifted in emit()
 
 
-def test_the_divide_is_spelled_slash_and_the_field_sits_left_of_the_weight():
-    """The REAL family's spelling. The complex family must spell the reciprocal
-    multiply instead -- the inversion the adjudication measured at ~25% of words."""
+def test_rinv_is_multiplied_and_the_field_sits_left_of_the_weight():
+    """MEEP stores ``rinv`` and multiplies by it; the sum restarts at each chunk start."""
     source = emit()
-    assert "float inc = (w - prev) / divisor[i - 1];" in source
-    # Executable text only: the certified scan's own COMMENT names the refuted
-    # spelling, which is how a reader learns it is refuted.
-    code = "\n".join(line for line in source.splitlines()
-                     if not line.strip().startswith("//"))
-    assert "(1.0f / divisor" not in code
-    assert f"h_cell(i, j, k, {cartesian.H_CELL_TAIL_ARGS}).a1 * weights[i];" in source
-    assert "acc = acc + inc;" in source
-    assert "float acc = 0.0f;" in source
+    assert "float inc = rinv[g - 1] * (w - w_prev);" in source
+    code = "\n".join(line.split("//", 1)[0] for line in source.splitlines())
+    assert " / divisor" not in code and "divisor" not in code
+    assert f"h_cell(g, j, k, {cartesian.H_CELL_TAIL_ARGS}).a1 * weights[g];" in source
+    assert "float nxt = acc + inc;" in source
+    assert "if (s != owner) { acc = 0.0f; owner = s; }" in source
 
 
 def test_launch_1_reads_nothing_it_writes():
@@ -178,11 +181,11 @@ def test_the_binding_count_the_module_spells_is_the_count_its_emitter_produces()
     source = emit()
     signature = source.split("kernel void cyl_real_hd_constitutive_prefix(", 1)[1]
     signature = signature.split("uint idx [[thread_position_in_grid]])", 1)[0]
-    assert signature.count("[[buffer(") == family.CONSTITUTIVE_BINDINGS == 25
+    assert signature.count("[[buffer(") == family.CONSTITUTIVE_BINDINGS == 26
     assert family.shipped_signature_bindings() == family.CONSTITUTIVE_BINDINGS
     pointers = [line for line in signature.splitlines() if "device" in line]
-    assert len(pointers) == family.CONSTITUTIVE_POINTERS == 24
-    assert family.HEADROOM == MAX_BUFFER_BINDINGS - family.CONSTITUTIVE_BINDINGS == 6
+    assert len(pointers) == family.CONSTITUTIVE_POINTERS == 25
+    assert family.HEADROOM == MAX_BUFFER_BINDINGS - family.CONSTITUTIVE_BINDINGS == 5
 
 
 def test_the_refuted_and_fitting_signatures_count_as_declared():
@@ -195,11 +198,11 @@ def test_the_refuted_and_fitting_signatures_count_as_declared():
     assert bindings(refuted) == MAX_BUFFER_BINDINGS + 1
 
 
-def test_launch_2_binds_the_certified_curls_twenty_two():
+def test_launch_2_binds_the_certified_curls_twenty_three():
     source = family.cylindrical_real_fused_hd_pair_curl_source(CODES_METALLIC_Z)
     signature = source.split("kernel void cyl_pml_curl_step(", 1)[1]
     signature = signature.split("uint idx [[thread_position_in_grid]])", 1)[0]
-    assert signature.count("[[buffer(") == family.CURL_BINDINGS == 22
+    assert signature.count("[[buffer(") == family.CURL_BINDINGS == 23
 
 
 def test_the_rotating_group_leads_the_signature_in_rotated_names_order():
@@ -234,22 +237,46 @@ def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set():
                                                                   Residency())
     assert not verdict.covered
     assert any("was not declared" in r for r in verdict.reasons)
-    assert family.plan_metal_cylindrical_real_fused_hd_pair(fields, pml, None,
-                                                             Residency()) is None
+    assert family.plan_metal_cylindrical_real_fused_hd_pair(
+        fields, pml, None, Residency(), chunk_bounds=_record(fields, pml)) is None
 
 
-def test_a_plain_electric_source_is_admitted_and_an_integrated_one_is_refused_by_name():
+def test_a_plain_and_an_integrated_engine_source_are_both_admitted():
+    """An engine integrated source enters at the constitutive update through
+    ``f_minus_p`` (``sources.f_minus_p_begin``), so it stands no withdraw between the
+    two consults this product spans, and a plain one never did."""
     fields, pml = build()
     plain = _source(fields, "Ez", integrated=False)
     integrated = _source(fields, "Ez", integrated=True)
-    assert family.metal_cylindrical_real_fused_hd_pair_coverage(
-        fields, pml, (plain,), Residency()).covered
-    assert len(withdraw_hoist.standing_withdraws((integrated,))) == 1
+    assert integrated.is_integrated and not hasattr(integrated, "withdraw")
+    assert withdraw_hoist.standing_withdraws((integrated,)) == ()
+    for source in (plain, integrated):
+        verdict = family.metal_cylindrical_real_fused_hd_pair_coverage(
+            fields, pml, (source,), Residency())
+        assert not any("standing integrated" in r for r in verdict.reasons), (
+            verdict.reasons)
+
+
+def test_a_foreign_standing_withdraw_is_refused_by_name():
+    """A source class that brings its own integrated electric ``withdraw`` is refused:
+    nothing measured a fused launch beside its body."""
+
+    class _ForeignElectric:
+        def withdraw(self, fields):  # never called: a predicate reads a source
+            raise AssertionError("a coverage predicate called a source's withdraw")
+
+        field_type = "D"
+        component = "Ez"
+        is_integrated = True
+        _n_source_points = 3
+        _applied_dipole = 0j
+
+    fields, pml = build()
     verdict = family.metal_cylindrical_real_fused_hd_pair_coverage(
-        fields, pml, (integrated,), Residency())
+        fields, pml, (_ForeignElectric(),), Residency())
     assert not verdict.covered
     assert any("standing integrated" in r and "HOISTS_THE_WITHDRAW = False" in r
-               for r in verdict.reasons)
+               for r in verdict.reasons), verdict.reasons
 
 
 def test_m_not_zero_and_a_cartesian_grid_are_both_refused_by_name():
@@ -392,6 +419,7 @@ def test_the_gate_exists_names_the_product_and_declares_the_battery_contract():
     assert 'SUBJECT_PACKAGE = "metal_kernels"' in source
     assert "def evaluate(driver" in source and "def runtime_reasons(" in source
     assert "refuted_over_the_ceiling_source" in source
-    assert "scan_divide_is_a_reciprocal_multiply" in source
+    assert "scan_quotient_divided_in_kernel" in source
+    assert "scan_sum_never_restarts" in source
     assert "scan_ladder_at_ir0_zero" in source
     assert "scan_reads_the_scratch_hy_corpus_scale" in source

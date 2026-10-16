@@ -689,14 +689,21 @@ def _shift_up(field, axis, boundary):
     return rolled
 
 
-def _reference_coupling(volumes, rows, own_axis, boundaries, wall_axes,
-                        component):
-    """stepping._offdiagonal_terms (:1206-1224) + the wall mask (:1227-1254):
-    pair down the partner axis, coefficient multiply BETWEEN the shifts, the
-    PRODUCT up the own axis, 0.25 applied last, offset 1 then offset 2, then
-    face-0 zeroing on every wall-masked axis with iyee 0."""
+def _reference_row(volumes, rows, own_axis, boundaries, wall_axes, component,
+                   inverse, presence=None):
+    """stepping._offdiagonal_terms + _rounded_row: MEEP's row, formed in double.
+
+    ``gs*us`` is one float32 product, widened. Per surviving partner, in
+    cycle_direction order: the pair down the partner axis, the coefficient
+    multiply BETWEEN the shifts, the PRODUCT up the own axis, their float32 sum,
+    face-0 zeroing on every wall-masked axis with iyee 0, then ``0.25`` applied in
+    double and the term added in double -- only where ``presence`` (the row slot's
+    per-chunk presence, None for everywhere) holds. The row is rounded once.
+    ``None`` when no partner survives (the caller keeps ``gs*us``)."""
     axes = "xyz"
-    total = None
+    row = (volumes[component] * inverse).astype(numpy.float64)
+    added = False
+    iyee = IYEE_SHIFTS[component]
     for offset in (1, 2):
         partner_axis = (own_axis + offset) % 3
         partner = "E" + axes[partner_axis]
@@ -707,39 +714,42 @@ def _reference_coupling(volumes, rows, own_axis, boundaries, wall_axes,
         pair = values + _shift_down(values, partner_axis,
                                     boundaries[partner_axis])
         product = pair * coefficient
-        term = 0.25 * (product + _shift_up(product, own_axis,
-                                           boundaries[own_axis]))
-        total = term if total is None else total + term
-    if total is not None:
-        iyee = IYEE_SHIFTS[component]
+        summed = product + _shift_up(product, own_axis, boundaries[own_axis])
         for axis in range(3):
-            if iyee[axis] != 0:
-                continue
-            if wall_axes[axis]:
-                total[_face(axis, 0)] = 0
-    return total
+            if iyee[axis] == 0 and wall_axes[axis]:
+                summed[_face(axis, 0)] = 0
+        term = 0.25 * summed.astype(numpy.float64)
+        present = None if presence is None else presence.get(partner)
+        row = row + term if present is None else numpy.where(present, row + term, row)
+        added = True
+    return row.astype(numpy.float32) if added else None
 
 
 def _reference_update_e(state, coefficients, rows_by_component, inv_eps,
-                        boundaries, wall_axes):
-    """The gate reference's twin: the whole offdiag sub-step on plain dicts
-    (stepping.py:1001-1008 + the PML tail's no-scratch branch, :2130-2135)."""
+                        boundaries, wall_axes, inside=None, presence=None):
+    """The gate reference's twin: the whole offdiag sub-step on plain dicts.
+
+    stepping.update_E's off-diagonal branch, then the PML tail per chunk
+    (``_apply_constitutive_regions``): on the cells whose chunk carries the
+    component's own layer (``inside``, the half-integer membership of its own
+    axis) MEEP's accumulation ``E + ((kps*src) - (kms*f_w))`` with ``f_w`` taking
+    ``src``; everywhere else ``E = src`` and ``f_w`` keeps its word."""
     volumes = {"Ex": state["Dx"], "Ey": state["Dy"], "Ez": state["Dz"]}
     for own_axis, target in enumerate(E_NAMES):
         gs = volumes[target]
         us = inv_eps[target]
-        constitutive = gs * us
-        coupling = _reference_coupling(volumes, rows_by_component[target],
-                                       own_axis, boundaries, wall_axes, target)
-        if coupling is not None:
-            constitutive = constitutive + coupling
+        row = _reference_row(volumes, rows_by_component[target], own_axis,
+                             boundaries, wall_axes, target, us,
+                             None if presence is None else presence[target])
+        constitutive = gs * us if row is None else row
         kps, kms = coefficients[target]
         fw = state["f_w_" + target]
         field = state[target]
-        fw_previous = fw.copy()
-        fw[...] = constitutive
-        field += kps * fw
-        field -= kms * fw_previous
+        member = (numpy.ones(field.shape, dtype=bool) if inside is None
+                  else numpy.broadcast_to(inside[target], field.shape))
+        accumulated = field + ((kps * constitutive) - (kms * fw))
+        field[...] = numpy.where(member, accumulated, constitutive)
+        fw[...] = numpy.where(member, constitutive, fw)
 
 
 def _state_of(fields):
@@ -754,6 +764,25 @@ def _wall_axes_of(grid):
         for axis in range(3))
 
 
+def _forms_of(fields, pml):
+    """(inside, presence): the dsigw membership and the per-slot presence the
+    array path steps with, read from its own chunk division."""
+    layout = stepping._chunk_layout(fields, pml)
+    shape = tuple(fields.grid.shape)
+    inside = {}
+    for own_axis, target in enumerate(E_NAMES):
+        line = layout.membership(own_axis, True)
+        view = [1, 1, 1]
+        view[own_axis] = shape[own_axis]
+        inside[target] = numpy.asarray(line, dtype=bool).reshape(view)
+    presence = {target: {partner: layout.offdiag_presence(coefficient,
+                                                           IYEE_SHIFTS[target])
+                         for partner, coefficient in
+                         fields.chi1inv_offdiagonal_for(target).items()}
+                for target in E_NAMES}
+    return inside, presence
+
+
 def _pin_against_stepping(od, fields, pml, steps=3):
     state = _state_of(fields)
     boundaries = tuple(stepping._boundary_kinds(fields.grid, pml))
@@ -764,10 +793,11 @@ def _pin_against_stepping(od, fields, pml, steps=3):
     rows_by_component = {name: fields.chi1inv_offdiagonal_for(name)
                          for name in E_NAMES}
     inv_eps = {name: fields.inverse_epsilon_for(name) for name in E_NAMES}
+    inside, presence = _forms_of(fields, pml)
     for step in range(steps):
         stepping.update_E(fields, pml)
         _reference_update_e(state, coefficients, rows_by_component, inv_eps,
-                            boundaries, wall_axes)
+                            boundaries, wall_axes, inside, presence)
         for name in ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez"):
             ours = state[name]
             theirs = getattr(fields, name)
@@ -861,12 +891,24 @@ def test_the_between_shifts_association_differs_from_the_hoist_on_varying_rows(o
             g = volumes[partner]
             four = (g + _shift_down(g, partner_axis, boundaries[partner_axis]))
             four = four + _shift_up(four, 2, boundaries[2])
-            term = 0.25 * (four * coefficient)
+            term = four * coefficient
             total = term if total is None else total + term
         return total
 
-    transcribed = _reference_coupling(volumes, rows, 2, boundaries,
-                                      (0, 0, 0), "Ez")
+    def between(rows_map):
+        """Each term's float32 sum, the coefficient multiply BETWEEN the shifts."""
+        total = None
+        for offset in (1, 2):
+            partner_axis = (2 + offset) % 3
+            partner = "E" + "xyz"[partner_axis]
+            g = volumes[partner]
+            product = (g + _shift_down(g, partner_axis, boundaries[partner_axis])) \
+                * rows_map[partner]
+            term = product + _shift_up(product, 2, boundaries[2])
+            total = term if total is None else total + term
+        return total
+
+    transcribed = between(rows)
     assert hoist(rows).tobytes() != transcribed.tobytes(), (
         "the hoist coincided with the transcription on varying rows — the "
         "central subtlety is not byte-visible on this seed and the gate's m1 "
@@ -874,8 +916,7 @@ def test_the_between_shifts_association_differs_from_the_hoist_on_varying_rows(o
 
     uniform = {partner: numpy.full_like(value, 0.11)
                for partner, value in rows.items()}
-    transcribed_uniform = _reference_coupling(volumes, uniform, 2, boundaries,
-                                              (0, 0, 0), "Ez")
+    transcribed_uniform = between(uniform)
     assert hoist(uniform).tobytes() != transcribed_uniform.tobytes(), (
         "the two forms coincided bitwise on a uniform coefficient on this "
         "seed — the measured distributivity-rounding separation vanished; "
@@ -895,10 +936,11 @@ def test_the_wall_mask_is_load_bearing_on_metallic_walls(od):
     rows_by_component = {name: fields.chi1inv_offdiagonal_for(name)
                          for name in E_NAMES}
     inv_eps = {name: fields.inverse_epsilon_for(name) for name in E_NAMES}
+    inside, presence = _forms_of(fields, pml)
     stepping.update_E(fields, pml)
     # wall_axes forced dark — the m6-class defect, in the reference.
     _reference_update_e(state, coefficients, rows_by_component, inv_eps,
-                        boundaries, (0, 0, 0))
+                        boundaries, (0, 0, 0), inside, presence)
     assert any(
         state[name].tobytes() != getattr(fields, name).tobytes()
         for name in ("Ex", "Ey", "Ez")), (
@@ -946,9 +988,26 @@ def _plan_arrays(shape=(4, 3, 5), seed=9):
     return arrays, flat, rows
 
 
+def _every_cell_record(shape):
+    """The harness's every-cell chunk record for ``shape`` (``gate_chunk_records``)."""
+    if str(PARITY_DIR) not in sys.path:
+        sys.path.insert(0, str(PARITY_DIR))
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
+    return every_cell_record(shape)
+
+
+def _from_arrays(od, arrays, flat, rows, codes, walls, **kwargs):
+    """The harness builder with an every-cell record and every term present."""
+    shape = tuple(arrays["Ex"].shape)
+    kwargs.setdefault("chunk_bounds", _every_cell_record(shape))
+    kwargs.setdefault("presence", od.ALL_PRESENT)
+    return od.plan_offdiagonal_constitutive_from_arrays(arrays, flat, rows, codes,
+                                                        walls, **kwargs)
+
+
 def test_the_from_arrays_plan_reports_its_shape(od):
     arrays, flat, rows = _plan_arrays()
-    plan = od.plan_offdiagonal_constitutive_from_arrays(
+    plan = _from_arrays(od,
         arrays, flat, rows, (0, 1, 0), (0, 1, 0))
     assert plan.row_mask == (0, 0, 0, 0, 1, 0)  # Ez/Ex is slot 4 (ROW_SLOTS)
     assert plan.boundary_codes == (0, 1, 0)
@@ -958,7 +1017,7 @@ def test_the_from_arrays_plan_reports_its_shape(od):
 def test_an_all_dead_row_mask_is_refused_toward_the_certified_kernel(od):
     arrays, flat, _rows = _plan_arrays()
     with pytest.raises(ValueError, match="certified plain constitutive"):
-        od.plan_offdiagonal_constitutive_from_arrays(
+        _from_arrays(od,
             arrays, flat, {}, (0, 0, 0), (0, 0, 0))
 
 
@@ -966,7 +1025,7 @@ def test_a_scalar_inverse_epsilon_is_refused_by_the_plan(od):
     arrays, flat, rows = _plan_arrays()
     arrays["inv_eps_Ez"] = 0.5
     with pytest.raises(ValueError, match="no scalar arm"):
-        od.plan_offdiagonal_constitutive_from_arrays(
+        _from_arrays(od,
             arrays, flat, rows, (0, 0, 0), (0, 0, 0))
 
 
@@ -974,7 +1033,7 @@ def test_an_output_aliasing_an_input_is_refused(od):
     arrays, flat, rows = _plan_arrays()
     arrays["Ex"] = arrays["Dx"]  # the schedule-dependent wrong answer
     with pytest.raises(ValueError, match="alias"):
-        od.plan_offdiagonal_constitutive_from_arrays(
+        _from_arrays(od,
             arrays, flat, rows, (0, 0, 0), (0, 0, 0))
 
 
@@ -982,7 +1041,7 @@ def test_a_row_volume_aliasing_an_output_is_refused(od):
     arrays, flat, rows = _plan_arrays()
     rows = {"Ez": {"Ex": arrays["f_w_Ez"]}}
     with pytest.raises(ValueError, match="alias"):
-        od.plan_offdiagonal_constitutive_from_arrays(
+        _from_arrays(od,
             arrays, flat, rows, (0, 0, 0), (0, 0, 0))
 
 
@@ -991,7 +1050,7 @@ def test_a_coefficient_vector_aliasing_an_output_is_refused(od):
     shape = arrays["Ex"].shape
     flat["kps_x"] = arrays["Ex"].ravel()[:shape[0]]  # view, same base address
     with pytest.raises(ValueError, match="alias"):
-        od.plan_offdiagonal_constitutive_from_arrays(
+        _from_arrays(od,
             arrays, flat, rows, (0, 0, 0), (0, 0, 0))
 
 
@@ -1002,7 +1061,7 @@ def test_aliased_isotropic_inverse_epsilon_inputs_are_accepted(od):
     shared = arrays["inv_eps_Ex"]
     arrays["inv_eps_Ey"] = shared
     arrays["inv_eps_Ez"] = shared
-    plan = od.plan_offdiagonal_constitutive_from_arrays(
+    plan = _from_arrays(od,
         arrays, flat, rows, (0, 0, 0), (0, 0, 0))
     assert plan.row_mask == (0, 0, 0, 0, 1, 0)
 
@@ -1010,10 +1069,10 @@ def test_aliased_isotropic_inverse_epsilon_inputs_are_accepted(od):
 def test_bad_boundary_codes_and_wall_axes_are_refused(od):
     arrays, flat, rows = _plan_arrays()
     with pytest.raises(ValueError, match="boundary codes"):
-        od.plan_offdiagonal_constitutive_from_arrays(
+        _from_arrays(od,
             arrays, flat, rows, (0, 2, 0), (0, 0, 0))
     with pytest.raises(ValueError, match="wall axes"):
-        od.plan_offdiagonal_constitutive_from_arrays(
+        _from_arrays(od,
             arrays, flat, rows, (0, 0, 0), (0, 3, 0))
 
 
@@ -1039,3 +1098,157 @@ def test_planning_a_refused_configuration_returns_none_without_triton(od):
     assert od.plan_offdiagonal_constitutive(fields, pml) is None, (
         "this laptop's NumPy backend must refuse, and the builder must answer "
         "None without needing the optional dependency")
+
+
+# ---------------------------------------------------------------------------
+# The chunk forms: the record, the presence, and the auxiliary contract
+# ---------------------------------------------------------------------------
+
+def test_a_plan_without_a_chunk_record_is_refused_by_name(od):
+    """The harness route has no default division: a gate whose plan fell back
+    to one would stop measuring the forms it exists to measure."""
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+
+    arrays, flat, rows = _plan_arrays()
+    with pytest.raises(ChunkLayoutRefusal, match="no chunk record"):
+        _from_arrays(od, arrays, flat, rows, (0, 0, 0), (0, 0, 0),
+                     chunk_bounds=None)
+    with pytest.raises(TypeError):
+        od.plan_offdiagonal_constitutive_from_arrays(
+            arrays, flat, rows, (0, 0, 0), (0, 0, 0), presence=od.ALL_PRESENT)
+
+
+def test_a_plan_without_presence_is_refused_by_name(od):
+    arrays, flat, rows = _plan_arrays()
+    with pytest.raises(ValueError, match="no off-diagonal presence"):
+        _from_arrays(od, arrays, flat, rows, (0, 0, 0), (0, 0, 0), presence=None)
+    varying = od.PresenceRecord(numpy.zeros(6, dtype=numpy.int32), (1, 0, 0, 0, 0, 0))
+    with pytest.raises(ValueError, match="dead slot"):
+        _from_arrays(od, arrays, flat, rows, (0, 0, 0), (0, 0, 0), presence=varying)
+
+
+def _interior_rows_build(boundaries="metallic", seed=5):
+    """Rows live in a central box only: the layer's chunks hold identically zero
+    rows and drop them (MEEP's NULL pointer), and D carries planted -0 words, the
+    only value on which an absent term and an added zero differ."""
+    fields, pml = _build(cell_size=(1.2, 1.0, 1.1), boundaries=boundaries, seed=seed)
+    shape = tuple(fields.grid.shape)
+    inside = numpy.zeros(shape, dtype=bool)
+    inside[tuple(slice(n // 3, n - n // 3) for n in shape)] = True
+    epsilon, inv_eps, rows = _tensor_rows(shape, varying_seed=seed)
+    rows = {row: {partner: numpy.where(inside, value, 0).astype(numpy.float32)
+                  for partner, value in entries.items()}
+            for row, entries in rows.items()}
+    fields.set_epsilon_volumes(epsilon, inv_eps, chi1inv_offdiagonal=rows)
+    for name in ("Dx", "Dy", "Dz"):
+        getattr(fields, name).reshape(-1)[::5] = numpy.float32(-0.0)
+    return fields, pml
+
+
+def test_the_reference_matches_stepping_where_chunks_drop_rows(od):
+    fields, pml = _interior_rows_build()
+    layout = stepping._chunk_layout(fields, pml)
+    dropped = sum(int((~numpy.asarray(fields.offdiag_presence(r, p, layout))).sum())
+                  for r, p in od.ROW_SLOTS
+                  if fields.offdiag_presence(r, p, layout) is not None)
+    assert dropped > 0, "no chunk dropped a row: the presence is not exercised"
+    _pin_against_stepping(od, fields, pml)
+
+
+def test_ignoring_presence_is_visible_where_chunks_drop_rows(od):
+    """The reference with every term added must differ from stepping on this
+    build, or the presence would be unobservable and the gates' presence
+    mutations vacuous."""
+    fields, pml = _interior_rows_build(seed=6)
+    state = _state_of(fields)
+    boundaries = tuple(stepping._boundary_kinds(fields.grid, pml))
+    coefficients = {
+        target: (getattr(pml, f"kps_{axis}_h"), getattr(pml, f"kms_{axis}_h"))
+        for target, _source, axis in stepping.E_CONSTITUTIVE_TERMS}
+    rows_by_component = {name: fields.chi1inv_offdiagonal_for(name)
+                         for name in E_NAMES}
+    inv_eps = {name: fields.inverse_epsilon_for(name) for name in E_NAMES}
+    inside, _presence = _forms_of(fields, pml)
+    stepping.update_E(fields, pml)
+    _reference_update_e(state, coefficients, rows_by_component, inv_eps,
+                        boundaries, _wall_axes_of(fields.grid), inside, None)
+    assert any(state[name].tobytes() != getattr(fields, name).tobytes()
+               for name in ("Ex", "Ey", "Ez"))
+
+
+def test_presence_packs_the_array_paths_volume_cell_for_cell(od):
+    """presence_for reads the array path's own presence and packs it into one
+    mask word per slot over the {low, interior, high} product; decoding the
+    packed vector reproduces every slot's volume at every stored cell."""
+    fields, pml = _interior_rows_build()
+    record = od.presence_for(fields, pml)
+    assert record.varies == (1, 1, 1, 1, 1, 1)
+    shape = tuple(fields.grid.shape)
+    vector = numpy.asarray(record.vector)
+    assert vector.shape == (od.PRESENCE_MASK_WORDS + 2 * sum(shape),)
+    lines = {}
+    offset = od.PRESENCE_MASK_WORDS
+    for half in (0, 1):
+        for axis in range(3):
+            lines[(half, axis)] = vector[offset:offset + shape[axis]]
+            offset += shape[axis]
+    layout = stepping._chunk_layout(fields, pml)
+    for slot, (row, partner) in enumerate(od.ROW_SLOTS):
+        own = E_NAMES.index(row)
+        x, y, z = (lines[(int(axis == own), axis)] for axis in range(3))
+        chunk = (x[:, None, None] * 9 + y[None, :, None] * 3) + z[None, None, :]
+        decoded = ((int(vector[slot]) >> chunk) & 1).astype(bool)
+        expected = numpy.asarray(fields.offdiag_presence(row, partner, layout))
+        assert numpy.array_equal(decoded, numpy.broadcast_to(expected, shape)), row
+
+
+def test_presence_is_all_present_on_a_division_that_keeps_every_row(od):
+    fields, pml = _build()
+    assert od.presence_for(fields, pml) == od.ALL_PRESENT
+
+
+def test_presence_refuses_a_division_it_cannot_index(od):
+    """A chunk cut that does not span the cross-section has no per-axis segment;
+    the presence is refused by name and the predicate refuses the run."""
+    from meep_gpu.chunk_map import ChunkLayout, ChunkLayoutRefusal, grid_frames
+
+    fields, pml = _interior_rows_build()
+    base = ChunkLayout.one_rank(fields.grid, pml)
+    frames = grid_frames(fields.grid)
+    boxes, flags = [], []
+    for (lo, hi), flag in zip(base.boxes, base.pml_flags):
+        if lo[0] == frames[0].window[0] and hi[1] > lo[1] + 2:
+            mid = lo[1] + 2 * ((hi[1] - lo[1]) // 4)
+            boxes += [(lo, (hi[0], mid, hi[2])), ((lo[0], mid, lo[2]), hi)]
+            flags += [flag, flag]
+        else:
+            boxes.append((lo, hi))
+            flags.append(flag)
+    layout = ChunkLayout(boxes, flags, frames, faces=base.faces, source="record")
+    volumes = [layout.offdiag_presence(fields.chi1inv_offdiagonal_for(row)[partner],
+                                       IYEE_SHIFTS[row])
+               for row, partner in od.ROW_SLOTS]
+    with pytest.raises(ChunkLayoutRefusal, match="does not span the cross-section"):
+        od.presence_record(layout, volumes, tuple(fields.grid.shape))
+
+
+def test_the_forms_touch_the_auxiliary_on_the_accumulations_cells_only():
+    """The auxiliary contract, pinned on the source: ``f_w`` is read and written
+    under the dsigw membership, and the plain form is an output select."""
+    code = MODULE_PATH.read_text(encoding="utf-8")
+    for index in range(3):
+        assert (f"prev{index} = tl.load(w{index} + idx, mask=live & dw{index}, "
+                f"other=0.0)") in code
+        assert f"tl.store(w{index} + idx, src{index}, mask=live & dw{index})" in code
+        assert (f"a{index} = constitutive_form(a{index}, prev{index}, src{index}, "
+                f"kp_{index}, km_{index}, dw{index})") in code
+        assert f"dw{index} = record_in(cb, RECORD_HALF_INTEGER + {4 * index}, " in code
+
+
+def test_the_row_is_formed_in_double_and_rounded_once():
+    """MEEP's 0.25 is a double literal: each term's float32 sum is widened and
+    scaled in double, the row is summed in double, and the store rounds once."""
+    code = MODULE_PATH.read_text(encoding="utf-8")
+    assert "added = row + 0.25 * tl.cast(summed, tl.float64)" in code
+    assert code.count("tl.cast(row") == 6
+    assert "0.25 * ((near" not in code

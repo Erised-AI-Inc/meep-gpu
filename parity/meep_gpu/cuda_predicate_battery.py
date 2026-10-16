@@ -406,44 +406,6 @@ def _cuda_constitutive_verdict(fields: Any, pml: Any, grid: Any,
 # above so the two rounds stay commensurable to the slot.
 # ---------------------------------------------------------------------------
 
-#: The complex arms are compiled at the expansion seam, so their predicates take a
-#: LICENSE and a POLICY -- and neither is a property of the census host. The
-#: question this census asks is "would the SHIPPED predicate admit this row on the
-#: target the complex family was certified on", so both are supplied from that
-#: target's own record: the expansion probe cut on the GPU host's RTX A6000 under the
-#: 'keep' policy, which classifies the arm FMA_V1 on a measured basis with no
-#: refusals. Passing a placeholder instead was measured on 2026-08-20 to refuse
-#: every row with "the expansion licence is str, not the verdict dict" -- a
-#: refusal about the census, reported as though it were about the corpus.
-COMPLEX_PROBE_RECORD = ("parity/meep_gpu/results/expansion_probe_2026-08-17/"
-                        "expansion_probe_keep.json")
-COMPLEX_POLICY = "keep"
-
-
-def _complex_license() -> Any:
-    """The expansion verdict the complex predicates gate on, or the failure reason.
-
-    Loaded ONCE per child process. A record that does not license an arm is not
-    silently downgraded to a placeholder: the reason travels into every row, so a
-    census run against a bad record reads as a census failure rather than as 186
-    rows of coverage gap.
-    """
-    import json as _json  # noqa: PLC0415
-    from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
-
-    path = _API_ROOT / COMPLEX_PROBE_RECORD
-    record = _json.loads(path.read_text(encoding="utf-8"))
-    verdict = complex_fields.expansion_license(record)
-    policy_reasons = list(
-        complex_fields.expansion_policy_reasons(record, COMPLEX_POLICY))
-    if not verdict.get("arm") or verdict.get("refusals") or policy_reasons:
-        raise RuntimeError(
-            f"{COMPLEX_PROBE_RECORD} licenses no arm under {COMPLEX_POLICY!r}: "
-            f"arm={verdict.get('arm')!r} refusals={verdict.get('refusals')} "
-            f"policy_reasons={policy_reasons[:1]}")
-    return verdict
-
-
 def _one(call: Callable[[], Any]) -> Dict[str, Any]:
     """One ``(covered, reason)`` predicate; a raise is a refusal WITH its reason."""
     try:
@@ -481,13 +443,12 @@ def _cuda_complex_verdicts(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
         covers_real_pml_complex_constitutive,
         covers_real_pml_complex_curl,
     )
-    licence = _complex_license()
     out: Dict[str, Any] = {}
     for name in CUDA_CURL_SUB_STEPS:
         out[name] = dict(_factored(
             fields, pml, grid,
             lambda g, n=name: covers_real_pml_complex_curl(
-                fields, pml, g, n, license=licence, subnormal_policy=COMPLEX_POLICY)),
+                fields, pml, g, n)),
             sub_step=name, kernel=f"fused_{name}_pml_complex_bloch",
             predicate="cuda_kernels.coverage.covers_real_pml_complex_curl",
             family="cuda_complex")
@@ -495,7 +456,7 @@ def _cuda_complex_verdicts(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
         out[f"update_{side}"] = dict(_factored(
             fields, pml, grid,
             lambda g, s=side: covers_real_pml_complex_constitutive(
-                fields, pml, g, s, license=licence, subnormal_policy=COMPLEX_POLICY)),
+                fields, pml, g, s)),
             sub_step=f"update_{side}", kernel=f"fused_update_{side}_pml_complex_bloch",
             predicate="cuda_kernels.coverage.covers_real_pml_complex_constitutive",
             family="cuda_complex")
@@ -558,51 +519,7 @@ def _cuda_ade_verdicts(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
 # kernels and three predicates for twenty of those slots; the other two are the
 # off-diagonal complex update_E, which that file refuses BY NAME rather than
 # leaving unclaimed.
-#
-# THIS LEG BINDS A DIFFERENT PROBE RECORD FROM THE OTHER COMPLEX LEGS, and that
-# is a property of the sub-step rather than a convenience. ``update_P``'s first
-# term is ``xp.multiply(P, c_now)`` -- a complex64 ARRAY times a PYTHON FLOAT --
-# and neither ``c8_mul_f4_field_left`` (array coefficient) nor
-# ``python_float_left`` (scalar on the left) is that orientation. The
-# four-pattern ``expansion_probe_2026-08-17`` record the Cartesian complex legs
-# bind does not classify it; the SEVEN-pattern keep-policy record cut by
-# ``gate_triton_unified_expansion`` on 2026-08-19 does. Binding the four-pattern
-# record here would measure a refusal about the ARTIFACT and report it as a
-# refusal about the corpus -- the exact failure this file's own
-# COMPLEX_PROBE_RECORD comment records from 2026-08-20.
 # ---------------------------------------------------------------------------
-
-COMPLEX_NO_PML_PROBE_RECORD = ("parity/meep_gpu/results/triton_welds_2026-08-19/"
-                               "unified_expansion/gate.json")
-
-
-def _complex_no_pml_license() -> Any:
-    """The seven-pattern verdict this family's three predicates gate on.
-
-    ``expansion_license`` computes the ARM from the record; the PATTERN TABLE it
-    was computed from is carried alongside, because ``update_P``'s probe clause
-    asks a question about the record and not only about the verdict. A record
-    that does not license an arm is not silently downgraded: the reason travels
-    into every row, so a census run against a bad record reads as a census
-    failure rather than as 186 rows of coverage gap.
-    """
-    import json as _json  # noqa: PLC0415
-    from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
-
-    path = _API_ROOT / COMPLEX_NO_PML_PROBE_RECORD
-    record = _json.loads(path.read_text(encoding="utf-8"))
-    verdict = complex_fields.expansion_license(record)
-    verdict.setdefault("patterns", record.get("patterns"))
-    policy_reasons = list(
-        complex_fields.expansion_policy_reasons(record, COMPLEX_POLICY))
-    if not verdict.get("arm") or verdict.get("refusals") or policy_reasons:
-        raise RuntimeError(
-            f"{COMPLEX_NO_PML_PROBE_RECORD} licenses no arm under "
-            f"{COMPLEX_POLICY!r}: arm={verdict.get('arm')!r} "
-            f"refusals={verdict.get('refusals')} "
-            f"policy_reasons={policy_reasons[:1]}")
-    return verdict
-
 
 def _cuda_complex_no_pml_verdicts(fields: Any, pml: Any,
                                   grid: Any) -> Dict[str, Any]:
@@ -616,14 +533,12 @@ def _cuda_complex_no_pml_verdicts(fields: Any, pml: Any,
     """
     from meep_gpu.cuda_kernels import complex_no_pml_kernels as arm  # noqa: PLC0415
 
-    licence = _complex_no_pml_license()
     out: Dict[str, Any] = {}
     for name in CUDA_CURL_SUB_STEPS:
         out[name] = dict(_factored(
             fields, pml, grid,
             lambda g, n=name: arm.covers_complex_no_pml_curl(
-                fields, pml, g, n, license=licence,
-                subnormal_policy=COMPLEX_POLICY)),
+                fields, pml, g, n)),
             sub_step=name, kernel=f"fused_{name}_no_pml_complex[_conductive]",
             predicate=("cuda_kernels.complex_no_pml_kernels."
                        "covers_complex_no_pml_curl"),
@@ -635,7 +550,7 @@ def _cuda_complex_no_pml_verdicts(fields: Any, pml: Any,
     out["update_E"] = dict(_factored(
         fields, pml, grid,
         lambda g: arm.covers_complex_no_pml_stored_e(
-            fields, pml, g, license=licence, subnormal_policy=COMPLEX_POLICY)),
+            fields, pml, g)),
         sub_step="update_E", kernel="fused_update_E_no_pml_complex_stored",
         predicate=("cuda_kernels.complex_no_pml_kernels."
                    "covers_complex_no_pml_stored_e"),
@@ -643,7 +558,7 @@ def _cuda_complex_no_pml_verdicts(fields: Any, pml: Any,
     out["update_P"] = dict(_factored(
         fields, pml, grid,
         lambda g: arm.covers_complex_no_pml_ade_update_p(
-            fields, pml, g, license=licence, subnormal_policy=COMPLEX_POLICY)),
+            fields, pml, g)),
         sub_step="update_P", kernel="fused_update_P_no_pml_complex[_uniform]",
         predicate=("cuda_kernels.complex_no_pml_kernels."
                    "covers_complex_no_pml_ade_update_p"),
@@ -807,19 +722,14 @@ def _cuda_no_pml_curl_verdicts(fields, pml, grid):
 
 
 def _cuda_cyl_complex_verdicts(fields, pml, grid):
-    """``covers_pml_cylindrical_complex_curl`` per sub-step.
-
-    Takes the same expansion licence and policy as the Cartesian complex arms and
-    for the same reason: the arm is compiled in at this seam.
-    """
+    """``covers_pml_cylindrical_complex_curl`` per sub-step."""
     from meep_gpu.cuda_kernels.cylindrical_coverage import (  # noqa: PLC0415
         covers_pml_cylindrical_complex_curl,
     )
-    licence = _complex_license()
     return {name: dict(_factored(
         fields, pml, grid,
         lambda g, n=name: covers_pml_cylindrical_complex_curl(
-            fields, pml, g, n, license=licence, subnormal_policy=COMPLEX_POLICY)),
+            fields, pml, g, n)),
         sub_step=name, kernel=f"fused_cyl_{name}_pml_complex",
         predicate=("cuda_kernels.cylindrical_coverage."
                    "covers_pml_cylindrical_complex_curl"),
@@ -902,11 +812,9 @@ def _cuda_bfast_verdicts(fields, pml, grid):
 # CUDA predicate now admits, and "special_kz (grid.beta != 0)" on 16 more. A census
 # that does not ask a predicate cannot report what it covers.
 #
-# BOTH TAKE THE EXPANSION LICENCE AND THE POLICY, and for the same reason the
-# Cartesian complex arms do: they delegate into ``covers_real_pml_complex_curl`` /
-# ``..._constitutive``, where the arm is compiled into the binary. Passing a
-# placeholder instead refuses every row with a message about the census rather than
-# about the corpus.
+# BOTH DELEGATE into ``covers_real_pml_complex_curl`` / ``..._constitutive``, as the
+# Cartesian complex arms do, and like them take no licence or policy argument: the
+# complex predicates read neither since the expansion licence was deleted.
 #
 # THE TWO ARE DISJOINT BY CONSTRUCTION and the union census CHECKS it rather than
 # assuming: the folded family inherits the certified predicate's beta refusal, and
@@ -921,14 +829,12 @@ def _cuda_complex_folded_verdicts(fields, pml, grid):
         covers_complex_folded_constitutive,
         covers_complex_folded_curl,
     )
-    licence = _complex_license()
     out = {}
     for name in CUDA_CURL_SUB_STEPS:
         out[name] = dict(_factored(
             fields, pml, grid,
             lambda g, n=name: covers_complex_folded_curl(
-                fields, pml, g, n, license=licence,
-                subnormal_policy=COMPLEX_POLICY)),
+                fields, pml, g, n)),
             sub_step=name, kernel=f"fused_{name}_pml_complex_folded",
             predicate=("cuda_kernels.complex_folded_kernels."
                        "covers_complex_folded_curl"),
@@ -937,8 +843,7 @@ def _cuda_complex_folded_verdicts(fields, pml, grid):
         out[f"update_{side}"] = dict(_factored(
             fields, pml, grid,
             lambda g, s=side: covers_complex_folded_constitutive(
-                fields, pml, g, s, license=licence,
-                subnormal_policy=COMPLEX_POLICY)),
+                fields, pml, g, s)),
             sub_step=f"update_{side}",
             kernel=f"fused_update_{side}_pml_complex_bloch",
             predicate=("cuda_kernels.complex_folded_kernels."
@@ -953,14 +858,12 @@ def _cuda_complex_beta_verdicts(fields, pml, grid):
         covers_complex_beta_constitutive,
         covers_complex_beta_curl,
     )
-    licence = _complex_license()
     out = {}
     for name in CUDA_CURL_SUB_STEPS:
         out[name] = dict(_factored(
             fields, pml, grid,
             lambda g, n=name: covers_complex_beta_curl(
-                fields, pml, g, n, license=licence,
-                subnormal_policy=COMPLEX_POLICY)),
+                fields, pml, g, n)),
             sub_step=name, kernel=f"fused_{name}_pml_complex_beta",
             predicate=("cuda_kernels.complex_beta_kernels."
                        "covers_complex_beta_curl"),
@@ -969,15 +872,13 @@ def _cuda_complex_beta_verdicts(fields, pml, grid):
         out[f"update_{side}"] = dict(_factored(
             fields, pml, grid,
             lambda g, s=side: covers_complex_beta_constitutive(
-                fields, pml, g, s, license=licence,
-                subnormal_policy=COMPLEX_POLICY)),
+                fields, pml, g, s)),
             sub_step=f"update_{side}",
             kernel=f"fused_update_{side}_pml_complex_bloch",
             predicate=("cuda_kernels.complex_beta_kernels."
                        "covers_complex_beta_constitutive"),
             family="cuda_complex_beta")
     return out
-
 
 
 # ---------------------------------------------------------------------------
@@ -1077,47 +978,7 @@ def _cuda_folded_offdiag_verdict(fields: Any, pml: Any, grid: Any) -> Dict[str, 
 # :1022), so at most one can ever admit a row -- which the analyzer's disjointness
 # check measures rather than assumes. The entry recorded under the slot is the one
 # that admitted, or the PML arm's refusal when neither did.
-#
-# THIS LEG BINDS THE **PARITY** LICENCE, not the base four-pattern one, and that is
-# a property of the arithmetic rather than a convenience. The mirror ghost is
-# ``_symmetry_phase(...) * _mirror_source(...)`` (stepping.py:1873-1875) -- a python
-# int on the LEFT of a complex64 plane, which is
-# ``folded_complex.PARITY_PROBE_PATTERN`` and none of the base four orientations.
-# The shipped ``expansion_probe_2026-08-17`` record DOES carry it, so this is not a
-# refusal about the artifact; binding ``complex_fields.expansion_license`` here
-# would produce one, and that is exactly the failure this file's own
-# COMPLEX_NO_PML_PROBE_RECORD comment records from 2026-08-20.
 # ---------------------------------------------------------------------------
-
-
-def _complex_offdiag_license() -> Any:
-    """The PARITY-pattern verdict this family's two predicates gate on.
-
-    ``folded_complex.parity_expansion_license`` over the same record the other
-    Cartesian complex legs bind, with the fifth orientation included. The verdict
-    carries ``probe_patterns``, which is the licence's own record of what its
-    arbiter looked at, and the predicates ask THAT rather than an attached table.
-
-    A record that does not licence an arm is not silently downgraded: the reason
-    travels into the raise, so a census run against a bad record reads as a census
-    failure rather than as 186 rows of coverage gap.
-    """
-    import json as _json  # noqa: PLC0415
-    from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
-    from meep_gpu.triton_kernels import folded_complex  # noqa: PLC0415
-
-    path = _API_ROOT / COMPLEX_PROBE_RECORD
-    record = _json.loads(path.read_text(encoding="utf-8"))
-    verdict = folded_complex.parity_expansion_license(record)
-    policy_reasons = list(
-        complex_fields.expansion_policy_reasons(record, COMPLEX_POLICY))
-    if not verdict.get("arm") or verdict.get("refusals") or policy_reasons:
-        raise RuntimeError(
-            f"{COMPLEX_PROBE_RECORD} licenses no PARITY arm under "
-            f"{COMPLEX_POLICY!r}: arm={verdict.get('arm')!r} "
-            f"refusals={verdict.get('refusals')} "
-            f"policy_reasons={policy_reasons[:1]}")
-    return verdict
 
 
 def _cuda_complex_offdiag_verdicts(fields: Any, pml: Any,
@@ -1133,15 +994,13 @@ def _cuda_complex_offdiag_verdicts(fields: Any, pml: Any,
     from meep_gpu.cuda_kernels import (  # noqa: PLC0415
         complex_offdiag_update_e as arm)
 
-    licence = _complex_offdiag_license()
     entries = {}
     for name, predicate in (
             ("pml", arm.covers_complex_offdiag_pml_update_e),
             ("no_pml", arm.covers_complex_no_pml_offdiag_update_e)):
         entries[name] = _factored(
             fields, pml, grid,
-            lambda g, p=predicate: p(fields, pml, g, license=licence,
-                                     subnormal_policy=COMPLEX_POLICY))
+            lambda g, p=predicate: p(fields, pml, g))
     winner = ("pml" if entries["pml"]["covered_modulo_backend"]
               else "no_pml" if entries["no_pml"]["covered_modulo_backend"]
               else "pml")
@@ -1243,8 +1102,7 @@ def _cuda_dispersive_offdiag_verdict(fields: Any, pml: Any,
 # (driver.py:3293), so the predicate refuses one; ``Fields`` does not hold the source
 # list, so passing nothing makes it refuse with "the source set was not declared"
 # (deposit_repair.py:228-229) -- a refusal about the CENSUS reported as one about the
-# corpus, which is the failure this file's COMPLEX_PROBE_RECORD comment records from
-# 2026-08-20. ``driver._sources`` is what the driver itself steps with.
+# corpus. ``driver._sources`` is what the driver itself steps with.
 #
 # MEASURED 2026-08-28, AND IT IS WHY THIS LEG HAS A THIRD OUTCOME: ON A NUMPY HOST
 # THE PREDICATE COULD NOT BE ASKED AT ALL. ``fused_magnetic_pair.py`` opened with a
@@ -1271,8 +1129,7 @@ def _cuda_dispersive_offdiag_verdict(fields: Any, pml: Any,
 # false`` -- one unaskable predicate would cost the census all 186 rows. Folding it
 # into ``covered_modulo_backend: False`` would be worse: that column means "the
 # shipped predicate refused this row", and a census that reported a MISSING
-# MEASUREMENT as a refusal about the corpus is the failure this file's
-# COMPLEX_PROBE_RECORD comment already records twice. So the row carries
+# MEASUREMENT as a refusal about the corpus would be wrong. So the row carries
 # ``askable: false`` with the import error, and every verdict field is None.
 # ---------------------------------------------------------------------------
 
@@ -1541,33 +1398,12 @@ _COMPLEX_PAIR_SEAM: Dict[str, Dict[str, Any]] = {
 }
 
 
-#: Which expansion record each complex fused product's predicate is asked with. The
-#: default is :data:`COMPLEX_PROBE_RECORD`, the four-pattern one every ``cuda_complex``
-#: arm binds through. THE NO-ABSORBER PRODUCTS NEED THE OTHER ONE and it is a refusal
-#: rather than a preference: their halves are the ``cuda_complex_no_pml`` family's,
-#: that family's arms are bound through :data:`COMPLEX_NO_PML_PROBE_RECORD` (the
-#: seven-pattern record, the only one that classifies ``update_P``'s fifth operand
-#: orientation), and asking a predicate with a verdict cut for a different family is
-#: asking about a different arm.
-_FUSED_PAIR_LICENCE: Dict[str, Callable[[], Any]] = {
-    "no_pml_complex_fused_electric_pair": lambda: _complex_no_pml_license(),
-    "complex_no_pml_fused_polarization_pair": lambda: _complex_no_pml_license(),
-    "complex_no_pml_three_slot_dispersive_weld": lambda: _complex_no_pml_license(),
-}
-
-
 def _cuda_complex_fused_pair_verdict(module: str, function: str, family: str,
                                      fields: Any, pml: Any, grid: Any,
                                      sources: Any) -> Dict[str, Any]:
     """One COMPLEX fused-pair predicate, in the shape the board's column reads.
 
-    THE SAME THREE-FIELD FACTORING as the real pair's, and one addition: these
-    predicates take the EXPANSION LICENCE. It is supplied from
-    :data:`COMPLEX_PROBE_RECORD` under :data:`COMPLEX_POLICY`, exactly as the
-    ``cuda_complex`` slot arms above are asked, so the seam and the cells it is
-    priced against are read through one licence rather than two. Asking with
-    ``license=None`` would return that family's own named refusal on EVERY row --
-    a statement about this census, recorded as if it were about the corpus.
+    THE SAME THREE-FIELD FACTORING as the real pair's.
 
     THE SEAM COMES FROM :data:`_COMPLEX_PAIR_SEAM`, not from a constant in this
     function: two of the four complex products span the ELECTRIC seam, and the
@@ -1586,10 +1422,6 @@ def _cuda_complex_fused_pair_verdict(module: str, function: str, family: str,
         "sources_declared": sources is not None,
         "askable": True,
         "unaskable_reason": None,
-        "expansion_probe": (COMPLEX_NO_PML_PROBE_RECORD
-                            if module in _FUSED_PAIR_LICENCE
-                            else COMPLEX_PROBE_RECORD),
-        "expansion_policy": COMPLEX_POLICY,
     }
     try:
         from importlib import import_module  # noqa: PLC0415
@@ -1597,44 +1429,27 @@ def _cuda_complex_fused_pair_verdict(module: str, function: str, family: str,
         loaded = import_module(f"meep_gpu.cuda_kernels.{module}")
         predicate = getattr(loaded, function)
         kernel_name = loaded.KERNEL_NAME
-        licence = _FUSED_PAIR_LICENCE.get(module, _complex_license)()
     except BaseException as exc:  # noqa: BLE001 - an unaskable predicate is not a refusal
         record.update(
             askable=False,
             unaskable_reason=(
-                f"{type(exc).__name__}: {exc} -- the module could not be imported or "
-                f"the expansion licence could not be read on this host, so this "
-                f"predicate could not be reached"[:400]),
+                f"{type(exc).__name__}: {exc} -- the module could not be imported on "
+                f"this host, so this predicate could not be reached"[:400]),
             kernel=None, covered=None, covered_modulo_backend=None,
             raw_reason=None, raw_refusal_is_backend_clause=None,
             first_refusal=None, raised=None, shim=None)
         return record
     record.update(_factored(
         fields, pml, grid,
-        lambda g: predicate(fields, pml, g, sources, licence, COMPLEX_POLICY)),
+        lambda g: predicate(fields, pml, g, sources)),
         kernel=kernel_name)
     return record
 
 
 def _cuda_complex_offdiag_fused_pair_verdict(module: str, function: str,
-                                            family: str, curl_licence: Any,
-                                            curl_record: str, fields: Any, pml: Any,
+                                            family: str, fields: Any, pml: Any,
                                             grid: Any, sources: Any) -> Dict[str, Any]:
-    """One COMPLEX OFF-DIAGONAL fused-pair predicate, in the board's column shape.
-
-    THE ONLY COLUMN ON THIS BATTERY THAT BINDS TWO LICENCES, and it needs two
-    because its product's two halves sit in different licence families: the curl
-    binds ``LICENSE_COMPLEX`` (folded) or ``LICENSE_COMPLEX_NO_PML``, and the
-    off-diagonal ``update_E`` binds ``LICENSE_COMPLEX_OFFDIAG``, whose arbiter is
-    ``folded_complex.parity_expansion_license`` and classifies a FIFTH multiply
-    orientation -- the mirror parity as a coefficient on the left -- that none of
-    the base-four records carries.
-
-    Asking BOTH halves with one verdict would record that one record's pattern set
-    answered for the other's, which is exactly the failure this file's
-    ``COMPLEX_NO_PML_PROBE_RECORD`` comment records from 2026-08-20. Both records
-    are named in the row, so a reader can see which artifact licensed which half.
-    """
+    """One COMPLEX OFF-DIAGONAL fused-pair predicate, in the board's column shape."""
     if module not in _COMPLEX_PAIR_SEAM:
         raise KeyError(
             f"{module} has no seam row in _COMPLEX_PAIR_SEAM; the board reads the "
@@ -1647,9 +1462,6 @@ def _cuda_complex_offdiag_fused_pair_verdict(module: str, function: str,
         "sources_declared": sources is not None,
         "askable": True,
         "unaskable_reason": None,
-        "expansion_probe": COMPLEX_PROBE_RECORD,
-        "curl_expansion_probe": curl_record,
-        "expansion_policy": COMPLEX_POLICY,
     }
     try:
         from importlib import import_module  # noqa: PLC0415
@@ -1657,23 +1469,19 @@ def _cuda_complex_offdiag_fused_pair_verdict(module: str, function: str,
         loaded = import_module(f"meep_gpu.cuda_kernels.{module}")
         predicate = getattr(loaded, function)
         kernel_name = loaded.KERNEL_NAME
-        constitutive = _complex_offdiag_license()
-        curl = curl_licence()
     except BaseException as exc:  # noqa: BLE001 - unaskable is not a refusal
         record.update(
             askable=False,
             unaskable_reason=(
-                f"{type(exc).__name__}: {exc} -- the module could not be imported "
-                f"or one of the two expansion licences could not be read on this "
-                f"host, so this predicate could not be reached"[:400]),
+                f"{type(exc).__name__}: {exc} -- the module could not be imported on "
+                f"this host, so this predicate could not be reached"[:400]),
             kernel=None, covered=None, covered_modulo_backend=None,
             raw_reason=None, raw_refusal_is_backend_clause=None,
             first_refusal=None, raised=None, shim=None)
         return record
     record.update(_factored(
         fields, pml, grid,
-        lambda g: predicate(fields, pml, g, sources, constitutive, COMPLEX_POLICY,
-                            curl_license=curl)),
+        lambda g: predicate(fields, pml, g, sources)),
         kernel=kernel_name)
     return record
 
@@ -1685,10 +1493,7 @@ def _cuda_real_fused_pair_verdict(module: str, function: str, family: str,
                                   ) -> Dict[str, Any]:
     """One REAL-storage residual fused-pair predicate, in the board's column shape.
 
-    The same three-field factoring as every fused column; NO LICENCE, because
-    these products' halves are real-storage families that bind no expansion arm
-    -- asking with one would be asking a different question than the predicate
-    answers, and the record says so by carrying no ``expansion_probe`` key.
+    The same three-field factoring as every fused column.
 
     THE SPANS ARE READ OFF THE SEAM STRING rather than hard-coded: the
     2026-09-02 electric twins put this shape on the D seam too, and a constant
@@ -1928,48 +1733,6 @@ def plan_step_live(fields: Any, pml: Any, sources: Any) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _composer_licenses() -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """The three expansion licences :class:`arms.StepContext` binds, and their record.
-
-    THREE AND NOT ONE, for the reason the legs above already measure: the Cartesian /
-    cylindrical / folded / beta complex arms take the four-pattern record, the
-    complex no-absorber arms need the seven-pattern one, and the complex off-diagonal
-    arms need the PARITY licence. The keys are :mod:`registry`'s own constants, not
-    strings spelled here -- a key spelled here that drifted from the table's would
-    hand every complex family ``license=None``, which is a NAMED refusal per family
-    and would read off the census as a coverage gap rather than as a harness defect.
-
-    A licence that will not load is recorded and the composition still runs. That is
-    the fail-closed direction: the family gets ``None``, refuses by its own name, and
-    the reason travels into ``refusals`` where it can be read -- as against raising
-    and losing the other 30-odd arms' answers for this row.
-    """
-    from meep_gpu.cuda_kernels import registry  # noqa: PLC0415
-
-    loaders = (
-        (registry.LICENSE_COMPLEX, COMPLEX_PROBE_RECORD, _complex_license),
-        (registry.LICENSE_COMPLEX_NO_PML, COMPLEX_NO_PML_PROBE_RECORD,
-         _complex_no_pml_license),
-        (registry.LICENSE_COMPLEX_OFFDIAG, COMPLEX_PROBE_RECORD,
-         _complex_offdiag_license),
-    )
-    licenses: Dict[str, Any] = {}
-    report: Dict[str, Any] = {}
-    for key, record_path, load in loaders:
-        try:
-            verdict = load()
-        except BaseException as exc:  # noqa: BLE001 - a missing licence is a refusal
-            report[key] = {"bound": False, "record": record_path, "arm": None,
-                           "error": f"{type(exc).__name__}: {exc}"[:400]}
-            continue
-        licenses[key] = verdict
-        report[key] = {"bound": True, "record": record_path,
-                       "arm": verdict.get("arm") if isinstance(verdict, dict)
-                       else None,
-                       "error": None}
-    return licenses, report
-
-
 def _refusal_kind(slot: str, reasons: Tuple[str, ...]) -> Dict[str, Any]:
     """Classify ONE unselected slot's refusal, against the shipped strings themselves.
 
@@ -2059,12 +1822,10 @@ def plan_step_selected(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
     from meep_gpu.cuda_kernels import arms  # noqa: PLC0415
 
     proxy = _GridWithCupyBackend(grid)
-    licenses, license_report = _composer_licenses()
     record: Dict[str, Any] = {
         "selected": {}, "selected_kernel": {}, "selected_family": {},
         "replaces": [], "launchable": [], "reasons": {}, "refusals": {},
-        "unselected": [], "licenses": license_report,
-        "subnormal_policy": COMPLEX_POLICY,
+        "unselected": [],
         "registration_state": None,
         "grid_factoring": "xp.__name__ reported as cupy; every other read forwarded",
         "shim": shim_soundness(grid, proxy),
@@ -2083,8 +1844,7 @@ def plan_step_selected(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
         # than the table's coverage, which is the one thing this battery is for.
         # ``fuse`` is likewise still absent, so the fusion block does not run here
         # at all.
-        return arms.plan_step(fields, pml, target_grid, licenses=licenses,
-                              subnormal_policy=COMPLEX_POLICY)
+        return arms.plan_step(fields, pml, target_grid)
 
     try:
         plan = compose(proxy)
@@ -2177,7 +1937,7 @@ def _merge_plan_step(live: Dict[str, Any],
     return dict(live, **composed)
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The CUDA predicate, the Triton cross-check, and the ladder legs. JSON-safe."""
     from meep_gpu.triton_kernels import (  # noqa: PLC0415
         ade_update_p_coverage,
@@ -2409,12 +2169,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
                     "cuda_cylindrical_fused_electric_pair", fields, pml, grid,
                     sources),
             # THE NO-ABSORBER ELECTRIC PRODUCT, ADDED 2026-08-31 with it. Same shape
-            # as the three complex columns above and one difference that is not
-            # cosmetic: it is asked with the SEVEN-PATTERN no-absorber record, because
-            # its halves are the cuda_complex_no_pml family's and that family's arms
-            # bind through that record. _FUSED_PAIR_LICENCE is where that is decided,
-            # once, so this row and the three slot rows of the same family cannot be
-            # asked two different questions about one arm.
+            # as the three complex columns above.
             "cuda_no_pml_complex_fused_electric_pair":
                 _cuda_complex_fused_pair_verdict(
                     "no_pml_complex_fused_electric_pair",
@@ -2436,9 +2191,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
                     sources),
             # THE FIVE RESIDUAL MAGNETIC-SEAM PRODUCTS, ADDED 2026-09-02 with
             # them -- the board's last buildable cells. Seam verdicts like every
-            # fused column: never in UNION_FAMILIES. The two complex ones are
-            # asked with the licence their families bind through; the three
-            # real ones bind no arm and are asked without one.
+            # fused column: never in UNION_FAMILIES.
             "cuda_complex_folded_fused_magnetic_pair":
                 _cuda_complex_fused_pair_verdict(
                     "complex_folded_fused_magnetic_pair",
@@ -2479,12 +2232,8 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
                     fields, pml, grid, sources),
             # THE FIVE ELECTRIC TWINS AND THE THIRD E->P PRODUCT, 2026-09-02
             # (the residue round) -- seam verdicts like every fused column,
-            # never in UNION_FAMILIES. The two complex twins and the E->P
-            # product are asked with the licence their families bind through
-            # (_FUSED_PAIR_LICENCE routes the no-absorber one to the
-            # seven-pattern record); the three real twins bind no arm and are
-            # asked without one, with their spans read off their own seam
-            # strings -- two of which carry the D-side fills.
+            # never in UNION_FAMILIES. The three real twins have their spans read
+            # off their own seam strings -- two of which carry the D-side fills.
             "cuda_complex_folded_fused_electric_pair":
                 _cuda_complex_fused_pair_verdict(
                     "complex_folded_fused_electric_pair",
@@ -2527,10 +2276,6 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             # resolves to ``h_to_d_seam.SEAM`` and what makes the board file a
             # ``served_by`` verdict per row on that seam.
             #
-            # ASKED WITH NO LICENCE, like every real-storage residual pair above: both
-            # halves are real-storage families that bind no expansion arm, and asking
-            # with one would be asking a different question than the predicate answers.
-            #
             # THE COLUMN IS NOT A CLAIM THAT THE PRODUCT RUNS. Its module declares
             # INSTALLABLE = False and the composer refuses it on every configuration;
             # what this column carries is the PREDICATE's answer, which is what the
@@ -2542,10 +2287,9 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
                     fields, pml, grid, sources),
             # THE TWO CYLINDRICAL H->D PRODUCTS, 2026-09-07 -- the second and third
             # columns on the fourth seam, one per storage. The real m = 0 one is asked
-            # like ``cuda_fused_hd_pair`` (no licence: both halves are real-storage
-            # families); the complex one is asked with the expansion licence its
-            # halves bind through, like ``cuda_cylindrical_fused_magnetic_pair``,
-            # and reads its seam off ``_COMPLEX_PAIR_SEAM``. Both modules declare
+            # like ``cuda_fused_hd_pair``; the complex one is asked like
+            # ``cuda_cylindrical_fused_magnetic_pair`` and reads its seam off
+            # ``_COMPLEX_PAIR_SEAM``. Both modules declare
             # INSTALLABLE = False; each column carries the PREDICATE's answer, which is
             # what the board's served bucket is defined over, and the board records
             # the declaration beside the count.
@@ -2561,11 +2305,10 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
                     "covers_cylindrical_fused_hd_pair",
                     "cuda_cylindrical_fused_hd_pair", fields, pml, grid, sources),
             # THE CARTESIAN COMPLEX H->D PRODUCT, 2026-09-07 -- the fourth column on
-            # the fourth seam. Asked with the expansion licence its two halves bind
-            # through (the four-pattern ``cuda_complex`` record, like
-            # ``cuda_complex_fused_magnetic_pair``), and its seam comes from
-            # ``_COMPLEX_PAIR_SEAM``. ONE COLUMN, TWO BOARD CELLS: the predicate reads
-            # the fold off the grid and asks the certified curl predicate the variant
+            # the fourth seam. Asked like ``cuda_complex_fused_magnetic_pair``, and its
+            # seam comes from ``_COMPLEX_PAIR_SEAM``. ONE COLUMN, TWO BOARD CELLS: the
+            # predicate reads the fold off the grid and asks the certified curl
+            # predicate the variant
             # selects, so the plain and folded cells separate through the composer's
             # own ``step_D`` selection rather than through a second column here. The
             # module declares INSTALLABLE = False; this column carries the PREDICATE's
@@ -2605,11 +2348,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             # that inferred the missing answer would be reporting a number nobody
             # measured.
             #
-            # ASKED WITHOUT A LICENCE, like ``cuda_fused_hd_pair`` above and for the
-            # same reason: both variants this product resolves between are
-            # real-storage families that bind no expansion arm, so asking with one
-            # would be asking a different question than the predicate answers. Its
-            # seam string is the module's own ``update_H -> step_D`` (``SEAM`` reads
+            # Its seam string is the module's own ``update_H -> step_D`` (``SEAM`` reads
             # ``H_to_D`` on this family exactly as it does on ``fused_hd_pair``), so
             # the derived span is those two passes and
             # ``build_cuda_fusion_matrix.fused_seams_of`` resolves it to
@@ -2641,8 +2380,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             # of the shared ``update_E`` slot on the four TestLoadDump 3-D rows
             # where ``cuda_no_pml_complex_fused_electric_pair`` and
             # ``cuda_complex_no_pml_fused_polarization_pair`` traded that slot one
-            # for one. Asked with the seven-pattern no-absorber licence like its
-            # two halves; its spans come from _COMPLEX_PAIR_SEAM's row.
+            # for one. Its spans come from _COMPLEX_PAIR_SEAM's row.
             "cuda_three_slot_complex_no_pml_dispersive_weld":
                 _cuda_complex_fused_pair_verdict(
                     "complex_no_pml_three_slot_dispersive_weld",
@@ -2653,10 +2391,9 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             # battery whose board cells were recorded UNBUILDABLE rather than
             # unbuilt. Seam verdicts like every fused column: never in
             # UNION_FAMILIES, because a fused pair bids at no slot and would be
-            # double-counted against the arms it absorbs. Both bind no expansion
-            # arm (their halves are real-storage families), so both are asked
-            # WITHOUT a licence, and their spans are read off their own seam
-            # strings -- the folded one carries all three in-seam passes.
+            # double-counted against the arms it absorbs. Their spans are read off
+            # their own seam strings -- the folded one carries all three in-seam
+            # passes.
             "cuda_offdiag_fused_electric_pair":
                 _cuda_real_fused_pair_verdict(
                     "offdiag_fused_electric_pair",
@@ -2673,9 +2410,8 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
                     "fill_folded_far_ghosts_D -> update_E",
                     fields, pml, grid, sources),
             # THE LAST UNSERVED E->P CELL, 2026-09-02. A seam verdict like every
-            # fused column -- never in UNION_FAMILIES -- and asked WITHOUT a
-            # licence, because both halves are real-storage families that bind no
-            # expansion arm. Its span is read off its own seam string, which is
+            # fused column -- never in UNION_FAMILIES. Its span is read off its own
+            # seam string, which is
             # the driver's two adjacent consults with nothing between them.
             "cuda_dispersive_offdiag_fused_polarization_pair":
                 _cuda_real_fused_pair_verdict(
@@ -2689,8 +2425,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             # (cuda_curl/PML, cuda_dispersive/dispersive), 7 corpus rows. A seam
             # verdict like every fused column -- never in UNION_FAMILIES, because a
             # fused pair bids at no slot and would be double-counted against the arms
-            # it absorbs. Asked WITHOUT a licence: both halves are real-storage
-            # families that bind no expansion arm. Its span is its own REPLACES, all
+            # it absorbs. Its span is its own REPLACES, all
             # five passes, because four of the seven rows it exists for are FOLDED and
             # the two mirror fills are carried rather than refused -- which is what
             # separates this product from BOTH sibling backends' dispersive pairs.
@@ -2711,8 +2446,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             #
             # Seam verdicts like every fused column -- never in UNION_FAMILIES,
             # because a fused pair bids at no slot and would be double-counted
-            # against the arms it absorbs. Both are asked WITHOUT a licence: every
-            # half involved is a real-storage family that binds no expansion arm.
+            # against the arms it absorbs.
             #
             # THEIR SPANS ARE THREE PASSES, NOT FIVE, and that is each module's own
             # REPLACES rather than a shortened copy of the row above's: both REFUSE a
@@ -2748,8 +2482,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             # first-and-last derivation would record ``["step_D", "update_P"]``,
             # which is no seam, and the board would refuse the column rather than
             # credit it at both. Seam verdicts like every fused column -- never in
-            # UNION_FAMILIES -- and asked WITHOUT a licence, because all four halves
-            # are real-storage families that bind no expansion arm.
+            # UNION_FAMILIES.
             "cuda_three_slot_dispersive_weld":
                 _cuda_real_fused_pair_verdict(
                     "three_slot_dispersive_weld",
@@ -2777,23 +2510,18 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             #
             # Seam verdicts like every fused column -- never in UNION_FAMILIES,
             # because a fused pair bids at no slot and would be double-counted
-            # against the arms it absorbs. THEY ARE THE ONLY COLUMNS ASKED WITH TWO
-            # LICENCES: each product's halves sit in different licence families, and
-            # the row names both records so a reader can see which artifact licensed
-            # which half.
+            # against the arms it absorbs.
             "cuda_folded_complex_offdiag_fused_electric_pair":
                 _cuda_complex_offdiag_fused_pair_verdict(
                     "folded_complex_offdiag_fused_electric_pair",
                     "covers_folded_complex_offdiag_fused_electric_pair",
                     "cuda_folded_complex_offdiag_fused_electric_pair",
-                    _complex_license, COMPLEX_PROBE_RECORD,
                     fields, pml, grid, sources),
             "cuda_complex_no_pml_offdiag_fused_electric_pair":
                 _cuda_complex_offdiag_fused_pair_verdict(
                     "complex_no_pml_offdiag_fused_electric_pair",
                     "covers_complex_no_pml_offdiag_fused_electric_pair",
                     "cuda_complex_no_pml_offdiag_fused_electric_pair",
-                    _complex_no_pml_license, COMPLEX_NO_PML_PROBE_RECORD,
                     fields, pml, grid, sources),
             "polarization": polarization, "configuration": configuration,
             # Two things under one key. ``live`` is the ENGINE fact

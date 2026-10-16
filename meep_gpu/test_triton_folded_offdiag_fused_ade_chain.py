@@ -46,6 +46,7 @@ from meep_gpu.grid import Grid, Mirror
 from meep_gpu.pml import PML
 from meep_gpu.triton_kernels import complex_fused_ade_chain as complex_chain
 from meep_gpu.triton_kernels import dispersive_update_e as dispersive_module
+from meep_gpu.triton_kernels.coverage import POLARIZATION_CONSTANTS
 from meep_gpu.triton_kernels import folded_offdiag_dispersive_update_e as fod_module
 from meep_gpu.triton_kernels import folded_offdiag_fused_ade_chain as module
 from meep_gpu.triton_kernels import folded_offdiag_update_e as folded_module
@@ -360,7 +361,7 @@ def test_the_no_pml_storage_mode_is_refused_by_the_seam_itself():
     fields, pml = engine(storage="field")
     verdict = reasons(fields, pml)
     assert any("Fields is not in PML storage mode" in reason
-               and "split-field drive" in reason for reason in verdict), verdict
+               and "PML tail writes f_w" in reason for reason in verdict), verdict
 
 
 def test_the_ade_halfs_refusals_are_inherited_per_state_and_component():
@@ -374,17 +375,17 @@ def test_the_ade_halfs_refusals_are_inherited_per_state_and_component():
 def test_the_seam_names_the_drive_field_identity_itself():
     """Not inherited: the ADE predicate only asks that ``f_w`` EXISTS.
 
-    The hazard this clause exists for is ``drive_field`` handing back the STORED E
-    under an absorber — the two agree everywhere except inside the PML. The
-    register this kernel passes the recurrence is what it stored to ``f_w``, so a
-    ``Fields`` whose reader disagrees is refused BY NAME rather than admitted.
+    The register this kernel passes the recurrence is ``src``, MEEP's ``w`` on every
+    cell (``f_w`` on the layer's chunks, the stored E elsewhere), which is what
+    ``Fields.drive_field`` composes. A ``Fields`` whose reader is replaced -- for
+    instance by one handing back the stored E under an absorber -- is refused BY NAME.
     """
     fields, pml = engine()
     assert reasons(fields, pml) == []
     fields.drive_field = lambda component: getattr(fields, component)
     verdict = reasons(fields, pml)
-    assert any("is not f_w_Ey" in reason for reason in verdict), verdict
-    assert len([r for r in verdict if "is not f_w_" in r]) == 3
+    assert [r for r in verdict if "is not Fields.drive_field" in r], verdict
+    assert len(verdict) == 1, verdict
 
 
 def test_a_state_whose_driven_disagrees_with_the_subtraction_is_refused():
@@ -561,11 +562,12 @@ def test_the_declared_runtime_argument_count_is_the_kernels_own():
     node = kernel_node()
     runtime = _runtime_names(node)
     constexpr = _constexpr_names(node)
-    assert len(runtime) == module.RUNTIME_ARGUMENTS == 91
+    assert len(runtime) == module.RUNTIME_ARGUMENTS == 99
     assert len(set(a.arg for a in node.args.args)) == len(node.args.args)
-    # The certified nineteen (NP0..2, six row flags, three boundary codes, three
-    # ghost flags, three wall flags, BLOCK) plus one SIGMA flag per live slot.
-    assert len(constexpr) == 19 + 3 * module.CHAIN_MAX_POLES == 25
+    # The certified twenty-six (NP0..2, six row flags, six presence flags, PRESENCE,
+    # three boundary codes, three ghost flags, three wall flags, BLOCK) plus one
+    # SIGMA flag per live slot.
+    assert len(constexpr) == 26 + 3 * module.CHAIN_MAX_POLES == 32
 
 
 def test_the_assembled_arguments_land_on_the_slots_they_are_named_for():
@@ -607,16 +609,16 @@ def test_the_assembled_arguments_land_on_the_slots_they_are_named_for():
                 assert held(f"p_prev_{letter}{position}") is getattr(
                     fields, displacement)
                 assert slot[f"sigma_{letter}{position}"] == 0.0
-                assert slot[f"cnow_{letter}{position}"] == 0.0
+                for word in POLARIZATION_CONSTANTS:
+                    assert slot[f"{word}_{letter}{position}"] == 0.0
                 continue
             state = states[position]
             assert held(f"p_out_{letter}{position}") is plan._scratch[
                 (position, component)]
             assert held(f"p_prev_{letter}{position}") is state.P_prev[component]
-            c_now, c_prev, c_drive = state._coefficients
-            assert slot[f"cnow_{letter}{position}"] == float(c_now)
-            assert slot[f"cprev_{letter}{position}"] == float(c_prev)
-            assert slot[f"cdrive_{letter}{position}"] == float(c_drive)
+            # MEEP's four realnum words, in RealnumConstants order, exactly.
+            for word, value in zip(POLARIZATION_CONSTANTS, state.constants):
+                assert slot[f"{word}_{letter}{position}"] == float(value)
             sigma = state.sigma[component]
             if getattr(sigma, "shape", ()):
                 assert held(f"sigma_{letter}{position}") is sigma
@@ -648,6 +650,10 @@ def test_the_assembled_arguments_land_on_the_slots_they_are_named_for():
         folded_module.mirror_ghost_weights(fields.grid)
     assert (slot["nx"], slot["ny"], slot["nz"]) == tuple(plan.shape)
     assert slot["n_elem"] == plan.n_elem
+    # The chunk record and the row presence the composed E plan bound, after the
+    # ghost weights, as the certified folded off-diagonal kernel takes them.
+    assert slot["cb"] is plan._e._base._cb and slot["op"] is plan._e._base._op
+    assert names[names.index("gwz") + 1:names.index("gwz") + 3] == ["cb", "op"]
     # ...and the geometry tail sits exactly where the ADE block begins.
     assert names[names.index("n_elem") + 1] == "p_out_a0"
 
@@ -707,12 +713,12 @@ def test_both_halves_of_the_certified_signature_are_prefixes_of_the_fused_one():
     fused_constexpr = _constexpr_names(fused)
     assert fused_runtime[:len(certified_runtime)] == certified_runtime
     assert fused_constexpr[:len(certified_constexpr)] == certified_constexpr
-    assert len(certified_runtime) == 55 and len(certified_constexpr) == 19
+    assert len(certified_runtime) == 57 and len(certified_constexpr) == 26
     # The ADE runtime block sits between n_elem and NP0; the SV_* flags after BLOCK.
     everything = [a.arg for a in fused.args.args]
     assert everything[everything.index("n_elem") + 1] == "p_out_a0"
     assert everything[everything.index("NP0") - 1] == \
-        f"cdrive_c{module.CHAIN_MAX_POLES - 1}"
+        f"gamma1inv_c{module.CHAIN_MAX_POLES - 1}"
     assert certified_constexpr[-1] == "BLOCK"
     assert fused_constexpr[len(certified_constexpr):] == [
         f"SV_{letter}{slot}" for letter in module.LETTERS
@@ -720,7 +726,7 @@ def test_both_halves_of_the_certified_signature_are_prefixes_of_the_fused_one():
     # ...and the ADE block is laid out as the chain lays it, per component.
     expected = []
     for letter in module.LETTERS:
-        for stem in ("p_out", "p_prev", "sigma", "cnow", "cprev", "cdrive"):
+        for stem in ("p_out", "p_prev", "sigma") + POLARIZATION_CONSTANTS:
             expected.extend(f"{stem}_{letter}{slot}"
                             for slot in range(module.CHAIN_MAX_POLES))
     assert fused_runtime[len(certified_runtime):] == expected
@@ -731,7 +737,7 @@ def test_the_recurrence_is_spelled_exactly_as_ade_update_p_spells_it():
     certified = _normalised(_function_text(
         PACKAGE_DIR / "kernels.py", "ade_update_p"))
     fused = _normalised(kernel_text())
-    expression = "((p * c_now) + (c_prev * q)) + (c_drive * (s * w))"
+    expression = "gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)))"
     assert f"tl.store(p_out + idx, {expression}, mask=live)" in certified
     assert "q = tl.load(p_prev + idx, mask=live, other=0.0)" in certified
     assert "s = tl.load(sigma + idx, mask=live, other=0.0)" in certified
@@ -752,9 +758,8 @@ def test_the_recurrence_is_spelled_exactly_as_ade_update_p_spells_it():
             assert (f"p = tl.load({letter}{slot} + idx, mask=live, "
                     f"other=0.0)") in fused
             assert f"w = src{index}" in fused
-            assert f"c_now = cnow_{letter}{slot}" in fused
-            assert f"c_prev = cprev_{letter}{slot}" in fused
-            assert f"c_drive = cdrive_{letter}{slot}" in fused
+            for word in POLARIZATION_CONSTANTS:
+                assert f"{word} = {word}_{letter}{slot}" in fused
             arms += 1
     assert arms == 3 * module.CHAIN_MAX_POLES
     # ...and the drive is NEVER re-loaded from a buffer, nor the pole from a
@@ -809,26 +814,31 @@ def test_the_callers_NP_guards_are_the_ade_arms_alone():
 def test_the_helpers_and_constexprs_are_bound_to_the_certified_modules_objects():
     """A called JIT helper resolves through THIS module's globals, so each is
     bound here, by name, to the certified module's own object."""
-    for line in ("_masked_row_sum = _folded._masked_row_sum",
-                 "_load_d_minus_p = _fod._load_d_minus_p",
+    for line in ("_load_d_minus_p = _fod._load_d_minus_p",
                  "_folded_dispersive_term = _fod._folded_dispersive_term",
                  "PERIODIC = tl.constexpr(_fod.CODE_PERIODIC)",
                  "METALLIC = tl.constexpr(_fod.CODE_METALLIC)",
-                 "MIRROR_ROW = tl.constexpr(_fod.MIRROR_SOURCE_INDEX)"):
+                 "MIRROR_ROW = tl.constexpr(_fod.MIRROR_SOURCE_INDEX)",
+                 "PRESENCE_LINES = tl.constexpr(_offdiag.PRESENCE_MASK_WORDS)",
+                 "from .forms import constitutive_form, record_in",
+                 "from .kernels import RECORD_HALF_INTEGER",
+                 "from .offdiag_update_e import _row_add"):
         assert line in SOURCE, line
     fused = kernel_text()
-    for name in ("_load_d_minus_p", "_folded_dispersive_term", "_masked_row_sum",
-                 "PERIODIC", "METALLIC", "MIRROR_ROW"):
+    for name in ("_load_d_minus_p", "_folded_dispersive_term", "_row_add",
+                 "record_in", "constitutive_form", "PERIODIC", "METALLIC",
+                 "MIRROR_ROW", "PRESENCE_LINES", "RECORD_HALF_INTEGER"):
         assert name in fused, name
+    assert "_masked_row_sum" not in fused
     if module.triton is not None:  # pragma: no cover - the device host
-        assert module._masked_row_sum is folded_module._masked_row_sum
+        assert module._row_add is offdiag_module._row_add
         assert module._load_d_minus_p is fod_module._load_d_minus_p
         assert module._folded_dispersive_term is fod_module._folded_dispersive_term
         assert module.PERIODIC.value == fod_module.CODE_PERIODIC
         assert module.METALLIC.value == fod_module.CODE_METALLIC
         assert module.MIRROR_ROW.value == fod_module.MIRROR_SOURCE_INDEX
     else:
-        assert module._masked_row_sum is None
+        assert module._load_d_minus_p is None
         assert module.folded_offdiag_fused_ade_chain_step is None
 
 
@@ -867,14 +877,19 @@ def test_the_lift_edits_are_six_and_every_needle_is_present():
 # ---------------------------------------------------------------------------
 
 def test_the_seam_carries_no_driver_pass_and_the_predicate_takes_no_sources():
-    """Measured from ``driver.py``, not asserted: nothing sits between the two."""
+    """Measured from ``driver.py``: the one statement between the two is the electric
+    ``f_minus_p`` restore, which writes D alone and which ``update_P`` does not read
+    (it reads the polarizations, sigma and MEEP's w). One launch that forms E and then
+    P before the restore leaves the words the driver's order leaves.
+    """
     driver = (API_ROOT / "meep_gpu" / "driver.py").read_text(encoding="utf-8")
     match = re.search(
         r'if fast is None or not fast\.dispatch\("update_E", self\.fields\):\n'
         r"\s+update_E\(self\.fields, self\.pml\)\n"
+        r"\s+f_minus_p_end\(self\.fields, f_minus_p_D\)\n"
         r'\s+if fast is None or not fast\.dispatch\("update_P", self\.fields\):\n'
         r"\s+update_P\(self\.fields, self\.pml\)\n", driver)
-    assert match, "the E->P seam is no longer two adjacent dispatch blocks"
+    assert match, "the E->P seam no longer holds exactly the electric f_minus_p restore"
     signature = inspect.signature(module.folded_offdiag_fused_ade_chain_coverage)
     assert "sources" not in signature.parameters
     assert "arm" not in signature.parameters

@@ -34,6 +34,11 @@ them. Specifically —
    directions are measured, because the admission alone could equally mean the clause
    was dropped.
 4. **The arm is registered UNWIRED**, so ``plan_step`` cannot select it.
+5. **The per-chunk forms are lifted, not retyped.** The curl head and its form
+   statements are the certified folded D curl's own text (two lines through the
+   declared :data:`~meep_gpu.metal_kernels.folded_fused_pair.LIFT_EDITS`), the E half
+   is the certified E body statement for statement, the far ghost evaluates its own
+   membership at its destination, and the chunk record rides in ``Params``.
 
 Measured 2026-08-20 (parity/meep_gpu/results/covering_refusals_2026-08-20/); the
 far-carry legs re-measured 2026-08-21
@@ -423,3 +428,108 @@ def test_the_device_gate_exists_and_names_this_product():
     assert GATE.exists(), GATE
     text = GATE.read_text(encoding="utf-8")
     assert "folded_fused_pair" in text
+
+
+# ---------------------------------------------------------------------------
+# 5. The per-chunk forms: lifted from the certified emitters, keyed where the cell is
+# ---------------------------------------------------------------------------
+
+def test_the_curl_head_is_the_certified_folded_d_curl_bodys_own_bytes():
+    """The lifted head is a VERBATIM PREFIX of the certified folded D curl body."""
+    from meep_gpu.metal_kernels import symmetry
+
+    for boundaries in ("metallic", "periodic"):
+        head = family.certified_curl_head(codes(boundaries))
+        certified = symmetry.folded_curl_source(codes(boundaries), family.BACKWARD)
+        body = certified.split("uint idx [[thread_position_in_grid]])\n{\n", 1)[1]
+        assert head.strip() and body.startswith(head)
+        assert head in family.folded_fused_pair_source(codes(boundaries), PHASES, WALLS)
+
+
+def test_the_lift_is_the_certified_text_plus_exactly_the_declared_edits():
+    """``n`` verbatim; ``p`` and ``v`` the certified lines with their LIFT_EDITS
+    fragment replaced and nothing else moved; the flags and guarded stores verbatim."""
+    from meep_gpu.metal_kernels import symmetry
+
+    resolved = codes("periodic")
+    statements = family.certified_curl_statements(resolved)
+    lines = symmetry.folded_curl_source(resolved, family.BACKWARD).splitlines()
+    for target, (previous, stage, stepped) in enumerate(statements["recurrence"]):
+        assert stage in lines
+        for (prefix, old, _new), lifted in zip(family.LIFT_EDITS, (previous, stepped)):
+            original = [line for line in lines if line.startswith(prefix.format(t=target))]
+            fragment = old.format(t=target)
+            assert len(original) == 1 and original[0].endswith(fragment), original
+            assert lifted.startswith(original[0][: -len(fragment)])
+            assert lifted != original[0]
+    assert statements["flags"] in lines
+    assert all(store in lines for store in statements["aux_stores"])
+
+
+def test_a_destination_thread_never_loads_the_field_its_source_writes():
+    """Before the first ownership guard, no ``f{t}[ii]`` is read: the dsig-only form's
+    read of ``f`` moved into the owned block with the declared edit."""
+    text = family.folded_fused_pair_source(codes("periodic"), PHASES, WALLS)
+    shared = text.split("    if (!(", 1)[0]
+    for target in range(3):
+        assert f"f{target}[ii]" not in shared, target
+        assert f"float p{target} = du{target} ? u{target}[ii] : 0.0f;" in shared
+
+
+def test_the_e_half_is_the_certified_e_body_statement_for_statement():
+    """Six statements per component, rendered with the certified names, equal to
+    ``shaders.constitutive_source('E')``'s own, in both contraction modes."""
+    from meep_gpu.metal_kernels import shaders
+
+    for mode in shaders.CONTRACT_MODES:
+        result = family.constitutive_transcription(mode)
+        assert result["identical"], result
+        assert [len(block) for block in result["certified"]] == [6, 6, 6]
+
+
+def test_the_far_ghost_selects_its_form_at_its_own_coordinate():
+    """The E half's membership is on the component's OWN axis, which the far fill
+    moves: the far ghost's flag is evaluated at stored ``last`` through the shared
+    emitter, beside the coefficient pair it reloads there; a near ghost keeps its
+    owner's flag, as it keeps its owner's pair."""
+    text = family.folded_fused_pair_source(codes("periodic"), PHASES, WALLS)
+    far = [target for target in range(3)
+           if family.far_fill_axes(codes("periodic"), target)]
+    assert far == [1], far
+    assert ("const bool in_h_y_gf = (((nyi - 1)) >= cbh_y_a0 && ((nyi - 1)) < "
+            "cbh_y_a1) || (((nyi - 1)) >= cbh_y_b0 && ((nyi - 1)) < cbh_y_b1);") in text
+    assert "float gf_prev = in_h_y_gf ? w1[gf_i] : 0.0f;" in text
+    assert "if (in_h_y_gf) { gf_acc = e1[gf_i] + ((gf_kp * gf_src) - (gf_km * gf_prev)); }" in text
+    # The owned cell and the near ghosts select on the lifted flags.
+    assert "    const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_z;" in text
+    assert "float gj_prev = dw0 ? w0[gj_i] : 0.0f;" in text
+
+
+def test_the_record_rides_in_params_and_the_binding_count_stays_at_the_ceiling():
+    """132 bytes, the record at offset 32, declared once and aliased as ``cb``; the
+    signature stays 30 pointers plus one packed struct, the measured ceiling."""
+    from meep_gpu.metal_kernels import chunk_bounds
+
+    dtype = family.params_record_dtype()
+    assert dtype.itemsize == 132
+    assert dtype.fields["cb"][1] == 32
+    assert dtype.fields["cb"][0] == chunk_bounds.record_dtype()
+    text = family.folded_fused_pair_source(codes("periodic"), PHASES, WALLS)
+    assert text.count(chunk_bounds.struct_source()) == 1
+    assert chunk_bounds.params_member() in text
+    assert chunk_bounds.params_alias() in text
+    highest = max(int(chunk.split(")")[0]) for chunk in text.split("[[buffer(")[1:])
+    assert highest + 1 == family.PACKED_BINDINGS == 31
+
+
+def test_an_admitted_plan_without_a_record_is_refused_by_name(monkeypatch):
+    """The record has no default: an admitted configuration given no division raises
+    the record's own refusal, before any volume is bound."""
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+    from meep_gpu.triton_kernels.coverage import Coverage
+
+    fields, pml = build()
+    monkeypatch.setattr(family, "metal_folded_fused_pair_coverage",
+                        lambda *args, **kwargs: Coverage(True, ()))
+    with pytest.raises(ChunkLayoutRefusal, match="MetalFoldedFusedPairPlan"):
+        family.plan_metal_folded_fused_pair(fields, pml, (), None, chunk_bounds=None)

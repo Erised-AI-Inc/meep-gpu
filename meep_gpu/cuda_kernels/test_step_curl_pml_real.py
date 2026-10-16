@@ -1372,6 +1372,16 @@ def _seeded(xp, **build_kwargs):
     return fields, layer, grid
 
 
+def _host_copy(array) -> numpy.ndarray:
+    """A host copy of a volume on either backend.
+
+    CuPy refuses an implicit conversion to NumPy, so a device array is fetched with
+    its own ``get``; the NumPy stand-in's arrays have none and are copied as they are.
+    """
+    fetch = getattr(array, "get", None)
+    return numpy.array(fetch() if callable(fetch) else array, copy=True)
+
+
 def _stepped(xp, sub_step: str, prepare=None, **build_kwargs) -> dict:
     """Run one real curl sub-step and return copies of everything it wrote."""
     from .. import stepping  # noqa: PLC0415
@@ -1381,7 +1391,7 @@ def _stepped(xp, sub_step: str, prepare=None, **build_kwargs) -> dict:
         prepare(fields, grid, xp)
     getattr(stepping, sub_step)(fields, layer)
     written = coverage.CURL_SUB_STEPS[sub_step]
-    return {name: numpy.asarray(getattr(fields, name)).copy()
+    return {name: _host_copy(getattr(fields, name))
             for name in written + tuple("fu_" + n for n in written)}
 
 
@@ -1393,7 +1403,7 @@ def _stored_E(xp, prepare=None, **build_kwargs) -> dict:
     if prepare is not None:
         prepare(fields, grid, xp)
     stepping.update_E(fields, layer)
-    return {name: numpy.asarray(getattr(fields, name)).copy()
+    return {name: _host_copy(getattr(fields, name))
             for name in ("Ex", "Ey", "Ez")}
 
 

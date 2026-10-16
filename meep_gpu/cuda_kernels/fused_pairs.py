@@ -106,6 +106,7 @@ from typing import Any, Callable, Dict, FrozenSet, Optional, Sequence, Tuple
 from .. import deposit_repair as _deposit_repair
 from .. import withdraw_hoist as _withdraw_hoist
 from . import compile_cache as _compile_cache
+from .chunk_coverage import CHUNK_AXES_CYLINDRICAL, CHUNK_AXES_OFFDIAG
 from ..triton_kernels.coverage import Coverage
 from ..triton_kernels.launch import (NoopPlan, _guarded_plan, _guarded_verdict,
                                      _pair_may_absorb)
@@ -728,19 +729,15 @@ def _held_kernel(held: Dict[str, Any], module: Any, shape: Tuple[Any, ...],
 
 
 def _held_arm_kernel(held: Dict[str, Any], module: Any,
-                     emit: Callable[[Any], str], arm: Any) -> Any:
-    """:func:`_held_kernel` under the ARM-KEYED getters' key, copied verbatim.
+                     emit: Callable[[], str]) -> Any:
+    """:func:`_held_kernel` under the complex getters' key, copied verbatim.
 
     The complex, complex-folded, complex-beta and complex-Dcyl pairs all key
-    ``kernel_cache_key(f"{name}_arm{complex_emitter.normalized_expansion(arm)}", True,
-    _COMPILE_OPTIONS, <product>_source(arm))`` and compile the bare ``KERNEL_NAME``
-    (``complex_fused_magnetic_pair.py:622-626`` and its seven siblings). The held
-    shape is the RAW arm the getter would have been handed, so a second spelling of
-    one arm is a second emission rather than one string standing in for another.
+    ``kernel_cache_key(KERNEL_NAME, True, _COMPILE_OPTIONS, <product>_source())`` and
+    compile the bare ``KERNEL_NAME`` (``complex_fused_magnetic_pair._get_kernel`` and
+    its seven siblings), one source each.
     """
-    key_name = (f"{module.KERNEL_NAME}_arm"
-                f"{module.complex_emitter.normalized_expansion(arm)}")
-    return _held_kernel(held, module, (arm,), lambda: emit(arm), key_name, True,
+    return _held_kernel(held, module, (), emit, module.KERNEL_NAME, True,
                         module.KERNEL_NAME)
 
 
@@ -777,29 +774,22 @@ def _held_no_pml_dispersive_kernel(held: Dict[str, Any], module: Any, cond: Any,
 
 
 def _held_offdiag_kernel(held: Dict[str, Any], module: Any, row_mask: Any,
-                         expansion: Any = None) -> Any:
+                         is_complex: bool = False) -> Any:
     """:func:`_held_kernel` under an off-diagonal weld's getter's key.
 
     ONLY THE TEXT IS HELD, NEVER THE RESOLUTION: these resolvers hand out the scratch
     the launch rotates and read the row volumes fresh (see :func:`_resolved_once`).
     The row mask is resolved per launch, as before, and handed to the getter
-    unchanged, so the held shape is that mask (and the arm, on the complex two).
-    Keys copied from the four getters: the real ones ``(KERNEL_NAME, False,
-    _COMPILE_OPTIONS, kernel_source(row_mask))`` (``offdiag_fused_electric_pair.py
-    :572-573``, ``folded_offdiag_fused_electric_pair.py:575-576``), the complex ones
-    ``(f"{KERNEL_NAME}_arm{normalized_expansion(expansion)}", True, ...,
-    kernel_source(row_mask, expansion))`` (``folded_complex_offdiag_fused_electric_pair
-    .py:402-405``, ``complex_no_pml_offdiag_fused_electric_pair.py:359-362``).
+    unchanged, so the held shape is that mask. Keys copied from the four getters:
+    ``(KERNEL_NAME, is_complex, _COMPILE_OPTIONS, kernel_source(row_mask))``
+    (``offdiag_fused_electric_pair.py:572-573``,
+    ``folded_offdiag_fused_electric_pair.py:575-576``, and the complex two,
+    ``folded_complex_offdiag_fused_electric_pair._get_kernel`` and
+    ``complex_no_pml_offdiag_fused_electric_pair._get_kernel``).
     """
-    if expansion is None:
-        return _held_kernel(held, module, (tuple(row_mask),),
-                            lambda: module.kernel_source(row_mask),
-                            module.KERNEL_NAME, False, module.KERNEL_NAME)
-    key_name = (f"{module.KERNEL_NAME}_arm"
-                f"{module.complex_emitter.normalized_expansion(expansion)}")
-    return _held_kernel(held, module, (tuple(row_mask), expansion),
-                        lambda: module.kernel_source(row_mask, expansion),
-                        key_name, True, module.KERNEL_NAME)
+    return _held_kernel(held, module, (tuple(row_mask),),
+                        lambda: module.kernel_source(row_mask),
+                        module.KERNEL_NAME, bool(is_complex), module.KERNEL_NAME)
 
 
 def _resolved_once(held: Dict[str, Any],
@@ -808,8 +798,8 @@ def _resolved_once(held: Dict[str, Any],
     """``resolve`` asked at the first launch and its answer held for the plan's life.
 
     FOR A RESOLVER WHOSE EVERY ENTRY IS A PURE READING OF THE FROZEN CONFIGURATION, and
-    only for one: the tables, the boundary codes, the walls, the fills, the licence's
-    arm and ``dt/dx`` are all fixed at the freeze that built this plan
+    only for one: the tables, the boundary codes, the walls, the fills and ``dt/dx``
+    are all fixed at the freeze that built this plan
     (``driver.py:3266-3271``), which is what the tables' own docstrings already
     promised ("Called ONCE per frozen configuration", ``fused_magnetic_pair.py:1480``).
     Measured 2026-09-19 on the laptop with a stub CuPy and NumPy fields: the plain
@@ -882,7 +872,11 @@ def _fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
                 "boundary_codes": real_curl_boundary_codes(ctx.grid),
                 "walls": zero_metal_axes(ctx.grid),
                 "fills": fused_magnetic_pair_fills(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                # The composition's chunk record, uploaded once (the kernel's cb), and
+                # the layer the run's first update_H starts H with
+                # (fused_magnetic_pair.start_of_h).
+                "chunk_bounds": ctx.chunk_bounds_device(), "layer": ctx.pml}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import fused_magnetic_pair as family  # noqa: PLC0415
@@ -892,7 +886,8 @@ def _fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
                               family.KERNEL_NAME, False, family.KERNEL_NAME)
         return family.launch_fused_magnetic_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
-            arguments["walls"], arguments["fills"], arguments["dtdx"], kernel=kernel)
+            arguments["walls"], arguments["fills"], arguments["dtdx"], kernel=kernel,
+            chunk_bounds=arguments["chunk_bounds"], layer=arguments["layer"])
 
     return CudaFusedPairPlan(family=FAMILY, label="fused magnetic pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
@@ -944,7 +939,10 @@ def _fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
             held["codes"] = fused_hd_pair_codes(ctx.grid)
             held["scratch"] = fused_hd_pair_scratch(ctx.fields)
         return {"tables": held["tables"], "boundary_codes": held["codes"],
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                # The composition's chunk record, and the layer the run's first
+                # update_H starts H from (fused_hd_pair.launch_fused_hd_pair).
+                "chunk_bounds": ctx.chunk_bounds_device(), "layer": ctx.pml}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import fused_hd_pair as family  # noqa: PLC0415
@@ -958,7 +956,8 @@ def _fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
                               family.KERNEL_NAME, False, family.KERNEL_NAME)
         record = family.launch_fused_hd_pair(
             fields, held["scratch"], arguments["tables"], arguments["boundary_codes"],
-            arguments["dtdx"], kernel=kernel)
+            arguments["dtdx"], kernel=kernel, chunk_bounds=arguments["chunk_bounds"],
+            layer=arguments["layer"])
         held["scratch"] = family.rotate_into_fields(fields, held["scratch"])
         record["rotated"] = True
         return record
@@ -987,10 +986,11 @@ def _cylindrical_real_fused_hd_pair_coverage(context: Any) -> Coverage:
 def _cylindrical_real_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the real m = 0 Dcyl H->D product, built without a device.
 
-    THE STATE IS RESOLVED IN THE CLOSURE (six scratch twins, the increment and prefix
-    buffers, the array path's own cached row vectors) and carried between launches;
-    ``run_cylindrical_real_fused_hd_pair`` performs launch 1, the ``xp.cumsum`` on the
-    array path, the rotation and launch 2 -- three launches per run, counted.
+    THE STATE IS RESOLVED IN THE CLOSURE (six scratch twins, the scan's division readings
+    and buffer, the composition's chunk record) and carried between launches;
+    ``run_cylindrical_real_fused_hd_pair`` performs launch 1 (update_H into scratch), the
+    radial scan over the scratch Hp, the rotation and the curl -- three launches per run,
+    counted.
     """
     from .cylindrical_real_fused_hd_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
@@ -1002,18 +1002,16 @@ def _cylindrical_real_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
         from .cylindrical_real_fused_hd_pair import resolve as resolve_state  # noqa: PLC0415
 
         if "state" not in held:
-            held["state"] = resolve_state(ctx.fields, ctx.grid, ctx.pml)
+            held["state"] = resolve_state(ctx.fields, ctx.grid, ctx.pml,
+                                          chunk_bounds=ctx.chunk_bounds_device())
         return {"state": held["state"]}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import cylindrical_real_fused_hd_pair as family  # noqa: PLC0415
 
-        # HALF OF THIS PRODUCT'S PER-LAUNCH HOST WORK IS REACHABLE FROM HERE. The held
-        # text feeds launch 1 (``run_cylindrical_real_fused_hd_pair`` threads
-        # ``kernel=`` to ``launch_constitutive_and_increment`` only); launch 2 is the
-        # certified ``cyl_step_D_pml_real`` through its own launcher, and ``run_``
-        # re-asks the coverage predicate on every call. Both are the certified
-        # module's and are left as they are.
+        # The held text feeds launch 1 (``run_cylindrical_real_fused_hd_pair`` threads
+        # ``kernel=`` to ``launch_update_H`` only); the scan and the curl are their own
+        # modules' launches.
         kernel = _held_kernel(held, family, (), family.kernel_source,
                               family.KERNEL_NAME, False, family.KERNEL_NAME)
         return family.run_cylindrical_real_fused_hd_pair(
@@ -1031,11 +1029,9 @@ def _cylindrical_fused_hd_pair_coverage(context: Any) -> Coverage:
     from .cylindrical_fused_hd_pair import (  # noqa: PLC0415
         covers_cylindrical_fused_hd_pair,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     covered, reason = covers_cylindrical_fused_hd_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -1044,7 +1040,6 @@ def _cylindrical_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     from .cylindrical_fused_hd_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -1053,26 +1048,20 @@ def _cylindrical_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
 
         if "state" not in held:
             held["state"] = resolve_state(ctx.fields, ctx.grid, ctx.pml,
-                                          ctx.license_for(LICENSE_COMPLEX)["arm"])
+                                          chunk_bounds=ctx.chunk_bounds_device())
         return {"state": held["state"]}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import cylindrical_fused_hd_pair as family  # noqa: PLC0415
 
-        # Launch 1's text is held under its getter's key, ``(f"{KERNEL_NAME}_arm{arm}",
-        # True, _COMPILE_OPTIONS, kernel_source(arm))`` with ``arm = _arm(expansion)``
-        # (cylindrical_fused_hd_pair.py:531-538); launch 2 is the certified curl
-        # through its own launcher, as in the real twin.
-        expansion = arguments["state"]["arm"]
-        arm = family._arm(expansion)  # noqa: SLF001 - the getter's own normalization
-        kernel = _held_kernel(held, family, (expansion,),
-                              lambda: family.kernel_source(arm),
-                              f"{family.KERNEL_NAME}_arm{arm}", True,
-                              family.KERNEL_NAME)
+        # Launch 1's text is held under its getter's key, ``(KERNEL_NAME, True,
+        # _COMPILE_OPTIONS, kernel_source())`` (cylindrical_fused_hd_pair._get_kernel);
+        # the scan and the curl are their own modules' launches, as in the real twin.
+        kernel = _held_kernel(held, family, (), family.kernel_source,
+                              family.KERNEL_NAME, True, family.KERNEL_NAME)
         return family.run_cylindrical_fused_hd_pair(
-            fields, fields.grid, context.pml, expansion,
-            sources=context.sources, license=context.license_for(LICENSE_COMPLEX),
-            subnormal_policy=context.subnormal_policy, state=arguments["state"],
+            fields, fields.grid, context.pml,
+            sources=context.sources, state=arguments["state"],
             kernel=kernel)
 
     return CudaFusedPairPlan(family=FAMILY, label="cylindrical complex fused H/D pair",
@@ -1084,9 +1073,7 @@ def _cylindrical_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
 def _special_kz_fused_hd_pair_coverage(context: Any) -> Coverage:
     """``covers_special_kz_fused_hd_pair`` as a ``Coverage``, imported at call time.
 
-    NO LICENCE ARGUMENT AND THAT IS THE STORAGE CLASS SPEAKING, not an omission: this
-    family is REAL float32 throughout, so there is no complex expansion arm to be
-    licensed and its predicate takes none. Its source question goes through
+    Its source question goes through
     ``withdraw_hoist.seam_withdraw_reasons`` for the reason
     ``_fused_hd_pair_coverage``'s does: nothing is INJECTED between the ``update_H``
     and ``step_D`` consults, so what sits there is the electric integrated-source
@@ -1130,6 +1117,10 @@ def _special_kz_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
             held["codes"] = special_kz_fused_hd_pair_codes(ctx.grid)
             held["beta"] = beta_scalars(ctx.grid)
             held["scratch"] = special_kz_fused_hd_pair_scratch(ctx.fields)
+            # The composition's chunk record (the kernel's cb) and the layer the run's
+            # first update_H starts H with.
+            held["chunk_bounds"] = ctx.chunk_bounds_device()
+            held["layer"] = ctx.pml
         return dict(held)
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -1149,7 +1140,8 @@ def _special_kz_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
                               family.KERNEL_NAME, False, family.KERNEL_NAME)
         record = family.launch_special_kz_fused_hd_pair(
             fields, arguments["scratch"], arguments["tables"], arguments["codes"],
-            arguments["beta"], dtdx, kernel=kernel)
+            arguments["beta"], dtdx, kernel=kernel,
+            chunk_bounds=arguments["chunk_bounds"], layer=arguments["layer"])
         held["scratch"] = family.rotate_into_fields(fields, arguments["scratch"])
         record["rotated"] = True
         return record
@@ -1165,11 +1157,9 @@ def _complex_beta_fused_hd_pair_coverage(context: Any) -> Coverage:
     from .complex_beta_fused_hd_pair import (  # noqa: PLC0415
         covers_complex_beta_fused_hd_pair,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     covered, reason = covers_complex_beta_fused_hd_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -1212,7 +1202,8 @@ def _conductive_bfast_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
         from .conductive_bfast_fused_hd_pair import resolve as resolve_state  # noqa: PLC0415
 
         if "state" not in held:
-            held["state"] = resolve_state(ctx.fields, ctx.grid, ctx.pml)
+            held["state"] = resolve_state(ctx.fields, ctx.grid, ctx.pml,
+                                          chunk_bounds=ctx.chunk_bounds_device())
         return {"state": held["state"]}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -1225,9 +1216,9 @@ def _conductive_bfast_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
         # honours an override standing at the first launch. ``run_`` threads
         # ``kernel=`` to the one launch (:1435-1436) and still re-asks its predicate.
         state = arguments["state"]
-        variant, cond = state["variant"], state["cond"]
-        kernel = _held_kernel(held, family, (variant, cond),
-                              lambda: family.current_source(variant, cond),
+        variant, cond, keep = state["variant"], state["cond"], state["keep"]
+        kernel = _held_kernel(held, family, (variant, cond, keep),
+                              lambda: family.current_source(variant, cond, keep=keep),
                               family.kernel_name(variant), False,
                               family.kernel_name(variant))
         return family.run_conductive_bfast_fused_hd_pair(
@@ -1251,7 +1242,6 @@ def _complex_beta_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     from .complex_beta_fused_hd_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -1261,7 +1251,7 @@ def _complex_beta_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
         if "state" not in held:
             held["state"] = resolve_state(
                 ctx.fields, ctx.grid, ctx.pml,
-                ctx.license_for(LICENSE_COMPLEX)["arm"])
+                chunk_bounds=ctx.chunk_bounds_device())
         return {"state": held["state"]}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -1270,9 +1260,8 @@ def _complex_beta_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
         )
 
         return run_complex_beta_fused_hd_pair(
-            fields, context.grid, context.pml, arguments["state"]["arm"],
-            sources=context.sources, license=context.license_for(LICENSE_COMPLEX),
-            subnormal_policy=context.subnormal_policy, state=arguments["state"],
+            fields, context.grid, context.pml,
+            sources=context.sources, state=arguments["state"],
             check=False)
 
     return CudaFusedPairPlan(family=FAMILY, label="complex beta fused H/D pair",
@@ -1299,11 +1288,9 @@ def _complex_fused_hd_pair_coverage(context: Any) -> Coverage:
     second column.
     """
     from .complex_fused_hd_pair import covers_complex_fused_hd_pair  # noqa: PLC0415
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     covered, reason = covers_complex_fused_hd_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -1317,7 +1304,6 @@ def _complex_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     the same reading.
     """
     from .complex_fused_hd_pair import FAMILY, KERNEL_NAME, REPLACES  # noqa: PLC0415
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -1326,8 +1312,7 @@ def _complex_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
 
         if "state" not in held:
             held["state"] = resolve_state(
-                ctx.fields, ctx.grid, ctx.pml,
-                ctx.license_for(LICENSE_COMPLEX)["arm"])
+                ctx.fields, ctx.grid, ctx.pml)
         return {"state": held["state"]}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -1336,9 +1321,8 @@ def _complex_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
         )
 
         return run_complex_fused_hd_pair(
-            fields, fields.grid, context.pml, arguments["state"]["arm"],
-            sources=context.sources, license=context.license_for(LICENSE_COMPLEX),
-            subnormal_policy=context.subnormal_policy, state=arguments["state"])
+            fields, fields.grid, context.pml,
+            sources=context.sources, state=arguments["state"])
 
     return CudaFusedPairPlan(family=FAMILY, label="complex fused H/D pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
@@ -1397,7 +1381,9 @@ def _fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
                 "boundary_codes": real_curl_boundary_codes(ctx.grid),
                 "walls": zero_metal_axes(ctx.grid),
                 "fills": fused_electric_pair_fills(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                # The composition's chunk record, uploaded once (the kernel's cb).
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import fused_electric_pair as family  # noqa: PLC0415
@@ -1408,7 +1394,8 @@ def _fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
                               family.KERNEL_NAME, True, family.KERNEL_NAME)
         return family.launch_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
-            arguments["walls"], arguments["fills"], arguments["dtdx"], kernel=kernel)
+            arguments["walls"], arguments["fills"], arguments["dtdx"], kernel=kernel,
+            chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedPairPlan(family=FAMILY, label="fused electric pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
@@ -1474,7 +1461,9 @@ def _dispersive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
                 "boundary_codes": real_curl_boundary_codes(ctx.grid),
                 "walls": zero_metal_axes(ctx.grid),
                 "fills": fused_electric_pair_fills(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                # The composition's chunk record, uploaded once (the kernel's cb).
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import dispersive_fused_electric_pair as family  # noqa: PLC0415
@@ -1487,7 +1476,7 @@ def _dispersive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
         return family.launch_dispersive_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["fills"], arguments["dtdx"],
-            poles, counts, kernel=kernel)
+            poles, counts, kernel=kernel, chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedPairPlan(family=FAMILY, label="dispersive fused electric pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
@@ -1543,10 +1532,12 @@ def _no_pml_dispersive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairP
         # THE SAME TWO READINGS OF THE GRID the real twin takes, from the same
         # modules: the boundary codes are the curl's ghost-rule resolution and the
         # walls are ``_zero_metal``'s question. There is no fill plan here because
-        # this family refuses a mirror plane.
+        # this family refuses a mirror plane. The record carries the curl's
+        # partner-presence word.
         return {"boundary_codes": real_curl_boundary_codes(ctx.grid),
                 "walls": zero_metal_axes(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import no_pml_dispersive_fused_electric_pair as family  # noqa: PLC0415
@@ -1558,7 +1549,8 @@ def _no_pml_dispersive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairP
         kernel = _held_no_pml_dispersive_kernel(held, family, cond, counts)
         return family.launch_no_pml_dispersive_fused_electric_pair(
             fields, arguments["boundary_codes"], arguments["walls"],
-            arguments["dtdx"], poles, counts, conductivity, cond, kernel=kernel)
+            arguments["dtdx"], poles, counts, conductivity, cond, kernel=kernel,
+            chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedPairPlan(
         family=FAMILY, label="no-PML dispersive fused electric pair",
@@ -1603,23 +1595,28 @@ def _conductive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
         return {"tables": conductive_fused_electric_pair_tables(ctx.pml),
                 "boundary_codes": real_curl_boundary_codes(ctx.grid),
                 "walls": zero_metal_axes(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                # The composition's chunk record, and the layer whose region plan says
+                # which chunks keep the conductivity (conductive_kernels.conductive_keeps).
+                "chunk_bounds": ctx.chunk_bounds_device(), "layer": ctx.pml}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import conductive_fused_electric_pair as family  # noqa: PLC0415
 
-        # The mask is read per launch, as before, and handed to the getter unchanged
-        # (conductive_fused_electric_pair.py:975); the text it selects is held per
-        # distinct mask under the getter's key, ``(KERNEL_NAME, True, ...)`` (:718).
+        # The masks are read per launch, as before, and handed to the getter unchanged;
+        # the text they select is held per distinct (conductive mask, keep mask) under
+        # the getter's key, ``(KERNEL_NAME, True, ...)``.
         conductivity, histories, cond = family.conductive_bindings(fields)
+        keep, keep_masks = family.conductive_keeps(fields, arguments["layer"])
         kernel = _held_kernel(
-            held, family, tuple(cond),
-            lambda: family.conductive_fused_electric_pair_source(cond),
+            held, family, (tuple(cond), tuple(keep)),
+            lambda: family.conductive_fused_electric_pair_source(cond, keep),
             family.KERNEL_NAME, True, family.KERNEL_NAME)
         return family.launch_conductive_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["dtdx"], conductivity, histories, cond,
-            kernel=kernel)
+            kernel=kernel, chunk_bounds=arguments["chunk_bounds"], keep=keep,
+            keep_masks=keep_masks)
 
     return CudaFusedPairPlan(
         family=FAMILY, label="conductive fused electric pair",
@@ -1630,22 +1627,13 @@ def _conductive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
 
 
 def _complex_fused_magnetic_pair_coverage(context: Any) -> Coverage:
-    """``covers_complex_fused_magnetic_pair`` as a ``Coverage``, imported at call time.
-
-    THE LICENCE IS READ OFF THE CONTEXT, not defaulted. ``StepContext.license_for``
-    is what the licensed ARMS are bound through (``arms._bind_licensed_curl``), and a
-    fused product that asked its halves with ``license=None`` would get that family's
-    own named refusal on every configuration -- which reads as a claim about the run
-    rather than about the caller.
-    """
+    """``covers_complex_fused_magnetic_pair`` as a ``Coverage``, imported at call time."""
     from .complex_fused_magnetic_pair import (  # noqa: PLC0415
         covers_complex_fused_magnetic_pair,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     covered, reason = covers_complex_fused_magnetic_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -1654,7 +1642,6 @@ def _complex_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
     from .complex_fused_magnetic_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -1667,31 +1654,30 @@ def _complex_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
         )
         from .in_seam_coverage import zero_metal_axes  # noqa: PLC0415
 
-        # THE ARM IS THE LICENCE'S, and it is resolved HERE rather than defaulted:
-        # both arms compile, both run, and they differ in the last bits of about a
-        # quarter of the words, so a wrong arm is a wrong ANSWER rather than a crash.
         flags, values = bloch_phase_arguments(ctx.grid, False)
         return {"tables": complex_fused_magnetic_pair_tables(ctx.pml),
                 "boundary_codes": complex_boundary_codes(ctx.grid),
                 "phase_flags": flags, "phase_values": values,
                 "walls": zero_metal_axes(ctx.grid),
-                "arm": ctx.license_for(LICENSE_COMPLEX)["arm"],
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                # The run's first update_H starts H from B on the array path right
+                # after the launch (complex_fused_magnetic_pair.start_of_h).
+                "chunk_bounds": ctx.chunk_bounds_device(), "layer": ctx.pml}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import complex_fused_magnetic_pair as family  # noqa: PLC0415
 
-        kernel = _held_arm_kernel(held, family, family.complex_fused_magnetic_pair_source,
-                                  arguments["arm"])
+        kernel = _held_arm_kernel(held, family, family.complex_fused_magnetic_pair_source)
         return family.launch_complex_fused_magnetic_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
-            arguments["walls"], arguments["dtdx"], arguments["arm"], kernel=kernel)
+            arguments["walls"], arguments["dtdx"], kernel=kernel,
+            chunk_bounds=arguments["chunk_bounds"], layer=arguments["layer"])
 
     return CudaFusedPairPlan(family=FAMILY, label="complex fused magnetic pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
                              slots=("step_B", "update_H"), context=context,
-                             # Pure readings of the frozen pml/grid/licence: held.
+                             # Pure readings of the frozen pml and grid: held.
                              resolve_launch_args=_resolved_once(held, resolve),
                              launch=launch)
 
@@ -1701,73 +1687,45 @@ def _cylindrical_fused_magnetic_pair_coverage(context: Any) -> Coverage:
     from .cylindrical_fused_magnetic_pair import (  # noqa: PLC0415
         covers_cylindrical_fused_magnetic_pair,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     covered, reason = covers_cylindrical_fused_magnetic_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
 def _cylindrical_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the Dcyl complex B/H product, built without a device.
 
-    THE RADIAL PREFIX IS RESOLVED PER LAUNCH AND NOT PER CONFIGURATION, which is the
-    one place this plan diverges from its two siblings: ``cylindrical_prefix`` is a
-    cumulative sum over the CURRENT Ep, so a value cached beside the coefficient
-    tables would be a stale field one step later -- the same class of defect as a
-    fused pair reading a pre-injection B, arriving through a cache instead of a seam.
+    TWO LAUNCHES PER STEP: the column-serial radial scan over the CURRENT Ep (per
+    stored part), then the fused kernel. Everything else the launch binds -- the tables,
+    the i*m/r rows, the Courant words, the m class, the chunk record, the scan's division
+    readings, the layer -- is a reading of the frozen grid and layer
+    (``cylindrical_fused_magnetic_pair.resolve_launch_arguments``) and is held.
     """
     from .cylindrical_fused_magnetic_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
     def resolve(ctx: Any) -> Dict[str, Any]:
-        from .cylindrical_complex_kernels import (  # noqa: PLC0415
-            axis_increment_scalars, cylindrical_complex_boundary_codes,
-            imr_rows_for, m_class, zero_rows,
-        )
-        from .cylindrical_fused_magnetic_pair import (  # noqa: PLC0415
-            cylindrical_fused_magnetic_pair_tables,
-        )
-        from .in_seam_coverage import zero_metal_axes  # noqa: PLC0415
+        from .cylindrical_fused_magnetic_pair import resolve_launch_arguments  # noqa: PLC0415
 
-        dtdx = float(ctx.grid.dt / ctx.grid.dx)
-        m = int(ctx.grid.m)
-        return {"tables": cylindrical_fused_magnetic_pair_tables(ctx.pml),
-                "boundary_codes": cylindrical_complex_boundary_codes(ctx.grid),
-                "imr_rows": imr_rows_for("step_B", ctx.grid.xp, m, dtdx,
-                                         int(ctx.fields.Bx.shape[0]),
-                                         ctx.fields.Bx.dtype),
-                "increment_scalars": axis_increment_scalars(m, dtdx),
-                "m_class": m_class(m),
-                "zero_rows": zero_rows(
-                    m, bool(ctx.grid.accurate_fields_near_cylorigin)),
-                "walls": zero_metal_axes(ctx.grid),
-                "arm": ctx.license_for(LICENSE_COMPLEX)["arm"],
-                "dtdx": dtdx}
+        return resolve_launch_arguments(ctx.fields, ctx.grid, ctx.pml,
+                                        ctx.chunk_bounds_device())
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import cylindrical_fused_magnetic_pair as family  # noqa: PLC0415
-        from .cylindrical_prefix import cylindrical_prefix  # noqa: PLC0415
 
         kernel = _held_arm_kernel(
-            held, family, family.cylindrical_fused_magnetic_pair_source, arguments["arm"])
-        return family.launch_cylindrical_fused_magnetic_pair(
-            fields, arguments["tables"],
-            cylindrical_prefix(fields, "step_B"), arguments["imr_rows"],
-            arguments["boundary_codes"], arguments["increment_scalars"],
-            arguments["m_class"], arguments["zero_rows"], arguments["walls"],
-            arguments["dtdx"], arguments["arm"], kernel=kernel)
+            held, family, family.cylindrical_fused_magnetic_pair_source)
+        return family.launch_cylindrical_fused_magnetic_pair(fields, arguments, kernel=kernel)
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="cylindrical fused magnetic pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
                              slots=("step_B", "update_H"), context=context,
-                             # Pure readings of the frozen pml/grid/licence: held.
+                             # Pure readings of the frozen pml and grid: held.
                              resolve_launch_args=_resolved_once(held, resolve),
                              launch=launch)
 
@@ -1784,11 +1742,9 @@ def _complex_fused_electric_pair_coverage(context: Any) -> Coverage:
     from .complex_fused_electric_pair import (  # noqa: PLC0415
         covers_complex_fused_electric_pair,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     covered, reason = covers_complex_fused_electric_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -1797,7 +1753,6 @@ def _complex_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     from .complex_fused_electric_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -1812,31 +1767,32 @@ def _complex_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
 
         # ``True`` IS THE BACKWARD FLAG and it is the one argument here a copy of the
         # magnetic resolver would get silently wrong: ``step_D`` takes ``cshift_dn``
-        # and the CONJUGATED Bloch factor (``complex_emitter.KERNELS['step_D'][1]``,
-        # ``stepping._shift_down``:1818-1822). The forward table compiles, runs, and is
+        # and the connection to the word ABOVE the stored window (``eikna``), where the
+        # B curl takes ``conj(eikna)`` (``complex_emitter.KERNELS['step_D'][1]``,
+        # ``stepping._bloch_ghost_operand``). The forward table compiles, runs, and is
         # the wrong phase on every phased row.
         flags, values = bloch_phase_arguments(ctx.grid, True)
         return {"tables": complex_fused_electric_pair_tables(ctx.pml),
                 "boundary_codes": complex_boundary_codes(ctx.grid),
                 "phase_flags": flags, "phase_values": values,
                 "walls": zero_metal_axes(ctx.grid),
-                "arm": ctx.license_for(LICENSE_COMPLEX)["arm"],
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import complex_fused_electric_pair as family  # noqa: PLC0415
 
-        kernel = _held_arm_kernel(held, family, family.complex_fused_electric_pair_source,
-                                  arguments["arm"])
+        kernel = _held_arm_kernel(held, family, family.complex_fused_electric_pair_source)
         return family.launch_complex_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
-            arguments["walls"], arguments["dtdx"], arguments["arm"], kernel=kernel)
+            arguments["walls"], arguments["dtdx"], kernel=kernel,
+            chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedPairPlan(family=FAMILY, label="complex fused electric pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
                              slots=("step_D", "update_E"), context=context,
-                             # Pure readings of the frozen pml/grid/licence: held.
+                             # Pure readings of the frozen pml and grid: held.
                              resolve_launch_args=_resolved_once(held, resolve),
                              launch=launch)
 
@@ -1850,20 +1806,13 @@ def _no_pml_complex_fused_electric_pair_coverage(context: Any) -> Coverage:
     ``coverage._complex_grid_refusal``:2785, ``cylindrical_coverage``'s own copy) and
     this one requires it. Two admitters leave the seam UNFUSED naming both, so the
     disjointness is what buys the slots.
-
-    THE LICENCE IS ``LICENSE_COMPLEX_NO_PML``, not ``LICENSE_COMPLEX``. Its halves are
-    the ``cuda_complex_no_pml`` family's, and that family's own arms are bound through
-    that licence (``registry._TABLE``); asking with the PML complex one would be asking
-    a different verdict about a different arm.
     """
     from .no_pml_complex_fused_electric_pair import (  # noqa: PLC0415
         covers_no_pml_complex_fused_electric_pair,
     )
-    from .registry import LICENSE_COMPLEX_NO_PML  # noqa: PLC0415
 
     covered, reason = covers_no_pml_complex_fused_electric_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX_NO_PML), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -1885,7 +1834,6 @@ def _no_pml_complex_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan
     from .no_pml_complex_fused_electric_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX_NO_PML  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -1897,40 +1845,36 @@ def _no_pml_complex_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan
             no_pml_complex_curl_arm,
         )
 
-        # ``True`` IS THE BACKWARD FLAG and it is the one argument here a copy of a
+        # ``True`` IS THE D CURL'S TABLE and it is the one argument here a copy of a
         # magnetic resolver would get silently wrong: ``step_D`` takes ``cshift_dn``
-        # and the CONJUGATED Bloch factor (``complex_emitter.KERNELS['step_D'][1]``,
-        # ``stepping._shift_down``:1818-1822). The forward table compiles, runs, and is
-        # the wrong phase on every phased row.
+        # and connects plane 0 with ``eikna`` (``complex_emitter.KERNELS['step_D'][1]``,
+        # ``stepping._bloch_ghost_operand``), the B curl with its conjugate. The other
+        # table compiles, runs, and is the wrong phase on every phased row.
         flags, values = bloch_phase_arguments(ctx.grid, True)
         return {"boundary_codes": complex_boundary_codes(ctx.grid),
                 "phase_flags": flags, "phase_values": values,
                 "curl_arm": no_pml_complex_curl_arm(ctx.fields, "step_D"),
-                "expansion": ctx.license_for(LICENSE_COMPLEX_NO_PML)["arm"],
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import no_pml_complex_fused_electric_pair as family  # noqa: PLC0415
 
         # THE RESOLUTION IS NOT HELD HERE: the curl arm is ``fields.condfac_for``'s
-        # answer, read per launch as before. Only the text is held, per distinct
-        # (expansion, tail), under the getter's key: the launcher derives
-        # ``conductive = arm == "conductive"`` (no_pml_complex_fused_electric_pair.py
-        # :1313) and its getter names ``kernel_name("conductive" if conductive else
-        # "plain")`` and keys ``f"{name}_arm{normalized_expansion(arm)}"`` (:912-915).
-        expansion = arguments["expansion"]
+        # answer, read per launch as before. Only the text is held, per tail, under the
+        # getter's key: the launcher derives ``conductive = arm == "conductive"`` and
+        # its getter names and keys ``kernel_name("conductive" if conductive else
+        # "plain")`` (no_pml_complex_fused_electric_pair._get_kernel).
         conductive = arguments["curl_arm"] == "conductive"
         name = family.kernel_name("conductive" if conductive else "plain")
         kernel = _held_kernel(
-            held, family, (expansion, conductive),
-            lambda: family.no_pml_complex_fused_electric_pair_source(expansion,
-                                                                     conductive),
-            f"{name}_arm{family.complex_emitter.normalized_expansion(expansion)}",
-            True, name)
+            held, family, (conductive,),
+            lambda: family.no_pml_complex_fused_electric_pair_source(conductive),
+            name, True, name)
         return family.launch_no_pml_complex_fused_electric_pair(
             fields, arguments["boundary_codes"], arguments["phase_flags"],
             arguments["phase_values"], arguments["dtdx"], arguments["curl_arm"],
-            expansion, kernel=kernel)
+            kernel=kernel, chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="complex no-absorber fused electric pair",
@@ -1944,75 +1888,45 @@ def _cylindrical_fused_electric_pair_coverage(context: Any) -> Coverage:
     from .cylindrical_fused_electric_pair import (  # noqa: PLC0415
         covers_cylindrical_fused_electric_pair,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     covered, reason = covers_cylindrical_fused_electric_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
 def _cylindrical_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the Dcyl complex D/E product, built without a device.
 
-    THE RADIAL PREFIX IS RESOLVED PER LAUNCH AND NOT PER CONFIGURATION, as in the
-    magnetic twin: ``cylindrical_prefix`` is a cumulative sum over the CURRENT Hp, so a
-    value cached beside the coefficient tables would be a stale field one step later --
-    the same class of defect as a fused pair reading a pre-injection D, arriving through
-    a cache instead of a seam. EVERY CYLINDRICAL QUANTITY HERE IS THE ``step_D`` ONE:
-    the prefix sums Hp rather than Ep, and ``imr_rows_for`` binds the D-side coefficient
-    rows, whose signs are the B side's negated (``IMR_TERMS``).
+    TWO LAUNCHES PER STEP: the column-serial radial scan over the CURRENT Hp (per
+    stored part), then the fused kernel. Everything else the launch binds -- the tables,
+    the i*m/r rows, the Courant words, the m class, the chunk record, the scan's division
+    readings, the layer -- is a reading of the frozen grid and layer
+    (``cylindrical_fused_electric_pair.resolve_launch_arguments``) and is held.
     """
     from .cylindrical_fused_electric_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
     def resolve(ctx: Any) -> Dict[str, Any]:
-        from .cylindrical_complex_kernels import (  # noqa: PLC0415
-            axis_increment_scalars, cylindrical_complex_boundary_codes,
-            imr_rows_for, m_class, zero_rows,
-        )
-        from .cylindrical_fused_electric_pair import (  # noqa: PLC0415
-            cylindrical_fused_electric_pair_tables,
-        )
-        from .in_seam_coverage import zero_metal_axes  # noqa: PLC0415
+        from .cylindrical_fused_electric_pair import resolve_launch_arguments  # noqa: PLC0415
 
-        dtdx = float(ctx.grid.dt / ctx.grid.dx)
-        m = int(ctx.grid.m)
-        return {"tables": cylindrical_fused_electric_pair_tables(ctx.pml),
-                "boundary_codes": cylindrical_complex_boundary_codes(ctx.grid),
-                "imr_rows": imr_rows_for("step_D", ctx.grid.xp, m, dtdx,
-                                         int(ctx.fields.Dx.shape[0]),
-                                         ctx.fields.Dx.dtype),
-                "increment_scalars": axis_increment_scalars(m, dtdx),
-                "m_class": m_class(m),
-                "zero_rows": zero_rows(
-                    m, bool(ctx.grid.accurate_fields_near_cylorigin)),
-                "walls": zero_metal_axes(ctx.grid),
-                "arm": ctx.license_for(LICENSE_COMPLEX)["arm"],
-                "dtdx": dtdx}
+        return resolve_launch_arguments(ctx.fields, ctx.grid, ctx.pml,
+                                        ctx.chunk_bounds_device())
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import cylindrical_fused_electric_pair as family  # noqa: PLC0415
-        from .cylindrical_prefix import cylindrical_prefix  # noqa: PLC0415
 
         kernel = _held_arm_kernel(
-            held, family, family.cylindrical_fused_electric_pair_source, arguments["arm"])
-        return family.launch_cylindrical_fused_electric_pair(
-            fields, arguments["tables"],
-            cylindrical_prefix(fields, "step_D"), arguments["imr_rows"],
-            arguments["boundary_codes"], arguments["increment_scalars"],
-            arguments["m_class"], arguments["zero_rows"], arguments["walls"],
-            arguments["dtdx"], arguments["arm"], kernel=kernel)
+            held, family, family.cylindrical_fused_electric_pair_source)
+        return family.launch_cylindrical_fused_electric_pair(fields, arguments, kernel=kernel)
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="cylindrical fused electric pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
                              slots=("step_D", "update_E"), context=context,
-                             # Pure readings of the frozen pml/grid/licence: held.
+                             # Pure readings of the frozen pml and grid: held.
                              resolve_launch_args=_resolved_once(held, resolve),
                              launch=launch)
 
@@ -2055,8 +1969,10 @@ def _fused_polarization_pair_plan(context: Any) -> "CudaFusedPairPlan":
 
         # THE HALF-INTEGER SUB-LATTICE, decided by the certified family's own
         # resolver (stepping.py:1015): update_E reads it, and the integer views
-        # are a half-cell error in the absorber profile.
-        return {"tables": dispersive_tables(ctx.pml)}
+        # are a half-cell error in the absorber profile. The record chooses each
+        # cell's constitutive form.
+        return {"tables": dispersive_tables(ctx.pml),
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from .fused_polarization_pair import (  # noqa: PLC0415 - a device import
@@ -2064,7 +1980,8 @@ def _fused_polarization_pair_plan(context: Any) -> "CudaFusedPairPlan":
         )
 
         return run_fused_polarization_pair(fields, None, "pml",
-                                           tables=arguments["tables"])
+                                           tables=arguments["tables"],
+                                           chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedPairPlan(family=FAMILY_PML, label="fused polarization pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
@@ -2119,21 +2036,13 @@ def _no_pml_fused_polarization_pair_plan(context: Any) -> "CudaFusedPairPlan":
 
 
 def _complex_folded_fused_magnetic_pair_coverage(context: Any) -> Coverage:
-    """``covers_complex_folded_fused_magnetic_pair`` as a ``Coverage``, at call time.
-
-    THE LICENCE IS READ OFF THE CONTEXT like every complex closure's: the folded
-    family's arms bind through ``LICENSE_COMPLEX`` (``registry._TABLE``), and a
-    fused product that asked with ``license=None`` would get that family's own
-    named refusal on every configuration.
-    """
+    """``covers_complex_folded_fused_magnetic_pair`` as a ``Coverage``, at call time."""
     from .complex_folded_fused_magnetic_pair import (  # noqa: PLC0415
         covers_complex_folded_fused_magnetic_pair,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     covered, reason = covers_complex_folded_fused_magnetic_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -2149,7 +2058,6 @@ def _complex_folded_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan
     from .complex_folded_fused_magnetic_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -2174,26 +2082,26 @@ def _complex_folded_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan
                 "phase_flags": flags, "phase_values": values,
                 "walls": zero_metal_axes(ctx.grid),
                 "fills": fills_plan(ctx.grid),
-                "arm": ctx.license_for(LICENSE_COMPLEX)["arm"],
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device(), "layer": ctx.pml}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import complex_folded_fused_magnetic_pair as family  # noqa: PLC0415
 
         kernel = _held_arm_kernel(
-            held, family, family.complex_folded_fused_magnetic_pair_source,
-            arguments["arm"])
+            held, family, family.complex_folded_fused_magnetic_pair_source)
         return family.launch_complex_folded_fused_magnetic_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
             arguments["walls"], arguments["fills"], arguments["dtdx"],
-            arguments["arm"], kernel=kernel)
+            kernel=kernel, chunk_bounds=arguments["chunk_bounds"],
+            layer=arguments["layer"])
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="folded complex fused magnetic pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
                              slots=("step_B", "update_H"), context=context,
-                             # Pure readings of the frozen pml/grid/licence: held.
+                             # Pure readings of the frozen pml and grid: held.
                              resolve_launch_args=_resolved_once(held, resolve),
                              launch=launch)
 
@@ -2203,11 +2111,9 @@ def _complex_beta_fused_magnetic_pair_coverage(context: Any) -> Coverage:
     from .complex_beta_fused_magnetic_pair import (  # noqa: PLC0415
         covers_complex_beta_fused_magnetic_pair,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     covered, reason = covers_complex_beta_fused_magnetic_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -2221,7 +2127,6 @@ def _complex_beta_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
     from .complex_beta_fused_magnetic_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -2247,37 +2152,32 @@ def _complex_beta_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
                 "beta_words": beta_coefficients(ctx.grid),
                 "walls": zero_metal_axes(ctx.grid),
                 "fills": fills_plan(ctx.grid),
-                "arm": ctx.license_for(LICENSE_COMPLEX)["arm"],
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device(), "layer": ctx.pml}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import complex_beta_fused_magnetic_pair as family  # noqa: PLC0415
 
         kernel = _held_arm_kernel(
-            held, family, family.complex_beta_fused_magnetic_pair_source,
-            arguments["arm"])
+            held, family, family.complex_beta_fused_magnetic_pair_source)
         return family.launch_complex_beta_fused_magnetic_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
             arguments["beta_words"], arguments["walls"], arguments["fills"],
-            arguments["dtdx"], arguments["arm"], kernel=kernel)
+            arguments["dtdx"], kernel=kernel,
+            chunk_bounds=arguments["chunk_bounds"], layer=arguments["layer"])
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="complex beta fused magnetic pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
                              slots=("step_B", "update_H"), context=context,
-                             # Pure readings of the frozen pml/grid/licence: held.
+                             # Pure readings of the frozen pml and grid: held.
                              resolve_launch_args=_resolved_once(held, resolve),
                              launch=launch)
 
 
 def _cylindrical_real_fused_magnetic_pair_coverage(context: Any) -> Coverage:
-    """``covers_cylindrical_real_fused_magnetic_pair`` as a ``Coverage``.
-
-    NO LICENCE: both halves are REAL-storage families and neither binds an
-    expansion arm; asking with one would be asking a different question than
-    the predicates answer.
-    """
+    """``covers_cylindrical_real_fused_magnetic_pair`` as a ``Coverage``."""
     from .cylindrical_real_fused_magnetic_pair import (  # noqa: PLC0415
         covers_cylindrical_real_fused_magnetic_pair,
     )
@@ -2290,10 +2190,11 @@ def _cylindrical_real_fused_magnetic_pair_coverage(context: Any) -> Coverage:
 def _cylindrical_real_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the REAL Dcyl B/H product, built without a device.
 
-    THE RADIAL PREFIX IS RESOLVED PER LAUNCH AND NOT PER CONFIGURATION, the same
-    rule as the complex Dcyl twins: ``cylindrical_prefix`` is a cumulative sum
-    over the CURRENT Ep, so a value cached beside the coefficient tables would
-    be a stale field one step later.
+    TWO LAUNCHES PER STEP: the column-serial radial scan over the CURRENT Ep
+    (``cylindrical_prefix.radial_difference``; its chunk starts and row vectors are
+    readings of the frozen division and are held, the difference it writes is not), then
+    the fused kernel. The composition's chunk record and the layer the run's first
+    update_H starts H with (``start_of_h``) are held beside the tables.
     """
     from .cylindrical_real_fused_magnetic_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
@@ -2305,6 +2206,9 @@ def _cylindrical_real_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPl
         import numpy as _np  # noqa: PLC0415
         from .coverage import real_pml_boundary_kinds  # noqa: PLC0415
         from .cylindrical_coverage import cylindrical_boundary_codes  # noqa: PLC0415
+        from .cylindrical_prefix import (  # noqa: PLC0415
+            radial_scan_device_tables, radial_scan_tables,
+        )
         from .cylindrical_real_fused_magnetic_pair import (  # noqa: PLC0415
             cylindrical_real_fused_magnetic_pair_tables,
         )
@@ -2315,21 +2219,26 @@ def _cylindrical_real_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPl
         return {"tables": cylindrical_real_fused_magnetic_pair_tables(ctx.pml),
                 "boundary_codes": tuple(_np.int32(code) for code in codes),
                 "walls": zero_metal_axes(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device(), "layer": ctx.pml,
+                "scan": radial_scan_device_tables(
+                    radial_scan_tables(ctx.fields, ctx.pml, "step_B"), ctx.grid.xp)}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import cylindrical_real_fused_magnetic_pair as family  # noqa: PLC0415
-        from .cylindrical_prefix import cylindrical_prefix  # noqa: PLC0415
+        from .cylindrical_prefix import radial_difference  # noqa: PLC0415
 
         kernel = _held_kernel(held, family, (),
                               family.cylindrical_real_fused_magnetic_pair_source,
                               family.KERNEL_NAME, False, family.KERNEL_NAME)
         return family.launch_cylindrical_real_fused_magnetic_pair(
             fields, arguments["tables"],
-            cylindrical_prefix(fields, "step_B",
-                               scratch=getattr(fields, "scratch", None)),
+            radial_difference(fields, arguments["layer"], "step_B",
+                              tables=arguments["scan"],
+                              scratch=getattr(fields, "scratch", None)),
             arguments["boundary_codes"], arguments["walls"],
-            arguments["dtdx"], kernel=kernel)
+            arguments["dtdx"], kernel=kernel,
+            chunk_bounds=arguments["chunk_bounds"], layer=arguments["layer"])
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="cylindrical real fused magnetic pair",
@@ -2341,8 +2250,7 @@ def _cylindrical_real_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPl
 
 
 def _special_kz_fused_magnetic_pair_coverage(context: Any) -> Coverage:
-    """``covers_special_kz_fused_magnetic_pair`` as a ``Coverage``. No licence:
-    real-storage halves bind no expansion arm."""
+    """``covers_special_kz_fused_magnetic_pair`` as a ``Coverage``."""
     from .special_kz_fused_magnetic_pair import (  # noqa: PLC0415
         covers_special_kz_fused_magnetic_pair,
     )
@@ -2378,7 +2286,8 @@ def _special_kz_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
                 "walls": zero_metal_axes(ctx.grid),
                 "beta": beta_scalars(ctx.grid),
                 "fills": special_kz_fused_magnetic_pair_fills(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device(), "layer": ctx.pml}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import special_kz_fused_magnetic_pair as family  # noqa: PLC0415
@@ -2389,7 +2298,8 @@ def _special_kz_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
         return family.launch_special_kz_fused_magnetic_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["beta"], arguments["fills"],
-            arguments["dtdx"], kernel=kernel)
+            arguments["dtdx"], kernel=kernel,
+            chunk_bounds=arguments["chunk_bounds"], layer=arguments["layer"])
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="special_kz fused magnetic pair",
@@ -2401,8 +2311,7 @@ def _special_kz_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
 
 
 def _bfast_fused_magnetic_pair_coverage(context: Any) -> Coverage:
-    """``covers_bfast_fused_magnetic_pair`` as a ``Coverage``. No licence:
-    real-storage halves bind no expansion arm."""
+    """``covers_bfast_fused_magnetic_pair`` as a ``Coverage``."""
     from .bfast_fused_magnetic_pair import (  # noqa: PLC0415
         covers_bfast_fused_magnetic_pair,
     )
@@ -2435,7 +2344,8 @@ def _bfast_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
                 "boundary_codes": tuple(_np.int32(code) for code in codes),
                 "walls": zero_metal_axes(ctx.grid),
                 "coefficients": bfast_scalars(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device(), "layer": ctx.pml}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import bfast_fused_magnetic_pair as family  # noqa: PLC0415
@@ -2445,7 +2355,8 @@ def _bfast_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
         return family.launch_bfast_fused_magnetic_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["coefficients"], arguments["dtdx"],
-            kernel=kernel)
+            kernel=kernel, chunk_bounds=arguments["chunk_bounds"],
+            layer=arguments["layer"])
 
     return CudaFusedPairPlan(family=FAMILY, label="BFAST fused magnetic pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
@@ -2456,8 +2367,7 @@ def _bfast_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
 
 
 def _cylindrical_real_fused_electric_pair_coverage(context: Any) -> Coverage:
-    """``covers_cylindrical_real_fused_electric_pair`` as a ``Coverage``. No
-    licence: real-storage halves bind no expansion arm."""
+    """``covers_cylindrical_real_fused_electric_pair`` as a ``Coverage``."""
     from .cylindrical_real_fused_electric_pair import (  # noqa: PLC0415
         covers_cylindrical_real_fused_electric_pair,
     )
@@ -2470,9 +2380,9 @@ def _cylindrical_real_fused_electric_pair_coverage(context: Any) -> Coverage:
 def _cylindrical_real_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the REAL Dcyl D/E product, built without a device.
 
-    THE RADIAL PREFIX IS RESOLVED PER LAUNCH AND NOT PER CONFIGURATION -- the
-    ``step_D`` prefix (a cumulative sum over the CURRENT Hp), never the
-    ``step_B`` one.
+    TWO LAUNCHES PER STEP: the radial scan over the CURRENT Hp (the ``step_D`` side,
+    never the Ep sum), then the fused kernel. The chunk record and the scan's division
+    readings are held beside the tables.
     """
     from .cylindrical_real_fused_electric_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
@@ -2485,28 +2395,37 @@ def _cylindrical_real_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPl
             cylindrical_real_fused_electric_pair_tables,
         )
         from .cylindrical_kernels import (  # noqa: PLC0415
-            cylindrical_boundary_codes_for,
+            axis_courant, cylindrical_boundary_codes_for,
+        )
+        from .cylindrical_prefix import (  # noqa: PLC0415
+            radial_scan_device_tables, radial_scan_tables,
         )
         from .in_seam_coverage import zero_metal_axes  # noqa: PLC0415
 
         return {"tables": cylindrical_real_fused_electric_pair_tables(ctx.pml),
                 "boundary_codes": cylindrical_boundary_codes_for(ctx.grid),
                 "walls": zero_metal_axes(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "axis_courant": axis_courant(ctx.grid),
+                "chunk_bounds": ctx.chunk_bounds_device(), "layer": ctx.pml,
+                "scan": radial_scan_device_tables(
+                    radial_scan_tables(ctx.fields, ctx.pml, "step_D"), ctx.grid.xp)}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import cylindrical_real_fused_electric_pair as family  # noqa: PLC0415
-        from .cylindrical_prefix import cylindrical_prefix  # noqa: PLC0415
+        from .cylindrical_prefix import radial_difference  # noqa: PLC0415
 
         kernel = _held_kernel(held, family, (),
                               family.cylindrical_real_fused_electric_pair_source,
                               family.KERNEL_NAME, False, family.KERNEL_NAME)
         return family.launch_cylindrical_real_fused_electric_pair(
             fields, arguments["tables"],
-            cylindrical_prefix(fields, "step_D",
-                               scratch=getattr(fields, "scratch", None)),
+            radial_difference(fields, arguments["layer"], "step_D",
+                              tables=arguments["scan"],
+                              scratch=getattr(fields, "scratch", None)),
             arguments["boundary_codes"], arguments["walls"],
-            arguments["dtdx"], kernel=kernel)
+            arguments["dtdx"], kernel=kernel, chunk_bounds=arguments["chunk_bounds"],
+            axis_courant=arguments["axis_courant"])
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="cylindrical real fused electric pair",
@@ -2518,8 +2437,7 @@ def _cylindrical_real_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPl
 
 
 def _special_kz_fused_electric_pair_coverage(context: Any) -> Coverage:
-    """``covers_special_kz_fused_electric_pair`` as a ``Coverage``. No licence:
-    real-storage halves bind no expansion arm."""
+    """``covers_special_kz_fused_electric_pair`` as a ``Coverage``."""
     from .special_kz_fused_electric_pair import (  # noqa: PLC0415
         covers_special_kz_fused_electric_pair,
     )
@@ -2554,7 +2472,8 @@ def _special_kz_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
                 "walls": zero_metal_axes(ctx.grid),
                 "beta": beta_scalars(ctx.grid),
                 "fills": special_kz_fused_electric_pair_fills(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import special_kz_fused_electric_pair as family  # noqa: PLC0415
@@ -2565,7 +2484,7 @@ def _special_kz_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
         return family.launch_special_kz_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["beta"], arguments["fills"],
-            arguments["dtdx"], kernel=kernel)
+            arguments["dtdx"], kernel=kernel, chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="special_kz fused electric pair",
@@ -2577,8 +2496,7 @@ def _special_kz_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
 
 
 def _bfast_fused_electric_pair_coverage(context: Any) -> Coverage:
-    """``covers_bfast_fused_electric_pair`` as a ``Coverage``. No licence:
-    real-storage halves bind no expansion arm."""
+    """``covers_bfast_fused_electric_pair`` as a ``Coverage``."""
     from .bfast_fused_electric_pair import (  # noqa: PLC0415
         covers_bfast_fused_electric_pair,
     )
@@ -2612,7 +2530,8 @@ def _bfast_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
                 "boundary_codes": tuple(_np.int32(code) for code in codes),
                 "walls": zero_metal_axes(ctx.grid),
                 "coefficients": bfast_curl_coefficients(ctx.grid, "step_D"),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import bfast_fused_electric_pair as family  # noqa: PLC0415
@@ -2622,7 +2541,7 @@ def _bfast_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
         return family.launch_bfast_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["coefficients"], arguments["dtdx"],
-            kernel=kernel)
+            kernel=kernel, chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedPairPlan(family=FAMILY, label="BFAST fused electric pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
@@ -2637,11 +2556,9 @@ def _complex_folded_fused_electric_pair_coverage(context: Any) -> Coverage:
     from .complex_folded_fused_electric_pair import (  # noqa: PLC0415
         covers_complex_folded_fused_electric_pair,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     covered, reason = covers_complex_folded_fused_electric_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -2650,7 +2567,6 @@ def _complex_folded_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan
     from .complex_folded_fused_electric_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -2668,35 +2584,34 @@ def _complex_folded_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan
         codes, refusal = folded_complex_boundary_codes(ctx.grid)
         if refusal is not None:
             raise ValueError(f"this grid has no boundary codes: {refusal}")
-        # THE BACKWARD PHASE TABLE: `True` is the step_D sub-step's own
-        # conjugation, the one argument a copy of the magnetic sibling would
-        # get silently wrong.
+        # THE BACKWARD CONNECTION TABLE: `True` is the step_D sub-step's own (the
+        # word ABOVE the stored window, eikna), the one argument a copy of the
+        # magnetic sibling would get silently wrong.
         flags, values = bloch_phase_arguments(ctx.grid, True)
         return {"tables": complex_folded_fused_electric_pair_tables(ctx.pml),
                 "boundary_codes": codes,
                 "phase_flags": flags, "phase_values": values,
                 "walls": zero_metal_axes(ctx.grid),
                 "fills": complex_folded_fused_electric_pair_fills(ctx.grid),
-                "arm": ctx.license_for(LICENSE_COMPLEX)["arm"],
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import complex_folded_fused_electric_pair as family  # noqa: PLC0415
 
         kernel = _held_arm_kernel(
-            held, family, family.complex_folded_fused_electric_pair_source,
-            arguments["arm"])
+            held, family, family.complex_folded_fused_electric_pair_source)
         return family.launch_complex_folded_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
             arguments["walls"], arguments["fills"], arguments["dtdx"],
-            arguments["arm"], kernel=kernel)
+            kernel=kernel, chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="folded complex fused electric pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
                              slots=("step_D", "update_E"), context=context,
-                             # Pure readings of the frozen pml/grid/licence: held.
+                             # Pure readings of the frozen pml and grid: held.
                              resolve_launch_args=_resolved_once(held, resolve),
                              launch=launch)
 
@@ -2706,11 +2621,9 @@ def _complex_beta_fused_electric_pair_coverage(context: Any) -> Coverage:
     from .complex_beta_fused_electric_pair import (  # noqa: PLC0415
         covers_complex_beta_fused_electric_pair,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     covered, reason = covers_complex_beta_fused_electric_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -2719,7 +2632,6 @@ def _complex_beta_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     from .complex_beta_fused_electric_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -2744,42 +2656,38 @@ def _complex_beta_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
                 "beta_words": beta_coefficients(ctx.grid),
                 "walls": zero_metal_axes(ctx.grid),
                 "fills": complex_beta_fused_electric_pair_fills(ctx.grid),
-                "arm": ctx.license_for(LICENSE_COMPLEX)["arm"],
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import complex_beta_fused_electric_pair as family  # noqa: PLC0415
 
         kernel = _held_arm_kernel(
-            held, family, family.complex_beta_fused_electric_pair_source,
-            arguments["arm"])
+            held, family, family.complex_beta_fused_electric_pair_source)
         return family.launch_complex_beta_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["phase_flags"], arguments["phase_values"],
             arguments["beta_words"], arguments["walls"], arguments["fills"],
-            arguments["dtdx"], arguments["arm"], kernel=kernel)
+            arguments["dtdx"], kernel=kernel,
+            chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="complex beta fused electric pair",
                              kernel_label=KERNEL_NAME, replaces=tuple(REPLACES),
                              slots=("step_D", "update_E"), context=context,
-                             # Pure readings of the frozen pml/grid/licence: held.
+                             # Pure readings of the frozen pml and grid: held.
                              resolve_launch_args=_resolved_once(held, resolve),
                              launch=launch)
 
 
 def _complex_no_pml_fused_polarization_pair_coverage(context: Any) -> Coverage:
-    """``covers_complex_no_pml_fused_polarization_pair`` as a ``Coverage``, asked
-    with the ``cuda_complex_no_pml`` family's own licence -- the seven-pattern
-    record, the same one its slot arms bind through."""
+    """``covers_complex_no_pml_fused_polarization_pair`` as a ``Coverage``."""
     from .complex_no_pml_fused_polarization_pair import (  # noqa: PLC0415
         covers_complex_no_pml_fused_polarization_pair,
     )
-    from .registry import LICENSE_COMPLEX_NO_PML  # noqa: PLC0415
 
     covered, reason = covers_complex_no_pml_fused_polarization_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX_NO_PML), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -2788,18 +2696,16 @@ def _complex_no_pml_fused_polarization_pair_plan(context: Any) -> "CudaFusedPair
     from .complex_no_pml_fused_polarization_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX_NO_PML  # noqa: PLC0415
 
     def resolve(ctx: Any) -> Dict[str, Any]:
-        return {"arm": ctx.license_for(LICENSE_COMPLEX_NO_PML)["arm"]}
+        return {}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from .complex_no_pml_fused_polarization_pair import (  # noqa: PLC0415
             run_complex_no_pml_fused_polarization_pair,
         )
 
-        return run_complex_no_pml_fused_polarization_pair(
-            fields, None, arguments["arm"])
+        return run_complex_no_pml_fused_polarization_pair(fields, None)
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="complex no-PML fused polarization pair",
@@ -2869,9 +2775,19 @@ def _offdiag_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
         # constitutive's own reading, which this family binds as one vector), the
         # COUPLING wall mask is _mask_metallic_wall_coupling's question, and the fill
         # plan is the three in-seam passes' -- of which only zero_metal_D can be live
-        # here, because the constitutive arm refuses a fold.
+        # here, because the constitutive arm refuses a fold. The chunk record is the
+        # composition's one upload, and the presence words are built against it ONCE
+        # per plan, like the tables: they are a fact of the frozen configuration (the
+        # material's chi1inv arrays and the division), and building them reads every
+        # stored cell of the six row volumes, which a per-launch resolve must not.
+        codes = offdiag_fused_electric_pair_codes(ctx.grid, ctx.pml)
+        if "kept" not in held:
+            from .offdiag_presence import launch_chunk_arguments  # noqa: PLC0415
+            _record, held["kept"] = launch_chunk_arguments(ctx.fields, ctx.pml, codes,
+                                                           ctx.chunk_bounds())
         return {"tables": held["tables"], "scratch": held["scratch"],
-                "codes": offdiag_fused_electric_pair_codes(ctx.grid, ctx.pml),
+                "codes": codes, "kept": held["kept"],
+                "chunk_bounds": ctx.chunk_bounds_device(),
                 "wall_mask": offdiag_wall_mask_flags(ctx.grid),
                 "fills": weld.fill_plan(ctx.grid),
                 "row_mask": normalized_row_mask(offdiag_row_mask(ctx.fields)),
@@ -2891,7 +2807,8 @@ def _offdiag_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
         record = launch_offdiag_fused_electric_pair(
             fields, arguments["scratch"], arguments["tables"], arguments["codes"],
             arguments["wall_mask"], arguments["fills"], arguments["dtdx"],
-            arguments["row_mask"], arguments["rows"], kernel=kernel)
+            arguments["row_mask"], arguments["rows"], arguments["kept"],
+            arguments["chunk_bounds"], kernel=kernel)
         # THE ROTATION IS PART OF THE LAUNCH, not of the caller. A scratch-output
         # weld that did not rotate would have computed the step and thrown it away,
         # which is precisely the ``rotation_skipped`` null the gate arms.
@@ -2947,8 +2864,14 @@ def _folded_offdiag_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan
         if "tables" not in held:
             held["tables"] = folded_offdiag_fused_electric_pair_tables(ctx.pml)
             held["scratch"] = folded_offdiag_fused_electric_pair_scratch(ctx.fields)
+        codes = folded_offdiag_fused_electric_pair_codes(ctx.grid, ctx.pml)
+        if "kept" not in held:  # once per plan, as in the unfolded weld's resolve
+            from .offdiag_presence import launch_chunk_arguments  # noqa: PLC0415
+            _record, held["kept"] = launch_chunk_arguments(
+                ctx.fields, ctx.pml, codes["constitutive"], ctx.chunk_bounds())
         return {"tables": held["tables"], "scratch": held["scratch"],
-                "codes": folded_offdiag_fused_electric_pair_codes(ctx.grid, ctx.pml),
+                "codes": codes, "kept": held["kept"],
+                "chunk_bounds": ctx.chunk_bounds_device(),
                 "wall_mask": offdiag_wall_mask_flags(ctx.grid),
                 "weights": folded.mirror_ghost_weights(ctx.grid),
                 "fills": weld.fill_plan(ctx.grid),
@@ -2973,7 +2896,7 @@ def _folded_offdiag_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan
             fields, arguments["scratch"], arguments["tables"], arguments["codes"],
             arguments["wall_mask"], arguments["weights"], arguments["fills"],
             arguments["dtdx"], arguments["row_mask"], arguments["rows"],
-            kernel=kernel)
+            arguments["kept"], arguments["chunk_bounds"], kernel=kernel)
         held["scratch"] = rotate_into_fields(fields, arguments["scratch"])
         record["rotated"] = True
         return record
@@ -2986,24 +2909,13 @@ def _folded_offdiag_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan
 
 
 def _folded_complex_offdiag_fused_electric_pair_coverage(context: Any) -> Coverage:
-    """``covers_folded_complex_offdiag_fused_electric_pair`` as a ``Coverage``.
-
-    TWO LICENCES, ONE PER HALF, and this is the first product on this table that
-    needs two: the folded complex curl binds ``LICENSE_COMPLEX`` and the
-    off-diagonal ``update_E`` binds ``LICENSE_COMPLEX_OFFDIAG``, whose arbiter
-    classifies a FIFTH multiply orientation the base four do not carry. Handing one
-    verdict to both halves would declare that one record's pattern set answered for
-    the other's.
-    """
+    """``covers_folded_complex_offdiag_fused_electric_pair`` as a ``Coverage``."""
     from .folded_complex_offdiag_fused_electric_pair import (  # noqa: PLC0415
         covers_folded_complex_offdiag_fused_electric_pair,
     )
-    from .registry import LICENSE_COMPLEX, LICENSE_COMPLEX_OFFDIAG  # noqa: PLC0415
 
     covered, reason = covers_folded_complex_offdiag_fused_electric_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX_OFFDIAG), context.subnormal_policy,
-        curl_license=context.license_for(LICENSE_COMPLEX))
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -3013,14 +2925,13 @@ def _folded_complex_offdiag_fused_electric_pair_plan(context: Any
 
     The scratch is held exactly as the real-storage welds hold it, and the two
     boundary readings are resolved and kept APART for the folded twin's reason. The
-    Bloch table is resolved ONCE and cross-checked between the two resolvers inside
-    the family's own helper, because the curl's conjugate factor and the
-    constitutive's DOWN factor are the same number by two routes.
+    two connection tables come from one resolver (the D curl's table IS the pair's
+    partner-axis table), and the presence words are built once per plan against the
+    composition's chunk record, as the real folded weld builds them.
     """
     from .folded_complex_offdiag_fused_electric_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX_OFFDIAG  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -3031,6 +2942,7 @@ def _folded_complex_offdiag_fused_electric_pair_plan(context: Any
             offdiag_row_mask, offdiag_row_volumes, offdiag_wall_mask_flags,
         )
         from .folded_complex_offdiag_fused_electric_pair import (  # noqa: PLC0415
+            folded_complex_offdiag_fused_electric_pair_chunk_arguments,
             folded_complex_offdiag_fused_electric_pair_codes,
             folded_complex_offdiag_fused_electric_pair_phases,
             folded_complex_offdiag_fused_electric_pair_scratch,
@@ -3042,8 +2954,14 @@ def _folded_complex_offdiag_fused_electric_pair_plan(context: Any
                 ctx.pml)
             held["scratch"] = folded_complex_offdiag_fused_electric_pair_scratch(
                 ctx.fields)
+        codes = folded_complex_offdiag_fused_electric_pair_codes(ctx.grid)
+        if "kept" not in held:  # once per plan, as in the real folded weld's resolve
+            _record, held["kept"] = (
+                folded_complex_offdiag_fused_electric_pair_chunk_arguments(
+                    ctx.fields, ctx.pml, codes, ctx.chunk_bounds()))
         return {"tables": held["tables"], "scratch": held["scratch"],
-                "codes": folded_complex_offdiag_fused_electric_pair_codes(ctx.grid),
+                "codes": codes, "kept": held["kept"],
+                "chunk_bounds": ctx.chunk_bounds_device(),
                 "phases": folded_complex_offdiag_fused_electric_pair_phases(
                     ctx.grid),
                 "wall_mask": offdiag_wall_mask_flags(ctx.grid),
@@ -3053,7 +2971,6 @@ def _folded_complex_offdiag_fused_electric_pair_plan(context: Any
                     offdiag_row_mask(ctx.fields)),
                 "rows": [volume for volume in offdiag_row_volumes(ctx.fields)
                          if volume is not None],
-                "arm": ctx.license_for(LICENSE_COMPLEX_OFFDIAG)["arm"],
                 "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -3068,13 +2985,13 @@ def _folded_complex_offdiag_fused_electric_pair_plan(context: Any
         _validate_launch_arguments(
             tuple(int(n) for n in fields.Dx.shape), arguments["codes"],
             arguments["wall_mask"], arguments["weights"], arguments["fills"])
-        kernel = _held_offdiag_kernel(held, family, arguments["row_mask"],
-                                      arguments["arm"])
+        kernel = _held_offdiag_kernel(held, family, arguments["row_mask"], True)
         record = launch_folded_complex_offdiag_fused_electric_pair(
             fields, arguments["scratch"], arguments["tables"], arguments["codes"],
             arguments["wall_mask"], arguments["phases"], arguments["weights"],
             arguments["fills"], arguments["dtdx"], arguments["row_mask"],
-            arguments["rows"], arguments["arm"], kernel=kernel)
+            arguments["rows"], arguments["kept"], arguments["chunk_bounds"],
+            kernel=kernel)
         held["scratch"] = rotate_into_fields(fields, arguments["scratch"])
         record["rotated"] = True
         return record
@@ -3087,24 +3004,13 @@ def _folded_complex_offdiag_fused_electric_pair_plan(context: Any
 
 
 def _complex_no_pml_offdiag_fused_electric_pair_coverage(context: Any) -> Coverage:
-    """``covers_complex_no_pml_offdiag_fused_electric_pair`` as a ``Coverage``.
-
-    TWO LICENCES, ONE PER HALF -- see the folded twin above. The complex
-    no-absorber curl binds ``LICENSE_COMPLEX_NO_PML``, whose arbiter reads a
-    SEVEN-pattern record, and the off-diagonal ``update_E`` binds
-    ``LICENSE_COMPLEX_OFFDIAG``.
-    """
+    """``covers_complex_no_pml_offdiag_fused_electric_pair`` as a ``Coverage``."""
     from .complex_no_pml_offdiag_fused_electric_pair import (  # noqa: PLC0415
         covers_complex_no_pml_offdiag_fused_electric_pair,
     )
-    from .registry import (  # noqa: PLC0415
-        LICENSE_COMPLEX_NO_PML, LICENSE_COMPLEX_OFFDIAG,
-    )
 
     covered, reason = covers_complex_no_pml_offdiag_fused_electric_pair(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX_OFFDIAG), context.subnormal_policy,
-        curl_license=context.license_for(LICENSE_COMPLEX_NO_PML))
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -3118,7 +3024,6 @@ def _complex_no_pml_offdiag_fused_electric_pair_plan(context: Any
     from .complex_no_pml_offdiag_fused_electric_pair import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES,
     )
-    from .registry import LICENSE_COMPLEX_OFFDIAG  # noqa: PLC0415
 
     held: Dict[str, Any] = {}
 
@@ -3126,6 +3031,7 @@ def _complex_no_pml_offdiag_fused_electric_pair_plan(context: Any
         from . import complex_offdiag_stencil_weld as weld  # noqa: PLC0415
         from . import complex_offdiag_update_e as offdiag  # noqa: PLC0415
         from .complex_no_pml_offdiag_fused_electric_pair import (  # noqa: PLC0415
+            complex_no_pml_offdiag_fused_electric_pair_chunk_arguments,
             complex_no_pml_offdiag_fused_electric_pair_codes,
             complex_no_pml_offdiag_fused_electric_pair_phases,
             complex_no_pml_offdiag_fused_electric_pair_scratch,
@@ -3137,8 +3043,14 @@ def _complex_no_pml_offdiag_fused_electric_pair_plan(context: Any
         if "scratch" not in held:
             held["scratch"] = complex_no_pml_offdiag_fused_electric_pair_scratch(
                 ctx.fields)
+        codes = complex_no_pml_offdiag_fused_electric_pair_codes(ctx.grid)
+        if "kept" not in held:  # once per plan, as in the folded twin's resolve
+            _record, held["kept"] = (
+                complex_no_pml_offdiag_fused_electric_pair_chunk_arguments(
+                    ctx.fields, ctx.pml, codes, ctx.chunk_bounds()))
         return {"scratch": held["scratch"],
-                "codes": complex_no_pml_offdiag_fused_electric_pair_codes(ctx.grid),
+                "codes": codes, "kept": held["kept"],
+                "chunk_bounds": ctx.chunk_bounds_device(),
                 "phases": complex_no_pml_offdiag_fused_electric_pair_phases(
                     ctx.grid),
                 "wall_mask": offdiag_wall_mask_flags(ctx.grid),
@@ -3148,7 +3060,6 @@ def _complex_no_pml_offdiag_fused_electric_pair_plan(context: Any
                     offdiag_row_mask(ctx.fields)),
                 "rows": [volume for volume in offdiag_row_volumes(ctx.fields)
                          if volume is not None],
-                "arm": ctx.license_for(LICENSE_COMPLEX_OFFDIAG)["arm"],
                 "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -3161,13 +3072,13 @@ def _complex_no_pml_offdiag_fused_electric_pair_plan(context: Any
         assert_scratch_is_disjoint(fields, arguments["scratch"])
         _validate_launch_arguments(arguments["codes"], arguments["wall_mask"],
                                    arguments["fills"])
-        kernel = _held_offdiag_kernel(held, family, arguments["row_mask"],
-                                      arguments["arm"])
+        kernel = _held_offdiag_kernel(held, family, arguments["row_mask"], True)
         record = launch_complex_no_pml_offdiag_fused_electric_pair(
             fields, arguments["scratch"], arguments["codes"],
             arguments["wall_mask"], arguments["phases"], arguments["weights"],
             arguments["fills"], arguments["dtdx"], arguments["row_mask"],
-            arguments["rows"], arguments["arm"], kernel=kernel)
+            arguments["rows"], arguments["kept"], arguments["chunk_bounds"],
+            kernel=kernel)
         held["scratch"] = rotate_into_fields(fields, arguments["scratch"])
         record["rotated"] = True
         return record
@@ -3212,7 +3123,14 @@ def _dispersive_offdiag_fused_polarization_pair_plan(context: Any
 
         if "tables" not in held:
             held["tables"] = offdiag_e.dispersive_offdiag_constitutive_tables(ctx.pml)
-        return {"tables": held["tables"]}
+            codes = offdiag_e.dispersive_offdiag_boundary_codes(ctx.grid, ctx.pml)
+            _record, held["kept"] = offdiag_e.dispersive_offdiag_chunk_arguments(
+                ctx.fields, ctx.pml, codes, ctx.chunk_bounds())
+        # THE LAYER IS PASSED THROUGH: the run asks the predicate first and derives
+        # the boundary codes from it, and without it the predicate refuses ("no
+        # active PML layer") and the seam's two sub-steps would not be advanced.
+        return {"tables": held["tables"], "layer": ctx.pml,
+                "chunk_bounds": ctx.chunk_bounds_device(), "kept": held["kept"]}
 
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from .dispersive_offdiag_fused_polarization_pair import (  # noqa: PLC0415
@@ -3223,7 +3141,8 @@ def _dispersive_offdiag_fused_polarization_pair_plan(context: Any
         # between them are part of what REPLACES declares. A composition that
         # launched only the fused kernel would leave two components unadvanced.
         return run_dispersive_offdiag_fused_polarization_pair(
-            fields, fields.grid, None, tables=arguments["tables"])
+            fields, fields.grid, arguments["layer"], tables=arguments["tables"],
+            chunk_bounds=arguments["chunk_bounds"], kept=arguments["kept"])
 
     return CudaFusedPairPlan(family=FAMILY,
                              label="dispersive off-diagonal polarization pair",
@@ -3303,12 +3222,14 @@ def _three_slot_dispersive_weld_plan(context: Any) -> "CudaFusedTriplePlan":
 
         # THE SAME FOUR READINGS OF THE GRID the D->E half's own plan builder takes,
         # from the same modules: sharing them is deliberate, because group 1 IS that
-        # product's launch and a second reading is a second thing to drift.
+        # product's launch and a second reading is a second thing to drift. The chunk
+        # record is the composition's one upload, read by both groups.
         return {"tables": fused_electric_pair_tables(ctx.pml),
                 "boundary_codes": real_curl_boundary_codes(ctx.grid),
                 "walls": zero_metal_axes(ctx.grid),
                 "fills": fused_electric_pair_fills(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch_leading(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import dispersive_fused_electric_pair as leading  # noqa: PLC0415
@@ -3321,14 +3242,15 @@ def _three_slot_dispersive_weld_plan(context: Any) -> "CudaFusedTriplePlan":
         return leading.launch_dispersive_fused_electric_pair(
             fields, arguments["tables"], arguments["boundary_codes"],
             arguments["walls"], arguments["fills"], arguments["dtdx"],
-            poles, counts, kernel=kernel)
+            poles, counts, kernel=kernel, chunk_bounds=arguments["chunk_bounds"])
 
-    def launch_trailing(fields: Any, _arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def launch_trailing(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from .three_slot_dispersive_weld import (  # noqa: PLC0415 - a device import
             run_three_slot_polarization,
         )
 
-        return run_three_slot_polarization(fields, "pml")
+        return run_three_slot_polarization(fields, "pml",
+                                           chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedTriplePlan(
         family=FAMILY, label="three-slot dispersive weld",
@@ -3378,7 +3300,10 @@ def _no_pml_three_slot_dispersive_weld_plan(context: Any) -> "CudaFusedTriplePla
 
         return {"boundary_codes": real_curl_boundary_codes(ctx.grid),
                 "walls": zero_metal_axes(ctx.grid),
-                "dtdx": float(ctx.grid.dt / ctx.grid.dx)}
+                "dtdx": float(ctx.grid.dt / ctx.grid.dx),
+                # The trailing group's drive select decodes the composition's record
+                # (with no layer both of its drive pointers are the stored E).
+                "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch_leading(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import no_pml_dispersive_fused_electric_pair as leading  # noqa: PLC0415
@@ -3388,14 +3313,16 @@ def _no_pml_three_slot_dispersive_weld_plan(context: Any) -> "CudaFusedTriplePla
         kernel = _held_no_pml_dispersive_kernel(held, leading, cond, counts)
         return leading.launch_no_pml_dispersive_fused_electric_pair(
             fields, arguments["boundary_codes"], arguments["walls"],
-            arguments["dtdx"], poles, counts, conductivity, cond, kernel=kernel)
+            arguments["dtdx"], poles, counts, conductivity, cond, kernel=kernel,
+            chunk_bounds=arguments["chunk_bounds"])
 
-    def launch_trailing(fields: Any, _arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def launch_trailing(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from .no_pml_three_slot_dispersive_weld import (  # noqa: PLC0415
             run_three_slot_polarization,
         )
 
-        return run_three_slot_polarization(fields)
+        return run_three_slot_polarization(fields,
+                                           chunk_bounds=arguments["chunk_bounds"])
 
     return CudaFusedTriplePlan(
         family=FAMILY, label="no-absorber three-slot dispersive weld",
@@ -3408,20 +3335,17 @@ def _no_pml_three_slot_dispersive_weld_plan(context: Any) -> "CudaFusedTriplePla
 def _complex_no_pml_three_slot_weld_coverage(context: Any) -> Coverage:
     """``covers_three_slot_complex_no_pml_dispersive_weld`` as a ``Coverage``.
 
-    Asked with the ``cuda_complex_no_pml`` family's own licence -- the seven-pattern
-    record its slot arms bind through -- exactly as the two products it conjoins
-    are. Its SOURCE question is the D->E half's, which carries ``carries_repair=False``
-    and refuses every electric in-seam source by name: that refusal is what licenses
-    the single per-component launch, so it is not weakened here.
+    Asked exactly as the two products it conjoins are. Its SOURCE question is the D->E
+    half's, which carries ``carries_repair=False`` and refuses every electric in-seam
+    source by name: that refusal is what licenses the single per-component launch, so
+    it is not weakened here.
     """
     from .complex_no_pml_three_slot_dispersive_weld import (  # noqa: PLC0415
         covers_three_slot_complex_no_pml_dispersive_weld,
     )
-    from .registry import LICENSE_COMPLEX_NO_PML  # noqa: PLC0415
 
     covered, reason = covers_three_slot_complex_no_pml_dispersive_weld(
-        context.fields, context.pml, context.grid, context.sources,
-        context.license_for(LICENSE_COMPLEX_NO_PML), context.subnormal_policy)
+        context.fields, context.pml, context.grid, context.sources)
     return Coverage(bool(covered), (str(reason),))
 
 
@@ -3444,7 +3368,6 @@ def _complex_no_pml_three_slot_weld_plan(context: Any) -> "CudaFusedTriplePlan":
     from .complex_no_pml_three_slot_dispersive_weld import (  # noqa: PLC0415
         FAMILY, KERNEL_NAME, REPLACES, SLOTS,
     )
-    from .registry import LICENSE_COMPLEX_NO_PML  # noqa: PLC0415
 
     def resolve(ctx: Any) -> Dict[str, Any]:
         from .complex_pml_kernels import (  # noqa: PLC0415
@@ -3454,13 +3377,12 @@ def _complex_no_pml_three_slot_weld_plan(context: Any) -> "CudaFusedTriplePlan":
             no_pml_complex_curl_arm,
         )
 
-        # ``True`` IS THE BACKWARD FLAG: step_D takes the conjugated Bloch factor.
+        # ``True`` IS THE D CURL'S TABLE: step_D connects plane 0 with eikna.
         flags, values = bloch_phase_arguments(ctx.grid, True)
         return {"boundary_codes": complex_boundary_codes(ctx.grid),
                 "phase_flags": flags, "phase_values": values,
                 "curl_arm": no_pml_complex_curl_arm(ctx.fields, "step_D"),
-                "expansion": ctx.license_for(LICENSE_COMPLEX_NO_PML)["arm"],
-                "grid": ctx.grid}
+                "grid": ctx.grid, "chunk_bounds": ctx.chunk_bounds_device()}
 
     def launch_leading(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from .complex_no_pml_three_slot_dispersive_weld import (  # noqa: PLC0415
@@ -3468,11 +3390,12 @@ def _complex_no_pml_three_slot_weld_plan(context: Any) -> "CudaFusedTriplePlan":
         )
 
         return run_three_slot_no_pml_complex(
-            fields, arguments["grid"], arguments["expansion"],
+            fields, arguments["grid"],
             curl_arm=arguments["curl_arm"],
             boundary_codes=arguments["boundary_codes"],
             phase_flags=arguments["phase_flags"],
-            phase_values=arguments["phase_values"])
+            phase_values=arguments["phase_values"],
+            chunk_bounds=arguments["chunk_bounds"])
 
     def launch_trailing(_fields: Any, _arguments: Dict[str, Any]) -> Dict[str, Any]:
         # THE CONSULT IS ANSWERED, NOT LAUNCHED: update_P was advanced inside the
@@ -3491,6 +3414,12 @@ def _complex_no_pml_three_slot_weld_plan(context: Any) -> "CudaFusedTriplePlan":
         launch_leading=launch_leading, launch_trailing=launch_trailing)
 
 
+#: One row per fused product: its curl slot, label, predicate, builder and family
+#: module. ``chunk_axes`` (on the five off-diagonal and six cylindrical rows) names
+#: the axes along which the product's kernels index MEEP's chunks beyond the
+#: membership runs, exactly as the arm table's rows spell it
+#: (``registry._TABLE``); :func:`install_fused_pairs` asks the chunk-division clause
+#: with it (:func:`_chunk_division_refusal`).
 FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
     "cuda_fused_magnetic_pair": {
         "curl_slot": "step_B",
@@ -3512,6 +3441,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "coverage": _cylindrical_fused_magnetic_pair_coverage,
         "plan": _cylindrical_fused_magnetic_pair_plan,
         "module": "cylindrical_fused_magnetic_pair",
+        "chunk_axes": CHUNK_AXES_CYLINDRICAL,
     },
     # THE FIVE RESIDUAL MAGNETIC-SEAM ROWS, 2026-09-02, landed with their
     # products -- the last buildable cells on this board. ``step_B`` becomes an
@@ -3544,6 +3474,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "coverage": _cylindrical_real_fused_magnetic_pair_coverage,
         "plan": _cylindrical_real_fused_magnetic_pair_plan,
         "module": "cylindrical_real_fused_magnetic_pair",
+        "chunk_axes": CHUNK_AXES_CYLINDRICAL,
     },
     "cuda_special_kz_fused_magnetic_pair": {
         "curl_slot": "step_B",
@@ -3635,6 +3566,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "coverage": _cylindrical_fused_electric_pair_coverage,
         "plan": _cylindrical_fused_electric_pair_plan,
         "module": "cylindrical_fused_electric_pair",
+        "chunk_axes": CHUNK_AXES_CYLINDRICAL,
     },
     # THE FOURTH ``step_D`` ROW, 2026-08-31, and the FIRST product on this track that
     # refuses an absorber rather than requiring one. THE DISJOINTNESS PROOF IS THE
@@ -3708,6 +3640,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "coverage": _cylindrical_real_fused_electric_pair_coverage,
         "plan": _cylindrical_real_fused_electric_pair_plan,
         "module": "cylindrical_real_fused_electric_pair",
+        "chunk_axes": CHUNK_AXES_CYLINDRICAL,
     },
     "cuda_special_kz_fused_electric_pair": {
         "curl_slot": "step_D",
@@ -3749,6 +3682,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "coverage": _offdiag_fused_electric_pair_coverage,
         "plan": _offdiag_fused_electric_pair_plan,
         "module": "offdiag_fused_electric_pair",
+        "chunk_axes": CHUNK_AXES_OFFDIAG,
     },
     "cuda_folded_offdiag_fused_electric_pair": {
         "curl_slot": "step_D",
@@ -3756,6 +3690,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "coverage": _folded_offdiag_fused_electric_pair_coverage,
         "plan": _folded_offdiag_fused_electric_pair_plan,
         "module": "folded_offdiag_fused_electric_pair",
+        "chunk_axes": CHUNK_AXES_OFFDIAG,
     },
     # THE LAST UNSERVED E->P CELL, 2026-09-02, landed with its product. The
     # ``update_E`` seam becomes a FOUR-candidate one and the partition is a
@@ -3768,6 +3703,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "coverage": _dispersive_offdiag_fused_polarization_pair_coverage,
         "plan": _dispersive_offdiag_fused_polarization_pair_plan,
         "module": "dispersive_offdiag_fused_polarization_pair",
+        "chunk_axes": CHUNK_AXES_OFFDIAG,
     },
     # THE TWO COMPLEX STENCIL WELDS, 2026-09-02, and the LAST two cells this board
     # recorded UNBUILDABLE. ``step_D`` becomes a THIRTEEN-candidate seam and the
@@ -3783,6 +3719,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "coverage": _folded_complex_offdiag_fused_electric_pair_coverage,
         "plan": _folded_complex_offdiag_fused_electric_pair_plan,
         "module": "folded_complex_offdiag_fused_electric_pair",
+        "chunk_axes": CHUNK_AXES_OFFDIAG,
     },
     "cuda_complex_no_pml_offdiag_fused_electric_pair": {
         "curl_slot": "step_D",
@@ -3790,6 +3727,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "coverage": _complex_no_pml_offdiag_fused_electric_pair_coverage,
         "plan": _complex_no_pml_offdiag_fused_electric_pair_plan,
         "module": "complex_no_pml_offdiag_fused_electric_pair",
+        "chunk_axes": CHUNK_AXES_OFFDIAG,
     },
     # THE TWO THREE-SLOT WELDS, 2026-09-02, and the first rows on this table
     # carrying a ``slots`` key: every other product's span is exactly
@@ -3874,6 +3812,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "coverage": _cylindrical_real_fused_hd_pair_coverage,
         "plan": _cylindrical_real_fused_hd_pair_plan,
         "module": "cylindrical_real_fused_hd_pair",
+        "chunk_axes": CHUNK_AXES_CYLINDRICAL,
     },
     "cuda_cylindrical_fused_hd_pair": {
         "curl_slot": "update_H",
@@ -3881,6 +3820,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "coverage": _cylindrical_fused_hd_pair_coverage,
         "plan": _cylindrical_fused_hd_pair_plan,
         "module": "cylindrical_fused_hd_pair",
+        "chunk_axes": CHUNK_AXES_CYLINDRICAL,
     },
     # THE CARTESIAN COMPLEX H->D PRODUCT, 2026-09-07: one launch (the certified
     # complex constitutive recompute at the thread's own cell and at every backward
@@ -3940,6 +3880,28 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "conductive_bfast_fused_hd_pair",
     },
 }
+
+
+def _chunk_bounds_of(context: Any, family: str) -> Any:
+    """``context.chunk_bounds_device()``, refused by name without a context."""
+    if context is None:
+        raise RuntimeError(f"{family} carries no composition context, so it has no "
+                           "chunk record to bind")
+    return context.chunk_bounds_device()
+
+
+def _chunk_division_refusal(context: Any, product: Dict[str, Any]) -> Optional[str]:
+    """The arm table's chunk-division clause, asked of one fused product.
+
+    The same clause every slot arm asks (``arms.coverage_adapter``), with the
+    product's own ``chunk_axes``: every product refuses a division no chunk record
+    describes, and an off-diagonal or cylindrical product also refuses one whose
+    record does not name its chunks along those axes. Asked HERE as well as at the
+    slots, rather than left to :func:`_spans_may_absorb` (an unselected slot would
+    refuse the product too), so the refusal names the division instead of an absent
+    arm.
+    """
+    return context.chunk_division_refusal(tuple(product.get("chunk_axes", ())))
 
 
 class CudaFusedPairPlan:
@@ -4007,6 +3969,17 @@ class CudaFusedPairPlan:
     @property
     def launchable(self) -> bool:
         return self.resolve_launch_args is not None and self.launch_kernel is not None
+
+    @property
+    def chunk_bounds(self) -> Any:
+        """The composition's chunk record on the device: the kernels' ``cb`` argument.
+
+        ``arms.StepContext.chunk_bounds_device``: one upload per composition, shared
+        by every plan in it, so a resolver binds it as ``ctx.chunk_bounds_device()``
+        and every launch of every product reads the same vector. Raises by name
+        where the context's division has no record.
+        """
+        return _chunk_bounds_of(self._context, self.family)
 
     def run(self, *_args: Any, **_kwargs: Any) -> Dict[str, Any]:
         """The single launch. NEEDS A DEVICE, and nothing in a plan build calls it.
@@ -4249,6 +4222,17 @@ class CudaFusedTriplePlan:
         return (self.resolve_launch_args is not None
                 and self.launch_leading is not None
                 and self.launch_trailing is not None)
+
+    @property
+    def chunk_bounds(self) -> Any:
+        """The composition's chunk record on the device: the kernels' ``cb`` argument.
+
+        ``arms.StepContext.chunk_bounds_device``: one upload per composition, shared
+        by every plan in it, so a resolver binds it as ``ctx.chunk_bounds_device()``
+        and every launch of every product reads the same vector. Raises by name
+        where the context's division has no record.
+        """
+        return _chunk_bounds_of(self._context, self.family)
 
     def run_half(self, which: str, *_args: Any, **_kwargs: Any) -> Dict[str, Any]:
         """One of the two device groups. NEEDS A DEVICE; no plan build calls it.
@@ -5022,6 +5006,10 @@ def install_fused_pairs(plans: Dict[str, Any],
                 f"the {family} pair predicate")
             if not verdict.covered:
                 reasons[key] = verdict.reasons
+                continue
+            chunk_refusal = _chunk_division_refusal(context, product)
+            if chunk_refusal is not None:
+                reasons[key] = (chunk_refusal,)
                 continue
             candidates.append((family, product, pair_arms))
         if not candidates:

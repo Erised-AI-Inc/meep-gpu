@@ -152,6 +152,7 @@ except ImportError:  # The whole gate runs without it; the backend row says so.
 # never considered — and because the ``--backend cupy`` row must be attributable to
 # the ship configuration like every other artifact in this package.
 import gate_triton_complex as gate  # noqa: E402
+import flush_vacuity  # noqa: E402 - the flush not-applicable rule, beside this file
 
 from meep_gpu import driver as driver_module  # noqa: E402
 from meep_gpu import stepping  # noqa: E402
@@ -612,6 +613,7 @@ def one_identity_case(spec: Dict[str, Any], xp: Any,
     entry["planned"] = list(plan.covered)
 
     entry["census_before"] = census(fields)
+    entry["seed_conditions"] = flush_vacuity.seed_conditions()
     before = snapshot(fields)
     # HONEST ACCOUNTING OF WHAT WAS COMPARED. The gate used to claim in its own
     # docstring that P/P_prev are byte-compared on this leg, "which pins update_E
@@ -650,9 +652,18 @@ def one_identity_case(spec: Dict[str, Any], xp: Any,
     entry["plan_runs"] = {name: p.runs for name, p in plan.plans.items()}
     entry["census_after"] = census(fields)
 
+    # UNDER FLUSH THE SEEDED SUBNORMAL PLANE CANNOT SURVIVE (the host flushes the
+    # plant itself), which flush_vacuity MEASURES rather than assumes: the installed
+    # policy, the host FPU when seeded, and this census. Then the subnormal clause is
+    # not applicable; the nonzero and signed-zero clauses stand under both policies.
+    subnormal_not_applicable = flush_vacuity.subnormal_class_not_applicable(
+        entry["census_before"]["subnormal_words"], entry["seed_conditions"])
+    if subnormal_not_applicable:
+        entry["not_applicable"] = {"subnormal_words": subnormal_not_applicable}
     non_vacuous = (entry["census_before"]["nonzero_words"] > 0
                    and entry["census_before"]["signed_zero_words"] > 0
-                   and entry["census_before"]["subnormal_words"] > 0)
+                   and (entry["census_before"]["subnormal_words"] > 0
+                        or bool(subnormal_not_applicable)))
     entry["non_vacuous"] = bool(non_vacuous)
     entry["ok"] = bool(
         all(entry["covered"].values())
@@ -1713,6 +1724,10 @@ def _check_identity_shaped_leg(label: str, block: Dict[str, Any],
         census = case.get("census_before", {})
         for key in ("nonzero_words", "signed_zero_words", "subnormal_words"):
             if int(census.get(key, 0)) <= 0:
+                if key == "subnormal_words" and \
+                        flush_vacuity.subnormal_class_not_applicable(
+                            census.get(key, 0), case.get("seed_conditions")):
+                    continue
                 failures.append(f"{label} case {name} is VACUOUS: {key} == 0")
         cycles = int(case.get("cycles", 0))
         if cycles < 2:

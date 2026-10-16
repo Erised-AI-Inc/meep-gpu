@@ -53,7 +53,7 @@ are the join:
 * ``fastpath._certification_for(arm, table)`` and ``fastpath._fingerprints(table)``
   — the per-table lookup that reads :data:`ARM_CERTIFICATION` and
   ``metal_kernels/fingerprints.json`` for this table;
-* ``fastpath._environment_block(grid, probe, probe_error, table)`` — the Metal half
+* ``fastpath._environment_block(grid, table)`` — the Metal half
   of which is :func:`environment_block` here.
 
 IMPORTS NOTHING METAL AND NOTHING TORCH AT MODULE LEVEL. Every reference to
@@ -64,13 +64,12 @@ module on a machine with neither costs nothing and pulls in nothing —
 
 from __future__ import annotations
 
-import importlib
 import json
 import os
 import platform
 import re
 import sys
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from typing import (Any, Dict, FrozenSet, Iterator, List, Mapping, Optional,
                     Sequence, Tuple)
 
@@ -104,95 +103,19 @@ SUBNORMAL_POLICY = "flush"
 #: make an absent optional dependency into a refusal.
 GOVERNED_EXECUTORS: Tuple[str, str] = ("host", "mps")
 
-#: THE DRIVER-ROUTE GATE THIS TABLE'S RELEASE IS CUT FROM, named BEFORE the
-#: campaign runs and not after it.
-#:
-#: THAT ORDER IS THE TRAP, and the Triton constant records paying for it: every
-#: source edit of a round must land BEFORE the round's campaign starts, and editing
-#: this line is itself such an edit — so a run that discovers the constant is wrong
-#: has to be repeated, not repointed. The campaign driver
-#: (``parity/meep_gpu/run_metal_dispatch_campaign.sh``) writes its legs under
-#: ``results/<this name>_<architecture>/`` (see the 2026-10-05 entry below), and
-#: ``recut_driver_dispatch_record.py --backend metal`` refuses to cut the record
-#: unless the directory it reads is the one this constant spells for the
-#: architecture its legs recorded.
-#: REPOINTED 2026-09-15, BEFORE the relaunch, which is the order the paragraph above
-#: demands. The ``2026-09-14_weldgrid`` campaign died with its host at 44 of 62 fleet
-#: gates, before its dispatch stage, and it had been launched while this line still
-#: named ``_target`` -- so it could not have been cut even had it finished.
-# ``_2026-09-15_offdiag``: the ``_2026-09-15_weldgrid`` campaign was stopped part-way
-# through its fleet, because the Triton off-diagonal fix moved fastpath.py, which
-# every Metal gate records.
-# ``_2026-09-15_gapclose``: one Triton batch moved fastpath.py again -- the release of
-# ``fused pair D (complex conductive no-PML)`` and the lift of ``complex folded
-# off-diagonal`` with the widening of ``fused pair B (folded complex)`` -- which every
-# Metal gate and this table's record bind, so the fleet and the dispatch stage re-run
-# under a fresh name. The ``_2026-09-15_offdiag`` campaign is kept as the record of the
-# tree before it.
-#: REPOINTED 2026-09-17 to ``_2026-09-17_envelope``, BEFORE the campaign runs, for the
-#: batch that moved ``pml_active`` and ``bfast`` off the shared envelope and onto 29
-#: per-arm pins (16 added, values read off each arm's own release cases). The
-#: constant had read ``_2026-09-15_gapclose`` through the whole 2026-09-17_allpaths
-#: campaign, so that campaign's record could never have bound; this one can.
-#: ``_2026-09-17_envelope`` ran and refused on three of four legs, on two defects of
-#: the ROUTE GATE's instrument rather than of any product: its launch witness never
-#: wrapped the real-cylindrical plans' function tables (``cylindrical``,
-#: ``cylindrical_m0`` VACUOUS-PASS on kernels that ran), and its withheld-consult
-#: control had no NOT-APPLICABLE rung for an inactive layer (``absorber_1d``,
-#: ``no_pml_dispersive_2d`` NULL on an array-against-array comparison). It stays as
-#: the record of that. REPOINTED 2026-09-19 to ``_2026-09-19_witness`` for the
-#: re-run with both repaired.
-#: ``_2026-09-19_witness`` refused ONE case on its probe leg, and on the route gate's
-#: EXPECTATION rather than on any product: ``complex_no_pml_3d`` (first fused on this
-#: round) read DROPPED-BUT-NOT-EXACT on a drop of 3.0 against an expected 1, because
-#: its unfused ``complex no-PML stored E`` single launches once per component (1800
-#: over 600 steps) and the pair folds all three into its one launch -- 8.0 -> 5.0 a
-#: step, compiled calls agreeing, byte-identical to the array path. The gate's
-#: "one launch fewer per pair" was the N = 1 case of ``pairs + sum(N - 1)``; that one
-#: drive row now DECLARES ``collapsed_single_launches_per_step = {"update_E": 3}``,
-#: cross-checked against the unfused leg's own counter (``DECLARATION-MISMATCH``
-#: refuses). Replayed over every stored row of that campaign's four case legs, it is
-#: the only verdict that moves. REPOINTED 2026-09-19 to ``_2026-09-19_components``,
-#: before that campaign ran; it released every leg (7.65 h) and cut the 327 / 597 board.
-#: REPOINTED 2026-09-20 to ``_2026-09-20_restrict``, before that campaign runs: the
-#: deposit repair this table brackets its source-seam pairs with (host NumPy here) now
-#: repairs only the component the source writes, bit-identical, so every bracketed row
-#: executes different bytes and the fleet and the route are re-run on them. The campaign
-#: runs its three long legs as concurrent lanes for the first time; the gate makes no
-#: timing claim, and each leg remains one process with its own policy and environment.
-#: REPOINTED 2026-09-27 to ``_2026-09-27_flip``, before that campaign runs: dispatch
-#: is on by default and held residency is this table's default, with the release at
-#: every freeze, the ``reset`` layer and the admission rung, so every leg executes
-#: different bytes and the fleet and the route are re-run on them.
-#: REPOINTED 2026-09-30 to ``_2026-09-30_091`` for release 0.9.1, whose certification
-#: round re-runs the fleet and the route on the released files.
-#: REPOINTED 2026-10-02 to ``_2026-10-02_arch3``, before that campaign runs: the
-#: 0.9.1 Metal round never ran, and this one is the first whose welds record the GPU
-#: architecture each ran on, which the route record requires every row to read
-#: certified. (``_2026-10-02_arch`` was abandoned during its fleet: its lift legs
-#: found no MEEP corpus. ``_2026-10-02_arch2`` was killed 40 gates in, every one
-#: released, when the shell that started it exited.)
-#: REPOINTED 2026-10-05 to ``_2026-10-05_perarch``, before that campaign runs: the
-#: admission reads the per-architecture run records and the route record keeps one
-#: run per GPU architecture, so this file moved and the route is re-run on it. THE
-#: CONSTANT IS NOW THE STAMP, not the directory: each architecture's campaign writes
-#: its legs under ``results/<metal_runs.route_campaign(this, architecture)>/``
-#: (``dispatch_metal_route_2026-10-05_perarch_applegpu_g13s``), the way the NVIDIA
-#: constants name ``<stamp>_cc86``, so a second Mac drives the same release on the
-#: same bytes without editing this line.
-METAL_DRIVER_ROUTE_GATE = "dispatch_metal_route_2026-10-05_perarch"
-
-#: The four expansion-probe families, as ``(plan_step keyword, module)``. Each
-#: module owns its own ``PROBE_PATH_ENVIRONMENT`` and ``load_expansion_probe``; the
-#: four are SEPARATE because the four families require different pattern sets and
-#: one shared artifact would let a record that classified five orientations licence
-#: a kernel that performs seven (``metal_kernels/launch.plan_step``).
-PROBE_FAMILIES: Tuple[Tuple[str, str], ...] = (
-    ("complex_probe", "complex_fields"),
-    ("beta_probe", "special_kz"),
-    ("folded_complex_probe", "folded_complex"),
-    ("cylindrical_complex_probe", "cylindrical_complex"),
-)
+#: WHERE THIS TABLE'S ROUTE RELEASE IS RECORDED, and what a run record and a refusal
+#: cite for it. The campaign driver (``parity/meep_gpu/run_metal_dispatch_campaign.sh``)
+#: writes one campaign per GPU architecture,
+#: ``results/dispatch_metal_route_<stamp>_<architecture>/``, and
+#: ``recut_driver_dispatch_record.py --backend metal`` refuses to cut the record unless
+#: the directory it reads is the one the stamp spells for the architecture its legs
+#: recorded; the run it cut is filed under that architecture, and this names the slot.
+#: The stamp is in ``meep_gpu/route_stamps.py`` (``route_stamps.route_gate("metal")``),
+#: with its history, and no dispatch module imports it (``fastpath.ROUTE_RECORD`` says
+#: why): every Metal gate records this file, so a stamp kept here moved them all.
+METAL_ROUTE_RECORD = ("the Metal route campaign recorded in "
+                      "metal_kernels/fingerprints.json at driver_dispatch.runs"
+                      "[<GPU architecture>].released_fused_arms.gate")
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +244,7 @@ def cited_environments(ledger: Optional[Mapping[str, Any]] = None,
     the per-architecture records replaced, which is not read both ways). Such a weld
     recorded nothing this ladder can judge: every verdict it takes part in is
     ``None``, so by default the plan dispatches with ``certified: None`` and prints no
-    NOTE line, and only ``MEEP_GPU_ALLOW_UNCERTIFIED=0`` refuses it. What catches a
+    NOTE line, and only ``MEEP_GPU_HARDWARE=certified`` refuses it. What catches a
     ledger in that shape is the test suite
     (``test_the_shipped_ledger_cites_a_readable_entry_for_every_gate``), not the run;
     :func:`unresolved_certification_rows` refuses a row with no entry at all.
@@ -657,8 +580,9 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
     # (metal_tranche7_fused_pairs_2026-09-11_dispatch/gate.json) carries
     # families[<name>] for both — identity bit-identical, declared equivalences
     # passed, deposit repaired, passed: true. They waited one campaign only because
-    # their dispatch is licensed by the complex expansion probe, so their route rows
-    # are driven on the probe leg alone and refused by name on the shipped leg.
+    # their dispatch was then licensed by the complex expansion probe (since deleted),
+    # so their route rows were driven on the probe leg alone and refused by name on
+    # the shipped leg.
     "complex fused electric D/E pair": ("complex_fused_electric_pair",
                                         "metal_tranche7_fused_pairs_device_gate"),
     "folded complex fused D/E pair": ("folded_complex_fused_pair",
@@ -771,9 +695,9 @@ def fused_arm_constituents() -> Mapping[str, Tuple[str, ...]]:
 #: typed because the campaign has to be TOLD which (arm, case) pairs to drive, and
 #: ``recut_driver_dispatch_record.py --backend metal`` refuses to write the record
 #: unless the artifact shows every one of them actually driven. That is the ordering
-#: trap this file's :data:`METAL_DRIVER_ROUTE_GATE` names, and the mitigation is
-#: ``parity/meep_gpu/probe_metal_dispatch_dryrun.py``: the rows are typed only after
-#: a dry run has shown each case dispatching and byte-identical.
+#: trap the route stamp's history names (``meep_gpu/route_stamps.py``), and the
+#: mitigation is ``parity/meep_gpu/probe_metal_dispatch_dryrun.py``: the rows are
+#: typed only after a dry run has shown each case dispatching and byte-identical.
 #:
 #: ``pml_3d_diagonal`` IS A DISPATCH CASE ON THIS TABLE and not the envelope
 #: control, which is where the Metal and Triton gates deliberately differ: measured,
@@ -880,11 +804,10 @@ METAL_RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # release these two welds on, for exactly this reason, and they are new Metal
     # DRIVE cases here.
     "off-diagonal fused electric D/E pair": ("offdiag_magnetic_2d",),
-    # THE TWO COMPLEX NO-ABSORBER ARMS, measured last because they are probe-gated:
-    # without the expansion licence the composer refuses each half by name -- "no
-    # complex-multiply expansion probe artifact is available ... which arm the numpy
-    # reference takes is a measured platform fact and may not be guessed" -- so the
-    # first pass over these two cases read SELECTED-NOTHING and said so.
+    # THE TWO COMPLEX NO-ABSORBER ARMS, measured last because they were then
+    # probe-gated: without the expansion licence (since deleted) the composer refused
+    # each half by name, so the first pass over these two cases read
+    # SELECTED-NOTHING and said so.
     "complex no-PML off-diagonal fused electric D/E pair": ("complex_no_pml_offdiag",),
     # THE NO-ABSORBER STORED-E PAIR. Measured on the all-offered pass and then MISSED
     # from this table, which the confirming pass caught by name: with the arm unoffered
@@ -1043,15 +966,15 @@ METAL_FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
 #: off-diagonal grid would put True in the magnetic pair's; a 3-D folded complex
 #: off-diagonal grid would put 3 in the folded complex pair's. NONE OF THE THREE
 #: EXISTS ON THE ROUTE, and the first of them was attempted and could not be built:
-#: a folded cylinder over a Lorentzian pole is refused by the lift on this MEEP
-#: (``chi1inv`` is non-diagonal at a lattice point and stock MEEP 1.33.0 carries no
-#: ``fields.get_susceptibility_sigma``), and neither escape the refusal names
+#: a folded cylinder over a Lorentzian pole is refused by the lift on stock MEEP
+#: 1.33.0 (``chi1inv`` is non-diagonal at a lattice point, so the susceptibility
+#: sigma cannot be checked there), and neither escape the refusal names
 #: serves — ``eps_averaging=False`` deletes the off-diagonal rows the case exists to
 #: drive, and moving the dispersion onto an axis-aligned block beside a
-#: non-dispersive cylinder still refuses, because the check is not per-region. It
-#: needs a MEEP built with ``MEEP_SIGMA_PATCH=1``; measured 2026-09-13, and the one
-#: served instance behind it (``examples:absorbed_power_density.py``) stays refused
-#: by name until such a build exists on the campaign host.
+#: non-dispersive cylinder still refuses, because the check is not per-region.
+#: Measured 2026-09-13; the one served instance behind it
+#: (``examples:absorbed_power_density.py``) stays refused by name until the lift can
+#: read such a cell on stock MEEP.
 METAL_OFF_DIAGONAL_CORNERS: Mapping[str, Mapping[str, FrozenSet[Any]]] = {
     "fused magnetic B/H pair": {
         "dimensions": frozenset({2, 3}),
@@ -1500,8 +1423,8 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "collapse, lifted the same day to dimensions 3 on (1, 1, 275); complex_3d "
          "is a genuine 3-D block, lifted to dimensions 3 on (40, 40, 40). The "
          "Metal driver-route campaign this batch runs (the directory "
-         "METAL_DRIVER_ROUTE_GATE names) is what drives all three through the "
-         "seam"),
+         "route_stamps.route_gate('metal') names) is what drives all three through "
+         "the seam"),
         ("folded", None, "both cases are unfolded; the folded complex grid has its "
                          "own pair, released separately"),
         ("cylindrical", False, "no Dcyl case drove it"),
@@ -1902,6 +1825,8 @@ def environment_block(grid: Any, toolchain: Mapping[str, Any]) -> Dict[str, Any]
     Written only when the architecture was read, so an unread one still quotes no
     run and says why.
     """
+    from . import fastpath  # noqa: PLC0415
+
     architecture = toolchain.get("architecture")
     torch_version = toolchain.get("version")
     frontend = toolchain.get("metal_frontend")
@@ -1929,19 +1854,19 @@ def environment_block(grid: Any, toolchain: Mapping[str, Any]) -> Dict[str, Any]
         "fast_math": toolchain.get("fast_math"),
         "fast_math_certified": toolchain.get("fast_math") in (None, "0"),
         "recorded_environments": recorded_environments(),
-        "certified_only": certified_only(),
+        "certified_only": fastpath.hardware_scope() == fastpath.HARDWARE_CERTIFIED,
     }
 
 
 #: WHY AN UNCERTIFIED METAL ENVIRONMENT RAN, in the words the run's NOTE line uses.
 #: The Metal table runs by default on an environment the cited welds did not record,
-#: and says so; ``fastpath.UNCERTIFIED_SWITCH=0`` restricts it to certified ones. On
-#: an Apple GPU the reason is that every Apple GPU is SUPPORTED: the kernels are
-#: meant to run there and only have not been measured there.
-SUPPORTED_BECAUSE = ("this Apple GPU is supported, and {switch}=0 would restrict the "
-                     "Metal kernels to certified environments")
+#: and says so; the ``certified`` scope (``fastpath.HARDWARE_SWITCH``) restricts it to
+#: certified ones. On an Apple GPU the reason is that every Apple GPU is SUPPORTED:
+#: the kernels are meant to run there and only have not been measured there.
+SUPPORTED_BECAUSE = ("this Apple GPU is supported, and {switch}=certified would "
+                     "restrict the Metal kernels to certified environments")
 UNCERTIFIED_BECAUSE = ("the Metal table runs on environments outside the certified "
-                       "set unless {switch}=0")
+                       "set unless {switch}=certified")
 
 
 def device_supported(toolchain: Mapping[str, Any]) -> Optional[bool]:
@@ -1961,18 +1886,6 @@ def device_supported(toolchain: Mapping[str, Any]) -> Optional[bool]:
     if name:
         return str(name).startswith("Apple ")
     return None
-
-
-def certified_only() -> bool:
-    """Does this run restrict the Metal kernels to certified environments? Never raises.
-
-    ``True`` for ``fastpath.UNCERTIFIED_SWITCH=0`` only. Unset and ``1`` both run an
-    uncertified environment, recorded as uncertified; any other value is refused by
-    name at rung 3b before this is asked.
-    """
-    from . import fastpath  # noqa: PLC0415
-
-    return os.environ.get(fastpath.UNCERTIFIED_SWITCH) == "0"
 
 
 # ---------------------------------------------------------------------------
@@ -2532,95 +2445,25 @@ def _held_admission(residency: Any, fields: Any, synced: Sequence[str],
 # ---------------------------------------------------------------------------
 
 @contextmanager
-def _composition_window(drops: Sequence[Tuple[str, str, Sequence[str]]]
-                        ) -> Iterator[Dict[str, Any]]:
-    """Declare this dispatch's policy, and stand its probe refusals up, for the composition.
+def _composition_window() -> Iterator[None]:
+    """Declare this dispatch's subnormal policy for the composition.
 
-    TWO FACTS THE RUNGS BELOW CANNOT READ FOR THEMSELVES, and the Triton window
-    exists for the same two.
+    Rung 8bM installs :data:`SUBNORMAL_POLICY` and refuses any process that installed
+    anything else, so which arithmetic this dispatch will use is a fact it already
+    owns — but it is not INSTALLED yet at the composer rung, and nothing under
+    ``plan_step`` can read an intention. On this table the declaration is not a
+    nicety: ``metal_kernels.subnormal.mps_policy_reasons`` gates the whole Metal
+    backend clause, and this arm64 host's own resolution is ``keep``, so WITHOUT the
+    declaration the composer selects NOTHING on any case — measured on all fourteen
+    driver-route cases, every reason being that one.
 
-    THE POLICY. Rung 8bM installs :data:`SUBNORMAL_POLICY` and refuses any process
-    that installed anything else, so which arithmetic this dispatch will use is a
-    fact it already owns — but it is not INSTALLED yet at the composer rung, and
-    nothing under ``plan_step`` can read an intention. On this table the
-    declaration is not a nicety: ``metal_kernels.subnormal.mps_policy_reasons``
-    gates the whole Metal backend clause, and this arm64 host's own resolution is
-    ``keep``, so WITHOUT the declaration the composer selects NOTHING on any case —
-    measured on all fourteen driver-route cases, every reason being that one.
-
-    THE REFUSALS. A probe artifact that is not RELEASED is dropped as a refusal
-    VALUE rather than as ``None``, and the refusal is also recorded against that
-    family's own environment variable for the duration. Refusal and absence deserve
-    opposite outcomes: nothing offered may fall back to the environment, something
-    offered and refused may not — and the rung that broke that invariant on the
-    Triton track was one that read the variable rather than the argument.
-
-    Restored on the way out, exception included, so neither fact leaks into
-    unrelated later work in this process.
+    Restored on the way out, exception included, so the declaration does not leak
+    into unrelated later work in this process.
     """
-    from .expansion_refusal import (  # noqa: PLC0415
-        declaring_run_policy, refusing_expansion_probe)
+    from .metal_kernels.subnormal import declaring_dispatch_policy  # noqa: PLC0415
 
-    with ExitStack() as scope:
-        scope.enter_context(declaring_run_policy(certification_policy()))
-        refusals: Dict[str, Any] = {}
-        for keyword, env, reasons in drops:
-            refusals[keyword] = scope.enter_context(
-                refusing_expansion_probe(env, tuple(reasons)))
-        yield refusals
-
-
-def _load_probes(record: Dict[str, Any]) -> Tuple[Dict[str, Any],
-                                                  List[Tuple[str, str, List[str]]]]:
-    """Rung 4cM: the four expansion licences, read and judged. Never raises.
-
-    Returns ``(probes handed to the composer, the drops the window must stand up)``.
-    A probe that is ABSENT stays ``None`` — the composer's own by-name refusal then
-    reports which family could not bind its multiply arm, which is the array path
-    for that family and no change at all for a run with no complex storage.
-    """
-    probes: Dict[str, Any] = {keyword: None for keyword, _ in PROBE_FAMILIES}
-    drops: List[Tuple[str, str, List[str]]] = []
-    block: Dict[str, Any] = {}
-    for keyword, module_name in PROBE_FAMILIES:
-        entry: Dict[str, Any] = {}
-        try:
-            module = importlib.import_module(
-                f".metal_kernels.{module_name}", __package__)
-            env = module.PROBE_PATH_ENVIRONMENT
-            entry["variable"] = env
-            entry["path"] = os.environ.get(env)
-            artifact = module.load_expansion_probe()
-        except Exception as exc:  # noqa: BLE001 - an unreadable licence is a refusal
-            entry["error"] = repr(exc)
-            entry["state"] = "unreadable"
-            block[module_name] = entry
-            continue
-        if artifact is None:
-            entry["state"] = "absent" if not entry.get("path") else "unreadable"
-            block[module_name] = entry
-            continue
-        release = artifact.get("release") if isinstance(artifact, Mapping) else None
-        released = isinstance(release, Mapping) and release.get("released") is True
-        entry["release"] = None if release is None else dict(release)
-        if released:
-            entry["state"] = "released"
-            probes[keyword] = artifact
-        else:
-            # DROPPED, NOT IGNORED. An expansion artifact whose own runner did not
-            # release it has no licence to bind a multiply arm, and handing back
-            # ``None`` would let the rung below re-read the same file off the
-            # environment and consume it anyway.
-            reasons = [
-                f"the expansion probe at {entry.get('path')!r} carries no released "
-                f"verdict (release={entry['release']!r}); a licence its own gate "
-                f"runner did not release cannot bind an expansion arm"]
-            entry["state"] = "dropped"
-            entry["dropped_because"] = reasons
-            drops.append((keyword, entry["variable"], reasons))
-        block[module_name] = entry
-    record.setdefault("environment", {})["metal_expansion_probes"] = block
-    return probes, drops
+    with declaring_dispatch_policy(certification_policy()):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -2628,7 +2471,7 @@ def _load_probes(record: Dict[str, Any]) -> Tuple[Dict[str, Any],
 # ---------------------------------------------------------------------------
 
 def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
-           sources: Any, xp: Any, finish: Any) -> Any:
+           sources: Any, xp: Any, finish: Any, chunk_layout: Any = None) -> Any:
     """Rungs 4M-9M: whether Metal kernels may serve this frozen configuration.
 
     Reached from ``fastpath._decide``'s backend rung once
@@ -2646,6 +2489,9 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
     composition block, the record). It is passed rather than imported so the two
     ladders cannot drift on it, and so a probe can drive this ladder with its own
     tail.
+
+    ``chunk_layout`` is the driver's chunk division (``FdtdDriver.chunk_layout``);
+    ``None`` is the one-rank division of ``grid`` and ``pml``. Rung 4bM reads it.
     """
     from . import fastpath  # noqa: PLC0415
 
@@ -2698,17 +2544,20 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
     # the welds contradict is recorded under ``uncertified.admitted`` (copied to
     # ``uncertified.served`` when the table serves), so the record says
     # ``certified: False`` and the run prints one NOTE line naming it.
-    # ``certified_only()`` (``UNCERTIFIED_SWITCH=0``) refuses instead, and refuses a
-    # fact it could not judge as well: a run restricted to certified environments
-    # does not run on one it cannot identify.
+    # The ``certified`` scope (``fastpath.hardware_scope()``) refuses instead, and
+    # refuses a fact it could not judge as well: a run restricted to certified
+    # environments does not run on one it cannot identify. ``supported`` (the
+    # default) and ``any`` both run an uncertified environment, a GPU that is not
+    # Apple's included (recorded ``device_supported: False``): this table refuses
+    # nothing for being unsupported.
     architecture = toolchain.get("architecture")
     # THE NUMBER OF CITED WELDS, not the sum of the rows: a weld with runs for two
     # architectures is one row per architecture.
     cited = len(cited_environments())
-    strict = certified_only()
-    switch = fastpath.UNCERTIFIED_SWITCH
+    strict = fastpath.hardware_scope() == fastpath.HARDWARE_CERTIFIED
+    switch = fastpath.HARDWARE_SWITCH
     # WHETHER THIS TABLE MAY RUN AN UNCERTIFIED ENVIRONMENT, as the record's switch
-    # block states it for the NVIDIA tables (``1`` only); here, anything but ``0``.
+    # block states it for the NVIDIA tables; here, every scope but ``certified``.
     record.setdefault("uncertified", {})["allowed"] = not strict
     for fact, what, verdict_key, read in (
             ("architecture", "GPU architecture", "device_certified",
@@ -2733,8 +2582,8 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
                          f"{what} {read} is not the one every Metal weld this table "
                          f"cites ran on (certified: {values or 'none'})")
                 fastpath._refuse(record,  # noqa: SLF001
-                                 f"{cause}; {switch}=0 restricts the Metal kernels to "
-                                 "certified environments")
+                                 f"{cause}; {switch}=certified restricts the Metal "
+                                 "kernels to certified environments")
                 return None
             because = (SUPPORTED_BECAUSE if environment.get("device_supported")
                        else UNCERTIFIED_BECAUSE)
@@ -2756,9 +2605,9 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
                             f"Metal welds this table cites record no {what} in a live "
                             f"run for {architecture or 'this GPU architecture'}"))
             fastpath._refuse(record,  # noqa: SLF001
-                             f"{cause}; {switch}=0 restricts the Metal kernels to "
-                             "certified environments, and an environment that cannot "
-                             "be judged is not one")
+                             f"{cause}; {switch}=certified restricts the Metal "
+                             "kernels to certified environments, and an environment "
+                             "that cannot be judged is not one")
             return None
 
     record["subnormal"] = fastpath._subnormal_block()  # noqa: SLF001
@@ -2769,9 +2618,18 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
     record["subnormal"]["governed_executors"] = list(GOVERNED_EXECUTORS)
     record["run_shape"] = fastpath._run_shape(fields, pml, grid)  # noqa: SLF001
 
-    # (4cM) THE EXPANSION LICENCES, before the composer consumes them and four
-    # rungs before rung 8bM installs anything.
-    probes, drops = _load_probes(record)
+    # (4bM) THE CHUNK DIVISION. MEEP selects every cell's PML form per structure
+    # chunk, and the Metal kernels read the division through one per-axis record.
+    # A division that record cannot describe (not separable, or more than two runs
+    # on a line) refuses the whole table by name here, before the composer, and the
+    # array path steps it on its mask route. The composer re-derives the same
+    # verdict from the same layout (``launch.chunk_division``), so a direct caller of
+    # ``plan_step`` is refused the same way.
+    layout, chunk_words, division = launch.chunk_division(fields, pml, chunk_layout)
+    record["chunk_division"] = _chunk_division_block(layout, chunk_words, division)
+    if division:
+        fastpath._refuse(record, "; ".join(division))  # noqa: SLF001
+        return None
 
     # (5M) THE COMPOSER. Never raises and never returns None; a configuration
     # nothing covers is a plan that replaces nothing, which is the array path.
@@ -2781,7 +2639,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
     released = released_fused_arms_metal(record["run_shape"])
     admitted = () if vetoed else tuple(sorted(set(opted_in) | set(released)))
     fusion = record.setdefault("fusion", {})
-    fusion["driver_route_gate"] = METAL_DRIVER_ROUTE_GATE
+    fusion["driver_route_gate"] = METAL_ROUTE_RECORD
     fusion["released_by_the_gate"] = sorted(METAL_RELEASED_FUSED_ARMS)
     fusion["released_here"] = list(released)
     fusion["admitted"] = list(admitted)
@@ -2796,8 +2654,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
     # composition binds is registered against this object, and the bracket
     # installed below is what keeps the HOST authoritative between launches.
     residency = device.Residency()
-    with _composition_window(drops) as refusals:
-        probes.update(refusals)
+    with _composition_window():
         # THE TWO-PASS SCOUT, AND THE SECOND PASS IS NOT REDUNDANT. The residency
         # verdict needs the SYNCED set — which array-path passes this caller
         # brackets with an explicit sync — and that cannot be known until the
@@ -2813,7 +2670,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
         # report a composition weaker than the one it executed.
         scout = launch.plan_step(fields, pml, residency=device.Residency(),
                                  sources=sources, fuse=bool(admitted),
-                                 fuse_labels=admitted, **probes)
+                                 fuse_labels=admitted, chunk_layout=layout)
         covered = set()
         for slot, product in scout.plans.items():
             covered.add(slot)
@@ -2824,7 +2681,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
         step_plan = launch.plan_step(fields, pml, residency=residency,
                                      sources=sources, synced=synced,
                                      fuse=bool(admitted), fuse_labels=admitted,
-                                     **probes)
+                                     chunk_layout=layout)
     selected = dict(getattr(step_plan, "selected", {}) or {})
     filled = set(getattr(step_plan, "plans", {}) or {})
     record["composition_inputs"] = {"live": list(live), "synced": list(synced),
@@ -2847,7 +2704,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
     if ungated:
         fastpath._record_slots(record, step_plan, (), {}, {})  # noqa: SLF001
         outside = [arm for arm in ungated if arm in METAL_RELEASED_FUSED_ARMS]
-        detail = (f"released by {METAL_DRIVER_ROUTE_GATE}: "
+        detail = (f"released by {METAL_ROUTE_RECORD}: "
                   f"{', '.join(sorted(METAL_RELEASED_FUSED_ARMS))}")
         if outside and envelope_reasons:
             detail += (f" — but {', '.join(outside)} is released only for the "
@@ -3080,6 +2937,22 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
 # ---------------------------------------------------------------------------
 # Self-checks the tests and the board read
 # ---------------------------------------------------------------------------
+
+def _chunk_division_block(layout: Any, chunk_words: Any,
+                          division: Sequence[str]) -> Dict[str, Any]:
+    """The dispatch record's ``chunk_division`` block: what rung 4bM read and decided."""
+    from .metal_kernels import chunk_bounds  # noqa: PLC0415
+
+    block: Dict[str, Any] = {
+        "source": getattr(layout, "source", None),
+        "chunks": len(getattr(layout, "boxes", ()) or ()),
+        "refused": list(division),
+    }
+    if chunk_words is not None:
+        block["record"] = [int(word) for word in chunk_words]
+        block.update(chunk_bounds.describe(chunk_words))
+    return block
+
 
 def unresolved_certification_rows() -> Tuple[str, ...]:
     """Rows of :data:`ARM_CERTIFICATION` whose gate key resolves to nothing.

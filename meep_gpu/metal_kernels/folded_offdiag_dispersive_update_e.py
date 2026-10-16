@@ -1,19 +1,51 @@
 """Metal ``update_E`` for the fold + tensor-row + dispersion intersection.
 
+**THE ROW IS MEEP'S DOUBLE ROW, IN SOFTWARE BINARY64 (ruling R7).** The source term
+is the off-diagonal row ``gs*us + OFFDIAG(...) + OFFDIAG(...)`` over the ``D - P0 -
+P1 ...`` volumes, which the array path forms in float64 and rounds once
+(``stepping._offdiagonal_terms``, ``_rounded_row``). The kernel forms it as the
+off-diagonal single does, statement for statement and through the same emitter
+(:func:`.offdiag_update_e._row_assembly`, :mod:`.softfp64` with ``fz = true``):
+``gs*us`` in float32, widened; per live term its float32 pair sum ``(near*u[i]) +
+(far*u[i+s])`` over the ordered ``D - P`` gathers, wall-masked, scaled by MEEP's
+double ``0.25`` and added left to right where the cell's chunk keeps the term; one
+rounding to float32. A component with no live row keeps the float32 ``gs*us``.
+
+**PRESENCE IS PER CHUNK (KERNELS.md §2).** The six 27-bit presence words
+(``OffdiagPresence kw``) ride in ``Params`` before the chunk record and are read by
+the single's own block (:func:`.offdiag_update_e.presence_block`, on the folded
+codes); the host builds them from the array path's presence
+(:func:`.offdiag_update_e.presence_for`) and the predicate refuses by name a
+division the record cannot carry them on.
+
+**THE PML TAIL IS THE ARRAY PATH'S PER-CHUNK SELECT.** The chunk record rides in the
+kernel's ``Params`` (``ChunkBounds cb``, :func:`.chunk_bounds.params_alias`), and the
+tail is the base constitutive kernel's own, character for character: on a cell whose
+chunk carries the component's own (``dsigw``) layer ``prev`` is read before ``f_w``
+is written and ``E = E + ((kps*src) - (kms*prev))``; everywhere else ``E = src`` and
+``f_w`` is neither read nor written (``stepping._apply_constitutive_regions``). The
+membership locals and their bounds block are the E side's
+(``shaders.constitutive_bounds_block("E")``,
+``shaders.constitutive_membership_flags("E")``), the predicate the base kernel reads.
+
+THE SCALARS MOVE INTO ``Params``. The shader binds 27 volumes; the four scalars
+(``nx``, ``ny``, ``nz``, ``n_elem``), the presence words and the chunk record ride in
+one ``constant Params&`` (:data:`BINDING_COUNT` 28 of
+:data:`.device.MAX_BUFFER_BINDINGS` 31), so neither costs a binding.
+
 The tensor row gathers each partner component at four Yee addresses.  With a
-susceptibility, *every one* of those gathers is ``D - P0 - P1 - …`` in registered
+susceptibility, *every one* of those gathers is ``D - P0 - P1 - ...`` in registered
 order; composing the folded tensor shader with the pointwise dispersive shader
-would therefore be wrong.  Metal exposes at most 31 bindings, while three groups
-of eight live pole volumes would exceed that limit.  The plan keeps three persistent
-``MAX_POLES × n_elem`` pole packs, one per D component, and the fused shader reads
-each pack by lane.  This preserves the ordered arithmetic and keeps the signature
-at the platform limit (31) without materialising ``D - sum(P)`` volumes.
+would therefore be wrong.  Three groups of eight live pole volumes would exceed the
+binding ceiling, so the plan keeps three persistent ``MAX_POLES x n_elem`` pole
+packs, one per D component, and the fused shader reads each pack by lane.  This
+preserves the ordered arithmetic without materialising ``D - sum(P)`` volumes.
 
 The pack refresh has two modes.  The standalone gate has no ADE plan, so it stages
 the initial NumPy pole arrays.  In a composed step, the ADE plan has already
 registered and then rotated the physical P mirrors; each pack lane copies directly
-from that live MPS mirror, without pulling stale P data through NumPy.  The latter
-is separately whole-step gated; neither mode enables production driver dispatch.
+from that live MPS mirror, without pulling stale P data through NumPy.  Neither mode
+enables production driver dispatch.
 """
 
 from __future__ import annotations
@@ -34,6 +66,7 @@ from ..triton_kernels.coverage import (
     _volume_reasons,
 )
 from . import arms, shaders, templates
+from . import chunk_bounds as _chunk_bounds
 from . import folded_offdiag_update_e as _folded
 from . import offdiag_update_e as _offdiag
 from . import symmetry as _symmetry
@@ -46,10 +79,16 @@ LABEL = "folded off-diagonal dispersive PML E"
 MAX_POLES = 8
 E_TERMS = _offdiag.E_TERMS
 ROW_SLOTS = _offdiag.ROW_SLOTS
-BINDING_COUNT = 31
 
-if BINDING_COUNT != MAX_BUFFER_BINDINGS:  # pragma: no cover - platform invariant
-    raise RuntimeError("the packed-pole signature must consume the measured limit")
+#: Buffer bindings the shader declares: 27 volumes and one ``Params`` carrying the
+#: four scalars, the presence words and the chunk record.
+BINDING_COUNT = 28
+
+#: The ``Params`` binding index: last, after the 27 volumes.
+PARAMS_BUFFER = 27
+
+if BINDING_COUNT > MAX_BUFFER_BINDINGS:  # pragma: no cover - platform invariant
+    raise RuntimeError("the packed-pole signature exceeds the measured binding limit")
 
 __all__ = [
     "BINDING_COUNT",
@@ -57,8 +96,11 @@ __all__ = [
     "LABEL",
     "MAX_POLES",
     "MetalFoldedOffdiagDispersivePlan",
+    "PARAMS_BUFFER",
     "folded_offdiag_dispersive_coverage",
     "folded_offdiag_dispersive_source",
+    "params_record_dtype",
+    "params_words",
     "plan_folded_offdiag_dispersive",
     "register_arms",
 ]
@@ -68,6 +110,17 @@ _TEMPLATE = r"""
 #include <metal_stdlib>
 using namespace metal;
 __CONTRACT__
+__SOFTFP64__
+__RECORD_STRUCT__
+__PRESENCE_STRUCT__
+struct Params {
+    uint nx;
+    uint ny;
+    uint nz;
+    uint n_elem;
+__PRESENCE_MEMBER__
+__RECORD_MEMBER__
+};
 __POLE_HELPERS__
 kernel void folded_offdiag_dispersive_step(
     device float* f0 [[buffer(0)]], device float* f1 [[buffer(1)]],
@@ -83,12 +136,24 @@ kernel void folded_offdiag_dispersive_step(
     device const float* u22 [[buffer(20)]], device const float* kp0 [[buffer(21)]],
     device const float* km0 [[buffer(22)]], device const float* kp1 [[buffer(23)]],
     device const float* km1 [[buffer(24)]], device const float* kp2 [[buffer(25)]],
-    device const float* km2 [[buffer(26)]], constant uint& nx [[buffer(27)]],
-    constant uint& ny [[buffer(28)]], constant uint& nz [[buffer(29)]],
-    constant uint& n_elem [[buffer(30)]], uint idx [[thread_position_in_grid]])
+    device const float* km2 [[buffer(26)]], constant Params& prm [[buffer(27)]],
+    uint idx [[thread_position_in_grid]])
 {
+    // The scalars live in ONE binding; copying them back into the names the
+    // certified emitters use lets GUARD and the decode below be their own text.
+    uint nx = prm.nx;
+    uint ny = prm.ny;
+    uint nz = prm.nz;
+    uint n_elem = prm.n_elem;
+__RECORD_ALIAS__
+__PRESENCE_ALIAS__
 __GUARD__
 __DECODE__
+
+    // --- the chunk record: each component's own-axis membership at this cell -----
+__BOUNDS__
+
+__PRESENCE__
     int di = i - 1, dj = j - 1, dk = k - 1;
     int ui = i + 1, uj = j + 1, uk = k + 1;
     bool dvx = true, dvy = true, dvz = true;
@@ -100,20 +165,72 @@ __GHOST_Z__
     float kp_0 = kp0[i], km_0 = km0[i];
     float kp_1 = kp1[j], km_1 = km1[j];
     float kp_2 = kp2[k], km_2 = km2[k];
-    float prev0 = w0[ii];
+    const bool dw0 = __DW0__, dw1 = __DW1__, dw2 = __DW2__;
+
+    // The PML tail is the base constitutive kernel's per-chunk select
+    // (stepping._apply_constitutive_regions): on a dsigw cell `prev` is read BEFORE
+    // `fw` is written and the right-hand side is formed first, f + ((kps*src) -
+    // (kms*prev)) (step_generic.cpp:689, :697); elsewhere the word is src itself and
+    // fw is not touched.
+    float prev0 = dw0 ? w0[ii] : 0.0f;
 __SRC0__
-    w0[ii] = src0;
-    float a0 = f0[ii]; a0 = a0 + kp_0 * src0; a0 = a0 - km_0 * prev0; f0[ii] = a0;
-    float prev1 = w1[ii];
+    if (dw0) { w0[ii] = src0; }
+    float a0 = src0;
+    if (dw0) { a0 = f0[ii] + ((kp_0 * src0) - (km_0 * prev0)); }
+    f0[ii] = a0;
+
+    float prev1 = dw1 ? w1[ii] : 0.0f;
 __SRC1__
-    w1[ii] = src1;
-    float a1 = f1[ii]; a1 = a1 + kp_1 * src1; a1 = a1 - km_1 * prev1; f1[ii] = a1;
-    float prev2 = w2[ii];
+    if (dw1) { w1[ii] = src1; }
+    float a1 = src1;
+    if (dw1) { a1 = f1[ii] + ((kp_1 * src1) - (km_1 * prev1)); }
+    f1[ii] = a1;
+
+    float prev2 = dw2 ? w2[ii] : 0.0f;
 __SRC2__
-    w2[ii] = src2;
-    float a2 = f2[ii]; a2 = a2 + kp_2 * src2; a2 = a2 - km_2 * prev2; f2[ii] = a2;
+    if (dw2) { w2[ii] = src2; }
+    float a2 = src2;
+    if (dw2) { a2 = f2[ii] + ((kp_2 * src2) - (km_2 * prev2)); }
+    f2[ii] = a2;
 }
 """
+
+
+def params_record_dtype() -> np.dtype:
+    """``Params``: four ``uint`` scalars, the presence words (``OffdiagPresence kw``),
+    then the chunk record (``ChunkBounds cb``).
+
+    Every member is a 4-byte word, so the six presence words sit at byte 16, the
+    record 4-aligned at byte 40 with no padding, and the struct is ``40 + 100`` bytes.
+    The presence precedes the record as it does in the off-diagonal welds' ``Params``.
+    """
+    record = _chunk_bounds.record_dtype()
+    presence = _offdiag.presence_record_dtype()
+    names = ["nx", "ny", "nz", "n_elem", "kw", "cb"]
+    formats: List[Any] = ["<u4", "<u4", "<u4", "<u4", presence, record]
+    offsets = [0, 4, 8, 12, 16, 16 + presence.itemsize]
+    return np.dtype({"names": names, "formats": formats, "offsets": offsets,
+                     "itemsize": 16 + presence.itemsize + record.itemsize})
+
+
+def params_words(shape: Sequence[int], chunk_bounds: Any,
+                 presence: Any) -> np.ndarray:
+    """The packed ``Params`` as ``int32`` words, the record checked against ``shape``.
+
+    Refused by name: a missing record or one that disagrees with the shape
+    (:func:`.chunk_bounds.plan_words`), and missing or malformed presence words
+    (:func:`.offdiag_update_e.presence_plan_words`). Both are required, with no
+    default.
+    """
+    checked = _chunk_bounds.plan_words(chunk_bounds, shape, f"{FAMILY} Params")
+    words = _offdiag.presence_plan_words(presence, f"{FAMILY} Params")
+    record = np.zeros(1, dtype=params_record_dtype())
+    nx, ny, nz = (int(n) for n in shape)
+    record["nx"], record["ny"], record["nz"] = nx, ny, nz
+    record["n_elem"] = nx * ny * nz
+    record["kw"] = tuple(words)
+    record["cb"] = _chunk_bounds.pack(checked)
+    return np.frombuffer(record.tobytes(), dtype=np.int32).copy()
 
 
 def _pole_helpers(counts: Sequence[int]) -> str:
@@ -153,18 +270,28 @@ def _term(component: int, partner_axis: int, coefficient: str, tag: str,
         f"+ {corner_sign};",
         f"    float unear_{tag} = {coefficient}[ii];",
         f"    float ufar_{tag} = {own_up_valid} ? {coefficient}[{up}] : 0.0f;",
-        f"    float term_{tag} = 0.25f * ((near_{tag} * unear_{tag}) "
-        f"+ (far_{tag} * ufar_{tag}));"))
+        f"    float sum_{tag} = (near_{tag} * unear_{tag}) "
+        f"+ (far_{tag} * ufar_{tag});"))
 
 
 def _component_source(component: int, row_mask: Sequence[int],
                       walls: Sequence[int], negate: Sequence[int]) -> str:
+    """One component's ``src{c}``: the float32 diagonal, or the double row.
+
+    ``gs`` is the ordered ``D - P0 - P1 ...`` gather at the cell (``dmp{c}``, the
+    array path's ``displacement_minus_polarization_volumes`` order) and ``us`` its
+    inverse epsilon. A live arm forms each term's float32 pair sum (:func:`_term`)
+    and the double row with the off-diagonal single's own emitter
+    (:func:`.offdiag_update_e._row_assembly`: the per-term wall masks, the kept
+    terms added left to right, one rounding), so the row text is that family's.
+    """
     gs = f"dmp{component}(g{component}, p{component}, ii, n_elem)"
     us = f"e{component}[ii]"
     live = [offset for offset in (0, 1) if row_mask[2 * component + offset]]
     if not live:
         return f"    float src{component} = {gs} * {us};"
-    lines = []
+    lines = [f"    float gs{component} = {gs};",
+             f"    float us{component} = {us};"]
     tags = []
     for offset in live:
         tag = f"{component}{offset}"
@@ -172,11 +299,7 @@ def _component_source(component: int, row_mask: Sequence[int],
                            _offdiag._ROW_BUFFERS[2 * component + offset], tag,
                            negate))
         tags.append(tag)
-    lines.append(f"    float total{component} = term_{tags[0]};")
-    for tag in tags[1:]:
-        lines.append(f"    total{component} = total{component} + term_{tag};")
-    lines.append(_offdiag._wall_mask(component, walls))
-    lines.append(f"    float src{component} = ({gs} * {us}) + total{component};")
+    lines.append(_offdiag._row_assembly(component, tags, walls))
     return "\n".join(lines)
 
 
@@ -194,9 +317,18 @@ def folded_offdiag_dispersive_source(row_mask: Sequence[int], codes: Sequence[in
         raise ValueError(f"counts must be three values in [0, {MAX_POLES}]")
     if not any(counts):
         raise ValueError("a dispersive intersection requires at least one live pole")
+    flags = shaders.constitutive_membership_flags("E")
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
-        "__POLE_HELPERS__": _pole_helpers(counts), "__GUARD__": templates.GUARD,
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__POLE_HELPERS__": _pole_helpers(counts),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
+        **_offdiag.weld_presence_substitutions(),
+        "__PRESENCE__": _offdiag.presence_block(row_mask, codes),
+        "__GUARD__": templates.GUARD,
+        "__BOUNDS__": shaders.constitutive_bounds_block("E"),
+        "__DW0__": flags[0], "__DW1__": flags[1], "__DW2__": flags[2],
         "__DECODE__": """    int nxi = int(nx), nyi = int(ny), nzi = int(nz);
     int nyz = nyi * nzi;
     int ii = int(idx);
@@ -264,11 +396,22 @@ def _pole_reasons(fields: Any, shape: Sequence[int]) -> List[str]:
 
 
 def folded_offdiag_dispersive_coverage(fields: Any, pml: Any,
-                                        residency: Any = None) -> Coverage:
+                                        residency: Any = None,
+                                        chunk_bounds: Any = None) -> Coverage:
+    """May the folded tensor-row dispersive kernel step ``update_E`` for this pair?
+
+    The folded off-diagonal grid clauses, a fold, a registered susceptibility, a live
+    row slot, PML storage, stored E, the rows', the poles', the layout's, the inverse
+    epsilon's and the half-integer coefficient tables' clauses, and last, on an
+    otherwise admitted run, the per-chunk presence words
+    (:func:`.offdiag_update_e.presence_reasons` on the folded codes, through
+    ``chunk_bounds``, the record the composer binds; ``None`` derives it from
+    ``stepping._chunk_layout``).
+    """
     grid = getattr(fields, "grid", None)
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
-    _codes, reasons = _folded._folded_offdiag_grid_reasons(fields, pml, grid)
+    codes, reasons = _folded._folded_offdiag_grid_reasons(fields, pml, grid)
     reasons = list(reasons)
     reasons.extend(_residency_declaration_reasons(residency))
     reasons.extend(_susceptibility_reasons(fields))
@@ -296,20 +439,41 @@ def folded_offdiag_dispersive_coverage(fields: Any, pml: Any,
     reasons.extend(_inverse_epsilon_reasons(fields, shape))
     if pml is not None and bool(getattr(pml, "is_active", False)):
         reasons.extend(_coefficient_reasons(pml, shape, ("kps", "kms"), ("_h",)))
+    # (p) The per-chunk presence words, on the codes the kernel bakes, only on an
+    #     otherwise admitted run (the clause reads the rows and the division the
+    #     clauses above vet).
+    if not reasons and codes is not None:
+        reasons.extend(_offdiag.presence_reasons(fields, pml, codes, chunk_bounds))
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
 class MetalFoldedOffdiagDispersivePlan:
+    """One launch per step, the four scalars, the presence words and the chunk record
+    in ``Params``.
+
+    ``chunk_bounds`` is the host record the plan binds, checked against the stored
+    shape by :func:`.chunk_bounds.plan_words`, and ``presence`` the six words the rows
+    are added with (:func:`.offdiag_update_e.presence_plan_words`); both required, with
+    no default. The ``Params`` words are a plan-owned device tensor outside the
+    residency registry, as every fused pair's ``Params`` is.
+    """
+
     performs_device_work = True
     replaces_sub_steps = ("update_E",)
 
     def __init__(self, fields: Any, pml: Any, residency: Residency,
                  row_mask: Sequence[int], codes: Sequence[int], walls: Sequence[int],
                  negate: Sequence[int], poles: Mapping[str, Sequence[Any]],
-                 functions: Mapping[str, Any]) -> None:
+                 functions: Mapping[str, Any], *, chunk_bounds: Any,
+                 presence: Any) -> None:
         self.fields, self.pml, self.residency = fields, pml, residency
         self.shape = tuple(int(value) for value in fields.grid.shape)
         self.n_elem = int(np.prod(self.shape))
+        self.params_words = params_words(self.shape, chunk_bounds, presence)
+        self.chunk_bounds = _chunk_bounds.plan_words(chunk_bounds, self.shape,
+                                                     "MetalFoldedOffdiagDispersivePlan")
+        self.presence = _offdiag.presence_plan_words(
+            presence, "MetalFoldedOffdiagDispersivePlan")
         self.row_mask, self.codes = tuple(row_mask), tuple(codes)
         self.walls, self.negate = tuple(walls), tuple(negate)
         self._poles = {component: tuple(values) for component, values in poles.items()}
@@ -351,6 +515,10 @@ class MetalFoldedOffdiagDispersivePlan:
         for component, pack in self._packs.items():
             self._tensors[f"pack:{component}"] = residency.mirror(
                 f"folded_offdiag_dispersive:pack:{component}", pack)
+        import torch  # noqa: PLC0415
+
+        self._params = torch.from_numpy(self.params_words.copy()).to(
+            torch.device(str(getattr(residency, "device", "mps"))))
         self._functions = dict(functions)
         self.launches = self.runs = 0
         self.launches_per_run = 1
@@ -392,7 +560,7 @@ class MetalFoldedOffdiagDispersivePlan:
                  tensors["pack:Ex"], tensors["pack:Ey"], tensors["pack:Ez"],
                  *(tensors[f"row:{row}:{partner}"] for row, partner in ROW_SLOTS),
                  *(tensors[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kps", "kms")),
-                 *self.shape, self.n_elem)
+                 self._params)
         self.launches += 1
         self.runs += 1
 
@@ -401,13 +569,24 @@ def plan_folded_offdiag_dispersive(
         fields: Any, pml: Any, residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalFoldedOffdiagDispersivePlan]:
-    if not folded_offdiag_dispersive_coverage(fields, pml, residency).covered:
+    """Build the folded tensor-row dispersive plan, or return ``None``.
+
+    None means REFUSED, and the reasons come from
+    :func:`folded_offdiag_dispersive_coverage`. ``chunk_bounds`` is the record of the
+    division the run steps with (the composer's ``StepContext.chunk_bounds``) and has
+    no default; the presence words are built against it
+    (:func:`.offdiag_update_e.presence_for`, on the folded codes).
+    """
+    if not folded_offdiag_dispersive_coverage(fields, pml, residency,
+                                              chunk_bounds).covered:
         return None
     assert residency is not None and pml is not None
     codes, _reasons = _symmetry.folded_axis_kinds(fields.grid, pml)
     if codes is None:  # pragma: no cover - coverage already refuses
         return None
+    presence = _offdiag.presence_for(fields, pml, codes, chunk_bounds)
     weights = _folded.mirror_ghost_weights(fields.grid)
     walls = _offdiag.wall_mask_axes(fields.grid)
     negate = _folded.negated_axes(codes, weights)
@@ -421,7 +600,8 @@ def plan_folded_offdiag_dispersive(
     return MetalFoldedOffdiagDispersivePlan(
         fields, pml, residency,
         tuple(value is not None for value in _offdiag.row_volumes_for(fields)),
-        codes, walls, negate, poles, selected)
+        codes, walls, negate, poles, selected, chunk_bounds=chunk_bounds,
+        presence=presence)
 
 
 def _has_fold_rows_poles(context: Any) -> bool:
@@ -436,18 +616,21 @@ def _has_fold_rows_poles(context: Any) -> bool:
 
 def _arm_coverage(context: Any, slot: str) -> Coverage:
     return (folded_offdiag_dispersive_coverage(context.fields, context.pml,
-                                                context.residency)
+                                                context.residency,
+                                                getattr(context, "chunk_bounds", None))
             if slot == SLOT else Coverage(False, (f"folded tensor dispersion cannot fill {slot}",)))
 
 
 def _arm_plan(context: Any, slot: str) -> Optional[MetalFoldedOffdiagDispersivePlan]:
     return (plan_folded_offdiag_dispersive(context.fields, context.pml,
                                             context.residency,
-                                            context.contract_variants)
+                                            context.contract_variants,
+                                            chunk_bounds=context.chunk_bounds)
             if slot == SLOT else None)
 
 
 def register_arms() -> Tuple[Any, ...]:
+    # Wired: the row is the array path's double row (ruling R7, software binary64).
     return (arms.register(
         FAMILY, SLOT, LABEL, _arm_coverage, _arm_plan,
         prefix=f"{LABEL}: ", noun="folded tensor dispersive stored-E constitutive",

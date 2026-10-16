@@ -33,17 +33,37 @@ floor, which an explicit conda install never checks.
 This report judges packages only. MEEP itself, built from source on top of the
 lock, is not a package of it: ``tools/check_install.py --require-reference``
 imports it and also requires the version, precision and MPI build that
-``numerics-relevant.json`` names (``judge_meep`` below).
+``numerics-relevant.json`` names, and its libGDSII support when the facts carry it
+(``judge_meep`` below).
+
+Apart from the numerics-relevant packages, the report lists what only the MEEP
+identity corpus (Table 2) needs: the packages of ``numerics-relevant.json``'s
+``corpus_only`` (shapely, nlopt and imageio-ffmpeg, pinned in the pip lock; gdspy, held
+by the conda lock; the PyMieScatt stand-in, judged by its version and the bytes of its
+files) and the ``ffmpeg`` the reference ``PATH`` finds, held only when it is the
+imageio-ffmpeg wheel's executable, each held, absent or another build. None of them
+takes part in what MEEP or the GPU route computes, so none counts in the verdict:
+an environment without them is judged on its numerics exactly as one with them.
+
+``--require-pip-lock`` checks something else: that the PyPI packages installed in
+the environment (every distribution an installer other than conda put there) are
+exactly the pip lock's pins at their versions and the corpus stand-in with its
+files, none missing and none added. The build scripts run it after installing the
+pip lock and the stand-in, beside their artifact-for-artifact check of the conda
+part.
 
 The report is informational and the exit status is 0, unless
 ``--require-reference`` is given: then it is 0 only when the verdict is
-"matches", and 1 otherwise. It never raises: a failure to read anything becomes
-a line of the report. ``tools/check_install.py`` prints the same report as its
-section 7.
+"matches", and 1 otherwise; or ``--require-pip-lock``: then it is 1 unless the
+PyPI packages are exactly the pip lock's and the stand-in. It never raises: a
+failure to read anything becomes a line of the report. ``tools/check_install.py``
+prints the same report as its section 7.
 
 Options:
 
     --require-reference  exit 1 unless the environment matches the reference
+    --require-pip-lock   exit 1 unless the environment's PyPI packages are exactly
+                         the pip lock's and the corpus stand-in (use with --prefix)
     --prefix PATH        compare the conda environment at PATH instead of the
                          running interpreter's
     --platform NAME      compare against this platform's lock (osx-arm64,
@@ -58,10 +78,12 @@ from __future__ import annotations
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import platform
 import re
+import shutil
 import sys
 
 LOCK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -84,6 +106,11 @@ DIFFERENT = "different"
 MISSING = "missing"
 BY_DESIGN = "by design"
 UNREAD = "not read"
+
+#: Corpus-only statuses: reported apart, never part of the verdict.
+HELD = "held"
+ABSENT = "absent"
+OTHER = "another build"
 
 #: Verdict kinds.
 MATCHES = "matches"
@@ -183,6 +210,9 @@ def load_reference(platform_tag: str, lock_dir: str = LOCK_DIR) -> dict:
         raise LookupError(f"no certification reference lock for {platform_tag}; there "
                           f"are locks for {', '.join(sorted(platforms)) or 'no platform'}")
     spec = platforms[platform_tag]
+    if "host_tools" in (numerics.get("corpus_only") or {}):
+        raise ValueError("corpus_only.host_tools is retired: ffmpeg is the imageio-ffmpeg "
+                         "pin's executable, linked into <prefix>/bin (corpus_only.pypi, links)")
     conda_path = os.path.join(lock_dir, spec["conda_lock"])
     pip_path = os.path.join(lock_dir, spec["pip_lock"])
     with open(conda_path, encoding="utf-8") as handle:
@@ -190,7 +220,26 @@ def load_reference(platform_tag: str, lock_dir: str = LOCK_DIR) -> dict:
     with open(pip_path, encoding="utf-8") as handle:
         pip = parse_pip_lock(handle.read())
     return {"platform": platform_tag, "spec": spec, "conda": conda, "pip": pip,
-            "conda_lock": spec["conda_lock"], "pip_lock": spec["pip_lock"]}
+            "conda_lock": spec["conda_lock"], "pip_lock": spec["pip_lock"],
+            "corpus": numerics.get("corpus_only") or {}}
+
+
+def corpus_digests(reference: dict) -> dict:
+    """``{normalized name: [relative paths]}`` of the files the corpus stand-in is judged by."""
+    standin = (reference.get("corpus") or {}).get("standin") or {}
+    if not standin.get("name") or not standin.get("files"):
+        return {}
+    return {normalize(standin["name"]): sorted(standin["files"])}
+
+
+def corpus_links(reference: dict) -> dict:
+    """``{tool: (normalized distribution name, relative directory)}``: the programs the
+    corpus calls, each the executable a pinned corpus distribution installs."""
+    links = {}
+    for name, entry in ((reference.get("corpus") or {}).get("pypi") or {}).items():
+        for tool, directory in ((entry or {}).get("links") or {}).items():
+            links[tool] = (normalize(name), directory)
+    return links
 
 
 # --------------------------------------------------------------------------
@@ -238,12 +287,27 @@ def wheel_build_tag(text):
     return ""
 
 
-def read_distributions(paths=None) -> dict:
+def _file_sha256(path) -> str | None:
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(block)
+        return digest.hexdigest()
+    except (OSError, TypeError, ValueError):
+        return None
+
+
+def read_distributions(paths=None, digests=None, locate=None) -> dict:
     """``{normalized name: {name, version, installer, build_tag}}`` of the installed
     distributions.
 
     ``paths`` is a list of directories; None means this interpreter's ``sys.path``.
     The first distribution of a name wins, as the first one on the path is imported.
+    ``digests`` maps a normalized name to relative paths: those distributions also
+    carry ``files_sha256``, the SHA-256 of each file (None when it cannot be read).
+    ``locate`` maps a normalized name to relative directories: those distributions also
+    carry ``located``, ``{directory: its real path}``.
     """
     from importlib import metadata
 
@@ -262,6 +326,15 @@ def read_distributions(paths=None) -> dict:
             found[normalize(name)] = {"name": name, "version": distribution.version,
                                       "installer": installer,
                                       "build_tag": wheel_build_tag(distribution.read_text("WHEEL"))}
+            where = (locate or {}).get(normalize(name))
+            if where:
+                found[normalize(name)]["located"] = {
+                    directory: os.path.realpath(str(distribution.locate_file(directory)))
+                    for directory in where}
+            wanted = (digests or {}).get(normalize(name))
+            if wanted:
+                found[normalize(name)]["files_sha256"] = {
+                    relative: _file_sha256(distribution.locate_file(relative)) for relative in wanted}
         except Exception:  # noqa: BLE001 - one broken distribution is skipped
             continue
     return found
@@ -299,8 +372,8 @@ def read_user_site():
         return None
 
 
-#: What a build script writes into a prefix it solved (MEEP_REFERENCE_SOLVE=1)
-#: instead of installing the lock.
+#: What a build script wrote into a prefix it solved instead of installing the lock (the
+#: retired MEEP_REFERENCE_SOLVE=1; the build scripts refuse it by name now).
 SOLVED_MARKER = os.path.join("share", "meep-gpu-build", "NOT_THE_CERTIFICATION_REFERENCE.txt")
 
 
@@ -313,24 +386,50 @@ def read_solved_marker(prefix):
         return None
 
 
-def read_environment(prefix: str | None = None) -> dict:
+#: The reference ``PATH`` after the environment's own ``bin``: the corpus legs run
+#: with ``<prefix>/bin:/usr/bin:/bin``.
+REFERENCE_PATH_TAIL = ("/usr/bin", "/bin")
+
+
+def read_links(tools, prefix) -> dict:
+    """``{tool: real path or None}``: each tool as ``which`` finds it on the reference PATH,
+    with every symbolic link resolved."""
+    found = {}
+    directories = ([os.path.join(prefix, "bin")] if prefix else []) + list(REFERENCE_PATH_TAIL)
+    for tool in tools or ():
+        try:
+            where = shutil.which(tool, path=os.pathsep.join(directories))
+            found[tool] = os.path.realpath(where) if where else None
+        except (OSError, TypeError, ValueError):
+            found[tool] = None
+    return found
+
+
+def read_environment(prefix: str | None = None, digests=None, links=None) -> dict:
     """What the comparison reads: conda records, distributions, Python, host.
 
     With ``prefix``, the conda environment at that path and the distributions in
     its ``lib/python*/site-packages``. Without, the running interpreter: the first
     of ``sys.prefix`` and ``sys.base_prefix`` that has ``conda-meta`` (a virtual
     environment on top of a conda one reads the conda one), and the distributions
-    on ``sys.path``.
+    on ``sys.path``. ``digests`` names the distributions whose files are hashed
+    (``read_distributions``), ``links`` the programs looked up on the reference PATH
+    and the distribution directory each must resolve into (``corpus_links``).
     """
+    links = links or {}
+    locate = {}
+    for name, directory in links.values():
+        locate.setdefault(name, []).append(directory)
     environment = {"host": read_host(), "user_site": None}
     if prefix is not None:
         environment["where"] = os.path.abspath(prefix)
         environment["conda"] = read_conda_meta(prefix)
         environment["conda_prefix"] = os.path.abspath(prefix) if environment["conda"] is not None else None
         sites = sorted(glob.glob(os.path.join(prefix, "lib", "python*", "site-packages")))
-        environment["distributions"] = read_distributions(sites)
+        environment["distributions"] = read_distributions(sites, digests, locate)
         environment["python"] = None
         environment["solved_marker"] = read_solved_marker(environment["conda_prefix"])
+        environment["links"] = read_links(links, os.path.abspath(prefix))
         return environment
     environment["where"] = sys.prefix
     environment["conda"] = None
@@ -340,10 +439,11 @@ def read_environment(prefix: str | None = None) -> dict:
         if records is not None:
             environment["conda"], environment["conda_prefix"] = records, candidate
             break
-    environment["distributions"] = read_distributions()
+    environment["distributions"] = read_distributions(None, digests, locate)
     environment["python"] = platform.python_version()
     environment["user_site"] = read_user_site()
     environment["solved_marker"] = read_solved_marker(environment["conda_prefix"])
+    environment["links"] = read_links(links, environment["conda_prefix"] or sys.prefix)
     return environment
 
 
@@ -499,7 +599,13 @@ def _meep_text(facts: dict) -> str:
     precision = {True: "single precision", False: "double precision"}.get(
         facts.get("single_precision"), "precision not read")
     mpi = {True: "MPI build", False: "serial build"}.get(facts.get("mpi"), "MPI not read")
-    return f"{facts.get('version') or 'version not read'}, {precision}, {mpi}"
+    gdsii = {True: ", libGDSII", False: ", no libGDSII"}.get(facts.get("gdsii"), "")
+    return f"{facts.get('version') or 'version not read'}, {precision}, {mpi}{gdsii}"
+
+
+#: What every MEEP fact set is judged on; ``gdsii`` is judged when the facts carry it.
+MEEP_REQUIRED = ("version", "single_precision", "mpi")
+MEEP_OPTIONAL = ("gdsii",)
 
 
 def judge_meep(expected, facts) -> dict:
@@ -507,8 +613,9 @@ def judge_meep(expected, facts) -> dict:
 
     ``expected`` is the platform's ``meep`` entry of ``numerics-relevant.json``
     (``result["meep_reference"]``); ``facts`` holds ``version``,
-    ``single_precision`` and ``mpi`` as an imported MEEP reports them. Anything
-    unread, or no expectation, is not a match.
+    ``single_precision`` and ``mpi`` as an imported MEEP reports them, and ``gdsii``
+    (whether MEEP reads a GDSII file) when the caller read it. Anything required that is
+    unread, or no expectation, is not a match; ``gdsii`` unread is named in the line.
     """
     facts = facts if isinstance(facts, dict) else {}
     found = _meep_text(facts) if facts else "not read"
@@ -517,10 +624,15 @@ def judge_meep(expected, facts) -> dict:
                 "line": f"MEEP       {found}: not compared (no reference names a MEEP "
                         "build for this platform)"}
     reference = _meep_text(expected)
-    ok = bool(facts) and all(facts.get(key) == expected.get(key)
-                             for key in ("version", "single_precision", "mpi"))
+    keys = MEEP_REQUIRED + tuple(key for key in MEEP_OPTIONAL
+                                 if key in expected and facts.get(key) is not None)
+    ok = bool(facts) and all(facts.get(key) == expected.get(key) for key in keys)
+    unread = [key for key in MEEP_OPTIONAL if key in expected and facts.get(key) is None]
     if ok:
         line = f"MEEP       {found}: the reference's build"
+        if unread:
+            line += f" ({', '.join('libGDSII' if key == 'gdsii' else key for key in unread)} "
+            line += "not read)"
     else:
         line = (f"MEEP       {found}: NOT the reference's build ({reference}), so this "
                 "environment is not the certification reference, whatever its packages")
@@ -538,6 +650,164 @@ def judge_host(spec: dict, host: dict):
         elif _version_key(value) < _version_key(floor):
             below.append(f"{label} {value} is below the lock's floor {floor}")
     return below, notes
+
+
+def _refused_rows(entry) -> str:
+    rows = (entry or {}).get("rows") or []
+    return (f"without it the corpus refuses {', '.join(rows)} by name" if rows
+            else "the corpus needs it")
+
+
+def judge_corpus(reference: dict, environment: dict) -> dict:
+    """``{rows, held, total}``: what only the identity corpus needs, never part of the verdict.
+
+    The pip lock's corpus packages by version and origin (a conda build is not the
+    pinned wheel); the conda lock's corpus packages by version and build (a pip install is
+    not the locked build); the stand-in by version and the SHA-256 of each of its files
+    (the PyPI release of the same version is not the stand-in: it does not import with
+    SciPy 1.14 or later); a program a corpus package installs by whether ``which`` finds
+    it on the reference PATH and resolves it into that package's directory.
+    """
+    corpus = reference.get("corpus") or {}
+    rows = []
+    for name, entry in (corpus.get("pypi") or {}).items():
+        locked = reference["pip"].get(normalize(name))
+        row = {"name": name, "kind": "pypi",
+               "reference": f"{locked['version']} (PyPI wheel)" if locked else "not in the pip lock"}
+        found = _distribution(environment, (name,))
+        if found is None:
+            row.update(status=ABSENT, found="absent", note=_refused_rows(entry))
+        else:
+            installer = found.get("installer")
+            row["found"] = f"{found['version']} (installed by {installer or 'an unknown installer'})"
+            if locked and found["version"] == locked["version"] and installer != "conda":
+                row["status"] = HELD
+            else:
+                row.update(status=OTHER, note="not the pip lock's wheel")
+        rows.append(row)
+    conda = environment.get("conda")
+    for name, entry in (corpus.get("conda") or {}).items():
+        locked = reference["conda"].get(name)
+        row = {"name": name, "kind": "conda",
+               "reference": _conda_text(locked) if locked else "not in the conda lock"}
+        record = (conda or {}).get(name)
+        found = _distribution(environment, (name,))
+        if record is not None:
+            row["found"] = _conda_text(record)
+            same = (locked and record.get("version") == locked["version"]
+                    and record.get("build") == locked["build"]
+                    and not (record.get("md5") and record["md5"] != locked["md5"]))
+            pip_over = found is not None and found.get("installer") not in (None, "conda")
+            if same and not pip_over:
+                row["status"] = HELD
+            else:
+                row.update(status=OTHER, note="not the conda lock's build")
+        elif found is not None:
+            row.update(status=OTHER, found=f"{found['version']} (installed by "
+                       f"{found.get('installer') or 'an unknown installer'})",
+                       note="not the conda lock's build")
+        else:
+            row.update(status=ABSENT, found="absent", note=_refused_rows(entry))
+        rows.append(row)
+    standin = corpus.get("standin") or {}
+    if standin.get("name"):
+        name, files = standin["name"], standin.get("files") or {}
+        row = {"name": name, "kind": "standin",
+               "reference": f"{standin.get('version')}, the stand-in"}
+        found = _distribution(environment, (name,))
+        if found is None:
+            row.update(status=ABSENT, found="absent",
+                       note=_refused_rows(standin) + f"; {standin.get('builder', 'its builder')} "
+                       "builds and installs it")
+        else:
+            digests = found.get("files_sha256") or {}
+            differing = sorted(relative for relative, pinned in files.items()
+                               if digests.get(relative) != pinned)
+            row["found"] = f"{found['version']} (installed by {found.get('installer') or 'an unknown installer'})"
+            if found["version"] != standin.get("version"):
+                row.update(status=OTHER, note="another version")
+            elif not files or differing:
+                row.update(status=OTHER,
+                           note=f"version {found['version']} but not the stand-in's files "
+                                f"({', '.join(differing) or 'none pinned'}); PyPI's own "
+                                f"{standin.get('version')} does not import with SciPy 1.14 or later")
+            else:
+                row["status"] = HELD
+        rows.append(row)
+    links = environment.get("links")
+    for name, entry in (corpus.get("pypi") or {}).items():
+        for tool, directory in ((entry or {}).get("links") or {}).items():
+            row = {"name": tool, "kind": "program",
+                   "reference": f"{name}'s {directory}/ on the reference PATH"}
+            owner = _distribution(environment, (name,))
+            located = ((owner or {}).get("located") or {}).get(directory)
+            where = (links or {}).get(tool) if isinstance(links, dict) else None
+            if links is None or tool not in links:
+                row.update(status=UNREAD, found="not looked up")
+            elif where is None:
+                row.update(status=ABSENT, found="absent",
+                           note=_refused_rows(entry) + f" (the build scripts link {name}'s "
+                           f"executable into <prefix>/bin)")
+            elif located and (where == located or where.startswith(located + os.sep)):
+                row.update(status=HELD, found=where)
+            else:
+                row.update(status=OTHER, found=where,
+                           note=f"not {name}'s executable: a host's own {tool} is not the "
+                                "reference's")
+            rows.append(row)
+    return {"rows": rows, "held": sum(1 for row in rows if row["status"] == HELD),
+            "total": len(rows)}
+
+
+def pip_lock_exact(reference: dict, environment: dict) -> dict:
+    """``{ok, expected, held, findings, extra, line}``: are the environment's PyPI packages
+    exactly the pip lock's pins and the corpus stand-in?
+
+    A PyPI package is a distribution whose ``INSTALLER`` names an installer other
+    than conda. Every pin must be present at its version, installed by such an
+    installer; the stand-in must also hold its pinned files; and no other PyPI
+    package may be present.
+    """
+    distributions = environment.get("distributions") or {}
+    expected = {key: dict(entry) for key, entry in reference["pip"].items()}
+    standin = (reference.get("corpus") or {}).get("standin") or {}
+    if standin.get("name"):
+        expected[normalize(standin["name"])] = {"name": standin["name"],
+                                                "version": standin.get("version"),
+                                                "files": standin.get("files") or {}}
+    findings = []
+    for key, entry in sorted(expected.items()):
+        found = distributions.get(key)
+        if found is None:
+            findings.append(f"{entry['name']} {entry['version']} is missing")
+            continue
+        installer = found.get("installer")
+        if installer in (None, "conda"):
+            findings.append(f"{entry['name']} is {found['version']} installed by "
+                            f"{installer or 'an unknown installer'}, not the pinned wheel")
+        elif found["version"] != entry["version"]:
+            findings.append(f"{entry['name']} is {found['version']}, the lock pins {entry['version']}")
+        elif entry.get("files"):
+            digests = found.get("files_sha256") or {}
+            differing = sorted(relative for relative, pinned in entry["files"].items()
+                               if digests.get(relative) != pinned)
+            if differing:
+                findings.append(f"{entry['name']} {found['version']} is not the stand-in: "
+                                f"{', '.join(differing)} differ from the pinned bytes")
+    extra = sorted(found["name"] + " " + str(found["version"])
+                   for key, found in distributions.items()
+                   if key not in expected and found.get("installer") not in (None, "conda"))
+    ok = not findings and not extra
+    held = len(expected) - len(findings)
+    what = (f"the pip lock's {len(reference['pip'])} pins"
+            + (f" and the {standin['name']} stand-in" if standin.get("name") else ""))
+    if ok:
+        line = f"the PyPI packages are exactly {what} ({held} of {len(expected)})"
+    else:
+        parts = findings + [f"{name} is not in the lock" for name in extra]
+        line = f"the PyPI packages are not exactly {what}: " + "; ".join(parts)
+    return {"ok": ok, "expected": len(expected), "held": held, "findings": findings,
+            "extra": extra, "line": line, "pip_lock": reference["pip_lock"]}
 
 
 def compare(reference: dict, environment: dict) -> dict:
@@ -587,9 +857,10 @@ def compare(reference: dict, environment: dict) -> dict:
                         f" from it by design ({', '.join(designed)})")
     notes = list(host_notes)
     if environment.get("solved_marker"):
-        notes.append(f"{environment['solved_marker']} is present: the build script made "
-                     "this environment with MEEP_REFERENCE_SOLVE=1, by a solve instead of "
-                     "from the lock, and recorded that it is not the certification reference")
+        notes.append(f"{environment['solved_marker']} is present: a build script made "
+                     "this environment with the retired MEEP_REFERENCE_SOLVE=1, by a solve "
+                     "instead of from the lock, and recorded that it is not the "
+                     "certification reference")
     user_site = environment.get("user_site")
     if user_site:
         notes.append(f"the user site directory ({user_site['path']}) is on this "
@@ -604,7 +875,8 @@ def compare(reference: dict, environment: dict) -> dict:
             "where": environment.get("where"), "conda_prefix": environment.get("conda_prefix"),
             "conda_packages": None if environment.get("conda") is None
             else len(environment["conda"]),
-            "distributions": len(environment.get("distributions") or {})}
+            "distributions": len(environment.get("distributions") or {}),
+            "corpus": judge_corpus(reference, environment)}
 
 
 def not_compared(reason: str, platform_tag=None) -> dict:
@@ -614,8 +886,12 @@ def not_compared(reason: str, platform_tag=None) -> dict:
 
 
 def report(platform_tag: str | None = None, prefix: str | None = None,
-           lock_dir: str = LOCK_DIR, environment: dict | None = None) -> dict:
-    """The comparison of this environment (or ``prefix``, or ``environment``). Never raises."""
+           lock_dir: str = LOCK_DIR, environment: dict | None = None,
+           pip_lock: bool = False) -> dict:
+    """The comparison of this environment (or ``prefix``, or ``environment``). Never raises.
+
+    With ``pip_lock``, the result also carries ``pip_lock_check`` (``pip_lock_exact``).
+    """
     try:
         tag = platform_tag or host_platform()
         if tag is None:
@@ -627,8 +903,12 @@ def report(platform_tag: str | None = None, prefix: str | None = None,
         except (OSError, ValueError, LookupError, KeyError, TypeError) as exc:
             return not_compared(f"the lock files could not be read ({exc})", tag)
         if environment is None:
-            environment = read_environment(prefix)
-        return compare(reference, environment)
+            environment = read_environment(prefix, corpus_digests(reference),
+                                           corpus_links(reference))
+        result = compare(reference, environment)
+        if pip_lock:
+            result["pip_lock_check"] = pip_lock_exact(reference, environment)
+        return result
     except Exception as exc:  # noqa: BLE001 - the report never raises
         return not_compared(f"the comparison stopped ({type(exc).__name__}: {exc})",
                             platform_tag)
@@ -675,6 +955,7 @@ def format_report(result: dict, indent: str = "   ") -> list:
     lines.append(f"{indent}of {result['total']}: {counts.get(SAME, 0)} same, "
                  f"{counts.get(DIFFERENT, 0)} different, {counts.get(MISSING, 0)} missing, "
                  f"{counts.get(BY_DESIGN, 0)} differ by design, {counts.get(UNREAD, 0)} not read")
+    lines.extend(format_corpus(result.get("corpus"), indent))
     for finding in result.get("host_below_floor") or ():
         lines.append(f"{indent}host: {finding}")
     for note in result.get("notes") or ():
@@ -683,11 +964,32 @@ def format_report(result: dict, indent: str = "   ") -> list:
     return lines
 
 
+def format_corpus(corpus, indent: str = "   ") -> list:
+    """The corpus-only section: what only the identity corpus needs, not judged."""
+    if not corpus or not corpus.get("rows"):
+        return []
+    rows = corpus["rows"]
+    lines = [f"{indent}corpus     {corpus['held']} of {corpus['total']} held: what only the MEEP "
+             "identity corpus (Table 2) needs; not numerics-relevant, not part of the verdict"]
+    width_name = max(len(row["name"]) for row in rows)
+    width_ref = max(len(row["reference"]) for row in rows)
+    width_found = min(max(len(str(row.get("found", ""))) for row in rows), 44)
+    for row in rows:
+        lines.append(f"{indent}{row['name']:<{width_name}}  {row['reference']:<{width_ref}}  "
+                     f"{str(row.get('found', '')):<{width_found}}  {row['status']}")
+        if row.get("note") and row["status"] != HELD:
+            lines.append(f"{indent}{'':<{width_name}}  ({row['note']})")
+    return lines
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Compare this environment with the certification reference lock.")
     parser.add_argument("--require-reference", action="store_true",
                         help="exit 1 unless the environment matches the reference")
+    parser.add_argument("--require-pip-lock", action="store_true",
+                        help="exit 1 unless the environment's PyPI packages are exactly the "
+                             "pip lock's pins and the corpus stand-in")
     parser.add_argument("--prefix", help="compare the conda environment at this path")
     parser.add_argument("--platform", choices=("osx-arm64", "linux-64"),
                         help="compare against this platform's lock")
@@ -695,18 +997,27 @@ def main(argv=None) -> int:
                         help="read the locks from this directory")
     parser.add_argument("--json", action="store_true", help="print the comparison as JSON")
     arguments = parser.parse_args(argv)
-    result = report(arguments.platform, arguments.prefix, arguments.lock_dir)
+    result = report(arguments.platform, arguments.prefix, arguments.lock_dir,
+                    pip_lock=arguments.require_pip_lock)
     if arguments.json:
         print(json.dumps(result, indent=2, sort_keys=True, default=str), flush=True)
     else:
         print("Certification reference environment", flush=True)
         for line in format_report(result):
             print(line, flush=True)
+        check = result.get("pip_lock_check")
+        if arguments.require_pip_lock and check:
+            print(f"   pip lock   {check['pip_lock']}: {check['line']}.", flush=True)
+    status = 0
     if arguments.require_reference and not passes(result):
         print("FAILED: --require-reference was given and this environment does not match "
               "the certification reference.", flush=True)
-        return 1
-    return 0
+        status = 1
+    if arguments.require_pip_lock and not (result.get("pip_lock_check") or {}).get("ok"):
+        print("FAILED: --require-pip-lock was given and the environment's PyPI packages are not "
+              "exactly the pip lock's and the corpus stand-in.", flush=True)
+        status = 1
+    return status
 
 
 if __name__ == "__main__":

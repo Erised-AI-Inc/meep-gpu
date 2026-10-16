@@ -181,6 +181,14 @@ def test_released_and_pending_partition_every_label_the_composer_writes():
     assert len(pending) == 15
 
 
+def test_every_released_arm_rides_the_shipped_and_harness_keep_legs():
+    """The leg split the recut walks ``(arm, case, leg)`` for: complex storage needs
+    nothing a real-storage arm does not, so every released arm names the same two."""
+    for arm in fastpath_cuda.CUDA_RELEASED_FUSED_ARMS:
+        assert fastpath_cuda.CUDA_RELEASED_ARM_LEGS[arm] == (
+            "cuda_shipped", "cuda_harness_keep"), arm
+
+
 def test_the_magnetic_pair_off_diagonal_admission_is_a_corner_not_a_row():
     """The Tier 2 widening, both directions, and the rule that keeps it honest.
 
@@ -247,10 +255,10 @@ def test_every_released_arm_has_cases_a_leg_and_its_own_axes():
     """Three tables, one release, and none of them substitutes for the others.
 
     The cases say WHICH driver-route case drove the arm; the leg says on which of
-    the campaign's five legs it dispatched (a complex arm dispatches only under the
-    expansion probe, and a complex arm appearing in the shipped leg's
-    ``arms_driven`` would mean the licence had been consumed without it); the axes
-    say on WHAT CONFIGURATION, which is what ``released_fused_arms`` decides with.
+    the route campaign's legs it dispatched (in the campaign of record, cut before
+    the expansion licence was deleted, a complex arm dispatched only under its
+    expansion-probe leg); the axes say on WHAT CONFIGURATION, which is what
+    ``released_fused_arms`` decides with.
     """
     for arm, cases in fastpath_cuda.CUDA_RELEASED_FUSED_ARMS.items():
         assert cases, arm
@@ -259,21 +267,6 @@ def test_every_released_arm_has_cases_a_leg_and_its_own_axes():
         assert arm in fastpath_cuda.CUDA_FUSED_RELEASE_ARM_AXES, arm
         assert fastpath_cuda.CUDA_FUSED_RELEASE_ARM_AXES[arm], arm
         assert arm in fastpath_cuda.CUDA_ARM_CERTIFICATION, arm
-
-
-def test_a_complex_storage_arm_rides_the_probe_leg_and_only_that_one():
-    """The one leg split the recut walks ``(arm, case, leg)`` rather than
-    ``(arm, case)`` for."""
-    for arm, axes in fastpath_cuda.CUDA_FUSED_RELEASE_ARM_AXES.items():
-        if arm not in fastpath_cuda.CUDA_RELEASED_FUSED_ARMS:
-            continue
-        complex_storage = dict((axis, value) for axis, value, _why in axes).get(
-            "complex_storage")
-        legs = fastpath_cuda.CUDA_RELEASED_ARM_LEGS[arm]
-        if complex_storage is True:
-            assert legs == ("cuda_shipped_expansion_probe",), arm
-        else:
-            assert "cuda_shipped_expansion_probe" not in legs, arm
 
 
 def test_an_arm_with_no_per_arm_row_fails_closed():

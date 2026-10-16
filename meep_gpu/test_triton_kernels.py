@@ -304,6 +304,17 @@ def test_the_fingerprint_record_matches_the_shipped_kernel_source():
     import hashlib
 
     record = fingerprints()
+    forms = PACKAGE_DIR / "forms.py"
+    live_forms = hashlib.sha256(forms.read_bytes()).hexdigest()
+    # The kernels select between the forms of ``forms.py``, which are inlined into the
+    # compiled program, so an edit there changes the bytes the gate measured exactly as
+    # an edit here does. The record has to carry its digest or the weld is hollow.
+    assert record.get("forms_source_sha256") == live_forms, (
+        "forms.py is not the file the bit-identity gate certified (record "
+        f"{str(record.get('forms_source_sha256'))[:16]}, live {live_forms[:16]}). Re-run "
+        "parity/meep_gpu/probe_fused_kernel_bit_identity.py --track triton on a CUDA "
+        "host and re-cut fingerprints.json with forms_source_sha256 beside "
+        "kernel_source_sha256.")
     path = PACKAGE_DIR / "kernels.py"
     live = hashlib.sha256(path.read_bytes()).hexdigest()
     # ONE HOME FOR THE RULE (device_identity.py:209). What the gate measured is
@@ -1048,19 +1059,59 @@ def test_the_ade_predicate_refuses_a_magnetic_component_by_name():
 
 
 def test_the_ade_predicate_requires_the_pml_drive_field():
-    """RISK/mutation m11: P must be driven from ``f_w_*``, never the stored E.
+    """RISK/mutation m11: on the layer's chunks P is driven from ``f_w_*``, never E.
 
-    ``Fields.drive_field`` returns ``f_w_*`` under PML and the stored E without
-    (fields.py:1140-1163). The two agree exactly OUTSIDE the absorber, so driving
-    from E passes every no-PML case and is wrong only inside the layer — smoothly,
-    plausibly, and in the region a transmission spectrum is normalised against. The
-    predicate pins that the auxiliary exists so the launcher's read cannot fall back.
+    ``Fields.drive_field`` is MEEP's ``w = f_w ? f_w : f`` PER CHUNK (update_pols.cpp:44):
+    ``f_w`` on the cells whose chunk carries the component's own layer, the stored E
+    (there the constitutive product) everywhere else. The two agree exactly OUTSIDE the
+    absorber, so driving from E everywhere passes every no-PML case and is wrong only
+    inside the layer. The plan reads the drive through ``drive_field``; the predicate
+    pins that the auxiliary exists so that read cannot fall back.
     """
-    fields, _, state = _with_pole()
-    assert fields.drive_field("Ez") is fields.f_w_Ez
+    import numpy
+
+    fields, pml, state = _with_pole()
+    plan = stepping._region_plan(fields, pml)
+    fields.f_w_Ez[...] = 1.0
+    fields.Ez[...] = 2.0
+    drive = numpy.asarray(fields.drive_field("Ez"))
+    inside = numpy.broadcast_to(numpy.asarray(plan.mask("constitutive", "Ez", numpy)),
+                                drive.shape)
+    assert inside.any() and (~inside).any()
+    assert (drive[inside] == 1.0).all() and (drive[~inside] == 2.0).all()
+    assert _ade_reasons(fields, state, "Ez") == []
     fields.f_w_Ez = None
     reasons = _ade_reasons(fields, state, "Ez")
     assert any("f_w_Ez is not allocated" in r for r in reasons), reasons
+
+
+def test_the_four_words_are_the_dispersion_modules_own_fields():
+    """The predicate's names are ``RealnumConstants``'s, in its order (no copy can drift)."""
+    from meep_gpu.dispersion import RealnumConstants
+
+    assert coverage_module.POLARIZATION_CONSTANTS == RealnumConstants._fields
+    _fields, _, state = _with_pole()
+    assert tuple(type(state.constants)._fields) == coverage_module.POLARIZATION_CONSTANTS
+
+
+@pytest.mark.parametrize("edit, needle", (
+    (lambda c: None, "are missing"),
+    (lambda c: c[:3], "are missing"),
+    (lambda c: (float("nan"),) + tuple(c[1:]), "two_minus_od=nan is not finite"),
+    (lambda c: tuple(c[:3]) + (float(c[3]) + 1e-12,), "is not a float32 word"),
+    (lambda c: tuple(c[:1]) + ("x",) + tuple(c[2:]), "gamma1='x' is not a float"),
+))
+def test_the_ade_predicate_refuses_words_the_kernel_would_round_differently(edit, needle):
+    """A word that is missing, non-finite or not float32 is refused BY NAME.
+
+    The kernels take MEEP's four ``realnum`` words as float32 scalars; a value that is
+    not a float32 word would be rounded at the launch and step a different recurrence
+    from ``PolarizationState.update``'s, smoothly and with no error.
+    """
+    fields, _, state = _with_pole()
+    state.constants = edit(state.constants)
+    reasons = _ade_reasons(fields, state, "Ez")
+    assert any(needle in r for r in reasons), reasons
 
 
 def test_sigma_is_volume_agrees_with_what_the_predicate_checked():
@@ -1168,6 +1219,11 @@ def kernel_source() -> str:
     return (PACKAGE_DIR / "kernels.py").read_text(encoding="utf-8")
 
 
+def forms_source() -> str:
+    """``forms.py`` -- the one home of each PML form the kernels select between."""
+    return (PACKAGE_DIR / "forms.py").read_text(encoding="utf-8")
+
+
 def test_the_constitutive_kernel_reads_the_auxiliary_before_it_writes_it():
     """RISK 4: ``_apply_constitutive_pml`` copies ``fw`` BEFORE overwriting it.
 
@@ -1186,19 +1242,29 @@ def test_the_constitutive_kernel_reads_the_auxiliary_before_it_writes_it():
         assert load < store, f"component {index} writes f_w before reading fw_previous"
 
 
-def test_the_constitutive_kernel_keeps_the_two_accumulations_separate():
-    """RISK/mutation: the grouping is ``((f + kps*src) - kms*prev)``.
+def test_the_constitutive_accumulation_is_one_add_of_the_difference():
+    """RISK/mutation: the grouping is ``f + ((kps*src) - (kms*prev))``.
 
-    Flattened to ``f + (kps*src - kms*prev)`` it is a different float32 number. The
-    array path spells it as two statements (``field += kps * fw`` then
-    ``field -= kms * fw_previous``) and so does the kernel; a single expression here
-    would be the regroup mutation shipped by accident.
+    MEEP's ``f[i] += X - Y;`` forms the right-hand side first (step_generic.cpp:689,
+    :697) and ``stepping._apply_constitutive_pml`` spells exactly that. The two
+    separate accumulations ``((f + kps*src) - kms*prev)`` are a different float32
+    number — they are what this file carried until the forms moved to
+    ``forms.constitutive_form``, and what the host battery's
+    ``old_constitutive_grouping`` mutation puts back. The expression lives ONCE, so
+    this pins it there and pins every caller to the call.
     """
-    body = kernel_source().split("def constitutive_step(")[1].split(
-        "def fused_curl_constitutive_B")[0]
-    for index in (0, 1, 2):
-        assert f"a{index} = a{index} + kp_{index} * src{index}" in body
-        assert f"a{index} = a{index} - km_{index} * prev{index}" in body
+    forms = forms_source().split("def constitutive_form(")[1]
+    assert "return tl.where(dsigw, f + ((kps * src) - (kms * prev)), src)" in forms
+    for body, target in ((kernel_source().split("def constitutive_step(")[1].split(
+                              "def fused_curl_constitutive_B")[0], "f"),
+                         (fused_body(), "h"),
+                         (fused_body("D"), "e")):
+        for index in (0, 1, 2):
+            on_register = (f"constitutive_form(a{index}, prev{index}, src{index}, "
+                           f"kp_{index}, km_{index}, dw{index})")
+            on_load = (f"constitutive_form(tl.load({target}{index} + idx, "
+                       f"mask=live & dw{index}, ")
+            assert on_register in body or on_load in body, (target, index)
 
 
 def test_the_constitutive_kernel_indexes_coefficients_on_the_components_own_axis():
@@ -1460,29 +1526,41 @@ def test_the_fused_kernel_substitutes_the_register_for_the_reload():
 def test_the_fused_kernel_keeps_both_halves_groupings_verbatim():
     """Every parenthesisation that decides a float32 value, in one place.
 
-    The curl's ``dtdx * ((a - b) + (c - d))`` and the constitutive side's two
-    separate accumulations. A fused body is a copy, and a copy is exactly where a
-    silent re-association gets introduced.
+    Both halves call the shared forms of ``forms.py`` with the operands in the curl
+    term table's order, so the parenthesisations that decide a float32 word are in one
+    place and this pins the CALLS. A fused body is a copy, and a copy is exactly where
+    a silent re-association, or a swapped operand, gets introduced.
     """
     body = fused_body()
-    assert "curl0 = dtdx * ((c_y - c) + (b - b_z))" in body
-    assert "curl1 = dtdx * ((a_z - a) + (c - c_x))" in body
-    assert "curl2 = dtdx * ((b_x - b) + (a - a_y))" in body
+    assert "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)" in body
+    assert "curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)" in body
+    assert "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)" in body
     for index in range(3):
-        assert f"a{index} = a{index} + kp_{index} * src{index}" in body
-        assert f"a{index} = a{index} - km_{index} * prev{index}" in body
+        assert f"constitutive_form(a{index}, prev{index}, src{index}, " \
+               f"kp_{index}, km_{index}, dw{index})" in body
         assert body.index(f"prev{index} = tl.load(w{index} + idx") < body.index(
             f"tl.store(w{index} + idx, src{index}")
 
 
-def test_the_fused_kernel_carries_the_curls_recurrence_unchanged():
-    """The split-field recurrence is the curl's, character for character."""
+def test_the_fused_kernel_carries_the_curls_forms_unchanged():
+    """The two curl forms are the curl kernel's call, character for character.
+
+    The recurrence and the dsig-only form live once, in ``forms.curl_form``; what each
+    kernel decides is which coefficient pair is the dsig one and which the dsigu one,
+    and which record line keys the select. That is the line pinned here, on both the
+    separate curl and every fused half.
+    """
     curl = kernel_source().split("def pml_curl_step(")[1].split(
         "def constitutive_step")[0]
-    body = fused_body()
+    forms = forms_source().split("def curl_form(")[1]
+    assert "n = ((fu * kms) - curl) * sinv" in forms
+    assert "recurrence = (((f * kms_u) + n) - fu) * sinv_u" in forms
+    assert "dsig_only = ((f * kms) - curl) * sinv" in forms
+    bodies = [curl, fused_body(), fused_body("D")]
     for index, (dsig, dsigu) in enumerate((("y", "z"), ("z", "x"), ("x", "y"))):
-        line = (f"n{index} = ((p{index} * km_{dsig}) - curl{index}) * si_{dsig}")
-        assert line in curl and line in body
+        line = (f"km_{dsig}, si_{dsig}, km_{dsigu}, si_{dsigu}, du{index})")
+        for body in bodies:
+            assert line in body, (index, line)
 
 
 def test_the_fused_plan_binds_both_pairs_sub_lattices_the_way_stepping_does():
@@ -1567,6 +1645,25 @@ def test_the_noop_sentinel_still_reports_update_H_as_replaced():
     assert plan.replaces == ("step_B", "update_H")
     assert noop.absorbed_by is pair
     assert noop.run() is None
+
+
+def test_the_ade_kernel_spells_meeps_update_on_the_four_words():
+    """``gamma1inv * (((p * two_minus_od) - (gamma1 * pp)) + (omega0dtsqr * (s * w)))``.
+
+    MEEP's isotropic ``update_P`` (susceptibility.cpp:251-256) and
+    ``PolarizationState.update``'s grouping. The package's previous folded three-term
+    form, ``((p*c_now) + (c_prev*q)) + (c_drive*(s*w))``, is the same recurrence in
+    exact arithmetic and a different float32 number; it must be gone.
+    """
+    body = kernel_source().split("def ade_update_p(")[1]
+    signature, text = body.split("):", 1)
+    text = text.split('"""', 2)[2]          # the code, not the docstring
+    body = signature + text
+    assert "two_minus_od, gamma1, omega0dtsqr, gamma1inv, n_elem" in signature
+    assert ("gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + "
+            "(omega0dtsqr * (s * w)))") in text
+    for retired in ("c_now", "c_prev", "c_drive"):
+        assert retired not in body
 
 
 def test_the_fused_kernel_is_an_addition_and_the_separate_kernels_remain():

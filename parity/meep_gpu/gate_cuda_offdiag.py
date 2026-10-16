@@ -211,6 +211,19 @@ VALUE_CLASSES: Tuple[str, ...] = ("uniform", "subnormal_band")
 #: the difference.
 ROW_FORMS: Tuple[str, ...] = ("varying", "uniform")
 
+#: THE PRESENCE CASES (0.10). MEEP deletes a row's ``chi1inv`` array in every chunk where
+#: it is identically zero and drops its term there, which differs from adding a zero only
+#: on a ``-0`` row -- so the random product above never sees it. These cases keep the
+#: rows on an interior block (``block``: every chunk that carries a layer deletes them),
+#: plant ``D = -0`` on every third cell (``negative_zero``: ``gs*us`` is ``-0`` there,
+#: which a dropped term leaves alone and a plain cell's ``E = src`` keeps), and run on a
+#: 14-cell grid so the interior chunk is wider than the block. Appended to every product.
+PRESENCE_SHAPE: Tuple[Tuple[float, float, float], str] = ((14.0, 14.0, 14.0), "14x14x14")
+PRESENCE_ROW_FORM = "block"
+PRESENCE_VALUE_CLASS = "negative_zero"
+PRESENCE_TRIPLES: Tuple[Tuple[str, str, str], ...] = (
+    ("metallic", "metallic", "metallic"), ("periodic", "metallic", "metallic"))
+
 GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
     ("fmad_false", ("--fmad=false",), True),
     ("default_no_options", (), False),
@@ -298,6 +311,14 @@ def install_rows(fields, grid, mask, row_form: str, rng) -> Dict[str, Any]:
             # off-diagonals, and a sign error that only shows on one side of zero
             # is exactly the kind a positive-only draw hides.
             values = rng.uniform(-0.45, 0.45, size=grid.shape).astype(np.float32)
+        if row_form == PRESENCE_ROW_FORM:
+            # Exactly zero outside the middle third of every axis longer than 2:
+            # the chunks that carry a layer delete the array.
+            inside = tuple(slice(n // 3, n - n // 3) if n > 2 else slice(None)
+                           for n in grid.shape)
+            kept = np.zeros(grid.shape, dtype=np.float32)
+            kept[inside] = values[inside]
+            values = kept
         rows.setdefault(row, {})[partner] = xp.asarray(values)
     fields.set_epsilon_volumes(epsilon, inverse, chi1inv_offdiagonal=rows)
     return rows
@@ -317,13 +338,17 @@ def seed_state(fields, grid, value_class: str, rng) -> Dict[str, np.ndarray]:
     fixture rather than the policy's reach into this arithmetic.
     """
     xp = grid.xp
-    if value_class == "uniform":
+    if value_class in ("uniform", PRESENCE_VALUE_CLASS):
         host = {name: rng.uniform(-1.0, 1.0, size=grid.shape).astype(np.float32)
                 for name in STATE}
+        if value_class == PRESENCE_VALUE_CLASS:
+            for name in ("Dx", "Dy", "Dz"):
+                host[name].reshape(-1)[::3] = np.float32(-0.0)
     elif value_class == "subnormal_band":
         host = subnormal_band_hosts(STATE, tuple(grid.shape), rng)
     else:
-        raise ValueError(f"value class {value_class!r} is not one of {VALUE_CLASSES}")
+        raise ValueError(f"value class {value_class!r} is not one of "
+                         f"{VALUE_CLASSES + (PRESENCE_VALUE_CLASS,)}")
     for name, values in host.items():
         getattr(fields, name)[...] = xp.asarray(np.ascontiguousarray(values))
     return host
@@ -407,6 +432,7 @@ def evaluator():
 _SCAFFOLDING: Tuple[str, ...] = (
     'extern "C" __global__', "float* __restrict__", "const float*",
     "int nx, int ny, int nz,", "int bc_x", "int wm_x",
+    "const int* __restrict__ cb", "int kept_",
     "int idx = blockIdx.x", "if (idx >= nx * ny * nz) return;",
     "int nyz = ny * nz;", "int k = idx % nz;", "int j = (idx / nz) % ny;",
     "int i = idx / (ny * nz);", "int di = coord_dn", "int dj = coord_dn",
@@ -434,10 +460,11 @@ def evaluator_blind_lines(text: str) -> List[str]:
     both are reported.
     """
     slice_tests = slice_module()
-    grammar = (slice_tests._TERM_CALL, slice_tests._TOTAL_FIRST,
-               slice_tests._TOTAL_ADD, slice_tests._MASK, slice_tests._GS,
-               slice_tests._US, slice_tests._SRC_COUPLED,
-               slice_tests._SRC_PLAIN, slice_tests._TAIL)
+    grammar = (slice_tests._TERM_CALL, slice_tests._MASK, slice_tests._GS,
+               slice_tests._US, slice_tests._ROW_START, slice_tests._ROW_ADD,
+               slice_tests._SRC_ROW, slice_tests._SRC_PLAIN, slice_tests._TAIL)
+    pinned_blocks = (offdiag_emitter.RECORD_BLOCK
+                     + offdiag_emitter.CHUNK_LINES).split("\n")
     body = text[text.index('extern "C"'):]
     covered = set()
     for pattern in grammar:
@@ -452,10 +479,25 @@ def evaluator_blind_lines(text: str) -> List[str]:
             continue
         if span & covered:
             continue
+        if line in pinned_blocks:
+            continue
         if any(token in line for token in _SCAFFOLDING):
             continue
         blind.append(stripped)
     return blind
+
+
+def pinned_texts() -> Dict[str, str]:
+    """What the evaluator transcribes rather than executes, keyed: the small helpers,
+    the welded tail's body, and the chunk-record block and chunk-label lines."""
+    pinned = dict(slice_module().PINNED_HELPERS)
+    pinned["constitutive_apply"] = (
+        "    float prev = dsigw ? fw[idx] : 0.0f;\n    if (dsigw) fw[idx] = src;\n"
+        "    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;\n"
+        "    f[idx] = value;")
+    pinned["record_block"] = offdiag_emitter.RECORD_BLOCK
+    pinned["chunk_lines"] = offdiag_emitter.CHUNK_LINES
+    return pinned
 
 
 def classify_for_evaluator(pristine: str, mutated: str) -> Dict[str, Any]:
@@ -473,10 +515,7 @@ def classify_for_evaluator(pristine: str, mutated: str) -> Dict[str, Any]:
       anchored grammar does not match, so on the laptop backend the mutation is
       not applied. Not scored there; scored normally on device.
     """
-    pinned = dict(slice_module().PINNED_HELPERS)
-    pinned["constitutive_apply"] = (
-        "    float prev = fw[idx];\n    fw[idx] = src;\n"
-        "    float a = f[idx] + kps * src;\n    f[idx] = a - kms * prev;")
+    pinned = pinned_texts()
     broken_pins = [name for name, body in pinned.items() if body not in mutated]
     if broken_pins:
         return {"evaluator_sees_it": False, "why": "pinned_half",
@@ -518,12 +557,13 @@ class EvaluatorBackend:
             return text, 0
         return self.source_transform(text)
 
-    def launch(self, fields, layer, rows, mask, tables, codes, walls) -> None:
+    def launch(self, fields, layer, rows, mask, tables, codes, walls, record,
+               kept) -> None:
         text, _sites = self.source_for(mask)
         self.sources_used[str(tuple(mask))] = hashlib.sha256(
             text.encode("utf-8")).hexdigest()
         evaluator()(text, device_arrays(fields, rows), tables, codes, walls,
-                    tuple(fields.grid.shape))
+                    tuple(fields.grid.shape), record, kept)
 
     def compile_log(self) -> List[Dict[str, Any]]:
         return []
@@ -595,12 +635,14 @@ class KernelBackend:
             return text, 0
         return self.source_transform(text)
 
-    def launch(self, fields, layer, rows, mask, tables, codes, walls) -> None:
+    def launch(self, fields, layer, rows, mask, tables, codes, walls, record,
+               kept) -> None:
         text, _sites = self.source_for(mask)
         self.sources_used[str(tuple(mask))] = hashlib.sha256(
             text.encode("utf-8")).hexdigest()
         self.kernels.update_E_offdiag_fused_pml_real(
-            fields, tables=tables, codes=codes, walls=walls)
+            fields, tables=tables, codes=codes, walls=walls,
+            chunk_bounds=cp.asarray(np.asarray(record, dtype=np.int32)), kept=kept)
         cp.cuda.runtime.deviceSynchronize()
 
     def compile_log(self) -> List[Dict[str, Any]]:
@@ -646,29 +688,31 @@ def m_couple_the_wrong_components(text: str) -> Tuple[str, int]:
 
 
 def m_drop_a_row_from_the_volume_sum(text: str) -> Tuple[str, int]:
-    """One partner's term silently missing from a component's total.
+    """One partner's term silently missing from a component's row.
 
     Half a tensor. The remaining term is right, the field stays smooth, and the
-    anisotropy is simply wrong. Only applies where a component has BOTH slots
-    live, which is why the leg names the masks it is armed on.
+    anisotropy is simply wrong. The second partner's add is dropped, so it applies
+    where a component has its cycle-2 slot live, which is why the leg names the masks
+    it is armed on.
     """
-    return _sub(r"\n    total_(\w+) = total_\1 \+ term_\w+;", "", text)
+    return _sub(r"\n    if \(chunk_keeps\(kept_\w+, chunk_(\w+)\)\) row_\1 = row_\1 \+ "
+                r"\(0\.25 \* \(double\)term_\1_1\);", "", text)
 
 
 def m_invert_the_wall_mask(text: str) -> Tuple[str, int]:
     """The metallic wall-coupling select inverted: kept at the wall, zeroed inside.
 
-    ``stepping._mask_metallic_wall_coupling`` zeroes the coupling ON face 0 of the
-    declared-metallic axes and leaves it everywhere else (stepping.py:1279-1283).
+    ``stepping._mask_metallic_wall_coupling`` zeroes each term's sum ON face 0 of the
+    declared-metallic axes and leaves it everywhere else.
     """
-    return _sub(r"\? 0\.0f : total_(\w+);", r"? total_\1 : 0.0f;", text)
+    return _sub(r"\? 0\.0f : term_(\w+);", r"? term_\1 : 0.0f;", text)
 
 
 def m_drop_the_wall_mask(text: str) -> Tuple[str, int]:
     """The mask never applied. Its discriminator: it must be a NULL on a grid that
     declares no metallic axis, which is what makes 'the mask is caught' a statement
     about the mask rather than about something else the metallic case changes."""
-    return _sub(r"\n *total_\w+ = \(wm_[xyz] && at_[xyz]\) \? 0\.0f : total_\w+;",
+    return _sub(r"\n *term_\w+ = \(wm_[xyz] && at_[xyz]\) \? 0\.0f : term_\w+;",
                 "", text)
 
 
@@ -720,9 +764,8 @@ def m_hoist_the_coefficient(text: str) -> Tuple[str, int]:
     BETWEEN the two shifts — so it is the defect the gate most owes a leg.
     """
     return _sub(
-        re.escape("return 0.25f * ((near_pair * u[home])"
-                  " + (far_pair * ghosted(u, up)));"),
-        "return 0.25f * ((near_pair + far_pair) * u[home]);", text)
+        re.escape("return (near_pair * u[home]) + (far_pair * ghosted(u, up));"),
+        "return (near_pair + far_pair) * u[home];", text)
 
 
 def m_own_axis_shift_down(text: str) -> Tuple[str, int]:
@@ -754,43 +797,71 @@ def m_column_major_index(text: str) -> Tuple[str, int]:
     return _sub(re.escape("(i * nyz + j * nz + k)"), "(k * nyz + j * nz + i)", text)
 
 
-def m_flatten_the_tail(text: str) -> Tuple[str, int]:
-    """``((f + kps*src) - kms*prev)`` flattened to ``f + (kps*src - kms*prev)`` —
-    the form BOTH complex constitutive kernels in the certified file are written
-    as, so it is the defect the template would have introduced here."""
+def m_previous_tail_grouping(text: str) -> Tuple[str, int]:
+    """The constitutive grouping the package used until 0.10, ``(f + kps*src) -
+    kms*prev``, in place of MEEP's ``f + ((kps*src) - (kms*prev))`` (the inversion
+    rule: the mutation that used to plant MEEP's grouping now plants the old one)."""
     return _sub(
-        re.escape("    float a = f[idx] + kps * src;\n    f[idx] = a - kms * prev;"),
-        "    f[idx] = f[idx] + (kps * src - kms * prev);", text)
+        re.escape("float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;"),
+        "float value = dsigw ? ((f[idx] + (kps * src)) - (kms * prev)) : src;", text)
 
 
 def m_store_fw_before_reading_prev(text: str) -> Tuple[str, int]:
     """The aliasing trap the array path's copy exists to prevent: ``prev`` becomes
     the value just stored and the recurrence loses its history term."""
     return _sub(
-        re.escape("    float prev = fw[idx];\n    fw[idx] = src;"),
-        "    fw[idx] = src;\n    float prev = fw[idx];", text)
+        re.escape("    float prev = dsigw ? fw[idx] : 0.0f;\n    if (dsigw) fw[idx] = src;"),
+        "    if (dsigw) fw[idx] = src;\n    float prev = dsigw ? fw[idx] : 0.0f;", text)
 
 
 def m_drop_fw_store(text: str) -> Tuple[str, int]:
     """The auxiliary-only defect: ``f_w`` is never written. E is bit-identical on
     launch one and wrong from launch two, so only the auxiliary comparison and the
     multi-step leg can see it."""
-    return _sub(re.escape("    fw[idx] = src;\n"), "", text)
+    return _sub(re.escape("    if (dsigw) fw[idx] = src;\n"), "", text)
 
 
-def n_distribute_the_quarter(text: str) -> Tuple[str, int]:
-    """NULL: 0.25 distributed over the sum.
+def m_row_in_float32(text: str) -> Tuple[str, int]:
+    """The row summed and scaled in float32 -- the package's arithmetic until 0.10 --
+    where MEEP scales by the double literal 0.25 and sums the row in double."""
+    out, hits = _sub(r"double row_(\w+) = ", r"float row_\1 = ", text)
+    out, more = _sub(r"\(0\.25 \* \(double\)term_(\w+)\)", r"(0.25f * term_\1)", out)
+    return out, hits + more
 
-    0.25 is an exact power of two, so scaling by it commutes with round-to-nearest
-    — the rounding grid scales exactly — and the distributed form is bitwise
-    identical AWAY FROM UNDERFLOW. It is NOT a null once ``0.25*x`` is subnormal,
-    which is why this leg is armed on the uniform class only and says so.
-    """
+
+def m_predicate_on_coefficient_identity(text: str) -> Tuple[str, int]:
+    """The tail's form keyed on ``kms != 1`` instead of chunk membership: a cell whose
+    sigma is exactly zero inside a chunk that carries the layer takes the wrong form."""
+    return _sub(r"kms_([xyz])\[([ijk])\], in_h_\1\);",
+                r"kms_\1[\2], (kms_\1[\2] != 1.0f));", text)
+
+
+def m_presence_ignored(text: str) -> Tuple[str, int]:
+    """Every term added whether or not the cell's chunk keeps the row's array: an
+    added zero where MEEP drops the term, which moves a ``-0`` row to ``+0``."""
+    return _sub(r"if \(chunk_keeps\(kept_\w+, chunk_\w+\)\) ", "", text)
+
+
+def m_plain_constitutive_via_unit_coefficients(text: str) -> Tuple[str, int]:
+    """The plain form written as the accumulation with ``f = 0, kps = 1, kms = 0``
+    rather than as the output select ``f = src``: ``0 + ((1*src) - (0*prev))`` turns a
+    ``-0`` source into ``+0``. Caught only on a planted ``-0`` plain cell."""
     return _sub(
-        re.escape("return 0.25f * ((near_pair * u[home])"
-                  " + (far_pair * ghosted(u, up)));"),
-        "return (0.25f * (near_pair * u[home]))"
-        " + (0.25f * (far_pair * ghosted(u, up)));", text)
+        re.escape("float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;"),
+        "float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev)))"
+        " : (0.0f + ((1.0f * src) - (0.0f * prev)));", text)
+
+
+def n_scale_the_quarter_in_float32(text: str) -> Tuple[str, int]:
+    """NULL: the term's float32 sum scaled by ``0.25f`` in float32 and widened.
+
+    0.25 is an exact power of two, so the float32 product is exact AWAY FROM
+    UNDERFLOW and widening it gives the double scale's word. It is NOT a null once
+    ``0.25*x`` is subnormal in float32, which is why this leg is armed on the uniform
+    class only and says so.
+    """
+    return _sub(r"\(0\.25 \* \(double\)term_(\w+)\)", r"(double)(0.25f * term_\1)",
+                text)
 
 
 def n_commute_the_diagonal_product(text: str) -> Tuple[str, int]:
@@ -822,10 +893,15 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "own_axis_shift_down": m_own_axis_shift_down,
     "wrong_own_axis_table": m_wrong_own_axis_table,
     "column_major_index": m_column_major_index,
-    "flatten_the_tail": m_flatten_the_tail,
+    "previous_tail_grouping": m_previous_tail_grouping,
     "store_fw_before_reading_prev": m_store_fw_before_reading_prev,
     "drop_fw_store": m_drop_fw_store,
-    "distribute_the_quarter": n_distribute_the_quarter,
+    "row_in_float32": m_row_in_float32,
+    "predicate_on_coefficient_identity": m_predicate_on_coefficient_identity,
+    "presence_ignored": m_presence_ignored,
+    "plain_constitutive_via_unit_coefficients":
+        m_plain_constitutive_via_unit_coefficients,
+    "scale_the_quarter_in_float32": n_scale_the_quarter_in_float32,
     "commute_the_diagonal_product": n_commute_the_diagonal_product,
 }
 
@@ -833,31 +909,61 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
 #: scores identically whether the comparator works or has degenerated into failing
 #: everything, so each null is paired with a leg editing the same kind of
 #: expression that must be caught.
-NULL_MUTATIONS: Tuple[str, ...] = ("distribute_the_quarter",
+NULL_MUTATIONS: Tuple[str, ...] = ("scale_the_quarter_in_float32",
                                    "commute_the_diagonal_product")
+
+#: Defects only the presence cases can show (a ``-0`` row a deleted array leaves alone,
+#: a ``-0`` source on a plain cell): a NULL on the random product, so a gate that sweeps
+#: every source mutation over random states must leave these to the presence legs.
+PRESENCE_ONLY_MUTATIONS: Tuple[str, ...] = ("presence_ignored",
+                                            "plain_constitutive_via_unit_coefficients")
 
 #: Host-side defects: the kernel never chooses these and cannot choose them wrong,
 #: but its caller can. They are armed through the launcher's keyword-only gate
 #: door, which exists for exactly this.
 HOST_MUTATIONS: Tuple[str, ...] = ("swap_sub_lattice", "drop_the_wall_flags",
-                                   "metallic_as_periodic")
+                                   "metallic_as_periodic", "select_removed",
+                                   "record_bound_off_by_one", "records_swapped",
+                                   "presence_bit_cleared")
 
 
 def apply_host_mutation(name: Optional[str], layer, grid,
-                        tables, codes, walls):
+                        tables, codes, walls, record, kept):
+    """The launch's data doors, mutated: ``(tables, codes, walls, record, kept)``."""
+    record = list(record)
+    kept = tuple(kept)
     if name is None:
-        return tables, codes, walls
+        return tables, codes, walls, record, kept
     if name == "swap_sub_lattice":
         # The INTEGER coefficients on the E side: half a cell wrong in the
         # absorber profile. A host mutation because the sub-lattice is chosen by
-        # the wrapper (stepping.py:948 vs :1015), not by the kernel.
-        return integer_tables(layer), codes, walls
+        # the wrapper, not by the kernel.
+        return integer_tables(layer), codes, walls, record, kept
     if name == "drop_the_wall_flags":
-        return tables, codes, (0, 0, 0)
+        return tables, codes, (0, 0, 0), record, kept
     if name == "metallic_as_periodic":
         # A wall told to the kernel as a wrap: what porting a hard-coded
         # all-periodic layout produces.
-        return tables, (0, 0, 0), walls
+        return tables, (0, 0, 0), walls, record, kept
+    if name == "select_removed":
+        # Every row of every lattice in a layer chunk: the accumulation, f_w read
+        # and f_w written on every cell -- the whole-grid recurrence until 0.10.
+        for half in (False, True):
+            for axis in range(3):
+                base = ((1 if half else 0) * 3 + axis) * 4
+                record[base:base + 4] = [0, int(grid.shape[axis]), 0, 0]
+        return tables, codes, walls, record, kept
+    if name == "record_bound_off_by_one":
+        # The half-integer x low run one row long: the boundary plane changes form.
+        base = (1 * 3 + 0) * 4
+        record[base + 1] += 1
+        return tables, codes, walls, record, kept
+    if name == "records_swapped":
+        # The integer and half-integer records swapped: the boundary plane moves.
+        return tables, codes, walls, record[12:24] + record[0:12] + record[24:], kept
+    if name == "presence_bit_cleared":
+        # The interior chunk's bit (labels 1, 1, 1: code 13) cleared in every word.
+        return tables, codes, walls, record, tuple(word & ~(1 << 13) for word in kept)
     raise ValueError(f"unknown host mutation {name!r}")
 
 
@@ -920,12 +1026,16 @@ def one_case(backend, xp, cell, shape_label, boundaries, mask, row_form,
     codes = tuple(coverage.BC_CODES[kind]
                   for kind in coverage.real_pml_boundary_kinds(grid))
     walls = coverage.offdiag_wall_mask_flags(grid)
-    tables, codes, walls = apply_host_mutation(host_mutation, layer, grid,
-                                               tables, codes, walls)
+    record, kept = slice_module().chunk_arguments(fields, layer, codes)
+    dropping = sum(1 for word in kept
+                   if word and word != offdiag_emitter.ALL_CHUNKS_KEPT)
+    tables, codes, walls, record, kept = apply_host_mutation(
+        host_mutation, layer, grid, tables, codes, walls, record, kept)
     launch_error = None
     try:
         for _ in range(steps):
-            backend.launch(fields, layer, rows, mask, tables, codes, walls)
+            backend.launch(fields, layer, rows, mask, tables, codes, walls, record,
+                           kept)
             advance_sources(fields)
     except Exception as exc:  # noqa: BLE001 - a refusal is a result, recorded
         launch_error = f"{type(exc).__name__}: {exc}"[:600]
@@ -939,7 +1049,7 @@ def one_case(backend, xp, cell, shape_label, boundaries, mask, row_form,
                                             "total_floats": 0,
                                             "per_component": {}}
 
-    record: Dict[str, Any] = {
+    case: Dict[str, Any] = {
         "key": case_key(shape_label, boundaries, mask, row_form, courant,
                         value_class, guard_label, steps),
         "shape": list(grid.shape),
@@ -965,9 +1075,10 @@ def one_case(backend, xp, cell, shape_label, boundaries, mask, row_form,
         "oracle_moved": moved > 0,
         "coupling_max_abs": coupling_max,
         "coupling_is_live": coupling_max > 0.0,
+        "rows_some_chunk_deletes": dropping,
         "operand_census": operand_census(host),
     }
-    return record
+    return case
 
 
 def case_is_valid(record: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
@@ -1006,7 +1117,17 @@ def case_product(product: str, steps: int) -> List[Dict[str, Any]]:
                                 "boundaries": triple, "mask": mask,
                                 "row_form": form, "courant": courant,
                                 "value_class": value_class, "steps": steps})
+    cases.extend(presence_cases(masks, steps))
     return cases
+
+
+def presence_cases(masks, steps: int) -> List[Dict[str, Any]]:
+    """The presence cases (:data:`PRESENCE_SHAPE`), on every mask the product sweeps."""
+    cell, label = PRESENCE_SHAPE
+    return [{"cell": cell, "shape_label": label, "boundaries": triple, "mask": mask,
+             "row_form": PRESENCE_ROW_FORM, "courant": INEXACT_COURANT,
+             "value_class": PRESENCE_VALUE_CLASS, "steps": steps}
+            for triple in PRESENCE_TRIPLES for mask in masks]
 
 
 def summarize(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1040,6 +1161,9 @@ def summarize(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "subnormal_band_is_non_vacuous": census["subnormals"] > 0,
         "every_case_moved_the_oracle": all(c["oracle_moved"] for c in cases),
         "every_case_had_live_coupling": all(c["coupling_is_live"] for c in cases),
+        "presence_cases_with_a_deleted_row": sum(
+            1 for c in cases if c["value_class"] == PRESENCE_VALUE_CLASS
+            and c["rows_some_chunk_deletes"] > 0),
         "min_coupling_max_abs": (min(c["coupling_max_abs"] for c in cases)
                                  if cases else None),
     }
@@ -1143,10 +1267,10 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
      "kind": "source", "expect": "caught",
      "why": "which cell a thread believes it is; in bounds on every swept shape "
             "by construction, so it must be caught as a wrong answer"},
-    {"leg": "o12_flatten_the_tail", "mutation": "flatten_the_tail",
+    {"leg": "o12_previous_tail_grouping", "mutation": "previous_tail_grouping",
      "kind": "source", "expect": "caught",
-     "why": "the welded tail's two accumulations flattened into one — the form "
-            "both complex constitutive kernels are written as"},
+     "why": "the welded tail in the grouping the package used until 0.10, "
+            "(f + kps*src) - kms*prev: the inversion of the leg that planted MEEP's"},
     {"leg": "o13_store_fw_before_reading_prev",
      "mutation": "store_fw_before_reading_prev", "kind": "source",
      "expect": "caught",
@@ -1170,11 +1294,52 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
      "kind": "host", "expect": "null_on_periodic",
      "why": "a wall told to the kernel as a wrap; an all-periodic grid already "
             "resolves to (0,0,0), so the same pair applies"},
-    {"leg": "n1_distribute_the_quarter", "mutation": "distribute_the_quarter",
+    {"leg": "b1_row_in_float32", "mutation": "row_in_float32", "kind": "source",
+     "expect": "caught", "masks": ((1, 1, 1, 1, 1, 1), (0, 0, 1, 1, 0, 0)),
+     "why": "the row scaled and summed in float32, the package's arithmetic until "
+            "0.10, where MEEP's 0.25 is a double literal and the row a double sum. A "
+            "one-term row is ONE rounding of an exact double sum either way, so the leg "
+            "is armed only on masks where a component adds two terms."},
+    {"leg": "b2_select_removed", "mutation": "select_removed", "kind": "host",
+     "expect": "caught",
+     "why": "every cell in a layer chunk: the accumulation and the f_w traffic on "
+            "every cell, the whole-grid recurrence until 0.10"},
+    {"leg": "b3_predicate_on_coefficient_identity",
+     "mutation": "predicate_on_coefficient_identity", "kind": "source",
+     "expect": "caught",
+     "why": "the form keyed on kms != 1 rather than on chunk membership: the cells "
+            "of a layer chunk whose sigma is exactly zero take the wrong form"},
+    {"leg": "b4_record_bound_off_by_one", "mutation": "record_bound_off_by_one",
+     "kind": "host", "expect": "caught",
+     "why": "a membership run one row long: the boundary plane changes form"},
+    {"leg": "b5_records_swapped", "mutation": "records_swapped", "kind": "host",
+     "expect": "caught",
+     "why": "the integer and half-integer records swapped: the boundary plane "
+            "moves by one cell"},
+    {"leg": "b6_presence_ignored", "mutation": "presence_ignored", "kind": "source",
+     "expect": "caught", "cell": PRESENCE_SHAPE, "row_form": PRESENCE_ROW_FORM,
+     "classes": (PRESENCE_VALUE_CLASS,), "triples": PRESENCE_TRIPLES,
+     "why": "a term added where the chunk deleted the row's array: an added zero "
+            "moves a -0 row to +0, so only the presence cases can see it"},
+    {"leg": "b7_presence_bit_cleared", "mutation": "presence_bit_cleared",
+     "kind": "host", "expect": "caught", "cell": PRESENCE_SHAPE,
+     "row_form": PRESENCE_ROW_FORM, "classes": (PRESENCE_VALUE_CLASS,),
+     "triples": PRESENCE_TRIPLES,
+     "why": "the interior chunk's presence bit cleared: the coupling dropped where "
+            "the rows live"},
+    {"leg": "b8_plain_constitutive_via_unit_coefficients",
+     "mutation": "plain_constitutive_via_unit_coefficients", "kind": "source",
+     "expect": "caught", "cell": PRESENCE_SHAPE, "row_form": PRESENCE_ROW_FORM,
+     "classes": (PRESENCE_VALUE_CLASS,), "triples": PRESENCE_TRIPLES,
+     "why": "the plain form as the accumulation with unit coefficients rather than "
+            "the output select: 0 + ((1*src) - (0*prev)) turns a -0 source into +0, "
+            "visible only on a planted -0 plain cell"},
+    {"leg": "n1_scale_the_quarter_in_float32",
+     "mutation": "scale_the_quarter_in_float32",
      "kind": "source", "expect": "uncaught", "classes": ("uniform",),
-     "why": "NULL: 0.25 is an exact power of two and scaling by it commutes with "
-            "round-to-nearest. NOT a null under the band class, which is why this "
-            "leg names the class it is armed on."},
+     "why": "NULL: 0.25 is an exact power of two, so the float32 scale is exact and "
+            "widening it gives the double scale's word. NOT a null under the band "
+            "class, which is why this leg names the class it is armed on."},
     {"leg": "n2_commute_the_diagonal_product",
      "mutation": "commute_the_diagonal_product", "kind": "source",
      "expect": "uncaught",
@@ -1208,9 +1373,10 @@ def mutation_case_plan(leg: Dict[str, Any], product: str,
     plan = []
     masks = leg.get("masks", GATE_ROW_MASKS[:2])
     classes = leg.get("classes", ("uniform",))
-    triples = (BOUNDARY_TRIPLES[:2] if leg["expect"] != "null_on_periodic"
-               else (BOUNDARY_TRIPLES[0], BOUNDARY_TRIPLES[4]))
-    shapes = SHAPES[:1] if product == "reduced" else SHAPES[:2]
+    triples = leg.get("triples", (BOUNDARY_TRIPLES[:2] if leg["expect"] != "null_on_periodic"
+                                  else (BOUNDARY_TRIPLES[0], BOUNDARY_TRIPLES[4])))
+    shapes = ((leg["cell"],) if "cell" in leg
+              else SHAPES[:1] if product == "reduced" else SHAPES[:2])
     for cell, label in shapes:
         for triple in triples:
             if config_viable(cell, triple) is not None:

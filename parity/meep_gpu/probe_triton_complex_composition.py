@@ -9,7 +9,7 @@ CuPy driver state reproduce the array-path driver EXACTLY after every step, for
 a STATED number of steps, sources, PML, boundary fills and metal zeroing
 included?
 
-The nine cases span the corpus demand plus the zero-coincidence class the
+The ten cases span the corpus demand plus the zero-coincidence class the
 random-seeded certification provably could not see:
 
 1. ``complex_k0``               — force_complex_fields at k = 0, metallic x/y
@@ -39,23 +39,30 @@ random-seeded certification provably could not see:
    absorber whose deepest ``kms = kappa - sigma`` is NEGATIVE (-0.5111
    integer / -0.0494 half-integer at res 12, courant 0.35). A negative
    coefficient times a quiet +0.0 word is the reachable producer of stored
-   ``re = -0.0`` words on the array path (NumPy census 2026-08-12: 224 words
+   ``-0.0`` words on the array path (NumPy census 2026-08-12: 224 words
    on every ODD step across fu_Bx/fu_Bz/fu_Dx/fu_Dz/Bz/f_w_Hz, 0 on even —
-   the -0 feeds back as ``-0 * negative = +0`` — hence the ODD budget), which
-   the unary-minus addend lowering canonicalizes to +0 (semantic.py:386-391).
-   The certifying run's random seeds and the seeded rows' strictly-negative-imag
-   companions could not reach this class. Exercises _mul_field_left /
-   _mul_coefficient_left (the zero-imaginary product helpers' re-addends).
+   the -0 feeds back as ``-0 * negative = +0`` — hence the ODD budget). Since
+   the per-part alignment (bit_parity 0.10) the array path forms every such
+   product part by part, so BOTH words of the cell are -0 (566 words, 283
+   cells, on every odd step): the discriminating class is now the cell whose
+   imaginary word is -0 beside a -0 real word, which a whole-complex product
+   (the coefficient promoted to ``c + 0i``) stores as ``-0 + 0i`` instead
+   (``c*im + 0*re = -0 + +0 = +0``).
 9. ``zero_init_quiet_bloch``    — the same class under a SECOND-QUADRANT
    Bloch phase (k = 0.11 on x, exp(2*pi*i*0.33): p_re < 0 < p_im), periodic
    both axes, thin 3-cell x/y absorber graded under the phased wrap. Every
-   quiet wrap-lane read is a rotate-canonicalization event (measured 72/step;
-   the _rotate_field_left line-251 class), counted per step and required > 0.
-   LOAD-BEARING census result: the rotated ±0-sign difference never reaches a
-   STORED word in any reachable composition (E/H curl-source words never
-   carry -0.0; the curl grouping launders ``+0 + -0`` to +0), so line 251's
-   spelling is pinned by construction and by the armed negation-mutation leg
-   below, not by a per-case stored-byte divergence of the rotation itself.
+   quiet read of a connected plane is a connection event: the phase product's
+   real word ``(a*re) - (b*im)`` is ``-0 - +0 = -0`` where a fused, negated
+   addend would store +0 (counted per step, required > 0; since the alignment
+   the connection sits on the UNSHIFTED operand's plane 0 in both directions).
+10. ``edge_sparse_y``           — the Brillouin edge on y (k = 0.25, L = 2:
+   ``grid.bloch_phase`` is exactly -1, MEEP's NEGATION), 3-D between metallic
+   x and z walls under their layers, seeded SPARSE: most words are zeros of
+   random sign, so a stencil whose every operand is zero is common and the
+   sign of a negated connection reaches stored words. The armed negation leg
+   below runs here (on the host interpreter, with the lowered spelling planted,
+   it diverged at step 1 in 44 words; the 2-D edge row it replaced, z
+   invariant, never did in 16 steps).
 
 Two-level NON-VACUITY, both asserted in-run for the zero-init rows: (1) the
 source must separate the run from a source-free control (every sourced case's
@@ -66,14 +73,13 @@ across the 24 arrays) — otherwise the case cannot discriminate the
 canonicalization and reports itself VACUOUS by AssertionError.
 
 TWO ARMED mutation legs, both launch-counted, DISARMED/NOT-CAUGHT are
-failures: (a) case 4 re-run with the step_D plan's phase table un-conjugated
-(the band-structure sign error); (b) case 8 re-run with the kernels compiled
-from a source mutation that restores the unary-minus addend spelling
-``-(a * b)`` in all three helpers (the pre-2026-08-12 spelling) — the
-negation-lowering gap itself, which must diverge from the array path within
-the budget on the zero-init state. Leg (b) is what proves the zero-init rows
-actually discriminate the lowering; it is licensed under FMA_V1 only (the
-NAIVE arms carry no unary minus) and records a predicted null otherwise.
+failures: (a) case 4 re-run with the step_D plan carrying step_B's connection
+factor (``conj(eikna)`` for ``eikna``: the band-structure sign error); (b) case
+10 re-run with the curl kernel compiled from a source mutation that respells
+the connection's negation ``v * -1.0`` as the unary ``-v`` (Triton lowers it as
+``0.0 - v``, which turns -(+0) into +0) — the negation-lowering gap itself,
+which must diverge from the array path within the budget on the sparse edge
+state.
 
 Requirements carried from prior defects: per-complete-step uint32 compare of
 EVERY allocated primary and auxiliary; a non-power-of-two Courant (0.35)
@@ -86,20 +92,8 @@ SUBNORMAL POLICY. This probe runs UNDER THE STRIPPED IEEE-KEEP POLICY — the
 ship configuration — installed via the gate's ``install_ftz_strip`` (wrap
 ``cupy.cuda.compiler.compile_using_nvrtc``, filter ``-ftz=true``, private
 policy-suffixed ``CUPY_CACHE_DIR``) BEFORE ``guard_kernel_compilation`` so the
-guard wraps the strip and both apply. A probe artifact handed in with
-``--probe-artifact`` must certify that same policy (the gate stamps it) and is
-refused otherwise; every claim in this artifact states the policy it was cut
-under.
-
-The earlier NEITHER under CuPy's default ``-ftz=true`` was a BROKEN COMPARISON,
-not a property of the platform: the device flushed while the candidate arms were
-built under keep, so the platform matched none of the three arms. Cut the
-candidates under the policy in force and the same platform classifies (see
-``complex_fields.POLICY_CONDITIONAL_LICENCE`` and the 2026-08-15 coincidence
-artifact). This paragraph stated the retired framing as a platform fact until
-2026-08-15. It changes nothing here — this probe runs under the stripped
-IEEE-keep policy either way, where every pattern discriminates and the licence is
-fully measured — but the fact has two homes and they now agree.
+guard wraps the strip and both apply; every claim in this artifact states the
+policy it was cut under.
 
 Usage (the GPU host, one clear device; the cache dir must carry the policy token)::
 
@@ -118,7 +112,6 @@ many words that the Triton legs were skipped.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import time
@@ -133,8 +126,8 @@ if API_ROOT not in sys.path:
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-# The expansion preflight, the atomic writer, provenance and the seeding all
-# live in the sub-step gate; re-implementing any of them here would make this
+# The atomic writer, provenance and the seeding all live in the sub-step
+# gate; re-implementing any of them here would make this
 # probe's verdict about this file rather than about the contract.
 import gate_triton_complex as gate  # noqa: E402
 
@@ -197,21 +190,19 @@ CASES: Tuple[Tuple[Any, ...], ...] = (
      (1, 0, 0),
      {"zero_init": True, "min_final_neg_zero_words": 1,
       "min_final_quiet_fraction": 0.25, "min_rotate_events_per_step": 1}),
+    # The Brillouin edge (docstring case 10): k*L = 0.5 exactly, so the y phase is
+    # exactly -1 and MEEP connects by negation; the seeded state is sparse.
+    ("edge_sparse_y", 3, (1.5, 2.0, 1.5), ("metallic", "periodic", "metallic"),
+     (0.0, 0.25, 0.0), {"x": 4, "z": 4}, (), 8, (0, 1, 0), {"sparse": 0.04}),
 )
 
-#: The three FMA-arm addends whose negation must be spelled ``* -1.0``
-#: (complex_fields._rotate_field_left / _mul_field_left /
-#: _mul_coefficient_left) -> the pre-2026-08-12 unary-minus spelling the
-#: armed negation-mutation leg compiles back in. The NAIVE arms carry binary
-#: subtraction (IEEE-identical on host and device) and are not part of the
-#: gap.
+#: The connection's negation (``complex_fields._connect``, MEEP's CONNECT_NEGATE),
+#: spelled ``* -1.0`` per part -> the unary spelling the armed negation-mutation
+#: leg compiles back in. Every other product of the kernels has a real operand and
+#: no negated addend, so these are the only negation sites.
 NEGATION_MUTATION_SITES: Tuple[Tuple[str, str], ...] = (
-    ("tl.math.fma(g_re, p_re, (g_im * p_im) * -1.0)",
-     "tl.math.fma(g_re, p_re, -(g_im * p_im))"),
-    ("tl.math.fma(z_re, c, (z_im * 0.0) * -1.0)",
-     "tl.math.fma(z_re, c, -(z_im * 0.0))"),
-    ("tl.math.fma(c, z_re, (0.0 * z_im) * -1.0)",
-     "tl.math.fma(c, z_re, -(0.0 * z_im))"),
+    ("out_re = v_re * -1.0", "out_re = -v_re"),
+    ("out_im = v_im * -1.0", "out_im = -v_im"),
 )
 
 EXPECTED_PLANS = {"step_B": "ComplexPmlCurlPlan",
@@ -228,7 +219,7 @@ REQUIRED_STATE = set(STATE_NAMES)
 
 def build_driver(xp, name, dimensions, cell, boundaries, k_point, pml_spec,
                  source_specs, seed: int, prefer_gpu: bool,
-                 zero_init: bool = False):
+                 zero_init: bool = False, sparse: Optional[float] = None):
     from meep_gpu.driver import FdtdDriver  # noqa: PLC0415
 
     driver = FdtdDriver(
@@ -255,6 +246,13 @@ def build_driver(xp, name, dimensions, cell, boundaries, k_point, pml_spec,
         # Scaled INSIDE the builder: a complex multiply by 0.25 afterwards
         # would rewrite the targeted signed-zero planes.
         host = gate._seed_host_complex(tuple(shape), rng, scale=0.25)
+        if sparse:
+            # Most words become zeros of random sign (case 10's class).
+            for part in (host.real, host.imag):
+                keep = rng.random(size=tuple(shape)) < sparse
+                zeros = np.where(rng.random(size=tuple(shape)) < 0.5,
+                                 np.float32(-0.0), np.float32(0.0))
+                part[...] = np.where(keep, part, zeros)
         driver.set_field(primary, xp.asarray(host))
     return driver
 
@@ -287,9 +285,11 @@ def host_state(cp, arrays: Dict[str, Any]) -> Dict[str, np.ndarray]:
 
 def negative_zero_census(state_host: Dict[str, np.ndarray]) -> Dict[str, Any]:
     """-0.0 word count per array, plus the DISCRIMINATING cell count: cells
-    whose real word is -0.0 with a non-negative imaginary word — the class
-    the unary-minus addend lowering flips at the next coefficient multiply
-    (a * b = -0 with a +0 addend whose true negation is -0)."""
+    whose real AND imaginary words are both -0.0 — what a negative real
+    coefficient times a quiet ``+0 + 0i`` word stores part by part (MEEP's
+    ``DOCMP`` products), and what a whole-complex product with the coefficient
+    promoted to ``c + 0i`` would store as ``-0 + 0i`` instead
+    (``c*im + 0*re = -0 + +0 = +0``)."""
     total = 0
     per_array: Dict[str, int] = {}
     discriminating = 0
@@ -301,7 +301,7 @@ def negative_zero_census(state_host: Dict[str, np.ndarray]) -> Dict[str, Any]:
         total += neg
         re, im = arr.real, arr.imag
         discriminating += int(np.count_nonzero(
-            (re == 0) & np.signbit(re) & ~np.signbit(im)))
+            (re == 0) & np.signbit(re) & (im == 0) & np.signbit(im)))
     return {"neg_zero_words": total, "per_array": per_array,
             "discriminating_cells": discriminating}
 
@@ -320,24 +320,31 @@ def quiet_fraction(state_host: Dict[str, np.ndarray]) -> float:
 
 def rotate_event_count(state_host: Dict[str, np.ndarray],
                        phases: Sequence[Optional[complex]]) -> int:
-    """Line-251 class occupancy: wrapped-read operands (both shift
-    directions, phased axes only) whose ROTATED real word depends on the
-    addend's zero sign — f32(g_re*p_re) an exact -0 while f32(g_im*p_im) is
-    an exact +0, so sign-exact negation stores -0.0 where the ``0.0 - x``
-    lowering stores +0.0. Counted on the reference state; whether an event
-    survives to a stored word is the byte compare's question (measured: it
-    never does — the record case 9's docstring carries)."""
+    """Connection-event occupancy: connected operands (plane 0 of each phased
+    axis, the factor of each direction: ``conj(eikna)`` under B, ``eikna``
+    under D, as ``complex_fields.connection_arguments`` rounds it) whose
+    connected real word depends on the subtraction's zero sign —
+    f32(g_re*p_re) an exact -0 while f32(g_im*p_im) is an exact +0, so the
+    unfused ``-0 - +0`` stores -0.0 where a fused, negated addend stores +0.0.
+    Counted on the reference state; whether an event survives to a stored
+    word is the byte compare's question."""
+    from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
+
     total = 0
     f32 = np.float32
     for axis, phase in enumerate(phases):
         if phase is None:
             continue
-        rounded = np.complex64(phase)
         for backward in (False, True):
-            p_re = f32(rounded.real)
-            p_im = f32(-rounded.imag if backward else rounded.imag)
+            table: List[Optional[complex]] = [None, None, None]
+            table[axis] = phase
+            kinds, values = complex_fields.connection_arguments(table, backward)
+            if kinds[axis] != complex_fields.CONNECTION_KINDS["phase"]:
+                continue
+            p_re = f32(values[2 * axis])
+            p_im = f32(values[2 * axis + 1])
             sources = ("Hx", "Hy", "Hz") if backward else ("Ex", "Ey", "Ez")
-            plane = 0 if backward else -1  # the lane whose read wraps
+            plane = 0  # the connected plane, both directions
             for component, name in enumerate(sources):
                 if component == axis or name not in state_host:
                     continue
@@ -355,7 +362,7 @@ def rotate_event_count(state_host: Dict[str, np.ndarray],
 def census_point(cp, reference, checks: Optional[Dict[str, Any]]
                  ) -> Optional[Dict[str, Any]]:
     """One step's census on the REFERENCE driver, zero-init rows only."""
-    if not checks:
+    if not (checks and checks.get("zero_init")):
         return None
     state_arrays = host_state(cp, state(reference))
     point = negative_zero_census(state_arrays)
@@ -376,8 +383,8 @@ def assert_zero_init_nonvacuous(name: str, checks: Dict[str, Any],
             f"{name} is VACUOUS: the reference carried "
             f"{final['neg_zero_words']} negative-zero words at the final "
             f"compared step (needs >= {checks['min_final_neg_zero_words']}); "
-            f"the case cannot discriminate the negation-lowering "
-            f"canonicalization and must not be reported as passing")
+            f"the case cannot discriminate the per-part products' "
+            f"signed zeros and must not be reported as passing")
     if final["quiet_fraction"] < checks["min_final_quiet_fraction"]:
         raise AssertionError(
             f"{name}: the quiet region did not persist — final quiet "
@@ -389,36 +396,36 @@ def assert_zero_init_nonvacuous(name: str, checks: Dict[str, Any],
         least = min(row["rotate_events"] for row in census_rows)
         if least < floor:
             raise AssertionError(
-                f"{name}: the rotation was not exercised on the line-251 "
+                f"{name}: the connection was not exercised on its signed-zero "
                 f"class every step (min {least} events < {floor}); a case "
-                f"that never exercises the rotation cannot see "
-                f"_rotate_field_left")
+                f"that never exercises the connection product cannot see "
+                f"_connect")
 
 
-def build_plans(driver, record) -> Dict[str, Any]:
+def build_plans(driver) -> Dict[str, Any]:
     from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
 
     plans = {
         "step_B": complex_fields.plan_complex_pml_curl(
-            driver.fields, driver.pml, "step_B", probe=record),
+            driver.fields, driver.pml, "step_B"),
         "update_H": complex_fields.plan_complex_constitutive(
-            driver.fields, driver.pml, "H", probe=record),
+            driver.fields, driver.pml, "H"),
         "step_D": complex_fields.plan_complex_pml_curl(
-            driver.fields, driver.pml, "step_D", probe=record),
+            driver.fields, driver.pml, "step_D"),
         "update_E": complex_fields.plan_complex_constitutive(
-            driver.fields, driver.pml, "E", probe=record),
+            driver.fields, driver.pml, "E"),
     }
     missing = {slot for slot, plan in plans.items() if plan is None}
     if missing:
         reasons = {
             "step_B": complex_fields.complex_pml_curl_coverage(
-                driver.fields, driver.pml, "step_B", probe=record).reasons,
+                driver.fields, driver.pml, "step_B").reasons,
             "update_H": complex_fields.complex_constitutive_coverage(
-                driver.fields, driver.pml, "H", probe=record).reasons,
+                driver.fields, driver.pml, "H").reasons,
             "step_D": complex_fields.complex_pml_curl_coverage(
-                driver.fields, driver.pml, "step_D", probe=record).reasons,
+                driver.fields, driver.pml, "step_D").reasons,
             "update_E": complex_fields.complex_constitutive_coverage(
-                driver.fields, driver.pml, "E", probe=record).reasons,
+                driver.fields, driver.pml, "E").reasons,
         }
         raise AssertionError(f"plans refused for {sorted(missing)}: "
                              f"{ {k: list(v) for k, v in reasons.items()} }")
@@ -463,12 +470,13 @@ def install(driver_module, plans: Dict[str, Any], owner):
                     for name, function in originals.items()]
 
 
-def run_case(cp, record, name, dimensions, cell, boundaries, k_point, pml_spec,
+def run_case(cp, name, dimensions, cell, boundaries, k_point, pml_spec,
              source_specs, steps, expected_phased,
              checks: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     from meep_gpu import driver as driver_module  # noqa: PLC0415
 
     zero_init = bool(checks and checks.get("zero_init"))
+    sparse = (checks or {}).get("sparse")
     if expected_phased is None:
         # Case 6: the construction is EXPECTED to refuse (grid.py:980-991).
         try:
@@ -490,20 +498,24 @@ def run_case(cp, record, name, dimensions, cell, boundaries, k_point, pml_spec,
 
     reference = build_driver(cp, name, dimensions, cell, boundaries, k_point,
                              pml_spec, source_specs, 20260811, prefer_gpu=True,
-                             zero_init=zero_init)
+                             zero_init=zero_init, sparse=sparse)
     candidate = build_driver(cp, name, dimensions, cell, boundaries, k_point,
                              pml_spec, source_specs, 20260811, prefer_gpu=True,
-                             zero_init=zero_init)
+                             zero_init=zero_init, sparse=sparse)
     control = (build_driver(cp, name, dimensions, cell, boundaries, k_point,
                             pml_spec, (), 20260811, prefer_gpu=True,
-                            zero_init=zero_init)
+                            zero_init=zero_init, sparse=sparse)
                if source_specs else None)
     undo = lambda: None  # noqa: E731
     try:
-        plans = build_plans(candidate, record)
-        phased = tuple(plans["step_B"].phased)
+        plans = build_plans(candidate)
+        # The grid's phased axes; the plan's connection kinds are MEEP's classes of
+        # them (a phase within 1e-13 of +1, e.g. case 7's exp(2*pi*i*15), connects
+        # as a copy and carries kind 0).
+        phased = tuple(0 if candidate.grid.bloch_phase(axis) is None else 1
+                       for axis in range(3))
         if phased != tuple(expected_phased):
-            raise AssertionError(f"{name}: plan phased flags {phased} != "
+            raise AssertionError(f"{name}: grid phased flags {phased} != "
                                  f"expected {expected_phased}")
         missing = REQUIRED_STATE - set(state(candidate))
         if missing:
@@ -518,14 +530,16 @@ def run_case(cp, record, name, dimensions, cell, boundaries, k_point, pml_spec,
             "k_point": list(k_point),
             "pml": dict(pml_spec),
             "phased": list(phased),
-            "phase_values": list(plans["step_B"].phase_values),
+            "connections": list(plans["step_B"].connections),
+            "connection_values": list(plans["step_B"].connection_values),
             "sources": [f"{d['component']} amplitude={d.get('amplitude')!r}"
                         for d in source_specs],
             "steps": steps,
             "step_budget_note": "bit-identity is claimed for exactly this many "
                                 "steps and no further",
             "init": "zero (all fields +0.0, source only)" if zero_init
-                    else "seeded (random + targeted signed-zero planes)",
+                    else ("seeded sparse (zeros of random sign)" if sparse
+                          else "seeded (random + targeted signed-zero planes)"),
             "checks": checks,
             "per_step": [],
         }
@@ -589,7 +603,7 @@ def run_case(cp, record, name, dimensions, cell, boundaries, k_point, pml_spec,
             raise AssertionError(
                 f"{name}: the source never separated the reference from its "
                 f"control — the case is vacuous")
-        if checks:
+        if zero_init:
             assert_zero_init_nonvacuous(name, checks, census_rows)
             row["census_final"] = census_rows[-1]
         row["bit_identical"] = True
@@ -604,9 +618,10 @@ def run_case(cp, record, name, dimensions, cell, boundaries, k_point, pml_spec,
         cp.get_default_memory_pool().free_all_blocks()
 
 
-def run_armed_mutation(cp, record) -> Dict[str, Any]:
-    """Case 4 with the step_D phase table un-conjugated — MUST diverge within
-    the budget, and the mutated plan MUST demonstrably have launched."""
+def run_armed_mutation(cp) -> Dict[str, Any]:
+    """Case 4 with the step_D plan carrying step_B's connection factor
+    (``conj(eikna)`` for ``eikna``) — MUST diverge within the budget, and the
+    mutated plan MUST demonstrably have launched."""
     from meep_gpu import driver as driver_module  # noqa: PLC0415
 
     (name, dimensions, cell, boundaries, k_point, pml_spec, source_specs,
@@ -617,18 +632,20 @@ def run_armed_mutation(cp, record) -> Dict[str, Any]:
                              pml_spec, source_specs, 20260811, prefer_gpu=True)
     undo = lambda: None  # noqa: E731
     try:
-        plans = build_plans(candidate, record)
+        plans = build_plans(candidate)
+        from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
+
         mutated = plans["step_D"]
-        values = list(mutated.phase_values)
-        flipped = 0
-        for axis, flag in enumerate(mutated.phased):
-            if flag:
-                values[2 * axis + 1] = -values[2 * axis + 1]
-                flipped += 1
+        phases = tuple(candidate.grid.bloch_phase(axis) for axis in range(3))
+        _kinds, values = complex_fields.connection_arguments(phases, backward=False)
+        flipped = sum(1 for axis, kind in enumerate(mutated.connections)
+                      if kind == complex_fields.CONNECTION_KINDS["phase"]
+                      and values[2 * axis:2 * axis + 2]
+                      != mutated.connection_values[2 * axis:2 * axis + 2])
         if flipped == 0:
-            raise AssertionError("armed mutation: no phased axis to flip — "
+            raise AssertionError("armed mutation: no connected axis to flip — "
                                  "the leg is disarmed")
-        mutated.phase_values = tuple(values)
+        mutated.connection_values = tuple(values)
         counter = PlanCounter(mutated)
         plans["step_D"] = counter
         undo = install(driver_module, plans, candidate.fields)
@@ -655,7 +672,7 @@ def run_armed_mutation(cp, record) -> Dict[str, Any]:
                 f"{counter.launches} mutated launches — the per-step compare "
                 f"cannot see the phase-conjugate sign error and the harness "
                 f"is not trustworthy")
-        return {"case": name, "mutation": "step_D phase table un-conjugated",
+        return {"case": name, "mutation": "step_D carries step_B's connection factor",
                 "axes_flipped": flipped, "launches": counter.launches,
                 "caught_at_step": first_divergence, "caught": True}
     finally:
@@ -665,30 +682,20 @@ def run_armed_mutation(cp, record) -> Dict[str, Any]:
         cp.get_default_memory_pool().free_all_blocks()
 
 
-def run_armed_negation_mutation(cp, record) -> Dict[str, Any]:
-    """The zero-init k0 case with the kernels compiled from the unary-minus
-    addend spelling (the pre-2026-08-12 form of the three inlined helpers)
-    — the negation-lowering gap itself. Triton lowers ``-x`` as
-    ``0.0 - x`` (semantic.py:386-391), which canonicalizes the ±0 addends the
-    zero-init state reaches, so the mutant MUST diverge from the array-path
-    reference within the budget; a leg that never launched or never diverged
-    proves the zero-init rows discriminate nothing and FAILS.
-
-    FMA_V1-only: the NAIVE arms spell binary subtraction, which is
-    IEEE-identical on host and device, so under a NAIVE license this leg is a
-    predicted null and is recorded as one rather than armed."""
+def run_armed_negation_mutation(cp) -> Dict[str, Any]:
+    """Case 10 (the sparse Brillouin-edge state) with the curl kernel compiled
+    from the unary spelling of the connection's negation — the
+    negation-lowering gap itself. Triton lowers ``-x`` as ``0.0 - x``
+    (semantic.py:386-391), which turns the negation of a +0 word into +0
+    where MEEP's sign-bit negation stores -0, so the mutant MUST diverge from
+    the array-path reference within the budget; a leg that never launched or
+    never diverged proves case 10 discriminates nothing and FAILS."""
     from meep_gpu import driver as driver_module  # noqa: PLC0415
-    from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
 
-    if complex_fields.expansion_from_probe(record) != \
-            complex_fields.EXPANSIONS["FMA_V1"]:
-        return {"skipped": "the licensed expansion is not FMA_V1: the NAIVE "
-                           "arms carry no unary-minus addend, so the mutation "
-                           "is byte-inert by construction (predicted null)"}
-
-    case = next(row for row in CASES if row[0] == "zero_init_quiet_k0")
+    case = next(row for row in CASES if row[0] == "edge_sparse_y")
     (name, dimensions, cell, boundaries, k_point, pml_spec, source_specs,
      steps, _phased, checks) = case
+    sparse = checks["sparse"]
 
     shipped = gate.shipped_source()
     mutated = shipped
@@ -703,22 +710,18 @@ def run_armed_negation_mutation(cp, record) -> Dict[str, Any]:
             f"{len(NEGATION_MUTATION_SITES)} sites): the helper spelling "
             f"drifted and the leg no longer compiles the old form")
     mutated_curl = gate.compile_mutated(mutated, "bloch_pml_curl_step")
-    mutated_constitutive = gate.compile_mutated(mutated,
-                                                "bloch_constitutive_step")
 
     reference = build_driver(cp, name, dimensions, cell, boundaries, k_point,
                              pml_spec, source_specs, 20260811, prefer_gpu=True,
-                             zero_init=True)
+                             sparse=sparse)
     candidate = build_driver(cp, name, dimensions, cell, boundaries, k_point,
                              pml_spec, source_specs, 20260811, prefer_gpu=True,
-                             zero_init=True)
+                             sparse=sparse)
     undo = lambda: None  # noqa: E731
     try:
-        plans = build_plans(candidate, record)
+        plans = build_plans(candidate)
         plans["step_B"]._kernel = mutated_curl
         plans["step_D"]._kernel = mutated_curl
-        plans["update_H"]._kernel = mutated_constitutive
-        plans["update_E"]._kernel = mutated_constitutive
         counters = {slot: PlanCounter(plan) for slot, plan in plans.items()}
         undo = install(driver_module, counters, candidate.fields)
         first_divergence = None
@@ -733,9 +736,8 @@ def run_armed_negation_mutation(cp, record) -> Dict[str, Any]:
                      for key in sorted(ref_state)}
             identical = all(p["bit_identical"] for p in parts.values())
             launches = sum(c.launches for c in counters.values())
-            census = census_point(cp, reference, checks)
             log(f"[armed-negation] step {step}/{steps} identical={identical} "
-                f"launches={launches} neg0={census['neg_zero_words']}")
+                f"launches={launches}")
             if not identical:
                 first_divergence = step
                 detail = {
@@ -744,7 +746,6 @@ def run_armed_negation_mutation(cp, record) -> Dict[str, Any]:
                     "differing_arrays": sorted(
                         key for key, p in parts.items()
                         if not p["bit_identical"]),
-                    "reference_neg_zero_words": census["neg_zero_words"],
                 }
                 break
         launches = sum(c.launches for c in counters.values())
@@ -754,12 +755,12 @@ def run_armed_negation_mutation(cp, record) -> Dict[str, Any]:
         if first_divergence is None:
             raise AssertionError(
                 f"armed negation mutation NOT CAUGHT in {steps} steps with "
-                f"{launches} mutated launches — the zero-init case cannot "
+                f"{launches} mutated launches — the sparse edge case cannot "
                 f"see the unary-minus lowering and its non-vacuity claim is "
                 f"false")
         return {"case": name,
-                "mutation": "helper addends respelled unary-minus "
-                            "(pre-2026-08-12 form, 3 sites)",
+                "mutation": "the connection's negation respelled unary "
+                            "(2 sites, complex_fields._connect)",
                 "sites": hits, "launches": launches,
                 "caught_at_step": first_divergence, "detail": detail,
                 "caught": True}
@@ -978,9 +979,6 @@ def environment(cp) -> Dict[str, Any]:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--probe-artifact", default=None,
-                        help="an existing expansion probe JSON; measured "
-                             "in-process when absent")
     parser.add_argument("--self-check", action="store_true",
                         help="laptop mode: build the cases on NumPy, no CUDA")
     args = parser.parse_args(argv)
@@ -998,7 +996,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 75
 
     from meep_gpu import backends  # noqa: PLC0415
-    from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
 
     # Strip FIRST, guard second: the guard wraps whatever is installed at the
     # seam, so both apply (the demonstrated composition order).
@@ -1009,18 +1006,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     os.makedirs(out_dir, exist_ok=True)
     gate.write_provenance(out_dir)
 
-    if args.probe_artifact:
-        with open(args.probe_artifact, "r", encoding="utf-8") as handle:
-            record = json.load(handle)
-        policy_problems = gate.probe_record_policy_reasons(record)
-    else:
-        record = gate.measure_expansion_record(cp, "cupy")
-        save(record, os.path.join(out_dir, "probe.json"))
-        policy_problems = gate.ftz_strip_license_reasons()
+    policy_problems = gate.ftz_strip_license_reasons()
     if policy_problems:
         payload = {"environment": environment(cp),
                    "subnormal_policy": gate.policy_stamp("cupy"),
-                   "expansion_probe": record,
                    "summary": {"status": "REFUSED",
                                "certified_under_subnormal_policy": None,
                                "reason": "subnormal policy: "
@@ -1028,26 +1017,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         save(payload, args.out)
         log(f"SUBNORMAL POLICY REFUSAL: {policy_problems}")
         return 1
-    expansion_verdict = complex_fields.expansion_license(record)
-    if expansion_verdict["expansion"] is None:
-        payload = {"environment": environment(cp),
-                   "subnormal_policy": gate.policy_stamp("cupy"),
-                   "expansion_probe": record,
-                   "expansion_license": expansion_verdict,
-                   "summary": {"status": "REFUSED",
-                               "reason": "the expansion probe licenses no "
-                                         "single constexpr on this platform; "
-                                         "the kernels may not be launched — "
-                                         + "; ".join(expansion_verdict["refusals"])}}
-        save(payload, args.out)
-        log(f"EXPANSION REFUSAL: {record.get('patterns')} "
-            f"-> {expansion_verdict['refusals']}")
-        return 1
-
     payload: Dict[str, Any] = {
         "environment": environment(cp),
-        "expansion_patterns": record["patterns"],
-        "expansion_license": expansion_verdict,
         "subnormal_policy": gate.policy_stamp("cupy"),  # refreshed at the end
         "step_budget": {case[0]: case[7] for case in CASES},
         "step_budget_note": "bit-identity is claimed per case for exactly the "
@@ -1058,11 +1029,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     for case in CASES:
         log(f"starting {case[0]}: k={case[4]} pml={case[5]} "
             f"sources={[d['component'] for d in case[6]]}")
-        payload["cases"].append(run_case(cp, record, *case))
+        payload["cases"].append(run_case(cp, *case))
         save(payload, args.out)
-    payload["armed_mutation"] = run_armed_mutation(cp, record)
+    payload["armed_mutation"] = run_armed_mutation(cp)
     save(payload, args.out)
-    payload["armed_negation_mutation"] = run_armed_negation_mutation(cp, record)
+    payload["armed_negation_mutation"] = run_armed_negation_mutation(cp)
     save(payload, args.out)
 
     # Final policy check with every case's compiles counted: a run whose strip

@@ -16,6 +16,13 @@ CARRIES flag with the clause that forces it MEASURED rather than cited, the
 predicate in both directions, the absorb rows, the registration shape, and the
 two properties the weld's whole design rests on — that the lift is a LIFT, and
 that no displacement read survives the redirect.
+
+THE PER-CHUNK FORMS AND THE DOUBLE ROW. The three PML welds lift bodies that read the
+chunk record: it rides in ``Params``, ``step_cell`` takes it, and the curl's guarded
+auxiliary store becomes a register select so the rotating scratch carries the
+pre-launch ``fu`` off the recurrence's cells. Their constitutive halves are the
+singles' software-binary64 rows (ruling R7), whose presence words ride in ``Params``
+beside the record.
 """
 
 from __future__ import annotations
@@ -102,10 +109,10 @@ def _emit(product):
             (1, 0, 0, 0, 0, 0), (0, 3, 0), (0, 0, 0), (0, 1, 0), {1: 1}, {1: 1})
     if name == "complex_no_pml_offdiag_fused_electric_pair":
         return product.complex_no_pml_offdiag_fused_electric_pair_source(
-            (1, 0, 0, 0, 0, 0), (0, 0, 0), (0, 0, 0), (1, 1, 0), "FMA_V1")
+            (1, 0, 0, 0, 0, 0), (0, 0, 0), (0, 0, 0), (2, 2, 0))
     return product.folded_complex_offdiag_fused_electric_pair_source(
         (0, 0, 1, 0, 0, 0), (0, 3, 0), (0, 0, 0), (0, 0, 0), (0, 1, 0),
-        {1: 1}, {1: 1}, "FMA_V1")
+        {1: 1}, {1: 1})
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +264,8 @@ def test_the_params_record_matches_the_kernel_struct(product):
     declared = [name.rstrip(";")
                 for line in body.splitlines()
                 for name in line.replace(";", " ; ").split()
-                if name not in ("uint", "int", "float", "float2", ";")]
+                if name not in ("uint", "int", "float", "float2", "ChunkBounds",
+                                "OffdiagPresence", ";")]
     record = product.params_record_dtype()
     assert sorted(declared) == sorted(record.names), (
         sorted(set(declared) ^ set(record.names)))
@@ -297,6 +305,12 @@ def test_the_lift_is_a_lift(product):
     # re-indent the function body takes and the stores the lift rewrote.
     assert "float curl0 = " in helper or "float2 curl0 = " in helper
     assert "out.v0 = v0;" in helper
+    if product.FAMILY in PML_FAMILIES:
+        # The guarded auxiliary store moved to the register, and nothing else did.
+        for t in range(3):
+            assert f"n{t} = du{t} ? n{t} : u{t}[ii];" in helper, t
+            assert f"u{t}[ii] = n{t};" not in helper, t
+        assert "f0[ii] = v0;" not in helper
     for name in ("d0s", "n0s", "dfin0"):
         assert name not in helper, (
             f"{name} is the KERNEL's, not the certified curl's; the helper must "
@@ -351,32 +365,37 @@ def _words(value):
 
 @pytest.mark.parametrize("weight", (1, -1))
 def test_the_complex_parity_spelling_is_the_array_paths(weight):
-    """``c_mul((w, +0), z)`` IS ``w * z``; a copy / bare negation is NOT.
+    """The weld's per-part ``w * z`` IS the array path's; the full product is NOT.
 
-    ``stepping._write_mirror_ghost`` spells a parity ``phase * plane`` — a FULL
-    complex multiply — and the emitted complex form expands that multiply's own
-    arithmetic. A plain copy at +1 and a bare ``-z`` at -1 are the REAL families'
-    (correct, measured) spelling and differ from it in TEN of a hundred
-    engineered signed-zero pairs, which is why the complex families do not elide
-    the +1 product. The gate reaches one of those ten on a real fixture.
+    ``stepping._write_mirror_ghost`` writes a complex parity through
+    ``host_writes.copy_face`` as ``part_products.scale(phase, plane)``: one float32
+    product per part. The emitted complex form spells it
+    ``c_mul_coefficient_left(w, z)`` -- the same products. The previous spelling,
+    the full complex multiply ``c_mul((w, +0), z)``, differs from it on
+    signed-zero pairs, which is the weld gate's must-catch mutant.
     """
+    from . import part_products
+
     module_differing = 0
-    bare_differing = 0
+    full_differing = 0
     for left in _SPELLING_VALUES:
         for right in _SPELLING_VALUES:
             value = np.array([np.complex64(complex(left, right))],
                              dtype=np.complex64)
-            reference = np.complex64(weight) * value
+            reference = part_products.scale(np.float32(weight), value)
             w = np.float32(weight)
             a, b = np.float32(left), np.float32(right)
-            module = np.array([np.complex64(complex(
-                np.float32(w * a - np.float32(0.0) * b),
-                np.float32(w * b + np.float32(0.0) * a)))], dtype=np.complex64)
-            bare = value.copy() if weight == 1 else -value
+            module = part_products.from_parts(
+                np.array([w * a], dtype=np.float32),
+                np.array([w * b], dtype=np.float32), np.complex64)
+            full = part_products.from_parts(
+                np.array([np.float32(w * a - np.float32(0.0) * b)], dtype=np.float32),
+                np.array([np.float32(w * b + np.float32(0.0) * a)], dtype=np.float32),
+                np.complex64)
             module_differing += int((_words(module) != _words(reference)).any())
-            bare_differing += int((_words(bare) != _words(reference)).any())
+            full_differing += int((_words(full) != _words(reference)).any())
     assert module_differing == 0
-    assert bare_differing == 10, bare_differing
+    assert full_differing > 0, full_differing
 
 
 def test_the_real_parity_spelling_is_a_copy_and_a_negation():
@@ -416,9 +435,11 @@ def test_the_emitted_parity_lines_are_one_per_axis(product):
     else:
         source = product.folded_complex_offdiag_fused_electric_pair_source(
             (1, 0, 0, 0, 0, 1), (3, 3, 0), (0, 0, 0), (0, 0, 0), (1, 0, 0),
-            {0: -1, 1: 1}, {0: -1, 1: 1}, "FMA_V1")
-        assert source.count("c_mul(float2(-1.0f, 0.0f), value)") >= 1
-        assert source.count("c_mul(float2(1.0f, 0.0f), value)") >= 1
+            {0: -1, 1: 1}, {0: -1, 1: 1})
+        assert source.count("c_mul_coefficient_left(-1.0f, value)") >= 1
+        assert source.count("c_mul_coefficient_left(1.0f, value)") >= 1
+        assert "c_mul(float2(" not in source.split("kernel void", 1)[0].split(
+            "static inline float2 d_final_0", 1)[-1]
     # ONE LINE PER AXIS: a corner emits two guarded applications, never one
     # combined product.
     body = source.split("static inline", 1)[1]
@@ -503,3 +524,105 @@ def test_the_closed_form_artifact_is_the_one_the_modules_cite():
         text = (PACKAGE_DIR / f"{family}.py").read_text(encoding="utf-8")
         if "metal_scratch_weld_closed_form" in text:
             assert "2026-09-01T2" in text, family
+
+
+# ---------------------------------------------------------------------------
+# The per-chunk forms (the three PML welds) and ruling R7 (all four)
+# ---------------------------------------------------------------------------
+
+PML_FAMILIES = ("offdiag_fused_electric_pair",
+                "folded_offdiag_fused_electric_pair",
+                "folded_complex_offdiag_fused_electric_pair")
+
+#: Every weld whose constitutive half is a software-binary64 row with presence words
+#: in ``Params``: the three PML welds and the complex no-PML one.
+SOFTFP64_FAMILIES = PML_FAMILIES + ("complex_no_pml_offdiag_fused_electric_pair",)
+
+
+@pytest.fixture(scope="module", params=PML_FAMILIES)
+def pml_product(request):
+    return importlib.import_module(f"meep_gpu.metal_kernels.{request.param}")
+
+
+@pytest.fixture(scope="module", params=SOFTFP64_FAMILIES)
+def softfp64_product(request):
+    return importlib.import_module(f"meep_gpu.metal_kernels.{request.param}")
+
+
+def test_the_record_rides_last_in_params_and_reaches_every_lifted_body(pml_product):
+    """``ChunkBounds cb`` is the last ``Params`` member, aliased before any lifted
+    text, passed to ``step_cell`` and every ``d_final_c``: the curl's select is
+    evaluated at the cell being stepped, a re-derived foreign cell included."""
+    from .metal_kernels import chunk_bounds
+
+    source = _emit(pml_product)
+    struct = source.split("struct Params {", 1)[1].split("};", 1)[0]
+    assert struct.rstrip().endswith(chunk_bounds.params_member().strip())
+    assert chunk_bounds.struct_source() in source
+    assert source.index("struct ChunkBounds {") < source.index("struct Params {")
+    assert chunk_bounds.params_alias() in source
+    assert "constant ChunkBounds& cb) {" in source  # step_cell's last parameter
+    for c in range(3):
+        header = source.split(f"d_final_{c}(", 1)[1].split(")", 1)[0]
+        assert "constant ChunkBounds& cb" in header, c
+    record = pml_product.params_record_dtype()
+    assert record.names[-1] == "cb"
+    assert record.fields["cb"][0] == chunk_bounds.record_dtype()
+    assert record.fields["cb"][1] + chunk_bounds.record_dtype().itemsize <= record.itemsize
+
+
+def test_the_constitutive_half_is_the_per_chunk_tail(pml_product):
+    source = _emit(pml_product).split("kernel void", 1)[1]
+    for t in range(3):
+        assert f"if (dw{t}) {{ w{t}[ii] = src{t}; }}" in source, t
+
+
+def test_no_ruling_refuses_a_weld_through_its_constitutive_half(softfp64_product,
+                                                               matrix):
+    """Ruling R7 chose the software-binary64 row, so the constitutive half refuses
+    nothing by ruling: no reason names R7 or a float64 refusal."""
+    from .metal_kernels import complex_no_pml_offdiag_update_e, offdiag_update_e
+
+    fields, pml = _fixture(matrix, softfp64_product.FAMILY)
+    verdict = _coverage(softfp64_product, fields, pml, ())
+    assert not any("R7" in reason or "float64" in reason
+                   for reason in verdict.reasons), verdict.reasons
+    assert not hasattr(offdiag_update_e, "R7_REFUSAL")
+    assert not hasattr(complex_no_pml_offdiag_update_e, "R7_REFUSAL")
+
+
+def test_the_presence_words_ride_params_before_the_record(softfp64_product):
+    """``OffdiagPresence kw`` sits immediately before ``ChunkBounds cb`` in ``Params``,
+    is aliased to ``kw`` before any lifted text, and the lifted constitutive body
+    reads it and the software-binary64 helpers spliced after the contraction
+    directive."""
+    from .metal_kernels import offdiag_update_e, softfp64
+
+    pml_product = softfp64_product
+    source = _emit(pml_product)
+    struct = source.split("struct Params {", 1)[1].split("};", 1)[0]
+    lines = [line.strip() for line in struct.strip().splitlines()]
+    assert lines[-2:] == ["OffdiagPresence kw;", "ChunkBounds cb;"], lines[-2:]
+    assert offdiag_update_e.presence_struct_source() in source
+    assert offdiag_update_e.presence_params_alias() in source
+    assert softfp64.MSL_HELPERS.strip("\n") in source
+    entry = source.split("kernel void", 1)[1]
+    assert "kw.kept" in entry and "sd_narrow_f(" in entry
+    record = pml_product.params_record_dtype()
+    assert record.names[-2:] == (offdiag_update_e.PRESENCE_NAME, "cb")
+    assert (record.fields["kw"][1] + offdiag_update_e.presence_record_dtype().itemsize
+            == record.fields["cb"][1])
+
+
+def test_the_plan_builders_take_the_record_with_no_default(pml_product):
+    import inspect
+
+    name = {"offdiag_fused_electric_pair": "plan_metal_offdiag_fused_electric_pair",
+            "folded_offdiag_fused_electric_pair":
+                "plan_metal_folded_offdiag_fused_electric_pair",
+            "folded_complex_offdiag_fused_electric_pair":
+                "plan_metal_folded_complex_offdiag_fused_electric_pair"}[
+                    pml_product.FAMILY]
+    parameter = inspect.signature(getattr(pml_product, name)).parameters["chunk_bounds"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty

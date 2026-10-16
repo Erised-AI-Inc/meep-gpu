@@ -1,5 +1,5 @@
-"""Byte gate for the Metal Dcyl m = 0 fused H->D pair: ``update_H`` + the radial prefix
-in one launch, the certified ``step_D`` curl in the other.
+"""Byte gate for the Metal Dcyl m = 0 fused H->D pair: ``update_H`` + the radial
+difference in one launch, the certified ``step_D`` curl in the other.
 
 THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
 :func:`~meep_gpu.metal_kernels.cylindrical_real_fused_hd_pair.metal_cylindrical_real_fused_hd_pair_coverage`
@@ -17,40 +17,45 @@ engine in a state that is BIT-IDENTICAL, PER COMPLETE DRIVER STEP, to
 
 over every stored volume, compared as uint32 words. ``allclose`` appears nowhere.
 
-THE QUESTION THIS SEAM TURNS ON, and the leg that answers it: the radial prefix's source
+THE QUESTION THIS SEAM TURNS ON, and the leg that answers it: the radial sum's source
 is what the seam's first half WRITES. Launch 1 never reads its own output -- the column
 leader RECOMPUTES ``Hy`` row by row from the pre-launch state -- and leg
-``recompute_identity`` measures that the prefix so formed is word-identical to the
-SHIPPED device scan run over the ``H`` launch 1 stored, and to
-``stepping.cylindrical_rderiv_prefix`` itself over the synced host ``Hy``, with the same
-scan over the PRE-launch ``Hy`` as the control that must differ.
+``recompute_identity`` measures that the radial difference so formed (MEEP's
+``f_rderiv_int`` summed per structure chunk, ``rinv`` multiplied) is word-identical to
+the SHIPPED device scan run over the ``H`` launch 1 stored, and to
+``stepping.cylindrical_rderiv_difference`` itself over the synced host ``Hy`` with the
+run's chunk starts, with the same scan over the PRE-launch ``Hy`` as the control that
+must differ.
 
 THE LEGS
 
-  1  binding_ceiling      launch 1's 25 bindings COMPILE, +6 (31) compiles, +7 (32) is
+  1  binding_ceiling      launch 1's 26 bindings COMPILE, +5 (31) compiles, +6 (32) is
                           REFUSED with the platform's own error, the ceiling is bisected
-                          on this host, and launch 2 (the certified curl, 22) compiles
+                          on this host, and launch 2 (the certified curl, 23) compiles
   2  transcription        launch 1 is the certified ``update_H`` cell function plus the
                           certified scan text with EXACTLY the two declared edits, reads
                           nothing it writes; launch 2 IS the certified curl, byte for byte
-  3  scan_order_host      ``numpy.cumsum`` is a strictly-serial accumulation over the
-                          increments the SHIPPED prefix forms, at ir0 = 0.5, on the
-                          fixture and corpus radial extents; a blocked scan must differ
-  4  recompute_identity   the prefix from the recomputed ``Hy`` equals the shipped scan
-                          over the stored ``H`` (device) and the oracle (host); the scan
-                          over the pre-launch ``Hy`` must differ
+  3  scan_order_host      the array path's radial difference IS a strictly serial
+                          per-chunk walk at ir0 = 0.5 (a transcription of the kernel's
+                          loop), on the fixture and corpus radial extents; a blocked
+                          association and one sum from the axis must both differ
+  4  recompute_identity   the radial difference from the recomputed ``Hy`` equals the
+                          shipped scan over the stored ``H`` (device) and the oracle
+                          (host); the scan over the pre-launch ``Hy`` must differ
   5  driver_order         REPLACES is the driver's two adjacent consults with only the
                           electric withdraw between them, read off ``driver.py`` by ast
-  6  refusal              undeclared sources, a standing integrated withdraw, |m| >= 1,
-                          Cartesian -- each refused by name; a non-integrated electric
-                          source admitted
+  6  refusal              undeclared sources, a source class that still carries a
+                          working withdraw, |m| >= 1, Cartesian, the run's first
+                          update_H -- each refused by name; a non-integrated electric
+                          source admitted, and an integrated one too: it stands no
+                          withdraw in this tree (withdraw_hoist: f_minus_p)
   7  arbitration          the shipped composer refuses this product today (no absorb
                           row); with the row applied IN-PROCESS and INSTALLABLE held
                           True it still refuses it, naming the released D->E incumbent,
                           and the installed composition does not move
   8  product              every case, six arrangements, bit-identical per complete
-                          step, the prefix against the oracle every step, both launch
-                          counters advancing, two launch witnesses agreeing
+                          step, the radial difference against the oracle every step,
+                          both launch counters advancing, two launch witnesses agreeing
   9  value_class          the same on the +-0 lattice, plus the subnormal ladder
  10  launch_structure     launches per step at the seam (singles 3, this 2) and over
                           the whole step (composition today 5, unfused 6, this 5)
@@ -70,10 +75,9 @@ WHAT THE GATE REFUSES TO INFER
   MOVE during a synthetic case; a lifted row must move the seam's own outputs.
 * **A DECLARED NULL MUST BE CONFIRMED**, and each has a live sibling: the commuted weight
   multiply and accumulator (float32 multiply and add are commutative to the bit) beside
-  the reciprocal-multiply divide, which is not; ``dtdx`` distributed over Dz's OUTER sum
-  (its phi pair is an exact +0.0 on the one-cell invariant axis) beside ``dtdx``
-  distributed INTO the prefix difference, which is the ``bz_flat_grouping`` class and is
-  caught.
+  the quotient divided in the kernel, which is not; Dz's curl keeping the phi pair as a
+  zero term (an exact +0.0 on the one-cell invariant axis) beside Dy's live pair in the
+  package's previous grouping, which is caught.
 * **A race is not a null and not a catch.** The leader reading ``H_out`` instead of
   recomputing read the intended value on a 400-thread grid and the wrong one on the
   corpus-sized grids (measured before this gate was written). It is armed on both: the
@@ -145,7 +149,8 @@ SUBJECT_PACKAGE = "metal_kernels"
 
 #: The budget every synthetic case runs -- the cylindrical siblings' twelve. The
 #: comparison is per COMPLETE DRIVER STEP and the state this weld carries between
-#: steps (the rotated ``H``/``f_w_H`` pair, the in-place ``fu_D``, the prefix) compounds.
+#: steps (the rotated ``H``/``f_w_H`` pair, the in-place ``fu_D``, the radial
+#: difference) compounds.
 STEPS = 12
 
 #: How many clean complete steps a LIFTED corpus row must reach to count. A lifted
@@ -176,19 +181,30 @@ EXIT_INCOMPLETE = 75
 #:                       and row count trade off), the composition matrix's own
 #:                       (16, 1, 20) row, and a 120 x 120 grid at the corpus rows'
 #:                       scale -- the one on which the scratch-read race is caught.
+#:
+#: EVERY COURANT IS A FLOAT32 WORD: the m = 0 D side's axis rule is MEEP's double
+#: product ``4 * Courant * Hp[r=0]`` rounded once, which this backend forms in float32
+#: only for such a word, and any other Courant is refused by name.
+
+
+def _f32(value: float) -> float:
+    """The float32 word of ``value``, as the Python float the grid carries."""
+    return float(np.float32(value))
+
+
 CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     ("square_metallic", dict(shape=(20, 1, 20), courant=0.5, z_kind="metallic")),
     ("square_metallic_odd_courant",
-     dict(shape=(20, 1, 20), courant=0.3141592653589793, z_kind="metallic")),
+     dict(shape=(20, 1, 20), courant=_f32(0.3141592653589793), z_kind="metallic")),
     ("tall_metallic_odd_courant",
-     dict(shape=(32, 1, 13), courant=0.4142135623730951, z_kind="metallic")),
+     dict(shape=(32, 1, 13), courant=_f32(0.4142135623730951), z_kind="metallic")),
     ("wide_metallic_odd_courant",
-     dict(shape=(13, 1, 32), courant=0.37, z_kind="metallic")),
+     dict(shape=(13, 1, 32), courant=_f32(0.37), z_kind="metallic")),
     ("square_periodic", dict(shape=(20, 1, 20), courant=0.5, z_kind="periodic")),
     ("composition_matrix_row",
-     dict(shape=(16, 1, 20), courant=0.37, z_kind="metallic", pml=(4, 4))),
+     dict(shape=(16, 1, 20), courant=_f32(0.37), z_kind="metallic", pml=(4, 4))),
     ("corpus_scale_metallic_odd_courant",
-     dict(shape=(120, 1, 120), courant=0.3141592653589793, z_kind="metallic")),
+     dict(shape=(120, 1, 120), courant=_f32(0.3141592653589793), z_kind="metallic")),
 )
 
 #: The case the mutations are armed on: SQUARE (so the coefficient-index defect reads a
@@ -380,6 +396,12 @@ def build_driver(label: str, seed: int, value_class: str = values.UNIFORM,
                           * scale).astype(array.dtype)
     else:
         raise ValueError(f"unknown value class {value_class!r}")
+    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # ``stepping.separate_h_from_b`` must not run again on it -- the array path would
+    # copy B into H and f_w on the dsigw cells at the first update_H and no kernel
+    # does. The composition matrix's seeds carry the same flag; the run's first
+    # update_H is refused by name instead (leg refusal).
+    driver.fields.h_separated = True
     driver.invalidate_fast_path()
     pin_array_path(driver)
     return driver
@@ -527,7 +549,7 @@ class CountingFunction:
 
 #: Every function-table attribute a plan in this composition can hold. The two-launch
 #: plans carry two tables; the single-launch ones carry ``_functions``.
-FUNCTION_TABLES: Tuple[str, ...] = ("_functions", "_prefix_functions", "_curl_functions",
+FUNCTION_TABLES: Tuple[str, ...] = ("_functions", "_scan_functions", "_curl_functions",
                                     "_fused_functions", "_constitutive_functions")
 
 
@@ -644,8 +666,10 @@ def arrangement_singles(driver: Any) -> Arrangement:
     """Reference 2: the two certified singles dispatched at the seam's two slots."""
     residency = Residency()
     fields, pml = driver.fields, driver.pml
-    constitutive = cyl.plan_cylindrical_real_constitutive(fields, pml, "H", residency)
-    curl = cyl.plan_cylindrical_real_curl(fields, pml, "step_D", residency)
+    constitutive = cyl.plan_cylindrical_real_constitutive(fields, pml, "H", residency,
+                                                          chunk_bounds=driver.chunk_bounds_record())
+    curl = cyl.plan_cylindrical_real_curl(fields, pml, "step_D", residency,
+                                          chunk_bounds=driver.chunk_bounds_record())
     if constitutive is None or curl is None:
         raise RuntimeError("a certified single was refused on a fixture this gate "
                            "expects it to admit")
@@ -688,7 +712,8 @@ def build_subject(driver: Any, residency: Residency,
     plan = family.plan_metal_cylindrical_real_fused_hd_pair(
         driver.fields, driver.pml, sources=tuple(getattr(driver, "_sources", ())),
         residency=residency, constitutive_function=constitutive_function,
-        curl_function=curl_function, scan_vectors=scan_vectors)
+        curl_function=curl_function, scan_vectors=scan_vectors,
+        chunk_bounds=driver.chunk_bounds_record())
     if plan is None:
         reasons = family.metal_cylindrical_real_fused_hd_pair_coverage(
             driver.fields, driver.pml, tuple(getattr(driver, "_sources", ())),
@@ -750,18 +775,27 @@ def all_arrangements(driver: Any, **weld_kwargs: Any) -> Dict[str, Arrangement]:
 # The walk: six engines on ONE driver, in lockstep from one seed
 # ---------------------------------------------------------------------------
 
-def prefix_against_the_oracle(arrangement: Arrangement, fields: Any) -> Optional[int]:
-    """The subject's device prefix against ``stepping.cylindrical_rderiv_prefix``.
+def radial_oracle(fields: Any, pml: Any, hy: Any, one_sum: bool = False) -> Any:
+    """``stepping.cylindrical_rderiv_difference`` over ``hy`` at ir0 = 0.5, backward,
+    with the run's own chunk starts for Dz (``one_sum``: one sum from the axis)."""
+    starts = None if one_sum else stepping._cylindrical_scan_starts(fields, pml, "Dz")
+    hy = np.asarray(hy)
+    return stepping.cylindrical_rderiv_difference(np, hy, family.IR0, starts,
+                                                  int(hy.shape[0]), backward=True)
+
+
+def radial_against_the_oracle(arrangement: Arrangement, driver: Any) -> Optional[int]:
+    """The subject's device radial difference against the array path's own.
 
     Taken AFTER the complete step, when ``fields.Hy`` is exactly what launch 1 stored
     (nothing after ``update_H`` writes H in a step) and the residency's ``sync_out``
-    has refreshed the plan's prefix host array.
+    has refreshed the plan's radial host array.
     """
     plan = arrangement.subject
     if plan is None:
         return None
-    oracle = stepping.cylindrical_rderiv_prefix(np, np.asarray(fields.Hy), family.IR0)
-    return differing(oracle, plan.prefix_host)
+    oracle = radial_oracle(driver.fields, driver.pml, driver.fields.Hy)
+    return differing(oracle, plan.radial_host)
 
 
 def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
@@ -787,7 +821,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                                                   if name != reference}
     autopsies: Dict[str, Dict[str, Any]] = {}
     census_per_step: List[Dict[str, Any]] = []
-    prefix_rows: Dict[str, List[Optional[int]]] = {name: [] for name in arrangements}
+    radial_rows: Dict[str, List[Optional[int]]] = {name: [] for name in arrangements}
     orphaned: Dict[str, List[str]] = {name: [] for name in arrangements}
     lazily: List[str] = []
     steps_done = 0
@@ -814,8 +848,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                 else:
                     driver.step()
                 arrangement.settle(driver.fields)
-                prefix_rows[name].append(prefix_against_the_oracle(arrangement,
-                                                                   driver.fields))
+                radial_rows[name].append(radial_against_the_oracle(arrangement, driver))
                 orphans = orphaned_mirrors(arrangements, driver.fields)
                 if orphans:
                     orphaned[name] = sorted(set(orphaned[name]) | set(orphans))
@@ -837,7 +870,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                 row: Dict[str, Any] = {"step": step,
                                        "differing_words": int(sum(difference.values())),
                                        "differing_volumes": difference,
-                                       "prefix_vs_oracle": prefix_rows[name][-1]}
+                                       "radial_vs_oracle": radial_rows[name][-1]}
                 if secondary is not None and secondary in states and name != secondary:
                     against = compare_snapshots(states[secondary], states[name])
                     row[f"differing_words_vs_{secondary}"] = int(sum(against.values()))
@@ -851,7 +884,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                 progress(f"step {step}/{steps} "
                          + " ".join(f"{name}={rows[-1]['differing_words']}"
                                     for name, rows in per_step.items())
-                         + f" prefix_vs_oracle={prefix_rows['weld'][-1]} subnormals=0 "
+                         + f" radial_vs_oracle={radial_rows['weld'][-1]} subnormals=0 "
                          f"({time.time() - started:.1f} s)")
             if stop_on_divergence and any(rows[-1]["differing_words"]
                                           for rows in per_step.values()):
@@ -879,10 +912,10 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
             "first_divergence": first,
             "differing_words_final": rows[-1]["differing_words"] if rows else None,
             "differing_volumes_final": rows[-1]["differing_volumes"] if rows else {},
-            "prefix_vs_oracle_per_step": [row["prefix_vs_oracle"] for row in rows],
-            "prefix_identical_to_oracle_every_step": (
+            "radial_vs_oracle_per_step": [row["radial_vs_oracle"] for row in rows],
+            "radial_identical_to_oracle_every_step": (
                 None if subject is None
-                else bool(rows and all(row["prefix_vs_oracle"] == 0 for row in rows))),
+                else bool(rows and all(row["radial_vs_oracle"] == 0 for row in rows))),
             "launches": arrangements[name].launches(),
             "constitutive_launches": (None if subject is None
                                       else subject.constitutive_launches),
@@ -923,6 +956,32 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
     }
 
 
+def floor_violations(moved: Mapping[str, int], pml: Any) -> List[str]:
+    """The vacuity floor under the auxiliary contract (KERNELS.md §1, C2).
+
+    ``f_w_{H,E}c`` is touched only where c's own axis (its dsigw) carries a layer and
+    ``fu_{B,D}c`` only where its dsigu axis, ``(c + 2) % 3``, does, by the array path
+    and by every kernel alike. On a Dcyl grid phi carries none, so ``f_w_Hy``,
+    ``f_w_Ey``, ``fu_Bz`` and ``fu_Dz`` keep their seeds for the whole run, except
+    where the |m| >= 2 near-axis rule zeroes every array on its rows. The floor
+    exempts exactly the set derived here from the layer, never the set a run happened
+    to leave still: every other compared array must move, and below |m| = 2 an exempt
+    one that moved is a violation too.
+    """
+    silent = set()
+    for index, c in enumerate("xyz"):
+        if not pml.axis_has_pml(index):
+            silent.update((f"f_w_H{c}", f"f_w_E{c}"))
+        if not pml.axis_has_pml((index + 2) % 3):
+            silent.update((f"fu_B{c}", f"fu_D{c}"))
+    zeroing = abs(int(getattr(getattr(pml, "grid", None), "m", 0) or 0)) >= 2
+    return (sorted(name for name, count in moved.items()
+                   if count == 0 and name not in silent)
+            + sorted(f"{name} (moved, untouched by the contract)"
+                     for name, count in moved.items()
+                     if count and name in silent and not zeroing))
+
+
 def run_product(driver: Any, steps: int, progress: Optional[Callable[[str], None]] = None,
                 movement_floor: str = "all", stop_on_divergence: bool = True,
                 require_full_budget: bool = True, clean_floor: int = 0,
@@ -948,7 +1007,7 @@ def run_product(driver: Any, steps: int, progress: Optional[Callable[[str], None
         and legs[name]["runs"] == stepped
         and legs[name]["launches"]["plans"] >= 2 * stepped
         for name in ("weld", "weld_seam_only"))
-    prefix_ok = all(legs[name]["prefix_identical_to_oracle_every_step"]
+    radial_ok = all(legs[name]["radial_identical_to_oracle_every_step"]
                     for name in ("weld", "weld_seam_only"))
     seam_outputs = tuple(name for name in
                          [f"{stem}{axis}" for stem in ("D", "fu_D", "H", "f_w_H")
@@ -961,12 +1020,14 @@ def run_product(driver: Any, steps: int, progress: Optional[Callable[[str], None
         floor = bool(signs["positive_zero_words"] and signs["negative_zero_words"])
         result["reference_zero_sign_census"] = signs
     elif movement_floor == "all":
-        floor = not result["arrays_that_never_moved"]
+        floor = not floor_violations(
+            {name: int(result["moved_from_seed"].get(name, 0))
+             for name in result["volumes_compared"]}, driver.pml)
     else:
         floor = bool(seam_outputs) and sum(seam_moved.values()) > 0
     settled = bool(result["every_arrangement_gave_the_engine_its_volumes_back"])
     result.update({
-        "passed": bool(identical and launched and weld_ok and prefix_ok and floor
+        "passed": bool(identical and launched and weld_ok and radial_ok and floor
                        and budget_ok and settled and result["step_error"] is None
                        and (result["precondition_clean"] or not require_full_budget)),
         "bit_identical": identical,
@@ -975,7 +1036,7 @@ def run_product(driver: Any, steps: int, progress: Optional[Callable[[str], None
         "clean_floor": clean_floor,
         "every_arrangement_launched_and_the_two_counters_agree": launched,
         "weld_launched_twice_per_step_both_counters_and_absorbed_step_D": weld_ok,
-        "prefix_identical_to_the_oracle_every_step": prefix_ok,
+        "radial_identical_to_the_oracle_every_step": radial_ok,
         "movement_floor": movement_floor,
         "movement_floor_met": floor,
         "seam_output_words_moved": seam_moved,
@@ -1080,7 +1141,7 @@ def leg_transcription() -> Dict[str, Any]:
     source = family.cylindrical_real_fused_hd_pair_constitutive_source()
     h_cell = cartesian.h_cell_function()
     h_cell_verbatim = h_cell in source
-    certified_scan = cyl.cylindrical_prefix_source("step_D")
+    certified_scan = cyl.scan_source("step_D")
     scan_tail = certified_scan.split("    int base = j * nzi + k;\n", 1)[1][: -len("}\n")]
     lifted = family.certified_scan_tail()
     certified_lines = scan_tail.splitlines()
@@ -1121,54 +1182,57 @@ def leg_transcription() -> Dict[str, Any]:
     }
 
 
-def _rebuild_increment(f_p: np.ndarray, ir0: float) -> np.ndarray:
-    """The increment EXACTLY as stepping.py:1313-1331 spells it (float64 ladder,
-    rounded once; field left of the weight; difference over the row divisor)."""
-    counts = np.arange(f_p.shape[0], dtype=np.float64) + ir0
-    weights = counts.reshape(-1, 1, 1).astype(np.float32)
-    divisor = (counts[1:] - 0.5).reshape(-1, 1, 1).astype(np.float32)
-    weighted = f_p * weights
-    increment = np.zeros_like(f_p)
-    increment[1:] = (weighted[1:] - weighted[:-1]) / divisor
-    return increment
+def _division_starts(nr: int) -> np.ndarray:
+    """A two-chunk division of ``nr`` rows on the Dz lattice: the cut row belongs to
+    the LOWER chunk (a chunk owns lo < p <= hi in doubled r)."""
+    cut = nr - max(2, nr // 8)
+    return np.where(np.arange(nr) > cut, cut, 0).astype(np.int64).reshape(-1, 1, 1)
 
 
-def _serial_scan(inc: np.ndarray) -> np.ndarray:
-    out = np.empty_like(inc)
-    acc = np.zeros(inc.shape[1:], dtype=inc.dtype)
-    for i in range(inc.shape[0]):
-        acc = (acc + inc[i]).astype(inc.dtype)
-        out[i] = acc
-    return out
+def _serial_walk(f_p: np.ndarray, starts: Optional[np.ndarray],
+                 tile: Optional[int] = None) -> np.ndarray:
+    """The kernel's D-side column walk, transcribed in NumPy float32 over all columns.
 
-
-def _blocked_scan(inc: np.ndarray, tile: int = 4) -> np.ndarray:
-    """NULL CONTROL: tile-local scans then a carry add -- a legitimate other order.
-
-    FOUR-ROW TILES, so the control has more than one tile on EVERY extent this leg
-    walks: at 32-row tiles the blocked scan IS ``numpy.cumsum`` on a column of 32 rows
-    or fewer and cannot bite there (measured on this gate's first run: 0 differing
-    words on nr = 13, 16, 20 and 32 while 120 and 150 differed by more than half).
+    ``tile`` is the NULL CONTROL: the sum carried as a 4-row-tile local sum plus a
+    carry, a legitimate other association of the same increments.
     """
-    out = np.empty_like(inc)
-    carry = np.zeros(inc.shape[1:], dtype=inc.dtype)
-    for start in range(0, inc.shape[0], tile):
-        end = min(start + tile, inc.shape[0])
-        local = np.cumsum(inc[start:end], axis=0).astype(inc.dtype)
-        out[start:end] = (local + carry).astype(inc.dtype)
-        carry = out[end - 1]
+    nr = f_p.shape[0]
+    weights, rinv = stepping._cylindrical_rderiv_rows(np, nr, family.IR0, np.float32)
+    weights, rinv = weights.reshape(-1), rinv.reshape(-1)
+    line = (np.zeros(nr, dtype=np.int64) if starts is None
+            else np.asarray(starts).reshape(-1))
+    out = np.zeros_like(f_p)
+    zero = np.zeros(f_p.shape[1:], dtype=np.float32)
+    w_prev = f_p[0] * weights[0]
+    acc, carry, local, owner = zero.copy(), zero.copy(), zero.copy(), 0
+    for g in range(1, nr):
+        s = int(line[g])
+        if s != owner:
+            acc, carry, local, owner = zero.copy(), zero.copy(), zero.copy(), s
+        w = f_p[g] * weights[g]
+        inc = rinv[g - 1] * (w - w_prev)
+        if tile is None:
+            nxt = acc + inc
+        else:
+            local = local + inc
+            nxt = carry + local
+            if (g % tile) == tile - 1:
+                carry, local = nxt, zero.copy()
+        out[g] = acc - nxt
+        acc = nxt
+        w_prev = w
     return out
 
 
 def leg_scan_order_host() -> Dict[str, Any]:
-    """``numpy.cumsum`` IS strictly serial over the shipped increments, at ir0 = 0.5.
+    """The array path's radial difference IS the kernel's serial per-chunk walk.
 
-    Re-measured on THIS host over the fixture and corpus radial extents rather than
-    cited from the adjudication: it is the premise the device scan reproduces by
-    construction, and the blocked scan is the control that must differ.
+    Re-measured on THIS host over the fixture and corpus radial extents: it is the
+    premise the device scan reproduces by construction. Two controls must differ: a
+    blocked association of the same increments, and one sum from the axis.
     """
     rows = []
-    total = serial = blocked = 0
+    total = serial = blocked = one_sum = 0
     for nr, nz in ((13, 32), (16, 20), (20, 20), (32, 13), (120, 120), (150, 175)):
         for index, kind in enumerate(("uniform", "wide_dynamic", "cancelling")):
             rng = np.random.default_rng(3000 + 7 * nr + index)
@@ -1181,24 +1245,27 @@ def leg_scan_order_host() -> Dict[str, Any]:
                 a = (rng.standard_normal((nr, 1, nz))
                      * np.where(np.arange(nr).reshape(-1, 1, 1) % 2, 1.0, -1.0) * 1e6)
             f_p = a.astype(np.float32)
-            inc = _rebuild_increment(f_p, family.IR0)
-            shipped = stepping.cylindrical_rderiv_prefix(np, f_p, family.IR0)
-            rebuild_ok = differing(shipped, np.cumsum(inc, axis=0)) == 0
-            d_serial = differing(shipped, _serial_scan(inc))
-            d_blocked = differing(shipped, _blocked_scan(inc))
+            starts = _division_starts(nr)
+            shipped = stepping.cylindrical_rderiv_difference(np, f_p, family.IR0, starts,
+                                                             nr, backward=True)
+            d_serial = differing(shipped, _serial_walk(f_p, starts))
+            d_blocked = differing(shipped, _serial_walk(f_p, starts, tile=4))
+            d_one = differing(shipped, _serial_walk(f_p, None))
             n = int(words(shipped).size)
             total += n
             serial += d_serial
             blocked += d_blocked
+            one_sum += d_one
             rows.append({"nr": nr, "nz": nz, "class": kind, "words": n,
-                         "rebuild_matches_shipped": rebuild_ok,
-                         "serial_differing": d_serial, "blocked_differing": d_blocked})
+                         "serial_differing": d_serial, "blocked_differing": d_blocked,
+                         "one_sum_differing": d_one})
             log(f"    scan_order nr={nr} nz={nz} {kind}: serial={d_serial}/{n} "
-                f"blocked={d_blocked}/{n} rebuild_ok={rebuild_ok}")
-    return {"passed": bool(serial == 0 and all(r["rebuild_matches_shipped"] for r in rows)
-                           and all(r["blocked_differing"] > 0 for r in rows)),
+                f"blocked={d_blocked}/{n} one_sum={d_one}/{n}")
+    return {"passed": bool(serial == 0 and all(r["blocked_differing"] > 0 for r in rows)
+                           and all(r["one_sum_differing"] > 0 for r in rows)),
             "ir0": family.IR0, "cases": len(rows), "words": total,
-            "serial_differing": serial, "blocked_differing": blocked, "rows": rows}
+            "serial_differing": serial, "blocked_differing": blocked,
+            "one_sum_differing": one_sum, "rows": rows}
 
 
 def leg_driver_order() -> Dict[str, Any]:
@@ -1216,6 +1283,23 @@ def leg_driver_order() -> Dict[str, Any]:
         "replaces": list(family.REPLACES),
         "seam_row": list(seam_row) if seam_row else None,
     }
+
+
+class StandingWithdraw:
+    """A source class that still carries a working electric ``withdraw``.
+
+    None in this package does (``withdraw_hoist``: an integrated source enters through
+    ``f_minus_p``), so the seam clause can only be exercised by this stand-in; it
+    publishes exactly the three attributes ``withdraw_hoist.standing_withdraws`` reads.
+    Its body is never run.
+    """
+
+    field_type = "E"
+    is_integrated = True
+    _n_source_points = 1
+
+    def withdraw(self, fields: Any) -> None:  # noqa: ARG002 - never called
+        raise AssertionError("the seam clause must refuse this source, not run it")
 
 
 def _volume_source(fields: Any, component: str, integrated: bool) -> Any:
@@ -1238,11 +1322,15 @@ def leg_refusal() -> Dict[str, Any]:
                                                                    residency)
     integrated = _volume_source(fields, "Ez", integrated=True)
     standing = withdraw_hoist.standing_withdraws((integrated,))
+    integrated_verdict = family.metal_cylindrical_real_fused_hd_pair_coverage(
+        fields, pml, (integrated,), residency)
+    stand_in = StandingWithdraw()
     refused = family.metal_cylindrical_real_fused_hd_pair_coverage(fields, pml,
-                                                                  (integrated,), residency)
+                                                                  (stand_in,), residency)
     refused_named = [r for r in refused.reasons if "standing integrated" in r]
     refused_plan = family.plan_metal_cylindrical_real_fused_hd_pair(
-        fields, pml, (integrated,), Residency())
+        fields, pml, (stand_in,), Residency(),
+        chunk_bounds=driver.chunk_bounds_record())
     from meep_gpu.driver import FdtdDriver  # noqa: PLC0415
     complex_driver = FdtdDriver(cell_size=(16.0, 0.0, 20.0), resolution=1.0, courant=0.37,
                                 force_complex_fields=True, boundaries={"z": "metallic"},
@@ -1257,6 +1345,14 @@ def leg_refusal() -> Dict[str, Any]:
     cart_verdict = family.metal_cylindrical_real_fused_hd_pair_coverage(
         cart_driver.fields, cart_driver.pml, (), Residency())
     cart_named = [r for r in cart_verdict.reasons if "cylindrical" in r]
+    # THE RUN'S FIRST update_H, which this pair's H half takes: refused by name while
+    # B, its auxiliary or E holds a word other than +0 (launch.h_start_reasons).
+    first = build_driver(REFUSAL_CASE, 91000)
+    first.fields.h_separated = False
+    first_verdict = family.metal_cylindrical_real_fused_hd_pair_coverage(
+        first.fields, first.pml, (plain,), Residency())
+    first_named = [r for r in first_verdict.reasons
+                   if "separate_h_from_b" in r and "holds a word other than +0" in r]
     twins = {
         "magnetic_twin_admits": magnetic_twin.metal_cylindrical_real_fused_magnetic_pair_coverage(
             fields, pml, (plain,), Residency()).covered,
@@ -1268,10 +1364,11 @@ def leg_refusal() -> Dict[str, Any]:
         "passed": bool(not undeclared.covered
                        and any("was not declared" in r for r in undeclared.reasons)
                        and admitted.covered
-                       and len(standing) == 1
+                       and standing == () and integrated_verdict.covered
                        and not refused.covered and refused_named and refused_plan is None
                        and not m_verdict.covered and m_named
                        and not cart_verdict.covered and cart_named
+                       and not first_verdict.covered and first_named
                        and len(registered) == 1 and registered[0].wired is False
                        and registered[0].slot == family.SLOT
                        and tuple(registered[0].replaces) == family.REPLACES
@@ -1283,12 +1380,16 @@ def leg_refusal() -> Dict[str, Any]:
         "undeclared_refused": not undeclared.covered,
         "plain_electric_source_admitted": admitted.covered,
         "plain_source_reasons": list(admitted.reasons),
-        "integrated_source_has_a_standing_withdraw": len(standing) == 1,
-        "integrated_source_refused": not refused.covered,
-        "integrated_named": refused_named[:1],
-        "integrated_plan_is_none": refused_plan is None,
+        "integrated_source_stands_no_withdraw": standing == (),
+        "integrated_source_admitted": integrated_verdict.covered,
+        "integrated_source_reasons": list(integrated_verdict.reasons),
+        "standing_withdraw_refused": not refused.covered,
+        "standing_withdraw_named": refused_named[:1],
+        "standing_withdraw_plan_is_none": refused_plan is None,
         "m_is_one_refused": not m_verdict.covered, "m_named": m_named[:1],
         "cartesian_refused": not cart_verdict.covered, "cartesian_named": cart_named[:2],
+        "first_update_h_refused": not first_verdict.covered,
+        "first_update_h_named": first_named[:1],
         "released_twins_on_the_same_fixture": twins,
         "registered_rows": [f"{s.family}/{s.slot} wired={s.wired} replaces={s.replaces}"
                             for s in registered],
@@ -1414,14 +1515,16 @@ def leg_arbitration() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def leg_recompute_identity(label: str, seed: int) -> Dict[str, Any]:
-    """The prefix from the RECOMPUTED Hy equals the shipped scan over the STORED H.
+    """The radial difference from the RECOMPUTED Hy equals the shipped scan over the
+    STORED H.
 
     Three comparisons after one ``run`` of the plan:
 
-    * device: the shipped ``cyl_rderiv_prefix`` over the rotated ``H_out`` tensor into a
-      second scratch, against the plan's prefix tensor -- 0 words or the recompute is
-      not the pointwise value;
-    * host: ``stepping.cylindrical_rderiv_prefix`` over the synced ``Hy`` -- the oracle;
+    * device: the shipped ``cyl_rderiv_difference`` over the rotated ``H_out`` tensor
+      into a second scratch, against the plan's radial tensor -- 0 words or the
+      recompute is not the pointwise value;
+    * host: ``stepping.cylindrical_rderiv_difference`` over the synced ``Hy`` with the
+      run's chunk starts -- the oracle;
     * NULL: the shipped scan over the PRE-launch ``Hy`` (the plan's twin after the
       rotation) must DIFFER, or the leg could not tell the two H's apart.
     """
@@ -1434,31 +1537,37 @@ def leg_recompute_identity(label: str, seed: int) -> Dict[str, Any]:
     plan.run()
     residency.sync_out()
     fields = driver.fields
-    oracle = stepping.cylindrical_rderiv_prefix(np, np.asarray(fields.Hy), family.IR0)
-    host_diff = differing(oracle, plan.prefix_host)
-    shipped_scan = cyl.compile_cylindrical_prefix("step_D")
+    oracle = radial_oracle(fields, driver.pml, fields.Hy)
+    host_diff = differing(oracle, plan.radial_host)
+    shipped_scan = cyl.compile_scan("step_D")
     nx, ny, nz = plan.shape
     new_hy = residency.tensor_for_host(fields.Hy)
     old_hy = residency.tensor_for_host(plan.rotated["Hy"])
     weights = residency.tensor(f"cyl_weights:{family.CURL_SUB_STEP}")
-    divisor = residency.tensor(f"cyl_divisor:{family.CURL_SUB_STEP}")
-    prefix = residency.tensor(f"cyl_pfx:{family.CURL_SUB_STEP}")
-    second = torch.zeros_like(prefix)
-    shipped_scan(second, new_hy, weights, divisor, nx, ny, nz, ny * nz)
+    rinv = residency.tensor(f"cyl_rinv:{family.CURL_SUB_STEP}")
+    radial = residency.tensor(f"cyl_radial:{family.CURL_SUB_STEP}")
+    starts = cyl.int32_tensor(plan.starts, residency.device)
+    second = torch.zeros_like(radial)
+    shipped_scan(second, new_hy, weights, rinv, starts, nx, ny, nz, ny * nz)
     torch.mps.synchronize()
-    device_diff = differing(second.cpu().numpy(), prefix.cpu().numpy())
-    control = torch.zeros_like(prefix)
-    shipped_scan(control, old_hy, weights, divisor, nx, ny, nz, ny * nz)
+    device_diff = differing(second.cpu().numpy(), radial.cpu().numpy())
+    control = torch.zeros_like(radial)
+    shipped_scan(control, old_hy, weights, rinv, starts, nx, ny, nz, ny * nz)
     torch.mps.synchronize()
-    null_diff = differing(control.cpu().numpy(), prefix.cpu().numpy())
+    null_diff = differing(control.cpu().numpy(), radial.cpu().numpy())
+    one_sum = differing(radial_oracle(fields, driver.pml, fields.Hy, one_sum=True),
+                        oracle)
     h_moved = differing(np.asarray(fields.Hy), plan.rotated["Hy"])
     return {
         "passed": bool(host_diff == 0 and device_diff == 0 and null_diff > 0 and h_moved > 0
+                       and one_sum > 0
                        and plan.constitutive_launches == plan.curl_launches == 1),
         "words": int(oracle.size),
-        "prefix_vs_oracle_host_differing": host_diff,
-        "prefix_vs_shipped_scan_over_H_out_differing": device_diff,
+        "radial_vs_oracle_host_differing": host_diff,
+        "radial_vs_shipped_scan_over_H_out_differing": device_diff,
         "null_shipped_scan_over_pre_launch_Hy_differing": null_diff,
+        "one_sum_control_differing": one_sum,
+        "chunk_starts": sorted({int(s) for s in plan.starts}),
         "hy_words_moved_by_update_H": h_moved,
         "constitutive_launches": plan.constitutive_launches,
         "curl_launches": plan.curl_launches,
@@ -1533,17 +1642,24 @@ def needle(source: str, old: str, new: str, count: int = 1) -> str:
 
 _TAIL = cartesian.H_CELL_TAIL_ARGS
 _OWN_CALL = f"h_cell_result own = h_cell(i, j, k, {_TAIL});"
-_SCAN_READ = f"float w = h_cell(i, j, k, {_TAIL}).a1 * weights[i];"
-_SCAN_ROW0 = f"float prev = h_cell(0, j, k, {_TAIL}).a1 * weights[0];"
+_SCAN_READ = f"float w = h_cell(g, j, k, {_TAIL}).a1 * weights[g];"
+_SCAN_ROW0 = f"float w_prev = h_cell(0, j, k, {_TAIL}).a1 * weights[0];"
 
 #: Mutation id -> what it is DECLARED to do. Anything not named is scored on CATCHING.
 #: ``null`` must be CONFIRMED (a null that is caught means its reasoning is wrong);
 #: ``schedule_dependent`` is recorded and does not decide the verdict -- its must-catch
 #: twin is armed on RACE_CASE below.
 MUTATION_EXPECTATION: Dict[str, str] = {
+    # THE TWO IN-PLACE CONTROLS ARE NULLS UNDER MEEP'S FORMS. The leader's recompute
+    # reads only Hy (``h_cell(...).a1``), and Hy's dsigw axis is phi, which carries no
+    # layer on a Dcyl grid: Hy takes the plain form ``a1 = src1`` everywhere and reads
+    # neither its old word nor f_w_Hy (KERNELS.md §1, C2). Every other thread reads its
+    # own cell only, so a buffer written where it is read changes no word.
+    "in_place_H": "null",
+    "in_place_fw": "null",
     "scan_weight_multiply_commuted": "null",
     "scan_accumulator_commuted": "null",
-    "dz_curl_distributes_dtdx_over_the_outer_sum": "null",
+    "dz_curl_keeps_the_invariant_phi_pair": "null",
     "scan_reads_the_scratch_hy_small_grid": "schedule_dependent",
 }
 
@@ -1553,38 +1669,51 @@ def constitutive_mutations() -> Dict[str, str]:
     base = family.cylindrical_real_fused_hd_pair_constitutive_source()
     return {
         # --- THE SCAN --------------------------------------------------------
-        "scan_divide_is_a_reciprocal_multiply":
-            needle(base, "float inc = (w - prev) / divisor[i - 1];",
-                   "float inc = (w - prev) * (1.0f / divisor[i - 1]);"),
+        "scan_quotient_divided_in_kernel":
+            needle(base, "float inc = rinv[g - 1] * (w - w_prev);",
+                   "float inc = (w - w_prev) / ((float(g) + 0.5f) - 0.5f);"),
+        "scan_sum_never_restarts":
+            needle(base, "        if (s != owner) { acc = 0.0f; owner = s; }\n",
+                   "        if (s != owner) { owner = s; }\n"),
+        "scan_rounded_increment_stored":
+            needle(base, "out[g * nyz + base] = acc - nxt;",
+                   "out[g * nyz + base] = -inc;"),
         "scan_weights_shifted_down":
-            needle(base, _SCAN_READ, _SCAN_READ.replace("weights[i]", "weights[i - 1]")),
+            needle(base, _SCAN_READ, _SCAN_READ.replace("weights[g]", "weights[g - 1]")),
         "scan_row0_weight_shifted_up":
             needle(base, _SCAN_ROW0, _SCAN_ROW0.replace("weights[0]", "weights[1]")),
         "scan_skips_the_last_row":
-            needle(base, "for (int i = 1; i < nxi; ++i)", "for (int i = 1; i < nxi - 1; ++i)"),
+            needle(base, "for (int g = 1; g < nxi; ++g)", "for (int g = 1; g < nxi - 1; ++g)"),
         "scan_recomputes_hx_not_hy":
             needle(base, _SCAN_READ, _SCAN_READ.replace(").a1", ").a0")),
         "scan_reads_the_pre_launch_hy":
-            needle(base, _SCAN_READ, "float w = hi1[i * nyz + base] * weights[i];"),
+            needle(base, _SCAN_READ, "float w = hi1[g * nyz + base] * weights[g];"),
         "scan_reads_the_scratch_hy_small_grid":
-            needle(base, _SCAN_READ, "float w = ho1[i * nyz + base] * weights[i];"),
+            needle(base, _SCAN_READ, "float w = ho1[g * nyz + base] * weights[g];"),
         "scan_weight_multiply_commuted":
             needle(base, _SCAN_READ,
-                   f"float w = weights[i] * h_cell(i, j, k, {_TAIL}).a1;"),
+                   f"float w = weights[g] * h_cell(g, j, k, {_TAIL}).a1;"),
         "scan_accumulator_commuted":
-            needle(base, "acc = acc + inc;", "acc = inc + acc;"),
+            needle(base, "float nxt = acc + inc;", "float nxt = inc + acc;"),
         # --- THE CONSTITUTIVE -------------------------------------------------
+        # On target 0 (Hx, dsigw r): Hy (target 1) takes the plain form on every Dcyl
+        # cell (its dsigw axis is phi, which carries no layer), so it reads neither its
+        # old word nor the coefficients these rows edit.
         "own_h_from_the_scratch":
-            needle(base, _OWN_CALL, _OWN_CALL.replace("hi1", "ho1")),
+            needle(base, _OWN_CALL, _OWN_CALL.replace("hi0", "ho0")),
         "own_fw_prev_from_the_scratch":
             needle(base, _OWN_CALL, _OWN_CALL.replace("wi1", "wo1")),
-        "constitutive_accumulations_reversed":
-            needle(base, "        a1 = a1 + kp_1 * src1;\n        a1 = a1 - km_1 * prev1;",
-                   "        a1 = a1 - km_1 * src1;\n        a1 = a1 + kp_1 * prev1;"),
+        "constitutive_coefficients_exchanged":
+            needle(base, "a0 = hi0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
+                   "a0 = hi0[ii] + ((km_0 * src0) - (kp_0 * prev0));"),
+        # INVERTED (KERNELS.md §7.1): the package's previous constitutive grouping.
+        "constitutive_previous_package_grouping":
+            needle(base, "a0 = hi0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
+                   "a0 = (hi0[ii] + (kp_0 * src0)) - (km_0 * prev0);"),
         "constitutive_coefficient_index_moved":
             needle(base, "float kp_0 = kp0[i], km_0 = kmx[i];",
                    "float kp_0 = kp0[k], km_0 = kmx[k];"),
-        "fw_store_dropped": needle(base, "wo0[ii] = own.src0; ", ""),
+        "fw_store_dropped": needle(base, "wo0[ii] = own.wnext0; ", ""),
         "h_store_dropped": needle(base, " ho2[ii] = own.a2;", ""),
     }
 
@@ -1592,28 +1721,30 @@ def constitutive_mutations() -> Dict[str, str]:
 def race_mutation() -> str:
     """The scratch-read race, for the corpus-scale case where it must be caught."""
     base = family.cylindrical_real_fused_hd_pair_constitutive_source()
-    return needle(base, _SCAN_READ, "float w = ho1[i * nyz + base] * weights[i];")
+    return needle(base, _SCAN_READ, "float w = ho1[g * nyz + base] * weights[g];")
 
 
 def curl_mutations(codes: Sequence[int]) -> Dict[str, str]:
     """Armed defects in launch 2 -- the certified curl's text, mutated through the seam."""
     base = family.cylindrical_real_fused_hd_pair_curl_source(codes)
-    dz = "float curl2 = dtdx * ((pb_x - pb) + (a - a_y));"
+    dz = "    float curl2 = dtdx * rad[ii];"
     return {
-        # THE bz_flat_grouping CLASS: dtdx distributed INTO the prefix difference.
-        "dz_curl_distributes_dtdx_into_the_prefix_difference":
-            needle(base, dz, "float curl2 = ((dtdx * pb_x) - (dtdx * pb)) + dtdx * (a - a_y);"),
-        "dz_curl_parens_flattened":
-            needle(base, dz, "float curl2 = dtdx * (pb_x - pb + a - a_y);"),
-        # DECLARED NULL: the phi pair is an exact +0.0 on the one-cell invariant axis.
-        "dz_curl_distributes_dtdx_over_the_outer_sum":
-            needle(base, dz, "float curl2 = (dtdx * (pb_x - pb)) + (dtdx * (a - a_y));"),
-        "dy_curl_parens_flattened_on_a_live_pair":
-            needle(base, "dtdx * ((a_z - a) + (c - c_x))", "dtdx * (a_z - a + c - c_x)"),
-        "dz_prefix_difference_is_forward":
-            needle(base, dz, "float curl2 = dtdx * ((pb - pb_x) + (a - a_y));"),
-        "dx_reads_the_prefixed_hy":
-            needle(base, "float b   = g1[ii];", "float b   = pfx[ii];"),
+        "dz_curl_is_the_generic_one":
+            needle(base, dz, "    float curl2 = dtdx * (((b_x - b) + a) - a_y);"),
+        "dz_radial_term_negated":
+            needle(base, dz, "    float curl2 = (-dtdx) * rad[ii];"),
+        # DECLARED NULL (KERNELS.md Appendix A, the invariant-axis class): Dz's phi
+        # pair kept as a zero term, an exact +0.0 on the one-cell invariant axis;
+        # differs only in the sign of a zero radial term.
+        "dz_curl_keeps_the_invariant_phi_pair":
+            needle(base, dz, "    float curl2 = dtdx * (rad[ii] + (a - a_y));"),
+        # INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping on Dy's
+        # live (z, r) pair.
+        "dy_curl_previous_package_grouping_on_a_live_pair":
+            needle(base, "dtdx * (((a_z - a) + c) - c_x)",
+                   "dtdx * ((a_z - a) + (c - c_x))"),
+        "dx_reads_the_radial_difference":
+            needle(base, "float b   = g1[ii];", "float b   = rad[ii];"),
         "axis_increment_dropped":
             needle(base, "    v2 = at_x ? (v2 + (axis_coef * g1[ii])) : v2;\n", ""),
     }
@@ -1627,7 +1758,7 @@ def byte_neutral_source() -> str:
     recompute's central claim written as a program, and must NOT diverge.
     """
     base = family.cylindrical_real_fused_hd_pair_constitutive_source()
-    return needle(base, _SCAN_ROW0, "float prev = own.a1 * weights[0];")
+    return needle(base, _SCAN_ROW0, "float w_prev = own.a1 * weights[0];")
 
 
 def _compile_constitutive(source: str) -> Dict[str, Any]:
@@ -1736,7 +1867,7 @@ def constitutive_takes_the_half_integer_lattice(plan: Any, residency: Residency,
 def curl_takes_the_half_integer_lattice(plan: Any, residency: Residency, pml: Any) -> Any:
     """HOST DEFECT: the curl's six kms/sinv vectors from the ``_h`` sub-lattice."""
     _rebind_curl(
-        plan, range(7, 13),
+        plan, range(6, 12),
         [residency.mirror(f"mutation:{stem}_{axis}_h", getattr(pml, f"{stem}_{axis}_h"),
                           constant=True)
          for axis in "xyz" for stem in ("kms", "sinv")])
@@ -1746,11 +1877,13 @@ def curl_takes_the_half_integer_lattice(plan: Any, residency: Residency, pml: An
 HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Residency, Any], Any], str]] = {
     "in_place_H": (_launcher("in_place_H"),
                    "THE IN-PLACE NULL CONTROL: H written where it is read. The leader's "
-                   "recompute of a row already stored reads the NEW H where it needs "
-                   "the old one"),
+                   "recompute of a row already stored reads Hy alone, whose plain form "
+                   "on a Dcyl grid does not read its old word, so the edit changes "
+                   "nothing (MUTATION_EXPECTATION)"),
     "in_place_fw": (_launcher("in_place_fw"),
-                    "THE SECOND IN-PLACE NULL CONTROL: f_w_H written where it is read. A "
-                    "recompute of a stored row reads B where it needs B_prev"),
+                    "THE SECOND IN-PLACE NULL CONTROL: f_w_H written where it is read. The "
+                    "recompute reads Hy alone, whose plain form reads no f_w_Hy, so the "
+                    "edit changes nothing (MUTATION_EXPECTATION)"),
     "curl_reads_the_pre_launch_H": (_launcher("curl_reads_the_pre_launch_H"),
                                     "launch 2 bound to the pre-launch H: the curl over the "
                                     "previous half-step's magnetic field"),
@@ -1758,8 +1891,8 @@ HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Residency, Any], Any], str]] = {
                          "the engine keeps naming the pre-launch buffers; H is stale "
                          "under its own name"),
     "curl_launched_first": (_launcher("curl_launched_first"),
-                            "the order reversed: the curl reads the stale prefix and the "
-                            "pre-launch H"),
+                            "the order reversed: the curl reads the stale radial "
+                            "difference and the pre-launch H"),
     "constitutive_takes_the_half_integer_lattice":
         (constitutive_takes_the_half_integer_lattice,
          "a half-cell-wrong absorber profile in update_H"),
@@ -1771,10 +1904,10 @@ HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Residency, Any], Any], str]] = {
 
 def scan_ladder_at_ir0_zero(shape: Sequence[int]) -> Tuple[Any, Any]:
     """HOST DEFECT: the ``ir0 = 0.0`` ladder -- the B side's -- bound to the D side's scan."""
-    weights, divisor = stepping._cylindrical_rderiv_weights(  # noqa: SLF001
+    weights, rinv = stepping._cylindrical_rderiv_rows(  # noqa: SLF001
         np, int(shape[0]), 0.0, np.float32)
     return (np.ascontiguousarray(weights).reshape(-1),
-            np.ascontiguousarray(divisor).reshape(-1))
+            np.ascontiguousarray(rinv).reshape(-1))
 
 
 def leg_mutants_compile(codes: Sequence[int]) -> Dict[str, Any]:
@@ -1819,7 +1952,7 @@ def _child_progress(message: str) -> None:
             handle.flush()
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:  # noqa: ARG001 - the census probe is unused
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The census driver's battery hook: the four-reference identity on ONE lifted row."""
     steps = int(os.environ.get("MEEP_GPU_CYLHD_GATE_STEPS", STEPS))
     sources = tuple(getattr(driver, "_sources", ()) or ())
@@ -1869,10 +2002,13 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
     ``tests_param_matched.jsonl`` and carry BOTH names: the census child enumerates the
     shim's ``__idxN`` spelling (``case``), the boards file the matched name (``row``).
     """
+    import lift_host  # noqa: PLC0415
+
     census = results / CENSUS
     seam = results / SEAM_RECORD
-    if not census.is_dir() or not seam.is_dir():
-        raise SystemExit(f"the lift leg needs {census} and {seam}")
+    missing = lift_host.missing_inputs(results, CENSUS, SEAM_RECORD)
+    if missing:
+        raise SystemExit(lift_host.missing_reason(results, missing))
     seam_rows = {row["label"]: row for row in _load_jsonl(seam / "h_to_d_seam.jsonl")}
     rows: List[dict] = []
     for leg, filename in (("examples", "examples.jsonl"), ("tests", "tests.jsonl"),
@@ -1892,8 +2028,9 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
                 "label": label, "leg": record.get("leg", leg), "row": record["row"],
                 "case": record.get("case") or record["row"],
                 "module": record.get("module") or seam_row.get("module"),
-                "interpreter": (record.get("interpreter") or record.get("python")
-                                or seam_row.get("interpreter") or sys.executable),
+                # WHERE THE CHILD RUNS: this gate's interpreter. The path the census
+                # recorded is kept as recorded_interpreter and never launched.
+                **lift_host.row_fields(record, seam_row),
                 "grid_cells": record.get("grid_cells"),
                 "grid_shape": record.get("grid_shape"),
                 "withdraw_in_seam": bool((seam_row.get("h_to_d_seam") or {})
@@ -1909,8 +2046,11 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
 
 
 def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[str, Any]:
-    """Every corpus row in the cell, re-lifted in its own interpreter and driven."""
+    """Every corpus row in the cell, re-lifted under this gate's interpreter and driven;
+    a row whose declared needs this host lacks is named unlifted_on_this_host
+    (``lift_host``) and counted out."""
     import gate_provenance  # noqa: PLC0415
+    import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
     out_dir = Path(out_dir).resolve()
@@ -1926,7 +2066,6 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
                 "reason": (f"the MEEP corpus is not at {tests_dir}; set "
                            f"MEEP_GPU_CORPUS_ROOT to the checkout the census was cut "
                            f"over. Refused rather than measured on nothing")}
-    probe_path = API_ROOT / census.PROBE
     environment = dict(os.environ)
     environment.update({"KMP_DUPLICATE_LIB_OK": "TRUE", "MPLBACKEND": "Agg",
                         "MEEP_GPU_SUBNORMAL_POLICY": "flush",
@@ -1953,8 +2092,20 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
         if module_file.is_file() and "import parameterized" in module_file.read_text(
                 encoding="utf-8", errors="replace"):
             needs_shim.add(module_name)
+    # WHAT THIS HOST CANNOT LIFT, asked once before any child: the needs the rows
+    # declare, probed under this interpreter (lift_host).
+    host = lift_host.host_check(rows, environment, work)
+    if host["unreadable"]:
+        return {"passed": False, "facts": facts, "host_capabilities": host,
+                "reason": host["unreadable"]}
+    unlifted = host["unlifted_on_this_host"]
     measured: List[dict] = []
     for index, row in enumerate(rows, start=1):
+        if row["label"] in unlifted:
+            log(f"lift {index}/{len(rows)} {row['label']}: UNLIFTED ON THIS HOST, "
+                f"{unlifted[row['label']]}")
+            measured.append(lift_host.unlifted_entry(row, unlifted[row["label"]]))
+            continue
         record_path = per_row / (row["label"].replace(":", "__").replace(".", "_") + ".json")
         environment["MEEP_GPU_CYLHD_GATE_LABEL"] = row["label"]
         environment["PYTHONPATH"] = (f"{shim_path}{os.pathsep}{API_ROOT}"
@@ -1962,10 +2113,10 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
         started = time.time()
         if not (resume and record_path.exists()):
             if row["leg"] == "examples":
-                command = [row["interpreter"], "-u", str(Path(census.__file__).resolve()),
+                command = [sys.executable, "-u", str(Path(census.__file__).resolve()),
                            "--leg", "examples", "--child-script",
                            str(examples_dir / row["row"]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", Path(__file__).stem]
             else:
@@ -1974,10 +2125,10 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
                         f"recorded for this tests row")
                     measured.append({**row, "measured": False, "note": "no module recorded"})
                     continue
-                command = [row["interpreter"], "-u", str(Path(census.__file__).resolve()),
+                command = [sys.executable, "-u", str(Path(census.__file__).resolve()),
                            "--leg", "tests", "--child-module", str(tests_dir / row["module"]),
                            "--child-cases", json.dumps([row["case"]]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", Path(__file__).stem]
             log(f"lift {index}/{len(rows)} {row['label']} start (cells {row.get('grid_cells')}, "
@@ -2019,7 +2170,8 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
     blocks = {r["label"]: (r.get("metal_cylindrical_real_fused_hd_pair_gate") or {})
               for r in measured}
     admitted = sorted(label for label, b in blocks.items() if b.get("predicate_admits"))
-    unmeasured = sorted(label for label, b in blocks.items() if "predicate_admits" not in b)
+    unmeasured = sorted(label for label, b in blocks.items()
+                        if "predicate_admits" not in b and label not in unlifted)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     identical = sorted(label for label in driven if blocks[label].get("bit_identical"))
     cleared = sorted(label for label in identical
@@ -2031,13 +2183,19 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
     composer_refuses = all(blocks[label].get("composer_refuses_this_product")
                            for label in admitted)
     return {
-        "passed": bool(rows and not unmeasured and len(admitted) == len(rows)
+        # AT LEAST ONE ROW IS ASKED: a cell whose every row is unlifted on this host
+        # measured nothing, and "no row disagreed" over no rows is not a pass.
+        "passed": bool(len(rows) > len(unlifted) and not unmeasured
+                       and len(admitted) == len(rows) - len(unlifted)
                        and len(driven) == len(admitted) and not diverged
                        and len(cleared) == len(driven) and composer_refuses),
         "facts": facts,
         "rows_in_cell": len(rows),
         "rows": [r["label"] for r in rows],
         "unmeasured": unmeasured,
+        "unlifted_on_this_host": unlifted,
+        "rows_the_engine_was_asked_about": len(blocks) - len(unlifted),
+        "host_capabilities": host,
         "admitted": admitted,
         "driven": driven,
         "bit_identical": identical,
@@ -2055,8 +2213,8 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
             "first_banded_step": blocks[label].get("first_banded_step"),
             "words_compared": blocks[label].get("words_compared"),
             "bit_identical": blocks[label].get("bit_identical"),
-            "prefix_identical_to_the_oracle_every_step":
-                blocks[label].get("prefix_identical_to_the_oracle_every_step"),
+            "radial_identical_to_the_oracle_every_step":
+                blocks[label].get("radial_identical_to_the_oracle_every_step"),
             "weld_agrees_with_the_certified_singles":
                 blocks[label].get("weld_agrees_with_the_certified_singles"),
             "composer_selected": blocks[label].get("composer_selected"),
@@ -2188,13 +2346,13 @@ def main() -> int:
             legs = tuple(leg for leg in legs if leg in LEG_GROUPS["host"])
 
         if "binding_ceiling" in legs:
-            add("binding_ceiling", "twenty_five_bindings_six_of_headroom_bisected",
+            add("binding_ceiling", "twenty_six_bindings_five_of_headroom_bisected",
                 leg_binding_ceiling())
         if "transcription" in legs:
             add("transcription", "lifted_certified_text_with_the_declared_edits",
                 leg_transcription())
         if "scan_order_host" in legs:
-            add("scan_order_host", "numpy_cumsum_is_serial_over_the_shipped_increments",
+            add("scan_order_host", "the_radial_difference_is_the_serial_per_chunk_walk",
                 leg_scan_order_host())
         if "driver_order" in legs:
             add("driver_order", "replaces_is_the_drivers_two_adjacent_consults",
@@ -2208,7 +2366,7 @@ def main() -> int:
         if "mutants_compile" in legs:
             add("mutants_compile", "every_armed_defect_compiles", leg_mutants_compile(codes))
         if "recompute_identity" in legs:
-            add("recompute_identity", "recomputed_hy_prefix_equals_the_shipped_scan",
+            add("recompute_identity", "recomputed_hy_radial_equals_the_shipped_scan",
                 leg_recompute_identity(MUTATION_CASE, 51000))
         if "product" in legs:
             for offset, (name, _keywords) in enumerate(CASES):
@@ -2288,8 +2446,8 @@ def main() -> int:
                 driver = build_driver(MUTATION_CASE, 72000 + index)
                 result = run_product(driver, args.steps, launcher=launcher)
                 add("mutation", name, _mutation_row(
-                    name, result, "caught", {"host_defect": True, "case": MUTATION_CASE,
-                                             "why": why}))
+                    name, result, MUTATION_EXPECTATION.get(name, "caught"),
+                    {"host_defect": True, "case": MUTATION_CASE, "why": why}))
         if "disarm" in legs:
             driver = build_driver(MUTATION_CASE, 97000)
             result = run_product(driver, args.steps)

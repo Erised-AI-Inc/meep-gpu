@@ -3,10 +3,13 @@ Unit tests for the FDTD field storage (fields.Fields).
 
 These cover the conventions the rest of the engine is written against: the Yee
 offset table, the mirror parities derived from MEEP's ``symmetry::phase_shift``
-(any axis, either declared phase), cell-centering (periodic on full axes,
-metallic at the far edge of a symmetry-halved one), quadrant-to-full-domain
-reconstruction with those parities, MEEP get_array() output geometry, the lazy
-PML storage switch, and the loud failures on unknown component names.
+(any axis, either declared phase), the cell-centring entry points
+(``to_cell_center`` / ``to_meep_array``: MEEP's centred sum over its chunk words,
+periodic on full axes, metallic at the far edge of a symmetry-halved one, the
+mirror ghost rebuilt from its image), quadrant-to-full-domain unfolding with
+those parities, MEEP get_array() output geometry, the lazy PML storage switch,
+and the loud failures on unknown component names. The word-for-word pins of the
+reader against MEEP itself are ``test_readback.py``'s.
 
 Everything here runs on the NumPy path — no CuPy, no CUDA, no MEEP — so the
 numerics stay verifiable on any developer machine. Grids are kept tiny
@@ -363,8 +366,12 @@ def test_to_cell_center_symmetry_axis_uses_metallic_far_edge():
     centered = fields.to_cell_center('Bx')
 
     values = np.arange(1, grid.nx + 1, dtype=np.float32)
+    # Stored row 0 is the mirror GHOST at doubled -2: MEEP's chunk word there is the
+    # image of row 2 with Bx's parity (connect_the_chunks), whatever the storage holds.
+    words = values.copy()
+    words[0] = mirror_parity('Bx', 0, grid.mirror_phase(0)) * values[2]
     expected_line = np.empty_like(values)
-    expected_line[:-1] = 0.5 * (values[:-1] + values[1:])
+    expected_line[:-1] = 0.5 * (words[:-1] + words[1:])
     expected_line[-1] = 0.5 * values[-1]  # Metallic BC: the cell beyond the edge is zero.
     np.testing.assert_allclose(centered[:, 1, 2], expected_line, rtol=0, atol=1e-6)
     assert centered[-1, 1, 2] == pytest.approx(0.5 * grid.nx)
@@ -379,8 +386,9 @@ def test_to_cell_center_symmetry_axis_uses_metallic_far_edge():
     assert periodic.grid.nx == 6  # owned_cells + the plane and its ghost slot.
     periodic.Bx[:] = _ramp(periodic.grid.shape, axis=0)
     line = periodic.to_cell_center('Bx')[:, 1, 2]
-    np.testing.assert_allclose(line[:-1], 0.5 * (np.arange(1, 6) + np.arange(2, 7)),
+    np.testing.assert_allclose(line[1:-1], 0.5 * (np.arange(2, 6) + np.arange(3, 7)),
                                rtol=0, atol=1e-6)
+    assert line[0] == pytest.approx(0.5 * (3 + 2))  # the ghost reads its image, row 2 (holds 3)
     assert line[-1] == pytest.approx(0.5 * (6 + 5))  # parity +1, image row 4 holds 5.
 
 
@@ -405,8 +413,10 @@ def test_to_cell_center_terminates_every_folded_axis_metallically(axis, componen
     centered = fields.to_cell_center(component)
 
     values = np.arange(1, n_stored + 1, dtype=np.float32)
+    words = values.copy()  # the mirror ghost (row 0) is MEEP's image of row 2
+    words[0] = mirror_parity(component, axis, grid.mirror_phase(axis)) * values[2]
     expected = np.empty_like(values)
-    expected[:-1] = 0.5 * (values[:-1] + values[1:])
+    expected[:-1] = 0.5 * (words[:-1] + words[1:])
     expected[-1] = 0.5 * values[-1]  # Metallic BC: the cell beyond the edge is zero.
     line = centered[_line(axis, centered.shape)]
     np.testing.assert_allclose(line, expected, rtol=0, atol=1e-6)
@@ -451,30 +461,53 @@ def test_to_cell_center_rejects_unknown_component():
         fields.to_cell_center('Qz')
 
 
-def _build_mirror_symmetric_full_field(shape_full, component, planes):
-    """Full-domain array obeying the mirror parities of one component.
-
-    ``planes`` maps axis -> declared mirror phase. Values on the stored side of
-    each plane are arbitrary; the negative interior is generated from them with
-    ``mirror_parity``, which is exactly the relation _reconstruct_full_domain has
-    to reproduce.
-    """
-    rng = np.random.default_rng(20260728)
-    full = rng.standard_normal(shape_full).astype(np.float32)
-    for axis, mirror_phase in planes.items():
-        phase = mirror_parity(component, axis, mirror_phase)
-        centre = shape_full[axis] // 2
-        for step in range(1, centre):
-            full[_slab(axis, centre - 1 - step)] = phase * full[_slab(axis, centre + step)]
-    return full
-
-
 def _slab(axis, index):  # Index tuple selecting along one axis only.
     return (slice(None),) * axis + (index,)
 
 
+def _unfold_reference(grid, quadrant, component):
+    """The documented fold rule, axis by axis in X, Y, Z order, on stored cell centres.
+
+    With ``c = n_full // 2`` and ``phase = mirror_parity`` for the component and plane:
+    ``full[c:] = q[1:]``, ``full[c-1] = q[0]`` (no phase: it sits on the negative side
+    already), ``full[:c-1] = phase * q[c:1:-1]`` (the mirrored range starts at ``c``, not
+    ``n_q - 1``: an odd count's top cell has no lower image inside MEEP's window). A
+    folded periodic axis's extra stored cell has no full-domain cell and is dropped.
+    """
+    result = quadrant
+    for axis in range(3):
+        mirror_phase = grid.mirror_phase(axis)
+        if mirror_phase is None:
+            continue
+        phase = mirror_parity(component, axis, mirror_phase)
+        n_full = grid.shape_full[axis]
+        centre = n_full // 2
+        shape = list(result.shape)
+        shape[axis] = n_full
+        full = np.zeros(tuple(shape), dtype=result.dtype)
+        full[_slab(axis, slice(centre, None))] = result[_slab(axis, slice(1, 1 + n_full - centre))]
+        full[_slab(axis, centre - 1)] = result[_slab(axis, 0)]
+        full[_slab(axis, slice(None, centre - 1))] = phase * result[_slab(axis, slice(centre, 1, -1))]
+        result = full
+    return result
+
+
+def _meep_duplicates(grid, full):
+    """MEEP's periodic duplicate plane, prepended where its get_array has one (k = 0: a copy)."""
+    for axis in range(3):
+        if grid.is_invariant(axis):
+            continue
+        if grid.is_mirrored(axis):
+            if grid.shape_full[axis] % 2 == 0 or grid.is_metallic(axis):
+                continue
+        elif grid.is_metallic(axis):
+            continue
+        full = np.concatenate((full[_slab(axis, slice(-1, None))], full), axis=axis)
+    return full
+
+
 # Every axis, both declared phases, and the combinations. The odd cases are what
-# say the reconstruction reads the plane's phase instead of the even-mirror table.
+# say the unfolding reads the plane's phase instead of the even-mirror table.
 RECONSTRUCTION_PLANES = {
     'x_even': {0: +1},
     'x_odd': {0: -1},
@@ -491,72 +524,66 @@ RECONSTRUCTION_PLANES = {
 @pytest.mark.parametrize('component', ['Ex', 'Ey', 'Ez', 'Hx', 'Hz', 'Bz'])
 @pytest.mark.parametrize('case', sorted(RECONSTRUCTION_PLANES))
 def test_quadrant_reconstruction_round_trips_every_plane_set(case, component, shape_full):
-    """Fold-then-unfold is the identity for BOTH cell-count parities.
+    """``to_meep_array`` unfolds the stored centres by the fold rule, for BOTH count parities.
 
-    The stored quadrant is ``full[centre - 1:]`` on each folded axis with
-    ``centre = n_full // 2``, plus MEEP's ``big_corner`` cell (stored at both
-    parities). The odd axis's top full-domain cell — centre at exactly +L/2 —
-    has no lower image inside MEEP's shifted window, so the mirrored interior
-    must start from ``quadrant[centre]``, not ``quadrant[n_q - 1]``. Starting
-    from the quadrant count instead is silent at even counts and writes every
+    The whole-cell array is the stored cell centres (``to_cell_center``) unfolded axis
+    by axis with the component's parity (:func:`_unfold_reference`), then MEEP's periodic
+    duplicate planes: the same words, signs and all, since a parity of -1 is a negation
+    of the same double sum before its one rounding. Starting the mirrored range from
+    the quadrant count instead of ``c`` is silent at even counts and writes every
     odd-count mirror cell one cell off.
     """
     planes = RECONSTRUCTION_PLANES[case]
     grid = _make_grid(*shape_full, symmetry=tuple(
         Mirror('XYZ'[axis], phase) for axis, phase in sorted(planes.items())))
     fields = Fields(grid=grid)
-    full = _build_mirror_symmetric_full_field(grid.shape_full, component, planes)
+    source = 'D' + component[1] if component[0] == 'E' else 'B' + component[1]
+    rng = np.random.default_rng(20260728)
+    getattr(fields, source)[:] = (rng.standard_normal(grid.shape) + 3.0).astype(np.float32)
 
-    quadrant = full
-    for axis in planes:  # Stored half: cell 0 sits at -0.5*dx on each folded axis.
-        sliced = quadrant[_slab(axis, slice(grid.shape_full[axis] // 2 - 1, None))]
-        # A periodic fold also stores MEEP's big_corner cell, at BOTH parities —
-        # on the full periodic domain that is cell 0's own sample one lattice
-        # vector up (no phase at k = 0). The unfold drops it, so the round trip
-        # is unchanged by its value; it is built faithfully here.
-        sliced = np.concatenate((sliced, quadrant[_slab(axis, slice(0, 1))]),
-                                axis=axis)
-        quadrant = sliced
-    assert quadrant.shape == grid.shape
-
-    reconstructed = fields._reconstruct_full_domain(quadrant, component)
-    assert reconstructed.shape == grid.shape_full
-    np.testing.assert_array_equal(reconstructed, full)
+    stored = fields.to_cell_center(component)
+    whole = fields.to_meep_array(component)
+    expected = _meep_duplicates(grid, _unfold_reference(grid, stored, component))
+    assert whole.shape == expected.shape
+    np.testing.assert_array_equal(whole, expected)
 
 
 def test_quadrant_reconstruction_applies_the_component_phase():
     grid = _make_grid(8, 6, 4, symmetry=('Y',))
     fields = Fields(grid=grid)
-    quadrant = _distinct(grid.shape)
+    fields.Dz[:] = _distinct(grid.shape)
+    fields.Dy[:] = _distinct(grid.shape)
     cy = grid.ny_full // 2
 
-    even = fields._reconstruct_full_domain(quadrant, 'Ez')  # phase_y = +1
-    odd = fields._reconstruct_full_domain(quadrant, 'Ey')   # phase_y = -1
-    np.testing.assert_array_equal(even[:, cy - 1, :], quadrant[:, 0, :])  # Boundary cell: no phase.
-    np.testing.assert_array_equal(odd[:, cy - 1, :], quadrant[:, 0, :])
-    np.testing.assert_array_equal(even[:, cy - 2, :], quadrant[:, 2, :])
-    np.testing.assert_array_equal(odd[:, cy - 2, :], -quadrant[:, 2, :])
+    even, odd = fields.to_meep_array('Ez')[1:], fields.to_meep_array('Ey')[1:]  # phase_y +1 / -1
+    q_even, q_odd = fields.to_cell_center('Ez'), fields.to_cell_center('Ey')
+    np.testing.assert_array_equal(even[:, cy - 1, 1:], q_even[:, 0, :])  # Boundary cell: no phase.
+    np.testing.assert_array_equal(odd[:, cy - 1, 1:], q_odd[:, 0, :])
+    np.testing.assert_array_equal(even[:, cy - 2, 1:], q_even[:, 2, :])
+    np.testing.assert_array_equal(odd[:, cy - 2, 1:], -q_odd[:, 2, :])
 
 
 def test_quadrant_reconstruction_reads_the_declared_phase_not_the_even_table():
     """The same component, the same axis, opposite folds — the sign must follow.
 
-    Reconstructing from ``SYMMETRY_PHASES`` (the even X/Y table) instead of the
-    plane's declared phase leaves every even run correct and silently mirrors an
-    odd run with the wrong sign, which no shape or round-trip check would notice.
+    Unfolding with ``SYMMETRY_PHASES`` (the even X/Y table) instead of the plane's
+    declared phase leaves every even run correct and silently mirrors an odd run with
+    the wrong sign, which no shape check would notice.
     """
-    quadrant = _distinct((5, 6, 4))
-    reconstructions = {}
+    reconstructions, centres = {}, {}
     for phase in (+1, -1):
         grid = _make_grid(8, 6, 4, symmetry=(Mirror('X', phase),))
-        reconstructions[phase] = Fields(grid=grid)._reconstruct_full_domain(quadrant, 'Ez')
+        fields = Fields(grid=grid)
+        fields.Dz[:] = _distinct(grid.shape)
+        reconstructions[phase] = fields.to_meep_array('Ez')[:, 1:, 1:]
+        centres[phase] = fields.to_cell_center('Ez')
     centre = 4
     # Ez is even about x under an even mirror and odd about it under an odd one.
-    np.testing.assert_array_equal(reconstructions[+1][centre - 2], quadrant[2])
-    np.testing.assert_array_equal(reconstructions[-1][centre - 2], -quadrant[2])
+    np.testing.assert_array_equal(reconstructions[+1][centre - 2], centres[+1][2])
+    np.testing.assert_array_equal(reconstructions[-1][centre - 2], -centres[-1][2])
     # The boundary cell already sits on the negative side and takes no phase either way.
-    np.testing.assert_array_equal(reconstructions[+1][centre - 1], quadrant[0])
-    np.testing.assert_array_equal(reconstructions[-1][centre - 1], quadrant[0])
+    np.testing.assert_array_equal(reconstructions[+1][centre - 1], centres[+1][0])
+    np.testing.assert_array_equal(reconstructions[-1][centre - 1], centres[-1][0])
 
 
 def test_to_meep_array_shape_without_symmetry():
@@ -620,7 +647,9 @@ def test_to_meep_array_shape_with_symmetry():
                         boundaries='metallic')
     fields_pec = Fields(grid=grid_odd_pec)
     fields_pec.Dz[:] = _distinct(grid_odd_pec.shape)
-    assert fields_pec.to_meep_array('Dz').shape == (9, grid_odd_pec.ny + 1, grid_odd_pec.nz + 1)
+    # Every axis metallic: MEEP's get_array has no duplicate plane on a metallic axis,
+    # so the unfolded y and z come back at their cell counts too.
+    assert fields_pec.to_meep_array('Dz').shape == (9, grid_odd_pec.ny, grid_odd_pec.nz)
 
 
 def test_a_collapsed_axis_is_averaged_with_its_lattice_image_not_selected():
@@ -711,42 +740,45 @@ def test_repr_memory_counts_material_arrays_at_four_bytes():
     assert f"memory={expected_real_mb:.1f}MB" in repr(real_fields)
 
 
-def test_to_cell_center_phases_the_wrapped_plane_under_bloch_boundaries():
-    """The wrapped neighbour of an interpolated axis is one lattice vector away.
+def test_to_cell_center_phases_the_not_owned_plane_under_bloch_boundaries():
+    """The not-owned neighbour of an interpolated axis is the image of stored cell 0.
 
     ``to_cell_center`` averages ``0.5*(f[i] + f[i+1])`` along every axis whose Yee
-    shift is 0, and at ``i = n-1`` that neighbour is stored cell 0 — one lattice
-    vector up, which under Bloch boundaries carries ``grid.bloch_phase(axis)``.
-    MEEP applies the same factor filling an array from a shifted chunk
-    (loop_in_chunks.cpp ``ph *= pow(eikna[d], ishift)``).
+    shift is 0. On a Bloch-phased axis the engine stores MEEP's owned window
+    (``Grid.stored_window_low``): stored cell 0 IS the owned top point ``lc + 2N``, so
+    the top centre's neighbour is stored cell 0 itself, unphased, and the BOTTOM
+    centre's word at ``lc`` is MEEP's not-owned word, stored cell 0 one lattice vector
+    down: ``conj(grid.bloch_phase(axis))`` times it (boundaries.cpp:203-226, the
+    connection ``readback.chunk_words`` forms).
 
     This lives in ``Fields`` rather than in the driver so that every reader gets
     it — ``to_meep_array`` and any direct caller included. While it lived only in
     ``FdtdDriver.get_field``, a ``Fields`` object read directly under a nonzero k
-    returned a wrong far plane on each interpolated axis, silently.
+    returned a wrong boundary plane on each interpolated axis, silently.
     """
     k_z = 0.3
     grid = Grid(resolution=1.0, cell_size=(3.0, 3.0, 4.0), k_point=(0.0, 0.0, k_z))
     phase = grid.bloch_phase(2)
     assert phase is not None
     fields = Fields(grid=grid, force_complex_fields=True)
-    # Bz has iyee_shift (1,1,0): z is the only interpolated axis, so the wrap phase
-    # appears exactly once and can be read off directly.
+    # Bz has iyee_shift (1,1,0): z is the only interpolated axis, so the phase appears
+    # exactly once and can be read off directly. Stored cell 0 holds lc + 2N.
+    assert grid.stored_window_low(2, 0) == 1
     line = np.array([1.0, 2.0, 5.0, 11.0], dtype=np.complex64)
     fields.Bz[:] = np.broadcast_to(line.reshape(1, 1, grid.nz), grid.shape)
     centered = fields.to_cell_center('Bz')
 
-    expected = 0.5 * (line + phase * np.roll(line, -1))
-    expected[:-1] = 0.5 * (line[:-1] + line[1:])  # Interior planes never wrapped.
+    expected = 0.5 * (line + np.roll(line, -1))  # the top centre reads stored cell 0 as owned
+    expected[0] = 0.5 * (phase.conjugate() * line[0] + line[1])
     np.testing.assert_allclose(centered[1, 2, :], expected, rtol=0, atol=1e-6)
-    assert centered[1, 2, -1] == pytest.approx(0.5 * (line[-1] + phase * line[0]), rel=1e-6)
+    assert centered[1, 2, -1] == pytest.approx(0.5 * (line[-1] + line[0]), rel=1e-6)
 
     # Controls: the two ways to get this wrong are both measurably different here,
     # because k = 0.3 is not at the zone edge where the phase is its own conjugate.
-    for label, wrong in (("unphased", 0.5 * (line[-1] + line[0])),
-                         ("conjugated", 0.5 * (line[-1] + phase.conjugate() * line[0]))):
-        assert abs(centered[1, 2, -1] - wrong) > 0.1 * abs(centered[1, 2, -1]), (
-            f"The {label} far plane is within 10% of the measured value; this cannot see it."
+    for label, wrong in (("unphased", 0.5 * (line[0] + line[1])),
+                         ("phased up", 0.5 * (phase * line[0] + line[1]))):
+        assert abs(centered[1, 2, 0] - wrong) > 0.1 * abs(centered[1, 2, 0]), (
+            f"The {label} bottom plane is within 10% of the measured value; this cannot see it."
         )
 
     # k = 0 keeps the plain periodic average, bit-for-bit: the factor is None there
@@ -853,20 +885,34 @@ def test_displacement_minus_polarization_aliases_D_when_nothing_drives_the_compo
 
 
 def test_drive_field_is_the_constitutive_product_not_the_absorbed_E():
-    """W = (D - sum P)*inv_eps, which is ``f_w`` under PML and the stored E without it.
+    """W = (D - sum P)*inv_eps, which is ``f_w`` in the layer's chunks and the stored E elsewhere.
 
     They agree EXACTLY outside an absorber, so driving the polarization from the
     stored E passes every no-PML test and is wrong only inside the layer — smoothly,
     plausibly, and in the region a transmission spectrum is normalised against. The
-    distinction lives in one accessor so it cannot be re-derived differently.
+    distinction lives in one accessor so it cannot be re-derived differently. Under a
+    PML it is MEEP's per-chunk ``w = f_w ? f_w : f``: ``f_w`` exists only in a chunk that
+    carries the component's own layer, so outside those cells ``w`` is the stored E,
+    which ``update_E`` writes as the constitutive product there.
     """
+    from .chunk_map import ChunkLayout, RegionPlan
+    from .pml import PML
+
     fields, _ = _dispersive_fields()
     fields.Ez[:] = 1.0
     assert fields.drive_field('Ez') is fields.Ez
     fields.enable_pml_storage()
     fields.f_w_Ez[:] = 2.0
-    assert fields.drive_field('Ez') is fields.f_w_Ez
-    assert complex(fields.drive_field('Ez')[0, 0, 0]) == 2.0 + 0.0j
+    with pytest.raises(RuntimeError, match="region plan"):
+        fields.drive_field('Ez')
+    layer = PML(fields.grid, thickness={"z": 1})
+    plan = RegionPlan(ChunkLayout.one_rank(fields.grid, layer), fields.grid, layer)
+    fields.install_region_plan(plan)
+    inside = np.broadcast_to(plan.mask("constitutive", "Ez"), fields.Ez.shape)
+    assert inside.any() and not inside.all()
+    drive = fields.drive_field('Ez')
+    assert np.all(drive[inside] == 2.0) and np.all(drive[~inside] == 1.0)
+    assert fields.drive_field('Ex') is fields.Ex  # Ex's own axis x carries no layer here.
 
 
 def test_reset_clears_stored_E_and_every_polarization_history():

@@ -476,7 +476,7 @@ def _sibling_predicates() -> Dict[str, Callable[..., Any]]:
                 if s == "E" else (False, "the H side has no off-diagonal kernel")),
         "covers_real_pml_complex_constitutive":
             lambda f, p, g, s: cuda_coverage.covers_real_pml_complex_constitutive(
-                f, p, g, s, "NAIVE"),
+                f, p, g, s),
     }
     discovered = {name for name in dir(cuda_coverage)
                   if name.startswith("covers_") and "constitutive" in name}

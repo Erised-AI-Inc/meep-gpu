@@ -39,8 +39,6 @@ GATE = REPO / "parity" / "meep_gpu" / "gate_metal_complex_fused_hd_pair.py"
 #: longer describes the tree and the weld in `fingerprints.json` binds `_wired`.
 ARTIFACT = (REPO / "parity" / "meep_gpu" / "results"
             / "metal_complex_fused_hd_pair_2026-09-07_wired" / "gate.json")
-EXPANSIONS = tuple(templates.EXPANSION_ARMS)
-ARM = "FMA_V1"
 
 
 def _has_mps() -> bool:
@@ -150,13 +148,8 @@ def test_the_module_registers_one_unwired_row_on_update_H():
                                  if spec.wired}
 
 
-# ---------------------------------------------------------------------------
-# 2. The lift — the certified bodies, with exactly the declared edits
-# ---------------------------------------------------------------------------
-
-@pytest.mark.parametrize("expansion", EXPANSIONS)
-def test_the_constitutive_lift_is_the_certified_body_under_the_declared_edits(expansion):
-    certified = complex_fields.bloch_constitutive_source("H", expansion)
+def test_the_constitutive_lift_is_the_certified_body_under_the_declared_edits():
+    certified = complex_fields.bloch_constitutive_source("H")
     tail = certified.split(family.DECODE_END, 1)[1][: -len("}\n")]
     for old, new in (("    float kp_0 = kp0[i], km_0 = km0[i];\n",
                       "    float kp_0 = kp0[i], km_0 = kmx[i];\n"),
@@ -166,19 +159,26 @@ def test_the_constitutive_lift_is_the_certified_body_under_the_declared_edits(ex
                       "    float kp_2 = kp2[k], km_2 = kmz[k];\n")):
         assert tail.count(old) == 1
         tail = tail.replace(old, new)
+    zero = templates.COMPLEX_ZERO
     for target in range(3):
         for old, new in (
-                (f"    float2 prev{target} = w{target}[ii];\n",
-                 f"    float2 prev{target} = wi{target}[ii];\n"),
+                (f"    float2 prev{target} = dw{target} ? w{target}[ii] : {zero};\n",
+                 f"    float2 prev{target} = dw{target} ? wi{target}[ii] : {zero};\n"),
                 (f"    float2 src{target} = g{target}[ii];\n",
                  f"    float2 src{target} = b{target}[ii];\n"),
-                (f"    w{target}[ii] = src{target};\n", ""),
-                (f"    float2 a{target} = f{target}[ii];\n",
-                 f"    float2 a{target} = hi{target}[ii];\n"),
+                (f"    if (dw{target}) {{ w{target}[ii] = src{target}; }}\n",
+                 f"    float2 wn{target} = dw{target} ? src{target} : wi{target}[ii];\n"),
+                (f"    if (dw{target}) {{ a{target} = f{target}[ii] + ",
+                 f"    if (dw{target}) {{ a{target} = hi{target}[ii] + "),
                 (f"    f{target}[ii] = a{target};\n", "")):
             assert tail.count(old) == 1, old
             tail = tail.replace(old, new)
-    assert tail == family.certified_complex_constitutive_tail(expansion)
+    assert tail == family.certified_complex_constitutive_tail()
+
+
+# ---------------------------------------------------------------------------
+# 2. The lift — the certified bodies, with exactly the declared edits
+# ---------------------------------------------------------------------------
 
 
 def test_the_lift_edit_table_names_every_edit_and_touches_no_arithmetic():
@@ -193,22 +193,25 @@ def test_the_lift_edit_table_names_every_edit_and_touches_no_arithmetic():
     assert accumulations == []
 
 
-@pytest.mark.parametrize("expansion", EXPANSIONS)
-def test_the_lifted_constitutive_accumulations_are_character_identical(expansion):
-    certified = complex_fields.bloch_constitutive_source(
-        "H", expansion).split(family.DECODE_END, 1)[1]
-    lifted = family.certified_complex_constitutive_tail(expansion)
+def test_the_lifted_constitutive_accumulations_are_character_identical():
+    certified = complex_fields.bloch_constitutive_source("H").split(
+        family.DECODE_END, 1)[1]
+    lifted = family.certified_complex_constitutive_tail()
 
     def accumulations(text):
         return [line.split("//", 1)[0].strip() for line in text.splitlines()
                 if "c_mul_coefficient_left" in line.split("//", 1)[0]]
 
-    assert accumulations(certified) == accumulations(lifted)
-    assert len(accumulations(lifted)) == 6
+    # The accumulation reads the PRE-LAUNCH H (``hiN``) where the certified body reads
+    # its target (``fN``); everything else on the line is the certified text.
+    renamed = [line.replace(f"hi{t}[ii]", f"f{t}[ii]")
+               for t, line in enumerate(accumulations(lifted))]
+    assert accumulations(certified) == renamed
+    assert len(renamed) == 3
 
 
 def test_the_lifted_body_indexes_no_volume_the_fused_signature_renames():
-    tail = family.certified_complex_constitutive_tail(ARM)
+    tail = family.certified_complex_constitutive_tail()
     for stem in ("f", "w", "g", "e", "km"):
         for target in range(3):
             assert f"{stem}{target}[" not in tail
@@ -222,7 +225,7 @@ def test_the_welded_curl_reverses_to_the_certified_text(codes, phased):
     """THE STRONGEST STATEMENT THIS SUITE CAN MAKE WITHOUT A DEVICE: undo the nine
     declared load redirections and the certified emitter's own body comes back, byte
     for byte -- which says NOTHING ELSE moved."""
-    prologue, body = family.welded_curl_tail(codes, phased, ARM)
+    prologue, body = family.welded_curl_tail(codes, phased)
     restored = body
     for var, target in family.OWN_LOAD_EDITS:
         restored = restored.replace(f"    float2 {var}   = own.a{target};\n",
@@ -233,54 +236,70 @@ def test_the_welded_curl_reverses_to_the_certified_text(codes, phased):
             call = (f"h_cell({', '.join(coordinates)}, "
                     f"{family.H_CELL_TAIL_ARGS}).a{target}")
             restored = restored.replace(call, f"g{target}[{offset}]")
-    theirs = complex_fields.bloch_curl_source(codes, True, phased, ARM)
+    theirs = complex_fields.bloch_curl_source(codes, True, phased)
     theirs_body = theirs.split("uint idx [[thread_position_in_grid]])\n{\n",
                                1)[1][: -len("}\n")]
     assert prologue + restored == theirs_body
 
 
 def test_the_offsets_are_parsed_from_the_certified_index_lines():
-    _prologue, body = family.welded_curl_tail((0, 0, 0), (0, 0, 0), ARM)
+    _prologue, body = family.welded_curl_tail((0, 0, 0), (0, 0, 0))
     offsets = family.offset_coordinates(body)
     assert offsets == {"ox": ("si", "j", "k"), "oy": ("i", "sj", "k"),
                        "oz": ("i", "j", "sk")}
 
 
 def test_a_curl_whose_index_layout_changed_raises_rather_than_redirecting():
-    _prologue, body = family.welded_curl_tail((0, 0, 0), (0, 0, 0), ARM)
+    _prologue, body = family.welded_curl_tail((0, 0, 0), (0, 0, 0))
     broken = body.replace("int ox = si * nyz + j * nzi + k;",
                           "int ox = si * nyz + j * nzi;")
     with pytest.raises(AssertionError):
         family.offset_coordinates(broken)
 
 
-def test_the_phase_block_is_left_standing_on_the_register():
-    """The Bloch rotation applies to the LOADED REGISTER after the gather, so this weld
-    redirects the load and never sees the multiply. A tap that lost its rotation would
-    be a smooth, plausible, wrong band structure."""
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1), ARM)
-    for axis, operands in (("x", ("b_x", "c_x")), ("y", ("a_y", "c_y")),
-                           ("z", ("a_z", "b_z"))):
-        for operand in operands:
-            assert f"{operand} = w{axis} ? c_mul({operand}, p{axis}) : {operand};" \
-                in source
+def test_the_connection_is_left_standing_on_the_own_cell_registers():
+    """The Bloch connection applies to the UNSHIFTED registers on plane 0, which this
+    weld fills from its own recompute (``own.aN``); it redirects the loads and never
+    sees the connection. A connection lost on the weld would be a smooth, plausible,
+    wrong band structure."""
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (2, 2, 2))
+    for axis, pairs in (("x", (("c_dx", "c"), ("b_dx", "b"))),
+                        ("y", (("c_dy", "c"), ("a_dy", "a"))),
+                        ("z", (("b_dz", "b"), ("a_dz", "a")))):
+        for connected, stored in pairs:
+            assert f"{connected} = c_mul({stored}, p{axis});" in source
+    for var, target in family.OWN_LOAD_EDITS:
+        assert f"float2 {var}   = own.a{target};" in source
+
+
+def test_the_recompute_keys_its_form_at_the_cell_it_is_called_for():
+    """``h_cell`` takes the chunk record as a parameter and evaluates the dsigw
+    membership at its own (i, j, k), so a foreign tap selects the neighbour's form."""
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (0, 0, 0))
+    helper = source.split("static inline h_cell_result h_cell(", 1)[1].split(
+        "\nkernel void", 1)[0]
+    assert "constant ChunkBounds& cb" in helper.split(")", 1)[0]
+    assert "const bool in_i_x = ((i) >= cbi_x_a0" in helper
+    assert family.H_CELL_TAIL_ARGS.endswith(", cb")
+    kernel = source.split(f"kernel void {family.KERNEL}(", 1)[1]
+    assert "constant ChunkBounds& cb = prm.cb;" in kernel
 
 
 def test_an_unphased_axis_emits_no_multiply_at_all():
     """The SKIP, not a multiply by 1+0j, is what keeps k = 0 bit-identical to the plain
     complex engine (stepping.py:1815-1817)."""
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (0, 0, 0), ARM)
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (0, 0, 0))
     assert "c_mul(" not in _code(source).split("kernel void", 1)[1]
+
+
+def test_the_shipped_signature_binds_exactly_the_platform_ceiling():
+    assert family.shipped_signature_bindings() == family.PACKED_BINDINGS
+    assert family.PACKED_BINDINGS == MAX_BUFFER_BINDINGS == 31
 
 
 # ---------------------------------------------------------------------------
 # 3. The signature and the ceiling
 # ---------------------------------------------------------------------------
-
-@pytest.mark.parametrize("expansion", EXPANSIONS)
-def test_the_shipped_signature_binds_exactly_the_platform_ceiling(expansion):
-    assert family.shipped_signature_bindings(expansion) == family.PACKED_BINDINGS
-    assert family.PACKED_BINDINGS == MAX_BUFFER_BINDINGS == 31
 
 
 def test_the_refuted_binding_counts_are_the_declared_ones():
@@ -303,7 +322,7 @@ def test_the_two_halves_share_one_yee_sub_lattice_and_that_is_why_thirty_fits():
 
 
 def test_the_signature_binds_twenty_one_float2_volumes_and_nine_float_vectors():
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (0, 0, 0), ARM)
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (0, 0, 0))
     signature = source.split(f"kernel void {family.KERNEL}(", 1)[1].split(
         "uint idx [[thread_position_in_grid]])", 1)[0]
     assert signature.count("float2*") == 21
@@ -311,16 +330,16 @@ def test_the_signature_binds_twenty_one_float2_volumes_and_nine_float_vectors():
     assert signature.count("constant Params&") == 1
 
 
-def test_the_params_record_puts_the_phases_first_and_is_forty_eight_bytes():
+def test_the_params_record_puts_the_phases_first_and_carries_the_chunk_record():
     dtype = family.params_record_dtype()
-    assert dtype.itemsize == family.PARAMS_ITEMSIZE == 48
-    assert dtype.names == ("px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx")
+    assert dtype.itemsize == family.PARAMS_ITEMSIZE == 144
+    assert dtype.names == ("px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx", "cb")
     assert [dtype.fields[name][1] for name in dtype.names] == [0, 8, 16, 24, 28, 32,
-                                                              36, 40]
+                                                              36, 40, 44]
 
 
 def test_the_rotating_group_is_the_signatures_first_twelve_bindings():
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (0, 0, 0), ARM)
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (0, 0, 0))
     signature = source.split(f"kernel void {family.KERNEL}(", 1)[1].split(
         "uint idx [[thread_position_in_grid]])", 1)[0]
     names = re.findall(r"\b(\w+)\s+\[\[buffer\(\d+\)\]\]", signature)
@@ -334,7 +353,7 @@ def test_the_rotating_group_is_the_signatures_first_twelve_bindings():
 # ---------------------------------------------------------------------------
 
 def test_the_launch_reads_nothing_it_writes():
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1), ARM)
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1))
     kernel = _code(source.split(f"kernel void {family.KERNEL}(", 1)[1].split("{", 1)[1])
     for name in ("ho0", "ho1", "ho2", "wo0", "wo1", "wo2"):
         stores = len(re.findall(rf"\b{name}\[[^\]]*\]\s*=(?!=)", kernel))
@@ -343,14 +362,14 @@ def test_the_launch_reads_nothing_it_writes():
 
 
 def test_the_in_place_group_is_touched_only_at_the_threads_own_cell():
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1), ARM)
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1))
     kernel = _code(source.split(f"kernel void {family.KERNEL}(", 1)[1].split("{", 1)[1])
     for name in ("f0", "f1", "f2", "u0", "u1", "u2"):
         assert not re.findall(rf"\b{name}\[(?!ii\])", kernel), name
 
 
 def test_the_cell_function_stores_nothing_and_serves_seven_call_sites():
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1), ARM)
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1))
     helper = source.split("static inline h_cell_result h_cell(", 1)[1].split(
         "\nkernel void", 1)[0]
     assert not re.findall(r"\b\w+\[[^\]]*\]\s*=(?!=)", _code(helper))
@@ -360,7 +379,7 @@ def test_the_cell_function_stores_nothing_and_serves_seven_call_sites():
 
 
 def test_no_magnetic_pointer_survives_the_weld():
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1), ARM)
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1))
     for target in range(3):
         assert f"g{target}[" not in source
 
@@ -368,7 +387,7 @@ def test_no_magnetic_pointer_survives_the_weld():
 def test_the_kernel_performs_no_floating_point_division():
     """Every PML reciprocal is precomputed on the host into ``sinv_a``; the two
     divisions in the emitted text are the INTEGER index decode."""
-    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1), ARM)
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1))
     code = _code(source)
     divides = re.findall(r"[\w\.\)]\s*/\s*[\w\(]", code)
     integer = re.findall(r"\bii\s*/\s*nzi|\bplane\s*/\s*nyi", code)
@@ -382,32 +401,31 @@ def test_the_kernel_performs_no_floating_point_division():
 
 def test_a_phased_metallic_axis_is_refused_by_the_certified_emitter():
     with pytest.raises(ValueError):
-        family.complex_fused_hd_pair_source((1, 0, 0), (1, 0, 0), ARM)
+        family.complex_fused_hd_pair_source((1, 0, 0), (1, 0, 0))
 
 
 def test_a_malformed_triple_is_refused_by_name():
     with pytest.raises(ValueError):
-        family.complex_fused_hd_pair_source((0, 0), (0, 0, 0), ARM)
+        family.complex_fused_hd_pair_source((0, 0), (0, 0, 0))
     with pytest.raises(ValueError):
-        family.complex_fused_hd_pair_source((0, 0, 0), (0, 0), ARM)
+        family.complex_fused_hd_pair_source((0, 0, 0), (0, 0))
 
 
 def test_enumerate_sources_covers_only_the_reachable_specialisations():
-    sources = family.enumerate_sources(ARM)
-    # 8 boundary triples; a metallic axis cannot carry a phase, so the phase count per
-    # triple is 2 ** (number of periodic axes).
-    expected = sum(2 ** sum(1 for code in codes if code == templates.PERIODIC)
+    sources = family.enumerate_sources()
+    # 8 boundary triples; a metallic axis cannot carry a phase, and a periodic one
+    # takes MEEP's three connection spellings: 3 ** (number of periodic axes).
+    expected = sum(3 ** sum(1 for code in codes if code == templates.PERIODIC)
                    for codes in [(cx, cy, cz) for cx in (0, 1) for cy in (0, 1)
                                  for cz in (0, 1)])
-    assert len(sources) == expected == 27
+    assert len(sources) == expected == 64
     assert len(set(sources.values())) == len(sources)
 
 
 def test_every_emitted_source_carries_one_contraction_guard_and_the_helpers():
-    for arm in EXPANSIONS:
-        source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1), arm)
-        assert source.count(shaders.contraction_pragma(shaders.CONTRACT_OFF)) == 1
-        assert templates.complex_helpers(arm) in source
+    source = family.complex_fused_hd_pair_source((0, 0, 0), (1, 1, 1))
+    assert source.count(shaders.contraction_pragma(shaders.CONTRACT_OFF)) == 1
+    assert templates.complex_helpers() in source
 
 
 # ---------------------------------------------------------------------------
@@ -457,27 +475,21 @@ def test_the_rotation_invariant_is_a_predicate_clause():
 # 7. The plan carries its specialisation
 # ---------------------------------------------------------------------------
 
-def test_the_plan_class_extends_the_shared_scratch_weld_and_adds_three_slots():
+def test_the_plan_class_extends_the_shared_scratch_weld_and_adds_two_slots():
     from meep_gpu.metal_kernels import offdiag_weld_common as weld
 
     assert issubclass(family.MetalComplexFusedHdPairPlan, weld.ScratchWeldPairPlan)
-    assert family.MetalComplexFusedHdPairPlan.__slots__ == ("phased", "phase_values",
-                                                            "expansion")
+    assert family.MetalComplexFusedHdPairPlan.__slots__ == ("phased", "phase_values")
     # `run` and `_resolve` are the BASE's: the rotation is not reimplemented here.
     assert "run" not in vars(family.MetalComplexFusedHdPairPlan)
     assert "_resolve" not in vars(family.MetalComplexFusedHdPairPlan)
 
 
-# ---------------------------------------------------------------------------
-# 8. The device — the smallest non-vacuous check
-# ---------------------------------------------------------------------------
-
 @requires_mps
-@pytest.mark.parametrize("expansion", EXPANSIONS)
-def test_every_reachable_specialisation_compiles_on_this_platform(expansion):
+def test_every_reachable_specialisation_compiles_on_this_platform():
     from meep_gpu.metal_kernels.device import compile_source
 
-    for source in family.enumerate_sources(expansion).values():
+    for source in family.enumerate_sources().values():
         compile_source(source)
 
 
@@ -502,18 +514,8 @@ def test_one_complete_driver_step_is_bit_identical_to_the_array_path():
     from meep_gpu.metal_kernels.device import Residency  # noqa: E402
     from meep_gpu.pml import PML  # noqa: E402
 
-    # THE ARM IS A MEASURED PLATFORM FACT read from the checked-in probe artifact, and
-    # binding it is what makes this a test rather than a skip. `prepare_environment`
-    # is the ONE place the candidate list lives.
+    # `prepare_environment` is the ONE place the subnormal policy is set.
     matrix.prepare_environment()
-    if complex_fields.expansion_from_probe(
-            complex_fields.load_expansion_probe()) is None:
-        from conftest import requires_resource_skip  # noqa: PLC0415
-
-        requires_resource_skip(
-            "metal_complex_expansion_probe",
-            "no complex expansion probe artifact under parity/meep_gpu/results; the "
-            "arm is measured, never defaulted, so the product cannot be built")
 
     state = ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
              "fu_Bx", "fu_By", "fu_Bz", "fu_Dx", "fu_Dy", "fu_Dz",
@@ -538,6 +540,8 @@ def test_one_complete_driver_step_is_bit_identical_to_the_array_path():
             view = np.empty(grid.shape, dtype=np.complex64).view(np.float32)
             view[...] = rng.standard_normal(view.shape).astype(np.float32) * 0.3
             array[...] = view.view(np.complex64).reshape(grid.shape)
+        # A seeded state is a mid-run one: H was started from B long ago.
+        fields.h_separated = True
         return fields, pml
 
     def words(array):
@@ -549,8 +553,12 @@ def test_one_complete_driver_step_is_bit_identical_to_the_array_path():
     reference, reference_pml = build(20260907)
     device_fields, device_pml = build(20260907)
     residency = Residency()
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record  # noqa: E402
+
     plan = family.plan_metal_complex_fused_hd_pair(
-        device_fields, device_pml, sources=(), residency=residency)
+        device_fields, device_pml, sources=(), residency=residency,
+        chunk_bounds=chunk_bounds_record(ChunkLayout.one_rank(device_fields.grid,
+                                                              device_pml)))
     assert plan is not None
     residency.sync_in()
 
@@ -577,6 +585,11 @@ def test_one_complete_driver_step_is_bit_identical_to_the_array_path():
         plan.rotated[name] = current
     assert sum(differing(getattr(reference, name), getattr(device_fields, name))
                for name in family.ROTATED_NAMES) > 0
+
+
+# ---------------------------------------------------------------------------
+# 8. The device — the smallest non-vacuous check
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------

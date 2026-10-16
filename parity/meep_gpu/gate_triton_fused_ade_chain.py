@@ -214,6 +214,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/fields.py", "meep_gpu/subnormal_policy.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/triton_kernels/no_pml_stored_e.py",
         "meep_gpu/triton_kernels/no_pml_ade.py",
@@ -323,6 +324,13 @@ def build(xp, case: Case, seed: int, scale: Optional[float] = None):
             else ((0, 2) if grid.is_mirrored(index) else (2, 2))
             for index in range(3))
         pml = PML(grid=grid, thickness=thickness)
+        # MEEP's drive is per chunk (Fields.drive_field: f_w on the layer's chunks, the
+        # stored E elsewhere), read through the region plan the PML sub-steps dispatch
+        # on. A driver installs it with the layer; the separate-products control steps
+        # this Fields through kernel plans alone, so it is installed here, the one-rank
+        # division stepping.update_E would install.
+        from meep_gpu import stepping as _stepping  # noqa: PLC0415
+        _stepping._region_plan(fields, pml)
 
     if case.value_class == "pm_zero_lattice":
         # A LATTICE of +0.0 and -0.0 over every array the seam consumes, with the
@@ -439,15 +447,45 @@ def zero_words(state: Dict[str, np.ndarray], negative: bool) -> int:
     return sum(int(np.count_nonzero(value == needle)) for value in state.values())
 
 
-def _split_movement(before: Dict[str, np.ndarray], after: Dict[str, np.ndarray]
+def _outside_every_layer(fields: Any, pml: Any) -> List[str]:
+    """The ``f_w_E<c>`` whose own-axis record line holds no cell of the run's division.
+
+    THE AUXILIARY CONTRACT LEAVES THEM UNTOUCHED: the E tail reads and writes ``f_w_<c>``
+    only on the cells whose chunk carries ``c``'s own (dsigw) layer, so on a division
+    that gives that layer no cell (an invariant axis, or an axis with no layer) the
+    array keeps its first word for the whole run, on the array path and in the kernel
+    alike. Such an array is not a written array that failed to move; it is the
+    contract, and it is checked as one: it must NOT move.
+    """
+    if pml is None:
+        return []
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+    from meep_gpu.triton_kernels.launch import chunk_bounds_for  # noqa: PLC0415
+
+    record = np.asarray(chunk_bounds_for(fields, pml, None))
+    shape = tuple(int(n) for n in fields.grid.shape)
+    return sorted(f"f_w_E{letter}" for axis, letter in enumerate("xyz")
+                  if not membership_from_record(record, True, axis, shape[axis]).any())
+
+
+def _split_movement(before: Dict[str, np.ndarray], after: Dict[str, np.ndarray],
+                    untouched: Sequence[str] = ()
                     ) -> Tuple[List[str], List[str], int]:
+    """Written arrays that never moved, read-only arrays that moved, words moved.
+
+    ``untouched`` (:func:`_outside_every_layer`) are written arrays the auxiliary
+    contract leaves at rest: they are not reported still, and one that moved is
+    reported disturbed.
+    """
     moved = {name: differing(before[name], after[name]) for name in before}
     written = [name for name in moved if name.startswith(WRITTEN_PREFIXES)]
     read_only = [name for name in moved if name.startswith(READ_ONLY_PREFIXES)]
     assert set(written) | set(read_only) == set(moved), sorted(
         set(moved) - set(written) - set(read_only))
-    still = sorted(name for name in written if moved[name] == 0)
-    disturbed = sorted(name for name in read_only if moved[name])
+    still = sorted(name for name in written if moved[name] == 0
+                   and name not in untouched)
+    disturbed = sorted([name for name in read_only if moved[name]]
+                       + [name for name in written if moved[name] and name in untouched])
     return still, disturbed, int(sum(moved.values()))
 
 
@@ -543,7 +581,8 @@ def run_case(xp, case: Case, leg: str, steps: int, kernel: Any = None,
             break
 
     after = snapshot(actual, plan)
-    still, disturbed, moved_words = _split_movement(before, after)
+    still, disturbed, moved_words = _split_movement(
+        before, after, _outside_every_layer(actual, actual_pml))
     identical = (error is None and len(per_step) == steps
                  and all(row["differing_words"] == 0 for row in per_step))
     launches_ok = (plan.runs == len(per_step)
@@ -693,7 +732,8 @@ def run_separate_control(xp, case: Case, steps: int) -> Dict[str, Any]:
         if any(value for key, value in row.items() if key != "step"):
             break
 
-    still, disturbed, _ = _split_movement(before, snapshot(fused, plan))
+    still, disturbed, _ = _split_movement(before, snapshot(fused, plan),
+                                          _outside_every_layer(fused, fused_pml))
     identical = (len(per_step) == steps
                  and all(row["separate_vs_array"] == row["fused_vs_array"]
                          == row["fused_vs_separate"] == 0 for row in per_step))
@@ -750,7 +790,7 @@ def leg_transcription() -> Dict[str, Any]:
         "constitutive_step_dispersive"))
     ade = _normalised(_function_text(os.path.join(kernels, "kernels.py"),
                                      "ade_update_p"))
-    expression = "((p * c_now) + (c_prev * q)) + (c_drive * (s * w))"
+    expression = "gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)))"
     rows: List[Dict[str, Any]] = []
 
     def row(line: str, certified: str, source: str, wanted: str,
@@ -779,10 +819,16 @@ def leg_transcription() -> Dict[str, Any]:
             f"mask=live, other=0.0), mask=live)",
             f"tl.store(f{index} + idx, src{index}, mask=live)",
             "the stored product is NAMED src, then stored")
-        for line in (f"prev{index} = tl.load(w{index} + idx, mask=live, other=0.0)",
-                     f"tl.store(w{index} + idx, src{index}, mask=live)",
-                     f"v{index} = v{index} + kp_{index} * src{index}",
-                     f"v{index} = v{index} - km_{index} * prev{index}",
+        word, coordinate = ("0", "i") if index == 0 else (
+            ("4", "j") if index == 1 else ("8", "k"))
+        for line in (f"dw{index} = record_in(cb, RECORD_HALF_INTEGER + {word}, "
+                     f"{coordinate})",
+                     f"prev{index} = tl.load(w{index} + idx, mask=live & dw{index}, "
+                     f"other=0.0)",
+                     f"tl.store(w{index} + idx, src{index}, mask=live & dw{index})",
+                     f"v{index} = constitutive_form(tl.load(f{index} + idx, mask=live & "
+                     f"dw{index}, other=0.0), prev{index}, src{index}, kp_{index}, "
+                     f"km_{index}, dw{index})",
                      f"tl.store(f{index} + idx, v{index}, mask=live)"):
             row(f"pml_tail[{index}]: {line}", dispersive,
                 "dispersive_update_e.constitutive_step_dispersive",
@@ -1055,7 +1101,9 @@ def shipped_source(family) -> str:
 
 def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant. The rename is what keeps the JIT cache honest."""
-    header = "import triton\nimport triton.language as tl\n\n"
+    header = ("import triton\nimport triton.language as tl\n"
+              "from meep_gpu.triton_kernels.forms import constitutive_form, record_in\n"
+              "from meep_gpu.triton_kernels.kernels import RECORD_HALF_INTEGER\n\n")
     handle = tempfile.NamedTemporaryFile(
         "w", suffix="_mutated_ade_chain.py", delete=False, encoding="utf-8")
     handle.write(header + source)
@@ -1129,18 +1177,28 @@ def mutation_table() -> Tuple[Tuple[str, Tuple[str, ...], int, str, str,
             needle, "p = tl.load(a0 + idx, mask=live, other=0.0)"),
             source.count(needle))
 
-    def m4_ade_association_flattened(source: str) -> Tuple[str, int]:
-        needle = "((p * c_now) + (c_prev * q)) + (c_drive * (s * w))"
-        return (source.replace(needle, "p * c_now + c_prev * q + c_drive * s * w"),
-                source.count(needle))
+    def m4_ade_previous_folded_form(source: str) -> Tuple[str, int]:
+        # THE INVERSION (KERNELS.md section 7.1): the package's previous three-term
+        # form, gamma1inv folded into three coefficients, planted back. The same
+        # recurrence in exact arithmetic and a different float32 number.
+        needle = "gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)))"
+        return (source.replace(needle, (
+            "((p * (gamma1inv * two_minus_od)) + ((0.0 - (gamma1inv * gamma1)) * q))"
+            " + ((gamma1inv * omega0dtsqr) * (s * w))")), source.count(needle))
+
+    def m4b_ade_sum_regrouped(source: str) -> Tuple[str, int]:
+        needle = "gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)))"
+        return (source.replace(needle, (
+            "gamma1inv * ((p * two_minus_od) - ((gamma1 * q) - "
+            "(omega0dtsqr * (s * w))))")), source.count(needle))
 
     def m5_ade_p_and_q_swapped(source: str) -> Tuple[str, int]:
         return _swap_two(source, "p = pa0", "q = tl.load(p_prev_a0 + idx", (
             "p = tl.load(p_prev_a0 + idx, mask=live, other=0.0)", "q = pa0"))
 
-    def m6_c_now_and_c_prev_swapped(source: str) -> Tuple[str, int]:
-        return _swap_two(source, "c_now = cnow_a0", "c_prev = cprev_a0",
-                         ("c_now = cprev_a0", "c_prev = cnow_a0"))
+    def m6_two_minus_od_and_gamma1_swapped(source: str) -> Tuple[str, int]:
+        return _swap_two(source, "two_minus_od = two_minus_od_a0", "gamma1 = gamma1_a0",
+                         ("two_minus_od = gamma1_a0", "gamma1 = two_minus_od_a0"))
 
     def m7_second_pole_dropped_from_the_e_chain(source: str) -> Tuple[str, int]:
         return _replace_span(source, "s0 = s0 - pa1", 1, ("pa1 = pa1",))
@@ -1155,16 +1213,36 @@ def mutation_table() -> Tuple[Tuple[str, Tuple[str, ...], int, str, str,
             source.count(needle))
 
     def m10_commuted_multiply(source: str) -> Tuple[str, int]:
-        needle = "(c_drive * (s * w))"
-        return source.replace(needle, "(c_drive * (w * s))"), source.count(needle)
+        needle = "(omega0dtsqr * (s * w))"
+        return source.replace(needle, "(omega0dtsqr * (w * s))"), source.count(needle)
 
     def m11_pml_accumulations_reversed(source: str) -> Tuple[str, int]:
-        return _swap_two(source, "v0 = v0 + kp_0 * src0", "v0 = v0 - km_0 * prev0",
-                         ("v0 = v0 - km_0 * src0", "v0 = v0 + kp_0 * prev0"))
+        needle = "prev0, src0, kp_0, km_0, dw0)"
+        return (source.replace(needle, "prev0, src0, km_0, kp_0, dw0)"),
+                source.count(needle))
 
     def m12_fw_store_dropped(source: str) -> Tuple[str, int]:
-        return _replace_span(source, "tl.store(w0 + idx, src0, mask=live)", 1,
+        return _replace_span(source, "tl.store(w0 + idx, src0, mask=live & dw0)", 1,
                              ("pass",))
+
+    # THE SECTION 7.2 BATTERY on the PML tail (the per-chunk constitutive form).
+    def b1_fw_stored_on_every_cell(source: str) -> Tuple[str, int]:
+        needle = "tl.store(w0 + idx, src0, mask=live & dw0)"
+        return (source.replace(needle, "tl.store(w0 + idx, src0, mask=live)"),
+                source.count(needle))
+
+    def b2_integer_record_line(source: str) -> Tuple[str, int]:
+        needle = "dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)"
+        return source.replace(needle, "dw0 = record_in(cb, 0, i)"), source.count(needle)
+
+    def b3_select_removed(source: str) -> Tuple[str, int]:
+        needle = "dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)"
+        return source.replace(needle, "dw0 = live"), source.count(needle)
+
+    def n1_unconditional_aux_load(source: str) -> Tuple[str, int]:
+        needle = "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)"
+        return (source.replace(needle, "prev0 = tl.load(w0 + idx, mask=live, other=0.0)"),
+                source.count(needle))
 
     def m13_e_store_dropped(source: str) -> Tuple[str, int]:
         return _replace_span(source, "tl.store(f0 + idx, src0, mask=live)", 1,
@@ -1187,8 +1265,9 @@ def mutation_table() -> Tuple[Tuple[str, Tuple[str, ...], int, str, str,
     both = ("dispersive", "no_pml")
     return (
         ("m1_drive_reloaded_from_f_w", ("dispersive",), 0,
-         "the fusion itself, undone: read f_w back instead of keeping the register",
-         "null", m1_drive_reloaded_from_f_w),
+         "the drive read back from f_w everywhere: off the layer's chunks f_w keeps "
+         "its word and MEEP's w there is the stored E (update_pols.cpp:44)",
+         "caught", m1_drive_reloaded_from_f_w),
         ("m1n_drive_reloaded_from_stored_E", ("no_pml",), 0,
          "the same, on the arm whose drive is the stored E",
          "null", m1n_drive_reloaded_from_stored_E),
@@ -1198,15 +1277,18 @@ def mutation_table() -> Tuple[Tuple[str, Tuple[str, ...], int, str, str,
         ("m3_pole_reloaded_rather_than_reused", both, 0,
          "the second elimination, undone: re-load P instead of reusing the register",
          "null", m3_pole_reloaded_rather_than_reused),
-        ("m4_ade_association_flattened", both, 0,
-         "ade_update_p's parentheses ARE the float32 answer",
-         "caught", m4_ade_association_flattened),
+        ("m4_ade_previous_folded_form", both, 0,
+         "INVERTED: the package's previous folded three-term form planted back",
+         "caught", m4_ade_previous_folded_form),
+        ("m4b_ade_sum_regrouped", both, 0,
+         "MEEP's sum regrouped: the parentheses ARE the float32 answer",
+         "caught", m4b_ade_sum_regrouped),
         ("m5_ade_p_and_q_swapped", both, 0,
          "advance the recurrence from the history and the history from P",
          "caught", m5_ade_p_and_q_swapped),
-        ("m6_c_now_and_c_prev_swapped", both, 0,
-         "the recurrence constants, crossed",
-         "caught", m6_c_now_and_c_prev_swapped),
+        ("m6_two_minus_od_and_gamma1_swapped", both, 0,
+         "two of MEEP's four words, crossed",
+         "caught", m6_two_minus_od_and_gamma1_swapped),
         ("m7_second_pole_dropped_from_the_e_chain", both, 1,
          "one pole missing from D - sum P: a smooth, plausible, wrong field",
          "caught", m7_second_pole_dropped_from_the_e_chain),
@@ -1225,6 +1307,19 @@ def mutation_table() -> Tuple[Tuple[str, Tuple[str, ...], int, str, str,
         ("m12_fw_store_dropped", ("dispersive",), 0,
          "a stale f_w: next step's PML history term is one step old",
          "caught", m12_fw_store_dropped),
+        ("b1_fw_stored_on_every_cell", ("dispersive",), 0,
+         "the auxiliary contract broken: f_w written off the layer's chunks",
+         "caught", b1_fw_stored_on_every_cell),
+        ("b2_integer_record_line", ("dispersive",), 0,
+         "the integer sub-lattice's record line keys an E component's form",
+         "caught", b2_integer_record_line),
+        ("b3_select_removed", ("dispersive",), 0,
+         "the accumulation on every cell (the package's previous whole-grid form)",
+         "caught", b3_select_removed),
+        ("n1_unconditional_aux_load", ("dispersive",), 0,
+         "the f_w load unmasked, its store still masked: a DECLARED null (the "
+         "discarded form never reaches a store)",
+         "null", n1_unconditional_aux_load),
         ("m13_e_store_dropped", ("no_pml",), 0,
          "a stale E: the drive the NEXT step reads never lands",
          "caught", m13_e_store_dropped),
@@ -1370,21 +1465,22 @@ def reverse_ade_coefficients_on_Ex(plan: Any) -> Dict[str, Any]:
     """
     slots = len(plan._order["Ex"])
     triples = [plan._coeff[("Ex", slot)] for slot in range(slots)]
-    assert len(set(triples)) > 1, "the poles share one coefficient triple"
+    assert len(set(triples)) > 1, "the poles share one set of MEEP's four words"
     for slot, triple in enumerate(reversed(triples)):
         plan._coeff[("Ex", slot)] = triple
     return {"slots_reversed": slots}
 
 
-def swap_c_prev_and_c_drive(plan: Any) -> Dict[str, Any]:
-    """The recurrence constants come from the susceptibility and dt
-    (dispersion.py:644). Swapping two of them is a plausible packing slip that no
-    kernel edit can reach — the body reads ``cprev_a0`` either way."""
+def swap_gamma1_and_omega0dtsqr(plan: Any) -> Dict[str, Any]:
+    """MEEP's four words come from the susceptibility and dt
+    (``Susceptibility.realnum_constants``). Swapping two of them is a plausible
+    packing slip that no kernel edit can reach — the body reads ``gamma1_a0`` either
+    way."""
     changed = 0
-    for key, (c_now, c_prev, c_drive) in list(plan._coeff.items()):
-        plan._coeff[key] = (c_now, c_drive, c_prev)
+    for key, (two_minus_od, gamma1, omega0dtsqr, gamma1inv) in list(plan._coeff.items()):
+        plan._coeff[key] = (two_minus_od, omega0dtsqr, gamma1, gamma1inv)
         changed += 1
-    return {"triples_swapped": changed}
+    return {"words_swapped": changed}
 
 
 def swap_inverse_epsilon(plan: Any) -> Dict[str, Any]:
@@ -1423,7 +1519,7 @@ def lie_about_the_sigma_kind(plan: Any) -> Dict[str, Any]:
 HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any], Dict[str, Any]], str]] = {
     "sigma_bound_for_the_wrong_component": (swap_sigma_between_components, "caught"),
     "ade_coefficients_reversed_on_Ex": (reverse_ade_coefficients_on_Ex, "caught"),
-    "c_prev_and_c_drive_swapped": (swap_c_prev_and_c_drive, "caught"),
+    "gamma1_and_omega0dtsqr_swapped": (swap_gamma1_and_omega0dtsqr, "caught"),
     "sigma_constexpr_disagrees_with_the_binding": (lie_about_the_sigma_kind, "caught"),
     "inverse_epsilon_bound_for_the_wrong_component": (swap_inverse_epsilon, "null"),
 }
@@ -1440,8 +1536,8 @@ HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any], Dict[str, Any]], str]] = {
 #: verdict must flip to FAIL. Run with ``--plant <name>`` and require a nonzero exit.
 PLANTED: Dict[str, Tuple[Tuple[str, str], ...]] = {
     "ade_association_flattened_everywhere": (
-        ("((p * c_now) + (c_prev * q)) + (c_drive * (s * w))",
-         "p * c_now + c_prev * q + c_drive * s * w"),),
+        ("gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)))",
+         "gamma1inv * (p * two_minus_od - gamma1 * q + omega0dtsqr * s * w)"),),
     "seam_reads_the_stale_pole_instead_of_the_drive": (
         ("w = src0", "w = p"), ("w = src1", "w = p"), ("w = src2", "w = p")),
 }

@@ -68,10 +68,10 @@ Component Ey's launch WRITES the buffer component Ex's launch READ as ``p_prev``
 one MPS stream, which in-order execution settles, and it is EXACTLY the relation
 ``MetalAdeUpdatePPlan`` already has between its own consecutive launches
 (ade_update_p.py:353-355). The gate's ``separate_control`` leg runs that certified
-plan beside this one on identical state and both agree with the array path word
-for word, so the inherited relation is measured on both sides rather than assumed
-on one. What this shape removes is the INTRA-launch alias, which is a different
-animal: no compiler ordering can repair a cross-program-instance race, and one
+plan beside this one on identical state and both agreed with the array path word
+for word, so the inherited relation was measured on both sides rather than assumed
+on one, on both arms. What this shape removes is the INTRA-launch alias, which is a
+different animal: no compiler ordering can repair a cross-program-instance race, and one
 inside a single launch is what ``fused_ade_state``'s note is about.
 
 ===========================================================================
@@ -79,13 +79,15 @@ WHAT IS FUSED, AND IT IS EXACTLY ONE VALUE
 ===========================================================================
 
 ``update_P``'s drive is ``Fields.drive_field(component)``: the stored E without
-PML, and ``f_w_E*`` under one. In both cases that is the value ``update_E`` just
-computed and stored one launch earlier. Fused, the reload becomes a register:
+PML, and under one MEEP's per-chunk ``w`` -- ``f_w_E*`` on the cells whose chunk
+carries the component's own layer and the stored E elsewhere. In every case that is
+the value ``update_E`` just computed and stored one launch earlier. Fused, the
+reload becomes a register:
 
-* **dispersive PML E** — the certified body ALREADY names it. ``float src =
-  source * inv_e[idx]; fw[idx] = src;`` (dispersive_update_e.py:79-80), and
-  ``src`` IS ``f_w_E[c][idx]``. The ADE half's ``float w = drive[idx];`` becomes
-  ``float w = src;`` and NOTHING ELSE MOVES.
+* **dispersive PML E** — the E half names it ``src``: on an accumulating cell
+  ``f_w`` takes ``src``, and on a plain cell the stored E IS ``src``, so ``src`` is the
+  drive on every cell. The ADE half's ``float w = drive[idx];`` becomes ``float w =
+  src;``.
 * **no-PML stored E** — the certified body stores the product without naming it:
   ``e_out[idx] = source * inv_e[idx];`` (no_pml_stored_e.py:87). Fused, that ONE
   line becomes two, ``float e = source * inv_e[idx]; e_out[idx] = e;``, and the
@@ -118,7 +120,7 @@ signature binds it once. That shared binding is the fusion's whole footprint.
 **THE SCALARS.** :data:`.device.MAX_BUFFER_BINDINGS` is 31 and the corpus's worst
 E->P row (``stochastic_emitter*.py``) carries SIX poles on every component. Six
 poles costs ``3 x 6 = 18`` ADE pointers plus up to six sigma volumes on top of the
-E half's own six, and the coefficients are ``3 x 6 = 18`` scalars besides. Bound
+E half's own six, and MEEP's four constants are ``4 x 6 = 24`` scalars besides. Bound
 one per index that is 52 bindings against a ceiling of 31. Packing every scalar
 into ONE ``constant Params&`` — the shape ``fused_dispersive_pair``'s docstring
 records as measured to compile — brings the worst corpus configuration to exactly
@@ -184,6 +186,9 @@ import numpy as np
 
 from ..triton_kernels.coverage import Coverage
 from . import shaders, templates
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as a keyword named
+# `chunk_bounds`, the name the composer's StepContext carries (launch.py does the same).
+from . import chunk_bounds as _chunk_bounds
 from .ade_update_p import (
     _physical_name,
     metal_ade_update_p_coverage,
@@ -234,12 +239,12 @@ E_TERMS: Tuple[Tuple[str, str, int, str], ...] = (
     ("Ex", "Dx", 0, "x"), ("Ey", "Dy", 1, "y"), ("Ez", "Dz", 2, "z"))
 
 __all__ = [
-    "ARMS_FIXED_POINTERS", "DISPERSIVE_FAMILY", "E_TERMS", "FAMILY",
+    "ARMS_FIXED_POINTERS", "CONSTANT_ARRAYS", "DISPERSIVE_FAMILY", "E_TERMS", "FAMILY",
     "FOLDED_FAMILY", "REPLACES", "SLOT",
     "MetalFusedAdeChainPlan", "binding_count",
     "compile_fused_ade_chain", "fused_ade_chain_coverage",
     "fused_ade_chain_source", "pack_params", "params_words",
-    "plan_metal_fused_ade_chain",
+    "plan_metal_fused_ade_chain", "record_params",
 ]
 
 
@@ -253,15 +258,16 @@ using namespace metal;
 
 __CONTRACT__
 
-struct Params {
-    float c_now[__NP__];
-    float c_prev[__NP__];
-    float c_drive[__NP__];
+__RECORD_STRUCT__struct Params {
+    float two_minus_od[__NP__];
+    float gamma1[__NP__];
+    float omega0dtsqr[__NP__];
+    float gamma1inv[__NP__];
     float sigma[__NP__];
     uint  ny;
     uint  nz;
     uint  n_elem;
-};
+__RECORD_MEMBER__};
 
 kernel void fused_ade_chain_component(
 __SIGNATURE__
@@ -273,7 +279,7 @@ __SIGNATURE__
     uint n_elem = prm.n_elem;
     uint ny = prm.ny;
     uint nz = prm.nz;
-__BODY__
+__RECORD_ALIAS____BODY__
 }
 """
 
@@ -295,38 +301,68 @@ def binding_count(arm: str, pole_count: int, volume_sigmas: int) -> int:
 
 
 def params_words(pole_count: int) -> int:
-    """Length of the ``Params`` blob in 4-byte words: ``4 * max(N, 1) + 3``.
+    """Length of the ``Params`` blob in 4-byte words: ``5 * max(N, 1) + 3``.
+
+    Per pole MEEP's four constants (``dispersion.RealnumConstants`` order) and the
+    scalar sigma, then ``ny``, ``nz``, ``n_elem``.
 
     Every member is a 4-byte scalar or an array of them, so the struct's layout is
     a flat word sequence with no padding to reason about. ``max(N, 1)`` because
     MSL has no zero-length array; a zero-pole specialisation never reads them.
     """
-    return 4 * max(int(pole_count), 1) + 3
+    return 5 * max(int(pole_count), 1) + 3
 
 
-def pack_params(coefficients: Sequence[Tuple[float, float, float]],
+#: The ``Params`` constant arrays, in blob order: ``dispersion.RealnumConstants``.
+CONSTANT_ARRAYS: Tuple[str, str, str, str] = (
+    "two_minus_od", "gamma1", "omega0dtsqr", "gamma1inv")
+
+
+def pack_params(constants: Sequence[Sequence[Any]],
                 scalar_sigmas: Sequence[float], ny: int, nz: int,
                 n_elem: int) -> np.ndarray:
     """The ``Params`` blob as float32 words, uints carried as their bit patterns.
 
-    ``float()`` on every coefficient for the reason ``fused_dispersive_pair``
-    gives its ``dtdx``: the array path multiplies a float32 volume by a Python
-    float and Metal binds a Python float into a ``float`` member the same way, so
-    the two scalars are the same bits.
+    ``constants`` holds one ``PolarizationState.constants`` per pole: MEEP's four
+    float32 words (``two_minus_od, gamma1, omega0dtsqr, gamma1inv``), stored here
+    word for word. A value that is not a float32 word is refused by name: the
+    kernel would read a rounded constant, not MEEP's.
     """
-    pole_count = len(coefficients)
+    pole_count = len(constants)
     span = max(pole_count, 1)
     blob = np.zeros(params_words(pole_count), dtype=np.float32)
-    for index, (c_now, c_prev, c_drive) in enumerate(coefficients):
-        blob[index] = np.float32(c_now)
-        blob[span + index] = np.float32(c_prev)
-        blob[2 * span + index] = np.float32(c_drive)
+    for index, words in enumerate(constants):
+        words = tuple(words)
+        if len(words) != len(CONSTANT_ARRAYS):
+            raise ValueError(
+                f"pole {index} carries {len(words)} constants, not the four "
+                f"{CONSTANT_ARRAYS}")
+        for position, (name, value) in enumerate(zip(CONSTANT_ARRAYS, words)):
+            word = np.float32(value)
+            if float(word) != float(value):
+                raise ValueError(
+                    f"pole {index} {name}={value!r} is not a float32 word")
+            blob[position * span + index] = word
     for index, sigma in enumerate(scalar_sigmas):
-        blob[3 * span + index] = np.float32(sigma)
-    blob[4 * span:4 * span + 3] = np.frombuffer(
+        blob[4 * span + index] = np.float32(sigma)
+    blob[5 * span:5 * span + 3] = np.frombuffer(
         np.array([int(ny), int(nz), int(n_elem)], dtype=np.uint32).tobytes(),
         dtype=np.float32)
     return blob
+
+
+def record_params(blob: np.ndarray, chunk_bounds: Any) -> np.ndarray:
+    """The PML arm's ``Params``: the shared blob, then the chunk record's 25 words.
+
+    The record is the struct's last member (``ChunkBounds cb``), at word
+    ``params_words(N)``; every member before it is a 4-byte word, so it sits 4-aligned
+    with no padding. The int32 words ride as float32 bit patterns, as ``ny``/``nz``/
+    ``n_elem`` already do. :func:`pack_params` and :func:`params_words` are unchanged,
+    because ``complex_fused_ade_chain`` lays out the same blob without a record.
+    """
+    words = _chunk_bounds.words(chunk_bounds)
+    return np.concatenate((np.asarray(blob, dtype=np.float32),
+                           np.frombuffer(words.tobytes(), dtype=np.float32)))
 
 
 def _signature(arm: str, pole_count: int, sigma_is_volume: Sequence[bool]) -> str:
@@ -366,30 +402,33 @@ def _signature(arm: str, pole_count: int, sigma_is_volume: Sequence[bool]) -> st
 def _ade_arm(index: int, sigma_is_volume: bool, drive_register: str) -> List[str]:
     """One pole's ``update_P``, transcribed from ``ade_update_p.ade_source``.
 
-    ``ade_update_p.py:126-130`` is the float32 body::
+    The certified float32 body is MEEP's isotropic update on its four float32
+    constants (``PolarizationState.update``, susceptibility.cpp:251-256)::
 
         float p = p_now[idx];
         float q = p_prev[idx];
         float w = drive[idx];
         float s = __SIGMA_VALUE__;
-        p_out[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));
+        p_out[idx] = gamma1inv * (((two_minus_od * p) - (gamma1 * q)) + (omega0dtsqr * (s * w)));
 
     Reproduced here with the pointer renames the module docstring names and ONE
-    substitution — ``drive[idx]`` becomes the register ``update_E`` just wrote.
-    The braces give each arm its own ``p``/``q``/``w``/``s``/``c_now``/``c_prev``/
-    ``c_drive`` scope, so the final line is character for character that body's.
+    substitution — the drive read becomes the register ``update_E`` just wrote.
+    The braces give each arm its own ``p``/``q``/``w``/``s`` and constant scope, so
+    the final line is character for character that body's.
     """
     sigma = f"s{index}[idx]" if sigma_is_volume else f"prm.sigma[{index}]"
     return [
-        f"    {{  // pole {index}: ade_update_p.ade_source, float32 body (:126-130)",
-        f"        float c_now = prm.c_now[{index}];",
-        f"        float c_prev = prm.c_prev[{index}];",
-        f"        float c_drive = prm.c_drive[{index}];",
+        f"    {{  // pole {index}: ade_update_p.ade_source, float32 body",
+        f"        float two_minus_od = prm.two_minus_od[{index}];",
+        f"        float gamma1 = prm.gamma1[{index}];",
+        f"        float omega0dtsqr = prm.omega0dtsqr[{index}];",
+        f"        float gamma1inv = prm.gamma1inv[{index}];",
         f"        float p = p{index}[idx];",
         f"        float q = q{index}[idx];",
         f"        float w = {drive_register};   // THE SEAM: the register update_E just wrote.",
         f"        float s = {sigma};",
-        f"        o{index}[idx] = ((p * c_now) + (c_prev * q)) + (c_drive * (s * w));",
+        f"        o{index}[idx] = gamma1inv * (((two_minus_od * p) - (gamma1 * q)) + "
+        f"(omega0dtsqr * (s * w)));",
         "    }",
     ]
 
@@ -445,23 +484,33 @@ def fused_ade_chain_source(arm: str, axis: int, pole_count: int,
         ]
         drive = "e"
     else:
-        # --- dispersive_update_e.dispersive_e_source (:76-83) ------------------
-        # NOTHING is rewritten here: the certified body already names the drive
-        # `src` at :79, one line before it stores it into f_w.
+        # --- pole-aware update_E under PML, per structure chunk ----------------
+        # stepping._apply_constitutive_regions: where this component's own (dsigw)
+        # chunk holds, f_w takes the constitutive product and E accumulates
+        # f + ((kps*src) - (kms*prev)) (step_generic.cpp:689, :697); everywhere else
+        # E IS the product and f_w is neither read nor written.
+        # THE DRIVE NEEDS NO SELECT: MEEP's w is f_w where the chunk keeps one and E
+        # elsewhere (update_pols.cpp:44, Fields.drive_field), and both are `src` --
+        # f_w is set to it, and the plain E is it. So the register is the drive on
+        # every cell.
         electric = [
             templates.GUARD,
             templates.DECODE_IJK,
             "",
-            "    // --- pole-aware update_E under PML (stepping.update_E:981-987,",
-            "    //     stepping._apply_constitutive_pml:2083-2096) --------------",
-            "    float prev = fw[idx];",
+            "    // --- the chunk record: this component's own-axis membership --------",
+            _chunk_bounds.prologue(((True, axis),)),
+            "",
+            "    // --- pole-aware update_E under PML (stepping.update_E,",
+            "    //     stepping._apply_constitutive_regions) ------------------------",
+            f"    const bool dw = {_chunk_bounds.membership_name(True, axis)};",
+            "    float prev = dw ? fw[idx] : 0.0f;",
             "    float source = d_in[idx];",
             *chain,
             "    float src = source * inv_e[idx];",
-            "    fw[idx] = src;",
-            "    float value = e_out[idx];",
-            f"    value = value + kps[{coordinate}] * src;",
-            f"    value = value - kms[{coordinate}] * prev;",
+            "    if (dw) { fw[idx] = src; }",
+            "    float value = src;",
+            f"    if (dw) {{ value = e_out[idx] + ((kps[{coordinate}] * src) - "
+            f"(kms[{coordinate}] * prev)); }}",
             "    e_out[idx] = value;",
         ]
         drive = "src"
@@ -477,8 +526,15 @@ def fused_ade_chain_source(arm: str, axis: int, pole_count: int,
     for index in range(pole_count):
         polarization.extend(_ade_arm(index, sigma_is_volume[index], drive))
 
+    # The record exists only under PML: the no-PML arm stores E = (D - sum P) * inv_eps
+    # on every cell, has no form to select, and its source keeps its bytes (each
+    # placeholder below carries its own line break, and is empty there).
+    record = arm == "dispersive"
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": (_chunk_bounds.struct_source() + "\n\n") if record else "",
+        "__RECORD_MEMBER__": (_chunk_bounds.params_member() + "\n") if record else "",
+        "__RECORD_ALIAS__": (_chunk_bounds.params_alias() + "\n") if record else "",
         "__NP__": str(max(pole_count, 1)),
         "__SIGNATURE__": _signature(arm, pole_count, sigma_is_volume),
         "__BODY__": "\n".join(electric + polarization),
@@ -739,11 +795,21 @@ def plan_metal_fused_ade_chain(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[Tuple[str, int], Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalFusedAdeChainPlan]:
-    """Build the fused E->P plan for one arm, or return ``None`` on any refusal."""
+    """Build the fused E->P plan for one arm, or return ``None`` on any refusal.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the
+    composer's ``StepContext.chunk_bounds``), with no default. The PML arm checks it
+    against the grid by name (:func:`.chunk_bounds.plan_words`) and packs it into
+    each component's ``Params``; the no-PML arm has no form to select and binds none.
+    """
     if not fused_ade_chain_coverage(fields, pml, arm, folded, residency).covered:
         return None
     assert residency is not None
+    record = (_chunk_bounds.plan_words(chunk_bounds, fields.grid.shape,
+                                       "plan_metal_fused_ade_chain")
+              if arm == "dispersive" else None)
     tensors: Dict[int, Any] = {}
     volumes: List[str] = []
     entries: List[_Entry] = []
@@ -779,7 +845,7 @@ def plan_metal_fused_ade_chain(
         chain = tuple(order.get(component, ()))
         sigma_flags = tuple(_sigma_flags(state, component) for state in chain)
         sigmas: List[Any] = []
-        coefficients: List[Tuple[float, float, float]] = []
+        constants: List[Tuple[Any, ...]] = []
         scalar_sigmas: List[float] = []
         for position, state in enumerate(chain):
             state_index = index_of[id(state)]
@@ -803,11 +869,12 @@ def plan_metal_fused_ade_chain(
                 scalar_sigmas.append(0.0)
             else:
                 scalar_sigmas.append(float(sigma))
-            c_now, c_prev, c_drive = state._coefficients
-            coefficients.append((float(c_now), float(c_prev), float(c_drive)))
+            constants.append(tuple(state.constants))
 
-        params = pack_params(coefficients, scalar_sigmas, shape[1], shape[2],
+        params = pack_params(constants, scalar_sigmas, shape[1], shape[2],
                              int(target.size))
+        if record is not None:
+            params = record_params(params, record)
         params_name = f"fused_ade_chain:params:{component}"
         tensors[id(params)] = residency.mirror(params_name, params, constant=True)
         volumes.append(params_name)
@@ -855,7 +922,7 @@ def _arm_plan(context: Any, slot: str, arm: str, folded: bool
         return None
     return plan_metal_fused_ade_chain(
         context.fields, context.pml, arm, folded, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

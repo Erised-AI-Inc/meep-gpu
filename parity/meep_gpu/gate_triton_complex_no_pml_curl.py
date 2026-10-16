@@ -1,13 +1,23 @@
 """Byte gate for the COMPLEX NO-ABSORBER curl arm (``complex_no_pml_curl``).
 
-DEVICE RESULT (2026-08-17). This gate released on the GPU host's RTX A6000 with the
-``keep`` policy installed: 8/8 shipped product rows were byte-identical over
-eight launches, all three controls and all three mutations diverged, and the
-predicate partition agreed on every refusal row. The adversarial signed-zero
-leg is recorded rather than asserted away: step_B remained identical, while
-step_D differed by 86,450/281,250 words in 3-D and 3,552/11,250 in 2-D. The
-tracked provenance is ``triton_complex_no_pml_curl_device_gate`` in
-``meep_gpu/triton_kernels/fingerprints.json``.
+DEVICE RESULT (2026-08-17), ON THE PREVIOUS BINDING. This gate released on the GPU
+host's RTX A6000 with the ``keep`` policy installed: 8/8 shipped product rows were
+byte-identical over eight launches, all three controls and all three mutations
+diverged, and the predicate partition agreed on every refusal row. Its adversarial
+signed-zero leg recorded the previous binding's residual (the recurrence on every
+cell with a per-launch zeroed auxiliary): step_D differed by 86,450/281,250 words in
+3-D and 3,552/11,250 in 2-D. step_B read identical only because that leg's
+uniform-source loop overwrote the B targets it had just set to -0, so it never
+planted step_B. The tracked provenance is
+``triton_complex_no_pml_curl_device_gate`` in
+``meep_gpu/triton_kernels/fingerprints.json``, re-cut at certification.
+
+THE PRESENT BINDING (``complex_no_pml_curl``'s module docstring): the absorber-free
+chunk record (no membership run, the grid's presence word) and unit columns, so the
+kernel's dsig-only form ``((f * 1) - curl) * 1`` steps every cell, which IS MEEP's
+plain ``f - curl`` on every word. The planted leg therefore REQUIRES the -0 target
+with an exact +0 curl to come back identical, on both sub-steps, and the previous
+binding is armed against it as a mutation that must be caught there.
 
 WHAT IT MEASURES, AND WHY IT IS NOT THE GROUP-(J) PROBE AGAIN
 ------------------------------------------------------------
@@ -33,19 +43,23 @@ LEGS, selected with ``--leg`` (default: all)
 
   product     the four slots (2 row shapes x {step_B, step_D}) x both no-absorber
               shapes, shipped plan vs ``stepping``, whole-inventory uint32.
-  controls    PHASEOFF and STALESOURCE, which MUST diverge. A null beside a dead
-              control is not evidence — group (G) measured IDENTICAL over four
-              cycles and was wrong.
-  adversarial the ``minus_zero_target_zero_curl`` row: the ONE pattern on which
-              the degenerate binding is known to diverge from stepping.py:539
-              (target ``-0.0``, curl ``+0.0``). Measured on device and RECORDED,
-              never asserted away. Its word count is the release payload's, and
-              ``validate_payload`` requires the field to be present rather than
-              requiring it to be zero.
-  mutations   deliberately broken copies of the SHIPPED builder, each of which
-              must be CAUGHT. The load-bearing one is ``aux_zeroed_once``: it
-              hoists the zeroing out of ``run`` to plan time, which is invisible
-              on cycle 1 and wrong on every cycle after.
+  controls    PHASEOFF (every connection kind none) and STALESOURCE, which MUST
+              diverge. A null beside a dead control is not evidence — group (G)
+              measured IDENTICAL over four cycles and was wrong.
+  mutations   deliberately broken bindings of the SHIPPED plan, each of which must
+              be CAUGHT on the product leg: a record marking every cell a
+              recurrence cell (the auxiliary then carries the previous launch's
+              ``n``), the presence word with every bit set on the 2-D row (the full
+              bracket over the invariant axis's partner), and a unit column one ulp
+              off.
+  nulls       ``aux_poisoned``: the placeholder auxiliary filled with NaN before
+              every launch. The kernel reads it on recurrence cells only, of which
+              the absorber-free record has none, so no byte may move.
+  planted     the ``minus_zero_target_zero_curl`` rows: target ``-0.0`` with every
+              source uniform (an exact ``+0`` curl inside the window), on both
+              sub-steps and both row shapes. The shipped binding must store the
+              array path's words with the ``-0`` among them; the previous binding
+              (recurrence everywhere, auxiliary zeroed per launch) must diverge.
   refusals    the predicate's own answers on the adjacent configurations, so an
               over-broad clause is caught here and not in a later census.
 
@@ -56,12 +70,10 @@ perturbation, and the complex seeding that writes BOTH halves. The 2026-08-15
 adversarial audit found four defects in the superseded measurement and repaired
 them there; running a copy is how one gets re-introduced.
 
-THE POLICY TRAP, which cost the group-(J) leg a run. ``MEEP_GPU_SUBNORMAL_POLICY``
-in the environment is NOT enough: the complex expansion licence is
-policy-conditional and ``complex_fields._policy_in_force`` fails closed on an env
-var, so every complex plan refuses for a harness reason wearing a coverage
-reason's clothes. This gate calls ``install_subnormal_policy('keep')`` before the
-first CuPy elementwise op or Triton compile, and records what it installed.
+THE POLICY IS INSTALLED, NOT NAMED. ``MEEP_GPU_SUBNORMAL_POLICY`` in the
+environment declares a policy and installs nothing; this gate calls
+``install_subnormal_policy('keep')`` before the first CuPy elementwise op or Triton
+compile, and records what it installed.
 
 THE SINGLE COMMAND THE NEXT DEVICE VISIT RUNS::
 
@@ -132,8 +144,7 @@ def emit(jsonl, row: Dict[str, Any]) -> None:
 # The shipped route, and the two controls as departures from it
 # ---------------------------------------------------------------------------
 
-def shipped_plan(fields: Any, pml: Any, sub_step: str, probe: Any,
-                 drop_layer: bool = False):
+def shipped_plan(fields: Any, pml: Any, sub_step: str, drop_layer: bool = False):
     """``plan_complex_no_pml_curl`` and nothing else — the point of this gate.
 
     A ``None`` here is a GATE FAILURE, not a refusal to be tolerated: the
@@ -144,7 +155,7 @@ def shipped_plan(fields: Any, pml: Any, sub_step: str, probe: Any,
     from meep_gpu.triton_kernels import complex_no_pml_curl as arm
 
     plan = arm.plan_complex_no_pml_curl(fields, None if drop_layer else pml,
-                                        sub_step, probe=probe)
+                                        sub_step)
     if plan is None:
         raise RuntimeError(
             f"the SHIPPED builder refused {sub_step} on the target configuration "
@@ -152,31 +163,20 @@ def shipped_plan(fields: Any, pml: Any, sub_step: str, probe: Any,
     return plan
 
 
-def phase_off_plan(fields: Any, pml: Any, sub_step: str, probe: Any):
-    """CONTROL: the Bloch rotation compiled away (PH* = 0).
+def phase_off_plan(fields: Any, pml: Any, sub_step: str):
+    """CONTROL: every axis's connection kind set to none (the stored word itself).
 
     A live control on the exact feature that makes group (J) complex. On the
-    hand-built binding it diverged 7350 / 281250, on the wrapped lanes only.
+    previous hand-built binding it diverged 7350 / 281250, on the wrapped lanes only.
+    Only the connection constexprs move; the shipped plan's pointers are kept.
     """
-    from meep_gpu.triton_kernels import complex_fields as cx
-
-    plan = shipped_plan(fields, pml, sub_step, probe)
-    inner = plan._inner
-    unphased = cx.ComplexPmlCurlPlan(
-        inner.sub_step, inner.shape, inner.dtdx, inner.bc,
-        (0, 0, 0), (1.0, 0.0, 1.0, 0.0, 1.0, 0.0),
-        inner.expansion, inner.block,
-        [], [], [], [], num_warps=inner.num_warps)
-    # Re-bind the SHIPPED plan's own pointers; only the phase constexprs move.
-    unphased._targets = inner._targets
-    unphased._aux = inner._aux
-    unphased._sources = inner._sources
-    unphased._coefficients = inner._coefficients
-    plan._inner = unphased
+    plan = shipped_plan(fields, pml, sub_step)
+    plan._inner.connections = (0, 0, 0)
+    plan._inner.connection_values = (1.0, 0.0, 1.0, 0.0, 1.0, 0.0)
     return plan
 
 
-def stale_source_plan(fields: Any, pml: Any, sub_step: str, probe: Any):
+def stale_source_plan(fields: Any, pml: Any, sub_step: str):
     """CONTROL: sources bound as a plan-time SNAPSHOT.
 
     Group (G)'s false-pass mechanism, re-armed. It diverged 93750 / 281250 on the
@@ -187,7 +187,7 @@ def stale_source_plan(fields: Any, pml: Any, sub_step: str, probe: Any):
     from meep_gpu.triton_kernels import complex_fields as cx
     from meep_gpu.triton_kernels import complex_no_pml_curl as arm
 
-    plan = shipped_plan(fields, pml, sub_step, probe)
+    plan = shipped_plan(fields, pml, sub_step)
     inner = plan._inner
     frozen = [array.copy() for array in arm.source_arrays(fields, sub_step)]
     inner._sources = tuple(cx.CupyPointer(cx._word_view(a)) for a in frozen)
@@ -195,34 +195,98 @@ def stale_source_plan(fields: Any, pml: Any, sub_step: str, probe: Any):
     return plan
 
 
-def aux_never_zeroed_plan(fields: Any, pml: Any, sub_step: str, probe: Any):
-    """MUTATION: the auxiliary is zeroed ONCE, at plan time, instead of per launch.
+def rebind_record(plan, edit) -> None:
+    """Rebind the shipped plan's chunk record after ``edit(record)``, past its builder.
 
-    Invisible on cycle 1 and wrong on every cycle after, which is precisely why
-    it is here: a gate that ran a single cycle would certify it.
+    ``launch.bind_chunk_bounds`` still checks the edited record, so a mutation can
+    only plant a record the plan would accept from a harness.
     """
-    plan = shipped_plan(fields, pml, sub_step, probe)
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, record_index
+    from meep_gpu.triton_kernels.launch import bind_chunk_bounds
+
     inner = plan._inner
+    record = np.array(inner.chunk_bounds, dtype=np.int32, copy=True)
+    edit(record, record_index, RECORD_PRESENCE_WORD, inner.shape)
+    like = inner._targets[0].array
+    inner.chunk_bounds, inner._cb = bind_chunk_bounds(
+        record, inner.shape, like, "gate mutation")
 
-    class _HoistedZeroing:
-        sub_step = inner.sub_step
 
-        def run(self, guard: Optional[bool] = None) -> None:
-            inner.run(guard)
+def _every_cell_a_recurrence(record, record_index, presence_word, shape) -> None:
+    for half in (False, True):
+        for axis, n in enumerate(shape):
+            if record[presence_word] >> axis & 1:
+                record[record_index(half, axis, 0)] = 0
+                record[record_index(half, axis, 1)] = n
 
-    plan._inner = _HoistedZeroing()
-    plan._auxiliaries = ()          # nothing left for run() to zero
+
+def record_with_a_run_plan(fields: Any, pml: Any, sub_step: str):
+    """MUTATION: a record marking every cell a recurrence cell on every present axis.
+
+    The recurrence then runs on the plan's placeholder auxiliary, which carries the
+    previous launch's ``n``: identical-looking on cycle 1, wrong on every cycle after.
+    """
+    plan = shipped_plan(fields, pml, sub_step)
+    rebind_record(plan, _every_cell_a_recurrence)
     return plan
 
 
-def unit_columns_perturbed_plan(fields: Any, pml: Any, sub_step: str, probe: Any):
+def presence_all_present_plan(fields: Any, pml: Any, sub_step: str):
+    """MUTATION: every presence bit set. On the 2-D row the invariant z axis's partner
+    then takes the full bracket, ``((g1s - g1) + g2) - g2``, which rounds twice more."""
+    plan = shipped_plan(fields, pml, sub_step)
+
+    def edit(record, record_index, presence_word, shape):
+        record[presence_word] = 7
+
+    rebind_record(plan, edit)
+    return plan
+
+
+class _AuxiliaryWrapped:
+    """The shipped inner plan, with one thing done to its auxiliary before each launch."""
+
+    def __init__(self, inner: Any, auxiliaries, value) -> None:
+        self.sub_step = inner.sub_step
+        self._inner = inner
+        self._auxiliaries = auxiliaries
+        self._value = value
+
+    def run(self, guard: Optional[bool] = None) -> None:
+        for auxiliary in self._auxiliaries:
+            auxiliary.fill(self._value)
+        self._inner.run(guard)
+
+
+def aux_poisoned_plan(fields: Any, pml: Any, sub_step: str):
+    """DECLARED NULL: the placeholder auxiliary is NaN at every launch.
+
+    The kernel loads and stores ``fu`` on recurrence cells only (the auxiliary
+    contract), and the absorber-free record has none, so no word may change.
+    """
+    plan = shipped_plan(fields, pml, sub_step)
+    plan._inner = _AuxiliaryWrapped(plan._inner, plan._auxiliaries, float("nan"))
+    return plan
+
+
+def previous_binding_plan(fields: Any, pml: Any, sub_step: str):
+    """MUTATION (the inversion): the previous binding, recurrence on every cell with
+    the auxiliary zeroed before each launch. It loses ``(-0, +0)``: the planted leg's
+    pattern, where it must be caught."""
+    plan = shipped_plan(fields, pml, sub_step)
+    rebind_record(plan, _every_cell_a_recurrence)
+    plan._inner = _AuxiliaryWrapped(plan._inner, plan._auxiliaries, 0)
+    return plan
+
+
+def unit_columns_perturbed_plan(fields: Any, pml: Any, sub_step: str):
     """MUTATION: one synthesized coefficient column is 1.0 + 1 ulp, not 1.0.
 
     The binding's whole premise is that the columns are EXACTLY one. A column
     that is merely close must be caught, or the gate would license a near-unit
     binding as a degenerate one.
     """
-    plan = shipped_plan(fields, pml, sub_step, probe)
+    plan = shipped_plan(fields, pml, sub_step)
     inner = plan._inner
     import cupy as cp
     from meep_gpu.triton_kernels import complex_fields as cx
@@ -238,67 +302,82 @@ def unit_columns_perturbed_plan(fields: Any, pml: Any, sub_step: str, probe: Any
 
 
 # ---------------------------------------------------------------------------
-# The adversarial row — measured and RECORDED, never asserted away
+# The planted row — the pattern the previous binding lost, now required identical
 # ---------------------------------------------------------------------------
 
-def leg_adversarial(probe: Any, handle) -> Dict[str, Any]:
-    """The one pattern the degenerate binding is known to lose: (-0.0, +0.0).
+PLANTED_BUILDERS = {"shipped": ("IDENTICAL", None),
+                    "previous_binding": ("DIVERGENT", None)}
 
-    Seeded into the TARGET volumes directly, with the curl driven to exactly zero
-    by making every source volume uniform (a uniform field has an identically
-    zero curl, so no source-side trickery is needed and the arithmetic reaching
-    the recurrence is the shipped one).
 
-    The count is REPORTED. This leg has no pass/fail threshold on it, because the
-    honest statement is a size, and hiding a known divergence behind an assertion
-    is how a residual becomes a defect.
+def leg_planted(handle) -> Dict[str, Any]:
+    """Target ``-0.0`` with an exact ``+0`` curl: MEEP's plain form keeps the ``-0``.
+
+    Seeded into the TARGET volumes directly, with every SOURCE volume uniform (a
+    uniform field has an identically zero curl inside the window, so the arithmetic
+    reaching the form is the shipped one; plane 0 of a phased axis connects to a
+    rotated word and is not a planted cell). The targets are excluded from the
+    uniform fill: the previous leg's fill overwrote the B targets, so it never
+    planted ``step_B``.
+
+    ``shipped`` rows must be IDENTICAL and store the ``-0``; ``previous_binding``
+    rows (recurrence everywhere, auxiliary zeroed per launch) must DIVERGE.
     """
     import cupy as cp
+    from meep_gpu.triton_kernels.launch import SUB_STEPS
 
-    out: Dict[str, Any] = {"leg": "adversarial", "cases": []}
+    builders = {"shipped": shipped_plan, "previous_binding": previous_binding_plan}
+    out: Dict[str, Any] = {"leg": "planted", "cases": []}
     for tag, config in (("J3", J_3D), ("J2", J_2D)):
         for sub_step in ("step_B", "step_D"):
-            reference_fields, pml, _ = P.build(cp, **config)
-            candidate_fields, _, _ = P.build(cp, **config)
-            shape = tuple(reference_fields.grid.shape)
-            minus_zero = cp.empty(shape, dtype=cp.complex64)
-            minus_zero.real = cp.full(shape, np.float32(-0.0), dtype=cp.float32)
-            minus_zero.imag = cp.full(shape, np.float32(-0.0), dtype=cp.float32)
-            uniform = cp.empty(shape, dtype=cp.complex64)
-            uniform.real = cp.full(shape, np.float32(0.25), dtype=cp.float32)
-            uniform.imag = cp.full(shape, np.float32(-0.125), dtype=cp.float32)
-            for fields in (reference_fields, candidate_fields):
-                from meep_gpu.triton_kernels.launch import SUB_STEPS
-
-                for name in SUB_STEPS[sub_step]["targets"]:
-                    getattr(fields, name)[...] = minus_zero
-                for name in ("Ex", "Ey", "Ez", "Bx", "By", "Bz"):
-                    array = getattr(fields, name, None)
-                    if array is not None:
-                        array[...] = uniform
-            try:
-                plan = shipped_plan(candidate_fields, pml, sub_step, probe)
-                SUB_STEP_FUNCTIONS[sub_step](reference_fields, pml)
-                plan.run()
-                verdict = P.compare(P.inventory(reference_fields),
-                                    P.inventory(candidate_fields))
-                row = {"case": f"{tag}_{sub_step}_minus_zero_target_zero_curl",
-                       "differing": verdict["differing"],
-                       "compared": verdict["words"],
-                       "identical": verdict["identical"],
-                       "first_difference": verdict.get("first_difference")}
-            except BaseException as exc:  # noqa: BLE001
-                row = {"case": f"{tag}_{sub_step}_minus_zero_target_zero_curl",
-                       "error": f"{type(exc).__name__}: {exc}"[:300],
-                       "traceback": traceback.format_exc()[-800:]}
-            out["cases"].append(row)
-            log(handle, f"  adversarial {row['case']}: "
-                        f"{row.get('differing', 'ERROR')} / "
-                        f"{row.get('compared', '?')} differing")
+            for label, builder in builders.items():
+                prediction = PLANTED_BUILDERS[label][0]
+                reference_fields, pml, _ = P.build(cp, **config)
+                candidate_fields, _, _ = P.build(cp, **config)
+                shape = tuple(reference_fields.grid.shape)
+                minus_zero = np.empty(shape, dtype=np.complex64)
+                minus_zero.real = np.float32(-0.0)
+                minus_zero.imag = np.float32(-0.0)
+                uniform = np.empty(shape, dtype=np.complex64)
+                uniform.real = np.float32(0.25)
+                uniform.imag = np.float32(-0.125)
+                targets = SUB_STEPS[sub_step]["targets"]
+                for fields in (reference_fields, candidate_fields):
+                    for name in targets:
+                        getattr(fields, name)[...] = cp.asarray(minus_zero)
+                    for name in ("Ex", "Ey", "Ez", "Bx", "By", "Bz"):
+                        array = getattr(fields, name, None)
+                        if array is not None and name not in targets:
+                            array[...] = cp.asarray(uniform)
+                case = f"{tag}_{sub_step}_minus_zero_target_zero_curl:{label}"
+                try:
+                    plan = builder(candidate_fields, pml, sub_step)
+                    SUB_STEP_FUNCTIONS[sub_step](reference_fields, pml)
+                    plan.run()
+                    verdict = P.compare(P.inventory(reference_fields),
+                                        P.inventory(candidate_fields))
+                    stored = sum(int((P.as_words(getattr(reference_fields, name))
+                                      == 0x80000000).sum()) for name in targets)
+                    row = {"case": case, "binding": label, "prediction": prediction,
+                           "differing": verdict["differing"],
+                           "compared": verdict["words"],
+                           "identical": verdict["identical"],
+                           "negative_zero_words_stored": stored,
+                           "verdict": "IDENTICAL" if verdict["identical"] else "DIVERGENT",
+                           "first_difference": verdict.get("first_difference")}
+                except BaseException as exc:  # noqa: BLE001
+                    row = {"case": case, "binding": label, "prediction": prediction,
+                           "error": f"{type(exc).__name__}: {exc}"[:300],
+                           "traceback": traceback.format_exc()[-800:]}
+                out["cases"].append(row)
+                log(handle, f"  planted {row['case']}: "
+                            f"{row.get('differing', 'ERROR')} / "
+                            f"{row.get('compared', '?')} differing, -0 stored "
+                            f"{row.get('negative_zero_words_stored', '?')} "
+                            f"(predict {prediction})")
     return out
 
 
-def leg_refusals(probe: Any, handle) -> Dict[str, Any]:
+def leg_refusals(handle) -> Dict[str, Any]:
     """The predicate's own answers, so an over-broad clause is caught HERE."""
     import cupy as cp
     from meep_gpu.triton_kernels import complex_fields as cx
@@ -316,9 +395,9 @@ def leg_refusals(probe: Any, handle) -> Dict[str, Any]:
         fields, pml, _ = P.build(cp, **config)
         for sub_step in ("step_B", "step_D"):
             verdict = arm.complex_no_pml_curl_coverage(
-                fields, None if drop else pml, sub_step, probe=probe)
+                fields, None if drop else pml, sub_step)
             incumbent = cx.complex_pml_curl_coverage(
-                fields, None if drop else pml, sub_step, probe=probe)
+                fields, None if drop else pml, sub_step)
             row = {"case": f"{name}:{sub_step}", "covered": verdict.covered,
                    "expected": expected, "agrees": verdict.covered == expected,
                    "reasons": list(verdict.reasons)[:6],
@@ -334,7 +413,7 @@ def leg_refusals(probe: Any, handle) -> Dict[str, Any]:
 
 # ---------------------------------------------------------------------------
 
-def build_cases(probe: Any) -> List[Dict[str, Any]]:
+def build_cases() -> List[Dict[str, Any]]:
     cases: List[Dict[str, Any]] = []
     clause = ("complex_fields._complex_grid_reasons clause 3 INVERTED "
               "(no active PML layer) — the arm under test")
@@ -353,7 +432,7 @@ def build_cases(probe: Any) -> List[Dict[str, Any]]:
                     "clause": clause, "make": make,
                     "array_path": SUB_STEP_FUNCTIONS[sub_step],
                     "kernel_plan": (lambda f, p, s=sub_step, d=drop:
-                                    shipped_plan(f, p, s, probe, drop_layer=d)),
+                                    shipped_plan(f, p, s, drop_layer=d)),
                 })
 
     def make3(offset):
@@ -368,31 +447,51 @@ def build_cases(probe: Any) -> List[Dict[str, Any]]:
             "clause": "control: the Bloch rotation compiled away",
             "make": make3, "array_path": SUB_STEP_FUNCTIONS[sub_step],
             "kernel_plan": (lambda f, p, s=sub_step:
-                            phase_off_plan(f, p, s, probe)),
+                            phase_off_plan(f, p, s)),
         })
     cases.append({
         "name": "J3_step_B_STALESOURCE_CONTROL", "group": "J",
         "sub_step": "step_B", "prediction": "DIVERGENT",
         "clause": "control: sources bound as a plan-time snapshot (group G)",
         "make": make3, "array_path": stepping.step_B,
-        "kernel_plan": lambda f, p: stale_source_plan(f, p, "step_B", probe),
+        "kernel_plan": lambda f, p: stale_source_plan(f, p, "step_B"),
     })
+    def make2(offset):
+        import cupy as cp
+
+        return P.build(cp, seed_offset=offset, **J_2D)
+
     for sub_step in ("step_B", "step_D"):
         cases.append({
-            "name": f"J3_{sub_step}_MUTATION_aux_zeroed_once", "group": "J",
+            "name": f"J3_{sub_step}_MUTATION_record_with_a_run", "group": "J",
             "sub_step": sub_step, "prediction": "DIVERGENT",
-            "clause": "mutation: the auxiliary zeroing hoisted to plan time",
+            "clause": "mutation: a record marking every cell a recurrence cell",
             "make": make3, "array_path": SUB_STEP_FUNCTIONS[sub_step],
             "kernel_plan": (lambda f, p, s=sub_step:
-                            aux_never_zeroed_plan(f, p, s, probe)),
+                            record_with_a_run_plan(f, p, s)),
+        })
+        cases.append({
+            "name": f"J2_{sub_step}_MUTATION_presence_all_present", "group": "J",
+            "sub_step": sub_step, "prediction": "DIVERGENT",
+            "clause": "mutation: every presence bit set on the 2-D row",
+            "make": make2, "array_path": SUB_STEP_FUNCTIONS[sub_step],
+            "kernel_plan": (lambda f, p, s=sub_step:
+                            presence_all_present_plan(f, p, s)),
+        })
+        cases.append({
+            "name": f"J3_{sub_step}_NULL_aux_poisoned", "group": "J",
+            "sub_step": sub_step, "prediction": "IDENTICAL",
+            "clause": "declared null: the placeholder auxiliary is NaN at every launch",
+            "make": make3, "array_path": SUB_STEP_FUNCTIONS[sub_step],
+            "kernel_plan": (lambda f, p, s=sub_step:
+                            aux_poisoned_plan(f, p, s)),
         })
     cases.append({
         "name": "J3_step_B_MUTATION_unit_column_one_ulp", "group": "J",
         "sub_step": "step_B", "prediction": "DIVERGENT",
         "clause": "mutation: a synthesized coefficient column is 1.0 + 1 ulp",
         "make": make3, "array_path": stepping.step_B,
-        "kernel_plan": lambda f, p: unit_columns_perturbed_plan(f, p, "step_B",
-                                                                probe),
+        "kernel_plan": lambda f, p: unit_columns_perturbed_plan(f, p, "step_B"),
     })
     return cases
 
@@ -400,12 +499,10 @@ def build_cases(probe: Any) -> List[Dict[str, Any]]:
 def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     """The release contract. Refusals are BY NAME; nothing is inferred from absence."""
     reasons: List[str] = []
-    if payload.get("subnormal_policy_installed") != "keep":
-        reasons.append("the 'keep' subnormal policy was not INSTALLED (an env var "
-                       "alone leaves _policy_in_force closed and every complex "
-                       "plan refuses for a harness reason)")
-    if payload.get("expansion") is None:
-        reasons.append("no EXPANSION constexpr was licensed from a probe artifact")
+    wanted = payload.get("subnormal_policy_requested", "keep")
+    if payload.get("subnormal_policy_installed") != wanted:
+        reasons.append(f"the {wanted!r} subnormal policy was not INSTALLED (an env var "
+                       f"alone declares a policy and installs nothing)")
 
     rows = payload.get("cases") or []
     by_name = {row.get("case"): row for row in rows}
@@ -424,19 +521,35 @@ def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     if any(r.get("verdict") != "DIVERGENT" for r in controls):
         reasons.append("a control did not diverge; the round is void")
     mutations = [r for r in rows if "MUTATION" in str(r.get("case"))]
-    if len(mutations) < 3:
-        reasons.append(f"{len(mutations)} mutations ran; this gate requires 3")
+    if len(mutations) < 5:
+        reasons.append(f"{len(mutations)} mutations ran; this gate requires 5")
     if any(r.get("verdict") != "DIVERGENT" for r in mutations):
         reasons.append("a mutation was NOT caught")
+    nulls = [r for r in rows if "NULL" in str(r.get("case"))]
+    if len(nulls) < 2:
+        reasons.append(f"{len(nulls)} declared nulls ran; this gate requires 2")
+    if any(r.get("verdict") != "IDENTICAL" for r in nulls):
+        reasons.append("a declared null moved a byte: the auxiliary was read")
 
-    adversarial = payload.get("adversarial") or {}
-    if not adversarial.get("cases"):
-        reasons.append("the adversarial (-0.0 target, +0.0 curl) row did not run; "
-                       "its word count is REQUIRED in the payload and is reported, "
-                       "not asserted to be zero")
-    for row in adversarial.get("cases", []):
+    planted = payload.get("planted") or {}
+    if not planted.get("cases"):
+        reasons.append("the planted (-0.0 target, +0.0 curl) leg did not run")
+    shipped_rows = [r for r in planted.get("cases", []) if r.get("binding") == "shipped"]
+    previous_rows = [r for r in planted.get("cases", [])
+                     if r.get("binding") == "previous_binding"]
+    if planted.get("cases") and (len(shipped_rows) < 4 or len(previous_rows) < 4):
+        reasons.append(f"the planted leg ran {len(shipped_rows)} shipped and "
+                       f"{len(previous_rows)} previous-binding rows; it requires 4 each")
+    for row in planted.get("cases", []):
         if "differing" not in row:
-            reasons.append(f"{row.get('case')}: no differing count recorded")
+            reasons.append(f"{row.get('case')}: no differing count recorded "
+                           f"({row.get('error', 'no error recorded')})")
+        elif row.get("verdict") != row.get("prediction"):
+            reasons.append(f"{row.get('case')}: planted verdict {row.get('verdict')} != "
+                           f"prediction {row.get('prediction')}")
+        elif row.get("binding") == "shipped" and not row.get("negative_zero_words_stored"):
+            reasons.append(f"{row.get('case')}: no -0 word was stored; the planted row "
+                           f"measured nothing")
 
     refusals = payload.get("refusals") or {}
     if not refusals.get("disjoint"):
@@ -454,8 +567,10 @@ def main(argv=None) -> int:
         description="byte gate for the complex no-absorber curl arm")
     parser.add_argument("--out", required=True)
     parser.add_argument("--cycles", type=int, default=CYCLES)
+    parser.add_argument("--subnormal-policy", default="keep", choices=("keep", "flush"),
+                        help="the float32 subnormal policy to install before the first device compile (keep, the default, or flush: the certification round gates every family under both on the NVIDIA tables)")
     parser.add_argument("--leg", default="all",
-                        choices=("all", "product", "adversarial", "refusals"))
+                        choices=("all", "product", "planted", "refusals"))
     parser.add_argument("--only", default="")
     args = parser.parse_args(argv)
 
@@ -472,27 +587,15 @@ def main(argv=None) -> int:
     # THE POLICY, INSTALLED before the first CuPy elementwise op or Triton compile.
     from meep_gpu.subnormal_policy import install_subnormal_policy
 
-    install_subnormal_policy("keep")
-    payload["subnormal_policy_installed"] = "keep"
+    payload["subnormal_policy_requested"] = args.subnormal_policy
+    install_subnormal_policy(args.subnormal_policy)
+    payload["subnormal_policy_installed"] = args.subnormal_policy
 
-    probe = P._load_expansion_probe()
-    from meep_gpu.triton_kernels import complex_fields as cx
-
-    payload["expansion"] = cx._resolve_expansion(probe)
-    log(handle, f"policy installed: keep; expansion = {payload['expansion']}")
-    if payload["expansion"] is None:
-        log(handle, "REFUSED: no licensable expansion probe; a guess is not a "
-                    "measurement")
-        payload["cases"] = []
-        payload["release"] = validate_payload(payload)
-        from gate_provenance import stamp as _stamp_provenance  # noqa: PLC0415
-        _stamp_provenance(payload)  # bytes THIS process imported; see gate_provenance
-        out_path.write_text(json.dumps(payload, indent=1, default=str))
-        return 1
+    log(handle, "policy installed: keep")
 
     cases: List[Dict[str, Any]] = []
     if args.leg in ("all", "product"):
-        built = build_cases(probe)
+        built = build_cases()
         if args.only:
             built = [c for c in built if args.only in c["name"]]
         for index, case in enumerate(built, 1):
@@ -510,10 +613,10 @@ def main(argv=None) -> int:
                         f"[{round(time.time() - started, 1)} s]")
     payload["cases"] = cases
 
-    if args.leg in ("all", "adversarial"):
-        payload["adversarial"] = leg_adversarial(probe, handle)
+    if args.leg in ("all", "planted"):
+        payload["planted"] = leg_planted(handle)
     if args.leg in ("all", "refusals"):
-        payload["refusals"] = leg_refusals(probe, handle)
+        payload["refusals"] = leg_refusals(handle)
 
     payload["seconds"] = round(time.time() - started, 1)
     payload["release"] = validate_payload(payload)

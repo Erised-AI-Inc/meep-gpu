@@ -163,12 +163,13 @@ def _down(n, code):
 
 
 def four_point_sum(g, own_axis, partner_axis, codes, shape, defect=None):
-    """``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])`` -- the SHIFTED-PAIR association.
+    """``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]`` -- MEEP C's order, left to right.
 
     ``defect`` plants one of the gate's arithmetic mutations so this reference can
-    be shown to see it: ``"left_to_right"`` is MEEP C's summation order
-    (step_generic.cpp:646-648) and ``"same_direction"`` takes both shifts the same
-    way round, the half-cell registration error.
+    be shown to see it: ``"pair_association"`` is the 0.9.2 array path's pairing of
+    the corners, ``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])``, and
+    ``"same_direction"`` takes both shifts the same way round, the half-cell
+    registration error.
     """
     identity = [np.arange(shape[axis]) for axis in range(3)]
     up_index, up_valid = _up(shape[own_axis], codes[own_axis])
@@ -197,17 +198,33 @@ def four_point_sum(g, own_axis, partner_axis, codes, shape, defect=None):
 
     here, down, up, both = (corner(False, False), corner(False, True),
                             corner(True, False), corner(True, True))
-    if defect == "left_to_right":
-        return (((here + up) + down) + both).astype(np.float32)
-    return ((here + down) + (up + both)).astype(np.float32)
+    if defect == "pair_association":
+        return ((here + down) + (up + both)).astype(np.float32)
+    return (((here + up) + down) + both).astype(np.float32)
+
+
+def dsqr_of(gs, g1s, g2s, defect=None):
+    """``nonlinear_dsqr``: the float32 squares widened, scaled and added in double,
+    rounded once. ``"dsqr_in_float32"`` plants the 0.9.2 float32 form."""
+    own = (gs * gs).astype(np.float32)
+    transverse = (g1s * g1s + g2s * g2s).astype(np.float32)
+    if defect == "drop_transverse":
+        return own
+    if defect == "dsqr_in_float32":
+        return (own + np.float32(0.0625) * transverse).astype(np.float32)
+    return (own.astype(np.float64) + 0.0625 * transverse.astype(np.float64)).astype(np.float32)
 
 
 def device_tree(fields, tables, codes, defect=None):
     """``update_E_pml_real_nonlinear``, transcribed in float32 NumPy.
 
     Line for line the CUDA body: three sources formed first, then the certified
-    two-accumulation tail with ``prev`` read before the store. ``defect`` plants
-    exactly one of the gate's mutations.
+    constitutive tail with MEEP's per-chunk forms: on a cell whose chunk carries the
+    component's own layer, ``prev`` read before the store and
+    ``f + ((kps*src) - (kms*prev))``; elsewhere ``f = src`` with ``f_w`` untouched.
+    Which cells are which is the run's region plan, the membership the kernel's chunk
+    record encodes (``test_root_chunk_forms.py`` pins the two equal). ``defect``
+    plants exactly one of the gate's mutations.
     """
     shape = tuple(fields.grid.shape)
     displacement = {0: np.asarray(fields.Dx), 1: np.asarray(fields.Dy),
@@ -222,13 +239,10 @@ def device_tree(fields, tables, codes, defect=None):
             first, second = nlc.TRANSVERSE_PARTNERS[axis]
             if defect == "swap_transverse_partners":
                 first, second = second, first
-            sub = defect if defect in ("left_to_right", "same_direction") else None
+            sub = defect if defect in ("pair_association", "same_direction") else None
             g1s = four_point_sum(displacement[first], axis, first, codes, shape, sub)
             g2s = four_point_sum(displacement[second], axis, second, codes, shape, sub)
-            transverse = np.float32(0.0625) * (g1s * g1s + g2s * g2s)
-            if defect == "drop_transverse":
-                transverse = np.float32(0.0)
-            dsqr = (gs * gs + transverse).astype(np.float32)
+            dsqr = dsqr_of(gs, g1s, g2s, defect)
             chi2 = fields.chi2_for(component)
             chi3 = fields.chi3_for(component)
             if defect == "swap_chi2_chi3":
@@ -256,6 +270,8 @@ def device_tree(fields, tables, codes, defect=None):
             else:
                 src = (src * factor).astype(np.float32)
         sources.append(src)
+    plan = fields.region_plan
+    assert plan is not None, "the oracle step installs the region plan the tail reads"
     for (component, _source, axis), src in zip(nlc.E_TERMS, sources):
         target = np.asarray(getattr(fields, component))
         auxiliary = np.asarray(getattr(fields, "f_w_" + component))
@@ -263,10 +279,11 @@ def device_tree(fields, tables, codes, defect=None):
         bshape[axis] = shape[axis]
         kps = tables[f"kps_{'xyz'[axis]}"].reshape(bshape)
         kms = tables[f"kms_{'xyz'[axis]}"].reshape(bshape)
+        inside = np.broadcast_to(np.asarray(plan.mask("constitutive", component, np)), shape)
         previous = auxiliary.copy()
-        auxiliary[...] = src
-        accumulated = (target + kps * src).astype(np.float32)
-        target[...] = (accumulated - kms * previous).astype(np.float32)
+        accumulated = (target + ((kps * src) - (kms * previous))).astype(np.float32)
+        auxiliary[...] = np.where(inside, src, auxiliary)
+        target[...] = np.where(inside, accumulated, src).astype(np.float32)
 
 
 def differing_words(reference, fields):
@@ -314,7 +331,7 @@ CASES = {
 #: a NULL that must leave the bytes alone. A battery of only-must-be-caught legs
 #: scores identically whether the comparator works or fails everything.
 PLANTED_DEFECTS = {
-    "left_to_right": True,
+    "pair_association": True,
     "same_direction": True,
     "drop_transverse": True,
     "drop_pade_factor": True,
@@ -403,6 +420,49 @@ def test_each_planted_defect_is_visible_against_the_reference(defect, xp):
         assert seen == 0, (
             f"{defect} is claimed inert and changed {seen} words; either IEEE-754 "
             f"does not say what this test says it does, or the plant is wrong")
+
+
+#: The planted ``|D|^2`` band (``test_root_chunk_forms.DSQR_BAND_SCALE``): every D volume
+#: drawn in ``(-2^-63, 2^-63)``, so ``0.0625*(g1s^2 + g2s^2)`` often lies below float32's
+#: normal range while ``gs*gs`` does not, and ``chi3`` large enough to carry such a
+#: ``Dsqr`` into ``c3`` while the pole guard's expansion stays below 1/3.
+DSQR_BAND_SCALE = np.float32(2.0 ** -63)
+DSQR_BAND_CHI3 = 9.0e36
+
+
+def test_the_float32_dsqr_is_seen_on_the_planted_band_and_nowhere_else(xp):
+    """MEEP's double ``Dsqr`` (16-AP6h) against the float32 form, both ways.
+
+    On the ``mixed`` fixture the two forms give the same stored words (they differ
+    only where the exact ``0.0625*t`` is below float32's normal range), so the
+    float32 form is invisible there; on the planted band it is seen. The first half
+    is the measurement that the form is pinned by the band and not by luck.
+    """
+    seen = {}
+    for label in ("mixed", "dsqr_band"):
+        if label == "mixed":
+            fields, layer, grid = build(xp, **CASES["mixed"])
+        else:
+            fields, layer, grid = build(
+                xp, boundaries=("periodic", "metallic", "periodic"),
+                chi2={c: 0.0 for c in ("Ex", "Ey", "Ez")},
+                chi3={c: DSQR_BAND_CHI3 for c in ("Ex", "Ey", "Ez")})
+            for name in ("Dx", "Dy", "Dz"):
+                getattr(fields, name)[...] *= DSQR_BAND_SCALE
+        margin = stepping.nonlinear_margin(fields, layer)
+        assert margin is not None and 0.0 < margin.expansion < nlc.POLE_EXPANSION_BOUND
+        codes, refusal = nlc.boundary_codes(grid)
+        assert refusal is None, refusal
+        frozen = snapshot(fields)
+        stepping.update_E(fields, layer)
+        reference = snapshot(fields)
+        restore(fields, frozen)
+        device_tree(fields, tables_for_E(layer), codes)
+        assert differing_words(reference, fields) == 0, label
+        restore(fields, frozen)
+        device_tree(fields, tables_for_E(layer), codes, defect="dsqr_in_float32")
+        seen[label] = differing_words(reference, fields)
+    assert seen["mixed"] == 0 and seen["dsqr_band"] > 0, seen
 
 
 def test_a_volume_chi_and_a_scalar_chi_take_the_same_reference(xp):
@@ -710,10 +770,12 @@ def test_the_tail_is_the_certified_pairs_tail_character_for_character():
     them differently the gate's battery goes quietly NOT ARMED.
     """
     sibling = (HERE / "constitutive_kernels.py").read_text(encoding="utf-8")
-    tail = ("    float prev = fw[idx];\n"
-            "    fw[idx] = src;\n"
-            "    float a = f[idx] + kps * src;\n"
-            "    f[idx] = a - kms * prev;\n")
+    tail = ("    float kps, float kms, int dsigw\n"
+            ") {\n"
+            "    float prev = dsigw ? fw[idx] : 0.0f;\n"
+            "    if (dsigw) fw[idx] = src;\n"
+            "    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;\n"
+            "    f[idx] = value;\n")
     assert tail in sibling, "the certified pair's tail moved; re-derive this pin"
     assert tail in nlc._NONLINEAR_PRELUDE
 
@@ -727,9 +789,12 @@ def test_the_device_string_carries_the_lines_the_mutations_key_on():
     """
     code = nlc._update_E_pml_real_nonlinear_kernel_code
     exact = {
-        "    float near_pair = g[o_c] + (v_d ? g[o_d] : 0.0f);\n": 1,
-        "    float far_pair = (v_u ? g[o_u] : 0.0f) + (v_ud ? g[o_ud] : 0.0f);\n": 1,
-        "    return near_pair + far_pair;\n": 1,
+        "    float own_pair = g[o_c] + (v_u ? g[o_u] : 0.0f);\n": 1,
+        "    float with_down = own_pair + (v_d ? g[o_d] : 0.0f);\n": 1,
+        "    return with_down + (v_ud ? g[o_ud] : 0.0f);\n": 1,
+        "    double own_sq = gs * gs;\n": 1,
+        "    double transverse_sq = g1s * g1s + g2s * g2s;\n": 1,
+        "    return __double2float_rn(own_sq + 0.0625 * transverse_sq);\n": 1,
         "    float c2 = (gs * chi2) * us_sq;\n": 1,
         "    float c3 = (dsqr * chi3) * us_cu;\n": 1,
         "    float num = (1.0f + c2) + 2.0f * c3;\n": 1,
@@ -740,9 +805,10 @@ def test_the_device_string_carries_the_lines_the_mutations_key_on():
         assert code.count(needle) == count, (
             f"{needle!r} occurs {code.count(needle)} times, not {count}; a gate "
             f"mutation keys on this line")
-    assert code.count("0.0625f * (g1s * g1s + g2s * g2s)") == 3
+    assert "0.0625f" not in code, "the 1/16 scale is MEEP's double literal, never a float"
     for axis in "xyz":
         assert code.count(f"float us_cu = us_sq * us_{axis};") == 1
+        assert code.count(f"float dsqr = nonlinear_dsqr(gs_{axis}, g1s, g2s);") == 1
 
 
 def test_the_device_string_names_the_partner_volumes_the_table_names():
@@ -953,7 +1019,7 @@ def test_a_device_edit_would_fail_this_pin_on_a_laptop():
     reads the shipped attribute and not a constant beside it.
     """
     mutated = nlc._update_E_pml_real_nonlinear_kernel_code.replace(
-        "0.0625f", "0.0624f", 1)
+        "0.0625 * transverse_sq", "0.0624 * transverse_sq", 1)
     assert mutated != nlc._update_E_pml_real_nonlinear_kernel_code
     digest = hashlib.sha256(mutated.encode("utf-8")).hexdigest()
     assert digest != RECORD["device_source_sha256"]["update_E_pml_real_nonlinear"]

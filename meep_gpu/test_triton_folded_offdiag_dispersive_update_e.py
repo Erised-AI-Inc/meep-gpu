@@ -9,6 +9,7 @@ requiring Triton or a CUDA device.
 from __future__ import annotations
 
 import inspect
+import pathlib
 from types import SimpleNamespace
 
 import numpy as np
@@ -128,8 +129,15 @@ def _reference_update_e(fields, pml, state, *, reverse_poles=False,
     walls = offdiag_update_e.wall_mask_axes(grid)
     volumes = _d_minus_p(fields, reverse=reverse_poles, drop=drop_poles)
 
+    from meep_gpu.chunk_map import (ChunkLayout, chunk_bounds_record,  # noqa: PLC0415
+                                    membership_from_record)
+
+    record = chunk_bounds_record(ChunkLayout.one_rank(grid, pml))
     for own_axis, target in enumerate(E_NAMES):
-        constitutive = volumes[target] * fields.inverse_epsilon_for(target)
+        # MEEP's row (stepping._offdiagonal_terms): gs*us one float32 product, widened;
+        # each term's float32 sum, wall-masked, scaled by the double 0.25 and added in
+        # double; the store rounds the row once.
+        row = (volumes[target] * fields.inverse_epsilon_for(target)).astype(np.float64)
         rows = fields.chi1inv_offdiagonal_for(target)
         total = None
         for offset in (1, 2):
@@ -157,21 +165,29 @@ def _reference_update_e(fields, pml, state, *, reverse_poles=False,
             shifted_up = np.roll(product, -1, axis=own_axis)
             if kinds[own_axis] in (stepping.METALLIC, stepping.MIRROR):
                 shifted_up[_face(own_axis, -1)] = 0
-            term = 0.25 * (product + shifted_up)
-            total = term if total is None else total + term
-        if total is not None:
+            summed = product + shifted_up
             for axis in range(3):
                 if IYEE_SHIFTS[target][axis] == 0 and walls[axis]:
-                    total[_face(axis, 0)] = 0
-            constitutive = constitutive + total
+                    summed[_face(axis, 0)] = 0
+            row = row + 0.25 * summed.astype(np.float64)
+            total = True
+        constitutive = row.astype(np.float32)
 
+        # The per-chunk constitutive form (stepping._apply_constitutive_regions): MEEP's
+        # accumulation f + ((kps*src) - (kms*prev)) on the cells whose chunk carries the
+        # component's own layer, E = src and f_w untouched everywhere else.
+        line = np.asarray(membership_from_record(record, True, own_axis,
+                                                 grid.shape[own_axis]))
+        inside = np.broadcast_to(
+            line.reshape([-1 if a == own_axis else 1 for a in range(3)]),
+            constitutive.shape)
         previous = state["f_w_" + target].copy()
-        state["f_w_" + target][...] = constitutive
         suffix = "" if integer_coefficients else "_h"
-        state[target] += getattr(
-            pml, f"kps_{AXES[own_axis]}{suffix}") * constitutive
-        state[target] -= getattr(
-            pml, f"kms_{AXES[own_axis]}{suffix}") * previous
+        accumulated = state[target] + (
+            (getattr(pml, f"kps_{AXES[own_axis]}{suffix}") * constitutive)
+            - (getattr(pml, f"kms_{AXES[own_axis]}{suffix}") * previous))
+        state[target][...] = np.where(inside, accumulated, constitutive)
+        state["f_w_" + target][...] = np.where(inside, constitutive, previous)
 
 
 def _state(fields):
@@ -372,9 +388,48 @@ def test_kernel_source_carries_all_three_arithmetic_layers():
     assert "value = value - tl.load(p7" in text
     assert "_folded_dispersive_term" in text
     assert "MIRROR_ROW" in text
-    assert "value0 = value0 + kp_0 * src0" in text
-    assert "value0 = value0 - km_0 * prev0" in text
+    # MEEP's row in double through the certified helper, and the per-chunk form.
+    assert "row0 = tl.cast(gs0 * us0, tl.float64)" in text
+    assert "_row_add(row0, _folded_dispersive_term(" in text
+    assert "value0 = constitutive_form(value0, prev0, src0, kp_0, km_0, dw0)" in text
+    assert "tl.store(w0 + idx, src0, mask=live & dw0)" in text
+    for retired in ("value0 = value0 + kp_0 * src0", "_masked_row_sum("):
+        assert retired not in text
     assert "NP0=self.counts[0]" in text
+
+
+def test_the_kernel_is_the_folded_offdiag_body_with_the_pole_chain_at_every_read():
+    """Statement for statement KT4's folded off-diagonal ``update_E`` once its own-cell
+    and gathered D reads are replaced by ``D - sum P`` and its registers renamed off
+    the pole-slot names: generated from that body, so the lift is checked here."""
+    import ast as _ast
+    import re as _re
+
+    def body(path, name):
+        tree = _ast.parse(pathlib.Path(path).read_text(encoding="utf-8"))
+        node = next(n for n in _ast.walk(tree)
+                    if isinstance(n, _ast.FunctionDef) and n.name == name)
+        return [s for s in node.body
+                if not (isinstance(s, _ast.Expr) and isinstance(s.value, _ast.Constant))]
+
+    certified = body(folded_offdiag_update_e.__file__, "folded_offdiag_constitutive_step")
+    mine = body(module.__file__, "folded_offdiag_dispersive_constitutive_step")
+    assert len(certified) == len(mine)
+    slots = {"0": "a", "1": "b", "2": "c"}
+    for theirs, ours in zip(certified, mine):
+        text = _ast.unparse(theirs)
+        text = _re.sub(r"\bc([012])\b", r"cell\1", text)
+        text = _re.sub(r"\ba([012])\b", r"value\1", text)
+        text = _re.sub(r"gs([012]) = tl\.load\(g\1 \+ idx, mask=live, other=0\.0\)",
+                       lambda m: (f"gs{m.group(1)} = _load_d_minus_p(g{m.group(1)}, "
+                                  + ", ".join(f"{slots[m.group(1)]}{k}" for k in range(8))
+                                  + f", idx, live, NP{m.group(1)})"), text)
+        text = _re.sub(r"_folded_offdiag_term\(g([012]), (u\d\d), (.*?), (MG_[XYZ])\)",
+                       lambda m: (f"_folded_dispersive_term(g{m.group(1)}, "
+                                  + ", ".join(f"{slots[m.group(1)]}{k}" for k in range(8))
+                                  + f", {m.group(2)}, {m.group(3)}, NP{m.group(1)}, "
+                                  f"{m.group(4)})"), text)
+        assert text == _ast.unparse(ours)
 
 
 def test_central_wiring_spec_names_the_row_product_veto():

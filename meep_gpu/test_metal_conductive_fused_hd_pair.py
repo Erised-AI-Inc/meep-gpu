@@ -26,7 +26,7 @@ import numpy as np
 import pytest
 
 from meep_gpu.metal_kernels import (
-    coefficient_pack, conductive_fused_hd_pair as family, conductive_pml,
+    chunk_bounds, coefficient_pack, conductive_fused_hd_pair as family, conductive_pml,
     fused_hd_pair as plain, shaders,
 )
 from meep_gpu.metal_kernels.device import MAX_BUFFER_BINDINGS
@@ -285,7 +285,8 @@ def test_the_conductive_tail_survives_the_lift_unedited():
             # the curl's magnetic loads `float c_x = ...`, which the lift DOES
             # redirect -- and a test that demanded those survive unedited would
             # contradict the whole shape.
-            if not re.match(r"(float [fuc]\d_(previous|new)|bool dsigu?\d|"
+            if not re.match(r"(float [fuc]\d_(previous|new|step)|float [pn]\d = |"
+                            r"const bool d[su]\d = |if \(d[su]\d|"
                             r"[fuc]\d\[ii\] = )", stripped):
                 continue
             assert stripped in welded, (codes, lossy, stripped)
@@ -363,6 +364,78 @@ def test_the_params_struct_carries_one_offset_per_pack_member():
             assert f"uint off_{member};" in struct
         assert struct.count("uint off_") == (len(family.PACKED_VECTORS)
                                              + len(family.PACKED_VOLUMES))
+
+
+def test_the_record_rides_in_params_and_is_aliased_before_the_lift():
+    """The chunk record costs no binding: ``Params`` embeds it, the kernel aliases it.
+
+    Both lifted bounds blocks and every ``h_cell`` call read it as ``cb``, so the alias
+    precedes every lifted line, and the struct is declared before ``h_cell``, whose
+    record parameter names its type.
+    """
+    for _codes, _lossy, source in sources():
+        struct = source.split("struct Params {", 1)[1].split("};", 1)[0]
+        assert chunk_bounds.params_member() in struct
+        assert source.count(chunk_bounds.params_alias()) == 1
+        # h_cell, emitted above the kernel, reads its own record parameter; inside the
+        # kernel the alias precedes the lifted curl's bounds block.
+        kernel = source.split("kernel void conductive_fused_hd_pair_step(", 1)[1]
+        assert (kernel.index(chunk_bounds.params_alias())
+                < kernel.index(chunk_bounds.BLOCK_BEGIN))
+        assert "constant ChunkBounds& cb" in source.split("kernel void", 1)[0]
+        assert (source.index(chunk_bounds.struct_source())
+                < source.index("struct Params {"))
+        assert family.shipped_signature_bindings() == family.PACKED_BINDINGS
+    dtype = family.params_record_dtype()
+    assert dtype.fields["cb"][1] == 4 * (5 + len(family.PACKED_VECTORS)
+                                         + len(family.PACKED_VOLUMES))
+    assert dtype.fields["cw"][1] == (dtype.fields["cb"][1]
+                                     + chunk_bounds.record_dtype().itemsize)
+    assert dtype.itemsize == (dtype.fields["cw"][1]
+                              + conductive_pml.presence_record_dtype().itemsize)
+
+
+def test_the_presence_words_ride_in_params_and_are_aliased_before_the_lift():
+    """The lifted curl tails read ``cw.`` here as the single's do, at no binding."""
+    for _codes, lossy, source in sources():
+        struct = source.split("struct Params {", 1)[1].split("};", 1)[0]
+        assert conductive_pml.presence_params_member() in struct
+        assert source.count(conductive_pml.presence_params_alias()) == 1
+        kernel = source.split("kernel void conductive_fused_hd_pair_step(", 1)[1]
+        alias = kernel.index(conductive_pml.presence_params_alias())
+        for index, flag in enumerate(lossy):
+            if flag:
+                assert alias < kernel.index(f"const bool kc{index} = ")
+        assert (source.index(conductive_pml.presence_struct_source())
+                < source.index("struct Params {"))
+
+
+def test_the_params_words_carry_the_checked_record():
+    record = np.zeros(25, dtype=np.int32)
+    record[-1] = 0b111
+    vectors = {name: index for index, name in enumerate(family.PACKED_VECTORS)}
+    presence = (0b10010, conductive_pml.ALL_CHUNKS_KEPT, 7)
+    words = family.params_words((6, 5, 4), 0.35, vectors, {"cf0": 7}, record, presence)
+    packed = np.frombuffer(words.tobytes(), dtype=family.params_record_dtype())[0]
+    assert (packed["nx"], packed["ny"], packed["nz"], packed["n_elem"]) == (6, 5, 4, 120)
+    assert packed["off_cf0"] == 7 and packed["off_ci2"] == 0
+    assert packed["cb"]["cb_presence"] == 0b111
+    assert tuple(int(packed["cw"][name]) for name in conductive_pml.PRESENCE_MEMBERS) \
+        == presence
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+
+    with pytest.raises(ChunkLayoutRefusal):
+        family.params_words((6, 5, 4), 0.35, vectors, {}, None, presence)
+    with pytest.raises(ValueError, match="no conductivity presence words"):
+        family.params_words((6, 5, 4), 0.35, vectors, {}, record, None)
+
+
+def test_the_f_w_scratch_takes_h_cells_total_word():
+    """Off the dsigw cells the scratch must carry the PRE-LAUNCH word, not src."""
+    for _codes, _lossy, source in sources():
+        assert ("wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;"
+                in source)
+        assert "own.src" not in source
 
 
 def test_the_wall_clear_is_not_carried():
@@ -452,6 +525,41 @@ def test_the_fold_is_refused_by_name_on_this_seam_for_this_seams_reason():
     joined = " | ".join(verdict.reasons)
     assert "axis 1 is folded" in joined
     assert "conductive PML curl" in joined
+
+
+def test_the_runs_first_update_h_is_refused_on_the_composers_rule():
+    """The weld does not start H from B (stepping.separate_h_from_b), so it refuses
+    every run where that start could move a word, in ``h_start_reasons``' words."""
+
+    class _Fields:
+        grid = _Grid()
+
+    verdict = family.metal_conductive_fused_hd_pair_coverage(_Fields(), None, None)
+    assert not verdict.covered
+    assert any(reason.startswith("constitutive half: the run's first update_H")
+               for reason in verdict.reasons), verdict.reasons
+
+    class _Started:
+        grid = _Grid()
+        h_separated = True
+
+    started = family.metal_conductive_fused_hd_pair_coverage(_Started(), None, ())
+    assert not any("the run's first update_H" in reason for reason in started.reasons)
+
+
+def test_the_plan_builder_requires_the_record_and_reads_the_division():
+    import inspect
+
+    signature = inspect.signature(family.plan_metal_conductive_fused_hd_pair)
+    parameter = signature.parameters["chunk_bounds"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty
+    assert "chunk_layout" in signature.parameters
+    text = inspect.getsource(family._arm_plan)  # noqa: SLF001
+    assert "chunk_bounds=context.chunk_bounds" in text
+    assert "chunk_layout=context.chunk_layout" in text
+    assert "chunk_layout=context.chunk_layout" in inspect.getsource(
+        family._arm_coverage)  # noqa: SLF001
 
 
 def test_unread_conductivity_members_names_exactly_the_lossless_pairs():

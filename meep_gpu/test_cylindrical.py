@@ -20,6 +20,7 @@ import pytest
 
 from . import stepping
 from .driver import FdtdDriver
+from .fields import StepScratch
 from .grid import AXIS, METALLIC, Grid, Mirror
 
 _HAS_MEEP = importlib.util.find_spec("meep") is not None
@@ -696,32 +697,341 @@ def test_cylindrical_grid_refusals_are_by_name():
         Grid(resolution=10, cell_size=(2.0, 2.0, 2.0), m=1)
 
 
-def test_rderiv_prefix_sum_matches_meeps_explicit_loop():
-    """The vectorized prefix sum equals step_db.cpp:99-119 written out row by row.
+def _parts(values):
+    return (values.real, values.imag) if values.dtype.kind == "c" else (values,)
 
-    MEEP's loop, transcribed verbatim (ir0 folded in as the code does)::
 
-        f_rderiv_int[0, iz] = 0
-        f_rderiv_int[ir, iz] = f_rderiv_int[ir-1, iz]
-            + (1/((ir+ir0)-0.5)) * (f_p[ir,iz]*(ir+ir0) - f_p[ir-1,iz]*((ir-1)+ir0))
+def _assemble(like, parts):
+    out = np.empty(parts[0].shape, dtype=like.dtype)
+    if like.dtype.kind == "c":
+        out.real, out.imag = parts
+    else:
+        out[...] = parts[0]
+    return out
 
-    Random complex Fp over a (nr, 1, nz) volume, both ir0 = 0.5 (a cell touching
-    the axis, Fp with r-shift 1 — the Dz/Hp case) and ir0 = 3.5 (a cell whose
-    origin sits off the axis). Agreement bar 1e-6 relative in float32 — the
-    cumsum's summation order differs from the fused loop only in rounding.
+
+def _meep_rderiv_difference(f_p, ir0, chunk_starts, n_target, backward, divide=False):
+    """step_db.cpp:99-119 per structure chunk and per part, then step_curl's ``g1[i+s1] - g1[i]``.
+
+    Written out row by row in float32: each chunk ``[s, e]`` (``e`` the next chunk's first
+    row, or the last row) sums ``F[0] = +0``, ``F[ir] = F[ir-1] + rinv * (f_p[g]*(g + ir0) -
+    f_p[g-1]*((g - 1) + ir0))`` with ``g = s + ir`` and ``rinv = realnum(1.0 / ((g + ir0) -
+    0.5))``; a target cell reads its own chunk's sum, ``F[j+1] - F[j]`` forward (B) and
+    ``F[g-1] - F[g]`` backward (D). ``divide`` replaces the multiply by ``rinv`` with a
+    float32 division by ``(g + ir0) - 0.5``, the form this engine used before.
     """
-    rng = np.random.default_rng(20260803)
-    for ir0 in (0.5, 3.5):
-        f_p = (rng.standard_normal((7, 1, 5))
-               + 1j * rng.standard_normal((7, 1, 5))).astype(np.complex64)
-        expected = np.zeros_like(f_p, dtype=np.complex128)
-        for ir in range(1, f_p.shape[0]):
-            expected[ir] = expected[ir - 1] + (
-                f_p[ir] * (ir + ir0) - f_p[ir - 1] * ((ir - 1) + ir0)
-            ) / ((ir + ir0) - 0.5)
-        result = stepping.cylindrical_rderiv_prefix(np, f_p, ir0)
-        scale = float(np.abs(expected).max())
-        assert scale > 0.0
-        worst = float(np.abs(result - expected).max()) / scale
-        assert worst < 1e-6, f"ir0={ir0}: prefix sum diverges from MEEP's loop by {worst:.3e}"
-        assert result.dtype == f_p.dtype, "the prefix sum must keep the field dtype"
+    rows = f_p.shape[0]
+    outs = []
+    for part in _parts(f_p):
+        part = np.ascontiguousarray(part, dtype=np.float32)
+        out = np.zeros((n_target,) + part.shape[1:], dtype=np.float32)
+        for k, s in enumerate(chunk_starts):
+            e = chunk_starts[k + 1] if k + 1 < len(chunk_starts) else rows - 1
+            total = np.zeros((e - s + 1,) + part.shape[1:], dtype=np.float32)
+            for ir in range(1, e - s + 1):
+                g = s + ir
+                weight, below = np.float32(g + ir0), np.float32(g - 1 + ir0)
+                difference = part[g] * weight - part[g - 1] * below
+                if divide:
+                    increment = difference / np.float32((g + ir0) - 0.5)
+                else:
+                    increment = np.float32(1.0 / (float(weight) - 0.5)) * difference
+                total[ir] = total[ir - 1] + increment
+            if backward:
+                for g in range(max(s + 1, 1), min(e, n_target - 1) + 1):
+                    out[g] = total[g - 1 - s] - total[g - s]
+            else:
+                for j in range(s, min(e, n_target)):
+                    out[j] = total[j + 1 - s] - total[j - s]
+        outs.append(out)
+    return _assemble(f_p, outs)
+
+
+def _row_starts(chunk_starts, n_target, half_integer):
+    """Per target row, the first row of the chunk that owns it (``lo < p <= hi`` doubled)."""
+    line = np.zeros((n_target, 1, 1), dtype=np.int64)
+    for row in range(n_target):
+        doubled = 2 * row + (1 if half_integer else 0)
+        line[row] = max([s for s in chunk_starts if 2 * s < doubled], default=0)
+    return line
+
+
+def _random_field(rng, shape, dtype, wall_row=False):
+    values = rng.standard_normal(shape).astype(np.float32)
+    if dtype is np.complex64:
+        values = (values + 1j * rng.standard_normal(shape).astype(np.float32)).astype(np.complex64)
+    words = values.reshape(-1).view(np.uint32)
+    words[::5] = 0x80000000  # -0 in every fifth part: a zero sign the sums must keep
+    words[3::11] = 0x00000001  # and a subnormal
+    if wall_row:
+        values[-1] = 0
+    return values
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.complex64])
+@pytest.mark.parametrize("chunk_starts", [(0,), (0, 7), (0, 3, 7)])
+@pytest.mark.parametrize("backward", [False, True])
+def test_rderiv_difference_is_meeps_per_chunk_loop_word_for_word(dtype, chunk_starts, backward):
+    """The radial difference equals MEEP's per-chunk ``f_rderiv_int`` written out, in WORDS.
+
+    The B side (forward, Ep extended by its zero wall row, ir0 = 0) and the D side
+    (backward, Hp, ir0 = 0.5), on one chunk, on two (an r layer's cut) and on three, with
+    -0 and subnormal words in the input. Pooled and allocating paths alike.
+    """
+    rng = np.random.default_rng(20261008 + len(chunk_starts) + 10 * backward)
+    rows, ir0 = (12, 0.5) if backward else (13, 0.0)
+    n_target = rows if backward else rows - 1
+    f_p = _random_field(rng, (rows, 1, 6), dtype, wall_row=not backward)
+    expected = _meep_rderiv_difference(f_p, ir0, chunk_starts, n_target, backward)
+    starts = None if chunk_starts == (0,) else _row_starts(chunk_starts, n_target, not backward)
+    for scratch in (None, StepScratch(np)):
+        got = stepping.cylindrical_rderiv_difference(np, f_p, ir0, starts, n_target,
+                                                     backward=backward, scratch=scratch)
+        assert got.dtype == f_p.dtype and got.shape == expected.shape
+        differing = int(np.count_nonzero(got.view(np.uint32) != expected.view(np.uint32)))
+        assert differing == 0, (
+            f"{differing} of {expected.size * (2 if dtype is np.complex64 else 1)} words differ "
+            f"from MEEP's per-chunk loop (starts {chunk_starts}, backward {backward}, "
+            f"pooled {scratch is not None})")
+
+
+def test_rderiv_multiplies_rinv_rather_than_dividing():
+    """MEEP stores ``rinv = 1/((ir + ir0) - 0.5)`` and MULTIPLIES; a division is another word.
+
+    The control for the word-exact test above: on the same kind of input the division form
+    differs from the function in some words, so that test can tell the two apart.
+    """
+    rng = np.random.default_rng(31)
+    f_p = _random_field(rng, (40, 1, 32), np.float32)
+    got = stepping.cylindrical_rderiv_difference(np, f_p, 0.5, None, 40, backward=True)
+    divided = _meep_rderiv_difference(f_p, 0.5, (0,), 40, True, divide=True)
+    multiplied = _meep_rderiv_difference(f_p, 0.5, (0,), 40, True)
+    assert np.array_equal(got.view(np.uint32), multiplied.view(np.uint32))
+    assert np.count_nonzero(got.view(np.uint32) != divided.view(np.uint32)) > 0
+
+
+def test_rderiv_sum_restarts_at_a_chunk_cut():
+    """Past an r cut the sum restarts at +0, so the words differ from one global sum; below it
+    they are the same words (the lower chunk's sum is the global one)."""
+    rng = np.random.default_rng(5)
+    f_p = _random_field(rng, (20, 1, 8), np.float32)
+    cut = 14
+    whole = stepping.cylindrical_rderiv_difference(np, f_p, 0.5, None, 20, backward=True)
+    split = stepping.cylindrical_rderiv_difference(np, f_p, 0.5, _row_starts((0, cut), 20, False),
+                                                   20, backward=True)
+    words, split_words = whole.view(np.uint32), split.view(np.uint32)
+    assert np.array_equal(words[:cut + 1], split_words[:cut + 1])
+    assert np.count_nonzero(words[cut + 1:] != split_words[cut + 1:]) > 0
+
+
+def test_numpy_cumsum_along_r_is_the_sequential_row_loop():
+    """The radial sum relies on NumPy's ``cumsum`` along axis 0 adding row after row.
+
+    Pinned against the explicit loop on float32 and complex64 words, -0 and subnormals
+    included: a pairwise or blocked accumulation would round differently.
+    """
+    rng = np.random.default_rng(77)
+    for dtype in (np.float32, np.complex64):
+        values = _random_field(rng, (257, 3, 5), dtype)
+        expected = np.empty_like(values)
+        expected[0] = values[0]
+        for row in range(1, values.shape[0]):
+            expected[row] = expected[row - 1] + values[row]
+        assert np.array_equal(np.cumsum(values, axis=0).view(np.uint32), expected.view(np.uint32))
+
+
+def _layered_cylindrical(m=1, courant=0.5):
+    from .fields import Fields  # noqa: PLC0415
+    from .pml import PML  # noqa: PLC0415
+
+    grid = Grid(resolution=10.0, cell_size=(2.0, 0.0, 4.0), cylindrical=True, m=m,
+                courant=courant, boundaries={"z": METALLIC})
+    fields = Fields(grid=grid, force_complex_fields=True)
+    pml = PML(grid=grid, thickness={"x": (0, 5), "z": (5, 5)})
+    fields.enable_pml_storage()
+    return grid, fields, pml
+
+
+def test_scan_starts_follow_the_layer_chunk_cut():
+    """An r-high layer of 5 cells at resolution 10 cuts r at doubled 28 (row 14), as MEEP's
+    m1_pml chunk division does: Dz rows 1-14 and Bz rows 0-13 sum from the axis, the rows
+    past them from row 14. With no layer there is one chunk."""
+    grid, fields, pml = _layered_cylindrical()
+    dz = np.asarray(stepping._cylindrical_scan_starts(fields, pml, "Dz")).reshape(-1)
+    bz = np.asarray(stepping._cylindrical_scan_starts(fields, pml, "Bz")).reshape(-1)
+    assert dz.tolist() == [0] * 15 + [14] * 5
+    assert bz.tolist() == [0] * 14 + [14] * 6
+    plain = Grid(resolution=10.0, cell_size=(2.0, 0.0, 4.0), cylindrical=True, m=1)
+    from .fields import Fields  # noqa: PLC0415
+
+    assert stepping._cylindrical_scan_starts(Fields(grid=plain, force_complex_fields=True),
+                                             None, "Dz") is None
+
+
+def _meep_imr_rinv(grid, target, sign, rows):
+    real = np.float32
+    the_m = real(sign * 2.0 * grid.m * grid.courant)
+    shift = stepping.IYEE_SHIFTS[target][0]
+    here_r = np.maximum(2 * np.arange(rows) + shift, 1).astype(real).reshape(-1, 1, 1)
+    return the_m / here_r
+
+
+@pytest.mark.parametrize("target,sign", [("Bx", +1.0), ("Bz", -1.0), ("Dx", -1.0), ("Dz", +1.0)])
+def test_imr_increment_is_meeps_realnum_quotient_per_part(target, sign):
+    """``the_m`` rounded to realnum, ``rinv = the_m / r`` a realnum QUOTIENT, then
+    ``re += rinv*g.im`` and ``im += (-rinv)*g.re``, returned negated, in words. At Courant
+    0.3 a double ``2m*Courant/r`` rounded once is a different word in some rows, which
+    makes the quotient's spelling visible."""
+    grid = Grid(resolution=10.0, cell_size=(2.0, 0.0, 4.0), cylindrical=True, m=3, courant=0.3)
+    from .fields import Fields  # noqa: PLC0415
+
+    fields = Fields(grid=grid, force_complex_fields=True)
+    rng = np.random.default_rng(13)
+    partner = _random_field(rng, grid.shape, np.complex64)
+    got = stepping._cylindrical_imr_increment(fields, target, partner, sign)
+    rinv = _meep_imr_rinv(grid, target, sign, grid.shape[0])
+    expected = np.empty_like(partner)
+    expected.real = -(rinv * partner.imag)
+    expected.imag = -((-rinv) * partner.real)
+    assert np.array_equal(got.view(np.uint32), expected.view(np.uint32))
+    shift = stepping.IYEE_SHIFTS[target][0]
+    doubled = np.maximum(2 * np.arange(grid.shape[0]) + shift, 1).reshape(-1, 1, 1)
+    once = ((sign * 2.0 * grid.m * grid.courant) / doubled).astype(np.float32)
+    assert np.count_nonzero(once != rinv) > 0
+
+
+@pytest.mark.parametrize("side", ["B", "D"])
+def test_imr_pass_takes_meeps_ladders_after_the_curl(side):
+    """The i*m/r pass is its own increment after the curl, through MEEP's ladder.
+
+    With the curl's own partner zero (Ep on the B side, Hp on the D side) and the targets
+    and their ``fu`` zero, the curl adds a signed zero and the R and Z targets carry the
+    pass alone: an R target (Bx, Dx), whose dsig is phi and dsigu z, takes ``f += raw``
+    outside a z-layer chunk and ``fu += raw; f += siginvu*raw`` inside one; a Z target
+    (Bz, Dz), whose dsig is r and dsigu phi, takes ``f += raw``, or ``f += raw*siginv`` in
+    an r-layer chunk, and never writes ``fu``. Compared by value (the curl's signed zero
+    under a negative ``kap - sig`` is not this test's subject); an unowned cell (the
+    metallic z wall row of the z-shift-0 target) keeps its -0 word.
+    """
+    grid, fields, pml = _layered_cylindrical()
+    rng = np.random.default_rng(2)
+    partners = ("Ex", "Ez") if side == "B" else ("Hx", "Hz")
+    zero_partner = "Ey" if side == "B" else "Hy"
+    for name in partners:
+        getattr(fields, name)[...] = _random_field(rng, grid.shape, np.complex64)
+    getattr(fields, zero_partner)[...] = 0
+    targets = ("Bx", "Bz") if side == "B" else ("Dx", "Dz")
+    for name in targets + tuple("fu_" + t for t in targets):
+        array = getattr(fields, name, None)
+        if array is not None:
+            array[...] = 0
+    wall_target = next(t for t in targets if stepping.IYEE_SHIFTS[t][2] == 0)
+    getattr(fields, wall_target)[:, :, 0] = np.complex64(complex(-0.0, -0.0))
+    snapshot = {name: np.array(getattr(fields, name)) for name in partners}
+    (stepping.step_B if side == "B" else stepping.step_D)(fields, pml)
+    plan = stepping._region_plan(fields, pml)
+    half = side == "B"
+    table = stepping._CYLINDRICAL_IMR_B if side == "B" else stepping._CYLINDRICAL_IMR_D
+    assert tuple(term.target for term, _, _ in table) == targets
+    for term, partner, sign in table:
+        raw = -stepping._cylindrical_imr_increment(fields, term.target, snapshot[partner], sign)
+        mask = np.ones(grid.shape, dtype=np.float32)
+        stepping._mask_non_owned_cells(mask, grid, term.iyee)
+        live = mask != 0
+        live[0] = False  # the axis row: the per-m axis rules', not the pass's
+        field = np.asarray(getattr(fields, term.target))
+        _kms, sinv = stepping._curl_coefficients(pml, term.dsig, half_integer=half)
+        _kms_u, sinv_u = stepping._curl_coefficients(pml, term.dsigu, half_integer=half)
+        if term.target in ("Bx", "Dx"):
+            inside = np.broadcast_to(plan.mask("curl", term.target, np), grid.shape)
+            assert np.count_nonzero(inside & live) > 0 and np.count_nonzero(~inside & live) > 0
+            expected = np.where(inside, stepping.part_products.scale(sinv_u, raw), raw)
+            fu = np.asarray(getattr(fields, "fu_" + term.target))
+            assert np.array_equal(fu[inside & live], raw[inside & live])
+            assert np.count_nonzero(fu[~inside]) == 0, "fu written outside its chunks"
+        else:
+            dsig = np.broadcast_to(plan.axis_mask(0, term.target, np), grid.shape)
+            assert np.count_nonzero(dsig & live) > 0
+            expected = np.where(dsig, stepping.part_products.scale(sinv, raw), raw)
+            fu = getattr(fields, "fu_" + term.target, None)
+            assert fu is None or np.count_nonzero(fu) == 0
+        assert np.count_nonzero(raw[live]) > 0
+        assert np.array_equal(field[live], expected[live]), term.target
+    # The wall rows outside the target's dsig chunks: there the curl's form is ``f - curl``
+    # with the curl masked to +0, which keeps the word, so what is checked is the pass's own
+    # treatment of a cell MEEP's loop never visits. (Inside an r-layer chunk the
+    # dsig-only form multiplies by ``kap - sig``, which is negative deep in the layer.)
+    wall_term = next(term for term, _, _ in table if term.target == wall_target)
+    dsig_axis = stepping.AXIS_NAMES.index(wall_term.dsig)
+    outside = ~np.broadcast_to(plan.axis_mask(dsig_axis, wall_target, np), grid.shape)[:, :, 0]
+    wall = np.asarray(getattr(fields, wall_target))[:, :, 0][outside]
+    assert wall.size > 0
+    assert np.all(wall.view(np.uint32) == 0x80000000), f"{wall_target}'s unowned -0 did not survive"
+
+
+def _plain_cylindrical(m, courant):
+    from .fields import Fields  # noqa: PLC0415
+
+    grid = Grid(resolution=10.0, cell_size=(2.0, 0.0, 4.0), cylindrical=True, m=m,
+                courant=courant, boundaries={"z": METALLIC})
+    fields = Fields(grid=grid, force_complex_fields=m != 0)
+    return grid, fields
+
+
+def _double_product(factor, values):
+    parts = [(p.astype(np.float64) * factor).astype(np.float32) for p in _parts(values)]
+    return _assemble(values, parts)
+
+
+def test_m0_axis_rule_is_meeps_double_courant_product():
+    """m = 0: ``Dz[axis] += realnum(double(Hp[0]) * (Courant*4))`` (step_db.cpp:324), the
+    product in double and rounded once, then a realnum add; ``Dp[axis] = 0``. At Courant 0.3
+    a float32 ``4*Courant`` times Hp is a different word in some columns."""
+    grid, fields = _plain_cylindrical(0, 0.3)
+    rng = np.random.default_rng(3)
+    fields.By[...] = _random_field(rng, grid.shape, np.float32)
+    fields.Dz[...] = _random_field(rng, grid.shape, np.float32)
+    fields.Dy[...] = 1.0
+    hp, before = np.array(fields.By[0]), np.array(fields.Dz)
+    stepping._cylindrical_axis_zero_D(fields)
+    expected = before[0] + _double_product(4.0 * 0.3, hp)
+    assert np.array_equal(np.asarray(fields.Dz[0]).view(np.uint32), expected.view(np.uint32))
+    assert np.array_equal(np.asarray(fields.Dz[1:]), before[1:])
+    assert np.count_nonzero(np.asarray(fields.Dy[0])) == 0
+    float_form = before[0] + np.float32(4.0 * 0.3) * hp
+    assert np.count_nonzero(float_form.view(np.uint32) != expected.view(np.uint32)) > 0
+
+
+@pytest.mark.parametrize("side", ["B", "D"])
+def test_m1_axis_increment_is_meeps_double_courant_product(side):
+    """|m| = 1: ``dfcnd = (sd*Courant) * (f_p[i] - f_p[i-sd] - f_m_mult*f_m[i])`` per part
+    (step_db.cpp:377): the bracket in realnum, left to right, then a double product rounded
+    once. D: sd = +1, f_p = Hr, f_m = Hz, f_m_mult = 2. B: sd = -1, f_p = Ep, f_m = Ez's
+    OTHER part one row off the axis, f_m_mult = (1-2*cmp)*m. Interior z columns (the wall
+    ghost is the shift helpers' subject). At Courant 0.3 a float32 factor is another word."""
+    grid, fields = _plain_cylindrical(1, 0.3)
+    rng = np.random.default_rng(11 if side == "B" else 12)
+    names = ("Ex", "Ey", "Ez") if side == "B" else ("Hx", "Hy", "Hz")
+    values = {n: _random_field(rng, grid.shape, np.complex64) for n in names}
+    boundaries = stepping._boundary_kinds(grid, None)
+    phases = stepping._bloch_phases(grid, boundaries, values[names[0]], None)
+    if side == "B":
+        target, got = stepping._cylindrical_axis_increment_B(fields, values, boundaries, phases, 0.03)
+        ep, ez1 = values["Ey"][0], values["Ez"][1]
+        bracket_re = (ep.real[:, :-1] - ep.real[:, 1:]) - np.float32(1) * ez1.imag[:, :-1]
+        bracket_im = (ep.imag[:, :-1] - ep.imag[:, 1:]) - np.float32(-1) * ez1.real[:, :-1]
+        factor, cols, assert_target = -0.3, slice(0, -1), "Bx"
+    else:
+        target, got = stepping._cylindrical_axis_increment_D(fields, values, boundaries, phases, 0.03)
+        hr, hz = values["Hx"][0], values["Hz"][0]
+        bracket_re = (hr.real[:, 1:] - hr.real[:, :-1]) - np.float32(2) * hz.real[:, 1:]
+        bracket_im = (hr.imag[:, 1:] - hr.imag[:, :-1]) - np.float32(2) * hz.imag[:, 1:]
+        factor, cols, assert_target = 0.3, slice(1, None), "Dy"
+    assert target == assert_target
+    bracket = np.empty(bracket_re.shape, np.complex64)
+    bracket.real, bracket.imag = bracket_re, bracket_im
+    expected = _double_product(factor, bracket)
+    got = np.asarray(got)[:, cols]
+    assert np.array_equal(got.view(np.uint32), expected.view(np.uint32))
+    float_form = _assemble(bracket, [np.float32(factor) * p for p in _parts(bracket)])
+    assert np.count_nonzero(float_form.view(np.uint32) != expected.view(np.uint32)) > 0

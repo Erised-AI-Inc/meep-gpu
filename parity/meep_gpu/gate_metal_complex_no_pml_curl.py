@@ -6,6 +6,17 @@ Metal mirrors.  It intentionally covers only the curl pair: a whole-driver
 residency seam remains a distinct certification step.  One JSONL row is flushed
 after every product or mutation so an interrupted Apple-GPU run retains all
 completed evidence.
+
+Every plan binds the chunk record of its case's grid
+(``complex_no_pml_gate_common.case_record``: the composer's one-rank
+division), whose partner-presence word decides the stencil form. The cases, the
+planted signed-zero state and the mutation rows are the common module's, shared
+with the conductive gate: the products cover 3-D, 2-D and 1-D grids, a 3-D grid
+storing one cell on a live axis, phased, Brillouin-edge and metallic axes; the
+planted leg requires the shipped kernel to reproduce a state holding ``-0`` on every
+target part; the mutations invert the old flattened-grouping row to the previous
+pairwise bracket (KERNELS.md §7.1) and arm the absent-partner, connection and
+presence rows, each absent-arm row beside a declared-null twin.
 """
 
 from __future__ import annotations
@@ -17,18 +28,21 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, Mapping, Sequence, Tuple
+from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
 
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 API_ROOT = Path(__file__).resolve().parents[2]
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
+HERE = str(Path(__file__).resolve().parent)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 
 import numpy as np  # noqa: E402
 
+import complex_no_pml_gate_common as common  # noqa: E402
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.fields import Fields  # noqa: E402
-from meep_gpu.grid import Grid  # noqa: E402
 from meep_gpu.metal_kernels import complex_no_pml_curl as family  # noqa: E402
 from meep_gpu.metal_kernels import shaders, subnormal  # noqa: E402
 from meep_gpu.metal_kernels.device import (  # noqa: E402
@@ -36,30 +50,9 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
     compile_source,
     metal_frontend_version,
 )
-from meep_gpu.pml import PML  # noqa: E402
 
-PROBE = {
-    "backend": "numpy",
-    "patterns": {
-        name: "FMA_V1"
-        for name in (
-            "c8_mul_c8", "c8_mul_c8_scalar_right", "c8_mul_f4_field_left",
-            "f4_mul_c8_coefficient_left", "python_float_left",
-        )
-    },
-}
-
-
-def words(value: Any) -> np.ndarray:
-    """View all float32 words without changing complex layout."""
-    array = np.ascontiguousarray(value)
-    if array.dtype not in (np.dtype(np.float32), np.dtype(np.complex64)):
-        raise TypeError(f"expected float32 or complex64, got {array.dtype}")
-    return array.reshape(-1).view(np.uint32)
-
-
-def differing(left: Any, right: Any) -> int:
-    return int(np.count_nonzero(words(left) != words(right)))
+words = common.words
+differing = common.differing
 
 
 def sha256_bytes(payload: bytes) -> str:
@@ -70,26 +63,7 @@ def sha256_file(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
 
 
-def build(*, seed: int, cell_size: Sequence[float], phase: Sequence[float],
-          boundaries: Sequence[str]) -> Tuple[Fields, PML]:
-    """Build one live complex lossless state with nontrivial curl operands."""
-    grid = Grid(resolution=8.0, cell_size=tuple(cell_size), courant=0.3,
-                boundaries=tuple(boundaries), k_point=tuple(phase), xp=np)
-    fields = Fields(grid=grid, force_complex_fields=True)
-    fields.set_background_eps(2.25)
-    fields.enable_field_storage()
-    rng = np.random.default_rng(seed)
-    for name in ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez",
-                 "Hx", "Hy", "Hz"):
-        array = getattr(fields, name, None)
-        if array is not None:
-            array[...] = (
-                rng.uniform(-0.3, 0.3, grid.shape).astype(np.float32)
-                + 1j * rng.uniform(-0.3, 0.3, grid.shape).astype(np.float32))
-    return fields, PML(grid=grid, thickness=0)
-
-
-def compared_names(fields: Fields) -> Tuple[str, ...]:
+def compared_names(fields: Fields) -> Sequence[str]:
     return ("Bx", "By", "Bz", "Dx", "Dy", "Dz")
 
 
@@ -97,22 +71,22 @@ def subnormal_words(fields: Fields, names: Iterable[str]) -> int:
     return sum(subnormal.census(getattr(fields, name)) for name in names)
 
 
-def execute_case(*, seed: int, cycles: int, cell_size: Sequence[float],
-                 phase: Sequence[float], boundaries: Sequence[str],
+def execute_case(*, case: str, seed: int, cycles: int, planted: bool = False,
                  b_functions: Mapping[str, Any] | None = None,
-                 ) -> Dict[str, Any]:
-    """Run B then D beside their exact NumPy sub-step oracle."""
-    reference, reference_pml = build(
-        seed=seed, cell_size=cell_size, phase=phase, boundaries=boundaries)
-    actual, actual_pml = build(
-        seed=seed, cell_size=cell_size, phase=phase, boundaries=boundaries)
+                 every_axis_present: bool = False) -> Dict[str, Any]:
+    """Run B then D beside their exact NumPy sub-step oracle on one case."""
+    reference, reference_pml = common.build(case, seed=seed, planted=planted)
+    actual, actual_pml = common.build(case, seed=seed, planted=planted)
     names = compared_names(actual)
     before = {name: np.array(getattr(actual, name), copy=True) for name in names}
+    record = common.case_record(actual, actual_pml)
+    bound = common.all_axes_present(record) if every_axis_present else record
     residency = Residency()
     b_plan = family.plan_metal_complex_no_pml_curl(
-        actual, actual_pml, "step_B", residency, probe=PROBE, functions=b_functions)
+        actual, actual_pml, "step_B", residency, functions=b_functions,
+        chunk_bounds=bound)
     d_plan = family.plan_metal_complex_no_pml_curl(
-        actual, actual_pml, "step_D", residency, probe=PROBE)
+        actual, actual_pml, "step_D", residency, chunk_bounds=bound)
     if b_plan is None or d_plan is None:
         return {"passed": False, "reason": "a declared no-PML product was refused"}
     residency.sync_in()
@@ -144,48 +118,64 @@ def execute_case(*, seed: int, cycles: int, cell_size: Sequence[float],
         "passed": (len(per_cycle) == cycles
                    and all(row["differing_words"] == 0
                            and row["reference_subnormals"] == 0 for row in per_cycle)
-                   and moved > 0 and b_plan.launches == len(per_cycle)
+                   and (moved > 0 or planted) and b_plan.launches == len(per_cycle)
                    and d_plan.launches == len(per_cycle)),
         "per_cycle": per_cycle,
         "differing_words": per_cycle[-1]["differing_words"],
+        "compared_words": sum(2 * getattr(actual, name).size for name in names),
         "reference_subnormals": per_cycle[-1]["reference_subnormals"],
+        "reference_negative_zeros": sum(common.negative_zeros(getattr(reference, name))
+                                        for name in names),
         "moved_words": moved,
+        "record_presence": int(np.asarray(bound)[-1]),
         "b_launches": b_plan.launches,
         "d_launches": d_plan.launches,
         "mirrors": len(residency.names),
     }
 
 
-def mutation_sources() -> Dict[str, str]:
-    """Independent source faults, all exercised on a phased periodic B row."""
-    source = family.complex_no_pml_curl_source(
-        (0, 0, 0), False, (1, 1, 0), "FMA_V1")
-    wrong_tail = source
-    for index in range(3):
-        wrong_tail = wrong_tail.replace(
-            f"f{index}[ii] = f{index}[ii] - curl{index};",
-            f"f{index}[ii] = f{index}[ii] + curl{index};", 1)
-    flat_curl = source.replace(
-        "float2 t0 = ((c_y - c) + (b - b_z));",
-        "float2 t0 = (c_y - c + b - b_z);", 1)
-    dropped_phase = source.replace(
-        "b_x = wx ? c_mul(b_x, px) : b_x;", "// dropped b_x phase", 1)
-    return {
-        "curl_subtraction_reversed": wrong_tail,
-        "curl_grouping_flattened": flat_curl,
-        "bloch_x_rotation_dropped": dropped_phase,
-    }
+def _shipped_b_source(case: str) -> str:
+    codes, kinds = common.b_specialization(case)
+    return family.complex_no_pml_curl_source(codes, False, kinds)
 
 
-def source_provenance() -> Dict[str, Any]:
+def mutation_rows():
+    """(label, case, mutated step_B source, expectation, planted, every-axis-present).
+
+    The lossless tail row is this gate's own; the stencil, connection and presence
+    rows are the common module's (shared with the conductive gate).
+    """
+    rows = []
+
+    def reversed_tail(text: str) -> str:
+        for index in range(3):
+            text = common.needle(text, f"f{index}[ii] = f{index}[ii] - curl{index};",
+                                 f"f{index}[ii] = f{index}[ii] + curl{index};")
+        return text
+
+    table = [("curl_subtraction_reversed", "two_axis_bloch", reversed_tail, "caught",
+              False, False)] + common.curl_mutations()
+    for label, case, transform, expectation, planted, present in table:
+        rows.append((label, case, transform(_shipped_b_source(case)), expectation,
+                     planted, present))
+    return rows
+
+
+def source_provenance(rows) -> Dict[str, Any]:
     specializations = {}
-    for codes, phased in (((0, 0, 0), (1, 1, 0)),
-                          ((1, 0, 1), (0, 1, 0)),
-                          ((0, 0, 0), (0, 0, 0))):
+    for case in common.CASES:
+        codes, _ = common.b_specialization(case)
         for sub_step in ("step_B", "step_D"):
+            grid = common.grid_for(case)
+            resolved = stepping._boundary_kinds(grid, None)
+            from meep_gpu.metal_kernels import complex_fields  # noqa: PLC0415
+
+            kinds, _values = complex_fields.phase_arguments(
+                complex_fields.bloch_phase_table(grid, resolved),
+                backward=sub_step == "step_D")
             source = family.complex_no_pml_curl_source(
-                codes, sub_step == "step_D", phased, "FMA_V1")
-            specializations[f"{sub_step}/{codes}/{phased}"] = sha256_bytes(
+                codes, sub_step == "step_D", kinds)
+            specializations[f"{sub_step}/{codes}/{kinds}"] = sha256_bytes(
                 source.encode("utf-8"))
     return {
         "files": {
@@ -193,11 +183,13 @@ def source_provenance() -> Dict[str, Any]:
             "shared_stencil": sha256_file(Path(family.__file__).resolve().with_name(
                 "complex_no_pml_conductive.py")),
             "gate": sha256_file(Path(__file__).resolve()),
+            "common": sha256_file(Path(common.__file__).resolve()),
         },
+        "cases": common.provenance_cases(),
         "specialized_metal_sources": specializations,
         "mutation_metal_sources": {
             label: sha256_bytes(source.encode("utf-8"))
-            for label, source in mutation_sources().items()
+            for label, _case, source, *_rest in rows
         },
     }
 
@@ -206,8 +198,14 @@ def emit(handle, row: Dict[str, Any]) -> None:
     handle.write(json.dumps(row, sort_keys=True) + "\n")
     handle.flush()
     os.fsync(handle.fileno())
-    print(f"{row['index']}/{row['total']} {row['label']}: "
-          f"diff={row.get('differing_words', '-')}", flush=True)
+    print(f"{row['index']}/{row['total']} {row['leg']} {row['label']}: "
+          f"diff={row.get('differing_words', '-')} passed={row.get('passed')}",
+          flush=True)
+
+
+PRODUCTS = ("two_axis_bloch", "zero_phase_control", "metallic_xz_bloch_y",
+            "collapsed_y", "brillouin_edge_x", "planar_2d_bloch", "planar_2d_edge_y",
+            "planar_2d_metallic_x", "line_1d_z")
 
 
 def main() -> int:
@@ -222,58 +220,63 @@ def main() -> int:
 
     if not torch.backends.mps.is_available():
         raise SystemExit("MPS is not available; this gate must run on an Apple GPU")
-    products = (
-        ("two_axis_bloch", (1.0, 0.875, 0.75), (0.2, -0.125, 0.0),
-         ("periodic", "periodic", "periodic")),
-        ("zero_phase_control", (1.0, 0.875, 0.75), (0.0, 0.0, 0.0),
-         ("periodic", "periodic", "periodic")),
-        ("metallic_xz_bloch_y", (1.0, 0.875, 0.75), (0.0, 0.125, 0.0),
-         ("metallic", "periodic", "metallic")),
-        ("collapsed_y", (1.25, 0.0625, 0.75), (0.2, 0.0, 0.0),
-         ("periodic", "periodic", "periodic")),
-    )
-    mutations = mutation_sources()
-    total = len(products) + len(mutations)
+    mutations = mutation_rows()
+    total = len(PRODUCTS) + len(common.PLANTED_CASES) + len(mutations)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     jsonl = args.out.with_suffix(".jsonl")
     rows = []
     started = time.perf_counter()
+    index = 0
     with jsonl.open("w", encoding="utf-8") as handle:
-        for index, (label, cell_size, phase, boundaries) in enumerate(products, 1):
-            result = execute_case(seed=20000 + index, cycles=args.cycles,
-                                  cell_size=cell_size, phase=phase,
-                                  boundaries=boundaries)
-            row = {"index": index, "total": total, "leg": "product", "label": label,
-                   "cell_size": cell_size, "phase": phase, "boundaries": boundaries,
-                   "cycles": args.cycles, **result}
+        for number, case in enumerate(PRODUCTS, 1):
+            index += 1
+            result = execute_case(case=case, seed=20000 + number, cycles=args.cycles)
+            row = {"index": index, "total": total, "leg": "product", "label": case,
+                   "case": case, "cycles": args.cycles, **result}
             rows.append(row)
             emit(handle, row)
-        offset = len(products)
-        for number, (label, source) in enumerate(mutations.items(), 1):
+        for number, (label, case) in enumerate(common.PLANTED_CASES, 1):
+            index += 1
+            result = execute_case(case=case, seed=20500 + number, cycles=args.cycles,
+                                  planted=True)
+            row = {"index": index, "total": total, "leg": "planted_zero",
+                   "label": label, "case": case, "cycles": args.cycles, **result}
+            row["passed"] = bool(result["passed"]
+                                 and result.get("reference_negative_zeros", 0) > 0)
+            rows.append(row)
+            emit(handle, row)
+        for number, (label, case, source, expectation, planted, present) in enumerate(
+                mutations, 1):
+            index += 1
             function = compile_source(source).complex_no_pml_conductive_curl_step
-            result = execute_case(seed=21000 + number, cycles=1,
-                                  cell_size=(1.0, 0.875, 0.75),
-                                  phase=(0.2, -0.125, 0.0),
-                                  boundaries=("periodic", "periodic", "periodic"),
-                                  b_functions={shaders.CONTRACT_OFF: function})
+            result = execute_case(case=case, seed=21000 + number, cycles=1,
+                                  planted=planted,
+                                  b_functions=(None if present else
+                                               {shaders.CONTRACT_OFF: function}),
+                                  every_axis_present=present)
             diff = int(result.get("differing_words", 0))
-            row = {"index": offset + number, "total": total, "leg": "mutation",
-                   "label": label, "differing_words": diff,
-                   "b_launches": result.get("b_launches"),
-                   "caught": diff > 0,
-                   "passed": bool(result.get("b_launches") == 1 and diff > 0)}
+            caught = diff > 0
+            launched = result.get("b_launches") == 1
+            row = {"index": index, "total": total, "leg": "mutation",
+                   "label": label, "case": case, "expectation": expectation,
+                   "planted": planted, "differing_words": diff,
+                   "compared_words": result.get("compared_words"),
+                   "b_launches": result.get("b_launches"), "caught": caught,
+                   "passed": bool(launched and (caught if expectation == "caught"
+                                                else not caught))}
             rows.append(row)
             emit(handle, row)
     result = {
         "verdict": "PASS" if all(row["passed"] for row in rows) else "FAIL",
         "elapsed_seconds": time.perf_counter() - started,
-        "product_rows": len(products),
+        "product_rows": len(PRODUCTS),
+        "planted_rows": len(common.PLANTED_CASES),
         "mutation_rows": len(mutations),
         "rows": rows,
         "torch_version": torch.__version__,
         "metal_frontend": metal_frontend_version(),
         "subnormal_policy": subnormal.mps_policy_report("flush"),
-        "source_provenance": source_provenance(),
+        "source_provenance": source_provenance(mutations),
         "jsonl": str(jsonl),
     }
     from gate_provenance import stamp as _stamp_provenance  # noqa: PLC0415

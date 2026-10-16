@@ -11,7 +11,12 @@ BEFORE any device time is spent:
 bytewise, over shape x boundary x dtdx x E-storage-mode, with a real ``Grid`` and
 a real ``Fields``. Both storage modes are swept because they are DIFFERENT
 sub-steps: ``stores_E`` False derives ``D * inv_eps`` per sub-step, True reads
-the stored arrays.
+the stored arrays. The reference takes MEEP's grouping (``kernel_order``) and the
+grid's own partner presence (``Grid.is_invariant``); the control is the package's
+pre-alignment grouping (``pairwise_order``), which must disagree wherever both partners
+of some component are present and the Courant factor is not a power of two. The
+shapes carry 3-D runs with a one-cell resolved axis (both partners) and a 2-D run
+(z invariant: the one-partner forms).
 
 Run::
 
@@ -51,6 +56,9 @@ SIDE = {
 }
 
 SHAPES = ((16, 12, 8), (10, 1, 10), (24, 24, 1), (7, 9, 11))
+#: The run's dimensionality per shape: every shape above at 3-D, and (24, 24, 1) at
+#: 2-D as well, where z is invariant.
+DIMENSIONED_SHAPES = tuple((shape, 3) for shape in SHAPES) + (((24, 24, 1), 2),)
 BOUNDARY_SETS = (
     ("periodic", "periodic", "periodic"),
     ("metallic", "metallic", "metallic"),
@@ -67,10 +75,11 @@ def log(message: str) -> None:
     print(message, flush=True)
 
 
-def build(shape, boundaries, dtdx, storage: str):
-    grid = Grid(resolution=1.0,
-                cell_size=(float(shape[0]), float(shape[1]), float(shape[2])),
-                courant=dtdx, boundaries=tuple(boundaries), dimensions=3, xp=np)
+def build(shape, boundaries, dtdx, storage: str, dimensions: int = 3):
+    cell = tuple(float(n) if axis < dimensions else 0.0 for axis, n in enumerate(shape))
+    grid = Grid(resolution=1.0, cell_size=cell,
+                courant=dtdx, boundaries=tuple(boundaries), dimensions=dimensions,
+                xp=np)
     if tuple(grid.shape) != tuple(shape):
         raise RuntimeError(f"Grid built {tuple(grid.shape)} for {tuple(shape)}")
     if float(grid.dt / grid.dx) != float(dtdx):
@@ -102,8 +111,10 @@ def seed(fields, shape, rng, storage: str) -> None:
         inverse[...] = rng.uniform(0.25, 1.0, size=shape).astype(np.float32)
 
 
-def one_case(shape, boundaries, dtdx, sub_step, storage) -> Dict[str, Any]:
-    case: Dict[str, Any] = {"shape": list(shape), "boundaries": list(boundaries),
+def one_case(shape, boundaries, dtdx, sub_step, storage,
+             dimensions: int = 3) -> Dict[str, Any]:
+    case: Dict[str, Any] = {"shape": list(shape), "dimensions": dimensions,
+                            "boundaries": list(boundaries),
                             "dtdx": dtdx, "sub_step": sub_step, "storage": storage}
     walled_invariant = [a for a in range(3)
                         if shape[a] == 1 and boundaries[a] == "metallic"]
@@ -111,7 +122,7 @@ def one_case(shape, boundaries, dtdx, sub_step, storage) -> Dict[str, Any]:
         case["skipped"] = f"axis {walled_invariant[0]} is one cell and metallic"
         return case
     try:
-        grid, fields = build(shape, boundaries, dtdx, storage)
+        grid, fields = build(shape, boundaries, dtdx, storage, dimensions)
     except Exception as exc:  # noqa: BLE001
         case["skipped"] = f"{type(exc).__name__}: {exc}"[:300]
         return case
@@ -146,18 +157,20 @@ def one_case(shape, boundaries, dtdx, sub_step, storage) -> Dict[str, Any]:
     else:
         # get_H returns the B array itself without PML (fields.py:1184).
         sources = {"Hx": before["Bx"], "Hy": before["By"], "Hz": before["Bz"]}
+    presence = tuple(not grid.is_invariant(axis) for axis in range(3))
+    case["presence"] = list(presence)
     state = {n: before[n].copy() for n in target_names}
     ref.reference_plain_step(np, sources, state, np.float32(dtdx), sub_step,
-                             tuple(boundaries), "array_order")
+                             tuple(boundaries), "kernel_order", presence=presence)
     case["vs_stepping"] = ref.combine(
         {n: ref.bit_compare(array_path[n], state[n]) for n in target_names})
 
-    # NEGATIVE CONTROL. Regroup the stencil to C's left-to-right association and
-    # require a DISAGREEMENT — only asserted where dtdx is not exactly
-    # representable, because at 0.5 the two groupings legitimately coincide.
+    # NEGATIVE CONTROL. Regroup the stencil to the package's pre-alignment pairwise
+    # association and require a DISAGREEMENT — only asserted where dtdx is not
+    # exactly representable, because at 0.5 the two groupings legitimately coincide.
     control = {n: before[n].copy() for n in target_names}
     ref.reference_plain_step(np, sources, control, np.float32(dtdx), sub_step,
-                             tuple(boundaries), "kernel_order")
+                             tuple(boundaries), "pairwise_order", presence=presence)
     regrouped = ref.combine({n: ref.bit_compare(array_path[n], control[n])
                              for n in target_names})
     case["regrouped_control"] = {
@@ -192,23 +205,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     started = time.time()
     cases: List[Dict[str, Any]] = []
-    total = (len(SHAPES) * len(BOUNDARY_SETS) * len(COURANTS) * len(SIDE) * len(STORAGE))
+    total = (len(DIMENSIONED_SHAPES) * len(BOUNDARY_SETS) * len(COURANTS) * len(SIDE)
+             * len(STORAGE))
     index = 0
-    for shape in SHAPES:
+    for shape, dimensions in DIMENSIONED_SHAPES:
         for boundaries in BOUNDARY_SETS:
             for dtdx in COURANTS:
                 for sub_step in SIDE:
                     for storage in STORAGE:
                         index += 1
-                        case = one_case(shape, boundaries, dtdx, sub_step, storage)
+                        case = one_case(shape, boundaries, dtdx, sub_step, storage,
+                                        dimensions)
                         cases.append(case)
                         if "skipped" in case:
-                            log(f"case {index}/{total} {shape} {boundaries} "
+                            log(f"case {index}/{total} {shape} {dimensions}-D {boundaries} "
                                 f"dtdx={dtdx} {sub_step} {storage}: SKIP "
                                 f"{case['skipped']}")
                         else:
                             verdict = case["vs_stepping"]
-                            log(f"case {index}/{total} {shape} {boundaries} "
+                            log(f"case {index}/{total} {shape} {dimensions}-D {boundaries} "
                                 f"dtdx={dtdx} {sub_step} {storage}: "
                                 f"identical={verdict['bit_identical']} "
                                 f"ndiff={verdict['differing_floats']} "

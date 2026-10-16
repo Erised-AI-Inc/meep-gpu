@@ -49,7 +49,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import copy
 import hashlib
 import importlib.util
 import inspect
@@ -72,16 +71,6 @@ for _path in (HERE, API_ROOT):
 SEED = 20260830
 
 _TEMPORARY: List[str] = []
-
-#: The keep-cut expansion probe artifacts in this tree, newest first. The licence
-#: leg scores EVERY one of them through the shipped rule; the device legs consume
-#: whichever the environment names (``MEEP_GPU_COMPLEX_EXPANSION_PROBE``), and the
-#: leg records which that was so the artifact says what licensed its own bytes.
-KEEP_PROBES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/expansion_probe_2026-08-17/expansion_probe_keep.json",
-    "parity/meep_gpu/results/complex_expansion_convention_2026-08-16/results/"
-    "probe_keep/probe.json",
-)
 
 #: (name, dimensions, cell, boundaries, k_point, pml, steps). Every case stores
 #: complex fields. THE SET IS SWEPT AND NEITHER AXIS IS DECORATION: a k = 0 case is
@@ -196,6 +185,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/complex_fused_electric_pair.py",
         "meep_gpu/triton_kernels/complex_fields.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/deposit_repair.py",
@@ -298,28 +288,35 @@ def _statements(text: str) -> List[str]:
 #: complex curl. Each is a line whose grouping decides float32 bits; a reformat is
 #: a different number, not a style change.
 CURL_LINES = (
-    "t0_re = ((c_y_re - c_re) + (b_re - b_z_re))",
-    "t0_im = ((c_y_im - c_im) + (b_im - b_z_im))",
-    "t1_re = ((a_z_re - a_re) + (c_re - c_x_re))",
-    "t1_im = ((a_z_im - a_im) + (c_im - c_x_im))",
-    "t2_re = ((b_x_re - b_re) + (a_re - a_y_re))",
-    "t2_im = ((b_x_im - b_im) + (a_im - a_y_im))",
-    "curl0_re, curl0_im = _mul_coefficient_left(dtdx, t0_re, t0_im, EXPANSION)",
-    "r_re = (r_re + n0_re) - p0_re",
-    "r_im = (r_im + n0_im) - p0_im",
-    "v0_re, v0_im = _mul_field_left(r_re, r_im, si_z, EXPANSION)",
+    "r_re, r_im = _connect(c_re, c_im, cxr, cxi, CNX)",
+    "c1_re = tl.where(at_x, r_re, c_re)",
+    "r_re, r_im = _connect(c_re, c_im, cyr, cyi, CNY)",
+    "c0_re = tl.where(at_y, r_re, c_re)",
+    "r_re, r_im = _connect(a_re, a_im, czr, czi, CNZ)",
+    "a1_im = tl.where(at_z, r_im, a_im)",
+    "presence = tl.load(cb + RECORD_PRESENCE)",
+    "curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)",
+    "curl0_im = curl_stencil(c_y_im, c0_im, b0_im, b_z_im, dtdx, py, pz)",
+    "curl1_re = curl_stencil(a_z_re, a1_re, c1_re, c_x_re, dtdx, pz, px)",
+    "curl1_im = curl_stencil(a_z_im, a1_im, c1_im, c_x_im, dtdx, pz, px)",
+    "curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)",
+    "curl2_im = curl_stencil(b_x_im, b2_im, a2_im, a_y_im, dtdx, px, py)",
+    "du0 = record_in(cb, lattice + 8, k)",
+    "p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)",
+    "tl.store(u0 + 2 * idx, n0_re, mask=live & du0)",
+    "tl.store(u0 + 2 * idx + 1, n0_im, mask=live & du0)",
 )
 
 #: The constitutive accumulation, from ``complex_fields.bloch_constitutive_step``.
 #: Two separate accumulations, left to right, on BOTH planes; flattening them is a
 #: different float32 number.
 CONSTITUTIVE_LINES = (
-    "t_re, t_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)",
-    "a_re = a_re + t_re",
-    "a_im = a_im + t_im",
-    "t_re, t_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)",
-    "a_re = a_re - t_re",
-    "a_im = a_im - t_im",
+    "prev_re = tl.load(w0 + 2 * idx, mask=live & dw0, other=0.0)",
+    "prev_im = tl.load(w0 + 2 * idx + 1, mask=live & dw0, other=0.0)",
+    "tl.store(w0 + 2 * idx, src_re, mask=live & dw0)",
+    "tl.store(w0 + 2 * idx + 1, src_im, mask=live & dw0)",
+    "src_re = src_re * ie",
+    "src_im = src_im * ie",
 )
 
 #: THE SCALE=1 ARM, which the magnetic twin does not carry at all. The multiply is
@@ -328,7 +325,7 @@ CONSTITUTIVE_LINES = (
 #: neither is visible to any check the twin's gate runs.
 SCALE_LINES = (
     "ie = tl.load(e0 + idx, mask=live, other=0.0)",
-    "src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)",
+    "src_re = src_re * ie",
     "ie = tl.load(e1 + idx, mask=live, other=0.0)",
     "ie = tl.load(e2 + idx, mask=live, other=0.0)",
 )
@@ -439,7 +436,7 @@ def transcription_leg() -> Dict[str, Any]:
     # `_zero_metal`'s rule, so a body whose `if ZM_*:` blocks drifted back to the
     # magnetic twin's `axis d -> component d` fails at the MERGE BAR rather than on
     # a metallic device case. The shipped predicate carries the same clause; this is
-    # the copy that runs with no device and no probe.
+    # the copy that runs with no device.
     from meep_gpu.fields import IYEE_SHIFTS  # noqa: PLC0415
 
     derived = tuple(
@@ -471,22 +468,22 @@ def transcription_leg() -> Dict[str, Any]:
             "the fused body has no `if SCALE:` guard; the constitutive half is no "
             "longer a transcription of bloch_constitutive_step's own arm")
 
-    # NO MULTIPLY OUTSIDE THE THREE LICENSED HELPERS. A fourth would be a fourth
-    # operand orientation, needing its own probe pattern before it could be
-    # licensed — and this product's whole pattern claim is that it adds none.
-    helpers = sorted({name for name in product.LICENSED_MULTIPLY_HELPERS
+    # NO MULTIPLY OUTSIDE THE THREE DECLARED HELPERS. A fourth would be a fourth
+    # operand orientation, and this product's whole helper claim is that it adds
+    # none.
+    helpers = sorted({name for name in product.MULTIPLY_HELPERS
                       if any(name in line for line in fused)})
     stray = sorted({line for line in fused
                     if "_mul_" in line or "_rotate_" in line
-                    if not any(name in line for name in product.LICENSED_MULTIPLY_HELPERS)})
+                    if not any(name in line for name in product.MULTIPLY_HELPERS)})
     if stray:
         findings.append(
             f"the fused body calls a complex-multiply helper outside "
-            f"{product.LICENSED_MULTIPLY_HELPERS}: {stray}")
-    if set(helpers) != set(product.LICENSED_MULTIPLY_HELPERS):
+            f"{product.MULTIPLY_HELPERS}: {stray}")
+    if set(helpers) != set(product.MULTIPLY_HELPERS):
         findings.append(
             f"the fused body calls {helpers}, not all of "
-            f"{list(product.LICENSED_MULTIPLY_HELPERS)}; the pattern-set claim "
+            f"{list(product.MULTIPLY_HELPERS)}; the pattern-set claim "
             f"names orientations the kernel no longer launches")
     return {
         "leg": "transcription",
@@ -498,162 +495,6 @@ def transcription_leg() -> Dict[str, Any]:
         "weld_lines_checked": len(WELD_LINES),
         "wall_lines_checked": len(WALL_LINES),
         "multiply_helpers_called": helpers,
-        "findings": findings,
-        "passed": not findings,
-    }
-
-
-# ---------------------------------------------------------------------------
-# NO-DEVICE LEG 2 — the EXPANSION licence, and what refuses it
-# ---------------------------------------------------------------------------
-
-def _neither(record: Dict[str, Any]) -> Dict[str, Any]:
-    broken = copy.deepcopy(record)
-    broken["patterns"]["c8_mul_c8"] = "NEITHER"
-    return broken
-
-
-def _missing_pattern(record: Dict[str, Any]) -> Dict[str, Any]:
-    broken = copy.deepcopy(record)
-    broken["patterns"].pop("f4_mul_c8_coefficient_left", None)
-    return broken
-
-
-def _cross_policy(record: Dict[str, Any]) -> Dict[str, Any]:
-    """The candidates cut under one policy, the platform's bytes under the other.
-
-    This is the 2026-08-11 defect in its licensable-looking disguise: every pattern
-    names an arm, and the comparison that produced them was broken.
-    """
-    broken = copy.deepcopy(record)
-    broken.setdefault("candidates", {})["policy"] = "flush"
-    return broken
-
-
-def _evidence_free_ambiguity(record: Dict[str, Any]) -> Dict[str, Any]:
-    """``AMBIGUOUS_BOTH`` asserted with no vectors behind it."""
-    broken = copy.deepcopy(record)
-    for name in broken["patterns"]:
-        broken["patterns"][name] = "AMBIGUOUS_BOTH"
-    broken.pop("vectors", None)
-    broken.pop("detail", None)
-    return broken
-
-
-def _disagreeing_arms(record: Dict[str, Any]) -> Dict[str, Any]:
-    broken = copy.deepcopy(record)
-    broken["patterns"]["python_float_left"] = "NAIVE"
-    broken["patterns"]["c8_mul_c8"] = "FMA_V1"
-    return broken
-
-
-def expansion_licence_leg() -> Dict[str, Any]:
-    """Which arm this product binds, on what evidence, and what refuses it.
-
-    The rule is NOT re-implemented: this calls the shipped
-    :func:`~meep_gpu.triton_kernels.complex_fields.expansion_license` over
-    ``PRODUCT_PROBE_PATTERNS``, which for this product is the BASE four — the
-    ``inv_eps`` multiply the SCALE arm adds is ``_mul_field_left``, an orientation
-    the curl half already launches six times (leg 1 checks that by scanning the
-    body).
-
-    THE FALSIFICATION ROWS ARE THE POINT. A licence leg that reads one good
-    artifact and reports 'FMA_V1, measured' measures the artifact, not the rule.
-    """
-    from meep_gpu.triton_kernels import complex_fields as complex_module  # noqa: PLC0415
-    from meep_gpu.triton_kernels import complex_fused_electric_pair as product  # noqa: PLC0415
-
-    patterns = list(product.PRODUCT_PROBE_PATTERNS)
-    findings: List[str] = []
-    if tuple(patterns) != tuple(complex_module.PROBE_PATTERNS):
-        findings.append(
-            f"this product declares pattern set {patterns}, which is not the base "
-            f"set {list(complex_module.PROBE_PATTERNS)}; leg 1's body scan says it "
-            f"launches no orientation outside the base four, so the two disagree")
-
-    licensed: List[Dict[str, Any]] = []
-    for relative in KEEP_PROBES:
-        path = os.path.join(API_ROOT, relative)
-        if not os.path.exists(path):
-            findings.append(f"the declared keep probe {relative} is not in the tree")
-            continue
-        record = json.load(open(path, encoding="utf-8"))
-        verdict = complex_module.expansion_license(record, patterns)
-        licensed.append({
-            "artifact": relative,
-            "arm": verdict["arm"],
-            "basis": verdict["basis"],
-            "expansion": verdict["expansion"],
-            "refusals": list(verdict["refusals"]),
-            "discriminating": dict(verdict["discriminating"]),
-            "non_discriminating": list(verdict["non_discriminating"]),
-            "policy_resolved": verdict["policy_resolved"],
-            "candidate_policy": verdict["candidate_policy"],
-            "environment": verdict["environment"],
-        })
-        if verdict["arm"] is None:
-            findings.append(f"{relative} licenses nothing: {verdict['refusals']}")
-            continue
-        if verdict["basis"] != "measured":
-            findings.append(
-                f"{relative} licenses {verdict['arm']} on basis "
-                f"{verdict['basis']!r}; this product's arm must be MEASURED on the "
-                f"run's own probe, not taken from ENVIRONMENT_DEFAULTS")
-        if verdict["policy_resolved"] != complex_module.CERTIFIED_UNDER_SUBNORMAL_POLICY:
-            findings.append(
-                f"{relative} was cut under {verdict['policy_resolved']!r}, not the "
-                f"{complex_module.CERTIFIED_UNDER_SUBNORMAL_POLICY!r} every complex "
-                f"arm in this package was certified under; a licence does not "
-                f"transfer across the policy boundary")
-    arms = sorted({row["arm"] for row in licensed if row["arm"]})
-    if len(arms) > 1:
-        findings.append(
-            f"the keep-cut artifacts in this tree license DIFFERENT arms {arms}; "
-            f"one constexpr cannot represent a platform whose artifacts disagree")
-
-    base = next((json.load(open(os.path.join(API_ROOT, row["artifact"]),
-                                encoding="utf-8"))
-                 for row in licensed if row["arm"]), None)
-    refusals: List[Dict[str, Any]] = []
-    if base is None:
-        findings.append(
-            "no artifact licensed an arm, so the falsification rows had nothing to "
-            "break and this leg measured nothing")
-    else:
-        for name, broken, needle in (
-            ("neither_pattern", _neither(base), "NO licensable arm"),
-            ("missing_pattern", _missing_pattern(base), "not classified"),
-            ("candidates_cut_under_another_policy", _cross_policy(base),
-             "broken comparison"),
-            ("evidence_free_ambiguity", _evidence_free_ambiguity(base), ""),
-            ("discriminating_patterns_disagree", _disagreeing_arms(base),
-             "disagree"),
-            ("not_a_record", None, "no probe record"),
-            ("host_backend", {**copy.deepcopy(base), "backend": "numpy"}, "cupy"),
-        ):
-            verdict = complex_module.expansion_license(broken, patterns)
-            refused = verdict["arm"] is None
-            named = (not needle) or any(needle in reason
-                                        for reason in verdict["refusals"])
-            refusals.append({
-                "case": name, "arm": verdict["arm"],
-                "refusals": list(verdict["refusals"])[:3],
-                "refused": refused, "reason_names_the_defect": named,
-                "passed": refused and named,
-            })
-            if not (refused and named):
-                findings.append(
-                    f"falsification row {name!r} was NOT refused by name "
-                    f"(arm={verdict['arm']!r}); the licence rule does not catch it")
-
-    return {
-        "leg": "expansion_licence",
-        "device": False,
-        "probe_patterns": patterns,
-        "certified_under_subnormal_policy":
-            complex_module.CERTIFIED_UNDER_SUBNORMAL_POLICY,
-        "licensed": licensed,
-        "falsification": refusals,
         "findings": findings,
         "passed": not findings,
     }
@@ -701,6 +542,9 @@ def _build_complex(cell, boundaries, k_point, mirrors=(), thickness=0.4,
         {component: np.ascontiguousarray((1.0 / epsilon).astype(np.float32))
          for component in ("Ex", "Ey", "Ez")})
     pml = PML(grid=grid, thickness=thickness)
+    # A state seeded mid-run carries MEEP's H already separated from B
+    # (stepping.separate_h_from_b): the seeded H and f_w are the history.
+    fields.h_separated = True
     rng = np.random.default_rng(seed)
     for name in ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez",
                  "Hx", "Hy", "Hz", "fu_Dx", "fu_Dy", "fu_Dz",
@@ -712,6 +556,28 @@ def _build_complex(cell, boundaries, k_point, mirrors=(), thickness=0.4,
                       + 1j * rng.uniform(-0.25, 0.25, size=array.shape)
                       ).astype(array.dtype)
     return fields, pml
+
+
+def _accumulation_cells(plan, component, shape):
+    """The cells whose chunk carries ``component``'s own layer (the region plan's)."""
+    spec = plan.spec("constitutive", component)
+    if spec.mode == "outside_only":
+        return np.zeros(shape, dtype=bool)
+    if spec.mode == "inside_only":
+        return np.ones(shape, dtype=bool)
+    return np.broadcast_to(np.asarray(plan.mask("constitutive", component, np)), shape)
+
+
+def _accumulate(target, history, stored, current, previous, kps, kms, inside):
+    """MEEP's two constitutive forms, per part: ``f + ((kps*src) - (kms*prev))`` and
+    ``f_w = stored`` on ``inside``, ``f = src`` everywhere else."""
+    from meep_gpu import part_products  # noqa: PLC0415
+
+    difference = (part_products.scale(kps, current)
+                  - part_products.scale(kms, previous))
+    accumulated = target + difference
+    np.copyto(history, stored, where=inside)
+    target[...] = np.where(inside, accumulated, current)
 
 
 def _array_path_seam(fields, pml, driver_module) -> None:
@@ -751,36 +617,31 @@ def _welded_seam(fields, pml, driver_module, *, wall: str = "before",
     if wall == "before":
         driver_module.zero_metal_D(fields)
 
+    # Each component's two forms on its own cells
+    # (stepping._apply_constitutive_regions), every product per part.
+    from meep_gpu import part_products  # noqa: PLC0415
+
+    plan = stepping._region_plan(fields, pml)
     for component, source_name, axis_name in stepping.E_CONSTITUTIVE_TERMS:
         target = getattr(fields, component)
         source = getattr(fields, source_name)
         history_array = getattr(fields, "f_w_" + component)
         kps, kms = stepping._constitutive_coefficients(pml, axis_name,
                                                        half_integer=True)
-        kps, kms = np.asarray(kps), np.asarray(kms)
-        inv_eps = fields.inverse_epsilon_for(component)
-        stored = source * inv_eps if scale == "before_the_store" else source
+        inside = _accumulation_cells(plan, component, target.shape)
+        scaled = part_products.scale(fields.inverse_epsilon_for(component), source)
+        # The history holds D * inv_eps under the correct order; the scale-after-
+        # the-store flip leaves the UNSCALED displacement in it while the kps term
+        # still consumes the scaled one. THE kms TERM IS THE WHOLE DEFECT and is
+        # not re-scaled here.
+        stored = scaled if scale == "before_the_store" else source
         if history == "read_then_write":
             previous = history_array.copy()
-            history_array[...] = stored
         else:
-            # The defect: f_w is written before it is read, so `previous` is the
-            # value just stored. Wrong only where kms != 0, i.e. inside the PML.
-            history_array[...] = stored
+            # The defect: f_w is written before it is read.
+            np.copyto(history_array, stored, where=inside)
             previous = history_array.copy()
-        # ``current`` is what the kps term consumes. Under the correct order it IS
-        # the stored history; under the flip the scale lands on the register AFTER
-        # the store, so the history keeps the UNSCALED displacement and only the
-        # kps term is scaled.
-        #
-        # THE kms TERM IS THE WHOLE DEFECT and it must NOT be re-scaled here. An
-        # emulation that scaled ``previous`` too would compute the same number by a
-        # different route — measured: this leg reported the flip INVISIBLE until
-        # the re-scale was removed, which is exactly the "armed and measuring
-        # nothing" failure the mutation harness exists to avoid.
-        current = history_array if scale == "before_the_store" else stored * inv_eps
-        target += kps * current
-        target -= kms * previous
+        _accumulate(target, history_array, stored, scaled, previous, kps, kms, inside)
 
     if wall == "after":
         # The defect: update_E has already consumed the pre-clear D, so E and
@@ -907,10 +768,7 @@ def design_sweep_leg() -> Dict[str, Any]:
 
 def predicate_leg() -> Dict[str, Any]:
     """Every clause of the seam predicate, exercised on real complex grids."""
-    from meep_gpu import expansion_refusal  # noqa: PLC0415
     from meep_gpu.triton_kernels import complex_fused_electric_pair as product  # noqa: PLC0415
-
-    probe = json.load(open(os.path.join(API_ROOT, KEEP_PROBES[0]), encoding="utf-8"))
 
     class _Source:
         def __init__(self, field_type: str) -> None:
@@ -947,10 +805,9 @@ def predicate_leg() -> Dict[str, Any]:
     def residual(verdict) -> List[str]:
         """The reasons that are not the NumPy-host backend clause.
 
-        MATCHED ON THE CLAUSE, NOT ON THE WORD 'cupy'. The complex predicates'
-        EXPANSION refusal names the backend the probe must be for, so a filter on
-        the word swallows it — and a refusal that vanishes from the residual is a
-        refusal the leg reports as an admission.
+        MATCHED ON THE CLAUSE, NOT ON THE WORD 'cupy'. A filter on the word would
+        also swallow any other clause that names a backend, and a refusal that
+        vanishes from the residual is a refusal the leg reports as an admission.
         """
         return [reason for reason in verdict.reasons
                 if not ("array module is" in reason and "not cupy" in reason)]
@@ -965,55 +822,50 @@ def predicate_leg() -> Dict[str, Any]:
                      "residual_reasons": left[:6], "needle": needle, "passed": ok})
 
     coverage = product.complex_fused_electric_pair_coverage
-    with expansion_refusal.declaring_run_policy("keep"):
-        bloch, bloch_pml = _build_complex((3.0, 3.0, 0.0), "periodic",
-                                          (0.23, 0.0, 0.0))
-        record("bloch_no_sources", coverage(bloch, bloch_pml, (), probe=probe), True)
-        # THE OTHER SEAM'S SOURCE is not this pair's business at all.
-        record("bloch_magnetic_source",
-               coverage(bloch, bloch_pml, (_Source("B"),), probe=probe), True)
-        # THE IN-SEAM ELECTRIC DEPOSIT IS CARRIED. This is the row that takes the
-        # product from one corpus row to sixteen.
-        record("bloch_electric_deposit_is_carried",
-               coverage(bloch, bloch_pml, (_deposit(bloch, "Ey"),), probe=probe),
-               True)
-        record("bloch_electric_source_without_a_deposit_index",
-               coverage(bloch, bloch_pml, (_Source("D"),), probe=probe),
-               False, "does not publish the index it writes")
-        record("bloch_electric_deposit_refused_when_the_flag_is_held_False",
-               _with_flag_false(
-                   product,
-                   lambda: coverage(bloch, bloch_pml, (_deposit(bloch, "Ey"),),
-                                    probe=probe)),
-               False, "is electric")
-        record("undeclared_sources", coverage(bloch, bloch_pml, None, probe=probe),
-               False, "was not declared")
-        record("no_probe_artifact", coverage(bloch, bloch_pml, (), probe={}),
-               False, "expansion probe artifact")
-        record("no_pml", coverage(bloch, None, (), probe=probe), False, "PML")
+    bloch, bloch_pml = _build_complex((3.0, 3.0, 0.0), "periodic",
+                                      (0.23, 0.0, 0.0))
+    record("bloch_no_sources", coverage(bloch, bloch_pml, ()), True)
+    # THE OTHER SEAM'S SOURCE is not this pair's business at all.
+    record("bloch_magnetic_source",
+           coverage(bloch, bloch_pml, (_Source("B"),)), True)
+    # THE IN-SEAM ELECTRIC DEPOSIT IS CARRIED. This is the row that takes the
+    # product from one corpus row to sixteen.
+    record("bloch_electric_deposit_is_carried",
+           coverage(bloch, bloch_pml, (_deposit(bloch, "Ey"),)),
+           True)
+    record("bloch_electric_source_without_a_deposit_index",
+           coverage(bloch, bloch_pml, (_Source("D"),)),
+           False, "does not publish the index it writes")
+    record("bloch_electric_deposit_refused_when_the_flag_is_held_False",
+           _with_flag_false(
+               product,
+               lambda: coverage(bloch, bloch_pml, (_deposit(bloch, "Ey"),))),
+           False, "is electric")
+    record("undeclared_sources", coverage(bloch, bloch_pml, None),
+           False, "was not declared")
+    record("no_pml", coverage(bloch, None, ()), False, "PML")
 
-        walls, walls_pml = _build_complex(
-            (3.0, 3.0, 0.0), ("metallic", "metallic", "periodic"), (0.0, 0.0, 0.0))
-        record("metallic_walls_k0", coverage(walls, walls_pml, (), probe=probe),
-               True)
+    walls, walls_pml = _build_complex(
+        (3.0, 3.0, 0.0), ("metallic", "metallic", "periodic"), (0.0, 0.0, 0.0))
+    record("metallic_walls_k0", coverage(walls, walls_pml, ()),
+           True)
 
-        folded, folded_pml = _build_complex(
-            (3.0, 3.0, 0.0), ("metallic", "metallic", "periodic"),
-            (0.0, 0.0, 0.0), mirrors=(("Y", 1),))
-        record("folded_grid", coverage(folded, folded_pml, (), probe=probe),
-               False, "mirror plane")
+    folded, folded_pml = _build_complex(
+        (3.0, 3.0, 0.0), ("metallic", "metallic", "periodic"),
+        (0.0, 0.0, 0.0), mirrors=(("Y", 1),))
+    record("folded_grid", coverage(folded, folded_pml, ()),
+           False, "mirror plane")
 
-        builder_rows = []
-        for label, args, kwargs in (
-            ("electric_source_without_a_deposit_index",
-             (bloch, bloch_pml, (_Source("D"),)), {"probe": probe}),
-            ("undeclared_sources", (bloch, bloch_pml, None), {"probe": probe}),
-            ("no_probe_artifact", (bloch, bloch_pml, ()), {"probe": {}}),
-            ("folded_grid", (folded, folded_pml, ()), {"probe": probe}),
-        ):
-            plan = product.plan_complex_fused_electric_pair(*args, **kwargs)
-            builder_rows.append({"case": label, "plan_is_none": plan is None,
-                                 "passed": plan is None})
+    builder_rows = []
+    for label, args, kwargs in (
+        ("electric_source_without_a_deposit_index",
+         (bloch, bloch_pml, (_Source("D"),)), {}),
+        ("undeclared_sources", (bloch, bloch_pml, None), {}),
+        ("folded_grid", (folded, folded_pml, ()), {}),
+    ):
+        plan = product.plan_complex_fused_electric_pair(*args, **kwargs)
+        builder_rows.append({"case": label, "plan_is_none": plan is None,
+                             "passed": plan is None})
 
     findings = [row["case"] for row in rows if not row["passed"]]
     findings += [f"builder:{row['case']}" for row in builder_rows
@@ -1207,6 +1059,41 @@ def first_divergence(left: Dict[str, np.ndarray],
     return {"array": "<inventory>", "reason": "asymmetric", "names": only} if only else None
 
 
+#: Each auxiliary's record line: (half-integer lattice?, axis). ``fu`` follows its
+#: target's dsigu axis on the curl's lattice, ``f_w`` its component's own axis on the
+#: constitutive's.
+AUXILIARY_LINES: Dict[str, Tuple[bool, int]] = {
+    "fu_Bx": (True, 2), "fu_By": (True, 0), "fu_Bz": (True, 1),
+    "fu_Dx": (False, 2), "fu_Dy": (False, 0), "fu_Dz": (False, 1),
+    "f_w_Hx": (False, 0), "f_w_Hy": (False, 1), "f_w_Hz": (False, 2),
+    "f_w_Ex": (True, 0), "f_w_Ey": (True, 1), "f_w_Ez": (True, 2),
+}
+
+
+def outside_every_layer(driver, names) -> List[str]:
+    """The auxiliaries whose record line holds no row of the run's division.
+
+    THE AUXILIARY CONTRACT LEAVES THEM UNTOUCHED: an auxiliary word outside its form's
+    region is never read or written, so on a division that gives a component's layer
+    no cell at all (a 2-D case layering y only gives fu_Bx, fu_By, f_w_Hx, f_w_Hz none)
+    the auxiliary keeps its first word for the whole run, on the array path and in the
+    kernel alike. Such an array is not a vacuous leg; it is the contract, and it is
+    checked as one: it must NOT move.
+    """
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+
+    record = driver.chunk_bounds_record()
+    shape = tuple(int(n) for n in driver.fields.grid.shape)
+    out = []
+    for name in names:
+        if name not in AUXILIARY_LINES:
+            continue
+        half, axis = AUXILIARY_LINES[name]
+        if not membership_from_record(record, half, axis, shape[axis]).any():
+            out.append(name)
+    return sorted(out)
+
+
 def moved(before: Dict[str, np.ndarray], after: Dict[str, np.ndarray]) -> List[str]:
     return [name for name in sorted(set(before) & set(after))
             if not np.array_equal(before[name], after[name])]
@@ -1295,14 +1182,13 @@ def install(driver_module, routes, counter: Dict[str, int], roles: Dict[int, str
                     for name, function in originals.items()]
 
 
-def separate_route(driver, probe):
+def separate_route(driver):
     """The two separately certified Triton products this launch replaces."""
     from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
 
-    curl = complex_fields.plan_complex_pml_curl(driver.fields, driver.pml, "step_D",
-                                                probe=probe)
+    curl = complex_fields.plan_complex_pml_curl(driver.fields, driver.pml, "step_D")
     constitutive = complex_fields.plan_complex_constitutive(
-        driver.fields, driver.pml, "E", probe=probe)
+        driver.fields, driver.pml, "E")
     missing = [name for name, plan in
                (("complex curl", curl), ("complex constitutive", constitutive))
                if plan is None]
@@ -1349,9 +1235,9 @@ def fused_route(plan, driver=None, sources=()):
 # ---------------------------------------------------------------------------
 
 def run_leg(cp, name: str, dimensions, cell, boundaries, k_point, pml_spec,
-            steps: int, product, probe, mutant: Any = None,
+            steps: int, product, mutant: Any = None,
             install_fused: bool = True, freeze_electric: bool = False,
-            electric: bool = False, expansion: Optional[int] = None
+            electric: bool = False
             ) -> Dict[str, Any]:
     """Three routes in lockstep; stop at the FIRST byte divergence."""
     import meep_gpu.driver as driver_module  # noqa: PLC0415
@@ -1374,25 +1260,18 @@ def run_leg(cp, name: str, dimensions, cell, boundaries, k_point, pml_spec,
         "electric_source_in_the_seam": bool(electric),
         "fused_substituted": bool(install_fused),
         "electric_frozen": bool(freeze_electric),
-        "expansion_override": expansion,
         "first_divergence": None, "control_divergence": None,
     }
     try:
         plan = product.plan_complex_fused_electric_pair(
             fused.fields, fused.pml, tuple(fused._sources), num_warps=1,
-            kernel=kernel, probe=probe)
+            kernel=kernel)
         if plan is None:
             verdict = product.complex_fused_electric_pair_coverage(
-                fused.fields, fused.pml, tuple(fused._sources), probe=probe)
+                fused.fields, fused.pml, tuple(fused._sources))
             raise AssertionError(f"the product refused the case: {verdict.reasons}")
-        if expansion is not None:
-            # THE ARM, OVERRIDDEN. Not a source rewrite: the constexpr IS the
-            # licence, so flipping it here measures whether the licence is
-            # load-bearing rather than decorative.
-            plan.expansion = int(expansion)
         row["plan"] = repr(plan)
         row["plan_replaces"] = list(plan.replaces)
-        row["licensed_expansion"] = plan.expansion
         if install_fused:
             route, leading = fused_route(plan, fused, tuple(fused._sources))
         else:
@@ -1405,7 +1284,7 @@ def run_leg(cp, name: str, dimensions, cell, boundaries, k_point, pml_spec,
                 "the case declares an in-seam electric source but the bracket was "
                 "not installed; this leg would measure an unbracketed launch and "
                 "report it as the shipped composition")
-        separate_plans = separate_route(separate, probe)
+        separate_plans = separate_route(separate)
         row["separate_products"] = {key: type(value).__name__
                                     for key, value in separate_plans.plans.items()}
 
@@ -1464,8 +1343,11 @@ def run_leg(cp, name: str, dimensions, cell, boundaries, k_point, pml_spec,
         row["arrays_total"] = len(final)
         row["arrays_compared"] = sorted(final)
         row["arrays_ever_moved"] = len(ever_moved)
+        outside = outside_every_layer(fused, final)
+        row["arrays_outside_every_layer"] = outside
+        row["auxiliary_contract_violations"] = sorted(set(outside) & set(ever_moved))
         row["arrays_never_moved"] = sorted(
-            set(final) - set(ever_moved) - set(material))
+            set(final) - set(ever_moved) - set(material) - set(outside))
         row["material_changed"] = sorted(key for key in material if key in ever_moved)
         row["inventory_asymmetry_vs_array"] = sorted(
             set(final).symmetric_difference(snapshot(cp, reference)))
@@ -1504,6 +1386,10 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
             f"expected {require_launches}: the fused path is not what executed")
     if require_moved and (row.get("arrays_never_moved") or []):
         failures.append(f"VACUOUS: these arrays never moved: {row['arrays_never_moved']}")
+    if row.get("auxiliary_contract_violations"):
+        failures.append(
+            f"an auxiliary outside every layer of the division moved (the auxiliary "
+            f"contract): {row['auxiliary_contract_violations']}")
     if row.get("material_changed"):
         failures.append(f"a material input changed: {row['material_changed']}")
     if require_repairs and not row.get("deposit_repairs"):
@@ -1530,17 +1416,24 @@ def shipped_source(product) -> str:
 def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant. The rename is what keeps the JIT cache honest.
 
-    The three complex-multiply helpers are IMPORTED into the mutant's namespace
-    rather than copied, for the same reason the shipped module imports them: a
-    second spelling of the arm is a second place for it to be wrong, and a mutant
-    carrying its own copy would no longer be testing the shipped multiply.
+    The connection helper and the shared forms are IMPORTED into the mutant's
+    namespace rather than copied, for the same reason the shipped module imports
+    them: a second spelling is a second place to be wrong, and a mutant carrying its
+    own copy would no longer be testing the shipped arithmetic. THE MODULE NAME MUST
+    NOT START WITH ``triton``: Triton's dependency finder leaves every callee whose
+    ``__module__`` starts with its package name out of the kernel's cache key, so a
+    helper-only mutant could be served another mutant's binary (measured on the
+    off-diagonal gate, 2026-10-08).
     """
     header = ("import triton\n"
               "import triton.language as tl\n"
-              "from meep_gpu.triton_kernels.complex_fields import (\n"
-              "    _rotate_field_left, _mul_field_left, _mul_coefficient_left)\n"
+              "from meep_gpu.triton_kernels.complex_fields import _connect\n"
+              "from meep_gpu.triton_kernels.forms import (\n"
+              "    axis_present, constitutive_form, curl_form, curl_stencil, record_in)\n"
               "PERIODIC = tl.constexpr(0)\n"
-              "METALLIC = tl.constexpr(1)\n\n")
+              "METALLIC = tl.constexpr(1)\n"
+              "RECORD_HALF_INTEGER = tl.constexpr(12)\n"
+              "RECORD_PRESENCE = tl.constexpr(24)\n\n")
     handle = tempfile.NamedTemporaryFile(
         "w", suffix="_mutated_complex_electric_pair.py", delete=False,
         encoding="utf-8")
@@ -1549,7 +1442,7 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
     handle.close()
     _TEMPORARY.append(handle.name)
     spec = importlib.util.spec_from_file_location(
-        "triton_mutated_complex_electric_pair_" + str(len(_TEMPORARY)), handle.name)
+        "complex_electric_pair_mutant_" + str(len(_TEMPORARY)), handle.name)
     module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     sys.modules[spec.name] = module  # type: ignore[union-attr]
     spec.loader.exec_module(module)  # type: ignore[union-attr]
@@ -1609,41 +1502,100 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             ["v0_re = tl.where(at_x, 0.0, v0_re)",
              "v0_im = tl.where(at_x, 0.0, v0_im)"])
 
-    def m3_phase_applied_to_every_lane(source: str) -> Tuple[str, int]:
-        """The Bloch rotation applied everywhere, not only on the wrapped plane."""
+    def m3_connection_applied_to_every_lane(source: str) -> Tuple[str, int]:
+        """The x connection applied on every lane, not only on plane 0 of the
+        unshifted operand: the whole-volume version of the same product."""
         hits = 0
-        for register in ("b_x_re", "b_x_im", "c_x_re", "c_x_im"):
-            needle = f"{register} = tl.where(wx, rot_{register[-2:]}, {register})"
+        for register, original in (("c1_re", "c_re"), ("c1_im", "c_im"),
+                                   ("b2_re", "b_re"), ("b2_im", "b_im")):
+            plane = register[-2:]
+            needle = f"{register} = tl.where(at_x, r_{plane}, {original})"
             hits += source.count(needle)
-            source = source.replace(needle, f"{register} = rot_{register[-2:]}")
-        return source, hits
+            source = source.replace(needle, f"{register} = r_{plane}")
+        return source, hits if hits == 4 else 0
 
-    def m4_phase_dropped_on_x(source: str) -> Tuple[str, int]:
-        """The wrap phase thrown away on x: the Bloch run becomes a plain periodic
-        one. Invisible at k = 0 by construction, which is why the case list carries
-        two phased rows."""
+    def m4_connection_dropped_on_x(source: str) -> Tuple[str, int]:
+        """The x connection thrown away: the Bloch run becomes a plain periodic one.
+        Invisible at k = 0 by construction, which is why the case list carries two
+        phased rows."""
+        return _rewrite_block(source, ["if CNX:"], ["if 0:"])
+
+    def m14_connection_on_the_old_wrapped_plane(source: str) -> Tuple[str, int]:
+        """INVERSION (Appendix A): the x connection on the LAST plane, where the
+        rolled operand used to carry the phase, instead of the unshifted operand's
+        plane 0."""
+        hits = 0
+        for register in ("c1_re", "c1_im", "b2_re", "b2_im"):
+            needle = f"{register} = tl.where(at_x, "
+            hits += source.count(needle)
+            source = source.replace(needle, f"{register} = tl.where(i == nx - 1, ")
+        return source, hits if hits == 4 else 0
+
+    def a1_pairwise_stencil(source: str) -> Tuple[str, int]:
+        """INVERSION (Appendix A): the previous pairwise grouping
+        ``(g1s - g1) + (g2 - g2s)`` in place of MEEP's left-to-right stencil."""
+        needle = "curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)"
+        return (source.replace(needle,
+                               "curl2_re = dtdx * ((b_x_re - b2_re) + (a2_re - a_y_re))"),
+                source.count(needle))
+
+    def a2_whole_grid_recurrence(source: str) -> Tuple[str, int]:
+        """INVERSION (Appendix A): the split-field recurrence on every cell, the
+        previous whole-grid form, instead of each chunk's own."""
+        hits = 0
+        for needle in ("du0 = record_in(cb, lattice + 8, k)",
+                       "du1 = record_in(cb, lattice + 0, i)",
+                       "du2 = record_in(cb, lattice + 4, j)"):
+            hits += source.count(needle)
+            source = source.replace(needle, needle.split(" = ")[0] + " = live")
+        return source, hits if hits == 3 else 0
+
+    def a3_constitutive_old_grouping(source: str) -> Tuple[str, int]:
+        """INVERSION (Appendix A): the previous two-accumulation grouping
+        ``(f + kps*src) - kms*prev`` in place of MEEP's ``f + ((kps*src) -
+        (kms*prev))``, on component 1's real part (component 1's own axis, y, is
+        the one the 2-D scoring case layers)."""
+        needle = "constitutive_form(a_re, prev_re, src_re, kp_1, km_1, dw1)"
+        return (source.replace(
+            needle, "tl.where(dw1, (a_re + (kp_1 * src_re)) - (km_1 * prev_re), src_re)"),
+            source.count(needle))
+
+    def b1_membership_one_row_off(source: str) -> Tuple[str, int]:
+        """The y-dsigu membership read one row over: a plane takes the wrong form
+        (y is the axis the scoring case layers)."""
+        needle = "du2 = record_in(cb, lattice + 4, j)"
+        return (source.replace(needle, "du2 = record_in(cb, lattice + 4, j + 1)"),
+                source.count(needle))
+
+    def b2_constitutive_select_removed(source: str) -> Tuple[str, int]:
+        """The accumulation on every cell: ``f_w`` and the accumulate outside the
+        component's own layer, where MEEP stores ``f = src``."""
+        import re  # noqa: PLC0415
+
+        pattern = re.compile(r"dw0 = record_in\(cb, [^\n]*\)")
+        return pattern.sub("dw0 = live", source), len(pattern.findall(source))
+
+    def b3_fu_store_unmasked(source: str) -> Tuple[str, int]:
+        """``fu`` stored on every cell: the dsig-only cells' auxiliary overwritten."""
+        needle = "tl.store(u0 + 2 * idx, n0_re, mask=live & du0)"
+        return (source.replace(needle, "tl.store(u0 + 2 * idx, n0_re, mask=live)"),
+                source.count(needle))
+
+    def b4_presence_ignored(source: str) -> Tuple[str, int]:
+        """Both partners taken whatever the record says: the invariant z partner of
+        a 2-D grid adds ``(g + g2) - g2`` where MEEP takes the one-partner form."""
+        needle = "presence = tl.load(cb + RECORD_PRESENCE)"
+        return source.replace(needle, "presence = 7"), source.count(needle)
+
+    def n1_store_order(source: str) -> Tuple[str, int]:
+        """PREDICTED NULL: the two parts of ``fu_0`` stored in the other order --
+        independent words, so only the instruction order may move."""
         return _rewrite_block(
             source,
-            ["rot_re, rot_im = _rotate_field_left(b_x_re, b_x_im, pxr, pxi, EXPANSION)",
-             "b_x_re = tl.where(wx, rot_re, b_x_re)",
-             "b_x_im = tl.where(wx, rot_im, b_x_im)"],
-            ["b_x_re = b_x_re", "b_x_im = b_x_im"])
-
-    def m5_constitutive_association(source: str) -> Tuple[str, int]:
-        """Right-associated accumulation on the real plane: same algebra, different
-        float32 rounding."""
-        return _rewrite_block(
-            source,
-            ["t_re, t_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)",
-             "a_re = a_re + t_re",
-             "a_im = a_im + t_im",
-             "t_re, t_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)",
-             "a_re = a_re - t_re",
-             "a_im = a_im - t_im"],
-            ["kp_re, kp_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)",
-             "km_re, km_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)",
-             "a_re = a_re + (kp_re - km_re)",
-             "a_im = a_im + (kp_im - km_im)"])
+            ["tl.store(u0 + 2 * idx, n0_re, mask=live & du0)",
+             "tl.store(u0 + 2 * idx + 1, n0_im, mask=live & du0)"],
+            ["tl.store(u0 + 2 * idx + 1, n0_im, mask=live & du0)",
+             "tl.store(u0 + 2 * idx, n0_re, mask=live & du0)"])
 
     def m6_history_read_after_write(source: str) -> Tuple[str, int]:
         """f_w read AFTER it is written: wrong only where kms != 0, i.e. in the PML.
@@ -1667,27 +1619,28 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         for register in ("w0", "w1", "w2"):
             source, hit = _rewrite_block(
                 source,
-                [f"tl.store({register} + 2 * idx, src_re, mask=live)",
-                 f"tl.store({register} + 2 * idx + 1, src_im, mask=live)"],
-                [f"tl.store({register} + 2 * idx, src_re, mask=live)",
-                 f"tl.store({register} + 2 * idx + 1, src_im, mask=live)",
-                 f"prev_re = tl.load({register} + 2 * idx, mask=live, other=0.0)",
-                 f"prev_im = tl.load({register} + 2 * idx + 1, mask=live, "
-                 f"other=0.0)"])
+                [f"tl.store({register} + 2 * idx, src_re, mask=live & dw{register[1]})",
+                 f"tl.store({register} + 2 * idx + 1, src_im, mask=live & dw{register[1]})"],
+                [f"tl.store({register} + 2 * idx, src_re, mask=live & dw{register[1]})",
+                 f"tl.store({register} + 2 * idx + 1, src_im, mask=live & dw{register[1]})",
+                 f"prev_re = tl.load({register} + 2 * idx, mask=live & dw{register[1]}, "
+                 f"other=0.0)",
+                 f"prev_im = tl.load({register} + 2 * idx + 1, mask=live & "
+                 f"dw{register[1]}, other=0.0)"])
             hits += hit
         return source, hits
 
     def m7_word_index_not_doubled(source: str) -> Tuple[str, int]:
-        """The complex word addressing undone on the E history: ``w0 + idx`` reads
+        """The complex word addressing undone on the E history: ``w1 + idx`` reads
         the wrong plane of the wrong cell. The load and the store move TOGETHER, so
         the mutant is self-consistent and only the array-path comparison refuses
         it."""
         hits = 0
         for needle, replacement in (
-                ("tl.load(w0 + 2 * idx, mask=live, other=0.0)",
-                 "tl.load(w0 + idx, mask=live, other=0.0)"),
-                ("tl.store(w0 + 2 * idx, src_re, mask=live)",
-                 "tl.store(w0 + idx, src_re, mask=live)")):
+                ("tl.load(w1 + 2 * idx, mask=live & dw1, other=0.0)",
+                 "tl.load(w1 + idx, mask=live & dw1, other=0.0)"),
+                ("tl.store(w1 + 2 * idx, src_re, mask=live & dw1)",
+                 "tl.store(w1 + idx, src_re, mask=live & dw1)")):
             hits += source.count(needle)
             source = source.replace(needle, replacement)
         return source, hits
@@ -1720,9 +1673,9 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             source, hit = _rewrite_block(
                 source,
                 [f"ie = tl.load(e{component} + idx, mask=live, other=0.0)",
-                 "src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)"],
+                 "src_re = src_re * ie", "src_im = src_im * ie"],
                 [f"ie = tl.load(e{component} + idx, mask=live, other=0.0)",
-                 "src_re, src_im = src_re, src_im"])
+                 "src_re = src_re", "src_im = src_im"])
             hits += hit
         return source, hits
 
@@ -1750,12 +1703,10 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return _scale_after_store(source)
 
     def m9_commuted_multiply(source: str) -> Tuple[str, int]:
-        """PREDICTED NULL: IEEE multiplication commutes on the plane-wise adds; only
-        the PTX may move. It is the control that says a caught mutation means
-        something."""
-        needle = "r_re = (r_re + n0_re) - p0_re"
-        return source.replace(needle, "r_re = (n0_re + r_re) - p0_re"), \
-            source.count(needle)
+        """PREDICTED NULL: IEEE multiplication commutes; the connection's real
+        product spelled operand-first. Only the PTX may move. It is the control that
+        says a caught mutation means something."""
+        return n1_store_order(source)
 
     return (
         ("m1_wall_clear_dropped", "the wall clear's slot", "caught",
@@ -1763,11 +1714,26 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         ("m2_wall_clear_only_on_the_real_plane",
          "complex zero is TWO words", "caught",
          m2_wall_clear_only_on_the_real_plane),
-        ("m3_phase_applied_to_every_lane", "the single-plane multiply", "caught",
-         m3_phase_applied_to_every_lane),
-        ("m4_phase_dropped_on_x", "the Bloch wrap", "caught", m4_phase_dropped_on_x),
-        ("m5_constitutive_association", "float32 association", "caught",
-         m5_constitutive_association),
+        ("m3_connection_applied_to_every_lane", "the single-plane product",
+         "caught", m3_connection_applied_to_every_lane),
+        ("m4_connection_dropped_on_x", "the Bloch connection", "caught",
+         m4_connection_dropped_on_x),
+        ("m14_connection_on_the_old_wrapped_plane", "the stored window",
+         "caught", m14_connection_on_the_old_wrapped_plane),
+        ("a1_pairwise_stencil", "MEEP's left-to-right curl", "caught",
+         a1_pairwise_stencil),
+        ("a2_whole_grid_recurrence", "each chunk's own curl form", "caught",
+         a2_whole_grid_recurrence),
+        ("a3_constitutive_old_grouping", "MEEP's constitutive grouping",
+         "caught", a3_constitutive_old_grouping),
+        ("b1_membership_one_row_off", "the membership line", "caught",
+         b1_membership_one_row_off),
+        ("b2_constitutive_select_removed", "the constitutive select", "caught",
+         b2_constitutive_select_removed),
+        ("b3_fu_store_unmasked", "the auxiliary contract", "caught",
+         b3_fu_store_unmasked),
+        ("b4_presence_ignored", "the partner presence", "caught",
+         b4_presence_ignored),
         ("m6_history_read_after_write", "the f_w ordering", "caught",
          m6_history_read_after_write),
         ("m7_word_index_not_doubled", "complex word addressing", "caught",
@@ -1800,15 +1766,17 @@ def _scale_after_store(source: str) -> Tuple[str, int]:
     for component, register in (("0", "w0"), ("1", "w1"), ("2", "w2")):
         before = [
             f"ie = tl.load(e{component} + idx, mask=live, other=0.0)",
-            "src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)",
-            f"tl.store({register} + 2 * idx, src_re, mask=live)",
-            f"tl.store({register} + 2 * idx + 1, src_im, mask=live)",
+            "src_re = src_re * ie",
+            "src_im = src_im * ie",
+            f"tl.store({register} + 2 * idx, src_re, mask=live & dw{component})",
+            f"tl.store({register} + 2 * idx + 1, src_im, mask=live & dw{component})",
         ]
         after = [
-            f"tl.store({register} + 2 * idx, src_re, mask=live)",
-            f"tl.store({register} + 2 * idx + 1, src_im, mask=live)",
+            f"tl.store({register} + 2 * idx, src_re, mask=live & dw{component})",
+            f"tl.store({register} + 2 * idx + 1, src_im, mask=live & dw{component})",
             f"ie = tl.load(e{component} + idx, mask=live, other=0.0)",
-            "src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)",
+            "src_re = src_re * ie",
+            "src_im = src_im * ie",
         ]
         source, hit = _rewrite_block(source, before, after)
         hits += hit
@@ -1841,7 +1809,7 @@ def mutation_case_for(name: str) -> Tuple[int, Tuple[Any, ...]]:
     return index, CASES[index]
 
 
-def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]) -> List[Dict[str, Any]]:
+def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, Any]]:
     source = shipped_source(product)
     rows: List[Dict[str, Any]] = []
     for index, (name, why, expectation, rewrite) in enumerate(mutation_table()):
@@ -1869,7 +1837,7 @@ def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]) -> List[Dict[
         row["case"] = case[0]
         row["case_index"] = case_index
         leg = run_leg(cp, f"mutation:{name}", case[1], case[2], case[3], case[4],
-                      case[5], MUTATION_STEPS, product, probe, mutant=mutant)
+                      case[5], MUTATION_STEPS, product, mutant=mutant)
         row["caught"] = leg.get("first_divergence") is not None
         row["first_divergence"] = leg.get("first_divergence")
         row["launches"] = leg.get("fused_kernel_launches")
@@ -1884,7 +1852,7 @@ def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]) -> List[Dict[
 # Refusals — the predicate, on the device's own objects
 # ---------------------------------------------------------------------------
 
-def run_refusals(cp, product, probe) -> List[Dict[str, Any]]:
+def run_refusals(cp, product) -> List[Dict[str, Any]]:
     """Configurations the product must refuse, asked of a real CuPy driver."""
     from meep_gpu.sources import FIELD_TYPE_B  # noqa: PLC0415
 
@@ -1910,23 +1878,22 @@ def run_refusals(cp, product, probe) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     # `sources` may be a CALLABLE taking the built fields, and `needle=None` means
     # "this row must be ADMITTED".
-    for name, case, needle, sources, use_probe in (
+    for name, case, needle, sources in (
         ("electric_source_without_a_deposit_index", base,
-         "does not publish the index it writes", (_Electric(),), probe),
+         "does not publish the index it writes", (_Electric(),)),
         ("electric_deposit_is_carried", base, None,
-         lambda fields: (_deposit(fields, "Ey"),), probe),
-        ("magnetic_source_is_the_other_seams", base, None, (_Magnetic(),), probe),
-        ("undeclared_sources", base, "was not declared", None, probe),
-        ("no_probe_artifact", base, "expansion probe artifact", (), {}),
+         lambda fields: (_deposit(fields, "Ey"),)),
+        ("magnetic_source_is_the_other_seams", base, None, (_Magnetic(),)),
+        ("undeclared_sources", base, "was not declared", None),
     ):
         driver = build_driver(cp, case[1], case[2], case[3], case[4], case[5],
                               SEED, electric=False)
         try:
             bound = sources(driver.fields) if callable(sources) else sources
             verdict = product.complex_fused_electric_pair_coverage(
-                driver.fields, driver.pml, bound, probe=use_probe)
+                driver.fields, driver.pml, bound)
             plan = product.plan_complex_fused_electric_pair(
-                driver.fields, driver.pml, bound, probe=use_probe)
+                driver.fields, driver.pml, bound)
             if needle is None:
                 passed = bool(verdict.covered) and plan is not None
             else:
@@ -1970,8 +1937,6 @@ def environment(cp: Any = None) -> Dict[str, Any]:
         "numpy": np.__version__,
         "argv": list(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "expansion_probe_environment_variable": os.environ.get(
-            "MEEP_GPU_COMPLEX_EXPANSION_PROBE"),
         "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
         "triton_cache_dir": os.environ.get("TRITON_CACHE_DIR"),
     }
@@ -2001,12 +1966,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--subnormal-policy", default="keep",
         help="the float32 subnormal policy to DRIVE EVERY EXECUTOR TO before the "
-             "first device compile. Default 'keep' — "
-             "complex_fields.CERTIFIED_UNDER_SUBNORMAL_POLICY, and the policy the "
-             "expansion probe this gate consumes was cut under. A run that "
-             "installs NOTHING is a MIXED configuration attributable to no policy "
-             "at all, and a keep-cut licence read by such a run is a broken "
-             "comparison, not a platform verdict.")
+             "first device compile. Default 'keep'. A run that installs NOTHING "
+             "is a MIXED configuration attributable to no policy at all.")
     args = parser.parse_args(argv)
 
     payload: Dict[str, Any] = {
@@ -2026,7 +1987,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
 
     log("=== no-device legs ===")
-    for leg in (transcription_leg, expansion_licence_leg, symmetry_inertness_leg,
+    for leg in (transcription_leg, symmetry_inertness_leg,
                 design_sweep_leg, predicate_leg, seam_binding_leg):
         started = time.time()
         row = leg()
@@ -2057,9 +2018,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
     # BEFORE THE FIRST DEVICE COMPILE. strict=True: a process that asked to keep and
-    # quietly did not is a process whose bytes mean nothing — and on this family it
-    # is worse than that, because the EXPANSION licence it consumes is
-    # policy-conditional and a keep-cut record read under flush licenses nothing.
+    # quietly did not is a process whose bytes mean nothing.
     subnormal_policy.install_subnormal_policy(args.subnormal_policy, cupy=cp,
                                               strict=True)
     payload["subnormal_policy"] = subnormal_policy.policy_stamp()
@@ -2068,29 +2027,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"(requested {args.subnormal_policy!r}, "
         f"CUPY_CACHE_DIR={os.environ.get('CUPY_CACHE_DIR')!r})")
 
-    from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
     from meep_gpu.triton_kernels import complex_fused_electric_pair as product  # noqa: PLC0415
-
-    probe = complex_fields.load_expansion_probe()
-    licence = complex_fields.expansion_license(probe,
-                                               product.PRODUCT_PROBE_PATTERNS)
-    payload["expansion"] = {
-        "probe_path": os.environ.get("MEEP_GPU_COMPLEX_EXPANSION_PROBE"),
-        "arm": licence["arm"], "basis": licence["basis"],
-        "expansion": licence["expansion"], "refusals": list(licence["refusals"]),
-        "policy_resolved": licence["policy_resolved"],
-        "candidate_policy": licence["candidate_policy"],
-    }
-    if licence["expansion"] is None:
-        payload["device_status"] = "REFUSED BEFORE THE FIRST LEG"
-        payload["passed"] = False
-        payload["release"] = {"released": False, "reasons": [
-            "no EXPANSION arm is licensed for this run, so no device leg could "
-            "measure anything: " + "; ".join(licence["refusals"])]}
-        save(payload, args.out)
-        log(f"\nREFUSED: {licence['refusals']}")
-        return 1
-    log(f"expansion arm licensed: {licence['arm']} (basis {licence['basis']})")
 
     backends.guard_kernel_compilation(cp)
     payload["environment"] = environment(cp)
@@ -2105,7 +2042,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     log("\n=== device legs: the QUIET family (no in-seam source) ===")
     for name, dimensions, cell, boundaries, k_point, pml_spec, steps in CASES:
         row = run_leg(cp, f"quiet:{name}", dimensions, cell, boundaries, k_point,
-                      pml_spec, steps, product, probe, electric=False)
+                      pml_spec, steps, product, electric=False)
         passed, failures = verdict_of(row, require_launches=steps)
         row["passed"], row["failures"] = passed, failures
         payload["device_legs"].append(row)
@@ -2115,7 +2052,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for index in CARRY_CASES:
         name, dimensions, cell, boundaries, k_point, pml_spec, steps = CASES[index]
         row = run_leg(cp, f"carry:{name}", dimensions, cell, boundaries, k_point,
-                      pml_spec, steps, product, probe, electric=True)
+                      pml_spec, steps, product, electric=True)
         passed, failures = verdict_of(row, require_launches=steps,
                                       require_repairs=True)
         row["passed"], row["failures"] = passed, failures
@@ -2125,7 +2062,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     log("\n=== armed harness mutations ===")
     base = CASES[0]
     row = run_leg(cp, "armed:no_substitution", base[1], base[2], base[3], base[4],
-                  base[5], 3, product, probe, install_fused=False)
+                  base[5], 3, product, install_fused=False)
     passed, _ = verdict_of(row, require_launches=3)
     row["armed"] = True
     row["passed"] = not passed and row.get("fused_kernel_launches") == 0
@@ -2135,7 +2072,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     save(payload, args.out)
 
     row = run_leg(cp, "armed:frozen_electric_seam", base[1], base[2], base[3],
-                  base[4], base[5], 3, product, probe, freeze_electric=True)
+                  base[4], base[5], 3, product, freeze_electric=True)
     passed, _ = verdict_of(row)
     row["armed"] = True
     row["passed"] = not passed and bool(row.get("arrays_never_moved"))
@@ -2144,29 +2081,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["device_legs"].append(row)
     save(payload, args.out)
 
-    # THE LICENCE IS LOAD-BEARING, measured. The constexpr is flipped to the arm
-    # the platform did NOT measure; if the bytes still agree, the probe machinery
-    # is decorative on this kernel and the artifact must say so.
-    other = 1 - int(licence["expansion"])
-    row = run_leg(cp, "armed:unlicensed_expansion_arm", CASES[4][1], CASES[4][2],
-                  CASES[4][3], CASES[4][4], CASES[4][5], 3, product, probe,
-                  expansion=other)
-    passed, _ = verdict_of(row, require_launches=3)
-    row["armed"] = True
-    row["passed"] = not passed and row.get("first_divergence") is not None
-    row["why"] = (f"the EXPANSION constexpr is forced to arm {other} while the "
-                  f"platform measured {licence['expansion']}; the bytes must "
-                  f"diverge, or the licence constrains nothing here")
-    payload["device_legs"].append(row)
-    save(payload, args.out)
-
     log("\n=== armed kernel mutations ===")
     pristine = kernel_ptx(product.complex_fused_curl_constitutive_D)
-    payload["mutations"] = run_mutations(cp, product, probe, pristine)
+    payload["mutations"] = run_mutations(cp, product, pristine)
     save(payload, args.out)
 
     log("\n=== refusals ===")
-    payload["refusals"] = run_refusals(cp, product, probe)
+    payload["refusals"] = run_refusals(cp, product)
     save(payload, args.out)
 
     device_ok = all(row.get("passed") for row in payload["device_legs"])

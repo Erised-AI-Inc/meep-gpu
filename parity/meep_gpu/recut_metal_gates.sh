@@ -8,10 +8,7 @@
 # command without anyone remembering to add it — and a gate that vanishes shows up
 # as a shorter run rather than as a silently unchecked one.
 #
-# ORDER MATTERS AT TWO POINTS. Inside this file: every expansion probe a gate binds is
-# cut before the first gate that binds it -- the three standalone probes, then
-# `gate_metal_complex`, whose expansion leg cuts the fourth, and only then the rest
-# (see below). Outside it: `write_fingerprints` must run AFTER the last gate,
+# ORDER MATTERS OUTSIDE THIS FILE: `write_fingerprints` must run AFTER the last gate,
 # deliberately and separately, because a fingerprint cut before the gates that check
 # it certifies nothing. This script never calls it.
 #
@@ -26,6 +23,14 @@
 # layout the rebind reads is producible from here rather than from a one-off loop
 # somebody writes beside it. With a stamp, each gate lands in
 # `results/metal_<family>_<stamp>/gate.json` and `<root>` keeps only the logs.
+#
+# THE LIFT LEGS (lift_host.py). Nine `*_fused_hd_pair` gates re-lift corpus rows, each
+# row in a child under $PY, never under an interpreter a census row records. They read
+# the 2026-09-04 census and seam records under results/, which the release tree does not
+# carry (a missing one stops the lift basis by name), and the MEEP corpus named by
+# MEEP_GPU_CORPUS_ROOT, which this script passes through and does not set: export it
+# (rounds/1.0/metal_round.py sets it from the reference environment's build record).
+# A row whose declared needs $PY lacks is recorded unlifted on this host, by name.
 #
 # Usage (from the repository root):
 #   zsh parity/meep_gpu/recut_metal_gates.sh <artifact-root> [rebind-stamp]
@@ -49,12 +54,6 @@ export MEEP_GPU_SUBNORMAL_POLICY=flush
 # sets the enable itself, in-process, per leg. Exactly 0 -- any other value is refused
 # by name.
 export MEEP_GPU_DISPATCH=0
-# NO PROBE FROM THE CALLING SHELL. Every expansion probe a gate binds is cut by this run
-# and exported by it below; a value inherited from the shell would license this host's
-# arms from a record another run, or another machine, measured.
-unset MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE MEEP_GPU_METAL_EXPANSION_PROBE \
-      MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE \
-      MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE
 
 mkdir -p "$ROOT"
 export MEEP_GPU_GATE_SOURCE_MANIFEST="$ROOT/source_sha256.txt"
@@ -75,55 +74,6 @@ if [[ -n "$STAMP" ]]; then
     print -r -- "VERDICT: COULD NOT RECORD THE METAL ENVIRONMENT" | tee -a "$SUMMARY"
     exit 1
   fi
-fi
-# Four complex families are licensed by their own MPS expansion measurements.  The
-# gate sources used to search an ambient results directory, which made a green gate
-# dependent on whichever old artifact happened to be present.  Cut the three
-# standalone records first, source-weld them through the same runner, and bind them
-# explicitly for every later child.  The base complex gate creates its own probe in
-# its expansion leg, is welded immediately after that gate returns, and RUNS BEFORE
-# EVERY OTHER GATE: several earlier-sorting gates bind it too (the refusal leg of
-# `gate_metal_beta_complex_fused_hd_pair` asks the plain complex family to admit, which
-# needs the probe). Run in directory order they ran without it, and on a Mac holding
-# the evidence archive `metal_composition_matrix.prepare_environment` silently filled
-# the gap with a dated archive probe measured on another run.
-PROBE_ROOT="$ROOT/probes"
-mkdir -p "$PROBE_ROOT"
-
-run_probe() {
-  script="$1"
-  artifact="$2"
-  label=$(basename "$script" .py)
-  log="$ROOT/$label.log"
-  started=$(date +%s)
-  $PY -u "$API/parity/meep_gpu/metal_gate_runner.py" \
-    "$API/parity/meep_gpu/$script" -- --out "$artifact" > "$log" 2>&1
-  rc=$?
-  elapsed=$(( $(date +%s) - started ))
-  line=$(printf "%-36s exit=%d  %4ds  %s" "$label" "$rc" "$elapsed" "$log")
-  print -r -- "$line" | tee -a "$SUMMARY"
-  [[ $rc -ne 0 ]] && fail=1
-}
-
-run_probe "probe_metal_beta_expansion.py" "$PROBE_ROOT/special_kz.json"
-run_probe "probe_metal_folded_complex_expansion.py" "$PROBE_ROOT/folded_complex.json"
-run_probe "probe_metal_cylindrical_complex.py" "$PROBE_ROOT/cylindrical_complex.json"
-
-if [[ $fail -ne 0 ]]; then
-  print -r -- "---" | tee -a "$SUMMARY"
-  print -r -- "VERDICT: EXPANSION PROBE RECUT FAILED; NO GATE WAS RUN" | tee -a "$SUMMARY"
-  exit 1
-fi
-
-export MEEP_GPU_METAL_EXPANSION_PROBE="$PROBE_ROOT/special_kz.json"
-export MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE="$PROBE_ROOT/folded_complex.json"
-export MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE="$PROBE_ROOT/cylindrical_complex.json"
-# The base complex gate writes its expansion probe BESIDE its own artifact, so
-# this path follows the same layout switch the loop below applies.
-if [[ -n "$STAMP" ]]; then
-  COMPLEX_PROBE="$RESULTS/metal_complex_$STAMP/complex_expansion_probe.json"
-else
-  COMPLEX_PROBE="$ROOT/gate_metal_complex/complex_expansion_probe.json"
 fi
 
 run_gate() {
@@ -155,36 +105,9 @@ run_gate() {
   line=$(printf "%-36s exit=%d  %4ds  %s" "$name" "$rc" "$elapsed" "$log")
   print -r -- "$line" | tee -a "$SUMMARY"
   [[ $rc -ne 0 ]] && fail=1
-  if [[ "$name" == "gate_metal_complex" && $rc -eq 0 ]]; then
-    probe_log="$ROOT/gate_metal_complex_probe.log"
-    probe_started=$(date +%s)
-    $PY -u "$API/parity/meep_gpu/metal_gate_runner.py" \
-      --weld-related "$COMPLEX_PROBE" --parent-artifact "$out" > "$probe_log" 2>&1
-    probe_rc=$?
-    probe_elapsed=$(( $(date +%s) - probe_started ))
-    probe_line=$(printf "%-36s exit=%d  %4ds  %s" "complex expansion probe" \
-      "$probe_rc" "$probe_elapsed" "$probe_log")
-    print -r -- "$probe_line" | tee -a "$SUMMARY"
-    [[ $probe_rc -ne 0 ]] && fail=1
-  fi
 }
 
-# The base complex gate first: its expansion leg writes the probe every complex-family
-# gate binds. Once present it is an explicit input for all of them; no source is allowed
-# to fall back to a glob of historic results.
-run_gate "$API/parity/meep_gpu/gate_metal_complex.py"
-if [[ -f "$COMPLEX_PROBE" ]]; then
-  export MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE="$COMPLEX_PROBE"
-else
-  fail=1
-  print -r -- "$(printf "%-36s MISSING  %s" "complex expansion probe" "$COMPLEX_PROBE")" \
-    | tee -a "$SUMMARY"
-  print -r -- "  every gate that binds the complex probe will refuse by name; none falls back" \
-    | tee -a "$SUMMARY"
-fi
-
 for gate in "$API"/parity/meep_gpu/gate_metal_*.py; do
-  [[ "$(basename "$gate")" == "gate_metal_complex.py" ]] && continue
   run_gate "$gate"
 done
 

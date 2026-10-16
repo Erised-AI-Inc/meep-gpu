@@ -88,6 +88,7 @@ class NonlinearProduct(kit.Product):
         "meep_gpu/triton_kernels/offdiag_scratch_weld.py",
         "meep_gpu/triton_kernels/nonlinear_update_e.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/stepping.py",
@@ -108,6 +109,13 @@ class NonlinearProduct(kit.Product):
         ("chi3_ppm", {"boundaries": {"z": "metallic"}}),
         ("chi2_and_chi3_mmm",
          {"boundaries": {axis: "metallic" for axis in "xyz"}, "chi2": 0.02}),
+        # THE RUN'S FIRST update_H on the mutation fixture's grid: unseparated, so
+        # every arrangement performs MEEP's start of H at step 1 (the array path in
+        # update_H, the weld through its start_h scalar; the rotation and the flag
+        # both reach the engine through the admission's view). Every fixture above is
+        # seeded mid-run.
+        ("chi3_mmm_first_update",
+         {"boundaries": {axis: "metallic" for axis in "xyz"}, "h_started": False}),
     )
     mutation_fixture = "chi3_mmm"
 
@@ -153,10 +161,57 @@ class NonlinearProduct(kit.Product):
         },
         "m_f_w_H_written_in_place": {
             "target": "kernel", "expected": "CAUGHT", "hits": 1,
-            "old": "        tl.store(wo0 + idx, src0, mask=live)\n",
-            "new": "        tl.store(wi0 + idx, src0, mask=live)\n",
+            "old": "        tl.store(wo0 + idx, tl.where(dw0, src0, tl.load(\n",
+            "new": "        tl.store(wi0 + idx, tl.where(dw0, src0, tl.load(\n",
             "why": "on this side the newly written f_w_H IS B exactly, so a foreign "
                    "recompute reads B where it needs B_prev",
+        },
+        # -- the welded kernel's forms, on this admission's fixtures (the full
+        # KERNELS.md 7.1 / 7.2 battery is gate_triton_fused_hd_pair's, on the same
+        # bytes; these rows show the harness sees a form defect on a chi3 run) --
+        "a1_pairwise_curl_grouping": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "old": "        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)\n",
+            "new": "        curl0 = dtdx * ((c_y - c) + (b - b_z))\n",
+            "why": "INVERTED (KERNELS.md 7.1): Dx's curl takes the PREVIOUS package "
+                   "grouping, the pairwise `(g1s - g1) + (g2 - g2s)`, in place of MEEP's "
+                   "left-to-right `((g1s - g1) + g2) - g2s` that forms.curl_stencil "
+                   "spells",
+        },
+        "b1_whole_grid_recurrence": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "old": "        du0 = record_in(cb, lattice + 8, k)\n",
+            "new": "        du0 = idx >= 0\n",
+            "why": "the select is removed for Dx: the split-field recurrence runs at "
+                   "EVERY cell and fu_Dx is read and written everywhere, as the 0.9.2 "
+                   "kernels ran it",
+        },
+        "b7_fw_scratch_stored_unmasked": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "old": ("        tl.store(wo0 + idx, tl.where(dw0, src0, tl.load(\n"
+                    "            wi0 + idx, mask=live & (dw0 == 0), other=0.0)), "
+                    "mask=live)\n"),
+            "new": "        tl.store(wo0 + idx, src0, mask=live)\n",
+            "why": "the scratch f_w_Hx takes B at every cell, as the 0.9.2 kernels "
+                   "wrote it, instead of B on the dsigw cells and the pre-launch word "
+                   "everywhere else; the rotation publishes the moved history",
+        },
+        "b11_start_of_H_ignored": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 1,
+            "case": "chi3_mmm_first_update",
+            "old": "        start = start_h != 0\n",
+            "new": "        start = start_h != start_h\n",
+            "why": "MEEP's start of H is dropped: the run's first update_H accumulates "
+                   "onto the stored H instead of starting it from B. Scored on the "
+                   "first-update fixture",
+        },
+        "n1_fu_load_unmasked": {
+            "target": "kernel", "expected": "NULL", "hits": 1,
+            "old": "        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)\n",
+            "new": "        p0 = tl.load(u0 + idx, mask=live, other=0.0)\n",
+            "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): "
+                   "off the dsigu chunk the selected form never consumes fu_Dx and its "
+                   "store stays masked; the guard is pinned by the lift",
         },
         "m_rotation_skipped": {
             "target": "host", "expected": "CAUGHT",

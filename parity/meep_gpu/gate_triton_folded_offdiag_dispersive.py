@@ -113,6 +113,24 @@ def wrong_coefficient_lattice_plan(fields: Any, pml: Any):
     return plan
 
 
+def every_cell_record_plan(fields: Any, pml: Any):
+    """Mutation (KERNELS.md section 7.2): the select removed.
+
+    The plan's chunk record is replaced by one in which every stored cell carries every
+    axis's layer, so every cell takes MEEP's accumulation and writes ``f_w`` -- the
+    package's previous whole-grid form. The array path takes ``E = src`` off the
+    layer's chunks and leaves ``f_w`` alone there.
+    """
+    import cupy as cp
+
+    from gate_chunk_records import every_cell_record
+    from meep_gpu.triton_kernels.launch import CupyPointer
+
+    plan = shipped_plan(fields, pml)
+    plan._base._cb = CupyPointer(cp.asarray(every_cell_record(plan.shape)))
+    return plan
+
+
 class EThenP:
     def __init__(self, inner: Any, fields: Any, pml: Any) -> None:
         self.inner = inner
@@ -194,6 +212,8 @@ def build_cases() -> List[Dict[str, Any]]:
              wrong_coefficient_lattice_plan),
         case("MUTATION_freeze_rotating_pointers", "DIVERGENT",
              frozen_rotation_plan, rotate=True),
+        case("MUTATION_select_removed_every_cell_accumulates", "DIVERGENT",
+             every_cell_record_plan),
         case("CONTROL_reverse_one_pole", "IDENTICAL", reordered_plan,
              config={"poles": 1}),
     ]
@@ -262,7 +282,7 @@ def validate(payload: Dict[str, Any]) -> Dict[str, Any]:
             reasons.append(f"{row.get('case')}: vacuous")
     if len([row for row in rows if str(row.get("case", "")).startswith("product_")]) != 4:
         reasons.append("the four product rows were not all recorded")
-    if len([row for row in rows if "MUTATION" in str(row.get("case", ""))]) != 5:
+    if len([row for row in rows if "MUTATION" in str(row.get("case", ""))]) != 6:
         reasons.append("the five mutation rows were not all recorded")
     refusals = payload.get("refusals") or {}
     if not refusals.get("all_agree"):
@@ -276,6 +296,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--cycles", type=int, default=CYCLES)
+    parser.add_argument("--subnormal-policy", default="keep", choices=("keep", "flush"),
+                        help="the float32 subnormal policy to install before the first device compile (keep, the default, or flush: the certification round gates every family under both on the NVIDIA tables)")
     args = parser.parse_args(argv)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -288,8 +310,8 @@ def main(argv=None) -> int:
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     from meep_gpu.subnormal_policy import install_subnormal_policy
-    install_subnormal_policy("keep")
-    payload["subnormal_policy_installed"] = "keep"
+    install_subnormal_policy(args.subnormal_policy)
+    payload["subnormal_policy_installed"] = args.subnormal_policy
 
     rows = []
     cases = build_cases()

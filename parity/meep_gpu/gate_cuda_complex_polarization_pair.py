@@ -82,7 +82,7 @@ for path in (_HERE, _REPO_API):
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 import gate_provenance  # noqa: E402
-import gate_cuda_complex_no_pml as sibling  # noqa: E402 - fixtures + licence
+import gate_cuda_complex_no_pml as sibling  # noqa: E402 - fixtures
 
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.dispersion import PolarizationState, Susceptibility  # noqa: E402
@@ -301,16 +301,16 @@ class _CountingKernels:
         return False
 
 
-def weld_seam(fields, pml, arm) -> Dict[str, Any]:
+def weld_seam(fields, pml) -> Dict[str, Any]:
     """The subject: three fused launches, host rotation between."""
-    return weld.run_complex_no_pml_fused_polarization_pair(fields, pml, arm)
+    return weld.run_complex_no_pml_fused_polarization_pair(fields, pml)
 
 
-def certified_seam(fields, arm) -> Dict[str, Any]:
+def certified_seam(fields) -> Dict[str, Any]:
     """The certified singles: the stored-E launch, then the per-(state,
     component) ADE launches with the module's own rotation."""
-    certified.update_E_complex_no_pml_stored(fields, arm)
-    launches = certified.update_P_complex_no_pml(fields, arm)
+    certified.update_E_complex_no_pml_stored(fields)
+    launches = certified.update_P_complex_no_pml(fields)
     return {"update_P_launches": int(launches)}
 
 
@@ -330,7 +330,7 @@ def leg_driver_order() -> Dict[str, Any]:
             "expected": list(expected)}
 
 
-def leg_lift(arm) -> Dict[str, Any]:
+def leg_lift() -> Dict[str, Any]:
     """The lift, measured two ways per emitted variant.
 
     FIRST the emit itself: the module derives its text from the CERTIFIED
@@ -350,7 +350,7 @@ def leg_lift(arm) -> Dict[str, Any]:
             count_name = weld._COMPONENTS[component_index][3]  # noqa: SLF001
             try:
                 source = weld.fused_polarization_pair_no_pml_complex_source(
-                    arm, component_index, len(kinds), kinds)
+                    component_index, len(kinds), kinds)
                 emitted = True
             except Exception as exc:  # noqa: BLE001
                 checks.append({"spec": spec["label"],
@@ -375,8 +375,8 @@ def leg_lift(arm) -> Dict[str, Any]:
                     f"    cf_store(p_out_{index}, idx, ade_step(\n"
                     f"        cf_load({stem}{index}, idx), "
                     f"cf_load(p_prev_{index}, idx), ev,\n"
-                    f"        {sigma_read}, c_now_{index}, c_prev_{index}, "
-                    f"c_drive_{index}));\n")))
+                    f"        {sigma_read}, two_minus_od_{index}, gamma1_{index}, "
+                    f"omega0dtsqr_{index}, gamma1inv_{index}));\n")))
             for label, line in wanted:
                 checks.append({
                     "spec": spec["label"], "component_index": component_index,
@@ -387,16 +387,14 @@ def leg_lift(arm) -> Dict[str, Any]:
     return {"passed": bool(passed), "checks": checks}
 
 
-def leg_refusal(arm, licence) -> Dict[str, Any]:
+def leg_refusal() -> Dict[str, Any]:
     """Every configuration the predicate refuses BY NAME, built and refused,
     plus the admitted control built by this gate's own builder."""
     checks: List[Dict[str, Any]] = []
 
-    def record(name: str, expectation: str, fields, pml, grid,
-               license_value="use") -> None:
-        value = licence if license_value == "use" else license_value
+    def record(name: str, expectation: str, fields, pml, grid) -> None:
         covered, reason = weld.covers_complex_no_pml_fused_polarization_pair(
-            fields, pml, grid, (), value, POLICY["name"])
+            fields, pml, grid, ())
         checks.append({"case": name, "expected": expectation,
                        "covered": bool(covered), "reason": str(reason),
                        "passed": (not covered) if expectation == "refused"
@@ -404,7 +402,6 @@ def leg_refusal(arm, licence) -> Dict[str, Any]:
 
     fields, grid, _seeded = build(SPECS[0], "uniform", 11)
     record("the_fixture_this_gate_sweeps", "covered", fields, None, grid)
-    record("no_licence", "refused", fields, None, grid, license_value=None)
 
     real_grid = Grid(resolution=1.0, cell_size=(5.0, 6.0, 7.0),
                      boundaries=("periodic",) * 3, dimensions=3, xp=cp,
@@ -445,7 +442,7 @@ def leg_refusal(arm, licence) -> Dict[str, Any]:
                 c["expected"] == "covered" and c["passed"] for c in checks)}
 
 
-def run_case(spec: Dict[str, Any], value_class: str, steps: int, arm,
+def run_case(spec: Dict[str, Any], value_class: str, steps: int,
              seam: Optional[Callable] = None,
              label_suffix: str = "") -> Dict[str, Any]:
     """One fixture swept ``steps`` COMPLETE driver steps, three engines abreast:
@@ -461,7 +458,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, arm,
                            "operand_census": operand_census(seeded)}
 
     covered, reason = weld.covers_complex_no_pml_fused_polarization_pair(
-        actual, None, grid, (), LICENCE["verdict"], POLICY["name"])
+        actual, None, grid, ())
     if not covered:
         out.update({"passed": False,
                     "why": f"the predicate refused the sweep fixture: {reason}"})
@@ -481,9 +478,9 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, arm,
             _run_pass(name, actual, None)
         array_seam(reference, None)
         certified_p_launches.append(
-            certified_seam(control, arm)["update_P_launches"])
+            certified_seam(control)["update_P_launches"])
         with _CountingKernels(weld) as counter:
-            result = run_seam(actual, None, arm)
+            result = run_seam(actual, None)
         weld_launches.append(int(result.get("launches", -1))
                              if isinstance(result, dict) else -1)
         counted_launches.append(counter.count)
@@ -573,7 +570,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
 )
 
 
-def leg_mutations(arm, steps: int) -> List[Dict[str, Any]]:
+def leg_mutations(steps: int) -> List[Dict[str, Any]]:
     legs: List[Dict[str, Any]] = []
     for mutation in DEVICE_MUTATIONS:
         for spec in SPECS:
@@ -589,7 +586,7 @@ def leg_mutations(arm, steps: int) -> List[Dict[str, Any]]:
                 old = mutation["old"].format(i=component_index, s=stem)
                 new = mutation["new"].format(i=component_index, s=stem)
                 source = weld.fused_polarization_pair_no_pml_complex_source(
-                    arm, component_index, len(kinds), kinds)
+                    component_index, len(kinds), kinds)
                 hits = source.count(old)
                 if hits == 0:
                     missed = True
@@ -611,13 +608,13 @@ def leg_mutations(arm, steps: int) -> List[Dict[str, Any]]:
 
             original = weld._get_kernel  # noqa: SLF001
 
-            def patched(arm_value, component_index, count, kinds_value,
+            def patched(component_index, count, kinds_value,
                         _table=compiled):
                 return _table[(component_index, count, tuple(kinds_value))]
 
             weld._get_kernel = patched  # noqa: SLF001
             try:
-                case = run_case(spec, "uniform", steps, arm,
+                case = run_case(spec, "uniform", steps,
                                 label_suffix=f"|{mutation['name']}")
             finally:
                 weld._get_kernel = original  # noqa: SLF001
@@ -650,7 +647,7 @@ def _loop_copy(defect: Optional[str]):
     copy itself is shown equivalent before any defect is blamed on it.
     """
 
-    def run(fields, pml, arm, kernel=None):  # noqa: ARG001
+    def run(fields, pml, kernel=None):  # noqa: ARG001
         launches = 0
         components = [target for target, _d, _s, _c in weld._COMPONENTS]  # noqa: SLF001
         for order, target in enumerate(components):
@@ -665,7 +662,7 @@ def _loop_copy(defect: Optional[str]):
                     state.P_prev[target] = p
                     state._scratch = p_prev  # noqa: SLF001
             weld.launch_complex_no_pml_fused_polarization_component(
-                fields, arm, target, states)
+                fields, target, states)
             launches += 1
             if defect == "rotate_before_launch":
                 continue
@@ -683,13 +680,13 @@ def _loop_copy(defect: Optional[str]):
             raise AssertionError("handled by its own runner")
         return {"launched": True, "launches": launches}
 
-    def run_rotate_after(fields, pml, arm, kernel=None):  # noqa: ARG001
+    def run_rotate_after(fields, pml, kernel=None):  # noqa: ARG001
         launches = 0
         pending: List[Tuple[str, Any]] = []
         for target, _d, _s, _c in weld._COMPONENTS:  # noqa: SLF001
             states = weld.component_specs(fields)[target]["states"]
             weld.launch_complex_no_pml_fused_polarization_component(
-                fields, arm, target, states)
+                fields, target, states)
             launches += 1
             pending.extend((target, state) for state in states)
         for target, state in pending:
@@ -712,11 +709,11 @@ ROTATION_LEGS: Tuple[Tuple[str, Optional[str], str], ...] = (
 )
 
 
-def leg_rotation(arm, steps: int) -> List[Dict[str, Any]]:
+def leg_rotation(steps: int) -> List[Dict[str, Any]]:
     legs: List[Dict[str, Any]] = []
     spec = SPECS[0]  # two states, mixed kinds: every rotation defect can bite
     for name, defect, expect in ROTATION_LEGS:
-        case = run_case(spec, "uniform", steps, arm, seam=_loop_copy(defect),
+        case = run_case(spec, "uniform", steps, seam=_loop_copy(defect),
                         label_suffix=f"|{name}")
         diverged = not (case.get("bit_identical_to_the_array_path", False)
                         and case.get(
@@ -736,7 +733,6 @@ def leg_rotation(arm, steps: int) -> List[Dict[str, Any]]:
 # Driving
 # ---------------------------------------------------------------------------
 
-LICENCE: Dict[str, Any] = {"verdict": None}
 POLICY: Dict[str, Any] = {"name": None}
 
 
@@ -803,7 +799,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--subnormal-policy", choices=("keep", "flush"),
                         required=True)
     parser.add_argument("--import-meep-for-host-policy", action="store_true")
-    parser.add_argument("--expansion-probe", default=None)
     parser.add_argument("--skip-mutations", action="store_true")
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
@@ -849,19 +844,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         results["environment"] = probe.device_info()
     results["subnormal_policy_stamp"] = probe.subnormal_policy_stamp(_REPO_API)
 
-    licence = sibling.load_licence(args.subnormal_policy, args.expansion_probe)
-    results["licence"] = {key: licence.get(key) for key in
-                          ("arm", "record", "record_sha256", "policy_reasons",
-                           "refusals", "basis")}
-    LICENCE["verdict"] = licence
-    usable = bool(licence.get("arm") and not licence.get("refusals")
-                  and not licence.get("policy_reasons"))
-
     results["driver_order"] = leg_driver_order()
     log(f"driver order: "
         f"{'PASS' if results['driver_order']['passed'] else 'FAIL'}")
-    arm = licence.get("arm") or "NAIVE"
-    results["lift"] = leg_lift(arm)
+    results["lift"] = leg_lift()
     log(f"lift: {'PASS' if results['lift']['passed'] else 'FAIL'}")
     save(results, args.out)
 
@@ -870,15 +856,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                               "why": "CuPy is absent; only the source legs ran"}
         save(results, args.out)
         return 1
-    if not usable:
-        results["verdict"] = {
-            "released": False,
-            "why": f"the expansion licence is unusable: "
-                   f"{licence.get('policy_reasons') or licence.get('refusals')}"}
-        save(results, args.out)
-        return 1
 
-    results["refusal"] = leg_refusal(arm, licence)
+    results["refusal"] = leg_refusal()
     log(f"refusal: {'PASS' if results['refusal']['passed'] else 'FAIL'}")
     save(results, args.out)
 
@@ -889,7 +868,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["cases"] = cases
     for spec in specs:
         for value_class in VALUE_CLASSES:
-            case = run_case(spec, value_class, args.steps, arm)
+            case = run_case(spec, value_class, args.steps)
             cases.append(case)
             log(f"  case {case['label']}: "
                 f"{'PASS' if case.get('passed') else 'FAIL'} "
@@ -899,13 +878,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 f"({case.get('seconds', 0.0):.1f} s)")
             save(results, args.out)
 
-    results["rotation"] = leg_rotation(arm, min(12, args.steps))
+    results["rotation"] = leg_rotation(min(12, args.steps))
     save(results, args.out)
 
     if args.skip_mutations:
         results["mutations"] = []
     else:
-        results["mutations"] = leg_mutations(arm, min(12, args.steps))
+        results["mutations"] = leg_mutations(min(12, args.steps))
     save(results, args.out)
 
     results["verdict"] = summarize(results, args.steps)

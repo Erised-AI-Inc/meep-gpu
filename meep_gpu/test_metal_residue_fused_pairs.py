@@ -92,9 +92,9 @@ def _emit(product):
             (0, 0, 1), (True, True, True), (False, False, True))
     if name == "beta_complex_fused_electric_pair":
         return product.beta_complex_fused_electric_pair_source(
-            (0, 0, 0), (1, 0, 0), (False, False, False), "FMA_V1")
+            (0, 0, 0), (1, 0, 0), (False, False, False))
     return product.beta_complex_fused_magnetic_pair_source(
-        (0, 0, 0), (1, 0, 0), (False, False, False), "FMA_V1")
+        (0, 0, 0), (1, 0, 0), (False, False, False))
 
 
 # ---------------------------------------------------------------------------
@@ -201,16 +201,18 @@ def test_the_pack_declaration_is_arithmetically_sound(family):
 @pytest.mark.parametrize("family", ["beta_complex_fused_electric_pair",
                                     "beta_complex_fused_magnetic_pair"])
 def test_the_beta_params_record_matches_the_metal_struct(family):
-    """The 64-byte host record: five float2 first, then four uints and dtdx —
-    offsets stated so the record cannot drift into agreeing by accident.
-    Parametrised over the two beta twins by name: the packed families carry
-    uint/float structs whose layouts their own plan builders assert."""
+    """The 152-byte host record: three float2 first, then four uints, dtdx, the two
+    real beta words and the chunk record — offsets stated so the record cannot drift
+    into agreeing by accident. Parametrised over the two beta twins by name: the
+    packed families carry uint/float structs whose layouts their own plan builders
+    assert."""
     product = importlib.import_module(f"meep_gpu.metal_kernels.{family}")
     dtype = product.params_record_dtype()
-    assert dtype.itemsize == product.PARAMS_ITEMSIZE == 64
+    assert dtype.itemsize == product.PARAMS_ITEMSIZE == 152
     offsets = {name: dtype.fields[name][1] for name in dtype.names}
-    assert offsets == {"px": 0, "py": 8, "pz": 16, "bp": 24, "bm": 32,
-                       "nx": 40, "ny": 44, "nz": 48, "n_elem": 52, "dtdx": 56}
+    assert offsets == {"px": 0, "py": 8, "pz": 16, "nx": 24, "ny": 28, "nz": 32,
+                       "n_elem": 36, "dtdx": 40, "beta_plus": 44, "beta_minus": 48,
+                       "cb": 52}
 
 
 # ---------------------------------------------------------------------------

@@ -390,3 +390,138 @@ def test_record_control_names_the_metal_gate(tmp_path):
                                  str(harness), False, {}, "gate_dispatch_metal_route.py")
     assert entry["how_forced"]["read_from"].startswith("gate_dispatch_metal_route.ARRAY_ENV")
     assert entry["how_forced"]["environment_of_the_array_leg"]["MEEP_GPU_FUSED"] == "0"
+
+
+# ---------------------------------------------------------------------------
+# A GPU-only row cites its identity row (CERT-8: one lift, no array control)
+# ---------------------------------------------------------------------------
+
+def _gpu_only_row(**kw):
+    row = gpu_row(**kw)
+    row["legs_mode"] = "gpu-only"
+    row["bit_identity"] = {"fused_vs_array_identical": None, "measured": False}
+    row["substitution"]["tables_by_leg"] = {"fused": ["triton"]}
+    del row["per_leg"]["unfused"], row["per_leg"]["array"]
+    return row
+
+
+def _identity_entry(tmp_path, **kw):
+    """The identity tier's ledger entry for the same route, case and size."""
+    write_rows(str(tmp_path / "identity"), [dict(gpu_row(**kw), substitution={
+        "tables_dispatched": ["triton"], "proved": True,
+        "tables_by_leg": {"fused": ["triton"], "unfused": ["triton"], "array": []}})])
+    entry, _ = tr.record_gpu(str(tmp_path / "id_ledger.jsonl"), str(tmp_path / "identity"),
+                             None, "triton", None, False, {"key": "identity_gpu_x",
+                                                           "tier": "identity"})
+    return entry
+
+
+def test_a_gpu_only_row_without_its_identity_row_is_struck_by_name(tmp_path):
+    ledger = str(tmp_path / "ledger.jsonl")
+    write_rows(str(tmp_path / "solo"), [_gpu_only_row()])
+    entry, summary = tr.record_gpu(ledger, str(tmp_path / "solo"), None, "triton", None,
+                                   False, {})
+    assert entry["measured"]["legs_mode"] == "gpu-only"
+    assert "no identity row" in entry["struck"] and "gpu-only" in summary
+    assert entry["bit_identity_from"]["ok"] is False
+
+
+def test_a_gpu_only_row_cites_a_three_leg_identity_row_of_its_size(tmp_path):
+    ledger = str(tmp_path / "ledger.jsonl")
+    write_rows(str(tmp_path / "solo"), [_gpu_only_row()])
+    identity = _identity_entry(tmp_path)
+    entry, summary = tr.record_gpu(ledger, str(tmp_path / "solo"), None, "triton", None,
+                                   False, {}, identity_from=identity)
+    assert not entry.get("struck"), entry.get("struck")
+    assert entry["bit_identity_from"]["ok"] is True
+    assert entry["bit_identity_from"]["key"] == "identity_gpu_x"
+    assert "identity from identity_gpu_x: ok" in summary
+    # an identity row the spread floor struck still vouches: its windows are not figures
+    identity["measured"]["verdict"] = "TIMED-NOT-REPORTABLE"
+    identity["struck"] = "TIMED-NOT-REPORTABLE: floors failed ['spread_within_gate']"
+    entry, _ = tr.record_gpu(ledger, str(tmp_path / "solo"), None, "triton", None,
+                             False, {}, identity_from=identity)
+    assert not entry.get("struck") and entry["bit_identity_from"]["ok"] is True
+    # and a three-leg row is untouched by the clause
+    write_rows(str(tmp_path / "full"), [gpu_row()])
+    entry, _ = tr.record_gpu(ledger, str(tmp_path / "full"), None, "triton", None, False, {})
+    assert "bit_identity_from" not in entry and not entry.get("struck")
+
+
+@pytest.mark.parametrize("change, why", [
+    (lambda e: e["measured"].update(cells=1), "timed 1 cells"),
+    (lambda e: e["measured"].update(bit_identical_fused_vs_array=False), "not bit-identical"),
+    (lambda e: e["measured"].update(provenance_sha256={"bench": "other"}),
+     "other pinned sources"),
+    (lambda e: e["measured"]["tables_by_leg"].update(fused=["cuda"]), "fused leg launched"),
+    (lambda e: e["measured"].update(verdict="ERROR"), "did not run to the end"),
+    (lambda e: e.update(deposit_repair={"ok": False}), "deposit-repair route"),
+], ids=["other_size", "not_identical", "other_sources", "other_table", "did_not_finish",
+        "repair"])
+def test_a_gpu_only_row_cannot_borrow_another_rows_identity(tmp_path, change, why):
+    write_rows(str(tmp_path / "solo"), [_gpu_only_row()])
+    identity = _identity_entry(tmp_path)
+    change(identity)
+    entry, _ = tr.record_gpu(str(tmp_path / "ledger.jsonl"), str(tmp_path / "solo"), None,
+                             "triton", None, False, {}, identity_from=identity)
+    assert why in entry["struck"]
+
+
+# ---------------------------------------------------------------------------
+# The variance precondition (CERT-8 H5)
+# ---------------------------------------------------------------------------
+
+def _variance_ledger(path, gpu, meep, gpu_verdicts=None, ranks=32):
+    with open(path, "w", encoding="utf-8") as handle:
+        for index, (g, m) in enumerate(zip(gpu, meep), 1):
+            verdict = (gpu_verdicts or {}).get(index, "TIMED")
+            handle.write(json.dumps({
+                "ledger": "gpu", "tier": "priority", "route": "default", "pass": index,
+                "measured": {"verdict": verdict, "legs": {"fused": {
+                    "mcell_steps_per_s": g, "spread": 0.074 if verdict != "TIMED" else 0.01}}},
+                **({"struck": f"{verdict}: floors failed ['spread_within_gate']"}
+                   if verdict != "TIMED" else {})}) + "\n")
+            handle.write(json.dumps({
+                "ledger": "meep", "tier": "priority", "pass": index, "ranks": ranks,
+                "control": None, "build": "reference",
+                "measured": {"mcell_steps_per_s": m, "spread": 0.02}}) + "\n")
+            handle.write(json.dumps({     # a control at the same ranks: not the reference
+                "ledger": "meep", "tier": "priority", "pass": index, "ranks": ranks,
+                "control": "split", "build": "reference",
+                "measured": {"mcell_steps_per_s": 1.0}}) + "\n")
+
+
+def test_the_variance_precondition_lists_a_row_gate_strike_and_does_not_refuse(tmp_path):
+    """The GPU host's 1.0 variance run: GPU 1.6 %, MEEP@32 3.3 % over five repeats, the
+    first GPU repeat struck by its own window gate (7.4 %). The precondition is the
+    repeat spread; the chain's first rule (every repeat TIMED) refused this box."""
+    ledger = str(tmp_path / "ladder_rows.jsonl")
+    _variance_ledger(ledger, [747.0, 746.0, 742.6, 738.5, 735.0],
+                     [569.5, 582.3, 564.9, 584.2, 580.8],
+                     gpu_verdicts={1: "TIMED-NOT-REPORTABLE"})
+    verdict = tr.variance_verdict(ledger, 32)
+    assert verdict["verdict"] == "GO", verdict["why"]
+    assert verdict["sides"]["gpu"]["spread"] == pytest.approx(0.0161, abs=5e-4)
+    assert verdict["sides"]["meep@32"]["spread"] == pytest.approx(0.0333, abs=5e-4)
+    assert verdict["sides"]["meep@32"]["readable"] == 5          # the control is not read
+    assert [s["pass"] for s in verdict["rows_struck_by_their_own_gate"]] == [1]
+
+
+def test_the_variance_precondition_refuses_a_spread_above_its_threshold(tmp_path):
+    """The Mac's 1.0 variance run: fused 5.75 %, MEEP@8 7.09 %: NO-GO at the table's 5 %,
+    GO at the 10 % that run restated to; the threshold is the caller's, and recorded."""
+    ledger = str(tmp_path / "ladder_rows.jsonl")
+    _variance_ledger(ledger, [605.9, 573.1, 602.0, 601.2, 607.7],
+                     [423.8, 394.3, 418.8, 415.9, 396.7], ranks=8)
+    strict = tr.variance_verdict(ledger, 8)
+    assert strict["verdict"] == "NO-GO" and strict["max_spread"] == 0.05
+    assert any(w.startswith("gpu: repeat spread 0.0575") for w in strict["why"])
+    assert tr.variance_verdict(ledger, 8, max_spread=0.10)["verdict"] == "GO"
+    assert tr.main(["variance-verdict", "--ledger", ledger, "--meep-ranks", "8",
+                    "--out", str(tmp_path / "v.json")]) == 5
+    assert json.load(open(tmp_path / "v.json"))["verdict"] == "NO-GO"
+    assert tr.main(["variance-verdict", "--ledger", ledger, "--meep-ranks", "8",
+                    "--max-spread", "0.1"]) == 0
+    few = str(tmp_path / "few.jsonl")
+    _variance_ledger(few, [600.0, 601.0], [400.0, 401.0])
+    assert "2 readable repeats < 5" in tr.variance_verdict(few, 32)["why"][0]

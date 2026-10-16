@@ -293,7 +293,7 @@ __all__ = [
     "HALO_TAPS", "HOISTS_THE_WITHDRAW", "H_CELL_TAIL_ARGS", "INSTALLABLE",
     "INSTALLABLE_REASON", "IN_PLACE", "OWN_LOAD_EDITS", "REPAIR_PATHS", "REPLACES",
     "ROTATED", "SEAM", "SLOT",
-    "FusedHdPairPlan",
+    "FusedHdPairPlan", "StartsH",
     "certified_constitutive_tail", "certified_curl_tail", "curl_lift_edits",
     "explain_fused_hd_pair", "fused_hd_pair_coverage",
     "fused_constitutive_curl_H_to_D_kernel", "halo_taps", "lifted_constitutive_tail",
@@ -314,8 +314,11 @@ DECODE_END = "    i = plane // ny\n"
 #: helper's own anchor, below which every line is lifted text.
 H_CELL_DECODE_END = "        idx = i * nyz + j * nz + k\n"
 
-#: Where :func:`_h_cell` stops being lifted text and returns its six registers.
-H_CELL_RETURN_START = "        return a0, a1, a2, src0, src1, src2\n"
+#: Where :func:`_h_cell` stops being lifted text and returns its nine registers: the
+#: three stepped fields, the three flux densities the split-field history takes, and the
+#: three dsigw membership flags the caller keys that history's scratch store on.
+H_CELL_RETURN_START = ("        return a0, a1, a2, src0, src1, src2, "
+                       "dw0, dw1, dw2\n")
 
 #: Where the fused kernel's lifted CURL body begins. A marker rather than the shared
 #: decode anchor, because the weld block sits between the decode and the curl.
@@ -324,7 +327,7 @@ CURL_BODY_ANCHOR = "        # === the certified step_D curl body begins here ===
 #: What one call site forwards after the four leading arguments. Built once so the
 #: declaration, the generated lift edits and every call cannot drift apart.
 H_CELL_TAIL_ARGS = ("hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,\n"
-                    "             kp0, kp1, kp2, kmx, kmy, kmz, ny, nz")
+                    "             kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz")
 
 
 def _source_of(function_name: str, path: Optional[Path] = None) -> str:
@@ -394,8 +397,17 @@ def needle(text: str, old: str, new: str) -> str:
 #:
 #: THERE IS NO ARITHMETIC IN THIS TABLE. Every entry is a pointer spelling, a
 #: constexpr branch resolved to the side this product serves, or a store that moves to
-#: the caller; not one right-hand side, operand order or paren is touched.
+#: the caller; not one right-hand side, operand order or paren is touched, and the
+#: form itself -- ``forms.constitutive_form``, keyed on the record's dsigw line -- is
+#: the certified call, character for character.
 CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
+    {"line": "if SCALE: lattice = RECORD_HALF_INTEGER else: lattice = 0",
+     "became": "lattice = 0",
+     "why": "the constexpr branch is RESOLVED to the side this product serves. "
+            "update_H is SCALE 0, so the dsigw membership lines are the record's "
+            "INTEGER lines (chunk_map.record_index(False, axis, 0)), exactly the "
+            "sub-lattice the shared kms group sits on. The three record_in calls "
+            "below are the certified calls, unedited."},
     {"line": "km_0 = tl.load(km0 + i, ...)",
      "became": "km_0 = tl.load(kmx + i, ...)",
      "why": "ONE POINTER RENAME, NO ARITHMETIC. Both halves sit on the same Yee "
@@ -415,29 +427,40 @@ CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "SCALE=0 arm character for character, under the fused signature's own "
             "name for the magnetic flux density -- `gN` in the curl half is the "
             "MAGNETIC FIELD, so the constitutive source cannot keep that name."},
-    {"line": "prevN = tl.load(wN + idx, ...)",
-     "became": "prevN = tl.load(wiN + idx, ...)",
+    {"line": "prevN = tl.load(wN + idx, mask=live & dwN, ...)",
+     "became": "prevN = tl.load(wiN + idx, mask=live & dwN, ...)",
      "why": "the split-field history is read from the PRE-LAUNCH buffer, which "
-            "nothing in this launch writes. On this side the newly written f_w_H IS "
-            "B exactly, so an in-place write would hand a racing neighbour B where "
-            "it needs B_prev -- the second, easily missed half of the hazard."},
-    {"line": "tl.store(wN + idx, srcN, mask=live)",
+            "nothing in this launch writes, under the certified dsigw guard. On this "
+            "side the newly written f_w_H IS B exactly, so an in-place write would "
+            "hand a racing neighbour B where it needs B_prev -- the second, easily "
+            "missed half of the hazard."},
+    {"line": "tl.store(wN + idx, srcN, mask=live & dwN)",
      "became": "(removed -- the caller stores srcN to the SCRATCH volume)",
      "why": "the weld writes a scratch volume, so the helper must not store. The "
             "value and the expression that produced it are untouched; only the "
             "destination moves, and only for the program's OWN cell (a foreign "
-            "recompute stores nothing at all)."},
-    {"line": "aN = tl.load(fN + idx, ...)",
-     "became": "aN = tl.load(hiN + idx, ...)",
+            "recompute stores nothing at all). The helper RETURNS the dsigw flags so "
+            "the caller writes srcN on the accumulation's cells and the pre-launch "
+            "word everywhere else -- the auxiliary contract on a twin the rotation "
+            "publishes, which must therefore be written at every cell."},
+    {"line": "aN = tl.load(fN + idx, mask=live & dwN, ...)",
+     "became": "aN = tl.load(hiN + idx, mask=live & dwN, ...)",
      "why": "the accumulator is read from the PRE-LAUNCH H, which is const for the "
             "whole dispatch. This is what makes the foreign recompute a pure function "
             "of unwritten memory. In the fused signature `fN` is the DISPLACEMENT."},
+    {"line": "if SCALE == 0: prevN = tl.where(start, ...); aN = tl.where(start, ...)",
+     "became": "prevN = tl.where(start, ...); aN = tl.where(start, ...)",
+     "why": "the constexpr branch is RESOLVED to the side this product serves: on "
+            "the H side MEEP's start of H (stepping.separate_h_from_b) starts H and "
+            "its history as copies of B on the run's first update_H, and the two "
+            "selects are the certified ones. `start_h` is a launch scalar, the same "
+            "for the program's own cell and every foreign recompute, so the recompute "
+            "of a neighbour is that neighbour's own first update_H."},
     {"line": "tl.store(fN + idx, aN, mask=live)",
      "became": "(removed -- the value is RETURNED)",
      "why": "same as the split-field store: the destination moves to the caller, "
             "which addresses the scratch for its own cell and consumes the register "
-            "for the curl half. The two accumulations, their order and their parens "
-            "are untouched."},
+            "for the curl half. The form call that produced it is untouched."},
     {"line": "idx = tl.program_id(0) * BLOCK + ... ; i = plane // ny",
      "became": "(removed -- i, j and k are parameters; idx is composed from them)",
      "why": "THE WHOLE POINT OF THE LIFT. The certified body becomes a function "
@@ -445,7 +468,9 @@ CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "cell arrives as three coordinates and the flat index is COMPOSED by the "
             "same layout the decode inverts. `live` arrives as the caller's per-lane "
             "validity: a tap the certified ghost rule masked off passes False, every "
-            "load inside is masked, and no out-of-range coordinate is dereferenced."},
+            "load inside is masked, and no out-of-range coordinate is dereferenced. "
+            "The record `cb` is read at the cell the helper is handed, so a "
+            "recomputed neighbour takes its own chunk's form."},
 )
 
 
@@ -458,6 +483,12 @@ def certified_constitutive_tail() -> str:
     the fused kernel reading the wrong volume.
     """
     tail = _cut(_source_of("constitutive_step"), DECODE_END)
+    tail = needle(tail,
+                  "if SCALE:\n"
+                  "    lattice = RECORD_HALF_INTEGER\n"
+                  "else:\n"
+                  "    lattice = 0\n",
+                  "lattice = 0\n")
     axes = ("i", "j", "k")
     pointers = ("kmx", "kmy", "kmz")
     for target in range(3):
@@ -481,9 +512,19 @@ def certified_constitutive_tail() -> str:
         tail = needle(tail, f"prev{target} = tl.load(w{target} + idx",
                       f"prev{target} = tl.load(wi{target} + idx")
         tail = needle(tail,
-                      f"tl.store(w{target} + idx, src{target}, mask=live)\n", "")
+                      f"tl.store(w{target} + idx, src{target}, "
+                      f"mask=live & dw{target})\n", "")
         tail = needle(tail, f"a{target} = tl.load(f{target} + idx",
                       f"a{target} = tl.load(hi{target} + idx")
+        tail = needle(
+            tail,
+            f"if SCALE == 0:                    # H starts as a copy of B on its "
+            f"own cells\n"
+            f"    prev{target} = tl.where(start, src{target}, prev{target})\n"
+            f"    a{target} = tl.where(start, src{target}, a{target})\n",
+            f"# H starts as a copy of B on its own cells (MEEP's start of H)\n"
+            f"prev{target} = tl.where(start, src{target}, prev{target})\n"
+            f"a{target} = tl.where(start, src{target}, a{target})\n")
         tail = needle(
             tail, f"tl.store(f{target} + idx, a{target}, mask=live)\n", "")
     # THE CHECK THAT MATTERS. In the fused signature `f*`, `w*` and `g*` are the
@@ -496,6 +537,10 @@ def certified_constitutive_tail() -> str:
                 raise AssertionError(
                     f"the lifted update_H body still indexes {stem}{target}, which "
                     f"in the fused kernel is not the volume the certified body meant")
+    if "SCALE" in tail:
+        raise AssertionError(
+            "the lifted update_H body still branches on SCALE; every constexpr arm "
+            "must be resolved to the H side this product serves")
     return tail.rstrip("\n") + "\n"
 
 
@@ -663,11 +708,17 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
     #: Boundary codes, identical to :mod:`.kernels`' own.
     PERIODIC = tl.constexpr(0)
     METALLIC = tl.constexpr(1)
+    # The names the two lifted bodies read: the shared forms and the record's word
+    # offsets, the very objects the certified kernels call, so the lift is the same
+    # text resolving to the same functions.
+    from .forms import (axis_present, constitutive_form, curl_form,  # noqa: E402
+                        curl_stencil, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
 
     @triton.jit
     def _h_cell(i, j, k, live,
                 hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                kp0, kp1, kp2, kmx, kmy, kmz, ny, nz):
+                kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz):
         """``kernels.constitutive_step`` for side H at ONE named cell, returning.
 
         ONE code path serves the program's own cell and every foreign recompute, so
@@ -680,10 +731,26 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         ``live`` is the caller's per-lane validity for THIS cell, not the dispatch's
         ``idx < n_elem``: a foreign tap masked off by the certified ghost rule passes
         ``live=False``, every load inside is masked, and no out-of-range coordinate
-        is ever dereferenced.
+        is ever dereferenced. The chunk record ``cb`` is read at the cell handed in,
+        so the form of a recomputed neighbour is that neighbour's own; ``start_h`` is
+        the launch's one start-of-H scalar.
+
+        The return carries the three dsigw flags beside the six registers: the
+        caller keys the scratch history store on them (the auxiliary contract).
         """
         nyz = ny * nz
         idx = i * nyz + j * nz + k
+
+        # Which cells take the accumulation: the component's own (dsigw) layer on the
+        # component's own sub-lattice. The own axis is x for target 0, y for 1, z for 2
+        # (the constitutive term tables), so each target's record line is again a
+        # compile-time word index, chunk_map.record_index(half_integer, axis, 0).
+        lattice = 0
+        dw0 = record_in(cb, lattice + 0, i)
+        dw1 = record_in(cb, lattice + 4, j)
+        dw2 = record_in(cb, lattice + 8, k)
+        # MEEP's start of H (see the docstring); always 0 on the E side.
+        start = start_h != 0
 
         # Component 0 takes its coefficient from axis x, 1 from y, 2 from z.
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
@@ -694,40 +761,46 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         km_2 = tl.load(kmz + k, mask=live, other=0.0)
 
         # --- component 0 -----------------------------------------------------------
-        prev0 = tl.load(wi0 + idx, mask=live, other=0.0)   # BEFORE the store; note 3.
+        prev0 = tl.load(wi0 + idx, mask=live & dw0, other=0.0)   # BEFORE the store; note 3.
         src0 = tl.load(b0 + idx, mask=live, other=0.0)
-        a0 = tl.load(hi0 + idx, mask=live, other=0.0)
-        a0 = a0 + kp_0 * src0
-        a0 = a0 - km_0 * prev0
+        a0 = tl.load(hi0 + idx, mask=live & dw0, other=0.0)
+        # H starts as a copy of B on its own cells (MEEP's start of H)
+        prev0 = tl.where(start, src0, prev0)
+        a0 = tl.where(start, src0, a0)
+        a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)
 
         # --- component 1 -----------------------------------------------------------
-        prev1 = tl.load(wi1 + idx, mask=live, other=0.0)
+        prev1 = tl.load(wi1 + idx, mask=live & dw1, other=0.0)
         src1 = tl.load(b1 + idx, mask=live, other=0.0)
-        a1 = tl.load(hi1 + idx, mask=live, other=0.0)
-        a1 = a1 + kp_1 * src1
-        a1 = a1 - km_1 * prev1
+        a1 = tl.load(hi1 + idx, mask=live & dw1, other=0.0)
+        # H starts as a copy of B on its own cells (MEEP's start of H)
+        prev1 = tl.where(start, src1, prev1)
+        a1 = tl.where(start, src1, a1)
+        a1 = constitutive_form(a1, prev1, src1, kp_1, km_1, dw1)
 
         # --- component 2 -----------------------------------------------------------
-        prev2 = tl.load(wi2 + idx, mask=live, other=0.0)
+        prev2 = tl.load(wi2 + idx, mask=live & dw2, other=0.0)
         src2 = tl.load(b2 + idx, mask=live, other=0.0)
-        a2 = tl.load(hi2 + idx, mask=live, other=0.0)
-        a2 = a2 + kp_2 * src2
-        a2 = a2 - km_2 * prev2
-        return a0, a1, a2, src0, src1, src2
+        a2 = tl.load(hi2 + idx, mask=live & dw2, other=0.0)
+        # H starts as a copy of B on its own cells (MEEP's start of H)
+        prev2 = tl.where(start, src2, prev2)
+        a2 = tl.where(start, src2, a2)
+        a2 = constitutive_form(a2, prev2, src2, kp_2, km_2, dw2)
+        return a0, a1, a2, src0, src1, src2, dw0, dw1, dw2
 
     @triton.jit
     def _h_tap(COMP: tl.constexpr, i, j, k, valid,
                hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-               kp0, kp1, kp2, kmx, kmy, kmz, ny, nz):
+               kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz):
         """One FOREIGN magnetic field the curl half would have loaded.
 
         The whole substitution, in one place: step the cell from PRE-LAUNCH state,
         take the component the certified load named, and serve an exact ``+0.0``
         where that load's mask was False -- which is what ``other=0.0`` served.
         """
-        a0, a1, a2, s0, s1, s2 = _h_cell(i, j, k, valid, hi0, hi1, hi2,
-                                         wi0, wi1, wi2, b0, b1, b2,
-                                         kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+        a0, a1, a2, s0, s1, s2, d0, d1, d2 = _h_cell(
+            i, j, k, valid, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
+            kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         value = a0
         if COMP == 1:
             value = a1
@@ -735,7 +808,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
             value = a2
         return tl.where(valid, value, 0.0)
 
-    @triton.jit
+    @triton.jit(do_not_specialize=["start_h"])
     def fused_constitutive_curl_H_to_D(
         ho0, ho1, ho2,                  # SCRATCH out: the stepped Hx, Hy, Hz
         wo0, wo1, wo2,                  # SCRATCH out: the stepped f_w_Hx, f_w_Hy, f_w_Hz
@@ -746,7 +819,8 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         u0, u1, u2,                     # curl auxiliaries: fu_Dx, fu_Dy, fu_Dz (in/out)
         kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, INTEGER sub-lattice
         kp0, kp1, kp2,                  # kps on each component's OWN axis, INTEGER
-        nx, ny, nz, n_elem, dtdx,
+        cb,                             # chunk record: both halves' forms and presence
+        nx, ny, nz, n_elem, dtdx, start_h,   # start_h: MEEP's start of H
         BACKWARD: tl.constexpr,
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         BLOCK: tl.constexpr,
@@ -757,6 +831,11 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         write-only scratch, so nothing written by the constitutive half is read by
         this launch; ``f``/``u`` step IN PLACE and that is safe by construction,
         because the curl reads and writes them at the program's OWN cell only.
+
+        Both halves read the chunk record: ``_h_cell`` the integer dsigw lines at
+        every cell it is handed, the curl body the presence word and the integer
+        dsigu lines at the program's own cell. ``start_h`` is not specialized on, as
+        on the certified constitutive.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -771,15 +850,22 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         # OWN cell's magnetic field from these registers and recomputes every foreign
         # tap from PRE-LAUNCH state through the same `_h_cell`, so no program observes
         # another program's store; the plan rotates H/f_w_H after the launch returns.
-        own0, own1, own2, src0, src1, src2 = _h_cell(
+        own0, own1, own2, src0, src1, src2, dw0, dw1, dw2 = _h_cell(
             i, j, k, live, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-            kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+            kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         tl.store(ho0 + idx, own0, mask=live)
         tl.store(ho1 + idx, own1, mask=live)
         tl.store(ho2 + idx, own2, mask=live)
-        tl.store(wo0 + idx, src0, mask=live)
-        tl.store(wo1 + idx, src1, mask=live)
-        tl.store(wo2 + idx, src2, mask=live)
+        # The history takes B on the accumulation's cells only (the auxiliary
+        # contract); every other cell of the twin takes the pre-launch word, so the
+        # rotation hands the engine an f_w_H that kept its word there and the twin is
+        # written at every cell.
+        tl.store(wo0 + idx, tl.where(dw0, src0, tl.load(
+            wi0 + idx, mask=live & (dw0 == 0), other=0.0)), mask=live)
+        tl.store(wo1 + idx, tl.where(dw1, src1, tl.load(
+            wi1 + idx, mask=live & (dw1 == 0), other=0.0)), mask=live)
+        tl.store(wo2 + idx, tl.where(dw2, src2, tl.load(
+            wi2 + idx, mask=live & (dw2 == 0), other=0.0)), mask=live)
 
         # === the certified step_D curl body begins here ===
 
@@ -812,22 +898,30 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         b = own1
         c = own2
         a_y = _h_tap(0, i, sj, k, vy, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         a_z = _h_tap(0, i, j, sk, vz, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         b_x = _h_tap(1, si, j, k, vx, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         b_z = _h_tap(1, i, j, sk, vz, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         c_x = _h_tap(2, si, j, k, vx, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         c_y = _h_tap(2, i, sj, k, vy, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
 
         # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        # One call per target: MEEP's left-to-right association with both partners, the
+        # one-partner form where the record says the other partner's derivative axis is
+        # invariant, and an exact +0 with neither. The presence word is the record's
+        # (stepping.curl_presence, MEEP's have_plus_deriv / have_minus_deriv).
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
         # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
         # Cell 0 of a metallic axis, for every target whose Yee shift there is 0. The
@@ -865,21 +959,36 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0 = tl.load(u0 + idx, mask=live, other=0.0)
-        n0 = ((p0 * km_y) - curl0) * si_y
-        v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+        # Which cells take the recurrence: the component's dsigu layer, on the component's
+        # own sub-lattice. The dsigu axis is z for target 0, x for 1 and y for 2 (vec.hpp
+        # cycle_direction); the sub-lattice is half-integer for every B target and integer
+        # for every D one (the iyee table), so each target's record line is a compile-time
+        # word index, chunk_map.record_index(half_integer, axis, 0).
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1 = tl.load(u1 + idx, mask=live, other=0.0)
-        n1 = ((p1 * km_z) - curl1) * si_z
-        v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+        v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                           km_y, si_y, km_z, si_z, du0)
 
-        p2 = tl.load(u2 + idx, mask=live, other=0.0)
-        n2 = ((p2 * km_x) - curl2) * si_x
-        v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+        p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+        v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                           km_z, si_z, km_x, si_x, du1)
 
-        tl.store(u0 + idx, n0, mask=live)
-        tl.store(u1 + idx, n1, mask=live)
-        tl.store(u2 + idx, n2, mask=live)
+        p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+        v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                           km_x, si_x, km_y, si_y, du2)
+
+        # fu is written on the recurrence's cells ONLY: outside them the dsig-only form
+        # reads and writes the field alone and fu keeps its word (the auxiliary contract).
+        tl.store(u0 + idx, n0, mask=live & du0)
+        tl.store(u1 + idx, n1, mask=live & du1)
+        tl.store(u2 + idx, n2, mask=live & du2)
         tl.store(f0 + idx, v0, mask=live)
         tl.store(f1 + idx, v1, mask=live)
         tl.store(f2 + idx, v2, mask=live)
@@ -989,7 +1098,36 @@ def explain_fused_hd_pair(fields: Any, pml: Any,
 # The plan
 # ---------------------------------------------------------------------------
 
-class FusedHdPairPlan(ScratchWeldPairPlan):
+class StartsH:
+    """MEEP's start of H for a weld plan whose kernel carries ``update_H``.
+
+    On ``launch.ConstitutivePlan``'s terms, which every H->D weld of this table
+    shares: the launch passes ``start_h = 1`` while ``h_state.h_separated`` is still
+    false, and :meth:`run` sets the flag after the first launch that has programs (a
+    warm launch over an empty grid starts nothing, and :meth:`warm` never calls
+    :meth:`run`). ``h_state`` is the engine's ``Fields`` on the engine route and
+    ``None`` on the from-arrays route, a state that has already started.
+
+    A mixin ahead of :class:`.offdiag_scratch_weld.ScratchWeldPairPlan`; the subclass
+    declares the ``_h_state`` slot and sets it.
+    """
+
+    __slots__ = ()
+
+    def start_h(self) -> int:
+        """1 on the one launch that starts H from B, 0 otherwise."""
+        state = self._h_state
+        return 0 if state is None or state.h_separated else 1
+
+    def run(self, guard: Optional[bool] = None) -> None:
+        """Launch and rotate (the base class), then record MEEP's start of H."""
+        start = self.start_h()
+        super().run(guard)
+        if start and self._grid[0]:  # an empty grid starts nothing
+            self._h_state.h_separated = True
+
+
+class FusedHdPairPlan(StartsH, ScratchWeldPairPlan):
     """ONE allocation-free launch for ``update_H`` and ``step_D``.
 
     THE SIX ROTATING VOLUMES ARE RESOLVED PER LAUNCH, never cached: the plan owns a
@@ -1003,10 +1141,13 @@ class FusedHdPairPlan(ScratchWeldPairPlan):
     among the written volumes themselves. The base class additionally refuses a
     scratch buffer that IS its own live volume, which would be the in-place weld this
     design exists to avoid, wearing this class's name.
+
+    ``h_state`` IS THE ``Fields`` THE H HALF STARTS FROM, or ``None``
+    (:class:`StartsH`).
     """
 
     __slots__ = ("dtdx", "backward", "bc", "_b", "_targets", "_aux", "_curl_coeff",
-                 "_kps", "_kernel", "_pointer")
+                 "_kps", "_kernel", "_pointer", "_h_state")
 
     replaces = REPLACES
 
@@ -1015,11 +1156,12 @@ class FusedHdPairPlan(ScratchWeldPairPlan):
                  flux: Sequence[Any], targets: Sequence[Any],
                  auxiliaries: Sequence[Any], curl_coefficients: Sequence[Any],
                  constitutive_coefficients: Sequence[Any], kernel: Any = None,
-                 num_warps: Optional[int] = 1) -> None:
+                 num_warps: Optional[int] = 1, *, chunk_bounds: Any,
+                 h_state: Any = None) -> None:
         from .launch import CupyPointer, _flat  # noqa: PLC0415
 
         super().__init__(FAMILY, fields, twins, ROTATED, shape, block, REPLACES,
-                         num_warps=num_warps)
+                         num_warps=num_warps, chunk_bounds=chunk_bounds)
         self.dtdx = float(dtdx)
         self.backward = BACKWARD
         self.bc = tuple(int(code) for code in codes)
@@ -1039,6 +1181,7 @@ class FusedHdPairPlan(ScratchWeldPairPlan):
         self._check_aliases(twins, flux, targets, auxiliaries,
                             curl_coefficients, constitutive_coefficients)
         self._kernel = kernel
+        self._h_state = h_state
 
     def _check_aliases(self, twins, flux, targets, auxiliaries,
                        curl_coefficients, constitutive_coefficients) -> None:
@@ -1098,8 +1241,8 @@ class FusedHdPairPlan(ScratchWeldPairPlan):
         prior = [self._pointer(array) for array in reads]
         kernel[self._grid](
             *scratch, *prior, *self._b, *self._targets, *self._aux,
-            *self._curl_coeff, *self._kps,
-            nx, ny, nz, self.n_elem, self.dtdx,
+            *self._curl_coeff, *self._kps, self._cb,
+            nx, ny, nz, self.n_elem, self.dtdx, self.start_h(),
             BACKWARD=self.backward,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
             BLOCK=self.block,
@@ -1152,6 +1295,7 @@ def plan_fused_hd_pair(fields: Any, pml: Any, sources: Any = None,
     slowdown, it is a silent DISARMING -- every mutation leg would then launch the
     shipped kernel and report the defect as uncaught.
     """
+    from .launch import chunk_bounds_for  # noqa: PLC0415
     if not fused_hd_pair_coverage(fields, pml, sources).covered:
         return None
     suffix, constitutive_suffix = _sub_lattice_suffixes()
@@ -1170,13 +1314,16 @@ def plan_fused_hd_pair(fields: Any, pml: Any, sources: Any = None,
          for axis in "xyz" for stem in ("kms", "sinv")],
         [getattr(pml, f"kps_{axis}{constitutive_suffix}") for axis in "xyz"],
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, None),
+        h_state=fields,
     )
 
 
 def plan_fused_hd_pair_from_arrays(
         arrays: Dict[str, Any], flat: Dict[str, Any], dtdx: float,
         codes: Sequence[int], fields: Any, block: Optional[int] = None,
-        kernel: Any = None, num_warps: Optional[int] = 1) -> FusedHdPairPlan:
+        kernel: Any = None, num_warps: Optional[int] = 1, *,
+        chunk_bounds: Any) -> FusedHdPairPlan:
     """Build from bare device arrays -- the gate's route.
 
     No coverage predicate runs: the caller is a harness that constructed the
@@ -1196,5 +1343,5 @@ def plan_fused_hd_pair_from_arrays(
         [arrays[name] for name in IN_PLACE[3:]],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
         [flat[f"kps_{axis}"] for axis in "xyz"],
-        kernel=kernel, num_warps=num_warps,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )

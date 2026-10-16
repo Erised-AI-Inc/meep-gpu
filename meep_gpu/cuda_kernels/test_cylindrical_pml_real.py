@@ -1,42 +1,27 @@
-"""The CUDA cylindrical (Dcyl, m = 0) curl slice: its predicate, its prefix, its text.
+"""The CUDA cylindrical (Dcyl, m = 0) curl slice: its predicate, its scan's host side, its text.
 
-THE BIT-IDENTITY GATE LIVES ELSEWHERE — it needs a device and a sweep, so it is
-``parity/meep_gpu/gate_cuda_cylindrical_real.py``. What is pinned HERE is the rest of
-the slice's silent-failure surface, and every one of these failures is a plausible,
-smooth, WRONG field rather than a crash:
+THE WORD-FOR-WORD CHECK OF THE TEXT AGAINST THE ARRAY PATH is ``test_cylindrical_chunk_forms``
+(the kernels executed by an interpreter, launched through their own launchers); the device
+gate is ``parity/meep_gpu/gate_cuda_cylindrical_real.py``. What is pinned HERE is the rest of
+the slice's silent-failure surface, and every one of these failures is a plausible, smooth,
+WRONG field rather than a crash:
 
-* THE PREDICATE. Every configuration it refuses would be mis-stepped if it leaked, so
-  the refusals are mutated and every mutation must be caught. A predicate no mutation
-  exercises is indistinguishable from one that returns True.
-* THE NON-WIDENING. ``coverage.covers_real_pml_curl`` — the CARTESIAN predicate — must
-  STILL refuse Dcyl. This slice adds a second pair with a second predicate; if adding
-  it widened the first, a Dcyl grid would reach kernels with no prefix pointer, no
-  axis tail and no ``4*Courant`` scalar. That is exactly the leak the folded round
-  measured on the constitutive siblings, and it is asserted here in both directions.
-* THE DEVICE TEXT. Four things separate this pair from the certified Cartesian one
-  (``cylindrical_kernels``' docstring derives them off ``stepping.py``), and three of
-  them are ARITHMETIC — the Bz grouping, the Dz source swap, the on-axis post-add.
-  The gate can see a wrong answer; only a text pin can see the grouping change that
-  is exact at Courant 0.5 and wrong at 0.35, which is why the Metal port pins it as
-  source text as well as arming it as a mutation.
-* THE ARGUMENT ORDER. The kernel signature and the launcher's tuple are two lists
-  that must agree; CuPy's ``RawKernel`` does not check, so a swapped pair is a wrong
-  answer at a wrong pointer.
-* THE PREFIX. The wall row on the B side and its absence on the D side, and the two
-  ``ir0`` values, are silent half-cell and last-row errors.
+* THE PREDICATE. Every configuration it refuses would be mis-stepped if it leaked, so the
+  refusals are mutated and every mutation must be caught.
+* THE NON-WIDENING. ``coverage.covers_real_pml_curl`` -- the CARTESIAN predicate -- must
+  STILL refuse Dcyl, and this pair's predicate every Cartesian grid.
+* THE DEVICE TEXT. What separates this pair from the root Cartesian one: Bz's and Dz's whole
+  curl is ``dtdx`` times the scan's radial difference, and the m = 0 axis rules run after
+  the PML forms with MEEP's double ``4*Courant`` product. Pinned as text because a regrouped
+  or float32 spelling is exact at some Courant numbers.
+* THE ARGUMENT ORDER. The kernel signature and the launcher's tuple are two lists that must
+  agree; CuPy's ``RawKernel`` does not check.
+* THE SCAN'S HOST SIDE. Its row vectors and chunk starts are the array path's own.
 
-THE SOURCE IS READ WITH ``ast`` RATHER THAN IMPORTED, and that is the whole reason
-this file runs at the merge bar: ``cylindrical_kernels`` imports ``cupy`` at module
-scope because it holds ``cp.RawKernel`` objects, so importing it on a laptop collapses
-the file to one sanctioned skip — the failure mode ``coverage.py``'s own header
-records and this package has already paid for once. The predicate and the prefix live
-in CuPy-free siblings and ARE imported.
-
-THE BACKEND STAND-IN, AND WHAT IT IS NOT. Off device the fixture hands ``Grid`` a
-module that is NumPy wearing CuPy's ``__name__``, because the predicate's first
-question is whether the backend is CuPy at all. Everything else it reads — the Dcyl
-axis table, the phi extent, dtype, contiguity, the PML vectors — is exercised on REAL
-``Grid``/``Fields``/``PML`` objects, which is what catches an attribute rename.
+THE SOURCE IS READ WITH ``ast`` RATHER THAN IMPORTED: ``cylindrical_kernels`` imports
+``cupy`` at module scope. The predicate and the scan's host side live in CuPy-free siblings
+and ARE imported. Off device the fixture hands ``Grid`` NumPy wearing CuPy's ``__name__``,
+because the predicate's first question is whether the backend is CuPy at all.
 """
 
 from __future__ import annotations
@@ -135,7 +120,7 @@ def _string_assignment(path: str, name: str) -> str:
     kernel files spell a kernel, and taking only the literal half would silently drop
     the prelude from every text assertion below.
     """
-    tree = ast.parse(open(path).read())
+    tree = ast.parse(open(path, encoding="utf-8").read())
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
             continue
@@ -344,7 +329,7 @@ def test_every_shared_helper_this_module_borrows_still_exists():
 def test_the_predicate_module_pulls_in_no_device_dependency():
     """It must be importable, exercisable and mutable on a machine with no GPU."""
     source = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "cylindrical_coverage.py")).read()
+                               "cylindrical_coverage.py"), encoding="utf-8").read()
     tree = ast.parse(source)
     imported = set()
     for node in ast.walk(tree):
@@ -465,7 +450,7 @@ def test_the_prelude_is_the_certified_one_verbatim(prelude):
     """Reused, not copied. Two copies of ``pml_apply`` are two things to keep in step
     — and a second spelling would silently un-arm the shared mutation battery, whose
     needles are those exact strings."""
-    source = open(_KERNEL_PATH).read()
+    source = open(_KERNEL_PATH, encoding="utf-8").read()
     assert "from .step_curl_kernels import _REAL_PML_PRELUDE" in source
     for needle in ("float fu_new = ((fprev * kms) - curl) * sinv;",
                    "__device__ __forceinline__ float shift_up(",
@@ -473,76 +458,63 @@ def test_the_prelude_is_the_certified_one_verbatim(prelude):
         assert needle in prelude
 
 
-def test_bz_takes_the_prefix_difference_and_does_not_distribute_dtdx():
-    """``dtdx * (pfx_up - pfx_here)`` — ONE subtract, ONE multiply (stepping.py:375).
+def test_bz_takes_dtdx_times_the_radial_difference():
+    """Bz's whole curl is ``dtdx * rad`` -- ``part_products.scale(dtdx, radial)``, one
+    product -- where ``rad`` is the scan's radial difference of Ep's per-chunk sum.
 
-    PINNED AS TEXT because the mutation that distributes the scale is EXACT whenever
-    ``dtdx`` is a power of two: a case matrix without a non-power-of-two Courant
-    cannot see it at all, which the Metal port measured. A text pin does not depend on
-    the fixture.
+    PINNED AS TEXT because a distributed or a re-grouped spelling is exact whenever
+    ``dtdx`` is a power of two, which a fixture without a non-power-of-two Courant cannot
+    see. The Cartesian Bz stencil must be gone from the Bz block (``Ey`` is still read raw
+    by Bx, so the assertion is scoped to the block).
     """
     body = kernel_body("step_B")
-    assert "float curl = dtdx * (pfx_up - pfx_here);" in body
-    assert "dtdx * pfx_up" not in body
-    assert "float pfx_up   = pfx[idx + sx];" in body, (
-        "the B side must read the NEXT RADIAL ROW of the wall-extended prefix")
-    # And the Cartesian Bz stencil must be GONE FROM THE Bz BLOCK. ``Ey`` is still
-    # read RAW by Bx (curl_x = dEz/dy - dEy/dz), so a whole-file count would pin the
-    # wrong thing — the first draft of this test did exactly that and failed on the
-    # correct kernel. The assertion is scoped to the block the substitution replaced.
-    bz_block = body[body.index("// Bz: CYLINDRICAL SUBSTITUTION"):
-                    body.index("pml_apply(Bz,")]
-    assert "shift_up(Ey," not in bz_block and "shift_up(Ex," not in bz_block, (
-        "Bz's curl is REPLACED by the prefix difference; the raw radial and azimuthal "
-        "stencils must not survive in that block")
+    bz_block = body[body.index("    // Bz:"):body.index("pml_apply(Bz,")]
+    assert "float curl = dtdx * rad[idx];" in bz_block
+    assert "shift_up(Ey," not in bz_block and "shift_up(Ex," not in bz_block
+    assert body.count("rad[") == 1, "exactly one term may read the radial difference"
 
 
-def test_dz_takes_the_prefix_and_dx_keeps_the_raw_hy():
-    """The substitution is per TERM (stepping.py:452-455), not per sub-step."""
+def test_dz_takes_the_radial_difference_and_dx_keeps_the_raw_hy():
+    """The substitution is per TERM, not per sub-step: Dx's Hy operands stay RAW."""
     body = kernel_body("step_D")
-    assert "float f1 = pfx[idx];" in body
-    assert "float sf = shift_dn(pfx, idx, i, nx, sx, bc_x);" in body
+    dz_block = body[body.index("    // Dz:"):body.index("pml_apply(Dz,")]
+    assert "float curl = dtdx * rad[idx];" in dz_block
     assert "float f2 = Hy[idx];" in body, "Dx's Hy operand must stay RAW"
     assert "float ss = shift_dn(Hy, idx, k, nz, sz, bc_z);" in body
-    assert body.count("pfx[") == 1 and body.count("shift_dn(pfx") == 1, (
-        "exactly one term may read the prefix on the D side")
+    assert body.count("rad[") == 1, "exactly one term may read the radial difference"
 
 
 def test_the_axis_rules_are_post_rules_in_the_array_paths_own_order():
-    """``Bx[r=0]=0``; then ``Dz[r=0] += axis_coef*Hy``, then ``Dy[r=0]=0``.
-
-    The Dz increment is a POST-ADD and NOT folded into the curl: the fold was measured
-    to break m = 0 under PML (stepping.py:574-580). Pinned as text as well as armed as
-    a mutation, because "applied after the recurrence" is a property of WHERE the line
-    sits, which a value comparison can only see through its consequences.
-    """
+    """``Bx[r=0]=0``; then ``Dz[r=0] += realnum(double(4*Courant) * double(Hp))``, then
+    ``Dy[r=0]=0`` -- after every PML form, in the array path's own order. Pinned as text
+    as well as armed as a mutation, because "applied after the recurrence" is a property
+    of WHERE the line sits."""
     b_body = kernel_body("step_B")
     d_body = kernel_body("step_D")
-    assert re.search(r"pml_apply\(Bz,.*\n\s*\}\n\n.*\n.*\n.*\n.*\n\s*if \(i == 0\) Bx\[idx\] = 0\.0f;",
-                     b_body), "Bx's axis zero must come AFTER every pml_apply"
-    add = d_body.index("Dz[idx] = Dz[idx] + (axis_coef * Hy[idx]);")
+    assert b_body.rindex("pml_apply(") < b_body.index("if (i == 0) Bx[idx] = 0.0f;")
+    add = d_body.index(
+        "Dz[idx] = Dz[idx] + __double2float_rn(axis_courant * (double)(Hy[idx]));")
     zero = d_body.index("Dy[idx] = 0.0f;")
     last_apply = d_body.rindex("pml_apply(")
-    assert last_apply < add < zero, (
-        "the D-side axis rules must run after every pml_apply, in the array path's "
-        "own order: the Dz post-add first, then Dp forced to zero")
-    assert "curl = curl - (axis_coef" not in d_body, (
-        "the on-axis increment must NOT be folded into the curl")
+    assert last_apply < add < zero
+    assert "curl = curl - " not in d_body, "the on-axis rule must NOT be folded into the curl"
 
 
-def test_the_axis_coefficient_is_bound_not_recomputed():
-    """``axis_coef`` is a kernel ARGUMENT, host-rounded (stepping.py:585)."""
+def test_the_axis_rule_takes_the_double_courant_product():
+    """``axis_courant`` is a ``double`` ARGUMENT, ``4 * Courant`` in double, and the product
+    with Hp is formed in double and rounded once (MEEP step_db.cpp:324,
+    ``stepping._realnum_double_product``). A float32 ``4*Courant`` is another factor
+    wherever Courant is not a float32 word (0.3 is not)."""
     d_body = kernel_body("step_D")
-    assert "constant" not in d_body  # that is the Metal spelling, not this one
-    assert "float axis_coef" in d_body
-    assert "4.0f * dtdx" not in d_body
-    source = open(_KERNEL_PATH).read()
-    assert "np.float32(4.0 * float(dtdx))" in source
+    assert "double axis_courant" in d_body
+    assert "4.0f" not in d_body and "axis_coef" not in d_body
+    source = open(_KERNEL_PATH, encoding="utf-8").read()
+    assert "np.float64(4.0 * float(grid.courant))" in source
 
 
-def test_the_b_side_kernel_takes_no_axis_coefficient():
+def test_the_b_side_kernel_takes_no_axis_factor():
     """A scalar bound and unread is a signature two callers can disagree about."""
-    assert "axis_coef" not in kernel_body("step_B")
+    assert "axis_courant" not in kernel_body("step_B")
 
 
 # --------------------------------------------------------------------------
@@ -561,107 +533,93 @@ def _signature_names(body: str) -> list:
 
 @pytest.mark.parametrize("sub_step,expected", (
     ("step_B", ["Bx", "By", "Bz", "fu_Bx", "fu_By", "fu_Bz", "Ex", "Ey", "Ez",
-                "pfx", "nx", "ny", "nz", "dtdx",
+                "rad", "nx", "ny", "nz", "dtdx",
                 "kms_x", "sinv_x", "kms_y", "sinv_y", "kms_z", "sinv_z",
-                "bc_x", "bc_y", "bc_z"]),
+                "bc_x", "bc_y", "bc_z", "cb"]),
     ("step_D", ["Dx", "Dy", "Dz", "fu_Dx", "fu_Dy", "fu_Dz", "Hx", "Hy", "Hz",
-                "pfx", "nx", "ny", "nz", "dtdx", "axis_coef",
+                "rad", "nx", "ny", "nz", "dtdx", "axis_courant",
                 "kms_x", "sinv_x", "kms_y", "sinv_y", "kms_z", "sinv_z",
-                "bc_x", "bc_y", "bc_z"]),
+                "bc_x", "bc_y", "bc_z", "cb"]),
 ))
 def test_the_kernel_signature_is_the_order_the_launcher_passes(sub_step, expected):
     """``RawKernel`` does not type-check its tuple; a swapped pair is a wrong pointer.
 
     The launcher builds one tuple for both sides and inserts the D side's extra scalar
-    through ``extra_scalars``, so the two orders differ in exactly one position — the
-    place a reader is most likely to get it wrong.
+    through ``extra_scalars``, so the two orders differ in exactly one position -- the
+    place a reader is most likely to get it wrong -- and closes it with the chunk record.
     """
     assert _signature_names(kernel_body(sub_step)) == expected
     launch = _string_assignment  # keep the import used; the real check is below
-    source = open(_KERNEL_PATH).read()
+    source = open(_KERNEL_PATH, encoding="utf-8").read()
     order = re.search(r"kernel\(\(blocks,\), \(_REAL_PML_THREADS,\), \((.*?)\)\)\n",
                       source, re.S).group(1)
     flattened = [token.strip() for token in order.replace("\n", " ").split(",")
                  if token.strip()]
     assert flattened[:10] == ["targets[0]", "targets[1]", "targets[2]",
                               "auxiliaries[0]", "auxiliaries[1]", "auxiliaries[2]",
-                              "sources[0]", "sources[1]", "sources[2]", "prefix"]
+                              "sources[0]", "sources[1]", "sources[2]", "radial"]
     assert "*extra_scalars" in flattened
     assert flattened.index("*extra_scalars") == flattened.index("np.float32(dtdx)") + 1
+    assert flattened[-1] == "cb"
     assert launch is _string_assignment
 
 
-def test_the_dispatch_is_sized_from_the_target_volume_not_the_prefix():
-    """The B side's prefix is one row taller; a grid sized from it steps cells the
-    array path does not own."""
-    source = open(_KERNEL_PATH).read()
+def test_the_dispatch_is_sized_from_the_target_volume():
+    """The radial difference shares the target's shape; the launch is sized from the
+    target and the launcher refuses a difference of any other shape."""
+    source = open(_KERNEL_PATH, encoding="utf-8").read()
     assert "nx, ny, nz = targets[0].shape" in source
+    assert "if tuple(radial.shape) != (nx, ny, nz):" in source
     for sub_step in SUB_STEPS:
         assert "if (idx >= nx * ny * nz) return;" in kernel_body(sub_step)
 
 
 # --------------------------------------------------------------------------
-# The prefix
+# The radial scan's host side
 # --------------------------------------------------------------------------
 
 def test_the_prefix_tables_are_the_array_paths_own_values():
     assert cylindrical_prefix.PREFIX_IR0 == {"step_B": 0.0, "step_D": 0.5}
     assert cylindrical_prefix.PREFIX_WALL_ROW == {"step_B": True, "step_D": False}
     assert cylindrical_prefix.PREFIX_COMPONENT == {"step_B": "Ey", "step_D": "Hy"}
+    assert cylindrical_prefix.RADIAL_TARGET == {"step_B": "Bz", "step_D": "Dz"}
+    assert cylindrical_prefix.RADIAL_BACKWARD == {"step_B": False, "step_D": True}
     assert cylindrical_prefix.prefix_rows("step_B", 16) == 17
     assert cylindrical_prefix.prefix_rows("step_D", 16) == 16
 
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
-def test_the_prefix_is_the_shipped_scan_over_the_shipped_source(sub_step, xp):
-    """Called, never re-derived — and on the B side over Ep EXTENDED by a ZERO row.
-
-    The comparison is against ``stepping.cylindrical_rderiv_prefix`` itself, spelled
-    here the way ``step_B``:326-333 spells it, so this pins the EXTENSION rather than
-    re-running the same helper and calling the agreement a result.
-    """
-    fields, _layer, grid = build(xp, shape=(16, 1, 20))
-    rng = numpy.random.default_rng(3)
-    for name in ("Ey", "Hy"):
-        getattr(fields, name)[...] = grid.xp.asarray(
-            rng.uniform(-1.0, 1.0, size=grid.shape).astype(numpy.float32))
-    produced = cylindrical_prefix.cylindrical_prefix(fields, sub_step)
-    source = getattr(fields, cylindrical_prefix.PREFIX_COMPONENT[sub_step])
-    if sub_step == "step_B":
-        rows = source.shape[0]
-        extended = grid.xp.zeros((rows + 1,) + source.shape[1:], dtype=source.dtype)
-        extended[:rows] = source
-        expected = stepping.cylindrical_rderiv_prefix(grid.xp, extended, 0.0)
-        assert produced.shape[0] == rows + 1
-    else:
-        expected = stepping.cylindrical_rderiv_prefix(grid.xp, source, 0.5)
-        assert produced.shape == source.shape
-    a = numpy.ascontiguousarray(numpy.asarray(produced), numpy.float32)
-    b = numpy.ascontiguousarray(numpy.asarray(expected), numpy.float32)
-    assert numpy.array_equal(a.ravel().view(numpy.uint32), b.ravel().view(numpy.uint32))
+def test_the_scan_binds_the_array_paths_own_rows_and_chunk_starts(sub_step, xp):
+    """``radial_rows`` is ``stepping._cylindrical_rderiv_rows`` over the sum's source rows
+    (the B side's carries the wall row), and ``radial_starts`` is
+    ``stepping._cylindrical_scan_starts`` of the target -- both CALLED, never re-derived.
+    On a grid with an r layer the division has two r chunks, so the line restarts."""
+    fields, layer, grid = build(xp, shape=(16, 1, 20))
+    rows = int(grid.shape[0])
+    weights, rinv = cylindrical_prefix.radial_rows(sub_step, rows)
+    want_w, want_r = stepping._cylindrical_rderiv_rows(
+        numpy, cylindrical_prefix.prefix_rows(sub_step, rows),
+        cylindrical_prefix.PREFIX_IR0[sub_step], numpy.dtype(numpy.float32))
+    assert numpy.array_equal(weights.view(numpy.uint32),
+                             numpy.ascontiguousarray(want_w.reshape(-1)).view(numpy.uint32))
+    assert numpy.array_equal(rinv.view(numpy.uint32),
+                             numpy.ascontiguousarray(want_r.reshape(-1)).view(numpy.uint32))
+    line, segments = cylindrical_prefix.radial_starts(fields, layer, sub_step)
+    target = cylindrical_prefix.RADIAL_TARGET[sub_step]
+    starts = stepping._cylindrical_scan_starts(fields, layer, target)
+    want = (numpy.zeros(rows, dtype=numpy.int64) if starts is None
+            else numpy.asarray(stepping._host_ints(starts)).reshape(-1))
+    assert line.tolist() == want.tolist()
+    assert segments.tolist() == sorted(set(want.tolist()))
+    assert len(segments) == 2
 
 
-@pytest.mark.parametrize("sub_step", SUB_STEPS)
-def test_the_prefix_row_zero_is_an_exact_positive_zero(sub_step, xp):
-    """``-0.0`` there would be a different word, and this family compares words.
-
-    It is also what makes the r near ghost unobservable on Dz: the ghost would be
-    ``-prefix[0]``, and ``-0.0 - (+0.0)`` is absorbed by the phi self-difference.
-    """
-    fields, _layer, grid = build(xp)
-    rng = numpy.random.default_rng(5)
-    for name in ("Ey", "Hy"):
-        getattr(fields, name)[...] = grid.xp.asarray(
-            rng.uniform(-1.0, 1.0, size=grid.shape).astype(numpy.float32))
-    produced = numpy.asarray(cylindrical_prefix.cylindrical_prefix(fields, sub_step))
-    row0 = numpy.ascontiguousarray(produced[0], numpy.float32).ravel().view(numpy.uint32)
-    assert numpy.all(row0 == 0), "prefix row 0 must be an exact +0.0 everywhere"
-
-
-def test_an_unnamed_sub_step_raises_in_the_prefix_too(xp):
-    fields, _layer, _grid = build(xp)
+def test_an_unnamed_sub_step_raises_in_the_scan_too(xp):
+    fields, layer, _grid = build(xp)
     with pytest.raises(ValueError, match="sub_step must be one of"):
-        cylindrical_prefix.cylindrical_prefix(fields, "step_E")
+        cylindrical_prefix.radial_rows("step_E", 16)
+    with pytest.raises(ValueError, match="sub_step must be one of"):
+        cylindrical_prefix.radial_starts(fields, layer, "step_E")
 
 
 # --------------------------------------------------------------------------
@@ -700,7 +658,7 @@ def test_the_kernel_is_not_certified_and_says_so(sub_step):
     import json
 
     record = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                         "certification.json")))
+                                         "certification.json"), encoding="utf-8"))
     names = json.dumps(record)
     # RELEASED 2026-08-27, so this clause is INVERTED exactly as its own message said it
     # should be: "if the device gate has released it, the record is the place that says
@@ -721,7 +679,7 @@ def test_the_kernel_is_not_certified_and_says_so(sub_step):
             f"{name} appears in certification.json; if the device gate has released "
             f"it, the record is the place that says so and this test is the place "
             f"that has to be updated deliberately")
-    source = open(_KERNEL_PATH).read()
+    source = open(_KERNEL_PATH, encoding="utf-8").read()
     assert "UNCERTIFIED_KERNELS" in source
     assert f'"cyl_{sub_step.lower()}_pml_real"'.replace("step_", "step_") in source \
         or f'"cyl_{sub_step}_pml_real"' in source

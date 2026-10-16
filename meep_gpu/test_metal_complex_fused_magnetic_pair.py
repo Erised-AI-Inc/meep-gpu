@@ -21,11 +21,8 @@ THE THREE CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
    device measurement and belongs to the gate; that the counts this suite and that leg
    talk about are the same counts belongs here.
 
-THE ARM IS NOT ASSERTED HERE. Which complex-multiply expansion a platform takes is a
-measured fact carried in a probe artifact, and a unit test that pinned ``FMA_V1`` would
-be a guess wearing a test's clothes. What IS asserted is that the family binds through
-:mod:`.complex_fields`' probe rather than carrying one of its own, and that a missing or
-ambiguous probe refuses.
+No complex-multiply arm is asserted, because none exists: every product is formed part
+by part (:func:`.templates.complex_helpers`), so the family's source has one body.
 """
 
 from __future__ import annotations
@@ -40,11 +37,10 @@ GATE = (REPO / "parity" / "meep_gpu"
         / "gate_metal_complex_fused_magnetic_pair.py")
 
 from meep_gpu.metal_kernels import (  # noqa: E402
-    arms, complex_fields, complex_fused_magnetic_pair as family,
+    arms, complex_fused_magnetic_pair as family,
     fused_magnetic_pair as real_twin, registry, shaders, templates,
 )
 
-ARM = "FMA_V1"  # a spelling to emit WITH, never a claim about this platform.
 PERIODIC = (0, 0, 0)
 UNPHASED = (0, 0, 0)
 UNWALLED = (False, False, False)
@@ -55,8 +51,8 @@ UNWALLED = (False, False, False)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("codes,phased", (((0, 0, 0), (0, 0, 0)),
-                                          ((0, 0, 0), (1, 1, 1)),
-                                          ((1, 0, 1), (0, 1, 0)),
+                                          ((0, 0, 0), (2, 1, 2)),
+                                          ((1, 0, 1), (0, 2, 0)),
                                           ((1, 1, 1), (0, 0, 0))))
 def test_the_curl_half_is_the_certified_complex_curl_bodys_own_bytes(codes, phased):
     """The certified complex ``step_B`` body appears VERBATIM, both sides of the splice.
@@ -65,8 +61,8 @@ def test_the_curl_half_is_the_certified_complex_curl_bodys_own_bytes(codes, phas
     ``complex_fields.bloch_curl_source`` and ``bloch_constitutive_source``. That makes
     the transcription rule a substring check rather than a promise.
     """
-    source = family.complex_fused_magnetic_pair_source(codes, phased, UNWALLED, ARM)
-    body = family.certified_curl_body(codes, phased, ARM)
+    source = family.complex_fused_magnetic_pair_source(codes, phased, UNWALLED)
+    body = family.certified_curl_body(codes, phased)
     head, tail = body.split(family._CURL_STORE, 1)
     assert head in source
     assert (family._CURL_STORE + tail) in source
@@ -75,7 +71,7 @@ def test_the_curl_half_is_the_certified_complex_curl_bodys_own_bytes(codes, phas
 def test_the_curl_half_is_the_forward_direction():
     """``step_B`` differences UP. ``step_D``'s negated strides are another product."""
     source = family.complex_fused_magnetic_pair_source(
-        (1, 1, 1), UNPHASED, (True, True, True), ARM)
+        (1, 1, 1), UNPHASED, (True, True, True))
     assert "int si = i + 1, sj = j + 1, sk = k + 1;" in source
     assert "int si = i - 1, sj = j - 1, sk = k - 1;" not in source
 
@@ -83,8 +79,8 @@ def test_the_curl_half_is_the_forward_direction():
 def test_the_constitutive_half_differs_only_in_the_three_seam_lines():
     """Every other line of the certified H body must survive the lift unedited."""
     source = family.complex_fused_magnetic_pair_source(
-        PERIODIC, UNPHASED, UNWALLED, ARM)
-    certified = family.certified_constitutive_body(ARM).splitlines()
+        PERIODIC, UNPHASED, UNWALLED)
+    certified = family.certified_constitutive_body().splitlines()
     marker = "    // --- update_H (stepping.update_H"
     spliced = [line for line in source.split(marker, 1)[1].splitlines()
                if "// THE SEAM:" not in line]
@@ -106,7 +102,7 @@ def test_the_seam_removes_every_reference_to_the_curls_source_buffer():
     the magnetic flux density.
     """
     source = family.complex_fused_magnetic_pair_source(
-        PERIODIC, UNPHASED, UNWALLED, ARM)
+        PERIODIC, UNPHASED, UNWALLED)
     marker = "    // --- update_H (stepping.update_H"
     constitutive_half = source.split(marker, 1)[1]
     assert "g0[ii]" not in constitutive_half
@@ -121,7 +117,7 @@ def test_the_h_side_carries_no_inverse_epsilon():
     asserted rather than left as a docstring claim.
     """
     source = family.complex_fused_magnetic_pair_source(
-        PERIODIC, UNPHASED, UNWALLED, ARM)
+        PERIODIC, UNPHASED, UNWALLED)
     assert "e0" not in source.split("kernel void", 1)[1].split(")", 1)[0]
     assert "c_mul_field_left(g0[ii], e0[ii])" not in source
 
@@ -129,9 +125,9 @@ def test_the_h_side_carries_no_inverse_epsilon():
 @pytest.mark.parametrize("bad", ((0, 0), (0, 0, 0, 0)))
 def test_a_boundary_or_phase_triple_that_is_not_a_triple_is_refused(bad):
     with pytest.raises(ValueError):
-        family.complex_fused_magnetic_pair_source(bad, UNPHASED, UNWALLED, ARM)
+        family.complex_fused_magnetic_pair_source(bad, UNPHASED, UNWALLED)
     with pytest.raises(ValueError):
-        family.complex_fused_magnetic_pair_source(PERIODIC, bad, UNWALLED, ARM)
+        family.complex_fused_magnetic_pair_source(PERIODIC, bad, UNWALLED)
 
 
 def test_a_phase_on_a_metallic_axis_is_refused_by_the_certified_emitter():
@@ -142,7 +138,7 @@ def test_a_phase_on_a_metallic_axis_is_refused_by_the_certified_emitter():
     """
     with pytest.raises(ValueError):
         family.complex_fused_magnetic_pair_source(
-            (1, 0, 0), (1, 0, 0), UNWALLED, ARM)
+            (1, 0, 0), (1, 0, 0), UNWALLED)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +186,7 @@ def test_the_wall_clear_writes_a_complex_zero_to_both_planes():
 
 def test_a_run_with_no_wall_emits_no_clear_at_all():
     source = family.complex_fused_magnetic_pair_source(
-        PERIODIC, UNPHASED, UNWALLED, ARM)
+        PERIODIC, UNPHASED, UNWALLED)
     assert "no walled axis clears a B component" in source
     assert "? float2(0.0f, 0.0f) : v0;" not in source
 
@@ -198,8 +194,9 @@ def test_a_run_with_no_wall_emits_no_clear_at_all():
 def test_the_auxiliary_is_never_masked():
     """``zero_metal_B`` passes ``B_COMPONENTS`` only (stepping.py:2250)."""
     source = family.complex_fused_magnetic_pair_source(
-        (1, 1, 1), UNPHASED, (True, True, True), ARM)
-    assert "u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;" in source
+        (1, 1, 1), UNPHASED, (True, True, True))
+    for t in range(3):
+        assert f"if (du{t}) {{ u{t}[ii] = n{t}; }}" in source
     assert "u0[ii] = at_x" not in source
 
 
@@ -208,25 +205,23 @@ def test_the_auxiliary_is_never_masked():
 # ---------------------------------------------------------------------------
 
 def test_an_unphased_axis_emits_no_multiply_at_all():
-    """The SKIP is the bit-identity of k = 0 (S:1768-1770), not a multiply by one."""
+    """An unphased axis reads the stored word: no line, not a multiply by one."""
     source = family.complex_fused_magnetic_pair_source(
-        PERIODIC, UNPHASED, UNWALLED, ARM)
-    assert "carries no Bloch phase" in source
-    assert "c_mul(b_x, px)" not in source
-    assert "c_mul(a_y, py)" not in source
+        PERIODIC, UNPHASED, UNWALLED)
+    assert source.count("no connection") == 3
+    assert "c_mul(c, px)" not in source and "c_mul(a, py)" not in source
 
 
-@pytest.mark.parametrize("axis,operands,phase", ((0, ("b_x", "c_x"), "px"),
-                                                 (1, ("a_y", "c_y"), "py"),
-                                                 (2, ("a_z", "b_z"), "pz")))
-def test_each_phased_axis_rotates_exactly_the_operands_that_crossed_it(
-        axis, operands, phase):
-    """Which operand crossed which face follows the stencil, not the axis order."""
-    phased = tuple(1 if n == axis else 0 for n in range(3))
+@pytest.mark.parametrize("axis,operands,phase", ((0, (("c_dx", "c"), ("b_dx", "b")), "px"),
+                                                 (1, (("c_dy", "c"), ("a_dy", "a")), "py"),
+                                                 (2, (("b_dz", "b"), ("a_dz", "a")), "pz")))
+def test_each_phased_axis_connects_exactly_its_unshifted_operands(axis, operands, phase):
+    """The B seam connects the unshifted partners on plane 0 (the lifted curl body)."""
+    phased = tuple(2 if n == axis else 0 for n in range(3))
     source = family.complex_fused_magnetic_pair_source(
-        PERIODIC, phased, UNWALLED, ARM)
-    for operand in operands:
-        assert f"c_mul({operand}, {phase})" in source
+        PERIODIC, phased, UNWALLED)
+    for connected, stored in operands:
+        assert f"{connected} = c_mul({stored}, {phase});" in source
 
 
 # ---------------------------------------------------------------------------
@@ -333,42 +328,35 @@ def test_real_storage_is_refused_by_the_inherited_complex_clause():
     assert any("storage is real float32" in r for r in coverage.reasons)
 
 
+def test_the_helpers_are_emitted_verbatim():
+    """The kernel must carry the certified helper block unedited."""
+    source = family.complex_fused_magnetic_pair_source(PERIODIC, (1, 1, 1), UNWALLED)
+    assert templates.complex_helpers() in source
+
+
 # ---------------------------------------------------------------------------
-# 5. The arm is BOUND FROM AN ARTIFACT, and this family carries no probe of its own
+# 5. Every complex product is formed part by part
 # ---------------------------------------------------------------------------
 
-def test_the_family_binds_through_the_complex_families_probe():
-    """One question, one answer. A second probe here would be a way for two to drift."""
-    assert not hasattr(family, "PROBE_PATH_ENVIRONMENT")
-    assert not hasattr(family, "load_expansion_probe")
-    assert complex_fields.PROBE_PATH_ENVIRONMENT == (
-        "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE")
+
+def test_the_source_forms_every_product_part_by_part():
+    """The one part-wise helper body (templates.complex_helpers): no fused multiply-add."""
+    source = family.complex_fused_magnetic_pair_source(PERIODIC, (2, 1, 2), UNWALLED)
+    assert "fma(" not in source
 
 
-def test_a_missing_or_ambiguous_probe_yields_no_arm():
-    """Never a default arm: a platform that has not been measured is a refusal."""
-    assert complex_fields.expansion_from_probe(None) is None
-    ambiguous = {"backend": complex_fields.PROBE_BACKEND,
-                 "patterns": {name: complex_fields.AMBIGUOUS_BOTH
-                              for name in complex_fields.PROBE_PATTERNS}}
-    assert complex_fields.expansion_from_probe(ambiguous) is None
+def test_the_chunk_record_rides_in_params_and_both_halves_read_it():
+    """No binding is spent: the record is a ``Params`` member, aliased to ``cb``
+    before the lifted bodies, whose anchored blocks read the B curl's half-integer
+    lines and the H constitutive's integer ones."""
+    from meep_gpu.metal_kernels import chunk_bounds
 
-
-@pytest.mark.parametrize("arm", templates.EXPANSION_ARMS)
-def test_the_helpers_are_emitted_verbatim_for_whichever_arm_is_bound(arm):
-    """The helpers ARE the arm; the kernel must carry the certified block unedited."""
     source = family.complex_fused_magnetic_pair_source(
-        PERIODIC, (1, 1, 1), UNWALLED, arm)
-    assert templates.complex_helpers(arm) in source
-
-
-def test_the_two_arms_produce_different_sources():
-    """If they did not, the probe would be binding nothing."""
-    a = family.complex_fused_magnetic_pair_source(PERIODIC, (1, 1, 1), UNWALLED,
-                                                  "FMA_V1")
-    b = family.complex_fused_magnetic_pair_source(PERIODIC, (1, 1, 1), UNWALLED,
-                                                  "NAIVE")
-    assert a != b
+        PERIODIC, UNPHASED, UNWALLED)
+    assert chunk_bounds.params_member() in source.split("struct Params {", 1)[1]
+    assert chunk_bounds.params_alias() in source
+    assert shaders.curl_bounds_block(False) in source
+    assert shaders.constitutive_bounds_block("H") in source
 
 
 # ---------------------------------------------------------------------------
@@ -446,7 +434,7 @@ def test_the_shipped_packed_signature_fits_with_room():
     from meep_gpu.metal_kernels.device import MAX_BUFFER_BINDINGS
 
     source = family.complex_fused_magnetic_pair_source(
-        (1, 1, 1), UNPHASED, (True, True, True), ARM)
+        (1, 1, 1), UNPHASED, (True, True, True))
     highest = max(int(chunk.split(")")[0])
                   for chunk in source.split("[[buffer(")[1:])
     assert highest + 1 == family.PACKED_BINDINGS == 28
@@ -466,7 +454,7 @@ def test_the_coefficients_stay_float32_under_complex_storage():
     product could not be built, so the invariant is asserted rather than assumed.
     """
     source = family.complex_fused_magnetic_pair_source(
-        PERIODIC, UNPHASED, UNWALLED, ARM)
+        PERIODIC, UNPHASED, UNWALLED)
     signature = source.split("kernel void", 1)[1].split("{", 1)[0]
     for name in ("kmx", "sinvx", "kp0", "km0"):
         assert f"device const float*  {name}" in signature.replace("   ", "  ")
@@ -482,17 +470,18 @@ def test_the_params_record_puts_the_float2_members_first():
     order is this one. The device round-trip is the gate's ``params_layout`` leg."""
     dtype = family.params_record_dtype()
     assert dtype.names[:3] == ("px", "py", "pz")
-    assert [dtype.fields[n][1] for n in dtype.names] == [0, 8, 16, 24, 28, 32, 36, 40]
-    assert dtype.itemsize == family.PARAMS_ITEMSIZE == 48
+    assert [dtype.fields[n][1] for n in dtype.names] == [0, 8, 16, 24, 28, 32, 36, 40, 44]
+    assert dtype.names[-1] == "cb"
+    assert dtype.itemsize == family.PARAMS_ITEMSIZE == 144
 
 
 def test_the_struct_declaration_agrees_with_the_host_record():
     """One layout, declared twice — so the two are compared rather than trusted."""
     source = family.complex_fused_magnetic_pair_source(
-        PERIODIC, UNPHASED, UNWALLED, ARM)
+        PERIODIC, UNPHASED, UNWALLED)
     struct = source.split("struct Params {", 1)[1].split("};", 1)[0]
     order = [token for token in struct.replace(";", " ").split()
-             if token in ("px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx")]
+             if token in ("px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx", "cb")]
     assert tuple(order) == family.params_record_dtype().names
 
 
@@ -503,23 +492,22 @@ def test_the_struct_declaration_agrees_with_the_host_record():
 def test_enumerate_sources_covers_only_reachable_specialisations():
     """A metallic axis cannot carry a phase and a periodic axis cannot be walled, so
     the enumeration is the REACHABLE set rather than the Cartesian product."""
-    labels = family.enumerate_sources(ARM)
+    labels = family.enumerate_sources()
     assert labels
     for label in labels:
-        _kernel, codes, phase, wall, arm = label.split("/")
-        assert arm == ARM
+        _kernel, codes, phase, wall = label.split("/")
         for axis in range(3):
             metallic = codes[axis] == "1"
-            assert not (metallic and phase[2 + axis] == "1")
+            assert not (metallic and phase[2 + axis] != "0")
             assert not ((not metallic) and wall[2 + axis] == "1")
 
 
 def test_the_contraction_guard_is_emitted_in_both_modes():
     """Each mode is a different compiled kernel on this backend."""
     off = family.complex_fused_magnetic_pair_source(
-        (1, 1, 1), UNPHASED, (True,) * 3, ARM, shaders.CONTRACT_OFF)
+        (1, 1, 1), UNPHASED, (True,) * 3, shaders.CONTRACT_OFF)
     fast = family.complex_fused_magnetic_pair_source(
-        (1, 1, 1), UNPHASED, (True,) * 3, ARM, shaders.CONTRACT_FAST)
+        (1, 1, 1), UNPHASED, (True,) * 3, shaders.CONTRACT_FAST)
     assert "contract(off)" in off
     assert off != fast
 

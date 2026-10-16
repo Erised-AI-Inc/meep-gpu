@@ -1,0 +1,1011 @@
+{
+ "schema": "meep_gpu.parity_board_emit_recipes",
+ "version": 1,
+ "cap": 64,
+ "canonical": {
+  "cuda": {
+   "name": {
+    "attr": [
+     "CERTIFIED_KERNELS",
+     "UNCERTIFIED_KERNELS"
+    ],
+    "union": true
+   },
+   "sub_step": {
+    "attr": [
+     "KERNEL_FOR_SUB_STEP",
+     "KERNELS"
+    ],
+    "else": [
+     "step_B",
+     "step_D"
+    ]
+   },
+   "key": {
+    "attr": [
+     "KERNEL_KEYS"
+    ]
+   },
+   "expansion": [
+    "NAIVE",
+    "FMA_V1"
+   ],
+   "arm": {
+    "attr": [
+     "ARMS",
+     "DISPERSIVE_ARMS"
+    ],
+    "else": [
+     "NAIVE",
+     "FMA_V1"
+    ]
+   },
+   "sigma_is_volume": [
+    false,
+    true
+   ],
+   "conductive": [
+    false,
+    true
+   ],
+   "cond": [
+    [
+     true,
+     true,
+     true
+    ],
+    [
+     true,
+     false,
+     false
+    ]
+   ],
+   "row_mask": [
+    [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1
+    ],
+    [
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   "counts": [
+    [
+     1,
+     1,
+     1
+    ]
+   ]
+  },
+  "metal": {
+   "codes": [
+    [
+     {
+      "const": "METALLIC"
+     },
+     {
+      "const": "METALLIC"
+     },
+     {
+      "const": "METALLIC"
+     }
+    ],
+    [
+     {
+      "const": "PERIODIC"
+     },
+     {
+      "const": "PERIODIC"
+     },
+     {
+      "const": "PERIODIC"
+     }
+    ]
+   ],
+   "walls": [
+    [
+     {
+      "const": "METALLIC"
+     },
+     {
+      "const": "METALLIC"
+     },
+     {
+      "const": "METALLIC"
+     }
+    ]
+   ],
+   "backward": [
+    false,
+    true
+   ],
+   "phased": [
+    [
+     0,
+     0,
+     0
+    ],
+    [
+     1,
+     1,
+     1
+    ]
+   ],
+   "phases": [
+    [
+     0,
+     0,
+     0
+    ]
+   ],
+   "zero_metal": [
+    [
+     false,
+     false,
+     false
+    ],
+    [
+     true,
+     true,
+     true
+    ]
+   ],
+   "conductive": [
+    [
+     true,
+     true,
+     true
+    ],
+    [
+     false,
+     false,
+     false
+    ]
+   ],
+   "expansion": [
+    "NAIVE",
+    "FMA_V1"
+   ],
+   "pole_count": [
+    1
+   ],
+   "axis": [
+    0,
+    1,
+    2
+   ],
+   "sigma_is_volume": [
+    false
+   ],
+   "side": [
+    "H",
+    "E"
+   ],
+   "row_mask": [
+    [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1
+    ],
+    [
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   "negate": [
+    [
+     0,
+     0,
+     0
+    ]
+   ],
+   "counts": [
+    [
+     1,
+     1,
+     1
+    ]
+   ],
+   "pole_counts": [
+    [
+     1,
+     1,
+     1
+    ]
+   ],
+   "derive": [
+    false,
+    true
+   ],
+   "dtype": [
+    "float32",
+    "complex64"
+   ],
+   "target": [
+    0,
+    1,
+    2
+   ],
+   "arm": {
+    "attr": [
+     "ARMS_FIXED_POINTERS"
+    ]
+   },
+   "folded_axes": [
+    {
+     "dict": [
+      [
+       0,
+       1
+      ]
+     ]
+    }
+   ],
+   "far_axes": [
+    {
+     "dict": []
+    },
+    {
+     "dict": [
+      [
+       0,
+       1
+      ]
+     ]
+    }
+   ]
+  },
+  "triton": {}
+ },
+ "modules": {
+  "cuda": {
+   "cylindrical_kernels": {
+    "seam": "_get_cylindrical_kernel"
+   },
+   "offdiag_emitter": {
+    "route": "sweep",
+    "functions": [
+     "offdiag_launch_source"
+    ]
+   },
+   "complex_emitter": {
+    "route": "sweep",
+    "functions": [
+     "complex_source"
+    ],
+    "domains": {
+     "sub_step": [
+      "step_B",
+      "step_D",
+      "update_H",
+      "update_E"
+     ]
+    }
+   },
+   "offdiag_stencil_weld": {
+    "route": "sweep",
+    "functions": [
+     "raw_step_D_cell_source",
+     "resolution_source"
+    ]
+   },
+   "complex_offdiag_stencil_weld": {
+    "route": "sweep",
+    "functions": [
+     "certified_curl_source",
+     "raw_step_D_cell_source"
+    ],
+    "domains": {
+     "arm": [
+      "pml",
+      "no_pml"
+     ]
+    }
+   },
+   "own_cell_hoist": {
+    "route": "calls",
+    "calls": [
+     {
+      "label": "unhoisted update_H_pml_real",
+      "call": [
+       "unhoisted_kernel_code",
+       {
+        "module_attr": "meep_gpu.cuda_kernels.constitutive_kernels._update_H_pml_real_kernel_code"
+       },
+       "update_H_pml_real",
+       "update_H_pml_real"
+      ]
+     },
+     {
+      "label": "unhoisted update_E_pml_real",
+      "call": [
+       "unhoisted_kernel_code",
+       {
+        "module_attr": "meep_gpu.cuda_kernels.constitutive_kernels._update_E_pml_real_kernel_code"
+       },
+       "update_E_pml_real",
+       "update_E_pml_real"
+      ]
+     }
+    ]
+   },
+   "complex_fill_carry": {
+    "route": "none",
+    "reason": "a shared emitter of fragments the complex fused magnetic pairs splice; it compiles nothing of its own, and its fragments are read in those pairs' emitted text"
+   },
+   "complex_electric_fill_carry": {
+    "route": "none",
+    "reason": "a shared emitter of fragments the complex fused electric pairs splice; it compiles nothing of its own, and its fragments are read in those pairs' emitted text"
+   },
+   "cylindrical_prefix": {
+    "route": "none",
+    "reason": "a host scan (no CuPy, no device text): the radial prefix the cylindrical curl pair consumes"
+   },
+   "no_pml_constitutive": {
+    "route": "none",
+    "reason": "ships no kernel: without an absorber the constitutive sub-step does nothing (a null arm)"
+   },
+   "no_pml_three_slot_dispersive_weld": {
+    "allow_alias": true
+   },
+   "cylindrical_real_fused_hd_pair": {
+    "with": [
+     [
+      "meep_gpu.cuda_kernels.cylindrical_kernels._get_cylindrical_kernel",
+      "step_D"
+     ]
+    ]
+   },
+   "cylindrical_fused_hd_pair": {
+    "with": [
+     [
+      "meep_gpu.cuda_kernels.cylindrical_complex_kernels._get_kernel",
+      "step_D"
+     ]
+    ]
+   }
+  },
+  "metal": {
+   "folded_fused_pair": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ],
+      [
+       {
+        "const": "MIRROR_PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       }
+      ]
+     ],
+     "phases": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       -1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "folded_fused_magnetic_pair": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ],
+      [
+       {
+        "const": "MIRROR_PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       }
+      ]
+     ],
+     "phases": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       -1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "folded_fused_dispersive_pair": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ],
+      [
+       {
+        "const": "MIRROR_PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       }
+      ]
+     ],
+     "phases": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       -1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "folded_complex_fused_pair": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ],
+      [
+       {
+        "const": "MIRROR_PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       }
+      ]
+     ],
+     "phases": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       -1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "folded_complex_fused_magnetic_pair": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ],
+      [
+       {
+        "const": "MIRROR_PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       }
+      ]
+     ],
+     "phases": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       -1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "folded_beta_real_fused_pair": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ],
+      [
+       {
+        "const": "MIRROR_PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       }
+      ]
+     ],
+     "phases": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       -1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "folded_beta_real_fused_magnetic_pair": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ],
+      [
+       {
+        "const": "MIRROR_PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       }
+      ]
+     ],
+     "phases": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       -1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "folded_beta_complex_fused_pair": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ],
+      [
+       {
+        "const": "MIRROR_PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       }
+      ]
+     ],
+     "phases": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       -1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "folded_beta_complex_fused_magnetic_pair": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ],
+      [
+       {
+        "const": "MIRROR_PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       },
+       {
+        "const": "PERIODIC"
+       }
+      ]
+     ],
+     "phases": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       -1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "folded_offdiag_fused_electric_pair": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ]
+     ],
+     "walls": [
+      [
+       0,
+       1,
+       1
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ],
+     "negate": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "folded_complex_offdiag_fused_electric_pair": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ]
+     ],
+     "walls": [
+      [
+       0,
+       1,
+       1
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ],
+     "negate": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "folded_offdiag_dispersive_update_e": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ]
+     ],
+     "walls": [
+      [
+       0,
+       1,
+       1
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ],
+     "negate": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "complex_folded_offdiag_update_e": {
+    "domains": {
+     "codes": [
+      [
+       {
+        "const": "MIRROR_METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       },
+       {
+        "const": "METALLIC"
+       }
+      ]
+     ],
+     "walls": [
+      [
+       0,
+       1,
+       1
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ],
+     "negate": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       1,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "nonlinear_update_e": {
+    "specialised": "nonlinear_source"
+   },
+   "offdiag_update_e": {
+    "specialised": "offdiag_source"
+   },
+   "folded_offdiag_update_e": {
+    "specialised": "folded_offdiag_source"
+   },
+   "complex_fused_ade_chain": {
+    "domains": {
+     "sigma_is_volume": [
+      [
+       false
+      ]
+     ]
+    }
+   },
+   "fused_ade_chain": {
+    "domains": {
+     "sigma_is_volume": [
+      [
+       false
+      ]
+     ]
+    }
+   },
+   "complex_dispersive_spine": {
+    "delegate": "complex_fields",
+    "emitters": [
+     "bloch_curl_source",
+     "bloch_constitutive_source"
+    ],
+    "domains": {
+     "side": [
+      "H"
+     ]
+    }
+   },
+   "folded_dispersive_update_e": {
+    "delegate": "dispersive_update_e",
+    "emitters": [
+     "dispersive_e_source"
+    ]
+   },
+   "no_pml_constitutive": {
+    "route": "none",
+    "reason": "ships no kernel: without an absorber the constitutive sub-step does nothing (a null arm)"
+   },
+   "offdiag_weld_common": {
+    "route": "none",
+    "reason": "shared machinery of the scratch-output off-diagonal welds; it compiles nothing of its own, and its fragments are read in those welds' emitted text"
+   },
+   "templates": {
+    "emitters": [
+     "complex_helpers"
+    ],
+    "domains": {
+     "expansion": [
+      "NAIVE",
+      "FMA_V1"
+     ]
+    }
+   }
+  },
+  "triton": {
+   "nonlinear_fused_magnetic_pair": {
+    "launches": [
+     "kernels.fused_curl_constitutive_B"
+    ]
+   },
+   "nonlinear_fused_hd_pair": {
+    "launches": [
+     "fused_hd_pair.fused_constitutive_curl_H_to_D"
+    ]
+   },
+   "complex_no_pml_curl": {
+    "launches": [
+     "complex_fields.bloch_pml_curl_step"
+    ]
+   },
+   "no_pml_ade": {
+    "launches": [
+     "kernels.ade_update_p"
+    ]
+   },
+   "no_pml_constitutive": {
+    "route": "none",
+    "reason": "ships no kernel: without an absorber the constitutive sub-step does nothing (a null arm)"
+   },
+   "cylindrical_real_fused_hd_pair": {
+    "also_launches": [
+     "cylindrical_triton.cyl_pml_curl_step"
+    ]
+   },
+   "cylindrical_fused_hd_pair": {
+    "also_launches": [
+     "cylindrical_complex.cyl_complex_pml_curl_step"
+    ]
+   }
+  }
+ }
+}

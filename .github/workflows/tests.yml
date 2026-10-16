@@ -58,17 +58,31 @@ jobs:
         run: python -c "import meep_gpu; print(meep_gpu.available_gpu(), meep_gpu.missing_dependencies())"
       - name: The wheel carries the ledgers and not the harness
         run: python tools/ci/check_wheel.py
+      - name: No host name, account name, local path or personal e-mail address in a tracked file or the board's subject
+        # tools/ci/check_hygiene.py; the ledgers are its third leg, run as a test of the
+        # harness suite (parity/meep_gpu/test_check_hygiene.py).
+        run: python tools/ci/check_hygiene.py --legs tracked,subject
       - name: Package suite
         run: python -m pytest meep_gpu -q -p no:cacheprovider -rfEs --junitxml=reports/meep_gpu.xml
+        continue-on-error: true
+      - name: MEEP identity, Tier A, with NumPy's AVX-512, AVX2 and FMA3 loops disabled
+        # The digests must not move with the SIMD loops NumPy dispatches at run time
+        # (docs/development/testing.md, "MEEP identity"). The list is this NumPy's own
+        # dispatched features of those families; show_runtime prints what was disabled.
+        run: |
+          export NPY_DISABLE_CPU_FEATURES="$(python -c "from numpy._core._multiarray_umath import __cpu_dispatch__ as d; print(' '.join(f for f in d if f.startswith(('AVX512', 'AVX2', 'FMA3'))))")"
+          echo "NPY_DISABLE_CPU_FEATURES=$NPY_DISABLE_CPU_FEATURES"
+          python -c "import numpy; numpy.show_runtime()"
+          python -m pytest meep_gpu/test_meep_identity.py -q -p no:cacheprovider -rfEs --junitxml=reports/meep_identity_simd_disabled.xml
         continue-on-error: true
       - name: Harness suite
         run: python -m pytest parity/meep_gpu -q -p no:cacheprovider -rfEs --junitxml=reports/harness.xml
         continue-on-error: true
-      - name: Certification suite (two pending failures declared; reported)
+      - name: Certification suite (pending failures declared; reported)
         run: python -m pytest meep_gpu parity/meep_gpu -m certification -q -p no:cacheprovider -rfEs --junitxml=reports/certification.xml
         continue-on-error: true
       - name: Every failure is a declared one
-        run: python tools/ci/check_failures.py reports/meep_gpu.xml reports/harness.xml reports/certification.xml
+        run: python tools/ci/check_failures.py reports/meep_gpu.xml reports/meep_identity_simd_disabled.xml reports/harness.xml reports/certification.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -113,7 +127,7 @@ jobs:
       - name: Harness suite
         run: python -m pytest parity/meep_gpu -q -p no:cacheprovider -rfEs --junitxml=reports/harness.xml
         continue-on-error: true
-      - name: Certification suite (two pending failures declared; reported)
+      - name: Certification suite (pending failures declared; reported)
         run: python -m pytest meep_gpu parity/meep_gpu -m certification -q -p no:cacheprovider -rfEs --junitxml=reports/certification.xml
         continue-on-error: true
       - name: Examples, reference and MEEP legs

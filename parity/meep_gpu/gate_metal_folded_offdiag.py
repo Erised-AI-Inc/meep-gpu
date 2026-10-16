@@ -55,6 +55,14 @@ byte at all — fold X with the single live slot ``Ey <- Ez``, the measured
 counterexample a row-level reachability test gets wrong. Without that row the SCOPE
 on the corresponding catch would be indistinguishable from a convenient exclusion.
 
+RULING R7: SOFTWARE BINARY64. The row is the certified family's software-binary64
+double row (``offdiag_update_e._row_assembly``), with its per-chunk presence words,
+so every leg compares the kernel with ``stepping.py`` on generic states through the
+ENGINE route (``plan_folded_offdiag_constitutive`` with the chunk record of the
+division the oracle steps with). ``b_select`` adds the per-chunk tail and the fold
+on EXACT-ROW states (dyadic words: every float32 operation of the row is exact, so
+a differing word is the tail's or the fold's).
+
 THE STATED WEAKNESS, and it is this certification's one gap against the Triton
 twin's: ``torch.mps.compile_shader`` exposes NO DISASSEMBLY. This gate cannot refuse
 a compile whose emitted code violates the policy and cannot establish that the
@@ -106,6 +114,7 @@ from meep_gpu.metal_kernels import offdiag_update_e as offdiag  # noqa: E402
 from meep_gpu.metal_kernels.device import compile_source  # noqa: E402
 
 import metal_gate_kit as kit  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
 log, save, differing, words = kit.log, kit.save, kit.differing, kit.words
 needle = kit.needle
@@ -228,6 +237,17 @@ def build(axes: str = "Y", phases: Sequence[int] = (1,), boundaries: Any = None,
     this sub-step (``src = g*u + 0``, ``f += kps*src - kms*prev`` all vanish), so a
     no-op agreeing with a no-op would be trivially identical and would certify
     nothing.
+
+    A SEEDED STATE IS A MID-RUN ONE, so it carries ``Fields.h_separated``, as
+    ``matrix``'s builders do. MEEP's start of H and ``f_w`` from B
+    (``stepping.separate_h_from_b``, run by the array path's first ``update_H``) is
+    long past, and the certified constitutive kernel ``symmetry.plan_folded_constitutive``
+    builds never runs it (``ConstitutivePlan.starts_h_from_b`` is False; the composer
+    keeps it off a run's real first ``update_H`` by ``launch.h_start_reasons``).
+    Without the flag the whole-step leg compares the start with no start: on
+    2d_fold_Y_even_periodic the array path alone, as built without it against the same
+    state with it, reaches Dz 92, Hx 72, Hy 32 and fu_Dz 32 differing words before
+    ``update_E``, the step-0 divergence this leg used to report.
     """
     size = [1.6, 1.6, 0.0] if dims == 2 else [1.3, 1.2, 1.1]
     for name in axes:
@@ -261,6 +281,7 @@ def build(axes: str = "Y", phases: Sequence[int] = (1,), boundaries: Any = None,
     for name in TOUCHED:
         getattr(fields, name)[...] = (rng.standard_normal(shape) * 0.37
                                       ).astype(np.float32)
+    fields.h_separated = True
     return fields, pml
 
 
@@ -346,13 +367,21 @@ def divergence(fields: Any, after: Dict[str, Any]) -> Dict[str, int]:
             for name, array in after.items()}
 
 
-def run_shipped(fields: Any, pml: Any) -> Any:
-    """Launch the family through the ENGINE ROUTE — the plan the composer builds."""
-    residency = device.Residency()
-    plan = folded.plan_folded_offdiag_constitutive(fields, pml, residency)
+def engine_plan(fields: Any, pml: Any, residency: Any) -> Any:
+    """The plan the composer builds: the ENGINE route, with the record of the
+    division the oracle steps with (``layer_record``)."""
+    plan = folded.plan_folded_offdiag_constitutive(
+        fields, pml, residency, chunk_bounds=layer_record(fields.grid, pml))
     if plan is None:
         raise AssertionError(folded.folded_offdiag_constitutive_coverage(
             fields, pml, residency).reasons)
+    return plan
+
+
+def run_shipped(fields: Any, pml: Any) -> Any:
+    """Launch the family through the ENGINE ROUTE — the plan the composer builds."""
+    residency = device.Residency()
+    plan = engine_plan(fields, pml, residency)
     plan.run()
     residency.sync_out()
     assert not residency.verify()
@@ -367,10 +396,7 @@ def run_mutant(fields: Any, pml: Any, source: str) -> Any:
     rebuilt the plan around the mutant would be measuring a second object.
     """
     residency = device.Residency()
-    plan = folded.plan_folded_offdiag_constitutive(fields, pml, residency)
-    if plan is None:
-        raise AssertionError(folded.folded_offdiag_constitutive_coverage(
-            fields, pml, residency).reasons)
+    plan = engine_plan(fields, pml, residency)
     plan._functions = {shaders.CONTRACT_OFF:
                        compile_source(source).offdiag_constitutive_step}
     plan.run()
@@ -538,7 +564,10 @@ def leg_reduction(payload: Dict[str, Any], out: str) -> None:
     # THE FOLDED DIFF, stated as a number rather than as a description: the folded
     # source against the CERTIFIED source for the same grid with the mirror axis
     # declared METALLIC. Every differing line must be the ghost redirect, the
-    # up-validity line beside it, or a lane whose sign moved.
+    # up-validity line beside it, a lane whose sign moved, or the presence block's
+    # chunk label of the folded axis on the integer lattice (a METALLIC axis reads
+    # its unowned wall row 0 at row 1, a mirror axis reads row 0 itself:
+    # ``offdiag_update_e._label_row``).
     diffs: List[Dict[str, Any]] = []
     for label, kwargs in CASES:
         fields, pml = build(**kwargs)
@@ -550,23 +579,35 @@ def leg_reduction(payload: Dict[str, Any], out: str) -> None:
         changed = [line for line in difflib.unified_diff(
             base.splitlines(), ours.splitlines(), lineterm="", n=0)
             if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))]
-        # EVERY CHANGED LINE MUST BE ONE OF EXACTLY TWO THINGS, and the check is
+        # EVERY CHANGED LINE MUST BE ONE OF EXACTLY THREE THINGS, and the check is
         # spelled from the emitter's own name tables rather than from a pattern a
         # reader guessed: a line of the GHOST BLOCK of a folded axis (its down index,
-        # its down-validity flag or its up-validity flag), or a line carrying a
+        # its down-validity flag or its up-validity flag), a line carrying a
         # `dn_`/`cn_` temporary — the hoist that lets the sign apply to the LOADED
-        # value, and the lanes that read it. Anything else means the fold reached
-        # arithmetic it has no business touching.
+        # value, and the lanes that read it — or a presence chunk-label term of a
+        # folded axis on the integer lattice, in the folded or the METALLIC spelling
+        # the emitter writes (``offdiag_update_e._label_expression`` of
+        # ``_label_row``). Anything else means the fold reached arithmetic it has no
+        # business touching.
         ghost_names = tuple(
             name for axis in folded_axes_of(codes)
             for name in offdiag._TWO_WAY_NAMES["xyz"[axis]][:4])
+        label_terms = tuple(
+            offdiag._label_expression(False, axis,
+                                      offdiag._label_row(False, axis, variant))
+            for axis in folded_axes_of(codes) for variant in (codes, unfolded))
+        presence_lines = [line for line in changed
+                          if any(term in line for term in label_terms)]
         unexpected = [line for line in changed
                       if "dn_" not in line and "cn_" not in line
+                      and line not in presence_lines
                       and not any(re.search(rf"\b{name}\b", line)
                                   for name in ghost_names)]
         assert not unexpected, (label, "the fold changed a line that is neither the "
-                                "ghost block nor a ghosted lane", unexpected)
+                                "ghost block, a ghosted lane nor a folded axis's "
+                                "presence label", unexpected)
         diffs.append({"case": label, "changed_lines": len(changed),
+                      "presence_label_lines": len(presence_lines),
                       "negate": list(negate), "codes": list(codes)})
         log(f"[reduction] {label:<32} folded diff = {len(changed)} lines "
             f"(negate={negate})")
@@ -576,8 +617,8 @@ def leg_reduction(payload: Dict[str, Any], out: str) -> None:
         "folded_diff": diffs,
         "why": ("an unfolded code triple must emit offdiag_update_e.offdiag_source's "
                 "string EXACTLY; the folded diff against the same grid declared "
-                "METALLIC must be the ghost redirect plus the sign lanes and nothing "
-                "else"),
+                "METALLIC must be the ghost redirect, the sign lanes and the folded "
+                "axis's presence chunk label, and nothing else"),
     }
     save(payload, out)
     log(f"[reduction] {equal} unfolded (row_mask, codes) pairs emit the certified "
@@ -750,12 +791,15 @@ def leg_value_class(payload: Dict[str, Any], out: str) -> None:
 
 def composed_plans(fields: Any, pml: Any, residency: Any) -> Dict[str, Any]:
     plans = {
-        "step_B": symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency),
+        "step_B": symmetry.plan_folded_pml_curl(fields, pml, "step_B", residency,
+                                                chunk_bounds=layer_record(fields.grid, pml)),
         "fill_B": symmetry.plan_mirror_ghost_fill(fields, "B", "fill_B", residency),
-        "update_H": symmetry.plan_folded_constitutive(fields, pml, "H", residency),
-        "step_D": symmetry.plan_folded_pml_curl(fields, pml, "step_D", residency),
+        "update_H": symmetry.plan_folded_constitutive(fields, pml, "H", residency,
+                                                      chunk_bounds=layer_record(fields.grid, pml)),
+        "step_D": symmetry.plan_folded_pml_curl(fields, pml, "step_D", residency,
+                                                chunk_bounds=layer_record(fields.grid, pml)),
         "fill_D": symmetry.plan_mirror_ghost_fill(fields, "D", "fill_D", residency),
-        "update_E": folded.plan_folded_offdiag_constitutive(fields, pml, residency),
+        "update_E": engine_plan(fields, pml, residency),
     }
     missing = [name for name, plan in plans.items() if plan is None]
     assert not missing, f"no plan for {missing}"
@@ -809,6 +853,9 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = 6) -> None:
     for label, kwargs in WHOLE_STEP_CASES:
         fields, pml = build(**kwargs)
         reference_fields, reference_pml = build(**kwargs)
+        assert fields.h_separated and reference_fields.h_separated, (
+            label, "the composed update_H never starts H from B, so the state must be "
+            "a mid-run one (see build)")
         for name in STORED:
             if getattr(fields, name, None) is not None:
                 assert differing(getattr(fields, name),
@@ -1277,9 +1324,12 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                    fields: Any) -> str:
         axis = folded_axes_of(codes)[0]
         at = ("at_x", "at_y", "at_z")[axis]
-        return needle(source, "    float src0 = (gs0 * us0) + total0;",
-                      f"    total0 = {at} ? 0.0f : total0;\n"
-                      f"    float src0 = (gs0 * us0) + total0;")
+        masks = "".join(f"    sum_0{offset} = {at} ? 0.0f : sum_0{offset};\n"
+                        for offset in (0, 1) if f"float sum_0{offset} = " in source)
+        if not masks:
+            raise LookupError("component 0 carries no live term on this grid")
+        return needle(source, "    ulong od_row0 = sd_widen_f(gs0 * us0, true);",
+                      masks + "    ulong od_row0 = sd_widen_f(gs0 * us0, true);")
 
     source_mutation(
         "fold_plane_masked_the_metallic_way", mask_the_fold_plane, True,
@@ -1422,6 +1472,63 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     save(payload, out)
 
 
+
+# ---------------------------------------------------------------------------
+# b_select — the per-chunk tail and the fold on exact-row states
+# ---------------------------------------------------------------------------
+
+def exact_state(fields: Any, seed: int) -> None:
+    """Dyadic words on which every float32 operation of the row is exact (see
+    gate_metal_offdiag)."""
+    rng = np.random.default_rng(seed)
+    shape = fields.grid.shape
+    for name in ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez", "Dx", "Dy", "Dz"):
+        getattr(fields, name)[...] = (
+            rng.integers(-64, 65, size=shape) / 64.0).astype(np.float32)
+    seen = set()
+    for component in ("Ex", "Ey", "Ez"):
+        inverse = fields.inverse_epsilon_for(component)
+        if id(inverse) in seen:
+            continue
+        seen.add(id(inverse))
+        inverse[...] = (rng.integers(4, 9, size=shape) / 8.0).astype(np.float32)
+    for row, partner in folded.ROW_SLOTS:
+        value = (fields.chi1inv_offdiagonal_for(row) or {}).get(partner)
+        if value is None:
+            continue
+        sign = np.where(rng.integers(0, 2, size=shape) == 0, 1.0, -1.0)
+        value[...] = (sign * rng.integers(1, 9, size=shape) / 64.0).astype(np.float32)
+
+
+def leg_b_select(payload: Dict[str, Any], out: str) -> None:
+    """The per-chunk tail on a fold against ``stepping.update_E``, exact-row states.
+
+    Every case of the matrix. The fold's ghost lane (a redirect and a sign) is exact
+    on these states too, so a differing word is the tail's or the fold's.
+    """
+    rows: List[Dict[str, Any]] = []
+    for index, (label, kwargs) in enumerate(CASES):
+        fields, pml = build(**kwargs)
+        exact_state(fields, 20261008 + index)
+        before, after, moved = oracle(fields, pml)
+        kit.assert_moved(moved, f"{label} the array path barely moved", floor=64)
+        fw_moved = [differing(before[n], after[n]) for n in ("f_w_Ex", "f_w_Ey",
+                                                             "f_w_Ez")]
+        plan = run_shipped(fields, pml)
+        assert plan.launches == 1, (label, plan.launches)
+        per = divergence(fields, after)
+        total = sum(per.values())
+        rows.append({"case": label, "tags": tags(fields, pml), "moved": moved,
+                     "f_w_moved": fw_moved, "compared": compared_words(after),
+                     "differing": total, "per_target": per})
+        log(f"[b_select] {label:<32} moved={moved:<6} compared={compared_words(after):<7} "
+            f"differing={total} f_w_moved={fw_moved}")
+        restore(fields, before)
+        payload["legs"]["b_select"] = rows
+        save(payload, out)
+        assert total == 0, rows[-1]
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -1434,6 +1541,7 @@ LEGS: Tuple[Tuple[str, Callable[[Dict[str, Any], str], None]], ...] = (
     ("whole_step", leg_whole_step),
     ("precondition", leg_precondition),
     ("mutations", leg_mutations),
+    ("b_select", leg_b_select),
 )
 
 
@@ -1468,7 +1576,8 @@ def main() -> int:
     compared = 0
     certified = True
     refused: List[str] = []
-    for key, name_key in (("byte", "case"), ("value_class", "class")):
+    for key, name_key in (("byte", "case"), ("value_class", "class"),
+                          ("b_select", "case")):
         for row in payload["legs"].get(key, ()):
             if row.get("refused"):
                 refused.append(f"{key}:{row[name_key]}")
@@ -1479,7 +1588,8 @@ def main() -> int:
     # Folding it into `certified` either way would be wrong in both directions: as a
     # pass it would certify bytes produced under a condition the claim EXCLUDES, and
     # as a failure it would report a coverage boundary as a defect.
-    for row in payload["legs"].get("whole_step", ()):
+    whole_rows = payload["legs"].get("whole_step", ())
+    for row in whole_rows:
         if row.get("refused"):
             refused.append(f"whole_step:{row['case']}")
             continue
@@ -1496,8 +1606,10 @@ def main() -> int:
         payload, out,
         claim=("metal_kernels.folded_offdiag_update_e reproduces stepping.update_E "
                "word for word on a mirror-folded grid carrying off-diagonal chi1inv "
-               "rows, per sub-step and per complete step, subject to a CHECKED "
-               "subnormal-free precondition reported as a window"),
+               "rows (the software-binary64 row of ruling R7, the per-chunk presence "
+               "words and the per-chunk tail), per sub-step and per complete step, "
+               "subject to a CHECKED subnormal-free precondition reported as a "
+               "window"),
         scope=("the case matrix in CASES: both fold terminations, both plane "
                "parities, one and three folded axes, both full-count parities, a "
                "declared metallic wall beside a fold, row sets whose live slot "
@@ -1519,7 +1631,7 @@ def main() -> int:
                "subnormal_windows": {
                    row["case"]: [row["subnormal_window"]["first_step"],
                                  row["subnormal_window"]["last_step"]]
-                   for row in payload["legs"].get("whole_step", ())}})
+                   for row in whole_rows}})
 
 
 if __name__ == "__main__":

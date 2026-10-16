@@ -136,6 +136,13 @@ class Source:
         self.field_type = field_type
 
 
+def _record(fields, pml):
+    """The one-rank chunk record of the run's grid and layer."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
+
+
 def _real_source(fields, component: str):
     """A REAL engine source, so ``field_type`` and the deposit index are the
     engine's own answers rather than a stub's."""
@@ -299,12 +306,13 @@ def test_the_wall_clear_sits_after_the_axis_rules_and_before_the_store():
 
 
 def test_the_m0_axis_increment_is_a_POST_ADD_and_is_not_folded_into_the_curl():
-    """MEASURED in ``stepping.py``: folding it breaks m = 0 under PML (Er 2.7e-01
-    against 3.6e-07), because Dz's dsig is R and sigma is zero on the axis row."""
+    """MEASURED in ``stepping.py``: folding it breaks m = 0 under PML, because Dz's dsig
+    is R and sigma is zero on the axis row; it is added to the stored value after the
+    forms."""
     source = emit()
     increment = source.index("v2 = at_x ? (v2 + (axis_coef * g1[ii])) : v2;")
-    recurrence = source.index("float v2 = (((f2[ii] * km_y) + n2) - p2) * si_y;")
-    assert recurrence < increment
+    forms = source.index("float v2 = du2 ? ((((f2[ii] * km_y) + n2) - p2) * si_y) : n2;")
+    assert forms < increment
     assert "curl2 = at_x ? (curl2 + (axis_coef" not in source
 
 
@@ -362,16 +370,16 @@ def test_the_pack_saves_exactly_five_pointers_and_the_cell_needed_one():
     assert family.UNPACKED_POINTERS - (MAX_BUFFER_BINDINGS - 1) == 1
 
 
-def test_the_prefix_is_NOT_in_the_pack_and_keeps_its_own_binding():
-    """THE ONE DESIGN DECISION HERE. ``pfx`` is the only member of the curl half's
+def test_the_radial_difference_is_NOT_in_the_pack_and_keeps_its_own_binding():
+    """THE ONE DESIGN DECISION HERE. ``rad`` is the only member of the curl half's
     read-only set that the DEVICE writes — the radial scan fills it in the launch
     before this one. Folding it into the same allocation as the coefficients would
     have saved a seventh pointer and let a wrong offset in the SCAN overwrite a PML
     coefficient vector permanently (a constant mirror is uploaded once) and silently
     (an absorber that leaks a little is a plausible field)."""
-    assert "pfx" not in family.PACKED_VECTORS
+    assert "rad" not in family.PACKED_VECTORS
     source = emit()
-    assert "device const float* pfx     [[buffer(9)]]," in source
+    assert "device const float* rad     [[buffer(9)]]," in source
     assert "device const float* cpml" in source
 
 
@@ -404,11 +412,10 @@ def test_the_struct_carries_the_six_scalars_and_the_six_offsets_in_one_order():
         in struct
     for name in family.PACKED_VECTORS:
         assert f"uint off_{name};" in struct
-    fields = coefficient_pack.record_dtype_fields(family.PACKED_VECTORS)
-    record = np.zeros(1, dtype=np.dtype(
-        [("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
-         ("dtdx", "<f4"), ("axis_coef", "<f4")] + fields))
-    assert record.itemsize == 4 * (6 + len(family.PACKED_VECTORS))
+    assert struct.rstrip().endswith("ChunkBounds cb;"), struct
+    record = np.zeros(1, dtype=family.params_record_dtype())
+    assert record.itemsize == 4 * (6 + len(family.PACKED_VECTORS)) + 100
+    assert record.dtype.names[-1] == "cb"
 
 
 def test_the_scalars_are_unpacked_into_the_certified_bodies_own_names():
@@ -416,9 +423,12 @@ def test_the_scalars_are_unpacked_into_the_certified_bodies_own_names():
     source = emit()
     for name in ("nx", "ny", "nz", "n_elem", "dtdx", "axis_coef"):
         assert f"prm.{name}" in source
-    lifted = source.split(
-        coefficient_pack.prologue("cpml", family.PACKED_VECTORS), 1)[1]
+    from meep_gpu.metal_kernels import chunk_bounds
+
+    lifted = source.split(chunk_bounds.params_alias() + "\n", 1)[1]
     assert "prm." not in lifted
+    assert source.index(coefficient_pack.prologue("cpml", family.PACKED_VECTORS)) < (
+        source.index(chunk_bounds.params_alias()))
 
 
 def test_the_signature_group_order_is_the_cartesian_D_E_pairs():
@@ -432,7 +442,7 @@ def test_the_signature_group_order_is_the_cartesian_D_E_pairs():
 
     mine = groups(emit())
     theirs = groups(cartesian.fused_electric_pair_source((1, 1, 1), UNWALLED))
-    assert [n for n in mine if n not in ("pfx", "cpml")] == [
+    assert [n for n in mine if n not in ("rad", "cpml")] == [
         n for n in theirs if n not in ("kmx", "sinvx", "kmy", "sinvy",
                                        "kmz", "sinvz")]
 
@@ -496,7 +506,7 @@ def test_an_electric_source_publishing_no_deposit_index_is_REFUSED_by_name():
     assert not verdict.covered
     assert any("does not publish the index it writes" in r for r in verdict.reasons)
     assert family.plan_metal_cylindrical_real_fused_electric_pair(
-        fields, pml, (indexless,), Residency()) is None
+        fields, pml, (indexless,), Residency(), chunk_bounds=_record(fields, pml)) is None
 
 
 def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set():
@@ -506,7 +516,7 @@ def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set():
     assert not verdict.covered
     assert any("was not declared" in reason for reason in verdict.reasons)
     assert family.plan_metal_cylindrical_real_fused_electric_pair(
-        fields, pml, None, Residency()) is None
+        fields, pml, None, Residency(), chunk_bounds=_record(fields, pml)) is None
 
 
 def test_m_not_zero_and_a_cartesian_grid_are_both_refused_by_name():
@@ -597,7 +607,7 @@ def test_REPLACES_and_INERT_PASSES_partition_the_seam():
 def test_the_plan_is_two_dispatches_and_counts_them_apart():
     assert family.MetalCylindricalRealFusedElectricPairPlan.launches_per_run == 2
     slots = family.MetalCylindricalRealFusedElectricPairPlan.__slots__
-    assert "prefix_launches" in slots and "fused_launches" in slots
+    assert "scan_launches" in slots and "fused_launches" in slots
 
 
 # ---------------------------------------------------------------------------
@@ -874,18 +884,18 @@ def test_the_artifact_measured_the_fusion_and_every_other_mutation_was_caught():
     assert walled and walled[0]["seam_host_passes_for_separate"] == ["zero_metal_D"]
     assert walled[0]["seam_host_passes_for_fused"] == []
     mutations = [r for r in payload["rows"] if r["leg"] == "mutation"]
-    # FOUR DECLARED NULLS AND NO OTHERS. Each is a measurement with a live sibling in
-    # the same set: the phi-invariant parenthesisation against its (z, r) twin, the
-    # two phi offset swaps against the same offsets moved the other way, and the Dz
-    # r ownership mask against Dy's.
+    # FIVE DECLARED NULLS AND NO OTHERS: the phi-invariant term against its (z, r)
+    # twin, the two phi offset swaps against the same offsets moved the other way, and
+    # the r ownership mask on both D components (under MEEP's forms the m = 0 axis rule
+    # overwrites Dp's row 0 and fu_Dp is never stored there).
     nulls = sorted(r["label"] for r in mutations if r.get("expectation") == "null")
-    assert nulls == ["curl_parens_flattened_on_the_invariant_pair",
+    assert nulls == ["curl_invariant_term_kept_as_a_self_difference",
                      "offset_kmy_plus_one_reads_sinvy",
                      "offset_sinvy_minus_one_reads_kmy",
+                     "ownership_mask_dropped_on_r_for_dy",
                      "ownership_mask_dropped_on_r_for_dz"]
     caught = {r["label"]: r["caught"] for r in mutations}
-    assert caught["curl_parens_flattened_on_a_live_pair"] is True
-    assert caught["ownership_mask_dropped_on_r_for_dy"] is True
+    assert caught["curl_previous_package_grouping_on_a_live_pair"] is True
     assert all(r["caught"] for r in mutations
                if r.get("expectation", "caught") == "caught")
     assert all(r["caught"] is False for r in mutations

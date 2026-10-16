@@ -1833,7 +1833,7 @@ def _does_not_claim(results: Dict[str, Any]) -> List[str]:
         "(folded_fused_magnetic_pair.py:324-368) and no leg here runs that kernel",
         "BREADTH is a different dimension: this file drives the families with "
         "accumulating auxiliary state, not all 22, and not the off-diagonal row "
-        "masks or the NAIVE expansion arm",
+        "masks",
     ]
     if results.get("backend") == "numpy":
         out += [

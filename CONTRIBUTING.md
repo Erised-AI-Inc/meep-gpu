@@ -45,8 +45,9 @@ not run by these commands; run it with
     python -m pytest meep_gpu parity/meep_gpu -m certification
 
 [Running the tests](docs/development/testing.md) describes the suites, what a
-run of them shows today, and the two failures that are expected while the
-fused-product timing records are pending. The examples have their own check:
+run of them shows today, and the failures that are expected while the
+certification of the released files is pending. The examples have their own
+check:
 
     python examples/run_examples.py --check
 
@@ -73,9 +74,9 @@ weld contracts before and after the edit:
     grep -lE '"([^"]*/)?driver\.py"' meep_gpu/*_kernels/*.json
     python -m pytest meep_gpu/test_metal_weld_contract.py meep_gpu/test_triton_weld_contract.py meep_gpu/test_cuda_weld_contract.py -q
 
-They pass on the files of this release. A failure reports how many pinned files
-have drifted, as N of D, and names each drifted file with its ledger entry; one
-that appears after your edit means the edit touched a pinned file.
+They fail in this preview, but each failure reports how many pinned files have
+drifted, as N of D, and names each drifted file with its ledger entry. A count
+that rises after your edit means the edit touched a pinned file.
 
 A pull request with such an edit leaves the ledgers as they are. It names the
 drifted entries and says either that re-certification is needed and was not
@@ -126,6 +127,14 @@ alone, without this package, is theirs.
 Code, comments and documentation are neutral and technical. Names are renamed
 outright, with no alias left behind. A test, gate or benchmark that can run for
 more than about a minute prints a flushed line of progress per unit of work.
+
+No host names, account names, local paths or personal e-mail addresses in any
+tracked file: write "the GPU host" or "this machine", write a staged path as
+`<staging-root>/...`, and cite evidence by a neutral name. The hygiene guard
+enforces it on every tracked file, the certification ledgers and the coverage
+board's subject:
+
+    python tools/ci/check_hygiene.py --legs tracked,subject
 
 ## Names
 

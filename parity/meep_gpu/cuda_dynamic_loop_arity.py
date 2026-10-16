@@ -74,18 +74,31 @@ followed by one in-place subtraction per driving state, in
     #   PolarizationState.subtract_into is `target -= self.P[component]`
     #                                                          dispersion.py:693
 
-with ``_apply_constitutive_pml`` (stepping.py:2112-2143) being
+with the constitutive step being ``stepping._apply_constitutive_regions``: on a
+cell whose structure chunk carries the component's own (dsigw) layer, MEEP's
+step_update_EDHB with dsigw (step_generic.cpp:689, :697),
 
-    fw_previous = fw.copy(); fw[...] = source
-    field += kps * fw ; field -= kms * fw_previous
+    fw_previous = fw; fw = source
+    field = field + ((kps * fw) - (kms * fw_previous))
 
-i.e. TWO SEPARATE ACCUMULATIONS, ``prev`` read before the store. So the contract,
-per component, is exactly:
+the two products, their difference, then ONE add, ``prev`` read before the store;
+on every other cell ``field = source`` with ``fw`` keeping its word (MEEP's plain
+constitutive, update_eh.cpp:162-170). Which cells are which is the chunk record
+(``chunk_map.chunk_bounds_record``): the component's line along its own axis on
+the half-integer lattice. So the contract, per component, is exactly:
 
     s    = ((D_c - P_0[c]) - P_1[c]) - ...      left to right, NP terms
     src  = s * inv_eps_c                        D-minus-P on the LEFT
-    prev = f_w_c ; f_w_c = src
-    E_c  = (E_c + kps_h[a]*src) - kms_h[a]*prev a = the component's OWN axis
+    on the record's cells along a:              a = the component's OWN axis
+        prev = f_w_c ; f_w_c = src
+        E_c  = E_c + ((kps_h[a]*src) - (kms_h[a]*prev))
+    elsewhere:
+        E_c  = src
+
+Every case of this experiment launches with every cell inside
+(``gate_chunk_records.every_cell_record``, carried in the case as ``record``), so
+the accumulation runs everywhere and the outside form is exercised only by the
+reference's own validation against ``stepping``.
 
 The ARITY AXIS IS THE ``s`` LINE AND NOTHING ELSE. Everything downstream of it is
 byte-for-byte the certified ``constitutive_apply`` from
@@ -402,28 +415,29 @@ def operand_census(arrays: Dict[str, np.ndarray]) -> Dict[str, int]:
 # performs the encode itself.
 
 _PRELUDE = r'''
-// stepping._apply_constitutive_pml (stepping.py:2065), MEEP's step_update_EDHB
-// with dsigw active:
+// stepping._apply_constitutive_regions, MEEP's step_update_EDHB:
 //
-//     realnum fwprev = fw[i], kapwkw = kapw[kw], sigwkw = sigw[kw];
-//     fw[i] = g[i] * u[i];                   // B for H, D*inv_eps for E
-//     f[i] += (kapwkw + sigwkw) * fw[i] - (kapwkw - sigwkw) * fwprev;
+//     dsigw cell:  realnum fwprev = fw[i], kapwkw = kapw[kw], sigwkw = sigw[kw];
+//                  fw[i] = g[i] * u[i];      // B for H, D*inv_eps for E
+//                  f[i] += (kapwkw + sigwkw) * fw[i] - (kapwkw - sigwkw) * fwprev;
+//     other cell:  f[i] = g[i] * u[i];       // fw keeps its word
 //
-// The two accumulations are kept SEPARATE and LEFT-TO-RIGHT; `prev` is loaded
-// before the store. This is the certified body from
+// The two products, their difference, then one add; `prev` is loaded before the
+// store, and only where the flag says the cell's chunk carries the dsigw layer.
+// This is the certified body from
 // cuda_kernels/constitutive_kernels.py::_REAL_CONSTITUTIVE_PRELUDE, reproduced
 // rather than imported so this file compiles standalone, and pinned equal to it
 // by test_cuda_dynamic_loop_arity.py.
 __device__ __forceinline__ void constitutive_apply(
     float* __restrict__ f, float* __restrict__ fw, int idx, float src,
-    float kps, float kms
+    float kps, float kms, int dsigw
 ) {
-    float prev = fw[idx];
-    fw[idx] = src;
-    float a = f[idx] + kps * src;
-    f[idx] = a - kms * prev;
+    float prev = dsigw ? fw[idx] : 0.0f;
+    if (dsigw) fw[idx] = src;
+    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;
+    f[idx] = value;
 }
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 2065->2112
+'''  # stepping.py live lines for the frozen device-text citation(s) in this string: _apply_constitutive_regions, _apply_constitutive_pml
 
 #: The linear-index decomposition, identical in every variant. Written once so a
 #: divergence can never be attributed to two spellings of ``i``, ``j``, ``k``.
@@ -435,6 +449,30 @@ _INDEX_BLOCK = r'''
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 '''
+
+#: The chunk record's half-integer membership, identical in every variant and
+#: spelled as the certified ``update_E_pml_real`` spells it: row r of this lattice
+#: and axis lies in a chunk that carries the axis's layer iff
+#: ``(a0 <= r < a1) || (b0 <= r < b1)``, read from words 12..23 of the int32[25]
+#: record (``chunk_map.chunk_bounds_record``, half-integer lattice second).
+_RECORD_BLOCK = r'''
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
+    const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
+    const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
+    const int cbh_y_a0 = cb[16], cbh_y_a1 = cb[17], cbh_y_b0 = cb[18], cbh_y_b1 = cb[19];
+    const int in_h_y = (j >= cbh_y_a0 && j < cbh_y_a1) || (j >= cbh_y_b0 && j < cbh_y_b1);
+    const int cbh_z_a0 = cb[20], cbh_z_a1 = cb[21], cbh_z_b0 = cb[22], cbh_z_b1 = cb[23];
+    const int in_h_z = (k >= cbh_z_a0 && k < cbh_z_a1) || (k >= cbh_z_b0 && k < cbh_z_b1);
+'''
+
+#: The three constitutive calls, identical in every variant: each component on its
+#: own axis's coefficients and its own axis's membership flag.
+CONSTITUTIVE_CALLS: Tuple[str, ...] = (
+    "constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);",
+    "constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j], in_h_y);",
+    "constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k], in_h_z);",
+)
 
 _UNROLLED_TEMPLATE = r'''
 #define NP0 __NP0__
@@ -464,9 +502,11 @@ extern "C" __global__ void dispersive_update_E_unrolled(
     int nx, int ny, int nz,
     const float* __restrict__ kps_x, const float* __restrict__ kms_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_y,
-    const float* __restrict__ kps_z, const float* __restrict__ kms_z
+    const float* __restrict__ kps_z, const float* __restrict__ kms_z,
+    const int* __restrict__ cb
 ) {
 __INDEX__
+__RECORD__
     // fields.displacement_minus_polarization (fields.py:1102-1104): a copy of D
     // followed by one in-place subtraction per driving state, left to right, in
     // fields.polarizations order. NOT pre-summed: D - (P0 + P1) is a different
@@ -561,11 +601,12 @@ __INDEX__
     // it cannot reach a float operand.
     trips[idx] = NP0 + NP1 + NP2;
 
-    // Ex takes its half-integer coefficients from axis x, Ey from y, Ez from z:
-    // the component's OWN axis (stepping.E_CONSTITUTIVE_TERMS, stepping.py:227).
-    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);
-    constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j]);
-    constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k]);
+    // Ex takes its half-integer coefficients and membership from axis x, Ey from
+    // y, Ez from z: the component's OWN axis (stepping.E_CONSTITUTIVE_TERMS,
+    // stepping.py:227).
+    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);
+    constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j], in_h_y);
+    constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k], in_h_z);
 }
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 982->1011, 227->228
 
@@ -585,9 +626,11 @@ extern "C" __global__ void dispersive_update_E_dynamic(
     int nx, int ny, int nz,
     const float* __restrict__ kps_x, const float* __restrict__ kms_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_y,
-    const float* __restrict__ kps_z, const float* __restrict__ kms_z
+    const float* __restrict__ kps_z, const float* __restrict__ kms_z,
+    const int* __restrict__ cb
 ) {
 __INDEX__
+__RECORD__
     int executed = 0;
 
     // The SAME chain as the unrolled variant, with the count as a runtime bound
@@ -609,9 +652,9 @@ __LOOP_Z__
     float src_z = sz * inv_eps_Ez[idx];
 
 __TRIPS__
-    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);
-    constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j]);
-    constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k]);
+    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);
+    constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j], in_h_y);
+    constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k], in_h_z);
 }
 '''
 
@@ -688,7 +731,8 @@ def unrolled_source(np0: int, np1: int, np2: int) -> str:
             .replace("__NP0__", str(np0))
             .replace("__NP1__", str(np1))
             .replace("__NP2__", str(np2))
-            .replace("__INDEX__", _INDEX_BLOCK))
+            .replace("__INDEX__", _INDEX_BLOCK)
+            .replace("__RECORD__", _RECORD_BLOCK))
     return _PRELUDE + body
 
 
@@ -700,6 +744,7 @@ def dynamic_source(variant: str) -> str:
     trips = "" if variant == "dynamic_notrips" else "    trips[idx] = executed;\n"
     body = (_DYNAMIC_TEMPLATE
             .replace("__INDEX__", _INDEX_BLOCK)
+            .replace("__RECORD__", _RECORD_BLOCK)
             .replace("__LOOP_X__", make("x", "np0"))
             .replace("__LOOP_Y__", make("y", "np1"))
             .replace("__LOOP_Z__", make("z", "np2"))
@@ -766,15 +811,29 @@ THREADS = 256
 def reference_update_E(state: Dict[str, np.ndarray],
                        arities: Tuple[int, int, int],
                        kps: Sequence[np.ndarray],
-                       kms: Sequence[np.ndarray]) -> Dict[str, np.ndarray]:
+                       kms: Sequence[np.ndarray], *,
+                       record: Sequence[int]) -> Dict[str, np.ndarray]:
     """``stepping.update_E`` under PML with poles, in float32 NumPy.
 
-    Transcribed from the four lines cited in the module docstring, and VALIDATED
+    Transcribed from the lines cited in the module docstring, and VALIDATED
     against ``stepping.update_E`` itself on real ``Fields``/``PML``/
     ``PolarizationState`` objects by ``test_cuda_dynamic_loop_arity.py``. This
     function is not the gate's verdict -- the gate compares two KERNELS -- but a
     third leg that reports which of them, if either, also matches the array path
     is worth having for free, and a reference nobody validated is worth nothing.
+
+    Per component, ``src = (D - P0 - P1 - ...) * inv_eps`` (the poles subtracted
+    one at a time, in order), then the two forms of
+    ``stepping._apply_constitutive_regions``, keyed on the chunk ``record``
+    (REQUIRED; ``chunk_map.chunk_bounds_record``): on a cell whose record line
+    along the component's own axis, on the half-integer lattice, holds it, MEEP's
+    dsigw accumulation ``f + ((kps * src) - (kms * fw_previous))`` with
+    ``fw = src`` (step_generic.cpp:689, :697: the two products, their difference,
+    then one add); everywhere else ``f = src`` with ``fw`` keeping its word (the
+    auxiliary contract). The gate's cases carry every cell inside
+    (:func:`make_case`'s ``record``), which is what its kernels launch with.
+    The record is decoded here by :func:`record_membership`, transcribed rather
+    than imported, so the validation against ``stepping`` also checks the decode.
 
     ``kps``/``kms`` are the three per-axis vectors ALREADY RESHAPED for
     broadcasting on their own axis, which is the shape ``PML._reshape_for_broadcast``
@@ -785,19 +844,38 @@ def reference_update_E(state: Dict[str, np.ndarray],
                   ("Ez", "Dz", "Pz", 2))
     out: Dict[str, np.ndarray] = {}
     for index, (field, source_name, pole_prefix, axis) in enumerate(components):
-        # fields.py:1102-1104 -- a copy, then one in-place subtraction per state.
+        # Fields.displacement_minus_polarization -- a copy, then one in-place
+        # subtraction per state.
         s = np.array(state[source_name], dtype=np.float32, copy=True)
         for pole in range(arities[index]):
             s -= state[f"{pole_prefix}{pole}"]
         src = (s * state["inv_eps_" + field]).astype(np.float32)
         fw_name = "f_w_" + field
         prev = np.array(state[fw_name], dtype=np.float32, copy=True)
-        out[fw_name] = src
-        # stepping.py:2133-2134 -- two separate accumulations, left to right.
-        value = (state[field] + (kps[axis] * src)).astype(np.float32)
-        value = (value - (kms[axis] * prev)).astype(np.float32)
-        out[field] = value
+        n = state[field].shape[axis]
+        broadcast = [1, 1, 1]
+        broadcast[axis] = n
+        inside = record_membership(record, True, axis, n).reshape(broadcast)
+        accumulated = (state[field]
+                       + ((kps[axis] * src) - (kms[axis] * prev))).astype(np.float32)
+        out[fw_name] = np.where(inside, src, prev).astype(np.float32)
+        out[field] = np.where(inside, accumulated, src).astype(np.float32)
     return out
+
+
+def record_membership(record: Sequence[int], half_integer: bool, axis: int,
+                      n: int) -> np.ndarray:
+    """Rows ``0..n-1`` along ``axis`` that the record puts inside a layer chunk.
+
+    The int32[25] layout of ``chunk_map.chunk_bounds_record``: the runs
+    ``[a0, a1) U [b0, b1)`` at words ``((sub-lattice) * 3 + axis) * 4 ..+3``, integer
+    lattice first. The kernels evaluate the same two comparisons per cell
+    (:data:`_RECORD_BLOCK`).
+    """
+    base = ((1 if half_integer else 0) * 3 + int(axis)) * 4
+    a0, a1, b0, b1 = (int(record[base + word]) for word in range(4))
+    rows = np.arange(int(n))
+    return ((rows >= a0) & (rows < a1)) | ((rows >= b0) & (rows < b1))
 
 
 def coefficient_tables(shape: Tuple[int, int, int], rng
@@ -839,7 +917,14 @@ def make_case(shape: Tuple[int, int, int], arities: Tuple[int, int, int],
     arity, and are always filled with live values. Binding an unused slot to a
     zero volume would make the short control undetectable at the boundary and
     would make "the loop stopped early" look like "the loop read a zero".
+
+    ``record`` is the chunk record every variant launches with and the reference
+    steps with: every stored cell inside a layer chunk
+    (``gate_chunk_records.every_cell_record``), the division the graded
+    coefficient tables admit, since they are not 1 on any cell.
     """
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415 - beside this file
+
     rng = np.random.default_rng(seed)
     state: Dict[str, np.ndarray] = {}
     for name in ("Ex", "Ey", "Ez", "Dx", "Dy", "Dz",
@@ -871,6 +956,7 @@ def make_case(shape: Tuple[int, int, int], arities: Tuple[int, int, int],
         "kms_vectors": tables["kms"],
         "kps_broadcast": kps,
         "kms_broadcast": kms,
+        "record": every_cell_record(tuple(shape)),
         "operand_census": census,
     }
 

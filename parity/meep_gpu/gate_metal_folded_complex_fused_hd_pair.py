@@ -35,6 +35,16 @@ those; what is asserted is the substantive half -- refused BY NAME, the refusal 
 ``INSTALLABLE`` False, the composer's selection unchanged, and the released neighbours
 keeping their slots.
 
+THE PER-CHUNK FORMS (bit_parity_0_10, KERNELS.md §7, step M5). Both halves lift the
+aligned complex emitters: the recomputed ``update_H`` selects its form on the dsigw
+membership of the cell it is evaluated at, the scratch takes the pre-launch ``f_w`` on a
+cell outside the dsigw chunks, and the curl half takes the per-chunk forms on the integer
+record; the planner and the two certified singles bind the driver's chunk record. The
+grouping mutations are INVERTED (KERNELS.md §7.1) -- each plants the package's PREVIOUS
+grouping and stays must-catch -- the §7.2 select rows are armed on both halves with their
+declared nulls, and the Bloch connection's operand order is a declared equivalence: with
+every product and sum rounded on its own it moves no word.
+
 Progress reporting: one flushed timestamped line per unit of work; every leg appended and fsynced
 as it lands; the lift writes one JSON per corpus row as it lands.
 """
@@ -153,78 +163,72 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
 MUTATION_CASES: Tuple[str, ...] = ("y_periodic_even_2d", "y_metallic_x_wall_2d")
 
 #: The fixture the mask leg scores on: it must carry a folded PERIODIC axis, because
-#: ``folded_top_plane_mask`` emits a comment and no line on a MIRROR_METALLIC one.
-MASK_CASE = "y_periodic_even_2d"
+#: ``folded_top_plane_mask`` emits a comment and no line on a MIRROR_METALLIC one, and it
+#: is THREE-DIMENSIONAL: under the auxiliary contract a mask is observable after a
+#: complete step only through ``fu_D`` on the masked target's dsigu cells, and on a 2-D
+#: fold the cell-0 targets' dsigu axes are the invariant z and the folded axis, whose
+#: mirror plane carries no layer.
+MASK_CASE = "y_periodic_3d"
 
-
-def expansion() -> str:
-    """The PROBE-MEASURED complex-multiply arm. Never a default."""
-    arm = folded_complex.expansion_from_probe(folded_complex.load_expansion_probe())
-    if arm is None:
-        raise SystemExit(
-            "the folded-complex expansion probe is absent or non-discriminating on "
-            "this host; the arm is a PLATFORM FACT and this gate refuses to default it")
-    return arm
 
 
 def emit(variant: str, codes: Sequence[int], phased: Sequence[int],
-         arm: str, contract: str) -> str:
-    return family.folded_complex_fused_hd_pair_source(codes, phased, arm, contract)
+         contract: str) -> str:
+    return family.folded_complex_fused_hd_pair_source(codes, phased, contract)
 
 
-def parent_curl(variant: str, codes: Sequence[int], phased: Sequence[int],
-                arm: str) -> str:
+def parent_curl(variant: str, codes: Sequence[int], phased: Sequence[int]) -> str:
     """The CERTIFIED folded complex curl this weld lifts, unwelded."""
-    return folded_complex.folded_bloch_curl_source(codes, True, phased, arm)
+    return folded_complex.folded_bloch_curl_source(codes, True, phased)
 
 
 def singles(driver: Any, residency: Residency) -> Tuple[Any, Any]:
     """The two CERTIFIED folded-complex parent plans at the seam's two slots."""
+    record = driver.chunk_bounds_record()
     return (folded_complex.plan_folded_complex_constitutive(
-                driver.fields, driver.pml, "H", residency),
+                driver.fields, driver.pml, "H", residency, chunk_bounds=record),
             folded_complex.plan_folded_complex_pml_curl(
-                driver.fields, driver.pml, "step_D", residency))
+                driver.fields, driver.pml, "step_D", residency, chunk_bounds=record))
 
 
 # ---------------------------------------------------------------------------
 # The armed defects
 # ---------------------------------------------------------------------------
 
-def _shipped(variant: str, codes: Sequence[int], phased: Sequence[int],
-             arm: str) -> str:
+def _shipped(variant: str, codes: Sequence[int], phased: Sequence[int]) -> str:
     from meep_gpu.metal_kernels import shaders  # noqa: PLC0415
 
-    return emit(variant, codes, phased, arm, shaders.CONTRACT_OFF)
+    return emit(variant, codes, phased, shaders.CONTRACT_OFF)
 
 
-def _own_load_from_the_input(variant, codes, phased, arm):  # noqa: ANN001
+def _own_load_from_the_input(variant, codes, phased):  # noqa: ANN001
     """The own-cell magnetic load taken from the PRE-launch ``H``.
 
     The whole weld rests on the curl's own cell reading the register the constitutive
     half just produced, which is the post-``update_H`` value the array path loads.
     """
-    return common.needle(_shipped(variant, codes, phased, arm),
+    return common.needle(_shipped(variant, codes, phased),
                          "    float2 a   = own.a0;\n",
                          "    float2 a   = hi0[ii];\n")
 
 
-def _foreign_tap_component_swapped(variant, codes, phased, arm):  # noqa: ANN001
+def _foreign_tap_component_swapped(variant, codes, phased):  # noqa: ANN001
     """One foreign recompute returns the wrong component of ``h_cell``'s struct."""
-    source = _shipped(variant, codes, phased, arm)
+    source = _shipped(variant, codes, phased)
     start = source.index("h_cell(", source.index("h_cell_result own"))
     tap = source.index("h_cell(", start + 1)
     hit = source.index(".a0", tap)
     return source[:hit] + ".a1" + source[hit + 3:]
 
 
-def _scratch_history_store_dropped(variant, codes, phased, arm):  # noqa: ANN001
+def _scratch_history_store_dropped(variant, codes, phased):  # noqa: ANN001
     """The split-field history never reaches the scratch, so the rotation publishes 0."""
     return common.needle(
-        _shipped(variant, codes, phased, arm),
-        "    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;\n", "")
+        _shipped(variant, codes, phased),
+        "    wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;\n", "")
 
 
-def _constitutive_bound_to_the_curl_sinv(variant, codes, phased, arm):  # noqa: ANN001
+def _constitutive_bound_to_the_curl_sinv(variant, codes, phased):  # noqa: ANN001
     """THE SHARED COEFFICIENT GROUP, BROKEN.
 
     Both halves sit on the same Yee sub-lattice, so the curl's ``kms`` and the
@@ -232,42 +236,48 @@ def _constitutive_bound_to_the_curl_sinv(variant, codes, phased, arm):  # noqa: 
     that makes 30 pointers possible. This hands ``h_cell`` the curl's OTHER group
     instead, which compiles and is a smooth wrong answer.
     """
-    return _shipped(variant, codes, phased, arm).replace(
-        "kmx, kmy, kmz)", "sinvx, sinvy, sinvz)")
+    source = _shipped(variant, codes, phased)
+    mutated = source.replace("kmx, kmy, kmz, cb)", "sinvx, sinvy, sinvz, cb)")
+    if mutated == source:
+        raise AssertionError("no h_cell call site carries the shared kms group")
+    return mutated
 
 
-def _dtdx_dropped(variant, codes, phased, arm):  # noqa: ANN001
-    """The curl's ``dtdx`` scale dropped on target 0."""
-    return common.needle(_shipped(variant, codes, phased, arm),
-                         "    float2 curl0 = c_mul_coefficient_left(dtdx, t0);\n",
-                         "    float2 curl0 = t0;\n")
+def _dtdx_dropped(variant, codes, phased):  # noqa: ANN001
+    """The curl's ``dtdx`` scale dropped on target 2's both-partner bracket.
+
+    Target 2 differences along x and y, both resolved on every fixture here; target
+    0's bracket needs z, which a 2-D fixture does not resolve (the record's presence
+    word), so a needle there would plant a branch nothing evaluates.
+    """
+    return common.needle(_shipped(variant, codes, phased),
+                         "c_mul_coefficient_left(dtdx, ((b_x - b_dx) + a_dy) - a_y)",
+                         "(((b_x - b_dx) + a_dy) - a_y)")
 
 
-def _phase_orientation_swapped(variant, codes, phased, arm):  # noqa: ANN001
-    """The Bloch rotation applied with the COEFFICIENT on the left.
+def _phase_orientation_swapped(variant, codes, phased):  # noqa: ANN001
+    """The Bloch connection applied with the PHASE on the left.
 
-    ``complex_fields._phase_block`` emits ``b_x = wx ? c_mul(b_x, px) : b_x;`` --
-    FIELD on the left -- which is the array path's orientation (stepping.py:1909) and
-    the one the expansion arm was PROBED for. Complex multiplication is commutative in
-    exact arithmetic and is not in this expansion, so the swap is a must-catch defect
-    here (unlike the folded fill's real +/-1 coefficient, for which the same swap is a
-    measured equivalence).
+    ``complex_fields._phase_block`` emits ``c_dx = c_mul(c, px);`` on plane 0 of a
+    phased axis. With every product and every sum rounded on its own (MEEP's unfused
+    connection), IEEE multiplication and two-operand addition are commutative, so the
+    swap is a DECLARED EQUIVALENCE and is scored on NOT diverging.
 
     The rewrite is generic over the emitted line rather than a fixed needle: every
-    ``c_mul(<operand>, p?)`` inside a phase ternary is inverted, so a template that
-    renamed an operand cannot silently disarm this leg -- it would arm zero sites, and
-    a zero-site arm is reported as a no-op rather than as a caught defect.
+    ``<connected> = c_mul(<operand>, p?);`` is inverted, so a template that renamed an
+    operand cannot silently disarm this leg -- it would arm zero sites, and a
+    zero-site arm is reported as a no-op rather than as an equivalence.
     """
-    source = _shipped(variant, codes, phased, arm)
+    source = _shipped(variant, codes, phased)
     out: List[str] = []
     armed = 0
     for line in source.splitlines(keepends=True):
         stripped = line.strip()
-        if stripped.startswith(("b_", "c_", "a_")) and " ? c_mul(" in stripped:
-            head, rest = line.split(" ? c_mul(", 1)
+        if stripped.startswith(("b_d", "c_d", "a_d")) and " = c_mul(" in stripped:
+            head, rest = line.split(" = c_mul(", 1)
             inner, tail = rest.split(")", 1)
             operand, word = (piece.strip() for piece in inner.split(",", 1))
-            out.append(f"{head} ? c_mul({word}, {operand}){tail}")
+            out.append(f"{head} = c_mul({word}, {operand}){tail}")
             armed += 1
         else:
             out.append(line)
@@ -335,16 +345,77 @@ SHADER_MUTATIONS: Dict[str, Tuple[Any, ...]] = {
         _dtdx_dropped, "the curl's dtdx scale dropped on target 0", True),
     "bloch_phase_orientation_swapped": (
         _phase_orientation_swapped,
-        "the Bloch rotation applied coefficient-left; the array path is field-left "
-        "(stepping.py:1909) and that orientation is what the expansion arm was probed "
-        "for", True, ("y_periodic_x_bloch_2d",)),
+        "DECLARED EQUIVALENCE: the Bloch connection with the phase on the left; with "
+        "every product and sum rounded on its own the orientation moves no word",
+        False, ("y_periodic_x_bloch_2d",)),
+    "curl_previous_grouping": (
+        lambda variant, codes, phased: common.needle(
+            _shipped(variant, codes, phased),
+            "((b_x - b_dx) + a_dy) - a_y", "(b_x - b_dx) + (a_dy - a_y)"),
+        "INVERTED (KERNELS.md §7.1): the package's previous pairwise curl grouping "
+        "planted in place of MEEP's left-to-right bracket, on target 2 (both partners "
+        "resolved on every fixture)", True),
+    "constitutive_previous_accumulation_grouping": (
+        lambda variant, codes, phased: common.needle(
+            _shipped(variant, codes, phased),
+            "if (dw0) { a0 = hi0[ii] + (c_mul_coefficient_left(kp_0, src0) - "
+            "c_mul_coefficient_left(km_0, prev0)); }",
+            "if (dw0) { a0 = (hi0[ii] + c_mul_coefficient_left(kp_0, src0)) - "
+            "c_mul_coefficient_left(km_0, prev0); }"),
+        "INVERTED (KERNELS.md §7.1): the package's previous accumulation grouping in "
+        "the recomputed update_H", True),
+    "b1_select_removed": (
+        lambda variant, codes, phased: common.needle(
+            _shipped(variant, codes, phased),
+            "    const bool du0 = in_i_z, du1 = in_i_x, du2 = in_i_y;\n",
+            "    const bool du0 = true, du1 = true, du2 = true;\n"),
+        "KERNELS.md §7.2: the whole-grid recurrence (the previous package form) on "
+        "the D half", True),
+    "b6_auxiliary_stored_on_a_plain_cell": (
+        lambda variant, codes, phased: common.needle(
+            _shipped(variant, codes, phased),
+            "    if (du0) { u0[ii] = n0; }\n", "    u0[ii] = n0;\n"),
+        "KERNELS.md §7.2: fu_D written outside the recurrence's cells", True),
+    "b7_auxiliary_load_unconditional": (
+        lambda variant, codes, phased: common.needle(
+            _shipped(variant, codes, phased),
+            "    float2 p0 = du0 ? u0[ii] : f0[ii];",
+            "    float2 p0u = u0[ii]; float2 p0 = du0 ? p0u : f0[ii];"),
+        "DECLARED NULL (KERNELS.md §7.2): an unguarded fu load with the store still "
+        "guarded changes no word", False),
+    "b9_constitutive_select_removed": (
+        lambda variant, codes, phased: common.needle(
+            _shipped(variant, codes, phased),
+            "        const bool dw0 = in_i_x, dw1 = in_i_y, dw2 = in_i_z;\n",
+            "        const bool dw0 = true, dw1 = true, dw2 = true;\n"),
+        "KERNELS.md §7.2: the whole-grid accumulation in the recomputed update_H",
+        True),
+    "b11_f_w_stored_on_a_plain_cell": (
+        lambda variant, codes, phased: common.needle(
+            _shipped(variant, codes, phased),
+            "        float2 wn0 = dw0 ? src0 : wi0[ii];\n",
+            "        float2 wn0 = src0;\n"),
+        "KERNELS.md §7.2: f_w_H's scratch takes B outside the accumulation's cells",
+        True),
+    "b12_constitutive_load_unconditional": (
+        lambda variant, codes, phased: common.needle(
+            _shipped(variant, codes, phased),
+            "        float2 prev0 = dw0 ? wi0[ii] : float2(0.0f, 0.0f);",
+            "        float2 prev0 = wi0[ii];"),
+        "DECLARED NULL (KERNELS.md §7.2): prev is consumed only on the accumulation's "
+        "cells", False),
 }
 
 HOST_MUTATIONS: Dict[str, Tuple[Any, str]] = {
     "codes_from_boundary_kinds": (
         _host_codes_from_boundary_kinds,
         "the PERIODIC/METALLIC triple the unfolded complex product builds, on a folded "
-        "grid: the ghost wraps and the cell-0 mask is not widened"),
+        "grid: the ghost wraps and the cell-0 mask is not widened. Armed where the "
+        "defect reaches a stored word: a folded PERIODIC axis (the top-plane mask and "
+        "far ghost go too) and a 3-D fold (the cell-0 plane meets a dsigu layer). On a "
+        "2-D MIRROR_METALLIC fold the fills restore D and, under the auxiliary "
+        "contract, no fu_D word sits on the mirror plane",
+        ("y_periodic_even_2d", "y_periodic_3d")),
     "rotation_skipped": (
         _host_rotation_skipped,
         "the post-launch rotation dropped: the constitutive half's output is invisible "
@@ -365,23 +436,23 @@ MASK_MUTATIONS: Dict[str, Tuple[Any, str]] = {
 }
 
 
-def _byte_neutral_own_from_scratch(variant, codes, phased, arm):  # noqa: ANN001
+def _byte_neutral_own_from_scratch(variant, codes, phased):  # noqa: ANN001
     """The thread's own cell read back from the scratch IT just wrote.
 
     Same thread, same cell, program order -- so this is required NOT to diverge, and
     what it measures is that the scratch store is EXACTLY the register the curl uses:
     a store that rounded, widened or reordered would show here.
     """
-    return common.needle(_shipped(variant, codes, phased, arm),
+    return common.needle(_shipped(variant, codes, phased),
                          "    float2 a   = own.a0;\n",
                          "    float2 a   = ho0[ii];\n")
 
 
-def _byte_neutral_store_order(variant, codes, phased, arm):  # noqa: ANN001
+def _byte_neutral_store_order(variant, codes, phased):  # noqa: ANN001
     """The six scratch stores reordered: two disjoint volume groups, one thread."""
-    source = _shipped(variant, codes, phased, arm)
+    source = _shipped(variant, codes, phased)
     first = "    ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;\n"
-    second = "    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;\n"
+    second = "    wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;\n"
     return common.needle(common.needle(source, first, "__FIRST__\n"),
                          second, first).replace("__FIRST__\n", second)
 
@@ -452,12 +523,16 @@ def params_probe() -> Dict[str, Any]:
 
     from meep_gpu.metal_kernels.device import compile_source  # noqa: PLC0415
 
+    from meep_gpu.metal_kernels import chunk_bounds as _chunk_bounds  # noqa: PLC0415
+
     source = """
 #include <metal_stdlib>
 using namespace metal;
+""" + _chunk_bounds.struct_source() + """
 struct Params {
     float2 px; float2 py; float2 pz;
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
+    ChunkBounds cb;
 };
 kernel void params_probe(device float* out [[buffer(0)]],
                          constant Params& prm [[buffer(1)]],
@@ -508,7 +583,6 @@ PRODUCT = common.Product(
     source=emit,
     parent_curl_source=parent_curl,
     singles=singles,
-    expansion=expansion,
     complex_storage=True,
     cases=CASES,
     cell_arms=CELL_ARMS,
@@ -541,7 +615,7 @@ def runtime_reasons() -> List[str]:
     return common.runtime_reasons()
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:  # noqa: ARG001
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The census driver's battery hook: the identity claim on ONE lifted corpus row."""
     steps = int(os.environ.get(f"{LIFT_PREFIX}_STEPS", 12))
     block = common.evaluate_row(PRODUCT, driver, steps)
@@ -570,7 +644,6 @@ BUILDERS: Dict[str, Any] = {
     "host": lambda args: {
         **common.host_block(PRODUCT, __file__),
         "probes": PROBES,
-        "expansion_arm": expansion(),
         "cases": [name for name, _spec in CASES],
     },
     "policy": lambda args: common.leg_policy(PRODUCT,

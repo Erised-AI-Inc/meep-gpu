@@ -64,8 +64,10 @@ history beside ``D`` and ``fu_D``, and both write it at the THREAD'S OWN CELL ON
 * ``conductive`` -- ``cond_pml_apply`` (conductive_kernels.py's
   ``_COND_PML_APPLY_PRELUDE``) reads ``f[idx]``, ``u[idx]``, ``c[idx]``, ``cf[idx]``,
   ``ci[idx]`` and writes ``f[idx]``, ``u[idx]``, ``c[idx]``. No neighbour, either way;
-* ``bfast`` -- ``fb_D*[idx]`` is read into ``bprev`` and written back at the same
-  index, and nothing else touches it.
+* ``bfast`` -- MEEP's BFAST pass after each component's curl (``folded_pass``'s
+  ``bfast_pass`` and ``fold_apply``): ``fb_D*[idx]`` is read and written at the same
+  index, and the folded ladder writes ``f[idx]`` and ``fu[idx]``; nothing else
+  touches them.
 
 Neither history is read by ``update_H``, which reads ``H``, ``f_w_H``, ``B`` and the
 two coefficient groups and nothing else (stepping.py:907-923). So the weld's premise
@@ -338,9 +340,10 @@ _FUSED_THREADS = 256
 #: ``fused_hd_pair`` restates them: loading this file by path (which the probes do)
 #: must not pick up a different tuple than the one the gate compiled. Both certified
 #: curl families and the constitutive family ship exactly this tuple, and
-#: ``--fmad=false`` is CORRECTNESS on every one of them -- ``a - kms * prev``,
-#: ``f + kps * src``, ``((f * cf) - curl) * ci``, ``k1 * (sf + f1) - k2 * (ss + f2)``
-#: and ``total - 2.0f * bprev`` are all FMA candidates the array path rounds twice.
+#: ``--fmad=false`` is CORRECTNESS on every one of them -- the constitutive
+#: ``(kps * src) - (kms * prev)``, the curl recurrence's ``(fu * kms) - curl``, the
+#: BFAST state's ``(k1 * (sf + f1)) - (k2 * (ss + f2))`` and the ladder's
+#: ``fcur - (sinv_u * df)`` are all FMA candidates the array path rounds twice.
 _COMPILE_OPTIONS: Tuple[str, ...] = ("--fmad=false",)
 
 __all__ = [
@@ -474,12 +477,13 @@ CURL_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "kernel unread and unrewritten. It touches f[idx], u[idx] and c[idx] and "
             "no neighbour, which is what makes it safe IN PLACE inside a launch whose "
             "magnetic half writes only scratch."},
-    {"line": "        fb_D*[idx] = bprev + advance;  /  curl = curl - advance;",
-     "became": "(kept, verbatim -- the BFAST variant's tail)",
-     "why": "NOT AN EDIT either. The BFAST insert, its DOUBLE mask (on `advance` "
-            "before the state absorbs it, then on the `curl` it was added to) and the "
-            "IIR store are bfast_curl's own. The state is read and written at idx and "
-            "nowhere else."},
+    {"line": "        float inc_bfast = bfast_pass(fb_D*, idx, ...);  /  "
+             "fold_apply(D*, fu_D*, idx, inc_bfast, ...);",
+     "became": "(kept, verbatim -- the BFAST variant's pass)",
+     "why": "NOT AN EDIT either. MEEP's BFAST pass after the component's curl, its "
+            "ownership flag (the curl's own mask lines), the IIR store and the folded "
+            "ladder are bfast_curl's own. The state, the field and its auxiliary are "
+            "read and written at idx and nowhere else."},
 )
 
 
@@ -598,6 +602,8 @@ def raw_update_H_cell_source() -> str:
     for _kind, name in _hd.WELD_ARGS_FIELDS:
         if name.startswith(("H", "f_w_H", "B", "kps_", "kms_")):
             unpack.append(f"    const float* __restrict__ {name} = weld.{name};")
+    # The chunk record: the lifted block below decodes it at the RECOMPUTED cell.
+    unpack.append("    const int* __restrict__ cb = weld.cb;")
     return signature_text + "\n".join(unpack) + "\n" + body + "}\n"
 
 
@@ -715,13 +721,17 @@ def conductive_mask(fields: Any) -> Tuple[bool, bool, bool]:
 
 
 def certified_curl_text(variant: str,
-                        cond: Optional[Tuple[bool, bool, bool]] = None) -> str:
+                        cond: Optional[Tuple[bool, bool, bool]] = None, *,
+                        keep: Optional[Tuple[bool, bool, bool]] = None) -> str:
     """The certified ``step_D`` device text this variant welds, unmodified.
 
     Taken from the OWNING family's own public emitter, so a template edit or a mask
     reaches this weld the way it reaches the certified launch. ``cond`` is required on
     the conductive variant and refused on the BFAST one: the mask is three ``#define``
     lines the conductive family prepends, and the BFAST text has no such switch.
+    ``keep`` is the conductive family's ``KEEP<n>`` triple
+    (``conductive_kernels.conductive_keeps``: does every structure chunk keep that
+    target's conductivity), all True when not given, and is refused on the BFAST one.
     """
     _check_variant(variant)
     if variant == "conductive":
@@ -730,8 +740,13 @@ def certified_curl_text(variant: str,
                 "the conductive variant's device text is per-component: pass the "
                 "(COND0, COND1, COND2) mask conductive_kernels.conductive_targets "
                 "reads off the run, which is what its predicate reads too")
-        return _conductive.kernel_source(CERTIFIED_CURL["conductive"],
-                                         tuple(bool(flag) for flag in cond))
+        return _conductive.kernel_source(
+            CERTIFIED_CURL["conductive"], tuple(bool(flag) for flag in cond),
+            tuple(bool(flag) for flag in (keep or (True, True, True))))
+    if keep is not None:
+        raise ValueError(
+            "the BFAST variant carries no conductive-chunk switch; its certified text "
+            "has no KEEP lines")
     if cond is not None:
         raise ValueError(
             "the BFAST variant carries no conductivity mask; its certified text has "
@@ -765,7 +780,8 @@ def _split_certified(text: str, name: str) -> Tuple[str, str, str]:
 
 
 def welded_curl_pieces(variant: str,
-                       cond: Optional[Tuple[bool, bool, bool]] = None
+                       cond: Optional[Tuple[bool, bool, bool]] = None, *,
+                       keep: Optional[Tuple[bool, bool, bool]] = None
                        ) -> Dict[str, str]:
     """The certified curl, split and with every magnetic read redirected.
 
@@ -776,7 +792,7 @@ def welded_curl_pieces(variant: str,
     """
     name = CERTIFIED_CURL[_check_variant(variant)]
     prelude, parameters, body = _split_certified(
-        certified_curl_text(variant, cond), name)
+        certified_curl_text(variant, cond, keep=keep), name)
     preamble = _hd._THREAD_PREAMBLE  # noqa: SLF001
     decode = _hd._INDEX_DECODE  # noqa: SLF001
     if body.count(preamble) != 1 or body.count(decode) != 1:
@@ -895,9 +911,11 @@ extern "C" __global__ void {name}(
 
 
 def kernel_source(variant: str,
-                  cond: Optional[Tuple[bool, bool, bool]] = None) -> str:
-    """The whole device source for one variant (and, on the conductive one, one mask)."""
-    pieces = welded_curl_pieces(variant, cond)
+                  cond: Optional[Tuple[bool, bool, bool]] = None, *,
+                  keep: Optional[Tuple[bool, bool, bool]] = None) -> str:
+    """The whole device source for one variant (and, on the conductive one, one mask
+    and one ``KEEP`` triple)."""
+    pieces = welded_curl_pieces(variant, cond, keep=keep)
     weld = "\n".join([
         "",
         weld_args_construction().rstrip("\n"),
@@ -932,26 +950,31 @@ def kernel_source(variant: str,
 #: NVRTC. A map memoized at first call would hand back the pre-mutation bytes forever
 #: -- "a leg reporting a pass for a mutation it never applied", the defect this track
 #: has hit three times.
-_OVERRIDES: Dict[Tuple[str, Optional[Tuple[bool, bool, bool]]], str] = {}
+_OVERRIDES: Dict[Tuple[str, Optional[Tuple[bool, bool, bool]],
+                     Optional[Tuple[bool, bool, bool]]], str] = {}
 
 
 def _key(variant: str,
-         cond: Optional[Tuple[bool, bool, bool]]
-         ) -> Tuple[str, Optional[Tuple[bool, bool, bool]]]:
+         cond: Optional[Tuple[bool, bool, bool]],
+         keep: Optional[Tuple[bool, bool, bool]] = None) -> Tuple[Any, ...]:
     return (_check_variant(variant),
-            None if cond is None else tuple(bool(flag) for flag in cond))
+            None if cond is None else tuple(bool(flag) for flag in cond),
+            None if keep is None else tuple(bool(flag) for flag in keep))
 
 
 def current_source(variant: str,
-                   cond: Optional[Tuple[bool, bool, bool]] = None) -> str:
+                   cond: Optional[Tuple[bool, bool, bool]] = None, *,
+                   keep: Optional[Tuple[bool, bool, bool]] = None) -> str:
     """The source a launch would compile now: the override if one stands, else shipped."""
-    return _OVERRIDES.get(_key(variant, cond)) or kernel_source(variant, cond)
+    return (_OVERRIDES.get(_key(variant, cond, keep))
+            or kernel_source(variant, cond, keep=keep))
 
 
 def set_kernel_source(variant: str, cond: Optional[Tuple[bool, bool, bool]],
-                      source: str) -> None:
+                      source: str, *,
+                      keep: Optional[Tuple[bool, bool, bool]] = None) -> None:
     """Install one deliberately altered body -- the gate's door, and only that."""
-    _OVERRIDES[_key(variant, cond)] = source
+    _OVERRIDES[_key(variant, cond, keep)] = source
 
 
 def reset_kernel_sources() -> int:
@@ -986,7 +1009,8 @@ def source_digest() -> str:
 
 
 def _get_kernel(variant: str, cond: Optional[Tuple[bool, bool, bool]] = None,
-                source: Optional[str] = None):
+                source: Optional[str] = None, *,
+                keep: Optional[Tuple[bool, bool, bool]] = None):
     """Compile on first use, memoized on (name, options, policy, source).
 
     THE SOURCE IS IN THE KEY, so a mutation harness that handed in a rewritten string
@@ -995,7 +1019,7 @@ def _get_kernel(variant: str, cond: Optional[Tuple[bool, bool, bool]] = None,
     """
     import cupy as cp  # noqa: PLC0415 - device-only, in a laptop-importable module
 
-    code = current_source(variant, cond) if source is None else source
+    code = current_source(variant, cond, keep=keep) if source is None else source
     name = kernel_name(variant)
     key = _kernel_cache_key(name, False, _COMPILE_OPTIONS, code)
     return _get_or_compile(
@@ -1180,8 +1204,19 @@ def resolve(fields: Any, grid: Any, pml: Any, *,
             boundary_codes: Optional[Sequence[int]] = None,
             coefficients: Optional[Sequence[Sequence[float]]] = None,
             scratch: Optional[Dict[str, Any]] = None,
-            dtdx: Optional[float] = None) -> Dict[str, Any]:
+            dtdx: Optional[float] = None,
+            chunk_bounds: Any = None,
+            keeps: Optional[Tuple[Tuple[bool, bool, bool],
+                                  Tuple[Any, Any, Any]]] = None) -> Dict[str, Any]:
     """Everything the launch needs, derived once per frozen configuration.
+
+    ``chunk_bounds`` is the run's chunk record on the device, REQUIRED (keyword only so
+    the overrides keep their order; ``step_curl_kernels.chunk_record_argument`` checks
+    it): the curl half and every recomputed ``update_H`` choose their forms from it.
+    ``keeps`` is ``conductive_kernels.conductive_keeps``' answer on the conductive
+    variant (the ``KEEP<n>`` triple compiled in, and the per-cell conductive-chunk
+    masks bound as ``ck<n>`` where a chunk keeps none), read from the run when not
+    given -- the certified launcher's own arrangement.
 
     DERIVED HERE BY THE SAME FUNCTIONS THE CERTIFIED LAUNCHERS ASK, which is what makes
     "the weld and the singles cannot disagree about which sub-lattice, which boundary
@@ -1207,6 +1242,7 @@ def resolve(fields: Any, grid: Any, pml: Any, *,
     """
     from . import constitutive_kernels, step_curl_kernels  # noqa: PLC0415
 
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
     if variant is None:
         variant, refusal = variant_for(fields, grid)
         if variant is None:
@@ -1216,6 +1252,17 @@ def resolve(fields: Any, grid: Any, pml: Any, *,
                 f"than raising")
     _check_variant(variant)
     cond = conductive_mask(fields) if variant == "conductive" else None
+    keep: Optional[Tuple[bool, bool, bool]] = None
+    masks: Tuple[Any, Any, Any] = (None, None, None)
+    if variant == "conductive":
+        keep, masks = (keeps if keeps is not None
+                       else _conductive.conductive_keeps(fields, pml, "step_D"))
+        keep = tuple(bool(flag) for flag in keep)
+        for target, flag, mask in zip(D_TARGETS, keep, masks):
+            if not flag and mask is None:
+                raise ValueError(
+                    f"target {target} is not kept by every chunk and no conductive-"
+                    f"chunk mask was bound for it")
 
     if tables is None:
         curl = step_curl_kernels.real_pml_curl_tables(pml, False)
@@ -1257,7 +1304,8 @@ def resolve(fields: Any, grid: Any, pml: Any, *,
             # launch, so there is no cell whose prior contents a reader could observe.
             scratch[name] = cp.empty_like(source)
 
-    return {"variant": variant, "cond": cond, "tables": tables,
+    return {"variant": variant, "cond": cond, "keep": keep, "masks": masks,
+            "chunk_bounds": cb, "layer": pml, "tables": tables,
             "boundary_codes": tuple(int(code) for code in boundary_codes),
             "coefficients": (None if coefficients is None else
                              tuple(tuple(float(v) for v in pair)
@@ -1312,6 +1360,10 @@ def assert_bindings_are_disjoint(fields: Any, state: Dict[str, Any]) -> int:
             visit(f"condinv_{component}", fields.condinv_for(component))
             visit(f"f_cond_{component}", getattr(fields, f"f_cond_{component}"))
             del index
+        for component, flag, mask in zip(D_TARGETS, state.get("keep") or (True,) * 3,
+                                         state.get("masks") or (None,) * 3):
+            if not flag:
+                visit(f"ck_{component}", mask)
     else:
         for name in _bfast.BFAST_STATE["step_D"]:
             visit(name, getattr(fields, name))
@@ -1356,6 +1408,12 @@ def _launch_arguments(fields: Any, state: Dict[str, Any]) -> List[Any]:
                       for name, live, target in zip(D_TARGETS, cond, targets)]
         arguments += [getattr(fields, f"f_cond_{name}") if live else target
                       for name, live, target in zip(D_TARGETS, cond, targets)]
+        # A target every chunk keeps the conductivity of binds its own field array in
+        # its mask slot: KEEP<n> is 1 for it, so the pointer is never dereferenced
+        # (conductive_kernels.step_conductive_curl's own convention).
+        arguments += [target if kept else mask
+                      for kept, mask, target in zip(state["keep"], state["masks"],
+                                                    targets)]
     arguments += [np.int32(nx), np.int32(ny), np.int32(nz),
                   np.float32(state["dtdx"])]
     for axis in ("x", "y", "z"):
@@ -1364,6 +1422,7 @@ def _launch_arguments(fields: Any, state: Dict[str, Any]) -> List[Any]:
     if variant == "bfast":
         arguments += [np.float32(value) for pair in state["coefficients"]
                       for value in pair]
+    arguments += [state["chunk_bounds"]]
     # ---- this weld's tail ----
     arguments += [state["tables"]["kps"][axis] for axis in ("x", "y", "z")]
     return arguments
@@ -1383,16 +1442,32 @@ def launch_conductive_bfast_fused_hd_pair(fields: Any, state: Dict[str, Any], *,
     answer does NOT depend on which block ran first, and a block size that never moves
     cannot expose the opposite.
 
+    THE RUN'S FIRST ``update_H`` STARTS H FROM B, as on the released weld
+    (``fused_hd_pair.launch_fused_hd_pair``): when ``fields.h_separated`` is still
+    False the start runs on the array path BEFORE the launch, with the layer
+    :func:`resolve` bound, and every recompute then reads the started state.
+
     Returns the launch geometry rather than ``None`` so a gate can assert that
     something was actually launched.
     """
+    started = False
+    if not bool(getattr(fields, "h_separated", True)):
+        if state.get("layer") is None:
+            raise RuntimeError(
+                "the run's first update_H starts H from B (stepping.separate_h_from_b) "
+                "and this H->D launch was resolved with no layer to start it with")
+        from ..stepping import separate_h_from_b  # noqa: PLC0415 - NumPy/CuPy array path
+
+        separate_h_from_b(fields, state["layer"])
+        started = True
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + threads - 1) // threads
     arguments = _launch_arguments(fields, state)
-    launched = kernel or _get_kernel(state["variant"], state["cond"])
+    launched = kernel or _get_kernel(state["variant"], state["cond"],
+                                     keep=state.get("keep"))
     launched((blocks,), (threads,), tuple(arguments))
     return {"launched": True, "blocks": blocks, "threads": threads,
-            "elements": nx * ny * nz, "replaces": REPLACES,
+            "elements": nx * ny * nz, "replaces": REPLACES, "h_started": started,
             "variant": state["variant"], "cond": state["cond"],
             "arguments": len(arguments),
             "boundary_codes": tuple(state["boundary_codes"])}
@@ -1413,6 +1488,7 @@ def rotate_into_fields(fields: Any, scratch: Dict[str, Any]) -> Dict[str, Any]:
 
 def run_conductive_bfast_fused_hd_pair(fields: Any, grid: Any, pml: Any,
                                        dtdx: Optional[float] = None, *,
+                                       chunk_bounds: Any = None,
                                        sources: Any = None,
                                        state: Optional[Dict[str, Any]] = None,
                                        kernel: Optional[Any] = None,
@@ -1433,7 +1509,7 @@ def run_conductive_bfast_fused_hd_pair(fields: Any, grid: Any, pml: Any,
     if not covered:
         return {"launched": False, "reason": reason}
     if state is None:
-        state = resolve(fields, grid, pml, dtdx=dtdx)
+        state = resolve(fields, grid, pml, dtdx=dtdx, chunk_bounds=chunk_bounds)
     assert_bindings_are_disjoint(fields, state)
     record = launch_conductive_bfast_fused_hd_pair(fields, state,
                                                    kernel=kernel, threads=threads)

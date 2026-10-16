@@ -1,10 +1,10 @@
 """The own-cell hoist moves LOADS and nothing else, read off every hoisted kernel's emitted text.
 
-WHAT THE HOIST CLAIMS. Seven device texts on this track issue every own-cell word a thread
+WHAT THE HOIST CLAIMS. Five device texts on this track issue every own-cell word a thread
 reads before the kernel's first store: the fused magnetic pair
 (``fused_magnetic_pair_pml_real``, S3d), the two register-view singles
 (``update_H_pml_real`` / ``update_E_pml_real``, ``own_cell_hoist.py``) and the Dcyl complex
-magnetic and electric pairs on both expansion arms. The claim each module makes is that the
+magnetic and electric pairs. The claim each module makes is that the
 arithmetic, its parenthesisation, the stores and their order are the certified ones and only
 the load issue points moved. Until this file that claim rested on design-time instruments
 that live under ``results/`` and run by hand: ``singles_design/tools/store_values.py``,
@@ -33,9 +33,10 @@ THE PROPERTY, per kernel, the hoisted text against the certified pre-hoist text:
    one is a reload of the lane's own write, which the compiler forwards. The hoisted texts
    must carry 0 exposed loads. The certified texts carry 11 (S3d's pair), 5 per single and
    22 per cylindrical text, which is the SASS census's base column for the six Round B texts
-   (``cuda_round_b_compose_2026-09-25/compile/own_cell.json``: 5/5/22/22/22/22). The one
-   reload is pinned by count rather than hidden: the Dcyl electric pair's m = 0 axis tail
-   reads back the ``Dz`` word pair its own lane stored (2 per arm, on both texts).
+   (``cuda_round_b_compose_2026-09-25/compile/own_cell.json``: 5/5/22/22/22/22). The
+   reloads are pinned by count rather than hidden: on both Dcyl pairs the i*m/r pass's
+   ladder (``fold_apply_reg``) reads back the target and its ``fu`` word pairs its own lane
+   stored in the curl form (12 per text, on both texts; bit_parity_0_10 KC8).
 
 Clause 3 is what the hoist is FOR and clauses 1-2 are what it must not break.
 
@@ -51,7 +52,7 @@ and requires each to be caught by the clause named for it -- and the two load de
 INVISIBLE to the other load clause, so neither load clause is redundant.
 
 THE REFERENCE IS FROZEN, AND THAT WAS A CHOICE. The certified pre-hoist texts are
-``own_cell_hoist_reference.json``, seven line lists cut from the results rounds that emitted
+``own_cell_hoist_reference.json``, five line lists cut from the results rounds that emitted
 them (each entry names its ``cut_from``), and each is asserted against a sha256 literal
 below. The alternative -- re-deriving the pre-hoist text at run time -- is available for the
 two singles only: ``own_cell_hoist.unhoisted_kernel_code`` is the inverse every lifter reads,
@@ -95,7 +96,6 @@ import types
 import numpy
 import pytest
 
-from . import complex_emitter
 from . import cylindrical_fused_electric_pair
 from . import cylindrical_fused_magnetic_pair
 from . import dispersive_offdiag_update_e
@@ -113,19 +113,15 @@ REFERENCE = HERE / "own_cell_hoist_reference.json"
 #: so these are literals rather than reads of the record).
 REFERENCE_SHA256 = {
     "fused_magnetic_pair_pml_real":
-        "742095b3a1b191f8e196387d8909e1b1702b888dcc7665e9fff2df94cd563400",
+        "ad9b580e5ce5a72b749ce1812127fa3fe05fa50035335dd2086bb7756088fbf0",
     "update_H_pml_real":
-        "518b066e839c4419df62bbe61656ac7e25fd3bed843a2604650f3a78ffcfd30b",
+        "befca96b0260cb297ee872ae2f0f3d2ace20f8425ca285725ea79a73e4be6516",
     "update_E_pml_real":
-        "04ba4648896cb931849acf32ae2f427763f04347ce7edc064854f694c4891b3c",
-    "fused_magnetic_pair_pml_cyl_complex[FMA_V1]":
-        "032a4828f46f8bb282b96383ee9997a5e004db0ff3222b6b1797cceb10c1f6f0",
-    "fused_magnetic_pair_pml_cyl_complex[NAIVE]":
-        "7e30dd8aa8b9ee6b998a0da1e0d3728afd6fa6a9e98858fa0b1fb6ee54712e3c",
-    "fused_electric_pair_pml_cyl_complex[FMA_V1]":
-        "9db74a5e24245d9d72a742791e265b55780813972b350cbcb299e35cc3169102",
-    "fused_electric_pair_pml_cyl_complex[NAIVE]":
-        "d4a426c205a647fd05b844ef47671a77c1360a5cb7c44d017dc50743e6479830",
+        "c3b8cc7a121f898c7d73e574f644e44a565a97080987144a5057683ae1f3deee",
+    "fused_magnetic_pair_pml_cyl_complex":
+        "a68897cbab476de4f2739e67b8ae2a22dc120ed91300b18781fc52f5322ae94b",
+    "fused_electric_pair_pml_cyl_complex":
+        "e7c781879a597b0e81928f93bfc3a2634f28a3335434077fafc159953aaaf370",
 }
 
 KEYS = sorted(REFERENCE_SHA256)
@@ -142,14 +138,10 @@ KNOWN = {
                               reference_exposed=5, reloads=0),
     "update_E_pml_real": dict(stores=6, loads=18, hoisted_before=6,
                               reference_exposed=5, reloads=0),
-    "fused_magnetic_pair_pml_cyl_complex[FMA_V1]": dict(stores=44, loads=62, hoisted_before=24,
-                                                        reference_exposed=22, reloads=0),
-    "fused_magnetic_pair_pml_cyl_complex[NAIVE]": dict(stores=44, loads=62, hoisted_before=24,
-                                                       reference_exposed=22, reloads=0),
-    "fused_electric_pair_pml_cyl_complex[FMA_V1]": dict(stores=54, loads=65, hoisted_before=24,
-                                                        reference_exposed=22, reloads=2),
-    "fused_electric_pair_pml_cyl_complex[NAIVE]": dict(stores=54, loads=65, hoisted_before=24,
-                                                       reference_exposed=22, reloads=2),
+    "fused_magnetic_pair_pml_cyl_complex": dict(stores=52, loads=74, hoisted_before=24,
+                                                reference_exposed=22, reloads=12),
+    "fused_electric_pair_pml_cyl_complex": dict(stores=62, loads=77, hoisted_before=24,
+                                                reference_exposed=22, reloads=12),
 }
 
 #: The product modules that carry the hoist (each defines ``hoisted_loads``), and the
@@ -274,6 +266,11 @@ def _find_ternary(expression: str):
 
 
 def _c_to_py(expression: str) -> str:
+    # A C cast to a floating type reads as a call of that type's name: ``(double)(x)``
+    # and ``(double)x`` become ``double(x)``, ``(float)row`` becomes ``float(row)`` (the
+    # off-diagonal row, formed in double and rounded once).
+    expression = re.sub(r"\((double|float)\)\s*\(", r"\1(", expression)
+    expression = re.sub(r"\((double|float)\)\s*(\w+)", r"\1(\2)", expression)
     expression = re.sub(r"(\d+\.\d*|\.\d+|\d+)f\b", r"\1", expression)
     expression = expression.replace("&&", " and ").replace("||", " or ")
     expression = re.sub(r"!(?!=)", " not ", expression)
@@ -319,7 +316,14 @@ def _negate(tree):
 
 
 def _simplify(value, facts):
-    """Select the branch of every IfExp whose test (or its negation) is a known fact."""
+    """Select the branch of every IfExp whose test (or its negation) is a known fact.
+
+    Inside an IfExp's arms its own test is a fact too (true in the body, false in the
+    other arm), so a select nested under the same condition -- a register loaded under a
+    membership flag and read again in the arm that flag selects -- reads as its arm. The
+    instrument decided only from the enclosing predicates; the nested case first appears
+    with the per-chunk forms (bit_parity_0_10 KC1), whose loads are guarded.
+    """
     if isinstance(value, dict):
         return {k: _simplify(v, facts) for k, v in value.items()}
     if isinstance(value, ast.IfExp):
@@ -329,7 +333,11 @@ def _simplify(value, facts):
             return _simplify(value.body, facts)
         if spelled in facts["false"]:
             return _simplify(value.orelse, facts)
-        body, orelse = _simplify(value.body, facts), _simplify(value.orelse, facts)
+        negated = _unp(_negate(_copy(test)))
+        body = _simplify(value.body, {"true": facts["true"] | {spelled},
+                                      "false": facts["false"] | {negated}})
+        orelse = _simplify(value.orelse, {"true": facts["true"] | {negated},
+                                          "false": facts["false"] | {spelled}})
         if _same(body, orelse):
             return body
         return ast.IfExp(test=test, body=body, orelse=orelse)
@@ -453,6 +461,13 @@ class Machine:
 
     # -- expressions -----------------------------------------------------------------
     def expr(self, text: str, binding):
+        # A wholly parenthesised expression is its inside: a nested select spelled
+        # `own_x ? (in_i_x ? H[idx] : 0.0f) : 0.0f` (the fused pair's hoisted loads,
+        # bit_parity_0_10 KC2) reaches here as `(in_i_x ? ...)`, whose ternary sits one
+        # bracket deep. Before this, such a text did not parse at all.
+        text = text.strip()
+        while text.startswith("(") and _match_close(text, 0, "(", ")") == len(text) - 1:
+            text = text[1:-1].strip()
         ternary = _find_ternary(text)
         if ternary:
             condition_text, when_true, when_false = ternary
@@ -700,7 +715,7 @@ class Machine:
                                 "im": ast.Name(id=f"UNINIT_{name}_im")}
                          if match.group(1) == "cf" else ast.Name(id=f"UNINIT_{name}"))
             return
-        match = re.match(r"^(float|cf) (\w+) = (.+);$", statement)
+        match = re.match(r"^(float|double|cf) (\w+) = (.+);$", statement)
         if match:
             value = self.expr(match.group(3), binding)
             if (match.group(1) == "cf") != isinstance(value, dict):
@@ -818,7 +833,7 @@ def _certified_by_path() -> dict:
 
 class _PerKey(dict):
     """A mapping that builds each value on first use. A refusal while building one kernel's
-    value fails that kernel's rows and leaves the other six to report for themselves."""
+    value fails that kernel's rows and leaves the other four to report for themselves."""
 
     def __init__(self, make):
         super().__init__()
@@ -829,7 +844,7 @@ class _PerKey(dict):
         return value
 
 
-#: Each Dcyl pair's entry name -> its module (``device_sources()`` is keyed by arm).
+#: Each Dcyl pair's entry name -> its module (``device_sources()`` is keyed by kernel name).
 _CYLINDRICAL = {"fused_magnetic_pair_pml_cyl_complex": cylindrical_fused_magnetic_pair,
                 "fused_electric_pair_pml_cyl_complex": cylindrical_fused_electric_pair}
 
@@ -856,8 +871,7 @@ def hoisted(certified) -> dict:
             finally:
                 for name, module in held.items():
                     setattr(family, name, module)
-        kernel, arm = key[:-1].split("[")
-        return _CYLINDRICAL[kernel].device_sources()[arm]
+        return _CYLINDRICAL[key].device_sources()[key]
 
     return _PerKey(emit)
 
@@ -882,6 +896,14 @@ def test_the_frozen_references_are_the_certified_pre_hoist_texts(reference):
         assert entry["cut_from"].startswith("apps/api/parity/meep_gpu/results/"), key
 
 
+@pytest.mark.parametrize("kernel", SINGLES)
+def test_the_singles_inverse_returns_the_frozen_reference_byte_for_byte(kernel, reference,
+                                                                        hoisted):
+    """What every lifter reads is the certified text, so the frozen one is not a guess."""
+    assert own_cell_hoist.unhoisted_kernel_code(
+        hoisted[kernel], kernel, f"_{kernel}_kernel_code") == reference[kernel]
+
+
 def test_every_hoisted_text_in_the_package_is_in_this_table(certified, hoisted):
     """A hoist added to another kernel without a row here fails by name."""
     products = {path.stem for path in HERE.glob("*.py") if not path.stem.startswith("test_")
@@ -895,23 +917,12 @@ def test_every_hoisted_text_in_the_package_is_in_this_table(certified, hoisted):
                 singles.add(name[1:-len("_kernel_code")])
     assert singles == set(SINGLES)
     for kernel, module in _CYLINDRICAL.items():
-        assert sorted(module.device_sources()) == sorted(complex_emitter.EXPANSIONS), kernel
-    emitted = sorted(["fused_magnetic_pair_pml_real", *SINGLES]
-                     + [f"{kernel}[{arm}]" for kernel in _CYLINDRICAL
-                        for arm in complex_emitter.EXPANSIONS])
+        assert sorted(module.device_sources()) == [kernel], kernel
+    emitted = sorted(["fused_magnetic_pair_pml_real", *SINGLES, *_CYLINDRICAL])
     assert emitted == KEYS
     for key in KEYS:
-        kernel = key.split("[")[0]
         assert hoisted[key].count('extern "C" __global__ void ') == 1, key
-        assert f'extern "C" __global__ void {kernel}(' in hoisted[key], key
-
-
-@pytest.mark.parametrize("kernel", SINGLES)
-def test_the_singles_inverse_returns_the_frozen_reference_byte_for_byte(kernel, reference,
-                                                                        hoisted):
-    """What every lifter reads is the certified text, so the frozen one is not a guess."""
-    assert own_cell_hoist.unhoisted_kernel_code(
-        hoisted[kernel], kernel, f"_{kernel}_kernel_code") == reference[kernel]
+        assert f'extern "C" __global__ void {key}(' in hoisted[key], key
 
 
 # =============================================================================
@@ -989,7 +1000,7 @@ def _line_naming(text: str, needle: str, what: str) -> str:
 
 
 def _plant_single(text: str, kernel: str, mutation: str) -> str:
-    helper, field, aux, freg, areg, _source, indent = own_cell_hoist.KERNELS[kernel]
+    helper, field, aux, freg, areg, _source, indent, _flags = own_cell_hoist.KERNELS[kernel]
     back = [line + "\n" for line in own_cell_hoist.writeback_block(kernel)]
     if mutation == "drop_a_store":
         return _once(text, back[0], "", mutation)
@@ -1002,7 +1013,8 @@ def _plant_single(text: str, kernel: str, mutation: str) -> str:
     text = _once(text, back[0], "", mutation)
     call_x = _line_naming(text, f"{helper}(&{freg}_x, &{areg}_x, 0, ", mutation)
     text = _once(text, call_x, call_x + back[0], mutation)
-    load_z = f"    float {areg}_z = {aux}z[idx];\n"
+    load_z = next(line for line in own_cell_hoist.load_block(kernel)
+                  if line.startswith(f"    float {areg}_z = ")) + "\n"
     text = _once(text, load_z, "", mutation)
     call_z = _line_naming(text, f"{helper}(&{freg}_z, &{areg}_z, 0, ", mutation)
     return _once(text, call_z, load_z + call_z, mutation)
@@ -1010,11 +1022,16 @@ def _plant_single(text: str, kernel: str, mutation: str) -> str:
 
 def _plant_product(text: str, family, mutation: str) -> str:
     complex_words = "cf_store(" in text
-    aux_store = "    cf_store(fw, idx, src);\n" if complex_words else "    fw[idx] = src;\n"
-    field_store = ("    cf_store(f, idx, a);\n" if complex_words
-                   else "    f[idx] = a - kms * prev;\n")
-    again = ("    cf again = cf_load(fw, idx);\n" if complex_words
-             else "    float again = fw[idx];\n")
+    # The real helper's two stores in MEEP's per-chunk forms (bit_parity_0_10 KC1/KC2):
+    # the auxiliary behind its dsigw flag, the field from the selected form's value.
+    aux_store = ("    if (dsigw) cf_store(fw, idx, src);\n" if complex_words
+                 else "    if (dsigw) fw[idx] = src;\n")
+    field_store = ("    cf_store(f, idx, updated);\n" if complex_words
+                   else "    f[idx] = value;\n")
+    # The reload under the store's own flag: a reload of the lane's own write, which an
+    # unguarded load would not be off the dsigw run (there it reads a word nobody wrote).
+    again = ("    cf again = dsigw ? cf_load(fw, idx) : cf_zero();\n" if complex_words
+             else "    float again = dsigw ? fw[idx] : 0.0f;\n")
     if mutation == "drop_a_store":
         return _in_helper(text, "constitutive_apply_pre",
                           lambda h: _once(h, aux_store, "", mutation))
@@ -1090,11 +1107,12 @@ OFFDIAG = offdiag_emitter.KERNEL_NAME
 #: The pair the 2026-09-28 kernel screen compiled and timed on ``pml_3d`` (all six rows
 #: live): 0 differing words at 512,000, 2,097,152 and 7,077,888 cells. A change to either
 #: text is a change to what was measured, and owes the device a new screen and the family
-#: gate a new run.
+#: gate a new run. Re-cut with the 0.10 per-chunk forms (the double row, the presence
+#: words and the flagged tail); the screen and the gate are owed on these texts.
 OFFDIAG_SCREENED_MASK = (1, 1, 1, 1, 1, 1)
 OFFDIAG_SCREENED_SHA256 = {
-    "certified": "3dc04cbe7d958e2adce638a22ab08d547757e2c10a18cc8f3b9ed64b7de3f42c",
-    "launch": "45d2bbc49c8c2846c246e934c1ec6831c3515592b5f4f0a860b021a76c4441d8",
+    "certified": "54322f32707f50d6bd8c3f373bd93ceedaa137de809d554dd8e7f151172b8217",
+    "launch": "66d99934225da76cd630453fbade8c1b503ca0e705feb2833963dea53162b42b",
 }
 
 #: The row masks ``gate_cuda_offdiag.GATE_ROW_MASKS`` sweeps; the planted controls run here.
@@ -1203,25 +1221,74 @@ def test_the_forward_reproduces_the_shipped_register_view_singles(kernel, hoiste
     assert own_cell_hoist.hoisted_kernel_code(statements, kernel, kernel) == hoisted[kernel]
 
 
-def test_the_forward_refuses_a_text_its_inverse_would_not_return():
-    certified = offdiag_emitter.offdiag_source(OFFDIAG_SCREENED_MASK)
+def test_the_forward_refuses_a_text_its_inverse_would_not_return(hoisted):
+    kernel = "update_E_pml_real"
+    launch = hoisted[kernel]
+    certified = own_cell_hoist.unhoisted_kernel_code(launch, kernel, kernel)
     # the helper stores the field before the auxiliary: the hazard half refuses
     swapped = certified.replace(
-        "    fw[idx] = src;\n    float a = f[idx] + kps * src;\n    f[idx] = a - kms * prev;\n",
-        "    float a = f[idx] + kps * src;\n    f[idx] = a - kms * prev;\n    fw[idx] = src;\n",
+        "    if (dsigw) fw[idx] = src;\n"
+        "    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;\n"
+        "    f[idx] = value;\n",
+        "    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;\n"
+        "    f[idx] = value;\n"
+        "    if (dsigw) fw[idx] = src;\n",
         1)
     assert swapped != certified
     with pytest.raises(AssertionError, match="write-back order"):
-        own_cell_hoist.hoisted_kernel_code(swapped, OFFDIAG, "swapped")
+        own_cell_hoist.hoisted_kernel_code(swapped, kernel, "swapped")
+    # the helper stores the auxiliary on every cell: the guarded write-back would not
+    # be the certified one
+    unguarded = certified.replace("    if (dsigw) fw[idx] = src;\n", "    fw[idx] = src;\n", 1)
+    assert unguarded != certified
+    with pytest.raises(AssertionError, match="does not store fw\\[idx\\] under dsigw"):
+        own_cell_hoist.hoisted_kernel_code(unguarded, kernel, "unguarded")
     # a text already in the register view carries no certified call to rewrite
-    launch = offdiag_emitter.offdiag_launch_source(OFFDIAG_SCREENED_MASK)
     with pytest.raises(AssertionError, match="not one"):
-        own_cell_hoist.hoisted_kernel_code(launch, OFFDIAG, "launch")
+        own_cell_hoist.hoisted_kernel_code(launch, kernel, "launch")
     # a second decode line leaves the load block without an anchor
     decode = "    int i = idx / (ny * nz);\n"
     with pytest.raises(AssertionError, match="load block has no anchor"):
         own_cell_hoist.hoisted_kernel_code(certified.replace(decode, decode + decode, 1),
-                                           OFFDIAG, "twice")
+                                           kernel, "twice")
+    # a text whose decode carries no chunk-record block has no flags to guard on
+    block = certified.split(decode, 1)[1].split("\n\n", 1)[0] + "\n"
+    with pytest.raises(AssertionError, match="no chunk-record block"):
+        own_cell_hoist.hoisted_kernel_code(certified.replace(block, "", 1), kernel, "bare")
+    # a call that passes another component's flag is refused by name
+    crossed = certified.replace("kms_y[j], in_h_y);", "kms_y[j], in_h_x);", 1)
+    assert crossed != certified
+    with pytest.raises(AssertionError, match="does not pass its membership flag in_h_y"):
+        own_cell_hoist.hoisted_kernel_code(crossed, kernel, "crossed")
+
+
+#: The one-form ``constitutive_apply`` every table shipped until 0.10: no membership
+#: flag, the auxiliary read and written on every cell.
+_FLAGLESS_CONSTITUTIVE_APPLY = (
+    "__device__ __forceinline__ void constitutive_apply(\n"
+    "    float* __restrict__ f, float* __restrict__ fw, int idx, float src,\n"
+    "    float kps, float kms\n"
+    ") {\n"
+    "    float prev = fw[idx];\n"
+    "    fw[idx] = src;\n"
+    "    float a = f[idx] + kps * src;\n"
+    "    f[idx] = a - kms * prev;\n"
+    "}\n")
+
+
+def test_a_text_whose_helper_takes_no_membership_flag_is_refused_by_name():
+    """A single not yet stepped to MEEP's per-chunk forms is refused, not hoisted on a
+    flag it does not define: the emitted off-diagonal ``update_E`` with the one-form
+    helper it carried until 0.10 put back."""
+    certified = offdiag_emitter.offdiag_source(OFFDIAG_SCREENED_MASK)
+    helper = own_cell_hoist._helper_text(certified, "constitutive_apply")  # noqa: SLF001
+    flagless = certified.replace(helper, _FLAGLESS_CONSTITUTIVE_APPLY, 1)
+    assert flagless != certified
+    with pytest.raises(AssertionError, match="takes no membership flag"):
+        own_cell_hoist.hoisted_kernel_code(flagless, OFFDIAG, "offdiag")
+    # and the shipped text, whose helper takes the flag, is hoisted
+    assert REGISTER_VIEW_MARKER in own_cell_hoist.hoisted_kernel_code(certified, OFFDIAG,
+                                                                     "offdiag")
 
 
 @pytest.mark.parametrize("kernel,text", [

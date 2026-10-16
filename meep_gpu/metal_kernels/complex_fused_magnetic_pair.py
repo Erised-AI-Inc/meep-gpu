@@ -131,44 +131,15 @@ survives the mistake, and the gate's ``params_layout`` leg reads every field bac
 the device and carries the 44-byte record as a must-catch mutation.
 
 ===========================================================================
-(2) THE COMPLEX-MULTIPLY ARM — bound from an artifact, never chosen
+(2) THE COMPLEX MULTIPLIES — part by part, one helper body
 ===========================================================================
 
-A complex product has two licensable transcription arms, ``FMA_V1`` and ``NAIVE``
-(:data:`.templates.EXPANSIONS`), and which one the REFERENCE takes is a measured
-platform fact. This family does not re-open that question and does not carry a probe
-of its own: its arithmetic IS :mod:`.complex_fields`' arithmetic, spliced from that
-module's own emitters, so it binds through that module's probe —
-``$MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE``, :func:`.complex_fields.load_expansion_probe`
-and :func:`.complex_fields.expansion_from_probe` — and inherits its refusals. A second
-probe here would be a second answer to one question and a way for the two to drift.
-
-**THE ARM THIS PACKAGE BINDS ON THIS HOST IS ``FMA_V1``, ON THIS EVIDENCE:**
-``parity/meep_gpu/results/metal_complex_audit_2026-08-16/complex_expansion_probe.json``,
-``backend: numpy``, ``measured: 2026-08-15``, ``numpy: 2.4.3`` — the backend the
-ENGINE holds on this host, and the same numpy this machine runs today (2.4.3), so the
-artifact is valid here rather than merely present. Its five patterns:
-
-    c8_mul_c8                    FMA_V1     the generic complex product
-    c8_mul_c8_scalar_right       FMA_V1     the phase rotation as S:1862 spells it
-    c8_mul_f4_field_left         AMBIGUOUS_BOTH
-    f4_mul_c8_coefficient_left   AMBIGUOUS_BOTH
-    python_float_left            AMBIGUOUS_BOTH
-
-Two patterns discriminate, both name ``FMA_V1``, and the three that cannot are
-``AMBIGUOUS_BOTH`` by construction: their coefficient is real, so the fma's addend is
-an exact ``+0.0`` and the two arms coincide bit for bit. A probe on which NOTHING
-discriminates, or on which the discriminating patterns DISAGREE, yields ``None`` and
-is a coverage refusal by name — never a default arm.
-
-**THE ARM IS LOAD-BEARING FOR THIS PAIR ONLY THROUGH THE BLOCH ROTATION.** Every other
-multiply either half performs takes a real coefficient (``dtdx``, ``kms``, ``sinv``,
-``kps``), so its imaginary operand is an exact ``+0.0`` and the arms coincide. The
-consequence is sharp and is stated here rather than discovered: **on an unphased row
-this kernel's bytes do not depend on the arm at all**, so a gate that ran only
-``k = 0`` rows would certify the arm binding vacuously. That is why
-:data:`.CONFIGS`-style phased rows are required in the gate rather than sampled, and
-why the arm-swap mutation is armed on a PHASED case.
+Every multiply either half performs is :mod:`.complex_fields`' arithmetic, spliced
+from that module's own emitters: a real coefficient (``dtdx``, ``kms``, ``sinv``,
+``kps``) times one stored part, and the Bloch rotation with every product and sum
+rounded on its own (:func:`.templates.complex_helpers`). There is no arm to bind and
+no artifact to read. The Bloch rotation is the only complex product in the pair, so
+phased rows are required in the gate rather than sampled.
 
 ===========================================================================
 WHAT THE CORPUS SAYS THIS IS WORTH — measured, and it is not sixteen
@@ -196,11 +167,9 @@ one arm per slot and this product spans THREE of them (``step_B``, ``zero_metal_
 measured, so it registers ``wired=False``. The composer cannot select it, the
 disjointness sweep can still enumerate it, and no existing arm's behaviour changes.
 
-NO ENTRY IN ``fingerprints.json``'s ``kernel_source_sha256``, deliberately and for
-:mod:`.complex_fields`' reason: this module's sources are a function of the
-PROBE-BOUND arm, so a checked-in hash would record a choice rather than a measurement.
-The gate hashes every specialisation of the arm it actually bound, into its own
-results directory, beside the probe artifact that bound it.
+NO ENTRY IN ``fingerprints.json``'s ``kernel_source_sha256``, as for
+:mod:`.complex_fields`: the gate hashes every specialisation it launches into its own
+results directory.
 
 Import contract: importable WITHOUT torch. The predicates and the plan builders (to
 ``None``) must answer on a host with no GPU, which is the merge bar.
@@ -215,6 +184,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..triton_kernels.coverage import Coverage, MAGNETIC_FIELD_TYPE
+from . import chunk_bounds as _chunk_bounds
 from . import complex_fields, shaders, templates
 from .coverage import zero_metal_axes
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
@@ -280,10 +250,11 @@ if PACKED_BINDINGS > MAX_BUFFER_BINDINGS:  # pragma: no cover - a design invaria
         f"built at all")
 
 #: The host record's total size in bytes. Metal aligns ``float2`` to 8, and with the
-#: three phases FIRST there is no internal padding — only a trailing pad from 44 to
-#: the struct's 8-byte alignment. Spelled as data so the plan and the gate size the
-#: record from one number.
-PARAMS_ITEMSIZE = 48
+#: three phases FIRST there is no internal padding: 44 bytes of phases and scalars,
+#: then the 100-byte chunk record (4-aligned, so it starts at 44), 144 in all, which
+#: is already a multiple of the struct's 8-byte alignment. Spelled as data so the
+#: plan and the gate size the record from one number.
+PARAMS_ITEMSIZE = 144
 
 __all__ = [
     "FAMILY", "PACKED_BINDINGS", "PARAMS_ITEMSIZE", "REPLACES",
@@ -313,13 +284,17 @@ __CONTRACT__
 
 __HELPERS__
 
+__RECORD_STRUCT__
+
 // THE THREE float2 MEMBERS COME FIRST. Metal aligns float2 to 8 bytes, so with the
 // scalars first this struct needs internal padding and the natural host record puts
 // every phase one word early — measured on this toolchain, and it reads as a
 // plausible complex number rather than as garbage. Phases first, no internal padding.
+// The chunk record follows the scalars (offset 44), costing no binding.
 struct Params {
     float2 px; float2 py; float2 pz;
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
+__RECORD_MEMBER__
 };
 
 kernel void complex_fused_magnetic_pair_step(
@@ -360,6 +335,7 @@ kernel void complex_fused_magnetic_pair_step(
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
     float2 px = prm.px, py = prm.py, pz = prm.pz;
+__RECORD_ALIAS__
 
 __BODY__
 }
@@ -398,7 +374,7 @@ _ZERO_METAL_ROWS: Tuple[Tuple[int, int, str], ...] = (
 )
 
 
-def certified_curl_body(codes: Sequence[int], phased: Sequence[int], expansion: str,
+def certified_curl_body(codes: Sequence[int], phased: Sequence[int],
                         contract: str = shaders.CONTRACT_OFF) -> str:
     """The complex ``step_B`` curl kernel's BODY, lifted from the certified emitter.
 
@@ -407,7 +383,7 @@ def certified_curl_body(codes: Sequence[int], phased: Sequence[int], expansion: 
     removed. ``backward`` is False and never a parameter — this pair is the B seam,
     and ``step_D``'s negated strides and conjugated phase are a different product.
     """
-    source = complex_fields.bloch_curl_source(codes, False, phased, expansion,
+    source = complex_fields.bloch_curl_source(codes, False, phased,
                                               contract)
     if _BODY_ANCHOR not in source:
         raise AssertionError(
@@ -420,8 +396,7 @@ def certified_curl_body(codes: Sequence[int], phased: Sequence[int], expansion: 
     return body[: -len("}\n")]
 
 
-def certified_constitutive_body(expansion: str,
-                                contract: str = shaders.CONTRACT_OFF) -> str:
+def certified_constitutive_body(contract: str = shaders.CONTRACT_OFF) -> str:
     """The complex ``update_H`` constitutive kernel's BODY, lifted and renamed.
 
     Two edits, and both are POINTER SPELLING rather than arithmetic — the same kind
@@ -438,7 +413,7 @@ def certified_constitutive_body(expansion: str,
     ``g0`` means E in the curl half and B in the certified H body, and after the seam
     substitution the constitutive half references ``g`` nowhere at all.
     """
-    source = complex_fields.bloch_constitutive_source("H", expansion, contract)
+    source = complex_fields.bloch_constitutive_source("H", contract)
     if _BODY_ANCHOR not in source:
         raise AssertionError(
             "the certified complex constitutive source no longer carries the body "
@@ -482,7 +457,7 @@ def zero_metal_mask(zero_metal: Sequence[bool],
 
 def complex_fused_magnetic_pair_source(
         codes: Sequence[int], phased: Sequence[int], zero_metal: Sequence[bool],
-        expansion: str, contract: str = shaders.CONTRACT_OFF) -> str:
+        contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (boundaries, phases, walls, arm, contraction).
 
     Every constant Triton bakes into a ``tl.constexpr`` is baked into the string here,
@@ -504,7 +479,7 @@ def complex_fused_magnetic_pair_source(
     # S:2346-2360). It is not re-checked here: one raise, in the emitter that owns
     # the rule.
 
-    curl = certified_curl_body(codes, phased, expansion, contract)
+    curl = certified_curl_body(codes, phased, contract)
     if _CURL_STORE not in curl:
         raise AssertionError(
             "the certified complex curl body no longer stores the three targets on "
@@ -519,7 +494,7 @@ def complex_fused_magnetic_pair_source(
         _CURL_STORE, tail,
     ))
 
-    magnetic = certified_constitutive_body(expansion, contract)
+    magnetic = certified_constitutive_body(contract)
     # THE SEAM, and it is exactly three lines. The certified complex H body opens each
     # component with `float2 srcN = gN[ii];` — a RELOAD of the complex flux density
     # the curl just stored. Fused, that becomes the live register.
@@ -542,22 +517,24 @@ def complex_fused_magnetic_pair_source(
     ))
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__BODY__": body,
     })
 
 
 def compile_complex_fused_magnetic_pair(
         codes: Sequence[int], phased: Sequence[int], zero_metal: Sequence[bool],
-        expansion: str, contract: str = shaders.CONTRACT_OFF) -> Any:
+        contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised entry point for one (boundaries, phases, walls, arm, mode)."""
     return compile_source(complex_fused_magnetic_pair_source(
-        codes, phased, zero_metal, expansion,
+        codes, phased, zero_metal,
         contract)).complex_fused_magnetic_pair_step
 
 
-def enumerate_sources(expansion: str,
-                      contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
+def enumerate_sources(contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
     """Every specialisation a shipped plan can emit, keyed by a stable label.
 
     The phase triple is enumerated only over the axes a given boundary triple can
@@ -571,7 +548,9 @@ def enumerate_sources(expansion: str,
         for cy in (templates.PERIODIC, templates.METALLIC):
             for cz in (templates.PERIODIC, templates.METALLIC):
                 codes = (cx, cy, cz)
-                phase_options = [(0, 1) if code == templates.PERIODIC else (0,)
+                phase_options = [complex_fields.CONNECT_KINDS
+                                 if code == templates.PERIODIC
+                                 else (complex_fields.CONNECT_NONE,)
                                  for code in codes]
                 wall_options = [(False, True) if code == templates.METALLIC
                                 else (False,) for code in codes]
@@ -585,12 +564,10 @@ def enumerate_sources(expansion: str,
                                         label = (
                                             f"complex_fused_magnetic_pair_step/"
                                             f"{cx}{cy}{cz}/ph{px}{py}{pz}/"
-                                            f"zm{int(wx)}{int(wy)}{int(wz)}/"
-                                            f"{expansion}")
+                                            f"zm{int(wx)}{int(wy)}{int(wz)}")
                                         out[label] = (
                                             complex_fused_magnetic_pair_source(
-                                                codes, (px, py, pz), walls,
-                                                expansion, contract))
+                                                codes, (px, py, pz), walls, contract))
     return out
 
 
@@ -702,24 +679,23 @@ def split_plane_pair_signature() -> str:
 # ---------------------------------------------------------------------------
 
 def metal_complex_fused_magnetic_pair_coverage(
-        fields: Any, pml: Any, sources: Any = None, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, sources: Any = None, residency: Any = None) -> Coverage:
     """May ONE dispatch span complex ``step_B`` -> wall -> ``update_H``?
 
     A conjunction of the two halves' OWN certified predicates plus the seam clauses.
     Nothing is weakened: a configuration either half refuses is refused here with that
     half's reasons, prefixed so a reader can tell which side said it. That is the
-    construction the real twin uses, and it is what makes the expansion-probe clause,
-    the complex-storage clause and the fold clause inherited rather than restated.
+    construction the real twin uses, and it is what makes the complex-storage clause
+    and the fold clause inherited rather than restated.
     """
     reasons: List[str] = []
 
     curl = complex_fields.complex_pml_curl_coverage(
-        fields, pml, "step_B", residency, probe)
+        fields, pml, "step_B", residency)
     if not curl.covered:
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
     magnetic = complex_fields.complex_constitutive_coverage(
-        fields, pml, "H", residency, probe)
+        fields, pml, "H", residency)
     if not magnetic.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in magnetic.reasons)
 
@@ -766,6 +742,14 @@ def metal_complex_fused_magnetic_pair_coverage(
         if getattr(grid, name, None) is None:
             reasons.append(
                 f"grid does not expose {name}; zero_metal_B cannot be carried inline")
+    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # cells at that update (stepping.separate_h_from_b) and the lifted H body does
+    # not, so this pair takes that update only where the start cannot change a word:
+    # the base single's own clause (launch.h_start_reasons), asked with no source
+    # list because a magnetic deposit is this family's bracket's to start
+    # (deposit_repair._START_KEY), and the undeclared list is refused above.
+    from .launch import h_start_reasons  # noqa: PLC0415 - launch imports this family's peers
+    reasons.extend(f"constitutive half: {reason}" for reason in h_start_reasons(fields, ()))
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
@@ -787,13 +771,14 @@ class MetalComplexFusedMagneticPairPlan(KernelPlan):
     """
 
     __slots__ = ("residency", "volumes", "codes", "phased", "phase_values",
-                 "zero_metal", "shape", "n_elem", "dtdx", "expansion", "params")
+                 "zero_metal", "shape", "n_elem", "dtdx", "params",
+                 "chunk_bounds")
 
     family = "complex fused PML B-curl/stored-H pair"
 
     replaces_sub_steps = REPLACES
 
-    REPR_FIELDS = ("shape", "codes", "phased", "zero_metal", "expansion")
+    REPR_FIELDS = ("shape", "codes", "phased", "zero_metal")
 
     #: This plan launches a kernel; the composer's planned/null split reads it.
     performs_device_work = True
@@ -801,10 +786,11 @@ class MetalComplexFusedMagneticPairPlan(KernelPlan):
     def __init__(self, residency: Residency, volumes: Sequence[str],
                  codes: Sequence[int], phased: Sequence[int],
                  phase_values: Sequence[Tuple[float, float]],
-                 zero_metal: Sequence[bool], shape: Sequence[int], dtdx: float,
-                 expansion: str, params: Any, pointers: Sequence[Any],
-                 functions: Mapping[str, Any]) -> None:
+                 zero_metal: Sequence[bool], shape: Sequence[int], dtdx: float, params: Any,
+                 pointers: Sequence[Any],
+                 functions: Mapping[str, Any], *, chunk_bounds: Any) -> None:
         self.residency = residency
+        self.chunk_bounds = chunk_bounds
         self.volumes = tuple(dict.fromkeys(volumes))
         self.codes = tuple(int(code) for code in codes)
         self.phased = tuple(int(flag) for flag in phased)
@@ -820,7 +806,6 @@ class MetalComplexFusedMagneticPairPlan(KernelPlan):
         # the packed struct holds numpy.float32 of the same value, so the two scalars
         # are the same bits.
         self.dtdx = float(dtdx)
-        self.expansion = str(expansion)
         self.params = params
         super().__init__(dict(functions), tuple(pointers) + (params,))
 
@@ -830,28 +815,29 @@ class MetalComplexFusedMagneticPairPlan(KernelPlan):
 
 
 def params_record_dtype() -> Any:
-    """The host record's dtype — THE THREE ``float2`` MEMBERS FIRST, itemsize 48.
+    """The host record's dtype — THE THREE ``float2`` MEMBERS FIRST, itemsize 144.
 
     ONE HOME FOR THE LAYOUT, because getting it wrong is a silent wrong answer rather
     than a crash: see the module docstring for the measurement. The offsets are stated
     EXPLICITLY even though the phases-first order makes them the natural ones, so that
-    the record cannot drift into agreeing with Metal only by accident; ``itemsize`` is
-    stated because the natural record is 44 bytes and Metal's struct is 48.
+    the record cannot drift into agreeing with Metal only by accident. The chunk
+    record (:func:`.chunk_bounds.record_dtype`) sits at offset 44.
     """
     import numpy as np  # noqa: PLC0415
 
     return np.dtype({
-        "names": ["px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx"],
+        "names": ["px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx", "cb"],
         "formats": [("<f4", 2), ("<f4", 2), ("<f4", 2),
-                    "<u4", "<u4", "<u4", "<u4", "<f4"],
-        "offsets": [0, 8, 16, 24, 28, 32, 36, 40],
+                    "<u4", "<u4", "<u4", "<u4", "<f4", _chunk_bounds.record_dtype()],
+        "offsets": [0, 8, 16, 24, 28, 32, 36, 40, 44],
         "itemsize": PARAMS_ITEMSIZE,
     })
 
 
 def _params_tensor(shape: Sequence[int], dtdx: float,
-                   phase_values: Sequence[Tuple[float, float]], device: str) -> Any:
-    """The five scalars and three phases as one 48-byte device record.
+                   phase_values: Sequence[Tuple[float, float]], device: str,
+                   chunk_words: Any) -> Any:
+    """The five scalars, three phases and the chunk record as one 144-byte device record.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason the real twin's
     ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and complex64
@@ -871,6 +857,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
     record["dtdx"] = np.float32(dtdx)
     for name, (real, imag) in zip(("px", "py", "pz"), tuple(phase_values)):
         record[name] = (np.float32(real), np.float32(imag))
+    record["cb"] = _chunk_bounds.pack(chunk_words)[0]
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -879,8 +866,7 @@ def plan_metal_complex_fused_magnetic_pair(
         fields: Any, pml: Any, sources: Any = None,
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        functions: Optional[Mapping[str, Any]] = None,
-        probe: Any = None,
+        functions: Optional[Mapping[str, Any]] = None, *, chunk_bounds: Any,
         ) -> Optional[MetalComplexFusedMagneticPairPlan]:
     """Build the complex fused B/H plan, or ``None`` when the seam is refused.
 
@@ -892,14 +878,16 @@ def plan_metal_complex_fused_magnetic_pair(
     the shipped source and hands it here; dropping the argument is not a silent
     slowdown, it is a silent DISARMING — every mutation leg would then launch the
     shipped kernel and report the defect as uncaught.
+
+    ``chunk_bounds`` is the record of the division the run steps with; it rides in
+    ``Params`` (both halves read it through their anchored bounds blocks) and is
+    checked against the grid's shape (:func:`.chunk_bounds.plan_words`).
     """
     if not metal_complex_fused_magnetic_pair_coverage(
-            fields, pml, sources, residency, probe).covered:
+            fields, pml, sources, residency).covered:
         return None
-    expansion = complex_fields.expansion_from_probe(
-        probe if probe is not None else complex_fields.load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
-        return None
+    chunk_words = _chunk_bounds.plan_words(
+        chunk_bounds, fields.grid.shape, "MetalComplexFusedMagneticPairPlan")
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
@@ -957,16 +945,16 @@ def plan_metal_complex_fused_magnetic_pair(
     for mode in contract_variants:
         if mode not in selected:
             selected[mode] = compile_complex_fused_magnetic_pair(
-                codes, flags, walls, expansion, mode)
+                codes, flags, walls, mode)
 
     # The residency layer DECLARES its device; sniffing it off a bound tensor would
     # read "mps:0" where the mirrors were built with "mps" and put the struct on a
     # nominally different device from the volumes it describes.
     dtdx = grid.dt / grid.dx
     return MetalComplexFusedMagneticPairPlan(
-        residency, volumes, codes, flags, values, walls, grid.shape, dtdx, expansion,
-        _params_tensor(grid.shape, dtdx, values, residency.device),
-        pointers, selected)
+        residency, volumes, codes, flags, values, walls, grid.shape, dtdx,
+        _params_tensor(grid.shape, dtdx, values, residency.device, chunk_words),
+        pointers, selected, chunk_bounds=chunk_words)
 
 
 # ---------------------------------------------------------------------------
@@ -986,7 +974,7 @@ def _arm_plan(context: Any,
         return None
     return plan_metal_complex_fused_magnetic_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

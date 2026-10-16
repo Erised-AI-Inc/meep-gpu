@@ -94,7 +94,6 @@ Usage (the GPU host, one clear device)::
     CUDA_VISIBLE_DEVICES=N \\
     CUPY_CACHE_DIR=$RUN_ROOT/results/cupy_cache_ftz_stripped_$JOB \\
         python -u probe_triton_cylindrical_complex_composition.py \\
-            --probe-artifact results/.../probe.json \\
             --out results/triton_cylindrical_complex_<date>/composition.json
 
 Laptop preflight (NumPy drivers, no launches, no byte claim)::
@@ -501,7 +500,7 @@ def assert_axis_rule_live(record: Dict[str, Any], name: str) -> None:
 # The seams — asserted by name before any step is taken
 # ---------------------------------------------------------------------------
 
-def seam_report(fields, pml, probe, drop_backend: bool) -> Dict[str, Any]:
+def seam_report(fields, pml, drop_backend: bool) -> Dict[str, Any]:
     def strip(reasons: Sequence[str]) -> List[str]:
         out = list(reasons)
         if drop_backend:
@@ -511,11 +510,11 @@ def seam_report(fields, pml, probe, drop_backend: bool) -> Dict[str, Any]:
     report: Dict[str, Any] = {}
     for sub_step in ("step_B", "step_D"):
         reasons = strip(cylmod.cylindrical_complex_curl_coverage(
-            fields, pml, sub_step, probe=probe).reasons)
+            fields, pml, sub_step).reasons)
         report[f"curl_{sub_step}"] = {"covered": not reasons, "reasons": reasons}
     for side in ("H", "E"):
         reasons = strip(cylmod.cylindrical_complex_constitutive_coverage(
-            fields, pml, side, probe=probe).reasons)
+            fields, pml, side).reasons)
         report[f"constitutive_{side}"] = {"covered": not reasons,
                                           "reasons": reasons}
     # THE TWO DISJOINTNESS SEAMS. Neither sibling predicate may admit this run:
@@ -525,7 +524,7 @@ def seam_report(fields, pml, probe, drop_backend: bool) -> Dict[str, Any]:
     # be choosing between them silently.
     real_curl = strip(cylreal.cylindrical_curl_coverage(fields, pml).reasons)
     complex_curl = strip(cxmod.complex_pml_curl_coverage(
-        fields, pml, "step_B", probe=probe).reasons)
+        fields, pml, "step_B").reasons)
     report["sibling_real_cylindrical"] = {
         "m_clause": [r for r in real_curl if "m " in r or "m=" in r or "m!" in r
                      or "azimuthal" in r],
@@ -574,7 +573,7 @@ class PlanCounter:
         self.plan.run(*args, **kwargs)
 
 
-def build_plans(driver, probe) -> Dict[str, Any]:
+def build_plans(driver) -> Dict[str, Any]:
     """All four sub-step plans from the ENGINE's own objects.
 
     A builder that returns None here is a regression, not an expected refusal:
@@ -583,14 +582,10 @@ def build_plans(driver, probe) -> Dict[str, Any]:
     """
     fields, pml = driver.fields, driver.pml
     plans = {
-        "step_B": cylmod.plan_cylindrical_complex_curl(fields, pml, "step_B",
-                                                       probe=probe),
-        "update_H": cylmod.plan_cylindrical_complex_constitutive(fields, pml, "H",
-                                                                 probe=probe),
-        "step_D": cylmod.plan_cylindrical_complex_curl(fields, pml, "step_D",
-                                                       probe=probe),
-        "update_E": cylmod.plan_cylindrical_complex_constitutive(fields, pml, "E",
-                                                                 probe=probe),
+        "step_B": cylmod.plan_cylindrical_complex_curl(fields, pml, "step_B"),
+        "update_H": cylmod.plan_cylindrical_complex_constitutive(fields, pml, "H"),
+        "step_D": cylmod.plan_cylindrical_complex_curl(fields, pml, "step_D"),
+        "update_E": cylmod.plan_cylindrical_complex_constitutive(fields, pml, "E"),
     }
     for slot, plan in plans.items():
         if plan is None:
@@ -678,12 +673,27 @@ def arm_zero_rows_reduced(driver, plans: Dict[str, Any], case) -> str:
     return f"ZERO_ROWS {before} -> {before - 1} on both curl plans"
 
 
-def arm_axis_increment_negated(driver, plans: Dict[str, Any], case) -> str:
-    """Negate the |m| = 1 axis-increment scalars the curl plans carry.
+def _negate_courant_word(plan: Any, word: str) -> Tuple[float, float]:
+    """Negate one double word of the plan's bound Courant vector in place, ``* -1.0``.
 
-    Read from the plan and negated, so the arming is relative. The scalars are
-    ``(-dtdx, (re, im))``; all three words are flipped, which moves both the B
-    replacement row and the D one.
+    The vector (``cylindrical_triton.courant_constants``) is what the kernel reads for
+    the axis rules' double products; the array path recomputes its own from
+    ``grid.courant``, so the edit bends the kernel's input only.
+    """
+    index = cylreal.COURANT_WORDS[word]
+    array = plan._courant.array                              # noqa: SLF001
+    before = float(array[index])
+    array[index] = array[index] * -1.0
+    return before, float(array[index])
+
+
+def arm_axis_increment_negated(driver, plans: Dict[str, Any], case) -> str:
+    """Negate the B-side |m| = 1 axis-increment factor (``-Courant``) the curl plans bind.
+
+    Read from the plan and negated, so the arming is relative. Only the B-side word
+    is bent: the Bx replacement row is ``realnum(double(-Courant) * double(bracket))``,
+    and the D side reads its own ``+Courant`` word, left alone, so the declared catch
+    step is the B side's.
     """
     plan = plans["step_B"].plan if isinstance(plans["step_B"], PlanCounter) \
         else plans["step_B"]
@@ -695,36 +705,31 @@ def arm_axis_increment_negated(driver, plans: Dict[str, Any], case) -> str:
     for slot in ("step_B", "step_D"):
         entry = plans[slot]
         target = entry.plan if isinstance(entry, PlanCounter) else entry
-        minus_dtdx, inc = target.increment_scalars
-        target.increment_scalars = (minus_dtdx * -1.0,
-                                    (inc[0] * -1.0, inc[1] * -1.0))
-        changed.append((slot, minus_dtdx, list(inc)))
-    return f"axis increment scalars negated on {changed}"
+        changed.append((slot,) + _negate_courant_word(target, "minus"))
+    return f"B-side axis increment factor negated on {changed}"
 
 
 def arm_m0_axis_add_scalar_negated(driver, plans: Dict[str, Any], case) -> str:
-    """Negate the m = 0 on-axis ``Dz`` scalar (``4*Courant``) both curl plans carry.
+    """Negate the m = 0 on-axis ``Dz`` factor (``4*Courant``) both curl plans bind.
 
-    Read from the plan and negated, so the arming is relative. Only the D-side
-    plan reads it (the B side's M_ZERO arm has no scalar), so the B plan's copy
-    is flipped for symmetry and measures nothing; the catch is on ``Dz`` row 0
-    at the FIRST step_D, whose ``Hp`` operand is the ``update_H`` of the seeded
-    ``By`` and is therefore live from step 1.
+    Read from the plan and negated, so the arming is relative. Only the D-side plan
+    reads it (the B side's M_ZERO arm has no factor), so the B plan's copy is flipped
+    for symmetry and measures nothing; the catch is on ``Dz`` row 0 at the FIRST
+    step_D, whose ``Hp`` operand is the ``update_H`` of the seeded ``By`` and is
+    therefore live from step 1.
     """
     plan = plans["step_D"].plan if isinstance(plans["step_D"], PlanCounter) \
         else plans["step_D"]
     if plan.m_class != cylmod.m_class(0):
         raise AssertionError(
             "this case is not m = 0; the mutation table must not schedule the "
-            "m = 0 axis-scalar needle here")
+            "m = 0 axis-factor needle here")
     changed = []
     for slot in ("step_B", "step_D"):
         entry = plans[slot]
         target = entry.plan if isinstance(entry, PlanCounter) else entry
-        before = float(target.four_dtdx)
-        target.four_dtdx = before * -1.0
-        changed.append((slot, before, target.four_dtdx))
-    return f"m = 0 on-axis Dz scalar negated on {changed}"
+        changed.append((slot,) + _negate_courant_word(target, "four"))
+    return f"m = 0 on-axis Dz factor negated on {changed}"
 
 
 #: ``(name, case_name, callable, expected_step, why)``. Scheduled per case,
@@ -742,18 +747,18 @@ MUTATIONS: Tuple[Tuple[str, str, Callable[..., str], int, str], ...] = (
      "the seeded state carries amplitude on the rows the rule zeroes"),
     ("axis_increment_negated", "m_minus1_z_periodic_gaussian",
      arm_axis_increment_negated, 2,
-     "the |m| = 1 axis-row increment, negated — the other m class's whole "
-     "addition, and the one the array path applies BEFORE the recurrence. "
-     "STEP 2 IS STRUCTURAL, not a weaker claim: these two scalars are the "
-     "B-SIDE pair (cylindrical_complex.py:715 — 'unused on D'), the B-side "
-     "increment reads Ep and Ez, and the driver runs update_E at the END of a "
-     "step, so E is exactly +0.0 at every run's FIRST step_B whatever the "
-     "seeding. Measured: caught at step 2 with the needle armed from step 1"),
+     "the |m| = 1 axis-row increment, its B-side factor negated — the other m "
+     "class's whole addition, and the one the array path applies BEFORE the "
+     "recurrence. STEP 2 IS STRUCTURAL, not a weaker claim: only the B-side "
+     "word (-Courant) is bent, the B-side increment reads Ep and Ez, and the "
+     "driver runs update_E at the END of a step, so E is exactly +0.0 at every "
+     "run's FIRST step_B whatever the seeding"),
     ("m0_axis_add_scalar_negated", "m0_z_metallic_gaussian",
      arm_m0_axis_add_scalar_negated, 1,
      "the m = 0 arm's own addition (2026-09-04): the on-axis Dz post-add "
-     "4*Courant*Hp[0], its host-rounded scalar negated where only the kernel "
-     "reads it. Live at the FIRST step_D: Hp there is update_H of the seeded By"),
+     "realnum(double(4*Courant) * double(Hp[0])), its bound double factor "
+     "negated where only the kernel reads it. Live at the FIRST step_D: Hp there "
+     "is update_H of the seeded By"),
 )
 
 
@@ -775,7 +780,7 @@ def driver_state(driver) -> Dict[str, Any]:
             if getattr(driver.fields, name, None) is not None}
 
 
-def run_case(xp, case: Dict[str, Any], probe,
+def run_case(xp, case: Dict[str, Any],
              mutation: Optional[Tuple[str, str, Callable[..., str], int, str]] = None
              ) -> Dict[str, Any]:
     from meep_gpu import driver as driver_module                # noqa: PLC0415
@@ -806,7 +811,7 @@ def run_case(xp, case: Dict[str, Any], probe,
         row["dtype"] = str(candidate.fields.Bx.dtype)
         for target in (reference, candidate) + ((control,) if control else ()):
             row["seeding_record"] = seed_state(target, xp, case)
-        row["seams"] = seam_report(candidate.fields, candidate.pml, probe,
+        row["seams"] = seam_report(candidate.fields, candidate.pml,
                                    drop_backend=False)
         assert_seams(row["seams"], name)
 
@@ -819,13 +824,13 @@ def run_case(xp, case: Dict[str, Any], probe,
                 f"negative zero, so this case cannot see a sign-bit defect "
                 f"(census 0 is vacuous, not passed)")
 
-        plans = build_plans(candidate, probe)
+        plans = build_plans(candidate)
         row["plan_types"] = {slot: type(plan).__name__
                              for slot, plan in plans.items()}
         curl_b = plans["step_B"]
         row["plan_constexprs"] = {
             "m_class": int(curl_b.m_class), "zero_rows": int(curl_b.zero_rows),
-            "bcz": int(curl_b.bcz), "expansion": int(curl_b.expansion),
+            "bcz": int(curl_b.bcz),
             "block": int(curl_b.block)}
         counters = {slot: PlanCounter(plan) for slot, plan in plans.items()}
         if mutation is not None:
@@ -1000,7 +1005,7 @@ NR1_CELL = (1.0, 0.0, 8.0)
 NR1_RESOLUTION = 1.0
 
 
-def run_refusal(xp, probe) -> Dict[str, Any]:
+def run_refusal(xp) -> Dict[str, Any]:
     from meep_gpu.driver import FdtdDriver                      # noqa: PLC0415
 
     record: Dict[str, Any] = {"leg": "nr>=2 refusal",
@@ -1019,7 +1024,7 @@ def run_refusal(xp, probe) -> Dict[str, Any]:
         reasons: Dict[str, List[str]] = {}
         for sub_step in ("step_B", "step_D"):
             verdict = cylmod.cylindrical_complex_curl_coverage(
-                driver.fields, driver.pml, sub_step, probe=probe)
+                driver.fields, driver.pml, sub_step)
             reasons[sub_step] = list(verdict.reasons)
             if verdict.covered:
                 raise AssertionError(
@@ -1030,7 +1035,7 @@ def run_refusal(xp, probe) -> Dict[str, Any]:
                     f"{sub_step} was refused, but NOT by the radial-extent "
                     f"clause: {verdict.reasons}")
             if cylmod.plan_cylindrical_complex_curl(
-                    driver.fields, driver.pml, sub_step, probe=probe) is not None:
+                    driver.fields, driver.pml, sub_step) is not None:
                 raise AssertionError(
                     f"the {sub_step} plan builder returned a plan for a grid "
                     f"its own predicate refuses")
@@ -1088,23 +1093,6 @@ def run_refusal(xp, probe) -> Dict[str, Any]:
 # Preflight
 # ---------------------------------------------------------------------------
 
-#: The laptop stand-in for a measured expansion record. It licenses NOTHING
-#: about device bytes; it exists so the preflight can drive the predicates and
-#: the plan builders on NumPy. Since 2026-08-17 a record must state the policy
-#: it was cut under and the run must DECLARE one (``declaring_run_policy``), so
-#: the stub carries a ``keep`` stamp and the preflight declares ``keep`` — the
-#: policy every weld in fingerprints.json records. A real record passed as
-#: ``--probe-artifact`` to the dry run takes precedence over this stub.
-LAPTOP_PROBE = {"backend": "cupy",
-                "patterns": {name: "FMA_V1"
-                             for name in cxmod.PROBE_PATTERNS},
-                "subnormal_policy": {"policy": "ieee_keep_ftz_stripped",
-                                     "resolved": "keep",
-                                     "note": "LAPTOP STUB: licenses no device byte"},
-                "candidates": {"policy": "keep"}}
-LAPTOP_RUN_POLICY = "keep"
-
-
 def _plans_from_arrays(driver, case) -> Dict[str, Any]:
     """Curl plans built WITHOUT the predicate, for the arming check only.
 
@@ -1116,7 +1104,7 @@ def _plans_from_arrays(driver, case) -> Dict[str, Any]:
     returns is the same class the engine route builds.
     """
     fields, pml, grid = driver.fields, driver.pml, driver.grid
-    from meep_gpu.triton_kernels.launch import SUB_STEPS          # noqa: PLC0415
+    from meep_gpu.triton_kernels.launch import SUB_STEPS, chunk_bounds_for  # noqa: PLC0415
 
     plans: Dict[str, Any] = {}
     for sub_step in ("step_B", "step_D"):
@@ -1128,9 +1116,11 @@ def _plans_from_arrays(driver, case) -> Dict[str, Any]:
         flat = {f"{stem}_{axis}": getattr(pml, f"{stem}_{axis}{suffix}")
                 for axis in "xyz" for stem in ("kms", "sinv")}
         plans[sub_step] = cylmod.plan_cylindrical_complex_curl_from_arrays(
-            sub_step, arrays, flat, grid.dt / grid.dx, int(grid.m),
+            sub_step, arrays, flat, grid.dt / grid.dx, float(grid.courant), int(grid.m),
             bool(grid.accurate_fields_near_cylorigin),
-            1 if driver.grid.is_metallic(2) else 0, 1, np)
+            1 if driver.grid.is_metallic(2) else 0, np,
+            chunk_bounds=chunk_bounds_for(fields, pml, None),
+            scan_starts=cylreal.radial_scan_starts(fields, pml, sub_step, None))
     return plans
 
 
@@ -1153,12 +1143,10 @@ def run_arming(out_path: str) -> Dict[str, Any]:
             plans = _plans_from_arrays(driver, case)
             before = {
                 "zero_rows": int(plans["step_B"].zero_rows),
-                "increment": [float(plans["step_B"].increment_scalars[0]),
-                              complex(plans["step_B"].increment_scalars[1][0]).real,
-                              complex(plans["step_B"].increment_scalars[1][1]).real],
+                "courant": {slot: np.array(plans[slot]._courant.array, copy=True)  # noqa: SLF001
+                            for slot in ("step_B", "step_D")},
                 "imr": [np.array(pointer.array, copy=True)
                         for pointer in plans["step_B"]._imr_rows],  # noqa: SLF001
-                "four_dtdx": float(plans["step_D"].four_dtdx),
             }
             record["detail"] = apply(driver, plans, case)
             after_imr = [np.asarray(pointer.array)
@@ -1173,22 +1161,17 @@ def run_arming(out_path: str) -> Dict[str, Any]:
                 record["zero_rows"] = [before["zero_rows"],
                                        int(plans["step_B"].zero_rows)]
                 bitten = plans["step_B"].zero_rows == before["zero_rows"] - 1
-            elif name == "m0_axis_add_scalar_negated":
-                record["four_dtdx"] = [before["four_dtdx"],
-                                       float(plans["step_D"].four_dtdx)]
-                bitten = (np.float32(before["four_dtdx"]).tobytes()
-                          != np.float32(plans["step_D"].four_dtdx).tobytes())
             else:
-                after = [float(plans["step_B"].increment_scalars[0]),
-                         complex(plans["step_B"].increment_scalars[1][0]).real,
-                         complex(plans["step_B"].increment_scalars[1][1]).real]
-                record["increment_scalars"] = [before["increment"], after]
-                # WORD comparison, not ``!=``: the increment's real part is an
-                # exact -0.0 here and ``-0.0 != 0.0`` is False in Python, so a
-                # value comparison would call a real sign-bit flip a no-op.
-                bitten = any(
-                    np.float32(a).tobytes() != np.float32(b).tobytes()
-                    for a, b in zip(before["increment"], after))
+                # The bound double factor the needle names, compared as WORDS: the
+                # B-side word for the axis increment, the 4*Courant word for m = 0.
+                word = cylreal.COURANT_WORDS[
+                    "four" if name == "m0_axis_add_scalar_negated" else "minus"]
+                slot = "step_D" if name == "m0_axis_add_scalar_negated" else "step_B"
+                after = np.asarray(plans[slot]._courant.array)  # noqa: SLF001
+                record["courant_word"] = [float(before["courant"][slot][word]),
+                                          float(after[word])]
+                bitten = (before["courant"][slot][word:word + 1].tobytes()
+                          != after[word:word + 1].tobytes())
             record["armed"] = bool(bitten)
             if not bitten:
                 record["error"] = "DISARMED: the callable changed nothing"
@@ -1207,29 +1190,18 @@ def run_arming(out_path: str) -> Dict[str, Any]:
             "disarmed": [row["mutation"] for row in rows if not row["armed"]]}
 
 
-def run_preflight(out_path: str, probe: Optional[Dict[str, Any]] = None) -> int:
+def run_preflight(out_path: str) -> int:
     """Build every case on the ARRAY path and assert the seams with the
     array-module clause stripped. No launch, no byte claim: this exists so a
     broken enumeration is found on a laptop rather than on a device slot.
-
-    ``probe`` is a measured expansion record when the caller has one; otherwise
-    :data:`LAPTOP_PROBE`. Either way the run policy is DECLARED as ``keep`` for
-    the duration, which is what the licence clause needs on a host that has
-    installed nothing (``complex_fields._policy_in_force``).
     """
-    from meep_gpu.expansion_refusal import declaring_run_policy  # noqa: PLC0415
-
-    with declaring_run_policy(LAPTOP_RUN_POLICY):
-        return _run_preflight(out_path, LAPTOP_PROBE if probe is None else probe)
+    return _run_preflight(out_path)
 
 
-def _run_preflight(out_path: str, probe: Dict[str, Any]) -> int:
+def _run_preflight(out_path: str) -> int:
     payload: Dict[str, Any] = {
-        "probe": "triton_cylindrical_complex_composition",
         "mode": "preflight (NumPy drivers; NO byte-identity claim)",
         "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "declared_run_policy": LAPTOP_RUN_POLICY,
-        "probe_is_the_laptop_stub": probe is LAPTOP_PROBE,
         "step_budgets": {case["name"]: case["steps"] for case in CASES},
         "cases": [],
     }
@@ -1248,8 +1220,7 @@ def _run_preflight(out_path: str, probe: Dict[str, Any]) -> int:
             record["seeding_record"] = seed_state(driver, np, case)
             record["negative_zero_census_at_seed"] = negative_zero_census(
                 np, driver)
-            record["seams"] = seam_report(driver.fields, driver.pml,
-                                          probe, drop_backend=True)
+            record["seams"] = seam_report(driver.fields, driver.pml, drop_backend=True)
             assert_seams(record["seams"], case["name"])
             if case["seeding"] == "signed_zero_lattice" and \
                     record["negative_zero_census_at_seed"] == 0:
@@ -1298,7 +1269,7 @@ def _run_preflight(out_path: str, probe: Dict[str, Any]) -> int:
     save(payload, out_path)
 
     try:
-        payload["refusal"] = run_refusal(np, probe)
+        payload["refusal"] = run_refusal(np)
     except Exception as exc:                        # noqa: BLE001
         payload["refusal"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         failures.append("nr>=2 refusal")
@@ -1334,8 +1305,6 @@ def environment() -> Dict[str, Any]:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", required=True)
-    parser.add_argument("--probe-artifact", default=None,
-                        help="the measured complex-expansion probe (device run)")
     parser.add_argument("--dry-run", action="store_true",
                         help="NumPy preflight: enumeration, seams and refusal")
     args = parser.parse_args(argv)
@@ -1343,9 +1312,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
 
     if args.dry_run:
-        record = (cxmod.load_expansion_probe(args.probe_artifact)
-                  if args.probe_artifact else None)
-        return run_preflight(out_path, record)
+        return run_preflight(out_path)
 
     if cp is None:
         log("[composition] cupy is not importable; NO byte-identity claim")
@@ -1358,28 +1325,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     gate.install_ftz_strip()
     backends.guard_kernel_compilation(cp)
 
-    record = cxmod.load_expansion_probe(args.probe_artifact)
-    reasons = list(gate.probe_record_policy_reasons(record)) if record else [
-        f"no expansion probe artifact at {args.probe_artifact!r}; the EXPANSION "
-        f"constexpr is a measured platform fact and may not be guessed"]
-    if record is not None and cxmod.expansion_from_probe(record) is None:
-        reasons.append("the probe artifact licenses no single EXPANSION constexpr")
-    if reasons:
-        payload = {"probe": "triton_cylindrical_complex_composition",
-                   "status": "REFUSED", "refusal_reasons": reasons,
-                   "byte_identity_claim": "NONE"}
-        save(payload, out_path)
-        log(f"[composition] REFUSED: {reasons}")
-        return 1
-
     payload: Dict[str, Any] = {
-        "probe": "triton_cylindrical_complex_composition",
         "module": "meep_gpu/triton_kernels/cylindrical_complex.py",
         "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "environment": environment(),
         "dispatch": "DISABLED (the engine's fast-path hook returns None)",
         "installed_slots": list(SLOTS),
-        "expansion": int(cxmod.expansion_from_probe(record)),
         "step_budgets": {
             **{case["name"]: case["steps"] for case in CASES},
             "mutation_cases": 2,
@@ -1398,7 +1349,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     for case in CASES:
         log(f"[composition] starting {case['name']}: {case['why']}")
         try:
-            payload["cases"].append(run_case(cp, case, record))
+            payload["cases"].append(run_case(cp, case))
         except Exception as exc:                    # noqa: BLE001
             payload["cases"].append({"case": case["name"], "ok": False,
                                      "error": f"{type(exc).__name__}: {exc}"})
@@ -1411,8 +1362,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         case = by_name[mutation[1]]
         log(f"[composition] arming {mutation[0]} on {case['name']}")
         try:
-            payload["mutations"].append(run_case(cp, case, record,
-                                                 mutation=mutation))
+            payload["mutations"].append(run_case(cp, case, mutation=mutation))
         except Exception as exc:                    # noqa: BLE001
             payload["mutations"].append(
                 {"case": f"{case['name']}::{mutation[0]}", "caught": False,
@@ -1422,7 +1372,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         save(payload, out_path)
 
     try:
-        payload["refusal"] = run_refusal(cp, record)
+        payload["refusal"] = run_refusal(cp)
     except Exception as exc:                        # noqa: BLE001
         payload["refusal"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         failures.append("nr>=2 refusal")

@@ -1,0 +1,2611 @@
+{
+ "about": "MEEP identity, Tier A: per subnormal mode, the minted cases' capsules, currents and digests of MEEP's words (meep_gpu/meep_identity.py). Written only by parity/meep_gpu/record_meep_identity.py.",
+ "fixture_budget_bytes": 5000000,
+ "fixture_bytes": 4636168,
+ "schema": "meep_gpu.meep_identity",
+ "sets": {
+  "flush": {
+   "array_path_oracle": {
+    "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+    "fixture_set": "array_path_oracle/real-v6"
+   },
+   "cases": {
+    "a": {
+     "files": {
+      "capsule": {
+       "bytes": 22945,
+       "file": "flush/a/capsule.capsule",
+       "sha256": "025dbc623376708197d2b71957d340e4c3a564d1f426565aef8f04765ad510c3"
+      },
+      "currents": {
+       "bytes": 17180,
+       "file": "flush/a/currents.json",
+       "sha256": "9272142717b5bab9e77ff37b5876704eabeac5dbe7f8f93cb82b3d2b0bb27617"
+      },
+      "digests": {
+       "bytes": 53257,
+       "file": "flush/a/digests.json",
+       "sha256": "b169c4cb2b7c18d545819ee9eda6103a09744124a6969b621f5e115e0277b9c1"
+      },
+      "planes": {
+       "bytes": 403328,
+       "file": "flush/a/planes.npy",
+       "sha256": "a0e9c98b0ac026e160036de56b2436c07726dc8bcb65f0cb6a977b69373ee897"
+      }
+     },
+     "tier_a": {
+      "digests": 360,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 235,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "placed": true,
+       "planes_differing": [
+        81
+       ],
+       "step": 20,
+       "word": 16300,
+       "word_plane": 81
+      },
+      "reader_equal": 360,
+      "seconds": 5.559,
+      "stored_equal": 360
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 9
+      },
+      "fpu_checks": 30,
+      "ghost": {},
+      "n_steps": 200,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "digest_caught": true,
+       "plane": 81,
+       "planes_differing": [
+        81
+       ],
+       "step": 20,
+       "word": 16300,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 14400000
+      },
+      "reads": {
+       "held_aliased": 400,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 71940,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 0,
+       "held_unconnected": 400,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 7200000
+      },
+      "seconds": 89.428,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       40,
+       60,
+       80,
+       100,
+       120,
+       140,
+       160,
+       180,
+       200
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 14400000
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": true,
+       "float32_flush_to_zero": true,
+       "float64_denormals_are_zero": true,
+       "float64_flush_to_zero": true,
+       "mode": "flush"
+      }
+     }
+    },
+    "b": {
+     "files": {
+      "capsule": {
+       "bytes": 27908,
+       "file": "flush/b/capsule.capsule",
+       "sha256": "a71b6311d6bf87aa9f4092133026e12094b3451de2667665c865d5f470bae12c"
+      },
+      "currents": {
+       "bytes": 17180,
+       "file": "flush/b/currents.json",
+       "sha256": "9272142717b5bab9e77ff37b5876704eabeac5dbe7f8f93cb82b3d2b0bb27617"
+      },
+      "digests": {
+       "bytes": 53257,
+       "file": "flush/b/digests.json",
+       "sha256": "48599b726d0b9a95676e93f6250f4ec1ba3fddc8d5e2699339e8ba23229fbb11"
+      },
+      "planes": {
+       "bytes": 403328,
+       "file": "flush/b/planes.npy",
+       "sha256": "7b0b9c9559a15d3746782c515f1a077f08ac2e67610a6e9a9e63a644a2503362"
+      }
+     },
+     "tier_a": {
+      "digests": 360,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 270,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "placed": true,
+       "planes_differing": [
+        81
+       ],
+       "step": 20,
+       "word": 16300,
+       "word_plane": 81
+      },
+      "reader_equal": 360,
+      "seconds": 5.758,
+      "stored_equal": 360
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 9
+      },
+      "fpu_checks": 30,
+      "ghost": {},
+      "n_steps": 200,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "digest_caught": true,
+       "plane": 81,
+       "planes_differing": [
+        81
+       ],
+       "step": 20,
+       "word": 16300,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 14400000
+      },
+      "reads": {
+       "held_aliased": 400,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 71940,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 0,
+       "held_unconnected": 400,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 7200000
+      },
+      "seconds": 66.683,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       40,
+       60,
+       80,
+       100,
+       120,
+       140,
+       160,
+       180,
+       200
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 14400000
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": true,
+       "float32_flush_to_zero": true,
+       "float64_denormals_are_zero": true,
+       "float64_flush_to_zero": true,
+       "mode": "flush"
+      }
+     }
+    },
+    "c": {
+     "files": {
+      "capsule": {
+       "bytes": 23645,
+       "file": "flush/c/capsule.capsule",
+       "sha256": "9c68f3519b3069dd4306009dff0ab5f350d6f4a62201f267a021b954eca8ce67"
+      },
+      "currents": {
+       "bytes": 31868,
+       "file": "flush/c/currents.json",
+       "sha256": "f05230e759b24c4707d248d27701e73c41ae5729342aca8647c840bf06955f6c"
+      },
+      "digests": {
+       "bytes": 55026,
+       "file": "flush/c/digests.json",
+       "sha256": "eaa6cbcea56e609e604eb5435c2a56641f1992e8b51999a14946b3f2368f870e"
+      },
+      "planes": {
+       "bytes": 78752,
+       "file": "flush/c/planes.npy",
+       "sha256": "0bc2cf3cf5a54213f8cf0cab604651a641d1051675dbc448c20fe81f93969ec7"
+      }
+     },
+     "tier_a": {
+      "digests": 372,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 307,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Hx",
+       "placed": true,
+       "planes_differing": [
+        1
+       ],
+       "step": 20,
+       "word": 342,
+       "word_plane": 1
+      },
+      "reader_equal": 372,
+      "seconds": 6.363,
+      "stored_equal": 372
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 12
+      },
+      "fpu_checks": 31,
+      "ghost": {
+       "sign_of_zero_only": 33559,
+       "value_differing": 0,
+       "word_differing": 33559,
+       "words": 265980
+      },
+      "n_steps": 375,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Hx",
+       "digest_caught": true,
+       "plane": 1,
+       "planes_differing": [
+        1
+       ],
+       "step": 20,
+       "word": 342,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 16756740
+      },
+      "reads": {
+       "held_aliased": 342,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 61318,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 6985,
+       "held_unconnected": 342,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 0
+      },
+      "seconds": 32.056,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       38,
+       75,
+       113,
+       150,
+       188,
+       225,
+       263,
+       300,
+       338,
+       375
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 4695756
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": true,
+       "float32_flush_to_zero": true,
+       "float64_denormals_are_zero": true,
+       "float64_flush_to_zero": true,
+       "mode": "flush"
+      }
+     }
+    },
+    "c_prime": {
+     "files": {
+      "capsule": {
+       "bytes": 23628,
+       "file": "flush/c_prime/capsule.capsule",
+       "sha256": "0d7417cd253a6e5fe4ee6e9405ebed2b781ff70e43ecda79fe956aad711029ca"
+      },
+      "currents": {
+       "bytes": 17168,
+       "file": "flush/c_prime/currents.json",
+       "sha256": "2b85faabbce0bead062e380d824c4abafef1aaf41761093f3273b07b56195125"
+      },
+      "digests": {
+       "bytes": 53281,
+       "file": "flush/c_prime/digests.json",
+       "sha256": "1cddfadc1f69eba934ded7d5e8c63d452ceeed5e589439e15732ffb8da2882cd"
+      },
+      "planes": {
+       "bytes": 78752,
+       "file": "flush/c_prime/planes.npy",
+       "sha256": "ab274b096db9906fd5bcf9bc78488746d160c65e418aaa922c14778bd2305d3d"
+      }
+     },
+     "tier_a": {
+      "digests": 360,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 307,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Hx",
+       "placed": true,
+       "planes_differing": [
+        1
+       ],
+       "step": 20,
+       "word": 342,
+       "word_plane": 1
+      },
+      "reader_equal": 360,
+      "seconds": 4.584,
+      "stored_equal": 360
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 12
+      },
+      "fpu_checks": 30,
+      "ghost": {
+       "sign_of_zero_only": 33503,
+       "value_differing": 0,
+       "word_differing": 33503,
+       "words": 257400
+      },
+      "n_steps": 200,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Hx",
+       "digest_caught": true,
+       "plane": 1,
+       "planes_differing": [
+        1
+       ],
+       "step": 20,
+       "word": 342,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 16216200
+      },
+      "reads": {
+       "held_aliased": 342,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 59340,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 6985,
+       "held_unconnected": 342,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 0
+      },
+      "seconds": 37.669,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       40,
+       60,
+       80,
+       100,
+       120,
+       140,
+       160,
+       180,
+       200
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 4544280
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": true,
+       "float32_flush_to_zero": true,
+       "float64_denormals_are_zero": true,
+       "float64_flush_to_zero": true,
+       "mode": "flush"
+      }
+     }
+    },
+    "ex.absorber-1d": {
+     "files": {
+      "capsule": {
+       "bytes": 28419,
+       "file": "flush/ex.absorber-1d/capsule.capsule",
+       "sha256": "e739136a2c5f08d05076054d6751a936a530d037d4d98f5db879f9886c0a79e9"
+      },
+      "currents": {
+       "bytes": 336381,
+       "file": "flush/ex.absorber-1d/currents.json",
+       "sha256": "6adb1f9bc4125f6db0070b16e1db699dd8edd2f5edafa3d095a2111987f77b42"
+      },
+      "digests": {
+       "bytes": 55023,
+       "file": "flush/ex.absorber-1d/digests.json",
+       "sha256": "676e94f22d8f266c9306f78665df1f0955cefb4bb930d2747b4e66b1ce806e39"
+      },
+      "planes": {
+       "bytes": 2144,
+       "file": "flush/ex.absorber-1d/planes.npy",
+       "sha256": "f9a8d55b596e7eadb46755fb5ed1839fd139f67dd24ddba52e8170ff4e89e344"
+      }
+     },
+     "tier_a": {
+      "digests": 372,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 249,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ex",
+       "placed": true,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 181,
+       "word_plane": 0
+      },
+      "reader_equal": 372,
+      "seconds": 2.278,
+      "stored_equal": 372
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 1
+      },
+      "fpu_checks": 31,
+      "ghost": {},
+      "n_steps": 4000,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ex",
+       "digest_caught": true,
+       "plane": 0,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 181,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 148800
+      },
+      "reads": {
+       "held_aliased": 0,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 186,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 0,
+       "held_unconnected": 0,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 99200
+      },
+      "seconds": 6.51,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       400,
+       800,
+       1200,
+       1600,
+       2000,
+       2400,
+       2800,
+       3200,
+       3600,
+       4000
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 148800
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": true,
+       "float32_flush_to_zero": true,
+       "float64_denormals_are_zero": true,
+       "float64_flush_to_zero": true,
+       "mode": "flush"
+      }
+     }
+    },
+    "ex.material-dispersion": {
+     "files": {
+      "capsule": {
+       "bytes": 10639,
+       "file": "flush/ex.material-dispersion/capsule.capsule",
+       "sha256": "21c47946d8ccc06234e3ea6b8abe366c31af22e9a78ee8ad50a6943992e41db1"
+      },
+      "currents": {
+       "bytes": 17180,
+       "file": "flush/ex.material-dispersion/currents.json",
+       "sha256": "b5b93d0d5235a0852ac87e5f914aa78c1fe84de9d21c6681d176f61bce16a658"
+      },
+      "digests": {
+       "bytes": 53223,
+       "file": "flush/ex.material-dispersion/digests.json",
+       "sha256": "7b584829d10d1d28c052aefd1874d6f006b37a5224fa3a41bdbe376ffdf2443d"
+      },
+      "planes": {
+       "bytes": 2144,
+       "file": "flush/ex.material-dispersion/planes.npy",
+       "sha256": "741033dfa31f3f9e85cca86d52f470c8b10d81460ef0ba5b6e7632db94f392c9"
+      }
+     },
+     "tier_a": {
+      "digests": 360,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 197,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "placed": true,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 0,
+       "word_plane": 0
+      },
+      "reader_equal": 360,
+      "seconds": 0.664,
+      "stored_equal": 360
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 1
+      },
+      "fpu_checks": 30,
+      "ghost": {},
+      "n_steps": 200,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "digest_caught": true,
+       "plane": 0,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 0,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 360
+      },
+      "reads": {
+       "held_aliased": 60,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 300,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 0,
+       "held_unconnected": 0,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 180
+      },
+      "seconds": 1.489,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       40,
+       60,
+       80,
+       100,
+       120,
+       140,
+       160,
+       180,
+       200
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 360
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": true,
+       "float32_flush_to_zero": true,
+       "float64_denormals_are_zero": true,
+       "float64_flush_to_zero": true,
+       "mode": "flush"
+      }
+     }
+    },
+    "t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx": {
+     "files": {
+      "capsule": {
+       "bytes": 22954,
+       "file": "flush/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/capsule.capsule",
+       "sha256": "07104e7f528e8a1e2d52cb250a22dc31593fb7d6f3edec655a22aa827c4608fd"
+      },
+      "currents": {
+       "bytes": 17168,
+       "file": "flush/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/currents.json",
+       "sha256": "457a017b61a24c2f198ad196195590e38d8bc2f0390fb962565ffab477528b83"
+      },
+      "digests": {
+       "bytes": 53310,
+       "file": "flush/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/digests.json",
+       "sha256": "3ec23f506ac698b5131486e9a82919f2196143f9ef9d251c738e69ec4a2d7204"
+      },
+      "planes": {
+       "bytes": 40448,
+       "file": "flush/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/planes.npy",
+       "sha256": "101f7ce23e3515d216700e8c7bc0a52076d9c332d1ed673f06cf2b92c6d6ec5d"
+      }
+     },
+     "tier_a": {
+      "digests": 360,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 222,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ey",
+       "placed": true,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 0,
+       "word_plane": 0
+      },
+      "reader_equal": 360,
+      "seconds": 1.491,
+      "stored_equal": 360
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 2
+      },
+      "fpu_checks": 30,
+      "ghost": {
+       "sign_of_zero_only": 2618,
+       "value_differing": 0,
+       "word_differing": 2618,
+       "words": 14400
+      },
+      "n_steps": 200,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ey",
+       "digest_caught": true,
+       "plane": 0,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 0,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 3628800
+      },
+      "reads": {
+       "held_aliased": 0,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 0,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 2618,
+       "held_unconnected": 0,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 439200
+      },
+      "seconds": 9.93,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       40,
+       60,
+       80,
+       100,
+       120,
+       140,
+       160,
+       180,
+       200
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 1742400
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": true,
+       "float32_flush_to_zero": true,
+       "float64_denormals_are_zero": true,
+       "float64_flush_to_zero": true,
+       "mode": "flush"
+      }
+     }
+    },
+    "t.test_ring_cyl.TestRingCyl.test_ring_cyl": {
+     "files": {
+      "capsule": {
+       "bytes": 17761,
+       "file": "flush/t.test_ring_cyl.TestRingCyl.test_ring_cyl/capsule.capsule",
+       "sha256": "eb74ca2467c07fe2ea8337e387327ff022bdd24965687329e0bc9f9655d01861"
+      },
+      "currents": {
+       "bytes": 84381,
+       "file": "flush/t.test_ring_cyl.TestRingCyl.test_ring_cyl/currents.json",
+       "sha256": "ad45f07627569c5b19f908786192be20308a0af9914482766dd2534fee50e9ac"
+      },
+      "digests": {
+       "bytes": 55018,
+       "file": "flush/t.test_ring_cyl.TestRingCyl.test_ring_cyl/digests.json",
+       "sha256": "189dcb5e9e6a2137eaba1aeb2ec51a2623d47572b19a4d98b3b122f33af038f9"
+      },
+      "planes": {
+       "bytes": 161408,
+       "file": "flush/t.test_ring_cyl.TestRingCyl.test_ring_cyl/planes.npy",
+       "sha256": "8440ff35cb0e90a8a5d30512aff4023ade9582c17a2e28a0ecd6fb4fb4c01c24"
+      }
+     },
+     "tier_a": {
+      "digests": 372,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 207,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "placed": true,
+       "planes_differing": [
+        3
+       ],
+       "step": 20,
+       "word": 6,
+       "word_plane": 3
+      },
+      "reader_equal": 372,
+      "seconds": 1.795,
+      "stored_equal": 372
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 2
+      },
+      "fpu_checks": 31,
+      "ghost": {},
+      "n_steps": 1000,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "digest_caught": true,
+       "plane": 3,
+       "planes_differing": [
+        3
+       ],
+       "step": 20,
+       "word": 6,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 59520
+      },
+      "reads": {
+       "held_aliased": 2480,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 14880,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 0,
+       "held_unconnected": 0,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 0
+      },
+      "seconds": 4.965,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       100,
+       200,
+       300,
+       400,
+       500,
+       600,
+       700,
+       800,
+       900,
+       1000
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 59520
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": true,
+       "float32_flush_to_zero": true,
+       "float64_denormals_are_zero": true,
+       "float64_flush_to_zero": true,
+       "mode": "flush"
+      }
+     }
+    }
+   },
+   "minted": {
+    "host": {
+     "machine": "x86_64",
+     "numpy": "2.2.6",
+     "python": "3.10.20",
+     "system": "Linux"
+    },
+    "inputs_sha256": {
+     "meep_gpu/array_path_oracle.py": "e99a0a3feb81bca2a7b6af18c5bbe47808abe62ec868baacd29b9ffcae99b4db",
+     "meep_gpu/capsule.py": "74b473e6870bc1f784b4e5a5607a3bc12129b0153da76812a4281556d2656fce",
+     "meep_gpu/chunk_map.py": "bcf2e803008010dfcebf377cc073add9c33a978068be610ed32a70ace918a3c4",
+     "meep_gpu/deposit_repair.py": "3b3a2665874148ebb1fdc4d9cbbc7b7788953610e67fe3bcaeb22b73596c4cc7",
+     "meep_gpu/dispersion.py": "5dab447734013e50800211ebcc7aec5f2c18ba4ab9e76c67a06dcbd0260b8974",
+     "meep_gpu/driver.py": "dfdc15423274ddd589b11fd79d5814635fdee9fab71c919a4f013a256742f1d1",
+     "meep_gpu/fields.py": "99cfb1ea66edf4d1436e9939ce950386818893fb943cedeede822c216900f370",
+     "meep_gpu/from_meep.py": "e6dd7a8a436e457e58a7969a5d648384cf80f711a99425978b9555f68aa96125",
+     "meep_gpu/grid.py": "ea68d46d6c28b0ced6a75a4af9cc002acc5286a19d619a09e352294046ec6524",
+     "meep_gpu/host_writes.py": "c4fa862d518789231649d95bc75716625eafc3e896962257953bc26475f986ea",
+     "meep_gpu/meep_identity.py": "1c095319e4f2a38db9897c7932877bfe286eb4121de4de77c8a4d4ab68ab9efa",
+     "meep_gpu/part_products.py": "23cc6a36f1ba534ed59dce34d413a010ec5015e1a7c8569b20112933759b16b9",
+     "meep_gpu/pml.py": "d76f91fc967fe549badf2f42acf91d5a944a8ac21c4cea6bedfe1bea46c516fb",
+     "meep_gpu/sources.py": "2451b01223a39df67a0d3fbc5c3a9bf5cdf87a813bc5bdc1178244f523e42db1",
+     "meep_gpu/stepping.py": "913c337fd818ec5b7fabba6837146d57ebe8f077cf765f5760e857e166039c57",
+     "meep_gpu/withdraw_hoist.py": "8bee15197ead66de7e5c8b2adbf19884c1943b16b3fa3d069fcaf3bee3e20b89",
+     "parity/meep_gpu/meep_identity_smoke.json": "400d822fec6eadb6a2e0b041eb0ec535bf33ce3309496339bbec2c3cb2f3a9b8",
+     "parity/meep_gpu/meep_identity_smoke.py": "2b8c2dfab8486cbb61723e8041e54134985e05fdbb58e60e0505b24d87e66cdc",
+     "parity/meep_gpu/meep_identity_tier_c.py": "68bdd443b1135903f9467e90158c18af60f11619ccdd5a4a40be5d3fbc1d5dfa",
+     "parity/meep_gpu/record_meep_identity.py": "766f72ccddb02fa0610d14a29e480228869e52aa0c2ce87fa7c9ba5c15cf2436"
+    },
+    "seconds": 335.1,
+    "tool": "parity/meep_gpu/record_meep_identity.py",
+    "tool_sha256": "766f72ccddb02fa0610d14a29e480228869e52aa0c2ce87fa7c9ba5c15cf2436",
+    "utc": "2026-10-15T08:35:40Z"
+   },
+   "mode": "flush",
+   "provenance_code_sha256": {
+    "meep_gpu/chunk_map.py": "f0d36fdd46573db9dfd6e958aafa17cdcf5cb8f131f0b0f7b4a537b8472e9d6b",
+    "meep_gpu/deposit_repair.py": "c165c1c870013c3a329c32b46aded84463918f60e3db96c31661e0819e013a99",
+    "meep_gpu/dispersion.py": "7e59617c4d1a408ccd6f0e4ba3c963ba1424f00e2b5468b8e79f1c794460043d",
+    "meep_gpu/driver.py": "0d7fb07728ad7f67dd341d67ed4f37ef54ffdddf67f9646c521b2effdffd2e09",
+    "meep_gpu/fields.py": "d6c9113bb8dbccb0c8dc422dc2f8b979896c22da1a2d5dff0d553fc11e6efc44",
+    "meep_gpu/from_meep.py": "8472c5daa7768ef74996bd6937f77b2484d6c421e43bedc7df31f32d081da5e5",
+    "meep_gpu/grid.py": "80a5929036e19bfa6dd86e8cc8a0d8f8344eb804f6fd083c605050516655e8c7",
+    "meep_gpu/host_writes.py": "20db60eff5f1e610aecd80d7359a96021713b62938a14e6640a8f437c6cff0f5",
+    "meep_gpu/part_products.py": "f22eeb2f33924a389619071d4495b1006b1434f6a95de0146e521f433c66e348",
+    "meep_gpu/pml.py": "07bcc739ae6ffb150977f9cd62855900da2dedb6d9e1a1fbb4e62d7e60c8d200",
+    "meep_gpu/sources.py": "bd775d3f096d2784e26e88a86beef8a768a5f62a4ed3d89e15a6511f8b550c07",
+    "meep_gpu/stepping.py": "b9b1cd42682f41bea991cf275623da854ae8b2cafd3bccad6e8f483f930a3e93",
+    "meep_gpu/withdraw_hoist.py": "6c0033f42b8d913fad685d696a42d65be63ba0cb64f925ab4f7076951a9b1f03"
+   },
+   "reference": {
+    "build_record": {
+     "census": "no fused multiply-add instruction outside the compiler-rt division builtins in 2 of 2 image(s) (0 inside them, exempt)",
+     "file": "build_record.json",
+     "fp_contract": "off",
+     "sha256": "10b4b5ab39f1466ea09e65b6661a2c5b1a9d6f13adbcb5ff8f2f026cdb276134"
+    },
+    "images": {
+     "_meep.so.37.0.0": "0445f8367660246cbfc68feba6d015933743f512b7ce5e5a6724203641e49750",
+     "libmeep.so.37.0.0": "d7f4a0c456f1edc3fec28febb4bfd1979857d6f8456adb7fa3986f856099e2ff"
+    },
+    "libm": {
+     "cpu_features": [
+      "avx",
+      "avx2",
+      "avx512f",
+      "fma"
+     ],
+     "cpu_model": "Intel(R) Xeon(R) Gold 5220R CPU @ 2.20GHz",
+     "glibc": "glibc 2.31",
+     "glibc_tunables": null,
+     "kind": "glibc libm",
+     "path": "/usr/lib/x86_64-linux-gnu/libm-2.31.so",
+     "sha256": "a0e70f48f02a399e8dd37f861a99e226c285a9daf50a25d19fff7ccf18b97f9c"
+    },
+    "meep": {
+     "mpi": true,
+     "single_precision": true,
+     "version": "1.33.0"
+    },
+    "numpy": "2.2.6",
+    "omp_num_threads": "1",
+    "python": "3.10.20",
+    "subnormals": {
+     "float32_denormals_are_zero": true,
+     "float32_flush_to_zero": true,
+     "float64_denormals_are_zero": true,
+     "float64_flush_to_zero": true,
+     "mode": "flush"
+    },
+    "system": "Linux x86_64",
+    "verdict": null
+   }
+  },
+  "keep": {
+   "array_path_oracle": {
+    "fingerprint_sha256": "1ab516279d74002ad997a1e37e713b44d526395fa7cf41b1c63169515e925d0a",
+    "fixture_set": "array_path_oracle/real-v6"
+   },
+   "cases": {
+    "a": {
+     "files": {
+      "capsule": {
+       "bytes": 22942,
+       "file": "keep/a/capsule.capsule",
+       "sha256": "3db426b99e5156850c46594eadd60e6b4f97af499e982677a8289d8e928eba95"
+      },
+      "currents": {
+       "bytes": 17180,
+       "file": "keep/a/currents.json",
+       "sha256": "50488dc51c7822b14a0dc3d361fe7b71cc2d60d9e17510bd5ccdcb068ee25953"
+      },
+      "digests": {
+       "bytes": 53256,
+       "file": "keep/a/digests.json",
+       "sha256": "541b32783a4617ada29376a5702344a7ee6b5525b7aa288a24d9c0bc5a288685"
+      },
+      "planes": {
+       "bytes": 403328,
+       "file": "keep/a/planes.npy",
+       "sha256": "a0e9c98b0ac026e160036de56b2436c07726dc8bcb65f0cb6a977b69373ee897"
+      }
+     },
+     "tier_a": {
+      "digests": 360,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 235,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "placed": true,
+       "planes_differing": [
+        81
+       ],
+       "step": 20,
+       "word": 16300,
+       "word_plane": 81
+      },
+      "reader_equal": 360,
+      "seconds": 1.035,
+      "stored_equal": 360
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 9
+      },
+      "fpu_checks": 30,
+      "ghost": {},
+      "n_steps": 200,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "digest_caught": true,
+       "plane": 81,
+       "planes_differing": [
+        81
+       ],
+       "step": 20,
+       "word": 16300,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 14400000
+      },
+      "reads": {
+       "held_aliased": 400,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 71940,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 0,
+       "held_unconnected": 400,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 7200000
+      },
+      "seconds": 28.923,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       40,
+       60,
+       80,
+       100,
+       120,
+       140,
+       160,
+       180,
+       200
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 14400000
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": false,
+       "float32_flush_to_zero": false,
+       "float64_denormals_are_zero": false,
+       "float64_flush_to_zero": false,
+       "mode": "keep"
+      }
+     }
+    },
+    "b": {
+     "files": {
+      "capsule": {
+       "bytes": 27906,
+       "file": "keep/b/capsule.capsule",
+       "sha256": "506efc4a150467ff1702a371f32321a00624758edad0a4b7a123b266c03692da"
+      },
+      "currents": {
+       "bytes": 17180,
+       "file": "keep/b/currents.json",
+       "sha256": "50488dc51c7822b14a0dc3d361fe7b71cc2d60d9e17510bd5ccdcb068ee25953"
+      },
+      "digests": {
+       "bytes": 53256,
+       "file": "keep/b/digests.json",
+       "sha256": "380340b7b4b1f06ae8d345ce91eca8ac76af004b612fc2bda4b71ac7e704937a"
+      },
+      "planes": {
+       "bytes": 403328,
+       "file": "keep/b/planes.npy",
+       "sha256": "7b0b9c9559a15d3746782c515f1a077f08ac2e67610a6e9a9e63a644a2503362"
+      }
+     },
+     "tier_a": {
+      "digests": 360,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 270,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "placed": true,
+       "planes_differing": [
+        81
+       ],
+       "step": 20,
+       "word": 16300,
+       "word_plane": 81
+      },
+      "reader_equal": 360,
+      "seconds": 0.994,
+      "stored_equal": 360
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 9
+      },
+      "fpu_checks": 30,
+      "ghost": {},
+      "n_steps": 200,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "digest_caught": true,
+       "plane": 81,
+       "planes_differing": [
+        81
+       ],
+       "step": 20,
+       "word": 16300,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 14400000
+      },
+      "reads": {
+       "held_aliased": 400,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 71940,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 0,
+       "held_unconnected": 400,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 7200000
+      },
+      "seconds": 29.354,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       40,
+       60,
+       80,
+       100,
+       120,
+       140,
+       160,
+       180,
+       200
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 14400000
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": false,
+       "float32_flush_to_zero": false,
+       "float64_denormals_are_zero": false,
+       "float64_flush_to_zero": false,
+       "mode": "keep"
+      }
+     }
+    },
+    "c": {
+     "files": {
+      "capsule": {
+       "bytes": 23639,
+       "file": "keep/c/capsule.capsule",
+       "sha256": "33db97c65550b35d9e48b897b63751d15487adbe1bc798976da265e85ab80b27"
+      },
+      "currents": {
+       "bytes": 31868,
+       "file": "keep/c/currents.json",
+       "sha256": "4cd989d37a7d9cce4c5305a67e60bc2ad19a2778fcd5160a47d9f2aad7dd1d70"
+      },
+      "digests": {
+       "bytes": 55025,
+       "file": "keep/c/digests.json",
+       "sha256": "2e116e067186e33ed9d9586574437f292a67fb00775456ac03460a16f0644d33"
+      },
+      "planes": {
+       "bytes": 78752,
+       "file": "keep/c/planes.npy",
+       "sha256": "0bc2cf3cf5a54213f8cf0cab604651a641d1051675dbc448c20fe81f93969ec7"
+      }
+     },
+     "tier_a": {
+      "digests": 372,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 307,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Hx",
+       "placed": true,
+       "planes_differing": [
+        1
+       ],
+       "step": 20,
+       "word": 342,
+       "word_plane": 1
+      },
+      "reader_equal": 372,
+      "seconds": 1.13,
+      "stored_equal": 372
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 12
+      },
+      "fpu_checks": 31,
+      "ghost": {
+       "sign_of_zero_only": 33559,
+       "value_differing": 0,
+       "word_differing": 33559,
+       "words": 265980
+      },
+      "n_steps": 375,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Hx",
+       "digest_caught": true,
+       "plane": 1,
+       "planes_differing": [
+        1
+       ],
+       "step": 20,
+       "word": 342,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 16756740
+      },
+      "reads": {
+       "held_aliased": 342,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 61318,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 6985,
+       "held_unconnected": 342,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 0
+      },
+      "seconds": 12.563,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       38,
+       75,
+       113,
+       150,
+       188,
+       225,
+       263,
+       300,
+       338,
+       375
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 4695756
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": false,
+       "float32_flush_to_zero": false,
+       "float64_denormals_are_zero": false,
+       "float64_flush_to_zero": false,
+       "mode": "keep"
+      }
+     }
+    },
+    "c_prime": {
+     "files": {
+      "capsule": {
+       "bytes": 23619,
+       "file": "keep/c_prime/capsule.capsule",
+       "sha256": "d664a0da97b10ebc2ac71e25dc4cc88bb3680fd31d2eb6fd848c0f31587250b2"
+      },
+      "currents": {
+       "bytes": 17168,
+       "file": "keep/c_prime/currents.json",
+       "sha256": "b0dc1f1a93e03bd69f1f74c611504d4a58e1e50bb695ae769f2ecc824fbe8a28"
+      },
+      "digests": {
+       "bytes": 53280,
+       "file": "keep/c_prime/digests.json",
+       "sha256": "ee08c00ff5e30a3ac267855f5c6dd520d3a6db299b5a118c176e9e8d887d986b"
+      },
+      "planes": {
+       "bytes": 78752,
+       "file": "keep/c_prime/planes.npy",
+       "sha256": "ab274b096db9906fd5bcf9bc78488746d160c65e418aaa922c14778bd2305d3d"
+      }
+     },
+     "tier_a": {
+      "digests": 360,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 307,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Hx",
+       "placed": true,
+       "planes_differing": [
+        1
+       ],
+       "step": 20,
+       "word": 342,
+       "word_plane": 1
+      },
+      "reader_equal": 360,
+      "seconds": 0.979,
+      "stored_equal": 360
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 12
+      },
+      "fpu_checks": 30,
+      "ghost": {
+       "sign_of_zero_only": 33503,
+       "value_differing": 0,
+       "word_differing": 33503,
+       "words": 257400
+      },
+      "n_steps": 200,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Hx",
+       "digest_caught": true,
+       "plane": 1,
+       "planes_differing": [
+        1
+       ],
+       "step": 20,
+       "word": 342,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 16216200
+      },
+      "reads": {
+       "held_aliased": 342,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 59340,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 6985,
+       "held_unconnected": 342,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 0
+      },
+      "seconds": 12.013,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       40,
+       60,
+       80,
+       100,
+       120,
+       140,
+       160,
+       180,
+       200
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 4544280
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": false,
+       "float32_flush_to_zero": false,
+       "float64_denormals_are_zero": false,
+       "float64_flush_to_zero": false,
+       "mode": "keep"
+      }
+     }
+    },
+    "ex.absorber-1d": {
+     "files": {
+      "capsule": {
+       "bytes": 28415,
+       "file": "keep/ex.absorber-1d/capsule.capsule",
+       "sha256": "6cb3c91ca2a57503ceda3e2b18cac29b834ee198f66cf1ebd09fd572e3b79a97"
+      },
+      "currents": {
+       "bytes": 336381,
+       "file": "keep/ex.absorber-1d/currents.json",
+       "sha256": "d7e2692d03b14af949296db146d4f135416260d91783aa959779919fc7fec002"
+      },
+      "digests": {
+       "bytes": 55022,
+       "file": "keep/ex.absorber-1d/digests.json",
+       "sha256": "4bf0e4da654f8cb90ee8650e8dd1cc01db0b3dd8e4a3ecc6950e05ca56746cae"
+      },
+      "planes": {
+       "bytes": 2144,
+       "file": "keep/ex.absorber-1d/planes.npy",
+       "sha256": "f9a8d55b596e7eadb46755fb5ed1839fd139f67dd24ddba52e8170ff4e89e344"
+      }
+     },
+     "tier_a": {
+      "digests": 372,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 249,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ex",
+       "placed": true,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 181,
+       "word_plane": 0
+      },
+      "reader_equal": 372,
+      "seconds": 0.873,
+      "stored_equal": 372
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 1
+      },
+      "fpu_checks": 31,
+      "ghost": {},
+      "n_steps": 4000,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ex",
+       "digest_caught": true,
+       "plane": 0,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 181,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 148800
+      },
+      "reads": {
+       "held_aliased": 0,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 186,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 0,
+       "held_unconnected": 0,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 99200
+      },
+      "seconds": 1.927,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       400,
+       800,
+       1200,
+       1600,
+       2000,
+       2400,
+       2800,
+       3200,
+       3600,
+       4000
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 148800
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": false,
+       "float32_flush_to_zero": false,
+       "float64_denormals_are_zero": false,
+       "float64_flush_to_zero": false,
+       "mode": "keep"
+      }
+     }
+    },
+    "ex.material-dispersion": {
+     "files": {
+      "capsule": {
+       "bytes": 10637,
+       "file": "keep/ex.material-dispersion/capsule.capsule",
+       "sha256": "b508e009c480e33c3ee61670b98c37617245fd0966d63319b07cf36b7f580852"
+      },
+      "currents": {
+       "bytes": 17180,
+       "file": "keep/ex.material-dispersion/currents.json",
+       "sha256": "6c273818503d337480c20dc9ad62b73a34cfe7d0abb03a79e709ed21acf9ce7c"
+      },
+      "digests": {
+       "bytes": 53222,
+       "file": "keep/ex.material-dispersion/digests.json",
+       "sha256": "93e91278e894c30c0a898676656b8d91de4f820d487a08d425ab214de5143f75"
+      },
+      "planes": {
+       "bytes": 2144,
+       "file": "keep/ex.material-dispersion/planes.npy",
+       "sha256": "741033dfa31f3f9e85cca86d52f470c8b10d81460ef0ba5b6e7632db94f392c9"
+      }
+     },
+     "tier_a": {
+      "digests": 360,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 197,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "placed": true,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 0,
+       "word_plane": 0
+      },
+      "reader_equal": 360,
+      "seconds": 0.181,
+      "stored_equal": 360
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 1
+      },
+      "fpu_checks": 30,
+      "ghost": {},
+      "n_steps": 200,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "digest_caught": true,
+       "plane": 0,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 0,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 360
+      },
+      "reads": {
+       "held_aliased": 60,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 300,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 0,
+       "held_unconnected": 0,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 180
+      },
+      "seconds": 0.971,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       40,
+       60,
+       80,
+       100,
+       120,
+       140,
+       160,
+       180,
+       200
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 360
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": false,
+       "float32_flush_to_zero": false,
+       "float64_denormals_are_zero": false,
+       "float64_flush_to_zero": false,
+       "mode": "keep"
+      }
+     }
+    },
+    "t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx": {
+     "files": {
+      "capsule": {
+       "bytes": 22951,
+       "file": "keep/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/capsule.capsule",
+       "sha256": "5bfb399f1d8854155f9d84adcfac1dff8ca5fc8d42e34f766fad9164f25fdb05"
+      },
+      "currents": {
+       "bytes": 17168,
+       "file": "keep/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/currents.json",
+       "sha256": "49a46cad074b0dbcf4bbc65997802bda0c472184018e090e58e264c383f02690"
+      },
+      "digests": {
+       "bytes": 53309,
+       "file": "keep/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/digests.json",
+       "sha256": "36d082814ddc4653d728579b8c80e0bbcd31a4fb5808c1b9453b6527b251fb57"
+      },
+      "planes": {
+       "bytes": 40448,
+       "file": "keep/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/planes.npy",
+       "sha256": "101f7ce23e3515d216700e8c7bc0a52076d9c332d1ed673f06cf2b92c6d6ec5d"
+      }
+     },
+     "tier_a": {
+      "digests": 360,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 222,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ey",
+       "placed": true,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 0,
+       "word_plane": 0
+      },
+      "reader_equal": 360,
+      "seconds": 0.416,
+      "stored_equal": 360
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 2
+      },
+      "fpu_checks": 30,
+      "ghost": {
+       "sign_of_zero_only": 2618,
+       "value_differing": 0,
+       "word_differing": 2618,
+       "words": 14400
+      },
+      "n_steps": 200,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ey",
+       "digest_caught": true,
+       "plane": 0,
+       "planes_differing": [
+        0
+       ],
+       "step": 20,
+       "word": 0,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 3628800
+      },
+      "reads": {
+       "held_aliased": 0,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 0,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 2618,
+       "held_unconnected": 0,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 439200
+      },
+      "seconds": 2.789,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       40,
+       60,
+       80,
+       100,
+       120,
+       140,
+       160,
+       180,
+       200
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 1742400
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": false,
+       "float32_flush_to_zero": false,
+       "float64_denormals_are_zero": false,
+       "float64_flush_to_zero": false,
+       "mode": "keep"
+      }
+     }
+    },
+    "t.test_ring_cyl.TestRingCyl.test_ring_cyl": {
+     "files": {
+      "capsule": {
+       "bytes": 17758,
+       "file": "keep/t.test_ring_cyl.TestRingCyl.test_ring_cyl/capsule.capsule",
+       "sha256": "19dfb8b00d9ab6d086c3b9d4ef2a7198f74f23e79d03804b6e0907f4427d2d4c"
+      },
+      "currents": {
+       "bytes": 84381,
+       "file": "keep/t.test_ring_cyl.TestRingCyl.test_ring_cyl/currents.json",
+       "sha256": "6356f4bf61ebb06bb459b7b29958a5bc26dbb214205e448eead2c488509c39e9"
+      },
+      "digests": {
+       "bytes": 55017,
+       "file": "keep/t.test_ring_cyl.TestRingCyl.test_ring_cyl/digests.json",
+       "sha256": "e2f1159355572aa3d49fe2af4f176c4601caf1164f65777a1e2612038ce8af20"
+      },
+      "planes": {
+       "bytes": 161408,
+       "file": "keep/t.test_ring_cyl.TestRingCyl.test_ring_cyl/planes.npy",
+       "sha256": "8440ff35cb0e90a8a5d30512aff4023ade9582c17a2e28a0ecd6fb4fb4c01c24"
+      }
+     },
+     "tier_a": {
+      "digests": 372,
+      "load_report": {
+       "arrays_pasted": 0,
+       "arrays_rebuilt_differently": 0,
+       "arrays_rebuilt_differently_paths": [],
+       "scalars_compared": 207,
+       "scalars_rebuilt_differently": 0,
+       "scalars_rebuilt_differently_paths": []
+      },
+      "meep_imported": false,
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "placed": true,
+       "planes_differing": [
+        3
+       ],
+       "step": 20,
+       "word": 6,
+       "word_plane": 3
+      },
+      "reader_equal": 372,
+      "seconds": 0.617,
+      "stored_equal": 372
+     },
+     "tier_c": {
+      "chunk_division": {
+       "chunks": 2
+      },
+      "fpu_checks": 31,
+      "ghost": {},
+      "n_steps": 1000,
+      "omp_num_threads": "1",
+      "planted_flip": {
+       "caught": true,
+       "component": "Ez",
+       "digest_caught": true,
+       "plane": 3,
+       "planes_differing": [
+        3
+       ],
+       "step": 20,
+       "word": 6,
+       "words_differing": 1
+      },
+      "reader": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 59520
+      },
+      "reads": {
+       "held_aliased": 2480,
+       "held_aliased_complex": 0,
+       "held_aliased_substituted": 0,
+       "held_aliased_unexplained": 0,
+       "held_compared": 14880,
+       "held_copies_differing": 0,
+       "held_point_read_differing": 0,
+       "held_unconnected": 0,
+       "held_unconnected_substituted": 0,
+       "held_unconnected_unexplained": 0,
+       "imaginary": 0,
+       "inexact": 0,
+       "not_stored_compared": 0,
+       "not_stored_ghost": 0,
+       "point_read_differing": 0,
+       "unallocated": 0
+      },
+      "seconds": 1.348,
+      "smoke_record": {
+       "equal": 0,
+       "lattice_equal": null,
+       "of": 0,
+       "record": "meep_identity_smoke.json",
+       "steps": []
+      },
+      "steps": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       100,
+       200,
+       300,
+       400,
+       500,
+       600,
+       700,
+       800,
+       900,
+       1000
+      ],
+      "stored": {
+       "sign_of_zero_only": 0,
+       "value_differing": 0,
+       "word_differing": 0,
+       "words": 59520
+      },
+      "subnormals": {
+       "float32_denormals_are_zero": false,
+       "float32_flush_to_zero": false,
+       "float64_denormals_are_zero": false,
+       "float64_flush_to_zero": false,
+       "mode": "keep"
+      }
+     }
+    }
+   },
+   "minted": {
+    "host": {
+     "machine": "arm64",
+     "numpy": "2.4.3",
+     "python": "3.12.13",
+     "system": "Darwin"
+    },
+    "inputs_sha256": {
+     "meep_gpu/array_path_oracle.py": "e99a0a3feb81bca2a7b6af18c5bbe47808abe62ec868baacd29b9ffcae99b4db",
+     "meep_gpu/capsule.py": "74b473e6870bc1f784b4e5a5607a3bc12129b0153da76812a4281556d2656fce",
+     "meep_gpu/chunk_map.py": "bcf2e803008010dfcebf377cc073add9c33a978068be610ed32a70ace918a3c4",
+     "meep_gpu/deposit_repair.py": "3b3a2665874148ebb1fdc4d9cbbc7b7788953610e67fe3bcaeb22b73596c4cc7",
+     "meep_gpu/dispersion.py": "5dab447734013e50800211ebcc7aec5f2c18ba4ab9e76c67a06dcbd0260b8974",
+     "meep_gpu/driver.py": "dfdc15423274ddd589b11fd79d5814635fdee9fab71c919a4f013a256742f1d1",
+     "meep_gpu/fields.py": "99cfb1ea66edf4d1436e9939ce950386818893fb943cedeede822c216900f370",
+     "meep_gpu/from_meep.py": "e6dd7a8a436e457e58a7969a5d648384cf80f711a99425978b9555f68aa96125",
+     "meep_gpu/grid.py": "ea68d46d6c28b0ced6a75a4af9cc002acc5286a19d619a09e352294046ec6524",
+     "meep_gpu/host_writes.py": "c4fa862d518789231649d95bc75716625eafc3e896962257953bc26475f986ea",
+     "meep_gpu/meep_identity.py": "1c095319e4f2a38db9897c7932877bfe286eb4121de4de77c8a4d4ab68ab9efa",
+     "meep_gpu/part_products.py": "23cc6a36f1ba534ed59dce34d413a010ec5015e1a7c8569b20112933759b16b9",
+     "meep_gpu/pml.py": "d76f91fc967fe549badf2f42acf91d5a944a8ac21c4cea6bedfe1bea46c516fb",
+     "meep_gpu/sources.py": "2451b01223a39df67a0d3fbc5c3a9bf5cdf87a813bc5bdc1178244f523e42db1",
+     "meep_gpu/stepping.py": "913c337fd818ec5b7fabba6837146d57ebe8f077cf765f5760e857e166039c57",
+     "meep_gpu/withdraw_hoist.py": "8bee15197ead66de7e5c8b2adbf19884c1943b16b3fa3d069fcaf3bee3e20b89",
+     "parity/meep_gpu/meep_identity_smoke.json": "400d822fec6eadb6a2e0b041eb0ec535bf33ce3309496339bbec2c3cb2f3a9b8",
+     "parity/meep_gpu/meep_identity_smoke.py": "2b8c2dfab8486cbb61723e8041e54134985e05fdbb58e60e0505b24d87e66cdc",
+     "parity/meep_gpu/meep_identity_tier_c.py": "68bdd443b1135903f9467e90158c18af60f11619ccdd5a4a40be5d3fbc1d5dfa",
+     "parity/meep_gpu/record_meep_identity.py": "766f72ccddb02fa0610d14a29e480228869e52aa0c2ce87fa7c9ba5c15cf2436"
+    },
+    "seconds": 174.3,
+    "tool": "parity/meep_gpu/record_meep_identity.py",
+    "tool_sha256": "766f72ccddb02fa0610d14a29e480228869e52aa0c2ce87fa7c9ba5c15cf2436",
+    "utc": "2026-10-15T05:19:26Z"
+   },
+   "mode": "keep",
+   "provenance_code_sha256": {
+    "meep_gpu/chunk_map.py": "f0d36fdd46573db9dfd6e958aafa17cdcf5cb8f131f0b0f7b4a537b8472e9d6b",
+    "meep_gpu/deposit_repair.py": "c165c1c870013c3a329c32b46aded84463918f60e3db96c31661e0819e013a99",
+    "meep_gpu/dispersion.py": "7e59617c4d1a408ccd6f0e4ba3c963ba1424f00e2b5468b8e79f1c794460043d",
+    "meep_gpu/driver.py": "0d7fb07728ad7f67dd341d67ed4f37ef54ffdddf67f9646c521b2effdffd2e09",
+    "meep_gpu/fields.py": "d6c9113bb8dbccb0c8dc422dc2f8b979896c22da1a2d5dff0d553fc11e6efc44",
+    "meep_gpu/from_meep.py": "8472c5daa7768ef74996bd6937f77b2484d6c421e43bedc7df31f32d081da5e5",
+    "meep_gpu/grid.py": "80a5929036e19bfa6dd86e8cc8a0d8f8344eb804f6fd083c605050516655e8c7",
+    "meep_gpu/host_writes.py": "20db60eff5f1e610aecd80d7359a96021713b62938a14e6640a8f437c6cff0f5",
+    "meep_gpu/part_products.py": "f22eeb2f33924a389619071d4495b1006b1434f6a95de0146e521f433c66e348",
+    "meep_gpu/pml.py": "07bcc739ae6ffb150977f9cd62855900da2dedb6d9e1a1fbb4e62d7e60c8d200",
+    "meep_gpu/sources.py": "bd775d3f096d2784e26e88a86beef8a768a5f62a4ed3d89e15a6511f8b550c07",
+    "meep_gpu/stepping.py": "b9b1cd42682f41bea991cf275623da854ae8b2cafd3bccad6e8f483f930a3e93",
+    "meep_gpu/withdraw_hoist.py": "6c0033f42b8d913fad685d696a42d65be63ba0cb64f925ab4f7076951a9b1f03"
+   },
+   "reference": {
+    "build_record": {
+     "census": "no fused multiply-add instruction outside the compiler-rt division builtins in 2 of 2 image(s) (18 inside them, exempt)",
+     "file": "build_record.json",
+     "fp_contract": "off",
+     "sha256": "7ddd1ec54c44c8b06e4c4e81e31edff9c64021fad13d5f39b135ca3634cbe6e8"
+    },
+    "images": {
+     "_meep.37.so": "44ca8721afab0b25e63cb6c4efe92651b6b9837bf012be5fc336961ff042320c",
+     "libmeep.37.dylib": "88240050de1650ba215bea96c35f4a35b61fd3653150c00a4114cb6b69bc4541"
+    },
+    "libm": {
+     "kind": "libsystem_m",
+     "macos": "26.2",
+     "os_build": "25C56",
+     "path": "/usr/lib/system/libsystem_m.dylib",
+     "uuid": "42E15F5C-02B8-3B56-9889-5B59CADD45EB"
+    },
+    "meep": {
+     "mpi": true,
+     "single_precision": true,
+     "version": "1.33.0"
+    },
+    "numpy": "2.4.3",
+    "omp_num_threads": "1",
+    "python": "3.12.13",
+    "smoke": [
+     "MEEP identity smoke: 324 of 324 digests equal over 4 case(s), mode keep: REPRODUCED."
+    ],
+    "subnormals": {
+     "float32_denormals_are_zero": false,
+     "float32_flush_to_zero": false,
+     "float64_denormals_are_zero": false,
+     "float64_flush_to_zero": false,
+     "mode": "keep"
+    },
+    "system": "Darwin arm64",
+    "verdict": null
+   }
+  }
+ },
+ "version": 1
+}

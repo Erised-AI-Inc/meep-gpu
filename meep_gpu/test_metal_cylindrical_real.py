@@ -7,7 +7,7 @@ what is pinned here is chosen by which hazards a byte gate cannot reach:
 
 **1. THE PAIRINGS THAT ARE HALF-CELL ERRORS.** ``ir0`` is 0.0 on the B side and 0.5
 on the D side because Ep sits at the node and Hp half a cell out
-(stepping.py:1297-1299); the wall row is the B side's only. Swapping either is a
+(``stepping.step_B`` / ``step_D``); the wall row is the B side's only. Swapping either is a
 half-cell error in the radial ladder, and it is invisible in every test that runs
 one sub-step. They are pinned as TABLES against ``stepping``'s own call sites.
 
@@ -26,13 +26,14 @@ are asserted to actually refuse the configurations they name.
 worse, at run time: the 31-binding ceiling, the two-launch plan's ORDER, and the
 no-module-level-torch rule that keeps the predicate readable on a host with no GPU.
 
-WHAT IS MEASURED ELSEWHERE, and named so this file is not mistaken for the whole
-claim. ``parity/meep_gpu/probe_metal_cylindrical_real.py`` carries the five
-measurements this family was built on — Metal's ``/`` against NumPy's divide, the
-column-serial scan against ``stepping.cylindrical_rderiv_prefix``, the negation
-spellings, the r-axis near ghost on the array path, and the emitter agreement. The
-device-touching tests here are the smallest non-vacuous version, so a red merge bar
-names the defect without a GPU run; they skip without MPS.
+**5. THE PER-CHUNK RADIAL SUM.** MEEP sums ``f_rderiv_int`` in every structure chunk
+(``stepping.cylindrical_rderiv_difference``); the chunk starts the scan binds are the
+array path's own, and the column walk's restart rule is pinned against one, two and
+three r chunks on both sides.
+
+The device-touching tests here are the smallest non-vacuous version, so a red merge bar
+names the defect without a GPU run; they skip without MPS. The gate
+(``parity/meep_gpu/gate_metal_cylindrical_real.py``) carries the case matrix.
 """
 
 from __future__ import annotations
@@ -68,7 +69,12 @@ def _has_mps() -> bool:
 requires_mps = pytest.mark.skipif(not _has_mps(), reason="no MPS device")
 
 
-def _engine(shape=(20, 1, 40), courant=0.3141592653589793, m=0,
+#: A float32 word that is not a power of two: the D side's on-axis product with Courant
+#: is MEEP's double product, which this backend forms in float32 only for such a word.
+COURANT = float(np.float32(0.3141592653589793))
+
+
+def _engine(shape=(20, 1, 40), courant=COURANT, m=0,
             z_kind="metallic", complex_storage=False):
     """A real Dcyl ``Grid``/``Fields``/``PML`` — the same shape the probe builds."""
     from meep_gpu.fields import Fields
@@ -133,53 +139,57 @@ def test_only_the_b_side_carries_the_zero_wall_row():
 
 
 def test_the_row_vectors_come_from_steppings_own_builder():
-    """``prefix_row_vectors`` must not re-derive the ladder in float32.
+    """``prefix_row_vectors`` is ``stepping._cylindrical_rderiv_rows``, word for word.
 
-    ``stepping._cylindrical_rderiv_weights`` builds both vectors in FLOAT64 and
-    rounds to float32 exactly once (stepping.py:1339-1341). Recomputing the divisor
-    as ``float32(i + ir0) - 0.5f`` would round twice and is a half-ulp error along
-    the whole radial ladder — invisible in any tolerance and visible in every word.
+    ``weights[g] = realnum(g + ir0)`` and ``rinv[g-1] = realnum(1.0 / ((g + ir0) -
+    0.5))``: the quotient in double, rounded once, as MEEP stores it.
     """
     for sub_step in SUB_STEPS:
         rows = cyl.scan_rows(sub_step, 17)
-        weights, divisor = cyl.prefix_row_vectors(sub_step, 17)
-        expected_w, expected_d = stepping._cylindrical_rderiv_weights(
+        weights, rinv = cyl.prefix_row_vectors(sub_step, 17)
+        expected_w, expected_r = stepping._cylindrical_rderiv_rows(
             np, rows, cyl.PREFIX_IR0[sub_step], np.float32)
-        assert weights.shape == (rows,) and divisor.shape == (rows - 1,)
+        assert weights.shape == (rows,) and rinv.shape == (rows - 1,)
         assert np.array_equal(weights.view(np.uint32),
                               expected_w.reshape(-1).view(np.uint32))
-        assert np.array_equal(divisor.view(np.uint32),
-                              expected_d.reshape(-1).view(np.uint32))
-
-    # THE DOUBLE ROUNDING THIS GUARDS AGAINST, exhibited rather than described: a
-    # divisor formed as float32(i + ir0) - 0.5f instead of float32((i + ir0) - 0.5)
-    # rounds twice. At ir0 = 0.0 and 0.5 the ladder values happen to be exactly
-    # representable and the two orders agree, so this loop searches for an ir0 where
-    # they do NOT — which is what makes the pin above load-bearing rather than a
-    # restatement of a coincidence.
-    disagreeing = []
-    for ir0 in (0.1, 0.3, 1.0 / 3.0, 0.7):
-        counts = np.arange(64, dtype=np.float64) + ir0
-        twice = (counts.astype(np.float32)[1:] - np.float32(0.5)).astype(np.float32)
-        once = (counts[1:] - 0.5).astype(np.float32)
-        if not np.array_equal(twice.view(np.uint32), once.view(np.uint32)):
-            disagreeing.append(ir0)
-    assert disagreeing, (
-        "no ir0 in the probe set separates the two rounding orders, so this test "
-        "cannot demonstrate the defect it names")
+        assert np.array_equal(rinv.view(np.uint32),
+                              expected_r.reshape(-1).view(np.uint32))
 
 
-def test_the_axis_coefficient_is_host_rounded_from_the_array_paths_expression():
-    """``4.0 * (dt/dx)`` in float64, rounded ONCE — stepping.py:586.
+def test_the_axis_coefficient_is_the_float32_word_of_four_courant():
+    """MEEP's on-axis ``g[i] * (Courant * 4)`` is a double product rounded once.
 
-    The kernel binds this scalar rather than forming ``4.0f * dtdx`` itself. Scaling
-    by four is exact so the two agree, and this test PINS that they agree rather
-    than leaving the transcription resting on the coincidence.
+    For a float32-word Courant the kernel's float32 product with ``4 * Courant`` is that
+    word on every operand (two float32 operands multiply exactly in double); for any
+    other Courant it is not, which is why the D-side predicate refuses one.
     """
-    for dtdx in (0.3141592653589793, 0.5, 0.37, 0.6, 1.0 / 3.0):
-        host = np.float32(4.0 * dtdx)
-        in_kernel = np.float32(4.0) * np.float32(dtdx)
-        assert host.view(np.uint32) == in_kernel.view(np.uint32)
+    rng = np.random.default_rng(7)
+    hp = rng.uniform(-1.0, 1.0, 20000).astype(np.float32)
+    for courant in (COURANT, 0.5, 0.375, 0.25):
+        assert float(np.float32(courant)) == courant
+        factor = cyl.axis_coefficient(courant)
+        assert factor == 4.0 * courant
+        double = (hp.astype(np.float64) * factor).astype(np.float32)
+        single = np.float32(factor) * hp
+        assert np.array_equal(double.view(np.uint32), single.view(np.uint32))
+    courant = 0.3
+    factor = cyl.axis_coefficient(courant)
+    double = (hp.astype(np.float64) * factor).astype(np.float32)
+    single = np.float32(factor) * hp
+    assert np.count_nonzero(double.view(np.uint32) != single.view(np.uint32)) > 0, (
+        "no operand separates the double product from the float32 one at Courant 0.3, "
+        "so the refusal below would guard nothing")
+
+
+def test_the_d_side_refuses_a_courant_that_is_not_a_float32_word():
+    """Courant 0.3 is refused on step_D by name and admitted on step_B (no product)."""
+    grid, fields, pml = _engine(courant=0.3)
+    d_reasons = _reasons(fields, pml, "step_D")
+    assert any("is not a float32 word" in r for r in d_reasons), d_reasons
+    b_reasons = _reasons(fields, pml, "step_B")
+    assert not any("float32 word" in r for r in b_reasons), b_reasons
+    grid, fields, pml = _engine()
+    assert not any("float32 word" in r for r in _reasons(fields, pml, "step_D"))
 
 
 # ---------------------------------------------------------------------------
@@ -369,15 +379,17 @@ def test_the_curl_kernel_fits_under_the_buffer_ceiling():
     indices = [int(part.split(")")[0]) for part in source.split("[[buffer(")[1:]]
     assert indices == sorted(indices), "the binding indices are out of order"
     assert indices == list(range(len(indices))), "a binding index is skipped"
-    assert len(indices) == 22, len(indices)
+    assert len(indices) == 23, len(indices)
     assert max(indices) < MAX_BUFFER_BINDINGS
+    assert f"constant ChunkBounds& cb [[buffer({cyl.CURL_RECORD_BUFFER})]]" in source
 
 
-def test_the_scan_kernel_binds_its_two_row_vectors_and_nothing_else():
-    source = cyl.cylindrical_prefix_source("step_B")
-    indices = [int(part.split(")")[0]) for part in source.split("[[buffer(")[1:]]
-    assert indices == list(range(8)), indices
-    assert "weights[" in source and "divisor[" in source
+def test_the_scan_kernel_binds_its_row_vectors_and_the_chunk_starts():
+    for sub_step in SUB_STEPS:
+        source = cyl.scan_source(sub_step)
+        indices = [int(part.split(")")[0]) for part in source.split("[[buffer(")[1:]]
+        assert indices == list(range(9)), indices
+        assert "weights[" in source and "rinv[" in source and "starts[" in source
 
 
 def test_the_contraction_directive_is_present_in_both_kernels_and_spelled_once():
@@ -406,22 +418,23 @@ def _code_lines(source: str) -> str:
     return "\n".join(kept)
 
 
-def test_the_divide_is_the_ieee_one_and_never_fast_divide():
-    """``fast::divide`` was MEASURED to miss 625 of the 2,046 words of the divisor
-    ladder this kernel walks, so its absence is a pinned property, not a style rule.
+def test_the_scan_multiplies_rinv_and_never_divides():
+    """MEEP stores ``rinv`` and MULTIPLIES by it; a divide is another float32 word.
+
+    The only ``/`` left is the integer index decode of the column.
     """
-    for source in cyl.enumerate_cylindrical_real_sources().values():
-        code = _code_lines(source)
-        assert "fast::" not in code
-        assert "1.0f / divisor" not in code, (
-            "x * (1/y) is a different float32 number from x / y")
+    for sub_step in SUB_STEPS:
+        code = _code_lines(cyl.scan_source(sub_step))
+        divides = [line for line in code.splitlines() if "/" in line]
+        assert divides == ["    int j = int(idx) / nzi;"], divides
+        assert "fast::" not in code and "rinv[" in code
 
 
 def test_no_unary_minus_and_no_refuted_negation_spelling():
     """``0.0f - x`` was MEASURED to miss 257/8,462 words on this backend.
 
-    The kernels negate nothing, so the strongest pin is that the refuted spelling
-    does not appear in the code at all.
+    The one negation is the certified curl's ``(-dtdx)``, a sign flip; the refuted
+    spellings do not appear in the code at all.
     """
     for source in cyl.enumerate_cylindrical_real_sources().values():
         code = _code_lines(source)
@@ -453,31 +466,45 @@ def test_the_enumerated_sources_are_the_reachable_ones_only():
     """
     labels = sorted(cyl.enumerate_cylindrical_real_sources())
     assert len(labels) == 10, labels
-    assert sum(label.startswith("cyl_rderiv_prefix/") for label in labels) == 2
+    assert sum(label.startswith("cyl_rderiv_difference/") for label in labels) == 2
     curls = [label for label in labels if label.startswith("cyl_pml_curl_step/")]
     assert len(curls) == 8
     assert all(label.rsplit("/", 1)[1][0] == str(shaders.METALLIC)
                for label in curls), curls
 
 
-def test_the_bz_substitution_is_one_multiply_and_one_subtract():
-    """stepping.py:375 — NOT the four-operand grouping, which is a different number.
+def test_the_target_2_curl_is_one_product_of_the_radial_difference_on_both_sides():
+    """``part_products.scale(dtdx, radial)``: Bz and Dz differentiate the per-chunk sum.
 
-    Pinned as source text because the two spellings agree at every power-of-two
-    Courant number: the mutation that distributes ``dtdx`` over the difference was
-    MEASURED uncaught at Courant 0.5 and caught (4,390 words) at 0.3141592653589793.
-    A byte gate can hold this only if its case matrix carries a non-power-of-two
-    Courant, so the source text is pinned here as well.
+    The phi partner is the derivative MEEP drops (its i*m/r part is a pass of its own),
+    so neither side keeps the certified four-operand stencil on target 2.
     """
-    source = cyl.cylindrical_curl_source("step_B", CODES)
-    assert "float curl2 = dtdx * (pfx_up - pfx_here);" in source
-    assert "(dtdx * pfx_up)" not in source
+    for sub_step in SUB_STEPS:
+        source = cyl.cylindrical_curl_source(sub_step, CODES)
+        assert source.count(cyl.CYLINDRICAL_CURL2) == 1
+        assert "float curl2 = has_x" not in source
 
-    d_source = cyl.cylindrical_curl_source("step_D", CODES)
-    # The D side keeps the four-operand grouping and swaps only the OPERAND.
-    assert "float curl2 = dtdx * ((pb_x - pb) + (a - a_y));" in d_source
-    # Dx keeps the RAW Hp: stepping.py:454-455 substitutes for the Dz term only.
-    assert "float curl0 = dtdx * ((c_y - c) + (b - b_z));" in d_source
+
+def test_the_curl_is_the_certified_curl_with_exactly_four_edits():
+    """Undo the four declared edits and the certified ``shaders.curl_source`` remains.
+
+    Targets 0 and 1 (MEEP's left-to-right bracket with the phi partner absent), the
+    bounds block, the ghost rule, the ownership mask and the per-chunk forms are
+    therefore the certified text, byte for byte.
+    """
+    for sub_step, backward in (("step_B", False), ("step_D", True)):
+        for codes in ((shaders.METALLIC, shaders.PERIODIC, shaders.METALLIC),
+                      (shaders.METALLIC, shaders.PERIODIC, shaders.PERIODIC)):
+            source = cyl.cylindrical_curl_source(sub_step, codes)
+            undone = source.replace("kernel void cyl_pml_curl_step(",
+                                    "kernel void pml_curl_step(")
+            undone = undone.replace(cyl._CURL_EXTRA_BINDINGS, "")
+            undone = undone.replace(
+                f"constant ChunkBounds& cb [[buffer({cyl.CURL_RECORD_BUFFER})]]",
+                f"constant ChunkBounds& cb [[buffer({shaders.CURL_RECORD_BUFFER})]]")
+            undone = undone.replace(cyl.CYLINDRICAL_CURL2, cyl._CERTIFIED_CURL2)
+            undone = undone.replace(cyl._AXIS_TAILS[sub_step] + "\n", "")
+            assert undone == shaders.curl_source(codes, backward), sub_step
 
 
 def test_the_axis_rules_are_on_the_right_side_and_in_the_array_paths_order():
@@ -506,86 +533,223 @@ def test_the_axis_rules_are_on_the_right_side_and_in_the_array_paths_order():
 
 
 # ---------------------------------------------------------------------------
-# 5. The plan — two launches, and their ORDER
+# 5. The per-chunk radial sum: the chunk starts and the column walk
+# ---------------------------------------------------------------------------
+
+def _record(grid, pml):
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    return chunk_bounds_record(ChunkLayout.one_rank(grid, pml))
+
+
+def _split_r(layout, cut):
+    """The division with every chunk that straddles doubled r ``cut`` cut there."""
+    from meep_gpu.chunk_map import ChunkLayout
+
+    boxes, flags = [], []
+    for (lo, hi), flag in zip(layout.boxes, layout.pml_flags):
+        if lo[0] < cut < hi[0]:
+            boxes += [(lo, (cut,) + tuple(hi[1:])), ((cut,) + tuple(lo[1:]), hi)]
+            flags += [flag, flag]
+        else:
+            boxes.append((lo, hi))
+            flags.append(flag)
+    return ChunkLayout(boxes, flags, layout.frames, layout.faces)
+
+
+def _divisions(grid, pml):
+    """One, two and three r chunks: no layer, the high-r layer, and a cut below it."""
+    from meep_gpu.chunk_map import ChunkLayout
+
+    two = ChunkLayout.one_rank(grid, pml)
+    return {"one": ChunkLayout.one_rank(grid, None), "two": two,
+            "three": _split_r(two, 2 * (grid.shape[0] // 3))}
+
+
+def _starts(fields, pml, layout, sub_step):
+    fields.install_chunk_layout(layout)
+    try:
+        return stepping._cylindrical_scan_starts(fields, pml, cyl.SCAN_TARGETS[sub_step])
+    finally:
+        fields.install_chunk_layout(None)
+
+
+def test_the_chunk_starts_of_one_two_and_three_r_chunks_are_accepted():
+    """The array path's own starts, for every division the walk serves, on both sides."""
+    grid, fields, pml = _engine()
+    rows = grid.shape[0]
+    seen = {}
+    for name, layout in _divisions(grid, pml).items():
+        for sub_step in SUB_STEPS:
+            line = cyl.scan_starts(sub_step, _starts(fields, pml, layout, sub_step), rows)
+            assert line.dtype == np.int32 and line.shape == (rows,)
+            seen[(name, sub_step)] = sorted(set(int(v) for v in line))
+    assert seen[("one", "step_B")] == [0] and seen[("one", "step_D")] == [0]
+    assert len(seen[("two", "step_B")]) == 2 and len(seen[("three", "step_D")]) == 3, seen
+
+
+def test_the_chunk_starts_are_refused_where_the_walk_cannot_restart():
+    """A full volume, a wrong length, a first chunk off the axis, an unreachable change."""
+    rows = 8
+    with pytest.raises(ValueError, match="differ along z"):
+        cyl.scan_starts("step_B", np.zeros((rows, 1, 3), dtype=np.int64), rows)
+    with pytest.raises(ValueError, match="hold 7 rows"):
+        cyl.scan_starts("step_B", np.zeros((7, 1, 1), dtype=np.int64), rows)
+    with pytest.raises(ValueError, match="not at the axis"):
+        cyl.scan_starts("step_B", np.full((rows, 1, 1), 2, dtype=np.int64), rows)
+    forward = np.array([0, 0, 0, 3, 3, 3, 3, 3]).reshape(-1, 1, 1)
+    assert cyl.scan_starts("step_B", forward, rows).tolist() == forward.reshape(-1).tolist()
+    with pytest.raises(ValueError, match="only for a chunk starting at row 2"):
+        cyl.scan_starts("step_D", forward, rows)
+    backward = np.array([0, 0, 0, 0, 3, 3, 3, 3]).reshape(-1, 1, 1)
+    assert cyl.scan_starts("step_D", backward, rows).tolist() == backward.reshape(-1).tolist()
+    with pytest.raises(ValueError, match="only for a chunk starting at row 4"):
+        cyl.scan_starts("step_B", backward, rows)
+
+
+def _column_walk(sub_step, source, starts):
+    """The scan kernel's column loop, transcribed in NumPy float32 (host twin)."""
+    rows = source.shape[0]
+    weights, rinv = cyl.prefix_row_vectors(sub_step, rows)
+    f32 = np.float32
+    out = np.full(source.shape, f32(-7.5), dtype=np.float32)
+    for j in range(source.shape[1]):
+        for k in range(source.shape[2]):
+            col = source[:, j, k]
+            w_prev = col[0] * weights[0]
+            acc = f32(0.0)
+            owner = 0
+            if sub_step == "step_B":
+                for g in range(rows):
+                    if starts[g] != owner:
+                        acc, owner = f32(0.0), starts[g]
+                    w = (col[g + 1] if g + 1 < rows else f32(0.0)) * weights[g + 1]
+                    nxt = acc + rinv[g] * (w - w_prev)
+                    out[g, j, k] = nxt - acc
+                    acc, w_prev = nxt, w
+            else:
+                out[0, j, k] = f32(0.0)
+                for g in range(1, rows):
+                    if starts[g] != owner:
+                        acc, owner = f32(0.0), starts[g]
+                    w = col[g] * weights[g]
+                    nxt = acc + rinv[g - 1] * (w - w_prev)
+                    out[g, j, k] = acc - nxt
+                    acc, w_prev = nxt, w
+    return out
+
+
+def _array_path_difference(sub_step, source, starts):
+    rows = source.shape[0]
+    if sub_step == "step_B":
+        extended = np.zeros((rows + 1,) + source.shape[1:], dtype=source.dtype)
+        extended[:rows] = source
+        return stepping.cylindrical_rderiv_difference(
+            np, extended, 0.0, starts, rows, backward=False)
+    return stepping.cylindrical_rderiv_difference(np, source, 0.5, starts, rows,
+                                                  backward=True)
+
+
+def test_the_column_walk_is_the_array_paths_per_chunk_difference_on_the_host():
+    """The kernel's loop, transcribed, against ``cylindrical_rderiv_difference`` called.
+
+    One, two and three r chunks, both sides, random and signed-zero-rich columns. A
+    one-sum walk over a divided column is the control and must differ.
+    """
+    grid, fields, pml = _engine(shape=(21, 1, 7))
+    rng = np.random.default_rng(31)
+    for sub_step in SUB_STEPS:
+        for name, layout in _divisions(grid, pml).items():
+            starts = _starts(fields, pml, layout, sub_step)
+            line = cyl.scan_starts(sub_step, starts, grid.shape[0])
+            for values in (rng.uniform(-1.0, 1.0, size=grid.shape).astype(np.float32),
+                           np.where(rng.uniform(size=grid.shape) < 0.5, np.float32(-0.0),
+                                    np.float32(0.0)).astype(np.float32)):
+                expected = _array_path_difference(sub_step, values, starts)
+                walked = _column_walk(sub_step, values, line)
+                assert np.array_equal(walked.view(np.uint32), expected.view(np.uint32)), (
+                    sub_step, name)
+                if name != "one":
+                    single = _column_walk(sub_step, values, np.zeros_like(line))
+                    if np.any(values):
+                        assert not np.array_equal(single.view(np.uint32),
+                                                  expected.view(np.uint32)), (
+                            "a one-sum walk over a divided column must differ")
+
+
+def test_the_backward_difference_row_zero_is_an_exact_positive_zero():
+    """Row 0 of Dz's difference is ``+0`` (the axis; the per-m rules own it)."""
+    rng = np.random.default_rng(4242)
+    for radial in (9, 13, 20):
+        source = rng.uniform(-1.0, 1.0, size=(radial, 1, 12)).astype(np.float32)
+        out = _array_path_difference("step_D", source, None)
+        assert np.all(np.ascontiguousarray(out[0]).view(np.uint32) == 0)
+        assert np.count_nonzero(np.ascontiguousarray(out[1:]).view(np.uint32)) > 0
+
+
+# ---------------------------------------------------------------------------
+# 6. The plan — two launches, and their ORDER
 # ---------------------------------------------------------------------------
 
 @requires_mps
 def test_the_plan_launches_the_scan_then_the_curl_exactly_once_each():
-    """A slot may not pass by NOT EXECUTING, and the order is the contract.
-
-    The curl reads the prefix the scan writes, and the prefix is a function of THIS
-    sub-step's source volume — so a scan hoisted out of the loop feeds the curl the
-    previous timestep's radial derivative, which is a plausible wrong field rather
-    than an error.
-    """
+    """A slot may not pass by NOT EXECUTING, and the order is the contract."""
     from meep_gpu.metal_kernels.device import Residency
 
     grid, fields, pml = _engine()
     residency = Residency()
     order = []
     for sub_step in ("step_B", "step_D"):
-        plan = cyl.plan_cylindrical_real_curl(fields, pml, sub_step, residency)
+        plan = cyl.plan_cylindrical_real_curl(fields, pml, sub_step, residency,
+                                              chunk_bounds=_record(grid, pml))
         if plan is None:
             pytest.skip("the subnormal policy on this host refuses the family; "
                         "run with MEEP_GPU_SUBNORMAL_POLICY=flush")
-        for name, table in (("scan", plan._prefix_functions),
+        for name, table in (("scan", plan._scan_functions),
                             ("curl", plan._curl_functions)):
             inner = table["off"]
             table["off"] = (lambda *a, _n=name, _f=inner:
                             (order.append(_n), _f(*a))[1])
         residency.sync_in()
         plan.run()
-        assert plan.prefix_launches == 1 and plan.curl_launches == 1
+        assert plan.scan_launches == 1 and plan.curl_launches == 1
         assert plan.launches == 2
     assert order == ["scan", "curl", "scan", "curl"], order
 
 
 @requires_mps
 def test_rebuilding_a_plan_reuses_the_scratch_rather_than_refusing_it():
-    """This family OWNS three volumes, which the earlier families never did.
-
-    Every volume they mirror belongs to the ENGINE, so the builder always has the
-    array in hand and one name always means one array. The radial prefix and its two
-    row vectors are allocated in the BUILDER, so a second build handed ``mirror`` a
-    different array under the same name and it refused — correctly by its own
-    contract and wrongly for this case, since the prefix is fully overwritten by the
-    scan before the curl reads it and the row vectors are grid invariants.
-    """
+    """The radial difference and its two row vectors are plan-owned and shared."""
     from meep_gpu.metal_kernels.device import Residency
 
     grid, fields, pml = _engine()
     residency = Residency()
-    first = cyl.plan_cylindrical_real_curl(fields, pml, "step_B", residency)
+    record = _record(grid, pml)
+    first = cyl.plan_cylindrical_real_curl(fields, pml, "step_B", residency,
+                                           chunk_bounds=record)
     if first is None:
         pytest.skip("the subnormal policy on this host refuses the family")
-    second = cyl.plan_cylindrical_real_curl(fields, pml, "step_B", residency)
+    second = cyl.plan_cylindrical_real_curl(fields, pml, "step_B", residency,
+                                            chunk_bounds=record)
     assert second is not None
-    for name in ("cyl_pfx:step_B", "cyl_weights:step_B", "cyl_divisor:step_B"):
+    for name in ("cyl_radial:step_B", "cyl_weights:step_B", "cyl_rinv:step_B"):
         assert name in residency.names
-    # The SAME device buffer, not two copies: a second allocation would leave the
-    # first plan launching against a prefix the second plan's scan never fills.
-    assert second._prefix_args[0] is first._prefix_args[0]
-    assert second.prefix_host is first.prefix_host
-    assert residency.host("cyl_pfx:step_B") is first.prefix_host
-    # And an unregistered name answers None rather than raising: "not yet" is the
-    # ordinary first-build answer.
-    assert residency.host("cyl_pfx:step_D") is None
+    assert second._scan_args[0] is first._scan_args[0]
+    assert second.radial_host is first.radial_host
+    assert residency.host("cyl_radial:step_B") is first.radial_host
+    assert residency.host("cyl_radial:step_D") is None
 
 
 @requires_mps
 def test_the_plan_variants_are_the_intersection_of_both_kernels():
-    """A variant the plan cannot launch on BOTH kernels must not be reported.
-
-    A plan holding a ``fast`` scan and no ``fast`` curl would report a variant whose
-    guard leg would then measure the shipped curl while believing it had removed the
-    guard.
-    """
+    """A variant the plan cannot launch on BOTH kernels must not be reported."""
     from meep_gpu.metal_kernels.device import Residency
 
     grid, fields, pml = _engine()
     plan = cyl.plan_cylindrical_real_curl(
         fields, pml, "step_B", Residency(),
-        contract_variants=(shaders.CONTRACT_OFF, shaders.CONTRACT_FAST))
+        contract_variants=(shaders.CONTRACT_OFF, shaders.CONTRACT_FAST),
+        chunk_bounds=_record(grid, pml))
     if plan is None:
         pytest.skip("the subnormal policy on this host refuses the family")
     assert plan.variants == (shaders.CONTRACT_FAST, shaders.CONTRACT_OFF)
@@ -595,127 +759,76 @@ def test_the_plan_variants_are_the_intersection_of_both_kernels():
         plan.run(shaders.CONTRACT_FAST)
 
 
+def test_a_plan_without_the_chunk_record_is_refused_by_name():
+    """No default division: the record is a required keyword, refused when None."""
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+
+    grid, fields, pml = _engine()
+    with pytest.raises(TypeError):
+        cyl.plan_cylindrical_real_curl(fields, pml, "step_B", _Residency())  # noqa
+    with pytest.raises(ChunkLayoutRefusal, match="no chunk record"):
+        cyl._build_curl_plan("step_B", grid.shape, 0.5, 0.5, CODES, _Residency(), {},
+                             [], None, None, "test", None, None, ("off",))
+
+
 @requires_mps
-def test_the_scan_reproduces_steppings_own_prefix_word_for_word():
-    """The smallest non-vacuous version of the probe's 48-case prefix leg."""
+def test_the_scan_reproduces_the_array_paths_per_chunk_difference_word_for_word():
+    """The device scan against ``stepping.cylindrical_rderiv_difference``, 1-3 chunks."""
     from meep_gpu.metal_kernels.device import compile_source
 
     import torch
 
+    grid, fields, pml = _engine(shape=(21, 1, 9))
     rng = np.random.default_rng(2026)
+
+    def upload(array, dtype=np.float32):
+        return torch.from_numpy(
+            np.ascontiguousarray(array, dtype=dtype).reshape(-1)).to("mps")
+
     for sub_step in ("step_B", "step_D"):
-        shape = (13, 1, 9)
-        source = rng.uniform(-1.0, 1.0, size=shape).astype(np.float32)
-        rows = cyl.scan_rows(sub_step, shape[0])
-        scanned = source
-        if cyl.PREFIX_WALL_ROW[sub_step]:
-            scanned = np.zeros((rows,) + shape[1:], dtype=np.float32)
-            scanned[0:shape[0]] = source
-        expected = stepping.cylindrical_rderiv_prefix(
-            np, scanned, cyl.PREFIX_IR0[sub_step])
-
-        weights, divisor = cyl.prefix_row_vectors(sub_step, shape[0])
-        entry = compile_source(
-            cyl.cylindrical_prefix_source(sub_step)).cyl_rderiv_prefix
-
-        def upload(array):
-            return torch.from_numpy(
-                np.ascontiguousarray(array, dtype=np.float32).reshape(-1)).to("mps")
-
-        # A sentinel fill, so a kernel that never ran cannot compare equal.
-        out = upload(np.full((rows,) + shape[1:], np.float32(-7.5)))
-        entry(out, upload(source), upload(weights), upload(divisor),
-              rows, shape[1], shape[2], shape[1] * shape[2])
-        torch.mps.synchronize()
-        got = out.cpu().numpy().reshape(expected.shape)
-        assert np.count_nonzero(got.view(np.uint32) != np.float32(-7.5).view(
-            np.uint32)) > 0, "VACUOUS: the scan moved nothing"
-        assert np.array_equal(got.view(np.uint32), expected.view(np.uint32)), (
-            f"{sub_step}: the device scan is not "
-            f"stepping.cylindrical_rderiv_prefix's answer")
+        entry = compile_source(cyl.scan_source(sub_step)).cyl_rderiv_difference
+        weights, rinv = cyl.prefix_row_vectors(sub_step, grid.shape[0])
+        for name, layout in _divisions(grid, pml).items():
+            starts = _starts(fields, pml, layout, sub_step)
+            line = cyl.scan_starts(sub_step, starts, grid.shape[0])
+            source = rng.uniform(-1.0, 1.0, size=grid.shape).astype(np.float32)
+            expected = _array_path_difference(sub_step, source, starts)
+            out = upload(np.full(grid.shape, np.float32(-7.5)))
+            entry(out, upload(source), upload(weights), upload(rinv),
+                  upload(line, np.int32), grid.shape[0], grid.shape[1], grid.shape[2],
+                  grid.shape[1] * grid.shape[2])
+            torch.mps.synchronize()
+            got = out.cpu().numpy().reshape(expected.shape)
+            assert np.array_equal(got.view(np.uint32), expected.view(np.uint32)), (
+                sub_step, name)
 
 
-# ---------------------------------------------------------------------------
-# What the byte gate's NULL CONTROLS rest on
-# ---------------------------------------------------------------------------
-#
-# `gate_metal_cylindrical_real.py` carries two mutations that must NOT be caught —
-# the r = 0 near ghost restored on `c_x` and on `pb_x` — and a null control is only
-# worth recording if the operand it edits is LIVE. These two tests pin the source
-# facts those controls depend on, so an edit that quietly invalidates a null fails
-# HERE, in the suite, rather than by turning a gate row green for the wrong reason.
+@requires_mps
+def test_one_curl_sub_step_is_byte_identical_to_stepping():
+    """The plan against ``stepping.step_B`` / ``step_D`` on a random full-volume state."""
+    from meep_gpu.metal_kernels.device import Residency
 
-
-def test_b_x_is_dead_on_both_sub_steps_so_a_null_planted_there_would_be_vacuous():
-    """``b_x`` — ``g1``'s shift-down/up along r — is consumed by NO curl.
-
-    THIS IS A CORRECTION PINNED AS A TEST. The build round's mutation table restored
-    the CYL_AXIS near ghost on ``b_x`` and recorded the resulting null as evidence
-    that compiling the r axis METALLIC is equivalent. It is not evidence of anything:
-    on the B side Bz's curl is the prefix difference (the emitted source says so in
-    as many words) and on the D side Dz's takes the PREFIXED ``pb_x``, so ``b_x`` is
-    initialised and never read on either. The gate re-arms that null on ``c_x`` and
-    ``pb_x``, which ARE read.
-
-    If a future edit starts consuming ``b_x``, this test fails and the gate's null
-    controls have to be re-derived rather than silently changing meaning.
-    """
-    import re  # noqa: PLC0415
-
-    # A WORD BOUNDARY, not a substring: `pb_x` — the PREFIXED operand, which IS read —
-    # contains `b_x`, and a naive `in` match would report the dead operand as live and
-    # fail for the opposite of the right reason.
-    token = re.compile(r"(?<![A-Za-z0-9_])b_x(?![A-Za-z0-9_])")
-    for sub_step in SUB_STEPS:
-        for codes in ((shaders.METALLIC, shaders.PERIODIC, shaders.METALLIC),
-                      (shaders.METALLIC, shaders.PERIODIC, shaders.PERIODIC)):
-            source = cyl.cylindrical_curl_source(sub_step, codes)
-            body = [line for line in source.splitlines()
-                    if token.search(line) and not line.strip().startswith("//")]
-            assert len(body) == 1, (
-                f"{sub_step}/{codes}: b_x appears on {len(body)} live lines, not just "
-                f"its initialiser — it is now READ somewhere, and the gate's "
-                f"near-ghost null controls rest on it being dead: {body}")
-            assert "float b_x =" in body[0], body[0]
-            # NON-VACUITY: the sibling operand this one is contrasted with must BE
-            # read, or the test is pinning a source that carries no live neighbour.
-            live = [line for line in source.splitlines()
-                    if "pb_x" in line and not line.strip().startswith("//")]
-            expected_live = 2 if sub_step == "step_D" else 0
-            assert len(live) == expected_live, (sub_step, codes, live)
-
-
-def test_the_prefix_row_zero_is_an_exact_positive_zero_which_is_load_bearing():
-    """Prefix row 0 is ``+0.0`` exactly, and that — not the mask — zeroes Dz at r = 0.
-
-    ``cylindrical_rderiv_prefix`` starts from ``zeros_like`` (stepping.py:1314), so
-    every word of the scan's first row is ``0x00000000``. The gate measured what that
-    buys: dropping the r ownership mask on **Dz** changes nothing (0/8), because that
-    curl's radial pair at r = 0 is ``(prefix[0], the metallic zero ghost)`` and its
-    phi pair is a self-difference on the one-cell invariant axis — the value is
-    already the word the mask would write. On **Dy** the mask IS load-bearing (11-40
-    words per case), because its radial pair is ``(Hz[0], zero)``.
-
-    Pinned here because two of the gate's null controls are explained by this zero
-    row rather than by the ownership mask, and a scan that ever started row 0 at
-    anything else would change which explanation is true.
-    """
-    rng = np.random.default_rng(4242)
-    for sub_step in SUB_STEPS:
-        for radial in (9, 13, 20, 32):
-            shape = (radial, 1, 12)
-            source = rng.uniform(-1.0, 1.0, size=shape).astype(np.float32)
-            prefix = stepping.cylindrical_rderiv_prefix(
-                np, source, cyl.PREFIX_IR0[sub_step])
-            row_zero = np.ascontiguousarray(prefix[0]).reshape(-1).view(np.uint32)
-            assert np.all(row_zero == np.uint32(0)), (
-                f"{sub_step}/nr={radial}: prefix row 0 is not an exact +0.0 "
-                f"({sorted(set(int(w) for w in row_zero))[:4]}); the gate's Dz "
-                f"near-ghost and mask nulls are explained by this zero and would "
-                f"have to be re-derived")
-            # NON-VACUITY: the rest of the scan must not be zero too, or the row
-            # above is a fact about an empty array.
-            rest = np.ascontiguousarray(prefix[1:]).reshape(-1).view(np.uint32)
-            assert np.count_nonzero(rest) > 0, (
-                f"{sub_step}/nr={radial}: the whole prefix is zero, so row 0 being "
-                f"zero says nothing")
+    names = ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
+             "fu_Bx", "fu_By", "fu_Bz", "fu_Dx", "fu_Dy", "fu_Dz")
+    for sub_step, oracle in (("step_B", stepping.step_B), ("step_D", stepping.step_D)):
+        reference = _engine()
+        device = _engine()
+        rng_a, rng_b = np.random.default_rng(5), np.random.default_rng(5)
+        for (_g, f, _p), rng in ((reference, rng_a), (device, rng_b)):
+            for name in names:
+                getattr(f, name)[...] = rng.uniform(
+                    -1.0, 1.0, size=getattr(f, name).shape).astype(np.float32)
+        oracle(reference[1], reference[2])
+        residency = Residency()
+        plan = cyl.plan_cylindrical_real_curl(device[1], device[2], sub_step, residency,
+                                              chunk_bounds=_record(device[0], device[2]))
+        if plan is None:
+            pytest.skip("the subnormal policy on this host refuses the family")
+        residency.sync_in()
+        plan.run()
+        residency.sync_out()
+        for name in names:
+            want = np.ascontiguousarray(getattr(reference[1], name)).view(np.uint32)
+            got = np.ascontiguousarray(getattr(device[1], name)).view(np.uint32)
+            assert np.array_equal(want, got), (sub_step, name,
+                                               int(np.count_nonzero(want != got)))

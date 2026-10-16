@@ -479,8 +479,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
     # and every store mask are the certified module's and not a transcription. Its
     # own docstring is where that case table is stated.
     from .conductivity import _conductive_component  # noqa: PLC0415
+    # The names the two lifted curl bodies read: the shared forms and the record's
+    # word offsets, the very objects the certified curls call.
+    from .forms import (axis_present, bfast_advance, curl_form,  # noqa: PLC0415
+                        curl_stencil, fold_ladder, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: PLC0415
 
-    @triton.jit
+    @triton.jit(do_not_specialize=["start_h"])
     def fused_constitutive_curl_H_to_D_conductive(
         ho0, ho1, ho2,                  # SCRATCH out: the stepped Hx, Hy, Hz
         wo0, wo1, wo2,                  # SCRATCH out: the stepped f_w_Hx/y/z
@@ -492,12 +497,15 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         c0, c1, c2,                     # conductive history: f_cond_Dx/y/z    (in/out)
         cf0, cf1, cf2,                  # condfac per target               (read-only)
         ci0, ci1, ci2,                  # condinv per target               (read-only)
+        m0, m1, m2,                     # conductive chunks (a placeholder where CMASK == 0)
         kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, INTEGER lattice
         kp0, kp1, kp2,                  # kps on each component's OWN axis, INTEGER
-        nx, ny, nz, n_elem, dtdx,
+        cb,                             # chunk record: both halves' forms and presence
+        nx, ny, nz, n_elem, dtdx, start_h,   # start_h: MEEP's start of H
         BACKWARD: tl.constexpr,
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         COND0: tl.constexpr, COND1: tl.constexpr, COND2: tl.constexpr,
+        CMASK0: tl.constexpr, CMASK1: tl.constexpr, CMASK2: tl.constexpr,
         BLOCK: tl.constexpr,
     ):
         """``update_H`` + the CONDUCTIVE ``step_D``, one launch, scratch output.
@@ -521,21 +529,28 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         # OWN cell's magnetic field from these registers and recomputes every foreign
         # tap from PRE-LAUNCH state through the same `_h_cell`, so no program observes
         # another program's store; the plan rotates H/f_w_H after the launch returns.
-        own0, own1, own2, src0, src1, src2 = _h_cell(
+        own0, own1, own2, src0, src1, src2, dw0, dw1, dw2 = _h_cell(
             i, j, k, live, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-            kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+            kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         tl.store(ho0 + idx, own0, mask=live)
         tl.store(ho1 + idx, own1, mask=live)
         tl.store(ho2 + idx, own2, mask=live)
-        tl.store(wo0 + idx, src0, mask=live)
-        tl.store(wo1 + idx, src1, mask=live)
-        tl.store(wo2 + idx, src2, mask=live)
+        # The history takes B on the accumulation's cells only (the auxiliary
+        # contract); every other cell of the twin takes the pre-launch word, so the
+        # rotation hands the engine an f_w_H that kept its word there and the twin is
+        # written at every cell.
+        tl.store(wo0 + idx, tl.where(dw0, src0, tl.load(
+            wi0 + idx, mask=live & (dw0 == 0), other=0.0)), mask=live)
+        tl.store(wo1 + idx, tl.where(dw1, src1, tl.load(
+            wi1 + idx, mask=live & (dw1 == 0), other=0.0)), mask=live)
+        tl.store(wo2 + idx, tl.where(dw2, src2, tl.load(
+            wi2 + idx, mask=live & (dw2 == 0), other=0.0)), mask=live)
 
         # === the certified conductive step_D curl body begins here ===
 
-        # --- the ghost rule, per axis (stepping._shift_up / _shift_down) --------
-        # PERIODIC wraps; METALLIC serves an exact 0.0 past the wall, which
-        # `tl.load`'s `other=` delivers without dereferencing anything.
+        # --- the ghost rule, per axis (stepping._shift_up / _shift_down) ------------
+        # PERIODIC wraps; METALLIC serves an exact 0.0 past the wall, which `tl.load`'s
+        # `other=` delivers without dereferencing anything.
         if BACKWARD:
             si, sj, sk = i - 1, j - 1, k - 1
         else:
@@ -562,24 +577,35 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         b = own1
         c = own2
         a_y = _h_tap(0, i, sj, k, vy, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         a_z = _h_tap(0, i, j, sk, vz, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         b_x = _h_tap(1, si, j, k, vx, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         b_z = _h_tap(1, i, j, sk, vz, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         c_x = _h_tap(2, si, j, k, vx, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         c_y = _h_tap(2, i, sj, k, vy, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
 
-        # --- the curl (stepping._curl_from_operands): DO NOT flatten these ------
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
+        # One call per target: MEEP's left-to-right association with both partners, the
+        # one-partner form where the record says the other partner's derivative axis is
+        # invariant, and an exact +0 with neither. The presence word is the record's
+        # (stepping.curl_presence, MEEP's have_plus_deriv / have_minus_deriv).
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
-        # --- ownership mask (stepping._mask_non_owned_cells) -------------------
+        # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
+        # Cell 0 of a metallic axis, for every target whose Yee shift there is 0. The
+        # B targets have a single zero shift each (Bx:x, By:y, Bz:z); the D targets
+        # have two (Dx:y,z  Dy:x,z  Dz:x,y). Masked, then the recurrence runs on zero.
         at_x, at_y, at_z = i == 0, j == 0, k == 0
         if BACKWARD:
             if BCY == METALLIC:
@@ -602,7 +628,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
             if BCZ == METALLIC:
                 curl2 = tl.where(at_z, 0.0, curl2)
 
-        # --- the recurrence, per component -------------------------------------
+        # --- the forms, per component ----------------------------------------------
         # dsig/dsigu follow vec.hpp's cycle_direction and are the same triple on
         # both sides: target 0 takes (y, z), target 1 (z, x), target 2 (x, y).
         km_x = tl.load(kmx + i, mask=live, other=0.0)
@@ -612,14 +638,28 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        _conductive_component(f0, u0, c0, cf0, ci0, idx, live, curl0,
-                              km_y, si_y, km_z, si_z, COND0)
-        _conductive_component(f1, u1, c1, cf1, ci1, idx, live, curl1,
-                              km_z, si_z, km_x, si_x, COND1)
-        _conductive_component(f2, u2, c2, cf2, ci2, idx, live, curl2,
-                              km_x, si_x, km_y, si_y, COND2)
+        # The component's dsig and dsigu chunk memberships, on its own sub-lattice
+        # (half-integer for every B target, integer for every D one): each record line
+        # is a compile-time word index, chunk_map.record_index(half_integer, axis, 0).
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        ds0 = record_in(cb, lattice + 4, j)
+        du0 = record_in(cb, lattice + 8, k)
+        ds1 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        ds2 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-    @triton.jit
+        _conductive_component(f0, u0, c0, cf0, ci0, m0, idx, live, curl0,
+                              km_y, si_y, km_z, si_z, ds0, du0, COND0, CMASK0)
+        _conductive_component(f1, u1, c1, cf1, ci1, m1, idx, live, curl1,
+                              km_z, si_z, km_x, si_x, ds1, du1, COND1, CMASK1)
+        _conductive_component(f2, u2, c2, cf2, ci2, m2, idx, live, curl2,
+                              km_x, si_x, km_y, si_y, ds2, du2, COND2, CMASK2)
+
+    @triton.jit(do_not_specialize=["start_h"])
     def fused_constitutive_curl_H_to_D_bfast(
         ho0, ho1, ho2,                  # SCRATCH out: the stepped Hx, Hy, Hz
         wo0, wo1, wo2,                  # SCRATCH out: the stepped f_w_Hx/y/z
@@ -631,7 +671,8 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         s0, s1, s2,                     # BFAST state: f_bfast_Dx/y/z          (in/out)
         kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, INTEGER lattice
         kp0, kp1, kp2,                  # kps on each component's OWN axis, INTEGER
-        nx, ny, nz, n_elem, dtdx,
+        cb,                             # chunk record: both halves' forms and presence
+        nx, ny, nz, n_elem, dtdx, start_h,   # start_h: MEEP's start of H
         k1_0, k2_0, k1_1, k2_1, k1_2, k2_2,   # the six BFAST scalars
         BACKWARD: tl.constexpr,
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
@@ -653,19 +694,28 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         i = plane // ny
 
         # ============ THE WELD: update_H, computed into registers, stored to SCRATCH
-        own0, own1, own2, src0, src1, src2 = _h_cell(
+        own0, own1, own2, src0, src1, src2, dw0, dw1, dw2 = _h_cell(
             i, j, k, live, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-            kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+            kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         tl.store(ho0 + idx, own0, mask=live)
         tl.store(ho1 + idx, own1, mask=live)
         tl.store(ho2 + idx, own2, mask=live)
-        tl.store(wo0 + idx, src0, mask=live)
-        tl.store(wo1 + idx, src1, mask=live)
-        tl.store(wo2 + idx, src2, mask=live)
+        # The history takes B on the accumulation's cells only (the auxiliary
+        # contract); every other cell of the twin takes the pre-launch word, so the
+        # rotation hands the engine an f_w_H that kept its word there and the twin is
+        # written at every cell.
+        tl.store(wo0 + idx, tl.where(dw0, src0, tl.load(
+            wi0 + idx, mask=live & (dw0 == 0), other=0.0)), mask=live)
+        tl.store(wo1 + idx, tl.where(dw1, src1, tl.load(
+            wi1 + idx, mask=live & (dw1 == 0), other=0.0)), mask=live)
+        tl.store(wo2 + idx, tl.where(dw2, src2, tl.load(
+            wi2 + idx, mask=live & (dw2 == 0), other=0.0)), mask=live)
 
         # === the certified BFAST step_D curl body begins here ===
 
         # --- the ghost rule, per axis (stepping._shift_up / _shift_down) ------------
+        # PERIODIC wraps; METALLIC serves an exact 0.0 past the wall, which `tl.load`'s
+        # `other=` delivers without dereferencing anything.
         if BACKWARD:
             si, sj, sk = i - 1, j - 1, k - 1
         else:
@@ -692,71 +742,36 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         b = own1
         c = own2
         a_y = _h_tap(0, i, sj, k, vy, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         a_z = _h_tap(0, i, j, sk, vz, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         b_x = _h_tap(1, si, j, k, vx, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         b_z = _h_tap(1, i, j, sk, vz, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         c_x = _h_tap(2, si, j, k, vx, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         c_y = _h_tap(2, i, sj, k, vy, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
 
         # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
-
-        # The ownership predicates, shared by the BFAST advance mask and the curl
-        # mask below (stepping._mask_non_owned_cells — the SAME predicate, applied
-        # to the advance at :902 and to the summed curl at :369/:450).
-        at_x, at_y, at_z = i == 0, j == 0, k == 0
-
-        # --- the BFAST tail (stepping._bfast_term :896-904), SHARED operands --------
-        # AFTER the dtdx curl, BEFORE the ownership mask — the array path's fold
-        # order. The sums pair each SHIFTED load with its center in the operand
-        # order of :896-897; no dtdx (:836-837); no unary minus anywhere.
-        if HAS_BFAST:
-            st0 = tl.load(s0 + idx, mask=live, other=0.0)
-            st1 = tl.load(s1 + idx, mask=live, other=0.0)
-            st2 = tl.load(s2 + idx, mask=live, other=0.0)
-            total0 = (k1_0 * (c_y + c)) - (k2_0 * (b_z + b))
-            total1 = (k1_1 * (a_z + a)) - (k2_1 * (c_x + c))
-            total2 = (k1_2 * (b_x + b)) - (k2_2 * (a_y + a))
-            adv0 = total0 - (2.0 * st0)
-            adv1 = total1 - (2.0 * st1)
-            adv2 = total2 - (2.0 * st2)
-            # --- advance ownership mask, BEFORE the state store (S:902) ---------
-            if BACKWARD:
-                if BCY == METALLIC:
-                    adv0 = tl.where(at_y, 0.0, adv0)
-                if BCZ == METALLIC:
-                    adv0 = tl.where(at_z, 0.0, adv0)
-                if BCX == METALLIC:
-                    adv1 = tl.where(at_x, 0.0, adv1)
-                if BCZ == METALLIC:
-                    adv1 = tl.where(at_z, 0.0, adv1)
-                if BCX == METALLIC:
-                    adv2 = tl.where(at_x, 0.0, adv2)
-                if BCY == METALLIC:
-                    adv2 = tl.where(at_y, 0.0, adv2)
-            else:
-                if BCX == METALLIC:
-                    adv0 = tl.where(at_x, 0.0, adv0)
-                if BCY == METALLIC:
-                    adv1 = tl.where(at_y, 0.0, adv1)
-                if BCZ == METALLIC:
-                    adv2 = tl.where(at_z, 0.0, adv2)
-            tl.store(s0 + idx, st0 + adv0, mask=live)
-            tl.store(s1 + idx, st1 + adv1, mask=live)
-            tl.store(s2 + idx, st2 + adv2, mask=live)
-            curl0 = curl0 - adv0
-            curl1 = curl1 - adv1
-            curl2 = curl2 - adv2
+        # One call per target: MEEP's left-to-right association with both partners, the
+        # one-partner form where the record says the other partner's derivative axis is
+        # invariant, and an exact +0 with neither. The presence word is the record's
+        # (stepping.curl_presence, MEEP's have_plus_deriv / have_minus_deriv).
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
         # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
+        # Cell 0 of a metallic axis, for every target whose Yee shift there is 0. The
+        # B targets have a single zero shift each (Bx:x, By:y, Bz:z); the D targets
+        # have two (Dx:y,z  Dy:x,z  Dz:x,y). Masked, then the recurrence runs on zero.
+        at_x, at_y, at_z = i == 0, j == 0, k == 0
         if BACKWARD:
             if BCY == METALLIC:
                 curl0 = tl.where(at_y, 0.0, curl0)
@@ -779,6 +794,8 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
                 curl2 = tl.where(at_z, 0.0, curl2)
 
         # --- split-field recurrence (stepping._apply_pml_update) -------------------
+        # dsig/dsigu follow vec.hpp's cycle_direction and are the same triple on both
+        # sides: target 0 takes (y, z), target 1 (z, x), target 2 (x, y).
         km_x = tl.load(kmx + i, mask=live, other=0.0)
         si_x = tl.load(sinvx + i, mask=live, other=0.0)
         km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -786,21 +803,91 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0 = tl.load(u0 + idx, mask=live, other=0.0)
-        n0 = ((p0 * km_y) - curl0) * si_y
-        v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+        # Which cells take the recurrence: the component's dsigu layer, on the component's
+        # own sub-lattice. The dsigu axis is z for target 0, x for 1 and y for 2 (vec.hpp
+        # cycle_direction); the sub-lattice is half-integer for every B target and integer
+        # for every D one (the iyee table), so each target's record line is a compile-time
+        # word index, chunk_map.record_index(half_integer, axis, 0).
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1 = tl.load(u1 + idx, mask=live, other=0.0)
-        n1 = ((p1 * km_z) - curl1) * si_z
-        v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+        v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                           km_y, si_y, km_z, si_z, du0)
 
-        p2 = tl.load(u2 + idx, mask=live, other=0.0)
-        n2 = ((p2 * km_x) - curl2) * si_x
-        v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+        p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+        v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                           km_z, si_z, km_x, si_x, du1)
 
-        tl.store(u0 + idx, n0, mask=live)
-        tl.store(u1 + idx, n1, mask=live)
-        tl.store(u2 + idx, n2, mask=live)
+        p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+        v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                           km_x, si_x, km_y, si_y, du2)
+
+        # --- the BFAST pass (stepping._bfast_term, then stepping._apply_folded_increment)
+        # MEEP's STEP_BFAST on each component right after its STEP_CURL
+        # (step_db.cpp:124-142), on the SAME gathered partners, applied to the registers
+        # the forms returned (forms.bfast_advance: the state's two roundings, the
+        # one-partner forms by the record's presence bits, MEEP's plain branch on cells
+        # in neither the dsig nor the dsigu chunk). The increment is masked to +0, and
+        # the state kept, on the cells the curl's own mask drops (MEEP writes F inside
+        # its owned loop only); the BFAST ladder subtracts it (forms.fold_ladder). No
+        # dtdx anywhere: MEEP passes it to step_bfast and never reads it.
+        if HAS_BFAST:
+            ds0 = record_in(cb, lattice + 4, j)
+            ds1 = record_in(cb, lattice + 8, k)
+            ds2 = record_in(cb, lattice + 0, i)
+            st0 = tl.load(s0 + idx, mask=live, other=0.0)
+            st1 = tl.load(s1 + idx, mask=live, other=0.0)
+            st2 = tl.load(s2 + idx, mask=live, other=0.0)
+            bf0, q0 = bfast_advance(st0, c_y, c, b_z, b, k1_0, k2_0, py, pz, ds0 | du0)
+            bf1, q1 = bfast_advance(st1, a_z, a, c_x, c, k1_1, k2_1, pz, px, ds1 | du1)
+            bf2, q2 = bfast_advance(st2, b_x, b, a_y, a, k1_2, k2_2, px, py, ds2 | du2)
+            if BACKWARD:
+                if BCY == METALLIC:
+                    q0 = tl.where(at_y, 0.0, q0)
+                    bf0 = tl.where(at_y, st0, bf0)
+                if BCZ == METALLIC:
+                    q0 = tl.where(at_z, 0.0, q0)
+                    bf0 = tl.where(at_z, st0, bf0)
+                if BCX == METALLIC:
+                    q1 = tl.where(at_x, 0.0, q1)
+                    bf1 = tl.where(at_x, st1, bf1)
+                if BCZ == METALLIC:
+                    q1 = tl.where(at_z, 0.0, q1)
+                    bf1 = tl.where(at_z, st1, bf1)
+                if BCX == METALLIC:
+                    q2 = tl.where(at_x, 0.0, q2)
+                    bf2 = tl.where(at_x, st2, bf2)
+                if BCY == METALLIC:
+                    q2 = tl.where(at_y, 0.0, q2)
+                    bf2 = tl.where(at_y, st2, bf2)
+            else:
+                if BCX == METALLIC:
+                    q0 = tl.where(at_x, 0.0, q0)
+                    bf0 = tl.where(at_x, st0, bf0)
+                if BCY == METALLIC:
+                    q1 = tl.where(at_y, 0.0, q1)
+                    bf1 = tl.where(at_y, st1, bf1)
+                if BCZ == METALLIC:
+                    q2 = tl.where(at_z, 0.0, q2)
+                    bf2 = tl.where(at_z, st2, bf2)
+            tl.store(s0 + idx, bf0, mask=live)
+            tl.store(s1 + idx, bf1, mask=live)
+            tl.store(s2 + idx, bf2, mask=live)
+            v0, n0 = fold_ladder(v0, n0, q0, si_y, si_z, du0)
+            v1, n1 = fold_ladder(v1, n1, q1, si_z, si_x, du1)
+            v2, n2 = fold_ladder(v2, n2, q2, si_x, si_y, du2)
+
+        # fu is written on the recurrence's cells ONLY: outside them the dsig-only form
+        # reads and writes the field alone and fu keeps its word (the auxiliary contract).
+        tl.store(u0 + idx, n0, mask=live & du0)
+        tl.store(u1 + idx, n1, mask=live & du1)
+        tl.store(u2 + idx, n2, mask=live & du2)
         tl.store(f0 + idx, v0, mask=live)
         tl.store(f1 + idx, v1, mask=live)
         tl.store(f2 + idx, v2, mask=live)
@@ -968,7 +1055,7 @@ def explain_conductive_bfast_fused_hd_pair(
 # The plan
 # ---------------------------------------------------------------------------
 
-class ConductiveBfastFusedHdPairPlan(ScratchWeldPairPlan):
+class ConductiveBfastFusedHdPairPlan(_plain.StartsH, ScratchWeldPairPlan):
     """ONE allocation-free launch for ``update_H`` and one of the two ``step_D`` tails.
 
     THE SIX ROTATING VOLUMES ARE RESOLVED PER LAUNCH, never cached: the plan owns a
@@ -984,9 +1071,9 @@ class ConductiveBfastFusedHdPairPlan(ScratchWeldPairPlan):
     live volume, which would be the in-place weld this design exists to avoid.
     """
 
-    __slots__ = ("variant", "dtdx", "backward", "bc", "cond", "has_bfast", "ks",
-                 "_b", "_targets", "_aux", "_state", "_condfac", "_condinv",
-                 "_curl_coeff", "_kps", "_kernel", "_pointer")
+    __slots__ = ("variant", "dtdx", "backward", "bc", "cond", "cmask", "has_bfast",
+                 "ks", "_b", "_targets", "_aux", "_state", "_condfac", "_condinv",
+                 "_chunks", "_curl_coeff", "_kps", "_kernel", "_pointer", "_h_state")
 
     replaces = REPLACES
 
@@ -999,11 +1086,13 @@ class ConductiveBfastFusedHdPairPlan(ScratchWeldPairPlan):
                  condfac: Sequence[Any] = (), condinv: Sequence[Any] = (),
                  cond: Sequence[Any] = (0, 0, 0), ks: Sequence[float] = (),
                  has_bfast: int = 1, kernel: Any = None,
-                 num_warps: Optional[int] = 1) -> None:
+                 num_warps: Optional[int] = 1, *, chunk_bounds: Any,
+                 conductive_chunks: Sequence[Any] = (None, None, None),
+                 h_state: Any = None) -> None:
         from .launch import CupyPointer, _flat  # noqa: PLC0415
 
         super().__init__(FAMILY, fields, twins, ROTATED, shape, block, REPLACES,
-                         num_warps=num_warps)
+                         num_warps=num_warps, chunk_bounds=chunk_bounds)
         self.variant = _check_variant(variant)
         self.dtdx = float(dtdx)
         self.backward = BACKWARD
@@ -1031,6 +1120,19 @@ class ConductiveBfastFusedHdPairPlan(ScratchWeldPairPlan):
                 "three constitutive kps; the constitutive kms are the curl's own "
                 "three, shared because both halves sit on the integer sub-lattice")
         self.cond = tuple(1 if flag else 0 for flag in cond)
+        # The certified conductive plan's conductive-chunk binding, called rather than
+        # re-derived: a conductive target whose chunks do not all keep the
+        # conductivity binds its volume as uint8 and compiles CMASK 1; every other
+        # target binds its own field as the placeholder, never dereferenced.
+        chunks = tuple(conductive_chunks)
+        if len(chunks) != 3:
+            raise ValueError("conductive_chunks names one volume (or None) per target")
+        self.cmask = tuple(1 if (flag and volume is not None) else 0
+                           for flag, volume in zip(self.cond, chunks))
+        self._chunks = tuple(
+            CupyPointer(_conductivity._chunk_volume(  # noqa: SLF001
+                volume, self.shape, target) if mask else target)
+            for mask, volume, target in zip(self.cmask, chunks, targets))
         if self.variant == "conductive" and not any(self.cond):
             raise ValueError(
                 "a conductive weld with no conductive component is fused_hd_pair's "
@@ -1042,6 +1144,8 @@ class ConductiveBfastFusedHdPairPlan(ScratchWeldPairPlan):
         self._check_aliases(twins, flux, targets, auxiliaries, state,
                             curl_coefficients, constitutive_coefficients)
         self._kernel = kernel
+        # MEEP's start of H, on the plain product's terms (fused_hd_pair.StartsH).
+        self._h_state = h_state
 
     def _check_aliases(self, twins, flux, targets, auxiliaries, state,
                        curl_coefficients, constitutive_coefficients) -> None:
@@ -1106,12 +1210,13 @@ class ConductiveBfastFusedHdPairPlan(ScratchWeldPairPlan):
         if self.variant == "conductive":
             kernel[self._grid](
                 *scratch, *prior, *self._b, *self._targets, *self._aux,
-                *self._state, *self._condfac, *self._condinv,
-                *self._curl_coeff, *self._kps,
-                nx, ny, nz, self.n_elem, self.dtdx,
+                *self._state, *self._condfac, *self._condinv, *self._chunks,
+                *self._curl_coeff, *self._kps, self._cb,
+                nx, ny, nz, self.n_elem, self.dtdx, self.start_h(),
                 BACKWARD=self.backward,
                 BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
                 COND0=self.cond[0], COND1=self.cond[1], COND2=self.cond[2],
+                CMASK0=self.cmask[0], CMASK1=self.cmask[1], CMASK2=self.cmask[2],
                 BLOCK=self.block,
                 enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
                 **extra,
@@ -1119,8 +1224,8 @@ class ConductiveBfastFusedHdPairPlan(ScratchWeldPairPlan):
         else:
             kernel[self._grid](
                 *scratch, *prior, *self._b, *self._targets, *self._aux,
-                *self._state, *self._curl_coeff, *self._kps,
-                nx, ny, nz, self.n_elem, self.dtdx, *self.ks,
+                *self._state, *self._curl_coeff, *self._kps, self._cb,
+                nx, ny, nz, self.n_elem, self.dtdx, self.start_h(), *self.ks,
                 BACKWARD=self.backward,
                 BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
                 HAS_BFAST=self.has_bfast,
@@ -1174,6 +1279,7 @@ def plan_conductive_bfast_fused_hd_pair(
     the shipped kernel and hands it here; dropping the argument is not a silent
     slowdown, it is a silent DISARMING.
     """
+    from .launch import chunk_bounds_for  # noqa: PLC0415
     variant, _why = resolve_variant(fields, pml)
     if variant is None:
         return None
@@ -1195,7 +1301,8 @@ def plan_conductive_bfast_fused_hd_pair(
         targets=[getattr(fields, name) for name in IN_PLACE[:3]],
         auxiliaries=[getattr(fields, name) for name in IN_PLACE[3:]],
         curl_coefficients=curl_coefficients, constitutive_coefficients=kps,
-        kernel=kernel, num_warps=num_warps)
+        kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, None), h_state=fields)
     if variant == "conductive":
         targets = _conductivity.CONDUCTIVE_SUB_STEPS[CURL_SUB_STEP]
         return ConductiveBfastFusedHdPairPlan(
@@ -1204,6 +1311,8 @@ def plan_conductive_bfast_fused_hd_pair(
             condfac=[fields.condfac_for(name) for name in targets],
             condinv=[fields.condinv_for(name) for name in targets],
             cond=_conductivity.conductive_targets(fields, CURL_SUB_STEP),
+            conductive_chunks=_conductivity.conductive_chunk_volumes(
+                fields, CURL_SUB_STEP, None, pml),
             **common)
     invariant = tuple(grid.is_invariant(axis) for axis in range(3))
     ks = _bfast.bfast_curl_coefficients(
@@ -1219,7 +1328,7 @@ def plan_conductive_bfast_fused_hd_pair_from_arrays(
         codes: Sequence[int], fields: Any, block: Optional[int] = None,
         kernel: Any = None, num_warps: Optional[int] = 1,
         cond: Sequence[Any] = (1, 1, 1), ks: Sequence[float] = (),
-        has_bfast: int = 1) -> ConductiveBfastFusedHdPairPlan:
+        has_bfast: int = 1, *, chunk_bounds: Any) -> ConductiveBfastFusedHdPairPlan:
     """Build from bare device arrays -- the gate's route.
 
     No coverage predicate runs: the caller is a harness that constructed the
@@ -1241,7 +1350,7 @@ def plan_conductive_bfast_fused_hd_pair_from_arrays(
         curl_coefficients=[flat[f"{stem}_{axis}"]
                            for axis in "xyz" for stem in ("kms", "sinv")],
         constitutive_coefficients=[flat[f"kps_{axis}"] for axis in "xyz"],
-        kernel=kernel, num_warps=num_warps)
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds)
     if variant == "conductive":
         targets = _conductivity.CONDUCTIVE_SUB_STEPS[CURL_SUB_STEP]
         return ConductiveBfastFusedHdPairPlan(
@@ -1249,7 +1358,10 @@ def plan_conductive_bfast_fused_hd_pair_from_arrays(
             state=[arrays.get("f_cond_" + name) for name in targets],
             condfac=[arrays.get("condfac_" + name) for name in targets],
             condinv=[arrays.get("condinv_" + name) for name in targets],
-            cond=cond, **common)
+            cond=cond,
+            conductive_chunks=tuple(arrays.get("conductive_chunks_" + name)
+                                    for name in targets),
+            **common)
     return ConductiveBfastFusedHdPairPlan(
         "bfast", state=[arrays[name] for name in BFAST_STATES],
         ks=ks, has_bfast=has_bfast, **common)

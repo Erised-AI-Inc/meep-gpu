@@ -537,22 +537,8 @@ DRIVER = PACKAGE / "driver.py"
 #: parameterised rows, 194 distinct labels; the board it cuts
 #: (`fusion_matrix_cuda_2026-09-25_roundb`) reads 352 / 597 in dispatch, 532 served --
 #: unchanged from the ``_2026-09-23_sparse_b`` and ``_2026-09-24_hoist`` boards.
-#: THE DEFAULT MOVED AGAIN 2026-10-06, to ``cuda_predicate_coverage_2026-10-06_092``, the
-#: first CUDA census cut on release bytes. Against ``_2026-09-25_roundb`` 60 of its 131 subjects
-#: changed and one was added (`cuda_kernels/test_single_arm_launches.py`): the 2026-09-27
-#: composer edits (`arms.py`, `registry.py`: the mirror-fill family on `fill_B`/`fill_D` and
-#: the off-diagonal `update_E` launchers), the neutral-wording pass, and test edits since,
-#: `test_complex_no_pml.py`'s release-host rule among them, so this tree's 132 subject files
-#: hash to ``9945e4ff...`` and :func:`subject_pin` refused the old default by name. The
-#: battery digest moved with it (``71fb17c5...`` -> ``ac59bd40...``). Same corpus and basis:
-#: 60 + 134 rows, 179 measured, the 15 unmeasured rows recovered by 24 of 25 matched
-#: parameterised rows, 194 distinct labels. Row for row against ``_2026-09-25_roundb``:
-#: every predicate answer and every selection on the slots both carry is unchanged; 79 of
-#: the 194 rows gain `fill_B` and `fill_D`, selected to the mirror-fill family. The board it
-#: cuts (`fusion_matrix_cuda_2026-10-06_092`) reads 352 / 597 in dispatch, 532 served, 29
-#: products bound and 3 withheld -- unchanged from the ``_2026-09-25_roundb`` board.
 CENSUS = RESULTS / (os.environ.get("MEEP_GPU_CUDA_CENSUS")
-                    or "cuda_predicate_coverage_2026-10-06_092")
+                    or "cuda_predicate_coverage_2026-09-25_roundb")
 
 #: The composer modules the cells come from. Their PRESENCE is what makes a selection
 #: readable, so it is asserted rather than assumed: without them the census's
@@ -1356,6 +1342,61 @@ def _flatten_fstring(node: ast.JoinedStr) -> str:
     return "".join(parts)
 
 
+def _imported_preludes(tree: ast.AST) -> List[Tuple[int, str]]:
+    """Device preludes a module IMPORTS from a sibling and concatenates into a kernel.
+
+    THE FOURTH SOURCE OF DEVICE TEXT, and the one a per-module literal walk cannot see.
+    ``cylindrical_kernels.py`` compiles ``_REAL_PML_PRELUDE + r'''...'''`` with the
+    prelude imported from ``step_curl_kernels`` (``from .step_curl_kernels import
+    _REAL_PML_PRELUDE``), so ``shift_up`` and ``shift_dn`` -- the helpers that read
+    ``g[idx + stride]`` and ``g[idx - stride]``, the curl's neighbour reads -- are in the
+    text NVRTC compiles and in no literal of the module itself. Read module by module,
+    the kernel body calls helpers that do not exist, and the cylindrical curl measures
+    POINTWISE: a false POINTWISE, the error this board treats as the dangerous one. It
+    DID once the radial difference left the kernel body for ``cylindrical_prefix.py``'s
+    column-serial scan (bit_parity_0_10) and took the body's only direct neighbour read
+    with it.
+
+    Narrow by construction: a name bound by a RELATIVE ``from .<sibling> import`` at
+    module level, used as an operand of ``+`` whose other operand is a string literal
+    carrying ``__global__`` (so the import is concatenated into a kernel source, not
+    merely referenced), resolved to the sibling's module-level string literal of that
+    name, and kept only if it is multi-line device code with no ``__global__`` of its
+    own (a prelude, not another kernel). Anything else is not resolved here.
+    """
+    imported: Dict[str, Tuple[str, str]] = {}
+    for node in getattr(tree, "body", ()):
+        if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module:
+            for alias in node.names:
+                imported[alias.asname or alias.name] = (f"{node.module}.py", alias.name)
+    used = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add)):
+            continue
+        for name_side, other in ((node.left, node.right), (node.right, node.left)):
+            if (isinstance(name_side, ast.Name) and name_side.id in imported
+                    and isinstance(other, ast.Constant) and isinstance(other.value, str)
+                    and "__global__" in other.value):
+                used.add(name_side.id)
+    found: List[Tuple[int, str]] = []
+    for name in sorted(used):
+        sibling, original = imported[name]
+        path = CUDA_KERNELS / sibling
+        if not path.is_file():
+            continue
+        for node in ast.parse(path.read_text()).body:
+            if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)
+                    and node.targets[0].id == original
+                    and isinstance(node.value, ast.Constant)
+                    and isinstance(node.value.value, str)):
+                text = node.value.value
+                if (any(marker in text for marker in _CUDA_MARKERS)
+                        and len(text.splitlines()) > 1 and "__global__" not in text):
+                    found.append((node.lineno, text))
+    return found
+
+
 def device_text(module: str) -> Dict[str, Any]:
     """A module's device code, split into preludes, kernel bodies and fragments.
 
@@ -1371,11 +1412,14 @@ def device_text(module: str) -> Dict[str, Any]:
 
     Docstrings are excluded by identity, not by heuristic: this module's own prose
     quotes MEEP expressions like ``g[i+s]`` and would otherwise be read as code.
+
+    A prelude the module imports from a sibling and concatenates into a kernel is
+    a prelude here too (:func:`_imported_preludes`): it is in the text NVRTC compiles.
     """
     path = CUDA_KERNELS / module
     tree = ast.parse(path.read_text())
     docstrings = _docstring_ids(tree)
-    preludes: List[Tuple[int, str]] = []
+    preludes: List[Tuple[int, str]] = list(_imported_preludes(tree))
     bodies: List[Tuple[int, str]] = []
     fragments: List[Tuple[int, str]] = []
     for node in ast.walk(tree):
@@ -1469,8 +1513,14 @@ DETECTOR_CONTROLS: Tuple[Tuple[str, str, str], ...] = (
      "a PML curl is a neighbour stencil by construction — it is the finite "
      "difference. If the detector calls THIS pointwise it is measuring nothing"),
     ("cylindrical_kernels.py", "STENCIL",
-     "the cylindrical curl, same argument, on a module whose neighbour read is a "
-     "direct `pfx[idx + sx]` in the kernel body rather than inside a helper"),
+     "the cylindrical curl, same argument, on a module whose neighbour reads sit in a "
+     "prelude it IMPORTS: Bx, By, Dx and Dy call `shift_up`/`shift_dn`, which read "
+     "`g[idx + stride]` and `g[idx - stride]` and are defined in step_curl_kernels' "
+     "`_REAL_PML_PRELUDE`, concatenated into this module's kernel sources "
+     "(_imported_preludes). The radial difference, once a direct `pfx[idx + sx]` in "
+     "the body, is a separate column-serial launch (cylindrical_prefix.py) whose output "
+     "the body reads at its own cell. A detector that reads only the module's own "
+     "literals calls this curl POINTWISE"),
     ("nonlinear_constitutive.py", "STENCIL",
      "the nonlinear constitutive reads four corners of two partner volumes "
      "(nonlinear_constitutive.py:435, `four_point_sum(g, o_c, o_d, o_u, o_ud, ...)`) "
@@ -1522,8 +1572,8 @@ def _analyze_emitted(spec: Dict[str, Any]) -> Dict[str, Any]:
 
     The variant list is part of the spec and is deliberately explicit: each
     entry is a real specialization the corpus can drive (a pole arity, a row
-    mask, an expansion arm), so what is analysed is a shipped kernel body and
-    never a synthetic one.
+    mask, a kernel key), so what is analysed is a shipped kernel body and never
+    a synthetic one.
     """
     import importlib  # noqa: PLC0415
 
@@ -1939,15 +1989,29 @@ def registry_arms() -> Dict[Tuple[str, str, str], dict]:
 #: ``complex_emitter`` emits its kernel names through a ``__NAME__`` substitution
 #: (there is no literal to match), which is why the complex families need the
 #: explicit body selection rather than a name lookup.
+#:
+#: THE TWO BLOCH CONSTITUTIVE LABELS ARE MEASURED ON THE EMITTED TEXT, the source the
+#: shipped launcher compiles: ``complex_pml_kernels`` hands NVRTC
+#: ``complex_emitter.complex_source(sub_step)``, which fills every splice point of
+#: ``_CONSTITUTIVE_TEMPLATE`` (``__NAME__``, ``__EPS_PARAMS__``, ``__SCALE__``, the
+#: chunk-record block ``__BOUNDS__`` and the membership flags ``__FLAG0__`` to
+#: ``__FLAG2__``). A body-mode reconstruction can fill a splice only from a fragment
+#: literal, and the bounds block and the flags are not fragments (the flags are
+#: single-token strings of ``CONSTITUTIVE_FLAGS``; the bounds block is assembled from
+#: ``_BOUNDS_LATTICE``), so it left those five splice points open and both labels read
+#: UNDETERMINED. One variant each: the emitter takes only the sub-step, and the E
+#: side's ``__SCALE__`` / ``__EPS_PARAMS__`` are the ones it fills for ``update_E``.
 FITNESS_SOURCE_BY_LABEL: Dict[str, dict] = {
     "fused_update_H_pml_complex_bloch": {
-        "module": "complex_emitter.py", "mode": "body",
-        "bodies": ("constitutive_apply(f0, w0, idx",),
-        "fills": {"__SCALE__": "mul_field_left(s0, inv_eps_0[idx]"}},
+        "module": "complex_emitter.py", "mode": "emitted",
+        "import": "meep_gpu.cuda_kernels.complex_emitter",
+        "function": "complex_source",
+        "variants": (("update_H",),)},
     "fused_update_E_pml_complex_bloch": {
-        "module": "complex_emitter.py", "mode": "body",
-        "bodies": ("constitutive_apply(f0, w0, idx",),
-        "fills": {"__SCALE__": "mul_field_left(s0, inv_eps_0[idx]"}},
+        "module": "complex_emitter.py", "mode": "emitted",
+        "import": "meep_gpu.cuda_kernels.complex_emitter",
+        "function": "complex_source",
+        "variants": (("update_E",),)},
     # THE FIVE EMITTED-TEXT LABELS, 2026-09-02 residue round (audit §1.5 stage 1).
     # Each names a family whose kernel exists only as EMITTED text -- f-string
     # assembly (dispersive_source) or __NAME__/__SIGMA__ substitution -- so
@@ -1962,9 +2026,7 @@ FITNESS_SOURCE_BY_LABEL: Dict[str, dict] = {
         "module": "complex_no_pml_kernels.py", "mode": "emitted",
         "import": "meep_gpu.cuda_kernels.complex_no_pml_kernels",
         "function": "kernel_source",
-        "variants": (("update_P", "NAIVE"), ("update_P", "FMA_V1"),
-                     ("update_P_uniform", "NAIVE"),
-                     ("update_P_uniform", "FMA_V1"))},
+        "variants": (("update_P",), ("update_P_uniform",))},
     "fused_update_E_pml_real_dispersive": {
         "module": "dispersive_kernels.py", "mode": "emitted",
         "import": "meep_gpu.cuda_kernels.dispersive_kernels",
@@ -1981,16 +2043,13 @@ FITNESS_SOURCE_BY_LABEL: Dict[str, dict] = {
         "module": "complex_offdiag_update_e.py", "mode": "emitted",
         "import": "meep_gpu.cuda_kernels.complex_offdiag_update_e",
         "function": "complex_offdiag_source",
-        "variants": (("pml", (1, 0, 0, 0, 0, 0), "NAIVE"),
-                     ("pml", (1, 1, 1, 1, 1, 1), "NAIVE"),
-                     ("pml", (1, 1, 1, 1, 1, 1), "FMA_V1"))},
+        "variants": (("pml", (1, 0, 0, 0, 0, 0)), ("pml", (1, 1, 1, 1, 1, 1)))},
     "update_E_no_pml_complex_offdiag": {
         "module": "complex_offdiag_update_e.py", "mode": "emitted",
         "import": "meep_gpu.cuda_kernels.complex_offdiag_update_e",
         "function": "complex_offdiag_source",
-        "variants": (("no_pml", (1, 0, 0, 0, 0, 0), "NAIVE"),
-                     ("no_pml", (1, 1, 1, 1, 1, 1), "NAIVE"),
-                     ("no_pml", (1, 1, 1, 1, 1, 1), "FMA_V1"))},
+        "variants": (("no_pml", (1, 0, 0, 0, 0, 0)),
+                     ("no_pml", (1, 1, 1, 1, 1, 1)))},
 }
 
 #: Labels that name a plan launching NO device work at all. Not a fitness question:

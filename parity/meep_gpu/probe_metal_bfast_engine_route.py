@@ -86,6 +86,7 @@ from meep_gpu.metal_kernels import bfast_curl as bfast  # noqa: E402
 from meep_gpu.metal_kernels import device, preconditions, subnormal  # noqa: E402
 
 import gate_metal_bfast as gate  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
 SUB_STEPS = bfast.SUB_STEPS
 STATES = bfast.BFAST_STATE_NAMES
@@ -336,9 +337,11 @@ class EngineRoute:
             # ``plain`` takes the CERTIFIED tranche-1 curl instead, which is what the
             # attribution leg needs: the same lattice and the same horizon with the
             # BFAST tail absent entirely.
-            plan = (metal_launch.plan_pml_curl(fields, pml, sub_step, self.residency)
+            plan = (metal_launch.plan_pml_curl(fields, pml, sub_step, self.residency,
+                                               chunk_bounds=layer_record(fields.grid, pml))
                     if plain else
-                    bfast.plan_bfast_pml_curl(fields, pml, sub_step, self.residency))
+                    bfast.plan_bfast_pml_curl(fields, pml, sub_step, self.residency,
+                                              chunk_bounds=layer_record(fields.grid, pml)))
             if plan is None:
                 reasons = (metal_launch.pml_curl_coverage(fields, pml, sub_step,
                                                           self.residency).reasons
@@ -530,7 +533,8 @@ def leg_binding(payload: Dict[str, Any], out: str) -> None:
                                        bfast_k=BFAST_KS[1][1])
         for sub_step, spec in SUB_STEPS.items():
             residency = device.Residency()
-            plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step, residency)
+            plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step, residency,
+                                             chunk_bounds=layer_record(fields.grid, pml))
             assert plan is not None, "the engine route refused a covered case"
             mirrors = residency._mirrors  # noqa: SLF001 - the audit's whole subject
 
@@ -610,8 +614,9 @@ def leg_single(payload: Dict[str, Any], out: str) -> None:
                     after = gate.snapshot(oracle)
 
                     residency = device.Residency()
-                    plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step,
-                                                     residency)
+                    plan = bfast.plan_bfast_pml_curl(
+                        fields, pml, sub_step, residency,
+                        chunk_bounds=layer_record(fields.grid, pml))
                     assert plan is not None
                     plan.run()
                     residency.sync_out()
@@ -1042,7 +1047,8 @@ def leg_arming(payload: Dict[str, Any], out: str) -> None:
             name, cell, boundaries, COURANTS[0], BFAST_KS[1][1], seeded=True)
         stepping.step_B(oracle, pml_o)
         residency = device.Residency()
-        plan = bfast.plan_bfast_pml_curl(fields, pml, "step_B", residency)
+        plan = bfast.plan_bfast_pml_curl(fields, pml, "step_B", residency,
+                                         chunk_bounds=layer_record(fields.grid, pml))
         plan.run()
         residency.sync_out()
         compared = ("Bx", "By", "Bz", "fu_Bx", "fu_By", "fu_Bz") + STATES["step_B"]
@@ -1097,7 +1103,8 @@ def leg_arming(payload: Dict[str, Any], out: str) -> None:
         name, cell, boundaries, COURANTS[0], BFAST_KS[1][1], seeded=True)
     stepping.step_B(oracle, pml_o)
     residency = device.Residency()
-    plan = bfast.plan_bfast_pml_curl(fields, pml, "step_B", residency)
+    plan = bfast.plan_bfast_pml_curl(fields, pml, "step_B", residency,
+                                     chunk_bounds=layer_record(fields.grid, pml))
     compared = ("Bx", "By", "Bz", "fu_Bx", "fu_By", "fu_Bz") + STATES["step_B"]
     bad = per_name_differing(gate.snapshot(fields), gate.snapshot(oracle),
                              compared)

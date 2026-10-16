@@ -13,7 +13,8 @@ storage classes whose arithmetic differs in exactly the places
 Everything that does not depend on the storage class lives here ONCE: the five
 arrangements, the lock-step driver walk, the launch counters, the purity/race ledger,
 the ghost-observability derivation, the block-size and seed-scale sweeps, the
-driver-level sync and withdraw legs, the arbitration leg (as shipped AND with the
+driver-level sync leg and seam leg (``withdraw``: the magnetic f_minus_p restore,
+hd_seam_restore), the arbitration leg (as shipped AND with the
 wiring rows patched in-process), the compiler leg, the corpus lift (parent and child)
 and the runner. A second transcription of a launch counter is a second place for a
 counter to stop counting.
@@ -79,6 +80,7 @@ except ImportError:  # laptop: the host legs and the tests only
     cp = None
 
 import gate_provenance  # noqa: E402
+import hd_seam_restore  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 
 # THE SIBLING GATES, imported for the machinery every scratch-output weld gate on this
@@ -115,8 +117,6 @@ SEED_SCALE_BITS: int = cyl.SEED_SCALE_BITS
 LIFT_CLEAN_STEP_FLOOR: int = cyl.LIFT_CLEAN_STEP_FLOOR
 #: The volumes that must MOVE for a band-class case to be non-vacuous.
 BAND_MUST_MOVE: Tuple[str, ...] = cyl.BAND_MUST_MOVE
-#: The expansion probe artifact the complex family's licence is read from, per policy.
-EXPANSION_PROBES: Dict[str, str] = cyl.EXPANSION_PROBES
 
 #: The arrangements every product case drives in lockstep. ``weld`` is the subject.
 MODES: Tuple[str, ...] = ("array", "singles", "composition_today", "unfused", "weld")
@@ -158,8 +158,8 @@ class Adapter:
 
     #: The family module (``meep_gpu.cuda_kernels.<...>``), set by the gate.
     family: Any = None
-    #: ``True`` for complex64 storage: word views on every launch argument, an
-    #: expansion licence and an arm, and two uint32 words per cell in every count.
+    #: ``True`` for complex64 storage: word views on every launch argument and two
+    #: uint32 words per cell in every count.
     complex_storage: bool = False
     #: The board cell, in the census's ``(update_H arm, step_D arm)`` spelling.
     cell_arms: Tuple[str, str] = ("", "")
@@ -170,12 +170,8 @@ class Adapter:
     value_classes: Tuple[str, ...] = ("uniform", "subnormal_band")
     #: Per-case RNG seed base.
     seed: int = 20260907
-    #: The float32 subnormal policy this run installs, and the expansion licence
-    #: (complex only; ``None`` for the real family).
+    #: The float32 subnormal policy this run installs.
     policy: Optional[str] = None
-    license: Optional[Dict[str, Any]] = None
-    #: The arm the kernel compiles under (complex only; ``None`` for real).
-    arm: Any = None
     #: ``{name: {"old", "new", "why", "live_on", ["also"], ["options"], ["null_under"],
     #: ["null_reason"]}}`` -- device-source rewrites.
     device_mutations: Dict[str, Dict[str, Any]] = {}
@@ -294,7 +290,7 @@ class Adapter:
         raise NotImplementedError
 
     def kernel_source(self, source: Optional[str] = None) -> str:
-        """The shipped device text for this run's arm."""
+        """The shipped device text."""
         raise NotImplementedError
 
     def compile(self, source: Optional[str] = None,
@@ -324,15 +320,9 @@ class Adapter:
     def attribution_source(self) -> Optional[str]:
         """The device text ``--fmad=false`` is attributed on.
 
-        ``None`` means the shipped text. The COMPLEX family overrides this with the
-        UNCONTRACTED arm, because its shipped arm spells every fusion as an explicit
-        ``__fmaf_rn`` and leaves the flag nothing to remove -- so an attribution run on
-        the shipped text would measure the harness rather than the spelling.
+        ``None`` means the shipped text.
         """
         return None
-
-    def attribution_arm_name(self) -> str:
-        return str(self.arm)
 
     def host_mutation(self, name: str, spec: Mapping[str, Any],
                       steps: int) -> Dict[str, Any]:
@@ -359,6 +349,12 @@ class Adapter:
                 "source_type": "continuous" if integrated else "gaussian",
                 **({"is_integrated": True} if integrated else {"fwidth": 0.2})}
 
+    def seam_sources(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """The seam leg's integrated electric and magnetic sources, in the beta run's
+        plane (z is translationally invariant there)."""
+        return ({**hd_seam_restore.INTEGRATED_ELECTRIC_SOURCE, "center": (0.15, -0.1, 0.0)},
+                {**hd_seam_restore.INTEGRATED_MAGNETIC_SOURCE, "center": (-0.1, 0.15, 0.0)})
+
     # -- the family's own host legs -------------------------------------------
     def leg_transcription(self) -> Dict[str, Any]:
         raise NotImplementedError
@@ -373,17 +369,11 @@ class Adapter:
         """The ``FUSED_PRODUCTS`` row the wiring change adds, for the arbitration leg."""
         raise NotImplementedError
 
-    def composer_licenses(self) -> Optional[Dict[str, Any]]:
-        """What ``arms.plan_step`` needs to reach this family's predicates."""
-        return None
-
     def child_env(self) -> Dict[str, str]:
         """Extra environment the lift CHILDREN need, resolved AFTER the policy install.
 
         Called by :func:`run_campaign` at the moment the lift leg runs rather than at
-        parser time, because on the complex family the value is the expansion licence
-        the run installs -- and a child handed a licence resolved before the install
-        would be handed ``null``.
+        parser time, after the policy install.
         """
         return {}
 
@@ -591,20 +581,32 @@ def drive(adapter: Adapter, spec: Mapping[str, Any], value_class: str, steps: in
         memo_named, memo_total = counter.named(), counter.total
 
     final = frozen(engines[modes[-1]].fields)
+    array_final = frozen(engines[modes[0]].fields)
     must_move = STATE_NAMES if value_class != "subnormal_band" else BAND_MUST_MOVE
+    # THE AUXILIARY CONTRACT (bit_parity_0_10 KERNELS.md section 1, C2): ``fu_*`` and
+    # ``f_w_*`` are read and written only on the cells whose chunk carries their form,
+    # so on a 2-D beta grid the array path never steps the ones whose axis is the
+    # invariant z (fu_Bx, fu_Dx, f_w_Hz, f_w_Ez). The floor exempts exactly the
+    # auxiliaries the ARRAY PATH leaves at their seed -- read off the oracle's own
+    # movement, never the subject's -- and names them.
+    never_stepped = sorted(name for name in must_move
+                           if name.startswith(("fu_", "f_w_")) and name in seeded
+                           and not differing(seeded[name], array_final[name]))
     unmoved = sorted(name for name in must_move
-                     if name in seeded and not differing(seeded[name], final[name]))
+                     if name in seeded and name not in never_stepped
+                     and not differing(seeded[name], final[name]))
     identical = {mode: first[mode] is None for mode in modes[1:]}
     drift = read_only_drift(read_only, reference.pml)
     return {
         "label": label, "spec": spec["label"], "value_class": value_class,
-        "beta": float(spec["beta"]), "arm": str(adapter.arm),
+        "beta": float(spec["beta"]),
         "modes": list(modes), "steps_requested": steps, "steps_compared": compared,
         "words_compared": word_total(seeded) * compared * max(1, len(modes) - 1),
         "identical": identical, "first_divergence": first,
         "operand_census": census, "plant": plant,
         "read_only_drift": drift,
         "volumes_that_did_not_move": unmoved,
+        "auxiliaries_the_array_path_never_steps": never_stepped,
         "memo_launches": memo_total, "memo_named": memo_named,
         "weld_launches": engines["weld"].launches if "weld" in engines else None,
         "seconds": round(time.perf_counter() - started, 1),
@@ -639,13 +641,18 @@ def leg_driver_order(adapter: Adapter) -> Dict[str, Any]:
     except ValueError:
         start = -1
     adjacent = start >= 0 and order[start:start + len(span)] == span
-    withdraw_line = "getattr(source, \"withdraw\""
+    # THE SEAM'S ONE PASS, read off driver.py: since entry 25 it is the magnetic
+    # f_minus_p restore (writes B alone, where H is stored), not an electric withdraw.
+    seam = hd_seam_restore.driver_seam_facts()
     record = {
         "driver_step_passes": order, "span": span,
         "the_span_is_adjacent_in_the_driver_step": adjacent,
         "seam": family.SEAM,
         "seam_is_the_withdraw_hoist_seam": family.SEAM == withdraw_hoist.SEAM,
-        "the_driver_runs_an_electric_withdraw_in_this_seam": withdraw_line in source,
+        "driver_seam": seam,
+        "the_seam_holds_only_the_magnetic_restore": bool(seam.get("passed")),
+        "the_driver_runs_an_electric_withdraw_in_this_seam":
+            "getattr(source, \"withdraw\"" in source,
         "carries_deposit_repair": bool(family.CARRIES_DEPOSIT_REPAIR),
         "hoists_the_withdraw": bool(family.HOISTS_THE_WITHDRAW),
         "why_no_deposit_repair": (
@@ -655,7 +662,8 @@ def leg_driver_order(adapter: Adapter) -> Dict[str, Any]:
     }
     record["passed"] = bool(
         adjacent and record["seam_is_the_withdraw_hoist_seam"]
-        and record["the_driver_runs_an_electric_withdraw_in_this_seam"]
+        and record["the_seam_holds_only_the_magnetic_restore"]
+        and not record["the_driver_runs_an_electric_withdraw_in_this_seam"]
         and not record["carries_deposit_repair"]
         and not record["hoists_the_withdraw"])
     return record
@@ -934,8 +942,10 @@ def leg_seed_scale(adapter: Adapter, spec: Mapping[str, Any],
 
 def build_driver(adapter: Adapter, spec: Mapping[str, Any], *,
                  integrated: bool = False, seed: int = 20260907,
-                 scale_bits: int = 0):
-    """One seeded ``FdtdDriver`` on the device, with one source."""
+                 scale_bits: int = 0,
+                 sources: Optional[Sequence[Mapping[str, Any]]] = None):
+    """One seeded ``FdtdDriver`` on the device, with one source (or ``sources``,
+    ``add_source`` specs, in its place)."""
     from meep_gpu.driver import FdtdDriver  # noqa: PLC0415
 
     boundaries = ({axis: kind for axis, kind in zip("xyz", spec["boundaries"])}
@@ -960,7 +970,8 @@ def build_driver(adapter: Adapter, spec: Mapping[str, Any], *,
          for name, value in (("Ex", 2.0), ("Ey", 2.5), ("Ez", 3.0))},
         {name: cp.full(shape, np.float32(1.0 / value), cp.float32)
          for name, value in (("Ex", 2.0), ("Ey", 2.5), ("Ez", 3.0))})
-    driver.add_source(adapter.driver_source(integrated))
+    for source in (sources if sources is not None else (adapter.driver_source(integrated),)):
+        driver.add_source(dict(source))
     rng = np.random.default_rng(seed)
     scale = np.float32(2.0) ** int(scale_bits)
     for name in STATE_NAMES:
@@ -1067,76 +1078,31 @@ def leg_sync(adapter: Adapter, spec: Mapping[str, Any], steps: int) -> Dict[str,
 
 def leg_withdraw(adapter: Adapter, spec: Mapping[str, Any],
                  steps: int) -> Dict[str, Any]:
-    """The seam's one pass, on a device, with both of the campaign's null controls."""
-    family = adapter.family
-    # THE SEED IS NOT SCALED HERE: this leg compares a subtraction of the SOURCE's
-    # standing dipole, whose magnitude is the source amplitude. Against a scaled state
-    # that subtraction is below the float32 resolution of every word it touches and is
-    # swallowed whole -- which silently stops the two null controls controlling
-    # anything.
-    probe_driver = build_driver(adapter, spec, integrated=True, scale_bits=0)
-    sources = tuple(probe_driver._sources)  # noqa: SLF001
-    standing = withdraw_hoist.standing_withdraws(sources)
-    covered, reason = adapter.predicate(
-        probe_driver.fields, probe_driver.pml, probe_driver.grid, sources)
-    hoistable, hoist_reasons = withdraw_hoist.hoistable(
-        probe_driver.fields, sources, span=family.REPLACES)
+    """The seam's one pass on a device: :func:`hd_seam_restore.seam_restore_leg`.
 
-    arms_out: Dict[str, Any] = {}
-    for label in ("hoisted", "not_hoisted", "after_step_D"):
-        reference = build_driver(adapter, spec, integrated=True, scale_bits=0)
-        driver = build_driver(adapter, spec, integrated=True, scale_bits=0)
-        if label == "after_step_D":
-            plans, book = weld_plan_for(adapter, driver)
-            electric = tuple(driver._sources)  # noqa: SLF001
-            inner = plans["update_H"]
-
-            def _after(_inner=inner, _fields=driver.fields, _electric=electric):
-                _inner()
-                for source in _electric:
-                    getattr(source, "withdraw", lambda *_a: None)(_fields)
-
-            plans = {"update_H": _after, "step_D": lambda: None}
-        else:
-            plans, book = weld_plan_for(adapter, driver,
-                                        hoisted=(label == "hoisted"))
+    Since entry 25 what stands between the two consults is the magnetic ``f_minus_p``
+    restore, not an electric withdraw. The driver carries an integrated electric AND an
+    integrated magnetic source (:meth:`Adapter.seam_sources`); the weld is
+    force-installed, stepped in lockstep with its own array-path reference and required
+    identical, and the weld with the restore moved before the launch and with no
+    magnetic ``f_minus_p`` must each diverge. THE SEED IS NOT SCALED HERE: the
+    ``f_minus_p`` words are the sources' amplitude, which a scaled state would swallow.
+    """
+    def install(driver: Any) -> Mapping[str, Any]:
+        plans, book = weld_plan_for(adapter, driver)
         driver._fast_path = Shim(plans)  # noqa: SLF001
         driver._fast_path_stale = False  # noqa: SLF001
-        first: Optional[Dict[str, Any]] = None
-        compared = 0
-        for step in range(steps):
-            reference.step()
-            driver.step()
-            cp.cuda.runtime.deviceSynchronize()
-            moved = compare(driver_state(reference), driver_state(driver))
-            compared = step + 1
-            if moved:
-                first = {"step": step + 1, "volumes": moved}
-                break
-        arms_out[label] = {"first_divergence": first, "identical": first is None,
-                           "steps_compared": compared,
-                           "withdrawn_on_the_last_step": book.get("withdrawn"),
-                           "launches": book.get("launches")}
-    record = {
-        "spec": spec["label"], "steps": steps,
-        "predicate_refuses_this_row": not covered, "predicate_reason": reason,
-        "predicate_names_the_withdraw": "standing integrated" in str(reason),
-        "standing_withdraws": len(standing),
-        "hoistable": bool(hoistable), "hoistable_reasons": list(hoist_reasons),
-        "arms": arms_out, "campaign": dict(withdraw_hoist.MEASUREMENT),
-        "what_this_licenses": (
-            "the LeadingWithdrawPlan placement on this device against the array path, "
-            "with both of the array-path campaign's null controls diverging. It does "
-            "NOT flip HOISTS_THE_WITHDRAW: the product still refuses these rows by "
-            "name, and the flag moves only together with INSTALLABLE and the wiring"),
-    }
-    record["passed"] = bool(
-        record["predicate_refuses_this_row"] and record["predicate_names_the_withdraw"]
-        and record["hoistable"] and standing
-        and arms_out["hoisted"]["identical"]
-        and not arms_out["not_hoisted"]["identical"]
-        and not arms_out["after_step_D"]["identical"])
-    return record
+        return book
+
+    return hd_seam_restore.seam_restore_leg(
+        build=lambda: build_driver(adapter, spec, sources=adapter.seam_sources(),
+                                   scale_bits=0),
+        install_weld=install,
+        coverage=lambda driver: adapter.predicate(
+            driver.fields, driver.pml, driver.grid, tuple(driver._sources)),  # noqa: SLF001
+        state_of=driver_state, compare=compare,
+        synchronize=cp.cuda.runtime.deviceSynchronize, steps=steps,
+        spec_label=spec["label"])
 
 
 # ---------------------------------------------------------------------------
@@ -1181,8 +1147,7 @@ def ask_the_composer(adapter: Adapter, fields, grid, pml, sources=()) -> Dict[st
 
     family = adapter.family
     plan = arms.plan_step(fields=fields, pml=pml, grid=grid, sources=sources,
-                          fuse=True, licenses=adapter.composer_licenses(),
-                          subnormal_policy=adapter.policy)
+                          fuse=True)
     selected = dict(getattr(plan, "selected", {}) or {})
     reasons = {name: list(value) for name, value
                in (getattr(plan, "reasons", {}) or {}).items()}
@@ -1319,11 +1284,6 @@ def leg_mutation(adapter: Adapter, specs: Sequence[Mapping[str, Any]],
     """Every armed defect, each required to DIVERGE on at least one scored fixture."""
     results: List[Dict[str, Any]] = []
     for name, spec in adapter.device_mutations.items():
-        if spec.get("arm_only") and spec["arm_only"] != str(adapter.arm):
-            results.append({"name": name, "kind": "device", "compiled": None,
-                            "caught": False, "passed": True,
-                            "skipped": f"armed only under {spec['arm_only']}"})
-            continue
         caught_on: List[str] = []
         compiled, compile_error = True, None
         for case in specs:
@@ -1415,9 +1375,8 @@ def _fmad_attribution(adapter: Adapter, spec: Mapping[str, Any],
     moved = compare(states["guarded"], states["default"])
     return {
         "spec": spec["label"], "steps": steps,
-        "arm_under_attribution": adapter.attribution_arm_name(),
         "differing_volumes": moved,
-        "the_flag_changes_the_answer_on_this_arm": bool(moved),
+        "the_flag_changes_the_answer": bool(moved),
         "what_this_attributes": (
             "--fmad=false DOES reach NVRTC and DOES change the emitted arithmetic on "
             "a source that carries contractible multiply-adds -- so a null on the "
@@ -1698,7 +1657,7 @@ def evaluate_row(adapter: Adapter, driver: Any, steps: int,
     sources = tuple(getattr(driver, "_sources", ()) or ())
     block: Dict[str, Any] = {
         "family": family.FAMILY, "steps_requested": steps,
-        "n_sources": len(sources), "arm": str(adapter.arm),
+        "n_sources": len(sources),
         "grid_shape": [int(n) for n in driver.grid.shape],
         "beta": float(getattr(driver.grid, "beta", 0.0)),
         "storage": str(driver.fields.Hx.dtype),
@@ -1716,9 +1675,7 @@ def evaluate_row(adapter: Adapter, driver: Any, steps: int,
     block["predicate_reason"] = reason
     try:
         plan = arms.plan_step(fields=driver.fields, pml=driver.pml, grid=driver.grid,
-                              sources=sources, fuse=True,
-                              licenses=adapter.composer_licenses(),
-                              subnormal_policy=adapter.policy)
+                              sources=sources, fuse=True)
         block["composer_selected_as_shipped"] = dict(getattr(plan, "selected", {}) or {})
     except Exception as error:  # noqa: BLE001
         block["composer_error"] = repr(error)[:400]
@@ -1763,8 +1720,7 @@ def lift_child(adapter: Adapter, leg: str, target: str, cases: Sequence[str],
     if policy:
         probe.install_subnormal_policy_for_run(policy, _REPO_API)
     adapter.policy = policy
-    child_progress(adapter, f"child start policy={policy} steps={steps} "
-                            f"arm={adapter.arm}")
+    child_progress(adapter, f"child start policy={policy} steps={steps}")
 
     records: List[Dict[str, Any]] = []
 
@@ -1899,10 +1855,9 @@ def leg_lift(adapter: Adapter, gate_file: str, out_dir: Path, steps: int,
                            "payload": json.loads(out_json.read_text(encoding="utf-8")),
                            "resumed": True})
             continue
-        if row["withdraw_in_seam"]:
-            driven.append({**row, "refused_by_the_predicate": True,
-                           "why": "standing integrated electric withdraw in the seam"})
-            continue
+        # A withdraw_in_seam row is LIFTED AND ASKED like any other: the flag was cut on
+        # the driver before f_minus_p, and since entry 25 no engine source stands a
+        # withdraw (hd_seam_restore.lift_withdraw_accounting scores the refusals).
         if target is None:
             driven.append({**row, "error": "no module for this row in the census"})
             continue
@@ -1969,14 +1924,17 @@ def leg_lift(adapter: Adapter, gate_file: str, out_dir: Path, steps: int,
     errored = [entry["label"] for entry in driven
                if entry.get("error") or (entry.get("returncode") not in (0, None)
                                          and not blocks[entry["label"]])]
-    refused = sorted(entry["label"] for entry in driven
-                     if entry.get("refused_by_the_predicate"))
+    accounting = hd_seam_restore.lift_withdraw_accounting(
+        blocks, facts["rows_with_a_standing_withdraw"])
+    refused = accounting["refused"]
     record = {
         "basis": facts, "rows": driven, "blocks": blocks,
         "rows_on_the_board_cell": len(rows),
         "rows_admitted": len(admitted), "rows_driven": len(ran),
         "rows_identical": len(identical),
-        "rows_refused_for_the_withdraw": refused,
+        "rows_refused_for_the_withdraw": accounting["refused_by_a_standing_withdraw"],
+        "rows_refused": refused,
+        "refusal_accounting": accounting,
         "rows_below_the_step_floor": below,
         "rows_diverged": diverged, "rows_errored": errored,
         "complete_driver_steps": sum(int(value.get("steps_compared") or 0)
@@ -1990,7 +1948,7 @@ def leg_lift(adapter: Adapter, gate_file: str, out_dir: Path, steps: int,
     record["passed"] = bool(
         ran and not diverged and not errored and not below
         and len(identical) == len(ran)
-        and sorted(refused) == sorted(facts["rows_with_a_standing_withdraw"]))
+        and accounting["passed"])
     return record
 
 
@@ -2004,10 +1962,6 @@ def make_parser(description: str):
 
 def install_policy(results: Dict[str, Any], args) -> Dict[str, Any]:
     return cyl.install_policy(results, args)
-
-
-def load_expansion_licence(policy: Optional[str]) -> Dict[str, Any]:
-    return cyl.load_expansion_licence(policy)
 
 
 def save(results: Dict[str, Any], out: str) -> None:
@@ -2046,20 +2000,6 @@ def run_campaign(adapter: Adapter, args, gate_file: str, family_name: str,
     results["device_mode"] = True
     at_install = install_policy(results, args)
     adapter.policy = args.subnormal_policy
-    if adapter.complex_storage:
-        licence = load_expansion_licence(args.subnormal_policy)
-        results["expansion_licence"] = licence
-        if not licence.get("usable"):
-            results["status"] = "refused: no usable expansion licence for this policy"
-            results["verdict"] = {"passed": False, "clauses": {}}
-            results["canonical_verdict"] = {"released": False,
-                                            "reasons": ["no usable expansion licence"]}
-            save(results, args.out)
-            log(results["status"])
-            return 1
-        adapter.arm = licence["arm"]
-        adapter.license = licence["verdict"]
-        results["arm"] = adapter.arm
     results["what_a_release_does_not_license"] = family.WHAT_A_RELEASE_DOES_NOT_LICENSE
     results["installable"] = bool(family.INSTALLABLE)
     results["source_digest"] = adapter.source_digest()

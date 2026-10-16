@@ -25,7 +25,7 @@ behind it: its device source is the FOLDED complex curl with the beta insert, so
 fold branches are RUNTIME boundary codes and are simply dead on an unfolded grid.
 Three of this cell's four rows are folded (Mirror(Y) with a periodic termination)
 and one is not, and one text serves all four. :data:`KERNEL_NAME` is therefore a
-single name and :func:`kernel_source` a single string per arm, not a variant map.
+single name and :func:`kernel_source` a single string, not a variant map.
 
 THE UPDATE_H HALF IS THE CERTIFIED COMPLEX CONSTITUTIVE, unchanged.
 ``complex_beta_kernels`` ships NO constitutive kernel:
@@ -85,45 +85,43 @@ helper keeps that return verbatim.
 WHAT THIS SEAM ADDS THAT NO OTHER H->D WELD HAS: THE BETA PARTNER
 =============================================================================
 
-``stepping._special_kz_beta_term`` takes the SAME-CELL component snapshot
-(stepping.py:437), and in the D-side curl that snapshot is already in a register: Dx
-takes the Hy CENTRE the stencil loaded into ``f_2`` and Dy the Hx CENTRE in ``f_1``
-(``complex_beta_kernels.BETA_PARTNER``, pinned there against ``D_CURL_TERMS`` and the
-call sites :443/:445). The array path evaluates ``step_D`` AFTER ``update_H``, so
-that snapshot is the POST-``update_H`` magnetic field.
+``stepping._special_kz_beta_term`` takes the SAME-CELL component snapshot, and in the
+D-side curl that snapshot is already in a register: Dx takes the Hy CENTRE the stencil
+loaded into ``f_2`` and Dy the Hx CENTRE in ``f_1`` (``complex_beta_kernels.BETA_PARTNER``,
+pinned there against ``D_CURL_TERMS``). The array path evaluates ``step_D`` AFTER
+``update_H``, so that snapshot is the POST-``update_H`` magnetic field. Since 0.10 the
+beta increment is MEEP's own pass after the component's curl, ``-quarter_turn(c, g)``
+part by part through its own additive ladder (``folded_pass.complex_beta_insert``;
+bit_parity_0_10 KERNELS.md section 6), and the ladder writes ``D``/``fu_D`` at the
+thread's OWN cell only -- in place, safe by construction, exactly as ``pml_apply`` is.
 
 **Welded, those two registers are this launch's own** ``own_h[1]`` **and**
 ``own_h[0]``, because the weld redirects every own-cell magnetic load in the body and
-the beta term consumes the redirected declaration rather than a load of its own. That
+the beta pass consumes the redirected declaration rather than a load of its own. That
 is CHECKED and not assumed: :func:`curl_pieces` asserts, per target block, that each
-surviving ``mul_imag_coefficient_left`` line names a register whose declaration it
-has just rewritten to ``own_h[...]``. A beta term left reading the PRE-launch ``H``
-would be one sub-step behind on exactly two of the six curl terms -- converged,
-plausible and wrong -- and it is the armed mutation ``beta_partner_reads_stale_h``.
+surviving ``beta_increment`` call names a register whose declaration it has just
+rewritten to ``own_h[...]``. A beta pass left reading the PRE-launch ``H`` would put
+the beta pass of targets 0 and 1 one sub-step behind -- converged, plausible and
+wrong -- and it is the armed mutation ``beta_partner_reads_stale_h``.
 
 =============================================================================
 THE ARITHMETIC IS THE CERTIFIED FAMILIES', INCLUDING ITS ARM
 =============================================================================
 
 Every complex operation comes from ``complex_emitter``'s prelude
-(``cf_load``/``cf_store``, ``cf_add``/``cf_sub``, ``cf_zero``, ``rotate_field_left``,
-``mul_field_left``, ``mul_coefficient_left``, ``pml_apply``, ``constitutive_apply``)
-or from ``complex_beta_kernels``' one-line ``mul_imag_coefficient_left``, which is
-``rotate_field_left`` with the coefficient as the first operand. NOTHING is retyped.
-The arm (``NAIVE``/``FMA_V1``) is an ARGUMENT with no default, for the reason
-``complex_emitter.normalized_expansion`` refuses rather than defaulting: a wrong arm
-is a wrong ANSWER, not a crash.
+(``cf_load``/``cf_store``, ``cf_add``/``cf_sub``, ``cf_zero``, ``mul_coefficient_left``,
+``pml_apply``, ``constitutive_apply``) or from ``folded_pass.COMPLEX_FOLD_HELPERS``
+(``beta_increment``, the quarter turn as two real products and a sign flip, and the
+folded ladder ``cfold_apply``), which the certified beta curl carries. NOTHING is
+retyped.
 
 TWO CuPy SPELLINGS MEASURED ON THIS BACKEND ARE RESPECTED RATHER THAN REDISCOVERED
 (``lanes/cyl_round/cupy_probe``, 2026-09-06/07, one RTX A6000, CuPy 13.5.1, both
 float32 subnormal policies):
 
 * ``complex64 * float32`` is the four-product form CONTRACTED by NVRTC. The
-  UNCONTRACTED transcription differs on the sign of a FLUSHED zero. The spelling that
-  is 0 on all twelve probe cases under ``--fmad=false`` is
-  ``_ARM_SOURCE[FMA_V1].mul_field_left``, which is what this kernel calls -- through
-  the emitter's own text, under either arm's name binding, because the arm block is
-  lifted whole.
+  UNCONTRACTED transcription differs on the sign of a FLUSHED zero. This kernel calls
+  the emitter's own ``mul_field_left``, lifted whole with the rest of the prelude.
 * ``complex64 / float32`` is CuPy's SCALED complex/complex algorithm with the
   zero-valued terms kept, NOT numpy's reciprocal multiply. **This family performs NO
   DIVISION** -- the reciprocal its recurrence needs is ``sinv``, computed host-side
@@ -136,15 +134,10 @@ float32 subnormal policies):
 Both facts are armed as gate mutations anyway, on a PLANTED row-0 tiny-normal class:
 a random battery does not exercise the class where the wrong multiply shows.
 
-THE BETA COEFFICIENT'S SIGNED ZERO IS PASSED THROUGH AND IS NOT CLAIMED TO MATTER.
-``complex_beta_kernels.beta_curl_coefficients`` returns the words Python's own
-complex multiply produced, real word included, and the real word is ``-0.0`` exactly
-when the coefficient is negative on the magnetic side. THE COMPLEX BETA FAMILY'S OWN
-DEVICE LEG MEASURED THE PASS-THROUGH TO BE INERT -- ``synthesise_the_zero_real_word``
-came back UNCAUGHT 0/12 under BOTH policies, because ``mul_imag_coefficient_left``
-consumes the imaginary word alone -- and this module inherits that finding rather
-than re-arguing it. This gate re-arms the same needle on the H->D seam and records
-whatever it measures; a null here is a null, not a defence.
+THE BETA COEFFICIENTS ARE REAL WORDS. ``complex_beta_kernels.beta_curl_coefficients``
+returns two float32 words, one per call site, the D side's negated in double before the
+one rounding: the quarter turn forms no complex coefficient, so there is no real word
+of a complex coefficient whose signed zero could be passed through or synthesised.
 
 =============================================================================
 WHAT SITS IN THE SEAM, AND WHY THIS PRODUCT REFUSES THE WITHDRAW ROWS
@@ -249,9 +242,9 @@ CURL_SOURCE_NAMES: Tuple[str, str, str] = _chd.CURL_SOURCE_NAMES
 HALO_TAPS: int = _chd.HALO_TAPS
 OWN_LOAD_EDITS: int = _chd.OWN_LOAD_EDITS
 
-#: How many beta increments the certified complex-beta ``step_D`` carries: one on
-#: target 0 and one on target 1, none on target 2 (MEEP step_db.cpp:148-176 runs
-#: ``cc`` over ``d_c`` in {X, Y} only; stepping.py:472-474). A site count is a WELD.
+#: How many beta passes the certified complex-beta ``step_D`` carries: one on target 0
+#: and one on target 1, none on target 2 (MEEP step_db.cpp:161-175 runs ``cc`` over
+#: ``d_c`` in {X, Y} only). A site count is a WELD.
 BETA_INSERT_LINES = 2
 
 #: NOT CERTIFIED YET. The gate for this family is
@@ -316,10 +309,9 @@ _FUSED_THREADS = 256
 
 #: ``--fmad=false`` is CORRECTNESS and is the certified complex family's own tuple,
 #: restated here rather than imported so that loading this file by path cannot pick up
-#: a different one than the gate compiled. The constitutive half's two separate
-#: accumulations, the curl's ``((sf - f_1) + (f_2 - ss))`` grouping and the beta
-#: insert's ``cf_sub(curl, c*g)`` are all contraction candidates; the arm's own
-#: fusions are explicit ``__fmaf_rn`` and survive the flag.
+#: a different one than the gate compiled. The constitutive half's accumulation, the
+#: curl's left-to-right stencil and the folded ladder's ``fcur - (sinv_u * df)`` are
+#: all contraction candidates.
 _COMPILE_OPTIONS: Tuple[str, ...] = ("--fmad=false",)
 
 __all__ = [
@@ -336,11 +328,7 @@ __all__ = [
 ]
 
 
-def _arm(expansion) -> int:
-    return complex_emitter.normalized_expansion(expansion)
-
-
-def _curl_source(expansion) -> str:
+def _curl_source() -> str:
     """The certified ``step_D_pml_complex_beta`` text this weld lifts.
 
     Taken from :func:`complex_beta_kernels.beta_source` -- the pure emitter -- rather
@@ -349,33 +337,34 @@ def _curl_source(expansion) -> str:
     gate had installed, and the weld and the single must be mutable independently or a
     mutation leg cannot attribute a divergence to either.
     """
-    return _beta.beta_source("step_D", _arm(expansion))
+    return _beta.beta_source("step_D")
 
 
 # ---------------------------------------------------------------------------
 # The device source
 # ---------------------------------------------------------------------------
 
-def constitutive_prelude(expansion) -> str:
+def constitutive_prelude() -> str:
     """The beta variant's certified prelude with ``constitutive_apply`` made PURE.
 
     THE PRELUDE IS THE BETA CURL SOURCE'S OWN, which is what carries the folded
     complex prelude's two deltas -- ``#define BC_MIRROR_PERIODIC 2`` and the widened
-    ghost -- AND ``complex_beta_kernels``' own ``mul_imag_coefficient_left`` into the
-    weld without this module restating any of the three. The four anchored edits on
+    ghost -- AND the beta pass's helpers (``folded_pass.COMPLEX_FOLD_HELPERS``:
+    ``beta_increment`` and the ladder ``cfold_apply``) into the weld without this module
+    restating any of them. The four anchored edits on
     top are :data:`.complex_fused_hd_pair.CONSTITUTIVE_LIFT_EDITS`, applied through
     that module's own table so the two products cannot make ``constitutive_apply``
     pure in two different ways; the arithmetic is untouched.
     """
     prelude, _ = _chd._split_at_kernel(  # noqa: SLF001
-        _curl_source(expansion), "the certified complex-beta step_D source")
+        _curl_source(), "the certified complex-beta step_D source")
     for old, new in _chd.CONSTITUTIVE_LIFT_EDITS:
         prelude = _chd._needle(prelude, old, new,  # noqa: SLF001
                                "constitutive_apply's lifted text")
     return prelude
 
 
-def cshift_dn_recompute_source(expansion) -> str:
+def cshift_dn_recompute_source() -> str:
     """The certified ``cshift_dn`` with its two leaf LOADS RESOLVED.
 
     THE BRANCHES AND THE INDEX EXPRESSIONS ARE THE CERTIFIED HELPER'S OWN, parsed out
@@ -391,7 +380,7 @@ def cshift_dn_recompute_source(expansion) -> str:
     one component and would converge.
     """
     prelude, _ = _chd._split_at_kernel(  # noqa: SLF001
-        _curl_source(expansion), "the certified complex-beta step_D source")
+        _curl_source(), "the certified complex-beta step_D source")
     signature_text = _chd._CSHIFT_DN_SIGNATURE  # noqa: SLF001
     if prelude.count(signature_text) != 1:
         raise AssertionError(
@@ -409,7 +398,7 @@ def cshift_dn_recompute_source(expansion) -> str:
         raise AssertionError("the certified cshift_dn does not close")
     # EVERYTHING PAST THE CLOSING BRACE IS DROPPED, and dropping it is load-bearing
     # rather than tidy: the rest of the prelude is ``pml_apply``,
-    # ``constitutive_apply`` and ``mul_imag_coefficient_left``, which
+    # ``constitutive_apply`` and the beta pass's helpers, which
     # :func:`constitutive_prelude` already emits. Carrying them a second time is a
     # duplicate definition NVRTC refuses outright.
     body = body[:end]
@@ -435,27 +424,27 @@ def cshift_dn_recompute_source(expansion) -> str:
             + _chd._CSHIFT_DN_SIGNATURE_RECOMPUTE + " {\n" + body + "}\n")  # noqa: SLF001
 
 
-def curl_pieces(expansion, source: Optional[str] = None) -> Tuple[str, str]:
+def curl_pieces(source: Optional[str] = None) -> Tuple[str, str]:
     """``(head, tail)`` of a certified complex ``step_D`` body, every H read redirected.
 
     PARAMETERISED ON THE CURL TEXT, and that parameter is the point rather than a
-    convenience: applied to ``complex_emitter.complex_source("step_D", arm)`` this
-    function returns exactly what ``complex_fused_hd_pair.curl_pieces("plain", arm)``
-    returns, and applied to ``complex_folded_kernels.folded_source("step_D", arm)``
+    convenience: applied to ``complex_emitter.complex_source("step_D")`` this
+    function returns exactly what ``complex_fused_hd_pair.curl_pieces("plain")``
+    returns, and applied to ``complex_folded_kernels.folded_source("step_D")``
     exactly what that function's ``"folded"`` variant returns. Both equalities are
     asserted BYTE FOR BYTE by ``test_complex_beta_fused_hd_pair.py``, on a host with
     no CuPy, so the beta weld is the RELEASED transform plus the two beta assertions
     below -- measured rather than claimed.
 
     ``head`` is the certified preamble, the stride constants, the index decode, the
-    three phase constants AND the two beta coefficient registers, lifted VERBATIM.
+    chunk-record block and the three phase constants, lifted VERBATIM.
     ``tail`` is the three target blocks with the six own-cell magnetic loads taken
     from registers and the six shifted ones recomputed. The ownership mask -- the
     folded three-arm block, which the beta text inherits -- rides in ``tail``
-    untouched: it zeroes ``curl``, never a magnetic read, and the beta increment sits
-    ABOVE it exactly where the array path puts it (:443/:445 after :429, before :450).
+    untouched (it zeroes ``curl`` and, re-spelled as the pass's ownership flag, the
+    beta increment; never a magnetic read).
     """
-    text = _curl_source(expansion) if source is None else source
+    text = _curl_source() if source is None else source
     _, kernel = _chd._split_at_kernel(  # noqa: SLF001
         text, "the certified complex step_D source this weld lifts")
     if kernel.count(_chd._BODY_ANCHOR) != 1:  # noqa: SLF001
@@ -476,16 +465,22 @@ def curl_pieces(expansion, source: Optional[str] = None) -> Tuple[str, str]:
     cut = body.index(_chd._FIRST_TARGET)  # noqa: SLF001
     head, tail = body[:cut], body[cut:]
 
+    # THE OWN-CELL READS: each centre operand is the certified window of the stored
+    # word at the cell (``cwindow``), and becomes the same connection of this launch's
+    # own register (``cconnect(own_h[c], ...)``) -- the released complex weld's rewrite.
     own = 0
-    for component, pointer in enumerate(CURL_SOURCE_NAMES):
-        for variable in ("f_1", "f_2"):
-            old = f"        cf {variable} = cf_load({pointer}, idx);\n"
-            if old not in tail:
-                continue
-            tail = _chd._needle(  # noqa: SLF001
-                tail, old, f"        cf {variable} = own_h[{component}];\n",
-                f"{pointer}'s own-cell load into {variable}")
-            own += 1
+    for line in [line + "\n" for line in tail.splitlines() if "= cwindow(" in line]:
+        line_head, _, rest = line.partition("cwindow(")
+        pointer, _, arguments = rest.partition(", idx, ")
+        if pointer not in CURL_SOURCE_NAMES:
+            raise AssertionError(
+                f"the certified step_D body reads {pointer!r} through cwindow; this weld "
+                f"resolves exactly the three magnetic sources {CURL_SOURCE_NAMES}")
+        component = CURL_SOURCE_NAMES.index(pointer)
+        tail = _chd._needle(  # noqa: SLF001
+            tail, line, f"{line_head}cconnect(own_h[{component}], {arguments}",
+            f"{pointer}'s own-cell read {line.strip()!r}")
+        own += 1
     if own != OWN_LOAD_EDITS:
         raise AssertionError(
             f"the certified step_D body makes {own} own-cell magnetic loads of the "
@@ -524,10 +519,10 @@ def curl_pieces(expansion, source: Optional[str] = None) -> Tuple[str, str]:
                 f"the welded curl half still reads {pointer}; in this signature that "
                 f"pointer is the PRE-LAUNCH magnetic field and every read must be the "
                 f"register or a recompute")
-    if "cshift_dn(" in tail:
+    if "cshift_dn(" in tail or "= cwindow(" in tail:
         raise AssertionError(
-            "the welded curl half still calls the certified cshift_dn, which loads a "
-            "stored H; every shifted tap must go through cshift_dn_recompute")
+            "the welded curl half still calls the certified cshift_dn or cwindow, which "
+            "load a stored H; every magnetic read must be the register or a recompute")
     _assert_the_beta_partner_is_the_weld_register(tail, source is not None)
     return head, tail
 
@@ -535,14 +530,13 @@ def curl_pieces(expansion, source: Optional[str] = None) -> Tuple[str, str]:
 def _assert_the_beta_partner_is_the_weld_register(tail: str, lifted: bool) -> None:
     """Every surviving beta line consumes a register THIS WELD redirected.
 
-    THE ONE CLAUSE THIS FAMILY OWNS AND NO SIBLING H->D WELD HAS. The beta term's
-    partner is the SAME-CELL component snapshot (stepping.py:437), which the array
-    path evaluates after ``update_H``; welded, that snapshot must be this launch's own
-    ``own_h[...]`` register and never a load of the pre-launch volume. The redirect
-    above rewrites the DECLARATION and leaves the beta line's spelling alone, so this
-    checks the PAIRING rather than the line: per target block, each
-    ``mul_imag_coefficient_left`` factor names a register declared ``= own_h[...]`` in
-    that same block.
+    THE ONE CLAUSE THIS FAMILY OWNS AND NO SIBLING H->D WELD HAS. The beta pass's
+    partner is the SAME-CELL component snapshot, which the array path evaluates after
+    ``update_H``; welded, that snapshot must be this launch's own ``own_h[...]``
+    register and never a load of the pre-launch volume. The redirect above rewrites the
+    DECLARATION and leaves the increment line's spelling alone, so this checks the
+    PAIRING rather than the line: per target block, each ``beta_increment`` call's
+    partner names a register declared ``= own_h[...]`` in that same block.
 
     A body with no beta lines at all is accepted ONLY when the caller handed in a text
     -- which is what the two equality checks against the released complex transform
@@ -558,10 +552,11 @@ def _assert_the_beta_partner_is_the_weld_register(tail: str, lifted: bool) -> No
                     declared[variable] = stripped[len(f"cf {variable} = "):]
         for line in block.splitlines():
             stripped = line.strip()
-            if "mul_imag_coefficient_left(" not in stripped:
+            if "beta_increment(" not in stripped:
                 continue
             seen += 1
-            partner = stripped.split("mul_imag_coefficient_left(", 1)[1]
+            # ``cf inc_beta = owned_cell ? beta_increment(bp, f_2) : cf_zero();``
+            partner = stripped.split("beta_increment(", 1)[1]
             partner = partner.split(")", 1)[0].split(",")[-1].strip()
             source_of = declared.get(partner)
             if source_of is None:
@@ -569,12 +564,16 @@ def _assert_the_beta_partner_is_the_weld_register(tail: str, lifted: bool) -> No
                     f"the beta line {stripped!r} names the register {partner!r}, "
                     f"which its own target block does not declare; this weld cannot "
                     f"vouch that the beta partner is the post-update_H field")
-            if not source_of.startswith("own_h["):
+            # The partner's register is the window along z of this launch's own
+            # register: z is the invariant axis of every beta grid and carries no
+            # phase, so the connection is the identity and the word is own_h[c].
+            if not (source_of.startswith("cconnect(own_h[")
+                    and source_of.endswith(", k, ph_z, pz);")):
                 raise AssertionError(
                     f"the beta line {stripped!r} consumes {partner!r}, declared as "
-                    f"{source_of!r} rather than from this launch's own_h register; "
-                    f"the beta partner would then be the PRE-launch magnetic field, "
-                    f"one sub-step behind on exactly two of the six curl terms")
+                    f"{source_of!r} rather than as this launch's own_h register windowed "
+                    f"along z; the beta partner would then be the PRE-launch magnetic "
+                    f"field, and that target's beta pass one sub-step behind")
     if seen != BETA_INSERT_LINES and not (lifted and seen == 0):
         raise AssertionError(
             f"the certified complex-beta step_D body carries {seen} beta increments, "
@@ -586,44 +585,39 @@ def _assert_the_beta_partner_is_the_weld_register(tail: str, lifted: bool) -> No
 _SIGNATURE_HEAD = '\nextern "C" __global__ void fused_hd_pair_pml_complex_beta(\n'
 
 
-def _beta_argument_delta() -> Tuple[str, str]:
-    """``complex_beta_kernels``' OWN signature delta, read off its own delta table.
-
-    Read rather than retyped so this weld's parameter list gains the four beta words
-    in exactly the place, order and spelling the certified single gained them; a
-    change there arrives here as a failed anchor rather than as two hand-kept lists
-    drifting apart.
-    """
-    for label, old, new, _expected in _beta._deltas_for("step_D"):  # noqa: SLF001
-        if label == "beta_coefficient_arguments":
-            return old, new
-    raise AssertionError(
-        "complex_beta_kernels no longer declares a 'beta_coefficient_arguments' "
-        "delta; this weld takes the four beta parameters from that table and has "
-        "nothing to take them from")
+#: The beta words' insert into the released complex weld's parameter list: after the
+#: phase constants and before the chunk record, which stays last -- the place and the
+#: spelling ``complex_beta_kernels.beta_source`` gives the certified single.
+_PHASE_TAIL = "    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,\n"
+_BETA_PARAMETERS = (
+    "    // The two real beta coefficients, one per call-site sign, rounded ONCE on the\n"
+    "    // host (complex_beta_kernels.beta_curl_coefficients, the D side's table).\n"
+    "    float bp, float bm,\n")
 
 
 def signature() -> str:
     """The kernel's parameter list: the released complex weld's, plus the beta words.
 
     THE PARAMETER TEXT IS THE RELEASED PRODUCT'S OWN
-    (:data:`.complex_fused_hd_pair._SIGNATURE_BODY`) with
-    :func:`_beta_argument_delta`'s anchored edit applied, so neither half is retyped
-    and a change to either arrives as a failed anchor.
+    (:data:`.complex_fused_hd_pair._SIGNATURE_BODY`) with the two beta words inserted
+    after its phase constants, so neither half is retyped and a change to either
+    arrives as a failed anchor.
     """
-    old, new = _beta_argument_delta()
     body = _chd._SIGNATURE_BODY  # noqa: SLF001
-    if body.count(old) != 1:
+    if body.count(_PHASE_TAIL) != 1:
         raise AssertionError(
-            f"the released complex H->D signature carries {body.count(old)} copies of "
-            f"the phase-constant tail the beta delta anchors on, not one; this weld "
-            f"cannot splice the four beta words into a list it cannot find the end of")
-    return _SIGNATURE_HEAD + body.replace(old, new, 1)
+            f"the released complex H->D signature carries {body.count(_PHASE_TAIL)} "
+            f"copies of the phase-constant line the beta insert anchors on, not one")
+    if not body.rstrip().endswith("const int* __restrict__ cb\n) {"):
+        raise AssertionError(
+            "the released complex H->D signature no longer ends on the chunk record; "
+            "the beta words are inserted before it")
+    return _SIGNATURE_HEAD + body.replace(_PHASE_TAIL, _PHASE_TAIL + _BETA_PARAMETERS, 1)
 
 
-def kernel_source(expansion) -> str:
-    """The whole device source under one arm. ONE string; the fold is a runtime code."""
-    head, tail = curl_pieces(expansion)
+def kernel_source() -> str:
+    """The whole device source. ONE string; the fold is a runtime code."""
+    head, tail = curl_pieces()
     weld = "\n".join([
         "",
         _chd.weld_args_construction().rstrip("\n"),
@@ -645,14 +639,14 @@ def kernel_source(expansion) -> str:
         "    cf_store(f_w_Hz_out, idx, own_w[2]);",
         "",
         "    // --- step_D (stepping.step_D / _apply_pml_update) with the special_kz",
-        "    // beta insert under complex storage, the certified body from its first",
+        "    // beta passes under complex storage, the certified body from its first",
         "    // target block down, with the twelve magnetic reads redirected and",
         "    // NOTHING else touched.",
         "",
     ])
-    source = (constitutive_prelude(expansion) + _chd.weld_args_struct()
-              + _chd.raw_update_H_cell_source(expansion) + _chd.resolution_source()
-              + cshift_dn_recompute_source(expansion)
+    source = (constitutive_prelude() + _chd.weld_args_struct()
+              + _chd.raw_update_H_cell_source() + _chd.resolution_source()
+              + cshift_dn_recompute_source()
               + signature() + head + weld + tail + "}\n")
     _assert_the_measured_absence_of_a_divide(source)
     return source
@@ -712,50 +706,40 @@ def _assert_the_measured_absence_of_a_divide(source: str) -> None:
 
 
 def device_sources() -> Dict[str, str]:
-    """``{kernel name: source}`` -- the shape every family on this track publishes.
-
-    The FMA_V1 arm, which is the one every corpus row of this cell licenses on this
-    hardware; the NAIVE arm's text is reachable through :func:`kernel_source` and the
-    gate compiles both.
-    """
-    return {KERNEL_NAME: kernel_source("FMA_V1")}
+    """``{kernel name: source}`` -- the shape every family on this track publishes."""
+    return {KERNEL_NAME: kernel_source()}
 
 
 def source_digest() -> str:
-    """One sha256 over every source this family can emit, canonically ordered.
+    """One sha256 over the source this family emits.
 
-    Two arms is two sources; a single changed character here, in ``complex_emitter``,
-    in ``complex_folded_kernels`` or in ``complex_beta_kernels`` moves this value.
+    A single changed character here, in ``complex_emitter``, in
+    ``complex_folded_kernels`` or in ``complex_beta_kernels`` moves this value.
     """
     import hashlib  # noqa: PLC0415 - stdlib, imported at the one call site
 
-    digest = hashlib.sha256()
-    for name in sorted(complex_emitter.EXPANSIONS):
-        digest.update(name.encode("ascii"))
-        digest.update(kernel_source(name).encode("utf-8"))
-    return digest.hexdigest()
+    return hashlib.sha256(kernel_source().encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------------------
 # The compile memo
 # ---------------------------------------------------------------------------
 
-#: The mutable copy the launcher compiles, keyed by arm. The gate mutates through
+#: The mutable copy the launcher compiles, under one key. The gate mutates through
 #: :func:`set_kernel_source`; ONE seam, so a mutation cannot miss a second copy.
-_SOURCES: Dict[int, str] = {}
+_SOURCES: Dict[str, str] = {}
 
 
-def current_source(expansion) -> str:
+def current_source() -> str:
     """The device text this family would compile now -- the mutated one if any."""
-    key = _arm(expansion)
-    if key not in _SOURCES:
-        _SOURCES[key] = kernel_source(key)
-    return _SOURCES[key]
+    if KERNEL_NAME not in _SOURCES:
+        _SOURCES[KERNEL_NAME] = kernel_source()
+    return _SOURCES[KERNEL_NAME]
 
 
-def set_kernel_source(expansion, source: str) -> None:
+def set_kernel_source(source: str) -> None:
     """Replace this family's device text -- the gate's mutation seam, and only that."""
-    _SOURCES[_arm(expansion)] = source
+    _SOURCES[KERNEL_NAME] = source
 
 
 def reset_kernel_sources() -> int:
@@ -765,7 +749,7 @@ def reset_kernel_sources() -> int:
     return count
 
 
-def _get_kernel(expansion, source: Optional[str] = None,
+def _get_kernel(source: Optional[str] = None,
                 options: Optional[Tuple[str, ...]] = None):
     """Compile on first use, memoized in the PACKAGE'S SHARED MEMO.
 
@@ -782,8 +766,7 @@ def _get_kernel(expansion, source: Optional[str] = None,
     """
     import cupy as cp  # noqa: PLC0415 - device-only
 
-    arm = _arm(expansion)
-    code = current_source(arm) if source is None else source
+    code = current_source() if source is None else source
     build = _COMPILE_OPTIONS if options is None else tuple(options)
     key = _kernel_cache_key(KERNEL_NAME, True, build, code)
     return _get_or_compile(key, lambda: cp.RawKernel(code, KERNEL_NAME, options=build))
@@ -798,8 +781,7 @@ def _clear_kernel_cache() -> int:
 # ---------------------------------------------------------------------------
 
 def covers_complex_beta_fused_hd_pair(fields: Any, pml: Any, grid: Any,
-                                      sources: Any = None, license: Any = None,
-                                      subnormal_policy: Any = None) -> Tuple[bool, str]:
+                                      sources: Any = None) -> Tuple[bool, str]:
     """May this product span ``update_H`` -> the electric withdraw -> ``step_D`` here?
 
     A CONJUNCTION OF THE TWO CERTIFIED HALVES' OWN PREDICATES plus this seam's
@@ -807,8 +789,7 @@ def covers_complex_beta_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     volumes -- never a re-derivation of either half's clause set:
 
     * the H side: ``complex_beta_kernels.covers_complex_beta_constitutive(..., "H")``,
-      asked FIRST because it runs first and because it asks the expansion licence
-      first of all;
+      asked FIRST because it runs first;
     * the D side: ``complex_beta_kernels.covers_complex_beta_curl(..., "step_D")``;
     * the seam: ``withdraw_hoist.seam_withdraw_reasons``, which refuses BY NAME every
       row carrying a standing integrated electric withdraw;
@@ -820,11 +801,11 @@ def covers_complex_beta_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     predicates a visible disagreement here rather than a silent widening.
     """
     covered, reason = _beta.covers_complex_beta_constitutive(
-        fields, pml, grid, "H", license, subnormal_policy)
+        fields, pml, grid, "H")
     if not covered:
         return False, f"constitutive half: {reason}"
     covered, reason = _beta.covers_complex_beta_curl(
-        fields, pml, grid, "step_D", license, subnormal_policy)
+        fields, pml, grid, "step_D")
     if not covered:
         return False, f"curl half: {reason}"
     seam_reasons = _withdraw_hoist.seam_withdraw_reasons(
@@ -874,13 +855,11 @@ def covers_complex_beta_fused_hd_pair(fields: Any, pml: Any, grid: Any,
 # ---------------------------------------------------------------------------
 
 def beta_coefficients(grid: Any):
-    """``((plus_re, plus_im), (minus_re, minus_im))`` for the ELECTRIC side.
+    """``(target 0, target 1)`` for the ELECTRIC side.
 
     CALLED, never re-transcribed: ``complex_beta_kernels.beta_curl_coefficients`` is
-    stepping.py:797-811's transcription, and ``MAGNETIC["step_D"]`` is False, so the
-    ``-1j`` branch is the one taken here. The real word is whatever Python's own
-    complex multiply produced and is passed through -- see the module docstring for
-    what that pass-through has and has not been measured to be worth.
+    the array path's transcription, and ``MAGNETIC["step_D"]`` is False, so the D
+    side's negated coefficients are the ones taken here.
     """
     return _beta.beta_curl_coefficients(grid.beta, grid.dt, _beta.MAGNETIC["step_D"])
 
@@ -891,7 +870,7 @@ def _word_view(array: Any) -> Any:
     return complex_pml_kernels.word_view(array)
 
 
-def resolve(fields: Any, grid: Any, pml: Any, expansion, *,
+def resolve(fields: Any, grid: Any, pml: Any, *,
             tables: Optional[Dict[str, Any]] = None,
             constitutive: Optional[Dict[str, Any]] = None,
             boundary_codes: Optional[Any] = None,
@@ -899,8 +878,13 @@ def resolve(fields: Any, grid: Any, pml: Any, expansion, *,
             phase_values: Optional[Any] = None,
             beta: Optional[Any] = None,
             scratch: Optional[Dict[str, Any]] = None,
-            dtdx: Optional[float] = None) -> Dict[str, Any]:
+            dtdx: Optional[float] = None,
+            chunk_bounds: Any = None) -> Dict[str, Any]:
     """Everything the launch needs, derived once per frozen configuration.
+
+    ``chunk_bounds`` is the run's chunk record on the device, REQUIRED (a keyword only so
+    the overrides keep their order): the curl half and every recomputed ``update_H``
+    choose their forms from it.
 
     DERIVED HERE BY THE SAME FUNCTIONS THE CERTIFIED LAUNCHERS ASK, which is what
     makes "the weld and the singles cannot disagree about which sub-lattice, which
@@ -923,7 +907,7 @@ def resolve(fields: Any, grid: Any, pml: Any, expansion, *,
 
     if complex_pml_kernels is None:  # pragma: no cover - laptop guard
         raise RuntimeError("complex_pml_kernels did not import; there is no device here")
-    arm = _arm(expansion)
+    cb = complex_pml_kernels.chunk_record_argument(chunk_bounds)
     supplied = tables is not None or constitutive is not None
     if tables is None:
         tables = complex_pml_kernels.complex_curl_tables(
@@ -972,11 +956,12 @@ def resolve(fields: Any, grid: Any, pml: Any, expansion, *,
             # UNINITIALIZED IS CORRECT: every cell of all six is written by every
             # launch, so there is no cell whose prior contents a reader could observe.
             scratch[name] = cp.empty_like(source)
-    return {"arm": arm, "tables": tables, "constitutive": constitutive,
+    return {"tables": tables, "constitutive": constitutive,
             "boundary_codes": tuple(boundary_codes),
             "phase_flags": tuple(phase_flags), "phase_values": tuple(phase_values),
-            "beta": tuple(tuple(float(word) for word in pair) for pair in beta),
-            "dtdx": float(dtdx), "scratch": scratch, "launches": 0}
+            "beta": tuple(float(word) for word in beta),
+            "dtdx": float(dtdx), "scratch": scratch, "launches": 0,
+            "chunk_bounds": cb, "layer": pml}
 
 
 def assert_bindings_are_disjoint(fields: Any, state: Dict[str, Any]) -> int:
@@ -994,12 +979,27 @@ def launch_complex_beta_fused_hd_pair(fields: Any, state: Dict[str, Any],
                                       threads: int = _FUSED_THREADS) -> Dict[str, Any]:
     """THE ONE LAUNCH. ``kernel`` and ``threads`` are the gate's doors.
 
-    The argument list is the released complex weld's with the four beta words
-    APPENDED, in the order and place ``complex_beta_kernels.step_complex_beta``
-    appends them to the certified single's -- so a reader can diff either pair.
+    The argument list is the released complex weld's with the two beta words inserted
+    before the chunk record, in the place ``complex_beta_kernels.step_complex_beta``
+    binds them on the certified single -- so a reader can diff either pair.
+
+    THE RUN'S FIRST ``update_H`` STARTS H FROM B, as on the released complex weld: when
+    ``fields.h_separated`` is still False the start runs on the array path BEFORE the
+    launch, with the layer :func:`resolve` bound, and every recompute then reads the
+    started state. A state with no layer is refused by name on that launch.
     """
     import numpy as np  # noqa: PLC0415 - device-only path
 
+    started = False
+    if not bool(getattr(fields, "h_separated", True)):
+        if state.get("layer") is None:
+            raise RuntimeError(
+                "the run's first update_H starts H from B (stepping.separate_h_from_b) "
+                "and this H->D launch was resolved with no layer to start it with")
+        from ..stepping import separate_h_from_b  # noqa: PLC0415 - NumPy/CuPy array path
+
+        separate_h_from_b(fields, state["layer"])
+        started = True
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + threads - 1) // threads
     tables, constitutive = state["tables"], state["constitutive"]
@@ -1017,15 +1017,14 @@ def launch_complex_beta_fused_hd_pair(fields: Any, state: Dict[str, Any],
     arguments += [np.int32(code) for code in state["boundary_codes"]]
     arguments += [np.int32(flag) for flag in state["phase_flags"]]
     arguments += [np.float32(value) for value in state["phase_values"]]
-    (plus_re, plus_im), (minus_re, minus_im) = state["beta"]
-    arguments += [np.float32(plus_re), np.float32(plus_im),
-                  np.float32(minus_re), np.float32(minus_im)]
-    launcher = kernel or _get_kernel(state["arm"])
+    target_0, target_1 = state["beta"]
+    arguments += [np.float32(target_0), np.float32(target_1)]
+    arguments += [state["chunk_bounds"]]
+    launcher = kernel or _get_kernel()
     launcher((blocks,), (threads,), tuple(arguments))
     state["launches"] += 1
     return {"launched": True, "blocks": blocks, "threads": threads,
-            "elements": nx * ny * nz, "kernel": KERNEL_NAME,
-            "arm": complex_emitter.EXPANSION_NAMES[state["arm"]],
+            "elements": nx * ny * nz, "kernel": KERNEL_NAME, "h_started": started,
             "beta": state["beta"], "replaces": REPLACES}
 
 
@@ -1041,9 +1040,9 @@ def rotate_into_fields(fields: Any, scratch: Dict[str, Any]) -> Dict[str, Any]:
     return _chd.rotate_into_fields(fields, scratch)
 
 
-def run_complex_beta_fused_hd_pair(fields: Any, grid: Any, pml: Any, expansion, *,
-                                   sources: Any = None, license: Any = None,
-                                   subnormal_policy: Any = None,
+def run_complex_beta_fused_hd_pair(fields: Any, grid: Any, pml: Any, *,
+                                   chunk_bounds: Any = None,
+                                   sources: Any = None,
                                    state: Optional[Dict[str, Any]] = None,
                                    check: bool = True,
                                    rotate: bool = True) -> Dict[str, Any]:
@@ -1053,11 +1052,11 @@ def run_complex_beta_fused_hd_pair(fields: Any, grid: Any, pml: Any, expansion, 
     """
     if check:
         covered, reason = covers_complex_beta_fused_hd_pair(
-            fields, pml, grid, sources, license, subnormal_policy)
+            fields, pml, grid, sources)
         if not covered:
             raise ValueError(f"this product does not cover this configuration: {reason}")
     if state is None:
-        state = resolve(fields, grid, pml, expansion)
+        state = resolve(fields, grid, pml, chunk_bounds=chunk_bounds)
     assert_bindings_are_disjoint(fields, state)
     record = launch_complex_beta_fused_hd_pair(fields, state)
     if rotate:

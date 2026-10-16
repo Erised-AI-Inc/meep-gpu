@@ -92,6 +92,38 @@ class _Fields:
         self.has_offdiagonal_epsilon = offdiagonal
 
 
+def _kernel_increment(word, partner, complex_storage):
+    """The negated increment the emitted pass forms from one beta word, in numpy.
+
+    Real: ``bi = -(w * g)``. Complex: ``bq = (-(w * g.im), w * g.re)``, then
+    ``bi = -bq`` per part -- the quarter turn and the outer negation, each a sign-bit
+    negation or one float32 product, exactly the statements the pass emits.
+    """
+    w = np.float32(word)
+    if not complex_storage:
+        return -(w * partner)
+    out = np.empty_like(partner)
+    out.real = -(-(w * partner.imag))
+    out.imag = -(w * partner.real)
+    return out
+
+
+def _partner(complex_storage):
+    """Unit, signed-zero and random partner words, so a sign of zero is exercised."""
+    values = np.array([0.0, -0.0, 1.0, -1.0, 1e-30, -2.5, 3.7e5], dtype=np.float32)
+    rng = np.random.default_rng(20261008)
+    real = np.concatenate([np.repeat(values, values.size),
+                           rng.standard_normal(512).astype(np.float32)])
+    if not complex_storage:
+        return real
+    imag = np.concatenate([np.tile(values, values.size),
+                           rng.standard_normal(512).astype(np.float32)])
+    out = np.empty(real.size, dtype=np.complex64)
+    out.real = real
+    out.imag = imag
+    return out
+
+
 @pytest.mark.parametrize("beta,dt", [(BETA_KZ2D, 1.0 / 24.0),
                                      (BETA_GRATING, 0.034),
                                      (-0.3907, 0.0233),
@@ -100,45 +132,38 @@ class _Fields:
 @pytest.mark.parametrize("complex_storage", [True, False])
 def test_the_coefficient_matches_steppings_own_rounding(beta, dt, magnetic,
                                                         complex_storage):
-    """Byte-identical to what ``stepping._special_kz_beta_term`` puts in the product.
+    """Byte-identical to the increment ``stepping._special_kz_beta_term`` returns.
 
-    The array path computes ``sign*2*pi*beta*dt`` in f64, multiplies by ±1j under
-    complex storage, and rounds ONCE through ``partner.dtype.type`` before the
-    multiply. This calls that function on a unit partner and reads the coefficient
-    straight back out of the returned product — so a rounding moved, doubled or
-    dropped anywhere in the transcription fails here rather than in a gate run.
+    The array path forms ``sign*2*pi*beta*dt`` in f64 and rounds it ONCE to the
+    storage's realnum; real storage multiplies the partner by it, complex storage
+    takes a quarter turn of the partner's parts by it (``-it`` on the D side), and
+    the increment is returned negated. This forms the same increment from this
+    module's words with the kernel's own statements (:func:`_kernel_increment`) and
+    compares every word, over partners that include signed zeros, so a rounding
+    moved, doubled or dropped anywhere in the transcription fails here rather than in
+    a gate run.
     """
     from meep_gpu import stepping
 
-    dtype = np.complex64 if complex_storage else np.float32
     fields = _Fields(beta, dt)
     ours = special_kz.beta_curl_coefficients(beta, dt, magnetic, complex_storage)
+    partner = _partner(complex_storage)
     for index, sign in enumerate((1.0, -1.0)):
-        # THE PRODUCT IS COMPARED, NOT THE COEFFICIENT UN-NEGATED. `-(x)` on a
-        # complex flips BOTH words, so "negate stepping's answer back" would move
-        # the signed zero this coefficient exists to carry. Forming the same
-        # product from our own words and comparing bit for bit asks the question
-        # the kernel actually asks.
-        partner = np.ones((1,), dtype=dtype)
+        assert isinstance(ours[index], float), ours
         theirs = stepping._special_kz_beta_term(fields, partner, sign,
                                                 magnetic=magnetic)
-        if complex_storage:
-            mine = np.array([complex(ours[index][0], ours[index][1])],
-                            dtype=np.complex64)
-        else:
-            mine = np.array([ours[index]], dtype=np.float32)
-        product = -(mine * partner)
+        mine = _kernel_increment(ours[index], partner, complex_storage)
         assert not np.count_nonzero(
-            product.view(np.uint32) != np.asarray(theirs).view(np.uint32)), (
-            f"{product!r} != {theirs!r}")
+            mine.view(np.uint32) != np.asarray(theirs).view(np.uint32)), (
+            f"{mine[:4]!r} != {theirs[:4]!r}")
 
 
 @pytest.mark.parametrize("magnetic", [True, False])
 @pytest.mark.parametrize("complex_storage", [True, False])
 def test_the_coefficient_matches_stepping_on_numpy_typed_grid_scalars(
         magnetic, complex_storage):
-    """S:770 IS THE EXPRESSION, on the objects the array path holds — not on
-    ``float()`` copies of them.
+    """The expression is the array path's, on the objects the array path holds --
+    not on ``float()`` copies of them.
 
     THE PATH IS LIVE. ``Grid._resolve_beta`` coerces ``beta`` to a Python float;
     NOTHING coerces ``dt``, which is ``courant / resolution``, so
@@ -146,24 +171,13 @@ def test_the_coefficient_matches_stepping_on_numpy_typed_grid_scalars(
     hands it straight to both ``stepping._special_kz_beta_term`` and
     ``beta_curl_coefficients``. Under NEP 50 a numpy-typed operand rounds the
     product chain EARLY, so a transcription that widens through ``float()`` first
-    computes the whole chain in f64 and rounds once — a different float32 word.
+    computes the whole chain in f64 and rounds once -- a different float32 word.
 
     MEASURED 2026-08-15 before the casts came out: 14,926 of 40,000 random
-    ``numpy.float32`` (beta, dt, sign) draws produced a different coefficient. This
-    test is the pin; the four rows above cover the Python-float case, which never
-    discriminated because there both spellings are the same arithmetic.
+    ``numpy.float32`` (beta, dt, sign) draws produced a different coefficient.
+    ``beta = BETA_GRATING`` with ``courant = 0.34`` DISCRIMINATES on BOTH signs.
 
-    THE SCALARS COME FROM A REAL ``Grid``, not from hand-made numpy values, so the
-    test is a statement about the engine rather than about a constructed hazard —
-    and note that ``grid.beta`` is a Python float (``_resolve_beta`` coerces it)
-    while ``grid.dt`` is not, which is the exact mixture the two spellings disagree
-    on. ``beta = BETA_GRATING`` with ``courant = 0.34`` is the byte gate's own
-    ``r2`` pair and it DISCRIMINATES on BOTH signs: ``float()`` gives
-    ``-0.14634662866592407``, the literal spelling ``-0.14634664356708527``.
-    Measured over the corpus betas crossed with fourteen Courants and two
-    resolutions: 76 of 168 rows discriminate, so the pin is not a lucky draw.
-
-    The ``type(grid.dt)`` assertion is deliberate — if ``Grid`` ever coerces
+    The ``type(grid.dt)`` assertion is deliberate -- if ``Grid`` ever coerces
     ``dt``, this test must be re-examined rather than pass silently on a hazard that
     has moved.
     """
@@ -178,49 +192,85 @@ def test_the_coefficient_matches_stepping_on_numpy_typed_grid_scalars(
         f"no longer reaches the NEP-50 rounding hazard it was written for and the "
         f"transcription's literal spelling needs a new pin")
 
-    dtype = np.complex64 if complex_storage else np.float32
     fields = _Fields(grid.beta, grid.dt)
     ours = special_kz.beta_curl_coefficients(grid.beta, grid.dt, magnetic,
                                              complex_storage)
+    partner = _partner(complex_storage)
     for index, sign in enumerate((1.0, -1.0)):
-        partner = np.ones((1,), dtype=dtype)
         theirs = stepping._special_kz_beta_term(fields, partner, sign,
                                                 magnetic=magnetic)
-        mine = (np.array([complex(ours[index][0], ours[index][1])],
-                         dtype=np.complex64) if complex_storage
-                else np.array([ours[index]], dtype=np.float32))
-        product = -(mine * partner)
+        mine = _kernel_increment(ours[index], partner, complex_storage)
         assert not np.count_nonzero(
-            product.view(np.uint32) != np.asarray(theirs).view(np.uint32)), (
-            f"numpy-typed dt: {product!r} != {theirs!r}. The transcription is "
-            f"normalising operands stepping.py:797 does not normalise")
+            mine.view(np.uint32) != np.asarray(theirs).view(np.uint32)), (
+            f"numpy-typed dt: {mine[:4]!r} != {theirs[:4]!r}. The transcription is "
+            f"normalising operands stepping does not normalise")
 
 
-def test_the_complex_coefficient_carries_a_signed_zero_real_word():
-    """The ±0 real word is Python's own complex multiply and is PASSED THROUGH.
+def test_the_complex_words_are_one_real_word_per_sign_and_the_d_side_negates():
+    """A quarter turn by a REAL coefficient, never a complex pair.
 
-    Synthesizing it as ``+0.0`` would be wrong on exactly the cells where it
-    matters, and it is what makes the beta product's expansion arm ambiguous — a
-    fact the probe records and two gate rows depend on.
+    ``part_products.quarter_turn`` scales the partner's parts by one realnum and
+    negates one product, so the kernel binds one float per sign. The D side's word is
+    the B side's negated (``quarter_turn(-coefficient, g)``), and f64 negation
+    commutes with the f32 rounding exactly, so the two words differ in the sign bit
+    alone.
     """
-    (plus, minus) = special_kz.beta_curl_coefficients(BETA_KZ2D, 1.0 / 24.0,
-                                                      magnetic=True,
-                                                      complex_storage=True)
-    signs = {np.float32(plus[0]).view(np.uint32).item(),
-             np.float32(minus[0]).view(np.uint32).item()}
-    assert signs & {0x80000000}, (
-        "no coefficient carried a NEGATIVE zero real word; Python's complex "
-        "multiply produces one for one of the two signs and passing it through "
-        "is the whole reason the real word is not synthesized")
+    for beta, dt in ((BETA_KZ2D, 1.0 / 24.0), (BETA_GRATING, 0.034)):
+        b_side = special_kz.beta_curl_coefficients(beta, dt, magnetic=True,
+                                                   complex_storage=True)
+        d_side = special_kz.beta_curl_coefficients(beta, dt, magnetic=False,
+                                                   complex_storage=True)
+        real = special_kz.beta_curl_coefficients(beta, dt, magnetic=False,
+                                                 complex_storage=False)
+        for b_word, d_word, r_word in zip(b_side, d_side, real):
+            assert isinstance(b_word, float) and isinstance(d_word, float)
+            assert (np.float32(b_word).view(np.uint32) ^ np.uint32(0x80000000)
+                    == np.float32(d_word).view(np.uint32))
+            assert np.float32(b_word).view(np.uint32) == np.float32(r_word).view(
+                np.uint32)
+
+
+def _pass_block(source):
+    """The folded pass's text, between its two marker lines."""
+    from meep_gpu.metal_kernels import folded_pass
+
+    start = source.index(folded_pass.FOLDED_PASS_BEGIN)
+    return source[start:source.index(folded_pass.FOLDED_PASS_END, start)]
 
 
 def test_the_term_carries_no_dtdx():
-    """An analytic derivative, not a finite difference (stepping.py:758-762)."""
-    source = special_kz.beta_curl_source((0, 0, 0), False, True)
-    beta_lines = [line for line in source.splitlines() if "beta_plus" in line
-                  and "curl0" in line]
-    assert beta_lines, "the beta insert is missing from the shipped source"
-    assert all("dtdx" not in line for line in beta_lines), beta_lines
+    """An analytic derivative, not a finite difference (``_special_kz_beta_term``)."""
+    for backward in (False, True):
+        block = _pass_block(special_kz.beta_curl_source((0, 0, 0), backward, True))
+        assert "beta_plus" in block and "beta_minus" in block
+        assert "dtdx" not in block, block
+
+
+def test_the_pass_runs_after_the_forms_and_before_every_store():
+    """MEEP's beta pass follows every component's curl (step_db.cpp:161-175).
+
+    The pass reads the forms' ``n``/``v`` registers and runs in front of the first
+    guarded ``fu`` store, so both stores carry the pass; the curl's own statements are
+    the certified emitter's, unchanged.
+    """
+    from meep_gpu.metal_kernels import folded_pass, shaders
+
+    for backward in (False, True):
+        for codes in ((0, 0, 0), (1, 1, 0), (1, 0, 1)):
+            source = special_kz.beta_curl_source(codes, backward, True)
+            certified = shaders.curl_source(codes, backward)
+            start = source.index(folded_pass.FOLDED_PASS_BEGIN)
+            end = source.index(folded_pass.FOLDED_PASS_END)
+            assert source.index("float v2 = ") < start
+            assert end < source.index(folded_pass.FOLDED_PASS_ANCHOR)
+            stripped = (source[:start] + source[end:].split("\n", 2)[2]).replace(
+                "beta_pml_curl_step(", "pml_curl_step(")
+            stripped = stripped.replace(
+                "    constant float&     beta_plus  [[buffer(20)]],\n"
+                "    constant float&     beta_minus [[buffer(21)]],\n"
+                "    constant ChunkBounds& cb [[buffer(22)]],\n",
+                "    constant ChunkBounds& cb [[buffer(20)]],\n")
+            assert stripped == certified, (codes, backward)
 
 
 # ---------------------------------------------------------------------------
@@ -233,43 +283,48 @@ def test_the_beta_partner_is_the_unshifted_centre_operand():
     ``beta`` is legal only on an effective-2-D grid, so the invariant axis has
     extent 1 and ``b_z`` IS ``b``: the gate measured that mutation at 0/2 caught
     and records it as a predicted null. The property still has to hold, so it is
-    asserted on the SOURCE: the term reads ``b`` and ``a``, never a shifted name.
+    asserted on the SOURCE: the pass reads the stored centres ``b`` and ``a``, never a
+    shifted or Bloch-connected name.
     """
     for backward in (False, True):
-        source = special_kz.beta_curl_source((0, 0, 0), backward, True)
-        assert "curl0 = curl0 - (beta_plus * b);" in source
-        assert "curl1 = curl1 - (beta_minus * a);" in source
-        for shifted in ("b_x", "b_z", "a_y", "a_z", "c_x", "c_y"):
-            assert f"beta_plus * {shifted}" not in source
-            assert f"beta_minus * {shifted}" not in source
+        block = _pass_block(special_kz.beta_curl_source((0, 0, 0), backward, True))
+        assert "float bi0 = -(beta_plus * b);" in block
+        assert "float bi1 = -(beta_minus * a);" in block
+        cblock = _pass_block(special_kz.beta_bloch_curl_source(
+            (0, 0, 0), backward, (2, 1, 0), True))
+        assert "float2(-(beta_plus * b.y), beta_plus * b.x)" in cblock
+        assert "float2(-(beta_minus * a.y), beta_minus * a.x)" in cblock
+        for shifted in ("b_x", "b_z", "a_y", "a_z", "c_x", "c_y",
+                        "b_dx", "b_dz", "a_dy", "a_dz"):
+            assert f"* {shifted}" not in block + cblock
 
 
 def test_the_real_arm_spells_subtraction_rather_than_a_negation():
-    """The zero-sign question does not arise where no negation is spelled.
+    """No ``0.0f - x`` and no ``x * -1.0`` anywhere in the pass.
 
-    The gate measured ``a + (0.0f - b)`` at 0/2 caught in this arm and records the
-    reason: the arm spells IEEE subtraction. The spelling hazard lives in the
-    complex helper and is measured there at the product layer (36/512 words).
+    The increment's one negation is ``-(...)``, a sign-bit operation on this host;
+    ``0.0f - x`` misses 36/512 on the exhaustive signed-zero table.
     """
-    source = special_kz.beta_curl_source((0, 0, 0), False, True)
-    assert "0.0f -" not in source
-    assert "* -1.0" not in source
+    for complex_storage in (False, True):
+        source = (special_kz.beta_bloch_curl_source((0, 0, 0), False, (0, 0, 0), True)
+                  if complex_storage
+                  else special_kz.beta_curl_source((0, 0, 0), False, True))
+        block = _pass_block(source)
+        assert "0.0f -" not in block
+        assert "* -1.0" not in block
 
 
-def test_the_beta_product_puts_the_coefficient_on_the_left():
-    """S:784 is ``dtype.type(coefficient) * partner_values``.
+def test_the_complex_pass_forms_no_complex_product():
+    """``part_products.quarter_turn``: two real products and an exact negation.
 
-    Byte-invisible for THIS product — the coefficient's ±0 real word makes both
-    fusions exact, which the gate records as a predicted null and the probe as
-    AMBIGUOUS_BOTH — so the orientation is pinned on the source instead, and the
-    rule itself is measured on the Bloch rotation where it does bite.
+    The complex pass calls no complex helper at all -- no ``c_mul`` of the beta word
+    and the partner, which would round the cross terms the array path never forms.
     """
-    source = special_kz.beta_bloch_curl_source((0, 0, 0), False, (1, 0, 0),
-                                               "FMA_V1", True)
-    assert "c_mul(float2(bpr, bpi), b)" in source
-    assert "c_mul(b, float2(bpr, bpi))" not in source
-    # ...and the phase rotation keeps the FIELD on the left (S:1862's `*=`).
-    assert "c_mul(b_x, float2(pxr, pxi))" in source
+    for backward in (False, True):
+        block = _pass_block(special_kz.beta_bloch_curl_source(
+            (0, 0, 0), backward, (1, 0, 0), True))
+        assert "c_mul" not in block, block
+        assert "float2 bi0 = -bq0;" in block and "float2 bi1 = -bq1;" in block
 
 
 # ---------------------------------------------------------------------------
@@ -320,13 +375,14 @@ def test_every_source_a_reachable_grid_emits_is_enumerated(boundaries, k):
 
     This walks the reachable (boundary, k) space through the SAME calls the plan
     builders make — ``stepping._boundary_kinds`` then
-    ``special_kz.bloch_phase_words`` then the emitter — and asserts the result is in
+    ``complex_fields.phase_arguments`` then the emitter — and asserts the result is in
     the enumeration. It needs no GPU: a source is a string.
     """
     import hashlib
 
     from meep_gpu import stepping
     from meep_gpu.grid import Grid
+    from meep_gpu.metal_kernels import complex_fields
     from meep_gpu.pml import PML
 
     catalogue = {hashlib.sha256(source.encode("utf-8")).hexdigest(): label
@@ -341,17 +397,17 @@ def test_every_source_a_reachable_grid_emits_is_enumerated(boundaries, k):
     for sub_step, spec in special_kz.SUB_STEPS.items():
         for has_beta in (True, False):
             if complex_storage:
-                phased, _ = special_kz.bloch_phase_words(
-                    grid, kinds, bool(spec["backward"]))
-                for expansion in sorted(templates.EXPANSIONS):
-                    source = special_kz.beta_bloch_curl_source(
-                        codes, spec["backward"], phased, expansion, has_beta)
-                    digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
-                    assert digest in catalogue, (
-                        f"{boundaries}/{k}/{sub_step}/{expansion}/beta{int(has_beta)}"
-                        f" emits codes={codes} phased={phased}, which is NOT in "
-                        f"enumerate_sources() — the gate would launch a "
-                        f"specialisation it never fingerprinted")
+                phased, _ = complex_fields.phase_arguments(
+                    complex_fields.bloch_phase_table(grid, kinds),
+                    backward=bool(spec["backward"]))
+                source = special_kz.beta_bloch_curl_source(
+                    codes, spec["backward"], phased, has_beta)
+                digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+                assert digest in catalogue, (
+                    f"{boundaries}/{k}/{sub_step}/beta{int(has_beta)}"
+                    f" emits codes={codes} phased={phased}, which is NOT in "
+                    f"enumerate_sources() — the gate would launch a "
+                    f"specialisation it never fingerprinted")
             # The real arm's emitter is boundary-only and is exercised on every row.
             source = special_kz.beta_curl_source(codes, spec["backward"], has_beta)
             digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
@@ -360,21 +416,24 @@ def test_every_source_a_reachable_grid_emits_is_enumerated(boundaries, k):
 
 def test_the_enumeration_is_a_superset_of_what_the_emitter_can_produce():
     """...and the derived set is not merely large, it CONTAINS the emittable one."""
+    from meep_gpu.metal_kernels import complex_fields
+
     emittable = set(special_kz._emittable_bloch_specialisations())
     for codes, phased in emittable:
         for axis in range(3):
             if codes[axis] == templates.METALLIC:
-                assert phased[axis] == 0, (codes, phased)
-        assert phased[2] == 0, (codes, phased)
-    # eight boundary triples, and every phase combination each of them permits
-    assert len(emittable) == 18, sorted(emittable)
-    assert len(special_kz.enumerate_sources()) == 32 + len(emittable) * 8
+                assert phased[axis] == complex_fields.CONNECT_NONE, (codes, phased)
+        assert phased[2] == complex_fields.CONNECT_NONE, (codes, phased)
+    kinds = len(complex_fields.CONNECT_KINDS)
+    # per invariant-axis code: (P, P) kinds**2, (P, M) and (M, P) kinds, (M, M) one
+    assert len(emittable) == 2 * (kinds * kinds + 2 * kinds + 1), sorted(emittable)
+    # two sides, both HAS_BETA arms
+    assert len(special_kz.enumerate_sources()) == 32 + len(emittable) * 2 * 2
 
 
 def test_the_mask_masks_both_planes_on_the_complex_arm():
     """A complex zero is assigned to BOTH words (stepping.py:1943)."""
-    source = special_kz.beta_bloch_curl_source((1, 1, 1), True, (0, 0, 0),
-                                               "FMA_V1", True)
+    source = special_kz.beta_bloch_curl_source((1, 1, 1), True, (0, 0, 0), True)
     assert source.count("float2(0.0f, 0.0f) : curl") == 6
 
 
@@ -382,71 +441,20 @@ def test_the_complex_signature_fits_under_the_31_binding_ceiling():
     """A measured platform limit, not a style rule.
 
     Metal's buffer attribute indices run 0..30; a 32nd is a COMPILE ERROR. This
-    kernel binds 30. A re/im-split build would need nine more and could not be
-    built at all, which is why the complex volumes are ``float2`` — forced, not
-    preferred.
+    kernel binds the certified complex curl's 24 and the two beta words. A re/im-split
+    build would need nine more volumes, which is why the complex volumes are
+    ``float2`` -- forced, not preferred.
     """
     from meep_gpu.metal_kernels import device
 
-    source = special_kz.beta_bloch_curl_source((0, 0, 0), False, (1, 1, 0),
-                                               "FMA_V1", True)
+    source = special_kz.beta_bloch_curl_source((0, 0, 0), False, (1, 1, 0), True)
     indices = [int(part.split(")")[0]) for part in source.split("[[buffer(")[1:]]
-    assert indices == sorted(indices)
+    assert indices == list(range(len(indices)))
     assert max(indices) < device.MAX_BUFFER_BINDINGS, indices
-    assert len(indices) == 30, indices
+    assert len(indices) == 26, indices
+    assert f"constant ChunkBounds& cb [[buffer({special_kz.COMPLEX_RECORD_BUFFER})]]" \
+        in source
     assert source.count("device float2*") + source.count("device const float2*") == 9
-
-
-def test_an_unknown_expansion_arm_raises_rather_than_defaulting():
-    with pytest.raises(ValueError):
-        special_kz.beta_bloch_curl_source((0, 0, 0), False, (0, 0, 0), "GUESS", True)
-    with pytest.raises(ValueError):
-        special_kz.beta_curl_source((2, 0, 0), False, True)
-
-
-# ---------------------------------------------------------------------------
-# 5. The probe contract
-# ---------------------------------------------------------------------------
-
-def _record(**overrides):
-    patterns = {name: "AMBIGUOUS_BOTH" for name in special_kz.BETA_PROBE_PATTERNS}
-    patterns["c8_mul_c8"] = "FMA_V1"
-    patterns.update(overrides.pop("patterns", {}))
-    record = {"backend": special_kz.PROBE_BACKEND, "patterns": patterns}
-    record.update(overrides)
-    return record
-
-
-def test_a_measured_record_licenses_exactly_one_arm():
-    assert special_kz.beta_expansion_from_probe(_record()) == "FMA_V1"
-
-
-def test_a_record_without_the_fifth_pattern_licenses_nothing():
-    """An artifact cut before this tranche does not license this family."""
-    record = _record()
-    del record["patterns"][special_kz.BETA_PROBE_PATTERN]
-    assert special_kz.beta_expansion_from_probe(record) is None
-
-
-def test_a_neither_verdict_is_a_refusal_by_name():
-    assert special_kz.beta_expansion_from_probe(
-        _record(patterns={"c8_mul_c8": "NEITHER"})) is None
-
-
-def test_an_all_ambiguous_record_licenses_nothing():
-    """Nothing discriminated, so an arm chosen under it would be a default."""
-    assert special_kz.beta_expansion_from_probe(
-        _record(patterns={"c8_mul_c8": "AMBIGUOUS_BOTH"})) is None
-
-
-def test_disagreeing_patterns_license_nothing():
-    assert special_kz.beta_expansion_from_probe(
-        _record(patterns={"c8_mul_c8": "FMA_V1",
-                          "python_float_left": "NAIVE"})) is None
-
-
-def test_another_backends_artifact_licenses_nothing():
-    assert special_kz.beta_expansion_from_probe(_record(backend="cupy")) is None
 
 
 # ---------------------------------------------------------------------------
@@ -499,8 +507,17 @@ class _StubGrid:
 
 
 class _StubResidency:
+    device = "cpu"
+
     def mirror(self, *args, **kwargs):
         return None
+
+
+def _stub_record():
+    """A valid chunk record for the stub shape: no layer runs, x and y resolved."""
+    record = np.zeros(25, dtype=np.int32)
+    record[24] = 0b011
+    return record
 
 
 class _StubPML:
@@ -583,7 +600,7 @@ def test_the_complex_stub_baseline_is_ADMITTED(monkeypatch):
     grid = _StubGrid(has_bloch=True, k_point=(0.3, 0.0, 0.0))
     fields = _StubFields(grid, dtype=np.complex64)
     verdict = special_kz.beta_bloch_pml_curl_coverage(
-        fields, _StubPML(), "step_B", _StubResidency(), _record())
+        fields, _StubPML(), "step_B", _StubResidency())
     assert verdict.covered, verdict.reasons
 
 
@@ -639,7 +656,7 @@ def test_the_complex_predicate_refuses_by_name(label, grid_kwargs, fields_kwargs
     grid = _StubGrid(**defaults)
     fields = _StubFields(grid, dtype=np.complex64, **fields_kwargs)
     verdict = special_kz.beta_bloch_pml_curl_coverage(
-        fields, _StubPML(), "step_B", _StubResidency(), _record())
+        fields, _StubPML(), "step_B", _StubResidency())
     assert not verdict.covered
     assert any(fragment in reason for reason in verdict.reasons), verdict.reasons
 
@@ -665,7 +682,7 @@ def test_an_unreadable_layout_is_refused_rather_than_admitted(arm):
                         if arm == "complex" else {}))
     fields = _StubFields(grid, dtype=dtype, Bx=_NoFlags())
     verdict = (special_kz.beta_bloch_pml_curl_coverage(
-        fields, _StubPML(), "step_B", _StubResidency(), _record())
+        fields, _StubPML(), "step_B", _StubResidency())
         if arm == "complex" else
         special_kz.beta_pml_curl_coverage(fields, _StubPML(), "step_B",
                                           _StubResidency()))
@@ -685,7 +702,7 @@ def test_a_non_three_dimensional_shape_is_refused_on_the_complex_arm():
     grid = _StubGrid(shape=(8, 6), has_bloch=True, k_point=(0.3, 0.0, 0.0))
     fields = _StubFields(grid, dtype=np.complex64)
     verdict = special_kz.beta_bloch_pml_curl_coverage(
-        fields, _StubPML(), "step_B", _StubResidency(), _record())
+        fields, _StubPML(), "step_B", _StubResidency())
     assert not verdict.covered
     assert any("not three-dimensional" in reason for reason in verdict.reasons), \
         verdict.reasons
@@ -748,7 +765,7 @@ def test_the_complex_constitutive_admits_a_complex_beta_run(monkeypatch):
     fields = _StubFields(grid, dtype=np.complex64)
     for side in ("H", "E"):
         verdict = special_kz.beta_run_complex_constitutive_coverage(
-            fields, _StubPML(), side, _StubResidency(), _record())
+            fields, _StubPML(), side, _StubResidency())
         assert verdict.covered, (side, verdict.reasons)
 
 
@@ -787,7 +804,7 @@ def test_the_complex_constitutive_refuses_each_clause_by_name(
     grid = _StubGrid(**kwargs)
     fields = _StubFields(grid, dtype=np.complex64, **fields_kwargs)
     verdict = special_kz.beta_run_complex_constitutive_coverage(
-        fields, _StubPML(), side, _StubResidency(), _record())
+        fields, _StubPML(), side, _StubResidency())
     assert not verdict.covered, label
     assert any(fragment in reason for reason in verdict.reasons), \
         (label, verdict.reasons)
@@ -840,26 +857,9 @@ def test_the_complex_constitutive_plan_is_the_CERTIFIED_class(monkeypatch):
     fields = _StubFields(grid, dtype=np.complex64)
     for side in ("H", "E"):
         plan = special_kz.plan_beta_run_complex_constitutive(
-            fields, _StubPML(), side, _StubResidency(), probe=_record())
+            fields, _StubPML(), side, _StubResidency(),
+            chunk_bounds=_stub_record())
         assert isinstance(plan, complex_fields.ComplexConstitutivePlan), (side, plan)
-
-
-def test_the_complex_constitutive_refuses_without_a_probe_artifact():
-    """A missing or unlicensable probe is a refusal, never a defaulted arm.
-
-    The EXPANSION arm is a measured property of this host's reference. The
-    constitutive companion binds it exactly as the curl does, so it must refuse the
-    same unlicensable record rather than inheriting whatever the curl resolved.
-    """
-    grid = _StubGrid(has_bloch=True, k_point=(0.3, 0.0, 0.0))
-    fields = _StubFields(grid, dtype=np.complex64)
-    verdict = special_kz.beta_run_complex_constitutive_coverage(
-        fields, _StubPML(), "H", _StubResidency(), probe={})
-    assert not verdict.covered
-    assert any("expansion probe" in reason for reason in verdict.reasons), \
-        verdict.reasons
-    assert special_kz.plan_beta_run_complex_constitutive(
-        fields, _StubPML(), "H", _StubResidency(), probe={}) is None
 
 
 # ---------------------------------------------------------------------------
@@ -925,19 +925,17 @@ def test_one_beta_curl_pair_is_byte_identical_to_stepping(monkeypatch,
     grid, fields, pml = _engine_case(complex_storage, k=k, courant=0.35)
     codes = [1 if kind == "metallic" else 0
              for kind in stepping._boundary_kinds(grid, pml)]
-    probe = {"backend": special_kz.PROBE_BACKEND,
-             "patterns": dict({name: "AMBIGUOUS_BOTH"
-                               for name in special_kz.BETA_PROBE_PATTERNS},
-                              c8_mul_c8="FMA_V1")}
 
     for sub_step in ("step_B", "step_D"):
         spec = special_kz.SUB_STEPS[sub_step]
         before = {n: np.array(getattr(fields, n), copy=True) for n in _STATE}
         residency = device.Residency()
+        record = _one_rank_record(fields, pml)
         plan = (special_kz.plan_beta_bloch_pml_curl(fields, pml, sub_step,
-                                                    residency, probe=probe)
+                                                    residency, chunk_bounds=record)
                 if complex_storage else
-                special_kz.plan_beta_pml_curl(fields, pml, sub_step, residency))
+                special_kz.plan_beta_pml_curl(fields, pml, sub_step, residency,
+                                              chunk_bounds=record))
         assert plan is not None, "the engine route refused a covered configuration"
         plan.run()
         residency.sync_out()
@@ -981,13 +979,14 @@ def test_a_beta_zero_build_reproduces_the_certified_plain_curl(monkeypatch):
     residency = device.Residency()
     special_kz.plan_beta_pml_curl_from_arrays(
         "step_B", beta_arrays, flat, codes, float(grid.dt / grid.dx), 0.0, 0.0,
-        residency, has_beta=False).run()
+        residency, has_beta=False, chunk_bounds=_one_rank_record(fields, pml)).run()
     residency.sync_out()
 
     plain_arrays = {k: np.array(v, copy=True) for k, v in arrays.items()}
     residency = device.Residency()
     launch.plan_from_arrays("step_B", plain_arrays, flat, codes,
-                            float(grid.dt / grid.dx), residency).run()
+                            float(grid.dt / grid.dx), residency,
+                            chunk_bounds=_one_rank_record(fields, pml)).run()
     residency.sync_out()
 
     names = tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
@@ -997,3 +996,10 @@ def test_a_beta_zero_build_reproduces_the_certified_plain_curl(monkeypatch):
     for name in names:
         assert not np.count_nonzero(_words(beta_arrays[name])
                                     != _words(plain_arrays[name])), name
+
+
+def _one_rank_record(fields, pml):
+    """The record of the one-rank division ``stepping`` steps these ``Fields`` with."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))

@@ -26,23 +26,21 @@ measurement and not an inference from a docstring. :mod:`.folded_fused_pair` alr
 ships at this exact width, which is why 30 is known to be reachable rather than
 hoped for.
 
-WHY THE SWAP IS SOUND, measured rather than argued. The BFAST curl and the certified
-curl differ by ONE INSERTED BLOCK — the Tustin tail (bfast_curl.py, transcribing
-``stepping._bfast_term`` :896-904) — placed AFTER the ``dtdx`` curl and BEFORE the
-ownership mask, which is the array path's own fold order (:364-368 after :342, before
-:369). Everything the weld depends on is unchanged: the same
-``uint idx [[thread_position_in_grid]])`` body anchor, the same
-``bool at_x = (i == 0), ...`` declaration, and the same single store line
-``f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;`` the wall clear splices in front of. All
-three are ASSERTED at emit time.
+WHY THE SWAP IS SOUND. The BFAST curl IS the certified curl with MEEP's BFAST pass
+inserted after its per-chunk forms (:func:`.bfast_curl.bfast_curl_source`, through
+:func:`.folded_pass.with_folded_pass`): three state pointers, six scalars and the pass
+block between the forms and the stores, and nothing else. Everything the weld depends
+on is the certified curl's own text: the ``uint idx [[thread_position_in_grid]])``
+body anchor, ``bool at_x = (i == 0), ...`` declared before the forms, and the single
+store line ``f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;`` the wall clear splices in front
+of, AFTER the pass has updated ``v`` -- the array path's order (the pass runs inside
+``step_B``, the wall clear after it). The anchors and the pass block are ASSERTED at
+emit time.
 
-ONE ORDERING FACT THIS WELD INHERITS AND MUST NOT DISTURB. The BFAST curl declares
-``at_x``/``at_y``/``at_z`` EARLY — before the tail, because the tail's advance carries
-the same ownership predicate the curl's mask does (:902 precedes :903) — where the
-ordinary curl declares them just before its mask. The wall clear this family splices
-in reads those same three flags and is spliced in front of the STORE, which is after
-both. So the flags are in scope at the splice on either emitter, and the splice site
-is unchanged. That is checked at emit time by the store-line anchor, not assumed.
+THE CHUNK RECORD RIDES IN THE PARAMS STRUCT, as in :mod:`.fused_magnetic_pair`, and
+costs no binding: at 31 of 31 there is none to spare. The curl half reads the
+half-integer entries (its forms and the pass's plain-branch flags) and the H half the
+integer ones.
 
 WHY THE CONSTITUTIVE HALF NEEDS NOTHING. ``update_H`` reads nothing BFAST-dependent:
 :func:`.bfast_curl.bfast_run_constitutive_coverage` is already the certified
@@ -69,7 +67,10 @@ from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
 from ..triton_kernels.bfast_curl import BFAST_STATE_NAMES, bfast_curl_coefficients
 from ..triton_kernels.coverage import Coverage, MAGNETIC_FIELD_TYPE
-from . import bfast_curl, shaders
+from . import bfast_curl, folded_pass, shaders
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as a keyword named
+# `chunk_bounds`, the name the composer's StepContext carries.
+from . import chunk_bounds as _chunk_bounds
 from .coverage import zero_metal_axes
 from .device import Residency, compile_source
 from .fused_magnetic_pair import (
@@ -117,9 +118,12 @@ using namespace metal;
 
 __CONTRACT__
 
+__RECORD_STRUCT__
+
 struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx;
                 float k1_0; float k2_0; float k1_1; float k2_1;
-                float k1_2; float k2_2; };
+                float k1_2; float k2_2;
+__RECORD_MEMBER__ };
 
 kernel void bfast_fused_magnetic_pair_step(
     device float*       f0      [[buffer(0)]],
@@ -164,6 +168,9 @@ kernel void bfast_fused_magnetic_pair_step(
     float k1_0 = prm.k1_0, k2_0 = prm.k2_0;
     float k1_1 = prm.k1_1, k2_1 = prm.k2_1;
     float k1_2 = prm.k1_2, k2_2 = prm.k2_2;
+    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // line gives the lifted bounds blocks the `cb` they read.
+__RECORD_ALIAS__
 
 __BODY__
 }
@@ -210,12 +217,12 @@ def bfast_fused_magnetic_pair_source(codes: Sequence[int],
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
 
     curl = certified_bfast_curl_body(codes, contract)
-    # THE TAIL MUST BE PRESENT. A lift that silently produced the has_bfast=0 arm
+    # THE PASS MUST BE PRESENT. A lift that silently produced the has_bfast=0 arm
     # would be the ordinary weld wearing this family's name, and every device leg
     # would still pass because a zero k vector IS the ordinary arithmetic.
-    for statement in ("float st0 = s0[ii];",
-                      "s0[ii] = st0 + adv0;",
-                      "curl0 = curl0 - adv0;"):
+    for statement in (folded_pass.FOLDED_PASS_BEGIN, "float fp0 = s0[ii];",
+                      "if (own0 && (has_y || has_z)) { s0[ii] = F0; }",
+                      "float fi0 = (has_y || has_z) ? (-(F0 - fp0)) : 0.0f;"):
         if statement not in curl:
             raise AssertionError(
                 f"the lifted BFAST curl body does not carry {statement!r}; this "
@@ -254,6 +261,9 @@ def bfast_fused_magnetic_pair_source(codes: Sequence[int],
     ))
     return shaders.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(indent="                "),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__BODY__": body,
     })
 
@@ -392,6 +402,13 @@ def metal_bfast_fused_magnetic_pair_coverage(fields: Any, pml: Any,
         if getattr(grid, name, None) is None:
             reasons.append(
                 f"grid does not expose {name}; zero_metal_B cannot be carried inline")
+
+    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # cells at that update (stepping.separate_h_from_b) and the lifted H body does
+    # not, so this pair takes that update only where the start cannot change a word
+    # (launch.h_start_reasons), asked with no source list as fused_magnetic_pair asks.
+    from .launch import h_start_reasons  # noqa: PLC0415 - launch imports this family's peers
+    reasons.extend(h_start_reasons(fields, ()))
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
@@ -407,7 +424,7 @@ class MetalBfastFusedMagneticPairPlan(KernelPlan):
     """
 
     __slots__ = ("residency", "volumes", "codes", "zero_metal", "shape", "dtdx",
-                 "ks", "params")
+                 "ks", "params", "chunk_bounds")
 
     family = "fused BFAST PML B-curl/stored-H pair"
 
@@ -422,8 +439,10 @@ class MetalBfastFusedMagneticPairPlan(KernelPlan):
                  codes: Sequence[int], zero_metal: Sequence[bool],
                  shape: Sequence[int], dtdx: float, ks: Sequence[float],
                  params: Any, pointers: Sequence[Any],
-                 functions: Mapping[str, Any]) -> None:
+                 functions: Mapping[str, Any], *, chunk_bounds: Any) -> None:
         self.residency = residency
+        # The host words of the record ``params`` carries, kept for inspection.
+        self.chunk_bounds = chunk_bounds
         self.volumes = tuple(dict.fromkeys(volumes))
         self.codes = tuple(int(code) for code in codes)
         self.zero_metal = tuple(bool(value) for value in zero_metal)
@@ -442,8 +461,11 @@ class MetalBfastFusedMagneticPairPlan(KernelPlan):
 
 
 def _params_tensor(shape: Sequence[int], dtdx: float, ks: Sequence[float],
-                   device: str) -> Any:
-    """The eleven scalars as one 44-byte device record.
+                   device: str, *, chunk_bounds: Any) -> Any:
+    """The eleven scalars and the chunk record as one 144-byte device record.
+
+    The record is :func:`.chunk_bounds.pack` of the validated ``int32[25]`` words,
+    embedded at byte 44 (every member is four bytes, so the struct has no padding).
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for
     :func:`.fused_magnetic_pair._params_tensor`'s reason. Built here, once, at plan
@@ -455,10 +477,15 @@ def _params_tensor(shape: Sequence[int], dtdx: float, ks: Sequence[float],
     record = np.zeros(1, dtype=np.dtype(
         [("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
          ("dtdx", "<f4"), ("k1_0", "<f4"), ("k2_0", "<f4"), ("k1_1", "<f4"),
-         ("k2_1", "<f4"), ("k1_2", "<f4"), ("k2_2", "<f4")]))
+         ("k2_1", "<f4"), ("k1_2", "<f4"), ("k2_2", "<f4")]
+        + _chunk_bounds.record_dtype_fields()))
     nx, ny, nz = (int(n) for n in shape)
-    record[0] = (nx, ny, nz, nx * ny * nz, np.float32(dtdx),
-                 *(np.float32(value) for value in ks))
+    names = ("k1_0", "k2_0", "k1_1", "k2_1", "k1_2", "k2_2")
+    for name, value in ((("nx", nx), ("ny", ny), ("nz", nz), ("n_elem", nx * ny * nz),
+                         ("dtdx", np.float32(dtdx)))
+                        + tuple((key, np.float32(k)) for key, k in zip(names, ks))):
+        record[name] = value
+    record["cb"] = _chunk_bounds.pack(chunk_bounds)
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -468,8 +495,14 @@ def plan_metal_bfast_fused_magnetic_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalBfastFusedMagneticPairPlan]:
     """Build the fused BFAST B/H plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the
+    composer's ``StepContext.chunk_bounds``) and has no default: a missing record, or
+    one that disagrees with the grid, is refused by name
+    (:func:`.chunk_bounds.plan_words`).
 
     ``functions`` is the mutation seam and is FORWARDED; dropping it would silently
     disarm every mutation leg.
@@ -480,6 +513,8 @@ def plan_metal_bfast_fused_magnetic_pair(
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
+    record = _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                                      "plan_metal_bfast_fused_magnetic_pair")
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, pml))
     walls = zero_metal_axes(grid)
@@ -525,7 +560,8 @@ def plan_metal_bfast_fused_magnetic_pair(
     dtdx = grid.dt / grid.dx
     return MetalBfastFusedMagneticPairPlan(
         residency, volumes, codes, walls, grid.shape, dtdx, ks,
-        _params_tensor(grid.shape, dtdx, ks, residency.device), pointers, selected)
+        _params_tensor(grid.shape, dtdx, ks, residency.device, chunk_bounds=record),
+        pointers, selected, chunk_bounds=record)
 
 
 # ---------------------------------------------------------------------------
@@ -545,7 +581,7 @@ def _arm_plan(context: Any, slot: str
         return None
     return plan_metal_bfast_fused_magnetic_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

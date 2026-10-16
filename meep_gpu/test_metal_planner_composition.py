@@ -32,10 +32,9 @@ THE ENVIRONMENT IS A PRECONDITION, not a convenience. On MPS the float32 subnorm
 flush is native and has no lever, so the resolved default ``keep`` makes EVERY
 Metal predicate refuse by name and the whole matrix would collapse to "nothing
 admits anything" — which would pass a naive disjointness check while measuring
-nothing. ``prepare_environment`` sets ``flush`` and the two measured expansion
-probe paths, and :func:`test_the_environment_this_suite_needs_is_present` fails
-loudly if any of the three is missing rather than letting the suite go quietly
-vacuous.
+nothing. ``prepare_environment`` sets ``flush``, and
+:func:`test_the_environment_this_suite_needs_is_present` fails loudly if it is missing
+rather than letting the suite go quietly vacuous.
 """
 
 from __future__ import annotations
@@ -58,26 +57,9 @@ from meep_gpu.metal_kernels import arms, device, launch  # noqa: E402
 ENVIRONMENT = matrix.prepare_environment()
 
 
-def _probes():
-    from meep_gpu.metal_kernels import (
-        complex_fields,
-        cylindrical_complex,
-        folded_complex,
-        special_kz,
-    )
-
-    return {"complex_probe": complex_fields.load_expansion_probe(),
-            "beta_probe": special_kz.load_expansion_probe(),
-            "folded_complex_probe": folded_complex.load_expansion_probe(),
-            "cylindrical_complex_probe":
-                cylindrical_complex.load_expansion_probe()}
-
-
 def _plan(fields, pml, **kwargs):
-    probes = _probes()
-    probes.update(kwargs)
     return launch.plan_step(fields, pml, residency=device.Residency(),
-                            sources=(), **probes)
+                            sources=(), **kwargs)
 
 
 def _ambiguous(plan):
@@ -86,41 +68,21 @@ def _ambiguous(plan):
         if any("admit this configuration" in reason for reason in reasons)))
 
 
-# ---------------------------------------------------------------------------
-# 0. The precondition this suite runs under
-# ---------------------------------------------------------------------------
-
 def test_the_environment_this_suite_needs_is_present():
     """A vacuous suite must fail rather than pass quietly.
 
-    Without ``flush`` every predicate refuses on the policy clause; without the
-    FOUR expansion artifacts seven of the sixteen products refuse on the probe
-    clause. In either case the matrix below still "passes" a naive read — nothing
-    co-admits when nothing admits — so the precondition is asserted before anything
-    else.
-
-    Each artifact is asserted SEPARATELY rather than assumed to come with an
-    earlier one, because each carries an operand orientation its predecessors never
-    classified: the folded-complex artifact a complex coefficient on the LEFT, and
-    the cylindrical-complex artifact a complex ROW on the left plus a complex scalar
-    on the left whose real word is a SIGNED ZERO. An artifact cut before a tranche
-    satisfies neither that family nor this check.
+    Without ``flush`` every predicate refuses on the policy clause, and the matrix
+    below still "passes" a naive read -- nothing co-admits when nothing admits --
+    so the precondition is asserted before anything else.
     """
     assert os.environ.get("MEEP_GPU_SUBNORMAL_POLICY") == "flush", (
         "the MPS executor cannot honour 'keep'; without an explicit flush every "
         "Metal predicate refuses and this suite measures nothing")
-    assert ENVIRONMENT["MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE"], (
-        "no complex expansion probe artifact on this host")
-    assert ENVIRONMENT["MEEP_GPU_METAL_EXPANSION_PROBE"], (
-        "no beta expansion probe artifact on this host")
-    assert ENVIRONMENT["MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE"], (
-        "no folded-complex expansion probe artifact on this host")
-    assert ENVIRONMENT["MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE"], (
-        "no cylindrical-complex expansion probe artifact on this host")
-    probes = _probes()
-    assert (probes["complex_probe"] and probes["beta_probe"]
-            and probes["folded_complex_probe"]
-            and probes["cylindrical_complex_probe"])
+
+
+# ---------------------------------------------------------------------------
+# 0. The precondition this suite runs under
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
@@ -599,7 +561,7 @@ def test_an_undeclared_source_list_refuses_the_residency_verdict():
     knowing is exactly the over-covering refusal the clause exists to prevent."""
     fields, pml = matrix.cart()
     plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                            sources=None, **_probes())
+                            sources=None)
     assert plan.residency is not None and not plan.residency.covered
     assert any("live sub-step set was not declared" in reason
                for reason in plan.residency.reasons)
@@ -620,7 +582,7 @@ def test_an_array_path_sub_step_must_be_declared_synced():
     """
     fields, pml = matrix.dispersive(matrix.flat(beta=0.33))
     undeclared = launch.plan_step(fields, pml, residency=device.Residency(),
-                                  sources=(), **_probes())
+                                  sources=())
     assert not undeclared.residency.covered
     assert any("update_E runs on the array path" in reason
                for reason in undeclared.residency.reasons), (
@@ -628,7 +590,7 @@ def test_an_array_path_sub_step_must_be_declared_synced():
 
     declared = launch.plan_step(
         fields, pml, residency=device.Residency(), sources=(),
-        synced=("update_E",), **_probes())
+        synced=("update_E",))
     assert declared.residency.covered, declared.residency.reasons
 
 
@@ -640,7 +602,7 @@ def test_a_null_slot_neither_requires_a_mirror_nor_stales_one():
     """
     fields, pml = matrix.cart(pml=0, storage=False, eps=False)
     plan = launch.plan_step(fields, pml, residency=device.Residency(),
-                            sources=(), synced=("step_B", "step_D"), **_probes())
+                            sources=(), synced=("step_B", "step_D"))
     assert plan.residency.covered, plan.residency.reasons
     for slot in ("update_H", "update_E"):
         assert plan.plans[slot].performs_device_work is False

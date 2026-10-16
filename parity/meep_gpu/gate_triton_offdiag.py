@@ -87,6 +87,17 @@ Legs, in order (``--legs`` selects a subset):
   catches at any amplitude, measured at unit and 2**-16 amplitude
   alike, because rtol is scale-free. Blindness is a statement about
   rounding-scale defects, and the control now embodies it.
+* THE CHUNK FORMS (every leg): the reference is the array path's row in double
+  rounded once (``stepping._offdiagonal_terms``, ``_rounded_row``) and its
+  constitutive forms per chunk (``_apply_constitutive_regions``). Every sweep case
+  binds a chunk record (``gate_chunk_records.two_run_record`` keys both forms on
+  every axis; ``every_cell_record`` the accumulation everywhere) and a presence
+  (every term present, or a hand-built per-chunk presence on planted ``-0`` words,
+  :func:`synthetic_presence`, which must move a word or the case is VACUOUS). The
+  mutation leg carries the chunk-form battery beside m1-m9: b1 the select removed,
+  b2 the presence ignored, b3 the row in float32, b4 ``f_w`` stored on plain
+  cells, b5 the integer lattice, b6 the membership one row off, b8 the presence on
+  the wrong lattice, and b7 (the unconditional auxiliary load) as a declared null.
 * ``engine``     — ``plan_offdiagonal_constitutive`` from the engine's own
   objects (``Fields.set_epsilon_volumes``-installed tensors) against
   ``stepping.update_E`` on real CuPy grids, repeated calls, several
@@ -163,6 +174,7 @@ except ImportError:
 # Nothing is re-implemented.
 import gate_triton_complex as gate  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import flush_vacuity  # noqa: E402 - the flush not-applicable rule, beside this file
 
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.fields import Fields, IYEE_SHIFTS  # noqa: E402
@@ -218,6 +230,7 @@ def write_provenance(results_dir: str) -> str:
         "triton_kernels/coverage.py": os.path.join(kernel_dir, "coverage.py"),
         "triton_kernels/launch.py": os.path.join(kernel_dir, "launch.py"),
         "triton_kernels/kernels.py": os.path.join(kernel_dir, "kernels.py"),
+        "triton_kernels/forms.py": os.path.join(kernel_dir, "forms.py"),
         "triton_kernels/offdiag_update_e.py": os.path.join(
             kernel_dir, "offdiag_update_e.py"),
         "triton_kernels/fingerprints.json": os.path.join(
@@ -280,17 +293,20 @@ def reference_shift_up(xp: Any, field: Any, axis: int, boundary: str) -> Any:
     return rolled
 
 
-def reference_coupling(xp: Any, volumes: Dict[str, Any], rows: Dict[str, Any],
-                       own_axis: int, boundaries: Sequence[str],
-                       wall_axes: Sequence[int],
-                       component: str) -> Optional[Any]:
-    """stepping._offdiagonal_terms (:1206-1224) + _mask_metallic_wall_coupling
-    (:1227-1254): pair DOWN the partner axis on the raw partner volume, the
-    coefficient multiply BETWEEN the shifts, the PRODUCT up the own axis, 0.25
-    scaling the sum applied last, offset 1 then offset 2, then face-0 zeroing
-    of the total on every wall axis where the component's Yee shift is 0."""
+def reference_terms(xp: Any, volumes: Dict[str, Any], rows: Dict[str, Any],
+                    own_axis: int, boundaries: Sequence[str],
+                    wall_axes: Sequence[int],
+                    component: str) -> List[Tuple[str, Any]]:
+    """Each surviving partner's OFFDIAG term, in double, in cycle_direction order.
+
+    stepping._offdiagonal_terms: the pair DOWN the partner axis on the raw partner
+    volume, the coefficient multiply BETWEEN the shifts, the PRODUCT up the own
+    axis, their float32 sum; the sum zeroed at face 0 of every wall axis where the
+    component's Yee shift is 0 (_mask_metallic_wall_coupling); then MEEP's double
+    ``0.25`` applied to the widened sum. Returns ``[(partner, term)]``."""
     axes = "xyz"
-    total = None
+    terms: List[Tuple[str, Any]] = []
+    iyee = IYEE_SHIFTS[component]
     for offset in (1, 2):  # MEEP's cycle_direction(dim, d_ec, 1) then (..., 2).
         partner_axis = (own_axis + offset) % 3
         partner = "E" + axes[partner_axis]
@@ -301,17 +317,50 @@ def reference_coupling(xp: Any, volumes: Dict[str, Any], rows: Dict[str, Any],
         pair = values + reference_shift_down(xp, values, partner_axis,
                                              boundaries[partner_axis])
         product = pair * coefficient
-        term = 0.25 * (product + reference_shift_up(xp, product, own_axis,
-                                                    boundaries[own_axis]))
-        total = term if total is None else total + term
-    if total is not None:
-        iyee = IYEE_SHIFTS[component]
+        summed = product + reference_shift_up(xp, product, own_axis,
+                                              boundaries[own_axis])
         for axis in range(3):
-            if iyee[axis] != 0:
-                continue
-            if wall_axes[axis]:
-                total[_face(axis, 0)] = 0
+            if iyee[axis] == 0 and wall_axes[axis]:
+                summed[_face(axis, 0)] = 0
+        terms.append((partner, 0.25 * summed.astype(xp.float64)))
+    return terms
+
+
+def reference_coupling(xp: Any, volumes: Dict[str, Any], rows: Dict[str, Any],
+                       own_axis: int, boundaries: Sequence[str],
+                       wall_axes: Sequence[int],
+                       component: str) -> Optional[Any]:
+    """The component's OFFDIAG terms summed in double, or None: a magnitude for the
+    non-vacuity checks and the cancellation seeding, never a stored word."""
+    terms = reference_terms(xp, volumes, rows, own_axis, boundaries, wall_axes,
+                            component)
+    if not terms:
+        return None
+    total = terms[0][1]
+    for _partner, term in terms[1:]:
+        total = total + term
     return total
+
+
+def reference_row(xp: Any, volumes: Dict[str, Any], rows: Dict[str, Any],
+                  own_axis: int, boundaries: Sequence[str],
+                  wall_axes: Sequence[int], component: str, inverse: Any,
+                  presence: Optional[Dict[str, Any]] = None) -> Optional[Any]:
+    """stepping._offdiagonal_terms + _rounded_row: MEEP's row, rounded once.
+
+    ``gs*us`` is one float32 product, widened; each term is added in double, left
+    to right, only where its slot's per-chunk presence holds (``presence`` maps a
+    partner to a bool volume; absent or None means everywhere); the row is rounded
+    to float32 once. None when no partner survives (the caller keeps ``gs*us``)."""
+    terms = reference_terms(xp, volumes, rows, own_axis, boundaries, wall_axes,
+                            component)
+    if not terms:
+        return None
+    row = (volumes[component] * inverse).astype(xp.float64)
+    for partner, term in terms:
+        present = None if presence is None else presence.get(partner)
+        row = row + term if present is None else xp.where(present, row + term, row)
+    return row.astype(xp.float32)
 
 
 def reference_update_e(xp: Any, state: Dict[str, Any],
@@ -319,32 +368,114 @@ def reference_update_e(xp: Any, state: Dict[str, Any],
                        rows_by_component: Dict[str, Dict[str, Any]],
                        inv_eps: Dict[str, Any],
                        boundaries: Sequence[str],
-                       wall_axes: Sequence[int]) -> None:
+                       wall_axes: Sequence[int],
+                       inside: Optional[Dict[str, Any]] = None,
+                       presence: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
     """The whole offdiag sub-step, in place on ``state``.
 
-    stepping.update_E (:967-989), ``elif offdiagonal:`` branch (:972-979) with
-    no poles: the D volumes ARE the sources (fields.py:1107-1138 aliases
-    undriven components), the row sum is diagonal-first, and the tail is
-    _apply_constitutive_pml's no-scratch branch (:2083-2088).
+    stepping.update_E's ``elif offdiagonal:`` branch with no poles: the D volumes
+    ARE the sources (fields.py aliases undriven components), the row is MEEP's
+    (:func:`reference_row`), and the tail is ``_apply_constitutive_regions``: on
+    the cells whose chunk carries the component's own layer (``inside[component]``,
+    the half-integer membership of its own axis, broadcastable; None is the
+    every-cell record's, which keys no row of an invariant axis) MEEP's accumulation ``E + ((kps*src) - (kms*f_w))`` with ``f_w`` taking
+    ``src``; everywhere else ``E = src`` and ``f_w`` keeps its word.
     """
     volumes = {"Ex": state["Dx"], "Ey": state["Dy"], "Ez": state["Dz"]}
+    if inside is None:
+        shape = tuple(volumes["Ex"].shape)
+        inside = record_inside(chunk_record(shape, "every_cell"), shape)
     for own_axis, target in enumerate(E_NAMES):
         gs = volumes[target]
         us = inv_eps[target]
-        constitutive = gs * us  # MEEP step_update_EDHB: fw[i] = gs*us.
-        coupling = reference_coupling(xp, volumes,
-                                      rows_by_component.get(target, {}),
-                                      own_axis, boundaries, wall_axes, target)
-        if coupling is not None:
-            constitutive = constitutive + coupling
+        row = reference_row(xp, volumes, rows_by_component.get(target, {}),
+                            own_axis, boundaries, wall_axes, target, us,
+                            None if presence is None else presence.get(target))
+        constitutive = gs * us if row is None else row  # fw[i] = gs*us + OFFDIAG...
         kps = coefficients["kps_" + "xyz"[own_axis]]
         kms = coefficients["kms_" + "xyz"[own_axis]]
         fw = state["f_w_" + target]
         field = state[target]
-        fw_previous = fw.copy()
-        fw[...] = constitutive
-        field += kps * fw
-        field -= kms * fw_previous
+        member = xp.broadcast_to(xp.asarray(inside[target]), field.shape)
+        accumulated = field + ((kps * constitutive) - (kms * fw))
+        field[...] = xp.where(member, accumulated, constitutive)
+        fw[...] = xp.where(member, constitutive, fw)
+
+
+# ---------------------------------------------------------------------------
+# The chunk forms: the record, the membership it keys, the presence
+# ---------------------------------------------------------------------------
+
+def chunk_record(shape: Sequence[int], kind: str = "two_run") -> np.ndarray:
+    """The harness record a sweep case binds (``gate_chunk_records``): ``two_run``
+    keys both constitutive forms on every axis, ``every_cell`` keys the
+    accumulation on every cell."""
+    from gate_chunk_records import every_cell_record, two_run_record  # noqa: PLC0415
+
+    return (two_run_record(shape) if kind == "two_run"
+            else every_cell_record(shape))
+
+
+def record_inside(record: Any, shape: Sequence[int]) -> Dict[str, np.ndarray]:
+    """Per component, the half-integer membership of its own axis, broadcastable."""
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+
+    inside = {}
+    for own_axis, target in enumerate(E_NAMES):
+        line = membership_from_record(record, True, own_axis, int(shape[own_axis]))
+        view = [1, 1, 1]
+        view[own_axis] = int(shape[own_axis])
+        inside[target] = line.reshape(view)
+    return inside
+
+
+def synthetic_presence(shape: Sequence[int], rows: Dict[str, Dict[str, Any]],
+                       rng) -> Tuple[Any, Dict[str, Dict[str, np.ndarray]]]:
+    """A hand-built per-chunk presence: ``(PresenceRecord, per-slot bool volumes)``.
+
+    Each resolved axis is cut into three segments per sub-lattice (the
+    half-integer cuts one row above the integer ones), every live slot gets a
+    random 27-bit mask with both values present, and the volumes are the masks
+    decoded on each row component's own lattices -- what the kernel must read."""
+    lines = {}
+    for half in (0, 1):
+        for axis in range(3):
+            n = int(shape[axis])
+            index = np.arange(n)
+            if n < 3:
+                line = np.zeros(n, dtype=np.int32)
+            else:
+                low, high = n // 3 + half, (2 * n) // 3 + half
+                line = ((index >= low).astype(np.int32)
+                        + (index >= min(high, n - 1)).astype(np.int32))
+            lines[(half, axis)] = line.astype(np.int32)
+    words = np.zeros(odmod.PRESENCE_MASK_WORDS, dtype=np.int64)
+    varies = []
+    volumes: Dict[str, Dict[str, np.ndarray]] = {}
+    for slot, (row, partner) in enumerate(odmod.ROW_SLOTS):
+        if (rows.get(row) or {}).get(partner) is None:
+            varies.append(0)
+            continue
+        word = int(rng.integers(1, (1 << 27) - 1))
+        word |= 1 << int(rng.integers(0, 27))
+        words[slot] = word
+        varies.append(1)
+        own = E_NAMES.index(row)
+        x, y, z = (lines[(int(axis == own), axis)] for axis in range(3))
+        chunk = (x[:, None, None] * 9 + y[None, :, None] * 3) + z[None, None, :]
+        volumes.setdefault(row, {})[partner] = ((word >> chunk) & 1).astype(bool)
+    vector = np.concatenate(
+        [words.astype(np.int32)]
+        + [lines[(half, axis)] for half in (0, 1) for axis in range(3)]).astype(np.int32)
+    return odmod.PresenceRecord(vector, tuple(varies)), volumes
+
+
+def plant_negative_zeros(state: Dict[str, Any]) -> None:
+    """-0 in every fifth D word: the only value on which an absent OFFDIAG term and
+    an added zero differ (the row is -0 and the term +0), and on which the plain
+    form folded into the accumulation (``kps = 1, kms = 0``) is visible."""
+    for name in D_NAMES:
+        state[name].reshape(-1)[::5] = np.float32(-0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -520,11 +651,21 @@ def _wall_axes_for(boundaries: Sequence[str]) -> Tuple[int, ...]:
 def one_case(shape, boundaries, form_name, amplitude, guard,
              inv_form: str = "distinct", coefficient_source: str = "synthetic",
              courant: Optional[float] = None, kernel: Any = None,
-             seed_offset: int = 0) -> Dict[str, Any]:
+             seed_offset: int = 0, record_kind: str = "two_run",
+             presence_form: str = "all") -> Dict[str, Any]:
+    """One sweep case: the kernel against the in-file reference, uint32 words.
+
+    ``record_kind`` names the chunk record the plan binds and the reference keys
+    its constitutive forms on (:func:`chunk_record`); ``presence_form`` is ``all``
+    (every term added everywhere) or ``chunked`` (a hand-built per-chunk presence,
+    :func:`synthetic_presence`). ``amplitude="signed_zero"`` plants -0 in D
+    (:func:`plant_negative_zeros`), where presence and the plain select are
+    observable."""
     case: Dict[str, Any] = {
         "shape": list(shape), "boundaries": list(boundaries),
         "row_form": form_name, "amplitude": amplitude, "guard": guard,
         "inv_form": inv_form, "coefficient_source": coefficient_source,
+        "record": record_kind, "presence": presence_form,
     }
     skip = config_viable(shape, boundaries)
     if skip:
@@ -541,6 +682,14 @@ def one_case(shape, boundaries, form_name, amplitude, guard,
             return case
         case["cancellation"] = seed_cancellation(state, rows, inv_eps,
                                                  boundaries, wall_axes)
+    elif amplitude == "signed_zero":
+        plant_negative_zeros(state)
+    record = chunk_record(shape, record_kind)
+    inside = record_inside(record, shape)
+    presence_volumes = None
+    presence = odmod.ALL_PRESENT
+    if presence_form == "chunked":
+        presence, presence_volumes = synthetic_presence(shape, rows, rng)
 
     if coefficient_source == "synthetic":
         flat = synthetic_flat_coefficients(tuple(shape), rng)
@@ -555,7 +704,21 @@ def one_case(shape, boundaries, form_name, amplitude, guard,
     # The reference, on the HOST (IEEE keep — the ship configuration's side).
     reference = {name: state[name].copy() for name in ALL_NAMES}
     reference_update_e(np, reference, broadcast(flat), rows, inv_eps,
-                       boundaries, wall_axes)
+                       boundaries, wall_axes, inside, presence_volumes)
+    if presence_volumes is not None:
+        # Non-vacuity 0: the per-chunk presence moves a word, or the case could
+        # pass with every term added everywhere.
+        everywhere = {name: state[name].copy() for name in ALL_NAMES}
+        reference_update_e(np, everywhere, broadcast(flat), rows, inv_eps,
+                           boundaries, wall_axes, inside, None)
+        case["presence_visible_words"] = int(sum(
+            np.count_nonzero(reference[name].view(np.uint32)
+                             != everywhere[name].view(np.uint32))
+            for name in STATE_NAMES))
+        if not case["presence_visible_words"]:
+            case["error"] = ("VACUOUS: the per-chunk presence moved no word on "
+                             "this seed")
+            return case
     # Non-vacuity 1: the coupling is nonzero somewhere.
     couplings = [reference_coupling(
         np, {"Ex": state["Dx"], "Ey": state["Dy"], "Ez": state["Dz"]},
@@ -568,7 +731,7 @@ def one_case(shape, boundaries, form_name, amplitude, guard,
     # (diagonal-engine) control, so no case can pass with the feature dark.
     control = {name: state[name].copy() for name in ALL_NAMES}
     reference_update_e(np, control, broadcast(flat), {}, inv_eps,
-                       boundaries, wall_axes)
+                       boundaries, wall_axes, inside)
     if all(reference[name].tobytes() == control[name].tobytes()
            for name in STATE_NAMES):
         case["error"] = ("VACUOUS: the coupling left every byte equal to the "
@@ -589,8 +752,10 @@ def one_case(shape, boundaries, form_name, amplitude, guard,
     device_flat = {key: cp.asarray(value) for key, value in flat.items()}
     codes = tuple(CODE_OF[b] for b in boundaries)
     plan = odmod.plan_offdiagonal_constitutive_from_arrays(
-        arrays, device_flat, device_rows, codes, wall_axes, kernel=kernel)
+        arrays, device_flat, device_rows, codes, wall_axes, kernel=kernel,
+        chunk_bounds=record, presence=presence)
     case["row_mask"] = list(plan.row_mask)
+    case["presence_varies"] = list(plan.presence_varies)
     plan.run(guard=guard)
     cp.cuda.runtime.deviceSynchronize()
 
@@ -639,34 +804,53 @@ def run_synthetic(results: Dict[str, Any], out_path: str,
     # (offdiag_update_e.py), which NO other leg's mask compiles — without
     # these two rows a defect there would certify green.
     extras.append(((13, 17, 11), (METALLIC, PERIODIC, PERIODIC),
-                   "single_ex_ey", "normal", "distinct", "synthetic", None))
+                   "single_ex_ey", "normal", "distinct", "synthetic", None, "two_run", "all"))
     extras.append(((13, 17, 11), (PERIODIC, METALLIC, PERIODIC),
-                   "single_ex_ez", "normal", "distinct", "synthetic", None))
+                   "single_ex_ez", "normal", "distinct", "synthetic", None, "two_run", "all"))
     extras.append(((16, 16, 16), (METALLIC, PERIODIC, PERIODIC),
-                   "single_ey_ez", "normal", "distinct", "synthetic", None))
+                   "single_ey_ez", "normal", "distinct", "synthetic", None, "two_run", "all"))
     extras.append(((13, 17, 11), (METALLIC, PERIODIC, PERIODIC),
-                   "single_ey_ex", "normal", "distinct", "synthetic", None))
+                   "single_ey_ex", "normal", "distinct", "synthetic", None, "two_run", "all"))
     extras.append(((16, 16, 16), (PERIODIC, METALLIC, PERIODIC),
-                   "single_ez_ey", "normal", "distinct", "synthetic", None))
+                   "single_ez_ey", "normal", "distinct", "synthetic", None, "two_run", "all"))
     # Signed varying coefficients.
     extras.append(((13, 17, 11), (PERIODIC, METALLIC, PERIODIC),
-                   "varying_signed", "normal", "distinct", "synthetic", None))
+                   "varying_signed", "normal", "distinct", "synthetic", None, "two_run", "all"))
     # The aliased (isotropic) inverse-epsilon install.
     extras.append(((16, 16, 16), (PERIODIC, METALLIC, PERIODIC),
-                   "varying_full", "normal", "aliased", "synthetic", None))
+                   "varying_full", "normal", "aliased", "synthetic", None, "two_run", "all"))
     # The cancellation class — the row-sum association's byte-visible home.
     extras.append(((13, 17, 11), (PERIODIC, METALLIC, PERIODIC),
                    "uniform_full", "cancellation", "distinct", "synthetic",
-                   None))
+                   None, "two_run", "all"))
     extras.append(((16, 16, 16), (PERIODIC, PERIODIC, PERIODIC),
                    "varying_full", "cancellation", "distinct", "synthetic",
-                   None))
+                   None, "two_run", "all"))
+    # The chunk forms. Every case above binds the two-run record, so both
+    # constitutive forms and their boundary planes are live on every axis; these
+    # add the every-cell record (the accumulation everywhere) and the per-chunk
+    # presence on planted -0 words, on both row-mask arms of a single slot.
+    extras.append(((13, 17, 11), (PERIODIC, METALLIC, PERIODIC),
+                   "varying_full", "normal", "distinct", "synthetic", None,
+                   "every_cell", "all"))
+    extras.append(((13, 17, 11), (PERIODIC, METALLIC, PERIODIC),
+                   "varying_full", "signed_zero", "distinct", "synthetic", None,
+                   "two_run", "chunked"))
+    extras.append(((16, 16, 16), (METALLIC, METALLIC, METALLIC),
+                   "varying_signed", "signed_zero", "distinct", "synthetic", None,
+                   "two_run", "chunked"))
+    extras.append(((1, 160, 160), (PERIODIC, PERIODIC, PERIODIC),
+                   "varying_full", "signed_zero", "distinct", "synthetic", None,
+                   "two_run", "chunked"))
+    extras.append(((13, 17, 11), (METALLIC, PERIODIC, PERIODIC),
+                   "single_ey_ex", "signed_zero", "distinct", "synthetic", None,
+                   "two_run", "chunked"))
     # Real-layer tables at both Courant numbers.
     for shape in shapes:
         for courant in LAYER_COURANTS:
             extras.append((shape, (PERIODIC, PERIODIC, PERIODIC),
                            "varying_full", "normal", "distinct",
-                           "layer", courant))
+                           "layer", courant, "two_run", "all"))
     total = len(guards) * len(combos) + len(extras)
     index = 0
     for guard in guards:
@@ -682,12 +866,14 @@ def run_synthetic(results: Dict[str, Any], out_path: str,
             summary["cases"] = cases
             results.setdefault("synthetic", {})[label] = summary
             save(results, out_path)
-    for shape, boundaries, form_name, amplitude, inv_form, source, courant in extras:
+    for (shape, boundaries, form_name, amplitude, inv_form, source, courant,
+         record_kind, presence_form) in extras:
         index += 1
         started = time.time()
         case = one_case(shape, boundaries, form_name, amplitude, False,
                         inv_form=inv_form, coefficient_source=source,
-                        courant=courant, kernel=kernel)
+                        courant=courant, kernel=kernel, record_kind=record_kind,
+                        presence_form=presence_form)
         case["seconds"] = round(time.time() - started, 3)
         cases.append(case)
         _log_case(label, index, total, case)
@@ -708,7 +894,8 @@ def _log_case(label, index, total, case) -> None:
         log(f"[{label}] {index}/{total} guard={case['guard']} "
             f"{'x'.join(str(n) for n in case['shape'])} "
             f"{'/'.join(b[0] for b in case['boundaries'])} {case['row_form']} "
-            f"{case['amplitude']} {case['inv_form']}: "
+            f"{case['amplitude']} {case['inv_form']} {case['record']}/"
+            f"{case['presence']}: "
             f"identical={verdict['bit_identical']} "
             f"(differing={verdict['differing_floats']}/"
             f"{verdict['total_floats']}, maxulp={verdict.get('max_ulp', 0)}) "
@@ -736,10 +923,12 @@ def run_subnormal(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
         tiny = np.float32(1e-38)
         for name in ALL_NAMES:
             state[name] = (state[name] * tiny).astype(np.float32)
+        conditions = flush_vacuity.seed_conditions()
         flat = synthetic_flat_coefficients(shape, rng)
+        record = chunk_record(shape)
         reference = {name: state[name].copy() for name in ALL_NAMES}
         reference_update_e(np, reference, broadcast(flat), rows, inv_eps,
-                           boundaries, wall_axes)
+                           boundaries, wall_axes, record_inside(record, shape))
         subnormals = int(sum(
             int(np.count_nonzero((np.abs(reference[name]) < 2.0 ** -126)
                                  & (reference[name] != 0)))
@@ -752,7 +941,8 @@ def run_subnormal(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
             {row: {partner: cp.asarray(volume)
                    for partner, volume in partners.items()}
              for row, partners in rows.items()},
-            tuple(CODE_OF[b] for b in boundaries), wall_axes)
+            tuple(CODE_OF[b] for b in boundaries), wall_axes,
+            chunk_bounds=record, presence=odmod.ALL_PRESENT)
         plan.run(guard=False)
         cp.cuda.runtime.deviceSynchronize()
         verdict = combine({name: bit_compare(arrays[name], reference[name])
@@ -761,7 +951,12 @@ def run_subnormal(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
                "reference_subnormals": subnormals,
                "identical": verdict["bit_identical"],
                "differing_floats": verdict["differing_floats"]}
-        if subnormals == 0:
+        row["seed_conditions"] = conditions
+        not_applicable = flush_vacuity.subnormal_class_not_applicable(
+            subnormals, conditions)
+        if not_applicable:
+            row["not_applicable"] = not_applicable
+        elif subnormals == 0:
             row["error"] = ("VACUOUS: the seeding produced no subnormal in "
                             "the reference — the class measured nothing")
         rows_out.append(row)
@@ -808,15 +1003,22 @@ def run_identity(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
                 + [CupyPointer(ours[n]) for n in D_NAMES] * 2  # dead row slots
                 + [CupyPointer(device_flat[f"{stem}_{axis}"])
                    for axis in "xyz" for stem in ("kps", "kms")])
+    # The two-run record keys both forms on every axis, on both sides.
+    record = chunk_record(shape)
+    pointers += [CupyPointer(cp.asarray(record)),
+                 CupyPointer(cp.asarray(np.zeros(odmod.PRESENCE_MASK_WORDS,
+                                                 dtype=np.int32)))]
     from meep_gpu.triton_kernels.kernels import ENABLE_FP_FUSION  # noqa: PLC0415
     kernel[((n_elem + block - 1) // block,)](
         *pointers,
         shape[0], shape[1], shape[2], n_elem,
         R01=0, R02=0, R11=0, R12=0, R21=0, R22=0,
+        P01=0, P02=0, P11=0, P12=0, P21=0, P22=0, PRESENCE=0,
         BCX=0, BCY=1, BCZ=0, WM_X=0, WM_Y=1, WM_Z=0, BLOCK=block,
         enable_fp_fusion=ENABLE_FP_FUSION)
-    plan = launch_module.plan_constitutive_from_arrays("E", certified,
-                                                       device_flat)
+
+    plan = launch_module.plan_constitutive_from_arrays(
+        "E", certified, device_flat, chunk_bounds=record)
     plan.run(guard=False)
     cp.cuda.runtime.deviceSynchronize()
     verdict = combine({name: bit_compare(ours[name], certified[name])
@@ -847,10 +1049,10 @@ def run_identity(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
         {row: {partner: cp.asarray(volume)
                for partner, volume in partners.items()}
          for row, partners in rows.items()},
-        (0, 1, 0), (0, 1, 0))
+        (0, 1, 0), (0, 1, 0), chunk_bounds=record, presence=odmod.ALL_PRESENT)
     plan.run(guard=False)
     launch_module.plan_constitutive_from_arrays(
-        "E", certified, device_flat).run(guard=False)
+        "E", certified, device_flat, chunk_bounds=record).run(guard=False)
     cp.cuda.runtime.deviceSynchronize()
     plain_names = ("Ex", "Ey", "f_w_Ex", "f_w_Ey")
     plain_verdict = combine({name: bit_compare(partial[name], certified[name])
@@ -894,6 +1096,12 @@ REFERENCE_GRIDS: Tuple[Dict[str, Any], ...] = (
     {"name": "reduced_2d", "cell": (1.6, 1.6, 0.0), "dimensions": 2,
      "boundaries": None, "courant": 0.35, "rows": "varying_full",
      "inv_form": "aliased"},
+    # Rows in a central box only: every chunk of the layer holds identically zero
+    # rows and drops them (MEEP's NULL pointer), and D carries planted -0 words,
+    # so the per-chunk presence decides words.
+    {"name": "interior_rows_presence", "cell": (1.2, 1.0, 1.1), "dimensions": 3,
+     "boundaries": "metallic", "courant": 0.35, "rows": "interior_varying",
+     "inv_form": "distinct", "plant_negative_zero": True},
 )
 REFERENCE_STEPS = 4
 
@@ -902,6 +1110,13 @@ def _grid_rows(spec_rows: str, shape, rng) -> Dict[str, Dict[str, np.ndarray]]:
     if spec_rows == "single_ez_ex":
         return {"Ez": {"Ex": np.full(shape, INV_TENSOR[2, 0],
                                      dtype=np.float32)}}
+    if spec_rows == "interior_varying":
+        inside = np.zeros(tuple(shape), dtype=bool)
+        inside[tuple(slice(n // 3, n - n // 3) for n in shape)] = True
+        return {row: {partner: np.where(inside, volume, 0).astype(np.float32)
+                      for partner, volume in partners.items()}
+                for row, partners in row_form("varying_full", tuple(shape),
+                                              rng).items()}
     return row_form(spec_rows, tuple(shape), rng)
 
 
@@ -933,8 +1148,10 @@ def _build_reference_fields(xp, spec: Dict[str, Any]):
                              for row, partners in rows.items()})
     fields.enable_pml_storage()
     for name in D_NAMES + STATE_NAMES:
-        getattr(fields, name)[...] = xp.asarray(rng.uniform(
-            -0.4, 0.4, size=shape).astype(np.float32))
+        values = rng.uniform(-0.4, 0.4, size=shape).astype(np.float32)
+        if spec.get("plant_negative_zero") and name in D_NAMES:
+            values.reshape(-1)[::5] = np.float32(-0.0)
+        getattr(fields, name)[...] = xp.asarray(values)
     pml_cells = int(spec.get("pml_thickness", 2))
     thickness = tuple((pml_cells, pml_cells) if shape[axis] >= 6 else (0, 0)
                       for axis in range(3))
@@ -945,6 +1162,27 @@ def _grid_wall_axes(grid) -> Tuple[int, ...]:
     """The mask's own question (stepping.py:1279-1283), on a real grid."""
     return tuple(int(grid.is_metallic(axis) and not grid.is_mirrored(axis))
                  for axis in range(3))
+
+
+def layout_forms(xp, fields: Any, pml: Any) -> Tuple[Dict[str, Any],
+                                                     Dict[str, Dict[str, Any]]]:
+    """(inside, presence) as the array path reads them: the half-integer membership
+    of each component's own axis and each live slot's per-chunk presence, from the
+    division ``stepping.update_E`` steps with (``stepping._chunk_layout``)."""
+    layout = stepping._chunk_layout(fields, pml)
+    shape = tuple(fields.grid.shape)
+    inside: Dict[str, Any] = {}
+    presence: Dict[str, Dict[str, Any]] = {}
+    for own_axis, target in enumerate(E_NAMES):
+        view = [1, 1, 1]
+        view[own_axis] = shape[own_axis]
+        line = np.asarray(layout.membership(own_axis, True), dtype=bool)
+        inside[target] = xp.asarray(line.reshape(view))
+        presence[target] = {}
+        for partner, coefficient in fields.chi1inv_offdiagonal_for(target).items():
+            mask = layout.offdiag_presence(coefficient, IYEE_SHIFTS[target])
+            presence[target][partner] = None if mask is None else xp.asarray(mask)
+    return inside, presence
 
 
 def run_reference_validation(results: Dict[str, Any], out_path: str, xp,
@@ -965,12 +1203,13 @@ def run_reference_validation(results: Dict[str, Any], out_path: str, xp,
         rows_by_component = {name: fields.chi1inv_offdiagonal_for(name)
                              for name in E_NAMES}
         inv_eps = {name: fields.inverse_epsilon_for(name) for name in E_NAMES}
+        inside, presence = layout_forms(xp, fields, pml)
         chain = hashlib.sha256()
         identical = True
         for step in range(REFERENCE_STEPS):
             stepping.update_E(fields, pml)
             reference_update_e(xp, state, coefficients, rows_by_component,
-                               inv_eps, boundaries, wall_axes)
+                               inv_eps, boundaries, wall_axes, inside, presence)
             for name in STATE_NAMES:
                 ours = probe.to_host(state[name])
                 theirs = probe.to_host(getattr(fields, name))
@@ -1148,26 +1387,44 @@ _TEMPORARY: List[str] = []
 
 def compile_mutated(source: str, kernel_name: str = "offdiag_constitutive_step"):
     """Compile a mutated copy of the shipped kernel from a real file on disk
-    (Triton reads source via inspect). The constexpr codes are re-declared in
-    the header because a @triton.jit body may not read a plain module global."""
+    (Triton reads source via inspect). The constexpr codes and offsets are
+    re-declared in the header because a @triton.jit body may not read a plain
+    module global, and the shared forms are imported, as the module imports them.
+
+    THE MODULE NAME MUST NOT START WITH ``triton``. Triton's dependency finder
+    treats every callee whose ``__module__`` starts with its own package name as a
+    builtin and leaves it out of the kernel's cache key, so under a ``triton_*``
+    name a mutation that edits only a helper (``_row_add``, ``_offdiag_term``)
+    keys exactly like every other helper-only mutant of the same specialization,
+    and the cache serves the first one's binary to the rest. Measured 2026-10-08
+    on the device: b3 (the row in float32) ran m4's binary and read as not caught,
+    while the same mutant compiled first in a fresh process moved 2,008 words."""
     header = ("import triton\nimport triton.language as tl\n"
-              "PERIODIC = tl.constexpr(0)\nMETALLIC = tl.constexpr(1)\n\n")
+              "from meep_gpu.triton_kernels.forms import constitutive_form, record_in\n"
+              "PERIODIC = tl.constexpr(0)\nMETALLIC = tl.constexpr(1)\n"
+              f"RECORD_HALF_INTEGER = tl.constexpr({RECORD_HALF_INTEGER_WORD})\n"
+              f"PRESENCE_LINES = tl.constexpr({odmod.PRESENCE_MASK_WORDS})\n\n")
     handle = tempfile.NamedTemporaryFile("w", suffix="_mutated_offdiag.py",
                                          delete=False, encoding="utf-8")
     handle.write(header + source)
     handle.close()
     _TEMPORARY.append(handle.name)
     spec = importlib.util.spec_from_file_location(
-        "triton_mutated_offdiag_" + str(len(_TEMPORARY)), handle.name)
+        "offdiag_mutant_" + str(len(_TEMPORARY)), handle.name)
     module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     sys.modules[spec.name] = module  # type: ignore[union-attr]
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return getattr(module, kernel_name)
 
 
+#: The record word where the half-integer lines start
+#: (``chunk_map.record_index(True, 0, 0)``), restated for the mutant header.
+RECORD_HALF_INTEGER_WORD = 12
+
+
 def shipped_source() -> str:
     """Helpers first (they may be the mutation target), then the kernel."""
-    functions = (odmod._offdiag_term, odmod._masked_row_sum,
+    functions = (odmod._offdiag_term, odmod._row_add,
                  odmod.offdiag_constitutive_step)
     return "\n\n".join(textwrap.dedent(inspect.getsource(f.fn))
                        for f in functions)
@@ -1188,8 +1445,8 @@ def kernel_ptx_set(jit_fn: Any) -> List[str]:
     return out
 
 
-_TERM_NEEDLE = """    return 0.25 * ((near * tl.load(u + o_c, mask=v_c, other=0.0))
-                   + (far * tl.load(u + o_u, mask=v_u, other=0.0)))"""
+_TERM_NEEDLE = """    return ((near * tl.load(u + o_c, mask=v_c, other=0.0))
+            + (far * tl.load(u + o_u, mask=v_u, other=0.0)))"""
 
 
 def mutate_m1_hoisted_coefficient(source: str) -> Tuple[str, int]:
@@ -1197,7 +1454,7 @@ def mutate_m1_hoisted_coefficient(source: str) -> Tuple[str, int]:
     integer-node registration. Different ALGEBRA on a varying coefficient;
     on a uniform one the two differ only through distributivity rounding
     (measured on the laptop), so the uniform row is recorded, not asserted."""
-    replacement = ("    return 0.25 * ((near + far)"
+    replacement = ("    return ((near + far)"
                    " * tl.load(u + o_c, mask=v_c, other=0.0))")
     return source.replace(_TERM_NEEDLE, replacement), source.count(_TERM_NEEDLE)
 
@@ -1250,36 +1507,34 @@ def mutate_m3_mispaired_coefficients(source: str) -> Tuple[str, int]:
     return source, hits
 
 
+_ROW_ADD_NEEDLE = "    added = row + 0.25 * tl.cast(summed, tl.float64)"
+
+
 def mutate_m4_distribute_quarter(source: str) -> Tuple[str, int]:
-    """m4: 0.25 distributed before the sum — a NULL control, measured
-    (launched, PTX-verified-different, bytes identical on the
-    cancellation class) and derivable: an exact power-of-two factor commutes
-    with round-to-nearest away from underflow, so the distributed form is
-    bitwise identical wherever nothing is subnormal. Contrast m1: an
-    ARBITRARY coefficient's distribution rounds differently and is caught."""
-    replacement = ("    return (0.25 * (near * tl.load(u + o_c, mask=v_c, "
-                   "other=0.0)))\\\n"
-                   "        + (0.25 * (far * tl.load(u + o_u, mask=v_u, "
-                   "other=0.0)))")
-    return source.replace(_TERM_NEEDLE, replacement), source.count(_TERM_NEEDLE)
+    """m4: MEEP's double 0.25 applied in float32, before the widening — a NULL
+    control away from underflow, derivable: 0.25 is an exact power of two, so
+    scaling the float32 sum by it is exact unless the product is subnormal, and the
+    widening is exact either way. The subnormal leg is where it could bite."""
+    replacement = "    added = row + tl.cast(0.25 * summed, tl.float64)"
+    return (source.replace(_ROW_ADD_NEEDLE, replacement),
+            source.count(_ROW_ADD_NEEDLE))
 
 
 _MASK_NEEDLE = """    if WMA:
-        total = tl.where(at_a, 0.0, total)
+        summed = tl.where(at_a, 0.0, summed)
     if WMB:
-        total = tl.where(at_b, 0.0, total)
-    return diag + total"""
+        summed = tl.where(at_b, 0.0, summed)
+"""
 
 
 def mutate_m6_wall_mask_dropped(source: str) -> Tuple[str, int]:
     """m6: the metallic wall-coupling mask dropped — the 2.6e-02-class defect,
     byte-visible at the first call on any metallic-transverse case."""
-    return (source.replace(_MASK_NEEDLE, "    return diag + total"),
-            source.count(_MASK_NEEDLE))
+    return source.replace(_MASK_NEEDLE, ""), source.count(_MASK_NEEDLE)
 
 
-_M7_NEEDLE = "src0 = _masked_row_sum(gs0 * us0, total0, at_y, at_z, WM_Y, WM_Z)"
-_M7_REPLACEMENT = "src0 = _masked_row_sum(gs0 * us0, total0, at_x, at_z, WM_X, WM_Z)"
+_M7_NEEDLE = "at_y, at_z, op, c0, 0, WM_Y, WM_Z, P01)"
+_M7_REPLACEMENT = "at_x, at_z, op, c0, 0, WM_X, WM_Z, P01)"
 
 
 def mutate_m7_wall_mask_overapplied(source: str) -> Tuple[str, int]:
@@ -1317,19 +1572,87 @@ def mutate_m8_metallic_near_ghost_wrapped(source: str) -> Tuple[str, int]:
 def mutate_m9_store_order(source: str) -> Tuple[str, int]:
     """m9: prev read AFTER the fw store — the certified constitutive family's
     retained store-order defect, whose observable is prev == src."""
-    pattern = re.compile(r"a(\d) = a\1 - km_\1 \* prev\1")
-    return (pattern.sub(r"a\1 = a\1 - km_\1 * src\1", source),
+    pattern = re.compile(r"constitutive_form\(a(\d), prev\1, src\1,")
+    return (pattern.sub(r"constitutive_form(a\1, src\1, src\1,", source),
             len(pattern.findall(source)))
 
 
 def mutate_null_commuted_row_sum(source: str) -> Tuple[str, int]:
-    """NULL control: the row sum commuted — ``diag + total`` ->
-    ``total + diag``. float32 addition is bitwise commutative, so this must be
-    caught 0 times — a leg that reports it caught is comparing something other
-    than bytes. (This is also why the plan's 'row-sum order flipped' candidate
-    is a control here rather than a mutation.)"""
-    needle = "    return diag + total"
-    return (source.replace(needle, "    return total + diag"),
+    """NULL control: each term's add into the row commuted — ``row + term`` ->
+    ``term + row``. Addition is bitwise commutative in double as in float32, so
+    this must be caught 0 times — a leg that reports it caught is comparing
+    something other than bytes."""
+    return (source.replace(_ROW_ADD_NEEDLE,
+                           "    added = 0.25 * tl.cast(summed, tl.float64) + row"),
+            source.count(_ROW_ADD_NEEDLE))
+
+
+# --- the chunk-form battery (KERNELS.md section 7.2) --------------------------------
+
+def mutate_b1_select_removed(source: str) -> Tuple[str, int]:
+    """b1: the plain form folded into the accumulation -- the dsigw select removed,
+    so every cell accumulates (today's whole-grid form). On a plain cell MEEP
+    stores ``src``; the accumulation adds ``kps*src - kms*prev`` to a field it
+    never read there."""
+    pattern = re.compile(
+        r"a(\d) = constitutive_form\(a\1, prev\1, src\1, kp_\1, km_\1, dw\1\)")
+    return (pattern.sub(r"a\1 = a\1 + ((kp_\1 * src\1) - (km_\1 * prev\1))", source),
+            len(pattern.findall(source)))
+
+
+def mutate_b2_presence_ignored(source: str) -> Tuple[str, int]:
+    """b2: a slot's term added in the chunks that dropped its array, where MEEP
+    passes NULL and adds nothing; visible where the row is -0 and the term +0."""
+    needle = "        added = tl.where(present, added, row)"
+    return source.replace(needle, "        added = added"), source.count(needle)
+
+
+def mutate_b3_row_in_float32(source: str) -> Tuple[str, int]:
+    """b3: the row summed in float32 (the previous package row): each add rounds."""
+    return (source.replace(_ROW_ADD_NEEDLE,
+                           "    added = tl.cast(tl.cast(row, tl.float32) + "
+                           "0.25 * summed, tl.float64)"),
+            source.count(_ROW_ADD_NEEDLE))
+
+
+def mutate_b4_fw_stored_on_plain_cells(source: str) -> Tuple[str, int]:
+    """b4: ``f_w`` takes ``src`` on every cell; the auxiliary contract leaves it its
+    word outside the accumulation's cells, and the gate compares it."""
+    pattern = re.compile(r"tl\.store\(w(\d) \+ idx, src\1, mask=live & dw\1\)")
+    return (pattern.sub(r"tl.store(w\1 + idx, src\1, mask=live)", source),
+            len(pattern.findall(source)))
+
+
+def mutate_b5_integer_lattice(source: str) -> Tuple[str, int]:
+    """b5: Ex's form keyed on the integer x line, not the half-integer one its Yee
+    site sits on; the record's lattices differ by a row at every boundary plane."""
+    needle = "dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)"
+    return source.replace(needle, "dw0 = record_in(cb, 0, i)"), source.count(needle)
+
+
+def mutate_b6_membership_one_row_off(source: str) -> Tuple[str, int]:
+    """b6: Ey's membership read one row off: the boundary plane takes the other
+    form."""
+    needle = "dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)"
+    return (source.replace(needle, "dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j + 1)"),
+            source.count(needle))
+
+
+def mutate_b7_prev_load_unmasked(source: str) -> Tuple[str, int]:
+    """b7, a declared NULL: the auxiliary LOAD unconditional while its store stays
+    guarded. The loaded word is used only on the accumulation's cells, so no stored
+    word moves; the traffic is what changes (pinned on the source by the module's
+    own test)."""
+    pattern = re.compile(r"prev(\d) = tl\.load\(w\1 \+ idx, mask=live & dw\1, other=0\.0\)")
+    return (pattern.sub(r"prev\1 = tl.load(w\1 + idx, mask=live, other=0.0)", source),
+            len(pattern.findall(source)))
+
+
+def mutate_b8_presence_on_the_wrong_lattice(source: str) -> Tuple[str, int]:
+    """b8: Ex's chunk read on the integer x segment line instead of its own
+    half-integer one; the two lines differ by a row at every cut."""
+    needle = "c0 = (sxh * 9 + syi * 3) + szi"
+    return (source.replace(needle, "c0 = (sxi * 9 + syi * 3) + szi"),
             source.count(needle))
 
 
@@ -1366,6 +1689,32 @@ SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str,
     "null_commuted_row_sum": (mutate_null_commuted_row_sum,
                               "varying_full", MUTATION_MIXED, "normal",
                               False),
+    "b1_select_removed": (mutate_b1_select_removed,
+                          "varying_full", MUTATION_MIXED, "normal", True),
+    "b2_presence_ignored": (mutate_b2_presence_ignored,
+                            "varying_full", MUTATION_MIXED, "signed_zero", True),
+    "b3_row_in_float32": (mutate_b3_row_in_float32,
+                          "varying_full", MUTATION_MIXED, "normal", True),
+    "b4_fw_stored_on_plain_cells": (mutate_b4_fw_stored_on_plain_cells,
+                                    "varying_full", MUTATION_MIXED, "normal",
+                                    True),
+    "b5_integer_lattice": (mutate_b5_integer_lattice,
+                           "varying_full", MUTATION_MIXED, "normal", True),
+    "b6_membership_one_row_off": (mutate_b6_membership_one_row_off,
+                                  "varying_full", MUTATION_MIXED, "normal", True),
+    "b7_prev_load_unmasked": (mutate_b7_prev_load_unmasked,
+                              "varying_full", MUTATION_MIXED, "normal", False),
+    "b8_presence_on_the_wrong_lattice": (mutate_b8_presence_on_the_wrong_lattice,
+                                         "varying_full", MUTATION_MIXED,
+                                         "signed_zero", True),
+}
+
+#: The mutations scored with a per-chunk presence (``one_case``'s
+#: ``presence_form="chunked"``); every other mutation is scored with every term
+#: present.
+MUTATION_PRESENCE: Dict[str, str] = {
+    "b2_presence_ignored": "chunked",
+    "b8_presence_on_the_wrong_lattice": "chunked",
 }
 
 # Every NULL control carries its reason into the artifact — a null without a
@@ -1393,9 +1742,13 @@ NULL_REASONS: Dict[str, str] = {
         "admitted space the near-ghost zeroing is transcription fidelity, "
         "unobservable to any byte gate.",
     "null_commuted_row_sum":
-        "f32 addition is bitwise commutative, so the commuted row sum must "
+        "addition is bitwise commutative, so the commuted add into the row must "
         "be caught 0 times — a leg that reports it caught is comparing "
         "something other than bytes.",
+    "b7_prev_load_unmasked":
+        "the unconditional load reads f_w on plain cells, where the select "
+        "discards what it read: no stored word moves. The guard is pinned on the "
+        "source (test_triton_offdiag_update_e) and is a traffic property.",
 }
 
 
@@ -1403,6 +1756,14 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     shipped = shipped_source()
     shipped_ptx = kernel_ptx_set(odmod.offdiag_constitutive_step)
+    # The cache-key tripwire: every mutant's kernel must key apart from the
+    # shipped kernel and from every mutant before it, or the cache may serve it
+    # a binary it never compiled (see compile_mutated). Hosts without Triton's
+    # JIT object (no ``cache_key``) record nothing here.
+    seen_keys: Dict[str, str] = {}
+    shipped_key = getattr(odmod.offdiag_constitutive_step, "cache_key", None)
+    if isinstance(shipped_key, str):
+        seen_keys[shipped_key] = "shipped"
     if not shipped_ptx:
         log("[mut] WARNING: no shipped PTX cached yet (run the synthetic leg "
             "first); the stale-cache check will treat an empty set as pass-through")
@@ -1418,8 +1779,14 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
             save(results, out_path)
             continue
         counter = gate.CountingKernel(compile_mutated(mutated))
+        mutant_key = getattr(counter.kernel, "cache_key", None)
+        collided = (seen_keys.get(mutant_key)
+                    if isinstance(mutant_key, str) else None)
+        if isinstance(mutant_key, str) and collided is None:
+            seen_keys[mutant_key] = name
         case = one_case(MUTATION_SHAPE, boundaries, form_name, amplitude,
-                        False, kernel=counter, seed_offset=3)
+                        False, kernel=counter, seed_offset=3,
+                        presence_form=MUTATION_PRESENCE.get(name, "all"))
         caught = (not case.get("skipped") and not case.get("error")
                   and not case["verdict"]["bit_identical"])
         entry: Dict[str, Any] = {"sites": hits, "launches": counter.launches,
@@ -1431,6 +1798,11 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
         if counter.launches == 0:
             entry["error"] = ("DISARMED: the mutated kernel never launched — "
                               "the leg measured nothing and FAILS")
+        if collided is not None:
+            entry["error"] = (f"CACHE KEY COLLISION with {collided}: the mutant's "
+                              "kernel keys like a binary already compiled, so the "
+                              "cache may serve that binary and the verdict measures "
+                              "it, not this mutation")
         mutant_ptx = kernel_ptx_set(counter.kernel)
         entry["mutant_ptx_specializations"] = len(mutant_ptx)
         if must_catch:
@@ -1522,9 +1894,11 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     rows = row_form("uniform_full", MUTATION_SHAPE, rng)
     wall_axes = _wall_axes_for(MUTATION_MIXED)
     flat = synthetic_flat_coefficients(MUTATION_SHAPE, rng)
+    record = chunk_record(MUTATION_SHAPE)
     reference = {name: state[name].copy() for name in ALL_NAMES}
     reference_update_e(np, reference, broadcast(flat), rows, inv_eps,
-                       MUTATION_MIXED, wall_axes)
+                       MUTATION_MIXED, wall_axes,
+                       record_inside(record, MUTATION_SHAPE))
     arrays = {name: cp.asarray(state[name]) for name in ALL_NAMES}
     arrays.update({"inv_eps_" + n: cp.asarray(inv_eps[n]) for n in E_NAMES})
     plan = odmod.plan_offdiagonal_constitutive_from_arrays(
@@ -1532,7 +1906,8 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
         {row: {partner: cp.asarray(volume)
                for partner, volume in partners.items()}
          for row, partners in rows.items()},
-        tuple(CODE_OF[b] for b in MUTATION_MIXED), wall_axes, kernel=counter)
+        tuple(CODE_OF[b] for b in MUTATION_MIXED), wall_axes, kernel=counter,
+        chunk_bounds=record, presence=odmod.ALL_PRESENT)
     plan.run(guard=False)
     cp.cuda.runtime.deviceSynchronize()
     bytes_fail = any(not bit_compare(arrays[name],

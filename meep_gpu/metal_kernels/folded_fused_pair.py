@@ -9,14 +9,16 @@ none, so the whole D half fits in a single launch — 30 pointers plus one packe
 device dispatches (the folded curl, then the certified constitutive) plus one to
 three host fill passes; this is ONE, and the displacement never leaves a register.
 
-EVERYTHING HERE IS TRANSCRIBED, and every arithmetic line carries the file:line it
-came from:
+EVERYTHING HERE IS LIFTED OR TRANSCRIBED, and every arithmetic line is either a
+certified emitter's own text or carries the file:line it came from:
 
-* the folded D curl — :data:`.symmetry._FOLDED_CURL_TEMPLATE`
-  (symmetry.py:333-451), whose ghost gather and cell-0 mask are the CERTIFIED
-  emitters :func:`.templates.ghost` and :func:`.templates.ownership_mask` called
-  through :func:`.symmetry._reduced_codes` (symmetry.py:456-482), and whose
-  top-plane block is :func:`.symmetry.folded_top_plane_mask` (symmetry.py:528-552);
+* the folded D curl — LIFTED from :func:`.symmetry.folded_curl_source` at
+  ``backward=True``: its head (guard, decode, the chunk record's bounds block,
+  ghost gather, the curl and its absent-partner forms, the cell-0 mask and the
+  top-plane mask of :func:`.symmetry.folded_top_plane_mask`) verbatim by
+  :func:`certified_curl_head`, and its per-chunk form statements line by line by
+  :func:`certified_curl_statements`, two of them through the declared edits of
+  :data:`LIFT_EDITS`;
 * the wall clear — ``stepping._zero_metal`` (stepping.py:2206-2247) restricted to
   ``D_COMPONENTS``, carried inline through :data:`.fused_dispersive_pair._ZERO_METAL_ROWS`,
   which is IMPORTED rather than re-spelled;
@@ -24,9 +26,39 @@ came from:
   and ``stepping._write_mirror_ghost`` (stepping.py:1497-1498), with the parity
   spelled by :func:`.symmetry._parity_spelling` (symmetry.py:657-686), the ONE
   measured place a mirror parity becomes Metal text;
-* the constitutive half — :data:`.shaders._CONSTITUTIVE_TEMPLATE` (shaders.py:267-345)
-  on its E product ``D * inv_eps`` with D LEFT (shaders.py:351-360, transcribing
-  ``stepping.update_E``:983-987 and ``stepping._apply_constitutive_pml``:2083-2096).
+* the constitutive half — ``shaders.constitutive_source("E")``'s own body
+  (:func:`certified_constitutive_body`, renamed for this kernel's pointers), whose
+  six statements per component are re-emitted at the owned cell and at every imaged
+  ghost and checked statement for statement by :func:`constitutive_transcription`:
+  the E product ``D * inv_eps`` with D LEFT, the accumulation on a cell whose chunk
+  carries the component's own layer and the output select ``E = D * inv_eps``
+  elsewhere (``stepping.update_E`` through ``stepping._apply_constitutive_regions``).
+
+===========================================================================
+THE PML FORMS ARE CHOSEN PER STRUCTURE CHUNK — the chunk record, in Params
+===========================================================================
+
+Both halves take the array path's per-chunk forms: the curl steps the split-field
+recurrence on a cell whose chunk carries the target's dsigu layer and the dsig-only
+form elsewhere, and ``update_E`` accumulates on a cell whose chunk carries the
+component's own layer and is the output select elsewhere. ``fu_D`` is read and
+written only on the recurrence's cells and ``f_w_E`` only on the accumulation's.
+Membership is the chunk record (:mod:`.chunk_bounds`), which rides as one member of
+the packed ``Params`` and costs no binding — the family stays at 31, the ceiling.
+
+Each select is evaluated WHERE THE CELL IS. A destination thread steps its own curl
+form and ``fu`` at its own coordinate. The E half's membership is on the
+component's OWN axis, which only the FAR fill moves: a far ghost's flag is evaluated
+at its destination (stored ``last``), beside the coefficient pair it reloads there,
+and a near ghost shares its owner's flag as it shares its owner's pair. The
+record's lines are ghost-adjusted (``chunk_map.ChunkLayout.membership``), so a ghost
+slot reads its image row's membership, as the array path's line does.
+
+ONE LIFTED LINE PAIR IS EDITED, BY DECLARATION. The certified curl reads
+``p = du ? fu : f`` at every cell, which on a destination thread is a load of a word
+the source thread writes. :data:`LIFT_EDITS` moves the dsig-only form's read of
+``f`` into the owned block — the same operations in the same order, so the same
+word.
 
 ===========================================================================
 THE SEAM, AND THE FILL THAT SITS INSIDE IT — the whole design problem
@@ -153,9 +185,10 @@ thread at the top plane reading the reflect row — is a race on both ``f`` and
 axis ``a``,
 
 * the thread whose coordinate on a NEAR axis ``a`` is 0, or whose coordinate on the
-  FAR axis is ``last``, is a DESTINATION. It computes the curl and the split-field
-  recurrence's ``n`` and stores ``u`` (the array path's ``step_D`` writes ``fu`` at
-  every cell and neither fill touches it), and then STOPS: it never forms ``v``,
+  FAR axis is ``last``, is a DESTINATION. It computes the curl and, where its own
+  chunk carries the target's dsigu layer, the split-field recurrence's ``n`` and
+  stores ``u`` (the array path's ``step_D`` writes ``fu`` on the recurrence's cells
+  and neither fill touches it), and then STOPS: it never forms ``v``,
   never reads ``f``, never writes ``f``, and never touches ``E`` or ``f_w_E``. Its
   stepped displacement is discarded by the array path too — the fill overwrites it,
   and at the top plane ``_mask_non_owned_cells`` has already zeroed its curl;
@@ -297,16 +330,17 @@ from ..triton_kernels.symmetry import (
     folded_axis_kinds,
 )
 from . import shaders, templates
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as `chunk_bounds`.
+from . import chunk_bounds as _chunk_bounds
 from .device import Residency, compile_source
 from .fused_dispersive_pair import _ZERO_METAL_ROWS
 from .plans import KernelPlan
 from .symmetry import (
     MIRROR_CODES,
     _parity_spelling,
-    _reduced_codes,
     folded_composition_curl_coverage,
     folded_constitutive_coverage,
-    folded_top_plane_mask,
+    folded_curl_source,
 )
 from .. import deposit_repair as _deposit_repair
 
@@ -374,11 +408,13 @@ _LAST: Tuple[str, str, str] = ("(nxi - 1)", "(nyi - 1)", "(nzi - 1)")
 _LAST_FLAG: Tuple[str, str, str] = ("last_x", "last_y", "last_z")
 
 __all__ = [
-    "FAMILY", "NEAR_SOURCE_INDEX", "PACKED_BINDINGS", "REPLACES", "SLOT",
+    "BACKWARD", "CONSTITUTIVE_SIDE", "CURL_SUB_STEP", "FAMILY", "LIFT_EDITS",
+    "NEAR_SOURCE_INDEX", "PACKED_BINDINGS", "REPLACES", "SLOT",
     "SEPARATE_SCALAR_BINDINGS", "MetalFoldedFusedPairPlan",
-    "carried_destinations", "compile_folded_fused_pair", "far_fill_axes",
-    "folded_fused_pair_source",
-    "metal_folded_fused_pair_coverage", "near_fill_axes",
+    "carried_destinations", "certified_constitutive_body", "certified_curl_head",
+    "certified_curl_statements", "compile_folded_fused_pair",
+    "constitutive_transcription", "far_fill_axes", "folded_fused_pair_source",
+    "metal_folded_fused_pair_coverage", "near_fill_axes", "params_record_dtype",
     "plan_metal_folded_fused_pair", "refuted_separate_scalar_source",
     "zero_metal_lines",
 ]
@@ -398,9 +434,15 @@ __CONTRACT__
 // reflect rows the far carry needs (stepping._far_reflect_rows:1661) ride inside
 // this record rather than as three more buffers, so carrying
 // fill_folded_far_ghosts_D costs nothing against the platform's 31-binding ceiling
-// (device.py:72) — which this family sits EXACTLY on and could not have paid.
+// (device.py:72) — which this family sits EXACTLY on and could not have paid. THE
+// CHUNK RECORD rides here too, as one member after the scalars, for the same
+// reason: the per-chunk forms read it as runtime data at no binding.
+__RECORD_STRUCT__
+
 struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx;
-                int rx; int ry; int rz; };
+                int rx; int ry; int rz;
+__RECORD_MEMBER__
+};
 
 kernel void folded_fused_pair_step(
     device float*       f0      [[buffer(0)]],
@@ -437,13 +479,15 @@ kernel void folded_fused_pair_step(
     uint idx [[thread_position_in_grid]])
 {
     // THE EIGHT SCALARS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN NAMES, once,
-    // before any of the transcribed text runs. Everything below this line is then
+    // and the record is aliased as the `cb` both lifted bounds blocks read, before
+    // any of the lifted text runs. Everything below this line is then
     // character-for-character what the folded curl and the certified constitutive
     // emit, rather than the same arithmetic re-spelled around a struct field.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
     int reflect_x = prm.rx, reflect_y = prm.ry, reflect_z = prm.rz;
     (void)reflect_x; (void)reflect_y; (void)reflect_z;
+__RECORD_ALIAS__
 
 __BODY__
 }
@@ -457,11 +501,85 @@ __BODY__
 _RECURRENCE_AXES: Tuple[Tuple[str, str], ...] = (("y", "z"), ("z", "x"), ("x", "y"))
 
 #: The flat-index coordinate name per axis, and the stride expression per axis, in
-#: the decode's own spelling (symmetry.py:366-372). ``nyz`` and ``nzi`` are that
-#: block's variables; a second decode here would be a second place to get the
-#: C-contiguous layout wrong.
+#: the lifted decode's own spelling. ``nyz`` and ``nzi`` are that block's variables;
+#: a second decode here would be a second place to get the C-contiguous layout
+#: wrong.
 _COORDINATE: Tuple[str, str, str] = ("i", "j", "k")
 _STRIDE: Tuple[str, str, str] = ("nyz", "nzi", "1")
+
+#: The curl sub-step this product starts at, its direction, and the constitutive
+#: side it ends at. ``BACKWARD`` is ``SUB_STEPS['step_D']['backward']``, restated so
+#: the one legal binding is visible here; the test file pins the two equal.
+CURL_SUB_STEP = "step_D"
+CONSTITUTIVE_SIDE = "E"
+BACKWARD = True
+
+#: The Yee sub-lattice the E half's membership reads, per ``shaders``' own table:
+#: half-integer, on the component's own axis. The curl half's lattice is the lifted
+#: head's (integer, on each target's dsigu axis), so the two blocks declare disjoint
+#: names (``cbi_*``/``in_i_*`` against ``cbh_*``/``in_h_*``).
+CONSTITUTIVE_HALF_INTEGER = shaders.CONSTITUTIVE_HALF_INTEGER[CONSTITUTIVE_SIDE]
+
+#: The marker that separates a certified shader's signature from its body. Every
+#: template in this package ends its parameter list with this exact line.
+_BODY_ANCHOR = "uint idx [[thread_position_in_grid]])\n{\n"
+
+#: The comment line the folded curl body opens its per-chunk form block with: the
+#: CUT POINT of the lift. Everything above it is spliced verbatim; everything below
+#: is re-emitted per component around the ownership carve-out.
+_FORMS_MARK = "    // --- the two PML forms"
+
+#: The decode line the certified constitutive body's prologue ends on. The lift of
+#: that body starts AFTER it, because the curl head has already decoded the index.
+_CONSTITUTIVE_PROLOGUE_END = "    int i   = plane / nyi;\n"
+
+#: THE TWO DECLARED EDITS of the lifted curl statements, per target ``t``:
+#: ``(statement prefix, old fragment, new fragment)``. Everything else below the cut
+#: is the certified folded curl's text verbatim.
+#:
+#: The certified ``p`` statement reads ``f`` off the recurrence's cells (the
+#: dsig-only form is the recurrence's first stage with ``fu := f``). Fused, a
+#: DESTINATION thread runs that statement too, and ``f`` at a destination is a word
+#: its source thread writes in the same dispatch, so ``p`` takes ``0.0f`` there and
+#: the read moves into the owned ``v``: ``{dsig_only}`` is the certified ``n``
+#: statement's own expression with ``p{t}`` replaced by ``f{t}[ii]`` — the same
+#: operations in the same order, so the same word as the certified ``v``.
+LIFT_EDITS: Tuple[Tuple[str, str, str], ...] = (
+    ("    float p{t} = ", ": f{t}[ii];", ": 0.0f;"),
+    ("    float v{t} = ", ": n{t};", ": {dsig_only};"),
+)
+
+#: The six statements ``_apply_constitutive_regions`` runs for one E component, as
+#: they appear in the certified E body once its pointers are renamed for this kernel
+#: (the inverse permittivity ``e`` -> ``ie``, then the target ``f`` -> ``e``): the
+#: accumulation ``f + ((kps*src) - (kms*prev))`` with ``f_w = src`` where the
+#: component's own layer holds, and the output select ``e = src`` elsewhere, ``f_w``
+#: neither read nor written there. Parameterised on the flat index, the displacement
+#: register, the coefficient pair, the membership flag and a register prefix — the
+#: FAR ghost takes the identical six at a different index with its own pair and its
+#: own flag, which is the D geometry's one asymmetry.
+#:
+#: NOT A RETYPING: :func:`constitutive_transcription` renders these with the
+#: certified names and compares them statement for statement against
+#: :func:`certified_constitutive_body`, and :func:`folded_fused_pair_source` runs
+#: that comparison on every build.
+_CONSTITUTIVE_STATEMENTS: Tuple[str, ...] = (
+    "float {prefix}prev = {dw} ? w{target}[{index}] : 0.0f;",
+    "float {prefix}src = {value} * ie{target}[{index}];",
+    "if ({dw}) {{ w{target}[{index}] = {prefix}src; }}",
+    "float {prefix}acc = {prefix}src;",
+    "if ({dw}) {{ {prefix}acc = e{target}[{index}] + "
+    "(({kp} * {prefix}src) - ({km} * {prefix}prev)); }}",
+    "e{target}[{index}] = {prefix}acc;",
+)
+
+#: How the certified E body spells each of the six for component ``t``: the register
+#: names ``prev{t}`` / ``src{t}`` / ``a{t}``, the flat index ``ii``, the displacement
+#: ``g{t}[ii]``, the pair ``kp_{t}`` / ``km_{t}`` and the flag ``dw{t}``.
+_CERTIFIED_PREFIX = "@"
+_CERTIFIED_NAMES: Dict[str, str] = {
+    "@prev": "prev{target}", "@src": "src{target}", "@acc": "a{target}",
+}
 
 
 def near_fill_axes(codes: Sequence[int], target: int) -> Tuple[int, ...]:
@@ -577,6 +695,231 @@ def _component_parity(target: int, axis: int, phase: int) -> int:
     return int(mirror_parity(name, axis, int(phase)))
 
 
+def _line_starting(body: str, prefix: str, what: str) -> str:
+    """The one line of ``body`` starting with ``prefix``, or a named failure.
+
+    The lift's whole safety property: a missing anchor is a certified emitter that
+    has changed under this family, and TWO matches would mean the anchor no longer
+    identifies a single statement.
+    """
+    matches = [line for line in body.splitlines() if line.startswith(prefix)]
+    if not matches:
+        raise AssertionError(
+            f"the certified body no longer carries {what} (looked for a line "
+            f"starting {prefix!r}); this family LIFTS that line rather than "
+            f"retyping it and cannot splice around its absence")
+    if len(matches) > 1:
+        raise AssertionError(
+            f"{prefix!r} matches {len(matches)} lines in the certified body; the "
+            f"lift of {what} would take an arbitrary one")
+    return matches[0]
+
+
+def _body_of(source: str, what: str) -> str:
+    """One certified shader's body: everything between its signature and its brace."""
+    if _BODY_ANCHOR not in source:
+        raise AssertionError(
+            f"the certified {what} source no longer carries the body anchor; this "
+            f"family lifts that body and would otherwise splice a truncated kernel")
+    body = source.split(_BODY_ANCHOR, 1)[1]
+    if not body.endswith("}\n"):
+        raise AssertionError(f"the certified {what} source does not end with '}}'")
+    return body[: -len("}\n")]
+
+
+def certified_curl_head(codes: Sequence[int],
+                        contract: str = shaders.CONTRACT_OFF) -> str:
+    """The folded ``step_D`` curl body DOWN TO the per-chunk PML forms, verbatim.
+
+    :func:`.symmetry.folded_curl_source`'s own output at ``backward=True`` with the
+    ``#include``/signature preamble removed and the cut taken at
+    :data:`_FORMS_MARK`: the guard, the index decode, the chunk record's bounds
+    block (integer-lattice membership and partner presence), the ghost gather
+    (``templates.ghost`` through ``symmetry._reduced_codes``), the curl and its
+    absent-partner forms, the cell-0 ownership mask and the top-plane mask that
+    :func:`.symmetry.folded_top_plane_mask` emits on a folded PERIODIC axis.
+    """
+    body = _body_of(folded_curl_source(codes, BACKWARD, contract), "folded curl")
+    lines = body.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if line.startswith(_FORMS_MARK):
+            head = "".join(lines[:index])
+            if not head.strip():
+                raise AssertionError("the lifted folded curl head is empty")
+            return head
+    raise AssertionError(
+        f"the certified folded curl body no longer opens its per-chunk form block "
+        f"with {_FORMS_MARK!r}; this family cuts the lift there")
+
+
+def _lift_edit(line: str, target: int, old: str, new: str) -> str:
+    """One declared edit of one lifted statement, refused unless it lands exactly once."""
+    old = old.format(t=target)
+    if line.count(old) != 1 or not line.rstrip().endswith(old):
+        raise AssertionError(
+            f"the declared lift edit {old!r} does not end the certified statement "
+            f"{line!r} exactly once; the certified folded curl has changed under it")
+    return line[: line.rindex(old)] + new
+
+
+def certified_curl_statements(codes: Sequence[int],
+                              contract: str = shaders.CONTRACT_OFF,
+                              ) -> Dict[str, Any]:
+    """The per-chunk form's own lines, pulled out of the certified folded D curl.
+
+    The coefficient loads, the dsigu membership flags, the three ``p``/``n``/``v``
+    statements (the ``p``/``v`` pair through :data:`LIFT_EDITS`), the three guarded
+    ``fu`` stores and the flux store split per target, each matched by an anchor that
+    must identify exactly one line.
+    """
+    body = _body_of(folded_curl_source(codes, BACKWARD, contract), "folded curl")
+    coefficients = [_line_starting(body, f"    float km_{axis} = ",
+                                   f"the {axis} split-field coefficient load")
+                    for axis in "xyz"]
+    flags = _line_starting(body, "    const bool du0 = ",
+                           "the three dsigu membership flags")
+    (p_prefix, p_old, p_new), (v_prefix, v_old, v_new) = LIFT_EDITS
+    recurrence = []
+    for target in range(3):
+        previous = _line_starting(body, p_prefix.format(t=target),
+                                  f"target {target}'s previous split field")
+        stage = _line_starting(body, f"    float n{target} = ",
+                               f"target {target}'s split-field recurrence")
+        stepped = _line_starting(body, v_prefix.format(t=target),
+                                 f"target {target}'s stepped displacement")
+        expression = stage.split(" = ", 1)[1].rstrip()
+        if not expression.endswith(";") or expression.count(f"p{target}") != 1:
+            raise AssertionError(
+                f"target {target}'s recurrence statement {stage!r} no longer reads "
+                f"p{target} once; the dsig-only form cannot be derived from it")
+        dsig_only = "(" + expression[:-1].replace(f"p{target}", f"f{target}[ii]") + ")"
+        recurrence.append((
+            _lift_edit(previous, target, p_old, p_new),
+            stage,
+            _lift_edit(stepped, target, v_old, v_new.format(dsig_only=dsig_only)),
+        ))
+    aux_stores = tuple(_line_starting(body, f"    if (du{target}) {{ u{target}[ii] = ",
+                                      f"target {target}'s guarded fu store")
+                       for target in range(3))
+    flux_store = _line_starting(body, "    f0[ii] = ", "the three flux stores")
+    stores = tuple(f"{part.strip()};" for part in flux_store.strip().split(";")
+                   if part.strip())
+    if len(stores) != 3:
+        raise AssertionError(
+            f"the certified folded curl no longer stores three targets on one "
+            f"line: {flux_store!r}")
+    return {"coefficients": tuple(coefficients), "flags": flags,
+            "recurrence": tuple(recurrence), "aux_stores": aux_stores,
+            "stores": stores}
+
+
+def certified_constitutive_body(contract: str = shaders.CONTRACT_OFF) -> str:
+    """The ``update_E`` constitutive kernel's BODY, lifted and renamed for this kernel.
+
+    ``shaders.constitutive_source("E")``'s own body with the decode prologue dropped
+    (the curl head already decoded the index) and two pointer renames, in this
+    order: the inverse permittivity ``e{t}`` -> ``ie{t}``, then the target ``f{t}``
+    -> ``e{t}`` (fused, ``f`` is D). No arithmetic is edited.
+    """
+    body = _body_of(shaders.constitutive_source(CONSTITUTIVE_SIDE, contract),
+                    "constitutive")
+    if _CONSTITUTIVE_PROLOGUE_END not in body:
+        raise AssertionError(
+            "the certified constitutive body no longer carries its decode prologue; "
+            "the lift would redeclare the curl half's indices")
+    body = body.split(_CONSTITUTIVE_PROLOGUE_END, 1)[1]
+    for old_stem, new_stem in (("e", "ie"), ("f", "e")):
+        for target in range(3):
+            old, new = f"{old_stem}{target}[ii]", f"{new_stem}{target}[ii]"
+            if old not in body:
+                raise AssertionError(f"the certified constitutive body has no {old}")
+            body = body.replace(old, new)
+    return body
+
+
+def _constitutive_bounds_lines(contract: str = shaders.CONTRACT_OFF
+                               ) -> Tuple[str, ...]:
+    """The certified E body's chunk-record block, BEGIN to END, verbatim."""
+    lines = certified_constitutive_body(contract).splitlines()
+    begin = [index for index, line in enumerate(lines)
+             if line.strip() == _chunk_bounds.BLOCK_BEGIN]
+    end = [index for index, line in enumerate(lines)
+           if line.strip() == _chunk_bounds.BLOCK_END]
+    if len(begin) != 1 or len(end) != 1 or end[0] <= begin[0]:
+        raise AssertionError(
+            "the certified E body no longer carries exactly one chunk-record block; "
+            "this family lifts it rather than retyping it")
+    return tuple(lines[begin[0]: end[0] + 1])
+
+
+def _constitutive_flag_line(contract: str = shaders.CONTRACT_OFF) -> str:
+    """``const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_z;``, lifted."""
+    return _line_starting(certified_constitutive_body(contract), "    const bool dw0 = ",
+                          "the three dsigw membership flags")
+
+
+def _constitutive_coefficient_lines(contract: str = shaders.CONTRACT_OFF
+                                    ) -> Tuple[str, ...]:
+    """``kp_t``/``km_t`` on the component's OWN axis, lifted from the certified body."""
+    body = certified_constitutive_body(contract)
+    return tuple(_line_starting(body, f"    float kp_{target} = ",
+                                f"target {target}'s constitutive coefficient pair")
+                 for target in range(3))
+
+
+def _render_constitutive(target: int, index: str, value: str, prefix: str,
+                         kp: str, km: str, dw: str) -> Tuple[str, ...]:
+    """The six constitutive statements for one component at one cell, unindented."""
+    return tuple(line.format(target=target, index=index, value=value, kp=kp, km=km,
+                             prefix=prefix, dw=dw)
+                 for line in _CONSTITUTIVE_STATEMENTS)
+
+
+def _touches(statement: str, target: int) -> bool:
+    """Does one certified constitutive statement belong to component ``target``?
+
+    The block, the coefficient loads and the flags are declarations (``const``,
+    ``float kp_``) naming several components and are lifted separately; every other
+    line names its component in a register or a pointer.
+    """
+    if statement.startswith(("float kp_", "const ")):
+        return False
+    marks = (f"prev{target}", f"src{target}", f"a{target} ", f"w{target}[",
+             f"e{target}[")
+    return any(mark in statement for mark in marks)
+
+
+def constitutive_transcription(contract: str = shaders.CONTRACT_OFF
+                               ) -> Dict[str, Any]:
+    """Is :data:`_CONSTITUTIVE_STATEMENTS` the certified E body, statement for statement?
+
+    This family re-emits the certified E arithmetic at the owned cell and at every
+    imaged ghost, so it cannot splice the body wholesale; it renders its own
+    template with the CERTIFIED spellings and requires exactly the lifted body's
+    statements back. ``identical`` false is a build-time failure:
+    :func:`folded_fused_pair_source` raises on it.
+    """
+    body = certified_constitutive_body(contract)
+    statements = [line.strip() for line in body.splitlines()
+                  if line.strip() and not line.strip().startswith("//")]
+    certified: List[List[str]] = []
+    emitted: List[List[str]] = []
+    for target in range(3):
+        rendered = list(_render_constitutive(
+            target, "ii", f"g{target}[ii]", _CERTIFIED_PREFIX, f"kp_{target}",
+            f"km_{target}", f"dw{target}"))
+        for token, spelling in _CERTIFIED_NAMES.items():
+            rendered = [line.replace(token, spelling.format(target=target))
+                        for line in rendered]
+        emitted.append(rendered)
+        certified.append([line for line in statements if _touches(line, target)])
+    return {
+        "emitted": [list(rows) for rows in emitted],
+        "certified": [list(rows) for rows in certified],
+        "identical": all(emitted[t] == certified[t] for t in range(3)),
+    }
+
+
 def zero_metal_lines(target: int, zero_metal: Sequence[bool], name: str,
                      indent: str = "    ", zero: str = "0.0f") -> List[str]:
     """``stepping.zero_metal_D`` for ONE target, on one named register.
@@ -597,31 +940,29 @@ def zero_metal_lines(target: int, zero_metal: Sequence[bool], name: str,
 
 def _constitutive_block(target: int, index: str, value: str, indent: str,
                         prefix: str, kp: Optional[str] = None,
-                        km: Optional[str] = None) -> List[str]:
-    """``_apply_constitutive_pml`` for one component at one cell.
+                        km: Optional[str] = None,
+                        dw: Optional[str] = None) -> List[str]:
+    """``_apply_constitutive_regions`` for one component at one cell.
 
-    TRANSCRIBED from ``shaders._CONSTITUTIVE_TEMPLATE`` (shaders.py:317-327) with
-    its E product (shaders.py:355-359): ``prev`` is read BEFORE ``fw`` is written,
-    the accumulation is two SEPARATE left-to-right steps, and the source is
-    ``D * inv_eps`` with D on the LEFT.
+    The certified E body's six statements (:data:`_CONSTITUTIVE_STATEMENTS`, checked
+    against ``shaders.constitutive_source('E')`` by :func:`constitutive_transcription`):
+    on a cell whose chunk carries the component's own layer, ``prev`` is read BEFORE
+    ``fw`` is written and the right-hand side is formed first, ``e + ((kps*src) -
+    (kms*prev))``; elsewhere ``e = src``, an output select, and ``fw`` is not
+    touched. The source is ``D * inv_eps`` with D on the LEFT.
 
-    ``kp``/``km`` default to the thread's own pair, which is what a NEAR ghost takes:
-    it differs from its source only along an axis that is never the component's own,
-    and the coefficient is indexed on the component's own axis. A FAR ghost moves
-    ALONG that axis and passes its own pair (:func:`_far_coefficient_lines`) — the
-    one asymmetry the D geometry forces and the exact inverse of the magnetic twin's.
+    ``kp``/``km``/``dw`` default to the thread's own pair and flag, which is what a
+    NEAR ghost takes: it differs from its source only along an axis that is never
+    the component's own, and both are indexed on the component's own axis. A FAR
+    ghost moves ALONG that axis and passes its own (:func:`_far_coefficient_lines`,
+    :func:`_far_membership`) — the one asymmetry the D geometry forces and the
+    exact inverse of the magnetic twin's.
     """
     kp = f"kp_{target}" if kp is None else kp
     km = f"km_{target}" if km is None else km
-    return [
-        f"{indent}float {prefix}prev = w{target}[{index}];",
-        f"{indent}float {prefix}src = {value} * ie{target}[{index}];",
-        f"{indent}w{target}[{index}] = {prefix}src;",
-        f"{indent}float {prefix}acc = e{target}[{index}];",
-        f"{indent}{prefix}acc = {prefix}acc + {kp} * {prefix}src;",
-        f"{indent}{prefix}acc = {prefix}acc - {km} * {prefix}prev;",
-        f"{indent}e{target}[{index}] = {prefix}acc;",
-    ]
+    dw = f"dw{target}" if dw is None else dw
+    return [indent + line
+            for line in _render_constitutive(target, index, value, prefix, kp, km, dw)]
 
 
 def _far_coefficient_lines(target: int, axis: int, tag: str,
@@ -665,6 +1006,32 @@ def _far_coefficient_lines(target: int, axis: int, tag: str,
         f"{indent}float {tag}_kp = kp{target}[{_LAST[axis]}], "
         f"{tag}_km = km{target}[{_LAST[axis]}];",
     ]
+
+
+def _far_membership(target: int, axis: int, tag: str,
+                    indent: str) -> Tuple[List[str], str]:
+    """The FAR destination's own dsigw membership, evaluated at stored ``last``.
+
+    The E half selects its form on the component's OWN axis, the axis the far fill
+    moves, so the select is evaluated where the destination cell is — beside the
+    coefficient pair :func:`_far_coefficient_lines` reloads there and for the same
+    reason. Emitted by :func:`.chunk_bounds.membership_lines` with the destination's
+    coordinate on that axis and a per-ghost suffix, reading the ``cbh_*`` locals the
+    lifted block declares. The record's line is ghost-adjusted, so the far ghost
+    slot reads its image row's membership, as the array path's line does.
+
+    Returns the declaration lines and the flag's name.
+    """
+    if axis != target:
+        raise AssertionError(
+            f"component {target} images its FAR ghost on axis {axis}; the E half's "
+            f"membership is on the component's OWN axis (fields.IYEE_SHIFTS)")
+    coordinates = list(_COORDINATE)
+    coordinates[axis] = _LAST[axis]
+    suffix = f"_{tag}"
+    lines = _chunk_bounds.membership_lines(
+        [(CONSTITUTIVE_HALF_INTEGER, axis)], coordinates, suffix, indent).splitlines()
+    return lines, _chunk_bounds.membership_name(CONSTITUTIVE_HALF_INTEGER, axis, suffix)
 
 
 def _carry_blocks(target: int, near: Sequence[int], far: Sequence[int],
@@ -784,12 +1151,15 @@ def _carry_blocks(target: int, near: Sequence[int], far: Sequence[int],
         if carries_far:
             lines.extend(_far_coefficient_lines(target, int(far[0]), tag, inner))
             kp, km = f"{tag}_kp", f"{tag}_km"
+            membership, dw = _far_membership(target, int(far[0]), tag, inner)
+            lines.extend(membership)
         else:
             # The near destination shares the indexed axis with its source thread,
-            # so the pair this thread already loaded IS the destination's.
-            kp, km = f"kp_{target}", f"km_{target}"
+            # so the pair and the flag this thread already holds ARE the
+            # destination's.
+            kp, km, dw = f"kp_{target}", f"km_{target}", f"dw{target}"
         lines.extend(_constitutive_block(target, f"{tag}_i", f"{tag}_v", inner,
-                                         f"{tag}_", kp, km))
+                                         f"{tag}_", kp, km, dw))
         lines.append(f"{indent}}}")
     return lines
 
@@ -848,88 +1218,63 @@ def folded_fused_pair_source(codes: Sequence[int], phases: Sequence[int],
                 f"excludes a folded axis by construction (stepping.py:2282-2284) and "
                 f"this kernel's ghost carry relies on the two sets being disjoint")
 
-    reduced = _reduced_codes(codes)
-    body: List[str] = [
-        templates.GUARD,
-        "",
-        "    int nxi = int(nx), nyi = int(ny), nzi = int(nz);",
-        "    int nyz = nyi * nzi;",
-        "    int ii  = int(idx);",
-        "    int k   = ii % nzi;",
-        "    int plane = ii / nzi;",
-        "    int j   = plane % nyi;",
-        "    int i   = plane / nyi;",
-        "",
-        "    // --- the ghost rule, per axis (stepping._shift_down:1787) ----------",
-        "    // BOTH MIRROR CODES TAKE THE METALLIC BRANCH through _reduced_codes;",
-        "    // the ghost it serves is dead under the cell-0 mask (symmetry.py:36-49).",
-        "    int si = i - 1, sj = j - 1, sk = k - 1;",
-        "    bool vx = true, vy = true, vz = true;",
-        templates.ghost("x", reduced[0], True),
-        templates.ghost("y", reduced[1], True),
-        templates.ghost("z", reduced[2], True),
-        "",
-        "    int ox = si * nyz + j * nzi + k;",
-        "    int oy = i * nyz + sj * nzi + k;",
-        "    int oz = i * nyz + j * nzi + sk;",
-        "",
-        "    // METALLIC serves an exact 0.0 past the wall -- Triton's `other=0.0`.",
-        "    float a   = g0[ii];",
-        "    float b   = g1[ii];",
-        "    float c   = g2[ii];",
-        "    float a_y = vy ? g0[oy] : 0.0f;",
-        "    float a_z = vz ? g0[oz] : 0.0f;",
-        "    float b_x = vx ? g1[ox] : 0.0f;",
-        "    float b_z = vz ? g1[oz] : 0.0f;",
-        "    float c_x = vx ? g2[ox] : 0.0f;",
-        "    float c_y = vy ? g2[oy] : 0.0f;",
-        "",
-        "    // --- the curl (stepping._curl_from_operands:1601): DO NOT flatten these parens",
-        "    float curl0 = dtdx * ((c_y - c) + (b - b_z));",
-        "    float curl1 = dtdx * ((a_z - a) + (c - c_x));",
-        "    float curl2 = dtdx * ((b_x - b) + (a - a_y));",
-        "",
-        "    // --- ownership mask, cell 0 (stepping._mask_non_owned_cells:1865) --",
-        "    bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);",
-        templates.ownership_mask(reduced, True),
-        "",
-        "    // --- ownership mask, the TOP plane of a folded PERIODIC axis -------",
-        "    bool last_x = (i == nxi - 1), last_y = (j == nyi - 1), "
-        "last_z = (k == nzi - 1);",
-        "    (void)last_x; (void)last_y; (void)last_z;",
-        folded_top_plane_mask(codes, True),
-        "",
-        "    // --- split-field recurrence (stepping._apply_pml_update:1905) ------",
-        "    float km_x = kmx[i], si_x = sinvx[i];",
-        "    float km_y = kmy[j], si_y = sinvy[j];",
-        "    float km_z = kmz[k], si_z = sinvz[k];",
-        "",
-        "    // --- the constitutive coefficient, on the component's OWN axis -----",
-        "    // shaders.py:310-312. The NEAR imaged cell takes the SAME entry: it",
-        "    // differs from its source only on a folded axis whose iyee is 0, which",
-        "    // is never the component's own. The FAR imaged cell does NOT: it moves",
-        "    // along exactly the axis this is indexed on, and loads its own pair at",
-        "    // `last` (_far_coefficient_lines). That inversion is this family's",
-        "    // whole delta from folded_fused_magnetic_pair.",
-        "    float kp_0 = kp0[i], km_0 = km0[i];",
-        "    float kp_1 = kp1[j], km_1 = km1[j];",
-        "    float kp_2 = kp2[k], km_2 = km2[k];",
-        "",
-    ]
+    transcription = constitutive_transcription(contract)
+    if not transcription["identical"]:
+        raise AssertionError(
+            "this family's parameterised constitutive statements no longer "
+            "reproduce shaders.constitutive_source('E'); the fused arithmetic "
+            "would silently stop being the certified arithmetic. emitted="
+            f"{transcription['emitted']!r} certified={transcription['certified']!r}")
 
-    # The three recurrences and the three `fu` stores, in the certified body's own
-    # order (symmetry.py:436-450). `u` IS WRITTEN AT EVERY CELL, including the ghost
-    # cells the fill overwrites: `step_D` updates `fu` everywhere and the fill
-    # touches D only (stepping.py:1497-1498 writes `field`, never `fu_field`).
-    for target in range(3):
-        first = _RECURRENCE_AXES[target][0]
-        body.extend([
-            f"    float p{target} = u{target}[ii];",
-            f"    float n{target} = ((p{target} * km_{first}) - curl{target})"
-            f" * si_{first};",
-        ])
+    statements = certified_curl_statements(codes, contract)
+    body: List[str] = [certified_curl_head(codes, contract).rstrip("\n")]
+    body.extend([
+        "",
+        "    // The top-plane flags the lifted head declares are read below by the far",
+        "    // carry's ownership guard where a folded PERIODIC axis exists; a (void)",
+        "    // keeps the others from warning.",
+        "    (void)last_x; (void)last_y; (void)last_z;",
+        "",
+        "    // --- the E half's chunk record: each component's own-axis membership on",
+        "    // the HALF-INTEGER lattice, lifted from the certified E body (cbh_*/in_h_*,",
+        "    // beside the curl head's integer cbi_*/in_i_*).",
+    ])
+    body.extend(_constitutive_bounds_lines(contract))
+    body.extend([
+        "",
+        "    // --- the two PML forms, per structure chunk (stepping._apply_curl_regions)",
+        "    // The certified folded curl's own statements; a target whose dsigu",
+        "    // membership holds steps the recurrence, any other the dsig-only form, and",
+        "    // fu is read and written only on the recurrence's cells.",
+    ])
+    body.extend(statements["coefficients"])
+    body.append(statements["flags"])
+    body.extend([
+        "",
+        "    // --- the constitutive coefficient and membership, on the OWN axis ----",
+        "    // shaders._CONSTITUTIVE_TEMPLATE's own lines. The NEAR imaged cell takes",
+        "    // the SAME entry and flag: it differs from its source only on a folded",
+        "    // axis whose iyee is 0, which is never the component's own. The FAR",
+        "    // imaged cell does NOT: it moves along exactly the axis these are indexed",
+        "    // on, and loads its own pair and evaluates its own flag at `last`",
+        "    // (_far_coefficient_lines, _far_membership). That inversion is this",
+        "    // family's whole delta from folded_fused_magnetic_pair.",
+    ])
+    body.extend(_constitutive_coefficient_lines(contract))
+    body.append(_constitutive_flag_line(contract))
     body.append("")
-    body.append("    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;")
+
+    # The three first stages and the three guarded `fu` stores, in the certified
+    # body's own order, every thread: `step_D` updates `fu` on the recurrence's cells
+    # whatever the fills later do to D, and the fills touch D only
+    # (stepping._write_mirror_ghost writes `field`, never `fu_field`). The `p`
+    # statement carries LIFT_EDITS' first edit, so a destination thread never loads
+    # the `f` its source thread writes.
+    for target in range(3):
+        previous, recurrence, _ = statements["recurrence"][target]
+        body.extend([previous, recurrence])
+    body.append("")
+    body.extend(statements["aux_stores"])
 
     for target in range(3):
         near = near_fill_axes(codes, target)
@@ -947,7 +1292,7 @@ def folded_fused_pair_source(codes: Sequence[int], phases: Sequence[int],
                 f"is 1 on the component's own axis and 0 on the other two, "
                 f"fields.IYEE_SHIFTS), so far holds at most ONE axis and never a "
                 f"near one")
-        second = _RECURRENCE_AXES[target][1]
+        _, _, stepped = statements["recurrence"][target]
         body.append("")
         owned = ([f"({_COORDINATE[axis]} == 0)" for axis in near]
                  + [_LAST_FLAG[axis] for axis in far])
@@ -971,16 +1316,13 @@ def folded_fused_pair_source(codes: Sequence[int], phases: Sequence[int],
             body.append(f"    // component {target}: no folded axis images a cell "
                         f"of this component")
             indent = "    "
-        body.extend([
-            f"{indent}float v{target} = (((f{target}[ii] * km_{second}) + n{target})"
-            f" - p{target}) * si_{second};",
-        ])
+        body.append(indent + stepped.strip())
         # `zero_metal_D` on the cell this thread owns, then the store, then the
         # constitutive read of the SAME register — that is the seam this family
         # closes, exactly as the first fused pair closes it.
         cleared = zero_metal_lines(target, zero_metal, f"v{target}", indent)
         body.extend(cleared or [f"{indent}// no walled axis clears this target"])
-        body.append(f"{indent}f{target}[ii] = v{target};")
+        body.append(indent + statements["stores"][target])
         body.extend(_constitutive_block(target, "ii", f"v{target}", indent, "o"))
         if owned:
             body.append("")
@@ -990,6 +1332,9 @@ def folded_fused_pair_source(codes: Sequence[int], phases: Sequence[int],
 
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__BODY__": "\n".join(body),
     })
 
@@ -1251,7 +1596,8 @@ class MetalFoldedFusedPairPlan(KernelPlan):
     """
 
     __slots__ = ("residency", "volumes", "codes", "phases", "zero_metal", "shape",
-                 "dtdx", "params", "reflect", "carried_axes", "carried_far_axes")
+                 "dtdx", "params", "reflect", "carried_axes", "carried_far_axes",
+                 "chunk_bounds")
 
     family = "folded fused D-curl/mirror-fill/far-fill/stored-E pair"
 
@@ -1268,7 +1614,10 @@ class MetalFoldedFusedPairPlan(KernelPlan):
                  zero_metal: Sequence[bool], shape: Sequence[int], dtdx: float,
                  params: Any, reflect: Sequence[Optional[int]],
                  pointers: Sequence[Any],
-                 functions: Mapping[str, Any]) -> None:
+                 functions: Mapping[str, Any], *, chunk_bounds: Any) -> None:
+        # The chunk record's host words, kept for inspection: the device copy
+        # rides inside ``params``.
+        self.chunk_bounds = chunk_bounds
         self.residency = residency
         self.volumes = tuple(dict.fromkeys(volumes))
         self.codes = tuple(int(code) for code in codes)
@@ -1290,9 +1639,25 @@ class MetalFoldedFusedPairPlan(KernelPlan):
         return self.launches
 
 
+def params_record_dtype() -> Any:
+    """The packed ``Params`` record: the eight scalars, then the chunk record.
+
+    ONE HOME FOR THE LAYOUT. Every member is four bytes and Metal aligns ``uint``,
+    ``int``, ``float`` and the all-4-byte ``ChunkBounds`` struct to four, so the
+    natural record IS the struct: 32 bytes of scalars, then the record's 100 at
+    offset 32 (:func:`.chunk_bounds.record_dtype_fields`).
+    """
+    import numpy as np  # noqa: PLC0415
+
+    return np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
+                     ("dtdx", "<f4"), ("rx", "<i4"), ("ry", "<i4"), ("rz", "<i4")]
+                    + _chunk_bounds.record_dtype_fields("cb"))
+
+
 def _params_tensor(shape: Sequence[int], dtdx: float,
-                   reflect: Sequence[Optional[int]], device: str) -> Any:
-    """The eight scalars as one 32-byte device record.
+                   reflect: Sequence[Optional[int]], record: Any,
+                   device: str) -> Any:
+    """The eight scalars and the chunk record as one 132-byte device record.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, deliberately and for a stated
     reason: :meth:`.Residency.mirror` binds float32 and complex64 volumes and
@@ -1312,19 +1677,24 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
     an axis :func:`far_fill_axes` returned, and that requires ``CODE_MIRROR_PERIODIC``.
     A sentinel rather than 0, so a source that read it anyway would index outside the
     volume and be caught, not silently image row 0.
+
+    ``record`` is the chunk record's checked words (:func:`.chunk_bounds.plan_words`),
+    packed as the ``cb`` member both lifted bounds blocks read.
     """
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
-    record = np.zeros(1, dtype=np.dtype(
-        [("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
-         ("dtdx", "<f4"), ("rx", "<i4"), ("ry", "<i4"), ("rz", "<i4")]))
+    params = np.zeros(1, dtype=params_record_dtype())
     nx, ny, nz = (int(n) for n in shape)
     rows = tuple(-1 if value is None else int(value) for value in reflect)
     if len(rows) != 3:
         raise ValueError(f"reflect must be a per-axis triple, got {reflect!r}")
-    record[0] = (nx, ny, nz, nx * ny * nz, np.float32(dtdx)) + rows
-    words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
+    params["nx"], params["ny"], params["nz"] = nx, ny, nz
+    params["n_elem"] = nx * ny * nz
+    params["dtdx"] = np.float32(dtdx)
+    params["rx"], params["ry"], params["rz"] = rows
+    params["cb"] = _chunk_bounds.pack(record)
+    words = np.frombuffer(params.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
 
@@ -1333,12 +1703,19 @@ def plan_metal_folded_fused_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalFoldedFusedPairPlan]:
     """Build the fused folded D/E plan, or ``None`` when the seam is refused.
 
     ``None`` is the only refusal, for the reason :func:`.symmetry.plan_folded_pml_curl`
     gives: a configuration this kernel does not carry must fall back to the array
     path, never raise into a caller that would otherwise have stepped correctly.
+
+    ``chunk_bounds`` is the record of the division the run steps with — the
+    composer's ``StepContext.chunk_bounds`` — and has no default, as
+    :func:`.launch.plan_pml_curl` takes it. An admitted configuration given no
+    record, or one that disagrees with the grid, is refused BY NAME
+    (:func:`.chunk_bounds.plan_words`).
 
     ``functions`` is the mutation seam. The gate compiles a deliberately broken copy
     of the shipped source and hands it here; dropping the argument is not a silent
@@ -1355,6 +1732,8 @@ def plan_metal_folded_fused_pair(
     phases = tuple(int(_call(grid, "mirror_phase", axis, default=0) or 0)
                    for axis in range(3))
     walls = zero_metal_axes(grid)
+    record = _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                                      "MetalFoldedFusedPairPlan")
     # The runtime reflect rows the far carry images from — stepping's OWN answer,
     # never a local `n - 2`: the formula is `n_full - stored + 2`, which is
     # `stored - 2` at an even full count and `stored - 3` at an odd one.
@@ -1395,8 +1774,9 @@ def plan_metal_folded_fused_pair(
 
     return MetalFoldedFusedPairPlan(
         residency, volumes, codes, phases, walls, grid.shape, grid.dt / grid.dx,
-        _params_tensor(grid.shape, grid.dt / grid.dx, reflect, residency.device),
-        reflect, pointers, selected)
+        _params_tensor(grid.shape, grid.dt / grid.dx, reflect, record,
+                       residency.device),
+        reflect, pointers, selected, chunk_bounds=record)
 
 
 # ---------------------------------------------------------------------------
@@ -1415,7 +1795,7 @@ def _arm_plan(context: Any, slot: str) -> Optional[MetalFoldedFusedPairPlan]:
         return None
     return plan_metal_folded_fused_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

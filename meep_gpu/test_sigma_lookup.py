@@ -1,39 +1,32 @@
 """Tests for the DECLARED-GEOMETRY sigma lookup and the per-point check under it.
 
-Four layers, in the order a defect would reach them:
+Three layers, in the order a defect would reach them:
 
 1. **The verification algebra alone**, with no MEEP: the columns against MEEP's
    own ``chi1`` closed form retyped from susceptibility.cpp:297-307, a correct
    sigma passing, a wrong one failing, and the degeneracy the check cannot see
    through being refused rather than checked blind.
-2. **The lookup against the EXACT reader**, point by point. This is what the
-   patched environment exists for, and it is also where the retirement question
-   gets decided: the same cells are looked up AND inverted against the same
-   reader, and the two disagreements are printed side by side. Measured:
-
-       two-block Lorentz+Drude, res 10   lookup 1.70e-08   inversion 5.67e-08
-       meep.materials.Au, 6 poles        lookup 3.28e-08   inversion 1.35e-06
-
-   SKIPS on a stock MEEP, where there is no exact reader to compare against.
-3. **The check FAILING when it should**, and the three cells that need the three
-   images MEEP searches — all on any MEEP, no reader required. The defect the
+2. **The check FAILING when it should**, and the three cells that need the three
+   images MEEP searches — all on stock MEEP. The defect the
    check is aimed at is not hypothetical: this engine's own Yee coordinate and the
    one MEEP snapped the point to differ by one ulp at a block face that no binary
    float represents, and that flips which medium 81 of 10800 points are in. Both
    halves are measured here — that the two coordinates really do disagree, and
-   that substituting one for the other moves the check by seven orders.
-4. **The lift end to end on a stock MEEP**, against CPU MEEP stepping the same
-   cell, plus the route record that says which of the three paths ran.
+   that substituting one for the other moves the check by seven orders. The
+   refusal stock MEEP leaves is pinned here too, on both routes: a smoothed curved
+   interface anywhere in the cell, with the escape it names shown to work, and a
+   declared ``epsilon_offdiag``, which that escape does not clear.
+3. **The lift end to end on a stock MEEP**, against CPU MEEP stepping the same
+   cell, plus the route record that says which of the two paths ran.
 
-THE HONEST COMPARISON, and why it is a test rather than a claim in a docstring.
-The lookup is NOT cheaper than the inversion at ANY object count, including zero —
-measured per call on this machine, ``mp.is_point_in_object`` costs 4.38 us against
-``get_chi1inv``'s 0.64 us at a nonzero frequency, and end to end the lookup runs
-1.4-2.0x the inversion at one or two objects and 14.6x at thirty-two. What it is,
-is exact: it installs the declared number rather than a solved one.
-``test_the_lookup_is_closer_to_the_reader_than_the_inversion_is`` is the
-measurement that decides whether that is still true, and it asserts the ordering
-rather than a digit.
+THE HONEST COMPARISON. The lookup is NOT cheaper than the inversion at ANY object
+count, including zero — measured per call on this machine, ``mp.is_point_in_object``
+costs 4.38 us against ``get_chi1inv``'s 0.64 us at a nonzero frequency, and end to
+end the lookup runs 1.4-2.0x the inversion at one or two objects and 14.6x at
+thirty-two. What it is, is exact: it installs the declared number rather than a
+solved one. Measured on 2026-08-04 against MEEP's stored sigma words, point by
+point: two-block Lorentz+Drude at resolution 10, lookup 1.70e-08 and inversion
+5.67e-08; ``meep.materials.Au`` (6 poles), lookup 3.28e-08 and inversion 1.35e-06.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -264,7 +257,7 @@ def _gold_cell(mp, resolution: int = 20):
     face lands on the one lattice plane per axis that ``_lattice_indices`` enumerates
     and MEEP does not own. MEEP answers vacuum-with-no-susceptibility there whatever
     the geometry says; without the ``gv.owns`` gate the lookup takes the declared
-    sigma instead, and 21 of 1281 points disagree with the exact reader.
+    sigma instead, and 21 of 1281 points disagree with MEEP's stored sigma.
     """
     from meep.materials import Au
     return mp.Simulation(cell_size=mp.Vector3(1.0, 1.0, 0.0), resolution=resolution,
@@ -350,6 +343,129 @@ def _mirrored_cell(mp, resolution: int = 10):
                                             component=mp.Ez, center=mp.Vector3(0, 0, 0))])
 
 
+def _rounded_periodic_cell(mp, resolution: int = 10):
+    """A ``k_point`` cell that is not a whole number of pixels, a dispersive slab on its low face.
+
+    stochastic_emitter_reciprocity.py's arrangement, small. 4.56 at resolution 10 is
+    45.6 pixels, which MEEP rounds to 46, and libctl's periodic copies are shifted by
+    the rounded grid's size (``make_geom_epsilon``, meepgeom.cpp:1956-1985: 4.6 here),
+    not by the declared 4.56. The slab runs from the declared low face y = -2.28 to
+    -1.78, so its copy shifted by 4.56 would cover [2.28, 2.78] and claim the rounded
+    grid's top face y = 2.3, which MEEP's copy at [2.32, 2.82] leaves as vacuum.
+    """
+    slab = mp.Medium(epsilon=2.0, E_susceptibilities=[
+        mp.LorentzianSusceptibility(frequency=1.0, gamma=0.1, sigma=0.4),
+        mp.DrudeSusceptibility(frequency=0.5, gamma=0.05, sigma=3.0)])
+    return mp.Simulation(cell_size=mp.Vector3(1.0, 4.56, 0.0), resolution=resolution,
+                         geometry=[mp.Block(center=mp.Vector3(0, -2.03, 0),
+                                            size=mp.Vector3(mp.inf, 0.5, mp.inf), material=slab)],
+                         k_point=mp.Vector3(),
+                         sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4),
+                                            component=mp.Ez, center=mp.Vector3(0, 0.5, 0))])
+
+
+def _face_crossing_cell(mp, resolution: int = 15):
+    """test_dump_load.py's 3-D cell in 2-D: a dispersive block across the periodic x face.
+
+    2.3 x 2.1 at resolution 15 grids 35 x 32, so MEEP's lattice vector along x is
+    35/15 = 2.3333333333333335 and the block's copy ends at 1.5 - 2.3333333333333335 =
+    -0.8333333333333335, one ulp below the Yee point x = -25/30 = -0.8333333333333334.
+    libctl's bounding-box gate keeps that point out of the copy; the object test, run on
+    the point less the shift, rounds onto the block's face 1.5 and lets it in.
+    """
+    block = mp.Medium(epsilon=3.1, E_susceptibilities=[
+        mp.LorentzianSusceptibility(frequency=1.5, gamma=0.2, sigma=0.9)])
+    return mp.Simulation(cell_size=mp.Vector3(2.3, 2.1, 0.0), resolution=resolution,
+                         geometry=[mp.Block(center=mp.Vector3(0, 0, 0), size=mp.Vector3(1, 1, mp.inf),
+                                            material=mp.Medium(index=2.3)),
+                                   mp.Block(center=mp.Vector3(1, 0, 0), size=mp.Vector3(1, 1, mp.inf),
+                                            material=block)],
+                         default_material=mp.Medium(index=1.4), k_point=mp.Vector3(0.4, -1.3, 0),
+                         sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4), component=mp.Hz,
+                                            center=mp.Vector3(-0.2, 0.3, 0))])
+
+
+def _one_d_wrapped_cell(mp, resolution: int = 10):
+    """A 1-D ``k_point`` cell with a dispersive slab across its periodic z face.
+
+    The slab runs from z = 1.65 to 2.15 in a cell of 4 (40 pixels), so its part past
+    the high face z = 2 belongs, in libctl's tree, to the copy shifted by -4, which
+    covers the owned points from the low face z = -2 up to -1.85. MEEP's D1 lattice is
+    ``(0, 0, 4)`` and libctl's ``LOOP_PERIODIC`` runs its three-dimensional case there
+    (``geom_initialize`` leaves ``dimensions = 3``), so those copies lie along z.
+    """
+    slab = mp.Medium(epsilon=2.2, E_susceptibilities=[
+        mp.LorentzianSusceptibility(frequency=1.1, gamma=0.1, sigma=0.7)])
+    return mp.Simulation(cell_size=mp.Vector3(0, 0, 4.0), resolution=resolution, dimensions=1,
+                         geometry=[mp.Block(center=mp.Vector3(0, 0, 1.9),
+                                            size=mp.Vector3(mp.inf, mp.inf, 0.5), material=slab)],
+                         k_point=mp.Vector3(),
+                         sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4),
+                                            component=mp.Ex, center=mp.Vector3(0, 0, 0.3))])
+
+
+def _curved_interface_cell(mp, curve_is_dispersive: bool, eps_averaging: bool,
+                           resolution: int = 10):
+    """Two dispersive media and a cylinder whose curved face subpixel averaging smooths.
+
+    With ``curve_is_dispersive`` the cylinder is the Lorentz medium. Without it the
+    dispersion sits on two axis-aligned blocks and the cylinder is a plain
+    dielectric, so the only curved interface in the cell bounds no susceptibility.
+    """
+    lorentz = mp.Medium(epsilon=4.0, E_susceptibilities=[
+        mp.LorentzianSusceptibility(frequency=1.0, gamma=0.1, sigma=0.4)])
+    drude = mp.Medium(epsilon=2.0, E_susceptibilities=[
+        mp.DrudeSusceptibility(frequency=2.0, gamma=0.05, sigma=0.7)])
+    if curve_is_dispersive:
+        geometry = [
+            mp.Cylinder(radius=0.73, height=mp.inf, center=mp.Vector3(-1.0, 0, 0),
+                        material=lorentz),
+            mp.Block(center=mp.Vector3(1.0, 0, 0), size=mp.Vector3(1.46, 1.46, mp.inf),
+                     material=drude),
+        ]
+    else:
+        geometry = [
+            mp.Block(center=mp.Vector3(-1.0, 0.8, 0), size=mp.Vector3(1.4, 1.2, mp.inf),
+                     material=lorentz),
+            mp.Block(center=mp.Vector3(1.0, 0.8, 0), size=mp.Vector3(1.4, 1.2, mp.inf),
+                     material=drude),
+            mp.Cylinder(radius=0.5, height=mp.inf, center=mp.Vector3(0, -1.0, 0),
+                        material=mp.Medium(epsilon=3.0)),
+        ]
+    return mp.Simulation(cell_size=mp.Vector3(4.0, 4.0, 0.0), resolution=resolution,
+                         geometry=geometry, force_complex_fields=True,
+                         eps_averaging=eps_averaging,
+                         sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4),
+                                            component=mp.Ez,
+                                            center=mp.Vector3(0, 1.8, 0))])
+
+
+def _anisotropic_unsmoothed_cell(mp, resolution: int = 10):
+    """Two dispersive axis-aligned blocks, ``eps_averaging=False``, off-diagonal rows anyway.
+
+    A third, non-dispersive block declares ``epsilon_offdiag``, so MEEP's tensor carries
+    off-diagonal entries there with subpixel averaging off and every shape an
+    axis-aligned block.
+    """
+    lorentz = mp.Medium(epsilon=4.0, E_susceptibilities=[
+        mp.LorentzianSusceptibility(frequency=1.0, gamma=0.1, sigma=0.4)])
+    drude = mp.Medium(epsilon=2.0, E_susceptibilities=[
+        mp.DrudeSusceptibility(frequency=2.0, gamma=0.05, sigma=0.7)])
+    anisotropic = mp.Medium(epsilon_diag=mp.Vector3(3.0, 3.0, 3.0),
+                            epsilon_offdiag=mp.Vector3(0.5, 0, 0))
+    return mp.Simulation(
+        cell_size=mp.Vector3(4.0, 4.0, 0.0), resolution=resolution,
+        force_complex_fields=True, eps_averaging=False,
+        geometry=[mp.Block(center=mp.Vector3(-1.0, 0.8, 0), size=mp.Vector3(1.4, 1.2, mp.inf),
+                           material=lorentz),
+                  mp.Block(center=mp.Vector3(1.0, 0.8, 0), size=mp.Vector3(1.4, 1.2, mp.inf),
+                           material=drude),
+                  mp.Block(center=mp.Vector3(0, -1.0, 0), size=mp.Vector3(1.0, 1.0, mp.inf),
+                           material=anisotropic)],
+        sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4), component=mp.Ez,
+                           center=mp.Vector3(0, 1.8, 0))])
+
+
 def _overlapping_cell(mp, resolution: int = 10):
     """Two dispersive blocks that overlap, so object PRECEDENCE decides the middle.
 
@@ -371,162 +487,6 @@ def _overlapping_cell(mp, resolution: int = 10):
                          sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4),
                                             component=mp.Ez,
                                             center=mp.Vector3(0, -1.2, 0))])
-
-
-def _match_term(term, candidates) -> int:
-    """Index of ``term`` in ``candidates``, matched on physics rather than on identity."""
-    best = None
-    for index, other in enumerate(candidates):
-        if other.kind != term.kind:
-            continue
-        distance = (abs(other.frequency - term.frequency) / max(abs(term.frequency), 1e-30)
-                    + abs(other.gamma - term.gamma) / max(abs(term.gamma), 1e-30))
-        if best is None or distance < best[1]:
-            best = (index, distance)
-    assert best is not None and best[1] < 1e-5, (
-        f"no chain entry matches {term} among {candidates} (closest {best})"
-    )
-    return best[0]
-
-
-def _worst_against(mine, theirs, terms, reference_terms) -> float:
-    worst = 0.0
-    for index, term in enumerate(terms):
-        matched = _match_term(term, reference_terms)
-        for name in ("Ex", "Ey", "Ez"):
-            scale = max(float(np.abs(theirs[name][matched]).max()), 1e-300)
-            worst = max(worst, float(np.max(np.abs(mine[name][index] - theirs[name][matched])))
-                        / scale)
-    return worst
-
-
-# --- against the exact reader (patched MEEP only) ----------------------------------
-
-
-@requires_meep
-@skip_without_meep
-@pytest.mark.parametrize(
-    "case",
-    ["two_block", "gold", "unrepresentable_face", "overlapping", "wrapped_object", "mirrored"])
-def test_the_looked_up_sigma_matches_the_exact_reader_point_by_point(case):
-    """The lookup against ``fields.get_susceptibility_sigma``, over every Yee point.
-
-    Both routes run over the SAME initialized simulation and the same driver, so
-    nothing but the route differs. Measured worst disagreement, relative to each
-    term's own largest sigma:
-
-        two_block             2 poles   **1.70e-08**
-        gold                  6 poles   **3.28e-08**
-        unrepresentable_face  1 pole    **1.49e-08**
-        overlapping           2 poles   **1.70e-08**
-        wrapped_object        1 pole    **1.49e-08**
-        mirrored              2 poles   **1.70e-08**
-
-    Every one of those is MEEP's own float32 storage rounding — 0.4 comes back as
-    0.400000005960464 — and nothing else, because the lookup installs the declared
-    number rather than a solved one. The bound asserted is 1e-6, which is two
-    orders above the float32 floor and two below the smallest structural defect any
-    of these cells can produce.
-
-    SKIPPED on a stock MEEP: there is no exact reader to compare against, which is
-    a statement about the oracle, not a silent pass. The stock environment's own
-    bars are the check-fires test and the end-to-end lift below.
-    """
-    import meep as mp
-
-    from . import from_meep
-    from .from_meep import _lookup_sigma_volumes, _materials_of, _sigma_volumes_through_the_reader
-
-    if not from_meep._has_sigma_reader(mp):
-        pytest.skip("this MEEP lacks the sigma reader; build one with MEEP_SIGMA_PATCH=1 "
-                    "via parity/meep_gpu/build_meep_133_macos.sh")
-
-    build = {
-        "two_block": _two_block_cell, "gold": _gold_cell,
-        "unrepresentable_face": _unrepresentable_face_cell, "overlapping": _overlapping_cell,
-        "wrapped_object": _wrapped_object_cell, "mirrored": _mirrored_cell,
-    }[case]
-    sim = build(mp)
-    driver = from_meep.lift_simulation(sim, prefer_gpu=False)
-    try:
-        materials = _materials_of(mp, sim)
-        exact_terms, exact = _sigma_volumes_through_the_reader(mp, sim, driver)
-        terms, mine, record = _lookup_sigma_volumes(mp, sim, driver, materials)
-        assert len(terms) == len(exact_terms), (
-            f"{case}: the lookup enumerated {len(terms)} susceptibilities where MEEP's chain "
-            f"holds {len(exact_terms)}; the dedup no longer agrees with susceptibility_equiv"
-        )
-        worst = _worst_against(mine, exact, terms, exact_terms)
-        print(f"[sigma_lookup] reader-vs-lookup {case:22} terms={len(terms)} worst={worst:.3e} "
-              f"verified={record.verified_points} pts residual={record.worst_residual:.3e}",
-              flush=True)
-        assert worst < 1e-6, (
-            f"{case}: the looked-up sigma differs from the exact reader by {worst:.3e} of a "
-            f"term's own largest value, well past MEEP's float32 storage rounding"
-        )
-    finally:
-        driver.close()
-
-
-@requires_meep
-@skip_without_meep
-@pytest.mark.parametrize("case", ["two_block", "gold"])
-def test_the_lookup_is_closer_to_the_reader_than_the_inversion_is(case):
-    """THE RETIREMENT QUESTION, measured: which compatibility route is more accurate?
-
-    Both are run over the same cell and the same driver and both are subtracted
-    from the exact reader. Measured worst disagreement, relative to each term's own
-    largest sigma:
-
-        two_block   lookup **1.70e-08**   inversion **5.67e-08**   (3.3x closer)
-        gold        lookup **3.28e-08**   inversion **1.35e-06**   (41x closer)
-
-    The gap widens with the pole count, which is the expected shape: the lookup
-    installs a declared constant and the inversion solves a system whose
-    conditioning grows with N. If this test ever fails, the lookup has stopped
-    being the better default and the dispatch in
-    ``_lift_susceptibilities_structured`` should be reconsidered — which is why it
-    asserts the ordering rather than a digit.
-
-    Cost is the other half of the comparison and it goes the OTHER way at every
-    object count: measured, the lookup runs 1.4-2.0x the inversion's wall time at
-    one or two objects and 14.6x at thirty-two, because ``is_point_in_object`` is
-    4.38 us against ``get_chi1inv``'s 0.64 us and the scan is linear in the object
-    count. The lookup is not chosen for speed, and
-    ``from_meep._LOOKUP_MAX_OBJECTS`` is what bounds the price.
-    """
-    import meep as mp
-
-    from . import from_meep
-    from .from_meep import (
-        _lookup_sigma_volumes,
-        _materials_of,
-        _recover_sigma_volumes,
-        _sigma_volumes_through_the_reader,
-    )
-
-    if not from_meep._has_sigma_reader(mp):
-        pytest.skip("this MEEP lacks the sigma reader; build one with MEEP_SIGMA_PATCH=1 "
-                    "via parity/meep_gpu/build_meep_133_macos.sh")
-
-    sim = (_two_block_cell if case == "two_block" else _gold_cell)(mp)
-    driver = from_meep.lift_simulation(sim, prefer_gpu=False)
-    try:
-        materials = _materials_of(mp, sim)
-        exact_terms, exact = _sigma_volumes_through_the_reader(mp, sim, driver)
-        lookup_terms, looked_up, _ = _lookup_sigma_volumes(mp, sim, driver, materials)
-        inverted_terms, inverted = _recover_sigma_volumes(mp, sim, driver, materials)
-        lookup_error = _worst_against(looked_up, exact, lookup_terms, exact_terms)
-        inversion_error = _worst_against(inverted, exact, inverted_terms, exact_terms)
-        print(f"[sigma_lookup] {case:10} vs reader: lookup={lookup_error:.3e} "
-              f"inversion={inversion_error:.3e}", flush=True)
-        assert lookup_error <= inversion_error, (
-            f"{case}: the declared-geometry lookup is {lookup_error:.3e} from the exact reader "
-            f"where the chi1inv inversion is {inversion_error:.3e}. The lookup is the DEFAULT "
-            f"compatibility route on the strength of being the more accurate one; it no longer is"
-        )
-    finally:
-        driver.close()
 
 
 # --- the check firing when it should (any MEEP) ------------------------------------
@@ -616,8 +576,6 @@ def test_the_check_catches_a_lookup_at_the_nominal_coordinate_and_the_lift_falls
         lift_simulation,
     )
 
-    monkeypatch.setattr(from_meep, "_has_sigma_reader", lambda module: False)
-
     sim = _unrepresentable_face_cell(mp)
     driver = lift_simulation(sim, prefer_gpu=False)
     try:
@@ -656,8 +614,8 @@ def test_the_check_catches_a_lookup_at_the_nominal_coordinate_and_the_lift_falls
 
 @requires_meep
 @skip_without_meep
-def test_a_structure_flush_with_the_cell_face_needs_meeps_own_ownership_gate(monkeypatch):
-    """THE UNOWNED PLANE, on a stock MEEP where there is no reader to compare against.
+def test_a_structure_flush_with_the_cell_face_needs_meeps_own_ownership_gate():
+    """THE UNOWNED PLANE: a structure flush with the plane MEEP does not own.
 
     ``_lattice_indices`` enumerates the full closed lattice, and one plane per axis
     of it lies outside the region MEEP owns — ``little_owned_corner`` is
@@ -665,21 +623,17 @@ def test_a_structure_flush_with_the_cell_face_needs_meeps_own_ownership_gate(mon
     MEEP answers vacuum-with-no-susceptibility at every frequency
     (monitor.cpp:182-184), whatever the geometry says. The gold block is placed
     flush with that plane precisely so the two answers differ: with the ``gv.owns``
-    gate the lookup agrees with the exact reader at 0 of 1281 points wrong, without
-    it at 21.
+    gate the lookup agreed with MEEP's stored sigma at 0 of 1281 points wrong,
+    without it at 21 (measured 2026-08-04).
 
-    On the patched environment the reader test above measures that directly. This
-    one is the stock-MEEP half, and it does not need the reader: dropping the gate
-    makes the lookup's own per-point check fail — it would be predicting Au's
-    permittivity where MEEP reports vacuum — so the lift falls back to the
-    inversion and the route stops being the lookup.
+    Dropping the gate makes the lookup's own per-point check fail — it would be
+    predicting Au's permittivity where MEEP reports vacuum — so the lift falls back
+    to the inversion and the route stops being the lookup.
     """
     import meep as mp
 
-    from . import from_meep
     from .from_meep import SIGMA_ROUTE_LOOKUP, lift_simulation
 
-    monkeypatch.setattr(from_meep, "_has_sigma_reader", lambda module: False)
     driver = lift_simulation(_gold_cell(mp), prefer_gpu=False)
     try:
         record = driver.sigma_lift
@@ -696,7 +650,7 @@ def test_a_structure_flush_with_the_cell_face_needs_meeps_own_ownership_gate(mon
 
 @requires_meep
 @skip_without_meep
-def test_a_periodic_cell_wraps_both_the_objects_and_the_lattice_point(monkeypatch):
+def test_a_periodic_cell_wraps_both_the_objects_and_the_lattice_point():
     """The two periodic mechanisms, on a stock MEEP, on one cell that needs both.
 
     ``_wrapped_object_cell`` puts a dispersive block across the high x face of a
@@ -710,10 +664,8 @@ def test_a_periodic_cell_wraps_both_the_objects_and_the_lattice_point(monkeypatc
     """
     import meep as mp
 
-    from . import from_meep
     from .from_meep import SIGMA_ROUTE_LOOKUP, lift_simulation
 
-    monkeypatch.setattr(from_meep, "_has_sigma_reader", lambda module: False)
     driver = lift_simulation(_wrapped_object_cell(mp), prefer_gpu=False)
     try:
         record = driver.sigma_lift
@@ -729,7 +681,205 @@ def test_a_periodic_cell_wraps_both_the_objects_and_the_lattice_point(monkeypatc
 
 @requires_meep
 @skip_without_meep
-def test_a_mirror_folded_cell_reads_its_unowned_plane_through_the_symmetry_image(monkeypatch):
+def test_the_periodic_copies_are_shifted_by_meeps_rounded_lattice_not_the_declared_cell(monkeypatch):
+    """libctl's periodic copies sit one ROUNDED cell apart, and the lookup follows them.
+
+    ``_rounded_periodic_cell`` declares 4.56 and MEEP grids 4.6. Shifted by the
+    declared size, the low slab's copy claims the rounded grid's top face, which
+    MEEP holds as vacuum: the per-point check refused the whole cell there, and the
+    chi1inv inversion installed sigma volumes that are not MEEP's float32 words
+    (measured on stochastic_emitter_reciprocity.py: five of six Ag terms off by 1 to
+    0x12f ulps, which a subnormal-range polarization then showed as a 1-ulp E word at
+    step 1387). Shifted by MEEP's lattice it lifts through the lookup, and every
+    installed sigma word is the declared sigma rounded once, as MEEP stores it. The
+    control re-installs the declared size and must fall back.
+    """
+    import meep as mp
+
+    from . import from_meep
+    from .from_meep import SIGMA_ROUTE_INVERSION, SIGMA_ROUTE_LOOKUP, lift_simulation
+
+    mp.verbosity(0)
+    sim = _rounded_periodic_cell(mp)
+    driver = lift_simulation(sim, prefer_gpu=False)
+    try:
+        record = driver.sigma_lift
+        print(f"[sigma_lookup] rounded periodic cell -> {record}", flush=True)
+        assert record.route == SIGMA_ROUTE_LOOKUP, record
+        assert record.worst_residual < VERIFICATION_TOLERANCE
+        declared = sorted(np.float32(term.sigma_diag.z).view(np.uint32)
+                          for term in sim.geometry[0].material.E_susceptibilities)
+        installed = sorted({int(value) for state in driver.fields.polarizations
+                            for value in np.unique(np.asarray(state.sigma["Ez"]).view(np.uint32))
+                            if value})
+        assert installed == [int(word) for word in declared], (installed, declared)
+    finally:
+        driver.close()
+
+    declared_size = from_meep._vector3(sim.cell_size)
+    monkeypatch.setattr(from_meep, "_geometry_lattice_size", lambda simulation: declared_size)
+    control = lift_simulation(_rounded_periodic_cell(mp), prefer_gpu=False)
+    try:
+        assert control.sigma_lift.route == SIGMA_ROUTE_INVERSION, (
+            f"with the copies shifted by the declared cell the lookup must decline here, or "
+            f"this test cannot see the defect it pins: {control.sigma_lift}")
+    finally:
+        control.close()
+
+
+@requires_meep
+@skip_without_meep
+def test_a_1d_periodic_cell_takes_libctls_copies_along_z():
+    """libctl's periodic copies run its three-dimensional loop in every MEEP dimension.
+
+    ``make_geom_epsilon`` calls ``geom_initialize``, which sets libctl's ``dimensions``
+    to 3, and MEEP's ``set_dimensions`` then sets MEEP's own ``dim``, not libctl's: so a
+    1-D cell's copies are the three along z of its ``(0, 0, nz/resolution)`` lattice.
+    ``_one_d_wrapped_cell`` holds the slab at z = -1.95 only through the copy shifted
+    by -4. MEEP's own permittivity there is the slab's; the search finds the slab; the
+    control, libctl's one-dimensional case (three copies along x, all at the origin in
+    a 1-D lattice), finds the default medium. Asked of the search directly: in a 1-D cell
+    the lift's lookup also checks Ey and Ez, which MEEP holds no permittivity for, so the
+    lift itself takes the inversion there whatever the copies are.
+    """
+    import meep as mp
+
+    from . import from_meep
+
+    mp.verbosity(0)
+    sim = _one_d_wrapped_cell(mp)
+    sim.init_sim()
+    point = (0.0, 0.0, -1.95)
+    meep_epsilon = complex(sim.get_epsilon_point(mp.Vector3(*point), frequency=0))
+    print(f"[sigma_lookup] 1-D cell: MEEP's permittivity at z = -1.95 -> {meep_epsilon}", flush=True)
+    assert meep_epsilon.real > 1.5, f"MEEP holds the slab's copy at z = -1.95: {meep_epsilon}"
+    objects = tuple(sim.geometry)
+    shifts = from_meep._lattice_shifts(mp, sim)
+    assert from_meep._declared_material_at(mp, sim, point, objects, shifts) is sim.geometry[0].material
+    size = from_meep._geometry_lattice_size(sim)
+    one_dimensional_case = tuple((i * size[0], 0.0, 0.0) for i in (-1, 0, 1))
+    assert from_meep._declared_material_at(mp, sim, point, objects, one_dimensional_case) is (
+        sim.default_material), ("with libctl's one-dimensional case the search must miss the copy, "
+                                "or this test cannot see the defect it pins")
+
+
+@requires_meep
+@skip_without_meep
+def test_the_lattice_shifts_are_libctls_three_dimensional_loop_in_every_dimension():
+    """The copies, in order, for a 1-D, a 2-D and a cylindrical ``k_point`` cell.
+
+    ``LOOP_PERIODIC``'s three-dimensional case (geom.c:502-518): x outermost, then y,
+    then z, each over -1, 0, 1, an axis of zero lattice length stepped once at -1
+    (a shift of -0.0). Read from MEEP's own structure, so the lattice is the rounded
+    grid's.
+    """
+    import meep as mp
+
+    from .from_meep import _lattice_shifts
+
+    mp.verbosity(0)
+    source = [mp.Source(mp.GaussianSource(1.0, fwidth=0.4), component=mp.Ez, center=mp.Vector3())]
+    one_d = mp.Simulation(cell_size=mp.Vector3(0, 0, 4.0), resolution=10, dimensions=1,
+                          k_point=mp.Vector3(),
+                          sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4), component=mp.Ex,
+                                             center=mp.Vector3())])
+    two_d = mp.Simulation(cell_size=mp.Vector3(2.0, 3.0, 0), resolution=10, k_point=mp.Vector3(),
+                          sources=source)
+    cylinder = mp.Simulation(cell_size=mp.Vector3(2.0, 0, 3.0), resolution=10,
+                             dimensions=mp.CYLINDRICAL, m=1, k_point=mp.Vector3(),
+                             sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4), component=mp.Ez,
+                                                center=mp.Vector3(0.6, 0, 0.2))])
+    expected = {
+        "1-D": [(-0.0, -0.0, -4.0), (-0.0, -0.0, 0.0), (-0.0, -0.0, 4.0)],
+        "2-D": [(i * 2.0, j * 3.0, -0.0) for i in (-1, 0, 1) for j in (-1, 0, 1)],
+        "cylindrical": [(i * 2.0, -0.0, k * 3.0) for i in (-1, 0, 1) for k in (-1, 0, 1)],
+    }
+    for name, sim in (("1-D", one_d), ("2-D", two_d), ("cylindrical", cylinder)):
+        sim.init_sim()
+        shifts = [tuple(float(v) for v in shift) for shift in _lattice_shifts(mp, sim)]
+        print(f"[sigma_lookup] {name} lattice shifts -> {shifts}", flush=True)
+        assert shifts == expected[name], (name, shifts)
+        signs = [tuple(np.signbit(shift)) for shift in shifts]
+        assert signs == [tuple(np.signbit(shift)) for shift in expected[name]], (name, signs)
+
+
+@requires_meep
+@skip_without_meep
+def test_the_bounding_box_gate_decides_a_point_on_a_periodic_copys_face(monkeypatch):
+    """libctl's tree search gates each copy on its bounding box before the object test.
+
+    ``_face_crossing_cell`` puts a Yee point one ulp outside a periodic copy's box while
+    the object test, evaluated on the point less the shift, rounds onto the block's face
+    and calls it inside. MEEP point-samples the default medium there; without the gate
+    the lookup takes the block's sigma, the per-point check refuses the cell (measured
+    on test_dump_load.py's 3-D cell: a relative 1.2 at lattice point (-25, -14, 14)), and
+    the chi1inv inversion installs sigma words that are not MEEP's. The control drops
+    the gate and must fall back.
+    """
+    import meep as mp
+
+    from . import from_meep
+    from .from_meep import SIGMA_ROUTE_INVERSION, SIGMA_ROUTE_LOOKUP, lift_simulation
+
+    mp.verbosity(0)
+    driver = lift_simulation(_face_crossing_cell(mp), prefer_gpu=False)
+    try:
+        record = driver.sigma_lift
+        print(f"[sigma_lookup] block across the periodic face -> {record}", flush=True)
+        assert record.route == SIGMA_ROUTE_LOOKUP, record
+        assert record.worst_residual < VERIFICATION_TOLERANCE
+    finally:
+        driver.close()
+
+    monkeypatch.setattr(from_meep, "_libctl_bounding_box", lambda module, obj: None)
+    control = lift_simulation(_face_crossing_cell(mp), prefer_gpu=False)
+    try:
+        assert control.sigma_lift.route == SIGMA_ROUTE_INVERSION, (
+            f"without the bounding-box gate the lookup must decline here, or this test "
+            f"cannot see the defect it pins: {control.sigma_lift}")
+    finally:
+        control.close()
+
+
+@requires_meep
+@skip_without_meep
+def test_the_looser_cylinder_box_holds_every_point_the_object_test_admits():
+    """A cylinder's box only spares object tests, so it must never exclude a point inside.
+
+    Tilted cylinders, a cone and a wedge, sampled on a lattice through and around each
+    (with points on the end faces and the rims): every point ``is_point_in_object``
+    admits lies inside the box :func:`~.from_meep._libctl_bounding_box` gives.
+    """
+    import itertools
+
+    import meep as mp
+
+    from .from_meep import _libctl_bounding_box
+
+    axis = mp.Vector3(1, 2, 3).unit()
+    objects = [
+        mp.Cylinder(radius=0.4, height=1.2, axis=axis, center=mp.Vector3(0.1, -0.2, 0.3)),
+        mp.Cylinder(radius=0.5, height=mp.inf, center=mp.Vector3(0, 0, 0)),
+        mp.Cone(radius=0.1, radius2=0.6, height=1.0, axis=mp.Vector3(1, 0, 1).unit()),
+        mp.Wedge(radius=0.7, height=0.4, wedge_angle=2.0, axis=mp.Vector3(0, 0, 1)),
+    ]
+    admitted = 0
+    for obj in objects:
+        (lx, ly, lz), (hx, hy, hz) = _libctl_bounding_box(mp, obj)
+        c = obj.center
+        span = [v * 0.05 for v in range(-24, 25)]
+        for dx, dy, dz in itertools.product(span, span, (-0.6, -0.5, -0.2, 0.0, 0.2, 0.5, 0.6)):
+            point = mp.Vector3(c.x + dx, c.y + dy, c.z + dz)
+            if mp.is_point_in_object(point, obj):
+                admitted += 1
+                assert lx <= point.x <= hx and ly <= point.y <= hy and lz <= point.z <= hz, (
+                    type(obj).__name__, point)
+    assert admitted > 1000, admitted
+
+
+@requires_meep
+@skip_without_meep
+def test_a_mirror_folded_cell_reads_its_unowned_plane_through_the_symmetry_image():
     """The third image MEEP searches, on stock MEEP: the mirror.
 
     ``fields::get_chi1inv`` searches ``chunks[i]->gv.owns(S.transform(iloc, sn))``
@@ -742,10 +892,8 @@ def test_a_mirror_folded_cell_reads_its_unowned_plane_through_the_symmetry_image
     """
     import meep as mp
 
-    from . import from_meep
     from .from_meep import SIGMA_ROUTE_LOOKUP, lift_simulation
 
-    monkeypatch.setattr(from_meep, "_has_sigma_reader", lambda module: False)
     driver = lift_simulation(_mirrored_cell(mp), prefer_gpu=False)
     try:
         record = driver.sigma_lift
@@ -760,7 +908,7 @@ def test_a_mirror_folded_cell_reads_its_unowned_plane_through_the_symmetry_image
 
 @requires_meep
 @skip_without_meep
-def test_a_crowded_cell_goes_to_the_inversion_before_the_lookup_pays_for_it(monkeypatch):
+def test_a_crowded_cell_goes_to_the_inversion_before_the_lookup_pays_for_it():
     """The one dispatch rule that is about cost rather than correctness.
 
     The lookup asks ``is_point_in_object`` once per object per Yee point until one
@@ -774,8 +922,6 @@ def test_a_crowded_cell_goes_to_the_inversion_before_the_lookup_pays_for_it(monk
 
     from . import from_meep
     from .from_meep import SIGMA_ROUTE_INVERSION, lift_simulation
-
-    monkeypatch.setattr(from_meep, "_has_sigma_reader", lambda module: False)
 
     count = from_meep._LOOKUP_MAX_OBJECTS + 1
     dispersive = mp.Medium(epsilon=4.0, E_susceptibilities=[
@@ -799,19 +945,106 @@ def test_a_crowded_cell_goes_to_the_inversion_before_the_lookup_pays_for_it(monk
         driver.close()
 
 
+@requires_meep
+@skip_without_meep
+@pytest.mark.parametrize("route", ["lookup", "inversion"])
+@pytest.mark.parametrize("curve", ["dispersive", "plain"])
+def test_a_smoothed_curved_interface_anywhere_in_the_cell_is_refused_by_name(
+        monkeypatch, curve, route):
+    """THE REFUSAL STOCK MEEP LEAVES, and the escape it names, on both routes.
+
+    Both routes read eps as ``1/chi1inv[c][c]`` and check that the tensor is
+    diagonal at every lattice point of the cell, so subpixel averaging at ANY curved
+    face refuses the structured dispersive lift: at the dispersive cylinder, and
+    equally at a plain dielectric cylinder beside axis-aligned dispersive blocks. The
+    refusal names no MEEP build the user would have to make, and the first escape it
+    names works: the same cell with ``eps_averaging=False`` lifts through the same
+    route. The inversion is reached as the end-to-end inversion test reaches it,
+    with the lookup forced to decline.
+    """
+    import meep as mp
+
+    from . import from_meep
+    from .from_meep import (
+        SIGMA_ROUTE_INVERSION,
+        SIGMA_ROUTE_LOOKUP,
+        MeepSimulationNotLiftable,
+        lift_simulation,
+    )
+
+    if route == "inversion":
+        monkeypatch.setattr(
+            from_meep, "_why_the_lookup_cannot_run",
+            lambda mp_module, simulation, media: "forced off so this test covers the inversion")
+    dispersive = curve == "dispersive"
+    with pytest.raises(MeepSimulationNotLiftable) as refusal:
+        lift_simulation(_curved_interface_cell(mp, dispersive, True), prefer_gpu=False)
+    message = str(refusal.value)
+    assert "chi1inv tensor is not diagonal" in message, message
+    assert ("has to be checked against" if route == "lookup"
+            else "has to be recovered from chi1inv") in message, message
+    assert ("Where the rows come from subpixel averaging, set eps_averaging=False or make "
+            "every shape in the cell an axis-aligned Block; otherwise run this simulation on "
+            "CPU MEEP.") in message, message
+
+    driver = lift_simulation(_curved_interface_cell(mp, dispersive, False), prefer_gpu=False)
+    try:
+        expected = SIGMA_ROUTE_LOOKUP if route == "lookup" else SIGMA_ROUTE_INVERSION
+        assert driver.sigma_lift.route == expected, driver.sigma_lift
+    finally:
+        driver.close()
+
+
+@requires_meep
+@skip_without_meep
+@pytest.mark.parametrize("route", ["lookup", "inversion"])
+def test_a_declared_off_diagonal_permittivity_is_refused_without_the_smoothing_escape(
+        monkeypatch, route):
+    """Off-diagonal rows that ``eps_averaging=False`` does not clear, on both routes.
+
+    A declared ``epsilon_offdiag`` puts off-diagonal entries in MEEP's tensor with
+    subpixel averaging off and every shape an axis-aligned block, so the escape the
+    refusal offers for smoothing cannot apply. The refusal names that source, so it does
+    not send the user to a setting the cell already has, and it ends with the
+    instruction that does apply.
+
+    A cylindrical cell is refused by the same check on the builds measured here, but is
+    not pinned: at a nonzero frequency MEEP 1.33.0 returns
+    ``chi1_inv_tensor[component_index(c) + 3 * d]`` (monitor.cpp:367) from a nine-entry
+    tensor (monitor.cpp:311), and ``d`` is R or P (3 or 4, vec.hpp:79) in a cylindrical
+    structure, so the entry the check reads there lies past the end of the array
+    rather than being a value MEEP defines.
+    """
+    import meep as mp
+
+    from . import from_meep
+    from .from_meep import MeepSimulationNotLiftable, lift_simulation
+
+    if route == "inversion":
+        monkeypatch.setattr(
+            from_meep, "_why_the_lookup_cannot_run",
+            lambda mp_module, simulation, media: "forced off so this test covers the inversion")
+    with pytest.raises(MeepSimulationNotLiftable) as refusal:
+        lift_simulation(_anisotropic_unsmoothed_cell(mp), prefer_gpu=False)
+    message = str(refusal.value)
+    assert "chi1inv tensor is not diagonal" in message, message
+    assert ("has to be checked against" if route == "lookup"
+            else "has to be recovered from chi1inv") in message, message
+    assert ("so do a medium with a nonzero epsilon_offdiag and a cylindrical cell"
+            in message), message
+    assert "otherwise run this simulation on CPU MEEP." in message, message
+
+
 # --- the lift, end to end, and the route record ------------------------------------
 
 
 @requires_meep
 @skip_without_meep
 @pytest.mark.parametrize("case", ["two_block", "overlapping"])
-def test_a_structured_dispersive_cell_lifts_through_the_lookup_and_steps(monkeypatch, case):
+def test_a_structured_dispersive_cell_lifts_through_the_lookup_and_steps(case):
     """The whole point: a cell whose media differ in dispersion runs on a STOCK MEEP.
 
-    ``_has_sigma_reader`` is the single seam both the gate and the lift consult, so
-    forcing it False is precisely "pretend this MEEP has no reader" — and on the
-    stock environment it is already False, which makes the patch a no-op there and
-    the test the real thing. Measured against CPU MEEP stepping the same cell:
+    Measured against CPU MEEP stepping the same cell:
 
         two_block    Ez/Hx/Hy  **1.06e-07 .. 1.49e-07**   dropped-terms control 1.7e-01 .. 2.0e-01
         overlapping  Ez/Hx/Hy  **1.23e-07 .. 1.38e-07**   dropped-terms control 3.7e-01 .. 5.1e-01
@@ -827,10 +1060,8 @@ def test_a_structured_dispersive_cell_lifts_through_the_lookup_and_steps(monkeyp
     """
     import meep as mp
 
-    from . import from_meep
     from .from_meep import SIGMA_ROUTE_LOOKUP, run_on_gpu
 
-    monkeypatch.setattr(from_meep, "_has_sigma_reader", lambda module: False)
     build = _two_block_cell if case == "two_block" else _overlapping_cell
 
     result = run_on_gpu(build(mp), until=6.0, prefer_gpu=False)
@@ -868,29 +1099,17 @@ def test_a_structured_dispersive_cell_lifts_through_the_lookup_and_steps(monkeyp
 
 @requires_meep
 @skip_without_meep
-def test_the_route_actually_taken_is_reported_on_the_driver_and_the_result(monkeypatch):
-    """Every lift says which of the three sigma routes ran, or that none did.
+def test_the_route_actually_taken_is_reported_on_the_driver_and_the_result():
+    """Every lift says which of the two sigma routes ran, or that none did.
 
     Without this a test that means to exercise one route has no way to know it did
-    — the whole dispatch is invisible from outside, and all three produce a driver
-    that steps. The reader route is asserted only where the reader exists; the
-    lookup is asserted with it forced away, which is the state a stock MEEP is
-    already in.
+    — the whole dispatch is invisible from outside, and both produce a driver that
+    steps.
     """
     import meep as mp
 
-    from . import from_meep
-    from .from_meep import SIGMA_ROUTE_LOOKUP, SIGMA_ROUTE_READER, lift_simulation
+    from .from_meep import SIGMA_ROUTE_LOOKUP, lift_simulation
 
-    if from_meep._has_sigma_reader(mp):
-        driver = lift_simulation(_two_block_cell(mp), prefer_gpu=False)
-        try:
-            assert driver.sigma_lift.route == SIGMA_ROUTE_READER, driver.sigma_lift
-            assert driver.sigma_lift.term_count == 2
-        finally:
-            driver.close()
-
-    monkeypatch.setattr(from_meep, "_has_sigma_reader", lambda module: False)
     driver = lift_simulation(_two_block_cell(mp), prefer_gpu=False)
     try:
         record = driver.sigma_lift

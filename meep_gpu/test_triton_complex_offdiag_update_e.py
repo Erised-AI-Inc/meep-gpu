@@ -15,11 +15,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from . import stepping
+from . import part_products, readback, stepping
 from .fields import Fields, IYEE_SHIFTS, mirror_parity
 from .grid import Grid, Mirror
 from .pml import PML
-from .test_triton_complex_fields import _probe_record
 from .triton_kernels import complex_fields
 from .triton_kernels import complex_offdiag_update_e as family
 from .triton_kernels import folded_complex
@@ -88,15 +87,6 @@ def _build(*, folded=False, active_pml=False, dimensions=3,
     return fields, pml
 
 
-def _probe():
-    record = _probe_record()
-    name = folded_complex.PARITY_PROBE_PATTERN
-    record["patterns"][name] = "FMA_V1"
-    record["vectors"][name] = 2792
-    record["detail"][name] = dict(record["detail"]["c8_mul_c8"])
-    return record
-
-
 def _strip_backend(reasons):
     return tuple(r for r in reasons if "not cupy" not in r)
 
@@ -108,26 +98,26 @@ def _strip_backend(reasons):
 def test_no_pml_tail_admits_the_two_group_j_rows(dimensions, k):
     fields, pml = _build(dimensions=dimensions, k_point=k)
     verdict = family.complex_no_pml_offdiag_update_e_coverage(
-        fields, pml, probe=_probe())
+        fields, pml)
     assert verdict.covered, verdict.reasons
     assert family.plan_complex_no_pml_offdiag_update_e(
-        fields, pml, probe=_probe()) is not None
+        fields, pml) is not None
 
 
 def test_folded_pml_tail_admits_group_d_and_incumbent_still_refuses_e():
     fields, pml = _build(folded=True, active_pml=True,
                          k_point=(0.35, 0.0, 0.0))
     verdict = family.complex_folded_offdiag_update_e_coverage(
-        fields, pml, probe=_probe())
+        fields, pml)
     assert verdict.covered, verdict.reasons
     plan = family.plan_complex_folded_offdiag_update_e(
-        fields, pml, probe=_probe())
+        fields, pml)
     assert plan is not None
     assert plan.pml is True
     assert plan.mirror_axes == (0, 1, 0)
-    assert plan.phase_flags == (1, 0, 0)
+    assert plan.connections == (complex_fields.CONNECTION_KINDS["phase"], 0, 0)
     incumbent = folded_complex.folded_complex_offdiag_constitutive_coverage(
-        fields, pml, "E", probe=_probe())
+        fields, pml, "E")
     assert not incumbent.covered
     assert any("needs a complex folded off-diagonal kernel" in r
                for r in incumbent.reasons)
@@ -136,16 +126,16 @@ def test_folded_pml_tail_admits_group_d_and_incumbent_still_refuses_e():
 def test_the_two_tails_are_disjoint_on_the_array_paths_branch():
     plain, inert = _build(active_pml=False)
     assert family.complex_no_pml_offdiag_update_e_coverage(
-        plain, inert, probe=_probe()).covered
+        plain, inert).covered
     assert not family.complex_folded_offdiag_update_e_coverage(
-        plain, inert, probe=_probe()).covered
+        plain, inert).covered
 
     folded, active = _build(folded=True, active_pml=True,
                             k_point=(0.35, 0.0, 0.0))
     assert family.complex_folded_offdiag_update_e_coverage(
-        folded, active, probe=_probe()).covered
+        folded, active).covered
     assert not family.complex_no_pml_offdiag_update_e_coverage(
-        folded, active, probe=_probe()).covered
+        folded, active).covered
 
 
 @pytest.mark.parametrize("mutation,needle", [
@@ -169,7 +159,7 @@ def test_adjacent_families_are_refused_by_name(mutation, needle):
     else:
         fields.set_nonlinear_volumes({"Ex": np.float32(0.03)}, {})
     reasons = family.complex_no_pml_offdiag_update_e_coverage(
-        fields, pml, probe=_probe()).reasons
+        fields, pml).reasons
     assert any(needle.lower() in reason.lower() for reason in reasons), reasons
 
 
@@ -183,16 +173,22 @@ def test_row_and_yee_tables_are_the_engine_tables():
             axis for axis in range(3) if IYEE_SHIFTS[component][axis] == 0)
 
 
-def test_phase_arguments_carry_both_shift_directions_without_device_negation():
-    fields, _ = _build(k_point=(0.23, -0.17, 0.35))
+def test_the_two_connections_are_conjugates_and_the_device_negates_nothing():
+    """The partner pair reads ABOVE the window (``eikna``), the near product BELOW it
+    (``conj(eikna)``): two host-built factor sets, the second the first's conjugate
+    word for word, and the same connection kind on every axis."""
+    fields, pml = _build(k_point=(0.23, -0.17, 0.35))
     phases = complex_fields.bloch_phase_table(
         fields.grid, stepping._boundary_kinds(fields.grid, None))
-    flags_f, forward = complex_fields._phase_arguments(phases, backward=False)
-    flags_b, backward = complex_fields._phase_arguments(phases, backward=True)
-    assert flags_f == flags_b == (1, 1, 1)
+    kinds_above, above = complex_fields.connection_arguments(phases, backward=True)
+    kinds_below, below = complex_fields.connection_arguments(phases, backward=False)
+    assert kinds_above == kinds_below == (complex_fields.CONNECTION_KINDS["phase"],) * 3
     for axis in range(3):
-        assert forward[2 * axis] == backward[2 * axis]
-        assert forward[2 * axis + 1] == -backward[2 * axis + 1]
+        assert above[2 * axis] == below[2 * axis]
+        assert above[2 * axis + 1] == -below[2 * axis + 1]
+    plan = family.plan_complex_no_pml_offdiag_update_e(fields, pml)
+    assert plan is not None
+    assert plan.above_values == above and plan.below_values == below
 
 
 def test_mirror_weight_uses_the_partner_displacement_parity():
@@ -206,9 +202,37 @@ def _face(axis, index):
     return (slice(None),) * axis + (index,)
 
 
+def _connected(volume, axis, phase, below):
+    """Plane 0 of ``volume`` along ``axis`` as MEEP's not-owned word; a copy elsewhere.
+
+    ``thephase = 1.0 * conj(eikna)`` (``below``) or ``1.0 * eikna``, in double, and the
+    word connected by MEEP's rule (copy within 1e-13 of +1, negation of -1, else the
+    product with every part rounded on its own): ``part_products.connect``.
+    """
+    out = volume.copy()
+    if phase is None:
+        return out
+    eikna = complex(phase)
+    factor = (eikna.real, -eikna.imag) if below else (eikna.real, eikna.imag)
+    thephase = readback.cmul((1.0, 0.0), factor)
+    out[_face(axis, 0)] = part_products.connect(volume[_face(axis, 0)], thephase)
+    return out
+
+
 def _reference(fields, pml, state, *, coefficient_after_shift=False,
                pml_tail=None):
-    """Direct transcription with mutation knobs used for non-vacuity controls."""
+    """Direct transcription of the row core, with a mutation knob for non-vacuity.
+
+    MEEP's ``fw[i] = gs*us + OFFDIAG(u1, g1, s1) + OFFDIAG(u2, g2, s2)`` per stored part:
+    ``gs*us`` one float32 product widened to double; each OFFDIAG the float32 pair
+    ``g[i] + g[i-sx]`` (the unshifted operand's plane 0 connected ABOVE the window on a
+    phased partner axis, the down neighbour a plain roll with the near-face ghost of
+    its boundary), times ``u`` per part, then the product at this node (plane 0
+    connected BELOW the window on a phased own axis) plus the product one node up (a
+    plain roll, zero past a non-periodic top face), wall-masked, times the double
+    literal 0.25; the row summed in double left to right and rounded once per part.
+    The PML tail is the array path's own region forms (not this test's subject).
+    """
     if pml_tail is None:
         pml_tail = bool(pml is not None and pml.is_active)
     grid = fields.grid
@@ -216,10 +240,11 @@ def _reference(fields, pml, state, *, coefficient_after_shift=False,
     phases = stepping._bloch_phases(grid, kinds, state["Dx"], pml if pml_tail else None)
     mirror_phases = stepping._mirror_phases(grid)
     walls = offdiag_update_e.wall_mask_axes(grid)
-    volumes = {e: state[d] for e, d in zip(E, D)}
+    volumes = {e: state[d].copy() for e, d in zip(E, D)}
     for own, target in enumerate(E):
-        diagonal = volumes[target] * fields.inverse_epsilon_for(target)
-        total = None
+        inverse = fields.inverse_epsilon_for(target)
+        row = [(part * inverse).astype(np.float64)
+               for part in (volumes[target].real, volumes[target].imag)]
         rows = fields.chi1inv_offdiagonal_for(target)
         for offset in (1, 2):
             partner_axis = (own + offset) % 3
@@ -228,45 +253,48 @@ def _reference(fields, pml, state, *, coefficient_after_shift=False,
             if u is None:
                 continue
             g = volumes[partner]
+            here_g = (_connected(g, partner_axis, phases[partner_axis], below=False)
+                      if kinds[partner_axis] == stepping.PERIODIC else g)
             down = np.roll(g, 1, axis=partner_axis)
-            if kinds[partner_axis] == stepping.PERIODIC:
-                if phases[partner_axis] is not None:
-                    down[_face(partner_axis, 0)] *= np.conj(
-                        np.complex64(phases[partner_axis]))
-            elif kinds[partner_axis] == stepping.METALLIC:
+            if kinds[partner_axis] == stepping.METALLIC:
                 down[_face(partner_axis, 0)] = 0
-            else:
-                weight = mirror_parity("D" + AXES[partner_axis], partner_axis,
-                                       int(mirror_phases[partner_axis]))
-                down[_face(partner_axis, 0)] = weight * g[
-                    _face(partner_axis, stepping.MIRROR_SOURCE_INDEX)]
+            elif kinds[partner_axis] != stepping.PERIODIC:
+                weight = np.float32(mirror_parity("D" + AXES[partner_axis], partner_axis,
+                                                  int(mirror_phases[partner_axis])))
+                source = g[_face(partner_axis, stepping.MIRROR_SOURCE_INDEX)]
+                down.real[_face(partner_axis, 0)] = weight * source.real
+                down.imag[_face(partner_axis, 0)] = weight * source.imag
+            pair = here_g + down
             if coefficient_after_shift:
-                product = (g + down)
+                product = pair
             else:
-                product = (g + down) * u
+                product = np.empty_like(pair)
+                product.real = pair.real * u
+                product.imag = pair.imag * u
+            here = (_connected(product, own, phases[own], below=True)
+                    if kinds[own] == stepping.PERIODIC else product)
             up = np.roll(product, -1, axis=own)
-            if kinds[own] == stepping.PERIODIC:
-                if phases[own] is not None:
-                    up[_face(own, -1)] *= np.complex64(phases[own])
-            else:
+            if kinds[own] != stepping.PERIODIC:
                 up[_face(own, -1)] = 0
-            term = 0.25 * (product + up)
-            if coefficient_after_shift:
-                term *= u
-            total = term if total is None else total + term
-        source = diagonal
-        if total is not None:
-            for axis in range(3):
-                if walls[axis] and IYEE_SHIFTS[target][axis] == 0:
-                    total[_face(axis, 0)] = 0
-            source = source + total
+            for index, (low, high) in enumerate(((here.real, up.real),
+                                                 (here.imag, up.imag))):
+                summed = low + high
+                if coefficient_after_shift:
+                    summed = summed * u
+                for axis in range(3):
+                    if walls[axis] and IYEE_SHIFTS[target][axis] == 0:
+                        summed[_face(axis, 0)] = 0
+                row[index] = row[index] + 0.25 * summed.astype(np.float64)
+        constitutive = np.empty(volumes[target].shape, np.complex64)
+        constitutive.real = row[0].astype(np.float32)
+        constitutive.imag = row[1].astype(np.float32)
         if pml_tail:
-            previous = state["f_w_" + target].copy()
-            state["f_w_" + target][...] = source
-            state[target] += getattr(pml, f"kps_{AXES[own]}_h") * source
-            state[target] -= getattr(pml, f"kms_{AXES[own]}_h") * previous
+            plan = stepping._region_plan(fields, pml)
+            kps, kms = stepping._constitutive_coefficients(pml, AXES[own], half_integer=True)
+            stepping._apply_constitutive_regions(plan, target, state[target], constitutive,
+                                                 kps, kms, state["f_w_" + target], np)
         else:
-            state[target][...] = source
+            state[target][...] = constitutive
 
 
 def _snapshot(fields, pml_tail):
@@ -300,7 +328,14 @@ def test_host_transcription_is_bit_identical_and_mutation_armed(folded, pml_tail
 
 def test_kernel_source_preserves_the_load_bearing_operand_orientations():
     source = inspect.getsource(family)
-    assert "_mul_field_left" in source       # D/partner field LEFT, real row RIGHT
-    assert "_mul_coefficient_left" in source  # PML/parity/0.25 coefficient LEFT
+    # MEEP's (g[i] + g[i-sx])*u[i]: the float32 pair LEFT, the real row RIGHT, per part.
+    assert "near_re = (c_re + d_re) * u_c" in source
+    assert "far_im = (p_im + q_im) * u_u" in source
+    # The mirror ghost's weight LEFT of the stored word, exact (+1 or -1).
+    assert "d_re = w_d * d_re" in source
+    # Connections through the one helper; no whole-complex rotation remains.
+    assert "_connect(near_re, near_im, obr, obi, CNO)" in source
+    assert "_rotate_field_left" not in source and "_mul_field_left" not in source
     assert "PML: tl.constexpr" in source
-    assert "PHX" in source and "MG_X" in source
+    assert "CNX: tl.constexpr" in source and "MG_X" in source
+    assert "tl.math.fma" not in source

@@ -34,6 +34,27 @@ What it does, in order:
    read for every numerics-relevant package, and one verdict line.
    Informational unless --require-reference is given.
 
+With --require-identity-reference MODE, before step 1, it judges whether the MEEP
+this Python imports is an identity reference in MODE (keep or flush), the MEEP
+whose stored words the array path is held to. That is a property of the MEEP
+build and of the host, so it is read in a process of its own that imports NumPy
+and MEEP and nothing else, and the check stops there unless every point holds:
+
+- MEEP is the reference's build (1.33.0, single precision, MPI);
+- the build record beside it (<prefix>/share/meep-gpu-build/build_record.json,
+  or the file --identity-build-record names) describes the very images this
+  process loads (their sha256), and its fused multiply-add census is clean;
+- the census, re-run here on those images by tools/fma_census.py, finds no fused
+  multiply-add outside the compiler-rt division builtins;
+- after MEEP's own switch (set_zero_subnormals) is set for MODE, the processor's
+  subnormal handling, measured in float32 and float64, is MODE; flush is a
+  reference only at OMP_NUM_THREADS=1 (MEEP's switch reaches the main thread
+  only), and on a host where MEEP's switch has no effect (Apple silicon) there is
+  no flush reference at all;
+- the system math library is the one the build record pins (on macOS the UUID of
+  libsystem_m; on Linux the glibc version, the sha256 of libm and the CPU features
+  its implementations are selected by).
+
 The exit status is 0 when everything that ran is in order. Otherwise the last
 line states the reason and names the section of INSTALL.md to read, and the exit
 status is 1.
@@ -44,6 +65,12 @@ Options:
                          check the NumPy reference alone on such a host)
     --require-reference  fail when this environment or its MEEP does not match
                          the certification reference of its platform (step 7)
+    --require-identity-reference MODE
+                         fail, before anything is stepped, unless the imported MEEP
+                         is an identity reference in MODE, keep or flush (above)
+    --identity-build-record PATH
+                         the build record to judge it by, when it is not beside
+                         the MEEP the process loads
     --gpu-id N           the CUDA device to use (default 0); an Apple GPU is
                          device 0
     --verbose            also print what each run wrote
@@ -78,6 +105,13 @@ LIBCUDA_LINK_ERROR = re.compile(r"cannot find -lcuda|libcuda\.so[^\n]*(?:not fou
 # and 2.5e-6 (single-precision MEEP) of the final field, and from the GPU run by
 # 0. The band is wider than that, so it fails on a defect and not on rounding.
 AGREEMENT_BAND = 1.0e-4
+#: The package's hardware-scope switch, its accepted values (exact match) and the
+#: name it replaced, which the package refuses by name set to anything. Spelled here
+#: rather than imported, so this check reads a shell even where the package will not
+#: import; the harness tests hold them equal to ``meep_gpu.fastpath``'s.
+HARDWARE_SWITCH = "MEEP_GPU_HARDWARE"
+HARDWARE_VALUES = ("certified", "supported", "any")
+RETIRED_HARDWARE_SWITCH = "MEEP_GPU_ALLOW_UNCERTIFIED"
 RUN_UNTIL = 20.0
 LEG_TIMEOUT_S = 1200
 MARK = "CHECK-INSTALL-JSON "
@@ -92,10 +126,19 @@ SECTION_OPENMP = "One OpenMP runtime on an Apple silicon Mac"
 SECTION_UNCERTIFIED = "GPUs that are not on the certified list"
 SECTION_TROUBLE = "Troubleshooting"
 SECTION_REFERENCE = "The certification reference environment"
+SECTION_IDENTITY = "The MEEP identity reference"
 #: The drift report of step 7, beside this file. Loaded by path, so nothing is
 #: added to the import path and the package does not depend on it.
 REFERENCE_TOOL = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               "compare_reference_environment.py")
+#: The fused multiply-add census, beside this file, loaded the same way.
+CENSUS_TOOL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fma_census.py")
+#: Where a build script keeps its record, relative to the prefix MEEP is installed in.
+BUILD_RECORD = os.path.join("share", "meep-gpu-build", "build_record.json")
+IDENTITY_MODES = ("keep", "flush")
+#: The CPU features glibc selects its x86-64 libm implementations by (the
+#: ifunc variants of sin, cos, exp and friends).
+LIBM_CPU_FEATURES = ("avx", "avx2", "avx512f", "fma", "fma4")
 
 # Every MEEP name the lift reads, by where it is read from. A MEEP release that
 # lacks one of them cannot be lifted from.
@@ -397,8 +440,9 @@ def child_facts() -> int:
             name: os.environ.get(name)
             for name in ("KMP_DUPLICATE_LIB_OK", "PYTHONPATH", "MEEP_GPU_DISPATCH",
                          "MEEP_GPU_FUSED", "MEEP_GPU_KERNEL_TABLE",
-                         "MEEP_GPU_BACKEND_PREFERENCE", "MEEP_GPU_ALLOW_UNCERTIFIED",
-                         "TRITON_LIBCUDA_PATH", "CUDA_VISIBLE_DEVICES", "CC")
+                         "MEEP_GPU_BACKEND_PREFERENCE", HARDWARE_SWITCH,
+                         RETIRED_HARDWARE_SWITCH, "TRITON_LIBCUDA_PATH",
+                         "CUDA_VISIBLE_DEVICES", "CC")
         },
         "distributions": distribution_versions(),
     }
@@ -425,6 +469,7 @@ def child_facts() -> int:
         "real_bytes": int(mp.get_realnum_size())
         if hasattr(mp, "get_realnum_size") else None,
         "mpi": bool(mp.with_mpi()) if hasattr(mp, "with_mpi") else None,
+        "gdsii": bool(mp.with_libGDSII()) if hasattr(mp, "with_libGDSII") else None,
         "processes": int(mp.count_processors())
         if hasattr(mp, "count_processors") else None,
     }
@@ -474,9 +519,6 @@ def child_facts() -> int:
             if not hasattr(mp, name) or int(getattr(mp, name)) != want
         },
     }
-    facts["sigma_reader"] = hasattr(getattr(mp, "fields", None),
-                                    "get_susceptibility_sigma")
-
     try:
         import meep_gpu
     except Exception as exc:  # noqa: BLE001
@@ -493,6 +535,413 @@ def child_facts() -> int:
         facts["gpu_error"] = repr(exc)
     emit(facts)
     return 0
+
+
+# --------------------------------------------------------------------------
+# The identity reference (--require-identity-reference). Its child imports
+# NumPy, then MEEP, and nothing else, so no GPU library has touched the
+# floating-point environment before it is measured.
+# --------------------------------------------------------------------------
+
+def subnormal_state():
+    """The calling thread's subnormal handling, measured in float32 and float64.
+
+    Flush-to-zero is read from a product of two normal operands whose exact result
+    is subnormal; denormals-are-zero from a subnormal operand times a power of two
+    whose exact result is normal (a flush-to-zero alone leaves that product
+    nonzero). ``mode`` is keep when none of the four flushes, flush when all four
+    do, and mixed otherwise.
+    """
+    import numpy
+
+    tiny32 = numpy.finfo(numpy.float32).smallest_subnormal
+    tiny64 = numpy.finfo(numpy.float64).smallest_subnormal
+    state = {
+        "float32_flush_to_zero": bool(numpy.float32(1e-38) * numpy.float32(0.25) == 0),
+        "float32_denormals_are_zero": bool(tiny32 * numpy.float32(2.0 ** 100) == 0),
+        "float64_flush_to_zero": bool(numpy.float64(1e-300) * numpy.float64(1e-16) == 0),
+        "float64_denormals_are_zero": bool(tiny64 * numpy.float64(2.0 ** 600) == 0),
+    }
+    flushed = sum(state.values())
+    state["mode"] = ("keep" if flushed == 0 else "flush" if flushed == 4 else "mixed")
+    return state
+
+
+def loaded_image_paths():
+    """Every file the dynamic loader has mapped into this process (real paths)."""
+    paths = []
+    try:
+        with open("/proc/self/maps", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                parts = line.split()
+                if len(parts) >= 6 and parts[5].startswith("/"):
+                    paths.append(parts[5])
+    except OSError:
+        import ctypes
+
+        loader = ctypes.CDLL(None)
+        loader._dyld_image_count.restype = ctypes.c_uint32
+        loader._dyld_get_image_name.restype = ctypes.c_char_p
+        loader._dyld_get_image_name.argtypes = [ctypes.c_uint32]
+        for index in range(loader._dyld_image_count()):
+            name = loader._dyld_get_image_name(index)
+            if name:
+                paths.append(name.decode("utf-8", "replace"))
+    return sorted({os.path.realpath(path) for path in paths})
+
+
+def sha256_of(path):
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def macos_image_uuid(basename):
+    """``(path, UUID)`` of a loaded Mach-O image, from its header's LC_UUID, or None.
+
+    The system libraries live in the dyld shared cache, not in files, so the UUID
+    is read from the header the loader mapped, not from disk.
+    """
+    import ctypes
+    import uuid
+
+    loader = ctypes.CDLL(None)
+    loader._dyld_image_count.restype = ctypes.c_uint32
+    loader._dyld_get_image_name.restype = ctypes.c_char_p
+    loader._dyld_get_image_name.argtypes = [ctypes.c_uint32]
+    loader._dyld_get_image_header.restype = ctypes.c_void_p
+    loader._dyld_get_image_header.argtypes = [ctypes.c_uint32]
+    for index in range(loader._dyld_image_count()):
+        name = (loader._dyld_get_image_name(index) or b"").decode("utf-8", "replace")
+        if os.path.basename(name) != basename:
+            continue
+        address = loader._dyld_get_image_header(index)
+        header = ctypes.string_at(address, 32)
+        if struct.unpack_from("<I", header)[0] != 0xFEEDFACF:
+            return None
+        count, size = struct.unpack_from("<II", header, 16)
+        commands = ctypes.string_at(address + 32, size)
+        position = 0
+        for _ in range(count):
+            command, length = struct.unpack_from("<II", commands, position)
+            if command == 0x1B:  # LC_UUID
+                return name, str(uuid.UUID(bytes=commands[position + 8:position + 24])).upper()
+            if length < 8:
+                return None
+            position += length
+        return None
+    return None
+
+
+def libm_identity():
+    """The system math library this process runs on, which MEEP's sources call.
+
+    macOS: the UUID of libsystem_m (it differs between macOS builds). Linux: the
+    glibc version, the sha256 of the libm file the process mapped, and the CPU
+    features glibc chooses its libm implementations by, with GLIBC_TUNABLES,
+    which can mask them.
+    """
+    system = platform.system()
+    if system == "Darwin":
+        found = {"kind": "libsystem_m", "macos": platform.mac_ver()[0] or None}
+        sysctl = "/usr/sbin/sysctl" if os.path.exists("/usr/sbin/sysctl") else "sysctl"
+        try:
+            build = subprocess.run([sysctl, "-n", "kern.osversion"], capture_output=True,
+                                   text=True, timeout=30, check=False).stdout.strip()
+            found["os_build"] = build or None
+        except (OSError, subprocess.TimeoutExpired):
+            found["os_build"] = None
+        image = macos_image_uuid("libsystem_m.dylib")
+        if image is None:
+            found["unread"] = "the UUID of libsystem_m.dylib could not be read"
+        else:
+            found["path"], found["uuid"] = image
+        return found
+    if system == "Linux":
+        found = {"kind": "glibc libm", "glibc_tunables": os.environ.get("GLIBC_TUNABLES")}
+        try:
+            found["glibc"] = os.confstr("CS_GNU_LIBC_VERSION")
+        except (ValueError, OSError):
+            found["glibc"] = None
+        libm = [path for path in loaded_image_paths()
+                if re.match(r"^libm(\.so|-[0-9])", os.path.basename(path))]
+        if libm:
+            found["path"] = libm[0]
+            found["sha256"] = sha256_of(libm[0])
+        else:
+            found["unread"] = "no libm is mapped into this process"
+        try:
+            with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as handle:
+                text = handle.read()
+            flags = next((line.split(":", 1)[1].split() for line in text.splitlines()
+                          if line.startswith(("flags", "Features"))), [])
+            found["cpu_features"] = sorted(set(flags) & set(LIBM_CPU_FEATURES))
+            found["cpu_model"] = next((line.split(":", 1)[1].strip()
+                                       for line in text.splitlines()
+                                       if line.startswith("model name")), None)
+        except OSError as exc:
+            found["unread"] = f"/proc/cpuinfo: {exc}"
+        return found
+    return {"kind": None, "unread": f"no math-library pin is defined for {system}"}
+
+
+def libm_key(identity):
+    """What two math-library identities must share to be the same library."""
+    if not isinstance(identity, dict) or identity.get("unread"):
+        return None
+    if identity.get("kind") == "libsystem_m":
+        return ("libsystem_m", identity.get("uuid"))
+    if identity.get("kind") == "glibc libm":
+        return ("glibc libm", identity.get("glibc"), identity.get("sha256"),
+                tuple(identity.get("cpu_features") or ()), identity.get("glibc_tunables"))
+    return None
+
+
+def libm_text(identity):
+    if not isinstance(identity, dict):
+        return "not recorded"
+    if identity.get("unread"):
+        return f"not read ({identity['unread']})"
+    if identity.get("kind") == "libsystem_m":
+        return (f"libsystem_m {identity.get('uuid')} (macOS {identity.get('macos')}, "
+                f"build {identity.get('os_build')})")
+    features = (",".join(identity.get("cpu_features") or [])
+                or "none of " + ",".join(LIBM_CPU_FEATURES))
+    return (f"{identity.get('glibc')}, libm sha256 {str(identity.get('sha256'))[:16]}..., "
+            f"CPU features {features}"
+            + (f", GLIBC_TUNABLES={identity['glibc_tunables']}"
+               if identity.get("glibc_tunables") else ""))
+
+
+def child_identity(mode: str) -> int:
+    """Import NumPy, then MEEP; set MEEP's switch for ``mode``; report the facts."""
+    payload = {"mode": mode, "python": platform.python_version(),
+               "system": f"{platform.system()} {platform.machine()}",
+               "omp_num_threads": os.environ.get("OMP_NUM_THREADS")}
+    try:
+        import numpy
+
+        payload["numpy"] = numpy.__version__
+        import meep as mp
+    except Exception as exc:  # noqa: BLE001 - reported by the parent
+        payload["error"] = f"{type(exc).__name__}: {exc}"
+        emit(payload)
+        return 0
+    mp.verbosity(0)
+    payload["meep"] = {
+        "version": str(mp.__version__),
+        "single_precision": bool(mp.is_single_precision()),
+        "mpi": bool(mp.with_mpi()),
+        "gdsii": bool(mp.with_libGDSII()) if hasattr(mp, "with_libGDSII") else None,
+        "file": getattr(mp, "__file__", None),
+    }
+    payload["subnormals_after_import"] = subnormal_state()
+    mp.set_zero_subnormals(mode == "flush")
+    payload["subnormals"] = subnormal_state()
+    payload["images"] = {path: sha256_of(path) for path in loaded_image_paths()
+                         if os.path.basename(path).startswith(("libmeep", "_meep"))}
+    payload["libm"] = libm_identity()
+    emit(payload)
+    return 0
+
+
+def find_build_record(images, explicit=None):
+    """The build record to judge the identity reference by: ``explicit``, or the one
+    in the prefix the loaded libmeep is installed in (``<prefix>/lib/libmeep*``)."""
+    if explicit:
+        return explicit
+    libmeep = sorted(path for path in images if os.path.basename(path).startswith("libmeep"))
+    if not libmeep:
+        return None
+    return os.path.join(os.path.dirname(os.path.dirname(libmeep[0])), BUILD_RECORD)
+
+
+def load_census_tool(path: str = CENSUS_TOOL):
+    """tools/fma_census.py as a module of its own."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("meep_gpu_fma_census", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _census_clean(census):
+    verdict = (census or {}).get("verdict") or {}
+    return verdict.get("none_outside_exempt") is True
+
+
+def _census_text(census):
+    verdict = (census or {}).get("verdict") or {}
+    return verdict.get("text") or "no verdict"
+
+
+def identity_reference_section(mode, payload, record_path=None, record=None, census=None,
+                               expected_meep=None, judge_meep=None):
+    """``(lines, reasons)`` of the identity check. Pure; never raises.
+
+    ``payload`` is what the identity child reported; ``record`` the build record
+    (a dict) or why it could not be read (a string); ``census`` the census re-run
+    on the loaded images (a dict) or why it was not (a string); ``expected_meep``
+    the MEEP build the platform's reference names, judged by ``judge_meep``
+    (``compare_reference_environment.judge_meep``). ``reasons`` is empty when the
+    MEEP is an identity reference in ``mode``.
+    """
+    lines, reasons = [], []
+    payload = payload if isinstance(payload, dict) else {}
+    if payload.get("error"):
+        reasons.append(f"MEEP could not be imported ({payload['error']})")
+        return [f"   MEEP           not importable: {payload['error']}"], reasons
+    meep = payload.get("meep") or {}
+    if judge_meep is not None:
+        judged = judge_meep(expected_meep, meep)
+        lines.append(f"   {judged['line']}")
+        if not judged["ok"]:
+            reasons.append(f"its MEEP is {judged['found']}"
+                           + (f", not the reference's {judged['reference']}"
+                              if judged.get("reference") else ""))
+    else:
+        reasons.append("its MEEP was not compared with the reference's build")
+    images = payload.get("images") or {}
+    names = ", ".join(os.path.basename(path) for path in sorted(images)) or "none"
+    lines.append(f"   images         {names}")
+    if not images:
+        reasons.append("this process loaded no libmeep or _meep image")
+    lines.append(f"   build record   {record_path or 'none found'}")
+    loaded = sorted(images.values())
+    if isinstance(record, dict):
+        recorded = sorted((record.get("sha256") or {}).values())
+        if recorded == loaded and loaded:
+            lines.append(f"      describes the loaded images: {len(loaded)} of {len(loaded)} "
+                         "sha256 as recorded")
+        else:
+            lines.append("      does NOT describe the loaded images (sha256 differ)")
+            reasons.append("its build record does not describe the MEEP images this "
+                           "process loads (their sha256 differ)")
+        recorded_census = record.get("fma_census")
+        census_images = sorted(image.get("sha256") for image in
+                               (recorded_census or {}).get("images") or [])
+        if not isinstance(recorded_census, dict):
+            lines.append("      fused multiply-add census: not in the record")
+            reasons.append("its build record carries no fused multiply-add census")
+        elif census_images != loaded:
+            lines.append("      fused multiply-add census: of other images")
+            reasons.append("the census in its build record is of other images")
+        elif not _census_clean(recorded_census):
+            lines.append(f"      fused multiply-add census: {_census_text(recorded_census)}")
+            reasons.append(f"its build record's census found "
+                           f"{recorded_census['verdict'].get('fused_elsewhere')} fused "
+                           "multiply-add instructions outside the compiler-rt division "
+                           "builtins")
+        else:
+            lines.append(f"      fused multiply-add census: {_census_text(recorded_census)}")
+        contraction = record.get("fp_contract")
+        lines.append(f"      floating-point contraction: {contraction or 'not recorded'} "
+                     "(informational: the census decides)")
+    else:
+        lines.append(f"      not read: {record or 'no build record'}")
+        reasons.append(f"it has no build record ({record or 'none found'})")
+    if isinstance(census, dict):
+        lines.append(f"   census here    {_census_text(census)}")
+        census_here = sorted(image.get("sha256") for image in census.get("images") or [])
+        if not _census_clean(census):
+            reasons.append(f"the census of the loaded images found "
+                           f"{(census.get('verdict') or {}).get('fused_elsewhere')} fused "
+                           "multiply-add instructions outside the compiler-rt division "
+                           "builtins")
+        elif census_here != loaded:
+            reasons.append("the census here read other images than the process loaded")
+    else:
+        lines.append(f"   census here    not re-run: {census or 'no images'}")
+    measured = payload.get("subnormals") or {}
+    switch = f"set_zero_subnormals({'True' if mode == 'flush' else 'False'})"
+    lines.append(f"   subnormals     {measured.get('mode', 'not measured')} after MEEP's "
+                 f"{switch} (measured in float32 and float64; after import alone: "
+                 f"{(payload.get('subnormals_after_import') or {}).get('mode', 'not measured')})")
+    if measured.get("mode") != mode:
+        if mode == "flush" and measured.get("mode") == "keep":
+            reasons.append("MEEP's subnormal switch has no effect on this host, so it has "
+                           "no flush reference (only keep; Apple silicon is such a host)")
+        else:
+            reasons.append(f"the processor's subnormal handling is "
+                           f"{measured.get('mode', 'not measured')} after MEEP's {switch}, "
+                           f"not {mode}")
+    threads = payload.get("omp_num_threads")
+    if mode == "flush":
+        lines.append(f"   OpenMP         OMP_NUM_THREADS={threads if threads is not None else 'unset'}"
+                     " (flush is a reference at 1 thread only)")
+        if threads != "1":
+            reasons.append("flush is a reference only at OMP_NUM_THREADS=1 (MEEP's switch "
+                           f"reaches the main thread only), and it is "
+                           f"{threads if threads is not None else 'unset'}")
+    else:
+        lines.append(f"   OpenMP         OMP_NUM_THREADS={threads if threads is not None else 'unset'}"
+                     " (keep holds at any thread count)")
+    here = payload.get("libm")
+    pinned = record.get("libm") if isinstance(record, dict) else None
+    lines.append(f"   libm           {libm_text(here)}")
+    if libm_key(here) is None:
+        reasons.append(f"this host's math library could not be identified ({libm_text(here)})")
+    elif isinstance(record, dict):
+        if libm_key(pinned) is None:
+            lines.append(f"      the build record pins: {libm_text(pinned)}")
+            reasons.append("its build record pins no math library")
+        elif libm_key(pinned) != libm_key(here):
+            lines.append(f"      the build record pins another: {libm_text(pinned)}")
+            reasons.append("this host's math library is not the one its build record pins; "
+                           "re-record the build and re-run the digest smoke on this host")
+        else:
+            lines.append("      as the build record pins")
+    return lines, reasons
+
+
+def identity_check(arguments):
+    """Run and judge the identity reference; ``(lines, failure)``. Never raises."""
+    mode = arguments.require_identity_reference
+    payload, done = run_child("identity", arguments, ("--identity-mode", mode))
+    if payload is None:
+        failure = explain_crash("the identity reference run", done)
+        return [f"   {failure.reason}"], failure
+    images = payload.get("images") or {}
+    record_path = find_build_record(images, getattr(arguments, "identity_build_record", None))
+    if record_path is None:
+        record = "no libmeep image was loaded, so no prefix to look in"
+    else:
+        try:
+            with open(record_path, encoding="utf-8") as handle:
+                record = json.load(handle)
+            if not isinstance(record, dict):
+                record = f"{record_path} does not hold a JSON object"
+        except FileNotFoundError:
+            record = f"{record_path} does not exist"
+        except (OSError, ValueError) as exc:
+            record = f"{record_path}: {exc}"
+    census = None
+    if images:
+        try:
+            census = load_census_tool().census(sorted(images), progress=None)
+        except Exception as exc:  # noqa: BLE001 - reported, then judged by the record
+            census = f"{type(exc).__name__}: {exc}"
+    expected, judge = None, None
+    try:
+        tool = load_reference_tool()
+        judge = tool.judge_meep
+        expected = tool.load_reference(tool.host_platform())["spec"].get("meep")
+    except Exception:  # noqa: BLE001 - judge_meep without an expectation is no match
+        pass
+    lines, reasons = identity_reference_section(mode, payload, record_path, record, census,
+                                                expected, judge)
+    failure = None
+    if reasons:
+        failure = Failure(f"--require-identity-reference {mode} was given and "
+                          + "; and ".join(reasons) + ".", SECTION_IDENTITY)
+    return lines, failure
 
 
 def summarize_report(report):
@@ -591,6 +1040,8 @@ def child_main(arguments) -> int:
         return child_facts()
     if arguments.child == "openmp":
         return child_openmp()
+    if arguments.child == "identity":
+        return child_identity(arguments.identity_mode)
     try:
         return child_leg(arguments.child, arguments.save, arguments.gpu_id)
     except Exception as exc:  # noqa: BLE001
@@ -693,27 +1144,54 @@ def mark(value, supported=None) -> str:
         value, "could not be read, so it is not refused")
 
 
-def nvidia_runs(certified, supported, value) -> bool:
-    """Would an NVIDIA table run on this fact under MEEP_GPU_ALLOW_UNCERTIFIED=value?
+def hardware_switch_refusal(variables) -> str:
+    """Why the package refuses this shell's hardware scope before any table, or ``""``.
 
-    Certified runs; supported but not certified runs unless the value is 0; outside
-    the supported range runs only under 1; a fact that could not be read runs unless
-    the value is 0.
+    The retired MEEP_GPU_ALLOW_UNCERTIFIED set to anything, or a MEEP_GPU_HARDWARE
+    value other than certified, supported or any (exact match): the package refuses
+    either by name at its rung 3b and the run takes the array path, on every table.
+    """
+    retired = variables.get(RETIRED_HARDWARE_SWITCH)
+    if retired is not None:
+        meant = {"0": "certified", "1": "any"}.get(retired)
+        return (f"{RETIRED_HARDWARE_SWITCH} is set in this shell, and that variable is "
+                f"retired: the package refuses it by name, so the GPU run took the array "
+                f"path. Unset it; its replacement is {HARDWARE_SWITCH} "
+                f"({', '.join(HARDWARE_VALUES)}; unset means supported)"
+                + (f", and {RETIRED_HARDWARE_SWITCH}={retired} is "
+                   f"{HARDWARE_SWITCH}={meant}." if meant else ".")
+                + f" (INSTALL.md, \"{SECTION_UNCERTIFIED}\")")
+    value = variables.get(HARDWARE_SWITCH)
+    if value is not None and value not in HARDWARE_VALUES:
+        return (f"{HARDWARE_SWITCH}={value!r} is not an accepted value ("
+                f"{', '.join(HARDWARE_VALUES)}): the package refuses it by name, so the "
+                f"GPU run took the array path (INSTALL.md, \"{SECTION_UNCERTIFIED}\").")
+    return ""
+
+
+def nvidia_runs(certified, supported, value) -> bool:
+    """Would an NVIDIA table run on this fact under MEEP_GPU_HARDWARE=value?
+
+    ``value`` is the shell's value, ``None`` when unset (the supported scope).
+    Certified runs; supported but not certified runs unless the value is certified;
+    outside the supported range runs only under any; a fact that could not be read
+    runs unless the value is certified. A value the package refuses is answered by
+    :func:`hardware_switch_refusal`, before this is asked.
     """
     if certified is True:
         return True
     if certified is None:
-        return value != "0"
-    if value == "0":
+        return value != "certified"
+    if value == "certified":
         return False
-    return supported is True or value == "1"
+    return supported is True or value == "any"
 
 
 def nvidia_uncertified_note(entries, section) -> str:
     """The NOTE for an NVIDIA run that dispatched uncertified, from what was served.
 
     Names each identity read with its own verdict: supported but not certified, or
-    outside the supported range (which only MEEP_GPU_ALLOW_UNCERTIFIED=1 runs). An
+    outside the supported range (which only MEEP_GPU_HARDWARE=any runs). An
     identity two tables share is named once.
     """
     supported, outside = [], []
@@ -730,12 +1208,12 @@ def nvidia_uncertified_note(entries, section) -> str:
     if outside:
         clauses.append(f"{' and '.join(outside)} "
                        f"{'is' if len(outside) == 1 else 'are'} outside the supported "
-                       "range, which only MEEP_GPU_ALLOW_UNCERTIFIED=1 runs")
+                       "range, which only MEEP_GPU_HARDWARE=any runs")
     text = ("; ".join(clauses) or "an identity was admitted uncertified")
     text = (text[0].upper() + text[1:] + ", so the kernels ran uncertified; compare "
             f"with the NumPy reference above (INSTALL.md, \"{section}\").")
     if not outside:
-        text += (" Set MEEP_GPU_ALLOW_UNCERTIFIED=0 to run them only on a certified "
+        text += (" Set MEEP_GPU_HARDWARE=certified to run them only on a certified "
                  "device and toolchain.")
     return text
 
@@ -776,9 +1254,9 @@ def reference_section(require_reference: bool, tool=None, result=None, meep=None
     """``(lines, failure)`` of step 7. Never raises.
 
     ``meep`` holds what step 2 read from the imported MEEP (version,
-    single_precision, mpi); the first line judges it against the MEEP build the
-    reference names, since the drift report judges packages only. None means it
-    was not read, which is not a match.
+    single_precision, mpi, and gdsii from MEEP's own ``with_libGDSII()``); the first
+    line judges it against the MEEP build the reference names, since the drift report
+    judges packages only. None means it was not read, which is not a match.
 
     ``failure`` is a Failure only when ``require_reference`` is set and either the
     verdict is not "matches" or MEEP is not the reference's build; otherwise None,
@@ -826,6 +1304,19 @@ def check(arguments) -> int:
             f"this check was started by an MPI launcher as one of {launched} "
             "processes; the package steps one process on one GPU. Start the check "
             "without mpirun.", SECTION_MPI)
+
+    # An identity reference is a property of the MEEP build and of the host. It is
+    # judged first, in a process that imports NumPy and MEEP only, and the check
+    # stops on it before anything is stepped.
+    if getattr(arguments, "require_identity_reference", None):
+        say(f"MEEP identity reference (--require-identity-reference "
+            f"{arguments.require_identity_reference})")
+        lines, failure = identity_check(arguments)
+        for line in lines:
+            say(line)
+        say()
+        if failure is not None:
+            raise failure
 
     # Read before any process imports PyTorch: a process that loads two OpenMP
     # runtimes is stopped by the second one, so the prediction is made from files
@@ -914,8 +1405,6 @@ def check(arguments) -> int:
     say(f"   constants the lift relies on  "
         f"{constants.get('checked', 0) - len(wrong)} of {constants.get('checked')} "
         "have the expected value")
-    say("   optional sigma-reader patch   "
-        + ("present" if facts.get("sigma_reader") else "absent (stock MEEP; expected)"))
     if names.get("missing"):
         for where, absent in names["missing"].items():
             say(f"      missing from {where}: {', '.join(absent)}")
@@ -1046,7 +1535,7 @@ def check(arguments) -> int:
             # THE METAL KERNELS RUN ON AN UNCERTIFIED ENVIRONMENT BY DEFAULT, and are
             # expected to unless the shell restricts them to certified ones; then all
             # three facts must be certified.
-            if variables.get("MEEP_GPU_ALLOW_UNCERTIFIED") == "0":
+            if variables.get(HARDWARE_SWITCH) == "certified":
                 certified = all(report.get(key) is True for key in (
                     "device_certified", "torch_certified", "frontend_certified",
                     "fast_math_certified"))
@@ -1057,24 +1546,24 @@ def check(arguments) -> int:
                         "This Mac's environment is supported but not the certified "
                         "one, so the Metal kernels ran uncertified; compare with the "
                         f"NumPy reference above (INSTALL.md, \"{SECTION_UNCERTIFIED}\"). "
-                        "Set MEEP_GPU_ALLOW_UNCERTIFIED=0 to run them only on a "
+                        "Set MEEP_GPU_HARDWARE=certified to run them only on a "
                         "certified environment."
                         if report.get("device_supported") else
                         "This Mac's environment is not the certified one, so the "
                         "Metal kernels ran uncertified; compare with the NumPy "
                         f"reference above (INSTALL.md, \"{SECTION_UNCERTIFIED}\"). "
-                        "Set MEEP_GPU_ALLOW_UNCERTIFIED=0 to run them only on a "
+                        "Set MEEP_GPU_HARDWARE=certified to run them only on a "
                         "certified environment.")
                 elif report.get("certified") is None and report.get("step_path") == "fused":
                     notes.append(
                         "A fact of this Mac's environment could not be judged against "
                         "the certification records (marked 'not judged' above), so "
                         "the run is neither certified nor uncertified; "
-                        "MEEP_GPU_ALLOW_UNCERTIFIED=0 would refuse it.")
+                        "MEEP_GPU_HARDWARE=certified would refuse it.")
         else:
             by_table = report.get("device_certified_by_table") or {}
             supported_by = report.get("device_supported_by_table") or {}
-            switch = variables.get("MEEP_GPU_ALLOW_UNCERTIFIED")
+            switch = variables.get(HARDWARE_SWITCH)
             say(f"   device           {report.get('device_name') or 'name not read'}, "
                 f"compute capability {report.get('compute_capability')}")
             say(f"      for the Triton kernels: "
@@ -1090,8 +1579,8 @@ def check(arguments) -> int:
                 say(f"   Triton           {report.get('triton')}: "
                     f"{mark(report.get('triton_certified'), report.get('triton_supported'))}")
             # THE KERNELS ARE EXPECTED wherever one table may run on what was read:
-            # certified, or supported and not restricted by MEEP_GPU_ALLOW_UNCERTIFIED=0,
-            # or anything read under =1.
+            # certified, or supported and not restricted by MEEP_GPU_HARDWARE=certified,
+            # or anything read under =any.
             if by_table:
                 runnable = [nvidia_runs(by_table.get("cuda"), supported_by.get("cuda"),
                                         switch)]
@@ -1110,7 +1599,7 @@ def check(arguments) -> int:
             elif report.get("certified") is None and report.get("step_path") == "fused":
                 notes.append(
                     "This GPU's compute capability could not be read, so the run is "
-                    "neither certified nor uncertified; MEEP_GPU_ALLOW_UNCERTIFIED=0 "
+                    "neither certified nor uncertified; MEEP_GPU_HARDWARE=certified "
                     "would refuse it.")
             for entry in report.get("uncertified_dropped") or []:
                 if entry.get("dropped_because"):
@@ -1136,25 +1625,32 @@ def check(arguments) -> int:
             say(f"      {line[:600]}")
         switched_off = (variables.get("MEEP_GPU_DISPATCH") == "0"
                         or variables.get("MEEP_GPU_FUSED") == "0")
-        kernels_expected = certified and not served and not switched_off
+        # A SCOPE THE PACKAGE REFUSES is answered before any table: the run takes the
+        # array path whatever the device, so no kernel is expected and the note names
+        # the variable rather than the device.
+        scope_refusal = hardware_switch_refusal(variables)
+        kernels_expected = (certified and not served and not switched_off
+                            and not scope_refusal)
         if not served and switched_off:
             notes.append("Kernel dispatch is switched off by MEEP_GPU_DISPATCH=0 or "
                          "MEEP_GPU_FUSED=0 in this shell.")
-        if not served and not certified and route == "metal":
-            notes.append("MEEP_GPU_ALLOW_UNCERTIFIED=0 restricts the Metal kernels to "
+        if not served and scope_refusal:
+            notes.append(scope_refusal)
+        elif not served and not certified and route == "metal":
+            notes.append("MEEP_GPU_HARDWARE=certified restricts the Metal kernels to "
                          "certified environments, and this Mac's is not certified or "
                          "could not be judged, so the run took the array path, NumPy "
                          f"on the host CPU (INSTALL.md, \"{SECTION_UNCERTIFIED}\").")
         elif not served and not certified and variables.get(
-                "MEEP_GPU_ALLOW_UNCERTIFIED") == "0":
-            notes.append("MEEP_GPU_ALLOW_UNCERTIFIED=0 restricts the NVIDIA kernels to "
+                HARDWARE_SWITCH) == "certified":
+            notes.append("MEEP_GPU_HARDWARE=certified restricts the NVIDIA kernels to "
                          "certified devices and toolchains, and this one is not certified "
                          "or could not be judged, so the default run took the array "
                          f"path (INSTALL.md, \"{SECTION_UNCERTIFIED}\").")
         elif not served and not certified:
             notes.append("This device or toolchain is outside the supported range, so "
                          "the default run took the array path; "
-                         "MEEP_GPU_ALLOW_UNCERTIFIED=1 runs the kernels on it, "
+                         "MEEP_GPU_HARDWARE=any runs the kernels on it, "
                          "uncertified (INSTALL.md, "
                          f"\"{SECTION_UNCERTIFIED}\").")
 
@@ -1218,12 +1714,23 @@ def main() -> int:
     parser.add_argument("--require-reference", action="store_true",
                         help="fail when this environment or its MEEP does not "
                              "match the certification reference of its platform")
+    parser.add_argument("--require-identity-reference", choices=IDENTITY_MODES,
+                        dest="require_identity_reference", metavar="MODE",
+                        help="fail, before anything is stepped, unless the imported MEEP "
+                             "is an identity reference in MODE (keep or flush)")
+    parser.add_argument("--identity-build-record", dest="identity_build_record",
+                        metavar="PATH",
+                        help="the build record to judge the identity reference by, when "
+                             "it is not in the prefix the loaded MEEP is installed in")
     parser.add_argument("--gpu-id", type=int, default=0,
                         help="the CUDA device to use (default 0)")
     parser.add_argument("--verbose", action="store_true",
                         help="also print what each run wrote")
-    parser.add_argument("--child", choices=("openmp", "facts", "gpu", "reference", "meep"),
+    parser.add_argument("--child",
+                        choices=("openmp", "facts", "identity", "gpu", "reference", "meep"),
                         help=argparse.SUPPRESS)
+    parser.add_argument("--identity-mode", choices=IDENTITY_MODES, default="keep",
+                        dest="identity_mode", help=argparse.SUPPRESS)
     parser.add_argument("--save", help=argparse.SUPPRESS)
     arguments = parser.parse_args()
     if arguments.child:

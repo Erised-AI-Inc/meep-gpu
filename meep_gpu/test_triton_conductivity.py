@@ -89,6 +89,7 @@ def reasons_without_backend(fields, pml, sub_step="step_D"):
 # The optional dependency must stay optional
 # ---------------------------------------------------------------------------
 
+
 def test_the_module_imports_and_answers_coverage_with_triton_absent(monkeypatch):
     """A missing optional dependency must not break the engine — or this module.
 
@@ -152,20 +153,20 @@ def _kernel_body(text: str, function: str, start: str, end: str) -> str:
 
 
 def test_the_duplicated_curl_body_still_matches_the_shipped_one():
-    """RISK 5, enforced. Two transcriptions of the ghost rule with no link.
+    """Two transcriptions of the ghost rule, the stencil and the mask, diffed.
 
-    ``conductivity.py`` may not edit ``kernels.py`` this round, so it carries its
-    own copy of the ghost rule, the stencil grouping and the ownership mask — the
-    three things most likely to drift. Until the two are folded into one kernel
-    behind ``COND`` constexprs, this diff is the guard: an edit to either curl
-    body that is not made to both fails here.
+    ``conductivity.py`` carries its own copy of ``kernels.pml_curl_step``'s head --
+    the ghost rule, the stencil through ``forms.curl_stencil`` with the record's
+    presence word, and the ownership mask, the three things most likely to drift.
+    Until the two are folded into one kernel behind ``COND`` constexprs, this diff
+    is the guard: an edit to either curl body that is not made to both fails here.
     """
     shipped = (PACKAGE_DIR / "kernels.py").read_text(encoding="utf-8")
     mine = (PACKAGE_DIR / "conductivity.py").read_text(encoding="utf-8")
     a = _kernel_body(shipped, "pml_curl_step", "idx = tl.program_id(0)",
                      "--- split-field recurrence")
     b = _kernel_body(mine, "conductive_pml_curl_step", "idx = tl.program_id(0)",
-                     "--- the recurrence, per component")
+                     "--- the forms, per component")
     assert a == b, "the conductive kernel's curl body has drifted from kernels.py"
 
 
@@ -197,66 +198,83 @@ def load_gate():
 @pytest.mark.parametrize("shape", [(7, 5, 3), (5, 5, 5)])
 @pytest.mark.parametrize("target", [0, 1, 2])
 def test_the_gates_reference_is_bit_identical_to_stepping(shape, target):
-    """The four cases, evaluated as branches, against the array path's select.
+    """The conductive forms, evaluated as selections, against the array path's.
 
-    The array path computes ALL FOUR cases over the whole volume and selects with
-    ``copyto``; the kernel evaluates ONE branch per cell. They are the same bits
-    only because the branches are mutually independent, and that is a claim to
-    MEASURE rather than assert. Bytewise, never allclose, and at a
-    non-power-of-two Courant as well as 0.5 — at 0.5 the scaling is exact in
-    binary and a whole family of discrepancies vanishes.
+    The array path computes every form over the whole volume and selects with
+    ``copyto``; the kernel evaluates one form per cell. They are the same bits only
+    because the forms are mutually independent, and that is a claim to MEASURE
+    rather than assert. The memberships are the gate's ``split`` record's lines on
+    the component's lattice, with every chunk keeping the conductivity and with the
+    ``interior`` conductive-chunk volume (an outer shell of chunks that keeps none).
+    Bytewise, never allclose, and at a non-power-of-two Courant as well as 0.5.
     """
     from meep_gpu.stepping import _apply_conductive_pml_update
 
     gate = load_gate()
     a1, a2 = DSIG_AXES[target]
     axis_names = ("x", "y", "z")
+    half = target == 0
+    record = gate.split_record(shape)
+    coefficients = gate.fit_coefficients(
+        np, gate.conductive_coefficients(np, shape, half), record, half, shape)
+    pairs = (coefficients["kms_" + axis_names[a1]],
+             coefficients["sinv_" + axis_names[a1]],
+             coefficients["kms_" + axis_names[a2]],
+             coefficients["sinv_" + axis_names[a2]])
+    dsig = gate.membership(np, record, half, a1, shape)
+    dsigu = gate.membership(np, record, half, a2, shape)
     for dtdx in (0.5, 0.35):
-        coefficients = gate.conductive_coefficients(np, shape, target == 0)
-        rng = np.random.default_rng(20260810 + target)
-        field = (rng.standard_normal(shape) * 0.5).astype(np.float32)
-        fu = (rng.standard_normal(shape) * 0.5).astype(np.float32)
-        f_cond = (rng.standard_normal(shape) * 0.5).astype(np.float32)
-        curl = ((rng.standard_normal(shape) * 0.5) * dtdx).astype(np.float32)
-        sigma = (0.4 * (0.3 + rng.random(shape))).astype(np.float32)
-        half_dt = np.float32(0.00625)
-        condfac = (np.float32(1.0) - sigma * half_dt).astype(np.float32)
-        condinv = (np.float32(1.0) / (np.float32(1.0) + sigma * half_dt)
-                   ).astype(np.float32)
-        pairs = (coefficients["kms_" + axis_names[a1]],
-                 coefficients["sinv_" + axis_names[a1]],
-                 coefficients["kms_" + axis_names[a2]],
-                 coefficients["sinv_" + axis_names[a2]])
+        for kept in (None, gate.interior_volume(shape)):
+            rng = np.random.default_rng(20260810 + target)
+            field = (rng.standard_normal(shape) * 0.5).astype(np.float32)
+            field.reshape(-1)[::7] = np.float32(-0.0)
+            fu = (rng.standard_normal(shape) * 0.5).astype(np.float32)
+            f_cond = (rng.standard_normal(shape) * 0.5).astype(np.float32)
+            curl = ((rng.standard_normal(shape) * 0.5) * dtdx).astype(np.float32)
+            curl.reshape(-1)[::5] = np.float32(0.0)
+            sigma = (0.4 * (0.3 + rng.random(shape))).astype(np.float32)
+            half_dt = np.float32(0.00625)
+            condfac = (np.float32(1.0) - sigma * half_dt).astype(np.float32)
+            condinv = (np.float32(1.0) / (np.float32(1.0) + sigma * half_dt)
+                       ).astype(np.float32)
 
-        got = [field.copy(), fu.copy(), f_cond.copy()]
-        _apply_conductive_pml_update(np, got[0], curl, condfac, condinv, *pairs,
-                                     got[1], got[2], scratch=None)
-        want = [field.copy(), fu.copy(), f_cond.copy()]
-        gate.reference_conductive_recurrence(np, want[0], want[1], want[2], curl,
-                                             condfac, condinv, *pairs)
-        for name, a, b in zip(("field", "fu", "f_cond"), got, want):
-            assert a.tobytes() == b.tobytes(), (
-                f"{name} differs at dtdx={dtdx}: "
-                f"{int(np.count_nonzero(a.view(np.uint32) != b.view(np.uint32)))} "
-                f"of {a.size} floats")
-        # All four branches must actually be reachable in this configuration, or
-        # the check above is a check of one case wearing four names.
-        mix = gate.case_mix(np, shape, coefficients, axis_names[a1], axis_names[a2])
-        assert sum(1 for count in mix.values() if count) >= 2, mix
+            got = [field.copy(), fu.copy(), f_cond.copy()]
+            _apply_conductive_pml_update(np, got[0], curl, condfac, condinv, *pairs,
+                                         got[1], got[2], dsig_active=dsig,
+                                         dsigu_active=dsigu, conductive=kept,
+                                         scratch=None)
+            want = [field.copy(), fu.copy(), f_cond.copy()]
+            gate.reference_conductive_recurrence(np, want[0], want[1], want[2], curl,
+                                                 condfac, condinv, *pairs, dsig=dsig,
+                                                 dsigu=dsigu, kept=kept)
+            for name, a, b in zip(("field", "fu", "f_cond"), got, want):
+                assert a.tobytes() == b.tobytes(), (
+                    f"{name} differs at dtdx={dtdx} kept={kept is not None}: "
+                    f"{int(np.count_nonzero(a.view(np.uint32) != b.view(np.uint32)))} "
+                    f"of {a.size} floats")
+            # More than one form must be reachable here, or the check above is a
+            # check of one form wearing several names.
+            mix = gate.case_mix(record, shape, "step_B" if half else "step_D",
+                                axis_names[a1], axis_names[a2], kept)
+            assert sum(1 for count in mix.values() if count) >= 2, mix
 
 
 def test_the_gates_reference_bites_when_the_grouping_is_flattened():
     """The negative control for the test above, on NumPy alone.
 
-    ``(((f*km2) + u_new) - u)`` flattened to ``((f*km2) + (u_new - u))`` is a
-    different float32 number. If this passed, the byte comparison above would be
-    comparing two spellings of the same expression and proving nothing.
+    The increment added in two operations (``((u*km1) + c_new) - c``, the grouping
+    the kernel carried before the alignment) and ``(((f*km2) + u_new) - u)``
+    flattened to ``((f*km2) + (u_new - u))`` are each a different float32 number. If
+    either matched, the byte comparison above would be comparing two spellings of
+    the same expression and proving nothing.
     """
     from meep_gpu.stepping import _apply_conductive_pml_update
 
     gate = load_gate()
     shape = (7, 5, 3)
-    coefficients = gate.conductive_coefficients(np, shape, False)
+    record = gate.split_record(shape)
+    coefficients = gate.fit_coefficients(
+        np, gate.conductive_coefficients(np, shape, False), record, False, shape)
     rng = np.random.default_rng(20260810)
     field = (rng.standard_normal(shape) * 0.5).astype(np.float32)
     fu = (rng.standard_normal(shape) * 0.5).astype(np.float32)
@@ -266,25 +284,156 @@ def test_the_gates_reference_bites_when_the_grouping_is_flattened():
     half_dt = np.float32(0.00625)
     condfac = (np.float32(1.0) - sigma * half_dt).astype(np.float32)
     condinv = (np.float32(1.0) / (np.float32(1.0) + sigma * half_dt)).astype(np.float32)
-    pairs = (coefficients["kms_y"], coefficients["sinv_y"],
-             coefficients["kms_z"], coefficients["sinv_z"])
+    kms, sinv = coefficients["kms_y"], coefficients["sinv_y"]
+    kms_u, sinv_u = coefficients["kms_z"], coefficients["sinv_z"]
+    dsig = gate.membership(np, record, False, 1, shape)
+    dsigu = gate.membership(np, record, False, 2, shape)
 
     got = [field.copy(), fu.copy(), f_cond.copy()]
-    _apply_conductive_pml_update(np, got[0], curl, condfac, condinv, *pairs,
-                                 got[1], got[2], scratch=None)
+    _apply_conductive_pml_update(np, got[0], curl, condfac, condinv, kms, sinv, kms_u,
+                                 sinv_u, got[1], got[2], dsig_active=dsig,
+                                 dsigu_active=dsigu, conductive=None, scratch=None)
 
-    kms, sinv, kms_u, sinv_u = pairs
-    dsig = (kms != np.float32(1.0)) | (sinv != np.float32(1.0))
-    dsigu = (kms_u != np.float32(1.0)) | (sinv_u != np.float32(1.0))
     c_new = ((f_cond * condfac) - curl) * condinv
     u_cond = ((fu * condfac) - curl) * condinv
-    u_split = (((fu * kms) + c_new) - f_cond) * sinv
-    u_new = np.where(dsig, u_split, u_cond)
-    flattened = ((field * kms_u) + (u_new - fu)) * sinv_u   # THE MUTATION
-    f_first = (((field * kms) + c_new) - f_cond) * sinv
+    previous = np.where(dsig, (((fu * kms) + c_new) - f_cond) * sinv, u_cond)
+    f_first = ((field * kms) + (c_new - f_cond)) * sinv
     f_direct = ((field * condfac) - curl) * condinv
-    wrong = np.where(dsigu, flattened, np.where(dsig, f_first, f_direct))
-    assert got[0].tobytes() != wrong.tobytes()
+    wrong_u = np.where(dsigu, (((field * kms_u) + previous) - fu) * sinv_u,
+                       np.where(dsig, f_first, f_direct))
+    assert got[0].tobytes() != wrong_u.tobytes()
+
+    u_new = np.where(dsig, ((fu * kms) + (c_new - f_cond)) * sinv, u_cond)
+    flattened = ((field * kms_u) + (u_new - fu)) * sinv_u   # THE MUTATION
+    wrong_f = np.where(dsigu, flattened, np.where(dsig, f_first, f_direct))
+    assert got[0].tobytes() != wrong_f.tobytes()
+
+
+def test_the_auxiliary_loads_sit_under_their_guards():
+    """The two declared nulls of KERNELS.md section 7.2, pinned by needle instead.
+
+    An unconditional ``fu`` or ``f_cond`` load moves no stored word (the loaded value
+    reaches a store only on the cells its guard admits), so no byte gate can see one;
+    it costs the traffic the auxiliary contract exists to save. The same lines in the
+    fused electric pair are its helper's, pinned by that module's transcription test.
+    """
+    text = (PACKAGE_DIR / "conductivity.py").read_text(encoding="utf-8")
+    assert text.count("u = tl.load(u_ptr + idx, mask=live & du, other=0.0)") == 1
+    assert text.count("c = tl.load(c_ptr + idx, mask=live & ds & kept, other=0.0)") == 1
+    assert "tl.load(u_ptr + idx, mask=live, other=0.0)" not in text
+    assert "tl.load(c_ptr + idx, mask=live, other=0.0)" not in text
+
+
+def test_the_forms_are_keyed_on_the_record_never_on_a_coefficient():
+    """No form of the kernel tests a coefficient: membership is the record's.
+
+    A cell inside a layer chunk whose own sigma is exactly zero takes its chunk's
+    form, which a coefficient test would not give it.
+    """
+    text = (PACKAGE_DIR / "conductivity.py").read_text(encoding="utf-8")
+    source = text[text.index("    def _conductive_component("):
+                  text.index("# Coverage\n")]
+    code = "\n".join(line.split("#", 1)[0] for line in source.splitlines())
+    assert "!= 1.0" not in code
+    for name in ("ds0", "du0", "ds1", "du1", "ds2", "du2"):
+        assert code.count(f"{name} = record_in(cb, lattice + ") == 1, name
+
+
+# ---------------------------------------------------------------------------
+# The plan's bindings: the record and the conductive-chunk volumes
+# ---------------------------------------------------------------------------
+
+def _interior_fields(sigma_kind):
+    grid = Grid(resolution=10.0, cell_size=(1.6, 1.4, 1.2))
+    fields = Fields(grid=grid, force_complex_fields=False)
+    fields.enable_pml_storage()
+    sigma = np.full(grid.shape, 0.4, dtype=np.float32)
+    if sigma_kind == "interior":
+        inside = np.zeros(grid.shape, dtype=bool)
+        inside[5:-5, 5:-5, 5:-5] = True
+        sigma = np.where(inside, sigma, np.float32(0.0)).astype(np.float32)
+    fields.set_d_conductivity({"Dx": sigma, "Dz": sigma})
+    return fields, PML(grid=grid, thickness=2)
+
+
+def test_the_conductive_chunk_volumes_follow_the_array_paths_chunks():
+    """The plan's third test is the region plan's, per component, or nothing.
+
+    With sigma on an interior block the layer chunks keep none and each conductive
+    target binds ``ChunkLayout.conductive_mask`` of the division; with sigma
+    everywhere every chunk keeps it and nothing is bound (the array path's
+    ``conductive=None``); a lossless target binds nothing either way.
+    """
+    from meep_gpu.chunk_map import ChunkLayout
+    from meep_gpu.fields import IYEE_SHIFTS
+
+    for kind in ("whole", "interior"):
+        fields, pml = _interior_fields(kind)
+        layout = ChunkLayout.one_rank(fields.grid, pml)
+        volumes = conductivity_module.conductive_chunk_volumes(fields, "step_D", None, pml)
+        assert volumes[1] is None
+        for index, target in ((0, "Dx"), (2, "Dz")):
+            if kind == "whole":
+                assert volumes[index] is None, target
+                continue
+            want = layout.conductive_mask(fields.conductivity_for(target),
+                                          IYEE_SHIFTS[target])
+            assert volumes[index] is not None and np.array_equal(volumes[index], want)
+            assert want.any() and not want.all()
+
+
+def test_the_plan_reads_a_volume_only_for_a_conductive_target_that_carries_one():
+    """``CMASK`` is 1 exactly where a conductive target binds a volume."""
+    shape = (6, 5, 4)
+    arrays = [np.zeros(shape, dtype=np.float32) for _ in range(3)]
+    volume = np.ones(shape, dtype=bool)
+    plan = conductivity_module.ConductivePmlCurlPlan(
+        "step_D", shape, 0.5, (0, 0, 0), (1, 1, 0), 256, arrays, arrays,
+        [arrays[0], arrays[1], None], [arrays[0], arrays[1], None],
+        [arrays[0], arrays[1], None], arrays, [np.ones(n, np.float32)
+                                               for n in shape for _ in range(2)],
+        chunk_bounds=_every_cell(shape), conductive_chunks=(volume, None, volume))
+    assert plan.cmask == (1, 0, 0)
+    assert plan._chunks[0].array.dtype == np.uint8  # noqa: SLF001
+
+
+def _every_cell(shape):
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, RECORD_WORDS, record_index
+
+    record = np.zeros(RECORD_WORDS, dtype=np.int32)
+    for axis, n in enumerate(shape):
+        if n > 1:
+            record[RECORD_PRESENCE_WORD] |= 1 << axis
+            for half in (False, True):
+                record[record_index(half, axis, 1)] = n
+    return record
+
+
+def test_a_plan_without_a_record_is_refused_by_name():
+    """The harness route has no default division (``launch.plan_from_arrays``'s rule)."""
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+
+    shape = (6, 5, 4)
+    arrays = [np.zeros(shape, dtype=np.float32) for _ in range(3)]
+    with pytest.raises(ChunkLayoutRefusal, match="ConductivePmlCurlPlan was given no chunk"):
+        conductivity_module.ConductivePmlCurlPlan(
+            "step_D", shape, 0.5, (0, 0, 0), (1, 1, 1), 256, arrays, arrays, arrays,
+            arrays, arrays, arrays, [np.ones(n, np.float32)
+                                     for n in shape for _ in range(2)],
+            chunk_bounds=None)
+    with pytest.raises(TypeError):
+        # chunk_bounds deliberately missing (the expansion keeps the record-binding
+        # scan of test_triton_chunk_bounds from counting this refusal as a plan).
+        conductivity_module.plan_conductive_from_arrays(
+            "step_D", {}, {}, (0, 0, 0), (1, 1, 1), 0.5, **{})
+
+
+def test_a_conductive_target_whose_volume_cannot_be_read_is_refused(monkeypatch):
+    """Which chunks keep a conductivity is read off its volume; no volume, no claim."""
+    fields, pml = build()
+    monkeypatch.setattr(fields, "conductivity_for", lambda component: None)
+    reasons = reasons_without_backend(fields, pml)
+    assert any("conductivity_for" in r for r in reasons), reasons
 
 
 # ---------------------------------------------------------------------------
@@ -565,10 +714,12 @@ def test_plan_step_selects_one_ordinary_and_one_conductive_curl(monkeypatch):
         lambda fields, pml, sub_step: _composition_refusal())
     monkeypatch.setattr(
         launch_module, "plan_pml_curl",
-        lambda fields, pml, sub_step, block=None: f"ordinary:{sub_step}")
+        lambda fields, pml, sub_step, block=None, chunk_layout=None:
+            f"ordinary:{sub_step}")
     monkeypatch.setattr(
         launch_module, "plan_conductive_pml_curl",
-        lambda fields, pml, sub_step, block=None: f"conductive:{sub_step}",
+        lambda fields, pml, sub_step, block=None, chunk_layout=None:
+            f"conductive:{sub_step}",
         raising=False)
     monkeypatch.setattr(
         launch_module, "constitutive_coverage",

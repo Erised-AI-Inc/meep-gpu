@@ -14,21 +14,16 @@ registered at ``update_E`` in ``launch.py``'s arm table, and its device byte gat
 is RELEASED (``triton_kernels/fingerprints.json`` ::
 ``triton_complex_offdiag_device_gate``, ``status: PASS``).
 
-WHAT IS ACTUALLY TRUE is narrower and mechanical: the census that board reads was
-cut under an expansion probe artifact classifying the BASE FOUR patterns, and
-this tranche binds :data:`folded_complex.PARITY_PROBE_PATTERNS` — the base four
-PLUS ``'c8_mul_c8_parity_coefficient_left'``.  The arm therefore refuses with two
-clauses that are about the ARTIFACT and never about the configuration.
+WHAT WAS ACTUALLY TRUE was narrower and mechanical: the census that board reads was
+cut under an expansion probe artifact classifying the BASE FOUR patterns, and this
+tranche then bound the parity pattern as well, so the arm refused with clauses about
+the ARTIFACT and never about the configuration. That licence is deleted.
 
 These tests pin the BEHAVIOUR, so the reading cannot be made again from a board
 column: the arm admits every one of the three configurations modulo the CuPy
-clause under an artifact that classifies the parity pattern; it is the SOLE
-``update_E`` admitter there, so it would be selected rather than lost to
-ambiguity; five controls that must refuse do refuse; and the parity arithmetic
-the fifth pattern is about is measured, with a bare sign flip caught.
-
-The two probe artifacts are read off the results tree.  Every test that needs one
-SKIPS when it is absent rather than passing vacuously.
+clause; it is the SOLE ``update_E`` admitter there, so it would be selected rather
+than lost to ambiguity; three controls that must refuse do refuse; and the mirror
+parity arithmetic is measured, with a bare sign flip caught.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -37,7 +32,6 @@ SKIPS when it is absent rather than passing vacuously.
 
 from __future__ import annotations
 
-import copy
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -46,26 +40,6 @@ import numpy as np
 import pytest
 
 API = Path(__file__).resolve().parents[1]
-
-#: The artifact the 2026-09-02 census was cut under — base four patterns only.
-CENSUS_PROBE = (API / "parity/meep_gpu/results"
-                / "complex_expansion_beta_extension_2026-09-01/probe_keep/probe.json")
-
-#: The artifact the FOLDED COMPLEX families are gated under — base four plus the
-#: parity pattern.
-FOLDED_PROBE = (API / "parity/meep_gpu/results"
-                / "triton_regate_2026-08-31_final3/folded_complex/probe.json")
-
-#: All SEVEN patterns.  This is the record the 2026-09-02 board already names in
-#: ``credited_under_a_different_expansion_licence`` on the B->H twin of the three
-#: rows above, so no NEW artifact has to be cut for the E-side arm to be credited
-#: — the one the H-side arm is already credited under licenses it too.
-UNIFIED_PROBE = (API / "parity/meep_gpu/results"
-                 / "unified_expansion_2026-08-27/keep/gate.json")
-
-#: The census declared this on every leg (``--run-policy keep``); the expansion
-#: clauses are conditional on it, so every comparison here is made under it.
-RUN_POLICY = "keep"
 
 BACKEND_HEAD = "array module is "
 BACKEND_TAIL = ", not cupy"
@@ -99,23 +73,6 @@ FIXTURES: Dict[str, Dict[str, Any]] = {
 # Fixtures and helpers
 # ---------------------------------------------------------------------------
 
-def _probe(path: Path) -> Any:
-    """One expansion artifact, or a DECLARED skip naming the absent resource.
-
-    ``parity/meep_gpu/results/`` is gitignored in full, so these records
-    are present only on a machine that cut or fetched them.  The skip is
-    sanctioned rather than bare so a run that could not ask the question says so
-    in its own summary instead of reporting a pass.
-    """
-    if not path.exists():  # pragma: no cover - artifact-absent checkouts
-        from conftest import requires_resource_skip  # noqa: PLC0415
-
-        requires_resource_skip(
-            "expansion_probe_artifact",
-            f"this record is under the gitignored results tree and is absent "
-            f"here: {path}")
-    return json.loads(path.read_text())
-
 
 def _build(**kwargs: Any) -> Tuple[Any, Any]:
     import sys
@@ -136,19 +93,17 @@ def _residual(reasons: Any) -> Tuple[str, ...]:
                          and str(reason).endswith(BACKEND_TAIL)))
 
 
-def _coverage(fields: Any, pml: Any, probe: Any) -> Any:
-    from meep_gpu.expansion_refusal import declaring_run_policy
+def _coverage(fields: Any, pml: Any) -> Any:
     from meep_gpu.triton_kernels import complex_offdiag_update_e as arm
 
-    with declaring_run_policy(RUN_POLICY):
-        return arm.complex_folded_offdiag_update_e_coverage(fields, pml, probe)
+    return arm.complex_folded_offdiag_update_e_coverage(fields, pml)
 
 
 # ---------------------------------------------------------------------------
 # The arm is registered, and it is the SOLE admitter
 # ---------------------------------------------------------------------------
 
-def _consulted_arms(fields: Any, pml: Any, probe: Any,
+def _consulted_arms(fields: Any, pml: Any,
                     slot: str) -> List[Dict[str, Any]]:
     """Every arm ``launch.plan_step`` consults for one slot, with its verdict.
 
@@ -159,7 +114,6 @@ def _consulted_arms(fields: Any, pml: Any, probe: Any,
     filter :func:`_residual` applies — the same seam
     ``parity/meep_gpu/triton_predicate_battery.py`` uses.
     """
-    from meep_gpu.expansion_refusal import declaring_run_policy
     from meep_gpu.triton_kernels import launch
     from meep_gpu.triton_kernels.coverage import Coverage
 
@@ -205,8 +159,7 @@ def _consulted_arms(fields: Any, pml: Any, probe: Any,
 
     launch._select_slot = recording_select
     try:
-        with declaring_run_policy(RUN_POLICY):
-            launch.plan_step(fields, pml, probe=probe)
+        launch.plan_step(fields, pml)
     finally:
         launch._select_slot = original_select
         for name, attribute in originals.items():
@@ -218,7 +171,7 @@ def _consulted_arms(fields: Any, pml: Any, probe: Any,
 def test_the_folded_complex_offdiag_arm_is_consulted_at_update_e(fixture: str) -> None:
     """The arm the board reports as absent is in the shipped ``update_E`` table."""
     fields, pml = _build(**FIXTURES[fixture])
-    arms = _consulted_arms(fields, pml, _probe(FOLDED_PROBE), "update_E")
+    arms = _consulted_arms(fields, pml, "update_E")
     labels = [entry["arm"] for entry in arms]
     assert "complex folded off-diagonal" in labels, (
         f"{fixture}: update_E consulted {labels}; the folded complex "
@@ -228,8 +181,7 @@ def test_the_folded_complex_offdiag_arm_is_consulted_at_update_e(fixture: str) -
 
 
 @pytest.mark.parametrize("fixture", sorted(FIXTURES))
-def test_it_is_the_sole_update_e_admitter_under_a_parity_carrying_artifact(
-        fixture: str) -> None:
+def test_it_is_the_sole_update_e_admitter(fixture: str) -> None:
     """Sole, so the slot is FILLED rather than emptied for ambiguity.
 
     ``_select_slot`` leaves a slot unselected when two or more arms admit, so
@@ -237,7 +189,7 @@ def test_it_is_the_sole_update_e_admitter_under_a_parity_carrying_artifact(
     the stronger one.
     """
     fields, pml = _build(**FIXTURES[fixture])
-    arms = _consulted_arms(fields, pml, _probe(FOLDED_PROBE), "update_E")
+    arms = _consulted_arms(fields, pml, "update_E")
     admitted = sorted(entry["arm"] for entry in arms if entry["covered"])
     assert admitted == ["complex folded off-diagonal"], (
         f"{fixture}: update_E admitters are {admitted}; expected exactly the "
@@ -245,110 +197,27 @@ def test_it_is_the_sole_update_e_admitter_under_a_parity_carrying_artifact(
 
 
 @pytest.mark.parametrize("fixture", sorted(FIXTURES))
-def test_the_census_artifact_refuses_it_for_the_artifact_and_nothing_else(
-        fixture: str) -> None:
-    """Under the census's own artifact the arm refuses — and ONLY about the artifact.
-
-    This is the whole of the board's empty ``constitutive_admitters`` column,
-    stated as a set difference rather than as a verdict: swapping the artifact
-    must remove exactly the expansion clauses and add nothing.
-    """
-    from meep_gpu.triton_kernels.folded_complex import PARITY_PROBE_PATTERN
-
+def test_the_arm_admits_every_fixture_modulo_the_backend(fixture: str) -> None:
+    """Every one of the three configurations, with nothing but the backend clause."""
     fields, pml = _build(**FIXTURES[fixture])
-    census = _residual(_coverage(fields, pml, _probe(CENSUS_PROBE)).reasons)
-    folded = _residual(_coverage(fields, pml, _probe(FOLDED_PROBE)).reasons)
-
-    assert folded == (), (
-        f"{fixture}: the arm still refuses under the parity-carrying artifact: "
-        f"{folded}")
-    assert census, f"{fixture}: the census artifact was expected to refuse"
-    assert all(PARITY_PROBE_PATTERN in reason or "EXPANSION" in reason
-               for reason in census), (
-        f"{fixture}: the census artifact refuses for a reason that is NOT about "
-        f"the artifact, which would make this a real product gap: {census}")
-    assert set(folded) - set(census) == set(), (
-        f"{fixture}: swapping the artifact ADDED refusals: "
-        f"{sorted(set(folded) - set(census))}")
-
-
-@pytest.mark.parametrize("fixture", sorted(FIXTURES))
-def test_the_board_s_own_credited_artifact_already_licenses_this_arm(
-        fixture: str) -> None:
-    """No NEW artifact is needed to credit the arm — an existing one licenses it.
-
-    ``unified_expansion_2026-08-27/keep/gate.json`` is the record the board names
-    in ``credited_under_a_different_expansion_licence`` for the ``B->H`` twin of
-    these three rows.  It classifies all seven patterns, the parity one included.
-    """
-    fields, pml = _build(**FIXTURES[fixture])
-    residual = _residual(_coverage(fields, pml, _probe(UNIFIED_PROBE)).reasons)
+    residual = _residual(_coverage(fields, pml).reasons)
     assert residual == (), (
-        f"{fixture}: the arm refuses under the unified record the board already "
-        f"credits its B->H twin under: {residual}")
-
-
-def test_the_census_artifact_does_not_classify_the_pattern_this_tranche_binds() -> None:
-    """The mechanism, named at the artifacts rather than inferred from a refusal."""
-    from meep_gpu.triton_kernels.folded_complex import (
-        PARITY_PROBE_PATTERN, PARITY_PROBE_PATTERNS)
-
-    census = _probe(CENSUS_PROBE).get("patterns", {})
-    folded = _probe(FOLDED_PROBE).get("patterns", {})
-    assert PARITY_PROBE_PATTERN in PARITY_PROBE_PATTERNS
-    assert PARITY_PROBE_PATTERN not in census, (
-        "the census artifact now classifies the parity pattern; if that is "
-        "deliberate, this file's premise has changed and the board should be "
-        "re-cut rather than this test relaxed")
-    assert PARITY_PROBE_PATTERN in folded, (
-        f"{FOLDED_PROBE} no longer classifies {PARITY_PROBE_PATTERN!r}")
-    unified = _probe(UNIFIED_PROBE).get("patterns", {})
-    assert PARITY_PROBE_PATTERN in unified, (
-        f"{UNIFIED_PROBE} no longer classifies {PARITY_PROBE_PATTERN!r}; the "
-        f"board's existing credit for the B->H twin rests on it")
+        f"{fixture}: the arm refuses: {residual}")
 
 
 # ---------------------------------------------------------------------------
 # The controls that must refuse
 # ---------------------------------------------------------------------------
 
-def _without_parity(record: Any) -> Any:
-    from meep_gpu.triton_kernels.folded_complex import PARITY_PROBE_PATTERN
-
-    stripped = copy.deepcopy(record)
-    stripped.get("detail", {}).pop(PARITY_PROBE_PATTERN, None)
-    stripped.get("patterns", {}).pop(PARITY_PROBE_PATTERN, None)
-    return stripped
-
-
-def _parity_unclassifiable(record: Any) -> Any:
-    from meep_gpu.triton_kernels.folded_complex import PARITY_PROBE_PATTERN
-
-    broken = copy.deepcopy(record)
-    entry = broken.get("detail", {}).get(PARITY_PROBE_PATTERN)
-    if isinstance(entry, dict):
-        entry["classified"] = "NEITHER"
-        entry["matches"] = {key: False for key in entry.get("matches", {})}
-        entry["mismatch_words"] = {key: 7 for key in entry.get("mismatch_words", {})}
-    broken.get("patterns", {})[PARITY_PROBE_PATTERN] = "NEITHER"
-    return broken
-
-
-@pytest.mark.parametrize("name,overrides,artifact", [
-    ("no_offdiagonal_row", {"offdiag": False}, "folded"),
-    ("unfolded", {"symmetry": ()}, "folded"),
-    ("real_storage", {"complex_storage": False}, "folded"),
-    ("parity_pattern_deleted", {}, "deleted"),
-    ("parity_pattern_unclassifiable", {}, "unclassifiable"),
+@pytest.mark.parametrize("name,overrides", [
+    ("no_offdiagonal_row", {"offdiag": False}),
+    ("unfolded", {"symmetry": ()}),
+    ("real_storage", {"complex_storage": False}),
 ])
-def test_the_arm_refuses_every_control(name: str, overrides: Dict[str, Any],
-                                       artifact: str) -> None:
-    """Five controls.  An admission on ANY of them voids the admissions above."""
-    folded = _probe(FOLDED_PROBE)
-    record = {"folded": folded, "deleted": _without_parity(folded),
-              "unclassifiable": _parity_unclassifiable(folded)}[artifact]
+def test_the_arm_refuses_every_control(name: str, overrides: Dict[str, Any]) -> None:
+    """Three controls.  An admission on ANY of them voids the admissions above."""
     fields, pml = _build(**dict(FIXTURES["folded_twofold"], **overrides))
-    residual = _residual(_coverage(fields, pml, record).reasons)
+    residual = _residual(_coverage(fields, pml).reasons)
     assert residual, (
         f"control {name} was ADMITTED modulo backend; the predicate is broader "
         f"than its product")
@@ -445,84 +314,6 @@ def test_the_flip_and_the_full_multiply_agree_where_no_zero_is_signed() -> None:
         assert int(np.count_nonzero(_words(flipped) != _words(reference))) == 0, (
             f"phase {phase:+d}: the flip diverged on an all-normal plane, so the "
             f"signed-zero measurement above is not specific to signed zeros")
-
-
-# ---------------------------------------------------------------------------
-# Is re-cutting the census under the unified record safe for every family?
-# ---------------------------------------------------------------------------
-
-#: A spread wide enough that a regression would show: real and complex storage,
-#: folded and unfolded, with and without an off-diagonal row, a pole, a
-#: nonlinearity, a conductivity, and with the absorber off.
-SWAP_CASES: Dict[str, Dict[str, Any]] = dict(
-    FIXTURES,
-    real_pml_3d=dict(),
-    real_offdiag=dict(offdiag=True),
-    complex_pml=dict(complex_storage=True),
-    complex_offdiag_unfolded=dict(complex_storage=True, offdiag=True,
-                                  boundaries="periodic",
-                                  k_point=(0.4, 0.0, 0.0)),
-    folded_real=dict(symmetry=("X",)),
-    folded_real_offdiag=dict(symmetry=("X",), offdiag=True),
-    folded_complex=dict(symmetry=("X",), complex_storage=True),
-    folded_complex_offdiag=dict(symmetry=("X",), complex_storage=True,
-                                offdiag=True),
-    dispersive=dict(poles=1),
-    nonlinear=dict(nonlinear=True),
-    conductive=dict(conductivity=0.2),
-    no_pml_real=dict(pml_thickness=0),
-    no_pml_complex=dict(pml_thickness=0, complex_storage=True),
-)
-
-
-def _slot_admitters(fields: Any, pml: Any, probe: Any) -> Dict[str, List[str]]:
-    out: Dict[str, List[str]] = {}
-    for slot in ("step_B", "step_D", "fill_B", "fill_D", "update_H", "update_E"):
-        recorded = _consulted_arms(fields, pml, probe, slot)
-        if recorded:
-            out[slot] = sorted(entry["arm"] for entry in recorded
-                               if entry["covered"])
-    return out
-
-
-@pytest.mark.parametrize("case", sorted(SWAP_CASES))
-def test_the_unified_record_never_costs_an_admitter(case: str) -> None:
-    """The unified record is a STRICT SUPERSET, measured rather than argued.
-
-    Same five shared patterns, same classifications, same backend, same device,
-    same ``keep`` policy — so re-cutting the census under it should only ever ADD
-    admitters.  A single LOST admitter would make that re-cut unsafe, which is
-    the thing a reader needs to know before ordering one.
-    """
-    fields, pml = _build(**SWAP_CASES[case])
-    before = _slot_admitters(fields, pml, _probe(CENSUS_PROBE))
-    after = _slot_admitters(fields, pml, _probe(UNIFIED_PROBE))
-    lost = {slot: sorted(set(before.get(slot, [])) - set(after.get(slot, [])))
-            for slot in sorted(set(before) | set(after))
-            if set(before.get(slot, [])) - set(after.get(slot, []))}
-    assert lost == {}, (
-        f"{case}: swapping the census artifact for the unified record LOST "
-        f"admitters {lost}; the re-cut is not safe as stated")
-
-
-def test_the_census_artifact_also_hides_the_folded_complex_fill_arms() -> None:
-    """The blast radius is wider than the three D->E rows, and it is measured.
-
-    The parity pattern is bound by the mirror-ghost FILL as well as by the
-    off-diagonal ``update_E`` stencil, so the census artifact suppresses the
-    ``folded complex fill`` arm at ``fill_B``/``fill_D`` on EVERY folded complex
-    configuration — not only the off-diagonal ones.  Recorded here so a re-cut is
-    scoped to what it actually changes.
-    """
-    fields, pml = _build(symmetry=("X",), complex_storage=True)
-    before = _slot_admitters(fields, pml, _probe(CENSUS_PROBE))
-    after = _slot_admitters(fields, pml, _probe(UNIFIED_PROBE))
-    for slot in ("fill_B", "fill_D"):
-        gained = set(after.get(slot, [])) - set(before.get(slot, []))
-        assert "folded complex fill" in gained, (
-            f"{slot}: the census artifact no longer hides the folded complex "
-            f"fill arm (gained {sorted(gained)}); if a re-cut has landed, this "
-            f"file's premise has changed")
 
 
 # ---------------------------------------------------------------------------

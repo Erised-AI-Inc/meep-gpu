@@ -24,17 +24,28 @@ MEEP's ``python/tests`` adds nothing steppable. The value is two things:
 
 WHAT COLLAPSES WHEN THE ABSORBER GOES AWAY
 ------------------------------------------
-``stepping._apply_curl`` (stepping.py:460-509) has four branches. With
+``stepping._apply_curl`` (stepping.py:516-587) has four branches. With
 ``_pml_is_active(pml)`` False and ``fields.condfac_for(target)`` None, all of the
 machinery falls away and the whole sub-step tail is one line::
 
-    target -= curl                                       # stepping.py:508
+    target -= curl                                       # stepping.py:587
 
 There is no ``fu`` auxiliary (``_require_pml_storage`` is not called, and
 ``fu_*`` is None), no ``kms``/``sinv`` pair, and no split-field recurrence. The
 curl itself — the term table, the ghost rule, the grouping and the ownership
 mask — is UNCHANGED, which is why this kernel's first two thirds are a verbatim
 copy of ``kernels.pml_curl_step``'s.
+
+THE CURL IS MEEP'S, PER PARTNER PRESENCE. ``step_generic.cpp`` associates the
+stencil left to right, ``dtdx * (((g1s - g1) + g2) - g2s)`` (:104), and takes a
+one-partner form where a partner's derivative axis is invariant (:72-76, :108);
+``stepping._curl_from_operands`` does the same, and so does this kernel, through the
+shared :func:`.forms.curl_stencil`. Which partners are present is a fact of the run
+(``stepping.curl_presence``, ``Grid.is_invariant``), NOT of the stored extent: a 3-D
+run may store one cell along an axis that still takes both partners. So the kernel
+reads it from the chunk record every plan binds (``chunk_map.chunk_bounds_record``,
+its presence word), exactly as the PML kernels do. The record's membership runs are
+all empty on a run with no absorber, and this kernel reads none of them.
 
 ``update_H`` returns immediately (stepping.py:916): without PML, H is not stored
 and ``get_H`` serves the B array itself. ``update_E`` returns immediately too
@@ -61,10 +72,11 @@ disappears. It is bit-safe because the product is ELEMENTWISE: the value at flat
 index j is ``D[j] * inv_eps[j]`` whether it is computed into a scratch array and
 read back or computed in a register, the operands are the same float32 bits in
 the same order, and ``ENABLE_FP_FUSION = False`` stops the multiply from
-contracting with the subtraction that consumes it. The operand ORDER is kept as
-the array path writes it (D on the left, stepping.py:2393
-``xp.multiply(displacement, inverse, out=target)``); float multiplication is
-bitwise commutative, but a transcription is not the place to rely on that.
+contracting with the subtraction that consumes it. The array path writes the
+product ``part_products.scale(inverse, displacement, out=target)``
+(stepping.py:3002); the kernel writes ``D * inv_eps``. IEEE-754 multiplication is
+commutative on every word, signed zero included, so the two are one word, and the
+gate's ``swap_derive_operand_order`` control is an expected null for that reason.
 
 ``DERIVE = 0`` binds whatever the host resolved — the stored E arrays when
 ``stores_E``, or the array path's own snapshot when a caller wants the
@@ -130,6 +142,10 @@ class _UnavailableKernel:
 try:  # The host predicate and public refusal path must work without Triton.
     import triton
     import triton.language as tl
+
+    # The shared form helpers import Triton themselves, so they are imported here,
+    # behind the same guard: the kernel body below is the only reader.
+    from .forms import axis_present, curl_stencil
     _TRITON_IMPORT_ERROR: Optional[BaseException] = None
 except ImportError as _exc:  # pragma: no cover - exercised by the absence test
     _TRITON_IMPORT_ERROR = _exc
@@ -158,11 +174,18 @@ from .coverage import (  # READ-ONLY imports; nothing here mutates coverage.py
     _susceptibility_reasons,
     _volume_reasons,
 )
-from .launch import CupyPointer
+from .launch import CupyPointer, bind_chunk_bounds, chunk_bounds_for
 
 # Same constexpr code as ``kernels.METALLIC``. Importing kernels.py here would
 # import Triton and defeat this module's host-only coverage route.
 METALLIC = tl.constexpr(1)
+
+#: The chunk record's partner-presence word (``chunk_map.RECORD_PRESENCE_WORD``), the
+#: one word of the record this path reads: a run with no absorber has no membership
+#: run on any axis, so the forms never vary by chunk and only the curl expression
+#: does. Same value as ``kernels.RECORD_PRESENCE``; ``test_triton_no_pml`` pins it
+#: against ``chunk_map``.
+RECORD_PRESENCE = tl.constexpr(24)
 
 #: Targets and sources per sub-step. Same table as ``launch.SUB_STEPS`` minus the
 #: PML sub-lattice suffix, which does not exist on this path.
@@ -242,16 +265,17 @@ GATE_VERDICT = {
 }
 
 # A DEGENERATE AXIS HIDES A GROUPING DEFECT, and ``2d_plain`` is a degenerate-axis
-# case. ``flatten_grouping`` — the mutation that reassociates
-# ``dtdx * ((c_y - c) + (b - b_z))`` into ``dtdx * (c_y - c + b - b_z)`` — was caught
-# 36/36 on the 3-D shape (32,24,16) and 0/18 on (64,1,64), at EVERY Courant and on
-# both sub-steps. The cause is structural, not statistical: the mutation edits
-# ``curl0``, and on a one-cell y axis ``(c_y - c)`` is an exact zero, so the
-# reassociation is exact. EVERY 2-D benchmark case has an invariant axis, so a gate
-# that swept only the shapes it was unblocking would certify a regrouped kernel.
-# The 3-D shape is in the mutation leg for that reason and for no other, and
-# ``test_the_curl_grouping_is_the_one_stepping_uses`` pins the same thing
-# structurally on a laptop, where no shape is being swept at all.
+# case. A regrouping of the two-partner stencil can only show where BOTH partners
+# are present: on a run whose y axis is invariant, ``curl0``'s first partner is
+# absent and the one-partner form never reads the grouping at all. The gate's
+# ``regroup_stencil`` mutation (the pairwise ``dtdx * ((c_y - c) + (b - b_z))`` that
+# this kernel carried before MEEP's left-to-right grouping) is therefore scored only
+# on cases with two or more resolved axes, and ``full_bracket_over_an_absent_partner``
+# (presence ignored) only on cases with an invariant axis. Recorded 2026-08-10 for the
+# pairwise kernel, the same structure: the flattening mutation of that day was caught
+# 36/36 on the 3-D shape (32,24,16) and 0/18 on (64,1,64).
+# ``test_the_curl_grouping_is_the_one_stepping_uses`` pins the call structurally on a
+# laptop, where no shape is being swept at all.
 
 
 @triton.jit
@@ -259,6 +283,7 @@ def plain_curl_step(
     f0, f1, f2,                       # targets: Bx,By,Bz  or  Dx,Dy,Dz
     g0, g1, g2,                       # sources: Ex,Ey,Ez (or Dx,Dy,Dz if DERIVE) / Bx,By,Bz
     e0, e1, e2,                       # inverse epsilon; read only when DERIVE
+    cb,                               # chunk record: the curl's partner-presence word
     nx, ny, nz, n_elem, dtdx,
     BACKWARD: tl.constexpr,           # 0 = B (forward differences), 1 = D
     DERIVE: tl.constexpr,             # 1 = sources are D and E = D * inv_eps here
@@ -269,15 +294,18 @@ def plain_curl_step(
 
     Transcribed, and from where (re-checked against the tree):
 
-    * term table          ``stepping.B_CURL_TERMS`` / ``D_CURL_TERMS`` (:213-223)
-    * ghost rule          ``stepping._shift_up`` (:1723) / ``_shift_down`` (:1787)
-    * curl grouping       ``stepping._curl_from_operands`` (:1601)
-    * ownership mask      ``stepping._mask_non_owned_cells`` (:1865)
-    * the update          ``stepping._apply_curl``'s plain branch (:508)
-    * the E derivation    ``stepping._read_component`` (:2383)
+    * term table          ``stepping.B_CURL_TERMS`` / ``D_CURL_TERMS`` (:237-246)
+    * ghost rule          ``stepping._shift_up`` (:2093) / ``_shift_down`` (:2155)
+    * curl grouping       ``stepping._curl_from_operands`` (:1935), every presence arm,
+                          through :func:`.forms.curl_stencil`
+    * partner presence    ``stepping.curl_presence`` (:1842), the record's presence word
+    * ownership mask      ``stepping._mask_non_owned_cells`` (:2259)
+    * the update          ``stepping._apply_curl``'s plain branch (:587)
+    * the E derivation    ``stepping._read_component`` (:2990)
 
-    The first three are IDENTICAL to :func:`kernels.pml_curl_step`; only the tail
-    differs. ``ENABLE_FP_FUSION`` still applies and still matters: ``f - curl``
+    The first four are IDENTICAL to :func:`kernels.pml_curl_step`; only the tail
+    differs. The record ``cb`` is read for its presence word alone: with no absorber
+    every membership run is empty, so no form is chunk-dependent here. ``ENABLE_FP_FUSION`` still applies and still matters: ``f - curl``
     with ``curl = dtdx * (...)`` is a multiply feeding a subtract, which is the
     exact shape LLVM contracts into ``fma.rn.f32``. It matters MORE here than in
     the split-field tail, because there the multiply's consumer was a separate
@@ -316,8 +344,10 @@ def plain_curl_step(
 
     # --- the source operands ----------------------------------------------------
     # DERIVE forms stepping._read_component's D * inv_eps here rather than reading
-    # a scratch volume the host wrote. D ON THE LEFT — the array path's operand
-    # order (stepping.py:2393), kept literally.
+    # a scratch volume the host wrote. The array path writes the product
+    # part_products.scale(inverse, displacement) (stepping.py:3002); multiplication
+    # operand order is free in IEEE arithmetic, signed zero included, so D * inv_eps
+    # here is the same word.
     if DERIVE:
         a = tl.load(g0 + idx, mask=live, other=0.0) * tl.load(e0 + idx, mask=live, other=0.0)
         b = tl.load(g1 + idx, mask=live, other=0.0) * tl.load(e1 + idx, mask=live, other=0.0)
@@ -347,9 +377,17 @@ def plain_curl_step(
     # metallic legs of the gate rather than argued here.
 
     # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-    curl0 = dtdx * ((c_y - c) + (b - b_z))
-    curl1 = dtdx * ((a_z - a) + (c - c_x))
-    curl2 = dtdx * ((b_x - b) + (a - a_y))
+    # One call per target: MEEP's left-to-right association with both partners, the
+    # one-partner form where the record says the other partner's derivative axis is
+    # invariant, and an exact +0 with neither. The presence word is the record's
+    # (stepping.curl_presence, MEEP's have_plus_deriv / have_minus_deriv).
+    presence = tl.load(cb + RECORD_PRESENCE)
+    px = axis_present(presence, 0)
+    py = axis_present(presence, 1)
+    pz = axis_present(presence, 2)
+    curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+    curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+    curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
     # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
     at_x, at_y, at_z = i == 0, j == 0, k == 0
@@ -610,19 +648,26 @@ class PlainCurlPlan:
     Same two construction routes and one launch route as ``launch.PmlCurlPlan``:
     :func:`plan_plain_curl` from the engine's objects through the predicate, and
     :func:`plan_plain_curl_from_arrays` from bare device arrays for the gate.
+
+    ``chunk_bounds`` is the chunk record (``launch.bind_chunk_bounds``), required: the
+    plan keeps its read-only host copy as :attr:`chunk_bounds` and launches with the
+    device copy as ``cb``, whose presence word picks each target's curl expression.
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "derive", "bc",
-                 "block", "_targets", "_sources", "_inv_eps", "_grid", "_kernel")
+                 "block", "chunk_bounds", "_targets", "_sources", "_inv_eps", "_cb",
+                 "_grid", "_kernel")
 
     def __init__(self, sub_step: str, shape, dtdx: float, bc, block: int,
                  targets, sources, inverse_epsilon=None, derive: int = 0,
-                 kernel=None) -> None:
+                 kernel=None, *, chunk_bounds: Any) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "PlainCurlPlan")
         # float(): the array path multiplies a float32 volume by a Python float,
         # which NumPy/CuPy cast to float32 before the multiply; Triton types a
         # Python float argument as fp32. Same bits. (launch.PmlCurlPlan, verbatim.)
@@ -648,7 +693,7 @@ class PlainCurlPlan:
         nx, ny, nz = self.shape
         kernel = self._kernel if self._kernel is not None else plain_curl_step
         kernel[self._grid](
-            *self._targets, *self._sources, *self._inv_eps,
+            *self._targets, *self._sources, *self._inv_eps, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
             BACKWARD=self.backward,
             DERIVE=self.derive,
@@ -659,12 +704,21 @@ class PlainCurlPlan:
 
     def __repr__(self) -> str:
         return (f"PlainCurlPlan({self.sub_step}, shape={self.shape}, bc={self.bc}, "
-                f"derive={self.derive}, block={self.block})")
+                f"derive={self.derive}, block={self.block}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_plain_curl(fields: Any, pml: Any, sub_step: str,
-                    block: Optional[int] = None) -> Optional[PlainCurlPlan]:
-    """Build a plan from the engine's own objects, or None when out of coverage."""
+                    block: Optional[int] = None,
+                    chunk_layout: Any = None) -> Optional[PlainCurlPlan]:
+    """Build a plan from the engine's own objects, or None when out of coverage.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default;
+    the plan binds its record (``launch.chunk_bounds_for``). On a run with no absorber
+    every division's record carries empty membership runs and the grid's own presence
+    word, so the two bind the same words; the argument is taken so the engine route
+    states which division it binds, as every PML plan does.
+    """
     if not plain_curl_coverage(fields, pml, sub_step).covered:
         return None
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
@@ -691,19 +745,27 @@ def plan_plain_curl(fields: Any, pml: Any, sub_step: str,
         sub_step, grid.shape, grid.dt / grid.dx, codes,
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, n) for n in spec["targets"]],
-        sources, inverse, derive)
+        sources, inverse, derive,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout))
 
 
 def plan_plain_curl_from_arrays(sub_step: str, arrays: Dict[str, Any], codes,
                                 dtdx: float, derive: int = 0,
                                 block: Optional[int] = None,
-                                kernel: Any = None) -> PlainCurlPlan:
+                                kernel: Any = None, *,
+                                chunk_bounds: Any) -> PlainCurlPlan:
     """Build a plan from bare device arrays — the gate's and benchmark's route.
 
     No predicate runs: the caller is a harness that constructed the configuration
     deliberately, including the deliberately wrong ones. ``kernel=`` is plumbed
     through because a mutation leg that silently launches the SHIPPED kernel
     reports every defect as uncaught — the exact harness defect §13.4 records.
+
+    ``chunk_bounds`` is REQUIRED and has no default: the caller hands over the record
+    whose presence word states which curl partners its grid has
+    (``chunk_map.chunk_bounds_record``), and a plan without one is refused by name
+    (``launch.bind_chunk_bounds``). A one-cell axis is not evidence of an invariant
+    one, so no default could be derived from the arrays' shape.
     """
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
 
@@ -718,7 +780,8 @@ def plan_plain_curl_from_arrays(sub_step: str, arrays: Dict[str, Any], codes,
     return PlainCurlPlan(sub_step, shape, dtdx, codes,
                          DEFAULT_BLOCK if block is None else block,
                          [arrays[n] for n in spec["targets"]],
-                         sources, inverse, derive, kernel=kernel)
+                         sources, inverse, derive, kernel=kernel,
+                         chunk_bounds=chunk_bounds)
 
 
 class PlainStepPlan:
@@ -748,14 +811,16 @@ class PlainStepPlan:
 
 
 def plan_plain_step(fields: Any, pml: Any,
-                    block: Optional[int] = None) -> PlainStepPlan:
+                    block: Optional[int] = None,
+                    chunk_layout: Any = None) -> PlainStepPlan:
     """Ask each sub-step's predicate independently and report the covered subset."""
     plans: Dict[str, PlainCurlPlan] = {}
     refusals: Dict[str, Tuple[str, ...]] = {}
     for sub_step in SUB_STEPS:
         verdict = plain_curl_coverage(fields, pml, sub_step)
         if verdict.covered:
-            plan = plan_plain_curl(fields, pml, sub_step, block=block)
+            plan = plan_plain_curl(fields, pml, sub_step, block=block,
+                                   chunk_layout=chunk_layout)
             if plan is not None:
                 plans[sub_step] = plan
                 continue

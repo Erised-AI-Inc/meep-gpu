@@ -16,7 +16,9 @@ Subcommands (``timing_ladder.py`` calls the same functions in process):
   record-control     the array-path control read off GPU rows' own array legs -> ledger
   record-note        a row that produced no measurement (timeout, refusal) -> ledger
   decide-binding     the binding probe's rule, applied to its rows
-  meep-build-record  what a MEEP build is: version, precision, flags, libraries
+  variance-verdict   the variance precondition over repeats of one point, GO / NO-GO
+  meep-build-record  what a MEEP build is: version, precision, flags, libraries, its
+                     fused multiply-add census and the host's math library
 
 Ported from the 2026-09-28 ladder's ``ladder_tools.py``. What changed, each by name:
 ``record-gpu`` read ``box_before.foreign_on_pinned_device``, a key no row carries, so the
@@ -436,9 +438,76 @@ print("BUILD " + json.dumps({
 """
 
 
+#: tools/ of the repository this file ships in: the fused multiply-add census and the
+#: installation check, whose identity child reads the host's math library.
+TOOLS_DIR = os.path.join(os.path.dirname(os.path.dirname(HERE)), "tools")
+
+
+def load_tool(name: str) -> Any:
+    """``tools/<name>.py`` as a module of its own (the import path is not touched)."""
+    import importlib.util  # noqa: PLC0415
+
+    path = os.path.join(TOOLS_DIR, name + ".py")
+    spec = importlib.util.spec_from_file_location("meep_gpu_tool_" + name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_CONTRACT = re.compile(r"(?:^|\s)-ffp-contract=(\w+)(?=\s|$)")
+_FAST = re.compile(r"(?:^|\s)(-ffast-math|-Ofast|-funsafe-math-optimizations)(?=\s|$)")
+
+
+def fp_contract(flags: Dict[str, str]) -> Optional[str]:
+    """The floating-point contraction the C and C++ flags ask for.
+
+    ``off``, ``on`` or ``fast`` when both ``CFLAGS`` and ``CXXFLAGS`` name it (the last
+    ``-ffp-contract`` of each wins, as for the compiler); ``fast`` under a fast-math
+    flag; ``compiler default`` when neither names one (clang's default contracts within
+    an expression, gcc's is ``fast``); ``mixed`` when the two differ; None when the
+    flags were not read. Informational: the census of the machine code decides.
+    """
+    values = []
+    for name in ("CFLAGS", "CXXFLAGS"):
+        text = flags.get(name)
+        if text is None:
+            return None
+        if _FAST.search(text):
+            values.append("fast")
+            continue
+        named = _CONTRACT.findall(text)
+        values.append(named[-1] if named else "compiler default")
+    return values[0] if values[0] == values[1] else "mixed"
+
+
+def identity_facts(python: str, timeout: float = 300.0) -> Tuple[Optional[Dict[str, Any]], str]:
+    """What ``tools/check_install.py``'s identity child reads in ``python``: the MEEP
+    images it loads, its subnormal handling, and the host's math library."""
+    check = os.path.join(TOOLS_DIR, "check_install.py")
+    text = timing_host.run_text([python, "-s", check, "--child", "identity",
+                                 "--identity-mode", "keep"], timeout=timeout) or ""
+    for line in text.splitlines():
+        if line.startswith("CHECK-INSTALL-JSON "):
+            try:
+                return json.loads(line[len("CHECK-INSTALL-JSON "):]), text
+            except ValueError:
+                break
+    return None, text
+
+
 def meep_build_record(python: str, config_log: Optional[str] = None,
                       launcher: Optional[str] = None) -> Dict[str, Any]:
-    """What a MEEP build IS, read off the interpreter that imports it."""
+    """What a MEEP build IS, read off the interpreter that imports it.
+
+    Beside the version, precision, flags and the sha256 of the MEEP images the
+    process loads (``sha256``, by path), it records what an identity reference is
+    judged by (``tools/check_install.py --require-identity-reference``): the
+    floating-point contraction the flags ask for (``fp_contract``), the fused
+    multiply-add census of those very images (``fma_census``, by
+    ``tools/fma_census.py``) and the host's math library (``libm``).
+    """
     record: Dict[str, Any] = {"utc": utc(), "python": python, "launcher": launcher,
                               "config_log": config_log}
     quiet = dict(os.environ)
@@ -468,6 +537,17 @@ def meep_build_record(python: str, config_log: Optional[str] = None,
     record["openmp_runtimes_in_process"] = facts.get("openmp_runtimes_loaded")
     record["configure_line"] = configure_line(config_log)
     record["makefile_flags"] = makefile_flags(config_log)
+    record["fp_contract"] = fp_contract(record["makefile_flags"])
+    try:
+        record["fma_census"] = load_tool("fma_census").census(libraries, progress=None)
+    except Exception as error:  # noqa: BLE001 - recorded by name; --require-identity refuses
+        record["fma_census"] = None
+        record["fma_census_unread"] = f"{type(error).__name__}: {error}"
+    identity, identity_text = identity_facts(python)
+    record["libm"] = (identity or {}).get("libm")
+    record["subnormals_after_import"] = (identity or {}).get("subnormals_after_import")
+    if identity is None:
+        record["identity_facts_output"] = identity_text[-2000:]
     if launcher:
         record["launcher_version"] = (timing_host.run_text([launcher, "--version"]) or "")[:400]
         record["mpi_implementation"] = timing_host.mpi_implementation(
@@ -487,11 +567,26 @@ def command_meep_build_record(args: Any) -> int:
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(record, handle, indent=2, sort_keys=True, default=str)
     probe = record.get("probe") or {}
+    census = record.get("fma_census") or {}
+    verdict = census.get("verdict") or {}
     print(f"MEEP build record: meep {probe.get('meep')} single "
-          f"{probe.get('single_precision')} openmp {record.get('openmp')} -> {args.out}")
+          f"{probe.get('single_precision')} openmp {record.get('openmp')} fp_contract "
+          f"{record.get('fp_contract')} -> {args.out}")
+    print(f"  FMA census: {verdict.get('text') or record.get('fma_census_unread')}")
+    libm = record.get("libm") or {}
+    print(f"  libm: {libm.get('uuid') or libm.get('sha256') or libm.get('unread') or 'not read'}")
     if args.require_single and probe.get("single_precision") is not True:
         print("REFUSING: the MEEP build is not single precision")
         return 3
+    if args.require_identity:
+        if verdict.get("none_outside_exempt") is not True:
+            print("REFUSING: --require-identity was given and the census of the loaded "
+                  "MEEP images is not clean (or did not run)")
+            return 4
+        if not libm or libm.get("unread"):
+            print("REFUSING: --require-identity was given and the host's math library "
+                  "was not read")
+            return 4
     return 0
 
 
@@ -644,6 +739,10 @@ def gpu_facts(row: Dict[str, Any], run_log: Optional[str]) -> Dict[str, Any]:
     out: Dict[str, Any] = {
         "case": row.get("case"), "timing_case": row.get("timing_case"),
         "verdict": row.get("verdict"), "reportable": row.get("reportable"),
+        # ``all`` (the fused leg, its singles and the array leg) or ``gpu-only`` (the
+        # fused leg alone, whose bit identity is its identity row's); rows written
+        # before the field existed are three-leg rows.
+        "legs_mode": row.get("legs_mode") or "all",
         "error": row.get("error"), "why": row.get("why"),
         "floors_failed": [k for k, v in (row.get("floors") or {}).items() if v is False],
         "grid_shape": row.get("grid_shape"), "cells": cells,
@@ -730,10 +829,57 @@ def monitor_count(attached: Any) -> Optional[int]:
     return sum(int(v) for v in attached.values() if isinstance(v, (int, float)))
 
 
+def identity_source(facts: Dict[str, Any],
+                    source: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Whether a ``gpu-only`` row's bit identity is vouched for by its identity row.
+
+    A GPU-only row lifts the fused leg alone, so its identity is measured by a three-leg
+    row of the SAME case and cells, on the same pinned sources (the rows' provenance
+    digests), launching the same tables -- the ladder's ``identity`` tier. Every clause
+    is checked here, so a row cannot borrow an identity measured on other code, at
+    another size or on another route.
+    """
+    if source is None:
+        return {"ok": False, "why": "no identity row of this route, case and size"}
+    measured = source.get("measured") or {}
+    out: Dict[str, Any] = {"key": source.get("key"), "tier": source.get("tier"),
+                           "cells": measured.get("cells"),
+                           "bit_identity_words": measured.get("bit_identity_words")}
+    # ITS TIMING IS NOT THE QUESTION: an identity row times the preflight's half-second
+    # windows, which the spread floor may strike, and is never a figure. What it vouches
+    # for is that it ran to the end, three legs, bit-identical, on this row's facts.
+    verdict = str(measured.get("verdict") or "")
+    if not verdict.startswith("TIMED"):
+        why = f"the identity row did not run to the end (verdict {verdict or None})"
+    elif (source.get("deposit_repair") or {}).get("ok") is False:
+        why = "the identity row's deposit-repair route is not the one its case declares"
+    elif measured.get("legs_mode", "all") != "all":
+        why = "the identity row is not a three-leg row"
+    elif measured.get("bit_identical_fused_vs_array") is not True:
+        why = "the identity row's fused leg is not bit-identical to its array leg"
+    elif measured.get("cells") != facts.get("cells"):
+        why = (f"the identity row timed {measured.get('cells')} cells and this row "
+               f"{facts.get('cells')}")
+    elif ((measured.get("tables_by_leg") or {}).get("fused")
+          != (facts.get("tables_by_leg") or {}).get("fused")):
+        why = (f"the identity row's fused leg launched "
+               f"{(measured.get('tables_by_leg') or {}).get('fused')} and this row's "
+               f"{(facts.get('tables_by_leg') or {}).get('fused')}")
+    elif (measured.get("provenance_sha256") or None) != (facts.get("provenance_sha256")
+                                                         or None):
+        why = "the identity row ran other pinned sources (provenance digests differ)"
+    else:
+        why = None
+    out.update(ok=why is None, why=why)
+    return out
+
+
 def record_gpu(ledger: str, row_dir: str, run_log: Optional[str],
                expect_launched: Optional[str], expect_repair: Optional[str],
                check_repair: bool, fields: Dict[str, Any],
-               extra: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], str]:
+               extra: Optional[Dict[str, Any]] = None,
+               identity_from: Optional[Dict[str, Any]] = None
+               ) -> Tuple[Dict[str, Any], str]:
     rows_path = os.path.join(row_dir, "rows.jsonl")
     row, why = last_row(rows_path)
     entry: Dict[str, Any] = {"ledger": "gpu", "utc": utc(), "rows_file": rows_path,
@@ -752,6 +898,10 @@ def record_gpu(ledger: str, row_dir: str, run_log: Optional[str],
     array = (facts["legs"].get("array") or {})
     unfused = (facts["legs"].get("unfused") or {})
     facts["monitor_count"] = monitor_count(facts.get("monitors_attached"))
+    gpu_only = facts["legs_mode"] == "gpu-only"
+    identity = identity_source(facts, identity_from) if gpu_only else None
+    if gpu_only:
+        entry["bit_identity_from"] = identity
     conditions = condition_strikes(entry, row)
     entry["conditions"] = conditions
     if facts["verdict"] != "TIMED":
@@ -766,7 +916,11 @@ def record_gpu(ledger: str, row_dir: str, run_log: Optional[str],
         # A ROW THAT FELL TO ANOTHER ROUTE IS A NUMBER, NOT AN ERROR, unless it is read.
         entry["struck"] = (f"launched {facts['what_launched']}, and this route is "
                            f"{expect_launched}")
-    elif facts["bit_identical_fused_vs_array"] is not True:
+    elif gpu_only and not identity["ok"]:
+        # A GPU-ONLY ROW HAS NO ARRAY LEG: its identity is its identity row's, or none.
+        entry["struck"] = (f"a gpu-only row carries no array leg and its bit identity is "
+                           f"not vouched for: {identity['why']}")
+    elif not gpu_only and facts["bit_identical_fused_vs_array"] is not True:
         entry["struck"] = "the fused leg is not bit-identical to the array leg"
     elif repair is not None and not repair["ok"]:
         entry["struck"] = f"deposit-repair route: {repair['why']}"
@@ -787,7 +941,10 @@ def record_gpu(ledger: str, row_dir: str, run_log: Optional[str],
                f"singles {number(unfused.get('mcell_steps_per_s'), '.1f')} "
                f"array {number(array.get('mcell_steps_per_s'), '.1f')} "
                f"(array launches/step {number(array.get('launches_per_step'), '.2f')}) "
-               f"bit_identical={facts['bit_identical_fused_vs_array']} lift[{lifts}]"
+               f"bit_identical={facts['bit_identical_fused_vs_array']}"
+               + (f" (gpu-only; identity from {identity.get('key')}: "
+                  f"{'ok' if identity['ok'] else identity['why']})" if gpu_only else "")
+               + f" lift[{lifts}]"
                + (f" repair={','.join(repair['seams']) or 'none'}"
                   f"(expected {repair['expected'] or 'none'})" if repair else "")
                + (f" STRUCK: {entry['struck']}" if entry.get("struck") else ""))
@@ -1208,6 +1365,107 @@ def decide_binding(probe_dir: str, bindings: Sequence[str], default: str,
     return chosen, record
 
 
+#: The repeat spread a variance precondition admits by default: the table's own gate
+#: between passes. Which threshold is of record is the owner's call; the rule takes it
+#: as a parameter and writes the one it used beside the verdict.
+VARIANCE_MAX_SPREAD = 0.05
+VARIANCE_MIN_REPEATS = 5
+
+
+def repeat_spread(values: Sequence[Optional[float]]) -> Optional[float]:
+    """(max - min) / median over the readable values: the table's between-pass spread."""
+    found = [float(v) for v in values if v]
+    if len(found) < 2:
+        return None
+    return (max(found) - min(found)) / statistics.median(found)
+
+
+def variance_verdict(ledger: str, meep_ranks: int, route: Optional[str] = None,
+                     tier: str = "priority", max_spread: float = VARIANCE_MAX_SPREAD,
+                     min_repeats: int = VARIANCE_MIN_REPEATS,
+                     check_ratio: bool = True) -> Dict[str, Any]:
+    """THE VARIANCE PRECONDITION, fixed before any row of record: repeats of ONE point,
+    the GPU route's fused rate and MEEP's at ``meep_ranks`` per repeat; GO when each side
+    (and their per-repeat ratio) has at least ``min_repeats`` readings whose spread is
+    within ``max_spread``.
+
+    THE ROW GATE IS NOT THIS GATE (CERT-8 H5). A repeat the bench or the ledger strikes
+    -- a within-window spread above its floor, a struck MEEP leg -- is LISTED and is the
+    table's to strike; it is not a box whose spread swamps the differences, which is the
+    one thing this precondition refuses. The 1.0 round's first rule required every
+    repeat ``TIMED`` and refused a 1.6 % / 3.3 % box over one 7.4 % window.
+    """
+    entries = [e for e in rows_of(ledger) if e.get("tier") == tier]
+    gpu_entries = [e for e in entries if e.get("ledger") == "gpu"
+                   and (route is None or e.get("route") == route)]
+    routes = sorted({str(e.get("route")) for e in gpu_entries})
+    if route is None and len(routes) > 1:
+        raise SystemExit(f"REFUSING: the variance ladder timed routes {routes}; name one "
+                         "with --route")
+    gpu: Dict[int, Optional[float]] = {}
+    meep: Dict[int, Optional[float]] = {}
+    struck: List[Dict[str, Any]] = []
+    for entry in gpu_entries:
+        measured = entry.get("measured") or {}
+        fused = (measured.get("legs") or {}).get("fused") or {}
+        gpu[int(entry.get("pass") or 0)] = fused.get("mcell_steps_per_s")
+        if entry.get("struck") or measured.get("verdict") != "TIMED":
+            struck.append({"side": "gpu", "pass": entry.get("pass"),
+                           "verdict": measured.get("verdict"), "struck": entry.get("struck"),
+                           "spread": fused.get("spread")})
+    for entry in entries:
+        if entry.get("ledger") != "meep" or int(entry.get("ranks") or 0) != int(meep_ranks):
+            continue
+        if entry.get("control") or entry.get("build") not in (None, "reference"):
+            continue
+        measured = entry.get("measured") or {}
+        meep[int(entry.get("pass") or 0)] = measured.get("mcell_steps_per_s")
+        if entry.get("struck"):
+            struck.append({"side": f"meep@{meep_ranks}", "pass": entry.get("pass"),
+                           "struck": entry.get("struck"), "spread": measured.get("spread")})
+    ratios = {p: gpu[p] / meep[p] for p in sorted(set(gpu) & set(meep))
+              if gpu.get(p) and meep.get(p)}
+    sides = {"gpu": gpu, f"meep@{meep_ranks}": meep}
+    if check_ratio:
+        sides["ratio"] = ratios
+    verdict: Dict[str, Any] = {
+        "utc": utc(), "ledger": ledger, "tier": tier, "route": route or (routes or [None])[0],
+        "meep_ranks": int(meep_ranks), "max_spread": float(max_spread),
+        "min_repeats": int(min_repeats),
+        "sides": {name: {"rates": {str(k): v for k, v in sorted(values.items())},
+                         "readable": sum(1 for v in values.values() if v),
+                         "spread": repeat_spread(values.values())}
+                  for name, values in sides.items()},
+        "rows_struck_by_their_own_gate": struck,
+        "rule": variance_verdict.__doc__.split("\n\n")[0].replace("\n", " ")}
+    why = []
+    for name, side in verdict["sides"].items():
+        if side["readable"] < min_repeats:
+            why.append(f"{name}: {side['readable']} readable repeats < {min_repeats}")
+        elif side["spread"] is None or side["spread"] > max_spread:
+            why.append(f"{name}: repeat spread {side['spread']:.4f} > {max_spread}")
+    verdict["ok"] = not why
+    verdict["verdict"] = "GO" if not why else "NO-GO"
+    verdict["why"] = why
+    return verdict
+
+
+def command_variance_verdict(args: Any) -> int:
+    verdict = variance_verdict(args.ledger, args.meep_ranks, args.route, args.tier,
+                               args.max_spread, args.min_repeats, not args.no_ratio)
+    if args.out:
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+        with open(args.out, "w", encoding="utf-8") as handle:
+            json.dump(verdict, handle, indent=2, sort_keys=True)
+    spreads = ", ".join(
+        f"{name} {None if side['spread'] is None else round(side['spread'], 4)} over "
+        f"{side['readable']}" for name, side in verdict["sides"].items())
+    print(f"VARIANCE {verdict['verdict']} ({spreads}; max {verdict['max_spread']}; "
+          f"{len(verdict['rows_struck_by_their_own_gate'])} repeat(s) struck by their own "
+          f"gate, listed)" + (f": {'; '.join(verdict['why'])}" if verdict["why"] else ""))
+    return 0 if verdict["ok"] else 5
+
+
 def command_decide_binding(args: Any) -> int:
     chosen, record = decide_binding(args.probe_dir, args.binding, args.default, args.out)
     measured = {k: v["best"] for k, v in record["bindings"].items()}
@@ -1274,6 +1532,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     one.add_argument("--out", required=True)
     one.set_defaults(run=command_decide_binding)
 
+    one = sub.add_parser("variance-verdict")
+    one.add_argument("--ledger", required=True, help="the variance ladder's ladder_rows.jsonl")
+    one.add_argument("--meep-ranks", type=int, required=True, dest="meep_ranks")
+    one.add_argument("--route", default=None)
+    one.add_argument("--tier", default="priority")
+    one.add_argument("--max-spread", type=float, default=VARIANCE_MAX_SPREAD,
+                     dest="max_spread")
+    one.add_argument("--min-repeats", type=int, default=VARIANCE_MIN_REPEATS,
+                     dest="min_repeats")
+    one.add_argument("--no-ratio", action="store_true", dest="no_ratio",
+                     help="do not gate the per-repeat GPU / MEEP ratio")
+    one.add_argument("--out", default=None)
+    one.set_defaults(run=command_variance_verdict)
+
     one = sub.add_parser("meep-build-record")
     one.add_argument("--python", required=True)
     one.add_argument("--config-log", default=None, dest="config_log")
@@ -1281,6 +1553,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     one.add_argument("--extra-json", action="append", default=[], dest="extra_json",
                      help="a JSON object of build facts to merge under 'build'")
     one.add_argument("--require-single", action="store_true", dest="require_single")
+    one.add_argument("--require-identity", action="store_true", dest="require_identity",
+                     help="exit 4 unless the census of the loaded MEEP images finds no "
+                          "fused multiply-add outside the compiler-rt division builtins "
+                          "and the host's math library was read")
     one.add_argument("--out", required=True)
     one.set_defaults(run=command_meep_build_record)
 
@@ -1291,6 +1567,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         raise
     except Exception as error:  # noqa: BLE001 - a recorder never stops the ladder
         print(f"RECORDER ERROR {type(error).__name__}: {error}")
+        # ...unless the caller asked it to refuse: a build script's requirement is not
+        # met by a recorder that stopped.
+        if getattr(args, "require_single", False) or getattr(args, "require_identity", False):
+            print("REFUSING: the build record was not made, so its requirement is not met")
+            return 4
         return 0
 
 

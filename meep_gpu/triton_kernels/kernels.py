@@ -4,7 +4,8 @@ Five kernels live here. Three replace one array-path sub-step each:
 
 * :func:`pml_curl_step` — ``stepping.step_B`` and ``stepping.step_D``;
 * :func:`constitutive_step` — ``stepping.update_H`` and ``stepping.update_E``;
-* :func:`ade_update_p` — one Lorentz/Drude pole in ``dispersion.PolarizationState.update``.
+* :func:`ade_update_p` — one Lorentz/Drude pole in ``dispersion.PolarizationState.update``,
+  MEEP's expression on MEEP's four float32 constants.
 
 The other two replace one curl/constitutive pair each, in one launch:
 
@@ -19,6 +20,14 @@ Every one of them takes ``ENABLE_FP_FUSION`` and every one of them has its group
 pinned by the shared byte gate; see the two numbered notes below, which apply to all
 five and not only to the curl.
 
+THE FORMS COME FROM :mod:`.forms`, NOT FROM THIS FILE. MEEP picks its PML form per
+structure chunk (step_db.cpp:56-59) and its curl expression per partner presence
+(fields.cpp:428-453), and so does the array path. The four kernels below read the
+run's chunk record -- the ``int32[25]`` of ``chunk_map.chunk_bounds_record``, bound
+as ``cb`` by every plan -- and call the shared ``@triton.jit`` helpers of
+:mod:`.forms` for the selects. Those helpers are inlined, so a form boundary is not
+a rounding boundary; what each one transcribes is stated there, once.
+
 ONE kernel serves both ``stepping.step_B`` and ``stepping.step_D``. The two differ
 only in which direction the stencil shifts (forward for B, MEEP's negated strides
 for D), which Yee sub-lattice the PML coefficients come from (half-integer for B,
@@ -32,9 +41,14 @@ WHAT IS TRANSCRIBED, and from where (re-checked against the tree, not the plan):
 * term table          ``stepping.B_CURL_TERMS`` / ``D_CURL_TERMS`` (stepping.py:213-223)
 * ghost rule          ``stepping._shift_up`` (:1723) / ``_shift_down`` (:1787),
                       PERIODIC and METALLIC branches only
-* curl grouping       ``stepping._curl_from_operands`` (:1601)
+* curl grouping       ``stepping._curl_from_operands``, every presence arm
+* partner presence    ``stepping.curl_presence`` (the record's presence word)
 * ownership mask      ``stepping._mask_non_owned_cells`` (:1865)
-* PML recurrence      ``stepping._apply_pml_update`` (:1905)
+* PML forms           ``stepping._apply_curl_regions``: the recurrence
+                      (``_apply_pml_update``) on the component's dsigu cells and the
+                      dsig-only form (``_apply_dsig_only_update``) elsewhere, with
+                      the auxiliary contract on ``fu``
+* chunk membership    ``chunk_map.chunk_bounds_record`` / ``chunk_map.record_index``
 * coefficient pairing ``stepping._curl_coefficients`` (:2418)
 
 THE TWO THINGS THAT DECIDE BIT-IDENTITY, both measured rather than assumed:
@@ -45,13 +59,18 @@ THE TWO THINGS THAT DECIDE BIT-IDENTITY, both measured rather than assumed:
    result diverges by up to 113238 ulp. It is spelled ONCE, here, because it is a
    per-launch keyword and a launch site that omits it produces a kernel that is
    bit-wrong but numerically plausible.
-2. The stencil grouping ``dtdx * ((sf - f) + (s - ss))``. C and Triton alike would
-   associate ``sf - f + s - ss`` as ``((sf - f) + s) - ss``, which is a different
-   float32 number. Note that Triton's MLIR pipeline DOES rewrite the expression it
-   is given (it was measured swapping the two ``add`` operands, which is harmless
-   because float addition is bitwise commutative) — so this grouping is held by
-   the gate empirically, not guaranteed by construction, and a Triton version bump
-   is a correctness event for this file.
+2. The stencil grouping ``dtdx * (((g1s - g1) + g2) - g2s)`` — MEEP's C associates
+   ``g1[i+s1] - g1[i] + g2[i] - g2[i+s2]`` left to right (step_generic.cpp:104), and
+   so does ``stepping._curl_from_operands``. The pairwise ``((g1s - g1) + (g2 -
+   g2s))`` is the same sum in exact arithmetic and a different float32 number; so is
+   the full bracket over an absent partner, which is why
+   :func:`.forms.curl_stencil` selects the one-partner forms instead of letting an
+   exactly-zero difference ride through. Note that Triton's MLIR pipeline DOES
+   rewrite the expression it is given (it was measured swapping the two ``add``
+   operands, which is harmless because float addition is bitwise commutative) — so
+   this grouping is held by the gate empirically, not guaranteed by construction,
+   and a Triton version bump is a correctness event for this file and for
+   :mod:`.forms`.
 
 The kernel writes its own inputs in place, which is why ``triton.autotune`` is
 deliberately absent: the tuner re-runs a kernel to time it, and on this step path
@@ -63,6 +82,9 @@ from __future__ import annotations
 
 import triton
 import triton.language as tl
+
+from .forms import (axis_present, constitutive_form, curl_form, curl_stencil,
+                    record_in)
 
 #: Triton's contraction guard, spelled exactly once in this package. Every launch
 #: passes this constant; ``test_triton_kernels`` fails the build if a second
@@ -81,6 +103,14 @@ METALLIC = tl.constexpr(1)
 #: median of the configurations the feasibility recon measured, all within noise.
 DEFAULT_BLOCK = 256
 
+#: Where the chunk record's half-integer lines start (``chunk_map.record_index(True,
+#: 0, 0)``); the integer lines start at word 0. Line ``(lattice, axis)`` is then
+#: ``lattice + 4 * axis``. ``test_triton_chunk_bounds`` pins both this and
+#: :data:`RECORD_PRESENCE` against ``chunk_map``'s own numbers.
+RECORD_HALF_INTEGER = tl.constexpr(12)
+#: The record's partner-presence word (``chunk_map.RECORD_PRESENCE_WORD``).
+RECORD_PRESENCE = tl.constexpr(24)
+
 
 @triton.jit
 def pml_curl_step(
@@ -88,12 +118,20 @@ def pml_curl_step(
     u0, u1, u2,                       # auxiliaries: fu_B*  or  fu_D*
     g0, g1, g2,                       # sources: Ex,Ey,Ez  or  Hx,Hy,Hz
     kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, one Yee sub-lattice
+    cb,                               # chunk record: the forms' membership and presence
     nx, ny, nz, n_elem, dtdx,
     BACKWARD: tl.constexpr,           # 0 = B (forward differences), 1 = D
     BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """One curl sub-step of all three components, PML recurrence included."""
+    """One curl sub-step of all three components, both PML forms included.
+
+    The record decides two things here and nothing else does. Its presence word picks
+    the curl expression per target (:func:`.forms.curl_stencil`), and its membership
+    line for the target's dsigu axis on the target's own sub-lattice picks the form
+    (:func:`.forms.curl_form`): the split-field recurrence inside, the dsig-only form
+    outside, with ``fu`` read and written inside only.
+    """
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     live = idx < n_elem
     nyz = ny * nz
@@ -138,9 +176,17 @@ def pml_curl_step(
     c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
     # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-    curl0 = dtdx * ((c_y - c) + (b - b_z))
-    curl1 = dtdx * ((a_z - a) + (c - c_x))
-    curl2 = dtdx * ((b_x - b) + (a - a_y))
+    # One call per target: MEEP's left-to-right association with both partners, the
+    # one-partner form where the record says the other partner's derivative axis is
+    # invariant, and an exact +0 with neither. The presence word is the record's
+    # (stepping.curl_presence, MEEP's have_plus_deriv / have_minus_deriv).
+    presence = tl.load(cb + RECORD_PRESENCE)
+    px = axis_present(presence, 0)
+    py = axis_present(presence, 1)
+    pz = axis_present(presence, 2)
+    curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+    curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+    curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
     # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
     # Cell 0 of a metallic axis, for every target whose Yee shift there is 0. The
@@ -178,38 +224,59 @@ def pml_curl_step(
     km_z = tl.load(kmz + k, mask=live, other=0.0)
     si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-    p0 = tl.load(u0 + idx, mask=live, other=0.0)
-    n0 = ((p0 * km_y) - curl0) * si_y
-    v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+    # Which cells take the recurrence: the component's dsigu layer, on the component's
+    # own sub-lattice. The dsigu axis is z for target 0, x for 1 and y for 2 (vec.hpp
+    # cycle_direction); the sub-lattice is half-integer for every B target and integer
+    # for every D one (the iyee table), so each target's record line is a compile-time
+    # word index, chunk_map.record_index(half_integer, axis, 0).
+    if BACKWARD:
+        lattice = 0
+    else:
+        lattice = RECORD_HALF_INTEGER
+    du0 = record_in(cb, lattice + 8, k)
+    du1 = record_in(cb, lattice + 0, i)
+    du2 = record_in(cb, lattice + 4, j)
 
-    p1 = tl.load(u1 + idx, mask=live, other=0.0)
-    n1 = ((p1 * km_z) - curl1) * si_z
-    v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+    p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+    v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                       km_y, si_y, km_z, si_z, du0)
 
-    p2 = tl.load(u2 + idx, mask=live, other=0.0)
-    n2 = ((p2 * km_x) - curl2) * si_x
-    v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+    p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+    v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                       km_z, si_z, km_x, si_x, du1)
 
-    tl.store(u0 + idx, n0, mask=live)
-    tl.store(u1 + idx, n1, mask=live)
-    tl.store(u2 + idx, n2, mask=live)
+    p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+    v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                       km_x, si_x, km_y, si_y, du2)
+
+    # fu is written on the recurrence's cells ONLY: outside them the dsig-only form
+    # reads and writes the field alone and fu keeps its word (the auxiliary contract).
+    tl.store(u0 + idx, n0, mask=live & du0)
+    tl.store(u1 + idx, n1, mask=live & du1)
+    tl.store(u2 + idx, n2, mask=live & du2)
     tl.store(f0 + idx, v0, mask=live)
     tl.store(f1 + idx, v1, mask=live)
     tl.store(f2 + idx, v2, mask=live)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["start_h"])
 def constitutive_step(
     f0, f1, f2,                       # targets: Hx,Hy,Hz  or  Ex,Ey,Ez
     w0, w1, w2,                       # auxiliaries: f_w_H*  or  f_w_E*
     g0, g1, g2,                       # sources: Bx,By,Bz  or  Dx,Dy,Dz
     e0, e1, e2,                       # inverse epsilon, E side only (see SCALE)
     kp0, km0, kp1, km1, kp2, km2,     # kps/kms on each component's OWN axis
-    nx, ny, nz, n_elem,
+    cb,                               # chunk record: the forms' dsigw membership
+    nx, ny, nz, n_elem, start_h,      # start_h: MEEP's start of H (see below)
     SCALE: tl.constexpr,              # 0 = H (source is B), 1 = E (source is D*inv_eps)
     BLOCK: tl.constexpr,
 ):
-    """One constitutive PML sub-step of all three components (``dsigw`` accumulation).
+    """One constitutive PML sub-step of all three components, both forms included.
+
+    The record's membership line for the component's own (dsigw) axis, on the
+    component's own sub-lattice, picks the form (:func:`.forms.constitutive_form`):
+    MEEP's ``dsigw`` accumulation inside, ``f = src`` outside, with ``f_w`` written
+    inside only.
 
     ``stepping._apply_constitutive_pml`` (stepping.py:2065), which is MEEP's
     ``step_update_EDHB`` with ``dsigw`` active::
@@ -231,10 +298,13 @@ def constitutive_step(
 
     THREE THINGS DECIDE BIT-IDENTITY HERE.
 
-    1. **The grouping.** ``field += kps * fw`` then ``field -= kms * fw_previous`` is
-       two separate accumulations, left to right: ``((f + kps*src) - kms*prev)``.
-       Flattening it to ``f + (kps*src - kms*prev)`` is a different float32 number,
-       and neither multiply may contract into an FMA — ``ENABLE_FP_FUSION`` is what
+    1. **The grouping.** MEEP's ``f[i] += X - Y;`` forms the right-hand side first,
+       so the word is ``f + ((kps*src) - (kms*prev))``: the two products, their
+       difference, then one add into the field — which is what
+       ``stepping._apply_constitutive_pml`` spells and what
+       :func:`.forms.constitutive_form` carries. The two-accumulation
+       ``((f + kps*src) - kms*prev)`` is a different float32 number, and neither
+       multiply may contract into an FMA — ``ENABLE_FP_FUSION`` is what
        stops the second. The PML coefficients are the same family of
        non-representable multiplicands §12.2 measured on the curl, so the guard
        matters at every Courant number, not only at a non-power-of-two one.
@@ -247,6 +317,16 @@ def constitutive_step(
        first (``fw_previous = fw.copy()``) for exactly this reason. Writing the store
        before the load produces a wrong answer only where ``kms != 0`` — i.e. INSIDE
        THE PML ONLY — which looks like a slightly worse absorber, not like a bug.
+
+    ``start_h`` IS MEEP'S START OF H (``stepping.separate_h_from_b``). MEEP allocates no
+    H array at first — ``alloc_f`` points H at B's storage (fields.cpp:485-494) — and
+    the run's first ``update_eh(H_stuff)`` in a chunk that carries H's own layer starts
+    H as a COPY of B and ``f_w`` as a copy of that H (update_eh.cpp:165-177). A nonzero
+    ``start_h`` is that first update: on the accumulation's cells the field and the
+    previous auxiliary are ``src`` rather than the stored words. The plan passes it
+    from ``Fields.h_separated`` and sets that flag afterwards, so it is 1 at most once
+    per run; it is 0 on the E side always. It is a runtime value Triton must not
+    specialize on (``do_not_specialize``), so one compiled program serves both.
 
     The sub-step reads no neighbour, so it needs no ghost rule, no ownership mask and
     no boundary constexpr. That does not make it boundary-agnostic: a folded or
@@ -261,6 +341,20 @@ def constitutive_step(
     j = plane % ny
     i = plane // ny
 
+    # Which cells take the accumulation: the component's own (dsigw) layer on the
+    # component's own sub-lattice. The own axis is x for target 0, y for 1, z for 2
+    # (the constitutive term tables), so each target's record line is again a
+    # compile-time word index, chunk_map.record_index(half_integer, axis, 0).
+    if SCALE:
+        lattice = RECORD_HALF_INTEGER
+    else:
+        lattice = 0
+    dw0 = record_in(cb, lattice + 0, i)
+    dw1 = record_in(cb, lattice + 4, j)
+    dw2 = record_in(cb, lattice + 8, k)
+    # MEEP's start of H (see the docstring); always 0 on the E side.
+    start = start_h != 0
+
     # Component 0 takes its coefficient from axis x, 1 from y, 2 from z.
     kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
     km_0 = tl.load(km0 + i, mask=live, other=0.0)
@@ -270,46 +364,52 @@ def constitutive_step(
     km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
     # --- component 0 -----------------------------------------------------------
-    prev0 = tl.load(w0 + idx, mask=live, other=0.0)   # BEFORE the store; note 3.
+    prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)   # BEFORE the store; note 3.
     if SCALE:
         src0 = tl.load(g0 + idx, mask=live, other=0.0) * tl.load(e0 + idx, mask=live,
                                                                  other=0.0)
     else:
         src0 = tl.load(g0 + idx, mask=live, other=0.0)
-    tl.store(w0 + idx, src0, mask=live)
-    a0 = tl.load(f0 + idx, mask=live, other=0.0)
-    a0 = a0 + kp_0 * src0
-    a0 = a0 - km_0 * prev0
+    tl.store(w0 + idx, src0, mask=live & dw0)
+    a0 = tl.load(f0 + idx, mask=live & dw0, other=0.0)
+    if SCALE == 0:                    # H starts as a copy of B on its own cells
+        prev0 = tl.where(start, src0, prev0)
+        a0 = tl.where(start, src0, a0)
+    a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)
     tl.store(f0 + idx, a0, mask=live)
 
     # --- component 1 -----------------------------------------------------------
-    prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+    prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
     if SCALE:
         src1 = tl.load(g1 + idx, mask=live, other=0.0) * tl.load(e1 + idx, mask=live,
                                                                  other=0.0)
     else:
         src1 = tl.load(g1 + idx, mask=live, other=0.0)
-    tl.store(w1 + idx, src1, mask=live)
-    a1 = tl.load(f1 + idx, mask=live, other=0.0)
-    a1 = a1 + kp_1 * src1
-    a1 = a1 - km_1 * prev1
+    tl.store(w1 + idx, src1, mask=live & dw1)
+    a1 = tl.load(f1 + idx, mask=live & dw1, other=0.0)
+    if SCALE == 0:                    # H starts as a copy of B on its own cells
+        prev1 = tl.where(start, src1, prev1)
+        a1 = tl.where(start, src1, a1)
+    a1 = constitutive_form(a1, prev1, src1, kp_1, km_1, dw1)
     tl.store(f1 + idx, a1, mask=live)
 
     # --- component 2 -----------------------------------------------------------
-    prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+    prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
     if SCALE:
         src2 = tl.load(g2 + idx, mask=live, other=0.0) * tl.load(e2 + idx, mask=live,
                                                                  other=0.0)
     else:
         src2 = tl.load(g2 + idx, mask=live, other=0.0)
-    tl.store(w2 + idx, src2, mask=live)
-    a2 = tl.load(f2 + idx, mask=live, other=0.0)
-    a2 = a2 + kp_2 * src2
-    a2 = a2 - km_2 * prev2
+    tl.store(w2 + idx, src2, mask=live & dw2)
+    a2 = tl.load(f2 + idx, mask=live & dw2, other=0.0)
+    if SCALE == 0:                    # H starts as a copy of B on its own cells
+        prev2 = tl.where(start, src2, prev2)
+        a2 = tl.where(start, src2, a2)
+    a2 = constitutive_form(a2, prev2, src2, kp_2, km_2, dw2)
     tl.store(f2 + idx, a2, mask=live)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["start_h"])
 def fused_curl_constitutive_B(
     f0, f1, f2,                       # curl targets: Bx,By,Bz
     u0, u1, u2,                       # curl auxiliaries: fu_Bx,fu_By,fu_Bz
@@ -318,7 +418,8 @@ def fused_curl_constitutive_B(
     h0, h1, h2,                       # constitutive targets: Hx,Hy,Hz
     w0, w1, w2,                       # constitutive auxiliaries: f_w_Hx,f_w_Hy,f_w_Hz
     kp0, km0, kp1, km1, kp2, km2,     # constitutive kps/kms, INTEGER sub-lattice
-    nx, ny, nz, n_elem, dtdx,
+    cb,                               # chunk record: the forms' membership and presence
+    nx, ny, nz, n_elem, dtdx, start_h,  # start_h: constitutive_step's start of H
     BACKWARD: tl.constexpr,           # bound to 0 by every planner; see below
     BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
     ZM_X: tl.constexpr, ZM_Y: tl.constexpr, ZM_Z: tl.constexpr,
@@ -334,6 +435,10 @@ def fused_curl_constitutive_B(
     ``src0 = tl.load(g0 + idx)`` becomes the register ``v0`` the curl half just
     computed. Every parenthesisation, every mask, every coefficient index is the
     original's.
+
+    ``start_h`` is :func:`constitutive_step`'s, for the H half: the registers
+    ``v0``..``v2`` the curl just computed ARE the B words MEEP's first ``update_eh``
+    would copy from.
 
     IS THE ROUND TRIP LOAD-BEARING FOR BIT-IDENTITY? No, and it is measured rather
     than argued. A Triton fp32 value lives in a 32-bit register on NVIDIA — there
@@ -418,9 +523,17 @@ def fused_curl_constitutive_B(
     c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
     # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-    curl0 = dtdx * ((c_y - c) + (b - b_z))
-    curl1 = dtdx * ((a_z - a) + (c - c_x))
-    curl2 = dtdx * ((b_x - b) + (a - a_y))
+    # One call per target: MEEP's left-to-right association with both partners, the
+    # one-partner form where the record says the other partner's derivative axis is
+    # invariant, and an exact +0 with neither. The presence word is the record's
+    # (stepping.curl_presence, MEEP's have_plus_deriv / have_minus_deriv).
+    presence = tl.load(cb + RECORD_PRESENCE)
+    px = axis_present(presence, 0)
+    py = axis_present(presence, 1)
+    pz = axis_present(presence, 2)
+    curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+    curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+    curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
     # --- ownership mask (stepping._mask_non_owned_cells) -----------------------
     at_x, at_y, at_z = i == 0, j == 0, k == 0
@@ -453,17 +566,30 @@ def fused_curl_constitutive_B(
     km_z = tl.load(kmz + k, mask=live, other=0.0)
     si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-    p0 = tl.load(u0 + idx, mask=live, other=0.0)
-    n0 = ((p0 * km_y) - curl0) * si_y
-    v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+    # Which cells take the recurrence: the component's dsigu layer, on the component's
+    # own sub-lattice. The dsigu axis is z for target 0, x for 1 and y for 2 (vec.hpp
+    # cycle_direction); the sub-lattice is half-integer for every B target and integer
+    # for every D one (the iyee table), so each target's record line is a compile-time
+    # word index, chunk_map.record_index(half_integer, axis, 0).
+    if BACKWARD:
+        lattice = 0
+    else:
+        lattice = RECORD_HALF_INTEGER
+    du0 = record_in(cb, lattice + 8, k)
+    du1 = record_in(cb, lattice + 0, i)
+    du2 = record_in(cb, lattice + 4, j)
 
-    p1 = tl.load(u1 + idx, mask=live, other=0.0)
-    n1 = ((p1 * km_z) - curl1) * si_z
-    v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+    p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+    v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                       km_y, si_y, km_z, si_z, du0)
 
-    p2 = tl.load(u2 + idx, mask=live, other=0.0)
-    n2 = ((p2 * km_x) - curl2) * si_x
-    v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+    p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+    v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                       km_z, si_z, km_x, si_x, du1)
+
+    p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+    v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                       km_x, si_x, km_y, si_y, du2)
 
     # --- the seam: stepping.zero_metal_B, between the two sub-steps ------------
     # Applied to the REGISTER, before both the store and the constitutive read, so
@@ -475,9 +601,11 @@ def fused_curl_constitutive_B(
     if ZM_Z:
         v2 = tl.where(at_z, 0.0, v2)
 
-    tl.store(u0 + idx, n0, mask=live)
-    tl.store(u1 + idx, n1, mask=live)
-    tl.store(u2 + idx, n2, mask=live)
+    # fu is written on the recurrence's cells ONLY: outside them the dsig-only form
+    # reads and writes the field alone and fu keeps its word (the auxiliary contract).
+    tl.store(u0 + idx, n0, mask=live & du0)
+    tl.store(u1 + idx, n1, mask=live & du1)
+    tl.store(u2 + idx, n2, mask=live & du2)
     tl.store(f0 + idx, v0, mask=live)
     tl.store(f1 + idx, v1, mask=live)
     tl.store(f2 + idx, v2, mask=live)
@@ -494,30 +622,42 @@ def fused_curl_constitutive_B(
     km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
     # --- component 0 -----------------------------------------------------------
-    prev0 = tl.load(w0 + idx, mask=live, other=0.0)   # BEFORE the store.
+    # Which cells take the accumulation: the component's own (dsigw) layer on the
+    # component's own sub-lattice. The own axis is x for target 0, y for 1, z for 2
+    # (the constitutive term tables), so each target's record line is again a
+    # compile-time word index, chunk_map.record_index(half_integer, axis, 0).
+    dw0 = record_in(cb, 0, i)         # H: the integer sub-lattice
+    dw1 = record_in(cb, 4, j)
+    dw2 = record_in(cb, 8, k)
+    # MEEP's start of H (see the docstring).
+    start = start_h != 0
+    prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)   # BEFORE the store.
     src0 = v0
-    tl.store(w0 + idx, src0, mask=live)
-    a0 = tl.load(h0 + idx, mask=live, other=0.0)
-    a0 = a0 + kp_0 * src0
-    a0 = a0 - km_0 * prev0
+    tl.store(w0 + idx, src0, mask=live & dw0)
+    a0 = tl.load(h0 + idx, mask=live & dw0, other=0.0)
+    prev0 = tl.where(start, src0, prev0)    # MEEP's start of H
+    a0 = tl.where(start, src0, a0)
+    a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)
     tl.store(h0 + idx, a0, mask=live)
 
     # --- component 1 -----------------------------------------------------------
-    prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+    prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
     src1 = v1
-    tl.store(w1 + idx, src1, mask=live)
-    a1 = tl.load(h1 + idx, mask=live, other=0.0)
-    a1 = a1 + kp_1 * src1
-    a1 = a1 - km_1 * prev1
+    tl.store(w1 + idx, src1, mask=live & dw1)
+    a1 = tl.load(h1 + idx, mask=live & dw1, other=0.0)
+    prev1 = tl.where(start, src1, prev1)    # MEEP's start of H
+    a1 = tl.where(start, src1, a1)
+    a1 = constitutive_form(a1, prev1, src1, kp_1, km_1, dw1)
     tl.store(h1 + idx, a1, mask=live)
 
     # --- component 2 -----------------------------------------------------------
-    prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+    prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
     src2 = v2
-    tl.store(w2 + idx, src2, mask=live)
-    a2 = tl.load(h2 + idx, mask=live, other=0.0)
-    a2 = a2 + kp_2 * src2
-    a2 = a2 - km_2 * prev2
+    tl.store(w2 + idx, src2, mask=live & dw2)
+    a2 = tl.load(h2 + idx, mask=live & dw2, other=0.0)
+    prev2 = tl.where(start, src2, prev2)    # MEEP's start of H
+    a2 = tl.where(start, src2, a2)
+    a2 = constitutive_form(a2, prev2, src2, kp_2, km_2, dw2)
     tl.store(h2 + idx, a2, mask=live)
 
 
@@ -531,6 +671,7 @@ def fused_curl_constitutive_D(
     w0, w1, w2,                       # constitutive auxiliaries: f_w_Ex,f_w_Ey,f_w_Ez
     ie0, ie1, ie2,                    # diagonal inverse epsilon volumes
     kp0, km0, kp1, km1, kp2, km2,     # constitutive kps/kms, HALF-INTEGER sub-lattice
+    cb,                               # chunk record: the forms' membership and presence
     nx, ny, nz, n_elem, dtdx,
     BACKWARD: tl.constexpr,           # bound to 1 by the D planner
     BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
@@ -594,9 +735,13 @@ def fused_curl_constitutive_D(
     c_x = tl.load(g2 + ox, mask=vx, other=0.0)
     c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
-    curl0 = dtdx * ((c_y - c) + (b - b_z))
-    curl1 = dtdx * ((a_z - a) + (c - c_x))
-    curl2 = dtdx * ((b_x - b) + (a - a_y))
+    presence = tl.load(cb + RECORD_PRESENCE)
+    px = axis_present(presence, 0)
+    py = axis_present(presence, 1)
+    pz = axis_present(presence, 2)
+    curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+    curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+    curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
     at_x, at_y, at_z = i == 0, j == 0, k == 0
     if BACKWARD:
@@ -627,17 +772,30 @@ def fused_curl_constitutive_D(
     km_z = tl.load(kmz + k, mask=live, other=0.0)
     si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-    p0 = tl.load(u0 + idx, mask=live, other=0.0)
-    n0 = ((p0 * km_y) - curl0) * si_y
-    v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+    # Which cells take the recurrence: the component's dsigu layer, on the component's
+    # own sub-lattice. The dsigu axis is z for target 0, x for 1 and y for 2 (vec.hpp
+    # cycle_direction); the sub-lattice is half-integer for every B target and integer
+    # for every D one (the iyee table), so each target's record line is a compile-time
+    # word index, chunk_map.record_index(half_integer, axis, 0).
+    if BACKWARD:
+        lattice = 0
+    else:
+        lattice = RECORD_HALF_INTEGER
+    du0 = record_in(cb, lattice + 8, k)
+    du1 = record_in(cb, lattice + 0, i)
+    du2 = record_in(cb, lattice + 4, j)
 
-    p1 = tl.load(u1 + idx, mask=live, other=0.0)
-    n1 = ((p1 * km_z) - curl1) * si_z
-    v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+    p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+    v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                       km_y, si_y, km_z, si_z, du0)
 
-    p2 = tl.load(u2 + idx, mask=live, other=0.0)
-    n2 = ((p2 * km_x) - curl2) * si_x
-    v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+    p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+    v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                       km_z, si_z, km_x, si_x, du1)
+
+    p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+    v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                       km_x, si_x, km_y, si_y, du2)
 
     # zero_metal_D: each axis clears the two tangential D components.
     if ZM_X:
@@ -650,9 +808,11 @@ def fused_curl_constitutive_D(
         v0 = tl.where(at_z, 0.0, v0)
         v1 = tl.where(at_z, 0.0, v1)
 
-    tl.store(u0 + idx, n0, mask=live)
-    tl.store(u1 + idx, n1, mask=live)
-    tl.store(u2 + idx, n2, mask=live)
+    # fu is written on the recurrence's cells ONLY: outside them the dsig-only form
+    # reads and writes the field alone and fu keeps its word (the auxiliary contract).
+    tl.store(u0 + idx, n0, mask=live & du0)
+    tl.store(u1 + idx, n1, mask=live & du1)
+    tl.store(u2 + idx, n2, mask=live & du2)
     tl.store(f0 + idx, v0, mask=live)
     tl.store(f1 + idx, v1, mask=live)
     tl.store(f2 + idx, v2, mask=live)
@@ -665,52 +825,67 @@ def fused_curl_constitutive_D(
     kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
     km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
-    prev0 = tl.load(w0 + idx, mask=live, other=0.0)
+    # Which cells take the accumulation: the component's own (dsigw) layer on the
+    # component's own sub-lattice. The own axis is x for target 0, y for 1, z for 2
+    # (the constitutive term tables), so each target's record line is again a
+    # compile-time word index, chunk_map.record_index(half_integer, axis, 0).
+    dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)   # E: the half-integer sub-lattice
+    dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+    dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
+    prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)
     src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)
-    tl.store(w0 + idx, src0, mask=live)
-    a0 = tl.load(e0 + idx, mask=live, other=0.0)
-    a0 = a0 + kp_0 * src0
-    a0 = a0 - km_0 * prev0
+    tl.store(w0 + idx, src0, mask=live & dw0)
+    a0 = constitutive_form(tl.load(e0 + idx, mask=live & dw0, other=0.0),
+                             prev0, src0, kp_0, km_0, dw0)
     tl.store(e0 + idx, a0, mask=live)
 
-    prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+    prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
     src1 = v1 * tl.load(ie1 + idx, mask=live, other=0.0)
-    tl.store(w1 + idx, src1, mask=live)
-    a1 = tl.load(e1 + idx, mask=live, other=0.0)
-    a1 = a1 + kp_1 * src1
-    a1 = a1 - km_1 * prev1
+    tl.store(w1 + idx, src1, mask=live & dw1)
+    a1 = constitutive_form(tl.load(e1 + idx, mask=live & dw1, other=0.0),
+                             prev1, src1, kp_1, km_1, dw1)
     tl.store(e1 + idx, a1, mask=live)
 
-    prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+    prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
     src2 = v2 * tl.load(ie2 + idx, mask=live, other=0.0)
-    tl.store(w2 + idx, src2, mask=live)
-    a2 = tl.load(e2 + idx, mask=live, other=0.0)
-    a2 = a2 + kp_2 * src2
-    a2 = a2 - km_2 * prev2
+    tl.store(w2 + idx, src2, mask=live & dw2)
+    a2 = constitutive_form(tl.load(e2 + idx, mask=live & dw2, other=0.0),
+                             prev2, src2, kp_2, km_2, dw2)
     tl.store(e2 + idx, a2, mask=live)
 
 
 @triton.jit
 def ade_update_p(
     p_out, p_now, p_prev, sigma, drive,
-    c_now, c_prev, c_drive, n_elem,
+    two_minus_od, gamma1, omega0dtsqr, gamma1inv, n_elem,
     SIGMA_IS_VOLUME: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """One Lorentz/Drude pole's ADE recurrence for one component.
+    """One Lorentz/Drude pole's ADE recurrence for one component: MEEP's expression.
 
-    ``dispersion.PolarizationState.update`` (dispersion.py:679-691), whose array
-    form is three passes plus two temporaries per component::
+    ``dispersion.PolarizationState.update``, which transcribes MEEP's isotropic
+    ``update_P`` (susceptibility.cpp:251-256, contraction off)::
 
-        xp.multiply(p, c_now, out=scratch)      # scratch = P^n * c_now
-        scratch += c_prev * p_prev              #         + c_prev * P^(n-1)
-        scratch += c_drive * (sigma * w)        #         + c_drive * (sigma * W^n)
+        p[i] = gamma1inv *
+               (pcur * (2 - omega0dtsqr_denom) - gamma1 * pp[i] + omega0dtsqr * (s[i] * w[i]));
 
-    so the grouping is ``((p*c_now) + (c_prev*p_prev)) + (c_drive*(sigma*w))`` —
-    left-associated across the two ``+=``, and with the scalar on the LEFT of the
-    two products the array path writes that way. ``sigma`` is a uniform scalar in
-    most runs and a full volume in a graded one; both are carried, chosen at
-    compile time so the uniform case pays no load.
+    that is ``gamma1inv * (((p * two_minus_od) - (gamma1 * pp)) + (omega0dtsqr * (s * w)))``,
+    every operation one float32 rounding. The four scalars are MEEP's ``realnum`` words,
+    ``PolarizationState.constants`` (``Susceptibility.realnum_constants``), formed on the
+    host where MEEP forms them; ``two_minus_od`` is exactly 2 for a Drude term. The middle
+    term is a SUBTRACTION of ``gamma1 * pp``: folding ``gamma1inv`` into three
+    coefficients, ``((p*c_now) + (c_prev*pp)) + (c_drive*(s*w))``, is the same recurrence
+    in exact arithmetic and a different float32 number on most words (the array path's
+    ``dispersive_update_folded_three_term_form`` mutation). Multiplication operand order
+    is free (IEEE-754 multiplication is commutative on every word); the grouping of the
+    sum is not. ``sigma`` is a uniform scalar in most runs and a full volume in a graded
+    one; both are carried, chosen at compile time so the uniform case pays no load. A
+    uniform sigma is MEEP's ``realnum`` too: the plan passes the Python float, which
+    Triton types as float32, the word ``numpy.float32(sigma)`` the array path forms.
+
+    ``drive`` is MEEP's ``w`` (update_pols.cpp:44, ``w = f_w ? f_w : f`` per chunk), which
+    the plan reads through ``Fields.drive_field``: ``f_w`` on the cells whose chunk
+    carries the component's own layer, the stored E everywhere else.
 
     Writes to ``p_out``, which the caller rotates into the P slot — the array path
     never updates P in place, and reproducing that is what keeps P_prev valid.
@@ -725,4 +900,5 @@ def ade_update_p(
     else:
         s = sigma
     tl.store(p_out + idx,
-             ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)), mask=live)
+             gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
+             mask=live)

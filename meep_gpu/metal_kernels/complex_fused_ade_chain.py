@@ -66,29 +66,16 @@ output for the same line with the documented rename applied — so the check par
 both sources and mirrors neither.
 
 ===========================================================================
-THE ONE FACT THIS FAMILY MUST NOT INHERIT: WHICH COMPLEX ARM
+THE ADE HALF NAMES NO COMPLEX ARM
 ===========================================================================
 
-Both halves multiply complex numbers, and WHICH EXPANSION a platform's reference
-takes is a MEASURED fact, not a choice (:func:`.complex_fields.expansion_from_probe`).
-The two certified halves disagree about where that fact comes from:
-
-* ``complex_no_pml_stored_e`` takes the arm the PROBE licenses, threaded through
-  its plan (complex_no_pml_stored_e.py:77, :208);
-* ``ade_update_p`` BAKES ``FMA_V1`` into its complex body (ade_update_p.py:105).
-
-One fused source carries ONE set of helpers under one set of names, so a platform
-whose probe licensed ``NAIVE`` would need the two halves to disagree inside a
-single scope, which is unspellable. On this host the probe licenses ``FMA_V1`` and
-the two agree — but agreeing today is a coincidence, not an invariant, so this
-module does not assume it:
-
-* :func:`ade_expansion_arm` PARSES the certified ADE emitter's own output and
-  reports which arm's helper block it carries. It does not restate ``FMA_V1``
-  anywhere, so a change to ade_update_p.py:105 moves this module's answer with it;
-* :func:`complex_fused_ade_chain_coverage` REFUSES BY NAME when the probe-licensed
-  arm is not that one. A configuration on such a platform earns a new arm rather
-  than a silent downgrade of one half.
+The certified complex ADE body is MEEP's ``DOCMP2`` two real passes
+(``ade_update_p.ade_source``): every product is a real float32 word (one of MEEP's
+four constants, or the real sigma) times one stored part, and the sums are per part.
+It forms no complex-by-complex product and calls no complex helper, so whichever
+helper body the E half is emitted with (one body, since the complex arithmetic went
+per part) cannot disagree with it inside the one fused scope. There is no arm for
+the two halves to differ on, and no clause here that checks one.
 
 ===========================================================================
 THE ROTATION, AND WHAT IS MEASURED RATHER THAN INHERITED
@@ -198,9 +185,8 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 
 from ..triton_kernels.coverage import Coverage
-from . import ade_update_p, shaders, templates
+from . import shaders, templates
 from .ade_update_p import _physical_name, metal_ade_update_p_coverage
-from .complex_fields import expansion_from_probe, load_expansion_probe
 from .complex_no_pml_stored_e import (
     _poles,
     metal_complex_stored_e_coverage,
@@ -233,38 +219,10 @@ E_TERMS: Tuple[Tuple[str, str, int], ...] = (
 
 __all__ = [
     "E_TERMS", "FAMILY", "FIXED_POINTERS", "REPLACES", "SLOT",
-    "MetalComplexFusedAdeChainPlan", "ade_expansion_arm", "binding_count",
+    "MetalComplexFusedAdeChainPlan", "binding_count",
     "compile_complex_fused_ade_chain", "complex_fused_ade_chain_coverage",
     "complex_fused_ade_chain_source", "plan_metal_complex_fused_ade_chain",
 ]
-
-
-# ---------------------------------------------------------------------------
-# Which complex arm the certified ADE half carries — PARSED, never restated
-# ---------------------------------------------------------------------------
-
-def ade_expansion_arm() -> str:
-    """The expansion arm ``ade_update_p``'s complex body is emitted with.
-
-    MEASURED FROM THE CERTIFIED EMITTER'S OWN OUTPUT, not copied from
-    ade_update_p.py:105. The helper block for each arm is a distinct literal
-    (:data:`.templates._COMPLEX_HELPERS`), so asking which one appears in the
-    emitted source is a parse, not a mirror — and a change on that line moves this
-    answer with it rather than leaving a stale constant behind.
-
-    Raises when the emitted source carries no arm's helpers, or more than one:
-    either would mean this module cannot say which arithmetic the ADE half does,
-    and guessing is exactly what the probe machinery exists to stop.
-    """
-    emitted = ade_update_p.ade_source("complex64", False)
-    found = [arm for arm in templates.EXPANSION_ARMS
-             if templates.complex_helpers(arm) in emitted]
-    if len(found) != 1:
-        raise RuntimeError(
-            f"the certified complex ADE body carries {found!r} of the known "
-            f"expansion arms {templates.EXPANSION_ARMS!r}; this family cannot "
-            f"weld a half whose complex arithmetic it cannot name")
-    return found[0]
 
 
 # ---------------------------------------------------------------------------
@@ -280,9 +238,10 @@ __CONTRACT__
 __HELPERS__
 
 struct Params {
-    float c_now[__NP__];
-    float c_prev[__NP__];
-    float c_drive[__NP__];
+    float two_minus_od[__NP__];
+    float gamma1[__NP__];
+    float omega0dtsqr[__NP__];
+    float gamma1inv[__NP__];
     float sigma[__NP__];
     uint  ny;
     uint  nz;
@@ -352,48 +311,49 @@ def _signature(pole_count: int, sigma_is_volume: Sequence[bool]) -> str:
 def _ade_arm(index: int, sigma_is_volume: bool, drive_register: str) -> List[str]:
     """One pole's ``update_P``, transcribed from ``ade_update_p.ade_source``.
 
-    ``ade_update_p.py:106-114`` is the complex64 body::
+    The certified complex64 body is MEEP's ``DOCMP2`` two real passes on its four
+    float32 constants (``PolarizationState.update``, susceptibility.cpp:251-256)::
 
         float2 p = p_now[idx];
         float2 q = p_prev[idx];
         float2 w = drive[idx];
         float s = __SIGMA_VALUE__;
-        float2 a = c_mul_field_left(p, c_now);
-        float2 b = c_mul_coefficient_left(c_prev, q);
-        float2 sw = c_mul_coefficient_left(s, w);
-        float2 d = c_mul_coefficient_left(c_drive, sw);
-        p_out[idx] = (a + b) + d;
+        float2 a = two_minus_od * p;
+        float2 b = gamma1 * q;
+        float2 sw = s * w;
+        float2 d = omega0dtsqr * sw;
+        p_out[idx] = gamma1inv * ((a - b) + d);
 
     Reproduced here with the pointer renames the module docstring names and ONE
-    substitution — ``drive[idx]`` becomes the register ``update_E`` just wrote.
+    substitution — the drive read becomes the register ``update_E`` just wrote.
     The braces give each arm its own ``p``/``q``/``w``/``s``/``a``/``b``/``sw``/
-    ``d``/``c_now``/``c_prev``/``c_drive`` scope, so the final five lines are
-    character for character that body's.
+    ``d`` and constant scope, so the final five lines are character for character
+    that body's.
     """
     sigma = f"s{index}[idx]" if sigma_is_volume else f"prm.sigma[{index}]"
     return [
-        f"    {{  // pole {index}: ade_update_p.ade_source, complex64 body (:106-114)",
-        f"        float c_now = prm.c_now[{index}];",
-        f"        float c_prev = prm.c_prev[{index}];",
-        f"        float c_drive = prm.c_drive[{index}];",
+        f"    {{  // pole {index}: ade_update_p.ade_source, complex64 body",
+        f"        float two_minus_od = prm.two_minus_od[{index}];",
+        f"        float gamma1 = prm.gamma1[{index}];",
+        f"        float omega0dtsqr = prm.omega0dtsqr[{index}];",
+        f"        float gamma1inv = prm.gamma1inv[{index}];",
         f"        float2 p = p{index}[idx];",
         f"        float2 q = q{index}[idx];",
         f"        float2 w = {drive_register};   // THE SEAM: the register update_E just wrote.",
         f"        float s = {sigma};",
-        "        float2 a = c_mul_field_left(p, c_now);",
-        "        float2 b = c_mul_coefficient_left(c_prev, q);",
-        "        float2 sw = c_mul_coefficient_left(s, w);",
-        "        float2 d = c_mul_coefficient_left(c_drive, sw);",
-        f"        o{index}[idx] = (a + b) + d;",
+        "        float2 a = two_minus_od * p;",
+        "        float2 b = gamma1 * q;",
+        "        float2 sw = s * w;",
+        "        float2 d = omega0dtsqr * sw;",
+        f"        o{index}[idx] = gamma1inv * ((a - b) + d);",
         "    }",
     ]
 
 
 def complex_fused_ade_chain_source(pole_count: int,
                                    sigma_is_volume: Sequence[bool],
-                                   expansion: str,
                                    contract: str = shaders.CONTRACT_OFF) -> str:
-    """One specialised fused source: (poles, sigma kinds, expansion arm, mode).
+    """One specialised fused source: (poles, sigma kinds, mode).
 
     Every constant Triton would bake into a ``tl.constexpr`` is baked into the
     string, for the reason :mod:`.shaders` gives: ``torch.mps.compile_shader``
@@ -446,7 +406,7 @@ def complex_fused_ade_chain_source(pole_count: int,
 
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
         "__NP__": str(max(pole_count, 1)),
         "__SIGNATURE__": _signature(pole_count, sigma_is_volume),
         "__BODY__": "\n".join(electric + polarization),
@@ -455,11 +415,10 @@ def complex_fused_ade_chain_source(pole_count: int,
 
 def compile_complex_fused_ade_chain(pole_count: int,
                                     sigma_is_volume: Sequence[bool],
-                                    expansion: str,
                                     contract: str = shaders.CONTRACT_OFF) -> Any:
-    """The specialised entry point for one (poles, sigmas, expansion, mode)."""
+    """The specialised entry point for one (poles, sigmas, mode)."""
     return compile_source(complex_fused_ade_chain_source(
-        pole_count, sigma_is_volume, expansion,
+        pole_count, sigma_is_volume,
         contract)).complex_fused_ade_chain_component
 
 
@@ -473,8 +432,7 @@ def _sigma_is_volume(state: Any, component: str) -> bool:
 
 
 def complex_fused_ade_chain_coverage(fields: Any, pml: Any,
-                                     residency: Any = None,
-                                     probe: Any = None) -> Coverage:
+                                     residency: Any = None) -> Coverage:
     """May ONE dispatch per component span complex ``update_E`` -> ``update_P``?
 
     A conjunction of the two halves' OWN certified predicates plus the seam
@@ -490,29 +448,12 @@ def complex_fused_ade_chain_coverage(fields: Any, pml: Any,
     refuse configurations the driver cannot break.
     """
     reasons: List[str] = []
-    electric = metal_complex_stored_e_coverage(fields, pml, residency, probe)
+    electric = metal_complex_stored_e_coverage(fields, pml, residency)
     if not electric.covered:
         reasons.extend(f"E half: {reason}" for reason in electric.reasons)
     polarization = metal_ade_update_p_coverage(fields, pml, residency)
     if not polarization.covered:
         reasons.extend(f"ADE half: {reason}" for reason in polarization.reasons)
-
-    # THE ARM CLAUSE. One fused source carries one set of helpers under one set of
-    # names; a platform whose probe licenses an arm the certified ADE half does not
-    # bake in cannot be served by this signature at all. See the module docstring.
-    record = probe if probe is not None else load_expansion_probe()
-    licensed = expansion_from_probe(record)
-    try:
-        baked = ade_expansion_arm()
-    except RuntimeError as exc:  # noqa: BLE001 - unnameable is a refusal
-        reasons.append(str(exc))
-        baked = None
-    if licensed is not None and baked is not None and licensed != baked:
-        reasons.append(
-            f"the probe licenses the {licensed!r} complex arm but the certified "
-            f"ADE half bakes in {baked!r} (ade_update_p.py:105); one fused source "
-            f"cannot carry two arms under one set of helper names, so this "
-            f"platform earns a new arm rather than a silent downgrade of a half")
 
     # THE SEAM CLAUSE. The per-component interleave is equivalent to the driver's
     # order only while update_E(c) reads NOTHING but component c's own volumes.
@@ -598,17 +539,16 @@ class MetalComplexFusedAdeChainPlan:
     replaces_sub_steps = REPLACES
     launches_per_run = len(E_TERMS)
 
-    __slots__ = ("entries", "residency", "volumes", "expansion", "shape",
+    __slots__ = ("entries", "residency", "volumes", "shape",
                  "_functions", "_tensors", "launches", "runs", "alias_checks")
 
     def __init__(self, entries: Sequence[_Entry], residency: Residency,
-                 volumes: Sequence[str], expansion: str, shape: Sequence[int],
+                 volumes: Sequence[str], shape: Sequence[int],
                  functions: Mapping[Tuple[str, int], Any],
                  tensors: Mapping[int, Any]) -> None:
         self.entries = tuple(entries)
         self.residency = residency
         self.volumes = tuple(dict.fromkeys(volumes))
-        self.expansion = str(expansion)
         self.shape = tuple(int(n) for n in shape)
         self._functions = dict(functions)
         self._tensors = dict(tensors)
@@ -690,23 +630,18 @@ class MetalComplexFusedAdeChainPlan:
 
     def __repr__(self) -> str:
         return (f"MetalComplexFusedAdeChainPlan(entries={len(self.entries)}, "
-                f"expansion={self.expansion!r}, variants={self.variants!r})")
+                f"variants={self.variants!r})")
 
 
 def plan_metal_complex_fused_ade_chain(
         fields: Any, pml: Any, residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        probe: Any = None,
         functions: Optional[Mapping[Tuple[str, int], Any]] = None,
         ) -> Optional[MetalComplexFusedAdeChainPlan]:
     """Build the complex fused E->P plan, or return ``None`` on any refusal."""
-    if not complex_fused_ade_chain_coverage(fields, pml, residency, probe).covered:
+    if not complex_fused_ade_chain_coverage(fields, pml, residency).covered:
         return None
     assert residency is not None
-    expansion = expansion_from_probe(
-        probe if probe is not None else load_expansion_probe())
-    if expansion is None:
-        return None
     tensors: Dict[int, Any] = {}
     volumes: List[str] = []
     entries: List[_Entry] = []
@@ -733,7 +668,7 @@ def plan_metal_complex_fused_ade_chain(
         chain = tuple(order.get(component, ()))
         sigma_flags = tuple(_sigma_is_volume(state, component) for state in chain)
         sigmas: List[Any] = []
-        coefficients: List[Tuple[float, float, float]] = []
+        constants: List[Tuple[Any, ...]] = []
         scalar_sigmas: List[float] = []
         for position, state in enumerate(chain):
             state_index = index_of[id(state)]
@@ -758,11 +693,10 @@ def plan_metal_complex_fused_ade_chain(
                 scalar_sigmas.append(0.0)
             else:
                 scalar_sigmas.append(float(sigma))
-            c_now, c_prev, c_drive = state._coefficients
-            coefficients.append((float(c_now), float(c_prev), float(c_drive)))
+            constants.append(tuple(state.constants))
 
         # THE PACKER IS THE FLOAT32 FAMILY'S OWN — see the module docstring.
-        params = pack_params(coefficients, scalar_sigmas, shape[1], shape[2],
+        params = pack_params(constants, scalar_sigmas, shape[1], shape[2],
                              int(target.size))
         assert params.size == params_words(len(chain)), (
             params.size, params_words(len(chain)))
@@ -780,8 +714,8 @@ def plan_metal_complex_fused_ade_chain(
     for key, (pole_count, flags) in sorted(required.items()):
         if key not in selected:
             selected[key] = compile_complex_fused_ade_chain(
-                pole_count, flags, expansion, key[0])
-    return MetalComplexFusedAdeChainPlan(entries, residency, volumes, expansion,
+                pole_count, flags, key[0])
+    return MetalComplexFusedAdeChainPlan(entries, residency, volumes,
                                          shape, selected, tensors)
 
 
@@ -794,8 +728,7 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
         return Coverage(
             False, (f"the complex fused ADE chain cannot fill slot {slot!r}",))
     return complex_fused_ade_chain_coverage(
-        context.fields, context.pml, context.residency,
-        context.extra.get("complex_probe"))
+        context.fields, context.pml, context.residency)
 
 
 def _arm_plan(context: Any, slot: str) -> Optional[MetalComplexFusedAdeChainPlan]:
@@ -803,7 +736,7 @@ def _arm_plan(context: Any, slot: str) -> Optional[MetalComplexFusedAdeChainPlan
         return None
     return plan_metal_complex_fused_ade_chain(
         context.fields, context.pml, context.residency,
-        context.contract_variants, context.extra.get("complex_probe"))
+        context.contract_variants)
 
 
 def register_arms() -> Tuple[Any, ...]:

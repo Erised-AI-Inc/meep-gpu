@@ -53,12 +53,12 @@ os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 
 import gate_metal_special_kz as gate  # noqa: E402
 import metal_gate_kit as kit  # noqa: E402
-import probe_metal_beta_expansion as expansion_probe  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.metal_kernels import arms, coverage, device, special_kz  # noqa: E402
 from meep_gpu.metal_kernels import launch as metal_launch  # noqa: E402
 from meep_gpu.metal_kernels import subnormal, templates  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
 log, save = kit.log, kit.save
 
@@ -86,33 +86,36 @@ def expected_live(grid) -> tuple:
     return tuple(name for name in order if name in live)
 
 
-def _plans_for(case: Dict[str, Any], fields, pml, residency, probe):
+def _plans_for(case: Dict[str, Any], fields, pml, residency):
     """Every device plan a wired version of this family would build for one case."""
     plans: Dict[str, Any] = {}
     for sub_step in ("step_B", "step_D"):
         plans[sub_step] = (
-            special_kz.plan_beta_bloch_pml_curl(fields, pml, sub_step, residency,
-                                                probe=probe)
+            special_kz.plan_beta_bloch_pml_curl(
+                fields, pml, sub_step, residency,
+                chunk_bounds=layer_record(fields.grid, pml))
             if case["complex"] else
-            special_kz.plan_beta_pml_curl(fields, pml, sub_step, residency))
+            special_kz.plan_beta_pml_curl(
+                fields, pml, sub_step, residency,
+                chunk_bounds=layer_record(fields.grid, pml)))
     if not case["complex"]:
         # The CERTIFIED constitutive kernel under this family's restated
         # predicate: no new kernel, no new sub-step.
         for slot, side in (("update_H", "H"), ("update_E", "E")):
             plans[slot] = special_kz.plan_beta_run_constitutive(
-                fields, pml, side, residency)
+                fields, pml, side, residency,
+                chunk_bounds=layer_record(fields.grid, pml))
     return plans
 
 
 def leg_residency(payload: Dict[str, Any], out: str) -> None:
     """The verdict on holding one mirror set across a complete step, per family."""
     rows: List[Dict[str, Any]] = []
-    probe = expansion_probe.measure()
     started = time.time()
     for case in gate.CASES:
         residency = device.Residency()
         grid, fields, pml = gate.build(case)
-        plans = _plans_for(case, fields, pml, residency, probe)
+        plans = _plans_for(case, fields, pml, residency)
         planned = tuple(name for name, plan in plans.items() if plan is not None)
         live = metal_launch.live_sub_steps(fields, pml, sources=())
         verdict = coverage.residency_coverage(residency.names, planned, live)
@@ -171,13 +174,12 @@ def leg_whole_step(payload: Dict[str, Any], out: str) -> None:
     have let a reader take the wall passes as covered.
     """
     rows: List[Dict[str, Any]] = []
-    probe = expansion_probe.measure()
     started = time.time()
     for case in gate.CASES:
         residency = device.Residency()
         grid, fields, pml = gate.build(case)
         before = gate.snapshot(fields)
-        plans = _plans_for(case, fields, pml, residency, probe)
+        plans = _plans_for(case, fields, pml, residency)
 
         order = ("step_B", "update_H", "step_D", "update_E")
         for slot in order:
@@ -245,11 +247,10 @@ def leg_seam(payload: Dict[str, Any], out: str) -> None:
         field_type = "D"
 
     rows: List[Dict[str, Any]] = []
-    probe = expansion_probe.measure()
     for case in gate.CASES:
         residency = device.Residency()
         grid, fields, pml = gate.build(case)
-        plans = _plans_for(case, fields, pml, residency, probe)
+        plans = _plans_for(case, fields, pml, residency)
         planned = tuple(name for name, plan in plans.items() if plan is not None)
         live = metal_launch.live_sub_steps(fields, pml, sources=(_Source(),))
         verdict = coverage.residency_coverage(residency.names, planned, live)
@@ -292,25 +293,9 @@ def leg_disjointness(payload: Dict[str, Any], out: str) -> None:
       invisible to this leg and to the gate's.
     """
     rows: List[Dict[str, Any]] = []
-    probe = expansion_probe.measure()
     table = gate.assert_table_is_whole(payload)
-    # `complex_fields` reads its OWN key and its OWN pattern set; with only this
-    # family's probe bound it refused every configuration and every complex row
-    # below was a comparison against a product that could not admit anything.
-    complex_probe, complex_source = gate.complex_family_probe()
-    payload["complex_probe_source"] = (complex_source if complex_probe is not None
-                                       else None)
-    payload["complex_probe_reason"] = (None if complex_probe is not None
-                                       else complex_source)
-    # `beta_probe` is the key this family's arms read (special_kz.py:1634); nothing
-    # reads `"probe"`, which is what this bound before. Under the wrong key every
-    # complex row below reported ZERO admitters and passed the `<= 1` assertion
-    # vacuously — a disjointness measured over a product that had been disabled.
-    extra = {"beta_probe": probe, "complex_probe": complex_probe}
     log(f"[disjointness] arm table: {table['registered_families']}")
     log(f"[disjointness] unregistered arms swept: {table['unregistered_arms']}")
-    log(f"[disjointness] complex_fields licence: "
-        f"{complex_source if complex_probe is not None else 'NONE'}")
     matrix = list(gate.CASES) + [
         dict(gate.case_named("r1_kz2d_periodic"), name="beta_zero_control",
              beta=0.0),
@@ -327,8 +312,7 @@ def leg_disjointness(payload: Dict[str, Any], out: str) -> None:
         residency = device.Residency()
         grid, fields, pml = gate.build(case, beta=case.get("beta"))
         context = arms.StepContext(fields, pml, residency,
-                                   (templates.CONTRACT_OFF,), sources=(),
-                                   extra=extra)
+                                   (templates.CONTRACT_OFF,), sources=())
         admitters: Dict[str, List[str]] = {
             slot: gate.admitters_for(slot, context)
             for slot in ("step_B", "step_D", "update_H", "update_E")}
@@ -350,13 +334,8 @@ def leg_disjointness(payload: Dict[str, Any], out: str) -> None:
             # THE VACUITY CONTROL for every complex row above: the other complex
             # curl on this slot must ADMIT something, or "exactly one admitter"
             # on the beta rows is an absence of coverage rather than disjointness.
-            if complex_probe is None:
-                kit.predicted_null(row, complex_source)
-                save(payload, out)
-            else:
-                assert any("complex_fields" in name
-                           for name in admitters["step_B"]), (admitters,
-                                                              complex_source)
+            assert any("complex_fields" in name
+                       for name in admitters["step_B"]), admitters
         else:
             # THE SOLE ADMITTER MUST BE THIS FAMILY. The assertion here read
             # `.startswith("unregistered:")`, which pinned the arm's REGISTRATION

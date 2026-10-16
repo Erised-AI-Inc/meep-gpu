@@ -31,29 +31,42 @@ component to its D array, fields.py:1107-1138)::
 
     gs   = D_c                                            # aliased volume
     us   = fields.inverse_epsilon_for(c)
-    g1s  = (g1 + shift_down(g1, p1)) + shift_up(g1 + shift_down(g1, p1), a)
-    g2s  = likewise for the second partner                # stepping.py:1150-1193
-    Dsqr = gs*gs + 0.0625*(g1s*g1s + g2s*g2s)             # stepping.py:1131-1147
-    c2   = gs   * chi2 * (us*us)                          # stepping.py:1054
-    c3   = Dsqr * chi3 * (us*us*us)                       # stepping.py:1055
-    u    = (1 + c2 + 2*c3) / (1 + 2*c2 + 3*c3)            # stepping.py:1056
-    src  = (gs * us) * u                                  # stepping.py:1107-1109
-    prev = f_w_c ; f_w_c = src                            # stepping.py:2112-2143
-    E_c += kps_a_h * src ;  E_c -= kms_a_h * prev         # half-integer, :1015
+    g1s  = ((g1[i] + g1[i+s]) + g1[i-s1]) + g1[i+(s-s1)]  # left to right, one partner
+    g2s  = likewise for the second partner                # _nonlinear_transverse_sums
+    Dsqr = f32(f64(gs*gs) + 0.0625*f64(g1s*g1s + g2s*g2s))  # _nonlinear_dsqr
+    c2   = gs   * chi2 * (us*us)                          # calc_nonlinear_u
+    c3   = Dsqr * chi3 * (us*us*us)
+    u    = (1 + c2 + 2*c3) / (1 + 2*c2 + 3*c3)
+    src  = (gs * us) * u                                  # _nonlinear_constitutive
+    on the cells whose chunk carries the own axis's layer (dsigw, half-integer):
+        prev = f_w_c ; f_w_c = src
+        E_c = E_c + ((kps_a_h * src) - (kms_a_h * prev))  # _apply_constitutive_pml
+    everywhere else:
+        E_c = src                                         # f_w_c keeps its word
 
 THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
 
-1. **THE FOUR-CORNER ASSOCIATION IS THE SHIFTED-PAIR ONE, NOT MEEP C'S.**
-   ``stepping._nonlinear_transverse_sums`` (:1158-1162) forms
-   ``(g1[i] + g1[i-s1]) + (g1[i+s] + g1[i+s-s1])`` — pair first, then the pair
-   shifted — while MEEP C sums left to right (step_generic.cpp:646-648). The
-   byte arbiter is stepping.py, so the pair association is what the kernel
-   carries, and the gate's left-to-right mutation is what proves the difference
-   is byte-visible rather than argued.
+1. **THE FOUR-CORNER SUM ASSOCIATES LEFT TO RIGHT, AS MEEP's C DOES.**
+   ``stepping._nonlinear_transverse_sums`` forms
+   ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]`` (step_generic.cpp:646-648), each
+   addition rounded once. Pairing the corners, ``(g[i] + g[i-s1]) + (g[i+s] +
+   g[i+(s-s1)])``, is the same sum in exact arithmetic and a different float32
+   word; the gate's pair-association mutation is what proves the difference is
+   byte-visible rather than argued.
 2. **THE TWO SHIFTS GO IN OPPOSITE DIRECTIONS** — half a cell DOWN the
-   partner's axis, half a cell UP the component's own axis (stepping.py:
-   1160-1171). Taking both the same way is the half-cell registration error
-   that survives every scalar test; the gate carries a mutation for exactly it.
+   partner's axis, half a cell UP the component's own axis. Taking both the
+   same way is the half-cell registration error that survives every scalar
+   test; the gate carries a mutation for exactly it.
+2a. **Dsqr IS FORMED IN DOUBLE AND ROUNDED ONCE.** ``gs*gs`` and
+   ``g1s*g1s + g2s*g2s`` are float32 operations, but ``0.0625`` is a double
+   literal in MEEP's C, so the scaled sum and the addition after it are double
+   operations, rounded once to float32 by ``calc_nonlinear_u``'s ``realnum``
+   parameter (``stepping._nonlinear_dsqr``). The kernel widens the two float32
+   terms with ``tl.cast``, adds in ``tl.float64`` and rounds to nearest even on
+   the way back. Against the all-float32 form this moves Dsqr only where the
+   exact ``0.0625*t`` lies below float32's normal range, so the gate pins it on
+   planted operands in that band rather than on field-scale states, where the
+   two forms agree.
 3. **SCALAR COEFFICIENT POWERS ARE PYTHON-DOUBLE POWERS, ROUNDED ONCE.** With a
    PYTHON-FLOAT ``us``, NumPy evaluates ``(chi1inv * chi1inv)`` in double and
    rounds ONCE when the product meets the float32 array; ``f32(us)*f32(us)`` in
@@ -89,12 +102,18 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    the array path performs is a compile-time specialization here — and the
    gate's identity leg pins the NL=(0,0,0) build byte-identical to the
    certified kernel, which is what makes the seam a measurement.
-6. **``prev`` IS READ BEFORE ``f_w`` IS WRITTEN**, and the tail keeps the two
-   separate accumulations of ``_apply_constitutive_pml`` (stepping.py:
-   2112-2143) — byte-for-byte the certified constitutive family's recurrence,
-   mutation included. ``ENABLE_FP_FUSION = False`` is the certified
-   configuration for this family's multiply-subtract tail (the beta gate
-   measured fusion-on changing bytes on 72/96 cases of the same tail shape).
+6. **THE TAIL IS THE CERTIFIED CONSTITUTIVE KERNEL's, FORM FOR FORM.** The
+   chunk record (``cb``, ``chunk_map.chunk_bounds_record``) keys it: on a cell
+   whose chunk carries the component's own (dsigw) layer, on the half-integer
+   sub-lattice an E component occupies along its own axis, MEEP's accumulation
+   ``E + ((kps*src) - (kms*prev))`` with ``f_w`` taking ``src``; everywhere else
+   ``E = src`` and ``f_w`` is neither read nor written (the auxiliary
+   contract). Both are :func:`.forms.constitutive_form`, the one spelling
+   :func:`.kernels.constitutive_step` uses, and the select is an output select:
+   the plain form is never ``kps = 1, kms = 0`` (a stored ``-0`` would come
+   back ``+0``). ``prev`` IS READ BEFORE ``f_w`` IS WRITTEN. ``ENABLE_FP_FUSION
+   = False`` is the certified configuration for the multiply-subtract tail and
+   for the double add of 2a.
 
 GHOSTS. Phase A carries exactly the two plain rules of ``_shift_up``
 (stepping.py:1770) / ``_shift_down`` (:1834): the periodic wrap and the metallic
@@ -135,6 +154,7 @@ from __future__ import annotations
 import struct
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from .. import chunk_map as _chunk_map
 from . import coverage as _coverage
 
 #: The components this sub-step writes, in ``stepping.E_CONSTITUTIVE_TERMS``
@@ -184,15 +204,25 @@ except ImportError as _exc:  # pragma: no cover - the laptop path
     tl = None  # type: ignore[assignment]
     _TRITON_IMPORT_ERROR = _exc
 
+#: Word index of the half-integer sub-lattice's first record line
+#: (``chunk_map.record_index(True, 0, 0)``): an E component is half-integer along its
+#: own axis, so its dsigw membership is that sub-lattice's line for the own axis, at
+#: words ``RECORD_HALF_INTEGER_WORD + 4 * axis``.
+RECORD_HALF_INTEGER_WORD = _chunk_map.record_index(True, 0, 0)
+
 if triton is not None:
+    from .forms import constitutive_form, record_in
+
     #: Boundary codes matching ``stepping``'s string kinds, the package's own
     #: values (kernels.py:77-78). Wrapped in tl.constexpr because a @triton.jit
     #: body may not read a plain module global.
     PERIODIC = tl.constexpr(0)
     METALLIC = tl.constexpr(1)
+    RECORD_HALF_INTEGER = tl.constexpr(RECORD_HALF_INTEGER_WORD)
 else:
     PERIODIC = 0  # type: ignore[assignment]
     METALLIC = 1  # type: ignore[assignment]
+    RECORD_HALF_INTEGER = RECORD_HALF_INTEGER_WORD  # type: ignore[assignment]
 
 
 if triton is not None:
@@ -201,22 +231,38 @@ if triton is not None:
     def _four_point_sum(g, o_c, o_d, o_u, o_ud, v_c, v_d, v_u, v_ud):
         """MEEP's ``g1s``: one partner's four-corner sum onto this Yee point.
 
-        ``stepping._nonlinear_transverse_sums`` (:1158-1162) forms
-        ``pair = g + shift_down(g, partner)`` then ``pair + shift_up(pair, own)``
-        — so the bytes are ``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])``, the pair
-        association, NOT MEEP C's left-to-right sum. The far pair is the near
-        pair's elementwise sum moved up one cell, so loading the two far corners
-        and adding them is the same bits as shifting the formed pair: a shift is
-        data movement. Ghost rules compose per axis: a periodic index wraps, a
+        ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]``, left to right, one float32
+        rounding per addition — MEEP's C (step_generic.cpp:646-648) and
+        ``stepping._nonlinear_transverse_sums``. ``o_c`` is ``g[i]``, ``o_u`` the
+        cell half a cell UP this component's own axis (``g[i+s]``), ``o_d`` half a
+        cell DOWN the partner's axis (``g[i-s1]``), ``o_ud`` both (the corner). A
+        shift is data movement, so loading the shifted word is the array path's
+        rolled operand. Ghost rules compose per axis: a periodic index wraps, a
         metallic out-of-range mask delivers ``other=0.0``, and the corner takes
-        BOTH axes' rules (mask AND, wrap independent) exactly as shifting the
-        already-shifted pair applies them in sequence.
+        BOTH axes' rules (mask AND, wrap independent), exactly as shifting the
+        already-shifted operand applies them in sequence.
         """
-        near = (tl.load(g + o_c, mask=v_c, other=0.0)
-                + tl.load(g + o_d, mask=v_d, other=0.0))
-        far = (tl.load(g + o_u, mask=v_u, other=0.0)
-               + tl.load(g + o_ud, mask=v_ud, other=0.0))
-        return near + far
+        center = tl.load(g + o_c, mask=v_c, other=0.0)
+        up = tl.load(g + o_u, mask=v_u, other=0.0)
+        down = tl.load(g + o_d, mask=v_d, other=0.0)
+        corner = tl.load(g + o_ud, mask=v_ud, other=0.0)
+        return ((center + up) + down) + corner
+
+    @triton.jit
+    def _dsqr(gs, g1s, g2s):
+        """MEEP's ``Dsqr`` argument, as its C evaluates it (``stepping._nonlinear_dsqr``).
+
+        ``gs*gs`` and ``g1s*g1s + g2s*g2s`` are float32 operations; ``0.0625`` is a
+        double literal, so the scale and the addition after it are double, and the
+        ``const realnum Dsqr`` parameter of ``calc_nonlinear_u`` rounds the sum once
+        (step_generic.cpp:542, :646-654). ``tl.cast`` widens exactly; the
+        float64 -> float32 cast rounds to nearest even. ``0.0625 * t`` is exact in
+        double, so contraction could not move this word even if it were allowed.
+        """
+        square = gs * gs
+        transverse = g1s * g1s + g2s * g2s
+        widened = tl.cast(square, tl.float64) + 0.0625 * tl.cast(transverse, tl.float64)
+        return tl.cast(widened, tl.float32)
 
     @triton.jit
     def _pade_u(gs, dsqr, chi2, chi3, us_sq, us_cu):
@@ -251,6 +297,7 @@ if triton is not None:
         q20, q21, q22,                  # chi2 volumes (own D pointer when scalar/linear)
         q30, q31, q32,                  # chi3 volumes (same rule)
         kp0, km0, kp1, km1, kp2, km2,   # kps/kms on each component's OWN axis, half-integer
+        cb,                             # chunk record: each component's dsigw membership
         ue0, ue0_2, ue0_3,              # scalar inverse-epsilon arm, component 0
         ue1, ue1_2, ue1_3,              #   (f32(us), f32(us^2), f32(us^3) — double powers,
         ue2, ue2_2, ue2_3,              #    rounded once on the host; docstring point 3)
@@ -270,16 +317,18 @@ if triton is not None:
         substitution per nonlinear component: ``src`` is no longer ``D*inv_eps``
         but ``(D*inv_eps) * u`` with ``u`` the Pade factor built from the
         four-point transverse average of the two partner D volumes. Everything
-        else — the prev-before-store ordering, the two separate accumulations,
-        the own-axis half-integer coefficient index — is that kernel's,
-        unchanged, because the array path's is unchanged.
+        else — the record line that picks the form, the masked auxiliary traffic,
+        the prev-before-store ordering, :func:`.forms.constitutive_form`, the
+        own-axis half-integer coefficient index — is that kernel's, unchanged,
+        because the array path's is the same.
 
         ``NL*`` select the nonlinear body per component at compile time; the 0
         arm is the certified plain body verbatim (docstring point 5). ``EV*`` /
         ``QV2*`` / ``QV3*`` select volume vs fp32-scalar operands; unused
         pointer slots are bound to the component's own D pointer by the plan
         and never read. ``BC*`` carry the per-axis ghost rule for the sums'
-        neighbour loads — the only stencil this sub-step has.
+        neighbour loads — the only stencil this sub-step has. ``cb`` is the
+        chunk record, read with scalar loads (:func:`.forms.record_in`).
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -288,6 +337,13 @@ if triton is not None:
         plane = idx // nz
         j = plane % ny
         i = plane // ny
+
+        # Which cells take the accumulation: the component's own (dsigw) layer on the
+        # half-integer sub-lattice an E component occupies along its own axis, x for
+        # component 0, y for 1, z for 2 (chunk_map.record_index(True, axis, 0)).
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
 
         # --- per-axis neighbour indices, both directions, with the ghost rule
         # (stepping._shift_down / _shift_up, plain PERIODIC/METALLIC branches).
@@ -323,7 +379,7 @@ if triton is not None:
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
         # --- component 0: Ex — own axis x; partners Dy (down y) then Dz (down z)
-        prev0 = tl.load(w0 + idx, mask=live, other=0.0)   # BEFORE the store.
+        prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)   # BEFORE the store.
         gs0 = tl.load(g0 + idx, mask=live, other=0.0)
         if EV0:
             us0 = tl.load(e0 + idx, mask=live, other=0.0)
@@ -342,7 +398,7 @@ if triton is not None:
                 ui * nyz + j * nz + k,
                 ui * nyz + j * nz + dk,
                 live, dvz, uvx, uvx & dvz)
-            dsqr0 = gs0 * gs0 + 0.0625 * (g1s * g1s + g2s * g2s)
+            dsqr0 = _dsqr(gs0, g1s, g2s)
             if QV20:
                 chi2_0 = tl.load(q20 + idx, mask=live, other=0.0)
             else:
@@ -361,14 +417,13 @@ if triton is not None:
             src0 = (gs0 * us0) * u0
         else:
             src0 = gs0 * us0
-        tl.store(w0 + idx, src0, mask=live)
-        a0 = tl.load(f0 + idx, mask=live, other=0.0)
-        a0 = a0 + kp_0 * src0
-        a0 = a0 - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=live & dw0)
+        a0 = tl.load(f0 + idx, mask=live & dw0, other=0.0)
+        a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)
         tl.store(f0 + idx, a0, mask=live)
 
         # --- component 1: Ey — own axis y; partners Dz (down z) then Dx (down x)
-        prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+        prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
         gs1 = tl.load(g1 + idx, mask=live, other=0.0)
         if EV1:
             us1 = tl.load(e1 + idx, mask=live, other=0.0)
@@ -387,7 +442,7 @@ if triton is not None:
                 i * nyz + uj * nz + k,
                 di * nyz + uj * nz + k,
                 live, dvx, uvy, uvy & dvx)
-            dsqr1 = gs1 * gs1 + 0.0625 * (g1s * g1s + g2s * g2s)
+            dsqr1 = _dsqr(gs1, g1s, g2s)
             if QV21:
                 chi2_1 = tl.load(q21 + idx, mask=live, other=0.0)
             else:
@@ -406,14 +461,13 @@ if triton is not None:
             src1 = (gs1 * us1) * u1
         else:
             src1 = gs1 * us1
-        tl.store(w1 + idx, src1, mask=live)
-        a1 = tl.load(f1 + idx, mask=live, other=0.0)
-        a1 = a1 + kp_1 * src1
-        a1 = a1 - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=live & dw1)
+        a1 = tl.load(f1 + idx, mask=live & dw1, other=0.0)
+        a1 = constitutive_form(a1, prev1, src1, kp_1, km_1, dw1)
         tl.store(f1 + idx, a1, mask=live)
 
         # --- component 2: Ez — own axis z; partners Dx (down x) then Dy (down y)
-        prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+        prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
         gs2 = tl.load(g2 + idx, mask=live, other=0.0)
         if EV2:
             us2 = tl.load(e2 + idx, mask=live, other=0.0)
@@ -432,7 +486,7 @@ if triton is not None:
                 i * nyz + j * nz + uk,
                 i * nyz + dj * nz + uk,
                 live, dvy, uvz, uvz & dvy)
-            dsqr2 = gs2 * gs2 + 0.0625 * (g1s * g1s + g2s * g2s)
+            dsqr2 = _dsqr(gs2, g1s, g2s)
             if QV22:
                 chi2_2 = tl.load(q22 + idx, mask=live, other=0.0)
             else:
@@ -451,10 +505,9 @@ if triton is not None:
             src2 = (gs2 * us2) * u2
         else:
             src2 = gs2 * us2
-        tl.store(w2 + idx, src2, mask=live)
-        a2 = tl.load(f2 + idx, mask=live, other=0.0)
-        a2 = a2 + kp_2 * src2
-        a2 = a2 - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=live & dw2)
+        a2 = tl.load(f2 + idx, mask=live & dw2, other=0.0)
+        a2 = constitutive_form(a2, prev2, src2, kp_2, km_2, dw2)
         tl.store(f2 + idx, a2, mask=live)
 
 else:  # pragma: no cover - the laptop path
@@ -751,18 +804,23 @@ class NonlinearConstitutivePlan:
     sums re-read the D volumes at neighbour offsets while E and f_w are being
     written, so an aliased pair would make the result depend on block schedule
     — a wrong answer that varies run to run.
+
+    ``chunk_bounds`` is the chunk record (``chunk_map.chunk_bounds_record``),
+    required and bound as every Triton PML plan binds it
+    (:func:`.launch.bind_chunk_bounds`): the kernel reads each component's dsigw
+    membership line from it, so a plan without one would key no form at all.
     """
 
     __slots__ = ("shape", "n_elem", "block", "nonlinear", "boundary_codes",
                  "epsilon_is_volume", "chi2_is_volume", "chi3_is_volume",
-                 "epsilon_scalars", "chi2_scalars", "chi3_scalars",
+                 "epsilon_scalars", "chi2_scalars", "chi3_scalars", "chunk_bounds",
                  "_targets", "_aux", "_sources", "_inv_eps", "_chi2", "_chi3",
-                 "_coefficients", "_grid", "_kernel")
+                 "_coefficients", "_cb", "_grid", "_kernel")
 
     def __init__(self, shape, block: int, targets, auxiliaries, sources,
                  inverse_epsilon, chi2, chi3, coefficients, boundary_codes,
-                 kernel: Any = None) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 kernel: Any = None, *, chunk_bounds: Any) -> None:
+        from .launch import CupyPointer, _flat, bind_chunk_bounds  # noqa: PLC0415
 
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
@@ -796,6 +854,8 @@ class NonlinearConstitutivePlan:
 
         self._require_no_aliasing(targets, auxiliaries, sources,
                                   inverse_epsilon, chi2, chi3, coefficients)
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "NonlinearConstitutivePlan")
 
         self._targets = tuple(CupyPointer(a) for a in targets)
         self._aux = tuple(CupyPointer(a) for a in auxiliaries)
@@ -884,7 +944,7 @@ class NonlinearConstitutivePlan:
         kernel[self._grid](
             *self._targets, *self._aux, *self._sources,
             *self._inv_eps, *self._chi2, *self._chi3,
-            *self._coefficients,
+            *self._coefficients, self._cb,
             *scalars, *self.chi2_scalars, *self.chi3_scalars,
             nx, ny, nz, self.n_elem,
             NL0=self.nonlinear[0], NL1=self.nonlinear[1], NL2=self.nonlinear[2],
@@ -903,7 +963,7 @@ class NonlinearConstitutivePlan:
     def __repr__(self) -> str:
         return (f"NonlinearConstitutivePlan(shape={self.shape}, "
                 f"nonlinear={self.nonlinear}, bc={self.boundary_codes}, "
-                f"block={self.block})")
+                f"block={self.block}, chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 #: Boundary kind string -> the kernel's constexpr code. The strings are
@@ -912,7 +972,8 @@ BOUNDARY_CODES = {"periodic": 0, "metallic": 1}
 
 
 def plan_nonlinear_constitutive(fields: Any, pml: Any,
-                                block: Optional[int] = None
+                                block: Optional[int] = None,
+                                chunk_layout: Any = None,
                                 ) -> Optional[NonlinearConstitutivePlan]:
     """Build the nonlinear ``update_E`` plan from the engine's own objects, or None.
 
@@ -920,9 +981,15 @@ def plan_nonlinear_constitutive(fields: Any, pml: Any,
     :func:`nonlinear_constitutive_coverage`. The Triton import stays below the
     predicate: a NumPy host must be able to plan (to ``None``) without the
     optional dependency being importable at all.
+
+    ``chunk_layout`` is the run's chunk division (``FdtdDriver.chunk_layout``),
+    ``None`` for the one-rank default; the plan binds its record
+    (:func:`.launch.chunk_bounds_for`).
     """
     if not nonlinear_constitutive_coverage(fields, pml).covered:
         return None
+    from .launch import chunk_bounds_for  # noqa: PLC0415
+
     kinds = _coverage._boundary_kinds(fields.grid, pml)
     codes = tuple(BOUNDARY_CODES[kind] for kind in kinds)
     targets = tuple(term[0] for term in E_TERMS)
@@ -938,6 +1005,7 @@ def plan_nonlinear_constitutive(fields: Any, pml: Any,
         [getattr(pml, f"{stem}_{axis}_h")
          for axis in "xyz" for stem in ("kps", "kms")],
         codes,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
@@ -947,7 +1015,8 @@ def plan_nonlinear_constitutive_from_arrays(arrays: Dict[str, Any],
                                             chi3: Dict[str, Any],
                                             boundary_codes: Sequence[int],
                                             block: Optional[int] = None,
-                                            kernel: Any = None
+                                            kernel: Any = None,
+                                            *, chunk_bounds: Any,
                                             ) -> NonlinearConstitutivePlan:
     """Build it from bare arrays — the gate's and benchmark's route.
 
@@ -963,6 +1032,11 @@ def plan_nonlinear_constitutive_from_arrays(arrays: Dict[str, Any],
     through it, and a builder that drops it launches the shipped kernel and
     reports a pass for a defect it never introduced (plan §13.4's measured
     harness-disarm failure).
+
+    ``chunk_bounds`` is REQUIRED and has no default, as in
+    :func:`.launch.plan_from_arrays`: a harness states which division its
+    reference steps with (``parity/meep_gpu/gate_chunk_records.py``), and a plan
+    that fell back to some default division would stop measuring the forms.
     """
     targets = tuple(term[0] for term in E_TERMS)
     shape = tuple(int(n) for n in arrays[targets[0]].shape)
@@ -977,6 +1051,7 @@ def plan_nonlinear_constitutive_from_arrays(arrays: Dict[str, Any],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kps", "kms")],
         boundary_codes,
         kernel=kernel,
+        chunk_bounds=chunk_bounds,
     )
 
 
@@ -1272,12 +1347,15 @@ def nonlinear_run_constitutive_coverage(fields: Any, pml: Any,
 
 def plan_nonlinear_run_pml_curl(fields: Any, pml: Any, sub_step: str,
                                 block: Optional[int] = None,
-                                num_warps: Optional[int] = None) -> Any:
+                                num_warps: Optional[int] = None,
+                                chunk_layout: Any = None) -> Any:
     """A CERTIFIED PML curl plan for a nonlinear run, or None.
 
     The kernel and the plan class are ``launch.PmlCurlPlan``'s, untouched; only
     the admission is this module's. The ``launch`` import stays BELOW the
     predicate so a NumPy host can plan (to ``None``) without Triton.
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank
+    default, bound as :func:`.launch.plan_pml_curl` binds it.
     """
     if sub_step not in _coverage.CURL_SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(_coverage.CURL_SUB_STEPS)}, "
@@ -1285,7 +1363,7 @@ def plan_nonlinear_run_pml_curl(fields: Any, pml: Any, sub_step: str,
     if not nonlinear_run_pml_curl_coverage(fields, pml, sub_step).covered:
         return None
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
-    from .launch import SUB_STEPS, PmlCurlPlan  # noqa: PLC0415
+    from .launch import SUB_STEPS, PmlCurlPlan, chunk_bounds_for  # noqa: PLC0415
 
     spec = SUB_STEPS[sub_step]
     grid = fields.grid
@@ -1300,19 +1378,27 @@ def plan_nonlinear_run_pml_curl(fields: Any, pml: Any, sub_step: str,
         [getattr(pml, f"{stem}_{axis}{spec['suffix']}")
          for axis in "xyz" for stem in ("kms", "sinv")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
 def plan_nonlinear_run_constitutive(fields: Any, pml: Any, side: str,
                                     block: Optional[int] = None,
-                                    num_warps: Optional[int] = None) -> Any:
-    """A CERTIFIED constitutive plan for a nonlinear run's ``update_H``, or None."""
+                                    num_warps: Optional[int] = None,
+                                    chunk_layout: Any = None) -> Any:
+    """A CERTIFIED constitutive plan for a nonlinear run's ``update_H``, or None.
+
+    Bound as :func:`.launch.plan_constitutive` binds it: the run's chunk division
+    (``None`` for the one-rank default) and ``h_state=fields``, so the first
+    ``update_H`` of the run is MEEP's start of H (``stepping.separate_h_from_b``),
+    which a dispatched sub-step replaces with the rest of the call.
+    """
     if side not in _coverage.CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(_coverage.CONSTITUTIVE_SIDES)}, "
                          f"got {side!r}")
     if not nonlinear_run_constitutive_coverage(fields, pml, side).covered:
         return None
-    from .launch import ConstitutivePlan  # noqa: PLC0415
+    from .launch import ConstitutivePlan, chunk_bounds_for  # noqa: PLC0415
 
     spec = _coverage.CONSTITUTIVE_SIDES[side]
     suffix = "_h" if spec["half_integer"] else ""
@@ -1326,6 +1412,8 @@ def plan_nonlinear_run_constitutive(fields: Any, pml: Any, side: str,
         [getattr(pml, f"{stem}_{axis}{suffix}")
          for axis in "xyz" for stem in ("kps", "kms")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        h_state=fields,
     )
 
 

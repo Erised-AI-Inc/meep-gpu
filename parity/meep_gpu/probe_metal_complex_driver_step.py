@@ -72,8 +72,7 @@ STATED WEAKNESSES, because the artifact inherits them:
   not readable from here.
 
     python -u probe_metal_complex_driver_step.py \\
-        --out results/metal_complex_2026-08-15/driver_step.json \\
-        --probe results/metal_complex_2026-08-15/complex_expansion_probe.json
+        --out results/metal_complex_2026-08-15/driver_step.json
 
 Progress is one flushed line per case and the artifact is rewritten atomically after
 every case (the progress-reporting rule).
@@ -135,11 +134,6 @@ SEED = 20260815
 
 TALLY = {"compared": 0, "disagreed": 0}
 
-#: Bound from the probe artifact before any leg runs. Deliberately NOT defaulted:
-#: the arm is a MEASURED platform fact and a leg that ran before it was bound would
-#: be binding a guess.
-EXPANSION: Optional[str] = None
-PROBE: Any = None
 
 
 # ---------------------------------------------------------------------------
@@ -371,17 +365,20 @@ def build_plans(driver: FdtdDriver,
     fields, pml = driver.fields, driver.pml
     residency = device.Residency()
     plans: Dict[str, Any] = {}
+    record = driver.chunk_bounds_record()
     for sub_step in ("step_B", "step_D"):
         plan = cx.plan_complex_pml_curl(fields, pml, sub_step, residency,
-                                        (shaders.CONTRACT_OFF,), probe=PROBE)
+                                        (shaders.CONTRACT_OFF,),
+                                        chunk_bounds=record)
         assert plan is not None, cx.complex_pml_curl_coverage(
-            fields, pml, sub_step, residency, PROBE).reasons
+            fields, pml, sub_step, residency).reasons
         plans[sub_step] = plan
     for slot, side in (("update_H", "H"), ("update_E", "E")):
         plan = cx.plan_complex_constitutive(fields, pml, side, residency,
-                                            (shaders.CONTRACT_OFF,), probe=PROBE)
+                                            (shaders.CONTRACT_OFF,),
+                                            chunk_bounds=record)
         assert plan is not None, cx.complex_constitutive_coverage(
-            fields, pml, side, residency, PROBE).reasons
+            fields, pml, side, residency).reasons
         plans[slot] = plan
     for slot, replacement in (functions or {}).items():
         plan = plans.get(slot)
@@ -729,8 +726,8 @@ class SeamCensus:
     arithmetic unchecked.
     """
 
-    __slots__ = ("window", "grid", "pml", "codes", "phases", "inverse", "step",
-                 "observations")
+    __slots__ = ("window", "grid", "pml", "codes", "phases", "inverse", "record",
+                 "step", "observations")
 
     def __init__(self, window: Any, driver: FdtdDriver) -> None:
         self.window = window
@@ -740,6 +737,7 @@ class SeamCensus:
         self.phases = gate.phase_table(driver.grid, driver.pml)
         self.inverse = {n: driver.fields.inverse_epsilon_for(n)
                         for n in gate.SIDES["E"]["targets"]}
+        self.record = driver.chunk_bounds_record()
         self.step = 0
         self.observations = 0
 
@@ -754,7 +752,7 @@ class SeamCensus:
                 "fu_" + n for n in spec["targets"])
             curls = gate.reference_curls(
                 [getattr(fields, n) for n in spec["sources"]], self.codes,
-                bool(spec["backward"]), dtdx, self.phases)
+                bool(spec["backward"]), dtdx, self.phases, self.record)
             intermediates = {f"{slot}:curl:{target}": volume
                              for target, volume in zip(spec["targets"], curls)}
         else:
@@ -885,25 +883,26 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
 #: partial needle miss as NEEDLE-MISSED and fails the row, precisely so a mutation
 #: cannot be half-planted and still report a pass.
 DRIVER_MUTATIONS: Dict[str, Dict[str, Any]] = {
-    "d1_flatten_curl_parens": {
+    "d1_previous_curl_grouping": {
         "must_catch": True,
         "why": "the ONE grouping the whole claim rests on, re-armed inside a "
                "complete driver step: this is the row that proves the compared "
                "inventory carries the Metal kernel's output rather than the array "
                "path's",
         "curl_sub_steps": ("step_B", "step_D"),
-        "apply": lambda s: kit.needle(s, "float2 t0 = ((c_y - c) + (b - b_z));",
-                                      "float2 t0 = (c_y - c + b - b_z);"),
+        # INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping planted
+        # in place of MEEP's left-to-right bracket.
+        "apply": lambda s: kit.needle(s, "((c_y - c_dy) + b_dz) - b_z",
+                                      "(c_y - c_dy) + (b_dz - b_z)"),
     },
-    "d2_phase_on_every_lane": {
+    "d2_connection_on_every_lane": {
         "must_catch": True,
         "why": "the wrapped-lane SELECT dropped on the phased z axis, so every lane "
                "is rotated. Caught at sub-step level; re-armed here because the "
                "per-dispatch sync could in principle overwrite the device's answer "
                "with the host's before the comparison sees it",
         "curl_sub_steps": ("step_B",),
-        "apply": lambda s: kit.needle(s, "bool wz = (k == nzi - 1);",
-                                      "bool wz = true;"),
+        "apply": lambda s: kit.needle(s, "    if (k == 0) {\n", "    if (true) {\n"),
     },
     "d3_drop_ownership_mask_x": {
         "must_catch": True,
@@ -917,19 +916,20 @@ DRIVER_MUTATIONS: Dict[str, Dict[str, Any]] = {
             s, "curl0 = at_x ? float2(0.0f, 0.0f) : curl0;",
             "// ownership mask dropped on x"),
     },
-    "d4_flatten_constitutive_accumulation": {
+    "d4_previous_constitutive_grouping": {
         "must_catch": True,
         "why": "`((f + kps*src) - kms*prev)` flattened, on BOTH sides. The "
                "constitutive pair is half this family's claim and the gate's own "
                "audit found it certified with no census; a driver-level arm is what "
                "shows the device reaches those bytes too",
         "sides": ("H", "E"),
+        # INVERTED (KERNELS.md §7.1): the package's previous accumulation grouping.
         "apply": lambda s: kit.needle(
             s,
-            "    a0 = a0 + c_mul_coefficient_left(kp_0, src0);\n"
-            "    a0 = a0 - c_mul_coefficient_left(km_0, prev0);",
-            "    a0 = a0 + (c_mul_coefficient_left(kp_0, src0) "
-            "- c_mul_coefficient_left(km_0, prev0));"),
+            "if (dw0) { a0 = f0[ii] + (c_mul_coefficient_left(kp_0, src0) - "
+            "c_mul_coefficient_left(km_0, prev0)); }",
+            "if (dw0) { a0 = (f0[ii] + c_mul_coefficient_left(kp_0, src0)) - "
+            "c_mul_coefficient_left(km_0, prev0); }"),
     },
     "d5_comment_only_is_not_a_defect": {
         # THE MUST-NOT-CATCH ROW. Without it, "every mutation was caught" is equally
@@ -941,8 +941,8 @@ DRIVER_MUTATIONS: Dict[str, Dict[str, Any]] = {
                "measuring recompilation and not arithmetic",
         "curl_sub_steps": ("step_B", "step_D"),
         "apply": lambda s: kit.needle(
-            s, "float2 t0 = ((c_y - c) + (b - b_z));",
-            "float2 t0 = ((c_y - c) + (b - b_z));  // same arithmetic"),
+            s, "    float2 curl0 = has_y ?",
+            "    // same arithmetic\n    float2 curl0 = has_y ?"),
     },
 }
 
@@ -970,7 +970,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
             spec = gate.SUB_STEPS[sub_step]
             flags, _ = cx.phase_arguments(tuple(phases),
                                           backward=bool(spec["backward"]))
-            shipped = cx.bloch_curl_source(codes, spec["backward"], flags, EXPANSION)
+            shipped = cx.bloch_curl_source(codes, spec["backward"], flags)
             try:
                 mutated = entry["apply"](shipped)
             except LookupError:
@@ -981,7 +981,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
             counters.append(counter)
             functions[sub_step] = {shaders.CONTRACT_OFF: counter}
         for side in entry.get("sides", ()):
-            shipped = cx.bloch_constitutive_source(side, EXPANSION)
+            shipped = cx.bloch_constitutive_source(side)
             try:
                 mutated = entry["apply"](shipped)
             except LookupError:
@@ -1041,8 +1041,6 @@ REQUIRED = tuple(name for name, _ in LEGS)
 
 def main() -> int:
     parser = kit.argument_parser(__doc__)
-    parser.add_argument("--probe", default="",
-                        help="expansion probe artifact (defaults to the environment)")
     arguments = parser.parse_args()
     started = time.time()
     out_dir = os.path.dirname(os.path.abspath(arguments.out)) or "."
@@ -1070,23 +1068,9 @@ def main() -> int:
                        "green artifact")
     if not payload["subnormal_policy"]["admitted"]:
         reasons.extend(payload["subnormal_policy"]["reasons"])
-    probe = cx.load_expansion_probe(arguments.probe or None)
-    if probe is None or cx.expansion_from_probe(probe) is None:
-        reasons.append(
-            f"no usable complex-expansion probe artifact (pass --probe or set "
-            f"{cx.PROBE_PATH_ENVIRONMENT}); the arm is a MEASURED platform fact "
-            f"and this probe will not guess it. Run gate_metal_complex.py --legs "
-            f"expansion to write one")
     if reasons:
         return kit.cannot_certify(payload, arguments.out, reasons)
 
-    global EXPANSION, PROBE
-    PROBE = probe
-    EXPANSION = cx.expansion_from_probe(probe)
-    # The gate's helpers this probe reuses read the module-level arm; binding it
-    # here keeps one arm across both files rather than two that could drift.
-    gate.EXPANSION = EXPANSION
-    payload["expansion_arm"] = EXPANSION
 
     kernel_dir = os.path.join(API_ROOT, "meep_gpu", "metal_kernels")
     payload["provenance"] = kit.provenance(out_dir, {
@@ -1107,11 +1091,11 @@ def main() -> int:
         # the composition probe, and `kit.provenance`'s default name is what one
         # caller used to overwrite another's record wholesale — the evidence-
         # destroying collision the kit's `name` parameter exists for.
-    }, kernel_sources=cx.enumerate_complex_sources(EXPANSION),
+    }, kernel_sources=cx.enumerate_complex_sources(),
         name="provenance_driver_step.json")
     save(payload, arguments.out)
 
-    log(f"[env] arm={EXPANSION} torch={payload['environment'].get('torch')} "
+    log(f"[env] torch={payload['environment'].get('torch')} "
         f"numpy={payload['environment']['numpy']} "
         f"frontend={payload['environment'].get('metal_frontend')} "
         f"policy={payload['subnormal_policy']['resolved']} "
@@ -1158,10 +1142,7 @@ def main() -> int:
             "read as a family-level one"),
         started=started, legs_run=ran, compared=TALLY["compared"],
         certified=TALLY["disagreed"] == 0,
-        extra={"expansion_arm": EXPANSION,
-               "expansion_probe": os.path.abspath(arguments.probe)
-               if arguments.probe else None,
-               "arrays_that_disagreed": TALLY["disagreed"],
+        extra={"arrays_that_disagreed": TALLY["disagreed"],
                "setup_pml_docstring_finding": (
                    "driver.py:2160-2168 documents a refusal of a nonzero k_point "
                    "on an absorbing axis that the code does not implement; "

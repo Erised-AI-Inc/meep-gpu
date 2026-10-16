@@ -212,3 +212,66 @@ def test_the_waiver_is_the_triton_less_legs_only(monkeypatch):
     assert not route_gate.tritonless_baseline_only(
         proof, route_gate.DRIVE_CUDA["conductive_2d"])
     assert proof["verdict"] == "NOT-COMPARABLE"
+
+
+# ---------------------------------------------------------------------------
+# Companion launches: the Dcyl pairs' radial scan (series entry 76-KC8)
+# ---------------------------------------------------------------------------
+
+_CYLINDRICAL_CUDA_ROWS = ("cylindrical", "cylindrical_m0_complex", "cylindrical_mneg1",
+                          "cylindrical_m1", "cylindrical_m2", "cylindrical_m3")
+_DCYL_SLOTS = ["step_B", "step_D", "update_E", "update_H"]
+
+
+def test_every_cuda_dcyl_row_declares_one_scan_per_curl_slot():
+    for case in _CYLINDRICAL_CUDA_ROWS:
+        spec = route_gate.DRIVE_CUDA[case]
+        assert spec["companion_kernels"] == {"step_B": ("cyl_radial_difference",),
+                                             "step_D": ("cyl_radial_difference",)}, case
+        assert [route_gate.baseline_launches_per_step(slot, spec)
+                for slot in ("step_B", "update_H", "step_D", "update_E")] == [2, 1, 2, 1]
+
+
+def test_a_companion_cancels_against_a_kernel_baseline():
+    """cuda_shipped's measurement: Triton singles 6.0 a step, the fused leg 4.0, drop 2
+    -- the row's two pairs, because the singles launch the two scans too."""
+    spec = route_gate.DRIVE_CUDA["cylindrical"]
+    assert route_gate.expected_substitution(spec)["drop_per_step"] == 2
+    assert route_gate.companion_launches_per_step("update_E", spec) == 0
+    assert route_gate.companion_launches_per_step(
+        "step_B", route_gate.DRIVE_CUDA["pml_2d"]) == 0
+
+
+def test_the_cuda_alone_cylindrical_proof_counts_the_scans(monkeypatch):
+    """cuda_alone's measurement (precert pass 4, tree 8e6ccf99): the Triton-less veto
+    leg 0.0 launches a step, the fused leg 4.0 (two scans and two fused kernels), both
+    witnesses agreeing. One launch per absorbed slot counted -2 and read the case
+    NO-SUBSTITUTION on a correct result; the declared scans count -4."""
+    _withheld(monkeypatch)
+    spec = route_gate.DRIVE_CUDA["cylindrical"]
+    proof = _not_comparable(_DCYL_SLOTS, 2, -4.0, driven=_DCYL_SLOTS)
+    assert route_gate.tritonless_baseline_only(proof, spec)
+    assert proof["verdict"] == route_gate.TRITONLESS_SUBSTITUTION_VERDICT
+    assert proof["expected_drop_per_step"] == -4
+
+
+def test_a_dcyl_pair_that_stopped_launching_its_scan_still_fails(monkeypatch):
+    """The 0.9.2 shape -- one launch per pair, fused 2.0 a step, drop -2 -- is now a
+    product that lost its companion, and the counted -4 refuses it."""
+    _withheld(monkeypatch)
+    spec = route_gate.DRIVE_CUDA["cylindrical"]
+    proof = _not_comparable(_DCYL_SLOTS, 2, -2.0, driven=_DCYL_SLOTS)
+    assert not route_gate.tritonless_baseline_only(proof, spec)
+    assert proof["verdict"] == "NOT-COMPARABLE"
+    assert proof["expected_drop_tritonless"] == -4
+
+
+def test_the_declaration_is_what_admits_the_measured_drop(monkeypatch):
+    """Without the row's companion_kernels the measured -4 is refused, as on the
+    precert pass: the declaration is load-bearing, not decoration."""
+    _withheld(monkeypatch)
+    spec = dict(route_gate.DRIVE_CUDA["cylindrical"])
+    spec.pop("companion_kernels")
+    proof = _not_comparable(_DCYL_SLOTS, 2, -4.0, driven=_DCYL_SLOTS)
+    assert not route_gate.tritonless_baseline_only(proof, spec)
+    assert proof["expected_drop_tritonless"] == -2

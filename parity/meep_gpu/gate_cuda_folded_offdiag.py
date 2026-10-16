@@ -670,16 +670,17 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     flat.restore(fields, frozen)
     backend.set_guard(guard)
     tables = flat.half_integer_tables(layer)
-    tables, launch_codes, launch_walls = flat.apply_host_mutation(
+    record, kept = flat.slice_module().chunk_arguments(fields, layer, codes)
+    tables, launch_codes, launch_walls, record, kept = flat.apply_host_mutation(
         host_mutation if host_mutation in flat.HOST_MUTATIONS else None,
-        layer, grid, tables, codes, walls)
+        layer, grid, tables, codes, walls, record, kept)
     if host_mutation == "reverse_folded_axis_coefficients":
         tables = reversed_folded_axis_tables(layer, grid)
     launch_error = None
     try:
         for _ in range(steps):
             backend.launch(fields, layer, rows, mask, tables, launch_codes,
-                           launch_walls)
+                           launch_walls, record, kept)
             flat.advance_sources(fields)
     except Exception as exc:  # noqa: BLE001 - a refusal is a result, recorded
         launch_error = f"{type(exc).__name__}: {exc}"[:600]
@@ -938,7 +939,8 @@ def run_sweep(backend, xp, results: Dict[str, Any], out_path: str, product: str,
 
 #: Every source defect this family owns, imported from the flat gate rather than
 #: respelled, so the two records cannot disagree about what a defect IS.
-SOURCE_MUTATIONS = flat.SOURCE_MUTATIONS
+SOURCE_MUTATIONS = {name: transform for name, transform in flat.SOURCE_MUTATIONS.items()
+                    if name not in flat.PRESENCE_ONLY_MUTATIONS}
 NULL_SOURCE_MUTATIONS: Tuple[str, ...] = tuple(flat.NULL_MUTATIONS)
 
 #: Host defects. ``reverse_folded_axis_coefficients`` is THIS gate's own and is
@@ -1020,7 +1022,10 @@ def leg_armable(name: str, entry: Dict[str, Any]) -> bool:
     mask = tuple(entry["mask_spec"]["mask"])
     if name == "transpose_the_chi1inv_term_table":
         return mask in TRANSPOSE_CLOSED
-    if name == "drop_a_row_from_the_volume_sum":
+    if name in ("drop_a_row_from_the_volume_sum", "row_in_float32"):
+        # A one-term row is ONE rounding of an exact double sum either way, so the
+        # float32 row (like a dropped second term) is visible only where a component
+        # adds two terms.
         return mask in BOTH_SLOTS_MASKS
     return True
 

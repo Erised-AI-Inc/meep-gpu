@@ -1,8 +1,9 @@
 """Laptop contracts for the complex64 no-PML conductive curl family.
 
 The merge-bar host can settle the coverage partition, per-term conductivity
-reach, corpus mapping, builder bindings and source transcription.  It cannot
-settle Triton lowering or bytes; the sibling CUDA gate owns those claims.
+reach, corpus mapping, builder bindings (the connection kinds and the chunk record)
+and source transcription.  It cannot settle Triton lowering or bytes;
+``parity/meep_gpu/gate_triton_complex_no_pml_conductive.py`` owns those claims.
 """
 
 from __future__ import annotations
@@ -20,9 +21,7 @@ from meep_gpu.dispersion import PolarizationState, Susceptibility
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
 from meep_gpu.pml import PML
-from meep_gpu.test_triton_complex_fields import _probe_record
 
-pytestmark = pytest.mark.usefixtures("run_policy_declared_keep")
 
 MODULE_NAME = "meep_gpu.triton_kernels.complex_no_pml_conductive"
 MODULE_PATH = pathlib.Path(__file__).parent / "triton_kernels" / (
@@ -82,10 +81,9 @@ def _build(
     return fields, pml
 
 
-def _coverage(arm, fields, pml, sub_step, probe=None):
+def _coverage(arm, fields, pml, sub_step):
     return arm.complex_conductive_no_pml_curl_coverage(
-        fields, pml, sub_step,
-        probe=_probe_record() if probe is None else probe)
+        fields, pml, sub_step)
 
 
 @pytest.mark.parametrize("row", GROUP_I_ROWS)
@@ -118,9 +116,9 @@ def test_d_sigma_cannot_reach_step_b(arm):
     assert conductive_no_pml_targets(fields, "step_B") == (False, False, False)
     assert conductive_no_pml_targets(fields, "step_D") == (True, True, True)
     b_plan = arm.plan_complex_conductive_no_pml_curl(
-        fields, pml, "step_B", probe=_probe_record())
+        fields, pml, "step_B")
     d_plan = arm.plan_complex_conductive_no_pml_curl(
-        fields, pml, "step_D", probe=_probe_record())
+        fields, pml, "step_D")
     assert b_plan is not None and b_plan.cond == (0, 0, 0)
     assert d_plan is not None and d_plan.cond == (1, 1, 1)
 
@@ -128,9 +126,9 @@ def test_d_sigma_cannot_reach_step_b(arm):
 def test_b_sigma_cannot_reach_step_d(arm):
     fields, pml = _build(d_conductivity=False, b_conductivity=True)
     b_plan = arm.plan_complex_conductive_no_pml_curl(
-        fields, pml, "step_B", probe=_probe_record())
+        fields, pml, "step_B")
     d_plan = arm.plan_complex_conductive_no_pml_curl(
-        fields, pml, "step_D", probe=_probe_record())
+        fields, pml, "step_D")
     assert b_plan is not None and b_plan.cond == (1, 1, 1)
     assert d_plan is not None and d_plan.cond == (0, 0, 0)
 
@@ -145,7 +143,7 @@ def test_predicate_is_disjoint_from_both_incumbent_storage_families(
     fields, pml = _build()
     target = _coverage(arm, fields, pml, sub_step)
     lossless_complex = complex_no_pml_curl.complex_no_pml_curl_coverage(
-        fields, pml, sub_step, probe=_probe_record())
+        fields, pml, sub_step)
     real_conductive = no_pml_conductive.conductive_plain_curl_coverage(
         fields, pml, sub_step)
     assert target.covered
@@ -170,15 +168,6 @@ def test_active_pml_and_absent_conductivity_are_refused_by_name(arm, sub_step):
                for reason in absent.reasons)
 
 
-@pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
-def test_expansion_probe_is_a_required_platform_license(arm, sub_step):
-    fields, pml = _build()
-    verdict = arm.complex_conductive_no_pml_curl_coverage(
-        fields, pml, sub_step, probe={})
-    assert not verdict.covered
-    assert any("expansion probe" in reason for reason in verdict.reasons)
-
-
 def test_a_malformed_conductivity_pair_is_refused(arm, monkeypatch):
     fields, pml = _build()
     real_reader = fields.condinv_for
@@ -194,9 +183,9 @@ def test_a_malformed_conductivity_pair_is_refused(arm, monkeypatch):
 def test_builder_binds_live_engine_sources_for_both_curls(arm):
     fields, pml = _build()
     b_plan = arm.plan_complex_conductive_no_pml_curl(
-        fields, pml, "step_B", probe=_probe_record())
+        fields, pml, "step_B")
     d_plan = arm.plan_complex_conductive_no_pml_curl(
-        fields, pml, "step_D", probe=_probe_record())
+        fields, pml, "step_D")
     assert b_plan is not None and d_plan is not None
     assert [pointer.array.base for pointer in b_plan._sources] == [
         fields.Ex, fields.Ey, fields.Ez]
@@ -206,17 +195,33 @@ def test_builder_binds_live_engine_sources_for_both_curls(arm):
         fields.Bx, fields.By, fields.Bz]
 
 
-def test_kernel_source_preserves_the_normative_stencil_and_three_pass_tail():
-    raw = MODULE_PATH.read_text(encoding="utf-8")
-    tree = ast.parse(raw)
-    kernel = next(
+def _kernel_node():
+    tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
+    return next(
         node for node in tree.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.name == "complex_conductive_no_pml_curl_step")
-    source = ast.unparse(kernel)
-    assert "t0_re = ((c_y_re - c_re) + (b_re - b_z_re))" in raw
-    assert "_mul_coefficient_left(dtdx, t0_re, t0_im, EXPANSION)" in source
-    assert source.count("_rotate_field_left") == 6
+
+
+def test_kernel_source_preserves_the_normative_stencil_and_three_pass_tail():
+    """MEEP's stencil per part with the record's presence, the plane-0 connection,
+    and the three-pass conductive tail -- and none of the previous spellings."""
+    source = ast.unparse(_kernel_node())
+    # Six curl words (three components, two parts), each MEEP's left-to-right
+    # stencil with the record's partner presence.
+    assert source.count("curl_stencil(") == 6
+    assert "curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)" in source
+    assert source.count("tl.load(cb + RECORD_PRESENCE)") == 1
+    # The connection of the UNSHIFTED partners, on plane 0, two per phased axis.
+    assert source.count("_connect(") == 6
+    for axis in "xyz":
+        assert f"tl.where(at_{axis}, r_re," in source
+    # The previous spellings are gone: the pairwise bracket, the shifted-operand
+    # rotation on the last plane, the complex-coefficient helpers.
+    assert "t0_re" not in source and "_rotate_field_left" not in source
+    assert "_mul_coefficient_left" not in source
+    for previous_plane in ("i == nx - 1", "j == ny - 1", "k == nz - 1"):
+        assert previous_plane not in source
     # Two field-left conductive multiplies per target: condfac before subtract,
     # condinv after.  Lossless targets compile both away.
     assert source.count("_mul_field_left") == 6
@@ -225,6 +230,92 @@ def test_kernel_source_preserves_the_normative_stencil_and_three_pass_tail():
         subtract = source.index(f"v{index}_re = v{index}_re - curl{index}_re")
         inverse = source.index(f"inverse = tl.load(ci{index} + idx")
         assert first < subtract < inverse
+
+
+def test_the_kernel_takes_the_record_after_its_last_pointer():
+    """``cb`` follows the six coefficient pointers, before the extents, as the
+    certified complex curl takes it after its coefficient pointers."""
+    names = [argument.arg for argument in _kernel_node().args.args]
+    assert names[:13] == ["f0", "f1", "f2", "g0", "g1", "g2", "cf0", "cf1", "cf2",
+                          "ci0", "ci1", "ci2", "cb"]
+    assert names[13:18] == ["nx", "ny", "nz", "n_elem", "dtdx"]
+    assert names[18:24] == ["cxr", "cxi", "cyr", "cyi", "czr", "czi"]
+    assert {"CNX", "CNY", "CNZ"} <= set(names)
+    assert not {"PHX", "PHY", "PHZ"} & set(names)
+
+
+@pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
+def test_the_engine_plan_binds_the_absorber_free_record(arm, sub_step):
+    """No membership run anywhere, and the grid's presence word (a 3-D run: 7)."""
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD
+
+    fields, pml = _build()
+    plan = arm.plan_complex_conductive_no_pml_curl(
+        fields, pml, sub_step)
+    record = numpy.asarray(plan.chunk_bounds)
+    assert not record[:RECORD_PRESENCE_WORD].any(), record.tolist()
+    assert int(record[RECORD_PRESENCE_WORD]) == 7
+    assert "chunk_bounds=" in repr(plan)
+
+
+@pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
+def test_the_plan_binds_meeps_connection_kinds(arm, sub_step):
+    """The connection kinds and parts are complex_fields.connection_arguments' for the
+    sub-step's difference direction, from the grid's phase table."""
+    from meep_gpu.stepping import _boundary_kinds
+    from meep_gpu.triton_kernels import complex_fields
+
+    fields, pml = _build()
+    plan = arm.plan_complex_conductive_no_pml_curl(
+        fields, pml, sub_step)
+    phases = complex_fields.bloch_phase_table(
+        fields.grid, _boundary_kinds(fields.grid, None))
+    kinds, values = complex_fields.connection_arguments(
+        phases, backward=sub_step == "step_D")
+    assert plan.connections == tuple(kinds)
+    assert plan.connection_values == tuple(values)
+    assert all(kind == complex_fields.CONNECTION_KINDS["phase"] for kind in kinds)
+
+
+def test_the_harness_route_requires_a_record(arm):
+    """A plan built without the record raises by name, never defaults to one: the
+    harness route's ``chunk_bounds`` is keyword-only with no default, and ``None`` is
+    refused by ``launch.bind_chunk_bounds``."""
+    import inspect
+
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+
+    for builder in (arm.plan_complex_conductive_no_pml_curl_from_arrays,
+                    arm.ComplexConductiveNoPmlCurlPlan):
+        parameter = inspect.signature(builder).parameters["chunk_bounds"]
+        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameter.default is inspect.Parameter.empty
+    fields, _pml = _build()
+    arrays = {name: getattr(fields, name)
+              for name in ("Bx", "By", "Bz", "Ex", "Ey", "Ez")}
+    for name in ("Bx", "By", "Bz"):
+        arrays["condfac_" + name] = fields.condfac_for(name)
+        arrays["condinv_" + name] = fields.condinv_for(name)
+
+    with pytest.raises(ChunkLayoutRefusal):
+        arm.plan_complex_conductive_no_pml_curl_from_arrays(
+            "step_B", arrays, (None, None, None), 0.5, (0, 0, 0), chunk_bounds=None)
+
+
+def test_a_connection_on_a_wall_is_refused_by_the_plan(arm):
+    """The array path connects a wrapping axis only (stepping._bloch_ghost_operand)."""
+    from meep_gpu.triton_kernels.launch import chunk_bounds_for
+
+    fields, _pml = _build()
+    arrays = {name: getattr(fields, name)
+              for name in ("Bx", "By", "Bz", "Ex", "Ey", "Ez")}
+    for name in ("Bx", "By", "Bz"):
+        arrays["condfac_" + name] = fields.condfac_for(name)
+        arrays["condinv_" + name] = fields.condinv_for(name)
+    with pytest.raises(ValueError, match="does not wrap"):
+        arm.plan_complex_conductive_no_pml_curl_from_arrays(
+            "step_B", arrays, (0.6 + 0.8j, None, None), 0.5, (1, 0, 0),
+            chunk_bounds=chunk_bounds_for(fields, None, None))
 
 
 def test_kernel_prefix_is_ast_identical_to_the_certified_complex_curl():

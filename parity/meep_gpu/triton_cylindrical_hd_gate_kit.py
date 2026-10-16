@@ -2,44 +2,39 @@
 
 ``gate_triton_cylindrical_real_fused_hd_pair.py`` (3 real m = 0 rows) and
 ``gate_triton_cylindrical_fused_hd_pair.py`` (16 complex rows) measure the SAME
-product shape -- ``update_H`` plus the pre-scan increment in one launch, the array
-module's ``cumsum`` untouched, the certified cylindrical curl in a second launch -- on
-two storage classes. Every leg below is written once against a :class:`FamilySpec`
-the gate instantiates, and is the H->D template gate's leg
-(``gate_triton_fused_hd_pair.py``) with three additions the cylindrical seam owes:
+product shape -- ``update_H`` into launch-local scratch (launch 1), then the certified
+cylindrical ``step_D`` plan over the scratch ``H``: its column-serial radial scan
+(launch 2) and its curl (launch 3) -- on two storage classes. Every leg below is
+written once against a :class:`FamilySpec` the gate instantiates, and is the H->D
+template gate's leg (``gate_triton_fused_hd_pair.py``) with two the cylindrical seam
+owes:
 
-``increment_stage``   the pre-scan increment, compiled BY TRITON from the product's own
-                      spelling and from every armed alternative spelling, against the
-                      array path's four CuPy passes, on the corpus radial extents under
-                      four value classes and a PLANTED row-0 class; then ``cumsum`` of
-                      the fused increment against the SHIPPED prefix. The first Triton
-                      measurement of this arithmetic anywhere -- the design record's
-                      numbers are NVRTC and do not transfer.
-``scan_order``        a column-serial device scan against ``cupy.cumsum`` (must differ)
-                      and ``numpy.cumsum`` (must not), restated on this run, so the
-                      decision to leave the scan on the array path is measured here.
-``purity_ledger``     on the array path: how many ``Hy`` words ``update_H`` moves at the
-                      cells the increment's backward-radial recompute lands on -- the
-                      template's purity ledger for THIS product's one foreign tap, and
-                      the non-vacuity floor for the stored-halo mutation.
-``ghost_observability`` read off the certified curl's own text: launch 2 is the shipped
-                      kernel object (this product lifts no curl text), the prefix's
-                      backward radial tap is guarded, and the ownership mask zeroes the
-                      target that tap feeds at the axis row -- the reason no edit to
-                      what the r near ghost serves can be byte-visible here.
+``purity_ledger``     on the array path: how many ``Hy`` words ``update_H`` moves over
+                      the rows the radial scan reads -- the floor that makes the
+                      scan-reads-the-pre-launch-Hy mutation a claim about the product
+                      rather than about a quiet fixture.
+``ghost_observability`` read off the product's and the certified curl's own text: the
+                      scan and the curl are the certified plan's (this product lifts no
+                      curl or scan text), the radial difference's backward tap is
+                      guarded, and the ownership mask zeroes the target that tap feeds
+                      at the axis row -- the reason no edit to what the r near ghost
+                      serves can be byte-visible here.
+
+The 0.9.2 product fused the pre-``cumsum`` increment into launch 1 and kept the
+array module's ``cumsum``; the legs that measured that stage (``increment_stage``,
+``scan_order``) left with it.
 
 Every product row also carries the cylindrical floors the CUDA cylindrical gate
-defines: the prefix is live (non-constant down r) and the axis row moves.
+defines: the radial difference the scan hands the curl is live (nonzero somewhere) and
+the axis row moves.
 
-THE TWO POLICIES ARE NOT SYMMETRIC FOR A KEEP-CERTIFIED FAMILY. A complex family's
-arms are certified under ``keep`` only (``complex_fields.CERTIFIED_UNDER_SUBNORMAL_POLICY``),
-so under ``flush`` its predicate refuses by that clause, the composer selects nothing
-on its seam, and the two composition references are UNREACHABLE. What the flush
-record then measures is the product's arithmetic from arrays with the arm FORCED to
-the one the keep-cut probe licenses, against the array path and the two certified
-singles built the same way; the verdict names the unreachable references rather than
-scoring them, and ``composer_reachable_under_this_policy`` is RECORDED, never a
-release clause a keep-certified family could pass under flush by construction.
+THE TWO POLICIES NEED NOT BE SYMMETRIC. Where a family's predicate refuses a policy,
+the composer selects nothing on its seam and the two composition references are
+UNREACHABLE under it. What that record then measures is the product's arithmetic built
+from arrays, against the array path and the two certified singles built the same way;
+the verdict names the unreachable references rather than scoring them, and
+``composer_reachable_under_this_policy`` is RECORDED, never a release clause a family
+could pass under a policy its predicate refuses by construction.
 
 THE EVIDENCE STANDARD is the template's: uint32 words per COMPLETE driver step over
 every stored volume, never ``allclose``; every zero beside a control that moves words;
@@ -80,6 +75,7 @@ for _path in (str(API_ROOT), str(HERE)):
 
 import gate_provenance  # noqa: E402
 import h_to_d_seam  # noqa: E402
+import hd_seam_restore  # noqa: E402
 
 from meep_gpu import stepping, withdraw_hoist  # noqa: E402
 from meep_gpu.subnormal_policy import SubnormalPolicyUnattainable  # noqa: E402
@@ -94,9 +90,8 @@ MODES: Tuple[str, ...] = ("array", "singles", "composition_today", "unfused",
 
 LEG_GROUPS: Dict[str, Tuple[str, ...]] = {
     "host": ("driver_order", "transcription", "purity_ledger", "ghost_observability"),
-    "device": ("refusal", "arbitration", "increment_stage", "scan_order", "product",
-               "seed_scale", "launch_structure", "sync", "withdraw", "byte_neutral",
-               "mutation", "disarm", "lift"),
+    "device": ("refusal", "arbitration", "product", "seed_scale", "launch_structure",
+               "sync", "withdraw", "byte_neutral", "mutation", "disarm", "lift"),
 }
 ALL_LEGS: Tuple[str, ...] = tuple(leg for group in LEG_GROUPS.values() for leg in group)
 
@@ -108,21 +103,19 @@ SEAM_RECORD = "h_to_d_seam_2026-09-04"
 STEPS = 60
 SYNC_STEPS: Tuple[int, ...] = (3, 7)
 
-#: The outcome of a spelling the subnormal policy in force refuses to COMPILE: its
-#: PTX is not uniform under that policy (Triton's `/` lowers to div.full.f32, which
-#: the flush executor cannot make .ftz). Neither a word count nor a pass.
+#: The outcome of a mutant the subnormal policy in force refuses to COMPILE: its
+#: PTX is not uniform under that policy. Neither a word count nor a pass.
 REFUSED_BY_THE_POLICY = "REFUSED BY THE POLICY"
 LIFT_CLEAN_STEP_FLOOR = 8
 SEED_SCALE_BITS = 80
 EXIT_INCOMPLETE = 75
 
-#: The pooled D-side prefix's CuPy launch count, READ OFF ``stepping.py``'s statements
-#: (multiply, the row-0 fill, subtract, in-place divide, cumsum: :1325-1333). A count
-#: of statements, reported as such -- the kernel and cumsum counts beside it are
-#: measured.
-ARRAY_PATH_D_PREFIX_LAUNCHES = 5
-#: The B-side prefix adds the extension copy and the wall-row fill (:314-333).
-ARRAY_PATH_B_PREFIX_LAUNCHES = 7
+#: Kernel launches one run of a certified cylindrical ``step_D`` (or ``step_B``) plan
+#: performs: its column-serial radial scan, then its curl (or fused curl) kernel.
+#: The certified plans declare no ``kernel_launches_per_run``; this is read off their
+#: ``run`` (``self.scan.run(guard)`` then ``kernel[...]``), and the independent kernel
+#: counter checks it.
+CYLINDRICAL_PLAN_KERNEL_LAUNCHES = 2
 
 
 def log(message: str) -> None:
@@ -151,9 +144,6 @@ class FamilySpec:
     #: ``tag -> spec`` mutation table and the one byte-neutral edit.
     mutations: Dict[str, Dict[str, Any]] = {}
     byte_neutral: Dict[str, Any] = {}
-    #: The increment-stage variant tables (name -> body dict, expected per policy).
-    increment_variants: Dict[str, Dict[str, Any]] = {}
-    multiply_variants: Dict[str, Dict[str, Any]] = {}
     fixture_resolution: float = 10.0
 
     # -- fixtures ------------------------------------------------------------
@@ -165,7 +155,7 @@ class FamilySpec:
 
     # -- plans -----------------------------------------------------------------
     def build_weld(self, driver: Any, kernel: Any = None, curl_kernel: Any = None,
-                   forced: bool = False) -> Any:
+                   forced: bool = False, scan_kernel: Any = None) -> Any:
         raise NotImplementedError
 
     def singles(self, driver: Any, forced: bool = False) -> Tuple[Any, Any]:
@@ -175,7 +165,18 @@ class FamilySpec:
         raise NotImplementedError
 
     def default_kernels(self, owner: Any) -> Dict[str, Any]:
+        """``{attribute path: default kernel}`` for every kernel ``owner`` launches; a
+        dotted path (``"scan._kernel"``) names a kernel slot on a nested object."""
         raise NotImplementedError
+
+    def kernel_launches_of(self, owner: Any) -> int:
+        """Kernel launches ONE run of ``owner`` performs, by declaration."""
+        declared = getattr(owner, "kernel_launches_per_run", None)
+        if declared is not None:
+            return int(declared)
+        if getattr(owner, "scan", None) is not None:
+            return CYLINDRICAL_PLAN_KERNEL_LAUNCHES
+        return 1
 
     def kernel_of(self, module: Any) -> Any:
         return getattr(module, self.kernel_name)
@@ -205,23 +206,10 @@ class FamilySpec:
     def composition_refusal_needle(self) -> str:
         return ""
 
-    def forced_expansion(self) -> Optional[Dict[str, Any]]:
-        """What ``forced=True`` binds, for the record; ``None`` on a real family."""
-        return None
-
-    # -- the launch-2 seam the host mutations reach ------------------------------
+    # -- the seam the host mutations reach --------------------------------------
     def word_view(self, array: Any) -> Any:
         """The pointer view of one rotating volume, as the plan binds it."""
         return array
-
-    def curl_prelaunch_positions(self) -> Dict[int, int]:
-        """``{positional index in the curl launch: index into the pre-launch H list}``
-        -- every argument of launch 2 that reads the magnetic field, so the
-        curl-reads-pre-launch-H mutation can redirect all of them and none by luck."""
-        raise NotImplementedError
-
-    def default_curl_kernel(self) -> Any:
-        raise NotImplementedError
 
     def host_launcher(self, host: str, driver: Any) -> Optional[Callable[[Any], Any]]:
         """A family-specific host mutation by name, or ``None`` when unknown."""
@@ -318,6 +306,9 @@ def capture(driver: Any) -> Dict[str, Any]:
         "dipoles": [getattr(source, "_applied_dipole", None)
                     for source in getattr(driver, "_sources", ())],
         "step_count": int(driver.step_count),
+        # MEEP's start of H is state a step advances: the run's first update_H starts
+        # H from B and every later one does not.
+        "h_separated": bool(getattr(driver.fields, "h_separated", True)),
     }
 
 
@@ -334,6 +325,8 @@ def restore(driver: Any, snapshot: Mapping[str, Any]) -> List[str]:
         if dipole is not None:
             source._applied_dipole = dipole  # noqa: SLF001
     driver.step_count = snapshot["step_count"]
+    if "h_separated" in snapshot:
+        driver.fields.h_separated = bool(snapshot["h_separated"])
     return lazily
 
 
@@ -458,6 +451,12 @@ def build_driver(spec: FamilySpec, keywords: Mapping[str, Any], seed: int,
         else:
             host = (float(amplitude) * rng.standard_normal(array.shape)).astype(np.float32) * scale
             array[...] = _module_of(array).asarray(host.astype(np.float32))
+    # A SEEDED STATE IS A MID-RUN ONE unless the case says otherwise: H was started
+    # from B long ago, so no arrangement starts it again. A first-update case
+    # (``h_started`` False) keeps the flag False, and ``capture``/``restore`` carry it,
+    # so every arrangement's step 1 is the run's first update_H -- MEEP's start of H
+    # (``stepping.separate_h_from_b``), measured on every arrangement.
+    driver.fields.h_separated = bool(keywords.get("h_started", True))
     driver.invalidate_fast_path()
     pin_array_path(driver)
     return driver
@@ -604,52 +603,43 @@ class CountingKernel:
         return getattr(self.kernel, name)
 
 
+def _slot_owner(owner: Any, path: str) -> Tuple[Any, str]:
+    """The object holding a dotted kernel slot, and the slot's last name."""
+    *parents, leaf = path.split(".")
+    holder = owner
+    for name in parents:
+        if name.isdigit():
+            items = tuple(holder) if holder is not None else ()
+            holder = items[int(name)] if int(name) < len(items) else None
+        else:
+            holder = getattr(holder, name, None)
+        if holder is None:
+            return None, leaf
+    return holder, leaf
+
+
 def count_kernels(spec: FamilySpec, owner: Any) -> List[CountingKernel]:
-    """Wrap EVERY kernel a plan launches (one or two attributes), or decline by name."""
+    """Wrap EVERY kernel a plan launches, or decline by name.
+
+    A slot path may be dotted (``"scan._kernel"``): the certified cylindrical plans
+    launch their radial scan through a nested ``RadialScan``'s own slot, and a weld
+    holds two such plans.
+    """
     defaults = spec.default_kernels(owner)
     if not defaults:
         return []
     wrappers: List[CountingKernel] = []
-    for attribute, default in defaults.items():
-        if not hasattr(owner, attribute):
+    for path, default in defaults.items():
+        holder, leaf = _slot_owner(owner, path)
+        if holder is None or not hasattr(holder, leaf):
             return []
-        resolved = getattr(owner, attribute, None) or default
+        resolved = getattr(holder, leaf, None) or default
         if resolved is None:
             return []
         wrapper = CountingKernel(resolved)
-        setattr(owner, attribute, wrapper)
+        setattr(holder, leaf, wrapper)
         wrappers.append(wrapper)
     return wrappers
-
-
-class PrefixCounter:
-    """Counts calls to ``stepping.cylindrical_rderiv_prefix`` while installed.
-
-    The array path calls it once per cylindrical curl sub-step; every plan that
-    consumes the shipped prefix calls it through ``cylindrical_triton.cylindrical_prefix``
-    (a function-body import of the same name), so patching the module attribute
-    reaches both. Installed around ONE arrangement's step at a time.
-    """
-
-    def __init__(self) -> None:
-        self.calls = 0
-        self.rows_seen: List[int] = []
-        self._original = None
-
-    def __enter__(self) -> "PrefixCounter":
-        self._original = stepping.cylindrical_rderiv_prefix
-        counter = self
-
-        def counted(xp: Any, f_p: Any, ir0: float, scratch: Any = None) -> Any:
-            counter.calls += 1
-            counter.rows_seen.append(int(f_p.shape[0]))
-            return counter._original(xp, f_p, ir0, scratch=scratch)
-
-        stepping.cylindrical_rderiv_prefix = counted
-        return self
-
-    def __exit__(self, *_exc: Any) -> None:
-        stepping.cylindrical_rderiv_prefix = self._original
 
 
 # ---------------------------------------------------------------------------
@@ -693,8 +683,7 @@ def rotating_originals(fields: Any, owners: Sequence[Any]) -> Dict[str, Any]:
 
 class Arrangement:
     __slots__ = ("name", "shim", "counters", "uncounted", "rotating", "originals",
-                 "selected", "reasons", "on_step_done", "wipe_private", "prefix",
-                 "unreachable")
+                 "selected", "reasons", "on_step_done", "wipe_private", "unreachable")
 
     def __init__(self, name: str, shim: Optional[Shim],
                  selected: Optional[Mapping[str, str]] = None,
@@ -711,7 +700,6 @@ class Arrangement:
         self.selected = dict(selected or {})
         self.reasons = dict(reasons or {})
         self.on_step_done: Optional[Callable[[], None]] = None
-        self.prefix = PrefixCounter()
         #: Set when this arrangement could not be built under the run's policy; it
         #: is then not stepped and not compared, and the record says why.
         self.unreachable = unreachable
@@ -754,9 +742,6 @@ class Arrangement:
     def launches(self) -> Dict[str, Any]:
         return {"plans": 0 if self.shim is None else self.shim.launches,
                 "kernels": sum(counter.calls for counter in self.counters),
-                "array_path_prefix_calls": self.prefix.calls,
-                "cumsum_calls": sum(int(getattr(owner, "cumsum_calls", 0))
-                                    for owner in self.owners()),
                 "uncounted_plans": list(self.uncounted)}
 
 
@@ -806,11 +791,12 @@ def arrangement_weld(spec: FamilySpec, driver: Any, kernel: Any = None,
                      launcher: Optional[Callable[[Any], Any]] = None,
                      sync_hazard: bool = False, hoist: bool = False,
                      rest_unfused: bool = True, name: str = "weld",
-                     forced: bool = False) -> Arrangement:
+                     forced: bool = False, scan_kernel: Any = None) -> Arrangement:
     """The SUBJECT: the weld force-installed at ``update_H``, ``step_D`` absorbed."""
     family = spec.family
     sources = tuple(getattr(driver, "_sources", ()))
-    plan = spec.build_weld(driver, kernel=kernel, curl_kernel=curl_kernel, forced=forced)
+    plan = spec.build_weld(driver, kernel=kernel, curl_kernel=curl_kernel, forced=forced,
+                           scan_kernel=scan_kernel)
     occupant: Any = plan if launcher is None else launcher(plan)
     if hoist:
         occupant = withdraw_hoist.LeadingWithdrawPlan(
@@ -843,7 +829,10 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
     seed = capture(driver)
     state: Dict[str, Dict[str, Any]] = {
         name: {"volumes": {key: value.copy() for key, value in seed["volumes"].items()},
-               "dipoles": list(seed["dipoles"]), "step_count": seed["step_count"]}
+               "dipoles": list(seed["dipoles"]), "step_count": seed["step_count"],
+               # Every arrangement starts from the seed's start-of-H flag, not from
+               # whatever the previous arrangement's step left on the shared Fields.
+               "h_separated": seed["h_separated"]}
         for name in active}
     per_step: List[Dict[str, Any]] = []
     hooks: Dict[str, List[Any]] = {name: [] for name in active}
@@ -859,8 +848,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                     if _is_private(volume_name):
                         array.fill(0)
             install(driver, arrangement.shim)
-            with arrangement.prefix:
-                driver.step()
+            driver.step()
             arrangement.settle(driver.fields)
             if per_step_hook is not None:
                 hooks[name].append(per_step_hook(step, name, driver))
@@ -964,19 +952,24 @@ def all_arrangements(spec: FamilySpec, driver: Any, kernel: Any = None,
 def cylindrical_floors(driver: Any, spec: FamilySpec) -> Dict[str, Any]:
     """The CUDA cylindrical gate's two floors on THIS fixture, on the array path.
 
-    ``prefix_is_live``: the SHIPPED prefix over the current ``Hy`` is non-constant down
-    r (a flat prefix makes every prefix defect invisible). ``axis_row_is_live``: one
-    array-path ``step_D`` moves the axis row of the targets the m = 0 / |m| = 1 rules
-    write. Both are measured on a copy of the state so nothing here advances the run.
+    ``radial_difference_is_live``: the radial difference ``stepping.step_D`` hands the
+    Dz curl (``cylindrical_rderiv_difference`` over the current ``Hy``, MEEP's per-chunk
+    sum) is nonzero somewhere -- an all-zero difference makes every scan defect
+    invisible. ``axis_row_is_live``: one array-path ``step_D`` moves the axis row of the
+    targets the m = 0 / |m| = 1 rules write. Both are measured on a copy of the state
+    so nothing here advances the run.
     """
     fields = driver.fields
     snapshot = capture(driver)
     try:
-        prefix = stepping.cylindrical_rderiv_prefix(
-            driver.xp, fields.Hy, spec.family.PREFIX_IR0, scratch=fields.scratch)
-        host = _host(prefix)
+        hy = fields.Hy
+        radial = stepping.cylindrical_rderiv_difference(
+            driver.xp, hy, spec.family.PREFIX_IR0,
+            stepping._cylindrical_scan_starts(fields, driver.pml, "Dz"),  # noqa: SLF001
+            hy.shape[0], backward=True, scratch=fields.scratch)
+        host = _host(radial)
         host = host.view(np.float32) if host.dtype == np.complex64 else host.astype(np.float32)
-        diffs = host[1:] - host[:-1]
+        live_words = int(np.count_nonzero(host))
         before = {name: words(getattr(fields, name)[0]).copy() for name in ("Dy", "Dz")}
         stepping.step_D(fields, driver.pml)
         after = {name: words(getattr(fields, name)[0]) for name in ("Dy", "Dz")}
@@ -984,11 +977,9 @@ def cylindrical_floors(driver: Any, spec: FamilySpec) -> Dict[str, Any]:
     finally:
         restore(driver, snapshot)
     return {
-        "prefix_rows": int(host.shape[0]),
-        "prefix_distinct_radial_differences": int(np.count_nonzero(diffs)),
-        "prefix_row0_all_exact_positive_zero": bool(
-            np.all(words(np.ascontiguousarray(host[0])) == 0)),
-        "prefix_is_live": int(np.count_nonzero(diffs)) > 0,
+        "radial_rows": int(host.shape[0]),
+        "radial_difference_nonzero_words": live_words,
+        "radial_difference_is_live": live_words > 0,
         "axis_row_words_moved": moved,
         "axis_row_is_live": any(moved.values()),
     }
@@ -1003,10 +994,10 @@ def run_product(spec: FamilySpec, driver: Any, steps: int,
     ``floors_at`` says WHERE the two cylindrical floors are measured. On the synthetic
     fixture the seed is a random state, so ``seed`` is right and BOTH floors are
     required. A lifted corpus row starts from the engine's zeros and is driven by its
-    own sources, so at the seed the prefix is identically zero and no axis word moves
-    (measured 2026-09-07: two rows bit-identical over 60 steps and failed on the
-    floors alone); there the floors are measured on the array path's FINAL state,
-    the prefix is required live, and the axis row's liveness is RECORDED -- whether
+    own sources, so at the seed the radial difference is identically zero and no axis
+    word moves (measured 2026-09-07: two rows bit-identical over 60 steps and failed on
+    the floors alone); there the floors are measured on the array path's FINAL state,
+    the difference is required live, and the axis row's liveness is RECORDED -- whether
     the corpus row's own field has reached the axis by the end of the budget is a
     fact about the row, not about the product.
     """
@@ -1030,8 +1021,8 @@ def run_product(spec: FamilySpec, driver: Any, steps: int,
             restore(driver, seed_state)
             pin_array_path(driver)
     floors["measured_at"] = floors_at
-    floors_hold = floors["prefix_is_live"] and (floors["axis_row_is_live"]
-                                                or floors_at == "end")
+    floors_hold = floors["radial_difference_is_live"] and (floors["axis_row_is_live"]
+                                                           or floors_at == "end")
     active = [name for name, a in arrangements.items() if a.unreachable is None]
     references = [name for name in active if name != "array"]
 
@@ -1073,7 +1064,7 @@ def run_product(spec: FamilySpec, driver: Any, steps: int,
         "the_seam_alone_agrees_with_the_array_path": per_reference.get("weld_seam_only"),
         "weld_agrees_with_the_certified_singles": pair_agreement["weld_seam_only|singles"],
         "the_certified_singles_agree_with_the_array_path": bool(per_reference.get("singles")),
-        "expansion_forced_from_arrays": bool(forced),
+        "built_from_arrays": bool(forced),
         "seconds": round(time.time() - started, 2),
     })
     return result
@@ -1104,8 +1095,14 @@ def leg_driver_order(spec: FamilySpec) -> Dict[str, Any]:
     statements = [line.strip() for line in between.splitlines()
                   if line.strip() and not line.strip().startswith("#")]
     statements = [line for line in statements if "update_H(self.fields" not in line]
-    if not any("withdraw" in line for line in statements):
-        findings.append("no withdraw statement stands between the two consults")
+    # The magnetic f_minus_p restore, which writes B alone and which step_D does not
+    # read (withdraw_hoist.SEAM_PASS); an integrated source stands no withdraw here.
+    # statements[0] and [-1] are the tails of the two consult lines themselves.
+    if tuple(statements[1:-1]) != h_to_d_seam.EXPECTED_BETWEEN[1:]:
+        findings.append(f"between the two consults stands {statements[1:-1]}, not the magnetic "
+                        f"f_minus_p restore alone")
+    if any("withdraw" in line for line in statements):
+        findings.append("a withdraw stands between the two consults")
     if any("inject" in line for line in statements):
         findings.append("an injection stands between the two consults")
     if family.REPLACES != withdraw_hoist.SEAM_SPAN:
@@ -1119,31 +1116,27 @@ def leg_driver_order(spec: FamilySpec) -> Dict[str, Any]:
         findings.append("the sync channel no longer owns update_H by name")
     if family.CARRIES_DEPOSIT_REPAIR or family.HOISTS_THE_WITHDRAW or family.INSTALLABLE:
         findings.append("a declaration flag is True that this round's verdicts say is False")
-    # THE PREFIX'S PLACE IN step_D, read off stepping.py: the Hy prefix is formed from
-    # the POST-update_H magnetic snapshot and feeds the Dz term only.
+    # THE RADIAL DIFFERENCE'S PLACE IN step_D, read off stepping.py: MEEP's per-chunk
+    # sum of the POST-update_H magnetic snapshot's Hy at ir0 = 0.5, over the Dz chunk
+    # starts, fed to the Dz term only -- what the certified plan's scan computes.
     stepping_text = (API_ROOT / "meep_gpu" / "stepping.py").read_text(encoding="utf-8")
     step_d = stepping_text.split("def step_D(", 1)[1].split("\ndef ", 1)[0]
-    if 'prefixed["Hy"] = cylindrical_rderiv_prefix(grid.xp, magnetic["Hy"], 0.5' not in step_d:
-        findings.append("stepping.step_D no longer prefixes magnetic['Hy'] at ir0 = 0.5")
-    if 'if cylindrical and term.target == "Dz":' not in step_d:
-        findings.append("stepping.step_D no longer feeds the prefix to the Dz term only")
+    for needle, what in (
+            ('radial = cylindrical_rderiv_difference(\n            grid.xp, '
+             'magnetic["Hy"], 0.5,', "sums magnetic['Hy'] at ir0 = 0.5"),
+            ('_cylindrical_scan_starts(fields, pml if pml_active else None, "Dz")',
+             "keys the sum on Dz's chunk starts"),
+            ('if cylindrical and term.target == "Dz":', "feeds the Dz term only")):
+        if needle not in step_d:
+            findings.append(f"stepping.step_D no longer {what}")
     if float(family.PREFIX_IR0) != 0.5 or family.PREFIX_COMPONENT != "Hy":
-        findings.append("the product's prefix declaration disagrees with stepping.step_D")
-    # THE POOL TAGS ARE THE ORACLE'S OWN.
-    scan = stepping_text.split("def cylindrical_rderiv_prefix(", 1)[1].split("\ndef ", 1)[0]
-    for tag in (family.INCREMENT_TAG, family.PREFIX_TAG):
-        if f'scratch.take("{tag}"' not in scan:
-            findings.append(f"cylindrical_rderiv_prefix no longer pools {tag!r}")
-    if 'xp.cumsum(increment, axis=0,\n                     out=scratch.take("cyl_prefix"' not in scan \
-            and 'xp.cumsum(increment, axis=0, out=scratch.take("cyl_prefix"' not in scan:
-        findings.append("the oracle's scan statement is no longer the pooled cumsum")
+        findings.append("the product's radial-sum declaration disagrees with stepping.step_D")
     return {"passed": not findings, "findings": findings,
             "consult_order": order,
             "statements_between_the_two_consults": statements,
             "replaces": list(family.REPLACES),
-            "prefix": {"component": family.PREFIX_COMPONENT, "ir0": family.PREFIX_IR0,
-                       "increment_tag": family.INCREMENT_TAG,
-                       "prefix_tag": family.PREFIX_TAG},
+            "radial_sum": {"component": family.PREFIX_COMPONENT,
+                           "ir0": family.PREFIX_IR0},
             "launches_per_run": family.LAUNCHES_PER_RUN,
             "kernel_launches_per_run": family.KERNEL_LAUNCHES_PER_RUN,
             "installable": family.INSTALLABLE,
@@ -1173,26 +1166,30 @@ def leg_transcription(spec: FamilySpec) -> Dict[str, Any]:
 
 
 def purity_ledger(spec: FamilySpec, fields: Any, pml: Any) -> Dict[str, Any]:
-    """How many ``Hy`` words ``update_H`` MOVES at the cells the halo recomputes.
+    """How many ``Hy`` words ``update_H`` MOVES over the rows the radial scan reads.
 
-    THE TEMPLATE'S PURITY LEDGER FOR THIS PRODUCT'S ONE FOREIGN TAP. The increment at
-    row ``i >= 1`` recomputes ``Hy`` at row ``i - 1``; if ``update_H`` moved nothing
-    there, reading the STORED ``Hy[i-1]`` would agree with the recompute by accident and
-    the stored-halo mutation would be a null about the fixture rather than the kernel.
+    THE FLOOR FOR THE SCAN'S ONE ORDERING FACT. The certified scan in launch 2 sums the
+    SCRATCH ``Hy`` launch 1 wrote; if ``update_H`` moved nothing there, a scan of the
+    PRE-LAUNCH ``Hy`` would agree with it by accident and the scan-reads-the-pre-launch-
+    Hy mutation would be a null about the fixture rather than the product.
     """
+    histories = ("f_w_Hx", "f_w_Hy", "f_w_Hz")
     before = _host(fields.Hy).copy()
-    before_w = _host(fields.f_w_Hy).copy()
+    before_w = {name: _host(getattr(fields, name)).copy() for name in histories}
     stepping.update_H(fields, pml)
     after = _host(fields.Hy)
-    after_w = _host(fields.f_w_Hy)
-    nr = int(fields.grid.shape[0])
-    moved = (words(before) != words(after)).reshape(before.shape[0], -1)
-    halo_rows = moved[: nr - 1]
+    moved = words(before) != words(after)
+    # The history moves only where the component's OWN axis carries a layer (the
+    # auxiliary contract): r for Hx, z for Hz, and never phi, so f_w_Hy stays at rest.
+    moved_w = {name: int(np.count_nonzero(words(before_w[name])
+                                          != words(_host(getattr(fields, name)))))
+               for name in histories}
     return {"cells": int(before.size),
-            "halo_source_words": int(halo_rows.size),
-            "halo_source_words_update_H_moved": int(np.count_nonzero(halo_rows)),
-            "f_w_Hy_words_moved": int(np.count_nonzero(words(before_w) != words(after_w))),
-            "meets_floor": int(np.count_nonzero(halo_rows)) > 0}
+            "scan_source_words": int(moved.size),
+            "scan_source_words_update_H_moved": int(np.count_nonzero(moved)),
+            "f_w_H_words_moved": moved_w,
+            "f_w_H_words_moved_total": int(sum(moved_w.values())),
+            "meets_floor": int(np.count_nonzero(moved)) > 0}
 
 
 def leg_purity_ledger(spec: FamilySpec) -> Dict[str, Any]:
@@ -1205,21 +1202,24 @@ def leg_purity_ledger(spec: FamilySpec) -> Dict[str, Any]:
         finally:
             driver.close()
         if not rows[name]["meets_floor"]:
-            findings.append(f"{name}: update_H moves no Hy word at any halo source cell")
-        if rows[name]["f_w_Hy_words_moved"] == 0:
-            findings.append(f"{name}: update_H moves no f_w_Hy word")
+            findings.append(f"{name}: update_H moves no Hy word the scan reads")
+        if rows[name]["f_w_H_words_moved_total"] == 0:
+            findings.append(f"{name}: update_H moves no f_w_H word")
+        if rows[name]["f_w_H_words_moved"]["f_w_Hy"]:
+            findings.append(f"{name}: update_H moved f_w_Hy, whose own axis phi carries "
+                            f"no layer; the auxiliary contract leaves it at rest")
     return {"passed": not findings, "findings": findings, "fixtures": rows,
             "what_it_measures": (
-                "of the increment's backward-radial recompute cells (rows 0..nr-2), how "
-                "many Hy words one array-path update_H moves on the fixture's seeded "
-                "state; the floor that makes the stored-halo mutation a claim about the "
-                "kernel rather than about a quiet fixture")}
+                "of the Hy words the radial scan reads (every stored row), how many one "
+                "array-path update_H moves on the fixture's seeded state; the floor that "
+                "makes the scan-reads-the-pre-launch-Hy mutation a claim about the "
+                "product rather than about a quiet fixture")}
 
 
 def leg_ghost_observability(spec: FamilySpec) -> Dict[str, Any]:
-    """Read off the certified curl's own text, never restated: launch 2 is the shipped
-    kernel object, the prefix's backward radial tap is guarded, and the ownership mask
-    zeroes the target that tap feeds at the axis row."""
+    """Read off the product's and the certified curl's own text, never restated: the
+    scan and the curl are the certified plan's, the radial difference's backward tap is
+    guarded, and the ownership mask zeroes the target that tap feeds at the axis row."""
     findings, measures = spec.ghost_observability()
     return {"passed": not findings, "findings": findings, **measures}
 
@@ -1253,10 +1253,13 @@ class FieldsView:
 
 def stand_in_source(component: str = "Ez", integrated: bool = True,
                     field_type: str = "D", points: int = 3) -> Any:
-    from meep_gpu import sources as sources_module  # noqa: PLC0415
+    """A source class carrying an integrated withdraw of its own, which the predicate's
+    withdraw clause refuses. No engine source carries one since an integrated source
+    entered through ``f_minus_p`` (``withdraw_hoist``)."""
 
     class _Stand:
-        withdraw = sources_module.VolumeSource.withdraw
+        def withdraw(self, fields):  # never called: a predicate reads a source
+            raise AssertionError("a coverage predicate called a source's withdraw")
 
     stand = _Stand()
     stand.component = component
@@ -1456,11 +1459,11 @@ def leg_arbitration(spec: FamilySpec, policy: Optional[str]) -> Dict[str, Any]:
             "cylindrical_device_launch_algebra": {
                 "what_it_counts": "device launches on the D-side seam per step per row, "
                                   "measured by launch_structure rather than assumed here",
-                "d_side_seam_today": 1 + ARRAY_PATH_D_PREFIX_LAUNCHES + 1,
+                "d_side_seam_today": 1 + CYLINDRICAL_PLAN_KERNEL_LAUNCHES,
                 "d_side_seam_with_this_product": family.LAUNCHES_PER_RUN,
                 "each_neighbouring_pair_saves": 1,
                 "net_saving_displacing_both_neighbours":
-                    (1 + ARRAY_PATH_D_PREFIX_LAUNCHES + 1) - family.LAUNCHES_PER_RUN
+                    (1 + CYLINDRICAL_PLAN_KERNEL_LAUNCHES) - family.LAUNCHES_PER_RUN
                     - pairs_installed},
         })
     finally:
@@ -1469,499 +1472,7 @@ def leg_arbitration(spec: FamilySpec, policy: Optional[str]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# DEVICE LEG: the increment stage, compiled by Triton
-# ---------------------------------------------------------------------------
-
-def _corpus_extents() -> List[Tuple[int, int]]:
-    """(nr, nz) per distinct corpus radial extent; the LARGEST nz seen for that nr."""
-    census = HERE / "results" / CENSUS
-    best: Dict[int, int] = {}
-    for leg in ("examples", "tests", "tests_param"):
-        path = census / f"{leg}.jsonl"
-        if not path.is_file():
-            continue
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            record = json.loads(line)
-            if not (record.get("configuration") or {}).get("cylindrical"):
-                continue
-            nr, ny, nz = record["grid_shape"]
-            best[int(nr)] = max(best.get(int(nr), 0), int(nz))
-    if not best:
-        raise SystemExit(f"{census} names no cylindrical row; the increment leg has "
-                         f"no corpus extents to run over")
-    return sorted(best.items())
-
-
-def make_field(nr: int, nz: int, dtype: Any, cls: str, seed: int) -> np.ndarray:
-    """The probe's four value classes plus the PLANTED row-0 class (complex).
-
-    ``planted``: row 0 carries ``(-t, -b)`` with ``t`` a tiny NORMAL in
-    ``[2^-126, 2^-125)`` (so ``t * 0.5`` is subnormal and FLUSHES under the flush
-    policy) and ``b`` a negative normal in ``(-0.75, -0.25)``; row 1 carries
-    ``(-0.0, -a)`` with ``a`` in ``[2, 3)``. That is the one class where the
-    four-product complex multiply and the fused arrangement produce a differently
-    SIGNED zero: at row 0 ``Hy.re * w`` underflows, the four-product form flushes it
-    to ``+0.0`` inside ``(-t*w) - (-b*0)`` while the fused form carries ``-0.0``; and
-    the row-1 imaginary part is made NEGATIVE and large so that the increment's
-    ``d_im`` at row 1 is negative, which is what lets that signed zero survive the
-    scaled divide's ``(ars*brs) + (ais*bis)`` (with ``ais > 0`` the ``+0.0`` cross
-    term would launder both signs to ``+0.0`` and the increment would not see it; the
-    multiply sub-leg sees it either way). Assembled from bit patterns so no host float
-    op touches a subnormal under either policy.
-    """
-    rng = np.random.default_rng(seed)
-    shape = (nr, 1, nz)
-
-    def one(cls_: str) -> np.ndarray:
-        if cls_ == "uniform":
-            return rng.standard_normal(shape).astype(np.float32)
-        if cls_ == "wide_dynamic":
-            return (rng.standard_normal(shape)
-                    * (10.0 ** rng.integers(-12, 12, shape))).astype(np.float32)
-        if cls_ == "cancelling":
-            sign = np.where(np.arange(nr).reshape(-1, 1, 1) % 2, 1.0, -1.0)
-            return (rng.standard_normal(shape) * sign * 1e6).astype(np.float32)
-        if cls_ in ("edge", "planted"):
-            kind = rng.integers(0, 6, shape).astype(np.uint32)
-            sign = rng.integers(0, 2, shape).astype(np.uint32) << np.uint32(31)
-            mant = rng.integers(1, 1 << 23, shape).astype(np.uint32)
-            exp = np.select(
-                [kind == 0, kind == 1, kind == 2, kind == 3, kind == 4],
-                [np.zeros(shape, np.uint32), np.zeros(shape, np.uint32),
-                 rng.integers(1, 17, shape).astype(np.uint32),
-                 rng.integers(120, 135, shape).astype(np.uint32),
-                 np.full(shape, 226, np.uint32)],
-                default=np.full(shape, 117, np.uint32)).astype(np.uint32)
-            mant = np.where(kind == 0, np.uint32(0), mant).astype(np.uint32)
-            bits = (sign | (exp << np.uint32(23)) | mant).astype(np.uint32)
-            return bits.view(np.float32)
-        raise ValueError(cls_)
-
-    if dtype == np.complex64:
-        out = np.empty(shape, dtype=np.complex64)
-        view = out.view(np.float32).reshape(nr, 1, nz, 2)
-        if cls == "planted":
-            re = rng.standard_normal(shape).astype(np.float32)
-            im = rng.standard_normal(shape).astype(np.float32)
-            words_re = re.view(np.uint32).copy()
-            words_im = im.view(np.uint32).copy()
-            # Row 0: re = -t (biased exponent 1 -> [2^-126, 2^-125)), im = -b with
-            # b in (0.25, 0.75).
-            mant0 = rng.integers(1, 1 << 23, (1, 1, nz)).astype(np.uint32)
-            words_re[0] = (np.uint32(1 << 31) | (np.uint32(1) << np.uint32(23)) | mant0)
-            words_im[0] = (-(0.25 + 0.5 * rng.random((1, 1, nz)))).astype(
-                np.float32).view(np.uint32)
-            if nr > 1:
-                # Row 1: re = -0.0 exactly, im = -a with a in [2, 3).
-                words_re[1] = np.uint32(1 << 31)
-                words_im[1] = (-(2.0 + rng.random((1, 1, nz)))).astype(
-                    np.float32).view(np.uint32)
-            view[..., 0] = words_re.view(np.float32)
-            view[..., 1] = words_im.view(np.float32)
-            return out
-        view[..., 0] = one(cls)
-        view[..., 1] = one(cls)
-        return out
-    if cls == "planted":
-        return one("edge")
-    return one(cls)
-
-
-_INCREMENT_HEAD = '''
-import triton
-import triton.language as tl
-
-
-@triton.jit
-def increment_kernel(inc, f, wgt, dvs, nx, ny, nz, n_elem, BLOCK: tl.constexpr):
-    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    live = idx < n_elem
-    nyz = ny * nz
-    i = idx // nyz
-    inner = live & (i >= 1)
-    w_i = tl.load(wgt + i, mask=live, other=0.0)
-    w_im1 = tl.load(wgt + i - 1, mask=inner, other=0.0)
-    d_im1 = tl.load(dvs + i - 1, mask=inner, other=1.0)
-'''
-
-_REAL_LOADS = '''
-    f_i = tl.load(f + idx, mask=live, other=0.0)
-    f_im1 = tl.load(f + idx - nyz, mask=inner, other=0.0)
-'''
-_REAL_STORE = '''
-    value = tl.where(inner, value, 0.0)
-    tl.store(inc + idx, value, mask=live)
-'''
-_COMPLEX_LOADS = '''
-    fr_i = tl.load(f + 2 * idx, mask=live, other=0.0)
-    fi_i = tl.load(f + 2 * idx + 1, mask=live, other=0.0)
-    fr_b = tl.load(f + 2 * (idx - nyz), mask=inner, other=0.0)
-    fi_b = tl.load(f + 2 * (idx - nyz) + 1, mask=inner, other=0.0)
-'''
-_COMPLEX_STORE = '''
-    q_re = tl.where(inner, q_re, 0.0)
-    q_im = tl.where(inner, q_im, 0.0)
-    tl.store(inc + 2 * idx, q_re, mask=live)
-    tl.store(inc + 2 * idx + 1, q_im, mask=live)
-'''
-
-_MULTIPLY_HEAD = '''
-import triton
-import triton.language as tl
-
-
-@triton.jit
-def multiply_kernel(out, f, wgt, nx, ny, nz, n_elem, BLOCK: tl.constexpr):
-    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    live = idx < n_elem
-    nyz = ny * nz
-    i = idx // nyz
-    w_i = tl.load(wgt + i, mask=live, other=0.0)
-    fr_i = tl.load(f + 2 * idx, mask=live, other=0.0)
-    fi_i = tl.load(f + 2 * idx + 1, mask=live, other=0.0)
-'''
-_MULTIPLY_STORE = '''
-    tl.store(out + 2 * idx, wh_re, mask=live)
-    tl.store(out + 2 * idx + 1, wh_im, mask=live)
-'''
-
-
-def _indent(block: str) -> str:
-    return "".join("    " + line + "\n" for line in block.strip("\n").splitlines())
-
-
-_COMPILED: Dict[str, Any] = {}
-
-
-def compile_variant(name: str, source: str, function: str) -> Any:
-    """A standalone Triton kernel from generated SOURCE, cached by its text."""
-    key = hashlib.sha256(source.encode()).hexdigest()
-    if key in _COMPILED:
-        return _COMPILED[key]
-    filename = f"<triton_cylindrical_hd_increment:{name}:{key[:12]}>"
-    linecache.cache[filename] = (len(source), None, source.splitlines(True), filename)
-    module = types.ModuleType(f"triton_cylindrical_hd_increment_{name}_{key[:12]}")
-    module.__file__ = filename
-    sys.modules[module.__name__] = module
-    exec(compile(source, filename, "exec"), module.__dict__)  # noqa: S102
-    _COMPILED[key] = getattr(module, function)
-    return _COMPILED[key]
-
-
-def increment_source(spec: FamilySpec, variant: Mapping[str, str]) -> str:
-    if spec.complex_storage:
-        return (_INCREMENT_HEAD + _COMPLEX_LOADS + _indent(variant["multiply"])
-                + _indent("d_re = wh_re - wb_re\nd_im = wh_im - wb_im")
-                + _indent(variant["divide"]) + _COMPLEX_STORE)
-    return (_INCREMENT_HEAD + _REAL_LOADS + _indent(variant["multiply"])
-            + _indent(variant["divide"]) + _REAL_STORE)
-
-
-def multiply_source(variant: Mapping[str, str]) -> str:
-    return _MULTIPLY_HEAD + _indent(variant["multiply_here"]) + _MULTIPLY_STORE
-
-
-def array_path_increment(cp: Any, f_p: Any, ir0: float, scratch: Any) -> Tuple[Any, Any, Any]:
-    """stepping.py:1313-1331's pooled branch, statement for statement, stopped before
-    the scan so the increment can be read. The proof it IS the shipped function is the
-    ``cumsum`` comparison against ``cylindrical_rderiv_prefix`` beside it."""
-    xp = cp
-    real_dtype = f_p.real.dtype
-    key = ("cyl_rderiv", int(f_p.shape[0]), float(ir0), real_dtype)
-    weights, divisor = scratch.constant(
-        key, lambda: stepping._cylindrical_rderiv_weights(  # noqa: SLF001
-            xp, f_p.shape[0], ir0, real_dtype))
-    weighted = scratch.take("cyl_weighted", f_p.shape, f_p.dtype)
-    xp.multiply(f_p, weights, out=weighted)
-    increment = scratch.take("cyl_increment", f_p.shape, f_p.dtype)
-    increment[stepping._face(0, 0)] = 0  # noqa: SLF001
-    xp.subtract(weighted[1:], weighted[:-1], out=increment[1:])
-    increment[1:] /= divisor
-    return increment.copy(), weights, divisor
-
-
-def resolve_expected(expected: Any, policy: Optional[str], cls: str) -> str:
-    """One of ``IDENTICAL`` / ``DIFFERS`` / ``RECORDED`` from a table keyed by policy
-    and then by value class. ``RECORDED`` asserts nothing: the count is written down
-    and the row passes either way, for a control whose bite is CLASS-dependent and
-    was not measured on this backend's compiler before this run."""
-    # A table is keyed by POLICY when it names one; otherwise it is keyed by value
-    # class (or is a bare verdict). The two levels are told apart by their keys, never
-    # by position, so a class-keyed table under no policy key is not read as a policy
-    # table with a default.
-    if isinstance(expected, dict) and ("keep" in expected or "flush" in expected):
-        expected = expected.get(policy or "keep", expected.get("keep"))
-    if isinstance(expected, dict):
-        expected = expected.get(cls, expected.get("default"))
-    if expected not in ("IDENTICAL", "DIFFERS", "RECORDED"):
-        raise AssertionError(f"an expectation must resolve to IDENTICAL, DIFFERS or "
-                             f"RECORDED, not {expected!r}")
-    return expected
-
-
-def leg_increment_stage(spec: FamilySpec, seed: int, policy: Optional[str],
-                        limit: Optional[int] = None) -> List[Dict[str, Any]]:
-    """The pre-scan increment, compiled by TRITON, against the array path's four passes.
-
-    Per case: the product's spelling (the ``primary`` variant, the same statements the
-    launch-1 kernel carries) and every armed alternative, each against the array path's
-    own increment as uint32 words; ``cumsum`` of the fused increment against the SHIPPED
-    prefix; the replica's own ``cumsum`` against the shipped prefix (the proof the
-    replica is the oracle). On complex storage a ``multiply`` sub-leg compares
-    ``Hy * w`` alone, where the naive four-product spelling is byte-visible.
-
-    THE FIRST TRITON MEASUREMENT OF THIS ARITHMETIC: every number the design record
-    carries for these spellings is NVRTC's, and this leg is what stands in for them.
-    """
-    import cupy as cp  # noqa: PLC0415
-    from meep_gpu.fields import StepScratch  # noqa: PLC0415
-    from meep_gpu.triton_kernels.kernels import ENABLE_FP_FUSION  # noqa: PLC0415
-    from meep_gpu.triton_kernels.launch import CupyPointer  # noqa: PLC0415
-
-    dtype = np.complex64 if spec.complex_storage else np.float32
-    classes = ("uniform", "wide_dynamic", "cancelling", "edge") + (
-        ("planted",) if spec.complex_storage else ())
-    extents = _corpus_extents()
-    plan = [(nr, nz, cls) for (nr, nz) in extents for cls in classes]
-    if limit:
-        plan = plan[:limit]
-    ir0 = float(spec.family.PREFIX_IR0)
-    rows: List[Dict[str, Any]] = []
-    block = 256
-    for index, (nr, nz, cls) in enumerate(plan, start=1):
-        started = time.time()
-        f_host = make_field(nr, nz, dtype, cls, seed + index)
-        f_dev = cp.asarray(f_host)
-        scratch = StepScratch(cp)
-        inc_ap, weights, divisor = array_path_increment(cp, f_dev, ir0, scratch)
-        shipped = stepping.cylindrical_rderiv_prefix(cp, f_dev, ir0, scratch=scratch).copy()
-        rebuild = differing(cp.cumsum(inc_ap, axis=0), shipped)
-        total = int(native_words(inc_ap).size)
-        nonzero = int(cp.count_nonzero(native_words(inc_ap) & cp.uint32(0x7FFFFFFF)))
-        cells = nr * 1 * nz
-        grid = ((cells + block - 1) // block,)
-        # TRITON RESOLVES A POINTER ARGUMENT THROUGH data_ptr(): a bare CuPy array is
-        # rejected at the launcher, so every device operand goes through the same
-        # adapter the shipped plans use.
-        f_words = CupyPointer(f_dev.view(cp.float32) if dtype == np.complex64 else f_dev)
-        weights_flat = CupyPointer(cp.ascontiguousarray(weights.reshape(-1)))
-        divisor_flat = CupyPointer(cp.ascontiguousarray(divisor.reshape(-1)))
-        row: Dict[str, Any] = {
-            "leg": "increment_stage", "case": f"nr{nr}_nz{nz}_{cls}",
-            "nr": nr, "nz": nz, "value_class": cls, "ir0": ir0, "words": total,
-            "increment_nonzero_words": nonzero,
-            "replica_cumsum_vs_shipped_prefix_differing": rebuild,
-            "variants": {}, "findings": []}
-        for name, variant in spec.increment_variants.items():
-            source = increment_source(spec, variant)
-            kernel = compile_variant(f"{spec.gate}_{name}", source, "increment_kernel")
-            for fusion in ((False, True) if variant.get("also_fusion_on") else (False,)):
-                label = name + ("_fusion_on" if fusion else "")
-                expected = resolve_expected(
-                    variant["expected_fusion_on"] if fusion else variant["expected"],
-                    policy, cls)
-                out = cp.empty_like(f_dev)
-                o_words = CupyPointer(out.view(cp.float32) if dtype == np.complex64 else out)
-                try:
-                    kernel[grid](o_words, f_words, weights_flat, divisor_flat,
-                                 nr, 1, nz, cells, BLOCK=block,
-                                 enable_fp_fusion=(ENABLE_FP_FUSION if not fusion else True))
-                    cp.cuda.runtime.deviceSynchronize()
-                except SubnormalPolicyUnattainable as refused:
-                    # THE POLICY REFUSED TO COMPILE THIS SPELLING: its PTX is not uniform
-                    # under the policy in force (Triton's `/` lowers to div.full.f32,
-                    # which the flush executor cannot make .ftz). Recorded by name, not
-                    # scored as a word count; a spelling the policy cannot even compile
-                    # uniformly is not a candidate for the oracle's bytes.
-                    entry = {"increment_differing": None, "expected": expected,
-                             "outcome": REFUSED_BY_THE_POLICY,
-                             "refusal": str(refused)[:400]}
-                    if expected == "IDENTICAL":
-                        row["findings"].append(f"{label}: expected identical, and the policy "
-                                               f"refused to compile it")
-                    row["variants"][label] = entry
-                    continue
-                entry = {"increment_differing": differing(out, inc_ap)}
-                if name == "primary" or entry["increment_differing"] == 0:
-                    entry["cumsum_vs_shipped_prefix_differing"] = differing(
-                        cp.cumsum(out, axis=0), shipped)
-                entry["expected"] = expected
-                entry["outcome"] = "IDENTICAL" if entry["increment_differing"] == 0 else "DIFFERS"
-                if expected == "IDENTICAL" and entry["outcome"] != "IDENTICAL":
-                    row["findings"].append(f"{label}: expected identical, differs on "
-                                           f"{entry['increment_differing']} words")
-                if expected == "DIFFERS" and entry["outcome"] != "DIFFERS":
-                    row["findings"].append(f"{label}: expected to bite, moved 0 words")
-                row["variants"][label] = entry
-        if spec.complex_storage:
-            reference = cp.empty_like(f_dev)
-            cp.multiply(f_dev, weights, out=reference)
-            row["multiply"] = {}
-            for name, variant in spec.multiply_variants.items():
-                kernel = compile_variant(f"{spec.gate}_mul_{name}", multiply_source(variant),
-                                         "multiply_kernel")
-                out = cp.empty_like(f_dev)
-                expected = resolve_expected(variant["expected"], policy, cls)
-                try:
-                    kernel[grid](CupyPointer(out.view(cp.float32)), f_words, weights_flat,
-                                 nr, 1, nz, cells, BLOCK=block,
-                                 enable_fp_fusion=ENABLE_FP_FUSION)
-                    cp.cuda.runtime.deviceSynchronize()
-                except SubnormalPolicyUnattainable as refused:
-                    row["multiply"][name] = {"differing": None, "expected": expected,
-                                             "outcome": REFUSED_BY_THE_POLICY,
-                                             "refusal": str(refused)[:400]}
-                    if expected == "IDENTICAL":
-                        row["findings"].append(f"multiply {name}: expected identical, and "
-                                               f"the policy refused to compile it")
-                    continue
-                n = differing(out, reference)
-                entry = {"differing": n, "expected": expected,
-                         "outcome": "IDENTICAL" if n == 0 else "DIFFERS"}
-                if expected == "IDENTICAL" and n:
-                    row["findings"].append(f"multiply {name}: expected identical, differs on {n}")
-                if expected == "DIFFERS" and not n:
-                    row["findings"].append(f"multiply {name}: expected to bite, moved 0 words")
-                row["multiply"][name] = entry
-        primary = row["variants"]["primary"]
-        if rebuild:
-            row["findings"].append(f"the replica's cumsum differs from the SHIPPED prefix on "
-                                   f"{rebuild} words; the reference is not the oracle")
-        if primary.get("cumsum_vs_shipped_prefix_differing"):
-            row["findings"].append("cumsum of the fused increment differs from the shipped prefix")
-        biting = [label for label, entry in row["variants"].items()
-                  if label != "primary" and entry["increment_differing"]]
-        if spec.complex_storage:
-            biting += [f"multiply:{name}" for name, entry in row["multiply"].items()
-                       if name != "primary" and entry["differing"]]
-        row["controls_refused_by_the_policy"] = (
-            [label for label, entry in row["variants"].items()
-             if entry["outcome"] == REFUSED_BY_THE_POLICY]
-            + [f"multiply:{name}" for name, entry in row.get("multiply", {}).items()
-               if entry["outcome"] == REFUSED_BY_THE_POLICY])
-        if not biting:
-            row["findings"].append("no control moved a word on this case; the zero is vacuous")
-        if nonzero == 0:
-            row["findings"].append("the array path's increment is all zero on this case")
-        row["controls_that_bite"] = biting
-        row["passed"] = not row["findings"]
-        row["seconds"] = round(time.time() - started, 2)
-        rows.append(row)
-        bites = ", ".join("%s:%s" % (name, entry["increment_differing"]
-                                      if entry["increment_differing"] is not None
-                                      else "REFUSED")
-                          for name, entry in row["variants"].items() if name != "primary")
-        multiplies = ""
-        if spec.complex_storage:
-            multiplies = " mul={" + ", ".join(
-                "%s:%s" % (name, entry["differing"] if entry["differing"] is not None
-                           else "REFUSED")
-                for name, entry in row["multiply"].items()) + "}"
-        log("    increment %d/%d nr=%d nz=%d %s: primary=%d/%d cumsum=%s rebuild=%d bite={%s}%s"
-            " (%ss)%s" % (
-                index, len(plan), nr, nz, cls, primary["increment_differing"], total,
-                primary.get("cumsum_vs_shipped_prefix_differing"), rebuild, bites,
-                multiplies, row["seconds"],
-                "" if row["passed"] else " ! %s" % row["findings"]))
-    return rows
-
-
-_SERIAL_SCAN_REAL = r'''
-extern "C" __global__ void column_serial_scan(
-    float* __restrict__ out, const float* __restrict__ inc,
-    int nx, int ny, int nz, int n_cols
-) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n_cols) return;
-    int nyz = ny * nz;
-    int k = idx % nz;
-    int j = idx / nz;
-    if (j >= ny) return;
-    int base = j * nz + k;
-    float acc = inc[base];
-    out[base] = acc;
-    for (int i = 1; i < nx; ++i) {
-        int o = i * nyz + base;
-        acc = acc + inc[o];
-        out[o] = acc;
-    }
-}
-'''
-
-_SERIAL_SCAN_COMPLEX = r'''
-extern "C" __global__ void column_serial_scan_complex(
-    float* __restrict__ out, const float* __restrict__ inc,
-    int nx, int ny, int nz, int n_cols
-) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n_cols) return;
-    int nyz = ny * nz;
-    int k = idx % nz;
-    int j = idx / nz;
-    if (j >= ny) return;
-    int base = j * nz + k;
-    float ar = inc[2 * base], ai = inc[2 * base + 1];
-    out[2 * base] = ar; out[2 * base + 1] = ai;
-    for (int i = 1; i < nx; ++i) {
-        int o = i * nyz + base;
-        ar = ar + inc[2 * o];
-        ai = ai + inc[2 * o + 1];
-        out[2 * o] = ar; out[2 * o + 1] = ai;
-    }
-}
-'''
-
-
-def leg_scan_order(spec: FamilySpec, seed: int) -> Dict[str, Any]:
-    """A column-serial device scan vs ``cupy.cumsum`` (must differ) and ``numpy.cumsum``
-    (must not), restated on THIS run -- the reason the product leaves the scan alone."""
-    import cupy as cp  # noqa: PLC0415
-
-    findings: List[str] = []
-    dtype = np.complex64 if spec.complex_storage else np.float32
-    kernel = cp.RawKernel(_SERIAL_SCAN_COMPLEX if spec.complex_storage else _SERIAL_SCAN_REAL,
-                          "column_serial_scan_complex" if spec.complex_storage
-                          else "column_serial_scan", options=("--fmad=false",))
-    cases = []
-    for index, (nr, nz) in enumerate(((163, 175), (80, 1), (462, 497)), start=1):
-        host = make_field(nr, nz, dtype, "uniform", seed + 700 + index)
-        inc = cp.asarray(host)
-        reference = cp.cumsum(inc, axis=0)
-        produced = cp.empty_like(inc)
-        cols = nz
-        kernel(((cols + 127) // 128,), (128,),
-               (produced.view(cp.float32) if spec.complex_storage else produced,
-                inc.view(cp.float32) if spec.complex_storage else inc,
-                np.int32(nr), np.int32(1), np.int32(nz), np.int32(cols)))
-        cp.cuda.runtime.deviceSynchronize()
-        np_cum = np.cumsum(host, axis=0, dtype=host.dtype)
-        case = {"nr": nr, "nz": nz, "words": int(native_words(inc).size),
-                "serial_device_vs_cupy_cumsum_differing": differing(produced, reference),
-                "serial_device_vs_numpy_cumsum_differing": differing(produced, cp.asarray(np_cum)),
-                "cupy_cumsum_twice_differing": differing(cp.cumsum(inc, axis=0), reference)}
-        if nr > 1 and case["serial_device_vs_cupy_cumsum_differing"] == 0:
-            findings.append(f"nr={nr}: the serial scan EQUALS cupy.cumsum; the premise that the "
-                            f"scan must stay on the array path did not hold here")
-        if case["serial_device_vs_numpy_cumsum_differing"]:
-            findings.append(f"nr={nr}: the serial scan differs from numpy.cumsum")
-        if case["cupy_cumsum_twice_differing"]:
-            findings.append(f"nr={nr}: cupy.cumsum is not deterministic on this run")
-        cases.append(case)
-        log(f"    scan_order nr={nr} nz={nz}: serial vs cupy {case['serial_device_vs_cupy_cumsum_differing']}, "
-            f"vs numpy {case['serial_device_vs_numpy_cumsum_differing']}, cupy twice "
-            f"{case['cupy_cumsum_twice_differing']}")
-    return {"passed": not findings, "findings": findings, "cases": cases,
-            "cupy_version": cp.__version__,
-            "what_this_licenses": (
-                "that on this run a column-serial device scan is NOT cupy.cumsum's order "
-                "and IS numpy.cumsum's, so the product's decision to leave the scan on the "
-                "array path is measured here rather than inherited")}
-
-
-# ---------------------------------------------------------------------------
-# DEVICE LEGS: product, seed scale, launch structure, sync, withdraw, mutations
+# DEVICE LEGS: the product
 # ---------------------------------------------------------------------------
 
 def leg_product(spec: FamilySpec, steps: int, seed: int, forced: bool,
@@ -1998,13 +1509,14 @@ def leg_seed_scale(spec: FamilySpec, steps: int, seed: int, forced: bool) -> Dic
 
 
 def leg_launch_structure(spec: FamilySpec, steps: int, seed: int, forced: bool) -> Dict[str, Any]:
-    """Launches per step at the seam AND over the whole step, three witnesses.
+    """Launches per step at the seam AND over the whole step, two witnesses.
 
-    The kernel counter wraps every Triton kernel a plan launches (two for the weld);
-    the plan counter counts ``run()`` calls; the prefix counter counts array-path
-    scans. What the weld saves is reported in device launches per step, with the
-    CuPy-launches-per-prefix figure marked as read off ``stepping.py`` rather than
-    measured.
+    The kernel counter wraps every Triton kernel a plan can launch (the weld's launch 1
+    and both certified step_D plans' scan and curl; a certified cylindrical plan's scan
+    and curl); the plan counter counts ``run()`` calls. Every arrangement's kernel count
+    must equal its plans' declared launches per run times their runs
+    (:meth:`FamilySpec.kernel_launches_of`), and the weld's per-step count at the seam is
+    reported beside the singles' -- three against three.
     """
     findings: List[str] = []
     family = spec.family
@@ -2015,19 +1527,23 @@ def leg_launch_structure(spec: FamilySpec, steps: int, seed: int, forced: bool) 
         result.pop("_reference_final_state", None)
         launches = result["launches"]
         expected_kernels: Dict[str, int] = {}
-        seam_device: Dict[str, Any] = {}
+        seam_kernels: Dict[str, int] = {}
         for name, arrangement in arrangements.items():
             if arrangement.unreachable or arrangement.shim is None:
                 continue
             expected = 0
+            seam = 0
+            seam_owners = {id(declaring(arrangement.shim.plans[slot]))
+                           for slot in family.REPLACES
+                           if arrangement.shim.plans.get(slot) not in (None, ABSORBED)}
             for wrapper in arrangement.shim.counting_plans:
                 owner = declaring(wrapper.inner)
-                expected += wrapper.plan_runs * int(getattr(owner, "kernel_launches_per_run", 1))
+                count = wrapper.plan_runs * spec.kernel_launches_of(owner)
+                expected += count
+                if id(owner) in seam_owners:
+                    seam += count
             expected_kernels[name] = expected
-            seam_plans = {id(declaring(arrangement.shim.plans[slot]))
-                          for slot in family.REPLACES
-                          if arrangement.shim.plans.get(slot) not in (None, ABSORBED)}
-            seam_device[name] = {"distinct_plans_on_the_seam": len(seam_plans)}
+            seam_kernels[name] = seam
     finally:
         driver.close()
     steps_run = result["steps_compared"]
@@ -2038,60 +1554,33 @@ def leg_launch_structure(spec: FamilySpec, steps: int, seed: int, forced: bool) 
             findings.append(f"{name}: the kernel counter cannot see {counts['uncounted_plans']}")
         elif counts["kernels"] != expected_kernels.get(name):
             findings.append(f"{name}: the kernel counter saw {counts['kernels']} launches and "
-                            f"the plans' declared kernel_launches_per_run predict "
+                            f"the plans' declared launches per run predict "
                             f"{expected_kernels.get(name)}")
-    weld = launches.get("weld", {})
-    if weld and weld.get("cumsum_calls") != steps_run:
-        findings.append(f"the weld performed {weld.get('cumsum_calls')} scans over {steps_run} steps")
-    if weld and weld.get("array_path_prefix_calls") != steps_run:
-        findings.append(f"the weld arrangement made {weld.get('array_path_prefix_calls')} "
-                        f"array-path prefix calls over {steps_run} steps; step_B's one per "
-                        f"step is the only one it should make")
-    singles = launches.get("singles", {})
-    if singles and singles.get("array_path_prefix_calls") != 2 * steps_run:
-        findings.append(f"the singles arrangement made {singles.get('array_path_prefix_calls')} "
-                        f"prefix calls over {steps_run} steps, not two per step")
-
-    def derived(name: str) -> Optional[Dict[str, Any]]:
-        counts = launches.get(name)
-        if counts is None or steps_run == 0:
-            return None
-        # One B-side and (in the array-path arrangements) one D-side prefix per step;
-        # the weld leaves only the B-side one. Which side each call served is read off
-        # the recorded row counts (the B side is extended to nr + 1 rows).
-        arrangement = arrangements[name]
-        b_side = sum(1 for rows in arrangement.prefix.rows_seen if rows == driver_rows + 1)
-        d_side = sum(1 for rows in arrangement.prefix.rows_seen if rows == driver_rows)
-        cupy_prefix = (b_side * ARRAY_PATH_B_PREFIX_LAUNCHES + d_side * ARRAY_PATH_D_PREFIX_LAUNCHES)
-        return {"kernels_per_step": counts["kernels"] / steps_run,
-                "cumsum_per_step": counts["cumsum_calls"] / steps_run,
-                "prefix_calls_per_step": {"b_side": b_side / steps_run, "d_side": d_side / steps_run},
-                "cupy_prefix_launches_per_step_DERIVED": cupy_prefix / steps_run,
-                "device_launches_per_step_DERIVED":
-                    (counts["kernels"] + counts["cumsum_calls"] + cupy_prefix) / steps_run}
-
-    driver_rows = int(dict(spec.cases)[spec.mutation_case]["shape"][0])
-    per_step = {name: derived(name) for name in launches}
+    if steps_run and seam_kernels.get("weld") != family.LAUNCHES_PER_RUN * steps_run:
+        findings.append(f"the weld launched {seam_kernels.get('weld')} kernels at the seam "
+                        f"over {steps_run} steps, not LAUNCHES_PER_RUN = "
+                        f"{family.LAUNCHES_PER_RUN} per step")
+    per_step = {name: (None if not steps_run else {
+        "kernels_per_step": counts["kernels"] / steps_run,
+        "seam_kernels_per_step": seam_kernels.get(name, 0) / steps_run})
+        for name, counts in launches.items()}
     return {
         "passed": not findings, "findings": findings, "steps": steps_run,
         "launches_over_the_run": launches,
         "expected_kernel_launches_from_declarations": expected_kernels,
-        "seam_plans": seam_device,
+        "seam_kernel_launches": seam_kernels,
         "device_launches_per_step": per_step,
         "d_side_seam_per_step": {
-            "singles": 1 + ARRAY_PATH_D_PREFIX_LAUNCHES + 1,
+            "singles": 1 + CYLINDRICAL_PLAN_KERNEL_LAUNCHES,
             "weld": family.LAUNCHES_PER_RUN,
-            "what_is_measured": "kernel launches (independent wrapper), plan runs, scan "
-                                "calls and array-path prefix calls; the CuPy launches per "
-                                f"prefix call ({ARRAY_PATH_D_PREFIX_LAUNCHES} D side, "
-                                f"{ARRAY_PATH_B_PREFIX_LAUNCHES} B side) are read off "
-                                "stepping.py's statements, not measured"},
+            "what_is_measured": "kernel launches (independent wrappers on every kernel "
+                                "slot, the certified plans' nested scan slot included) "
+                                "and plan runs; nothing is read off source"},
         "the_honest_reading": (
-            "against the composition installed today (both neighbouring cylindrical pairs) "
-            "the weld's whole-step DEVICE launch count is what the derived column says, and "
-            "against the two certified singles it replaces 1 + 5 + 1 with 3 on the D-side "
-            "seam; the composer's own rule counts neither and would refuse the product "
-            "(arbitration leg)"),
+            "under MEEP's per-chunk radial sum the weld performs the D-side seam in the "
+            "same number of kernel launches as the two certified singles it replaces "
+            "(update_H, the scan, the curl); it is kept for its form alignment, not for "
+            "a launch saving, and the composer's own rule refuses it (arbitration leg)"),
     }
 
 
@@ -2154,82 +1643,70 @@ def volume_source(keywords: Mapping[str, Any], component: str = "Ez",
             "is_integrated": integrated}
 
 
-class WithdrawAfter:
-    def __init__(self, inner: Any, fields: Any, sources: Sequence[Any]) -> None:
-        self.inner = inner
-        self.absorbed_by = inner
-        self._fields = fields
-        self._sources = tuple(sources)
-
-    def run(self, *args: Any, **kwargs: Any) -> None:
-        self.inner.run(*args, **kwargs)
-        for _index, source in withdraw_hoist.standing_withdraws(self._sources):
-            source.withdraw(self._fields)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.inner, name)
-
-
 def leg_withdraw(spec: FamilySpec, steps: int, seed: int, forced: bool) -> Dict[str, Any]:
-    findings: List[str] = []
-    out: Dict[str, Any] = {}
+    """The seam's one pass on a device: :func:`hd_seam_restore.seam_restore_leg`.
+
+    Since entry 25 what stands between the two consults is the magnetic ``f_minus_p``
+    restore, not an electric withdraw. The Dcyl driver carries an integrated electric
+    (``Ez``) AND an integrated magnetic (``Hz``) source inside the cell and clear of the
+    absorbers; the weld arrangement is force-installed, stepped in lockstep with its own
+    array-path reference (its rotation settled after every step, as :func:`drive`
+    settles it) and required identical, and the weld with the restore moved before the
+    launch and with no magnetic ``f_minus_p`` must each diverge. THE SEED IS NOT SCALED
+    HERE (2^0): the ``f_minus_p`` words are the sources' amplitude.
+
+    ``forced`` is the run's own: under a policy the family's arms are not certified for,
+    the predicate must refuse by that clause and no other (never by a withdraw) and the
+    weld is built from arrays, as every other leg here builds it then.
+    """
     keywords = dict(dict(spec.cases)[spec.mutation_case])
-    sources = (volume_source(keywords, resolution=spec.fixture_resolution),)
-    standing = None
-    dipoles: Dict[str, List[float]] = {}
-    for mode in ("hoisted", "not_hoisted", "after_step_D"):
-        driver = build_driver(spec, keywords, seed=seed, sources=sources, amplitude=0.0)
-        try:
-            declared = tuple(getattr(driver, "_sources", ()))
-            standing = len(withdraw_hoist.standing_withdraws(declared))
-            verdict = spec.coverage(driver.fields, driver.pml, declared)
-            if mode == "hoisted":
-                out["predicate_refuses_this_configuration"] = not verdict.covered
-                out["predicate_reasons"] = list(verdict.reasons)
-            launcher = None
-            if mode == "after_step_D":
-                def launcher(plan: Any, fields=None) -> Any:  # noqa: ARG001
-                    return WithdrawAfter(plan, driver.fields, declared)
-            arrangements = {
-                "array": Arrangement("array", None),
-                "weld": arrangement_weld(spec, driver, launcher=launcher,
-                                         hoist=(mode == "hoisted"), forced=forced),
-            }
-            seen: List[float] = []
+    nr, nz = keywords["shape"]
+    resolution = spec.fixture_resolution
+    sources = (volume_source(keywords, resolution=resolution),
+               {**volume_source(keywords, component="Hz", resolution=resolution),
+                "frequency": 1.1,
+                "center": (0.6 * nr / resolution, 0.0, 0.35 * nz / resolution)})
+    built: List[Any] = []
+    welds: Dict[int, Arrangement] = {}
 
-            def watch(step: int, name: str, run: Any, seen: List[float] = seen) -> Any:
-                seen.append(max((abs(complex(getattr(source, "_applied_dipole", 0j) or 0j))
-                                 for source in getattr(run, "_sources", ())), default=0.0))
-                return None
+    def build() -> Any:
+        driver = build_driver(spec, keywords, seed=seed, sources=sources, scale_bits=0)
+        built.append(driver)
+        return driver
 
-            result = drive(driver, arrangements, steps, per_step_hook=watch,
-                           stop_on_divergence=False)
-            result.pop("_reference_final_state", None)
-            dipoles[mode] = [round(value, 12) for value in seen]
-            out[mode] = {"bit_identical": result["bit_identical"],
-                         "first_divergence_step": result["first_divergence_step"],
-                         "steps_compared": result["steps_compared"],
-                         "reference_moved_words_step_1": result["reference_moved_words_step_1"]}
-        finally:
-            driver.close()
-    out["standing_withdraws"] = standing
-    out["standing_dipole_magnitude_per_step"] = dipoles
-    if not standing:
-        findings.append("no standing withdraw on the withdraw leg's fixture")
-    if not any(value > 0.0 for values in dipoles.values() for value in values):
-        findings.append("the standing dipole is ZERO on every step compared")
-    if not out["hoisted"]["reference_moved_words_step_1"]:
-        findings.append("the array path moved no word on step 1")
-    if not out.get("predicate_refuses_this_configuration"):
-        findings.append("the predicate ADMITS a row with a standing integrated electric withdraw")
-    if not any("standing integrated" in r for r in out.get("predicate_reasons", ())):
-        findings.append("the refusal does not name the standing withdraw")
-    if not out["hoisted"]["bit_identical"]:
-        findings.append("the HOISTED arrangement is not identical to the array path")
-    for null in ("not_hoisted", "after_step_D"):
-        if out[null]["bit_identical"]:
-            findings.append(f"the {null} null control did NOT diverge")
-    return {"passed": not findings, "findings": findings, **out}
+    def install_weld(driver: Any) -> Callable[[], int]:
+        arrangement = arrangement_weld(spec, driver, forced=forced)
+        welds[id(driver)] = arrangement
+        install(driver, arrangement.shim)
+        # The weld's own launches: the update_H slot it holds (the shim counts every
+        # slot's plan, and the other slots carry the unfused singles).
+        return lambda: int(arrangement.shim.dispatched.get("update_H", 0))
+
+    def coverage(driver: Any) -> Tuple[bool, str]:
+        verdict = spec.coverage(driver.fields, driver.pml,
+                                tuple(getattr(driver, "_sources", ())))
+        reasons = list(verdict.reasons)
+        if not forced:
+            return bool(verdict.covered), "; ".join(reasons)
+        by_the_policy = bool(not verdict.covered and reasons and not any(
+            "withdraw" in reason for reason in reasons))
+        return by_the_policy, ("refused by the policy's certification clause alone: "
+                               + "; ".join(reasons))
+
+    try:
+        record = hd_seam_restore.seam_restore_leg(
+            build=build, install_weld=install_weld, coverage=coverage,
+            state_of=lambda driver: capture(driver)["volumes"],
+            compare=lambda left, right: compare_snapshots({"volumes": left},
+                                                          {"volumes": right}),
+            synchronize=lambda: None, steps=steps, spec_label=spec.mutation_case,
+            settle=lambda driver: welds[id(driver)].settle(driver.fields))
+    finally:
+        for driver in built:
+            with contextlib.suppress(Exception):
+                driver.close()
+    record["weld_built_from_arrays"] = bool(forced)
+    return record
 
 
 def mutated_family(spec: FamilySpec, tag: str, old: str, new: str) -> Any:
@@ -2281,105 +1758,48 @@ class FusionOn:
         return getattr(self.inner, name)
 
 
-class ArgSwappingKernel:
-    """A kernel object whose launcher substitutes named POSITIONAL arguments.
-
-    The plan's own ``_launch`` builds the argument list; this wrapper sits in the
-    plan's ``_curl_kernel`` seam for one run and replaces the positions the family
-    names, so the redirect is measured through the shipped launch code rather than
-    through a second copy of it.
-    """
-
-    def __init__(self, kernel: Any, substitutions: Mapping[int, Any]) -> None:
-        self.kernel = kernel
-        self.substitutions = dict(substitutions)
-        self.calls = 0
-
-    def __getitem__(self, grid: Any) -> Any:
-        launcher = self.kernel[grid]
-
-        def call(*args: Any, **kwargs: Any) -> Any:
-            self.calls += 1
-            arguments = list(args)
-            for index, value in self.substitutions.items():
-                if index >= len(arguments):
-                    raise AssertionError(
-                        f"the curl launch carries {len(arguments)} positional arguments; "
-                        f"the mutation names position {index}")
-                arguments[index] = value
-            return launcher(*arguments, **kwargs)
-
-        return call
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.kernel, name)
-
-
 class CurlReadsPreLaunchH:
-    """Launch 2 bound to the PRE-LAUNCH H instead of the freshly written twins.
+    """Launches 2 and 3 run over the PRE-LAUNCH H instead of this run's scratch.
 
     THE ORDER DEFECT, driven through the shipped ``_launch``: launch 1 still writes the
-    twins and the increment, the scan still runs, and only the curl's magnetic
-    pointers are redirected -- every position the family names
-    (:meth:`FamilySpec.curl_prelaunch_positions`), so ``Dx``'s raw ``Hy`` and the axis
-    add's ``Hp`` read the state the seam's first half has not yet produced. An
-    earlier version of this wrapper set an attribute nothing read; it is replaced by
-    an argument-swapping kernel object installed in the plan's own ``_curl_kernel``
-    seam for exactly one run.
+    scratch, and the certified step_D plan the weld picks is swapped for the one built
+    over the OTHER allocation -- the pre-launch H -- for exactly one run, so the scan
+    sums and the curl differences the state the seam's first half has not yet produced.
     """
 
-    def __init__(self, inner: Any, spec: FamilySpec) -> None:
+    def __init__(self, inner: Any) -> None:
         self.inner = inner
         self.absorbed_by = inner
-        self.spec = spec
         self.swaps = 0
 
     def run(self, guard: Optional[bool] = None) -> None:
         plan = self.inner
         writes, reads = plan._resolve()  # noqa: SLF001
-        prior = [plan._pointer(self.spec.word_view(array)) for array in reads]  # noqa: SLF001
-        positions = self.spec.curl_prelaunch_positions()
-        default = (plan._curl_kernel if plan._curl_kernel is not None  # noqa: SLF001
-                   else self.spec.default_curl_kernel())
-        swapper = ArgSwappingKernel(default, {index: prior[source]
-                                             for index, source in positions.items()})
-        saved = plan._curl_kernel  # noqa: SLF001
-        plan._curl_kernel = swapper  # noqa: SLF001
+        wrong = plan._curl_plan_for(reads)  # noqa: SLF001
+        right = plan._curl_plan_for(writes)  # noqa: SLF001
+        if wrong is right:
+            raise AssertionError("the pre-launch and scratch H resolve to one plan")
+        plans = plan._curl_plans  # noqa: SLF001
+        key = next(key for key, value in plans.items() if value is right)
+        plans[key] = wrong
         try:
-            plan._launch(writes, reads, guard)  # noqa: SLF001
+            plan.run(guard)
         finally:
-            plan._curl_kernel = saved  # noqa: SLF001
-        if swapper.calls != 1:
-            raise AssertionError(f"the redirected curl launched {swapper.calls} times, not once")
-        self.swaps += swapper.calls
-        plan.launches += 1
-        plan._rotate()  # noqa: SLF001
+            plans[key] = right
+        self.swaps += 1
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.inner, name)
 
 
-class ScanSkipped:
-    """The increment handed to launch 2 UNSCANNED: ``cumsum`` replaced by a copy.
+class ScanReadsPreLaunchHy:
+    """Launch 2's scan sums the PRE-LAUNCH Hy; launch 3's curl still reads the scratch H.
 
-    The array module the plan scans with is a slot on the plan, so the swap goes
-    through the plan's own statement (``self.xp.cumsum(increment, axis=0, out=...)``)
-    and the ``cumsum_calls`` witness still counts it; what changes is that the prefix
-    the certified curl differences is the increment itself.
+    The certified step_D plan over this run's scratch takes, for one run, the OTHER
+    plan's ``RadialScan`` -- the one bound to the pre-launch Hy -- so the difference the
+    curl reads is the previous step's field's while every other operand is this step's.
+    The purity ledger is the floor that makes this a claim about the product.
     """
-
-    class _NoScan:
-        def __init__(self, xp: Any) -> None:
-            self._xp = xp
-
-        def cumsum(self, array: Any, axis: int = 0, out: Any = None) -> Any:
-            if out is None:
-                return array.copy()
-            out[...] = array
-            return out
-
-        def __getattr__(self, name: str) -> Any:
-            return getattr(self._xp, name)
 
     def __init__(self, inner: Any) -> None:
         self.inner = inner
@@ -2387,21 +1807,62 @@ class ScanSkipped:
 
     def run(self, guard: Optional[bool] = None) -> None:
         plan = self.inner
-        saved = plan.xp
-        plan.xp = self._NoScan(saved)
+        writes, reads = plan._resolve()  # noqa: SLF001
+        right = plan._curl_plan_for(writes)  # noqa: SLF001
+        wrong = plan._curl_plan_for(reads)  # noqa: SLF001
+        saved = right.scan
+        right.scan = wrong.scan
         try:
             plan.run(guard)
         finally:
-            plan.xp = saved
+            right.scan = saved
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.inner, name)
+
+
+class ScanSkipped:
+    """Launch 2 not performed: the curl reads whatever the scan's output last held.
+
+    The certified plan's own ``RadialScan`` is replaced, for one run, by a stand-in
+    whose ``run`` does nothing, so the difference the curl reads is the previous
+    step's (or the zero-initialised buffer on step 1).
+    """
+
+    class _NoScan:
+        def __init__(self, scan: Any) -> None:
+            self._scan = scan
+            self.out = scan.out
+
+        def run(self, guard: Optional[bool] = None) -> None:  # noqa: ARG002
+            return None
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._scan, name)
+
+    def __init__(self, inner: Any) -> None:
+        self.inner = inner
+        self.absorbed_by = inner
+
+    def run(self, guard: Optional[bool] = None) -> None:
+        plan = self.inner
+        writes, _reads = plan._resolve()  # noqa: SLF001
+        target = plan._curl_plan_for(writes)  # noqa: SLF001
+        saved = target.scan
+        target.scan = self._NoScan(saved)
+        try:
+            plan.run(guard)
+        finally:
+            target.scan = saved
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.inner, name)
 
 
 class Ir0Ladder:
-    """The two invariant row vectors rebuilt at ANOTHER ``ir0`` -- the B side's 0.0
-    ladder bound where the D side's 0.5 belongs. Built by the array path's own
-    ``_cylindrical_rderiv_weights`` so the only thing that moves is ``ir0``."""
+    """The scan's two invariant row vectors rebuilt at ANOTHER ``ir0`` -- the B side's
+    0.0 ladder bound where the D side's 0.5 belongs. Built by the array path's own
+    ``_cylindrical_rderiv_rows`` so the only thing that moves is ``ir0``."""
 
     def __init__(self, inner: Any, ir0: float) -> None:
         self.inner = inner
@@ -2410,15 +1871,18 @@ class Ir0Ladder:
 
     def run(self, guard: Optional[bool] = None) -> None:
         plan = self.inner
-        saved = (plan._weights, plan._divisor)  # noqa: SLF001
-        real_dtype = getattr(saved[0], "dtype", None)
-        weights, divisor = stepping._cylindrical_rderiv_weights(  # noqa: SLF001
-            plan.xp, int(plan.shape[0]), self.ir0, real_dtype)
-        plan._weights, plan._divisor = weights, divisor  # noqa: SLF001
+        writes, _reads = plan._resolve()  # noqa: SLF001
+        scan = plan._curl_plan_for(writes).scan  # noqa: SLF001
+        saved = (scan._w, scan._rinv)  # noqa: SLF001
+        xp = _module_of(saved[0])
+        weights, rinv = stepping._cylindrical_rderiv_rows(  # noqa: SLF001
+            np, int(scan.rows_src), self.ir0, np.dtype(np.float32))
+        scan._w = xp.asarray(np.ascontiguousarray(weights.reshape(-1)))  # noqa: SLF001
+        scan._rinv = xp.asarray(np.ascontiguousarray(rinv.reshape(-1)))  # noqa: SLF001
         try:
             plan.run(guard)
         finally:
-            plan._weights, plan._divisor = saved  # noqa: SLF001
+            scan._w, scan._rinv = saved  # noqa: SLF001
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.inner, name)
@@ -2488,8 +1952,9 @@ def leg_mutation(spec: FamilySpec, steps: int, seed: int, policy: Optional[str],
                     def launcher(plan: Any, pml=driver.pml) -> Any:
                         return spec.half_integer_rebind(plan, pml)
                 elif host == "curl_reads_pre_launch_H":
-                    def launcher(plan: Any, spec=spec) -> Any:
-                        return CurlReadsPreLaunchH(plan, spec)
+                    launcher = CurlReadsPreLaunchH
+                elif host == "scan_reads_pre_launch_Hy":
+                    launcher = ScanReadsPreLaunchHy
                 elif host == "scan_skipped":
                     launcher = ScanSkipped
                 elif host == "ir0_zero_ladder":
@@ -2707,8 +2172,11 @@ def evaluate_row(spec: FamilySpec, driver: Any, steps: int, max_cells: Optional[
                                      f"{control['first_divergence_step']}"))
         return block
     block["driven"] = True
-    block.update(run_product(spec, driver, steps, progress=_child_progress,
-                             require_full_budget=True, clean_floor=1, floors_at="end"))
+    # THE DRIVER'S OWN CHUNK DIVISION for every plan built on this lifted row, the one the
+    # array path steps with (hd_seam_restore.plans_bind_the_driver_chunk_layout).
+    with hd_seam_restore.plans_bind_the_driver_chunk_layout(driver):
+        block.update(run_product(spec, driver, steps, progress=_child_progress,
+                                 require_full_budget=True, clean_floor=1, floors_at="end"))
     return block
 
 
@@ -2814,15 +2282,27 @@ def leg_lift(spec: FamilySpec, gate_path: Path, out_dir: Path, steps: int,
     blocks = {r["label"]: (r.get(key) or {}) for r in measured}
     unliftable = {record["label"]: str(record.get("error") or record.get("note") or "")
                   for record in measured if record.get("unliftable_on_this_host")}
+    # A ROW THE ENGINE'S OWN LIFTER REFUSES BY NAME (MeepSimulationNotLiftable) is
+    # nobody's to step either: named and counted out with the rows above.
+    refused_by_the_lifter = {record["label"]: reason for record in measured
+                             if record["label"] not in unliftable
+                             and not (record.get(key) or {})
+                             and (reason := hd_seam_restore.lifter_refusal(record))}
+    unliftable.update({label: f"refused by the engine's lifter: {reason}"
+                       for label, reason in refused_by_the_lifter.items()})
     blocks = {label: block for label, block in blocks.items() if label not in unliftable}
     admitted = sorted(label for label, b in blocks.items() if b.get("predicate_admits"))
     refused = sorted(label for label, b in blocks.items() if b.get("predicate_admits") is False)
-    refused_by_the_withdraw = sorted(
-        label for label in refused
-        if any("standing integrated" in reason for reason in blocks[label].get("predicate_reasons", ())))
     refused_by_policy = sorted(label for label in refused
                                if blocks[label].get("refused_by_the_certification_policy"))
-    expected_refused = sorted(set(facts["rows_with_a_standing_withdraw"]) & set(blocks))
+    # THE WITHDRAW REFUSALS, DERIVED FROM EACH ROW'S OWN SOURCES (an electric source
+    # whose withdraw does work; none since entry 25), never from the predicate's answer;
+    # the certification clause's refusals are scored by the ledger below.
+    accounting = hd_seam_restore.lift_withdraw_accounting(
+        blocks, facts["rows_with_a_standing_withdraw"],
+        tolerated=lambda label, block: label in refused_by_policy)
+    refused_by_the_withdraw = accounting["refused_by_a_standing_withdraw"]
+    expected_refused = accounting["expected_refused_from_the_row_sources"]
     unmeasured = sorted(label for label, b in blocks.items() if "predicate_admits" not in b)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
@@ -2836,19 +2316,14 @@ def leg_lift(spec: FamilySpec, gate_path: Path, out_dir: Path, steps: int,
     diverged_against_the_array_path = sorted(label for label in driven
                                              if not blocks[label].get("bit_identical"))
     reachable, why_unreachable = spec.policy_reaches_composer(policy)
-    # THE REFUSAL LEDGER: every refused row is either the standing withdraw (expected by
-    # name from the seam record) or, under a policy the family's arms are not certified
-    # for, the certification clause -- and under such a policy EVERY liftable row must
-    # be refused by it, or a row slipped through a clause that should have held.
-    # A row with a standing withdraw is refused by the withdraw clause AND, under a
-    # policy the arms are not certified for, by the certification clause as well; the
-    # ledger reconciles the two sets against the seam record on the rows the policy
-    # clause does not already own, and under such a policy requires that clause on
-    # EVERY row of the cell.
+    # THE REFUSAL LEDGER: every refused row is either a standing withdraw (expected from
+    # the row's own sources; none since entry 25, so the seam record's withdraw_in_seam
+    # rows are admitted) or, under a policy the family's arms are not certified for, the
+    # certification clause -- and under such a policy EVERY liftable row must be refused
+    # by it, or a row slipped through a clause that should have held.
     refusals_accounted = (
         set(refused) == (set(refused_by_the_withdraw) | set(refused_by_policy))
-        and (set(refused_by_the_withdraw) - set(refused_by_policy))
-        == (set(expected_refused) - set(refused_by_policy))
+        and accounting["passed"]
         and set(expected_refused) <= set(refused)
         and (reachable or set(refused_by_policy) == set(blocks)))
 
@@ -2920,7 +2395,9 @@ def leg_lift(spec: FamilySpec, gate_path: Path, out_dir: Path, steps: int,
         "refused": refused,
         "refused_by_the_standing_withdraw": refused_by_the_withdraw,
         "refused_by_the_certification_policy": refused_by_policy,
-        "refused_expected_from_the_seam_record": expected_refused,
+        "refused_expected_from_the_row_sources": expected_refused,
+        "refusal_accounting": accounting,
+        "rows_refused_by_the_lifter": refused_by_the_lifter,
         "policy_reaches_composer": reachable,
         "why_the_policy_does_not_reach_the_composer": why_unreachable or None,
         "driven": len(driven), "driven_rows": driven, "not_driven": not_driven,
@@ -3010,17 +2487,8 @@ def verdict(spec: FamilySpec, rows: Sequence[Dict[str, Any]], legs: Sequence[str
             (not composer_reachable) or all(
                 set(row.get("launches", {})) == set(MODES) for row in products))
         clauses["every_product_case_met_the_cylindrical_floors"] = all(
-            (row.get("cylindrical_floors") or {}).get("prefix_is_live")
+            (row.get("cylindrical_floors") or {}).get("radial_difference_is_live")
             and (row.get("cylindrical_floors") or {}).get("axis_row_is_live") for row in products)
-    if "increment_stage" in legs:
-        entries = by_leg.get("increment_stage", ())
-        clauses["increment_primary_identical_on_every_case"] = bool(entries) and all(
-            row["variants"]["primary"]["increment_differing"] == 0 for row in entries)
-        clauses["increment_cumsum_equals_the_shipped_prefix_on_every_case"] = bool(entries) and all(
-            row["variants"]["primary"].get("cumsum_vs_shipped_prefix_differing") == 0
-            for row in entries)
-        clauses["a_control_bites_on_every_increment_case"] = bool(entries) and all(
-            row.get("controls_that_bite") for row in entries)
     if "mutation" in legs:
         armed = [row for row in by_leg.get("mutation", ()) if row.get("expected") == "CAUGHT"]
         clauses["every_armed_mutation_is_caught"] = bool(armed) and all(
@@ -3030,8 +2498,9 @@ def verdict(spec: FamilySpec, rows: Sequence[Dict[str, Any]], legs: Sequence[str
         clauses["every_mutation_refused_by_the_policy_names_its_refusal"] = all(
             row.get("refusal") for row in by_leg.get("mutation", ())
             if row.get("outcome") == REFUSED_BY_THE_POLICY)
-        clauses["the_stored_halo_plant_is_CAUGHT"] = any(
-            row["mutation"] == "m_halo_reads_the_stored_Hy" and row.get("outcome") == "CAUGHT"
+        clauses["the_scan_ordering_plant_is_CAUGHT"] = any(
+            row["mutation"] == "m_scan_reads_the_pre_launch_Hy"
+            and row.get("outcome") == "CAUGHT"
             for row in by_leg.get("mutation", ()))
         clauses["every_predicted_null_is_recorded_with_its_reason"] = all(
             row.get("why") for row in by_leg.get("mutation", ()) if row.get("expected") == "NULL")
@@ -3046,7 +2515,7 @@ def verdict(spec: FamilySpec, rows: Sequence[Dict[str, Any]], legs: Sequence[str
             "composer_reachable_under_this_policy": bool(composer_reachable),
             "what_released_means_when_the_composer_is_unreachable": (
                 None if composer_reachable else
-                "the product's arithmetic (arm FORCED to the keep-cut probe's licence) "
+                "the product's arithmetic (the arm FORCED past the composer) "
                 "is byte-identical to the array path and to the two certified singles "
                 "built the same way over the full budget under this policy; the two "
                 "composition references and the lifted rows are REFUSED by the "
@@ -3063,7 +2532,6 @@ def main(spec: FamilySpec, gate_path: Path, argv: Optional[Sequence[str]] = None
     parser.add_argument("--seed", type=int, default=20260906)
     parser.add_argument("--subnormal-policy", default=None, choices=(None, "keep", "flush"))
     parser.add_argument("--import-meep-for-host-policy", action="store_true")
-    parser.add_argument("--increment-limit", type=int, default=None)
     parser.add_argument("--lift-steps", type=int, default=None)
     parser.add_argument("--lift-max-cells", type=int, default=None)
     parser.add_argument("--lift-timeout", type=float, default=3600.0)
@@ -3116,7 +2584,7 @@ def main(spec: FamilySpec, gate_path: Path, argv: Optional[Sequence[str]] = None
     composer_reachable, why = spec.policy_reaches_composer(args.subnormal_policy)
     payload["composer_reachable_under_this_policy"] = {"reachable": composer_reachable, "why": why}
     forced = not composer_reachable
-    payload["expansion_forced_from_arrays"] = spec.forced_expansion() if forced else None
+    payload["built_from_arrays"] = forced
     if not args.no_device:
         triton_launch.require_triton()
         import cupy  # noqa: PLC0415
@@ -3138,8 +2606,7 @@ def main(spec: FamilySpec, gate_path: Path, argv: Optional[Sequence[str]] = None
                 cupy.cuda.runtime.getDevice())["name"]),
             "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
             "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
-            "triton_cache_dir": os.environ.get("TRITON_CACHE_DIR"),
-            "expansion_probe": os.environ.get("MEEP_GPU_COMPLEX_EXPANSION_PROBE")})
+            "triton_cache_dir": os.environ.get("TRITON_CACHE_DIR")})
         log(f"subnormal policy installed: {payload['subnormal_policy'].get('policy')!r} "
             f"(requested {args.subnormal_policy!r}); composer reachable: {composer_reachable}"
             + (f" ({why})" if why else ""))
@@ -3186,10 +2653,6 @@ def main(spec: FamilySpec, gate_path: Path, argv: Optional[Sequence[str]] = None
             record("refusal", leg_refusal(spec, policy))
         if "arbitration" in legs:
             record("arbitration", leg_arbitration(spec, policy))
-        if "increment_stage" in legs:
-            record("increment_stage", leg_increment_stage(spec, seed, policy, args.increment_limit))
-        if "scan_order" in legs:
-            record("scan_order", leg_scan_order(spec, seed))
         if "product" in legs:
             record("product", leg_product(spec, steps, seed, forced, progress=progress))
         if "seed_scale" in legs:

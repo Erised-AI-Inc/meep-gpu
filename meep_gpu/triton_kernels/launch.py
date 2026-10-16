@@ -39,13 +39,27 @@ said dispatch was off by default; that described the package before release.
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
+import numpy
+
+from ..chunk_map import (
+    AXIS_NAMES,
+    RECORD_PRESENCE_WORD,
+    RECORD_WORDS,
+    ChunkLayout,
+    ChunkLayoutRefusal,
+    chunk_bounds_record,
+    grid_frames,
+    record_index,
+)
 from .coverage import (
     CONSTITUTIVE_SIDES,
     FUSED_PAIRS,
     Coverage,
     ade_update_p_coverage,
+    chunk_layout_reasons,
     constitutive_coverage,
     dispersive_constitutive_coverage,
     fused_pair_coverage,
@@ -74,10 +88,14 @@ def conductive_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Covera
 
 
 def plan_conductive_pml_curl(fields: Any, pml: Any, sub_step: str,
-                             block: Optional[int] = None) -> Any:
-    """Build one conductive PML curl plan through its specialized module."""
+                             block: Optional[int] = None,
+                             chunk_layout: Any = None) -> Any:
+    """Build one conductive PML curl plan through its specialized module.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     from .conductivity import plan_conductive_pml_curl as specialized_plan  # noqa: PLC0415
-    return specialized_plan(fields, pml, sub_step, block)
+    return specialized_plan(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def plain_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
@@ -115,10 +133,10 @@ def folded_composition_curl_coverage(fields: Any, pml: Any,
 
 
 def plan_folded_pml_curl(fields: Any, pml: Any, sub_step: str,
-                         block: Optional[int] = None) -> Any:
+                         block: Optional[int] = None, chunk_layout: Any = None) -> Any:
     """Build one folded PML curl plan."""
     from .symmetry import plan_folded_pml_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def mirror_ghost_fill_coverage(fields: Any, family: str) -> Coverage:
@@ -141,10 +159,10 @@ def folded_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
 
 
 def plan_folded_constitutive(fields: Any, pml: Any, side: str,
-                             block: Optional[int] = None) -> Any:
+                             block: Optional[int] = None, chunk_layout: Any = None) -> Any:
     """Build the ordinary constitutive kernel against a folded stored extent."""
     from .symmetry import plan_folded_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, side, block)
+    return builder(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def cylindrical_grid_active(fields: Any) -> bool:
@@ -175,10 +193,10 @@ def cylindrical_curl_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_cylindrical_curl(fields: Any, pml: Any, sub_step: str,
-                          block: Optional[int] = None) -> Any:
-    """Build one admitted m=0 Dcyl curl plan."""
+                          block: Optional[int] = None, chunk_layout: Any = None) -> Any:
+    """Build one admitted m=0 Dcyl curl plan on the run's division."""
     from .cylindrical_triton import plan_cylindrical_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def cylindrical_constitutive_coverage(fields: Any, pml: Any,
@@ -189,10 +207,11 @@ def cylindrical_constitutive_coverage(fields: Any, pml: Any,
 
 
 def plan_cylindrical_constitutive(fields: Any, pml: Any, side: str,
-                                  block: Optional[int] = None) -> Any:
+                                  block: Optional[int] = None,
+                                  chunk_layout: Any = None) -> Any:
     """Build the existing elementwise constitutive plan for the Dcyl slice."""
     from .cylindrical_triton import plan_cylindrical_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, side, block)
+    return builder(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def dispersive_fused_pair_coverage(fields: Any, pml: Any,
@@ -204,10 +223,11 @@ def dispersive_fused_pair_coverage(fields: Any, pml: Any,
 
 def plan_dispersive_fused_pair(fields: Any, pml: Any, sources: Any = None,
                                block: Optional[int] = None,
-                               num_warps: Optional[int] = 1) -> Any:
+                               num_warps: Optional[int] = 1,
+                               chunk_layout: Any = None) -> Any:
     """Build the pole-aware D/E pair through its specialized module."""
     from .dispersive_fused_pair import plan_dispersive_fused_pair as builder  # noqa: PLC0415
-    return builder(fields, pml, sources, block, num_warps)
+    return builder(fields, pml, sources, block, num_warps, chunk_layout=chunk_layout)
 
 
 def fused_ade_state_coverage(fields: Any, state: Any) -> Coverage:
@@ -237,46 +257,31 @@ def plan_fused_ade_state(fields: Any, state: Any,
 # the arithmetic is each family's. These are the seam between them.
 
 
-def load_expansion_probe(path: Optional[str] = None) -> Any:
-    """Read the complex-multiply expansion probe artifact, or None when absent.
-
-    Three-valued like the reader it forwards to: a record, ``None`` for absent,
-    or a ``RefusedExpansionProbe`` when this dispatch has already refused the
-    artifact that variable points at. The re-export exists so callers need not
-    import a family module; it must not flatten the third value into ``None``,
-    which is what made a refusal survivable by a re-read.
-    """
-    from .complex_fields import load_expansion_probe as reader  # noqa: PLC0415
-    return reader(path)
-
-
-def complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                              probe: Any = None) -> Coverage:
+def complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Ask the complex/Bloch split-field curl predicate."""
     from .complex_fields import complex_pml_curl_coverage as predicate  # noqa: PLC0415
-    return predicate(fields, pml, sub_step, probe=probe)
+    return predicate(fields, pml, sub_step)
 
 
 def plan_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
-                          block: Optional[int] = None, probe: Any = None) -> Any:
-    """Build one complex/Bloch split-field curl plan."""
+                          block: Optional[int] = None,
+                          chunk_layout: Any = None) -> Any:
+    """Build one complex/Bloch split-field curl plan on the run's chunk division."""
     from .complex_fields import plan_complex_pml_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block, probe=probe)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
-def complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                  probe: Any = None) -> Coverage:
+def complex_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """Ask the complex/Bloch constitutive predicate for one side."""
     from .complex_fields import complex_constitutive_coverage as predicate  # noqa: PLC0415
-    return predicate(fields, pml, side, probe=probe)
+    return predicate(fields, pml, side)
 
 
 def plan_complex_constitutive(fields: Any, pml: Any, side: str,
-                              block: Optional[int] = None,
-                              probe: Any = None) -> Any:
-    """Build one complex/Bloch constitutive plan."""
+                              block: Optional[int] = None, chunk_layout: Any = None) -> Any:
+    """Build one complex/Bloch constitutive plan on the run's chunk division."""
     from .complex_fields import plan_complex_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, side, block, probe=probe)
+    return builder(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def beta_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
@@ -286,25 +291,23 @@ def beta_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
 
 
 def plan_beta_pml_curl(fields: Any, pml: Any, sub_step: str,
-                       block: Optional[int] = None) -> Any:
-    """Build one REAL special_kz curl plan."""
+                       block: Optional[int] = None, chunk_layout: Any = None) -> Any:
+    """Build one REAL special_kz curl plan on the run's chunk division."""
     from .special_kz import plan_beta_pml_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
-def beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                 probe: Any = None) -> Coverage:
+def beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Ask the COMPLEX special_kz curl predicate (its extended pattern set)."""
     from .special_kz import beta_bloch_pml_curl_coverage as predicate  # noqa: PLC0415
-    return predicate(fields, pml, sub_step, probe=probe)
+    return predicate(fields, pml, sub_step)
 
 
 def plan_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
-                             block: Optional[int] = None,
-                             probe: Any = None) -> Any:
-    """Build one COMPLEX special_kz curl plan."""
+                             block: Optional[int] = None, chunk_layout: Any = None) -> Any:
+    """Build one COMPLEX special_kz curl plan on the run's chunk division."""
     from .special_kz import plan_beta_bloch_pml_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block, probe=probe)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def beta_run_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
@@ -314,14 +317,14 @@ def beta_run_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage
 
 
 def plan_beta_run_constitutive(fields: Any, pml: Any, side: str,
-                               block: Optional[int] = None) -> Any:
-    """Build the certified REAL constitutive plan for a beta run."""
+                               block: Optional[int] = None,
+                               chunk_layout: Any = None) -> Any:
+    """Build the REAL constitutive plan for a beta run on the run's chunk division."""
     from .special_kz import plan_beta_run_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, side, block)
+    return builder(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
-def beta_run_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                           probe: Any = None) -> Coverage:
+def beta_run_complex_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """Ask whether the certified COMPLEX constitutive kernel may step a beta run.
 
     The base pattern set, not the curl's extended one: the kernel launched is
@@ -329,15 +332,15 @@ def beta_run_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
     what binds here (``special_kz`` grouping choice 5).
     """
     from .special_kz import beta_run_complex_constitutive_coverage as predicate  # noqa: PLC0415
-    return predicate(fields, pml, side, probe=probe)
+    return predicate(fields, pml, side)
 
 
 def plan_beta_run_complex_constitutive(fields: Any, pml: Any, side: str,
                                        block: Optional[int] = None,
-                                       probe: Any = None) -> Any:
-    """Build the certified COMPLEX constitutive plan for a beta run."""
+                                       chunk_layout: Any = None) -> Any:
+    """Build the COMPLEX constitutive plan for a beta run on the run's chunk division."""
     from .special_kz import plan_beta_run_complex_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, side, block, probe=probe)
+    return builder(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def bfast_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
@@ -347,7 +350,7 @@ def bfast_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
 
 
 def plan_bfast_pml_curl(fields: Any, pml: Any, sub_step: str,
-                        block: Optional[int] = None) -> Any:
+                        block: Optional[int] = None, chunk_layout: Any = None) -> Any:
     """Build one BFAST curl plan.
 
     ONE launch, not two. The second additive term and the ``f_bfast_*`` IIR
@@ -356,7 +359,7 @@ def plan_bfast_pml_curl(fields: Any, pml: Any, sub_step: str,
     to :data:`STEP_ORDER`.
     """
     from .bfast_curl import plan_bfast_pml_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def bfast_run_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
@@ -366,10 +369,11 @@ def bfast_run_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverag
 
 
 def plan_bfast_run_constitutive(fields: Any, pml: Any, side: str,
-                                block: Optional[int] = None) -> Any:
-    """Build the certified REAL constitutive plan for a BFAST run."""
+                                block: Optional[int] = None,
+                                chunk_layout: Any = None) -> Any:
+    """Build the REAL constitutive plan for a BFAST run on the run's chunk division."""
     from .bfast_curl import plan_bfast_run_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, side, block)
+    return builder(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def nonlinear_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
@@ -379,10 +383,11 @@ def nonlinear_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_nonlinear_constitutive(fields: Any, pml: Any,
-                                block: Optional[int] = None) -> Any:
+                                block: Optional[int] = None,
+                                chunk_layout: Any = None) -> Any:
     """Build the chi2/chi3 Pade ``update_E`` plan."""
     from .nonlinear_update_e import plan_nonlinear_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, block)
+    return builder(fields, pml, block, chunk_layout=chunk_layout)
 
 
 def offdiag_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
@@ -392,10 +397,11 @@ def offdiag_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_offdiagonal_constitutive(fields: Any, pml: Any,
-                                  block: Optional[int] = None) -> Any:
+                                  block: Optional[int] = None,
+                                  chunk_layout: Any = None) -> Any:
     """Build the off-diagonal chi1inv row-product ``update_E`` plan."""
     from .offdiag_update_e import plan_offdiagonal_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, block)
+    return builder(fields, pml, block, chunk_layout=chunk_layout)
 
 
 # ---------------------------------------------------------------------------
@@ -424,8 +430,7 @@ def plan_offdiagonal_constitutive(fields: Any, pml: Any,
 # :func:`absorber_inactive` for why it gets no preference of any kind.
 
 
-def folded_complex_composition_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                             probe: Any = None) -> Coverage:
+def folded_complex_composition_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Ask K1's COMPOSITION verdict — the one that requires an actual fold.
 
     ``folded_complex_pml_curl_coverage`` admits an unfolded grid deliberately so
@@ -434,15 +439,14 @@ def folded_complex_composition_curl_coverage(fields: Any, pml: Any, sub_step: st
     is the same split the ``folded PML`` arm already makes.
     """
     from .folded_complex import folded_complex_composition_curl_coverage as predicate  # noqa: PLC0415
-    return predicate(fields, pml, sub_step, probe=probe)
+    return predicate(fields, pml, sub_step)
 
 
 def plan_folded_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
-                                 block: Optional[int] = None,
-                                 probe: Any = None) -> Any:
-    """Build one folded complex/Bloch PML curl plan (K1)."""
+                                 block: Optional[int] = None, chunk_layout: Any = None) -> Any:
+    """Build one folded complex/Bloch PML curl plan (K1) on the run's chunk division."""
     from .folded_complex import plan_folded_complex_pml_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block, probe=probe)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def folded_beta_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
@@ -452,56 +456,49 @@ def folded_beta_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Cover
 
 
 def plan_folded_beta_pml_curl(fields: Any, pml: Any, sub_step: str,
-                              block: Optional[int] = None) -> Any:
-    """Build one folded REAL special_kz curl plan (K3a)."""
+                              block: Optional[int] = None,
+                              chunk_layout: Any = None) -> Any:
+    """Build one folded REAL special_kz curl plan (K3a) on the run's chunk division."""
     from .folded_complex import plan_folded_beta_pml_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
-def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                        probe: Any = None) -> Coverage:
+def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Ask the folded COMPLEX special_kz curl predicate (K3b). A fold is mandatory."""
     from .folded_complex import folded_beta_bloch_pml_curl_coverage as predicate  # noqa: PLC0415
-    return predicate(fields, pml, sub_step, probe=probe)
+    return predicate(fields, pml, sub_step)
 
 
 def plan_folded_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
-                                    block: Optional[int] = None,
-                                    probe: Any = None) -> Any:
-    """Build one folded COMPLEX special_kz curl plan (K3b)."""
+                                    block: Optional[int] = None, chunk_layout: Any = None) -> Any:
+    """Build one folded COMPLEX special_kz curl plan (K3b) on the run's chunk division."""
     from .folded_complex import plan_folded_beta_bloch_pml_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block, probe=probe)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
-def folded_mirror_ghost_fill_complex_coverage(fields: Any, family: str,
-                                              probe: Any = None) -> Coverage:
+def folded_mirror_ghost_fill_complex_coverage(fields: Any, family: str) -> Coverage:
     """Ask whether one folded family's ghost fills may run on COMPLEX storage (K2)."""
     from .folded_complex import folded_mirror_ghost_fill_complex_coverage as predicate  # noqa: PLC0415
-    return predicate(fields, family, probe=probe)
+    return predicate(fields, family)
 
 
 def plan_folded_mirror_ghost_fill_complex(fields: Any, family: str,
-                                          block: Optional[int] = None,
-                                          probe: Any = None) -> Any:
+                                          block: Optional[int] = None) -> Any:
     """Build one complex-storage mirror-fill plan (K2).
 
-    ITS ADAPTER CONTRACT IS NOT ``MirrorGhostFillPlan``'S, and the only seam an
-    adapter can branch on is ``selected[slot]``. ``symmetry.MirrorGhostFillPlan``
-    fuses the near and far passes and is entitled to (the parity factors are
-    +-1 and float32 multiplication by them is exact); this plan's two passes are
-    separated in the driver by ``zero_metal_*`` (driver.py:3209-3211, :3222-3224)
-    and complex float multiplication is NOT associative, so running the two
-    passes as one is a measured wrong answer (5 words of By, 5 of Dx on a
-    two-axis fold). Dispatch is disabled, so this is a documented contract today
-    rather than a live hazard — documented HERE because inferring it from the
-    plan class is exactly what a driver adapter would get wrong.
+    ITS TWO PASSES ARE LAUNCHED SEPARATELY, as ``symmetry.MirrorGhostFillPlan``'s
+    are: the plan's ``run_near`` answers the fill slot's consult and ``run_far`` the
+    folded-far consult, because the driver runs ``zero_metal_*`` BETWEEN the two
+    passes: a far ghost images the wall cell after the clear has zeroed it, and a
+    fused order would image it before. The parity factors are +-1 applied per
+    part (``part_products.scale``), exact on every word. A driver adapter reaches
+    the two passes by branching on ``selected[slot]``, never on the plan class.
     """
     from .folded_complex import plan_folded_mirror_ghost_fill_complex as builder  # noqa: PLC0415
-    return builder(fields, family, block, probe=probe)
+    return builder(fields, family, block)
 
 
-def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                         probe: Any = None) -> Coverage:
+def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """Ask whether the CERTIFIED complex constitutive kernel may step a folded run.
 
     Carries NO beta clause, deliberately (``special_kz`` grouping choice 5): the
@@ -509,15 +506,14 @@ def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
     serves the folded complex run with and without beta.
     """
     from .folded_complex import folded_complex_constitutive_coverage as predicate  # noqa: PLC0415
-    return predicate(fields, pml, side, probe=probe)
+    return predicate(fields, pml, side)
 
 
 def plan_folded_complex_constitutive(fields: Any, pml: Any, side: str,
-                                     block: Optional[int] = None,
-                                     probe: Any = None) -> Any:
-    """Build the certified complex constitutive plan for a folded run."""
+                                     block: Optional[int] = None, chunk_layout: Any = None) -> Any:
+    """Build the complex constitutive plan for a folded run on the run's chunk division."""
     from .folded_complex import plan_folded_complex_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, side, block, probe=probe)
+    return builder(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def folded_beta_run_constitutive_coverage(fields: Any, pml: Any,
@@ -528,10 +524,11 @@ def folded_beta_run_constitutive_coverage(fields: Any, pml: Any,
 
 
 def plan_folded_beta_run_constitutive(fields: Any, pml: Any, side: str,
-                                      block: Optional[int] = None) -> Any:
-    """Build the certified REAL constitutive plan for a folded beta run."""
+                                      block: Optional[int] = None,
+                                      chunk_layout: Any = None) -> Any:
+    """Build the REAL constitutive plan for a folded beta run on the run's chunk division."""
     from .folded_complex import plan_folded_beta_run_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, side, block)
+    return builder(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def folded_offdiag_composition_coverage(fields: Any, pml: Any) -> Coverage:
@@ -546,74 +543,70 @@ def folded_offdiag_composition_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_folded_offdiagonal_constitutive(fields: Any, pml: Any,
-                                          block: Optional[int] = None) -> Any:
+                                          block: Optional[int] = None,
+                                          chunk_layout: Any = None) -> Any:
     """Build the folded off-diagonal chi1inv row-product ``update_E`` plan."""
     from .folded_offdiag_update_e import plan_folded_offdiagonal_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, block)
+    return builder(fields, pml, block, chunk_layout=chunk_layout)
 
 
 def complex_no_pml_offdiag_update_e_coverage(
-        fields: Any, pml: Any, probe: Any = None) -> Coverage:
+        fields: Any, pml: Any) -> Coverage:
     """Ask whether the complex absorber-free row-product kernel covers ``update_E``."""
     from .complex_offdiag_update_e import (  # noqa: PLC0415
         complex_no_pml_offdiag_update_e_coverage as predicate)
-    return predicate(fields, pml, probe)
+    return predicate(fields, pml)
 
 
 def plan_complex_no_pml_offdiag_update_e(
-        fields: Any, pml: Any, block: Optional[int] = None,
-        probe: Any = None) -> Any:
+        fields: Any, pml: Any, block: Optional[int] = None, chunk_layout: Any = None) -> Any:
     """Build the complex absorber-free row-product ``update_E`` plan."""
     from .complex_offdiag_update_e import (  # noqa: PLC0415
         plan_complex_no_pml_offdiag_update_e as builder)
-    return builder(fields, pml, block=block, probe=probe)
+    return builder(fields, pml, block=block, chunk_layout=chunk_layout)
 
 
 def complex_folded_offdiag_update_e_coverage(
-        fields: Any, pml: Any, probe: Any = None) -> Coverage:
+        fields: Any, pml: Any) -> Coverage:
     """Ask whether the complex folded PML row-product kernel covers ``update_E``."""
     from .complex_offdiag_update_e import (  # noqa: PLC0415
         complex_folded_offdiag_update_e_coverage as predicate)
-    return predicate(fields, pml, probe)
+    return predicate(fields, pml)
 
 
 def plan_complex_folded_offdiag_update_e(
-        fields: Any, pml: Any, block: Optional[int] = None,
-        probe: Any = None) -> Any:
+        fields: Any, pml: Any, block: Optional[int] = None, chunk_layout: Any = None) -> Any:
     """Build the complex folded PML row-product ``update_E`` plan."""
     from .complex_offdiag_update_e import (  # noqa: PLC0415
         plan_complex_folded_offdiag_update_e as builder)
-    return builder(fields, pml, block=block, probe=probe)
+    return builder(fields, pml, block=block, chunk_layout=chunk_layout)
 
 
-def cylindrical_complex_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                      probe: Any = None) -> Coverage:
+def cylindrical_complex_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Ask the complex Dcyl curl predicate (|m| >= 1)."""
     from .cylindrical_complex import cylindrical_complex_curl_coverage as predicate  # noqa: PLC0415
-    return predicate(fields, pml, sub_step, probe=probe)
+    return predicate(fields, pml, sub_step)
 
 
 def plan_cylindrical_complex_curl(fields: Any, pml: Any, sub_step: str,
-                                  block: Optional[int] = None,
-                                  probe: Any = None) -> Any:
-    """Build one complex Dcyl curl plan."""
+                                  block: Optional[int] = None, chunk_layout: Any = None) -> Any:
+    """Build one complex Dcyl curl plan on the run's division."""
     from .cylindrical_complex import plan_cylindrical_complex_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block, probe=probe)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
-def cylindrical_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                              probe: Any = None) -> Coverage:
+def cylindrical_complex_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """Ask whether the certified complex constitutive kernel may step a Dcyl slice."""
     from .cylindrical_complex import cylindrical_complex_constitutive_coverage as predicate  # noqa: PLC0415
-    return predicate(fields, pml, side, probe=probe)
+    return predicate(fields, pml, side)
 
 
 def plan_cylindrical_complex_constitutive(fields: Any, pml: Any, side: str,
                                           block: Optional[int] = None,
-                                          probe: Any = None) -> Any:
-    """Build the certified complex constitutive plan for the admitted Dcyl slice."""
+                                          chunk_layout: Any = None) -> Any:
+    """Build the complex constitutive plan for the admitted Dcyl slice."""
     from .cylindrical_complex import plan_cylindrical_complex_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, side, block, probe=probe)
+    return builder(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def null_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
@@ -677,10 +670,11 @@ def nonlinear_run_pml_curl_coverage(fields: Any, pml: Any,
 
 
 def plan_nonlinear_run_pml_curl(fields: Any, pml: Any, sub_step: str,
-                                block: Optional[int] = None) -> Any:
+                                block: Optional[int] = None,
+                                chunk_layout: Any = None) -> Any:
     """Build the certified real PML curl plan for a chi2/chi3 run."""
     from .nonlinear_update_e import plan_nonlinear_run_pml_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def nonlinear_run_constitutive_coverage(fields: Any, pml: Any,
@@ -696,10 +690,11 @@ def nonlinear_run_constitutive_coverage(fields: Any, pml: Any,
 
 
 def plan_nonlinear_run_constitutive(fields: Any, pml: Any, side: str,
-                                    block: Optional[int] = None) -> Any:
+                                    block: Optional[int] = None,
+                                    chunk_layout: Any = None) -> Any:
     """Build the certified constitutive plan for a chi2/chi3 run's ``update_H``."""
     from .nonlinear_update_e import plan_nonlinear_run_constitutive as builder  # noqa: PLC0415
-    return builder(fields, pml, side, block)
+    return builder(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def folded_dispersive_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
@@ -717,11 +712,12 @@ def folded_dispersive_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_folded_dispersive_constitutive(fields: Any, pml: Any,
-                                        block: Optional[int] = None) -> Any:
+                                        block: Optional[int] = None,
+                                        chunk_layout: Any = None) -> Any:
     """Build the certified dispersive ``update_E`` plan for a folded run."""
     from .folded_dispersive_update_e import (  # noqa: PLC0415
         plan_folded_dispersive_constitutive as builder)
-    return builder(fields, pml, block)
+    return builder(fields, pml, block, chunk_layout=chunk_layout)
 
 
 def folded_offdiag_dispersive_constitutive_coverage(
@@ -733,15 +729,15 @@ def folded_offdiag_dispersive_constitutive_coverage(
 
 
 def plan_folded_offdiag_dispersive_constitutive(
-        fields: Any, pml: Any, block: Optional[int] = None) -> Any:
+        fields: Any, pml: Any, block: Optional[int] = None,
+        chunk_layout: Any = None) -> Any:
     """Build the folded row-product plus pole-aware ``update_E`` plan."""
     from .folded_offdiag_dispersive_update_e import (  # noqa: PLC0415
         plan_folded_offdiag_dispersive_constitutive as builder)
-    return builder(fields, pml, block)
+    return builder(fields, pml, block, chunk_layout=chunk_layout)
 
 
-def folded_complex_offdiag_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                             probe: Any = None) -> Coverage:
+def folded_complex_offdiag_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Ask whether K1's curl may step a folded complex run carrying an off-diagonal row.
 
     THE SCOPE CHANGE TWO BACKENDS LICENSED. ``folded_complex._media_reasons``'
@@ -753,20 +749,19 @@ def folded_complex_offdiag_pml_curl_coverage(fields: Any, pml: Any, sub_step: st
     """
     from .folded_complex import (  # noqa: PLC0415
         folded_complex_offdiag_pml_curl_coverage as predicate)
-    return predicate(fields, pml, sub_step, probe=probe)
+    return predicate(fields, pml, sub_step)
 
 
 def plan_folded_complex_offdiag_pml_curl(fields: Any, pml: Any, sub_step: str,
                                          block: Optional[int] = None,
-                                         probe: Any = None) -> Any:
-    """Build K1's certified curl plan for a folded complex off-diagonal run."""
+                                         chunk_layout: Any = None) -> Any:
+    """Build K1's curl plan for a folded complex off-diagonal run."""
     from .folded_complex import (  # noqa: PLC0415
         plan_folded_complex_offdiag_pml_curl as builder)
-    return builder(fields, pml, sub_step, block, probe=probe)
+    return builder(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
-def folded_complex_offdiag_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                                 probe: Any = None) -> Coverage:
+def folded_complex_offdiag_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """Ask whether the certified complex constitutive kernel may step that run's ``update_H``.
 
     ``side='E'`` is refused BY NAME and STAYS refused: 25041 of 110592 words
@@ -776,16 +771,16 @@ def folded_complex_offdiag_constitutive_coverage(fields: Any, pml: Any, side: st
     """
     from .folded_complex import (  # noqa: PLC0415
         folded_complex_offdiag_constitutive_coverage as predicate)
-    return predicate(fields, pml, side, probe=probe)
+    return predicate(fields, pml, side)
 
 
 def plan_folded_complex_offdiag_constitutive(fields: Any, pml: Any, side: str,
                                              block: Optional[int] = None,
-                                             probe: Any = None) -> Any:
-    """Build the certified complex constitutive plan for that run's ``update_H``."""
+                                             chunk_layout: Any = None) -> Any:
+    """Build the complex constitutive plan for that run's ``update_H``."""
     from .folded_complex import (  # noqa: PLC0415
         plan_folded_complex_offdiag_constitutive as builder)
-    return builder(fields, pml, side, block, probe=probe)
+    return builder(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def no_pml_ade_update_p_coverage(fields: Any, pml: Any, state: Any,
@@ -811,19 +806,17 @@ def plan_no_pml_ade_update_p(fields: Any, pml: Any, state: Any,
 
 
 def complex_ade_update_p_coverage(fields: Any, pml: Any, state: Any,
-                                  component: str,
-                                  probe: Any = None) -> Coverage:
+                                  component: str) -> Coverage:
     """Ask whether complex64 absorber-free ADE covers one driven component."""
     from .complex_ade import complex_ade_update_p_coverage as predicate  # noqa: PLC0415
-    return predicate(fields, pml, state, component, probe)
+    return predicate(fields, pml, state, component)
 
 
 def plan_complex_ade_update_p(fields: Any, pml: Any, state: Any,
-                              block: Optional[int] = None,
-                              probe: Any = None) -> Any:
+                              block: Optional[int] = None) -> Any:
     """Build one complex64 absorber-free susceptibility plan."""
     from .complex_ade import plan_complex_ade_update_p as builder  # noqa: PLC0415
-    return builder(fields, pml, state, block, probe)
+    return builder(fields, pml, state, block)
 
 
 # ---------------------------------------------------------------------------
@@ -836,38 +829,35 @@ def plan_complex_ade_update_p(fields: Any, pml: Any, state: Any,
 # run that cannot meet the narrow gate neither imports nor compiles the family.
 
 
-def complex_no_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                 probe: Any = None) -> Coverage:
+def complex_no_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Ask whether the complex no-absorber curl binding covers this sub-step."""
     from .complex_no_pml_curl import (  # noqa: PLC0415
         complex_no_pml_curl_coverage as predicate)
-    return predicate(fields, pml, sub_step, probe=probe)
+    return predicate(fields, pml, sub_step)
 
 
 def plan_complex_no_pml_curl(fields: Any, pml: Any, sub_step: str,
-                             block: Optional[int] = None,
-                             probe: Any = None) -> Any:
+                             block: Optional[int] = None) -> Any:
     """Build the complex no-absorber curl binding."""
     from .complex_no_pml_curl import plan_complex_no_pml_curl as builder  # noqa: PLC0415
-    return builder(fields, pml, sub_step, block, probe=probe)
+    return builder(fields, pml, sub_step, block)
 
 
 def complex_conductive_no_pml_curl_coverage(
-        fields: Any, pml: Any, sub_step: str,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Ask whether the complex conductive no-absorber curl covers this sub-step."""
     from .complex_no_pml_conductive import (  # noqa: PLC0415
         complex_conductive_no_pml_curl_coverage as predicate)
-    return predicate(fields, pml, sub_step, probe=probe)
+    return predicate(fields, pml, sub_step)
 
 
 def plan_complex_conductive_no_pml_curl(
         fields: Any, pml: Any, sub_step: str,
-        block: Optional[int] = None, probe: Any = None) -> Any:
+        block: Optional[int] = None) -> Any:
     """Build the complex conductive no-absorber curl plan."""
     from .complex_no_pml_conductive import (  # noqa: PLC0415
         plan_complex_conductive_no_pml_curl as builder)
-    return builder(fields, pml, sub_step, block, probe=probe)
+    return builder(fields, pml, sub_step, block)
 
 
 def conductive_plain_curl_coverage(fields: Any, pml: Any,
@@ -898,20 +888,18 @@ def plan_stored_e_constitutive(fields: Any, pml: Any,
     return builder(fields, pml, block)
 
 
-def complex_stored_e_coverage(fields: Any, pml: Any,
-                              probe: Any = None) -> Coverage:
+def complex_stored_e_coverage(fields: Any, pml: Any) -> Coverage:
     """Ask whether complex pole-aware stored-E ``update_E`` is covered."""
     from .complex_no_pml_stored_e import (  # noqa: PLC0415
         complex_stored_e_coverage as predicate)
-    return predicate(fields, pml, probe=probe)
+    return predicate(fields, pml)
 
 
 def plan_complex_stored_e(fields: Any, pml: Any,
-                          block: Optional[int] = None,
-                          probe: Any = None) -> Any:
+                          block: Optional[int] = None) -> Any:
     """Build the complex pole-aware stored-E ``update_E`` plan."""
     from .complex_no_pml_stored_e import plan_complex_stored_e as builder  # noqa: PLC0415
-    return builder(fields, pml, block, probe=probe)
+    return builder(fields, pml, block)
 
 
 # ---------------------------------------------------------------------------
@@ -1332,6 +1320,145 @@ def _has_libcuda_dev_symlink() -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# The chunk record every PML plan binds
+# ---------------------------------------------------------------------------
+#
+# MEEP selects every PML form per structure chunk (step_db.cpp:56-59,
+# update_eh.cpp:162-163), so the kernels key their forms on the chunk division, and
+# the division reaches them as data: ``chunk_map.chunk_bounds_record``, an ``int32``
+# vector of ``RECORD_WORDS`` words (``[a0, a1, b0, b1]`` per Yee sub-lattice and axis,
+# then the partner-presence word), bound as ONE pointer argument, ``cb``.
+#
+# A POINTER, NOT INTEGER ARGUMENTS. Triton specialises an integer argument equal to 1
+# or divisible by 16, so bounds passed as scalars would fork the compiled binary on
+# whichever bounds happen to be multiples of 16; one pointer also adds one parameter
+# to a signature rather than twenty-five.
+#
+# WHERE ``cb`` SITS IN A LAUNCH. Directly after the plan's last pointer argument and
+# before its first scalar (``nx``). The three plans below pass it from the moment they
+# bind it, and the four ``kernels.py`` entry points they launch declare the parameter
+# in the same position and read it through the forms of ``forms.py``
+# (``test_triton_chunk_bounds`` pins both sides). No host test launches a compiled
+# kernel.
+#
+# ONE ENGINE-ROUTE SOURCE. :func:`chunk_bounds_for` is the only place the engine route
+# takes a record: the division the caller hands over, or the one-rank default of the
+# grid and layer when it hands over none. THE HARNESS ROUTE (``*_from_arrays``) has no
+# default at all: a plan built without a record is refused by name, because a gate
+# whose mutation legs fell back to some default division would stop measuring the
+# predicate it exists to measure.
+
+
+def chunk_bounds_for(fields: Any, pml: Any, chunk_layout: Any) -> Any:
+    """The chunk record an engine-route plan binds, as a host ``int32`` vector.
+
+    ``chunk_layout`` is the run's division (``FdtdDriver.chunk_layout``), or ``None``
+    for the one-rank default of ``fields.grid`` and ``pml``
+    (:meth:`~meep_gpu.chunk_map.ChunkLayout.one_rank`), the division a driver built
+    without MEEP steps with. The argument has no default so that every caller states
+    which of the two it binds.
+
+    Refused by name (:class:`~meep_gpu.chunk_map.ChunkLayoutRefusal`): a layout built
+    for another grid (its axis frames differ from this grid's), and a division that is
+    not separable along some axis and sub-lattice, which no per-axis record describes
+    (raised by :func:`~meep_gpu.chunk_map.chunk_bounds_record`).
+    """
+    grid = fields.grid
+    if chunk_layout is None:
+        return chunk_bounds_record(ChunkLayout.one_rank(grid, pml))
+    frames = grid_frames(grid)
+    if tuple(chunk_layout.frames) != tuple(frames):
+        raise ChunkLayoutRefusal(
+            f"the chunk layout was built for another grid: its axis frames are "
+            f"{tuple(chunk_layout.frames)}, this grid's {tuple(frames)}, so its record "
+            f"would key the forms on cells of a different lattice")
+    return chunk_bounds_record(chunk_layout)
+
+
+def bind_chunk_bounds(chunk_bounds: Any, shape: Sequence[int], like: Any,
+                      owner: str) -> Tuple[Any, CupyPointer]:
+    """Check a chunk record against a plan's shape and upload it once.
+
+    Returns ``(host record, device pointer)``. The host record is a read-only
+    ``int32`` copy, kept for inspection. The device copy is made on the array module
+    of ``like`` (the plan's first bound volume), once, at plan time: a CuPy plan binds
+    a CuPy vector, and a NumPy host, which never launches, keeps the NumPy copy.
+
+    Refused by name (:class:`~meep_gpu.chunk_map.ChunkLayoutRefusal`), with ``owner``
+    naming the plan or builder:
+
+    * no record (``None``);
+    * anything but ``RECORD_WORDS`` integers that fit ``int32``;
+    * a run outside the plan's extent on its axis. Each ``[start, stop)`` is empty
+      (``[0, 0)``) or ``0 <= start < stop <= n``; the second run is empty when the
+      first is; two runs are disjoint and in order, ``a1 < b0``;
+    * a presence word with a bit outside the three axes, or with the bit of an axis
+      that stores more than one cell cleared, or an absent axis whose runs are not
+      empty. An absent partner is an invariant axis, which stores one cell
+      (``Grid.is_invariant``).
+    """
+    if chunk_bounds is None:
+        raise ChunkLayoutRefusal(
+            f"{owner} was given no chunk record (chunk_map.chunk_bounds_record): the "
+            f"kernels select every PML form per chunk, and a plan without the record "
+            f"would bind no division at all; pass chunk_bounds explicitly")
+    source = chunk_bounds
+    if type(source).__module__.split(".")[0] == "cupy":  # pragma: no cover - device path
+        source = source.get()
+    host = numpy.asarray(source)
+    if host.shape != (RECORD_WORDS,) or not numpy.issubdtype(host.dtype, numpy.integer):
+        raise ChunkLayoutRefusal(
+            f"{owner} was given a chunk record of dtype {host.dtype} and shape "
+            f"{host.shape}; the record is {RECORD_WORDS} int32 words")
+    record = host.astype(numpy.int32)
+    if not numpy.array_equal(record.astype(host.dtype), host):
+        raise ChunkLayoutRefusal(f"{owner} was given a chunk record that does not fit int32")
+    extent = tuple(int(n) for n in shape)
+    if len(extent) != 3:
+        raise ChunkLayoutRefusal(f"{owner} binds a chunk record to a {len(extent)}-axis shape")
+    presence = int(record[RECORD_PRESENCE_WORD])
+    if presence & ~0b111:
+        raise ChunkLayoutRefusal(
+            f"{owner} was given a presence word {presence:#x} with a bit outside the "
+            f"three axes")
+    for axis, n in enumerate(extent):
+        present = bool(presence >> axis & 1)
+        if not present and n != 1:
+            raise ChunkLayoutRefusal(
+                f"{owner}: the chunk record marks {AXIS_NAMES[axis]} invariant (no curl "
+                f"partner along it), but the plan stores {n} cells there")
+        for half in (False, True):
+            a0, a1, b0, b1 = (int(record[record_index(half, axis, word)])
+                              for word in range(4))
+            lattice = "half-integer" if half else "integer"
+            for start, stop in ((a0, a1), (b0, b1)):
+                if (start, stop) != (0, 0) and not 0 <= start < stop <= n:
+                    raise ChunkLayoutRefusal(
+                        f"{owner}: the {AXIS_NAMES[axis]} run [{start}, {stop}) on the "
+                        f"{lattice} lattice does not fit the plan's {n} cells")
+            if (a0, a1) == (0, 0) and (b0, b1) != (0, 0):
+                raise ChunkLayoutRefusal(
+                    f"{owner}: the {AXIS_NAMES[axis]} record on the {lattice} lattice "
+                    f"holds its one run in the second slot [{b0}, {b1})")
+            if (a0, a1) != (0, 0) and (b0, b1) != (0, 0) and not a1 < b0:
+                raise ChunkLayoutRefusal(
+                    f"{owner}: the {AXIS_NAMES[axis]} runs [{a0}, {a1}) and [{b0}, {b1}) "
+                    f"on the {lattice} lattice overlap or touch")
+            if not present and (a0, a1, b0, b1) != (0, 0, 0, 0):
+                raise ChunkLayoutRefusal(
+                    f"{owner}: the invariant {AXIS_NAMES[axis]} axis carries a run on the "
+                    f"{lattice} lattice")
+    record.setflags(write=False)
+    if type(like).__module__.split(".")[0] == "cupy":  # pragma: no cover - device path
+        import cupy  # noqa: PLC0415
+
+        device = cupy.asarray(record)
+    else:
+        device = record
+    return record, CupyPointer(device)
+
+
 class PmlCurlPlan:
     """A launchable, allocation-free real-field PML curl sub-step.
 
@@ -1340,18 +1467,24 @@ class PmlCurlPlan:
     :func:`plan_from_arrays` is the gate and benchmark route, which hands over bare
     device arrays. Both produce this object and both go through :meth:`run`, so the
     bytes the gate certifies are the bytes the engine would launch.
+
+    ``chunk_bounds`` is the chunk record (:func:`bind_chunk_bounds`), required: the
+    plan keeps its read-only host copy as :attr:`chunk_bounds` and launches with the
+    device copy as ``cb``.
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc", "block",
-                 "num_warps", "_targets", "_aux", "_sources", "_coefficients",
-                 "_grid", "_kernel")
+                 "num_warps", "chunk_bounds", "_targets", "_aux", "_sources",
+                 "_coefficients", "_cb", "_grid", "_kernel")
 
     def __init__(self, sub_step: str, shape, dtdx: float, bc, block: int,
                  targets, auxiliaries, sources, coefficients, kernel=None,
-                 num_warps: Optional[int] = None) -> None:
+                 num_warps: Optional[int] = None, *, chunk_bounds: Any) -> None:
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "PmlCurlPlan")
         # float(): the array path multiplies a float32 volume by a Python float,
         # which NumPy/CuPy cast to float32 before the multiply. Triton types a
         # Python float argument as fp32, so the two scalars are the same bits.
@@ -1382,7 +1515,7 @@ class PmlCurlPlan:
         kernel = self._kernel if self._kernel is not None else pml_curl_step
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
         kernel[self._grid](
-            *self._targets, *self._aux, *self._sources, *self._coefficients,
+            *self._targets, *self._aux, *self._sources, *self._coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
             BACKWARD=self.backward,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
@@ -1393,17 +1526,22 @@ class PmlCurlPlan:
 
     def __repr__(self) -> str:
         return (f"PmlCurlPlan({self.sub_step}, shape={self.shape}, bc={self.bc}, "
-                f"block={self.block}, num_warps={self.num_warps})")
+                f"block={self.block}, num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_pml_curl(fields: Any, pml: Any, sub_step: str,
                   block: Optional[int] = None,
-                  num_warps: Optional[int] = None) -> Optional[PmlCurlPlan]:
+                  num_warps: Optional[int] = None,
+                  chunk_layout: Any = None) -> Optional[PmlCurlPlan]:
     """Build a plan from the engine's own objects, or None when out of coverage.
 
     None is the only refusal: a configuration this kernel does not carry must fall
     back to the array path, never raise into a caller that would otherwise have
     stepped correctly.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default;
+    the plan binds its record (:func:`chunk_bounds_for`).
     """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
@@ -1425,13 +1563,15 @@ def plan_pml_curl(fields: Any, pml: Any, sub_step: str,
         [getattr(pml, f"{stem}_{axis}{spec['suffix']}")
          for axis in "xyz" for stem in ("kms", "sinv")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
 def plan_from_arrays(sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any],
                      codes, dtdx: float, block: Optional[int] = None,
                      kernel: Any = None,
-                     num_warps: Optional[int] = None) -> PmlCurlPlan:
+                     num_warps: Optional[int] = None, *,
+                     chunk_bounds: Any) -> PmlCurlPlan:
     """Build a plan from bare device arrays — the gate's and benchmark's route.
 
     ``arrays`` is keyed by component name, ``flat`` by ``kms_x``/``sinv_x``/... on
@@ -1439,6 +1579,11 @@ def plan_from_arrays(sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any]
     0/1 periodic/metallic triple. No coverage predicate runs here: the caller is a
     harness that has constructed the configuration deliberately, and refusing it
     would defeat the point of a mutation leg.
+
+    ``chunk_bounds`` is REQUIRED and has no default: the caller hands over the chunk
+    record of the division it built (``chunk_map.chunk_bounds_record``), and a plan
+    without one is refused by name (:func:`bind_chunk_bounds`). A default would
+    decide, on the gate's behalf, which cells take which form.
     """
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
 
@@ -1450,7 +1595,7 @@ def plan_from_arrays(sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any]
         [arrays["fu_" + n] for n in spec["targets"]],
         [arrays[n] for n in spec["sources"]],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
-        kernel=kernel, num_warps=num_warps,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )
 
 
@@ -1466,18 +1611,36 @@ class ConstitutivePlan:
     The kernel takes six coefficient pointers and never asks which lattice they came
     from, so a swap on this line is a silent half-cell error in the absorber profile
     — converged, smooth, and wrong. The gate carries a mutation for exactly it.
+
+    ``chunk_bounds`` is the chunk record, required, bound as :class:`PmlCurlPlan`
+    binds it.
+
+    ``h_state`` IS THE ``Fields`` THE H SIDE STARTS FROM, or ``None``. MEEP's first
+    ``update_eh(H_stuff)`` of a run starts H as a copy of B on the cells whose chunk
+    carries H's layer (``stepping.separate_h_from_b``); the array path runs that
+    function, and a dispatched sub-step replaces the whole call, so the kernel has to
+    carry it. :meth:`run` passes ``start_h = 1`` while ``h_state.h_separated`` is
+    still false and sets the flag after the first launch that has programs, which is
+    what the array path's own early return does. A launch over an empty grid -- the
+    warm pass, ``fastpath._warm_with_empty_grid`` -- writes nothing, so it starts
+    nothing and leaves the flag alone; it compiles the same program, because
+    ``start_h`` is not specialized on. ``None`` (the from-arrays route, the gates, the
+    batteries) means a state that has already started, ``start_h = 0``.
     """
 
     __slots__ = ("side", "shape", "n_elem", "scale", "block", "num_warps",
-                 "_targets", "_aux", "_sources", "_inv_eps", "_coefficients",
-                 "_grid", "_kernel")
+                 "chunk_bounds", "_targets", "_aux", "_sources", "_inv_eps",
+                 "_coefficients", "_cb", "_grid", "_kernel", "_h_state")
 
     def __init__(self, side: str, shape, block: int, targets, auxiliaries, sources,
                  inverse_epsilon, coefficients, kernel=None,
-                 num_warps: Optional[int] = None) -> None:
+                 num_warps: Optional[int] = None, *, chunk_bounds: Any,
+                 h_state: Any = None) -> None:
         self.side = side
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "ConstitutivePlan")
         self.scale = 1 if side == "E" else 0
         self.block = int(block)
         self.num_warps = None if num_warps is None else int(num_warps)
@@ -1493,6 +1656,12 @@ class ConstitutivePlan:
         self._coefficients = tuple(CupyPointer(_flat(a)) for a in coefficients)
         self._grid = ((self.n_elem + self.block - 1) // self.block,)
         self._kernel = kernel
+        self._h_state = h_state if side == "H" else None
+
+    def start_h(self) -> int:
+        """1 on the one H launch that starts H from B, 0 otherwise (and always on E)."""
+        state = self._h_state
+        return 0 if state is None or state.h_separated else 1
 
     def run(self, guard: Optional[bool] = None) -> None:
         """Launch the sub-step, in place. Same ``guard`` contract as the curl plan."""
@@ -1501,25 +1670,34 @@ class ConstitutivePlan:
         nx, ny, nz = self.shape
         kernel = self._kernel if self._kernel is not None else constitutive_step
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
+        start = self.start_h()
         kernel[self._grid](
             *self._targets, *self._aux, *self._sources, *self._inv_eps,
-            *self._coefficients,
-            nx, ny, nz, self.n_elem,
+            *self._coefficients, self._cb,
+            nx, ny, nz, self.n_elem, start,
             SCALE=self.scale,
             BLOCK=self.block,
             enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
             **extra,
         )
+        if start and self._grid[0]:  # an empty grid (the warm pass) starts nothing
+            self._h_state.h_separated = True
 
     def __repr__(self) -> str:
         return (f"ConstitutivePlan({self.side}, shape={self.shape}, "
-                f"block={self.block}, num_warps={self.num_warps})")
+                f"block={self.block}, num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_constitutive(fields: Any, pml: Any, side: str,
                       block: Optional[int] = None,
-                      num_warps: Optional[int] = None) -> Optional[ConstitutivePlan]:
-    """Build a constitutive plan from the engine's own objects, or None when refused."""
+                      num_warps: Optional[int] = None,
+                      chunk_layout: Any = None) -> Optional[ConstitutivePlan]:
+    """Build a constitutive plan from the engine's own objects, or None when refused.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default;
+    the plan binds its record (:func:`chunk_bounds_for`).
+    """
     if side not in CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, got {side!r}")
     if not constitutive_coverage(fields, pml, side).covered:
@@ -1538,19 +1716,24 @@ def plan_constitutive(fields: Any, pml: Any, side: str,
         [getattr(pml, f"{stem}_{axis}{suffix}")
          for axis in "xyz" for stem in ("kps", "kms")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        h_state=fields,
     )
 
 
 def plan_constitutive_from_arrays(side: str, arrays: Dict[str, Any],
                                   flat: Dict[str, Any], block: Optional[int] = None,
                                   kernel: Any = None,
-                                  num_warps: Optional[int] = None) -> ConstitutivePlan:
+                                  num_warps: Optional[int] = None, *,
+                                  chunk_bounds: Any) -> ConstitutivePlan:
     """Build a constitutive plan from bare device arrays — the gate's route.
 
     ``arrays`` is keyed by component name (plus ``inv_eps_Ex``... on the E side) and
     ``flat`` by ``kps_x``/``kms_x``/... on the sub-lattice THE CALLER already
     selected. No predicate runs: the caller is a harness that constructed the
     configuration deliberately, including the deliberately wrong ones.
+
+    ``chunk_bounds`` is REQUIRED, as in :func:`plan_from_arrays`.
     """
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
 
@@ -1569,7 +1752,7 @@ def plan_constitutive_from_arrays(side: str, arrays: Dict[str, Any],
         # shipped kernel and reports the defect as uncaught. Measured — 4/4
         # constitutive source mutations came back 120/120 "identical" before this
         # line existed, which is what a gate that certifies nothing looks like.
-        kernel=kernel, num_warps=num_warps,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )
 
 
@@ -1594,23 +1777,44 @@ class FusedPairPlan:
 
     ``zero_metal`` is the third binding and the one that is new. It is resolved by
     :func:`coverage.zero_metal_axes`, the same function the predicate checked with.
+
+    ``chunk_bounds`` is the chunk record, required, and ONE record serves both halves:
+    the curl half reads its entries on the curl's sub-lattice and the constitutive half
+    on its own, the same rule that picks each half's coefficient table.
+
+    ``h_state`` IS THE ``Fields`` THE H SIDE STARTS FROM, or ``None``. MEEP's first
+    ``update_eh(H_stuff)`` of a run starts H as a copy of B on the cells whose chunk
+    carries H's layer (``stepping.separate_h_from_b``); the array path runs that
+    function, and a dispatched sub-step replaces the whole call, so the kernel has to
+    carry it. :meth:`run` passes ``start_h = 1`` while ``h_state.h_separated`` is
+    still false and sets the flag after the first launch that has programs, which is
+    what the array path's own early return does. A launch over an empty grid -- the
+    warm pass, ``fastpath._warm_with_empty_grid`` -- writes nothing, so it starts
+    nothing and leaves the flag alone; it compiles the same program, because
+    ``start_h`` is not specialized on. ``None`` (the from-arrays route, the gates, the
+    batteries) means a state that has already started, ``start_h = 0``.
     """
 
     __slots__ = ("pair", "shape", "n_elem", "dtdx", "backward", "bc", "zero_metal",
-                 "block", "num_warps", "_targets", "_aux", "_sources",
+                 "block", "num_warps", "chunk_bounds", "_targets", "_aux", "_sources",
                  "_curl_coefficients", "_constitutive_targets", "_constitutive_aux",
-                 "_inverse_epsilon", "_constitutive_coefficients", "_grid", "_kernel")
+                 "_inverse_epsilon", "_constitutive_coefficients", "_cb", "_grid",
+                 "_kernel", "_h_state")
 
     def __init__(self, pair: str, shape, dtdx: float, bc, zero_metal, block: int,
                  targets, auxiliaries, sources, curl_coefficients,
                  constitutive_targets, constitutive_auxiliaries, inverse_epsilon,
                  constitutive_coefficients, kernel=None,
-                 num_warps: Optional[int] = FUSED_DEFAULT_NUM_WARPS) -> None:
+                 num_warps: Optional[int] = FUSED_DEFAULT_NUM_WARPS, *,
+                 chunk_bounds: Any, h_state: Any = None) -> None:
         if pair not in FUSED_PAIRS:
             raise ValueError(f"pair must be one of {tuple(FUSED_PAIRS)}, got {pair!r}")
         self.pair = pair
+        self._h_state = h_state if pair == "B" else None
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "FusedPairPlan")
         self.dtdx = float(dtdx)
         self.backward = int(SUB_STEPS[FUSED_PAIRS[pair]["curl"]]["backward"])
         self.bc = tuple(int(code) for code in bc)
@@ -1675,10 +1879,11 @@ class FusedPairPlan:
             *self._targets, *self._aux, *self._sources, *self._curl_coefficients,
             *self._constitutive_targets, *self._constitutive_aux,
         )
+        start = self.start_h()
         if self.pair == "B":
             kernel[self._grid](
-                *common, *self._constitutive_coefficients,
-                nx, ny, nz, self.n_elem, self.dtdx,
+                *common, *self._constitutive_coefficients, self._cb,
+                nx, ny, nz, self.n_elem, self.dtdx, start,
                 BACKWARD=self.backward,
                 BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
                 ZM_X=self.zero_metal[0], ZM_Y=self.zero_metal[1], ZM_Z=self.zero_metal[2],
@@ -1688,7 +1893,10 @@ class FusedPairPlan:
             )
         else:
             kernel[self._grid](
+                # The D/E pair has no H, so no start_h: start_h() is 0 there and
+                # fused_curl_constitutive_D does not declare the argument.
                 *common, *self._inverse_epsilon, *self._constitutive_coefficients,
+                self._cb,
                 nx, ny, nz, self.n_elem, self.dtdx,
                 BACKWARD=self.backward,
                 BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
@@ -1697,11 +1905,19 @@ class FusedPairPlan:
                 enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
                 **extra,
             )
+        if start and self._grid[0]:  # an empty grid (the warm pass) starts nothing
+            self._h_state.h_separated = True
+
+    def start_h(self) -> int:
+        """1 on the one B/H launch that starts H from B, 0 otherwise (and on D/E)."""
+        state = self._h_state
+        return 0 if state is None or state.h_separated else 1
 
     def __repr__(self) -> str:
         return (f"FusedPairPlan({self.pair}, shape={self.shape}, bc={self.bc}, "
                 f"zero_metal={self.zero_metal}, block={self.block}, "
-                f"num_warps={self.num_warps})")
+                f"num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def _install_fused_pair(plans, selected, fields, pml, sources, pair_name,
@@ -1800,11 +2016,10 @@ class NoopPlan:
         return f"NoopPlan({self.sub_step}, absorbed_by={self.absorbed_by!r})"
 
 
-
-
 def plan_fused_pair(fields: Any, pml: Any, pair: str = "B", sources: Any = None,
                     block: Optional[int] = None,
                     num_warps: Optional[int] = FUSED_DEFAULT_NUM_WARPS,
+                    chunk_layout: Any = None,
                     ) -> Optional[FusedPairPlan]:
     """Build the fused pair from the engine's own objects, or None when refused.
 
@@ -1812,6 +2027,9 @@ def plan_fused_pair(fields: Any, pml: Any, pair: str = "B", sources: Any = None,
     predicate refuses ``None`` rather than assuming an empty set, because ``Fields``
     does not hold the sources and a predicate that infers coverage from what it
     cannot see is the over-covering failure §10.4 names.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default;
+    the plan binds its record (:func:`chunk_bounds_for`).
     """
     if pair not in FUSED_PAIRS:
         raise ValueError(f"pair must be one of {tuple(FUSED_PAIRS)}, got {pair!r}")
@@ -1842,6 +2060,8 @@ def plan_fused_pair(fields: Any, pml: Any, pair: str = "B", sources: Any = None,
         [getattr(pml, f"{stem}_{axis}{'_h' if side_spec['half_integer'] else ''}")
          for axis in "xyz" for stem in ("kps", "kms")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        h_state=fields,
     )
 
 
@@ -1851,6 +2071,7 @@ def plan_fused_pair_from_arrays(pair: str, arrays: Dict[str, Any],
                                 block: Optional[int] = None,
                                 kernel: Any = None,
                                 num_warps: Optional[int] = FUSED_DEFAULT_NUM_WARPS,
+                                *, chunk_bounds: Any,
                                 ) -> FusedPairPlan:
     """Build the fused pair from bare device arrays — the gate's and benchmark's route.
 
@@ -1858,6 +2079,8 @@ def plan_fused_pair_from_arrays(pair: str, arrays: Dict[str, Any],
     ``constitutive_flat`` the constitutive side's ``kps_x``/``kms_x``/... on the
     sub-lattices the caller selected. Both are deliberately caller-owned so the
     gate can hand over swapped tables and watch them be caught.
+
+    ``chunk_bounds`` is REQUIRED, as in :func:`plan_from_arrays`.
     """
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
 
@@ -1878,7 +2101,7 @@ def plan_fused_pair_from_arrays(pair: str, arrays: Dict[str, Any],
          if spec["constitutive"] == "E" else None),
         [constitutive_flat[f"{stem}_{axis}"]
          for axis in "xyz" for stem in ("kps", "kms")],
-        kernel=kernel, num_warps=num_warps,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )
 
 
@@ -1931,7 +2154,9 @@ class AdeUpdatePPlan:
 
         state = self.state
         kernel = self._kernel if self._kernel is not None else ade_update_p
-        c_now, c_prev, c_drive = state._coefficients
+        # MEEP's four realnum words (dispersion.RealnumConstants); each is a float32
+        # word, so the Python float the launch passes is that word exactly.
+        two_minus_od, gamma1, omega0dtsqr, gamma1inv = state.constants
         for component in self.components:
             w = drive(component)
             p = state.P[component]
@@ -1943,7 +2168,8 @@ class AdeUpdatePPlan:
                 CupyPointer(scratch), CupyPointer(p), CupyPointer(p_prev),
                 CupyPointer(sigma) if volume else float(sigma),
                 CupyPointer(w),
-                float(c_now), float(c_prev), float(c_drive), self.n_elem,
+                float(two_minus_od), float(gamma1), float(omega0dtsqr), float(gamma1inv),
+                self.n_elem,
                 SIGMA_IS_VOLUME=1 if volume else 0,
                 BLOCK=self.block,
                 enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
@@ -2289,7 +2515,7 @@ def _folded_fused_pair_entries():
 
 
 def _install_folded_fused_pairs(plans, reasons, selected, fields, pml, sources,
-                                block, num_warps, offered=None):
+                                block, num_warps, offered=None, chunk_layout=None):
     """Route the folded grid's two pairs through their OWN builders, or refuse by name.
 
     GUARDED EXACTLY AS AN ARM IS, and for the same reason the ordinary block is:
@@ -2348,7 +2574,8 @@ def _install_folded_fused_pairs(plans, reasons, selected, fields, pml, sources,
             reasons[key] = (not_offered,)
             continue
         pair, builder_refusal = _guarded_plan(
-            lambda builder=builder: builder(fields, pml, sources, block, num_warps),
+            lambda builder=builder: builder(fields, pml, sources, block, num_warps,
+                                            chunk_layout=chunk_layout),
             f"the {spec['noun']} pair builder")
         if builder_refusal is not None:
             reasons[key] = (builder_refusal,)
@@ -3133,8 +3360,24 @@ def _neighbouring_seam_claimant(modules, fields, pml, sources, name: str,
     return None
 
 
+def _division_keyword(builder: Any, chunk_layout: Any) -> Dict[str, Any]:
+    """``{"chunk_layout": chunk_layout}`` for a product builder that binds the run's division.
+
+    A certified product whose kernels read the chunk record takes the division
+    (``chunk_layout``, as :func:`plan_fused_pair` does) and is handed the run's; one
+    that does not take it yet is called as before and binds the one-rank record,
+    which its kernels do not read until its own step binds the division.
+    """
+    try:
+        parameters = inspect.signature(builder).parameters
+    except (TypeError, ValueError):
+        return {}
+    return {"chunk_layout": chunk_layout} if "chunk_layout" in parameters else {}
+
+
 def _install_certified_fused_products(plans, reasons, selected, fields, pml,
-                                      sources, block, num_warps, offered=None):
+                                      sources, block, num_warps, offered=None,
+                                      chunk_layout=None):
     """At most one certified product per seam, refusing on every doubt.
 
     Guarded exactly as an arm is, and for the same three reasons the hand-written
@@ -3252,8 +3495,8 @@ def _install_certified_fused_products(plans, reasons, selected, fields, pml,
             reasons[key] = (not_offered,)
             continue
         pair, builder_refusal = _guarded_plan(
-            lambda builder=builder: builder(fields, pml, sources, block,
-                                            num_warps),
+            lambda builder=builder: builder(fields, pml, sources, block, num_warps,
+                                            **_division_keyword(builder, chunk_layout)),
             f"the {name} pair builder")
         if builder_refusal is not None:
             reasons[key] = (builder_refusal,)
@@ -3452,8 +3695,9 @@ def _update_e_ambiguity(labels: Sequence[str]) -> str:
 def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
               fuse: bool = False, sources: Any = None,
               num_warps: Optional[int] = FUSED_DEFAULT_NUM_WARPS,
-              fuse_ade: bool = False, probe: Any = None,
+              fuse_ade: bool = False,
               fuse_labels: Any = None,
+              chunk_layout: Any = None,
               ) -> TritonStepPlan:
     """Ask every predicate independently and report the covered subset with its refusals.
 
@@ -3531,12 +3775,6 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     the ambiguity had refused to pick — leaving ``reasons`` and ``plans``
     contradicting each other for the same slot.
 
-    ``probe`` is the complex-multiply expansion record, resolved ONCE here and
-    passed explicitly to every complex-family predicate and builder. Reading it
-    per predicate call would open a file up to eight times per plan and could
-    see two different records inside one composition. It is the LAST parameter
-    so every positional caller is unaffected.
-
     ``fuse`` IS OPT-IN AND DEFAULTS OFF. The composed-but-unfused plan — one launch
     per sub-step — is the control the cross-sub-step fusion is measured against,
     and it stays the default so every existing caller keeps measuring it. With
@@ -3552,10 +3790,40 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     reason, exactly as a refused predicate does; see :func:`_label_not_offered` for
     the measured failure this closes, which is that a fused label occupies BOTH
     slots, so a caller that has to reject one rejects the arms underneath it too.
+
+    ``chunk_layout`` IS THE RUN'S CHUNK DIVISION (``FdtdDriver.chunk_layout``), and
+    ``None`` — the default — means the division the array path steps with: the lifted
+    one the fields carry (``Fields.chunk_layout``) when a lift installed one, which is
+    then judged and bound as if handed over, and otherwise the one-rank division of
+    the grid and layer, the one a driver built without MEEP steps with. A division
+    handed over is judged FIRST, for the whole plan
+    (:func:`coverage.chunk_layout_reasons`): one built for another grid, one that is
+    not separable, or, on a cylindrical run or one with a
+    live off-diagonal row (:func:`live_offdiagonal_rows`), one that is not a
+    ``{low, interior, high}`` product leaves every slot on the array path with the
+    reason named. Then the builders that bind a chunk record take its record
+    (:func:`chunk_bounds_for`): the ordinary curl, constitutive and fused-pair plans,
+    the folded curl, constitutive and fused-pair plans, and the dispersive and folded
+    dispersive ``update_E``. A family builder that does
+    not take the division yet binds the one-rank record; its kernels read no record
+    until its own step binds the division.
     """
     plans: Dict[str, Any] = {}
     reasons: Dict[str, Tuple[str, ...]] = {}
     selected: Dict[str, str] = {}
+    if chunk_layout is None:
+        chunk_layout = getattr(fields, "chunk_layout", None)
+    if chunk_layout is not None:
+        try:
+            layout_refusal = chunk_layout_reasons(
+                fields, chunk_layout,
+                cylindrical=cylindrical_grid_active(fields),
+                offdiagonal=live_offdiagonal_rows(fields))
+        except Exception as exc:  # noqa: BLE001 - an unjudgeable division is refused
+            layout_refusal = (f"the chunk division could not be judged ({exc!r})",)
+        if layout_refusal:
+            return TritonStepPlan(
+                {}, (), {name: tuple(layout_refusal) for name in STEP_ORDER}, {})
     offered = _offered_labels(fuse_labels)
     has_fold = folded_grid_active(fields)
     has_cylindrical = cylindrical_grid_active(fields)
@@ -3570,67 +3838,17 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     # whole gate block still runs before any predicate does.
     no_active_absorber = absorber_inactive(pml)
 
-    # Resolved ONCE, and only when a complex-family arm is gated on — every one
-    # is gated on complex storage, so an ordinary run never opens
-    # the artifact and never imports that family's module.
-    #
-    # THE INVARIANT THIS RUNG BROKE AND NOW STATES. Reading the environment here
-    # is legitimate for exactly ONE of the three things ``probe`` can be, and
-    # this composer used to do it for two of them:
-    #
-    #   a record            -> use it, never re-read.
-    #   None                -> NOTHING WAS OFFERED. Read the environment; a host
-    #                          with no artifact makes the complex predicates
-    #                          refuse by name, which is the right answer.
-    #   RefusedExpansionProbe -> SOMETHING WAS OFFERED AND REFUSED. Re-reading is
-    #                          how the refusal was defeated: the caller's drop
-    #                          set only ITS OWN local name to None, this rung
-    #                          re-opened the same file, and the refused artifact
-    #                          was handed EXPLICITLY to all eight complex arms
-    #                          below. Measured: 4/7 slots bound complex arms over
-    #                          8004 launches from an artifact the policy clause
-    #                          had already refused.
-    #
-    # Both of the last two used to arrive as ``None``. They no longer do, so the
-    # ``is None`` test below means what it says — and the clause after it is what
-    # keeps that true if someone reintroduces the conflation upstream.
-    from ..expansion_refusal import is_expansion_refusal  # noqa: PLC0415
-
-    resolved_probe = probe
-    if resolved_probe is None and has_complex:
-        resolved_probe = load_expansion_probe()
-    if is_expansion_refusal(probe):
-        # WHAT THIS DOES TODAY: NOTHING, and it is kept deliberately. Audited
-        # 2026-08-16 — ``resolved_probe`` starts as ``probe`` two lines above,
-        # and the re-read is guarded on ``resolved_probe is None``, which a
-        # refusal never is; so the read cannot fire for a refusal and this
-        # assignment restores what the name already holds. The line is a
-        # BACKSTOP, not the enforcement, and the earlier claim that it is "what
-        # the refusal has to survive" overstated it.
-        #
-        # WHEN IT BECOMES LOAD-BEARING: the moment the guard above stops being
-        # conditional on ``resolved_probe is None`` — an unconditional
-        # ``resolved_probe = load_expansion_probe()``, or a guard widened to
-        # anything a refusal satisfies. Then the read would replace the refusal
-        # with the very artifact it refused, and this line is what puts it back
-        # before the composer hands ``resolved_probe`` EXPLICITLY to all eight
-        # complex arms. That is the exact shape of the defect this value exists
-        # to end, which is why the backstop stays.
-        #
-        # Restoring rather than raising because this function's whole contract is
-        # that it never raises — a configuration nothing covers is a plan that
-        # replaces nothing, which is the array path.
-        resolved_probe = probe
-
     for name in ("step_B", "step_D"):
         _select_slot(name, (
             _Arm("PML", True,
                  lambda: pml_curl_coverage(fields, pml, name),
-                 lambda: plan_pml_curl(fields, pml, name, block),
+                 lambda: plan_pml_curl(fields, pml, name, block,
+                                       chunk_layout=chunk_layout),
                  "PML: ", "PML curl"),
             _Arm("conductive PML", True,
                  lambda: conductive_pml_curl_coverage(fields, pml, name),
-                 lambda: plan_conductive_pml_curl(fields, pml, name, block),
+                 lambda: plan_conductive_pml_curl(fields, pml, name, block,
+                                                  chunk_layout=chunk_layout),
                  "conductive PML: ", "conductive PML"),
             _Arm("no-PML", True,
                  lambda: plain_curl_coverage(fields, pml, name),
@@ -3645,17 +3863,18 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
                  "conductive no-PML: ", "conductive no-PML curl"),
             _Arm("folded PML", has_fold,
                  lambda: folded_composition_curl_coverage(fields, pml, name),
-                 lambda: plan_folded_pml_curl(fields, pml, name, block),
+                 lambda: plan_folded_pml_curl(fields, pml, name, block,
+                                              chunk_layout=chunk_layout),
                  "folded PML: ", "folded PML curl"),
             _Arm("cylindrical PML", has_cylindrical,
                  lambda: cylindrical_curl_coverage(fields, pml),
-                 lambda: plan_cylindrical_curl(fields, pml, name, block),
+                 lambda: plan_cylindrical_curl(fields, pml, name, block,
+                                               chunk_layout=chunk_layout),
                  "cylindrical PML: ", "cylindrical PML curl"),
             _Arm("complex PML", has_complex,
-                 lambda: complex_pml_curl_coverage(fields, pml, name,
-                                                   resolved_probe),
+                 lambda: complex_pml_curl_coverage(fields, pml, name),
                  lambda: plan_complex_pml_curl(fields, pml, name, block,
-                                               resolved_probe),
+                                               chunk_layout=chunk_layout),
                  "complex PML: ", "complex PML curl"),
             # Complex storage plus a material conductivity needs both the
             # complex/Bloch stencil and the per-target conductive recurrence.
@@ -3664,33 +3883,32 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
             _Arm("complex conductive no-PML curl",
                  has_complex and no_active_absorber,
                  lambda: complex_conductive_no_pml_curl_coverage(
-                     fields, pml, name, resolved_probe),
+                     fields, pml, name),
                  lambda: plan_complex_conductive_no_pml_curl(
-                     fields, pml, name, block, resolved_probe),
+                     fields, pml, name, block),
                  "complex conductive no-PML curl: ",
                  "complex conductive no-PML curl"),
             # The complex PML predicate requires an active layer.  This is its
             # no-absorber sibling, reusing the measured unit-coefficient binding
             # and deliberately covering curls only (not stored-E update_E).
             _Arm("complex no-PML curl", has_complex and no_active_absorber,
-                 lambda: complex_no_pml_curl_coverage(fields, pml, name,
-                                                       resolved_probe),
-                 lambda: plan_complex_no_pml_curl(fields, pml, name, block,
-                                                   resolved_probe),
+                 lambda: complex_no_pml_curl_coverage(fields, pml, name),
+                 lambda: plan_complex_no_pml_curl(fields, pml, name, block),
                  "complex no-PML curl: ", "complex no-PML curl"),
             _Arm("real beta PML", has_beta,
                  lambda: beta_pml_curl_coverage(fields, pml, name),
-                 lambda: plan_beta_pml_curl(fields, pml, name, block),
+                 lambda: plan_beta_pml_curl(fields, pml, name, block,
+                                            chunk_layout=chunk_layout),
                  "real beta PML: ", "real beta PML curl"),
             _Arm("complex beta PML", has_beta and has_complex,
-                 lambda: beta_bloch_pml_curl_coverage(fields, pml, name,
-                                                      resolved_probe),
+                 lambda: beta_bloch_pml_curl_coverage(fields, pml, name),
                  lambda: plan_beta_bloch_pml_curl(fields, pml, name, block,
-                                                  resolved_probe),
+                                                  chunk_layout=chunk_layout),
                  "complex beta PML: ", "complex beta PML curl"),
             _Arm("BFAST PML", has_bfast,
                  lambda: bfast_pml_curl_coverage(fields, pml, name),
-                 lambda: plan_bfast_pml_curl(fields, pml, name, block),
+                 lambda: plan_bfast_pml_curl(fields, pml, name, block,
+                                             chunk_layout=chunk_layout),
                  "BFAST PML: ", "BFAST PML curl"),
             # K1. The COMPOSITION verdict, not the standalone one: the standalone
             # predicate admits an unfolded grid so its own gate can prove
@@ -3698,27 +3916,26 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
             # would put two products on every unfolded complex grid.
             _Arm("folded complex PML", has_fold and has_complex,
                  lambda: folded_complex_composition_curl_coverage(
-                     fields, pml, name, resolved_probe),
+                     fields, pml, name),
                  lambda: plan_folded_complex_pml_curl(fields, pml, name, block,
-                                                      probe=resolved_probe),
+                                                      chunk_layout=chunk_layout),
                  "folded complex PML: ", "folded complex PML curl"),
             # K3a/K3b carry ``_has_real_fold`` inside their own predicates, so
             # their base verdicts ARE composition verdicts and need no split.
             _Arm("folded real beta PML", has_fold and has_beta,
                  lambda: folded_beta_pml_curl_coverage(fields, pml, name),
-                 lambda: plan_folded_beta_pml_curl(fields, pml, name, block),
+                 lambda: plan_folded_beta_pml_curl(fields, pml, name, block,
+                                                   chunk_layout=chunk_layout),
                  "folded real beta PML: ", "folded real beta PML curl"),
             _Arm("folded complex beta PML", has_fold and has_beta and has_complex,
-                 lambda: folded_beta_bloch_pml_curl_coverage(fields, pml, name,
-                                                             resolved_probe),
+                 lambda: folded_beta_bloch_pml_curl_coverage(fields, pml, name),
                  lambda: plan_folded_beta_bloch_pml_curl(fields, pml, name, block,
-                                                         probe=resolved_probe),
+                                                         chunk_layout=chunk_layout),
                  "folded complex beta PML: ", "folded complex beta PML curl"),
             _Arm("cylindrical complex PML", has_cylindrical and has_complex,
-                 lambda: cylindrical_complex_curl_coverage(fields, pml, name,
-                                                           resolved_probe),
+                 lambda: cylindrical_complex_curl_coverage(fields, pml, name),
                  lambda: plan_cylindrical_complex_curl(fields, pml, name, block,
-                                                       probe=resolved_probe),
+                                                       chunk_layout=chunk_layout),
                  "cylindrical complex PML: ", "cylindrical complex PML curl"),
             # The CERTIFIED real curl on a chi2/chi3 run. `pml_curl_coverage`
             # refuses it at `_grid_reasons` clause 10, which is written "refused
@@ -3727,7 +3944,8 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
             # arm above in both directions by that one clause.
             _Arm("nonlinear run PML", has_nonlinearity,
                  lambda: nonlinear_run_pml_curl_coverage(fields, pml, name),
-                 lambda: plan_nonlinear_run_pml_curl(fields, pml, name, block),
+                 lambda: plan_nonlinear_run_pml_curl(fields, pml, name, block,
+                                                     chunk_layout=chunk_layout),
                  "nonlinear run PML: ", "nonlinear run PML curl"),
             # K1's curl on a folded complex run that ALSO carries an off-diagonal
             # row. The incumbent `folded complex PML` arm refuses the row through
@@ -3737,9 +3955,10 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
             _Arm("folded complex off-diagonal PML",
                  has_fold and has_complex and has_offdiag_rows,
                  lambda: folded_complex_offdiag_pml_curl_coverage(
-                     fields, pml, name, resolved_probe),
+                     fields, pml, name),
                  lambda: plan_folded_complex_offdiag_pml_curl(
-                     fields, pml, name, block, probe=resolved_probe),
+                     fields, pml, name, block,
+                     chunk_layout=chunk_layout),
                  "folded complex off-diagonal PML: ",
                  "folded complex off-diagonal PML curl"),
         ), _curl_ambiguity, plans, reasons, selected)
@@ -3773,9 +3992,9 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
                 # adapter can branch on.
                 _Arm("folded complex fill", has_fold and has_complex,
                      lambda family=family: folded_mirror_ghost_fill_complex_coverage(
-                         fields, family, resolved_probe),
+                         fields, family),
                      lambda family=family: plan_folded_mirror_ghost_fill_complex(
-                         fields, family, block, probe=resolved_probe),
+                         fields, family, block),
                      "folded complex fill: ", "folded complex mirror-fill"),
             ), _fill_ambiguity, plans, reasons, selected)
 
@@ -3786,55 +4005,57 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     _select_slot("update_H", (
         _Arm("ordinary", True,
              lambda: constitutive_coverage(fields, pml, "H"),
-             lambda: plan_constitutive(fields, pml, "H", block),
+             lambda: plan_constitutive(fields, pml, "H", block,
+                                       chunk_layout=chunk_layout),
              "", "ordinary constitutive"),
         _Arm("folded", has_fold,
              lambda: folded_constitutive_coverage(fields, pml, "H"),
-             lambda: plan_folded_constitutive(fields, pml, "H", block),
+             lambda: plan_folded_constitutive(fields, pml, "H", block,
+                                              chunk_layout=chunk_layout),
              "", "folded constitutive"),
         _Arm("cylindrical", has_cylindrical,
              lambda: cylindrical_constitutive_coverage(fields, pml, "H"),
-             lambda: plan_cylindrical_constitutive(fields, pml, "H", block),
+             lambda: plan_cylindrical_constitutive(fields, pml, "H", block,
+                                                   chunk_layout=chunk_layout),
              "", "cylindrical constitutive"),
         _Arm("complex", has_complex,
-             lambda: complex_constitutive_coverage(fields, pml, "H",
-                                                   resolved_probe),
+             lambda: complex_constitutive_coverage(fields, pml, "H"),
              lambda: plan_complex_constitutive(fields, pml, "H", block,
-                                               resolved_probe),
+                                               chunk_layout=chunk_layout),
              "complex: ", "complex constitutive"),
         _Arm("real beta run", has_beta,
              lambda: beta_run_constitutive_coverage(fields, pml, "H"),
-             lambda: plan_beta_run_constitutive(fields, pml, "H", block),
+             lambda: plan_beta_run_constitutive(fields, pml, "H", block,
+                                                chunk_layout=chunk_layout),
              "real beta run: ", "real beta run constitutive"),
         _Arm("complex beta run", has_beta and has_complex,
-             lambda: beta_run_complex_constitutive_coverage(fields, pml, "H",
-                                                            resolved_probe),
+             lambda: beta_run_complex_constitutive_coverage(fields, pml, "H"),
              lambda: plan_beta_run_complex_constitutive(fields, pml, "H", block,
-                                                        resolved_probe),
+                                                        chunk_layout=chunk_layout),
              "complex beta run: ", "complex beta run constitutive"),
         _Arm("BFAST run", has_bfast,
              lambda: bfast_run_constitutive_coverage(fields, pml, "H"),
-             lambda: plan_bfast_run_constitutive(fields, pml, "H", block),
+             lambda: plan_bfast_run_constitutive(fields, pml, "H", block,
+                                                 chunk_layout=chunk_layout),
              "BFAST run: ", "BFAST run constitutive"),
         # No beta clause on this arm, deliberately (special_kz grouping choice
         # 5): the constitutive kernel is storage-dependent, not beta-dependent,
         # so it serves the folded complex run with and without beta and the
         # `folded beta run` arm beside it refuses complex storage.
         _Arm("folded complex", has_fold and has_complex,
-             lambda: folded_complex_constitutive_coverage(fields, pml, "H",
-                                                          resolved_probe),
+             lambda: folded_complex_constitutive_coverage(fields, pml, "H"),
              lambda: plan_folded_complex_constitutive(fields, pml, "H", block,
-                                                      probe=resolved_probe),
+                                                      chunk_layout=chunk_layout),
              "folded complex: ", "folded complex constitutive"),
         _Arm("folded beta run", has_fold and has_beta,
              lambda: folded_beta_run_constitutive_coverage(fields, pml, "H"),
-             lambda: plan_folded_beta_run_constitutive(fields, pml, "H", block),
+             lambda: plan_folded_beta_run_constitutive(fields, pml, "H", block,
+                                                       chunk_layout=chunk_layout),
              "folded beta run: ", "folded beta run constitutive"),
         _Arm("cylindrical complex", has_cylindrical and has_complex,
-             lambda: cylindrical_complex_constitutive_coverage(fields, pml, "H",
-                                                               resolved_probe),
+             lambda: cylindrical_complex_constitutive_coverage(fields, pml, "H"),
              lambda: plan_cylindrical_complex_constitutive(fields, pml, "H", block,
-                                                           probe=resolved_probe),
+                                                           chunk_layout=chunk_layout),
              "cylindrical complex: ", "cylindrical complex constitutive"),
         # The CERTIFIED constitutive kernel on a chi2/chi3 run's MAGNETIC side.
         # `constitutive_coverage` refuses it through the same `_grid_reasons`
@@ -3844,7 +4065,8 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         # the update_E table and the Pade product keeps that slot.
         _Arm("nonlinear run", has_nonlinearity,
              lambda: nonlinear_run_constitutive_coverage(fields, pml, "H"),
-             lambda: plan_nonlinear_run_constitutive(fields, pml, "H", block),
+             lambda: plan_nonlinear_run_constitutive(fields, pml, "H", block,
+                                                     chunk_layout=chunk_layout),
              "nonlinear run: ", "nonlinear run constitutive"),
         # The update_H half of the folded complex off-diagonal scope change. Its
         # side='E' twin is refused by name and stays refused: 25041/110592 words
@@ -3852,9 +4074,10 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         _Arm("folded complex off-diagonal",
              has_fold and has_complex and has_offdiag_rows,
              lambda: folded_complex_offdiag_constitutive_coverage(
-                 fields, pml, "H", resolved_probe),
+                 fields, pml, "H"),
              lambda: plan_folded_complex_offdiag_constitutive(
-                 fields, pml, "H", block, probe=resolved_probe),
+                 fields, pml, "H", block,
+                 chunk_layout=chunk_layout),
              "folded complex off-diagonal: ",
              "folded complex off-diagonal constitutive"),
         # THE NULL ARM. Its product launches nothing because the array path's
@@ -3879,70 +4102,75 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     e_admitted = _select_slot("update_E", (
         _Arm("ordinary", True,
              lambda: constitutive_coverage(fields, pml, "E"),
-             lambda: plan_constitutive(fields, pml, "E", block),
+             lambda: plan_constitutive(fields, pml, "E", block,
+                                       chunk_layout=chunk_layout),
              "ordinary: ", "ordinary constitutive"),
         _Arm("dispersive", True,
              lambda: dispersive_constitutive_coverage(fields, pml),
-             lambda: plan_dispersive_constitutive(fields, pml, block),
+             lambda: plan_dispersive_constitutive(fields, pml, block,
+                                                  chunk_layout=chunk_layout),
              "dispersive: ", "dispersive constitutive"),
         _Arm("folded", has_fold,
              lambda: folded_constitutive_coverage(fields, pml, "E"),
-             lambda: plan_folded_constitutive(fields, pml, "E", block),
+             lambda: plan_folded_constitutive(fields, pml, "E", block,
+                                              chunk_layout=chunk_layout),
              "folded: ", "folded constitutive"),
         _Arm("cylindrical", has_cylindrical,
              lambda: cylindrical_constitutive_coverage(fields, pml, "E"),
-             lambda: plan_cylindrical_constitutive(fields, pml, "E", block),
+             lambda: plan_cylindrical_constitutive(fields, pml, "E", block,
+                                                   chunk_layout=chunk_layout),
              "cylindrical: ", "cylindrical constitutive"),
         _Arm("complex", has_complex,
-             lambda: complex_constitutive_coverage(fields, pml, "E",
-                                                   resolved_probe),
+             lambda: complex_constitutive_coverage(fields, pml, "E"),
              lambda: plan_complex_constitutive(fields, pml, "E", block,
-                                               resolved_probe),
+                                               chunk_layout=chunk_layout),
              "complex: ", "complex constitutive"),
         _Arm("real beta run", has_beta,
              lambda: beta_run_constitutive_coverage(fields, pml, "E"),
-             lambda: plan_beta_run_constitutive(fields, pml, "E", block),
+             lambda: plan_beta_run_constitutive(fields, pml, "E", block,
+                                                chunk_layout=chunk_layout),
              "real beta run: ", "real beta run constitutive"),
         _Arm("complex beta run", has_beta and has_complex,
-             lambda: beta_run_complex_constitutive_coverage(fields, pml, "E",
-                                                            resolved_probe),
+             lambda: beta_run_complex_constitutive_coverage(fields, pml, "E"),
              lambda: plan_beta_run_complex_constitutive(fields, pml, "E", block,
-                                                        resolved_probe),
+                                                        chunk_layout=chunk_layout),
              "complex beta run: ", "complex beta run constitutive"),
         _Arm("BFAST run", has_bfast,
              lambda: bfast_run_constitutive_coverage(fields, pml, "E"),
-             lambda: plan_bfast_run_constitutive(fields, pml, "E", block),
+             lambda: plan_bfast_run_constitutive(fields, pml, "E", block,
+                                                 chunk_layout=chunk_layout),
              "BFAST run: ", "BFAST run constitutive"),
         _Arm("nonlinear", has_nonlinearity,
              lambda: nonlinear_constitutive_coverage(fields, pml),
-             lambda: plan_nonlinear_constitutive(fields, pml, block),
+             lambda: plan_nonlinear_constitutive(fields, pml, block,
+                                                 chunk_layout=chunk_layout),
              "nonlinear: ", "nonlinear constitutive"),
         _Arm("off-diagonal", has_offdiag_rows,
              lambda: offdiag_constitutive_coverage(fields, pml),
-             lambda: plan_offdiagonal_constitutive(fields, pml, block),
+             lambda: plan_offdiagonal_constitutive(fields, pml, block,
+                                                   chunk_layout=chunk_layout),
              "off-diagonal: ", "off-diagonal constitutive"),
         _Arm("folded complex", has_fold and has_complex,
-             lambda: folded_complex_constitutive_coverage(fields, pml, "E",
-                                                          resolved_probe),
+             lambda: folded_complex_constitutive_coverage(fields, pml, "E"),
              lambda: plan_folded_complex_constitutive(fields, pml, "E", block,
-                                                      probe=resolved_probe),
+                                                      chunk_layout=chunk_layout),
              "folded complex: ", "folded complex constitutive"),
         _Arm("folded beta run", has_fold and has_beta,
              lambda: folded_beta_run_constitutive_coverage(fields, pml, "E"),
-             lambda: plan_folded_beta_run_constitutive(fields, pml, "E", block),
+             lambda: plan_folded_beta_run_constitutive(fields, pml, "E", block,
+                                                       chunk_layout=chunk_layout),
              "folded beta run: ", "folded beta run constitutive"),
         _Arm("cylindrical complex", has_cylindrical and has_complex,
-             lambda: cylindrical_complex_constitutive_coverage(fields, pml, "E",
-                                                               resolved_probe),
+             lambda: cylindrical_complex_constitutive_coverage(fields, pml, "E"),
              lambda: plan_cylindrical_complex_constitutive(fields, pml, "E", block,
-                                                           probe=resolved_probe),
+                                                           chunk_layout=chunk_layout),
              "cylindrical complex: ", "cylindrical complex constitutive"),
         _Arm("complex folded off-diagonal",
              has_fold and has_complex and has_offdiag_rows,
              lambda: complex_folded_offdiag_update_e_coverage(
-                 fields, pml, resolved_probe),
+                 fields, pml),
              lambda: plan_complex_folded_offdiag_update_e(
-                 fields, pml, block, resolved_probe),
+                 fields, pml, block, chunk_layout=chunk_layout),
              "complex folded off-diagonal: ",
              "complex folded off-diagonal constitutive"),
         # The three-way intersection must precede neither parent semantically:
@@ -3953,7 +4181,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
              has_fold and has_offdiag_rows and has_poles,
              lambda: folded_offdiag_dispersive_constitutive_coverage(fields, pml),
              lambda: plan_folded_offdiag_dispersive_constitutive(
-                 fields, pml, block),
+                 fields, pml, block, chunk_layout=chunk_layout),
              "folded off-diagonal dispersive: ",
              "folded off-diagonal dispersive constitutive"),
         # The second arm that counts LIVE ROW SLOTS rather than reading the flag,
@@ -3962,7 +4190,8 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         # product had just won, with a message that was false about that product.
         _Arm("folded off-diagonal", has_fold and has_offdiag_rows,
              lambda: folded_offdiag_composition_coverage(fields, pml),
-             lambda: plan_folded_offdiagonal_constitutive(fields, pml, block),
+             lambda: plan_folded_offdiagonal_constitutive(fields, pml, block,
+                                                          chunk_layout=chunk_layout),
              "folded off-diagonal: ", "folded off-diagonal constitutive"),
         # The CERTIFIED dispersive update_E on a FOLDED run. Two inverted clauses
         # hold it apart from two incumbents at once: the `dispersive` arm above
@@ -3971,14 +4200,15 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         # this arm can only ever win a slot on which both of them refuse.
         _Arm("folded dispersive", has_fold and has_poles,
              lambda: folded_dispersive_constitutive_coverage(fields, pml),
-             lambda: plan_folded_dispersive_constitutive(fields, pml, block),
+             lambda: plan_folded_dispersive_constitutive(fields, pml, block,
+                                                         chunk_layout=chunk_layout),
              "folded dispersive: ", "folded dispersive constitutive"),
         _Arm("complex no-PML off-diagonal",
              has_complex and has_offdiag_rows and no_active_absorber,
              lambda: complex_no_pml_offdiag_update_e_coverage(
-                 fields, pml, resolved_probe),
+                 fields, pml),
              lambda: plan_complex_no_pml_offdiag_update_e(
-                 fields, pml, block, resolved_probe),
+                 fields, pml, block, chunk_layout=chunk_layout),
              "complex no-PML off-diagonal: ",
              "complex no-PML off-diagonal constitutive"),
         # Complex stored E with live polarization state is a distinct product:
@@ -3988,9 +4218,9 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         _Arm("complex no-PML stored E",
              has_complex and has_poles and no_active_absorber,
              lambda: complex_stored_e_coverage(
-                 fields, pml, resolved_probe),
+                 fields, pml),
              lambda: plan_complex_stored_e(
-                 fields, pml, block, resolved_probe),
+                 fields, pml, block),
              "complex no-PML stored E: ",
              "complex no-PML stored-E constitutive"),
         # Stored E without an absorber has neither the split-field update nor the
@@ -4096,7 +4326,8 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         # which DO carry those passes are now routed through their own builders
         # instead of being refused alongside it. See :func:`_install_folded_fused_pairs`.
         _install_folded_fused_pairs(plans, reasons, selected, fields, pml, sources,
-                                    block, num_warps, offered)
+                                    block, num_warps, offered,
+                                    chunk_layout=chunk_layout)
         reasons["fused_pair_dispersive_D"] = (
             "folded dispersive D/E fusion is not implemented",
         )
@@ -4182,7 +4413,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
                 continue
             pair, builder_refusal = _guarded_plan(
                 lambda: plan_fused_pair(fields, pml, pair_name, sources, block,
-                                        num_warps),
+                                        num_warps, chunk_layout=chunk_layout),
                 f"the {pair_name} pair builder")
             if builder_refusal is not None:
                 reasons[f"fused_pair_{pair_name}"] = (builder_refusal,)
@@ -4215,7 +4446,8 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
             if refusal is None:
                 pair, builder_refusal = _guarded_plan(
                     lambda: plan_dispersive_fused_pair(fields, pml, sources,
-                                                       block, num_warps),
+                                                       block, num_warps,
+                                                       chunk_layout=chunk_layout),
                     "the dispersive D/E pair builder")
             if refusal is not None:
                 reasons["fused_pair_dispersive_D"] = (refusal,)
@@ -4255,7 +4487,8 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         # are unchanged — they are about the ORDINARY and DISPERSIVE pairs, whose
         # kernels carry none of what those grids need.
         _install_certified_fused_products(plans, reasons, selected, fields, pml,
-                                          sources, block, num_warps, offered)
+                                          sources, block, num_warps, offered,
+                                          chunk_layout=chunk_layout)
 
     try:
         states = tuple(getattr(fields, "polarizations", ()) or ())
@@ -4308,10 +4541,10 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
                         ("complex ADE update_P", "complex ADE: ",
                          lambda state, component:
                              complex_ade_update_p_coverage(
-                                 fields, pml, state, component, resolved_probe),
+                                 fields, pml, state, component),
                          lambda state:
                              plan_complex_ade_update_p(
-                                 fields, pml, state, block, resolved_probe)))
+                                 fields, pml, state, block)))
             ade_predicates = tuple((prefix, ask)
                                    for _label, prefix, ask, _builder in candidates)
             admitted = [candidate for candidate in candidates

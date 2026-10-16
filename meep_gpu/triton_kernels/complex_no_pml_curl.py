@@ -27,77 +27,46 @@ this module ships no constitutive predicate at all, and
 cannot take it by accident.
 
 THIS MODULE SHIPS NO KERNEL. It re-uses ``complex_fields.bloch_pml_curl_step``
-byte for byte, under a DEGENERATE NO-ABSORBER BINDING, and the whole of its
-content is the predicate, that binding, and the binding's one measured caveat.
+byte for byte, under a NO-ABSORBER BINDING, and the whole of its content is the
+predicate and that binding.
 
-THE BINDING, and which of its three parts is a substitution
------------------------------------------------------------
-``stepping._apply_curl`` (stepping.py:508-539) has four branches. With
-``_pml_is_active(pml)`` False and no conductivity the entire split-field tail
-falls away and the sub-step ends in one line::
+THE BINDING: the kernel's dsig-only form on unit columns, which IS MEEP's plain curl
+------------------------------------------------------------------------------------
+``stepping._apply_curl`` (``target -= curl`` with no active layer and no
+conductivity) is MEEP's plain form, ``f - curl`` (step_generic.cpp:104). The shipped
+kernel selects its forms per cell from the chunk record (``forms.curl_form``): the
+split-field recurrence where the cell's chunk carries the target's dsigu layer, and
+the dsig-only form ``((f * kms) - curl) * sinv`` everywhere else. This binding makes
+the second the only one, with three parts:
 
-    target -= curl                                        # stepping.py:539
+1. **The record: the absorber-free division's** (``launch.chunk_bounds_for(fields,
+   None, chunk_layout)``). No chunk carries a layer, so no membership run exists and
+   every cell takes the dsig-only form; the presence word is the grid's, so the
+   stencil takes MEEP's one-partner forms on an invariant axis (``curl_stencil``).
+2. **Coefficients: unit columns.** On a genuinely layer-less run ``pml`` is ``None``
+   and there are no tables to bind, so :func:`unit_coefficient_columns` synthesizes
+   them, and the test file pins them bit-identical to ``PML(thickness=0)``'s own
+   tables. With ``kms = sinv = 1.0f`` the dsig-only form is ``(f * 1) - curl``
+   rounded, times 1: ``f * 1.0`` and ``x * 1.0`` are exact on every word (signed
+   zero included, and subnormals under the keep policy), so the form IS
+   ``f - curl``. That holds on all 36 pairs of
+   ``{-0.0, +0.0, +-subnormal, +-normal}`` for (target, curl); the previous
+   binding (the recurrence on every cell with a zeroed auxiliary) lost one of them,
+   ``(-0.0, +0.0)``, and the gate keeps that binding as a mutation its planted
+   signed-zero leg must catch.
+3. **Sources: the engine's own accessors**, the ones ``stepping._read_component``
+   calls: ``fields.get_E(name)`` for ``step_B`` (storage, guaranteed by the shared
+   clause 9) and ``fields.get_H(name)`` for ``step_D``, which without PML returns the
+   B array ITSELF and allocates nothing (``Fields.get_H``). Binding the accessor
+   rather than the attribute is deliberate: the attribute ``Hx`` is ``None`` here,
+   and a plan-time snapshot of the value is exactly the group-(G) mechanism the
+   gate's STALESOURCE control re-arms.
 
-1. **Coefficients: substituted, and measured equal to what the round ran.** The
-   group-(J) probe bound ``PML(thickness=0)``'s own ``kms``/``sinv`` tables,
-   which are EXACTLY 1.0 on both Yee sub-lattices (measured, not assumed:
-   ``local/verify_group_j_fixture.json``, ``pml_coefficients_all_exactly_one``).
-   This module cannot bind those, because on a genuinely layer-less run ``pml``
-   is ``None`` and there are no tables to bind — so it synthesizes unit columns
-   instead. :func:`unit_coefficient_columns` is the one home for that, and the
-   test file asserts the synthesized columns are bit-identical to
-   ``PML(thickness=0)``'s, which is what keeps this binding the one the device
-   measured rather than a second, unmeasured one.
-
-2. **Sources: NOT substituted.** Both are read through the engine's OWN
-   accessors, the ones ``stepping._read_component`` (stepping.py:2438-2453)
-   calls: ``fields.get_E(name)`` for ``step_B`` (storage, guaranteed by the
-   shared clause 9) and ``fields.get_H(name)`` for ``step_D``, which without PML
-   returns the B array ITSELF and allocates nothing (fields.py:1164-1186).
-   Binding the accessor rather than the attribute is deliberate: the attribute
-   ``Hx`` is ``None`` here, and a plan-time snapshot of the value is exactly the
-   group-(G) mechanism the STALESOURCE control re-armed.
-
-3. **The auxiliary IS a substitution, and it is the only one.** The array path
-   has no ``fu`` at all. The faithful stand-in is an auxiliary that is ZERO at
-   entry to EVERY launch — zeroed in :meth:`ComplexNoPmlCurlPlan.run`, not once
-   at plan time, because after one launch it holds ``-curl`` and a second launch
-   would step the substitution instead of the body.
-
-Under (1) and (3) the shipped recurrence (stepping.py:1975-1982)::
-
-    fu_previous = fu.copy(); fu *= kms; fu -= curl; fu *= sinv
-    field *= kms_u; field += fu; field -= fu_previous; field *= sinv_u
-
-collapses to ``field - curl``. Re-measured on this tree rather than inherited:
-0 differing words of 31250 on the group-(J) fixture fill (7814 negative-zero
-words live in each operand), and 0 of 31250 on each of three physical bands
-spanning 1e-6 to 1e3, each with a vacuity floor asserting the array path moved
-every word it was compared on.
-
-THE ONE MEASURED CAVEAT, stated here because it is a property of the
-substitution and not of the kernel
------------------------------------------------------------------------------
-Over the 36-pattern cross product of ``{-0.0, +0.0, +-subnormal, +-normal}`` for
-(target, curl), the degenerate binding reproduces ``target -= curl`` on 35 and
-diverges on exactly one::
-
-    target = -0.0, curl = +0.0   ->  array path 0x80000000, binding 0x00000000
-
-The mechanism is forced and admits no coefficient repair: the auxiliary reaches
-``+0.0 - (+0.0) = +0.0``, and ``-0.0 + (+0.0)`` is ``+0.0`` in round-to-nearest,
-so the target's sign bit is lost. Seeding the auxiliary at ``-0.0`` moves the
-loss to the ``field -= fu_previous`` line instead of removing it.
-
-Reachability is an ARGUMENT, not a measurement, and is recorded as such: a
-``-0.0`` word cannot be CREATED in B or D under this arm's own coverage —
-``x - y`` yields ``-0.0`` only from ``-0.0 - (+0.0)``, so the subtraction
-preserves the sign but never introduces it, and the volumes are allocated by
-``xp.zeros``. It therefore needs a ``-0.0`` written from outside the sub-step.
-The byte gate carries the pattern as a named fixture row
-(``minus_zero_target_zero_curl``) so a device measures it instead of this
-paragraph standing alone, and the released payload records its word count rather
-than asserting it away.
+THE AUXILIARY IS A PLACEHOLDER. The kernel takes three ``fu`` pointers, and reads
+and writes them only on the recurrence's cells (the auxiliary contract), of which
+this record has none. The plan therefore binds three zeroed volumes of its own,
+allocated once, and never touches them at launch; the engine has no ``fu`` on this
+run. The gate poisons them before every launch and requires the bytes unchanged.
 
 WHAT IT IS FOR. The same demand list as the split-field complex product, minus
 the absorber: group (J)'s two ``test_material_grid.py`` rows are the measured
@@ -123,11 +92,10 @@ from .complex_fields import (
     DEFAULT_BLOCK,
     _complex_grid_reasons,
     _complex_layout_reasons,
-    _resolve_expansion,
     bloch_phase_table,
 )
 from .coverage import CURL_SUB_STEPS, Coverage
-from .launch import SUB_STEPS
+from .launch import SUB_STEPS, chunk_bounds_for
 
 __all__ = [
     "ComplexNoPmlCurlPlan",
@@ -183,8 +151,7 @@ def source_arrays(fields: Any, sub_step: str) -> List[Any]:
     return [accessor(name) for name in SUB_STEPS[sub_step]["sources"]]
 
 
-def complex_no_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                 probe: Any = None) -> Coverage:
+def complex_no_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """May the degenerate no-absorber complex curl step this (fields, pml, sub_step)?
 
     Positive clauses only; a failing clause appends its reason and the scan
@@ -199,8 +166,7 @@ def complex_no_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
 
-    reasons = _complex_grid_reasons(fields, pml, grid, probe,
-                                    require_active_pml=False)
+    reasons = _complex_grid_reasons(fields, pml, grid, require_active_pml=False)
 
     # 3b. ``Fields.enable_pml_storage`` is a ONE-WAY switch that also changes
     #     what get_E/get_H return (fields.py:678-700). A Fields whose storage was
@@ -261,15 +227,15 @@ def complex_no_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
 
 
 class ComplexNoPmlCurlPlan:
-    """A launchable no-absorber COMPLEX curl sub-step: the split-field plan, degenerate.
+    """A launchable no-absorber COMPLEX curl sub-step: the split-field plan, unit-bound.
 
     Composition rather than a second plan class, so the bytes the gate certifies
     are the bytes ``ComplexPmlCurlPlan.run`` launches — the same kernel, the same
-    argument order, the same ``enable_fp_fusion`` guard. This adds exactly one
-    thing to it, and adds it on EVERY launch: the auxiliary is zeroed first.
+    argument order, the same ``enable_fp_fusion`` guard, under the absorber-free
+    record and unit columns (see the module docstring).
 
-    Allocation-free at launch, not at build: the three auxiliary volumes and the
-    three unit columns are allocated once here.
+    Allocation-free at launch, not at build: the three placeholder auxiliary volumes
+    and the three unit columns are allocated once here.
     """
 
     __slots__ = ("sub_step", "shape", "_inner", "_auxiliaries")
@@ -281,16 +247,11 @@ class ComplexNoPmlCurlPlan:
         self._auxiliaries = tuple(auxiliaries)
 
     def run(self, guard: Optional[bool] = None) -> None:
-        """Zero the auxiliary, then launch the sub-step in place.
+        """Launch the sub-step in place.
 
-        The zeroing is NOT hoistable to build time. After one launch the
-        auxiliary holds ``-curl``; a second launch over it would step
-        ``fu*kms - curl`` from a nonzero ``fu`` and measure the substitution
-        rather than the body. ``fill(0)`` writes ``+0.0``, which is the state the
-        collapse to ``target -= curl`` was measured under.
+        Nothing is done to the auxiliary: the absorber-free record has no
+        recurrence cell, so the kernel neither reads nor writes it.
         """
-        for auxiliary in self._auxiliaries:
-            auxiliary.fill(0)
         self._inner.run(guard)
 
     def __repr__(self) -> str:
@@ -300,8 +261,7 @@ class ComplexNoPmlCurlPlan:
 
 def plan_complex_no_pml_curl(fields: Any, pml: Any, sub_step: str,
                              block: Optional[int] = None,
-                             num_warps: Optional[int] = None,
-                             probe: Any = None
+                             num_warps: Optional[int] = None, chunk_layout: Any = None,
                              ) -> Optional[ComplexNoPmlCurlPlan]:
     """Build a plan from the engine's own objects, or None when out of coverage.
 
@@ -312,14 +272,15 @@ def plan_complex_no_pml_curl(fields: Any, pml: Any, sub_step: str,
     builder is measured to raise ``ValueError: expected a complex64 volume, got
     dtype None`` behind an inactive layer object, and ``AttributeError:
     'NoneType' object has no attribute 'kms_x_h'`` behind no layer at all.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    With no absorber every division binds the same words: no membership run, and the
+    grid's presence word.
     """
     if sub_step not in CURL_SUB_STEPS:
         raise ValueError(
             f"sub_step must be one of {tuple(CURL_SUB_STEPS)}, got {sub_step!r}")
-    if not complex_no_pml_curl_coverage(fields, pml, sub_step, probe=probe).covered:
-        return None
-    expansion = _resolve_expansion(probe)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not complex_no_pml_curl_coverage(fields, pml, sub_step).covered:
         return None
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
 
@@ -339,38 +300,43 @@ def plan_complex_no_pml_curl(fields: Any, pml: Any, sub_step: str,
         sub_step, shape, grid.dt / grid.dx,
         [1 if kind == "metallic" else 0 for kind in kinds],
         *_phase_arguments_for(phases, spec),
-        expansion,
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in spec["targets"]],
         auxiliaries,
         source_arrays(fields, sub_step),
         [columns[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
         num_warps=num_warps,
+        # The record of the absorber-free division: no run anywhere, so every cell
+        # takes the dsig-only form, which on the unit columns is MEEP's plain curl.
+        chunk_bounds=chunk_bounds_for(fields, None, chunk_layout),
     )
     return ComplexNoPmlCurlPlan(inner, auxiliaries)
 
 
 def _phase_arguments_for(phases, spec):
-    """(phased flags, phase values) for this sub-step's difference direction."""
-    from .complex_fields import _phase_arguments  # noqa: PLC0415
+    """(connection kinds, factor parts) for this sub-step's difference direction."""
+    from .complex_fields import connection_arguments  # noqa: PLC0415
 
-    return _phase_arguments(phases, backward=bool(spec["backward"]))
+    return connection_arguments(phases, backward=bool(spec["backward"]))
 
 
 def plan_complex_no_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
                                          phases: Sequence[Optional[complex]],
-                                         dtdx: float, codes, expansion: int,
+                                         dtdx: float, codes,
                                          xp: Any,
                                          block: Optional[int] = None,
                                          kernel: Any = None,
                                          num_warps: Optional[int] = None,
+                                         *, chunk_bounds: Any,
                                          ) -> ComplexNoPmlCurlPlan:
     """Build from bare device arrays — the byte gate's and the benchmark's route.
 
     ``arrays`` is keyed by component name and carries the TARGETS and the
-    SOURCES only; the auxiliaries and the unit columns are this product's own and
-    are synthesized here exactly as the engine route synthesizes them, so the
-    gate certifies the shipped binding rather than a hand-built lookalike. No
+    SOURCES only; the placeholder auxiliaries and the unit columns are this
+    product's own and are synthesized here exactly as the engine route synthesizes
+    them, so the gate certifies the shipped binding rather than a hand-built
+    lookalike. ``chunk_bounds`` has no default: the harness states the record it
+    binds (the engine route binds the absorber-free division's). No
     predicate runs: the caller is a harness that built the configuration
     deliberately, including the deliberately wrong ones, and ``kernel=`` carries
     the mutation override — dropping it silently disarms every mutation leg
@@ -383,13 +349,12 @@ def plan_complex_no_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
     inner = ComplexPmlCurlPlan(
         sub_step, shape, dtdx, codes,
         *_phase_arguments_for(tuple(phases), spec),
-        int(expansion),
         DEFAULT_BLOCK if block is None else block,
         [arrays[name] for name in spec["targets"]],
         auxiliaries,
         [arrays[name] for name in spec["sources"]],
         [columns[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
-        kernel=kernel, num_warps=num_warps,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )
     return ComplexNoPmlCurlPlan(inner, auxiliaries)
 
@@ -403,13 +368,15 @@ def plan_complex_no_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
 # complex PML arm on ``stepping._pml_is_active``; the central composition sweep
 # checks that neither slot can acquire two admitters.
 #
-# ``parity/meep_gpu/gate_triton_complex_no_pml_curl.py`` ran on the GPU host's RTX
-# A6000 on 2026-08-17 under the installed ``keep`` policy.  All eight shipped
-# product rows were byte-identical over eight launches; all three controls and
-# all three mutations diverged.  The adversarial signed-zero leg records the
-# known boundary honestly: step_B remained identical, while step_D differed by
-# 86,450/281,250 words in 3-D and 3,552/11,250 in 2-D.  The readable provenance
-# entry is ``triton_complex_no_pml_curl_device_gate`` in ``fingerprints.json``
-# and licenses this arm at the opted-in fast-path seam.
+# ``parity/meep_gpu/gate_triton_complex_no_pml_curl.py`` first ran on the GPU host's
+# RTX A6000 on 2026-08-17 under the installed ``keep`` policy, on the previous
+# binding (the recurrence on every cell with a per-launch zeroed auxiliary): all
+# eight product rows identical over eight launches, every control and mutation
+# divergent, and the signed-zero leg's recorded residual on step_D (86,450/281,250
+# words in 3-D, 3,552/11,250 in 2-D) -- the (-0.0, +0.0) pattern that binding lost.
+# The readable provenance entry is ``triton_complex_no_pml_curl_device_gate`` in
+# ``fingerprints.json``, which licenses this arm at the opted-in fast-path seam; it
+# pins those bytes and is re-cut at certification. On the present binding the gate's
+# planted leg requires that pattern identical.
 # Nothing in ``metal_kernels`` or ``cuda_kernels`` changes: this family is
 # Triton-only and those backends retain their independent certifications.

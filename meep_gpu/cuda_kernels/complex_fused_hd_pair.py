@@ -69,16 +69,17 @@ so the argument is not restated at length here. In brief:
 * The launcher then ROTATES the ``H``/``f_w_H`` bindings
   (:func:`.fused_hd_pair.rotate_into_fields`, reused rather than re-spelled).
 
-WHERE THE BLOCH PHASE SITS, AND WHY THE RECOMPUTE DOES NOT CARRY ONE. The phase is
-applied by ``cshift_dn`` to the WRAPPED LANE ONLY and AFTER the load
-(``_TAIL``: ``cf w = cf_load(g, idx + (na - 1) * stride); if (ph) w =
-rotate_field_left(w, phase);``). :func:`cshift_dn_recompute_source` replaces the
-LOAD and leaves the branch, the wrap arithmetic, the ``ph`` guard and the
-``rotate_field_left`` call exactly where the certified helper puts them, so the
-recomputed neighbour is phased under precisely the conditions the stored one would
-have been. A recompute that carried a phase of its own, or applied one to the
-near-neighbour branch, would be a band structure that converges to the wrong
-dispersion.
+WHERE THE BLOCH CONNECTION SITS, AND WHY THE RECOMPUTE DOES NOT CARRY ONE. The
+array path applies the connection on plane 0 of the operand read at the cell ITSELF
+(``stepping._bloch_ghost_operand``; ``complex_emitter``'s ``cwindow``), and both
+shift helpers are plain wraps. So the weld's two kinds of magnetic read take it
+apart cleanly: :func:`cshift_dn_recompute_source` replaces the two LOADS of the
+certified ``cshift_dn`` and leaves its branch and wrap arithmetic exactly where the
+helper puts them, and the own-cell read becomes ``cconnect`` -- the certified
+connection that ``cwindow`` applies to a stored word, applied instead to the
+register the weld computed, under precisely the conditions the stored word would
+have taken it. A recompute that carried a connection of its own, or applied one to a shifted
+tap, would be a band structure that converges to the wrong dispersion.
 
 THE METALLIC AND MIRROR GHOSTS ARE NOT RECOMPUTED. ``cshift_dn`` returns
 ``cf_zero()`` on those branches without touching ``g``, and the resolved helper
@@ -91,11 +92,7 @@ THE ARITHMETIC IS THE CERTIFIED FAMILY'S, INCLUDING ITS ARM
 Every complex operation in this kernel comes from ``complex_emitter``'s prelude:
 ``cf_load``/``cf_store``'s word-pair addressing, ``cf_add``/``cf_sub``,
 ``cf_zero``, ``rotate_field_left``, ``mul_field_left``, ``mul_coefficient_left``,
-``pml_apply`` and ``constitutive_apply``. NOTHING is retyped. The arm
-(``NAIVE``/``FMA_V1``) is an ARGUMENT with no default, for the reason
-``complex_emitter.normalized_expansion`` refuses rather than defaulting: a wrong
-arm is a wrong ANSWER, not a crash, and the two differ in the last bits of about a
-quarter of the words.
+``pml_apply`` and ``constitutive_apply``. NOTHING is retyped.
 
 TWO CuPy SPELLINGS MEASURED ON THIS BACKEND ARE RESPECTED RATHER THAN
 REDISCOVERED (``lanes/cyl_round/cupy_probe``, 2026-09-06/07, one RTX A6000, CuPy
@@ -103,10 +100,8 @@ REDISCOVERED (``lanes/cyl_round/cupy_probe``, 2026-09-06/07, one RTX A6000, CuPy
 
 * ``complex64 * float32`` is the four-product form CONTRACTED by NVRTC. The
   UNCONTRACTED transcription is 0 on 11 of 12 spelling cases and 6 of 4,005,000
-  words on (flush, edge): the sign of a FLUSHED zero. The spelling that is 0 on all
-  twelve under ``--fmad=false`` is ``_ARM_SOURCE[FMA_V1].mul_field_left``, which is
-  what this kernel calls -- through the emitter's own text, under EITHER arm's name
-  binding, because the arm block is lifted whole.
+  words on (flush, edge): the sign of a FLUSHED zero. This kernel calls the emitter's
+  own ``mul_field_left``, lifted whole with the rest of the prelude.
 * ``complex64 / float32`` is CuPy's SCALED complex/complex algorithm with the
   zero-valued terms kept, NOT numpy's reciprocal multiply. **This family performs
   NO DIVISION** -- the reciprocal its recurrence needs is ``sinv``, computed
@@ -196,8 +191,8 @@ REPLACES: Tuple[str, ...] = ("update_H", "step_D")
 SEAM: str = _withdraw_hoist.SEAM
 
 #: The two variants and the kernel each emits. ``plain`` welds
-#: ``complex_emitter.complex_source("step_D", arm)``; ``folded`` welds
-#: ``complex_folded_kernels.folded_source("step_D", arm)``, which is the same text
+#: ``complex_emitter.complex_source("step_D")``; ``folded`` welds
+#: ``complex_folded_kernels.folded_source("step_D")``, which is the same text
 #: through that module's three deltas. The names are spelled as LITERALS in
 #: :func:`signature` as well, because ``test_kernel_partition.py`` reads shipped
 #: kernel names off this file's own text with a regex that requires a C identifier.
@@ -221,7 +216,7 @@ H_TARGETS: Tuple[str, str, str] = _hd.H_TARGETS
 #: The curl's own magnetic source parameters, in the emitted template's spelling.
 CURL_SOURCE_NAMES: Tuple[str, str, str] = ("g0", "g1", "g2")
 
-#: How many shifted magnetic taps and own-cell magnetic loads the certified
+#: How many shifted magnetic taps and own-cell magnetic reads (``cwindow``) the certified
 #: ``step_D`` curl makes. Both are ASSERTED against the lifted text on every emit: a
 #: tap left standing would read a word another block is writing, and an own load left
 #: standing would read the PRE-launch H.
@@ -235,6 +230,8 @@ OWN_LOAD_EDITS = 6
 #: {keep,flush}/gate.json``), and ``test_kernel_partition.py`` refuses a name here
 #: that no record block claims.
 #:
+#: THE 0.10 FORMS MOVED THESE BYTES (bit_parity_0_10 lane KC6); the record is re-cut
+#: when the family's gate is re-run on them in the combined certification round.
 #: THE DECLARATION IS THE FINAL BYTES: the campaign was cut against THESE bytes with
 #: the names still in ``UNCERTIFIED_KERNELS``, and the record binds the digests the
 #: campaign observed at NVRTC, which this move does not change (the partition sets are
@@ -292,9 +289,9 @@ _FUSED_THREADS = 256
 #: ``--fmad=false`` is CORRECTNESS and is the certified complex family's own tuple
 #: (``complex_pml_kernels._COMPILE_OPTIONS``), restated here rather than imported so
 #: that loading this file by path cannot pick up a different one than the gate
-#: compiled. The constitutive half's two separate accumulations and the curl's
-#: ``((sf - f_1) + (f_2 - ss))`` grouping are contraction candidates; the arm's own
-#: fusions are explicit ``__fmaf_rn`` and survive the flag.
+#: compiled. The constitutive tail ``(kps*src) - (kms*prev)``, the recurrence and the
+#: connection's two sums are contraction candidates; nothing in the family fuses on
+#: purpose.
 _COMPILE_OPTIONS: Tuple[str, ...] = ("--fmad=false",)
 
 __all__ = [
@@ -335,29 +332,35 @@ _FIRST_TARGET = "    // Target 0:"
 
 _APPLY_SIGNATURE = "__device__ __forceinline__ void constitutive_apply(\n"
 _APPLY_SIGNATURE_PURE = "__device__ __forceinline__ cf constitutive_apply_pure(\n"
-_APPLY_PARAMETERS = "    float* f, float* fw, int idx, cf src, float kps, float kms\n)"
+_APPLY_PARAMETERS = ("    float* f, float* fw, int idx, cf src, float kps, float kms, "
+                     "int dsigw\n)")
 _APPLY_PARAMETERS_PURE = ("    const float* f, const float* fw, int idx, cf src, "
-                          "float kps, float kms,\n    cf* fw_out\n)")
-_APPLY_FW_STORE = "    cf_store(fw, idx, src);\n"
+                          "float kps, float kms, int dsigw,\n    cf* fw_out\n)")
+_APPLY_FW_STORE = "    if (dsigw) cf_store(fw, idx, src);\n"
 _APPLY_FW_STORE_PURE = (
     "    // THE FIRST STORE, HANDED BACK INSTEAD OF PERFORMED: the caller writes it to\n"
     "    // the SCRATCH volume for its own cell and DISCARDS it for a foreign\n"
-    "    // recompute, so nothing this launch reads is a word this launch wrote.\n"
-    "    *fw_out = src;\n")
-_APPLY_F_STORE = "    cf_store(f, idx, a);\n"
+    "    // recompute, so nothing this launch reads is a word this launch wrote. Off\n"
+    "    // the dsigw run the auxiliary is not stepped and the scratch takes the word\n"
+    "    // it already holds: the rotation makes the scratch the live f_w_H, so every\n"
+    "    // cell of it is written (a copy-through read off the run that the in-place\n"
+    "    // helper does not make; fused_hd_pair's own arrangement).\n"
+    "    *fw_out = dsigw ? src : cf_load(fw, idx);\n")
+_APPLY_F_STORE = "    cf_store(f, idx, updated);\n"
 _APPLY_F_STORE_PURE = (
-    "    // THE SECOND STORE, LIKEWISE: the same two separate accumulations in the same\n"
-    "    // order, the value RETURNED so the caller stores it to scratch for its own\n"
-    "    // cell and consumes it from a register for a foreign one.\n"
-    "    return a;\n")
+    "    // THE SECOND STORE, LIKEWISE: the same forms in the same order, the value\n"
+    "    // RETURNED so the caller stores it to scratch for its own cell and consumes\n"
+    "    // it from a register for a foreign one.\n"
+    "    return updated;\n")
 
 _CSHIFT_DN_SIGNATURE = ("__device__ __forceinline__ cf cshift_dn(\n"
                         "    const float* g, int idx, int ia, int na, int stride, "
-                        "int bc, int ph, cf phase\n)")
+                        "int bc\n)")
 _CSHIFT_DN_SIGNATURE_RECOMPUTE = (
     "__device__ __forceinline__ cf cshift_dn_recompute(\n"
-    "    int comp, int idx, int ia, int na, int stride, int bc, int ph, cf phase,\n"
+    "    int comp, int idx, int ia, int na, int stride, int bc,\n"
     "    const WeldArgs& weld\n)")
+
 
 #: The argument pack, as ``(C type, member name)``. Every member is READ-ONLY for the
 #: whole launch: that is the property the recompute rests on, and binding H, f_w_H and
@@ -379,6 +382,9 @@ WELD_ARGS_FIELDS: Tuple[Tuple[str, str], ...] = (
     ("const float* __restrict__", "kms_x"),
     ("const float* __restrict__", "kms_y"),
     ("const float* __restrict__", "kms_z"),
+    # The run's chunk record: the recomputed update_H decodes it at the cell it is
+    # evaluated for, so each foreign tap takes that cell's own dsigw form.
+    ("const int* __restrict__", "cb"),
 )
 
 #: Which KERNEL PARAMETER each pack member is built from. Three of them are not
@@ -422,20 +428,16 @@ def _check_variant(variant: str) -> str:
     return variant
 
 
-def _arm(expansion) -> int:
-    return complex_emitter.normalized_expansion(expansion)
-
-
 def kernel_name(variant: str) -> str:
     """The kernel this variant emits."""
     return KERNEL_NAMES[_check_variant(variant)]
 
 
-def _curl_source(variant: str, arm: int) -> str:
+def _curl_source(variant: str) -> str:
     """The certified ``step_D`` source this variant welds -- plain or folded."""
     if _check_variant(variant) == "plain":
-        return complex_emitter.complex_source("step_D", arm)
-    return complex_folded_kernels.folded_source("step_D", arm)
+        return complex_emitter.complex_source("step_D")
+    return complex_folded_kernels.folded_source("step_D")
 
 
 def _split_at_kernel(source: str, what: str) -> Tuple[str, str]:
@@ -452,7 +454,7 @@ def _split_at_kernel(source: str, what: str) -> Tuple[str, str]:
 # The device source
 # ---------------------------------------------------------------------------
 
-def constitutive_prelude(variant: str, expansion) -> str:
+def constitutive_prelude(variant: str) -> str:
     """This variant's certified prelude with ``constitutive_apply`` made PURE.
 
     THE PRELUDE IS THE CURL SOURCE'S OWN, which is what carries the folded variant's
@@ -465,7 +467,7 @@ def constitutive_prelude(variant: str, expansion) -> str:
     whole is what keeps the shared mutation needles resolving, and NVRTC drops an
     unused ``__forceinline__`` helper.
     """
-    prelude, _ = _split_at_kernel(_curl_source(variant, _arm(expansion)),
+    prelude, _ = _split_at_kernel(_curl_source(variant),
                                  f"the certified step_D source for variant {variant!r}")
     for old, new in CONSTITUTIVE_LIFT_EDITS:
         prelude = _needle(prelude, old, new, "constitutive_apply's " + (
@@ -500,12 +502,12 @@ def weld_args_construction(indent: str = "    ") -> str:
     return "\n".join(lines) + "\n"
 
 
-def raw_update_H_cell_source(expansion) -> str:
+def raw_update_H_cell_source() -> str:
     """The certified ``update_H_pml_complex_bloch`` body as a function of a CELL.
 
     THE BODY IS ARM-DEPENDENT AND VARIANT-INDEPENDENT, and both halves of that are
     load-bearing. Arm-dependent because ``constitutive_apply`` calls
-    ``mul_coefficient_left``, whose text the arm decides. Variant-independent because
+    ``mul_coefficient_left``, the emitter's own text. Variant-independent because
     ``complex_folded_kernels`` ships NO constitutive kernel: the folded rows are
     served at ``update_H`` by this very body, unchanged, which is the fact that lets
     one product cover both cells.
@@ -516,9 +518,8 @@ def raw_update_H_cell_source(expansion) -> str:
     split-field history, which the caller stores to scratch for its own cell and
     discards for a foreign recompute.
     """
-    arm = _arm(expansion)
     prelude, kernel = _split_at_kernel(
-        complex_emitter.complex_source("update_H", arm),
+        complex_emitter.complex_source("update_H"),
         "the certified update_H source")
     del prelude
     if kernel.count(_BODY_ANCHOR) != 1:
@@ -545,11 +546,13 @@ def raw_update_H_cell_source(expansion) -> str:
             f"cannot vouch for a changed one")
     for component, axis in enumerate("xyz"):
         coordinate = "ijk"[component]
+        flag = complex_emitter.CONSTITUTIVE_FLAGS["H"][component]
         old = (f"    constitutive_apply(f{component}, w{component}, idx, "
-               f"s{component}, kps_{axis}[{coordinate}], kms_{axis}[{coordinate}]);\n")
+               f"s{component}, kps_{axis}[{coordinate}], kms_{axis}[{coordinate}], "
+               f"{flag});\n")
         new = (f"    h_out[{component}] = constitutive_apply_pure(f{component}, "
                f"w{component}, idx, s{component}, kps_{axis}[{coordinate}], "
-               f"kms_{axis}[{coordinate}], &w_out[{component}]);\n")
+               f"kms_{axis}[{coordinate}], {flag}, &w_out[{component}]);\n")
         body = _needle(body, old, new,
                        f"component {component}'s certified constitutive_apply call")
     if "constitutive_apply(" in body:
@@ -577,6 +580,8 @@ def raw_update_H_cell_source(expansion) -> str:
         for axis in "xyz":
             unpack.append(
                 f"    const float* __restrict__ {stem}_{axis} = weld.{stem}_{axis};")
+    unpack.append("    // The chunk record the certified body decodes below, at THIS cell.")
+    unpack.append("    const int* __restrict__ cb = weld.cb;")
     return ("\n// The certified update_H_pml_complex_bloch, evaluated at ONE ARBITRARY\n"
             "// CELL and storing nothing. This is the function the curl half calls for\n"
             "// every foreign tap it needs: a pure function of H, f_w_H and B, none of\n"
@@ -636,14 +641,15 @@ def _balanced_call(text: str, opener: str) -> Tuple[str, str, str]:
     return text[:start], text[start + len(opener):cursor], text[cursor + 1:]
 
 
-def cshift_dn_recompute_source(variant: str, expansion) -> str:
+def cshift_dn_recompute_source(variant: str) -> str:
     """The certified ``cshift_dn`` with its two leaf LOADS RESOLVED.
 
     THE BRANCHES AND THE INDEX EXPRESSIONS ARE THE CERTIFIED HELPER'S OWN, parsed out
     of the prelude this variant emits rather than retyped: the near-neighbour branch,
-    the ghost return, the wrap arithmetic, the ``ph`` guard and the
-    ``rotate_field_left`` call are carried across character for character, and only
-    ``cf_load(g, EXPR)`` becomes ``resolve_H(comp, EXPR, weld)``.
+    the ghost return and the wrap arithmetic are carried across character for
+    character, and only ``cf_load(g, EXPR)`` becomes ``resolve_H(comp, EXPR, weld)``.
+    The certified helper carries no connection (the shifted operand is a plain wrap,
+    ``stepping._shift_down``), and neither does its recompute.
 
     That the FOLDED variant's widened ghost (``bc == BC_METALLIC || bc ==
     BC_MIRROR_PERIODIC``) arrives here automatically is the whole reason this function
@@ -651,7 +657,7 @@ def cshift_dn_recompute_source(variant: str, expansion) -> str:
     ghost that recomputed a magnetic field instead of returning ``cf_zero()`` would be
     wrong on one plane of one component and would converge.
     """
-    prelude, _ = _split_at_kernel(_curl_source(variant, _arm(expansion)),
+    prelude, _ = _split_at_kernel(_curl_source(variant),
                                  f"the certified step_D source for variant {variant!r}")
     if prelude.count(_CSHIFT_DN_SIGNATURE) != 1:
         raise AssertionError(
@@ -686,14 +692,12 @@ def cshift_dn_recompute_source(variant: str, expansion) -> str:
     return ("\n// stepping._shift_down's certified device helper, with the leaf loads\n"
             "// RESOLVED: the value the curl needs at a backward neighbour is not a\n"
             "// stored word but update_H's result there, recomputed from pre-launch\n"
-            "// state. The branch, the ghost return, the wrap arithmetic and the Bloch\n"
-            "// rotation ON THE WRAPPED LANE ONLY are the certified helper's own -- the\n"
-            "// recompute carries no phase of its own and none is applied to the\n"
-            "// near-neighbour branch.\n"
+            "// state. The branch, the ghost return and the wrap arithmetic are the\n"
+            "// certified helper's own; a shifted tap carries no Bloch connection.\n"
             + _CSHIFT_DN_SIGNATURE_RECOMPUTE + " {\n" + body + "}\n")
 
 
-def curl_pieces(variant: str, expansion) -> Tuple[str, str]:
+def curl_pieces(variant: str) -> Tuple[str, str]:
     """``(head, tail)`` of the certified ``step_D`` body, every H read redirected.
 
     ``head`` is the certified preamble, the stride constants, the index decode and the
@@ -704,7 +708,7 @@ def curl_pieces(variant: str, expansion) -> Tuple[str, str]:
     rides in ``tail`` untouched: it zeroes ``curl``, never a magnetic read.
     """
     _check_variant(variant)
-    source = _curl_source(variant, _arm(expansion))
+    source = _curl_source(variant)
     _, kernel = _split_at_kernel(
         source, f"the certified step_D source for variant {variant!r}")
     if kernel.count(_BODY_ANCHOR) != 1:
@@ -727,15 +731,18 @@ def curl_pieces(variant: str, expansion) -> Tuple[str, str]:
     head, tail = body[:cut], body[cut:]
 
     own = 0
-    for component, pointer in enumerate(CURL_SOURCE_NAMES):
-        for variable in ("f_1", "f_2"):
-            old = f"        cf {variable} = cf_load({pointer}, idx);\n"
-            if old not in tail:
-                continue
-            tail = _needle(tail, old,
-                           f"        cf {variable} = own_h[{component}];\n",
-                           f"{pointer}'s own-cell load into {variable}")
-            own += 1
+    for line in [line + "\n" for line in tail.splitlines() if "= cwindow(" in line]:
+        line_head, _, rest = line.partition("cwindow(")
+        pointer, _, arguments = rest.partition(", idx, ")
+        if pointer not in CURL_SOURCE_NAMES:
+            raise AssertionError(
+                f"the certified step_D body reads {pointer!r} through cwindow; this weld "
+                f"resolves exactly the three magnetic sources {CURL_SOURCE_NAMES}")
+        component = CURL_SOURCE_NAMES.index(pointer)
+        tail = _needle(tail, line,
+                       f"{line_head}cconnect(own_h[{component}], {arguments}",
+                       f"{pointer}'s own-cell read {line.strip()!r}")
+        own += 1
     if own != OWN_LOAD_EDITS:
         raise AssertionError(
             f"the certified step_D body makes {own} own-cell magnetic loads of the "
@@ -773,10 +780,10 @@ def curl_pieces(variant: str, expansion) -> Tuple[str, str]:
                 f"the welded curl half still reads {pointer}; in this signature that "
                 f"pointer is the PRE-LAUNCH magnetic field and every read must be the "
                 f"register or a recompute")
-    if "cshift_dn(" in tail:
+    if "cshift_dn(" in tail or "= cwindow(" in tail:
         raise AssertionError(
-            "the welded curl half still calls the certified cshift_dn, which loads a "
-            "stored H; every shifted tap must go through cshift_dn_recompute")
+            "the welded curl half still calls the certified cshift_dn or cwindow, which "
+            "load a stored H; every magnetic read must be the register or a recompute")
     return head, tail
 
 
@@ -834,8 +841,13 @@ _SIGNATURE_BODY = '''    // THE SCRATCH OUTPUTS (float32 word views of complex64
     const float* __restrict__ kps_x, const float* __restrict__ kps_y,
     const float* __restrict__ kps_z,
     int bc_x, int bc_y, int bc_z,
+    // The Bloch connection per axis, the D curl's (eikna: the word ABOVE the stored
+    // window), from bloch_phase_arguments(grid, True).
     int ph_x, int ph_y, int ph_z,
-    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi
+    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: the curl half
+    // decodes it at the thread's cell and every recomputed update_H at its own.
+    const int* __restrict__ cb
 ) {
 '''
 
@@ -845,9 +857,9 @@ def signature(variant: str) -> str:
     return _SIGNATURE_HEAD[_check_variant(variant)] + _SIGNATURE_BODY
 
 
-def kernel_source(variant: str, expansion) -> str:
-    """The whole device source for one variant under one arm."""
-    head, tail = curl_pieces(variant, expansion)
+def kernel_source(variant: str) -> str:
+    """The whole device source for one variant."""
+    head, tail = curl_pieces(variant)
     weld = "\n".join([
         "",
         weld_args_construction().rstrip("\n"),
@@ -873,36 +885,31 @@ def kernel_source(variant: str, expansion) -> str:
         "    // redirected and NOTHING else touched.",
         "",
     ])
-    return (constitutive_prelude(variant, expansion) + weld_args_struct()
-            + raw_update_H_cell_source(expansion) + resolution_source()
-            + cshift_dn_recompute_source(variant, expansion)
+    return (constitutive_prelude(variant) + weld_args_struct()
+            + raw_update_H_cell_source() + resolution_source()
+            + cshift_dn_recompute_source(variant)
             + signature(variant) + head + weld + tail + "}\n")
 
 
 def device_sources() -> Dict[str, str]:
     """``{kernel name: source}`` -- the shape every family on this track publishes.
 
-    The FMA_V1 arm, which is the one every corpus row of both cells licenses on this
-    hardware; the NAIVE arm's texts are reachable through :func:`kernel_source` and
-    the gate compiles both.
     """
-    return {KERNEL_NAMES[variant]: kernel_source(variant, "FMA_V1")
-            for variant in VARIANTS}
+    return {KERNEL_NAMES[variant]: kernel_source(variant) for variant in VARIANTS}
 
 
 def source_digest() -> str:
     """One sha256 over every source this family can emit, canonically ordered.
 
-    Two variants times two arms is four sources; a single changed character here, in
+    Two variants, two sources; a single changed character here, in
     ``complex_emitter`` or in ``complex_folded_kernels`` moves this value.
     """
     import hashlib  # noqa: PLC0415 - stdlib, imported at the one call site
 
     digest = hashlib.sha256()
     for variant in sorted(KERNEL_NAMES):
-        for name in sorted(complex_emitter.EXPANSIONS):
-            digest.update(f"{variant}|{name}".encode("ascii"))
-            digest.update(kernel_source(variant, name).encode("utf-8"))
+        digest.update(variant.encode("ascii"))
+        digest.update(kernel_source(variant).encode("utf-8"))
     return digest.hexdigest()
 
 
@@ -910,23 +917,23 @@ def source_digest() -> str:
 # The compile memo
 # ---------------------------------------------------------------------------
 
-#: The mutable copy the launcher compiles, keyed by ``(variant, arm)``. The gate
+#: The mutable copy the launcher compiles, keyed by variant. The gate
 #: mutates through :func:`set_kernel_source`; ONE seam, so a mutation cannot miss a
 #: second copy.
-_SOURCES: Dict[Tuple[str, int], str] = {}
+_SOURCES: Dict[str, str] = {}
 
 
-def current_source(variant: str, expansion) -> str:
+def current_source(variant: str) -> str:
     """The device text this family would compile now -- the mutated one if any."""
-    key = (_check_variant(variant), _arm(expansion))
+    key = _check_variant(variant)
     if key not in _SOURCES:
-        _SOURCES[key] = kernel_source(*key)
+        _SOURCES[key] = kernel_source(key)
     return _SOURCES[key]
 
 
-def set_kernel_source(variant: str, expansion, source: str) -> None:
+def set_kernel_source(variant: str, source: str) -> None:
     """Replace one variant's device text -- the gate's mutation seam, and only that."""
-    _SOURCES[(_check_variant(variant), _arm(expansion))] = source
+    _SOURCES[_check_variant(variant)] = source
 
 
 def reset_kernel_sources() -> int:
@@ -936,7 +943,7 @@ def reset_kernel_sources() -> int:
     return count
 
 
-def _get_kernel(variant: str, expansion, source: Optional[str] = None,
+def _get_kernel(variant: str, source: Optional[str] = None,
                 options: Optional[Tuple[str, ...]] = None):
     """Compile on first use, memoized in the PACKAGE'S SHARED MEMO.
 
@@ -956,8 +963,7 @@ def _get_kernel(variant: str, expansion, source: Optional[str] = None,
     import cupy as cp  # noqa: PLC0415 - device-only, in a laptop-importable module
 
     variant = _check_variant(variant)
-    arm = _arm(expansion)
-    code = current_source(variant, arm) if source is None else source
+    code = current_source(variant) if source is None else source
     build = _COMPILE_OPTIONS if options is None else tuple(options)
     name = KERNEL_NAMES[variant]
     key = _kernel_cache_key(name, True, build, code)
@@ -994,8 +1000,7 @@ def variant_for(grid: Any) -> str:
 # ---------------------------------------------------------------------------
 
 def covers_complex_fused_hd_pair(fields: Any, pml: Any, grid: Any,
-                                 sources: Any = None, license: Any = None,
-                                 subnormal_policy: Any = None) -> Tuple[bool, str]:
+                                 sources: Any = None) -> Tuple[bool, str]:
     """May this product span ``update_H`` -> the electric withdraw -> ``step_D`` here?
 
     A CONJUNCTION OF THE TWO CERTIFIED HALVES' OWN PREDICATES plus this seam's
@@ -1004,7 +1009,7 @@ def covers_complex_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     configuration a half refuses:
 
     * the H side: ``coverage.covers_real_pml_complex_constitutive(..., "H")``, asked
-      FIRST because it asks the expansion licence first of all;
+      FIRST because the driver runs it first;
     * the D side: ``coverage.covers_real_pml_complex_curl(..., "step_D")`` on the
       plain variant, ``complex_folded_kernels.covers_complex_folded_curl(...,
       "step_D")`` on the folded one -- SELECTED BY THE GRID through
@@ -1020,7 +1025,7 @@ def covers_complex_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     Dcyl row is served.
     """
     covered, reason = covers_real_pml_complex_constitutive(
-        fields, pml, grid, "H", license, subnormal_policy)
+        fields, pml, grid, "H")
     if not covered:
         return False, f"constitutive half: {reason}"
     try:
@@ -1029,10 +1034,10 @@ def covers_complex_fused_hd_pair(fields: Any, pml: Any, grid: Any,
         return False, f"variant: {error}"
     if variant == "plain":
         covered, reason = covers_real_pml_complex_curl(
-            fields, pml, grid, "step_D", license, subnormal_policy)
+            fields, pml, grid, "step_D")
     else:
         covered, reason = complex_folded_kernels.covers_complex_folded_curl(
-            fields, pml, grid, "step_D", license, subnormal_policy)
+            fields, pml, grid, "step_D")
     if not covered:
         return False, f"curl half ({variant}): {reason}"
     seam_reasons = _withdraw_hoist.seam_withdraw_reasons(
@@ -1081,7 +1086,7 @@ def _word_view(array: Any) -> Any:
     return complex_pml_kernels.word_view(array)
 
 
-def resolve(fields: Any, grid: Any, pml: Any, expansion, *,
+def resolve(fields: Any, grid: Any, pml: Any, *,
             variant: Optional[str] = None,
             tables: Optional[Dict[str, Any]] = None,
             constitutive: Optional[Dict[str, Any]] = None,
@@ -1089,7 +1094,8 @@ def resolve(fields: Any, grid: Any, pml: Any, expansion, *,
             phase_flags: Optional[Any] = None,
             phase_values: Optional[Any] = None,
             scratch: Optional[Dict[str, Any]] = None,
-            dtdx: Optional[float] = None) -> Dict[str, Any]:
+            dtdx: Optional[float] = None,
+            chunk_bounds: Any = None) -> Dict[str, Any]:
     """Everything the launch needs, derived once per frozen configuration.
 
     DERIVED HERE BY THE SAME FUNCTIONS THE CERTIFIED LAUNCHERS ASK, which is what
@@ -1097,8 +1103,12 @@ def resolve(fields: Any, grid: Any, pml: Any, expansion, *,
     boundary code or which phase this seam reads" an enforced property rather than a
     convention. THE OVERRIDES ARE THE GATE'S DOOR and stay, keyword-only and named for
     what they are: a gate feeds deliberately wrong tables (the swapped sub-lattice),
-    wrong boundary codes (the dropped metallic wall) and wrong phases (the
-    unconjugated backward factor).
+    wrong boundary codes (the dropped metallic wall) and wrong connections (the B
+    curl's conjugate handed to this D curl).
+
+    ``chunk_bounds`` is the run's chunk record on the device, REQUIRED (it is a keyword
+    only so the overrides above keep their order): the curl half and every recomputed
+    ``update_H`` choose their forms from it.
 
     THE kms IDENTITY IS ASSERTED, NOT ASSUMED. ``step_D`` and ``update_H`` both read
     the INTEGER sub-lattice, so the curl's ``kms_*`` and the constitutive's are the
@@ -1112,7 +1122,7 @@ def resolve(fields: Any, grid: Any, pml: Any, expansion, *,
 
     if complex_pml_kernels is None:  # pragma: no cover - laptop guard
         raise RuntimeError("complex_pml_kernels did not import; there is no device here")
-    arm = _arm(expansion)
+    cb = complex_pml_kernels.chunk_record_argument(chunk_bounds)
     variant = _check_variant(variant if variant is not None else variant_for(grid))
     supplied = tables is not None or constitutive is not None
     if tables is None:
@@ -1165,10 +1175,11 @@ def resolve(fields: Any, grid: Any, pml: Any, expansion, *,
             # UNINITIALIZED IS CORRECT: every cell of all six is written by every
             # launch, so there is no cell whose prior contents a reader could observe.
             scratch[name] = cp.empty_like(source)
-    return {"variant": variant, "arm": arm, "tables": tables,
+    return {"variant": variant, "tables": tables,
             "constitutive": constitutive, "boundary_codes": tuple(boundary_codes),
             "phase_flags": tuple(phase_flags), "phase_values": tuple(phase_values),
-            "dtdx": float(dtdx), "scratch": scratch, "launches": 0}
+            "dtdx": float(dtdx), "scratch": scratch, "launches": 0,
+            "chunk_bounds": cb, "layer": pml}
 
 
 def assert_bindings_are_disjoint(fields: Any, state: Dict[str, Any]) -> int:
@@ -1202,9 +1213,27 @@ def assert_bindings_are_disjoint(fields: Any, state: Dict[str, Any]) -> int:
 def launch_complex_fused_hd_pair(fields: Any, state: Dict[str, Any],
                                  kernel: Optional[Any] = None,
                                  threads: int = _FUSED_THREADS) -> Dict[str, Any]:
-    """THE ONE LAUNCH. ``kernel`` and ``threads`` are the gate's doors."""
+    """THE ONE LAUNCH. ``kernel`` and ``threads`` are the gate's doors.
+
+    THE RUN'S FIRST ``update_H`` STARTS H FROM B (``stepping.separate_h_from_b``,
+    MEEP's update_eh.cpp:165-177), and this launch IS that update when
+    ``fields.h_separated`` is still False. B is final at this seam, so the start runs
+    on the array path BEFORE the launch, with the layer :func:`resolve` bound -- the
+    real weld's arrangement (``fused_hd_pair``) -- and every recompute then reads the
+    started state. A state with no layer is refused by name on that launch.
+    """
     import numpy as np  # noqa: PLC0415 - device-only path
 
+    started = False
+    if not bool(getattr(fields, "h_separated", True)):
+        if state.get("layer") is None:
+            raise RuntimeError(
+                "the run's first update_H starts H from B (stepping.separate_h_from_b) "
+                "and this H->D launch was resolved with no layer to start it with")
+        from ..stepping import separate_h_from_b  # noqa: PLC0415 - NumPy/CuPy array path
+
+        separate_h_from_b(fields, state["layer"])
+        started = True
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + threads - 1) // threads
     tables, constitutive = state["tables"], state["constitutive"]
@@ -1222,13 +1251,13 @@ def launch_complex_fused_hd_pair(fields: Any, state: Dict[str, Any],
     arguments += [np.int32(code) for code in state["boundary_codes"]]
     arguments += [np.int32(flag) for flag in state["phase_flags"]]
     arguments += [np.float32(value) for value in state["phase_values"]]
-    launcher = kernel or _get_kernel(state["variant"], state["arm"])
+    arguments += [state["chunk_bounds"]]
+    launcher = kernel or _get_kernel(state["variant"])
     launcher((blocks,), (threads,), tuple(arguments))
     state["launches"] += 1
     return {"launched": True, "blocks": blocks, "threads": threads,
-            "elements": nx * ny * nz, "variant": state["variant"],
-            "kernel": KERNEL_NAMES[state["variant"]],
-            "arm": complex_emitter.EXPANSION_NAMES[state["arm"]]}
+            "elements": nx * ny * nz, "variant": state["variant"], "h_started": started,
+            "kernel": KERNEL_NAMES[state["variant"]]}
 
 
 def rotate_into_fields(fields: Any, scratch: Dict[str, Any]) -> Dict[str, Any]:
@@ -1243,9 +1272,9 @@ def rotate_into_fields(fields: Any, scratch: Dict[str, Any]) -> Dict[str, Any]:
     return _hd.rotate_into_fields(fields, scratch)
 
 
-def run_complex_fused_hd_pair(fields: Any, grid: Any, pml: Any, expansion, *,
-                              sources: Any = None, license: Any = None,
-                              subnormal_policy: Any = None,
+def run_complex_fused_hd_pair(fields: Any, grid: Any, pml: Any, *,
+                              chunk_bounds: Any = None,
+                              sources: Any = None,
                               state: Optional[Dict[str, Any]] = None,
                               check: bool = True,
                               rotate: bool = True) -> Dict[str, Any]:
@@ -1255,11 +1284,11 @@ def run_complex_fused_hd_pair(fields: Any, grid: Any, pml: Any, expansion, *,
     """
     if check:
         covered, reason = covers_complex_fused_hd_pair(
-            fields, pml, grid, sources, license, subnormal_policy)
+            fields, pml, grid, sources)
         if not covered:
             raise ValueError(f"this product does not cover this configuration: {reason}")
     if state is None:
-        state = resolve(fields, grid, pml, expansion)
+        state = resolve(fields, grid, pml, chunk_bounds=chunk_bounds)
     assert_bindings_are_disjoint(fields, state)
     record = launch_complex_fused_hd_pair(fields, state)
     if rotate:

@@ -1,4 +1,4 @@
-"""Is ``--fmad=false`` load-bearing for the complex family? Measured, per arm.
+"""Is ``--fmad=false`` load-bearing for the complex family? Measured, per kernel.
 
 WHY THIS EXISTS. Every certified hand-CUDA slice carries ``--fmad=false`` as
 CORRECTNESS rather than tuning, and every one of their gates shows it by running a
@@ -8,8 +8,8 @@ complex family that control came back 36/36 IDENTICAL on the device
 gate that cannot see or a source the flag has nothing to do to.
 
 THE DISCRIMINATING EXPERIMENT, and it is a byte question rather than an output
-question: compile each of the four kernels under each arm, with the flag and
-without it, and compare the IMAGE NVRTC RETURNS. Two images that are bit-identical
+question: compile each of the four kernels with the flag and without it, and
+compare the IMAGE NVRTC RETURNS. Two images that are bit-identical
 cannot produce different words, so the flag is provably inert for that source; two
 that differ and still produce the same words would be a much weaker claim, and one
 this probe would show instead of hiding.
@@ -21,15 +21,13 @@ stronger comparison -- it is what actually runs -- and the instruction counts be
 are only meaningful on the PTX form, which is why they are reported as zero rather
 than as evidence when the image is binary.
 
-THE HYPOTHESIS IT TESTS, stated so a refutation is possible. Under ``FMA_V1``
-every product in the emitted source is either an explicit ``__fmaf_rn`` -- already
-one ``fma.rn.f32``, which no contraction flag reaches -- or a multiply by a
-literal (``0.0f``, ``-1.0f``) whose result feeds another multiply or an fma
-ADDEND. Contraction needs a ``mul`` feeding an ``add``, and the transcription
-leaves none. Under ``NAIVE`` it does: ``(z.re * c) - (z.im * 0.0f)`` is exactly
-that shape, so the flag should be load-bearing there and the two arms should come
-out differently. If FMA_V1 also differs, the hypothesis is wrong and the flag is
-doing something this probe will have named.
+THE HYPOTHESIS IT TESTS, stated so a refutation is possible. The emitter has one
+part-wise body: each real coefficient times a part is one product, each sum
+its own rounding, as MEEP's contraction-off build computes them. That body is full
+of a ``mul`` feeding an ``add`` -- the curl's ``f*kms - curl``, the constitutive
+``kps*src - kms*prev``, the unfused Bloch product -- which is exactly the shape
+``--fmad`` acts on, so the flag should be LOAD-BEARING on every kernel. An image the
+flag does not change would refute it, and this probe would name the kernel.
 
 Usage (from ``parity/meep_gpu``, on a host with CuPy and a device)::
 
@@ -124,67 +122,61 @@ def main(argv=None) -> int:
 
     for sub_step in sorted(complex_emitter.KERNELS):
         name = complex_emitter.KERNELS[sub_step][0]
-        for arm in ("FMA_V1", "NAIVE"):
-            source = complex_emitter.complex_source(sub_step, arm)
-            row: Dict[str, Any] = {"sub_step": sub_step, "kernel": name,
-                                   "arm": arm,
-                                   "source_sha256": hashlib.sha256(
-                                       source.encode("utf-8")).hexdigest()}
-            for label, options in GUARDS:
-                raw = image_for(source, options)
-                kind = image_kind(raw)
-                text = raw.decode("utf-8", "replace") if kind == "ptx" else ""
-                counts = {token: len(re.findall(re.escape(token), text))
-                          for token in _PTX_COUNTS}
-                row[label] = {
-                    "image_sha256": hashlib.sha256(raw).hexdigest(),
-                    "image_bytes": len(raw),
-                    "image_kind": kind,
-                    "instruction_counts": counts}
-                print(f"[{sub_step}/{arm}/{label}] {kind} "
-                      f"{len(raw)}B sha={hashlib.sha256(raw).hexdigest()[:12]} "
-                      + " ".join(f"{k}={v}" for k, v in counts.items() if v),
-                      flush=True)
-            row["image_identical_across_guards"] = (
-                row["fmad_false"]["image_sha256"]
-                == row["default_no_options"]["image_sha256"])
-            row["fma_delta"] = (
-                row["default_no_options"]["instruction_counts"]["fma.rn.f32"]
-                - row["fmad_false"]["instruction_counts"]["fma.rn.f32"])
-            print(f"[{sub_step}/{arm}] image_identical="
-                  f"{row['image_identical_across_guards']} "
-                  f"extra_fma_without_the_flag={row['fma_delta']}", flush=True)
-            results["rows"].append(row)
-            with open(out_path, "w", encoding="utf-8") as handle:
-                json.dump(results, handle, indent=2, sort_keys=True, default=str)
+        source = complex_emitter.complex_source(sub_step)
+        row: Dict[str, Any] = {"sub_step": sub_step, "kernel": name,
+                               "source_sha256": hashlib.sha256(
+                                   source.encode("utf-8")).hexdigest()}
+        for label, options in GUARDS:
+            raw = image_for(source, options)
+            kind = image_kind(raw)
+            text = raw.decode("utf-8", "replace") if kind == "ptx" else ""
+            counts = {token: len(re.findall(re.escape(token), text))
+                      for token in _PTX_COUNTS}
+            row[label] = {
+                "image_sha256": hashlib.sha256(raw).hexdigest(),
+                "image_bytes": len(raw),
+                "image_kind": kind,
+                "instruction_counts": counts}
+            print(f"[{sub_step}/{label}] {kind} "
+                  f"{len(raw)}B sha={hashlib.sha256(raw).hexdigest()[:12]} "
+                  + " ".join(f"{k}={v}" for k, v in counts.items() if v),
+                  flush=True)
+        row["image_identical_across_guards"] = (
+            row["fmad_false"]["image_sha256"]
+            == row["default_no_options"]["image_sha256"])
+        row["fma_delta"] = (
+            row["default_no_options"]["instruction_counts"]["fma.rn.f32"]
+            - row["fmad_false"]["instruction_counts"]["fma.rn.f32"])
+        print(f"[{sub_step}] image_identical="
+              f"{row['image_identical_across_guards']} "
+              f"extra_fma_without_the_flag={row['fma_delta']}", flush=True)
+        results["rows"].append(row)
+        with open(out_path, "w", encoding="utf-8") as handle:
+            json.dump(results, handle, indent=2, sort_keys=True, default=str)
 
-    by_arm = {}
-    for arm in ("FMA_V1", "NAIVE"):
-        rows = [r for r in results["rows"] if r["arm"] == arm]
-        by_arm[arm] = {
-            "kernels": len(rows),
-            "image_identical_across_guards": sum(
-                1 for r in rows if r["image_identical_across_guards"]),
-            "kernels_the_flag_changes": sum(
-                1 for r in rows if not r["image_identical_across_guards"]),
-            "max_extra_fma_without_the_flag": max(
-                (r["fma_delta"] for r in rows), default=0),
-        }
-    results["by_arm"] = by_arm
+    rows = results["rows"]
+    results["summary"] = {
+        "kernels": len(rows),
+        "image_identical_across_guards": sum(
+            1 for r in rows if r["image_identical_across_guards"]),
+        "kernels_the_flag_changes": sum(
+            1 for r in rows if not r["image_identical_across_guards"]),
+        "max_extra_fma_without_the_flag": max(
+            (r["fma_delta"] for r in rows), default=0),
+    }
     results["verdict"] = {
-        # THE CLAIM, as a measured pair. The flag is inert for the arm this
-        # platform licensed and load-bearing for the other one; a source with no
-        # mul-feeding-an-add has nothing for a contraction flag to do.
-        "flag_is_inert_for_FMA_V1":
-            by_arm["FMA_V1"]["kernels_the_flag_changes"] == 0,
-        "flag_is_load_bearing_for_NAIVE":
-            by_arm["NAIVE"]["kernels_the_flag_changes"] > 0,
+        # THE CLAIM: the flag changes the image of every kernel. The part-wise
+        # body spells MEEP's separate roundings, and a contraction flag left on
+        # would fuse them.
+        "flag_is_load_bearing_on_every_kernel": (
+            results["summary"]["kernels_the_flag_changes"]
+            == results["summary"]["kernels"]),
     }
     results["finished_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     with open(out_path, "w", encoding="utf-8") as handle:
         json.dump(results, handle, indent=2, sort_keys=True, default=str)
     print(f"[done] {json.dumps(results['verdict'])}", flush=True)
-    print(f"[done] by_arm {json.dumps(by_arm)}", flush=True)
+    print(f"[done] summary {json.dumps(results['summary'])}", flush=True)
     return 0
 
 

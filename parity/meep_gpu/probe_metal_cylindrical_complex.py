@@ -1,38 +1,18 @@
 """What this host actually does with the cylindrical complex family's own spellings.
 
-FOUR QUESTIONS, FOUR LEGS, ONE ARTIFACT. Each is a platform or array-path fact the
+THREE QUESTIONS, THREE LEGS, ONE ARTIFACT. Each is a platform or array-path fact the
 family would otherwise have to INHERIT from the Triton/CuPy track, and this project's
 rule is that a remembered fact about another backend is a hypothesis, not a
 measurement. Nothing here is copied forward; every number below is cut on this host.
 
-1. ``expansion`` — WHICH COMPLEX-MULTIPLY ARM THE REFERENCE TAKES, over the FIVE
-   orientations ``complex_fields`` already probes PLUS THE TWO THIS FAMILY ADDS:
-
-   * ``c8_mul_c8_row_coefficient_left`` — ``stepping._cylindrical_imr_term`` (:724)
-     spells ``factor * partner_values`` with ``factor`` an ``(nr, 1, 1)`` complex64
-     ROW and ``partner_values`` an ``(nr, ny, nz)`` complex64 VOLUME. A broadcast
-     complex-by-complex product with the COEFFICIENT ON THE LEFT. None of the base
-     five is that call: they cover a general product with the FIELD left, an array
-     times a complex SCALAR, a REAL coefficient in each orientation, and a Python
-     float on the left.
-   * ``c8_mul_c8_scalar_left`` — ``_cylindrical_axis_increment_B`` (:644) spells
-     ``1j * (m*dtdx) * ez_off_axis``, i.e. a PYTHON COMPLEX on the LEFT of a
-     complex64 array. Its real word is a SIGNED ZERO (``-0.0`` for m < 0), which is
-     exactly the operand class a plane-wise shortcut gets wrong.
-
-   ``special_kz`` and ``folded_complex`` each established that a new operand
-   ORIENTATION earns its own pattern rather than inheriting a verdict measured
-   elsewhere. This follows them, and an artifact cut before this tranche licenses
-   nothing here.
-
-2. ``negation`` — HOW ``-x`` LOWERS ON METAL, re-measured rather than inherited.
+1. ``negation`` — HOW ``-x`` LOWERS ON METAL, re-measured rather than inherited.
    The Triton cylindrical kernel spells every negated addend ``x * -1.0`` because
    *Triton* lowers unary minus as ``0.0 - x`` and canonicalizes signed zeros. THAT
    IS A FACT ABOUT TRITON. This leg compiles all three spellings and compares them
    against ``numpy``'s own unary negation on an EXHAUSTIVE signed-zero table, so the
    shipped spelling is chosen by this host's answer.
 
-3. ``axis_identity`` — WHETHER THE r = 0 NEAR GHOST IS OBSERVABLE, measured on the
+2. ``axis_identity`` — WHETHER THE r = 0 NEAR GHOST IS OBSERVABLE, measured on the
    ARRAY PATH on this host (NumPy, no device involved). ``stepping._shift_up``'s
    ``CYL_AXIS`` branch SHARES the ``METALLIC`` arm by source identity (:1781-1783 —
    one branch, three kinds), but the NEAR ghost (:1830-1842) writes the
@@ -42,14 +22,19 @@ measurement. Nothing here is copied forward; every number below is cut on this h
    sub-step, then run it again with ``boundaries[0]`` forced to ``metallic`` — the
    arm the kernel actually compiles — and count differing words.
 
-4. ``helper_agreement`` — WHETHER THE SHIPPED SHADER HELPER REPRODUCES THE
-   REFERENCE on this family's two new orientations. Leg 1 classifies what numpy
-   does; this launches ``templates.complex_helpers(arm)``'s ``c_mul`` on the device
-   against the same vectors and counts differing uint32 words. Leg 1 alone would
-   license an arm from a host-side model of the kernel; this is the kernel.
+3. ``helper_agreement`` — WHETHER THE SHIPPED SHADER HELPER REPRODUCES THE
+   REFERENCE on this family's own orientation (the i*m/r coefficient ROW on the
+   left of a volume): this launches ``templates.complex_helpers()``'s ``c_mul`` on
+   the device and counts differing uint32 words against ``factor * field``.
+
+SINCE THE ARRAY PATH STEPS MEEP'S CYLINDRICAL FORMS (bit_parity_0_10 AP6c), THE i*m/r
+ROW IS NOT A CALL ``stepping`` MAKES: the term is a per-part quarter turn of a float32
+``rinv`` row (``stepping._cylindrical_imr_increment``), and the Metal kernel forms no
+general complex product at all. Leg 3 still builds the retired row
+(:func:`legacy_imr_row`) as the operand ``c_mul`` is measured on.
 
 EVIDENCE CLASS, STATED AND NOT PAPERED OVER. ``torch.mps.compile_shader`` exposes no
-AIR, no GPU ISA and no optimisation report, so legs 2 and 4 certify that the ANSWERS
+AIR, no GPU ISA and no optimisation report, so legs 1 and 3 certify that the ANSWERS
 agree, never that the INSTRUCTIONS do. They catch a wrong answer, not a wrong
 instruction. That is this backend's standing certification gap against the Triton and
 CUDA tracks and it stays stated on every claim built on top of these numbers.
@@ -60,7 +45,7 @@ subnormal-free precondition; a probe that mixed the band question into the
 orientation question would answer neither. The census is asserted, not assumed.
 
     python -u probe_metal_cylindrical_complex.py \\
-        --out results/metal_cylindrical_complex_2026-08-16/expansion.json
+        --out results/metal_cylindrical_complex_<date>/probe.json
 """
 
 from __future__ import annotations
@@ -82,13 +67,11 @@ if HERE not in sys.path:
 import metal_gate_kit as kit  # noqa: E402
 
 from meep_gpu.metal_kernels import (  # noqa: E402
-    complex_fields,
     cylindrical_complex,
     templates,
 )
 
 SEED = 20260816
-VECTOR_CELLS = 8192
 
 #: The negation leg's table is EXHAUSTIVE over the operand classes that matter, not
 #: sampled: random data discriminates none of the three spellings (measured 0/16384
@@ -97,6 +80,22 @@ _NEGATION_CORNERS: Tuple[float, ...] = (
     0.0, -0.0, 1.0, -1.0, 3.5, -3.5, 1e-20, -1e-20, 1e20, -1e20,
     float(np.float32(np.pi)), float(-np.float32(np.pi)),
 )
+
+
+def legacy_imr_row(xp: Any, target: str, sign: float, m: int, dtdx: float, rows: int,
+                   dtype: Any) -> Any:
+    """The ``(rows, 1, 1)`` complex row ``(-1j) * (sign*2*m*dtdx) / max(2r + iyee_r, 1)``.
+
+    The operand class of the retired i*m/r coefficient row, built as it was:
+    the quotient in float64, rounded once to ``dtype``. Its real word is +0.0 on every
+    entry, whatever the sign, because the ``(-1j) * X`` spelling launders it.
+    """
+    from meep_gpu.fields import IYEE_SHIFTS  # noqa: PLC0415
+
+    iyee_r = IYEE_SHIFTS[target][0]
+    doubled = xp.maximum(2 * xp.arange(int(rows), dtype=xp.float64) + iyee_r, 1.0)
+    return ((-1j) * (float(sign) * 2.0 * int(m) * float(dtdx))
+            / doubled.reshape(-1, 1, 1)).astype(dtype)
 
 
 def _words(array: Any) -> Any:
@@ -115,62 +114,10 @@ def _subnormal_words(array: Any) -> int:
                                 & (magnitude < np.float32(np.finfo(np.float32).tiny))))
 
 
-def _fma(a: Any, b: Any, addend: Any) -> Any:
-    """An exact-enough f32 fma: the product is EXACT in float64 (24+24 <= 53 bits).
-
-    The subsequent add rounds twice, which can in principle differ from a true fma.
-    It is used only to CLASSIFY; the classification is corroborated by leg 4, where
-    the shipped shader's own ``fma()`` reproduces the reference on the same vectors.
-    """
-    return (np.float64(a) * np.float64(b) + np.float64(addend)).astype(np.float32)
-
-
-def _arms(left_re, left_im, right_re, right_im) -> Dict[str, Tuple[Any, Any]]:
-    """The two transcription arms, with LEFT and RIGHT named rather than assumed."""
-    p_rr = np.float32(left_re * right_re)
-    p_ii = np.float32(left_im * right_im)
-    p_ri = np.float32(left_re * right_im)
-    p_ir = np.float32(left_im * right_re)
-    return {
-        "NAIVE": (np.float32(p_rr - p_ii), np.float32(p_ri + p_ir)),
-        "FMA_V1": (_fma(left_re, right_re, -p_ii.astype(np.float64)),
-                   _fma(left_re, right_im, p_ir.astype(np.float64))),
-    }
-
-
-def _classify(product: Any, left_re, left_im, right_re, right_im
-              ) -> Tuple[str, Dict[str, Any]]:
-    got = np.asarray(product, dtype=np.complex64)
-    detail: Dict[str, Any] = {}
-    misses: Dict[str, int] = {}
-    for arm, (arm_re, arm_im) in _arms(left_re, left_im, right_re, right_im).items():
-        bad = ((_words(got.real) != _words(arm_re))
-               | (_words(got.imag) != _words(arm_im)))
-        misses[arm] = int(bad.sum())
-        detail[arm] = {
-            "differing_words": misses[arm],
-            "example_cells": [
-                {"index": int(i),
-                 "reference": [float(got.real.reshape(-1)[i]),
-                               float(got.imag.reshape(-1)[i])],
-                 "arm": [float(np.asarray(arm_re).reshape(-1)[i]),
-                         float(np.asarray(arm_im).reshape(-1)[i])]}
-                for i in np.flatnonzero(bad)[:3]],
-        }
-    if misses["NAIVE"] == 0 and misses["FMA_V1"] == 0:
-        return complex_fields.AMBIGUOUS_BOTH, detail
-    if misses["NAIVE"] == 0:
-        return "NAIVE", detail
-    if misses["FMA_V1"] == 0:
-        return "FMA_V1", detail
-    return "NEITHER", detail
-
-
 def _complex_from_parts(real: Any, imag: Any) -> Any:
     """``real + 1j*imag`` DOES NOT PRESERVE SIGNED ZEROS — build the words directly.
 
-    Recorded by ``probe_metal_beta_expansion`` after it silently corrupted that
-    probe's needles: ``zr + 1j*zi`` multiplies through complex128 and canonicalizes
+    ``zr + 1j*zi`` multiplies through complex128 and canonicalizes
     ``-0.0`` on the imaginary half. Writing the two planes into a complex64 view
     keeps every bit, which for THIS family matters twice over — the i*m/r row's real
     word is ``+0.0`` and the |m| = 1 scalar's is ``-0.0`` at negative m.
@@ -182,143 +129,8 @@ def _complex_from_parts(real: Any, imag: Any) -> Any:
     return out
 
 
-def _vectors(rng) -> Tuple[Any, Any]:
-    """Random normals plus an exhaustive signed-zero corner block. NO SUBNORMALS."""
-    real = rng.standard_normal(VECTOR_CELLS).astype(np.float32)
-    imag = rng.standard_normal(VECTOR_CELLS).astype(np.float32)
-    corners = np.float32([0.0, -0.0, 0.0, -0.0, 1e-20, -1e-20, 3.0, -3.0])
-    corner_imag = np.float32([0.0, 0.0, -0.0, -0.0, -1e-20, 1e-20, -0.5, 0.5])
-    real[:corners.size] = corners
-    imag[:corner_imag.size] = corner_imag
-    return real, imag
-
-
 # ---------------------------------------------------------------------------
-# Leg 1 — the expansion arm
-# ---------------------------------------------------------------------------
-
-def measure_expansion(record_backend: str = cylindrical_complex.PROBE_BACKEND
-                      ) -> Dict[str, Any]:
-    rng = np.random.default_rng(SEED)
-    real, imag = _vectors(rng)
-    field = _complex_from_parts(real, imag)
-
-    patterns: Dict[str, str] = {}
-    detail: Dict[str, Any] = {}
-
-    # THE BASE FIVE ARE `complex_fields`' OWN CALL SITES, re-measured here rather
-    # than read across from that family's artifact. This family's curl launches a
-    # body built from the same helpers — the dtdx scalar-left multiply, the
-    # `fu *= kms` family — so the same orientations have to agree, and an artifact
-    # carrying only the two new patterns would license a kernel on evidence about
-    # two of its five multiplies.
-    phase = np.complex64(complex(np.cos(0.7), np.sin(0.7)))
-    patterns["c8_mul_c8"], detail["c8_mul_c8"] = _classify(
-        (field * phase).astype(np.complex64), real, imag,
-        np.float32(phase.real), np.float32(phase.imag))
-    patterns["c8_mul_c8_scalar_right"], detail["c8_mul_c8_scalar_right"] = _classify(
-        np.multiply(field, phase).astype(np.complex64), real, imag,
-        np.float32(phase.real), np.float32(phase.imag))
-    kms = np.float32(0.8137)
-    patterns["c8_mul_f4_field_left"], detail["c8_mul_f4_field_left"] = _classify(
-        (field * kms).astype(np.complex64), real, imag, kms, np.float32(0.0))
-    patterns["f4_mul_c8_coefficient_left"], detail["f4_mul_c8_coefficient_left"] = (
-        _classify((kms * field).astype(np.complex64), kms, np.float32(0.0),
-                  real, imag))
-    dtdx = 0.37
-    patterns["python_float_left"], detail["python_float_left"] = _classify(
-        np.multiply(np.float32(dtdx), field).astype(np.complex64),
-        np.float32(dtdx), np.float32(0.0), real, imag)
-
-    # 6. THIS TRANCHE'S FIRST: the i*m/r coefficient as a BROADCAST ROW on the LEFT,
-    #    built by the family's own transcription of `stepping`'s `_build` and
-    #    multiplied exactly as :724 multiplies it. Swept over BOTH signs of m, BOTH
-    #    call-site signs and BOTH targets of each sub-step, because the row's real
-    #    word is laundered to +0.0 by the `(-1j) * X` spelling and a sign that
-    #    escaped it would be visible only here.
-    rows = 32
-    volume = _complex_from_parts(
-        rng.standard_normal(rows * 3 * 5).astype(np.float32),
-        rng.standard_normal(rows * 3 * 5).astype(np.float32)).reshape(rows, 3, 5)
-    row_verdicts: List[str] = []
-    per_row: List[Dict[str, Any]] = []
-    for m in (1, -1, 2, -2, 3, 5):
-        for sub_step, terms in cylindrical_complex.IMR_TERMS.items():
-            targets = cylindrical_complex.SUB_STEPS[sub_step]["targets"]
-            for index, _register, sign in terms:
-                factor = cylindrical_complex.imr_coefficient_row(
-                    np, targets[index], sign, m, dtdx, rows, np.complex64)
-                product = (factor * volume).astype(np.complex64)
-                broadcast = np.broadcast_to(factor, volume.shape)
-                verdict, entry = _classify(
-                    product.reshape(-1),
-                    np.ascontiguousarray(broadcast.real).reshape(-1),
-                    np.ascontiguousarray(broadcast.imag).reshape(-1),
-                    np.ascontiguousarray(volume.real).reshape(-1),
-                    np.ascontiguousarray(volume.imag).reshape(-1))
-                row_verdicts.append(verdict)
-                per_row.append({
-                    "m": m, "sub_step": sub_step, "target": targets[index],
-                    "sign": sign, "verdict": verdict,
-                    "real_word_hex": f"0x{_words(factor.real)[0]:08x}",
-                    "real_words_all_plus_zero": bool(
-                        np.all(_words(factor.real) == np.uint32(0))),
-                    "naive_differing": entry["NAIVE"]["differing_words"],
-                    "fma_differing": entry["FMA_V1"]["differing_words"]})
-    unique_rows = sorted(set(row_verdicts))
-    patterns[cylindrical_complex.IMR_ROW_PROBE_PATTERN] = (
-        unique_rows[0] if len(unique_rows) == 1 else "NEITHER")
-    detail[cylindrical_complex.IMR_ROW_PROBE_PATTERN] = {
-        "per_row": per_row, "distinct_verdicts": unique_rows,
-        "note": ("AMBIGUOUS_BOTH is the expected verdict and is accepted by "
-                 "arithmetic rather than leniency: the row's REAL word is exactly "
-                 "+0.0 at every m, so c_re*z_re is exact and the fused and "
-                 "separately-rounded forms are the same single rounding. It still "
-                 "gates NEITHER, and `real_words_all_plus_zero` is the datum that "
-                 "makes the reason checkable rather than asserted.")}
-
-    # 7. THIS TRANCHE'S SECOND: the |m| = 1 B-side scalar, a PYTHON COMPLEX on the
-    #    LEFT whose real word is a SIGNED ZERO. Both signs of m, because the sign is
-    #    the whole point — `1j * X` gives -0.0 for X < 0 where the i*m/r row's
-    #    `(-1j) * X` gives +0.0 for both.
-    scalar_verdicts: List[str] = []
-    per_scalar: List[Dict[str, Any]] = []
-    for m in (1, -1):
-        _minus, (inc_re, inc_im) = cylindrical_complex.axis_increment_scalars(m, dtdx)
-        scalar = _complex_from_parts(np.float32([inc_re]), np.float32([inc_im]))[0]
-        product = (scalar * field).astype(np.complex64)
-        verdict, entry = _classify(product, np.float32(inc_re), np.float32(inc_im),
-                                   real, imag)
-        scalar_verdicts.append(verdict)
-        per_scalar.append({
-            "m": m, "verdict": verdict,
-            "real_word_hex": f"0x{_words(np.float32([inc_re]))[0]:08x}",
-            "real_word_is_negative_zero": bool(
-                _words(np.float32([inc_re]))[0] == np.uint32(0x80000000)),
-            "naive_differing": entry["NAIVE"]["differing_words"],
-            "fma_differing": entry["FMA_V1"]["differing_words"]})
-    unique_scalars = sorted(set(scalar_verdicts))
-    patterns[cylindrical_complex.AXIS_SCALAR_PROBE_PATTERN] = (
-        unique_scalars[0] if len(unique_scalars) == 1 else "NEITHER")
-    detail[cylindrical_complex.AXIS_SCALAR_PROBE_PATTERN] = {
-        "per_scalar": per_scalar, "distinct_verdicts": unique_scalars}
-
-    return {
-        "backend": record_backend,
-        "numpy": np.__version__,
-        "seed": SEED,
-        "vector_cells": VECTOR_CELLS,
-        "patterns": patterns,
-        "detail": detail,
-        "subnormal_words_in_vectors": _subnormal_words(field.view(np.float32)),
-        "orientation_note": ("the fused product is the LEFT operand's; every pattern "
-                             "is probed in the orientation its call site writes, and "
-                             "a single-orientation probe would misclassify half"),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Leg 2 — how negation lowers on THIS backend
+# Leg 1 — how negation lowers on THIS backend
 # ---------------------------------------------------------------------------
 
 _NEGATION_SOURCE = r"""
@@ -387,7 +199,7 @@ def measure_negation(runner: "Runner") -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Leg 3 — is the r = 0 NEAR ghost observable? (array path, NumPy, no device)
+# Leg 2 — is the r = 0 NEAR ghost observable? (array path, NumPy, no device)
 # ---------------------------------------------------------------------------
 
 def measure_axis_identity() -> Dict[str, Any]:
@@ -497,7 +309,7 @@ def measure_axis_identity() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Leg 4 — does the shipped shader helper reproduce the reference?
+# Leg 3 — does the shipped shader helper reproduce the reference?
 # ---------------------------------------------------------------------------
 
 _HELPER_SOURCE = r"""
@@ -521,12 +333,12 @@ kernel void helper_probe(
 """
 
 
-def measure_helper_agreement(runner: "Runner", arm: str) -> Dict[str, Any]:
+def measure_helper_agreement(runner: "Runner") -> Dict[str, Any]:
     """``c_mul(coefficient, field)`` on the device against ``coefficient * field``.
 
     THE ORIENTATION IS THE POINT. ``stepping`` writes ``factor * partner_values``
     with the COEFFICIENT on the left, so the shader passes it as ``c_mul``'s FIRST
-    argument. Swapping them is a different fused expansion and a different set of
+    argument. Swapping them is a different product and a different set of
     bytes; this leg is what makes "the helper serves this call site" a measurement.
     """
     rng = np.random.default_rng(SEED + 2)
@@ -537,7 +349,7 @@ def measure_helper_agreement(runner: "Runner", arm: str) -> Dict[str, Any]:
         for sub_step, terms in cylindrical_complex.IMR_TERMS.items():
             targets = cylindrical_complex.SUB_STEPS[sub_step]["targets"]
             for index, _register, sign in terms:
-                factor = cylindrical_complex.imr_coefficient_row(
+                factor = legacy_imr_row(
                     np, targets[index], sign, m, dtdx, cells, np.complex64
                 ).reshape(-1)
                 field = _complex_from_parts(
@@ -547,7 +359,7 @@ def measure_helper_agreement(runner: "Runner", arm: str) -> Dict[str, Any]:
                 for mode in templates.CONTRACT_MODES:
                     filled = templates.substitute(_HELPER_SOURCE, {
                         "__CONTRACT__": templates.contraction_pragma(mode),
-                        "__HELPERS__": templates.complex_helpers(arm)})
+                        "__HELPERS__": templates.complex_helpers()})
                     got, moved = runner.launch_helper(filled, factor, field)
                     rows.append({
                         "m": m, "sub_step": sub_step, "target": targets[index],
@@ -560,7 +372,6 @@ def measure_helper_agreement(runner: "Runner", arm: str) -> Dict[str, Any]:
     kit.log(f"[helper] {len(rows)} rows, "
             f"{sum(r['differing_words'] for r in rows)} differing")
     return {
-        "arm": arm,
         "rows": rows,
         "rows_measured": len(rows),
         "total_differing": sum(row["differing_words"] for row in rows),
@@ -646,28 +457,14 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--legs", default="all",
                         help="comma-separated subset of "
-                             "expansion,negation,axis_identity,helper_agreement")
+                             "negation,axis_identity,helper_agreement")
     arguments = parser.parse_args()
-    wanted = ({"expansion", "negation", "axis_identity", "helper_agreement"}
+    wanted = ({"negation", "axis_identity", "helper_agreement"}
               if arguments.legs == "all"
               else {name.strip() for name in arguments.legs.split(",")})
 
     record: Dict[str, Any] = {"legs_run": sorted(wanted)}
     failures: List[str] = []
-
-    if "expansion" in wanted:
-        kit.log("[leg] expansion")
-        record.update(measure_expansion())
-        for name, verdict in sorted(record["patterns"].items()):
-            kit.log(f"[pattern] {name:<40} {verdict}")
-
-    arm: Optional[str] = None
-    if "patterns" in record:
-        arm = cylindrical_complex.expansion_from_probe(record)
-        record["licensed_expansion"] = arm
-        kit.log(f"[license] expansion arm = {arm!r}")
-        if arm is None:
-            failures.append("no expansion arm is licensed by this artifact")
 
     runner: Optional[Runner] = None
     if wanted & {"negation", "helper_agreement"}:
@@ -701,18 +498,15 @@ def main() -> int:
                             "with a no-op certifies nothing")
 
     if "helper_agreement" in wanted and runner is not None:
-        if arm is None:
-            failures.append("helper_agreement needs a licensed arm and has none")
-        else:
-            kit.log("[leg] helper_agreement")
-            record["helper_agreement"] = measure_helper_agreement(runner, arm)
-            if record["helper_agreement"]["minimum_moved"] <= 0:
-                failures.append("a helper_agreement row moved no words")
-            if record["helper_agreement"]["total_differing"]:
-                failures.append(
-                    f"the shipped c_mul helper misses "
-                    f"{record['helper_agreement']['total_differing']} words against "
-                    f"the reference on this family's own orientation")
+        kit.log("[leg] helper_agreement")
+        record["helper_agreement"] = measure_helper_agreement(runner)
+        if record["helper_agreement"]["minimum_moved"] <= 0:
+            failures.append("a helper_agreement row moved no words")
+        if record["helper_agreement"]["total_differing"]:
+            failures.append(
+                f"the shipped c_mul helper misses "
+                f"{record['helper_agreement']['total_differing']} words against "
+                f"the reference on this family's own orientation")
 
     if runner is not None:
         record["device"] = {"compiles": runner.compiles, "launches": runner.launches}

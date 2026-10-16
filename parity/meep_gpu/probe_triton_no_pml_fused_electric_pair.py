@@ -33,20 +33,23 @@ passes beside a null control that also passes has measured the reference against
 
 THE CLAUSE THAT USED TO PRICE THIS CELL IS MEASURED HERE TOO — in BOTH of its lives.
 Until 2026-09-01 a NON-INTEGRATED electric source on a conductive run sent the driver
-through ``_inject_electric_through_conductivity``'s whole-volume rescale, which
-canonicalised every ``-0.0`` in the target D component to ``+0.0`` at cells no deposit
-closure can name; the product refused that BY NAME and this gate's precursor leg ran it
-anyway and required the divergence. THE DRIVER NOW REPLAYS THE RESCALE SPARSELY at the
-deposit cells the sources publish (identity everywhere else), the clause was lifted on
-that change, and ``lifted_refusal`` below is the lift's measurement: the formerly
-refused configuration, WITH the bracket, must now be BYTE-IDENTICAL to the array path
-at EVERY step — while the RETIRED whole-volume composition, replayed verbatim as an
-armed control on a third driver, MUST still diverge from today's array path on the
-same signed-zero seed. A lift whose control cannot diverge measured nothing; a lift
-whose carried route diverges anywhere is no lift. The integrated-source and lossless
+through a whole-volume rescale, which canonicalised every ``-0.0`` in the target D
+component to ``+0.0`` at cells no deposit closure can name; the product refused that BY
+NAME and this gate's precursor leg ran it anyway and required the divergence. The
+rescale then became sparse at the deposit cells the sources publish (identity
+everywhere else), and since the double-precision deposit the ``condinv`` scale is
+inside each source's own deposit at its own cells (``sources._deposit``). The clause
+was lifted on that change, and ``lifted_refusal`` below is the lift's measurement: the
+formerly refused configuration, WITH the bracket, must now be BYTE-IDENTICAL to the
+array path at EVERY step — while the RETIRED whole-volume passes, re-armed around the
+shipped deposits as a control on a third driver (:func:`_retired_whole_volume_inject`),
+MUST still diverge from today's array path on the same signed-zero seed. A lift whose
+control cannot diverge measured nothing; a lift whose carried route diverges anywhere
+is no lift. The integrated-source and lossless
 companions of the original three-leg protocol ride in the same leg and must stay
 byte-identical. What the clause still refuses — a scaled source publishing NO deposit
-table, the driver's dense fallback — is asserted in ``predicate`` and ``refusals``.
+table, whose cells no point repair can name — is asserted in ``predicate`` and
+``refusals``.
 
 WHAT A PASS DOES NOT LICENSE. Nothing about a folded grid (refused by name, and the
 fold's own divergence with NO SOURCE AT ALL is measured in
@@ -102,6 +105,7 @@ SOURCES: Tuple[str, ...] = (
     "meep_gpu/triton_kernels/no_pml.py",
     "meep_gpu/triton_kernels/no_pml_stored_e.py",
     "meep_gpu/triton_kernels/kernels.py",
+    "meep_gpu/triton_kernels/forms.py",
     "meep_gpu/triton_kernels/launch.py",
     "meep_gpu/triton_kernels/coverage.py",
     "meep_gpu/deposit_repair.py",
@@ -433,9 +437,8 @@ class _ScaledElectric(_Electric):
 class _ScaledElectricNoTable:
     """A NON-integrated electric source publishing NO deposit table AT ALL.
 
-    ``hasattr(source, "_point_ix")`` is False — the driver's dense-fallback
-    partition (``_inject_electric_through_conductivity``) — where
-    :class:`_ElectricWithoutIndex` carries the attribute as ``None`` and is
+    ``hasattr(source, "_point_ix")`` is False — cells no point repair can name —
+    where :class:`_ElectricWithoutIndex` carries the attribute as ``None`` and is
     refused by the repair's own index clause instead. No in-tree source class is
     either; both stay because the clauses they exercise fail CLOSED on a
     duck-typed stranger.
@@ -1146,9 +1149,16 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
     assert not source.lstrip().startswith("@"), (
         "the extracted body already carries a decorator; adding a second would "
         "compile a different object from the one this gate certifies")
+    # The curl half calls the shared form helpers and reads the chunk record's
+    # presence word, so the mutant's module imports the helpers from the package and
+    # restates the word's offset, as the shipped module does.
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD  # noqa: PLC0415
+
     header = ("import triton\nimport triton.language as tl\n"
+              "from meep_gpu.triton_kernels.forms import axis_present, curl_stencil\n"
               "PERIODIC = tl.constexpr(0)\n"
-              "METALLIC = tl.constexpr(1)\n\n@triton.jit\n")
+              "METALLIC = tl.constexpr(1)\n"
+              f"RECORD_PRESENCE = tl.constexpr({RECORD_PRESENCE_WORD})\n\n@triton.jit\n")
     text = header + source.replace(KERNEL_NAME, kernel_name)
     # A MUTATION THAT DOES NOT PARSE IS NOT A MUTATION. Checked before any device work,
     # so a broken rewrite is reported as unarmed rather than as caught.
@@ -1299,13 +1309,24 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
              "            v0 = ((v0 * tl.load(cf0 + idx, mask=live, other=0.0)) - curl0) \\\n"
              "                * tl.load(ci0 + idx, mask=live, other=0.0)\n",
              "            v0 = (v0 * tl.load(cf0 + idx, mask=live, other=0.0)) - curl0\n")),
-        ("curl_parentheses_flattened",
-         "`dtdx * ((c_y - c) + (b - b_z))` is the array path's grouping "
-         "(stepping._curl_from_operands); flattening it re-associates the sum",
+        ("curl_regrouped_pairwise",
+         "MEEP's two-partner stencil associates left to right, "
+         "`dtdx * (((g1s - g1) + g2) - g2s)` (step_generic.cpp:104, "
+         "stepping._curl_from_operands); the pairwise `dtdx * ((c_y - c) + (b - b_z))` "
+         "this curl carried before is a different float32 number wherever both of "
+         "Dx's partners are present, so it is scored on the 3-D case",
          "caught",
          lambda s: _replace_all(
-             s, "        curl0 = dtdx * ((c_y - c) + (b - b_z))\n",
-             "        curl0 = dtdx * (c_y - c + b - b_z)\n")),
+             s, "        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)\n",
+             "        curl0 = dtdx * ((c_y - c) + (b - b_z))\n")),
+        ("presence_word_ignored",
+         "the record's presence word decides each D target's curl expression; with "
+         "every partner forced present, Dx's bracket over the invariant z axis rounds "
+         "`(a + g2) - g2` where MEEP's one-partner form returns `a`",
+         "caught",
+         lambda s: _replace_all(
+             s, "        presence = tl.load(cb + RECORD_PRESENCE)\n",
+             "        presence = tl.load(cb + RECORD_PRESENCE) | 7\n")),
         ("ownership_mask_dropped_on_curl0",
          "stepping._mask_non_owned_cells zeroes the row MEEP's loop never touches",
          "null",
@@ -1333,6 +1354,10 @@ def mutation_case_for(name: str) -> Tuple[str, Tuple[Any, ...]]:
         return "conductive_wall_xy", CASES_BY_NAME["conductive_wall_xy"]
     if name.startswith("poles_"):
         return "conductive_five_poles", CASES_BY_NAME["conductive_five_poles"]
+    if name.startswith("curl_"):
+        # Both of Dx's partners present: the only grid on which a regrouping of the
+        # two-partner stencil can reach a stored word.
+        return "lossless_3d", CASES_BY_NAME["lossless_3d"]
     return DEFAULT_MUTATION_CASE, CASES_BY_NAME[DEFAULT_MUTATION_CASE]
 
 
@@ -1479,39 +1504,51 @@ def run_host_mutations(cp, product) -> List[Dict[str, Any]]:
 # The lifted refusal — measured in both directions, not asserted
 # ---------------------------------------------------------------------------
 
-def _retired_whole_volume_inject(self, electric, source_time):
-    """The RETIRED composition of ``_inject_electric_through_conductivity``, verbatim.
+def _retired_whole_volume_inject(cp, driver) -> int:
+    """Re-arm the RETIRED whole-volume passes around ``driver``'s shipped deposits.
 
     The whole-volume difference passes the driver replaced on 2026-09-01: snapshot the
     target component, inject, then ``array -= before; array *= condinv;
-    array += before`` over the WHOLE volume. Kept HERE, in the gate that measures the
-    lift, as the armed control's body — it is the composition whose ``-0.0``
-    canonicalisation (and, on device, whose subnormal flushing) the refusal priced,
-    and the control MUST reproduce that divergence or the lift measured nothing.
-    Integrated sources are injected point-wise first, exactly as the retired driver
-    did and today's does.
+    array += before`` over the WHOLE volume. The double-precision deposit has since
+    moved the ``condinv`` scale inside each source's own expression at its own cells,
+    and the driver has no pass over the component left to rebind. So the armed control
+    is spelled on the SOURCES of this one driver (instance attributes only): each scaled
+    electric source's shipped ``inject`` runs, then the three passes run over every
+    cell it does NOT deposit into -- the composition's ``-0.0`` canonicalisation (and,
+    on device, its subnormal flushing) that the refusal priced. The control MUST
+    reproduce that divergence or the lift measured nothing. Integrated sources are left
+    as shipped. Returns how many sources were armed.
     """
-    integrated = [source for source in electric if source.is_integrated]
-    scaled = [source for source in electric if not source.is_integrated]
-    for source in integrated:
-        source.inject(self.fields, source_time)
-    if not scaled:
-        return
-    by_target: Dict[str, list] = {}
-    for source in scaled:
-        by_target.setdefault("D" + source.component[1], []).append(source)
-    before = {}
-    for name in sorted(by_target):
-        if self.fields.condinv_for(name) is None:
+    from meep_gpu import deposit_repair  # noqa: PLC0415
+
+    armed = 0
+    for source in driver._sources:  # noqa: SLF001 - the control rebinds this driver's own
+        if source.field_type == "B" or source.is_integrated:
             continue
-        before[name] = getattr(self.fields, name).copy()
-    for source in scaled:
-        source.inject(self.fields, source_time)
-    for name, prev in before.items():
-        array = getattr(self.fields, name)
-        array -= prev
-        array *= self.fields.condinv_for(name)
-        array += prev
+        shipped = source.inject
+
+        def retired(fields, time_value, _shipped=shipped, _source=source):
+            name = "D" + _source.component[1]
+            condinv = fields.condinv_for(name)
+            if condinv is None:
+                return _shipped(fields, time_value)
+            before = getattr(fields, name).copy()
+            _shipped(fields, time_value)
+            array = getattr(fields, name)
+            outside = cp.ones(array.shape, dtype=bool)
+            index = deposit_repair._deposit_index(_source)  # noqa: SLF001
+            if index is not None:
+                outside[index] = False
+            values = array[outside]
+            values -= before[outside]
+            values *= condinv[outside]
+            values += before[outside]
+            array[outside] = values
+            return None
+
+        source.inject = retired
+        armed += 1
+    return armed
 
 
 def lifted_refusal_leg(cp, product) -> Dict[str, Any]:
@@ -1607,8 +1644,6 @@ def _retired_passes_control(cp, case) -> Dict[str, Any]:
     subnormals the whole-volume passes flush) so the artifact says WHAT the
     retired composition destroyed, not merely that something moved.
     """
-    import types  # noqa: PLC0415
-
     _label, cell, boundaries, _steps, sigma, components, poles = case
     seed = case_seed("lifted_refusal_control", str(cell))
     made = [build_driver(cp, cell, boundaries, seed, "signed_zero_lattice",
@@ -1618,8 +1653,7 @@ def _retired_passes_control(cp, case) -> Dict[str, Any]:
     reference, retired = made
     row: Dict[str, Any] = {"leg": "retired_control", "device": True, "armed": True}
     try:
-        retired._inject_electric_through_conductivity = types.MethodType(
-            _retired_whole_volume_inject, retired)
+        row["armed_sources"] = _retired_whole_volume_inject(cp, retired)
         row["per_step"] = []
         for step in range(1, CARRY_STEPS + 1):
             reference.step()

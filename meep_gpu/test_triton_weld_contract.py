@@ -188,6 +188,7 @@ import re
 import pytest
 
 from . import fastpath
+from . import array_path_oracle
 from . import weld_record_walk as walk
 from .code_identity import code_digest
 from .device_identity import device_digests
@@ -224,7 +225,12 @@ CITED_KEY_FLOOR = 44
 #: record, measured 2026-10-01. The per-weld denominator the metadata tier used to
 #: have was 55 entries; this is what replaced it, and it is asserted for the same
 #: reason the pin floors are: a tier that stops being walked reports nothing.
-WELD_RUN_RECORD_FLOOR = 55
+#:
+#: 54 SINCE THE RETIREMENT BY NAME of ``triton_unified_expansion_device_gate``, whose
+#: gate was deleted with the expansion licence: the certification round's bind drops
+#: it (``parity/meep_gpu/rebind_triton_welds.py``, ``RETIRED_WELDS``) and its one
+#: ``8.6`` record with it. Until that bind runs the ledger still holds 55.
+WELD_RUN_RECORD_FLOOR = 54
 
 #: DECLARED DEBT: welds whose ``subnormal_policy`` does not NAME a policy.
 #: ONE, measured 2026-08-19. This set may only SHRINK — adding a name is a
@@ -248,9 +254,13 @@ POLICY_UNNAMED_BUDGET = {
     # withheld is any claim about WHICH policy it holds under. Clearing this
     # debt means making the gate call install_ftz_strip and re-running it —
     # not editing the field.
+    #
+    # ``triton_fused_electric_device_gate`` LEFT THIS BUDGET in the 1.0
+    # certification round: ``gate_triton_fused_electric.py`` installs, measures and
+    # stamps the campaign's policy (``composition_policy.py``), and its ledger
+    # entry no longer declares ``_mixed_policy``. Its record names a policy once
+    # the round's rebind binds the gate's keep and flush runs on these bytes.
     "triton_cylindrical_device_gate":
-        "gate never calls install_ftz_strip: mixed-policy comparison, see _mixed_policy",
-    "triton_fused_electric_device_gate":
         "gate never calls install_ftz_strip: mixed-policy comparison, see _mixed_policy",
     "triton_no_pml_device_gate":
         "gate never calls install_ftz_strip: mixed-policy comparison, see _mixed_policy",
@@ -1102,6 +1112,16 @@ EXPECTED_RULES = {
     walk.TIER_RAW + ":parent_key_named_pin": 6,
     "serial_driver_script": 4,
     "pin_names_no_path": 2,
+    # ARRIVED with the array-path oracle (parity/meep_gpu/record_array_path_oracle.py):
+    # one fingerprint per byte-binding entry (67 with driver_dispatch) plus
+    # driver_dispatch's 18 per-case digests, all compared by running the fixture in
+    # test_the_triton_ledger_records_the_live_array_path_oracle; and the code digests
+    # of the 11 array-path modules that exist (chunk_map.py does not yet), reported
+    # and not judged. 84 since the retirement of triton_unified_expansion_device_gate
+    # (see WELD_RUN_RECORD_FLOOR), whose fingerprint leaves with it at the bind; the
+    # ledger holds 85 until then.
+    "array_path_oracle_fingerprint": 84,
+    "array_path_oracle_provenance": 11,
 }
 
 #: DECLARED DEBT, and it is a debt rather than a clean exclusion. TWO digests in
@@ -2363,3 +2383,28 @@ def test_the_deposit_closure_weld_cites_the_products_whose_flip_it_licenses():
 # board, which is exactly why ``assert_every_credit_is_bound_to_released_bytes``
 # caught the fused products' drift on the same day and stayed silent about these.
 # A number that had moved here would have meant the drift reached a credited cell.
+
+
+# ---------------------------------------------------------------------------
+# THE ARRAY PATH THE WELDS WERE CERTIFIED AGAINST
+# ---------------------------------------------------------------------------
+
+
+def test_the_triton_ledger_records_the_live_array_path_oracle():
+    """Every Triton weld records the array-path behaviour it was certified against.
+
+    THE GAP THIS CLOSES. A Triton gate passes when the kernel returns the array
+    path's words, but the welds bind the KERNEL bytes and almost none of them bind an
+    array-path module, so an arithmetic change to ``stepping`` and its siblings would
+    leave every byte tier above green while every gate run against the new array path
+    failed. ``meep_gpu.array_path_oracle`` steps a fixed, seeded fixture set on the
+    array path and fingerprints the words; this asserts that every byte-binding entry
+    and ``driver_dispatch`` record that run, and names the fixture cases whose words
+    moved when they do not. A comment or docstring edit moves nothing here; an
+    arithmetic edit moves the fingerprint, by design: re-certify the table against the
+    new array path, then mint with ``parity/meep_gpu/record_array_path_oracle.py
+    --write``. Never mint to turn this green.
+    """
+    problems = array_path_oracle.ledger_problems(_record(), array_path_oracle.live(),
+                                                 "triton")
+    assert not problems, "\n".join(problems)

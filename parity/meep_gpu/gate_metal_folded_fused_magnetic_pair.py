@@ -16,8 +16,12 @@ THE SIX THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    oracle is the array path this walk would otherwise take. So every case asserts
    the exact LAUNCH COUNT (``launches_per_run`` x steps) and a nonzero ``runs``, and
    every case asserts every compared array MOVED from its seeded value.
-2. **A hollow pass.** FIFTEEN shader mutations and TWO host-binding mutations are
-   ARMED, and each must be CAUGHT. Leg ``disarm`` reruns the identical case with the
+2. **A hollow pass.** The shader mutations and the host mutations are ARMED, and
+   each must be CAUGHT: the transcription slips, the two INVERTED grouping rows (the
+   package's previous curl and constitutive groupings, KERNELS.md §7.1), and the
+   per-chunk B battery (§7.2) — the select removed, keyed on the wrong lattice or
+   axis, an auxiliary stored on a plain cell, and the chunk record one row wide or
+   with its two lattices exchanged. Leg ``disarm`` reruns the identical case with the
    shipped bytes and no host patch and requires zero, so a mutation reported as
    caught cannot be a harness that diverges anyway.
 3. **A LINE NOTHING CAN SEE.** This family's one novel line is the imaged ghost's
@@ -77,7 +81,7 @@ LEGS
                        cannot be carried is refused by name, both directions on the
                        flag; the reflect-row clauses still refuse their stubs
   6  moved_coefficient predicted observability vs measured catch, on two cases
-  7  mutation          seventeen armed defects, each of which MUST diverge
+  7  mutation          the armed defects, each of which MUST diverge
   8  disarm            the same harness, shipped bytes, must not diverge
 
 Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
@@ -119,6 +123,7 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
 from meep_gpu.sources import GaussianEnvelope, VolumeSource  # noqa: E402
 from meep_gpu.triton_kernels.coverage import zero_metal_axes  # noqa: E402
+from gate_chunk_records import every_cell_record, layer_record  # noqa: E402
 
 #: The budget every case runs. Twelve, matching the whole-step arbiter's and the
 #: other three fused pairs', and for their reason: the classes this gate exists for
@@ -379,6 +384,25 @@ def frozen(fields: Any) -> Dict[str, np.ndarray]:
             for name, value in state_of(fields).items()}
 
 
+#: The auxiliary volumes the per-chunk forms leave untouched off their forms' cells
+#: (KERNELS.md §1, C2): ``fu_*`` off the recurrence's cells, ``f_w_*`` off the
+#: accumulation's. On a configuration where a component's layer is absent (an invariant
+#: axis, an axis with no absorber) the ORACLE never moves that volume either.
+AUXILIARY_PREFIXES: Tuple[str, ...] = ("fu_", "f_w_")
+
+
+def movement_floor(still: Sequence[str], reference_still: Sequence[str]) -> bool:
+    """Every compared array MOVED, except an auxiliary the array path left untouched too.
+
+    The floor exists so a no-op cannot agree with a no-op. Under the auxiliary contract
+    an auxiliary volume the oracle never touches is not a no-op but the contract, so
+    the floor is: nothing stood still that the oracle moved, and nothing stood still
+    that is not an auxiliary.
+    """
+    return (set(still) <= set(reference_still)
+            and all(str(name).startswith(AUXILIARY_PREFIXES) for name in still))
+
+
 def compare(left: Any, right: Any) -> Dict[str, int]:
     a, b = state_of(left), state_of(right)
     assert set(a) == set(b), sorted(set(a) ^ set(b))
@@ -454,7 +478,8 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
 
     residency = Residency()
     plan = family.plan_metal_folded_fused_magnetic_pair(
-        actual, actual_pml, sources=(), residency=residency, functions=functions)
+        actual, actual_pml, sources=(), residency=residency, functions=functions,
+        chunk_bounds=layer_record(actual.grid, actual_pml))
     if plan is None:
         reasons = family.metal_folded_fused_magnetic_pair_coverage(
             actual, actual_pml, (), residency).reasons
@@ -466,6 +491,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     live = live_passes(actual, actual_pml)
     assert live == live_passes(reference, reference_pml)
     before = frozen(actual)
+    reference_before = frozen(reference)
     residency.sync_in()
 
     per_step: List[Dict[str, Any]] = []
@@ -487,6 +513,10 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     after = state_of(actual)
     moved = {name: differing(before[name], after[name]) for name in before}
     still = sorted(name for name, count in moved.items() if count == 0)
+    reference_after = state_of(reference)
+    reference_still = sorted(
+        name for name in reference_before
+        if differing(reference_before[name], reference_after[name]) == 0)
     identical = (len(per_step) == steps
                  and all(row["differing_words"] == 0 for row in per_step))
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
@@ -503,7 +533,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     if value_class == values.PM_ZERO_LATTICE:
         floor_ok = bool(signs["positive_zero_words"] and signs["negative_zero_words"])
     else:
-        floor_ok = not still
+        floor_ok = movement_floor(still, reference_still)
     return {
         "passed": bool(identical and clean and launches_ok and floor_ok),
         "value_class": value_class,
@@ -519,6 +549,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
         "reference_subnormals": per_step[-1]["reference_subnormals"],
         "arrays_compared": len(before),
         "arrays_that_never_moved": still,
+        "reference_arrays_that_never_moved": reference_still,
         "moved_words": int(sum(moved.values())),
         "runs": plan.runs, "launches": plan.launches,
         "launches_per_run": plan.launches_per_run,
@@ -567,12 +598,15 @@ def run_separate_control(keywords: Mapping[str, Any], seed: int, steps: int,
 
     separate_residency = Residency()
     curl = symmetry.plan_folded_pml_curl(separate, separate_pml, "step_B",
-                                         separate_residency)
+                                         separate_residency,
+                                         chunk_bounds=layer_record(separate.grid, separate_pml))
     magnetic = symmetry.plan_folded_constitutive(separate, separate_pml, "H",
-                                                 separate_residency)
+                                                 separate_residency,
+                                                 chunk_bounds=layer_record(separate.grid, separate_pml))
     fused_residency = Residency()
     plan = family.plan_metal_folded_fused_magnetic_pair(
-        fused, fused_pml, sources=(), residency=fused_residency)
+        fused, fused_pml, sources=(), residency=fused_residency,
+        chunk_bounds=layer_record(fused.grid, fused_pml))
     if curl is None or magnetic is None or plan is None:
         return {"passed": False, "reason": "a declared product was refused",
                 "curl": curl is not None, "constitutive": magnetic is not None,
@@ -716,30 +750,55 @@ def shader_edit_anchors(periodic: bool) -> Dict[str, Tuple[str, str]]:
         # THE WALL CLEAR on the owned cell.
         "zero_metal_dropped":
             ("v2 = at_z ? 0.0f : v2;\n", ""),
-        # shaders.py rule 2: flattening these parens is a different float32 number.
-        "curl_parens_flattened":
-            ("dtdx * ((c_y - c) + (b - b_z))",
-                   "dtdx * (c_y - c + b - b_z)"),
+        # INVERTED (KERNELS.md §7.1): the package's PREVIOUS pairwise curl grouping
+        # planted where MEEP's left-to-right bracket now ships.
+        "curl_previous_grouping":
+            ("dtdx * (((c_y - c) + b) - b_z)",
+                   "dtdx * ((c_y - c) + (b - b_z))"),
+        # INVERTED: the previous constitutive grouping, (f + kps*src) - kms*prev.
+        "constitutive_previous_grouping":
+            ("o0_acc = h0[ii] + ((kp_0 * o0_src) - (km_0 * o0_prev));",
+             "o0_acc = (h0[ii] + (kp_0 * o0_src)) - (km_0 * o0_prev);"),
         # THE DIRECTION. `step_B` shifts UP and `step_D` shifts DOWN
         # (SUB_STEPS['step_B']['backward'] == 0); this is the D curl in the B seam.
         "curl_shift_is_backward":
             ("int si = i + 1, sj = j + 1, sk = k + 1;",
                    "int si = i - 1, sj = j - 1, sk = k - 1;"),
         "fu_store_dropped":
-            ("    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;",
-                   "    u1[ii] = n1; u2[ii] = n2;"),
+            ("    if (du0) { u0[ii] = n0; }\n", ""),
         "fw_store_dropped":
-            ("w0[ii] = o0_src;", "// stale f_w_Hx"),
+            ("if (dw0) { w0[ii] = o0_src; }", "// stale f_w_Hx"),
         "constitutive_accumulations_reversed":
-            ("o0_acc = o0_acc + kp_0 * o0_src;\n"
-             "        o0_acc = o0_acc - km_0 * o0_prev;",
-             "o0_acc = o0_acc - km_0 * o0_src;\n"
-             "        o0_acc = o0_acc + kp_0 * o0_prev;"),
+            ("o0_acc = h0[ii] + ((kp_0 * o0_src) - (km_0 * o0_prev));",
+             "o0_acc = h0[ii] + ((km_0 * o0_src) - (kp_0 * o0_prev));"),
+        # --- THE B BATTERY (KERNELS.md §7.2): the per-chunk select removed, keyed
+        # on the wrong lattice or axis, and an auxiliary stored on a plain cell.
+        # The random full-volume state carries both forms on every axis at step 1.
+        "b1_curl_select_removed":
+            ("    const bool du0 = in_h_z, du1 = in_h_x, du2 = in_h_y;",
+             "    const bool du0 = true, du1 = true, du2 = true;"),
+        "b2_curl_select_on_the_integer_lattice":
+            ("    const bool du0 = in_h_z, du1 = in_h_x, du2 = in_h_y;",
+             "    const bool du0 = in_i_z, du1 = in_i_x, du2 = in_i_y;"),
+        "b3_dsig_and_dsigu_swapped":
+            ("    const bool du0 = in_h_z, du1 = in_h_x, du2 = in_h_y;",
+             "    const bool du0 = in_h_y, du1 = in_h_x, du2 = in_h_y;"),
+        "b4_fu_stored_on_a_plain_cell":
+            ("    if (du0) { u0[ii] = n0; }", "    u0[ii] = n0;"),
+        "b5_constitutive_select_removed":
+            ("    const bool dw0 = in_i_x, dw1 = in_i_y, dw2 = in_i_z;",
+             "    const bool dw0 = true, dw1 = true, dw2 = true;"),
+        "b6_constitutive_select_on_the_half_integer_lattice":
+            ("    const bool dw0 = in_i_x, dw1 = in_i_y, dw2 = in_i_z;",
+             "    const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_z;"),
+        "b7_fw_stored_on_a_plain_cell":
+            ("if (dw0) { w0[ii] = o0_src; }", "w0[ii] = o0_src;"),
         # THE NEAR GHOST'S OWN CONSTITUTIVE UPDATE, in three separable pieces: the
         # workspace copy, the H accumulation and the flux store. `update_H` reads the
         # ghost cell the fill just wrote, so all three are live work.
         "near_ghost_fw_store_dropped":
-            ("w0[g0_n_i] = g0_n_src;", "// stale ghost f_w_Hx"),
+            ("if (in_i_x_g0_n) { w0[g0_n_i] = g0_n_src; }",
+             "// stale ghost f_w_Hx"),
         "near_ghost_constitutive_dropped":
             ("            h0[g0_n_i] = g0_n_acc;\n", ""),
         "near_ghost_flux_store_dropped":
@@ -772,7 +831,7 @@ def shader_edit_anchors(periodic: bool) -> Dict[str, Tuple[str, str]]:
         "far_ghost_flux_store_dropped":
             ("            f0[g0_j_i] = g0_j_v;\n", ""),
         "far_ghost_fw_store_dropped":
-            ("w0[g0_j_i] = g0_j_src;", "// stale far ghost f_w_Hx"),
+            ("if (dw0) { w0[g0_j_i] = g0_j_src; }", "// stale far ghost f_w_Hx"),
         "far_ghost_constitutive_dropped":
             ("            h0[g0_j_i] = g0_j_acc;\n", ""),
         # THE FAR PARITY. `mirror_parity` is -phase for a shift-1 component, so
@@ -870,7 +929,7 @@ def triple_shader_edits(base: str) -> Dict[str, str]:
         "triple_composite_flux_store_dropped":
             needle(base, "            f0[g0_jkn_i] = g0_jkn_v;\n", ""),
         "triple_composite_fw_store_dropped":
-            needle(base, "w0[g0_jkn_i] = g0_jkn_src;",
+            needle(base, "if (in_i_x_g0_jkn) { w0[g0_jkn_i] = g0_jkn_src; }",
                    "// stale triple-composite ghost f_w_Hx"),
         "triple_composite_constitutive_dropped":
             needle(base, "            h0[g0_jkn_i] = g0_jkn_acc;\n", ""),
@@ -965,6 +1024,59 @@ MOVED_COEFFICIENT_EDITS: Dict[str, Tuple[Tuple[str, str], Tuple[str, ...]]] = {
         ("MUTATION_CASE", "DEEP_PERIODIC_CASE")),
 }
 
+#: THE SELECT KEYED AT THE SOURCE, ARMED (KERNELS.md §7.2's last row). The H half's
+#: membership is on the component's own axis, which the near fill moves, so the near
+#: ghost evaluates its flag at stored 0. Keying it at the source (stored 2) is a
+#: DIFFERENT form wherever the record's line differs between the two rows — which it
+#: does on a deep high-face layer: the integer line of ``DEEP_CASE``'s folded x axis
+#: is out at stored 0 and in at stored 2. So this is not a declared null: leg
+#: ``moved_coefficient`` predicts it from the record and requires the catch to agree.
+#: That holds on the ONE-RANK division the fixtures step (``layer_record``), whose
+#: lines keep the one-rank rule on ghost rows too; a lifted division gives an unowned
+#: ghost row its image row's line (``chunk_map.ChunkLayout.membership``), and there
+#: the edit is a null by construction.
+KEYED_AT_SOURCE_EDITS: Dict[str, Tuple[Tuple[str, str], Tuple[str, ...]]] = {
+    "near_ghost_keyed_at_its_source": (
+        ("const bool in_i_x_g0_n = ((0) >= cbi_x_a0 && (0) < cbi_x_a1) || "
+         "((0) >= cbi_x_b0 && (0) < cbi_x_b1);",
+         "const bool in_i_x_g0_n = in_i_x;"),
+        ("MUTATION_CASE", "DEEP_CASE")),
+}
+
+#: THE ROWS THE PER-CHUNK FORMS MADE CONDITIONAL, scored by prediction rather than as
+#: must-catch. Each touches the NEAR ghost's H-half work, which runs only where the
+#: ghost's own chunk carries the component's layer (``f_w`` is untouched elsewhere,
+#: C2); on a folded axis the integer line at stored 0 is outside the high-face run on
+#: every fixture here, so the oracle never touches that word and the edit cannot
+#: change it. ``destination_thread_keeps_its_displacement`` is the metallic case's
+#: near-only carve-out: with the ghost on its plain form the source thread reads
+#: nothing at the destination, so the destination's stores are overwritten by the
+#: source's later ones and no word moves. Each is required to agree with the
+#: prediction, read off the record (:func:`near_ghost_in_run`), case by case.
+PREDICTED_MUTATIONS: Dict[str, Tuple[str, ...]] = {
+    "near_ghost_fw_store_dropped": ("MUTATION_CASE", "METALLIC_MUTATION_CASE",
+                                    "TRIPLE_MUTATION_CASE"),
+    "triple_composite_fw_store_dropped": ("TRIPLE_MUTATION_CASE",),
+    "destination_thread_keeps_its_displacement": ("METALLIC_MUTATION_CASE",),
+}
+
+
+def near_ghost_in_run(fields: Any, pml: Any, axis: int = 0) -> Dict[str, bool]:
+    """Component ``axis``'s near ghost and its source, on the H half's lattice.
+
+    ``{"destination": line[0], "source": line[NEAR_SOURCE_INDEX]}`` of the record's
+    integer-lattice line on the component's own axis — the membership the kernel
+    evaluates at the ghost and the one keying at the source would read.
+    """
+    from meep_gpu.metal_kernels import chunk_bounds  # noqa: PLC0415
+
+    record = layer_record(fields.grid, pml)
+    line = chunk_bounds.decode(record, family.CONSTITUTIVE_HALF_INTEGER, axis,
+                               fields.grid.shape[axis])
+    return {"destination": bool(line[0]),
+            "source": bool(line[family.NEAR_SOURCE_INDEX])}
+
+
 #: THE MUTATION THAT MEASURES A LINE THIS FAMILY DELIBERATELY DOES NOT EMIT.
 #: A far ghost keeps its source thread's constitutive pair because it moves along an
 #: axis that is NOT the one ``update_H`` indexes on. That is a claim about
@@ -972,8 +1084,8 @@ MOVED_COEFFICIENT_EDITS: Dict[str, Tuple[Tuple[str, str], Tuple[str, ...]]] = {
 #: so the opposite — reloading at stored index 0, which is what the NEAR ghost
 #: correctly does — is armed and must be CAUGHT. Uncaught would mean the two
 #: coefficient entries are the same word on this fixture and the claim is untested.
-FAR_COEFFICIENT_EDIT = ("g0_j_acc = g0_j_acc + kp_0 * g0_j_src;",
-                        "g0_j_acc = g0_j_acc + kp0[0] * g0_j_src;")
+FAR_COEFFICIENT_EDIT = ("((kp_0 * g0_j_src) - (km_0 * g0_j_prev))",
+                        "((kp0[0] * g0_j_src) - (km_0 * g0_j_prev))")
 
 #: THE DOCUMENTED TRAP IN ``_far_reflect_rows``, ARMED. Its docstring says in
 #: capitals that the image row is NOT always ``n - 2``: both full-count parities put
@@ -1031,9 +1143,73 @@ def swap_curl_lattice(plan: Any, pml: Any, residency: Residency) -> None:
              for axis in "xyz" for stem in ("kms", "sinv")])
 
 
+def _rebind_record(plan: Any, record: Any) -> None:
+    """Rebuild the plan's packed ``Params`` around ``record`` and rebind it."""
+    params = family._params_tensor(plan.shape, plan.dtdx, plan.reflect, record,
+                                   plan.residency.device)
+    args = list(plan._args)
+    args[-1] = params
+    plan._args = tuple(args)
+
+
+#: The lattice whose runs :func:`widened_record` tries first: the curl half's, so the
+#: widened row changes a curl form (the constitutive lattice is tried after it).
+WIDEN_ORDER: Tuple[bool, bool] = (True, False)
+
+
+def widened_record(record: Any, shape: Sequence[int]) -> np.ndarray:
+    """The record with one run's upper bound one row too far (host-only).
+
+    The first (lattice, axis) entry in :data:`WIDEN_ORDER` whose first run ends inside
+    the axis is widened by one row, so the boundary plane takes the other form.
+    Refused if no entry can be widened: an unarmed host mutation is a defect reported
+    as uncaught.
+    """
+    from meep_gpu.chunk_map import record_index  # noqa: PLC0415
+
+    widened = np.array(record, copy=True)
+    for half in WIDEN_ORDER:
+        for axis in range(3):
+            a0, a1, b0, b1 = (int(widened[record_index(half, axis, word)])
+                              for word in range(4))
+            limit = b0 if b1 > b0 else int(shape[axis])
+            if a1 > a0 and a1 < limit:
+                widened[record_index(half, axis, 1)] = a1 + 1
+                return widened
+    raise AssertionError("no record run can be widened by one row on this case")
+
+
+def swapped_record(record: Any) -> np.ndarray:
+    """The record with its integer and half-integer entries exchanged (host-only)."""
+    from meep_gpu.chunk_map import record_index  # noqa: PLC0415
+
+    original = np.array(record, copy=True)
+    swapped = original.copy()
+    for axis in range(3):
+        for word in range(4):
+            swapped[record_index(False, axis, word)] = original[record_index(True, axis, word)]
+            swapped[record_index(True, axis, word)] = original[record_index(False, axis, word)]
+    if np.array_equal(swapped, original):
+        raise AssertionError("the two lattices hold the same runs on this case; the "
+                             "swap would arm nothing")
+    return swapped
+
+
+def record_bound_off_by_one(plan: Any, pml: Any, residency: Residency) -> None:
+    """HOST DEFECT (B battery): one run's upper bound one row too far."""
+    _rebind_record(plan, widened_record(plan.chunk_bounds, plan.shape))
+
+
+def record_lattices_swapped(plan: Any, pml: Any, residency: Residency) -> None:
+    """HOST DEFECT (B battery): the integer and half-integer entries exchanged."""
+    _rebind_record(plan, swapped_record(plan.chunk_bounds))
+
+
 HOST_MUTATIONS: Dict[str, Callable[[Any, Any, Residency], None]] = {
     "h_half_takes_the_half_integer_lattice": swap_h_lattice,
     "curl_takes_the_integer_lattice": swap_curl_lattice,
+    "b8_record_bound_off_by_one": record_bound_off_by_one,
+    "b9_record_lattices_swapped": record_lattices_swapped,
 }
 
 
@@ -1228,7 +1404,8 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     )
     launch_rows: List[Dict[str, Any]] = []
     for label, shape, dtdx, reflect in launch_records:
-        params = family._params_tensor(shape, dtdx, reflect, "mps")
+        params = family._params_tensor(shape, dtdx, reflect,
+                                       every_cell_record(shape), "mps")
         function(*buffers, params)
         torch.mps.synchronize()
         read = [buffers[index].cpu().numpy() for index in range(9)]
@@ -1318,9 +1495,23 @@ def leg_transcription(codes: Sequence[int]) -> Dict[str, Any]:
         head_ok = body.startswith(head) and bool(head.strip())
         transcription = family.constitutive_transcription(mode)
         statements = family.certified_curl_statements(codes, mode)
-        recurrence_ok = all(
-            all(line in body for line in triple)
-            for triple in statements["recurrence"])
+        # THE LIFT IS THE CERTIFIED TEXT PLUS EXACTLY THE DECLARED EDITS: the `n`
+        # statement verbatim, and the `p`/`v` statements equal to the certified line
+        # with its LIFT_EDITS fragment replaced.
+        recurrence_ok = True
+        for target, (previous, stage, stepped) in enumerate(statements["recurrence"]):
+            recurrence_ok = recurrence_ok and stage in body
+            for (prefix, old, _new), lifted in zip(family.LIFT_EDITS,
+                                                   (previous, stepped)):
+                certified_line = [line for line in body.splitlines()
+                                  if line.startswith(prefix.format(t=target))]
+                old_fragment = old.format(t=target)
+                recurrence_ok = recurrence_ok and (
+                    len(certified_line) == 1
+                    and certified_line[0].endswith(old_fragment)
+                    and lifted.startswith(
+                        certified_line[0][: -len(old_fragment)])
+                    and lifted != certified_line[0])
         rows["modes"][mode] = {
             "curl_head_is_a_verbatim_prefix": head_ok,
             "curl_head_lines": len(head.splitlines()),
@@ -1496,7 +1687,8 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
         actual_source = magnetic_source(actual.grid, component, centre)
         residency = Residency()
         plan = family.plan_metal_folded_fused_magnetic_pair(
-            actual, actual_pml, sources=(actual_source,), residency=residency)
+            actual, actual_pml, sources=(actual_source,), residency=residency,
+            chunk_bounds=layer_record(actual.grid, actual_pml))
         if plan is None:
             reasons = family.metal_folded_fused_magnetic_pair_coverage(
                 actual, actual_pml, (actual_source,), residency).reasons
@@ -1509,6 +1701,7 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
         live = live_passes(actual, actual_pml)
         assert live == live_passes(reference, reference_pml)
         before = frozen(actual)
+        reference_before = frozen(reference)
         dt = float(actual.grid.dt)
         residency.sync_in()
 
@@ -1543,6 +1736,10 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
         after = state_of(actual)
         moved = {name: differing(before[name], after[name]) for name in before}
         still = sorted(name for name, count in moved.items() if count == 0)
+        reference_after = state_of(reference)
+        reference_still = sorted(
+            name for name in reference_before
+            if differing(reference_before[name], reference_after[name]) == 0)
         identical = (len(per_step) == steps
                      and all(row["differing_words"] == 0 for row in per_step))
         clean = all(row["reference_subnormals"] == 0 for row in per_step)
@@ -1551,7 +1748,8 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
         return {
             # A CONTROL PASSES BY DIVERGING; reading one field for both directions
             # would make "the control worked" and "the product worked" one sentence.
-            "passed": bool(identical and clean and launches_ok and not still
+            "passed": bool(identical and clean and launches_ok
+                           and movement_floor(still, reference_still)
                            if (repair and carry_images) else not identical),
             "repair": repair, "carries_images": carry_images,
             "component": component,
@@ -1566,6 +1764,7 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
             "differing_arrays": per_step[-1]["differing_arrays"],
             "arrays_compared": len(before),
             "arrays_that_never_moved": still,
+            "reference_arrays_that_never_moved": reference_still,
             "runs": plan.runs, "launches": plan.launches,
             "launches_per_run": plan.launches_per_run,
             "live_passes": list(live), "replaces": list(plan.replaces_sub_steps),
@@ -1630,7 +1829,8 @@ def leg_carry() -> Dict[str, Any]:
     carried = family.metal_folded_fused_magnetic_pair_coverage(
         far_fields, far_pml, (), residency)
     plan = family.plan_metal_folded_fused_magnetic_pair(
-        far_fields, far_pml, sources=(), residency=residency)
+        far_fields, far_pml, sources=(), residency=residency,
+        chunk_bounds=layer_record(far_fields.grid, far_pml))
     live = live_passes(far_fields, far_pml)
     codes, _ = symmetry.folded_axis_kinds(far_fields.grid, far_pml)
     rows = stepping._far_reflect_rows(far_fields.grid)
@@ -1715,7 +1915,8 @@ def leg_carry() -> Dict[str, Any]:
                        and not undeclared.covered and undeclared_named
                        and polarity_named and not held_false.covered
                        and family.plan_metal_folded_fused_magnetic_pair(
-                           fields, pml, None, Residency()) is None),
+                           fields, pml, None, Residency(),
+                           chunk_bounds=layer_record(fields.grid, pml)) is None),
         "carries_deposit_repair": bool(shipped),
         "real_deposit_admitted": carried_deposit.covered,
         "real_deposit_refusals_if_any": list(carried_deposit.reasons),
@@ -1887,7 +2088,9 @@ def leg_moved_coefficient(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any
     out: Dict[str, Any] = {"edits": {}}
     ok = True
     seed = 93000
-    for edit_name, (edit, case_names) in MOVED_COEFFICIENT_EDITS.items():
+    observed_any = False
+    table = {**MOVED_COEFFICIENT_EDITS, **KEYED_AT_SOURCE_EDITS}
+    for edit_name, (edit, case_names) in table.items():
         rows: Dict[str, Any] = {}
         for name in case_names:
             label = resolved[name]
@@ -1895,9 +2098,19 @@ def leg_moved_coefficient(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any
             fields, pml = build(keywords, seed, faces)
             codes, phases, walls = _specialisation(fields, pml)
             census = coefficient_census(pml, codes)
+            membership = near_ghost_in_run(fields, pml)
             source = family.folded_fused_magnetic_pair_source(codes, phases, walls)
             functions = compile_edits({label: needle(source, *edit)})[label]
-            observable = bool(census.get("x", {}).get("differs", False))
+            # A RELOADED PAIR IS READ ONLY WHERE THE GHOST ACCUMULATES: the coefficient
+            # edits are observable where the two entries differ AND the destination's
+            # own chunk carries the layer. The keyed edit is observable where the
+            # record's line differs between the ghost and its source.
+            if edit_name in KEYED_AT_SOURCE_EDITS:
+                observable = membership["destination"] != membership["source"]
+            else:
+                observable = (bool(census.get("x", {}).get("differs", False))
+                              and membership["destination"])
+            observed_any = observed_any or observable
             seed += 1
             result = run_case(keywords, seed, steps, faces, functions=functions)
             caught = not result.get("bit_identical", False)
@@ -1905,6 +2118,7 @@ def leg_moved_coefficient(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any
             ok = ok and agree and bool(result.get("launches"))
             rows[label] = {
                 "census": census,
+                "near_ghost_membership": membership,
                 "shape": [int(n) for n in fields.grid.shape],
                 "pml_faces": [list(face) for face in pml.thickness_by_face],
                 "observable": observable, "caught": caught,
@@ -1914,7 +2128,10 @@ def leg_moved_coefficient(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any
                 "differing_arrays": result.get("differing_arrays"),
                 "launches": result.get("launches")}
         out["edits"][edit_name] = rows
-    out["passed"] = bool(ok)
+    # NON-VACUITY: at least one row of the leg must be predicted observable and caught,
+    # or the leg measures only its own blind fixtures.
+    out["some_row_observable"] = observed_any
+    out["passed"] = bool(ok and observed_any)
     out["note"] = ("an imaged ghost that moves the INDEXED axis reads kps/kms at "
                    "stored index 0; reusing the source thread's entry at index 2 is "
                    "a different number only where the folded axis's absorber "
@@ -2152,16 +2369,26 @@ def main() -> int:
                      **leg_far_coefficient(args.steps)})
         emit(handle, rows[-1])
 
+        case_names = {MUTATION_CASE: "MUTATION_CASE",
+                      METALLIC_MUTATION_CASE: "METALLIC_MUTATION_CASE",
+                      TRIPLE_MUTATION_CASE: "TRIPLE_MUTATION_CASE"}
         for case_label, compiled in mutants.items():
             keywords, faces = bases[case_label]
+            case_fields, case_pml = build(keywords, 1, faces)
+            membership = near_ghost_in_run(case_fields, case_pml)
             for name, functions in compiled.items():
                 index += 1
                 result = run_case(keywords, 52000 + index, args.steps, faces,
                                   functions=functions)
                 caught = not result.get("bit_identical", False)
+                predicted = case_names[case_label] in PREDICTED_MUTATIONS.get(name, ())
+                expected = membership["destination"] if predicted else True
                 row = {"index": index, "total": total, "leg": "mutation",
                        "label": name, "case": case_label, "caught": caught,
-                       "passed": bool(caught and result.get("launches")),
+                       "scored_by_prediction": predicted,
+                       "predicted_observable": expected,
+                       "near_ghost_membership": membership,
+                       "passed": bool(caught == expected and result.get("launches")),
                        "first_divergence": result.get("first_divergence"),
                        "differing_words": result.get("differing_words"),
                        "differing_arrays": result.get("differing_arrays"),

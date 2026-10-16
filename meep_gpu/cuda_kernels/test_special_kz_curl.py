@@ -35,7 +35,7 @@ from ..fields import Fields
 from ..grid import Grid, Mirror
 from ..pml import PML
 from .. import stepping
-from . import coverage, special_kz_curl
+from . import coverage, folded_pass, special_kz_curl
 
 
 class _NumpyWearingCupysName(types.ModuleType):
@@ -337,30 +337,45 @@ def _code_only(text: str) -> str:
     return "\n".join(out)
 
 
-BETA_LINES = ("        curl = curl - (beta_plus * f2);",
-              "        curl = curl - (beta_minus * f1);")
+#: The two beta increments, ``folded_pass.beta_insert``'s spelling (code only).
+BETA_LINES = ("        float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;",
+              "        float inc_beta = owned_cell ? (-(beta_minus * f1)) : 0.0f;")
+
+#: The other lines the beta pass adds to a component block: the ownership flag, its
+#: mask lines and the ladder.
+_PASS_LINE_PATTERNS = (
+    re.compile(r"int owned_cell = 1;"),
+    re.compile(r"if \(.*\) owned_cell = 0;"),
+    re.compile(r"fold_apply\([BD][xyz], fu_[BD][xyz], idx, inc_beta, .*\);"),
+)
 
 
 @pytest.mark.parametrize("side", ["B", "D"])
 def test_kernel_is_the_certified_kernel_plus_exactly_the_beta_lines(side):
     """THE ANTI-DRIFT TEST, and the reason this family is safe to read at all.
 
-    Strip the comments, delete the two beta statements and the two extra scalar
-    parameters, rename the entry point -- and what is left must be the CERTIFIED
-    ``step_{B,D}_pml_real`` byte for byte. The ghost rule, the stencil
+    Strip the comments and the fold ladder helper, delete the two beta passes and the
+    two extra scalar parameters, rename the entry point -- and what is left must be
+    the CERTIFIED ``step_{B,D}_pml_real`` byte for byte. The ghost rule, the stencil
     grouping, every mask line, the coefficient pairing and the recurrence are then
-    not "believed to be the same"; they ARE the same text.
+    not "believed to be the same"; they ARE the same text. The beta pass is MEEP's
+    own loop after the curls (step_db.cpp:161-175), so deleting it leaves each curl
+    block untouched.
     """
     mine = special_kz_curl.kernel_source(f"step_{side}_special_kz_real")
     certified = (special_kz_curl._REAL_PML_PRELUDE
                  + _literal(f"_step_{side}_pml_real_kernel_code"))
     stripped = _code_only(mine)
+    helpers = _code_only(folded_pass.REAL_FOLD_HELPERS)
+    assert stripped.count(helpers) == 1
+    stripped = stripped.replace(helpers + "\n", "", 1)
     for line in BETA_LINES:
         assert line in stripped, f"the {side} kernel no longer carries {line!r}"
         stripped = stripped.replace(line + "\n", "")
-    stripped = stripped.replace(
-        "    int bc_x, int bc_y, int bc_z,\n    float beta_plus, float beta_minus\n",
-        "    int bc_x, int bc_y, int bc_z\n")
+    stripped = "\n".join(
+        line for line in stripped.splitlines()
+        if not any(pattern.fullmatch(line.strip()) for pattern in _PASS_LINE_PATTERNS))
+    stripped = stripped.replace("    float beta_plus, float beta_minus,\n", "")
     stripped = stripped.replace(f"step_{side}_special_kz_real",
                                 f"step_{side}_pml_real")
     assert stripped == _code_only(certified)
@@ -368,11 +383,26 @@ def test_kernel_is_the_certified_kernel_plus_exactly_the_beta_lines(side):
 
 @pytest.mark.parametrize("side", ["B", "D"])
 def test_the_z_component_carries_no_beta_term(side):
-    """MEEP's ``cc`` loop runs over ``d_c`` in {X, Y} only (step_db.cpp:148-176) and
-    stepping.py:384-391 / :467-474 have no z branch. Two statements, not three."""
+    """MEEP's ``cc`` loop runs over ``d_c`` in {X, Y} only (step_db.cpp:161-175) and
+    stepping has no z branch. Two passes, not three."""
     stripped = _code_only(
         special_kz_curl.kernel_source(f"step_{side}_special_kz_real"))
-    assert len(re.findall(r"curl = curl - \(beta_", stripped)) == 2
+    assert len(re.findall(r"float inc_beta = owned_cell \? \(-\(beta_", stripped)) == 2
+    assert len(re.findall(r"fold_apply\([BD][xyz], fu_[BD][xyz], idx, inc_beta, ",
+                          stripped)) == 2
+    assert f"fold_apply({side}z," not in stripped
+
+
+@pytest.mark.parametrize("side", ["B", "D"])
+def test_each_beta_pass_follows_its_own_curl(side):
+    """The pass adds to the absorber's output: per component, the curl's ``pml_apply``
+    comes first, then the ladder."""
+    text = _code_only(special_kz_curl.kernel_source(f"step_{side}_special_kz_real"))
+    body = text[text.index('extern "C"'):]
+    for target in (f"{side}x", f"{side}y"):
+        curl = body.index(f"pml_apply({target}, fu_{target}, idx, curl, ")
+        ladder = body.index(f"fold_apply({target}, fu_{target}, idx, inc_beta, ")
+        assert curl < ladder, target
 
 
 def test_the_shared_prelude_is_the_certified_one():
@@ -447,6 +477,19 @@ def test_a_planted_coefficient_defect_diverges(gate, mutation):
     case = gate.one_case("numpy", spec, "step_B", gate.INEXACT_COURANT, "uniform",
                          "fmad_false", host_mutation=mutation)
     assert not case.get("skipped")
+    assert not case["single_launch"]["bit_identical"], mutation
+
+
+@pytest.mark.parametrize("mutation", ["record_bound_off_by_one",
+                                      "record_lattices_swapped"])
+def test_a_corrupted_chunk_record_diverges(gate, mutation):
+    """KERNELS.md section 7.2: the record the launch binds, corrupted while the
+    oracle's division is untouched, must move a word -- the per-cell forms are chosen
+    by the record and nothing else."""
+    spec = next(s for s in gate.BETA_SPECS if s["label"] == "plain_metallic_xy")
+    case = gate.one_case("numpy", spec, "step_B", gate.INEXACT_COURANT, "uniform",
+                         "fmad_false", host_mutation=mutation)
+    assert not case.get("skipped"), case.get("skipped")
     assert not case["single_launch"]["bit_identical"], mutation
 
 

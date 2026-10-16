@@ -248,6 +248,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/nonlinear_fused_magnetic_pair.py",
         "meep_gpu/triton_kernels/nonlinear_update_e.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/stepping.py",
@@ -1091,11 +1092,30 @@ def shipped_source() -> str:
     return "\n".join([f"@{segment}" for segment in decorators] + lines)
 
 
+def mutant_header() -> str:
+    """The module header a mutant of the shipped kernel compiles under.
+
+    The kernel reads ``PERIODIC``/``METALLIC`` and the chunk record's two word
+    offsets as ``tl.constexpr`` globals, and calls the shared ``@triton.jit`` forms of
+    ``triton_kernels/forms.py`` by their imported names; the mutant's module declares
+    and imports exactly the same way, or Triton refuses the name. The record offsets
+    are ``chunk_map``'s own numbers (the kernels restate them; a laptop test pins the
+    two together).
+    """
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, record_index  # noqa: PLC0415
+
+    return ("import triton\nimport triton.language as tl\n"
+            "from meep_gpu.triton_kernels.forms import ("
+            "axis_present, constitutive_form, curl_form, curl_stencil, record_in)\n"
+            "PERIODIC = tl.constexpr(0)\n"
+            "METALLIC = tl.constexpr(1)\n"
+            f"RECORD_HALF_INTEGER = tl.constexpr({record_index(True, 0, 0)})\n"
+            f"RECORD_PRESENCE = tl.constexpr({RECORD_PRESENCE_WORD})\n\n")
+
+
 def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant. The rename is what keeps the JIT cache honest."""
-    header = ("import triton\nimport triton.language as tl\n"
-              "PERIODIC = tl.constexpr(0)\n"
-              "METALLIC = tl.constexpr(1)\n\n")
+    header = mutant_header()
     text = header + source.replace("fused_curl_constitutive_B", kernel_name)
     # A MUTATION THAT DOES NOT PARSE IS NOT A MUTATION. Checked before any device
     # is involved, because a SyntaxError inside the loader aborts the whole
@@ -1208,33 +1228,36 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source, hits
 
     def m4_history_read_after_write(source: str) -> Tuple[str, int]:
-        """``f_w`` read AFTER it is written: wrong wherever ``kms != 0``, i.e. in
-        the PML. Unguarded — these three lines run on every case."""
+        """``f_w`` read AFTER it is written: wrong wherever ``kms != 0``, i.e. on the
+        accumulation's cells in the PML. Unguarded — these three lines run on every
+        case."""
         return _rewrite_block(
             source,
-            ["prev0 = tl.load(w0 + idx, mask=live, other=0.0)",
+            ["prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)",
              "src0 = v0",
-             "tl.store(w0 + idx, src0, mask=live)"],
+             "tl.store(w0 + idx, src0, mask=live & dw0)"],
             ["src0 = v0",
-             "tl.store(w0 + idx, src0, mask=live)",
-             "prev0 = tl.load(w0 + idx, mask=live, other=0.0)"])
+             "tl.store(w0 + idx, src0, mask=live & dw0)",
+             "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)"])
 
     def m5_constitutive_association(source: str) -> Tuple[str, int]:
-        """Right-associated accumulation: same algebra, different float32 rounding."""
+        """The two separate accumulations ``(H + kps*src) - kms*prev`` the package
+        carried, put back AT THE CALL SITE in place of MEEP's ``H + ((kps*src) -
+        (kms*prev))`` (``forms.constitutive_form``): same algebra, different float32
+        rounding. The chunk select is kept, so only the accumulation's cells move."""
         return _rewrite_block(
             source,
-            ["a0 = a0 + kp_0 * src0", "a0 = a0 - km_0 * prev0"],
-            ["a0 = a0 + (kp_0 * src0 - km_0 * prev0)"])
+            ["a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)"],
+            ["a0 = tl.where(dw0, (a0 + kp_0 * src0) - km_0 * prev0, src0)"])
 
     def m6_curl_parentheses_flattened(source: str) -> Tuple[str, int]:
-        """``stepping._curl_from_operands``' grouping flattened.
+        """The pairwise curl grouping the package carried, put back at the call site.
 
-        ``((c_y - c) + (b - b_z))`` and ``(((c_y - c) + b) - b_z)`` are the same
-        algebra and different float32 roundings. The comment three lines above it
-        says DO NOT flatten these parens; this measures what happens when someone
-        does. Unguarded."""
-        needle = "curl0 = dtdx * ((c_y - c) + (b - b_z))"
-        return source.replace(needle, "curl0 = dtdx * (c_y - c + b - b_z)"), \
+        ``dtdx * ((c_y - c) + (b - b_z))`` and MEEP's left-to-right
+        ``dtdx * (((c_y - c) + b) - b_z)`` (``forms.curl_stencil``) are the same
+        algebra and different float32 roundings. Unguarded."""
+        needle = "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)"
+        return source.replace(needle, "curl0 = dtdx * ((c_y - c) + (b - b_z))"), \
             source.count(needle)
 
     def m7_ownership_mask_dropped(source: str) -> Tuple[str, int]:
@@ -1262,10 +1285,13 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
              "else:", "si = tl.where(si < 0, nx - 1, tl.where(si == nx, 0, si))"],
             ["si = tl.where(si < 0, nx - 1, tl.where(si == nx, 0, si))"])
 
-    def m9_commuted_multiply(source: str) -> Tuple[str, int]:
-        """PREDICTED NULL: IEEE multiplication commutes; only the PTX may move."""
-        needle = "kp_0 * src0"
-        return source.replace(needle, "src0 * kp_0"), source.count(needle)
+    def m9_history_load_unmasked(source: str) -> Tuple[str, int]:
+        """PREDICTED NULL: ``prev`` loaded on every cell. Off the accumulation's cells
+        it feeds only the discarded form of ``forms.constitutive_form``, so no word
+        moves; only the PTX does (the auxiliary contract constrains stores)."""
+        needle = "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)"
+        return (source.replace(needle, "prev0 = tl.load(w0 + idx, mask=live, other=0.0)"),
+                source.count(needle))
 
     return (
         ("m1_wall_table_is_the_d_side", "the DIAGONAL vs the OFF-DIAGONAL table",
@@ -1284,7 +1310,8 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
          m7_ownership_mask_dropped),
         ("m8_metallic_ghost_becomes_a_wrap", "the metallic ghost", "caught",
          m8_metallic_ghost_becomes_a_wrap),
-        ("m9_commuted_multiply", "commuted multiply", "null", m9_commuted_multiply),
+        ("m9_history_load_unmasked", "an auxiliary load outside its form", "null",
+         m9_history_load_unmasked),
     )
 
 
@@ -1305,8 +1332,7 @@ def mutation_arming_leg() -> Dict[str, Any]:
         parses = True
         error = None
         try:
-            ast.parse("import triton\nimport triton.language as tl\n"
-                      "PERIODIC = tl.constexpr(0)\nMETALLIC = tl.constexpr(1)\n\n"
+            ast.parse(mutant_header()
                       + mutated.replace("fused_curl_constitutive_B", "mutant"))
         except SyntaxError as exc:  # noqa: PERF203
             parses, error = False, repr(exc)

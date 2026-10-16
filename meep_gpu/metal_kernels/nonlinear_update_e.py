@@ -1,5 +1,15 @@
 """The INSTANTANEOUS chi2/chi3 (Pade) electric constitutive sub-step, on Metal.
 
+It steps the array path's arithmetic (``stepping._nonlinear_constitutive``): the four
+corners of each transverse sum added left to right
+(``stepping._nonlinear_transverse_sums``), MEEP's ``Dsqr`` with its ``0.0625`` term and
+the addition after it in binary64, rounded once (``stepping._nonlinear_dsqr``), then the
+Pade factor in float32, and the constitutive form selected per structure chunk from the
+chunk record (``stepping._apply_constitutive_regions``). The Apple GPU has no float64,
+so the binary64 steps of ``Dsqr`` run in software (:mod:`.softfp64`, ruling R7: soft-fp64
+rather than refusal). The three spine arms below (``step_B``, ``step_D``, ``update_H``)
+launch the base kernels of :mod:`.shaders`, which bind the same record.
+
 One shader, one coverage predicate, one plan, in one file, on the pattern
 :mod:`.offdiag_update_e` set — that module is this one's TEMPLATE and the shape is
 deliberately copied rather than reinvented: same slot, same half-integer tail, same
@@ -14,20 +24,21 @@ WHAT IT REPLACES. ``stepping.update_E`` (stepping.py:954) with an active PML and
 OTHER components' volumes (stepping.py:991-997). Per component ``c`` with own axis
 ``a``, when ``fields.is_nonlinear(c)``::
 
-    per partner (offset 1 then 2, cycle X->Y->Z, stepping.py:1183-1185):
-        pair  = g + shift_down(g, partner_axis)          # :1187-1189
-        gNs   = pair + shift_up(pair, a)                 # :1162
-    Dsqr  = gs*gs + 0.0625*(g1s*g1s + g2s*g2s)           # :1118
-    c2    = (gs   * chi2) * (us*us)                      # :1025
-    c3    = (Dsqr * chi3) * ((us*us)*us)                 # :1026
-    u     = ((1 + c2) + 2*c3) / ((1 + 2*c2) + 3*c3)      # :1027
-    src   = (gs * us) * u                                # :1078-1080
-    prev  = f_w_c ; f_w_c = src                          # :2065-2096
-    E_c  += kps_a_h * f_w_c ;  E_c -= kms_a_h * prev     # half-integer, :986
+    per partner (offset 1 then 2, cycle X->Y->Z, _nonlinear_transverse_sums):
+        gNs   = ((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]   # left to right
+    Dsqr  = narrow(widen(gs*gs) + 0.0625*widen(g1s*g1s + g2s*g2s))  # _nonlinear_dsqr
+    c2    = (gs   * chi2) * (us*us)                         # calc_nonlinear_u
+    c3    = (Dsqr * chi3) * ((us*us)*us)
+    u     = ((1 + c2) + 2*c3) / ((1 + 2*c2) + 3*c3)
+    src   = (gs * us) * u                                   # _nonlinear_constitutive
+    on a cell whose chunk carries the own axis's layer (dsigw):
+        prev = f_w_c ; f_w_c = src ; E_c = E_c + ((kps_a_h*src) - (kms_a_h*prev))
+    elsewhere:
+        E_c = src                                            # f_w_c untouched
 
 and, when the component is LINEAR in a partly nonlinear run, ``src = gs * us`` —
-MEEP's ``else if (u)`` branch (stepping.py:1100-1102), which is the certified plain
-constitutive kernel's component body verbatim.
+MEEP's ``else if (u)`` branch, which is the certified plain constitutive kernel's
+component body verbatim.
 
 THIS IS THE FIRST METAL FAMILY IN THIS PACKAGE THAT DIVIDES, and that is not a
 remark. ``shaders.py``'s transcription rule 4 states the certified pair's position
@@ -71,12 +82,12 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by measurement rather than assume
    (stepping.py:1054-1056) and the row-then-scale order of ``_nonlinear_constitutive``
    (:1107-1109). Flattening any of them is a different float32 number.
 
-4. **THE FOUR-CORNER ASSOCIATION IS THE SHIFTED-PAIR ONE, NOT MEEP C'S.**
-   ``_nonlinear_transverse_sums`` (stepping.py:1187-1191) forms
-   ``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])`` — pair first, then the pair shifted
-   — while MEEP C sums left to right (step_generic.cpp:646-648). **The byte arbiter
-   is stepping.py**, so the pair association is what this kernel carries and the
-   left-to-right form is a gate mutation, not a comment.
+4. **THE FOUR CORNERS ARE ADDED LEFT TO RIGHT, IN MEEP'S ORDER.**
+   ``_nonlinear_transverse_sums`` forms ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]``,
+   MEEP's own sum (step_generic.cpp:646-648), each addition one float32 rounding. The
+   package's previous association, the pair ``(g[i] + g[i-s1]) + (g[i+s] +
+   g[i+(s-s1)])``, is the same sum in exact arithmetic and a different word; it is the
+   gate's must-catch mutation ``four_corner_pair_association``.
 
 5. **THE TWO SHIFTS GO IN OPPOSITE DIRECTIONS** — half a cell DOWN the partner's
    axis on the raw partner volume, then the formed pair half a cell UP the
@@ -87,11 +98,24 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by measurement rather than assume
    load site — the partner-axis flag is index-invariant along the own axis, so
    evaluating it at ``i`` and at ``i+s`` is the same flag.
 
-6. **0.0625 SCALES THE TRANSVERSE SUM OF SQUARES, APPLIED LAST** (stepping.py:1147).
-   ``0.0625 = (1/4)^2`` turns each UNNORMALIZED four-point sum back into a mean
-   before it is squared. It is an exact power of two, so — like the off-diagonal
-   family's 0.25 — distributing it is bitwise identical away from underflow and is
-   carried as a recorded NULL control rather than claimed as a catch.
+6. **0.0625 SCALES THE TRANSVERSE SUM OF SQUARES IN BINARY64, AND THE SUM ROUNDS
+   ONCE.** ``0.0625 = (1/4)^2`` turns each UNNORMALIZED four-point sum back into a
+   mean before it is squared. MEEP writes it as a double literal, so ``gs*gs`` and
+   ``g1s*g1s + g2s*g2s`` are float32 operations, rounded, then widened; the scale and
+   the addition after it are binary64 operations and ``Dsqr`` rounds once to float32
+   (``stepping._nonlinear_dsqr``). The kernel performs those two binary64 steps with
+   :mod:`.softfp64` (``sd_widen_f``, ``sd_scale_pow2`` at ``k = -4``, ``sd_add``,
+   ``sd_narrow_f``, every call under the flush policy, ``fz = true``), in the one
+   helper :data:`DSQR_HELPER`. Against the float32 form this moves ``Dsqr`` only
+   where the exact ``0.0625 * t`` lies below float32's smallest normal (the float32
+   form flushes or rounds that term; the binary64 one keeps it), and from there it
+   reaches a stored word where ``chi3 * |chi1inv|^3`` is large enough for ``c3`` to
+   carry the change into the ``1 + ...`` sums: MEASURED in a host model under the
+   flush policy, with ``|D| ~ 2**-55 .. 2**-60``, transverse sums near ``2**-62`` and
+   ``chi3 * |chi1inv|^3 = 9e28`` (under :data:`CHI_MAGNITUDE_CEILING`), 14,867 to
+   42,776 of 2,000,000 ``src`` words differ between the two forms. The gate's ``dsqr``
+   leg measures the helper itself on that band, and its ``dsqr_band`` class carries
+   the ``dsqr_in_float32`` mutation through the shipped kernel to E.
 
 7. **A VOLUME INVERSE EPSILON IS REQUIRED, AND THAT IS A NUMERICAL CLAUSE RATHER
    THAN A CONVENIENCE.** With a PYTHON-FLOAT ``us`` NumPy evaluates
@@ -106,10 +130,14 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by measurement rather than assume
    weak scalar rounded ONCE to float32 under NEP 50, measured 0 differing words
    over seven scalars spanning 1e-30 to 3.4e38.
 
-8. **``prev`` IS READ BEFORE ``f_w`` IS WRITTEN**, and the tail keeps the two
-   separate accumulations of ``_apply_constitutive_pml`` (stepping.py:2112-2143) —
-   byte-for-byte the certified constitutive family's recurrence, under the same
-   file-scope contraction directive. **The directive is load-bearing on THIS
+8. **THE TAIL IS THE BASE CONSTITUTIVE KERNEL'S, PER CHUNK.** Each component reads
+   its own axis's half-integer membership from the chunk record
+   (:func:`.shaders.constitutive_bounds_block`). On a member cell ``prev`` is read
+   BEFORE ``f_w`` is written and the accumulation is MEEP's ``f + ((kps*src) -
+   (kms*prev))`` (step_generic.cpp:689, :697); elsewhere the stored word is ``src``
+   itself, an output select, and ``f_w`` is neither read nor written (the auxiliary
+   contract). That is :mod:`.shaders`' constitutive tail line for line, under the
+   same file-scope contraction directive. **The directive is load-bearing on THIS
    expression and that was measured too**: with ``contract(fast)`` the Pade body
    diverges by 10,770 words (up to 2 ulp), because the numerator and denominator
    sums contract into fmas before the divide ever runs.
@@ -141,7 +169,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from . import arms, coverage as _coverage, templates
+from . import arms, chunk_bounds as _chunk_bounds, coverage as _coverage, softfp64
+from . import shaders, templates
 from .coverage import _boundary_kinds, _call, _metal_backend_reasons
 from .device import compile_source
 from .plans import KernelPlan
@@ -177,7 +206,8 @@ HALF_INTEGER = True
 
 #: Buffer bindings the shader declares. Metal's ceiling is 31 (indices 0..30) and a
 #: 32nd is a COMPILE ERROR, so the number is asserted by a test rather than left to
-#: be discovered by a future edit: 25 buffers + 4 scalars = 29, two of headroom.
+#: be discovered by a future edit: 25 buffers + 4 scalars + the chunk record = 30,
+#: one of headroom.
 #:
 #: THE PACKED SCALAR BUFFER EXISTS BECAUSE OF THIS CEILING, and it is the design
 #: decision the limit FORCED rather than informed. Six separate ``constant float&``
@@ -185,7 +215,15 @@ HALF_INTEGER = True
 #: — would have been 24 + 6 + 4 = 34 bindings and would not have compiled at all.
 #: One buffer holding six floats costs one binding. The same reasoning is what the
 #: ADE ``update_P`` port will need for its per-pole coefficients.
-BINDING_COUNT = 29
+BINDING_COUNT = 30
+
+#: The chunk record's binding index: one past the last scalar, as the base
+#: constitutive binds it one past its own (``shaders.CONSTITUTIVE_RECORD_BUFFER``).
+CHUNK_RECORD_BUFFER = 29
+
+#: The constitutive side this sub-step is, for the shared bounds block and membership
+#: flags of :mod:`.shaders`: each component's OWN axis on the half-integer lattice.
+SIDE = "E"
 
 #: Boundary kind string -> the kernel's specialisation code. The strings are
 #: ``stepping``'s own; the codes are the package's (shaders.py:71-72).
@@ -219,6 +257,10 @@ _TEMPLATE = r"""
 using namespace metal;
 
 __CONTRACT__
+__SOFTFP64__
+__RECORD_STRUCT__
+
+__DSQR_HELPER__
 
 kernel void nonlinear_constitutive_step(
     device float*       f0      [[buffer(0)]],
@@ -250,6 +292,7 @@ kernel void nonlinear_constitutive_step(
     constant uint&      ny      [[buffer(26)]],
     constant uint&      nz      [[buffer(27)]],
     constant uint&      n_elem  [[buffer(28)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
 __GUARD__
@@ -262,7 +305,7 @@ __GUARD__
     int j   = plane % nyi;
     int i   = plane / nyi;
 
-    // --- BOTH neighbours per axis (stepping._shift_down:1787 / _shift_up:1723) --
+    // --- BOTH neighbours per axis (stepping._shift_down / _shift_up) ------------
     // The four-corner sum's two shifts go in OPPOSITE directions, so one axis can
     // be read both ways inside one component's term and the corner sample needs
     // the up flag of one axis with the down flag of another. The flags stay
@@ -275,48 +318,68 @@ __GHOST_X__
 __GHOST_Y__
 __GHOST_Z__
 
+    // --- the chunk record: each component's own-axis membership at this cell -----
+__BOUNDS__
+
     // The coefficient index is on the component's OWN axis: kps_x/kms_x for
-    // target 0, _y for 1, _z for 2 (E_CONSTITUTIVE_TERMS, stepping.py:227). That
-    // is MEEP's dsigw, NOT the dsig/dsigu cycle the curl recurrence uses.
+    // target 0, _y for 1, _z for 2 (E_CONSTITUTIVE_TERMS). That is MEEP's dsigw,
+    // NOT the dsig/dsigu cycle the curl recurrence uses.
     float kp_0 = kp0[i], km_0 = km0[i];
     float kp_1 = kp1[j], km_1 = km1[j];
     float kp_2 = kp2[k], km_2 = km2[k];
+    const bool dw0 = __DW0__, dw1 = __DW1__, dw2 = __DW2__;
 
     // --- component 0: Ex — own axis x; partners Dy then Dz ---------------------
-    // `prev` is read BEFORE `fw` is written: the array path copies fw first
-    // (stepping.py:2090). Reversed, this is wrong only where kms != 0 -- INSIDE
-    // THE PML ONLY -- and looks like a slightly worse absorber, not like a bug.
-    float prev0 = w0[ii];
+    // On a dsigw cell `prev` is read BEFORE `fw` is written (the array path copies
+    // fw first) and the right-hand side is formed first: f + ((kps*src) -
+    // (kms*prev)), MEEP's step_update_EDHB (step_generic.cpp:689, :697). Elsewhere
+    // the word is src itself, an output select, and fw is not touched. Neither
+    // multiply may contract into an fma: the file-scope directive stops it.
+    float prev0 = dw0 ? w0[ii] : 0.0f;
 __SRC0__
-    w0[ii] = src0;
-    float a0 = f0[ii];
-    // Two SEPARATE accumulations, left to right: ((f + kps*src) - kms*prev).
-    // Flattening to f + (kps*src - kms*prev) is a different float32 number, and
-    // neither multiply may contract into an fma -- the file-scope contraction
-    // directive is what stops the second.
-    a0 = a0 + kp_0 * src0;
-    a0 = a0 - km_0 * prev0;
+    if (dw0) { w0[ii] = src0; }
+    float a0 = src0;
+    if (dw0) { a0 = f0[ii] + ((kp_0 * src0) - (km_0 * prev0)); }
     f0[ii] = a0;
 
     // --- component 1: Ey — own axis y; partners Dz then Dx ---------------------
-    float prev1 = w1[ii];
+    float prev1 = dw1 ? w1[ii] : 0.0f;
 __SRC1__
-    w1[ii] = src1;
-    float a1 = f1[ii];
-    a1 = a1 + kp_1 * src1;
-    a1 = a1 - km_1 * prev1;
+    if (dw1) { w1[ii] = src1; }
+    float a1 = src1;
+    if (dw1) { a1 = f1[ii] + ((kp_1 * src1) - (km_1 * prev1)); }
     f1[ii] = a1;
 
     // --- component 2: Ez — own axis z; partners Dx then Dy ---------------------
-    float prev2 = w2[ii];
+    float prev2 = dw2 ? w2[ii] : 0.0f;
 __SRC2__
-    w2[ii] = src2;
-    float a2 = f2[ii];
-    a2 = a2 + kp_2 * src2;
-    a2 = a2 - km_2 * prev2;
+    if (dw2) { w2[ii] = src2; }
+    float a2 = src2;
+    if (dw2) { a2 = f2[ii] + ((kp_2 * src2) - (km_2 * prev2)); }
     f2[ii] = a2;
 }
-"""  # stepping.py live lines for the frozen device-text citation(s) in this string: 227->228, 2090->2137
+"""
+
+#: MEEP's ``Dsqr`` (step_generic.cpp:646-654) as ``stepping._nonlinear_dsqr`` forms it,
+#: the one place this family runs binary64. ``gs*gs`` and ``g1s*g1s + g2s*g2s`` are
+#: float32 operations, each rounded to float32 BEFORE it is widened; ``0.0625`` is a
+#: double literal, so the scale (``sd_scale_pow2`` at ``k = softfp64.SIXTEENTH``) and the
+#: addition after it are binary64 operations, and the sum rounds ONCE to float32
+#: (``sd_narrow_f``). Every helper takes ``fz = true``: this executor runs the flush
+#: policy only (:mod:`.subnormal`), and the helpers then reproduce the host's own
+#: float64 unit with its FPU in that mode. One helper, so the gate's ``dsqr`` leg
+#: launches exactly the bytes the kernel inlines.
+DSQR_HELPER = (
+    "// stepping._nonlinear_dsqr: the two float32 terms widened, MEEP's 0.0625 and the\n"
+    "// addition after it in binary64 (meep_gpu.metal_kernels.softfp64), rounded once.\n"
+    "static inline float nonlinear_dsqr(float gs, float g1s, float g2s) {\n"
+    "    float own = gs * gs;\n"
+    "    float transverse = (g1s * g1s) + (g2s * g2s);\n"
+    "    return sd_narrow_f(sd_add(sd_widen_f(own, true),\n"
+    f"                              sd_scale_pow2(sd_widen_f(transverse, true), "
+    f"{softfp64.SIXTEENTH}, true),\n"
+    "                              true), true);\n"
+    "}")
 
 #: Per axis, the names the two-way neighbour block declares.
 _TWO_WAY_NAMES: Dict[str, Tuple[str, str, str, str, str]] = {
@@ -378,25 +441,22 @@ def _two_way_ghost(axis: str, code: int) -> str:
 
 def _four_point_sum(component: int, partner_axis: int, tag: str) -> str:
     """MEEP's ``g1s``/``g2s`` for one partner — ``stepping._nonlinear_transverse_sums``
-    (:1158-1162) as it ASSOCIATES them::
+    as it ASSOCIATES them, which is MEEP's left-to-right sum (step_generic.cpp:646-648)::
 
-        pair = g + shift_down(g, partner_axis)      -> g[i] + g[i-s1]
-        gNs  = pair + shift_up(pair, own_axis)      -> ... + (g[i+s] + g[i+s-s1])
+        gNs = ((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]
 
-    so the bytes are ``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])`` — THE PAIR
-    ASSOCIATION, not MEEP C's left-to-right sum (step_generic.cpp:646-648). The far
-    pair is the near pair's elementwise sum moved up one cell, so loading the two
-    far corners and adding them is the same bits as shifting the formed pair: a
-    shift is data movement, and no float rounds between the two spellings.
+    where ``s`` steps up the component's OWN axis and ``s1`` down the partner's. Each
+    addition is one float32 rounding, in that order; the corner ``g[i+(s-s1)]`` is the
+    down-shifted partner shifted up, one stored word.
 
     THE CORNER TAKES BOTH AXES' RULES. ``shift_up`` is applied to the ALREADY
-    SHIFTED pair, so the partner-axis down-flag is evaluated at ``i+s`` rather than
+    SHIFTED partner, so the partner-axis down-flag is evaluated at ``i+s`` rather than
     at ``i`` — and those are the same flag, because a shift along the OWN axis does
     not move the partner-axis coordinate. That is why ANDing the two flags at the
     load site reproduces applying them in sequence.
 
-    A metallic own axis at the top row makes ``far`` an exact ``0.0f + 0.0f``,
-    which is precisely the ``+0.0`` plane ``_shift_up`` writes there (:1782).
+    A metallic ghost serves an exact ``+0.0``, which is the plane ``_shift_up`` /
+    ``_shift_down`` write there, added in the same position.
     """
     own_axis = E_TERMS[component][2]
     down, _up, dvalid, _uvalid, _extent = _TWO_WAY_NAMES["xyz"[partner_axis]]
@@ -406,14 +466,11 @@ def _four_point_sum(component: int, partner_axis: int, tag: str) -> str:
     down_index = _index({partner_axis: down})
     up_index = _index({own_axis: oup})
     corner_index = _index({own_axis: oup, partner_axis: down})
-    return "\n".join([
-        f"    float near_{tag} = {partner_volume}[ii]",
-        f"        + ({dvalid} ? {partner_volume}[{down_index}] : 0.0f);",
-        f"    float far_{tag} = ({ouvalid} ? {partner_volume}[{up_index}] : 0.0f)",
-        f"        + (({ouvalid} && {dvalid}) ? {partner_volume}[{corner_index}]"
-        f" : 0.0f);",
-        f"    float sum_{tag} = near_{tag} + far_{tag};",
-    ])
+    return (
+        f"    float sum_{tag} = (({partner_volume}[ii]"
+        f" + ({ouvalid} ? {partner_volume}[{up_index}] : 0.0f))"
+        f" + ({dvalid} ? {partner_volume}[{down_index}] : 0.0f))"
+        f" + (({ouvalid} && {dvalid}) ? {partner_volume}[{corner_index}] : 0.0f);")
 
 
 def _component_source(component: int, nonlinear: Sequence[int],
@@ -442,12 +499,11 @@ def _component_source(component: int, nonlinear: Sequence[int],
         lines.append(_four_point_sum(component, partner_axis, tag))
         tags.append(tag)
 
-    # Dsqr = gs*gs + 0.0625*(g1s*g1s + g2s*g2s) — stepping.py:1147, with 0.0625
-    # scaling the SUM and applied last.
+    # Dsqr = gs*gs + 0.0625*(g1s*g1s + g2s*g2s), the scale and the addition in
+    # binary64 and rounded once (DSQR_HELPER; stepping._nonlinear_dsqr).
     lines.append(
-        f"    float dsqr{component} = gs{component} * gs{component}"
-        f" + 0.0625f * ((sum_{tags[0]} * sum_{tags[0]})"
-        f" + (sum_{tags[1]} * sum_{tags[1]}));")
+        f"    float dsqr{component} = nonlinear_dsqr(gs{component},"
+        f" sum_{tags[0]}, sum_{tags[1]});")
 
     chi2 = (f"{_CHI2_BUFFERS[component]}[ii]" if chi2_volume[component]
             else f"chis[{_CHI2_SLOTS[component]}]")
@@ -524,8 +580,17 @@ def nonlinear_source(nonlinear: Sequence[int], chi2_volume: Sequence[int],
             "the two families")
     if len(codes) != 3:
         raise ValueError(f"codes is a per-axis triple, got {codes!r}")
+    flags = shaders.constitutive_membership_flags(SIDE)
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__SOFTFP64__": softfp64.MSL_HELPERS,
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__DSQR_HELPER__": DSQR_HELPER,
+        "__RECORD_BINDING__": _chunk_bounds.binding(CHUNK_RECORD_BUFFER),
+        "__BOUNDS__": shaders.constitutive_bounds_block(SIDE),
+        "__DW0__": flags[0],
+        "__DW1__": flags[1],
+        "__DW2__": flags[2],
         "__GUARD__": templates.GUARD,
         "__GHOST_X__": _two_way_ghost("x", codes[0]),
         "__GHOST_Y__": _two_way_ghost("y", codes[1]),
@@ -1087,10 +1152,17 @@ class MetalNonlinearConstitutivePlan(KernelPlan):
     neighbour offsets while E and f_w are being written, so an aliased pair would
     make the result depend on thread schedule — a wrong answer that varies run to
     run. An all-linear specialisation is refused toward the certified plain kernel.
+
+    THE CHUNK RECORD BINDS LAST (:data:`CHUNK_RECORD_BUFFER`), keyword-only and with
+    no default, as every base plan takes it (``launch.ConstitutivePlan``): it is the
+    division the array path selects each cell's constitutive form by, checked against
+    the plan's shape (:func:`.chunk_bounds.plan_words`) and refused by name when
+    absent.
     """
 
     __slots__ = ("shape", "n_elem", "nonlinear", "chi2_volume", "chi3_volume",
-                 "boundary_codes", "residency", "volumes", "chi_scalars")
+                 "boundary_codes", "residency", "volumes", "chi_scalars",
+                 "chunk_bounds")
 
     REPR_FIELDS = ("shape", "nonlinear", "chi2_volume", "chi3_volume",
                    "boundary_codes")
@@ -1100,7 +1172,7 @@ class MetalNonlinearConstitutivePlan(KernelPlan):
                  coefficients, nonlinear, chi2_volume, chi3_volume,
                  boundary_codes, functions: Dict[str, Any],
                  volumes: Sequence[str], host_chi: Sequence[Any] = (),
-                 host_arrays: Sequence[Any] = ()) -> None:
+                 host_arrays: Sequence[Any] = (), *, chunk_bounds: Any) -> None:
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
         self.boundary_codes = tuple(int(code) for code in boundary_codes)
@@ -1128,13 +1200,16 @@ class MetalNonlinearConstitutivePlan(KernelPlan):
                              f"{len(self.chi_scalars)}")
 
         self._require_no_aliasing(host_arrays, host_chi)
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, "MetalNonlinearConstitutivePlan")
 
         super().__init__(
             functions,
             tuple(targets) + tuple(auxiliaries) + tuple(sources)
             + tuple(inverse_epsilon) + tuple(chi2_slots) + tuple(chi3_slots)
             + (chi_scalars_tensor(chi_scalars, residency),) + tuple(coefficients)
-            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem))
+            + (self.shape[0], self.shape[1], self.shape[2], self.n_elem,
+               _chunk_bounds.tensor(self.chunk_bounds)))
 
     @staticmethod
     def _require_no_aliasing(host_arrays: Sequence[Any],
@@ -1251,6 +1326,7 @@ def _packed_scalars(fields: Any) -> Tuple[float, ...]:
 def plan_nonlinear_constitutive(fields: Any, pml: Any, residency: Any = None,
                                 contract_variants: Sequence[str] = (
                                     templates.CONTRACT_OFF,),
+                                *, chunk_bounds: Any,
                                 ) -> Optional[MetalNonlinearConstitutivePlan]:
     """Build the chi2/chi3 ``update_E`` plan from the engine's own objects.
 
@@ -1258,7 +1334,8 @@ def plan_nonlinear_constitutive(fields: Any, pml: Any, residency: Any = None,
     :func:`nonlinear_constitutive_coverage`. The sources are taken through
     ``displacement_minus_polarization_volumes`` — the accessor the array path
     itself reads (stepping.py:1069) — which with no poles admitted hands back the
-    aliased D primaries (fields.py:1107-1138).
+    aliased D primaries (fields.py:1107-1138). ``chunk_bounds`` is the record of the
+    run's division, as ``launch.plan_constitutive`` takes it.
     """
     if not nonlinear_constitutive_coverage(fields, pml, residency).covered:
         return None
@@ -1314,7 +1391,8 @@ def plan_nonlinear_constitutive(fields: Any, pml: Any, residency: Any = None,
         volume_names,
         host_chi=host_chi,
         host_arrays=(host_targets, host_aux, host_sources, host_inv,
-                     host_coefficients))
+                     host_coefficients),
+        chunk_bounds=chunk_bounds)
 
 
 def plan_nonlinear_constitutive_from_arrays(
@@ -1322,7 +1400,7 @@ def plan_nonlinear_constitutive_from_arrays(
         chi: Dict[str, Dict[str, Any]], boundary_codes: Sequence[int],
         residency: Any, functions: Optional[Dict[str, Any]] = None,
         contract_variants: Sequence[str] = (templates.CONTRACT_OFF,),
-        ) -> MetalNonlinearConstitutivePlan:
+        *, chunk_bounds: Any) -> MetalNonlinearConstitutivePlan:
     """Build it from bare host arrays — the gate's and probe's route.
 
     ``arrays`` is keyed by component name (``Ex``, ``f_w_Ex``, ``Dx``,
@@ -1334,7 +1412,9 @@ def plan_nonlinear_constitutive_from_arrays(
 
     ``functions=`` IS LOAD-BEARING: the mutation legs route a mutated kernel
     through it, and a builder that drops it launches the SHIPPED kernel and reports
-    a pass for a defect it never introduced.
+    a pass for a defect it never introduced. ``chunk_bounds`` is required, with no
+    default: the harness hands over the record of the division its reference steps
+    with.
     """
     targets = tuple(term[0] for term in E_TERMS)
     shape = tuple(int(n) for n in arrays[targets[0]].shape)
@@ -1394,7 +1474,8 @@ def plan_nonlinear_constitutive_from_arrays(
         volume_names,
         host_chi=host_chi,
         host_arrays=(host_targets, host_aux, host_sources, host_inv,
-                     host_coefficients))
+                     host_coefficients),
+        chunk_bounds=chunk_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -1485,27 +1566,34 @@ def nonlinear_run_constitutive_coverage(fields: Any, pml: Any, side: str,
 def plan_nonlinear_run_pml_curl(
         fields: Any, pml: Any, sub_step: str, residency: Any = None,
         contract_variants: Sequence[str] = (templates.CONTRACT_OFF,),
-        ) -> Any:
-    """Build the certified ordinary PML curl for one nonlinear B/D sub-step."""
+        *, chunk_bounds: Any) -> Any:
+    """Build the certified ordinary PML curl for one nonlinear B/D sub-step.
+
+    ``chunk_bounds`` is the record of the run's division, as
+    ``launch.plan_pml_curl`` takes it.
+    """
     if not nonlinear_run_pml_curl_coverage(fields, pml, sub_step, residency).covered:
         return None
     from . import launch  # noqa: PLC0415 - avoids the registration import cycle
 
     return launch.plan_pml_curl(_LinearScopeView(fields), pml, sub_step, residency,
-                                contract_variants)
+                                contract_variants, chunk_bounds=chunk_bounds)
 
 
 def plan_nonlinear_run_constitutive(
         fields: Any, pml: Any, side: str, residency: Any = None,
         contract_variants: Sequence[str] = (templates.CONTRACT_OFF,),
-        ) -> Any:
-    """Build the certified ordinary magnetic constitutive plan for a nonlinear run."""
+        *, chunk_bounds: Any) -> Any:
+    """Build the certified ordinary magnetic constitutive plan for a nonlinear run.
+
+    ``chunk_bounds`` as :func:`plan_nonlinear_run_pml_curl` takes it.
+    """
     if not nonlinear_run_constitutive_coverage(fields, pml, side, residency).covered:
         return None
     from . import launch  # noqa: PLC0415 - avoids the registration import cycle
 
     return launch.plan_constitutive(_LinearScopeView(fields), pml, side, residency,
-                                    contract_variants)
+                                    contract_variants, chunk_bounds=chunk_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -1521,7 +1609,8 @@ def _arm_plan(context: Any, slot: str
               ) -> Optional[MetalNonlinearConstitutivePlan]:
     return plan_nonlinear_constitutive(context.fields, context.pml,
                                        context.residency,
-                                       context.contract_variants)
+                                       context.contract_variants,
+                                       chunk_bounds=context.chunk_bounds)
 
 
 def _spine_curl_coverage(context: Any, slot: str) -> "_coverage.Coverage":
@@ -1531,7 +1620,8 @@ def _spine_curl_coverage(context: Any, slot: str) -> "_coverage.Coverage":
 
 def _spine_curl_plan(context: Any, slot: str) -> Any:
     return plan_nonlinear_run_pml_curl(context.fields, context.pml, slot,
-                                       context.residency, context.contract_variants)
+                                       context.residency, context.contract_variants,
+                                       chunk_bounds=context.chunk_bounds)
 
 
 def _spine_h_coverage(context: Any, slot: str) -> "_coverage.Coverage":
@@ -1542,7 +1632,8 @@ def _spine_h_coverage(context: Any, slot: str) -> "_coverage.Coverage":
 def _spine_h_plan(context: Any, slot: str) -> Any:
     return plan_nonlinear_run_constitutive(context.fields, context.pml, "H",
                                            context.residency,
-                                           context.contract_variants)
+                                           context.contract_variants,
+                                           chunk_bounds=context.chunk_bounds)
 
 
 SPINE_ARMS = tuple(
@@ -1564,7 +1655,7 @@ ARM = arms.register(
     family=FAMILY, slot=SLOT, label="nonlinear",
     coverage=_arm_coverage, plan=_arm_plan,
     prefix="nonlinear: ", noun="chi2/chi3 Pade constitutive",
-    # WIRED. Its disjointness from the other two ``update_E`` arms rests on an
+    # Its disjointness from the other two ``update_E`` arms rests on an
     # INVERTED CLAUSE in both directions, which is the cleanest case in the table:
     # ``constitutive`` and ``offdiag_constitutive`` both take the shared clause 10
     # (chi2/chi3 refused on every sub-step), and this predicate requires it. There

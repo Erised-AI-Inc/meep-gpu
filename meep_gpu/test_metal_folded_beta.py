@@ -75,25 +75,9 @@ import metal_composition_matrix as matrix  # noqa: E402
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.metal_kernels import (  # noqa: E402
     arms, device, folded_beta, folded_complex, shaders, special_kz, symmetry,
-    templates,
 )
 
 ENVIRONMENT = matrix.prepare_environment()
-
-#: Read from the SAME artifact the predicates read, so a test cannot certify a body
-#: the family would not launch. ``folded_beta``'s complex arm binds through
-#: ``special_kz``'s probe deliberately — its arithmetic is that family's.
-PROBE = special_kz.load_expansion_probe()
-EXPANSION = special_kz.beta_expansion_from_probe(PROBE) if PROBE else None
-
-#: THE PARENTS' FILL PROBE IS A DIFFERENT ARTIFACT, and the distinction is load
-#: bearing rather than bookkeeping: ``folded_complex``'s FILL multiplies by the
-#: mirror parity as a complex coefficient on the LEFT, a pattern ``special_kz``'s
-#: artifact does not classify at all. This family registers no fill and therefore
-#: needs no such artifact — but the legs that show the parents' fills composing with
-#: this family's curls DO, and passing the beta artifact there was measured to be a
-#: refusal by name rather than a silent pass.
-FOLD_PROBE = folded_complex.load_expansion_probe()
 
 
 def _mps() -> bool:
@@ -105,9 +89,6 @@ def _mps() -> bool:
 
 
 requires_mps = pytest.mark.skipif(not _mps(), reason="no MPS device on this host")
-requires_probe = pytest.mark.skipif(
-    EXPANSION is None,
-    reason="no measured complex-multiply expansion artifact; the arm is refused")
 
 #: The per-axis code triples the corpus's four folded-beta rows drive, plus the
 #: METALLIC termination the corpus does not drive but the emitter must get right.
@@ -141,99 +122,71 @@ def _moved(before, after) -> int:
 # 1. The structural composition — checked BY CHARACTER, in both directions
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("owner,template", (
-    ("real", "_BETA_CURL_TEMPLATE"),
-    ("complex", "_BETA_BLOCH_CURL_TEMPLATE"),
-))
-def test_the_parent_template_carries_the_insertion_anchor_exactly_once(owner,
-                                                                      template):
-    """A parent edit that moved or duplicated the anchor is a BUILD failure.
+def _pass(source: str) -> str:
+    """The beta pass's text, between its two marker lines."""
+    from meep_gpu.metal_kernels import folded_pass
 
-    The top-plane mask goes AFTER the cell-0 mask slot. If that slot moved,
-    duplicated or vanished, the insertion would silently land somewhere else —
-    a plane of wrong values on every folded PERIODIC run, and not a crash.
-    """
-    source = getattr(special_kz, template)
-    assert source.count(folded_beta._MASK_ANCHOR) == 1, (owner, template)
+    start = source.index(folded_pass.FOLDED_PASS_BEGIN)
+    return source[start:source.index(folded_pass.FOLDED_PASS_END, start)]
 
 
-@pytest.mark.parametrize("owner,template", (
-    ("real", "_BETA_CURL_TEMPLATE"),
-    ("complex", "_BETA_BLOCH_CURL_TEMPLATE"),
-))
-def test_a_moved_anchor_is_refused_by_name_rather_than_mis_placed(owner, template):
-    """The check is live, not decorative: feed it a template with two anchors."""
-    doubled = getattr(special_kz, template).replace(
-        folded_beta._MASK_ANCHOR, folded_beta._MASK_ANCHOR * 2, 1)
-    with pytest.raises(RuntimeError, match="not once"):
-        folded_beta._with_top_mask_slot(doubled, "a doubled template")
+def _without_pass(source: str, kernel: str, parent_kernel: str, first: int) -> str:
+    """``source`` with the pass, the two beta bindings and the rename taken back out."""
+    from meep_gpu.metal_kernels import folded_pass
+
+    start = source.index(folded_pass.FOLDED_PASS_BEGIN)
+    end = source.index(folded_pass.FOLDED_PASS_END)
+    out = source[:start] + source[end:].split("\n", 2)[2]
+    out = out.replace(f"kernel void {kernel}(", f"kernel void {parent_kernel}(")
+    pad = "     " if kernel == "beta_pml_curl_step" else "      "
+    out = out.replace(special_kz.beta_parameters(first, pad), "")
+    return out.replace(f"[[buffer({first + 2})]]", f"[[buffer({first})]]")
 
 
-def test_the_derived_template_is_the_parent_plus_exactly_the_top_mask_block():
+@pytest.mark.parametrize("backward", (False, True), ids=("step_B", "step_D"))
+def test_the_real_source_is_the_certified_folded_curl_plus_exactly_the_pass(backward):
     """DERIVED RATHER THAN COPIED, and that is the claim this pins.
 
-    A copy would be a second home for twenty-two (real) or thirty (complex)
-    bindings, the ghost gather, the curl grouping, the beta insert and the
-    split-field recurrence. The derived template must be the parent with ONE block
-    added and NOTHING else changed.
+    The certified folded curl (:func:`.symmetry.folded_curl_source`) carries the
+    fold's ghost rule, both ownership masks, the chunk record and the per-chunk
+    forms. This family adds the beta pass, two bindings and an entry-point name, and
+    NOTHING else: removing those three gives the parent back byte for byte.
     """
-    for parent, derived in ((special_kz._BETA_CURL_TEMPLATE,
-                             folded_beta.folded_beta_curl_template()),
-                            (special_kz._BETA_BLOCH_CURL_TEMPLATE,
-                             folded_beta.folded_beta_bloch_curl_template())):
-        assert derived == parent.replace(
-            folded_beta._MASK_ANCHOR,
-            folded_beta._MASK_ANCHOR + folded_beta._TOP_MASK_BLOCK, 1)
-        assert len(derived) > len(parent)
-
-
-def test_the_last_plane_flag_line_matches_the_other_folded_family_character_wise():
-    """THREE families now declare those flags; a test is what stops drift.
-
-    ``symmetry._FOLDED_CURL_TEMPLATE`` and ``folded_complex._TOP_MASK_BLOCK`` carry
-    the same ``bool last_x = ...`` declaration, and so does this family's block. The
-    MASK ITSELF has one home (``symmetry.folded_top_plane_mask``); the declaration
-    does not, so it is pinned by character here rather than left to drift.
-    """
-    def flag_line(text: str) -> str:
-        lines = [line for line in text.splitlines() if "bool last_x" in line]
-        assert len(lines) == 1, text
-        return lines[0]
-
-    ours = flag_line(folded_beta._TOP_MASK_BLOCK)
-    assert ours == flag_line(folded_complex._TOP_MASK_BLOCK)
-    assert ours == flag_line(symmetry._FOLDED_CURL_TEMPLATE)
+    for codes in (CODES_PERIODIC, CODES_METALLIC, CODES_UNFOLDED,
+                  (symmetry.CODE_MIRROR_PERIODIC, symmetry.CODE_METALLIC,
+                   symmetry.CODE_PERIODIC)):
+        ours = folded_beta.folded_beta_curl_source(codes, backward)
+        parent = symmetry.folded_curl_source(codes, backward)
+        assert _without_pass(ours, "beta_pml_curl_step", "folded_pml_curl_step",
+                             shaders.CURL_RECORD_BUFFER) == parent, codes
 
 
 @pytest.mark.parametrize("backward", (False, True), ids=("step_B", "step_D"))
-def test_an_unfolded_grid_reduces_to_the_certified_parent_source(backward):
-    """THE STRONGEST STRUCTURAL FORM: with no folded axis the fold vanishes.
+def test_the_complex_source_is_the_certified_folded_complex_curl_plus_the_pass(
+        backward):
+    """The complex twin: :func:`.folded_complex.folded_bloch_curl_source` plus the
+    complex pass, and nothing else."""
+    from meep_gpu.metal_kernels import complex_fields
 
-    Character-identical to ``special_kz``'s certified emitter except for the
-    inserted block, whose mask body is then the "no folded PERIODIC axis" comment.
-    Anything else in the diff is this family changing the certified curl, which it
-    must not.
-    """
-    ours = folded_beta.folded_beta_curl_source(CODES_UNFOLDED, backward)
-    parent = special_kz.beta_curl_source(CODES_UNFOLDED, backward)
-    inserted = folded_beta._TOP_MASK_BLOCK.replace(
-        "__TOP_MASK__", symmetry.folded_top_plane_mask(CODES_UNFOLDED, backward))
-    assert ours.replace(inserted, "") == parent
-    assert "no folded PERIODIC axis" in ours
+    for codes, phased in ((CODES_PERIODIC, (0, 0, 0)), (CODES_PERIODIC, (2, 0, 0)),
+                          (CODES_METALLIC, (1, 0, 0))):
+        ours = folded_beta.folded_beta_bloch_curl_source(codes, backward, phased)
+        parent = folded_complex.folded_bloch_curl_source(codes, backward, phased)
+        assert _without_pass(ours, "beta_bloch_pml_curl_step", "bloch_pml_curl_step",
+                             complex_fields.CURL_RECORD_BUFFER) == parent, codes
 
 
-@requires_probe
-@pytest.mark.parametrize("backward", (False, True), ids=("step_B", "step_D"))
-def test_an_unfolded_grid_reduces_to_the_certified_complex_parent_source(backward):
-    """The complex twin of the leg above."""
-    ours = folded_beta.folded_beta_bloch_curl_source(
-        CODES_UNFOLDED, backward, (0, 0, 0), EXPANSION)
-    parent = special_kz.beta_bloch_curl_source(
-        CODES_UNFOLDED, backward, (0, 0, 0), EXPANSION)
-    inserted = folded_beta._TOP_MASK_BLOCK.replace(
-        "__TOP_MASK__", symmetry.folded_top_plane_mask(
-            CODES_UNFOLDED, backward, zero=templates.COMPLEX_ZERO))
-    assert ours.replace(inserted, "") == parent
+def test_the_pass_is_special_kz_s_own_text_under_the_fold_s_mask_rows():
+    """One spelling of the beta pass: :func:`.special_kz.beta_pass` on the rows the
+    folded source carries, so the pass's increment is masked by exactly the cell-0
+    and top-plane rows that mask the curl."""
+    from meep_gpu.metal_kernels import folded_pass
+
+    for backward in (False, True):
+        source = folded_beta.folded_beta_curl_source(CODES_PERIODIC, backward)
+        rows = folded_pass.ownership_rows(symmetry.folded_curl_source(CODES_PERIODIC,
+                                                                      backward))
+        assert special_kz.beta_pass(rows, False) in source
 
 
 def test_the_ghost_and_cell_zero_mask_are_the_certified_emitters_output():
@@ -251,30 +204,39 @@ def test_the_ghost_and_cell_zero_mask_are_the_certified_emitters_output():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("backward", (False, True), ids=("step_B", "step_D"))
-def test_the_beta_term_precedes_both_ownership_masks_in_the_real_source(backward):
-    """stepping.py:384-391 / :467-474 add the term; :397 / :479 mask AFTER it.
+def test_the_pass_follows_both_masks_and_the_forms_in_the_real_source(backward):
+    """MEEP's beta pass runs after every component's curl (step_db.cpp:161-175).
 
-    Both masks are downstream, so both may delete a beta contribution — which is
-    the array path's behaviour and therefore this kernel's obligation.
+    The curl, both of its ownership masks and the per-chunk forms come first; the
+    pass then masks its OWN increment by the same rows and adds it through the
+    curl's ladder, in front of the stores.
     """
+    from meep_gpu.metal_kernels import folded_pass
+
     source = folded_beta.folded_beta_curl_source(CODES_PERIODIC, backward)
-    curl = source.index("float curl0 = dtdx")
-    beta = source.index("beta_plus * b")
+    curl = source.index("float curl0 =")
     cell_zero = source.index("bool at_x")
     top = source.index("bool last_x")
-    assert curl < beta < cell_zero < top, (curl, beta, cell_zero, top)
+    forms = source.index("float v2 = ")
+    beta = source.index("-(beta_plus * b)")
+    store = source.index(folded_pass.FOLDED_PASS_ANCHOR)
+    assert curl < cell_zero < top < forms < beta < store, (curl, cell_zero, top,
+                                                           forms, beta, store)
 
 
-@requires_probe
 @pytest.mark.parametrize("backward", (False, True), ids=("step_B", "step_D"))
-def test_the_beta_term_precedes_both_ownership_masks_in_the_complex_source(backward):
+def test_the_pass_follows_both_masks_and_the_forms_in_the_complex_source(backward):
+    from meep_gpu.metal_kernels import folded_pass
+
     source = folded_beta.folded_beta_bloch_curl_source(
-        CODES_PERIODIC, backward, (1, 0, 0), EXPANSION)
-    curl = source.index("float2 curl0 = c_mul_coefficient_left")
-    beta = source.index("c_mul(float2(bpr, bpi), b)")
+        CODES_PERIODIC, backward, (2, 0, 0))
+    curl = source.index("float2 curl0 =")
     cell_zero = source.index("bool at_x")
     top = source.index("bool last_x")
-    assert curl < beta < cell_zero < top, (curl, beta, cell_zero, top)
+    forms = source.index("float2 v2 = ")
+    beta = source.index("float2(-(beta_plus * b.y), beta_plus * b.x)")
+    store = source.index(folded_pass.FOLDED_PASS_ANCHOR)
+    assert curl < cell_zero < top < forms < beta < store
 
 
 @pytest.mark.parametrize("backward,beta_targets,cell_zero,top", (
@@ -289,7 +251,7 @@ def test_each_mask_reaches_a_beta_modified_curl_on_exactly_one_side(
         backward, beta_targets, cell_zero, top):
     """WHY A LEG ON ONE SUB-STEP PROVES NOTHING ABOUT THE OTHER.
 
-    The beta term always writes ``curl0`` and ``curl1``; which of those two the
+    The beta pass always reaches targets 0 and 1; which of those two the
     cell-0 mask takes and which the top-plane mask takes SWAPS between the sides,
     because the B family's Yee shifts are 1 on the two axes that are NOT its own and
     the D family's are 1 on its own axis only. Between them the two sub-steps put
@@ -297,16 +259,25 @@ def test_each_mask_reaches_a_beta_modified_curl_on_exactly_one_side(
     leave the other's interaction unmeasured.
     """
     source = folded_beta.folded_beta_curl_source(CODES_PERIODIC, backward)
-    masked_at_zero = {line.split(" =")[0].strip()
-                      for line in source.splitlines() if "at_y ?" in line}
-    masked_at_top = {line.split(" =")[0].strip()
-                     for line in source.splitlines() if "last_y ?" in line}
+
+    def masked(flag: str, name: str):
+        return {line.split(" =")[0].strip()
+                for line in source.splitlines()
+                if f"{flag} ?" in line and line.strip().startswith(name)}
+
+    masked_at_zero = masked("at_y", "curl")
+    masked_at_top = masked("last_y", "curl")
     assert masked_at_zero == set(cell_zero), (backward, masked_at_zero)
     assert masked_at_top == set(top), (backward, masked_at_top)
-    # The composition's content, in one assertion: each mask deletes exactly one of
-    # the two curls the beta term wrote.
+    # The composition's content: each mask deletes exactly one of the two targets
+    # the pass reaches, and the pass's increment is masked on exactly those rows.
     assert len(masked_at_zero & set(beta_targets)) == 1
     assert len(masked_at_top & set(beta_targets)) == 1
+    as_increment = {name.replace("curl", "bi") for name in beta_targets}
+    assert masked("at_y", "bi") == {n.replace("curl", "bi")
+                                    for n in masked_at_zero} & as_increment
+    assert masked("last_y", "bi") == {n.replace("curl", "bi")
+                                      for n in masked_at_top} & as_increment
 
 
 def test_a_metallic_fold_emits_no_top_plane_mask_at_all():
@@ -325,22 +296,19 @@ def test_a_metallic_fold_emits_no_top_plane_mask_at_all():
         assert metallic != periodic
 
 
-@requires_probe
-def test_the_beta_partner_is_a_center_load_and_is_never_bloch_rotated():
-    """The array path's beta partner is the UNSHIFTED SAME-CELL snapshot (S:293/:408).
+def test_the_beta_partner_is_a_center_load_and_is_never_bloch_connected():
+    """The array path's beta partner is the stored same-cell snapshot.
 
-    The Bloch rotation applies to SHIFTED operands only, so reusing the center
-    registers keeps the beta partner unrotated BY CONSTRUCTION. Pinned by character:
-    the phase block may name only shifted operands, and the beta insert names only
-    ``a`` and ``b``.
+    MEEP's Bloch connection applies to the unshifted operand AS READ ACROSS A WRAP
+    (the curl's ``c_dx``/``b_dx``); the pass reads the stored centres ``a``/``b``.
+    Pinned by character.
     """
     source = folded_beta.folded_beta_bloch_curl_source(
-        CODES_PERIODIC, False, (1, 0, 0), EXPANSION)
-    rotated = {line.split("=")[0].strip()
-               for line in source.splitlines() if "wx ?" in line}
-    assert rotated and rotated <= {"b_x", "c_x"}, rotated
-    assert "c_mul(float2(bpr, bpi), b)" in source
-    assert "c_mul(float2(bmr, bmi), a)" in source
+        CODES_PERIODIC, False, (2, 0, 0))
+    block = _pass(source)
+    assert "b_dx" in source and "b_dx" not in block
+    assert "float2(-(beta_plus * b.y), beta_plus * b.x)" in block
+    assert "float2(-(beta_minus * a.y), beta_minus * a.x)" in block
 
 
 def test_a_phased_folded_axis_is_refused_by_the_emitter_as_well_as_the_predicate():
@@ -352,10 +320,10 @@ def test_a_phased_folded_axis_is_refused_by_the_emitter_as_well_as_the_predicate
     """
     with pytest.raises(ValueError, match="folded and carries a Bloch phase"):
         folded_beta.folded_beta_bloch_curl_source(
-            CODES_PERIODIC, False, (0, 1, 0), "FMA_V1")
+            CODES_PERIODIC, False, (0, 1, 0))
     with pytest.raises(ValueError, match="ghost rule is METALLIC"):
         folded_beta.folded_beta_bloch_curl_source(
-            (symmetry.CODE_METALLIC,) * 3, False, (1, 0, 0), "FMA_V1")
+            (symmetry.CODE_METALLIC,) * 3, False, (1, 0, 0))
 
 
 # ---------------------------------------------------------------------------
@@ -410,7 +378,7 @@ def test_the_two_fold_families_refuse_a_folded_beta_run_and_name_this_one():
         assert not real.covered
         assert "folded_beta" in _reason_text(real), real.reasons
         cplx = folded_complex.folded_complex_composition_curl_coverage(
-            complex_fields_, complex_pml, slot, residency, probe=PROBE)
+            complex_fields_, complex_pml, slot, residency)
         assert not cplx.covered
         assert "folded_beta" in _reason_text(cplx), cplx.reasons
 
@@ -424,12 +392,12 @@ def test_the_two_arms_split_on_storage_in_both_directions():
         assert folded_beta.folded_beta_composition_curl_coverage(
             real_fields, real_pml, slot, residency).covered
         refused = folded_beta.folded_beta_composition_bloch_curl_coverage(
-            real_fields, real_pml, slot, residency, probe=PROBE)
+            real_fields, real_pml, slot, residency)
         assert not refused.covered
         assert "storage is real float32" in _reason_text(refused)
 
         assert folded_beta.folded_beta_composition_bloch_curl_coverage(
-            cplx_fields, cplx_pml, slot, residency, probe=PROBE).covered
+            cplx_fields, cplx_pml, slot, residency).covered
         refused = folded_beta.folded_beta_composition_curl_coverage(
             cplx_fields, cplx_pml, slot, residency)
         assert not refused.covered
@@ -464,17 +432,7 @@ def test_a_folded_axis_may_carry_no_bloch_phase_and_an_unfolded_one_may():
                                k_point=(0.3, 0.0, 0.0))
     for slot in ("step_B", "step_D"):
         assert folded_beta.folded_beta_composition_bloch_curl_coverage(
-            fields, pml, slot, residency, probe=PROBE).covered
-
-
-def test_the_complex_arm_refuses_without_a_measured_expansion_artifact():
-    """Which arm the reference takes is a MEASURED platform fact, never a default."""
-    fields, pml = matrix.folded(complex_storage=True, beta=0.3)
-    residency = device.Residency()
-    verdict = folded_beta.folded_beta_composition_bloch_curl_coverage(
-        fields, pml, "step_B", residency, probe={"backend": "not-numpy"})
-    assert not verdict.covered
-    assert "expansion probe" in _reason_text(verdict)
+            fields, pml, slot, residency).covered
 
 
 def test_the_constitutive_pair_is_admitted_and_the_e_side_scopes_dispersion():
@@ -512,9 +470,9 @@ def test_the_two_complex_beta_constitutive_products_are_disjoint_on_the_fold():
     residency = device.Residency()
     for side in ("H", "E"):
         mine = folded_beta.folded_beta_complex_constitutive_coverage(
-            unfolded, unfolded_pml, side, residency, PROBE)
+            unfolded, unfolded_pml, side, residency)
         theirs = special_kz.beta_run_complex_constitutive_coverage(
-            unfolded, unfolded_pml, side, residency, PROBE)
+            unfolded, unfolded_pml, side, residency)
         assert theirs.covered, (side, theirs.reasons)
         assert not mine.covered
         assert "no mirror plane is active" in _reason_text(mine)
@@ -578,7 +536,7 @@ def test_no_fill_arm_is_registered_and_the_parents_still_own_those_slots():
     assert symmetry.mirror_ghost_fill_coverage(fields, "B", residency).covered
     cplx, _ = matrix.folded(complex_storage=True, beta=0.3)
     assert folded_complex.folded_complex_fill_coverage(
-        cplx, "B", residency, probe=FOLD_PROBE).covered
+        cplx, "B", residency).covered
 
 
 def test_update_p_belongs_only_to_the_independent_ade_family():
@@ -639,15 +597,17 @@ def test_a_complete_real_step_agrees_and_the_first_divergent_step_is_reported(
     residency = device.Residency()
     plans = {
         "step_B": folded_beta.plan_folded_beta_pml_curl(
-            fields, pml, "step_B", residency),
+            fields, pml, "step_B", residency,
+            chunk_bounds=_one_rank_record(fields, pml)),
         "fill_B": symmetry.plan_mirror_ghost_fill(fields, "B", "fill_B", residency),
         "update_H": folded_beta.plan_folded_beta_constitutive(
-            fields, pml, "H", residency),
+            fields, pml, "H", residency, chunk_bounds=_one_rank_record(fields, pml)),
         "step_D": folded_beta.plan_folded_beta_pml_curl(
-            fields, pml, "step_D", residency),
+            fields, pml, "step_D", residency,
+            chunk_bounds=_one_rank_record(fields, pml)),
         "fill_D": symmetry.plan_mirror_ghost_fill(fields, "D", "fill_D", residency),
         "update_E": folded_beta.plan_folded_beta_constitutive(
-            fields, pml, "E", residency),
+            fields, pml, "E", residency, chunk_bounds=_one_rank_record(fields, pml)),
     }
     assert all(plan is not None for plan in plans.values()), {
         name: plan for name, plan in plans.items() if plan is None}
@@ -704,7 +664,6 @@ COMPLEX_CASES = (
 
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("label,kwargs", COMPLEX_CASES,
                          ids=[c[0] for c in COMPLEX_CASES])
 def test_a_complete_complex_step_agrees_and_reports_the_first_divergent_step(
@@ -718,17 +677,21 @@ def test_a_complete_complex_step_agrees_and_reports_the_first_divergent_step(
     residency = device.Residency()
     plans = {
         "step_B": folded_beta.plan_folded_beta_bloch_pml_curl(
-            fields, pml, "step_B", residency, probe=PROBE),
+            fields, pml, "step_B", residency,
+            chunk_bounds=_one_rank_record(fields, pml)),
         "fill_B": folded_complex.plan_folded_complex_fill(
-            fields, "B", "fill_B", residency, probe=FOLD_PROBE),
+            fields, "B", "fill_B", residency),
         "update_H": folded_beta.plan_folded_beta_complex_constitutive(
-            fields, pml, "H", residency, probe=PROBE),
+            fields, pml, "H", residency,
+            chunk_bounds=_one_rank_record(fields, pml)),
         "step_D": folded_beta.plan_folded_beta_bloch_pml_curl(
-            fields, pml, "step_D", residency, probe=PROBE),
+            fields, pml, "step_D", residency,
+            chunk_bounds=_one_rank_record(fields, pml)),
         "fill_D": folded_complex.plan_folded_complex_fill(
-            fields, "D", "fill_D", residency, probe=FOLD_PROBE),
+            fields, "D", "fill_D", residency),
         "update_E": folded_beta.plan_folded_beta_complex_constitutive(
-            fields, pml, "E", residency, probe=PROBE),
+            fields, pml, "E", residency,
+            chunk_bounds=_one_rank_record(fields, pml)),
     }
     assert all(plan is not None for plan in plans.values()), {
         name: plan for name, plan in plans.items() if plan is None}
@@ -784,51 +747,48 @@ def test_a_complete_complex_step_agrees_and_reports_the_first_divergent_step(
 #: records whether the shipped answer is required to differ; a declared EQUIVALENCE
 #: is measured too, and asserting it is null is what stops it becoming folklore.
 MUTATIONS = (
-    ("beta_after_cell_zero_mask",
-     lambda src: _move_beta_after(src, "at_"), "must_catch"),
-    ("beta_after_both_masks",
-     lambda src: _move_beta_after(src, "last_"), "must_catch"),
+    ("beta_folded_into_the_curl",
+     lambda src: _fold_into_curl(src), "must_catch"),
+    ("increment_top_plane_row_dropped",
+     lambda src: "\n".join(line for line in src.splitlines()
+                           if not (line.strip().startswith("bi") and "last_y ?" in line)),
+     "must_catch"),
     ("top_plane_mask_dropped",
      lambda src: "\n".join(line for line in src.splitlines()
                            if "last_y ?" not in line), "must_catch"),
     ("beta_signs_swapped",
-     lambda src: src.replace("beta_plus * b", "__TMP__ * b")
-                    .replace("beta_minus * a", "beta_plus * a")
-                    .replace("__TMP__ * b", "beta_minus * b"), "must_catch"),
+     lambda src: src.replace("-(beta_plus * b)", "-(__TMP__ * b)")
+                    .replace("-(beta_minus * a)", "-(beta_plus * a)")
+                    .replace("-(__TMP__ * b)", "-(beta_minus * b)"), "must_catch"),
     # A MEASURED EQUIVALENCE, not a belief: float multiplication is commutative, so
-    # the shipped operand order is transcription fidelity to stepping.py:811 rather
-    # than a bit requirement. Asserted null so it cannot quietly become folklore.
+    # the shipped operand order is transcription fidelity rather than a bit
+    # requirement. Asserted null so it cannot quietly become folklore.
     ("multiply_operands_swapped",
      lambda src: src.replace("(beta_plus * b)", "(b * beta_plus)")
                     .replace("(beta_minus * a)", "(a * beta_minus)"),
      "equivalence"),
-    # UNOBSERVABLE ON THIS FAMILY'S GRIDS, and that is a PROVEN statement rather
-    # than a shrug — see the test below, which proves both halves of it.
+    # `0.0f - x` differs from `-x` only on x = +0, and the ladder's subtraction then
+    # differs only where the field word is -0 in the same cell; see the test below
+    # for why this family's physical-band state reaches neither.
     ("negation_spelled_zero_minus",
-     lambda src: src.replace("curl0 = curl0 - (beta_plus * b);",
-                             "curl0 = curl0 + (0.0f - (beta_plus * b));"),
+     lambda src: src.replace("float bi0 = -(beta_plus * b);",
+                             "float bi0 = 0.0f - (beta_plus * b);"),
      "unobservable_here"),
 )
 
 
-def _move_beta_after(source: str, marker: str) -> str:
-    """Relocate the two beta lines to just after the LAST mask line of one block.
+def _fold_into_curl(source: str) -> str:
+    """The PREVIOUS package form: the term inside the curl, before both masks and
+    the per-chunk forms, with no pass of its own."""
+    from meep_gpu.metal_kernels import folded_pass
 
-    THE ANCHOR IS THE MASK, NOT ITS FLAG DECLARATION, and the distinction cost a
-    round: anchoring on ``bool at_x = ...`` inserts the beta lines BEFORE the mask
-    assignments that follow it, which changes nothing about the order and made a
-    must-catch mutation report itself as uncaught.
-    """
-    lines = source.splitlines()
-    beta = [line for line in lines
-            if "beta_plus * b" in line or "beta_minus * a" in line]
-    assert len(beta) == 2, beta
-    kept = [line for line in lines if line not in beta]
-    positions = [index for index, line in enumerate(kept)
-                 if marker in line and "?" in line and "curl" in line]
-    assert positions, (marker, "no mask line carries this marker")
-    at = positions[-1]
-    return "\n".join(kept[:at + 1] + beta + kept[at + 1:])
+    start = source.index(folded_pass.FOLDED_PASS_BEGIN)
+    end = source.index(folded_pass.FOLDED_PASS_END) + len(folded_pass.FOLDED_PASS_END) + 1
+    source = source[:start] + source[end:]
+    anchor = "    bool at_x = (i == 0)"
+    assert source.count(anchor) == 1
+    return source.replace(anchor, "    curl0 = curl0 - (beta_plus * b);\n"
+                                  "    curl1 = curl1 - (beta_minus * a);\n" + anchor)
 
 
 def _pml_vectors(pml, sub_step: str):
@@ -855,7 +815,8 @@ def _from_arrays_plan(fields, pml, sub_step, codes, residency, *, beta_plus=0.0,
     return folded_beta.plan_folded_beta_pml_curl_from_arrays(
         sub_step, arrays, _pml_vectors(pml, sub_step), codes,
         fields.grid.dt / fields.grid.dx, beta_plus, beta_minus, residency,
-        functions=functions, has_beta=has_beta)
+        functions=functions, has_beta=has_beta,
+        chunk_bounds=_one_rank_record(fields, pml))
 
 
 @requires_mps
@@ -907,8 +868,9 @@ def test_the_armed_mutations_are_caught_on_a_folded_beta_step(name, mutate,
 def test_the_refuted_negation_spelling_is_unobservable_here_for_a_stated_reason():
     """WHY ONE REFUTED SPELLING IS A NULL ON THIS FAMILY, PROVED IN BOTH HALVES.
 
-    ``curl + (0.0f - x)`` differs from ``curl - x`` in EXACTLY ONE input pattern:
-    ``curl`` a NEGATIVE zero and ``x`` a positive zero. (``-0.0 - +0.0`` is
+    The pass's ladder subtracts the increment, and ``v + (0.0f - x)``-style
+    respellings of a negation differ from ``v - x`` in EXACTLY ONE input pattern:
+    ``v`` a NEGATIVE zero and ``x`` a positive zero. (``-0.0 - +0.0`` is
     ``-0.0``; ``0.0f - +0.0`` is ``+0.0`` and ``-0.0 + +0.0`` is ``+0.0``. Every
     other zero pairing agrees, and no normal input separates them at all.)
 
@@ -1041,3 +1003,10 @@ def test_the_beta_free_arm_reduces_to_the_certified_folded_curl_on_the_device(
                        getattr(reference_fields, n)) for n in targets)
     assert moved > 0, (sub_step, "VACUOUS: the reference wrote nothing")
     assert differing == 0, (sub_step, differing)
+
+
+def _one_rank_record(fields, pml):
+    """The record of the one-rank division ``stepping`` steps these ``Fields`` with."""
+    from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record
+
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))

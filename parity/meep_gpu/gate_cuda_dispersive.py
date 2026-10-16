@@ -4,15 +4,18 @@ WHAT IS UNDER TEST, and it is three different claims rather than one:
 
 * **arm1** -- ``dispersive_kernels.update_E_pml_real_dispersive`` reproduces
   ``stepping.update_E`` under an active absorber when the source is
-  ``(D - sum P) * inv_eps`` (stepping.py:1010-1018). A NEW KERNEL.
+  ``(D - sum P) * inv_eps``: MEEP's two forms chosen per structure chunk from the
+  region plan's record (the accumulation on the chunks that carry a component's
+  own layer, the plain store elsewhere). A NEW KERNEL.
 * **arm2** -- ``dispersive_kernels.update_E_no_pml_real_dispersive`` reproduces
   ``stepping.update_E`` with NO absorber and stored E, where the sub-step is the
   plain store at stepping.py:1022. A SECOND NEW KERNEL, not a flag on the first:
   no auxiliary, no coefficient vector, no history, no per-axis index.
 * **arm3** -- the SHIPPED ``ade_kernels.update_P_fused_pml_real`` reproduces
-  ``stepping.update_P`` on a LAYERLESS run. NO NEW KERNEL AT ALL. This leg is
-  what turns "a predicate widening, not a new kernel" from a reading of
-  ``Fields.drive_field`` (fields.py:1140-1163) into a measurement, and it carries
+  ``stepping.update_P`` (MEEP's recurrence in its four float32 constants) on a
+  LAYERLESS run, where both of its drive pointers are the stored E. NO NEW KERNEL
+  AT ALL. This leg is what turns "a predicate widening, not a new kernel" from a
+  reading of ``Fields.drive_field`` into a measurement, and it carries
   ``arm3_wrong_drive_CONTROL`` -- the same shipped launcher with ``D`` bound as
   the drive -- which MUST DIVERGE. A leg whose control cannot fail has not shown
   that binding the right array is what produced the pass.
@@ -105,6 +108,7 @@ from meep_gpu.fields import Fields  # noqa: E402
 from meep_gpu.grid import Grid, Mirror  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
 from meep_gpu.cuda_kernels import dispersive_kernels as dispersive  # noqa: E402
+from gate_chunk_records import layer_record, region_plan_record  # noqa: E402
 
 log = probe.log
 bit_compare = probe.bit_compare
@@ -303,6 +307,18 @@ SOURCE_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "arms": ("arm1", "arm2"), "pole_defect": False, "must_be_caught": False},
     "commute_constitutive_scale": {
         "arms": ("arm1",), "pole_defect": False, "must_be_caught": False},
+    # KERNELS.md section 7.2's rows on the per-chunk select.
+    "accumulate_on_every_cell": {
+        "arms": ("arm1",), "pole_defect": False, "must_be_caught": True},
+    "record_bound_off_by_one": {
+        "arms": ("arm1",), "pole_defect": False, "must_be_caught": True},
+    "integer_record_for_update_E": {
+        "arms": ("arm1",), "pole_defect": False, "must_be_caught": True},
+    # Differs from the plain form only where src is -0: a component with no
+    # contributor reads D directly, and the cancellation class plants -0 in D.
+    "plain_form_as_unit_accumulation": {
+        "arms": ("arm1",), "pole_defect": False, "must_be_caught": True,
+        "arities": ((0, 0, 0),), "value_class": "cancellation"},
 }
 
 
@@ -345,24 +361,69 @@ def _mutate_drop_one_pole(source: str) -> Tuple[str, int]:
     return out, sites
 
 
+#: The per-chunk constitutive helper's accumulation (MEEP's grouping, the root kernels' text).
+_ACCUMULATION = "(f[idx] + ((kps * src) - (kms * prev)))"
+
+
 def _mutate_regroup(source: str) -> Tuple[str, int]:
-    needle = ("    float a = f[idx] + kps * src;\n"
-              "    f[idx] = a - kms * prev;\n")
-    return source.replace(needle, "    f[idx] = f[idx] + (kps * src - kms * prev);\n"), \
-        source.count(needle)
+    """THE INVERTED MUTATION (KERNELS.md Appendix A): the 0.9.2 package grouping
+    ``(f + kps*src) - kms*prev`` planted where MEEP's ``f + ((kps*src) - (kms*prev))``
+    ships. Must be caught."""
+    return (source.replace(_ACCUMULATION, "((f[idx] + (kps * src)) - (kms * prev))"),
+            source.count(_ACCUMULATION))
 
 
 def _mutate_drop_fw_store(source: str) -> Tuple[str, int]:
-    needle = "    fw[idx] = src;\n"
+    needle = "    if (dsigw) fw[idx] = src;\n"
     return source.replace(needle, ""), source.count(needle)
 
 
 def _mutate_store_before_read(source: str) -> Tuple[str, int]:
-    needle = ("    float prev = fw[idx];\n"
-              "    fw[idx] = src;\n")
-    replacement = ("    fw[idx] = src;\n"
-                   "    float prev = fw[idx];\n")
+    needle = ("    float prev = dsigw ? fw[idx] : 0.0f;\n"
+              "    if (dsigw) fw[idx] = src;\n")
+    replacement = ("    if (dsigw) fw[idx] = src;\n"
+                   "    float prev = dsigw ? fw[idx] : 0.0f;\n")
     return source.replace(needle, replacement), source.count(needle)
+
+
+def _mutate_accumulate_every_cell(source: str) -> Tuple[str, int]:
+    """THE SELECT REMOVED (section 7.2): the dsigw accumulation on every cell, which
+    is the 0.9.2 whole-grid form. Caught where a component has plain cells."""
+    pattern = r", (in_h_[xyz])\);"
+    return re.subn(pattern, ", 1);", source)[0], len(re.findall(pattern, source))
+
+
+def _mutate_bound_off_by_one(source: str) -> Tuple[str, int]:
+    """A record bound off by one row: the boundary plane takes the other form."""
+    total, out = 0, source
+    for axis, coordinate in zip("xyz", "ijk"):
+        needle = f"({coordinate} >= cbh_{axis}_a0 && {coordinate} < cbh_{axis}_a1)"
+        total += out.count(needle)
+        out = out.replace(needle, f"({coordinate} >= cbh_{axis}_a0 && "
+                                  f"{coordinate} < cbh_{axis}_a1 + 1)")
+    return out, total
+
+
+def _mutate_integer_record(source: str) -> Tuple[str, int]:
+    """The integer-lattice record entries read where the half-integer ones belong."""
+    total, out = 0, source
+    for axis, base in zip("xyz", (12, 16, 20)):
+        old = ", ".join(f"cbh_{axis}_{word} = cb[{base + slot}]"
+                        for slot, word in enumerate(("a0", "a1", "b0", "b1")))
+        new = ", ".join(f"cbh_{axis}_{word} = cb[{base - 12 + slot}]"
+                        for slot, word in enumerate(("a0", "a1", "b0", "b1")))
+        total += out.count(old)
+        out = out.replace(old, new)
+    return out, total
+
+
+def _mutate_plain_as_unit_accumulation(source: str) -> Tuple[str, int]:
+    """The plain form spelt as the accumulation with ``kps = 1, kms = 0`` and zeroed
+    inputs. Differs only on ``src = -0`` (planted by the ``cancellation`` class)."""
+    needle = " : src;\n    f[idx] = value;"
+    return (source.replace(needle, " : (0.0f + ((1.0f * src) - (0.0f * prev)));\n"
+                                   "    f[idx] = value;"),
+            source.count(needle))
 
 
 #: THE LEFT OPERAND OF THE INVERSE-EPSILON MULTIPLY HAS TWO SPELLINGS, and the
@@ -389,12 +450,10 @@ def _mutate_inv_eps_left(source: str) -> Tuple[str, int]:
 
 
 def _mutate_commute_scale(source: str) -> Tuple[str, int]:
-    """A NULL on the accumulation. Its sibling regroups the same two lines."""
-    needle = ("    float a = f[idx] + kps * src;\n"
-              "    f[idx] = a - kms * prev;\n")
-    replacement = ("    float a = f[idx] + src * kps;\n"
-                   "    f[idx] = a - prev * kms;\n")
-    return source.replace(needle, replacement), source.count(needle)
+    """A NULL on the accumulation. Its sibling regroups the same expression."""
+    needle = "((kps * src) - (kms * prev))"
+    return (source.replace(needle, "((src * kps) - (prev * kms))"),
+            source.count(needle))
 
 
 def _mutate_own_axis(source: str) -> Tuple[str, int]:
@@ -431,6 +490,10 @@ SOURCE_TRANSFORMS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "own_axis_to_x_for_all_three": _mutate_own_axis,
     "fortran_order_index_decomposition": _mutate_fortran_index,
     "bind_Ez_inv_eps_for_all_three": _mutate_bind_Ez_inv_eps,
+    "accumulate_on_every_cell": _mutate_accumulate_every_cell,
+    "record_bound_off_by_one": _mutate_bound_off_by_one,
+    "integer_record_for_update_E": _mutate_integer_record,
+    "plain_form_as_unit_accumulation": _mutate_plain_as_unit_accumulation,
 }
 
 
@@ -489,6 +552,9 @@ def build(xp, spec: Dict[str, Any], courant: float, arity: Tuple[int, int, int],
     fields.enable_field_storage()
     if spec["pml"]:
         fields.enable_pml_storage()
+        # The one-rank region plan of this grid and layer: the division the oracle's
+        # update_E chooses its forms by and whose record the kernel decodes.
+        stepping._region_plan(fields, layer)
 
     # THREE INDEPENDENT inverse-epsilon volumes, never one array bound thrice --
     # binding one is defect 2 of the complex template and
@@ -781,10 +847,13 @@ def run_kernel_cuda(arm: str, fields, layer, tables, plan) -> None:
     ``tables`` and ``plan`` are passed explicitly -- the entry points'
     keyword-only gate doors, which exist so a harness can hand in deliberately
     mis-paired ones. Passing the layer instead would derive them correctly and
-    disarm every host mutation.
+    disarm every host mutation. Arm 1 binds the record of the region plan the
+    oracle stepped with.
     """
     if arm == "arm1":
-        dispersive.update_E_fused_pml_real_dispersive(fields, tables=tables, plan=plan)
+        record = cp.asarray(region_plan_record(fields), dtype=cp.int32)
+        dispersive.update_E_fused_pml_real_dispersive(
+            fields, tables=tables, plan=plan, chunk_bounds=record)
     else:
         dispersive.update_E_no_pml_real_dispersive(fields, plan=plan)
     cp.cuda.runtime.deviceSynchronize()
@@ -834,28 +903,46 @@ def run_kernel_numpy(arm: str, fields, layer, tables, plan,
         kms = _broadcast(tables[f"kms_{axis}"], axis_index)
         auxiliary = getattr(fields, "f_w_" + target)
         field = getattr(fields, target)
+        # MEEP's two forms per chunk (stepping._apply_constitutive_regions): the
+        # accumulation f + ((kps*src) - (kms*prev)), f_w = src, on the cells whose
+        # chunk carries this component's layer; f = src, f_w untouched, elsewhere.
+        current = to_host(field).astype(np.float32)
+        inside = np.broadcast_to(np.asarray(to_host(
+            fields.region_plan.mask("constitutive", target, np))), current.shape)
+        if defect == "accumulate_on_every_cell":
+            inside = np.ones(current.shape, dtype=bool)
         previous = to_host(auxiliary).copy()
-        auxiliary[...] = fields.grid.xp.asarray(product)
-        accumulated = (to_host(field).astype(np.float32)
-                       + kps * product).astype(np.float32)
-        field[...] = fields.grid.xp.asarray(
-            (accumulated - kms * previous).astype(np.float32))
+        accumulated = (current + ((kps * product).astype(np.float32)
+                                  - (kms * previous).astype(np.float32))
+                       ).astype(np.float32)
+        plain = product
+        if defect == "plain_form_as_unit_accumulation":
+            zero = np.float32(0.0)
+            plain = (zero + ((np.float32(1.0) * product).astype(np.float32)
+                             - (zero * zero))).astype(np.float32)
+        auxiliary[...] = fields.grid.xp.asarray(np.where(inside, product, previous))
+        field[...] = fields.grid.xp.asarray(np.where(inside, accumulated, plain))
 
 
 # --- arm 3 -----------------------------------------------------------------
 
 def arm3_drive(fields, host_mutation: Optional[str]) -> Callable[[str], Any]:
-    """The bound method the launcher binds, or the CONTROL that binds the wrong array.
+    """The drive pair the launcher binds, or the CONTROL that binds the wrong array.
 
-    The shipped default is ``fields.drive_field``, which without a layer returns
-    the STORED E (fields.py:1162). ``arm3_wrong_drive`` binds ``D`` instead --
-    the array a reader who conflated "the drive" with "the displacement" would
-    reach for, and the mirror image of the sibling track's measured
-    ``B_ade_wrong_drive_CONTROL``.
+    The shipped binding without a layer is the stored E for both of the kernel's
+    drive pointers (``ade_kernels.drive_pair``): ``fields.drive_field`` returns the
+    STORED E there. ``arm3_wrong_drive`` binds ``D`` instead -- the array a reader
+    who conflated "the drive" with "the displacement" would reach for, and the
+    mirror image of the sibling track's measured ``B_ade_wrong_drive_CONTROL``.
     """
     if host_mutation == "arm3_wrong_drive":
-        return lambda component: getattr(fields, "D" + component[1])
-    return fields.drive_field
+        return lambda component: (getattr(fields, "D" + component[1]),) * 2
+    return lambda component: (getattr(fields, component),) * 2
+
+
+def arm3_record(fields):
+    """The record a layerless run carries: no membership runs (both drives are E)."""
+    return layer_record(fields.grid, None)
 
 
 def _arm3_local_loop(fields, drive, hoisted: bool) -> int:
@@ -889,11 +976,13 @@ def _arm3_local_loop(fields, drive, hoisted: bool) -> int:
         else:
             p, p_prev, scratch = (state.P[component], state.P_prev[component],
                                   state._scratch)
-        w = drive(component)
+        drive_w, drive_e = drive(component)
         sigma = state.sigma[component]
         volume = bool(ade_kernels.ade_sigma_is_volume(state, component))
         ade_kernels._launch(ade_kernels._get_kernel(volume), scratch, p, p_prev,
-                            sigma, w, tuple(state._coefficients), volume)
+                            sigma, drive_w, drive_e, tuple(state.constants), volume,
+                            ade_kernels.ADE_ELECTRIC_COMPONENTS.index(component),
+                            cp.asarray(arm3_record(fields), dtype=cp.int32))
         launches += 1
         state.P[component] = scratch
         state.P_prev[component] = p
@@ -909,7 +998,9 @@ def run_arm3_cuda(fields, host_mutation: Optional[str]) -> int:
         launches = _arm3_local_loop(
             fields, drive, hoisted=host_mutation == "arm3_stale_pole_plan")
     else:
-        launches = ade_kernels.update_P_fused_pml_real(fields, None, drive=drive)
+        launches = ade_kernels.update_P_fused_pml_real(
+            fields, None, chunk_bounds=cp.asarray(arm3_record(fields), dtype=cp.int32),
+            drives=drive)
     cp.cuda.runtime.deviceSynchronize()
     return launches
 
@@ -917,10 +1008,10 @@ def run_arm3_cuda(fields, host_mutation: Optional[str]) -> int:
 def run_arm3_numpy(fields, host_mutation: Optional[str]) -> int:
     """``dispersion.PolarizationState.update``'s expression, with the ROTATION.
 
-    ``((p*c_now) + (c_prev*q)) + (c_drive*(s*w))`` -- left-associated across the
-    array path's two ``+=`` (dispersion.py:684-686), with ``s*w`` formed before
-    ``c_drive`` multiplies it, and the three buffers rotated only AFTER the write
-    (:689-691)::
+    MEEP's ``gamma1inv * (((p*two_minus_od) - (gamma1*q)) + (omega0dtsqr*(s*w)))``
+    in its four float32 words (susceptibility.cpp:251-256), with ``s*w`` formed
+    before ``omega0dtsqr`` multiplies it, and the three buffers rotated only AFTER
+    the write::
 
         state.P[component]      = scratch     # this step's result
         state.P_prev[component] = p           # what P held
@@ -949,15 +1040,16 @@ def run_arm3_numpy(fields, host_mutation: Optional[str]) -> int:
         else:
             p_array, q_array, scratch = (state.P[component],
                                          state.P_prev[component], state._scratch)
-        c_now, c_prev, c_drive = state._coefficients
-        w = to_host(drive(component)).astype(np.float32)
+        two_minus_od, gamma1, omega0dtsqr, gamma1inv = (
+            np.float32(value) for value in state.constants)
+        w = to_host(drive(component)[1]).astype(np.float32)
         p = to_host(p_array).astype(np.float32)
         q = to_host(q_array).astype(np.float32)
         sigma = state.sigma[component]
         s = (to_host(sigma).astype(np.float32) if hasattr(sigma, "shape")
              else np.float32(sigma))
-        value = (((p * np.float32(c_now)) + (np.float32(c_prev) * q))
-                 + (np.float32(c_drive) * (s * w))).astype(np.float32)
+        value = (gamma1inv * (((p * two_minus_od) - (gamma1 * q))
+                              + (omega0dtsqr * (s * w)))).astype(np.float32)
         scratch[...] = xp.asarray(value)
         # The rotation, transcribed, and only once the write landed.
         state.P[component] = scratch
@@ -1190,15 +1282,21 @@ def leg_caught(case: Dict[str, Any]) -> bool:
     return bool(multi is not None and not multi["bit_identical"])
 
 
-def mutation_plan(product: str, arms: Sequence[str], pole_defect: bool):
+def mutation_plan(product: str, arms: Sequence[str], pole_defect: bool,
+                  arities: Optional[Sequence[Tuple[int, int, int]]] = None,
+                  value_class: str = "uniform"):
     """One case per (spec, arm) at the INEXACT courant, at an arity that can see it.
 
     POLE MUTATIONS ARE PINNED TO :data:`MUTATION_ARITIES`, all of which are two or
     above, because ``sum_then_subtract`` and ``reverse_pole_order`` are PROVABLY
     inert at one pole. A leg scored at arity 1 would report a harness defect as a
     kernel pass, which is the failure the header measures rather than asserts.
+    A mutation whose defect lives on one value (``-0``) names its own arities and
+    value class.
     """
-    arities = MUTATION_ARITIES if pole_defect else ((2, 2, 2),)
+    if arities is None:
+        arities = MUTATION_ARITIES if pole_defect else ((2, 2, 2),)
+    arities = tuple(arities)
     if product != "full":
         arities = arities[:1]
     out = []
@@ -1207,7 +1305,7 @@ def mutation_plan(product: str, arms: Sequence[str], pole_defect: bool):
             if arm not in arms:
                 continue
             for arity in arities:
-                out.append((spec, arm, arity, INEXACT_COURANT, "uniform"))
+                out.append((spec, arm, arity, INEXACT_COURANT, value_class))
     if product != "full":
         out = out[:3]
     return out
@@ -1249,7 +1347,8 @@ def run_host_mutations(results, out_path, backend, product):
             continue
         legs = []
         for case_spec, arm, arity, courant, value_class in mutation_plan(
-                product, spec["arms"], spec["pole_defect"]):
+                product, spec["arms"], spec["pole_defect"], spec.get("arities"),
+                spec.get("value_class", "uniform")):
             legs.append(one_case(backend, case_spec, arm, arity, courant,
                                  value_class, "fmad_false", host_mutation=name))
         out[name] = dict(_score(legs, spec["must_be_caught"]), why=spec["why"],
@@ -1262,6 +1361,13 @@ def run_host_mutations(results, out_path, backend, product):
     return out
 
 
+#: The source mutations the NumPy transcription can also carry: the pole chain, the
+#: material multiply, and the per-chunk select's two host-visible rows.
+NUMPY_DEFECTS: Tuple[str, ...] = (
+    "sum_then_subtract", "drop_one_pole", "drop_inverse_epsilon_dispersive",
+    "inv_eps_left", "accumulate_on_every_cell", "plain_form_as_unit_accumulation")
+
+
 def run_numpy_defects(results, out_path, product):
     """The NumPy backend's answer to "can this harness fail at all?".
 
@@ -1272,12 +1378,12 @@ def run_numpy_defects(results, out_path, product):
     and that the two pole defects are invisible at one pole and lethal at two.
     """
     out: Dict[str, Any] = {}
-    for name in ("sum_then_subtract", "drop_one_pole",
-                 "drop_inverse_epsilon_dispersive", "inv_eps_left"):
+    for name in NUMPY_DEFECTS:
         spec = SOURCE_MUTATIONS[name]
         legs = []
         for case_spec, arm, arity, courant, value_class in mutation_plan(
-                product, spec["arms"], spec["pole_defect"]):
+                product, spec["arms"], spec["pole_defect"], spec.get("arities"),
+                spec.get("value_class", "uniform")):
             legs.append(one_case("numpy", case_spec, arm, arity, courant,
                                  value_class, "fmad_false", numpy_defect=name))
         out[name] = _score(legs, spec["must_be_caught"])
@@ -1337,7 +1443,8 @@ def run_source_mutations(results, out_path, product):
             compile_cache.clear_compile_log()
             legs = []
             for case_spec, arm, arity, courant, value_class in mutation_plan(
-                    product, spec["arms"], spec["pole_defect"]):
+                    product, spec["arms"], spec["pole_defect"], spec.get("arities"),
+                    spec.get("value_class", "uniform")):
                 legs.append(one_case("cuda", case_spec, arm, arity, courant,
                                      value_class, "fmad_false"))
             dispersive.SOURCE_TRANSFORM = None
@@ -1483,10 +1590,11 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         "claim": (
             "arm1 and arm2 -- the two emitted dispersive update_E kernels -- are "
             "byte-identical to stepping.update_E on real engine objects at every "
-            "swept pole arity, folded and unfolded, under both float32 subnormal "
-            "policies; and arm3 -- the SHIPPED ade_kernels update_P pair, "
-            "unchanged -- is byte-identical to stepping.update_P on a layerless "
-            "run when Fields.drive_field hands it the stored E"),
+            "swept pole arity, folded and unfolded, with MEEP's per-chunk forms "
+            "chosen from the region plan's record, under both float32 subnormal "
+            "policies; and arm3 -- the SHIPPED ade_kernels update_P, "
+            "on MEEP's recurrence -- is byte-identical to stepping.update_P on a "
+            "layerless run with both drive pointers bound to the stored E"),
         "does_not_claim": [
             "nothing dispatches any of these kernels; no module in meep_gpu "
             "imports cuda_kernels at all, so a predicate returning True licenses "

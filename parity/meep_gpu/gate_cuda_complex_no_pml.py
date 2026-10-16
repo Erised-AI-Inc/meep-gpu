@@ -67,7 +67,10 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   degenerated into failing everything. The four DEAD-PRELUDE nulls
   (``pml_apply``'s and ``constitutive_apply``'s bodies, compiled into every
   kernel here and called by none) are the measurement that this family's tails
-  really are ``target -= curl`` and the conductive triple.
+  really are ``target -= curl`` and the conductive triple. The previous family's
+  full complex product against ``(c + 0j)`` is armed as a defect (KERNELS.md
+  section 7.1: the old form is the mutant) on the signed-zero class, the one class
+  that separates it from the part-wise product.
 * ``verdict_flips_against_planted_defect`` -- the release verdict is recomputed
   against a record with a defect planted in it, three ways, and the run fails if
   it does not flip. A gate whose verdict cannot go red is not a gate.
@@ -75,10 +78,8 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
 THERE IS NO NumPy BACKEND, DELIBERATELY
 =======================================
 The sibling curl gates carry one. It costs a SECOND TRANSCRIPTION of the kernel
--- the ghost rule, the Bloch rotation, the masks, the tails -- on the leg that is
-supposed to be checking the first, and this family's bodies are the complex ones,
-where the zero cross terms and the FMA arm are the whole question and NumPy
-cannot express either. What a laptop CAN settle for this family is in
+-- the ghost rule, the stored window's Bloch connection, the masks, the tails -- on
+the leg that is supposed to be checking the first. What a laptop CAN settle for this family is in
 ``meep_gpu/cuda_kernels/test_complex_no_pml.py``: the emitted text against the
 certified template it is built from, the three float32 hazards measured in NumPy,
 and the predicate's whole verdict table on real engine objects.
@@ -92,9 +93,8 @@ token because CuPy's disk-cache key is computed above the strip seam)::
         python -u gate_cuda_complex_no_pml.py \\
         --subnormal-policy keep --out $OUT/keep/gate.json
 
-The flush leg takes a cache directory WITHOUT the keep token, imports MEEP for
-the host FTZ bits, and reads the flush-cut expansion record (the default for
-that policy -- see :data:`PROBE_RECORD_BY_POLICY`)::
+The flush leg takes a cache directory WITHOUT the keep token and imports MEEP for
+the host FTZ bits::
 
     CUDA_VISIBLE_DEVICES=$GPU CUPY_CACHE_DIR=$OUT/cupy_cache/flush \\
         MEEP_GPU_SUBNORMAL_POLICY=flush python -u gate_cuda_complex_no_pml.py \\
@@ -140,7 +140,6 @@ from meep_gpu.fields import Fields  # noqa: E402
 from meep_gpu.grid import Grid  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
 from meep_gpu.cuda_kernels import coverage  # noqa: E402
-from meep_gpu.cuda_kernels import complex_emitter  # noqa: E402
 from meep_gpu.cuda_kernels import complex_no_pml_kernels as family  # noqa: E402
 
 log = probe.log
@@ -160,28 +159,6 @@ MULTI_STEP_BUDGET = 60
 #: leg. The same exact float32 scale is applied on both fixtures.
 _ADVANCE = np.float32(0.97)
 
-#: The DEFAULT seven-pattern expansion record, cut under ``keep``. ``update_P``
-#: needs ``c8_mul_python_float_field_left`` and the four-pattern record does not
-#: carry it -- see the module docstring of ``complex_no_pml_kernels``.
-PROBE_RECORD = ("parity/meep_gpu/results/triton_welds_2026-08-19/"
-                "unified_expansion/gate.json")
-
-#: The same record cut under ``flush``. AN EXPANSION LICENCE IS POLICY-CONDITIONAL
-#: (``complex_fields.POLICY_CONDITIONAL_LICENCE``), so the keep-cut record above
-#: refuses a flush run by name and the flush leg was owed a record of its own
-#: rather than a wider clause. Cut 2026-08-27 by ``gate_triton_unified_expansion``
-#: under ``MEEP_GPU_SUBNORMAL_POLICY=flush`` on the GPU host; it classifies all seven
-#: patterns exactly as the keep record does, which is a measurement and not an
-#: assumption -- the keep leg of that same cut reproduced the 2026-08-19 table.
-PROBE_RECORD_FLUSH = ("parity/meep_gpu/results/unified_expansion_2026-08-27/"
-                      "flush/gate.json")
-
-#: Which record a policy reads when ``--expansion-probe`` is not given. Spelled as
-#: a table rather than as an if, so adding a policy without cutting its record is
-#: a KeyError at startup and not a silent fall-through to another policy's bytes.
-PROBE_RECORD_BY_POLICY: Dict[str, str] = {"keep": PROBE_RECORD,
-                                          "flush": PROBE_RECORD_FLUSH}
-
 SUB_STEPS: Tuple[str, ...] = ("step_B", "step_D", "update_E", "update_P")
 
 #: 0.5 is exactly representable in float32 and 0.35 is not. ONLY THE SECOND can
@@ -190,8 +167,9 @@ SUB_STEPS: Tuple[str, ...] = ("step_B", "step_D", "update_E", "update_P")
 COURANTS: Tuple[float, ...] = (0.5, 0.35)
 INEXACT_COURANT = 0.35
 
-#: ``signed_zero`` is here because this family's whole complex multiply rests on
-#: the zero cross terms, and ``uniform(-1, 1)`` provably draws no signed zero.
+#: ``signed_zero`` is here because the part-wise product and the previous full
+#: complex product against ``(c + 0j)`` differ only on the sign of a zero part, and
+#: ``uniform(-1, 1)`` provably draws no signed zero.
 VALUE_CLASSES: Tuple[str, ...] = ("uniform", "subnormal_band", "signed_zero")
 
 GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
@@ -555,15 +533,22 @@ def run_oracle(fields, layer, sub_step: str) -> None:
         stepping.update_P(fields, layer)
 
 
-def run_kernel(fields, grid, sub_step: str, arm: int, *,
+def run_kernel(fields, grid, sub_step: str, *, layer=None,
                drive=None, poles=None, conductivity=None) -> None:
     if sub_step in ("step_B", "step_D"):
-        family.step_complex_no_pml_curl(fields, sub_step, arm, grid,
+        # THE RUN'S CHUNK RECORD: the one-rank division of the grid and the (absent
+        # or inert) layer, the division the oracle steps with. With no absorber no
+        # chunk carries a layer; the kernel reads only the partner-presence word.
+        from gate_chunk_records import layer_record  # noqa: PLC0415
+
+        record = cp.asarray(layer_record(grid, layer), dtype=cp.int32)
+        family.step_complex_no_pml_curl(fields, sub_step, grid,
+                                        chunk_bounds=record,
                                         conductivity=conductivity)
     elif sub_step == "update_E":
-        family.update_E_complex_no_pml_stored(fields, arm, poles=poles)
+        family.update_E_complex_no_pml_stored(fields, poles=poles)
     else:
-        family.update_P_complex_no_pml(fields, arm, drive=drive)
+        family.update_P_complex_no_pml(fields, drive=drive)
     cp.cuda.runtime.deviceSynchronize()
 
 
@@ -617,17 +602,22 @@ def _conductive_swap_tables(source: str) -> Tuple[str, int]:
         "    cf_store(f, idx, mul_field_left(t, condfac));")
 
 
-def _conductive_planewise(source: str) -> Tuple[str, int]:
-    """Scale the two planes instead of the zero-imaginary complex product.
+def _conductive_full_complex_product(source: str) -> Tuple[str, int]:
+    """INVERTED (KERNELS.md section 7.1): the zero-imaginary complex product.
 
-    The natural implementation and the wrong one. Must be CAUGHT on the
-    ``signed_zero`` class; on ``uniform`` it may legitimately be a null, which is
-    why the leg plan carries a signed-zero spec.
+    ``_apply_conductive_update`` scales each part once
+    (``part_products.scale(condfac, field, out=field)``); the previous family's
+    full complex product against ``(condfac + 0j)`` carries the other part's sign
+    into an addend that is exactly zero. Must be CAUGHT on the ``signed_zero``
+    class; on ``uniform`` it is legitimately a null, which is why the leg plan
+    carries a signed-zero spec.
     """
     return _replace_once(
         source,
         "    cf t = mul_field_left(cf_load(f, idx), condfac);",
-        "    cf t = cf_load(f, idx); t.re = t.re * condfac; t.im = t.im * condfac;")
+        "    cf t = cf_load(f, idx);\n"
+        "    { cf z = t; t.re = (z.re * condfac) - (z.im * 0.0f);\n"
+        "      t.im = (z.re * 0.0f) + (z.im * condfac); }")
 
 
 def _presum_poles(source: str) -> Tuple[str, int]:
@@ -663,22 +653,37 @@ def _alias_inverse_epsilon(source: str) -> Tuple[str, int]:
     return out, min(n, m)
 
 
+#: MEEP's recurrence for one part (susceptibility.cpp:251-256), the line every ADE
+#: mutation below anchors on.
+_ADE_PART = ("    return gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + "
+             "(omega0dtsqr * (s * w)));")
+
+
 def _ade_regroup(source: str) -> Tuple[str, int]:
-    """Right-associate the two additions. Must be CAUGHT."""
+    """Right-associate the bracket: ``a - b + c`` as ``a - (b - c)``. Must be CAUGHT."""
     return _replace_once(
-        source,
-        "    cf out = cf_add(mul_field_left(p, c_now), mul_coefficient_left(c_prev, q));\n"
-        "    return cf_add(out, mul_coefficient_left(c_drive, mul_coefficient_left(s, w)));",
-        "    return cf_add(mul_field_left(p, c_now), cf_add(\n"
-        "        mul_coefficient_left(c_prev, q),\n"
-        "        mul_coefficient_left(c_drive, mul_coefficient_left(s, w))));")
+        source, _ADE_PART,
+        "    return gamma1inv * ((p * two_minus_od) - ((gamma1 * q) - "
+        "(omega0dtsqr * (s * w))));")
 
 
 def _ade_distribute_drive(source: str) -> Tuple[str, int]:
-    """``(c_drive * sigma) * w`` instead of ``c_drive * (sigma * w)``."""
+    """``(omega0dtsqr * sigma) * w`` instead of ``omega0dtsqr * (sigma * w)``."""
+    return _replace_once(source, "(omega0dtsqr * (s * w))", "((omega0dtsqr * s) * w)")
+
+
+def _ade_complex_drive_product(source: str) -> Tuple[str, int]:
+    """THE 0.9.2 FORM: the real part's drive product formed as a complex product
+    with a zero-imaginary coefficient, ``re = a*w.re - 0*w.im``, which carries the
+    imaginary part's sign into an exactly-zero addend. Differs only where that
+    addend's sign shows -- a real plane of signed zeros -- so it is armed on the
+    signed-zero class, whose real planes are half signed zeros."""
     return _replace_once(
-        source, "mul_coefficient_left(c_drive, mul_coefficient_left(s, w))",
-        "mul_coefficient_left(c_drive * s, w)")
+        source,
+        "    out.re = ade_part(p.re, q.re, w.re, s, two_minus_od, gamma1, omega0dtsqr, "
+        "gamma1inv);",
+        "    out.re = gamma1inv * (((p.re * two_minus_od) - (gamma1 * q.re)) + "
+        "((omega0dtsqr * (s * w.re)) - (0.0f * (s * w.im))));")
 
 
 def _ade_swap_history(source: str) -> Tuple[str, int]:
@@ -694,7 +699,7 @@ def _ade_swap_history(source: str) -> Tuple[str, int]:
 #: are ``target -= curl`` and the conductive triple rather than the split-field
 #: recurrence, a claim that otherwise rests on reading the source.
 def _dead_drop_fu_store(source: str) -> Tuple[str, int]:
-    return _replace_once(source, "    cf_store(fu, idx, fu_new);", "")
+    return _replace_once(source, "    if (dsigu) cf_store(fu, idx, fu_new);\n", "")
 
 
 def _dead_swap_pml_coefficients(source: str) -> Tuple[str, int]:
@@ -706,28 +711,30 @@ def _dead_swap_pml_coefficients(source: str) -> Tuple[str, int]:
 def _dead_constitutive_order(source: str) -> Tuple[str, int]:
     return _replace_once(
         source,
-        "    cf prev = cf_load(fw, idx);\n    cf_store(fw, idx, src);",
-        "    cf_store(fw, idx, src);\n    cf prev = cf_load(fw, idx);")
+        "    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();\n"
+        "    if (dsigw) cf_store(fw, idx, src);",
+        "    if (dsigw) cf_store(fw, idx, src);\n"
+        "    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();")
 
 
-def _dead_constitutive_flatten(source: str) -> Tuple[str, int]:
+def _dead_constitutive_regroup(source: str) -> Tuple[str, int]:
     return _replace_once(
         source,
-        "    a = cf_add(a, mul_coefficient_left(kps, src));\n"
-        "    a = cf_sub(a, mul_coefficient_left(kms, prev));",
-        "    a = cf_add(a, cf_sub(mul_coefficient_left(kps, src),\n"
-        "                         mul_coefficient_left(kms, prev)));")
+        "cf_add(cf_load(f, idx), cf_sub(mul_coefficient_left(kps, src), "
+        "mul_coefficient_left(kms, prev)))",
+        "cf_sub(cf_add(cf_load(f, idx), mul_coefficient_left(kps, src)), "
+        "mul_coefficient_left(kms, prev))")
 
 
 #: ``name -> (transform, must_be_caught, kernel keys, leg filter or None)``.
 #:
 #: THE LEG FILTER IS NOT A CONVENIENCE. A mutation scored on a leg where it is
 #: PROVABLY inert comes back ESCAPED and reads exactly like a kernel defect.
-#: ``conductive_planewise`` is the case that forced this: plane-wise
+#: ``conductive_full_complex_product`` is the case that forced this: the part-wise
 #: ``{re*c, im*c}`` and the zero-imaginary complex product agree EXACTLY on every
-#: normal nonzero operand -- ``fma(re, c, (im*0.0)*-1.0)`` is ``re*c`` whenever
-#: ``re*c`` is nonzero -- and separate only on signed zeros and on operands that
-#: underflow. Scoring it on a ``uniform`` leg would be scoring a null.
+#: normal nonzero operand -- ``(re*c) - (im*0.0)`` is ``re*c`` whenever ``re*c`` is
+#: nonzero -- and separate only on signed zeros and on operands that underflow.
+#: Scoring it on a ``uniform`` leg would be scoring a null.
 #: ``presum_poles`` is the same shape: at one pole every order agrees.
 MUTATIONS: Dict[str, Tuple[Any, bool, Tuple[str, ...], Any]] = {
     "flip_tail_sign": (_flip_tail_sign, True, ("step_B", "step_D"), None),
@@ -736,9 +743,9 @@ MUTATIONS: Dict[str, Tuple[Any, bool, Tuple[str, ...], Any]] = {
                          ("step_B_conductive", "step_D_conductive"), None),
     "conductive_swap_tables": (_conductive_swap_tables, True,
                                ("step_B_conductive", "step_D_conductive"), None),
-    "conductive_planewise": (_conductive_planewise, True,
-                             ("step_B_conductive", "step_D_conductive"),
-                             lambda leg: leg[6] == "signed_zero"),
+    "conductive_full_complex_product": (_conductive_full_complex_product, True,
+                                        ("step_B_conductive", "step_D_conductive"),
+                                        lambda leg: leg[6] == "signed_zero"),
     "presum_poles": (_presum_poles, True, ("update_E",),
                      lambda leg: leg[3] >= 2),
     "drop_inverse_epsilon": (_drop_inverse_epsilon, True, ("update_E",), None),
@@ -747,6 +754,9 @@ MUTATIONS: Dict[str, Tuple[Any, bool, Tuple[str, ...], Any]] = {
     "ade_regroup": (_ade_regroup, True, ("update_P", "update_P_uniform"), None),
     "ade_distribute_drive": (_ade_distribute_drive, True,
                              ("update_P", "update_P_uniform"), None),
+    "ade_complex_drive_product": (_ade_complex_drive_product, True,
+                                  ("update_P", "update_P_uniform"),
+                                  lambda leg: leg[6] == "signed_zero"),
     "ade_swap_history": (_ade_swap_history, True,
                          ("update_P", "update_P_uniform"), None),
     # The four dead-prelude nulls, armed on EVERY kernel.
@@ -756,7 +766,7 @@ MUTATIONS: Dict[str, Tuple[Any, bool, Tuple[str, ...], Any]] = {
                                    tuple(family.KERNEL_KEYS), None),
     "dead_constitutive_order": (_dead_constitutive_order, False,
                                 tuple(family.KERNEL_KEYS), None),
-    "dead_constitutive_flatten": (_dead_constitutive_flatten, False,
+    "dead_constitutive_regroup": (_dead_constitutive_regroup, False,
                                   tuple(family.KERNEL_KEYS), None),
 }
 
@@ -825,7 +835,7 @@ def host_mutated_drive(name: str, fields):
 
 def one_case(spec: Dict[str, Any], sub_step: str, conductivity: str, poles: int,
              sigma_form: str, courant: float, value_class: str, guard: str,
-             arm: int, host_mutation: Optional[str] = None) -> Dict[str, Any]:
+             host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One configuration, built twice: the array path on one, the kernel on the other."""
     started = time.time()
     # SEEDED FROM A DIGEST, NOT FROM hash(). Python salts hash() of a tuple
@@ -878,23 +888,19 @@ def one_case(spec: Dict[str, Any], sub_step: str, conductivity: str, poles: int,
 
     # THE PREDICATE'S ANSWER, recorded rather than acted on. The gate exists to
     # decide whether it should be believed, so it must not gate the measurement.
-    licence = _licence()
     if sub_step in ("step_B", "step_D"):
         covered, reason = family.covers_complex_no_pml_curl(
-            fields_o, layer_o, grid_o, sub_step, license=licence,
-            subnormal_policy=_POLICY_NAME)
+            fields_o, layer_o, grid_o, sub_step)
         try:
             case["curl_arm"] = family.complex_no_pml_curl_arm(fields_o, sub_step)
         except Exception as exc:  # noqa: BLE001
             case["curl_arm"] = f"UNCLASSIFIED {type(exc).__name__}"
     elif sub_step == "update_E":
         covered, reason = family.covers_complex_no_pml_stored_e(
-            fields_o, layer_o, grid_o, license=licence,
-            subnormal_policy=_POLICY_NAME)
+            fields_o, layer_o, grid_o)
     else:
         covered, reason = family.covers_complex_no_pml_ade_update_p(
-            fields_o, layer_o, grid_o, license=licence,
-            subnormal_policy=_POLICY_NAME)
+            fields_o, layer_o, grid_o)
     case["predicate_today"] = {"covered": bool(covered), "reason": reason}
 
     profile = coefficient_profile(fields_o, sub_step, conductivity)
@@ -953,7 +959,7 @@ def one_case(spec: Dict[str, Any], sub_step: str, conductivity: str, poles: int,
                                    f"corrupt on this case")
                 case["seconds"] = time.time() - started
                 return case
-    run_kernel(fields_k, grid_k, sub_step, arm, **kwargs)
+    run_kernel(fields_k, grid_k, sub_step, layer=layer_k, **kwargs)
 
     produced = slot_hosts(fields_k, sub_step)
     parts = {name: bit_compare(reference[name], produced[name])
@@ -971,7 +977,7 @@ def one_case(spec: Dict[str, Any], sub_step: str, conductivity: str, poles: int,
             run_oracle(multi_o[0], multi_o[1], sub_step)
             advance_sources(multi_o[0], sub_step)
         for _ in range(MULTI_STEP_BUDGET):
-            run_kernel(multi_k[0], multi_k[2], sub_step, arm)
+            run_kernel(multi_k[0], multi_k[2], sub_step, layer=multi_k[1])
             advance_sources(multi_k[0], sub_step)
         oracle_multi = slot_hosts(multi_o[0], sub_step)
         kernel_multi = slot_hosts(multi_k[0], sub_step)
@@ -1032,14 +1038,14 @@ def case_product(product: str, guard: str = "fmad_false"):
     return out
 
 
-def run_sweep(results: Dict[str, Any], out_path: str, product: str, guard: str,
-              arm: int) -> List[Dict[str, Any]]:
+def run_sweep(results: Dict[str, Any], out_path: str, product: str,
+              guard: str) -> List[Dict[str, Any]]:
     cases: List[Dict[str, Any]] = []
     plan = case_product(product, guard)
     for index, entry in enumerate(plan, start=1):
         spec, sub_step, conductivity, poles, sigma_form, courant, value_class = entry
         case = one_case(spec, sub_step, conductivity, poles, sigma_form, courant,
-                        value_class, guard, arm)
+                        value_class, guard)
         cases.append(case)
         results.setdefault("sweep", {})[guard] = cases
         save(results, out_path)
@@ -1075,9 +1081,9 @@ MUTATION_LEGS: Tuple[Tuple[str, str, str, int, str, float, str], ...] = (
     ("3d_mixed_phased", "step_D", "volume", 1, "volume", INEXACT_COURANT, "uniform"),
     ("2d_phased", "step_B", "volume", 1, "volume", INEXACT_COURANT, "uniform"),
     ("2d_phased", "step_D", "volume", 1, "volume", INEXACT_COURANT, "uniform"),
-    # THE SIGNED-ZERO CONDUCTIVE LEGS, without which conductive_planewise has no
-    # case that can separate the zero-imaginary product from a plane-wise scale:
-    # the two agree exactly on every normal nonzero operand.
+    # THE SIGNED-ZERO CONDUCTIVE LEGS, without which conductive_full_complex_product
+    # has no case that can separate the zero-imaginary product from the part-wise
+    # scale: the two agree exactly on every normal nonzero operand.
     ("3d_metallic", "step_B", "volume", 1, "volume", INEXACT_COURANT, "signed_zero"),
     ("3d_metallic", "step_D", "volume", 1, "volume", INEXACT_COURANT, "signed_zero"),
     ("3d_phased_periodic", "step_B", "volume", 1, "volume", INEXACT_COURANT,
@@ -1100,6 +1106,12 @@ MUTATION_LEGS: Tuple[Tuple[str, str, str, int, str, float, str], ...] = (
     ("3d_mixed_phased", "update_P", "volume", 1, "uniform", INEXACT_COURANT,
      "uniform"),
     ("3d_metallic", "update_P", "none", 2, "uniform", INEXACT_COURANT, "uniform"),
+    # THE SIGNED-ZERO update_P LEGS, both sigma specializations: the only class whose
+    # real planes carry signed zeros, without which ade_complex_drive_product has no
+    # case that can separate the per-part products from the zero-imaginary one.
+    ("3d_metallic", "update_P", "none", 2, "volume", INEXACT_COURANT, "signed_zero"),
+    ("3d_phased_periodic", "update_P", "none", 1, "uniform", INEXACT_COURANT,
+     "signed_zero"),
 )
 
 
@@ -1148,8 +1160,7 @@ def _legs_for(kernel_key: str, leg_filter=None):
     return out
 
 
-def run_source_mutations(results: Dict[str, Any], out_path: str,
-                         arm: int) -> Dict[str, Any]:
+def run_source_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     """Every device-text defect, applied to the SHIPPED strings and recompiled.
 
     The compile memo is keyed through the SOURCE, so a mutated body is a miss and
@@ -1163,7 +1174,7 @@ def run_source_mutations(results: Dict[str, Any], out_path: str,
     try:
         for name, (transform, must_catch, keys, leg_filter) in MUTATIONS.items():
             for key in keys:
-                original = family.kernel_source(key, arm)
+                original = family.kernel_source(key)
                 mutated, sites = transform(original)
                 tag = f"{key}:{name}"
                 legs_plan = _legs_for(key, leg_filter)
@@ -1176,15 +1187,15 @@ def run_source_mutations(results: Dict[str, Any], out_path: str,
                     results["source_mutations"] = out
                     save(results, out_path)
                     continue
-                family.set_kernel_source(key, arm, mutated)
+                family.set_kernel_source(key, mutated)
                 family.clear_kernel_cache()
                 compile_cache.clear_compile_log()
                 digest = hashlib.sha256(mutated.encode("utf-8")).hexdigest()
                 legs = [one_case(_spec_by_label(entry[0]), entry[1], entry[2],
                                  entry[3], entry[4], entry[5], entry[6],
-                                 "fmad_false", arm)
+                                 "fmad_false")
                         for entry in legs_plan]
-                family.set_kernel_source(key, arm, None)
+                family.set_kernel_source(key, None)
                 family.clear_kernel_cache()
                 from_mutated = sum(1 for entry in compile_cache.compile_log()
                                    if entry["source_sha256"] == digest)
@@ -1206,17 +1217,16 @@ def run_source_mutations(results: Dict[str, Any], out_path: str,
                 save(results, out_path)
     finally:
         for key in family.KERNEL_KEYS:
-            family.set_kernel_source(key, arm, None)
+            family.set_kernel_source(key, None)
         family.clear_kernel_cache()
     return out
 
 
-def run_host_mutations(results: Dict[str, Any], out_path: str,
-                       arm: int) -> Dict[str, Any]:
+def run_host_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for name in HOST_MUTATIONS:
         legs = [one_case(_spec_by_label(entry[0]), entry[1], entry[2], entry[3],
-                         entry[4], entry[5], entry[6], "fmad_false", arm,
+                         entry[4], entry[5], entry[6], "fmad_false",
                          host_mutation=name)
                 for entry in MUTATION_LEGS]
         scored = _score(legs, name not in NULL_HOST_MUTATIONS)
@@ -1299,12 +1309,13 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
             reasons.append(f"no case ran with absorber={shape}")
 
     # BOTH COURANTS, and the signed-zero class, which is the only one that can
-    # separate the zero cross terms from a plane-wise scale.
+    # separate the previous zero cross terms from the part-wise scale.
     if {c["courant"] for c in scored} != set(COURANTS):
         reasons.append("both courants are required; only one was scored")
     if "signed_zero" not in {c["value_class"] for c in scored}:
-        reasons.append("no signed_zero case was scored; the zero cross terms are "
-                       "unmeasured and they are what the complex product rests on")
+        reasons.append("no signed_zero case was scored; the part-wise product is "
+                       "then indistinguishable from the previous full complex "
+                       "product")
     if "subnormal_band" not in {c["value_class"] for c in scored}:
         reasons.append("no subnormal_band case was scored; the float32 subnormal "
                        "policy is unmeasured on this family")
@@ -1471,70 +1482,17 @@ def save(results: Dict[str, Any], out_path: str) -> None:
     os.replace(tmp, out_path)
 
 
-# ---------------------------------------------------------------------------
-# The expansion licence
-# ---------------------------------------------------------------------------
-
-_LICENCE: Optional[Dict[str, Any]] = None
-_POLICY_NAME: Optional[str] = None
-
-
-def _licence() -> Optional[Dict[str, Any]]:
-    return _LICENCE
-
-
-def load_licence(policy: str, record_path: Optional[str] = None) -> Dict[str, Any]:
-    """The seven-pattern verdict, and the arm it binds.
-
-    THIS GATE DOES NOT DERIVE AN ARM. ``expansion_license`` is the arbiter and a
-    second spelling of it is one too many; what happens here is that the record is
-    read, the licence is run, and the verdict's shape is checked by the SHIPPED
-    predicate clause rather than by a copy of it.
-
-    ``record_path`` overrides :data:`PROBE_RECORD_BY_POLICY`; it is a path, either
-    absolute or relative to ``the repository root``. THE POLICY STILL DECIDES THE DEFAULT and
-    the override does not weaken the comparison: a record handed in by hand is put
-    through the same ``expansion_policy_reasons`` clause as a defaulted one, so
-    pointing a flush run at the keep record refuses exactly as it did before this
-    argument existed. The sha256 is recorded because the path names a file and the
-    verdict rests on its bytes.
-    """
-    from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
-
-    relative = record_path or PROBE_RECORD_BY_POLICY[policy]
-    path = (relative if os.path.isabs(relative)
-            else os.path.join(_REPO_API, relative))
-    with open(path, "rb") as handle:
-        raw = handle.read()
-    record = json.loads(raw.decode("utf-8"))
-    verdict = complex_fields.expansion_license(record)
-    verdict.setdefault("patterns", record.get("patterns"))
-    reasons = list(complex_fields.expansion_policy_reasons(record, policy))
-    verdict["policy_reasons"] = reasons
-    verdict["record"] = relative
-    verdict["record_sha256"] = hashlib.sha256(raw).hexdigest()
-    verdict["record_subnormal_policy"] = record.get("subnormal_policy")
-    return verdict
-
-
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    global _LICENCE, _POLICY_NAME
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
     parser.add_argument("--subnormal-policy", choices=("keep", "flush"),
                         required=True)
     parser.add_argument("--import-meep-for-host-policy", action="store_true")
-    parser.add_argument("--expansion-probe", default=None, help=(
-        "the seven-pattern expansion record to read, overriding the per-policy "
-        "default in PROBE_RECORD_BY_POLICY. Path, absolute or relative to "
-        "apps/api. The policy comparison is unchanged: a record cut under the "
-        "other policy refuses here whether it arrived by default or by hand."))
     parser.add_argument("--out", required=True)
     parser.add_argument("--skip-mutations", action="store_true")
     args = parser.parse_args(argv)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
-    _POLICY_NAME = args.subnormal_policy
 
     results: Dict[str, Any] = {
         "gate": "cuda_complex_no_pml",
@@ -1562,25 +1520,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         save(results, args.out)
         return 2
 
-    licence = load_licence(args.subnormal_policy, args.expansion_probe)
-    results["expansion_licence"] = {
-        k: v for k, v in licence.items() if k != "record"}
-    results["expansion_probe_record"] = licence["record"]
-    results["expansion_probe_given"] = args.expansion_probe
-    refusal = coverage.complex_expansion_refusal(licence, args.subnormal_policy)
-    if refusal is not None or licence["policy_reasons"]:
-        log(f"[fatal] the expansion licence refuses this run: {refusal!r} "
-            f"{licence['policy_reasons'][:1]}")
-        results["status"] = f"refused: {refusal or licence['policy_reasons'][0]}"
-        save(results, args.out)
-        return 2
-    _LICENCE = licence
-    arm = int(licence["expansion"])
-    results["expansion_arm"] = {"code": arm,
-                                "name": complex_emitter.EXPANSION_NAMES[arm]}
     results["kernel_source_sha256"] = {
         family.kernel_name(key): hashlib.sha256(
-            family.kernel_source(key, arm).encode("utf-8")).hexdigest()
+            family.kernel_source(key).encode("utf-8")).hexdigest()
         for key in family.KERNEL_KEYS}
 
     if args.import_meep_for_host_policy:
@@ -1596,14 +1538,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         family._COMPILE_OPTIONS = tuple(options)
         family.clear_kernel_cache()
         log(f"[guard] {guard} options={options}")
-        run_sweep(results, args.out, args.product, guard, arm)
+        run_sweep(results, args.out, args.product, guard)
 
     family._COMPILE_OPTIONS = ("--fmad=false",)
     family.clear_kernel_cache()
 
     if not args.skip_mutations:
-        run_host_mutations(results, args.out, arm)
-        run_source_mutations(results, args.out, arm)
+        run_host_mutations(results, args.out)
+        run_source_mutations(results, args.out)
 
     results["nvrtc_binary_report"] = probe.nvrtc_binary_report()
     results["summary"] = summarize(results)

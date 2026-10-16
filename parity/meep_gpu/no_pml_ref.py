@@ -7,19 +7,20 @@ readings of one contract is the point, and an import would compare the kernel
 against whatever the array path happens to do rather than against what was read
 out of it. ``validate_no_pml_ref.py`` is what welds the two together.
 
-Transcribed from, with line numbers checked against the tree on 2026-08-10:
+Transcribed from, with line numbers checked against the tree on 2026-10-08:
 
-* term tables        ``stepping.B_CURL_TERMS`` / ``D_CURL_TERMS``      :213-223
-* ghost rule         ``stepping._shift_up`` / ``_shift_down``          :1723 / :1787
-* curl grouping      ``stepping._curl_from_operands``                  :1601
-* ownership mask     ``stepping._mask_non_owned_cells``                :1865
-* the update         ``stepping._apply_curl``, the plain branch        :508
-* the E derivation   ``stepping._read_component``                      :2383
+* term tables        ``stepping.B_CURL_TERMS`` / ``D_CURL_TERMS``      :237-246
+* ghost rule         ``stepping._shift_up`` / ``_shift_down``          :2093 / :2155
+* curl grouping      ``stepping._curl_from_operands``                  :1935
+* partner presence   ``stepping.curl_presence``                        :1842
+* ownership mask     ``stepping._mask_non_owned_cells``                :2259
+* the update         ``stepping._apply_curl``, the plain branch        :587
+* the E derivation   ``stepping._read_component``                      :2990
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+from typing import Any, Callable, Dict, Tuple
 
 import numpy as np
 
@@ -80,17 +81,62 @@ def derive_electric(xp, displacement: Dict[str, Any], inverse: Dict[str, Any]
             for name in ("Dx", "Dy", "Dz")}
 
 
+def _pairwise_order(sf, f, s, ss, dtdx):
+    """``dtdx * ((sf - f) + (s - ss))``, the package's tree before MEEP's grouping.
+
+    ``stepping._curl_from_operands`` no longer writes it; a consumer that holds it is
+    holding the pre-alignment grouping, as a control or a planted mutant. The probe
+    names the same tree ``pairwise_order``.
+    """
+    return dtdx * ((sf - f) + (s - ss))
+
+
+def _kernel_order(sf, f, s, ss, dtdx):
+    """``dtdx * (((sf - f) + s) - ss)``, C's left-to-right (step_generic.cpp:104).
+
+    MEEP's grouping, and ``stepping._curl_from_operands``'s since the array path was
+    aligned to it.
+    """
+    return dtdx * (((sf - f) + s) - ss)
+
+
+#: THE CURL GROUPINGS THIS REFERENCE CAN EVALUATE, by name. Each consumer names
+#: the one it takes as its reference and the one it holds as its control
+#: (``kernel_order``, MEEP's, is every consumer's reference and the default;
+#: ``pairwise_order``, the pre-alignment tree, is the control or the planted mutant),
+#: so re-grouping one consumer's reference is an edit to that consumer and to no
+#: other, and a new grouping is a new row here rather than a new branch inside
+#: :func:`reference_plain_step`.
+CURL_GROUPINGS: Dict[str, Callable[..., Any]] = {
+    "kernel_order": _kernel_order,
+    "pairwise_order": _pairwise_order,
+}
+
+
 def reference_plain_step(xp, sources: Dict[str, Any], targets: Dict[str, Any],
                          dtdx, sub_step: str, boundaries: Tuple[str, str, str],
-                         grouping: str = "array_order") -> None:
+                         grouping: str = "kernel_order",
+                         presence: Tuple[bool, bool, bool] = (True, True, True)) -> None:
     """Advance the three targets one no-absorber curl sub-step, IN PLACE.
 
-    ``grouping`` selects the parenthesisation:
+    ``grouping`` names the parenthesisation of the two-partner stencil, a row of
+    :data:`CURL_GROUPINGS`:
 
-    * ``array_order``  — ``dtdx * ((sf - f) + (s - ss))``, ``stepping.py``'s tree;
-    * ``kernel_order`` — ``dtdx * (((sf - f) + s) - ss)``, C's left-to-right, the
-      NEGATIVE CONTROL: it must NOT match at a non-power-of-two Courant.
+    * ``kernel_order``   — ``dtdx * (((sf - f) + s) - ss)``, C's left-to-right, MEEP's
+      and ``stepping.py``'s: the reference, and the default;
+    * ``pairwise_order`` — ``dtdx * ((sf - f) + (s - ss))``, the package's tree before
+      the array path took MEEP's grouping: a control, or a planted mutant.
+
+    ``presence`` is, per axis, whether a curl partner differenced along it exists
+    (``stepping.curl_presence``: the axis is not invariant). A term whose partner is
+    absent takes MEEP's one-partner form (step_generic.cpp:72-76, :108), whatever the
+    grouping: ``dtdx * (sf - f)`` without the second partner, ``(-dtdx) * (ss - s)``
+    without the first, an exact ``+0`` with neither. The default, every axis present,
+    is the reference every consumer held before the argument existed.
     """
+    if grouping not in CURL_GROUPINGS:
+        raise ValueError(f"unknown grouping {grouping!r}")
+    curl_of = CURL_GROUPINGS[grouping]
     backward = sub_step == "step_D"
     terms = D_TERMS if backward else B_TERMS
     shift = shift_down if backward else shift_up
@@ -99,12 +145,15 @@ def reference_plain_step(xp, sources: Dict[str, Any], targets: Dict[str, Any],
         s = sources[second]
         sf = shift(xp, f, first_axis, boundaries[first_axis])
         ss = shift(xp, s, second_axis, boundaries[second_axis])
-        if grouping == "array_order":
-            curl = dtdx * ((sf - f) + (s - ss))
-        elif grouping == "kernel_order":
-            curl = dtdx * (((sf - f) + s) - ss)
+        first_present, second_present = presence[first_axis], presence[second_axis]
+        if first_present and second_present:
+            curl = curl_of(sf, f, s, ss, dtdx)
+        elif first_present:
+            curl = dtdx * (sf - f)
+        elif second_present:
+            curl = (-dtdx) * (ss - s)
         else:
-            raise ValueError(f"unknown grouping {grouping!r}")
+            curl = xp.zeros_like(f)
         # stepping._mask_non_owned_cells: cell 0 of every METALLIC axis on which
         # this target's Yee shift is 0.
         for axis in range(3):

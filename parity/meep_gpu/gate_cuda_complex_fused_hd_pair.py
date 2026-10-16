@@ -40,13 +40,16 @@ neighbours as certified singles, so launch counts compare like with like.
 
 WHAT THE ARITHMETIC LEGS ADD THAT A WHOLE-STEP IDENTITY CANNOT
 =============================================================================
-CuPy's ``complex64 * float32`` is the four-product form CONTRACTED by NVRTC
-(``lanes/cyl_round/cupy_probe``): the uncontracted transcription differs on the SIGN
-OF A FLUSHED ZERO -- 6 words of 4,005,000, all on tiny normals at a row the multiply
-underflows. A RANDOM battery does not reach that class. The ``spelling`` leg therefore
-runs the family's own multiply against ``cupy.multiply`` on a PLANTED row-0
-tiny-normal fixture beside the ordinary classes, and the mutation battery arms the
-naive four-product form as a device defect on that same plant.
+The array path scales a complex field by a real coefficient ONE FLOAT32 PRODUCT PER
+PART (``part_products.scale``, MEEP's DOCMP loops), and the family's multiply helpers
+are that product. The spellings the family carried before -- the full complex product
+against ``(c + 0j)``, contracted or not, and CuPy's own ``complex64 * float32`` --
+differ from it only on the SIGN OF A ZERO, a class a RANDOM battery does not reach.
+The ``spelling`` leg therefore runs the family's multiply and each earlier spelling
+against the part-wise product on a signed-zero class and a PLANTED row-0 tiny-normal
+class beside the ordinary ones, and the mutation battery arms the full complex product
+as a device defect on that same plant (KERNELS.md section 7.1: the old form is the
+mutant).
 
 **THIS FAMILY PERFORMS NO DIVISION** and the ``spelling`` leg records that as a
 measured absence rather than omitting it: the reciprocal the recurrence needs is
@@ -94,6 +97,7 @@ except ImportError:  # laptop: only the host legs run
     cp = None
 
 import gate_provenance  # noqa: E402
+import hd_seam_restore  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 
 # THE TWO SIBLING GATES, imported for machinery rather than re-transcribed. ONE copy
@@ -160,12 +164,9 @@ LIFT_CLEAN_STEP_FLOOR = 8
 
 FAMILY_NAME = "cuda_complex_fused_hd_pair"
 
-#: THE LICENCE VERDICT AND THE POLICY NAME, set once by :func:`main` after the policy
-#: is installed. Every predicate on the complex track REQUIRES both -- the arm is
-#: compiled into the binary at this seam and there is no later rung to check it at --
-#: so a leg that passed ``None`` would be measuring a refusal rather than a product.
-#: Held here rather than threaded through twenty signatures, and READ ONLY.
-_CONTEXT: Dict[str, Any] = {"licence": None, "policy": None}
+#: THE POLICY NAME, set once by :func:`main` after the policy is installed. Held
+#: here rather than threaded through twenty signatures, and READ ONLY.
+_CONTEXT: Dict[str, Any] = {"policy": None}
 
 
 # ---------------------------------------------------------------------------
@@ -192,9 +193,10 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "periodic_kxyz", "variant": "plain", "cell": (1.6, 1.7, 1.5),
      "boundaries": ("periodic", "periodic", "periodic"), "symmetry": (),
      "k_point": (0.3, -0.2, 0.15)},
-    # THE BRILLOUIN EDGE, where ``Grid._axis_bloch_phase`` returns EXACTLY -1+0j
-    # (grid.py:1011-1017). The rotation is then a sign flip with an exact zero
-    # imaginary part, which is where a dropped zero cross term hides.
+    # THE BRILLOUIN EDGE, where ``Grid._axis_bloch_phase`` returns EXACTLY -1+0j.
+    # ``part_products.connect`` resolves that phase to a PER-PART NEGATION rather than
+    # the unfused product, so this fixture is the one that reaches the negation branch
+    # of ``cconnect``.
     {"label": "brillouin_edge_kx", "variant": "plain", "cell": (1.6, 1.7, 1.5),
      "boundaries": ("periodic", "periodic", "periodic"), "symmetry": (),
      "k_point": (0.5, 0.0, 0.0)},
@@ -247,6 +249,23 @@ def _family():
     return family
 
 
+def device_record(grid: Any, pml: Any) -> Any:
+    """The chunk record every complex launch binds as ``cb``, on the device: the
+    one-rank division of ``grid`` and ``pml`` (``gate_chunk_records.layer_record``),
+    which is the division the oracle's region plan and an unconfigured driver both
+    step with."""
+    from gate_chunk_records import layer_record  # noqa: PLC0415
+
+    return cp.asarray(layer_record(grid, pml), dtype=cp.int32)
+
+
+def resolve_state(family: Any, fields: Any, grid: Any, pml: Any,
+                  **overrides: Any) -> Dict[str, Any]:
+    """``family.resolve`` with the run's chunk record bound (it is required)."""
+    overrides.setdefault("chunk_bounds", device_record(grid, pml))
+    return family.resolve(fields, grid, pml, **overrides)
+
+
 def _plane(name: str, shape: Tuple[int, int, int], value_class: str,
            rng) -> np.ndarray:
     """One real plane of one complex volume, for one value class."""
@@ -257,13 +276,13 @@ def _plane(name: str, shape: Tuple[int, int, int], value_class: str,
     raise ValueError(f"value class {value_class!r} is not one this gate seeds")
 
 
-#: THE PLANT. ``complex64 * float32`` on this device is the CONTRACTED four-product
-#: form, and the uncontracted transcription differs only where a cross term
-#: UNDERFLOWS: the sign of a flushed zero. The class is ``|re|`` and ``|im|`` tiny
-#: NORMALS with both parts negative, so ``z.im * c`` with a small coefficient falls
-#: into the subnormal range and ``flush`` zeroes it while ``keep`` does not. Planted on
-#: row 0 of every magnetic and flux volume, one cell per column, because a random
-#: battery reaches this class with probability ~0.
+#: THE PLANT. The part-wise product and the full complex product against ``(c + 0j)``
+#: differ only on the SIGN OF A ZERO, and under ``flush`` a zero appears wherever a
+#: product UNDERFLOWS. The class is ``|re|`` and ``|im|`` tiny NORMALS of both signs,
+#: so a product with a coefficient below 1 falls into the subnormal range and
+#: ``flush`` zeroes it while ``keep`` does not. Planted on row 0 of every stored
+#: volume, one cell per column, because a random battery reaches this class with
+#: probability ~0.
 PLANT_MAGNITUDE = np.float32(1.5e-38)
 
 
@@ -272,7 +291,8 @@ def _plant(fields, grid, value_class: str) -> Dict[str, Any]:
 
     WHERE THE PLANT HAS TO GO IS A MEASUREMENT, not a guess, and the first cut of
     this leg got it wrong (2026-09-07): planting only the MAGNETIC volumes left the
-    ``naive_four_product_multiply`` mutation uncaught under ``flush``, because
+    full-complex-product mutation (then the shipped form's contracted twin) uncaught
+    under ``flush``, because
     ``mul_field_left`` -- the helper whose spelling that defect changes -- is called
     by ``pml_apply`` on ``D``, ``fu_D`` and the curl, NOT on ``H`` or ``B``. With the
     magnetic volumes alone its operands stayed order 1 and nothing underflowed.
@@ -308,9 +328,9 @@ def _plant(fields, grid, value_class: str) -> Dict[str, Any]:
                     "sign combinations. Multiplied by any coefficient below 1 -- "
                     "every sinv, and kms inside the absorber -- the product "
                     "underflows, and under flush the sign of the flushed zero is "
-                    "what separates the naive four-product multiply from the "
-                    "contracted one. A random battery reaches this class with "
-                    "probability ~0")}
+                    "what separates the full complex product against (c + 0j) "
+                    "from the part-wise one. A random battery reaches this class "
+                    "with probability ~0")}
 
 
 def build(spec: Mapping[str, Any], value_class: str, rng):
@@ -424,7 +444,7 @@ class Arrangement:
         raise NotImplementedError
 
 
-def _certified_single_launchers(fields, grid, pml, dtdx, arm, variant: str):
+def _certified_single_launchers(fields, grid, pml, dtdx, variant: str):
     """``{slot: callable}`` -- the certified complex single-slot launchers.
 
     ON A FOLDED GRID the two CURL slots go to ``complex_folded_kernels``, which is
@@ -434,31 +454,30 @@ def _certified_single_launchers(fields, grid, pml, dtdx, arm, variant: str):
     from meep_gpu.cuda_kernels import (complex_folded_kernels,  # noqa: PLC0415
                                        complex_pml_kernels)
 
-    tables = {sub: complex_pml_kernels.complex_curl_tables(pml, half)
-              for sub, half in (("step_B", True), ("step_D", False))}
-    constitutive = {side: complex_pml_kernels.complex_constitutive_tables(pml, half)
-                    for side, half in (("H", False), ("E", True))}
-
-    del tables   # derived per launch by the certified launchers from grid + pml
+    # Every table is derived per launch by the certified launchers from grid + pml,
+    # and every launch binds the run's chunk record. The constitutive launch takes the
+    # LAYER (not tables) so the run's first update_H performs the start from B on the
+    # array path exactly as stepping.update_H does.
+    cb = device_record(grid, pml)
 
     def curl(sub_step: str):
         if variant == "folded":
             return lambda: complex_folded_kernels.step_folded_complex(
-                sub_step, fields, arm, grid=grid, pml=pml, dtdx=dtdx)
+                sub_step, fields, grid=grid, pml=pml, dtdx=dtdx, chunk_bounds=cb)
         return lambda: complex_pml_kernels.step_fused_pml_complex(
-            sub_step, fields, arm, grid=grid, pml=pml, dtdx=dtdx)
+            sub_step, fields, grid=grid, pml=pml, dtdx=dtdx, chunk_bounds=cb)
 
     return {
         "step_B": curl("step_B"),
         "step_D": curl("step_D"),
         "update_H": lambda: complex_pml_kernels.update_fused_pml_complex(
-            "H", fields, arm, tables=constitutive["H"]),
+            "H", fields, pml=pml, chunk_bounds=cb),
         "update_E": lambda: complex_pml_kernels.update_fused_pml_complex(
-            "E", fields, arm, tables=constitutive["E"]),
+            "E", fields, pml=pml, chunk_bounds=cb),
     }
 
 
-def _released_pairs(fields, grid, pml, dtdx, arm, variant: str):
+def _released_pairs(fields, grid, pml, dtdx, variant: str):
     """The composition the composer builds on these rows TODAY.
 
     Plain: ``cuda_complex_fused_magnetic_pair`` at ``step_B``/``update_H`` and
@@ -480,7 +499,7 @@ def _released_pairs(fields, grid, pml, dtdx, arm, variant: str):
     return magnetic, electric, run_magnetic, run_electric
 
 
-def make_arrangement(mode: str, fields, grid, pml, dtdx: float, arm, variant: str, *,
+def make_arrangement(mode: str, fields, grid, pml, dtdx: float, variant: str, *,
                      kernel: Optional[Any] = None, rotate: bool = True,
                      threads: Optional[int] = None,
                      state_overrides: Optional[Dict[str, Any]] = None) -> Arrangement:
@@ -493,7 +512,7 @@ def make_arrangement(mode: str, fields, grid, pml, dtdx: float, arm, variant: st
             for name in STEP_PASSES:
                 run_pass(name, fields, pml)
     elif mode in ("singles", "unfused"):
-        singles = _certified_single_launchers(fields, grid, pml, dtdx, arm, variant)
+        singles = _certified_single_launchers(fields, grid, pml, dtdx, variant)
         dispatched = (("update_H", "step_D") if mode == "singles"
                       else ("step_B", "update_H", "step_D", "update_E"))
 
@@ -506,7 +525,7 @@ def make_arrangement(mode: str, fields, grid, pml, dtdx: float, arm, variant: st
                     run_pass(name, fields, pml)
     elif mode == "composition_today":
         magnetic, electric, run_magnetic, run_electric = _released_pairs(
-            fields, grid, pml, dtdx, arm, variant)
+            fields, grid, pml, dtdx, variant)
         # EACH PAIR LAUNCHES AT THE POSITION OF ITS OWN FIRST REPLACED PASS and every
         # pass it names is skipped; everything else runs on the array path in the
         # driver's own order. Written as a walk rather than as two slices because the
@@ -521,15 +540,15 @@ def make_arrangement(mode: str, fields, grid, pml, dtdx: float, arm, variant: st
                     electric.REPLACES[0]: ("electric", run_electric)}
         uncarried = [name for name in STEP_PASSES if name not in absorbed]
         arrangement.state = {"uncarried_passes": uncarried}
+        cb = device_record(grid, pml)
 
         def step() -> None:
             for name in STEP_PASSES:
                 entry = first_of.get(name)
                 if entry is not None:
                     label, run = entry
-                    report = run(fields, grid, pml, dtdx, arm, sources=(),
-                                 license=_CONTEXT["licence"],
-                                 subnormal_policy=_CONTEXT["policy"])
+                    report = run(fields, grid, pml, dtdx, sources=(),
+                                 chunk_bounds=cb)
                     if not report.get("launched"):
                         raise SystemExit(
                             f"the released {label} pair refused a fixture the H->D "
@@ -539,12 +558,12 @@ def make_arrangement(mode: str, fields, grid, pml, dtdx: float, arm, variant: st
                     continue
                 run_pass(name, fields, pml)
     elif mode in ("weld", "weld_composed"):
-        state = family.resolve(fields, grid, pml, arm, variant=variant,
+        state = resolve_state(family, fields, grid, pml, variant=variant,
                                **(state_overrides or {}))
         family.assert_bindings_are_disjoint(fields, state)
         arrangement.state = state
         block = family._FUSED_THREADS if threads is None else int(threads)  # noqa: SLF001
-        neighbours = (_certified_single_launchers(fields, grid, pml, dtdx, arm, variant)
+        neighbours = (_certified_single_launchers(fields, grid, pml, dtdx, variant)
                       if mode == "weld_composed" else None)
 
         def step() -> None:
@@ -570,7 +589,7 @@ def make_arrangement(mode: str, fields, grid, pml, dtdx: float, arm, variant: st
     return arrangement
 
 
-def drive(spec: Mapping[str, Any], value_class: str, steps: int, arm, *,
+def drive(spec: Mapping[str, Any], value_class: str, steps: int, *,
           modes: Sequence[str] = MODES, kernel: Optional[Any] = None,
           rotate: bool = True, threads: Optional[int] = None,
           state_overrides: Optional[Dict[str, Any]] = None,
@@ -583,7 +602,7 @@ def drive(spec: Mapping[str, Any], value_class: str, steps: int, arm, *,
     for mode in modes:
         fields, grid, pml, dtdx, plant = build(spec, value_class, case_rng(label))
         engines[mode] = make_arrangement(
-            mode, fields, grid, pml, dtdx, arm, variant,
+            mode, fields, grid, pml, dtdx, variant,
             kernel=kernel if mode == "weld" else None,
             rotate=rotate if mode == "weld" else True,
             threads=threads if mode == "weld" else None,
@@ -627,7 +646,7 @@ def drive(spec: Mapping[str, Any], value_class: str, steps: int, arm, *,
     identical = {mode: first[mode] is None for mode in modes[1:]}
     return {
         "label": label, "spec": spec["label"], "variant": variant,
-        "value_class": value_class, "arm": str(arm),
+        "value_class": value_class,
         "modes": list(modes), "steps_requested": steps, "steps_compared": compared,
         "words_compared": word_total(seeded) * compared * max(1, len(modes) - 1),
         "identical": identical,
@@ -660,15 +679,19 @@ def leg_driver_order() -> Dict[str, Any]:
     except ValueError:
         start = -1
     adjacent = start >= 0 and order[start:start + len(span)] == span
-    withdraw_line = "getattr(source, \"withdraw\""
+    # THE SEAM'S ONE PASS, read off driver.py: since entry 25 it is the magnetic
+    # f_minus_p restore (writes B alone, where H is stored), not an electric withdraw.
+    seam = hd_seam_restore.driver_seam_facts()
     record = {
         "driver_step_passes": order,
         "span": span,
         "the_span_is_adjacent_in_the_driver_step": adjacent,
         "seam": family.SEAM,
         "seam_is_the_withdraw_hoist_seam": family.SEAM == withdraw_hoist.SEAM,
+        "driver_seam": seam,
+        "the_seam_holds_only_the_magnetic_restore": bool(seam.get("passed")),
         "the_driver_runs_an_electric_withdraw_in_this_seam":
-            withdraw_line in source,
+            "getattr(source, \"withdraw\"" in source,
         "carries_deposit_repair": bool(family.CARRIES_DEPOSIT_REPAIR),
         "hoists_the_withdraw": bool(family.HOISTS_THE_WITHDRAW),
         "why_no_deposit_repair": (
@@ -678,7 +701,8 @@ def leg_driver_order() -> Dict[str, Any]:
     }
     record["passed"] = bool(
         adjacent and record["seam_is_the_withdraw_hoist_seam"]
-        and record["the_driver_runs_an_electric_withdraw_in_this_seam"]
+        and record["the_seam_holds_only_the_magnetic_restore"]
+        and not record["the_driver_runs_an_electric_withdraw_in_this_seam"]
         and not record["carries_deposit_repair"]
         and not record["hoists_the_withdraw"])
     return record
@@ -713,11 +737,12 @@ def _no_float_division(source: str) -> bool:
 def leg_transcription() -> Dict[str, Any]:
     """Is every welded byte the certified family's, and does the lift INVERT?
 
-    FOUR TEXTS (two variants x two arms), each checked for: ASCII (NVRTC writes the
+    TWO TEXTS (one per variant), each checked for: ASCII (NVRTC writes the
     source through the interpreter's locale encoding); the four constitutive lift
     edits inverting to the certified prelude character for character; the certified
     ``cshift_dn`` branches surviving the resolve; no magnetic pointer left readable in
-    the curl half; the arm block present whole; and -- the folded texts only -- the
+    the curl half; the part-wise product block present whole; and -- the folded
+    texts only -- the
     three deltas ``complex_folded_kernels`` owns.
     """
     from meep_gpu.cuda_kernels import (complex_emitter,  # noqa: PLC0415
@@ -726,59 +751,64 @@ def leg_transcription() -> Dict[str, Any]:
     family = _family()
     rows: List[Dict[str, Any]] = []
     for variant in family.VARIANTS:
-        for arm_name in sorted(complex_emitter.EXPANSIONS):
-            source = family.kernel_source(variant, arm_name)
-            prelude = family.constitutive_prelude(variant, arm_name)
-            certified_prelude, _ = (
-                complex_folded_kernels.folded_source("step_D", arm_name)
-                if variant == "folded" else
-                complex_emitter.complex_source("step_D", arm_name)
-            ).split('\nextern "C" __global__ void ', 1)
-            inverted = prelude
-            for old, new in family.CONSTITUTIVE_LIFT_EDITS:
-                inverted = inverted.replace(new, old, 1)
-            arm_block = complex_emitter._ARM_SOURCE[  # noqa: SLF001
-                complex_emitter.EXPANSIONS[arm_name]]
-            row = {
-                "variant": variant, "arm": arm_name,
-                "kernel": family.KERNEL_NAMES[variant],
-                "lines": len(source.splitlines()),
-                "sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
-                "ascii": common.encodes_ascii(source),
-                "the_lift_inverts_to_the_certified_prelude":
-                    inverted == certified_prelude,
-                "the_arm_block_is_present_whole": arm_block.strip() in source,
-                "the_kernel_name_is_declared":
-                    f'extern "C" __global__ void {family.KERNEL_NAMES[variant]}('
-                    in source,
-                "cshift_dn_recompute_keeps_the_near_neighbour_branch":
-                    "if (ia > 0) return resolve_H(comp, idx - stride, weld);" in source,
-                "cshift_dn_recompute_keeps_the_wrap_arithmetic":
-                    "resolve_H(comp, idx + (na - 1) * stride, weld)" in source,
-                "cshift_dn_recompute_keeps_the_phase_on_the_wrapped_lane_only":
-                    "if (ph) w = rotate_field_left(w, phase);" in source,
-                "no_magnetic_pointer_survives_in_the_curl_half":
-                    "cshift_dn(g" not in source,
-                # MINUS THE DECLARATION: the helper's own signature spells its name
-                # too, and a count that included it would report seven taps and pass a
-                # weld that had lost one.
-                "shifted_taps": source.count("cshift_dn_recompute(") - 1,
-                "own_cell_registers": source.count("own_h["),
-                # THE FAMILY DIVIDES NO FLOAT. The complex divide spelling the
-                # cylindrical H->D products must get right has NO SITE here; the
-                # reciprocal this recurrence needs is ``sinv``, computed host-side by
-                # PML. The only ``/`` left in the emitted text is the INDEX DECODE's
-                # integer division, which is checked by shape rather than waved past.
-                "no_floating_point_division": _no_float_division(source),
-            }
-            if variant == "folded":
-                row["the_third_boundary_code_is_defined"] = (
-                    "#define BC_MIRROR_PERIODIC 2" in source)
-                row["the_ghost_is_widened_to_the_metallic_zero"] = (
-                    "bc == BC_METALLIC || bc == BC_MIRROR_PERIODIC" in source)
-                row["the_mask_splits_by_termination"] = (
-                    source.count("BC_MIRROR_PERIODIC && ") >= 6)
-            rows.append(row)
+        source = family.kernel_source(variant)
+        prelude = family.constitutive_prelude(variant)
+        certified_prelude, _ = (
+            complex_folded_kernels.folded_source("step_D")
+            if variant == "folded" else
+            complex_emitter.complex_source("step_D")
+        ).split('\nextern "C" __global__ void ', 1)
+        inverted = prelude
+        for old, new in family.CONSTITUTIVE_LIFT_EDITS:
+            inverted = inverted.replace(new, old, 1)
+        products = complex_emitter._PART_PRODUCTS  # noqa: SLF001
+        row = {
+            "variant": variant,
+            "kernel": family.KERNEL_NAMES[variant],
+            "lines": len(source.splitlines()),
+            "sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+            "ascii": common.encodes_ascii(source),
+            "the_lift_inverts_to_the_certified_prelude":
+                inverted == certified_prelude,
+            "the_part_products_block_is_present_whole": products.strip() in source,
+            "the_kernel_name_is_declared":
+                f'extern "C" __global__ void {family.KERNEL_NAMES[variant]}('
+                in source,
+            "cshift_dn_recompute_keeps_the_near_neighbour_branch":
+                "if (ia > 0) return resolve_H(comp, idx - stride, weld);" in source,
+            "cshift_dn_recompute_keeps_the_wrap_arithmetic":
+                "resolve_H(comp, idx + (na - 1) * stride, weld)" in source,
+            # THE STORED WINDOW: a shifted tap is a plain wrap and carries no
+            # connection; the connection rides on the operand read at the cell
+            # itself (plane 0 of a phased axis), which here is the own-cell
+            # register.
+            "cshift_dn_recompute_carries_no_connection":
+                "rotate_field_left" not in source.split(
+                    "cshift_dn_recompute(", 1)[1].split("\n}\n", 1)[0],
+            "every_own_cell_register_is_connected":
+                source.count("cconnect(own_h[") == family.OWN_LOAD_EDITS,
+            "no_magnetic_pointer_survives_in_the_curl_half":
+                "cshift_dn(g" not in source,
+            # MINUS THE DECLARATION: the helper's own signature spells its name
+            # too, and a count that included it would report seven taps and pass a
+            # weld that had lost one.
+            "shifted_taps": source.count("cshift_dn_recompute(") - 1,
+            "own_cell_registers": source.count("own_h["),
+            # THE FAMILY DIVIDES NO FLOAT. The complex divide spelling the
+            # cylindrical H->D products must get right has NO SITE here; the
+            # reciprocal this recurrence needs is ``sinv``, computed host-side by
+            # PML. The only ``/`` left in the emitted text is the INDEX DECODE's
+            # integer division, which is checked by shape rather than waved past.
+            "no_floating_point_division": _no_float_division(source),
+        }
+        if variant == "folded":
+            row["the_third_boundary_code_is_defined"] = (
+                "#define BC_MIRROR_PERIODIC 2" in source)
+            row["the_ghost_is_widened_to_the_metallic_zero"] = (
+                "bc == BC_METALLIC || bc == BC_MIRROR_PERIODIC" in source)
+            row["the_mask_splits_by_termination"] = (
+                source.count("BC_MIRROR_PERIODIC && ") >= 6)
+        rows.append(row)
     keys = [key for key in rows[0] if isinstance(rows[0][key], bool)]
     checks = {key: all(bool(row.get(key, True)) for row in rows) for key in keys}
     checks["the_folded_deltas_are_present"] = all(
@@ -790,7 +820,7 @@ def leg_transcription() -> Dict[str, Any]:
         row["shifted_taps"] == family.HALO_TAPS
         and row["own_cell_registers"] >= family.OWN_LOAD_EDITS for row in rows)
     checks["the_two_variants_emit_different_texts"] = len(
-        {row["sha256"] for row in rows}) == len(rows)
+        {row["sha256"] for row in rows}) == len(family.VARIANTS)
     return {"texts": rows, "denominator": len(rows), "checks": checks,
             "device_sources": sorted(family.device_sources()),
             "source_digest": family.source_digest(),
@@ -835,11 +865,6 @@ def leg_refusal() -> Dict[str, Any]:
     check("grid_without_is_mirrored",
           lambda: family.covers_complex_fused_hd_pair(_Fields(), None, _HostGrid(), ()),
           False, "")
-    # 3. The licence, refused by the certified constitutive predicate first of all.
-    check("no_expansion_licence",
-          lambda: family.covers_complex_fused_hd_pair(_Fields(), None, _HostGrid(), (),
-                                                      None, None),
-          False, "constitutive half")
     # 4. The variant selector itself.
     variant_cases = []
     for mirrored, expected in ((lambda axis: False, "plain"),
@@ -876,25 +901,18 @@ def leg_refusal() -> Dict[str, Any]:
     # 6. The variant checker refuses an unknown name rather than defaulting.
     unknown = {"passed": False}
     try:
-        family.kernel_source("mirror", "FMA_V1")
+        family.kernel_source("mirror")
     except ValueError as error:
         unknown = {"raised": str(error)[:220], "passed": True}
-    # 7. The arm refuses rather than defaulting.
-    arm_case = {"passed": False}
-    try:
-        family.kernel_source("plain", "SOMETHING")
-    except ValueError as error:
-        arm_case = {"raised": str(error)[:220], "passed": True}
     record = {
         "named": named, "variant_selector": variant_cases,
         "withdraw_text": withdraw_case, "unknown_variant_refused": unknown,
-        "unknown_arm_refused": arm_case,
-        "denominator": len(named) + len(variant_cases) + 3,
+        "denominator": len(named) + len(variant_cases) + 2,
     }
     record["passed"] = bool(
         all(row["passed"] for row in named)
         and all(row["passed"] for row in variant_cases)
-        and withdraw_case["passed"] and unknown["passed"] and arm_case["passed"])
+        and withdraw_case["passed"] and unknown["passed"])
     return record
 
 
@@ -912,24 +930,32 @@ __device__ __forceinline__ void cf_store(float* g, int idx, cf z) {
 }
 '''
 
-#: The four candidate multiply spellings. ``family_fma_v1`` is the one the emitted
-#: kernel calls (through ``complex_emitter._ARM_SOURCE[FMA_V1].mul_field_left``, lifted
-#: whole); the rest are the controls the probe measured biting.
+#: The candidate multiply spellings, each measured against the ARRAY PATH'S product
+#: (``part_products.scale``: one float32 product per part). ``family`` is the one the
+#: emitted kernel calls (``complex_emitter``'s ``mul_field_left`` and
+#: ``mul_coefficient_left``, lifted whole); ``previous_fma_v1`` and
+#: ``naive_four_product`` are the full complex product against ``(c + 0j)`` the family
+#: carried before, contracted and not; ``coefficient_left`` drops a term outright.
 _MULTIPLY_ARMS: Dict[str, str] = {
-    "family_fma_v1": (
+    "family": (
+        "    o.re = z.re * c;\n"
+        "    o.im = z.im * c;\n"),
+    "previous_fma_v1": (
         "    o.re = __fmaf_rn(z.re, c, (z.im * 0.0f) * -1.0f);\n"
         "    o.im = __fmaf_rn(z.re, 0.0f, z.im * c);\n"),
     "naive_four_product": (
         "    o.re = (z.re * c) - (z.im * 0.0f);\n"
         "    o.im = (z.re * 0.0f) + (z.im * c);\n"),
-    "componentwise": (
-        "    o.re = z.re * c;\n"
-        "    o.im = z.im * c;\n"),
     "coefficient_left": (
         "    o.re = __fmaf_rn(c, z.re, (0.0f * z.im) * -1.0f);\n"
         "    o.im = __fmaf_rn(c, 0.0f, 0.0f * z.re);\n"),
 }
 
+#: The earlier spellings that must each differ from the part-wise product somewhere
+#: in the battery: the two full complex products above and CuPy's own
+#: ``complex64 * float32`` (the previous oracle).
+_PREVIOUS_SPELLINGS: Tuple[str, ...] = ("previous_fma_v1", "naive_four_product",
+                                        "cupy_complex_product")
 
 def _spelling_kernel(body: str, name: str):
     source = (_SPELLING_PRELUDE
@@ -945,13 +971,15 @@ def _spelling_kernel(body: str, name: str):
 
 
 def leg_spelling(policy: Optional[str]) -> Dict[str, Any]:
-    """``complex64 * float32``, measured against ``cupy.multiply`` word for word.
+    """A real coefficient times a complex field, against ``part_products.scale``.
 
-    THE CLASS THE PLANT EXISTS FOR. On uniform data the naive four-product form and
-    the contracted one AGREE bit for bit (``fma(a, b, +-0)`` rounds ``a*b`` once, zero
-    signs included). They separate only where a cross term UNDERFLOWS, and only under
-    ``flush``, where the flushed zero's sign is lost. Every class is run; the planted
-    one is the one that can bite, and the record says so either way.
+    THE ORACLE IS THE ARRAY PATH'S PRODUCT: ``multiply(c, z.real)`` and
+    ``multiply(c, z.imag)``, one float32 product per part. The family's multiply must
+    agree with it on every word of every class. The earlier spellings -- the full
+    complex product against ``(c + 0j)`` and CuPy's ``complex64 * float32`` -- carry
+    the other part's sign into an addend that is exactly zero, so they separate from
+    it on the signed-zero class (and, under ``flush``, wherever a product underflows);
+    each must bite somewhere, or the battery could not tell the forms apart.
     """
     if cp is None:
         return {"passed": False, "error": "no CuPy"}
@@ -1020,7 +1048,8 @@ def leg_spelling(policy: Optional[str]) -> Dict[str, Any]:
             host.real, host.imag = re, im
             z = cp.asarray(host)
             c = cp.asarray(coefficient)
-            oracle = cp.multiply(z, c)
+            from meep_gpu import part_products  # noqa: PLC0415
+            oracle = part_products.scale(c, z)
             words = 2 * n
             row: Dict[str, Any] = {"shape": shape_label, "n": n,
                                    "value_class": value_class, "words": words,
@@ -1033,9 +1062,12 @@ def leg_spelling(policy: Optional[str]) -> Dict[str, Any]:
                        (out.view(cp.float32), z.view(cp.float32), c, np.int32(n)))
                 cp.cuda.runtime.deviceSynchronize()
                 row["arms"][arm_name] = int(differing(to_host(oracle), to_host(out)))
+            row["arms"]["cupy_complex_product"] = int(
+                differing(to_host(oracle), to_host(cp.multiply(z, c))))
             cases.append(row)
-    family_zero = all(row["arms"]["family_fma_v1"] == 0 for row in cases)
-    biting = {arm: sum(row["arms"][arm] for row in cases) for arm in _MULTIPLY_ARMS}
+    family_zero = all(row["arms"]["family"] == 0 for row in cases)
+    labels = tuple(_MULTIPLY_ARMS) + ("cupy_complex_product",)
+    biting = {arm: sum(row["arms"][arm] for row in cases) for arm in labels}
     naive_planted = sum(row["arms"]["naive_four_product"] for row in cases
                         if row["value_class"] == "planted_tiny_normal")
     naive_other = sum(row["arms"]["naive_four_product"] for row in cases
@@ -1051,24 +1083,22 @@ def leg_spelling(policy: Optional[str]) -> Dict[str, Any]:
         "naive_four_product": {
             "on_the_planted_class": naive_planted,
             "on_every_other_class": naive_other,
-            "expected": ("bites under flush on the planted tiny-normal class (the "
-                         "sign of a flushed zero); 0 under keep, where nothing "
-                         "flushes, and 0 on uniform data under either policy where "
-                         "fma(a, b, +-0) rounds a*b once"),
+            "expected": ("bites on the signed-zero class under either policy (the "
+                         "zero cross term carries the other part's sign), and on the "
+                         "planted tiny-normal class under flush only (the sign of a "
+                         "flushed zero); 0 on uniform data, where no part is zero"),
             "bit_here": bool(naive_planted),
             "consistent_with_the_policy":
                 (policy != "flush") or True,
         },
-        "every_control_that_drops_a_term_bites": all(
-            biting[arm] > 0 for arm in ("componentwise", "coefficient_left")),
+        "every_previous_spelling_bites": all(
+            biting[arm] > 0 for arm in _PREVIOUS_SPELLINGS),
+        "the_control_that_drops_a_term_bites": biting["coefficient_left"] > 0,
         "cases_with_no_biting_control": [
             f"{row['shape']}/{row['value_class']}" for row in cases
-            if not any(row["arms"][arm] for arm in _MULTIPLY_ARMS
-                       if arm != "family_fma_v1")],
-        "at_least_one_control_bites": any(
-            biting[arm] > 0 for arm in ("componentwise", "coefficient_left")),
+            if not any(row["arms"][arm] for arm in labels if arm != "family")],
         "the_family_performs_no_float_division": _no_float_division(
-            family.kernel_source("plain", "FMA_V1")),
+            family.kernel_source("plain")),
         "why_no_divide_leg": (
             "the reciprocal this recurrence needs is sinv, computed host-side by PML; "
             "there is no complex64 / float32 site in these kernels, so CuPy's scaled "
@@ -1077,7 +1107,8 @@ def leg_spelling(policy: Optional[str]) -> Dict[str, Any]:
             "rather than assumed"),
     }
     record["passed"] = bool(family_zero
-                            and record["every_control_that_drops_a_term_bites"]
+                            and record["every_previous_spelling_bites"]
+                            and record["the_control_that_drops_a_term_bites"]
                             and record["the_family_performs_no_float_division"])
     return record
 
@@ -1086,7 +1117,7 @@ def leg_spelling(policy: Optional[str]) -> Dict[str, Any]:
 # Device leg: the purity / race ledger
 # ---------------------------------------------------------------------------
 
-def leg_purity_ledger(specs: Sequence[Mapping[str, Any]], arm) -> Dict[str, Any]:
+def leg_purity_ledger(specs: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     """Of the curl's valid foreign taps, how many land on a cell ``update_H`` MOVED?
 
     THIS IS THE MEASUREMENT THAT MAKES THE IDENTITY RESULT MEAN ANYTHING. If the
@@ -1164,7 +1195,7 @@ def leg_purity_ledger(specs: Sequence[Mapping[str, Any]], arm) -> Dict[str, Any]
 # Device leg: launch structure
 # ---------------------------------------------------------------------------
 
-def leg_launch_structure(spec: Mapping[str, Any], steps: int, arm) -> Dict[str, Any]:
+def leg_launch_structure(spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
     """Launches per step at the seam and over the whole step, every arrangement.
 
     TWO INDEPENDENT COUNTERS: each arrangement's own tally and a wrapper around the
@@ -1174,7 +1205,7 @@ def leg_launch_structure(spec: Mapping[str, Any], steps: int, arm) -> Dict[str, 
                            "steps": steps, "modes": {}}
     for mode in MODES + ("weld_composed",):
         fields, grid, pml, dtdx, _plant = build(spec, "uniform", case_rng("launch"))
-        arrangement = make_arrangement(mode, fields, grid, pml, dtdx, arm,
+        arrangement = make_arrangement(mode, fields, grid, pml, dtdx,
                                        spec["variant"])
         arrangement.step()      # warm the memo: an uncounted first compile
         cp.cuda.runtime.deviceSynchronize()
@@ -1252,8 +1283,10 @@ class Shim:
 
 
 def _build_driver(spec: Mapping[str, Any], *, integrated: bool = False,
-                  seed: int = SEED, scale_bits: int = SEED_SCALE_BITS):
-    """One seeded ``FdtdDriver`` on the device, complex storage, with one source."""
+                  seed: int = SEED, scale_bits: int = SEED_SCALE_BITS,
+                  sources: Optional[Sequence[Mapping[str, Any]]] = None):
+    """One seeded ``FdtdDriver`` on the device, complex storage, with one source (or
+    ``sources``, ``add_source`` specs, in its place)."""
     from meep_gpu.driver import FdtdDriver  # noqa: PLC0415
 
     boundaries = ({axis: kind for axis, kind in zip("xyz", spec["boundaries"])}
@@ -1271,11 +1304,12 @@ def _build_driver(spec: Mapping[str, Any], *, integrated: bool = False,
          for name, value in (("Ex", 2.0), ("Ey", 2.5), ("Ez", 3.0))},
         {name: cp.full(shape, np.float32(1.0 / value), cp.float32)
          for name, value in (("Ex", 2.0), ("Ey", 2.5), ("Ez", 3.0))})
-    driver.add_source({"component": "Ez", "center": (0.0, 0.0, 0.0),
-                       "size": (0.0, 0.0, 0.0), "frequency": 1.0,
-                       "source_type": "continuous" if integrated else "gaussian",
-                       **({"is_integrated": True} if integrated
-                          else {"fwidth": 0.2})})
+    for source in (sources if sources is not None else (
+            {"component": "Ez", "center": (0.0, 0.0, 0.0),
+             "size": (0.0, 0.0, 0.0), "frequency": 1.0,
+             "source_type": "continuous" if integrated else "gaussian",
+             **({"is_integrated": True} if integrated else {"fwidth": 0.2})},)):
+        driver.add_source(dict(source))
     rng = np.random.default_rng(seed)
     scale = np.float32(2.0) ** int(scale_bits)
     for name in STATE_NAMES:
@@ -1290,12 +1324,12 @@ def _build_driver(spec: Mapping[str, Any], *, integrated: bool = False,
     return driver
 
 
-def _weld_plan_for(driver, arm, variant: str, *, hoisted: bool = False,
+def _weld_plan_for(driver, variant: str, *, hoisted: bool = False,
                    placement: str = withdraw_hoist.BEFORE_UPDATE_H):
     """``(plans, state)`` -- the weld installed at ``update_H``, ``step_D`` absorbed."""
     family = _family()
     fields, pml, grid = driver.fields, driver.pml, driver.grid
-    state = family.resolve(fields, grid, pml, arm, variant=variant)
+    state = resolve_state(family, fields, grid, pml, variant=variant)
     book = {"launches": 0, "withdrawn": 0}
 
     def run() -> None:
@@ -1316,7 +1350,7 @@ def _driver_state(driver) -> Dict[str, np.ndarray]:
             if (array := getattr(driver.fields, name, None)) is not None}
 
 
-def leg_sync(spec: Mapping[str, Any], steps: int, arm) -> Dict[str, Any]:
+def leg_sync(spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
     """The magnetic half-step's channel, with the product FORCE-INSTALLED.
 
     ``synchronize_magnetic_fields`` repeats the magnetic half of ``step`` and then
@@ -1343,7 +1377,7 @@ def leg_sync(spec: Mapping[str, Any], steps: int, arm) -> Dict[str, Any]:
                                          ("guarded", False, True),
                                          ("hazard", True, True)):
         driver = _build_driver(spec)
-        plans, book = _weld_plan_for(driver, arm, spec["variant"])
+        plans, book = _weld_plan_for(driver, spec["variant"])
         driver._fast_path = Shim(plans, answers_the_sync_consult=answers)  # noqa: SLF001
         driver._fast_path_stale = False  # noqa: SLF001
         for step in range(steps):
@@ -1376,85 +1410,39 @@ def leg_sync(spec: Mapping[str, Any], steps: int, arm) -> Dict[str, Any]:
     return facts
 
 
-def leg_withdraw(spec: Mapping[str, Any], steps: int, arm) -> Dict[str, Any]:
-    """The seam's one pass, on a device, with both of the campaign's null controls."""
+def leg_withdraw(spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
+    """The seam's one pass on a device: :func:`hd_seam_restore.seam_restore_leg`.
+
+    The leg keeps its name because the seam is the one the withdraw campaign measured;
+    since entry 25 what stands in it is the magnetic ``f_minus_p`` restore. The driver
+    carries an integrated electric AND an integrated magnetic source; the weld is
+    force-installed, stepped in lockstep with its own array-path reference and required
+    identical, and the weld with the restore moved before the launch and with no
+    magnetic ``f_minus_p`` must each diverge.
+
+    THE SEED IS NOT SCALED HERE: the ``f_minus_p`` words are the sources' amplitude, and
+    against a state scaled by 2^80 they would be below the float32 resolution of every
+    word they touch, so neither null control could diverge.
+    """
     family = _family()
-    # THE SEED IS NOT SCALED HERE: this leg compares a subtraction of the SOURCE's
-    # standing dipole, whose magnitude is the source amplitude. Against a state scaled
-    # by 2^80 that subtraction is below the float32 resolution of every word it
-    # touches and is swallowed whole -- which silently stops the two null controls
-    # controlling anything.
-    probe_driver = _build_driver(spec, integrated=True, scale_bits=0)
-    sources = tuple(probe_driver._sources)  # noqa: SLF001
-    standing = withdraw_hoist.standing_withdraws(sources)
-    covered, reason = family.covers_complex_fused_hd_pair(
-        probe_driver.fields, probe_driver.pml, probe_driver.grid, sources,
-        _CONTEXT["licence"], _CONTEXT["policy"])
-    hoistable, hoist_reasons = withdraw_hoist.hoistable(
-        probe_driver.fields, sources, span=family.REPLACES)
+    integrated = (hd_seam_restore.INTEGRATED_ELECTRIC_SOURCE,
+                  hd_seam_restore.INTEGRATED_MAGNETIC_SOURCE)
 
-    arms_out: Dict[str, Any] = {}
-    for label in ("hoisted", "not_hoisted", "after_step_D"):
-        reference = _build_driver(spec, integrated=True, scale_bits=0)
-        driver = _build_driver(spec, integrated=True, scale_bits=0)
-        if label == "after_step_D":
-            plans, book = _weld_plan_for(driver, arm, spec["variant"])
-            electric = tuple(driver._sources)  # noqa: SLF001
-            inner = plans["update_H"]
-
-            def _after(_inner=inner, _fields=driver.fields, _electric=electric):
-                _inner()
-                for source in _electric:
-                    getattr(source, "withdraw", lambda *_a: None)(_fields)
-
-            plans = {"update_H": _after, "step_D": lambda: None}
-        else:
-            plans, book = _weld_plan_for(driver, arm, spec["variant"],
-                                         hoisted=(label == "hoisted"))
+    def install(driver: Any) -> Mapping[str, Any]:
+        plans, book = _weld_plan_for(driver, spec["variant"])
         driver._fast_path = Shim(plans)  # noqa: SLF001
         driver._fast_path_stale = False  # noqa: SLF001
-        first: Optional[Dict[str, Any]] = None
-        compared = 0
-        for step in range(steps):
-            reference.step()
-            driver.step()
-            cp.cuda.runtime.deviceSynchronize()
-            moved = compare(_driver_state(reference), _driver_state(driver))
-            compared = step + 1
-            if moved:
-                first = {"step": step + 1, "volumes": moved}
-                break
-        arms_out[label] = {"first_divergence": first, "identical": first is None,
-                           "steps_compared": compared,
-                           "withdrawn_on_the_last_step": book.get("withdrawn"),
-                           "launches": book.get("launches")}
-    record = {
-        "spec": spec["label"], "steps": steps,
-        "predicate_refuses_this_row": not covered, "predicate_reason": reason,
-        "predicate_names_the_withdraw": "standing integrated" in str(reason),
-        "standing_withdraws": len(standing),
-        "hoistable": bool(hoistable), "hoistable_reasons": list(hoist_reasons),
-        "arms": arms_out,
-        "campaign": dict(withdraw_hoist.MEASUREMENT),
-        "what_this_licenses": (
-            "the LeadingWithdrawPlan placement on this device against the array path, "
-            "with both of the array-path campaign's null controls diverging. It does "
-            "NOT flip HOISTS_THE_WITHDRAW: the product still refuses these rows by "
-            "name, and the flag moves only together with INSTALLABLE and the wiring"),
-        "what_the_refusal_costs_on_this_cell": (
-            "NOTHING measurable: all 22 seam-instances of the two cells carry "
-            "integrated_electric_sources = 0 on the standing board and none is in the "
-            "withdraw_seam bucket. The clause is still asked, because a predicate "
-            "that admitted a configuration it cannot serve would be wrong on the "
-            "first row that acquired an integrated source"),
-    }
-    record["passed"] = bool(
-        record["predicate_refuses_this_row"] and record["predicate_names_the_withdraw"]
-        and record["hoistable"] and standing
-        and arms_out["hoisted"]["identical"]
-        and not arms_out["not_hoisted"]["identical"]
-        and not arms_out["after_step_D"]["identical"])
-    return record
+        return book
+
+    return hd_seam_restore.seam_restore_leg(
+        build=lambda: _build_driver(spec, sources=integrated, scale_bits=0),
+        install_weld=install,
+        coverage=lambda driver: family.covers_complex_fused_hd_pair(
+            driver.fields, driver.pml, driver.grid,
+            tuple(driver._sources)),  # noqa: SLF001
+        state_of=_driver_state, compare=compare,
+        synchronize=cp.cuda.runtime.deviceSynchronize, steps=steps,
+        spec_label=spec["label"])
 
 
 # ---------------------------------------------------------------------------
@@ -1467,20 +1455,18 @@ def leg_withdraw(spec: Mapping[str, Any], steps: int, arm) -> Dict[str, Any]:
 WIRING_ARMS_ROW: Tuple[str, str] = ("cuda_complex", "cuda_complex")
 
 
-def _wired_in_process(arm):
+def _wired_in_process():
     """Context manager: the product's rows in ``fused_pairs``, then removed."""
     import contextlib  # noqa: PLC0415
 
     from meep_gpu.cuda_kernels import fused_pairs  # noqa: PLC0415
-    from meep_gpu.cuda_kernels.registry import LICENSE_COMPLEX  # noqa: PLC0415
     from meep_gpu.triton_kernels.coverage import Coverage  # noqa: PLC0415
 
     family = _family()
 
     def coverage(context: Any) -> Coverage:
         covered, reason = family.covers_complex_fused_hd_pair(
-            context.fields, context.pml, context.grid, context.sources,
-            context.license_for(LICENSE_COMPLEX), context.subnormal_policy)
+            context.fields, context.pml, context.grid, context.sources)
         return Coverage(bool(covered), (str(reason),))
 
     def plan(context: Any):
@@ -1488,14 +1474,13 @@ def _wired_in_process(arm):
 
         def resolve(ctx: Any) -> Dict[str, Any]:
             if "state" not in held:
-                held["state"] = family.resolve(
-                    ctx.fields, ctx.grid, ctx.pml,
-                    ctx.license_for(LICENSE_COMPLEX)["arm"])
+                held["state"] = resolve_state(
+                    family, ctx.fields, ctx.grid, ctx.pml)
             return {"state": held["state"]}
 
         def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
             return family.run_complex_fused_hd_pair(
-                fields, fields.grid, context.pml, arguments["state"]["arm"],
+                fields, fields.grid, context.pml,
                 sources=context.sources, state=arguments["state"], check=False)
 
         return fused_pairs.CudaFusedPairPlan(
@@ -1529,11 +1514,8 @@ def _ask_the_composer(fields, grid, pml, sources=()) -> Dict[str, Any]:
     from meep_gpu.cuda_kernels import arms  # noqa: PLC0415
 
     family = _family()
-    licenses = ({"complex": _CONTEXT["licence"]} if _CONTEXT["licence"] is not None
-                else None)
     plan = arms.plan_step(fields=fields, pml=pml, grid=grid, sources=sources,
-                          fuse=True, licenses=licenses,
-                          subnormal_policy=_CONTEXT["policy"])
+                          fuse=True)
     selected = dict(getattr(plan, "selected", {}) or {})
     reasons = {name: list(value) for name, value
                in (getattr(plan, "reasons", {}) or {}).items()}
@@ -1545,14 +1527,14 @@ def _ask_the_composer(fields, grid, pml, sources=()) -> Dict[str, Any]:
                 family.FAMILY in str(value) for value in selected.values())}
 
 
-def leg_arbitration(spec: Mapping[str, Any], arm) -> Dict[str, Any]:
+def leg_arbitration(spec: Mapping[str, Any]) -> Dict[str, Any]:
     """The COMPOSER, asked twice: AS SHIPPED and WITH the wiring rows patched in."""
     from meep_gpu.cuda_kernels import fused_pairs  # noqa: PLC0415
 
     family = _family()
     fields, grid, pml, _dtdx, _plant = build(spec, "uniform", case_rng("arbitration"))
     shipped = _ask_the_composer(fields, grid, pml)
-    with _wired_in_process(arm):
+    with _wired_in_process():
         wired = _ask_the_composer(fields, grid, pml)
         wired["product_row_present"] = family.FAMILY in fused_pairs.FUSED_PRODUCTS
         wired["declared_uninstallable"] = fused_pairs._declared_uninstallable(  # noqa: SLF001
@@ -1615,6 +1597,25 @@ def leg_arbitration(spec: Mapping[str, Any], arm) -> Dict[str, Any]:
 # The mutations
 # ---------------------------------------------------------------------------
 
+#: The predicate on coefficient identity (KERNELS.md section 7.2), spelled per call:
+#: the form chosen by ``kms != 1`` (curl) or ``kps != 1`` (constitutive) instead of by
+#: the chunk record.
+_CURL_CALLS: Tuple[Tuple[str, str, str], ...] = (
+    ("pml_apply(f0, u0, idx, curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k], ", "z", "k"),
+    ("pml_apply(f1, u1, idx, curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i], ", "x", "i"),
+    ("pml_apply(f2, u2, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j], ", "y", "j"),
+)
+_DSIG_OF: Dict[str, str] = {"z": "y", "x": "z", "y": "x"}
+
+
+def _constitutive_call(slot: int, axis: str, index: str, flag: str) -> str:
+    return (f"    h_out[{slot}] = constitutive_apply_pure(f{slot}, w{slot}, idx, s{slot}, "
+            f"kps_{axis}[{index}], kms_{axis}[{index}], {flag}, &w_out[{slot}]);")
+
+
+_CONSTITUTIVE_AXES: Tuple[Tuple[int, str, str], ...] = ((0, "x", "i"), (1, "y", "j"),
+                                                         (2, "z", "k"))
+
 DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
     "foreign_tap_reads_stale_H": {
         "old": "    if (ia > 0) return resolve_H(comp, idx - stride, weld);",
@@ -1637,123 +1638,183 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "live_on": "every fixture",
     },
     "own_cell_reads_stale_H": {
-        "old": "        cf f_1 = own_h[2];",
-        "new": "        cf f_1 = cf_load(g2, idx);",
+        "old": "        cf f_1 = cconnect(own_h[2], j, ph_y, py);",
+        "new": "        cf f_1 = cconnect(cf_load(g2, idx), j, ph_y, py);",
         "why": ("the thread's OWN cell load reverts to the pre-launch volume, so Dx's "
                 "curl differences an H one sub-step behind on one of its two terms"),
         "live_on": "every fixture",
     },
     "f_w_H_written_in_place": {
-        "old": "    *fw_out = src;",
-        "new": "    cf_store(const_cast<float*>(fw), idx, src);",
-        "why": ("the split-field history is stored IN PLACE, so a foreign recompute "
-                "reading fw at a cell another block already wrote gets B where its "
-                "recurrence needs B_prev. RACY BY CONSTRUCTION: whether it fires is a "
-                "schedule, which is why the deterministic twin below is armed beside "
-                "it"),
-        "live_on": "every fixture (schedule-dependent)",
+        "old": "    *fw_out = dsigw ? src : cf_load(fw, idx);",
+        "new": ("    if (dsigw) cf_store(const_cast<float*>(fw), idx, src);\n"
+                "    *fw_out = dsigw ? src : cf_load(fw, idx);"),
+        "why": ("the split-field history is ALSO stored IN PLACE, so a foreign "
+                "recompute reading fw at a cell another block already wrote gets B "
+                "where its recurrence needs B_prev. RACY BY CONSTRUCTION: whether it "
+                "fires is a schedule, which is why the deterministic twin below is "
+                "armed beside it"),
+        "live_on": "every fixture with an active absorber (schedule-dependent)",
     },
     "foreign_history_reads_the_post_store_value": {
-        "old": "    cf prev = cf_load(fw, idx);",
-        "new": "    cf prev = src;",
+        "old": "    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();",
+        "new": "    cf prev = dsigw ? src : cf_zero();",
         "why": ("THE DETERMINISTIC TWIN of the in-place store: the recurrence reads "
                 "the value the in-place arrangement would have handed it, with no "
                 "race to depend on"),
         "live_on": "every fixture with an active absorber (kms != 0)",
     },
-    "the_wrapped_lane_is_not_phased": {
-        # ANCHORED ON THE RECOMPUTE'S OWN WRAP, not on the bare phase line: the
-        # certified ``cshift_up`` and ``cshift_dn`` ride along in the lifted prelude
-        # and spell the same line, so a one-line needle finds three sites and lands
-        # nowhere. Measured on this gate's first mutation smoke (2026-09-07).
-        "old": ("    cf w = resolve_H(comp, idx + (na - 1) * stride, weld);\n"
-                "    if (ph) w = rotate_field_left(w, phase);"),
-        "new": ("    cf w = resolve_H(comp, idx + (na - 1) * stride, weld);\n"
-                "    if (ph) w = w;"),
-        "why": ("the Bloch factor is dropped from the wrapped lane, which is the "
-                "band-structure error: every magnitude stays plausible and only the "
-                "phase moves"),
+    "the_window_edge_is_not_connected": {
+        # ANCHORED ON THE HELPER'S BODY: every operand read at the cell itself goes
+        # through cconnect, so dropping the connection there drops it everywhere.
+        "old": ("    if (ia != 0 || ph == 0) return w;\n"
+                "    if (ph == CONNECT_NEGATE) return cf_neg(w);\n"
+                "    return rotate_field_left(w, phase);"),
+        "new": ("    (void) ia; (void) ph; (void) phase;\n"
+                "    return w;"),
+        "why": ("the Bloch connection is dropped from plane 0 of the stored window, "
+                "which is the band-structure error: every magnitude stays plausible "
+                "and only the phase moves"),
+        "live_on": ("periodic_kx, periodic_kxyz, brillouin_edge_kx, wall_x_kz, "
+                    "fold_y_odd_kx, fold_x_kz"),
+    },
+    "the_shifted_operand_is_connected": {
+        "old": "        cf ss = cshift_dn_recompute(2, idx, i, nx, sx, bc_x, weld);",
+        "new": ("        cf ss = cshift_dn_recompute(2, idx, i, nx, sx, bc_x, weld);\n"
+                "        ss = cconnect(ss, 0, ph_x, px);"),
+        "why": ("the connection is applied to EVERY lane of a shifted operand as "
+                "well: stepping._bloch_ghost_operand connects the operand read at the "
+                "cell itself on plane 0 and nothing else, and a shifted operand is a "
+                "plain wrap"),
         "live_on": "periodic_kx, periodic_kxyz, brillouin_edge_kx, fold_y_odd_kx",
     },
-    "the_phase_is_applied_to_the_near_neighbour_too": {
-        "old": "    if (ia > 0) return resolve_H(comp, idx - stride, weld);",
-        "new": ("    if (ia > 0) {\n"
-                "        cf n = resolve_H(comp, idx - stride, weld);\n"
-                "        if (ph) n = rotate_field_left(n, phase);\n"
-                "        return n;\n    }"),
-        "why": ("the phase is applied to EVERY lane rather than to the wrapped one "
-                "only -- ``_apply_bloch_phase`` multiplies the single plane "
-                "_face(axis, -1) of the rolled buffer and nothing else"),
-        "live_on": "periodic_kx, periodic_kxyz, brillouin_edge_kx",
+    "old_package_ghost_phase": {
+        "old": ("        cf f_2 = cconnect(own_h[2], i, ph_x, px);\n"
+                "        cf ss = cshift_dn_recompute(2, idx, i, nx, sx, bc_x, weld);"),
+        "new": ("        cf f_2 = own_h[2];\n"
+                "        cf ss = cshift_dn_recompute(2, idx, i, nx, sx, bc_x, weld);\n"
+                "        if (i == 0) ss = cconnect(ss, 0, ph_x, px);"),
+        "why": ("INVERTED (KERNELS.md section 7.1): the previous package's ghost rule "
+                "-- the phase on the shifted operand's wrapped lane, none on the "
+                "window -- where MEEP's stored window connects the operand read at the "
+                "cell itself on plane 0 and wraps the shifted one plainly"),
+        "live_on": "periodic_kx, periodic_kxyz, brillouin_edge_kx, fold_y_odd_kx",
     },
-    "accumulations_regrouped": {
-        "old": ("    a = cf_add(a, mul_coefficient_left(kps, src));\n"
-                "    a = cf_sub(a, mul_coefficient_left(kms, prev));"),
-        "new": ("    a = cf_add(a, cf_sub(mul_coefficient_left(kps, src),\n"
-                "                         mul_coefficient_left(kms, prev)));"),
-        "why": ("the two SEPARATE accumulations become one expression "
-                "f + (kps*src - kms*prev), which is a different float32 number "
-                "because addition is not associative. MEEP's step_update_EDHB "
-                "accumulates left to right and the certified body transcribes that; "
-                "flattening it is the defect the twelve uncertified complex kernels "
-                "in step_curl_kernels carry, and it reads as a slightly weaker "
-                "absorber rather than as a bug"),
-        "live_on": "every fixture with an active absorber",
+    "old_package_constitutive_grouping": {
+        "old": ("cf_add(cf_load(f, idx), cf_sub(mul_coefficient_left(kps, src), "
+                "mul_coefficient_left(kms, prev)))"),
+        "new": ("cf_sub(cf_add(cf_load(f, idx), mul_coefficient_left(kps, src)), "
+                "mul_coefficient_left(kms, prev))"),
+        "why": ("INVERTED (KERNELS.md section 7.1): MEEP's step_update_EDHB forms the "
+                "right-hand side first, f + ((kps*src) - (kms*prev)), and the "
+                "certified body transcribes that; the previous package's two "
+                "accumulations are a different float32 number and read as a slightly "
+                "different absorber rather than as a bug"),
+        "live_on": "every fixture, on the cells whose chunk carries the dsigw layer",
     },
-    "coefficient_index_is_the_threads_own": {
-        "old": ("    int k = idx % nz;\n    int j = (idx / nz) % ny;\n"
-                "    int i = idx / (ny * nz);\n\n    // NO ghost rule"),
-        "new": ("    int k = 0;\n    int j = 0;\n    int i = 0;\n\n    // NO ghost rule"),
+    "coefficient_index_is_the_origin": {
+        "old": "\n".join(_constitutive_call(slot, axis, index, f"in_i_{axis}")
+                         for slot, axis, index in _CONSTITUTIVE_AXES),
+        "new": "\n".join(_constitutive_call(slot, axis, index, f"in_i_{axis}").replace(
+                             f"[{index}]", "[0]")
+                         for slot, axis, index in _CONSTITUTIVE_AXES),
         "why": ("the recomputed cell's absorber coefficients are taken from the origin "
                 "instead of from the recomputed cell -- the half-cell class of error, "
-                "converged and smooth"),
+                "converged and smooth; the chunk record still picks the form"),
         "live_on": "every fixture with an active absorber",
     },
-    "naive_four_product_multiply": {
-        "old": ("__device__ __forceinline__ cf mul_field_left(cf z, float c) {\n"
-                "    cf o;\n"
-                "    o.re = __fmaf_rn(z.re, c, (z.im * 0.0f) * -1.0f);\n"
-                "    o.im = __fmaf_rn(z.re, 0.0f, z.im * c);\n"),
-        "new": ("__device__ __forceinline__ cf mul_field_left(cf z, float c) {\n"
-                "    cf o;\n"
-                "    o.re = (z.re * c) - (z.im * 0.0f);\n"
-                "    o.im = (z.re * 0.0f) + (z.im * c);\n"),
-        "why": ("CuPy's complex64 * float32 is the four-product form CONTRACTED by "
-                "NVRTC; the uncontracted transcription differs on the SIGN OF A "
-                "FLUSHED ZERO. Measured 6 words of 4,005,000 on (flush, edge) by "
-                "lanes/cyl_round/cupy_probe -- a class a random battery does not "
-                "reach, which is why the planted_row0 value class exists"),
+    "full_complex_coefficient_products": {
+        "old": "    o.re = z.re * c;\n    o.im = z.im * c;",
+        "new": ("    o.re = (z.re * c) - (z.im * 0.0f);\n"
+                "    o.im = (z.re * 0.0f) + (z.im * c);"),
+        "also": (("    o.re = c * z.re;\n    o.im = c * z.im;",
+                  "    o.re = (c * z.re) - (0.0f * z.im);\n"
+                  "    o.im = (c * z.im) + (0.0f * z.re);"),),
+        "why": ("INVERTED (KERNELS.md section 7.1): the previous family's full complex "
+                "product against (c + 0j), whose literal zero cross terms carry the "
+                "other part's sign into an addend that is exactly zero, where "
+                "part_products.scale forms one product per part. It differs on the "
+                "SIGN OF A ZERO only -- a class a random battery does not reach, which "
+                "is why the planted_row0 value class exists"),
         "live_on": "the planted_row0 class under flush",
-        "arm_only": "FMA_V1",
         "null_under": ("keep",),
         "null_reason": (
-            "under keep nothing flushes, so the two forms agree bit for bit: "
-            "fma(a, b, +-0) rounds a*b once, zero signs included. The defect is "
-            "POLICY-CONDITIONAL and a battery that averaged the two policies would "
-            "report it as flaky rather than as what it is"),
+            "under keep no product of the battery's data underflows to zero, so no "
+            "part the multiply sees is a signed zero and the two forms agree bit for "
+            "bit; the spelling leg's signed-zero class shows the forms differ when a "
+            "zero part is present. The defect is POLICY-CONDITIONAL here and a "
+            "battery that averaged the two policies would report it as flaky rather "
+            "than as what it is"),
     },
     "fmad_default_build": {
         "old": None,   # not a text edit: the compile options
         "new": None,
         "options": (),
-        "why": ("the same source built WITHOUT --fmad=false, so NVRTC may contract "
-                "the accidental multiply-adds the transcription does not spell"),
-        "live_on": "every fixture",
-        "null_under": ("keep", "flush"),
-        "null_reason": (
-            "PREDICTED NULL ON THE COMPLEX PRIMARY, and the prediction is a prior "
-            "MEASUREMENT rather than this run's excuse: lanes/cyl_round/cupy_probe "
-            "measured the same source built with and without --fmad=false at 0 of "
-            "14,387,504 words under both policies on the complex spelling "
-            "(FINDINGS.md section 3, the row 'same source built WITHOUT --fmad=false "
-            "... does NOT bite on the complex primary'), and the released cylindrical "
-            "complex H->D campaign carries the same held null. THE CAUSE is that with "
-            "the arm's multiplies spelled as explicit __fmaf_rn there is no "
-            "contractible multiply-add left for the flag to remove. That cause is "
-            "MEASURED here rather than argued: the fmad_attribution sub-leg builds "
-            "the UNCONTRACTED arm (NAIVE) both ways and requires those two to differ, "
-            "so a null whose real cause was a flag that never reached NVRTC would "
-            "fail. The control is kept armed because it must still COMPILE and RUN"),
+        "why": ("the same source built WITHOUT --fmad=false: MEEP's arithmetic is the "
+                "contraction-off build, and the part-wise body spells each product and "
+                "each sum as its own rounding -- the curl's f*kms - curl, the "
+                "constitutive kps*src - kms*prev and the unfused Bloch product -- so "
+                "NVRTC's default contraction into fused multiply-adds is a different "
+                "float32 number"),
+        "live_on": "every fixture with an active absorber",
+    },
+    # ---- KERNELS.md section 7.2: the B battery on the per-chunk forms -------------
+    "select_removed": {
+        "old": "    cf fprev = dsigu ? cf_load(fu, idx) : cf_zero();",
+        "new": "    dsigu = 1;\n    cf fprev = dsigu ? cf_load(fu, idx) : cf_zero();",
+        "also": (("    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();",
+                  "    dsigw = 1;\n    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();"),),
+        "why": ("the whole-grid recurrence (the form the family stepped before the "
+                "chunk forms): every cell takes the dsigu / dsigw form whatever its "
+                "chunk carries"),
+        "live_on": "every fixture with a cell outside the absorber layers",
+    },
+    "predicate_on_coefficient_identity": {
+        "old": _CURL_CALLS[0][0] + "in_i_z);",
+        "new": _CURL_CALLS[0][0] + "((kms_z[k] != 1.0f) || (sinv_z[k] != 1.0f)));",
+        "also": tuple(
+            (call + f"in_i_{axis});",
+             call + f"((kms_{axis}[{index}] != 1.0f) || (sinv_{axis}[{index}] != 1.0f)));")
+            for call, axis, index in _CURL_CALLS[1:]) + tuple(
+            (_constitutive_call(slot, axis, index, f"in_i_{axis}"),
+             _constitutive_call(slot, axis, index,
+                                f"((kps_{axis}[{index}] != 1.0f) || "
+                                f"(kms_{axis}[{index}] != 1.0f))"))
+            for slot, axis, index in _CONSTITUTIVE_AXES),
+        "why": ("the form chosen by the coefficient's value (kms != 1) rather than by "
+                "the chunk's membership, the predicate the family carried until 0.10: "
+                "a cell inside a layer's chunk whose own coefficients are exactly unity "
+                "takes a different form"),
+        "live_on": "every fixture with an absorber",
+    },
+    "swap_dsig_and_dsigu": {
+        "old": _CURL_CALLS[0][0] + "in_i_z);",
+        "new": _CURL_CALLS[0][0] + "in_i_y);",
+        "also": tuple((call + f"in_i_{axis});", call + f"in_i_{_DSIG_OF[axis]});")
+                      for call, axis, _index in _CURL_CALLS[1:]),
+        "why": ("the dsig axis's membership handed in as the dsigu flag: dsig-only "
+                "against dsigu-only on the cells whose chunk carries exactly one of "
+                "the two layers"),
+        "live_on": "every fixture with an absorber",
+    },
+    "auxiliary_stored_on_a_plain_cell": {
+        "old": "    if (dsigu) cf_store(fu, idx, fu_new);",
+        "new": "    cf_store(fu, idx, fu_new);",
+        "also": (("    *fw_out = dsigw ? src : cf_load(fw, idx);", "    *fw_out = src;"),),
+        "why": ("the auxiliary written on every cell: the auxiliary contract leaves it "
+                "untouched on a plain cell, and every auxiliary is compared"),
+        "live_on": "every fixture with a cell outside the absorber layers",
+    },
+    "auxiliary_load_unguarded": {
+        "old": "    cf fprev = dsigu ? cf_load(fu, idx) : cf_zero();",
+        "new": "    cf fprev = cf_load(fu, idx);",
+        "also": (("    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();",
+                  "    cf prev = cf_load(fw, idx);"),),
+        "why": ("A DECLARED NULL (KERNELS.md section 7.2): the auxiliary load issued on "
+                "every cell, the store still guarded. The loaded word feeds only the "
+                "forms of the cells whose chunk carries the layer, so no stored word "
+                "changes; the static needle in the module's own test pins the guard"),
+        "live_on": "nowhere, by construction",
+        "expect": "uncaught",
     },
 }
 
@@ -1762,91 +1823,83 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
 #: different route. A byte-neutral control that DID diverge would mean the harness,
 #: not the weld, decides the answer.
 BYTE_NEUTRAL: Dict[str, str] = {
-    "old": "        cf f_1 = own_h[2];",
-    "new": "        cf f_1 = cf_load(Hz_out, idx);",
+    "old": "        cf f_1 = cconnect(own_h[2], j, ph_y, py);",
+    "new": "        cf f_1 = cconnect(cf_load(Hz_out, idx), j, ph_y, py);",
 }
 
 HOST_MUTATIONS: Tuple[str, ...] = ("rotation_skipped", "scratch_aliased_to_storage",
                                    "swap_constitutive_sublattice",
-                                   "unconjugated_backward_phase",
+                                   "the_other_direction_s_connection",
+                                   "record_bound_off_by_one", "record_lattices_swapped",
                                    "the_wrong_variant_text")
 
+#: The host mutations that corrupt the chunk record the WELD binds (the oracle's
+#: division is untouched).
+RECORD_HOST_MUTATIONS: Tuple[str, ...] = ("record_bound_off_by_one",
+                                          "record_lattices_swapped")
 
-def _mutated_source(name: str, variant: str, arm) -> Optional[str]:
+
+def mutated_record(name: str, grid: Any, pml: Any) -> Any:
+    """The run's chunk record, corrupted as KERNELS.md section 7.2 names, on the device.
+
+    ``record_bound_off_by_one`` moves each layered axis's low run end one row up on
+    both lattices (the boundary plane changes form); ``record_lattices_swapped`` hands
+    each lattice the other's runs (the boundary plane moves by one cell).
+    """
+    from gate_chunk_records import layer_record  # noqa: PLC0415
+    from meep_gpu.chunk_map import record_index  # noqa: PLC0415
+
+    record = np.asarray(layer_record(grid, pml), dtype=np.int32)
+    out = record.copy()
+    for axis in range(3):
+        if int(grid.shape[axis]) <= 1:
+            continue
+        for half in (False, True):
+            a0 = int(record[record_index(half, axis, 0)])
+            a1 = int(record[record_index(half, axis, 1)])
+            if name == "record_bound_off_by_one" and a1 > a0:
+                out[record_index(half, axis, 1)] = a1 + 1
+        if name == "record_lattices_swapped":
+            for word in range(4):
+                low = record_index(False, axis, word)
+                high = record_index(True, axis, word)
+                out[low], out[high] = record[high], record[low]
+    return cp.asarray(out, dtype=cp.int32)
+
+def _mutated_source(name: str, variant: str) -> Optional[str]:
     family = _family()
     spec = DEVICE_MUTATIONS[name]
     if spec["old"] is None:
         return None
-    source = family.kernel_source(variant, arm)
+    source = family.kernel_source(variant)
     source = needle(source, spec["old"], spec["new"])
     for old, new in spec.get("also", ()):
         source = needle(source, old, new)
     return source
 
 
-def _fmad_attribution(spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
-    """Why ``fmad_default_build`` is null, MEASURED rather than argued.
-
-    The SAME two builds are compared on the arm whose multiplies are NOT explicit
-    fmas -- ``NAIVE``, the uncontracted transcription. If the flag were never
-    reaching NVRTC, those two would agree too and the null would be about the harness
-    rather than about the spelling. That they DIFFER attributes the null to the
-    explicit ``__fmaf_rn`` in ``FMA_V1``, which is the claim the record makes.
-    """
-    family = _family()
-    states: Dict[str, Dict[str, np.ndarray]] = {}
-    for label, options in (("guarded", family._COMPILE_OPTIONS), ("default", ())):  # noqa: SLF001
-        kernel = family._get_kernel(spec["variant"], "NAIVE", options=options)  # noqa: SLF001
-        fields, grid, pml, dtdx, _plant = build(spec, "uniform", case_rng("fmad"))
-        arrangement = make_arrangement("weld", fields, grid, pml, dtdx, "NAIVE",
-                                       spec["variant"], kernel=kernel)
-        for _ in range(steps):
-            arrangement.step()
-        cp.cuda.runtime.deviceSynchronize()
-        states[label] = frozen(fields)
-    moved = compare(states["guarded"], states["default"])
-    return {
-        "spec": spec["label"], "steps": steps, "arm": "NAIVE",
-        "differing_volumes": moved,
-        "the_flag_changes_the_answer_on_the_uncontracted_arm": bool(moved),
-        "what_this_attributes": (
-            "--fmad=false DOES reach NVRTC and DOES change the emitted arithmetic on "
-            "a source that carries contractible multiply-adds. What makes the flag "
-            "null on the SHIPPED arm is that FMA_V1 spells its fusions as explicit "
-            "__fmaf_rn, leaving nothing for the flag to remove -- not a build option "
-            "that never arrived"),
-        "passed": bool(moved),
-    }
-
-
-def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int, arm,
+def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int,
                  policy: Optional[str]) -> Dict[str, Any]:
     """Every armed defect, each required to DIVERGE on at least one scored fixture."""
     family = _family()
-    arm_name = str(arm)
     results: List[Dict[str, Any]] = []
     for name, spec in DEVICE_MUTATIONS.items():
-        if spec.get("arm_only") and spec["arm_only"] != arm_name:
-            results.append({"name": name, "kind": "device", "compiled": None,
-                            "caught": False, "passed": True,
-                            "skipped": f"armed only under {spec['arm_only']}"})
-            continue
         caught_on: List[str] = []
         compiled, compile_error = True, None
         for case in specs:
             variant = case["variant"]
             try:
-                source = _mutated_source(name, variant, arm)
+                source = _mutated_source(name, variant)
                 options = spec.get("options")
                 kernel = family._get_kernel(  # noqa: SLF001
-                    variant, arm, source=source,
+                    variant, source=source,
                     options=options if options is not None else None)
                 kernel.compile()
             except Exception as error:  # noqa: BLE001
                 compiled, compile_error = False, repr(error)[:400]
                 break
             for value_class in ("uniform", "planted_row0"):
-                record = drive(case, value_class, min(steps, 12), arm,
+                record = drive(case, value_class, min(steps, 12),
                                modes=("array", "weld"), kernel=kernel)
                 if not record["identical"]["weld"]:
                     caught_on.append(f"{case['label']}/{value_class}")
@@ -1855,6 +1908,9 @@ def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int, arm,
                  "live_on": spec["live_on"], "caught_on": caught_on,
                  "caught": bool(caught_on)}
         entry["passed"] = bool(compiled and caught_on)
+        if spec.get("expect") == "uncaught":
+            entry["declared_null"] = True
+            entry["passed"] = bool(compiled and not caught_on)
         if policy in (spec.get("null_under") or ()):
             entry["predicted_null_under_this_policy"] = spec["null_reason"]
             entry["prediction_held"] = not caught_on
@@ -1872,13 +1928,13 @@ def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int, arm,
     for name in HOST_MUTATIONS:
         try:
             if name == "rotation_skipped":
-                record = drive(case, "uniform", min(steps, 12), arm,
+                record = drive(case, "uniform", min(steps, 12),
                                modes=("array", "weld"), rotate=False)
                 caught = not record["identical"]["weld"]
                 detail = {"first_divergence": record["first_divergence"]["weld"]}
             elif name == "scratch_aliased_to_storage":
                 fields, grid, pml, _d, _p = build(case, "uniform", case_rng("alias"))
-                state = family.resolve(fields, grid, pml, arm,
+                state = resolve_state(family, fields, grid, pml,
                                        variant=case["variant"])
                 state["scratch"] = {vol: getattr(fields, vol)
                                     for vol in family.SCRATCH_VOLUMES}
@@ -1892,7 +1948,7 @@ def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int, arm,
                     complex_emitter, complex_pml_kernels)
                 fields, grid, pml, _d, _p = build(case, "uniform", case_rng("swap"))
                 half = complex_pml_kernels.complex_constitutive_tables(pml, True)
-                record = drive(case, "uniform", min(steps, 8), arm,
+                record = drive(case, "uniform", min(steps, 8),
                                modes=("array", "weld"),
                                state_overrides={"constitutive": half,
                                                 "tables": complex_pml_kernels
@@ -1904,33 +1960,48 @@ def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int, arm,
                           "note": ("update_H's kps/kms taken from the HALF-INTEGER "
                                    "sub-lattice -- a half-cell error in the absorber "
                                    "profile, converged and smooth")}
-            elif name == "unconjugated_backward_phase":
+            elif name == "the_other_direction_s_connection":
                 from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
-                phased = next((c for c in specs if any(c["k_point"])), None) or case
+                # A PHASE THAT IS THE UNFUSED PRODUCT: at the Brillouin edge the
+                # connection is a negation, which is its own conjugate.
+                phased = next((c for c in specs if any(c["k_point"])
+                               and 0.5 not in c["k_point"]), None) or case
                 fields, grid, pml, _d, _p = build(phased, "uniform",
                                                   case_rng("phase"))
-                # THE FORWARD factor where the backward one belongs: the classic sign
-                # error, in which every magnitude stays plausible and only the phase
-                # moves.
+                # THE B CURL'S CONNECTION (conj(eikna), the word BELOW the stored
+                # window) where the D curl's belongs: the classic sign error, in which
+                # every magnitude stays plausible and only the phase moves.
                 flags, values = complex_pml_kernels.bloch_phase_arguments(grid, False)
-                record = drive(phased, "uniform", min(steps, 8), arm,
+                record = drive(phased, "uniform", min(steps, 8),
                                modes=("array", "weld"),
                                state_overrides={"phase_flags": flags,
                                                 "phase_values": values})
                 caught = not record["identical"]["weld"]
                 detail = {"first_divergence": record["first_divergence"]["weld"],
                           "fixture": phased["label"]}
+            elif name in RECORD_HOST_MUTATIONS:
+                fields, grid, pml, _d, _p = build(case, "uniform", case_rng("record"))
+                record = drive(case, "uniform", min(steps, 8),
+                               modes=("array", "weld"),
+                               state_overrides={"chunk_bounds":
+                                                mutated_record(name, grid, pml)})
+                caught = not record["identical"]["weld"]
+                detail = {"first_divergence": record["first_divergence"]["weld"],
+                          "fixture": case["label"],
+                          "note": ("the WELD binds the corrupted record and the "
+                                   "oracle steps the run's own division: each "
+                                   "layered axis's boundary plane changes form")}
             else:   # the_wrong_variant_text
                 folded = next((c for c in specs if c["variant"] == "folded"), None)
                 if folded is None:
                     caught, detail = True, {"skipped": "no folded fixture in scope"}
                 else:
                     kernel = family._get_kernel(  # noqa: SLF001
-                        "folded", arm,
-                        source=family.kernel_source("plain", arm).replace(
+                        "folded",
+                        source=family.kernel_source("plain").replace(
                             family.KERNEL_NAMES["plain"],
                             family.KERNEL_NAMES["folded"]))
-                    record = drive(folded, "uniform", min(steps, 12), arm,
+                    record = drive(folded, "uniform", min(steps, 12),
                                    modes=("array", "weld"), kernel=kernel)
                     caught = not record["identical"]["weld"]
                     detail = {"first_divergence": record["first_divergence"]["weld"],
@@ -1945,7 +2016,6 @@ def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int, arm,
             results.append({"name": name, "kind": "host", "compiled": False,
                             "caught": False, "passed": False,
                             "error": repr(error)[:400]})
-    attribution = _fmad_attribution(specs[0], min(steps, 8))
     family._clear_kernel_cache()  # noqa: SLF001
     armed = [entry for entry in results if not entry.get("skipped")]
     return {"mutations": results, "denominator": len(results), "armed": len(armed),
@@ -1959,18 +2029,18 @@ def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int, arm,
                                     if entry.get("prediction_held") is False],
             "uncaught": [entry["name"] for entry in results if not entry["caught"]
                          and not entry.get("skipped")],
-            "fmad_attribution": attribution,
-            "passed": (all(entry["passed"] for entry in results)
-                       and attribution["passed"])}
+            "declared_null": [entry["name"] for entry in results
+                              if entry.get("declared_null")],
+            "passed": all(entry["passed"] for entry in results)}
 
 
-def leg_byte_neutral(spec: Mapping[str, Any], steps: int, arm) -> Dict[str, Any]:
+def leg_byte_neutral(spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
     """The one armed edit required NOT to diverge."""
     family = _family()
-    source = needle(family.kernel_source(spec["variant"], arm),
+    source = needle(family.kernel_source(spec["variant"]),
                     BYTE_NEUTRAL["old"], BYTE_NEUTRAL["new"])
-    kernel = family._get_kernel(spec["variant"], arm, source=source)  # noqa: SLF001
-    record = drive(spec, "uniform", min(steps, 12), arm,
+    kernel = family._get_kernel(spec["variant"], source=source)  # noqa: SLF001
+    record = drive(spec, "uniform", min(steps, 12),
                    modes=("array", "weld"), kernel=kernel)
     family._clear_kernel_cache()  # noqa: SLF001
     return {"spec": spec["label"], "identical": record["identical"]["weld"],
@@ -1983,9 +2053,9 @@ def leg_byte_neutral(spec: Mapping[str, Any], steps: int, arm) -> Dict[str, Any]
             "passed": bool(record["identical"]["weld"])}
 
 
-def leg_disarm(spec: Mapping[str, Any], steps: int, arm) -> Dict[str, Any]:
+def leg_disarm(spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
     """The identical harness on the SHIPPED bytes, required not to diverge."""
-    record = drive(spec, "uniform", min(steps, 12), arm, modes=("array", "weld"))
+    record = drive(spec, "uniform", min(steps, 12), modes=("array", "weld"))
     return {"spec": spec["label"], "identical": record["identical"]["weld"],
             "first_divergence": record["first_divergence"]["weld"],
             "passed": bool(record["identical"]["weld"])}
@@ -2029,7 +2099,7 @@ def leg_compiler(policy: Optional[str], at_install: Mapping[str, Any]) -> Dict[s
     observed_sources = {entry.get("source_sha256")
                         for entry in (report.get("observations") or [])}
     emitted = {variant: hashlib.sha256(
-        family.kernel_source(variant, "FMA_V1").encode("utf-8")).hexdigest()
+        family.kernel_source(variant).encode("utf-8")).hexdigest()
         for variant in family.VARIANTS}
     return {
         "policy_requested": policy, "policy_stamp": stamp.get("policy"),
@@ -2165,13 +2235,10 @@ def evaluate_row(driver: Any, steps: int, max_cells: Optional[str]) -> Dict[str,
     from meep_gpu.cuda_kernels import arms  # noqa: PLC0415
 
     family = _family()
-    licence = _CONTEXT["licence"]
-    policy = _CONTEXT["policy"]
-    arm = (licence or {}).get("arm")
     sources = tuple(getattr(driver, "_sources", ()) or ())
     block: Dict[str, Any] = {
         "family": family.FAMILY, "steps_requested": steps,
-        "n_sources": len(sources), "arm": arm,
+        "n_sources": len(sources),
         "grid_shape": [int(n) for n in driver.grid.shape],
         "storage": str(driver.fields.Hx.dtype),
         "sources": [{"type": type(s).__name__,
@@ -2189,15 +2256,13 @@ def evaluate_row(driver: Any, steps: int, max_cells: Optional[str]) -> Dict[str,
         block["variant"] = None
         block["variant_error"] = repr(error)[:200]
     covered, reason = family.covers_complex_fused_hd_pair(
-        driver.fields, driver.pml, driver.grid, sources, licence, policy)
+        driver.fields, driver.pml, driver.grid, sources)
     block["predicate_admits"] = bool(covered)
     block["predicate_reason"] = reason
     try:
         plan = arms.plan_step(
             fields=driver.fields, pml=driver.pml, grid=driver.grid, sources=sources,
-            fuse=True,
-            licenses={"complex": licence} if licence is not None else None,
-            subnormal_policy=policy)
+            fuse=True)
         block["composer_selected_as_shipped"] = dict(getattr(plan, "selected", {}) or {})
     except Exception as error:  # noqa: BLE001
         block["composer_error"] = repr(error)[:400]
@@ -2215,7 +2280,7 @@ def evaluate_row(driver: Any, steps: int, max_cells: Optional[str]) -> Dict[str,
                                          f"partially")})
         return {BLOCK_KEY: block}
     block["driven"] = True
-    block.update(_drive_lifted_row(driver, steps, arm, block["variant"]))
+    block.update(_drive_lifted_row(driver, steps, block["variant"]))
     block["policy_stamp_after_drive"] = (
         probe.subnormal_policy_stamp(_REPO_API).get("policy"))
     _child_progress(f"passed={block.get('passed')} words={block.get('words_compared')}")
@@ -2237,7 +2302,7 @@ def _stored_volumes(fields: Any) -> Dict[str, Any]:
     return stored(fields)
 
 
-def _drive_lifted_row(driver: Any, steps: int, arm, variant: str) -> Dict[str, Any]:
+def _drive_lifted_row(driver: Any, steps: int, variant: str) -> Dict[str, Any]:
     """One lifted corpus row, driven through the driver's own consult order.
 
     ONE DRIVER, CAPTURED AND RESTORED, rather than two engines: a lifted row carries
@@ -2255,8 +2320,8 @@ def _drive_lifted_row(driver: Any, steps: int, arm, variant: str) -> Dict[str, A
     family = _family()
     fields, pml, grid = driver.fields, driver.pml, driver.grid
     dtdx = float(grid.dt / grid.dx)
-    singles = _certified_single_launchers(fields, grid, pml, dtdx, arm, variant)
-    state = family.resolve(fields, grid, pml, arm, variant=variant)
+    singles = _certified_single_launchers(fields, grid, pml, dtdx, variant)
+    state = resolve_state(family, fields, grid, pml, variant=variant)
     family.assert_bindings_are_disjoint(fields, state)
     book = {"launches": 0}
 
@@ -2325,7 +2390,7 @@ def _drive_lifted_row(driver: Any, steps: int, arm, variant: str) -> Dict[str, A
 
 def _lift_child(leg: str, target: str, cases: Sequence[str], out_json: str,
                 steps: int, progress: str, policy: Optional[str],
-                import_meep: bool, licence: Optional[dict]) -> int:
+                import_meep: bool) -> int:
     """One corpus row, lifted in its OWN interpreter and driven. ALWAYS writes.
 
     THE POLICY IS INSTALLED HERE, before the child's first compile, and stamped before
@@ -2347,10 +2412,8 @@ def _lift_child(leg: str, target: str, cases: Sequence[str], out_json: str,
     probe.install_nvrtc_binary_observer()
     if policy:
         probe.install_subnormal_policy_for_run(policy, _REPO_API)
-    _CONTEXT["licence"] = licence
     _CONTEXT["policy"] = policy
-    _child_progress(f"child start policy={policy} steps={steps} arm="
-                    f"{(licence or {}).get('arm')}")
+    _child_progress(f"child start policy={policy} steps={steps}")
 
     records: List[Dict[str, Any]] = []
 
@@ -2420,7 +2483,7 @@ def _lift_child(leg: str, target: str, cases: Sequence[str], out_json: str,
 
 def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float,
              resume: bool, only: Optional[Sequence[str]], policy: Optional[str],
-             import_meep: bool, licence: Optional[dict]) -> Dict[str, Any]:
+             import_meep: bool) -> Dict[str, Any]:
     """Every corpus row in the two cells, re-lifted in its own interpreter and driven."""
     import contextlib  # noqa: PLC0415
     import tempfile  # noqa: PLC0415
@@ -2487,10 +2550,9 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
             payload = json.loads(out_json.read_text(encoding="utf-8"))
             driven.append({**row, "payload": payload, "resumed": True})
             continue
-        if row["withdraw_in_seam"]:
-            driven.append({**row, "refused_by_the_predicate": True,
-                           "why": "standing integrated electric withdraw in the seam"})
-            continue
+        # A withdraw_in_seam row is LIFTED AND ASKED like any other: the flag was cut on
+        # the driver before f_minus_p, and since entry 25 no engine source stands a
+        # withdraw (hd_seam_restore.lift_withdraw_accounting scores the refusals).
         if target is None:
             driven.append({**row, "error": "no module for this row in the census"})
             continue
@@ -2513,7 +2575,6 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
             else _REPO_API)
         if max_cells:
             environment["MEEP_GPU_CXHD_GATE_MAX_CELLS"] = str(max_cells)
-        environment["MEEP_GPU_CXHD_GATE_LICENCE"] = json.dumps(licence)
         started = time.perf_counter()
         try:
             # ENCODING AND ERRORS ARE EXPLICIT, and both are load-bearing. ``text=True``
@@ -2562,14 +2623,17 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     errored = [entry["label"] for entry in driven
                if entry.get("error") or (entry.get("returncode") not in (0, None)
                                          and not blocks[entry["label"]])]
-    refused = sorted(entry["label"] for entry in driven
-                     if entry.get("refused_by_the_predicate"))
+    accounting = hd_seam_restore.lift_withdraw_accounting(
+        blocks, facts["rows_with_a_standing_withdraw"])
+    refused = accounting["refused"]
     record = {
         "basis": facts, "rows": driven, "blocks": blocks,
         "rows_on_the_board_cells": len(rows),
         "rows_admitted": len(admitted), "rows_driven": len(ran),
         "rows_identical": len(identical),
-        "rows_refused_for_the_withdraw": refused,
+        "rows_refused_for_the_withdraw": accounting["refused_by_a_standing_withdraw"],
+        "rows_refused": refused,
+        "refusal_accounting": accounting,
         "rows_below_the_step_floor": below,
         "rows_diverged": diverged, "rows_errored": errored,
         "complete_driver_steps": sum(int(value.get("steps_compared") or 0)
@@ -2591,7 +2655,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     record["passed"] = bool(
         ran and not diverged and not errored and not below
         and len(identical) == len(ran)
-        and sorted(refused) == sorted(facts["rows_with_a_standing_withdraw"]))
+        and accounting["passed"])
     return record
 
 
@@ -2616,8 +2680,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             args.lift_child, args.lift_child_target,
             json.loads(args.lift_child_cases), args.lift_child_out,
             args.lift_steps, args.lift_child_progress, args.subnormal_policy,
-            bool(args.import_meep_for_host_policy),
-            json.loads(os.environ.get("MEEP_GPU_CXHD_GATE_LICENCE", "null")))
+            bool(args.import_meep_for_host_policy))
 
     if not args.out:
         parser.error("--out is required unless --lift-child is given")
@@ -2642,24 +2705,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     results["device_mode"] = True
     at_install = common.install_policy(results, args)
-    licence = common.load_expansion_licence(args.subnormal_policy)
-    results["expansion_licence"] = licence
-    if not licence.get("usable"):
-        results["status"] = "refused: no usable expansion licence for this policy"
-        results["verdict"] = {"passed": False, "clauses": {}}
-        save(results, args.out)
-        log(results["status"])
-        return 1
-    arm = licence["arm"]
-    results["arm"] = arm
-    # THE FULL VERDICT, not the arm alone: every complex predicate checks the verdict's
-    # shape, its refusal list, its basis and the policy it was cut under, and a caller
-    # that handed it a two-key summary would be refused at the last rung before the
-    # arm is compiled into a binary.
-    _CONTEXT["licence"] = licence["verdict"]
     _CONTEXT["policy"] = args.subnormal_policy
-    os.environ["MEEP_GPU_CXHD_GATE_LICENCE"] = json.dumps(licence["verdict"],
-                                                          default=str)
 
     family = _family()
     results["what_a_release_does_not_license"] = family.WHAT_A_RELEASE_DOES_NOT_LICENSE
@@ -2695,7 +2741,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         cases: List[Dict[str, Any]] = []
         for spec in specs:
             for value_class in VALUE_CLASSES:
-                record = drive(spec, value_class, args.steps, arm,
+                record = drive(spec, value_class, args.steps,
                                progress=lambda m: log(f"  {m}"))
                 cases.append(record)
                 log(f"[product] {record['label']:38s} "
@@ -2732,13 +2778,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         }
         save(results, args.out)
 
-    run_leg("purity_ledger", lambda: leg_purity_ledger(specs, arm))
+    run_leg("purity_ledger", lambda: leg_purity_ledger(specs))
 
     if "block_sizes" in legs:
         sweep: List[Dict[str, Any]] = []
         for spec in specs:
             for threads in BLOCK_SIZES:
-                record = drive(spec, "uniform", min(args.steps, 12), arm,
+                record = drive(spec, "uniform", min(args.steps, 12),
                                modes=("array", "weld"), threads=threads)
                 record["threads"] = threads
                 sweep.append(record)
@@ -2754,23 +2800,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     run_leg("launch_structure",
             lambda: leg_launch_structure(by_label["periodic_kxyz"],
-                                         min(args.steps, 12), arm))
-    run_leg("arbitration", lambda: leg_arbitration(by_label["periodic_kxyz"], arm))
-    run_leg("sync", lambda: leg_sync(by_label["periodic_k0"], min(args.steps, 12), arm))
+                                         min(args.steps, 12)))
+    run_leg("arbitration", lambda: leg_arbitration(by_label["periodic_kxyz"]))
+    run_leg("sync", lambda: leg_sync(by_label["periodic_k0"], min(args.steps, 12)))
     run_leg("withdraw",
-            lambda: leg_withdraw(by_label["periodic_k0"], min(args.steps, 12), arm))
+            lambda: leg_withdraw(by_label["periodic_k0"], min(args.steps, 12)))
     run_leg("byte_neutral",
-            lambda: leg_byte_neutral(by_label["walls_all"], args.steps, arm))
-    run_leg("mutation", lambda: leg_mutation(mutation_specs, args.steps, arm,
+            lambda: leg_byte_neutral(by_label["walls_all"], args.steps))
+    run_leg("mutation", lambda: leg_mutation(mutation_specs, args.steps,
                                              args.subnormal_policy))
-    run_leg("disarm", lambda: leg_disarm(by_label["walls_all"], args.steps, arm))
+    run_leg("disarm", lambda: leg_disarm(by_label["walls_all"], args.steps))
     run_leg("compiler", lambda: leg_compiler(args.subnormal_policy, at_install))
     run_leg("lift", lambda: leg_lift(
         Path(args.out).parent, args.lift_steps, args.lift_max_cells,
         args.lift_timeout, args.lift_resume,
         args.lift_only.split(",") if args.lift_only else None,
-        args.subnormal_policy, bool(args.import_meep_for_host_policy),
-        licence["verdict"]))
+        args.subnormal_policy, bool(args.import_meep_for_host_policy)))
 
     clauses = {name: bool(results.get(name, {}).get("passed"))
                for name in legs if name in results}

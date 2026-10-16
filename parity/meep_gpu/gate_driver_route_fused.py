@@ -1007,6 +1007,7 @@ DIGESTED = (
     "meep_gpu/deposit_repair.py",
     "meep_gpu/triton_kernels/launch.py",
     "meep_gpu/triton_kernels/kernels.py",
+    "meep_gpu/triton_kernels/forms.py",
     "meep_gpu/triton_kernels/coverage.py",
     "meep_gpu/triton_kernels/fingerprints.json",
     "parity/meep_gpu/gate_driver_route_fused.py",

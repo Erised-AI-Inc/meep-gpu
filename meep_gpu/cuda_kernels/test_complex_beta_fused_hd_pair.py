@@ -29,11 +29,10 @@ import pathlib
 import pytest
 
 from . import complex_beta_fused_hd_pair as family
-from . import complex_beta_kernels, complex_emitter, complex_folded_kernels
+from . import complex_beta_kernels, complex_emitter, complex_folded_kernels, folded_pass
 from . import complex_fused_hd_pair as released
 
 HERE = pathlib.Path(__file__).parent
-ARMS = tuple(sorted(complex_emitter.EXPANSIONS))
 
 
 # ---------------------------------------------------------------------------
@@ -84,43 +83,43 @@ def test_the_declaration_is_a_literal_this_files_own_readers_can_see():
 # The transform
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_transform_on_the_certified_plain_text_is_the_released_transform(arm):
+def test_the_transform_on_the_certified_plain_text_is_the_released_transform():
     """THE FIRST EQUALITY, byte for byte, on each arm."""
     assert family.curl_pieces(
-        arm, complex_emitter.complex_source("step_D", arm)) == \
-        released.curl_pieces("plain", arm)
+        complex_emitter.complex_source("step_D")) == \
+        released.curl_pieces("plain")
 
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_transform_on_the_certified_folded_text_is_the_released_transform(arm):
+def test_the_transform_on_the_certified_folded_text_is_the_released_transform():
     """THE SECOND, on the text this family's beta source is actually derived FROM."""
     assert family.curl_pieces(
-        arm, complex_folded_kernels.folded_source("step_D", arm)) == \
-        released.curl_pieces("folded", arm)
+        complex_folded_kernels.folded_source("step_D")) == \
+        released.curl_pieces("folded")
 
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_weld_redirects_every_magnetic_read_in_the_beta_body(arm):
-    head, tail = family.curl_pieces(arm)
+def test_the_weld_redirects_every_magnetic_read_in_the_beta_body():
+    head, tail = family.curl_pieces()
     assert tail.count("cshift_dn_recompute(") == family.HALO_TAPS
     assert tail.count("own_h[") == family.OWN_LOAD_EDITS
     for pointer in family.CURL_SOURCE_NAMES:
         assert f"cf_load({pointer}," not in tail
     assert "cshift_dn(" not in tail
-    # The head keeps the certified preamble, the strides, the decode, the three phase
-    # constants AND the two beta coefficient registers, verbatim.
-    assert "cf bp; bp.re = bp_re; bp.im = bp_im;" in head
-    assert "cf bm; bm.re = bm_re; bm.im = bm_im;" in head
+    # The head keeps the certified preamble, the strides, the decode and the three
+    # phase constants verbatim; the two beta coefficients are plain float arguments
+    # and need no register.
+    assert "cf pz; pz.re = pzr; pz.im = pzi;" in head
+    assert " bp;" not in head and " bm;" not in head
 
 
 def test_both_beta_partners_are_the_welds_own_register():
     """The clause this family owns and no sibling H->D weld has."""
-    _head, tail = family.curl_pieces("FMA_V1")
-    assert "curl = cf_sub(curl, mul_imag_coefficient_left(bp, f_2));" in tail
-    assert "curl = cf_sub(curl, mul_imag_coefficient_left(bm, f_1));" in tail
-    assert "cf f_2 = own_h[1];" in tail      # target 0's Hy centre
-    assert "cf f_1 = own_h[0];" in tail      # target 1's Hx centre
+    _head, tail = family.curl_pieces()
+    assert "cf inc_beta = owned_cell ? beta_increment(bp, f_2) : cf_zero();" in tail
+    assert "cf inc_beta = owned_cell ? beta_increment(bm, f_1) : cf_zero();" in tail
+    # target 0's Hy and target 1's Hx, the own-cell registers through the stored
+    # window's connection along the invariant z axis.
+    assert "cf f_2 = cconnect(own_h[1], k, ph_z, pz);" in tail
+    assert "cf f_1 = cconnect(own_h[0], k, ph_z, pz);" in tail
 
 
 def test_a_beta_partner_the_weld_did_not_redirect_is_refused():
@@ -130,31 +129,34 @@ def test_a_beta_partner_the_weld_did_not_redirect_is_refused():
     register -- the risk ``complex_beta_kernels`` names when it says the register must
     be the UNSHIFTED centre.
     """
-    corrupted = family._curl_source("FMA_V1").replace(  # noqa: SLF001
-        "        curl = cf_sub(curl, mul_imag_coefficient_left(bp, f_2));",
-        "        curl = cf_sub(curl, mul_imag_coefficient_left(bp, ss));", 1)
+    corrupted = family._curl_source().replace(  # noqa: SLF001
+        "        cf inc_beta = owned_cell ? beta_increment(bp, f_2) : cf_zero();",
+        "        cf inc_beta = owned_cell ? beta_increment(bp, ss) : cf_zero();", 1)
+    assert corrupted != family._curl_source()  # noqa: SLF001
     with pytest.raises(AssertionError, match="beta partner"):
-        family.curl_pieces("FMA_V1", corrupted)
+        family.curl_pieces(corrupted)
 
 
 def test_a_beta_partner_declared_from_the_pre_launch_volume_is_refused():
     """The OTHER branch of the pairing check, driven on a synthetic block."""
     block = ("    // Target 0\n"
              "    {\n"
-             "        cf f_1 = own_h[2];\n"
-             "        cf f_2 = cf_load(g1, idx);\n"
+             "        cf f_1 = cconnect(own_h[2], j, ph_y, py);\n"
+             "        cf f_2 = cwindow(g1, idx, k, ph_z, pz);\n"
              "        cf curl = cf_zero();\n"
-             "        curl = cf_sub(curl, mul_imag_coefficient_left(bp, f_2));\n"
+             "        cf inc_beta = owned_cell ? beta_increment(bp, f_2) : cf_zero();\n"
              "    }\n")
     with pytest.raises(AssertionError, match="PRE-launch magnetic field"):
         family._assert_the_beta_partner_is_the_weld_register(block, True)  # noqa: SLF001
 
 
 def test_a_body_that_lost_a_beta_increment_is_refused():
-    corrupted = family._curl_source("FMA_V1").replace(  # noqa: SLF001
-        "        curl = cf_sub(curl, mul_imag_coefficient_left(bp, f_2));\n", "", 1)
+    corrupted = family._curl_source().replace(  # noqa: SLF001
+        "        cf inc_beta = owned_cell ? beta_increment(bp, f_2) : cf_zero();\n", "",
+        1)
+    assert corrupted != family._curl_source()  # noqa: SLF001
     with pytest.raises(AssertionError, match="beta increments"):
-        family.curl_pieces("FMA_V1", corrupted)
+        family.curl_pieces(corrupted)
 
 
 # ---------------------------------------------------------------------------
@@ -178,9 +180,9 @@ def test_the_two_beta_cells_share_no_text_and_are_therefore_two_products():
     real_curl = _real_literal("step_curl_kernels.py", "_REAL_PML_PRELUDE")
     real_constitutive = _real_literal("constitutive_kernels.py",
                                       "_REAL_CONSTITUTIVE_PRELUDE")
-    complex_curl, _ = family._curl_source("FMA_V1").split(  # noqa: SLF001
+    complex_curl, _ = family._curl_source().split(  # noqa: SLF001
         '\nextern "C" __global__ void ', 1)
-    complex_update_h = complex_emitter.complex_source("update_H", "FMA_V1")
+    complex_update_h = complex_emitter.complex_source("update_H")
     real_update_h = _real_literal("constitutive_kernels.py",
                                   "_update_H_pml_real_kernel_code")
     assert complex_curl != real_curl
@@ -222,9 +224,8 @@ def _real_literal(module: str, name: str) -> str:
 # The measured absence
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_emitted_text_performs_no_floating_point_division(arm):
-    source = family.kernel_source(arm)      # raises if the absence is violated
+def test_the_emitted_text_performs_no_floating_point_division():
+    source = family.kernel_source()      # raises if the absence is violated
     divides = [line for line in source.splitlines()
                if "/" in line.split("//", 1)[0]]
     assert len(divides) == family._PERMITTED_DIVIDES  # noqa: SLF001
@@ -236,7 +237,7 @@ def test_the_absence_assertion_bites():
     """A zero beside a control that moves. CuPy's ``complex64 / float32`` is the
     SCALED complex/complex algorithm and has no site here; a planted divide must be
     refused rather than emitted."""
-    source = family.kernel_source("FMA_V1")
+    source = family.kernel_source()
     with pytest.raises(AssertionError, match="divides outside"):
         family._assert_the_measured_absence_of_a_divide(  # noqa: SLF001
             source.replace("    cf own_h[3];", "    float bad = 1.0f / dtdx;", 1))
@@ -249,7 +250,7 @@ def test_a_dropped_index_decode_is_refused():
     and the divide-count weld catches it on the host as well as the mutation battery
     catching it on a device.
     """
-    source = family.kernel_source("FMA_V1")
+    source = family.kernel_source()
     with pytest.raises(AssertionError, match="index-decode divide lines"):
         family._assert_the_measured_absence_of_a_divide(  # noqa: SLF001
             source.replace("    int j = (idx / nz) % ny;\n", "    int j = 0;\n", 1))
@@ -260,11 +261,13 @@ def test_a_dropped_index_decode_is_refused():
 # ---------------------------------------------------------------------------
 
 def test_the_signature_is_the_released_ones_with_the_certified_beta_delta():
-    """Neither half is retyped, so neither can drift."""
-    old, new = family._beta_argument_delta()  # noqa: SLF001
-    assert old in released._SIGNATURE_BODY   # noqa: SLF001
-    assert "float bp_re, float bp_im, float bm_re, float bm_im" in new
+    """Neither half is retyped, so neither can drift: the released body with the two
+    beta words inserted after its phase constants, the chunk record still last."""
+    assert released._SIGNATURE_BODY.count(family._PHASE_TAIL) == 1  # noqa: SLF001
+    assert family._BETA_PARAMETERS.endswith("\n    float bp, float bm,\n")  # noqa: SLF001
     signature = family.signature()
+    assert family._PHASE_TAIL + family._BETA_PARAMETERS in signature  # noqa: SLF001
+    assert signature.rstrip().endswith("const int* __restrict__ cb\n) {")
     assert signature.startswith(
         f'\nextern "C" __global__ void {family.KERNEL_NAME}(\n')
     assert signature.endswith("\n) {\n")
@@ -276,14 +279,15 @@ def test_the_signature_is_the_released_ones_with_the_certified_beta_delta():
 def test_the_digest_moves_when_any_input_text_moves():
     """One sha256 over both arms; a changed character anywhere upstream moves it."""
     before = family.source_digest()
-    original = complex_beta_kernels._MUL_IMAG_HELPER  # noqa: SLF001
+    original = folded_pass.COMPLEX_FOLD_HELPERS
     try:
-        complex_beta_kernels._MUL_IMAG_HELPER = original.replace(  # noqa: SLF001
-            "    return rotate_field_left(c, z);",
-            "    return rotate_field_left(c, z);  // moved")
+        folded_pass.COMPLEX_FOLD_HELPERS = original.replace(
+            "    o.im = -(c * g.re);", "    o.im = -(c * g.re);  // moved")
+        complex_beta_kernels.reset_kernel_sources()
         assert family.source_digest() != before
     finally:
-        complex_beta_kernels._MUL_IMAG_HELPER = original  # noqa: SLF001
+        folded_pass.COMPLEX_FOLD_HELPERS = original
+        complex_beta_kernels.reset_kernel_sources()
     assert family.source_digest() == before
 
 
@@ -318,16 +322,10 @@ class _Fields:
     (_Fields(), type("G", (_Grid,), {"beta": 0.25, "dimensions": 3})(), "dimensions"),
 ])
 def test_the_predicate_refuses_by_name(fields, grid, names):
-    licence = {"arm": "FMA_V1", "refusals": [], "basis": "probe", "policy": "keep"}
     covered, reason = family.covers_complex_beta_fused_hd_pair(
-        fields, None, grid, (), licence, "keep")
+        fields, None, grid, ())
     assert covered is False
     assert names.lower() in reason.lower()
-
-
-def test_the_arm_is_required_and_never_defaulted():
-    with pytest.raises(ValueError):
-        family.kernel_source("SOMETHING")
 
 
 def test_an_undeclared_source_set_is_never_an_empty_one():

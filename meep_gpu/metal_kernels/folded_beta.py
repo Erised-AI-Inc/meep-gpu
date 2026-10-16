@@ -19,15 +19,17 @@ that makes the fold mandatory; and state every inverted clause by number.
 WHAT COMPOSES, AND WHAT THE COMPOSITION ACTUALLY MOVES
 ===========================================================================
 
-* the CURL. The beta increment is added to ``curl`` AFTER ``_curl_from_operands``
-  (stepping.py:370 / :458) and BEFORE ``_mask_non_owned_cells`` (:397 / :479). A
-  FOLD WIDENS THAT MASK — from "metallic at cell 0" to "non-periodic at cell 0 PLUS
-  folded-periodic at the top plane" — so the beta term now lands inside a mask it
-  did not land inside on the unfolded arm. That is the whole composition: the same
-  two multiply-and-subtract lines, in the same place, under one more mask. Both
-  parents say so in their own refusal messages (``symmetry`` clause 12 and
-  ``folded_complex`` clause 8 each refuse beta because "the beta increment lands
-  inside the fold's widened mask"), and this module is the product they name;
+* the CURL. The beta coupling is MEEP's own pass after every component's curl
+  (step_db.cpp:161-175), through the curl's additive ladder
+  (``stepping._apply_folded_increment``), and its increment is masked by the curl's
+  own ownership predicate (``_mask_non_owned_cells``). A FOLD WIDENS THAT MASK --
+  from "metallic at cell 0" to "non-periodic at cell 0 PLUS folded-periodic at the
+  top plane" -- so the pass's increment is masked on the widened set too. The
+  source is therefore the CERTIFIED FOLDED curl (:func:`.symmetry.folded_curl_source`,
+  :func:`.folded_complex.folded_bloch_curl_source`) with :mod:`.special_kz`'s beta
+  pass inserted after its per-chunk forms (:func:`.folded_pass.with_folded_pass`);
+  the pass reads its mask rows off the folded source, so the top-plane rows mask it
+  exactly as they mask the curl;
 
 * the CONSTITUTIVE PAIR. ``update_H`` (stepping.py:907-924) and the diagonal
   ``update_E`` (:1012-1020) read nothing beta-dependent AND nothing fold-dependent:
@@ -55,6 +57,16 @@ drop them to the array path, which is a coverage LOSS dressed as completeness.
 ===========================================================================
 WHAT WAS MEASURED ON THIS HOST FOR THIS FAMILY, 2026-08-16
 ===========================================================================
+
+A RECORD OF THE RETIRED INSERT. The measurements below are of the beta term as a
+term INSIDE the curl (``curl - (c * b)`` and ``curl - c_mul(coefficient, b)``), the
+spelling this family carried before the beta coupling became MEEP's separate pass.
+The pass forms no complex product -- its complex increment is a quarter turn of the
+partner by the real word, then negated, which is the array path's
+``part_products.quarter_turn`` -- so items 4 and 5 describe an oracle the array path
+no longer uses. What carries over is the contraction policy (item 1), negation as a
+sign-bit operation (item 2) and bound uniforms (item 6); the pass's own spelling is
+pinned by this family's gate and by ``test_metal_folded_beta``.
 
 ``parity/meep_gpu/probe_metal_folded_beta_tail.py``, arm64 / macOS 26.2 /
 torch 2.10.0 / numpy 2.4.3. 48 cases, every value table BAND-FREE and
@@ -244,15 +256,10 @@ remaining beta gap on this backend — two slots, one corpus row
 ``special_kz``'s refusal message is narrowed in this change to say so rather than to
 keep claiming that no complex constitutive admits any beta run.
 
-EXPANSION ARM: BOUND FROM ``special_kz``'S PROBE, NOT A NEW ONE. The complex arm's
-arithmetic is ``special_kz``'s complex beta curl arithmetic exactly — the same
-``c_mul`` with the same purely-imaginary coefficient on the LEFT, plus the same
-field-left Bloch rotation — so the pattern set that licenses that family licenses
-this one, and cutting a second artifact would record a second choice rather than a
-second measurement. The fold contributes no complex multiply of its own: its only
-addition is an ownership mask, which assigns a literal zero. (``folded_complex``
-needs its OWN artifact because its FILL multiplies by the mirror parity as a complex
-coefficient; this family registers no fill.)
+THE COMPLEX ARM'S ARITHMETIC IS ``special_kz``'S complex beta curl arithmetic
+exactly — the same ``c_mul`` with the same purely-imaginary coefficient on the LEFT,
+plus the same field-left Bloch rotation. The fold contributes no complex multiply of
+its own: its only addition is an ownership mask, which assigns a literal zero.
 
 ===========================================================================
 WHAT IS CERTIFIED, AND WHAT IS NOT — measured 2026-08-16, stated as measured
@@ -389,7 +396,8 @@ from ..triton_kernels.coverage import (
     _layout_reasons,
     _susceptibility_reasons,
 )
-from . import complex_fields, shaders, special_kz, templates
+from . import complex_fields, folded_pass, shaders, special_kz
+from . import chunk_bounds as _chunk_bounds
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import Residency, compile_source
 from .launch import SUB_STEPS
@@ -433,16 +441,16 @@ __all__ = [
     "FoldedBetaPmlCurlPlan",
     "LABEL_COMPLEX",
     "LABEL_REAL",
+    "COMPLEX_RECORD_BUFFER",
+    "REAL_RECORD_BUFFER",
     "enumerate_folded_beta_sources",
     "folded_beta_bloch_curl_source",
-    "folded_beta_bloch_curl_template",
     "folded_beta_bloch_pml_curl_coverage",
     "folded_beta_composition_bloch_curl_coverage",
     "folded_beta_composition_curl_coverage",
     "folded_beta_complex_constitutive_coverage",
     "folded_beta_constitutive_coverage",
     "folded_beta_curl_source",
-    "folded_beta_curl_template",
     "folded_beta_pml_curl_coverage",
     "plan_folded_beta_bloch_pml_curl",
     "plan_folded_beta_bloch_pml_curl_from_arrays",
@@ -455,86 +463,15 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
-# K1/K2 — the two curl sources, DERIVED from special_kz's certified templates
+# K1/K2 -- the two curl sources, DERIVED from the certified folded curls
 # ---------------------------------------------------------------------------
 
-#: The anchor the top-plane mask is inserted after: the parent beta template's
-#: cell-0 ownership mask slot. Checked to appear EXACTLY ONCE in each parent
-#: template, so an edit that moves or duplicates it is a build failure rather than a
-#: kernel that masks the wrong plane.
-_MASK_ANCHOR = "__MASK__\n"
-
-#: The block the fold adds, and the ONLY text in either kernel that neither parent
-#: emits. Storage-neutral: the ZERO LITERAL is not here — it rides in through
-#: :func:`.symmetry.folded_top_plane_mask`'s ``zero`` parameter, which is ``0.0f``
-#: for the real arm and ``float2(0.0f, 0.0f)`` for the complex one (the array path
-#: assigns a complex zero to BOTH planes, stepping.py:1943, :1949).
-#:
-#: THE ``bool last_*`` LINE IS THE SAME LINE ``folded_complex._TOP_MASK_BLOCK``
-#: CARRIES, and ``test_metal_folded_beta`` asserts the two are character-identical.
-#: Three families now declare those flags; a test is what stops the third from
-#: drifting off the first two.
-_TOP_MASK_BLOCK = """
-    // --- ownership mask, the TOP plane of a folded PERIODIC axis ----------------
-    // The COMPLEMENT of the block above: every target whose Yee shift is 1 there.
-    // `_mask_non_owned_cells`' `if iyee[axis] != 0` arm (stepping.py:1887-1897)
-    // zeroes that slot because it sits half a cell past MEEP's `big_corner`, outside
-    // `owns` (vec.cpp:445-462), so the FILL PASS writes it and the curl must not.
-    // On a folded METALLIC axis the top plane IS stepped and no line is emitted.
-    bool last_x = (i == nxi - 1), last_y = (j == nyi - 1), last_z = (k == nzi - 1);
-__TOP_MASK__
-"""  # stepping.py live lines for the frozen device-text citation(s) in this string: 1887-1897->1934-1944
-
-
-def _with_top_mask_slot(template: str, owner: str) -> str:
-    """One parent template with the top-plane slot inserted after its cell-0 mask.
-
-    DERIVED RATHER THAN COPIED, and that is the composition made structural. A copy
-    would be a second home for twenty-two (real) or thirty (complex) bindings, the
-    ghost gather, the curl grouping, the beta insert and the split-field recurrence
-    — every one of which is certified in :mod:`.special_kz` and none of which the
-    fold changes. Deriving means an edit to the certified beta curl reaches this
-    family in the same commit, and means the only text this module can be blamed for
-    is :data:`_TOP_MASK_BLOCK`.
-
-    The anchor is checked to occur exactly once. A parent edit that moved,
-    duplicated or removed the cell-0 mask slot would otherwise silently produce a
-    kernel with the top-plane mask in the wrong place — a plane of wrong values on
-    every folded PERIODIC run, and not a crash.
-    """
-    occurrences = template.count(_MASK_ANCHOR)
-    if occurrences != 1:
-        raise RuntimeError(
-            f"{owner} carries the ownership-mask anchor {_MASK_ANCHOR!r} "
-            f"{occurrences} times, not once; the folded beta curl inserts its "
-            f"top-plane mask after that anchor and cannot place it unambiguously. "
-            f"Re-read the parent template before editing this family")
-    return template.replace(_MASK_ANCHOR, _MASK_ANCHOR + _TOP_MASK_BLOCK, 1)
-
-
-def folded_beta_curl_template() -> str:
-    """``special_kz._BETA_CURL_TEMPLATE`` with ONE slot inserted, and nothing else."""
-    return _with_top_mask_slot(special_kz._BETA_CURL_TEMPLATE,
-                               "special_kz._BETA_CURL_TEMPLATE")
-
-
-def folded_beta_bloch_curl_template() -> str:
-    """``special_kz._BETA_BLOCH_CURL_TEMPLATE`` with ONE slot inserted."""
-    return _with_top_mask_slot(special_kz._BETA_BLOCH_CURL_TEMPLATE,
-                               "special_kz._BETA_BLOCH_CURL_TEMPLATE")
-
-
-def _reduced_codes(codes: Sequence[int]) -> Tuple[int, int, int]:
-    """:func:`.symmetry._reduced_codes`, re-exported through a checked import.
-
-    Imported as a function call rather than re-implemented: "both mirror codes take
-    the METALLIC ghost branch" and "the cell-0 mask widens from ``== METALLIC`` to
-    ``!= PERIODIC``" are the SAME statement once every non-periodic code is spelled
-    METALLIC on the way in, and that mapping has exactly one home.
-    """
-    from .symmetry import _reduced_codes as reduce_codes  # noqa: PLC0415
-
-    return reduce_codes(codes)
+#: Where the chunk record binds on each arm: the certified folded curl's own record
+#: slot (``shaders.CURL_RECORD_BUFFER`` 20 on the real fold,
+#: ``complex_fields.CURL_RECORD_BUFFER`` 23 on the complex one) moves two places up,
+#: and the two beta words take the slots it leaves.
+REAL_RECORD_BUFFER = 22
+COMPLEX_RECORD_BUFFER = 25
 
 
 def folded_beta_curl_source(codes: Sequence[int], backward: bool,
@@ -543,96 +480,55 @@ def folded_beta_curl_source(codes: Sequence[int], backward: bool,
     """The specialised REAL folded ``beta_pml_curl_step`` source.
 
     ``codes`` is the per-axis PERIODIC / METALLIC / MIRROR_METALLIC /
-    MIRROR_PERIODIC quadruple :func:`.symmetry.folded_axis_kinds` resolves — NEVER a
+    MIRROR_PERIODIC quadruple :func:`.symmetry.folded_axis_kinds` resolves -- NEVER a
     hand-built triple, because the MIRROR_METALLIC / MIRROR_PERIODIC split is the
     fold's single point of failure and backwards on one axis is a plane of wrong
     values, not a crash.
 
-    THE THREE FOLD DELTAS OVER THE CERTIFIED BETA CURL, all three expressed as calls
-    rather than as copied text: (1) both mirror codes take the METALLIC ghost branch
-    and (2) the cell-0 mask widens from ``== METALLIC`` to ``!= PERIODIC``, which are
-    the same statement through :func:`_reduced_codes`; and (3) a folded PERIODIC axis
-    masks its LAST plane for every target whose Yee shift is 1 there, which is
-    :func:`.symmetry.folded_top_plane_mask`. Nothing arithmetic changes, and in
-    particular the beta insert is the parent's ``_REAL_BETA_INSERT`` verbatim, in the
-    parent's position: after the dtdx curl and BEFORE both masks.
-
-    ``has_beta=False`` compiles the term out. Engine-route plans always build 1 (the
-    predicate requires beta nonzero); the 0 arm exists so a gate's identity leg can
-    pin a beta = 0 build against the CERTIFIED FOLDED curl on the same seeds.
+    :func:`.symmetry.folded_curl_source`'s own output -- the fold's ghost rule, its
+    widened cell-0 mask and its top-plane mask, the chunk record and the per-chunk
+    forms -- with the beta pass (:func:`.special_kz.beta_pass`) inserted after the
+    forms. ``has_beta=False`` compiles the pass out: the 0 arm is the certified
+    folded curl under this entry point's name and binding layout, which a gate's
+    identity leg pins on the same seeds.
     """
+    from .shaders import CURL_RECORD_BUFFER  # noqa: PLC0415
+    from .symmetry import folded_curl_source  # noqa: PLC0415
+
     codes = tuple(int(code) for code in codes)
     if len(codes) != 3:
         raise ValueError(f"codes must be a per-axis triple, got {codes!r}")
-    reduced = _reduced_codes(codes)
-    return templates.substitute(folded_beta_curl_template(), {
-        "__HEADER__": "#include <metal_stdlib>\nusing namespace metal;",
-        "__CONTRACT__": templates.contraction_pragma(contract),
-        "__GUARD__": templates.GUARD,
-        "__DECODE__": templates.DECODE_IJK,
-        "__SHIFT__": "- 1" if backward else "+ 1",
-        "__GHOST_X__": templates.ghost("x", reduced[0], backward),
-        "__GHOST_Y__": templates.ghost("y", reduced[1], backward),
-        "__GHOST_Z__": templates.ghost("z", reduced[2], backward),
-        "__BETA__": (special_kz._REAL_BETA_INSERT if has_beta
-                     else special_kz._NO_BETA_INSERT),
-        "__MASK__": templates.ownership_mask(reduced, backward),
-        "__TOP_MASK__": folded_top_plane_mask(codes, backward),
-    })
+    source = folded_curl_source(codes, backward, contract)
+    return folded_pass.with_folded_pass(
+        source, ("folded_pml_curl_step", "beta_pml_curl_step"),
+        special_kz.beta_parameters(CURL_RECORD_BUFFER, "     "),
+        (CURL_RECORD_BUFFER, REAL_RECORD_BUFFER),
+        special_kz.beta_pass(folded_pass.ownership_rows(source), False, has_beta),
+        "folded_beta.folded_beta_curl_source")
 
 
 def folded_beta_bloch_curl_source(codes: Sequence[int], backward: bool,
-                                  phased: Sequence[int], expansion: str,
+                                  phased: Sequence[int],
                                   has_beta: bool = True,
                                   contract: str = shaders.CONTRACT_OFF) -> str:
     """The specialised COMPLEX folded ``beta_bloch_pml_curl_step`` source.
 
-    ``phased`` is the per-axis Bloch flag and ``expansion`` the PROBE-MEASURED
-    complex-multiply arm — never a default, because which arm the reference takes is
-    a platform fact.
-
-    A PHASED AXIS MUST BE PLAIN PERIODIC, and a mirror code carrying a Bloch flag is
-    refused HERE as well as by the predicate: a mis-baked flag is a plane of wrong
-    values rather than a crash, and this is the last place it can be seen.
+    :func:`.folded_complex.folded_bloch_curl_source`'s own output -- MEEP's Bloch
+    connection on the unfolded axes, the fold's masks, part-wise products -- with the
+    complex beta pass inserted after the forms. ``phased`` is the per-axis connection
+    kind (``complex_fields.CONNECT_KINDS``); the parent refuses a connection on a
+    folded or walled axis by name, and that refusal is the one that applies here.
     """
-    codes = tuple(int(code) for code in codes)
-    phased = tuple(int(flag) for flag in phased)
-    if len(codes) != 3 or len(phased) != 3:
-        raise ValueError(f"codes and phased must be per-axis triples, got "
-                         f"{codes!r} / {phased!r}")
-    for axis, (code, flag) in enumerate(zip(codes, phased)):
-        if not flag:
-            continue
-        if code in MIRROR_CODES:
-            raise ValueError(
-                f"axis {axis} is folded and carries a Bloch phase; a mirror plane "
-                f"reflects rather than repeating, so stepping._bloch_phases raises "
-                f"(S:2338-2341) and driver._require_bloch_is_representable refuses "
-                f"the configuration outright (driver.py:1047-1075)")
-        if code != CODE_PERIODIC:
-            raise ValueError(
-                f"axis {axis} carries a Bloch phase but its ghost rule is METALLIC; "
-                f"only a periodic wrap can carry a phase (S:2346-2360)")
-    reduced = _reduced_codes(codes)
-    return templates.substitute(folded_beta_bloch_curl_template(), {
-        "__HEADER__": "#include <metal_stdlib>\nusing namespace metal;",
-        "__CONTRACT__": templates.contraction_pragma(contract),
-        "__COMPLEX_HELPERS__": templates.complex_helpers(expansion),
-        "__GUARD__": templates.GUARD,
-        "__DECODE__": templates.DECODE_IJK,
-        "__SHIFT__": "- 1" if backward else "+ 1",
-        "__GHOST_X__": templates.ghost("x", reduced[0], backward),
-        "__GHOST_Y__": templates.ghost("y", reduced[1], backward),
-        "__GHOST_Z__": templates.ghost("z", reduced[2], backward),
-        "__WRAPPED__": special_kz._wrapped_lines(backward),
-        "__PHASE__": special_kz._phase_lines(phased),
-        "__BETA__": (special_kz._COMPLEX_BETA_INSERT if has_beta else
-                     "    // HAS_BETA = 0: the identity arm, beta compiled out"),
-        "__MASK__": templates.ownership_mask(reduced, backward,
-                                             zero=templates.COMPLEX_ZERO),
-        "__TOP_MASK__": folded_top_plane_mask(codes, backward,
-                                              zero=templates.COMPLEX_ZERO),
-    })
+    from .complex_fields import CURL_RECORD_BUFFER  # noqa: PLC0415
+    from .folded_complex import folded_bloch_curl_source  # noqa: PLC0415
+
+    source = folded_bloch_curl_source(codes, backward, phased, contract)
+    return folded_pass.with_folded_pass(
+        source, ("bloch_pml_curl_step", "beta_bloch_pml_curl_step"),
+        special_kz.beta_parameters(CURL_RECORD_BUFFER, "      "),
+        (CURL_RECORD_BUFFER, COMPLEX_RECORD_BUFFER),
+        special_kz.beta_pass(folded_pass.ownership_rows(source), True, has_beta),
+        "folded_beta.folded_beta_bloch_curl_source")
 
 
 def compile_folded_beta_curl(codes: Sequence[int], backward: bool,
@@ -644,12 +540,12 @@ def compile_folded_beta_curl(codes: Sequence[int], backward: bool,
 
 
 def compile_folded_beta_bloch_curl(codes: Sequence[int], backward: bool,
-                                   phased: Sequence[int], expansion: str,
+                                   phased: Sequence[int],
                                    has_beta: bool = True,
                                    contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised COMPLEX folded beta curl entry point."""
     return compile_source(folded_beta_bloch_curl_source(
-        codes, backward, phased, expansion, has_beta,
+        codes, backward, phased, has_beta,
         contract)).beta_bloch_pml_curl_step
 
 
@@ -659,8 +555,7 @@ _ALL_CODES: Tuple[int, ...] = (CODE_PERIODIC, CODE_METALLIC,
                                CODE_MIRROR_METALLIC, CODE_MIRROR_PERIODIC)
 
 
-def enumerate_folded_beta_sources(expansion: str,
-                                  contract: str = shaders.CONTRACT_OFF
+def enumerate_folded_beta_sources(contract: str = shaders.CONTRACT_OFF
                                   ) -> Dict[str, str]:
     """Every specialisation the shipped plans can emit, keyed by a stable label.
 
@@ -668,8 +563,8 @@ def enumerate_folded_beta_sources(expansion: str,
     axis carries no fold and no wall in any constructible configuration — but the
     enumeration sweeps all four codes on all three axes anyway, which is a
     deliberate SUPERSET and the safe direction for a fingerprint sweep. The
-    COMPLEX arm additionally sweeps the phased flags only on plain-PERIODIC axes,
-    which is what :func:`folded_beta_bloch_curl_source` will accept.
+    COMPLEX arm additionally sweeps the connection kinds only on plain-PERIODIC
+    axes, which is what :func:`folded_beta_bloch_curl_source` will accept.
     """
     out: Dict[str, str] = {}
     for backward in (False, True):
@@ -681,12 +576,16 @@ def enumerate_folded_beta_sources(expansion: str,
                     key = f"real/{direction}/{cx}{cy}{cz}"
                     out[key] = folded_beta_curl_source(codes, backward, True,
                                                        contract)
-                    for px in ((0, 1) if cx == CODE_PERIODIC else (0,)):
-                        for py in ((0, 1) if cy == CODE_PERIODIC else (0,)):
+                    kinds_x = (complex_fields.CONNECT_KINDS if cx == CODE_PERIODIC
+                               else (complex_fields.CONNECT_NONE,))
+                    kinds_y = (complex_fields.CONNECT_KINDS if cy == CODE_PERIODIC
+                               else (complex_fields.CONNECT_NONE,))
+                    for px in kinds_x:
+                        for py in kinds_y:
                             phased = (px, py, 0)
                             out[f"complex/{direction}/{cx}{cy}{cz}/"
                                 f"{px}{py}0"] = folded_beta_bloch_curl_source(
-                                    codes, backward, phased, expansion, True,
+                                    codes, backward, phased, True,
                                     contract)
     return out
 
@@ -892,7 +791,6 @@ def _folded_beta_real_grid_reasons(fields: Any, pml: Any, grid: Any,
 
 
 def _folded_beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any,
-                                      probe: Any = None,
                                       ) -> Tuple[Optional[Tuple[int, int, int]],
                                                  List[str]]:
     """The clauses every COMPLEX folded-beta predicate shares, plus the codes."""
@@ -954,11 +852,6 @@ def _folded_beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any,
 
     if not getattr(fields, "stores_E", False):
         reasons.append("E is recomputed from D rather than stored")
-
-    # 13. EXPANSION binding requires a MEASURED probe artifact carrying
-    #     special_kz's extended pattern set — the arithmetic here is that family's,
-    #     so its artifact is the one that licenses this arm.
-    reasons.extend(special_kz._beta_expansion_reasons(probe))
 
     return codes, reasons
 
@@ -1028,8 +921,7 @@ def folded_beta_composition_curl_coverage(fields: Any, pml: Any, sub_step: str,
 
 
 def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                        residency: Any = None,
-                                        probe: Any = None) -> Coverage:
+                                        residency: Any = None) -> Coverage:
     """May the COMPLEX folded beta curl step this? THE WIDE VERDICT (see above)."""
     if sub_step not in CURL_SUB_STEPS:
         raise ValueError(
@@ -1038,7 +930,7 @@ def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
 
-    codes, reasons = _folded_beta_complex_grid_reasons(fields, pml, grid, probe)
+    codes, reasons = _folded_beta_complex_grid_reasons(fields, pml, grid)
     reasons.extend(_residency_declaration_reasons(residency))
 
     spec = SUB_STEPS[sub_step]
@@ -1059,8 +951,7 @@ def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
 
 def folded_beta_composition_bloch_curl_coverage(fields: Any, pml: Any,
                                                 sub_step: str,
-                                                residency: Any = None,
-                                                probe: Any = None) -> Coverage:
+                                                residency: Any = None) -> Coverage:
     """THE ROUTING VERDICT for the complex arm — a fold MANDATORY."""
     if sub_step not in CURL_SUB_STEPS:
         raise ValueError(
@@ -1068,8 +959,7 @@ def folded_beta_composition_bloch_curl_coverage(fields: Any, pml: Any,
     grid = getattr(fields, "grid", None)
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
-    base = folded_beta_bloch_pml_curl_coverage(fields, pml, sub_step, residency,
-                                               probe)
+    base = folded_beta_bloch_pml_curl_coverage(fields, pml, sub_step, residency)
     codes, _ = _folded_beta_axis_reasons(grid, pml)
     reasons = list(base.reasons)
     reasons.extend(_requires_a_fold(
@@ -1135,8 +1025,7 @@ def folded_beta_constitutive_coverage(fields: Any, pml: Any, side: str,
 
 
 def folded_beta_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                              residency: Any = None,
-                                              probe: Any = None) -> Coverage:
+                                              residency: Any = None) -> Coverage:
     """May the CERTIFIED COMPLEX constitutive kernel step a FOLDED BETA run?
 
     THE ASYMMETRY WITH ``special_kz`` IS OVER, and this function was the first half
@@ -1158,7 +1047,7 @@ def folded_beta_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
         return Coverage(False, ("fields carries no grid",))
 
     spec = CONSTITUTIVE_SIDES[side]
-    codes, reasons = _folded_beta_complex_grid_reasons(fields, pml, grid, probe)
+    codes, reasons = _folded_beta_complex_grid_reasons(fields, pml, grid)
     reasons.extend(_residency_declaration_reasons(residency))
     reasons.extend(_requires_a_fold(
         grid, codes,
@@ -1207,7 +1096,8 @@ class FoldedBetaPmlCurlPlan(KernelPlan):
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc",
-                 "beta_plus", "beta_minus", "has_beta", "residency", "volumes")
+                 "beta_plus", "beta_minus", "has_beta", "residency", "volumes",
+                 "chunk_bounds")
 
     family = "folded beta real PML curl"
 
@@ -1216,7 +1106,8 @@ class FoldedBetaPmlCurlPlan(KernelPlan):
     def __init__(self, sub_step: str, shape, dtdx: float, bc, residency,
                  beta_plus: float, beta_minus: float, targets, auxiliaries,
                  sources, coefficients, functions: Dict[str, Any],
-                 volumes: Sequence[str], has_beta: bool = True) -> None:
+                 volumes: Sequence[str], has_beta: bool = True, *,
+                 chunk_bounds: Any) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, "
                              f"got {sub_step!r}")
@@ -1226,6 +1117,8 @@ class FoldedBetaPmlCurlPlan(KernelPlan):
         self.dtdx = float(dtdx)
         self.backward = bool(SUB_STEPS[sub_step]["backward"])
         self.bc = tuple(int(code) for code in bc)
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, f"FoldedBetaPmlCurlPlan({sub_step})")
         # Already f32-rounded by the host (special_kz.beta_curl_coefficients);
         # float() keeps the bits and the scalar ABI delivers them. MEASURED on this
         # host: a bound `constant float&` and the same value baked as a literal
@@ -1242,30 +1135,33 @@ class FoldedBetaPmlCurlPlan(KernelPlan):
             tuple(targets) + tuple(auxiliaries) + tuple(sources)
             + tuple(coefficients)
             + (self.shape[0], self.shape[1], self.shape[2], self.n_elem,
-               self.dtdx, self.beta_plus, self.beta_minus))
+               self.dtdx, self.beta_plus, self.beta_minus,
+               _chunk_bounds.tensor(self.chunk_bounds, _plan_device(residency))))
 
 
 class FoldedBetaBlochPmlCurlPlan(KernelPlan):
     """A launchable, allocation-free COMPLEX folded beta curl sub-step.
 
-    ``special_kz.BetaBlochPmlCurlPlan``'s thirty bindings exactly — ONE below Metal's
-    31-buffer ceiling (``device.MAX_BUFFER_BINDINGS``), which is why the complex
-    volumes must be ``float2``: a re/im-split build needs nine more and is a compile
-    error, not a slower kernel. The fold adds no binding at all.
+    The certified folded complex curl's bindings -- nine ``float2`` volumes, six
+    coefficient vectors, four extents, ``dtdx`` and the three connection words --
+    plus the two host-rounded beta words in front of the chunk record
+    (:data:`COMPLEX_RECORD_BUFFER`): 26 bindings, under Metal's 31-buffer ceiling.
+    The fold adds no binding at all.
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc",
-                 "phased", "phase_words", "beta_words", "has_beta", "expansion",
-                 "residency", "volumes")
+                 "phased", "phase_values", "beta_plus", "beta_minus", "has_beta", "residency",
+                 "volumes", "chunk_bounds")
 
     family = "folded beta complex PML curl"
 
-    REPR_FIELDS = ("sub_step", "shape", "bc", "phased", "expansion", "has_beta")
+    REPR_FIELDS = ("sub_step", "shape", "bc", "phased", "has_beta")
 
     def __init__(self, sub_step: str, shape, dtdx: float, bc, phased,
-                 phase_words, beta_words, expansion: str, residency, targets,
-                 auxiliaries, sources, coefficients, functions: Dict[str, Any],
-                 volumes: Sequence[str], has_beta: bool = True) -> None:
+                 phase_values, beta_plus: float, beta_minus: float,
+                 residency, targets, auxiliaries, sources, coefficients,
+                 functions: Dict[str, Any], volumes: Sequence[str],
+                 has_beta: bool = True, *, chunk_bounds: Any) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, "
                              f"got {sub_step!r}")
@@ -1276,20 +1172,27 @@ class FoldedBetaBlochPmlCurlPlan(KernelPlan):
         self.backward = bool(SUB_STEPS[sub_step]["backward"])
         self.bc = tuple(int(code) for code in bc)
         self.phased = tuple(int(flag) for flag in phased)
-        self.phase_words = tuple(float(word) for word in phase_words)
-        self.beta_words = tuple(tuple(float(word) for word in pair)
-                                for pair in beta_words)
+        self.phase_values = tuple((float(re), float(im)) for re, im in phase_values)
+        self.beta_plus = float(beta_plus)
+        self.beta_minus = float(beta_minus)
         self.has_beta = bool(has_beta)
-        self.expansion = str(expansion)
         self.residency = residency
         self.volumes = tuple(volumes)
-        (bpr, bpi), (bmr, bmi) = self.beta_words
+        self.chunk_bounds = _chunk_bounds.plan_words(
+            chunk_bounds, self.shape, f"FoldedBetaBlochPmlCurlPlan({sub_step})")
         super().__init__(
             functions,
             tuple(targets) + tuple(auxiliaries) + tuple(sources)
             + tuple(coefficients)
             + (self.shape[0], self.shape[1], self.shape[2], self.n_elem,
-               self.dtdx) + self.phase_words + (bpr, bpi, bmr, bmi))
+               self.dtdx) + self.phase_values
+            + (self.beta_plus, self.beta_minus,
+               _chunk_bounds.tensor(self.chunk_bounds, _plan_device(residency))))
+
+
+def _plan_device(residency: Any) -> str:
+    """The device the plan's residency DECLARES, which the record tensor joins."""
+    return str(getattr(residency, "device", "mps"))
 
 
 def _real_curl_functions(codes, backward: bool, has_beta: bool,
@@ -1298,11 +1201,10 @@ def _real_curl_functions(codes, backward: bool, has_beta: bool,
             for mode in contract_variants}
 
 
-def _complex_curl_functions(codes, backward: bool, phased, expansion: str,
+def _complex_curl_functions(codes, backward: bool, phased,
                             has_beta: bool,
                             contract_variants: Sequence[str]) -> Dict[str, Any]:
-    return {mode: compile_folded_beta_bloch_curl(codes, backward, phased,
-                                                 expansion, has_beta, mode)
+    return {mode: compile_folded_beta_bloch_curl(codes, backward, phased, has_beta, mode)
             for mode in contract_variants}
 
 
@@ -1310,8 +1212,12 @@ def plan_folded_beta_pml_curl(fields: Any, pml: Any, sub_step: str,
                               residency: Optional[Residency] = None,
                               contract_variants: Sequence[str] = (
                                   shaders.CONTRACT_OFF,),
+                              *, chunk_bounds: Any,
                               ) -> Optional[FoldedBetaPmlCurlPlan]:
     """Build a REAL folded beta curl plan from the engine's objects, or None.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the
+    composer's ``StepContext.chunk_bounds``) and has no default.
 
     None is the only refusal: a configuration this kernel does not carry must fall
     back to the array path, never raise into a caller that would otherwise have
@@ -1350,7 +1256,7 @@ def plan_folded_beta_pml_curl(fields: Any, pml: Any, sub_step: str,
         sub_step, grid.shape, grid.dt / grid.dx, codes, residency, plus, minus,
         targets, auxiliaries, sources, coefficients,
         _real_curl_functions(codes, spec["backward"], True, contract_variants),
-        volumes)
+        volumes, chunk_bounds=chunk_bounds)
 
 
 def plan_folded_beta_pml_curl_from_arrays(
@@ -1358,7 +1264,7 @@ def plan_folded_beta_pml_curl_from_arrays(
         dtdx: float, beta_plus: float, beta_minus: float, residency: Residency,
         functions: Optional[Dict[str, Any]] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        has_beta: bool = True) -> FoldedBetaPmlCurlPlan:
+        has_beta: bool = True, *, chunk_bounds: Any) -> FoldedBetaPmlCurlPlan:
     """Build a REAL folded beta curl plan from bare host arrays — the gate's route.
 
     ``codes`` is the FOUR-valued per-axis quadruple. No predicate runs: the caller is
@@ -1385,25 +1291,20 @@ def plan_folded_beta_pml_curl_from_arrays(
         functions if functions is not None
         else _real_curl_functions(codes, spec["backward"], has_beta,
                                   contract_variants),
-        volumes, has_beta=has_beta)
+        volumes, has_beta=has_beta, chunk_bounds=chunk_bounds)
 
 
 def plan_folded_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
                                     residency: Optional[Residency] = None,
                                     contract_variants: Sequence[str] = (
-                                        shaders.CONTRACT_OFF,),
-                                    probe: Any = None,
+                                        shaders.CONTRACT_OFF,), *, chunk_bounds: Any,
                                     ) -> Optional[FoldedBetaBlochPmlCurlPlan]:
     """Build a COMPLEX folded beta curl plan from the engine's objects, or None."""
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, "
                          f"got {sub_step!r}")
     if not folded_beta_composition_bloch_curl_coverage(
-            fields, pml, sub_step, residency, probe).covered:
-        return None
-    record = probe if probe is not None else special_kz.load_expansion_probe()
-    expansion = special_kz.beta_expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+            fields, pml, sub_step, residency).covered:
         return None
     grid = fields.grid
     codes, _ = folded_axis_kinds(grid, pml)
@@ -1411,22 +1312,21 @@ def plan_folded_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
         return None
 
     spec = SUB_STEPS[sub_step]
-    # THE PHASE FLAGS COME FROM `_boundary_kinds`, NOT FROM THE FOLDED CODES. A
+    # THE CONNECTION COMES FROM `_boundary_kinds`, NOT FROM THE FOLDED CODES. A
     # folded axis is refused a phase by clause 9 above, so the two agree on every
-    # admitted run; reading the phase off the RESOLVED kinds is what keeps this
-    # builder identical to `special_kz`'s and keeps the conjugation in one place.
+    # admitted run; reading it off the RESOLVED kinds through `complex_fields`' own
+    # host decisions keeps the connection in one place.
     kinds = _boundary_kinds(grid, pml)
-    phased, phase_words = special_kz.bloch_phase_words(
-        grid, kinds, bool(spec["backward"]))
-    beta_words = special_kz.beta_curl_coefficients(
+    phased, phase_values = complex_fields.phase_arguments(
+        complex_fields.bloch_phase_table(grid, kinds),
+        backward=bool(spec["backward"]))
+    plus, minus = special_kz.beta_curl_coefficients(
         grid.beta, grid.dt, magnetic=(sub_step == "step_B"), complex_storage=True)
-    complex64 = special_kz._numpy().complex64
-    targets = [residency.mirror(n, getattr(fields, n), dtype=complex64)
-               for n in spec["targets"]]
-    auxiliaries = [residency.mirror("fu_" + n, getattr(fields, "fu_" + n),
-                                    dtype=complex64) for n in spec["targets"]]
-    sources = [residency.mirror(n, getattr(fields, n), dtype=complex64)
-               for n in spec["sources"]]
+    mirror = complex_fields._complex_mirror
+    targets = [mirror(residency, n, getattr(fields, n)) for n in spec["targets"]]
+    auxiliaries = [mirror(residency, "fu_" + n, getattr(fields, "fu_" + n))
+                   for n in spec["targets"]]
+    sources = [mirror(residency, n, getattr(fields, n)) for n in spec["sources"]]
     # The PML coefficient vectors stay REAL on both sides: the array path's
     # `fu *= kms` is a complex-by-real multiply (stepping.py:1976-1982).
     coefficients = [
@@ -1437,54 +1337,57 @@ def plan_folded_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
     volumes = (tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
                + tuple(spec["sources"]))
     return FoldedBetaBlochPmlCurlPlan(
-        sub_step, grid.shape, grid.dt / grid.dx, codes, phased, phase_words,
-        beta_words, expansion, residency, targets, auxiliaries, sources,
+        sub_step, grid.shape, grid.dt / grid.dx, codes, phased, phase_values,
+        plus, minus, residency, targets, auxiliaries, sources,
         coefficients,
-        _complex_curl_functions(codes, spec["backward"], phased, expansion, True,
+        _complex_curl_functions(codes, spec["backward"], phased, True,
                                 contract_variants),
-        volumes)
+        volumes, chunk_bounds=chunk_bounds)
 
 
 def plan_folded_beta_bloch_pml_curl_from_arrays(
         sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any], codes,
-        phased, phase_words, dtdx: float, beta_words, expansion: str,
-        residency: Residency, functions: Optional[Dict[str, Any]] = None,
+        phases: Sequence[Optional[complex]], dtdx: float, beta_plus: float,
+        beta_minus: float, residency: Residency,
+        functions: Optional[Dict[str, Any]] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        has_beta: bool = True) -> FoldedBetaBlochPmlCurlPlan:
-    """Build a COMPLEX folded beta curl plan from bare host arrays — a gate's route.
+        has_beta: bool = True, *, chunk_bounds: Any) -> FoldedBetaBlochPmlCurlPlan:
+    """Build a COMPLEX folded beta curl plan from bare host arrays -- a gate's route.
 
-    ``beta_words`` is ``((bpr, bpi), (bmr, bmi))`` — normally
-    :func:`.special_kz.beta_curl_coefficients`'s output, or a deliberately wrong pair
-    on a mutation leg. The ``step_D`` phase conjugation is the CALLER's here, exactly
-    as the sub-step split makes it the plan builder's on the engine route.
+    ``phases`` is the per-axis ``Optional[complex]`` table of ``eikna``; the side's
+    connection kind and word are chosen HERE, per sub-step, exactly as the engine
+    route chooses them (:func:`.complex_fields.phase_arguments`). ``beta_plus`` and
+    ``beta_minus`` are normally :func:`.special_kz.beta_curl_coefficients`' words, or
+    deliberately wrong ones on a mutation leg. ``chunk_bounds`` is REQUIRED.
     """
     spec = SUB_STEPS[sub_step]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
-    complex64 = special_kz._numpy().complex64
-    targets = [residency.mirror(n, arrays[n], dtype=complex64)
-               for n in spec["targets"]]
-    auxiliaries = [residency.mirror("fu_" + n, arrays["fu_" + n], dtype=complex64)
+    phased, phase_values = complex_fields.phase_arguments(
+        tuple(phases), backward=bool(spec["backward"]))
+    mirror = complex_fields._complex_mirror
+    targets = [mirror(residency, n, arrays[n]) for n in spec["targets"]]
+    auxiliaries = [mirror(residency, "fu_" + n, arrays["fu_" + n])
                    for n in spec["targets"]]
-    sources = [residency.mirror(n, arrays[n], dtype=complex64)
-               for n in spec["sources"]]
+    sources = [mirror(residency, n, arrays[n]) for n in spec["sources"]]
     coefficients = [residency.mirror(f"pml:{stem}_{axis}:{sub_step}",
                                      flat[f"{stem}_{axis}"], constant=True)
                     for axis in "xyz" for stem in ("kms", "sinv")]
     volumes = (tuple(spec["targets"]) + tuple("fu_" + n for n in spec["targets"])
                + tuple(spec["sources"]))
     return FoldedBetaBlochPmlCurlPlan(
-        sub_step, shape, dtdx, codes, phased, phase_words, beta_words, expansion,
-        residency, targets, auxiliaries, sources, coefficients,
+        sub_step, shape, dtdx, codes, phased, phase_values, beta_plus, beta_minus, residency,
+        targets, auxiliaries, sources, coefficients,
         functions if functions is not None
-        else _complex_curl_functions(codes, spec["backward"], phased, expansion,
+        else _complex_curl_functions(codes, spec["backward"], phased,
                                      has_beta, contract_variants),
-        volumes, has_beta=has_beta)
+        volumes, has_beta=has_beta, chunk_bounds=chunk_bounds)
 
 
 def plan_folded_beta_constitutive(fields: Any, pml: Any, side: str,
                                   residency: Any = None,
                                   contract_variants: Sequence[str] = (
-                                      shaders.CONTRACT_OFF,)) -> Any:
+                                      shaders.CONTRACT_OFF,),
+                                  *, chunk_bounds: Any) -> Any:
     """A CERTIFIED REAL constitutive plan for a folded beta run, or None.
 
     The arithmetic, the source and the plan class are the certified ones; only the
@@ -1519,14 +1422,15 @@ def plan_folded_beta_constitutive(fields: Any, pml: Any, side: str,
     return ConstitutivePlan(
         side, fields.grid.shape, residency, targets, auxiliaries, sources,
         inverse_epsilon, coefficients,
-        _constitutive_functions(side, contract_variants), volumes)
+        _constitutive_functions(side, contract_variants), volumes,
+        chunk_bounds=chunk_bounds)
 
 
 def plan_folded_beta_complex_constitutive(fields: Any, pml: Any, side: str,
                                           residency: Any = None,
                                           contract_variants: Sequence[str] = (
-                                              shaders.CONTRACT_OFF,),
-                                          probe: Any = None) -> Any:
+                                              shaders.CONTRACT_OFF,), *,
+                                          chunk_bounds: Any) -> Any:
     """A CERTIFIED COMPLEX constitutive plan for a folded beta run, or None.
 
     ``complex_fields``' own body, its own plan class and its own compiled functions;
@@ -1536,11 +1440,7 @@ def plan_folded_beta_complex_constitutive(fields: Any, pml: Any, side: str,
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, "
                          f"got {side!r}")
     if not folded_beta_complex_constitutive_coverage(
-            fields, pml, side, residency, probe).covered:
-        return None
-    expansion = special_kz.beta_expansion_from_probe(
-        probe if probe is not None else special_kz.load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
+            fields, pml, side, residency).covered:
         return None
 
     spec = CONSTITUTIVE_SIDES[side]
@@ -1559,10 +1459,10 @@ def plan_folded_beta_complex_constitutive(fields: Any, pml: Any, side: str,
         for axis in "xyz" for stem in ("kps", "kms")]
     volumes = tuple(spec["targets"]) + tuple(spec["aux"]) + tuple(spec["sources"])
     return complex_fields.ComplexConstitutivePlan(
-        side, fields.grid.shape, expansion, residency, targets, auxiliaries,
+        side, fields.grid.shape, residency, targets, auxiliaries,
         sources, inverse_epsilon, coefficients,
-        complex_fields._constitutive_functions(side, expansion, contract_variants),
-        volumes)
+        complex_fields._constitutive_functions(side, contract_variants),
+        volumes, chunk_bounds=chunk_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -1629,19 +1529,20 @@ def _real_curl_coverage(context: Any, slot: str) -> Coverage:
 
 def _real_curl_plan(context: Any, slot: str) -> Any:
     return plan_folded_beta_pml_curl(context.fields, context.pml, slot,
-                                     context.residency, context.contract_variants)
+                                     context.residency, context.contract_variants,
+                                     chunk_bounds=context.chunk_bounds)
 
 
 def _complex_curl_coverage(context: Any, slot: str) -> Coverage:
     return folded_beta_composition_bloch_curl_coverage(
-        context.fields, context.pml, slot, context.residency,
-        context.extra.get("beta_probe"))
+        context.fields, context.pml, slot, context.residency)
 
 
 def _complex_curl_plan(context: Any, slot: str) -> Any:
     return plan_folded_beta_bloch_pml_curl(
         context.fields, context.pml, slot, context.residency,
-        context.contract_variants, context.extra.get("beta_probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def _real_constitutive_coverage(context: Any, slot: str) -> Coverage:
@@ -1653,20 +1554,20 @@ def _real_constitutive_coverage(context: Any, slot: str) -> Coverage:
 def _real_constitutive_plan(context: Any, slot: str) -> Any:
     return plan_folded_beta_constitutive(
         context.fields, context.pml, _CONSTITUTIVE_SLOT_SIDES[slot],
-        context.residency, context.contract_variants)
+        context.residency, context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def _complex_constitutive_coverage(context: Any, slot: str) -> Coverage:
     return folded_beta_complex_constitutive_coverage(
         context.fields, context.pml, _CONSTITUTIVE_SLOT_SIDES[slot],
-        context.residency, context.extra.get("beta_probe"))
+        context.residency)
 
 
 def _complex_constitutive_plan(context: Any, slot: str) -> Any:
     return plan_folded_beta_complex_constitutive(
         context.fields, context.pml, _CONSTITUTIVE_SLOT_SIDES[slot],
-        context.residency, context.contract_variants,
-        context.extra.get("beta_probe"))
+        context.residency, context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

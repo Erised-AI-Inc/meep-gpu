@@ -8,12 +8,16 @@ into evidence:
   through a table whose device OR (for the Triton table) Triton version is not
   certified;
 * ``drive_triton_weld_gates.py`` runs every gate child with
-  ``MEEP_GPU_ALLOW_UNCERTIFIED=0``, whatever the launching shell says;
-* ``timing_ladder.py`` exports ``0`` to its NVIDIA rows (``test_timing_ladder_plan``).
+  ``MEEP_GPU_HARDWARE=certified`` and without the retired ``MEEP_GPU_ALLOW_UNCERTIFIED``,
+  whatever the launching shell says;
+* ``timing_ladder.py`` exports ``certified`` to its NVIDIA rows
+  (``test_timing_ladder_plan``).
 
 And ``tools/check_install.py`` expects the kernels where one table may run on what was
-read, says which of supported and certified each fact is, and names each identity an
-uncertified run was admitted on with its own verdict.
+read, says which of supported and certified each fact is, names each identity an
+uncertified run was admitted on with its own verdict, and names a scope the package
+refuses (the retired name set, or a value that is not one of the three) instead of
+expecting the kernels.
 """
 
 from __future__ import annotations
@@ -72,30 +76,63 @@ def test_a_row_on_a_supported_uncertified_device_is_refused():
     assert all("compute capability 8.9" in reason for reason in reasons), reasons
 
 
-@pytest.mark.parametrize("inherited", [None, "1", "0"])
-def test_every_gate_child_runs_certified_identities_only(monkeypatch, tmp_path, inherited):
-    if inherited is None:
-        monkeypatch.delenv("MEEP_GPU_ALLOW_UNCERTIFIED", raising=False)
-    else:
-        monkeypatch.setenv("MEEP_GPU_ALLOW_UNCERTIFIED", inherited)
+@pytest.mark.parametrize("inherited", [None, "any", "supported", "certified"])
+@pytest.mark.parametrize("retired", [None, "1", "0"])
+def test_every_gate_child_runs_certified_identities_only(monkeypatch, tmp_path, inherited,
+                                                         retired):
+    for name, value in (("MEEP_GPU_HARDWARE", inherited),
+                        ("MEEP_GPU_ALLOW_UNCERTIFIED", retired)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
     env = weld_gates.gate_environment(0, tmp_path, "a_gate", "keep")
-    assert env["MEEP_GPU_ALLOW_UNCERTIFIED"] == "0"
+    assert env["MEEP_GPU_HARDWARE"] == "certified"
+    assert "MEEP_GPU_ALLOW_UNCERTIFIED" not in env
     assert env["MEEP_GPU_DISPATCH"] == "0"
 
 
-#: (certified, supported) -> would a table run, under unset, 0 and 1.
-RUNS = [((True, True), (True, True, True)),
-        ((True, None), (True, True, True)),
-        ((False, True), (True, False, True)),
-        ((False, False), (False, False, True)),
-        ((None, None), (True, False, True))]
+def test_check_install_spells_the_package_switch():
+    """check_install reads a shell without importing the package, so it spells the
+    switch itself; these must stay the package's own."""
+    from meep_gpu import fastpath  # noqa: PLC0415
+
+    assert check_install.HARDWARE_SWITCH == fastpath.HARDWARE_SWITCH
+    assert check_install.HARDWARE_VALUES == fastpath.HARDWARE_VALUES
+    assert check_install.RETIRED_HARDWARE_SWITCH == fastpath.RETIRED_HARDWARE_SWITCH
+
+
+#: (certified, supported) -> would a table run, under unset, certified, supported, any.
+RUNS = [((True, True), (True, True, True, True)),
+        ((True, None), (True, True, True, True)),
+        ((False, True), (True, False, True, True)),
+        ((False, False), (False, False, False, True)),
+        ((None, None), (True, False, True, True))]
 
 
 @pytest.mark.parametrize("fact,expected", RUNS)
 def test_check_install_expects_the_kernels_where_a_table_may_run(fact, expected):
     certified, supported = fact
     assert tuple(check_install.nvidia_runs(certified, supported, value)
-                 for value in (None, "0", "1")) == expected
+                 for value in (None, "certified", "supported", "any")) == expected
+
+
+@pytest.mark.parametrize("variables,needle", [
+    ({}, None), ({"MEEP_GPU_HARDWARE": "certified"}, None),
+    ({"MEEP_GPU_HARDWARE": "any"}, None),
+    ({"MEEP_GPU_HARDWARE": "1"}, "MEEP_GPU_HARDWARE='1' is not an accepted value"),
+    ({"MEEP_GPU_HARDWARE": "Any"}, "MEEP_GPU_HARDWARE='Any' is not an accepted value"),
+    ({"MEEP_GPU_ALLOW_UNCERTIFIED": "0"},
+     "MEEP_GPU_ALLOW_UNCERTIFIED=0 is MEEP_GPU_HARDWARE=certified."),
+    ({"MEEP_GPU_ALLOW_UNCERTIFIED": "1", "MEEP_GPU_HARDWARE": "any"},
+     "MEEP_GPU_ALLOW_UNCERTIFIED=1 is MEEP_GPU_HARDWARE=any."),
+    ({"MEEP_GPU_ALLOW_UNCERTIFIED": ""}, "MEEP_GPU_ALLOW_UNCERTIFIED is set in this shell")])
+def test_check_install_names_a_scope_the_package_refuses(variables, needle):
+    text = check_install.hardware_switch_refusal(variables)
+    if needle is None:
+        assert text == "", text
+    else:
+        assert needle in text, text
 
 
 @pytest.mark.parametrize("certified,supported,text", [
@@ -118,7 +155,7 @@ def test_check_install_names_the_supported_identity_alone():
          _served("GPU compute capability", "8.9", True, table="cuda")], "S")
     assert note.startswith("GPU compute capability 8.9 is supported but not certified "
                            "bit-identical, so the kernels ran uncertified"), note
-    assert note.endswith("Set MEEP_GPU_ALLOW_UNCERTIFIED=0 to run them only on a "
+    assert note.endswith("Set MEEP_GPU_HARDWARE=certified to run them only on a "
                          "certified device and toolchain."), note
     assert "toolchain are" not in note, note
 
@@ -130,6 +167,6 @@ def test_check_install_says_which_identity_is_outside_the_range():
          _served("GPU compute capability", "6.1", False, table="cuda")], "S")
     assert note.startswith("Triton 3.1.1 is supported but not certified bit-identical; "
                            "GPU compute capability 6.1 is outside the supported range, "
-                           "which only MEEP_GPU_ALLOW_UNCERTIFIED=1 runs, so the kernels "
+                           "which only MEEP_GPU_HARDWARE=any runs, so the kernels "
                            "ran uncertified"), note
-    assert "MEEP_GPU_ALLOW_UNCERTIFIED=0" not in note, note
+    assert "MEEP_GPU_HARDWARE=certified" not in note, note

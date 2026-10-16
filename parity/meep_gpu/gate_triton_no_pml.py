@@ -4,7 +4,15 @@ Legs, selected with ``--leg`` (default: all but ``budget`` and ``bench``):
 
   product   the shape x boundary x Courant x sub-step x DERIVE sweep, GUARDED and
             UNGUARDED, kernel vs ``no_pml_ref`` on CuPy. The unguarded run is the
-            control that proves the gate bites.
+            control that proves the gate bites. Each shape carries the axes its run
+            holds invariant, handed to the kernel in its chunk record's presence word
+            and to the reference as ``presence``: a one-cell axis is a 2-D run's
+            invariant axis (one-partner forms) or a 3-D run's resolved one (both
+            partners), and the sweep carries both.
+  planted   ``f = -0`` with every curl partner's neighbour equal to it, on a lattice
+            of cells of every case: the signed zero MEEP's forms store, which a
+            random state never draws (a one-partner form whose first partner is
+            absent turns that -0 into +0; the full bracket keeps it).
   multistep N consecutive launches of the same plan, compared after every one.
   mutations one deliberately broken kernel per defect class, each of which must be
             CAUGHT. A mutation leg that reports a pass for a mutation it never
@@ -50,7 +58,22 @@ for _path in (HERE, REPO_API):
         sys.path.insert(0, _path)
 import no_pml_ref as ref  # noqa: E402
 
-SHAPES = ((32, 24, 16), (64, 1, 64), (48, 48, 1), (17, 19, 23))
+#: The product sweep's shapes, each with the axes its run holds invariant
+#: (``Grid.is_invariant``). The presence word of each case's chunk record clears
+#: exactly those bits, and the reference takes the same triple. The last shape stores
+#: one cell along z and still takes both curl partners there, as a 3-D run with a
+#: one-cell axis does: the case where the extent and the record disagree, and the
+#: only one that shows the kernel reads the word rather than the shape.
+CASE_SHAPES = (
+    ((32, 24, 16), ()),
+    ((64, 1, 64), (1,)),
+    ((48, 48, 1), (2,)),
+    ((17, 19, 23), ()),
+    ((48, 48, 1), ()),
+)
+#: The multistep and mutation legs' shapes: a resolved 3-D box, a run with an
+#: invariant axis, and the 3-D run with a one-cell resolved axis.
+LEG_SHAPES = (CASE_SHAPES[0], CASE_SHAPES[1], CASE_SHAPES[4])
 BOUNDARY_SETS = (
     ("periodic", "periodic", "periodic"),
     ("metallic", "metallic", "metallic"),
@@ -83,6 +106,30 @@ def save(payload: Dict[str, Any], path: str) -> None:
 def sha256_file(path: str) -> str:
     with open(path, "rb") as handle:
         return hashlib.sha256(handle.read()).hexdigest()
+
+
+def presence_of(invariant: Sequence[int]) -> Tuple[bool, bool, bool]:
+    """Per axis, does a curl partner differenced along it exist (not invariant)."""
+    return tuple(axis not in invariant for axis in range(3))  # type: ignore[return-value]
+
+
+def no_layer_record(shape: Sequence[int], invariant: Sequence[int]) -> np.ndarray:
+    """The chunk record of a run with no absorber (``chunk_map.chunk_bounds_record``).
+
+    Every membership run is empty, because no chunk carries a layer; word
+    ``RECORD_PRESENCE_WORD`` has the bit of every axis that is not invariant. An
+    invariant axis must store one cell (``launch.bind_chunk_bounds`` refuses
+    otherwise).
+    """
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, RECORD_WORDS  # noqa: PLC0415
+
+    for axis in invariant:
+        if int(shape[axis]) != 1:
+            raise ValueError(f"axis {axis} stores {shape[axis]} cells and cannot be invariant")
+    record = np.zeros(RECORD_WORDS, dtype=np.int32)
+    record[RECORD_PRESENCE_WORD] = sum(1 << axis for axis in range(3)
+                                       if axis not in invariant)
+    return record
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +171,7 @@ TARGETS = {"step_B": ("Bx", "By", "Bz"), "step_D": ("Dx", "Dy", "Dz")}
 
 
 def one_product_case(cp, shape, boundaries, dtdx, sub_step, derive, guard,
-                     kernel=None) -> Dict[str, Any]:
+                     kernel=None, invariant: Sequence[int] = ()) -> Dict[str, Any]:
     from meep_gpu.triton_kernels.no_pml import plan_plain_curl_from_arrays  # noqa: PLC0415
 
     rng = np.random.default_rng(ref.SEED + 3)
@@ -135,11 +182,13 @@ def one_product_case(cp, shape, boundaries, dtdx, sub_step, derive, guard,
     state = {n: arrays[n].copy() for n in targets}
     sources = reference_sources(cp, arrays, sub_step, derive)
     ref.reference_plain_step(cp, sources, state, np.float32(dtdx), sub_step,
-                             tuple(boundaries), "array_order")
+                             tuple(boundaries), "kernel_order",
+                             presence=presence_of(invariant))
 
     codes = [1 if kind == "metallic" else 0 for kind in boundaries]
     plan = plan_plain_curl_from_arrays(sub_step, arrays, codes, dtdx,
-                                       derive=derive, kernel=kernel)
+                                       derive=derive, kernel=kernel,
+                                       chunk_bounds=no_layer_record(shape, invariant))
     plan.run(guard=guard)
     cp.cuda.runtime.deviceSynchronize()
 
@@ -156,10 +205,10 @@ def leg_product(cp, guard: bool, kernel=None) -> Dict[str, Any]:
 
     cases: List[Dict[str, Any]] = []
     started = time.time()
-    total = (len(SHAPES) * len(BOUNDARY_SETS) * len(COURANTS)
+    total = (len(CASE_SHAPES) * len(BOUNDARY_SETS) * len(COURANTS)
              * len(SUB_STEPS) * 2)
     index = 0
-    for shape in SHAPES:
+    for shape, invariant in CASE_SHAPES:
         for boundaries in BOUNDARY_SETS:
             for dtdx in COURANTS:
                 for sub_step in SUB_STEPS:
@@ -191,11 +240,13 @@ def leg_product(cp, guard: bool, kernel=None) -> Dict[str, Any]:
                         sources = reference_sources(cp, arrays, sub_step, derive)
                         ref.reference_plain_step(cp, sources, state,
                                                  np.float32(dtdx), sub_step,
-                                                 tuple(boundaries), "array_order")
+                                                 tuple(boundaries), "kernel_order",
+                                                 presence=presence_of(invariant))
                         codes = [1 if k == "metallic" else 0 for k in boundaries]
                         plan = plan_plain_curl_from_arrays(
                             sub_step, arrays, codes, dtdx, derive=derive,
-                            kernel=kernel)
+                            kernel=kernel,
+                            chunk_bounds=no_layer_record(shape, invariant))
                         plan.run(guard=guard)
                         cp.cuda.runtime.deviceSynchronize()
                         verdict = ref.combine(
@@ -203,12 +254,13 @@ def leg_product(cp, guard: bool, kernel=None) -> Dict[str, Any]:
                         verdict["all_targets_changed"] = all(
                             not bool((arrays[n] == before[n]).all()) for n in targets)
                         verdict.update({"shape": list(shape),
+                                        "invariant": list(invariant),
                                         "boundaries": list(boundaries),
                                         "dtdx": dtdx, "sub_step": sub_step,
                                         "derive": derive})
                         verdict.pop("per_array", None)
                         cases.append(verdict)
-                        log(f"  product {index}/{total} {shape} {boundaries} "
+                        log(f"  product {index}/{total} {shape} inv={invariant} {boundaries} "
                             f"dtdx={dtdx} {sub_step} derive={derive} "
                             f"guard={guard}: identical={verdict['bit_identical']} "
                             f"ndiff={verdict['differing_floats']} "
@@ -231,8 +283,10 @@ def leg_multistep(cp) -> Dict[str, Any]:
     from meep_gpu.triton_kernels.no_pml import plan_plain_curl_from_arrays  # noqa: PLC0415
 
     out: List[Dict[str, Any]] = []
-    for shape in SHAPES[:2]:
+    for shape, invariant in LEG_SHAPES:
         for boundaries in (BOUNDARY_SETS[0], BOUNDARY_SETS[1]):
+            if any(shape[a] == 1 and boundaries[a] == "metallic" for a in range(3)):
+                continue  # Grid refuses it; see leg_product.
             for dtdx in (0.35,):
                 for sub_step in SUB_STEPS:
                     for derive in ((0, 1) if sub_step == "step_B" else (0,)):
@@ -241,15 +295,16 @@ def leg_multistep(cp) -> Dict[str, Any]:
                         targets = TARGETS[sub_step]
                         mirror = {n: arrays[n].copy() for n in arrays}
                         codes = [1 if k == "metallic" else 0 for k in boundaries]
-                        plan = plan_plain_curl_from_arrays(sub_step, arrays, codes,
-                                                           dtdx, derive=derive)
+                        plan = plan_plain_curl_from_arrays(
+                            sub_step, arrays, codes, dtdx, derive=derive,
+                            chunk_bounds=no_layer_record(shape, invariant))
                         steps = []
                         for step in range(1, MULTISTEP + 1):
                             sources = reference_sources(cp, mirror, sub_step, derive)
                             ref.reference_plain_step(
                                 cp, sources, {n: mirror[n] for n in targets},
                                 np.float32(dtdx), sub_step, tuple(boundaries),
-                                "array_order")
+                                "kernel_order", presence=presence_of(invariant))
                             plan.run()
                             cp.cuda.runtime.deviceSynchronize()
                             verdict = ref.combine(
@@ -258,7 +313,8 @@ def leg_multistep(cp) -> Dict[str, Any]:
                             verdict.pop("per_array", None)
                             verdict["step"] = step
                             steps.append(verdict)
-                        row = {"shape": list(shape), "boundaries": list(boundaries),
+                        row = {"shape": list(shape), "invariant": list(invariant),
+                               "boundaries": list(boundaries),
                                "dtdx": dtdx, "sub_step": sub_step, "derive": derive,
                                "steps": steps,
                                "bit_identical": all(s["bit_identical"] for s in steps),
@@ -266,7 +322,7 @@ def leg_multistep(cp) -> Dict[str, Any]:
                                    (s["step"] for s in steps if not s["bit_identical"]),
                                    None)}
                         out.append(row)
-                        log(f"  multistep {shape} {boundaries} {sub_step} "
+                        log(f"  multistep {shape} inv={invariant} {boundaries} {sub_step} "
                             f"derive={derive}: {MULTISTEP} steps identical="
                             f"{row['bit_identical']}")
     return {"cases": out,
@@ -285,11 +341,25 @@ def leg_multistep(cp) -> Dict[str, Any]:
 # leg that ran unmutated tables cannot report a pass.
 
 MUTATIONS: Tuple[Tuple[str, str, str, str], ...] = (
-    ("flatten_grouping",
+    ("regroup_stencil",
+     "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)",
      "curl0 = dtdx * ((c_y - c) + (b - b_z))",
-     "curl0 = dtdx * (((c_y - c) + b) - b_z)",
-     "C's left-to-right association of the stencil; must be caught at a "
-     "non-power-of-two Courant and MAY legitimately survive at 0.5"),
+     "the pairwise grouping this kernel carried before MEEP's left-to-right one "
+     "(step_generic.cpp:104), presence ignored with it; scored only where both of "
+     "Bx/Dx's partners are present (y and z resolved), because a one-partner form "
+     "never reads the grouping"),
+    ("full_bracket_over_an_absent_partner",
+     "presence = tl.load(cb + RECORD_PRESENCE)",
+     "presence = tl.load(cb + RECORD_PRESENCE) | 7",
+     "the record's presence word ignored, every partner present: the two-partner "
+     "bracket over an invariant axis, where (a + g2) - g2 rounds and the one-partner "
+     "form returns a; scored only on runs with an invariant axis"),
+    ("presence_from_the_extent",
+     "pz = axis_present(presence, 2)",
+     "pz = axis_present(presence, 2) & (nz != 1)",
+     "z's presence read from the stored extent instead of the record: identical "
+     "wherever a one-cell axis is invariant, and wrong on a 3-D run's one-cell "
+     "resolved axis; scored only there"),
     ("add_instead_of_subtract",
      "v0 = tl.load(f0 + idx, mask=live, other=0.0) - curl0",
      "v0 = tl.load(f0 + idx, mask=live, other=0.0) + curl0",
@@ -379,8 +449,16 @@ def kernel_only_source(path: str) -> str:
                 f"{text.count(anchor)} times")
     start = text.index(start_anchor) + 1
     end = text.index(end_anchor)
+    # The body calls the shared form helpers and reads the record's presence word, so
+    # the slice imports the helpers from the package and restates the word's offset
+    # (the module's own ``RECORD_PRESENCE``, which ``test_triton_no_pml`` pins against
+    # ``chunk_map``).
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD  # noqa: PLC0415
+
     body = ("import triton\nimport triton.language as tl\n"
-            "PERIODIC = tl.constexpr(0)\nMETALLIC = tl.constexpr(1)\n\n"
+            "from meep_gpu.triton_kernels.forms import axis_present, curl_stencil\n"
+            "PERIODIC = tl.constexpr(0)\nMETALLIC = tl.constexpr(1)\n"
+            f"RECORD_PRESENCE = tl.constexpr({RECORD_PRESENCE_WORD})\n\n"
             + text[start:end])
     # A temp directory, not HERE: the recon build wrote this beside the gate and
     # left a stray module in the source tree that a later run would silently reuse.
@@ -388,6 +466,23 @@ def kernel_only_source(path: str) -> str:
     with open(out, "w", encoding="utf-8") as handle:
         handle.write(body)
     return out
+
+
+def mutation_scores(name: str, shape: Sequence[int], invariant: Sequence[int]) -> bool:
+    """Is ``name`` scored on this shape, i.e. can its edit reach a stored word here?
+
+    Three mutations edit a presence arm, and each is scored only where that arm is
+    live; on every other case it compiles the same arithmetic as the shipped kernel
+    (up to the sign of an exact zero), and counting it there would dilute a must-catch
+    rate with cases that cannot catch it. Every other mutation is scored everywhere.
+    """
+    if name == "regroup_stencil":  # Bx/Dx: partners differenced along y and z
+        return 1 not in invariant and 2 not in invariant
+    if name == "full_bracket_over_an_absent_partner":
+        return bool(invariant)
+    if name == "presence_from_the_extent":  # z stores one cell and is resolved
+        return int(shape[2]) == 1 and 2 not in invariant
+    return True
 
 
 def leg_mutations(cp, source_path: str) -> Dict[str, Any]:
@@ -401,7 +496,8 @@ def leg_mutations(cp, source_path: str) -> Dict[str, Any]:
         if digest == shipped_digest:
             raise RuntimeError(f"mutation {name!r} compiled the shipped source")
         caught, live, detail = 0, 0, []
-        for shape in SHAPES[:2]:
+        unscored, unscored_caught = 0, 0
+        for shape, invariant in LEG_SHAPES:
             for boundaries in BOUNDARY_SETS:
                 for dtdx in COURANTS:
                     for sub_step in SUB_STEPS:
@@ -416,28 +512,128 @@ def leg_mutations(cp, source_path: str) -> Dict[str, Any]:
                             sources = reference_sources(cp, arrays, sub_step, derive)
                             ref.reference_plain_step(cp, sources, state,
                                                      np.float32(dtdx), sub_step,
-                                                     tuple(boundaries), "array_order")
+                                                     tuple(boundaries), "kernel_order",
+                                                     presence=presence_of(invariant))
                             codes = [1 if k == "metallic" else 0 for k in boundaries]
                             plan = plan_plain_curl_from_arrays(
                                 sub_step, arrays, codes, dtdx, derive=derive,
-                                kernel=kernel)
+                                kernel=kernel,
+                                chunk_bounds=no_layer_record(shape, invariant))
                             plan.run()
                             cp.cuda.runtime.deviceSynchronize()
                             same = all(ref.bit_compare(arrays[n], state[n])["bit_identical"]
                                        for n in targets)
-                            live += 1
-                            if not same:
-                                caught += 1
+                            scored = mutation_scores(name, shape, invariant)
+                            if scored:
+                                live += 1
+                                caught += 0 if same else 1
+                            else:
+                                unscored += 1
+                                unscored_caught += 0 if same else 1
                             detail.append({"shape": list(shape),
+                                           "invariant": list(invariant),
                                            "boundaries": list(boundaries),
                                            "dtdx": dtdx, "sub_step": sub_step,
-                                           "derive": derive, "caught": not same})
+                                           "derive": derive, "scored": scored,
+                                           "caught": not same})
         row = {"mutation": name, "why": why, "sha256": digest,
                "caught": f"{caught}/{live}", "n_caught": caught, "n_live": live,
+               "unscored": unscored, "unscored_caught": unscored_caught,
                "detail": detail}
         results.append(row)
-        log(f"  mutation {name}: caught {caught}/{live}")
+        log(f"  mutation {name}: caught {caught}/{live} "
+            f"(unscored {unscored}, of which {unscored_caught} differ)")
     return {"shipped_kernel_sha256": shipped_digest, "mutations": results}
+
+
+def plant_negative_zero(cp, arrays: Dict[str, Any], sub_step: str, derive: int,
+                        shape: Sequence[int], boundaries: Sequence[str]) -> int:
+    """Plant ``f = -0`` with every partner's stencil neighbour equal to it, IN PLACE.
+
+    On a lattice of interior cells (stride 3 on every resolved axis, away from a
+    metallic face), each target is set to -0 and each partner's shifted word to the
+    partner's word at the cell, so every difference the stencil forms is an exact
+    +0. MEEP's forms then store: -0 where both partners are present or the second is
+    absent (``dtdx * +0`` is +0, and ``-0 - +0`` is -0), and +0 where the FIRST is
+    absent (``(-dtdx) * +0`` is -0, and ``-0 - -0`` is +0). The derived E source is
+    planted through its D and a unit inverse epsilon at those cells. Returns the
+    number of planted cells.
+    """
+    backward = sub_step == "step_D"
+    shift = -1 if backward else 1
+    terms = ref.D_TERMS if backward else ref.B_TERMS
+    host = {n: ref.to_host(arrays[n]).copy() for n in arrays}
+
+    def source_name(name):
+        if sub_step == "step_D":
+            return "B" + name[1]
+        return ("D" + name[1]) if derive else name
+
+    axes = [range(1, int(n) - 1, 3) if int(n) > 2 else range(int(n)) for n in shape]
+    cells = [(i, j, k) for i in axes[0] for j in axes[1] for k in axes[2]
+             if all(boundaries[a] == "periodic" or 0 < (i, j, k)[a] < int(shape[a]) - 1
+                    for a in range(3) if int(shape[a]) > 1)]
+    for cell in cells:
+        for target, first, first_axis, second, second_axis in terms:
+            for name, axis in ((first, first_axis), (second, second_axis)):
+                field = host[source_name(name)]
+                neighbour = list(cell)
+                neighbour[axis] = (cell[axis] + shift) % int(shape[axis])
+                field[tuple(neighbour)] = field[cell]
+                if sub_step == "step_B" and derive:
+                    inverse = host["inv_eps_E" + name[1]]
+                    inverse[cell] = np.float32(1.0)
+                    inverse[tuple(neighbour)] = np.float32(1.0)
+            host[target][cell] = np.float32(-0.0)
+    for n, values in host.items():
+        arrays[n][...] = cp.asarray(values)
+    return len(cells)
+
+
+def leg_planted(cp) -> Dict[str, Any]:
+    """Every product shape, periodic, both sub-steps: the planted signed zeros."""
+    from meep_gpu.triton_kernels.no_pml import plan_plain_curl_from_arrays  # noqa: PLC0415
+
+    boundaries = BOUNDARY_SETS[0]
+    cases: List[Dict[str, Any]] = []
+    for shape, invariant in CASE_SHAPES:
+        for sub_step in SUB_STEPS:
+            for derive in ((0, 1) if sub_step == "step_B" else (0,)):
+                rng = np.random.default_rng(ref.SEED + 7)
+                arrays = make_arrays(cp, shape, sub_step, derive, rng)
+                planted = plant_negative_zero(cp, arrays, sub_step, derive, shape,
+                                              boundaries)
+                targets = TARGETS[sub_step]
+                state = {n: arrays[n].copy() for n in targets}
+                sources = reference_sources(cp, arrays, sub_step, derive)
+                ref.reference_plain_step(cp, sources, state, np.float32(0.35), sub_step,
+                                         tuple(boundaries), "kernel_order",
+                                         presence=presence_of(invariant))
+                plan = plan_plain_curl_from_arrays(
+                    sub_step, arrays, [0, 0, 0], 0.35, derive=derive,
+                    chunk_bounds=no_layer_record(shape, invariant))
+                plan.run()
+                cp.cuda.runtime.deviceSynchronize()
+                verdict = ref.combine({n: ref.bit_compare(arrays[n], state[n])
+                                       for n in targets})
+                verdict.pop("per_array", None)
+                words = np.concatenate([ref.to_host(state[n]).ravel().view(np.uint32)
+                                        for n in targets])
+                verdict.update({"shape": list(shape), "invariant": list(invariant),
+                                "sub_step": sub_step, "derive": derive,
+                                "planted_cells": planted,
+                                "negative_zero_words": int(np.count_nonzero(
+                                    words == 0x80000000)),
+                                "positive_zero_words": int(np.count_nonzero(
+                                    words == 0))})
+                cases.append(verdict)
+                log(f"  planted {shape} inv={invariant} {sub_step} derive={derive}: "
+                    f"identical={verdict['bit_identical']} cells={planted} "
+                    f"-0={verdict['negative_zero_words']} +0={verdict['positive_zero_words']}")
+    identical = sum(1 for case in cases if case["bit_identical"])
+    return {"cases": cases, "identical": f"{identical}/{len(cases)}",
+            "negative_zero_words": sum(c["negative_zero_words"] for c in cases),
+            "positive_zero_words": sum(c["positive_zero_words"] for c in cases)}
 
 
 # ---------------------------------------------------------------------------
@@ -721,6 +917,20 @@ def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
                 or int(unguarded.get("n_identical", control_live)) >= control_live):
             failures.append(f"unguarded product control caught no divergence: {unguarded}")
 
+    if "planted" in legs:
+        planted = payload.get("planted", {})
+        cases = planted.get("cases", ())
+        if not cases or not all(bool(row.get("bit_identical")) for row in cases):
+            failures.append(f"one or more planted signed-zero cases diverged: "
+                            f"{planted.get('identical')}")
+        # Vacuity: the leg must have stored both of MEEP's planted words, -0 where
+        # the form keeps it and +0 where a first-partner-absent form flips it.
+        if (int(planted.get("negative_zero_words", 0)) <= 0
+                or int(planted.get("positive_zero_words", 0)) <= 0):
+            failures.append(f"the planted leg stored no -0 or no +0 word: "
+                            f"{planted.get('negative_zero_words')} / "
+                            f"{planted.get('positive_zero_words')}")
+
     if "multistep" in legs:
         cases = payload.get("multistep", {}).get("cases", ())
         if not cases or not all(bool(row.get("bit_identical")) for row in cases):
@@ -730,8 +940,10 @@ def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         rows = {row.get("mutation"): row
                 for row in payload.get("mutations", {}).get("mutations", ())}
         real_defects = {
-            "flatten_grouping", "add_instead_of_subtract", "drop_inverse_epsilon",
-            "derive_centre_only", "drop_ownership_mask", "periodic_ghost_on_metallic",
+            "regroup_stencil", "full_bracket_over_an_absent_partner",
+            "presence_from_the_extent", "add_instead_of_subtract",
+            "drop_inverse_epsilon", "derive_centre_only", "drop_ownership_mask",
+            "periodic_ghost_on_metallic",
         }
         missing = sorted((real_defects | {"swap_derive_operand_order"}) - set(rows))
         if missing:
@@ -784,6 +996,7 @@ def validate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         "legs": sorted(legs),
         "guarded_product": payload.get("product_guarded", {}).get("identical"),
         "unguarded_control": payload.get("product_unguarded", {}).get("identical"),
+        "planted": payload.get("planted", {}).get("identical"),
         "multistep": payload.get("multistep", {}).get("identical"),
         "engine_covered": len(payload.get("engine", {}).get("covered", ())),
         "engine_refusals": len(payload.get("engine", {}).get("refusals", ())),
@@ -803,7 +1016,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--bench-warmup", type=int, default=20)
     args = parser.parse_args(argv)
 
-    legs = args.leg or ["product", "multistep", "mutations", "engine"]
+    legs = args.leg or ["product", "planted", "multistep", "mutations", "engine"]
     os.makedirs(args.out_dir, exist_ok=True)
     out_path = os.path.join(args.out_dir, "gate.json")
     payload: Dict[str, Any] = {"environment": environment(), "legs": legs,
@@ -811,6 +1024,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     save(payload, out_path)
 
     import cupy as cp  # noqa: PLC0415
+    from composition_policy import (  # noqa: PLC0415
+        confirm_campaign_policy, stamp_campaign_policy)
+
+    # THE CAMPAIGN'S SUBNORMAL POLICY, installed and measured before the first kernel
+    # compiles and stamped into the artifact (owner ruling R16; composition_policy.py).
+    # The legs that lift a MEEP simulation import MEEP, which flushes the host, so MEEP
+    # is imported before the install whenever one of them is requested.
+    refused = stamp_campaign_policy(
+        payload, cp, verdict="validation",
+        import_meep=bool({"engine", "budget", "bench"} & set(legs)))
+    save(payload, out_path)
+    if refused:
+        log(f"GATE REFUSED: {refused}")
+        return 2
 
     if "product" in legs:
         # THE PARAMETER IS enable_fp_fusion, NOT "is the guard on".
@@ -823,6 +1050,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         save(payload, out_path)
         log("LEG product (UNGUARDED control: enable_fp_fusion=True)")
         payload["product_unguarded"] = leg_product(cp, guard=True)
+        save(payload, out_path)
+    if "planted" in legs:
+        log("LEG planted")
+        payload["planted"] = leg_planted(cp)
         save(payload, out_path)
     if "multistep" in legs:
         log("LEG multistep")
@@ -848,6 +1079,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                      args.bench_steps, args.bench_warmup)
         save(payload, out_path)
 
+    refused = confirm_campaign_policy(payload, verdict="validation")
+    if refused:
+        save(payload, out_path)
+        log(f"GATE REFUSED: {refused}")
+        return 2
     payload["validation"] = validate_payload(payload)
     save(payload, out_path)
     log(f"GATE PASSED: {payload['validation']}")

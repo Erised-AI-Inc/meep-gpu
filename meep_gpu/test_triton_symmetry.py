@@ -546,3 +546,96 @@ def test_the_fill_predicate_refuses_a_reflect_row_that_images_its_own_plane(monk
     reasons = reasons_without_backend(
         symmetry.mirror_ghost_fill_coverage(fields, "B"))
     assert any("reflect row" in r for r in reasons), reasons
+
+
+# ---------------------------------------------------------------------------
+# MEEP's start of H on the folded update_H (the singles route)
+# ---------------------------------------------------------------------------
+
+class _RecordingKernel:
+    """A stand-in ``@triton.jit`` object: ``kernel[grid](*args, **kwargs)`` is recorded."""
+
+    def __init__(self, name, calls):
+        self.name = name
+        self.calls = calls
+
+    def __getitem__(self, grid):
+        def launch(*args, **kwargs):
+            self.calls.append((self.name, grid, args))
+        return launch
+
+
+def _record_root_kernels(monkeypatch):
+    """Put a recording stand-in for ``triton_kernels.kernels`` in ``sys.modules``."""
+    import types  # noqa: PLC0415
+
+    calls = []
+    module = types.ModuleType("meep_gpu.triton_kernels.kernels")
+    module.ENABLE_FP_FUSION = False
+    module.DEFAULT_BLOCK = 256
+    for name in ("pml_curl_step", "constitutive_step", "fused_curl_constitutive_B",
+                 "fused_curl_constitutive_D", "ade_update_p"):
+        setattr(module, name, _RecordingKernel(name, calls))
+    monkeypatch.setitem(sys.modules, "meep_gpu.triton_kernels.kernels", module)
+    return calls
+
+
+def _admit_host_arrays(monkeypatch):
+    """Drop the folded predicate's array-module clause only; every other clause holds."""
+    original = symmetry.folded_constitutive_coverage
+
+    def admitted(fields, pml, side):
+        verdict = original(fields, pml, side)
+        reasons = tuple(r for r in verdict.reasons if "array module is" not in r)
+        return type(verdict)(not reasons, reasons)
+
+    monkeypatch.setattr(symmetry, "folded_constitutive_coverage", admitted)
+
+
+def _folded_host_driver():
+    from meep_gpu.driver import FdtdDriver  # noqa: PLC0415
+
+    driver = FdtdDriver(cell_size=(5.0, 6.0, 0.0), resolution=8.0, dimensions=2,
+                        boundaries={"x": "metallic", "y": "metallic", "z": "periodic"},
+                        symmetry=(Mirror("Y", 1),), force_complex_fields=False,
+                        prefer_gpu=False)
+    driver.setup_pml({"x": 6, "y": {"high": 6}})
+    return driver
+
+
+def test_the_folded_update_h_starts_h_once_and_a_warm_pass_starts_nothing(monkeypatch):
+    """The folded ``update_H`` plan carries MEEP's start of H, as the root plan does.
+
+    ``plan_folded_constitutive`` binds the run's ``Fields`` (``h_state``), so its
+    ``ConstitutivePlan`` passes ``start_h = 1`` on the run's first ``update_H`` and sets
+    ``Fields.h_separated`` afterwards (``stepping.separate_h_from_b``), and the warm
+    pass's empty launch passes the same ``start_h`` and starts nothing. Before the
+    folded plan bound it, a folded run's first ``update_H`` on the Triton singles did
+    not start H from B. The E side never starts H.
+    """
+    from meep_gpu import fastpath  # noqa: PLC0415
+
+    calls = _record_root_kernels(monkeypatch)
+    _admit_host_arrays(monkeypatch)
+    driver = _folded_host_driver()
+    try:
+        fields = driver.fields
+        assert fields.h_separated is False
+        plan = symmetry.plan_folded_constitutive(fields, driver.pml, "H")
+        assert plan is not None, "the folded builder refused the host driver"
+        assert fastpath.warm_plan(plan) is None
+        assert fields.h_separated is False, "the warm pass started H"
+        plan.run()
+        assert fields.h_separated is True
+        plan.run()
+        electric = symmetry.plan_folded_constitutive(fields, driver.pml, "E")
+        electric.run()
+        # constitutive_step: 18 pointers, cb, nx, ny, nz, n_elem, then start_h.
+        starts = [args[18 + 5] for _name, _grid, args in calls]
+        assert [name for name, _grid, _args in calls] == ["constitutive_step"] * 4
+        assert calls[0][1] == (0,) and calls[1][1] != (0,)
+        assert starts == [1, 1, 0, 0], starts
+        for _name, _grid, args in calls[:3]:
+            assert args[18] is plan._cb  # noqa: SLF001 - the anchor of the count
+    finally:
+        driver.close()

@@ -91,13 +91,6 @@ class _NumpyWearingCupysName(types.ModuleType):
         return getattr(numpy, item)
 
 
-#: The expansion licence both predicates require. Never defaulted: asking with
-#: ``license=None`` returns the complex family's own named refusal on EVERY
-#: configuration, which would make step 1's refusals meaningless.
-LICENCE = {"arm": "FMA_V1", "expansion": 1, "basis": "measured",
-           "refusals": [], "policy_resolved": "keep"}
-POLICY = "keep"
-
 #: The six volumes ``deposit_repair.SEAMS['D']`` touches, read from the module rather
 #: than typed, so a change there is a failure here instead of a stale list.
 D_SEAM_TARGETS = tuple(target for _component, target, _axis
@@ -296,7 +289,7 @@ def main() -> int:
         # 1. EVERY FOLDED GRID IS REFUSED.
         for axis, builder in spec["folded"].items():
             fields, pml, grid = builder(xp)
-            covered, reason = spec["predicate"](fields, pml, grid, (), LICENCE, POLICY)
+            covered, reason = spec["predicate"](fields, pml, grid, ())
             block["folded_refusals"][f"axis_{axis}"] = {
                 "grid_is_mirrored": bool(grid.is_mirrored(axis)),
                 "covered": bool(covered), "reason": str(reason)}
@@ -307,7 +300,7 @@ def main() -> int:
 
         # 2. THE CLOSURE IS THE POINT ON EVERYTHING THEY ADMIT.
         fields, pml, grid = spec["admitted"](xp)
-        covered, reason = spec["predicate"](fields, pml, grid, (), LICENCE, POLICY)
+        covered, reason = spec["predicate"](fields, pml, grid, ())
         block["admitted_fixture"] = {"covered": bool(covered), "reason": str(reason),
                                      "shape": [int(n) for n in grid.shape],
                                      "has_symmetry": bool(grid.has_symmetry())}

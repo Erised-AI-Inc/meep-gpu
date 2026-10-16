@@ -243,8 +243,12 @@ def plan_metal_nonlinear_fused_magnetic_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[fused_magnetic_pair.MetalFusedMagneticPairPlan]:
     """Build the fused B/H plan for a nonlinear run, or ``None`` when refused.
+
+    ``chunk_bounds`` is the run's chunk record, required and FORWARDED to the
+    welded family's builder, which checks it against the grid by name.
 
     THE PLAN CLASS IS THE WELDED FAMILY'S, not a subclass. The two are the same
     dispatch of the same compiled function over the same buffers; a distinct class
@@ -260,7 +264,7 @@ def plan_metal_nonlinear_fused_magnetic_pair(
         return None
     return fused_magnetic_pair.plan_metal_fused_magnetic_pair(
         _LinearScopeView(fields), pml, sources, residency, contract_variants,
-        functions)
+        functions, chunk_bounds=chunk_bounds)
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +285,7 @@ def _arm_plan(context: Any, slot: str
         return None
     return plan_metal_nonlinear_fused_magnetic_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

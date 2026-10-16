@@ -15,6 +15,15 @@ REAL ``meep_gpu.pml.PML`` layer and a REAL ``Fields``. The NumPy and CuPy legs o
 the array path are already bit-identical to each other (``test_backends``), so an
 agreement measured here holds on the device.
 
+Since 0.10 every PML form is chosen per structure chunk. Each reference is handed
+the chunk record of the region plan the array path stepped with
+(``gate_chunk_records.region_plan_record``: the one-rank division of the grid and
+layer, which a driver built without MEEP steps with), so the comparison also pins
+the reference's decoding of the record against ``stepping``'s own plan. An
+auxiliary the division gives no layer cell is untouched by the array path (the
+auxiliary contract), and each case checks it is: every target must move, and
+every auxiliary must move exactly when its layer has a cell in the division.
+
 Run (no GPU needed)::
 
     python -u validate_pml_reference_vs_stepping.py \\
@@ -66,6 +75,7 @@ def load_fused_electric_gate():
 
 fused_electric = load_fused_electric_gate()
 
+from gate_chunk_records import region_plan_record  # noqa: E402
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.fields import Fields  # noqa: E402
 from meep_gpu.grid import Grid  # noqa: E402
@@ -122,6 +132,11 @@ def seed_fields(fields: Fields, shape, rng) -> None:
     A zero ``fu`` makes ``fu * kms`` exactly zero whatever ``kms`` is, which would
     hide a coefficient-indexing error on the first sub-step — the one this
     comparison runs.
+
+    The seeded volumes are a state in the middle of a run, so ``h_separated`` is
+    set: the run's FIRST ``update_H`` also starts H and its ``f_w`` as copies of B
+    on the dsigw cells (``stepping.separate_h_from_b``), which is the run's start
+    and not the sub-step the references transcribe.
     """
     for name in ("Bx", "By", "Bz", "Dx", "Dy", "Dz",
                  "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
@@ -130,6 +145,46 @@ def seed_fields(fields: Fields, shape, rng) -> None:
         if target is None:
             raise RuntimeError(f"{name} was not allocated by enable_pml_storage()")
         target[...] = rng.uniform(-1.0, 1.0, size=shape).astype(np.float32)
+    fields.h_separated = True
+
+
+#: The auxiliary of each target and the axis whose layer decides whether it is
+#: stepped: the curl's dsigu axis (``probe.B_PML_TERMS`` / ``D_PML_TERMS``), the
+#: constitutive's own axis.
+def auxiliary_axis(name: str) -> Tuple[int, bool]:
+    """``(axis, half_integer)`` of the record line that decides auxiliary ``name``."""
+    for terms in (probe.B_PML_TERMS, probe.D_PML_TERMS):
+        for target, _g1, _a1, _g2, _a2, _dsig, dsigu, iyee in terms:
+            if name == "fu_" + target:
+                axis = probe.AXIS_NAMES.index(dsigu)
+                return axis, iyee[axis] == 1
+    for side, terms in probe.CONSTITUTIVE_TERMS.items():
+        for target, _source, axis in terms:
+            if name == "f_w_" + target:
+                return axis, probe.CONSTITUTIVE_HALF_INTEGER[side]
+    raise KeyError(name)
+
+
+def expected_to_move(name: str, record, shape) -> bool:
+    """Every target moves; an auxiliary moves exactly when its layer has a cell."""
+    if not (name.startswith("fu_") or name.startswith("f_w_")):
+        return True
+    axis, half_integer = auxiliary_axis(name)
+    return bool(np.asarray(probe.record_membership(
+        np, record, half_integer, axis, shape[axis])).any())
+
+
+def movement(before: Dict[str, Any], after: Dict[str, Any], names, record,
+             shape) -> Dict[str, Any]:
+    """Which arrays the array path moved, against which the contract says it must."""
+    moved = {name: not np.array_equal(before[name], after[name]) for name in names}
+    expected = {name: expected_to_move(name, record, shape) for name in names}
+    return {
+        "arrays_changed": moved,
+        "arrays_expected_to_change": expected,
+        "moved_as_contracted": moved == expected,
+        "unmoved_by_the_contract": sorted(n for n in names if not expected[n]),
+    }
 
 
 def snapshot(fields: Fields, names) -> Dict[str, Any]:
@@ -171,7 +226,9 @@ def one_case(shape, boundaries, dtdx, sub_step) -> Dict[str, Any]:
     (stepping.step_B if sub_step == "step_B" else stepping.step_D)(fields, layer)
     array_path = snapshot(fields, target_names + aux_names)
 
-    # Leg 2: the probe's transcription, from the identical inputs.
+    # Leg 2: the probe's transcription, from the identical inputs, on the division
+    # the array path just stepped with (the region plan its sub-step installed).
+    record = region_plan_record(fields)
     state = {name: before[name].copy() for name in target_names + aux_names}
     coefficients = probe.layer_coefficients(layer, sub_step == "step_B")
     probe.reference_pml_step(
@@ -179,7 +236,8 @@ def one_case(shape, boundaries, dtdx, sub_step) -> Dict[str, Any]:
         {name: before[name] for name in source_names},
         {name: state[name] for name in target_names},
         {name: state[name] for name in aux_names},
-        coefficients, np.float32(dtdx), sub_step, tuple(boundaries), "array_order")
+        coefficients, np.float32(dtdx), sub_step, tuple(boundaries), "array_order",
+        record=record)
 
     parts = {name: probe.bit_compare(array_path[name], state[name])
              for name in target_names + aux_names}
@@ -187,17 +245,19 @@ def one_case(shape, boundaries, dtdx, sub_step) -> Dict[str, Any]:
 
     # NEGATIVE CONTROL. An agreement is only evidence if a disagreement was
     # reachable: re-run the transcription with the ONE thing the gate exists to
-    # pin changed — the stencil regrouped to C's left-to-right association — and
-    # require that it does NOT match. At dtdx = 0.5 the scaling is exact in
-    # binary and the two groupings can legitimately coincide, which is precisely
-    # why 0.35 is in the sweep; the control is therefore only asserted there.
+    # pin changed — the stencil regrouped to the pairwise association the package
+    # carried until 0.10 — and require that it does NOT match. At dtdx = 0.5 the
+    # scaling is exact in binary and the two groupings can legitimately coincide,
+    # which is precisely why 0.35 is in the sweep; the control is therefore only
+    # asserted there.
     control = {name: before[name].copy() for name in target_names + aux_names}
     probe.reference_pml_step(
         np,
         {name: before[name] for name in source_names},
         {name: control[name] for name in target_names},
         {name: control[name] for name in aux_names},
-        coefficients, np.float32(dtdx), sub_step, tuple(boundaries), "kernel_order")
+        coefficients, np.float32(dtdx), sub_step, tuple(boundaries), "pairwise_order",
+        record=record)
     regrouped = probe.combine({name: probe.bit_compare(array_path[name], control[name])
                                for name in target_names + aux_names})
     case["regrouped_control"] = {
@@ -208,11 +268,9 @@ def one_case(shape, boundaries, dtdx, sub_step) -> Dict[str, Any]:
     }
 
     # The sub-step must actually have done something: a comparison of two
-    # unchanged copies is identical for the wrong reason.
-    moved = {name: not np.array_equal(before[name], array_path[name])
-             for name in target_names + aux_names}
-    case["arrays_changed"] = moved
-    case["all_arrays_changed"] = all(moved.values())
+    # unchanged copies is identical for the wrong reason. And an auxiliary the
+    # division gives no layer cell must NOT have moved (the auxiliary contract).
+    case.update(movement(before, array_path, target_names + aux_names, record, shape))
     return case
 
 
@@ -271,8 +329,10 @@ def one_constitutive_case(shape, boundaries, courant, side) -> Dict[str, Any]:
 
     coefficients = probe.layer_constitutive_coefficients(
         layer, probe.CONSTITUTIVE_HALF_INTEGER[side])
+    record = region_plan_record(fields)
     state = {name: before[name].copy() for name in targets + auxiliaries}
-    probe.reference_constitutive_step(side, arrays, state, coefficients, "array_order")
+    probe.reference_constitutive_step(side, arrays, state, coefficients, "array_order",
+                                      record=record)
     case["vs_stepping"] = probe.combine(
         {name: probe.bit_compare(array_path[name], state[name])
          for name in targets + auxiliaries})
@@ -282,7 +342,8 @@ def one_constitutive_case(shape, boundaries, courant, side) -> Dict[str, Any]:
     # multiplicands here are the PML coefficients themselves (§12.2) and not the
     # Courant scaling — there is no exact-in-binary case to exempt.
     control = {name: before[name].copy() for name in targets + auxiliaries}
-    probe.reference_constitutive_step(side, arrays, control, coefficients, "regrouped")
+    probe.reference_constitutive_step(side, arrays, control, coefficients, "regrouped",
+                                      record=record)
     regrouped = probe.combine({name: probe.bit_compare(array_path[name], control[name])
                                for name in targets + auxiliaries})
     case["regrouped_control"] = {
@@ -292,10 +353,7 @@ def one_constitutive_case(shape, boundaries, courant, side) -> Dict[str, Any]:
         "asserted": True,
     }
 
-    moved = {name: not np.array_equal(before[name], array_path[name])
-             for name in targets + auxiliaries}
-    case["arrays_changed"] = moved
-    case["all_arrays_changed"] = all(moved.values())
+    case.update(movement(before, array_path, targets + auxiliaries, record, shape))
     del grid
     return case
 
@@ -428,9 +486,11 @@ def one_dispersive_case(shape, boundaries, courant, counts) -> Dict[str, Any]:
         for i in range(len(states)) for c in states[i].driven())
 
     coefficients = probe.layer_constitutive_coefficients(layer, True)
+    record = region_plan_record(fields)
     state_arrays = {name: before[name].copy() for name in targets + auxiliaries}
     probe.reference_dispersive_constitutive_step(
-        arrays, state_arrays, coefficients, pole_names, "array_order", "sequential")
+        arrays, state_arrays, coefficients, pole_names, "array_order", "sequential",
+        record=record)
     case["vs_stepping"] = probe.combine(
         {name: probe.bit_compare(array_path[name], state_arrays[name])
          for name in targets + auxiliaries})
@@ -442,7 +502,8 @@ def one_dispersive_case(shape, boundaries, courant, counts) -> Dict[str, Any]:
             ("reversed_poles_control", "array_order", "reversed", multi_pole)):
         control = {name: before[name].copy() for name in targets + auxiliaries}
         probe.reference_dispersive_constitutive_step(
-            arrays, control, coefficients, pole_names, grouping, pole_grouping)
+            arrays, control, coefficients, pole_names, grouping, pole_grouping,
+            record=record)
         verdict = probe.combine({name: probe.bit_compare(array_path[name], control[name])
                                  for name in targets + auxiliaries})
         case[label] = {
@@ -452,10 +513,7 @@ def one_dispersive_case(shape, boundaries, courant, counts) -> Dict[str, Any]:
             "asserted": asserted,
         }
 
-    moved = {name: not np.array_equal(before[name], array_path[name])
-             for name in targets + auxiliaries}
-    case["arrays_changed"] = moved
-    case["all_arrays_changed"] = all(moved.values())
+    case.update(movement(before, array_path, targets + auxiliaries, record, shape))
     del grid
     return case
 
@@ -512,11 +570,12 @@ def one_fused_pair_case(shape, boundaries, dtdx) -> Dict[str, Any]:
     case["zero_metal_matches_coverage"] = list(zero_metal) == list(
         zero_metal_axes(grid))
 
+    record = region_plan_record(fields)
     state = {name: before[name].copy() for name in names}
     probe.reference_fused_pair_step(
         np, arrays, state, probe.layer_coefficients(layer, True),
         probe.layer_constitutive_coefficients(layer, False),
-        np.float32(dtdx), boundaries, zero_metal, "array_order")
+        np.float32(dtdx), boundaries, zero_metal, "array_order", record=record)
     case["vs_stepping"] = probe.combine(
         {name: probe.bit_compare(array_path[name], state[name]) for name in names})
 
@@ -524,7 +583,7 @@ def one_fused_pair_case(shape, boundaries, dtdx) -> Dict[str, Any]:
     probe.reference_fused_pair_step(
         np, arrays, control, probe.layer_coefficients(layer, True),
         probe.layer_constitutive_coefficients(layer, False),
-        np.float32(dtdx), boundaries, zero_metal, "regrouped")
+        np.float32(dtdx), boundaries, zero_metal, "regrouped", record=record)
     regrouped = probe.combine({name: probe.bit_compare(array_path[name], control[name])
                                for name in names})
     case["regrouped_control"] = {
@@ -533,9 +592,7 @@ def one_fused_pair_case(shape, boundaries, dtdx) -> Dict[str, Any]:
         "max_ulp": regrouped.get("max_ulp", 0),
         "asserted": True,
     }
-    moved = {name: not np.array_equal(before[name], array_path[name]) for name in names}
-    case["arrays_changed"] = moved
-    case["all_arrays_changed"] = all(moved.values())
+    case.update(movement(before, array_path, names, record, shape))
     del grid
     return case
 
@@ -588,17 +645,18 @@ def one_fused_electric_case(shape, boundaries, dtdx) -> Dict[str, Any]:
 
     curl_coefficients = probe.layer_coefficients(layer, False)
     constitutive_coefficients = probe.layer_constitutive_coefficients(layer, True)
+    record = region_plan_record(fields)
     state = {name: before[name].copy() for name in names}
     fused_electric.reference_fused_electric_step(
         np, arrays, state, curl_coefficients, constitutive_coefficients,
-        np.float32(dtdx), boundaries, zero_metal, "array_order")
+        np.float32(dtdx), boundaries, zero_metal, "array_order", record=record)
     case["vs_stepping"] = probe.combine(
         {name: probe.bit_compare(array_path[name], state[name]) for name in names})
 
     control = {name: before[name].copy() for name in names}
     fused_electric.reference_fused_electric_step(
         np, arrays, control, curl_coefficients, constitutive_coefficients,
-        np.float32(dtdx), boundaries, zero_metal, "regrouped")
+        np.float32(dtdx), boundaries, zero_metal, "regrouped", record=record)
     regrouped = probe.combine({
         name: probe.bit_compare(array_path[name], control[name]) for name in names})
     case["regrouped_control"] = {
@@ -607,9 +665,7 @@ def one_fused_electric_case(shape, boundaries, dtdx) -> Dict[str, Any]:
         "max_ulp": regrouped.get("max_ulp", 0),
         "asserted": True,
     }
-    moved = {name: not np.array_equal(before[name], array_path[name]) for name in names}
-    case["arrays_changed"] = moved
-    case["all_arrays_changed"] = all(moved.values())
+    case.update(movement(before, array_path, names, record, shape))
     del grid
     return case
 
@@ -671,7 +727,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 f"identical={verdict['bit_identical']} "
                 f"(differing={verdict['differing_floats']}/{verdict['total_floats']}, "
                 f"maxulp={verdict.get('max_ulp', 0)}) "
-                f"all_arrays_changed={case['all_arrays_changed']} "
+                f"moved_as_contracted={case['moved_as_contracted']} "
                 f"regrouped_control_differs="
                 f"{not case['regrouped_control']['bit_identical_to_stepping']}"
                 f"{'' if case['regrouped_control']['asserted'] else ' (not asserted at this dtdx)'} "
@@ -682,7 +738,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     ran = [c for c in results["cases"] if not c.get("skipped")]
     identical = [c for c in ran if c["vs_stepping"]["bit_identical"]]
-    inert = [c for c in ran if not c["all_arrays_changed"]]
+    inert = [c for c in ran if not c["moved_as_contracted"]]
     asserted_controls = [c for c in ran if c["regrouped_control"]["asserted"]]
     blind_controls = [c for c in asserted_controls
                       if c["regrouped_control"]["bit_identical_to_stepping"]]
@@ -699,7 +755,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "ran": len(ran),
         "skipped": len(results["cases"]) - len(ran),
         "identical": len(identical),
-        "cases_with_an_unchanged_array": len(inert),
+        "cases_moving_against_the_contract": len(inert),
+        "cases_with_an_auxiliary_unmoved_by_the_contract": sum(
+            1 for c in ran if c["unmoved_by_the_contract"]),
         "regrouped_control_asserted": len(asserted_controls),
         "regrouped_control_indistinguishable": len(blind_controls),
         "dispersive_ran": len(dispersive),

@@ -99,6 +99,8 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
 )
 from meep_gpu.pml import PML  # noqa: E402
 
+from gate_chunk_records import layer_record  # noqa: E402
+
 #: Per-case seeds are drawn from a DIGEST of the case label, never ``hash()``:
 #: Python salts ``hash()`` of a string with ``PYTHONHASHSEED``, so a hash-seeded
 #: probe draws a different fixture every process and a failing case cannot be
@@ -251,8 +253,13 @@ def run_interleaving_equivalence(label: str, cell: Sequence[float], boundaries: 
     for side, (fields, pml) in (("reference", (reference, reference_pml)),
                                 ("interleaved", (actual, actual_pml))):
         residency = Residency()
-        electric = planner(fields, pml, residency)
-        polarization = ade_update_p.plan_metal_ade_update_p(fields, pml, residency)
+        # The one-rank chunk record of this grid and layer: the dispersive E plan
+        # selects its form per chunk on it and the ADE plan its drive.
+        record = layer_record(fields.grid, pml)
+        electric = (planner(fields, pml, residency, chunk_bounds=record) if pml_active
+                    else planner(fields, pml, residency))
+        polarization = ade_update_p.plan_metal_ade_update_p(fields, pml, residency,
+                                                            chunk_bounds=record)
         if electric is None or polarization is None:
             reasons = list(ade_update_p.metal_ade_update_p_coverage(
                 fields, pml, residency).reasons)

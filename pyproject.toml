@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 #     python tools/rename_distribution.py --name NEW-NAME --apply
 # and never edit the name by hand.
 name = "meep-gpu"
-version = "0.9.2"
+version = "1.0.0"
 description = "GPU time stepping for MEEP simulations: steps a simulation built by the user's own MEEP installation on one NVIDIA or Apple GPU"
 readme = "README.md"
 license = "GPL-2.0-or-later"
@@ -28,7 +28,7 @@ maintainers = [
 ]
 keywords = ["FDTD", "MEEP", "GPU", "CUDA", "Metal", "electromagnetics", "photonics"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: Physics",
   "Programming Language :: Python :: 3",
@@ -47,9 +47,11 @@ classifiers = [
 # import MEEP: only the three entry points that accept an `mp.Simulation` do.
 # NumPy is the only run-time dependency. SciPy is not one: the single route that
 # needs it is MEEP's own 2-D Gaussian-beam source synthesis, and the lift names
-# SciPy in its refusal when it is missing.
+# SciPy in its refusal when it is missing. NumPy 2.0 is the floor: the array
+# path's identity with MEEP (Tier A, docs/development/testing.md) is judged on
+# NumPy 2 releases only.
 dependencies = [
-  "numpy>=1.26.0"
+  "numpy>=2.0"
 ]
 
 [project.urls]
@@ -75,9 +77,9 @@ Changelog = "https://github.com/Erised-AI-Inc/meep-gpu/blob/main/CHANGELOG.md"
 #     certified one, so an exact pin here could only repeat it or contradict it.
 #     The range is not the correctness pin: an installed Triton version that is
 #     not in the certification ledger is supported inside this same range and runs
-#     recorded as not certified (MEEP_GPU_ALLOW_UNCERTIFIED=0 refuses it by name
+#     recorded as not certified (MEEP_GPU_HARDWARE=certified refuses it by name
 #     and takes the array path); outside it the package refuses it by name
-#     unless MEEP_GPU_ALLOW_UNCERTIFIED=1.
+#     unless MEEP_GPU_HARDWARE=any.
 #     Triton 3.1.0 publishes wheels for Python 3.10 to 3.12, so the NVIDIA route
 #     needs one of those interpreters.
 #   * The extras install Python packages only. The NVIDIA driver, the CUDA
@@ -112,7 +114,7 @@ fdtd-gpu-triton = [
 # metalfe-32023.850.10, PYTORCH_MPS_FAST_MATH unset or 0. The GPU and the
 # frontend (one per macOS build) belong to the host and cannot be pinned by an
 # installer. On any other environment the Metal kernels run and the run is
-# recorded as not certified, unless MEEP_GPU_ALLOW_UNCERTIFIED=0 refuses it by
+# recorded as not certified, unless MEEP_GPU_HARDWARE=certified refuses it by
 # name to the array path.
 # ---------------------------------------------------------------------------
 apple = [

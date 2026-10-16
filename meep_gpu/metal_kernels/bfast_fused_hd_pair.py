@@ -69,8 +69,8 @@ certified template's own, character for character; a spelling that drifted makes
 wrong volume.
 
 ``s0``/``s1``/``s2`` are read and written at the THREAD'S OWN CELL only
-(``st0 = s0[ii]`` ... ``s0[ii] = st0 + adv0``), so they are stepped in place and no
-thread observes another thread's store -- the same argument ``D`` and ``fu_D`` rest
+(``fp0 = s0[ii]`` ... ``s0[ii] = F0`` on owned cells), so they are stepped in place and
+no thread observes another thread's store -- the same argument ``D`` and ``fu_D`` rest
 on. The state is not part of the rotation and must not be: the array path does not
 rotate it either, and the driver's flux backup/restore around the magnetic half-step
 (driver.py:4126-4135) depends on the mirror wrapping ``fields.f_bfast_*`` itself.
@@ -152,6 +152,7 @@ from ..triton_kernels.bfast_curl import BFAST_STATE_NAMES, bfast_curl_coefficien
 from ..triton_kernels.coverage import CONSTITUTIVE_SIDES, Coverage
 from . import bfast_curl as _bfast
 from . import coefficient_pack, shaders
+from . import chunk_bounds as _chunk_bounds
 from . import fused_hd_pair as _plain
 from . import offdiag_weld_common as _weld
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
@@ -299,7 +300,8 @@ __all__ = [
     "UNPACKED_POINTER_BINDINGS", "WELD_OWED",
     "bfast_fused_hd_pair_source", "bfast_welded_curl_tail",
     "compile_bfast_fused_hd_pair", "metal_bfast_fused_hd_pair_coverage",
-    "plan_metal_bfast_fused_hd_pair", "refuted_separate_scalar_source",
+    "params_record_dtype", "plan_metal_bfast_fused_hd_pair",
+    "refuted_separate_scalar_source",
     "refuted_unpacked_pointer_source", "register_arms",
     "shipped_signature_bindings",
 ]
@@ -323,7 +325,7 @@ def bfast_welded_curl_tail(codes: Sequence[int],
     how the certified curl spells a neighbour index reaches both welds without a
     second edit, and a needle that stopped matching RAISES here.
 
-    THE BFAST TAIL SURVIVES THE LIFT UNTOUCHED, and that is a property of what it
+    THE BFAST PASS SURVIVES THE LIFT UNTOUCHED, and that is a property of what it
     touches rather than an exemption: it reads ``s0``/``s1``/``s2`` at the thread's
     own cell and the curl's OWN registers, and contains no ``gN[`` at all. The final
     "no ``gN[`` survives" check is what makes that a measurement.
@@ -385,10 +387,13 @@ using namespace metal;
 
 __CONTRACT__
 
+__RECORD_STRUCT__
+
 struct Params {
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
     float k1_0; float k2_0; float k1_1; float k2_1; float k1_2; float k2_2;
 __PACK_FIELDS__
+__RECORD_MEMBER__
 };
 
 __H_CELL__
@@ -433,19 +438,23 @@ kernel void bfast_fused_hd_pair_step(
     float k1_1 = prm.k1_1, k2_1 = prm.k2_1;
     float k1_2 = prm.k1_2, k2_2 = prm.k2_2;
 __PACK_PROLOGUE__
+    // The chunk record rides in Params; both lifted bounds blocks and every h_cell
+    // call read it as `cb`.
+__RECORD_ALIAS__
 __PROLOGUE__
     // --- THE WELD: update_H, computed into registers and stored to SCRATCH ------
     // Nothing written here is read by this launch. The curl half below takes its
     // OWN cell's magnetic field from these registers and recomputes every foreign
     // tap from PRE-LAUNCH state through the same `h_cell`, so no thread observes
-    // another thread's store; the launcher rotates H/f_w_H afterwards.
+    // another thread's store; the launcher rotates H/f_w_H afterwards. Every scratch
+    // word is written: off the dsigw cells `wnext` is the pre-launch f_w word.
     h_cell_result own = h_cell(i, j, k, __H_CELL_ARGS__);
     ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;
-    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;
+    wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;
 
     // --- step_D, BFAST (stepping.step_D / _bfast_term:896 / _apply_pml_update) --
     // D, fu_D and the Tustin state f_bfast_D update IN PLACE and that is safe by
-    // construction: the curl and the tail read and write them at the THREAD'S OWN
+    // construction: the curl and the pass read and write them at the THREAD'S OWN
     // CELL only (`f0[ii]`, `u0[ii]`, `s0[ii]`), so no thread reads a value another
     // thread wrote.
 __CURL__
@@ -476,6 +485,7 @@ def bfast_fused_hd_pair_source(codes: Sequence[int],
                 .split(_plain.DECODE_END, 1)[0] + _plain.DECODE_END)
     return shaders.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
+        **_plain.record_substitutions(),
         "__PACK_FIELDS__": coefficient_pack.params_fields(PACKED_VECTORS),
         "__PACK_PROLOGUE__": coefficient_pack.prologue("cpack", PACKED_VECTORS),
         "__H_CELL__": _plain.h_cell_function(contract),
@@ -674,6 +684,13 @@ def metal_bfast_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = Non
             reasons.append(
                 f"{name} is not allocated; this weld rotates it against a "
                 f"plan-owned scratch twin after every launch")
+
+    # THE RUN'S FIRST update_H, on the composer's rule for the base constitutive kernel
+    # this half lifts (launch.h_start_reasons): the array path starts H and f_w from B
+    # on the dsigw cells at that update and this weld does not.
+    from .launch import h_start_reasons  # noqa: PLC0415 - launch imports this family's peers
+    reasons.extend(f"constitutive half: {reason}"
+                   for reason in h_start_reasons(fields, sources))
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
@@ -681,10 +698,28 @@ def metal_bfast_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = Non
 # The plan
 # ---------------------------------------------------------------------------
 
+def _params_fields() -> List[Tuple[str, Any]]:
+    """The ``Params`` members in struct order: five grid scalars, the six Tustin
+    scalars, the nine pack offsets and the chunk record."""
+    return ([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
+             ("dtdx", "<f4")]
+            + [(name, "<f4") for name in K_SCALARS]
+            + coefficient_pack.record_dtype_fields(PACKED_VECTORS)
+            + _chunk_bounds.record_dtype_fields("cb"))
+
+
+def params_record_dtype() -> Any:
+    """The host record's dtype, ONE HOME FOR THE LAYOUT: every member is 4 bytes, so
+    the natural packed layout is Metal's."""
+    import numpy as np  # noqa: PLC0415
+
+    return np.dtype(_params_fields())
+
+
 def _params_tensor(shape: Sequence[int], dtdx: float, ks: Sequence[float],
-                   offsets: Mapping[str, int], device: str) -> Any:
-    """The five grid scalars, the six Tustin scalars and the nine pack offsets as
-    one device record.
+                   offsets: Mapping[str, int], device: str, chunk_bounds: Any) -> Any:
+    """The five grid scalars, the six Tustin scalars, the nine pack offsets and the
+    chunk record (checked against the shape first) as one device record.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused pair's
     ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and complex64
@@ -693,16 +728,16 @@ def _params_tensor(shape: Sequence[int], dtdx: float, ks: Sequence[float],
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
-    fields = ([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
-               ("dtdx", "<f4")]
-              + [(name, "<f4") for name in K_SCALARS]
-              + coefficient_pack.record_dtype_fields(PACKED_VECTORS))
-    record = np.zeros(1, dtype=np.dtype(fields))
+    fields = _params_fields()
+    record = np.zeros(1, dtype=params_record_dtype())
     nx, ny, nz = (int(n) for n in shape)
-    record[0] = tuple(
-        [nx, ny, nz, nx * ny * nz, np.float32(dtdx)]
-        + [np.float32(value) for value in ks]
-        + [int(offsets[name]) for name in PACKED_VECTORS])
+    scalars = ([nx, ny, nz, nx * ny * nz, np.float32(dtdx)]
+               + [np.float32(value) for value in ks]
+               + [int(offsets[name]) for name in PACKED_VECTORS])
+    for (name, _kind), value in zip(fields, scalars):
+        record[name] = value
+    record["cb"] = _chunk_bounds.pack(
+        _chunk_bounds.plan_words(chunk_bounds, (nx, ny, nz), f"{FAMILY} Params"))
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -712,8 +747,12 @@ def plan_metal_bfast_fused_hd_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional["_weld.ScratchWeldPairPlan"]:
     """Build the BFAST fused H/D plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``) and has no default; it rides in ``Params``.
 
     ``None`` is the only refusal, for the reason :func:`.launch.plan_pml_curl`
     gives: a configuration this kernel does not carry must fall back to the array
@@ -799,7 +838,7 @@ def plan_metal_bfast_fused_hd_pair(
     static = (flux + displacement + auxiliary + state + [pack]
               + [_params_tensor(grid.shape, dtdx, ks,
                                 coefficient_pack.offsets_for(layout),
-                                residency.device)])
+                                residency.device, chunk_bounds)])
     assert (2 * len(ROTATED_NAMES) + len(static)) == PACKED_BINDINGS, (
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     assert PACKED_BINDINGS <= MAX_BUFFER_BINDINGS, (
@@ -827,7 +866,7 @@ def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
         return None
     return plan_metal_bfast_fused_hd_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

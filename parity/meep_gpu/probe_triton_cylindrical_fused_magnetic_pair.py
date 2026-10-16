@@ -40,16 +40,20 @@ WHAT THIS GATE REFUSES TO INFER
 * **A name that matches nothing is not a weaker check, it is an absent one.** The
   compared-volume list is asserted non-empty and asserted to contain the six
   magnetic volumes by name.
-* **A record cut under one subnormal policy licenses nothing under the other.**
-  BOTH policies are run. ``keep`` is
-  :data:`~meep_gpu.triton_kernels.complex_fields.CERTIFIED_UNDER_SUBNORMAL_POLICY`
-  and is the one the expansion licence is cut under; ``flush`` is run as a
-  SEPARATE, SEPARATELY REPORTED cut, and the two are never averaged.
+* **The two subnormal policies are two cuts, in two processes.** A process holds
+  ONE policy (its CuPy cache directory carries one policy token), so each run cuts
+  the policy its campaign names in ``MEEP_GPU_SUBNORMAL_POLICY`` (``keep``, the
+  arms' install default, when unset) and labels every row with it; the
+  certification round runs the probe once under ``keep`` and once under ``flush``,
+  and the two are never averaged. Until 2026-10-10 one process looped over both
+  and the second install returned the first's memoised stamp, so every "flush
+  cut" this probe recorded ran under keep (MEASURED on its released artifacts).
 
 WHAT IT DOES NOT CLAIM. Nothing about throughput. The fusion removes ONE LAUNCH
-and, on a walled run, one host wall pass; it does NOT remove the radial prefix
-scan, which stays on the array path because its float32 summation order defines
-the answer. Every row records the prefix cost on both compositions.
+and, on a walled run, one host wall pass; it does NOT remove the radial scan
+(``cylindrical_triton.cyl_radial_difference``, column-serial because its float32
+summation order defines the answer), which both compositions launch once per
+step. Every row records the scan launches on both compositions.
 
 THE FAMILY IS NOT WIRED. ``launch.plan_step`` assigns at most one plan per slot
 and this product spans five driver call sites. Nothing in ``launch.py`` names it,
@@ -81,15 +85,7 @@ for _path in (str(API_ROOT), str(HERE)):
 import numpy as np  # noqa: E402
 
 import gate_triton_complex as shared  # noqa: E402
-
-#: The keep-cut expansion probe artifacts in this tree, newest first. The device
-#: legs consume whichever the environment names; the row records which, so the
-#: artifact says what licensed its own bytes.
-PROBE_CANDIDATES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/expansion_probe_2026-08-17/expansion_probe_keep.json",
-    "parity/meep_gpu/results/complex_expansion_convention_2026-08-16/results/"
-    "probe_keep/probe.json",
-)
+import flush_vacuity  # noqa: E402 - the flush not-applicable rule, beside this file
 
 #: The product's own module path, hashed into the artifact.
 FAMILY_MODULE = "meep_gpu/triton_kernels/cylindrical_fused_magnetic_pair.py"
@@ -113,11 +109,26 @@ REQUIRED: Tuple[str, ...] = ("Bx", "By", "Bz", "Hx", "Hy", "Hz")
 #: ``0x80000000`` — the negative-zero word the zero-init census counts.
 NEG_ZERO = 0x80000000
 
-#: The two float32 subnormal policies. ``keep`` is the arms' certification policy
-#: and the one the expansion licence is cut under; ``flush`` is run as a SEPARATE
-#: cut and reported separately. They are never averaged: a keep-cut licence read by
-#: a flush process is a broken comparison, not a platform verdict.
+#: The two float32 subnormal policies this probe certifies, ONE PER PROCESS: a run
+#: cuts the one its campaign names (:func:`campaign_policy`) and refuses any other
+#: name. ``keep`` is the arms' install default; ``flush`` is the certification
+#: round's second campaign. They are never averaged.
 POLICIES: Tuple[str, ...] = ("keep", "flush")
+
+
+def campaign_policy() -> str:
+    """The policy this run cuts: ``MEEP_GPU_SUBNORMAL_POLICY`` (keep when unset).
+
+    Read through ``composition_policy.requested_policy``, the reader the composition
+    gates share, so a value outside :data:`POLICIES` is refused by name.
+    """
+    import composition_policy  # noqa: PLC0415 - beside this file
+
+    policy = composition_policy.requested_policy()
+    if policy not in POLICIES:
+        raise composition_policy.CampaignPolicyRefused(
+            f"{policy!r} is not one of the policies this probe cuts {list(POLICIES)}")
+    return policy
 
 #: ``(name, shape, m, courant, z_metallic, accurate, pml_cells, value_class)``.
 #:
@@ -265,6 +276,17 @@ def seed_state(xp, fields, shape, value_class: str, label: str) -> Dict[str, int
     return {"nonzero_words_written": written}
 
 
+def subnormal_census(*snapshots: Dict[str, np.ndarray]) -> int:
+    """How many float32 SUBNORMAL words the snapshots hold, classified off the bits."""
+    total = 0
+    for snap in snapshots:
+        for value in snap.values():
+            raw = np.asarray(value).view(np.uint32)
+            total += int(np.count_nonzero(((raw >> 23) & 0xFF) == 0)
+                         - np.count_nonzero((raw & 0x7FFFFFFF) == 0))
+    return total
+
+
 def to_host(array) -> np.ndarray:
     getter = getattr(array, "get", None)
     return np.asarray(getter() if callable(getter) else array)
@@ -378,13 +400,13 @@ def array_seam(fields, pml) -> None:
     stepping.update_H(fields, pml)
 
 
-def separate_plans(fields, pml, probe):
+def separate_plans(fields, pml):
     """The two ALREADY CERTIFIED Triton products this fusion replaces."""
     from meep_gpu.triton_kernels import cylindrical_complex as cyl  # noqa: PLC0415
 
-    curl = cyl.plan_cylindrical_complex_curl(fields, pml, "step_B", probe=probe)
+    curl = cyl.plan_cylindrical_complex_curl(fields, pml, "step_B")
     constitutive = cyl.plan_cylindrical_complex_constitutive(
-        fields, pml, "H", probe=probe)
+        fields, pml, "H")
     return curl, constitutive
 
 
@@ -405,9 +427,34 @@ def separate_seam(fields, pml, curl, constitutive) -> None:
 # One row
 # ===========================================================================
 
-def run_case(xp, case, launches: int, policy: str, probe,
-             mutant: Any = None, expansion_override: Optional[int] = None,
-             ) -> Dict[str, Any]:
+
+def at_rest_by_the_auxiliary_contract(pml: Any) -> Tuple[str, ...]:
+    """The auxiliary volumes the aligned forms never touch on this run, both seams.
+
+    DERIVED, not listed: ``fu`` of a curl target is read and written only where the
+    target's chunk carries its dsigu layer, and ``f_w`` of a constitutive component only
+    where its own axis carries one (the auxiliary contract, KERNELS.md section 1 C2). An
+    axis with no absorber on either face (``PML.axis_has_pml``: phi on every Dcyl run, z on
+    a periodic one) carries no layer in any chunk, so the target whose dsigu axis it is
+    (``cylindrical_triton.DSIG_AXES``) and the component whose own axis it is keep their
+    seeded words. They are still compared word for word; they are only excused from the
+    non-vacuity floor, which would otherwise call every row vacuous over them.
+    """
+    from meep_gpu.triton_kernels.coverage import CONSTITUTIVE_SIDES  # noqa: PLC0415
+    from meep_gpu.triton_kernels.cylindrical_triton import DSIG_AXES, SUB_STEPS  # noqa: PLC0415
+
+    rest = []
+    for sub_step in ("step_B", "step_D"):
+        rest += ["fu_" + target for index, target in enumerate(SUB_STEPS[sub_step]["targets"])
+                 if not pml.axis_has_pml(DSIG_AXES[index][1])]
+    # A constitutive component's own axis is its index (x, y, z = r, phi, z).
+    for side in ("H", "E"):
+        rest += ["f_w_" + name for index, name in enumerate(CONSTITUTIVE_SIDES[side]["targets"])
+                 if not pml.axis_has_pml(index)]
+    return tuple(rest)
+
+def run_case(xp, case, launches: int, policy: str,
+             mutant: Any = None) -> Dict[str, Any]:
     """Three routes in lockstep from ONE seed; stop at the FIRST byte divergence."""
     from meep_gpu.triton_kernels import (  # noqa: PLC0415
         cylindrical_fused_magnetic_pair as product)
@@ -427,7 +474,6 @@ def run_case(xp, case, launches: int, policy: str, probe,
         "pml_cells": pml_cells, "value_class": value_class,
         "launches_budget": launches, "policy": policy,
         "mutated": mutant is not None,
-        "expansion_override": expansion_override,
         "min_bound_kms_curl_lattice": minimum_bound_kms(fused_pml, True),
     }
 
@@ -435,22 +481,17 @@ def run_case(xp, case, launches: int, policy: str, probe,
         mutant if mutant is not None
         else product.cyl_complex_fused_curl_constitutive_B_kernel())
     plan = product.plan_cylindrical_fused_magnetic_pair(
-        fused, fused_pml, sources=(), num_warps=1, kernel=counter, probe=probe)
+        fused, fused_pml, sources=(), num_warps=1, kernel=counter)
     if plan is None:
         verdict = product.cylindrical_fused_magnetic_pair_coverage(
-            fused, fused_pml, (), probe=probe)
+            fused, fused_pml, ())
         row.update({"passed": False, "refused": True,
                     "reasons": list(verdict.reasons)})
         return row
-    if expansion_override is not None:
-        # THE ARM, OVERRIDDEN. Not a source rewrite: the constexpr IS the licence,
-        # so flipping it here measures whether the licence is load-bearing.
-        plan.expansion = int(expansion_override)
     row["plan"] = repr(plan)
     row["plan_replaces"] = list(plan.replaces)
-    row["licensed_expansion"] = plan.expansion
 
-    curl, constitutive = separate_plans(separate, separate_pml, probe)
+    curl, constitutive = separate_plans(separate, separate_pml)
     row["separate_products"] = {"curl": type(curl).__name__ if curl else None,
                                 "constitutive": (type(constitutive).__name__
                                                  if constitutive else None)}
@@ -462,6 +503,8 @@ def run_case(xp, case, launches: int, policy: str, probe,
     opening = snapshot(fused)
     opening_sources = source_snapshot(fused)
     row["negative_zero_census_at_seed"] = negative_zero_census(opening)
+    row["subnormal_census_at_seed"] = subnormal_census(opening, opening_sources)
+    row["seed_conditions"] = flush_vacuity.seed_conditions()
     # EVER-MOVED ACROSS THE SEQUENCE, not final-versus-seed.
     #
     # MEASURED ON THE GPU HOST 2026-08-20, and it is a harness defect of the class this
@@ -517,7 +560,10 @@ def run_case(xp, case, launches: int, policy: str, probe,
         "control_divergence": control,
         "arrays_compared": sorted(final),
         "arrays_moved": ever_moved,
-        "arrays_never_moved": sorted(set(final) - set(ever_moved)),
+        "arrays_at_rest_by_contract": sorted(
+            set(final) & set(at_rest_by_the_auxiliary_contract(fused_pml)) - set(ever_moved)),
+        "arrays_never_moved": sorted(set(final) - set(ever_moved)
+                                     - set(at_rest_by_the_auxiliary_contract(fused_pml))),
         "source_volumes_changed": sources_changed,
         "negative_zero_census_peak": peak_census,
         "nan_census": nan_census(fused),
@@ -537,7 +583,19 @@ def run_case(xp, case, launches: int, policy: str, probe,
                         f"not {launches}: this row may be a silent fallback")
     # THE NON-VACUITY FLOOR. A row whose state never moved compares a no-op with a
     # no-op and passes for a reason that has nothing to do with the kernel.
-    if row["arrays_never_moved"]:
+    #
+    # UNDER FLUSH THE BAND CLASS CANNOT BE SEEDED: every value it draws is subnormal,
+    # so the flushing host writes zeros and nothing can move. flush_vacuity MEASURES
+    # that (the installed policy, the host FPU at seed time, and a seed census of 0
+    # subnormal words) before the row is declared not applicable; under keep, or if
+    # any subnormal word survived the seeding, the floor applies unchanged.
+    band_not_applicable = (
+        value_class == "subnormal_band"
+        and flush_vacuity.subnormal_class_not_applicable(
+            row["subnormal_census_at_seed"], row["seed_conditions"]))
+    if band_not_applicable:
+        row["not_applicable"] = band_not_applicable
+    if row["arrays_never_moved"] and not band_not_applicable:
         failures.append(f"these volumes NEVER MOVED, so this row is vacuous over "
                         f"them: {row['arrays_never_moved']}")
     if sources_changed:
@@ -598,22 +656,13 @@ def compile_mutated(source: str, entry: str):
     module global.
     """
     header = (
+        "import importlib\n"
+        "globals().update({k: v for k, v in vars(importlib.import_module("
+        "'meep_gpu.triton_kernels.cylindrical_fused_magnetic_pair')).items() if not k.startswith('__')})\n"
         "import triton\n"
-        "import triton.language as tl\n"
-        "from meep_gpu.triton_kernels.complex_fields import (\n"
-        "    _mul_coefficient_left, _mul_field_left)\n"
-        "from meep_gpu.triton_kernels.cylindrical_complex import (\n"
-        "    _mul_general_coefficient_left)\n"
-        "PERIODIC = tl.constexpr(0)\n"
-        "METALLIC = tl.constexpr(1)\n"
-        "M_ZERO = tl.constexpr(0)\n"
-        "M_ONE = tl.constexpr(1)\n"
-        "M_MANY = tl.constexpr(2)\n\n"
-        # shipped_block() starts at `def`, so the DECORATOR is supplied here. Without
-        # it the mutated module defines a plain Python function, `CountingKernel`
-        # raises "'function' object is not subscriptable", and the whole mutation
-        # battery is unarmed. Measured on the GPU host 2026-08-20.
-        "@triton.jit\n")
+        "import triton.language as tl\n\n"
+        # shipped_block() starts at `def`, so the DECORATOR is supplied here.
+        "@triton.jit(do_not_specialize=[\"start_h\"])\n")
     handle = tempfile.NamedTemporaryFile(
         "w", suffix="_mutated_cylfused.py", delete=False, encoding="utf-8")
     handle.write(header + source)
@@ -665,26 +714,27 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "            v2_re = tl.where(at_r, 0.0, v2_re)", "catch"),
     # ---- THE CYLINDRICAL CURL ----------------------------------------------
     "imr_partners_swapped":
-        ("m1_z_metallic",
-         "            m0_re, m0_im = _mul_general_coefficient_left(q0_re, q0_im, c_re, c_im,",
-         "            m0_re, m0_im = _mul_general_coefficient_left(q0_re, q0_im, a_re, a_im,",
-         "catch"),
+        ("m1_z_metallic", "            i0_im = r0 * c_re",
+         "            i0_im = r0 * a_re", "catch"),
     "imr_row_indexed_by_z":
-        ("m1_z_metallic", "            q0_re = tl.load(c0 + 2 * i, mask=live, other=0.0)",
-         "            q0_re = tl.load(c0 + 2 * k, mask=live, other=0.0)", "catch"),
-    "imr_sign_flipped":
-        ("m1_z_metallic", "            curl0_re = curl0_re - m0_re",
-         "            curl0_re = curl0_re + m0_re", "catch"),
-    "prefix_row_stride_dropped":
+        ("m1_z_metallic", "            r0 = tl.load(q0 + i, mask=live, other=0.0)",
+         "            r0 = tl.load(q0 + k, mask=live & (k < nx), other=0.0)", "catch"),
+    "imr_quarter_turn_sign_flipped":
+        ("m1_z_metallic", "            i0_re = (r0 * c_im) * -1.0",
+         "            i0_re = r0 * c_im", "catch"),
+    "imr_inside_form_dropped":
         ("m1_z_metallic",
-         "            pu_re = tl.load(pfx + 2 * (idx + nyz), mask=live, other=0.0)",
-         "            pu_re = tl.load(pfx + 2 * idx, mask=live, other=0.0)", "catch"),
-    "prefix_replaced_by_the_four_operand_grouping":
+         "            v0_re = tl.where(du0, v0_re - (si_z * d_re), v0_re - d_re)",
+         "            v0_re = v0_re - d_re", "catch"),
+    "radial_difference_read_a_row_off":
         ("m1_z_metallic",
-         "            curl2_re, curl2_im = _mul_coefficient_left(dtdx, pu_re - pd_re,\n"
-         "                                                       pu_im - pd_im, EXPANSION)",
-         "            curl2_re, curl2_im = _mul_coefficient_left(dtdx, t2_re,\n"
-         "                                                       t2_im, EXPANSION)",
+         "        curl2_re = dtdx * tl.load(rad + 2 * idx, mask=live, other=0.0)",
+         "        curl2_re = dtdx * tl.load(rad + 2 * (idx + nyz), mask=live & (i + 1 < nx), "
+         "other=0.0)", "catch"),
+    "radial_sum_replaced_by_the_raw_ep_difference":
+        ("m1_z_metallic",
+         "        curl2_re = dtdx * tl.load(rad + 2 * idx, mask=live, other=0.0)",
+         "        curl2_re = dtdx * (tl.load(g1 + 2 * o_r, mask=vr, other=0.0) - b_re)",
          "catch"),
     # ---- THE |m| = 1 AXIS INCREMENT (M_ONE body only) ----------------------
     "axis_increment_not_negated":
@@ -694,6 +744,12 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
     "axis_increment_reads_the_axis_row":
         ("m1_z_metallic", "                off = nyz + j * nz + k",
          "                off = j * nz + k", "catch"),
+    "axis_increment_in_float32":
+        ("m1_z_metallic",
+         "                factor = tl.load(courant + COURANT_MINUS)\n"
+         "                inc_re = tl.cast(tl.cast(s_re, tl.float64) * factor, tl.float32)",
+         "                factor = tl.load(courant + COURANT_MINUS)\n"
+         "                inc_re = s_re * tl.cast(factor, tl.float32)", "catch"),
     # ---- THE |m| >= 2 NEAR-AXIS HOLD (M_MANY body only) --------------------
     "axis_hold_skips_the_auxiliaries":
         ("m3_z_metallic", "            n0_re = tl.where(near, 0.0, n0_re)\n", "",
@@ -701,59 +757,59 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
     "axis_hold_covers_only_row_zero":
         ("m3_z_metallic", "            near = i < ZERO_ROWS", "            near = i == 0",
          "catch"),
-    # ---- THE CERTIFIED COMPLEX BASE ----------------------------------------
-    "curl_parens_flattened":
+    # ---- THE FORMS (Appendix A inversion; section 7.2 battery) ---------------
+    "curl_grouping_inverted_to_the_pairwise_one":
         ("m1_z_metallic",
-         "        t1_re = ((a_z_re - a_re) + (c_re - c_r_re))",
-         "        t1_re = (a_z_re - a_re + c_re - c_r_re)", "catch"),
-    "recurrence_axis_pair_swapped":
-        ("m1_z_metallic",
-         "        x_re, x_im = _mul_field_left(p0_re, p0_im, km_y, EXPANSION)",
-         "        x_re, x_im = _mul_field_left(p0_re, p0_im, km_z, EXPANSION)",
-         "catch"),
+         "        curl1_re = curl_stencil(a_z_re, a_re, c_re, c_r_re, dtdx, pz, pr)",
+         "        curl1_re = dtdx * ((a_z_re - a_re) + (c_re - c_r_re))", "catch"),
+    "membership_on_the_wrong_axis":
+        ("m1_z_metallic", "        du0 = record_in(cb, lattice + 8, k)",
+         "        du0 = record_in(cb, lattice + 0, k)", "catch"),
+    "whole_grid_recurrence":
+        ("m1_z_metallic", "        du0 = record_in(cb, lattice + 8, k)",
+         "        du0 = k >= 0", "catch"),
     "fu_store_dropped":
-        ("m1_z_metallic", "        tl.store(u0 + 2 * idx, n0_re, mask=live)\n", "",
+        ("m1_z_metallic", "        tl.store(u0 + 2 * idx, n0_re, mask=um0)\n", "",
          "catch"),
     "flux_store_dropped":
         ("m1_z_metallic", "        tl.store(f0 + 2 * idx, v0_re, mask=live)\n", "",
          "catch"),
     "fw_store_dropped":
-        ("m1_z_metallic", "        tl.store(w0 + 2 * idx, src_re, mask=live)\n", "",
+        ("m1_z_metallic", "        tl.store(w0 + 2 * idx, src_re, mask=live & dw0)\n", "",
          "catch"),
     "constitutive_coefficient_index_moved":
         ("m1_z_metallic", "        kp_0 = tl.load(kp0 + i, mask=live, other=0.0)",
          "        kp_0 = tl.load(kp0 + j, mask=live, other=0.0)", "catch"),
     "constitutive_prev_read_after_write":
         ("m1_z_metallic",
-         "        prev_re = tl.load(w0 + 2 * idx, mask=live, other=0.0)   # BEFORE the store.\n"
-         "        prev_im = tl.load(w0 + 2 * idx + 1, mask=live, other=0.0)\n"
+         "        prev_re = tl.load(w0 + 2 * idx, mask=live & dw0, other=0.0)   # BEFORE the store.\n"
+         "        prev_im = tl.load(w0 + 2 * idx + 1, mask=live & dw0, other=0.0)\n"
          "        src_re = v0_re\n        src_im = v0_im\n"
-         "        tl.store(w0 + 2 * idx, src_re, mask=live)\n"
-         "        tl.store(w0 + 2 * idx + 1, src_im, mask=live)\n",
+         "        tl.store(w0 + 2 * idx, src_re, mask=live & dw0)\n"
+         "        tl.store(w0 + 2 * idx + 1, src_im, mask=live & dw0)\n",
          "        src_re = v0_re\n        src_im = v0_im\n"
-         "        tl.store(w0 + 2 * idx, src_re, mask=live)\n"
-         "        tl.store(w0 + 2 * idx + 1, src_im, mask=live)\n"
-         "        prev_re = tl.load(w0 + 2 * idx, mask=live, other=0.0)\n"
-         "        prev_im = tl.load(w0 + 2 * idx + 1, mask=live, other=0.0)\n",
+         "        tl.store(w0 + 2 * idx, src_re, mask=live & dw0)\n"
+         "        tl.store(w0 + 2 * idx + 1, src_im, mask=live & dw0)\n"
+         "        prev_re = tl.load(w0 + 2 * idx, mask=live & dw0, other=0.0)\n"
+         "        prev_im = tl.load(w0 + 2 * idx + 1, mask=live & dw0, other=0.0)\n",
+         "catch"),
+    "start_of_h_dropped":
+        ("m1_z_metallic", "        start = start_h != 0", "        start = start_h != start_h",
          "catch"),
     # ---- MEASURED PREDICTED NULLS -----------------------------------------
-    # Both were MEASURED on the Metal twin on 2026-08-20 and are re-measured here
-    # rather than inherited. They are REAL choices that a byte gate on a B-only
-    # seam cannot hold, and they are recorded as such.
-    "curl_parens_flattened_on_the_invariant_term":
+    "phi_partner_forced_present":
         ("m1_z_metallic",
-         "        t0_re = ((c_p_re - c_re) + (b_re - b_z_re))",
-         "        t0_re = (c_p_re - c_re + b_re - b_z_re)", "null"),
-    # ARMED AS A CATCH ON THE +-0 LATTICE, and that placement is the whole finding.
-    # The increment REPLACES row 0, and after the ownership mask that row is exactly
-    # +0.0 — so `+0.0 + x` and `x` differ ONLY at x = -0.0. A RANDOM seed reaches
-    # that class with probability zero and a ZERO-INIT state cannot manufacture it
-    # on this seam either (Bx's split-field dsig axis is phi, whose kms is 1.0, so
-    # the `fu * kms` minuend from an all-+0.0 state is +0.0). MEASURED BOTH WAYS ON
-    # 2026-08-20: 0 differing words under random seeding and under zero-init with a
-    # thin absorber, and CAUGHT on the +-0 LATTICE, where `fu` itself carries -0.0
-    # words and `-0.0 * 1.0` keeps the sign. So the choice is byte-visible and the
-    # row is a CATCH — on the one value class that can see it.
+         "        curl0_re = curl_stencil(c_p_re, c_re, b_re, b_z_re, dtdx, pp, pz)",
+         "        curl0_re = dtdx * (((c_p_re - c_re) + b_re) - b_z_re)", "null"),
+    "fu_load_unconditional":
+        ("m1_z_metallic",
+         "        p_re = tl.load(u1 + 2 * idx, mask=live & du1, other=0.0)",
+         "        p_re = tl.load(u1 + 2 * idx, mask=live, other=0.0)", "null"),
+    # The |m| = 1 increment REPLACES the masked row-0 curl rather than accumulating
+    # into it. The two differ only in the sign of a zero (the masked curl is +0, so
+    # `+0 - inc` and `inc * -1.0` part only at inc = +0), which a random seed reaches
+    # with probability zero: a CATCH on the +-0 lattice, re-run on the uniform class
+    # below as the paired NULL.
     "axis_increment_accumulates":
         ("m1_signed_zero_thin",
          "                curl0_re = tl.where(at_r, inc_re * -1.0, curl0_re)\n"
@@ -761,23 +817,25 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "                curl0_re = tl.where(at_r, curl0_re - inc_re, curl0_re)\n"
          "                curl0_im = tl.where(at_r, curl0_im - inc_im, curl0_im)",
          "catch"),
-    # ---- THE m = 0 AXIS RULE ON THIS SEAM (M_ZERO body; 2026-09-04) -----------
+    # ---- THE m = 0 AXIS RULE ON THIS SEAM (M_ZERO body) ----------------------
     "m0_bx_axis_zero_dropped":
         ("m0_z_metallic",
          "                v0_re = tl.where(at_r, 0.0, v0_re)\n"
          "                v0_im = tl.where(at_r, 0.0, v0_im)\n",
          "                v0_re = v0_re\n                v0_im = v0_im\n", "catch"),
-
 }
 
 NULL_REASONS: Dict[str, str] = {
-    "curl_parens_flattened_on_the_invariant_term":
-        "t0 leads with the PHI SELF-DIFFERENCE (c_p - c). phi has n = 1, so the "
-        "wrap returns the SAME element and the difference is an exact +0.0; both "
-        "associations then reduce to `b - b_z` and no word can differ. The "
-        "identical edit on t1, which carries no invariant-axis operand, IS armed "
-        "as a catch in the row above. Measured on the Metal twin 2026-08-20: "
-        "0 words against 528 for t1.",
+    "phi_partner_forced_present":
+        "phi has n = 1, so the forced phi partner adds the exact +0 difference "
+        "(c_p - c) to MEEP's one-partner form; the two differ only where the sum's "
+        "sign of zero differs, and at m != 0 the i*m/r pass then subtracts a nonzero "
+        "increment from target 0, which turns both into one word. The m = 0 gate "
+        "(gate_triton_cylindrical_complex, a1_phi_term_kept, lattice seeding) is "
+        "where the difference is visible.",
+    "fu_load_unconditional":
+        "fu is loaded on every cell but stored, and read by the recurrence's arm, on "
+        "the recurrence's cells only; the select discards the other loads.",
 }
 
 
@@ -991,7 +1049,7 @@ def leg_transcription() -> Dict[str, Any]:
 
     curl_lines = statements(
         curl, "    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)",
-        "    # --- stores: u then f (kernels.py:193-198 order), both planes ---")
+        "    # --- stores: fu on its cells")
     constitutive_lines = statements(
         constitutive, "        kp_0 = tl.load(kp0 + i, mask=live, other=0.0)",
         "else:  # pragma: no cover - laptop path")
@@ -999,11 +1057,11 @@ def leg_transcription() -> Dict[str, Any]:
     # its last statement and that statement is added back by name. An end anchor
     # that swallowed the last line would make one certified statement look missing
     # on every run, which is a check that fails for a reason of its own.
-    _LAST = "    tl.store(h2 + 2 * idx + 1, a_im, mask=live)"
-    assert _LAST in fused, "the fused body no longer ends at the H2 store"
+    # The fused body is read to a sentinel past its last statement, so the
+    # statement-joiner sees every logical statement whole, multi-line ones included.
     fused_statements = set(statements(
-        fused, "    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)", _LAST))
-    fused_statements.add(_LAST.strip())
+        fused + "\n#__END__\n",
+        "    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)", "#__END__"))
 
     # The curl half is carried verbatim EXCEPT for the register renames the
     # cylindrical curl and this weld share (none) — so every line must be present.
@@ -1030,7 +1088,7 @@ def leg_transcription() -> Dict[str, Any]:
     }
 
 
-def leg_refusal(xp, probe) -> Dict[str, Any]:
+def leg_refusal(xp) -> Dict[str, Any]:
     """The source seam, the m split and the geometry split, each measured by name.
 
     THE SOURCE CLAUSE COSTS THIS FAMILY ZERO CORPUS ROWS — every one of the sixteen
@@ -1045,19 +1103,19 @@ def leg_refusal(xp, probe) -> Dict[str, Any]:
     seed_state(xp, fields, (20, 1, 24), "uniform", "refusal")
 
     undeclared = product.cylindrical_fused_magnetic_pair_coverage(
-        fields, pml, None, probe=probe)
+        fields, pml, None)
     magnetic = VolumeSource(grid=fields.grid, component="Hy",
                             center=(0.0, 0.0, 0.0), size=(0.0, 0.0, 0.0),
                             envelope=ContinuousEnvelope(frequency=1.0))
     magnetic_cov = product.cylindrical_fused_magnetic_pair_coverage(
-        fields, pml, (magnetic,), probe=probe)
+        fields, pml, (magnetic,))
     electric = VolumeSource(grid=fields.grid, component="Ez",
                             center=(0.0, 0.0, 0.0), size=(0.0, 0.0, 0.0),
                             envelope=ContinuousEnvelope(frequency=1.0))
     electric_cov = product.cylindrical_fused_magnetic_pair_coverage(
-        fields, pml, (electric,), probe=probe)
+        fields, pml, (electric,))
     magnetic_plan = product.plan_cylindrical_fused_magnetic_pair(
-        fields, pml, sources=(magnetic,), probe=probe)
+        fields, pml, sources=(magnetic,))
 
     # m = 0 UNDER COMPLEX STORAGE IS ADMITTED (2026-09-04, the M_ZERO arm); the
     # REAL-storage m = 0 run is still cylindrical_triton's and must be refused BY
@@ -1065,11 +1123,11 @@ def leg_refusal(xp, probe) -> Dict[str, Any]:
     # and both directions are measured here.
     _g0, m0_fields, m0_pml = build_engine(xp, (20, 1, 24), 0, 0.37, True, False, 5)
     m0_cov = product.cylindrical_fused_magnetic_pair_coverage(
-        m0_fields, m0_pml, (), probe=probe)
+        m0_fields, m0_pml, ())
     _g1, real_fields, real_pml = build_engine(xp, (20, 1, 24), 0, 0.37, True, False,
                                               5, complex_storage=False)
     m0_real = product.cylindrical_fused_magnetic_pair_coverage(
-        real_fields, real_pml, (), probe=probe)
+        real_fields, real_pml, ())
 
     return {
         "passed": bool(not undeclared.covered
@@ -1105,39 +1163,10 @@ def leg_refusal(xp, probe) -> Dict[str, Any]:
 # Main
 # ===========================================================================
 
-def probe_record(explicit: Optional[str]) -> Tuple[Optional[Dict[str, Any]],
-                                                   List[str], Optional[str]]:
-    """The keep-cut expansion probe artifact, or a NAMED refusal.
-
-    A PLACEHOLDER IS REFUSED BY NAME: `expansion_license` takes the verdict dict,
-    not a path, and handing it a string produces "the expansion licence is str, not
-    the verdict dict" — a refusal about the harness reported as one about the
-    corpus. So the artifact is loaded here and the loaded record is what travels.
-    """
-    candidates = ([explicit] if explicit else
-                  [str(API_ROOT / relative) for relative in PROBE_CANDIDATES])
-    reasons: List[str] = []
-    for path in candidates:
-        if not path or not Path(path).is_file():
-            reasons.append(f"probe artifact absent: {path}")
-            continue
-        try:
-            record = json.loads(Path(path).read_text(encoding="utf-8"))
-        except Exception as exc:  # noqa: BLE001 - unreadable == missing
-            reasons.append(f"probe artifact unreadable ({path}): {exc}")
-            continue
-        if not isinstance(record, dict):
-            reasons.append(f"probe artifact is not a verdict dict: {path}")
-            continue
-        return record, reasons, path
-    return None, reasons, None
-
-
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True,
                         help="results DIRECTORY; partial rows land here as they do")
-    parser.add_argument("--probe-artifact", default=None)
     parser.add_argument("--launches", type=int, default=None,
                         help="override the largest launch budget")
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -1149,7 +1178,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "gate": "triton_cylindrical_fused_magnetic_pair",
         "family_module": FAMILY_MODULE,
         "cases": [list(case) for case in CASES],
-        "policies": list(POLICIES),
         "launch_budgets": list(LAUNCH_BUDGETS),
         "rows": [], "skipped": {}, "failures": [],
     }
@@ -1190,85 +1218,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     budgets = (LAUNCH_BUDGETS if args.launches is None
                else (1, int(args.launches)))
-    record, reasons, probe_path = probe_record(args.probe_artifact)
-    if record is None:
-        results["failures"].extend(reasons)
-        results["verdict"] = "REFUSED"
-        results["elapsed_seconds"] = time.time() - started
-        flush()
-        log("REFUSED: " + "; ".join(reasons))
-        return 1
-    results["probe_artifact"] = probe_path
-    results["probe_sha256"] = hashlib.sha256(
-        Path(probe_path).read_bytes()).hexdigest()
-
-    for policy in POLICIES:
-        # THE POLICY IS INSTALLED BEFORE ANY DEVICE COMPILE. One authority per
-        # process phase; the two cuts are reported separately and never averaged.
-        stamp = shared.install_ftz_strip(policy)
-        policy_reasons = shared.probe_record_policy_reasons(record)
-        results.setdefault("policy_stamps", {})[policy] = {
-            "install": stamp, "probe_policy_reasons": list(policy_reasons)}
-        if policy != "keep" and not policy_reasons:
-            # A keep-cut record read by a flush process is a BROKEN COMPARISON, not
-            # a platform verdict. It is recorded and the flush cut is reported as
-            # UNLICENSED rather than silently averaged with the keep cut.
-            results["policy_stamps"][policy]["licence"] = (
-                "the expansion record is keep-cut; the flush cut below is reported "
-                "as a SEPARATE measurement and licenses nothing")
-
-        from meep_gpu.triton_kernels import complex_fields as cx  # noqa: PLC0415
-        expansion = cx._resolve_expansion(record)
-        results["policy_stamps"][policy]["expansion"] = expansion
-        if expansion is None:
-            results["failures"].append(
-                f"[{policy}] the expansion licence refused this record")
+    # THE CAMPAIGN'S POLICY, INSTALLED ONCE BEFORE ANY DEVICE COMPILE, and every leg
+    # below -- products, refusal, mutations -- runs under it and is labelled with it.
+    policy = campaign_policy()
+    results["policies"] = [policy]
+    stamp = shared.install_ftz_strip(policy)
+    results.setdefault("policy_stamps", {})[policy] = {"install": stamp}
+    for case in CASES:
+        for launches in budgets:
+            row = run_case(cp, case, launches, policy)
+            row["leg"] = "product"
+            results["rows"].append(row)
+            log(f"[product/{policy}] {case[0]} x{launches}: "
+                f"passed={row.get('passed')} "
+                f"launches={row.get('launches_observed')} "
+                f"moved={len(row.get('arrays_moved', []))} "
+                f"census={row.get('negative_zero_census_peak')} "
+                f"({row.get('elapsed_seconds', 0):.1f} s)")
             flush()
-            continue
 
-        for case in CASES:
-            for launches in budgets:
-                row = run_case(cp, case, launches, policy, record)
-                row["leg"] = "product"
-                results["rows"].append(row)
-                log(f"[product/{policy}] {case[0]} x{launches}: "
-                    f"passed={row.get('passed')} "
-                    f"launches={row.get('launches_observed')} "
-                    f"moved={len(row.get('arrays_moved', []))} "
-                    f"census={row.get('negative_zero_census_peak')} "
-                    f"({row.get('elapsed_seconds', 0):.1f} s)")
-                flush()
-
-        # THE ARM OVERRIDE. The constexpr IS the licence; flipping it measures
-        # whether the licence is load-bearing on this family. On the cylindrical
-        # arm it is EXPECTED TO BE INERT (every general complex product here takes
-        # a coefficient whose real word is a zero, and there is no Bloch rotation),
-        # so the row is scored as a NULL with that reason and reported, never
-        # silently dropped.
-        other = 0 if int(expansion) == 1 else 1
-        row = run_case(cp, CASES[0], MUTATION_LAUNCHES, policy, record,
-                       expansion_override=other)
-        row["leg"] = "expansion_override"
-        row["expectation"] = "null"
-        row["reason"] = (
-            "the two arms differ only where a complex product's coefficient has a "
-            "NONZERO real word; every general complex product here takes one whose "
-            "real word is a zero (the i*m/r rows are exactly +0.0, the |m| = 1 "
-            "scalar is +-0.0) and this family compiles no Bloch rotation. The "
-            "binding is INERT here and is still made from a measured artifact, "
-            "because a widening would make it live.")
-        row["null_confirmed"] = row.get("first_divergence") is None
-        row["passed"] = bool(row["null_confirmed"]
-                             and row.get("launches_observed") == MUTATION_LAUNCHES)
-        results["rows"].append(row)
-        log(f"[expansion_override/{policy}] arm {expansion}->{other}: "
-            f"null_confirmed={row['null_confirmed']}")
-        flush()
-
-    # --- refusal + mutations, under the certification policy only ----------
-    shared.install_ftz_strip("keep")
-    results["rows"].append({"leg": "refusal", "device": True, "policy": "keep",
-                            **leg_refusal(cp, record)})
+    # --- refusal + mutations, under the same policy ---------------------------
+    results["rows"].append({"leg": "refusal", "device": True, "policy": policy,
+                            **leg_refusal(cp)})
     log(f"[refusal] passed={results['rows'][-1]['passed']}")
     flush()
 
@@ -1284,7 +1255,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             continue
         mutated, entry = _renamed(dedented(block.replace(old, new, 1)), name)
         kernel = compile_mutated(mutated, entry)
-        row = run_case(cp, cases[case_name], MUTATION_LAUNCHES, "keep", record,
+        row = run_case(cp, cases[case_name], MUTATION_LAUNCHES, policy,
                        mutant=kernel)
         diverged = row.get("first_divergence") is not None
         launched = row.get("launches_observed") == MUTATION_LAUNCHES
@@ -1324,8 +1295,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # pair of rows is the measurement: the choice is real and is visible ONLY on
         # the +-0 lattice, so a gate that swept random seeds alone would have
         # reported it uncaught and called the kernel certified.
-        row = run_case(cp, cases["m1_z_metallic"], MUTATION_LAUNCHES, "keep",
-                       record, mutant=kernel)
+        row = run_case(cp, cases["m1_z_metallic"], MUTATION_LAUNCHES, policy, mutant=kernel)
         diverged = row.get("first_divergence") is not None
         census = row.get("negative_zero_census_peak", 0)
         results["rows"].append({
@@ -1350,7 +1320,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         flush()
 
     # --- HOST mutations: what no source rewrite can reach -------------------
-    host_rows = run_host_mutations(cp, cases["m1_z_metallic"], record)
+    host_rows = run_host_mutations(cp, cases["m1_z_metallic"])
     results["rows"].extend(host_rows)
     for entry in host_rows:
         log(f"[host_mutation] {entry['label']}: caught={entry['caught']} "
@@ -1363,16 +1333,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["failed_rows"] = [row.get("label", row.get("case", row.get("leg")))
                               for row in rows if not row.get("passed")]
     results["elapsed_seconds"] = time.time() - started
-    # THE POLICY THE WELD IS CUT UNDER, in the key the ledger tools read. This probe
-    # cuts BOTH policies in one run and reports them side by side under
-    # ``policy_stamps``; ``seed_triton_welds.policy_line`` reads a top-level
-    # ``subnormal_policy`` block (``resolved`` / ``policy`` / ``cache_dir``) and
-    # refused this artifact by name on 2026-09-12 for want of it. The keep cut is the
-    # release (the flush cut is reported as a separate measurement and licenses
-    # nothing), so the keep install stamp is the block.
-    keep_stamp = (results.get("policy_stamps") or {}).get("keep") or {}
-    if isinstance(keep_stamp.get("install"), dict):
-        results["subnormal_policy"] = dict(keep_stamp["install"])
+    # THE POLICY THE WELD IS CUT UNDER, in the key the ledger tools read:
+    # ``seed_triton_welds.policy_line`` reads a top-level ``subnormal_policy`` block
+    # (``resolved`` / ``policy`` / ``cache_dir``) and refused this artifact by name on
+    # 2026-09-12 for want of it. The run cuts one policy, so its install stamp is the
+    # block; the keep campaign's run is the keep release and the flush campaign's the
+    # flush evidence the bind reads.
+    run_stamp = (results.get("policy_stamps") or {}).get(policy) or {}
+    if isinstance(run_stamp.get("install"), dict):
+        results["subnormal_policy"] = dict(run_stamp["install"])
     import triton_device_identity  # noqa: PLC0415
 
     results["environment"] = triton_device_identity.record({
@@ -1396,7 +1365,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     return 0 if results["verdict"] == "PASS" else 1
 
 
-def run_host_mutations(xp, case, probe) -> List[Dict[str, Any]]:
+def run_host_mutations(xp, case) -> List[Dict[str, Any]]:
     """Corrupt the TABLES the host binds — defects no source rewrite can reach.
 
     The kernel takes twelve coefficient pointers and two i*m/r rows and never asks
@@ -1419,8 +1388,7 @@ def run_host_mutations(xp, case, probe) -> List[Dict[str, Any]]:
         counter = shared.CountingKernel(
             product.cyl_complex_fused_curl_constitutive_B_kernel())
         plan = product.plan_cylindrical_fused_magnetic_pair(
-            actual, actual_pml, sources=(), num_warps=1, kernel=counter,
-            probe=probe)
+            actual, actual_pml, sources=(), num_warps=1, kernel=counter)
         assert plan is not None
         corrupt(plan, actual_pml)
         for _ in range(MUTATION_LAUNCHES):
@@ -1445,7 +1413,7 @@ def run_host_mutations(xp, case, probe) -> List[Dict[str, Any]]:
 
     def half_integer_h(plan, pml) -> None:
         """``update_H`` takes kps_a/kms_a; hand it the half-integer lattice."""
-        plan._h_coefficients = tuple(
+        plan._constitutive_coefficients = tuple(
             CupyPointer(_flat(getattr(pml, f"{stem}_{axis}_h")))
             for axis in "xyz" for stem in ("kps", "kms"))
 

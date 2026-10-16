@@ -98,7 +98,7 @@ class _Arguments(dict):
     """A resolved-argument dict that answers every key a closure reads.
 
     The closures only FORWARD what they resolve, so a sentinel per key is enough for
-    every entry but the few that select a kernel (the arm, the expansion, the curl
+    every entry but the few that select a kernel (the arm, the curl
     arm, the H->D state), which each product's row sets explicitly.
     """
 
@@ -112,9 +112,12 @@ ROW_MASK = (1, 0, 0, 0, 0, 0)
 
 
 def _context() -> types.SimpleNamespace:
+    # ``chunk_bounds_device``: the composition's one record upload, which a plan that
+    # resolves its arguments binds as the kernel's ``cb`` (a stand-in here; nothing
+    # reads it but the recorded launcher).
     return types.SimpleNamespace(
         fields=FIELDS, pml="<pml>", grid=GRID, sources=(),
-        license_for=lambda _name: {"arm": 1}, subnormal_policy=None)
+        chunk_bounds_device=lambda: "<cb>")
 
 
 class _Recorder:
@@ -137,9 +140,9 @@ class _Recorder:
 
 
 def _fake_emitter(counter: Dict[str, int], label: str):
-    def emit(*args):
+    def emit(*args, **kwargs):
         counter[label] = counter.get(label, 0) + 1
-        return f"// {label}{args!r}"
+        return f"// {label}{args!r}" + (f"{sorted(kwargs.items())!r}" if kwargs else "")
     return emit
 
 
@@ -148,7 +151,7 @@ def _fake_emitter(counter: Dict[str, int], label: str):
 # ``_get_kernel`` is called with for the SAME launch the row drives.
 # ---------------------------------------------------------------------------
 
-_CYL_PREFIX = ("cylindrical_prefix",)
+_CYL_RADIAL = ("radial_difference",)
 PRODUCTS: Dict[str, Dict[str, Any]] = {
     "fused_magnetic_pair": dict(
         builder="_fused_magnetic_pair_plan", launcher="launch_fused_magnetic_pair",
@@ -176,12 +179,12 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         builder="_cylindrical_real_fused_magnetic_pair_plan",
         launcher="launch_cylindrical_real_fused_magnetic_pair",
         emitter="cylindrical_real_fused_magnetic_pair_source", getter=(),
-        patches=_CYL_PREFIX),
+        patches=_CYL_RADIAL),
     "cylindrical_real_fused_electric_pair": dict(
         builder="_cylindrical_real_fused_electric_pair_plan",
         launcher="launch_cylindrical_real_fused_electric_pair",
         emitter="cylindrical_real_fused_electric_pair_source", getter=(),
-        patches=_CYL_PREFIX),
+        patches=_CYL_RADIAL),
     "fused_hd_pair": dict(
         builder="_fused_hd_pair_plan", launcher="launch_fused_hd_pair",
         emitter="kernel_source", getter=(), patches=("scratch_rotation",),
@@ -197,48 +200,40 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     "complex_fused_magnetic_pair": dict(
         builder="_complex_fused_magnetic_pair_plan",
         launcher="launch_complex_fused_magnetic_pair",
-        emitter="complex_fused_magnetic_pair_source", getter=("FMA_V1",),
-        arguments={"arm": "FMA_V1"}),
+        emitter="complex_fused_magnetic_pair_source", getter=()),
     "complex_fused_electric_pair": dict(
         builder="_complex_fused_electric_pair_plan",
         launcher="launch_complex_fused_electric_pair",
-        emitter="complex_fused_electric_pair_source", getter=("FMA_V1",),
-        arguments={"arm": "FMA_V1"}),
+        emitter="complex_fused_electric_pair_source", getter=()),
     "complex_folded_fused_magnetic_pair": dict(
         builder="_complex_folded_fused_magnetic_pair_plan",
         launcher="launch_complex_folded_fused_magnetic_pair",
-        emitter="complex_folded_fused_magnetic_pair_source", getter=("NAIVE",),
-        arguments={"arm": "NAIVE"}),
+        emitter="complex_folded_fused_magnetic_pair_source", getter=()),
     "complex_folded_fused_electric_pair": dict(
         builder="_complex_folded_fused_electric_pair_plan",
         launcher="launch_complex_folded_fused_electric_pair",
-        emitter="complex_folded_fused_electric_pair_source", getter=("NAIVE",),
-        arguments={"arm": "NAIVE"}),
+        emitter="complex_folded_fused_electric_pair_source", getter=()),
     "complex_beta_fused_magnetic_pair": dict(
         builder="_complex_beta_fused_magnetic_pair_plan",
         launcher="launch_complex_beta_fused_magnetic_pair",
-        emitter="complex_beta_fused_magnetic_pair_source", getter=(1,),
-        arguments={"arm": 1}),
+        emitter="complex_beta_fused_magnetic_pair_source", getter=()),
     "complex_beta_fused_electric_pair": dict(
         builder="_complex_beta_fused_electric_pair_plan",
         launcher="launch_complex_beta_fused_electric_pair",
-        emitter="complex_beta_fused_electric_pair_source", getter=(1,),
-        arguments={"arm": 1}),
+        emitter="complex_beta_fused_electric_pair_source", getter=()),
     "cylindrical_fused_magnetic_pair": dict(
         builder="_cylindrical_fused_magnetic_pair_plan",
         launcher="launch_cylindrical_fused_magnetic_pair",
-        emitter="cylindrical_fused_magnetic_pair_source", getter=("FMA_V1",),
-        arguments={"arm": "FMA_V1"}, patches=_CYL_PREFIX),
+        emitter="cylindrical_fused_magnetic_pair_source", getter=(), patches=_CYL_RADIAL),
     "cylindrical_fused_electric_pair": dict(
         builder="_cylindrical_fused_electric_pair_plan",
         launcher="launch_cylindrical_fused_electric_pair",
-        emitter="cylindrical_fused_electric_pair_source", getter=("FMA_V1",),
-        arguments={"arm": "FMA_V1"}, patches=_CYL_PREFIX),
+        emitter="cylindrical_fused_electric_pair_source", getter=(), patches=_CYL_RADIAL),
     "conductive_fused_electric_pair": dict(
         builder="_conductive_fused_electric_pair_plan",
         launcher="launch_conductive_fused_electric_pair",
         emitter="conductive_fused_electric_pair_source", getter=((True, False, True),),
-        patches=("conductive_bindings_3",)),
+        patches=("conductive_bindings_3", "conductive_keeps_all")),
     "dispersive_fused_electric_pair": dict(
         builder="_dispersive_fused_electric_pair_plan",
         launcher="launch_dispersive_fused_electric_pair",
@@ -267,22 +262,24 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         builder="_conductive_bfast_fused_hd_pair_plan",
         launcher="run_conductive_bfast_fused_hd_pair",
         emitter="current_source", getter=("conductive", (True, False, False)),
-        arguments={"state": {"variant": "conductive", "cond": (True, False, False)}}),
+        # ``keep`` None on both sides: the getter's default, and the state's.
+        arguments={"state": {"variant": "conductive", "cond": (True, False, False),
+                             "keep": None}}),
     "conductive_bfast_fused_hd_pair[bfast]": dict(
         builder="_conductive_bfast_fused_hd_pair_plan",
         module="conductive_bfast_fused_hd_pair",
         launcher="run_conductive_bfast_fused_hd_pair",
         emitter="current_source", getter=("bfast", None),
-        arguments={"state": {"variant": "bfast", "cond": None}}),
+        arguments={"state": {"variant": "bfast", "cond": None, "keep": None}}),
     "cylindrical_fused_hd_pair": dict(
         builder="_cylindrical_fused_hd_pair_plan",
         launcher="run_cylindrical_fused_hd_pair",
-        emitter="kernel_source", getter=(1,), arguments={"state": {"arm": 1}}),
+        emitter="kernel_source", getter=(), arguments={"state": {}}),
     "no_pml_complex_fused_electric_pair": dict(
         builder="_no_pml_complex_fused_electric_pair_plan",
         launcher="launch_no_pml_complex_fused_electric_pair",
-        emitter="no_pml_complex_fused_electric_pair_source", getter=("FMA_V1", True),
-        arguments={"expansion": "FMA_V1", "curl_arm": "conductive"}),
+        emitter="no_pml_complex_fused_electric_pair_source", getter=(True,),
+        arguments={"curl_arm": "conductive"}),
     "offdiag_fused_electric_pair": dict(
         builder="_offdiag_fused_electric_pair_plan",
         launcher="launch_offdiag_fused_electric_pair",
@@ -297,21 +294,21 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     "folded_complex_offdiag_fused_electric_pair": dict(
         builder="_folded_complex_offdiag_fused_electric_pair_plan",
         launcher="launch_folded_complex_offdiag_fused_electric_pair",
-        emitter="kernel_source", getter=(ROW_MASK, "FMA_V1"),
-        arguments={"row_mask": ROW_MASK, "arm": "FMA_V1"},
+        emitter="kernel_source", getter=(ROW_MASK,),
+        arguments={"row_mask": ROW_MASK},
         patches=("scratch_rotation", "validate")),
     "complex_no_pml_offdiag_fused_electric_pair": dict(
         builder="_complex_no_pml_offdiag_fused_electric_pair_plan",
         launcher="launch_complex_no_pml_offdiag_fused_electric_pair",
-        emitter="kernel_source", getter=(ROW_MASK, 0),
-        arguments={"row_mask": ROW_MASK, "arm": 0},
+        emitter="kernel_source", getter=(ROW_MASK,),
+        arguments={"row_mask": ROW_MASK},
         patches=("scratch_rotation", "validate")),
     "no_pml_complex_fused_electric_pair[plain]": dict(
         builder="_no_pml_complex_fused_electric_pair_plan",
         module="no_pml_complex_fused_electric_pair",
         launcher="launch_no_pml_complex_fused_electric_pair",
-        emitter="no_pml_complex_fused_electric_pair_source", getter=(0, False),
-        arguments={"expansion": 0, "curl_arm": "plain"}),
+        emitter="no_pml_complex_fused_electric_pair_source", getter=(False,),
+        arguments={"curl_arm": "plain"}),
 }
 
 
@@ -368,9 +365,10 @@ def _arm(row_name: str, monkeypatch, stub) -> Dict[str, Any]:
     recorder = _Recorder()
     monkeypatch.setattr(family, row["launcher"], recorder)
     for patch in row.get("patches", ()):
-        if patch == "cylindrical_prefix":
-            monkeypatch.setattr(cylindrical_prefix, "cylindrical_prefix",
-                                lambda *a, **k: "<prefix>")
+        if patch == "radial_difference":
+            # The scan's launch: the real pairs' plans call it before the fused kernel.
+            monkeypatch.setattr(cylindrical_prefix, "radial_difference",
+                                lambda *a, **k: "<radial>")
         elif patch == "scratch_rotation":
             rotations = iter(range(10 ** 6))
             monkeypatch.setattr(family, "assert_scratch_is_disjoint",
@@ -384,6 +382,11 @@ def _arm(row_name: str, monkeypatch, stub) -> Dict[str, Any]:
             monkeypatch.setattr(family, "conductive_bindings",
                                 lambda fields: (("c",) * 6, ("h",) * 3,
                                                 (True, False, True)))
+        elif patch == "conductive_keeps_all":
+            # Every chunk keeps the conductivity: the getter's default keep mask.
+            monkeypatch.setattr(family, "conductive_keeps",
+                                lambda fields, pml: ((True, True, True),
+                                                     (None, None, None)))
         elif patch == "conductive_bindings_2":
             monkeypatch.setattr(family, "conductive_bindings",
                                 lambda fields: (("c",) * 6, (False, True, False)))
@@ -646,9 +649,22 @@ def test_a_pure_resolver_is_read_once_per_plan(device, monkeypatch):
 def test_the_off_diagonal_weld_still_resolves_every_launch(device, monkeypatch):
     """Its resolver reads the row volumes fresh and hands out the scratch the launch
     rotates; held, the second launch would bind the FIRST launch's scratch. Its TEXT
-    is held all the same -- one emission across the three launches."""
+    is held all the same -- one emission across the three launches -- and so are its
+    presence words, a fact of the frozen configuration built against the record."""
+    from meep_gpu.cuda_kernels import offdiag_presence  # noqa: PLC0415
+
     family = offdiag_fused_electric_pair
     emitted: Dict[str, int] = {}
+    words: List[Any] = []
+
+    def chunk_arguments(fields, pml, codes, record):
+        words.append(record)
+        return record, ("<kept>",) * 6
+
+    monkeypatch.setattr(offdiag_presence, "launch_chunk_arguments", chunk_arguments)
+    context = _context()
+    context.chunk_bounds = lambda: "<record>"
+    context.chunk_bounds_device = lambda: "<cb>"
     monkeypatch.setattr(family, "kernel_source", _fake_emitter(emitted, "kernel_source"))
     reads = {"rows": 0}
     handed: List[Any] = []
@@ -672,17 +688,22 @@ def test_the_off_diagonal_weld_still_resolves_every_launch(device, monkeypatch):
     monkeypatch.setattr(family, "rotate_into_fields",
                         lambda fields, scratch: f"<rotated {next(rotations)}>")
 
+    bound: List[Any] = []
+
     def launcher(fields, scratch, *args, **kwargs):
         handed.append(scratch)
+        bound.append(args[-2:])
         return {"launched": True, "blocks": 1}
 
     monkeypatch.setattr(family, "launch_offdiag_fused_electric_pair", launcher)
-    plan = fused_pairs._offdiag_fused_electric_pair_plan(_context())  # noqa: SLF001
+    plan = fused_pairs._offdiag_fused_electric_pair_plan(context)  # noqa: SLF001
     for _ in range(3):
         plan.run()
     assert reads["rows"] == 3
     assert handed == ["<scratch 0>", "<rotated 0>", "<rotated 1>"]
     assert emitted == {"kernel_source": 1}
+    assert words == ["<record>"]
+    assert bound == [(("<kept>",) * 6, "<cb>")] * 3
 
 
 def test_the_special_kz_hd_weld_holds_its_text_but_not_its_resolution(device,

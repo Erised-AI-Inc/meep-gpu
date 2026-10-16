@@ -17,7 +17,7 @@ neither is re-derived here:
   already makes between exactly those two bodies on a beta = 0 run.
 
 SO THIS KERNEL IS ``fused_curl_constitutive_D``, CHARACTER FOR CHARACTER, PLUS THE
-SAME THREE LINES ``beta_pml_curl_step`` ADDS TO ``pml_curl_step``. A reader must be
+PASS ``beta_pml_curl_step`` ADDS TO ``pml_curl_step``. A reader must be
 able to diff this body against those two and see nothing else moved; the gate's
 transcription leg asserts exactly that, statement by statement, against both
 shipped sources.
@@ -53,13 +53,13 @@ its Triton twin: the same two certified halves, the same seam, each transcribed
 from ITS OWN backend's body.
 
 ===========================================================================
-THE THREE LINES, AND WHERE THEY GO
+THE PASS, AND WHERE IT GOES
 ===========================================================================
 
-``stepping._special_kz_beta_term`` (S:733-735, :770, :784) adds an analytic
-``d/dz -> i*2*pi*beta`` term to the curl. The array path inserts it AFTER the
-``dtdx`` curl and BEFORE the ownership mask (S:438-445 after :429, before :450 on
-the D side), and that is where it sits here. Transcribed from
+``stepping._special_kz_beta_term`` adds an analytic ``d/dz -> i*2*pi*beta`` term.
+MEEP runs it as a pass of its own after every component's curl
+(step_db.cpp:161-175), and so does the array path (``stepping._apply_folded_increment``):
+after the three curl forms and before the stores, which is where it sits here. Transcribed from
 :func:`.special_kz.beta_pml_curl_step`, not re-derived:
 
 * the beta partners are the CENTER loads the curl already made — target 0 takes the
@@ -67,15 +67,17 @@ the D side), and that is where it sits here. Transcribed from
   source's center ``a`` at sign -1 (Dy <- Hx); target 2 gets nothing, because
   ``step_db.cpp:148-176`` runs ``cc`` over ``d_c`` in {X, Y} only;
 * NO ``dtdx`` multiplies the term (it is an analytic derivative, S:733-735);
-* ``curl - (c * g)`` is the array path's ``curl + (-(c * g))`` by IEEE-754's
-  definition of subtraction, which is how ``beta_pml_curl_step`` spells it and
-  therefore how it is spelled here;
+* the increment is ``(c * g) * -1.0``, the array path's ``-(c * g)`` (the negation a
+  multiply, never Triton's unary minus), an exact ``+0`` on every cell the curl's
+  ownership mask drops, and the ladder subtracts it (:func:`.forms.fold_ladder`):
+  ``f - (sinv * q)`` outside the target's dsigu chunk, ``fu - (sinv * q)`` and
+  ``f - (sinv_u * (sinv * q))`` inside it;
 * real storage is MEEP's implicit-i trick, so BOTH sub-steps take the same sign
   (the ±i lives only in complex storage). MEASURED, and worth saying plainly because
   a reader will assume otherwise: :func:`.special_kz.beta_curl_coefficients` takes
   ``magnetic=``, this builder passes ``False`` and the twin passes ``True``, and ON
   REAL STORAGE THE TWO ANSWERS ARE IDENTICAL — the flag only decides the ``±1j``
-  multiply on the complex path (special_kz.py:277-281). So a builder here that
+  quarter turn on the complex path (:func:`.special_kz.beta_curl_coefficients`). So a builder here that
   copied its twin's ``magnetic=True`` would be harmless, and this product's gate
   arms NO mutation pretending to catch it; what it arms is the two WORDS exchanged
   (``h_beta_words_swapped``), which differ in sign on either storage. The host suite
@@ -259,6 +261,12 @@ if triton is not None:
     # ``== METALLIC`` and take periodic as the else.
     METALLIC = tl.constexpr(1)
 
+    # The forms, the fold ladder and the chunk record's word offsets, under the names
+    # kernels.py binds them: the lifted body reads them exactly as the root pair does.
+    from .forms import (axis_present, constitutive_form, curl_form,  # noqa: E402
+                        curl_stencil, fold_ladder, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
+
     @triton.jit
     def beta_fused_curl_constitutive_D(
         f0, f1, f2,                       # curl targets: Dx,Dy,Dz
@@ -268,34 +276,24 @@ if triton is not None:
         e0, e1, e2,                       # constitutive targets: Ex,Ey,Ez
         w0, w1, w2,                       # constitutive aux: f_w_Ex,f_w_Ey,f_w_Ez
         ie0, ie1, ie2,                    # diagonal inverse epsilon volumes
-        kp0, km0, kp1, km1, kp2, km2,     # constitutive kps/kms, HALF-INTEGER
+        kp0, km0, kp1, km1, kp2, km2,     # constitutive kps/kms, HALF-INTEGER lattice
+        cb,                               # chunk record: both halves' forms
         nx, ny, nz, n_elem, dtdx,
         beta_plus, beta_minus,            # f32(sign*2*pi*beta*dt), host-rounded once
-        BACKWARD: tl.constexpr,           # bound to 1 by every builder; see below
+        BACKWARD: tl.constexpr,           # bound to 1 by every builder
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         ZM_X: tl.constexpr, ZM_Y: tl.constexpr, ZM_Z: tl.constexpr,
-        HAS_BETA: tl.constexpr,           # compiled in only for beta != 0 runs
+        HAS_BETA: tl.constexpr,           # 1 on every admitted configuration
         BLOCK: tl.constexpr,
     ):
-        """beta ``step_D`` + ``zero_metal_D`` + ``update_E``, one launch.
+        """Beta ``step_D`` + ``zero_metal_D`` + ``update_E``, one launch.
 
-        :func:`.kernels.fused_curl_constitutive_D`'s body with
-        :func:`.special_kz.beta_pml_curl_step`'s constexpr-gated insert placed where
-        the array path places it — after the ``dtdx`` curl and before the ownership
-        mask (S:438-445 after :429, before :450). Nothing else moves.
-
-        ``BACKWARD`` IS CARRIED AND MUST BE 1. It keeps the curl half a verbatim copy
-        of the certified body rather than a hand-specialised one. It cannot be 0: the
-        wall clear below is the D family's six rows and the constitutive half is the
-        E side with its inverse-permittivity multiply; the B seam is the magnetic
-        twin's.
-
-        ``HAS_BETA`` MUST BE 1 on any admitted configuration — the beta family's
-        clause 12 is inverted and requires a nonzero ``grid.beta``. It is carried
-        rather than hard-coded so the gate has a certified-kernel arm: at
-        ``HAS_BETA = 0`` this body must reproduce
-        :func:`.kernels.fused_curl_constitutive_D` bit for bit, which is a leg rather
-        than an argument.
+        ``kernels.fused_curl_constitutive_D``'s body, character for character, plus
+        ``special_kz.beta_pml_curl_step``'s beta pass after the three curl forms and
+        before the wall clear -- the array path's order (step_D's curl, its beta pass,
+        then the seam, then update_E). The registers the pass leaves are the D words
+        both the store and the E half read. ``HAS_BETA = 0`` builds
+        ``kernels.fused_curl_constitutive_D`` exactly.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -305,7 +303,7 @@ if triton is not None:
         j = plane % ny
         i = plane // ny
 
-        # ======================= the curl half ================================
+        # ======================= the curl half ====================================
         if BACKWARD:
             si, sj, sk = i - 1, j - 1, k - 1
         else:
@@ -338,23 +336,14 @@ if triton is not None:
         c_x = tl.load(g2 + ox, mask=vx, other=0.0)
         c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
-        # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens -
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
-        # --- the beta term (stepping._special_kz_beta_term), CENTER partners only -
-        # AFTER the dtdx curl, BEFORE the ownership mask — the array path's order.
-        # No dtdx on the term (analytic derivative, S:733-735); the subtraction IS
-        # the array path's `curl + (-(c*g))`. Byte-copied from
-        # special_kz.beta_pml_curl_step, whose own body carries these two lines
-        # unbranched on BACKWARD: real storage is MEEP's implicit-i trick and the
-        # sign is the same on both sub-steps.
-        if HAS_BETA:
-            curl0 = curl0 - (beta_plus * b)
-            curl1 = curl1 - (beta_minus * a)
-
-        # --- ownership mask (stepping._mask_non_owned_cells) --------------------
         at_x, at_y, at_z = i == 0, j == 0, k == 0
         if BACKWARD:
             if BCY == METALLIC:
@@ -377,7 +366,6 @@ if triton is not None:
             if BCZ == METALLIC:
                 curl2 = tl.where(at_z, 0.0, curl2)
 
-        # --- split-field recurrence (stepping._apply_pml_update) ---------------
         km_x = tl.load(kmx + i, mask=live, other=0.0)
         si_x = tl.load(sinvx + i, mask=live, other=0.0)
         km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -385,24 +373,61 @@ if triton is not None:
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0 = tl.load(u0 + idx, mask=live, other=0.0)
-        n0 = ((p0 * km_y) - curl0) * si_y
-        v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+        # Which cells take the recurrence: the component's dsigu layer, on the component's
+        # own sub-lattice. The dsigu axis is z for target 0, x for 1 and y for 2 (vec.hpp
+        # cycle_direction); the sub-lattice is half-integer for every B target and integer
+        # for every D one (the iyee table), so each target's record line is a compile-time
+        # word index, chunk_map.record_index(half_integer, axis, 0).
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1 = tl.load(u1 + idx, mask=live, other=0.0)
-        n1 = ((p1 * km_z) - curl1) * si_z
-        v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+        v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                           km_y, si_y, km_z, si_z, du0)
 
-        p2 = tl.load(u2 + idx, mask=live, other=0.0)
-        n2 = ((p2 * km_x) - curl2) * si_x
-        v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+        p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+        v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                           km_z, si_z, km_x, si_x, du1)
 
-        # --- the seam: stepping.zero_metal_D (driver.py:3301) ------------------
-        # SIX rows against the magnetic twin's three: each axis clears the two
-        # TANGENTIAL D components. Applied to the REGISTER, before both the store
-        # and the constitutive read, so the two consumers see the one value the
-        # array path leaves in D. Byte-copied from
-        # kernels.fused_curl_constitutive_D.
+        p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+        v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                           km_x, si_x, km_y, si_y, du2)
+
+        # --- the special-kz beta pass (stepping._special_kz_beta_term, then
+        # stepping._apply_folded_increment) ----------------------------------------
+        # MEEP's pass of its own after every component's curl (step_db.cpp:161-175),
+        # applied to the registers the forms returned. The partners are the CENTER
+        # loads: target 0 takes the second source at sign +1 (Bx <- Ey, Dx <- Hy),
+        # target 1 the first at sign -1 (By <- Ex, Dy <- Hx); target 2 gets nothing.
+        # The increment is the NEGATED product (no dtdx: an analytic derivative),
+        # masked to +0 on the cells the curl's own mask drops, and the beta ladder
+        # subtracts it (forms.fold_ladder).
+        if HAS_BETA:
+            q0 = (beta_plus * b) * -1.0
+            q1 = (beta_minus * a) * -1.0
+            if BACKWARD:
+                if BCY == METALLIC:
+                    q0 = tl.where(at_y, 0.0, q0)
+                if BCZ == METALLIC:
+                    q0 = tl.where(at_z, 0.0, q0)
+                if BCX == METALLIC:
+                    q1 = tl.where(at_x, 0.0, q1)
+                if BCZ == METALLIC:
+                    q1 = tl.where(at_z, 0.0, q1)
+            else:
+                if BCX == METALLIC:
+                    q0 = tl.where(at_x, 0.0, q0)
+                if BCY == METALLIC:
+                    q1 = tl.where(at_y, 0.0, q1)
+            v0, n0 = fold_ladder(v0, n0, q0, si_y, si_z, du0)
+            v1, n1 = fold_ladder(v1, n1, q1, si_z, si_x, du1)
+
+        # zero_metal_D: each axis clears the two tangential D components.
         if ZM_X:
             v1 = tl.where(at_x, 0.0, v1)
             v2 = tl.where(at_x, 0.0, v2)
@@ -413,21 +438,16 @@ if triton is not None:
             v0 = tl.where(at_z, 0.0, v0)
             v1 = tl.where(at_z, 0.0, v1)
 
-        tl.store(u0 + idx, n0, mask=live)
-        tl.store(u1 + idx, n1, mask=live)
-        tl.store(u2 + idx, n2, mask=live)
+        # fu is written on the recurrence's cells ONLY: outside them the dsig-only form
+        # reads and writes the field alone and fu keeps its word (the auxiliary contract).
+        tl.store(u0 + idx, n0, mask=live & du0)
+        tl.store(u1 + idx, n1, mask=live & du1)
+        tl.store(u2 + idx, n2, mask=live & du2)
         tl.store(f0 + idx, v0, mask=live)
         tl.store(f1 + idx, v1, mask=live)
         tl.store(f2 + idx, v2, mask=live)
 
-        # ==================== the constitutive half ===========================
-        # Verbatim from kernels.fused_curl_constitutive_D, which is itself
-        # constitutive_step's SCALE=1 arm with `tl.load(g + idx)` replaced by the
-        # register the curl half computed. Component 0 takes its coefficient from
-        # axis x, 1 from y, 2 from z (stepping.E_CONSTITUTIVE_TERMS :227) — the
-        # component's OWN axis. D IS ON THE LEFT of the inverse-epsilon multiply
-        # because the array path writes `source * inverse_epsilon_for(component)`
-        # (stepping.py:1011-1013).
+        # ==================== the constitutive half ================================
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
         km_0 = tl.load(km0 + i, mask=live, other=0.0)
         kp_1 = tl.load(kp1 + j, mask=live, other=0.0)
@@ -435,28 +455,32 @@ if triton is not None:
         kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
-        prev0 = tl.load(w0 + idx, mask=live, other=0.0)
+        # Which cells take the accumulation: the component's own (dsigw) layer on the
+        # component's own sub-lattice. The own axis is x for target 0, y for 1, z for 2
+        # (the constitutive term tables), so each target's record line is again a
+        # compile-time word index, chunk_map.record_index(half_integer, axis, 0).
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)   # E: the half-integer sub-lattice
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
+        prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)
         src0 = v0 * tl.load(ie0 + idx, mask=live, other=0.0)
-        tl.store(w0 + idx, src0, mask=live)
-        a0 = tl.load(e0 + idx, mask=live, other=0.0)
-        a0 = a0 + kp_0 * src0
-        a0 = a0 - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=live & dw0)
+        a0 = constitutive_form(tl.load(e0 + idx, mask=live & dw0, other=0.0),
+                                 prev0, src0, kp_0, km_0, dw0)
         tl.store(e0 + idx, a0, mask=live)
 
-        prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+        prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
         src1 = v1 * tl.load(ie1 + idx, mask=live, other=0.0)
-        tl.store(w1 + idx, src1, mask=live)
-        a1 = tl.load(e1 + idx, mask=live, other=0.0)
-        a1 = a1 + kp_1 * src1
-        a1 = a1 - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=live & dw1)
+        a1 = constitutive_form(tl.load(e1 + idx, mask=live & dw1, other=0.0),
+                                 prev1, src1, kp_1, km_1, dw1)
         tl.store(e1 + idx, a1, mask=live)
 
-        prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+        prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
         src2 = v2 * tl.load(ie2 + idx, mask=live, other=0.0)
-        tl.store(w2 + idx, src2, mask=live)
-        a2 = tl.load(e2 + idx, mask=live, other=0.0)
-        a2 = a2 + kp_2 * src2
-        a2 = a2 - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=live & dw2)
+        a2 = constitutive_form(tl.load(e2 + idx, mask=live & dw2, other=0.0),
+                                 prev2, src2, kp_2, km_2, dw2)
         tl.store(e2 + idx, a2, mask=live)
 
 else:  # pragma: no cover - laptop path
@@ -579,7 +603,7 @@ class BetaFusedElectricPairPlan:
     twin has none.
     """
 
-    __slots__ = ("shape", "n_elem", "dtdx", "beta_plus", "beta_minus", "has_beta",
+    __slots__ = ("chunk_bounds", "_cb", "shape", "n_elem", "dtdx", "beta_plus", "beta_minus", "has_beta",
                  "backward", "bc", "zero_metal", "block", "num_warps",
                  "_targets", "_aux", "_sources", "_curl_coefficients",
                  "_e_targets", "_e_aux", "_inverse_epsilon", "_e_coefficients",
@@ -594,11 +618,14 @@ class BetaFusedElectricPairPlan:
                  targets, auxiliaries, sources, curl_coefficients,
                  e_targets, e_aux, inverse_epsilon, e_coefficients,
                  kernel: Any = None, num_warps: Optional[int] = 1,
-                 has_beta: int = 1) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 has_beta: int = 1, *, chunk_bounds: Any,
+                 ) -> None:
+        from .launch import CupyPointer, _flat, bind_chunk_bounds  # noqa: PLC0415
 
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "BetaFusedElectricPairPlan")
         self.dtdx = float(dtdx)
         # Already f32-rounded by the host (special_kz.beta_curl_coefficients);
         # float() keeps the bits, and Triton types a Python float argument as fp32.
@@ -643,7 +670,7 @@ class BetaFusedElectricPairPlan:
         kernel[self._grid](
             *self._targets, *self._aux, *self._sources, *self._curl_coefficients,
             *self._e_targets, *self._e_aux, *self._inverse_epsilon,
-            *self._e_coefficients,
+            *self._e_coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
             self.beta_plus, self.beta_minus,
             BACKWARD=self.backward,
@@ -667,6 +694,7 @@ def plan_beta_fused_electric_pair(fields: Any, pml: Any, sources: Any = None,
                                   block: Optional[int] = None,
                                   num_warps: Optional[int] = 1,
                                   kernel: Any = None,
+                                  chunk_layout: Any = None,
                                   ) -> Optional[BetaFusedElectricPairPlan]:
     """Build the plan from the engine's own objects, or ``None`` when refused.
 
@@ -678,7 +706,7 @@ def plan_beta_fused_electric_pair(fields: Any, pml: Any, sources: Any = None,
         return None
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
-    from .launch import SUB_STEPS  # noqa: PLC0415
+    from .launch import SUB_STEPS, chunk_bounds_for  # noqa: PLC0415
 
     curl_spec = SUB_STEPS[CURL_SUB_STEP]
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
@@ -715,6 +743,7 @@ def plan_beta_fused_electric_pair(fields: Any, pml: Any, sources: Any = None,
                       f"{'_h' if side_spec['half_integer'] else ''}")
          for axis in "xyz" for stem in ("kps", "kms")],
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
@@ -723,7 +752,8 @@ def plan_beta_fused_electric_pair_from_arrays(
         constitutive_flat: Dict[str, Any], codes, zero_metal,
         dtdx: float, beta_plus: float, beta_minus: float,
         block: Optional[int] = None, kernel: Any = None,
-        num_warps: Optional[int] = 1, has_beta: int = 1,
+        num_warps: Optional[int] = 1, has_beta: int = 1, *,
+        chunk_bounds: Any,
         ) -> BetaFusedElectricPairPlan:
     """Build from bare device arrays — the gate's route.
 
@@ -752,4 +782,5 @@ def plan_beta_fused_electric_pair_from_arrays(
         [constitutive_flat[f"{stem}_{axis}"]
          for axis in "xyz" for stem in ("kps", "kms")],
         kernel=kernel, num_warps=num_warps, has_beta=has_beta,
+        chunk_bounds=chunk_bounds,
     )

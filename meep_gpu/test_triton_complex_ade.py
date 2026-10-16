@@ -17,36 +17,9 @@ from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
 from meep_gpu.pml import PML
 
-pytestmark = pytest.mark.usefixtures("run_policy_declared_keep")
 
 MODULE_NAME = "meep_gpu.triton_kernels.complex_ade"
 MODULE_PATH = pathlib.Path(__file__).parent / "triton_kernels" / "complex_ade.py"
-
-
-def _detail(value="FMA_V1"):
-    return {
-        "matches": {"FMA_V1": value == "FMA_V1", "NAIVE": value == "NAIVE",
-                    "PLANEWISE_diagnostic": False},
-        "mismatch_words": {"FMA_V1": 0 if value == "FMA_V1" else 7,
-                           "NAIVE": 0 if value == "NAIVE" else 7,
-                           "PLANEWISE_diagnostic": 31},
-        "licensable_arms_disagreement_words": 128,
-        "discriminates": True,
-        "classified": value,
-    }
-
-
-def probe_record(module, value="FMA_V1"):
-    patterns = {name: value for name in module.COMPLEX_ADE_PROBE_PATTERNS}
-    return {
-        "backend": "cupy",
-        "patterns": patterns,
-        "vectors": {name: 2792 for name in patterns},
-        "detail": {name: _detail(value) for name in patterns},
-        "subnormal_policy": {
-            "policy": "ieee_keep_ftz_stripped", "resolved": "keep"},
-        "candidates": {"policy": "keep"},
-    }
 
 
 @pytest.fixture(scope="module")
@@ -96,10 +69,9 @@ def build(*, kind="lorentzian", counts=(1, 1, 1), volume_sigma=False,
     return fields, pml, state
 
 
-def clean_reasons(arm, fields, pml, state, component="Ez", probe=None):
-    record = probe_record(arm) if probe is None else probe
+def clean_reasons(arm, fields, pml, state, component="Ez"):
     return [reason for reason in arm.complex_ade_update_p_coverage(
-        fields, pml, state, component, probe=record).reasons
+        fields, pml, state, component).reasons
             if "not cupy" not in reason]
 
 
@@ -118,7 +90,7 @@ def test_module_imports_and_answers_coverage_without_triton(arm, monkeypatch):
     module = importlib.import_module(MODULE_NAME)
     fields, pml, state = build()
     assert isinstance(module.complex_ade_update_p_coverage(
-        fields, pml, state, "Ez", probe=probe_record(module)).covered, bool)
+        fields, pml, state, "Ez").covered, bool)
 
 
 def test_package_does_not_eagerly_import_the_new_family():
@@ -127,7 +99,7 @@ def test_package_does_not_eagerly_import_the_new_family():
     assert MODULE_NAME not in sys.modules
 
 
-def test_source_uses_word_pairs_and_the_three_normative_orientations(arm):
+def test_source_uses_word_pairs_and_the_three_normative_orientations():
     source = MODULE_PATH.read_text(encoding="utf-8")
     tree = ast.parse(source)
     kernel = next(node for node in tree.body
@@ -136,11 +108,13 @@ def test_source_uses_word_pairs_and_the_three_normative_orientations(arm):
     body = ast.unparse(kernel)
     assert "word = 2 * idx" in body
     assert body.count("_mul_field_left") == 1
-    assert body.count("_mul_coefficient_left") == 3
+    assert body.count("_mul_coefficient_left") == 4
+    # MEEP's update per part: the history term is SUBTRACTED and gamma1inv scales the
+    # whole bracket last (susceptibility.cpp:251-256, PolarizationState.update).
+    assert "out_re = a_re - b_re" in body and "out_im = a_im - b_im" in body
+    assert body.rindex("_mul_coefficient_left(gamma1inv") > body.index("out_re = out_re + d_re")
     assert body.index("_mul_field_left") < body.index("_mul_coefficient_left")
     assert "out_re = out_re + d_re" in body
-    assert arm.COMPLEX_ADE_PROBE_PATTERN == "c8_mul_python_float_field_left"
-    assert arm.COMPLEX_ADE_PROBE_PATTERNS[:-1] == arm.PROBE_PATTERNS
 
 
 @pytest.mark.parametrize("kind", ("lorentzian", "drude"))
@@ -157,15 +131,14 @@ def test_reference_recurrence_is_byte_exact_for_complex_storage(
     )
     for cycle in range(4):
         state.update(fields.drive_field, fields.grid.dt)
-        c_now, c_prev, c_drive = state._coefficients
         for component in state.driven():
             p = mirror.P[component]
             p_prev = mirror.P_prev[component]
             scratch = mirror._scratch
-            numpy.multiply(p, c_now, out=scratch)
-            scratch += c_prev * p_prev
-            scratch += c_drive * (state.sigma[component]
-                                  * fields.drive_field(component))
+            sigma = state.sigma[component]
+            sigma = sigma if getattr(sigma, "shape", ()) else numpy.float32(sigma)
+            scratch[...] = _meep_parts(state.constants, p, p_prev, sigma,
+                                       fields.drive_field(component))
             mirror.P[component] = scratch
             mirror.P_prev[component] = p
             mirror._scratch = p_prev
@@ -176,26 +149,36 @@ def test_reference_recurrence_is_byte_exact_for_complex_storage(
                     == state.P_prev[component].tobytes())
 
 
+def _meep_parts(constants, p, pp, s, w):
+    """MEEP's isotropic update, each stored part as one real float32 pass (DOCMP2)."""
+    two_minus_od, gamma1, omega0dtsqr, gamma1inv = (numpy.float32(c) for c in constants)
+    out = numpy.empty_like(p)
+    for part in ("real", "imag"):
+        pv, qv, wv = (getattr(a, part) for a in (p, pp, w))
+        bracket = (pv * two_minus_od) - (gamma1 * qv)
+        bracket = bracket + (omega0dtsqr * (s * wv))
+        getattr(out, part)[...] = gamma1inv * bracket
+    return out
+
+
 class NumpyKernel:
-    """Launch-shaped test double that executes the exact array recurrence."""
+    """Launch-shaped test double that executes MEEP's per-part recurrence."""
 
     def __init__(self):
         self.launches = []
 
     def __getitem__(self, grid):
-        def launch(out, p, prev, sigma, drive, c_now, c_prev, c_drive, n_elem,
-                   **kwargs):
+        def launch(out, p, prev, sigma, drive, two_minus_od, gamma1, omega0dtsqr,
+                   gamma1inv, n_elem, **kwargs):
             self.launches.append({"grid": grid, **kwargs})
-            shape = out.shape[:-1] if out.shape[-1] == 2 else None
             out_c = out.reshape(-1).view(numpy.complex64)[:n_elem]
             p_c = p.reshape(-1).view(numpy.complex64)[:n_elem]
             q_c = prev.reshape(-1).view(numpy.complex64)[:n_elem]
             w_c = drive.reshape(-1).view(numpy.complex64)[:n_elem]
-            numpy.multiply(p_c, c_now, out=out_c)
-            out_c += c_prev * q_c
-            out_c += c_drive * (sigma.reshape(-1)[:n_elem] * w_c
-                                 if kwargs["SIGMA_IS_VOLUME"] else sigma * w_c)
-            del shape
+            s = (sigma.reshape(-1)[:n_elem] if kwargs["SIGMA_IS_VOLUME"]
+                 else numpy.float32(sigma))
+            out_c[...] = _meep_parts((two_minus_od, gamma1, omega0dtsqr, gamma1inv),
+                                     p_c, q_c, s, w_c)
         return launch
 
 
@@ -204,7 +187,7 @@ def test_plan_resolves_rotating_pointers_on_every_launch(arm):
     candidate_fields, _, candidate = build(volume_sigma=True)
     kernel = NumpyKernel()
     plan = arm.ComplexAdeUpdatePPlan(
-        candidate, candidate.driven(), reference_fields.grid.shape, expansion=1,
+        candidate, candidate.driven(), reference_fields.grid.shape,
         kernel=kernel, pointer=lambda value: value)
     for cycle in range(5):
         reference.update(reference_fields.drive_field, reference_fields.grid.dt)
@@ -231,14 +214,6 @@ def test_target_predicate_admits_modulo_backend_and_base_ade_refuses(arm):
         incumbent = ade_update_p_coverage(fields, state, component)
         assert any("complex64 storage is not carried" in reason
                    for reason in incumbent.reasons)
-
-
-def test_the_fifth_probe_pattern_is_mandatory(arm):
-    fields, pml, state = build()
-    record = probe_record(arm)
-    del record["patterns"][arm.COMPLEX_ADE_PROBE_PATTERN]
-    reasons = clean_reasons(arm, fields, pml, state, probe=record)
-    assert any(arm.COMPLEX_ADE_PROBE_PATTERN in reason for reason in reasons)
 
 
 def test_active_pml_and_pml_storage_are_refused(arm):
@@ -281,11 +256,11 @@ def test_builder_is_all_or_nothing_per_susceptibility(arm, monkeypatch):
     fields, pml, state = build()
     seen = []
 
-    def verdict(_fields, _pml, _state, component, probe=None):
+    def verdict(_fields, _pml, _state, component):
         seen.append(component)
         return arm.Coverage(component != "Ey", ("planted",) if component == "Ey" else ())
 
     monkeypatch.setattr(arm, "complex_ade_update_p_coverage", verdict)
     assert arm.plan_complex_ade_update_p(
-        fields, pml, state, probe=probe_record(arm)) is None
+        fields, pml, state) is None
     assert seen == ["Ex", "Ey"]

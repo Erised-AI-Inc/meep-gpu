@@ -25,10 +25,10 @@ guarded ``pml_apply_reg`` -- lives in :mod:`.complex_fill_carry`, ONCE, because
 one carry is how they would come to differ.
 
 WHAT IS LIFTED AND FROM WHERE. The curl half is
-``complex_folded_kernels.folded_source("step_B", arm)`` -- the certified folded
+``complex_folded_kernels.folded_source("step_B")`` -- the certified folded
 complex curl, whose fold masks (``BC_MIRROR_PERIODIC`` at cell 0 and at the last
 stored slot) ride through the capture untouched. The constitutive half is
-``complex_emitter.complex_source("update_H", arm)`` -- the certified complex
+``complex_emitter.complex_source("update_H")`` -- the certified complex
 constitutive the fold ADMITS directly
 (``coverage.COMPLEX_CONSTITUTIVE_FOLD_ADMISSION``, 2026-08-20). The splice
 anchors every certified line it edits and raises on a moved one.
@@ -120,11 +120,18 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 # refuses by name when they are absent.
 try:
     from .complex_pml_kernels import (bloch_phase_arguments,
+                                      chunk_record_argument,
                                       complex_constitutive_tables,
                                       complex_curl_tables, word_view)
 except ImportError:  # a host with no CuPy: only the launch is unavailable
-    bloch_phase_arguments = complex_constitutive_tables = None
+    bloch_phase_arguments = complex_constitutive_tables = chunk_record_argument = None
     complex_curl_tables = word_view = None
+
+# The chunk-record decode's one spelling on this table (NumPy through chunk_map).
+try:
+    from . import bounds_block as _bounds_block
+except ImportError:  # loaded by path, outside the package: the bit-identity probe
+    from meep_gpu.cuda_kernels import bounds_block as _bounds_block
 
 # The source-seam clause, shared with every fused-pair predicate on all three
 # tracks; imported rather than re-spelled (a per-product copy once asked about the
@@ -208,21 +215,17 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
      "became": "__device__ __forceinline__ cf pml_apply_reg(... , int owned)",
      "why": "the constitutive half consumes the value in a register, and on a "
             "cell a fill images the SOURCE thread writes f -- so this thread "
-            "must not read f[idx] either. The fu recurrence stays ABOVE the "
-            "guard: step_B writes fu at every cell and neither fill touches it "
-            "(stepping.py:1451). The expression, its parenthesisation and the "
-            "store below the guard are the certified ones."},
-    {"line": "    cf_store(f, idx, mul_field_left(cf_sub(cf_add(a, fu_new), "
-             "fprev), sinv_u));",
-     "became": "    if (!owned) return cf_zero();\n    cf a = ...;\n    cf value "
-               "= mul_field_left(cf_sub(cf_add(a, fu_new), fprev), sinv_u);\n"
-               "    cf_store(f, idx, value);\n    return value;",
-     "why": "same right-hand side, same tree, same store; the value is "
-            "additionally NAMED so the constitutive half can read it from a "
-            "register, and the ownership guard sits ABOVE the field load so a "
-            "destination thread never reads a word another block writes. A "
-            "float32 word pair stored to global and reloaded is the identity "
-            "on the bits."},
+            "must not read f[idx] either. The fu stage stays ABOVE the guard: "
+            "step_B steps fu on every recurrence cell and neither fill touches "
+            "it. Both forms and the store below the guard are the certified ones."},
+    {"line": "    cf fcur = cf_load(f, idx);  ...  cf_store(f, idx, value);",
+     "became": "    if (!owned) return cf_zero();\n    cf fcur = cf_load(f, idx);\n"
+               "    ...\n    cf_store(f, idx, value);\n    return value;",
+     "why": "the ownership guard directly before the one load of the field (DESIGN.md "
+            "D11), so a destination thread never reads a word another block writes; "
+            "the value is additionally RETURNED so the constitutive half reads it "
+            "from a register. A float32 word pair stored to global and reloaded is "
+            "the identity on the bits."},
     {"line": "        pml_apply(f0, u0, idx, curl, ...);",
      "became": "        b0 = pml_apply_reg(f0, u0, idx, curl, ..., own_0);",
      "why": "capture the register under the ownership flag; three lines, one per "
@@ -234,9 +237,9 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "a reload of the flux density the curl just stored; this reads the "
             "register instead, and removes the constitutive half's only use of "
             "g0/g1/g2 -- which is what lets B be bound exactly once."},
-    {"line": "    constitutive_apply(f0, w0, idx, s0, kps_x[i], kms_x[i]);",
+    {"line": "    constitutive_apply(f0, w0, idx, s0, kps_x[i], kms_x[i], in_i_x);",
      "became": "    if (own_0) { constitutive_apply(h0, w0, idx, s0, kps_x[i], "
-               "kms_int_x[i]); <ghost blocks> }",
+               "kms_int_x[i], in_i_x); <ghost blocks> }",
      "why": "TWO RENAMES (f0 is B in the curl body and H here; kms_x is the "
             "HALF-INTEGER sub-lattice for the B curl and the INTEGER one for "
             "update_H), the ownership guard, and the ghost carry: a source "
@@ -258,10 +261,18 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
      "why": "THE TWO FILLS, carried. Each parity is ONE certified "
             "mul_coefficient_left -- the coefficient is np.multiply's left "
             "operand -- applied in the driver's own composition order (near "
-            "innermost, then far ascending), because under complex storage the "
-            "chain order and the zero cross terms both move bytes: measured on "
-            "the GPU host 2026-09-01 (plain scale wrong on signed zeros; "
-            "pre-multiplied parities wrong on 4 of 8216 words)."},
+            "innermost, then far ascending) -- the array path's own sequence of "
+            "part-wise products (host_writes.copy_face's part_products.scale per "
+            "pass)."},
+    # ----- THE PER-CHUNK FORMS, 0.10 (bit_parity_0_10 DESIGN.md D1, D10, D11) -------
+    {"line": "    <the folded curl's chunk-record block>\n"
+             "    <the complex constitutive's chunk-record block>",
+     "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
+     "why": "ONE DECODE OF THE RECORD PER KERNEL (D10). Both bodies' blocks are removed "
+            "by bounds_block.strip_bounds_block (refused unless each is exactly the "
+            "emitter's block for its body) and ONE block over the union is emitted "
+            "directly after the decode. A ghost the carry steps takes the membership "
+            "of the row its coefficient entry is read at (the destination's)."},
 )
 
 __all__ = [
@@ -354,12 +365,32 @@ extern "C" __global__ void fused_magnetic_pair_pml_complex_folded(
     // have Yee shift 0 there) and the far fill by -phase (theirs is 1).
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
-    float phase_x, float phase_y, float phase_z
+    float phase_x, float phase_y, float phase_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // which PML form, decoded once, after the index decode.
+    const int* __restrict__ cb
 ) {
 '''
 
 
-def complex_folded_fused_magnetic_pair_prelude(arm) -> str:
+#: The chunk-record entries each lifted body decodes, as ``(entries, presence)``: the
+#: B curl reads its lattice along each component's dsigu axis plus the
+#: partner-presence word, update_H its lattice along each component's own axis
+#: (the region plan's rule).
+CURL_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(_bounds_block.curl_entries(('Bx', 'By', 'Bz'))), (0, 1, 2))
+CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(_bounds_block.constitutive_entries(('Hx', 'Hy', 'Hz'))), ())
+
+
+def union_bounds_block() -> str:
+    """The fused kernel's ONE chunk-record block: both bodies' entries, one decode
+    (DESIGN.md D10). The names are tagged by lattice, so the union redeclares none."""
+    return _bounds_block.bounds_block(CURL_BLOCK[0] + CONSTITUTIVE_BLOCK[0],
+                                      CURL_BLOCK[1] + CONSTITUTIVE_BLOCK[1])
+
+
+def complex_folded_fused_magnetic_pair_prelude() -> str:
     """The certified FOLDED complex prelude with ``pml_apply`` owned and valued.
 
     The folded prelude differs from the plain complex one by exactly the two
@@ -369,18 +400,19 @@ def complex_folded_fused_magnetic_pair_prelude(arm) -> str:
     transform. ``constitutive_apply`` is emitted untouched.
     """
     prelude, _body = _split_emitted(
-        _folded.folded_source("step_B", arm), "folded_source('step_B')")
+        _folded.folded_source("step_B"), "folded_source('step_B')")
     return _carry.pml_apply_reg_prelude(prelude, FAMILY)
 
 
-def certified_curl_body(arm) -> str:
+def certified_curl_body() -> str:
     """``step_B_pml_complex_folded``'s body, captured OWNED via the shared carry."""
     _prelude, body = _split_emitted(
-        _folded.folded_source("step_B", arm), "folded_source('step_B')")
-    return _carry.captured_curl_body(body, FAMILY)
+        _folded.folded_source("step_B"), "folded_source('step_B')")
+    return _carry.captured_curl_body(
+        body, FAMILY, bounds=(CURL_BLOCK[0], CURL_BLOCK[1], union_bounds_block()))
 
 
-def certified_constitutive_body(arm) -> str:
+def certified_constitutive_body() -> str:
     """``update_H_pml_complex_bloch``'s statements, seamed, renamed and guarded.
 
     The certified complex constitutive is emitted by ``complex_emitter`` (the
@@ -390,29 +422,33 @@ def certified_constitutive_body(arm) -> str:
     the renames, the ownership guards and the ghost blocks.
     """
     _prelude, body = _split_emitted(
-        complex_emitter.complex_source("update_H", arm),
+        complex_emitter.complex_source("update_H"),
         "complex_source('update_H')")
     decode = "    int i = idx / (ny * nz);\n"
     if decode not in body:
         raise AssertionError(
             "the certified constitutive body no longer decodes i on its own "
             "line; the duplicate decomposition cannot be identified")
+    # Its chunk-record block goes with the decode: the union block decodes update_H's
+    # entries too (D10).
+    body = _bounds_block.strip_bounds_block(body, "the certified constitutive body",
+                                            *CONSTITUTIVE_BLOCK)
     tail = body.split(decode, 1)[1]
     return _carry.constitutive_body_with_carry(tail, FAMILY)
 
 
-def complex_folded_fused_magnetic_pair_source(arm) -> str:
-    """The whole fused kernel for one expansion arm. PURE ASCII (a compile
+def complex_folded_fused_magnetic_pair_source() -> str:
+    """The whole fused kernel. PURE ASCII (a compile
     requirement: NVRTC's source file goes through the locale encoding)."""
     source = "".join((
-        complex_folded_fused_magnetic_pair_prelude(arm),
+        complex_folded_fused_magnetic_pair_prelude(),
         _SIGNATURE,
-        certified_curl_body(arm),
+        certified_curl_body(),
         "\n",
         _carry.zero_metal_carry(),
         "\n    // --- update_H (the certified complex constitutive; its sources\n"
         "    // are the registers above, not a reload of B) -------------------\n",
-        certified_constitutive_body(arm),
+        certified_constitutive_body(),
         "}\n",
     ))
     try:
@@ -426,9 +462,8 @@ def complex_folded_fused_magnetic_pair_source(arm) -> str:
 
 
 def device_sources() -> Dict[str, str]:
-    """Every source this family can emit, keyed by arm name -- for a digest."""
-    return {name: complex_folded_fused_magnetic_pair_source(name)
-            for name in sorted(complex_emitter.EXPANSIONS)}
+    """The shipped device text by kernel name -- what a record block would pin."""
+    return {KERNEL_NAME: complex_folded_fused_magnetic_pair_source()}
 
 
 #: NVRTC compile options -- CORRECTNESS, identical to both certified halves'.
@@ -443,18 +478,17 @@ def _clear_kernel_cache() -> int:
     return compile_cache.clear_kernel_cache()
 
 
-def _get_kernel(arm, name: str = KERNEL_NAME):
-    """Compile the fused kernel under one arm, memoized on (name, options, policy,
+def _get_kernel(name: str = KERNEL_NAME):
+    """Compile the fused kernel, memoized on (name, options, policy,
     source). THE SOURCE IS EMITTED PER CALL: it is part of the memo key, and a
     gate mutates this family by monkeypatching the emitters it splices from."""
     if cp is None:
         raise RuntimeError(
             "CuPy is not importable on this host, so this kernel cannot be "
             "compiled; the predicate and the emitter need no device and still run")
-    code = complex_folded_fused_magnetic_pair_source(arm)
+    code = complex_folded_fused_magnetic_pair_source()
     key = compile_cache.kernel_cache_key(
-        f"{name}_arm{complex_emitter.normalized_expansion(arm)}", True,
-        _COMPILE_OPTIONS, code)
+        name, True, _COMPILE_OPTIONS, code)
     return compile_cache.get_or_compile(
         key, lambda: cp.RawKernel(code, name, options=_COMPILE_OPTIONS))
 
@@ -464,8 +498,7 @@ def _get_kernel(arm, name: str = KERNEL_NAME):
 # =============================================================================
 
 def covers_complex_folded_fused_magnetic_pair(
-        fields: Any, pml: Any, grid: Any, sources: Any = None,
-        license: Any = None, subnormal_policy: Any = None) -> Tuple[bool, str]:
+        fields: Any, pml: Any, grid: Any, sources: Any = None) -> Tuple[bool, str]:
     """May ONE launch span the five passes of :data:`REPLACES`?
 
     A CONJUNCTION, AND NOTHING IS WEAKENED. The curl half's certified predicate
@@ -484,11 +517,11 @@ def covers_complex_folded_fused_magnetic_pair(
     rows. Two admitters on one seam would leave it unfused naming both.
     """
     covered, reason = _folded.covers_complex_folded_curl(
-        fields, pml, grid, "step_B", license, subnormal_policy)
+        fields, pml, grid, "step_B")
     if not covered:
         return False, f"curl half: {reason}"
     covered, reason = covers_real_pml_complex_constitutive(
-        fields, pml, grid, "H", license, subnormal_policy)
+        fields, pml, grid, "H")
     if not covered:
         return False, f"constitutive half: {reason}"
 
@@ -591,8 +624,9 @@ def launch_complex_folded_fused_magnetic_pair(
         fields: "Fields", tables: Dict[str, Dict[str, Any]],
         boundary_codes: Sequence[Any], phase_flags: Sequence[Any],
         phase_values: Sequence[Any], walls: Sequence[int],
-        fills: Dict[str, Sequence[Any]], dtdx: float, arm: Any,
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
+        fills: Dict[str, Sequence[Any]], dtdx: float,
+        kernel: Optional[Any] = None, *, chunk_bounds: Any,
+        layer: Any = None) -> Dict[str, Any]:
     """All five of :data:`REPLACES` in ONE launch.
 
     ``boundary_codes`` are ``complex_folded_kernels.folded_complex_boundary_codes``'
@@ -600,7 +634,20 @@ def launch_complex_folded_fused_magnetic_pair(
     for this kernel); ``walls`` are ``zero_metal_axes``' and ``fills`` is
     :func:`complex_folded_fused_magnetic_pair_fills`' -- three DIFFERENT readings
     of the grid, none derivable from another. ``kernel`` is the gate's door.
+
+    ``chunk_bounds`` is the run's chunk record on the device, required. THE RUN'S FIRST
+    ``update_H`` STARTS H FROM B: when ``fields.h_separated`` is still False the launch is
+    followed by ``stepping.update_H`` on the array path with ``layer``
+    (``complex_fused_magnetic_pair.start_of_h``), which starts H and ``f_w_H`` from the
+    B this kernel stored -- after step_B, both fills and the wall clear, which is when
+    MEEP starts them. A first launch handed no layer is refused by name.
     """
+    cb = chunk_record_argument(chunk_bounds)
+    first = not bool(getattr(fields, "h_separated", True))
+    if first and layer is None:
+        raise RuntimeError(
+            "the run's first update_H starts H from B (stepping.separate_h_from_b) and "
+            "this fused magnetic launch was handed no layer to start it with")
     nx, ny, nz = (int(n) for n in fields.Bx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
@@ -615,20 +662,24 @@ def launch_complex_folded_fused_magnetic_pair(
         np.int32(int(bool(walls[axis]))) for axis in range(3)
     ) + tuple(np.int32(int(fills["near"][axis])) for axis in range(3)) + tuple(
         np.int32(int(fills["reflect"][axis])) for axis in range(3)
-    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3))
-    (kernel or _get_kernel(arm))((blocks,), (_FUSED_THREADS,), arguments)
+    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3)) + (cb,)
+    (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), arguments)
+    if first:
+        from ..stepping import update_H  # noqa: PLC0415 - NumPy/CuPy array path
+
+        update_H(fields, layer)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
-            "elements": nx * ny * nz, "replaces": REPLACES,
+            "elements": nx * ny * nz, "replaces": REPLACES, "h_started": first,
             "walls": tuple(int(bool(walls[axis])) for axis in range(3)),
             "near": tuple(int(v) for v in fills["near"]),
             "reflect": tuple(int(v) for v in fills["reflect"]),
-            "phase": tuple(float(v) for v in fills["phase"]),
-            "arm": complex_emitter.normalized_expansion(arm)}
+            "phase": tuple(float(v) for v in fills["phase"])}
 
 
 def run_complex_folded_fused_magnetic_pair(
-        fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, arm: Any, *,
-        sources: Any = None, license: Any = None, subnormal_policy: Any = None,
+        fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
+        chunk_bounds: Any,
+        sources: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once.
@@ -637,7 +688,7 @@ def run_complex_folded_fused_magnetic_pair(
     path. ``tables`` and ``kernel`` are the gate's doors.
     """
     covered, reason = covers_complex_folded_fused_magnetic_pair(
-        fields, pml, grid, sources, license, subnormal_policy)
+        fields, pml, grid, sources)
     if not covered:
         return {"launched": False, "reason": reason}
     if tables is None:
@@ -649,4 +700,5 @@ def run_complex_folded_fused_magnetic_pair(
     flags, values = bloch_phase_arguments(grid, False)
     return launch_complex_folded_fused_magnetic_pair(
         fields, tables, codes, flags, values, zero_metal_axes(grid),
-        _carry.fills_plan(grid), dtdx, arm, kernel)
+        _carry.fills_plan(grid), dtdx, kernel, chunk_bounds=chunk_bounds,
+        layer=pml)

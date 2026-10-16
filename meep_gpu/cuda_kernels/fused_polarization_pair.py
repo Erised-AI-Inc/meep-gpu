@@ -142,7 +142,7 @@ except ImportError:
 # route ``test_ade_update_p.py`` takes, and the reason
 # :func:`_certified_ade_strings` exists.
 try:
-    from . import compile_cache
+    from . import bounds_block, compile_cache
     from . import dispersive_kernels as certified_e
     from .coverage import (_base_address, ade_sigma_is_volume,
                            covers_real_pml_ade_update_p)
@@ -159,6 +159,7 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 
     compile_cache = _load("compile_cache")
     certified_e = _load("dispersive_kernels")
+    bounds_block = _load("bounds_block")
     _coverage = _load("coverage")
     _base_address = _coverage._base_address
     ade_sigma_is_volume = _coverage.ade_sigma_is_volume
@@ -247,19 +248,21 @@ ELECTRIC_TERMS = certified_e.ELECTRIC_TERMS
 #: Every line of certified device text this file did not lift verbatim, with the
 #: reason. DATA, not prose, so a gate can assert the list rather than a docstring.
 LIFT_EDITS: Tuple[Dict[str, str], ...] = (
-    {"line": "    float w = drive[idx];",
+    {"line": "    float w = dsigw ? drive_w[idx] : drive_e[idx];",
      "became": "    float w = src_<axis>;",
-     "why": "THE SEAM. The certified update_P loads the drive from the array "
-            "fields.drive_field(component) names -- f_w_<c> under an active "
-            "layer, the stored E<c> without one -- and BOTH hold exactly the "
-            "value the update_E half of this same thread just stored from its "
-            "src register (constitutive_apply stores fw[idx] = src on the PML "
-            "arm; the no-PML arm stores E[idx] = src). A float32 word stored to "
-            "global and reloaded is the identity on the bits. The predicate "
-            "checks the drive identity against the arrays this launch binds; "
-            "the load is emitted ONCE per component rather than once per pole, "
-            "because every pole of a component reads the same array and nothing "
-            "in this seam writes it between the certified launches."},
+     "why": "THE SEAM. The certified update_P selects MEEP's drive per chunk "
+            "(update_pols.cpp:44): f_w_<c> on the cells whose chunk carries the "
+            "component's own layer, the stored E<c> elsewhere -- and without a "
+            "layer the stored E<c> everywhere. On BOTH constitutive forms the "
+            "update_E half of this same thread has just stored its src register "
+            "into exactly that word (the dsigw form stores fw[idx] = src, the "
+            "plain form f[idx] = src; the no-PML arm stores E[idx] = src). A "
+            "float32 word stored to global and reloaded is the identity on the "
+            "bits, so the register IS the selected load on every cell and the "
+            "select itself goes with the load. The load is emitted ONCE per "
+            "component rather than once per pole, because every pole of a "
+            "component reads the same word and nothing in this seam writes it "
+            "between the certified launches."},
     {"line": "    const float* __restrict__ p_now,",
      "became": "(not a parameter: the pole pointer P_<c>_<i> is bound once)",
      "why": "the E half's chain reads state.P[c] and the recurrence's p_now IS "
@@ -267,20 +270,23 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "on both is undefined behaviour, so the signature binds it once and "
             "both halves read through that parameter. The recurrence's load and "
             "arithmetic are untouched; only the pointer's NAME changed."},
-    {"line": "    float p = p_now[idx]; (and q, s; c_now, c_prev, c_drive)",
+    {"line": "    float p = p_now[idx]; (and q, s; two_minus_od, gamma1, "
+             "omega0dtsqr, gamma1inv)",
      "became": "    float p_<i> = P_<c>_<i>[idx]; (suffixed per pole)",
      "why": "one launch now carries every driving state's recurrence for one "
-            "component, so each pole's locals and scalar coefficients carry the "
+            "component, so each pole's locals and scalar constants carry the "
             "pole's index. Names only: the loads, the grouping "
-            "((p*c_now) + (c_prev*q)) + (c_drive*(s*w)) and the store are the "
-            "certified line under a checked substitution that raises if the "
-            "certified string drifts."},
-    {"line": "    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n"
-             "    if (idx >= n_elem) return; (the ADE kernel's own guard)",
-     "became": "(dropped: the E half's guard has already returned)",
-     "why": "the update_E body above already declares idx and guarded the "
-            "extent; splicing the ADE guard would redeclare idx. On the PML arm "
-            "n_elem is therefore not a parameter at all, and the predicate "
+            "gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + "
+            "(omega0dtsqr * (s * w))) and the store are the certified line under "
+            "a checked substitution that raises if the certified string drifts."},
+    {"line": "    int idx = blockIdx.x * blockDim.x + threadIdx.x; ... "
+             "const int dsigw = own_axis == 0 ? in_h_x : ...; (the ADE kernel's "
+             "own guard, index decode, chunk-record block and drive flag)",
+     "became": "(dropped: the E half's guard, decode and record block come first)",
+     "why": "the update_E body above already declares idx, i, j and k, has "
+            "guarded the extent and decoded the component's own record entry; "
+            "splicing the ADE prefix would redeclare all of them, and its drive "
+            "flag selects a load the seam no longer issues. The predicate "
             "requires every P/P_prev/scratch/sigma volume to carry exactly the "
             "stored extent the E half walks, so the dropped bound is the same "
             "number the certified kernel would have used."},
@@ -290,9 +296,10 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "a whole-grid update_E cannot fuse with it -- see the module "
             "docstring for the buffer count and the word-for-word equivalence "
             "argument. Each per-component kernel's chain, inverse-epsilon "
-            "multiply and store are the certified emitter's own lines for that "
-            "component, lifted by exact anchor from the full emission; the "
-            "other two components' lines are in the other two launches."},
+            "multiply, store and chunk-record entry are the certified emitter's "
+            "own lines for that component, lifted by exact anchor from the full "
+            "emission; the other two components' lines are in the other two "
+            "launches."},
 )
 
 __all__ = [
@@ -397,7 +404,13 @@ def _pml_tail_line(component_index: int) -> str:
     target, _source, axis = ELECTRIC_TERMS[component_index]
     letter = _AXIS_INDEX[axis]
     return (f"    constitutive_apply({target}, f_w_{target}, idx, src_{axis}, "
-            f"kps_{axis}[{letter}], kms_{axis}[{letter}]);")
+            f"kps_{axis}[{letter}], kms_{axis}[{letter}], in_h_{axis});")
+
+
+def _pml_bounds_block(component_index: int) -> str:
+    """The chunk-record block of ONE component: its own axis, half-integer lattice."""
+    entry = certified_e.PML_BOUNDS_ENTRIES[component_index]
+    return bounds_block.bounds_block((entry,))
 
 
 def _no_pml_tail_line(component_index: int) -> str:
@@ -427,6 +440,16 @@ def _certified_e_pieces(arm: str, component_index: int, count: int
         raise AssertionError(
             f"the certified {arm} emission no longer carries the index block "
             f"this weld lifts; the guard would be retyped rather than lifted")
+    if arm == "pml":
+        # THE COMPONENT'S OWN RECORD ENTRY, every line of it lifted: the full
+        # emission decodes all three E entries, and this launch steps one component.
+        block = _pml_bounds_block(component_index)
+        for line in block.splitlines():
+            if line.strip() and line not in reference.splitlines():
+                raise AssertionError(
+                    f"record-block line {line!r} is not in the certified emission; "
+                    f"the component's form flag would be retyped rather than lifted")
+        index_block = index_block + "\n" + block.rstrip("\n") + "\n"
     tail = (_pml_tail_line(component_index) if arm == "pml"
             else _no_pml_tail_line(component_index))
     if tail not in reference:
@@ -553,16 +576,26 @@ def _certified_ade_strings() -> Dict[str, str]:
     return _parse_ade_strings(_read_ade_kernels_text())
 
 
-#: The certified recurrence bodies, one per sigma form, each the 5/4-line block
-#: between the ADE kernel's guard and its closing brace.
+#: The certified recurrence bodies, one per sigma form, each the five-line block
+#: between the ADE kernel's drive flag and its closing brace; and the prefix before
+#: them: the guard, the index decode, the chunk-record block (the half-integer entry
+#: of every axis) and the drive flag on the component's own axis.
 _ADE_GUARD = ("    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n"
-              "    if (idx >= n_elem) return;\n\n")
+              "    if (idx >= nx * ny * nz) return;\n\n"
+              "    int k = idx % nz;\n"
+              "    int j = (idx / nz) % ny;\n"
+              "    int i = idx / (ny * nz);\n\n"
+              + bounds_block.bounds_block(((True, 0), (True, 1), (True, 2)))
+              + "    const int dsigw = own_axis == 0 ? in_h_x : "
+                "(own_axis == 1 ? in_h_y : in_h_z);\n")
+#: The certified drive select: MEEP's per-chunk ``w``, one load of the two.
+_ADE_DRIVE_LINE = "    float w = dsigw ? drive_w[idx] : drive_e[idx];\n"
 _ADE_VOLUME_BODY = ("    float p = p_now[idx];\n"
                     "    float q = p_prev[idx];\n"
-                    "    float w = drive[idx];\n"
+                    + _ADE_DRIVE_LINE +
                     "    float s = sigma[idx];\n"
-                    "    p_out[idx] = ((p * c_now) + (c_prev * q)) + "
-                    "(c_drive * (s * w));\n")
+                    "    p_out[idx] = gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + "
+                    "(omega0dtsqr * (s * w)));\n")
 _ADE_UNIFORM_BODY = _ADE_VOLUME_BODY.replace("    float s = sigma[idx];\n",
                                              "    float s = sigma;\n")
 
@@ -602,8 +635,8 @@ def _pole_block(component_index: int, pole_index: int, volume: bool,
     target = ELECTRIC_TERMS[component_index][0]
     i = pole_index
     body = bodies[volume]
-    body = _replace_once(body, "    float w = drive[idx];\n", "",
-                         "the certified drive load (moved to the seam)")
+    body = _replace_once(body, _ADE_DRIVE_LINE, "",
+                         "the certified drive select (moved to the seam)")
     body = _replace_once(body, "p_now[idx]", f"P_{target}_{i}[idx]",
                          "the recurrence's P^n load")
     body = _replace_once(body, "p_prev[idx]", f"p_prev_{i}[idx]",
@@ -619,16 +652,13 @@ def _pole_block(component_index: int, pole_index: int, volume: bool,
     for name in ("p", "q", "s"):
         body = _replace_once(body, f"float {name} ", f"float {name}_{i} ",
                              f"the {name} declaration")
-    for name, suffixed in (("p", f"p_{i}"), ("q", f"q_{i}"), ("s", f"s_{i}")):
-        body = _replace_once(body, f"({name} * c_now)" if name == "p"
-                             else f"(c_prev * {name})" if name == "q"
-                             else f"({name} * w)",
-                             f"({suffixed} * c_now_{i})" if name == "p"
-                             else f"(c_prev_{i} * {suffixed})" if name == "q"
-                             else f"({suffixed} * w)",
-                             f"the {name} use in the recurrence")
-    body = _replace_once(body, "(c_drive * ", f"(c_drive_{i} * ",
-                         "the drive coefficient")
+    for old, new, what in (
+            ("(p * two_minus_od)", f"(p_{i} * two_minus_od_{i})", "the p use"),
+            ("(gamma1 * q)", f"(gamma1_{i} * q_{i})", "the q use"),
+            ("(s * w)", f"(s_{i} * w)", "the s use"),
+            ("(omega0dtsqr * (", f"(omega0dtsqr_{i} * (", "the drive constant"),
+            ("= gamma1inv * (", f"= gamma1inv_{i} * (", "the overall scale")):
+        body = _replace_once(body, old, new, f"{what} in the recurrence")
     return body
 
 
@@ -665,12 +695,13 @@ def _signature(arm: str, component_index: int, count: int,
                  else f"float sigma_{i},")
         lines.append(f"    float* __restrict__ p_out_{i}, "
                      f"const float* __restrict__ p_prev_{i}, {sigma}")
-        lines.append(f"    float c_now_{i}, float c_prev_{i}, "
-                     f"float c_drive_{i},")
+        lines.append(f"    float two_minus_od_{i}, float gamma1_{i}, "
+                     f"float omega0dtsqr_{i}, float gamma1inv_{i},")
     if arm == "pml":
         lines.append("    int nx, int ny, int nz,")
         lines.append(f"    const float* __restrict__ kps_{axis}, "
-                     f"const float* __restrict__ kms_{axis}")
+                     f"const float* __restrict__ kms_{axis},")
+        lines.append("    const int* __restrict__ cb")
     else:
         lines.append("    int n_elem")
     lines.append(") {")
@@ -703,17 +734,17 @@ def fused_polarization_pair_source(arm: str, component_index: int, count: int,
     bodies = _verified_ade_bodies()
     seam = (
         "\n"
-        "    // THE SEAM. stepping.update_P binds fields.drive_field(component)\n"
-        "    // as w -- " + ("f_w_" + target + " under this active layer, the "
-                             "array the\n    // constitutive_apply above just "
-                             "stored src_" + axis + " into" if arm == "pml"
-                             else "the stored " + target + " without a layer, "
-                             "the array the\n    // store above just wrote from "
-                             "src_" + axis) + ". A float32 word\n"
-        "    // stored and reloaded is the identity on the bits, so the register\n"
-        "    // IS the certified load. One load per component, not per pole: every\n"
-        "    // pole of a component reads the same array, and nothing between the\n"
-        "    // certified launches writes it.\n"
+        "    // THE SEAM. stepping.update_P binds fields.drive_field(component) as w:\n"
+        + ("    // f_w_" + target + " on the cells whose chunk carries the layer, the\n"
+           "    // stored " + target + " elsewhere -- on both forms the word the\n"
+           "    // constitutive_apply above just stored src_" + axis + " into"
+           if arm == "pml" else
+           "    // the stored " + target + " without a layer, the word the store\n"
+           "    // above just wrote from src_" + axis) + ". A float32\n"
+        "    // word stored and reloaded is the identity on the bits, so the\n"
+        "    // register IS the certified load. One load per component, not per\n"
+        "    // pole: every pole of a component reads the same word, and nothing\n"
+        "    // between the certified launches writes it.\n"
         f"    float w = src_{axis};\n")
     poles = "".join(
         "\n"
@@ -895,14 +926,33 @@ def assert_disjoint_bindings(fields: Any, arm: str, target: str,
 
 
 def _drive_identity_problem(fields: Any, arm: str, target: str) -> Optional[str]:
-    """Why the register hand-off would not be the certified drive; None if it is.
+    """Why the register hand-off would not be MEEP's drive; None if it is.
 
-    ``stepping.update_P`` binds ``fields.drive_field(component)``. The fused
-    kernel binds NOTHING for it -- the register carries the value -- so the
-    array that method names must BE the array the E half writes: ``f_w_<c>``
-    under the PML arm, the stored ``E<c>`` under the no-PML one. Checked by base
-    address against the arrays this launch binds.
+    ``stepping.update_P`` binds ``fields.drive_field(component)``: MEEP's ``w`` PER
+    CHUNK (update_pols.cpp:44) -- ``f_w_<c>`` on the cells whose chunk carries the
+    component's own layer and the stored ``E<c>`` elsewhere, or the stored ``E<c>``
+    everywhere without a layer. The fused kernel binds NOTHING for it: on the PML arm
+    the E half of the same thread stores its ``src`` register into ``f_w_<c>`` on the
+    dsigw form and into ``E<c>`` on the plain form, so the register is the drive on
+    every cell whichever form the record chose. What is checked is that the two
+    arrays the E half writes exist and are two allocations, and, without a layer,
+    that ``drive_field`` names the stored ``E<c>`` (by base address).
     """
+    stored = getattr(fields, target, None)
+    if stored is None:
+        return f"fields.{target} is not allocated"
+    if arm == "pml":
+        auxiliary = getattr(fields, f"f_w_{target}", None)
+        if auxiliary is None:
+            return f"fields.f_w_{target} is not allocated"
+        if not getattr(fields, "_pml_active", False):
+            return (f"Fields is not in PML storage mode under the layer; the E half's "
+                    f"dsigw form stores into f_w_{target}, which the drive would not "
+                    f"read")
+        if _base_address(auxiliary) == _base_address(stored):
+            return (f"fields.f_w_{target} and fields.{target} are one allocation; the "
+                    f"two forms' stores, and the drive's two arrays, would be one word")
+        return None
     drive = getattr(fields, "drive_field", None)
     if not callable(drive):
         return ("fields.drive_field is not callable; the drive identity the "
@@ -911,15 +961,10 @@ def _drive_identity_problem(fields: Any, arm: str, target: str) -> Optional[str]
         named = drive(target)
     except Exception as exc:  # noqa: BLE001 - a raise is not a refusal unless caught
         return f"fields.drive_field({target!r}) raised {type(exc).__name__}: {exc}"
-    expected_name = f"f_w_{target}" if arm == "pml" else target
-    expected = getattr(fields, expected_name, None)
-    if expected is None:
-        return f"fields.{expected_name} is not allocated"
     named_address = _base_address(named)
-    expected_address = _base_address(expected)
-    if named_address is None or named_address != expected_address:
-        return (f"fields.drive_field({target!r}) is not fields.{expected_name}: "
-                f"the update_P half would read a drive the update_E half of this "
+    if named_address is None or named_address != _base_address(stored):
+        return (f"fields.drive_field({target!r}) is not fields.{target}: the "
+                f"update_P half would read a drive the update_E half of this "
                 f"launch did not write, and the register hand-off would be a "
                 f"different number, not a faster one")
     return None
@@ -927,12 +972,15 @@ def _drive_identity_problem(fields: Any, arm: str, target: str) -> Optional[str]
 
 def launch_fused_polarization_component(
         fields: Any, arm: str, target: str, states: Sequence[Any],
-        tables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        tables: Optional[Dict[str, Any]] = None,
+        chunk_bounds: Any = None) -> Dict[str, Any]:
     """ONE component's fused launch. The caller rotates afterwards.
 
-    ``tables`` is required on the PML arm: the HALF-INTEGER kps/kms views from
-    ``dispersive_kernels.dispersive_tables`` (stepping.py:1015), of which this
-    launch binds only this component's axis pair.
+    ``tables`` and ``chunk_bounds`` are required on the PML arm: the HALF-INTEGER
+    kps/kms views from ``dispersive_kernels.dispersive_tables``, of which this launch
+    binds only this component's axis pair, and the run's chunk record on the device,
+    from which the E half chooses each cell's constitutive form
+    (``dispersive_kernels.chunk_record_argument``).
     """
     spec = {t: i for i, (t, _s, _a) in enumerate(ELECTRIC_TERMS)}
     if target not in spec:
@@ -963,26 +1011,27 @@ def launch_fused_polarization_component(
                 f"launch walks {n_elem}; the certified update_P guard this weld "
                 f"drops was that size, and dropping it is licensed only where "
                 f"the two are one number")
-        coefficients = tuple(state._coefficients)
-        if len(coefficients) != 3:
+        constants = tuple(state.constants)
+        if len(constants) != 4:
             raise ValueError(
-                f"a polarization carries {len(coefficients)} recurrence "
-                f"coefficients, not the (c_now, c_prev, c_drive) triple this "
-                f"kernel bakes as scalars")
+                f"a polarization carries {len(constants)} recurrence constants, "
+                f"not the four realnum words (two_minus_od, gamma1, omega0dtsqr, "
+                f"gamma1inv) this kernel takes as scalars")
         arguments.append(scratch)
         arguments.append(state.P_prev[target])
         sigma = state.sigma[target]
         arguments.append(sigma if kinds[i] else np.float32(sigma))
-        arguments.extend(np.float32(value) for value in coefficients)
+        arguments.extend(np.float32(value) for value in constants)
     if arm == "pml":
         if tables is None:
             raise ValueError(
                 "the PML arm indexes the half-integer kps/kms views and was "
                 "handed no tables; dispersive_kernels.dispersive_tables(pml) is "
                 "the certified resolver")
+        cb = certified_e.chunk_record_argument(chunk_bounds)
         nx, ny, nz = stored.shape
         arguments.extend([np.int32(nx), np.int32(ny), np.int32(nz),
-                          tables[f"kps_{axis}"], tables[f"kms_{axis}"]])
+                          tables[f"kps_{axis}"], tables[f"kms_{axis}"], cb])
     else:
         arguments.append(np.int32(n_elem))
 
@@ -994,8 +1043,8 @@ def launch_fused_polarization_component(
 
 
 def run_fused_polarization_pair(fields: Any, pml: Any, arm: str, *,
-                                tables: Optional[Dict[str, Any]] = None
-                                ) -> Dict[str, Any]:
+                                tables: Optional[Dict[str, Any]] = None,
+                                chunk_bounds: Any = None) -> Dict[str, Any]:
     """Both of :data:`REPLACES` in THREE launches, host rotation between.
 
     THE ROTATION IS TRANSCRIBED, NOT REIMPLEMENTED, from
@@ -1035,7 +1084,7 @@ def run_fused_polarization_pair(fields: Any, pml: Any, arm: str, *,
         spec = component_specs(fields)[target]
         states = spec["states"]
         result = launch_fused_polarization_component(
-            fields, arm, target, states, tables)
+            fields, arm, target, states, tables, chunk_bounds)
         launches += 1
         recurrences += len(states)
         per_component.append(result)

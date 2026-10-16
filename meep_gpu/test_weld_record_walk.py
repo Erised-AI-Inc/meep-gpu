@@ -164,6 +164,13 @@ def test_a_superseded_source_map_is_history_and_a_live_one_is_checked():
      "out_of_tree_sibling_path"),
     ({"g": {"gate_sha256": A}}, "pin_names_no_path"),
     ({"g": {"a.py": {"sha256": A}}}, walk.TIER_RAW + ":parent_key_named_pin"),
+    ({"g": {"array_path_oracle": {"fixture_set": "f", "fingerprint_sha256": A}}},
+     "array_path_oracle_fingerprint"),
+    ({"driver_dispatch": {"array_path_oracle": {"case_sha256": {"pml_3d": A}}}},
+     "array_path_oracle_fingerprint"),
+    ({"driver_dispatch": {"array_path_oracle": {
+        "provenance_code_sha256": {"meep_gpu/stepping.py": A}}}},
+     "array_path_oracle_provenance"),
     ({"g": {"a_key_nobody_wrote": A}}, walk.UNCLASSIFIED),
 ])
 def test_each_rule_claims_the_shape_it_was_written_for(record, rule):

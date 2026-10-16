@@ -677,7 +677,20 @@ BINDING_LABELS = {
 #: Placeholders a template may carry, filled per row by :func:`binding_flags`:
 #: ``{threads}`` OpenMP threads per rank; ``{per_socket}`` ceil(ranks / sockets);
 #: ``{threads_per_core}`` hardware threads per core; ``{cpus_per_task}`` threads x
-#: threads per core (a rank's T threads on T whole cores).
+#: threads per core (a rank's T threads on T whole cores); ``{hwthread_pe_list}`` the
+#: hardware threads in the order ``bound-hwthread`` ranks take them
+#: (:func:`hwthread_pe_list`).
+#:
+#: THE OPEN MPI ``bound-hwthread`` TEMPLATE PLACES EACH RANK BY NAME. Every mapping
+#: policy Open MPI 5.0.8 offers fills a mapped object's hardware threads in order
+#: (ranking ``FILL``): ``--map-by package`` (the 2026-09-28 string), ``core``, ``ppr``,
+#: ``node:span`` all put 64 ranks on 32 of a 2 x 24 x 2 host's 48 cores, two to a
+#: core, while 16 cores idled -- measured with ``--display map --do-not-launch`` on the
+#: GPU host, and the CERT-8 ladder struck its 64-rank rows for it. An ORDERED
+#: ``pe-list`` gives rank r the r-th listed hardware thread, in hwloc's LOGICAL
+#: numbering (what the pe-list reads); listing every core's first thread, alternating
+#: packages, before any second thread put 64 ranks on 48 cores (32 / 32 by package)
+#: and 96 on all 96 threads.
 #:
 #: THE srun TEMPLATES, per the Slurm ``srun`` manual, and why each flag:
 #: * ``--cpu-bind`` given on the command line OVERRIDES ``--hint``, so no template
@@ -696,7 +709,8 @@ FLAG_TEMPLATES: Dict[str, Dict[str, str]] = {
         "bound": "--map-by package --bind-to core",
         "unbound": "--bind-to none",
         "over": "--use-hwthread-cpus --bind-to none",
-        "bound-hwthread": "--use-hwthread-cpus --map-by package --bind-to hwthread",
+        "bound-hwthread": ("--use-hwthread-cpus --map-by pe-list={hwthread_pe_list}:ORDERED "
+                           "--bind-to hwthread"),
         "bound-pe": "--map-by package:PE={threads} --bind-to core",
     },
     "srun": {
@@ -737,24 +751,46 @@ def binding_mode_for(ranks: int, asked: str, physical_cores: int, threads: int =
 DARWIN_OVER_LABEL = "unbound-ecores"
 
 
+def hwthread_pe_list(sockets: int, cores_per_socket: int, threads_per_core: int) -> str:
+    """Every hardware thread, as hwloc LOGICAL indices, in the order ranks should take them.
+
+    hwloc numbers processing units depth-first -- package, then core, then thread -- so
+    thread t of core i of package p is ``(p * cores_per_socket + i) * threads_per_core
+    + t``. Listed thread-major, then core, then package: the first thread of every core,
+    alternating packages, then every second thread, so N ranks use min(N, cores) cores
+    and the packages differ by at most one rank.
+    """
+    return ",".join(str((p * cores_per_socket + i) * threads_per_core + t)
+                    for t in range(threads_per_core)
+                    for i in range(cores_per_socket)
+                    for p in range(sockets))
+
+
 def binding_flags(implementation: str, mode: str, threads: int = 1,
                   platform: str = "linux",
                   explicit: Optional[Mapping[str, str]] = None,
                   ranks: int = 1, sockets: Optional[int] = None,
-                  threads_per_core: Optional[int] = None) -> Tuple[str, str]:
+                  threads_per_core: Optional[int] = None,
+                  physical_cores: Optional[int] = None) -> Tuple[str, str]:
     """(flags, label) for a binding mode, or SystemExit naming why it is refused.
 
     ``explicit`` maps a mode to a flag string the operator gave, which wins over any
     template. On macOS only the unbound modes exist: Open MPI cannot bind there. A
     template that needs the socket count (``{per_socket}``) is refused by name when it
-    is unknown.
+    is unknown, as is one that needs the hardware-thread order (``{hwthread_pe_list}``)
+    when the sockets, physical cores or threads per core are unknown or uneven.
     """
     label = BINDING_LABELS[mode].format(threads=threads)
     per_core = int(threads_per_core or 1)
     values = {"threads": threads, "threads_per_core": per_core,
               "cpus_per_task": int(threads) * per_core,
               "per_socket": (int(math.ceil(int(ranks) / float(sockets)))
-                             if sockets else None)}
+                             if sockets else None),
+              "hwthread_pe_list": None}
+    if sockets and physical_cores and threads_per_core and \
+            int(physical_cores) % int(sockets) == 0:
+        values["hwthread_pe_list"] = hwthread_pe_list(
+            int(sockets), int(physical_cores) // int(sockets), int(threads_per_core))
     if explicit and mode in explicit and explicit[mode] is not None:
         return str(explicit[mode]).format(**values), label
     if platform == "darwin" and mode not in ("unbound", "over"):
@@ -773,6 +809,13 @@ def binding_flags(implementation: str, mode: str, threads: int = 1,
         raise SystemExit(f"REFUSING: the {implementation} template of mode {mode!r} "
                          "balances ranks across sockets and the socket count is unknown; "
                          "pass --sockets")
+    if "{hwthread_pe_list}" in template and values["hwthread_pe_list"] is None:
+        raise SystemExit(f"REFUSING: the {implementation} template of mode {mode!r} places "
+                         "each rank on a named hardware thread and needs the sockets, the "
+                         "physical cores (a multiple of the sockets) and the threads per "
+                         f"core (got {sockets!r}, {physical_cores!r}, {threads_per_core!r}); "
+                         "pass --sockets, --physical-cores and --threads-per-core, or "
+                         "--flags-bound-hwthread")
     return template.format(**values), label
 
 
@@ -1238,8 +1281,13 @@ def parse_ioreg_accelerator(text: str) -> Dict[str, Any]:
     return out
 
 
+#: ``ioreg`` lives in ``/usr/sbin``, which the reference environment's ``PATH``
+#: (``<prefix>/bin:/usr/bin:/bin``) does not hold: called by absolute path.
+IOREG = "/usr/sbin/ioreg"
+
+
 def apple_gpu_state() -> Dict[str, Any]:
-    text = run_text(["ioreg", "-r", "-d", "1", "-c", "IOAccelerator"], timeout=15)
+    text = run_text([IOREG, "-r", "-d", "1", "-c", "IOAccelerator"], timeout=15)
     if text is None:
         return {"utc": utc(), "readable": False, "why": "ioreg is unreadable"}
     found = parse_ioreg_accelerator(text)
@@ -1338,6 +1386,57 @@ class GateConfig:
 def default_cpu_max(logical_cpus_in_scope: Optional[int]) -> int:
     """10 % of the logical CPUs in scope, at least one."""
     return max(1, int(round(0.10 * float(logical_cpus_in_scope or 0))))
+
+
+#: THE macOS CPU GATE IS CALIBRATED AT THE LADDER'S START (CERT-8 F6). A laptop with its
+#: owner's session open idles at 1.2-2.0 busy CPUs of 10, so the 10 % default (1 CPU)
+#: could never open on the 1.0 round's Mac. The rule is the one that round fixed before
+#: its first row: take :data:`CPU_CALIBRATION_READINGS` busy readings
+#: :data:`CPU_CALIBRATION_EVERY_S` apart; if their 80th percentile is below the default
+#: the default stands, otherwise the gate opens below :data:`CPU_CALIBRATION_CEILING`
+#: of the logical CPUs (2.5 of 10). A box busier than the ceiling is not refused here:
+#: its rows wait at the gate, which gives up by its own rule.
+CPU_CALIBRATION_READINGS = 18
+CPU_CALIBRATION_EVERY_S = 10.0
+CPU_CALIBRATION_CEILING = 0.25
+
+
+def percentile(values: Sequence[float], share: float) -> Optional[float]:
+    """The ``share`` (0-1) percentile, by linear interpolation between ranks."""
+    found = sorted(float(v) for v in values if v is not None)
+    if not found:
+        return None
+    position = share * (len(found) - 1)
+    low = int(math.floor(position))
+    high = min(low + 1, len(found) - 1)
+    return found[low] + (found[high] - found[low]) * (position - low)
+
+
+def calibrated_cpu_max(readings: Sequence[Optional[float]],
+                       logical_cpus_in_scope: Optional[int]) -> Dict[str, Any]:
+    """The macOS gate's CPU threshold from an idle sample, by the rule fixed in advance."""
+    default = float(default_cpu_max(logical_cpus_in_scope))
+    ceiling = round(CPU_CALIBRATION_CEILING * float(logical_cpus_in_scope or 0), 2)
+    taken = [float(v) for v in readings if v is not None]
+    p80 = percentile(taken, 0.80)
+    out: Dict[str, Any] = {
+        "readings": list(readings), "readable": len(taken), "p80": p80,
+        "default": default, "ceiling": ceiling,
+        "rule": (f"cpu_max = {default:g} (10 % of {logical_cpus_in_scope} logical CPUs) "
+                 f"if the 80th percentile of the idle readings is below it, else "
+                 f"{ceiling:g} ({CPU_CALIBRATION_CEILING:.0%} of the logical CPUs)")}
+    if p80 is None:
+        out.update(value=default, why="no reading was readable: the default stands")
+    elif p80 < default:
+        out.update(value=default, why=f"the idle floor (p80 {p80:.2f}) is below the default")
+    else:
+        out.update(value=max(default, ceiling),
+                   why=f"the idle floor (p80 {p80:.2f}) is at or above the default")
+        if p80 >= ceiling:
+            out["warning"] = (f"the idle floor (p80 {p80:.2f}) is at or above the ceiling "
+                              f"{ceiling:g}: rows will wait at the gate until the box "
+                              "quietens or the gate gives up")
+    return out
 
 
 def default_mem_min_gib(total_gib: Optional[float]) -> float:

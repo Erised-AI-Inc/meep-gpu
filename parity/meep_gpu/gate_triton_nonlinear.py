@@ -3,10 +3,12 @@
 The module under test is ``meep_gpu/triton_kernels/nonlinear_update_e.py`` — NOT
 wired into production dispatch (``plan_fast_path`` keeps returning None; nothing
 here changes that). This gate is the arbiter of every grouping choice
-stepping.py does not force by construction: the four-corner pair association,
-the opposite shift directions, the host-rounded double-power scalar arms, the
-Pade quotient's division lowering, the compiled linear-arm seam, and the
-``fw``/``f`` store order.
+stepping.py does not force by construction: MEEP's left-to-right four-corner
+association, the opposite shift directions, the double-precision Dsqr, the
+host-rounded double-power scalar arms, the Pade quotient's division lowering,
+the compiled linear-arm seam, the chunk-keyed constitutive forms (MEEP's
+accumulation on the dsigw cells, ``E = src`` elsewhere, ``f_w`` touched on the
+accumulation's cells only), and the ``fw``/``f`` store order.
 
 Legs, in order (``--legs`` selects a subset):
 
@@ -38,6 +40,15 @@ Legs, in order (``--legs`` selects a subset):
   must be byte-identical to the certified ``kernels.constitutive_step`` on the
   same seeds, and the partial-nonlinearity case's LINEAR components must match
   the certified kernel while its nonlinear component differs (non-vacuous).
+* ``dsqr``       — the double-precision Dsqr at the operand level: the shipped
+  ``_dsqr`` helper launched on operands inside and outside the band where the
+  exact ``0.0625*t`` is below float32's normal range, against the array path's
+  ``_nonlinear_dsqr``; the float32 form must differ inside the band (else the
+  leg is blind). No stored E word separates the two forms (u is 1 there to the
+  last bit), so this is where the double form is pinned.
+* ``planted``    — the special values a random state never reaches: D = -0 on
+  cells of both forms. MEEP's plain E is that -0; folding the plain form into
+  the accumulation with unit and zero coefficients returns +0.
 * ``mutations``  — defects planted in the shipped kernel's SOURCE (compiled
   from a real file, launch-counted, DISARMED / NEEDLE-MISSED fail paths, and
   the mutant's PTX verified to DIFFER from every shipped specialization — the
@@ -121,6 +132,7 @@ except ImportError:
 # launch-counting wrapper come from the complex gate. Nothing is re-implemented.
 import gate_triton_complex as gate  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import flush_vacuity  # noqa: E402 - the flush not-applicable rule, beside this file
 
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.fields import Fields  # noqa: E402
@@ -178,6 +190,7 @@ def write_provenance(results_dir: str) -> str:
         "triton_kernels/coverage.py": os.path.join(kernel_dir, "coverage.py"),
         "triton_kernels/launch.py": os.path.join(kernel_dir, "launch.py"),
         "triton_kernels/kernels.py": os.path.join(kernel_dir, "kernels.py"),
+        "triton_kernels/forms.py": os.path.join(kernel_dir, "forms.py"),
         "triton_kernels/nonlinear_update_e.py": os.path.join(
             kernel_dir, "nonlinear_update_e.py"),
         "triton_kernels/fingerprints.json": os.path.join(
@@ -240,19 +253,29 @@ def reference_shift_up(xp: Any, field: Any, axis: int, boundary: str) -> Any:
 
 def reference_transverse_sums(xp: Any, volumes: Dict[str, Any], own_axis: int,
                               boundaries: Sequence[str]) -> Tuple[Any, Any]:
-    """stepping._nonlinear_transverse_sums (:1121-1164): the PAIR association,
-    half a cell DOWN the partner's axis then the formed pair half a cell UP the
-    own axis — (g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1]), NOT MEEP C's
-    left-to-right sum."""
+    """stepping._nonlinear_transverse_sums: MEEP C's left-to-right four-corner sum
+    ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]`` (step_generic.cpp:646-648), each
+    addition rounded once — ``s`` half a cell UP the own axis, ``s1`` half a cell
+    DOWN the partner's."""
     sums = []
     for offset in (1, 2):  # MEEP's cycle_direction(dim, d_ec, 1) then (..., 2).
         partner_axis = (own_axis + offset) % 3
         values = volumes[E_NAMES[partner_axis]]
-        pair = values + reference_shift_down(xp, values, partner_axis,
-                                             boundaries[partner_axis])
-        sums.append(pair + reference_shift_up(xp, pair, own_axis,
-                                              boundaries[own_axis]))
+        down = reference_shift_down(xp, values, partner_axis, boundaries[partner_axis])
+        up = reference_shift_up(xp, values, own_axis, boundaries[own_axis])
+        corner = reference_shift_up(xp, down, own_axis, boundaries[own_axis])
+        sums.append(((values + up) + down) + corner)
     return (sums[0], sums[1])
+
+
+def reference_dsqr(xp: Any, gs: Any, first: Any, second: Any) -> Any:
+    """stepping._nonlinear_dsqr: ``gs*gs`` and ``first*first + second*second`` in
+    float32, widened, scaled by the double literal ``0.0625`` and added in double,
+    rounded once to float32 (step_generic.cpp:542, :646-654)."""
+    square = gs * gs
+    transverse = first * first + second * second
+    return (square.astype(xp.float64)
+            + 0.0625 * transverse.astype(xp.float64)).astype(xp.float32)
 
 
 def reference_nonlinear_u(gs: Any, dsqr: Any, us: Any, chi2: Any,
@@ -276,14 +299,17 @@ def reference_update_e(xp: Any, state: Dict[str, Any],
                        coefficients: Dict[str, Any],
                        chi2: Dict[str, Any], chi3: Dict[str, Any],
                        inv_eps: Dict[str, Any],
-                       boundaries: Sequence[str]) -> None:
+                       boundaries: Sequence[str], record: Any) -> None:
     """The whole nonlinear sub-step, in place on ``state``.
 
-    stepping.update_E (:967-989) with no poles: the D volumes ARE the sources
-    (fields.py:1107-1138 aliases undriven components), the nonlinear branch is
-    ``(gs * us) * calc_nonlinear_u(...)`` (:1078-1080), the linear branch is
-    plain ``gs * us`` (:1071-1073), and the tail is _apply_constitutive_pml's
-    no-scratch branch (:2083-2088).
+    stepping.update_E with no poles: the D volumes ARE the sources (undriven
+    components alias D), the nonlinear branch is ``(gs * us) *
+    calc_nonlinear_u(...)`` with the left-to-right sums and the double Dsqr, the
+    linear branch is plain ``gs * us``, and the tail is
+    ``_apply_constitutive_regions``: on the cells of the component's dsigw line in
+    ``record`` (the half-integer sub-lattice of its own axis) MEEP's accumulation
+    ``E + ((kps*src) - (kms*prev))`` with ``f_w = src``; everywhere else ``E = src``
+    and ``f_w`` keeps its word.
     """
     volumes = {"Ex": state["Dx"], "Ey": state["Dy"], "Ez": state["Dz"]}
     for own_axis, target in enumerate(E_NAMES):
@@ -294,7 +320,7 @@ def reference_update_e(xp: Any, state: Dict[str, Any],
         else:
             first, second = reference_transverse_sums(xp, volumes, own_axis,
                                                       boundaries)
-            dsqr = gs * gs + 0.0625 * (first * first + second * second)
+            dsqr = reference_dsqr(xp, gs, first, second)
             row = gs * us
             constitutive = row * reference_nonlinear_u(
                 gs, dsqr, us, chi2[target], chi3[target])
@@ -302,10 +328,76 @@ def reference_update_e(xp: Any, state: Dict[str, Any],
         kms = coefficients["kms_" + "xyz"[own_axis]]
         fw = state["f_w_" + target]
         field = state[target]
-        fw_previous = fw.copy()
-        fw[...] = constitutive
-        field += kps * fw
-        field -= kms * fw_previous
+        inside = dsigw_line(xp, record, own_axis, field.shape)
+        accumulated = field + ((kps * constitutive) - (kms * fw))
+        field[...] = xp.where(inside, accumulated, constitutive)
+        fw[...] = xp.where(inside, constitutive, fw)
+
+
+def dsigw_line(xp: Any, record: Any, own_axis: int, shape: Sequence[int]) -> Any:
+    """The component's dsigw membership, broadcast along its own axis.
+
+    An E component is half-integer along its own axis, so its accumulation's cells
+    are the record's half-integer line for that axis
+    (``chunk_map.membership_from_record``), which the kernel reads with
+    ``record_in(cb, RECORD_HALF_INTEGER + 4*axis, index)``.
+    """
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+
+    line = np.asarray(membership_from_record(np.asarray(record), True, own_axis,
+                                             int(shape[own_axis])), dtype=bool)
+    view = [1, 1, 1]
+    view[own_axis] = int(shape[own_axis])
+    return xp.asarray(line.reshape(view))
+
+
+def split_record(shape: Sequence[int]) -> np.ndarray:
+    """A division with cells inside AND outside a layer chunk on every axis that can
+    have both, on both sub-lattices: ``[0, k) U [n - k, n)`` with ``k = max(1, n//5)``
+    on the half-integer sub-lattice and one cell deeper on the integer one where that
+    still leaves a cell outside (so a lattice swap moves a plane), where ``n >= 3``;
+    the whole axis where ``n == 2``; no run and no presence bit where ``n == 1`` (an
+    invariant axis). Random coefficient tables hold no unit on any cell, so the forms
+    here are keyed by the record alone — which is the kernel's contract (the run's
+    unit-coefficient precondition is the engine route's, and the ``engine`` leg steps
+    that)."""
+    from meep_gpu.chunk_map import (  # noqa: PLC0415
+        RECORD_PRESENCE_WORD, RECORD_WORDS, record_index)
+
+    record = np.zeros(RECORD_WORDS, dtype=np.int32)
+    for axis, n in enumerate(int(v) for v in shape):
+        if n <= 1:
+            continue
+        record[RECORD_PRESENCE_WORD] |= 1 << axis
+        for half in (False, True):
+            if n == 2:
+                record[record_index(half, axis, 1)] = n
+                continue
+            k = max(1, n // 5)
+            if not half and 2 * (k + 1) < n:
+                k += 1
+            record[record_index(half, axis, 1)] = k
+            record[record_index(half, axis, 2)] = n - k
+            record[record_index(half, axis, 3)] = n
+    return record
+
+
+def gate_record(shape: Sequence[int], kind: str) -> np.ndarray:
+    """The record a case binds: ``split`` (both forms), ``every_cell`` (all layer) or
+    ``no_layer`` (no cell in a layer chunk: ``E = src`` everywhere, presence kept)."""
+    if kind == "split":
+        return split_record(shape)
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
+
+    if kind == "every_cell":
+        return every_cell_record(shape)
+    if kind == "no_layer":
+        from meep_gpu.chunk_map import RECORD_PRESENCE_WORD  # noqa: PLC0415
+
+        record = np.zeros_like(every_cell_record(shape))
+        record[RECORD_PRESENCE_WORD] = every_cell_record(shape)[RECORD_PRESENCE_WORD]
+        return record
+    raise ValueError(kind)
 
 
 def reference_expansion(state: Dict[str, Any], chi2: Dict[str, Any],
@@ -322,7 +414,7 @@ def reference_expansion(state: Dict[str, Any], chi2: Dict[str, Any],
         us = inv_eps[target]
         first, second = reference_transverse_sums(np, volumes, own_axis,
                                                   boundaries)
-        dsqr = gs * gs + 0.0625 * (first * first + second * second)
+        dsqr = reference_dsqr(np, gs, first, second)
         c2 = gs * chi2[target] * (us * us)
         c3 = dsqr * chi3[target] * (us * us * us)
         worst_expansion = max(worst_expansion,
@@ -494,14 +586,38 @@ def _to_device(value: Any) -> Any:
     return cp.asarray(value) if getattr(value, "shape", None) is not None else value
 
 
+def form_counts(record: Any, shape: Sequence[int]) -> Dict[str, List[int]]:
+    """Per E component: [cells taking the accumulation, cells taking ``E = src``]."""
+    out = {}
+    for own_axis, target in enumerate(E_NAMES):
+        inside = np.broadcast_to(dsigw_line(np, record, own_axis, shape), tuple(shape))
+        out[target] = [int(np.count_nonzero(inside)), int(np.count_nonzero(~inside))]
+    return out
+
+
+def plant_special_values(state: Dict[str, Any]) -> None:
+    """D = -0 on one cell in seven and +0 on one in eleven, on cells of both forms.
+
+    A plain cell's E is then MEEP's ``-0`` (the row and the Pade factor keep the
+    sign), which an accumulation folded onto the plain form with unit and zero
+    coefficients turns into ``+0`` -- the signed-zero class no random state reaches.
+    """
+    for name in D_NAMES:
+        flat = state[name].reshape(-1)
+        flat[::7] = np.float32(-0.0)
+        flat[3::11] = np.float32(0.0)
+
+
 def one_case(shape, boundaries, chi_name, amplitude, guard,
              us_form: str = "volume", coefficient_source: str = "synthetic",
              courant: Optional[float] = None, kernel: Any = None,
-             seed_offset: int = 0) -> Dict[str, Any]:
+             seed_offset: int = 0, record_kind: str = "split",
+             planted: bool = False) -> Dict[str, Any]:
     case: Dict[str, Any] = {
         "shape": list(shape), "boundaries": list(boundaries),
         "chi_form": chi_name, "amplitude": amplitude, "guard": guard,
         "us_form": us_form, "coefficient_source": coefficient_source,
+        "record_kind": record_kind, "planted": planted,
     }
     skip = config_viable(shape, boundaries)
     if skip:
@@ -512,6 +628,11 @@ def one_case(shape, boundaries, chi_name, amplitude, guard,
     chi2, chi3 = chi_form(chi_name, tuple(shape), rng)
     case["expansion"] = scale_to_expansion(
         state, chi2, chi3, inv_eps, boundaries, AMPLITUDE_TARGETS[amplitude])
+    if planted:
+        plant_special_values(state)
+    record = gate_record(shape, record_kind)
+    case["record"] = [int(v) for v in record]
+    case["form_cells"] = form_counts(record, shape)
 
     if coefficient_source == "synthetic":
         flat = synthetic_flat_coefficients(tuple(shape), rng)
@@ -526,18 +647,30 @@ def one_case(shape, boundaries, chi_name, amplitude, guard,
     # The reference, on the HOST (IEEE keep — the ship configuration's side).
     reference = {name: state[name].copy() for name in ALL_NAMES}
     reference_update_e(np, reference, broadcast(flat), chi2, chi3, inv_eps,
-                       boundaries)
+                       boundaries, record)
     # Non-vacuity: the nonlinear branch must have changed bytes vs the linear
     # arm, or the case measures nothing.
     linear = {name: state[name].copy() for name in ALL_NAMES}
     reference_update_e(np, linear, broadcast(flat),
                        {c: None for c in E_NAMES}, {c: None for c in E_NAMES},
-                       inv_eps, boundaries)
+                       inv_eps, boundaries, record)
     if all(reference[name].tobytes() == linear[name].tobytes()
            for name in STATE_NAMES):
         case["error"] = ("VACUOUS: the nonlinear branch left every byte equal "
                          "to the linear arm on this seed")
         return case
+    if planted:
+        minus_zero = 0
+        for own_axis, target in enumerate(E_NAMES):
+            outside = ~np.broadcast_to(dsigw_line(np, record, own_axis, shape),
+                                       tuple(shape))
+            values = reference[target]
+            minus_zero += int(np.count_nonzero(outside & (values == 0)
+                                               & np.signbit(values)))
+        case["minus_zero_on_plain_cells"] = minus_zero
+        if minus_zero == 0:
+            case["error"] = "VACUOUS: no planted -0 reached a plain cell's E"
+            return case
 
     arrays = {name: cp.asarray(state[name]) for name in ALL_NAMES}
     for name in E_NAMES:
@@ -550,7 +683,7 @@ def one_case(shape, boundaries, chi_name, amplitude, guard,
          for name in E_NAMES},
         {name: (None if chi3[name] is None else _to_device(chi3[name]))
          for name in E_NAMES},
-        codes, kernel=kernel)
+        codes, kernel=kernel, chunk_bounds=record)
     plan.run(guard=guard)
     cp.cuda.runtime.deviceSynchronize()
 
@@ -592,13 +725,17 @@ def run_synthetic(results: Dict[str, Any], out_path: str,
     # Scalar-epsilon rows: the arm the engine route never reaches.
     for chi_name in ("chi2_chi3_scalar", "chi3_volume"):
         extras.append(((13, 17, 11), (PERIODIC, METALLIC, PERIODIC), chi_name,
-                       "near_pole", "scalar", "synthetic", None))
+                       "near_pole", "scalar", "synthetic", None, "split"))
     # Real-layer tables at both Courant numbers.
     for shape in shapes:
         for courant in LAYER_COURANTS:
             extras.append((shape, (PERIODIC, PERIODIC, PERIODIC),
                            "chi2_chi3_scalar", "near_pole", "volume",
-                           "layer", courant))
+                           "layer", courant, "split"))
+    # Every cell in a layer chunk: the accumulation alone, on every shape.
+    for shape in shapes:
+        extras.append((shape, (PERIODIC, METALLIC, PERIODIC), "chi2_chi3_scalar",
+                       "near_pole", "volume", "synthetic", None, "every_cell"))
     total = len(guards) * len(combos) + len(extras)
     index = 0
     for guard in guards:
@@ -614,12 +751,13 @@ def run_synthetic(results: Dict[str, Any], out_path: str,
             summary["cases"] = cases
             results.setdefault("synthetic", {})[label] = summary
             save(results, out_path)
-    for shape, boundaries, chi_name, amplitude, us_form, source, courant in extras:
+    for (shape, boundaries, chi_name, amplitude, us_form, source, courant,
+         record_kind) in extras:
         index += 1
         started = time.time()
         case = one_case(shape, boundaries, chi_name, amplitude, False,
                         us_form=us_form, coefficient_source=source,
-                        courant=courant, kernel=kernel)
+                        courant=courant, kernel=kernel, record_kind=record_kind)
         case["seconds"] = round(time.time() - started, 3)
         cases.append(case)
         _log_case(label, index, total, case)
@@ -667,10 +805,12 @@ def run_subnormal(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
         tiny = np.float32(1e-38)
         for name in ALL_NAMES:
             state[name] = (state[name] * tiny).astype(np.float32)
+        conditions = flush_vacuity.seed_conditions()
         flat = synthetic_flat_coefficients(shape, rng)
+        record = split_record(shape)
         reference = {name: state[name].copy() for name in ALL_NAMES}
         reference_update_e(np, reference, broadcast(flat), chi2, chi3,
-                           inv_eps, boundaries)
+                           inv_eps, boundaries, record)
         subnormals = int(sum(
             int(np.count_nonzero((np.abs(reference[name]) < 2.0 ** -126)
                                  & (reference[name] != 0)))
@@ -680,7 +820,7 @@ def run_subnormal(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
             arrays["inv_eps_" + name] = cp.asarray(inv_eps[name])
         plan = nlmod.plan_nonlinear_constitutive_from_arrays(
             arrays, {k: cp.asarray(v) for k, v in flat.items()},
-            chi2, chi3, tuple(CODE_OF[b] for b in boundaries))
+            chi2, chi3, tuple(CODE_OF[b] for b in boundaries), chunk_bounds=record)
         plan.run(guard=False)
         cp.cuda.runtime.deviceSynchronize()
         verdict = combine({name: bit_compare(arrays[name], reference[name])
@@ -689,7 +829,12 @@ def run_subnormal(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
                "reference_subnormals": subnormals,
                "identical": verdict["bit_identical"],
                "differing_floats": verdict["differing_floats"]}
-        if subnormals == 0:
+        row["seed_conditions"] = conditions
+        not_applicable = flush_vacuity.subnormal_class_not_applicable(
+            subnormals, conditions)
+        if not_applicable:
+            row["not_applicable"] = not_applicable
+        elif subnormals == 0:
             row["error"] = ("VACUOUS: the seeding produced no subnormal in "
                             "the reference — the class measured nothing")
         rows.append(row)
@@ -729,13 +874,17 @@ def run_identity(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     kernel = nlmod.nonlinear_constitutive_step_kernel()
     n_elem = shape[0] * shape[1] * shape[2]
     block = nlmod.DEFAULT_BLOCK
+    # Both forms on every axis: the seam is measured on the accumulation's cells and
+    # on the plain ones, against the certified kernel bound to the same record.
+    record = split_record(shape)
     pointers = ([CupyPointer(ours[n]) for n in E_NAMES]
                 + [CupyPointer(ours["f_w_" + n]) for n in E_NAMES]
                 + [CupyPointer(ours[n]) for n in D_NAMES]
                 + [CupyPointer(ours["inv_eps_" + n]) for n in E_NAMES]
                 + [CupyPointer(ours[n]) for n in D_NAMES] * 2  # unused chi slots
                 + [CupyPointer(device_flat[f"{stem}_{axis}"])
-                   for axis in "xyz" for stem in ("kps", "kms")])
+                   for axis in "xyz" for stem in ("kps", "kms")]
+                + [CupyPointer(cp.asarray(record))])
     from meep_gpu.triton_kernels.kernels import ENABLE_FP_FUSION  # noqa: PLC0415
     kernel[((n_elem + block - 1) // block,)](
         *pointers, *([0.0] * 9), *([0.0] * 6),
@@ -744,8 +893,8 @@ def run_identity(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
         QV20=0, QV21=0, QV22=0, QV30=0, QV31=0, QV32=0,
         BCX=0, BCY=1, BCZ=0, BLOCK=block,
         enable_fp_fusion=ENABLE_FP_FUSION)
-    plan = launch_module.plan_constitutive_from_arrays("E", certified,
-                                                       device_flat)
+    plan = launch_module.plan_constitutive_from_arrays(
+        "E", certified, device_flat, chunk_bounds=record)
     plan.run(guard=False)
     cp.cuda.runtime.deviceSynchronize()
     verdict = combine({name: bit_compare(ours[name], certified[name])
@@ -774,10 +923,10 @@ def run_identity(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     certified = {name: cp.asarray(state[name]) for name in ALL_NAMES}
     certified.update({"inv_eps_" + n: cp.asarray(inv_eps[n]) for n in E_NAMES})
     plan = nlmod.plan_nonlinear_constitutive_from_arrays(
-        partial, device_flat, chi2, chi3, (0, 1, 0))
+        partial, device_flat, chi2, chi3, (0, 1, 0), chunk_bounds=record)
     plan.run(guard=False)
     launch_module.plan_constitutive_from_arrays(
-        "E", certified, device_flat).run(guard=False)
+        "E", certified, device_flat, chunk_bounds=record).run(guard=False)
     cp.cuda.runtime.deviceSynchronize()
     linear_names = ("Ex", "Ey", "f_w_Ex", "f_w_Ey")
     linear_verdict = combine({name: bit_compare(partial[name], certified[name])
@@ -874,12 +1023,18 @@ def run_reference_validation(results: Dict[str, Any], out_path: str, xp,
         inv_eps = {name: fields.inverse_epsilon_for(name) for name in E_NAMES}
         margin = stepping.nonlinear_margin(fields, pml)
         row["expansion"] = None if margin is None else margin.expansion
+        # The division stepping keys its forms on: the one-rank division of this
+        # grid and layer (no driver installed another).
+        from gate_chunk_records import layer_record  # noqa: PLC0415
+
+        record = layer_record(fields.grid, pml)
+        row["form_cells"] = form_counts(record, tuple(fields.grid.shape))
         chain = hashlib.sha256()
         identical = True
         for step in range(REFERENCE_STEPS):
             stepping.update_E(fields, pml)
             reference_update_e(xp, state, coefficients, chi2, chi3, inv_eps,
-                               boundaries)
+                               boundaries, record)
             for name in STATE_NAMES:
                 ours = probe.to_host(state[name])
                 theirs = probe.to_host(getattr(fields, name))
@@ -1017,9 +1172,15 @@ _TEMPORARY: List[str] = []
 def compile_mutated(source: str, kernel_name: str = "nonlinear_constitutive_step"):
     """Compile a mutated copy of the shipped kernel from a real file on disk
     (Triton reads source via inspect). The constexpr codes are re-declared in
-    the header because a @triton.jit body may not read a plain module global."""
+    the header because a @triton.jit body may not read a plain module global, and
+    the shared ``forms`` helpers are imported under the names the kernel calls; the
+    constants are read from the shipped module so a change there cannot leave a
+    stale copy here."""
     header = ("import triton\nimport triton.language as tl\n"
-              "PERIODIC = tl.constexpr(0)\nMETALLIC = tl.constexpr(1)\n\n")
+              "from meep_gpu.triton_kernels.forms import constitutive_form, record_in\n"
+              f"PERIODIC = tl.constexpr({_constant(nlmod.PERIODIC)})\n"
+              f"METALLIC = tl.constexpr({_constant(nlmod.METALLIC)})\n"
+              f"RECORD_HALF_INTEGER = tl.constexpr({nlmod.RECORD_HALF_INTEGER_WORD})\n\n")
     handle = tempfile.NamedTemporaryFile("w", suffix="_mutated_nonlinear.py",
                                          delete=False, encoding="utf-8")
     handle.write(header + source)
@@ -1033,9 +1194,41 @@ def compile_mutated(source: str, kernel_name: str = "nonlinear_constitutive_step
     return getattr(module, kernel_name)
 
 
+SHIPPED_KERNEL_NAME = "nonlinear_constitutive_step"
+
+
+def compile_renamed_mutant(source: str, tag: str):
+    """Compile a mutant of the shipped kernel under its own name: ``<shipped>_<tag>``.
+
+    THE RENAME IS WHAT KEEPS THE JIT CACHE HONEST. Measured on an RTX A6000 with Triton
+    3.1.0: compiled under the shipped name, after nineteen other mutants in the same
+    process, the Dsqr-in-float32 mutant read as moving E words on the mutation case,
+    where the same mutant compiled under a fresh name (and the host transcription) moves
+    none: the binary that ran was not the mutant's. A mutant that changes only a called
+    helper (``_dsqr``, ``_four_point_sum``) leaves the kernel's own text unchanged, which
+    is where the collision bites. Returns the kernel and the name its PTX carries.
+    """
+    name = f"{SHIPPED_KERNEL_NAME}_{tag}"
+    renamed = source.replace(f"def {SHIPPED_KERNEL_NAME}(", f"def {name}(")
+    if renamed == source:
+        raise AssertionError(f"the kernel definition was not found to rename for {tag}")
+    return compile_mutated(renamed, name), name
+
+
+def normalized_ptx(ptx: Sequence[str], name: str) -> List[str]:
+    """A renamed mutant's PTX with its kernel name put back to the shipped one, so the
+    stale-cache tripwire compares code, not names."""
+    return [text.replace(name, SHIPPED_KERNEL_NAME) for text in ptx]
+
+
+def _constant(value: Any) -> int:
+    """A ``tl.constexpr`` (Triton host) or plain int (no Triton) as an int."""
+    return int(getattr(value, "value", value))
+
+
 def shipped_source() -> str:
     """Helpers first (they may be the mutation target), then the kernel."""
-    functions = (nlmod._four_point_sum, nlmod._pade_u,
+    functions = (nlmod._four_point_sum, nlmod._dsqr, nlmod._pade_u,
                  nlmod.nonlinear_constitutive_step)
     return "\n\n".join(textwrap.dedent(inspect.getsource(f.fn))
                        for f in functions)
@@ -1081,9 +1274,9 @@ def mutate_m2_drop_2x_on_c3(source: str) -> Tuple[str, int]:
 def mutate_m3_drop_0625(source: str) -> Tuple[str, int]:
     """m3: the (1/4)^2 renormalization of the two unnormalized four-point sums
     dropped from Dsqr."""
-    pattern = re.compile(r"0\.0625 \* \(g1s \* g1s \+ g2s \* g2s\)")
-    return (pattern.sub("(g1s * g1s + g2s * g2s)", source),
-            len(pattern.findall(source)))
+    needle = "0.0625 * tl.cast(transverse, tl.float64)"
+    return (source.replace(needle, "tl.cast(transverse, tl.float64)"),
+            source.count(needle))
 
 
 def mutate_m4_same_direction_double_shift(source: str) -> Tuple[str, int]:
@@ -1105,21 +1298,14 @@ def mutate_m4_same_direction_double_shift(source: str) -> Tuple[str, int]:
     return source, hits
 
 
-_M5_NEEDLE = """    near = (tl.load(g + o_c, mask=v_c, other=0.0)
-            + tl.load(g + o_d, mask=v_d, other=0.0))
-    far = (tl.load(g + o_u, mask=v_u, other=0.0)
-           + tl.load(g + o_ud, mask=v_ud, other=0.0))
-    return near + far"""
-
-_M5_REPLACEMENT = """    return ((tl.load(g + o_c, mask=v_c, other=0.0)
-             + tl.load(g + o_u, mask=v_u, other=0.0))
-            + tl.load(g + o_d, mask=v_d, other=0.0)) \\
-        + tl.load(g + o_ud, mask=v_ud, other=0.0)"""
+_M5_NEEDLE = "return ((center + up) + down) + corner"
+_M5_REPLACEMENT = "return (center + down) + (up + corner)"
 
 
-def mutate_m5_left_to_right_association(source: str) -> Tuple[str, int]:
-    """m5: MEEP C's left-to-right corner sum (step_generic.cpp:646-648)
-    substituted for stepping's pair association (:1158-1162)."""
+def mutate_m5_pair_association(source: str) -> Tuple[str, int]:
+    """m5: the pair association ``(g[i] + g[i-s1]) + (g[i+s] + g[i+(s-s1)])`` the
+    package carried before, substituted for MEEP C's left-to-right corner sum
+    (step_generic.cpp:646-648) that the array path and the kernel now take."""
     return (source.replace(_M5_NEEDLE, _M5_REPLACEMENT),
             source.count(_M5_NEEDLE))
 
@@ -1180,17 +1366,86 @@ def mutate_m8_power_miscount(source: str) -> Tuple[str, int]:
 def mutate_m9_dsqr_from_scaled_gs(source: str) -> Tuple[str, int]:
     """m9: gs scaled by inv_eps BEFORE Dsqr is formed — |E|^2 standing in for
     the |D|^2 MEEP's Pade factor is defined on."""
-    pattern = re.compile(r"dsqr(\d) = gs\1 \* gs\1")
-    return (pattern.sub(r"dsqr\1 = (gs\1 * us\1) * (gs\1 * us\1)", source),
+    pattern = re.compile(r"dsqr(\d) = _dsqr\(gs\1, g1s, g2s\)")
+    return (pattern.sub(r"dsqr\1 = _dsqr(gs\1 * us\1, g1s, g2s)", source),
             len(pattern.findall(source)))
 
 
 def mutate_m10_store_order(source: str) -> Tuple[str, int]:
     """m10: prev read AFTER the fw store — the certified constitutive family's
-    store-order defect, whose observable is prev == src."""
-    pattern = re.compile(r"a(\d) = a\1 - km_\1 \* prev\1")
-    return (pattern.sub(r"a\1 = a\1 - km_\1 * src\1", source),
+    store-order defect, whose observable is prev == src on the accumulation's
+    cells."""
+    pattern = re.compile(r"constitutive_form\(a(\d), prev\1, src\1,")
+    return (pattern.sub(r"constitutive_form(a\1, src\1, src\1,", source),
             len(pattern.findall(source)))
+
+
+# The B battery (KERNELS.md §7.2) and the old constitutive grouping (§7.1).
+_TAIL = re.compile(r"a(\d) = constitutive_form\(a\1, prev\1, src\1, kp_\1, km_\1, dw\1\)")
+_DW = re.compile(r"(dw\d = record_in\(cb, RECORD_HALF_INTEGER \+ \d, [ijk]\))")
+
+
+def mutate_b1_select_removed(source: str) -> Tuple[str, int]:
+    """b1: every cell takes the accumulation, its loads and stores included — the
+    whole-volume form the kernel carried before the chunk select."""
+    return _DW.sub(r"\1 | True", source), len(_DW.findall(source))
+
+
+def mutate_b2_old_constitutive_grouping(source: str) -> Tuple[str, int]:
+    """b2: the two separate accumulations ``(E + kps*src) - kms*prev`` the package
+    carried, in place of MEEP's ``E + ((kps*src) - (kms*prev))``, select kept."""
+    return (_TAIL.sub(lambda m: (f"a{m[1]} = tl.where(dw{m[1]}, (a{m[1]} + kp_{m[1]} * "
+                                 f"src{m[1]}) - km_{m[1]} * prev{m[1]}, src{m[1]})"),
+                      source), len(_TAIL.findall(source)))
+
+
+def mutate_b3_fw_stored_on_plain_cells(source: str) -> Tuple[str, int]:
+    """b3: ``f_w`` written on every cell — the auxiliary contract broken."""
+    pattern = re.compile(r"tl\.store\(w(\d) \+ idx, src\1, mask=live & dw\1\)")
+    return (pattern.sub(r"tl.store(w\1 + idx, src\1, mask=live)", source),
+            len(pattern.findall(source)))
+
+
+def mutate_b4_integer_lattice(source: str) -> Tuple[str, int]:
+    """b4: the record's integer line read where E's half-integer one belongs."""
+    needle = "record_in(cb, RECORD_HALF_INTEGER + "
+    return source.replace(needle, "record_in(cb, 0 + "), source.count(needle)
+
+
+def mutate_b5_own_axis_swapped(source: str) -> Tuple[str, int]:
+    """b5: component 0's dsigw line taken from the y axis instead of its own x."""
+    needle = "dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)"
+    return (source.replace(needle, "dw0 = record_in(cb, RECORD_HALF_INTEGER + 4, j)"),
+            source.count(needle))
+
+
+def mutate_b6_plain_as_unit_accumulation(source: str) -> Tuple[str, int]:
+    """b6: the plain form folded into the accumulation with unit and zero
+    coefficients. Caught only where ``src = -0`` (the planted case): ``0 + (-0 - 0)``
+    is ``+0``."""
+    return (_TAIL.sub(lambda m: (f"a{m[1]} = tl.where(dw{m[1]}, a{m[1]} + ((kp_{m[1]} * "
+                                 f"src{m[1]}) - (km_{m[1]} * prev{m[1]})), 0.0 + ((1.0 * "
+                                 f"src{m[1]}) - (0.0 * prev{m[1]})))"), source),
+            len(_TAIL.findall(source)))
+
+
+def mutate_b7_fw_load_unmasked(source: str) -> Tuple[str, int]:
+    """b7 (declared null): ``prev`` loaded on every cell; it feeds only the discarded
+    form off the accumulation's cells, so no word moves. Pinned instead by the
+    laptop test that reads the mask from the kernel text."""
+    pattern = re.compile(r"prev(\d) = tl\.load\(w\1 \+ idx, mask=live & dw\1, other=0\.0\)")
+    return (pattern.sub(r"prev\1 = tl.load(w\1 + idx, mask=live, other=0.0)", source),
+            len(pattern.findall(source)))
+
+
+def mutate_b8_float32_dsqr(source: str) -> Tuple[str, int]:
+    """b8 (recorded): Dsqr in float32. It differs only where the exact ``0.0625*t``
+    is below float32's normal range, where u is 1 to the last bit either way, so it
+    moves no E word on the mutation case; the ``dsqr`` leg catches it at the operand
+    level."""
+    needle = "return tl.cast(widened, tl.float32)"
+    return (source.replace(needle, "return square + 0.0625 * transverse"),
+            source.count(needle))
 
 
 def mutate_null_commuted_multiply(source: str) -> Tuple[str, int]:
@@ -1222,10 +1477,10 @@ def mutate_null_commuted_multiply_linear_arm(source: str) -> Tuple[str, int]:
             len(pattern.findall(source)))
 
 
-#: name -> (transform, chi form to arm it on, amplitude, expectation).
-#: expectation True = must catch; None = record only; False = must NOT catch.
-SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str, str,
-                                  Optional[bool]]] = {
+#: name -> (transform, chi form to arm it on, amplitude, expectation[, case options]).
+#: expectation True = must catch; None = record only; False = must NOT catch. The
+#: optional fifth element is extra ``one_case`` keywords (the planted case).
+SOURCE_MUTATIONS: Dict[str, Tuple[Any, ...]] = {
     "m1_quotient_swapped": (mutate_m1_quotient_swapped,
                             "chi2_chi3_scalar", "near_pole", True),
     "m2_drop_2x_on_c3": (mutate_m2_drop_2x_on_c3,
@@ -1233,8 +1488,8 @@ SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str, str,
     "m3_drop_0625": (mutate_m3_drop_0625, "chi3_scalar", "near_pole", True),
     "m4_same_direction_double_shift": (mutate_m4_same_direction_double_shift,
                                        "chi3_scalar", "near_pole", True),
-    "m5_left_to_right_association": (mutate_m5_left_to_right_association,
-                                     "chi3_scalar", "near_pole", True),
+    "m5_pair_association": (mutate_m5_pair_association,
+                            "chi3_scalar", "near_pole", True),
     "m6_pair_up_partner_axis": (mutate_m6_pair_up_partner_axis,
                                 "chi3_scalar", "near_pole", True),
     "m7_chi2_chi3_swapped": (mutate_m7_chi2_chi3_swapped,
@@ -1250,6 +1505,19 @@ SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str, str,
     "null_commuted_multiply_linear_arm": (
         mutate_null_commuted_multiply_linear_arm,
         "partial_ez", "near_pole", False),
+    "b1_select_removed": (mutate_b1_select_removed, "chi3_scalar", "near_pole", True),
+    "b2_old_constitutive_grouping": (mutate_b2_old_constitutive_grouping,
+                                     "chi3_scalar", "near_pole", True),
+    "b3_fw_stored_on_plain_cells": (mutate_b3_fw_stored_on_plain_cells,
+                                    "chi3_scalar", "near_pole", True),
+    "b4_integer_lattice": (mutate_b4_integer_lattice, "chi3_scalar", "near_pole", True),
+    "b5_own_axis_swapped": (mutate_b5_own_axis_swapped, "chi3_scalar", "near_pole", True),
+    "b6_plain_as_unit_accumulation": (mutate_b6_plain_as_unit_accumulation,
+                                      "chi3_scalar", "near_pole", True,
+                                      {"planted": True}),
+    "b7_fw_load_unmasked": (mutate_b7_fw_load_unmasked, "chi3_scalar", "near_pole",
+                            False),
+    "b8_float32_dsqr": (mutate_b8_float32_dsqr, "chi3_scalar", "near_pole", None),
 }
 
 #: The dedicated mutation shape: non-power-of-two, mixed boundaries, so every
@@ -1266,8 +1534,9 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
         log("[mut] WARNING: no shipped PTX cached yet (run the synthetic leg "
             "first); the stale-cache check will treat an empty set as pass-through")
 
-    for name, (transform, chi_name, amplitude,
-               must_catch) in SOURCE_MUTATIONS.items():
+    for name, entry_spec in SOURCE_MUTATIONS.items():
+        transform, chi_name, amplitude, must_catch = entry_spec[:4]
+        options = entry_spec[4] if len(entry_spec) > 4 else {}
         mutated, hits = transform(shipped)
         if hits == 0:
             out[name] = {"error": "NEEDLE MISSED: the mutation matched nothing; "
@@ -1276,12 +1545,15 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
             results["mutations"] = out
             save(results, out_path)
             continue
-        counter = gate.CountingKernel(compile_mutated(mutated))
+        compiled, kernel_name = compile_renamed_mutant(mutated, name)
+        counter = gate.CountingKernel(compiled)
         case = one_case(MUTATION_SHAPE, MUTATION_BOUNDARIES, chi_name,
-                        amplitude, False, kernel=counter, seed_offset=3)
+                        amplitude, False, kernel=counter, seed_offset=3, **options)
         caught = (not case.get("skipped") and not case.get("error")
                   and not case["verdict"]["bit_identical"])
         entry: Dict[str, Any] = {"sites": hits, "launches": counter.launches,
+                                 "case_options": dict(options),
+                                 "case_error": case.get("error"),
                                  "chi_form": chi_name, "amplitude": amplitude,
                                  "expansion": case.get("expansion"),
                                  "caught": caught,
@@ -1289,7 +1561,8 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
         if counter.launches == 0:
             entry["error"] = ("DISARMED: the mutated kernel never launched — "
                               "the leg measured nothing and FAILS")
-        mutant_ptx = kernel_ptx_set(counter.kernel)
+        mutant_ptx = normalized_ptx(kernel_ptx_set(counter.kernel), kernel_name)
+        entry["kernel_name"] = kernel_name
         entry["mutant_ptx_specializations"] = len(mutant_ptx)
         if must_catch:
             if not mutant_ptx:
@@ -1319,7 +1592,7 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     # float32 resolution and the bytes coincide — recorded WITH its reason,
     # never as a silent skip.
     mutated, hits = mutate_m2_drop_2x_on_c3(shipped)
-    counter = gate.CountingKernel(compile_mutated(mutated))
+    counter = gate.CountingKernel(compile_renamed_mutant(mutated, "m2_tiny")[0])
     case = one_case(MUTATION_SHAPE, MUTATION_BOUNDARIES, "chi3_scalar",
                     "tiny", False, kernel=counter, seed_offset=5)
     null_identical = (not case.get("error")
@@ -1341,22 +1614,28 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     # The allclose-blindness control: the SAME m2 mutant at an amplitude where
     # its deltas sit below allclose's rtol but above a float32 ulp — allclose
     # must PASS while the byte compare FAILS, or the harness's instrument is
-    # not the byte compare it claims.
-    counter = gate.CountingKernel(compile_mutated(mutated))
+    # not the byte compare it claims. It binds the no-layer record, so every cell
+    # takes ``E = src`` and E's relative delta is the Pade factor's own (about the
+    # expansion, 3e-6). The accumulation's difference can cancel and magnify it:
+    # with the split record one cell of 2,431 read 1.8e-5 (host, this seed), past
+    # rtol, which is a fact about the accumulation and not about the instrument.
+    counter = gate.CountingKernel(compile_renamed_mutant(mutated, "m2_allclose")[0])
     rng = np.random.default_rng(SEED + 61)
     state, inv_eps = make_host_state(MUTATION_SHAPE, rng)
     chi2, chi3 = chi_form("chi3_scalar", MUTATION_SHAPE, rng)
     expansion = scale_to_expansion(state, chi2, chi3, inv_eps,
                                    MUTATION_BOUNDARIES, 3.0e-6)
     flat = synthetic_flat_coefficients(MUTATION_SHAPE, rng)
+    record = gate_record(MUTATION_SHAPE, "no_layer")
     reference = {name: state[name].copy() for name in ALL_NAMES}
     reference_update_e(np, reference, broadcast(flat), chi2, chi3, inv_eps,
-                       MUTATION_BOUNDARIES)
+                       MUTATION_BOUNDARIES, record)
     arrays = {name: cp.asarray(state[name]) for name in ALL_NAMES}
     arrays.update({"inv_eps_" + n: cp.asarray(inv_eps[n]) for n in E_NAMES})
     plan = nlmod.plan_nonlinear_constitutive_from_arrays(
         arrays, {k: cp.asarray(v) for k, v in flat.items()}, chi2, chi3,
-        tuple(CODE_OF[b] for b in MUTATION_BOUNDARIES), kernel=counter)
+        tuple(CODE_OF[b] for b in MUTATION_BOUNDARIES), kernel=counter,
+        chunk_bounds=record)
     plan.run(guard=False)
     cp.cuda.runtime.deviceSynchronize()
     bytes_fail = any(not bit_compare(arrays[name],
@@ -1367,7 +1646,7 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
                                          rtol=1e-5, atol=1e-8))
                         for name in STATE_NAMES)
     out["allclose_blindness_control"] = {
-        "launches": counter.launches, "expansion": expansion,
+        "launches": counter.launches, "expansion": expansion, "record_kind": "no_layer",
         "bytes_fail": bytes_fail, "allclose_passes": allclose_pass,
         "ok": bytes_fail and allclose_pass and counter.launches > 0,
         "note": "a defect allclose forgives at rtol=1e-5 while the uint32 "
@@ -1383,6 +1662,152 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     results["mutations"] = out
     save(results, out_path)
     return out
+
+
+# ---------------------------------------------------------------------------
+# The planted special values and the operand-level Dsqr
+# ---------------------------------------------------------------------------
+
+PLANTED_CASES: Tuple[Tuple[Tuple[int, int, int], Tuple[str, str, str], str, str], ...] = (
+    ((13, 17, 11), (PERIODIC, METALLIC, PERIODIC), "chi2_chi3_scalar", "near_pole"),
+    ((16, 16, 16), (PERIODIC, PERIODIC, PERIODIC), "chi3_scalar", "normal"),
+    ((1, 1, 2000), (PERIODIC, PERIODIC, METALLIC), "chi3_scalar", "normal"),
+    ((13, 17, 11), (METALLIC, METALLIC, METALLIC), "partial_ez", "near_pole"),
+)
+
+
+def run_planted(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
+    """D = -0 on cells of both forms: a plain cell's E must come back -0."""
+    cases = []
+    for index, (shape, boundaries, chi_name, amplitude) in enumerate(PLANTED_CASES, 1):
+        started = time.time()
+        case = one_case(shape, boundaries, chi_name, amplitude, False, planted=True,
+                        seed_offset=17)
+        case["seconds"] = round(time.time() - started, 3)
+        cases.append(case)
+        _log_case("planted", index, len(PLANTED_CASES), case)
+        results["planted"] = {"cases": cases}
+        save(results, out_path)
+    ran = [c for c in cases if not c.get("skipped") and not c.get("error")]
+    leg = {"cases": cases, "ran": len(ran),
+           "pass": len(ran) == len(PLANTED_CASES)
+           and all(c["verdict"]["bit_identical"] for c in ran)}
+    results["planted"] = leg
+    save(results, out_path)
+    return leg
+
+
+_DSQR_PROBE = """
+@triton.jit
+def dsqr_probe(gs_ptr, g1_ptr, g2_ptr, out_ptr, n, BLOCK: tl.constexpr):
+    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    live = idx < n
+    gs = tl.load(gs_ptr + idx, mask=live, other=0.0)
+    g1s = tl.load(g1_ptr + idx, mask=live, other=0.0)
+    g2s = tl.load(g2_ptr + idx, mask=live, other=0.0)
+    tl.store(out_ptr + idx, _dsqr(gs, g1s, g2s), mask=live)
+"""
+
+#: (label, exponent range) of the operand bands: the exact ``0.0625*t`` below
+#: float32's normal range, and field-scale operands where the two forms agree.
+DSQR_BANDS = (("subnormal_band", (-66, -58)), ("field_scale", (-8, 4)))
+DSQR_OPERANDS = 1 << 16
+
+
+def dsqr_operands(exponents: Tuple[int, int], seed: int) -> Tuple[np.ndarray, ...]:
+    rng = np.random.default_rng(seed)
+    shape = (3, DSQR_OPERANDS)
+    values = (np.ldexp(rng.random(shape) + 1.0, rng.integers(exponents[0], exponents[1],
+                                                              shape))
+              * np.where(rng.random(shape) < 0.5, -1.0, 1.0)).astype(np.float32)
+    return values[0], values[1], values[2]
+
+
+def launch_dsqr(dsqr_source: str, operands: Tuple[np.ndarray, ...],
+                kernel_name: str = "dsqr_probe") -> Tuple[np.ndarray, List[str]]:
+    """Launch the probe kernel over the operands; return the words and its PTX.
+
+    CuPy arrays are handed to Triton through ``launch.CupyPointer``, as every plan hands
+    them (Triton reads a pointer argument's ``data_ptr``, which a CuPy array does not
+    have). Each source compiles under its own kernel name, the rename that keeps the
+    JIT cache from serving one variant's binary for another's.
+    """
+    from meep_gpu.triton_kernels.kernels import ENABLE_FP_FUSION  # noqa: PLC0415
+    from meep_gpu.triton_kernels.launch import CupyPointer  # noqa: PLC0415
+
+    kernel = compile_mutated(dsqr_source + "\n" + _DSQR_PROBE.replace(
+        "def dsqr_probe(", f"def {kernel_name}("), kernel_name)
+    gs, g1s, g2s = (cp.asarray(v) for v in operands)
+    out = cp.empty_like(gs)
+    block = 256
+    kernel[((gs.size + block - 1) // block,)](
+        CupyPointer(gs), CupyPointer(g1s), CupyPointer(g2s), CupyPointer(out), gs.size,
+        BLOCK=block, enable_fp_fusion=ENABLE_FP_FUSION)
+    cp.cuda.runtime.deviceSynchronize()
+    return probe.to_host(out), kernel_ptx_set(kernel)
+
+
+def _ptx_counts(ptx: Sequence[str]) -> Dict[str, int]:
+    """Float operations of interest in a probe kernel's PTX (all specializations)."""
+    text = "\n".join(ptx)
+    return {name: len(re.findall(pattern, text, re.MULTILINE)) for name, pattern in (
+        ("fma_f32", r"^\s*(fma|mad)\.[a-z.]*f32\b"),
+        ("mul_f32", r"^\s*mul\.(rn\.)?(ftz\.)?f32\b"),
+        ("add_f32", r"^\s*add\.(rn\.)?(ftz\.)?f32\b"),
+        ("add_f64", r"^\s*add\.(rn\.)?f64\b"),
+        ("cvt_rn_f32_f64", r"^\s*cvt\.rn\.(ftz\.)?f32\.f64\b"))}
+
+
+def run_dsqr(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
+    """The shipped ``_dsqr`` on device against the array path's ``_nonlinear_dsqr``.
+
+    Every operand triple must give the array path's word. The float32 form must
+    differ somewhere in the subnormal band (or the leg cannot see the double form) and
+    nowhere at field scale; the float32 mutant (b8) must be caught here.
+    """
+    shipped = textwrap.dedent(inspect.getsource(nlmod._dsqr.fn))
+    mutated, sites = mutate_b8_float32_dsqr(shipped)
+    leg: Dict[str, Any] = {"operands_per_band": DSQR_OPERANDS, "bands": {},
+                           "b8_sites": sites}
+    ok = sites == 1
+    for index, (label, exponents) in enumerate(DSQR_BANDS):
+        operands = dsqr_operands(exponents, SEED + 101 + index)
+        gs, g1s, g2s = operands
+        array_path = np.asarray(stepping._nonlinear_dsqr(gs, (g1s, g2s), stepping._WHOLE))
+        single = gs * gs + np.float32(0.0625) * (g1s * g1s + g2s * g2s)
+        device, shipped_ptx = launch_dsqr(shipped, operands, f"dsqr_probe_{label}")
+        mutant, mutant_ptx = launch_dsqr(mutated, operands, f"dsqr_probe_b8_{label}")
+        words = array_path.view(np.uint32)
+        row = {
+            "exponents": list(exponents),
+            "shipped_differing": int(np.count_nonzero(device.view(np.uint32) != words)),
+            "float32_form_differing_on_host": int(np.count_nonzero(
+                single.view(np.uint32) != words)),
+            "b8_mutant_differing": int(np.count_nonzero(mutant.view(np.uint32) != words)),
+            "subnormal_results": int(np.count_nonzero(
+                (np.abs(array_path) < np.float32(2.0 ** -126)) & (array_path != 0))),
+            "shipped_ptx": _ptx_counts(shipped_ptx),
+            "b8_mutant_ptx": _ptx_counts(mutant_ptx),
+        }
+        # THE STALE-CACHE TRIPWIRE, as the mutations leg has it: a mutant whose every
+        # specialization's PTX is a shipped one never ran as a mutant.
+        row["b8_stale"] = bool(mutant_ptx) and all(p in shipped_ptx for p in mutant_ptx)
+        must_separate = label == "subnormal_band"
+        row["ok"] = (row["shipped_differing"] == 0 and not row["b8_stale"]
+                     and (row["float32_form_differing_on_host"] > 0) == must_separate
+                     and (row["b8_mutant_differing"] > 0) == must_separate)
+        ok = ok and row["ok"]
+        leg["bands"][label] = row
+        log(f"[dsqr] {label}: shipped differing {row['shipped_differing']}/"
+            f"{DSQR_OPERANDS}, float32 form {row['float32_form_differing_on_host']}, "
+            f"b8 mutant {row['b8_mutant_differing']} stale={row['b8_stale']} "
+            f"ptx shipped {row['shipped_ptx']} b8 {row['b8_mutant_ptx']} ok={row['ok']}")
+        results["dsqr"] = leg
+        save(results, out_path)
+    leg["pass"] = ok
+    results["dsqr"] = leg
+    save(results, out_path)
+    return leg
 
 
 # ---------------------------------------------------------------------------
@@ -1450,8 +1875,10 @@ def run_engine(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
 # Main
 # ---------------------------------------------------------------------------
 
-DEFAULT_LEGS = "reference,refusals,synthetic,subnormal,identity,mutations,engine"
-DEVICE_LEGS = ("synthetic", "subnormal", "identity", "mutations", "engine")
+DEFAULT_LEGS = ("reference,refusals,synthetic,subnormal,identity,dsqr,planted,mutations,"
+                "engine")
+DEVICE_LEGS = ("synthetic", "subnormal", "identity", "dsqr", "planted", "mutations",
+               "engine")
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -1538,6 +1965,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         elif leg == "identity":
             if not run_identity(results, args.out)["pass"]:
                 failures.append("identity")
+        elif leg == "dsqr":
+            if not run_dsqr(results, args.out)["pass"]:
+                failures.append("dsqr")
+        elif leg == "planted":
+            if not run_planted(results, args.out)["pass"]:
+                failures.append("planted")
         elif leg == "mutations":
             out = run_mutations(results, args.out)
             for name, entry in out.items():

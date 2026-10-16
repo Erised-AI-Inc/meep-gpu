@@ -49,22 +49,17 @@ least one axis resolving to ``MIRROR`` through ``stepping._boundary_kinds``
 (stepping.py:2192-2197) — the ``elif offdiagonal:`` branch (stepping.py:1001-1008).
 With no poles admitted, ``displacement_minus_polarization_volumes`` aliases each
 source to its D primary, and all three are alive at once because the coupling
-reads the OTHER components' volumes (stepping.py:991-997). Per component ``c``
-with own axis ``a``::
+reads the OTHER components' volumes. Per component ``c`` with own axis ``a``,
+:mod:`offdiag_update_e`'s row and forms (its module docstring carries the
+pseudo-code): MEEP's row, ``gs*us`` widened plus each surviving term's float32
+sum, wall-masked, scaled by the double ``0.25`` and added in double where the
+slot's chunk keeps its array, rounded once; then the constitutive form per chunk
+(the accumulation on the cells whose chunk carries the ``a`` layer, ``E = src``
+elsewhere, ``f_w`` touched on the accumulation's cells only).
 
-    constitutive = D_c * us_c                               # stepping.py:1005
-    per surviving partner (offset 1 then 2, cycle X->Y->Z, :1235-1237):
-        pair    = g + shift_down(g, partner_axis)           # :1214-1216
-        product = pair * coefficient                        # :1217
-        term    = 0.25 * (product + shift_up(product, a))   # :1219-1220
-        total   accumulates term(offset1) then term(offset2)  # :1221
-    _mask_metallic_wall_coupling(total)                     # :1223, :1227-1254
-    constitutive = (D_c * us_c) + total                     # :978-979
-    prev = f_w_c ; f_w_c = constitutive                     # :2065-2096
-    E_c += kps_a_h * f_w_c ;  E_c -= kms_a_h * prev         # half-integer, :986
-
-Every line of that is :mod:`offdiag_update_e`'s, unchanged. The whole delta is
-what ``_shift_down`` and ``_shift_up`` do on a MIRROR axis.
+Every line of that is :mod:`offdiag_update_e`'s, unchanged, and the row helper is
+that module's ``_row_add``, imported. The whole delta is what ``_shift_down`` and
+``_shift_up`` do on a MIRROR axis.
 
 ================================================================================
 THE ELEMENT-WISE ARGUMENT DOES NOT TRANSFER. This is the question the family
@@ -244,15 +239,15 @@ D. **BOTH MIRROR CODES BEHAVE IDENTICALLY IN THIS KERNEL — a PREDICTED NULL
    there must index the SAME table (symmetry.py:108-114).
 
 E. **EVERYTHING ELSE IS :mod:`offdiag_update_e`'S, UNCHANGED**, and is
-   therefore that family's certified concern rather than re-litigated here: the
+   therefore that family's concern rather than re-litigated here: the
    coefficient multiply sitting BETWEEN the two shifts (that family's m1), the two
-   shifts going in OPPOSITE directions (m2), the ``0.25`` scaling the sum last
-   (a recorded null — an exact power of two commutes with round-to-nearest away
-   from underflow), the diagonal-first row sum (a null — f32 addition is
-   bitwise commutative), the slot-to-partner binding (m3), ``prev`` read before
-   ``f_w`` is written (m9), and the no-surviving-row arm reducing to
-   :func:`kernels.constitutive_step`'s body. The gate re-runs the ones the fold
-   could plausibly perturb and cites that family's certification for the rest.
+   shifts going in OPPOSITE directions (m2), MEEP's double row rounded once with
+   ``0.25`` in double (``_row_add``, imported; applying it in float32 first is a
+   recorded null away from underflow), the per-term add commuted (a null), the
+   per-chunk presence and constitutive forms, the slot-to-partner binding (m3),
+   ``prev`` read before ``f_w`` is written (m9), and the no-surviving-row arm
+   reducing to ``gs*us``. The gate re-runs the ones the fold could plausibly
+   perturb and cites that family's gate for the rest.
 
 F. **``ENABLE_FP_FUSION = False`` IS THE CERTIFIED CONFIGURATION.** Measured
    per tranche: offdiag 0/28 fusion-on rows identical (and nonlinear 0/108,
@@ -402,6 +397,12 @@ if triton is not None:
     MIRROR_METALLIC = tl.constexpr(CODE_MIRROR_METALLIC)
     MIRROR_PERIODIC = tl.constexpr(CODE_MIRROR_PERIODIC)
     MIRROR_ROW = tl.constexpr(MIRROR_SOURCE_INDEX)
+    #: Where the segment lines start in the presence vector
+    #: (``offdiag_update_e.PRESENCE_MASK_WORDS``).
+    PRESENCE_LINES = tl.constexpr(_offdiag.PRESENCE_MASK_WORDS)
+    from .forms import constitutive_form, record_in  # noqa: E402
+    from .kernels import RECORD_HALF_INTEGER  # noqa: E402
+    from .offdiag_update_e import _row_add  # noqa: E402
 else:  # pragma: no cover - the laptop path
     PERIODIC = CODE_PERIODIC          # type: ignore[assignment]
     METALLIC = CODE_METALLIC          # type: ignore[assignment]
@@ -416,12 +417,12 @@ if triton is not None:
     def _folded_offdiag_term(g, u, o_c, o_d, o_u, o_ud,
                              v_c, v_d, v_u, v_ud, w_d,
                              MG: tl.constexpr):
-        """One partner's OFFDIAG term, with or without the partner axis's ghost
-        weight.
+        """One partner's OFFDIAG sum before its scale, with or without the partner
+        axis's ghost weight.
 
-        ``stepping._offdiagonal_terms`` (:1214-1220) associates it as::
+        ``stepping._offdiagonal_terms`` forms it in float32 as::
 
-            0.25*((g[i] + w*g[i-sx])*u[i] + (g[i+s] + w*g[(i+s)-sx])*u[i+s])
+            (g[i] + w*g[i-sx])*u[i] + (g[i+s] + w*g[(i+s)-sx])*u[i+s]
 
         where ``w`` is the plane's ``-phase`` on the ghost lane of a MIRROR
         partner axis and 1 everywhere else. BOTH ghosted loads take the SAME
@@ -439,10 +440,10 @@ if triton is not None:
 
         Everything else is that function verbatim either way: the coefficient
         multiply sits BETWEEN the shifts (the near pair takes ``u`` at its own
-        node, the far pair at the next node up the component's own axis), and
-        0.25 scales the sum, applied last. No unary minus anywhere — ``w_d`` is
-        a RUNTIME scalar, never a negation the platform could canonicalize
-        (docstring point B).
+        node, the far pair at the next node up the component's own axis), and the
+        double ``0.25`` is applied by ``offdiag_update_e._row_add``. No unary minus
+        anywhere — ``w_d`` is a RUNTIME scalar, never a negation the platform could
+        canonicalize (docstring point B).
         """
         if MG:
             near = (tl.load(g + o_c, mask=v_c, other=0.0)
@@ -454,21 +455,22 @@ if triton is not None:
                     + tl.load(g + o_d, mask=v_d, other=0.0))
             far = (tl.load(g + o_u, mask=v_u, other=0.0)
                    + tl.load(g + o_ud, mask=v_ud, other=0.0))
-        return 0.25 * ((near * tl.load(u + o_c, mask=v_c, other=0.0))
-                       + (far * tl.load(u + o_u, mask=v_u, other=0.0)))
+        return ((near * tl.load(u + o_c, mask=v_c, other=0.0))
+                + (far * tl.load(u + o_u, mask=v_u, other=0.0)))
 
     @triton.jit
     def _masked_row_sum(diag, total, at_a, at_b,
                         WMA: tl.constexpr, WMB: tl.constexpr):
-        """Wall-mask the coupling, THEN form the row sum — the array path's order
-        (``_mask_metallic_wall_coupling`` at stepping.py:1252 runs before the
-        ``constitutive + coupling`` add at :1007-1008).
+        """Wall-mask a float32 coupling total, THEN add it to the float32 diagonal.
 
-        Byte-copied from :func:`offdiag_update_e._masked_row_sum`. On a folded
-        axis ``WM`` is 0 by construction (``wall_mask_axes`` asks the mask's own
-        ``is_metallic and not is_mirrored``, stepping.py:1282), which is what
-        leaves the fold plane's coupling alive — the thing zeroing it costs
-        2.0e-02 (stepping.py:1269-1274)."""
+        NOT this module's kernel's row: the folded kernel forms MEEP's double row
+        through ``offdiag_update_e._row_add``. This float32 sum is the one the
+        folded dispersive off-diagonal kernels
+        (``folded_offdiag_dispersive_update_e``, ``folded_offdiag_fused_ade_chain``)
+        still call, kept here for them until they take the double row. On a
+        folded axis ``WM`` is 0 by construction (``wall_mask_axes`` asks the mask's
+        own ``is_metallic and not is_mirrored``), which is what leaves the fold
+        plane's coupling alive."""
         if WMA:
             total = tl.where(at_a, 0.0, total)
         if WMB:
@@ -486,10 +488,16 @@ if triton is not None:
         u21, u22,                       # row Ez: partner Ex (down x), partner Ey (down y)
         kp0, km0, kp1, km1, kp2, km2,   # kps/kms on each component's OWN axis, half-integer
         gwx, gwy, gwz,                  # RUNTIME mirror ghost weights, exactly +1.0 / -1.0
+        cb,                             # chunk record: each component's dsigw membership
+        op,                             # off-diagonal presence: slot masks, segment lines
         nx, ny, nz, n_elem,
         R01: tl.constexpr, R02: tl.constexpr,
         R11: tl.constexpr, R12: tl.constexpr,
         R21: tl.constexpr, R22: tl.constexpr,
+        P01: tl.constexpr, P02: tl.constexpr,
+        P11: tl.constexpr, P12: tl.constexpr,
+        P21: tl.constexpr, P22: tl.constexpr,
+        PRESENCE: tl.constexpr,
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         MG_X: tl.constexpr, MG_Y: tl.constexpr, MG_Z: tl.constexpr,
         WM_X: tl.constexpr, WM_Y: tl.constexpr, WM_Z: tl.constexpr,
@@ -499,10 +507,11 @@ if triton is not None:
 
         :func:`offdiag_update_e.offdiag_constitutive_step`'s body with the
         boundary constexpr set widened from two values to four and ONE arm added
-        to the DOWN shift. Everything else — the row-mask arms, the wall mask,
-        the prev-before-store ordering, the two separate accumulations, the
-        own-axis half-integer coefficient index — is that kernel's, unchanged,
-        because the array path's is unchanged.
+        to the DOWN shift. Everything else — the row-mask arms, the double row
+        and its wall mask (``_row_add``), the per-chunk presence (``P*``, ``op``),
+        the per-chunk constitutive form keyed on the record (``cb``), the
+        prev-before-store ordering, the own-axis half-integer coefficient index —
+        is that kernel's, unchanged, because the array path's is unchanged.
 
         THE THREE DIFFERENCES FROM THE CERTIFIED KERNEL, all named:
 
@@ -581,6 +590,28 @@ if triton is not None:
             wz = tl.where(at_z, gwz, 1.0)
             uvz = live & (uk < nz)
 
+        # Which chunk of the {low, interior, high} product owns the cell, per
+        # component lattice (presence_record's segment lines: integer x, y, z,
+        # then half-integer x, y, z). Read only when some slot's presence varies.
+        c0, c1, c2 = i * 0, i * 0, i * 0
+        if PRESENCE:
+            sxi = tl.load(op + PRESENCE_LINES + i, mask=live, other=0)
+            syi = tl.load(op + PRESENCE_LINES + nx + j, mask=live, other=0)
+            szi = tl.load(op + PRESENCE_LINES + nx + ny + k, mask=live, other=0)
+            half = PRESENCE_LINES + nx + ny + nz
+            sxh = tl.load(op + half + i, mask=live, other=0)
+            syh = tl.load(op + half + nx + j, mask=live, other=0)
+            szh = tl.load(op + half + nx + ny + k, mask=live, other=0)
+            c0 = (sxh * 9 + syi * 3) + szi     # Ex: half-integer on x
+            c1 = (sxi * 9 + syh * 3) + szi     # Ey: half-integer on y
+            c2 = (sxi * 9 + syi * 3) + szh     # Ez: half-integer on z
+
+        # Which cells take the accumulation: each component's own (dsigw) layer on
+        # the half-integer sub-lattice (chunk_map.record_index(True, axis, 0)).
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
+
         # Component 0 takes its coefficient from axis x, 1 from y, 2 from z.
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
         km_0 = tl.load(km0 + i, mask=live, other=0.0)
@@ -590,114 +621,123 @@ if triton is not None:
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
         # --- component 0: Ex — own axis x; partners Dy (down y) then Dz (down z)
-        prev0 = tl.load(w0 + idx, mask=live, other=0.0)   # BEFORE the store.
+        prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)   # BEFORE the store.
         gs0 = tl.load(g0 + idx, mask=live, other=0.0)
         us0 = tl.load(e0 + idx, mask=live, other=0.0)
         if R01:
-            total0 = _folded_offdiag_term(
+            row0 = tl.cast(gs0 * us0, tl.float64)
+            row0 = _row_add(row0, _folded_offdiag_term(
                 g1, u01, idx,
                 i * nyz + dj * nz + k,
                 ui * nyz + j * nz + k,
                 ui * nyz + dj * nz + k,
-                live, dvy, uvx, uvx & dvy, wy, MG_Y)
+                live, dvy, uvx, uvx & dvy, wy, MG_Y),
+                at_y, at_z, op, c0, 0, WM_Y, WM_Z, P01)
             if R02:
-                total0 = total0 + _folded_offdiag_term(
+                row0 = _row_add(row0, _folded_offdiag_term(
                     g2, u02, idx,
                     i * nyz + j * nz + dk,
                     ui * nyz + j * nz + k,
                     ui * nyz + j * nz + dk,
-                    live, dvz, uvx, uvx & dvz, wz, MG_Z)
-            src0 = _masked_row_sum(gs0 * us0, total0, at_y, at_z, WM_Y, WM_Z)
+                    live, dvz, uvx, uvx & dvz, wz, MG_Z),
+                    at_y, at_z, op, c0, 1, WM_Y, WM_Z, P02)
+            src0 = tl.cast(row0, tl.float32)
         else:
             if R02:
-                total0 = _folded_offdiag_term(
+                row0 = tl.cast(gs0 * us0, tl.float64)
+                row0 = _row_add(row0, _folded_offdiag_term(
                     g2, u02, idx,
                     i * nyz + j * nz + dk,
                     ui * nyz + j * nz + k,
                     ui * nyz + j * nz + dk,
-                    live, dvz, uvx, uvx & dvz, wz, MG_Z)
-                src0 = _masked_row_sum(gs0 * us0, total0, at_y, at_z,
-                                       WM_Y, WM_Z)
+                    live, dvz, uvx, uvx & dvz, wz, MG_Z),
+                    at_y, at_z, op, c0, 1, WM_Y, WM_Z, P02)
+                src0 = tl.cast(row0, tl.float32)
             else:
                 src0 = gs0 * us0
-        tl.store(w0 + idx, src0, mask=live)
-        a0 = tl.load(f0 + idx, mask=live, other=0.0)
-        a0 = a0 + kp_0 * src0
-        a0 = a0 - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=live & dw0)
+        a0 = tl.load(f0 + idx, mask=live & dw0, other=0.0)
+        a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)
         tl.store(f0 + idx, a0, mask=live)
 
         # --- component 1: Ey — own axis y; partners Dz (down z) then Dx (down x)
-        prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+        prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
         gs1 = tl.load(g1 + idx, mask=live, other=0.0)
         us1 = tl.load(e1 + idx, mask=live, other=0.0)
         if R11:
-            total1 = _folded_offdiag_term(
+            row1 = tl.cast(gs1 * us1, tl.float64)
+            row1 = _row_add(row1, _folded_offdiag_term(
                 g2, u11, idx,
                 i * nyz + j * nz + dk,
                 i * nyz + uj * nz + k,
                 i * nyz + uj * nz + dk,
-                live, dvz, uvy, uvy & dvz, wz, MG_Z)
+                live, dvz, uvy, uvy & dvz, wz, MG_Z),
+                at_x, at_z, op, c1, 2, WM_X, WM_Z, P11)
             if R12:
-                total1 = total1 + _folded_offdiag_term(
+                row1 = _row_add(row1, _folded_offdiag_term(
                     g0, u12, idx,
                     di * nyz + j * nz + k,
                     i * nyz + uj * nz + k,
                     di * nyz + uj * nz + k,
-                    live, dvx, uvy, uvy & dvx, wx, MG_X)
-            src1 = _masked_row_sum(gs1 * us1, total1, at_x, at_z, WM_X, WM_Z)
+                    live, dvx, uvy, uvy & dvx, wx, MG_X),
+                    at_x, at_z, op, c1, 3, WM_X, WM_Z, P12)
+            src1 = tl.cast(row1, tl.float32)
         else:
             if R12:
-                total1 = _folded_offdiag_term(
+                row1 = tl.cast(gs1 * us1, tl.float64)
+                row1 = _row_add(row1, _folded_offdiag_term(
                     g0, u12, idx,
                     di * nyz + j * nz + k,
                     i * nyz + uj * nz + k,
                     di * nyz + uj * nz + k,
-                    live, dvx, uvy, uvy & dvx, wx, MG_X)
-                src1 = _masked_row_sum(gs1 * us1, total1, at_x, at_z,
-                                       WM_X, WM_Z)
+                    live, dvx, uvy, uvy & dvx, wx, MG_X),
+                    at_x, at_z, op, c1, 3, WM_X, WM_Z, P12)
+                src1 = tl.cast(row1, tl.float32)
             else:
                 src1 = gs1 * us1
-        tl.store(w1 + idx, src1, mask=live)
-        a1 = tl.load(f1 + idx, mask=live, other=0.0)
-        a1 = a1 + kp_1 * src1
-        a1 = a1 - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=live & dw1)
+        a1 = tl.load(f1 + idx, mask=live & dw1, other=0.0)
+        a1 = constitutive_form(a1, prev1, src1, kp_1, km_1, dw1)
         tl.store(f1 + idx, a1, mask=live)
 
         # --- component 2: Ez — own axis z; partners Dx (down x) then Dy (down y)
-        prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+        prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
         gs2 = tl.load(g2 + idx, mask=live, other=0.0)
         us2 = tl.load(e2 + idx, mask=live, other=0.0)
         if R21:
-            total2 = _folded_offdiag_term(
+            row2 = tl.cast(gs2 * us2, tl.float64)
+            row2 = _row_add(row2, _folded_offdiag_term(
                 g0, u21, idx,
                 di * nyz + j * nz + k,
                 i * nyz + j * nz + uk,
                 di * nyz + j * nz + uk,
-                live, dvx, uvz, uvz & dvx, wx, MG_X)
+                live, dvx, uvz, uvz & dvx, wx, MG_X),
+                at_x, at_y, op, c2, 4, WM_X, WM_Y, P21)
             if R22:
-                total2 = total2 + _folded_offdiag_term(
+                row2 = _row_add(row2, _folded_offdiag_term(
                     g1, u22, idx,
                     i * nyz + dj * nz + k,
                     i * nyz + j * nz + uk,
                     i * nyz + dj * nz + uk,
-                    live, dvy, uvz, uvz & dvy, wy, MG_Y)
-            src2 = _masked_row_sum(gs2 * us2, total2, at_x, at_y, WM_X, WM_Y)
+                    live, dvy, uvz, uvz & dvy, wy, MG_Y),
+                    at_x, at_y, op, c2, 5, WM_X, WM_Y, P22)
+            src2 = tl.cast(row2, tl.float32)
         else:
             if R22:
-                total2 = _folded_offdiag_term(
+                row2 = tl.cast(gs2 * us2, tl.float64)
+                row2 = _row_add(row2, _folded_offdiag_term(
                     g1, u22, idx,
                     i * nyz + dj * nz + k,
                     i * nyz + j * nz + uk,
                     i * nyz + dj * nz + uk,
-                    live, dvy, uvz, uvz & dvy, wy, MG_Y)
-                src2 = _masked_row_sum(gs2 * us2, total2, at_x, at_y,
-                                       WM_X, WM_Y)
+                    live, dvy, uvz, uvz & dvy, wy, MG_Y),
+                    at_x, at_y, op, c2, 5, WM_X, WM_Y, P22)
+                src2 = tl.cast(row2, tl.float32)
             else:
                 src2 = gs2 * us2
-        tl.store(w2 + idx, src2, mask=live)
-        a2 = tl.load(f2 + idx, mask=live, other=0.0)
-        a2 = a2 + kp_2 * src2
-        a2 = a2 - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=live & dw2)
+        a2 = tl.load(f2 + idx, mask=live & dw2, other=0.0)
+        a2 = constitutive_form(a2, prev2, src2, kp_2, km_2, dw2)
         tl.store(f2 + idx, a2, mask=live)
 
 else:  # pragma: no cover - the laptop path
@@ -1031,6 +1071,11 @@ def folded_offdiag_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Co
                 f"-1.0; the weight is a RUNTIME argument and an unreadable "
                 f"plane would launch rather than raise")
 
+    # (h) The per-chunk presence of every surviving row slot, packed for the kernel
+    #     (offdiag_update_e._presence_reasons, the unfolded family's clause).
+    if not reasons:
+        reasons.extend(_offdiag._presence_reasons(fields, pml))
+
     return _coverage.Coverage(not reasons, tuple(reasons))
 
 
@@ -1090,13 +1135,15 @@ class FoldedOffdiagConstitutivePlan:
     """
 
     __slots__ = ("shape", "n_elem", "block", "row_mask", "boundary_codes",
-                 "wall_axes", "ghost_weights", "ghost_axes", "_targets", "_aux",
-                 "_sources", "_inv_eps", "_rows", "_coefficients", "_kernel")
+                 "wall_axes", "ghost_weights", "ghost_axes", "chunk_bounds",
+                 "presence", "presence_varies", "_targets", "_aux", "_sources",
+                 "_inv_eps", "_rows", "_coefficients", "_cb", "_op", "_kernel")
 
     def __init__(self, shape, block: int, targets, auxiliaries, sources,
                  inverse_epsilon, rows, coefficients, boundary_codes,
-                 wall_axes, ghost_weights, kernel: Any = None) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 wall_axes, ghost_weights, kernel: Any = None, *,
+                 chunk_bounds: Any = None, presence: Any = None) -> None:
+        from .launch import CupyPointer, _flat, bind_chunk_bounds  # noqa: PLC0415
 
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
@@ -1183,6 +1230,19 @@ class FoldedOffdiagConstitutivePlan:
 
         self._require_no_aliasing(targets, auxiliaries, sources,
                                   inverse_epsilon, rows, coefficients)
+        # A plan another family composes for its bindings alone binds neither the
+        # record nor the presence, and refuses to launch (:meth:`run`). Every
+        # builder here binds both, and binding one without the other is refused.
+        if chunk_bounds is None and presence is None:
+            self.chunk_bounds = self._cb = None
+            self.presence_varies, self.presence, self._op = (0,) * 6, None, None
+        else:
+            self.chunk_bounds, self._cb = bind_chunk_bounds(
+                chunk_bounds, self.shape, targets[0],
+                "the folded off-diagonal update_E plan")
+            self.presence_varies, self.presence, self._op = _offdiag.bind_presence(
+                presence, self.shape, self.row_mask, targets[0],
+                "the folded off-diagonal update_E plan")
 
         self._targets = tuple(CupyPointer(a) for a in targets)
         self._aux = tuple(CupyPointer(a) for a in auxiliaries)
@@ -1241,18 +1301,30 @@ class FoldedOffdiagConstitutivePlan:
 
     def run(self, guard: Optional[bool] = None) -> None:
         """Launch the sub-step, in place. Same ``guard`` contract as every plan."""
+        if self._cb is None:
+            from ..chunk_map import ChunkLayoutRefusal  # noqa: PLC0415
+
+            raise ChunkLayoutRefusal(
+                "this folded off-diagonal update_E plan was built without a chunk "
+                "record and presence (bindings for a composing plan); it launches "
+                "nothing. Build it through plan_folded_offdiagonal_constitutive or "
+                "the _from_arrays builder, which bind both")
         from .kernels import ENABLE_FP_FUSION  # noqa: PLC0415
 
         kernel = (self._kernel if self._kernel is not None
                   else folded_offdiag_constitutive_step_kernel())
         nx, ny, nz = self.shape
+        varies = self.presence_varies
         kernel[self.launch_grid](
             *self._targets, *self._aux, *self._sources, *self._inv_eps,
             *self._rows, *self._coefficients, *self.ghost_weights,
+            self._cb, self._op,
             nx, ny, nz, self.n_elem,
             R01=self.row_mask[0], R02=self.row_mask[1],
             R11=self.row_mask[2], R12=self.row_mask[3],
             R21=self.row_mask[4], R22=self.row_mask[5],
+            P01=varies[0], P02=varies[1], P11=varies[2], P12=varies[3],
+            P21=varies[4], P22=varies[5], PRESENCE=int(any(varies)),
             BCX=self.boundary_codes[0], BCY=self.boundary_codes[1],
             BCZ=self.boundary_codes[2],
             MG_X=self.ghost_axes[0], MG_Y=self.ghost_axes[1],
@@ -1265,13 +1337,14 @@ class FoldedOffdiagConstitutivePlan:
 
     def __repr__(self) -> str:
         return (f"FoldedOffdiagConstitutivePlan(shape={self.shape}, "
-                f"rows={self.row_mask}, bc={self.boundary_codes}, "
-                f"mg={self.ghost_axes}, walls={self.wall_axes}, "
+                f"rows={self.row_mask}, presence={self.presence_varies}, "
+                f"bc={self.boundary_codes}, mg={self.ghost_axes}, walls={self.wall_axes}, "
                 f"gw={self.ghost_weights}, block={self.block})")
 
 
 def plan_folded_offdiagonal_constitutive(
-        fields: Any, pml: Any, block: Optional[int] = None
+        fields: Any, pml: Any, block: Optional[int] = None,
+        chunk_layout: Any = None
         ) -> Optional[FoldedOffdiagConstitutivePlan]:
     """Build the folded off-diagonal ``update_E`` plan from the engine's objects.
 
@@ -1282,9 +1355,16 @@ def plan_folded_offdiagonal_constitutive(
     back the aliased D primaries. The Triton import stays below the predicate: a
     NumPy host must be able to plan (to ``None``) without the optional
     dependency being importable at all.
+
+    ``chunk_layout`` is the run's chunk division (``FdtdDriver.chunk_layout``),
+    ``None`` for the one-rank default; the plan binds its record
+    (``launch.chunk_bounds_for``). The presence of each row slot is the array
+    path's own (``offdiag_update_e.presence_for``).
     """
     if not folded_offdiag_constitutive_coverage(fields, pml).covered:
         return None
+    from .launch import chunk_bounds_for  # noqa: PLC0415
+
     codes, _reasons = _symmetry.folded_axis_kinds(fields.grid, pml)
     if codes is None:  # pragma: no cover - the predicate already refused
         return None
@@ -1302,6 +1382,8 @@ def plan_folded_offdiagonal_constitutive(
         codes,
         _offdiag.wall_mask_axes(fields.grid),
         mirror_ghost_weights(fields.grid),
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        presence=_offdiag.presence_for(fields, pml),
     )
 
 
@@ -1310,7 +1392,8 @@ def plan_folded_offdiagonal_constitutive_from_arrays(
         rows: Dict[str, Dict[str, Any]],
         boundary_codes: Sequence[int], wall_axes: Sequence[int],
         ghost_weights: Sequence[float],
-        block: Optional[int] = None, kernel: Any = None
+        block: Optional[int] = None, kernel: Any = None, *,
+        chunk_bounds: Any, presence: Any
         ) -> FoldedOffdiagConstitutivePlan:
     """Build it from bare arrays — the gate's and validator's route.
 
@@ -1326,6 +1409,11 @@ def plan_folded_offdiagonal_constitutive_from_arrays(
     through it, and a builder that drops it launches the shipped kernel and
     reports a pass for a defect it never introduced (the measured harness-disarm
     failure the certified families document).
+
+    ``chunk_bounds`` (``chunk_map.chunk_bounds_record``) and ``presence``
+    (``offdiag_update_e.presence_record``, or ``offdiag_update_e.ALL_PRESENT``)
+    have no default: a gate whose plan fell back to some default division would
+    stop measuring the forms it exists to measure.
     """
     targets = tuple(term[0] for term in E_TERMS)
     shape = tuple(int(n) for n in arrays[targets[0]].shape)
@@ -1341,6 +1429,8 @@ def plan_folded_offdiagonal_constitutive_from_arrays(
         wall_axes,
         ghost_weights,
         kernel=kernel,
+        chunk_bounds=chunk_bounds,
+        presence=presence,
     )
 
 

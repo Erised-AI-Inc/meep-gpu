@@ -16,8 +16,16 @@ for the defects a byte gate would catch LATE or not at all:
   that adds a volume discovers the limit here rather than at compile time on a
   configuration nobody sweeps;
 * the predicate's refusals, all of which are answerable WITHOUT a GPU;
-* the registration's ``wired=False``, because a family that quietly became wired
-  would change what ``plan_step`` launches.
+* the registration's ``wired=True``, and the composer's selection of it;
+* RULING R7, SOFTWARE BINARY64: the row is the array path's double row, emitted
+  through :mod:`.metal_kernels.softfp64` (each term's float32 pair sum widened,
+  scaled by MEEP's double 0.25 and added left to right, one rounding), pinned as
+  text here and measured on the device against ``stepping.update_E`` on generic
+  states, where the float32 row differs;
+* the PER-CHUNK PRESENCE words: built from the array path's own presence, refused
+  by name where the record cannot carry them, and read by the kernel;
+* the PER-CHUNK TAIL (the B select): the kernel binds the chunk record and its tail
+  is the base constitutive kernel's select.
 
 Everything that needs a device is guarded and skipped, so this file is the merge
 bar on a host with no MPS as well as on this one.
@@ -28,7 +36,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from meep_gpu import stepping
+from meep_gpu import chunk_map, stepping
 from meep_gpu.fields import IYEE_SHIFTS, Fields
 from meep_gpu.grid import Grid
 from meep_gpu.metal_kernels import (
@@ -120,7 +128,8 @@ FULL = (1, 1, 1, 1, 1, 1)
 
 
 def test_the_binding_count_stays_under_metals_ceiling():
-    """28 bindings, three below the measured 31-buffer limit.
+    """30 bindings (the chunk record, then the presence words last), one below the
+    measured 31-buffer limit.
 
     Metal's buffer attribute indices must be 0..30 and a 32nd is a COMPILE ERROR.
     The count is asserted here so an edit that adds a volume discovers the ceiling
@@ -164,10 +173,11 @@ def test_a_component_with_no_row_emits_the_plain_diagonal_product():
     source = offdiag.offdiag_source((1, 0, 0, 0, 0, 0), (0, 0, 0), (0, 0, 0))
     assert "    float src1 = gs1 * us1;" in source
     assert "    float src2 = gs2 * us2;" in source
-    assert "total1" not in source
-    assert "total2" not in source
-    # And the live one is NOT the plain arm.
-    assert "    float src0 = (gs0 * us0) + total0;" in source
+    assert "od_row1" not in source
+    assert "od_row2" not in source
+    # And the live one is NOT the plain arm: it is the double row, rounded once.
+    assert "    ulong od_row0 = sd_widen_f(gs0 * us0, true);" in source
+    assert "    float src0 = sd_narrow_f(od_row0, true);" in source
 
 
 def test_the_wall_mask_is_emitted_only_for_declared_axes_of_the_right_component():
@@ -178,19 +188,25 @@ def test_the_wall_mask_is_emitted_only_for_declared_axes_of_the_right_component(
     plan carries ``wall_axes`` separately from ``boundary_codes``.
     """
     # Walls on x and y. Component 0 (Ex, shift (1,0,0)) masks y only; component 1
-    # (Ey) masks x only; component 2 (Ez) masks x and y.
+    # (Ey) masks x only; component 2 (Ez) masks x and y. EACH TERM'S float32 pair
+    # sum is masked, before its double scale, as the array path masks ``summed``.
     source = offdiag.offdiag_source(FULL, (1, 1, 0), (1, 1, 0))
-    assert "    total0 = at_y ? 0.0f : total0;" in source
-    assert "    total0 = at_x ? 0.0f : total0;" not in source
-    assert "    total1 = at_x ? 0.0f : total1;" in source
-    assert "    total1 = at_y ? 0.0f : total1;" not in source
-    assert "    total2 = at_x ? 0.0f : total2;" in source
-    assert "    total2 = at_y ? 0.0f : total2;" in source
-    # No declared wall: no branch at all, and a comment saying so rather than
-    # silence.
+    for tag in ("00", "01"):
+        assert f"    sum_{tag} = at_y ? 0.0f : sum_{tag};" in source
+        assert f"    sum_{tag} = at_x ? 0.0f : sum_{tag};" not in source
+    for tag in ("10", "11"):
+        assert f"    sum_{tag} = at_x ? 0.0f : sum_{tag};" in source
+        assert f"    sum_{tag} = at_y ? 0.0f : sum_{tag};" not in source
+    for tag in ("20", "21"):
+        assert f"    sum_{tag} = at_x ? 0.0f : sum_{tag};" in source
+        assert f"    sum_{tag} = at_y ? 0.0f : sum_{tag};" in source
+    # The mask precedes the widen of the sum it masks.
+    assert source.index("    sum_00 = at_y ? 0.0f : sum_00;") < source.index(
+        "sd_widen_f(sum_00, true)")
+    # No declared wall: no branch at all.
     plain = offdiag.offdiag_source(FULL, (1, 1, 0), (0, 0, 0))
-    assert "? 0.0f : total0;" not in plain
-    assert "no declared metallic wall axis" in plain
+    assert "? 0.0f : sum_00;" not in plain
+    assert "total0" not in plain
 
 
 def test_the_metallic_ghost_is_a_flag_and_the_periodic_one_is_a_wrap():
@@ -304,8 +320,8 @@ def test_the_coefficient_multiply_sits_between_the_two_shifts():
     source = offdiag.offdiag_source((1, 0, 0, 0, 0, 0), (0, 0, 0), (0, 0, 0))
     assert "    float unear_00 = u01[ii];" in source
     assert "    float ufar_00 = uvx ? u01[ui * nyz + j * nzi + k] : 0.0f;" in source
-    assert ("    float term_00 = 0.25f * ((near_00 * unear_00)"
-            " + (far_00 * ufar_00));") in source
+    assert ("    float sum_00 = (near_00 * unear_00)"
+            " + (far_00 * ufar_00);") in source
 
 
 def test_no_float_divides_and_no_min_or_max_builtin_is_called():
@@ -329,7 +345,7 @@ def test_no_float_divides_and_no_min_or_max_builtin_is_called():
         assert not any("fast::" in line for line in code)
         for line in code:
             if "float" in line or any(name in line for name in
-                                      ("near_", "far_", "term_", "total", "src",
+                                      ("near_", "far_", "sum_", "od_row", "src",
                                        "a0", "a1", "a2")):
                 assert "/" not in line, f"a float divide appeared: {line!r}"
         for builtin in ("min(", "max(", "fmin(", "fmax("):
@@ -645,7 +661,8 @@ def test_the_plan_builder_returns_none_out_of_coverage():
     grid = _grid()
     fields = _fields_with_rows(grid, rows={})
     pml = PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
-    assert offdiag.plan_offdiag_constitutive(fields, pml, _Residency()) is None
+    assert offdiag.plan_offdiag_constitutive(
+        fields, pml, _Residency(), chunk_bounds=_record(fields, pml)) is None
 
 
 def test_wall_mask_axes_reads_the_declaration_not_the_resolved_ghost_rule():
@@ -665,7 +682,8 @@ def test_wall_mask_axes_reads_the_declaration_not_the_resolved_ghost_rule():
 # ---------------------------------------------------------------------------
 
 def test_the_arm_is_registered_and_wired_on_update_E_alone():
-    """One arm, on ``update_E``, WIRED as of tranche 2.
+    """One arm, on ``update_E``, WIRED (as of tranche 2; under ruling R7 its row is
+    the software-binary64 one).
 
     The slot matters as much as the flag: this family's whole effect is inside
     ``update_E`` (stepping.py:1001-1008), so an arm on any curl slot would be
@@ -690,6 +708,279 @@ def test_re_registering_the_same_arm_is_refused():
 
 
 # ---------------------------------------------------------------------------
+# Ruling R7: the software-binary64 row, and its per-chunk presence
+# ---------------------------------------------------------------------------
+
+def _record(fields, pml):
+    """The chunk record of the division ``stepping.update_E`` steps this run with."""
+    return chunk_map.chunk_bounds_record(stepping._region_plan(fields, pml).layout)
+
+
+def test_the_row_is_summed_left_to_right_in_double_and_rounded_once():
+    """``stepping._offdiagonal_terms`` and ``_rounded_row``, statement for statement:
+    ``gs*us`` in float32, widened; each kept term's float32 pair sum scaled by MEEP's
+    double 0.25 (``sd_scale_pow2(.., -2, ..)``) and added left to right, offset 1 then
+    offset 2; one rounding. Every helper passes ``fz = true`` (the MPS executor
+    flushes and the array path it equals steps with the host flushing). The float32
+    ``0.25f`` and the float32 row sum are gone."""
+    from meep_gpu.metal_kernels import softfp64
+
+    source = offdiag.offdiag_source(FULL, (0, 0, 0), (0, 0, 0))
+    assert softfp64.MSL_HELPERS.strip("\n") in source
+    assert source.index(shaders.contraction_pragma(shaders.CONTRACT_OFF)) < \
+        source.index("#define MEEP_GPU_SOFTFP64")
+    for c in range(3):
+        widen = f"    ulong od_row{c} = sd_widen_f(gs{c} * us{c}, true);"
+        first = (f"    if (od_kept_{c}0) {{ od_row{c} = sd_add(od_row{c}, "
+                 f"sd_scale_pow2(sd_widen_f(sum_{c}0, true), {softfp64.QUARTER}, true), "
+                 f"true); }}")
+        second = first.replace(f"_{c}0", f"_{c}1")
+        narrow = f"    float src{c} = sd_narrow_f(od_row{c}, true);"
+        for line in (widen, first, second, narrow):
+            assert line in source, line
+        assert (source.index(widen) < source.index(first) < source.index(second)
+                < source.index(narrow)), c
+    body = source.split("uint idx [[thread_position_in_grid]])", 1)[1]
+    assert "0.25f" not in body
+    assert "total" not in body
+    assert ", false)" not in body, "every helper call passes fz = true"
+
+
+def test_the_presence_word_is_read_at_the_cells_chunk_code():
+    """KERNELS.md §2: the words bind LAST, and each live slot's flag is bit ``code``
+    of its word, ``code = lx + 3*ly + 9*lz`` read off the record on the component's
+    own Yee sub-lattice per axis (half-integer on its own axis, integer on the other
+    two), with a metallic axis's integer-lattice wall row 0 read at row 1."""
+    assert offdiag.PRESENCE_BUFFER == offdiag.BINDING_COUNT - 1
+    assert offdiag.RECORD_BUFFER == offdiag.BINDING_COUNT - 2
+    source = offdiag.offdiag_source((1, 0, 0, 0, 0, 1), (0, 1, 0), (0, 1, 0))
+    assert offdiag.presence_struct_source() in source
+    assert (f"constant OffdiagPresence& kw [[buffer({offdiag.PRESENCE_BUFFER})]]"
+            in source)
+    # Ex: half-integer x, integer y (metallic: the wall row reads row 1), integer z.
+    block = source.split("const uint od_chunk0 = ", 1)[1].split(";", 1)[0]
+    assert "cb.cbh_x_a0" in block and "cb.cbi_x_a0" not in block
+    assert "(((j == 0) ? 1 : j)) >= cb.cbi_y_a0" in block
+    assert "((k) >= cb.cbi_z_a0" in block
+    assert "    const bool od_kept_00 = ((kw.kept01 >> od_chunk0) & 1u) != 0u;" in source
+    # Ez's second slot, u22 -> kept22; Ey has no live slot and names no chunk.
+    assert "    const bool od_kept_21 = ((kw.kept22 >> od_chunk2) & 1u) != 0u;" in source
+    assert "od_chunk1" not in source
+    # A periodic axis reads its own row.
+    periodic = offdiag.offdiag_source((1, 0, 0, 0, 0, 0), (0, 0, 0), (0, 0, 0))
+    assert "(j == 0) ? 1 : j" not in periodic
+
+
+def test_presence_words_are_all_kept_where_no_chunk_deletes_a_row():
+    """A row nonzero in every chunk is added everywhere: the all-kept word, with no
+    chunk naming needed (the array path's presence is ``None``)."""
+    grid = _grid()
+    fields = _fields_with_rows(grid)
+    pml = PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
+    codes = (0, 0, 0)
+    words = offdiag.presence_for(fields, pml, codes, _record(fields, pml))
+    assert words == offdiag.ALL_KEPT
+
+
+def _block_fields(boundaries="metallic"):
+    """A row zero in every PML chunk: MEEP deletes it there, so presence varies."""
+    grid = _grid_of((1.6, 1.6, 1.6), boundaries)
+    rng = np.random.default_rng(41)
+    value = (0.03 * (1.0 + 0.4 * rng.standard_normal(grid.shape))).astype(np.float32)
+    keep = np.zeros(grid.shape, dtype=bool)
+    keep[3:-3, 3:-3, 3:-3] = True
+    value = np.where(keep, value, np.float32(0.0)).astype(np.float32)
+    fields = _fields_with_rows(grid, rows={"Ex": {"Ey": value}})
+    pml = PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
+    return fields, pml
+
+
+def test_presence_words_follow_the_array_paths_own_presence():
+    """The word is built from ``Fields.offdiag_presence`` and expands back to it on
+    every stored cell, through the device rule's host twin."""
+    from meep_gpu.fields import IYEE_SHIFTS
+
+    fields, pml = _block_fields()
+    record = _record(fields, pml)
+    codes = (1, 1, 1)
+    words = offdiag.presence_for(fields, pml, codes, record)
+    slot = offdiag.ROW_SLOTS.index(("Ex", "Ey"))
+    assert words[slot] != offdiag.ALL_CHUNKS_KEPT and words[slot] != 0, words
+    present = fields.offdiag_presence("Ex", "Ey", stepping._chunk_layout(fields, pml))
+    assert present is not None
+    chunk_codes = offdiag.cell_chunk_codes(record, IYEE_SHIFTS["Ex"],
+                                           fields.grid.shape, codes)
+    assert np.array_equal(offdiag.expand_presence_word(words[slot], chunk_codes),
+                          np.asarray(present, dtype=bool))
+    # Dead slots carry the all-kept word, which no kernel reads.
+    assert all(word == offdiag.ALL_CHUNKS_KEPT
+               for index, word in enumerate(words) if index != slot)
+
+
+def test_a_presence_the_record_cannot_carry_is_refused_by_name():
+    """A record whose labels do not name the chunks the presence varies over is
+    refused, by the builder and by the predicate's clause, never stepped."""
+    fields, pml = _block_fields()
+    record = np.array(_record(fields, pml), copy=True)
+    # A record that names no chunk along x on the half-integer lattice: every Ex row
+    # reads label 1, so cells of chunks that keep and drop the row share a code.
+    for word in range(4):
+        record[chunk_map.record_index(True, 0, word)] = 0
+    with pytest.raises(offdiag.PresenceRefusal):
+        offdiag.presence_for(fields, pml, (1, 1, 1), record)
+    reasons = offdiag.presence_reasons(fields, pml, (1, 1, 1), record)
+    assert reasons and "presence is refused" in reasons[0], reasons
+    # And with no record at all, a varying presence cannot be carried.
+    with pytest.raises(offdiag.PresenceRefusal, match="no chunk record"):
+        offdiag.presence_word(np.ones(fields.grid.shape, dtype=bool), None, "x")
+
+
+def test_an_otherwise_admitted_run_is_admitted(monkeypatch):
+    """Every structural clause and the presence clause admit an ordinary run: the
+    arm is not refused by a ruling any more."""
+    monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
+    monkeypatch.setattr(offdiag._coverage, "_metal_backend_reasons", lambda grid: [])
+    grid = _grid()
+    fields = _fields_with_rows(grid)
+    pml = PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
+    verdict = offdiag.offdiag_constitutive_coverage(fields, pml, _Residency(),
+                                                    _record(fields, pml))
+    assert verdict.covered, verdict.reasons
+    assert not hasattr(offdiag, "R7_REFUSAL")
+    assert not hasattr(offdiag, "r7_reasons")
+
+
+@pytest.mark.parametrize("boundaries", ("periodic", "metallic"))
+@pytest.mark.parametrize("rows", (
+    {"Ex": ("Ey",)},
+    {"Ex": ("Ey", "Ez"), "Ey": ("Ez",)},
+    {"Ex": ("Ey", "Ez"), "Ey": ("Ez", "Ex"), "Ez": ("Ex", "Ey")},
+    {"Ez": ("Ey",)},
+), ids=("one", "three", "all_six", "second_partner_only"))
+def test_the_predicate_admits_the_certified_row_masks(monkeypatch, boundaries, rows):
+    """Over the row masks and terminations the family was certified on, the
+    predicate admits, with or without the composer's record."""
+    monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
+    monkeypatch.setattr(offdiag._coverage, "_metal_backend_reasons", lambda grid: [])
+    grid = _grid(boundaries)
+    rng = np.random.default_rng(31)
+    built = {row: {partner: (0.03 * rng.standard_normal(grid.shape)).astype(np.float32)
+                   for partner in partners}
+             for row, partners in rows.items()}
+    fields = _fields_with_rows(grid, rows=built)
+    pml = PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
+    for record in (None, _record(fields, pml)):
+        verdict = offdiag.offdiag_constitutive_coverage(fields, pml, _Residency(),
+                                                        record)
+        assert verdict.covered, verdict.reasons
+
+
+# ---------------------------------------------------------------------------
+# The per-chunk tail (the B select)
+# ---------------------------------------------------------------------------
+
+def test_the_tail_is_the_base_constitutive_kernels_per_chunk_select():
+    """The record binds before the presence words, its bounds block is the base
+    kernel's own, and every
+    auxiliary load and store sits behind the component's ``dsigw`` membership.
+
+    The plain form is an output select (``E = src``), never ``kps = 1, kms = 0``
+    with zeroed inputs: that spelling is wrong on every ``-0`` (KERNELS.md §1, C4).
+    """
+    source = offdiag.offdiag_source(FULL, (0, 0, 0), (0, 0, 0))
+    assert offdiag.RECORD_BUFFER == offdiag.BINDING_COUNT - 2
+    assert (f"constant ChunkBounds& cb [[buffer({offdiag.RECORD_BUFFER})]]"
+            in source)
+    assert shaders.constitutive_bounds_block("E") in source
+    flags = shaders.constitutive_membership_flags("E")
+    assert (f"const bool dw0 = {flags[0]}, dw1 = {flags[1]}, dw2 = {flags[2]};"
+            in source)
+    for t in range(3):
+        assert f"float prev{t} = dw{t} ? w{t}[ii] : 0.0f;" in source, t
+        assert f"if (dw{t}) {{ w{t}[ii] = src{t}; }}" in source, t
+        assert f"float a{t} = src{t};" in source, t
+        assert (f"if (dw{t}) {{ a{t} = f{t}[ii] + ((kp_{t} * src{t}) - "
+                f"(km_{t} * prev{t})); }}") in source, t
+        assert f"f{t}[ii] = a{t};" in source, t
+        # The auxiliary is never touched unguarded.
+        assert f"    w{t}[ii] = src{t};" not in source, t
+        assert f"float prev{t} = w{t}[ii];" not in source, t
+
+
+def test_the_previous_accumulation_grouping_is_gone():
+    """KERNELS.md §7.1: the shipped form is MEEP's ``f + ((kps*src) - (kms*prev))``;
+    the previous ``((f + kps*src) - kms*prev)`` is now the gate's mutant."""
+    source = offdiag.offdiag_source(FULL, (1, 1, 1), (1, 1, 1))
+    assert "a0 = a0 + kp_0 * src0;" not in source
+    assert "a0 = a0 - km_0 * prev0;" not in source
+
+
+def test_the_plan_refuses_a_missing_or_misshapen_record_by_name():
+    """No default: a plan without the record would bind no division at all, and one
+    without the presence words would decide which terms are added."""
+    class _HostResidency:
+        device = "mps"
+
+        def mirror(self, name, host, constant=False):
+            return host
+
+    grid = _grid()
+    fields = _fields_with_rows(grid)
+    pml = PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
+    arrays, flat, rows_map, codes, walls = _harness_inputs(fields, pml)
+    # A placeholder entry point: the refusal must come before anything launches,
+    # and this host test compiles no Metal.
+    functions = {shaders.CONTRACT_OFF: lambda *args: None}
+    with pytest.raises(chunk_map.ChunkLayoutRefusal, match="no chunk record"):
+        offdiag.plan_offdiag_constitutive_from_arrays(
+            arrays, flat, rows_map, codes, walls, _HostResidency(),
+            functions=functions, chunk_bounds=None, presence=offdiag.ALL_KEPT)
+    with pytest.raises(ValueError, match="no off-diagonal presence words"):
+        offdiag.plan_offdiag_constitutive_from_arrays(
+            arrays, flat, rows_map, codes, walls, _HostResidency(),
+            functions=functions, chunk_bounds=_record(fields, pml), presence=None)
+    with pytest.raises(ValueError, match="not a 27-bit mask"):
+        offdiag.plan_offdiag_constitutive_from_arrays(
+            arrays, flat, rows_map, codes, walls, _HostResidency(),
+            functions=functions, chunk_bounds=_record(fields, pml),
+            presence=(1 << 27,) * 6)
+    wrong = chunk_map.chunk_bounds_record(stepping._region_plan(
+        _fields_with_rows(_grid_of((1.6, 1.0, 0.9))), PML(
+            grid=_grid_of((1.6, 1.0, 0.9)),
+            thickness=tuple((2, 2) for _ in range(3)))).layout)
+    with pytest.raises(chunk_map.ChunkLayoutRefusal, match="stored rows"):
+        offdiag.plan_offdiag_constitutive_from_arrays(
+            arrays, flat, rows_map, codes, walls, _HostResidency(),
+            functions=functions, chunk_bounds=wrong, presence=offdiag.ALL_KEPT)
+
+
+def _grid_of(cell_size, boundaries="periodic"):
+    return Grid(resolution=10.0, cell_size=cell_size, boundaries=boundaries,
+                dimensions=3, courant=0.35, k_point=(0.0, 0.0, 0.0), xp=np)
+
+
+def _harness_inputs(fields, pml):
+    """The harness route's inputs from the engine's own objects (the gate's shape)."""
+    arrays = {}
+    for target, source, _axis in offdiag.E_TERMS:
+        arrays[target] = np.array(getattr(fields, target), copy=True)
+        arrays["f_w_" + target] = np.array(getattr(fields, "f_w_" + target), copy=True)
+        arrays[source] = np.array(getattr(fields, source), copy=True)
+        arrays["inv_eps_" + target] = fields.inverse_epsilon_for(target)
+    flat = {f"{stem}_{axis}": np.asarray(getattr(pml, f"{stem}_{axis}_h")).reshape(-1)
+            for axis in "xyz" for stem in ("kps", "kms")}
+    rows_map = {}
+    for row, partner in offdiag.ROW_SLOTS:
+        value = (fields.chi1inv_offdiagonal_for(row) or {}).get(partner)
+        if value is not None:
+            rows_map.setdefault(row, {})[partner] = value
+    kinds = offdiag._coverage._boundary_kinds(fields.grid, pml)
+    codes = tuple(offdiag.BOUNDARY_CODES[kind] for kind in kinds)
+    walls = offdiag.wall_mask_axes(fields.grid)
+    return arrays, flat, rows_map, codes, walls
+
+
+# ---------------------------------------------------------------------------
 # Device-backed
 # ---------------------------------------------------------------------------
 
@@ -707,8 +998,6 @@ def test_one_update_e_is_byte_identical_to_stepping(monkeypatch):
     under which this claim is measurable at all; a test that inherited the ambient
     policy would pass or fail on the shell's environment rather than on the code.
     """
-    from meep_gpu.metal_kernels import device
-
     monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
 
     grid = Grid(resolution=10.0, cell_size=(1.2, 1.0, 0.9),
@@ -746,17 +1035,12 @@ def test_one_update_e_is_byte_identical_to_stepping(monkeypatch):
 
     for name, value in before.items():
         getattr(fields, name)[...] = value
-    residency = device.Residency()
-    plan = offdiag.plan_offdiag_constitutive(fields, pml, residency)
-    assert plan is not None, offdiag.offdiag_constitutive_coverage(
-        fields, pml, residency).reasons
-    plan.run()
-    residency.sync_out()
-    assert plan.launches == 1
-    for name in compared:
-        assert int(np.count_nonzero(
-            words(getattr(fields, name)) != words(after[name]))) == 0, name
-    assert not residency.verify()
+    # THE A-FORM CLAIM on a generic state, where a float32 row would differ from the
+    # array path's double one: the software-binary64 row must not.
+    device_arrays = _harness_step(fields, pml)
+    differing = {name: int(np.count_nonzero(
+        words(device_arrays[name]) != words(after[name]))) for name in compared}
+    assert sum(differing.values()) == 0, differing
 
 
 @needs_mps
@@ -769,8 +1053,12 @@ def test_asking_for_an_unbuilt_contract_variant_raises(monkeypatch):
     grid = _grid()
     fields = _fields_with_rows(grid)
     pml = PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
-    plan = offdiag.plan_offdiag_constitutive(fields, pml, device.Residency())
-    assert plan is not None
+    # The harness route: a property of the plan object, not of the predicate.
+    arrays, flat, rows_map, codes, walls = _harness_inputs(fields, pml)
+    plan = offdiag.plan_offdiag_constitutive_from_arrays(
+        arrays, flat, rows_map, codes, walls, device.Residency(),
+        chunk_bounds=_record(fields, pml),
+        presence=offdiag.presence_for(fields, pml, codes, _record(fields, pml)))
     assert plan.variants == (shaders.CONTRACT_OFF,)
     with pytest.raises(KeyError, match="holds no 'fast' variant"):
         plan.run(contract=shaders.CONTRACT_FAST)
@@ -795,4 +1083,162 @@ def test_the_keep_policy_refuses_the_plan_at_build_time(monkeypatch):
     verdict = offdiag.offdiag_constitutive_coverage(fields, pml, device.Residency())
     assert not verdict.covered
     assert any("subnormal" in reason for reason in verdict.reasons), verdict.reasons
-    assert offdiag.plan_offdiag_constitutive(fields, pml, device.Residency()) is None
+    assert offdiag.plan_offdiag_constitutive(
+        fields, pml, device.Residency(), chunk_bounds=_record(fields, pml)) is None
+
+
+def _random_state(fields, rng, exact):
+    """Every stored volume the sub-step reads, nonzero almost everywhere.
+
+    ``exact``: dyadic words of at most seven significant bits (D), four (inverse
+    epsilon) and four (the rows, never zero, so every chunk keeps its chi1inv array
+    and MEEP's presence drops no term), so every float32 operation of the row is
+    exact and the double row's one rounding is the identity: the package's float32
+    row and the array path's double row are the same word. Otherwise a generic
+    normal state, on which they are not.
+    """
+    shape = fields.grid.shape
+    names = ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez", "Dx", "Dy", "Dz")
+    for name in names:
+        if exact:
+            value = rng.integers(-64, 65, size=shape).astype(np.float32) / 64.0
+        else:
+            value = rng.standard_normal(shape) * 0.37
+        getattr(fields, name)[...] = np.asarray(value, dtype=np.float32)
+
+
+def _exact_rows(grid, rng, rows):
+    def one():
+        magnitude = rng.integers(1, 9, size=grid.shape).astype(np.float32)
+        sign = np.where(rng.integers(0, 2, size=grid.shape) == 0, 1.0, -1.0)
+        return (sign * magnitude / 64.0).astype(np.float32)
+    return {row: {partner: one() for partner in partners}
+            for row, partners in rows.items()}
+
+
+def _exact_fields(boundaries, rows, rng):
+    grid = _grid(boundaries)
+    fields = Fields(grid=grid, force_complex_fields=False)
+    fields.enable_pml_storage()
+    inverse = (rng.integers(4, 9, size=grid.shape).astype(np.float32) / 8.0)
+    epsilon = (np.float32(1.0) / inverse).astype(np.float32)
+    fields.set_epsilon_volumes({c: epsilon for c in ("Ex", "Ey", "Ez")},
+                               {c: inverse for c in ("Ex", "Ey", "Ez")},
+                               _exact_rows(grid, rng, rows))
+    return fields
+
+
+def _words(a):
+    return np.ascontiguousarray(a, dtype=np.float32).reshape(-1).view(np.uint32)
+
+
+def _harness_step(fields, pml):
+    """One launch through the harness route, on a copy of the fields' state."""
+    from meep_gpu.metal_kernels import device
+
+    arrays, flat, rows_map, codes, walls = _harness_inputs(fields, pml)
+    residency = device.Residency()
+    record = _record(fields, pml)
+    plan = offdiag.plan_offdiag_constitutive_from_arrays(
+        arrays, flat, rows_map, codes, walls, residency,
+        chunk_bounds=record, presence=offdiag.presence_for(fields, pml, codes, record))
+    plan.run()
+    residency.sync_out()
+    assert plan.launches == 1
+    assert not residency.verify()
+    return arrays
+
+
+_COMPARED = ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez")
+
+
+@needs_mps
+@pytest.mark.parametrize("boundaries", ("periodic", "metallic",
+                                        ("metallic", "metallic", "periodic")),
+                         ids=("periodic", "metallic", "mixed"))
+@pytest.mark.parametrize("rows", (
+    {"Ex": ("Ey",)},
+    {"Ex": ("Ey", "Ez"), "Ey": ("Ez", "Ex"), "Ez": ("Ex", "Ey")},
+), ids=("one_row", "all_six"))
+def test_the_per_chunk_tail_is_the_array_paths_on_an_exact_row_state(
+        monkeypatch, boundaries, rows):
+    """THE B SELECT, against the oracle itself. On a state whose float32 row is exact
+    the package's row and the array path's double row are one word, so the kernel
+    must equal ``stepping.update_E`` word for word: every differing word would be
+    the per-chunk tail's (the form a cell takes, which auxiliary it touches, and
+    the accumulation's grouping). The record is the division ``update_E`` steps
+    with, and the run carries both forms on every component's own axis.
+    """
+    monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
+    rng = np.random.default_rng(20261008)
+    fields = _exact_fields(boundaries, rows, rng)
+    pml = PML(grid=fields.grid, thickness=tuple((2, 2) for _ in range(3)))
+    record = _record(fields, pml)
+    for axis in range(3):
+        line = chunk_map.membership_from_record(record, True, axis,
+                                                fields.grid.shape[axis])
+        assert line.any() and not line.all(), (axis, line)
+    _random_state(fields, rng, exact=True)
+    before = {n: np.array(getattr(fields, n), copy=True) for n in _COMPARED}
+    device_arrays = _harness_step(fields, pml)
+    stepping.update_E(fields, pml)
+    moved = sum(int(np.count_nonzero(_words(before[n]) != _words(getattr(fields, n))))
+                for n in _COMPARED)
+    assert moved > 0, "the oracle did nothing; identity here would be vacuous"
+    # Both forms ran: some f_w words moved (accumulation cells), some did not
+    # (plain cells, where the auxiliary is untouched).
+    fw_moved = [int(np.count_nonzero(_words(before[n]) != _words(getattr(fields, n))))
+                for n in ("f_w_Ex", "f_w_Ey", "f_w_Ez")]
+    assert all(0 < count < fields.grid.shape[0] * fields.grid.shape[1]
+               * fields.grid.shape[2] for count in fw_moved), fw_moved
+    differing = {n: int(np.count_nonzero(_words(device_arrays[n])
+                                         != _words(getattr(fields, n))))
+                 for n in _COMPARED}
+    assert sum(differing.values()) == 0, differing
+
+
+@needs_mps
+@pytest.mark.parametrize("boundaries", ("periodic", "metallic"))
+def test_the_double_row_is_the_array_paths_word_on_a_generic_state(
+        monkeypatch, boundaries):
+    """THE RULING'S CLAIM, measured: on a generic state, where the float32 row
+    differs from the array path's double row in about 1.6 % of words, the shipped
+    software-binary64 row is 0 words from ``stepping.update_E``."""
+    monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
+    grid = _grid(boundaries)
+    rng = np.random.default_rng(20261009)
+    fields = _fields_with_rows(grid, rows={
+        "Ex": {"Ey": (0.03 * rng.standard_normal(grid.shape)).astype(np.float32),
+               "Ez": (0.02 * rng.standard_normal(grid.shape)).astype(np.float32)},
+        "Ez": {"Ex": (0.04 * rng.standard_normal(grid.shape)).astype(np.float32)}})
+    pml = PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
+    _random_state(fields, rng, exact=False)
+    device_arrays = _harness_step(fields, pml)
+    stepping.update_E(fields, pml)
+    differing = sum(int(np.count_nonzero(_words(device_arrays[n])
+                                         != _words(getattr(fields, n))))
+                    for n in _COMPARED)
+    assert differing == 0, differing
+
+
+@needs_mps
+def test_a_term_its_chunk_dropped_keeps_a_negative_zero_row(monkeypatch):
+    """PRESENCE ON THE DEVICE. The row is zero in every PML chunk, so MEEP drops the
+    term there; with ``Dx = -0`` the row so far is ``-0`` and adding the term's
+    ``+0`` would give ``+0``. The kernel must keep ``-0`` where the chunk dropped the
+    term, which is the array path's word."""
+    monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
+    fields, pml = _block_fields()
+    rng = np.random.default_rng(7)
+    _random_state(fields, rng, exact=False)
+    fields.Dx[...] = np.float32(-0.0)
+    fields.Dy[...] = np.abs(fields.Dy) + np.float32(0.01)
+    fields.Dz[...] = np.abs(fields.Dz) + np.float32(0.01)
+    device_arrays = _harness_step(fields, pml)
+    stepping.update_E(fields, pml)
+    negative = int(np.count_nonzero(_words(fields.Ex) == np.uint32(0x80000000)))
+    assert negative > 0, "no -0 row survived: the case does not exercise presence"
+    differing = sum(int(np.count_nonzero(_words(device_arrays[n])
+                                         != _words(getattr(fields, n))))
+                    for n in _COMPARED)
+    assert differing == 0, differing

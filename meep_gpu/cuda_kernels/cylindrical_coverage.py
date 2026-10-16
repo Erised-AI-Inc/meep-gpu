@@ -72,7 +72,6 @@ from .coverage import (
     _coefficient_vector_problem,
     _complex_volume_problem,
     _grid_facts,
-    complex_expansion_refusal,
 )
 
 #: The helpers this module borrows from the shared predicate file, named as data so
@@ -81,11 +80,10 @@ from .coverage import (
 SHARED_HELPERS: Tuple[str, ...] = (
     "_grid_facts", "_backend", "_array_problem", "_coefficient_vector_problem",
     "_boundary_kinds_from", "BC_CODES", "CURL_SUB_STEPS",
-    # The COMPLEX pair's two extra borrowings. ``_complex_volume_problem`` is the
-    # complex64 twin of ``_array_problem`` and ``complex_expansion_refusal`` is the
-    # ONE arbiter of an expansion licence in this package -- a second spelling of
-    # either would be a second place to get the layout or the arm wrong.
-    "_complex_volume_problem", "complex_expansion_refusal")
+    # The COMPLEX pair's extra borrowing. ``_complex_volume_problem`` is the
+    # complex64 twin of ``_array_problem`` -- a second spelling would be a second
+    # place to get the layout wrong.
+    "_complex_volume_problem")
 
 #: The one azimuthal order this pair carries. See the module docstring.
 COVERED_M: int = 0
@@ -319,8 +317,7 @@ def covers_real_pml_cylindrical_curl(fields: Any, pml: Any, grid: Any,
 #   m = 0 since 2026-09-04), r the leading axis, at least TWO radial rows;
 # * complex64 storage with ``force_complex_fields`` SET (the clause the real pair
 #   INVERTS), an active split-field PML, stored E;
-# * boundary kinds ``('axis', 'periodic', <'metallic'|'periodic'>)``;
-# * a bound expansion arm with a policy-matched licence.
+# * boundary kinds ``('axis', 'periodic', <'metallic'|'periodic'>)``.
 #
 # THE INTERNAL SPLIT AGAINST THE REAL PAIR IS ON STORAGE ALONE since 2026-09-04. Until
 # then this predicate ALSO refused ``m == 0`` by name -- the kernel compiled no such
@@ -362,33 +359,21 @@ COMPLEX_DEREFERENCED: Tuple[str, ...] = DEREFERENCED
 
 
 def covers_pml_cylindrical_complex_curl(fields: Any, pml: Any, grid: Any,
-                                        sub_step: str, license: Any = None,
-                                        subnormal_policy: Any = None) -> tuple:
+                                        sub_step: str) -> tuple:
     """Whether ``cyl_step_B_pml_complex`` / ``..._D_...`` may serve this run.
 
     ``sub_step`` is ``"step_B"`` or ``"step_D"``; returns ``(covered, reason)`` with
-    ``reason`` naming the FIRST refusal. ``license`` is the verdict
-    ``triton_kernels.complex_fields.expansion_license`` returns and
-    ``subnormal_policy`` the policy this run installs; both are REQUIRED in practice,
-    because the arm is compiled into the binary at this seam and there is no later
-    rung to check it at. A WRONG ARM IS A WRONG ANSWER, not a crash.
+    ``reason`` naming the FIRST refusal.
 
     THE CLAUSE ORDER MIRRORS :func:`covers_real_pml_cylindrical_curl` so the two can
-    be diffed by eye, with the storage clause INVERTED and three clauses added (the
-    radial minimum, the Bloch refusal, the licence). The ``m`` clause is READ and
+    be diffed by eye, with the storage clause INVERTED and two clauses added (the
+    radial minimum and the Bloch refusal). The ``m`` clause is READ and
     admitted at every integer since 2026-09-04; the real pair's clause 14 keeps its
     ``m != 0`` refusal, so the two partition on storage.
     """
     if sub_step not in CURL_SUB_STEPS:
         raise ValueError(
             f"sub_step must be one of {sorted(CURL_SUB_STEPS)}, got {sub_step!r}")
-
-    # 0. THE ARM, FIRST. It is compiled into the binary and nothing downstream can
-    #    check it; a licence cut under the other float32 subnormal policy is refused
-    #    by the same arbiter the Cartesian complex family uses.
-    refusal = complex_expansion_refusal(license, subnormal_policy)
-    if refusal is not None:
-        return False, refusal
 
     xp, backend = _backend(grid)
     if backend != "cupy":

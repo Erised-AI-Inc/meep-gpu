@@ -106,6 +106,19 @@ THE SEAM'S OTHER PASSES.
   (:mod:`.folded_offdiag_fused_electric_pair`), and the predicate says so by
   name rather than leaving a reader to chase a shared grid clause.
 
+**THE PER-CHUNK FORMS AND THE DOUBLE ROW.** Both lifted bodies read the chunk
+record, which rides in ``Params`` (``ChunkBounds cb``, last) and is aliased to ``cb``
+before any lifted text runs; the constitutive half's presence words ride beside it
+(``OffdiagPresence kw``, aliased to ``kw``). ``step_cell`` takes it as a parameter, so the curl's select is
+evaluated at the cell being stepped, re-derived foreign cells included. The curl's
+auxiliary store is guarded by its ``dsigu`` membership, and the scratch ``fu`` must
+carry the untouched pre-launch word everywhere else (the scratch rotates in as the
+engine's ``fu``), so the guarded store becomes ``n0 = du0 ? n0 : u0[ii]`` and the
+seam stores ``n0`` on every cell. The constitutive half is
+:func:`.offdiag_update_e.offdiag_source`'s, per-chunk tail, presence and software
+binary64 row (ruling R7) and all -- the helpers are spliced after the contraction
+directive -- and its predicate is part of this one's, prefixed "constitutive half".
+
 NOT WIRED AS AN ARM, for the reason every Metal fused pair records: ``plan_step``
 assigns at most one arm per slot and this product spans three. It registers
 ``wired=False`` and reaches its two slots through ``launch.FUSED_PAIR_ARMS``.
@@ -120,6 +133,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..triton_kernels.coverage import Coverage
+from . import chunk_bounds as _chunk_bounds
 from . import coefficient_pack, offdiag_update_e as _offdiag, shaders, templates
 from .coverage import pml_curl_coverage, zero_metal_axes
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
@@ -197,12 +211,23 @@ __all__ = [
 # The source
 # ---------------------------------------------------------------------------
 
-#: The curl's two store lines, and what they become. Both computed their value
-#: into a register first, so the edit DELETES the store and touches no arithmetic.
-CURL_STORE_EDITS: Tuple[Tuple[str, str], ...] = (
-    ("    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;\n", ""),
+#: The curl's store lines, and what they become. Each computed its value into a
+#: register first. The target store is DELETED (the struct returns ``v``). Each
+#: auxiliary store is guarded by the target's ``dsigu`` membership, and the scratch
+#: that receives ``n`` rotates in as the engine's ``fu``, so off the recurrence's
+#: cells it must carry the pre-launch word: the guard moves from the store to the
+#: register, ``n0 = du0 ? n0 : u0[ii]`` -- after ``v0`` has read ``n0``, so no
+#: arithmetic moves.
+CURL_STORE_EDITS: Tuple[Tuple[str, str], ...] = tuple(
+    (f"    if (du{t}) {{ u{t}[ii] = n{t}; }}\n",
+     f"    n{t} = du{t} ? n{t} : u{t}[ii];\n") for t in range(3)) + (
     ("    f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;\n", ""),
 )
+
+#: The chunk record as ``step_cell`` and ``d_final_c`` take it, and as every call
+#: forwards it: one ``constant ChunkBounds&`` parameter, last after ``dtdx``.
+RECORD_PARAMETER = ", constant ChunkBounds& cb"
+RECORD_ACTUAL = ", cb"
 
 #: ``step_cell``'s pointer parameters, under the CERTIFIED CURL BODY'S OWN NAMES —
 #: that is what lets the lifted text index ``f0``/``u0``/``g0``/``kmx`` character
@@ -222,7 +247,7 @@ STEP_ARGUMENTS = ", " + ", ".join(_ACTUALS.get(name, name)
                                   for _kind, name in STEP_POINTERS)
 CALL_ARGUMENTS = (", " + ", ".join(f"{kind} {name}"
                                    for kind, name in STEP_POINTERS)
-                  + ", float dtdx")
+                  + ", float dtdx" + RECORD_PARAMETER)
 
 #: The per-axis ``(down, up)`` neighbour-index variable names, NARROWED from the
 #: certified emitter's own five-member table. Only this pair is what the
@@ -233,8 +258,13 @@ NEIGHBOUR_NAMES: Dict[int, Tuple[str, str]] = {
     axis: (_offdiag._TWO_WAY_NAMES[letter][0], _offdiag._TWO_WAY_NAMES[letter][1])
     for axis, letter in enumerate(_weld.AXES)}
 
+#: ``step_cell``'s scalar parameters: ``dtdx`` and the chunk record.
+STEP_SCALARS: Tuple[Tuple[str, str], ...] = (("float", "dtdx"),
+                                             ("constant ChunkBounds&", "cb"))
+
 #: What one thread forwards to ``step_cell`` / ``d_final_c``.
-FORWARD = ", ".join(_weld.COORDS) + ", nxi, nyi, nzi" + STEP_ARGUMENTS + ", dtdx"
+FORWARD = (", ".join(_weld.COORDS) + ", nxi, nyi, nzi" + STEP_ARGUMENTS + ", dtdx"
+           + RECORD_ACTUAL)
 
 _TEMPLATE = r"""
 #include <metal_stdlib>
@@ -242,9 +272,17 @@ using namespace metal;
 
 __CONTRACT__
 
+__SOFTFP64__
+
+__RECORD_STRUCT__
+
+__PRESENCE_STRUCT__
+
 struct Params {
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
 __PACK_FIELDS__
+__PRESENCE_MEMBER__
+__RECORD_MEMBER__
 };
 
 __STEP_CELL__
@@ -284,6 +322,8 @@ kernel void offdiag_fused_electric_pair_step(
     // seam and the redirected displacement reads.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
+__RECORD_ALIAS__
+__PRESENCE_ALIAS__
 __CPACK_PROLOGUE__
 __MPACK_PROLOGUE__
 __BODY__
@@ -309,7 +349,7 @@ def certified_curl_body(codes: Sequence[int],
     return _weld.step_cell_function(
         "step_cell", tail, value_type="float",
         pointer_parameters=STEP_POINTERS,
-        scalar_parameters=(("float", "dtdx"),),
+        scalar_parameters=STEP_SCALARS,
         returns=("v0", "v1", "v2", "n0", "n1", "n2"))
 
 
@@ -337,7 +377,8 @@ def offdiag_fused_electric_pair_source(
         transverse_partners=_offdiag.TRANSVERSE_PARTNERS,
         neighbour_names=NEIGHBOUR_NAMES, index=_offdiag._index,
         register="dfin{0}",
-        call="d_final_{0}({1}, nxi, nyi, nzi" + STEP_ARGUMENTS + ", dtdx)")
+        call="d_final_{0}({1}, nxi, nyi, nzi" + STEP_ARGUMENTS + ", dtdx"
+             + RECORD_ACTUAL + ")")
     body = _weld.weld_body(
         _offdiag.offdiag_source(row_mask, codes, walls, contract),
         decode_end=CONSTITUTIVE_DECODE_END,
@@ -352,6 +393,10 @@ def offdiag_fused_electric_pair_source(
         for component in range(3))
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
+        **_offdiag.weld_presence_substitutions(),
         "__PACK_FIELDS__": (coefficient_pack.params_fields(PACKED_VECTORS)
                             + "\n" + coefficient_pack.params_fields(PACKED_VOLUMES)),
         "__STEP_CELL__": certified_curl_body(codes, contract),
@@ -456,7 +501,7 @@ def refuted_cpack_only_source(contract: str = shaders.CONTRACT_OFF) -> str:
 
 def metal_offdiag_fused_electric_pair_coverage(
         fields: Any, pml: Any, sources: Any = None,
-        residency: Any = None) -> Coverage:
+        residency: Any = None, chunk_bounds: Any = None) -> Coverage:
     """May ONE dispatch span ``step_D`` -> wall -> off-diagonal ``update_E``?
 
     A conjunction of the two halves' OWN certified predicates plus the seam
@@ -469,7 +514,8 @@ def metal_offdiag_fused_electric_pair_coverage(
     curl = pml_curl_coverage(fields, pml, "step_D", residency)
     if not curl.covered:
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
-    electric = _offdiag.offdiag_constitutive_coverage(fields, pml, residency)
+    electric = _offdiag.offdiag_constitutive_coverage(fields, pml, residency,
+                                                      chunk_bounds)
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
@@ -525,42 +571,80 @@ def metal_offdiag_fused_electric_pair_coverage(
 # The plan
 # ---------------------------------------------------------------------------
 
-PARAMS_ITEMSIZE = 4 * (5 + len(PACKED_VECTORS) + len(PACKED_VOLUMES))
+#: Five scalars, twenty-one pack offsets, the six presence words, then the 25-word
+#: chunk record.
+PARAMS_ITEMSIZE = 4 * (5 + len(PACKED_VECTORS) + len(PACKED_VOLUMES)
+                       + len(_offdiag.PRESENCE_MEMBERS) + _chunk_bounds.RECORD_WORDS)
 
 
 def params_record_dtype() -> Any:
-    """The host record's dtype — five scalars then twenty-one pack offsets.
+    """The host record's dtype — scalars, pack offsets, presence words, the record.
 
-    ONE HOME FOR THE LAYOUT. Every member is four bytes and the struct has no
-    member wider than that, so the natural packing IS Metal's and the offsets are
-    the running sum; they are stated explicitly anyway, because a record that
-    agreed with the device only by accident is one edit from disagreeing.
+    ONE HOME FOR THE LAYOUT. Every member is four bytes wide or a struct of
+    four-byte members, so the natural packing IS Metal's and the offsets are the
+    running sum; they are stated explicitly anyway, because a record that agreed
+    with the device only by accident is one edit from disagreeing. The presence
+    words (``OffdiagPresence kw``) sit before the chunk record (``ChunkBounds cb``),
+    which is the last member.
+    """
+    return params_record_dtype_for(PACKED_VECTORS + PACKED_VOLUMES)
+
+
+def params_record_dtype_for(labels: Sequence[str],
+                            extra: Sequence[Tuple[str, str]] = ()) -> Any:
+    """Five scalars, one ``off_<label>`` per pack member, ``extra``, ``kw``, then ``cb``.
+
+    The one layout rule the real-or-folded scratch welds share; ``extra`` are 4-byte
+    members a family declares between its pack offsets and the presence words (the
+    folded welds' reflect rows).
     """
     import numpy as np  # noqa: PLC0415
 
     names = ["nx", "ny", "nz", "n_elem", "dtdx"]
-    formats = ["<u4", "<u4", "<u4", "<u4", "<f4"]
-    for label in PACKED_VECTORS + PACKED_VOLUMES:
+    formats: List[Any] = ["<u4", "<u4", "<u4", "<u4", "<f4"]
+    for label in labels:
         names.append(f"off_{label}")
         formats.append("<u4")
+    for name, kind in extra:
+        names.append(name)
+        formats.append(kind)
+    offsets = [4 * index for index in range(len(names))]
+    presence = _offdiag.presence_record_dtype()
+    names.append(_offdiag.PRESENCE_NAME)
+    formats.append(presence)
+    offsets.append(4 * len(offsets))
+    record = _chunk_bounds.record_dtype()
+    names.append("cb")
+    formats.append(record)
+    offsets.append(offsets[-1] + presence.itemsize)
     return np.dtype({
-        "names": names, "formats": formats,
-        "offsets": [4 * index for index in range(len(names))],
-        "itemsize": PARAMS_ITEMSIZE,
+        "names": names, "formats": formats, "offsets": offsets,
+        "itemsize": offsets[-1] + record.itemsize,
     })
 
 
+def pack_presence(record: Any, presence: Any, owner: str) -> None:
+    """Write the six checked presence words into a ``Params`` record's ``kw`` member."""
+    words = _offdiag.presence_plan_words(presence, owner)
+    for name, word in zip(_offdiag.PRESENCE_MEMBERS, words):
+        record[_offdiag.PRESENCE_NAME][name] = int(word)
+
+
 def _params_tensor(shape: Sequence[int], dtdx: float,
-                   offsets: Mapping[str, int], device: str) -> Any:
-    """The scalars and the two packs' offsets as one device record.
+                   offsets: Mapping[str, int], device: str,
+                   chunk_bounds: Any, presence: Any) -> Any:
+    """The scalars, the two packs' offsets, the presence words and the chunk record.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused
     pair's ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and
-    complex64 volumes and refuses anything else by name.
+    complex64 volumes and refuses anything else by name. ``chunk_bounds`` is checked
+    against ``shape`` by :func:`.chunk_bounds.plan_words`, which refuses by name a
+    missing record or one that disagrees with the shape.
     """
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
+    checked = _chunk_bounds.plan_words(chunk_bounds, shape, f"{FAMILY} Params")
     record = np.zeros(1, dtype=params_record_dtype())
     nx, ny, nz = (int(n) for n in shape)
     record["nx"], record["ny"], record["nz"] = nx, ny, nz
@@ -568,6 +652,8 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
     record["dtdx"] = np.float32(dtdx)
     for label, offset in offsets.items():
         record[f"off_{label}"] = int(offset)
+    pack_presence(record, presence, f"{FAMILY} Params")
+    record["cb"] = _chunk_bounds.pack(checked)
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -582,9 +668,13 @@ def plan_metal_offdiag_fused_electric_pair(
         fields: Any, pml: Any, sources: Any = None,
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        functions: Optional[Mapping[str, Any]] = None,
+        functions: Optional[Mapping[str, Any]] = None, *, chunk_bounds: Any,
         ) -> Optional[_weld.ScratchWeldPairPlan]:
     """Build the fused off-diagonal D/E plan, or ``None`` when refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the
+    composer's ``StepContext.chunk_bounds``); required, it rides in ``Params`` with
+    the presence words built against it (:func:`.offdiag_update_e.presence_for`).
 
     ``None`` is the only refusal: a configuration this kernel does not carry must
     fall back to the array path, never raise into a caller that would otherwise
@@ -595,7 +685,7 @@ def plan_metal_offdiag_fused_electric_pair(
     silent slowdown, it is a silent DISARMING.
     """
     if not metal_offdiag_fused_electric_pair_coverage(
-            fields, pml, sources, residency).covered:
+            fields, pml, sources, residency, chunk_bounds).covered:
         return None
     import numpy as np  # noqa: PLC0415
 
@@ -604,6 +694,7 @@ def plan_metal_offdiag_fused_electric_pair(
     grid = fields.grid
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, pml))
+    presence = _offdiag.presence_for(fields, pml, codes, chunk_bounds)
     walls = _offdiag.wall_mask_axes(grid)
     rows = _offdiag.row_volumes_for(fields)
     row_mask = tuple(int(value is not None) for value in rows)
@@ -670,7 +761,8 @@ def plan_metal_offdiag_fused_electric_pair(
     dtdx = grid.dt / grid.dx
     static = (list(stored) + list(workspace) + list(magnetic)
               + [cpack, mpack,
-                 _params_tensor(grid.shape, dtdx, offsets, residency.device)])
+                 _params_tensor(grid.shape, dtdx, offsets, residency.device,
+                                chunk_bounds, presence)])
     assert (2 * len(ROTATED_NAMES) + len(static)) == PACKED_BINDINGS, (
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     return _weld.plan_scratch_weld(
@@ -688,7 +780,8 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
     if slot != SLOT:
         return Coverage(False, (f"offdiag fused electric pair cannot fill {slot}",))
     return metal_offdiag_fused_electric_pair_coverage(
-        context.fields, context.pml, context.sources, context.residency)
+        context.fields, context.pml, context.sources, context.residency,
+        getattr(context, "chunk_bounds", None))
 
 
 def _arm_plan(context: Any, slot: str) -> Optional[_weld.ScratchWeldPairPlan]:
@@ -696,7 +789,7 @@ def _arm_plan(context: Any, slot: str) -> Optional[_weld.ScratchWeldPairPlan]:
         return None
     return plan_metal_offdiag_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

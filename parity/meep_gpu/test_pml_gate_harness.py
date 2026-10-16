@@ -529,7 +529,7 @@ def _expected_attributes(name: str) -> tuple:
     if name in MUTATION_TARGETS["shared_index_decomposition"]:
         return ALL_GATED_SOURCE_ATTRIBUTES
     raise AssertionError(
-        f"{name} is in SOURCE_MUTATIONS and in no MUTATION_TARGETS family; the "
+        f"{name} is in the hand track's table and in no MUTATION_TARGETS family; the "
         f"partition has to say which kernels it is written against, or nothing "
         f"can tell 'matches nothing' apart from 'matches nothing YET'")
 
@@ -549,9 +549,13 @@ def test_every_source_mutation_still_resolves_on_the_kernels_it_targets(
         that started matching a constitutive kernel would be silently mutating a
         second sub-step, and the leg's verdict would no longer be about the defect
         it names.
+
+    It reads the hand track's own table (``probe.HAND_NEEDLES``), the one
+    :class:`HandTrackAdapter` arms: every entry borrowed from the shared default, which
+    is spelled on this pair's text since 0.10.
     """
     stale = []
-    for name, transform in probe.SOURCE_MUTATIONS.items():
+    for name, transform in probe.HAND_NEEDLES.items():
         targets = _expected_attributes(name)
         for attribute, original in device_sources.items():
             if attribute not in (CERTIFIED_SOURCE_ATTRIBUTES
@@ -650,7 +654,7 @@ def test_the_constitutive_defects_the_gate_requires_all_have_a_hand_spelling(pro
     not here.
     """
     missing = [name for name in probe.CONSTITUTIVE_SOURCE_MUTATIONS
-               if name not in probe.SOURCE_MUTATIONS]
+               if name not in probe.HAND_NEEDLES]
     assert not missing, (
         f"the hand track has no spelling for {missing}; the constitutive gate "
         f"cannot arm those legs")
@@ -667,7 +671,7 @@ def test_each_constitutive_null_has_a_discriminating_leg_on_the_same_expression(
     bytes", so a null that drifted onto some other expression stops being a
     control and this says so.
     """
-    source = probe.SOURCE_MUTATIONS
+    source = probe.HAND_NEEDLES  # the table the hand track arms
     # The SHIPPED E kernel, which carries both expressions — the accumulation in
     # its prelude and the three inverse-epsilon products in its body. Using the
     # real text rather than a hand-typed sample is what keeps this from passing
@@ -694,7 +698,7 @@ def test_each_null_mutation_has_a_discriminating_leg_that_must_be_caught(runner)
     everything" into a measurement.
     """
     by_mutation: dict = {}
-    for leg in runner.LEGS:
+    for leg in runner.HAND_LEGS:
         args = list(leg["args"])
         if "--source-mutation" in args:
             # A mutation may carry MORE than one leg — regroup_stencil is both the
@@ -723,7 +727,7 @@ def test_every_constitutive_leg_is_wired_to_the_constitutive_family(runner):
     not about the kernel. This is what keeps the two wirings apart.
     """
     families = {leg["leg"]: leg.get("family", runner.DEFAULT_FAMILY)
-                for leg in runner.LEGS}
+                for leg in runner.HAND_LEGS}
     constitutive = {name for name, family in families.items()
                     if family == "constitutive"}
     assert constitutive, "the constitutive gate legs are gone"
@@ -751,7 +755,7 @@ def test_the_constitutive_gate_carries_every_defect_the_gate_requires(probe, run
     """
     armed_source = set()
     armed_host = set()
-    for leg in runner.LEGS:
+    for leg in runner.HAND_LEGS:
         if leg.get("family") != "constitutive":
             continue
         args = list(leg["args"])
@@ -782,7 +786,7 @@ def test_every_leg_names_a_mutation_the_probe_implements(probe, runner):
     """A typo'd leg runs a gate with no mutation and reports its pass."""
     known_source = set(probe.SOURCE_MUTATIONS)
     unknown = []
-    for leg in runner.LEGS:
+    for leg in runner.HAND_LEGS:
         args = list(leg["args"])
         if "--source-mutation" in args:
             name = args[args.index("--source-mutation") + 1]
@@ -918,7 +922,7 @@ def test_every_leg_gets_a_private_policy_token_carrying_cache_directory(runner):
     assert not subnormal_policy.cupy_cache_reasons("keep", keep)
     assert not subnormal_policy.cupy_cache_reasons("flush", flush)
     assert keep != flush != none
-    for leg in runner.LEGS:
+    for leg in runner.HAND_LEGS:
         assert runner.leg_cache_dir("/out", "keep", leg["leg"]) != keep or \
             leg["leg"] == "m3_regroup_stencil"
 
@@ -1408,7 +1412,7 @@ def test_a_band_leg_whose_operands_hold_no_subnormal_is_marked_vacuous(probe):
                 "value_class": value_class,
                 "operand_census": census, "reference_moved_targets": 1,
                 "vs_array_order": {"bit_identical": True},
-                "vs_kernel_order": {"bit_identical": True}}
+                "vs_pairwise_order": {"bit_identical": True}}
 
     live = {"values": 100, "subnormals": 40, "negative_zeros": 3, "zeros": 5}
     dead = {"values": 100, "subnormals": 0, "negative_zeros": 0, "zeros": 0}
@@ -1638,7 +1642,11 @@ def _call_reference_step(probe, arrays, sub_step, grouping):
 
 @pytest.mark.parametrize("sub_step", sorted(PERIODIC_SUB_STEPS))
 def test_the_all_periodic_reference_is_steppings_curl_contract(probe, sub_step):
-    """``reference_step`` == stepping._curl_from_operands (:1601) then :510, to the bit.
+    """``reference_step`` == stepping._curl_from_operands then ``target -= curl``, to the bit.
+
+    The contract is MEEP's grouping (step_generic.cpp:104), which C associates left
+    to right: ``dtdx * (((shifted_first - first) + second) - shifted_second)``. Every
+    axis of this leg's shape is resolved, so both partners are present.
 
     The expectation is built here from ``np.roll`` and four arithmetic
     operations, NOT by calling anything the probe exposes, so agreement is
@@ -1655,7 +1663,7 @@ def test_the_all_periodic_reference_is_steppings_curl_contract(probe, sub_step):
         f, s = arrays[first], arrays[second]
         shifted_first = np.roll(f, shift, axis=first_axis)
         shifted_second = np.roll(s, shift, axis=second_axis)
-        curl = PERIODIC_DTDX * ((shifted_first - f) + (s - shifted_second))
+        curl = PERIODIC_DTDX * (((shifted_first - f) + s) - shifted_second)
         expected[target] = arrays[target] - curl
 
     produced = _call_reference_step(probe, arrays, sub_step, "array_order")
@@ -1669,7 +1677,7 @@ def test_the_all_periodic_reference_is_steppings_curl_contract(probe, sub_step):
         differing = int(np.count_nonzero(got != want))
         assert differing == 0, (
             f"{sub_step} {target}: {differing}/{want.size} floats differ from "
-            "dtdx * ((shifted_first - first) + (second - shifted_second)) "
+            "dtdx * (((shifted_first - first) + second) - shifted_second) "
             "computed independently in this test — the reference is no longer "
             "stepping.py's grouping, so every bit-identity number the leg "
             "reports is measured against the wrong expression")
@@ -1692,7 +1700,7 @@ def test_the_two_groupings_of_the_all_periodic_reference_are_different_bits(
         probe, sub_step):
     """The discriminating clause: if they agree, the pair measures nothing.
 
-    ``array_order`` and ``kernel_order`` differ only by where the parentheses
+    ``array_order`` and ``pairwise_order`` differ only by where the parentheses
     fall. Float addition is not associative, so on inexact operands they must
     differ in the last bits — and if they did NOT, the gate's whole "which
     grouping does the kernel reproduce" question would be unanswerable and the
@@ -1700,12 +1708,12 @@ def test_the_two_groupings_of_the_all_periodic_reference_are_different_bits(
     """
     arrays = _periodic_fields(probe, sub_step)
     array_order = _call_reference_step(probe, arrays, sub_step, "array_order")
-    kernel_order = _call_reference_step(probe, arrays, sub_step, "kernel_order")
+    pairwise_order = _call_reference_step(probe, arrays, sub_step, "pairwise_order")
 
     per_target = {}
     for target in sorted(array_order):
         a = np.ascontiguousarray(array_order[target]).view(np.uint32)
-        k = np.ascontiguousarray(kernel_order[target]).view(np.uint32)
+        k = np.ascontiguousarray(pairwise_order[target]).view(np.uint32)
         per_target[target] = int(np.count_nonzero(a != k))
     assert sum(per_target.values()) > 0, (
         f"{sub_step}: the two groupings produced identical bytes on these "

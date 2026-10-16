@@ -83,15 +83,77 @@ MUTATIONS: dict[str, tuple] = {
         "            if False:",
         "cylinder_smoothed or rotated_block_smoothed or uniform_epsilon_offdiag",
     ),
+    # Anchored on the ingest BOTH read paths pass through (the rows installed as couplings):
+    # the bulk read copies most words without reaching the per-point loop's assignment, so
+    # a flip there would leave the copied words untouched.
     "offdiagonal_chi1inv_sign_flipped_on_ingest": (
-        "                        coupling[axis][i, j, k] = entry.real",
-        "                        coupling[axis][i, j, k] = -entry.real",
+        "                coupling_rows.setdefault(name, {})[partner_names[axis]] = entries",
+        "                coupling_rows.setdefault(name, {})[partner_names[axis]] = -entries",
         "cylinder_smoothed or rotated_block_smoothed",
     ),
     "rotated_block_treated_as_axis_aligned": (
         "    axes = (_vector3(obj.e1), _vector3(obj.e2), _vector3(obj.e3))",
         "    axes = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))",
         "refused_by_name",
+    ),
+    # --- the bulk chi1inv read: a copy of MEEP's stored words, pinned word for word ---
+    # A defect in the bulk read is silent by construction: the lift falls back to the
+    # per-point reader on any refusal, and an installed 1/x can hide a one-ulp read error.
+    # So each of these is judged by test_from_meep_bulk_chi1inv.py, which compares the
+    # READ words with fields::get_chi1inv at every point, plants a word for the self-check
+    # to find, and lifts off the listed builds.
+    #
+    # Three more readings were measured EQUIVALENT and are deliberately not mutations here
+    # (each survived the pin test on all six of its cells, and none changes a read word):
+    # * the slot index floored instead of truncated toward zero (``relative // 2``): every
+    #   point the copy selects lies at or above its chunk's corner plus the component's Yee
+    #   shift, so ``relative`` is never negative and the two divisions agree;
+    # * the user-volume mask dropped from the selection: it only matters for a point a
+    #   chunk owns and the user volume does not, and MEEP's chunks own none — 0 such points
+    #   on every row of the word-for-word comparison (112 corpus rows and five bench sizes,
+    #   on each listed build) and on every pin cell;
+    # * the cylindrical r = 0 ownership dropped: those points then fall to the per-point
+    #   read, which returns the same words, so only the bulk / per-point split moves.
+    "bulk_chi1inv_offdiagonal_sign_flipped": (
+        "            target[where] = stored[flat]  # realnum -> float64 widens exactly, as MEEP's return does",
+        "            target[where] = stored[flat] if direction == own else -stored[flat]  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_null_default_inverted": (
+        "                target[where] = 1.0 if direction == own else 0.0",
+        "                target[where] = 0.0 if direction == own else 1.0  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_offdiagonal_reads_the_diagonal_array": (
+        "                + table.pointer * (int(component) * 5 + int(direction))).value",
+        "                + table.pointer * (int(component) * 5 + int(own))).value  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_self_check_skipped": (
+        "    for position in points:\n        location = ivec(*(indices[axis][position[axis]] for axis in range(3)))\n        answers",
+        "    for position in points[:0]:  # mutation\n        location = ivec(*(indices[axis][position[axis]] for axis in range(3)))\n        answers",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_taken_on_an_unlisted_build": (
+        "    elif _bulk_read is None and stamp not in BULK_CHI1INV_BUILDS:",
+        "    elif False:  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_restart_progress_starts_again": (
+        "                                                _progress_offset=_progress_offset + done,",
+        "                                                _progress_offset=0,  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    # The lift's own progress lines (rule 7): silenced, or printed when MEEP is quiet.
+    "lift_progress_lines_never_printed": (
+        "    if _lift_verbose(mp):",
+        "    if False:  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "lift_progress_printed_when_meep_is_quiet": (
+        "        return int(mp.verbosity.meep) > 0",
+        "        return True  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
     ),
     # --- the tensor stencil itself, in stepping.py ---------------------------------
     # The "stable averaging" pairs each two-point partner average with the
@@ -100,23 +162,39 @@ MUTATIONS: dict[str, tuple] = {
     # coefficient is uniform — the uniform-tensor oracles cannot see it — and
     # wrong exactly on the material interfaces the coefficient exists for.
     "offdiagonal_average_unstabilized": (
-        "        product = pair * coefficient\n"
-        "        # (pair*u)[i] + (pair*u)[i+s]: the same product half a cell UP this axis.\n"
-        "        term = 0.25 * (product + _shift_up(xp, product, own_axis,\n"
-        "                                           boundaries[own_axis], phases[own_axis]))",
-        "        product = pair * coefficient\n"
-        "        # (pair*u)[i] + (pair*u)[i+s]: the same product half a cell UP this axis.\n"
-        "        term = 0.25 * (pair + _shift_up(xp, pair, own_axis,\n"
-        "                                        boundaries[own_axis], phases[own_axis])) * coefficient",
+        "        product = part_products.scale(coefficient, pair)\n"
+        "        # (g[i] + g[i-sx])*u[i] per part, at this cell's own node (read across a phased\n"
+        "        # window edge as MEEP's not-owned word below it), and the same product half a\n"
+        "        # cell UP this axis: (g[i+s] + g[(i+s)-sx])*u[i+s].\n"
+        "        here = _bloch_ghost_operand(xp, product, own_axis, boundaries[own_axis],\n"
+        "                                    phases[own_axis], below=True)\n"
+        "        above = _shift_up(xp, product, own_axis, boundaries[own_axis])\n"
+        "        present = fields.offdiag_presence(component, partner, layout)\n"
+        "        for index, (low, high) in enumerate(zip(part_products.parts(here),\n"
+        "                                                part_products.parts(above))):\n"
+        "            summed = low + high\n",
+        "        product = pair  # mutation: the plain four-point average, times u[i] below\n"
+        "        # (g[i] + g[i-sx])*u[i] per part, at this cell's own node (read across a phased\n"
+        "        # window edge as MEEP's not-owned word below it), and the same product half a\n"
+        "        # cell UP this axis: (g[i+s] + g[(i+s)-sx])*u[i+s].\n"
+        "        here = _bloch_ghost_operand(xp, product, own_axis, boundaries[own_axis],\n"
+        "                                    phases[own_axis], below=True)\n"
+        "        above = _shift_up(xp, product, own_axis, boundaries[own_axis])\n"
+        "        present = fields.offdiag_presence(component, partner, layout)\n"
+        "        for index, (low, high) in enumerate(zip(part_products.parts(here),\n"
+        "                                                part_products.parts(above))):\n"
+        "            summed = (low + high) * coefficient\n",
         "cylinder_smoothed or rotated_block_smoothed or hand_loop",
         Path("meep_gpu/stepping.py"),
         ("meep_gpu/test_from_meep.py", "meep_gpu/test_tensor_epsilon.py"),
     ),
     "offdiagonal_partner_neighbour_dropped": (
-        "        # g[i] + g[i-sx]: half a cell DOWN the partner's own axis.\n"
-        "        pair = values + _shift_down(xp, values, partner_axis, boundaries[partner_axis],",
-        "        # g[i] + g[i-sx]: half a cell DOWN the partner's own axis.\n"
-        "        pair = values + values + 0 * _shift_down(xp, values, partner_axis, boundaries[partner_axis],",
+        "                + _shift_down(xp, values, partner_axis, boundaries[partner_axis],\n"
+        "                              \"D\" + AXIS_NAMES[partner_axis], parities[partner_axis]))\n"
+        "        product = part_products.scale(coefficient, pair)",
+        "                + values + 0 * _shift_down(xp, values, partner_axis, boundaries[partner_axis],\n"
+        "                              \"D\" + AXIS_NAMES[partner_axis], parities[partner_axis]))  # mutation\n"
+        "        product = part_products.scale(coefficient, pair)",
         "hand_loop or uniform_tensor",
         Path("meep_gpu/stepping.py"),
         ("meep_gpu/test_tensor_epsilon.py",),
@@ -148,32 +226,57 @@ MUTATIONS: dict[str, tuple] = {
     ),
     # The readback's periodic far-wall wrap is exact-by-accident on Cartesian
     # metallic axes and read the LIVE axis row across the PEC wall on cylindrical
-    # (Ez 1.27e-01 at m=0).
+    # (Ez 1.27e-01 at m=0). Re-anchored 2026-10-06 onto readback._metal_terminated,
+    # the one statement of what terminates an axis's top in MEEP's chunk words.
     "cylindrical_readback_wall_wrapped": (
-        "            if self.grid.is_mirrored(axis) or self.grid.is_axis(axis):",
-        "            if self.grid.is_mirrored(axis):",
+        "    if grid.is_axis(axis):\n        return True  # Dcyl r_max: the PEC wall",
+        "    if False:  # mutation: r_max is read as a lattice wrap\n        return True",
         "cylindrical_m0",
-        Path("meep_gpu/fields.py"),
+        Path("meep_gpu/readback.py"),
         ("meep_gpu/test_cylindrical.py",),
     ),
     # The i*m/r coupling's -i is MEEP's (1-2*cmp) real/imag swap; +i is the
     # conjugate run — smooth, plausible, rotating the wrong way.
     # Re-anchored 2026-08-09: the step-loop allocation work moved this factor into a
     # memoized builder, so the expression is now the closure's return and wraps a
-    # line. The MUTATION is unchanged — the coupling runs conjugated.
+    # line. Re-anchored 2026-10-08: the coupling became MEEP's own pass after the curl
+    # (_cylindrical_imr_increment) and its row is MEEP's realnum quotient ``rinv``. The
+    # MUTATION is unchanged — the coupling runs conjugated.
     "cylindrical_imr_conjugated": (
-        "        return ((-1j) * (sign * 2.0 * grid.m * (grid.dt / grid.dx))",
-        "        return ((+1j) * (sign * 2.0 * grid.m * (grid.dt / grid.dx))",
-        "cylindrical_m1",
+        "    return part_products.quarter_turn(rinv, partner_values)",
+        "    return part_products.quarter_turn(-rinv, partner_values)  # mutation: conjugated",
+        "cylindrical_m1 or imr",
+        Path("meep_gpu/stepping.py"),
+        ("meep_gpu/test_cylindrical.py",),
+    ),
+    # MEEP sums f_rderiv_int over each structure chunk's own rows (step_db.cpp:104-118):
+    # one sum over the whole r extent is exact without an r cut and differs from MEEP's
+    # words past one (a layer on r-high cuts r at its chunk).
+    "cylindrical_prefix_one_chunk": (
+        "    if layout is None or len(layout.boxes) == 1:\n        return None",
+        "    if True:  # mutation: one chunk\n        return None",
+        "scan_starts or imr_pass",
+        Path("meep_gpu/stepping.py"),
+        ("meep_gpu/test_cylindrical.py",),
+    ),
+    # MEEP stores rinv = 1/((ir + ir0) - 0.5) and MULTIPLIES; a division by the same
+    # quantity is a different float32 word in some rows.
+    "cylindrical_prefix_divides": (
+        "    part_products.scale(rinv, increment[1:], out=increment[1:])",
+        "    part_products.divide(increment[1:], (1.0 / rinv).astype(rinv.dtype),"
+        " out=increment[1:])  # mutation",
+        "rderiv",
         Path("meep_gpu/stepping.py"),
         ("meep_gpu/test_cylindrical.py",),
     ),
     # The m=0 axis rule's factor 4 is the analytic limit of (1/r)d(r*Hp)/dr plus
     # the doubled-ivec compensation; halving it is a plausible transcription slip.
+    # Re-anchored 2026-10-08: the rule forms MEEP's double product with Courant
+    # (_realnum_double_product); the MUTATION is unchanged — the factor is halved.
     "cylindrical_axis_limit_halved": (
-        '                                    4.0 * (grid.dt / grid.dx))',
-        '                                    2.0 * (grid.dt / grid.dx))',
-        "cylindrical_m0",
+        '        dfcnd = _realnum_double_product(4.0 * float(grid.courant),',
+        '        dfcnd = _realnum_double_product(2.0 * float(grid.courant),',
+        "cylindrical_m0 or axis_rule",
         Path("meep_gpu/stepping.py"),
         ("meep_gpu/test_cylindrical.py",),
     ),
@@ -433,49 +536,23 @@ MUTATIONS: dict[str, tuple] = {
     # Reverting to the generic corner clips an r=0 source on those components to
     # nothing — the run completes with every component identically zero.
     "cylindrical_axis_row_disowned": (
-        "            if axis_reader(d) and little_owned[d] == 2:",
-        "            if False and axis_reader(d) and little_owned[d] == 2:",
+        "    if callable(axis_reader) and axis_reader(axis) and lo == 0 and value == 2:",
+        "    if False and callable(axis_reader) and axis_reader(axis) and lo == 0 and value == 2:",
         "cylindrical_axis_sources",
         Path("meep_gpu/sources.py"),
         ("meep_gpu/test_cylindrical.py",),
     ),
     # --- source against the absorber: the two defect fixes and the chunk rule ------
-    # Defect A's fix: the integrated dipole is WITHDRAWN from D/B before every curl
-    # ladder, so no rescale (PML dsigu damping, conductivity) ever touches it.
-    # Stubbing the withdraw restores the old telescoping, which is exact only while
-    # nothing rescales D between injections — the integrated-in-PML parity case
-    # reads 9.5837e-01 with it stubbed against 4.9e-07 fixed (measured).
+    # Defect A's class: the integrated dipole left standing in D/B, where the curl
+    # ladder's rescale (PML dsigu damping, conductivity) touches it. MEEP subtracts it
+    # from a copy, f_minus_p, that only the constitutive update reads; the driver
+    # writes f_minus_p's words around that update and restores D/B after it
+    # (sources.f_minus_p_begin / f_minus_p_end). Dropping the restore leaves each
+    # step's dipole standing in D/B.
     "integrated_dipole_left_standing_in_d": (
-        "        if self._applied_dipole == 0:",
-        "        if True:  # mutation: the pre-withdraw telescoping",
+        "        host_writes.scatter(host_writes.raw(fields, name), linear, words)",
+        "        pass  # mutation: f_minus_p's words left standing in D/B",
         "integrated_source_in_the_pml",
-        Path("meep_gpu/sources.py"),
-        ("meep_gpu/test_from_meep.py",),
-    ),
-    # Defect B's fix: the non-integrated deposit is mirrored into f_u wherever
-    # MEEP's chunking runs the unsplit recurrence. Dropping the mirror restores the
-    # broken invariant — the full-width sheet parity case reads ~3e-01 without it
-    # (evidence packet §2.1 rows 16-17) against 6.3e-07 with it.
-    "fu_deposit_mirror_dropped": (
-        "    if source._fu_amps is None:",
-        "    if True:  # mutation: deposit into f alone, as before",
-        "source_spans_the_pml",
-        Path("meep_gpu/sources.py"),
-        ("meep_gpu/test_from_meep.py",),
-    ),
-    # The Dcyl arm of the same fix: the mirror runs on CYLINDRICAL grids since the
-    # sweep measured the truth table transferring (x = R, y = P, z = Z; Ez's
-    # dsigu = P never absorbs, so every r-layer deposit is unsplit, corners
-    # included — 4.08e+00 broken vs 3.12e-06 mirrored on the sweep's mid-layer
-    # case). Regrowing the pre-sweep cylindrical exclusion is exactly the
-    # plausible revert this pins against: the run completes, Cartesian cases are
-    # untouched, and only the cylindrical in-layer parity case sees it.
-    "fu_deposit_mirror_excluded_on_cylindrical": (
-        '    if pml is None or not getattr(pml, "is_active", False):\n        return None',
-        '    if pml is None or not getattr(pml, "is_active", False):\n        return None\n'
-        '    if getattr(grid, "cylindrical", False):\n'
-        '        return None  # mutation: the pre-sweep exclusion',
-        "cylindrical_source_in_pml",
         Path("meep_gpu/sources.py"),
         ("meep_gpu/test_from_meep.py",),
     ),
@@ -491,6 +568,11 @@ MUTATIONS: dict[str, tuple] = {
     # That is the sheet an EigenModeSource drives, and it is the whole defect —
     # mode-decomposition.py at resolution 17 read Hy 2.72e-03 with Ez and Hx at
     # 1.3e-06 / 2.5e-06, and 1.62e-06 on Hy once the fill moved.
+    # RE-TARGETED 2026-10-06: the readback no longer reads ghost storage (it rebuilds a
+    # not-owned word from owned words, as MEEP's chunk words are built), so the stale
+    # ghost row is invisible to every lift parity case (2.37e-07 restored, against a
+    # parity of 2.2-3.9e-07 on eigenmode_source_waveguide_folded). It is pinned on the
+    # stored rows, the state the kernel tables are certified against.
     # ANCHOR REPAIRED 2026-09-07. It had matched 0x since the dispatch round put
     # `fill_symmetry_bc_B` behind a `fill_B` consult and a comment block between
     # the injection and the fill, so this mutation was never applied and the
@@ -530,9 +612,9 @@ MUTATIONS: dict[str, tuple] = {
         "        # is the fact ``deposit_repair`` reads when it says the field is injected,\n"
         "        # filled and cleared by the second consult of a fused pair.\n"
         ,
-        "eigenmode_source_waveguide_folded",
+        "b_mirror_ghost_is_imaged",
         Path("meep_gpu/driver.py"),
-        ("meep_gpu/test_from_meep.py",),
+        ("meep_gpu/test_driver_integration.py",),
     ),
     # The folded-live-face lattice images: MEEP's loop_in_chunks keys its
     # lattice-shift loop on the boundary being Periodic (loop_in_chunks.cpp:393),
@@ -545,11 +627,29 @@ MUTATIONS: dict[str, tuple] = {
     # binary_grating_phasemap.py) against floors of 8e-07 … 1.1e-06 with the
     # images deposited.
     "folded_live_lattice_images_dropped": (
-        "        shift_lists[d] = list(range(low, high + 1))",
-        "        shift_lists[d] = [0]  # mutation: the clip-only fold",
+        "    periodic = tuple(resolved[d] and (wraps[d] or folded_live[d]) for d in range(3))",
+        "    periodic = tuple(resolved[d] and wraps[d] for d in range(3))  # mutation: the clip-only fold",
         "full_width_source_on_folded_live_face",
         Path("meep_gpu/sources.py"),
         ("meep_gpu/test_from_meep.py",),
+    ),
+    # The periodic seam. MEEP keeps a request's ishift = 0 piece and its lattice image as
+    # two src_vol entries (their index vectors differ, sources.cpp:179-181), so a cell both
+    # reach -- the seam row of a source spanning a periodic axis -- is deposited twice and
+    # rounds twice (step.cpp:309-314). Binding the source's summed table instead restores
+    # the one-deposit seam the package shipped: one ulp on the seam row of every corpus row
+    # whose source spans a periodic axis (AP8a's dry run, the AP6g rows, and on a
+    # mirror-folded periodic axis the far-ghost family's: ex.metasurface_lens,
+    # ex.binary_grating_phasemap, ex.diffracted_planewave, ex.chirped_pulse,
+    # test_mode_decomposition's test_grating_3d, test_diffracted_planewave and three
+    # test_binary_grating rows).
+    "seam_image_summed_into_one_entry": (
+        "        return _src_vol_pieces(geometry, layout.boxes, grid)",
+        "        return [(0, *map(list, _summed_table(geometry, grid)))]  # mutation: one entry per cell",
+        "seam_cell_is_deposited_twice or full_height_line_on_a_periodic_axis "
+        "or seam_cell_deposited_twice_is_carried or full_width_source_takes_its_lattice_image",
+        Path("meep_gpu/sources.py"),
+        ("meep_gpu/test_source_deposit.py", "meep_gpu/test_deposit_repair.py"),
     ),
     # THE ODD-COUNT TOP CELL. A folded PERIODIC axis stores MEEP's num + 1 slots
     # (vec.cpp:293-296) at BOTH parities: the top shift-0 sample sits AT
@@ -599,25 +699,29 @@ MUTATIONS: dict[str, tuple] = {
     # flip both detectors when applied: the lift parity case reads 1.24e-02
     # against its 5e-6 bound and the deposition test loses the wall-ring drop.
     "metal_wall_deposit_clamped_back_inward": (
-        "                    elif metal_high[d] and ladder_index >= count:",
-        "                    elif False and metal_high[d] and ladder_index >= count:  # mutation: the clamp regrown",
+        "            return None  # the metallic wall plane: MEEP's deposit there is zeroed unread",
+        "            return count - 1  # mutation: the clamp regrown",
         "cylindrical_source_on_r_wall or metallic_wall_plane",
         Path("meep_gpu/sources.py"),
         ("meep_gpu/test_from_meep.py", "meep_gpu/test_sources.py"),
     ),
-    # THE SUBTLEST CHOICE in that fix: mirror-or-not follows MEEP's per-CHUNK
+    # Defect B's fix: which curl form a cell steps follows MEEP's per-CHUNK
     # ownership (structure.cpp:509-524 effort volume, int(cells + 1.5) cells, owned
-    # corner + 2 - iyee), NOT the sigma support — the chunk owns integer planes
-    # whose own sigma is exactly zero, and mirroring one measured 4.59e-01 against
-    # 7.3e-07 unmirrored (12x12 evidence-packet cell, deposits at y = -4.0 /
-    # -3.975). Shrinking the owned span to the graded cells is precisely the
-    # plausible rewrite this pins against.
-    "fu_mirror_chunk_ownership_shrunk_to_sigma_support": (
-        "                inside[1: min(n_cells, span + 1)] = True",
-        "                inside[1: min(n_cells, span - 1)] = True  # mutation",
-        "source_spans_the_pml or in_pml_chunk or unsplit_deposit_flags",
-        Path("meep_gpu/pml.py"),
-        ("meep_gpu/test_grid_pml.py", "meep_gpu/test_sources.py", "meep_gpu/test_from_meep.py"),
+    # corner + 2 - iyee), NOT the sigma support: a chunk that carries a layer owns
+    # integer planes whose own sigma is exactly zero, and MEEP steps them with the
+    # split-field recurrence (12x12 evidence-packet cell, deposits at y = -4.0 /
+    # -3.975: the dsig-only form there measured 4.59e-01 against 7.3e-07). Shrinking
+    # the owned span to the graded cells is precisely the plausible rewrite this pins
+    # against. The rule is the one-rank chunk division's (chunk_map.one_rank_line),
+    # which the region plan the curl dispatches on reads; a lift steps MEEP's own
+    # division instead, so the detectors are the rule's own pins and the
+    # lifted-equals-one-rank comparison.
+    "pml_chunk_ownership_shrunk_to_sigma_support": (
+        "            inside[1: min(n_cells, span + 1)] = True",
+        "            inside[1: min(n_cells, span - 1)] = True  # mutation",
+        "source_spans_the_pml or one_rank",
+        Path("meep_gpu/chunk_map.py"),
+        ("meep_gpu/test_chunk_map.py", "meep_gpu/test_from_meep.py"),
     ),
     # The |m|>1 near-axis zeroing follows upstream #3164 (all six components);
     # exempting Bp is the 1.29-era bug this engine adopted the fix for, and the
@@ -712,10 +816,11 @@ MUTATIONS: dict[str, tuple] = {
     ),
     # --- BFAST: MEEP's broadband fixed-angle source technique -----------------------
     # The whole feature is one extra additive pass inside step_db (step_db.cpp:129-142
-    # -> step_generic.cpp:335-471), folded into this engine's curl on the operands the
-    # stencil already gathered. Every mutation below leaves a stable, smooth, complete
-    # run that is simply at the WRONG INCIDENCE ANGLE — which is the whole hazard: a
-    # BFAST run degraded in any of these ways looks exactly like a working one.
+    # -> step_generic.cpp:335-533), run by this engine as MEEP runs it: after the curl
+    # of the same component, on the operands the stencil already gathered, through its
+    # own ladder. Every mutation below leaves a stable, smooth, complete run that is
+    # simply at the WRONG INCIDENCE ANGLE — which is the whole hazard: a BFAST run
+    # degraded in any of these ways looks exactly like a working one.
     #
     # The Cartesian gate is gone (BFAST steps now); what this anchor still guards is
     # the CYLINDRICAL refusal, whose reason is upstream — MEEP's Dcyl branch makes
@@ -780,23 +885,22 @@ MUTATIONS: dict[str, tuple] = {
     # function, and it turns a field value into a first derivative — small, smooth, and
     # scaling with the resolution rather than being obviously wrong.
     "bfast_sum_taken_as_the_curls_difference": (
-        "    total = (dtype.type(k1) * (operands.shifted_first + operands.first)\n"
-        "             - dtype.type(k2) * (operands.shifted_second + operands.second))",
-        "    total = (dtype.type(k1) * (operands.shifted_first - operands.first)  # mutation\n"
-        "             - dtype.type(k2) * (operands.shifted_second - operands.second))",
+        "        total = (part_products.scale(realnum(k1), operands.shifted_first + operands.first)\n"
+        "                 - part_products.scale(realnum(k2), operands.shifted_second + operands.second))",
+        "        total = (part_products.scale(realnum(k1), operands.shifted_first - operands.first)  # mutation\n"
+        "                 - part_products.scale(realnum(k2), operands.shifted_second - operands.second))",
         "bfast",
         Path("meep_gpu/stepping.py"),
         ("meep_gpu/test_stepping.py", "meep_gpu/test_from_meep.py"),
     ),
     # F_n = S_n - F_{n-1} with output F_n - F_{n-1} is the TUSTIN (bilinear) derivative.
-    # Dropping the previous term from the state update leaves a backward difference at
-    # twice the amplitude — and this is not a hypothetical slip: it is the exact shape
-    # of MEEP's own inconsistency at step_generic.cpp:376, where the single-operand
-    # branch omits the `- F[i]` its seven siblings carry. Catching it proves this
-    # transcription is the consistent one.
+    # Dropping the previous term from a two-partner component's state update leaves a
+    # backward difference at twice the amplitude. MEEP's own plain one-partner line has
+    # that shape (step_generic.cpp:373-379) and the engine reproduces it there, where
+    # the k is zero; on a two-partner component it is a wrong run.
     "bfast_state_update_drops_the_previous_value": (
-        "    advance = total - dtype.type(2.0) * state",
-        "    advance = total - state  # mutation: step_generic.cpp:376's shape",
+        "        updated = total - state\n",
+        "        updated = total  # mutation: the one-partner plain line's shape\n",
         "bfast",
         Path("meep_gpu/stepping.py"),
         ("meep_gpu/test_stepping.py", "meep_gpu/test_from_meep.py"),
@@ -987,7 +1091,7 @@ MUTATIONS: dict[str, tuple] = {
     # MEASUREMENT alone: neither self-check fires, because zero is a perfectly
     # self-consistent, frequency-independent answer.
     "conductivity_read_at_frequency_zero": (
-        "_CONDUCTIVITY_PROBE_FREQUENCIES = (0.9, 0.3)",
+        "_CONDUCTIVITY_PROBE_FREQUENCIES = (1e8, 1e20)",
         "_CONDUCTIVITY_PROBE_FREQUENCIES = (0.0, 0.0)",
         "structured_conductivity or material_grid_damping",
     ),
@@ -1050,8 +1154,8 @@ MUTATIONS: dict[str, tuple] = {
         "material_grid",
     ),
     "offdiagonal_wall_mask_dropped": (
-        "        _mask_metallic_wall_coupling(total, fields.grid, IYEE_SHIFTS[component])",
-        "        pass  # mutation: the wall plane keeps the coupling it never has in MEEP",
+        "            _mask_metallic_wall_coupling(summed, grid, iyee)",
+        "            pass  # mutation: the wall plane keeps the coupling it never has in MEEP",
         "uniform_tensor_epsilon_matches_cpu_meep and metallic",
         Path("meep_gpu/stepping.py"),
         ("meep_gpu/test_tensor_epsilon.py",),
@@ -1465,7 +1569,7 @@ MUTATIONS: dict[str, tuple] = {
     "sigma_recovery_scale_division_dropped": (
         "            sigma[index] = coefficients[index] / pole.scale",
         "            sigma[index] = coefficients[index]",
-        "synthetic or drude_frequency or reader",
+        "synthetic or drude_frequency or through_the_inversion",
         Path("meep_gpu/sigma_recovery.py"),
         ("meep_gpu/test_sigma_recovery.py",),
     ),
@@ -1504,19 +1608,19 @@ MUTATIONS: dict[str, tuple] = {
     "sigma_lookup_yee_location_off_by_one_ulp": (
         "    return coordinates",
         "    return tuple(numpy.nextafter(value, -numpy.inf) for value in coordinates)",
-        "nominal_coordinate or reader",
+        "nominal_coordinate",
         DEFAULT_MODULE,
         ("meep_gpu/test_sigma_lookup.py",),
     ),
     # A point outside MEEP's owned region reads vacuum-with-no-susceptibility from
-    # chi1inv and from the sigma reader alike (monitor.cpp:182-184). _lattice_indices
+    # chi1inv (monitor.cpp:182-184). _lattice_indices
     # enumerates the full closed lattice, so ~5% of its points are such points, and
     # taking the declared sigma there instead is wrong at exactly the cells where a
     # structure touches the cell edge — 21 of 1281 on the gold cell.
     "sigma_lookup_ownership_gate_removed": (
         "                    reading = location if gv.owns(location) else _meep_reads_here(",
         "                    reading = location if True else _meep_reads_here(",
-        "reader or flush_with_the_cell_face",
+        "flush_with_the_cell_face",
         DEFAULT_MODULE,
         ("meep_gpu/test_sigma_lookup.py",),
     ),
@@ -1524,8 +1628,8 @@ MUTATIONS: dict[str, tuple] = {
     # is what "later objects take precedence" means. Searching forwards puts the wrong
     # medium in every overlap.
     "sigma_lookup_object_precedence_reversed": (
-        "    for obj in reversed(objects):\n        if mp.is_point_in_object(vector, obj):",
-        "    for obj in objects:\n        if mp.is_point_in_object(vector, obj):",
+        "    for obj in reversed(objects):\n        key = id(obj)\n",
+        "    for obj in objects:\n        key = id(obj)\n",
         "overlapping",
         DEFAULT_MODULE,
         ("meep_gpu/test_sigma_lookup.py",),
@@ -1557,7 +1661,7 @@ MUTATIONS: dict[str, tuple] = {
     # owned points inside the opposite one.
     "sigma_lookup_periodic_object_images_dropped": (
         "    return tuple(shifts)",
-        "    return ()  # mutation",
+        "    return ((0.0, 0.0, 0.0),)  # mutation: the unshifted copy alone",
         "periodic_cell_wraps",
         DEFAULT_MODULE,
         ("meep_gpu/test_sigma_lookup.py",),
@@ -1616,10 +1720,14 @@ MUTATIONS: dict[str, tuple] = {
         "    if False:\n        raise MeepSimulationNotLiftable(verdict.reasons)",
         "refused_by_name",
     ),
+    # Re-anchored 2026-10-06: the duplicate plane's phase is MEEP's shift_phase,
+    # pow(eikna, -1), in the readback's lattice (readback.CentredLattice).
     "bloch_correction_on_the_duplicate_plane_removed": (
-        "            values[first] = values[first] * numpy.conjugate(phase)",
-        "            values[first] = values[first] * 1.0",
+        "            ishift = [-1 if shift_bits >> axis & 1 else 0 for axis in range(3)]",
+        "            ishift = [0, 0, 0]  # mutation: the duplicate plane loses pow(eikna, -1)",
         "bloch",
+        Path("meep_gpu/readback.py"),
+        ("meep_gpu/test_from_meep.py",),
     ),
     # --- reduced dimensions: the traps the converter's own docstring names ---------
     # Each of these is a rule transcribed from MEEP's _infer_dimensions / use_2d /
@@ -1727,10 +1835,10 @@ MUTATIONS: dict[str, tuple] = {
     # odd-count mirror cell one cell off — the exact defect the fix removed, and
     # silent everywhere the pre-fix corpus could reach.
     "odd_fold_mirror_slice_from_quadrant_count": (
-        "                phase * result[_slab(axis, slice(centre, 1, -1))]",
-        "                phase * result[_slab(axis, slice(n_q - 1, 1, -1))]  # mutation",
+        "    full[_slab(axis, slice(None, centre - 1))] = a[_slab(axis, slice(centre, 1, -1))]",
+        "    full[_slab(axis, slice(None, centre - 1))] = a[_slab(axis, slice(a.shape[axis] - 1, 1, -1))]  # mutation",
         "round_trips",
-        Path("meep_gpu/fields.py"),
+        Path("meep_gpu/readback.py"),
         ("meep_gpu/test_fields.py",),
     ),
     # The DFT unfold used to re-derive n_full = 2*(n_quadrant - 1) from the stored
@@ -1919,12 +2027,16 @@ MUTATIONS: dict[str, tuple] = {
         Path("meep_gpu/from_meep.py"),
         ("meep_gpu/test_from_meep.py",),
     ),
-    "integrated_withdraw_skipped_under_symmetry": (
-        "        if not self.envelope.is_integrated or self._n_source_points == 0:\n"
-        "            return",
-        "        if (not self.envelope.is_integrated or self._n_source_points == 0\n"
-        "                or any(_axis_is_mirrored(self.grid, d) for d in range(3))):\n"
-        "            return",
+    # f_minus_p at a mirror plane: MEEP's constitutive update at a ghost reads the
+    # image of f_minus_p, so the driver re-runs the family's boundary passes after
+    # writing f_minus_p's words. Skipping them on a folded grid leaves the ghost
+    # holding D while the owned cell holds f_minus_p.
+    "integrated_f_minus_p_image_skipped_under_symmetry": (
+        "    _boundary_passes(fields, field_type)\n"
+        "    return FMinusP(field_type, tuple(saved))",
+        "    if not any(_axis_is_mirrored(fields.grid, d) for d in range(3)):  # mutation\n"
+        "        _boundary_passes(fields, field_type)\n"
+        "    return FMinusP(field_type, tuple(saved))",
         "integrated_source_through_the_fold",
         Path("meep_gpu/sources.py"),
         ("meep_gpu/test_from_meep.py",),
@@ -2031,19 +2143,20 @@ MUTATIONS: dict[str, tuple] = {
     # unconditional phase deletion produces — the equality that says the fold routes
     # its Bloch axis through the unfolded code and adds no hazard of its own.
     "bloch_factor_dropped_on_a_folded_run": (
-        "        shifted = self.grid.xp.roll(array, -1, axis=axis)",
-        "        shifted = self.grid.xp.roll(array, -1, axis=axis)\n"
-        "        if any(self.grid.is_mirrored(d) for d in range(3)):\n"
-        "            return shifted  # mutation: a folded run drops the lattice phase",
+        "    ph = (1.0, 0.0)\n    for axis in direction_axes(grid):\n        if axis in axes:\n",
+        "    ph = (1.0, 0.0)\n"
+        "    if any(grid.is_mirrored(d) for d in range(3)):\n"
+        "        return ph  # mutation: a folded run drops the lattice phase\n"
+        "    for axis in direction_axes(grid):\n        if axis in axes:\n",
         "fold_and_a_bloch",
-        Path("meep_gpu/fields.py"),
+        Path("meep_gpu/readback.py"),
         ("meep_gpu/test_driver_vs_meep.py",),
     ),
     "collapsed_bloch_axis_takes_one_plane": (
-        "        return arr * arr.dtype.type(0.5 * (1.0 + phase.conjugate()))",
-        "        return arr  # mutation: keep the stored plane, drop the lattice image",
+        "            wline[axis] = numpy.array([min(w0, w0), min(w1, w1)], dtype=_F64)",
+        "            wline[axis] = numpy.array([0.0, 1.0], dtype=_F64)  # mutation: keep the stored plane, drop the lattice image",
         "collapsed_axis or unit_axes_three_d_bloch",
-        Path("meep_gpu/fields.py"),
+        Path("meep_gpu/readback.py"),
         ("meep_gpu/test_fields.py", "meep_gpu/test_from_meep.py"),
     ),
     # THE SAME COLLAPSE, one level up, on the READ side of the assertion driver. When
@@ -2214,8 +2327,8 @@ MUTATIONS: dict[str, tuple] = {
     # mutation), and only the beta-GENERATED Ex sees it. The `beta_sign_flipped`
     # control in test_from_meep is precisely the reference this lands on.
     "special_kz_beta_ft_sign_swapped": (
-        '        coefficient = coefficient * (1j if magnetic else -1j)',
-        '        coefficient = coefficient * (-1j if magnetic else 1j)  # mutation',
+        '        return -part_products.quarter_turn(coefficient if magnetic else -coefficient,',
+        '        return -part_products.quarter_turn(-coefficient if magnetic else coefficient,  # mutation',
         "special_kz",
         Path("meep_gpu/stepping.py"),
         ("meep_gpu/test_from_meep.py",),
@@ -2248,6 +2361,237 @@ MUTATIONS: dict[str, tuple] = {
         "special_kz",
         Path("meep_gpu/stepping.py"),
         ("meep_gpu/test_from_meep.py",),
+    ),
+    # --- the dispersive polarization update: MEEP's float32 words and grouping ----------
+    # MEEP's update_P forms gamma1inv*((p*(2 - od) - gamma1*pp) + od*(s*w)) with four float32
+    # constants (susceptibility.cpp:191-195, :251-256). The folded three-term form the array
+    # path took before, c_now*p + c_prev*pp + c_drive*(s*w), is the same recurrence in exact
+    # arithmetic and a different float32 word on a large share of cells; it is the inverted
+    # mutation, the old package grouping re-installed.
+    "dispersive_update_folded_three_term_form": (
+        "            part_products.scale(two_minus_od, p, out=scratch)  # pcur * (2 - omega0dtsqr_denom)\n"
+        "            scratch -= part_products.scale(gamma1, p_prev)  # - gamma1 * pp[i]\n"
+        "            drive_term = part_products.scale(sigma, w)  # s[i] * w[i]\n"
+        "            part_products.scale(omega0dtsqr, drive_term, out=drive_term)  # omega0dtsqr * (s[i] * w[i])\n"
+        "            scratch += drive_term\n"
+        "            part_products.scale(gamma1inv, scratch, out=scratch)  # gamma1inv * ( ... )\n",
+        "            c_now = float(gamma1inv) * float(two_minus_od)  # mutation: the folded form\n"
+        "            c_prev = -float(gamma1inv) * float(gamma1)\n"
+        "            c_drive = float(gamma1inv) * float(omega0dtsqr)\n"
+        "            part_products.scale(c_now, p, out=scratch)\n"
+        "            scratch += part_products.scale(c_prev, p_prev)\n"
+        "            scratch += part_products.scale(c_drive, part_products.scale(sigma, w))\n",
+        "meeps_expression or meeps_grouping",
+        Path("meep_gpu/dispersion.py"),
+        ("meep_gpu/test_dispersion.py",),
+    ),
+    # The drive product associated with the constant first, (od*s)*w: one rounding moved,
+    # invisible wherever s*w or od*s happens to be exact.
+    "dispersive_drive_product_reassociated": (
+        "            drive_term = part_products.scale(sigma, w)  # s[i] * w[i]\n"
+        "            part_products.scale(omega0dtsqr, drive_term, out=drive_term)  # omega0dtsqr * (s[i] * w[i])\n",
+        "            drive_term = part_products.scale(omega0dtsqr * sigma, w)  # mutation: (od*s)*w\n",
+        "meeps_expression or meeps_grouping",
+        Path("meep_gpu/dispersion.py"),
+        ("meep_gpu/test_dispersion.py",),
+    ),
+    # omega0dtsqr formed in double from the user's numbers and rounded once: the closed
+    # form, a correctly rounded word, and not the one MEEP's float32 chain stores.
+    "dispersive_constant_formed_in_double": (
+        "        omega0dtsqr = ((omega2pi * omega2pi) * dt_r) * dt_r\n",
+        "        omega0dtsqr = f32((2.0 * math.pi * self.frequency * step) ** 2)  # mutation\n",
+        "float32_words or meeps_expression",
+        Path("meep_gpu/dispersion.py"),
+        ("meep_gpu/test_dispersion.py",),
+    ),
+    # MEEP's drive is w = f_w ? f_w : f PER CHUNK (update_pols.cpp:44): f_w only in the
+    # chunks that carry the component's own layer, the stored E elsewhere. Handing f_w to
+    # every cell under a layer is the whole-grid form, and f_w is not written outside
+    # those chunks.
+    "polarization_drive_taken_from_f_w_on_every_cell": (
+        "        if mode == \"outside_only\":\n"
+        "            return stored\n"
+        "        aux = getattr(self, 'f_w_' + component)\n"
+        "        if mode == \"inside_only\":\n"
+        "            return aux\n",
+        "        aux = getattr(self, 'f_w_' + component)\n"
+        "        return aux  # mutation: f_w on every cell under a layer\n",
+        "drive_field",
+        Path("meep_gpu/fields.py"),
+        ("meep_gpu/test_region_dispatch.py",),
+    ),
+    # --- MEEP's rounded lattice and its unallocated components (lane REF) ----------------
+    # libctl's periodic copies shifted by the declared cell size rather than the rounded
+    # grid's (meepgeom.cpp:1956-1985): on a cell that is not a whole number of pixels a
+    # copy claims a face MEEP holds as vacuum, the lookup declines, and the inversion's
+    # sigma words are not MEEP's.
+    "periodic_copies_shifted_by_the_declared_cell": (
+        "    size = _geometry_lattice_size(sim)\n",
+        "    size = _vector3(sim.cell_size)  # mutation: the declared cell, not MEEP's lattice\n",
+        "periodic_copies_are_shifted",
+        Path("meep_gpu/from_meep.py"),
+        ("meep_gpu/test_sigma_lookup.py",),
+    ),
+    # libctl's LOOP_PERIODIC run under MEEP's dimension instead of the dimensions = 3 that
+    # geom_initialize leaves (geom.c:228-238): a 1-D cell's copies land along x, all at the
+    # origin, and the slab's copy across the periodic z face is lost.
+    "lattice_shifts_take_meeps_dimension": (
+        "    size = _geometry_lattice_size(sim)\n    shifts = []\n",
+        "    size = _geometry_lattice_size(sim)\n"
+        "    if int(sim.structure.user_volume.dim) == 0:  # mutation: libctl's 1-D case\n"
+        "        return tuple((i * size[0], 0.0, 0.0) for i in (-1, 0, 1))\n"
+        "    shifts = []\n",
+        "1d_periodic or lattice_shifts_are",
+        Path("meep_gpu/from_meep.py"),
+        ("meep_gpu/test_sigma_lookup.py",),
+    ),
+    # libctl's bounding-box gate dropped: on a face the object test, run on the point less
+    # the shift, rounds onto the face and claims a point the copy's box excludes.
+    "periodic_copy_bounding_box_gate_dropped": (
+        "            if box is not None:\n"
+        "                (lx, ly, lz), (hx, hy, hz) = box\n",
+        "            if False:  # mutation: no bounding-box gate\n"
+        "                (lx, ly, lz), (hx, hy, hz) = box\n",
+        "bounding_box_gate",
+        Path("meep_gpu/from_meep.py"),
+        ("meep_gpu/test_sigma_lookup.py",),
+    ),
+    # An absent component stepped like any other: -0 on a perfect-conductor cell where
+    # MEEP holds no array and reads +0 (update_eh.cpp:150, monitor.cpp:160-164).
+    "absent_component_stepped": (
+        "        if component in absent:\n",
+        "        if False:  # mutation: every component stepped\n",
+        "absent_component",
+        Path("meep_gpu/stepping.py"),
+        ("meep_gpu/test_absent_components.py",),
+    ),
+    # The derived E of an absent component formed as D * inv_eps.
+    "absent_component_read_as_the_product": (
+        "        if component in self.absent_components:\n"
+        "            # MEEP holds no array for it and reads it as 0.0 (monitor.cpp:160-164), so\n",
+        "        if False:  # mutation: the product, -0 on a conductor\n"
+        "            # MEEP holds no array for it and reads it as 0.0 (monitor.cpp:160-164), so\n",
+        "absent_component",
+        Path("meep_gpu/fields.py"),
+        ("meep_gpu/test_absent_components.py",),
+    ),
+    # The lift not recording MEEP's unallocated components at all.
+    "lift_records_no_absent_component": (
+        "        driver.set_absent_components(_meep_absent_components(mp, sim, cylindrical))\n",
+        "        pass  # mutation: nothing recorded\n",
+        "records_what_meep_did_not_allocate",
+        Path("meep_gpu/from_meep.py"),
+        ("meep_gpu/test_absent_components.py",),
+    ),
+    # A dispatched update_E with no clear after it: every table's update_E steps the
+    # absent components, -0 on a conductor cell where the array path holds +0.
+    "absent_clear_dropped": (
+        '        if slot == "update_E" and self.absent_clears:\n',
+        '        if False:  # mutation: the absent words never cleared\n',
+        "",
+        Path("meep_gpu/fastpath.py"),
+        ("meep_gpu/test_dispatch_absent_components.py",),
+    ),
+    # The clear moved BEFORE the plan in the slot (and not after it): the launch then
+    # writes the -0 back, and the count still reads one clear per consult.
+    "absent_clear_before_the_launch": (
+        '        plan.run()\n'
+        '        if slot == "update_E" and self.absent_clears:\n',
+        '        if slot == "update_E" and self.absent_clears:  # mutation: before only\n'
+        '            _clear_absent_components(self.absent_clears)\n'
+        '            self._absent_clear_runs[0] += 1\n'
+        '        plan.run()\n'
+        '        if False:\n',
+        "",
+        Path("meep_gpu/fastpath.py"),
+        ("meep_gpu/test_dispatch_absent_components.py",),
+    ),
+    # E cleared, f_w not: a conductor inside the absorber keeps -0 in f_w.
+    "absent_clear_skips_f_w": (
+        "        if aux is not None:\n"
+        '            names.append("f_w_" + component)\n',
+        "        if False:  # mutation: E only\n"
+        '            names.append("f_w_" + component)\n',
+        "",
+        Path("meep_gpu/fastpath.py"),
+        ("meep_gpu/test_dispatch_absent_components.py",),
+    ),
+    # The cells chosen by a positive inverse permittivity rather than its sign bit.
+    "absent_clear_takes_the_positive_cells": (
+        "        sign = xp.signbit(xp.asarray(fields.inverse_epsilon_for(component)))\n",
+        "        sign = ~xp.signbit(xp.asarray(fields.inverse_epsilon_for(component)))\n",
+        "",
+        Path("meep_gpu/fastpath.py"),
+        ("meep_gpu/test_dispatch_absent_components.py",),
+    ),
+    # The fill planes dropped from the clear: on a folded grid the D fills leave -0 in the
+    # absent component's D on their planes (an odd parity times +0), and the stepped
+    # product is -0 there with no conductor anywhere.
+    "absent_clear_skips_the_fill_planes": (
+        "        if planes.size:\n"
+        "            linear = xp.unique(xp.concatenate([linear.astype(xp.int64),\n",
+        "        if False:  # mutation: the sign-bit cells only\n"
+        "            linear = xp.unique(xp.concatenate([linear.astype(xp.int64),\n",
+        "fill_planes",
+        Path("meep_gpu/fastpath.py"),
+        ("meep_gpu/test_dispatch_absent_components.py",),
+    ),
+    # A clear that cannot be written raised out of the tail instead of refusing by name.
+    "absent_clear_refusal_dropped": (
+        "        except Exception as exc:  # noqa: BLE001 - a refusal, never a raise from the tail\n",
+        "        except ZeroDivisionError as exc:  # mutation: no refusal\n",
+        "",
+        Path("meep_gpu/fastpath.py"),
+        ("meep_gpu/test_dispatch_absent_components.py",),
+    ),
+    # The held reader door forming D * inv_eps for an absent component.
+    "raw_factors_absent_read_as_the_product": (
+        "        if name in fields.absent_components:\n"
+        "            # The zeros ``component_factors`` serves for a component MEEP never\n",
+        "        if False:  # mutation: the product, -0 on a conductor\n"
+        "            # The zeros ``component_factors`` serves for a component MEEP never\n",
+        "",
+        Path("meep_gpu/dft.py"),
+        ("meep_gpu/test_dispatch_absent_components.py",),
+    ),
+    # --- R10: a BinaryPartition chunk_layout with mirrors, keyed on MEEP's grid -------
+    # The attribute-only refusal: the partition MEEP writes back after a halving build
+    # refused, which kept test_simulation.py's two _init_structure rows out of Table 2.
+    "partition_written_back_refused": (
+        "        return f\"{PARTITION_WITH_MIRRORS_REASON} ({_unhalved_detail(unfolded, grid_low, user_low)})\"\n"
+        "    return None\n",
+        "        return f\"{PARTITION_WITH_MIRRORS_REASON} ({_unhalved_detail(unfolded, grid_low, user_low)})\"\n"
+        "    return PARTITION_WITH_MIRRORS_REASON  # mutation\n",
+        "lifted_division",
+        Path("meep_gpu/from_meep.py"),
+        ("meep_gpu/test_chunk_map.py",),
+    ),
+    # A partition given before the structure exists admitted at the gate (MEEP will build
+    # the whole cell from it, unhalved).
+    "partition_before_build_admitted": (
+        "    if structure is None:\n        return PARTITION_WITH_MIRRORS_REASON\n",
+        "    if structure is None:\n        return None  # mutation\n",
+        "lifted_division",
+        Path("meep_gpu/from_meep.py"),
+        ("meep_gpu/test_chunk_map.py",),
+    ),
+    # The gate's read of an existing structure skipped: one built unhalved admitted.
+    "partition_prebuilt_corners_ignored": (
+        "    if unfolded:\n        return f\"{PARTITION_WITH_MIRRORS_REASON} (",
+        "    if False:  # mutation\n        return f\"{PARTITION_WITH_MIRRORS_REASON} (",
+        "lifted_division",
+        Path("meep_gpu/from_meep.py"),
+        ("meep_gpu/test_chunk_map.py",),
+    ),
+    # The lift's backstop on MEEP's built grid removed.
+    "folded_grid_halved_backstop_removed": (
+        "    if unfolded:\n        raise MeepSimulationNotLiftable([\n"
+        "            f\"{PARTITION_WITH_MIRRORS_REASON} (",
+        "    if False:  # mutation\n        raise MeepSimulationNotLiftable([\n"
+        "            f\"{PARTITION_WITH_MIRRORS_REASON} (",
+        "lifted_division",
+        Path("meep_gpu/from_meep.py"),
+        ("meep_gpu/test_chunk_map.py",),
     ),
 }
 

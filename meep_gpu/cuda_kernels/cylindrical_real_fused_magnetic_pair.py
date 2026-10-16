@@ -1,44 +1,26 @@
 """The REAL-Dcyl hand-CUDA fused pair: ``step_B`` -> ``zero_metal_B`` -> ``update_H``.
 
-THE BOARD'S CELL: ``B_to_H (cuda_cylindrical/cylindrical, cuda_constitutive/
-ordinary)`` -- 3 seam-instances of demand, all 3 clearing the source seam, with
-``zero_metal_B`` live on ALL 3
-(``parity/meep_gpu/results/fusion_matrix_cuda_2026-09-01_certclose/``:
-``TestAdjointSolver.test_adjoint_solver_cyl_n2f_fields_{0,1}_0`` and
-``TestPMLCylindrical.test_pml_cyl_0_0_0``). Both halves are CERTIFIED singles
-(``cuda_cylindrical_real_2026-08-27``, the real constitutive's own record); this
-module is the weld and introduces no new arithmetic.
+THE CELL: ``B_to_H (cuda_cylindrical/cylindrical, cuda_constitutive/ordinary)``. Both halves
+are lifted from the texts of their singles -- ``cylindrical_kernels``' ``cyl_step_B_pml_real``
+and ``constitutive_kernels``' ``update_H_pml_real`` (its statement form,
+``own_cell_hoist.unhoisted_kernel_code``) -- and this module introduces no arithmetic: every
+edit is a register capture, a seam or a rename, listed in :data:`LIFT_EDITS`.
 
-THE ONE CYLINDRICAL SUBTLETY, AND IT IS THE MEASURED ONE: the certified Dcyl curl
-does NOT end at ``pml_apply``. The m = 0 axis tail
-(``stepping._cylindrical_axis_zero_B``:659-661) runs AFTER the recurrence and
-stores zero into Br on the axis row -- so a weld that captured its register at
-``pml_apply`` would hand ``update_H`` a pre-tail displacement on exactly the rows
-a Dcyl run cares most about. THE WELD FOLLOWS THE CERTIFIED STORE, NOT THE
-RECURRENCE: the axis tail is lifted with the register cleared BESIDE the store,
-the same discipline the complex Dcyl weld's |m| >= 2 tail measured and recorded
-(``cylindrical_fused_magnetic_pair.LIFT_EDITS``). ``zero_metal_B`` is then
-carried AFTER the tail, which is the driver's own order (the tail is part of
-``step_B``, the wall pass is a separate driver call at :3295).
+THE REGISTER FOLLOWS THE STORE. The m = 0 axis rule (``stepping._cylindrical_axis_zero_B``)
+stores +0 into Br on the axis row AFTER the recurrence, so the weld clears the register
+beside that store; ``zero_metal_B`` is then carried after it, the driver's order.
 
-THE PREFIX STAYS ON THE ARRAY PATH, exactly as in the certified single: the weld
-takes ``pfx`` as an operand pointer, resolved PER LAUNCH from the CURRENT Ep --
-a cached one would be a stale field one step later (the complex Dcyl plan's own
-rule). The B-side prefix is one row taller than the volume; the launch is sized
-from the target volume, never from the prefix.
+THE RADIAL SCAN IS THE CURL'S FIRST LAUNCH (``cylindrical_prefix``): it runs before this
+launch over the CURRENT Ep and hands the difference in as ``rad`` -- a cached one would be a
+stale field one step later. ONE DECODE of the chunk record serves both halves (DESIGN.md
+D10). The run's first ``update_H`` starts H from B (``stepping.separate_h_from_b``), so that
+launch re-steps ``update_H`` on the array path over the stored B (:func:`start_of_h`), as
+the Cartesian pairs do.
 
-NO FILLS ARE CARRIED, AND THE ABSENCE IS A REFUSAL RATHER THAN AN OMISSION:
-:func:`covers_cylindrical_real_fused_magnetic_pair` refuses every folded grid by
-name (the certified curl predicate refuses one already -- the fold's top-plane
-machinery "fires only on a FOLDED periodic axis, which the predicate refuses" --
-and the clause is restated here so the guarantee does not rest on a clause
-another module could widen). On an unfolded grid the two mirror fills do nothing
-at all, so ``REPLACES`` is honest without them.
-
-THE ALIASING RULE IS THE SIBLINGS': B is bound EXACTLY ONCE; the constitutive
-half has no source pointers and reads the registers.
-
-NOTHING HERE IS DISPATCH; :mod:`.fused_pairs` can plan it opt-in only.
+NO FILLS ARE CARRIED, BY REFUSAL: the predicate refuses every folded grid. B is bound EXACTLY
+ONCE; the constitutive half reads the registers. ``kms_x/y/z`` collide between the halves
+(half-integer for the B curl, integer for ``update_H``), so the constitutive group is
+``kms_int_*``.
 """
 
 from __future__ import annotations
@@ -59,7 +41,7 @@ if TYPE_CHECKING:
 # spliced from these modules' own strings -- and they are DEFENSIVE because both
 # import CuPy at module scope while the predicate (which touches neither) must run
 # on the census laptop.
-from . import own_cell_hoist
+from . import bounds_block, own_cell_hoist
 
 try:
     from . import constitutive_kernels, cylindrical_kernels
@@ -171,37 +153,31 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "__device__ __forceinline__ void pml_apply(",
      "became": "__device__ __forceinline__ float pml_apply_reg(",
      "why": "the constitutive half consumes the value in a register; the helper "
-            "names and returns the expression it already computed. The "
-            "expression, its parenthesisation and the store to f[idx] are "
-            "unchanged, so the global state it leaves is the certified one."},
+            "returns the value it already stored. Both forms, the guards and the "
+            "stores are unchanged, so the global state it leaves is the certified one."},
+    {"line": "    <the curl body's chunk-record block> + <update_H's>",
+     "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
+     "why": "one decode of the record for both halves (DESIGN.md D10); "
+            "bounds_block.strip_bounds_block refuses unless each is exactly the block "
+            "its body carries."},
     {"line": "        pml_apply(Bx, fu_Bx, idx, curl, ...);",
      "became": "        b_x = pml_apply_reg(Bx, fu_Bx, idx, curl, ...);",
-     "why": "capture the register; three lines, one per component, argument "
-            "lists untouched. Three 'float b_* = 0.0f;' declarations are hoisted "
-            "above the certified braced blocks."},
+     "why": "capture the register; three lines, one per component, argument lists "
+            "untouched. Three 'float b_* = 0.0f;' declarations are hoisted above the "
+            "braced blocks."},
     {"line": "    if (i == 0) Bx[idx] = 0.0f;",
      "became": "    if (i == 0) { b_x = 0.0f; Bx[idx] = 0.0f; }",
-     "why": "THE CYLINDRICAL SUBTLETY, measured on the complex Dcyl weld: the "
-            "certified curl does NOT end at pml_apply -- the m = 0 axis tail "
-            "(stepping._cylindrical_axis_zero_B:659-661) stores zero into Br on "
-            "the axis row AFTER the recurrence -- so the weld follows the "
-            "certified STORE, clearing the register beside it. A capture that "
-            "stopped at pml_apply would hand update_H a pre-tail displacement "
-            "on the axis row. The auxiliary is NOT touched, exactly as the "
-            "array path leaves it."},
-    {"line": "    constitutive_apply(Hx, f_w_Hx, idx, Bx[idx], kps_x[i], kms_x[i]);",
-     "became": "    constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i]);",
-     "why": "THE SEAM (Bx[idx] -> b_x) plus the sub-lattice rename: both halves "
-            "ship a vector spelled kms_a on DIFFERENT Yee sub-lattices -- "
-            "half-integer for the B curl, integer for the H constitutive -- and "
-            "letting one shadow the other is a half-cell error in the absorber "
-            "profile, not a compile failure."},
-    {"line": "        array[_face(axis, 0)] = 0   (stepping._zero_metal, :2206)",
+     "why": "the m = 0 axis rule (stepping._cylindrical_axis_zero_B) stores +0 into Br "
+            "on the axis row AFTER the recurrence, so the weld follows the STORE, "
+            "clearing the register beside it. The auxiliary is not touched."},
+    {"line": "    constitutive_apply(Hx, f_w_Hx, idx, Bx[idx], kps_x[i], kms_x[i], in_i_x);",
+     "became": "    constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i], in_i_x);",
+     "why": "THE SEAM (Bx[idx] -> b_x) plus the sub-lattice rename: both halves ship a "
+            "vector spelled kms_a on DIFFERENT Yee sub-lattices."},
+    {"line": "        array[_face(axis, 0)] = 0   (stepping._zero_metal)",
      "became": "    if (wall_x && i == 0) { b_x = 0.0f; Bx[idx] = 0.0f; }",
-     "why": "zero_metal_B carried on the registers, AFTER the certified axis "
-            "tail -- the driver's own order (the tail is part of step_B; the "
-            "wall pass is driver.py:3295). Same B diagonal, same stored cell 0, "
-            "same +0.0f; launch geometry re-spelled, arithmetic not."},
+     "why": "zero_metal_B carried on the registers, AFTER the axis rule -- the driver's "
+            "order. Same B diagonal, same stored cell 0, same +0.0f."},
 )
 
 __all__ = [
@@ -225,22 +201,20 @@ _BODY_ANCHOR = "\n) {\n"
 _DECODE_END = "    int i = idx / (ny * nz);\n"
 _PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
 _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
-_PML_APPLY_STORE = "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
+_PML_APPLY_STORE = "    f[idx] = value;\n"
 _PML_APPLY_STORE_REG = (
-    "    // THE ONE EDIT TO THIS HELPER: the right-hand side, its\n"
-    "    // parenthesisation and the store are the certified ones; the value is\n"
-    "    // additionally NAMED so the constitutive half can read it from a\n"
-    "    // register instead of reloading it from global memory.\n"
-    "    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
     "    f[idx] = value;\n"
+    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // are the certified ones; the value is additionally RETURNED so the\n"
+    "    // constitutive half can read it from a register instead of reloading it.\n"
     "    return value;\n")
 
 #: The certified m = 0 axis tail, and the register-following rewrite.
 _AXIS_TAIL = "    if (i == 0) Bx[idx] = 0.0f;\n"
 _AXIS_TAIL_REG = (
-    "    // stepping._cylindrical_axis_zero_B:659-661, THE CERTIFIED STORE\n"
-    "    // FOLLOWED: the register is cleared beside it so update_H reads the\n"
-    "    // post-tail value. The auxiliary is untouched, as on the array path.\n"
+    "    // stepping._cylindrical_axis_zero_B, THE CERTIFIED STORE FOLLOWED: the\n"
+    "    // register is cleared beside it so update_H reads the post-rule value. The\n"
+    "    // auxiliary is untouched, as on the array path.\n"
     "    if (i == 0) { b_x = 0.0f; Bx[idx] = 0.0f; }\n")
 
 _CARRIED: Tuple[str, ...] = ("x", "y", "z")
@@ -261,9 +235,9 @@ extern "C" __global__ void fused_magnetic_pair_pml_cyl_real(
     float* __restrict__ fu_Bx, float* __restrict__ fu_By, float* __restrict__ fu_Bz,
     const float* __restrict__ Ex, const float* __restrict__ Ey,
     const float* __restrict__ Ez,
-    // The wall-extended radial prefix of Ep, computed on the array path per
-    // launch (nx + 1 rows at the same (phi, z) stride).
-    const float* __restrict__ pfx,
+    // The radial difference of Ep's per-chunk sum, written by the scan launch
+    // before this one (cylindrical_prefix), shaped like the target.
+    const float* __restrict__ rad,
     float* __restrict__ Hx, float* __restrict__ Hy, float* __restrict__ Hz,
     float* __restrict__ f_w_Hx, float* __restrict__ f_w_Hy,
     float* __restrict__ f_w_Hz,
@@ -278,7 +252,10 @@ extern "C" __global__ void fused_magnetic_pair_pml_cyl_real(
     const float* __restrict__ kps_z, const float* __restrict__ kms_int_z,
     int bc_x, int bc_y, int bc_z,
     // zero_metal_B's walled-axis flags, from in_seam_coverage.zero_metal_axes.
-    int wall_x, int wall_y, int wall_z
+    int wall_x, int wall_y, int wall_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // which PML form, decoded once for both halves.
+    const int* __restrict__ cb
 ) {
 '''
 
@@ -347,6 +324,22 @@ def cylindrical_real_fused_magnetic_pair_prelude() -> str:
     return prelude + constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE
 
 
+#: The chunk-record entries each lifted body decodes, as ``(entries, presence)``: the B
+#: curl its half-integer lattice along each dsigu axis plus the presence word, update_H
+#: its integer lattice along each own axis (``bounds_block.curl_entries`` /
+#: ``constitutive_entries``).
+CURL_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.curl_entries(("Bx", "By", "Bz"))), (0, 1, 2))
+CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.constitutive_entries(("Hx", "Hy", "Hz"))), ())
+
+
+def union_bounds_block() -> str:
+    """The fused kernel's ONE chunk-record block: both bodies' entries, one decode."""
+    return bounds_block.bounds_block(CURL_BLOCK[0] + CONSTITUTIVE_BLOCK[0],
+                                     CURL_BLOCK[1] + CONSTITUTIVE_BLOCK[1])
+
+
 def certified_curl_body() -> str:
     """``cyl_step_B_pml_real``'s body, lifted, registers captured, TAIL FOLLOWED."""
     _certified_halves()
@@ -357,16 +350,18 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "the certified curl body no longer decodes i on its own line; the "
             "carried registers have nowhere to be declared")
+    body = bounds_block.strip_bounds_block(body, "_cyl_step_B_pml_real_kernel_code",
+                                           *CURL_BLOCK)
     head, tail = body.split(_DECODE_END, 1)
     body = "".join((
-        head, _DECODE_END,
-        "\n    // The three carried registers. Declared HERE because each\n"
+        head, _DECODE_END, "\n",
+        union_bounds_block(),
+        "    // The three carried registers. Declared HERE because each\n"
         "    // certified component below is a braced scope, and a value declared\n"
         "    // inside one does not outlive it.\n"
         "    float b_x = 0.0f;\n"
         "    float b_y = 0.0f;\n"
-        "    float b_z = 0.0f;\n"
-        "\n",
+        "    float b_z = 0.0f;\n",
         tail,
     ))
     for axis in _CARRIED:
@@ -423,6 +418,8 @@ def certified_constitutive_body() -> str:
         raise AssertionError(
             "the certified constitutive body no longer carries its decode "
             "prologue; the lift would redeclare the curl half's indices")
+    body = bounds_block.strip_bounds_block(body, "_update_H_pml_real_kernel_code",
+                                           *CONSTITUTIVE_BLOCK)
     body = body.split(_DECODE_END, 1)[1]
     for axis, coordinate in zip(_CARRIED, ("i", "j", "k")):
         source = f"B{axis}[idx]"
@@ -621,9 +618,9 @@ def cylindrical_real_fused_magnetic_pair_tables(pml: "PML") -> Dict[str, Dict[st
 
 def assert_disjoint_bindings(fields: "Fields",
                              tables: Dict[str, Dict[str, Any]],
-                             prefix: Any) -> int:
-    """Check the promise every ``__restrict__`` in the signature makes -- the
-    prefix included, which no sibling binds."""
+                             radial: Any) -> int:
+    """Check the promise every ``__restrict__`` in the signature makes -- the radial
+    difference included, which no Cartesian sibling binds."""
     bound: Dict[int, str] = {}
     collisions: List[str] = []
 
@@ -636,7 +633,7 @@ def assert_disjoint_bindings(fields: "Fields",
 
     for name in _FIELD_BINDINGS + _H_BINDINGS:
         visit(name, getattr(fields, name))
-    visit("pfx", prefix)
+    visit("rad", radial)
     for key in _CURL_TABLE_KEYS:
         visit(f"curl:{key}", tables["curl"][key])
     for key in _CONSTITUTIVE_TABLE_KEYS:
@@ -650,46 +647,73 @@ def assert_disjoint_bindings(fields: "Fields",
     return len(bound)
 
 
+def start_of_h(fields: "Fields", layer: Any) -> None:
+    """MEEP's start of H after the run's first fused magnetic launch, on the array path:
+    ``stepping.update_H`` over the B the launch stored (``separate_h_from_b``)."""
+    from ..stepping import update_H  # noqa: PLC0415 - NumPy/CuPy array path
+
+    update_H(fields, layer)
+
+
 def launch_cylindrical_real_fused_magnetic_pair(
-        fields: "Fields", tables: Dict[str, Dict[str, Any]], prefix: Any,
+        fields: "Fields", tables: Dict[str, Dict[str, Any]], radial: Any,
         boundary_codes: Sequence[Any], walls: Sequence[int], dtdx: float,
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
+        kernel: Optional[Any] = None, *, chunk_bounds: Any,
+        layer: Any = None) -> Dict[str, Any]:
     """All three of :data:`REPLACES` in ONE launch.
 
-    ``prefix`` is the CURRENT step's wall-extended radial prefix of Ep --
-    resolved per launch by the caller, never cached (a cached one is a stale
-    field one step later). The launch is sized from the TARGET volume, never
-    from the prefix, which is one row taller. ``kernel`` is the gate's door.
+    ``radial`` is the CURRENT step's radial difference of Ep (the scan launch's,
+    ``cylindrical_prefix.radial_difference``), resolved per launch by the caller and
+    shaped like the target. ``chunk_bounds`` is the run's chunk record on the device,
+    required. The run's first launch (``fields.h_separated`` False) starts H on the array
+    path (:func:`start_of_h`) with ``layer``, and refuses by name when handed none.
+    ``kernel`` is the gate's door.
     """
+    from .cylindrical_complex_kernels import chunk_record_argument  # noqa: PLC0415
+
+    cb = chunk_record_argument(chunk_bounds)
+    first = not bool(getattr(fields, "h_separated", True))
+    if first and layer is None:
+        raise RuntimeError(
+            "the run's first update_H starts H from B (stepping.separate_h_from_b) and "
+            "this fused magnetic launch was handed no layer to start it with")
     nx, ny, nz = (int(n) for n in fields.Bx.shape)
+    if tuple(int(n) for n in radial.shape) != (nx, ny, nz):
+        raise ValueError(f"the radial difference is {tuple(radial.shape)}, the target "
+                         f"{(nx, ny, nz)}")
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
     constitutive = tables["constitutive"]
     arguments = tuple(getattr(fields, name) for name in _FIELD_BINDINGS) + (
-        prefix,
+        radial,
     ) + tuple(getattr(fields, name) for name in _H_BINDINGS) + (
         np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx),
     ) + tuple(curl[key] for key in _CURL_TABLE_KEYS) + tuple(
         constitutive[key] for key in _CONSTITUTIVE_TABLE_KEYS
     ) + tuple(np.int32(code) for code in boundary_codes) + tuple(
-        np.int32(int(bool(walls[axis]))) for axis in range(3))
+        np.int32(int(bool(walls[axis]))) for axis in range(3)) + (cb,)
     (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), arguments)
+    if first:
+        start_of_h(fields, layer)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
-            "elements": nx * ny * nz, "replaces": REPLACES,
+            "elements": nx * ny * nz, "replaces": REPLACES, "h_started": first,
             "walls": tuple(int(bool(walls[axis])) for axis in range(3))}
 
 
 def run_cylindrical_real_fused_magnetic_pair(
         fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
-        sources: Any = None,
+        chunk_bounds: Any, sources: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
-        prefix: Any = None, kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """Gate on the predicate, resolve everything from the grid, launch once.
+        radial: Any = None, scan: Any = None,
+        kernel: Optional[Any] = None) -> Dict[str, Any]:
+    """Gate on the predicate, resolve everything from the grid, scan, launch once.
 
-    ``prefix`` may be handed in by a gate that already computed it (so the same
-    words go to both paths); otherwise it is computed here from the CURRENT Ey,
-    per launch, by the certified family's own helper.
+    ``radial`` may be handed in by a gate that already computed it (so the same words go
+    to both paths); otherwise the scan runs here over the CURRENT Ep, from ``scan``
+    (``cylindrical_prefix.radial_scan_device_tables``) when a plan holds one.
     """
+    from .cylindrical_prefix import radial_difference  # noqa: PLC0415
+
     covered, reason = covers_cylindrical_real_fused_magnetic_pair(
         fields, pml, grid, sources)
     if not covered:
@@ -697,12 +721,10 @@ def run_cylindrical_real_fused_magnetic_pair(
     _certified_halves()
     if tables is None:
         tables = cylindrical_real_fused_magnetic_pair_tables(pml)
-    if prefix is None:
-        from .cylindrical_prefix import cylindrical_prefix  # noqa: PLC0415
-        prefix = cylindrical_prefix(fields, "step_B",
-                                    scratch=getattr(fields, "scratch", None))
-    assert_disjoint_bindings(fields, tables, prefix)
+    if radial is None:
+        radial = radial_difference(fields, pml, "step_B", tables=scan,
+                                   scratch=getattr(fields, "scratch", None))
     codes = cylindrical_boundary_codes(tuple(real_pml_boundary_kinds(grid)))
     return launch_cylindrical_real_fused_magnetic_pair(
-        fields, tables, prefix, tuple(np.int32(code) for code in codes),
-        zero_metal_axes(grid), dtdx, kernel)
+        fields, tables, radial, tuple(np.int32(code) for code in codes),
+        zero_metal_axes(grid), dtdx, kernel, chunk_bounds=chunk_bounds, layer=pml)

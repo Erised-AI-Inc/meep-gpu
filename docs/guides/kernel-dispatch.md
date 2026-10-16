@@ -39,7 +39,7 @@ process, says that the variable does not apply and names
 **On an Apple GPU the array path is the host CPU.** A CUDA driver that falls
 back stays on the device, through CuPy. An Apple GPU driver that falls back,
 because no released arm covers its configuration or because
-<code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code> restricts the Metal kernels to the
+<code>MEEP_GPU_HARDWARE=certified</code> restricts the Metal kernels to the
 certified environment and this host is outside it, runs the whole step on the
 CPU. That is announced on stderr
 (<code>step path array on the host CPU; dispatch refused: ...</code>) and
@@ -85,10 +85,10 @@ worth knowing where that evidence stops.
   certified for the device and toolchain runs alone in place of one that is only
   supported. A device or toolchain outside the supported range is refused by name
   and the run takes the array path, unless
-  <code>MEEP_GPU_ALLOW_UNCERTIFIED=1</code>. A device whose compute capability
+  <code>MEEP_GPU_HARDWARE=any</code>. A device whose compute capability
   **cannot be read** is recorded as unknown and not refused, so such a host
   dispatches on an architecture nothing verified;
-  <code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code> refuses it, and restricts the kernels
+  <code>MEEP_GPU_HARDWARE=certified</code> refuses it, and restricts the kernels
   to certified devices and toolchains everywhere
   ([Certification on an NVIDIA GPU](#certification-on-an-nvidia-gpu)).
 - **Every Apple GPU supported, one environment certified.** The Metal kernels
@@ -97,14 +97,18 @@ worth knowing where that evidence stops.
   <code>applegpu_g13s</code> (Apple M1 Max), PyTorch 2.10.0, Metal frontend
   <code>metalfe-32023.850.10</code>, fast math off. On every other Apple GPU,
   PyTorch version and macOS build they run uncertified, and say so on stderr
-  and in the record. <code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code>
+  and in the record. <code>MEEP_GPU_HARDWARE=certified</code>
   restricts them to the certified environment
   ([Certification on an Apple GPU](#certification-on-an-apple-gpu)).
-- **Complex storage needs an evidence record the package does not ship.** The
-  complex families refuse by name without
-  <code>MEEP_GPU_COMPLEX_EXPANSION_PROBE</code>, so a default complex-field run
-  takes the array path for those slots. Runs with a Bloch wavevector, a
-  cylindrical <code>m</code> other than 0 or a complex β store complex fields.
+- **A chunk division that is not separable takes the array path.** MEEP picks
+  each cell's PML form per structure chunk, and every kernel table reads the
+  division as at most two runs of rows per axis and Yee lattice. A lifted division
+  no table can describe that way (a forced <code>num_chunks</code> cutting a PML
+  chunk over part of the cell, which the lift announces with a line beginning
+  <code>meep_gpu: the lifted chunk division is not separable along</code>) is
+  refused by name. The dispatch record says why: on an Apple GPU in its
+  <code>chunk_division</code> block, and on an NVIDIA GPU in each slot's reason and
+  in <code>tables.cuda.chunk_division</code>.
 - **A dispatched plan is not always the fastest one available.** On the NVIDIA
   tables fused dispatch beats the array path at the measured 2-D sizes, but it
   loses to the certified single-arm kernels below a crossover between 1.0 and
@@ -140,13 +144,13 @@ A run that dispatches also pays for it:
 > **Note: Certification status of this release**
 >
 > Each kernel family ships with a ledger entry that binds its certification
-> to the digests of the source files that were certified. The certification
-> round ran on the files of 0.9.2, every entry is bound to them, and the record
-> that backs the on-by-default setting was cut from a go/no-go on them. Two
-> tests are pending: those of the fused-product timing records, which no timing
-> campaign on these files has re-cut. The counts on this page describe the dated
-> rounds they name. See
-> [Running the certification harness](../development/certification.md).
+> to the digests of the source files that were certified. The 1.0
+> certification round bound the ledgers on this release's bytes, and re-cut
+> the record that backs the on-by-default setting from its go/no-go, which
+> read GO. The ledger-contract tests that still fail are declared in
+> <code>tools/ci/pending_certification.txt</code>, each with the step that
+> removes it. The counts on this page describe the dated rounds they name. See
+> [Running the certification harness](../development/certification.md#certification-status-of-this-release).
 
 ## Which kernel table can serve you
 
@@ -183,7 +187,7 @@ covers four kinds of host:
 
 - an environment with CuPy and no Triton;
 - any environment whose Triton is outside 3.1 (<code>&gt;=3.1,&lt;3.2</code>), which
-  is refused by name unless <code>MEEP_GPU_ALLOW_UNCERTIFIED=1</code>;
+  is refused by name unless <code>MEEP_GPU_HARDWARE=any</code>;
 - a device on which the hand-written CUDA table is certified and the Triton
   table, or its Triton version, is only supported: the certified table runs
   alone ([Certification on an NVIDIA GPU](#certification-on-an-nvidia-gpu));
@@ -197,8 +201,9 @@ electric update beside its own curl.
 **That composition has not been timed.** On one device it has run the
 installation check and one example, with compiled kernels serving and results
 identical to the array path. The route campaign's leg with Triton withheld from
-the process ran on 2026-09-29: 19 of 39 cases byte-identical to the array path
-with only CUDA kernels launched (18 complex cases skipped, 2 with no fused arm).
+the process (`cuda_alone`) ran in the 1.0 certification round on 2026-10-15 and
+released: 31 of 39 cases dispatched on CUDA kernels alone and byte-identical to the
+array path, 6 whose refusal the leg requires and 2 with no fused arm.
 Every CUDA timing published so far was measured on a host with Triton
 present, including the CUDA column of [Will it help?](will-it-help.md), where the
 hand-written CUDA table served every dispatched sub-step of the timed case on the
@@ -213,16 +218,16 @@ These are the names that decide what a run dispatches and how it is recorded.
 | <code>MEEP_GPU_DISPATCH</code> | The enable, read by drivers built with <code>prefer_gpu=True</code>. Unset takes the package default, which is enabled. <code>1</code> enables and <code>0</code> disables. Any other value, including an empty one, <code>true</code>, <code>false</code> or <code>off</code>, is refused by name and the run takes the array path. A <code>prefer_gpu=False</code> driver ignores it: no value makes the reference dispatch, and a value other than <code>0</code> prints one line per process saying so. |
 | <code>MEEP_GPU_KERNEL_TABLE</code> | Names one table outright. It selects *within* the candidate set the hardware allows; a table this host cannot run is refused by name, never silently swapped for another. |
 | <code>MEEP_GPU_BACKEND_PREFERENCE</code> | Orders the two tables a CuPy engine has. <code>cuda</code> puts the hand-written table first. A value naming a non-candidate is refused by name. |
-| <code>MEEP_GPU_ALLOW_UNCERTIFIED</code> | Unset runs the kernels on a supported identity outside the certified one, labelled uncertified: on the NVIDIA tables a compute capability from 7.0 to 9.0 and a Triton 3.1 release, except that a table certified for the device and toolchain runs alone in place of one that is only supported; on the Metal table any environment. <code>0</code> restricts every table to certified identities: anything else, an identity that cannot be judged included, is refused by name and the run takes the array path (on an Apple GPU, the host CPU). <code>1</code> also runs an NVIDIA identity outside the supported range, recorded <code>supported: False</code>, and composes a supported, uncertified NVIDIA table beside a certified one; on the Metal table it behaves as unset ([Certification on an NVIDIA GPU](#certification-on-an-nvidia-gpu), [Certification on an Apple GPU](#certification-on-an-apple-gpu)). Any other value is refused by name and the run takes the array path, on every table. A run on an uncertified identity carries no certification: it prints one line per process naming what is certified, and its record carries <code>certified: False</code> with the identity read. |
+| <code>MEEP_GPU_HARDWARE</code> | Which hardware the kernels may run on, by value. <code>supported</code> (the default, when unset) runs the kernels on a supported identity outside the certified one, labelled uncertified: on the NVIDIA tables a compute capability from 7.0 to 9.0 and a Triton 3.1 release, except that a table certified for the device and toolchain runs alone in place of one that is only supported; on the Metal table any environment. <code>certified</code> restricts every table to certified identities: anything else, an identity that cannot be judged included, is refused by name and the run takes the array path (on an Apple GPU, the host CPU). <code>any</code> also runs an NVIDIA identity outside the supported range, recorded <code>supported: False</code>, and composes a supported, uncertified NVIDIA table beside a certified one; on the Metal table it behaves as <code>supported</code> ([Certification on an NVIDIA GPU](#certification-on-an-nvidia-gpu), [Certification on an Apple GPU](#certification-on-an-apple-gpu)). Any other value, exact match (<code>1</code>, <code>0</code>, <code>Any</code>, an empty string), is refused by name and the run takes the array path, on every table. A run on an uncertified identity carries no certification: it prints one line per process naming what is certified, and its record carries <code>certified: False</code> with the identity read. |
+| <code>MEEP_GPU_ALLOW_UNCERTIFIED</code> | Retired; replaced by <code>MEEP_GPU_HARDWARE</code>. Set to anything, it is refused by name and the run takes the array path, on every table; the refusal names the value that does what it did (<code>0</code> is <code>certified</code>, <code>1</code> is <code>any</code>, unset is <code>supported</code>). |
 | <code>MEEP_GPU_FUSED</code> | <code>0</code> forces the array path everywhere, regardless of everything else. <code>1</code> or unset leaves the decision to <code>MEEP_GPU_DISPATCH</code>. A veto only: no value of it can enable dispatch. Any other value, including an empty one, <code>false</code> or <code>off</code>, is refused by name and the run takes the array path. On a <code>prefer_gpu=True</code> driver it has the same effect as <code>MEEP_GPU_DISPATCH=0</code>; on a <code>prefer_gpu=False</code> driver it decides nothing, and the driver's record reports the value it was set to beside the reference reason. |
 | <code>MEEP_GPU_FUSE_ARMS</code> | <code>0</code> admits no fused arm and leaves the rest of dispatch running — the way to run the separate sub-step kernels without the fused pairs, for bisecting a fusion difference or counting the launches fusion saves. It also accepts a comma-separated list of arm labels; the <code>0</code> veto wins wherever it appears. |
 | <code>MEEP_GPU_DISPATCH_LOG</code> | A path. One JSON object is appended per configuration freeze, so a long run's dispatch state is readable with <code>tail</code> on the machine that owns the job. Unset keeps only the last record in memory, served by <code>driver.fast_path_report()</code>. |
 | <code>MEEP_GPU_WARM</code> | <code>0</code> skips the plan-time warm pass. It changes *which* slots dispatch, not only when they compile: with the pass off, a slot whose kernel will not compile is no longer unfilled in advance, so the dispatch set is wider and a compile failure lands mid-step. A run made with it off is not the same run made with it on. |
 | <code>MEEP_GPU_SUBNORMAL_POLICY</code> | Requests <code>flush</code>, <code>keep</code>, or <code>match_meep</code>. See below. |
 | <code>MEEP_GPU_SUBNORMAL_INSTALL</code> | <code>0</code> stops dispatch *installing* the policy so a caller can own that decision. It does not relax the rule: with the install off, dispatch refuses unless the certified policy is already installed on all three executors. |
-| <code>PYTORCH_MPS_FAST_MATH</code> | PyTorch's switch, not this package's; the package reads it and never sets it. <code>1</code> compiles the Metal kernels in fast-math mode, which no Metal certification ran. Unset or <code>0</code> is certified, and any other value is outside the certified environment: by default the run carries <code>certified: False</code> and the NOTE line, and under <code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code> it is refused by name. |
+| <code>PYTORCH_MPS_FAST_MATH</code> | PyTorch's switch, not this package's; the package reads it and never sets it. <code>1</code> compiles the Metal kernels in fast-math mode, which no Metal certification ran. Unset or <code>0</code> is certified, and any other value is outside the certified environment: by default the run carries <code>certified: False</code> and the NOTE line, and under <code>MEEP_GPU_HARDWARE=certified</code> it is refused by name. |
 | <code>MEEP_GPU_METAL_RESIDENCY</code> | The Metal table's residency mode. Unset is <code>held</code> (also accepted by name): the device keeps the field volumes between launches. <code>shipped</code> selects the bracket that copies every device mirror in both directions around each launch; it is slower than the array path at every size measured and is kept for comparison only. Any other spelling is refused by name and the run takes the array path. See [the Metal section](#the-metal-table-and-held-residency) below. |
-| <code>MEEP_GPU_COMPLEX_EXPANSION_PROBE</code> | A path to the complex families' evidence record. Four of the nine certified families refuse without it; the switch is named in the dispatch record so that refusal is visible rather than showing up as families silently missing from a coverage count. |
 | <code>CUPY_CACHE_DIR</code> | Not a dispatch switch, but load-bearing under the <code>keep</code> policy: the directory must carry the token <code>ftz_stripped</code> in its path. CuPy computes its cache key above the seam that policy installs at, so a shared directory either gets poisoned with stripped binaries or silently serves flushed ones. Dispatch points the variable at such a directory itself and records the move; a caller that installs the policy by hand supplies one. |
 
 ## Reading what you actually got
@@ -274,6 +279,32 @@ the host rather than by a hardcoded choice. What each policy does to each
 executor is in
 [the floating-point contract](../design/floating-point.md).
 
+**The host processor reaches both policies without MEEP on x86-64 Linux and on a
+Mac.** With MEEP imported, its own <code>set_zero_subnormals</code> drives the host,
+as MEEP does. Without MEEP, the package drives the thread that steps the array path
+itself: on x86-64 Linux with glibc it sets or clears the processor's flush-to-zero
+and denormals-are-zero bits, the same two bits MEEP's switch sets; on a Mac it
+installs Darwin's flush environment. Install the policy on the thread that will step
+the simulation; a thread that was already running keeps its own state. On any other
+system without MEEP, <code>flush</code> is refused by name, and <code>keep</code> is
+the processor's default.
+
+**A CuPy kernel your own code compiled keeps the policy it was compiled under.**
+Installing <code>keep</code>, whether dispatch does it at the configuration freeze
+or you call <code>install_subnormal_policy</code>, drops every compiled CuPy kernel
+the package can reach, so the array path's kernels are rebuilt under the policy.
+A <code>RawKernel</code> that your code compiled earlier in the same process is out
+of reach: CuPy holds its compiled kernel in a private attribute, so it keeps the
+policy it was compiled under, CuPy's own flushing, for the life of the process.
+The install does not refuse in that case. It records how many compiled CuPy kernels
+are still alive after the drop, in the stamp it returns, as
+<code>executors["cupy"]["kernel_memo"]["live_compiled_kernels_after_drop"]</code>.
+A nonzero count does not by itself mean a kernel of yours: the package's own kernels
+from an earlier install are counted too, and they are never served under another
+policy. The remedy is to install the policy before your own CuPy work: call
+<code>install_subnormal_policy</code> with the policy dispatch installs on this host
+(<code>keep</code> on an NVIDIA host) before your code compiles its first CuPy kernel.
+
 ## Coverage: what fraction of the fusion surface dispatches
 
 The unit is a **seam-instance**: one simulation of the corpus at one of the four
@@ -281,13 +312,21 @@ boundaries between consecutive sub-steps in the driver's timestep. The corpus is
 the 194 simulations accepted from MEEP's own example and test scripts. Not every
 simulation reaches every boundary, so the denominator is not 194 x 4: it is 194
 at each of B->H, D->E and H->D, plus the 15 that carry a susceptibility at the
-E->P chain seam, giving **597** seam-instances. Boards cut 2026-09-25:
+E->P chain seam, giving **597** seam-instances. Boards cut 2026-10-15 by the 1.0
+certification round, on the release's bytes:
 
-| Kernel table | Reachable in dispatch, with the complex-storage evidence record | Reachable in dispatch without it (what a default install has) | Denominator |
-|---|---:|---:|---:|
-| Triton | 334 | 244 | 597 |
-| Hand-written CUDA | 352 | 258 | 597 |
-| Metal | 327 | 245 | 597 |
+| Kernel table | Reachable in dispatch | Denominator |
+|---|---:|---:|
+| Triton | 334 | 597 |
+| Hand-written CUDA | 352 | 597 |
+| Metal | 327 | 597 |
+
+These are what an installed package reaches: no evidence record outside the package is
+needed. The complex families dispatch by default since the complex-multiply expansion
+licence was deleted in the 1.0 series (`CHANGELOG.md`, "The complex-multiply expansion
+licence is deleted, and the complex families dispatch by default"), so the 0.9 boards'
+second column, the figure without the complex-storage evidence record, has no 1.0
+counterpart.
 
 Read the qualifiers the boards state about themselves, in their own
 <code>dispatch_agreement</code> block (the boards are not published with this
@@ -296,7 +335,7 @@ package):
 - <code>is_an_upper_bound: true</code>. The number is what dispatch can reach,
   derived from the release tables and the parse tree, not a count of runs served.
 - It is a **different number** from the board's own count of seam-instances a
-  fused product exists for at all — 530 (Triton), 532 (CUDA), 531 (Metal) of the
+  fused product exists for at all — 537 (Triton), 538 (CUDA), 507 (Metal) of the
   same 597. The gap between the two is the point of publishing them separately.
 - The CUDA figure is conditioned on <code>MEEP_GPU_BACKEND_PREFERENCE=cuda</code>
   with Triton present to fill that table's refusals. Under the shipped precedence
@@ -309,9 +348,8 @@ package):
   are out of reach on every table.
 
 These are counts over MEEP's tutorial and test scripts. They are not a fraction
-of MEEP's features, and they are not a speed. The Metal and hand-written CUDA
-boards were re-cut on the files of 0.9.2 and read the same figures; the Triton
-board is the cut of 2026-09-25.
+of MEEP's features, and they are not a speed. The 1.0 round cut all three from its
+own censuses of the corpus and its own gate runs.
 
 The released arm tables behind those figures hold 30 arms over 64 arm-case rows
 (Triton), 23 over 68 (hand-written CUDA), and 29 over 72 (Metal).
@@ -330,19 +368,19 @@ throughput claim:
 - **Per-family device gates** certify the arithmetic of each family under both
   subnormal policies.
 
-| Route campaign | Cases byte-identical, without the complex-storage evidence record (what ships) | With it | Date |
+| Route campaign | Legs released | Cases dispatched and byte-identical, on each dispatch leg | Date |
 |---|---|---|---|
-| Triton | 20 of 37; the other 17 are complex cases, skipped and not compared | 37 of 37 | 2026-09-29 |
-| Hand-written CUDA | 19 of 39; 18 are complex cases, skipped and not compared, and 2 have no fused arm | 37 of 39; 2 have no fused arm | 2026-09-29 |
-| Metal | 24 of 42; the other 18 are complex cases, skipped and not compared | 42 of 42 | 2026-09-29 |
+| Triton | 3 of 3 (`shipped`, `harness_keep`, `flush`) | 37 of 37 | 2026-10-15 |
+| Hand-written CUDA | 5 of 5 (`cuda_shipped`, `cuda_harness_keep`, `cuda_flush`, `cuda_default_precedence`, `cuda_alone`) | 37 of 39 on the first four; the other 2 have no fused arm | 2026-10-15 |
+| Metal, residency held | 4 of 4 (`band_witness`, `harness_keep`, `shipped`, `harness_flush`) | 42 of 44 on `shipped` and `harness_flush`; the other 2 are engine smoke cases | 2026-10-15 |
 
-All three ran on the code of 0.9.0, and these counts are as of 0.9.0
-([Dispatch evidence of 0.9.0](../development/certification.md#dispatch-evidence-on-the-published-code-2026-09-29)).
-On the files of 0.9.2 the route campaigns ran again, in the rounds stamped
-2026-10-05, and released
-(Triton 4 of 4 legs, hand-written CUDA its 5 required legs and the leg with Triton
-withheld, Metal 5 of 5 legs)
+All three are the 1.0 certification round's, on the frozen commit of this release's
+bytes, as shipped: the complex cases dispatch with no evidence record, and the flush
+legs dispatch under `flush` on every arm's own flush evidence
 ([Certification status](../development/certification.md#certification-status-of-this-release)).
+`cuda_alone` is the leg with Triton withheld from the process: 31 of 39 cases dispatched
+on CUDA kernels alone, 6 read `PASS-REFUSAL-STANDS` (a refusal the leg requires) and 2
+have no fused arm.
 
 The largest route case is 110,592 cells. The timing ladders add a check at
 size: 16 of 16 rows on each of the two NVIDIA ladders (2026-09-22 and
@@ -366,7 +404,9 @@ fusing is reported as coverage.
 The measurement was made on 2026-09-21 on one NVIDIA host: 109 route cases
 attempted, 61 timed cleanly, 36 of those carrying a fusion number whose control
 ran the same kernel table. Monitors are detached and the window is the step
-loop.
+loop, so every figure below is per step, not end to end. It was made on earlier
+bytes than this release's: 1.0 ships the 2026-09-21 dispatch-preference records,
+and the 1.0 timing (CERT-8) follows in a documentation update after the release.
 
 **Against the certified single arms the fused products replace** — the
 comparison that measures fusing — the median is **0.52x over 36 cases**, ahead on
@@ -388,9 +428,7 @@ sweeps, two on each NVIDIA table. At 2,400,000 cells it reads 1.027x on both
 hand-written CUDA sweeps and 1.067x and 1.069x on the Triton sweeps. A one-pair
 plan on a clean seam alternates around its single arms, ahead at 3 of 4 swept
 sizes (1.055x, 1.048x, 0.975x and 1.001x at 24,000, 1,014,000, 2,400,000 and
-5,400,000 cells). These figures were measured on an earlier deposit-repair route
-and have not been re-measured on 0.9.2 (CHANGELOG, 0.9.2, "Pending:
-fused-product timing").
+5,400,000 cells).
 
 Where the fixed cost comes from: a fused pair that owns the seam a source is
 injected on is bracketed by a repair that saves the affected cells before the
@@ -417,26 +455,26 @@ certified list has been run. A device or Triton version is **certified** when th
 table's certification records hold a live run on it: today compute capability
 8.6 and Triton 3.1.0 (one RTX A6000).
 
-What each value of <code>MEEP_GPU_ALLOW_UNCERTIFIED</code> does with each kind of
+What each value of <code>MEEP_GPU_HARDWARE</code> does with each kind of
 identity:
 
 | Value | Certified | Supported, not certified | Outside the supported range (read) | Could not be read |
 |---|---|---|---|---|
-| unset | runs, <code>certified: True</code> | runs, <code>certified: False</code>, one NOTE line; refused by name when another candidate table is certified for this device and toolchain | refused by name; the refusal names <code>1</code> | runs, <code>certified: None</code> |
-| <code>1</code> | runs | runs, beside a certified table too | runs, recorded <code>supported: False</code>, one NOTE line | runs, <code>certified: None</code> |
-| <code>0</code> | runs | refused by name | refused by name | refused by name |
+| <code>certified</code> | runs | refused by name | refused by name | refused by name |
+| <code>supported</code> (unset) | runs, <code>certified: True</code> | runs, <code>certified: False</code>, one NOTE line; refused by name when another candidate table is certified for this device and toolchain | refused by name; the refusal names <code>any</code> | runs, <code>certified: None</code> |
+| <code>any</code> | runs | runs, beside a certified table too | runs, recorded <code>supported: False</code>, one NOTE line | runs, <code>certified: None</code> |
 
 **A certified table outranks a supported one.** Where one NVIDIA table is
 certified for the device and toolchain and the other is only supported, the
 default runs the certified table alone, and the run is certified; the other is
 refused by name, for example
 
-    the triton table is supported but not certified here (GPU compute capability 9.0), and the cuda table is certified for this device and toolchain; set MEEP_GPU_ALLOW_UNCERTIFIED=1 to compose it too
+    the triton table is supported but not certified here (GPU compute capability 9.0), and the cuda table is certified for this device and toolchain; set MEEP_GPU_HARDWARE=any to compose it too
 
 so the default never makes such a host less certified than the certified table
 alone. Such a host may serve fewer slots than the two tables merged would.
 <code>MEEP_GPU_BACKEND_PREFERENCE</code> naming the refused table is refused by
-name, with that reason appended, unless <code>MEEP_GPU_ALLOW_UNCERTIFIED=1</code>.
+name, with that reason appended, unless <code>MEEP_GPU_HARDWARE=any</code>.
 <code>MEEP_GPU_KERNEL_TABLE</code> naming one table leaves the other unconsulted,
 so the named table runs, uncertified if it is not certified.
 
@@ -446,17 +484,17 @@ so the named table runs, uncertified if it is not certified.
 tables that served. One line on stderr, once per process, names what is not
 certified:
 
-    meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU compute capability 8.9 (certified: 8.6). They were dispatched because this NVIDIA GPU and toolchain are supported but not certified bit-identical (the supported range is compute capability 7.0 to 9.0, with Triton >=3.1,<3.2 or with the NVRTC of either CuPy build, CUDA 11.8 for cupy-cuda11x or the host's CUDA 12 for cupy-cuda12x), and MEEP_GPU_ALLOW_UNCERTIFIED=0 would restrict the kernels to certified ones; the gates with no run on this GPU are counted in the dispatch record under uncertified.served[], which names the first five in welds_without_a_live_run_here; compare the results with a prefer_gpu=False run of the same simulation before relying on them
+    meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU compute capability 8.9 (certified: 8.6). They were dispatched because this NVIDIA GPU and toolchain are supported but not certified bit-identical (the supported range is compute capability 7.0 to 9.0, with Triton >=3.1,<3.2 or with the NVRTC of either CuPy build, CUDA 11.8 for cupy-cuda11x or the host's CUDA 12 for cupy-cuda12x), and MEEP_GPU_HARDWARE=certified would restrict the kernels to certified ones; the gates with no run on this GPU are counted in the dispatch record under uncertified.served[], which names the first five in welds_without_a_live_run_here; compare the results with a prefer_gpu=False run of the same simulation before relying on them
 
 The reason names what was judged: <code>this NVIDIA GPU and toolchain are</code>
 where the GPU and the Triton version beside it are both supported,
 <code>this NVIDIA GPU is</code> where no supported toolchain was judged with it (the
 hand-CUDA table reads no toolchain version), and <code>this Triton version is</code>
-where only the Triton version is uncertified. Under <code>1</code>, an identity
+where only the Triton version is uncertified. Under <code>any</code>, an identity
 outside the supported range gives as the reason
-<code>MEEP_GPU_ALLOW_UNCERTIFIED=1, which also runs this NVIDIA GPU outside the
-supported range</code> (or <code>this Triton version</code>). A refusal under <code>0</code> ends
-<code>MEEP_GPU_ALLOW_UNCERTIFIED=0 restricts the NVIDIA kernels to certified
+<code>MEEP_GPU_HARDWARE=any, which also runs this NVIDIA GPU outside the
+supported range</code> (or <code>this Triton version</code>). A refusal under <code>certified</code> ends
+<code>MEEP_GPU_HARDWARE=certified restricts the NVIDIA kernels to certified
 devices and toolchains</code>.
 
 **The record carries the verdicts.** The NVIDIA half of
@@ -466,10 +504,13 @@ devices and toolchains</code>.
 compute capability was not read), <code>device_certified</code> and
 <code>device_supported</code> (the Triton table's answers),
 <code>triton_certified</code> and <code>triton_supported</code>,
-<code>supported_ranges</code> and <code>certified_only</code>. The
-<code>uncertified</code> block holds <code>allowed</code> (a supported, uncertified
-identity may run: unset and <code>1</code>), <code>unsupported_allowed</code>
-(<code>1</code>), <code>admitted</code> and <code>served</code> (each identity
+<code>supported_ranges</code> and <code>certified_only</code> (the scope is
+<code>certified</code>). The <code>uncertified</code> block holds
+<code>variable</code> and <code>value</code> (<code>MEEP_GPU_HARDWARE</code> and its
+value as set, <code>None</code> when unset), <code>allowed</code> (a supported,
+uncertified identity may run: <code>supported</code> and <code>any</code>),
+<code>unsupported_allowed</code> (<code>any</code>), <code>admitted</code> and
+<code>served</code> (each identity
 admitted uncertified: table, what was read, what is certified,
 <code>supported</code>, <code>because</code> and, for a compute capability,
 <code>welds_without_a_live_run_here</code>), and <code>dropped</code> (an identity
@@ -521,26 +562,26 @@ each fact that is not certified under <code>uncertified["served"]</code>, with
 the value read, the certified value and <code>because</code>, why it ran. One
 line on stderr, once per process, names them:
 
-    meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU architecture applegpu_g15p (certified: applegpu_g13s). They were dispatched because this Apple GPU is supported, and MEEP_GPU_ALLOW_UNCERTIFIED=0 would restrict the Metal kernels to certified environments; compare the results with a prefer_gpu=False run of the same simulation before relying on them
+    meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: GPU architecture applegpu_g15p (certified: applegpu_g13s). They were dispatched because this Apple GPU is supported, and MEEP_GPU_HARDWARE=certified would restrict the Metal kernels to certified environments; compare the results with a prefer_gpu=False run of the same simulation before relying on them
 
 The reason is about the GPU, whichever fact is not certified: an uncertified
 PyTorch on the certified M1 Max gives the same <code>this Apple GPU is
 supported</code>. On a GPU that is not Apple's, and on one whose architecture and
 name could not be read, the reason is instead <code>the Metal table runs on
-environments outside the certified set unless MEEP_GPU_ALLOW_UNCERTIFIED=0</code>.
+environments outside the certified set unless MEEP_GPU_HARDWARE=certified</code>.
 
 A fact that is not judged runs too: when no fact is uncertified, the record
 reads <code>certified: None</code> and no NOTE line is printed. Compare an
 uncertified run with a <code>prefer_gpu=False</code> run of the same simulation
 before relying on it.
 
-**<code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code> restricts the Metal kernels to
+**<code>MEEP_GPU_HARDWARE=certified</code> restricts the Metal kernels to
 certified environments.** Every fact must then be certified. One that is not
 certified, or that is not judged, is refused by name, and the whole run takes the
 array path on the host CPU. The refusal names the fact, for example:
 
-    GPU architecture applegpu_g15p is not the one every Metal weld this table cites ran on (certified: ['applegpu_g13s']); MEEP_GPU_ALLOW_UNCERTIFIED=0 restricts the Metal kernels to certified environments
-    PYTORCH_MPS_FAST_MATH=1 compiles the Metal kernels in fast-math mode, which no Metal weld ran; MEEP_GPU_ALLOW_UNCERTIFIED=0 restricts the Metal kernels to certified environments
+    GPU architecture applegpu_g15p is not the one every Metal weld this table cites ran on (certified: ['applegpu_g13s']); MEEP_GPU_HARDWARE=certified restricts the Metal kernels to certified environments
+    PYTORCH_MPS_FAST_MATH=1 compiles the Metal kernels in fast-math mode, which no Metal weld ran; MEEP_GPU_HARDWARE=certified restricts the Metal kernels to certified environments
 
 A refusal of a fact that cannot be judged ends "..., and an environment that
 cannot be judged is not one". <code>1</code> behaves as unset on the Metal
@@ -582,7 +623,7 @@ capability), <code>torch_certified</code>, <code>frontend_certified</code>,
 PyTorch and Metal frontend the cited welds' live run records name, with how many
 welds have such a run) and
 <code>certified_only</code> (<code>True</code> under
-<code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code>). The three
+<code>MEEP_GPU_HARDWARE=certified</code>). The three
 <code>*_certified</code> verdicts for the GPU, PyTorch and the frontend read
 <code>True</code>, <code>False</code>, or <code>None</code> for not judged.
 
@@ -597,18 +638,25 @@ field volumes between launches, and the host reaches them only through the
 package's own paths — a read barrier on the field attributes, and sparse
 transport for the array-path passes that touch a held volume (source injection,
 the metallic wall clears, the symmetry and far-ghost fills, the trailing repair).
-This default is certified on the files of 0.9.2 on the Apple M1 Max: the Metal
-device gates, the Metal route campaign with residency held, the re-cut of the
-Metal dispatch record and the coverage board ran on them.
+The 1.0 certification round certified this default on the release's bytes: the
+Metal device gates (62 of 62 units hold), the Metal route campaign under held
+residency (4 of 4 legs released, every leg-case held), the Metal dispatch record
+re-cut from that campaign, and the coverage board. One of the route gate's
+residency controls cannot bite under a hold, and the evidence for the held seam is
+another control and byte identity
+([The Metal route campaign](../development/certification.md#the-metal-route-campaign)).
+The timings below were measured on earlier bytes than this release's; the 1.0
+timing (CERT-8) follows in a documentation update after the release.
 
 Which path is faster depends on the grid, so choose deliberately:
 
 - **Large 3-D grids: keep the default.** On one Apple M1 Max, the 3-D PML case
   at 7,077,888 cells with one flux monitor attached reads 1,141.9 Mcell-steps/s
   under held dispatch against 34.3 on the array path, bit-identical (measured
-  2026-09-25 with <code>held</code> set by name, before it became the default).
-  No comparison with MEEP on the identical problem has been made on Apple
-  hardware ([Will it help?](will-it-help.md)).
+  2026-09-25 with <code>held</code> set by name, before it became the default; the
+  row passed that ladder's 5 % spread gate). No comparison with MEEP on the identical
+  problem on Apple hardware has produced a figure of record
+  ([Will it help?](will-it-help.md)).
 - **Small grids: lift with <code>prefer_gpu=False</code>, or set
   <code>MEEP_GPU_DISPATCH=0</code>.** Both step the same array path on the
   host CPU. At 3,600 cells, Ez after 200 steps was bit-identical between the
@@ -642,7 +690,10 @@ polarization state still carries a guard from an earlier hold. A configuration
 that fails any of them is refused to the array path, never to
 <code>shipped</code>, and <code>fast_path_report()</code> names the reason.
 Replayed over the records of the Metal route campaign of 2026-09-25, 0 of its 42
-cases would be refused this way.
+cases would be refused this way. In the 1.0 round's direct corpus check on the
+Metal table, 2 of 192 rows were (two `test_special_kz` rows whose composition leaves
+`update_H` on the array path); both stepped on the array path and held against the
+Mac reference MEEP.
 
 **The driver's own mutators work mid-run.** <code>set_field</code>,
 <code>set_epsilon</code> and its component-resolved and smoothed forms,

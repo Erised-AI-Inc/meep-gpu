@@ -21,7 +21,7 @@ THE QUESTION, in three parts, each measured separately:
    * ``bfast_off`` -- the term skipped entirely (``grid.bfast_active`` False, which
      is the only switch ``stepping`` reads at :364/:446);
    * ``k_zero`` -- ``bfast_scaled_k`` forced to (0,0,0) with the term STILL taken,
-     so ``total`` is exactly zero and only the ``-2*F_prev`` half survives.
+     so the sum ``S`` is exactly zero and only the ``- F_prev`` half survives.
    The reference must differ from BOTH. The second control is what makes the k
    assignment load-bearing rather than the recurrence alone: a fixture that
    differed from ``bfast_off`` but not from ``k_zero`` would be measuring the IIR
@@ -38,14 +38,21 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
 ----------------------------------------------------------------
 * ``oracle_moved`` over field, auxiliary AND state.
 * ``bfast_term_is_live`` -- the two control runs above.
-* ``state_starts_nonzero`` -- an ``f_bfast`` seeded to zero makes ``advance`` equal
-  ``total`` at the first launch, which hides the ``2.0f * bprev`` term entirely.
+* ``state_starts_nonzero`` -- an ``f_bfast`` seeded to zero makes ``S - F_prev``
+  equal ``S`` at the first launch, which hides the state's own term entirely.
   Measured per case rather than assumed from the seeding code.
 * ``absorber_is_not_the_identity``.
-* The mutation battery, including legs that MUST BE UNCAUGHT: ``curl + (-advance)``
-  for ``curl - advance`` (IEEE-754 defines subtraction as addition of the negation)
-  and ``(f1 + sf)`` for ``(sf + f1)`` (float add commutes exactly). Each is paired
-  with a must-catch leg on the same expression.
+* The mutation battery, including legs that MUST BE UNCAUGHT: ``fcur + (-df)``
+  for the ladder's ``fcur - df`` (IEEE-754 defines subtraction as addition of the
+  negation) and ``(f1 + sf)`` for ``(sf + f1)`` (float add commutes exactly). Each is
+  paired with a must-catch leg on the same expression.
+
+THE KERNEL IS MEEP'S TWO PASSES. Per component the curl kernel's own curl and
+absorber, then MEEP's ``STEP_BFAST`` as a pass of its own (step_db.cpp:124-142):
+the state ``F = S - F_prev`` stored on MEEP's owned cells, ``-(F - F_prev)`` added
+through the pass's additive ladder, each form selected per cell from the chunk record
+the launcher binds. The gate hands the kernel the record of the division the array
+path stepped with (``gate_chunk_records.layer_record``).
 
 RUNNING IT
 ----------
@@ -86,9 +93,16 @@ except ImportError:  # laptop: the NumPy backend still runs
     cp = None
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import gate_chunk_records  # noqa: E402
+# The chunk-record host mutations (KERNELS.md section 7.2) are the complex gates' own,
+# imported rather than copied.
+import gate_cuda_complex as complex_gate  # noqa: E402
+import gate_cuda_complex_folded as fold_gate  # noqa: E402
+import gate_needles  # noqa: E402
 import gate_provenance  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
+from meep_gpu.chunk_map import membership_from_record  # noqa: E402
 from meep_gpu.fields import Fields, IYEE_SHIFTS  # noqa: E402
 from meep_gpu.grid import Grid  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
@@ -196,133 +210,141 @@ def _replace_all(source: str, pairs: Sequence[Tuple[str, str]]) -> Tuple[str, in
     return out, sites
 
 
-_TOTAL_LINES = tuple(
-    f"        float total = (k1_{s} * (sf + f1)) - (k2_{s} * (ss + f2));\n"
-    for s in ("a", "b", "c"))
+#: The three BFAST passes' state-step lines in the kernel body, one per component,
+#: ``folded_pass.bfast_insert``'s spelling.
+_PASS_LINE = "        float inc_bfast = bfast_pass("
+_LADDER_PREFIX = "        fold_apply("
+
+
+def _pass_call_lines(source: str) -> List[str]:
+    return [line for line in source.splitlines(keepends=True)
+            if line.startswith(_PASS_LINE)]
 
 
 def _drop_bfast_term(source: str) -> Tuple[str, int]:
-    """The whole feature deleted: the certified kernel, on a BFAST run.
+    """The whole increment deleted: the certified kernel's field, on a BFAST run.
 
-    The state store is kept (writing back what it read) so the mutation is a
-    DROPPED TERM rather than a dropped array, which is the defect the predicate's
-    inventory clause cannot see.
+    The state step is kept (``bfast_pass`` still runs and stores ``F``) and only the
+    ladder that adds its increment is dropped, so the mutation is a DROPPED TERM
+    rather than a dropped array -- the defect the predicate's inventory clause cannot
+    see.
     """
-    out, sites = _replace_all(source, [
-        ("        curl = curl - advance;\n", ""),
-    ])
-    out, more = _replace_all(out, [
-        ("        float advance = total - (2.0f * bprev);\n",
-         "        float advance = 0.0f;\n"),
-    ])
-    return out, sites + more
-
-
-def _bfast_difference_not_sum(source: str) -> Tuple[str, int]:
-    """THE defect this family exists to be proof against.
-
-    ``step_bfast`` SUMS the two samples where ``step_curl`` differences them
-    (stepping.py:889-896). On an invariant axis the difference is an exact zero and
-    the sum is ``2*g``, so the two are not close.
-    """
-    return _replace_all(source, [("(sf + f1)", "(sf - f1)"),
-                                 ("(ss + f2)", "(ss - f2)")])
-
-
-def _bfast_swap_k1_k2(source: str) -> Tuple[str, int]:
-    """``k1`` and ``k2`` exchanged -- MEEP's "puts k1 in direction of g2" comment,
-    read backwards (step_db.cpp:129-136). Silent: it merely moves the term to the
-    wrong pair of components."""
-    pairs = []
-    for s in ("a", "b", "c"):
-        pairs.append((f"(k1_{s} * (sf + f1)) - (k2_{s} * (ss + f2))",
-                      f"(k2_{s} * (sf + f1)) - (k1_{s} * (ss + f2))"))
-    return _replace_all(source, pairs)
-
-
-def _bfast_added_not_subtracted(source: str) -> Tuple[str, int]:
-    """``_bfast_term`` returns ``-advance`` (stepping.py:931) and the caller ADDS
-    it (:396); a kernel that adds the unnegated advance has the whole feature at
-    the wrong sign."""
-    return _replace_all(source, [("curl = curl - advance;",
-                                  "curl = curl + advance;")])
-
-
-def _bfast_scaled_by_dtdx(source: str) -> Tuple[str, int]:
-    """The term scaled by dtdx. MEEP passes ``dtdx`` to ``step_bfast`` and the body
-    NEVER READS IT (stepping.py:863-865); the Tustin filter already carries the
-    ``dt``."""
-    pairs = []
-    for line in _TOTAL_LINES:
-        pairs.append((line, line.replace("float total = ", "float total = dtdx * ")))
-    return _replace_all(source, pairs)
-
-
-def _bfast_two_becomes_one(source: str) -> Tuple[str, int]:
-    """``F_new = S - F_prev`` gives an advance of ``S - 2*F_prev`` (stepping.py:922).
-    Writing ``S - F_prev`` is the filter without its pole, which is stable rather
-    than marginally stable -- a plausible, smooth, wrong answer."""
-    return _replace_all(source, [("total - (2.0f * bprev)", "total - bprev")])
-
-
-def _bfast_state_regrouped(source: str) -> Tuple[str, int]:
-    """``F += advance`` regrouped as ``F = total - F``.
-
-    Algebraically identical (``F + (S - 2F) = S - F``) and NOT identical in
-    float32: the array path rounds ``S - 2F`` and then ``F + that``, two roundings
-    of different magnitudes. Scored as MUST BE CAUGHT because the grouping is the
-    thing being transcribed; a leg that came back UNCAUGHT would mean the gate
-    cannot see a regrouping of the state advance and would be reported as such
-    rather than passed over.
-    """
-    return _replace_all(source, [("= bprev + advance;", "= total - bprev;")])
-
-
-def _bfast_advance_not_masked(source: str) -> Tuple[str, int]:
-    """The ownership mask dropped from ``advance`` but kept on ``curl``.
-
-    ``stepping`` masks ``advance`` at :902, BEFORE the state absorbs it at :903,
-    because MEEP writes ``F`` only inside its owned-cell loop. Drop that and the
-    field is right on launch one and the state is wrong forever. Only bites where a
-    mask line fires, so it is scored on legs whose grid carries a mask code.
-    """
-    out = []
-    sites = 0
+    out, sites = [], 0
     for line in source.splitlines(keepends=True):
-        if "advance = 0.0f;" in line and " == BC_" in line:
+        if line.startswith(_LADDER_PREFIX) and "inc_bfast" in line:
             sites += 1
             continue
         out.append(line)
     return "".join(out), sites
 
 
+def _bfast_difference_not_sum(source: str) -> Tuple[str, int]:
+    """THE defect this family exists to be proof against.
+
+    ``step_bfast`` SUMS the two samples where ``step_curl`` differences them. On an
+    invariant axis the difference is an exact zero and the sum is ``2*g``, so the two
+    are not close.
+    """
+    return _replace_all(source, [("(sf + f1)", "(sf - f1)"),
+                                 ("(ss + f2)", "(ss - f2)")])
+
+
+def _bfast_swap_k1_k2(source: str) -> Tuple[str, int]:
+    """``k1`` and ``k2`` exchanged at the pass's call -- MEEP's "puts k1 in direction
+    of g2" comment, read backwards (step_db.cpp:129-136). Silent: it merely moves the
+    term to the wrong pair of components."""
+    pairs = [(f"k1_{s}, k2_{s}, ", f"k2_{s}, k1_{s}, ") for s in ("a", "b", "c")]
+    return _replace_all(source, pairs)
+
+
+def _bfast_added_not_subtracted(source: str) -> Tuple[str, int]:
+    """The pass returns ``-raw`` and the ladder SUBTRACTS it; returning ``raw`` puts the
+    whole feature at the wrong sign."""
+    return _replace_all(source, [("    return -(updated - fprev);",
+                                  "    return (updated - fprev);")])
+
+
+def _bfast_scaled_by_dtdx(source: str) -> Tuple[str, int]:
+    """The term scaled by dtdx. MEEP passes ``dtdx`` to ``step_bfast`` and the body
+    NEVER READS IT; the Tustin filter already carries the ``dt``."""
+    pairs = [(f"k1_{s}, k2_{s}, ", f"dtdx * k1_{s}, dtdx * k2_{s}, ")
+             for s in ("a", "b", "c")]
+    return _replace_all(source, pairs)
+
+
+def _bfast_two_becomes_one(source: str) -> Tuple[str, int]:
+    """``F_new = S - F_prev`` written ``F_new = S``: the filter without its pole, which
+    is stable rather than marginally stable -- a plausible, smooth, wrong answer."""
+    return _replace_all(source, [
+        ("    float updated = (pr1 && pr2) ? (((k1 * (sf + f1)) - (k2 * (ss + f2))) - fprev)",
+         "    float updated = (pr1 && pr2) ? ((k1 * (sf + f1)) - (k2 * (ss + f2)))")])
+
+
+def _bfast_state_regrouped(source: str) -> Tuple[str, int]:
+    """The 0.9.2 state step: ``F += S - 2F``, one rounding of a different magnitude.
+
+    Algebraically ``F_prev + (S - 2F_prev) = S - F_prev`` and NOT identical in float32:
+    MEEP rounds ``S - F_prev`` once and forms the increment as a second rounding of its
+    difference from ``F_prev``. Scored as MUST BE CAUGHT because the grouping is the
+    thing being transcribed.
+    """
+    return _replace_all(source, [
+        ("    float updated = (pr1 && pr2) ? (((k1 * (sf + f1)) - (k2 * (ss + f2))) - fprev)",
+         "    float updated = (pr1 && pr2) ? (fprev + (((k1 * (sf + f1)) - (k2 * (ss + f2)))"
+         " - (2.0f * fprev)))")])
+
+
+def _bfast_state_on_an_unowned_cell(source: str) -> Tuple[str, int]:
+    """The state stored before the ownership test, on every cell.
+
+    MEEP writes ``F`` only inside its owned-cell loop, so the array path leaves an
+    unowned cell's state as it was; storing it there is right on the field and wrong
+    on the state forever. Only bites where a mask line fires, so it is scored on legs
+    whose grid carries a mask code.
+    """
+    return _replace_all(source, [("    if (!owned) return 0.0f;\n    F[idx] = updated;",
+                                  "    F[idx] = updated;\n    if (!owned) return 0.0f;")])
+
+
 def _bfast_state_read_after_store(source: str) -> Tuple[str, int]:
     """The aliasing trap: read the previous state from memory AFTER writing it.
 
-    The array path holds ``state`` and computes ``advance`` from it before the
-    in-place ``+=`` (stepping.py:922-930). A kernel that re-read the array would
-    see its own store.
+    The pass holds ``fprev`` in a register and forms the increment from it; a kernel
+    that re-read the state would see its own store and add an exact zero.
     """
-    pairs = []
-    for target in ("fb_Bx", "fb_By", "fb_Bz", "fb_Dx", "fb_Dy", "fb_Dz"):
-        pairs.append((f"        {target}[idx] = bprev + advance;\n"
-                      f"        curl = curl - advance;\n",
-                      f"        {target}[idx] = bprev + advance;\n"
-                      f"        curl = curl - ({target}[idx] - bprev);\n"))
-    return _replace_all(source, pairs)
+    return _replace_all(source, [("    F[idx] = updated;\n    return -(updated - fprev);",
+                                  "    F[idx] = updated;\n    return -(updated - F[idx]);")])
+
+
+def _bfast_plain_branch_dropped(source: str) -> Tuple[str, int]:
+    """MEEP's one-partner plain branch (no layer on either axis, ``F = k*(gs + g)`` with
+    no ``- F``) dropped for the general form. Visible only on a grid with an invariant
+    axis, so it is scored on those legs."""
+    return _replace_all(source, [(": (plain ? single : (single - fprev));",
+                                  ": (single - fprev);")])
+
+
+def _bfast_ladder_without_the_recurrence(source: str) -> Tuple[str, int]:
+    """The folded ladder's ``fu`` stage dropped: inside the dsigu chunks MEEP adds the
+    increment to ``fu`` as well as to the field."""
+    return _replace_all(source, [("    if (dsigu) fu[idx] = fu[idx] - df;\n", "")])
+
+
+def _bfast_ladder_sinv_twice(source: str) -> Tuple[str, int]:
+    """The dsig-only ladder scaled by ``sinv`` a second time."""
+    return _replace_all(source, [(": (fcur - df);", ": (fcur - (sinv * df));")])
 
 
 def _bfast_subtract_as_add_negative(source: str) -> Tuple[str, int]:
     """NULL. IEEE-754 defines ``a - b`` as ``a + (-b)``; the two spellings are the
     same bits on every input, signed zeros included."""
-    return _replace_all(source, [("curl = curl - advance;",
-                                  "curl = curl + (-advance);")])
+    return _replace_all(source, [(": (fcur - df);", ": (fcur + (-df));")])
 
 
 def _bfast_sum_operands_commuted(source: str) -> Tuple[str, int]:
-    """NULL. float32 addition commutes exactly. stepping.py:917-918 writes
-    ``shifted + at``; this leg measures that the order is a transcription
-    convention rather than an arithmetic fact."""
+    """NULL. float32 addition commutes exactly; ``stepping`` writes ``shifted + at``
+    and this leg measures that the order is a transcription convention rather than an
+    arithmetic fact."""
     return _replace_all(source, [("(sf + f1)", "(f1 + sf)"),
                                  ("(ss + f2)", "(f2 + ss)")])
 
@@ -335,20 +357,30 @@ BFAST_SOURCE_MUTATIONS: Dict[str, Any] = {
     "bfast_scaled_by_dtdx": _bfast_scaled_by_dtdx,
     "bfast_two_becomes_one": _bfast_two_becomes_one,
     "bfast_state_regrouped": _bfast_state_regrouped,
-    "bfast_advance_not_masked": _bfast_advance_not_masked,
+    "bfast_state_on_an_unowned_cell": _bfast_state_on_an_unowned_cell,
     "bfast_state_read_after_store": _bfast_state_read_after_store,
+    "bfast_plain_branch_dropped": _bfast_plain_branch_dropped,
+    "bfast_ladder_without_the_recurrence": _bfast_ladder_without_the_recurrence,
+    "bfast_ladder_sinv_twice": _bfast_ladder_sinv_twice,
     "bfast_subtract_as_add_negative": _bfast_subtract_as_add_negative,
     "bfast_sum_operands_commuted": _bfast_sum_operands_commuted,
 }
 BFAST_NULL_MUTATIONS: Tuple[str, ...] = ("bfast_subtract_as_add_negative",
                                          "bfast_sum_operands_commuted")
-SOURCE_MUTATION_REQUIRES_MASK: Dict[str, bool] = {"bfast_advance_not_masked": True}
+SOURCE_MUTATION_REQUIRES_MASK: Dict[str, bool] = {"bfast_state_on_an_unowned_cell": True}
+#: Mutations that bite only on a one-partner component (a grid with an invariant axis).
+SOURCE_MUTATION_REQUIRES_INVARIANT: Dict[str, bool] = {"bfast_plain_branch_dropped": True}
 
 SHARED_SOURCE_MUTATIONS: Tuple[str, ...] = (
     "regroup_stencil", "drop_metallic_mask", "swap_dsig_dsigu", "drop_fu_store",
     "read_fprev_after_store", "fortran_order_index_decomposition",
     "commute_dtdx_scale", "reload_fu_from_memory",
 )
+#: THIS GATE'S NEEDLE TABLE for the shared defects above, every one borrowed from the
+#: probe's shared default, which is spelled on the root pair's text -- this family's
+#: kernels are the root kernels with the BFAST pass inserted (``gate_needles.py``).
+SHARED_NEEDLES = gate_needles.gate_table(
+    "gate_cuda_bfast", probe.SOURCE_MUTATIONS, SHARED_SOURCE_MUTATIONS)
 SHARED_NULL_MUTATIONS: Tuple[str, ...] = probe.PML_NULL_MUTATIONS
 SHARED_REQUIRES_CODE: Dict[str, int] = {"drop_metallic_mask": BC_METALLIC}
 
@@ -359,6 +391,10 @@ HOST_MUTATIONS: Tuple[str, ...] = (
     "k_indexed_by_derivative_axis",
     "swap_curl_sublattice",
     "k_scalars_rounded_again",
+    # KERNELS.md section 7.2: the chunk record a launch binds, corrupted (the oracle's
+    # division is untouched; ``gate_cuda_complex.host_mutated_record``).
+    "record_bound_off_by_one",
+    "record_lattices_swapped",
 )
 #: MUST BE UNCAUGHT: rounding an already-float32 value to float32 is the identity.
 HOST_NULL_MUTATIONS: Tuple[str, ...] = ("k_scalars_rounded_again",)
@@ -421,6 +457,11 @@ def seed_state(fields, grid, names: Sequence[str], value_class: str,
         raise ValueError(f"value class {value_class!r} is not one of {VALUE_CLASSES}")
     for name, values in host.items():
         getattr(fields, name)[...] = xp.asarray(np.ascontiguousarray(values))
+    # A seeded state is a mid-run one: MEEP's start of H from B
+    # (``stepping.separate_h_from_b``) belongs to a run's first ``update_H``, long
+    # before this state. Without this the oracle's ``update_H`` would run that start
+    # and the certified constitutive kernel, launched directly, would not.
+    fields.h_separated = True
     return host
 
 
@@ -485,7 +526,7 @@ def host_mutated_inputs(name: Optional[str], sub_step: str, layer, grid,
                         dtdx: float):
     tables = tables_for(sub_step, layer)
     coefficients = family.bfast_curl_coefficients(grid, sub_step)
-    if name is None:
+    if name is None or name in complex_gate.RECORD_HOST_MUTATIONS:
         return tables, coefficients
     if name == "swap_curl_sublattice":
         return wrong_sub_lattice_tables(sub_step, layer), coefficients
@@ -507,9 +548,12 @@ def host_mutated_inputs(name: Optional[str], sub_step: str, layer, grid,
 # The two kernel-side backends
 # ---------------------------------------------------------------------------
 
-def run_kernel_cuda(sub_step: str, fields, tables, codes, dtdx, coefficients):
+def run_kernel_cuda(sub_step: str, fields, tables, codes, dtdx, coefficients, record):
+    """The SHIPPED kernel through its own launcher, the case's chunk record uploaded as
+    the one contiguous ``int32[25]`` device vector the launcher requires."""
     family.step_bfast(sub_step, fields, tables,
-                      tuple(np.int32(c) for c in codes), dtdx, coefficients)
+                      tuple(np.int32(c) for c in codes), dtdx, coefficients,
+                      chunk_bounds=cp.asarray(np.ascontiguousarray(record, dtype=np.int32)))
     cp.cuda.runtime.deviceSynchronize()
 
 
@@ -539,67 +583,113 @@ def _broadcast(vector, axis):
     return np.asarray(vector, dtype=np.float32).reshape(shape)
 
 
-def run_kernel_numpy(sub_step: str, fields, tables, codes, dtdx, coefficients):
+def _membership(record, target: str, axis: int, shape) -> np.ndarray:
+    """``target``'s membership flag of ``axis``'s layer, as the kernel decodes it: on its
+    own Yee sub-lattice along ``axis``, from the record's runs, broadcast to the field."""
+    half = IYEE_SHIFTS[target][axis] == 1
+    line = membership_from_record(record, half, axis, int(shape[axis]))
+    view = [1, 1, 1]
+    view[axis] = int(shape[axis])
+    return np.broadcast_to(np.asarray(line, dtype=bool).reshape(view), tuple(shape))
+
+
+def _record_presence(record) -> Tuple[bool, bool, bool]:
+    """The three partner-presence bits of a chunk record, as the kernels decode them."""
+    word = int(np.asarray(record)[24])
+    return tuple(bool((word >> axis) & 1) for axis in range(3))
+
+
+def run_kernel_numpy(sub_step: str, fields, tables, codes, dtdx, coefficients, record):
     """The device tree, transcribed, in float32 -- the laptop backend.
 
-    THE GROUPING IS THE SHIPPED ONE and it is load-bearing::
+    Per component, the root kernel's curl and then MEEP's BFAST pass on it, each form
+    selected per cell from the chunk record the kernel reads::
 
-        float curl    = dtdx * ((sf - f1) + (f2 - ss));
-        float total   = (k1 * (sf + f1)) - (k2 * (ss + f2));
-        float bprev   = fb[idx];
-        float advance = total - (2.0f * bprev);
-        <mask lines on advance>
-        fb[idx]       = bprev + advance;
-        curl          = curl - advance;
+        curl  = curl_stencil(dtdx, sf, f1, f2, ss, pr1, pr2)      MEEP's left-to-right
         <mask lines on curl>
-        pml_apply(...)
+        pml_apply: the recurrence where dsigu, ((f*kms) - curl)*sinv elsewhere
+        F'    = (k1*(sf + f1) - k2*(ss + f2)) - F       both partners
+              =  k*(gs + g)                              one partner, plain chunk
+              =  k*(gs + g) - F                          one partner, otherwise
+        inc   = -(F' - F) on MEEP's owned cells, +0 elsewhere; F' stored where owned
+        ladder: f -= sinv*inc outside dsigu; fu -= (df = sinv*inc), f -= sinv_u*df inside
 
     COMPILES NOTHING AND CERTIFIES NOTHING.
     """
     spec = SUB_STEP_ARRAYS[sub_step]
     shift = _shift_dn_numpy if spec["backward"] else _shift_up_numpy
     scale = np.float32(dtdx)
-    two = np.float32(2.0)
     names = "xyz"
+    presence = _record_presence(record)
+    zero = np.float32(0.0)
     for term, (k1, k2) in zip(CURL_TERMS[sub_step], coefficients):
         (target, aux, state, first, first_axis, second, second_axis,
-         dsig, dsigu) = term
-        f = getattr(fields, target)
-        fu = getattr(fields, aux)
-        fb = getattr(fields, state)
-        f1 = getattr(fields, first)
-        f2 = getattr(fields, second)
+         dsig_axis, dsigu_axis) = term
+        f = np.asarray(to_host(getattr(fields, target)), dtype=np.float32).copy()
+        fu = np.asarray(to_host(getattr(fields, aux)), dtype=np.float32).copy()
+        fb = np.asarray(to_host(getattr(fields, state)), dtype=np.float32).copy()
+        f1 = np.asarray(to_host(getattr(fields, first)), dtype=np.float32)
+        f2 = np.asarray(to_host(getattr(fields, second)), dtype=np.float32)
         sf = shift(f1, first_axis, codes[first_axis])
         ss = shift(f2, second_axis, codes[second_axis])
-        curl = (scale * ((sf - f1) + (f2 - ss))).astype(np.float32)
-        total = ((np.float32(k1) * (sf + f1)).astype(np.float32)
-                 - (np.float32(k2) * (ss + f2)).astype(np.float32)).astype(np.float32)
-        bprev = fb.copy()
-        advance = (total - (two * bprev).astype(np.float32)).astype(np.float32)
+        pr1, pr2 = presence[first_axis], presence[second_axis]
+        if pr1 and pr2:
+            curl = (scale * (((sf - f1) + f2) - ss)).astype(np.float32)
+        elif pr1:
+            curl = (scale * (sf - f1)).astype(np.float32)
+        elif pr2:
+            curl = ((-scale) * (ss - f2)).astype(np.float32)
+        else:
+            curl = np.zeros_like(f, dtype=np.float32)
         iyee = IYEE_SHIFTS[target]
-
-        def mask(volume):
-            for axis in range(3):
-                if iyee[axis] == 0:
-                    if codes[axis] in (BC_METALLIC, BC_MIRROR_PERIODIC):
-                        volume[_plane(axis, 0, volume.shape)] = np.float32(0.0)
-                elif codes[axis] == BC_MIRROR_PERIODIC:
-                    volume[_plane(axis, -1, volume.shape)] = np.float32(0.0)
-
-        mask(advance)
-        fb[...] = (bprev + advance).astype(np.float32)
-        curl = (curl - advance).astype(np.float32)
-        mask(curl)
-        kms = _broadcast(tables[f"kms_{names[dsig]}"], dsig)
-        sinv = _broadcast(tables[f"sinv_{names[dsig]}"], dsig)
-        kms_u = _broadcast(tables[f"kms_{names[dsigu]}"], dsigu)
-        sinv_u = _broadcast(tables[f"sinv_{names[dsigu]}"], dsigu)
-        fprev = fu.copy()
-        fu_new = (((fprev * kms).astype(np.float32) - curl).astype(np.float32)
+        owned = np.ones(f.shape, dtype=bool)
+        for axis in range(3):
+            if iyee[axis] == 0:
+                if codes[axis] in (BC_METALLIC, BC_MIRROR_PERIODIC):
+                    curl[_plane(axis, 0, f.shape)] = zero
+                    owned[_plane(axis, 0, f.shape)] = False
+            elif codes[axis] == BC_MIRROR_PERIODIC:
+                curl[_plane(axis, -1, f.shape)] = zero
+                owned[_plane(axis, -1, f.shape)] = False
+        kms = _broadcast(to_host(tables[f"kms_{names[dsig_axis]}"]), dsig_axis)
+        sinv = _broadcast(to_host(tables[f"sinv_{names[dsig_axis]}"]), dsig_axis)
+        kms_u = _broadcast(to_host(tables[f"kms_{names[dsigu_axis]}"]), dsigu_axis)
+        sinv_u = _broadcast(to_host(tables[f"sinv_{names[dsigu_axis]}"]), dsigu_axis)
+        dsig = _membership(record, target, dsig_axis, f.shape)
+        dsigu = _membership(record, target, dsigu_axis, f.shape)
+        # pml_apply: fu only on the recurrence's cells.
+        fu_new = (((fu * kms).astype(np.float32) - curl).astype(np.float32)
                   * sinv).astype(np.float32)
-        fu[...] = fu_new
-        a = ((f * kms_u).astype(np.float32) + fu_new).astype(np.float32)
-        f[...] = ((a - fprev).astype(np.float32) * sinv_u).astype(np.float32)
+        recurrence = (((((f * kms_u).astype(np.float32) + fu_new).astype(np.float32)
+                        - fu).astype(np.float32)) * sinv_u).astype(np.float32)
+        dsig_only = ((((f * kms).astype(np.float32) - curl).astype(np.float32))
+                     * sinv).astype(np.float32)
+        f = np.where(dsigu, recurrence, dsig_only).astype(np.float32)
+        fu = np.where(dsigu, fu_new, fu).astype(np.float32)
+        # The BFAST pass.
+        if pr1 or pr2:
+            sum1 = (np.float32(k1) * (sf + f1).astype(np.float32)).astype(np.float32)
+            sum2 = (np.float32(k2) * (ss + f2).astype(np.float32)).astype(np.float32)
+            if pr1 and pr2:
+                updated = ((sum1 - sum2).astype(np.float32) - fb).astype(np.float32)
+            else:
+                single = sum1 if pr1 else sum2
+                plain = np.logical_not(dsig) & np.logical_not(dsigu)
+                updated = np.where(plain, single,
+                                   (single - fb).astype(np.float32)).astype(np.float32)
+            increment = np.where(owned, -(updated - fb).astype(np.float32),
+                                 zero).astype(np.float32)
+            fb = np.where(owned, updated, fb).astype(np.float32)
+        else:
+            increment = np.zeros_like(f, dtype=np.float32)
+        df = (sinv * increment).astype(np.float32)
+        fu = np.where(dsigu, (fu - df).astype(np.float32), fu).astype(np.float32)
+        f = np.where(dsigu, (f - (sinv_u * df).astype(np.float32)).astype(np.float32),
+                     (f - df).astype(np.float32)).astype(np.float32)
+        xp = fields.grid.xp
+        getattr(fields, target)[...] = xp.asarray(f)
+        getattr(fields, aux)[...] = xp.asarray(fu)
+        getattr(fields, state)[...] = xp.asarray(fb)
 
 
 # ---------------------------------------------------------------------------
@@ -655,7 +745,7 @@ class _ZeroKGrid:
     """The grid with ``bfast_scaled_k`` all zero but the term STILL TAKEN.
 
     ``bfast_active`` is forced True so ``stepping`` enters ``_bfast_term``; the
-    zero vector makes ``total`` exactly zero and leaves only ``-2*F_prev``. The
+    zero vector makes the sum ``S`` exactly zero and leaves only ``- F_prev``. The
     difference between this and the real run is what the k assignment is worth,
     isolated from the IIR recurrence.
     """
@@ -710,7 +800,7 @@ def bfast_term_is_live(fields, layer, grid, sub_step, frozen,
 
 
 def state_starts_nonzero(frozen, sub_step) -> Dict[str, Any]:
-    """An ``f_bfast`` seeded to zero hides ``2.0f * bprev`` at the first launch."""
+    """An ``f_bfast`` seeded to zero hides the ``- F_prev`` term at the first launch."""
     counts = {}
     for name in SUB_STEP_ARRAYS[sub_step]["state"]:
         values = np.ascontiguousarray(frozen[name], dtype=np.float32).ravel()
@@ -828,7 +918,7 @@ def one_case(backend, spec, sub_step, courant, value_class, guard,
     nonzero = state_starts_nonzero(frozen, sub_step)
     case["state_starts_nonzero"] = nonzero
     if not nonzero["meets_floor"]:
-        case["skipped"] = ("an f_bfast array is all zero: the 2.0f * bprev term "
+        case["skipped"] = ("an f_bfast array is all zero: the - F_prev term "
                            "is invisible at the first launch")
         case["seconds"] = time.time() - started
         return case
@@ -858,8 +948,20 @@ def one_case(backend, spec, sub_step, courant, value_class, guard,
     tables, coefficients = host_mutated_inputs(host_mutation, sub_step, layer,
                                                grid, dtdx)
     case["bfast_coefficients"] = [[float(a), float(b)] for a, b in coefficients]
+    # THE CHUNK RECORD of the division the array path stepped with (the one-rank
+    # division of the grid and layer), handed to the kernel as the launcher binds it.
+    record = np.ascontiguousarray(gate_chunk_records.layer_record(grid, layer),
+                                  dtype=np.int32)
+    case["chunk_record"] = [int(v) for v in record]
+    bound = complex_gate.host_mutated_record(host_mutation, record, grid)
+    if (host_mutation in complex_gate.RECORD_HOST_MUTATIONS
+            and not fold_gate._membership_moves(record, bound, grid)):
+        case["skipped"] = ("the record mutation moves no cell's membership on this "
+                           "division (its moved run end lies past the stored rows)")
+        case["seconds"] = time.time() - started
+        return case
     runner = run_kernel_cuda if backend == "cuda" else run_kernel_numpy
-    runner(sub_step, fields, tables, codes, dtdx, coefficients)
+    runner(sub_step, fields, tables, codes, dtdx, coefficients, bound)
 
     parts = {name: bit_compare(reference[name], getattr(fields, name))
              for name in outputs(sub_step)}
@@ -879,7 +981,7 @@ def one_case(backend, spec, sub_step, courant, value_class, guard,
 
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
-            runner(sub_step, fields, tables, codes, dtdx, coefficients)
+            runner(sub_step, fields, tables, codes, dtdx, coefficients, record)
             advance_sources(fields, SUB_STEP_ARRAYS[sub_step]["sources"])
         multi = {name: bit_compare(oracle_multi[name], getattr(fields, name))
                  for name in outputs(sub_step)}
@@ -938,8 +1040,13 @@ def one_constitutive_case(backend, spec, side, courant, value_class, guard):
         case["seconds"] = time.time() - started
         return case
 
+    # THE CHUNK RECORD of the division the array path stepped with, as the
+    # certified launcher binds it.
+    record = cp.asarray(np.ascontiguousarray(
+        gate_chunk_records.layer_record(grid, layer), dtype=np.int32))
     restore(fields, frozen)
-    constitutive_kernels.update_fused_pml_real(side, fields, layer)
+    constitutive_kernels.update_fused_pml_real(side, fields, layer,
+                                               chunk_bounds=record)
     cp.cuda.runtime.deviceSynchronize()
     parts = {name: bit_compare(reference[name], getattr(fields, name))
              for name in constitutive_outputs(side)}
@@ -955,7 +1062,8 @@ def one_constitutive_case(backend, spec, side, courant, value_class, guard):
     oracle_multi = snapshot(fields, constitutive_state_names(side))
     restore(fields, frozen)
     for _ in range(MULTI_STEP_BUDGET):
-        constitutive_kernels.update_fused_pml_real(side, fields, layer)
+        constitutive_kernels.update_fused_pml_real(side, fields, layer,
+                                               chunk_bounds=record)
         advance_sources(fields, CONSTITUTIVE_ARRAYS[side]["sources"])
     cp.cuda.runtime.deviceSynchronize()
     multi = {name: bit_compare(oracle_multi[name], getattr(fields, name))
@@ -1126,7 +1234,7 @@ def run_source_mutations(results, out_path, product, scorable):
     originals = {name: family.kernel_source(name) for name in family.BFAST_KERNELS}
     transforms = dict(BFAST_SOURCE_MUTATIONS)
     for name in SHARED_SOURCE_MUTATIONS:
-        transforms[name] = probe.SOURCE_MUTATIONS[name]
+        transforms[name] = SHARED_NEEDLES[name]
     nulls = set(BFAST_NULL_MUTATIONS) | set(SHARED_NULL_MUTATIONS)
     out: Dict[str, Any] = {}
     plan = mutation_plan(product, scorable)
@@ -1144,6 +1252,8 @@ def run_source_mutations(results, out_path, product, scorable):
                 if SOURCE_MUTATION_REQUIRES_MASK.get(name):
                     leg_plan = [e for e in leg_plan
                                 if _grid_carries_a_mask(spec_codes(e[0]))]
+                if SOURCE_MUTATION_REQUIRES_INVARIANT.get(name):
+                    leg_plan = [e for e in leg_plan if e[0].get("dimensions") == 2]
                 if sites == 0 or mutated == originals[kernel_name]:
                     out[key] = {"armed": False,
                                 "why": (f"matched {sites} site(s) and changed "

@@ -33,10 +33,10 @@ THE THREE DELTAS, AND NOTHING ELSE
 =============================================================================
 
 The device source is ``complex_emitter.complex_source`` TRANSFORMED, not rewritten:
-every arithmetic byte -- the word-pair addressing, the arm's three multiply
-helpers, the zero cross terms, the ``((sf - f1) + (f2 - ss))`` grouping, the PML
-recurrence -- is the certified complex family's, and :data:`DELTAS` is the whole
-of what this module changes. Each delta asserts its own site count, so a sibling
+every arithmetic byte -- the word-pair addressing, the part-wise products, the
+chunk-record decode and the per-chunk forms, MEEP's left-to-right stencil with its
+partner-presence forms, the stored window's Bloch connection -- is the complex
+family's, and :data:`DELTAS` is the whole of what this module changes. Each delta asserts its own site count, so a sibling
 edit that moves an anchor fails HERE, on a laptop, instead of silently emitting a
 kernel with one fold branch missing.
 
@@ -328,18 +328,15 @@ def _deltas_for(sub_step: str) -> Tuple[Tuple[str, str, str, int], ...]:
     return tuple(out)
 
 
-def folded_source(sub_step: str, expansion) -> str:
-    """The device source for one folded-complex curl sub-step under one arm.
+def folded_source(sub_step: str) -> str:
+    """The device source for one folded-complex curl sub-step.
 
-    ``sub_step`` is ``"step_B"`` or ``"step_D"``; ``expansion`` is an arm name or
-    its code, REQUIRED and never defaulted, for the reason
-    ``complex_emitter.normalized_expansion`` refuses rather than defaulting: a
-    wrong arm is a wrong answer and not a crash.
+    ``sub_step`` is ``"step_B"`` or ``"step_D"``.
     """
     if sub_step not in FOLDED_KERNELS:
         raise ValueError(
             f"sub_step must be one of {sorted(FOLDED_KERNELS)}, got {sub_step!r}")
-    source = complex_emitter.complex_source(sub_step, expansion)
+    source = complex_emitter.complex_source(sub_step)
     for label, old, new, expected in _deltas_for(sub_step):
         found = source.count(old)
         if found != expected:
@@ -352,28 +349,26 @@ def folded_source(sub_step: str, expansion) -> str:
     return source
 
 
-#: The mutable copy the launcher compiles, keyed by kernel name and arm code. The
+#: The mutable copy the launcher compiles, keyed by sub-step. The
 #: gate mutates through :func:`set_kernel_source`; ONE seam, so a mutation cannot
 #: miss a second copy.
-_SOURCES: Dict[Tuple[str, int], str] = {}
+_SOURCES: Dict[str, str] = {}
 
 
-def kernel_source(sub_step: str, expansion) -> str:
-    """The device text this family would compile for one sub-step and arm.
+def kernel_source(sub_step: str) -> str:
+    """The device text this family would compile for one sub-step.
 
     Emitted on first ask and then served from :data:`_SOURCES`, so that a gate's
     :func:`set_kernel_source` survives -- a function that re-derived from the
     emitter every call would discard the mutation and report a pass for a
     mutation it never applied.
     """
-    arm = complex_emitter.normalized_expansion(expansion)
-    key = (sub_step, arm)
-    if key not in _SOURCES:
-        _SOURCES[key] = folded_source(sub_step, arm)
-    return _SOURCES[key]
+    if sub_step not in _SOURCES:
+        _SOURCES[sub_step] = folded_source(sub_step)
+    return _SOURCES[sub_step]
 
 
-def set_kernel_source(sub_step: str, expansion, source: str) -> None:
+def set_kernel_source(sub_step: str, source: str) -> None:
     """Replace one kernel's device text -- the gate's mutation seam, and only that.
 
     The compile memo keys on the SOURCE STRING, so a rewritten body is a miss and
@@ -382,7 +377,7 @@ def set_kernel_source(sub_step: str, expansion, source: str) -> None:
     if sub_step not in FOLDED_KERNELS:
         raise ValueError(
             f"sub_step must be one of {sorted(FOLDED_KERNELS)}, got {sub_step!r}")
-    _SOURCES[(sub_step, complex_emitter.normalized_expansion(expansion))] = source
+    _SOURCES[sub_step] = source
 
 
 def reset_kernel_sources() -> int:
@@ -395,17 +390,16 @@ def reset_kernel_sources() -> int:
 def corpus_digest() -> str:
     """One sha256 over every source this family can emit, canonically ordered.
 
-    Two sub-steps times two arms is four sources; a single changed character in
-    this module OR in ``complex_emitter`` moves this value, which is the point --
+    Two sub-steps, two sources; a single changed character in this module OR in
+    ``complex_emitter`` moves this value, which is the point --
     the arithmetic is the sibling's and a drift there is a drift here.
     """
     import hashlib  # noqa: PLC0415 - stdlib, imported at the one call site
 
     digest = hashlib.sha256()
     for sub_step in sorted(FOLDED_KERNELS):
-        for name in sorted(complex_emitter.EXPANSIONS):
-            digest.update(f"{sub_step}|{name}".encode("ascii"))
-            digest.update(folded_source(sub_step, name).encode("utf-8"))
+        digest.update(sub_step.encode("ascii"))
+        digest.update(folded_source(sub_step).encode("utf-8"))
     return digest.hexdigest()
 
 
@@ -689,23 +683,17 @@ def _already_served(admits: bool, family: str) -> Any:
             f"extra coverage")
 
 
-def covers_complex_folded_curl(fields: Any, pml: Any, grid: Any, sub_step: str,
-                               license: Any = None,
-                               subnormal_policy: Any = None) -> tuple:
+def covers_complex_folded_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tuple:
     """Whether ``step_{B,D}_pml_complex_folded`` may serve this run.
 
-    ``sub_step`` is ``"step_B"`` or ``"step_D"``. ``license`` is the verdict
-    ``triton_kernels.complex_fields.expansion_license`` returns and
-    ``subnormal_policy`` the policy name this run installs; both are checked by the
-    certified predicate this one delegates to, at the seam where the arm is
-    compiled into the binary. Returns ``(covered, reason)``.
+    ``sub_step`` is ``"step_B"`` or ``"step_D"``. Returns ``(covered, reason)``.
 
     DELEGATION, NOT A SECOND CLAUSE SET. Every question except the fold is the
     CERTIFIED complex curl predicate's, asked through it on a proxy grid that
     reports no fold, so this family cannot drift to a weaker standard than the one
     it borrows its arithmetic from -- and a clause added there (the conductivity
-    split, the halved int32 bound, the volume and coefficient-vector tail, the
-    expansion licence) is inherited here rather than silently skipped.
+    split, the halved int32 bound, the volume and coefficient-vector tail) is
+    inherited here rather than silently skipped.
 
     THE SUB-STEP ARGUMENT IS REQUIRED for the reason the certified predicate's is:
     ``stepping._apply_curl`` reads ``fields.condfac_for(term.target)`` PER TERM
@@ -719,19 +707,15 @@ def covers_complex_folded_curl(fields: Any, pml: Any, grid: Any, sub_step: str,
     if own is not None:
         return False, own
     served, _ = _coverage.covers_real_pml_complex_curl(
-        fields, pml, grid, sub_step, license=license,
-        subnormal_policy=subnormal_policy)
+        fields, pml, grid, sub_step)
     taken = _already_served(served, "coverage.covers_real_pml_complex_curl")
     if taken is not None:
         return False, taken
     return _coverage.covers_real_pml_complex_curl(
-        fields, pml, _FoldFreeGrid(grid), sub_step,
-        license=license, subnormal_policy=subnormal_policy)
+        fields, pml, _FoldFreeGrid(grid), sub_step)
 
 
-def covers_complex_folded_constitutive(fields: Any, pml: Any, grid: Any, side: str,
-                                       license: Any = None,
-                                       subnormal_policy: Any = None) -> tuple:
+def covers_complex_folded_constitutive(fields: Any, pml: Any, grid: Any, side: str) -> tuple:
     """Whether the CERTIFIED complex constitutive pair may serve a FOLDED run.
 
     ``side`` is ``"H"`` or ``"E"``; returns ``(covered, reason)``.
@@ -760,15 +744,13 @@ def covers_complex_folded_constitutive(fields: Any, pml: Any, grid: Any, side: s
     if own is not None:
         return False, own
     served, _ = _coverage.covers_real_pml_complex_constitutive(
-        fields, pml, grid, side, license=license,
-        subnormal_policy=subnormal_policy)
+        fields, pml, grid, side)
     taken = _already_served(
         served, "coverage.covers_real_pml_complex_constitutive")
     if taken is not None:
         return False, taken
     return _coverage.covers_real_pml_complex_constitutive(
-        fields, pml, _FoldFreeGrid(grid), side,
-        license=license, subnormal_policy=subnormal_policy)
+        fields, pml, _FoldFreeGrid(grid), side)
 
 
 # ---------------------------------------------------------------------------
@@ -779,11 +761,10 @@ def covers_complex_folded_constitutive(fields: Any, pml: Any, grid: Any, side: s
 # predicates and the emitter above stay callable on the census laptop.
 
 #: ``--fmad=false`` is CORRECTNESS on this pair and not tuning, for exactly the
-#: reasons ``complex_emitter``'s note 5 gives: the PML recurrence has contraction
-#: candidates at ``(fu*kms) - curl`` and ``(f*kms_u) + fu_new``, and the arm's own
-#: fusions are spelled with ``__fmaf_rn``, which is a single ``fma.rn.f32``
-#: whatever the flag says. The fold adds no new contraction candidate -- it adds
-#: predicated zero stores -- but the flag is the sibling's and a family that
+#: reasons ``complex_emitter``'s platform requirements give: the PML recurrence has
+#: contraction candidates at ``(fu*kms) - curl`` and ``(f*kms_u) + fu_new``, and
+#: nothing in the family fuses on purpose. The fold adds no new contraction candidate
+#: -- it adds predicated zero stores -- but the flag is the sibling's and a family that
 #: compiled the same bytes under different options would not be comparable to it.
 _COMPILE_OPTIONS: Tuple[str, ...] = ('--fmad=false',)
 
@@ -791,8 +772,8 @@ _COMPILE_OPTIONS: Tuple[str, ...] = ('--fmad=false',)
 _COMPLEX_THREADS = 256
 
 
-def _get_kernel(sub_step: str, expansion):
-    """Compile one sub-step under one arm, memoized on (name, options, policy, source).
+def _get_kernel(sub_step: str):
+    """Compile one sub-step, memoized on (name, options, policy, source).
 
     The source is read through :func:`kernel_source` PER CALL, for the reason every
     sibling rebuilds its map per call: the memo key carries the source string, so a
@@ -803,10 +784,9 @@ def _get_kernel(sub_step: str, expansion):
 
     from .compile_cache import get_or_compile, kernel_cache_key  # noqa: PLC0415
 
-    arm = complex_emitter.normalized_expansion(expansion)
     name = FOLDED_KERNELS[sub_step]
-    code = kernel_source(sub_step, arm)
-    key = kernel_cache_key(f"{name}_arm{arm}", True, _COMPILE_OPTIONS, code)
+    code = kernel_source(sub_step)
+    key = kernel_cache_key(name, True, _COMPILE_OPTIONS, code)
     return get_or_compile(
         key, lambda: cp.RawKernel(code, name, options=_COMPILE_OPTIONS))
 
@@ -818,8 +798,9 @@ def _clear_kernel_cache() -> int:
     return clear_kernel_cache()
 
 
-def step_folded_complex(sub_step: str, fields: Any, expansion,
+def step_folded_complex(sub_step: str, fields: Any,
                         grid: Any = None, pml: Any = None, *,
+                        chunk_bounds: Any,
                         dtdx: float = None,
                         tables: Dict[str, Any] = None,
                         boundary_codes: Sequence[Any] = None,
@@ -837,12 +818,18 @@ def step_folded_complex(sub_step: str, fields: Any, expansion,
     SUPPLY ``grid`` AND ``pml`` and everything derivable is derived HERE, by the
     same functions the predicate asks; the keyword overrides are the GATE'S DOOR
     (a deliberately swapped sub-lattice, a dropped fold code, an unconjugated
-    backward phase) and passing a layer AND its override is refused.
+    B-side connection) and passing a layer AND its override is refused.
+
+    ``chunk_bounds`` is the run's chunk record on the device, required: the kernel
+    chooses each cell's PML form from it (``step_curl_kernels.chunk_record_argument``).
     """
     import numpy as np  # noqa: PLC0415
 
     from .complex_pml_kernels import (bloch_phase_arguments,  # noqa: PLC0415
-                                      complex_curl_tables, word_view)
+                                      chunk_record_argument, complex_curl_tables,
+                                      word_view)
+
+    cb = chunk_record_argument(chunk_bounds)
 
     if sub_step not in FOLDED_KERNELS:
         raise ValueError(
@@ -889,7 +876,8 @@ def step_folded_complex(sub_step: str, fields: Any, expansion,
     arguments += [np.int32(code) for code in boundary_codes]
     arguments += [np.int32(flag) for flag in phase_flags]
     arguments += [np.float32(value) for value in phase_values]
+    arguments += [cb]
     cells = int(shape[0]) * int(shape[1]) * int(shape[2])
     blocks = (cells + _COMPLEX_THREADS - 1) // _COMPLEX_THREADS
-    _get_kernel(sub_step, expansion)(
+    _get_kernel(sub_step)(
         (blocks,), (_COMPLEX_THREADS,), tuple(arguments))

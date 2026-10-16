@@ -20,84 +20,86 @@ directory. Callers are the gate (``parity/meep_gpu/gate_triton_offdiag.py``),
 the composition probe (``probe_triton_offdiag_composition.py``) and the laptop
 tests, nothing else.
 
-WHAT IT REPLACES. ``stepping.update_E`` (stepping.py:954) with an active PML,
-``fields.has_offdiagonal_epsilon`` True (fields.py:1312-1315) and NOT
-``fields.has_nonlinearity`` — the ``elif offdiagonal:`` branch (stepping.py:
-1001-1008). With no poles admitted, ``displacement_minus_polarization_volumes``
-aliases each source to its D primary (fields.py:1107-1138), and all three are
-alive at once because the coupling reads the OTHER components' volumes
-(stepping.py:991-997). Per component ``c`` with own axis ``a``::
+WHAT IT REPLACES. ``stepping.update_E`` with an active PML,
+``fields.has_offdiagonal_epsilon`` True and NOT ``fields.has_nonlinearity`` -- the
+``elif offdiagonal:`` branch. With no poles admitted,
+``displacement_minus_polarization_volumes`` aliases each source to its D primary,
+and all three are alive at once because the coupling reads the OTHER components'
+volumes. Per component ``c`` with own axis ``a`` (``stepping._offdiagonal_terms``,
+``_rounded_row``, ``_apply_constitutive_regions``; MEEP step_generic.cpp:568-611)::
 
-    constitutive = D_c * us_c                               # stepping.py:1005
-    per surviving partner (offset 1 then 2, cycle X->Y->Z, :1235-1237):
-        pair    = g + shift_down(g, partner_axis)           # :1214-1216
-        product = pair * coefficient                        # :1217
-        term    = 0.25 * (product + shift_up(product, a))   # :1219-1220
-        total   accumulates term(offset1) then term(offset2)  # :1221
-    _mask_metallic_wall_coupling(total)                     # :1223, :1227-1254
-    constitutive = (D_c * us_c) + total                     # :978-979
-    prev = f_w_c ; f_w_c = constitutive                     # :2065-2096
-    E_c += kps_a_h * f_w_c ;  E_c -= kms_a_h * prev         # half-integer, :986
+    row = double(D_c * us_c)                                # one float32 product, widened
+    per surviving partner (offset 1 then 2, cycle X->Y->Z):
+        pair    = g + shift_down(g, partner_axis)
+        product = pair * coefficient
+        summed  = product + shift_up(product, a)            # float32
+        summed  = 0 at face 0 of each metallic, non-mirrored axis with iyee 0
+        row     = row + 0.25 * double(summed)               # only where the slot is present
+    src = float(row)                                        # rounded once
+    on the cells whose chunk carries the a-layer (half-integer membership):
+        E_c = E_c + ((kps_a_h * src) - (kms_a_h * f_w_c));  f_w_c = src
+    everywhere else:
+        E_c = src;                                          f_w_c keeps its word
 
 THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
 
-1. **THE COEFFICIENT MULTIPLY SITS BETWEEN THE TWO SHIFTS** (stepping.py:
-   1243-1249): ``u[i]`` multiplies the two-point partner average AT ITS OWN
-   NODE and ``u[i+s]`` the average at the next node up — MEEP registers the
-   off-diagonal entry at the component's Yee site minus half a cell along its
-   own axis, the integer node (anisotropic_averaging.cpp:248-257,
-   ``here - shift1``). A plain four-point-average-times-``u[i]`` hoist is the
-   same ALGEBRA only for a uniform coefficient — and MEASURED bitwise-
-   different even there, because distributivity (``a*u + b*u`` vs
-   ``(a+b)*u``) is not a bitwise identity in f32 (the laptop test pins the
-   separation). The gate's spatially varying coefficient cases are what make
-   the REGISTRATION — not merely the rounding — byte-visible, and its m1
-   mutation is the hoist; the uniform-coefficient row is recorded as an
-   outcome, refining the plan's predicted null.
-2. **THE TWO SHIFTS GO IN OPPOSITE DIRECTIONS** — half a cell DOWN the
-   partner's axis on the raw partner volume (``g[i-sx]``), then the already-
-   multiplied product half a cell UP the component's own axis (``(pair*u)[i+s]``,
-   which is where the corner ``g[(i+s)-sx]`` arises). Per-axis ghost rules
-   compose independently on the corner. Taking both shifts the same way is the
-   half-cell registration error; the gate's m2 mutation is exactly it.
-3. **0.25 SCALES THE SUM, APPLIED LAST** (stepping.py:1248-1249). 0.25 is
-   exact in f32 and the association is the transcribed one — but it is NOT a
-   byte-observable choice: an exact power-of-two factor commutes with
-   round-to-nearest away from underflow, so the distributed form is bitwise
-   identical wherever nothing is subnormal (the gate's first cut measured the
-   planted distribution NOT caught on the cancellation class with a
-   PTX-verified-different binary; laptop, 0/2M mismatches). The gate carries
-   the distribution as a recorded NULL control; the transcribed association
-   is fidelity, not a pinned grouping. Contrast the coefficient hoist (m1):
-   ARBITRARY-coefficient distributivity rounds differently and is caught.
-4. **THE METALLIC WALL-COUPLING MASK** (``_mask_metallic_wall_coupling``,
-   stepping.py:1256-1283): the coupling total is zeroed at FACE 0 of every
-   metallic non-mirrored axis on which the component's Yee shift is 0, BEFORE
-   the row sum — the wall's tangential E is never stepped, the diagonal
-   product is already zero there via ``zero_metal_D``, but the coupling reads
-   live PARTNER volumes beside the wall (measured 2.6e-02 unmasked against a
-   2.0e-07 floor masked). Only the low wall is stored; the high wall is the
-   shift-up zero ghost. The gate's m6 (dropped) and m7 (over-applied)
-   mutations hold both directions.
-5. **THE ROW SUM IS DIAGONAL-FIRST**: ``(D_c * us_c) + total`` (stepping.py:
-   1007-1008) — and the accumulation order inside ``total`` is offset 1 then
-   offset 2 (:1221). Both additions are bitwise commutative in f32, which is
-   why the gate carries the commuted row sum as a NULL control (must NOT be
-   caught), not as a mutation.
-6. **A COMPONENT WITH NO SURVIVING ROW KEEPS THE PURE DIAGONAL ARITHMETIC** —
-   ``_offdiagonal_terms`` returns ``None`` and the caller never forms a
-   ``+ 0`` copy (stepping.py:1222-1227). The row-mask constexprs compile the
-   'none' arm to :func:`kernels.constitutive_step`'s SCALE=1 component body
-   verbatim, and the gate's identity leg pins the rows-all-dropped build
-   byte-identical to the certified kernel.
-7. **``prev`` IS READ BEFORE ``f_w`` IS WRITTEN**, and the tail keeps the two
-   separate accumulations of ``_apply_constitutive_pml`` (stepping.py:
-   2112-2143) — byte-for-byte the certified constitutive family's recurrence.
-   ``ENABLE_FP_FUSION = False`` is the certified configuration for this
-   multiply-subtract tail shape (the beta gate measured fusion-on changing
-   bytes on 72/96 cases of it). No unary minus appears on any coefficient
-   path (the platform's ``semantic.minus`` lowers ``-x`` as ``0.0 - x`` and
-   canonicalizes signed-zero addends).
+1. **THE COEFFICIENT MULTIPLY SITS BETWEEN THE TWO SHIFTS**: ``u[i]`` multiplies
+   the two-point partner average AT ITS OWN NODE and ``u[i+s]`` the average at the
+   next node up -- MEEP registers the off-diagonal entry at the component's Yee
+   site minus half a cell along its own axis, the integer node
+   (anisotropic_averaging.cpp:248-257, ``here - shift1``). A plain
+   four-point-average-times-``u[i]`` hoist is the same ALGEBRA only for a uniform
+   coefficient -- and MEASURED bitwise-different even there, because
+   distributivity (``a*u + b*u`` vs ``(a+b)*u``) is not a bitwise identity in f32
+   (the laptop test pins the separation). The gate's spatially varying
+   coefficient cases are what make the REGISTRATION -- not merely the rounding --
+   byte-visible, and its m1 mutation is the hoist.
+2. **THE TWO SHIFTS GO IN OPPOSITE DIRECTIONS** -- half a cell DOWN the partner's
+   axis on the raw partner volume (``g[i-sx]``), then the already-multiplied
+   product half a cell UP the component's own axis (``(pair*u)[i+s]``, which is
+   where the corner ``g[(i+s)-sx]`` arises). Per-axis ghost rules compose
+   independently on the corner. Taking both shifts the same way is the half-cell
+   registration error; the gate's m2 mutation is exactly it.
+3. **THE ROW IS MEEP'S DOUBLE ROW, ROUNDED ONCE.** ``0.25`` is a double literal in
+   MEEP's ``OFFDIAG`` macro, so each term is the float32 sum widened and scaled in
+   double (exact: a power of two), the terms are added to the widened ``gs*us`` in
+   double, left to right (offset 1 then 2), and the store rounds once
+   (``tl.cast`` to float64 and back; the narrowing is round-to-nearest-even). The
+   previous float32 row (``0.25`` in float32, ``diag + total`` in float32) is the
+   gate's b3 mutation.
+4. **THE METALLIC WALL-COUPLING MASK** (``_mask_metallic_wall_coupling``): each
+   term's float32 sum is zeroed at FACE 0 of every metallic non-mirrored axis on
+   which the component's Yee shift is 0, BEFORE it is scaled and added -- the
+   wall's tangential E is never stepped, the diagonal product is already zero
+   there via ``zero_metal_D``, but the coupling reads live PARTNER volumes beside
+   the wall. Only the low wall is stored; the high wall is the shift-up zero
+   ghost. The gate's m6 (dropped) and m7 (over-applied) mutations hold both
+   directions.
+5. **PER-CHUNK PRESENCE.** MEEP deletes an off-diagonal ``chi1inv`` array in every
+   chunk where it is identically zero over the chunk's samples and passes NULL for
+   it there, so the term is dropped rather than a zero added
+   (``Fields.offdiag_presence``; step_generic.cpp:568-583). That differs from
+   adding one only where the row so far is ``-0``. The kernel reads the slot's
+   presence per chunk of the ``{low, interior, high}`` product
+   (:func:`presence_record`), from per-axis segment lines read off the division's
+   own owner volume -- not from the membership record's runs, which are the
+   layer's and need not be the chunk cuts. A slot no chunk drops compiles to no
+   read at all (the ``P*`` constexprs).
+6. **A COMPONENT WITH NO SURVIVING ROW KEEPS THE PLAIN PRODUCT** -- ``_offdiagonal_terms``
+   returns ``None`` and the caller never forms a ``+ 0`` copy. The row-mask
+   constexprs compile the 'none' arm to ``gs*us`` itself, and the gate's identity
+   leg pins the rows-all-dropped build byte-identical to the root constitutive
+   kernel.
+7. **THE CONSTITUTIVE FORM IS PER CHUNK** (:func:`.forms.constitutive_form`, read
+   from the record's half-integer line of the component's own axis): MEEP's
+   accumulation ``E + ((kps*src) - (kms*f_w))`` with ``f_w = src`` on the cells
+   whose chunk carries the layer, ``E = src`` elsewhere. ``f_w`` is read and
+   written on the accumulation's cells only (the auxiliary contract), ``prev`` is
+   read before ``f_w`` is written, and the plain form is an output select, so a
+   ``-0`` source stays ``-0``. ``ENABLE_FP_FUSION = False`` keeps every product
+   unfused. No unary minus appears on any coefficient path (the platform's
+   ``semantic.minus`` lowers ``-x`` as ``0.0 - x`` and canonicalizes signed-zero
+   addends).
 
 NO DIVISION ANYWHERE. This family returns to the divide-free profile of the
 previously certified families — no Pade quotient, no ``div_rn`` concern, and
@@ -170,7 +172,7 @@ bar.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from . import coverage as _coverage
 
@@ -212,6 +214,12 @@ HALF_INTEGER = True
 #: Triton to import); a test pins the two against the source.
 DEFAULT_BLOCK = 256
 
+#: The presence vector (:func:`presence_record`) starts with one ``int32`` mask per
+#: row slot, in :data:`ROW_SLOTS` order: bit ``c`` set when chunk ``c`` of the
+#: ``{low, interior, high}`` product keeps that slot's ``chi1inv`` array. The
+#: per-axis segment lines follow these words.
+PRESENCE_MASK_WORDS = 6
+
 #: The shared clause builders the predicate composes from, named as data so the
 #: laptop test can assert every one still exists in the shared ``coverage.py``.
 SHARED_CLAUSES: Tuple[str, ...] = (
@@ -244,6 +252,10 @@ if triton is not None:
     #: body may not read a plain module global.
     PERIODIC = tl.constexpr(0)
     METALLIC = tl.constexpr(1)
+    #: Where the segment lines start in the presence vector (:data:`PRESENCE_MASK_WORDS`).
+    PRESENCE_LINES = tl.constexpr(PRESENCE_MASK_WORDS)
+    from .forms import constitutive_form, record_in  # noqa: E402
+    from .kernels import RECORD_HALF_INTEGER  # noqa: E402
 else:
     PERIODIC = 0  # type: ignore[assignment]
     METALLIC = 1  # type: ignore[assignment]
@@ -253,42 +265,56 @@ if triton is not None:
 
     @triton.jit
     def _offdiag_term(g, u, o_c, o_d, o_u, o_ud, v_c, v_d, v_u, v_ud):
-        """One partner's OFFDIAG term — MEEP step_generic.cpp:582-583 as
-        ``stepping._offdiagonal_terms`` (:1214-1220) associates it::
+        """One partner's OFFDIAG sum before its scale, in float32.
 
-            0.25*((g[i] + g[i-sx])*u[i] + (g[i+s] + g[(i+s)-sx])*u[i+s])
+        MEEP step_generic.cpp:580-583 as ``stepping._offdiagonal_terms`` forms it::
 
-        The coefficient multiply sits BETWEEN the shifts: the near pair takes
-        ``u`` at its own node, the far pair (the shifted PRODUCT's value) takes
-        ``u`` at the next node up the component's own axis — loading ``u`` at
-        the composed up index is the same bits as shifting the formed product,
-        because a shift is data movement and the coefficient wraps plainly
-        (phase-free) on a periodic axis while a metallic far face zeroes the
-        whole product through the masks. 0.25 scales the sum, applied last.
-        No unary minus (platform fact: ``semantic.minus`` canonicalizes
-        signed-zero addends).
+            (g[i] + g[i-sx])*u[i] + (g[i+s] + g[(i+s)-sx])*u[i+s]
+
+        The pair sums, the two products and their sum are ``realnum`` operations,
+        each rounded to float32. The coefficient multiply sits BETWEEN the shifts:
+        the near pair takes ``u`` at its own node, the far pair (the shifted
+        PRODUCT's value) takes ``u`` at the next node up the component's own axis --
+        loading ``u`` at the composed up index is the same bits as shifting the
+        formed product, because a shift is data movement and the coefficient wraps
+        plainly (phase-free) on a periodic axis while a metallic far face zeroes the
+        whole product through the masks. The ``0.25`` is MEEP's double literal and
+        is applied by :func:`_row_add`, in double. No unary minus (platform fact:
+        ``semantic.minus`` canonicalizes signed-zero addends).
         """
         near = (tl.load(g + o_c, mask=v_c, other=0.0)
                 + tl.load(g + o_d, mask=v_d, other=0.0))
         far = (tl.load(g + o_u, mask=v_u, other=0.0)
                + tl.load(g + o_ud, mask=v_ud, other=0.0))
-        return 0.25 * ((near * tl.load(u + o_c, mask=v_c, other=0.0))
-                       + (far * tl.load(u + o_u, mask=v_u, other=0.0)))
+        return ((near * tl.load(u + o_c, mask=v_c, other=0.0))
+                + (far * tl.load(u + o_u, mask=v_u, other=0.0)))
 
     @triton.jit
-    def _masked_row_sum(diag, total, at_a, at_b,
-                        WMA: tl.constexpr, WMB: tl.constexpr):
-        """Wall-mask the coupling, THEN form the row sum — the array path's
-        order (``_mask_metallic_wall_coupling`` at stepping.py:1252 runs before
-        the ``constitutive + coupling`` add at :1007-1008). ``at_a``/``at_b`` are
-        the face-0 predicates of the component's two Yee-shift-0 axes, in
-        ascending axis order (the mask's own loop order); only face 0 is
-        zeroed — the high wall is the shift-up zero ghost."""
+    def _row_add(row, summed, at_a, at_b, op, chunk, SLOT: tl.constexpr,
+                 WMA: tl.constexpr, WMB: tl.constexpr, PRESENT: tl.constexpr):
+        """Add one OFFDIAG term to the double row, as ``stepping._offdiagonal_terms`` does.
+
+        The wall mask zeroes the term's float32 sum first, at face 0 of the
+        component's Yee-shift-0 axes that are metallic and not mirrored
+        (``_mask_metallic_wall_coupling``; ``at_a``/``at_b`` in ascending axis order,
+        the mask's own loop order; the high wall is the shift-up zero ghost). The
+        sum is then widened exactly and scaled by the double ``0.25`` (exact: a power
+        of two on a widened float32), and the term is added in double. ``PRESENT``
+        set means the term is added only on the cells whose chunk keeps row slot
+        ``SLOT``'s array: MEEP passes NULL for it in every chunk that deleted it and
+        drops the term there rather than adding a zero (step_generic.cpp:568-583).
+        Word ``SLOT`` of the presence vector holds one bit per chunk of the
+        ``{low, interior, high}`` product, and ``chunk`` (0..26) is the cell's.
+        """
         if WMA:
-            total = tl.where(at_a, 0.0, total)
+            summed = tl.where(at_a, 0.0, summed)
         if WMB:
-            total = tl.where(at_b, 0.0, total)
-        return diag + total
+            summed = tl.where(at_b, 0.0, summed)
+        added = row + 0.25 * tl.cast(summed, tl.float64)
+        if PRESENT:
+            present = ((tl.load(op + SLOT) >> chunk) & 1) != 0
+            added = tl.where(present, added, row)
+        return added
 
     @triton.jit
     def offdiag_constitutive_step(
@@ -300,10 +326,16 @@ if triton is not None:
         u11, u12,                       # row Ey: partner Ez (down z), partner Ex (down x)
         u21, u22,                       # row Ez: partner Ex (down x), partner Ey (down y)
         kp0, km0, kp1, km1, kp2, km2,   # kps/kms on each component's OWN axis, half-integer
+        cb,                             # chunk record: each component's dsigw membership
+        op,                             # off-diagonal presence: slot masks, segment lines
         nx, ny, nz, n_elem,
         R01: tl.constexpr, R02: tl.constexpr,
         R11: tl.constexpr, R12: tl.constexpr,
         R21: tl.constexpr, R22: tl.constexpr,
+        P01: tl.constexpr, P02: tl.constexpr,
+        P11: tl.constexpr, P12: tl.constexpr,
+        P21: tl.constexpr, P22: tl.constexpr,
+        PRESENCE: tl.constexpr,
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         WM_X: tl.constexpr, WM_Y: tl.constexpr, WM_Z: tl.constexpr,
         BLOCK: tl.constexpr,
@@ -311,22 +343,28 @@ if triton is not None:
         """``stepping.update_E`` under PML with off-diagonal chi1inv rows.
 
         The body is :func:`kernels.constitutive_step`'s E arm with ONE
-        substitution per coupled component: ``src`` is no longer ``D*inv_eps``
-        but ``(D*inv_eps) + total`` with ``total`` the wall-masked OFFDIAG
-        accumulation. Everything else — the prev-before-store ordering, the two
-        separate accumulations, the own-axis half-integer coefficient index —
-        is that kernel's, unchanged, because the array path's is unchanged.
+        substitution per coupled component: ``src`` is no longer ``D*inv_eps`` but
+        MEEP's row, ``gs*us`` widened to double plus each surviving OFFDIAG term in
+        double (:func:`_row_add`), rounded once to float32 (``stepping._rounded_row``).
+        The tail is that kernel's: the component's own (dsigw) membership line on
+        the half-integer sub-lattice picks MEEP's accumulation or ``E = src``
+        (:func:`.forms.constitutive_form`), and ``f_w`` is read and written on the
+        accumulation's cells only.
 
         ``R*`` are the per-component ROW MASK constexprs (offset-1 and offset-2
         surviving-partner flags), giving each component the four arms
-        none/first/second/both; the 'none' arm is the certified plain body
-        verbatim (docstring point 6). ``BC*`` carry the per-axis ghost rule for
-        the coupling's neighbour loads. ``WM_*`` carry the metallic wall-mask
-        declaration — the SAME question ``_mask_metallic_wall_coupling`` asks
-        (``is_metallic and not is_mirrored``), deliberately NOT the ``BC*``
-        ghost codes, exactly as the fused pairs keep ``ZM_*`` separate from
-        ``BC*``. Coefficient pointers of dead slots are bound by the plan to
-        the component's own D pointer and never read.
+        none/first/second/both; the 'none' arm is the plain ``gs*us``, which is the
+        array path's own product when no row survives. ``P*`` say which surviving
+        slots are dropped by some chunk: such a slot's term is added where its
+        presence bit is set (:func:`presence_record`), every other slot's
+        everywhere; ``PRESENCE`` is any of them, and only then are the segment
+        lines read. ``BC*`` carry the per-axis ghost rule for the coupling's
+        neighbour loads. ``WM_*`` carry the metallic wall-mask declaration -- the
+        SAME question ``_mask_metallic_wall_coupling`` asks (``is_metallic and not
+        is_mirrored``), deliberately NOT the ``BC*`` ghost codes, exactly as the
+        fused pairs keep ``ZM_*`` separate from ``BC*``. Coefficient pointers of
+        dead slots are bound by the plan to the component's own D pointer and
+        never read.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -364,6 +402,28 @@ if triton is not None:
         # Wall-plane predicates for the coupling mask (face 0 only).
         at_x, at_y, at_z = i == 0, j == 0, k == 0
 
+        # Which chunk of the {low, interior, high} product owns the cell, per
+        # component lattice (presence_record's segment lines: integer x, y, z,
+        # then half-integer x, y, z). Read only when some slot's presence varies.
+        c0, c1, c2 = i * 0, i * 0, i * 0
+        if PRESENCE:
+            sxi = tl.load(op + PRESENCE_LINES + i, mask=live, other=0)
+            syi = tl.load(op + PRESENCE_LINES + nx + j, mask=live, other=0)
+            szi = tl.load(op + PRESENCE_LINES + nx + ny + k, mask=live, other=0)
+            half = PRESENCE_LINES + nx + ny + nz
+            sxh = tl.load(op + half + i, mask=live, other=0)
+            syh = tl.load(op + half + nx + j, mask=live, other=0)
+            szh = tl.load(op + half + nx + ny + k, mask=live, other=0)
+            c0 = (sxh * 9 + syi * 3) + szi     # Ex: half-integer on x
+            c1 = (sxi * 9 + syh * 3) + szi     # Ey: half-integer on y
+            c2 = (sxi * 9 + syi * 3) + szh     # Ez: half-integer on z
+
+        # Which cells take the accumulation: each component's own (dsigw) layer on
+        # the half-integer sub-lattice (chunk_map.record_index(True, axis, 0)).
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
+
         # Component 0 takes its coefficient from axis x, 1 from y, 2 from z.
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
         km_0 = tl.load(km0 + i, mask=live, other=0.0)
@@ -373,114 +433,123 @@ if triton is not None:
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
         # --- component 0: Ex — own axis x; partners Dy (down y) then Dz (down z)
-        prev0 = tl.load(w0 + idx, mask=live, other=0.0)   # BEFORE the store.
+        prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)   # BEFORE the store.
         gs0 = tl.load(g0 + idx, mask=live, other=0.0)
         us0 = tl.load(e0 + idx, mask=live, other=0.0)
         if R01:
-            total0 = _offdiag_term(
+            row0 = tl.cast(gs0 * us0, tl.float64)
+            row0 = _row_add(row0, _offdiag_term(
                 g1, u01, idx,
                 i * nyz + dj * nz + k,
                 ui * nyz + j * nz + k,
                 ui * nyz + dj * nz + k,
-                live, dvy, uvx, uvx & dvy)
+                live, dvy, uvx, uvx & dvy),
+                at_y, at_z, op, c0, 0, WM_Y, WM_Z, P01)
             if R02:
-                total0 = total0 + _offdiag_term(
+                row0 = _row_add(row0, _offdiag_term(
                     g2, u02, idx,
                     i * nyz + j * nz + dk,
                     ui * nyz + j * nz + k,
                     ui * nyz + j * nz + dk,
-                    live, dvz, uvx, uvx & dvz)
-            src0 = _masked_row_sum(gs0 * us0, total0, at_y, at_z, WM_Y, WM_Z)
+                    live, dvz, uvx, uvx & dvz),
+                    at_y, at_z, op, c0, 1, WM_Y, WM_Z, P02)
+            src0 = tl.cast(row0, tl.float32)
         else:
             if R02:
-                total0 = _offdiag_term(
+                row0 = tl.cast(gs0 * us0, tl.float64)
+                row0 = _row_add(row0, _offdiag_term(
                     g2, u02, idx,
                     i * nyz + j * nz + dk,
                     ui * nyz + j * nz + k,
                     ui * nyz + j * nz + dk,
-                    live, dvz, uvx, uvx & dvz)
-                src0 = _masked_row_sum(gs0 * us0, total0, at_y, at_z,
-                                       WM_Y, WM_Z)
+                    live, dvz, uvx, uvx & dvz),
+                    at_y, at_z, op, c0, 1, WM_Y, WM_Z, P02)
+                src0 = tl.cast(row0, tl.float32)
             else:
                 src0 = gs0 * us0
-        tl.store(w0 + idx, src0, mask=live)
-        a0 = tl.load(f0 + idx, mask=live, other=0.0)
-        a0 = a0 + kp_0 * src0
-        a0 = a0 - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=live & dw0)
+        a0 = tl.load(f0 + idx, mask=live & dw0, other=0.0)
+        a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)
         tl.store(f0 + idx, a0, mask=live)
 
         # --- component 1: Ey — own axis y; partners Dz (down z) then Dx (down x)
-        prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+        prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
         gs1 = tl.load(g1 + idx, mask=live, other=0.0)
         us1 = tl.load(e1 + idx, mask=live, other=0.0)
         if R11:
-            total1 = _offdiag_term(
+            row1 = tl.cast(gs1 * us1, tl.float64)
+            row1 = _row_add(row1, _offdiag_term(
                 g2, u11, idx,
                 i * nyz + j * nz + dk,
                 i * nyz + uj * nz + k,
                 i * nyz + uj * nz + dk,
-                live, dvz, uvy, uvy & dvz)
+                live, dvz, uvy, uvy & dvz),
+                at_x, at_z, op, c1, 2, WM_X, WM_Z, P11)
             if R12:
-                total1 = total1 + _offdiag_term(
+                row1 = _row_add(row1, _offdiag_term(
                     g0, u12, idx,
                     di * nyz + j * nz + k,
                     i * nyz + uj * nz + k,
                     di * nyz + uj * nz + k,
-                    live, dvx, uvy, uvy & dvx)
-            src1 = _masked_row_sum(gs1 * us1, total1, at_x, at_z, WM_X, WM_Z)
+                    live, dvx, uvy, uvy & dvx),
+                    at_x, at_z, op, c1, 3, WM_X, WM_Z, P12)
+            src1 = tl.cast(row1, tl.float32)
         else:
             if R12:
-                total1 = _offdiag_term(
+                row1 = tl.cast(gs1 * us1, tl.float64)
+                row1 = _row_add(row1, _offdiag_term(
                     g0, u12, idx,
                     di * nyz + j * nz + k,
                     i * nyz + uj * nz + k,
                     di * nyz + uj * nz + k,
-                    live, dvx, uvy, uvy & dvx)
-                src1 = _masked_row_sum(gs1 * us1, total1, at_x, at_z,
-                                       WM_X, WM_Z)
+                    live, dvx, uvy, uvy & dvx),
+                    at_x, at_z, op, c1, 3, WM_X, WM_Z, P12)
+                src1 = tl.cast(row1, tl.float32)
             else:
                 src1 = gs1 * us1
-        tl.store(w1 + idx, src1, mask=live)
-        a1 = tl.load(f1 + idx, mask=live, other=0.0)
-        a1 = a1 + kp_1 * src1
-        a1 = a1 - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=live & dw1)
+        a1 = tl.load(f1 + idx, mask=live & dw1, other=0.0)
+        a1 = constitutive_form(a1, prev1, src1, kp_1, km_1, dw1)
         tl.store(f1 + idx, a1, mask=live)
 
         # --- component 2: Ez — own axis z; partners Dx (down x) then Dy (down y)
-        prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+        prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
         gs2 = tl.load(g2 + idx, mask=live, other=0.0)
         us2 = tl.load(e2 + idx, mask=live, other=0.0)
         if R21:
-            total2 = _offdiag_term(
+            row2 = tl.cast(gs2 * us2, tl.float64)
+            row2 = _row_add(row2, _offdiag_term(
                 g0, u21, idx,
                 di * nyz + j * nz + k,
                 i * nyz + j * nz + uk,
                 di * nyz + j * nz + uk,
-                live, dvx, uvz, uvz & dvx)
+                live, dvx, uvz, uvz & dvx),
+                at_x, at_y, op, c2, 4, WM_X, WM_Y, P21)
             if R22:
-                total2 = total2 + _offdiag_term(
+                row2 = _row_add(row2, _offdiag_term(
                     g1, u22, idx,
                     i * nyz + dj * nz + k,
                     i * nyz + j * nz + uk,
                     i * nyz + dj * nz + uk,
-                    live, dvy, uvz, uvz & dvy)
-            src2 = _masked_row_sum(gs2 * us2, total2, at_x, at_y, WM_X, WM_Y)
+                    live, dvy, uvz, uvz & dvy),
+                    at_x, at_y, op, c2, 5, WM_X, WM_Y, P22)
+            src2 = tl.cast(row2, tl.float32)
         else:
             if R22:
-                total2 = _offdiag_term(
+                row2 = tl.cast(gs2 * us2, tl.float64)
+                row2 = _row_add(row2, _offdiag_term(
                     g1, u22, idx,
                     i * nyz + dj * nz + k,
                     i * nyz + j * nz + uk,
                     i * nyz + dj * nz + uk,
-                    live, dvy, uvz, uvz & dvy)
-                src2 = _masked_row_sum(gs2 * us2, total2, at_x, at_y,
-                                       WM_X, WM_Y)
+                    live, dvy, uvz, uvz & dvy),
+                    at_x, at_y, op, c2, 5, WM_X, WM_Y, P22)
+                src2 = tl.cast(row2, tl.float32)
             else:
                 src2 = gs2 * us2
-        tl.store(w2 + idx, src2, mask=live)
-        a2 = tl.load(f2 + idx, mask=live, other=0.0)
-        a2 = a2 + kp_2 * src2
-        a2 = a2 - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=live & dw2)
+        a2 = tl.load(f2 + idx, mask=live & dw2, other=0.0)
+        a2 = constitutive_form(a2, prev2, src2, kp_2, km_2, dw2)
         tl.store(f2 + idx, a2, mask=live)
 
 else:  # pragma: no cover - the laptop path
@@ -549,6 +618,234 @@ def row_volumes_for(fields: Any) -> Tuple[Optional[Any], ...]:
         _coverage._call(fields, "chi1inv_offdiagonal_for", row,
                         default={}).get(partner)
         for row, partner in ROW_SLOTS)
+
+
+# ---------------------------------------------------------------------------
+# Off-diagonal presence: which chunks keep each row slot's array
+# ---------------------------------------------------------------------------
+
+class PresenceRecord(NamedTuple):
+    """What the kernel reads to drop a term where MEEP dropped its array.
+
+    ``vector`` is a host ``int32`` vector: :data:`PRESENCE_MASK_WORDS` slot masks
+    (bit ``c`` set when chunk ``c`` of the ``{low, interior, high}`` product keeps
+    the slot's array), then one segment line per (sub-lattice, axis) over the stored
+    rows, integer x, y, z then half-integer x, y, z, each entry the segment (0, 1
+    or 2) of the chunk that owns the row along that axis. ``varies`` holds, per
+    slot, 1 when some chunk drops the slot's array (the kernel tests the bit) and 0
+    when every chunk keeps it (the term is added everywhere, no read).
+    """
+
+    vector: Any
+    varies: Tuple[int, ...]
+
+
+#: Every slot present everywhere: the presence of a one-chunk division.
+ALL_PRESENT = PresenceRecord(None, (0,) * 6)
+
+
+def segment_lines(layout: Any) -> Dict[Tuple[int, int], Any]:
+    """Per (sub-lattice, axis): the segment of the chunk that owns each stored row.
+
+    The division must be a ``{low, interior, high}`` product along every resolved
+    axis: each chunk cut spans the cross-section (``ChunkLayout.boundaries`` is not
+    ``None``) and an axis has at most three segments. A chunk's segment along an
+    axis is the position of its low face among the cuts. Each line is read off the
+    division's own owner volume (``ChunkLayout.owner_volume``, the same per-cell
+    owner the array path reads presence through) and the owner volume of every E
+    lattice must be the product of its three lines; anything else is refused by
+    name (:class:`~meep_gpu.chunk_map.ChunkLayoutRefusal`). The membership record's
+    runs are not used: they are the layer's, and a division may cut an axis that
+    carries no layer.
+    """
+    import bisect  # noqa: PLC0415
+
+    import numpy  # noqa: PLC0415
+
+    from ..chunk_map import AXIS_NAMES, ChunkLayoutRefusal  # noqa: PLC0415
+    from ..fields import IYEE_SHIFTS  # noqa: PLC0415
+
+    cuts = []
+    for axis in range(3):
+        cut = layout.boundaries(axis)
+        if cut is None:
+            raise ChunkLayoutRefusal(
+                f"a chunk cut along {AXIS_NAMES[axis]} does not span the cross-section, so "
+                f"the off-diagonal presence has no per-axis segment to index")
+        if len(cut) - 1 > 3:
+            raise ChunkLayoutRefusal(
+                f"the division cuts {AXIS_NAMES[axis]} into {len(cut) - 1} segments; the "
+                f"off-diagonal presence indexes at most three")
+        cuts.append(tuple(int(v) for v in cut))
+    triples = numpy.asarray(
+        [[max(bisect.bisect_right(cuts[axis], int(lo[axis])) - 1, 0) for axis in range(3)]
+         for lo, _hi in layout.boxes], dtype=numpy.int32)
+    lines: Dict[Tuple[int, int], Any] = {}
+    for _row, _source, own in E_TERMS:
+        iyee = IYEE_SHIFTS["E" + "xyz"[own]]
+        owned = triples[numpy.asarray(layout.owner_volume(iyee))]
+        for axis in range(3):
+            index = [0, 0, 0]
+            index[axis] = slice(None)
+            line = numpy.ascontiguousarray(owned[tuple(index) + (axis,)], dtype=numpy.int32)
+            shape = [1, 1, 1]
+            shape[axis] = line.size
+            if not numpy.array_equal(owned[..., axis],
+                                     numpy.broadcast_to(line.reshape(shape),
+                                                        owned.shape[:3])):
+                raise ChunkLayoutRefusal(
+                    f"the owning chunk's {AXIS_NAMES[axis]} segment of an E{'xyz'[own]} cell "
+                    f"depends on more than its {AXIS_NAMES[axis]} index")
+            key = (int(iyee[axis]), axis)
+            if key in lines and not numpy.array_equal(lines[key], line):
+                raise ChunkLayoutRefusal(
+                    f"two E components read different {AXIS_NAMES[axis]} segment lines on "
+                    f"one sub-lattice")
+            lines[key] = line
+    return lines
+
+
+def presence_record(layout: Any, volumes: Sequence[Any],
+                    shape: Sequence[int]) -> PresenceRecord:
+    """Pack per-slot presence volumes for the kernel, or refuse by name.
+
+    ``volumes`` holds one entry per :data:`ROW_SLOTS` slot: ``None`` when the term
+    is added on every cell, otherwise a host bool volume of ``shape``, the array
+    path's own (``Fields.offdiag_presence``, read from ``layout``). Each slot's
+    mask bit ``c`` is the presence on the cells whose owning chunk is ``c`` of the
+    ``{low, interior, high}`` product (:func:`segment_lines`); presence that is not
+    one value over such a cell class is refused. The kernel's decode then equals
+    every given volume cell for cell, which this function checks before returning.
+    """
+    import numpy  # noqa: PLC0415
+
+    from ..chunk_map import ChunkLayoutRefusal  # noqa: PLC0415
+
+    extent = tuple(int(n) for n in shape)
+    volumes = tuple(volumes)
+    if len(volumes) != len(ROW_SLOTS):
+        raise ValueError(f"presence needs {len(ROW_SLOTS)} slots (None where the term is "
+                         f"added everywhere), got {len(volumes)}")
+    if all(volume is None for volume in volumes):
+        return ALL_PRESENT
+    lines = segment_lines(layout)
+    for (half, axis), line in lines.items():
+        if line.size != extent[axis]:
+            raise ChunkLayoutRefusal(
+                f"the division's {'xyz'[axis]} segment line has {line.size} rows, the plan "
+                f"stores {extent[axis]}")
+    words = numpy.zeros(PRESENCE_MASK_WORDS, dtype=numpy.int64)
+    varies = []
+    component_of_slot = {row: own for row, _source, own in E_TERMS}
+    for slot, ((row, partner), volume) in enumerate(zip(ROW_SLOTS, volumes)):
+        if volume is None:
+            varies.append(0)
+            continue
+        present = numpy.asarray(volume, dtype=bool)
+        if present.shape != extent:
+            raise ValueError(f"the presence of {row}<-{partner} has shape {present.shape}, "
+                             f"the plan stores {extent}")
+        own = component_of_slot[row]
+        x, y, z = (lines[(int(axis == own), axis)] for axis in range(3))
+        chunk = (x[:, None, None] * 9 + y[None, :, None] * 3) + z[None, None, :]
+        word = 0
+        for value in numpy.unique(chunk):
+            cells = present[chunk == value]
+            if cells.all():
+                word |= 1 << int(value)
+            elif cells.any():
+                raise ChunkLayoutRefusal(
+                    f"the presence of {row}<-{partner} is not one value over the cells of "
+                    f"chunk {int(value)} of the low/interior/high product")
+        decoded = ((word >> chunk) & 1).astype(bool)
+        if not numpy.array_equal(decoded, present):
+            raise ChunkLayoutRefusal(
+                f"the packed presence of {row}<-{partner} does not reproduce its volume")
+        words[slot] = word
+        varies.append(1)
+    vector = numpy.concatenate(
+        [words.astype(numpy.int32)]
+        + [lines[(half, axis)] for half in (0, 1) for axis in range(3)]).astype(numpy.int32)
+    vector.setflags(write=False)
+    return PresenceRecord(vector, tuple(varies))
+
+
+def presence_for(fields: Any, pml: Any) -> PresenceRecord:
+    """The presence ``stepping.update_E`` adds each row slot's term with, packed.
+
+    Read as the array path reads it: the division is ``stepping._chunk_layout``
+    (the lifted one when the driver installed it, the one-rank division under a
+    layer otherwise), and each slot's volume is ``ChunkLayout.offdiag_presence`` of
+    the coefficient the plan binds (:func:`row_volumes_for`) on it -- what
+    ``Fields.offdiag_presence`` returns for a Cartesian grid (its one addition, the
+    cylindrical axis row, belongs to a run this family refuses). Refused by name
+    where the division is not a ``{low, interior, high}`` product the kernel can
+    index (:func:`presence_record`).
+    """
+    import numpy  # noqa: PLC0415
+
+    from .. import stepping  # noqa: PLC0415
+    from ..fields import IYEE_SHIFTS  # noqa: PLC0415
+
+    layout = stepping._chunk_layout(fields, pml)
+    if layout is None:
+        return ALL_PRESENT
+    volumes = []
+    for (row, _partner), coefficient in zip(ROW_SLOTS, row_volumes_for(fields)):
+        mask = (None if coefficient is None
+                else layout.offdiag_presence(coefficient, IYEE_SHIFTS[row]))
+        volumes.append(None if mask is None else numpy.asarray(mask, dtype=bool))
+    return presence_record(layout, volumes, tuple(fields.grid.shape))
+
+
+def bind_presence(presence: Any, shape: Sequence[int], row_mask: Sequence[int],
+                  like: Any, owner: str) -> Tuple[Tuple[int, ...], Any, Any]:
+    """Check a :class:`PresenceRecord` against a plan and upload its vector once.
+
+    Returns ``(varies, host vector, device pointer)``. ``presence`` is required:
+    :data:`ALL_PRESENT` states that every term is added on every cell. Refused by
+    name: anything but a record, a varying flag on a dead slot, and a vector that
+    does not carry the plan's segment lines (``PRESENCE_MASK_WORDS + 2*(nx+ny+nz)``
+    words with entries in 0..2) when a flag is set.
+    """
+    import numpy  # noqa: PLC0415
+
+    from .launch import CupyPointer  # noqa: PLC0415
+
+    # Read by its two fields rather than by class: a module reloaded in one process
+    # (a test that re-imports it) holds a second PresenceRecord class.
+    if presence is None or not (hasattr(presence, "vector") and hasattr(presence, "varies")):
+        raise ValueError(
+            f"{owner} was given no off-diagonal presence (PresenceRecord): pass "
+            f"presence_for(fields, pml) or presence_record(...), or ALL_PRESENT for a "
+            f"one-chunk division")
+    varies = tuple(int(bool(flag)) for flag in presence.varies)
+    if len(varies) != len(ROW_SLOTS):
+        raise ValueError(f"{owner}: presence carries {len(varies)} slot flags")
+    for slot, (flag, live) in enumerate(zip(varies, row_mask)):
+        if flag and not live:
+            raise ValueError(f"{owner}: presence varies on dead slot {ROW_SLOTS[slot]}")
+    extent = tuple(int(n) for n in shape)
+    if any(varies):
+        host = numpy.asarray(presence.vector, dtype=numpy.int32)
+        expected = PRESENCE_MASK_WORDS + 2 * sum(extent)
+        if host.shape != (expected,):
+            raise ValueError(f"{owner}: presence vector of shape {host.shape}, expected "
+                             f"({expected},) for the plan's extent {extent}")
+        lines = host[PRESENCE_MASK_WORDS:]
+        if lines.size and (lines.min() < 0 or lines.max() > 2):
+            raise ValueError(f"{owner}: a segment line leaves 0..2")
+    else:
+        host = numpy.zeros(PRESENCE_MASK_WORDS, dtype=numpy.int32)
+    host = host.copy()
+    host.setflags(write=False)
+    if type(like).__module__.split(".")[0] == "cupy":  # pragma: no cover - device path
+        import cupy  # noqa: PLC0415
+
+        device = cupy.asarray(host)
+    else:
+        device = host
+    return varies, host, CupyPointer(device)
 
 
 # ---------------------------------------------------------------------------
@@ -690,7 +987,26 @@ def offdiag_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Coverage"
             reasons.extend(_coverage._coefficient_reasons(
                 pml, shape, ("kps", "kms"), ("_h",) if HALF_INTEGER else ("",)))
 
+    # (g) The per-chunk presence of every surviving row slot, packed for the kernel.
+    if not reasons:
+        reasons.extend(_presence_reasons(fields, pml))
+
     return _coverage.Coverage(not reasons, tuple(reasons))
+
+
+def _presence_reasons(fields: Any, pml: Any) -> List[str]:
+    """Why the per-chunk off-diagonal presence cannot be packed for the kernel, if so.
+
+    MEEP drops a row slot's term in every chunk that deleted the slot's array
+    (``Fields.offdiag_presence``). The kernel indexes that per chunk of a
+    ``{low, interior, high}`` product (:func:`presence_for`); a division it cannot
+    index is refused here, so the builder never raises on an admitted run.
+    """
+    try:
+        presence_for(fields, pml)
+    except Exception as exc:  # noqa: BLE001 - an unpackable presence is a refusal
+        return [f"the off-diagonal presence cannot be packed for the kernel ({exc})"]
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -723,13 +1039,15 @@ class OffdiagConstitutivePlan:
     """
 
     __slots__ = ("shape", "n_elem", "block", "row_mask", "boundary_codes",
-                 "wall_axes", "_targets", "_aux", "_sources", "_inv_eps",
-                 "_rows", "_coefficients", "_grid", "_kernel")
+                 "wall_axes", "chunk_bounds", "presence", "presence_varies",
+                 "_targets", "_aux", "_sources", "_inv_eps", "_rows",
+                 "_coefficients", "_cb", "_op", "_grid", "_kernel")
 
     def __init__(self, shape, block: int, targets, auxiliaries, sources,
                  inverse_epsilon, rows, coefficients, boundary_codes,
-                 wall_axes, kernel: Any = None) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 wall_axes, kernel: Any = None, *, chunk_bounds: Any,
+                 presence: Any) -> None:
+        from .launch import CupyPointer, _flat, bind_chunk_bounds  # noqa: PLC0415
 
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
@@ -771,6 +1089,11 @@ class OffdiagConstitutivePlan:
 
         self._require_no_aliasing(targets, auxiliaries, sources,
                                   inverse_epsilon, rows, coefficients)
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "the off-diagonal update_E plan")
+        self.presence_varies, self.presence, self._op = bind_presence(
+            presence, self.shape, self.row_mask, targets[0],
+            "the off-diagonal update_E plan")
 
         self._targets = tuple(CupyPointer(a) for a in targets)
         self._aux = tuple(CupyPointer(a) for a in auxiliaries)
@@ -831,13 +1154,16 @@ class OffdiagConstitutivePlan:
         kernel = (self._kernel if self._kernel is not None
                   else offdiag_constitutive_step_kernel())
         nx, ny, nz = self.shape
+        varies = self.presence_varies
         kernel[self._grid](
             *self._targets, *self._aux, *self._sources, *self._inv_eps,
-            *self._rows, *self._coefficients,
+            *self._rows, *self._coefficients, self._cb, self._op,
             nx, ny, nz, self.n_elem,
             R01=self.row_mask[0], R02=self.row_mask[1],
             R11=self.row_mask[2], R12=self.row_mask[3],
             R21=self.row_mask[4], R22=self.row_mask[5],
+            P01=varies[0], P02=varies[1], P11=varies[2], P12=varies[3],
+            P21=varies[4], P22=varies[5], PRESENCE=int(any(varies)),
             BCX=self.boundary_codes[0], BCY=self.boundary_codes[1],
             BCZ=self.boundary_codes[2],
             WM_X=self.wall_axes[0], WM_Y=self.wall_axes[1],
@@ -848,7 +1174,8 @@ class OffdiagConstitutivePlan:
 
     def __repr__(self) -> str:
         return (f"OffdiagConstitutivePlan(shape={self.shape}, "
-                f"rows={self.row_mask}, bc={self.boundary_codes}, "
+                f"rows={self.row_mask}, presence={self.presence_varies}, "
+                f"bc={self.boundary_codes}, "
                 f"walls={self.wall_axes}, block={self.block})")
 
 
@@ -858,7 +1185,8 @@ BOUNDARY_CODES = {"periodic": 0, "metallic": 1}
 
 
 def plan_offdiagonal_constitutive(fields: Any, pml: Any,
-                                  block: Optional[int] = None
+                                  block: Optional[int] = None,
+                                  chunk_layout: Any = None
                                   ) -> Optional[OffdiagConstitutivePlan]:
     """Build the off-diagonal ``update_E`` plan from the engine's own objects.
 
@@ -869,9 +1197,16 @@ def plan_offdiagonal_constitutive(fields: Any, pml: Any,
     back the aliased D primaries (fields.py:1107-1138). The Triton import
     stays below the predicate: a NumPy host must be able to plan (to ``None``)
     without the optional dependency being importable at all.
+
+    ``chunk_layout`` is the run's chunk division (``FdtdDriver.chunk_layout``),
+    ``None`` for the one-rank default; the plan binds its record
+    (``launch.chunk_bounds_for``). The presence of each row slot is the array
+    path's own (:func:`presence_for`).
     """
     if not offdiag_constitutive_coverage(fields, pml).covered:
         return None
+    from .launch import chunk_bounds_for  # noqa: PLC0415
+
     kinds = _coverage._boundary_kinds(fields.grid, pml)
     codes = tuple(BOUNDARY_CODES[kind] for kind in kinds)
     targets = tuple(term[0] for term in E_TERMS)
@@ -887,6 +1222,8 @@ def plan_offdiagonal_constitutive(fields: Any, pml: Any,
          for axis in "xyz" for stem in ("kps", "kms")],
         codes,
         wall_mask_axes(fields.grid),
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        presence=presence_for(fields, pml),
     )
 
 
@@ -894,7 +1231,8 @@ def plan_offdiagonal_constitutive_from_arrays(
         arrays: Dict[str, Any], flat: Dict[str, Any],
         rows: Dict[str, Dict[str, Any]],
         boundary_codes: Sequence[int], wall_axes: Sequence[int],
-        block: Optional[int] = None, kernel: Any = None
+        block: Optional[int] = None, kernel: Any = None, *,
+        chunk_bounds: Any, presence: Any
         ) -> OffdiagConstitutivePlan:
     """Build it from bare arrays — the gate's and probe's route.
 
@@ -913,6 +1251,11 @@ def plan_offdiagonal_constitutive_from_arrays(
     through it, and a builder that drops it launches the shipped kernel and
     reports a pass for a defect it never introduced (the measured
     harness-disarm failure the certified families document).
+
+    ``chunk_bounds`` (``chunk_map.chunk_bounds_record``) and ``presence``
+    (:func:`presence_record`, or :data:`ALL_PRESENT`) have no default: a gate whose
+    plan fell back to some default division would stop measuring the forms it
+    exists to measure.
     """
     targets = tuple(term[0] for term in E_TERMS)
     shape = tuple(int(n) for n in arrays[targets[0]].shape)
@@ -927,6 +1270,8 @@ def plan_offdiagonal_constitutive_from_arrays(
         boundary_codes,
         wall_axes,
         kernel=kernel,
+        chunk_bounds=chunk_bounds,
+        presence=presence,
     )
 
 

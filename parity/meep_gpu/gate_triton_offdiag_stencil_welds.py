@@ -102,6 +102,7 @@ SOURCES: Tuple[str, ...] = (
     "meep_gpu/triton_kernels/offdiag_update_e.py",
     "meep_gpu/triton_kernels/folded_offdiag_update_e.py",
     "meep_gpu/triton_kernels/kernels.py",
+    "meep_gpu/triton_kernels/forms.py",
     "meep_gpu/triton_kernels/symmetry.py",
     "meep_gpu/triton_kernels/launch.py",
     "meep_gpu/stepping.py",
@@ -181,6 +182,14 @@ FAMILIES: Dict[str, Dict[str, Any]] = {
             {"label": "walled_xy_4096", "resolution": 32.0,
              "cell": (2.0, 2.0, 0.0),
              "boundaries": {"x": "metallic", "y": "metallic", "z": "periodic"}},
+            # Rows live in the interior only, so the layer's chunks drop every
+            # off-diagonal array (MEEP's NULL pointer) and the term is absent there;
+            # D carries planted -0 words, the only value on which an absent term and
+            # an added zero differ, and H is zero, so the curl is +0 and the planted
+            # words reach update_E through step_D.
+            {"label": "walled_xy_interior_rows", "cell": (1.6, 1.6, 0.0),
+             "boundaries": {"x": "metallic", "y": "metallic", "z": "periodic"},
+             "rows_interior": True, "plant_negative_zero_d": True},
         ),
         # EXACTLY THE 2026-08-20 GRID. That artifact's schedule-dependence table
         # is 4096 cells: 64 programs at BLOCK=64 and FOUR at BLOCK=1024, which is
@@ -218,6 +227,10 @@ FAMILIES: Dict[str, Dict[str, Any]] = {
              "cell": (2.0, 4.0, 0.0),
              "boundaries": {"x": "metallic", "y": "metallic", "z": "periodic"},
              "symmetry": (("Y", -1),)},
+            {"label": "fold_y_odd_walled_interior_rows", "cell": (1.6, 1.6, 0.0),
+             "boundaries": {"x": "metallic", "y": "metallic", "z": "periodic"},
+             "symmetry": (("Y", -1),),
+             "rows_interior": True, "plant_negative_zero_d": True},
         ),
         "s2_fixture": {"label": "fold_y_odd_walled_4096", "resolution": 32.0,
                        "cell": (2.0, 4.0, 0.0),
@@ -327,8 +340,15 @@ def build_fixture(fixture: Dict[str, Any], value_class: str, seed: int,
         "Ey": {"Ez": 0.02, "Ex": 0.04},
         "Ez": {"Ex": 0.01, "Ey": 0.06},
     }
-    rows = {row: {partner: xp.asarray(
-        (base + 0.01 * rng.random(shape)).astype(np.float32))
+    inside = np.ones(shape, dtype=bool)
+    if fixture.get("rows_interior"):
+        # Zero outside a central box, so every chunk of the layer holds an
+        # identically zero row and drops it (ChunkLayout.offdiag_kept).
+        inside = np.zeros(shape, dtype=bool)
+        box = tuple(slice(n // 3, n - n // 3) if n > 2 else slice(None) for n in shape)
+        inside[box] = True
+    rows = {row: {partner: xp.asarray(np.where(
+        inside, (base + 0.01 * rng.random(shape)), 0.0).astype(np.float32))
         for partner, base in entries.items()}
         for row, entries in rows.items()}
     fields.set_epsilon_volumes(diagonal, inverse, rows)
@@ -347,7 +367,13 @@ def build_fixture(fixture: Dict[str, Any], value_class: str, seed: int,
         array = getattr(fields, name, None)
         if array is None:
             continue
-        array[...] = xp.asarray(_seed_class(array.shape, rng, value_class))
+        values = _seed_class(array.shape, rng, value_class)
+        if fixture.get("plant_negative_zero_d"):
+            if name in ("Dx", "Dy", "Dz"):
+                values.reshape(-1)[::7] = np.float32(-0.0)
+            elif name in ("Hx", "Hy", "Hz"):
+                values[...] = np.float32(0.0)
+        array[...] = xp.asarray(values)
     return fields, pml
 
 
@@ -502,10 +528,13 @@ def certified_composition(fields: Any, pml: Any, family: str) -> Tuple[Any, int]
 #: A mutation scored where it cannot fire is a disarmed leg wearing a pass.
 MUTATIONS: Dict[str, Tuple[Tuple[str, str, str, str, str, Optional[str]], ...]] = {
     "offdiag_fused_electric_pair": (
-        ("m_flatten_curl_parens", "kernel",
+        # SCORED ON THE 3-D FIXTURE. On a 2-D one z is invariant, the curl takes
+        # its one-partner form and the planted bracket differs from it only on a
+        # -0 word: the grouping is observable where both partners are present.
+        ("m_pairwise_curl_grouping", "kernel",
+         "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)",
          "curl0 = dtdx * ((c_y - c) + (b - b_z))",
-         "curl0 = dtdx * (((c_y - c) + b) - b_z)",
-         "CAUGHT", None),
+         "CAUGHT", "walled_3d"),
         ("m_mispair_row_coefficients", "kernel",
          "u01, idx,\n                ui * nyz + j * nz + k,\n"
          "                live, uvx)",
@@ -524,9 +553,24 @@ MUTATIONS: Dict[str, Tuple[Tuple[str, str, str, str, str, Optional[str]], ...]] 
          "tap_xu_1 = _tap(1, ui, j, k, uvx,",
          "tap_xu_1 = _tap(1, di, j, k, dvx,",
          "CAUGHT", None),
+        # SCORED ON THE 3-D FIXTURE: Dx's recurrence runs on its dsigu (z) layer,
+        # which a 2-D grid does not have.
         ("m_aux_takes_the_resolved_value", "kernel",
+         "tl.store(a0s + idx, tl.where(du0, aux0, tl.load(",
+         "tl.store(a0s + idx, tl.where(du0, own0, tl.load(",
+         "CAUGHT", "walled_3d"),
+        ("m_aux_store_unguarded", "kernel",
+         "tl.store(a0s + idx, tl.where(du0, aux0, tl.load(\n"
+         "            r0 + idx, mask=live & (du0 == 0), other=0.0)), mask=live)",
          "tl.store(a0s + idx, aux0, mask=live)",
-         "tl.store(a0s + idx, own0, mask=live)",
+         "CAUGHT", None),
+        ("m_presence_ignored", "kernel",
+         "op, c0, 0, WM_Y, WM_Z, P01)",
+         "op, c0, 0, WM_Y, WM_Z, 0)",
+         "CAUGHT", "walled_xy_interior_rows"),
+        ("m_dsigw_on_the_integer_lattice", "kernel",
+         "dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)",
+         "dw0 = record_in(cb, 0, i)",
          "CAUGHT", None),
         ("m_reload_own_D_from_memory", "kernel",
          "        gs0 = dfin0\n",
@@ -534,10 +578,10 @@ MUTATIONS: Dict[str, Tuple[Tuple[str, str, str, str, str, Optional[str]], ...]] 
          "NULL", None),
     ),
     "folded_offdiag_fused_electric_pair": (
-        ("m_flatten_curl_parens", "kernel",
+        ("m_pairwise_curl_grouping", "kernel",
+         "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)",
          "curl0 = dtdx * ((c_y - c) + (b - b_z))",
-         "curl0 = dtdx * (((c_y - c) + b) - b_z)",
-         "CAUGHT", None),
+         "CAUGHT", "fold_x_walled_3d"),
         ("m_mispair_row_coefficients", "kernel",
          "u01, idx,\n                ui * nyz + j * nz + k,\n"
          "                live, uvx, wy, MG_Y)",
@@ -606,13 +650,22 @@ MUTATIONS: Dict[str, Tuple[Tuple[str, str, str, str, str, Optional[str]], ...]] 
         ("m_ghost_weight_wrong_axis", "kernel",
          "live, uvx, wy, MG_Y)", "live, uvx, wx, MG_Y)",
          "CAUGHT", None),
+        ("m_presence_ignored", "kernel",
+         "op, c0, 0, WM_Y, WM_Z, P01)",
+         "op, c0, 0, WM_Y, WM_Z, 0)",
+         "CAUGHT", "fold_y_odd_walled_interior_rows"),
         # `own0`, NOT `dfin0`. The first run declared this against `dfin0`, which
         # in THIS kernel is bound three lines BELOW the auxiliary store, so the
         # mutant died with a NameError and the leg reported REFUSED TO COMPILE —
         # a mutation that cannot build measures nothing.
         ("m_aux_takes_the_resolved_value", "kernel",
+         "tl.store(a0s + idx, tl.where(du0, aux0, tl.load(",
+         "tl.store(a0s + idx, tl.where(du0, own0, tl.load(",
+         "CAUGHT", "fold_x_walled_3d"),
+        ("m_aux_store_unguarded", "kernel",
+         "tl.store(a0s + idx, tl.where(du0, aux0, tl.load(\n"
+         "            r0 + idx, mask=live & (du0 == 0), other=0.0)), mask=live)",
          "tl.store(a0s + idx, aux0, mask=live)",
-         "tl.store(a0s + idx, own0, mask=live)",
          "CAUGHT", None),
         ("m_reload_own_D_from_memory", "kernel",
          "        gs0 = dfin0\n",
@@ -624,6 +677,24 @@ MUTATIONS: Dict[str, Tuple[Tuple[str, str, str, str, str, Optional[str]], ...]] 
 #: Why each mutation is a defect worth arming against, and what it would look
 #: like in a run if it shipped.
 MUTATION_REASONS: Dict[str, str] = {
+    "m_pairwise_curl_grouping":
+        "the curl takes the package's previous pairwise grouping "
+        "dtdx * ((g1s - g1) + (g2 - g2s)) instead of MEEP's left-to-right "
+        "((g1s - g1) + g2) - g2s (step_generic.cpp:104); the two round differently "
+        "in float32. The inversion of the grouping mutation once MEEP's grouping "
+        "is the shipped one",
+    "m_aux_store_unguarded":
+        "the twin's fu takes the recurrence's register on EVERY cell, where the "
+        "auxiliary contract leaves fu its word outside the recurrence's cells; the "
+        "rotation then hands the engine an fu the array path never wrote",
+    "m_presence_ignored":
+        "a row slot's term is added in the chunks that dropped its chi1inv array, "
+        "where MEEP passes NULL and adds nothing; observable only where the row "
+        "so far is -0 and the added term +0, which the fixture plants",
+    "m_dsigw_on_the_integer_lattice":
+        "the constitutive form of Ex is keyed on the integer x membership line "
+        "instead of the half-integer one its own Yee site sits on; the layer's "
+        "boundary plane takes the other form",
     "m_flatten_curl_parens":
         "the curl's association is re-parsed; `(a + b) - c` and `a + (b - c)` "
         "round differently in float32. The 2026-08-20 round recorded this "

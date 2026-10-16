@@ -7,12 +7,18 @@ NOTHING in the seam. Both halves are CERTIFIED singles
 (``cuda_bfast_2026-08-21``, re-gated 2026-08-30); this module is the weld and
 introduces no new arithmetic.
 
-WHAT THE CURL HALF IS: the certified real PML curl body with the BFAST insert --
-the IIR state advance (``fb_B*``), the masked ``advance``, and the
-``curl - advance`` substitution, all INSIDE the lifted body and untouched by the
-splice, exactly as the beta statements ride through the special_kz weld. The
-state pointers and the six host-gated ``(k1, k2)`` scalars are the certified
-signature's own appends, kept.
+WHAT THE CURL HALF IS: the certified ``step_B_bfast_real`` -- the root real PML curl
+body with MEEP's BFAST pass after each component's curl (``folded_pass.bfast_insert``:
+the IIR state step into ``fb_B*`` and the folded ladder on the word ``pml_apply`` just
+stored). The pass rides through the register capture: the component's register is the
+value the LADDER returns (``fold_apply_reg``), not the curl's, because ``update_H``
+must read B after both passes. The state pointers and the six host-gated ``(k1, k2)``
+scalars are the certified signature's own inserts, kept; the chunk record ``cb`` is
+decoded ONCE for both halves (bit_parity_0_10 DESIGN.md D10).
+
+THE RUN'S FIRST ``update_H`` STARTS H FROM B (``stepping.separate_h_from_b``), as on
+the real pair: when ``fields.h_separated`` is still False the launcher re-steps
+``update_H`` on the array path right after the kernel (``fused_magnetic_pair.start_of_h``).
 
 NO FILLS ARE CARRIED, AND THE ABSENCE IS A REFUSAL: the certified BFAST curl
 admits a folded grid (its masks carry the fold arms), so this predicate refuses
@@ -45,6 +51,8 @@ if TYPE_CHECKING:
 # module scope and is taken defensively.
 try:
     from . import bfast_curl as _bfast
+    from . import bounds_block
+    from . import folded_pass as _folded_pass
     from .coverage import real_curl_boundary_codes
     from .in_seam_coverage import zero_metal_axes
     from . import compile_cache
@@ -76,6 +84,8 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 
 
     _bfast = _load("bfast_curl")
+    bounds_block = _load("bounds_block")
+    _folded_pass = _load("folded_pass")
     real_curl_boundary_codes = _load("coverage").real_curl_boundary_codes
     zero_metal_axes = _load("in_seam_coverage").zero_metal_axes
     compile_cache = _load("compile_cache")
@@ -144,25 +154,46 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "__device__ __forceinline__ void pml_apply(",
      "became": "__device__ __forceinline__ float pml_apply_reg(",
      "why": "the constitutive half consumes the value in a register; the "
-            "expression, its parenthesisation and the store to f[idx] are "
-            "unchanged, so the global state it leaves is the certified one."},
-    {"line": "        pml_apply(Bx, fu_Bx, idx, curl, ...);",
-     "became": "        b_x = pml_apply_reg(Bx, fu_Bx, idx, curl, ...);",
-     "why": "capture the register; three lines, argument lists untouched, the "
-            "BFAST state advance and masks above them untouched. Three "
-            "'float b_* = 0.0f;' declarations are hoisted above the certified "
-            "braced blocks."},
-    {"line": "    constitutive_apply(Hx, f_w_Hx, idx, Bx[idx], kps_x[i], kms_x[i]);",
-     "became": "    constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i]);",
+            "helper names and returns the value it already stored. Both per-chunk "
+            "forms, their parenthesisation and the store to f[idx] are unchanged, "
+            "so the global state it leaves is the certified one."},
+    {"line": "    f[idx] = value;   (pml_apply and fold_apply)",
+     "became": "    f[idx] = value;\n    return value;",
+     "why": "same value, same store; the result is additionally returned. A "
+            "float32 stored to global and reloaded is the identity on the bits."},
+    {"line": "__device__ __forceinline__ void fold_apply(",
+     "became": "__device__ __forceinline__ float fold_apply_reg(",
+     "why": "the folded ladder returns the word it stored, so the register update_H "
+            "reads is B after the curl AND the BFAST pass; derived from the helper's "
+            "own text (folded_pass.fold_apply_reg_source). The plain helper leaves "
+            "the prelude: no call is left."},
+    {"line": "        pml_apply(Bx, fu_Bx, idx, curl, ...);\n"
+             "        ...\n        fold_apply(Bx, fu_Bx, idx, inc_bfast, ...);",
+     "became": "        b_x = pml_apply_reg(Bx, fu_Bx, idx, curl, ...);\n"
+               "        ...\n        b_x = fold_apply_reg(Bx, fu_Bx, idx, inc_bfast, ...);",
+     "why": "capture the register, twice per component, argument lists untouched; "
+            "the BFAST state step between them untouched. Three 'float b_* = 0.0f;' "
+            "declarations are hoisted above the certified braced blocks."},
+    {"line": "    constitutive_apply(Hx, f_w_Hx, idx, Bx[idx], kps_x[i], kms_x[i], "
+             "in_i_x);",
+     "became": "    constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i], "
+               "in_i_x);",
      "why": "THE SEAM plus the sub-lattice rename -- half-integer for the B "
             "curl, integer for the H constitutive; a shadow is a half-cell "
             "error in the absorber profile."},
-    {"line": "        array[_face(axis, 0)] = 0   (stepping._zero_metal, :2206)",
+    {"line": "        array[_face(axis, 0)] = 0   (stepping._zero_metal)",
      "became": "    if (wall_x && i == 0) { b_x = 0.0f; Bx[idx] = 0.0f; }",
      "why": "zero_metal_B carried on the registers -- launch geometry, not "
             "arithmetic. Same B diagonal, same stored cell 0, same +0.0f. The "
             "IIR state is NOT masked: zero_metal_B passes B_COMPONENTS only "
-            "(stepping.py:2250) and f_bfast_* is not in it."},
+            "and f_bfast_* is not in it."},
+    {"line": "    <step_B_bfast_real's chunk-record block>\n"
+             "    <update_H_pml_real's chunk-record block>",
+     "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
+     "why": "ONE DECODE OF THE RECORD PER KERNEL (DESIGN.md D10): both lifted bodies' "
+            "blocks are removed by bounds_block.strip_bounds_block, refused unless each "
+            "is exactly the emitter's block for its body, and one block over the union "
+            "is emitted directly after the decode."},
 )
 
 __all__ = [
@@ -172,7 +203,7 @@ __all__ = [
     "bfast_fused_magnetic_pair_tables", "certified_constitutive_body",
     "certified_curl_body", "covers_bfast_fused_magnetic_pair",
     "device_sources", "launch_bfast_fused_magnetic_pair",
-    "run_bfast_fused_magnetic_pair", "zero_metal_carry",
+    "run_bfast_fused_magnetic_pair", "union_bounds_block", "zero_metal_carry",
 ]
 
 
@@ -185,14 +216,12 @@ _BODY_ANCHOR = "\n) {\n"
 _DECODE_END = "    int i = idx / (ny * nz);\n"
 _PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
 _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
-_PML_APPLY_STORE = "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
+_PML_APPLY_STORE = "    f[idx] = value;\n"
 _PML_APPLY_STORE_REG = (
-    "    // THE ONE EDIT TO THIS HELPER: the right-hand side, its\n"
-    "    // parenthesisation and the store are the certified ones; the value is\n"
-    "    // additionally NAMED so the constitutive half can read it from a\n"
-    "    // register instead of reloading it from global memory.\n"
-    "    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
     "    f[idx] = value;\n"
+    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // are the certified ones; the value is additionally RETURNED so the\n"
+    "    // constitutive half can read it from a register instead of reloading it.\n"
     "    return value;\n")
 
 _CARRIED: Tuple[str, ...] = ("x", "y", "z")
@@ -202,9 +231,19 @@ _ZERO_METAL_ROWS: Tuple[Tuple[str, str, str], ...] = (
     ("Bz", "wall_z", "k"),
 )
 
+#: The chunk-record entries each lifted body decodes, as ``(entries, presence)``: the
+#: BFAST curl is the root step_B body (the half-integer record along each B component's
+#: dsigu axis plus the partner-presence word), update_H the integer record along each H
+#: component's own axis.
+CURL_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.curl_entries(("Bx", "By", "Bz"))), (0, 1, 2))
+CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.constitutive_entries(("Hx", "Hy", "Hz"))), ())
+
 #: The fused entry point: the certified BFAST step_B signature with the H group,
-#: the INTEGER constitutive tables and the wall flags appended. B appears ONCE;
-#: the IIR state pointers keep their certified position after the auxiliaries.
+#: the INTEGER constitutive tables and the wall flags inserted before the chunk
+#: record, which stays last. B appears ONCE; the IIR state pointers keep their
+#: certified position after the auxiliaries.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_magnetic_pair_bfast_real(
     // THE SHARED VOLUME, BOUND ONCE. The curl half writes it and the
@@ -228,10 +267,12 @@ extern "C" __global__ void fused_magnetic_pair_bfast_real(
     const float* __restrict__ kps_y, const float* __restrict__ kms_int_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_int_z,
     int bc_x, int bc_y, int bc_z,
-    // The six host-gated BFAST scalars, the certified signature's own append.
+    // The six host-gated BFAST scalars, the certified signature's own insert.
     float k1_a, float k2_a, float k1_b, float k2_b, float k1_c, float k2_c,
     // zero_metal_B's walled-axis flags, from in_seam_coverage.zero_metal_axes.
-    int wall_x, int wall_y, int wall_z
+    int wall_x, int wall_y, int wall_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded once.
+    const int* __restrict__ cb
 ) {
 '''
 
@@ -254,9 +295,9 @@ def _split_certified(source: str, name: str) -> Tuple[str, str]:
 
 
 def bfast_fused_magnetic_pair_prelude() -> str:
-    """The certified real prelude (through the BFAST family's own string, so a
-    gate mutation there reaches this weld) with ``pml_apply`` turned into a
-    value, plus the untouched real constitutive prelude."""
+    """The certified BFAST prelude (read through the family's own string, so a gate
+    mutation there reaches this weld) with ``pml_apply`` and the folded ladder turned
+    into values, plus the untouched real constitutive prelude."""
     if constitutive_kernels is None:
         raise RuntimeError(
             "constitutive_kernels is not importable on this host (it imports "
@@ -264,31 +305,35 @@ def bfast_fused_magnetic_pair_prelude() -> str:
             "to splice; the predicate needs none of it and still answers")
     prelude, _body = _split_certified(
         _bfast.kernel_source("step_B_bfast_real"), "step_B_bfast_real")
-    for anchor, what in ((_PML_APPLY_SIGNATURE, "pml_apply's signature"),
-                         (_PML_APPLY_STORE, "pml_apply's closing store")):
-        if prelude.count(anchor) != 1:
-            raise AssertionError(
-                f"the certified real prelude carries {what} "
-                f"{prelude.count(anchor)} times, not once; the value rewrite has "
-                f"no anchor")
-    prelude = prelude.replace(_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, 1)
-    prelude = prelude.replace(_PML_APPLY_STORE, _PML_APPLY_STORE_REG, 1)
+    prelude = _folded_pass.rewrite_helper(prelude, _PML_APPLY_SIGNATURE, (
+        (_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, "its signature"),
+        (_PML_APPLY_STORE, _PML_APPLY_STORE_REG, "its closing store"),
+    ), "pml_apply")
+    prelude = _folded_pass.with_fold_reg(prelude, owned=False)
     return prelude + constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE
 
 
+def union_bounds_block() -> str:
+    """The fused kernel's ONE chunk-record block: both bodies' entries, one decode."""
+    return bounds_block.bounds_block(CURL_BLOCK[0] + CONSTITUTIVE_BLOCK[0],
+                                     CURL_BLOCK[1] + CONSTITUTIVE_BLOCK[1])
+
+
 def certified_curl_body() -> str:
-    """``step_B_bfast_real``'s body, lifted, with the registers captured and the
-    three BFAST state advances asserted present."""
+    """``step_B_bfast_real``'s body, lifted, with the registers captured after the
+    BFAST pass and the three passes asserted present."""
     _prelude, body = _split_certified(
         _bfast.kernel_source("step_B_bfast_real"), "step_B_bfast_real")
     if _DECODE_END not in body:
         raise AssertionError(
             "the certified curl body no longer decodes i on its own line; the "
             "carried registers have nowhere to be declared")
+    body = bounds_block.strip_bounds_block(body, "step_B_bfast_real", *CURL_BLOCK)
     head, tail = body.split(_DECODE_END, 1)
     body = "".join((
-        head, _DECODE_END,
-        "\n    // The three carried registers. Declared HERE because each\n"
+        head, _DECODE_END, "\n",
+        union_bounds_block(),
+        "    // The three carried registers. Declared HERE because each\n"
         "    // certified component below is a braced scope, and a value declared\n"
         "    // inside one does not outlive it.\n"
         "    float b_x = 0.0f;\n"
@@ -308,11 +353,14 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "a pml_apply call survived the capture rewrite; its value would be "
             "written to global memory and never read into the seam")
-    if body.count("curl = curl - advance;") != 3:
+    body = _folded_pass.capture_fold_calls(
+        body, {f"B{axis}, fu_B{axis}, ": (f"b_{axis}", None) for axis in _CARRIED},
+        "fold_apply", "fold_apply_reg", "the BFAST fused magnetic pair")
+    if body.count("bfast_pass(") != 3 or body.count("= fold_apply_reg(B") != 3:
         raise AssertionError(
-            f"the captured BFAST curl body carries "
-            f"{body.count('curl = curl - advance;')} state substitutions, not 3; "
-            f"the lift would ship the plain real pair under this family's name")
+            f"the captured BFAST curl body carries {body.count('bfast_pass(')} state "
+            f"steps and {body.count('= fold_apply_reg(B')} captured ladders, not 3 and "
+            f"3; the lift would ship the plain real pair under this family's name")
     return body
 
 
@@ -321,9 +369,9 @@ def zero_metal_carry() -> str:
     state is NOT masked: ``zero_metal_B`` passes ``B_COMPONENTS`` only."""
     lines = [
         "    // --- zero_metal_B, carried in registers ---------------------------",
-        "    // stepping._zero_metal (:2206-2245): the B DIAGONAL, stored cell 0,",
-        "    // +0.0f. f_bfast_* is NOT in B_COMPONENTS and is not masked. A",
-        "    // folded metallic axis carries no wall; every folded grid is refused",
+        "    // stepping._zero_metal: the B DIAGONAL, stored cell 0, +0.0f.",
+        "    // f_bfast_* is NOT in B_COMPONENTS and is not masked. A folded",
+        "    // metallic axis carries no wall; every folded grid is refused",
         "    // outright by this product's predicate.",
     ]
     for target, flag, coordinate in _ZERO_METAL_ROWS:
@@ -349,6 +397,8 @@ def certified_constitutive_body() -> str:
         raise AssertionError(
             "the certified constitutive body no longer carries its decode "
             "prologue; the lift would redeclare the curl half's indices")
+    body = bounds_block.strip_bounds_block(body, "_update_H_pml_real_kernel_code",
+                                           *CONSTITUTIVE_BLOCK)
     body = body.split(_DECODE_END, 1)[1]
     for axis, coordinate in zip(_CARRIED, ("i", "j", "k")):
         source = f"B{axis}[idx]"
@@ -566,8 +616,24 @@ def launch_bfast_fused_magnetic_pair(
         fields: "Fields", tables: Dict[str, Dict[str, Any]],
         boundary_codes: Sequence[Any], walls: Sequence[int],
         coefficients: Sequence[Sequence[float]], dtdx: float,
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """All three of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door."""
+        kernel: Optional[Any] = None, *, chunk_bounds: Any,
+        layer: Any = None) -> Dict[str, Any]:
+    """All three of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door.
+
+    ``chunk_bounds`` is the run's chunk record on the device, required
+    (``step_curl_kernels.chunk_record_argument``). The run's first ``update_H`` starts
+    H from B: when ``fields.h_separated`` is still False the launch is followed by
+    ``fused_magnetic_pair.start_of_h`` with ``layer``, and a first launch handed no
+    ``layer`` is refused by name before it launches.
+    """
+    from . import fused_magnetic_pair, step_curl_kernels  # noqa: PLC0415 - device-only
+
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
+    first = not bool(getattr(fields, "h_separated", True))
+    if first and layer is None:
+        raise RuntimeError(
+            "the run's first update_H starts H from B (stepping.separate_h_from_b) and "
+            "this fused magnetic launch was handed no layer to start it with")
     nx, ny, nz = (int(n) for n in fields.Bx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
@@ -583,17 +649,19 @@ def launch_bfast_fused_magnetic_pair(
     ) + (
         boundary_codes[0], boundary_codes[1], boundary_codes[2],
     ) + tuple(scalars) + tuple(
-        np.int32(int(bool(walls[axis]))) for axis in range(3))
+        np.int32(int(bool(walls[axis]))) for axis in range(3)) + (cb,)
     (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), arguments)
+    if first:
+        fused_magnetic_pair.start_of_h(fields, layer)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
-            "elements": nx * ny * nz, "replaces": REPLACES,
+            "elements": nx * ny * nz, "replaces": REPLACES, "h_started": first,
             "walls": tuple(int(bool(walls[axis])) for axis in range(3)),
             "bfast_scalars": [float(value) for value in scalars]}
 
 
 def run_bfast_fused_magnetic_pair(
         fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
-        sources: Any = None,
+        chunk_bounds: Any, sources: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once."""
@@ -608,4 +676,5 @@ def run_bfast_fused_magnetic_pair(
         return {"launched": False, "reason": refusal}
     return launch_bfast_fused_magnetic_pair(
         fields, tables, tuple(np.int32(code) for code in codes),
-        zero_metal_axes(grid), bfast_scalars(grid), dtdx, kernel)
+        zero_metal_axes(grid), bfast_scalars(grid), dtdx, kernel,
+        chunk_bounds=chunk_bounds, layer=pml)

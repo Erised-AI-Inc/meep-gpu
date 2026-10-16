@@ -646,10 +646,10 @@ def case_special_kz_2d(mp, res=20):
 
     ``kz_2d="real/imag"`` and not the default ``"complex"``: both set
     ``special_kz`` and both lift a nonzero ``beta``, but the default also forces
-    complex64 storage, which routes the slot to the COMPLEX special_kz arm and its
-    expansion-probe licence. This case is here for the REAL beta arm, so it asks
-    for the storage that arm reads. Measured on the lift: ``"complex"`` gives
-    complex64 with beta 0.4, ``"real/imag"`` gives float32 with beta 0.4.
+    complex64 storage, which routes the slot to the COMPLEX special_kz arm. This
+    case is here for the REAL beta arm, so it asks for the storage that arm reads.
+    Measured on the lift: ``"complex"`` gives complex64 with beta 0.4,
+    ``"real/imag"`` gives float32 with beta 0.4.
     """
     cell = mp.Vector3(6, 6, 0)
     geometry = [mp.Block(mp.Vector3(mp.inf, 1.0, mp.inf), center=mp.Vector3(),
@@ -1744,38 +1744,115 @@ def main() -> int:
                                                    "PLAN-ONLY")],
         "rows": rows,
     }
+    # THE RUN'S OWN OUTCOME, written beside the rows: the same decision this function
+    # returns its exit code from, so a reader of summary.json does not re-derive it.
+    summary["release"] = run_release(summary, plan_only=bool(arguments.plan_only),
+                                     smoke=bool(arguments.smoke))
+    summary["canonical_verdict"] = _canonical_verdict(summary)
     with open(os.path.join(arguments.out, "summary.json"), "w",
               encoding="utf-8") as handle:
         json.dump(summary, handle, indent=1, default=str)
     say(f"SUMMARY {json.dumps(summary['verdicts'])}")
+    release = summary["release"]
+    outcome = release["outcome"]
     if arguments.null_control:
         say(f"first_divergent_checkpoint {json.dumps(summary['first_divergent_checkpoint'])}")
-        if not summary["null_control_clean"]:
-            say(f"NULL CONTROL FAILED: {json.dumps(null_control_offenders) if rows else 'no case ran'}"
-                " -- the array path did not reproduce itself (or a control leg "
-                "launched), so no divergence verdict on the ship leg is "
-                "attributable to dispatch")
-            return 1
+    if outcome == "NULL-CONTROL-FAILED":
+        say(f"NULL CONTROL FAILED: {json.dumps(null_control_offenders) if rows else 'no case ran'}"
+            " -- the array path did not reproduce itself (or a control leg "
+            "launched), so no divergence verdict on the ship leg is "
+            "attributable to dispatch")
+    elif outcome == "NULL-CONTROL-CLEAN":
         say(f"NULL CONTROL CLEAN: {len(rows)} of {len(rows)} cases PASS-FELL-BACK "
             "with no divergent checkpoint; the array path reproduces itself, so a "
             "ship-leg divergence would be attributable to dispatch")
-        return 0
-    if summary["failures"]:
+    elif outcome == "CASES-FAILED":
         say(f"FAILURES: {summary['failures']}")
-        return 1
-    if arguments.plan_only:
+    elif outcome == "PLAN-ONLY":
         say("recon complete; --plan-only measures the planner's verdict, not a run")
-        return 0
-    if not summary["dispatched_cases"]:
-        if arguments.smoke:
-            say("smoke run complete: nothing dispatched, which is the only "
-                "possible outcome on the NumPy reference")
-            return 0
+    elif outcome == "SMOKE":
+        say("smoke run complete: nothing dispatched, which is the only "
+            "possible outcome on the NumPy reference")
+    elif outcome == "NOTHING-DISPATCHED":
         say("REFUSING TO PASS: no case dispatched a kernel, so nothing end to end "
             "was proven")
-        return 1
-    say("ALL CASES PASSED")
-    return 0
+    else:
+        say("ALL CASES PASSED")
+    return 0 if release["released"] else 1
+
+
+def run_release(summary: Dict[str, Any], *, plan_only: bool,
+                smoke: bool) -> Dict[str, Any]:
+    """The run's outcome as a ``release`` block: ``released``, ``outcome``, ``reasons``.
+
+    ONE DECISION, IN THE ORDER :func:`main` HAS ALWAYS TAKEN IT, and ``main``'s exit
+    code is read off it: a null control is clean or not; any case outside
+    PASS-DISPATCHED / PASS-FELL-BACK / PLAN-ONLY fails the run; a ``--plan-only`` run
+    with no failure is complete; a run that dispatched nothing passes only as a
+    ``--smoke`` run; otherwise every case passed.
+
+    WHY IT IS WRITTEN DOWN. Until 0.10 the outcome lived only in the exit code and
+    the log, so a reader of ``summary.json`` had to re-derive it, and the precert
+    pass of 2026-10-09 re-derived it as "every verdict PASS-DISPATCHED or
+    PASS-FELL-BACK", which scored the ``--plan-only`` preflight -- whose designed
+    verdict is PLAN-ONLY -- as not released. ``released`` here means "the run
+    reached its own designed outcome"; what that outcome licenses is in
+    ``what_this_licenses``, and a PLAN-ONLY outcome licenses no dispatch claim
+    (``recut_driver_dispatch_record.LICENCE_VERDICTS`` still refuses it).
+    """
+    failures = list(summary.get("failures") or [])
+    if summary.get("null_control"):
+        if summary.get("null_control_clean"):
+            return {"released": True, "outcome": "NULL-CONTROL-CLEAN", "reasons": [],
+                    "what_this_licenses": ("the array path reproduces itself on every "
+                                           "case, so a ship-leg divergence would be "
+                                           "attributable to dispatch")}
+        offenders = summary.get("null_control_offenders") or {}
+        return {"released": False, "outcome": "NULL-CONTROL-FAILED",
+                "reasons": [f"null control not clean: "
+                            f"{json.dumps(offenders, default=str) if offenders else 'no case ran'}"],
+                "what_this_licenses": "nothing"}
+    if failures:
+        return {"released": False, "outcome": "CASES-FAILED",
+                "reasons": [f"cases not passing: {failures}"],
+                "what_this_licenses": "nothing"}
+    if plan_only:
+        decisions = {row.get("case"): (row.get("plan") or {}).get("decision")
+                     for row in summary.get("rows") or []}
+        return {"released": True, "outcome": "PLAN-ONLY", "reasons": [],
+                "plan_decisions": decisions,
+                "what_this_licenses": ("the planner's verdict per case "
+                                       "(rows[].plan, decisions above) after one frozen "
+                                       "step; no byte-identity and no dispatch claim")}
+    if not summary.get("dispatched_cases"):
+        if smoke:
+            return {"released": True, "outcome": "SMOKE", "reasons": [],
+                    "what_this_licenses": "nothing about dispatch"}
+        return {"released": False, "outcome": "NOTHING-DISPATCHED",
+                "reasons": ["no case dispatched a kernel, so nothing end to end "
+                            "was proven"],
+                "what_this_licenses": "nothing"}
+    return {"released": True, "outcome": "ALL-CASES-PASSED", "reasons": [],
+            "what_this_licenses": ("every case byte-identical to the array path, "
+                                   "PASS-DISPATCHED or PASS-FELL-BACK")}
+
+
+def _canonical_verdict(summary: Dict[str, Any]) -> Dict[str, Any]:
+    """The shared normaliser's reading of :func:`run_release`'s block, beside it.
+
+    ``gate_provenance.read_verdict`` reads ``release.released`` first, so every fleet
+    reader that keys on ``canonical_verdict`` reads this run the way the gate does.
+    Imported here, late, because this module is imported by tests that do not put
+    its directory on the path for anything else.
+    """
+    try:
+        import gate_provenance  # noqa: PLC0415
+    except ImportError as exc:
+        return {"released": summary["release"]["released"],
+                "reasons": list(summary["release"]["reasons"]),
+                "read_from": "release.released",
+                "normaliser_unavailable": repr(exc)}
+    return gate_provenance.read_verdict(summary)
 
 
 def plan_only_case(name: str, gpu_id: int, res: Optional[int],

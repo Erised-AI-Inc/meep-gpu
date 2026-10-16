@@ -121,12 +121,14 @@ def install_folded_arm_stubs(monkeypatch):
     monkeypatch.setattr(launch_module, "folded_composition_curl_coverage",
                         lambda *a: ADMITTED, raising=False)
     monkeypatch.setattr(launch_module, "plan_folded_pml_curl",
-                        lambda fields, pml, name, block=None: f"folded:{name}",
+                        lambda fields, pml, name, block=None, chunk_layout=None:
+                            f"folded:{name}",
                         raising=False)
     monkeypatch.setattr(launch_module, "folded_constitutive_coverage",
                         lambda *a: ADMITTED, raising=False)
     monkeypatch.setattr(launch_module, "plan_folded_constitutive",
-                        lambda fields, pml, side, block=None: f"folded:{side}",
+                        lambda fields, pml, side, block=None, chunk_layout=None:
+                            f"folded:{side}",
                         raising=False)
     monkeypatch.setattr(launch_module, "mirror_ghost_fill_coverage",
                         lambda fields, family: ADMITTED, raising=False)
@@ -567,24 +569,16 @@ def _metal():
     import metal_composition_matrix as matrix  # noqa: PLC0415
 
     matrix.prepare_environment()
-    from meep_gpu.metal_kernels import (  # noqa: PLC0415
-        complex_fields, cylindrical_complex, folded_complex, special_kz)
-
-    probes = {"complex_probe": complex_fields.load_expansion_probe(),
-              "beta_probe": special_kz.load_expansion_probe(),
-              "folded_complex_probe": folded_complex.load_expansion_probe(),
-              "cylindrical_complex_probe":
-                  cylindrical_complex.load_expansion_probe()}
-    return matrix, probes
+    return matrix
 
 
 def _metal_plan(sources=(), fuse=True):
     from meep_gpu.metal_kernels import device  # noqa: PLC0415
 
-    matrix, probes = _metal()
+    matrix = _metal()
     fields, pml = matrix.folded()
     return fields, metal.plan_step(fields, pml, residency=device.Residency(),
-                                   sources=sources, fuse=fuse, **probes)
+                                   sources=sources, fuse=fuse)
 
 
 def test_the_metal_folded_arms_win_all_four_slots_before_any_fusion():
@@ -628,7 +622,7 @@ def _folded_magnetic_source():
     """
     from meep_gpu.sources import GaussianEnvelope, VolumeSource  # noqa: PLC0415
 
-    matrix, _probes = _metal()
+    matrix = _metal()
     fields, _pml = matrix.folded()
     source = VolumeSource(grid=fields.grid, component="Hy",
                           center=(0.0, 0.0, 0.0), size=(0.0, 0.0, 0.0),

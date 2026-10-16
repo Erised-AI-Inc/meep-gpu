@@ -31,16 +31,15 @@ TWO CONSEQUENCES, BOTH OF WHICH CHANGED THE DESIGN:
    the stored E and NO derived arm is needed. What fires instead is the
    CONDUCTIVITY: ``fields.condfac_for`` returns a float32 volume for every one of
    Bx..Dz on the four ``test_dump_load`` rows, so ``stepping._apply_curl`` routes
-   them to ``_apply_conductive_update`` (stepping.py:536-537, :1985-1998) -- a
-   different tail from ``target -= curl``. EIGHT of the twelve curl slots are
+   them to ``_apply_conductive_update`` -- a different tail from ``target -= curl``. EIGHT of the twelve curl slots are
    conductive; four are plain. One kernel cannot serve both, so there are two
    curl pairs here and not one.
 
 2. **THE SIX update_E SLOTS ARE TWO DIFFERENT SUB-STEPS.** The four dispersive
-   rows want ``E = ((D - P0) - P1 ...) * inv_eps`` (stepping.py:1013-1022 through
+   rows want ``E = ((D - P0) - P1 ...) * inv_eps`` (stepping.update_E through
    ``Fields.displacement_minus_polarization``, fields.py:1079-1105). The two
    material-grid rows carry ``has_offdiagonal_epsilon`` True, so their
-   ``update_E`` is the TENSOR ROW PRODUCT (stepping.py:1001-1008) -- a four-point
+   ``update_E`` is the TENSOR ROW PRODUCT (stepping._offdiagonal_terms) -- a four-point
    transverse average with partner-axis shifts, Bloch phases on the shifted
    operands and wall masks. THIS FILE DOES NOT BUILD THAT and refuses it by name;
    it is the two slots this family leaves on the table. See
@@ -52,28 +51,31 @@ So: six kernels, three predicates, TWENTY of the twenty-two slots.
 WHAT COLLAPSES, AND WHAT DOES NOT
 ============================================================================
 
-``stepping._apply_curl`` (stepping.py:490-539) has four tails. With
-``_pml_is_active(pml)`` False, two remain::
+``stepping._apply_curl`` has four tails. With ``_pml_is_active(pml)`` False, two
+remain::
 
     elif condfac is not None:
         _apply_conductive_update(target, curl, condfac, fields.condinv_for(...))
     else:
-        target -= curl                                     # stepping.py:539
+        target -= curl
 
-and ``_apply_conductive_update`` (stepping.py:1985-1998) is three in-place
-statements, MEEP ``step_generic.cpp:87-97``::
+and ``_apply_conductive_update`` is three in-place statements, MEEP
+``step_generic.cpp:87-97``, each product per part::
 
-    field *= condfac
+    part_products.scale(condfac, field, out=field)
     field -= curl
-    field *= condinv
+    part_products.scale(condinv, field, out=field)
 
-THE CURL ITSELF IS UNCHANGED -- the term table, the ghost rule with its Bloch
-rotation on the wrapped lane, the plane-wise grouping, the ownership masks. That
+THE CURL ITSELF IS UNCHANGED -- the term table, the ghost rule, the stored
+window's Bloch connection on plane 0 of the operand read at the cell, MEEP's
+left-to-right stencil with its partner-presence forms, the ownership masks. That
 is not a claim about this file, it is a property of how it is BUILT:
-:func:`_curl_source` takes ``complex_emitter._CURL_TEMPLATE`` -- the certified
-complex PML curl's own string -- replaces the SIGNATURE and the three tail calls,
-and then ASSERTS that the three stencil lines survived unchanged and that no
-``pml_apply``, ``kms_``, ``sinv_`` or auxiliary token remains. A reader can diff
+:func:`_curl_source` takes ``complex_emitter._CURL_TEMPLATE`` -- the complex PML
+curl's own string -- replaces the SIGNATURE, the chunk-record block (only the
+partner-presence word is decoded: with no absorber no chunk carries a layer) and
+the three tail calls, and then ASSERTS that the three stencil lines survived
+unchanged and that no ``pml_apply``, ``kms_``, ``sinv_``, membership flag or
+auxiliary token remains. A reader can diff
 the emitted text against ``complex_emitter``'s and see that nothing in the
 arithmetic moved; :func:`_curl_source` is what makes that true by construction
 rather than by care.
@@ -89,42 +91,20 @@ imported here rather than parsed out of the source the way ``no_pml_curl`` has t
 parse ``step_curl_kernels`` -- one set of bytes either way.
 
 ============================================================================
-THE ARM IS AN ARGUMENT
+WHAT DECIDES BIT-IDENTITY HERE
 ============================================================================
 
-Same package boundary as ``complex_pml_kernels``: this module derives no
-expansion arm, opens no probe artifact, and re-implements no part of
-``triton_kernels.complex_fields.expansion_license``. The gate reads the artifact,
-runs the licence, and hands the arm in; the predicates take the VERDICT and check
-its shape through :func:`coverage.complex_expansion_refusal`.
-
-``update_P`` NEEDS A PROBE THE SHIPPED FOUR-PATTERN RECORD DOES NOT CARRY, and
-that is a refusal rather than a widening. ``xp.multiply(P, c_now, out=scratch)``
-(dispersion.py:686) multiplies a complex64 ARRAY by a PYTHON FLOAT, which is
-neither ``c8_mul_f4_field_left`` (array coefficient) nor ``python_float_left``
-(scalar on the left). The Triton sibling names the missing orientation
-``c8_mul_python_float_field_left`` and refuses without it
-(``triton_kernels/complex_ade.py:14-24``); :data:`ADE_PROBE_PATTERN` is that name
-and :func:`covers_complex_no_pml_ade_update_p` refuses a licence whose record
-does not classify it. The four-pattern ``expansion_probe_2026-08-17`` record does
-not; the seven-pattern ``triton_welds_2026-08-19/unified_expansion/gate.json``
-does, under the ``keep`` policy.
-
-============================================================================
-FIVE THINGS DECIDE BIT-IDENTITY HERE
-============================================================================
-
-Four of them are ``complex_emitter``'s and hold unchanged because the prelude and
-the stencil ARE its bytes: the zero cross terms carried literally, the normative
-operand orientations, ``* -1.0f`` rather than unary minus, and the plane-wise
-curl grouping ``((sf - f1) + (f2 - ss))``. Two more are this file's own, and both
-were MEASURED on NumPy before they were written down here rather than reasoned
-about (``test_complex_no_pml.py`` re-measures each and prints the count):
+Most of it is ``complex_emitter``'s and holds unchanged because the prelude and
+the stencil ARE its bytes: every product per part, ``* -1.0f`` rather than unary
+minus, MEEP's left-to-right stencil with its partner-presence forms, and the
+stored window's connection. Two more are this file's own, and both were MEASURED
+on NumPy before they were written down here rather than reasoned about
+(``test_complex_no_pml.py`` re-measures each and prints the count):
 
 **THE CONDUCTIVE TAIL'S ORDER IS LOAD-BEARING; ITS C SPELLING IS NOT.**
-``field *= condfac; field -= curl; field *= condinv`` against the same three
-operations reassociated as ``((field - curl) * condfac) * condinv`` differs on
-400 000 of 400 000 float32 words on a random fixture. What is NOT a hazard, and
+``scale(condfac); -= curl; scale(condinv)`` against the same three operations
+reassociated as ``((field - curl) * condfac) * condinv`` differs on every float32
+word of a random fixture. What is NOT a hazard, and
 is recorded here because the opposite is the natural guess: writing the three as
 one nested C expression is the SAME expression tree with the same three
 roundings, and differs on 0 of 400 000 words. So :func:`conductive_apply` uses a
@@ -136,11 +116,10 @@ inlining.
 subtracts one contributor at a time in registration order (fields.py:1102-1104),
 so :func:`minus_poles` does, and the gate arms the pre-sum.
 
-The zero-imaginary product is the sibling's fact and is re-measured here for the
-two new coefficient sites (``condfac``/``condinv``): the full complex multiply
-against a plane-wise ``{re*c, im*c}`` differs on 3 of 8 words over the four
-signed-zero patterns, which is why both conductive multiplies call
-``mul_field_left`` rather than scaling the planes.
+Both conductive multiplies are the part-wise product (``mul_field_left``), as the
+array path's ``part_products.scale`` forms them: the full complex multiply against
+``(c + 0j)`` differs from it on signed zeros, which ``test_complex_no_pml.py``
+re-measures for these two coefficient sites.
 
 ============================================================================
 PLATFORM REQUIREMENTS AND NOT-DISPATCHED
@@ -170,13 +149,6 @@ unaccounted; all three planted defects flipped the release verdict. The census
 delta is +20 slots (653 -> 673 of 759) and +4 rows covered at every sub-step
 (136 -> 140), recomputed as a CONTROLLED comparison over one record.
 
-THE FLUSH POLICY IS OWED AND IS NOT A CLAUSE THIS FILE CAN WIDEN. The gate
-REFUSED under ``meep_x86_flush``, by name and before any measurement:
-``update_P``'s fifth orientation is classified only by the seven-pattern
-``triton_welds_2026-08-19/unified_expansion/gate.json`` record, which was cut
-under ``keep``, and an expansion licence is POLICY-CONDITIONAL. Every certified
-sibling on this track spans both policies; this family spans one, and closing
-that needs a flush-policy probe carrying ``c8_mul_python_float_field_left``.
 """
 
 from __future__ import annotations
@@ -188,7 +160,6 @@ from . import complex_emitter
 from . import coverage as _coverage
 
 __all__ = (
-    "ADE_PROBE_PATTERN",
     "CERTIFIED_KERNELS",
     "COMPLEX_NO_PML_ADMISSION",
     "CURL_KERNELS",
@@ -216,7 +187,7 @@ __all__ = (
 # The tables
 # ---------------------------------------------------------------------------
 
-#: The kernel this family emits for each ``(sub_step, arm)`` key. The keys are
+#: The kernel this family emits for each key. The keys are
 #: what :func:`kernel_source` and the mutation seam take; the values are the
 #: ``extern "C"`` names NVRTC is asked for.
 KERNEL_KEYS: Dict[str, str] = {
@@ -246,12 +217,6 @@ CURL_KERNELS: Dict[str, Tuple[str, bool]] = {
 #: corpus rows drive ONE pole per component; the other seven slots are bound to
 #: the source pointer and never read, exactly as the sibling plan binds them.
 MAX_POLES = 8
-
-#: The expansion-probe orientation ``update_P`` needs and the other five kernels
-#: do not. See the module header. Spelled identically to
-#: ``triton_kernels.complex_ade.COMPLEX_ADE_PROBE_PATTERN`` and pinned equal to it
-#: by ``test_complex_no_pml.py``.
-ADE_PROBE_PATTERN = "c8_mul_python_float_field_left"
 
 #: The three E components, in ``stepping.E_CONSTITUTIVE_TERMS`` order.
 _ELECTRIC = ("Ex", "Ey", "Ez")
@@ -302,8 +267,8 @@ _THREADS = 256
 #: The four helpers this family adds to the sibling's prelude. Each is one
 #: transcribed array-path statement sequence and nothing else.
 _NO_PML_HELPERS = r'''
-// stepping._apply_curl's FOURTH tail (stepping.py:510) -- the whole sub-step
-// tail when the layer is inert and the component carries no conductivity:
+// stepping._apply_curl's FOURTH tail -- the whole sub-step tail when the layer
+// is inert and the component carries no conductivity:
 //
 //     target -= curl
 //
@@ -317,26 +282,20 @@ __device__ __forceinline__ void no_pml_apply(float* f, int idx, cf curl) {
     cf_store(f, idx, cf_sub(cf_load(f, idx), curl));
 }
 
-// stepping._apply_conductive_update (stepping.py:1938-1951), MEEP
-// step_generic.cpp:87-97, IN ITS IN-PLACE ORDER:
+// stepping._apply_conductive_update, MEEP step_generic.cpp:87-97, IN ITS
+// IN-PLACE ORDER, each product per part:
 //
-//     field *= condfac
+//     part_products.scale(condfac, field, out=field)
 //     field -= curl
-//     field *= condinv
+//     part_products.scale(condinv, field, out=field)
 //
 // THE ORDER IS THE ARITHMETIC AND THE SPELLING IS NOT. Reassociating the same
-// three operations to ((field - curl) * condfac) * condinv differs on 400000 of
-// 400000 float32 words (measured, test_complex_no_pml.py). Writing them as one
-// nested expression instead of three statements is the SAME expression tree with
-// the same three roundings and differs on 0 of 400000 -- the named temporary
-// below is for a reader, not for a rounding.
-//
-// BOTH MULTIPLIES ARE THE ZERO-IMAGINARY COMPLEX PRODUCT WITH THE FIELD ON THE
-// LEFT, never a plane-wise {re*c, im*c}: over the four signed-zero patterns the
-// two differ on 3 of 8 words, because the cross term carries the sign of the
-// field's OTHER word into an addend that is exactly zero. condfac and condinv
-// are float32 volumes (fields.condfac_for / condinv_for, fields.py:832-836) and
-// stay float32 under complex storage, exactly as inv_eps does.
+// three operations to ((field - curl) * condfac) * condinv differs on every
+// float32 word (measured, test_complex_no_pml.py). Writing them as one nested
+// expression instead of three statements is the SAME expression tree with the
+// same three roundings -- the named temporary below is for a reader, not for a
+// rounding. condfac and condinv are float32 volumes (fields.condfac_for /
+// condinv_for) and stay float32 under complex storage, exactly as inv_eps does.
 __device__ __forceinline__ void conductive_apply(
     float* f, int idx, cf curl, float condfac, float condinv
 ) {
@@ -373,25 +332,32 @@ __device__ __forceinline__ cf minus_poles(
     return s;
 }
 
-// dispersion.PolarizationState.update (dispersion.py:683-688), MEEP
-// susceptibility.cpp:251-258, whose array form is three passes over one scratch:
+// dispersion.PolarizationState.update, MEEP susceptibility.cpp:251-256 (the
+// isotropic branch), in MEEP's four realnum words and its grouping:
 //
-//     xp.multiply(p, c_now, out=scratch)   // scratch = P^n * c_now
-//     scratch += c_prev * p_prev           //         + c_prev * P^(n-1)
-//     scratch += c_drive * (sigma * w)     //         + c_drive * (sigma * W^n)
+//     p[i] = gamma1inv *
+//            (pcur * (2 - omega0dtsqr_denom) - gamma1 * pp[i] + omega0dtsqr * (s[i] * w[i]));
 //
-// GROUPING: ((p*c_now) + (c_prev*q)) + (c_drive*(s*w)) -- left-associated across
-// the two `+=`, with the inner `s*w` formed before c_drive multiplies it.
-// ORIENTATION: p*c_now is FIELD-left (the array is the left operand of
-// xp.multiply); c_prev*q, s*w and c_drive*(...) are all COEFFICIENT-left.
-// Character for character the Triton complex sibling's expression
-// (triton_kernels/complex_ade.py:127-140).
-__device__ __forceinline__ cf ade_step(cf p, cf q, cf w, float s,
-                                       float c_now, float c_prev, float c_drive) {
-    cf out = cf_add(mul_field_left(p, c_now), mul_coefficient_left(c_prev, q));
-    return cf_add(out, mul_coefficient_left(c_drive, mul_coefficient_left(s, w)));
+// ONE REAL PASS PER PART: complex storage is MEEP's DOCMP2 loop, which steps the
+// real and the imaginary array as two real recurrences, and the array path forms
+// every product part by part (part_products.scale). No complex product appears:
+// the zero-imaginary product of the 0.9.2 form carries the OTHER part's sign into
+// an exactly-zero addend, which a per-part product never does.
+__device__ __forceinline__ float ade_part(float p, float q, float w, float s,
+                                          float two_minus_od, float gamma1,
+                                          float omega0dtsqr, float gamma1inv) {
+    return gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)));
 }
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 510->539, 1938-1951->1985-1998
+
+__device__ __forceinline__ cf ade_step(cf p, cf q, cf w, float s,
+                                       float two_minus_od, float gamma1,
+                                       float omega0dtsqr, float gamma1inv) {
+    cf out;
+    out.re = ade_part(p.re, q.re, w.re, s, two_minus_od, gamma1, omega0dtsqr, gamma1inv);
+    out.im = ade_part(p.im, q.im, w.im, s, two_minus_od, gamma1, omega0dtsqr, gamma1inv);
+    return out;
+}
+'''
 
 #: The plain-tail curl signature. ``__EXTRA__`` is empty here and carries the two
 #: conductivity volume triples on the conductive arm.
@@ -403,7 +369,8 @@ extern "C" __global__ void __NAME__(
 __EXTRA__    int nx, int ny, int nz, float dtdx,
     int bc_x, int bc_y, int bc_z,
     int ph_x, int ph_y, int ph_z,
-    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi
+    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,
+    const int* __restrict__ cb
 ) {'''
 
 #: The conductive arm's extra parameters. NOT ``__restrict__``, deliberately and
@@ -424,11 +391,11 @@ _TAIL_PLAIN = "        no_pml_apply(f{0}, idx, curl);"
 _TAIL_CONDUCTIVE = ("        conductive_apply(f{0}, idx, curl, "
                     "condfac_{0}[idx], condinv_{0}[idx]);")
 
-#: The one stencil line each of the three per-target blocks must still carry after
-#: the substitution. Its survival is what makes "the curl itself is unchanged" a
-#: property of the build rather than a claim in a docstring.
-_STENCIL_LINE = ("        cf curl = mul_coefficient_left(dtdx, "
-                 "cf_add(cf_sub(sf, f_1), cf_sub(f_2, ss)));")
+#: The stencil line each of the three per-target blocks must still carry after the
+#: substitution (up to its two presence arguments). Its survival is what makes "the
+#: curl itself is unchanged" a property of the build rather than a claim in a
+#: docstring.
+_STENCIL_LINE = "        cf curl = curl_stencil(dtdx, sf, f_1, f_2, ss, "
 
 #: Patterns that must NOT survive into a no-absorber curl. The split-field call,
 #: the two coefficient stems and the three auxiliary pointers ARE that recurrence;
@@ -439,6 +406,7 @@ _STENCIL_LINE = ("        cf curl = mul_coefficient_left(dtdx, "
 _FORBIDDEN_IN_CURL_BODY = (r"(?<![A-Za-z0-9_])pml_apply\(",
                            r"(?<![A-Za-z0-9_])kms_",
                            r"(?<![A-Za-z0-9_])sinv_",
+                           r"(?<![A-Za-z0-9_])in_[ih]_",
                            r"(?<![A-Za-z0-9_])u[012](?![A-Za-z0-9_])")
 
 _STORED_E_TEMPLATE = r'''
@@ -452,13 +420,11 @@ __POLE_PARAMS__    int np0, int np1, int np2, int n_elem
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n_elem) return;
 
-    // stepping.update_E's no-PML store (stepping.py:984-993):
+    // stepping.update_E's no-PML store:
     //     source = fields.displacement_minus_polarization(component)
-    //     E[...] = source * fields.inverse_epsilon_for(component)
-    // SOURCE ON THE LEFT (stepping.py:984-985, `source * ...`), which is the
-    // FIELD-left zero-imaginary product; inv_eps is a float32 volume indexed by
-    // the COMPLEX CELL index and never word-doubled (stepping.py:41-50 against
-    // fields.py:1203-1204).
+    //     E[...] = part_products.scale(fields.inverse_epsilon_for(component), source)
+    // one product per part; inv_eps is a float32 volume indexed by the COMPLEX
+    // CELL index and never word-doubled.
     //
     // NO ghost rule, NO ownership mask, NO PHASE and NO f_w, all four transcribed
     // rather than forgotten: this branch writes every cell of the volume, reads no
@@ -476,7 +442,7 @@ __POLE_PARAMS__    int np0, int np1, int np2, int n_elem
         minus_poles(g2, c0, c1, c2, c3, c4, c5, c6, c7, idx, np2),
         inv_eps_2[idx]));
 }
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 984-993->1013-1022, 984-985->1013-1014
+'''
 
 _UPDATE_P_TEMPLATE = r'''
 extern "C" __global__ void __NAME__(
@@ -485,7 +451,7 @@ extern "C" __global__ void __NAME__(
     const float* __restrict__ p_prev,
     __SIGMA_PARAM__,
     const float* __restrict__ drive,
-    float c_now, float c_prev, float c_drive,
+    float two_minus_od, float gamma1, float omega0dtsqr, float gamma1inv,
     int n_elem
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -504,7 +470,7 @@ extern "C" __global__ void __NAME__(
     // silently reduced to first order, which is stable, smooth and wrong.
     cf_store(p_out, idx, ade_step(
         cf_load(p_now, idx), cf_load(p_prev, idx), cf_load(drive, idx),
-        __SIGMA_READ__, c_now, c_prev, c_drive));
+        __SIGMA_READ__, two_minus_od, gamma1, omega0dtsqr, gamma1inv));
 }
 '''
 
@@ -519,19 +485,18 @@ def _pole_parameters() -> str:
     return "\n".join(lines) + "\n"
 
 
-def _prelude(arm: int) -> str:
+def _prelude() -> str:
     """The sibling's whole prelude plus this family's four helpers.
 
-    ``complex_emitter._HEAD + _ARM_SOURCE[arm] + _TAIL`` is taken WHOLE, including
+    ``complex_emitter.prelude()`` is taken WHOLE, including
     ``pml_apply`` and ``constitutive_apply``, which nothing here calls. See the
     module header for why the dead code is carried and how the gate turns it into
     evidence.
     """
-    return (complex_emitter._HEAD + complex_emitter._ARM_SOURCE[arm]
-            + complex_emitter._TAIL + _NO_PML_HELPERS)
+    return complex_emitter.prelude() + _NO_PML_HELPERS
 
 
-def _curl_source(sub_step: str, conductive: bool, arm: int) -> str:
+def _curl_source(sub_step: str, conductive: bool) -> str:
     """One no-absorber complex curl, built FROM the certified complex PML curl.
 
     The three edits, and nothing else: the signature is replaced (no auxiliary,
@@ -555,6 +520,11 @@ def _curl_source(sub_step: str, conductive: bool, arm: int) -> str:
             "terminator; the no-absorber curl is built by replacing its signature "
             "and cannot be built without finding it")
     body = template.split(marker, 1)[1]
+    if body.count("__BOUNDS__") != 1:
+        raise RuntimeError(
+            "complex_emitter._CURL_TEMPLATE no longer carries its chunk-record "
+            "placeholder once; the no-absorber curl decodes the presence word there")
+    body = body.replace("__BOUNDS__", complex_emitter.presence_bounds_block())
 
     signature = _CURL_SIGNATURE.replace(
         "__EXTRA__", _CURL_CONDUCTIVE_PARAMS if conductive else "")
@@ -575,7 +545,7 @@ def _curl_source(sub_step: str, conductive: bool, arm: int) -> str:
         source = source.replace(
             f"__MASK{target}__", complex_emitter._mask_lines(axes))
 
-    if source.count(_STENCIL_LINE) != 3:
+    if source.count(_STENCIL_LINE) != 3 or "curl_stencil(dtdx, sf, f_1, f_2, ss, pr_" not in source:
         raise RuntimeError(
             "the three curl stencil lines did not survive the tail substitution; "
             "this family exists to reuse them unchanged")
@@ -586,19 +556,18 @@ def _curl_source(sub_step: str, conductive: bool, arm: int) -> str:
                 f"{found.group(0)!r} survived into a no-absorber curl body; the "
                 f"split-field recurrence has no place here")
     if "__" in source.replace("__restrict__", "").replace("__global__", "") \
-            .replace("__device__", "").replace("__forceinline__", "") \
-            .replace("__fmaf_rn", ""):
+            .replace("__device__", "").replace("__forceinline__", ""):
         raise RuntimeError("an unsubstituted placeholder survived the curl build")
-    return _prelude(arm) + source
+    return _prelude() + source
 
 
-def _stored_e_source(arm: int) -> str:
+def _stored_e_source() -> str:
     """``update_E`` with the stored E, the poles subtracted and inv_eps applied."""
-    return _prelude(arm) + _STORED_E_TEMPLATE.replace(
+    return _prelude() + _STORED_E_TEMPLATE.replace(
         "__POLE_PARAMS__", _pole_parameters())
 
 
-def _update_p_source(sigma_is_volume: bool, arm: int) -> str:
+def _update_p_source(sigma_is_volume: bool) -> str:
     """``update_P``, in its volume-sigma and uniform-sigma specializations.
 
     The two strings differ in ONE parameter declaration and ONE read, exactly as
@@ -616,29 +585,29 @@ def _update_p_source(sigma_is_volume: bool, arm: int) -> str:
     else:
         body = body.replace("__SIGMA_PARAM__", "float sigma")
         body = body.replace("__SIGMA_READ__", "sigma")
-    return _prelude(arm) + body
+    return _prelude() + body
 
 
-def _build(key: str, arm: int) -> str:
-    """The device text for one key under one arm; no memo, built per call."""
+def _build(key: str) -> str:
+    """The device text for one key; no memo, built per call."""
     if key in CURL_KERNELS:
         sub_step, conductive = CURL_KERNELS[key]
-        return _curl_source(sub_step, conductive, arm)
+        return _curl_source(sub_step, conductive)
     if key == "update_E":
-        return _stored_e_source(arm)
+        return _stored_e_source()
     if key in ("update_P", "update_P_uniform"):
-        return _update_p_source(key == "update_P", arm)
+        return _update_p_source(key == "update_P")
     raise ValueError(f"no such kernel key {key!r}; have {sorted(KERNEL_KEYS)}")
 
 
-#: The gate's MUTATION SEAM: ``{(key, arm): source}`` overrides, consulted by
+#: The gate's MUTATION SEAM: ``{key: source}`` overrides, consulted by
 #: :func:`kernel_source` before it builds. A MUTABLE MODULE GLOBAL on purpose --
 #: the source-mutation battery rewrites entries here and re-launches, and
 #: :func:`_get_kernel` re-reads it on every call so a rewritten string is seen. A
 #: map memoized at first call would hand back the pre-mutation bytes forever,
 #: which is "a leg reporting a pass for a mutation it never applied" and which the
 #: sibling track hit three times.
-_OVERRIDES: Dict[Tuple[str, int], str] = {}
+_OVERRIDES: Dict[str, str] = {}
 
 
 def kernel_name(key: str) -> str:
@@ -648,22 +617,15 @@ def kernel_name(key: str) -> str:
     return KERNEL_KEYS[key]
 
 
-def kernel_source(key: str, expansion: Any) -> str:
-    """The device text for one kernel under one expansion arm.
-
-    ``expansion`` is an arm name or its code and is REQUIRED, never defaulted: a
-    wrong arm is a wrong answer rather than a crash -- both arms compile, both
-    run, and they differ in the last bits of about a quarter of the words.
-    ``complex_emitter.normalized_expansion`` is the one refusal.
-    """
-    arm = complex_emitter.normalized_expansion(expansion)
+def kernel_source(key: str) -> str:
+    """The device text for one kernel."""
     if key not in KERNEL_KEYS:
         raise ValueError(f"no such kernel key {key!r}; have {sorted(KERNEL_KEYS)}")
-    override = _OVERRIDES.get((key, arm))
-    return override if override is not None else _build(key, arm)
+    override = _OVERRIDES.get(key)
+    return override if override is not None else _build(key)
 
 
-def set_kernel_source(key: str, expansion: Any, source: Optional[str]) -> None:
+def set_kernel_source(key: str, source: Optional[str]) -> None:
     """Install (or with ``source=None`` remove) one mutated device string.
 
     Paired with :func:`clear_kernel_cache`: the compile memo keys on the SOURCE,
@@ -671,13 +633,12 @@ def set_kernel_source(key: str, expansion: Any, source: Optional[str]) -> None:
     is what makes the accounting -- how many constructions came from the mutated
     bytes -- exact.
     """
-    arm = complex_emitter.normalized_expansion(expansion)
     if key not in KERNEL_KEYS:
         raise ValueError(f"no such kernel key {key!r}; have {sorted(KERNEL_KEYS)}")
     if source is None:
-        _OVERRIDES.pop((key, arm), None)
+        _OVERRIDES.pop(key, None)
     else:
-        _OVERRIDES[(key, arm)] = source
+        _OVERRIDES[key] = source
 
 
 def shipped_kernel_names(source: Optional[str] = None):
@@ -686,27 +647,24 @@ def shipped_kernel_names(source: Optional[str] = None):
         return set(re.findall(r'extern "C" __global__ void (\w+)\(', source))
     found = set()
     for key in KERNEL_KEYS:
-        for arm in complex_emitter.EXPANSIONS.values():
-            found |= set(re.findall(r'extern "C" __global__ void (\w+)\(',
-                                    _build(key, arm)))
+        found |= set(re.findall(r'extern "C" __global__ void (\w+)\(', _build(key)))
     return found
 
 
 def corpus_digest() -> str:
     """One sha256 over every source this family can emit, canonically ordered.
 
-    Seven kernels times two arms is fourteen sources; a single changed character
-    anywhere in this module or in ``complex_emitter``'s shared prelude moves this
-    value. The per-source digests of the arm a gate actually launches belong in
-    that gate's artifact.
+    Seven kernels, seven sources; a single changed character anywhere in this
+    module or in ``complex_emitter``'s shared prelude moves this value. The
+    per-source digests of what a gate actually launches belong in that gate's
+    artifact.
     """
     import hashlib  # noqa: PLC0415 - stdlib, imported at the one call site
 
     digest = hashlib.sha256()
     for key in sorted(KERNEL_KEYS):
-        for name in sorted(complex_emitter.EXPANSIONS):
-            digest.update(f"{key}|{name}".encode("ascii"))
-            digest.update(kernel_source(key, name).encode("utf-8"))
+        digest.update(key.encode("ascii"))
+        digest.update(kernel_source(key).encode("utf-8"))
     return digest.hexdigest()
 
 
@@ -800,7 +758,7 @@ def _shared_refusal(fields: Any, pml: Any, grid: Any) -> Any:
     switch (``Fields.enable_pml_storage``, fields.py:678-700) which also changes
     what ``get_H`` returns; a ``Fields`` whose storage was switched on while the
     layer handed to the stepper is inert reads H from the STORED array, which
-    ``update_H`` declines to write (stepping.py:944-945), so a curl would
+    ``update_H`` declines to write (stepping.update_H), so a curl would
     difference a frozen H. The array path has the same hazard; this refuses the
     configuration rather than reproducing it, exactly as ``no_pml.py:434-437``
     does for the real twin.
@@ -819,8 +777,8 @@ def _shared_refusal(fields: Any, pml: Any, grid: Any) -> Any:
 def complex_no_pml_curl_arm(fields: Any, sub_step: str) -> str:
     """Which curl arm a run takes at this sub-step. A classification, never a refusal.
 
-    ``stepping._apply_curl`` reads ``fields.condfac_for(term.target)`` PER TARGET
-    (stepping.py:508), so the arm is a property of the sub-step and not of the run.
+    ``stepping._apply_curl`` reads ``fields.condfac_for(term.target)`` PER TARGET,
+    so the arm is a property of the sub-step and not of the run.
     A sub-step whose three targets DISAGREE takes two different tails within one
     launch, which one kernel cannot serve -- that is a refusal and it belongs to
     the predicate, so this raises rather than picking one.
@@ -894,9 +852,7 @@ def _curl_volume_refusal(fields: Any, xp: Any, shape: Tuple,
     return None
 
 
-def covers_complex_no_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str,
-                               license: Any = None,
-                               subnormal_policy: Any = None) -> tuple:
+def covers_complex_no_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tuple:
     """Whether ``step_{B,D}_no_pml_complex[_conductive]`` may serve this run.
 
     ``sub_step`` is ``"step_B"`` or ``"step_D"``. Returns ``(covered, reason)``
@@ -914,7 +870,7 @@ def covers_complex_no_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str,
     is a future tranche ... a curl admitted into a step whose update_E and update_P
     are both refused buys a sub-step nothing can compose with". This file builds
     both of those, so the premise is gone. The curl reads no ``P``: it differences
-    the stored E that ``update_E`` wrote (stepping.py:2438-2453), and dispersion
+    the stored E that ``update_E`` wrote (the curl's operand), and dispersion
     changes the values in it and not the recurrence -- which is exactly why the
     REAL curl predicate admits dispersion too.
 
@@ -926,9 +882,6 @@ def covers_complex_no_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str,
         raise ValueError(
             f"sub_step must be one of {sorted(_coverage.CURL_SUB_STEPS)}, "
             f"got {sub_step!r}")
-    refusal = _coverage.complex_expansion_refusal(license, subnormal_policy)
-    if refusal is not None:
-        return False, refusal
     refusal = _shared_refusal(fields, pml, grid)
     if refusal is not None:
         return False, refusal
@@ -978,33 +931,28 @@ def poles_per_component(fields: Any) -> Dict[str, Tuple[Any, ...]]:
     return order
 
 
-def covers_complex_no_pml_stored_e(fields: Any, pml: Any, grid: Any,
-                                   license: Any = None,
-                                   subnormal_policy: Any = None) -> tuple:
+def covers_complex_no_pml_stored_e(fields: Any, pml: Any, grid: Any) -> tuple:
     """Whether ``update_E_no_pml_complex_stored`` may serve ``update_E``.
 
     THE OFF-DIAGONAL ROW IS REFUSED BY NAME and it is the largest thing this
     family did not build: two of the six corpus rows carry
     ``has_offdiagonal_epsilon``, which turns ``update_E`` into MEEP's tensor row
-    product (stepping.py:1001-1008) -- a four-point transverse average with
+    product (stepping._offdiagonal_terms) -- a four-point transverse average with
     partner-axis shifts, a Bloch rotation on each shifted operand and wall masks.
     That is a different kernel, not a different coefficient.
 
     A CONDUCTIVITY IS ADMITTED, on the certified twin's own measured grounds:
-    ``fields.condfac_for`` is read in ``stepping._apply_curl`` (stepping.py:508)
+    ``fields.condfac_for`` is read in ``stepping._apply_curl``
     and nowhere else in the module. ``update_E`` never mentions it, so refusing it
     here would be a refusal with no line behind it.
 
     A RUN WITH NO POLE IS ADMITTED and is not a no-op: with ``stores_E`` True the
-    array path still writes ``E[...] = D * inv_eps`` (stepping.py:1022), which is
+    array path still writes ``E[...] = D * inv_eps`` (stepping.update_E), which is
     this kernel with every ``np`` zero. What IS refused is ``stores_E`` False,
-    where ``update_E`` returns at stepping.py:983-984 -- that is
+    where ``update_E`` returns before any store -- that is
     ``no_pml_constitutive``'s null arm, and admitting it here would put a launch
     where the array path does nothing.
     """
-    refusal = _coverage.complex_expansion_refusal(license, subnormal_policy)
-    if refusal is not None:
-        return False, refusal
     refusal = _shared_refusal(fields, pml, grid)
     if refusal is not None:
         return False, refusal
@@ -1066,9 +1014,7 @@ def covers_complex_no_pml_stored_e(fields: Any, pml: Any, grid: Any,
     return True, "covered"
 
 
-def covers_complex_no_pml_ade_update_p(fields: Any, pml: Any, grid: Any,
-                                       license: Any = None,
-                                       subnormal_policy: Any = None) -> tuple:
+def covers_complex_no_pml_ade_update_p(fields: Any, pml: Any, grid: Any) -> tuple:
     """Whether the complex ADE kernels may serve the WHOLE ``update_P`` sub-step.
 
     ALL OR NOTHING OVER EVERY STATE AND EVERY DRIVEN COMPONENT, and that is a
@@ -1077,17 +1023,7 @@ def covers_complex_no_pml_ade_update_p(fields: Any, pml: Any, grid: Any,
     to component inside a single call (dispersion.py:689-691), so covering two of
     three components and leaving the third to the array path would interleave two
     rotations over one buffer set. Sub-steps compose; halves of one do not.
-
-    THE PROBE CLAUSE IS THIS FAMILY'S OWN. ``xp.multiply(P, c_now, out=scratch)``
-    is a complex64 array times a PYTHON FLOAT, an orientation the four-pattern
-    complex probe does not classify. See :data:`ADE_PROBE_PATTERN`.
     """
-    refusal = _coverage.complex_expansion_refusal(license, subnormal_policy)
-    if refusal is not None:
-        return False, refusal
-    refusal = _ade_probe_refusal(license)
-    if refusal is not None:
-        return False, refusal
     refusal = _shared_refusal(fields, pml, grid)
     if refusal is not None:
         return False, refusal
@@ -1118,43 +1054,6 @@ def covers_complex_no_pml_ade_update_p(fields: Any, pml: Any, grid: Any,
     if driven_total == 0:
         return False, "no driven component exists; update_P is a no-op"
     return True, "covered"
-
-
-def _ade_probe_refusal(license: Any) -> Any:
-    """Why this licence may not bind an arm for ``update_P``; None if it may.
-
-    The shared shape check is :func:`coverage.complex_expansion_refusal`'s and has
-    already run. What is added here is a question about the RECORD behind the
-    verdict: it must classify the fifth orientation. A verdict that carries no
-    readable pattern table is refused rather than assumed complete -- an
-    unmeasured orientation is not a measured one.
-    """
-    if not isinstance(license, dict):
-        return None  # the shared clause already refused a non-verdict
-    patterns = license.get("patterns")
-    if patterns is None:
-        record = license.get("record")
-        patterns = record.get("patterns") if isinstance(record, dict) else None
-    if not isinstance(patterns, dict):
-        return (f"the expansion licence carries no readable pattern table, so "
-                f"{ADE_PROBE_PATTERN!r} cannot be shown to have been measured; "
-                f"update_P multiplies a complex64 array by a Python float and "
-                f"that orientation is neither of the two the four-pattern probe "
-                f"classifies")
-    verdict = patterns.get(ADE_PROBE_PATTERN)
-    if verdict is None:
-        return (f"the expansion probe does not classify {ADE_PROBE_PATTERN!r}; "
-                f"xp.multiply(P, c_now) is a complex64 array times a Python "
-                f"float (dispersion.py:686) and an unmeasured orientation may "
-                f"not be inferred from a measured one")
-    if verdict not in complex_emitter.EXPANSIONS:
-        return (f"the expansion probe classifies {ADE_PROBE_PATTERN!r} as "
-                f"{verdict!r}, which names no emittable arm")
-    if verdict != license.get("arm"):
-        return (f"the expansion probe classifies {ADE_PROBE_PATTERN!r} as "
-                f"{verdict!r} while the licence binds {license.get('arm')!r}; "
-                f"one kernel cannot be compiled under two arms")
-    return None
 
 
 def _ade_component(fields: Any, grid: Any, xp: Any, shape: Tuple,
@@ -1282,17 +1181,16 @@ def _word_view(array: Any) -> Any:
     return array.view(cp.float32)
 
 
-def _get_kernel(key: str, expansion: Any):
-    """Compile (or fetch) one kernel, memoized on (key, arm, options, policy, source)."""
+def _get_kernel(key: str):
+    """Compile (or fetch) one kernel, memoized on (key, options, policy, source)."""
     import cupy as cp  # noqa: PLC0415 - a device-only import
 
     from .compile_cache import (get_or_compile,  # noqa: PLC0415
                                 kernel_cache_key)
 
-    arm = complex_emitter.normalized_expansion(expansion)
-    code = kernel_source(key, arm)
+    code = kernel_source(key)
     name = kernel_name(key)
-    cache_key = kernel_cache_key(f"{key}_arm{arm}", True, _COMPILE_OPTIONS, code)
+    cache_key = kernel_cache_key(key, True, _COMPILE_OPTIONS, code)
     return get_or_compile(
         cache_key, lambda: cp.RawKernel(code, name, options=_COMPILE_OPTIONS))
 
@@ -1301,8 +1199,9 @@ def _blocks(count: int) -> int:
     return (int(count) + _THREADS - 1) // _THREADS
 
 
-def step_complex_no_pml_curl(fields: Any, sub_step: str, expansion: Any,
+def step_complex_no_pml_curl(fields: Any, sub_step: str,
                              grid: Any = None, *,
+                             chunk_bounds: Any,
                              arm: Optional[str] = None,
                              dtdx: float = None,
                              boundary_codes: Sequence[Any] = None,
@@ -1323,11 +1222,17 @@ def step_complex_no_pml_curl(fields: Any, sub_step: str, expansion: Any,
     ``fields.condfac_for``/``condinv_for``, and a host-mutation leg substitutes
     corrupted ones here so the defect it plants is on the POINTERS a launch binds
     rather than on the fields object every other leg shares.
+
+    ``chunk_bounds`` is the run's chunk record on the device, required: the kernel
+    reads its partner-presence word, which chooses MEEP's stencil form per
+    component (``step_curl_kernels.chunk_record_argument`` checks it).
     """
     import numpy as np  # noqa: PLC0415 - only the scalar types are needed
 
     from .complex_pml_kernels import (bloch_phase_arguments,  # noqa: PLC0415
-                                      complex_boundary_codes)
+                                      chunk_record_argument, complex_boundary_codes)
+
+    cb = chunk_record_argument(chunk_bounds)
 
     if sub_step not in _coverage.CURL_SUB_STEPS:
         raise ValueError(
@@ -1356,7 +1261,7 @@ def step_complex_no_pml_curl(fields: Any, sub_step: str, expansion: Any,
         if phase_values is None:
             phase_values = derived_values
         if dtdx is None:
-            dtdx = grid.dt / grid.dx  # stepping.py:314, :431.
+            dtdx = grid.dt / grid.dx  # stepping.step_B, stepping.step_D.
     if boundary_codes is None or phase_flags is None or phase_values is None \
             or dtdx is None:
         raise ValueError(
@@ -1384,13 +1289,14 @@ def step_complex_no_pml_curl(fields: Any, sub_step: str, expansion: Any,
     arguments += [np.int32(code) for code in boundary_codes]
     arguments += [np.int32(flag) for flag in phase_flags]
     arguments += [np.float32(value) for value in phase_values]
-    kernel = _get_kernel(key, expansion)
+    arguments += [cb]
+    kernel = _get_kernel(key)
     cells = int(shape[0]) * int(shape[1]) * int(shape[2])
     kernel((_blocks(cells),), (_THREADS,), tuple(arguments))
     return kernel_name(key)
 
 
-def update_E_complex_no_pml_stored(fields: Any, expansion: Any, *,
+def update_E_complex_no_pml_stored(fields: Any, *,
                                    poles: Optional[Dict[str, Sequence[Any]]] = None
                                    ) -> str:
     """``stepping.update_E``'s no-PML store for complex storage. Returns the name.
@@ -1442,12 +1348,12 @@ def update_E_complex_no_pml_stored(fields: Any, expansion: Any, *,
     for bank in banks:
         arguments += bank
     arguments += [np.int32(count) for count in counts] + [np.int32(cells)]
-    kernel = _get_kernel("update_E", expansion)
+    kernel = _get_kernel("update_E")
     kernel((_blocks(cells),), (_THREADS,), tuple(arguments))
     return kernel_name("update_E")
 
 
-def update_P_complex_no_pml(fields: Any, expansion: Any, *, drive=None) -> int:
+def update_P_complex_no_pml(fields: Any, *, drive=None) -> int:
     """``stepping.update_P`` for complex storage, one launch per driven component.
 
     THE ROTATION IS THE POINT and it is transcribed from
@@ -1456,7 +1362,7 @@ def update_P_complex_no_pml(fields: Any, expansion: Any, *, drive=None) -> int:
     launch leaves the state exactly as it found it rather than half-advanced.
 
     ``drive`` is the gate's door. It defaults to ``fields.drive_field``, the bound
-    method, exactly as ``stepping.update_P`` passes it (stepping.py:1428); a
+    method, exactly as ``stepping.update_P`` passes it; a
     control leg binds something else, which must DIVERGE.
     """
     import numpy as np  # noqa: PLC0415 - only the scalar types are needed
@@ -1473,12 +1379,12 @@ def update_P_complex_no_pml(fields: Any, expansion: Any, *, drive=None) -> int:
         components = tuple(state.driven())
         if not components:
             continue
-        coefficients = tuple(state._coefficients)
-        if len(coefficients) != 3:
+        constants = tuple(state.constants)
+        if len(constants) != 4:
             raise ValueError(
-                f"a polarization carries {len(coefficients)} recurrence "
-                f"coefficients, not the (c_now, c_prev, c_drive) triple this "
-                f"kernel bakes as scalars")
+                f"a polarization carries {len(constants)} recurrence constants, not "
+                f"the four realnum words (two_minus_od, gamma1, omega0dtsqr, "
+                f"gamma1inv) this kernel takes as scalars")
         for component in components:
             # Re-read every semantic slot HERE, after the previous component's
             # rotation, never before the loop.
@@ -1490,14 +1396,12 @@ def update_P_complex_no_pml(fields: Any, expansion: Any, *, drive=None) -> int:
             volume = bool(_coverage.ade_sigma_is_volume(state, component))
             _require_no_aliasing(scratch, p, p_prev, w,
                                  sigma if volume else None, component)
-            kernel = _get_kernel("update_P" if volume else "update_P_uniform",
-                                 expansion)
+            kernel = _get_kernel("update_P" if volume else "update_P_uniform")
             cells = int(scratch.size)
             kernel((_blocks(cells),), (_THREADS,), (
                 _word_view(scratch), _word_view(p), _word_view(p_prev),
                 sigma if volume else np.float32(sigma), _word_view(w),
-                np.float32(coefficients[0]), np.float32(coefficients[1]),
-                np.float32(coefficients[2]), np.int32(cells),
+                *(np.float32(value) for value in constants), np.int32(cells),
             ))
             launches += 1
             # dispersion.py:689-691, verbatim, and only once the launch returned.
@@ -1548,7 +1452,7 @@ WHAT_IS_NOT_BUILT: dict = {
              "tests/TestMaterialGrid.test_subpixel_smoothing"),
     "why": ("both rows carry has_offdiagonal_epsilon=True (measured, "
             "parity/meep_gpu/results/cuda_complex_no_pml_recon_2026-08-20/), so "
-            "update_E is MEEP's tensor row product (stepping.py:1001-1008): a "
+            "update_E is MEEP's tensor row product (stepping._offdiagonal_terms): a "
             "four-point transverse average with partner-axis shifts, a Bloch "
             "rotation on each shifted operand and wall masks. Composing the "
             "complex word-pair addressing with the off-diagonal row is a kernel "

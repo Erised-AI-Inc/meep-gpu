@@ -1,25 +1,23 @@
-"""The withdraw hoist: what it admits, what it refuses, and the licence it may not widen.
+"""The ``update_H -> step_D`` seam's source pass: no withdraw stands in it, and the one
+restore that does commutes with ``step_D``.
 
-``parity/meep_gpu/results/h_to_d_withdraw_order_2026-09-04/`` measured the ordering on
-seven lifted corpus rows (420 complete driver steps, 7,364,789,280 uint32 words, 0
-differing) with two null controls that had to diverge. This file is the package-level
-test of the module that measurement became, and it is weighted the way the risk is: the
-failure mode here is a SILENT one -- a product that hoists what it may not, or that
-hoists part of the list, computes plausible fields nobody notices -- so every claim is
-paired with the thing that must fail.
+An integrated source enters at the constitutive update through ``f_minus_p``
+(``sources.f_minus_p_begin`` / ``f_minus_p_end``), so no source carries a ``withdraw`` and
+nothing is returned to D between the seam's two consults. What does stand there, in a run
+whose H is stored, is the magnetic ``f_minus_p`` restore, which writes B alone. This file
+drives the two facts a fused ``update_H + step_D`` launch rests on, the failure mode being
+SILENT (a launch reading the wrong words computes a plausible field nobody notices), so
+each claim is paired with the thing that must fail:
 
-Three habits, all from this package's own conventions:
+* THE RESTORE WRITES ONLY B, measured on a grid rather than asserted;
+* THE FUSED ORDER IS THE DRIVER'S, byte for byte over 30 complete steps, and the two
+  orders the commutation does not license -- the restore before ``update_H``, and no
+  ``f_minus_p`` at all -- diverge.
 
-* THE IDEMPOTENCE IS DRIVEN, NOT ASSERTED. The hoist rests on ``withdraw`` returning
-  early on a second call (``sources.py:2116-2121``); :func:`test_withdraw_is_idempotent`
-  injects, withdraws twice and byte-compares, with the first withdraw required to have
-  CHANGED D so the second's no-op is measured rather than trivially satisfied.
-* EVERY REFUSAL IS EARNED. The two placements the module refuses are the campaign's two
-  null controls, and the tests do not merely check that the refusal fires: they perform
-  the refused thing on a real grid and require it to DIVERGE from the driver's order.
-* THE LICENCE IS PINNED. :func:`test_the_licence_is_exactly_what_was_measured` fails if
-  ``LICENSED_PLACEMENTS`` grows, and :func:`test_the_recorded_measurement_matches_the_artifact`
-  compares every number in ``MEASUREMENT`` against the record's own ``summary.json``.
+The module's predicates still fail closed on a source class that carries a ``withdraw``
+(none in this package): the body the 2026-09-04 licence measured no longer exists, so no
+such withdraw may be hoisted. Those refusals are kept below with stand-in sources, and the
+recorded 2026-09-04 measurement is still compared against its artifact.
 """
 
 from __future__ import annotations
@@ -34,7 +32,9 @@ from . import stepping, withdraw_hoist
 from .fields import Fields
 from .grid import Grid
 from .pml import PML
-from .sources import ContinuousEnvelope, VolumeSource
+from .sources import (ContinuousEnvelope, ContinuousSource, ExtendedSource, FIELD_TYPE_B,
+                      FIELD_TYPE_D, GaussianEnvelope, GaussianPulsedSource, VolumeSource,
+                      f_minus_p_begin, f_minus_p_end)
 
 RECORD = (pathlib.Path(__file__).resolve().parent.parent / "parity" / "meep_gpu" /
           "results" / "h_to_d_withdraw_order_2026-09-04")
@@ -45,38 +45,39 @@ SEEDED = ("Ex", "Ey", "Ez", "Dx", "Dy", "Dz", "Hx", "Hy", "Hz", "Bx", "By", "Bz"
 
 
 # ---------------------------------------------------------------------------
-# The fixture: a small absorbing grid with one integrated electric point source
+# The fixture: a small absorbing grid with an integrated electric and an integrated
+# magnetic point source
 # ---------------------------------------------------------------------------
 
 
-def _build(cell=(1.2, 1.2, 0.0), resolution=12.0, thickness=2, seed=20260904,
-           integrated=True, component="Ez"):
-    """Grid, fields, layer and ONE source whose withdraw does work.
+def _build(cell=(1.2, 1.2, 0.0), resolution=12.0, thickness=2, seed=20261007):
+    """Grid, fields, an active layer and two integrated sources (Ez, Hz).
 
-    The layer is ACTIVE on purpose: with an inactive one ``stepping.update_H`` returns
-    before its first statement (``stepping.py:944-945``) and the seam this module serves
-    has no first half at all -- the boards' ``not_fusion_surface`` bucket, not this
-    module's subject.
-
-    The arrays are SEEDED WITH NOISE rather than zeroed, the ``test_deposit_repair``
-    habit: zero is a fixed point of the constitutive recurrence, so a zeroed comparison
-    passes whether or not the pass under test did anything.
+    The layer is ACTIVE on purpose: H is then stored, which is the case where the magnetic
+    restore stands between the seam's two consults. The arrays are SEEDED WITH NOISE (the
+    ``test_deposit_repair`` habit: zero is a fixed point of the constitutive recurrence),
+    and the state is mid-run (``h_separated``), so no first-step start is in play.
     """
     dimensions = sum(1 for extent in cell if extent > 0.0)
     grid = Grid(resolution=resolution, cell_size=cell, dimensions=dimensions)
     fields = Fields(grid=grid)
     pml = PML(grid=grid, thickness=tuple(thickness if e > 0.0 else 0 for e in cell))
     fields.enable_pml_storage()
+    fields.h_separated = True
     generator = numpy.random.default_rng(seed)
     for name in SEEDED:
         array = getattr(fields, name, None)
         if array is None:
             continue
         array[...] = generator.standard_normal(array.shape).astype(array.dtype)
-    envelope = ContinuousEnvelope(frequency=1.0, is_integrated=integrated)
-    source = VolumeSource(grid=grid, component=component, center=(0.0, 0.0, 0.0),
-                          size=(0.0, 0.0, 0.0), envelope=envelope)
-    return grid, fields, pml, source
+    electric = VolumeSource(grid=grid, component="Ez", center=(0.05, -0.08, 0.0),
+                            size=(0.0, 0.0, 0.0),
+                            envelope=ContinuousEnvelope(frequency=1.0, is_integrated=True))
+    magnetic = VolumeSource(grid=grid, component="Hz", center=(-0.11, 0.07, 0.0),
+                            size=(0.0, 0.0, 0.0),
+                            envelope=GaussianEnvelope(frequency=1.1, fwidth=0.8, start_time=-2.0,
+                                                      is_integrated=True))
+    return grid, fields, pml, [electric, magnetic]
 
 
 def _words(fields):
@@ -107,58 +108,81 @@ class _Recorder:
         self.log.append("launch")
 
 
+class _StandingWithdraw:
+    """A source class carrying a ``withdraw`` of its own -- the shape the predicates were
+    built for, and which no engine source has any more."""
+
+    field_type = "D"
+    is_integrated = True
+    component = "Ez"
+    _n_source_points = 1
+    _applied_dipole = 0j
+
+    def withdraw(self, _fields):
+        return None
+
+
+class _MagneticStandingWithdraw(_StandingWithdraw):
+    field_type = "B"
+    component = "Hz"
+
+
+def _refusal(index, source):
+    return f"in-seam withdraw from source {index} ({type(source).__name__})"
+
+
 # ---------------------------------------------------------------------------
-# The mechanism the licence rests on, DRIVEN
+# No withdraw stands in the seam
 # ---------------------------------------------------------------------------
 
 
-def test_withdraw_is_idempotent():
-    """A second ``withdraw`` in the same step writes nothing -- driven, not asserted.
+def test_no_engine_source_carries_a_withdraw():
+    """The integrated path enters through ``f_minus_p``; nothing stands in D or B to withdraw."""
+    for kind in (VolumeSource, ContinuousSource, ExtendedSource, GaussianPulsedSource):
+        assert not hasattr(kind, "withdraw"), kind
+        assert not hasattr(kind, "_applied_dipole"), kind
+    _grid, fields, _pml, sources = _build()
+    assert all(source.is_integrated for source in sources)
+    assert withdraw_hoist.standing_withdraws(sources) == ()
+    assert withdraw_hoist.seam_withdraw_reasons(
+        fields, sources, undeclared="no source list", refusal=_refusal) == ()
+    ok, reasons = withdraw_hoist.hoistable(fields, sources)
+    assert ok, reasons
+    assert withdraw_hoist.hoist(fields, sources) == 0
 
-    This is what lets a product hoist the pass and leave ``driver.py:3313-3314`` in
-    place: the driver's own loop runs after the hoisted call and must be free. The first
-    withdraw is REQUIRED to change D, or the second one's no-op would be measured against
-    nothing.
-    """
-    _grid, fields, _pml, source = _build()
-    source.inject(fields, 0.0)
-    assert source._applied_dipole != 0, "the injection did not arm a standing dipole"
 
+def test_an_integrated_inject_deposits_nothing():
+    """``step_source`` skips an integrated source (step.cpp:300): its ``inject`` writes no word."""
+    _grid, fields, _pml, sources = _build()
     before = _words(fields)
-    source.withdraw(fields)
-    after_first = _words(fields)
-    assert _differing(before, after_first), (
-        "the first withdraw wrote nothing, so this case cannot tell an idempotent "
-        "second call from a missing one")
-
-    source.withdraw(fields)
-    after_second = _words(fields)
-    assert not _differing(after_first, after_second), _differing(after_first, after_second)
-    assert source._applied_dipole == 0
+    for source in sources:
+        source.inject(fields, 0.37)
+    assert _differing(before, _words(fields)) == {}
 
 
-def test_update_H_and_the_withdraw_touch_disjoint_arrays():
-    """The mechanism the module's docstring claims, measured on this fixture.
+def test_the_magnetic_restore_writes_B_alone():
+    """The one pass between the seam's consults, measured: it moves B and nothing else.
 
-    ``stepping.update_H`` writes ``H*``/``f_w_H*``; the electric withdraw writes the
-    component's own D array at its deposit points. Neither reads what the other wrote,
-    which is why the hoist has a chance of being free -- and the next test is what makes
-    that a measurement rather than an argument.
+    The replace is REQUIRED to change B first, so the restore's footprint is measured
+    against a change rather than against nothing.
     """
-    _grid, fields, pml, source = _build()
-    source.inject(fields, 0.0)
-
+    _grid, fields, pml, sources = _build()
+    # The driver's own boundary passes run before the bracket (FdtdDriver.step).
+    stepping.fill_symmetry_bc_B(fields)
+    stepping.zero_metal_B(fields)
+    stepping.fill_folded_far_ghosts_B(fields)
     before = _words(fields)
+    held = f_minus_p_begin(fields, sources, FIELD_TYPE_B, 0.5 * fields.grid.dt)
+    assert held is not None
+    replaced = set(_differing(before, _words(fields)))
+    assert replaced == {"Bz"}, replaced
     stepping.update_H(fields, pml)
-    moved_by_update_H = set(_differing(before, _words(fields)))
-    assert moved_by_update_H, "update_H wrote nothing; the layer is not active"
-
-    between = _words(fields)
-    source.withdraw(fields)
-    moved_by_withdraw = set(_differing(between, _words(fields)))
-    assert moved_by_withdraw == {"Dz"}, moved_by_withdraw
-    assert not (moved_by_update_H & moved_by_withdraw), (
-        moved_by_update_H & moved_by_withdraw)
+    after_update = _words(fields)
+    f_minus_p_end(fields, held)
+    restored = set(_differing(after_update, _words(fields)))
+    assert restored == {"Bz"}, restored
+    assert set(withdraw_hoist.SEAM_PASS["writes"]) >= restored
+    assert withdraw_hoist.SEAM_PASS["step_D_reads_none_of_it"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -166,253 +190,111 @@ def test_update_H_and_the_withdraw_touch_disjoint_arrays():
 # ---------------------------------------------------------------------------
 
 
-#: The four orderings, as the campaign spells them. ``in_seam`` is whether the driver's
-#: own loop (``driver.py:3313-3314``) runs; ``before`` is what the product's leading slot
-#: withdraws ahead of ``update_H``; ``after`` is the refused placement.
-#:
-#: ``hoisted`` keeps the in-seam loop, which the campaign's `hoisted` mode replaced by a
-#: suppression -- and that is DELIBERATELY STRONGER here: the shipped product leaves the
-#: driver untouched, so the loop really does run a second time, and this mode is only
-#: byte-identical if it is free. The two null controls SUPPRESS the loop, because a
-#: dropped or displaced withdraw that the driver then performs anyway is no control at
-#: all.
-_ORDERINGS = {
-    "driver":             {"in_seam": True,  "before": "none", "after": "none"},
-    "hoisted":            {"in_seam": True,  "before": "all",  "after": "none"},
-    "hoisted_drop_first": {"in_seam": False, "before": "rest", "after": "none"},
-    "after_step_D":       {"in_seam": False, "before": "none", "after": "all"},
-}
+#: Where the magnetic restore runs, relative to the seam's two halves.
+_ORDERINGS = ("driver", "fused", "restore_before_update_H", "no_magnetic_f_minus_p")
 
 
-def _run(mode, steps=6, **build):
+def _run(mode, steps=30, **build):
     """Complete steps under one ordering, returning the final bytes.
 
-    Mirrors ``FdtdDriver.step`` (``driver.py:3289-3332``) for a run with no
-    susceptibility, so ``update_P`` is the no-op it would be there.
+    Mirrors ``FdtdDriver.step`` for a run with no susceptibility and only integrated
+    sources (whose ``inject`` deposits nothing), so ``update_P`` is the no-op it would be
+    there. ``fused`` is what a launch spanning ``update_H`` and ``step_D`` leaves: the
+    restore after both halves.
     """
-    ordering = _ORDERINGS[mode]
-    _grid, fields, pml, source = _build(**build)
-    sources = [source]
-    standing = [s for _index, s in withdraw_hoist.standing_withdraws(sources)]
-    before = {"none": [], "all": standing, "rest": standing[1:]}[ordering["before"]]
-    after = {"none": [], "all": standing}[ordering["after"]]
+    assert mode in _ORDERINGS
+    _grid, fields, pml, sources = _build(**build)
     dt = fields.grid.dt
     time = 0.0
     for _index in range(steps):
         stepping.step_B(fields, pml)
+        for source in sources:
+            source.inject(fields, time)
         stepping.fill_symmetry_bc_B(fields)
         stepping.zero_metal_B(fields)
         stepping.fill_folded_far_ghosts_B(fields)
-        # BY HAND rather than through `hoist`, because `hoist` refuses a partial list by
-        # name -- which is the other half of this file's claim
-        # (test_a_dropped_withdraw_is_refused_by_name). The subject mode is driven
-        # through the module itself in test_the_leading_plan_hoists_before_the_launch.
-        for candidate in before:
-            candidate.withdraw(fields)
+        held = None
+        if mode != "no_magnetic_f_minus_p":
+            held = f_minus_p_begin(fields, sources, FIELD_TYPE_B, time + 0.5 * dt)
+        if mode == "restore_before_update_H":
+            f_minus_p_end(fields, held)
+            held = None
         stepping.update_H(fields, pml)
-        if ordering["in_seam"]:  # driver.py:3313-3314
-            for candidate in sources:
-                candidate.withdraw(fields)
+        if mode == "driver":
+            f_minus_p_end(fields, held)
+            held = None
         stepping.step_D(fields, pml)
-        for candidate in after:
-            candidate.withdraw(fields)
-        for candidate in sources:
-            candidate.inject(fields, time + 0.5 * dt)
+        f_minus_p_end(fields, held)
+        for source in sources:
+            source.inject(fields, time + 0.5 * dt)
         stepping.fill_symmetry_bc_D(fields)
         stepping.zero_metal_D(fields)
         stepping.fill_folded_far_ghosts_D(fields)
+        held_d = f_minus_p_begin(fields, sources, FIELD_TYPE_D, time + dt)
         stepping.update_E(fields, pml)
+        f_minus_p_end(fields, held_d)
         time += dt
     return _words(fields)
 
 
-def test_the_hoisted_order_is_byte_identical_and_both_null_controls_diverge():
-    """The campaign's claim, reproduced at package scale on one small absorbing grid.
+def test_the_fused_order_is_byte_identical_and_both_null_controls_diverge():
+    """A launch spanning the seam may take the restore past ``step_D``; nothing else may move.
 
-    ``hoisted`` must be byte-identical to the driver's order and BOTH refused orderings
-    must diverge. A case where the controls agreed would be a case that cannot tell a
-    correct hoist from a wrong one.
+    ``fused`` must be byte-identical to the driver's order and BOTH refused orderings must
+    diverge. A case where the controls agreed would be a case that cannot tell a correct
+    fusion from a wrong one.
     """
     reference = _run("driver")
     assert _differing(reference, _run("driver")) == {}, "the fixture is not deterministic"
 
-    hoisted = _differing(reference, _run("hoisted"))
-    assert hoisted == {}, hoisted
+    fused = _differing(reference, _run("fused"))
+    assert fused == {}, fused
 
-    after = _differing(reference, _run("after_step_D"))
-    assert after, ("moving the withdraw after step_D did not change a single word; the "
-                   "comparison is not sensitive to where in the seam it runs")
+    early = _differing(reference, _run("restore_before_update_H"))
+    assert early, ("restoring B before update_H changed no word; the comparison cannot see "
+                   "which B the constitutive update read")
 
-    dropped = _differing(reference, _run("hoisted_drop_first"))
-    assert dropped, ("dropping the only working withdraw did not change a single word; "
-                     "the words it writes are outside the compared set")
-
-
-def test_a_run_with_no_standing_withdraw_is_unaffected_by_the_hoist():
-    """A non-integrated source has nothing standing, and the hoist is then a no-op.
-
-    Establishes that this module's subject is the INTEGRATED path: with
-    ``is_integrated=False`` the driver's loop is the no-op on every electric source, and
-    a product spanning the seam needs no hoist at all.
-    """
-    _grid, fields, _pml, source = _build(integrated=False)
-    assert withdraw_hoist.standing_withdraws([source]) == ()
-    assert _differing(_run("driver", integrated=False),
-                      _run("hoisted", integrated=False)) == {}
+    none = _differing(reference, _run("no_magnetic_f_minus_p"))
+    assert none, ("dropping the magnetic f_minus_p changed no word; the words it writes "
+                  "are outside the compared set")
 
 
 # ---------------------------------------------------------------------------
-# Which withdraws stand: the configuration test, and what it must not become
-# ---------------------------------------------------------------------------
-
-
-def test_standing_withdraws_reports_the_callers_own_index():
-    """"source 1" must name the second source the RUN declared, not the second match."""
-    _grid, _fields, _pml, electric = _build()
-    magnetic = VolumeSource(grid=electric.grid, component="Hy", center=(0.0, 0.0, 0.0),
-                            size=(0.0, 0.0, 0.0),
-                            envelope=ContinuousEnvelope(frequency=1.0,
-                                                        is_integrated=True))
-    standing = withdraw_hoist.standing_withdraws([magnetic, electric])
-    assert [index for index, _s in standing] == [1], standing
-    assert standing[0][1] is electric
-
-
-def test_a_magnetic_source_is_not_this_seams_business():
-    """The magnetic withdraw is hoisted over ``step_B``, one seam earlier.
-
-    It must be neither hoisted here nor refused here: a product spanning
-    ``update_H``/``step_D`` never swallows it, so its presence bars nothing.
-    """
-    _grid, fields, _pml, electric = _build()
-    magnetic = VolumeSource(grid=electric.grid, component="Hy", center=(0.0, 0.0, 0.0),
-                            size=(0.0, 0.0, 0.0),
-                            envelope=ContinuousEnvelope(frequency=1.0,
-                                                        is_integrated=True))
-    assert withdraw_hoist.standing_withdraws([magnetic]) == ()
-    ok, reasons = withdraw_hoist.hoistable(fields, [magnetic, electric])
-    assert ok, reasons
-
-
-def test_the_configuration_test_is_not_the_per_step_gate():
-    """``_applied_dipole`` is zero before the first injection, and must not be consulted.
-
-    A predicate that read it at plan-build time would answer "nothing stands here" for a
-    row whose withdraw does work on every step from the second on -- and would admit that
-    row into a product carrying no hoist.
-    """
-    _grid, fields, _pml, source = _build()
-    assert source._applied_dipole == 0
-    assert len(withdraw_hoist.standing_withdraws([source])) == 1
-    source.inject(fields, 0.0)
-    assert source._applied_dipole != 0
-    assert len(withdraw_hoist.standing_withdraws([source])) == 1
-
-
-def test_a_source_owning_no_deposit_point_has_nothing_to_withdraw():
-    """``withdraw`` returns at ``sources.py:2114-2115`` with no points, so none stands."""
-    _grid, _fields, _pml, source = _build()
-    source._n_source_points = 0
-    assert withdraw_hoist.standing_withdraws([source]) == ()
-
-
-# ---------------------------------------------------------------------------
-# The refusals, each paired with the thing it refuses
+# The refusals the predicates keep, each on a source that carries a withdraw
 # ---------------------------------------------------------------------------
 
 
 def test_the_after_step_D_placement_is_refused_by_name():
-    """The campaign's ``after_step_D`` null control, refused AND shown to diverge."""
-    _grid, fields, _pml, source = _build()
-    ok, reasons = withdraw_hoist.hoistable(fields, [source],
-                                           placement=withdraw_hoist.AFTER_STEP_D)
+    _grid, fields, _pml, sources = _build()
+    ok, reasons = withdraw_hoist.hoistable(fields, sources, placement=withdraw_hoist.AFTER_STEP_D)
     assert not ok
     assert any("REFUSED PLACEMENT after_step_D" in reason for reason in reasons), reasons
-    assert any("diverged at step 2 on all 7 rows" in reason for reason in reasons), reasons
-    # The refusal is EARNED: performing it really does change the answer.
-    assert _differing(_run("driver"), _run("after_step_D"))
 
 
 def test_the_in_launch_placement_is_refused_as_unmeasured():
-    """Carrying the withdraw inside the launch is refused for want of a measurement."""
-    ok, reasons = withdraw_hoist.hoistable(None, [],
-                                           placement=withdraw_hoist.IN_LAUNCH)
+    _grid, fields, _pml, sources = _build()
+    ok, reasons = withdraw_hoist.hoistable(fields, sources, placement=withdraw_hoist.IN_LAUNCH)
     assert not ok
-    assert any("REFUSED PLACEMENT in_launch" in reason for reason in reasons), reasons
     assert any("never been measured" in reason for reason in reasons), reasons
 
 
 def test_an_unknown_placement_is_a_declaration_error():
-    """A name outside :data:`PLACEMENTS` is refused, never resolved to the licensed one."""
-    ok, reasons = withdraw_hoist.hoistable(None, [], placement="whenever")
+    _grid, fields, _pml, sources = _build()
+    ok, reasons = withdraw_hoist.hoistable(fields, sources, placement="somewhere")
     assert not ok
-    assert any("UNKNOWN PLACEMENT 'whenever'" in reason for reason in reasons), reasons
+    assert any("UNKNOWN PLACEMENT" in reason for reason in reasons), reasons
 
 
-def test_a_dropped_withdraw_is_refused_by_name():
-    """The campaign's ``hoisted_drop_first`` null control, refused AND shown to diverge.
-
-    A hoist list missing a standing withdraw is the shape that diverged at step 2 on all
-    7 rows, so it is refused whatever else is in order.
-    """
-    _grid, fields, _pml, source = _build()
-    ok, reasons = withdraw_hoist.hoistable(fields, [source], hoisted=[])
-    assert not ok
-    assert any("DROPPED WITHDRAW" in reason for reason in reasons), reasons
-    assert any("hoisted_drop_first" in reason for reason in reasons), reasons
-    # Earned the same way: the dropped pass really does change the answer.
-    assert _differing(_run("driver"), _run("hoisted_drop_first"))
-
-
-def test_a_magnetic_source_in_the_hoist_list_is_refused_by_name():
-    """Declaring a magnetic source hoisted is a claim about a seam this never measured."""
-    _grid, fields, _pml, electric = _build()
-    magnetic = VolumeSource(grid=electric.grid, component="Hy", center=(0.0, 0.0, 0.0),
-                            size=(0.0, 0.0, 0.0),
-                            envelope=ContinuousEnvelope(frequency=1.0,
-                                                        is_integrated=True))
-    ok, reasons = withdraw_hoist.hoistable(fields, [magnetic, electric],
-                                           hoisted=[magnetic, electric])
-    assert not ok
-    assert any("NON-ELECTRIC SOURCE" in reason for reason in reasons), reasons
-    assert any("driver.py:3289-3290" in reason for reason in reasons), reasons
-
-
-def test_a_source_the_run_does_not_declare_is_refused():
-    """Hoisting a source the driver's own loop will never re-run is an unmeasured order."""
-    _grid, fields, _pml, source = _build()
-    other = VolumeSource(grid=source.grid, component="Ex", center=(0.0, 0.0, 0.0),
-                         size=(0.0, 0.0, 0.0),
-                         envelope=ContinuousEnvelope(frequency=1.0,
-                                                     is_integrated=True))
-    ok, reasons = withdraw_hoist.hoistable(fields, [source], hoisted=[source, other])
-    assert not ok
-    assert any("UNDECLARED SOURCE" in reason for reason in reasons), reasons
-
-
-def test_a_foreign_withdraw_body_is_refused_by_name():
-    """The idempotence belongs to ``VolumeSource.withdraw``, not to the attribute name."""
-
-    class _OwnWithdraw:
-        field_type = "D"
-        is_integrated = True
-        component = "Ez"
-        _n_source_points = 1
-        _applied_dipole = 0j
-
-        def withdraw(self, _fields):  # a body nothing has ever driven twice
-            return None
-
-    _grid, fields, _pml, _source = _build()
-    ok, reasons = withdraw_hoist.hoistable(fields, [_OwnWithdraw()])
+def test_a_withdraw_body_of_its_own_is_refused_by_name():
+    """The measured body is gone, so any ``withdraw`` a source class brings is foreign."""
+    _grid, fields, _pml, _sources = _build()
+    ok, reasons = withdraw_hoist.hoistable(fields, [_StandingWithdraw()])
     assert not ok
     assert any("FOREIGN WITHDRAW" in reason for reason in reasons), reasons
-    assert any("sources.py:2116-2121" in reason for reason in reasons), reasons
+    assert any("no longer exists" in reason for reason in reasons), reasons
 
 
 def test_a_source_publishing_no_standing_offset_is_refused_by_name():
-    """Without ``_applied_dipole`` the second call's early return cannot be established."""
-
     class _NoOffset:
         field_type = "D"
         is_integrated = True
@@ -422,17 +304,42 @@ def test_a_source_publishing_no_standing_offset_is_refused_by_name():
         def withdraw(self, _fields):
             return None
 
-    _grid, fields, _pml, _source = _build()
+    _grid, fields, _pml, _sources = _build()
     ok, reasons = withdraw_hoist.hoistable(fields, [_NoOffset()])
     assert not ok
     assert any("NO STANDING OFFSET" in reason for reason in reasons), reasons
 
 
+def test_a_dropped_withdraw_is_refused_by_name():
+    _grid, fields, _pml, _sources = _build()
+    standing = _StandingWithdraw()
+    ok, reasons = withdraw_hoist.hoistable(fields, [standing], hoisted=[])
+    assert not ok
+    assert any("DROPPED WITHDRAW" in reason for reason in reasons), reasons
+
+
+def test_a_magnetic_source_in_the_hoist_list_is_refused_by_name():
+    _grid, fields, _pml, _sources = _build()
+    magnetic = _MagneticStandingWithdraw()
+    assert withdraw_hoist.standing_withdraws([magnetic]) == ()
+    ok, reasons = withdraw_hoist.hoistable(fields, [magnetic], hoisted=[magnetic])
+    assert not ok
+    assert any("NON-ELECTRIC SOURCE" in reason for reason in reasons), reasons
+
+
+def test_a_source_the_run_does_not_declare_is_refused():
+    _grid, fields, _pml, _sources = _build()
+    ok, reasons = withdraw_hoist.hoistable(fields, [], hoisted=[_StandingWithdraw()])
+    assert not ok
+    assert any("UNDECLARED SOURCE" in reason for reason in reasons), reasons
+
+
 def test_an_unresolvable_component_is_refused_before_the_launch():
-    """``withdraw`` resolves one array; a component these fields cannot resolve refuses."""
-    _grid, fields, _pml, source = _build()
-    source.component = "Eq"
-    ok, reasons = withdraw_hoist.hoistable(fields, [source])
+    class _Unresolvable(_StandingWithdraw):
+        component = "Eq"
+
+    _grid, fields, _pml, _sources = _build()
+    ok, reasons = withdraw_hoist.hoistable(fields, [_Unresolvable()])
     assert not ok
     assert any("UNRESOLVED ARRAY" in reason for reason in reasons), reasons
 
@@ -444,11 +351,6 @@ def test_no_source_list_is_a_refusal_not_an_empty_answer():
     assert any("NO SOURCE LIST" in reason for reason in reasons), reasons
 
 
-# ---------------------------------------------------------------------------
-# The span: what a product must own for the hoist to be the measured one
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("span,marker", [
     (("step_B", "update_H", "step_D", "update_E"), "SPAN WIDER THAN THE SEAM"),
     (("update_H",), "SPAN HOLDS ONE HALF"),
@@ -458,16 +360,15 @@ def test_no_source_list_is_a_refusal_not_an_empty_answer():
 ])
 def test_a_span_that_is_not_the_seam_is_refused_by_name(span, marker):
     """Both directions fail closed, and for different reasons -- see ``_span_reasons``."""
-    _grid, fields, _pml, source = _build()
-    ok, reasons = withdraw_hoist.hoistable(fields, [source], span=span)
+    _grid, fields, _pml, sources = _build()
+    ok, reasons = withdraw_hoist.hoistable(fields, sources, span=span)
     assert not ok
     assert any(marker in reason for reason in reasons), reasons
 
 
 def test_the_seam_span_itself_is_admitted():
-    _grid, fields, _pml, source = _build()
-    ok, reasons = withdraw_hoist.hoistable(fields, [source],
-                                           span=withdraw_hoist.SEAM_SPAN)
+    _grid, fields, _pml, sources = _build()
+    ok, reasons = withdraw_hoist.hoistable(fields, sources, span=withdraw_hoist.SEAM_SPAN)
     assert ok, reasons
 
 
@@ -476,31 +377,19 @@ def test_the_seam_span_itself_is_admitted():
 # ---------------------------------------------------------------------------
 
 
-def _refusal(index, source):
-    return f"in-seam withdraw from source {index} ({type(source).__name__})"
-
-
-def test_a_product_that_does_not_hoist_keeps_refusing_the_row():
-    """The default is the answer the three boards file today under ``withdraw_seam``."""
-    _grid, fields, _pml, source = _build()
+def test_a_product_that_does_not_hoist_keeps_refusing_a_standing_withdraw():
+    _grid, fields, _pml, _sources = _build()
     reasons = withdraw_hoist.seam_withdraw_reasons(
-        fields, [source], undeclared="no source list", refusal=_refusal)
-    assert reasons == ("in-seam withdraw from source 0 (VolumeSource)",)
+        fields, [_StandingWithdraw()], undeclared="no source list", refusal=_refusal)
+    assert reasons == ("in-seam withdraw from source 0 (_StandingWithdraw)",)
 
 
-def test_a_product_that_hoists_admits_the_row():
-    _grid, fields, _pml, source = _build()
-    assert withdraw_hoist.seam_withdraw_reasons(
-        fields, [source], undeclared="no source list", refusal=_refusal,
-        hoists_the_withdraw=True) == ()
-
-
-def test_the_declared_hoist_does_not_survive_a_refused_placement():
-    """The flag declares wiring; it does not license a placement the campaign refused."""
-    _grid, fields, _pml, source = _build()
+def test_a_product_that_hoists_cannot_carry_a_withdraw_body_of_its_own():
+    """The declared hoist was licensed for the measured body; there is none to hoist now."""
+    _grid, fields, _pml, _sources = _build()
     reasons = withdraw_hoist.seam_withdraw_reasons(
-        fields, [source], undeclared="no source list", refusal=_refusal,
-        hoists_the_withdraw=True, placement=withdraw_hoist.AFTER_STEP_D)
+        fields, [_StandingWithdraw()], undeclared="no source list", refusal=_refusal,
+        hoists_the_withdraw=True)
     assert reasons and all(r.startswith("the withdraw hoist cannot carry this seam:")
                            for r in reasons), reasons
 
@@ -512,58 +401,48 @@ def test_an_undeclared_source_list_uses_the_sites_own_text():
         "THE SITE'S OWN TEXT",)
 
 
-def test_the_leading_plan_hoists_before_the_launch():
-    _grid, fields, _pml, source = _build()
-    source.inject(fields, 0.0)
+def test_the_leading_plan_runs_the_launch_and_withdraws_nothing():
+    _grid, fields, _pml, sources = _build()
+    before = _words(fields)
     log = []
-    plan = withdraw_hoist.LeadingWithdrawPlan(_Recorder(log), fields, [source])
+    plan = withdraw_hoist.LeadingWithdrawPlan(_Recorder(log), fields, sources)
     plan.run()
-    assert plan.withdrawn == 1
+    assert plan.withdrawn == 0
     assert log == ["launch"]
-    assert source._applied_dipole == 0, (
-        "the plan ran the launch without withdrawing first")
     assert plan.inner.runs == 1
+    assert _differing(before, _words(fields)) == {}
 
 
-def test_the_leading_plan_refuses_before_it_writes():
-    """A refused configuration must not reach the launch, and must not half-hoist."""
-    _grid, fields, _pml, source = _build()
-    source.inject(fields, 0.0)
-    standing = source._applied_dipole
+def test_the_leading_plan_refuses_before_it_launches():
+    """A refused configuration must not reach the launch."""
+    _grid, fields, _pml, sources = _build()
     log = []
-    plan = withdraw_hoist.LeadingWithdrawPlan(_Recorder(log), fields, [source],
+    plan = withdraw_hoist.LeadingWithdrawPlan(_Recorder(log), fields, sources,
                                               placement=withdraw_hoist.AFTER_STEP_D)
     with pytest.raises(withdraw_hoist.WithdrawNotHoistable):
         plan.run()
     assert log == []
-    assert source._applied_dipole == standing
 
 
 def test_hoist_returns_the_count_and_refuses_a_bad_span():
-    _grid, fields, _pml, source = _build()
-    source.inject(fields, 0.0)
+    _grid, fields, _pml, sources = _build()
     with pytest.raises(withdraw_hoist.WithdrawNotHoistable):
-        withdraw_hoist.hoist(fields, [source], span=("update_H",))
-    assert withdraw_hoist.hoist(fields, [source]) == 1
-    assert withdraw_hoist.hoist(fields, [source]) == 1  # idempotent, and still counted
+        withdraw_hoist.hoist(fields, sources, span=("update_H",))
+    assert withdraw_hoist.hoist(fields, sources) == 0
 
 
 # ---------------------------------------------------------------------------
-# The licence itself
+# The 2026-09-04 licence, kept as its record
 # ---------------------------------------------------------------------------
 
 
-def test_the_licence_is_exactly_what_was_measured():
-    """FAILS IF THE LICENCE IS WIDENED.
-
-    One placement was measured and one is licensed. Adding a second without a campaign
-    behind it fails here, which is the point: this constant is the whole difference
-    between a product that may hoist and one that may not.
-    """
+def test_the_licence_is_exactly_what_was_measured_and_is_superseded():
+    """FAILS IF THE LICENCE IS WIDENED, and it names what superseded it."""
     assert withdraw_hoist.LICENSED_PLACEMENTS == (withdraw_hoist.BEFORE_UPDATE_H,)
     assert set(withdraw_hoist.PLACEMENT_REFUSALS) == (
         set(withdraw_hoist.PLACEMENTS) - set(withdraw_hoist.LICENSED_PLACEMENTS))
     assert withdraw_hoist.MEASUREMENT["placement"] == withdraw_hoist.BEFORE_UPDATE_H
+    assert "f_minus_p" in withdraw_hoist.MEASUREMENT["superseded_by"]
     for phrase in ("array path", "device kernel", "magnetic"):
         assert phrase in withdraw_hoist.WHAT_THIS_DOES_NOT_LICENSE
 

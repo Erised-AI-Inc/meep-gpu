@@ -138,14 +138,21 @@ if triton is not None:
         out0, p0_now, p0_prev, sigma0, drive0,
         out1, p1_now, p1_prev, sigma1, drive1,
         out2, p2_now, p2_prev, sigma2, drive2,
-        c_now, c_prev, c_drive, n_elem,
+        two_minus_od, gamma1, omega0dtsqr, gamma1inv, n_elem,
         DRIVEN0: tl.constexpr, DRIVEN1: tl.constexpr, DRIVEN2: tl.constexpr,
         SIGMA_IS_VOLUME0: tl.constexpr,
         SIGMA_IS_VOLUME1: tl.constexpr,
         SIGMA_IS_VOLUME2: tl.constexpr,
         BLOCK: tl.constexpr,
     ):
-        """Advance one susceptibility's live Ex/Ey/Ez ADE recurrences together."""
+        """Advance one susceptibility's live Ex/Ey/Ez ADE recurrences together.
+
+        Each arm is :func:`kernels.ade_update_p`'s expression, MEEP's isotropic
+        ``update_P`` (susceptibility.cpp:251-256) on the four realnum words
+        (``PolarizationState.constants``): ``gamma1inv * (((p * two_minus_od) -
+        (gamma1 * pp)) + (omega0dtsqr * (s * w)))``, one float32 rounding per
+        operation. ``drive{c}`` is ``Fields.drive_field``'s word, MEEP's ``w``.
+        """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
 
@@ -158,8 +165,8 @@ if triton is not None:
             else:
                 s0 = sigma0
             tl.store(out0 + idx,
-                     ((p0 * c_now) + (c_prev * q0)) +
-                     (c_drive * (s0 * d0)), mask=live)
+                     gamma1inv * (((p0 * two_minus_od) - (gamma1 * q0)) +
+                                  (omega0dtsqr * (s0 * d0))), mask=live)
 
         if DRIVEN1:
             p1 = tl.load(p1_now + idx, mask=live, other=0.0)
@@ -170,8 +177,8 @@ if triton is not None:
             else:
                 s1 = sigma1
             tl.store(out1 + idx,
-                     ((p1 * c_now) + (c_prev * q1)) +
-                     (c_drive * (s1 * d1)), mask=live)
+                     gamma1inv * (((p1 * two_minus_od) - (gamma1 * q1)) +
+                                  (omega0dtsqr * (s1 * d1))), mask=live)
 
         if DRIVEN2:
             p2 = tl.load(p2_now + idx, mask=live, other=0.0)
@@ -182,8 +189,8 @@ if triton is not None:
             else:
                 s2 = sigma2
             tl.store(out2 + idx,
-                     ((p2 * c_now) + (c_prev * q2)) +
-                     (c_drive * (s2 * d2)), mask=live)
+                     gamma1inv * (((p2 * two_minus_od) - (gamma1 * q2)) +
+                                  (omega0dtsqr * (s2 * d2))), mask=live)
 else:  # pragma: no cover - laptop path
     fused_ade_state = None  # type: ignore[assignment]
 
@@ -280,9 +287,11 @@ class FusedAdeStatePlan:
             driven_flags.append(1)
             volume_flags.append(1 if volume else 0)
 
-        c_now, c_prev, c_drive = state._coefficients
+        # MEEP's four realnum words; each is a float32 word, passed exactly.
+        two_minus_od, gamma1, omega0dtsqr, gamma1inv = state.constants
         kernel[self._grid](
-            *arguments, float(c_now), float(c_prev), float(c_drive), self.n_elem,
+            *arguments, float(two_minus_od), float(gamma1), float(omega0dtsqr),
+            float(gamma1inv), self.n_elem,
             DRIVEN0=driven_flags[0], DRIVEN1=driven_flags[1],
             DRIVEN2=driven_flags[2],
             SIGMA_IS_VOLUME0=volume_flags[0],

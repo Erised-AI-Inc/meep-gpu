@@ -31,16 +31,17 @@ answer, so nothing here is argued:
 Two levels. The EMULATED level drives ``stepping``'s array functions in the driver's
 order with the fused launch emulated by those same functions, as ``test_deposit_repair``
 does. The DRIVER level installs the two repair plans on a real ``FdtdDriver`` and steps
-it, which is what reaches the conductive replay
-(``driver._inject_electric_through_conductivity``), the magnetic synchronization path
+it, which is what reaches the conductive deposit (each source's own double-precision
+deposit scaled by ``condinv``, ``sources._deposit``), the magnetic synchronization path
 (``driver.synchronize_magnetic_fields``) and the lifted corpus cases.
 
 ALL FOUR LISTED SOURCE CLASSES ARE DRIVEN. ``_make_source`` builds two of them
 (``GaussianPulsedSource``, ``VolumeSource``); the ``CW`` cases and the ``continuous``
 driver configurations build the other two (``ContinuousSource``, ``ExtendedSource``),
-which are what the driver's default source kind constructs. Every emulated source is
-bound to its layer as the driver binds it, so a deposit under a layer also writes its
-``f_u`` mirror, and the cases that claim that are held to it.
+which are what the driver's default source kind constructs. Every injection writes its
+one primary array and nothing else: a deposit under a layer whose chunk carries only the
+dsig layer is damped by the dsig-only form on the field itself, so no auxiliary is a
+deposit target.
 
 AND THE LIST IS OF INJECTS, NOT OF TYPES: an exact-class source whose ``inject`` has
 been rebound -- on the instance or on the class, delegating or writing a second array
@@ -58,7 +59,6 @@ import sys
 import time
 import types
 from collections.abc import Mapping
-from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy
@@ -205,29 +205,24 @@ def _inject_directly(fields: Any, sources: Sequence[Any], when: float) -> None:
         source.inject(fields, when)
 
 
-def _inject_through_conductivity(fields: Any, sources: Sequence[Any],
-                                 when: float) -> None:
-    """THE SHIPPED CONDUCTIVE REPLAY, not a copy of it (``driver.py:3341-3449``). The
-    method reads ``self.fields`` and nothing else, so a namespace carries it."""
-    FdtdDriver._inject_electric_through_conductivity(
-        SimpleNamespace(fields=fields), list(sources), when)
-
-
-def _withdraw(fields: Any, sources: Sequence[Any]) -> None:
-    for source in sources:
-        getattr(source, "withdraw", lambda _fields: None)(fields)
+def _f_minus_p_time(when: float, dt: float, pair: str) -> float:
+    """``calc_sources`` before ``update_eh``: ``time() + dt/2`` for H, ``time() + dt`` for E
+    (step.cpp:74, :105; ``FdtdDriver.step``)."""
+    return when + (0.5 * dt if pair == "B" else dt)
 
 
 def _reference_step(fields, pml, sources, when, dt, pair, inject) -> None:
     """The driver's order, verbatim, on the array path."""
     curl, fill, clear, far, update = LAUNCH[pair]
-    _withdraw(fields, sources)
     _call(curl, fields, pml)
     inject(fields, sources, when if pair == "B" else when + 0.5 * dt)
     _call(fill, fields, pml)
     _call(clear, fields, pml)
     _call(far, fields, pml)
+    # An integrated source's dipole, at the constitutive update (sources.f_minus_p_begin).
+    held = engine_sources.f_minus_p_begin(fields, sources, pair, _f_minus_p_time(when, dt, pair))
     _call(update, fields, pml)
+    engine_sources.f_minus_p_end(fields, held)
     if pair == "D":
         stepping.update_P(fields, pml)
 
@@ -235,13 +230,16 @@ def _reference_step(fields, pml, sources, when, dt, pair, inject) -> None:
 def _bracketed_step(fields, pml, sources, when, dt, pair, inject, bracket) -> None:
     """The fused pair's two consults with the driver's unconsulted passes between."""
     _, fill, clear, far, _update = LAUNCH[pair]
-    _withdraw(fields, sources)
     bracket.leading()
     inject(fields, sources, when if pair == "B" else when + 0.5 * dt)
     _call(fill, fields, pml)
     _call(clear, fields, pml)
     _call(far, fields, pml)
+    # The driver writes f_minus_p's words before the constitutive consult the trailing
+    # repair occupies, and restores them after it.
+    held = engine_sources.f_minus_p_begin(fields, sources, pair, _f_minus_p_time(when, dt, pair))
     bracket.trailing()
+    engine_sources.f_minus_p_end(fields, held)
     if pair == "D":
         stepping.update_P(fields, pml)
 
@@ -340,19 +338,12 @@ class Case:
     def __init__(self, name: str, pair: str, build: Callable[[], Tuple[Any, Any, Any]],
                  sources: Callable[[Any], List[Any]], *, steps: int = 6,
                  paths: Tuple[str, ...] = SPLIT, inject=_inject_directly,
-                 entries: Optional[int] = None, mirror: bool = False,
-                 bind: bool = True):
+                 entries: Optional[int] = None):
         self.name, self.pair, self.build, self.sources = name, pair, build, sources
         self.steps, self.paths, self.inject = steps, paths, inject
         #: ``(component, source)`` cell sets the restricted bracket holds. One per
         #: single-component source unless the case says otherwise.
         self.entries = entries
-        #: The case CLAIMS every source's ``f_u`` mirror is live, and ``_run`` holds it
-        #: to that: the injection then writes ``fu_<array>`` beside the primary array.
-        self.mirror = mirror
-        #: False ONLY where the case has broken something binding itself reads (the
-        #: trimmed component map), and the source sits where nothing mirrors anyway.
-        self.bind = bind
 
 
 def _run(case: Case, leg: str):
@@ -363,16 +354,6 @@ def _run(case: Case, leg: str):
     assert sources and all(deposit_repair._deposit_index(source) is not None
                            for source in sources), (
         f"{case.name}: a source deposits nothing, so the case cannot discriminate")
-    for source in sources if case.bind else ():
-        # AS THE DRIVER DOES (``driver.py:2472-2473``, ``:2509-2510``, and again from
-        # ``setup_pml``): a source is bound to the layer it will be stepped under, which
-        # is what selects the cells its deposit mirrors into ``fu_<array>``. Unbound,
-        # a source "in the PML shell" never writes the mirror at all.
-        source.bind_pml(pml)
-    if case.mirror:
-        assert all(getattr(source, "_fu_ix", None) is not None for source in sources), (
-            f"{case.name}: the f_u mirror is not live, so this case does not exercise "
-            f"the second array an injection writes")
     bracket = (None if leg == "reference"
                else BRACKETS[leg](fields, pml, sources, case.pair, case.paths))
     dt = grid.dt
@@ -453,8 +434,8 @@ def _pole_build(complex_storage: bool = False, seed: int = 20260920):
 
 
 def _conductive_build(seed: int = 20260921):
-    """SPLIT FIELD WITH A D CONDUCTIVITY: the configuration whose electric injection
-    the driver routes through ``_inject_electric_through_conductivity``."""
+    """SPLIT FIELD WITH A D CONDUCTIVITY: the configuration whose electric deposits
+    carry the ``condinv`` scale inside their own double expression (``sources._deposit``)."""
     grid = Grid(resolution=12.0, cell_size=(1.2, 1.2, 0.0), dimensions=2)
     fields = Fields(grid=grid)
     volume = numpy.full(grid.shape, 0.2, dtype=numpy.float32)
@@ -509,8 +490,8 @@ CW_FREQUENCY = 0.7
 
 def _continuous(component, center):
     """``ContinuousSource``: what the driver's default ``continuous`` kind builds for a
-    POINT (``driver.py:2494-2500``). Its ``inject`` is its OWN write path
-    (``sources.py:1742``), not the ``_inject_points`` the other three classes share."""
+    POINT (``driver.py:2494-2500``). Its ``inject`` packs its own weights and hands
+    them to the ``sources._deposit`` the other three classes share."""
     return lambda grid: ContinuousSource(grid=grid, frequency=CW_FREQUENCY,
                                          component=component, center=center)
 
@@ -531,10 +512,9 @@ def _built(*makers):
 
 O = (0.0, 0.0, 0.0)
 SHELL = (0.5, 0.5, 0.0)
-#: Under ONE layer and outside the other's chunk, which is where a deposit mirrors into
-#: ``f_u`` (``sources._unsplit_deposit_flags``): measured on ``_build``'s 14x14 grid, an
-#: Ez deposit mirrors under the x layer and an Ex deposit under the y layer; Ey's
-#: ladder axis is z, which carries no layer on a 2-D grid, so Ey never mirrors here.
+#: Under ONE layer and outside the other's chunk: on ``_build``'s 14x14 grid an Ez deposit
+#: under the x layer and an Ex deposit under the y layer sit in a chunk that carries only
+#: their dsig layer, where the curl steps the dsig-only form on the field alone.
 UNDER_X = (0.5, 0.0, 0.0)
 UNDER_Y = (0.0, 0.5, 0.0)
 
@@ -616,75 +596,68 @@ CASES = [
          _point("D", "Ez"), paths=PLAIN),
     Case("plain, Ex and Ez together", "D", _plain_build,
          _several("D", ("Ex", O, (0.6, 0.0, 0.0)), ("Ez", O, O)), paths=PLAIN),
-    # THE CONDUCTIVE REPLAY, through the driver's own method.
-    Case("conductive replay, split field, Ez", "D", _conductive_build,
-         _point("D", "Ez"), inject=_inject_through_conductivity),
-    Case("conductive replay, split field, Ex line and Ez point", "D", _conductive_build,
-         _several("D", ("Ex", O, (0.6, 0.0, 0.0)), ("Ez", (0.2, 0.1, 0.0), O)),
-         inject=_inject_through_conductivity),
-    Case("conductive replay, split field, two sources on one component", "D",
-         _conductive_build, _several("D", ("Ez", O, O), ("Ez", O, (0.3, 0.0, 0.0))),
-         inject=_inject_through_conductivity),
-    Case("conductive replay, split field, a scaled Ex beside an INTEGRATED Ez", "D",
+    # THE CONDUCTIVE DEPOSIT: the driver's own per-source injection on a D conductivity.
+    Case("conductive deposit, split field, Ez", "D", _conductive_build,
+         _point("D", "Ez")),
+    Case("conductive deposit, split field, Ex line and Ez point", "D", _conductive_build,
+         _several("D", ("Ex", O, (0.6, 0.0, 0.0)), ("Ez", (0.2, 0.1, 0.0), O))),
+    Case("conductive deposit, split field, two sources on one component", "D",
+         _conductive_build, _several("D", ("Ez", O, O), ("Ez", O, (0.3, 0.0, 0.0)))),
+    Case("conductive deposit, split field, a scaled Ex beside an INTEGRATED Ez", "D",
          _conductive_build,
          lambda grid: [_make_source(grid, "D", "Ex", O, O),
-                       _integrated(grid, "Ez", (0.2, 0.1, 0.0))],
-         inject=_inject_through_conductivity),
-    Case("conductive replay, plain path, Ex line", "D",
+                       _integrated(grid, "Ez", (0.2, 0.1, 0.0))]),
+    Case("conductive deposit, plain path, Ex line", "D",
          lambda: _plain_build(conductivity=0.20), _point("D", "Ex", O, (0.6, 0.0, 0.0)),
-         paths=PLAIN, inject=_inject_through_conductivity),
-    Case("an INTEGRATED magnetic source (withdraw, then the whole dipole)", "B", _build,
+         paths=PLAIN),
+    Case("an INTEGRATED magnetic source (its dipole at the constitutive update)", "B", _build,
          lambda grid: [_integrated(grid, "Hz", O)]),
     # THE TWO CLASSES THE DEFAULT ``continuous`` KIND BUILDS. Both are on
     # ``deposit_repair._READ_INJECTS``, and every case above builds the other two
     # (``_make_source``: GaussianPulsedSource and VolumeSource), so until 2026-09-20 an
     # edit to either ``inject`` that added a second write would have passed this file.
     # Each rides the wrong-component null control like every other case.
-    Case("CW point (ContinuousSource) Ex under the y layer, f_u mirror live", "D", _build,
-         _built(_continuous("Ex", UNDER_Y)), mirror=True),
+    Case("CW point (ContinuousSource) Ex under the y layer", "D", _build,
+         _built(_continuous("Ex", UNDER_Y))),
     Case("CW point (ContinuousSource) Ey", "D", _build, _built(_continuous("Ey", O))),
-    Case("CW point (ContinuousSource) Ez under the x layer, f_u mirror live", "D", _build,
-         _built(_continuous("Ez", UNDER_X)), mirror=True),
+    Case("CW point (ContinuousSource) Ez under the x layer", "D", _build,
+         _built(_continuous("Ez", UNDER_X))),
     Case("CW point (ContinuousSource) Ez, the D spelling, 24 steps", "D", _build,
-         _built(_continuous("Dz", UNDER_X)), steps=24, mirror=True),
-    Case("CW line (ExtendedSource) Ex under the y layer, f_u mirror live", "D", _build,
-         _built(_extended("Ex", UNDER_Y, (0.6, 0.0, 0.0))), mirror=True),
-    Case("CW line (ExtendedSource) Ez under the x layer, f_u mirror live", "D", _build,
-         _built(_extended("Ez", UNDER_X, (0.0, 0.6, 0.0))), mirror=True),
+         _built(_continuous("Dz", UNDER_X)), steps=24),
+    Case("CW line (ExtendedSource) Ex under the y layer", "D", _build,
+         _built(_extended("Ex", UNDER_Y, (0.6, 0.0, 0.0)))),
+    Case("CW line (ExtendedSource) Ez under the x layer", "D", _build,
+         _built(_extended("Ez", UNDER_X, (0.0, 0.6, 0.0)))),
     Case("CW area (ExtendedSource) Ey", "D", _build,
          _built(_extended("Ey", O, (0.6, 0.6, 0.0)))),
     Case("CW volume (ExtendedSource) Ez on a 3-D grid", "D", _volume_build,
          _built(_extended("Ez", O, (0.4, 0.4, 0.4)))),
-    Case("complex CW point Ez under the x layer, f_u mirror live", "D",
-         lambda: _build(complex_storage=True), _built(_continuous("Ez", UNDER_X)),
-         mirror=True),
-    Case("complex CW line Ex under the y layer, f_u mirror live", "D",
+    Case("complex CW point Ez under the x layer", "D",
+         lambda: _build(complex_storage=True), _built(_continuous("Ez", UNDER_X))),
+    Case("complex CW line Ex under the y layer", "D",
          lambda: _build(complex_storage=True),
-         _built(_extended("Ex", UNDER_Y, (0.6, 0.0, 0.0))), mirror=True),
+         _built(_extended("Ex", UNDER_Y, (0.6, 0.0, 0.0)))),
     Case("a CW point and a CW line on different components", "D", _build,
          _built(_continuous("Ez", UNDER_X), _extended("Ex", UNDER_Y, (0.6, 0.0, 0.0))),
-         steps=12, mirror=True),
+         steps=12),
     Case("SHARED SCRATCH, real: a CW point on Ex beside a CW line on Ez", "D", _pole_build,
          _built(_continuous("Ex", UNDER_Y), _extended("Ez", UNDER_X, (0.0, 0.6, 0.0))),
-         steps=12, mirror=True),
+         steps=12),
     Case("plain, CW point Ez", "D", _plain_build, _built(_continuous("Ez", O)),
          paths=PLAIN),
     Case("plain, CW line Ex", "D", _plain_build,
          _built(_extended("Ex", O, (0.6, 0.0, 0.0))), paths=PLAIN),
-    Case("conductive replay, split field, CW point Ez under the x layer", "D",
-         _conductive_build, _built(_continuous("Ez", UNDER_X)),
-         inject=_inject_through_conductivity, mirror=True),
-    Case("conductive replay, split field, CW line Ex under the y layer", "D",
-         _conductive_build, _built(_extended("Ex", UNDER_Y, (0.6, 0.0, 0.0))),
-         inject=_inject_through_conductivity, mirror=True),
-    Case("conductive replay, split field, a CW point, a CW line and a pulse on ONE "
+    Case("conductive deposit, split field, CW point Ez under the x layer", "D",
+         _conductive_build, _built(_continuous("Ez", UNDER_X))),
+    Case("conductive deposit, split field, CW line Ex under the y layer", "D",
+         _conductive_build, _built(_extended("Ex", UNDER_Y, (0.6, 0.0, 0.0)))),
+    Case("conductive deposit, split field, a CW point, a CW line and a pulse on ONE "
          "component", "D", _conductive_build,
          _built(_continuous("Ez", UNDER_X), _extended("Ez", O, (0.0, 0.6, 0.0)),
-                _pulse("Ez", O)),
-         inject=_inject_through_conductivity),
-    Case("conductive replay, plain path, CW point Ez", "D",
+                _pulse("Ez", O))),
+    Case("conductive deposit, plain path, CW point Ez", "D",
          lambda: _plain_build(conductivity=0.20), _built(_continuous("Ez", O)),
-         paths=PLAIN, inject=_inject_through_conductivity),
+         paths=PLAIN),
 ]
 IDS = [case.name for case in CASES]
 
@@ -788,20 +761,29 @@ def test_the_null_control_diverges_in_the_sources_own_component_and_nowhere_else
 # ---------------------------------------------------------------------------
 
 
-def _discriminating(kp, generator):
-    """``(f_old, fresh)`` float32 for which ``f_old + kp*fresh`` rounded in TWO steps
-    differs from the same expression rounded once -- the value a fused multiply-add
+def _contracted(f_old, fresh, fw_old, kp, km):
+    """The recurrence with ``kp*fresh`` contracted into the difference -- what a fused
+    multiply-add would give for ``f_old + ((kp*fresh) - (km*fw_old))``."""
+    product = numpy.float32(km * fw_old)
+    difference = numpy.float32(numpy.float64(kp) * numpy.float64(fresh)
+                               - numpy.float64(product))
+    return numpy.float32(f_old + difference)
+
+
+def _discriminating(kp, km, generator):
+    """``(f_old, fresh, fw_old)`` float32 for which ``f_old + ((kp*fresh) - (km*fw_old))``
+    with every operation rounded on its own differs from the same expression with the
+    first product contracted into the difference -- the value a fused multiply-add
     would give. A repair that contracted the recurrence is then a different word."""
     for _attempt in range(20000):
         f_old = numpy.float32(generator.standard_normal())
         fresh = numpy.float32(generator.standard_normal())
-        product = numpy.float32(kp * fresh)
-        separate = numpy.float32(f_old + product)
-        fused = numpy.float32(numpy.float64(f_old)
-                              + numpy.float64(kp) * numpy.float64(fresh))
-        if separate != fused:
-            return f_old, fresh
-    raise AssertionError("no discriminating operand pair found")
+        fw_old = numpy.float32(generator.standard_normal())
+        separate = numpy.float32(
+            f_old + numpy.float32(numpy.float32(kp * fresh) - numpy.float32(km * fw_old)))
+        if separate != _contracted(f_old, fresh, fw_old, kp, km):
+            return f_old, fresh, fw_old
+    raise AssertionError("no discriminating operand triple found")
 
 
 @pytest.mark.parametrize("pair,component,complex_storage", [
@@ -817,6 +799,7 @@ def test_known_value_at_one_hand_built_deposit_cell(pair, component, complex_sto
 
     def prepare():
         _grid, fields, pml = _build(complex_storage=complex_storage)
+        fields.h_separated = True  # A state written by hand is a mid-run one.
         source = _make_source(fields.grid, pair, component, O, O)
         source._point_ix, source._point_iy, source._point_iz = (
             numpy.array([cell[0]]), numpy.array([cell[1]]), numpy.array([cell[2]]))
@@ -829,13 +812,12 @@ def test_known_value_at_one_hand_built_deposit_cell(pair, component, complex_sto
     assert kp != 1.0 and km != 1.0 and kp != km, (kp, km)
     if pair == "D":
         assert numpy.asarray(fields.inverse_epsilon_for(component))[cell] == 1.0
-    f_old, fresh = _discriminating(kp, generator)
-    fw_old = numpy.float32(generator.standard_normal())
+    f_old, fresh, fw_old = _discriminating(kp, km, generator)
     if complex_storage:
-        f_imag, fresh_imag = _discriminating(kp, generator)
+        f_imag, fresh_imag, fw_imag = _discriminating(kp, km, generator)
         f_old = numpy.complex64(complex(f_old, f_imag))
         fresh = numpy.complex64(complex(fresh, fresh_imag))
-        fw_old = numpy.complex64(complex(fw_old, generator.standard_normal()))
+        fw_old = numpy.complex64(complex(fw_old, fw_imag))
 
     def drive(fields, pml, source, save, apply):
         getattr(fields, component)[cell] = f_old
@@ -853,8 +835,9 @@ def test_known_value_at_one_hand_built_deposit_cell(pair, component, complex_sto
     before, count = drive(fields, pml, source, deposit_repair.save, deposit_repair.apply)
     assert count == 1, count
     # THE RECURRENCE ON SCALARS, each operation rounded on its own, in
-    # ``_apply_constitutive_pml``'s operand order (``stepping.py:2083-2095``).
-    expected = (f_old + kp * fresh) - km * fw_old
+    # ``_apply_constitutive_pml``'s operand order: MEEP's right-hand side first
+    # (step_generic.cpp:697).
+    expected = f_old + ((kp * fresh) - (km * fw_old))
     dtype = numpy.complex64 if complex_storage else numpy.float32
     assert type(expected) is dtype, type(expected)
 
@@ -863,9 +846,8 @@ def test_known_value_at_one_hand_built_deposit_cell(pair, component, complex_sto
 
     assert words(getattr(fields, component)[cell]) == words(expected)
     assert words(getattr(fields, "f_w_" + component)[cell]) == words(fresh)
-    fused = numpy.float32(numpy.float64(numpy.real(f_old))
-                          + numpy.float64(kp) * numpy.float64(numpy.real(fresh)))
-    assert numpy.float32(numpy.real(f_old) + numpy.float32(kp * numpy.real(fresh))) != fused
+    fused = _contracted(numpy.real(f_old), numpy.real(fresh), numpy.real(fw_old), kp, km)
+    assert words(numpy.real(expected)) != words(fused)
 
     # NOTHING ELSE MOVED. The other two components at this cell were not written by the
     # source, so the restricted repair leaves them exactly as the launch left them.
@@ -917,7 +899,7 @@ def test_an_empty_seam_saves_the_stamps_and_repairs_nothing(pair):
     before = _state_words(fields)
     saved = deposit_repair.save(fields, [], pair, pml)
     assert set(saved) == {deposit_repair._PATH_KEY, deposit_repair._PREPARED_KEY,
-                          deposit_repair._TARGETS_KEY}
+                          deposit_repair._TARGETS_KEY, deposit_repair._START_KEY}
     assert saved[deposit_repair._TARGETS_KEY] == {}
     assert deposit_repair.apply(fields, pml, [], pair, saved) == 0
     assert not _compare("empty seam", before, _state_words(fields), tally=False)
@@ -1004,26 +986,25 @@ def _rebind_on_the_class(monkeypatch, source, extra=None, wraps=False):
     return source
 
 
-#: why -> (what is done to the built source, whether ``_run`` may bind it afterwards).
+#: why -> what is done to the built source.
 FAIL_CLOSED = {
     "the component is absent from the component map":
-        (lambda monkeypatch, source: (_unmapped(monkeypatch), source)[1], False),
+        lambda monkeypatch, source: (_unmapped(monkeypatch), source)[1],
     "a source class whose inject this module has not read":
-        (lambda monkeypatch, source: _retype(source), True),
+        lambda monkeypatch, source: _retype(source),
     # THE INJECT THAT WILL RUN IS NOT THE FUNCTION THAT WAS READ. The type is still the
     # engine's own class, which is all the allow-list looked at until 2026-09-20.
     "inject rebound on the instance, delegating":
-        (lambda monkeypatch, source: _rebind_on_the_instance(source), True),
+        lambda monkeypatch, source: _rebind_on_the_instance(source),
     "inject rebound on the instance, and writing Dx too":
-        (lambda monkeypatch, source: _rebind_on_the_instance(source, _write_Dx_too), True),
+        lambda monkeypatch, source: _rebind_on_the_instance(source, _write_Dx_too),
     "inject rebound on the class, delegating":
-        (lambda monkeypatch, source: _rebind_on_the_class(monkeypatch, source), True),
+        lambda monkeypatch, source: _rebind_on_the_class(monkeypatch, source),
     "inject rebound on the class, and writing Dx too":
-        (lambda monkeypatch, source: _rebind_on_the_class(monkeypatch, source,
-                                                          _write_Dx_too), True),
+        lambda monkeypatch, source: _rebind_on_the_class(monkeypatch, source, _write_Dx_too),
     "inject rebound on the class under functools.wraps":
-        (lambda monkeypatch, source: _rebind_on_the_class(monkeypatch, source,
-                                                          _write_Dx_too, wraps=True), True),
+        lambda monkeypatch, source: _rebind_on_the_class(monkeypatch, source,
+                                                         _write_Dx_too, wraps=True),
 }
 
 
@@ -1034,13 +1015,13 @@ def test_an_unestablished_written_array_fails_closed_to_all_three_and_is_counted
     shipped before the restriction, so falling back to it is the known-good answer."""
     steps = 6
 
-    mutate, bind = FAIL_CLOSED[why]
+    mutate = FAIL_CLOSED[why]
 
     def sources(grid):
         monkeypatch.setattr(engine_sources, "_ARRAY_FOR_COMPONENT", SHIPPED_MAP)
         return [mutate(monkeypatch, _make_source(grid, "D", "Ez", O, O))]
 
-    case = Case(why, "D", _build, sources, steps=steps, bind=bind)
+    case = Case(why, "D", _build, sources, steps=steps)
     reference, _none, _sources = _run(case, "reference")
     full, _frozen, _sources = _run(case, "frozen_full")
     # The driver's own order first: "identical to the full bracket" is only the
@@ -1144,14 +1125,16 @@ def test_a_rebound_inject_that_writes_a_second_array_is_repaired_in_full(monkeyp
         assert bracket.counters.restriction_fallbacks == steps
         assert bracket.counters.restricted_sources == 0
     # THE NULL CONTROL: the same source narrowed by its type alone IS wrong, and wrong in
-    # the array the rebound inject wrote -- so the legs above can see the difference.
+    # the array the rebound inject wrote -- so the legs above can see the difference. The
+    # source sits in the interior, outside every chunk carrying the x layer, so Ex there
+    # takes the plain form and its f_w is never written: Ex alone shows it.
     with monkeypatch.context() as patch:
         patch.setattr(deposit_repair, "_written_targets", _answer_by_type_alone)
         narrowed, bracket, _sources = _run(case, "plan")
     assert bracket.counters.restricted_sources == steps, "the plant was not reached"
     differing = _compare(f"[inject rebound on the {where}] NULL CONTROL", reference,
                          narrowed, tally=False)
-    assert {"fields.Ex", "fields.f_w_Ex"} <= set(differing), differing
+    assert "fields.Ex" in set(differing) and "fields.f_w_Ex" not in set(differing), differing
 
 
 def test_what_the_lookup_answers_for_each_spelling_of_a_rebound_inject(monkeypatch):
@@ -1332,13 +1315,15 @@ def test_the_reserved_keys_and_the_saved_state_of_one_source():
     assert deposit_repair._PATH_KEY == ("__repair_path__",)
     assert deposit_repair._PREPARED_KEY == ("__prepared_cells__",)
     assert deposit_repair._TARGETS_KEY == ("__source_targets__",)
+    assert deposit_repair._START_KEY == ("__h_start__",)
     _grid, fields, pml = _build()
     source = _make_source(fields.grid, "D", "Ez", O, O)
     saved = deposit_repair.save(fields, [source], "D", pml)
     assert set(saved) == {
         deposit_repair._PATH_KEY, deposit_repair._PREPARED_KEY,
-        deposit_repair._TARGETS_KEY, ("Ez", 0, "cells"), ("Ez", 0, "field"),
-        ("Ez", 0, "fw")}
+        deposit_repair._TARGETS_KEY, deposit_repair._START_KEY, ("Ez", 0, "cells"),
+        ("Ez", 0, "field"), ("Ez", 0, "fw")}
+    assert saved[deposit_repair._START_KEY] is False  # The D seam never starts H.
     assert saved[deposit_repair._TARGETS_KEY] == {0: (("Ez", "Dz", "z"),)}
     assert set(saved[deposit_repair._PREPARED_KEY].entries) == {("Ez", 0)}
     plain_fields = _plain_build()[1]
@@ -1346,7 +1331,7 @@ def test_the_reserved_keys_and_the_saved_state_of_one_source():
     plain = deposit_repair.save(plain_fields, [plain_source], "D", None, paths=PLAIN)
     assert set(plain) == {
         deposit_repair._PATH_KEY, deposit_repair._PREPARED_KEY,
-        deposit_repair._TARGETS_KEY, ("Ex", 0, "cells")}
+        deposit_repair._TARGETS_KEY, deposit_repair._START_KEY, ("Ex", 0, "cells")}
 
 
 def test_the_cache_keeps_the_four_route_counters_and_gains_two():
@@ -1707,10 +1692,10 @@ def _synthetic_driver(conductive: bool = False, dispersive: bool = False,
                           "frequency": 1.0, "fwidth": 0.4, "center": center,
                           "size": (0.0, 0.0, 0.0)})
     if continuous:
-        # THE DRIVER'S DEFAULT KIND, through the driver's own constructor and binding
+        # THE DRIVER'S DEFAULT KIND, through the driver's own constructor
         # (``driver.py:2494-2510``): a point becomes a ``ContinuousSource`` and an extent
-        # an ``ExtendedSource``. The line lies under the y layer, so its ``f_u`` mirror
-        # is live; the conductive configuration keeps both clear of the layers, as
+        # an ``ExtendedSource``. The line lies under the y layer; the conductive
+        # configuration keeps both clear of the layers, as
         # ``_require_source_clear_of_conductive_pml`` demands.
         line_y = 0.05 if conductive else 0.5
         built.add_source({"component": "Ez", "frequency": CW_FREQUENCY,
@@ -1719,8 +1704,6 @@ def _synthetic_driver(conductive: bool = False, dispersive: bool = False,
                           "center": (0.1, line_y, 0.0), "size": (0.3, 0.0, 0.0)})
         kinds = [type(source) for source in built._sources[-2:]]
         assert kinds == [ContinuousSource, ExtendedSource], kinds
-        assert conductive or built._sources[-1]._fu_ix is not None, (
-            "the line's f_u mirror is not live")
         return built
     for component, center in (("Ez", (0.0, 0.0, 0.0)), ("Ex", (0.1, 0.05, 0.0))):
         built.add_source({"source_type": "gaussian", "component": component,

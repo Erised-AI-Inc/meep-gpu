@@ -9,10 +9,6 @@ Two clauses cannot be satisfied on a laptop and are FACTORED OUT rather than dro
 * ``array module is 'numpy', not cupy`` — every predicate's clause 1. Emitted by
   ``coverage.py:141``/``:528`` and the identical line in nine sibling modules; the
   string is byte-identical in all of them, which is what makes the filter exact.
-* the complex-multiply EXPANSION probe (``complex_fields._expansion_reasons``) — a
-  MEASURED device fact. Not guessed here either: the certified artifact from the
-  recut jobs is loaded off disk and passed in as ``probe=``, so the clause is
-  satisfied by the same record the gate ran under, and the row says which file.
 
 Every OTHER refusal is reported as returned.
 
@@ -49,7 +45,7 @@ census stays commensurable with 482/759, 576/759 and 702/759.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 #: The kernels package these predicates measure. ``measure_predicate_coverage`` digests
 #: it (plus the shared engine files) into every census row's ``subject_manifest_sha256``.
@@ -79,35 +75,6 @@ RESIDUAL_WIRED: Tuple[str, ...] = ("residual_wired",)
 #: The four sub-steps a whole timestep is composed of, plus the polarization pass.
 SUB_STEPS: Tuple[str, ...] = ("step_B", "step_D", "update_H", "update_E")
 
-#: The UNIFIED expansion record, repository-relative. ``complex_fused_ade_chain``'s
-#: ADE half needs ``c8_mul_python_float_field_left`` on top of the four base
-#: patterns, and NO per-family probe carries it — see the seam block below for the
-#: measurement, and drive_triton_weld_gates.py:255-265 for the same fact stated by
-#: the family's own gate. Named here rather than passed in: this is not a choice the
-#: caller gets to make, it is the artifact that family's released gate ran under.
-UNIFIED_EXPANSION_RECORD = (
-    "parity/meep_gpu/results/unified_expansion_2026-08-27/keep/gate.json")
-
-
-def _load_unified_expansion_record() -> Optional[Dict[str, Any]]:
-    """The unified record off disk, or ``None`` — which is itself a refusal.
-
-    A MISSING ARTIFACT IS NOT A PASS. ``complex_fused_ade_chain_coverage(probe=None)``
-    falls through to ``load_expansion_probe()``, whose answer depends on whatever the
-    process happens to have installed — so handing it ``None`` silently would make the
-    verdict a property of the host rather than of the artifact. The row records
-    ``expansion_probe_loaded`` so a reader can tell an artifact that refused from an
-    artifact that was never there.
-    """
-    import json  # noqa: PLC0415
-    from pathlib import Path  # noqa: PLC0415
-
-    path = Path(__file__).resolve().parents[2] / UNIFIED_EXPANSION_RECORD
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except BaseException:  # noqa: BLE001 - an unreadable artifact is not a licence
-        return None
-
 
 def is_backend_clause(reason: str) -> bool:
     return BACKEND_CLAUSE_HEAD in reason and reason.endswith(BACKEND_CLAUSE_TAIL)
@@ -135,7 +102,7 @@ def _verdict(call: Callable[[], Any]) -> Dict[str, Any]:
             "raised": False}
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
+def evaluate(driver: Any) -> Dict[str, Any]:
     """Every predicate, on the real lifted objects. Returns a JSON-safe record."""
     from meep_gpu.triton_kernels import (  # noqa: PLC0415
         ade_update_p_coverage,
@@ -212,20 +179,20 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     # --- THE FIVE CERTIFIED FAMILIES: standalone, unreachable from plan_step -------
     for name in ("step_B", "step_D"):
         add("complex", "complex_pml_curl", name,
-            lambda n=name: complex_pml_curl_coverage(fields, pml, n, probe))
+            lambda n=name: complex_pml_curl_coverage(fields, pml, n))
         add("special_kz", "beta_pml_curl", name,
             lambda n=name: beta_pml_curl_coverage(fields, pml, n))
         add("special_kz", "beta_bloch_pml_curl", name,
-            lambda n=name: beta_bloch_pml_curl_coverage(fields, pml, n, probe))
+            lambda n=name: beta_bloch_pml_curl_coverage(fields, pml, n))
         add("bfast", "bfast_pml_curl", name,
             lambda n=name: bfast_pml_curl_coverage(fields, pml, n))
     for side, sub_step in (("H", "update_H"), ("E", "update_E")):
         add("complex", "complex_constitutive", sub_step,
-            lambda s=side: complex_constitutive_coverage(fields, pml, s, probe))
+            lambda s=side: complex_constitutive_coverage(fields, pml, s))
         add("special_kz", "beta_run_constitutive", sub_step,
             lambda s=side: beta_run_constitutive_coverage(fields, pml, s))
         add("special_kz", "beta_run_complex_constitutive", sub_step,
-            lambda s=side: beta_run_complex_constitutive_coverage(fields, pml, s, probe))
+            lambda s=side: beta_run_complex_constitutive_coverage(fields, pml, s))
         add("bfast", "bfast_run_constitutive", sub_step,
             lambda s=side: bfast_run_constitutive_coverage(fields, pml, s))
     add("nonlinear", "nonlinear_constitutive", "update_E",
@@ -244,25 +211,25 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     for name in ("step_B", "step_D"):
         add("folded_complex", "folded_complex_composition_curl", name,
             lambda n=name: launch.folded_complex_composition_curl_coverage(
-                fields, pml, n, probe))
+                fields, pml, n))
         add("folded_complex", "folded_beta_pml_curl", name,
             lambda n=name: launch.folded_beta_pml_curl_coverage(fields, pml, n))
         add("folded_complex", "folded_beta_bloch_pml_curl", name,
             lambda n=name: launch.folded_beta_bloch_pml_curl_coverage(
-                fields, pml, n, probe))
+                fields, pml, n))
         add("cylindrical_complex", "cylindrical_complex_curl", name,
             lambda n=name: launch.cylindrical_complex_curl_coverage(
-                fields, pml, n, probe))
+                fields, pml, n))
     for side, sub_step in (("H", "update_H"), ("E", "update_E")):
         add("folded_complex", "folded_complex_constitutive", sub_step,
             lambda s=side: launch.folded_complex_constitutive_coverage(
-                fields, pml, s, probe))
+                fields, pml, s))
         add("folded_complex", "folded_beta_run_constitutive", sub_step,
             lambda s=side: launch.folded_beta_run_constitutive_coverage(
                 fields, pml, s))
         add("cylindrical_complex", "cylindrical_complex_constitutive", sub_step,
             lambda s=side: launch.cylindrical_complex_constitutive_coverage(
-                fields, pml, s, probe))
+                fields, pml, s))
         add("no_pml_null", "null_constitutive", sub_step,
             lambda s=side: launch.null_constitutive_coverage(fields, pml, s))
     add("folded_offdiag", "folded_offdiag_composition", "update_E",
@@ -279,12 +246,12 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             lambda n=name: launch.nonlinear_run_pml_curl_coverage(fields, pml, n))
         add("residual_wired", "folded_complex_offdiag_pml_curl", name,
             lambda n=name: launch.folded_complex_offdiag_pml_curl_coverage(
-                fields, pml, n, probe))
+                fields, pml, n))
     add("residual_wired", "nonlinear_run_constitutive", "update_H",
         lambda: launch.nonlinear_run_constitutive_coverage(fields, pml, "H"))
     add("residual_wired", "folded_complex_offdiag_constitutive", "update_H",
         lambda: launch.folded_complex_offdiag_constitutive_coverage(
-            fields, pml, "H", probe))
+            fields, pml, "H"))
     add("residual_wired", "folded_dispersive_constitutive", "update_E",
         lambda: launch.folded_dispersive_constitutive_coverage(fields, pml))
 
@@ -297,7 +264,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
             lambda p=family_name: fused_pair_coverage(fields, pml, p, sources))
         seam[f"folded_complex_fill_{family_name}"] = _verdict(
             lambda f=family_name: launch.folded_mirror_ghost_fill_complex_coverage(
-                fields, f, probe))
+                fields, f))
     seam["dispersive_fused_pair_D"] = _verdict(
         lambda: dispersive_fused_pair_coverage(fields, pml, sources))
 
@@ -380,14 +347,12 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     from meep_gpu.triton_kernels.folded_offdiag_fused_ade_chain import (  # noqa: PLC0415, E501
         folded_offdiag_fused_ade_chain_coverage)
 
-    unified = _load_unified_expansion_record()
-
     seam["folded_fused_pair_D"] = _verdict(
         lambda: folded_fused_pair_coverage(fields, pml, sources))
     seam["folded_fused_magnetic_pair_B"] = _verdict(
         lambda: folded_fused_magnetic_pair_coverage(fields, pml, sources))
     seam["complex_fused_magnetic_pair_B"] = _verdict(
-        lambda: complex_fused_magnetic_pair_coverage(fields, pml, sources, probe))
+        lambda: complex_fused_magnetic_pair_coverage(fields, pml, sources))
     # THE ELECTRIC TWIN, added 2026-08-30 in the same round that built it. Asked
     # ONCE, under the census probe, for the reason the magnetic twin is: its
     # PRODUCT_PROBE_PATTERNS is the BASE four -- the inv_eps multiply its SCALE=1 arm
@@ -397,7 +362,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     # transcribed: the source clause it turns on consults deposit_repair.repairable
     # per run, which no configuration block carries.
     seam["complex_fused_electric_pair_D"] = _verdict(
-        lambda: complex_fused_electric_pair_coverage(fields, pml, sources, probe))
+        lambda: complex_fused_electric_pair_coverage(fields, pml, sources))
     # THE Dcyl ELECTRIC TWIN, added 2026-08-30 in the same round that gated it.
     # Asked ONCE, under the census probe, for the reason the Cartesian twin is: its
     # PRODUCT_PROBE_PATTERNS is the BASE four — the cylindrical-only orientations
@@ -411,8 +376,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     # source, so a transcription could only have guessed, and guessing False would
     # have priced the largest cell on the board at zero.
     seam["cylindrical_fused_electric_pair_D"] = _verdict(
-        lambda: cylindrical_fused_electric_pair_coverage(fields, pml, sources,
-                                                         probe))
+        lambda: cylindrical_fused_electric_pair_coverage(fields, pml, sources))
     # THE COMPLEX CONDUCTIVE no-PML D->E PAIR, added in the same round. Its cell is
     # the four `TestLoadDump.test_load_dump_*_3d` rows, and unlike the two pairs
     # above it carries NO deposit repair — every one of those rows declares a
@@ -421,8 +385,7 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     # board that holds a second copy of a predicate's answer is a board that can
     # drift from it.
     seam["complex_conductive_fused_pair_D"] = _verdict(
-        lambda: complex_conductive_fused_pair_coverage(fields, pml, sources,
-                                                       probe))
+        lambda: complex_conductive_fused_pair_coverage(fields, pml, sources))
     # THE FOLDED DISPERSIVE D->E PAIR, added 2026-08-31 in the same round that built
     # it. Its cell is the four `TestLoadDump.test_load_dump_*_2d` rows — the largest
     # remaining unbuilt cell on this board — and like the two D->E pairs above it
@@ -450,36 +413,13 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     # NO PROBE ARGUMENT: this family is REAL storage at m = 0 throughout.
     seam["cylindrical_real_fused_electric_pair_D"] = _verdict(
         lambda: cylindrical_real_fused_electric_pair_coverage(fields, pml, sources))
-    # ASKED TWICE, UNDER TWO NAMED ARTIFACTS, for the reason the complex ADE chain
-    # below is. MEASURED 2026-08-30 on a folded complex grid: this product's
-    # PRODUCT_PROBE_PATTERNS adds `c8_mul_c8_parity_coefficient_left` on top of the
-    # four base ones, and no per-family probe carries it -- under this census's probe
-    # the fill half refuses ("does not license an EXPANSION over the EXTENDED
-    # patterns") and under results/unified_expansion_2026-08-27/keep/gate.json it
-    # admits. Its own released gate is the one that named the requirement first: run
-    # with the complex family's probe it refuses before the first device leg.
-    #
-    # The SIBLING complex_fused_magnetic_pair needs NO such swap -- measured the same
-    # way, it admits under both -- which is why only this one is doubled. Recording
-    # one verdict per artifact rather than picking the permissive one is the whole
-    # point: under the census probe the refusal is TRUE, and a launch under that
-    # licence would be unlicensed arithmetic.
-    seam["folded_complex_fused_magnetic_pair_B"] = dict(
-        _verdict(lambda: folded_complex_fused_magnetic_pair_coverage(
-            fields, pml, sources, probe)),
-        expansion_probe="the census probe (--probe-artifact)")
-    seam["folded_complex_fused_magnetic_pair_B@unified_expansion"] = dict(
-        _verdict(lambda: folded_complex_fused_magnetic_pair_coverage(
-            fields, pml, sources, unified)),
-        expansion_probe=UNIFIED_EXPANSION_RECORD,
-        expansion_probe_loaded=unified is not None)
+    # ASKED ONCE. The second key it carried (``@unified_expansion``, the verdict under
+    # the unified expansion record) left with the licence: the predicates take no
+    # expansion record, so it was the same call.
+    seam["folded_complex_fused_magnetic_pair_B"] = _verdict(
+        lambda: folded_complex_fused_magnetic_pair_coverage(fields, pml, sources))
     # THE ELECTRIC TWIN OF THE PAIR ABOVE, added 2026-08-31 in the round that built
-    # it. ASKED TWICE UNDER THE SAME TWO ARTIFACTS AND FOR THE SAME MEASURED REASON:
-    # its PRODUCT_PROBE_PATTERNS is `folded_complex.PARITY_PROBE_PATTERNS`, the same
-    # extended set — the two carries call the same
-    # `special_kz._mul_imag_coefficient_left` — so no per-family probe classifies it
-    # either. Recording one verdict per artifact rather than picking the permissive
-    # one is the whole point: under the census probe the refusal is TRUE.
+    # it, asked once as the magnetic twin is.
     #
     # THERE IS NO LADDER FOR IT AND THERE NEVER WILL BE. The clause that decides BOTH
     # of its rows consults `deposit_repair.repairable` on the live run, which no
@@ -487,15 +427,8 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     # transcription could only have guessed, and guessing False would price the cell
     # at zero. Its MAGNETIC twin is the mirror image — on the B seam those same two
     # rows are electric-only, so no repair is consulted at all.
-    seam["folded_complex_fused_pair_D"] = dict(
-        _verdict(lambda: folded_complex_fused_pair_coverage(
-            fields, pml, sources, probe)),
-        expansion_probe="the census probe (--probe-artifact)")
-    seam["folded_complex_fused_pair_D@unified_expansion"] = dict(
-        _verdict(lambda: folded_complex_fused_pair_coverage(
-            fields, pml, sources, unified)),
-        expansion_probe=UNIFIED_EXPANSION_RECORD,
-        expansion_probe_loaded=unified is not None)
+    seam["folded_complex_fused_pair_D"] = _verdict(
+        lambda: folded_complex_fused_pair_coverage(fields, pml, sources))
     # THE REAL-BETA ELECTRIC WELD, added 2026-08-31 in the round that built it.
     # ASKED ONCE, and under NO probe at all: this family is REAL storage throughout,
     # so it launches no complex multiply and needs no expansion licence.
@@ -551,97 +484,37 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
     seam["folded_beta_fused_magnetic_pair_B"] = _verdict(
         lambda: folded_beta_fused_magnetic_pair_coverage(fields, pml, sources))
     # THE TWO COMPLEX-BETA WELDS, added 2026-09-01 in the round that built them.
-    # ASKED ONCE EACH, UNDER THE CENSUS PROBE — and that is a statement about the
-    # census probe, not a default: their PRODUCT_PROBE_PATTERNS is
-    # `special_kz.BETA_PROBE_PATTERNS` (the base four plus
-    # `c8_mul_c8_imaginary_coefficient_left`), which the census probe carries as
-    # of the 2026-09-01 extension cut
-    # (results/complex_expansion_beta_extension_2026-09-01/probe_keep — the same
-    # keep artifact whose base-four table is character-identical to the
-    # 2026-08-16 standing one). Under a base-four artifact both refuse BY NAME on
-    # the extended-pattern clause, which is the recorded state of every board cut
-    # before this round. NO LADDER, for the reason every recent weld has none:
+    # ASKED ONCE EACH. NO LADDER, for the reason every recent weld has none:
     # the electric twin's deciding clause consults `deposit_repair.repairable` on
     # the live run, and the magnetic twin's source clause reads the same live
     # objects.
     seam["complex_beta_fused_electric_pair_D"] = _verdict(
-        lambda: complex_beta_fused_electric_pair_coverage(fields, pml, sources,
-                                                          probe))
+        lambda: complex_beta_fused_electric_pair_coverage(fields, pml, sources))
     seam["complex_beta_fused_magnetic_pair_B"] = _verdict(
-        lambda: complex_beta_fused_magnetic_pair_coverage(fields, pml, sources,
-                                                          probe))
+        lambda: complex_beta_fused_magnetic_pair_coverage(fields, pml, sources))
     # THE TWO FOLDED COMPLEX-BETA WELDS, added 2026-09-02 with the modules (the
-    # folded half of the same no-admitting-arm residue). ASKED TWICE EACH, under
-    # the census probe and under the unified record, exactly as the beta-less
-    # folded complex twins are and for the same measured reason extended by one
-    # pattern: their PRODUCT_PROBE_PATTERNS is the SIX-pattern union (base four
-    # + parity + the beta imaginary-coefficient-left). The 2026-09-01 census
-    # probe classifies five — everything but the PARITY pattern — so under it
-    # the fill half refuses; the unified record classifies all six and both
-    # extended licences answer FMA_V1 on it. Recording one verdict per artifact
-    # rather than picking the permissive one is the whole point. NO LADDER for
+    # folded half of the same no-admitting-arm residue), asked once each as the
+    # beta-less folded complex twins are. NO LADDER for
     # either: the deciding clauses consult `deposit_repair.repairable` on the
     # live run (all three of the electric twin's rows and one of the magnetic
     # twin's declare in-seam deposits), which no configuration block carries.
-    seam["folded_beta_complex_fused_pair_D"] = dict(
-        _verdict(lambda: folded_beta_complex_fused_pair_coverage(
-            fields, pml, sources, probe)),
-        expansion_probe="the census probe (--probe-artifact)")
-    seam["folded_beta_complex_fused_pair_D@unified_expansion"] = dict(
-        _verdict(lambda: folded_beta_complex_fused_pair_coverage(
-            fields, pml, sources, unified)),
-        expansion_probe=UNIFIED_EXPANSION_RECORD,
-        expansion_probe_loaded=unified is not None)
-    seam["folded_beta_complex_fused_magnetic_pair_B"] = dict(
-        _verdict(lambda: folded_beta_complex_fused_magnetic_pair_coverage(
-            fields, pml, sources, probe)),
-        expansion_probe="the census probe (--probe-artifact)")
-    seam["folded_beta_complex_fused_magnetic_pair_B@unified_expansion"] = dict(
-        _verdict(lambda: folded_beta_complex_fused_magnetic_pair_coverage(
-            fields, pml, sources, unified)),
-        expansion_probe=UNIFIED_EXPANSION_RECORD,
-        expansion_probe_loaded=unified is not None)
+    seam["folded_beta_complex_fused_pair_D"] = _verdict(
+        lambda: folded_beta_complex_fused_pair_coverage(fields, pml, sources))
+    seam["folded_beta_complex_fused_magnetic_pair_B"] = _verdict(
+        lambda: folded_beta_complex_fused_magnetic_pair_coverage(fields, pml, sources))
     for chain_arm in FUSED_ADE_CHAIN_ARMS:
         seam[f"fused_ade_chain@{chain_arm}"] = _verdict(
             lambda a=chain_arm: fused_ade_chain_coverage(fields, pml, a))
 
-    # THE COMPLEX CHAIN IS ASKED TWICE, UNDER TWO NAMED ARTIFACTS, BECAUSE ITS
-    # EXPANSION LICENCE IS NOT THIS CENSUS'S. MEASURED on 2026-08-30, both ways:
-    #
-    #   this census's probe (complex_expansion_convention_2026-08-16/probe_keep)
-    #       expansion_license(..., COMPLEX_ADE_PROBE_PATTERNS) -> None
-    #       "pattern 'c8_mul_python_float_field_left' is not classified"
-    #   unified_expansion_2026-08-27/keep/gate.json
-    #       expansion_license(..., COMPLEX_ADE_PROBE_PATTERNS) -> 1, no refusals
-    #
-    # This is the same fact the family's own gate entry records
-    # (drive_triton_weld_gates.py:255-265): "REQUIRES the UNIFIED EXPANSION RECORD,
-    # not a per-family probe... the ADE half reads complex_ade. With the complex
-    # gate's probe (or with none) the gate reports 'expansion: E half=1 ADE
-    # half=None shared=None' and refuses at one_arm_for_both_halves."
-    #
-    # BOTH verdicts are recorded and NEITHER is discarded. Under the census probe
-    # the product REFUSES BY NAME and that refusal is true — a launch under that
-    # licence would be unlicensed arithmetic. The unified verdict is the one its
-    # RELEASED gate ran under, and a board may credit the family only against the
-    # artifact the gate names, which is why the artifact is carried in the row.
-    # Reporting one number without the other would either lose a real admission or
-    # credit a licence the run did not hold.
-    seam["complex_fused_ade_chain"] = dict(
-        _verdict(lambda: complex_fused_ade_chain_coverage(fields, pml, probe)),
-        expansion_probe="the census probe (--probe-artifact)")
-    seam["complex_fused_ade_chain@unified_expansion"] = dict(
-        _verdict(lambda: complex_fused_ade_chain_coverage(fields, pml, unified)),
-        expansion_probe=UNIFIED_EXPANSION_RECORD,
-        expansion_probe_loaded=unified is not None)
+    # ASKED ONCE: its ``@unified_expansion`` twin key left with the licence, as the
+    # folded complex pairs' did.
+    seam["complex_fused_ade_chain"] = _verdict(
+        lambda: complex_fused_ade_chain_coverage(fields, pml))
 
     # THE FOLDED OFF-DIAGONAL E->P CHAIN, added 2026-09-10 with the module. ASKED
     # ONCE, UNDER ONE KEY, and both facts are the product's own rather than this
     # file's convention: its predicate takes no ``arm`` (there is one body and one
-    # admission, unlike ``fused_ade_chain``'s three) and it consumes NO expansion
-    # record at all — the E half it composes is real float32 storage, so neither
-    # the census probe nor the unified record enters its verdict and a second key
-    # would distinguish nothing.
+    # admission, unlike ``fused_ade_chain``'s three).
     #
     # RECORDED ON EVERY ROW, like every other entry in this block. A verdict
     # present on some rows and absent on others makes the census non-uniform, and
@@ -738,14 +611,13 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:
 
     return {"predicates": results, "seam": seam, "polarization": polarization,
             "configuration": configuration,
-            "plan_step": plan_step_admission(fields, pml, sources, probe)}
+            "plan_step": plan_step_admission(fields, pml, sources)}
 
 
 # --- what plan_step ITSELF admits -----------------------------------------------------
 
 
-def plan_step_admission(fields: Any, pml: Any, sources: Any,
-                        probe: Any) -> Dict[str, Any]:
+def plan_step_admission(fields: Any, pml: Any, sources: Any) -> Dict[str, Any]:
     """Run the SHIPPED ``launch.plan_step`` and record what each slot's arms said.
 
     NOTHING about the composition is re-implemented here. Two seams are borrowed:
@@ -820,7 +692,7 @@ def plan_step_admission(fields: Any, pml: Any, sources: Any,
 
     launch._select_slot = recording_select
     try:
-        plan = launch.plan_step(fields, pml, sources=sources, probe=probe)
+        plan = launch.plan_step(fields, pml, sources=sources)
         record["selected"] = {str(k): str(v) for k, v in plan.selected.items()}
         record["replaces"] = [str(name) for name in plan.replaces]
         record["reasons"] = {str(k): [str(r)[:400] for r in v]

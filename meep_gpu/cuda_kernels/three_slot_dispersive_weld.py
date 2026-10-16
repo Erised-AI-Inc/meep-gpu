@@ -42,14 +42,16 @@ STRICTLY SMALLER LIFT than the shipped E->P weld's. That weld
 launch and paid for it with two risky edits; this one removes the ``update_E`` half
 entirely, so BOTH of those edits disappear:
 
-* ``float w = drive[idx];`` COMES BACK. There is no register to hand across a seam
-  here -- the constitutive half ran in a different launch -- so the certified ADE
-  drive load is restored UNEDITED, and with it the whole drive-identity argument the
-  E->P weld had to make about a float32 word stored and reloaded.
-* The ADE guard ``int idx = ...; if (idx >= n_elem) return;`` COMES BACK. No
-  ``update_E`` body above has declared ``idx``, so the certified guard is spliced
-  whole and ``n_elem`` is a parameter again, exactly as
-  ``ade_kernels.update_P_pml_real`` declares it.
+* The certified drive SELECT ``float w = dsigw ? drive_w[idx] : drive_e[idx];``
+  COMES BACK. There is no register to hand across a seam here -- the constitutive
+  half ran in a different launch -- so MEEP's per-chunk drive (``f_w`` on the cells
+  whose chunk carries the component's layer, the stored E elsewhere) is loaded
+  exactly as the certified ADE kernel loads it.
+* The ADE prefix COMES BACK: the guard, the index decode, the chunk-record block and
+  the drive flag on the component's own axis. No ``update_E`` body above has
+  declared ``idx``, so the certified prefix is spliced whole and ``nx, ny, nz,
+  own_axis, cb`` are parameters again, exactly as ``ade_kernels.update_P_pml_real``
+  declares them.
 
 What survives from :mod:`.fused_polarization_pair` is only its per-pole renaming
 machinery (:func:`~.fused_polarization_pair._pole_block`, imported rather than
@@ -336,15 +338,17 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "sound there: the update_E half that also read state.P[c] is in a "
             "different launch, so this signature binds the allocation exactly once "
             "and nothing else in the kernel reads it"},
-    {"line": "    float p = p_now[idx]; (and q, s; c_now, c_prev, c_drive)",
+    {"line": "    float p = p_now[idx]; (and q, s; two_minus_od, gamma1, omega0dtsqr, "
+             "gamma1inv)",
      "became": "    float p_<i> = P_<c>_<i>[idx]; (suffixed per pole)",
      "why": "the same per-pole suffixing, applied by the same imported function. "
-            "Names only: the loads, the grouping "
-            "((p * c_now) + (c_prev * q)) + (c_drive * (s * w)) and the store are the "
+            "Names only: the loads, the grouping gamma1inv * (((p * two_minus_od) - "
+            "(gamma1 * q)) + (omega0dtsqr * (s * w))) and the store are the "
             "certified line under checked substitutions that raise if the certified "
-            "string drifts. THE DRIVE LOAD IS NOT AMONG THEM -- float w = drive[idx] "
-            "is emitted ONCE PER COMPONENT, verbatim, because every pole of a "
-            "component reads the same array and nothing in this launch writes it"},
+            "string drifts. THE DRIVE SELECT IS NOT AMONG THEM -- float w = dsigw ? "
+            "drive_w[idx] : drive_e[idx] is emitted ONCE PER COMPONENT, verbatim, "
+            "because every pole of a component reads the same word and nothing in "
+            "this launch writes it"},
     {"line": "(the certified update_P, one launch per (state, component))",
      "became": "(one launch per COMPONENT, every driving state fused into it, host "
                "rotation between)",
@@ -379,17 +383,19 @@ def _signature(component_index: int, count: int,
 
     THE ONLY HAND-WRITTEN DEVICE TEXT IN THIS MODULE, and it is a signature: no
     arithmetic lives here. The parameter ORDER is the certified ADE kernel's --
-    ``p_out, p_now, p_prev, sigma, drive, c_now, c_prev, c_drive, n_elem`` -- with
-    the drive hoisted ahead of the per-pole groups because ONE launch now carries
-    several poles that all read it, and ``n_elem`` kept last exactly as
-    ``ade_kernels`` declares it.
+    ``p_out, p_now, p_prev, sigma, drive_w, drive_e, two_minus_od, gamma1,
+    omega0dtsqr, gamma1inv, nx, ny, nz, own_axis, cb`` -- with the two drive arrays
+    hoisted ahead of the per-pole groups because ONE launch now carries several poles
+    that all read them, and the extent, the axis and the record kept last exactly as
+    ``ade_kernels`` declares them.
     """
     target = ELECTRIC_TERMS[component_index][0]
     lines: List[str] = [f'extern "C" __global__ void {KERNEL_NAME}(']
-    # THE DRIVE, BOUND ONCE. ``Fields.drive_field(c)`` -- f_w_<c> under an active
-    # layer, the stored E<c> without one (fields.py:1140-1163) -- and every pole of
-    # this component reads it.
-    lines.append("    const float* __restrict__ drive,")
+    # THE DRIVE, BOUND ONCE: the two arrays MEEP's per-chunk w is selected from,
+    # f_w_<c> and the stored E<c> under a layer, the stored E<c> twice without one
+    # (ade_kernels.drive_pair). Neither is __restrict__, as in the certified kernel.
+    lines.append("    const float* drive_w,")
+    lines.append("    const float* drive_e,")
     for i in range(count):
         lines.append(f"    const float* __restrict__ P_{target}_{i},")
     for i in range(count):
@@ -397,9 +403,10 @@ def _signature(component_index: int, count: int,
                  else f"float sigma_{i},")
         lines.append(f"    float* __restrict__ p_out_{i}, "
                      f"const float* __restrict__ p_prev_{i}, {sigma}")
-        lines.append(f"    float c_now_{i}, float c_prev_{i}, "
-                     f"float c_drive_{i},")
-    lines.append("    int n_elem")
+        lines.append(f"    float two_minus_od_{i}, float gamma1_{i}, "
+                     f"float omega0dtsqr_{i}, float gamma1inv_{i},")
+    lines.append("    int nx, int ny, int nz, int own_axis,")
+    lines.append("    const int* __restrict__ cb")
     lines.append(") {")
     return "\n".join(lines) + "\n"
 
@@ -434,17 +441,17 @@ def three_slot_polarization_source(component_index: int, count: int,
             f"compile-time sigma form per driving state, in registration order")
 
     bodies = ep._verified_ade_bodies()
-    # THE CERTIFIED GUARD, RESTORED WHOLE. The E->P weld had to drop it (an update_E
-    # body above had already declared ``idx``); nothing here has, so this is
-    # ade_kernels' own two lines and ``n_elem`` is a real parameter again.
+    # THE CERTIFIED PREFIX, RESTORED WHOLE. The E->P weld had to drop it (an update_E
+    # body above had already declared ``idx`` and decoded the record); nothing here
+    # has, so this is ade_kernels' own guard, decode, record block and drive flag.
     guard = ep._ADE_GUARD
     drive = (
-        "    // THE DRIVE, LOADED FROM GLOBAL EXACTLY AS THE CERTIFIED KERNEL LOADS\n"
-        "    // IT. stepping.update_P binds fields.drive_field(component) as w; this\n"
-        "    // launch binds the same array. One load per component rather than one\n"
-        "    // per pole: every pole of a component reads the same array, and nothing\n"
-        "    // in this launch writes it.\n"
-        "    float w = drive[idx];\n")
+        "    // THE DRIVE, SELECTED AND LOADED EXACTLY AS THE CERTIFIED KERNEL DOES IT.\n"
+        "    // stepping.update_P binds fields.drive_field(component) as w: MEEP's w\n"
+        "    // per chunk, one load of the two arrays. One load per component rather\n"
+        "    // than one per pole: every pole of a component reads the same word, and\n"
+        "    // nothing in this launch writes it.\n"
+        + ep._ADE_DRIVE_LINE)
     poles = "".join(
         "\n"
         f"    // pole {i}: dispersion.PolarizationState.update, the certified\n"
@@ -560,8 +567,9 @@ def assert_disjoint_bindings(fields: Any, arm: str, target: str,
     THE GROUP IS SMALLER THAN THE E->P WELD'S BY EXACTLY THE update_E HALF'S
     BINDINGS: no ``E<c>``, no ``D<c>``, no ``f_w_<c>`` as an output and no
     ``inv_eps``, because this kernel is the recurrence alone. What is left is the
-    DRIVE -- which IS ``f_w_<c>`` on this arm and the stored ``E<c>`` on the other,
-    and is ``const __restrict__`` here -- and the four per-pole pointers.
+    DRIVE pair -- ``f_w_<c>`` and the stored ``E<c>`` on this arm, the stored
+    ``E<c>`` twice on the other, neither ``__restrict__`` -- which must stay distinct
+    from every output, and the four per-pole pointers.
 
     Base addresses only: overlapping views with different bases pass unseen, the
     accepted limitation every launcher on this track shares. Returns the number of
@@ -569,7 +577,7 @@ def assert_disjoint_bindings(fields: Any, arm: str, target: str,
     """
     if arm not in ("pml", "no_pml"):
         raise ValueError(f"arm must be 'pml' or 'no_pml', got {arm!r}")
-    named: List[Tuple[str, Any]] = [("drive", _drive_array(fields, arm, target))]
+    named: List[Tuple[str, Any]] = []
     for i, state in enumerate(states):
         named.append((f"P_{target}_{i}", state.P[target]))
         named.append((f"p_prev_{i}", state.P_prev[target]))
@@ -590,23 +598,32 @@ def assert_disjoint_bindings(fields: Any, arm: str, target: str,
                 f"allocation twice is undefined behaviour NVRTC miscompiles without "
                 f"a diagnostic")
         seen[address] = label
+    for label, array in zip(("drive_w", "drive_e"), _drive_arrays(fields, arm, target)):
+        address = _base_address(array)
+        if address is None:
+            raise ValueError(
+                f"{label} exposes no readable base address; the drive cannot be shown "
+                f"distinct from the outputs")
+        if address in seen and not seen[address].startswith("drive_"):
+            raise ValueError(
+                f"{label} aliases {seen[address]} in the {target} launch; the drive is "
+                f"read while the scratch is written")
+        seen.setdefault(address, label)
     return len(seen)
 
 
-def _drive_array(fields: Any, arm: str, target: str) -> Any:
-    """``stepping.update_P``'s own drive for one component, resolved the same way.
+def _drive_arrays(fields: Any, arm: str, target: str) -> Tuple[Any, Any]:
+    """``(drive_w, drive_e)``: the two arrays MEEP's per-chunk ``w`` is selected from.
 
-    ``Fields.drive_field`` is asked rather than a field reached for directly, exactly
-    as ``ade_kernels.update_P_fused_pml_real`` asks it (stepping.py:1428). The arm
-    only says which array that method MUST hand back, which
-    :func:`_drive_identity_problem` is what checks.
+    The certified ADE launcher's own binding (``ade_kernels.drive_pair``), restated
+    because that module imports CuPy at scope: ``f_w_<c>`` and the stored ``E<c>`` on
+    the PML arm, the stored ``E<c>`` twice on the no-absorber arm, where
+    ``drive_field`` is ``E<c>`` on every cell.
     """
-    drive = getattr(fields, "drive_field", None)
-    if not callable(drive):
-        raise ValueError(
-            "fields.drive_field is not callable; this launcher never reaches for a "
-            "field itself and has nothing to bind as the recurrence's w")
-    return drive(target)
+    stored = getattr(fields, target)
+    if arm == "pml":
+        return getattr(fields, "f_w_" + target), stored
+    return stored, stored
 
 
 def _drive_identity_problem(fields: Any, arm: str, target: str) -> Optional[str]:
@@ -626,12 +643,15 @@ def _drive_identity_problem(fields: Any, arm: str, target: str) -> Optional[str]
 
 def launch_three_slot_polarization_component(
         fields: Any, arm: str, target: str, states: Sequence[Any],
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
+        kernel: Optional[Any] = None, *, chunk_bounds: Any) -> Dict[str, Any]:
     """ONE component's recurrence launch. The caller rotates afterwards.
 
     ``kernel`` IS THE GATE'S DOOR, keyword-optional: a gate compiles a deliberately
     broken copy of the shipped source and hands it here. A launcher that could not be
     handed its own kernel could not arm a single mutation.
+
+    ``chunk_bounds`` is the run's chunk record on the device, required: the drive is
+    selected per cell from it (``dispersive_kernels.chunk_record_argument``).
     """
     spec = {t: i for i, (t, _s, _a) in enumerate(ELECTRIC_TERMS)}
     if target not in spec:
@@ -648,9 +668,11 @@ def launch_three_slot_polarization_component(
         raise ValueError(problem)
     assert_disjoint_bindings(fields, arm, target, states)
 
-    drive = _drive_array(fields, arm, target)
-    n_elem = int(drive.size)
-    arguments: List[Any] = [drive]
+    cb = ep.certified_e.chunk_record_argument(chunk_bounds)
+    drive_w, drive_e = _drive_arrays(fields, arm, target)
+    nx, ny, nz = (int(n) for n in drive_e.shape)
+    n_elem = nx * ny * nz
+    arguments: List[Any] = [drive_w, drive_e]
     for state in states:
         arguments.append(state.P[target])
     for i, state in enumerate(states):
@@ -660,18 +682,19 @@ def launch_three_slot_polarization_component(
                 f"state {i}'s scratch holds {int(scratch.size)} cells and the launch "
                 f"walks {n_elem}; the certified guard this kernel keeps is that "
                 f"bound, and a mismatch would leave cells unwritten")
-        coefficients = tuple(state._coefficients)
-        if len(coefficients) != 3:
+        constants = tuple(state.constants)
+        if len(constants) != 4:
             raise ValueError(
-                f"a polarization carries {len(coefficients)} recurrence "
-                f"coefficients, not the (c_now, c_prev, c_drive) triple this kernel "
-                f"bakes as scalars")
+                f"a polarization carries {len(constants)} recurrence constants, not "
+                f"the four realnum words (two_minus_od, gamma1, omega0dtsqr, "
+                f"gamma1inv) this kernel takes as scalars")
         arguments.append(scratch)
         arguments.append(state.P_prev[target])
         sigma = state.sigma[target]
         arguments.append(sigma if kinds[i] else np.float32(sigma))
-        arguments.extend(np.float32(value) for value in coefficients)
-    arguments.append(np.int32(n_elem))
+        arguments.extend(np.float32(value) for value in constants)
+    arguments.extend([np.int32(nx), np.int32(ny), np.int32(nz),
+                      np.int32(component_index), cb])
 
     blocks = (n_elem + _FUSED_THREADS - 1) // _FUSED_THREADS
     (kernel or _get_kernel(component_index, count, kinds))(
@@ -681,7 +704,8 @@ def launch_three_slot_polarization_component(
 
 
 def run_three_slot_polarization(fields: Any, arm: str,
-                                kernel: Optional[Any] = None) -> Dict[str, Any]:
+                                kernel: Optional[Any] = None, *,
+                                chunk_bounds: Any) -> Dict[str, Any]:
     """THE THIRD SLOT: one launch per DRIVEN component, host rotation between.
 
     THE ROTATION IS TRANSCRIBED, NOT REIMPLEMENTED, from
@@ -712,7 +736,7 @@ def run_three_slot_polarization(fields: Any, arm: str,
         if not states:
             continue
         per_component.append(launch_three_slot_polarization_component(
-            fields, arm, target, states, kernel))
+            fields, arm, target, states, kernel, chunk_bounds=chunk_bounds))
         launches += 1
         recurrences += len(states)
         for state in states:

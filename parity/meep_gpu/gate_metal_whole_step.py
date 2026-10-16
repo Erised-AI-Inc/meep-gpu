@@ -102,6 +102,12 @@ from meep_gpu.metal_kernels import (  # noqa: E402
     arms, coverage as metal_coverage, device, launch, preconditions, subnormal,
 )
 
+
+#: The float32 word of the composition matrix's default Courant (0.37), for the Dcyl
+#: rows: the cylindrical axis rules are MEEP's double products with Courant, formed in
+#: float32 on Metal only for a float32-word Courant.
+CYL_COURANT = float(np.float32(0.37))
+
 #: Every statically named volume one complete step can touch, in a fixed order.
 #: Derived from the composer's OWN residency table rather than listed by hand,
 #: plus the BFAST IIR state, which is not a sub-step volume but is carried between
@@ -309,6 +315,16 @@ def run_metal_step(fields: Any, pml: Any, plan: Any, residency: Any,
     convenient. Whether the plan owns the far pass is read from its own
     ``replaces_sub_steps`` — a folded METALLIC axis has no far pass and says so.
     """
+    # THE REGION PLAN IS INSTALLED BEFORE THE FIRST SLOT, as the driver installs it with
+    # the layer. Stepping ``Fields`` directly, the array path installs the one-rank plan
+    # lazily at its first PML sub-step (``stepping._region_plan``); a composition whose
+    # kernel serves ``update_E`` leaves no array-path ``update_E`` to do it, and an
+    # array-path ``update_P`` after it reads MEEP's ``w`` through ``Fields.drive_field``,
+    # which refuses by name without the plan. It is the one-rank division
+    # ``launch.plan_step`` resolves the kernels' chunk record from, and installing it is
+    # idempotent (the installed plan is returned while it describes this layer and grid).
+    if stepping._pml_is_active(pml):  # noqa: SLF001
+        stepping._region_plan(fields, pml)  # noqa: SLF001
     covered = covered_passes(plan)
     for slot in live:
         if slot in FILL_SLOT_FAR.values():
@@ -337,27 +353,8 @@ def run_array_step(fields: Any, pml: Any, live: Sequence[str]) -> None:
 
 
 def probe_records() -> Dict[str, Any]:
-    from meep_gpu.metal_kernels import (  # noqa: PLC0415
-        complex_fields,
-        cylindrical_complex,
-        folded_complex,
-        special_kz,
-    )
 
-    records = {"complex_probe": complex_fields.load_expansion_probe(),
-               "beta_probe": special_kz.load_expansion_probe(),
-               "folded_complex_probe": folded_complex.load_expansion_probe(),
-               # PASSED EXPLICITLY, not left to the arm's env-var fallback: a gate
-               # that certifies a family whose arm-binding artifact it never handed
-               # over is certifying a composition it did not fully specify.
-               "cylindrical_complex_probe":
-                   cylindrical_complex.load_expansion_probe()}
-    missing = sorted(name for name, record in records.items() if record is None)
-    if missing:
-        raise SystemExit(
-            f"no expansion probe artifact for {missing}; those arms would refuse "
-            f"by name and this gate would certify the families it could still "
-            f"reach while silently dropping the rest")
+    records = {}
     return records
 
 
@@ -514,32 +511,39 @@ CASES: Tuple[Tuple[str, Any, str], ...] = (
      "is not the zero-phase specialisation"),
 
     # -- TRANCHE 4: THE TWO CYLINDRICAL FAMILIES ------------------------------
+    # Every row takes CYL_COURANT, the float32 word of the matrix's default: the
+    # cylindrical axis rules form MEEP's double products with Courant, which the Metal
+    # kernels form in float32 only for a float32-word Courant (any other is refused by
+    # name and its slots would fall to the array path).
     # A cylindrical step is SIX passes, not ten: no fold, so neither ghost pass is
     # live — but the r = 0 seam is live on every one of them, and on a z-METALLIC
     # run `zero_metal_B`/`_D` sit between the curl and the constitutive sub-step
     # exactly where they do on a Cartesian walled run. So these rows carry the WALL
     # class and the accumulation class, and the complex family adds one this gate
     # has never walked before: a plan whose `run` performs a HOST round trip (the
-    # radial prefix scan) in the middle of the composition, which is the residency
+    # radial sum) in the middle of the composition, which is the residency
     # invariant's hardest case rather than its easiest.
-    ("dcyl_m1_complex", lambda: matrix.cylindrical(m=1),
-     "cylindrical complex |m| = 1, z METALLIC — WALLED, and the prefix scan syncs "
+    ("dcyl_m1_complex", lambda: matrix.cylindrical(m=1, courant=CYL_COURANT),
+     "cylindrical complex |m| = 1, z METALLIC — WALLED, and the radial sum syncs "
      "one volume out and one in inside every curl launch"),
-    ("dcyl_m1_complex_negative", lambda: matrix.cylindrical(m=-1),
+    ("dcyl_m1_complex_negative",
+     lambda: matrix.cylindrical(m=-1, courant=CYL_COURANT),
      "m = -1: the i*m/r row's sign flips AND the axis-increment scalar carries a "
      "-0.0 in its real word, which is the operand class a plane-wise product gets "
      "wrong"),
     ("dcyl_m1_complex_zperiodic",
-     lambda: matrix.cylindrical(m=1, z_kind="periodic"),
+     lambda: matrix.cylindrical(m=1, z_kind="periodic", courant=CYL_COURANT),
      "the other BCZ arm, and the one Triton's own predicate refuses by name — the "
      "8 Metal-only slots this round reports live on this shape"),
-    ("dcyl_m3_complex", lambda: matrix.cylindrical(m=3),
+    ("dcyl_m3_complex", lambda: matrix.cylindrical(m=3, courant=CYL_COURANT),
      "|m| = 3: the M_MANY arm, whose near-axis zero-row count is 3 rather than 1"),
-    ("dcyl_m0_real", lambda: matrix.cylindrical(m=0, complex_storage=False),
+    ("dcyl_m0_real",
+     lambda: matrix.cylindrical(m=0, complex_storage=False, courant=CYL_COURANT),
      "cylindrical REAL m = 0, z METALLIC — WALLED, and the only plan in the tree "
      "that dispatches TWICE per sub-step (the radial scan, then the curl)"),
     ("dcyl_m0_real_zperiodic",
-     lambda: matrix.cylindrical(m=0, complex_storage=False, z_kind="periodic"),
+     lambda: matrix.cylindrical(m=0, complex_storage=False, z_kind="periodic",
+                                courant=CYL_COURANT),
      "the real family's other BCZ arm, unwalled"),
 )
 
@@ -629,7 +633,8 @@ MIXED_CASES: Tuple[Tuple[str, Any, str], ...] = (
     # the refusal is the property; a row where the conductivity also sank the
     # constitutive slots would be a coverage loss inside a correct answer.
     ("dcyl_m0_real_conductive",
-     lambda: matrix.conductive(matrix.cylindrical(m=0, complex_storage=False)),
+     lambda: matrix.conductive(matrix.cylindrical(m=0, complex_storage=False,
+                                                  courant=CYL_COURANT)),
      "cylindrical m = 0 with an electric conductivity: both curls on the array "
      "path, the constitutive pair on the device, WALLED"),
 )
@@ -937,8 +942,8 @@ def tranche_four_mutations(probes: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     # --- stale_cylindrical_prefix -------------------------------------------
     label = "dcyl_m1_complex"
-    oracle_fields, oracle_pml = matrix.cylindrical(m=1)
-    metal_fields, metal_pml = matrix.cylindrical(m=1)
+    oracle_fields, oracle_pml = matrix.cylindrical(m=1, courant=CYL_COURANT)
+    metal_fields, metal_pml = matrix.cylindrical(m=1, courant=CYL_COURANT)
     live = live_slots(metal_fields, metal_pml)
     plan, residency, _ = compose(metal_fields, metal_pml, probes)
     curls = [slot for slot in ("step_B", "step_D") if slot in plan.plans]
@@ -974,12 +979,14 @@ def tranche_four_mutations(probes: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     # --- cylindrical_scan_after_curl ----------------------------------------
     label = "dcyl_m0_real"
-    oracle_fields, oracle_pml = matrix.cylindrical(m=0, complex_storage=False)
-    metal_fields, metal_pml = matrix.cylindrical(m=0, complex_storage=False)
+    oracle_fields, oracle_pml = matrix.cylindrical(m=0, complex_storage=False,
+                                                   courant=CYL_COURANT)
+    metal_fields, metal_pml = matrix.cylindrical(m=0, complex_storage=False,
+                                                 courant=CYL_COURANT)
     live = live_slots(metal_fields, metal_pml)
     plan, residency, _ = compose(metal_fields, metal_pml, probes)
     curls = [slot for slot in ("step_B", "step_D") if slot in plan.plans]
-    assert curls and all(hasattr(plan.plans[slot], "run_prefix") for slot in curls), (
+    assert curls and all(hasattr(plan.plans[slot], "run_scan") for slot in curls), (
         "DISARMED: the composed real cylindrical curls expose no separate scan")
     launched = 0
     for _ in range(CYCLES):
@@ -992,7 +999,7 @@ def tranche_four_mutations(probes: Dict[str, Any]) -> List[Dict[str, Any]]:
                 residency.sync_in()
             elif slot in curls:
                 product.run_curl()              # THE MUTATION: inverted order,
-                product.run_prefix()            # same two launches
+                product.run_scan()              # same two launches
                 launched += 2
             else:
                 product.run()

@@ -8,12 +8,12 @@ pair that rotates the P pointers between launches.
 The shipped predicate and engine-object builder are used for every product.
 Mutations reverse the two-pole order, pre-sum the poles, drop the final pole,
 and freeze pointers across ADE rotation; a one-pole reversal is the control.
-The shared complex expansion probe licenses the only multiplication orientation
-this body executes.  Every case is flushed to JSONL as it lands and the final
-payload is written atomically.
+Every case is flushed to JSONL as it lands and the final payload is written
+atomically.
 
 Run only on one confirmed-idle
-GPU, with the established private CuPy/Triton cache and KEEP policy::
+GPU, with private CuPy/Triton caches carrying the campaign policy's token
+(MEEP_GPU_SUBNORMAL_POLICY, keep when unset)::
 
     python -u gate_triton_complex_no_pml_stored_e.py \
         --out <results-dir>/gate.json --cycles 8
@@ -73,39 +73,17 @@ def save(path: Path, payload: Dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
-def measure_probe(xp: Any, out_dir: Path) -> Dict[str, Any]:
-    import gate_triton_complex as G
-    from meep_gpu.triton_kernels import complex_fields
-    from meep_gpu.triton_kernels import complex_no_pml_stored_e as arm
-
-    record = G.measure_expansion_record(xp, "cupy")
-    policy_reasons = G.ftz_strip_license_reasons()
-    verdict = complex_fields.expansion_license(record, arm.PROBE_PATTERNS)
-    record["complex_stored_e_license"] = verdict
-    record["policy_refusals"] = policy_reasons
-    save(out_dir / "complex_stored_e_expansion.json", record)
-    if policy_reasons:
-        raise RuntimeError(
-            "subnormal policy does not license the probe: "
-            + "; ".join(policy_reasons))
-    if verdict["expansion"] is None:
-        raise RuntimeError(
-            "the shared probe licenses no expansion: "
-            + "; ".join(verdict["refusals"]))
-    return record
-
-
 def make_factory(xp: Any, **config):
     return lambda offset: ADE.build_configuration(
         xp, seed_offset=offset, **config)
 
 
-def shipped_plan(fields: Any, pml: Any, probe: Dict[str, Any]):
+def shipped_plan(fields: Any, pml: Any):
     from meep_gpu.triton_kernels import complex_no_pml_stored_e as arm
 
-    plan = arm.plan_complex_stored_e(fields, pml, probe=probe)
+    plan = arm.plan_complex_stored_e(fields, pml)
     if plan is None:
-        verdict = arm.complex_stored_e_coverage(fields, pml, probe=probe)
+        verdict = arm.complex_stored_e_coverage(fields, pml)
         raise RuntimeError(
             f"shipped complex stored-E builder refused: {verdict.reasons}")
     return plan
@@ -178,41 +156,41 @@ class SummedComplexPoleBinding:
         return self._live
 
 
-def reordered_plan(fields: Any, pml: Any, probe: Dict[str, Any]):
+def reordered_plan(fields: Any, pml: Any):
     from meep_gpu.triton_kernels import complex_no_pml_stored_e as arm
 
-    plan = shipped_plan(fields, pml, probe)
+    plan = shipped_plan(fields, pml)
     plan._poles = arm.StaticComplexPoleBinding(
         _live_groups(fields, reverse=True))
     return plan
 
 
-def dropped_plan(fields: Any, pml: Any, probe: Dict[str, Any]):
+def dropped_plan(fields: Any, pml: Any):
     from meep_gpu.triton_kernels import complex_no_pml_stored_e as arm
 
-    plan = shipped_plan(fields, pml, probe)
+    plan = shipped_plan(fields, pml)
     plan._poles = arm.StaticComplexPoleBinding(_live_groups(fields, drop=1))
     plan.counts = plan._poles.counts
     return plan
 
 
-def presum_plan(fields: Any, pml: Any, probe: Dict[str, Any]):
-    plan = shipped_plan(fields, pml, probe)
+def presum_plan(fields: Any, pml: Any):
+    plan = shipped_plan(fields, pml)
     plan._poles = SummedComplexPoleBinding(fields)
     plan.counts = plan._poles.counts
     return plan
 
 
-def frozen_rotation_plan(fields: Any, pml: Any, probe: Dict[str, Any]):
+def frozen_rotation_plan(fields: Any, pml: Any):
     from meep_gpu.triton_kernels import complex_no_pml_stored_e as arm
 
-    plan = shipped_plan(fields, pml, probe)
+    plan = shipped_plan(fields, pml)
     plan._poles = arm.StaticComplexPoleBinding(_live_groups(fields))
     return EThenPPlan(plan, fields, pml)
 
 
-def live_rotation_plan(fields: Any, pml: Any, probe: Dict[str, Any]):
-    return EThenPPlan(shipped_plan(fields, pml, probe), fields, pml)
+def live_rotation_plan(fields: Any, pml: Any):
+    return EThenPPlan(shipped_plan(fields, pml), fields, pml)
 
 
 def case(name: str, prediction: str, make, builder, clause: str,
@@ -225,49 +203,49 @@ def case(name: str, prediction: str, make, builder, clause: str,
     }
 
 
-def build_cases(xp: Any, probe: Dict[str, Any]) -> List[Dict[str, Any]]:
+def build_cases(xp: Any) -> List[Dict[str, Any]]:
     target = make_factory(xp)
     rows = [case(
         "product_" + row.replace(".", "__"), "IDENTICAL", target,
-        lambda f, p, record=probe: shipped_plan(f, p, record),
+        lambda f, p: shipped_plan(f, p),
         "one-to-one lifted Group-I corpus row") for row in GROUP_I_ROWS]
     rows.extend((
         case("product_drude_subset", "IDENTICAL",
              make_factory(xp, kind="drude", driven=("Ex", "Ez")),
-             lambda f, p, record=probe: shipped_plan(f, p, record),
+             lambda f, p: shipped_plan(f, p),
              "Drude and a canonical component subset"),
         case("product_two_poles", "IDENTICAL",
              make_factory(xp, poles=2),
-             lambda f, p, record=probe: shipped_plan(f, p, record),
+             lambda f, p: shipped_plan(f, p),
              "two poles subtracted left-to-right in registration order"),
         case("product_live_pointer_rotation", "IDENTICAL",
              make_factory(xp, poles=2),
-             lambda f, p, record=probe: live_rotation_plan(f, p, record),
+             lambda f, p: live_rotation_plan(f, p),
              "live P pointers after update_P rotation", rotate=True),
         case("MUTATION_reverse_pole_order", "DIVERGENT",
              make_factory(xp, poles=2),
-             lambda f, p, record=probe: reordered_plan(f, p, record),
+             lambda f, p: reordered_plan(f, p),
              "mutation: reverse registration order"),
         case("MUTATION_presum_poles", "DIVERGENT",
              make_factory(xp, poles=2),
-             lambda f, p, record=probe: presum_plan(f, p, record),
+             lambda f, p: presum_plan(f, p),
              "mutation: D - (P0 + P1) instead of (D - P0) - P1"),
         case("MUTATION_drop_last_pole", "DIVERGENT",
              make_factory(xp, poles=2),
-             lambda f, p, record=probe: dropped_plan(f, p, record),
+             lambda f, p: dropped_plan(f, p),
              "mutation: omit final registered pole"),
         case("MUTATION_freeze_rotating_pointers", "DIVERGENT",
              make_factory(xp, poles=2),
-             lambda f, p, record=probe: frozen_rotation_plan(f, p, record),
+             lambda f, p: frozen_rotation_plan(f, p),
              "mutation: cache initial P pointers", rotate=True),
         case("CONTROL_reverse_one_pole", "IDENTICAL", target,
-             lambda f, p, record=probe: reordered_plan(f, p, record),
+             lambda f, p: reordered_plan(f, p),
              "control: reversing one pole changes nothing"),
     ))
     return rows
 
 
-def refusal_leg(xp: Any, probe: Dict[str, Any]) -> Dict[str, Any]:
+def refusal_leg(xp: Any) -> Dict[str, Any]:
     from meep_gpu.triton_kernels import complex_no_pml_stored_e as arm
     from meep_gpu.triton_kernels import no_pml_stored_e as real_arm
 
@@ -280,7 +258,7 @@ def refusal_leg(xp: Any, probe: Dict[str, Any]) -> Dict[str, Any]:
     )
     for name, config, expected in fixtures:
         fields, pml, _ = ADE.build_configuration(xp, **config)
-        verdict = arm.complex_stored_e_coverage(fields, pml, probe=probe)
+        verdict = arm.complex_stored_e_coverage(fields, pml)
         real = real_arm.stored_e_constitutive_coverage(fields, pml)
         rows.append({
             "case": name, "covered": verdict.covered, "expected": expected,
@@ -292,22 +270,12 @@ def refusal_leg(xp: Any, probe: Dict[str, Any]) -> Dict[str, Any]:
 
     fields, pml, _ = ADE.build_configuration(xp)
     fields._stored_E = False
-    verdict = arm.complex_stored_e_coverage(fields, pml, probe=probe)
+    verdict = arm.complex_stored_e_coverage(fields, pml)
     rows.append({"case": "unstored_E", "covered": verdict.covered,
                  "expected": False, "agrees": not verdict.covered,
                  "real_arm_covered": False, "exclusive": True,
                  "reasons": list(verdict.reasons)})
 
-    missing = json.loads(json.dumps(probe))
-    pattern = arm.PROBE_PATTERNS[-1]
-    del missing["patterns"][pattern]
-    fields, pml, _ = ADE.build_configuration(xp)
-    verdict = arm.complex_stored_e_coverage(fields, pml, probe=missing)
-    rows.append({"case": "missing_base_probe_pattern",
-                 "covered": verdict.covered, "expected": False,
-                 "agrees": not verdict.covered,
-                 "real_arm_covered": False, "exclusive": True,
-                 "reasons": list(verdict.reasons)})
     return {
         "cases": rows,
         "all_agree": all(row["agrees"] for row in rows),
@@ -356,9 +324,6 @@ def validate(payload: Dict[str, Any]) -> Dict[str, Any]:
             reasons.append("a predicate answer disagreed with its expectation")
         if not refusals.get("exclusive"):
             reasons.append("the real and complex stored-E predicates overlap")
-    probe = payload.get("expansion_probe") or {}
-    if (probe.get("license") or {}).get("expansion") is None:
-        reasons.append("the base complex expansion probe licensed no arm")
     return {"released": not reasons, "reasons": reasons}
 
 
@@ -379,21 +344,27 @@ def main(argv=None) -> int:
     }
     try:
         import cupy as cp
+        import composition_policy
         import gate_triton_complex as G
-        from meep_gpu.triton_kernels import complex_fields
+        from meep_gpu import fastpath
 
-        # ONE SUBNORMAL-POLICY AUTHORITY, AND IT IS THIS LINE.
+        # ONE SUBNORMAL-POLICY AUTHORITY, AND IT IS THIS LINE: THE CAMPAIGN'S.
         #
-        # The policy is NOT named here as a literal: it is read from the arms'
-        # own certification constant, so the gate cannot drift from what the
-        # kernels were certified under. If that constant changes, this gate
-        # follows it or fails loudly — it cannot quietly test a policy the arms
-        # were never compared under.
+        # The certification round gates this family under keep AND under flush
+        # (R13); the fleet driver names the campaign's policy in
+        # MEEP_GPU_SUBNORMAL_POLICY and composition_policy.requested_policy reads it
+        # (keep or flush, anything else refused by name). Unset, it is the table's own
+        # install default -- asserted equal below, so a bare run cannot drift from
+        # what dispatch installs. MEASURED: with the install default named here
+        # whatever the campaign asked, the flush campaign's run refused on its own
+        # flush cache token before the first product (FPC, 0 of 7).
+        #
+        # History of this line:
         #
         # Added 2026-08-17, replacing two competing authorities. This gate used
         # to install nothing and call the no-request path, which resolves
         # MATCH_MEEP by measuring the host — 'flush' on x86 — while every
-        # complex arm carries CERTIFIED_UNDER_SUBNORMAL_POLICY = 'keep'. The
+        # complex arm carried a 'keep' certification constant. The
         # certification clause then refused the run, correctly: a kernel's bytes
         # were only ever compared against the array path under the policy its
         # own gate ran in, so nothing establishes what it emits under another.
@@ -402,20 +373,19 @@ def main(argv=None) -> int:
         # MEEP_GPU_SUBNORMAL_POLICY happened to be exported. A run that is
         # correct only because of an unrecorded environment variable is worse
         # than one that fails.
-        policy = complex_fields.CERTIFIED_UNDER_SUBNORMAL_POLICY
+        if composition_policy.DEFAULT_POLICY != fastpath.TABLE_SUBNORMAL_POLICY["triton"]:
+            raise RuntimeError(
+                f"composition_policy.DEFAULT_POLICY={composition_policy.DEFAULT_POLICY!r} "
+                f"is not the Triton install default "
+                f"{fastpath.TABLE_SUBNORMAL_POLICY['triton']!r}")
+        policy = composition_policy.requested_policy()
         strip = G.install_ftz_strip(policy)
         payload["subnormal_policy_installed"] = policy
         payload["subnormal_policy_source"] = (
-            "complex_fields.CERTIFIED_UNDER_SUBNORMAL_POLICY")
+            "MEEP_GPU_SUBNORMAL_POLICY (composition_policy.requested_policy); unset reads "
+            'the install default fastpath.TABLE_SUBNORMAL_POLICY["triton"]')
         payload["subnormal_policy_stamp"] = strip
-        probe = measure_probe(cp, out.parent)
-        payload["expansion_probe"] = {
-            "patterns": probe["patterns"],
-            "license": probe["complex_stored_e_license"],
-            "subnormal_policy": probe["subnormal_policy"],
-            "artifact": str(out.parent / "complex_stored_e_expansion.json"),
-        }
-        cases = build_cases(cp, probe)
+        cases = build_cases(cp)
         rows = []
         for index, spec in enumerate(cases, 1):
             log(run_log, f"case {index}/{len(cases)} {spec['name']} "
@@ -434,7 +404,7 @@ def main(argv=None) -> int:
                          f"elapsed={time.time() - started:.1f}s")
             payload["cases"] = rows
             save(out, payload)
-        payload["refusals"] = refusal_leg(cp, probe)
+        payload["refusals"] = refusal_leg(cp)
     except BaseException as exc:  # noqa: BLE001 - artifact setup failure
         payload["setup_error"] = f"{type(exc).__name__}: {exc}"
         payload["setup_traceback"] = traceback.format_exc()[-3000:]

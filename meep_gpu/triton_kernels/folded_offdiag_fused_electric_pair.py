@@ -52,6 +52,14 @@ WHAT IS REFUSED, AND WHY IT IS A REFUSAL AND NOT A GAP:
 
 NOT WIRED. ``fastpath`` is untouched; dispatch is a separate milestone.
 
+THE CHUNK FORMS. The constitutive half is the folded off-diagonal kernel's: MEEP's
+double row with its per-chunk presence ``op``, then the constitutive form per chunk
+keyed on the record ``cb`` the plan binds (``launch.chunk_bounds_for`` on the engine
+route). The curl half is the folded curl single's own body, lifted at its anchors,
+and reads the same record at each recomputed neighbour; the twin of each ``fu_D*``
+takes the pre-launch word outside the recurrence's cells, which keeps the auxiliary
+contract across the rotation.
+
 Import contract: importable WITHOUT Triton.
 """
 
@@ -79,6 +87,8 @@ from .offdiag_update_e import (
     DEFAULT_BLOCK,
     E_TERMS,
     ROW_SLOTS,
+    bind_presence,
+    presence_for,
     row_volumes_for,
     wall_mask_axes,
 )
@@ -196,11 +206,17 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
     MIRROR_METALLIC = tl.constexpr(CODE_MIRROR_METALLIC)
     MIRROR_PERIODIC = tl.constexpr(CODE_MIRROR_PERIODIC)
     MIRROR_ROW = tl.constexpr(MIRROR_SOURCE_INDEX)
+    # The names the welded constitutive half reads: the shared constitutive form,
+    # the record's word offsets, the presence vector's layout and the row helper.
+    from .forms import (axis_present, constitutive_form, curl_form,  # noqa: E402
+                        curl_stencil, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
+    from .offdiag_update_e import PRESENCE_LINES, _row_add  # noqa: E402
 
     @triton.jit
     def _step_cell(i, j, k, live,
                    f0, f1, f2, u0, u1, u2, g0, g1, g2,
-                   kmx, sinvx, kmy, sinvy, kmz, sinvz,
+                   kmx, sinvx, kmy, sinvy, kmz, sinvz, cb,
                    nx, ny, nz, dtdx,
                    BACKWARD: tl.constexpr,
                    BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr):
@@ -210,7 +226,9 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         byte for byte between its decode anchor and its store anchor; the probe's
         transcription leg asserts the two strings equal. The only edits are the
         head (``idx``/``nyz`` rebuilt from ``(i, j, k)`` by integer arithmetic)
-        and the tail (six stores become one return).
+        and the tail (six stores become one return, which also carries the three
+        recurrence flags ``du*`` the weld keys its scratch ``fu`` on). The chunk
+        record ``cb`` is read at the cell the function is handed.
         """
         nyz = ny * nz
         idx = i * nyz + j * nz + k
@@ -252,9 +270,16 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
         # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        # kernels.pml_curl_step's three calls: MEEP's left-to-right association with
+        # both partners, the one-partner form where the record says the other
+        # partner's derivative axis is invariant, an exact +0 with neither.
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
         # --- ownership mask, cell 0 (stepping._mask_non_owned_cells) ------------
         # Every target whose Yee shift is 0 on a non-periodic axis. Byte-copied
@@ -310,10 +335,11 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
             if BCY == MIRROR_PERIODIC:
                 curl2 = tl.where(last_y, 0.0, curl2)
 
-        # --- split-field recurrence (stepping._apply_pml_update) ----------------
-        # Byte-copied. The PML coefficient vectors are built at the STORED extent
-        # on a folded axis (measured: kms_y.shape == (1, 22, 1) on a grid storing
-        # 22), so the `n_a` indexing needs no fold-aware change.
+        # --- the PML forms (stepping._apply_curl_regions) ----------------------
+        # Byte-copied from kernels.pml_curl_step. The PML coefficient vectors are
+        # built at the STORED extent on a folded axis (measured: kms_y.shape ==
+        # (1, 22, 1) on a grid storing 22), so the `n_a` indexing needs no
+        # fold-aware change.
         km_x = tl.load(kmx + i, mask=live, other=0.0)
         si_x = tl.load(sinvx + i, mask=live, other=0.0)
         km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -321,24 +347,36 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0 = tl.load(u0 + idx, mask=live, other=0.0)
-        n0 = ((p0 * km_y) - curl0) * si_y
-        v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+        # Which cells take the recurrence: the component's dsigu layer on its own
+        # sub-lattice (dsigu axis z for target 0, x for 1, y for 2; half-integer for
+        # every B target, integer for every D one), a compile-time record word.
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1 = tl.load(u1 + idx, mask=live, other=0.0)
-        n1 = ((p1 * km_z) - curl1) * si_z
-        v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+        v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                           km_y, si_y, km_z, si_z, du0)
 
-        p2 = tl.load(u2 + idx, mask=live, other=0.0)
-        n2 = ((p2 * km_x) - curl2) * si_x
-        v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+        p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+        v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                           km_z, si_z, km_x, si_x, du1)
 
-        return v0, v1, v2, n0, n1, n2
+        p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+        v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                           km_x, si_x, km_y, si_y, du2)
+
+        # fu is written on the recurrence's cells ONLY (the auxiliary contract).
+        return v0, v1, v2, n0, n1, n2, du0, du1, du2
 
     @triton.jit
     def _d_final(COMP: tl.constexpr, i, j, k, valid,
                  f0, f1, f2, u0, u1, u2, g0, g1, g2,
-                 kmx, sinvx, kmy, sinvy, kmz, sinvz,
+                 kmx, sinvx, kmy, sinvy, kmz, sinvz, cb,
                  nx, ny, nz, dtdx,
                  BACKWARD: tl.constexpr,
                  BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
@@ -384,9 +422,9 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
             if MG_Z:
                 k = tl.where(near_z, MIRROR_ROW, k)
 
-        v0, v1, v2, n0, n1, n2 = _step_cell(
+        v0, v1, v2, n0, n1, n2, du0, du1, du2 = _step_cell(
             i, j, k, valid, f0, f1, f2, u0, u1, u2, g0, g1, g2,
-            kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+            kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
             BACKWARD, BCX, BCY, BCZ)
         value = v0
         if COMP == 1:
@@ -430,8 +468,9 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         is that helper's, unchanged: the runtime ghost weight ``w_d`` still
         multiplies the two ghost-lane addends and only those, the ``MG``
         constexpr still selects between the weighted and the certified-verbatim
-        arms, the coefficient multiply still sits BETWEEN the shifts, and 0.25
-        still scales the sum, applied last.
+        arms, the coefficient multiply still sits BETWEEN the shifts, and the
+        float32 sum is returned for ``offdiag_update_e._row_add`` to scale and add
+        in double.
         """
         if MG:
             near = (near_c
@@ -443,26 +482,8 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
                     + near_d)
             far = (far_u
                    + far_ud)
-        return 0.25 * ((near * tl.load(u + o_c, mask=v_c, other=0.0))
-                       + (far * tl.load(u + o_u, mask=v_u, other=0.0)))
-
-    @triton.jit
-    def _masked_row_sum(diag, total, at_a, at_b,
-                        WMA: tl.constexpr, WMB: tl.constexpr):
-        """Wall-mask the coupling, THEN form the row sum — the array path's order
-        (``_mask_metallic_wall_coupling`` at stepping.py:1252 runs before the
-        ``constitutive + coupling`` add at :1007-1008).
-
-        Byte-copied from :func:`offdiag_update_e._masked_row_sum`. On a folded
-        axis ``WM`` is 0 by construction (``wall_mask_axes`` asks the mask's own
-        ``is_metallic and not is_mirrored``, stepping.py:1282), which is what
-        leaves the fold plane's coupling alive — the thing zeroing it costs
-        2.0e-02 (stepping.py:1269-1274)."""
-        if WMA:
-            total = tl.where(at_a, 0.0, total)
-        if WMB:
-            total = tl.where(at_b, 0.0, total)
-        return diag + total
+        return ((near * tl.load(u + o_c, mask=v_c, other=0.0))
+                + (far * tl.load(u + o_u, mask=v_u, other=0.0)))
 
     @triton.jit
     def folded_offdiag_fused_curl_constitutive_D(
@@ -480,11 +501,17 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         u21, u22,                       # row Ez: partner Ex (down x), partner Ey (down y)
         kp0, km0, kp1, km1, kp2, km2,   # kps/kms on each component's OWN axis, half-integer
         gwx, gwy, gwz,                  # RUNTIME mirror ghost weights, exactly +1.0 / -1.0
+        cb,                             # chunk record: the E half's dsigw membership
+        op,                             # off-diagonal presence: slot masks, segment lines
         nx, ny, nz, n_elem, dtdx,
         BACKWARD: tl.constexpr,
         R01: tl.constexpr, R02: tl.constexpr,
         R11: tl.constexpr, R12: tl.constexpr,
         R21: tl.constexpr, R22: tl.constexpr,
+        P01: tl.constexpr, P02: tl.constexpr,
+        P11: tl.constexpr, P12: tl.constexpr,
+        P21: tl.constexpr, P22: tl.constexpr,
+        PRESENCE: tl.constexpr,
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         MG_X: tl.constexpr, MG_Y: tl.constexpr, MG_Z: tl.constexpr,
         PH_X: tl.constexpr, PH_Y: tl.constexpr, PH_Z: tl.constexpr,
@@ -556,26 +583,33 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         # Nothing written below is read. The constitutive half re-derives every
         # foreign tap from PRE-LAUNCH state through the same `_step_cell`, and
         # the plan rotates the buffers after the launch returns.
-        own0, own1, own2, aux0, aux1, aux2 = _step_cell(
+        own0, own1, own2, aux0, aux1, aux2, du0, du1, du2 = _step_cell(
             i, j, k, live, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-            kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+            kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
             BACKWARD, BCX, BCY, BCZ)
-        tl.store(a0s + idx, aux0, mask=live)
-        tl.store(a1s + idx, aux1, mask=live)
-        tl.store(a2s + idx, aux2, mask=live)
+        # The auxiliary moves on the recurrence's cells only (the auxiliary
+        # contract); every other cell of the twin takes the pre-launch word, so the
+        # rotation hands the engine an fu that kept its word there and the twin
+        # stays written at every cell.
+        tl.store(a0s + idx, tl.where(du0, aux0, tl.load(
+            r0 + idx, mask=live & (du0 == 0), other=0.0)), mask=live)
+        tl.store(a1s + idx, tl.where(du1, aux1, tl.load(
+            r1 + idx, mask=live & (du1 == 0), other=0.0)), mask=live)
+        tl.store(a2s + idx, tl.where(du2, aux2, tl.load(
+            r2 + idx, mask=live & (du2 == 0), other=0.0)), mask=live)
         # The auxiliary takes the RAW stepped value: neither
         # `_fill_symmetry_ghost_cells` nor `_zero_metal` walks `fu_*` (both loop
         # D_CURL_TERMS / D_COMPONENTS).
         dfin0 = _d_final(0, i, j, k, live, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                         kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                         kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                          BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                          PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         dfin1 = _d_final(1, i, j, k, live, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                         kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                         kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                          BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                          PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         dfin2 = _d_final(2, i, j, k, live, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                         kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                         kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                          BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                          PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tl.store(d0s + idx, dfin0, mask=live)
@@ -585,71 +619,93 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         # The fifteen foreign taps, one per (component, cell) the certified body
         # loads: three DOWN faces, six UP faces, six corners.
         tap_xd_0 = _d_final(0, di, j, k, dvx, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                            kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                            kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                             BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                             PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_yd_1 = _d_final(1, i, dj, k, dvy, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                            kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                            kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                             BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                             PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_zd_2 = _d_final(2, i, j, dk, dvz, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                            kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                            kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                             BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                             PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_xu_1 = _d_final(1, ui, j, k, uvx, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                            kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                            kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                             BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                             PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_xu_2 = _d_final(2, ui, j, k, uvx, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                            kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                            kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                             BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                             PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_yu_0 = _d_final(0, i, uj, k, uvy, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                            kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                            kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                             BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                             PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_yu_2 = _d_final(2, i, uj, k, uvy, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                            kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                            kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                             BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                             PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_zu_0 = _d_final(0, i, j, uk, uvz, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                            kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                            kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                             BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                             PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_zu_1 = _d_final(1, i, j, uk, uvz, q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                            kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                            kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                             BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                             PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_xu_yd_1 = _d_final(1, ui, dj, k, uvx & dvy,
                                q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                               kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                               kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                                BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                                PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_xu_zd_2 = _d_final(2, ui, j, dk, uvx & dvz,
                                q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                               kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                               kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                                BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                                PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_yu_zd_2 = _d_final(2, i, uj, dk, uvy & dvz,
                                q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                               kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                               kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                                BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                                PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_yu_xd_0 = _d_final(0, di, uj, k, uvy & dvx,
                                q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                               kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                               kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                                BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                                PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_zu_xd_0 = _d_final(0, di, j, uk, uvz & dvx,
                                q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                               kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                               kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                                BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                                PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
         tap_zu_yd_1 = _d_final(1, i, dj, uk, uvz & dvy,
                                q0, q1, q2, r0, r1, r2, g0, g1, g2,
-                               kmx, sinvx, kmy, sinvy, kmz, sinvz, nx, ny, nz, dtdx,
+                               kmx, sinvx, kmy, sinvy, kmz, sinvz, cb, nx, ny, nz, dtdx,
                                BACKWARD, BCX, BCY, BCZ, MG_X, MG_Y, MG_Z,
                                PH_X, PH_Y, PH_Z, ZM_X, ZM_Y, ZM_Z)
+
+        # Which chunk of the {low, interior, high} product owns the cell, per
+        # component lattice (presence_record's segment lines: integer x, y, z,
+        # then half-integer x, y, z). Read only when some slot's presence varies.
+        c0, c1, c2 = i * 0, i * 0, i * 0
+        if PRESENCE:
+            sxi = tl.load(op + PRESENCE_LINES + i, mask=live, other=0)
+            syi = tl.load(op + PRESENCE_LINES + nx + j, mask=live, other=0)
+            szi = tl.load(op + PRESENCE_LINES + nx + ny + k, mask=live, other=0)
+            half = PRESENCE_LINES + nx + ny + nz
+            sxh = tl.load(op + half + i, mask=live, other=0)
+            syh = tl.load(op + half + nx + j, mask=live, other=0)
+            szh = tl.load(op + half + nx + ny + k, mask=live, other=0)
+            c0 = (sxh * 9 + syi * 3) + szi     # Ex: half-integer on x
+            c1 = (sxi * 9 + syh * 3) + szi     # Ey: half-integer on y
+            c2 = (sxi * 9 + syi * 3) + szh     # Ez: half-integer on z
+
+        # Which cells take the accumulation: each component's own (dsigw) layer on
+        # the half-integer sub-lattice (chunk_map.record_index(True, axis, 0)).
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
 
         # Component 0 takes its coefficient from axis x, 1 from y, 2 from z.
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
@@ -660,105 +716,114 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
         # --- component 0: Ex — own axis x; partners Dy (down y) then Dz (down z)
-        prev0 = tl.load(w0 + idx, mask=live, other=0.0)   # BEFORE the store.
+        prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)   # BEFORE the store.
         gs0 = dfin0
         us0 = tl.load(e0 + idx, mask=live, other=0.0)
         if R01:
-            total0 = _welded_folded_offdiag_term(
+            row0 = tl.cast(gs0 * us0, tl.float64)
+            row0 = _row_add(row0, _welded_folded_offdiag_term(
                 dfin1, tap_yd_1, tap_xu_1, tap_xu_yd_1,
                 u01, idx,
                 ui * nyz + j * nz + k,
-                live, uvx, wy, MG_Y)
+                live, uvx, wy, MG_Y),
+                at_y, at_z, op, c0, 0, WM_Y, WM_Z, P01)
             if R02:
-                total0 = total0 + _welded_folded_offdiag_term(
+                row0 = _row_add(row0, _welded_folded_offdiag_term(
                     dfin2, tap_zd_2, tap_xu_2, tap_xu_zd_2,
                     u02, idx,
                     ui * nyz + j * nz + k,
-                    live, uvx, wz, MG_Z)
-            src0 = _masked_row_sum(gs0 * us0, total0, at_y, at_z, WM_Y, WM_Z)
+                    live, uvx, wz, MG_Z),
+                    at_y, at_z, op, c0, 1, WM_Y, WM_Z, P02)
+            src0 = tl.cast(row0, tl.float32)
         else:
             if R02:
-                total0 = _welded_folded_offdiag_term(
+                row0 = tl.cast(gs0 * us0, tl.float64)
+                row0 = _row_add(row0, _welded_folded_offdiag_term(
                     dfin2, tap_zd_2, tap_xu_2, tap_xu_zd_2,
                     u02, idx,
                     ui * nyz + j * nz + k,
-                    live, uvx, wz, MG_Z)
-                src0 = _masked_row_sum(gs0 * us0, total0, at_y, at_z,
-                                       WM_Y, WM_Z)
+                    live, uvx, wz, MG_Z),
+                    at_y, at_z, op, c0, 1, WM_Y, WM_Z, P02)
+                src0 = tl.cast(row0, tl.float32)
             else:
                 src0 = gs0 * us0
-        tl.store(w0 + idx, src0, mask=live)
-        a0 = tl.load(f0 + idx, mask=live, other=0.0)
-        a0 = a0 + kp_0 * src0
-        a0 = a0 - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=live & dw0)
+        a0 = tl.load(f0 + idx, mask=live & dw0, other=0.0)
+        a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)
         tl.store(f0 + idx, a0, mask=live)
 
         # --- component 1: Ey — own axis y; partners Dz (down z) then Dx (down x)
-        prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+        prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
         gs1 = dfin1
         us1 = tl.load(e1 + idx, mask=live, other=0.0)
         if R11:
-            total1 = _welded_folded_offdiag_term(
+            row1 = tl.cast(gs1 * us1, tl.float64)
+            row1 = _row_add(row1, _welded_folded_offdiag_term(
                 dfin2, tap_zd_2, tap_yu_2, tap_yu_zd_2,
                 u11, idx,
                 i * nyz + uj * nz + k,
-                live, uvy, wz, MG_Z)
+                live, uvy, wz, MG_Z),
+                at_x, at_z, op, c1, 2, WM_X, WM_Z, P11)
             if R12:
-                total1 = total1 + _welded_folded_offdiag_term(
+                row1 = _row_add(row1, _welded_folded_offdiag_term(
                     dfin0, tap_xd_0, tap_yu_0, tap_yu_xd_0,
                     u12, idx,
                     i * nyz + uj * nz + k,
-                    live, uvy, wx, MG_X)
-            src1 = _masked_row_sum(gs1 * us1, total1, at_x, at_z, WM_X, WM_Z)
+                    live, uvy, wx, MG_X),
+                    at_x, at_z, op, c1, 3, WM_X, WM_Z, P12)
+            src1 = tl.cast(row1, tl.float32)
         else:
             if R12:
-                total1 = _welded_folded_offdiag_term(
+                row1 = tl.cast(gs1 * us1, tl.float64)
+                row1 = _row_add(row1, _welded_folded_offdiag_term(
                     dfin0, tap_xd_0, tap_yu_0, tap_yu_xd_0,
                     u12, idx,
                     i * nyz + uj * nz + k,
-                    live, uvy, wx, MG_X)
-                src1 = _masked_row_sum(gs1 * us1, total1, at_x, at_z,
-                                       WM_X, WM_Z)
+                    live, uvy, wx, MG_X),
+                    at_x, at_z, op, c1, 3, WM_X, WM_Z, P12)
+                src1 = tl.cast(row1, tl.float32)
             else:
                 src1 = gs1 * us1
-        tl.store(w1 + idx, src1, mask=live)
-        a1 = tl.load(f1 + idx, mask=live, other=0.0)
-        a1 = a1 + kp_1 * src1
-        a1 = a1 - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=live & dw1)
+        a1 = tl.load(f1 + idx, mask=live & dw1, other=0.0)
+        a1 = constitutive_form(a1, prev1, src1, kp_1, km_1, dw1)
         tl.store(f1 + idx, a1, mask=live)
 
         # --- component 2: Ez — own axis z; partners Dx (down x) then Dy (down y)
-        prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+        prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
         gs2 = dfin2
         us2 = tl.load(e2 + idx, mask=live, other=0.0)
         if R21:
-            total2 = _welded_folded_offdiag_term(
+            row2 = tl.cast(gs2 * us2, tl.float64)
+            row2 = _row_add(row2, _welded_folded_offdiag_term(
                 dfin0, tap_xd_0, tap_zu_0, tap_zu_xd_0,
                 u21, idx,
                 i * nyz + j * nz + uk,
-                live, uvz, wx, MG_X)
+                live, uvz, wx, MG_X),
+                at_x, at_y, op, c2, 4, WM_X, WM_Y, P21)
             if R22:
-                total2 = total2 + _welded_folded_offdiag_term(
+                row2 = _row_add(row2, _welded_folded_offdiag_term(
                     dfin1, tap_yd_1, tap_zu_1, tap_zu_yd_1,
                     u22, idx,
                     i * nyz + j * nz + uk,
-                    live, uvz, wy, MG_Y)
-            src2 = _masked_row_sum(gs2 * us2, total2, at_x, at_y, WM_X, WM_Y)
+                    live, uvz, wy, MG_Y),
+                    at_x, at_y, op, c2, 5, WM_X, WM_Y, P22)
+            src2 = tl.cast(row2, tl.float32)
         else:
             if R22:
-                total2 = _welded_folded_offdiag_term(
+                row2 = tl.cast(gs2 * us2, tl.float64)
+                row2 = _row_add(row2, _welded_folded_offdiag_term(
                     dfin1, tap_yd_1, tap_zu_1, tap_zu_yd_1,
                     u22, idx,
                     i * nyz + j * nz + uk,
-                    live, uvz, wy, MG_Y)
-                src2 = _masked_row_sum(gs2 * us2, total2, at_x, at_y,
-                                       WM_X, WM_Y)
+                    live, uvz, wy, MG_Y),
+                    at_x, at_y, op, c2, 5, WM_X, WM_Y, P22)
+                src2 = tl.cast(row2, tl.float32)
             else:
                 src2 = gs2 * us2
-        tl.store(w2 + idx, src2, mask=live)
-        a2 = tl.load(f2 + idx, mask=live, other=0.0)
-        a2 = a2 + kp_2 * src2
-        a2 = a2 - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=live & dw2)
+        a2 = tl.load(f2 + idx, mask=live & dw2, other=0.0)
+        a2 = constitutive_form(a2, prev2, src2, kp_2, km_2, dw2)
         tl.store(f2 + idx, a2, mask=live)
 
 else:  # pragma: no cover - the laptop path
@@ -766,7 +831,6 @@ else:  # pragma: no cover - the laptop path
     _step_cell = None  # type: ignore[assignment]
     _d_final = None  # type: ignore[assignment]
     _welded_folded_offdiag_term = None  # type: ignore[assignment]
-    _masked_row_sum = None  # type: ignore[assignment]
 
 
 def folded_offdiag_fused_curl_constitutive_D_kernel() -> Any:
@@ -891,9 +955,9 @@ class FoldedOffdiagFusedElectricPairPlan(ScratchWeldPairPlan):
     """
 
     __slots__ = ("dtdx", "backward", "bc", "zero_metal", "wall_mask", "row_mask",
-                 "mirror_axes", "phases", "ghost_weights", "_sources", "_pml",
-                 "_e_targets", "_aux", "_inv_eps", "_rows", "_coeff", "_kernel",
-                 "_pointer")
+                 "mirror_axes", "phases", "ghost_weights", "presence",
+                 "presence_varies", "_sources", "_pml", "_e_targets", "_aux",
+                 "_inv_eps", "_rows", "_coeff", "_op", "_kernel", "_pointer")
 
     replaces = REPLACES
 
@@ -905,11 +969,12 @@ class FoldedOffdiagFusedElectricPairPlan(ScratchWeldPairPlan):
                  e_targets: Sequence[Any], aux: Sequence[Any],
                  inverse_epsilon: Sequence[Any], rows: Sequence[Any],
                  coefficients: Sequence[Any], kernel: Any = None,
-                 num_warps: Optional[int] = 1) -> None:
+                 num_warps: Optional[int] = 1, *, chunk_bounds: Any,
+                 presence: Any) -> None:
         from .launch import CupyPointer, _flat  # noqa: PLC0415
 
         super().__init__(FAMILY, fields, twins, ROTATED, shape, block, REPLACES,
-                         num_warps=num_warps)
+                         num_warps=num_warps, chunk_bounds=chunk_bounds)
         self.dtdx = float(dtdx)
         self.backward = BACKWARD
         self.bc = tuple(int(code) for code in codes)
@@ -958,6 +1023,9 @@ class FoldedOffdiagFusedElectricPairPlan(ScratchWeldPairPlan):
                 "no off-diagonal row slot survives; that configuration is the "
                 "plain folded fused pair's and the predicate refuses it first")
         self.row_mask = tuple(1 if row is not None else 0 for row in rows)
+        self.presence_varies, self.presence, self._op = bind_presence(
+            presence, self.shape, self.row_mask, tuple(e_targets)[0],
+            f"the {FAMILY} weld plan")
         self._rows = tuple(
             CupyPointer(row) if row is not None
             else CupyPointer(tuple(e_targets)[index // 2])
@@ -977,15 +1045,18 @@ class FoldedOffdiagFusedElectricPairPlan(ScratchWeldPairPlan):
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
         scratch = [self._pointer(array) for array in writes]
         prior = [self._pointer(array) for array in reads]
+        varies = self.presence_varies
         kernel[self._grid](
             *scratch, *prior, *self._sources, *self._pml,
             *self._e_targets, *self._aux, *self._inv_eps, *self._rows,
-            *self._coeff, *self.ghost_weights,
+            *self._coeff, *self.ghost_weights, self._cb, self._op,
             nx, ny, nz, self.n_elem, self.dtdx,
             BACKWARD=self.backward,
             R01=self.row_mask[0], R02=self.row_mask[1],
             R11=self.row_mask[2], R12=self.row_mask[3],
             R21=self.row_mask[4], R22=self.row_mask[5],
+            P01=varies[0], P02=varies[1], P11=varies[2], P12=varies[3],
+            P21=varies[4], P22=varies[5], PRESENCE=int(any(varies)),
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
             MG_X=self.mirror_axes[0], MG_Y=self.mirror_axes[1],
             MG_Z=self.mirror_axes[2],
@@ -1003,7 +1074,7 @@ class FoldedOffdiagFusedElectricPairPlan(ScratchWeldPairPlan):
         return (f"FoldedOffdiagFusedElectricPairPlan(shape={self.shape}, "
                 f"bc={self.bc}, mirror={self.mirror_axes}, phases={self.phases}, "
                 f"zero_metal={self.zero_metal}, row_mask={self.row_mask}, "
-                f"block={self.block})")
+                f"presence={self.presence_varies}, block={self.block})")
 
 
 def _refuse_aliases(family: str, twins, sources, e_targets, aux,
@@ -1056,9 +1127,16 @@ def _refuse_aliases(family: str, twins, sources, e_targets, aux,
 
 def plan_folded_offdiag_fused_electric_pair(
         fields: Any, pml: Any, sources: Any = None, block: Optional[int] = None,
-        num_warps: Optional[int] = 1, kernel: Any = None,
+        num_warps: Optional[int] = 1, kernel: Any = None, chunk_layout: Any = None,
         ) -> Optional[FoldedOffdiagFusedElectricPairPlan]:
-    """Build the plan from the engine's own objects, or ``None`` when refused."""
+    """Build the plan from the engine's own objects, or ``None`` when refused.
+
+    ``chunk_layout`` is the run's chunk division (``FdtdDriver.chunk_layout``),
+    ``None`` for the one-rank default; the plan binds its record
+    (``launch.chunk_bounds_for``), which the constitutive half reads. The presence
+    of each row slot is the array path's own (``offdiag_update_e.presence_for``).
+    """
+    from .launch import chunk_bounds_for  # noqa: PLC0415
     if not folded_offdiag_fused_electric_pair_coverage(
             fields, pml, sources).covered:
         return None
@@ -1087,6 +1165,8 @@ def plan_folded_offdiag_fused_electric_pair(
         [getattr(pml, f"{stem}_{axis}_h")
          for axis in "xyz" for stem in ("kps", "kms")],
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        presence=presence_for(fields, pml),
     )
 
 
@@ -1096,15 +1176,16 @@ def plan_folded_offdiag_fused_electric_pair_from_arrays(
         zero_metal: Sequence[bool], wall_mask: Sequence[int],
         phases: Sequence[int], ghost_weights: Sequence[float],
         rows: Sequence[Any], fields: Any, block: Optional[int] = None,
-        kernel: Any = None, num_warps: Optional[int] = 1
-        ) -> FoldedOffdiagFusedElectricPairPlan:
+        kernel: Any = None, num_warps: Optional[int] = 1, *, chunk_bounds: Any,
+        presence: Any) -> FoldedOffdiagFusedElectricPairPlan:
     """Build from bare device arrays — the gate's route.
 
     ``fields`` is the object whose attributes the ROTATION swaps; the gate
     passes a namespace holding the six rotating volumes under the engine's own
     names, so the rotation the gate exercises is the rotation the engine gets.
     ``kernel=`` carries the mutation override and dropping it disarms every
-    mutation leg.
+    mutation leg. ``chunk_bounds`` and ``presence``
+    (``offdiag_update_e.presence_record`` or ``ALL_PRESENT``) have no default.
     """
     shape = tuple(int(n) for n in arrays[CURL_TARGETS[0]].shape)
     twins = {name: arrays["scratch_" + name] for name in ROTATED}
@@ -1120,5 +1201,6 @@ def plan_folded_offdiag_fused_electric_pair_from_arrays(
         rows,
         [constitutive_flat[f"{stem}_{axis}"]
          for axis in "xyz" for stem in ("kps", "kms")],
-        kernel=kernel, num_warps=num_warps,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
+        presence=presence,
     )

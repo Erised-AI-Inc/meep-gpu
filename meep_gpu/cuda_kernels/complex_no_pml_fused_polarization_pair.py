@@ -155,10 +155,11 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "stored to global and reloaded is the identity on the bits."},
     {"line": "    cf_store(p_out, idx, ade_step(\n"
              "        cf_load(p_now, idx), cf_load(p_prev, idx), "
-             "cf_load(drive, idx),\n        sigma[idx], c_now, c_prev, c_drive));",
+             "cf_load(drive, idx),\n"
+             "        sigma[idx], two_minus_od, gamma1, omega0dtsqr, gamma1inv));",
      "became": "    cf_store(p_out_i, idx, ade_step(\n"
                "        cf_load(a_i, idx), cf_load(p_prev_i, idx), ev,\n"
-               "        sigma_i[idx], c_now_i, c_prev_i, c_drive_i));",
+               "        sigma_i[idx], two_minus_od_i, gamma1_i, omega0dtsqr_i, gamma1inv_i));",
      "why": "per-pole renames plus THE SEAM: the drive load becomes the "
             "register the E half just stored (fields.drive_field(c) IS the "
             "stored E without an absorber), and p_now becomes the bank slot "
@@ -192,10 +193,10 @@ _COMPONENTS: Tuple[Tuple[str, str, str, str], ...] = (
 # THE LIFT
 # =============================================================================
 
-def _certified_store_line(component_index: int, arm) -> str:
+def _certified_store_line(component_index: int) -> str:
     """The certified stored-E line for ONE component, lifted verbatim.
 
-    Read from the certified emission itself (``kernel_source('update_E', arm)``)
+    Read from the certified emission itself (``kernel_source('update_E')``)
     so a gate mutation of the family's template reaches this weld, and asserted
     to appear exactly once.
     """
@@ -206,7 +207,7 @@ def _certified_store_line(component_index: int, arm) -> str:
     line = (f"    cf_store({f}, idx, mul_field_left(\n"
             f"        minus_poles({g}, {banks}, idx, {count_name}),\n"
             f"        inv_eps_{component_index}[idx]));\n")
-    emission = _family.kernel_source("update_E", arm)
+    emission = _family.kernel_source("update_E")
     if emission.count(line) != 1:
         raise AssertionError(
             f"the certified stored-E emission carries {target}'s store line "
@@ -215,15 +216,15 @@ def _certified_store_line(component_index: int, arm) -> str:
     return line
 
 
-def _certified_recurrence_line(sigma_is_volume: bool, arm) -> str:
+def _certified_recurrence_line(sigma_is_volume: bool) -> str:
     """The certified complex ADE store, lifted verbatim from the emission."""
     key = "update_P" if sigma_is_volume else "update_P_uniform"
     sigma_read = "sigma[idx]" if sigma_is_volume else "sigma"
     line = ("    cf_store(p_out, idx, ade_step(\n"
             "        cf_load(p_now, idx), cf_load(p_prev, idx), "
             "cf_load(drive, idx),\n"
-            f"        {sigma_read}, c_now, c_prev, c_drive));\n")
-    emission = _family.kernel_source(key, arm)
+            f"        {sigma_read}, two_minus_od, gamma1, omega0dtsqr, gamma1inv));\n")
+    emission = _family.kernel_source(key)
     if emission.count(line) != 1:
         raise AssertionError(
             f"the certified {key} emission carries the recurrence store "
@@ -241,10 +242,10 @@ def _replace_once(text: str, old: str, new: str, what: str) -> str:
     return text.replace(old, new, 1)
 
 
-def _prelude(arm) -> str:
-    """The certified family prelude for one arm -- the cf helpers, minus_poles
+def _prelude() -> str:
+    """The certified family prelude -- the cf helpers, minus_poles
     and ade_step, exactly as the certified kernels compile them."""
-    emission = _family.kernel_source("update_E", arm)
+    emission = _family.kernel_source("update_E")
     marker = 'extern "C" __global__ void '
     if emission.count(marker) != 1:
         raise AssertionError(
@@ -283,17 +284,17 @@ def _signature(component_index: int, count: int,
                  else f"float sigma_{i},")
         lines.append(f"    float* __restrict__ p_out_{i}, "
                      f"const float* __restrict__ p_prev_{i}, {sigma}")
-        lines.append(f"    float c_now_{i}, float c_prev_{i}, "
-                     f"float c_drive_{i},")
+        lines.append(f"    float two_minus_od_{i}, float gamma1_{i}, "
+                     f"float omega0dtsqr_{i}, float gamma1inv_{i},")
     lines.append(f"    int {count_name}, int n_elem")
     lines.append(") {")
     return "\n".join(lines) + "\n"
 
 
 def fused_polarization_pair_no_pml_complex_source(
-        arm, component_index: int, count: int,
+        component_index: int, count: int,
         sigma_kinds: Sequence[bool]) -> str:
-    """The whole fused kernel for one arm, one component, one specialization."""
+    """The whole fused kernel for one component, one specialization."""
     if not 0 <= int(component_index) <= 2:
         raise ValueError(f"component_index must be 0..2, got {component_index!r}")
     count = int(count)
@@ -311,7 +312,7 @@ def fused_polarization_pair_no_pml_complex_source(
 
     # THE E HALF: the certified store line, value-named. Same expression tree,
     # same store; the register is what the P half reads.
-    store = _certified_store_line(component_index, arm)
+    store = _certified_store_line(component_index)
     store = _replace_once(
         store, f"    cf_store({f}, idx, mul_field_left(",
         "    cf ev = mul_field_left(", "the certified store's opening")
@@ -321,7 +322,7 @@ def fused_polarization_pair_no_pml_complex_source(
 
     poles: List[str] = []
     for i in range(count):
-        line = _certified_recurrence_line(kinds[i], arm)
+        line = _certified_recurrence_line(kinds[i])
         line = _replace_once(line, "cf_store(p_out, idx,",
                              f"cf_store(p_out_{i}, idx,",
                              "the recurrence's store")
@@ -341,16 +342,16 @@ def fused_polarization_pair_no_pml_complex_source(
         else:
             line = _replace_once(line, "        sigma,", f"        sigma_{i},",
                                  "the uniform sigma bind")
-        line = _replace_once(line, "c_now, c_prev, c_drive",
-                             f"c_now_{i}, c_prev_{i}, c_drive_{i}",
-                             "the recurrence coefficients")
+        line = _replace_once(line, "two_minus_od, gamma1, omega0dtsqr, gamma1inv",
+                             f"two_minus_od_{i}, gamma1_{i}, omega0dtsqr_{i}, gamma1inv_{i}",
+                             "the recurrence constants")
         poles.append(
             f"\n    // pole {i}: dispersion.PolarizationState.update, the "
             f"certified\n    // complex recurrence under this launch's per-pole "
             f"names.\n" + line)
 
     source = "".join((
-        _prelude(arm),
+        _prelude(),
         _signature(component_index, count, kinds),
         "    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n"
         "    if (idx >= n_elem) return;\n"
@@ -369,18 +370,16 @@ def fused_polarization_pair_no_pml_complex_source(
 
 
 def device_sources() -> Dict[str, str]:
-    """Representative sources for a digest: both arms, all components, the
-    corpus-relevant counts and both sigma forms."""
+    """Representative sources for a digest: all components, the corpus-relevant
+    counts and both sigma forms."""
     out: Dict[str, str] = {}
-    for arm_name in ("NAIVE", "FMA_V1"):
-        for component in (0, 1, 2):
-            for count in (0, 1, 2):
-                for kinds in sorted({tuple([True] * count),
-                                     tuple([False] * count)}):
-                    key = (f"{KERNEL_NAME}|arm{arm_name}|c{component}|n{count}|"
-                           f"{''.join('v' if kind else 'u' for kind in kinds)}")
-                    out[key] = fused_polarization_pair_no_pml_complex_source(
-                        arm_name, component, count, kinds)
+    for component in (0, 1, 2):
+        for count in (0, 1, 2):
+            for kinds in sorted({tuple([True] * count), tuple([False] * count)}):
+                key = (f"{KERNEL_NAME}|c{component}|n{count}|"
+                       f"{''.join('v' if kind else 'u' for kind in kinds)}")
+                out[key] = fused_polarization_pair_no_pml_complex_source(
+                    component, count, kinds)
     return out
 
 
@@ -393,7 +392,7 @@ def _clear_kernel_cache() -> int:
     return compile_cache.clear_kernel_cache()
 
 
-def _get_kernel(arm, component_index: int, count: int,
+def _get_kernel(component_index: int, count: int,
                 sigma_kinds: Sequence[bool]):
     """Compile one specialization, memoized on (name, options, policy, source)."""
     if cp is None:
@@ -401,7 +400,7 @@ def _get_kernel(arm, component_index: int, count: int,
             "CuPy is not importable on this host, so this kernel cannot be "
             "compiled; the predicate and the emitter need no device and still run")
     code = fused_polarization_pair_no_pml_complex_source(
-        arm, component_index, count, sigma_kinds)
+        component_index, count, sigma_kinds)
     kinds = "".join("v" if bool(kind) else "u" for kind in sigma_kinds)
     key = compile_cache.kernel_cache_key(
         f"{KERNEL_NAME}_c{component_index}_n{count}_{kinds}", True,
@@ -517,7 +516,7 @@ def assert_disjoint_bindings(fields: Any, target: str,
 
 
 def launch_complex_no_pml_fused_polarization_component(
-        fields: Any, arm, target: str, states: Sequence[Any],
+        fields: Any, target: str, states: Sequence[Any],
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """ONE component's fused launch. The caller rotates afterwards."""
     spec = {t: i for i, (t, _d, _s, _c) in enumerate(_COMPONENTS)}
@@ -559,29 +558,29 @@ def launch_complex_no_pml_fused_polarization_component(
                 f"launch walks {n_elem}; the certified update_P guard this weld "
                 f"drops was that size, and dropping it is licensed only where "
                 f"the two are one number")
-        coefficients = tuple(state._coefficients)
-        if len(coefficients) != 3:
+        constants = tuple(state.constants)
+        if len(constants) != 4:
             raise ValueError(
-                f"a polarization carries {len(coefficients)} recurrence "
-                f"coefficients, not the (c_now, c_prev, c_drive) triple this "
-                f"kernel bakes as scalars")
+                f"a polarization carries {len(constants)} recurrence constants, "
+                f"not the four realnum words (two_minus_od, gamma1, omega0dtsqr, "
+                f"gamma1inv) this kernel takes as scalars")
         arguments.append(word_view(scratch))
         arguments.append(word_view(state.P_prev[target]))
         sigma = state.sigma[target]
         arguments.append(sigma if kinds[i] else np.float32(sigma))
-        arguments.extend(np.float32(value) for value in coefficients)
+        arguments.extend(np.float32(value) for value in constants)
     arguments.append(np.int32(count))
     arguments.append(np.int32(n_elem))
 
     blocks = (n_elem + _FUSED_THREADS - 1) // _FUSED_THREADS
-    (kernel or _get_kernel(arm, component_index, count, kinds))(
+    (kernel or _get_kernel(component_index, count, kinds))(
         (blocks,), (_FUSED_THREADS,), tuple(arguments))
     return {"component": target, "poles": count, "kinds": list(kinds),
             "blocks": blocks, "threads": _FUSED_THREADS, "elements": n_elem}
 
 
 def run_complex_no_pml_fused_polarization_pair(
-        fields: Any, pml: Any, arm, *,
+        fields: Any, pml: Any, *,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Both of :data:`REPLACES` in THREE launches, host rotation between.
 
@@ -597,7 +596,7 @@ def run_complex_no_pml_fused_polarization_pair(
         spec = component_specs(fields)[target]
         states = spec["states"]
         result = launch_complex_no_pml_fused_polarization_component(
-            fields, arm, target, states, kernel)
+            fields, target, states, kernel)
         launches += 1
         recurrences += len(states)
         per_component.append(result)
@@ -648,8 +647,7 @@ def _seam_clauses(fields: Any) -> Optional[str]:
 
 
 def covers_complex_no_pml_fused_polarization_pair(
-        fields: Any, pml: Any, grid: Any, sources: Any = None,
-        license: Any = None, subnormal_policy: Any = None) -> Tuple[bool, str]:
+        fields: Any, pml: Any, grid: Any, sources: Any = None) -> Tuple[bool, str]:
     """May three per-component launches span ``update_E`` -> ``update_P``?
 
     A CONJUNCTION over the ``cuda_complex_no_pml`` family's own two certified
@@ -664,11 +662,11 @@ def covers_complex_no_pml_fused_polarization_pair(
     name; these require it).
     """
     covered, reason = _family.covers_complex_no_pml_stored_e(
-        fields, pml, grid, license, subnormal_policy)
+        fields, pml, grid)
     if not covered:
         return False, f"update_E half: {reason}"
     covered, reason = _family.covers_complex_no_pml_ade_update_p(
-        fields, pml, grid, license, subnormal_policy)
+        fields, pml, grid)
     if not covered:
         return False, f"update_P half: {reason}"
     problem = _seam_clauses(fields)

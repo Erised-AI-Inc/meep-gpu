@@ -57,6 +57,16 @@ CARRIES_DEPOSIT_REPAIR IS FALSE and is forced by the off-diagonal constitutive,
 exactly as on the three siblings. That is the distance between this cell's 2 rows
 and its 1.
 
+THE CHUNK RECORD AND THE PRESENCE WORDS. The lifted lossless curl reads the
+partner-presence word of the chunk record (:mod:`.complex_no_pml_conductive`), so the
+record rides last in ``Params`` (``ChunkBounds cb``), is aliased before the body and
+is passed to ``step_cell`` and every ``d_final_c`` as their last parameter: the
+stencil form is evaluated at the cell being stepped, a re-derived foreign cell
+included. The lifted constitutive half is the single's software-binary64 row per part
+(ruling R7, :mod:`.complex_no_pml_offdiag_update_e`); its six presence words ride in
+``Params`` before the record (``OffdiagPresence kw``, aliased to ``kw``), so the lifted
+presence block reads one name in both kernels.
+
 NOT WIRED AS AN ARM; reached through ``launch.FUSED_PAIR_ARMS``.
 """
 
@@ -69,14 +79,14 @@ from __future__ import annotations
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..triton_kernels.coverage import Coverage
+from . import chunk_bounds as _chunk_bounds
 from . import (complex_no_pml_curl as _curl,
                complex_no_pml_offdiag_update_e as _offdiag_c,
                offdiag_update_e as _offdiag, shaders, templates)
 from .complex_no_pml_conductive import _source_binding
 from . import offdiag_weld_common as _weld
 from .complex_fields import (
-    _complex_mirror, bloch_phase_table, expansion_from_probe,
-    load_expansion_probe, phase_arguments,
+    _complex_mirror, bloch_phase_table, phase_arguments,
 )
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
 from .launch import SUB_STEPS
@@ -119,7 +129,12 @@ STEP_POINTERS: Tuple[Tuple[str, str], ...] = tuple(
 _ACTUALS: Dict[str, str] = {"f0": "pf0", "f1": "pf1", "f2": "pf2"}
 
 STEP_SCALARS: Tuple[Tuple[str, str], ...] = (
-    ("float", "dtdx"), ("float2", "px"), ("float2", "py"), ("float2", "pz"))
+    ("float", "dtdx"), ("float2", "px"), ("float2", "py"), ("float2", "pz"),
+    ("constant ChunkBounds&", "cb"))
+
+#: The record's actual argument, last, wherever ``step_cell`` or ``d_final_c`` is
+#: called.
+RECORD_ACTUAL = ", cb"
 
 STEP_ARGUMENTS = ", " + ", ".join(
     [_ACTUALS.get(name, name) for _kind, name in STEP_POINTERS])
@@ -128,7 +143,7 @@ CALL_ARGUMENTS = (", " + ", ".join(f"{kind} {name}"
                   + ", " + ", ".join(f"{kind} {name}"
                                      for kind, name in STEP_SCALARS))
 FORWARD = (", ".join(_weld.COORDS) + ", nxi, nyi, nzi" + STEP_ARGUMENTS
-           + ", dtdx, px, py, pz")
+           + ", dtdx, px, py, pz" + RECORD_ACTUAL)
 
 #: The per-axis ``(down, up)`` neighbour-index variable names, NARROWED from this
 #: emitter's own EIGHT-member table (which also carries the validity flags, the
@@ -168,13 +183,21 @@ using namespace metal;
 
 __CONTRACT__
 
+__SOFTFP64__
+
 __HELPERS__
+
+__RECORD_STRUCT__
+
+__PRESENCE_STRUCT__
 
 struct Params {
     float2 px; float2 py; float2 pz;
     float2 dpx; float2 dpy; float2 dpz;
     float2 upx; float2 upy; float2 upz;
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
+__PRESENCE_MEMBER__
+__RECORD_MEMBER__
 };
 
 __STEP_CELL__
@@ -211,17 +234,18 @@ kernel void complex_no_pml_offdiag_fused_electric_pair_step(
     float2 px = prm.px, py = prm.py, pz = prm.pz;
     float2 dpx = prm.dpx, dpy = prm.dpy, dpz = prm.dpz;
     float2 upx = prm.upx, upy = prm.upy, upz = prm.upz;
+__RECORD_ALIAS__
+__PRESENCE_ALIAS__
 __BODY__
 }
 """
 
 
 def certified_curl_body(codes: Sequence[int], phased: Sequence[int],
-                        expansion: str,
                         contract: str = shaders.CONTRACT_OFF) -> str:
     """The lossless complex ``step_D`` curl's body as an inline function."""
     source = _curl.complex_no_pml_curl_source(
-        codes, bool(SUB_STEPS["step_D"]["backward"]), phased, expansion, contract)
+        codes, bool(SUB_STEPS["step_D"]["backward"]), phased, contract)
     tail = _weld.lift_curl_tail(source, store_edits=CURL_STORE_EDITS,
                                 decode_end=CURL_DECODE_END)
     # THE LOSSLESS ARM READS NO CONDUCTIVITY, and this asserts it rather than
@@ -242,7 +266,7 @@ def certified_curl_body(codes: Sequence[int], phased: Sequence[int],
 
 def complex_no_pml_offdiag_fused_electric_pair_source(
         row_mask: Sequence[int], codes: Sequence[int], walls: Sequence[int],
-        phased: Sequence[int], expansion: str,
+        phased: Sequence[int],
         contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source."""
     row_mask = tuple(int(flag) for flag in row_mask)
@@ -257,10 +281,10 @@ def complex_no_pml_offdiag_fused_electric_pair_source(
         neighbour_names=NEIGHBOUR_NAMES, index=_offdiag_c._index,
         register="dfin{0}",
         call="d_final_{0}({1}, nxi, nyi, nzi" + STEP_ARGUMENTS
-             + ", dtdx, px, py, pz)")
+             + ", dtdx, px, py, pz" + RECORD_ACTUAL + ")")
     body = _weld.weld_body(
         _offdiag_c.complex_no_pml_offdiag_source(
-            row_mask, codes, walls, phased, expansion, contract),
+            row_mask, codes, walls, phased, contract),
         decode_end=CONSTITUTIVE_DECODE_END,
         seam=_weld.seam_lines(value_type="float2", forward=FORWARD,
                               split_field=False),
@@ -273,8 +297,12 @@ def complex_no_pml_offdiag_fused_electric_pair_source(
         for component in range(3))
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
-        "__STEP_CELL__": certified_curl_body(codes, phased, expansion, contract),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
+        **_offdiag.weld_presence_substitutions(),
+        "__STEP_CELL__": certified_curl_body(codes, phased, contract),
         "__D_FINAL__": finals,
         "__BODY__": body,
     })
@@ -282,11 +310,11 @@ def complex_no_pml_offdiag_fused_electric_pair_source(
 
 def compile_complex_no_pml_offdiag_fused_electric_pair(
         row_mask: Sequence[int], codes: Sequence[int], walls: Sequence[int],
-        phased: Sequence[int], expansion: str,
+        phased: Sequence[int],
         contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised entry point for one configuration."""
     return compile_source(complex_no_pml_offdiag_fused_electric_pair_source(
-        row_mask, codes, walls, phased, expansion, contract)
+        row_mask, codes, walls, phased, contract)
     ).complex_no_pml_offdiag_fused_electric_pair_step
 
 
@@ -345,16 +373,21 @@ def refuted_separate_scalar_source(contract: str = shaders.CONTRACT_OFF) -> str:
 
 def metal_complex_no_pml_offdiag_fused_electric_pair_coverage(
         fields: Any, pml: Any, sources: Any = None, residency: Any = None,
-        probe: Any = None) -> Coverage:
-    """May ONE dispatch span the complex no-PML off-diagonal D/E seam?"""
+        chunk_bounds: Any = None) -> Coverage:
+    """May ONE dispatch span the complex no-PML off-diagonal D/E seam?
+
+    Both halves' predicates (the constitutive half's through ``chunk_bounds``, the
+    record its presence words are read off), the seam's source refusal, no fold and
+    no susceptibility.
+    """
     reasons: List[str] = []
 
     curl = _curl.metal_complex_no_pml_curl_coverage(
-        fields, pml, "step_D", residency, probe)
+        fields, pml, "step_D", residency)
     if not curl.covered:
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
     electric = _offdiag_c.metal_complex_no_pml_offdiag_coverage(
-        fields, pml, residency, probe)
+        fields, pml, residency, chunk_bounds)
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
@@ -400,26 +433,29 @@ def metal_complex_no_pml_offdiag_fused_electric_pair_coverage(
 # The plan
 # ---------------------------------------------------------------------------
 
-PARAMS_ITEMSIZE = 96
+PARAMS_ITEMSIZE = 216
 
 
 def params_record_dtype() -> Any:
-    """The host record — THE NINE ``float2`` MEMBERS FIRST, itemsize 96.
+    """The host record — THE NINE ``float2`` MEMBERS FIRST, itemsize 216.
 
     ONE HOME FOR THE LAYOUT, for the reason
     :func:`.complex_fused_electric_pair.params_record_dtype` gives: getting it
     wrong is a silent wrong answer rather than a crash. Nine ``float2`` at 8-byte
-    alignment fill 0..71, the four uints and ``dtdx`` fill 72..91, and Metal
-    rounds the struct to the 8-byte alignment of its widest member, so the
-    itemsize is 96 where the natural record is 92.
+    alignment fill 0..71, the four uints and ``dtdx`` fill 72..91, the six presence
+    words (:func:`.offdiag_update_e.presence_record_dtype`, alignment 4) fill
+    92..115, and the chunk record (:func:`.chunk_bounds.record_dtype`, 25 four-byte
+    words, alignment 4) fills 116..215. Metal rounds the struct to the 8-byte
+    alignment of its widest member, and 216 is already a multiple of 8.
     """
     import numpy as np  # noqa: PLC0415
 
     phases = ["px", "py", "pz", "dpx", "dpy", "dpz", "upx", "upy", "upz"]
-    names = phases + ["nx", "ny", "nz", "n_elem", "dtdx"]
-    formats = [("<f4", 2)] * len(phases) + ["<u4", "<u4", "<u4", "<u4", "<f4"]
+    names = phases + ["nx", "ny", "nz", "n_elem", "dtdx", "kw", "cb"]
+    formats = ([("<f4", 2)] * len(phases) + ["<u4", "<u4", "<u4", "<u4", "<f4"]
+               + [_offdiag.presence_record_dtype(), _chunk_bounds.record_dtype()])
     offsets = [8 * index for index in range(len(phases))]
-    offsets += [72, 76, 80, 84, 88]
+    offsets += [72, 76, 80, 84, 88, 92, 92 + _offdiag.presence_record_dtype().itemsize]
     return np.dtype({"names": names, "formats": formats, "offsets": offsets,
                      "itemsize": PARAMS_ITEMSIZE})
 
@@ -427,11 +463,15 @@ def params_record_dtype() -> Any:
 def _params_tensor(shape: Sequence[int], dtdx: float,
                    curl_phases: Sequence[Tuple[float, float]],
                    down_phases: Sequence[Tuple[float, float]],
-                   up_phases: Sequence[Tuple[float, float]], device: str) -> Any:
-    """The nine phases and the five scalars as one 96-byte device record."""
+                   up_phases: Sequence[Tuple[float, float]], device: str,
+                   chunk_words: Any, presence: Any) -> Any:
+    """The nine phases, the five scalars, the presence words and the chunk record as
+    one 216-byte record. The presence words are checked by
+    :func:`.offdiag_update_e.presence_plan_words` (required, no default)."""
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
+    words = _offdiag.presence_plan_words(presence, f"{FAMILY} Params")
     record = np.zeros(1, dtype=params_record_dtype())
     nx, ny, nz = (int(n) for n in shape)
     record["nx"], record["ny"], record["nz"] = nx, ny, nz
@@ -441,6 +481,8 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
     for labels, values in zip(groups, (curl_phases, down_phases, up_phases)):
         for label, (real, imag) in zip(labels, tuple(values)):
             record[label] = (np.float32(real), np.float32(imag))
+    record["kw"] = tuple(words)
+    record["cb"] = _chunk_bounds.pack(chunk_words)[0]
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -453,26 +495,29 @@ def plan_metal_complex_no_pml_offdiag_fused_electric_pair(
         fields: Any, pml: Any, sources: Any = None,
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        probe: Any = None,
-        functions: Optional[Mapping[str, Any]] = None,
+        functions: Optional[Mapping[str, Any]] = None, *, chunk_bounds: Any,
         ) -> Optional[_weld.ScratchWeldPairPlan]:
-    """Build the complex no-PML fused off-diagonal plan, or ``None``."""
+    """Build the complex no-PML fused off-diagonal plan, or ``None``.
+
+    ``chunk_bounds`` is the record of the division the run steps with; it rides in
+    ``Params`` and has no default, with the presence words built against it
+    (:func:`.offdiag_update_e.presence_for`).
+    """
     if not metal_complex_no_pml_offdiag_fused_electric_pair_coverage(
-            fields, pml, sources, residency, probe).covered:
-        return None
-    expansion = expansion_from_probe(
-        probe if probe is not None else load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
+            fields, pml, sources, residency, chunk_bounds).covered:
         return None
     import numpy as _np  # noqa: PLC0415
 
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
+    chunk_words = _chunk_bounds.plan_words(
+        chunk_bounds, grid.shape, "plan_metal_complex_no_pml_offdiag_fused_electric_pair")
     kinds = _boundary_kinds(grid, None)
     codes = tuple(templates.METALLIC if kind == "metallic" else templates.PERIODIC
                   for kind in kinds)
     walls = _offdiag_c.wall_mask_axes(grid)
+    presence = _offdiag.presence_for(fields, pml, codes, chunk_words)
     table = bloch_phase_table(grid, kinds)
     phased_down, phase_down = phase_arguments(table, backward=True)
     phased_up, phase_up = phase_arguments(table, backward=False)
@@ -528,12 +573,12 @@ def plan_metal_complex_no_pml_offdiag_fused_electric_pair(
     for mode in contract_variants:
         if mode not in selected:
             selected[mode] = compile_complex_no_pml_offdiag_fused_electric_pair(
-                row_mask, codes, walls, phased_down, expansion, mode)
+                row_mask, codes, walls, phased_down, mode)
 
     dtdx = grid.dt / grid.dx
     static = (list(stored) + list(magnetic) + list(inverse) + list(row_mirrors)
               + [_params_tensor(grid.shape, dtdx, curl_phase, phase_down,
-                                phase_up, residency.device)])
+                                phase_up, residency.device, chunk_words, presence)])
     assert (2 * len(ROTATED_NAMES) + len(static)) == PACKED_BINDINGS, (
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     return _weld.plan_scratch_weld(
@@ -554,7 +599,7 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
             (f"complex no-PML offdiag fused electric pair cannot fill {slot}",))
     return metal_complex_no_pml_offdiag_fused_electric_pair_coverage(
         context.fields, context.pml, context.sources, context.residency,
-        context.extra.get("probe"))
+        getattr(context, "chunk_bounds", None))
 
 
 def _arm_plan(context: Any, slot: str) -> Optional[_weld.ScratchWeldPairPlan]:
@@ -562,7 +607,8 @@ def _arm_plan(context: Any, slot: str) -> Optional[_weld.ScratchWeldPairPlan]:
         return None
     return plan_metal_complex_no_pml_offdiag_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants, context.extra.get("probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

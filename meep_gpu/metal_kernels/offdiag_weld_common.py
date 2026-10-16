@@ -36,8 +36,17 @@ emitter's own output with the displacement loads substituted for register /
 re-derivation reads through exact needles (each asserted to match exactly once).
 The NEW text — the only text these families can be blamed for — is the closed
 form in :func:`d_final_function`, whose arithmetic is the probe's, and whose
-parity spellings are the fills' own measured ones (``-x`` real,
-``c_mul((+/-1, +0), z)`` complex, plain copy for +1 real).
+parity spellings are the fills' own (``-x`` real, plain copy for +1 real, and
+the per-part product ``c_mul_coefficient_left(+/-1, z)`` complex: the array path's
+``part_products.scale`` of the parity).
+
+THE PER-CHUNK FORMS. The lifted curl reads the chunk record, so
+:func:`step_cell_function` takes it (a family passes ``constant ChunkBounds& cb``
+among its scalar parameters) and the select is evaluated at the cell being stepped,
+a re-derived foreign cell included. The curl's auxiliary store is guarded by its
+``dsigu`` membership; the rotating ``fu`` scratch must carry the pre-launch word off
+the recurrence's cells, so each family's store edit moves the guard to the register
+(``n0 = du0 ? n0 : u0[ii]``) and :func:`seam_lines` stores ``n`` on every cell.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -171,17 +180,22 @@ def _apply_parity(value: str, weight: int, *, complex_storage: bool,
 
     Real: ``-x`` for -1 and NO LINE for +1 (a plain copy is the identity; a
     runtime weight flushes subnormals on this backend — symmetry._parity_spelling).
-    Complex: the FULL product ``c_mul((w, +0), z)`` at BOTH signs — the folded
-    complex fill's own arithmetic (folded_complex.mirror_parity_coefficients:
-    the coefficient words are (+/-1.0, +0.0) exactly, and +1 is NOT elided
-    because the fill launches the product there too).
+    Complex: the PER-PART product ``c_mul_coefficient_left(w, z)`` at BOTH signs —
+    the array path's ``part_products.scale(parity, plane)``
+    (``stepping._write_mirror_ghost`` through ``host_writes.copy_face``) and the
+    folded complex fill's own arithmetic (``folded_complex``'s fill body), one
+    float32 product per part; +1 is NOT elided because the fill launches the
+    product there too. The previous spelling, the full complex product
+    ``c_mul((w, +0), z)``, differs from it on signed-zero pairs and is the weld
+    gate's must-catch mutant.
     """
     if not complex_storage:
         if weight == 1:
             return None
         return f"    {value} = {guard} ? -{value} : {value};"
-    word = f"float2({float(weight):.1f}f, 0.0f)"
-    return f"    {value} = {guard} ? c_mul({word}, {value}) : {value};"
+    word = f"{float(weight):.1f}f"
+    return (f"    {value} = {guard} ? c_mul_coefficient_left({word}, {value})"
+            f" : {value};")
 
 
 def d_final_function(component_index: int, *, step_name: str,

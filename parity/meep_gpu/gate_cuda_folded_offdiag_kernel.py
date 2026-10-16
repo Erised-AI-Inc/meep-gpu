@@ -402,6 +402,7 @@ def slice_module():
 _SCAFFOLDING: Tuple[str, ...] = (
     'extern "C" __global__', "float* __restrict__", "const float*",
     "int nx, int ny, int nz,", "int bc_x", "int wm_x", "float gw_x",
+    "const int* __restrict__ cb", "int kept_",
     "int idx = blockIdx.x", "if (idx >= nx * ny * nz) return;",
     "int nyz = ny * nz;", "int k = idx % nz;", "int j = (idx / nz) % ny;",
     "int i = idx / (ny * nz);", "int di = coord_dn", "int dj = coord_dn",
@@ -421,9 +422,11 @@ def evaluator_blind_lines(text: str) -> List[str]:
     backends' catch tables differ and why both are reported.
     """
     tests = slice_module()
-    grammar = (tests._TERM_CALL, tests._TOTAL_FIRST, tests._TOTAL_ADD,
-               tests._MASK, tests._LANE, tests._GS, tests._US,
-               tests._SRC_COUPLED, tests._SRC_PLAIN, tests._TAIL)
+    grammar = (tests._TERM_CALL, tests._MASK, tests._LANE, tests._GS, tests._US,
+               tests._ROW_START, tests._ROW_ADD, tests._SRC_ROW, tests._SRC_PLAIN,
+               tests._TAIL)
+    pinned_blocks = (tests.offdiag_emitter.RECORD_BLOCK
+                     + tests.offdiag_emitter.CHUNK_LINES).split("\n")
     body = text[text.index('extern "C"'):]
     covered = set()
     for pattern in grammar:
@@ -437,6 +440,8 @@ def evaluator_blind_lines(text: str) -> List[str]:
         if not stripped or stripped.startswith("//"):
             continue
         if span & covered:
+            continue
+        if line in pinned_blocks:
             continue
         if any(token in line for token in _SCAFFOLDING):
             continue
@@ -510,13 +515,13 @@ class EvaluatorBackend:
         return self.source_transform(text)
 
     def launch(self, fields, layer, rows, mask, tables, codes, walls,
-               weights) -> None:
+               weights, record, kept) -> None:
         text, _sites = self.source_for(mask)
         self.sources_used[str(tuple(mask))] = hashlib.sha256(
             text.encode("utf-8")).hexdigest()
         slice_module().evaluate_folded_source(
             text, flat.device_arrays(fields, rows), tables, codes, walls,
-            weights, tuple(fields.grid.shape))
+            weights, tuple(fields.grid.shape), record, kept)
 
     def compile_log(self) -> List[Dict[str, Any]]:
         return []
@@ -573,7 +578,7 @@ class KernelBackend:
         return self.source_transform(text)
 
     def launch(self, fields, layer, rows, mask, tables, codes, walls,
-               weights) -> None:
+               weights, record, kept) -> None:
         key = tuple(mask)
         text, _sites = self.source_for(key)
         if self.source_transform is not None:
@@ -583,7 +588,8 @@ class KernelBackend:
         self.sources_used[str(key)] = hashlib.sha256(
             text.encode("utf-8")).hexdigest()
         folded.update_E_folded_offdiag_fused_pml_real(
-            fields, tables=tables, codes=codes, walls=walls, weights=weights)
+            fields, tables=tables, codes=codes, walls=walls, weights=weights,
+            chunk_bounds=cp.asarray(np.asarray(record, dtype=np.int32)), kept=kept)
         cp.cuda.runtime.deviceSynchronize()
 
     def compile_log(self) -> List[Dict[str, Any]]:
@@ -621,8 +627,7 @@ def build_backend(name: str):
 # only tested its own delta would certify a body it never checked.
 
 _MIRROR_BRANCH = "if (bc == BC_MIRROR) return MIRROR_ROW;"
-_TERM_RETURN = ("return 0.25f * ((near_pair * u[home])"
-                " + (far_pair * ghosted(u, up)));")
+_TERM_RETURN = "return (near_pair * u[home]) + (far_pair * ghosted(u, up));"
 _GHOST_RETURN = "return mg ? (w * value) : value;"
 
 
@@ -715,22 +720,23 @@ def m_couple_the_wrong_components(text):
 
 
 def m_drop_a_row_from_the_volume_sum(text):
-    """One partner's term silently missing from a component's total. Half a
-    tensor: the remaining term is right, the field stays smooth, the anisotropy is
-    wrong."""
-    return _sub(r"\n    total_(\w+) = total_\1 \+ term_\w+;", "", text)
+    """One partner's term silently missing from a component's row (the cycle-2
+    partner's add). Half a tensor: the remaining term is right, the field stays
+    smooth, the anisotropy is wrong."""
+    return _sub(r"\n    if \(chunk_keeps\(kept_\w+, chunk_(\w+)\)\) row_\1 = row_\1 \+ "
+                r"\(0\.25 \* \(double\)term_\1_1\);", "", text)
 
 
 def m_invert_the_wall_mask(text):
     """The metallic wall-coupling select inverted: kept at the wall, zeroed
     inside."""
-    return _sub(r"\? 0\.0f : total_(\w+);", r"? total_\1 : 0.0f;", text)
+    return _sub(r"\? 0\.0f : term_(\w+);", r"? term_\1 : 0.0f;", text)
 
 
 def m_drop_the_wall_mask(text):
     """The mask never applied. Its discriminator: a NULL on a grid that declares
     no metallic axis a live row masks against."""
-    return _sub(r"\n *total_\w+ = \(wm_[xyz] && at_[xyz]\) \? 0\.0f : total_\w+;",
+    return _sub(r"\n *term_\w+ = \(wm_[xyz] && at_[xyz]\) \? 0\.0f : term_\w+;",
                 "", text)
 
 
@@ -739,8 +745,22 @@ def m_hoist_the_coefficient(text):
     uniform coefficient, and a different float32 number even then. The family's
     one genuinely new arithmetic element in the certified round, carried here
     because this kernel emits it."""
-    return _replace(_TERM_RETURN,
-                    "return 0.25f * ((near_pair + far_pair) * u[home]);", text)
+    return _replace(_TERM_RETURN, "return (near_pair + far_pair) * u[home];", text)
+
+
+def m_row_in_float32(text):
+    """The row summed and scaled in float32, the package's arithmetic until 0.10."""
+    out, hits = _sub(r"double row_(\w+) = ", r"float row_\1 = ", text)
+    out, more = _sub(r"\(0\.25 \* \(double\)term_(\w+)\)", r"(0.25f * term_\1)", out)
+    return out, hits + more
+
+
+def m_previous_tail_grouping(text):
+    """The constitutive grouping until 0.10, ``(f + kps*src) - kms*prev`` (the
+    inversion of the leg that planted MEEP's grouping)."""
+    return _replace(
+        "float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;",
+        "float value = dsigw ? ((f[idx] + (kps * src)) - (kms * prev)) : src;", text)
 
 
 def m_same_direction_shifts(text):
@@ -759,13 +779,13 @@ def m_wrong_own_axis_table(text):
                 text)
 
 
-def n_distribute_the_quarter(text):
-    """NULL: 0.25 is an exact power of two, so scaling by it commutes with
-    round-to-nearest AWAY FROM UNDERFLOW. Armed on the uniform class only, and the
-    record says so rather than implying it is a null everywhere."""
-    return _replace(_TERM_RETURN,
-                    "return (0.25f * (near_pair * u[home]))"
-                    " + (0.25f * (far_pair * ghosted(u, up)));", text)
+def n_scale_the_quarter_in_float32(text):
+    """NULL: the term's float32 sum scaled by ``0.25f`` in float32 and widened. 0.25
+    is an exact power of two, so that is the double scale's word AWAY FROM
+    UNDERFLOW. Armed on the uniform class only, and the record says so rather than
+    implying it is a null everywhere."""
+    return _sub(r"\(0\.25 \* \(double\)term_(\w+)\)", r"(double)(0.25f * term_\1)",
+                text)
 
 
 def n_commute_the_near_product(text):
@@ -793,7 +813,9 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "hoist_the_coefficient": m_hoist_the_coefficient,
     "same_direction_shifts": m_same_direction_shifts,
     "wrong_own_axis_table": m_wrong_own_axis_table,
-    "distribute_the_quarter": n_distribute_the_quarter,
+    "row_in_float32": m_row_in_float32,
+    "previous_tail_grouping": m_previous_tail_grouping,
+    "scale_the_quarter_in_float32": n_scale_the_quarter_in_float32,
     "commute_the_near_product": n_commute_the_near_product,
 }
 
@@ -801,7 +823,7 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
 #: editing the same kind of expression that must be caught, because a battery of
 #: only-must-be-caught legs scores identically whether the comparator works or has
 #: degenerated into failing everything.
-NULL_MUTATIONS: Tuple[str, ...] = ("distribute_the_quarter",
+NULL_MUTATIONS: Tuple[str, ...] = ("scale_the_quarter_in_float32",
                                    "commute_the_near_product")
 
 #: Defects that can only bite where a folded axis is a live slot's PARTNER, which
@@ -1018,13 +1040,16 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     flat.restore(fields, frozen)
     backend.set_guard(guard)
     tables = flat.half_integer_tables(layer)
+    # The chunk record and the presence words, derived as the launcher derives them
+    # from the UNMUTATED codes (the constitutive's own reading of the grid).
+    record, kept = slice_module().chunk_arguments(fields, layer, codes)
     tables, launch_codes, launch_walls, launch_weights = apply_host_mutation(
         host_mutation, layer, grid, tables, codes, walls, weights)
     launch_error = None
     try:
         for _ in range(steps):
             backend.launch(fields, layer, rows, mask, tables, launch_codes,
-                           launch_walls, launch_weights)
+                           launch_walls, launch_weights, record, kept)
             flat.advance_sources(fields)
     except Exception as exc:  # noqa: BLE001 - a refusal is a result, recorded
         launch_error = f"{type(exc).__name__}: {exc}"[:600]
@@ -1305,7 +1330,7 @@ def expected_caught(name: str, case: Dict[str, Any]) -> bool:
         return bool(case["fold_reaches_the_own_arm"])
     if name == "reverse_folded_axis_coefficients":
         return bool(case["fold_axes"])
-    if name == "drop_a_row_from_the_volume_sum":
+    if name in TWO_TERM_MUTATIONS:
         return sum(case["row_mask"][0:2]) == 2 or sum(case["row_mask"][2:4]) == 2 \
             or sum(case["row_mask"][4:6]) == 2
     return True
@@ -1316,8 +1341,15 @@ def expected_caught(name: str, case: Dict[str, Any]) -> bool:
 BOTH_SLOTS_MASKS = {(1, 1, 1, 1, 1, 1), (1, 1, 0, 0, 0, 0)}
 
 
+#: Defects only a component with BOTH slots live can show: dropping the second term, and
+#: the row summed in float32 -- a one-term row is ONE rounding of an exact double sum
+#: either way, so the float32 row differs from MEEP's double row only where a component
+#: adds two terms.
+TWO_TERM_MUTATIONS: Tuple[str, ...] = ("drop_a_row_from_the_volume_sum", "row_in_float32")
+
+
 def leg_armable(name: str, entry: Dict[str, Any]) -> bool:
-    if name == "drop_a_row_from_the_volume_sum":
+    if name in TWO_TERM_MUTATIONS:
         return tuple(entry["mask_spec"]["mask"]) in BOTH_SLOTS_MASKS
     return True
 

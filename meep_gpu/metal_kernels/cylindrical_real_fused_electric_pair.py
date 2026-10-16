@@ -21,7 +21,7 @@ PLATFORM refusal rather than a structural one::
 OVER BY EXACTLY ONE POINTER. Its magnetic twin fits with two to spare (28 pointers)
 because the H constitutive brings no inverse-permeability volume; on the E side the
 three inverse-epsilon volumes are real and the same cylindrical curl half — whose
-sixteenth pointer is the radial prefix ``pfx`` — puts the pair one over.
+sixteenth pointer is the radial difference ``rad`` — puts the pair one over.
 
 WHAT MOVED IS NOT THE CEILING. :data:`.device.MAX_BUFFER_BINDINGS` is 31 and stays
 31; this file measures it again rather than citing it. What changed is the SIGNATURE:
@@ -31,15 +31,15 @@ pack is a NEW step on this backend and why it costs nothing here. The pair binds
 pointers where the unpacked shape needs 31, and both numbers are COMPILED rather than
 counted (:data:`UNPACKED_POINTER_BINDINGS`, :data:`PACKED_BINDINGS`).
 
-THE PREFIX IS DELIBERATELY NOT IN THE PACK, and that is the one design decision here
-worth stating twice. ``pfx`` is the only member of the curl half's read-only set that
-the DEVICE writes — the radial scan fills it in the launch immediately before this
-one. Folding it into the same allocation as the coefficient vectors would have saved
+THE RADIAL DIFFERENCE IS DELIBERATELY NOT IN THE PACK, and that is the one design
+decision here worth stating twice. ``rad`` is the only member of the curl half's
+read-only set that the DEVICE writes — the radial scan fills it in the launch
+immediately before this one. Folding it into the same allocation as the coefficient vectors would have saved
 a seventh pointer and created a hazard nothing in this package could catch: a wrong
 offset in the SCAN would overwrite a PML coefficient vector, permanently (a constant
 mirror is uploaded once and never refreshed) and silently (an absorber that leaks a
-little is a plausible field). The pack is read-only by construction; the prefix keeps
-its own binding.
+little is a plausible field). The pack is read-only by construction; the radial
+difference keeps its own binding.
 
 ===========================================================================
 ALL THREE ROWS DECLARE AN ELECTRIC SOURCE
@@ -91,9 +91,9 @@ WHAT IS CYLINDRICAL HERE, AND WHAT IS NOT
 ===========================================================================
 
 **The curl half is deeply cylindrical, and more so than the magnetic twin's.** Three
-things absent at ``step_B`` are live at ``step_D``: ``Dz``'s curl takes the BACKWARD
-difference of the radial prefix (the four-operand grouping, not ``Bz``'s two-operand
-forward difference); the ownership mask is the D family's; and the m = 0 axis tail is
+things absent at ``step_B`` are live at ``step_D``: ``Dz``'s curl is ``dtdx`` times
+the BACKWARD per-chunk radial difference (``Bz``'s is the forward one); the ownership
+mask is the D family's; and the m = 0 axis tail is
 ``_cylindrical_axis_zero_D`` — ``Dz[0] += (4*Courant)*Hp[0]`` as a POST-ADD, then
 ``Dp[0] = 0``. All three are the certified emitter's own text, lifted.
 
@@ -104,13 +104,13 @@ product inherits rather than an assumption it makes:
 coefficient tables indexed on the component's own axis.
 
 ===========================================================================
-THE PREFIX IS UPSTREAM OF THE SEAM, and the fusion is the SECOND launch
+THE RADIAL SUM IS UPSTREAM OF THE SEAM, and the fusion is the SECOND launch
 ===========================================================================
 
 The radial scan runs ON THE DEVICE on this backend and BEFORE the curl, so no
 dispatch straddles it. This plan is TWO dispatches per run — the scan, then the fused
 curl+wall+constitutive — where the separate composition is THREE. ``launches`` counts
-kernel launches and not ``run`` calls, and :attr:`prefix_launches` and
+kernel launches and not ``run`` calls, and :attr:`scan_launches` and
 :attr:`fused_launches` are carried apart so "the scan ran and the fused kernel did
 not" is distinguishable from "the plan ran once".
 
@@ -124,6 +124,12 @@ lets the installer bracket this launch with the deposit repair, and a Metal fami
 that flipped :data:`CARRIES_DEPOSIT_REPAIR` without it would be claiming a bracket the
 seam loop refuses to build. ``meep_gpu.fastpath.plan_fast_path`` still returns ``None``
 on every branch, so no default run reaches this plan.
+
+THE RELEASE RECORD BELOW DESCRIBES THE EARLIER SHAPE: a single radial prefix with a
+divided increment and no chunk record. Since the array path steps MEEP's cylindrical
+forms (bit_parity_0_10 AP6c) this kernel reads the per-chunk radial difference and
+carries the chunk record; the shipped bytes moved, the ledger entry still pins the
+released ones, and the certification round re-gates them.
 
 DEVICE STATUS: **RELEASED 2026-08-31** on this host (Apple GPU via MPS, torch 2.10.0)
     under the ``flush`` subnormal policy the backend can honour, with the
@@ -162,8 +168,8 @@ DEVICE STATUS: **RELEASED 2026-08-31** on this host (Apple GPU via MPS, torch 2.
     grid; here ``c_y`` IS ``c`` — phi is the one-cell invariant axis — so it came back
     0 differing words, while the same edit on target 1, whose pair is (z, r) and both
     live, diverges. Dropping the r ownership mask on ``Dz`` moves nothing, because
-    that curl's radial pair is (prefix[0], the metallic zero ghost) and prefix row 0
-    is an exact ``+0.0``; the same edit on ``Dy`` is caught. And the two PHI OFFSET
+    the D side's radial difference is written ``+0.0`` on row 0 by the array path's
+    own sum; the same edit on ``Dy`` is caught. And the two PHI OFFSET
     swaps are null because ``kms_y`` and ``sinv_y`` are each ONE element holding
     exactly ``1.0f`` — the phi axis carries no PML — while the SAME two offsets moved
     the other way, into a neighbouring vector, are caught. Each pairing is what stops
@@ -181,15 +187,19 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from ..triton_kernels.coverage import Coverage
 from . import coefficient_pack, shaders, templates
 from .coverage import zero_metal_axes
+from . import chunk_bounds as _chunk_bounds
 from .cylindrical_real import (
     METALLIC,
+    SCAN_TARGETS,
+    axis_coefficient,
     boundary_codes,
-    compile_cylindrical_prefix,
+    compile_scan,
     cylindrical_curl_source,
     cylindrical_real_constitutive_coverage,
     cylindrical_real_curl_coverage,
+    int32_tensor,
     prefix_row_vectors,
-    scan_rows,
+    scan_starts,
     scratch_mirror,
 )
 from .device import Residency, compile_source
@@ -293,7 +303,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 #: THE BUFFER ORDER IS ``fused_electric_pair``'s, GROUP FOR GROUP, with two
-#: differences and no others: the radial prefix sits immediately after the curl's
+#: differences and no others: the radial difference sits immediately after the curl's
 #: three sources (where the magnetic twin puts it), and the six curl coefficient
 #: vectors have become the ONE ``cpml`` pack in the slot the first of them held.
 _TEMPLATE = r"""
@@ -302,10 +312,12 @@ using namespace metal;
 
 __CONTRACT__
 
+__RECORD_STRUCT__
+
 struct Params {
     uint nx; uint ny; uint nz; uint n_elem; float dtdx; float axis_coef;
 __PACK_FIELDS__
-};
+__RECORD_MEMBER__ };
 
 kernel void cyl_real_fused_electric_pair_step(
     device float*       f0      [[buffer(0)]],
@@ -317,7 +329,7 @@ kernel void cyl_real_fused_electric_pair_step(
     device const float* g0      [[buffer(6)]],
     device const float* g1      [[buffer(7)]],
     device const float* g2      [[buffer(8)]],
-    device const float* pfx     [[buffer(9)]],
+    device const float* rad     [[buffer(9)]],
     device float*       e0      [[buffer(10)]],
     device float*       e1      [[buffer(11)]],
     device float*       e2      [[buffer(12)]],
@@ -348,10 +360,14 @@ kernel void cyl_real_fused_electric_pair_step(
     (void)axis_coef;   // read by the D-side axis tail; bound for one layout.
 
     // --- the curl half's PML coefficient vectors, one allocation, six offsets ---
-    // READ-ONLY: nothing on the device writes `cpml`. The radial prefix `pfx` is the
-    // one member of this half's read-only set the device DOES write (the scan fills
-    // it in the launch before this one) and it keeps its own binding for that reason.
+    // READ-ONLY: nothing on the device writes `cpml`. The radial difference `rad` is
+    // the one member of this half's read-only set the device DOES write (the scan
+    // fills it in the launch before this one) and it keeps its own binding for that
+    // reason.
 __PACK_PROLOGUE__
+    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // line gives the lifted bounds blocks the `cb` they read.
+__RECORD_ALIAS__
 
 __BODY__
 }
@@ -372,7 +388,7 @@ def certified_cyl_curl_body(codes: Sequence[int],
     Not a transcription: this is :func:`.cylindrical_real.cylindrical_curl_source`'s
     own output with the ``#include``/signature preamble and the closing brace removed.
     ``sub_step`` is pinned to ``step_D`` and is never a parameter — this pair is the
-    electric seam, and ``step_B``'s forward differences, its two-operand ``Bz`` prefix
+    electric seam, and ``step_B``'s forward differences, its ``Bz`` radial
     substitution and its one-rule axis tail are the magnetic twin's product.
     """
     source = cylindrical_curl_source(CURL_SUB_STEP, codes, contract)
@@ -469,8 +485,11 @@ def cylindrical_real_fused_electric_pair_source(
     ))
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
         "__PACK_FIELDS__": coefficient_pack.params_fields(PACKED_VECTORS),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
         "__PACK_PROLOGUE__": coefficient_pack.prologue("cpml", PACKED_VECTORS),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__BODY__": body,
     })
 
@@ -488,7 +507,7 @@ def compile_cylindrical_real_fused_electric_pair(
 #: number this family says it was over by is the number both refusals are built from.
 _UNPACKED_WRITTEN: Tuple[str, ...] = ("f0", "f1", "f2", "u0", "u1", "u2",
                                       "e0", "e1", "e2", "w0", "w1", "w2")
-_UNPACKED_READ: Tuple[str, ...] = ("g0", "g1", "g2", "pfx",
+_UNPACKED_READ: Tuple[str, ...] = ("g0", "g1", "g2", "rad",
                                    "ie0", "ie1", "ie2",
                                    "kmx", "sinvx", "kmy", "sinvy", "kmz", "sinvz",
                                    "kp0", "km0", "kp1", "km1", "kp2", "km2")
@@ -693,21 +712,18 @@ class MetalCylindricalRealFusedElectricPairPlan:
     """The device radial scan, then ONE dispatch for three of the driver's passes.
 
     DELIBERATELY A SIBLING OF :class:`.plans.KernelPlan` RATHER THAN A SUBCLASS, for
-    the reason :class:`.cylindrical_real.CylindricalRealCurlPlan` is one: that base's
-    whole contract is that ``run`` unpacks ONE argument tuple and calls ONE function.
-    This plan cannot honour it — the fused kernel READS the scan's output, so the two
-    are ordered and cannot be one dispatch — and the divergence is stated here rather
-    than hidden behind an overridden ``run``.
+    the reason :class:`.cylindrical_real.CylindricalRealCurlPlan` is one: the fused
+    kernel READS the scan's output, so the two are ordered and cannot be one dispatch.
 
     THE FUSION IS THE SECOND LAUNCH. Separate, this configuration is THREE dispatches
     (scan, curl, constitutive); here it is TWO, and the displacement never leaves a
     register between the curl and the constitutive.
     """
 
-    __slots__ = ("shape", "n_elem", "scan_shape", "n_cols", "dtdx", "axis_coef",
-                 "bc", "zero_metal", "residency", "volumes", "prefix_host",
-                 "pack_layout", "launches", "prefix_launches", "fused_launches",
-                 "runs", "_prefix_functions", "_prefix_args",
+    __slots__ = ("shape", "n_elem", "n_cols", "dtdx", "axis_coef",
+                 "bc", "zero_metal", "residency", "volumes", "radial_host", "starts",
+                 "chunk_bounds", "pack_layout", "launches", "scan_launches",
+                 "fused_launches", "runs", "_scan_functions", "_scan_args",
                  "_fused_functions", "_fused_args")
 
     family = "cylindrical m = 0 fused PML D-curl/stored-E pair"
@@ -717,18 +733,16 @@ class MetalCylindricalRealFusedElectricPairPlan:
     #: This plan launches kernels; the composer's planned/null split reads it.
     performs_device_work = True
 
-    #: TWO: the radial scan and the fused pair. Declared with the same name
-    #: :class:`.plans.KernelPlan` declares it under — this class is deliberately not a
-    #: subclass of that base, so the attribute is restated rather than inherited.
+    #: TWO: the radial scan and the fused pair.
     launches_per_run = 2
 
-    REPR_FIELDS = ("shape", "bc", "zero_metal", "scan_shape")
+    REPR_FIELDS = ("shape", "bc", "zero_metal")
 
-    def __init__(self, shape, scan_shape, dtdx: float, axis_coef: float, bc,
-                 zero_metal, residency: Residency, prefix_host: Any,
-                 pack_layout: Any, prefix_args: Sequence[Any],
+    def __init__(self, shape, dtdx: float, axis_coef: float, bc,
+                 zero_metal, residency: Residency, radial_host: Any, starts: Any,
+                 chunk_bounds: Any, pack_layout: Any, scan_args: Sequence[Any],
                  fused_args: Sequence[Any],
-                 prefix_functions: Mapping[str, Any],
+                 scan_functions: Mapping[str, Any],
                  fused_functions: Mapping[str, Any],
                  volumes: Sequence[str]) -> None:
         self.shape = tuple(int(n) for n in shape)
@@ -737,7 +751,6 @@ class MetalCylindricalRealFusedElectricPairPlan:
                 f"a Dcyl grid stores one phi cell; shape {self.shape} does not "
                 f"(the exp(i*m*phi) dependence is analytic)")
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
-        self.scan_shape = tuple(int(n) for n in scan_shape)
         self.n_cols = self.shape[1] * self.shape[2]
         # float(): the array path multiplies a float32 volume by a Python float,
         # which NumPy casts to float32 before the multiply; the packed struct holds
@@ -748,25 +761,23 @@ class MetalCylindricalRealFusedElectricPairPlan:
         self.zero_metal = tuple(bool(value) for value in zero_metal)
         self.residency = residency
         self.volumes = tuple(dict.fromkeys(volumes))
-        self.prefix_host = prefix_host
+        self.radial_host = radial_host
+        self.starts = starts
+        self.chunk_bounds = chunk_bounds
         self.pack_layout = pack_layout
-        self._prefix_functions = dict(prefix_functions)
+        self._scan_functions = dict(scan_functions)
         self._fused_functions = dict(fused_functions)
-        self._prefix_args = tuple(prefix_args)
+        self._scan_args = tuple(scan_args)
         self._fused_args = tuple(fused_args)
         self.launches = 0
-        self.prefix_launches = 0
+        self.scan_launches = 0
         self.fused_launches = 0
         self.runs = 0
 
     @property
     def variants(self) -> Tuple[str, ...]:
-        """The contraction modes BOTH kernels were built with.
-
-        The intersection rather than either alone: a plan holding a ``fast`` scan and
-        no ``fast`` fused kernel would report a variant it cannot launch.
-        """
-        return tuple(sorted(set(self._prefix_functions) & set(self._fused_functions)))
+        """The contraction modes BOTH kernels were built with (their intersection)."""
+        return tuple(sorted(set(self._scan_functions) & set(self._fused_functions)))
 
     def _function(self, table: Mapping[str, Any], mode: str, which: str) -> Any:
         function = table.get(mode)
@@ -777,13 +788,13 @@ class MetalCylindricalRealFusedElectricPairPlan:
                 f"than launching the pinned one")
         return function
 
-    def run_prefix(self, contract: Optional[str] = None) -> None:
-        """The radial scan alone — ``cylindrical_rderiv_prefix`` on the device."""
+    def run_scan(self, contract: Optional[str] = None) -> None:
+        """The radial scan alone — ``cylindrical_rderiv_difference`` on the device."""
         mode = shaders.CONTRACT_OFF if contract is None else contract
-        function = self._function(self._prefix_functions, mode, "scan")
+        function = self._function(self._scan_functions, mode, "scan")
         self.launches += 1
-        self.prefix_launches += 1
-        function(*self._prefix_args)
+        self.scan_launches += 1
+        function(*self._scan_args)
 
     def run_fused(self, contract: Optional[str] = None) -> None:
         """The fused pair alone. Reads the scan's output, so it is never run first."""
@@ -796,14 +807,12 @@ class MetalCylindricalRealFusedElectricPairPlan:
     def run(self, contract: Optional[str] = None) -> None:
         """The seam: scan, then the fused pair. In place.
 
-        THE ORDER IS THE CONTRACT. The fused kernel reads the prefix the scan writes,
-        and the prefix is a function of THIS sub-step's source volume — so a scan
-        hoisted out of the loop, or run after the pair, feeds it the PREVIOUS
-        timestep's radial derivative. That is a smooth, plausible, entirely wrong
-        field rather than an error.
+        THE ORDER IS THE CONTRACT. The fused kernel reads the radial difference the
+        scan writes from THIS sub-step's Hp, so a scan run after the pair feeds it the
+        previous timestep's derivative: a plausible wrong field rather than an error.
         """
         self.runs += 1
-        self.run_prefix(contract)
+        self.run_scan(contract)
         self.run_fused(contract)
 
     def describe(self) -> str:
@@ -816,36 +825,41 @@ class MetalCylindricalRealFusedElectricPairPlan:
         return self.describe()
 
 
+def params_record_dtype() -> Any:
+    """The host dtype of the kernel's ``Params``: six scalars, six pack offsets, the record."""
+    import numpy as np  # noqa: PLC0415
+
+    return np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
+                     ("dtdx", "<f4"), ("axis_coef", "<f4")]
+                    + coefficient_pack.record_dtype_fields(PACKED_VECTORS)
+                    + _chunk_bounds.record_dtype_fields())
+
+
 def _params_tensor(shape: Sequence[int], dtdx: float, axis_coef: float,
-                   offsets: Sequence[int], device: str) -> Any:
-    """The six scalars AND the six pack offsets as one 48-byte device record.
+                   offsets: Sequence[int], device: str, *, chunk_bounds: Any) -> Any:
+    """The six scalars, the six pack offsets and the chunk record as one device record.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason
     :func:`.fused_electric_pair._params_tensor` gives: :meth:`.Residency.mirror` binds
-    float32 and complex64 volumes and refuses anything else BY NAME, because a wider
-    element silently reinterprets. This record is neither — a packed struct of ten
-    uints and two floats that nothing on the host reads back and nothing on the device
-    writes — so it is built here, once, at plan time. Nothing on the launch path
-    allocates.
-
-    THE OFFSET FIELDS ARE THE PACK'S WHOLE COST. Six uints, in the pack's own order,
-    and they are what buys back five buffer bindings. The field order here and the
-    struct order in :data:`_TEMPLATE` are BOTH generated from
-    :data:`PACKED_VECTORS`, so the two cannot drift into a reinterpretation.
+    float32 and complex64 volumes only. The field order here and the struct order in
+    :data:`_TEMPLATE` are BOTH generated from :data:`PACKED_VECTORS` and
+    :mod:`.chunk_bounds`, so the two cannot drift into a reinterpretation.
     """
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
-    fields = ([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
-               ("dtdx", "<f4"), ("axis_coef", "<f4")]
-              + coefficient_pack.record_dtype_fields(PACKED_VECTORS))
-    record = np.zeros(1, dtype=np.dtype(fields))
+    record = np.zeros(1, dtype=params_record_dtype())
     nx, ny, nz = (int(n) for n in shape)
     offsets = tuple(int(offset) for offset in offsets)
     if len(offsets) != len(PACKED_VECTORS):  # pragma: no cover - arithmetic guard
         raise AssertionError((len(offsets), len(PACKED_VECTORS)))
-    record[0] = (nx, ny, nz, nx * ny * nz, np.float32(dtdx),
-                 np.float32(axis_coef)) + offsets
+    for name, value in (("nx", nx), ("ny", ny), ("nz", nz), ("n_elem", nx * ny * nz),
+                        ("dtdx", np.float32(dtdx)), ("axis_coef", np.float32(axis_coef))):
+        record[name] = value
+    for (name, _kind), offset in zip(coefficient_pack.record_dtype_fields(PACKED_VECTORS),
+                                     offsets):
+        record[name] = offset
+    record["cb"] = _chunk_bounds.pack(chunk_bounds)
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -860,9 +874,10 @@ def plan_metal_cylindrical_real_fused_electric_pair(
         fields: Any, pml: Any, sources: Any = None,
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        prefix_function: Optional[Mapping[str, Any]] = None,
+        scan_function: Optional[Mapping[str, Any]] = None,
         fused_function: Optional[Mapping[str, Any]] = None,
         params: Optional[Any] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalCylindricalRealFusedElectricPairPlan]:
     """Build the fused Dcyl D/E plan, or ``None`` when the seam is refused.
 
@@ -870,7 +885,11 @@ def plan_metal_cylindrical_real_fused_electric_pair(
     back to the array path, never raise into a caller that would otherwise have
     stepped correctly.
 
-    ``prefix_function`` and ``fused_function`` are the KERNEL mutation seams, and they
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``) and has no default; the chunk starts are the array
+    path's own (``stepping._cylindrical_scan_starts`` for Dz).
+
+    ``scan_function`` and ``fused_function`` are the KERNEL mutation seams, and they
     are SEPARATE so a leg can plant a defect in one kernel while the other stays
     shipped. ``params`` is the HOST mutation seam this family adds and its magnetic
     twin has no use for: the packed offsets are host arithmetic, so a leg that corrupts
@@ -884,6 +903,7 @@ def plan_metal_cylindrical_real_fused_electric_pair(
         return None
     import numpy as np  # noqa: PLC0415
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
+    from ..stepping import _cylindrical_scan_starts  # noqa: PLC0415
     from ..triton_kernels.coverage import CONSTITUTIVE_SIDES  # noqa: PLC0415
     from ..triton_kernels.launch import SUB_STEPS  # noqa: PLC0415
 
@@ -893,7 +913,10 @@ def plan_metal_cylindrical_real_fused_electric_pair(
     codes = boundary_codes(resolve(grid, pml))
     walls = zero_metal_axes(grid)
     shape = tuple(int(n) for n in grid.shape)
-    scan_shape = (scan_rows(CURL_SUB_STEP, shape[0]), shape[1], shape[2])
+    words = _chunk_bounds.plan_words(chunk_bounds, shape,
+                                     "plan_metal_cylindrical_real_fused_electric_pair")
+    start_line = scan_starts(CURL_SUB_STEP, _cylindrical_scan_starts(
+        fields, pml, SCAN_TARGETS[CURL_SUB_STEP]), shape[0])
 
     volumes: List[str] = []
 
@@ -913,16 +936,16 @@ def plan_metal_cylindrical_real_fused_electric_pair(
     scan_source_name = spec["sources"][1]
     scan_source = residency.mirror(scan_source_name,
                                    getattr(fields, scan_source_name))
-    prefix_host, prefix = scratch_mirror(
-        residency, f"cyl_pfx:{CURL_SUB_STEP}",
-        lambda: np.zeros(scan_shape, dtype=np.float32))
+    radial_host, radial = scratch_mirror(
+        residency, f"cyl_radial:{CURL_SUB_STEP}",
+        lambda: np.zeros(shape, dtype=np.float32))
     _, weight_vector = scratch_mirror(
         residency, f"cyl_weights:{CURL_SUB_STEP}",
         lambda: prefix_row_vectors(CURL_SUB_STEP, shape[0])[0], constant=True)
-    _, divisor_vector = scratch_mirror(
-        residency, f"cyl_divisor:{CURL_SUB_STEP}",
+    _, rinv_vector = scratch_mirror(
+        residency, f"cyl_rinv:{CURL_SUB_STEP}",
         lambda: prefix_row_vectors(CURL_SUB_STEP, shape[0])[1], constant=True)
-    volumes.append(f"cyl_pfx:{CURL_SUB_STEP}")
+    volumes.append(f"cyl_radial:{CURL_SUB_STEP}")
 
     stored = [bind(name, getattr(fields, name)) for name in side["targets"]]
     workspace = [bind(name, getattr(fields, name)) for name in side["aux"]]
@@ -949,13 +972,12 @@ def plan_metal_cylindrical_real_fused_electric_pair(
         for axis in "xyz" for stem in ("kps", "kms")]
 
     dtdx = grid.dt / grid.dx
-    # stepping.py:586 forms `4.0 * (grid.dt / grid.dx)` in float64 and NumPy rounds
-    # that ONE scalar to float32 before the multiply. LIVE on this side — the m = 0
-    # on-axis Dz increment is the D side's rule, where the magnetic twin binds the
-    # slot at zero without reading it.
-    axis_coef = 4.0 * dtdx
+    # The float32 word of 4 * Courant (cylindrical_real.axis_coefficient). LIVE on this
+    # side — the m = 0 on-axis Dz increment is the D side's rule, where the magnetic
+    # twin binds the slot at zero without reading it.
+    axis_coef = axis_coefficient(grid.courant)
 
-    pointers = (flux + auxiliary + magnetic + [prefix] + stored + workspace
+    pointers = (flux + auxiliary + magnetic + [radial] + stored + workspace
                 + inverse_epsilon + [curl_pack] + constitutive_coefficients)
     if len(pointers) != PACKED_POINTERS:  # pragma: no cover - arithmetic guard
         raise AssertionError((len(pointers), PACKED_POINTERS))
@@ -963,16 +985,17 @@ def plan_metal_cylindrical_real_fused_electric_pair(
         raise AssertionError((len(pointers), PACKED_BINDINGS))
 
     record = (_params_tensor(shape, dtdx, axis_coef, pack_layout.offsets,
-                             residency.device) if params is None else params)
+                             residency.device, chunk_bounds=words)
+              if params is None else params)
     return MetalCylindricalRealFusedElectricPairPlan(
-        shape, scan_shape, dtdx, axis_coef, codes, walls, residency, prefix_host,
-        pack_layout,
-        (prefix, scan_source, weight_vector, divisor_vector,
-         scan_shape[0], shape[1], shape[2], shape[1] * shape[2]),
+        shape, dtdx, axis_coef, codes, walls, residency, radial_host, start_line,
+        words, pack_layout,
+        (radial, scan_source, weight_vector, rinv_vector,
+         int32_tensor(start_line, residency.device),
+         shape[0], shape[1], shape[2], shape[1] * shape[2]),
         tuple(pointers) + (record,),
-        dict(prefix_function) if prefix_function is not None else {
-            mode: compile_cylindrical_prefix(CURL_SUB_STEP, mode)
-            for mode in contract_variants},
+        dict(scan_function) if scan_function is not None else {
+            mode: compile_scan(CURL_SUB_STEP, mode) for mode in contract_variants},
         dict(fused_function) if fused_function is not None
         else _fused_functions(codes, walls, contract_variants),
         volumes)
@@ -996,7 +1019,7 @@ def _arm_plan(context: Any, slot: str
         return None
     return plan_metal_cylindrical_real_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

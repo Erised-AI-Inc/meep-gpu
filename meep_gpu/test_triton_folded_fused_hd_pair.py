@@ -54,6 +54,25 @@ SEAM_RECORD = "h_to_d_seam_2026-09-04"
 METAL_ARTIFACT = "metal_folded_fused_hd_pair_2026-09-07_wired"
 
 
+def _every_cell_record(shape):
+    """The harness's every-cell chunk record for ``shape`` (``gate_chunk_records``).
+
+    These builds take their record from the harness rather than from a layer: the
+    arrays are bare, and every test here asserts something other than the division.
+    """
+    parity = str(pathlib.Path(__file__).parent.parent / "parity" / "meep_gpu")
+    if parity not in sys.path:
+        sys.path.insert(0, parity)
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
+    return every_cell_record(shape)
+
+
+def _chunk_record(arrays):
+    """:func:`_every_cell_record`, sized from the first three-axis volume of ``arrays``."""
+    shape = next(tuple(a.shape) for a in arrays.values() if getattr(a, "ndim", 0) == 3)
+    return _every_cell_record(shape)
+
+
 @pytest.fixture(scope="module")
 def product():
     return importlib.import_module(MODULE)
@@ -131,12 +150,15 @@ def _reasons(verdict):
     return [reason for reason in verdict.reasons if "not cupy" not in reason]
 
 
-class _Electric:
-    """A source with a standing INTEGRATED electric withdraw."""
+class _ForeignElectric:
+    """A source class from outside this package that brings an integrated electric
+    ``withdraw`` of its own. No engine source stands one any more (an integrated source
+    enters through ``f_minus_p``; ``withdraw_hoist``), and the predicate still refuses a
+    class that does, because nothing measured a fused launch beside its body."""
 
-    from . import sources as _sources_module
+    def withdraw(self, fields):  # never called: a predicate reads a source, it does not run it
+        raise AssertionError("a coverage predicate called a source's withdraw")
 
-    withdraw = _sources_module.VolumeSource.withdraw
     field_type = "D"
     component = "Ez"
     is_integrated = True
@@ -144,11 +166,11 @@ class _Electric:
     _applied_dipole = 0j
 
 
-class _NonIntegratedElectric(_Electric):
+class _NonIntegratedElectric(_ForeignElectric):
     is_integrated = False
 
 
-class _Magnetic(_Electric):
+class _Magnetic(_ForeignElectric):
     field_type = "B"
     component = "Hz"
 
@@ -212,7 +234,7 @@ def test_replaces_is_the_drivers_own_two_adjacent_consults(product):
     assert order[first + 1] == product.REPLACES[1], order
 
 
-def test_the_only_statement_in_the_seam_is_the_electric_withdraw(product):
+def test_the_only_statement_in_the_seam_is_the_magnetic_f_minus_p_restore(product):
     """On a FOLD as much as off one: every fill closes before or opens after."""
     text = (HERE / "driver.py").read_text(encoding="utf-8")
     body = text.split("    def step(self", 1)[1].split("\n    def ", 1)[0]
@@ -226,7 +248,10 @@ def test_the_only_statement_in_the_seam_is_the_electric_withdraw(product):
                   and line.strip() not in (", self.fields):",
                                            "if fast is None or not")]
     assert statements, "nothing at all stands between the two consults"
-    assert all("withdraw" in line or line.startswith("for source")
+    # The magnetic f_minus_p restore and the stored-H test that guards it: it writes B
+    # alone (its own B fills included, inside sources.f_minus_p_end), which step_D does
+    # not read. No withdraw stands here any more (withdraw_hoist).
+    assert all("f_minus_p" in line or line.startswith("if self._stores_H")
                for line in statements), statements
     # THE FILLS, BY NAME: none of the three folded-relevant passes is in the seam.
     for pass_name in ("fill_symmetry_bc_B", "fill_symmetry_bc_D", "zero_metal_B",
@@ -435,11 +460,13 @@ def test_the_plan_refuses_a_code_outside_the_four_ghost_rules(product):
     arrays, flat, holder = _bare_arrays(product, shape)
     with pytest.raises(ValueError):
         product.plan_folded_fused_hd_pair_from_arrays(arrays, flat, 0.35, (1, 4, 0),
-                                                      holder)
+                                                      holder,
+                                                      chunk_bounds=_chunk_record(arrays))
     # ...and each of the four is accepted.
     for code in (0, 1, 2, 3):
         product.plan_folded_fused_hd_pair_from_arrays(arrays, flat, 0.35,
-                                                      (code, 2, 0), holder)
+                                                      (code, 2, 0), holder,
+                                                      chunk_bounds=_chunk_record(arrays))
 
 
 # ---------------------------------------------------------------------------
@@ -458,13 +485,33 @@ def test_an_undeclared_source_list_is_refused_by_name(product):
     assert any("was not declared" in reason for reason in reasons), reasons
 
 
-def test_a_standing_integrated_electric_withdraw_is_refused_by_name(product):
-    """The 3 of this cell's 78 rows the board files under ``withdraw_seam``."""
+def test_a_foreign_standing_withdraw_is_refused_by_name(product):
+    """A source class that brings its own ``withdraw`` is refused, naming the flag.
+
+    The 3 of this cell's 78 rows the 2026-09-04 board filed under ``withdraw_seam``
+    were the engine's integrated electric sources; those now stand nothing in the seam
+    (the test below)."""
     fields, pml = build()
     reasons = _reasons(
-        product.folded_fused_hd_pair_coverage(fields, pml, (_Electric(),)))
+        product.folded_fused_hd_pair_coverage(fields, pml, (_ForeignElectric(),)))
     assert any("standing integrated" in reason for reason in reasons), reasons
     assert any("HOISTS_THE_WITHDRAW = False" in reason for reason in reasons), reasons
+
+
+def test_an_integrated_electric_source_stands_no_withdraw_in_the_seam(product):
+    """An engine integrated source enters at the constitutive update through
+    ``f_minus_p`` (``sources.f_minus_p_begin``), so nothing stands between the two
+    consults this product spans and the predicate has no withdraw to refuse."""
+    from .sources import ContinuousEnvelope, VolumeSource
+
+    fields, pml = build()
+    source = VolumeSource(grid=fields.grid, component="Ez", center=(0.0, 0.0, 0.0),
+                          size=(0.0, 0.0, 0.0),
+                          envelope=ContinuousEnvelope(frequency=1.0, is_integrated=True))
+    assert source.is_integrated and not hasattr(source, "withdraw")
+    reasons = _reasons(product.folded_fused_hd_pair_coverage(fields, pml, (source,)))
+    assert not any("standing integrated" in reason or "withdraw" in reason
+                   for reason in reasons), reasons
 
 
 def test_a_non_integrated_electric_source_is_not_this_seams_business(product):
@@ -473,7 +520,7 @@ def test_a_non_integrated_electric_source_is_not_this_seams_business(product):
         fields, pml, (_NonIntegratedElectric(),))) == []
 
 
-def test_a_magnetic_source_is_withdrawn_one_seam_earlier(product):
+def test_a_magnetic_source_is_not_this_seams_business(product):
     fields, pml = build()
     assert _reasons(product.folded_fused_hd_pair_coverage(
         fields, pml, (_Magnetic(),))) == []
@@ -599,11 +646,12 @@ def test_an_aliased_scratch_pair_is_refused_rather_than_launched(product):
     shape = (4, 5, 6)
     arrays, flat, holder = _bare_arrays(product, shape)
     product.plan_folded_fused_hd_pair_from_arrays(arrays, flat, 0.35, (1, 2, 0),
-                                                  holder)
+                                                  holder,
+                                                  chunk_bounds=_chunk_record(arrays))
     arrays["scratch_Hx"] = arrays["Hx"]
     with pytest.raises((ValueError, RuntimeError)):
         plan = product.plan_folded_fused_hd_pair_from_arrays(
-            arrays, flat, 0.35, (1, 2, 0), holder)
+            arrays, flat, 0.35, (1, 2, 0), holder, chunk_bounds=_chunk_record(arrays))
         plan._resolve()
 
 
@@ -613,7 +661,8 @@ def test_an_input_that_aliases_an_output_is_refused(product):
     arrays["Bx"] = arrays["Dx"]
     with pytest.raises(ValueError):
         product.plan_folded_fused_hd_pair_from_arrays(arrays, flat, 0.35, (1, 2, 0),
-                                                      holder)
+                                                      holder,
+                                                      chunk_bounds=_chunk_record(arrays))
 
 
 def test_the_module_is_importable_without_triton(product):

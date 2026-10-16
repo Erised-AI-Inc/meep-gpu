@@ -14,11 +14,13 @@ tables the product reads rather than spells, the declaration that it is not an a
 the wiring records that have to name it.
 
 THE ONE CLAUSE WORTH READING FIRST is the priced refusal. This cell has three corpus
-rows and the product serves ONE. The other two are refused not for the deposit — that is
-carried — but because ``FdtdDriver._inject_electric_through_conductivity`` rescales a
-WHOLE D volume for a NON-INTEGRATED source on a conductive run (``driver.py:3363-3370``),
-at cells no deposit closure can name. That refusal costs two thirds of the cell, so it is
-pinned here in BOTH directions and MEASURED on the device by the gate's own
+rows. Two of them were refused until the 2026-09-01 lift not for the deposit — that is
+carried — but because the driver then rescaled a WHOLE D volume for a NON-INTEGRATED
+source on a conductive run, at cells no deposit closure can name. The driver has since
+lost every pass over the component: the conductivity scale is inside each source's own
+double-precision deposit (``sources._deposit``, step.cpp:299-307). What survives is the
+refusal of a source that publishes no deposit table, which a point repair cannot name;
+it is pinned here in BOTH directions and MEASURED on the device by the gate's own
 ``priced_refusal`` leg rather than argued.
 """
 
@@ -115,11 +117,10 @@ class _ScaledElectric(_Electric):
 
 
 class _ScaledElectricNoTable:
-    """A scaled source with NO deposit table at all — the driver's dense fallback.
+    """A scaled source with NO deposit table at all — cells no point repair can name.
 
-    ``hasattr(source, "_point_ix")`` is False, which is the partition
-    ``_inject_electric_through_conductivity`` uses; no in-tree source class is
-    one, and the surviving clause exists exactly for this duck-typed stranger.
+    ``hasattr(source, "_point_ix")`` is False; no in-tree source class is one, and
+    the surviving clause exists exactly for this duck-typed stranger.
     """
 
     field_type = "D"
@@ -425,25 +426,24 @@ def test_the_flag_at_False_would_cost_every_electric_run(product):
 def test_the_corpus_rows_own_scaled_source_is_now_admitted(product):
     """The 2026-09-01 lift, pinned in its admitting direction.
 
-    ``FdtdDriver._inject_electric_through_conductivity`` used to rescale the WHOLE
-    target D volume for a scaled source — the identity everywhere except that it
-    canonicalised ``-0.0`` at cells no deposit closure can name — and the clause
-    refused both conductive corpus rows for it. The driver now replays the rescale
-    SPARSELY at the deposit cells the sources publish, so the corpus rows' own
-    source (scaled, table published) is carried; the device measurement is the
-    gate's ``lifted_refusal`` leg.
+    The driver used to rescale the WHOLE target D volume for a scaled source — the
+    identity everywhere except that it canonicalised ``-0.0`` at cells no deposit
+    closure can name — and the clause refused both conductive corpus rows for it.
+    The scale is now inside each source's own deposit at its own cells
+    (``sources._deposit``), so the corpus rows' own source (scaled, table published)
+    is carried; the device measurement is the gate's ``lifted_refusal`` leg.
     """
     fields, pml = build(sigma=0.4)
     assert reasons_of(product, fields, pml, (_ScaledElectric(),)) == []
 
 
 def test_a_scaled_source_publishing_no_deposit_table_is_still_refused(product):
-    """What survives the lift: the driver's dense whole-volume fallback, by name.
+    """What survives the lift: a scaled source that cannot name its deposit, by name.
 
-    A scaled source with no ``_point_ix`` attribute cannot name its deposit, so the
-    driver must still rescale the whole component — the composition whose
-    signed-zero canonicalisation the retired clause priced. No in-tree source class
-    is one; the clause fails CLOSED on the duck-typed stranger.
+    A scaled source with no ``_point_ix`` attribute writes cells no point repair can
+    name. (The driver's whole-volume fallback for it, which the reason string still
+    calls the dense branch, went with the double-precision deposit.) No in-tree source
+    class is one; the clause fails CLOSED on the duck-typed stranger.
     """
     fields, pml = build(sigma=0.4)
     found = reasons_of(product, fields, pml, (_ScaledElectricNoTable(),))
@@ -474,69 +474,48 @@ def test_the_clause_is_quiet_except_for_the_tableless_scaled_source(product):
         fields, (_ScaledElectricNoTable(),)) != ()
 
 
-def test_the_drivers_OWN_partition_is_the_one_this_clause_mirrors():
-    """THE TRIPWIRE UNDER THE LIFT, and it is a measurement rather than a reading.
+def test_the_drivers_conductive_deposit_moves_only_its_own_cells():
+    """THE TRIPWIRE UNDER THE LIFT, re-measured on the deposit that replaced the replay.
 
-    The lifted clause is a claim about a file this module does not own: that
-    ``FdtdDriver._inject_electric_through_conductivity`` replays the condinv
-    rescale SPARSELY for a source that publishes a deposit table and falls back to
-    the WHOLE-VOLUME difference passes only for one that does not. If the driver
-    ever loses the sparse branch, every reason string here would still read
-    correctly and the predicate would silently admit two corpus rows whose bytes
-    no longer match — rule 2's one silent failure, on a partition no test in this
-    suite could see.
+    The lifted clause is a claim about a file this module does not own: that on a
+    conductive run the driver changes a component ONLY at a source's own cells, so a
+    point repair at those cells is sufficient. The driver used to scale the current by
+    replaying ``condinv`` over the injected increment, sparsely for a source with a
+    deposit table and over the WHOLE component for one without. The double-precision
+    deposit removed both: ``condinv`` is inside each source's own expression,
+    ``f = float(double(f) - real((amp * current) * dt * double(condinv)))``
+    (``sources._deposit``, step.cpp:299-307), and the driver has no pass over the
+    component at all. A source that publishes NO deposit table is still refused by the
+    clause, because a point repair needs the cells named, not because of a rescale.
 
-    So this drives the driver's own method on both sides of its partition and
-    reads the WORD, on the value class the whole lift is about:
-
-      * table published -> a ``-0.0`` FAR from the deposit survives as ``-0.0``
-        (``0x80000000``): the pass is the identity away from the deposit, which
-        is exactly what makes a point repair sufficient;
-      * NO table       -> that same word comes back ``+0.0`` (``0x00000000``):
-        the dense fallback canonicalises it, which is what the surviving clause
-        refuses by name;
-      * and the DEPOSIT cell is byte-identical under both, so the sparse replay
-        reproduces the retired composition's arithmetic where it still applies —
-        the half of the lift that says it changed nothing it was not meant to.
-
-    A reader might reasonably ask why this is not a source-text assertion. Because
-    a rewrite that preserved the text and lost the behaviour is exactly the case
-    that costs two corpus rows, and the text is the weaker of the two claims.
+    So this drives a real source's injection on a conductive build and reads the WORDS:
+    a ``-0.0`` FAR from the deposit survives as ``-0.0`` (``0x80000000``), every cell
+    off the source's table is unchanged, and the deposit cells moved.
     """
     import struct
-    import types
 
-    from .driver import FdtdDriver
+    from .sources import GaussianPulsedSource
 
     def word(value) -> int:
         return struct.unpack("<I", struct.pack("<f", float(value)))[0]
 
-    class _Deposits:
-        """A scaled electric source that deposits at ONE cell, table optional."""
-
-        field_type, component, is_integrated = "D", "Ez", False
-
-        def __init__(self, table: bool):
-            if table:
-                self._point_ix = numpy.array([1])
-                self._point_iy = numpy.array([1])
-                self._point_iz = numpy.array([0])
-
-        def inject(self, fields, _time):
-            fields.Dz[1, 1, 0] += numpy.float32(1.0)
-
-    seen = {}
-    for table in (True, False):
-        fields, _pml = build(sigma=0.4, poles=0)
-        fields.Dz[...] = numpy.float32(0.0)
-        fields.Dz[3, 3, 0] = numpy.float32(-0.0)      # FAR from the deposit.
-        FdtdDriver._inject_electric_through_conductivity.__get__(
-            types.SimpleNamespace(fields=fields), types.SimpleNamespace)(
-                [_Deposits(table)], 0.0)
-        seen[table] = (word(fields.Dz[3, 3, 0]), word(fields.Dz[1, 1, 0]))
-    assert seen[True][0] == 0x80000000, seen      # sparse: the far -0.0 survives
-    assert seen[False][0] == 0x00000000, seen     # dense: it is canonicalised
-    assert seen[True][1] == seen[False][1], seen  # the deposit itself is unmoved
+    fields, _pml = build(sigma=0.4, poles=0)
+    assert fields.condinv_for("Dz") is not None, "the build is not conductive"
+    source = GaussianPulsedSource(grid=fields.grid, component="Ez", center=(0.0, 0.0, 0.0),
+                                  size=(0.0, 0.0, 0.0), frequency=1.0, fwidth=0.2,
+                                  amplitude=1.0)
+    table = numpy.zeros(fields.Dz.shape, dtype=bool)
+    table[source._point_ix, source._point_iy, source._point_iz] = True  # noqa: SLF001
+    far = (1, 1, 0)
+    assert not table[far]
+    fields.Dz[far] = numpy.float32(-0.0)
+    before = fields.Dz.copy()
+    source.inject(fields, source.peak_time)
+    after = fields.Dz
+    assert word(after[far]) == 0x80000000, "the far -0.0 was rewritten"
+    unchanged = after[~table].view(numpy.uint32) == before[~table].view(numpy.uint32)
+    assert bool(numpy.all(unchanged)), "the injection wrote a cell off the source's table"
+    assert bool(numpy.any(after[table].view(numpy.uint32) != before[table].view(numpy.uint32)))
 
 
 def test_the_device_gate_MEASURES_the_lift_rather_than_asserting_it(gate):
@@ -761,6 +740,13 @@ def test_every_mutation_is_scored_on_a_case_that_can_arm_it(gate):
             assert case[4] is not None, name
         if name.startswith("poles_"):
             assert case[6] >= 2, name
+        # A regrouping of the two-partner stencil reaches a word only where both of
+        # Dx's partners are present; forcing every partner present only where one is
+        # absent.
+        if name.startswith("curl_"):
+            assert all(extent > 0.0 for extent in case[1]), name
+        if name.startswith("presence_"):
+            assert 0.0 in case[1], name
 
 
 def test_the_gate_compares_every_polarization_buffer(gate):

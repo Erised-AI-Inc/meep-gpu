@@ -121,6 +121,7 @@ from meep_gpu.triton_kernels.coverage import (  # noqa: E402
 from meep_gpu.triton_kernels import folded_complex as triton_folded_complex  # noqa: E402
 
 import metal_gate_kit as kit  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
 
 log, save, differing, words = kit.log, kit.save, kit.differing, kit.words
 needle = kit.needle
@@ -236,23 +237,6 @@ CASES: Tuple[Tuple[str, Dict[str, Any], bool], ...] = (
 CASE_KWARGS: Dict[str, Dict[str, Any]] = {label: kwargs for label, kwargs, _ in CASES}
 CASE_COMPLEX: Dict[str, bool] = {label: is_complex for label, _, is_complex in CASES}
 
-#: This family's arm is bound from ``special_kz``'s artifact DELIBERATELY: the
-#: complex arithmetic here is that family's exactly (the same ``c_mul`` with the same
-#: purely-imaginary coefficient on the LEFT), so the record that licenses that family
-#: licenses this one. The fold contributes no complex multiply of its own — its only
-#: addition assigns a literal zero.
-PROBE = special_kz.load_expansion_probe()
-EXPANSION = special_kz.beta_expansion_from_probe(PROBE) if PROBE else None
-
-#: THE PARENTS' FILL PROBE IS A DIFFERENT ARTIFACT and the distinction is load
-#: bearing: ``folded_complex``'s FILL multiplies by the mirror parity as a complex
-#: coefficient on the LEFT, a pattern ``special_kz``'s artifact never classified.
-#: This family registers no fill, but the whole-step legs run the parents' fills.
-FOLD_PROBE = folded_complex.load_expansion_probe()
-FOLD_EXPANSION = (folded_complex.expansion_from_probe(FOLD_PROBE)
-                  if FOLD_PROBE else None)
-
-
 # ---------------------------------------------------------------------------
 # Building, seeding and describing a case
 # ---------------------------------------------------------------------------
@@ -263,10 +247,8 @@ def enrich_complex(fields: Any, seed: int = 20260816) -> int:
     NOT COSMETIC, AND THE MEASUREMENT IS IN THE MODULE DOCSTRING.
     ``matrix._fill`` assigns a REAL array into a complex64 volume, so the imaginary
     plane comes back identically zero. Every complex product in this family's kernel
-    then carries an exact-zero operand, and the arm choice, the contraction guard and
-    the complex curl itself all become unmeasurable: measured on ``complex_bloch_x``,
-    the NAIVE arm — which is the WRONG arm on this host — reproduced the array path
-    word for word until this seeding existed.
+    then carries an exact-zero operand, and the contraction guard and the complex
+    curl itself both become unmeasurable.
 
     Returns the number of cells given a nonzero imaginary part, which every caller
     asserts a floor on. A census of zero here would mean the enrichment silently did
@@ -321,19 +303,29 @@ def tags(fields: Any, pml: Any) -> Tuple[str, ...]:
         found.append("walled")
     if getattr(grid, "has_bloch", False):
         found.append("bloch")
-        kinds = _boundary_kinds(grid, pml)
-        phased, phase_words = special_kz.bloch_phase_words(grid, kinds, False)
-        # A GENERAL complex product exists only where a live phase has BOTH words
-        # nonzero. At the zone edge the phase is exactly -1+0j and every cross term
-        # is exact, which is why the arm and contraction needles are null there and
-        # the matrix carries the edge deliberately.
-        if any(flag and phase_words[2 * axis] != 0.0
-               and phase_words[2 * axis + 1] != 0.0
-               for axis, flag in enumerate(phased)):
+        phased, _values = phase_arguments(fields, pml, False)
+        # A GENERAL complex product exists only where a live connection multiplies
+        # (``complex_fields.CONNECT_PHASE``). At the zone edge MEEP's connection
+        # negates (``CONNECT_NEGATE``) and forms no product, which is why the matrix
+        # carries the edge deliberately.
+        if any(kind == complex_fields.CONNECT_PHASE for kind in phased):
             found.append("general_phase")
     if float(getattr(grid, "beta", 0.0)) < 0.0:
         found.append("negative_beta")
     return tuple(found)
+
+
+def phase_arguments(fields: Any, pml: Any, backward: bool) -> Tuple[Any, Any]:
+    """The per-axis connection kinds and words one curl side binds.
+
+    ``complex_fields``' own host decisions (:func:`.complex_fields.phase_arguments` of
+    :func:`.complex_fields.bloch_phase_table`), so the gate and the plan builders read
+    the connection from one place.
+    """
+    grid = fields.grid
+    return complex_fields.phase_arguments(
+        complex_fields.bloch_phase_table(grid, _boundary_kinds(grid, pml)),
+        backward=bool(backward))
 
 
 def snapshot(fields: Any, names: Sequence[str] = STORED) -> Dict[str, Any]:
@@ -413,13 +405,15 @@ def engine_curl(fields: Any, pml: Any, sub_step: str, residency: Any) -> Any:
     if getattr(fields, "force_complex_fields", False) or getattr(
             fields.grid, "has_bloch", False):
         plan = folded_beta.plan_folded_beta_bloch_pml_curl(
-            fields, pml, sub_step, residency, probe=PROBE)
+            fields, pml, sub_step, residency,
+            chunk_bounds=layer_record(fields.grid, pml))
         if plan is None:
             raise AssertionError(
                 folded_beta.folded_beta_composition_bloch_curl_coverage(
-                    fields, pml, sub_step, residency, PROBE).reasons)
+                    fields, pml, sub_step, residency).reasons)
         return plan
-    plan = folded_beta.plan_folded_beta_pml_curl(fields, pml, sub_step, residency)
+    plan = folded_beta.plan_folded_beta_pml_curl(
+        fields, pml, sub_step, residency, chunk_bounds=layer_record(fields.grid, pml))
     if plan is None:
         raise AssertionError(folded_beta.folded_beta_composition_curl_coverage(
             fields, pml, sub_step, residency).reasons)
@@ -430,13 +424,15 @@ def engine_constitutive(fields: Any, pml: Any, side: str, residency: Any) -> Any
     if getattr(fields, "force_complex_fields", False) or getattr(
             fields.grid, "has_bloch", False):
         plan = folded_beta.plan_folded_beta_complex_constitutive(
-            fields, pml, side, residency, probe=PROBE)
+            fields, pml, side, residency,
+            chunk_bounds=layer_record(fields.grid, pml))
         if plan is None:
             raise AssertionError(
                 folded_beta.folded_beta_complex_constitutive_coverage(
-                    fields, pml, side, residency, PROBE).reasons)
+                    fields, pml, side, residency).reasons)
         return plan
-    plan = folded_beta.plan_folded_beta_constitutive(fields, pml, side, residency)
+    plan = folded_beta.plan_folded_beta_constitutive(fields, pml, side, residency,
+                                                     chunk_bounds=layer_record(fields.grid, pml))
     if plan is None:
         raise AssertionError(folded_beta.folded_beta_constitutive_coverage(
             fields, pml, side, residency).reasons)
@@ -455,7 +451,7 @@ def engine_fill(fields: Any, family: str, residency: Any) -> Any:
     if getattr(fields, "force_complex_fields", False) or getattr(
             fields.grid, "has_bloch", False):
         return folded_complex.plan_folded_complex_fill(
-            fields, family, "fill_" + family, residency, probe=FOLD_PROBE)
+            fields, family, "fill_" + family, residency)
     return symmetry.plan_mirror_ghost_fill(fields, family, "fill_" + family,
                                            residency)
 
@@ -478,29 +474,27 @@ def from_arrays_curl(fields: Any, pml: Any, sub_step: str, codes: Any,
     magnetic = sub_step == "step_B"
     complex_storage = bool(getattr(fields, "force_complex_fields", False)
                            or getattr(grid, "has_bloch", False))
+    record = layer_record(grid, pml)
     if complex_storage:
-        kinds = _boundary_kinds(grid, pml)
-        phased, phase_words = special_kz.bloch_phase_words(
-            grid, kinds, bool(SUB_STEPS[sub_step]["backward"]))
-        beta_words = (beta_override if beta_override is not None
-                      else special_kz.beta_curl_coefficients(
-                          grid.beta, grid.dt, magnetic=magnetic,
-                          complex_storage=True))
+        plus, minus = (beta_override if beta_override is not None
+                       else special_kz.beta_curl_coefficients(
+                           grid.beta, grid.dt, magnetic=magnetic,
+                           complex_storage=True))
         return folded_beta.plan_folded_beta_bloch_pml_curl_from_arrays(
-            sub_step, arrays, flat, codes, phased, phase_words,
-            grid.dt / grid.dx, beta_words, EXPANSION, residency,
-            functions=functions, has_beta=has_beta)
+            sub_step, arrays, flat, codes,
+            complex_fields.bloch_phase_table(grid, _boundary_kinds(grid, pml)),
+            grid.dt / grid.dx, plus, minus, residency,
+            functions=functions, has_beta=has_beta, chunk_bounds=record)
     plus, minus = (beta_override if beta_override is not None
                    else special_kz.beta_curl_coefficients(
                        grid.beta, grid.dt, magnetic=magnetic,
                        complex_storage=False))
     return folded_beta.plan_folded_beta_pml_curl_from_arrays(
         sub_step, arrays, flat, codes, grid.dt / grid.dx, plus, minus, residency,
-        functions=functions, has_beta=has_beta)
+        functions=functions, has_beta=has_beta, chunk_bounds=record)
 
 
 def shipped_source(fields: Any, pml: Any, sub_step: str, *, has_beta: bool = True,
-                   expansion: Optional[str] = None,
                    contract: str = shaders.CONTRACT_OFF) -> str:
     """The exact source the shipped plan would compile for this case and sub-step."""
     grid = fields.grid
@@ -508,10 +502,9 @@ def shipped_source(fields: Any, pml: Any, sub_step: str, *, has_beta: bool = Tru
     backward = bool(SUB_STEPS[sub_step]["backward"])
     if getattr(fields, "force_complex_fields", False) or getattr(
             grid, "has_bloch", False):
-        phased, _ = special_kz.bloch_phase_words(
-            grid, _boundary_kinds(grid, pml), backward)
+        phased, _ = phase_arguments(fields, pml, backward)
         return folded_beta.folded_beta_bloch_curl_source(
-            codes, backward, phased, expansion or EXPANSION, has_beta, contract)
+            codes, backward, phased, has_beta, contract)
     return folded_beta.folded_beta_curl_source(codes, backward, has_beta, contract)
 
 
@@ -602,18 +595,18 @@ def walk_step(fields: Any, pml: Any, plans: Dict[str, Any], residency: Any,
 
 
 # ---------------------------------------------------------------------------
-# LEG execution — provenance, the bound arm, and the compile sweep
+# LEG execution — provenance and the compile sweep
 # ---------------------------------------------------------------------------
 
 def leg_execution(payload: Dict[str, Any], out: str) -> None:
-    """What was hashed, what arm was bound, and does every specialisation BUILD.
+    """What was hashed, and does every specialisation BUILD.
 
     A specialisation that fails to COMPILE is a crash at plan time on a configuration
     nobody swept, so the whole enumeration is built here — in BOTH contraction modes,
     because the fast build is a leg's substrate and a fast build that did not compile
     would report its guard as a null.
     """
-    sources = folded_beta.enumerate_folded_beta_sources(EXPANSION)
+    sources = folded_beta.enumerate_folded_beta_sources()
     kit.provenance(os.path.dirname(out), {
         "folded_beta.py": os.path.join(
             API_ROOT, "meep_gpu/metal_kernels/folded_beta.py"),
@@ -650,7 +643,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
     distinct: Dict[str, int] = {}
     started = time.time()
     for mode in shaders.CONTRACT_MODES:
-        emitted = folded_beta.enumerate_folded_beta_sources(EXPANSION, mode)
+        emitted = folded_beta.enumerate_folded_beta_sources(mode)
         distinct[mode] = len(set(emitted.values()))
         for source in emitted.values():
             compile_source(source)
@@ -660,9 +653,6 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
                             "distinct kernel sources compiled", floor=2)
 
     payload["legs"]["execution"] = {
-        "expansion": EXPANSION,
-        "fold_expansion": FOLD_EXPANSION,
-        "probe_patterns": (PROBE or {}).get("patterns"),
         "specialisations": len(sources),
         "compile_calls": built,
         "distinct_sources_per_contract_mode": distinct,
@@ -679,7 +669,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
             "against the Triton twin's certification and it is stated, not buried"),
     }
     save(payload, out)
-    log(f"[execution] arm={EXPANSION} specialisations={len(sources)} "
+    log(f"[execution] specialisations={len(sources)} "
         f"compile_calls={built} distinct={distinct} "
         f"({time.time() - started:.1f}s)")
 
@@ -741,7 +731,7 @@ def leg_constitutive(payload: Dict[str, Any], out: str) -> None:
     claim if the only thing this family contributes on these slots is a predicate.
     """
     assert not any("constitutive" in label for label in
-                   folded_beta.enumerate_folded_beta_sources(EXPANSION)), (
+                   folded_beta.enumerate_folded_beta_sources()), (
         "this family emitted a constitutive source: it is supposed to RE-ADMIT the "
         "certified bodies, not replace them")
     rows: List[Dict[str, Any]] = []
@@ -821,10 +811,11 @@ def leg_identity(payload: Dict[str, Any], out: str) -> None:
             if is_complex:
                 certified_plan = folded_complex.plan_folded_complex_pml_curl(
                     certified, certified_pml, sub_step, certified_residency,
-                    probe=FOLD_PROBE)
+                    chunk_bounds=layer_record(certified.grid, certified_pml))
             else:
                 certified_plan = symmetry.plan_folded_pml_curl(
-                    certified, certified_pml, sub_step, certified_residency)
+                    certified, certified_pml, sub_step, certified_residency,
+                    chunk_bounds=layer_record(certified.grid, certified_pml))
             assert certified_plan is not None, (label, sub_step, "no certified plan")
             certified_residency.sync_in()
             certified_plan.run()
@@ -842,12 +833,10 @@ def leg_identity(payload: Dict[str, Any], out: str) -> None:
 
             beta_free = shipped_source(fields, pml, sub_step, has_beta=False)
             if is_complex:
-                phased, _ = special_kz.bloch_phase_words(
-                    fields.grid, _boundary_kinds(fields.grid, pml),
-                    bool(SUB_STEPS[sub_step]["backward"]))
+                phased, _ = phase_arguments(fields, pml,
+                                            bool(SUB_STEPS[sub_step]["backward"]))
                 parent = folded_complex.folded_bloch_curl_source(
-                    codes, bool(SUB_STEPS[sub_step]["backward"]), phased,
-                    FOLD_EXPANSION)
+                    codes, bool(SUB_STEPS[sub_step]["backward"]), phased)
             else:
                 parent = symmetry.folded_curl_source(
                     codes, bool(SUB_STEPS[sub_step]["backward"]))
@@ -991,15 +980,6 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = 12) -> None:
 # LEG position — the composition's own hazard, isolated on the device
 # ---------------------------------------------------------------------------
 
-#: The two beta lines, per arm, spelled tightly enough to exclude the KERNEL
-#: SIGNATURE. ``beta_plus`` alone also matches ``constant float& beta_plus``, and a
-#: filter that caught the declaration would find three lines and report every
-#: position mutation as NEEDLE-MISSED.
-BETA_LINE_MARKERS: Tuple[str, ...] = (
-    "beta_plus * b", "beta_minus * a",
-    "float2(bpr, bpi), b", "float2(bmr, bmi), a")
-
-
 def is_complex(fields: Any) -> bool:
     return bool(getattr(fields, "force_complex_fields", False)
                 or getattr(fields.grid, "has_bloch", False))
@@ -1009,40 +989,58 @@ def zero_literal(fields: Any) -> str:
     return templates.COMPLEX_ZERO if is_complex(fields) else "0.0f"
 
 
-def move_beta_after(source: str, marker: str) -> str:
-    """Relocate the two beta lines to just after the LAST mask line of one block.
+def pass_block(source: str) -> Tuple[int, int]:
+    """``(start, end)`` of the beta pass in ``source``, its end line included."""
+    from meep_gpu.metal_kernels import folded_pass  # noqa: PLC0415
 
-    THE ANCHOR IS THE MASK, NOT ITS FLAG DECLARATION, and the distinction is the
-    difference between a must-catch mutation and a null: anchoring on ``bool at_x =``
-    inserts the beta lines BEFORE the mask assignments that follow it, which changes
-    nothing about the order.
-    """
-    lines = source.splitlines()
-    beta = [line for line in lines
-            if any(mark in line for mark in BETA_LINE_MARKERS)]
-    if len(beta) != 2:
-        raise LookupError(f"expected two beta lines, found {len(beta)}")
-    kept = [line for line in lines if line not in beta]
-    positions = [index for index, line in enumerate(kept)
-                 if marker in line and "?" in line and "curl" in line]
-    if not positions:
-        raise LookupError(f"no mask line carries {marker!r}")
-    at = positions[-1]
-    return "\n".join(kept[:at + 1] + beta + kept[at + 1:])
+    start = source.find(folded_pass.FOLDED_PASS_BEGIN)
+    end = source.find(folded_pass.FOLDED_PASS_END)
+    if start < 0 or end < 0:
+        raise LookupError("the folded pass block")
+    return start, end + len(folded_pass.FOLDED_PASS_END) + 1
+
+
+def fold_into_curl(source: str, fields: Any) -> str:
+    """The PREVIOUS package form: the term inside the curl, before both masks and the
+    per-chunk forms, with no pass of its own."""
+    start, end = pass_block(source)
+    source = source[:start] + source[end:]
+    if is_complex(fields):
+        terms = ("    curl0 = curl0 - float2(-(beta_plus * b.y), beta_plus * b.x);\n"
+                 "    curl1 = curl1 - float2(-(beta_minus * a.y), beta_minus * a.x);\n")
+    else:
+        terms = ("    curl0 = curl0 - (beta_plus * b);\n"
+                 "    curl1 = curl1 - (beta_minus * a);\n")
+    anchor = "    bool at_x = (i == 0)"
+    if source.count(anchor) != 1:
+        raise LookupError(anchor)
+    return source.replace(anchor, terms + anchor)
+
+
+def drop_increment_rows(source: str, flag_prefix: str) -> str:
+    """The pass's own mask rows on one family of flags (``at_`` or ``last_``) removed."""
+    start, end = pass_block(source)
+    block = source[start:end]
+    kept = [line for line in block.splitlines(keepends=True)
+            if not (line.strip().startswith("bi") and f"= {flag_prefix}" in line)]
+    if len(kept) == len(block.splitlines(keepends=True)):
+        raise LookupError(f"no increment row on a {flag_prefix} flag")
+    return source[:start] + "".join(kept) + source[end:]
 
 
 def leg_position(payload: Dict[str, Any], out: str) -> None:
-    """WHERE THE BETA TERM SITS, measured per case and per sub-step.
+    """WHERE THE BETA PASS SITS, measured per case and per sub-step.
 
-    The array path adds the term after the curl and BEFORE both masks. Moving it past
-    either one must change the answer, and HOW MANY words it changes is recorded
-    rather than only whether it did — the count is the size of the plane the mask
-    owns, and a count that stopped matching the geometry would be a finding even
-    while the leg still "passed".
+    MEEP adds the beta coupling as its own pass after every component's curl, through
+    the curl's ladder, with the increment masked by the curl's own ownership rows --
+    the cell-0 arm and, on a folded PERIODIC axis, the fold's top-plane arm. Three
+    variants must each change the answer, and HOW MANY words each changes is recorded:
+    the term folded back into the curl before the masks and forms (the previous package
+    form), and the increment left unmasked by either arm.
 
     The top-plane arm is a MEASURED NULL on a MIRROR_METALLIC fold, where the emitter
-    writes no mask at all, and the row says so with its reason rather than being
-    dropped or counted as a catch.
+    writes no top-plane mask at all, and the row says so with its reason rather than
+    being dropped or counted as a catch.
     """
     rows: List[Dict[str, Any]] = []
     started = time.time()
@@ -1057,9 +1055,11 @@ def leg_position(payload: Dict[str, Any], out: str) -> None:
 
             shipped = shipped_source(fields, pml, sub_step)
             variants: Dict[str, Optional[str]] = {
-                "after_cell_zero_mask": move_beta_after(shipped, "at_"),
-                "after_both_masks": (move_beta_after(shipped, "last_")
-                                     if "mirror_periodic" in case_tags else None),
+                "folded_into_the_curl": fold_into_curl(shipped, fields),
+                "increment_unmasked_at_cell_zero": drop_increment_rows(shipped, "at_"),
+                "increment_unmasked_at_the_top_plane": (
+                    drop_increment_rows(shipped, "last_")
+                    if "mirror_periodic" in case_tags else None),
             }
             per_variant: Dict[str, Any] = {}
             for name, mutant in variants.items():
@@ -1068,7 +1068,7 @@ def leg_position(payload: Dict[str, Any], out: str) -> None:
                         {"differing": 0},
                         "this fold is MIRROR_METALLIC: the top plane is OWNED and "
                         "STEPPED, the emitter writes no top-plane mask at all, and "
-                        "there is no second mask to move the term past")
+                        "the increment has no second row to lose")
                     continue
                 state = snapshot(fields, CURL_ARRAYS)
                 residency = device.Residency()
@@ -1094,12 +1094,14 @@ def leg_position(payload: Dict[str, Any], out: str) -> None:
             save(payload, out)
 
     for row in rows:
-        assert row["variants"]["after_cell_zero_mask"]["differing"] > 0, row
-        top = row["variants"]["after_both_masks"]
+        assert row["variants"]["folded_into_the_curl"]["differing"] > 0, row
+        assert row["variants"]["increment_unmasked_at_cell_zero"]["differing"] > 0, row
+        top = row["variants"]["increment_unmasked_at_the_top_plane"]
         if not top.get("predicted_null"):
             assert top["differing"] > 0, row
     fired = sum(1 for row in rows
-                if not row["variants"]["after_both_masks"].get("predicted_null"))
+                if not row["variants"]["increment_unmasked_at_the_top_plane"].get(
+                    "predicted_null"))
     kit.assert_census_floor(
         fired, "cases where the TOP-plane arm of the position leg is reachable")
 
@@ -1133,7 +1135,7 @@ __BODY__
 def micro(body: str, complex_storage: bool) -> str:
     return templates.substitute(MICRO_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(shaders.CONTRACT_OFF),
-        "__HELPERS__": (templates.complex_helpers(EXPANSION)
+        "__HELPERS__": (templates.complex_helpers()
                         if complex_storage else ""),
         "__T__": "float2" if complex_storage else "float",
         "__BODY__": body})
@@ -1175,8 +1177,8 @@ def run_micro(body: str, left: np.ndarray, right: np.ndarray,
 def leg_spellings(payload: Dict[str, Any], out: str) -> None:
     """TWO REFUTED SPELLINGS THAT THIS FAMILY CANNOT TELL APART, and why.
 
-    ``negation_spelled_as_zero_minus`` and ``complex_zero_cross_terms_folded`` are
-    both recorded in leg ``mutations`` as measured nulls, and a measured null is
+    ``negation_spelled_as_zero_minus`` and ``complex_increment_as_a_complex_product``
+    are both recorded in leg ``mutations`` as measured nulls, and a measured null is
     worthless without its mechanism: "the spellings are the same" (false) and "this
     family cannot tell them apart" (true) are different claims.
 
@@ -1184,15 +1186,15 @@ def leg_spellings(payload: Dict[str, Any], out: str) -> None:
     discriminating operand patterns rather than inherited from the probe. Both are
     required to move at least one word.
 
-    HALF TWO — THE FAMILY CANNOT REACH THE PATTERN, and this is a MEASUREMENT, not an
-    argument. Both differences reduce to the same question: is the value the beta term
-    is subtracted from ever a NEGATIVE ZERO? A needle replaces the beta insert with an
-    export of ``curl0/curl1/curl2`` and an early return, so the gate reads the exact
-    operand off the device on every case and sub-step and censuses the ``-0.0`` words.
-    ``grid.beta`` is legal only on an effective-2-D grid, whose invariant axis stores
-    ONE cell, so the z-shifted operand IS the centre operand and ``b - b_z`` is
-    ``+0.0`` for every finite ``b``; a float sum carrying a ``+0.0`` addend is never
-    ``-0.0``. The census is what turns that paragraph into a number.
+    HALF TWO -- THE FAMILY CANNOT REACH THE PATTERN, and this is a MEASUREMENT, not an
+    argument. Both differences reduce to the same question: is a word the beta
+    increment is subtracted from -- the forms' ``v`` and ``n`` registers -- ever a
+    NEGATIVE ZERO? A needle replaces the pass with an export of ``v0``/``v1`` (and,
+    as the census's own control, ``curl2``, which the pass never touches) and an
+    early return, so the gate reads the exact operands off the device on every case
+    and sub-step and censuses the ``-0.0`` words, with signed zeros planted into the
+    source volumes. The targets carry physical-band words, so the forms' outputs are
+    not zeros; the census is what turns that into a number.
     """
     rows: List[Dict[str, Any]] = []
     started = time.time()
@@ -1215,9 +1217,13 @@ def leg_spellings(payload: Dict[str, Any], out: str) -> None:
         "does not, this backend canonicalizes zeros and the whole discussion "
         "changes", shipped, refuted)
 
-    # --- HALF ONE, the complex cross terms ----------------------------------
-    # The product ITSELF, not the subtraction: the shipped tail then subtracts it,
-    # and the subtraction is exactly what half two shows absorbs the difference.
+    # --- HALF ONE, the complex increment ------------------------------------
+    # The shipped pass forms the increment as a quarter turn of the partner's parts
+    # (two real products and an exact negation); the refuted spelling forms it as a
+    # complex product by a purely imaginary coefficient, whose zero cross terms carry
+    # signs of their own. The PRODUCT itself is compared, not the subtraction: the
+    # ladder then subtracts it, and half two shows the subtraction absorbs the
+    # difference.
     values = np.array([complex(0.0, 0.0), complex(-0.0, -0.0), complex(0.0, -0.0),
                        complex(-0.0, 0.0), complex(1.5, -0.0), complex(-0.0, 1.5),
                        complex(0.75, -0.5), complex(-1.25, 0.25)],
@@ -1236,7 +1242,8 @@ def leg_spellings(payload: Dict[str, Any], out: str) -> None:
         cross_delta += delta
         per_coefficient.append({"coefficient": list(coefficient),
                                 "differing": delta, "lanes": int(partner.size)})
-    rows.append({"spelling": "float2(-(ci*b.y), ci*b.x) vs c_mul((cr, ci), b)",
+    rows.append({"spelling": "c_mul((cr, ci), b) vs the shipped quarter turn "
+                             "float2(-(ci*b.y), ci*b.x)",
                  "arm": "complex", "lanes": int(partner.size) * 4,
                  "differing": cross_delta, "per_coefficient": per_coefficient,
                  "discriminating_pattern":
@@ -1245,9 +1252,9 @@ def leg_spellings(payload: Dict[str, Any], out: str) -> None:
         f"({time.time() - started:.1f}s)")
     kit.assert_census_floor(
         cross_delta,
-        "the folded cross terms reproduced c_mul on EVERY signed-zero pattern, so "
-        "the spelling this gate refutes is not refutable here and the mutation row "
-        "would be a null about nothing")
+        "the complex product reproduced the quarter turn on EVERY signed-zero "
+        "pattern, so the spelling this gate refutes is not refutable here and the "
+        "mutation row would be a null about nothing")
 
     # --- HALF TWO, the curl census, on every case and sub-step --------------
     census: List[Dict[str, Any]] = []
@@ -1260,12 +1267,11 @@ def leg_spellings(payload: Dict[str, Any], out: str) -> None:
             # that TRIED to reach the pattern rather than about a bland one.
             plant_signed_zeros(fields, tuple(SUB_STEPS[sub_step]["sources"]))
             codes, _ = symmetry.folded_axis_kinds(fields.grid, pml)
-            insert = (special_kz._COMPLEX_BETA_INSERT if is_complex(fields)
-                      else special_kz._REAL_BETA_INSERT)
-            export = needle(
-                shipped_source(fields, pml, sub_step), insert,
-                "    f0[ii] = curl0; f1[ii] = curl1; f2[ii] = curl2;\n"
-                "    return;")
+            shipped = shipped_source(fields, pml, sub_step)
+            start, end = pass_block(shipped)
+            export = (shipped[:start]
+                      + "    f0[ii] = v0; f1[ii] = v1; f2[ii] = curl2;\n    return;\n"
+                      + shipped[end:])
             residency = device.Residency()
             counter = kit.Counter(entry_point(fields, export))
             plan = from_arrays_curl(fields, pml, sub_step, codes, residency,
@@ -1274,21 +1280,12 @@ def leg_spellings(payload: Dict[str, Any], out: str) -> None:
             plan.run()
             residency.sync_out()
             assert counter.launches == 1, (label, sub_step)
-            # THE SPLIT IS THE WHOLE POINT, AND IT IS THIS LEG'S OWN CORRECTION.
-            # The beta term is added to `curl0` and `curl1` ONLY — never to `curl2`
-            # (special_kz._REAL_BETA_INSERT / ._COMPLEX_BETA_INSERT) — and the
-            # structural argument only covers those two:
-            #   curl0 = dtdx * ((c_y - c) + (b - b_z))
-            #   curl1 = dtdx * ((a_z - a) + (c - c_x))
-            #   curl2 = dtdx * ((b_x - b) + (a - a_y))
-            # curl0 and curl1 each carry ONE difference along the INVARIANT axis,
-            # which stores a single cell, so that addend is a hard +0.0 and their sum
-            # can never be -0.0. `curl2` carries NO invariant-axis difference and CAN
-            # be -0.0 — measured here at 48 words on real_x_fold/step_B — which is
-            # what makes this census a measurement instead of a blind spot. Censusing
-            # all three together (which is how this leg was first written) reported
-            # curl2's negative zeros as a refutation of a claim that was never about
-            # curl2.
+            # THE SPLIT: the pass reaches targets 0 and 1 only (step_db.cpp:161-175
+            # runs d_c over {X, Y}), so their exported ``v`` words are the operands
+            # the claim is about. Target 2's slot carries ``curl2`` instead, a word
+            # the pass never touches and which DOES reach -0.0 on these grids: the
+            # census's own control, without which "no negative zero" could not be
+            # told from "this census cannot see one".
             targets = tuple(SUB_STEPS[sub_step]["targets"])
             touched = np.concatenate([words(getattr(fields, name))
                                       for name in targets[:2]])
@@ -1313,15 +1310,14 @@ def leg_spellings(payload: Dict[str, Any], out: str) -> None:
                                     floor=64)
             assert negative_zero == 0, (
                 label, sub_step,
-                "a NEGATIVE ZERO reached a curl the beta term is subtracted from. "
+                "a NEGATIVE ZERO reached a word the beta increment is subtracted from. "
                 "The two refuted spellings are then OBSERVABLE on this family after "
                 "all, and their mutation rows must be re-armed as must_catch",
                 census[-1])
 
     kit.assert_census_floor(
         sum(row["negative_zero_words_in_the_untouched_curl"] for row in census),
-        "the census never saw a negative zero in ANY curl, including the one the "
-        "beta term does not touch and the structural argument does not cover — so it "
+        "the census never saw a negative zero in the control curl2 either, so it "
         "cannot be shown to detect one at all and the zeros above are a blind spot "
         "rather than a result")
 
@@ -1332,18 +1328,14 @@ def leg_spellings(payload: Dict[str, Any], out: str) -> None:
             "BOTH refuted spellings are genuinely different on this backend (half "
             "one) and BOTH are unobservable on this family's grids (half two). Every "
             "difference they can produce is a signed zero in the beta increment, and "
-            "`curl - (+/-0.0)` is one word unless `curl` is a NEGATIVE ZERO — which "
-            "the census measures never happens on the TWO curls the beta term is "
-            "added to, over "
+            "`v - (+/-0.0)` is one word unless `v` is a NEGATIVE ZERO -- which the "
+            "census measures never happens on the forms' outputs for the two targets "
+            "the pass reaches, over "
             f"{sum(r['curl_words_exported'] for r in census)} exported words on "
             f"{len(census)} case/sub-step pairs, with signed zeros PLANTED into the "
-            "source volumes. The reason is structural and is narrower than 'the curl': "
-            "curl0 and curl1 each carry one difference along the INVARIANT axis, which "
-            "stores a single cell, so that addend is a hard +0.0 and a float sum with "
-            "a +0.0 addend is never -0.0. curl2 carries no such difference, is never "
-            "given the beta term, and DOES reach -0.0 — "
+            "source volumes, while the control curl2 reaches -0.0 in "
             f"{sum(r['negative_zero_words_in_the_untouched_curl'] for r in census)} "
-            "words across the matrix — which is this census's own control"),
+            "words"),
     }
     save(payload, out)
 
@@ -1352,16 +1344,7 @@ def leg_spellings(payload: Dict[str, Any], out: str) -> None:
 # LEG guard — the contraction directive, MEASURED, PER ARM
 # ---------------------------------------------------------------------------
 
-COMPLEX_GUARD_NULL_REASON = (
-    "the shipped complex arm is the FMA_V1 spelling, whose every product is already "
-    "inside an explicit fma() or carries an exact zero operand: there is no IMPLICIT "
-    "multiply-add pair for contract(fast) to fuse, so the directive is byte-invisible "
-    "here. That is a property of the SPELLING, not of the harness — the NAIVE control "
-    "below plants a body that DOES contract and must diverge wherever a general "
-    "complex product is live")
-
-
-def run_variant(label: str, sub_step: str, *, expansion: Optional[str] = None,
+def run_variant(label: str, sub_step: str, *,
                 contract: str = shaders.CONTRACT_OFF,
                 has_beta: bool = True) -> Tuple[Dict[str, Any], int, int]:
     """One compiled variant against the array path, on a freshly built case.
@@ -1371,8 +1354,7 @@ def run_variant(label: str, sub_step: str, *, expansion: Optional[str] = None,
     fields, pml = build(label)
     reference, reference_pml = build(label)
     codes, _ = symmetry.folded_axis_kinds(fields.grid, pml)
-    source = shipped_source(fields, pml, sub_step, has_beta=has_beta,
-                            expansion=expansion, contract=contract)
+    source = shipped_source(fields, pml, sub_step, has_beta=has_beta, contract=contract)
     residency = device.Residency()
     counter = kit.Counter(entry_point(fields, source))
     plan = from_arrays_curl(fields, pml, sub_step, codes, residency,
@@ -1381,7 +1363,7 @@ def run_variant(label: str, sub_step: str, *, expansion: Optional[str] = None,
     residency.sync_in()
     plan.run()
     residency.sync_out()
-    assert counter.launches == 1, (label, sub_step, expansion, contract)
+    assert counter.launches == 1, (label, sub_step, contract)
     getattr(stepping, sub_step)(reference, reference_pml)
     names = curl_names(sub_step)
     state = {n: np.array(getattr(fields, n), copy=True) for n in names}
@@ -1392,19 +1374,13 @@ def run_variant(label: str, sub_step: str, *, expansion: Optional[str] = None,
 
 
 def leg_guard(payload: Dict[str, Any], out: str) -> None:
-    """``contract(fast)`` must DIVERGE on the arm that can contract.
+    """``contract(fast)`` must DIVERGE, on each storage.
 
     On Metal this is a SOURCE variant rather than a launch keyword, so the two modes
-    are two compiled kernels. The REAL arm's hazard is this family's own tail —
-    ``curl - (c * b)`` — which is exactly the shape a compiler contracts into an fma,
-    and it is why the pragma is mandatory rather than tidy.
-
-    THE FLOOR IS PER ARM. A single sum over every row would be satisfied by the real
-    arm alone while every complex row sat at zero, and the null would not even be
-    recorded. The complex rows carry :data:`COMPLEX_GUARD_NULL_REASON` and are backed
-    by a NAIVE-arm CONTROL that must diverge exactly where a general complex product
-    is live — without it, "the complex arm does not contract" and "this leg cannot see
-    a contraction" would be the same measurement.
+    are two compiled kernels. Both arms carry contractable shapes: the forms'
+    ``(p * km) - curl`` and the pass's ``v - (si * df)``, per part on the complex
+    arm. THE FLOOR IS PER ARM: a single sum would be satisfied by one storage while
+    the other sat at zero.
     """
     rows: List[Dict[str, Any]] = []
     started = time.time()
@@ -1419,83 +1395,18 @@ def leg_guard(payload: Dict[str, Any], out: str) -> None:
                    "arm": "complex" if is_complex else "real",
                    "guarded_differing": guarded_bad, "fast_differing": fast_bad,
                    "moved": moved}
-            if is_complex:
-                kit.predicted_null(row, COMPLEX_GUARD_NULL_REASON)
             rows.append(row)
             log(f"[guard] {label:<26} {sub_step} guarded={guarded_bad} "
                 f"fast={fast_bad} ({time.time() - started:.1f}s)")
             payload["legs"]["guard"] = rows
             save(payload, out)
             assert guarded_bad == 0, row
-            if is_complex:
-                assert fast_bad == 0, (
-                    f"{row}: the complex arm DID diverge under contract(fast), which "
-                    f"contradicts the recorded null — an implicit multiply-add pair "
-                    f"has appeared in the complex body")
-
-    real_fast = sum(row["fast_differing"] for row in rows if row["arm"] == "real")
-    kit.assert_census_floor(
-        real_fast,
-        "REAL-arm contraction guard effect (the contract=fast build agreed with "
-        "stepping.py on every real case, so the one compile option this "
-        "certification rests on is not measurable and its pinning is decorative)")
-
-    # THE CONTROL. Plant the OTHER expansion arm — four separately rounded products
-    # and two rounded adds, an explicitly contractable shape — into the same complex
-    # kernel and require contract(fast) to move bytes wherever a general complex
-    # product is live.
-    other = "NAIVE" if EXPANSION == "FMA_V1" else "FMA_V1"
-    control: List[Dict[str, Any]] = []
-    for label, _, is_complex in CASES:
-        if not is_complex:
-            continue
-        fields, pml = build(label)
-        general = "general_phase" in tags(fields, pml)
-        for sub_step in ("step_B", "step_D"):
-            off, off_bad, _ = run_variant(label, sub_step, expansion=other)
-            fast, _, _ = run_variant(label, sub_step, expansion=other,
-                                     contract=shaders.CONTRACT_FAST)
-            delta = sum(differing(off[n], fast[n]) for n in off)
-            control.append({"case": label, "sub_step": sub_step, "arm": other,
-                            "off_vs_fast": delta,
-                            "wrong_arm_vs_stepping": off_bad,
-                            "a_general_complex_product_is_live": bool(general)})
-            log(f"[guard control] {label:<26} {sub_step} arm={other} "
-                f"off_vs_fast={delta} wrong_arm_vs_stepping={off_bad} "
-                f"general={general} ({time.time() - started:.1f}s)")
-            assert bool(delta) == bool(general), (
-                f"{label}/{sub_step}: the NAIVE control diverged={bool(delta)} while "
-                f"a general complex product was live={bool(general)}. The control's "
-                f"own explanation of WHICH rows can contract no longer matches what "
-                f"it measured")
-    payload["legs"]["guard_control"] = {
-        "arm": other,
-        "why": ("the NAIVE body spells `(a*b) - (c*d)`, an IMPLICIT multiply-add "
-                "pair, so contract(fast) has something to fuse. A general complex "
-                "product only exists where a Bloch phase is live and is neither 1+0j "
-                "nor -1+0j: the ZONE-EDGE row carries a LIVE phase whose word is "
-                "exactly (-1.0, +0.0), so every cross term is exact and it is a zero "
-                "BESIDE a general-phase row that is not — which is what makes this "
-                "control a discriminator rather than a pass/fail. The BETA "
-                "coefficient itself is purely imaginary, so it never makes one, and "
-                "the unphased complex rows are zeros for that reason"),
-        "rows": control,
-        "diverging_rows": sum(1 for r in control if r["off_vs_fast"]),
-        "wrong_arm_diverging_rows": sum(1 for r in control
-                                        if r["wrong_arm_vs_stepping"]),
-    }
-    save(payload, out)
-    kit.assert_census_floor(
-        sum(r["off_vs_fast"] for r in control),
-        f"complex contraction CONTROL ({other} arm): contract(fast) moved nothing "
-        f"even on a body that spells an implicit multiply-add pair, so this leg "
-        f"cannot see a contraction in the complex kernel at all and the shipped "
-        f"arm's zero rows are an absence of measurement rather than a null")
-    kit.assert_census_floor(
-        sum(r["wrong_arm_vs_stepping"] for r in control),
-        f"the WRONG expansion arm ({other}) reproduced stepping.py on every complex "
-        f"case, so which arm this host's reference takes is unmeasurable here and "
-        f"the probe-bound choice is decorative")
+    for arm in ("real", "complex"):
+        kit.assert_census_floor(
+            sum(row["fast_differing"] for row in rows if row["arm"] == arm),
+            f"{arm.upper()}-arm contraction guard effect (the contract=fast build "
+            f"agreed with stepping.py on every {arm} case, so the one compile option "
+            f"this certification rests on is not measurable there)")
 
 
 # ---------------------------------------------------------------------------
@@ -1726,11 +1637,18 @@ def source_mutations() -> Tuple[Tuple[str, Optional[bool], str, Optional[str],
     a defect surviving.
     """
 
-    def after_cell_zero(source, fields, pml, sub_step):
-        return move_beta_after(source, "at_")
+    def folded_into_curl(source, fields, pml, sub_step):
+        return fold_into_curl(source, fields)
 
-    def after_both(source, fields, pml, sub_step):
-        return move_beta_after(source, "last_")
+    def unmasked_at_cell_zero(source, fields, pml, sub_step):
+        return drop_increment_rows(source, "at_")
+
+    def unmasked_at_top(source, fields, pml, sub_step):
+        return drop_increment_rows(source, "last_")
+
+    def in_pass(source, edit):
+        start, end = pass_block(source)
+        return source[:start] + edit(source[start:end]) + source[end:]
 
     def drop_top_mask(source, fields, pml, sub_step):
         codes, _ = symmetry.folded_axis_kinds(fields.grid, pml)
@@ -1773,55 +1691,54 @@ def source_mutations() -> Tuple[Tuple[str, Optional[bool], str, Optional[str],
                       templates.ghost(letter, symmetry.CODE_PERIODIC, backward))
 
     def swap_beta_signs(source, fields, pml, sub_step):
-        if "beta_plus" in source:
-            return (source.replace("beta_plus * b", "__TMP__ * b")
-                          .replace("beta_minus * a", "beta_plus * a")
-                          .replace("__TMP__ * b", "beta_minus * b"))
-        return (source.replace("float2(bpr, bpi), b", "float2(__T__), b")
-                      .replace("float2(bmr, bmi), a", "float2(bpr, bpi), a")
-                      .replace("float2(__T__), b", "float2(bmr, bmi), b"))
+        # Inside the pass only: the two words are also the names of two bindings,
+        # and a swap that reached the signature would undo itself.
+        return in_pass(source, lambda block: block.replace("beta_plus", "__T__")
+                       .replace("beta_minus", "beta_plus")
+                       .replace("__T__", "beta_minus"))
 
     def swap_multiply_operands(source, fields, pml, sub_step):
         return (source.replace("(beta_plus * b)", "(b * beta_plus)")
                       .replace("(beta_minus * a)", "(a * beta_minus)"))
 
     def negate_with_zero_minus(source, fields, pml, sub_step):
-        return needle(source, "curl0 = curl0 - (beta_plus * b);",
-                      "curl0 = curl0 + (0.0f - (beta_plus * b));")
+        return needle(source, "float bi0 = -(beta_plus * b);",
+                      "float bi0 = 0.0f - (beta_plus * b);")
 
-    def swap_complex_orientation(source, fields, pml, sub_step):
-        return (source.replace("c_mul(float2(bpr, bpi), b)",
-                               "c_mul(b, float2(bpr, bpi))")
-                      .replace("c_mul(float2(bmr, bmi), a)",
-                               "c_mul(a, float2(bmr, bmi))"))
+    def swap_quarter_turn_operands(source, fields, pml, sub_step):
+        return in_pass(source, lambda block: block
+                       .replace("(beta_plus * b.y)", "(b.y * beta_plus)")
+                       .replace("beta_plus * b.x)", "b.x * beta_plus)"))
 
-    def fold_zero_cross_terms(source, fields, pml, sub_step):
-        return (source.replace("c_mul(float2(bpr, bpi), b)",
-                               "float2(-(bpi * b.y), bpi * b.x)")
-                      .replace("c_mul(float2(bmr, bmi), a)",
-                               "float2(-(bmi * a.y), bmi * a.x)"))
+    def increment_as_complex_product(source, fields, pml, sub_step):
+        return needle(source, "float2(-(beta_plus * b.y), beta_plus * b.x)",
+                      "c_mul(b, float2(0.0f, beta_plus))")
 
-    def rotate_the_beta_partner(source, fields, pml, sub_step):
-        # The phase words are named per AXIS (`pxr`/`pxi`, ...), so the letter is read
-        # off the emitted source rather than assumed to be x — a needle that hard-coded
-        # the axis would silently miss on a grid phased anywhere else.
-        letter = next((axis for axis in "xyz"
-                       if f"float2(p{axis}r, p{axis}i)" in source), None)
-        if letter is None:
-            raise LookupError("no phase word pair appears in this source")
-        return needle(
-            source, "c_mul(float2(bpr, bpi), b)",
-            f"c_mul(float2(bpr, bpi), c_mul(b, float2(p{letter}r, p{letter}i)))")
+    def connect_the_beta_partner(source, fields, pml, sub_step):
+        # The connected copy of each centre exists only on the axes MEEP connects;
+        # read which one this source carries rather than assume x.
+        if "b_dx = c_mul(b" in source:
+            return needle(source, "float2(-(beta_plus * b.y), beta_plus * b.x)",
+                          "float2(-(beta_plus * b_dx.y), beta_plus * b_dx.x)")
+        if "a_dy = c_mul(a" in source:
+            return needle(source, "float2(-(beta_minus * a.y), beta_minus * a.x)",
+                          "float2(-(beta_minus * a_dy.y), beta_minus * a_dy.x)")
+        raise LookupError("no connected copy of a beta partner in this source")
 
     return (
-        ("beta_after_the_cell_zero_mask", True,
-         "the array path adds the term at stepping.py:384-391 / :467-474 and masks "
-         "at :397 / :479; moving it past the cell-0 arm writes a beta contribution "
-         "into a cell the array path zeroes", None, BOTH_SUB_STEPS, False, after_cell_zero),
-        ("beta_after_both_masks", True,
-         "the SECOND mask is the fold's own contribution, and it is the whole reason "
-         "this family exists rather than special_kz's curl being re-admitted",
-         "mirror_periodic", BOTH_SUB_STEPS, False, after_both),
+        ("beta_folded_into_the_curl", True,
+         "the PREVIOUS package form: the term inside the curl, before both masks "
+         "and the per-chunk forms, instead of MEEP's pass after them through the "
+         "curl's ladder (step_db.cpp:161-175)", None, BOTH_SUB_STEPS, False,
+         folded_into_curl),
+        ("increment_unmasked_at_cell_zero", True,
+         "the pass's increment kept on the cell-0 rows the curl's mask drops; MEEP's "
+         "pass loops over owned cells only", None, BOTH_SUB_STEPS, False,
+         unmasked_at_cell_zero),
+        ("increment_unmasked_at_the_top_plane", True,
+         "the SECOND mask is the fold's own contribution: the pass's increment kept "
+         "on the folded PERIODIC top plane the FILL writes",
+         "mirror_periodic", BOTH_SUB_STEPS, False, unmasked_at_top),
         ("top_plane_mask_dropped", True,
          "the folded PERIODIC top plane sits past MEEP's big_corner and the FILL "
          "writes it, not the curl; masking it is what makes the two agree, and on "
@@ -1861,41 +1778,28 @@ def source_mutations() -> Tuple[Tuple[str, Optional[bool], str, Optional[str],
          swap_multiply_operands),
         ("negation_spelled_as_zero_minus", False,
          "UNOBSERVABLE ON THIS FAMILY'S GRIDS, and that is proved rather than "
-         "assumed: `curl + (0.0f - x)` differs from `curl - x` in exactly one input "
-         "pattern (curl a NEGATIVE zero, x a positive zero), and grid.beta is legal "
-         "only on an effective-2-D grid whose invariant axis stores ONE cell — so "
-         "`b - b_z` is +0.0 for every finite b and a float sum carrying a +0.0 addend "
-         "is never -0.0. The spellings ARE different on this backend (measured "
-         "0.0f - x misses 22/1728 on the probe's exhaustive table); this family "
-         "cannot tell them apart, which is a different claim and the only true one",
-         "real", BOTH_SUB_STEPS, True, negate_with_zero_minus),
-        ("complex_coefficient_orientation_swapped", False,
-         "A SCOPED equivalence. `c_mul(coefficient, partner)` vs "
-         "`c_mul(partner, coefficient)` is a null ONLY while the coefficient's real "
-         "word is an exact zero — with a GENERAL coefficient the probe measured "
-         "1080/41472 at up to 8 ulps. The scope is CHECKED below rather than trusted",
-         "complex", BOTH_SUB_STEPS, True,
-         swap_complex_orientation),
-        ("complex_zero_cross_terms_folded", False,
-         "UNOBSERVABLE ON THIS FAMILY'S GRIDS, and the classification is a "
-         "MEASUREMENT that corrected a prediction. The shortcut the orientation null "
-         "invites — a zero real word does not make the cross terms FREE, it makes "
-         "them EXACT — was armed as must_catch on the strength of the probe's "
-         "78/41472, and it reported CAUGHT 0/14 both on random data and with 2,988 "
-         "signed zeros planted into the source volumes. The reason is the SAME one "
-         "the negation row carries: dropping the fma's zero addend can only change "
-         "the SIGN OF A ZERO in the beta increment, and `curl - (+/-0.0)` is one word "
-         "unless `curl` is a negative zero — which leg `spellings` MEASURES never "
-         "happens on an effective-2-D grid. Half one (the spellings really do differ) "
-         "and half two (the pattern is unreachable) are both measured there",
-         "complex", BOTH_SUB_STEPS, True,
-         fold_zero_cross_terms),
-        ("beta_partner_bloch_rotated", True,
-         "the beta partner is the UNSHIFTED SAME-CELL snapshot (stepping.py:321 / "
-         ":408) and the Bloch rotation applies to SHIFTED operands only; rotating it "
-         "on the wrapped lane is the defect reusing the centre registers prevents BY "
-         "CONSTRUCTION", "general_phase", BOTH_SUB_STEPS, False,
-         rotate_the_beta_partner),
+         "assumed: `0.0f - x` and `-x` differ only on x = +0, and the ladder's "
+         "`v - (si * df)` then differs only where `v` is a NEGATIVE zero, which leg "
+         "`spellings` measures never happens on the forms' outputs here, with signed "
+         "zeros planted into the sources", "real", BOTH_SUB_STEPS, True,
+         negate_with_zero_minus),
+        ("complex_quarter_turn_operands_swapped", False,
+         "A DECLARED EQUIVALENCE, measured rather than believed: the quarter turn's "
+         "two products are real multiplications, commutative in bits",
+         "complex", BOTH_SUB_STEPS, False, swap_quarter_turn_operands),
+        ("complex_increment_as_a_complex_product", False,
+         "UNOBSERVABLE ON THIS FAMILY'S GRIDS: a complex product by the purely "
+         "imaginary (+0, c) differs from the quarter turn only in the SIGN OF A "
+         "ZERO of the increment (leg `spellings` half one measures that it does), "
+         "and `v - (+/-0.0)` is one word unless `v` is a negative zero, which half "
+         "two measures never happens here", "complex", BOTH_SUB_STEPS, True,
+         increment_as_complex_product),
+        ("beta_partner_bloch_connected", True,
+         "the beta partner is the stored same-cell word; MEEP's Bloch connection "
+         "applies to the unshifted operand AS READ ACROSS A WRAP, which the curl "
+         "carries as its own copy -- taking that copy is the defect reading the "
+         "centre register prevents", "general_phase", BOTH_SUB_STEPS, False,
+         connect_the_beta_partner),
     )
 
 
@@ -1960,40 +1864,6 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                          f"refutes differs ONLY on a zero operand, so an unplanted "
                          f"state would report it as a null)", floor=64)
 
-    # THE ORIENTATION NULL'S SCOPE, CHECKED RATHER THAN TRUSTED. The equivalence
-    # above holds only while the coefficient's REAL word is an exact zero. Reading
-    # that word here is what stops the null being inherited by a future edit that
-    # changes the coefficient.
-    coefficient_words: List[Dict[str, Any]] = []
-    for case, _, is_complex in CASES:
-        if not is_complex:
-            continue
-        fields, pml = build(case)
-        for sub_step in ("step_B", "step_D"):
-            (plus_re, plus_im), (minus_re, minus_im) = \
-                special_kz.beta_curl_coefficients(
-                    fields.grid.beta, fields.grid.dt,
-                    magnetic=(sub_step == "step_B"), complex_storage=True)
-            entry = {"case": case, "sub_step": sub_step,
-                     "beta_plus_real_word": float(plus_re),
-                     "beta_minus_real_word": float(minus_re),
-                     "purely_imaginary": bool(float(plus_re) == 0.0
-                                              and float(minus_re) == 0.0)}
-            coefficient_words.append(entry)
-            assert entry["purely_imaginary"], (
-                entry, "the beta coefficient's REAL word is not an exact zero, so "
-                "`complex_coefficient_orientation_swapped` is no longer a null and "
-                "the row above records a scope that no longer holds")
-            assert float(plus_im) != 0.0 and float(minus_im) != 0.0, entry
-    payload["legs"]["orientation_null_scope"] = {
-        "why": ("the orientation swap is byte-invisible only while the coefficient's "
-                "real word is an exact zero; with a general coefficient the probe "
-                "measured 1080/41472 words at up to 8 ulps. This is the scope, read "
-                "off the shipped coefficients rather than assumed"),
-        "rows": coefficient_words,
-    }
-    save(payload, out)
-
     # HOST-SIDE NEEDLE 1: THE SUB-STEP CONJUGATION. The two coefficients are built
     # with `magnetic=(sub_step == "step_B")`, which is where the B/D asymmetry of
     # stepping.py:798-799 lives. Flipping it is a defect no SOURCE edit can express.
@@ -2002,10 +1872,10 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     skipped_real: List[str] = []
     for case, _, complex_storage in CASES:
         # SCOPED TO THE COMPLEX ARM, AND THE SCOPE IS A MEASUREMENT. `magnetic`
-        # reaches the value ONLY through the `* (1j if magnetic else -1j)` factor
-        # (special_kz.beta_curl_coefficients, transcribing stepping.py:798-799), so on
-        # REAL storage the two sub-steps take the SAME coefficient words and flipping
-        # the flag is the identity. Measured unscoped this row reported CAUGHT 14/28
+        # reaches the words ONLY through the D side's quarter turn by `-c`
+        # (special_kz.beta_curl_coefficients, transcribing
+        # stepping._special_kz_beta_term), so on REAL storage the two sub-steps take
+        # the SAME words and flipping the flag is the identity. Measured unscoped this row reported CAUGHT 14/28
         # and the 14 misses were exactly the seven real cases: the B/D asymmetry of
         # the beta coefficient lives entirely in the complex arm.
         if not complex_storage:
@@ -2184,13 +2054,13 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         axis = 1 if codes[1] in symmetry.MIRROR_CODES else 0
         flags = tuple(1 if i == axis else 0 for i in range(3))
         try:
-            folded_beta.folded_beta_bloch_curl_source(codes, False, flags, EXPANSION)
+            folded_beta.folded_beta_bloch_curl_source(codes, False, flags)
         except ValueError:
             refusals += 1
     metallic_refusals = 0
     try:
         folded_beta.folded_beta_bloch_curl_source(
-            (symmetry.CODE_METALLIC,) * 3, False, (1, 0, 0), EXPANSION)
+            (symmetry.CODE_METALLIC,) * 3, False, (1, 0, 0))
     except ValueError:
         metallic_refusals += 1
     assert refusals == 2 and metallic_refusals == 1, (refusals, metallic_refusals)
@@ -2262,7 +2132,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
     cplx_fields, cplx_pml = build("complex_y_periodic_even")
     record("complex_arm_on_a_real_storage_run",
            *_verdict(folded_beta.folded_beta_composition_bloch_curl_coverage(
-               real_fields, real_pml, "step_B", residency, probe=PROBE)),
+               real_fields, real_pml, "step_B", residency)),
            "storage is real float32",
            owner=folded_beta.folded_beta_composition_curl_coverage(
                real_fields, real_pml, "step_B", residency).covered,
@@ -2272,7 +2142,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
                cplx_fields, cplx_pml, "step_B", residency)),
            "force_complex_fields=True",
            owner=folded_beta.folded_beta_composition_bloch_curl_coverage(
-               cplx_fields, cplx_pml, "step_B", residency, probe=PROBE).covered,
+               cplx_fields, cplx_pml, "step_B", residency).covered,
            owner_note="the complex arm must own it")
 
     # The real arm's off-diagonal refusal, and the ENGINE'S OWN RAISE beside it.
@@ -2333,7 +2203,9 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
         "the dimension clause fired on the family's own 2-D grid, so it refuses "
         "everything and measures nothing")
 
-    # Conductivity, nonlinearity, BFAST, dispersion, and the missing probe.
+    # Conductivity, nonlinearity and dispersion. (The missing-probe row left with the
+    # expansion probe itself, which entry 89 deleted along with its clause; the
+    # predicate's BFAST clause has never had a row here.)
     # THE CONDUCTIVITY CLAUSE IS PER SUB-STEP AND IS DRIVEN THAT WAY. An ELECTRIC
     # conductivity lands on Dx/Dy/Dz and a MAGNETIC one on Bx/By/Bz, so asking only
     # `step_B` about an electric one reports the clause as ADMITTING — which is what
@@ -2370,18 +2242,12 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
                dispersive[0], dispersive[1], "H", residency).covered,
            owner_note="dispersion must be scoped to the E side; refusing update_H "
                       "too would be a coverage loss wearing a refusal's clothes")
-    record("the_complex_arm_without_a_measured_expansion_artifact",
-           *_verdict(folded_beta.folded_beta_composition_bloch_curl_coverage(
-               cplx_fields, cplx_pml, "step_B", residency,
-               probe={"backend": "not-numpy"})),
-           "expansion probe")
-
     # Cylindrical, refused TWICE — the grid flag alone is not the inversion, because
     # `_mirror_phases` puts `(-1)**grid.m` into the SAME SLOT the mirror phase
     # occupies (stepping.py:2346-2366).
     cyl_fields, cyl_pml = matrix.cylindrical()
     cylindrical = folded_beta.folded_beta_composition_bloch_curl_coverage(
-        cyl_fields, cyl_pml, "step_B", residency, probe=PROBE)
+        cyl_fields, cyl_pml, "step_B", residency)
     text = " | ".join(cylindrical.reasons)
     rows.append({"refusal": "cylindrical_coordinates", "covered": cylindrical.covered,
                  "expected": "cylindrical (Dcyl)", "reasons": list(cylindrical.reasons),
@@ -2407,9 +2273,9 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
                                                          complex_storage=True)
     for side in ("H", "E"):
         theirs = special_kz.beta_run_complex_constitutive_coverage(
-            unfolded_complex, unfolded_complex_pml, side, residency, PROBE)
+            unfolded_complex, unfolded_complex_pml, side, residency)
         mine = folded_beta.folded_beta_complex_constitutive_coverage(
-            unfolded_complex, unfolded_complex_pml, side, residency, PROBE)
+            unfolded_complex, unfolded_complex_pml, side, residency)
         rows.append({"refusal": f"unfolded_complex_beta_constitutive_{side}",
                      "covered": mine.covered,
                      "expected": "DISJOINT: special_kz admits, this family refuses",
@@ -2424,7 +2290,9 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
 
     payload["legs"]["refusals"] = rows
     save(payload, out)
-    kit.assert_census_floor(len(rows), "named refusals driven", floor=14)
+    # THIRTEEN, one per row above: entry 89 deleted the expansion-probe clause and its
+    # row together, and a floor left at fourteen refuses the leg on its own census.
+    kit.assert_census_floor(len(rows), "named refusals driven", floor=13)
 
 
 def _verdict(coverage: Any) -> Tuple[bool, Tuple[str, ...]]:
@@ -2460,9 +2328,7 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
             for spec in arms.registered(slot):
                 context = arms.StepContext(
                     fields=fields, pml=pml, residency=residency,
-                    contract_variants=(shaders.CONTRACT_OFF,),
-                    extra={"beta_probe": PROBE, "folded_complex_probe": FOLD_PROBE,
-                           "probe": PROBE})
+                    contract_variants=(shaders.CONTRACT_OFF,))
                 if spec.gate is not None and not spec.gate(context):
                     skipped.append(spec.family)
                     continue
@@ -2535,13 +2401,12 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
 # LEG containment — Metal-only is never accepted on argument
 # ---------------------------------------------------------------------------
 
-#: The two Triton clauses that are facts about THAT platform rather than about a
+#: The Triton clause that is a fact about THAT platform rather than about a
 #: configuration, factored out and NAMED. This is the same method the Triton coverage
 #: round used ("its number is modulo that one clause"); the count of stripped clauses
 #: is recorded per row so nothing is factored out silently.
 HOST_FACT_CLAUSES: Tuple[str, ...] = (
     "not cupy",
-    "expansion probe artifact is available for this backend",
 )
 
 
@@ -2575,7 +2440,7 @@ def leg_containment(payload: Dict[str, Any], out: str) -> None:
             if slot in ("step_B", "step_D"):
                 if is_complex:
                     metal = folded_beta.folded_beta_composition_bloch_curl_coverage(
-                        fields, pml, slot, residency, probe=PROBE)
+                        fields, pml, slot, residency)
                     triton = triton_folded_complex.folded_beta_bloch_pml_curl_coverage(
                         fields, pml, slot)
                 else:
@@ -2587,7 +2452,7 @@ def leg_containment(payload: Dict[str, Any], out: str) -> None:
                 side = "H" if slot == "update_H" else "E"
                 if is_complex:
                     metal = folded_beta.folded_beta_complex_constitutive_coverage(
-                        fields, pml, side, residency, probe=PROBE)
+                        fields, pml, side, residency)
                     # The Triton track carries NO complex folded-beta constitutive
                     # either; its nearest arm is the folded complex one, which refuses
                     # beta by name. Asking it is what turns "nobody carries this" into
@@ -2683,16 +2548,6 @@ def main() -> int:
             reasons.append("no MPS device on this host")
     except Exception as exc:  # noqa: BLE001
         reasons.append(f"torch unavailable: {exc!r}")
-    if EXPANSION is None:
-        reasons.append(
-            "no special_kz expansion probe artifact: this family's complex arm binds "
-            "from that record deliberately, because its arithmetic IS that family's. "
-            "Cut one with gate_metal_special_kz.py")
-    if FOLD_EXPANSION is None:
-        reasons.append(
-            "no folded-complex expansion probe artifact: the complex whole-step legs "
-            "run the PARENT'S fill, whose parity is a complex coefficient on the "
-            "LEFT — a pattern special_kz's artifact never classified")
     if reasons:
         return kit.cannot_certify(payload, out, reasons)
 

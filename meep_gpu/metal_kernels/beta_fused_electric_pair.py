@@ -8,19 +8,19 @@ certified REAL beta curl body (:func:`.special_kz.beta_curl_source` with
 three-line seam, the same constitutive lift, the same 30 pointers, the same plan
 class shape.
 
-WHY THE SWAP IS SOUND, measured rather than argued. The beta curl and the certified
-curl differ by TWO STATEMENTS and two scalars (special_kz.py:392-393)::
+WHY THE SWAP IS SOUND. The beta curl IS the certified curl with MEEP's beta pass
+inserted after its per-chunk forms (:func:`.special_kz.beta_curl_source`, through
+:func:`.folded_pass.with_folded_pass`): two scalars and the pass block between the
+forms and the stores, and nothing else. Everything the weld depends on is the
+certified curl's own text -- the ``uint idx [[thread_position_in_grid]])`` anchor,
+``at_x``/``at_y``/``at_z``, and the one-line store the wall clear splices in front of,
+AFTER the pass has updated ``v`` (the array path's order: the pass runs inside
+``step_D``, the wall clear after it). Those anchors and the pass block are ASSERTED at
+emit time, not assumed.
 
-    curl0 = curl0 - (beta_plus  * b);
-    curl1 = curl1 - (beta_minus * a);
-
-inserted AFTER the ``dtdx`` curl and BEFORE the ownership mask -- the array path's
-own order (stepping.py:467-474 against :479 on this side). Everything the weld
-depends on is unchanged: the beta template ends its parameter list with the same
-``uint idx [[thread_position_in_grid]])`` anchor, declares ``at_x``/``at_y``/``at_z``
-in the same place, and stores the three targets on the same single line
-``f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;`` that the wall clear splices in front of.
-Those three are ASSERTED at emit time, not assumed.
+THE CHUNK RECORD RIDES IN THE PARAMS STRUCT, as in :mod:`.fused_electric_pair`: the
+only place it can ride at 31 of 31. The D curl half reads the integer entries and the
+E half the half-integer ones.
 
 WHY THE CONSTITUTIVE HALF NEEDS NOTHING. ``update_E`` reads nothing beta-dependent:
 ``grid.beta`` enters the two CURLS only (stepping.py:384-391, :467-474), never
@@ -86,7 +86,10 @@ from __future__ import annotations
 from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
 from ..triton_kernels.coverage import Coverage
-from . import shaders, special_kz
+from . import folded_pass, shaders, special_kz
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as a keyword named
+# `chunk_bounds`, the name the composer's StepContext carries.
+from . import chunk_bounds as _chunk_bounds
 from .coverage import zero_metal_axes
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
 from .fused_electric_pair import (
@@ -153,8 +156,11 @@ using namespace metal;
 
 __CONTRACT__
 
+__RECORD_STRUCT__
+
 struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx;
-                float beta_plus; float beta_minus; };
+                float beta_plus; float beta_minus;
+__RECORD_MEMBER__ };
 
 kernel void beta_fused_electric_pair_step(
     device float*       f0      [[buffer(0)]],
@@ -197,6 +203,10 @@ kernel void beta_fused_electric_pair_step(
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
     float beta_plus = prm.beta_plus, beta_minus = prm.beta_minus;
+    // THE CHUNK RECORD rides in the same struct (no binding to spare: this family
+    // sits on the ceiling), and this one line gives the lifted bounds blocks the `cb`
+    // they read.
+__RECORD_ALIAS__
 
 __BODY__
 }
@@ -247,11 +257,11 @@ def beta_fused_electric_pair_source(codes: Sequence[int],
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
 
     curl = certified_beta_curl_body(codes, contract)
-    # THE BETA TERM MUST BE PRESENT. A lift that silently produced the has_beta=0
+    # THE BETA PASS MUST BE PRESENT. A lift that silently produced the has_beta=0
     # arm would be the ordinary weld wearing this family's name, and every device
     # leg would still pass because beta = 0 IS the ordinary arithmetic.
-    for statement in ("curl0 = curl0 - (beta_plus * b);",
-                      "curl1 = curl1 - (beta_minus * a);"):
+    for statement in (folded_pass.FOLDED_PASS_BEGIN, "float bi0 = -(beta_plus * b);",
+                      "float bi1 = -(beta_minus * a);"):
         if statement not in curl:
             raise AssertionError(
                 f"the lifted beta curl body does not carry {statement!r}; this "
@@ -301,6 +311,9 @@ def beta_fused_electric_pair_source(codes: Sequence[int],
     ))
     return shaders.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(indent="                "),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__BODY__": body,
     })
 
@@ -465,7 +478,7 @@ class MetalBetaFusedElectricPairPlan(KernelPlan):
     """
 
     __slots__ = ("residency", "volumes", "codes", "zero_metal", "shape", "dtdx",
-                 "beta_plus", "beta_minus", "params")
+                 "beta_plus", "beta_minus", "params", "chunk_bounds")
 
     family = "fused real-beta PML D-curl/stored-E pair"
 
@@ -480,8 +493,10 @@ class MetalBetaFusedElectricPairPlan(KernelPlan):
                  codes: Sequence[int], zero_metal: Sequence[bool],
                  shape: Sequence[int], dtdx: float, beta_plus: float,
                  beta_minus: float, params: Any, pointers: Sequence[Any],
-                 functions: Mapping[str, Any]) -> None:
+                 functions: Mapping[str, Any], *, chunk_bounds: Any) -> None:
         self.residency = residency
+        # The host words of the record ``params`` carries, kept for inspection.
+        self.chunk_bounds = chunk_bounds
         self.volumes = tuple(dict.fromkeys(volumes))
         self.codes = tuple(int(code) for code in codes)
         self.zero_metal = tuple(bool(value) for value in zero_metal)
@@ -501,8 +516,11 @@ class MetalBetaFusedElectricPairPlan(KernelPlan):
 
 
 def _params_tensor(shape: Sequence[int], dtdx: float, beta_plus: float,
-                   beta_minus: float, device: str) -> Any:
-    """The seven scalars as one 28-byte device record.
+                   beta_minus: float, device: str, *, chunk_bounds: Any) -> Any:
+    """The seven scalars and the chunk record as one 128-byte device record.
+
+    The record is :func:`.chunk_bounds.pack` of the validated ``int32[25]`` words,
+    embedded at byte 28 (every member is four bytes, so the struct has no padding).
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for
     :func:`.beta_fused_magnetic_pair._params_tensor`'s reason:
@@ -513,13 +531,16 @@ def _params_tensor(shape: Sequence[int], dtdx: float, beta_plus: float,
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
-    record = np.zeros(1, dtype=np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"),
-                                         ("n_elem", "<u4"), ("dtdx", "<f4"),
-                                         ("beta_plus", "<f4"),
-                                         ("beta_minus", "<f4")]))
+    record = np.zeros(1, dtype=np.dtype(
+        [("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
+         ("dtdx", "<f4"), ("beta_plus", "<f4"), ("beta_minus", "<f4")]
+        + _chunk_bounds.record_dtype_fields()))
     nx, ny, nz = (int(n) for n in shape)
-    record[0] = (nx, ny, nz, nx * ny * nz, np.float32(dtdx),
-                 np.float32(beta_plus), np.float32(beta_minus))
+    for name, value in (("nx", nx), ("ny", ny), ("nz", nz), ("n_elem", nx * ny * nz),
+                        ("dtdx", np.float32(dtdx)), ("beta_plus", np.float32(beta_plus)),
+                        ("beta_minus", np.float32(beta_minus))):
+        record[name] = value
+    record["cb"] = _chunk_bounds.pack(chunk_bounds)
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -529,8 +550,14 @@ def plan_metal_beta_fused_electric_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalBetaFusedElectricPairPlan]:
     """Build the fused beta D/E plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the
+    composer's ``StepContext.chunk_bounds``) and has no default: a missing record, or
+    one that disagrees with the grid, is refused by name
+    (:func:`.chunk_bounds.plan_words`).
 
     ``functions`` is the mutation seam. The gate compiles a deliberately broken copy
     of the shipped source and hands it here; dropping the argument is not a silent
@@ -542,6 +569,8 @@ def plan_metal_beta_fused_electric_pair(
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
+    record = _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                                      "plan_metal_beta_fused_electric_pair")
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, pml))
     walls = zero_metal_axes(grid)
@@ -592,8 +621,9 @@ def plan_metal_beta_fused_electric_pair(
     dtdx = grid.dt / grid.dx
     return MetalBetaFusedElectricPairPlan(
         residency, volumes, codes, walls, grid.shape, dtdx, beta_plus, beta_minus,
-        _params_tensor(grid.shape, dtdx, beta_plus, beta_minus, residency.device),
-        pointers, selected)
+        _params_tensor(grid.shape, dtdx, beta_plus, beta_minus, residency.device,
+                       chunk_bounds=record),
+        pointers, selected, chunk_bounds=record)
 
 
 # ---------------------------------------------------------------------------
@@ -613,7 +643,7 @@ def _arm_plan(context: Any, slot: str
         return None
     return plan_metal_beta_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

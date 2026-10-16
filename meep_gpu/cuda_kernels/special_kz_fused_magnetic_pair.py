@@ -9,13 +9,16 @@ see :data:`CARRIES_DEPOSIT_REPAIR` -- and is folded, which the ported fill carry
 serves). Both halves are CERTIFIED singles (``cuda_special_kz_2026-08-21``,
 re-gated 2026-08-30); this module is the weld and introduces no new arithmetic.
 
-WHAT THE CURL HALF IS: the certified real PML curl body with the two beta
-statements above the masks -- ``grid.beta != 0`` under REAL storage, MEEP's
-"implicitly store i*(TM fields)" trick, the coefficient host-rounded once
-(``special_kz_curl.beta_curl_coefficients``). The beta statements ride through
-the register capture untouched, exactly as the fold masks do on the complex
-welds; the splice asserts they arrived, because a curl body without them would
-compile and be the plain real pair under this family's name.
+WHAT THE CURL HALF IS: the certified ``step_B_special_kz_real`` -- the root real PML
+curl body with MEEP's beta pass after the x and y components' curls
+(``folded_pass.beta_insert``: ``-(c * g)`` on the partner's stored word and the folded
+ladder on the word ``pml_apply`` just stored; ``grid.beta != 0`` under REAL storage,
+MEEP's "implicitly store i*(TM fields)" trick, the coefficient host-rounded once by
+``special_kz_curl.beta_curl_coefficients``). The pass rides through the register
+capture: the x and y registers are the values the LADDER returns (``fold_apply_reg``),
+because ``update_H`` and the fills must read B after both passes. The chunk record
+``cb`` is decoded ONCE for both halves (bit_parity_0_10 DESIGN.md D10), and the run's
+first ``update_H`` starts H from B on the array path (``fused_magnetic_pair.start_of_h``).
 
 THE TWO MIRROR FILLS ARE CARRIED SINCE 2026-09-02, BY THE REAL PAIR'S OWN
 MACHINERY. The fold refusal that stood here rested on "a cell whose one folded
@@ -58,6 +61,8 @@ if TYPE_CHECKING:
 try:
     from . import special_kz_curl as _special_kz
     from . import fused_magnetic_pair as _real_pair
+    from . import bounds_block
+    from . import folded_pass as _folded_pass
     from .coverage import real_curl_boundary_codes
     from .in_seam_coverage import (covers_fill_folded_far, covers_fill_symmetry,
                                    zero_metal_axes)
@@ -91,6 +96,8 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 
     _special_kz = _load("special_kz_curl")
     _real_pair = _load("fused_magnetic_pair")
+    bounds_block = _load("bounds_block")
+    _folded_pass = _load("folded_pass")
     real_curl_boundary_codes = _load("coverage").real_curl_boundary_codes
     _in_seam_coverage = _load("in_seam_coverage")
     covers_fill_folded_far = _in_seam_coverage.covers_fill_folded_far
@@ -176,53 +183,67 @@ SLOT = "step_B"
 
 #: Every line of certified device text this file did not lift verbatim. The
 #: carry entries are :mod:`.fused_magnetic_pair`'s, shared verbatim -- one
-#: spelling of the ownership inversion, two real-storage welds -- and the store
-#: entry is restated here because the lift leg checks each module's own
+#: spelling of the ownership inversion, two real-storage welds -- and the helper
+#: entries are restated here because the lift leg checks each module's own
 #: declaration against its own emitted source.
 LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "__device__ __forceinline__ void pml_apply(",
-     "became": "__device__ __forceinline__ float pml_apply_reg(",
-     "why": "the constitutive half consumes the value in a register; the "
-            "expression, its parenthesisation and the store to f[idx] are "
-            "unchanged, so the global state it leaves is the certified one."},
-    {"line": "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;",
-     "became": "    if (!owned) return 0.0f;\n    float value = ...;\n"
-               "    f[idx] = value;\n    return value;",
-     "why": "THE OWNERSHIP GUARD, shared with fused_magnetic_pair: on a cell one "
-            "of the two fills images, the SOURCE thread writes B -- so this "
-            "thread must not read f[idx] either. The fu recurrence stays ABOVE "
-            "the guard (step_B writes fu at every cell and neither fill touches "
-            "it, stepping.py:1451). Below the guard the right-hand side, its "
-            "parenthesisation and the store are the certified ones."},
-    {"line": "        pml_apply(Bx, fu_Bx, idx, curl, ...);",
-     "became": "        b_x = pml_apply_reg(Bx, fu_Bx, idx, curl, ..., own_x);",
-     "why": "capture the register OWNED; three lines, argument lists otherwise "
-            "untouched, the beta statements above them untouched. Three "
-            "'float b_* = 0.0f;' declarations and the ownership flags are "
-            "hoisted above the certified braced blocks."},
-    {"line": "    constitutive_apply(Hx, f_w_Hx, idx, Bx[idx], kps_x[i], kms_x[i]);",
-     "became": "    constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i]);",
-     "why": "THE SEAM plus the sub-lattice rename -- half-integer for the B "
-            "curl, integer for the H constitutive; a shadow is a half-cell "
-            "error in the absorber profile."},
-    {"line": "        array[_face(axis, 0)] = 0   (stepping._zero_metal, :2206)",
+     "became": "__device__ __forceinline__ float pml_apply_reg(... , int owned)",
+     "why": "the constitutive half consumes the value in a register, and on a cell "
+            "a fill images the SOURCE thread writes B -- so this thread must not "
+            "read f[idx] either. The guard sits directly before the one load of f; "
+            "the fu stage stays ABOVE it (step_B steps fu on every recurrence cell "
+            "and neither fill touches it). Both forms below the guard and the store "
+            "are the certified ones; the value is additionally returned."},
+    {"line": "__device__ __forceinline__ void fold_apply(",
+     "became": "__device__ __forceinline__ float fold_apply_reg(... , int owned)",
+     "why": "the folded ladder, derived the same way from its own text "
+            "(folded_pass.fold_apply_reg_source): the same guard above its one load "
+            "of f, its fu stage above the guard, and the value returned. The plain "
+            "helper leaves the prelude: no call is left."},
+    {"line": "        pml_apply(Bx, fu_Bx, idx, curl, ...);\n"
+             "        ...\n        fold_apply(Bx, fu_Bx, idx, inc_beta, ...);",
+     "became": "        b_x = pml_apply_reg(Bx, fu_Bx, idx, curl, ..., own_x);\n"
+               "        ...\n        b_x = fold_apply_reg(Bx, fu_Bx, idx, inc_beta, ..., "
+               "own_x);",
+     "why": "capture the register OWNED; argument lists otherwise untouched, the "
+            "beta pass between them untouched (Bz has no beta pass). Three "
+            "'float b_* = 0.0f;' declarations and the ownership flags are hoisted "
+            "above the certified braced blocks."},
+    {"line": "    constitutive_apply(Hx, f_w_Hx, idx, Bx[idx], kps_x[i], kms_x[i], "
+             "in_i_x);",
+     "became": "    if (own_x) { constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], "
+               "kms_int_x[i], in_i_x); <ghost blocks> }",
+     "why": "THE SEAM plus the sub-lattice rename, the ownership guard and the "
+            "ghost carry -- fused_magnetic_pair.certified_constitutive_body, "
+            "imported: half-integer for the B curl, integer for the H "
+            "constitutive."},
+    {"line": "        array[_face(axis, 0)] = 0   (stepping._zero_metal)",
      "became": "    if (own_x && wall_x && i == 0) { b_x = 0.0f; Bx[idx] = 0.0f; }",
      "why": "zero_metal_B carried on the registers, GUARDED on own_* -- launch "
             "geometry, not arithmetic. Same B diagonal, same stored cell 0, "
             "same +0.0f; a cell a fill images belongs to its source thread."},
     {"line": "    field[_face(axis, 0)] = phase * field[_face(axis, 2)]   "
-             "(stepping._write_mirror_ghost:1450-1451)",
+             "(stepping._write_mirror_ghost)",
      "became": "the SOURCE thread at stored 2 writes stored 0 from its register",
      "why": "THE OWNERSHIP INVERSION, imported from fused_magnetic_pair: the "
             "destination thread would have to read a word another block writes "
             "in this launch; the source thread already holds it. Same parity, "
             "same destination cell, same order relative to the wall clear."},
     {"line": "    array[_face(axis, -1)] = parity * array[_face(axis, reflect)]   "
-             "(stepping._fill_folded_far_ghosts:1524-1534)",
+             "(stepping._fill_folded_far_ghosts)",
      "became": "the SOURCE thread at the reflect row writes the top plane",
      "why": "The same inversion for the far fill, weight -phase against the "
             "near fill's +phase, applied AFTER the wall clear -- the driver's "
-            "own order (:3295 then :3296)."},
+            "own order."},
+    {"line": "    <step_B_special_kz_real's chunk-record block>\n"
+             "    <update_H_pml_real's chunk-record block>",
+     "became": "    <ONE block, fused_magnetic_pair.union_bounds_block()>",
+     "why": "ONE DECODE OF THE RECORD PER KERNEL (DESIGN.md D10): both lifted bodies' "
+            "blocks are removed by bounds_block.strip_bounds_block and the real pair's "
+            "union block is emitted directly after the decode. A ghost the carry "
+            "steps takes the membership of the row its coefficient entry is read at "
+            "(the destination's)."},
 )
 
 __all__ = [
@@ -245,33 +266,21 @@ __all__ = [
 _GLOBAL_MARKER = 'extern "C" __global__ void '
 _BODY_ANCHOR = "\n) {\n"
 _DECODE_END = "    int i = idx / (ny * nz);\n"
-#: The certified helper's anchors and the OWNED rewrites -- the real pair's own
-#: three (signature, parameter list, guarded store), read from
-#: :mod:`.fused_magnetic_pair` so the two real-storage welds cannot drift apart
-#: on the guard.
-_PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
-_PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
-_PML_APPLY_PARAMETERS = (
-    "    float kms, float sinv, float kms_u, float sinv_u\n)")
-_PML_APPLY_PARAMETERS_OWNED = (
-    "    float kms, float sinv, float kms_u, float sinv_u, int owned\n)")
-_PML_APPLY_STORE = "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
-_PML_APPLY_STORE_REG = (
-    "    // THE OWNERSHIP GUARD, AND IT IS ABOUT MEMORY TRAFFIC RATHER THAN\n"
-    "    // ABOUT A DEAD REGISTER. On a cell a fill images, the SOURCE thread\n"
-    "    // writes f -- so this thread must not read f[idx] either: that word is\n"
-    "    // written by another block in this same launch and an ordinary CUDA\n"
-    "    // launch has no grid-wide barrier at which the load would be defined.\n"
-    "    // fu above is UNGUARDED: step_B writes it at every cell and neither\n"
-    "    // fill touches it (stepping.py:1451).\n"
-    "    if (!owned) return 0.0f;\n"
-    "    // THE ONE EDIT TO THIS HELPER: the right-hand side, its\n"
-    "    // parenthesisation and the store are the certified ones; the value is\n"
-    "    // additionally NAMED so the constitutive half can read it from a\n"
-    "    // register instead of reloading it from global memory.\n"
-    "    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
-    "    f[idx] = value;\n"
-    "    return value;\n")
+#: The certified helper's anchors and the OWNED rewrites -- the real pair's own four
+#: (signature, parameter list, the guard above the one load of f, the returned store),
+#: read from :mod:`.fused_magnetic_pair` so the two real-storage welds cannot drift
+#: apart on the guard. Applied to ``pml_apply``'s own text only: the folded ladder ends
+#: on the same store line.
+_PML_APPLY_SIGNATURE = _real_pair._PML_APPLY_SIGNATURE
+_PML_APPLY_OWNED_EDITS: Tuple[Tuple[str, str, str], ...] = (
+    (_real_pair._PML_APPLY_SIGNATURE, _real_pair._PML_APPLY_SIGNATURE_REG,
+     "its signature"),
+    (_real_pair._PML_APPLY_PARAMETERS, _real_pair._PML_APPLY_PARAMETERS_OWNED,
+     "its parameter list"),
+    (_real_pair._PML_APPLY_FCUR, _real_pair._PML_APPLY_FCUR_OWNED,
+     "its one load of the field"),
+    (_real_pair._PML_APPLY_STORE, _real_pair._PML_APPLY_STORE_REG, "its closing store"),
+)
 
 _CARRIED: Tuple[str, ...] = ("x", "y", "z")
 
@@ -302,8 +311,8 @@ extern "C" __global__ void fused_magnetic_pair_special_kz_real(
     const float* __restrict__ kps_y, const float* __restrict__ kms_int_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_int_z,
     int bc_x, int bc_y, int bc_z,
-    // The two host-rounded beta coefficients, one per call-site sign
-    // (stepping.py:770/:784) -- the certified special_kz signature's own append.
+    // The two host-rounded beta coefficients, one per call-site sign -- the
+    // certified special_kz signature's own insert.
     float beta_plus, float beta_minus,
     // zero_metal_B's walled-axis flags, from in_seam_coverage.zero_metal_axes.
     int wall_x, int wall_y, int wall_z,
@@ -316,9 +325,11 @@ extern "C" __global__ void fused_magnetic_pair_special_kz_real(
     // far fill by -phase.
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
-    float phase_x, float phase_y, float phase_z
+    float phase_x, float phase_y, float phase_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded once.
+    const int* __restrict__ cb
 ) {
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 770->797, 784->811
+'''
 
 
 def _split_certified(source: str, name: str) -> Tuple[str, str]:
@@ -339,10 +350,10 @@ def _split_certified(source: str, name: str) -> Tuple[str, str]:
 
 
 def special_kz_fused_magnetic_pair_prelude() -> str:
-    """The certified real prelude (read through the special_kz family's own
-    string, so a gate mutation there reaches this weld) with ``pml_apply``
-    turned into an OWNED value -- the real pair's three rewrites -- plus the
-    untouched real constitutive prelude."""
+    """The certified special_kz prelude (read through the family's own string, so a
+    gate mutation there reaches this weld) with ``pml_apply`` and the folded ladder
+    turned into OWNED values -- the real pair's four rewrites -- plus the untouched real
+    constitutive prelude."""
     if constitutive_kernels is None:
         raise RuntimeError(
             "constitutive_kernels is not importable on this host (it imports "
@@ -351,29 +362,20 @@ def special_kz_fused_magnetic_pair_prelude() -> str:
     prelude, _body = _split_certified(
         _special_kz.kernel_source("step_B_special_kz_real"),
         "step_B_special_kz_real")
-    for anchor, what in ((_PML_APPLY_SIGNATURE, "pml_apply's signature"),
-                         (_PML_APPLY_PARAMETERS, "pml_apply's parameter list"),
-                         (_PML_APPLY_STORE, "pml_apply's closing store")):
-        if prelude.count(anchor) != 1:
-            raise AssertionError(
-                f"the certified real prelude carries {what} "
-                f"{prelude.count(anchor)} times, not once; the ownership rewrite "
-                f"has no anchor")
-    prelude = prelude.replace(_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, 1)
-    prelude = prelude.replace(_PML_APPLY_PARAMETERS,
-                              _PML_APPLY_PARAMETERS_OWNED, 1)
-    prelude = prelude.replace(_PML_APPLY_STORE, _PML_APPLY_STORE_REG, 1)
+    prelude = _folded_pass.rewrite_helper(prelude, _PML_APPLY_SIGNATURE,
+                                          _PML_APPLY_OWNED_EDITS, "pml_apply")
+    prelude = _folded_pass.with_fold_reg(prelude, owned=True)
     return prelude + constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE
 
 
 def certified_curl_body() -> str:
     """``step_B_special_kz_real``'s body, captured OWNED via the real pair's carry.
 
-    The registers, the ownership flags and the per-call ``own_*`` argument are
-    the real pair's own splice (:mod:`.fused_magnetic_pair`); the two beta
-    statements are INSIDE the lifted body and ride through untouched -- the
-    splice asserts they arrived, because a curl body without them would compile
-    and be the plain real pair under this family's name.
+    The registers, the ownership flags and the per-call ``own_*`` argument are the real
+    pair's own splice (:mod:`.fused_magnetic_pair`); the beta passes are INSIDE the
+    lifted body and ride through, their ladders captured into the same registers -- the
+    splice asserts both arrived, because a curl body without them would compile and be
+    the plain real pair under this family's name.
     """
     _prelude, body = _split_certified(
         _special_kz.kernel_source("step_B_special_kz_real"),
@@ -382,10 +384,13 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "the certified curl body no longer decodes i on its own line; the "
             "carried registers have nowhere to be declared")
+    body = bounds_block.strip_bounds_block(body, "step_B_special_kz_real",
+                                           *_real_pair.CURL_BLOCK)
     head, tail = body.split(_DECODE_END, 1)
     body = "".join((
-        head, _DECODE_END,
-        "\n    // The three carried registers. Declared HERE because each\n"
+        head, _DECODE_END, "\n",
+        _real_pair.union_bounds_block(),
+        "    // The three carried registers. Declared HERE because each\n"
         "    // certified component below is a braced scope, and a value declared\n"
         "    // inside one does not outlive it.\n"
         "    float b_x = 0.0f;\n"
@@ -415,11 +420,17 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "a pml_apply call survived the capture rewrite; its value would be "
             "written to global memory and never read into the seam")
-    if body.count("beta_plus") + body.count("beta_minus") < 2:
+    body = _folded_pass.capture_fold_calls(
+        body, {f"B{axis}, fu_B{axis}, ": (f"b_{axis}", f"own_{axis}")
+               for axis in _CARRIED},
+        "fold_apply", "fold_apply_reg", "the special_kz fused magnetic pair")
+    if (body.count("float inc_beta = ") != 2
+            or body.count("b_x = fold_apply_reg(") != 1
+            or body.count("b_y = fold_apply_reg(") != 1):
         raise AssertionError(
-            "the captured special_kz curl body no longer carries both beta "
-            "statements; the lift would ship the plain real pair under this "
-            "family's name")
+            "the captured special_kz curl body no longer carries both beta passes "
+            "captured into the x and y registers; the lift would ship the plain real "
+            "pair under this family's name")
     return body
 
 
@@ -671,8 +682,24 @@ def launch_special_kz_fused_magnetic_pair(
         fields: "Fields", tables: Dict[str, Dict[str, Any]],
         boundary_codes: Sequence[Any], walls: Sequence[int],
         beta: Sequence[float], fills: Dict[str, Sequence[Any]], dtdx: float,
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """All five of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door."""
+        kernel: Optional[Any] = None, *, chunk_bounds: Any,
+        layer: Any = None) -> Dict[str, Any]:
+    """All five of :data:`REPLACES` in ONE launch. ``kernel`` is the gate's door.
+
+    ``chunk_bounds`` is the run's chunk record on the device, required
+    (``step_curl_kernels.chunk_record_argument``). The run's first ``update_H`` starts
+    H from B: when ``fields.h_separated`` is still False the launch is followed by
+    ``fused_magnetic_pair.start_of_h`` with ``layer``, and a first launch handed no
+    ``layer`` is refused by name before it launches.
+    """
+    from . import step_curl_kernels  # noqa: PLC0415 - device-only module
+
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
+    first = not bool(getattr(fields, "h_separated", True))
+    if first and layer is None:
+        raise RuntimeError(
+            "the run's first update_H starts H from B (stepping.separate_h_from_b) and "
+            "this fused magnetic launch was handed no layer to start it with")
     nx, ny, nz = (int(n) for n in fields.Bx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
@@ -688,10 +715,12 @@ def launch_special_kz_fused_magnetic_pair(
     ) + tuple(np.int32(int(bool(walls[axis]))) for axis in range(3)
     ) + tuple(np.int32(int(fills["near"][axis])) for axis in range(3)) + tuple(
         np.int32(int(fills["reflect"][axis])) for axis in range(3)
-    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3))
+    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3)) + (cb,)
     (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), arguments)
+    if first:
+        _real_pair.start_of_h(fields, layer)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
-            "elements": nx * ny * nz, "replaces": REPLACES,
+            "elements": nx * ny * nz, "replaces": REPLACES, "h_started": first,
             "walls": tuple(int(bool(walls[axis])) for axis in range(3)),
             "near": tuple(int(v) for v in fills["near"]),
             "reflect": tuple(int(v) for v in fills["reflect"]),
@@ -701,7 +730,7 @@ def launch_special_kz_fused_magnetic_pair(
 
 def run_special_kz_fused_magnetic_pair(
         fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
-        sources: Any = None,
+        chunk_bounds: Any, sources: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once."""
@@ -721,4 +750,5 @@ def run_special_kz_fused_magnetic_pair(
     return launch_special_kz_fused_magnetic_pair(
         fields, tables, tuple(np.int32(code) for code in codes),
         zero_metal_axes(grid), beta_scalars(grid),
-        special_kz_fused_magnetic_pair_fills(grid), dtdx, kernel)
+        special_kz_fused_magnetic_pair_fills(grid), dtdx, kernel,
+        chunk_bounds=chunk_bounds, layer=pml)

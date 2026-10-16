@@ -17,18 +17,25 @@ WHAT THE FAMILY ADDS, AND THEREFORE WHAT THIS GATE HAS TO BE ABLE TO SEE
 =============================================================================
 
 Five things (``cylindrical_complex_kernels``' docstring derives them off
-``stepping.py`` with line numbers). The battery is built around them, because a gate
-that only re-ran the certified complex battery would certify a Dcyl kernel against
-Cartesian defects:
+``stepping.py``). The battery is built around them, because a gate that only re-ran the
+certified complex battery would certify a Dcyl kernel against Cartesian defects:
 
-1. the RADIAL PREFIX SUM, its ZERO WALL ROW on the B side and its ``ir0`` per side;
-2. Bz's whole curl REPLACED by the prefix's forward difference; Dz's ``first`` source
-   SWAPPED for the prefix while Dx's Hy operands stay RAW;
-3. the i*m/r COUPLING on targets 0 and 2, from a HOST-BUILT per-r row, added AFTER the
-   dtdx curl and BEFORE the ownership mask;
-4. the |m| = 1 AXIS-ROW INCREMENTS, which REPLACE curl row 0 after the mask;
-5. the PER-|m| AXIS RULES on the stored value -- ``Dz[0] = 0`` at |m| = 1 (field only)
-   and the six-volume near-axis zeroing at |m| >= 2.
+1. the RADIAL DIFFERENCE of MEEP's per-chunk ``f_rderiv_int`` (the column-serial scan,
+   ``cylindrical_prefix``; its own battery is ``gate_cuda_cylindrical_scan.py``'s);
+2. Bz's and Dz's whole curl REPLACED by ``dtdx`` times that difference, while Dx's Hy
+   operands stay RAW;
+3. the i*m/r PASS on targets 0 and 2, MEEP's own pass after the curl
+   (``stepping._cylindrical_imr_increment``): a quarter turn of the partner by the
+   bound realnum ``rinv`` row, masked on the target's unowned cells, folded through the
+   additive ladder (``_apply_folded_increment``);
+4. the |m| = 1 AXIS-ROW INCREMENTS, which REPLACE curl row 0 after the mask, formed as
+   MEEP's double product with Courant (``_realnum_double_product``);
+5. the PER-m AXIS RULES on the stored value -- the m = 0 tails (``Bx[0] = 0``; the Dz
+   post-add as a double product, then ``Dy[0] = 0``), ``Dz[0] = 0`` at |m| = 1 (field
+   only) and the six-volume near-axis zeroing at |m| >= 2.
+
+And the per-chunk PML forms of the certified complex prelude (KERNELS.md section 7.2),
+armed through ``gate_cuda_complex``'s B battery and two record host mutations.
 
 =============================================================================
 THREE BACKENDS, AND ONLY ONE OF THEM CERTIFIES
@@ -39,28 +46,18 @@ THREE BACKENDS, AND ONLY ONE OF THEM CERTIFIES
 * ``host`` -- the SAME EMITTED CHARACTERS compiled by the host C++ compiler and driven
   on NumPy. It certifies nothing about NVRTC and says so in the artifact; what it
   measures is the TRANSCRIPTION -- indices, stencils, masks, operand orders,
-  coefficient sub-lattices, the prefix wiring and the axis rules -- at the merge bar.
+  coefficient sub-lattices, the radial wiring and the axis rules -- at the merge bar.
   It is the ``gate_cuda_complex`` pattern, borrowed rather than re-invented.
 * neither -- ``--backend host`` on a machine with no compiler skips with its reason.
 
-THE HOST LEG COMPILES AT ``-O0`` AND THAT IS A CORRECTNESS SETTING, MEASURED. This
-family carries the only negation of an fma OUTPUT in the package (the axis-increment
-row, ``curl.re = inc.re * -1.0f``), and Apple clang 21 at ``-O1`` rewrites
-``-(fma(a,b,c))`` as ``fma(-a,b,-c)`` -- exact for every finite value and wrong on
-signed zeros. Measured over 96 host cases per cell (two sub-steps x four seedings x
-two absorber depths x six grids):
-
-    -O0  0/96 diverged      -O1  3/96 (one uint32 word each)      -O2  0/96
-
-every divergence the same cell -- ``step_D``, ``zero_init``, thin absorber, |m| = 1,
-``fu_Dy`` at r = 0 -- and an explicit sign-bit negation does NO better (it is wrong at
-``-O2`` where ``* -1.0f`` is right). The optimization level is the variable, not the
-source. ``-O0`` is the setting under which the host compiler runs the transcription
-rather than an algebraic rewrite of it. NVRTC IS A DIFFERENT COMPILER and was ASKED:
-the device leg's ``zero_init`` cases at |m| = 1 came back bit-identical, 129/129 under
-both float32 subnormal policies, so it does not share the fold. The leg stays armed --
-if it ever reports that word the fold is REAL on CUDA and this family is not
-releasable.
+THE HOST LEG COMPILES AT ``-O0``. Under the 0.9.2 text the axis-increment row negated
+an fma OUTPUT, and Apple clang 21 at ``-O1`` rewrote ``-(fma(a,b,c))`` as
+``fma(-a,b,-c)`` -- exact for every finite value and wrong on signed zeros (measured
+0/96, 3/96 and 0/96 host cases diverging at ``-O0``/``-O1``/``-O2``). The part-wise
+forms carry no fma, but the row still negates a rounded product and the ladder still
+subtracts masked signed zeros, so ``-O0`` stays: it is the setting under which the
+host compiler runs the transcription rather than an algebraic rewrite of it. NVRTC is a
+different compiler, and only the device leg certifies.
 
 =============================================================================
 THE CONTROLS
@@ -85,7 +82,7 @@ THE FLOORS THAT REFUSE A VACUOUS PASS
 * ``oracle_moved`` -- the fraction of output words the array path changed. Zero is a
   refusal, not a pass.
 * ``axis_row_is_live`` -- the rows the per-|m| rules touch must carry MOVED words.
-* ``prefix_is_live`` -- the prefix must be non-constant down r.
+* ``radial_is_live`` -- the radial difference must be non-zero and non-constant down r.
 * ``imr_is_live`` -- the two bound coefficient rows must be non-constant down r and
   not the identity, or a row-index error is invisible.
 * ``absorbs`` -- ``max|kms-1|`` and ``max|sinv-1|`` on r and z.
@@ -110,19 +107,16 @@ disk-cache key is computed above the strip seam)::
     CUDA_VISIBLE_DEVICES=6 CUPY_CACHE_DIR=$OUT/cupy_cache/ftz_stripped \\
         python -u gate_cuda_cylindrical_complex.py --backend cuda \\
         --subnormal-policy keep \\
-        --expansion-probe results/expansion_probe_2026-08-17/expansion_probe_keep.json \\
         --out $OUT/keep/gate.json
 
 Laptop (no CUDA)::
 
     python -u gate_cuda_cylindrical_complex.py --backend host \\
-        --expansion-probe results/expansion_probe_2026-08-17/expansion_probe_keep.json \\
         --out /tmp/cylcx_host.json
 
 One flushed line per case (the progress-reporting rule); the artifact is rewritten atomically
 after every case, so an interrupted run keeps everything up to the failure.
-Correctness only -- no throughput claim is made or possible, because the radial prefix
-stays on the array path.
+Correctness only -- no throughput claim is made.
 """
 
 from __future__ import annotations
@@ -155,10 +149,13 @@ except ImportError:  # laptop: the host backend still runs
     cp = None
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import gate_chunk_records  # noqa: E402
 import gate_provenance  # noqa: E402
 import gate_cuda_complex as complex_gate  # noqa: E402
+import gate_cuda_cylindrical_scan as scan_gate  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
+from meep_gpu.chunk_map import record_index  # noqa: E402
 from meep_gpu.fields import Fields  # noqa: E402
 from meep_gpu.grid import Grid  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
@@ -167,7 +164,6 @@ from meep_gpu.cuda_kernels import coverage as cuda_coverage  # noqa: E402
 from meep_gpu.cuda_kernels import cylindrical_complex_kernels as family  # noqa: E402
 from meep_gpu.cuda_kernels import cylindrical_coverage as cyl_coverage  # noqa: E402
 from meep_gpu.cuda_kernels import cylindrical_prefix as cyl_prefix  # noqa: E402
-from meep_gpu.triton_kernels import complex_fields  # noqa: E402
 
 log = probe.log
 bit_compare = probe.bit_compare
@@ -192,7 +188,7 @@ BC_METALLIC = 1
 SUB_STEPS: Tuple[str, ...] = ("step_B", "step_D")
 
 #: Every complex volume a case seeds and compares. BOTH sub-steps' volumes are seeded
-#: on every case, because ``step_B``'s prefix reads ``Ey`` and the axis increments read
+#: on every case, because ``step_B``'s scan reads ``Ey`` and the axis increments read
 #: ``Ez``/``Hx``/``Hz``: a zero source there is a fixed point that hides the rule.
 STATE: Tuple[str, ...] = (
     "Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
@@ -232,7 +228,7 @@ CASES: Tuple[Dict[str, Any], ...] = (
     {"label": "m+2_r9_z17_metallic", "shape": (9, 1, 17), "m": 2, "z_kind": "metallic"},
     {"label": "m+3_r9_z17_periodic", "shape": (9, 1, 17), "m": 3, "z_kind": "periodic"},
     {"label": "m+5_r12_z48_metallic", "shape": (12, 1, 48), "m": 5, "z_kind": "metallic"},
-    # A WIDER RADIAL EXTENT: the prefix's accumulated sum runs further, which is where
+    # A WIDER RADIAL EXTENT: the scan's accumulated sum runs further, which is where
     # a decaying field reaches the subnormal band first.
     {"label": "m-1_r40_z16_metallic", "shape": (40, 1, 16), "m": -1, "z_kind": "metallic"},
     # THE ACCURATE NEAR-AXIS BRANCH, which is ZERO_ROWS = 1 at |m| = 3 rather than 3.
@@ -283,9 +279,11 @@ GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
 #: ``-fno-fast-math`` keeps ``z.im * 0.0f`` alive.
 _HOST_OPTIONS: Tuple[str, ...] = ("-O0", "-ffp-contract=off", "-fno-fast-math")
 
-#: What the host compiler needs in place of CUDA. Extends ``gate_cuda_complex``'s
-#: shim with nothing: this family emits no intrinsic that one does not already carry.
-_HOST_SHIM = complex_gate._HOST_SHIM
+#: What the host compiler needs in place of CUDA: ``gate_cuda_complex``'s shim and the
+#: one intrinsic this family adds, ``__double2float_rn`` (the axis rules' double
+#: product rounded once to float32), which C's double-to-float conversion is under the
+#: default rounding mode.
+_HOST_SHIM = complex_gate._HOST_SHIM + "#define __double2float_rn(x) ((float)(x))\n"
 
 
 # ---------------------------------------------------------------------------
@@ -427,11 +425,40 @@ class _Backend:
     def set_source_transform(self, transform) -> int:
         raise NotImplementedError
 
-    def launch(self, sub_step, fields, layer, grid, arm, prefix, **overrides) -> None:
+    def launch(self, sub_step, fields, layer, grid, radial, record,
+               **overrides) -> None:
         raise NotImplementedError
 
     def restore(self) -> None:
         pass
+
+
+def launch_scalars(sub_step: str, grid, overrides: Dict[str, Any]) -> Dict[str, Any]:
+    """The launch's grid readings, derived by the functions the shipped launcher calls
+    (``step_cylindrical_complex``) unless a host mutation hands one in."""
+    m = int(grid.m)
+    rows = int(grid.shape[0])
+    out = {
+        "dtdx": float(grid.dt / grid.dx),
+        "m": m,
+        "imr_rows": overrides.get("imr_rows"),
+        "courant_words": overrides.get("courant_words"),
+        "m_class_code": overrides.get("m_class_code"),
+        "zero_rows_count": overrides.get("zero_rows_count"),
+        "boundary_codes": overrides.get("boundary_codes"),
+    }
+    if out["imr_rows"] is None:
+        out["imr_rows"] = family.imr_rows_for(sub_step, grid, rows)
+    if out["courant_words"] is None:
+        out["courant_words"] = family.axis_courant_words(sub_step, grid)
+    if out["m_class_code"] is None:
+        out["m_class_code"] = family.m_class(m)
+    if out["zero_rows_count"] is None:
+        out["zero_rows_count"] = family.zero_rows(
+            m, bool(grid.accurate_fields_near_cylorigin))
+    if out["boundary_codes"] is None:
+        out["boundary_codes"] = family.cylindrical_complex_boundary_codes(grid)
+    return out
 
 
 class KernelBackend(_Backend):
@@ -455,8 +482,8 @@ class KernelBackend(_Backend):
 
         Monkeypatching the emitter rather than a string constant is what an emitted
         family forces, and it is the stronger arrangement: the mutation is applied to
-        the SAME text the shipped path emits, per sub-step and per arm, so a leg
-        cannot mutate one specialization and score another.
+        the SAME text the shipped path emits, per sub-step, so a leg cannot mutate
+        one specialization and score another.
         """
         family._clear_kernel_cache()
         if transform is None:
@@ -464,47 +491,115 @@ class KernelBackend(_Backend):
             return 0
         sites = 0
         for sub_step in SUB_STEPS:
-            _text, count = transform(self._original_source(sub_step, "FMA_V1"))
+            _text, count = transform(self._original_source(sub_step))
             sites = max(sites, count)
 
-        def mutated(sub_step, expansion, _original=self._original_source):
-            text, _count = transform(_original(sub_step, expansion))
+        def mutated(sub_step, _original=self._original_source):
+            text, _count = transform(_original(sub_step))
             return text
 
         family.cylindrical_complex_source = mutated
         return sites
 
-    def launch(self, sub_step, fields, layer, grid, arm, prefix, **overrides) -> None:
-        # THE LAUNCHER REFUSES TWO ANSWERS TO ONE QUESTION -- pass ``pml`` AND
-        # ``tables`` and it raises, deliberately (a gate that could hand it both would
-        # not know which one the kernel read). So a host mutation that supplies an
-        # override REPLACES the object it derives from, rather than shadowing it.
-        arguments: Dict[str, Any] = dict(overrides)
-        if "tables" not in arguments:
-            arguments["pml"] = layer
-        if "boundary_codes" in arguments:
-            # Without a grid the launcher derives nothing, so everything it would have
-            # derived is supplied here from the same functions the predicate asks.
-            dtdx = float(grid.dt / grid.dx)
-            arguments.setdefault("dtdx", dtdx)
-            arguments.setdefault("m_class_code", family.m_class(int(grid.m)))
-            arguments.setdefault("zero_rows_count", family.zero_rows(
-                int(grid.m), bool(grid.accurate_fields_near_cylorigin)))
-            arguments.setdefault("imr_rows", family.imr_rows_for(
-                sub_step, grid.xp, int(grid.m), dtdx, int(grid.shape[0]),
-                getattr(fields, family.CURL_ARRAYS[sub_step][0][0]).dtype))
-            arguments.setdefault("increment_scalars",
-                                 family.axis_increment_scalars(int(grid.m), dtdx))
+    def launch(self, sub_step, fields, layer, grid, radial, record,
+               **overrides) -> None:
+        """The SHIPPED launcher when nothing is overridden; otherwise the shipped
+        argument builder (``curl_arguments``) with the overridden readings, so a host
+        mutation corrupts exactly one input and the kernel is the shipped one."""
+        cb = cp.ascontiguousarray(cp.asarray(np.ascontiguousarray(record, dtype=np.int32)))
+        tables = overrides.pop("tables", None)
+        if not overrides and tables is None:
+            family.step_cylindrical_complex(sub_step, fields, grid, layer,
+                                            chunk_bounds=cb, radial=radial)
         else:
-            arguments["grid"] = grid
-        family.step_cylindrical_complex(sub_step, fields, arm, prefix=prefix,
-                                        **arguments)
+            if tables is None:
+                tables = family.cylindrical_complex_curl_tables(
+                    layer, family.HALF_INTEGER[sub_step])
+            scalars = launch_scalars(sub_step, grid, overrides)
+            arguments = family.curl_arguments(
+                sub_step, fields, radial, family.device_rows(scalars["imr_rows"], cp),
+                scalars["dtdx"], scalars["m"], scalars["courant_words"], tables,
+                scalars["boundary_codes"], scalars["m_class_code"],
+                scalars["zero_rows_count"], family.chunk_record_argument(cb))
+            cells = int(getattr(fields, family.CURL_ARRAYS[sub_step][0][0]).size)
+            threads = family._COMPLEX_THREADS
+            family._get_kernel(sub_step)(((cells + threads - 1) // threads,),
+                                         (threads,), arguments)
         cp.cuda.runtime.deviceSynchronize()
 
     def restore(self) -> None:
         family.cylindrical_complex_source = self._original_source
         family._COMPILE_OPTIONS = self._original_options
         family._clear_kernel_cache()
+
+
+def _host_function(compiler: str, options: Sequence[str], workdir: str, text: str,
+                   cache: Dict[str, Any], tag: str = ""):
+    """Compile one emitted kernel with the HOST compiler behind a serial grid driver;
+    returns ``(function, parameters)``, memoized on the text and the options."""
+    key = hashlib.sha256((text + str(tuple(options))).encode()).hexdigest()[:24]
+    if key in cache:
+        return cache[key]
+    name, parameters = parse_signature(text)
+    declaration = ", ".join(f"{kind} {ident}" for kind, ident in parameters)
+    call = ", ".join(ident for _kind, ident in parameters)
+    driver = (f'\nextern "C" void launch_{name}(int nblocks, int nthreads, '
+              f'{declaration}) {{\n'
+              f'    blockDim.x = nthreads;\n'
+              f'    for (int b = 0; b < nblocks; ++b) {{\n'
+              f'        blockIdx.x = b;\n'
+              f'        for (int t = 0; t < nthreads; ++t) {{\n'
+              f'            threadIdx.x = t;\n'
+              f'            {name}({call});\n'
+              f'        }}\n    }}\n}}\n')
+    stem = os.path.join(workdir, tag + key)
+    with open(stem + ".cpp", "w", encoding="ascii") as handle:
+        handle.write(_HOST_SHIM + text + driver)
+    subprocess.run([compiler, *options, "-shared", "-fPIC", "-o", stem + ".so",
+                    stem + ".cpp"], check=True, capture_output=True)
+    function = getattr(ctypes.CDLL(stem + ".so"), f"launch_{name}")
+    argtypes: List[Any] = [ctypes.c_int, ctypes.c_int]
+    for kind, _ident in parameters:
+        if "*" in kind:
+            argtypes.append(ctypes.c_void_p)
+        elif kind == "float":
+            argtypes.append(ctypes.c_float)
+        elif kind == "double":
+            argtypes.append(ctypes.c_double)
+        elif kind == "int":
+            argtypes.append(ctypes.c_int)
+        else:
+            raise ValueError(f"unhandled parameter type {kind!r}")
+    function.argtypes = argtypes
+    function.restype = None
+    cache[key] = (function, parameters)
+    return cache[key]
+
+
+def _host_call(function, parameters, values: Dict[str, Any], cells: int) -> None:
+    """Call a host-compiled kernel with its arguments looked up BY PARAMETER NAME, each
+    converted to the C type its signature declares -- so a reordered signature is a
+    lookup, not a wrong pointer."""
+    arguments: List[Any] = []
+    keep: List[Any] = []
+    for kind, name in parameters:
+        value = values[name]
+        if "*" in kind:
+            array = np.asarray(value)
+            if not array.flags.c_contiguous:
+                raise ValueError(f"{name}: the host leg needs C-contiguous arrays")
+            if array.dtype.kind == "c":
+                array = array.view(np.float32)
+            keep.append(array)
+            arguments.append(array.ctypes.data_as(ctypes.c_void_p))
+        elif kind == "float":
+            arguments.append(ctypes.c_float(float(value)))
+        elif kind == "double":
+            arguments.append(ctypes.c_double(float(value)))
+        else:
+            arguments.append(int(value))
+    function((cells + 255) // 256, 256, *arguments)
+    del keep
 
 
 class HostCompiledBackend(_Backend):
@@ -538,111 +633,50 @@ class HostCompiledBackend(_Backend):
             return 0
         sites = 0
         for sub_step in SUB_STEPS:
-            _text, count = transform(family.cylindrical_complex_source(sub_step, "FMA_V1"))
+            _text, count = transform(family.cylindrical_complex_source(sub_step))
             sites = max(sites, count)
         return sites
 
-    def _entry(self, sub_step: str, arm):
-        text = family.cylindrical_complex_source(sub_step, arm)
+    def _entry(self, sub_step: str):
+        text = family.cylindrical_complex_source(sub_step)
         if self._transform is not None:
             text, _count = self._transform(text)
-        key = hashlib.sha256((text + str(self.options)).encode()).hexdigest()[:24]
-        if key in self._cache:
-            return self._cache[key]
-        name, parameters = parse_signature(text)
-        declaration = ", ".join(f"{kind} {ident}" for kind, ident in parameters)
-        call = ", ".join(ident for _kind, ident in parameters)
-        driver = (f'\nextern "C" void launch_{name}(int nblocks, int nthreads, '
-                  f'{declaration}) {{\n'
-                  f'    blockDim.x = nthreads;\n'
-                  f'    for (int b = 0; b < nblocks; ++b) {{\n'
-                  f'        blockIdx.x = b;\n'
-                  f'        for (int t = 0; t < nthreads; ++t) {{\n'
-                  f'            threadIdx.x = t;\n'
-                  f'            {name}({call});\n'
-                  f'        }}\n    }}\n}}\n')
-        stem = os.path.join(self._workdir, key)
-        with open(stem + ".cpp", "w", encoding="ascii") as handle:
-            handle.write(_HOST_SHIM + text + driver)
-        subprocess.run([self.compiler, *self.options, "-shared", "-fPIC",
-                        "-o", stem + ".so", stem + ".cpp"], check=True,
-                       capture_output=True)
-        function = getattr(ctypes.CDLL(stem + ".so"), f"launch_{name}")
-        argtypes: List[Any] = [ctypes.c_int, ctypes.c_int]
-        for kind, _ident in parameters:
-            if "*" in kind:
-                argtypes.append(ctypes.c_void_p)
-            elif kind == "float":
-                argtypes.append(ctypes.c_float)
-            elif kind == "int":
-                argtypes.append(ctypes.c_int)
-            else:
-                raise ValueError(f"unhandled parameter type {kind!r}")
-        function.argtypes = argtypes
-        function.restype = None
-        self._cache[key] = function
-        return function
+        return _host_function(self.compiler, self.options, self._workdir, text,
+                              self._cache)
 
-    @staticmethod
-    def _pointer(array):
-        return np.ascontiguousarray(array).ctypes.data_as(ctypes.c_void_p)
-
-    @staticmethod
-    def _word_pointer(array):
-        if not array.flags.c_contiguous:
-            raise ValueError("the host leg needs C-contiguous complex volumes")
-        return array.view(np.float32).ctypes.data_as(ctypes.c_void_p)
-
-    def launch(self, sub_step, fields, layer, grid, arm, prefix, **overrides) -> None:
-        function = self._entry(sub_step, arm)
+    def launch(self, sub_step, fields, layer, grid, radial, record,
+               **overrides) -> None:
+        function, parameters = self._entry(sub_step)
         targets, sources = family.CURL_ARRAYS[sub_step]
         shape = tuple(int(n) for n in grid.shape)
-        dtdx = overrides.get("dtdx") or float(grid.dt / grid.dx)
-        tables = overrides.get("tables")
+        tables = overrides.pop("tables", None)
         if tables is None:
             suffix = "_h" if family.HALF_INTEGER[sub_step] else ""
             tables = {f"{stem}_{axis}": np.ascontiguousarray(
                 getattr(layer, f"{stem}_{axis}{suffix}").reshape(-1))
                 for axis in "xyz" for stem in ("kms", "sinv")}
-        codes = overrides.get("boundary_codes")
-        if codes is None:
-            codes = family.cylindrical_complex_boundary_codes(grid)
-        imr = overrides.get("imr_rows")
-        if imr is None:
-            imr = family.imr_rows_for(sub_step, np, int(grid.m), dtdx, shape[0],
-                                      np.complex64)
-        increment = overrides.get("increment_scalars")
-        if increment is None:
-            increment = family.axis_increment_scalars(int(grid.m), dtdx)
-        m_class = overrides.get("m_class_code")
-        if m_class is None:
-            m_class = family.m_class(int(grid.m))
-        zero_rows = overrides.get("zero_rows_count")
-        if zero_rows is None:
-            zero_rows = family.zero_rows(
-                int(grid.m), bool(grid.accurate_fields_near_cylorigin))
-        minus_dtdx, (inc_re, inc_im) = increment
-
-        arguments: List[Any] = [self._word_pointer(getattr(fields, n)) for n in targets]
-        arguments += [self._word_pointer(getattr(fields, "fu_" + n)) for n in targets]
-        arguments += [self._word_pointer(getattr(fields, n)) for n in sources]
-        arguments += [self._word_pointer(np.ascontiguousarray(prefix))]
-        arguments += [self._word_pointer(np.ascontiguousarray(row)) for row in imr]
-        arguments += [int(shape[0]), int(shape[1]), int(shape[2]),
-                      ctypes.c_float(float(dtdx)), ctypes.c_float(float(minus_dtdx)),
-                      ctypes.c_float(float(inc_re)), ctypes.c_float(float(inc_im))]
-        if sub_step == "step_D":
-            axis_coef = overrides.get("axis_coef")
-            if axis_coef is None:
-                axis_coef = family.axis_coefficient(dtdx)
-            arguments += [ctypes.c_float(float(axis_coef))]
-        for axis in "xyz":
-            arguments += [self._pointer(tables[f"kms_{axis}"]),
-                          self._pointer(tables[f"sinv_{axis}"])]
-        arguments += [int(code) for code in codes] + [0, 0, 0]
-        arguments += [int(m_class), int(zero_rows)]
-        cells = shape[0] * shape[1] * shape[2]
-        function((cells + 255) // 256, 256, *arguments)
+        scalars = launch_scalars(sub_step, grid, overrides)
+        values: Dict[str, Any] = {name: getattr(fields, name) for name in targets}
+        values.update({"fu_" + name: getattr(fields, "fu_" + name) for name in targets})
+        values.update({name: getattr(fields, name) for name in sources})
+        values["rad"] = np.ascontiguousarray(to_host(radial))
+        values["imr0"], values["imr2"] = (np.ascontiguousarray(row, dtype=np.float32)
+                                          for row in scalars["imr_rows"])
+        values.update(nx=shape[0], ny=shape[1], nz=shape[2], dtdx=scalars["dtdx"],
+                      m_word=float(np.float32(scalars["m"])))
+        words = tuple(scalars["courant_words"])
+        if sub_step == "step_B":
+            values["minus_courant"] = words[0]
+        else:
+            values["plus_courant"], values["four_courant"] = words
+        for key, vector in tables.items():
+            values[key] = np.ascontiguousarray(to_host(vector), dtype=np.float32)
+        codes = scalars["boundary_codes"]
+        values.update(bc_x=codes[0], bc_y=codes[1], bc_z=codes[2],
+                      m_class=scalars["m_class_code"],
+                      zero_rows=scalars["zero_rows_count"],
+                      cb=np.ascontiguousarray(record, dtype=np.int32))
+        _host_call(function, parameters, values, shape[0] * shape[1] * shape[2])
 
     def restore(self) -> None:
         self._transform = None
@@ -650,47 +684,6 @@ class HostCompiledBackend(_Backend):
         shutil.rmtree(self._workdir, ignore_errors=True)
         self._workdir = tempfile.mkdtemp(prefix="gate_cuda_cylcx_")
 
-
-# ---------------------------------------------------------------------------
-# The expansion licence
-# ---------------------------------------------------------------------------
-
-def load_licence(path: Optional[str], policy: Optional[str]) -> Dict[str, Any]:
-    """Read the probe artifact and run the licence. THE ARBITER IS NOT REIMPLEMENTED."""
-    out: Dict[str, Any] = {"path": path, "policy_required": policy,
-                           "record_sha256": None, "verdict": None,
-                           "arm": None, "expansion": None, "usable": False,
-                           "policy_reasons": []}
-    if not path:
-        path = os.environ.get(complex_fields.PROBE_PATH_ENVIRONMENT)
-        out["path"] = path
-    if not path:
-        out["policy_reasons"] = [
-            "no expansion probe artifact was given and "
-            f"{complex_fields.PROBE_PATH_ENVIRONMENT} is unset; the arm is a measured "
-            "platform fact and may not be guessed"]
-        return out
-    try:
-        with open(path, "rb") as handle:
-            raw = handle.read()
-    except OSError as exc:
-        out["policy_reasons"] = [f"the probe artifact could not be read: {exc}"]
-        return out
-    out["record_sha256"] = hashlib.sha256(raw).hexdigest()
-    record = json.loads(raw.decode("utf-8"))
-    verdict = complex_fields.expansion_license(record)
-    out["verdict"] = verdict
-    out["arm"] = verdict.get("arm")
-    out["expansion"] = verdict.get("expansion")
-    out["policy_reasons"] = list(
-        complex_fields.expansion_policy_reasons(record, policy)) if policy else []
-    out["usable"] = bool(verdict.get("arm") and not verdict.get("refusals")
-                         and not out["policy_reasons"])
-    return out
-
-
-def other_arm(arm: str) -> str:
-    return "NAIVE" if arm == "FMA_V1" else "FMA_V1"
 
 
 # ---------------------------------------------------------------------------
@@ -740,14 +733,17 @@ def axis_row_is_live(frozen, reference, sub_step: str, shape, m: int,
     return out
 
 
-def prefix_is_live(prefix, sub_step: str) -> Dict[str, Any]:
-    """Is the prefix non-constant down r? A flat one hides every prefix defect."""
-    host = np.ascontiguousarray(to_host(prefix))
-    diffs = host[1:] - host[:-1]
+def radial_is_live(radial, sub_step: str) -> Dict[str, Any]:
+    """Is the radial difference non-zero and non-constant down r? A flat one hides every
+    radial-substitution defect."""
+    host = np.ascontiguousarray(to_host(radial))
+    words = _words(host)
+    varies = int(np.count_nonzero(host[1:] - host[:-1])) if host.shape[0] > 1 else 0
     return {"rows": int(host.shape[0]),
-            "distinct_radial_differences": int(np.count_nonzero(diffs)),
-            "prefixed_target": "Bz" if sub_step == "step_B" else "Dz",
-            "meets_floor": int(np.count_nonzero(diffs)) > 0}
+            "nonzero_words": int(np.count_nonzero(words)),
+            "rows_that_differ_from_the_one_below": varies,
+            "radial_target": "Bz" if sub_step == "step_B" else "Dz",
+            "meets_floor": int(np.count_nonzero(words)) > 0 and varies > 0}
 
 
 def imr_is_live(rows: Sequence[Any]) -> Dict[str, Any]:
@@ -851,7 +847,7 @@ def axis_identity_leg(rng) -> Dict[str, Any]:
     return out
 
 
-def stripped_control(backend, arm, rng) -> Dict[str, Any]:
+def stripped_control(backend, rng) -> Dict[str, Any]:
     """The CERTIFIED complex CARTESIAN body on a Dcyl grid. It MUST diverge.
 
     A zero here would mean this module should not exist. Run through
@@ -875,7 +871,7 @@ def stripped_control(backend, arm, rng) -> Dict[str, Any]:
             getattr(stepping, sub_step)(fields, layer)
             reference = snapshot(fields)
             restore(fields, frozen)
-            _launch_certified_cartesian(host, sub_step, fields, layer, grid, arm)
+            _launch_certified_cartesian(host, sub_step, fields, layer, grid)
             differing = sum(differing_words(reference[n], getattr(fields, n))
                             for n in outputs(sub_step))
             out["rows"].append({"label": spec["label"], "sub_step": sub_step,
@@ -897,58 +893,38 @@ def stripped_control(backend, arm, rng) -> Dict[str, Any]:
 _CARTESIAN_CACHE: Dict[str, Any] = {}
 
 
-def _launch_certified_cartesian(host, sub_step, fields, layer, grid, arm) -> None:
-    """Compile and drive ``complex_emitter``'s Cartesian curl on a Dcyl grid."""
-    text = complex_emitter.complex_source(sub_step, arm)
-    key = hashlib.sha256((text + str(host.options)).encode()).hexdigest()[:24]
-    if key not in _CARTESIAN_CACHE:
-        name, parameters = parse_signature(text)
-        declaration = ", ".join(f"{k} {i}" for k, i in parameters)
-        call = ", ".join(i for _k, i in parameters)
-        driver = (f'\nextern "C" void launch_{name}(int nblocks, int nthreads, '
-                  f'{declaration}) {{\n    blockDim.x = nthreads;\n'
-                  f'    for (int b = 0; b < nblocks; ++b) {{\n        blockIdx.x = b;\n'
-                  f'        for (int t = 0; t < nthreads; ++t) {{\n'
-                  f'            threadIdx.x = t;\n            {name}({call});\n'
-                  f'        }}\n    }}\n}}\n')
-        stem = os.path.join(host._workdir, "cart_" + key)
-        with open(stem + ".cpp", "w", encoding="ascii") as handle:
-            handle.write(_HOST_SHIM + text + driver)
-        subprocess.run([host.compiler, *host.options, "-shared", "-fPIC",
-                        "-o", stem + ".so", stem + ".cpp"], check=True,
-                       capture_output=True)
-        function = getattr(ctypes.CDLL(stem + ".so"), f"launch_{name}")
-        argtypes: List[Any] = [ctypes.c_int, ctypes.c_int]
-        for kind, _ident in parameters:
-            argtypes.append(ctypes.c_void_p if "*" in kind else
-                            (ctypes.c_float if kind == "float" else ctypes.c_int))
-        function.argtypes = argtypes
-        function.restype = None
-        _CARTESIAN_CACHE[key] = function
-    function = _CARTESIAN_CACHE[key]
+def _launch_certified_cartesian(host, sub_step, fields, layer, grid) -> None:
+    """Compile and drive ``complex_emitter``'s Cartesian curl on a Dcyl grid, its
+    arguments looked up by the certified signature's own parameter names."""
+    text = complex_emitter.complex_source(sub_step)
+    function, parameters = _host_function(host.compiler, host.options, host._workdir,
+                                          text, _CARTESIAN_CACHE, tag="cart_")
     targets, sources = family.CURL_ARRAYS[sub_step]
     shape = tuple(int(n) for n in grid.shape)
     suffix = "_h" if complex_emitter.HALF_INTEGER[sub_step] else ""
-    tables = {f"{stem}_{axis}": np.ascontiguousarray(
-        getattr(layer, f"{stem}_{axis}{suffix}").reshape(-1))
-        for axis in "xyz" for stem in ("kms", "sinv")}
+    values: Dict[str, Any] = {}
+    for index, name in enumerate(targets):
+        values[f"f{index}"] = getattr(fields, name)
+        values[f"u{index}"] = getattr(fields, "fu_" + name)
+    for index, name in enumerate(sources):
+        values[f"g{index}"] = getattr(fields, name)
+    values.update(nx=shape[0], ny=shape[1], nz=shape[2],
+                  dtdx=float(grid.dt / grid.dx))
+    for axis in "xyz":
+        for stem in ("kms", "sinv"):
+            values[f"{stem}_{axis}"] = np.ascontiguousarray(
+                getattr(layer, f"{stem}_{axis}{suffix}").reshape(-1), dtype=np.float32)
     # r resolves to 'axis', which the CARTESIAN family has no code for -- so the
     # control passes METALLIC, which is the strictly most favourable choice for it.
-    codes = (BC_METALLIC, BC_PERIODIC,
-             BC_METALLIC if stepping._boundary_kinds(grid, None)[2] == "metallic"
-             else BC_PERIODIC)
-    arguments: List[Any] = [host._word_pointer(getattr(fields, n)) for n in targets]
-    arguments += [host._word_pointer(getattr(fields, "fu_" + n)) for n in targets]
-    arguments += [host._word_pointer(getattr(fields, n)) for n in sources]
-    arguments += [int(shape[0]), int(shape[1]), int(shape[2]),
-                  ctypes.c_float(float(grid.dt / grid.dx))]
+    z_metallic = stepping._boundary_kinds(grid, None)[2] == "metallic"
+    values.update(bc_x=BC_METALLIC, bc_y=BC_PERIODIC,
+                  bc_z=BC_METALLIC if z_metallic else BC_PERIODIC)
     for axis in "xyz":
-        arguments += [host._pointer(tables[f"kms_{axis}"]),
-                      host._pointer(tables[f"sinv_{axis}"])]
-    arguments += [int(c) for c in codes] + [0, 0, 0]
-    arguments += [ctypes.c_float(1.0), ctypes.c_float(0.0)] * 3
-    cells = shape[0] * shape[1] * shape[2]
-    function((cells + 255) // 256, 256, *arguments)
+        values[f"ph_{axis}"] = complex_emitter.CONNECT_NONE
+        values[f"p{axis}r"] = 1.0
+        values[f"p{axis}i"] = 0.0
+    values["cb"] = case_record(grid, layer)
+    _host_call(function, parameters, values, shape[0] * shape[1] * shape[2])
 
 
 # ---------------------------------------------------------------------------
@@ -960,24 +936,54 @@ def _sub(pattern: str, replacement: str, text: str) -> Tuple[str, int]:
     return out, count
 
 
+#: One i*m/r pass block as the kernels spell it: the guard, the increment, its masks,
+#: the folded ladder, the closing brace.
+_IMR_BLOCK = (r"( *)if \(m_class != 0\) \{\n *cf inc = imr_increment\([^\n]*\n"
+              r"(?: *if \([^\n]*inc = cf_zero\(\);\n)* *fold_apply\([^\n]*\n *\}\n")
+
+
 def m_drop_imr(text):
-    """Drop BOTH i*m/r couplings -- the whole |m| >= 1 physics."""
-    return _sub(r"\n *curl = cf_sub\(curl, mul_complex_left\([^;]*;", "", text)
+    """Drop BOTH i*m/r passes -- the whole |m| >= 1 physics."""
+    return _sub(_IMR_BLOCK, "", text)
 
 
-def m_imr_after_mask(text):
-    """Add the i*m/r term AFTER the ownership mask instead of before it.
+def m_imr_increment_unmasked(text):
+    """The pass's increment no longer masked on the target's unowned cells.
 
-    The whole GUARDED block moves (the ``if (m_class != 0) {`` line, the term and its
-    closing brace), so the mutated text is still the m = 0 arm's on the m = 0 cases
-    and the defect lives at |m| >= 1 exactly as before the guard landed.
+    MEEP's pass loops over its owned cells only (LOOP_OVER_VOL_OWNED0) and the array
+    path masks the increment to +0 there; unmasked, the z-wall plane of Bz / Dx takes
+    the increment. MUST BE CAUGHT where z is metallic.
     """
-    out, count = _sub(
-        r"( *if \(m_class != 0\) \{\n *curl = cf_sub\(curl, mul_complex_left\([^;]*;\n"
-        r" *\}\n)"
-        r"((?: *if \(bc_[xyz] == BC_METALLIC && \w == 0\) curl = cf_zero\(\);\n)+)",
-        r"\2\1", text)
-    return out, count
+    return _sub(r" *if \(bc_[xyz] == BC_METALLIC && \w == 0\) inc = cf_zero\(\);\n", "",
+                text)
+
+
+def m_imr_partner_swapped(text):
+    """Target 0's pass takes the OTHER centre load -- a real mis-wiring."""
+    return _sub(r"imr_increment\(imr0\[i\], f_1\)", "imr_increment(imr0[i], f_2)", text)
+
+
+def m_imr_row_reversed(text):
+    """Index the per-r row from the far wall: the wrong radius on every cell."""
+    return _sub(r"imr_increment\(imr(\d)\[i\],", r"imr_increment(imr\1[nx - 1 - i],",
+                text)
+
+
+def m_imr_increment_conjugated(text):
+    """The quarter turn's sign on the other part: the coupling rotates the wrong way.
+
+    MEEP's ``(1-2*cmp)`` puts ``-rinv`` on the imaginary part; swapped, the run is
+    the conjugate one -- smooth, plausible and wrong.
+    """
+    return _sub(r"    o\.re = \(rinv \* g\.im\) \* -1\.0f;\n    o\.im = rinv \* g\.re;\n",
+                "    o.re = rinv * g.im;\n    o.im = (rinv * g.re) * -1.0f;\n", text)
+
+
+def m_imr_ladder_skips_sinv(text):
+    """The ladder's ``df = sinv * inc`` dropped: the increment enters unscaled where the
+    target's dsig layer is not unity (``stepping._apply_folded_increment``)."""
+    return _sub(r"    cf df = mul_coefficient_left\(sinv, inc\);\n", "    cf df = inc;\n",
+                text)
 
 
 def m_m0_drop_bx_axis_zero(text):
@@ -986,104 +992,104 @@ def m_m0_drop_bx_axis_zero(text):
                 r" *cf_store\(Bx, idx, cf_zero\(\)\);\n *\}\n", "", text)
 
 
+_M0_POST_ADD = (r" *cf_store\(Dz, idx, cf_add\(cf_load\(Dz, idx\), "
+                r"double_product\(four_courant, cf_load\(Hy, idx\)\)\)\);\n")
+
+
 def m_m0_drop_dz_axis_post_add(text):
-    """Drop the m = 0 on-axis Dz post-add (stepping.py:585); Dy's zero stays."""
-    return _sub(r" *cf_store\(Dz, idx, cf_add\(cf_load\(Dz, idx\),\n"
-                r" *mul_coefficient_left\(axis_coef, cf_load\(Hy, idx\)\)\)\);\n",
-                "", text)
+    """Drop the m = 0 on-axis Dz post-add; Dy's zero stays."""
+    return _sub(_M0_POST_ADD, "", text)
 
 
 def m_m0_drop_dy_axis_zero(text):
-    """Drop Dp = 0 on the axis at m = 0 (stepping.py:586); the post-add stays."""
+    """Drop Dp = 0 on the axis at m = 0; the post-add stays."""
     return _sub(r"(if \(m_class == 0 && i == 0\) \{\n[^}]*\)\);\n)"
                 r" *cf_store\(Dy, idx, cf_zero\(\)\);\n", r"\1", text)
 
 
-def m_m0_post_add_reads_prefixed_hp(text):
-    """Feed the post-add the PREFIXED Hp instead of the raw stored one."""
-    return _sub(r"mul_coefficient_left\(axis_coef, cf_load\(Hy, idx\)\)",
-                "mul_coefficient_left(axis_coef, cf_load(pfx, idx))", text)
+def m_m0_post_add_reads_the_radial_difference(text):
+    """Feed the post-add the radial difference instead of the raw stored Hp."""
+    return _sub(r"double_product\(four_courant, cf_load\(Hy, idx\)\)",
+                "double_product(four_courant, cf_load(rad, idx))", text)
+
+
+def m_m0_post_add_in_float32(text):
+    """The on-axis product through a float32 factor instead of MEEP's double product.
+
+    ``realnum(double(4*Courant) * double(Hp))`` (step_db.cpp:324) is another word
+    wherever ``4*Courant`` is not a float32 word. MUST BE CAUGHT at the inexact Courant.
+    """
+    return _sub(r"double_product\(four_courant, cf_load\(Hy, idx\)\)",
+                "mul_coefficient_left((float)four_courant, cf_load(Hy, idx))", text)
 
 
 def m_m0_post_add_folded_before_dy_zero_swapped(text):
     """Zero Dp BEFORE the post-add -- the same two stores in the other order.
 
     They touch different volumes, so this is a PREDICTED NULL: order-independent
-    stores are order-independent bytes, and a leg that caught it would mean the
-    harness reports differences that are not arithmetic.
+    stores are order-independent bytes.
     """
-    return _sub(r"( *)(cf_store\(Dz, idx, cf_add\(cf_load\(Dz, idx\),\n"
-                r" *mul_coefficient_left\(axis_coef, cf_load\(Hy, idx\)\)\)\);\n)"
+    return _sub(r"( *)(cf_store\(Dz, idx, cf_add\(cf_load\(Dz, idx\), "
+                r"double_product\(four_courant, cf_load\(Hy, idx\)\)\)\);\n)"
                 r"( *cf_store\(Dy, idx, cf_zero\(\)\);\n)", r"\3\1\2", text)
 
 
 def m_m0_imr_unguarded(text):
-    """Subtract the (zero) i*m/r rows at m = 0 instead of skipping them.
+    """Run the i*m/r pass at m = 0 instead of skipping it.
 
-    MEASURED, NOT REQUIRED. The array path adds no term at m = 0 (stepping.py:376,
-    :459). ``curl - (0 * f)`` is the identity on every word except a ``-0.0`` curl
-    meeting a ``-0.0`` subtrahend, so on ordinary values this leg is a null and on
-    the signed-zero classes it may move a word; the guard is kept because the array
-    path SKIPS the term, and the reading records what the unguarded form costs.
+    MEASURED, NOT REQUIRED. The array path runs no pass at m = 0. The m = 0 row is a
+    signed zero (``realnum(sign * 0)``), so the pass adds signed-zero increments, which
+    move a word only where a ``-0`` meets a ``+0`` in the ladder; the guard is kept
+    because the array path SKIPS the pass.
     """
     return _sub(r"if \(m_class != 0\) \{", "if (1) {", text)
 
 
-def m_imr_partner_swapped(text):
-    """Target 0's coupling takes the OTHER center load -- a real mis-wiring."""
-    return _sub(r"mul_complex_left\(cf_load\(imr0, i\), f_1\)",
-                "mul_complex_left(cf_load(imr0, i), f_2)", text)
-
-
-def m_imr_row_indexed_by_k(text):
-    """Index the per-r row by the z lane: the wrong radius on every cell."""
-    return _sub(r"cf_load\(imr(\d), i\)", r"cf_load(imr\1, k)", text)
-
-
-def m_imr_added_not_subtracted(text):
-    """``curl + m`` instead of ``curl - m``: the sign of the whole coupling."""
-    return _sub(r"curl = cf_sub\(curl, (mul_complex_left\([^;]*)\);",
-                r"curl = cf_add(curl, \1);", text)
+_AXIS_REPLACE = r"curl = cf_neg\(double_product\(((?:minus|plus)_courant), ([^\n]*)\)\);"
 
 
 def m_drop_axis_increment(text):
-    return _sub(r" *curl\.re = inc\.re \* -1\.0f;\n *curl\.im = inc\.im \* -1\.0f;\n",
-                "", text)
+    return _sub(r" *curl = cf_neg\(double_product\((?:minus|plus)_courant, [^\n]*\n", "",
+                text)
 
 
 def m_axis_increment_accumulates(text):
     """REPLACE vs ACCUMULATE -- byte-visible only on a stored signed zero."""
-    return _sub(r"curl\.re = inc\.re \* -1\.0f;\n( *)curl\.im = inc\.im \* -1\.0f;",
-                r"curl.re = curl.re + inc.re * -1.0f;\n"
-                r"\1curl.im = curl.im + inc.im * -1.0f;", text)
+    return _sub(_AXIS_REPLACE, r"curl = cf_add(curl, cf_neg(double_product(\1, \2)));",
+                text)
 
 
 def m_axis_increment_not_negated(text):
-    return _sub(r"curl\.re = inc\.re \* -1\.0f;\n( *)curl\.im = inc\.im \* -1\.0f;",
-                r"curl.re = inc.re;\n\1curl.im = inc.im;", text)
+    return _sub(_AXIS_REPLACE, r"curl = double_product(\1, \2);", text)
+
+
+def m_axis_increment_in_float32(text):
+    """The |m| = 1 increment through a float32 Courant factor instead of MEEP's double
+    product (step_db.cpp:377). MUST BE CAUGHT at the inexact Courant."""
+    return _sub(_AXIS_REPLACE,
+                r"curl = cf_neg(mul_coefficient_left((float)\1, \2));", text)
 
 
 def m_axis_increment_operands_swapped(text):
-    """``-(A - B)`` is NOT ``B - A`` when both are +0.0 (grouping choice)."""
-    out, count = _sub(r"mul_coefficient_left\(minus_dtdx, cf_sub\(f_2, ss\)\)",
-                      "mul_coefficient_left(minus_dtdx, cf_sub(ss, f_2))", text)
+    """``(A - B)`` is NOT ``-(B - A)`` (grouping choice)."""
+    out, count = _sub(r"cf_sub\(cf_sub\(f_2, ss\), turn\)", "cf_sub(cf_sub(ss, f_2), turn)",
+                      text)
     if count:
         return out, count
-    return _sub(r"cf_sub\(cf_sub\(f_1, sf\), two_c\)",
-                "cf_sub(cf_sub(sf, f_1), two_c)", text)
+    return _sub(r"cf_sub\(cf_sub\(f_1, sf\), mul_coefficient_left\(2\.0f, f_2\)\)",
+                "cf_sub(cf_sub(sf, f_1), mul_coefficient_left(2.0f, f_2))", text)
 
 
 def m_axis_increment_reads_row0_ez(text):
-    """Read the AXIS row of Ez instead of the FIRST OFF-AXIS row (stepping.py:671)."""
-    return _sub(r"cf_load\(Ez, sx \+ j \* sy \+ k\)", "cf_load(Ez, j * sy + k)", text)
+    """Read the AXIS row of Ez instead of the FIRST OFF-AXIS row."""
+    return _sub(r"cf e1 = cf_load\(Ez, idx \+ sx\);", "cf e1 = cf_load(Ez, idx);", text)
 
 
 def m_axis_increment_before_mask(text):
     """Apply the |m| = 1 replacement BEFORE the mask, so the mask wipes it."""
     return _sub(
         r"((?: *if \(bc_[xyz] == BC_METALLIC && \w == 0\) curl = cf_zero\(\);\n)+)"
-        r"( *// stepping\.py:[^\n]*\n(?: *//[^\n]*\n)* *if \(m_class == 1 && i == 0\) \{"
-        r"(?:[^}]*)\}\n)",
+        r"((?: *//[^\n]*\n)* *if \(m_class == 1 && i == 0\) \{\n(?:[^}]*)\}\n)",
         r"\2\1", text)
 
 
@@ -1115,65 +1121,58 @@ def m_dz_axis_zero_takes_fu(text):
                 r"\1        cf_store(fu_Dz, idx, cf_zero());\n", text)
 
 
-def m_drop_bz_prefix_substitution(text):
-    """Bz's curl becomes the four-operand Cartesian grouping again."""
-    return _sub(
-        r"cf pfx_here = cf_load\(pfx, idx\);\n"
-        r" *cf pfx_up = cf_load\(pfx, idx \+ sx\);\n"
-        r" *cf curl = mul_coefficient_left\(dtdx, cf_sub\(pfx_up, pfx_here\)\);",
-        "cf f_1 = cf_load(Ey, idx);\n"
-        "        cf sf = cshift_up(Ey, idx, i, nx, sx, bc_x, ph_x, noph);\n"
-        "        cf f_2 = cf_load(Ex, idx);\n"
-        "        cf ss = cshift_up(Ex, idx, j, ny, sy, bc_y, ph_y, noph);\n"
-        "        cf curl = mul_coefficient_left(dtdx, "
-        "cf_add(cf_sub(sf, f_1), cf_sub(f_2, ss)));", text)
+_RADIAL_CURL = r"cf curl = mul_coefficient_left\(dtdx, cf_load\(rad, idx\)\);"
 
 
-def m_bz_flat_grouping(text):
-    """``dtdx*a - dtdx*b`` instead of ``dtdx*(a-b)`` -- exact at 0.5, wrong at 0.35."""
-    return _sub(
-        r"cf curl = mul_coefficient_left\(dtdx, cf_sub\(pfx_up, pfx_here\)\);",
-        "cf curl = cf_sub(mul_coefficient_left(dtdx, pfx_up), "
-        "mul_coefficient_left(dtdx, pfx_here));", text)
+def m_drop_bz_radial_substitution(text):
+    """Bz's curl becomes the four-operand Cartesian one again."""
+    return _sub(_RADIAL_CURL,
+                "cf f_1 = cf_load(Ey, idx);\n"
+                "        cf sf = cshift_up(Ey, idx, i, nx, sx, bc_x);\n"
+                "        cf f_2 = cf_load(Ex, idx);\n"
+                "        cf ss = cshift_up(Ex, idx, j, ny, sy, bc_y);\n"
+                "        cf curl = curl_stencil(dtdx, sf, f_1, f_2, ss, pr_x, pr_y);", text)
 
 
-def m_bz_prefix_reads_same_row(text):
-    """Drop the wall row's reach: the forward difference becomes zero."""
-    return _sub(r"cf pfx_up = cf_load\(pfx, idx \+ sx\);",
-                "cf pfx_up = cf_load(pfx, idx);", text)
+def m_drop_dz_radial_substitution(text):
+    """Dz's curl becomes the four-operand Cartesian one over the raw Hp."""
+    return _sub(_RADIAL_CURL,
+                "cf f_1 = cf_load(Hy, idx);\n"
+                "        cf sf = cshift_dn(Hy, idx, i, nx, sx, bc_x);\n"
+                "        cf f_2 = cf_load(Hx, idx);\n"
+                "        cf ss = cshift_dn(Hx, idx, j, ny, sy, bc_y);\n"
+                "        cf curl = curl_stencil(dtdx, sf, f_1, f_2, ss, pr_x, pr_y);", text)
 
 
-def m_drop_dz_prefix_substitution(text):
-    return _sub(r"cf f_1 = cf_load\(pfx, idx\);\n"
-                r"( *)cf sf = cshift_dn\(pfx, idx, i, nx, sx, bc_x, ph_x, noph\);",
-                r"cf f_1 = cf_load(Hy, idx);\n"
-                r"\1cf sf = cshift_dn(Hy, idx, i, nx, sx, bc_x, ph_x, noph);", text)
+def n_radial_scale_commuted(text):
+    """A NULL: ``rad * dtdx`` per part for ``dtdx * rad``. IEEE multiplication commutes
+    bitwise; paired with the substitution legs on the same line."""
+    return _sub(_RADIAL_CURL, "cf curl = mul_field_left(cf_load(rad, idx), dtdx);", text)
 
 
-def m_prefix_into_dx(text):
-    """Leak the prefix into Dx, whose Hy operands must stay RAW."""
+def m_radial_into_dx(text):
+    """Leak the radial difference into Dx, whose Hy operands must stay RAW."""
     return _sub(r"cf f_2 = cf_load\(Hy, idx\);\n"
-                r"( *)cf ss = cshift_dn\(Hy, idx, k, nz, sz, bc_z, ph_z, noph\);",
-                r"cf f_2 = cf_load(pfx, idx);\n"
-                r"\1cf ss = cshift_dn(pfx, idx, k, nz, sz, bc_z, ph_z, noph);", text)
+                r"( *)cf ss = cshift_dn\(Hy, idx, k, nz, sz, bc_z\);",
+                r"cf f_2 = cf_load(rad, idx);\n"
+                r"\1cf ss = cshift_dn(rad, idx, k, nz, sz, bc_z);", text)
 
 
 def _r_near_ghost(variable: str, volume: str, sign: str):
     """Serve the array path's CYL_AXIS near ghost instead of the metallic zero.
 
-    ``stepping._shift_down``'s CYL_AXIS branch (:1830-1846) images stored row 0 with a
-    direction sign and the ``(-1)^m`` phase. Both the imaged value and its NEGATION are
-    armed, because the claim is that the row is UNOBSERVABLE and neither may move a
-    word. If either is ever CAUGHT, the ownership mask has broken, not the ghost.
+    ``stepping._shift_down``'s CYL_AXIS branch images stored row 0 with a direction sign
+    and the ``(-1)^m`` phase. Both the imaged value and its NEGATION are armed, because
+    the claim is that the row is UNOBSERVABLE and neither may move a word. If either is
+    ever CAUGHT, the ownership mask has broken, not the ghost.
     """
-    call = f"cf {variable} = cshift_dn({volume}, idx, i, nx, sx, bc_x, ph_x, noph);"
+    call = f"cf {variable} = cshift_dn({volume}, idx, i, nx, sx, bc_x);"
     replacement = (
         f"cf {variable};\n"
         f"        if (i == 0) {{ {variable} = cf_load({volume}, idx); "
         f"{variable}.re = {variable}.re * {sign}f; "
         f"{variable}.im = {variable}.im * {sign}f; }}\n"
-        f"        else {{ {variable} = cshift_dn({volume}, idx, i, nx, sx, bc_x, "
-        f"ph_x, noph); }}")
+        f"        else {{ {variable} = cshift_dn({volume}, idx, i, nx, sx, bc_x); }}")
 
     def transform(text):
         if call not in text:
@@ -1190,38 +1189,38 @@ def n_reload_the_target_from_memory(text):
                 r"\1pml_apply(\2, \3, idx, curl,", text)
 
 
-def n_commute_the_imr_subtrahend(text):
-    """A NULL: ``a - b`` with the SAME operands, spelled through a named temporary.
-
-    IEEE subtraction is not commutative, so this does NOT swap them; it only moves the
-    product into a local. A leg that CAUGHT this would mean the harness reports
-    differences that are not arithmetic.
-    """
-    return _sub(r"curl = cf_sub\(curl, (mul_complex_left\([^;]*)\);",
-                r"{ cf mterm = \1; curl = cf_sub(curl, mterm); }", text)
+def n_imr_partner_through_a_temporary(text):
+    """A NULL: the pass's partner named through a local first. A copy is the identity on
+    the bits; a leg that CAUGHT it would mean the harness reports differences that are
+    not arithmetic."""
+    return _sub(r"cf inc = imr_increment\((imr\d\[i\]), ([^;]*)\);",
+                r"cf partner = \2; cf inc = imr_increment(\1, partner);", text)
 
 
 #: The family's own battery. ``reach`` names the cases the defect can be seen on and
 #: is DERIVED, not guessed -- see :func:`reaches`. ``must`` is True for a catch and
 #: False for a predicted null.
 OWN_MUTATIONS: Dict[str, Dict[str, Any]] = {
-    # THE i*m/r BATTERY REACHES |m| >= 1 ONLY (2026-09-04): at m = 0 every i*m/r site
-    # is guarded off by ``m_class != 0`` -- the arm the array path takes (stepping.py
-    # :376, :459) -- so a defect in the term is unreachable there BY DESIGN, and
-    # ``m0_imr_unguarded`` below is the leg that measures the guard itself.
+    # THE i*m/r BATTERY REACHES |m| >= 1 ONLY: at m = 0 every pass is guarded off by
+    # ``m_class != 0`` -- the arm the array path takes -- so a defect in the pass is
+    # unreachable there BY DESIGN, and ``m0_imr_unguarded`` measures the guard itself.
     "drop_imr": {"fn": m_drop_imr, "must": True, "reach": "imr_live"},
-    "imr_after_mask": {"fn": m_imr_after_mask, "must": True,
-                       "reach": "imr_metallic_live"},
+    "imr_increment_unmasked": {"fn": m_imr_increment_unmasked, "must": True,
+                               "reach": "imr_metallic_live"},
     "imr_partner_swapped": {"fn": m_imr_partner_swapped, "must": True, "reach": "imr_live"},
-    "imr_row_indexed_by_k": {"fn": m_imr_row_indexed_by_k, "must": True, "reach": "imr_live"},
-    "imr_added_not_subtracted": {"fn": m_imr_added_not_subtracted, "must": True,
+    "imr_row_reversed": {"fn": m_imr_row_reversed, "must": True, "reach": "imr_live"},
+    "imr_increment_conjugated": {"fn": m_imr_increment_conjugated, "must": True,
                                  "reach": "imr_live"},
+    "imr_ladder_skips_sinv": {"fn": m_imr_ladder_skips_sinv, "must": True,
+                              "reach": "imr_live"},
     "drop_axis_increment": {"fn": m_drop_axis_increment, "must": True,
                             "reach": "m1_live"},
     "axis_increment_accumulates": {"fn": m_axis_increment_accumulates, "must": True,
                                    "reach": "m1_zero_init"},
     "axis_increment_not_negated": {"fn": m_axis_increment_not_negated, "must": True,
                                    "reach": "m1_live"},
+    "axis_increment_in_float32": {"fn": m_axis_increment_in_float32, "must": True,
+                                  "reach": "m1_inexact"},
     "axis_increment_operands_swapped": {"fn": m_axis_increment_operands_swapped,
                                         "must": True, "reach": "m1_live"},
     "axis_increment_before_mask": {"fn": m_axis_increment_before_mask, "must": True,
@@ -1231,80 +1230,79 @@ OWN_MUTATIONS: Dict[str, Dict[str, Any]] = {
     "near_axis_leaves_fu": {"fn": m_near_axis_leaves_fu, "must": True, "reach": "mmany_live"},
     "near_axis_row_zero_only": {"fn": m_near_axis_row_zero_only, "must": True,
                                 "reach": "mmany_wide_live"},
-    "drop_bz_prefix_substitution": {"fn": m_drop_bz_prefix_substitution, "must": True,
+    "drop_bz_radial_substitution": {"fn": m_drop_bz_radial_substitution, "must": True,
                                     "reach": "live_state", "sub_step": "step_B"},
-    "bz_flat_grouping": {"fn": m_bz_flat_grouping, "must": True,
-                         "reach": "inexact_courant", "sub_step": "step_B"},
-    "bz_prefix_reads_same_row": {"fn": m_bz_prefix_reads_same_row, "must": True,
-                                 "reach": "live_state", "sub_step": "step_B"},
     "axis_increment_reads_row0_ez": {"fn": m_axis_increment_reads_row0_ez, "must": True,
                                      "reach": "m1_live", "sub_step": "step_B"},
-    "drop_dz_prefix_substitution": {"fn": m_drop_dz_prefix_substitution, "must": True,
+    "drop_dz_radial_substitution": {"fn": m_drop_dz_radial_substitution, "must": True,
                                     "reach": "live_state", "sub_step": "step_D"},
-    "prefix_into_dx": {"fn": m_prefix_into_dx, "must": True, "reach": "live_state",
+    "radial_into_dx": {"fn": m_radial_into_dx, "must": True, "reach": "live_state",
                        "sub_step": "step_D"},
     "drop_dz_axis_zero": {"fn": m_drop_dz_axis_zero, "must": True, "reach": "m1_live",
                           "sub_step": "step_D"},
     "dz_axis_zero_takes_fu": {"fn": m_dz_axis_zero_takes_fu, "must": True, "reach": "m1_live",
                               "sub_step": "step_D"},
-    # THE m = 0 ARM'S OWN BATTERY (2026-09-04): each of the array path's three m = 0
-    # rules dropped, the post-add fed the wrong Hp, and the guard on the i*m/r sites
-    # removed. The store-order swap is a predicted null.
+    # THE m = 0 ARM'S OWN BATTERY: each of the array path's three m = 0 rules dropped,
+    # the post-add fed the wrong volume or a float32 factor, and the guard on the
+    # passes removed. The store-order swap is a predicted null.
     "m0_drop_bx_axis_zero": {"fn": m_m0_drop_bx_axis_zero, "must": True,
                              "reach": "m0_live", "sub_step": "step_B"},
     "m0_drop_dz_axis_post_add": {"fn": m_m0_drop_dz_axis_post_add, "must": True,
                                  "reach": "m0_live", "sub_step": "step_D"},
     "m0_drop_dy_axis_zero": {"fn": m_m0_drop_dy_axis_zero, "must": True,
                              "reach": "m0_live", "sub_step": "step_D"},
-    "m0_post_add_reads_prefixed_hp": {"fn": m_m0_post_add_reads_prefixed_hp,
-                                      "must": True, "reach": "m0_live",
-                                      "sub_step": "step_D"},
+    "m0_post_add_reads_the_radial_difference": {
+        "fn": m_m0_post_add_reads_the_radial_difference, "must": True,
+        "reach": "m0_live", "sub_step": "step_D"},
+    "m0_post_add_in_float32": {"fn": m_m0_post_add_in_float32, "must": True,
+                               "reach": "m0_inexact", "sub_step": "step_D"},
     "m0_dy_zero_before_dz_post_add": {"fn": m_m0_post_add_folded_before_dy_zero_swapped,
                                       "must": False, "reach": "any",
                                       "sub_step": "step_D"},
     "m0_imr_unguarded": {"fn": m_m0_imr_unguarded, "must": "measure", "reach": "m0",
                          "reading": (
-                             "the UNGUARDED form -- subtracting the (zero) i*m/r rows "
-                             "at m = 0 -- moved a word on {caught} of {live} m = 0 "
+                             "the UNGUARDED form -- the i*m/r pass run at m = 0 with its "
+                             "signed-zero row -- moved a word on {caught} of {live} m = 0 "
                              "cases across all four value classes; the guard is kept "
-                             "because the array path SKIPS the term (stepping.py:376, "
-                             ":430) and `curl - (0 * f)` is not the identity on a "
-                             "-0.0 curl meeting a -0.0 subtrahend, which no seeding "
-                             "here produced")},
-    # THE TWO r-NEAR-GHOST NULLS, on the D side only. On the B side ``cshift_dn`` is
-    # compiled but never called, so a mutation to it there is armed in the TEXT and
-    # unreachable in fact -- which is a vacuous leg, not a null.
+                             "because the array path SKIPS the pass")},
+    # THE TWO r-NEAR-GHOST NULLS, on the D side only (Dy's Hz operand). On the B side
+    # ``cshift_dn`` is never called, so a mutation to it there is armed in the TEXT and
+    # unreachable in fact -- a vacuous leg, not a null. Dz reads no shifted operand: its
+    # whole curl is the radial difference.
     "r_near_ghost_dy_image": {"fn": _r_near_ghost("ss", "Hz", "1.0"), "must": False,
                               "reach": "any", "sub_step": "step_D"},
     "r_near_ghost_dy_image_negated": {"fn": _r_near_ghost("ss", "Hz", "-1.0"),
                                       "must": False, "reach": "any",
                                       "sub_step": "step_D"},
-    "r_near_ghost_dz_image": {"fn": _r_near_ghost("sf", "pfx", "-1.0"), "must": False,
-                              "reach": "any", "sub_step": "step_D"},
-    "r_near_ghost_dz_image_negated": {"fn": _r_near_ghost("sf", "pfx", "1.0"),
-                                      "must": False, "reach": "any",
-                                      "sub_step": "step_D"},
-    # THE TWO HARNESS NULLS.
+    # THE HARNESS NULLS.
+    "radial_scale_commuted": {"fn": n_radial_scale_commuted, "must": False,
+                              "reach": "any"},
     "reload_the_target_from_memory": {"fn": n_reload_the_target_from_memory,
                                       "must": False, "reach": "any"},
-    "commute_the_imr_subtrahend": {"fn": n_commute_the_imr_subtrahend, "must": False,
-                                   "reach": "any"},
+    "imr_partner_through_a_temporary": {"fn": n_imr_partner_through_a_temporary,
+                                        "must": False, "reach": "any"},
 }
 
 #: The SHARED battery, borrowed from ``gate_cuda_complex`` so this gate cannot own a
 #: second spelling of a defect the certified complex record was cut against. Every one
 #: of them arms on the IMPORTED ``_HEAD``/``_ARM_SOURCE``/``_TAIL`` strings or on the
 #: Cartesian target blocks this pair keeps unchanged -- which is itself the check that
-#: "the certified body, character for character" is true rather than claimed.
+#: "the certified body, character for character" is true rather than claimed. The
+#: grouping legs are KERNELS.md section 7.1's inversions (the previous package grouping
+#: is the mutant) and the select legs its section 7.2 B battery.
 SHARED_MUTATIONS: Dict[str, Dict[str, Any]] = {
-    "fold_the_zero_cross_terms": {"must": True, "reach": "signed_zero"},
-    "plane_wise_scaling": {"must": True, "reach": "signed_zero"},
-    "left_to_right_curl": {"must": True, "reach": "live_state"},
+    "full_complex_coefficient_products": {"must": True, "reach": "signed_zero"},
+    "old_package_curl_grouping": {"must": True, "reach": "live_state"},
     "drop_the_ownership_mask": {"must": True, "reach": "mask_observable"},
     "metallic_ghost_wraps": {"must": True, "reach": "metallic_ghost"},
     "hoist_dtdx_into_the_difference": {"must": True, "reach": "inexact_courant"},
     "word_pair_transposed": {"must": True, "reach": "live_state"},
     "column_major_index": {"must": True, "reach": "live_state"},
+    "select_removed": {"must": True, "reach": "live_state"},
+    "predicate_on_coefficient_identity": {"must": True, "reach": "live_state"},
+    "swap_dsig_and_dsigu": {"must": True, "reach": "live_state"},
+    "auxiliary_stored_on_a_plain_cell": {"must": True, "reach": "live_state"},
+    "auxiliary_load_unguarded": {"must": False, "reach": "any"},
     "reload_the_target_from_memory": {"must": False, "reach": "any",
                                       "rename": "shared_reload_the_target"},
     "commute_the_plane_sum": {"must": False, "reach": "any"},
@@ -1314,35 +1312,37 @@ SHARED_MUTATIONS: Dict[str, Dict[str, Any]] = {
 #: fire and a mutation that is not caught look identical in a verdict, so an
 #: unreachable leg is excluded by name rather than scored as a null.
 SHARED_EXCLUDED: Dict[str, str] = {
-    "flatten_the_constitutive_tail":
+    "old_package_constitutive_grouping":
         "arms on constitutive_apply, which these curl kernels never call",
     "store_fw_before_reading_prev":
         "arms on constitutive_apply, which these curl kernels never call",
-    "phase_on_every_lane":
-        "arms on the Bloch rotation; this family passes every phase flag 0 and the "
-        "predicate refuses a phase, so the mutated path is unreachable",
+    "connection_on_every_plane":
+        "arms on the Bloch connection; this family's predicate refuses a phase and its "
+        "shift helpers carry none, so the mutated path is unreachable",
     "conjugate_the_rotation":
-        "arms on the Bloch rotation; see phase_on_every_lane",
+        "arms on the Bloch connection; see connection_on_every_plane",
 }
 
 #: HOST mutations: nothing in the device text changes, the LAUNCHER is handed
-#: something wrong. Each is a real defect a call site can carry.
+#: something wrong. Each is a real defect a call site can carry. The scan's own host
+#: defects (the starts line, the weights' ir0, the wall row) are
+#: gate_cuda_cylindrical_scan.py's.
 HOST_MUTATIONS: Dict[str, Dict[str, Any]] = {
     "swap_curl_sublattice": {"must": True, "reach": "live_state"},
-    "swap_prefix_ir0": {"must": True, "reach": "live_state"},
-    "wall_row_not_zero": {"must": True, "reach": "live_state", "sub_step": "step_B"},
     "imr_iyee_zero": {"must": True, "reach": "imr_live"},
     "imr_rows_swapped": {"must": True, "reach": "imr_live"},
     "imr_clamp_raised": {"must": True, "reach": "m1_live"},
     "zero_rows_forced_one": {"must": True, "reach": "mmany_wide_live"},
     "m_class_forced_one": {"must": True, "reach": "not_m1_live"},
-    # THE THIRD ARM FORCED ON THE OTHER TWO: at |m| >= 1 the i*m/r sites go silent,
-    # the increments and the near-axis zeroing never fire and the m = 0 tails do.
+    # THE THIRD ARM FORCED ON THE OTHER TWO: at |m| >= 1 the passes go silent, the
+    # increments and the near-axis zeroing never fire and the m = 0 tails do.
     "m_class_forced_zero": {"must": True, "reach": "not_m0_live"},
-    "the_other_expansion_arm": {"must": "measure", "reach": "arm_separable"},
+    "courant_words_in_float32": {"must": True, "reach": "axis_rule_inexact"},
+    "record_bound_off_by_one": {"must": True, "reach": "live_state"},
+    "record_lattices_swapped": {"must": True, "reach": "live_state"},
     "drop_the_metallic_codes": {"must": True, "reach": "boundary_code_observable"},
-    # A PREDICTED NULL: the clamp bites only on row 0 of a shift-0 target, whose curl
-    # the ownership mask zeroes -- so dropping it cannot move a compared word (the
+    # A PREDICTED NULL: the clamp bites only on row 0 of a shift-0 target, whose
+    # increment the mask zeroes -- so dropping it cannot move a compared word (the
     # divide-by-zero's non-finite never reaches a compared volume).
     "imr_clamp_dropped": {"must": False, "reach": "any"},
 }
@@ -1371,19 +1371,18 @@ def reaches(reach: str, case: Dict[str, Any]) -> bool:
       is byte-visible only on a stored ``-0.0``, and the reachable producer is a
       negative ``kms`` times a quiet ``+0.0``;
     * ``inexact_courant`` -- distributing ``dtdx`` over a difference is EXACT at 0.5;
-    * ``arm_separable`` -- the two expansion arms must actually differ on this case.
     """
     if reach == "any":
         return True
     if reach == "live_state":
         # A defect in ORDINARY arithmetic needs ordinary values. Under ``zero_init``
         # every operand is an exact zero and under ``signed_zero`` half of one plane
-        # is: the prefix is flat, the i*m/r products are +-0 and a grouping change
+        # is: the radial difference is flat, the i*m/r products are +-0 and a grouping change
         # moves nothing. Those two classes exist for the +-0 defects and are scored on
         # those; scoring an arithmetic leg there would report UNCAUGHT for a reason
         # that belongs to the fixture.
         return (case["value_class"] not in SIGNED_ZERO_CLASSES
-                and case.get("prefix_live", True))
+                and case.get("radial_live", True))
     metallic = case["z_kind"] == "metallic"
     m_one = abs(int(case["m"])) == 1
     m_zero = int(case["m"]) == 0
@@ -1473,10 +1472,19 @@ def reaches(reach: str, case: Dict[str, Any]) -> bool:
                 and case["sub_step"] == "step_D")
     if reach == "inexact_courant":
         return case["courant"] != 0.5 and reaches("live_state", case)
-    if reach == "arm_separable":
-        return case["value_class"] in ("uniform", "subnormal_band")
-    if reach == "prefix_live":
-        return bool(case.get("prefix_live", True))
+    if reach == "radial_live":
+        return bool(case.get("radial_live", True))
+    if reach == "m1_inexact":
+        # The double product against a float32 factor: the same word wherever Courant
+        # is a float32 word (0.5), so only the inexact Courant can see it.
+        return reaches("m1_live", case) and case["courant"] != 0.5
+    if reach == "m0_inexact":
+        return reaches("m0_live", case) and case["courant"] != 0.5
+    if reach == "axis_rule_inexact":
+        # Every axis rule that multiplies by Courant: the |m| = 1 increments and the
+        # m = 0 on-axis Dz post-add (the B side's m = 0 rule is a zero store).
+        return (reaches("m1_inexact", case)
+                or (case["sub_step"] == "step_D" and reaches("m0_inexact", case)))
     raise ValueError(f"unknown reach {reach!r}")
 
 
@@ -1484,12 +1492,10 @@ def reaches(reach: str, case: Dict[str, Any]) -> bool:
 # The host-side overrides a host mutation installs
 # ---------------------------------------------------------------------------
 
-def host_overrides(name: Optional[str], sub_step: str, fields, layer, grid,
-                   arm) -> Dict[str, Any]:
+def host_overrides(name: Optional[str], sub_step: str, fields, layer, grid) -> Dict[str, Any]:
     """The launcher arguments one host mutation corrupts; ``{}`` when there is none."""
     if name is None:
         return {}
-    dtdx = float(grid.dt / grid.dx)
     shape = tuple(int(n) for n in grid.shape)
     if name == "swap_curl_sublattice":
         suffix = "" if family.HALF_INTEGER[sub_step] else "_h"
@@ -1497,20 +1503,19 @@ def host_overrides(name: Optional[str], sub_step: str, fields, layer, grid,
                            getattr(layer, f"{stem}_{axis}{suffix}").reshape(-1)
                            for axis in "xyz" for stem in ("kms", "sinv")}}
     if name == "imr_iyee_zero":
-        rows = tuple(_imr_row_with_shift(grid, sub_step, target, sign, 0)
+        rows = tuple(_imr_row_with_shift(grid, target, sign, 0)
                      for _index, target, sign in family.IMR_TERMS[sub_step])
         return {"imr_rows": rows}
     if name == "imr_rows_swapped":
-        rows = family.imr_rows_for(sub_step, grid.xp, int(grid.m), dtdx, shape[0],
-                                   np.complex64)
+        rows = family.imr_rows_for(sub_step, grid, shape[0])
         return {"imr_rows": (rows[1], rows[0])}
     if name == "imr_clamp_dropped":
         return {"imr_rows": tuple(
-            _imr_row_with_clamp(grid, sub_step, target, sign, None)
+            _imr_row_with_clamp(grid, target, sign, None)
             for _index, target, sign in family.IMR_TERMS[sub_step])}
     if name == "imr_clamp_raised":
         return {"imr_rows": tuple(
-            _imr_row_with_clamp(grid, sub_step, target, sign, 2.0)
+            _imr_row_with_clamp(grid, target, sign, 2)
             for _index, target, sign in family.IMR_TERMS[sub_step])}
     if name == "zero_rows_forced_one":
         return {"zero_rows_count": 1}
@@ -1518,63 +1523,79 @@ def host_overrides(name: Optional[str], sub_step: str, fields, layer, grid,
         return {"m_class_code": family.M_ONE}
     if name == "m_class_forced_zero":
         return {"m_class_code": family.M_ZERO}
-    if name == "the_other_expansion_arm":
-        return {"__arm__": other_arm(arm)}
+    if name == "courant_words_in_float32":
+        # The axis rules' double factors rounded through float32 first: another word
+        # wherever Courant is not a float32 word (stepping._realnum_double_product).
+        return {"courant_words": tuple(np.float64(np.float32(word)) for word in
+                                       family.axis_courant_words(sub_step, grid))}
     if name == "drop_the_metallic_codes":
         return {"boundary_codes": (BC_PERIODIC, BC_PERIODIC, BC_PERIODIC)}
-    if name in ("swap_prefix_ir0", "wall_row_not_zero"):
-        return {"__prefix__": name}
+    if name in ("record_bound_off_by_one", "record_lattices_swapped"):
+        return {"__record__": name}
     raise KeyError(f"unknown host mutation {name!r}")
 
 
-def _imr_row_with_shift(grid, sub_step, target, sign, iyee_r):
-    """The i*m/r row built with a WRONG radial Yee shift."""
-    xp = grid.xp
+def _imr_row_with_shift(grid, target, sign, iyee_r):
+    """The i*m/r ``rinv`` row built with a WRONG radial Yee shift (the array path's
+    realnum quotient otherwise)."""
     rows = int(grid.shape[0])
-    dtdx = float(grid.dt / grid.dx)
-    r_doubled = 2 * xp.arange(rows, dtype=xp.float64) + iyee_r
-    divisor = xp.maximum(r_doubled, 1.0)
-    row = ((-1j) * (sign * 2.0 * int(grid.m) * dtdx)) / divisor
-    return xp.ascontiguousarray(row.astype(xp.complex64))
+    the_m = np.float32(sign * 2.0 * int(grid.m) * float(grid.courant))
+    here_r = np.maximum(2 * np.arange(rows, dtype=np.int64) + iyee_r, 1).astype(np.float32)
+    return np.ascontiguousarray(the_m / here_r, dtype=np.float32)
 
 
-def _imr_row_with_clamp(grid, sub_step, target, sign, clamp):
-    """The i*m/r row with the domain clamp dropped or raised."""
+def _imr_row_with_clamp(grid, target, sign, clamp):
+    """The i*m/r ``rinv`` row with the divisor's clamp dropped or raised."""
     from meep_gpu.fields import IYEE_SHIFTS  # noqa: PLC0415
 
-    xp = grid.xp
     rows = int(grid.shape[0])
-    dtdx = float(grid.dt / grid.dx)
-    r_doubled = 2 * xp.arange(rows, dtype=xp.float64) + IYEE_SHIFTS[target][0]
-    divisor = r_doubled if clamp is None else xp.maximum(r_doubled, clamp)
+    the_m = np.float32(sign * 2.0 * int(grid.m) * float(grid.courant))
+    doubled = 2 * np.arange(rows, dtype=np.int64) + IYEE_SHIFTS[target][0]
+    here_r = (doubled if clamp is None else np.maximum(doubled, clamp)).astype(np.float32)
     with np.errstate(divide="ignore", invalid="ignore"):
-        row = ((-1j) * (sign * 2.0 * int(grid.m) * dtdx)) / divisor
-    return xp.ascontiguousarray(row.astype(xp.complex64))
+        return np.ascontiguousarray(the_m / here_r, dtype=np.float32)
 
 
-def prefix_for(fields, sub_step: str, mutation: Optional[str]):
-    """This launch's prefix, from the SHIPPED helper unless a mutation corrupts it."""
-    from meep_gpu.stepping import _face, _span, cylindrical_rderiv_prefix  # noqa: PLC0415
+def case_record(grid, layer) -> np.ndarray:
+    """The chunk record of the case's own division: the one-rank division of ``grid``
+    with ``layer``, the division the oracle steps with (``stepping``'s region plan when
+    no driver installed one)."""
+    return gate_chunk_records.layer_record(grid, layer)
 
-    if mutation is None:
-        return cyl_prefix.cylindrical_prefix(fields, sub_step, scratch=None)
-    xp = fields.grid.xp
+
+def host_mutated_record(name: Optional[str], record: np.ndarray, grid) -> np.ndarray:
+    """Corrupt the chunk record a LAUNCH BINDS, leaving the oracle's division alone
+    (KERNELS.md section 7.2): the low run's end one row up on both lattices, or each
+    lattice handed the other's runs."""
+    if name is None:
+        return record
+    out = np.array(record, dtype=np.int32, copy=True)
+    for axis in range(3):
+        if int(grid.shape[axis]) <= 1:
+            continue
+        for half in (False, True):
+            a0 = out[record_index(half, axis, 0)]
+            a1 = out[record_index(half, axis, 1)]
+            if name == "record_bound_off_by_one" and a1 > a0:
+                out[record_index(half, axis, 1)] = a1 + 1
+        if name == "record_lattices_swapped":
+            for word in range(4):
+                low = record_index(False, axis, word)
+                high = record_index(True, axis, word)
+                out[low], out[high] = record[high], record[low]
+    return out
+
+
+def radial_for(backend_name: str, fields, layer, sub_step: str):
+    """This launch's radial difference: the SHIPPED scan on the device
+    (``cylindrical_prefix.radial_difference``), and the scan gate's transcription of the
+    column-serial loop on the host leg (``gate_cuda_cylindrical_scan.scan_numpy``). The
+    scan's own defects are that gate's."""
+    if backend_name == "cuda":
+        return cyl_prefix.radial_difference(fields, layer, sub_step)
+    tables = cyl_prefix.radial_scan_tables(fields, layer, sub_step)
     source = getattr(fields, cyl_prefix.PREFIX_COMPONENT[sub_step])
-    if mutation == "swap_prefix_ir0":
-        other = "step_D" if sub_step == "step_B" else "step_B"
-        ir0 = cyl_prefix.PREFIX_IR0[other]
-    else:
-        ir0 = cyl_prefix.PREFIX_IR0[sub_step]
-    if not cyl_prefix.PREFIX_WALL_ROW[sub_step]:
-        return cylindrical_rderiv_prefix(xp, source, ir0)
-    rows = source.shape[0]
-    extended = xp.empty((rows + 1,) + source.shape[1:], dtype=source.dtype)
-    extended[_span(0, 0, rows)] = source
-    if mutation == "wall_row_not_zero":
-        extended[_face(0, rows)] = source[_face(0, rows - 1)]
-    else:
-        extended[_face(0, rows)] = 0
-    return cylindrical_rderiv_prefix(xp, extended, ir0)
+    return scan_gate.scan_numpy(np.ascontiguousarray(to_host(source)), tables)
 
 
 # ---------------------------------------------------------------------------
@@ -1582,7 +1603,7 @@ def prefix_for(fields, sub_step: str, mutation: Optional[str]):
 # ---------------------------------------------------------------------------
 
 def one_case(backend, spec: Dict[str, Any], sub_step: str, courant: float,
-             value_class: str, guard: str, arm: str,
+             value_class: str, guard: str,
              host_mutation: Optional[str] = None,
              multi_step: bool = True) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
@@ -1609,7 +1630,7 @@ def one_case(backend, spec: Dict[str, Any], sub_step: str, courant: float,
     case: Dict[str, Any] = {
         "label": spec["label"], "sub_step": sub_step, "courant": courant,
         "value_class": value_class, "guard": guard, "backend": backend.name,
-        "arm": arm, "host_mutation": host_mutation, "absorber": absorber,
+        "host_mutation": host_mutation, "absorber": absorber,
         "z_kind": spec["z_kind"], "m": int(spec["m"]),
         "zero_rows": family.zero_rows(int(spec["m"]),
                                       bool(spec.get("accurate", False))),
@@ -1617,10 +1638,7 @@ def one_case(backend, spec: Dict[str, Any], sub_step: str, courant: float,
     }
 
     covered, reason = cyl_coverage.covers_pml_cylindrical_complex_curl(
-        fields, layer, grid, sub_step,
-        license={"arm": arm, "expansion": complex_emitter.EXPANSIONS[arm],
-                 "refusals": [], "basis": "measured", "policy_resolved": "keep"},
-        subnormal_policy="keep")
+        fields, layer, grid, sub_step)
     case["predicate_today"] = {"covered": bool(covered), "reason": reason}
 
     absorption = absorbs(sub_step, layer)
@@ -1673,25 +1691,28 @@ def one_case(backend, spec: Dict[str, Any], sub_step: str, courant: float,
         case["seconds"] = time.time() - started
         return case
 
-    # Leg 2: the kernel, from the SAME frozen state, with the prefix computed from the
-    # SAME sources the oracle differenced.
+    # Leg 2: the kernel, from the SAME frozen state, with the radial difference scanned
+    # from the SAME sources the oracle differenced and the chunk record of the division
+    # the oracle stepped with.
     restore(fields, frozen)
-    overrides = host_overrides(host_mutation, sub_step, fields, layer, grid, arm)
-    prefix_mutation = overrides.pop("__prefix__", None)
-    launch_arm = overrides.pop("__arm__", arm)
-    prefix = prefix_for(fields, sub_step, prefix_mutation)
+    overrides = host_overrides(host_mutation, sub_step, fields, layer, grid)
+    record = host_mutated_record(overrides.pop("__record__", None),
+                                 case_record(grid, layer), grid)
+    case["chunk_record"] = [int(word) for word in record]
+    radial = radial_for(backend.name, fields, layer, sub_step)
 
-    liveness = prefix_is_live(prefix, sub_step)
-    case["prefix_is_live"] = liveness
-    case["prefix_live"] = bool(liveness["meets_floor"])
+    liveness = radial_is_live(radial, sub_step)
+    case["radial_is_live"] = liveness
+    case["radial_live"] = bool(liveness["meets_floor"])
     if value_class not in SIGNED_ZERO_CLASSES and not liveness["meets_floor"]:
-        case["skipped"] = ("the prefix is constant down r; every prefix defect is "
-                           "invisible on this case")
+        case["skipped"] = ("the radial difference is +0 everywhere or constant down r; "
+                           "every radial defect is invisible on this case")
         case["seconds"] = time.time() - started
         return case
 
-    rows = overrides.get("imr_rows") or family.imr_rows_for(
-        sub_step, grid.xp, int(grid.m), dtdx, int(grid.shape[0]), xp.complex64)
+    rows = overrides.get("imr_rows")
+    if rows is None:
+        rows = family.imr_rows_for(sub_step, grid, int(grid.shape[0]))
     imr_live = imr_is_live(rows)
     case["imr_is_live"] = imr_live
     if not imr_live["meets_floor"] and host_mutation is None and int(spec["m"]) != 0:
@@ -1703,7 +1724,7 @@ def one_case(backend, spec: Dict[str, Any], sub_step: str, courant: float,
         case["seconds"] = time.time() - started
         return case
 
-    backend.launch(sub_step, fields, layer, grid, launch_arm, prefix, **overrides)
+    backend.launch(sub_step, fields, layer, grid, radial, record, **overrides)
 
     parts = {name: bit_compare(reference[name], getattr(fields, name))
              for name in outputs(sub_step)}
@@ -1713,9 +1734,9 @@ def one_case(backend, spec: Dict[str, Any], sub_step: str, courant: float,
                "words": int(parts[name]["total_floats"])}
         for name in outputs(sub_step)}
 
-    # Leg 3: the multi-step. ``fu`` IS STATE, and the prefix is RECOMPUTED every
-    # launch on both paths -- which is what a real driver does and what a cached
-    # prefix would get wrong.
+    # Leg 3: the multi-step. ``fu`` IS STATE, and the radial difference is RESCANNED
+    # every launch on both paths -- which is what a real driver does and what a cached
+    # one would get wrong.
     if multi_step and host_mutation is None:
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
@@ -1725,8 +1746,9 @@ def one_case(backend, spec: Dict[str, Any], sub_step: str, courant: float,
 
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
-            backend.launch(sub_step, fields, layer, grid, launch_arm,
-                           prefix_for(fields, sub_step, None), **overrides)
+            backend.launch(sub_step, fields, layer, grid,
+                           radial_for(backend.name, fields, layer, sub_step), record,
+                           **overrides)
             advance_sources(fields, sub_step)
         multi = {name: bit_compare(oracle_multi[name], getattr(fields, name))
                  for name in outputs(sub_step)}
@@ -1765,11 +1787,11 @@ def case_product(product: str):
     return plan
 
 
-def run_sweep(results, out_path, backend, product, guard, arm) -> List[Dict[str, Any]]:
+def run_sweep(results, out_path, backend, product, guard) -> List[Dict[str, Any]]:
     cases: List[Dict[str, Any]] = []
     plan = case_product(product)
     for index, (spec, sub_step, courant, value_class) in enumerate(plan, start=1):
-        case = one_case(backend, spec, sub_step, courant, value_class, guard, arm)
+        case = one_case(backend, spec, sub_step, courant, value_class, guard)
         cases.append(case)
         results.setdefault("sweep", {})[guard] = cases
         save(results, out_path)
@@ -1853,14 +1875,7 @@ def score(legs: List[Dict[str, Any]], must_be_caught, reach: str,
         if reading is not None:
             out["reading"] = reading.format(caught=caught_live, live=len(live))
             return out
-        out["reading"] = (
-            f"the two expansion arms differ on {caught_live} of {len(live)} live cases"
-            if caught_live else
-            "the two expansion arms are DEGENERATE on every case this family reaches: "
-            "every complex multiply it makes carries a zero real operand (the "
-            "real-coefficient products by construction, the i*m/r row and the |m| = 1 "
-            "scalar by measurement), and fma(+-0, x, y) is the same single rounding as "
-            "(+-0 * x) + y. The arm binding is therefore NOT evidenced by bytes here")
+        out["reading"] = f"{caught_live} of {len(live)} live cases separated"
     elif must_be_caught:
         # THE BAR, AND WHAT IT DELIBERATELY IS NOT. "Every live case must diverge" is
         # the default and is what CAUGHT means. A leg that catches the defect on most
@@ -1902,8 +1917,7 @@ def score(legs: List[Dict[str, Any]], must_be_caught, reach: str,
     return out
 
 
-def run_host_mutations(results, out_path, backend, scorable, product,
-                       arm) -> Dict[str, Any]:
+def run_host_mutations(results, out_path, backend, scorable, product) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     plan = mutation_plan(scorable, product)
     for name, spec in HOST_MUTATIONS.items():
@@ -1912,7 +1926,7 @@ def run_host_mutations(results, out_path, backend, scorable, product,
             if spec.get("sub_step") and spec["sub_step"] != sub_step:
                 continue
             legs.append(one_case(backend, case_spec, sub_step, courant, value_class,
-                                 "fmad_false", arm, host_mutation=name,
+                                 "fmad_false", host_mutation=name,
                                  multi_step=False))
         out[name] = dict(score(legs, spec["must"], spec["reach"],
                                spec.get("reading")), cases=legs)
@@ -1923,8 +1937,7 @@ def run_host_mutations(results, out_path, backend, scorable, product,
     return out
 
 
-def run_source_mutations(results, out_path, backend, scorable, product,
-                         arm) -> Dict[str, Any]:
+def run_source_mutations(results, out_path, backend, scorable, product) -> Dict[str, Any]:
     """Every device-text defect, applied to the EMITTED source and recompiled."""
     out: Dict[str, Any] = {}
     plan = mutation_plan(scorable, product)
@@ -1951,7 +1964,7 @@ def run_source_mutations(results, out_path, backend, scorable, product,
             if spec.get("sub_step") and spec["sub_step"] != sub_step:
                 continue
             legs.append(one_case(backend, case_spec, sub_step, courant, value_class,
-                                 "fmad_false", arm, multi_step=False))
+                                 "fmad_false", multi_step=False))
         backend.set_source_transform(None)
         out[name] = dict(score(legs, spec["must"], spec["reach"],
                                spec.get("reading")), armed=True,
@@ -2073,21 +2086,15 @@ def summarize(results) -> Dict[str, Any]:
             "characters with a host C++ compiler and drives them on NumPy. What it "
             "measures is the TRANSCRIPTION; the shipped bytes are NVRTC's"),
         "does_not_claim": [
-            "no throughput claim: the radial prefix stays on the array path, so this "
-            "pair cannot go below the prefix's own launches and nothing here was timed",
+            "no throughput claim: nothing here was timed",
             "m = 0 with REAL float32 storage is NOT covered and is refused by name: "
             "that is the real-storage pair's kernel (cylindrical_kernels). m = 0 with "
             "complex64 storage IS covered since 2026-09-04, as the third m_class arm",
             "no CONSTITUTIVE claim: this family ships no constitutive predicate and "
             "admits no update_H/update_E slot",
             "nothing dispatches these kernels; fastpath.plan_fast_path is untouched",
-            "the expansion ARM is barely evidenced by bytes here and the "
-            "the_other_expansion_arm leg carries the number: every complex multiply "
-            "this family makes has a zero real operand -- the real-coefficient "
-            "products by construction, the i*m/r row and the |m| = 1 scalar by "
-            "measurement -- so the two arms coincide almost everywhere. The arm is "
-            "still REQUIRED and bound from a policy-matched licence, and a future call "
-            "site with a nonzero real coefficient would separate them everywhere",
+            "the complex products are part-wise: the family emits one body and binds "
+            "no expansion arm",
             "the r near ghost is served as the METALLIC zero; that choice is measured "
             "as a NULL here and cannot be certified by any byte gate from inside the "
             "kernel",
@@ -2111,7 +2118,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--backend", choices=("cuda", "host"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
     parser.add_argument("--subnormal-policy", choices=("keep", "flush"), default=None)
-    parser.add_argument("--expansion-probe", default=None)
     parser.add_argument("--import-meep-for-host-policy", action="store_true", help=(
         "import MEEP before installing the subnormal policy. REQUIRED for 'flush': "
         "MEEP's set_zero_subnormals is the only exposure of this process's FTZ/DAZ "
@@ -2140,28 +2146,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                      "stepping.step_B / step_D word for word on a Dcyl grid at any m "
                      "(m = 0 since 2026-09-04, |m| >= 1) with complex64 storage?"),
         "kernel_source_sha256": {
-            f"{sub_step}|{arm}": hashlib.sha256(
-                family.cylindrical_complex_source(sub_step, arm).encode()).hexdigest()
-            for sub_step in SUB_STEPS for arm in ("FMA_V1", "NAIVE")},
+            sub_step: hashlib.sha256(
+                family.cylindrical_complex_source(sub_step).encode()).hexdigest()
+            for sub_step in SUB_STEPS},
         "corpus_digest": family.corpus_digest(),
         "host_compile_options": list(_HOST_OPTIONS),
         "host_optimization_level_is_a_correctness_setting": (
-            "-O0: this family carries the only negation of an fma OUTPUT in the "
-            "package, and clang rewrites -(fma(a,b,c)) as fma(-a,b,-c) at -O1, which "
-            "is wrong on signed zeros. Measured 0/96, 3/96, 0/96 at -O0/-O1/-O2."),
+            "-O0: the host compiler must run the transcription, not an algebraic "
+            "rewrite of it; under the 0.9.2 text clang rewrote -(fma(a,b,c)) as "
+            "fma(-a,b,-c) at -O1 (0/96, 3/96, 0/96 at -O0/-O1/-O2)."),
     }
-
-    licence = load_licence(args.expansion_probe, args.subnormal_policy)
-    results["expansion_licence"] = licence
-    if not licence["usable"]:
-        log(f"[fatal] no usable expansion licence: {licence['policy_reasons']}")
-        results["status"] = "refused: no usable expansion arm"
-        results["summary"] = {"released": False,
-                              "reasons": ["no usable expansion licence"]}
-        save(results, args.out)
-        return 2
-    arm = licence["arm"]
-    log(f"[arm] {arm} (basis {licence['verdict'].get('basis')!r})")
 
     if args.backend == "cuda":
         if cp is None:
@@ -2221,7 +2215,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         save(results, args.out)
 
         results["stripped_control"] = stripped_control(
-            backend, arm, np.random.default_rng(SEED + 2))
+            backend, np.random.default_rng(SEED + 2))
         log(f"[control] stripped: {results['stripped_control'].get('reading', results['stripped_control'].get('skipped'))[:90]}")
         save(results, args.out)
 
@@ -2232,7 +2226,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 continue
             results.setdefault("guards", {})[guard] = backend.set_guard(options)
             log(f"[guard] {guard} options={options}")
-            run_sweep(results, args.out, backend, args.product, guard, arm)
+            run_sweep(results, args.out, backend, args.product, guard)
         backend.set_guard(("--fmad=false",))
 
         if not args.skip_mutations:
@@ -2245,8 +2239,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         "answer it")}
             log(f"[mut-scope] {len(scorable)} scorable keys; {len(excluded)} excluded")
             save(results, args.out)
-            run_host_mutations(results, args.out, backend, scorable, args.product, arm)
-            run_source_mutations(results, args.out, backend, scorable, args.product, arm)
+            run_host_mutations(results, args.out, backend, scorable, args.product)
+            run_source_mutations(results, args.out, backend, scorable, args.product)
     finally:
         backend.restore()
 

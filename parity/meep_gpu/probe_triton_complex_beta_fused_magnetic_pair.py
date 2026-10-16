@@ -17,8 +17,8 @@ is the template; the differences are the B side's own:
   complement of the D side's tangential pair;
 * there is no ``SCALE`` arm and no ``inv_eps`` anywhere in the kernel, so the
   D-side scale legs and mutations have no counterpart here;
-* the beta coefficient words are the ``+1j`` pair (S:771-772), and the armed
-  wrong-words leg forces the ELECTRIC ``-1j`` pair instead.
+* the beta words are the ``+i`` quarter turn's (the magnetic side's), and the
+  armed wrong-words leg forces the ELECTRIC side's negated words instead.
 
 Correctness only. NOTHING HERE IS TIMED and no throughput claim is admissible.
 Dispatch stays disabled: ``launch.plan_step`` does not know this module exists.
@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import copy
 import hashlib
 import importlib.util
 import inspect
@@ -52,17 +51,12 @@ for _path in (HERE, API_ROOT):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import fold_pass_mutations as fold_passes  # noqa: E402
+import probe_triton_complex_fused_magnetic_pair as twin_probe  # noqa: E402
+
 SEED = 20260902
 
 _TEMPORARY: List[str] = []
-
-EXTENDED_PROBE = ("parity/meep_gpu/results/"
-                  "complex_expansion_beta_extension_2026-09-01/probe_keep/"
-                  "probe.json")
-
-BASE_FOUR_PROBE = ("parity/meep_gpu/results/"
-                   "complex_expansion_convention_2026-08-16/results/probe_keep/"
-                   "probe.json")
 
 #: (name, dimensions, cell, boundaries, k_point, pml, beta, steps) — the same
 #: sweep as the electric twin's, on the same beta values.
@@ -144,6 +138,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/special_kz.py",
         "meep_gpu/triton_kernels/complex_fields.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/deposit_repair.py",
@@ -211,191 +206,96 @@ def _rewrite_block(source: str, before: Sequence[str],
     return source, 0
 
 
-BETA_INSERT = (
-    "if HAS_BETA:",
-    "t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)",
-    "curl0_re = curl0_re - t_re",
-    "curl0_im = curl0_im - t_im",
-    "t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)",
-    "curl1_re = curl1_re - t_re",
-    "curl1_im = curl1_im - t_im",
-)
+#: The flag that gates the beta pass. The pass itself is DERIVED from the shipped curl
+#: (``special_kz.beta_bloch_pml_curl_step``'s top-level ``if HAS_BETA:`` statement),
+#: never listed here: the transcription leg checks that this kernel splices that exact
+#: statement after its six part forms (``fold_pass_mutations.body_and_insert``).
+BETA_FLAG = "HAS_BETA"
+
+#: Target 2's imaginary-part stencil line, the last of the curl half's stencils: the
+#: previous placement of the beta term (inside the curl, before the forms) is planted
+#: after it.
+CURL_ANCHOR = "curl2_im = curl_stencil(b_x_im, b2_im, a2_im, a_y_im, dtdx, px, py)"
 
 
 def transcription_leg() -> Dict[str, Any]:
-    """The fused body is the beta-less twin's plus EXACTLY K2's delta."""
+    """The fused body is the beta-less twin's plus EXACTLY the beta curl's pass.
+
+    Three statement-list equalities, in order, against the shipped sources, and one
+    position: the kernel minus its pass IS ``complex_fused_curl_constitutive_B``; its pass IS
+    ``special_kz.beta_bloch_pml_curl_step``'s; that curl minus the same pass IS
+    ``complex_fields.bloch_pml_curl_step``; and the pass follows the six part forms
+    and precedes the wall clear (MEEP's beta pass after every component's curl,
+    step_db.cpp:161-175). The kernel forms no complex product: the only complex
+    device function it may call is the Bloch connection.
+    """
     from meep_gpu.triton_kernels import complex_beta_fused_magnetic_pair as product  # noqa: PLC0415
 
+    kernel_file = os.path.join(API_ROOT, "meep_gpu", "triton_kernels",
+                               "complex_beta_fused_magnetic_pair.py")
+    special_py = os.path.join(API_ROOT, "meep_gpu", "triton_kernels", "special_kz.py")
     fused = _shipped_body_statements("complex_beta_fused_curl_constitutive_B")
+    body, insert = fold_passes.body_and_insert(kernel_file, "complex_beta_fused_curl_constitutive_B", BETA_FLAG)
     twin = _shipped_body_statements("complex_fused_curl_constitutive_B")
-    beta_curl = _shipped_body_statements("beta_bloch_pml_curl_step")
+    curl_body, curl_insert = fold_passes.body_and_insert(
+        special_py, "beta_bloch_pml_curl_step", BETA_FLAG)
     bloch_curl = _shipped_body_statements("bloch_pml_curl_step")
 
+    def first_difference(left: List[str], right: List[str]) -> str:
+        index = next((i for i, (a, b) in enumerate(zip(left, right)) if a != b),
+                     min(len(left), len(right)))
+        return (f"first difference at statement {index}: "
+                f"{left[index:index + 1]} vs {right[index:index + 1]}")
+
     findings: List[str] = []
-
-    without_beta = [line for line in fused if line not in BETA_INSERT]
-    if without_beta != twin:
-        index = next((i for i, (a, b) in enumerate(zip(without_beta, twin))
-                      if a != b), "length")
-        findings.append(
-            f"the fused body minus the beta insert is not "
-            f"complex_fused_curl_constitutive_B; first difference at {index}")
-
-    delta = [line for line in beta_curl if line not in bloch_curl]
-    if delta != list(BETA_INSERT):
-        findings.append(
-            f"the shipped beta curl's delta over bloch_pml_curl_step is {delta}, "
-            f"not the insert this gate arms")
-
-    weld = [line for line in twin if line not in bloch_curl]
-    if not weld:
-        findings.append("the derived weld set is empty; this leg compares nothing")
-    without_weld = [line for line in fused if line not in weld]
-    if without_weld != beta_curl:
-        index = next((i for i, (a, b) in enumerate(zip(without_weld, beta_curl))
-                      if a != b), "length")
-        findings.append(
-            f"the fused body minus the weld is not beta_bloch_pml_curl_step; "
-            f"first difference at {index}")
-
-    shipped = set(beta_curl) | set(twin)
+    if not insert:
+        findings.append("the kernel carries no top-level `if HAS_BETA:` pass")
+    if body != twin:
+        findings.append("the fused body minus its beta pass is not "
+                        "complex_fused_curl_constitutive_B; " + first_difference(body, twin))
+    if insert != curl_insert:
+        findings.append("the beta pass is not beta_bloch_pml_curl_step's; "
+                        + first_difference(insert, curl_insert))
+    if curl_body != bloch_curl:
+        findings.append("beta_bloch_pml_curl_step minus its pass is not "
+                        "bloch_pml_curl_step; " + first_difference(curl_body, bloch_curl))
+    shipped = set(curl_body) | set(curl_insert) | set(twin)
     invented = [line for line in fused if line not in shipped]
     if invented:
         findings.append(f"statements written here rather than transcribed: "
                         f"{invented}")
 
-    helpers = sorted({name for name in product.LICENSED_MULTIPLY_HELPERS
+    # The licensed complex device functions, all called, and only them.
+    helpers = sorted({name for name in product.MULTIPLY_HELPERS
                       if any(name in line for line in fused)})
     stray = sorted({line for line in fused
-                    if ("_mul_" in line or "_rotate_" in line)
+                    if ("_mul_" in line or "_rotate_" in line or "_connect(" in line)
                     and not any(name in line
-                                for name in product.LICENSED_MULTIPLY_HELPERS)})
+                                for name in product.MULTIPLY_HELPERS)})
     if stray:
         findings.append(
-            f"the fused body calls a complex-multiply helper outside "
-            f"{product.LICENSED_MULTIPLY_HELPERS}: {stray}")
-    if set(helpers) != set(product.LICENSED_MULTIPLY_HELPERS):
+            f"the fused body calls a complex device function outside "
+            f"{product.MULTIPLY_HELPERS}: {stray}")
+    if set(helpers) != set(product.MULTIPLY_HELPERS):
         findings.append(
             f"the fused body calls {helpers}, not all of "
-            f"{list(product.LICENSED_MULTIPLY_HELPERS)}")
+            f"{list(product.MULTIPLY_HELPERS)}")
 
-    # The B-SIDE wall map: axis d clears component d, and only it. Derived from
-    # IYEE_SHIFTS over the B targets, then checked against the body's ZM blocks.
-    from meep_gpu.fields import IYEE_SHIFTS  # noqa: PLC0415
-    from meep_gpu.triton_kernels.launch import SUB_STEPS  # noqa: PLC0415
-
-    targets = tuple(SUB_STEPS["step_B"]["targets"])
-    derived = tuple(
-        tuple(index for index, target in enumerate(targets)
-              if IYEE_SHIFTS[target][axis] == 0)
-        for axis in range(3))
-    if derived != ((0,), (1,), (2,)):
-        findings.append(
-            f"stepping._zero_metal clears {derived} per walled axis on the B "
-            f"side; this gate's map expectation has drifted")
-    for axis, coordinate in enumerate(("at_x", "at_y", "at_z")):
-        for component in range(3):
-            cleared = any(
-                f"v{component}_{plane} = tl.where({coordinate}, 0.0, "
-                f"v{component}_{plane})" in line
-                for plane in ("re", "im") for line in fused)
-            expected = component in derived[axis]
-            if cleared is not expected:
-                findings.append(
-                    f"the fused body {'clears' if cleared else 'does not clear'} "
-                    f"component {component} at {coordinate}, but _zero_metal's "
-                    f"rule says {'it should' if expected else 'it should not'}")
-
-    curl_index = fused.index(
-        "curl2_re, curl2_im = _mul_coefficient_left(dtdx, t2_re, t2_im, EXPANSION)")
-    insert_index = fused.index("if HAS_BETA:")
-    mask_index = fused.index("at_x, at_y, at_z = i == 0, j == 0, k == 0")
-    if not (curl_index < insert_index < mask_index):
-        findings.append(
-            f"the beta insert is not between the dtdx curl ({curl_index}) and "
-            f"the ownership mask ({mask_index}): found at {insert_index}")
+    if insert:
+        before, after = fold_passes.insert_neighbours(kernel_file, "complex_beta_fused_curl_constitutive_B", BETA_FLAG)
+        if not before.startswith("v2_im, n2_im = curl_form("):
+            findings.append(f"the beta pass does not follow the last part form: it "
+                            f"follows {before!r}")
+        if after != "if ZM_X:":
+            findings.append(f"the beta pass does not precede the wall clear: it "
+                            f"precedes {after!r}")
 
     return {
         "leg": "transcription",
         "device": False,
         "fused_statements": len(fused),
-        "beta_insert_statements": len(BETA_INSERT),
+        "beta_insert_statements": len(insert),
         "multiply_helpers_called": helpers,
-        "findings": findings,
-        "passed": not findings,
-    }
-
-
-# ---------------------------------------------------------------------------
-# NO-DEVICE LEG 2 — the EXTENDED expansion licence
-# ---------------------------------------------------------------------------
-
-def expansion_licence_leg() -> Dict[str, Any]:
-    from meep_gpu.triton_kernels import complex_fields as complex_module  # noqa: PLC0415
-    from meep_gpu.triton_kernels import special_kz  # noqa: PLC0415
-    from meep_gpu.triton_kernels import complex_beta_fused_magnetic_pair as product  # noqa: PLC0415
-
-    patterns = list(product.PRODUCT_PROBE_PATTERNS)
-    findings: List[str] = []
-    if tuple(patterns) != tuple(special_kz.BETA_PROBE_PATTERNS):
-        findings.append(
-            f"this product declares pattern set {patterns}, not the beta "
-            f"tranche's extended set {list(special_kz.BETA_PROBE_PATTERNS)}")
-
-    extended = json.load(open(os.path.join(API_ROOT, EXTENDED_PROBE),
-                              encoding="utf-8"))
-    verdict = complex_module.expansion_license(extended, patterns)
-    licensed = {
-        "artifact": EXTENDED_PROBE,
-        "arm": verdict["arm"], "basis": verdict["basis"],
-        "expansion": verdict["expansion"],
-        "refusals": list(verdict["refusals"]),
-        "non_discriminating": list(verdict["non_discriminating"]),
-        "policy_resolved": verdict["policy_resolved"],
-        "candidate_policy": verdict["candidate_policy"],
-    }
-    if verdict["arm"] is None:
-        findings.append(f"{EXTENDED_PROBE} licenses nothing: {verdict['refusals']}")
-    elif verdict["basis"] != "measured":
-        findings.append(
-            f"{EXTENDED_PROBE} licenses {verdict['arm']} on basis "
-            f"{verdict['basis']!r}; this product's arm must be MEASURED")
-
-    base = json.load(open(os.path.join(API_ROOT, BASE_FOUR_PROBE),
-                          encoding="utf-8"))
-    refused = complex_module.expansion_license(base, patterns)
-    base_row = {"artifact": BASE_FOUR_PROBE, "arm": refused["arm"],
-                "refusals": list(refused["refusals"])[:3]}
-    if refused["arm"] is not None:
-        findings.append(
-            f"the STANDING base-four artifact licenses {refused['arm']} over the "
-            f"extended set; the whole premise of this round is that it cannot")
-
-    falsification: List[Dict[str, Any]] = []
-    for name, broken, needle in (
-        ("fifth_pattern_removed",
-         (lambda r: (r["patterns"].pop(special_kz.BETA_PROBE_PATTERN, None), r)[1])(
-             copy.deepcopy(extended)), "not classified"),
-        ("candidates_cut_under_another_policy",
-         (lambda r: (r.setdefault("candidates", {}).__setitem__("policy", "flush"),
-                     r)[1])(copy.deepcopy(extended)), "broken comparison"),
-        ("host_backend",
-         {**copy.deepcopy(extended), "backend": "numpy"}, "cupy"),
-    ):
-        v = complex_module.expansion_license(broken, patterns)
-        ok = v["arm"] is None and any(needle in reason for reason in v["refusals"])
-        falsification.append({"case": name, "arm": v["arm"],
-                              "refusals": list(v["refusals"])[:2], "passed": ok})
-        if not ok:
-            findings.append(f"falsification row {name!r} was NOT refused by name")
-
-    return {
-        "leg": "expansion_licence",
-        "device": False,
-        "probe_patterns": patterns,
-        "licensed": licensed,
-        "base_four_artifact_refuses": base_row,
-        "falsification": falsification,
         "findings": findings,
         "passed": not findings,
     }
@@ -450,36 +350,14 @@ def _array_path_seam(fields, pml, driver_module) -> None:
 
 def _welded_seam(fields, pml, driver_module, *, wall: str = "before",
                  history: str = "read_then_write") -> None:
-    """The FUSED B->H semantics with array ops: step_B (beta included, it IS the
-    array path), the wall clear on the chosen side, then the H constitutive with
-    the SCALE=0 source (B read directly, no inv_eps)."""
-    import meep_gpu.stepping as stepping  # noqa: PLC0415
+    """The FUSED semantics, spelled with array ops: the beta-less twin's emulation.
 
-    driver_module.step_B(fields, pml)
-    if wall == "before":
-        driver_module.zero_metal_B(fields)
-
-    for component, source_name, axis_name in stepping.H_CONSTITUTIVE_TERMS:
-        target = getattr(fields, component)
-        source = getattr(fields, source_name)
-        history_array = getattr(fields, "f_w_" + component)
-        kps, kms = stepping._constitutive_coefficients(pml, axis_name,
-                                                       half_integer=False)
-        kps, kms = np.asarray(kps), np.asarray(kms)
-        stored = source
-        if history == "read_then_write":
-            previous = history_array.copy()
-            history_array[...] = stored
-        else:
-            history_array[...] = stored
-            previous = history_array.copy()
-        target += kps * history_array
-        target -= kms * previous
-
-    if wall == "after":
-        driver_module.zero_metal_B(fields)
-    elif wall == "dropped":
-        pass
+    ``driver_module.step_B`` IS the array path and
+    carries the beta pass, so the weld's design knobs are the same questions on a beta
+    run, and the twin's per-cell forms (KT5's re-cut of this emulation) are imported
+    rather than restated.
+    """
+    twin_probe._welded_seam(fields, pml, driver_module, wall=wall, history=history)
 
 
 def design_sweep_leg() -> Dict[str, Any]:
@@ -519,12 +397,16 @@ def design_sweep_leg() -> Dict[str, Any]:
                                                (0.0, 0.0, 0.0), -0.685)
         right_fields, right_pml = _build_complex((3.0, 3.0, 0.0), boundaries,
                                                  (0.0, 0.0, 0.0), -0.685)
+        # LATCHED PER STEP: a flip that differs at one step and is rewritten by the
+        # next step's plain form (H or E = src outside the layer) is still visible.
+        differing_set: set = set()
         for _ in range(2):
             _array_path_seam(left_fields, left_pml, driver_module)
             _welded_seam(right_fields, right_pml, driver_module, **kwargs)
-        left, right = _complex_state(left_fields), _complex_state(right_fields)
-        differing = sorted(name for name in left
-                           if not np.array_equal(left[name], right[name]))
+            left, right = _complex_state(left_fields), _complex_state(right_fields)
+            differing_set |= {name for name in left
+                              if not np.array_equal(left[name], right[name])}
+        differing = sorted(differing_set)
         knobs.append({"flip": label, "arrays_differing": differing,
                       "visible": bool(differing)})
         if not differing:
@@ -554,13 +436,8 @@ def design_sweep_leg() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def predicate_leg() -> Dict[str, Any]:
-    from meep_gpu import expansion_refusal  # noqa: PLC0415
     from meep_gpu.triton_kernels import complex_beta_fused_magnetic_pair as product  # noqa: PLC0415
 
-    probe = json.load(open(os.path.join(API_ROOT, EXTENDED_PROBE),
-                           encoding="utf-8"))
-    base_probe = json.load(open(os.path.join(API_ROOT, BASE_FOUR_PROBE),
-                                encoding="utf-8"))
 
     class _Source:
         def __init__(self, field_type: str) -> None:
@@ -592,51 +469,44 @@ def predicate_leg() -> Dict[str, Any]:
                      "residual_reasons": left[:6], "needle": needle, "passed": ok})
 
     coverage = product.complex_beta_fused_magnetic_pair_coverage
-    with expansion_refusal.declaring_run_policy("keep"):
-        bloch, bloch_pml = _build_complex((3.0, 3.0, 0.0), "periodic",
-                                          (0.23, 0.0, 0.0),
-                                          -0.39073112848927377)
-        record("corpus_no_sources", coverage(bloch, bloch_pml, (), probe=probe),
-               True)
-        record("electric_source_is_the_other_seams",
-               coverage(bloch, bloch_pml, (_Source("D"),), probe=probe), True)
-        record("magnetic_deposit_is_carried",
-               coverage(bloch, bloch_pml, (_deposit(bloch, "Hz"),), probe=probe),
-               True)
-        record("magnetic_source_without_a_deposit_index",
-               coverage(bloch, bloch_pml, (_Source("B"),), probe=probe),
-               False, "does not publish the index it writes")
-        record("undeclared_sources", coverage(bloch, bloch_pml, None, probe=probe),
-               False, "was not declared")
-        record("no_probe_artifact", coverage(bloch, bloch_pml, (), probe={}),
-               False, "probe record")
-        record("base_four_probe_refused_on_the_extended_clause",
-               coverage(bloch, bloch_pml, (), probe=base_probe),
-               False, "EXTENDED pattern set")
-        record("no_pml", coverage(bloch, None, (), probe=probe), False, "PML")
+    bloch, bloch_pml = _build_complex((3.0, 3.0, 0.0), "periodic",
+                                      (0.23, 0.0, 0.0),
+                                      -0.39073112848927377)
+    record("corpus_no_sources", coverage(bloch, bloch_pml, ()),
+           True)
+    record("electric_source_is_the_other_seams",
+           coverage(bloch, bloch_pml, (_Source("D"),)), True)
+    record("magnetic_deposit_is_carried",
+           coverage(bloch, bloch_pml, (_deposit(bloch, "Hz"),)),
+           True)
+    record("magnetic_source_without_a_deposit_index",
+           coverage(bloch, bloch_pml, (_Source("B"),)),
+           False, "does not publish the index it writes")
+    record("undeclared_sources", coverage(bloch, bloch_pml, None),
+           False, "was not declared")
+    record("no_pml", coverage(bloch, None, ()), False, "PML")
 
-        zero, zero_pml = _build_complex((3.0, 3.0, 0.0), "periodic",
-                                        (0.23, 0.0, 0.0), 0.0)
-        record("beta_zero_is_the_plain_complex_pairs",
-               coverage(zero, zero_pml, (), probe=probe), False, "beta is zero")
+    zero, zero_pml = _build_complex((3.0, 3.0, 0.0), "periodic",
+                                    (0.23, 0.0, 0.0), 0.0)
+    record("beta_zero_is_the_plain_complex_pairs",
+           coverage(zero, zero_pml, ()), False, "beta is zero")
 
-        walls, walls_pml = _build_complex(
-            (3.0, 3.0, 0.0), ("metallic", "metallic", "periodic"),
-            (0.0, 0.0, 0.0), -0.685)
-        record("metallic_walls_k0", coverage(walls, walls_pml, (), probe=probe),
-               True)
+    walls, walls_pml = _build_complex(
+        (3.0, 3.0, 0.0), ("metallic", "metallic", "periodic"),
+        (0.0, 0.0, 0.0), -0.685)
+    record("metallic_walls_k0", coverage(walls, walls_pml, ()),
+           True)
 
-        builder_rows = []
-        for label, args, kwargs in (
-            ("magnetic_source_without_a_deposit_index",
-             (bloch, bloch_pml, (_Source("B"),)), {"probe": probe}),
-            ("undeclared_sources", (bloch, bloch_pml, None), {"probe": probe}),
-            ("base_four_probe", (bloch, bloch_pml, ()), {"probe": base_probe}),
-            ("beta_zero", (zero, zero_pml, ()), {"probe": probe}),
-        ):
-            plan = product.plan_complex_beta_fused_magnetic_pair(*args, **kwargs)
-            builder_rows.append({"case": label, "plan_is_none": plan is None,
-                                 "passed": plan is None})
+    builder_rows = []
+    for label, args, kwargs in (
+        ("magnetic_source_without_a_deposit_index",
+         (bloch, bloch_pml, (_Source("B"),)), {}),
+        ("undeclared_sources", (bloch, bloch_pml, None), {}),
+        ("beta_zero", (zero, zero_pml, ()), {}),
+    ):
+        plan = product.plan_complex_beta_fused_magnetic_pair(*args, **kwargs)
+        builder_rows.append({"case": label, "plan_is_none": plan is None,
+                             "passed": plan is None})
 
     findings = [row["case"] for row in rows if not row["passed"]]
     findings += [f"builder:{row['case']}" for row in builder_rows
@@ -923,14 +793,14 @@ def install(driver_module, routes, counter: Dict[str, int], roles: Dict[int, str
                     for name, function in originals.items()]
 
 
-def separate_route(driver, probe):
+def separate_route(driver):
     """The two separately certified BETA singles this launch replaces."""
     from meep_gpu.triton_kernels import special_kz  # noqa: PLC0415
 
     curl = special_kz.plan_beta_bloch_pml_curl(driver.fields, driver.pml,
-                                               "step_B", probe=probe)
+                                               "step_B")
     constitutive = special_kz.plan_beta_run_complex_constitutive(
-        driver.fields, driver.pml, "H", probe=probe)
+        driver.fields, driver.pml, "H")
     missing = [name for name, plan in
                (("beta bloch curl", curl),
                 ("beta complex constitutive", constitutive))
@@ -959,9 +829,8 @@ def fused_route(plan, driver=None, sources=()):
 
 
 def run_leg(cp, name: str, dimensions, cell, boundaries, k_point, pml_spec,
-            beta, steps: int, product, probe, mutant: Any = None,
+            beta, steps: int, product, mutant: Any = None,
             install_fused: bool = True, magnetic: bool = False,
-            expansion: Optional[int] = None,
             has_beta: Optional[int] = None,
             beta_words_override: Any = None) -> Dict[str, Any]:
     """Three routes in lockstep; stop at the FIRST byte divergence."""
@@ -984,31 +853,26 @@ def run_leg(cp, name: str, dimensions, cell, boundaries, k_point, pml_spec,
         "k_point": list(k_point), "pml": dict(pml_spec), "beta": beta,
         "magnetic_source_in_the_seam": bool(magnetic),
         "fused_substituted": bool(install_fused),
-        "expansion_override": expansion,
         "has_beta_override": has_beta,
         "beta_words_override": (None if beta_words_override is None
-                                else [list(pair) for pair in beta_words_override]),
+                                else list(beta_words_override)),
         "first_divergence": None, "control_divergence": None,
     }
     try:
         plan = product.plan_complex_beta_fused_magnetic_pair(
             fused.fields, fused.pml, tuple(fused._sources), num_warps=1,
-            kernel=kernel, probe=probe)
+            kernel=kernel)
         if plan is None:
             verdict = product.complex_beta_fused_magnetic_pair_coverage(
-                fused.fields, fused.pml, tuple(fused._sources), probe=probe)
+                fused.fields, fused.pml, tuple(fused._sources))
             raise AssertionError(f"the product refused the case: {verdict.reasons}")
-        if expansion is not None:
-            plan.expansion = int(expansion)
         if has_beta is not None:
             plan.has_beta = int(has_beta)
         if beta_words_override is not None:
-            plan.beta_words = tuple(tuple(float(word) for word in pair)
-                                    for pair in beta_words_override)
+            plan.beta_words = tuple(float(word) for word in beta_words_override)
         row["plan"] = repr(plan)
         row["plan_replaces"] = list(plan.replaces)
-        row["licensed_expansion"] = plan.expansion
-        row["beta_words"] = [list(pair) for pair in plan.beta_words]
+        row["beta_words"] = list(plan.beta_words)
         if install_fused:
             route, leading = fused_route(plan, fused, tuple(fused._sources))
         else:
@@ -1020,7 +884,7 @@ def run_leg(cp, name: str, dimensions, cell, boundaries, k_point, pml_spec,
             raise AssertionError(
                 "the case declares an in-seam magnetic source but the bracket "
                 "was not installed")
-        separate_plans = separate_route(separate, probe)
+        separate_plans = separate_route(separate)
         row["separate_products"] = {key: type(value).__name__
                                     for key, value in separate_plans.plans.items()}
 
@@ -1030,6 +894,7 @@ def run_leg(cp, name: str, dimensions, cell, boundaries, k_point, pml_spec,
         undo = install(driver_module, routes, counter, roles)
 
         opening = snapshot(cp, fused)
+        reference_opening = snapshot(cp, reference)
         row["per_step"] = []
         started = time.time()
         for step in range(1, steps + 1):
@@ -1072,8 +937,16 @@ def run_leg(cp, name: str, dimensions, cell, boundaries, k_point, pml_spec,
         row["arrays_total"] = len(final)
         row["arrays_compared"] = sorted(final)
         row["arrays_ever_moved"] = len(ever_moved)
-        row["arrays_never_moved"] = sorted(
-            set(final) - set(ever_moved) - set(material))
+        # THE AUXILIARY CONTRACT'S EXEMPTION. fu_* and f_w_* move only on their
+        # layer's cells (KERNELS.md section 1, C2), so on a 2-D grid the invariant
+        # axis's auxiliaries are inert on EVERY route. An auxiliary the array path
+        # also leaves inert is exempt; every other unmoved array still refuses.
+        reference_moved = moved(reference_opening, snapshot(cp, reference))
+        unmoved = set(final) - set(ever_moved) - set(material)
+        row["inert_on_every_route"] = sorted(
+            name for name in unmoved - set(reference_moved)
+            if name.startswith(("fu_", "f_w_")))
+        row["arrays_never_moved"] = sorted(unmoved - set(row["inert_on_every_route"]))
         row["material_changed"] = sorted(key for key in material if key in ever_moved)
         row["inventory_asymmetry_vs_array"] = sorted(
             set(final).symmetric_difference(snapshot(cp, reference)))
@@ -1137,50 +1010,62 @@ def shipped_source(product) -> str:
 
 
 def compile_mutant(source: str, kernel_name: str) -> Any:
+    """Compile a renamed mutant. The rename is what keeps the JIT cache honest.
+
+    The connection and the shared forms are IMPORTED into the mutant's namespace
+    rather than copied (``fold_pass_mutations.MUTANT_IMPORTS``), as the shipped module
+    imports them. THE MODULE NAME MUST NOT START WITH ``triton``: Triton's dependency
+    finder leaves every callee whose ``__module__`` starts with its package name out of
+    the kernel's cache key.
+    """
     header = ("import triton\n"
               "import triton.language as tl\n"
-              "from meep_gpu.triton_kernels.complex_fields import (\n"
-              "    _rotate_field_left, _mul_field_left, _mul_coefficient_left)\n"
-              "from meep_gpu.triton_kernels.special_kz import (\n"
-              "    _mul_imag_coefficient_left)\n"
-              "PERIODIC = tl.constexpr(0)\n"
+              "from meep_gpu.triton_kernels.complex_fields import _connect\n"
+              + fold_passes.MUTANT_IMPORTS
+              + "PERIODIC = tl.constexpr(0)\n"
               "METALLIC = tl.constexpr(1)\n\n")
     handle = tempfile.NamedTemporaryFile(
         "w", suffix="_mutated_complex_beta_magnetic_pair.py", delete=False,
         encoding="utf-8")
-    handle.write(header + source.replace("complex_beta_fused_curl_constitutive_B",
-                                         kernel_name))
+    handle.write(header + source.replace("complex_beta_fused_curl_constitutive_B", kernel_name))
     handle.close()
     _TEMPORARY.append(handle.name)
     spec = importlib.util.spec_from_file_location(
-        "triton_mutated_complex_beta_magnetic_pair_" + str(len(_TEMPORARY)),
-        handle.name)
+        "complex_beta_magnetic_pair_mutant_" + str(len(_TEMPORARY)), handle.name)
     module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     sys.modules[spec.name] = module  # type: ignore[union-attr]
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return getattr(module, kernel_name)
 
 
-def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
-    def m1_wall_clear_dropped(source: str) -> Tuple[str, int]:
-        return _rewrite_block(
-            source,
-            ["if ZM_X:", "v0_re = tl.where(at_x, 0.0, v0_re)",
-             "v0_im = tl.where(at_x, 0.0, v0_im)"],
-            ["v0_re = v0_re", "v0_im = v0_im"])
+#: What each case's grid carries (by ``CASES`` index), in ``fold_pass_mutations.NEEDS``
+#: words: a PML layer on x (the dsigu axis of the beta pass's target 1) and a metallic
+#: axis (the increment's ownership mask).
+CASE_CARRIES: Dict[int, Tuple[str, ...]] = {
+    0: (), 1: (), 2: ("layer",), 3: ("wall", "layer"), 4: ("wall",),
+}
 
-    def m2_wall_clear_only_on_the_real_plane(source: str) -> Tuple[str, int]:
-        hits = 0
-        for register, coordinate in (("v0_im", "at_x"), ("v1_im", "at_y"),
-                                     ("v2_im", "at_z")):
-            needle = f"{register} = tl.where({coordinate}, 0.0, {register})"
-            hits += source.count(needle)
-            source = source.replace(needle, f"{register} = {register}")
-        return source, hits
+#: The beta pass's own mutations: ``fold_pass_mutations``' shared spellings, the same
+#: text in every carrier of the pass. The root forms' battery and the twin's own rows
+#: come from the twin probe's table.
+SHARED_MUTATIONS = fold_passes.beta_mutations(True, False, CURL_ANCHOR)
+_SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
+
+
+def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
+    """(id, why it is armed, expectation, rewrite).
+
+    THE TWIN'S TABLE FIRST: this kernel's body IS ``complex_fused_curl_constitutive_B``'s (the
+    transcription leg), so its rewrites -- the wall clear, the Bloch connection, the
+    inversions and the chunk-form battery, the f_w order and the weld's registers --
+    are the twin probe's own, imported from ``probe_triton_complex_fused_magnetic_pair``, and score the same
+    lines here. Then the beta pass's shared mutations, from
+    :data:`SHARED_MUTATIONS`.
+    """
 
     def m3_wall_clear_takes_the_electric_maps_components(source: str) -> Tuple[str, int]:
-        """The D side's tangential map carried onto the B side — the mirror
-        image of the electric twin's shipped defect."""
+        """The D side's two tangential components cleared on the x wall instead of
+        the B side's own component: the electric twin's map on the magnetic seam."""
         return _rewrite_block(
             source,
             ["if ZM_X:", "v0_re = tl.where(at_x, 0.0, v0_re)",
@@ -1190,140 +1075,20 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
              "v2_re = tl.where(at_x, 0.0, v2_re)",
              "v2_im = tl.where(at_x, 0.0, v2_im)"])
 
-    def m4_phase_dropped_on_x(source: str) -> Tuple[str, int]:
-        return _rewrite_block(
-            source,
-            ["rot_re, rot_im = _rotate_field_left(b_x_re, b_x_im, pxr, pxi, EXPANSION)",
-             "b_x_re = tl.where(wx, rot_re, b_x_re)",
-             "b_x_im = tl.where(wx, rot_im, b_x_im)"],
-            ["b_x_re = b_x_re", "b_x_im = b_x_im"])
-
-    def m5_constitutive_association(source: str) -> Tuple[str, int]:
-        return _rewrite_block(
-            source,
-            ["t_re, t_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)",
-             "a_re = a_re + t_re",
-             "a_im = a_im + t_im",
-             "t_re, t_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)",
-             "a_re = a_re - t_re",
-             "a_im = a_im - t_im"],
-            ["kp_re, kp_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)",
-             "km_re, km_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)",
-             "a_re = a_re + (kp_re - km_re)",
-             "a_im = a_im + (kp_im - km_im)"])
-
-    def m6_history_read_after_write(source: str) -> Tuple[str, int]:
-        hits = 0
-        for register in ("w0", "w1", "w2"):
-            source, hit = _rewrite_block(
-                source,
-                [f"tl.store({register} + 2 * idx, src_re, mask=live)",
-                 f"tl.store({register} + 2 * idx + 1, src_im, mask=live)"],
-                [f"tl.store({register} + 2 * idx, src_re, mask=live)",
-                 f"tl.store({register} + 2 * idx + 1, src_im, mask=live)",
-                 f"prev_re = tl.load({register} + 2 * idx, mask=live, other=0.0)",
-                 f"prev_im = tl.load({register} + 2 * idx + 1, mask=live, "
-                 f"other=0.0)"])
-            hits += hit
-        return source, hits
-
-    def m8_imaginary_plane_of_the_weld_dropped(source: str) -> Tuple[str, int]:
-        hits = 0
-        for component in ("0", "1", "2"):
-            needle = f"src_im = v{component}_im"
-            hits += source.count(needle)
-            source = source.replace(needle, "src_im = 0.0")
-        return source, hits
-
-    def m14_beta_insert_dropped(source: str) -> Tuple[str, int]:
-        return _rewrite_block(
-            source,
-            ["if HAS_BETA:",
-             "t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)",
-             "curl0_re = curl0_re - t_re",
-             "curl0_im = curl0_im - t_im",
-             "t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)",
-             "curl1_re = curl1_re - t_re",
-             "curl1_im = curl1_im - t_im"],
-            ["curl0_re = curl0_re", "curl0_im = curl0_im",
-             "curl1_re = curl1_re", "curl1_im = curl1_im"])
-
-    def m15_beta_partner_rotated(source: str) -> Tuple[str, int]:
-        needle = ("t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, "
-                  "b_re, b_im, EXPANSION)")
-        replacement = ("t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, "
-                       "b_x_re, b_x_im, EXPANSION)")
-        return source.replace(needle, replacement), source.count(needle)
-
-    def m16_beta_below_the_ownership_mask(source: str) -> Tuple[str, int]:
-        without, removed = _rewrite_block(
-            source,
-            ["if HAS_BETA:",
-             "t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)",
-             "curl0_re = curl0_re - t_re",
-             "curl0_im = curl0_im - t_im",
-             "t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)",
-             "curl1_re = curl1_re - t_re",
-             "curl1_im = curl1_im - t_im"],
-            ["curl0_re = curl0_re"])
-        if not removed:
-            return source, 0
-        anchor = "km_x = tl.load(kmx + i, mask=live, other=0.0)"
-        insert = (
-            "    if HAS_BETA:\n"
-            "        t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, "
-            "b_re, b_im, EXPANSION)\n"
-            "        curl0_re = curl0_re - t_re\n"
-            "        curl0_im = curl0_im - t_im\n"
-            "        t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, "
-            "a_re, a_im, EXPANSION)\n"
-            "        curl1_re = curl1_re - t_re\n"
-            "        curl1_im = curl1_im - t_im\n")
-        if without.count(anchor) != 1:
-            return source, 0
-        lines = without.splitlines(keepends=True)
-        for index, line in enumerate(lines):
-            if anchor in line:
-                lines.insert(index, insert)
-                break
-        return "".join(lines), 1
-
-    def m9_commuted_multiply(source: str) -> Tuple[str, int]:
-        needle = "r_re = (r_re + n0_re) - p0_re"
-        return source.replace(needle, "r_re = (n0_re + r_re) - p0_re"), \
-            source.count(needle)
-
-    return (
-        ("m1_wall_clear_dropped", "the wall clear's slot", "caught",
-         m1_wall_clear_dropped),
-        ("m2_wall_clear_only_on_the_real_plane",
-         "complex zero is TWO words", "caught",
-         m2_wall_clear_only_on_the_real_plane),
+    return tuple(twin_probe.mutation_table()) + (
         ("m3_wall_clear_takes_the_electric_maps_components",
-         "the B-side wall map is the twin's COMPLEMENT", "caught",
+         "the B-side wall map is the electric twin's COMPLEMENT", "caught",
          m3_wall_clear_takes_the_electric_maps_components),
-        ("m4_phase_dropped_on_x", "the Bloch wrap", "caught", m4_phase_dropped_on_x),
-        ("m5_constitutive_association", "float32 association", "caught",
-         m5_constitutive_association),
-        ("m6_history_read_after_write", "the f_w ordering", "caught",
-         m6_history_read_after_write),
-        ("m8_imaginary_plane_of_the_weld_dropped", "the weld is two registers",
-         "caught", m8_imaginary_plane_of_the_weld_dropped),
-        ("m14_beta_insert_dropped", "the beta insert IS the product", "caught",
-         m14_beta_insert_dropped),
-        ("m15_beta_partner_rotated", "the partner is the CENTER load", "caught",
-         m15_beta_partner_rotated),
-        ("m16_beta_below_the_ownership_mask",
-         "the array path masks the beta increment too", "caught",
-         m16_beta_below_the_ownership_mask),
-        ("m9_commuted_multiply", "commuted add", "null", m9_commuted_multiply),
-    )
+    ) + _SHARED_ROWS
 
 
+#: Mutation id -> the CASES index whose grid carries the branch it rewrites: the twin
+#: probe's own choices for its rows, and for the beta pass's rows the first case that
+#: carries what each needs (``fold_pass_mutations.cases_for``).
 MUTATION_CASE: Dict[str, int] = {
-    "m1_wall_clear_dropped": 3,
+    **twin_probe.MUTATION_CASE,
     "m3_wall_clear_takes_the_electric_maps_components": 3,
-    "m16_beta_below_the_ownership_mask": 3,
+    **fold_passes.cases_for(MUTATION_NEEDS, CASE_CARRIES, 4),
 }
 
 DEFAULT_MUTATION_CASE = 4
@@ -1331,10 +1096,12 @@ DEFAULT_MUTATION_CASE = 4
 
 def mutation_case_for(name: str) -> Tuple[int, Tuple[Any, ...]]:
     index = MUTATION_CASE.get(name, DEFAULT_MUTATION_CASE)
+    fold_passes.check_needs(name, MUTATION_NEEDS.get(name, ()), CASE_CARRIES[index],
+                            CASES[index][0])
     return index, CASES[index]
 
 
-def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]) -> List[Dict[str, Any]]:
+def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, Any]]:
     source = shipped_source(product)
     rows: List[Dict[str, Any]] = []
     for index, (name, why, expectation, rewrite) in enumerate(mutation_table()):
@@ -1359,7 +1126,7 @@ def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]) -> List[Dict[
         row["case"] = case[0]
         row["case_index"] = case_index
         leg = run_leg(cp, f"mutation:{name}", case[1], case[2], case[3], case[4],
-                      case[5], case[6], MUTATION_STEPS, product, probe,
+                      case[5], case[6], MUTATION_STEPS, product,
                       mutant=mutant)
         row["caught"] = leg.get("first_divergence") is not None
         row["first_divergence"] = leg.get("first_divergence")
@@ -1375,7 +1142,7 @@ def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]) -> List[Dict[
 # Refusals — the predicate, on the device's own objects
 # ---------------------------------------------------------------------------
 
-def run_refusals(cp, product, probe) -> List[Dict[str, Any]]:
+def run_refusals(cp, product) -> List[Dict[str, Any]]:
     from meep_gpu.sources import FIELD_TYPE_B  # noqa: PLC0415
 
     class _Magnetic:
@@ -1396,23 +1163,18 @@ def run_refusals(cp, product, probe) -> List[Dict[str, Any]]:
         assert deposit_repair._deposit_index(source) is not None
         return source
 
-    base_four = json.load(open(os.path.join(API_ROOT, BASE_FOUR_PROBE),
-                               encoding="utf-8"))
     base = CASES[0]
     rows: List[Dict[str, Any]] = []
-    for name, case, beta_override, needle, sources, use_probe in (
+    for name, case, beta_override, needle, sources in (
         ("magnetic_source_without_a_deposit_index", base, None,
-         "does not publish the index it writes", (_Magnetic(),), probe),
+         "does not publish the index it writes", (_Magnetic(),)),
         ("magnetic_deposit_is_carried", base, None, None,
-         lambda fields: (_deposit(fields, "Hz"),), probe),
+         lambda fields: (_deposit(fields, "Hz"),)),
         ("electric_source_is_the_other_seams", base, None, None,
-         (_Electric(),), probe),
-        ("undeclared_sources", base, None, "was not declared", None, probe),
-        ("no_probe_artifact", base, None, "probe record", (), {}),
+         (_Electric(),)),
+        ("undeclared_sources", base, None, "was not declared", None),
         ("beta_zero_is_the_plain_complex_pairs", base, 0.0, "beta is zero",
-         (), probe),
-        ("base_four_probe_refused_on_the_extended_clause", base, None,
-         "EXTENDED pattern set", (), base_four),
+         ()),
     ):
         beta = case[6] if beta_override is None else beta_override
         driver = build_driver(cp, case[1], case[2], case[3], case[4], case[5],
@@ -1420,9 +1182,9 @@ def run_refusals(cp, product, probe) -> List[Dict[str, Any]]:
         try:
             bound = sources(driver.fields) if callable(sources) else sources
             verdict = product.complex_beta_fused_magnetic_pair_coverage(
-                driver.fields, driver.pml, bound, probe=use_probe)
+                driver.fields, driver.pml, bound)
             plan = product.plan_complex_beta_fused_magnetic_pair(
-                driver.fields, driver.pml, bound, probe=use_probe)
+                driver.fields, driver.pml, bound)
             if needle is None:
                 passed = bool(verdict.covered) and plan is not None
             else:
@@ -1451,8 +1213,6 @@ def environment(cp: Any = None) -> Dict[str, Any]:
         "numpy": np.__version__,
         "argv": list(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "expansion_probe_environment_variable": os.environ.get(
-            "MEEP_GPU_COMPLEX_EXPANSION_PROBE"),
         "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
         "triton_cache_dir": os.environ.get("TRITON_CACHE_DIR"),
     }
@@ -1499,8 +1259,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
 
     log("=== no-device legs ===")
-    for leg in (transcription_leg, expansion_licence_leg, design_sweep_leg,
-                predicate_leg, seam_binding_leg):
+    for leg in (transcription_leg, design_sweep_leg, predicate_leg,
+                seam_binding_leg):
         started = time.time()
         row = leg()
         row["seconds"] = round(time.time() - started, 3)
@@ -1534,29 +1294,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"(requested {args.subnormal_policy!r}, "
         f"CUPY_CACHE_DIR={os.environ.get('CUPY_CACHE_DIR')!r})")
 
-    from meep_gpu.triton_kernels import complex_fields, special_kz  # noqa: PLC0415
+    from meep_gpu.triton_kernels import special_kz  # noqa: PLC0415
     from meep_gpu.triton_kernels import complex_beta_fused_magnetic_pair as product  # noqa: PLC0415
-
-    probe = complex_fields.load_expansion_probe()
-    licence = complex_fields.expansion_license(probe,
-                                               product.PRODUCT_PROBE_PATTERNS)
-    payload["expansion"] = {
-        "probe_path": os.environ.get("MEEP_GPU_COMPLEX_EXPANSION_PROBE"),
-        "arm": licence["arm"], "basis": licence["basis"],
-        "expansion": licence["expansion"], "refusals": list(licence["refusals"]),
-        "policy_resolved": licence["policy_resolved"],
-        "candidate_policy": licence["candidate_policy"],
-    }
-    if licence["expansion"] is None:
-        payload["device_status"] = "REFUSED BEFORE THE FIRST LEG"
-        payload["passed"] = False
-        payload["release"] = {"released": False, "reasons": [
-            "no EXPANSION arm is licensed for this run: "
-            + "; ".join(licence["refusals"])]}
-        save(payload, args.out)
-        log(f"\nREFUSED: {licence['refusals']}")
-        return 1
-    log(f"expansion arm licensed: {licence['arm']} (basis {licence['basis']})")
 
     backends.guard_kernel_compilation(cp)
     payload["environment"] = triton_device_identity.record(environment(cp))
@@ -1571,7 +1310,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     log("\n=== device legs: the QUIET family (no in-seam source) ===")
     for name, dimensions, cell, boundaries, k_point, pml_spec, beta, steps in CASES:
         row = run_leg(cp, f"quiet:{name}", dimensions, cell, boundaries, k_point,
-                      pml_spec, beta, steps, product, probe, magnetic=False)
+                      pml_spec, beta, steps, product, magnetic=False)
         passed, failures = verdict_of(row, require_launches=steps)
         row["passed"], row["failures"] = passed, failures
         payload["device_legs"].append(row)
@@ -1581,7 +1320,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for index in CARRY_CASES:
         name, dimensions, cell, boundaries, k_point, pml_spec, beta, steps = CASES[index]
         row = run_leg(cp, f"carry:{name}", dimensions, cell, boundaries, k_point,
-                      pml_spec, beta, steps, product, probe, magnetic=True)
+                      pml_spec, beta, steps, product, magnetic=True)
         passed, failures = verdict_of(row, require_launches=steps,
                                       require_repairs=True)
         row["passed"], row["failures"] = passed, failures
@@ -1593,13 +1332,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         name, dimensions, cell, boundaries, k_point, pml_spec, beta, _steps = CASES[index]
         payload["device_legs"].append(_null_unbracketed(
             cp, f"null:unbracketed:{name}", dimensions, cell, boundaries,
-            k_point, pml_spec, beta, product, probe))
+            k_point, pml_spec, beta, product))
         save(payload, args.out)
 
     log("\n=== armed harness legs ===")
     base = CASES[0]
     row = run_leg(cp, "armed:no_substitution", base[1], base[2], base[3], base[4],
-                  base[5], base[6], 3, product, probe, install_fused=False)
+                  base[5], base[6], 3, product, install_fused=False)
     passed, _ = verdict_of(row, require_launches=3)
     row["armed"] = True
     row["passed"] = not passed and row.get("fused_kernel_launches") == 0
@@ -1608,21 +1347,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["device_legs"].append(row)
     save(payload, args.out)
 
-    other = 1 - int(licence["expansion"])
-    row = run_leg(cp, "armed:unlicensed_expansion_arm", CASES[4][1], CASES[4][2],
-                  CASES[4][3], CASES[4][4], CASES[4][5], CASES[4][6], 3, product,
-                  probe, expansion=other)
-    passed, _ = verdict_of(row, require_launches=3)
-    row["armed"] = True
-    row["passed"] = not passed and row.get("first_divergence") is not None
-    row["why"] = (f"the EXPANSION constexpr is forced to arm {other} while the "
-                  f"platform measured {licence['expansion']}; the bytes must "
-                  f"diverge")
-    payload["device_legs"].append(row)
-    save(payload, args.out)
-
     row = run_leg(cp, "armed:has_beta_zero", base[1], base[2], base[3], base[4],
-                  base[5], base[6], 3, product, probe, has_beta=0)
+                  base[5], base[6], 3, product, has_beta=0)
     passed, _ = verdict_of(row, require_launches=3)
     row["armed"] = True
     row["passed"] = not passed and row.get("first_divergence") is not None
@@ -1634,7 +1360,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     electric_words = special_kz.beta_curl_coefficients(
         base[6], 0.35 / 12.0, magnetic=False, complex_storage=True)
     row = run_leg(cp, "armed:electric_coefficient_words", base[1], base[2],
-                  base[3], base[4], base[5], base[6], 3, product, probe,
+                  base[3], base[4], base[5], base[6], 3, product,
                   beta_words_override=electric_words)
     passed, _ = verdict_of(row, require_launches=3)
     row["armed"] = True
@@ -1646,11 +1372,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     log("\n=== armed kernel mutations ===")
     pristine = kernel_ptx(product.complex_beta_fused_curl_constitutive_B)
-    payload["mutations"] = run_mutations(cp, product, probe, pristine)
+    payload["mutations"] = run_mutations(cp, product, pristine)
     save(payload, args.out)
 
     log("\n=== refusals ===")
-    payload["refusals"] = run_refusals(cp, product, probe)
+    payload["refusals"] = run_refusals(cp, product)
     save(payload, args.out)
 
     device_ok = all(row.get("passed") for row in payload["device_legs"])
@@ -1686,7 +1412,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _null_unbracketed(cp, name, dimensions, cell, boundaries, k_point, pml_spec,
-                      beta, product, probe) -> Dict[str, Any]:
+                      beta, product) -> Dict[str, Any]:
     """The NULL CONTROL: the weld substituted WITHOUT the repair bracket, on a
     case with an in-seam magnetic deposit. It MUST diverge."""
     import meep_gpu.driver as driver_module  # noqa: PLC0415
@@ -1703,7 +1429,7 @@ def _null_unbracketed(cp, name, dimensions, cell, boundaries, k_point, pml_spec,
     try:
         plan = product.plan_complex_beta_fused_magnetic_pair(
             fused.fields, fused.pml, tuple(fused._sources), num_warps=1,
-            kernel=kernel, probe=probe)
+            kernel=kernel)
         if plan is None:
             raise AssertionError("the product refused the null control's case")
         route = Route({key: (plan if key == "step_B" else _Absorbed(key, plan))

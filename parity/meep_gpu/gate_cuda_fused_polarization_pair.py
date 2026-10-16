@@ -25,13 +25,16 @@ half establishes:
 
 THE SEAM NULL AND ITS CONTROL, the pair this gate exists to arm. The weld's one
 arithmetic claim is that the register hand-off ``float w = src_<axis>;`` IS the
-certified drive load ``float w = drive[idx];``:
+certified drive load ``float w = dsigw ? drive_w[idx] : drive_e[idx];`` (MEEP's
+``w`` per chunk):
 
 * ``reload_drive_from_global`` rewrites the register back into a load of the
-  array the E half just stored (``f_w_<c>`` on the PML arm, the stored ``E<c>``
+  word the E half just stored (``f_w_<c>`` on the cells whose chunk carries the
+  layer and the stored ``E<c>`` elsewhere on the PML arm, the stored ``E<c>``
   without one). It MUST come back UNCAUGHT -- a float32 word stored to global and
   reloaded is the identity on the bits, and this null is what shows the register
-  IS that word rather than a number that happens to be close.
+  IS that word rather than a number that happens to be close. Its partner on the
+  PML arm, ``reload_fw_on_every_cell`` (the 0.9.2 drive), must be CAUGHT.
 * ``wrong_drive_register`` rewrites it to ``D<axis>[idx]`` -- the certified ADE
   gate's own wrong-drive control, restated against the fused text. It MUST
   DIVERGE; a leg whose control cannot fail has not shown that handing the RIGHT
@@ -94,6 +97,7 @@ except ImportError:  # the gate refuses to run; the module is importable anyway
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 import gate_provenance  # noqa: E402
 import gate_cuda_dispersive as sibling  # noqa: E402 - the fixture machinery
+from gate_chunk_records import layer_record, region_plan_record  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.cuda_kernels import dispersive_kernels as dispersive  # noqa: E402
@@ -164,35 +168,55 @@ def _mutate_wrong_drive_register(source: str) -> Tuple[str, int]:
 
 
 def _mutate_reload_drive_from_global(source: str) -> Tuple[str, int]:
-    """THE SEAM NULL: the register becomes a reload of the array the E half just
-    stored. MUST BE UNCAUGHT -- this is what shows the register IS the certified
-    load rather than a number that happens to be close."""
+    """THE SEAM NULL: the register becomes a reload of the word the E half just
+    stored -- MEEP's ``w = f_w ? f_w : f`` per chunk on the PML arm (f_w on the
+    cells whose chunk carries the layer, E elsewhere), E on the layerless arm. MUST
+    BE UNCAUGHT -- this is what shows the register IS the certified load rather
+    than a number that happens to be close."""
     sites = 0
     out = source
     for target, _source_name, axis in weld.ELECTRIC_TERMS:
         needle = f"    float w = src_{axis};\n"
         if needle not in out:
             continue
-        stored = (f"f_w_{target}" if f"f_w_{target}" in out else target)
-        out = out.replace(needle, f"    float w = {stored}[idx];\n", 1)
+        stored = (f"in_h_{axis} ? f_w_{target}[idx] : {target}[idx]"
+                  if f"f_w_{target}" in out else f"{target}[idx]")
+        out = out.replace(needle, f"    float w = {stored};\n", 1)
+        sites += 1
+    return out, sites
+
+
+def _mutate_reload_fw_on_every_cell(source: str) -> Tuple[str, int]:
+    """The 0.9.2 drive: ``f_w`` reloaded on every cell. Off the layer's chunks
+    ``f_w`` is not this step's word (the plain form leaves it untouched), so this
+    MUST DIVERGE wherever a component has plain cells -- the partner that makes
+    the seam null above a measurement on the PML arm."""
+    sites = 0
+    out = source
+    for target, _source_name, axis in weld.ELECTRIC_TERMS:
+        needle = f"    float w = src_{axis};\n"
+        if needle not in out or f"f_w_{target}" not in out:
+            continue
+        out = out.replace(needle, f"    float w = f_w_{target}[idx];\n", 1)
         sites += 1
     return out, sites
 
 
 def _mutate_regroup_recurrence(source: str) -> Tuple[str, int]:
-    """Right-associate the two additions. float32 addition is not associative."""
-    pattern = (r"\(\(p_(\d+) \* c_now_\1\) \+ \(c_prev_\1 \* q_\1\)\) "
-               r"\+ \(c_drive_\1 \* \(s_\1 \* w\)\)")
-    replacement = (r"(p_\1 * c_now_\1) + ((c_prev_\1 * q_\1) "
-                   r"+ (c_drive_\1 * (s_\1 * w)))")
+    """Right-associate the bracket: ``a - b + c`` as ``a - (b - c)``. float32
+    addition is not associative."""
+    pattern = (r"\(\(p_(\d+) \* two_minus_od_\1\) - \(gamma1_\1 \* q_\1\)\) "
+               r"\+ \(omega0dtsqr_\1 \* \(s_\1 \* w\)\)")
+    replacement = (r"(p_\1 * two_minus_od_\1) - ((gamma1_\1 * q_\1) "
+                   r"- (omega0dtsqr_\1 * (s_\1 * w)))")
     return re.subn(pattern, replacement, source)
 
 
 def _mutate_distribute_drive(source: str) -> Tuple[str, int]:
-    """``c_drive * (s * w)`` becomes ``(c_drive * s) * w`` -- reassociating the
-    drive product, note 2 of the certified ADE header."""
-    pattern = r"\(c_drive_(\d+) \* \(s_\1 \* w\)\)"
-    return re.subn(pattern, r"((c_drive_\1 * s_\1) * w)", source)
+    """``omega0dtsqr * (s * w)`` becomes ``(omega0dtsqr * s) * w`` --
+    reassociating the drive product (MEEP forms ``s * w`` first)."""
+    pattern = r"\(omega0dtsqr_(\d+) \* \(s_\1 \* w\)\)"
+    return re.subn(pattern, r"((omega0dtsqr_\1 * s_\1) * w)", source)
 
 
 def _mutate_write_p_in_place(source: str) -> Tuple[str, int]:
@@ -228,12 +252,17 @@ SOURCE_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "why": "THE SEAM NULL: reloading the just-stored word must be the "
                "identity on the bits, or the register hand-off itself is not "
                "the certified arithmetic"},
+    "reload_fw_on_every_cell": {
+        "arms": ("pml",), "pole_defect": False, "must_be_caught": True,
+        "why": "f_w read as the drive on every cell, where MEEP reads E off the "
+               "layer's chunks: the seam null's partner on the PML arm"},
     "regroup_recurrence": {
         "arms": ("pml", "no_pml"), "pole_defect": False, "must_be_caught": True,
-        "why": "the recurrence's left association is the array path's two +="},
+        "why": "MEEP's bracket is left-associated: (p*two_minus_od - gamma1*q) "
+               "+ omega0dtsqr*(s*w)"},
     "distribute_drive_product": {
         "arms": ("pml", "no_pml"), "pole_defect": False, "must_be_caught": True,
-        "why": "sigma*w first, then c_drive: reassociating rounds differently"},
+        "why": "sigma*w first, then omega0dtsqr: reassociating rounds differently"},
     "write_p_now_in_place": {
         "arms": ("pml", "no_pml"), "pole_defect": False, "must_be_caught": True,
         "why": "p_out is a third buffer; in-place destroys P^n and promotes an "
@@ -258,6 +287,7 @@ SOURCE_MUTATIONS: Dict[str, Dict[str, Any]] = {
 SOURCE_TRANSFORMS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "wrong_drive_register": _mutate_wrong_drive_register,
     "reload_drive_from_global": _mutate_reload_drive_from_global,
+    "reload_fw_on_every_cell": _mutate_reload_fw_on_every_cell,
     "regroup_recurrence": _mutate_regroup_recurrence,
     "distribute_drive_product": _mutate_distribute_drive,
     "write_p_now_in_place": _mutate_write_p_in_place,
@@ -364,16 +394,27 @@ def seam_oracle(fields, layer) -> None:
     stepping.update_P(fields, layer)
 
 
+def chunk_record(fields, arm: str):
+    """The device record a launch decodes: the region plan's on the PML arm, the
+    layerless record (no membership runs) on the other."""
+    if arm == "pml":
+        return cp.asarray(region_plan_record(fields), dtype=cp.int32)
+    return cp.asarray(layer_record(fields.grid, None), dtype=cp.int32)
+
+
 def seam_certified(fields, layer, arm: str) -> int:
     """The two separately certified kernels, launched as their own launchers
     launch them. Returns the launch count (1 + one per (state, component))."""
     from meep_gpu.cuda_kernels import ade_kernels  # noqa: PLC0415
 
+    record = chunk_record(fields, arm)
     if arm == "pml":
-        dispersive.update_E_fused_pml_real_dispersive(fields, layer)
+        dispersive.update_E_fused_pml_real_dispersive(fields, layer,
+                                                      chunk_bounds=record)
     else:
         dispersive.update_E_no_pml_real_dispersive(fields)
-    return 1 + int(ade_kernels.update_P_fused_pml_real(fields, layer))
+    return 1 + int(ade_kernels.update_P_fused_pml_real(fields, layer,
+                                                       chunk_bounds=record))
 
 
 class _CountingKernel:
@@ -391,14 +432,15 @@ class _CountingKernel:
 def seam_weld(fields, layer, arm: str, counter: Optional[List[int]] = None,
               tables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The weld, with an INDEPENDENT launch count when asked for."""
+    record = chunk_record(fields, arm)
     if counter is None:
         return weld.run_fused_polarization_pair(fields, layer, arm,
-                                                tables=tables)
+                                                tables=tables, chunk_bounds=record)
     real_get = weld._get_kernel
     weld._get_kernel = lambda *a, **k: _CountingKernel(real_get(*a, **k), counter)
     try:
         return weld.run_fused_polarization_pair(fields, layer, arm,
-                                                tables=tables)
+                                                tables=tables, chunk_bounds=record)
     finally:
         weld._get_kernel = real_get
 
@@ -445,11 +487,12 @@ def _local_launch_component(fields, arm: str, target: str, states,
         arguments.append(p_prev)
         sigma = state.sigma[target]
         arguments.append(sigma if kinds[index] else np.float32(sigma))
-        arguments.extend(np.float32(value) for value in state._coefficients)
+        arguments.extend(np.float32(value) for value in state.constants)
     if arm == "pml":
         nx, ny, nz = stored.shape
         arguments.extend([np.int32(nx), np.int32(ny), np.int32(nz),
-                          tables[f"kps_{axis}"], tables[f"kms_{axis}"]])
+                          tables[f"kps_{axis}"], tables[f"kms_{axis}"],
+                          chunk_record(fields, arm)])
     else:
         arguments.append(np.int32(n_elem))
     blocks = (n_elem + weld._FUSED_THREADS - 1) // weld._FUSED_THREADS

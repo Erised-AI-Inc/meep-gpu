@@ -50,16 +50,13 @@ WHAT THIS GATE REFUSES TO INFER
   leg ``needle_reachability`` parses the needle's ENCLOSING GUARDS out of the
   shipped text and evaluates them against that case. An unmodelled guard FAILS the
   leg rather than passing.
-* **A record cut under one subnormal policy licenses nothing under the other.**
-  The device legs install ``keep``, which is
-  :data:`~meep_gpu.triton_kernels.complex_fields.CERTIFIED_UNDER_SUBNORMAL_POLICY`
-  and the policy the expansion licence is cut under, before the first device
-  compile.
+* **The subnormal policy is installed, not assumed.** The device legs install
+  ``keep`` before the first device compile.
 
 WHAT IT DOES NOT CLAIM. Nothing about throughput. The fusion removes ONE LAUNCH
-and, on a walled run, one host wall pass; it does NOT remove the radial prefix
-scan, which stays on the array path because its float32 summation order defines
-the answer.
+and, on a walled run, one host wall pass; it does NOT remove the radial scan
+(``cylindrical_triton.cyl_radial_difference``, column-serial because its float32
+summation order defines the answer), which both compositions launch once per step.
 
 THE FAMILY IS NOT WIRED. ``launch.plan_step`` assigns at most one plan per slot
 and this product spans five driver call sites. Nothing in ``launch.py`` names it,
@@ -96,15 +93,6 @@ _TEMPORARY: List[str] = []
 
 #: The product's own module path, hashed into the artifact.
 FAMILY_MODULE = "meep_gpu/triton_kernels/cylindrical_fused_electric_pair.py"
-
-#: The keep-cut expansion probe artifacts in this tree, newest first. The device
-#: legs consume whichever the environment names; the row records which, so the
-#: artifact says what licensed its own bytes.
-KEEP_PROBES: Tuple[str, ...] = (
-    "parity/meep_gpu/results/expansion_probe_2026-08-17/expansion_probe_keep.json",
-    "parity/meep_gpu/results/complex_expansion_convention_2026-08-16/results/"
-    "probe_keep/probe.json",
-)
 
 #: ``(name, cell, m, accurate, z_metallic, pml, steps, courant)``.
 #:
@@ -154,7 +142,10 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], int, bool, bool,
     # depth; 50 cells is 1.0 length unit at the row's resolution 50).
     ("m0_z_metallic", (2.0, 0.0, 2.0), 0, False, True, {"x": (0, 5), "z": 5}, 10,
      0.5),
-    ("m0_z_periodic", (2.0, 0.0, 2.0), 0, False, False, {"x": (0, 5)}, 10, 0.5),
+    # Courant 0.37 on this row: 4*Courant is then not a float32 word, so the axis add's
+    # double product and a float32 one differ (at 0.5 they are the same word, and the
+    # m0_dz_axis_add_in_float32 needle would be a null by construction).
+    ("m0_z_periodic", (2.0, 0.0, 2.0), 0, False, False, {"x": (0, 5)}, 10, 0.37),
     ("m0_corpus_shape", (12.5, 0.0, 25.0), 0, False, True, {"x": (0, 50), "z": 50},
      4, 0.5),
 )
@@ -441,7 +432,7 @@ def install(driver_module, routes, counter: Dict[str, int], roles: Dict[int, str
                     for name, function in originals.items()]
 
 
-def separate_route(driver, probe):
+def separate_route(driver):
     """The two separately certified Triton products this launch replaces.
 
     THE COMPILED CONSTITUTIVE ARITHMETIC IS THE ORDINARY COMPLEX ONE, which is not
@@ -463,10 +454,9 @@ def separate_route(driver, probe):
     """
     from meep_gpu.triton_kernels import cylindrical_complex as cyl  # noqa: PLC0415
 
-    curl = cyl.plan_cylindrical_complex_curl(driver.fields, driver.pml, "step_D",
-                                             probe=probe)
+    curl = cyl.plan_cylindrical_complex_curl(driver.fields, driver.pml, "step_D")
     constitutive = cyl.plan_cylindrical_complex_constitutive(
-        driver.fields, driver.pml, "E", probe=probe)
+        driver.fields, driver.pml, "E")
     missing = [name for name, plan in (("cylindrical curl", curl),
                                        ("complex constitutive", constitutive))
                if plan is None]
@@ -512,10 +502,34 @@ def fused_route(plan, driver=None, sources=()):
 # The three-route leg
 # ===========================================================================
 
-def run_leg(cp, name: str, case, product, probe, mutant: Any = None,
+def at_rest_by_the_auxiliary_contract(pml: Any) -> Tuple[str, ...]:
+    """The auxiliary volumes the aligned forms never touch on this run, both seams.
+
+    DERIVED, not listed: ``fu`` of a curl target is read and written only where the
+    target's chunk carries its dsigu layer, and ``f_w`` of a constitutive component only
+    where its own axis carries one (the auxiliary contract, KERNELS.md section 1 C2). An
+    axis with no absorber on either face (``PML.axis_has_pml``: phi on every Dcyl run, z on
+    a periodic one) carries no layer in any chunk, so the target whose dsigu axis it is
+    (``cylindrical_triton.DSIG_AXES``) and the component whose own axis it is keep their
+    seeded words. They are still compared word for word; they are only excused from the
+    non-vacuity floor, which would otherwise call every row vacuous over them.
+    """
+    from meep_gpu.triton_kernels.coverage import CONSTITUTIVE_SIDES  # noqa: PLC0415
+    from meep_gpu.triton_kernels.cylindrical_triton import DSIG_AXES, SUB_STEPS  # noqa: PLC0415
+
+    rest = []
+    for sub_step in ("step_B", "step_D"):
+        rest += ["fu_" + target for index, target in enumerate(SUB_STEPS[sub_step]["targets"])
+                 if not pml.axis_has_pml(DSIG_AXES[index][1])]
+    # A constitutive component's own axis is its index (x, y, z = r, phi, z).
+    for side in ("H", "E"):
+        rest += ["f_w_" + name for index, name in enumerate(CONSTITUTIVE_SIDES[side]["targets"])
+                 if not pml.axis_has_pml(index)]
+    return tuple(rest)
+
+def run_leg(cp, name: str, case, product, mutant: Any = None,
             steps: Optional[int] = None, install_fused: bool = True,
-            electric: bool = False, bracket: bool = True,
-            expansion: Optional[int] = None) -> Dict[str, Any]:
+            electric: bool = False, bracket: bool = True) -> Dict[str, Any]:
     """Three routes in lockstep, per COMPLETE driver step; stop at the FIRST
     byte divergence."""
     import meep_gpu.driver as driver_module  # noqa: PLC0415
@@ -539,25 +553,18 @@ def run_leg(cp, name: str, case, product, probe, mutant: Any = None,
         "electric_source_in_the_seam": bool(electric),
         "fused_substituted": bool(install_fused),
         "bracket_installed": bool(bracket),
-        "expansion_override": expansion,
         "first_divergence": None, "control_divergence": None,
     }
     try:
         plan = product.plan_cylindrical_fused_electric_pair(
             fused.fields, fused.pml, tuple(fused._sources), num_warps=1,
-            kernel=kernel, probe=probe)
+            kernel=kernel)
         if plan is None:
             verdict = product.cylindrical_fused_electric_pair_coverage(
-                fused.fields, fused.pml, tuple(fused._sources), probe=probe)
+                fused.fields, fused.pml, tuple(fused._sources))
             raise AssertionError(f"the product refused the case: {verdict.reasons}")
-        if expansion is not None:
-            # THE ARM, OVERRIDDEN. Not a source rewrite: the constexpr IS the
-            # licence, so flipping it here measures whether the licence is
-            # load-bearing rather than decorative.
-            plan.expansion = int(expansion)
         row["plan"] = repr(plan)
         row["plan_replaces"] = list(plan.replaces)
-        row["licensed_expansion"] = plan.expansion
         row["m_class"] = plan.m_class
         row["zero_rows"] = plan.zero_rows
         row["zero_metal"] = list(plan.zero_metal)
@@ -583,7 +590,7 @@ def run_leg(cp, name: str, case, product, probe, mutant: Any = None,
                 "the case declares an in-seam electric source but the bracket was "
                 "not installed; this leg would measure an unbracketed launch and "
                 "report it as the shipped composition")
-        separate_plans = separate_route(separate, probe)
+        separate_plans = separate_route(separate)
         row["separate_products"] = {key: type(value).__name__
                                     for key, value in separate_plans.plans.items()}
 
@@ -636,8 +643,10 @@ def run_leg(cp, name: str, case, product, probe, mutant: Any = None,
         row["arrays_total"] = len(final)
         row["arrays_compared"] = sorted(final)
         row["arrays_ever_moved"] = len(ever_moved)
+        at_rest = set(at_rest_by_the_auxiliary_contract(fused.pml))
+        row["arrays_at_rest_by_contract"] = sorted(set(final) & at_rest - set(ever_moved))
         row["arrays_never_moved"] = sorted(
-            set(final) - set(ever_moved) - set(material))
+            set(final) - set(ever_moved) - set(material) - at_rest)
         row["material_changed"] = sorted(key for key in material
                                          if key in ever_moved)
         # THE ASYMMETRY IS RECORDED, not compared through. `PRIVATE_SCRATCH`'s
@@ -751,21 +760,12 @@ def compile_mutant(source: str, entry: str):
     shipped multiply.
     """
     header = (
+        "import importlib\n"
+        "globals().update({k: v for k, v in vars(importlib.import_module("
+        "'meep_gpu.triton_kernels.cylindrical_fused_electric_pair')).items() if not k.startswith('__')})\n"
         "import triton\n"
-        "import triton.language as tl\n"
-        "from meep_gpu.triton_kernels.complex_fields import (\n"
-        "    _mul_coefficient_left, _mul_field_left)\n"
-        "from meep_gpu.triton_kernels.cylindrical_complex import (\n"
-        "    _mul_general_coefficient_left)\n"
-        "PERIODIC = tl.constexpr(0)\n"
-        "METALLIC = tl.constexpr(1)\n"
-        "M_ZERO = tl.constexpr(0)\n"
-        "M_ONE = tl.constexpr(1)\n"
-        "M_MANY = tl.constexpr(2)\n\n"
+        "import triton.language as tl\n\n"
         # shipped_block() starts at `def`, so the DECORATOR is supplied here.
-        # Without it the mutated module defines a plain Python function,
-        # CountingKernel raises "'function' object is not subscriptable", and the
-        # whole mutation battery is unarmed.
         "@triton.jit\n")
     handle = tempfile.NamedTemporaryFile(
         "w", suffix="_mutated_cylfusedD.py", delete=False, encoding="utf-8")
@@ -794,20 +794,12 @@ def _renamed(source: str, suffix: str) -> Tuple[str, str]:
 #: unreached line and report UNCAUGHT while measuring nothing.
 MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
     # ---- THE SEAM ITSELF ---------------------------------------------------
-    # The whole weld is `src = v`, three times. These are the needles that ask
-    # whether the register carried across the seam is the one the array path
-    # leaves in D.
     "seam_takes_the_pre_recurrence_curl":
         ("m1_z_metallic", "        src_re = v0_re\n        src_im = v0_im\n",
          "        src_re = curl0_re\n        src_im = curl0_im\n", "catch"),
     "seam_takes_the_wrong_component":
         ("m1_z_metallic", "        src_re = v1_re\n        src_im = v1_im\n",
          "        src_re = v0_re\n        src_im = v0_im\n", "catch"),
-    # THE ORDERING FACT THIS PRODUCT'S DOCSTRING NAMES. `_cylindrical_axis_zero_D`
-    # runs AFTER `_apply_pml_update`, so a weld that consumed the recurrence's
-    # output rather than the post-rule value would hand update_E a displacement the
-    # array path never leaves in D. Armed on |m| >= 2, where the hold is live over
-    # ZERO_ROWS rows rather than one component of one row.
     "seam_reads_before_the_axis_rules":
         ("m3_z_metallic",
          "            v2_re = tl.where(near, 0.0, v2_re)\n"
@@ -824,9 +816,6 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
     "zero_metal_clears_only_the_real_plane":
         ("m1_z_metallic", "            v0_im = tl.where(at_z, 0.0, v0_im)\n", "",
          "catch"),
-    # THE COMPONENT MAP. A z wall clears Dx and Dy and LEAVES Dz ALONE, which is the
-    # exact COMPLEMENT of the magnetic twin's map — and the one place a transcriber
-    # gets this seam wrong. This needle installs the twin's map.
     "zero_metal_takes_the_magnetic_twins_component_map":
         ("m1_z_metallic",
          "            v0_re = tl.where(at_z, 0.0, v0_re)\n"
@@ -837,50 +826,20 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "            v2_im = tl.where(at_z, 0.0, v2_im)\n", "catch"),
     # ---- THE CYLINDRICAL CURL ----------------------------------------------
     "imr_partners_swapped":
-        ("m1_z_metallic",
-         "            m0_re, m0_im = _mul_general_coefficient_left(q0_re, q0_im, c_re, c_im,",
-         "            m0_re, m0_im = _mul_general_coefficient_left(q0_re, q0_im, a_re, a_im,",
-         "catch"),
-    # THE ROW IS INDEXED BY r, AND BOTH WORDS MUST MOVE FOR THE EDIT TO BE ONE.
-    # Measured on the GPU host 2026-08-30: rewriting the REAL word alone is byte-
-    # invisible over three complete steps, because the i*m/r coefficient is PURELY
-    # IMAGINARY — its real word is an exact +0.0 at EVERY row — so a misindexed
-    # real word reads another +0.0. That null is kept below as its own scored row
-    # rather than discarded, because it is the measurement behind the module's
-    # claim that the row's "real word is +0.0 and MUST survive as a literal
-    # cross-term operand"; this needle is the one that actually misindexes the
-    # coefficient.
+        ("m1_z_metallic", "            i0_im = r0 * c_re",
+         "            i0_im = r0 * a_re", "catch"),
     "imr_row_indexed_by_z":
+        ("m1_z_metallic", "            r0 = tl.load(q0 + i, mask=live, other=0.0)",
+         "            r0 = tl.load(q0 + k, mask=live & (k < nx), other=0.0)", "catch"),
+    "imr_quarter_turn_sign_flipped":
+        ("m1_z_metallic", "            i2_re = (r2 * a_im) * -1.0",
+         "            i2_re = r2 * a_im", "catch"),
+    "radial_sum_replaced_by_the_raw_hp_difference":
         ("m1_z_metallic",
-         "            q0_re = tl.load(c0 + 2 * i, mask=live, other=0.0)\n"
-         "            q0_im = tl.load(c0 + 2 * i + 1, mask=live, other=0.0)\n",
-         "            q0_re = tl.load(c0 + 2 * k, mask=live, other=0.0)\n"
-         "            q0_im = tl.load(c0 + 2 * k + 1, mask=live, other=0.0)\n",
-         "catch"),
-    "imr_row_real_word_alone_indexed_by_z":
-        ("m1_z_metallic",
-         "            q0_re = tl.load(c0 + 2 * i, mask=live, other=0.0)\n",
-         "            q0_re = tl.load(c0 + 2 * k, mask=live, other=0.0)\n",
-         "null"),
-    "imr_sign_flipped":
-        ("m1_z_metallic", "            curl0_re = curl0_re - m0_re",
-         "            curl0_re = curl0_re + m0_re", "catch"),
-    # THE D-SIDE PREFIX SUBSTITUTION on target 2, which is the whole cylindrical
-    # difference in the backward arm.
-    "prefix_substitution_dropped":
-        ("m1_z_metallic",
-         "            t2_re = ((p_down_re - p_here_re) + (a_re - a_p_re))\n"
-         "            t2_im = ((p_down_im - p_here_im) + (a_im - a_p_im))\n",
-         "", "catch"),
-    "prefix_neighbour_is_the_centre":
-        ("m1_z_metallic",
-         "            p_down_re = tl.load(pfx + 2 * o_r, mask=vr, other=0.0)",
-         "            p_down_re = tl.load(pfx + 2 * idx, mask=vr, other=0.0)",
+         "        curl2_re = dtdx * tl.load(rad + 2 * idx, mask=live, other=0.0)",
+         "        curl2_re = dtdx * (tl.load(g1 + 2 * o_r, mask=vr, other=0.0) - b_re)",
          "catch"),
     # ---- THE |m| = 1 AXIS-ROW INCREMENT (M_ONE + BACKWARD body only) -------
-    # ON THIS SUB-STEP THE TARGET IS 1 (Dy), not 0 — AXIS_INCREMENT_TARGET's whole
-    # content. A transcriber carrying the B side's target here writes a silent
-    # wrong-component increment.
     "axis_increment_writes_the_B_sides_target":
         ("m1_z_metallic",
          "                curl1_re = tl.where(at_r, inc_re * -1.0, curl1_re)\n"
@@ -893,15 +852,15 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "                curl1_re = tl.where(at_r, inc_re * -1.0, curl1_re)",
          "                curl1_re = tl.where(at_r, inc_re, curl1_re)", "catch"),
     "axis_increment_drops_the_two_Hz_term":
-        ("m1_z_metallic", "                s_re = (a_re - a_z_re) - two_c_re",
+        ("m1_z_metallic", "                s_re = (a_re - a_z_re) - (2.0 * c_re)",
          "                s_re = (a_re - a_z_re)", "catch"),
+    "axis_increment_in_float32":
+        ("m1_z_metallic",
+         "                factor = tl.load(courant + COURANT_PLUS)\n"
+         "                inc_re = tl.cast(tl.cast(s_re, tl.float64) * factor, tl.float32)",
+         "                factor = tl.load(courant + COURANT_PLUS)\n"
+         "                inc_re = s_re * tl.cast(factor, tl.float32)", "catch"),
     # ---- THE |m| = 1 Dz AXIS CLEAR (M_ONE + BACKWARD) ----------------------
-    # THE NEEDLE CARRIES ITS OWN ``if`` AND LEAVES A ``pass``. Deleting the two
-    # store lines alone leaves ``if BACKWARD:`` with an empty block followed by the
-    # ``else:``, which is an IndentationError rather than a mutant — measured on
-    # the GPU host 2026-08-30, where it killed the run 146 s in, AFTER thirteen
-    # mutations had already been scored. The ``mutants_compile`` leg below now
-    # catches that class on the laptop.
     "m_one_axis_clear_dropped":
         ("m1_z_metallic",
          "            if BACKWARD:\n"
@@ -915,117 +874,63 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
     "axis_hold_covers_only_row_zero":
         ("m3_z_metallic", "            near = i < ZERO_ROWS",
          "            near = i == 0", "catch"),
-    # ---- THE CERTIFIED COMPLEX BASE ----------------------------------------
-    "curl_parens_flattened":
+    # ---- THE FORMS (Appendix A inversion; section 7.2 battery) ---------------
+    "curl_grouping_inverted_to_the_pairwise_one":
         ("m1_z_metallic",
-         "        t1_re = ((a_z_re - a_re) + (c_re - c_r_re))",
-         "        t1_re = (a_z_re - a_re + c_re - c_r_re)", "catch"),
-    "recurrence_axis_pair_swapped":
-        ("m1_z_metallic",
-         "        x_re, x_im = _mul_field_left(p0_re, p0_im, km_y, EXPANSION)",
-         "        x_re, x_im = _mul_field_left(p0_re, p0_im, km_z, EXPANSION)",
-         "catch"),
+         "        curl1_re = curl_stencil(a_z_re, a_re, c_re, c_r_re, dtdx, pz, pr)",
+         "        curl1_re = dtdx * ((a_z_re - a_re) + (c_re - c_r_re))", "catch"),
+    "membership_on_the_wrong_axis":
+        ("m1_z_metallic", "        du0 = record_in(cb, lattice + 8, k)",
+         "        du0 = record_in(cb, lattice + 0, k)", "catch"),
     "fu_store_dropped":
-        ("m1_z_metallic", "        tl.store(u0 + 2 * idx, n0_re, mask=live)\n", "",
+        ("m1_z_metallic", "        tl.store(u0 + 2 * idx, n0_re, mask=um0)\n", "",
          "catch"),
     "displacement_store_dropped":
         ("m1_z_metallic", "        tl.store(f0 + 2 * idx, v0_re, mask=live)\n", "",
          "catch"),
     "fw_store_dropped":
-        ("m1_z_metallic", "        tl.store(w0 + 2 * idx, src_re, mask=live)\n", "",
+        ("m1_z_metallic", "        tl.store(w0 + 2 * idx, src_re, mask=live & dw0)\n", "",
          "catch"),
     # ---- THE E-SIDE CONSTITUTIVE -------------------------------------------
     "inv_eps_word_doubled":
         ("m1_z_metallic", "            ie = tl.load(e0 + idx, mask=live, other=0.0)",
-         "            ie = tl.load(e0 + 2 * idx, mask=live, other=0.0)", "catch"),
-    "inv_eps_multiply_moved_after_the_w_store":
-        ("m1_z_metallic",
-         "        if SCALE:\n"
-         "            # inv_eps is a float32 volume at the COMPLEX cell index — `+ idx`, not\n"
-         "            # `+ 2 * idx`. D LEFT (S:982-984).\n"
-         "            ie = tl.load(e0 + idx, mask=live, other=0.0)\n"
-         "            src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)\n"
-         "        tl.store(w0 + 2 * idx, src_re, mask=live)\n"
-         "        tl.store(w0 + 2 * idx + 1, src_im, mask=live)\n",
-         "        tl.store(w0 + 2 * idx, src_re, mask=live)\n"
-         "        tl.store(w0 + 2 * idx + 1, src_im, mask=live)\n"
-         "        if SCALE:\n"
-         "            ie = tl.load(e0 + idx, mask=live, other=0.0)\n"
-         "            src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)\n",
+         "            ie = tl.load(e0 + 2 * idx, mask=live & (2 * idx < n_elem), other=0.0)",
          "catch"),
     "constitutive_coefficient_index_moved":
         ("m1_z_metallic", "        kp_0 = tl.load(kp0 + i, mask=live, other=0.0)",
          "        kp_0 = tl.load(kp0 + j, mask=live, other=0.0)", "catch"),
-    # THE LOAD MUST CROSS THE STORE, or the needle moves nothing. Measured on
-    # the GPU host 2026-08-30: an earlier spelling moved `prev` only past `src_re =
-    # v0_re` -- still BEFORE `tl.store(w0 ...)` -- and was correctly uncaught,
-    # because reading the history before the write is exactly what the shipped
-    # body does wherever the load sits. The needle below carries the whole block
-    # through the inv_eps multiply and the store, so the mutant reads back the
-    # value it has just written.
-    "constitutive_prev_read_after_write":
+    "constitutive_accumulation_grouping_inverted":
         ("m1_z_metallic",
-         "        prev_re = tl.load(w0 + 2 * idx, mask=live, other=0.0)   # BEFORE the store.\n"
-         "        prev_im = tl.load(w0 + 2 * idx + 1, mask=live, other=0.0)\n"
-         "        src_re = v0_re\n        src_im = v0_im\n"
-         "        if SCALE:\n"
-         "            # inv_eps is a float32 volume at the COMPLEX cell index — `+ idx`, not\n"
-         "            # `+ 2 * idx`. D LEFT (S:982-984).\n"
-         "            ie = tl.load(e0 + idx, mask=live, other=0.0)\n"
-         "            src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)\n"
-         "        tl.store(w0 + 2 * idx, src_re, mask=live)\n"
-         "        tl.store(w0 + 2 * idx + 1, src_im, mask=live)\n",
-         "        src_re = v0_re\n        src_im = v0_im\n"
-         "        if SCALE:\n"
-         "            ie = tl.load(e0 + idx, mask=live, other=0.0)\n"
-         "            src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)\n"
-         "        tl.store(w0 + 2 * idx, src_re, mask=live)\n"
-         "        tl.store(w0 + 2 * idx + 1, src_im, mask=live)\n"
-         "        prev_re = tl.load(w0 + 2 * idx, mask=live, other=0.0)\n"
-         "        prev_im = tl.load(w0 + 2 * idx + 1, mask=live, other=0.0)\n",
-         "catch"),
-    "constitutive_accumulation_order_reversed":
-        ("m1_z_metallic",
-         "        t_re, t_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)\n"
-         "        a_re = a_re + t_re\n        a_im = a_im + t_im\n"
-         "        t_re, t_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)\n"
-         "        a_re = a_re - t_re\n        a_im = a_im - t_im\n",
-         "        t_re, t_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)\n"
-         "        a_re = a_re - t_re\n        a_im = a_im - t_im\n"
-         "        t_re, t_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)\n"
-         "        a_re = a_re + t_re\n        a_im = a_im + t_im\n",
-         "catch"),
-    # ---- THE m = 0 AXIS PAIR (M_ZERO body only; 2026-09-04) --------------------
+         "        tl.store(h0 + 2 * idx, constitutive_form(a_re, prev_re, src_re, kp_0, km_0, dw0),\n"
+         "                 mask=live)",
+         "        tl.store(h0 + 2 * idx, tl.where(dw0, (a_re + kp_0 * src_re) - km_0 * prev_re,"
+         " src_re),\n                 mask=live)", "catch"),
+    # ---- THE m = 0 AXIS PAIR (M_ZERO body only) --------------------------------
     "m0_dz_axis_add_dropped":
         ("m0_z_metallic",
-         "                v2_re = tl.where(at_r, v2_re + hp_re, v2_re)\n"
-         "                v2_im = tl.where(at_r, v2_im + hp_im, v2_im)\n",
+         "                v2_re = tl.where(at_r, v2_re + h_re, v2_re)\n"
+         "                v2_im = tl.where(at_r, v2_im + h_im, v2_im)\n",
          "                v2_re = v2_re\n                v2_im = v2_im\n", "catch"),
     "m0_dy_axis_zero_dropped":
         ("m0_z_metallic",
          "                v1_re = tl.where(at_r, 0.0, v1_re)\n"
          "                v1_im = tl.where(at_r, 0.0, v1_im)\n",
          "                v1_re = v1_re\n                v1_im = v1_im\n", "catch"),
-    "m0_dz_axis_add_uses_dtdx":
-        ("m0_z_metallic",
-         "                hp_re, hp_im = _mul_coefficient_left(four_dtdx, b_re, b_im, EXPANSION)",
-         "                hp_re, hp_im = _mul_coefficient_left(dtdx, b_re, b_im, EXPANSION)",
-         "catch"),
-
+    "m0_dz_axis_add_in_float32":
+        ("m0_z_periodic",
+         "                h_re = tl.cast(tl.cast(b_re, tl.float64) * four, tl.float32)",
+         "                h_re = b_re * tl.cast(four, tl.float32)", "catch"),
+    # ---- MEASURED PREDICTED NULLS -----------------------------------------
+    "fu_load_unconditional":
+        ("m1_z_metallic",
+         "        p_re = tl.load(u1 + 2 * idx, mask=live & du1, other=0.0)",
+         "        p_re = tl.load(u1 + 2 * idx, mask=live, other=0.0)", "null"),
 }
 
 NULL_REASONS: Dict[str, str] = {
-    "imr_row_real_word_alone_indexed_by_z":
-        "the i*m/r coefficient row is PURELY IMAGINARY — `imr_coefficient_row` "
-        "builds `+-1j * m / r`, whose real word is an exact +0.0 at every row — so "
-        "misindexing the REAL word alone reads another +0.0 and no bit can move. "
-        "MEASURED on the GPU host 2026-08-30 over three complete driver steps: 0 "
-        "differing words here, against a CATCH for the row above, which moves both "
-        "words. The pair is the measurement, and it is the evidence for the "
-        "module's claim that the row's real word 'MUST survive as a literal "
-        "cross-term operand': a plane-wise shortcut that dropped the +0.0 * z "
-        "product would be byte-wrong on signed zeros, and this null is what says "
-        "the zero is really there rather than merely intended.",
+    "fu_load_unconditional":
+        "fu is loaded on every cell but stored, and read by the recurrence's arm, on "
+        "the recurrence's cells only; the select discards the other loads.",
 }
 
 
@@ -1280,20 +1185,17 @@ def leg_transcription() -> Dict[str, Any]:
 
     curl_lines = statements(
         curl, "    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)",
-        "    # --- stores: u then f (kernels.py:193-198 order), both planes ---")
+        "    # --- stores: fu on its cells")
     constitutive_lines = statements(
         constitutive, "        kp_0 = tl.load(kp0 + i, mask=live, other=0.0)",
         "else:  # pragma: no cover - laptop path")
     # The END anchor is EXCLUSIVE, so the fused body is read to a sentinel PAST its
     # last statement and that statement is added back by name.
-    last = "    tl.store(h2 + 2 * idx + 1, a_im, mask=live)"
-    if last not in fused:
-        return {"passed": False,
-                "reason": "the fused body no longer ends at the h2 store; this "
-                          "leg's end anchor is stale and it measured nothing"}
+    # The fused body is read to a sentinel past its last statement, so the
+    # statement-joiner sees every logical statement whole, multi-line ones included.
     fused_statements = set(statements(
-        fused, "    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)", last))
-    fused_statements.add(last.strip())
+        fused + "\n#__END__\n",
+        "    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)", "#__END__"))
 
     curl_missing = [line for line in curl_lines if line not in fused_statements]
     constitutive_missing = [line for line in constitutive_lines
@@ -1318,7 +1220,7 @@ def leg_transcription() -> Dict[str, Any]:
     }
 
 
-def leg_refusal(cp, probe) -> Dict[str, Any]:
+def leg_refusal(cp) -> Dict[str, Any]:
     """The source seam, the m split and the polarization clause, measured BY NAME.
 
     THE ELECTRIC SOURCE IS THE WHOLE PRODUCT HERE. With the deposit repair carried
@@ -1335,21 +1237,19 @@ def leg_refusal(cp, probe) -> Dict[str, Any]:
     try:
         fields, pml = driver.fields, driver.pml
         undeclared = product.cylindrical_fused_electric_pair_coverage(
-            fields, pml, None, probe=probe)
+            fields, pml, None)
         quiet = product.cylindrical_fused_electric_pair_coverage(
-            fields, pml, (), probe=probe)
+            fields, pml, ())
         electric = VolumeSource(grid=fields.grid, component="Ez",
                                 center=(0.5, 0.0, 0.0), size=(0.0, 0.0, 0.0),
                                 envelope=ContinuousEnvelope(frequency=1.0))
         carried = product.cylindrical_fused_electric_pair_coverage(
-            fields, pml, (electric,), probe=probe)
+            fields, pml, (electric,))
         magnetic = VolumeSource(grid=fields.grid, component="Hy",
                                 center=(0.5, 0.0, 0.0), size=(0.0, 0.0, 0.0),
                                 envelope=ContinuousEnvelope(frequency=1.0))
         magnetic_cov = product.cylindrical_fused_electric_pair_coverage(
-            fields, pml, (magnetic,), probe=probe)
-        no_probe = product.cylindrical_fused_electric_pair_coverage(
-            fields, pml, (), probe=None)
+            fields, pml, (magnetic,))
     finally:
         driver.close()
 
@@ -1361,7 +1261,7 @@ def leg_refusal(cp, probe) -> Dict[str, Any]:
                         case[7])
     try:
         m0 = product.cylindrical_fused_electric_pair_coverage(
-            zero.fields, zero.pml, (), probe=probe)
+            zero.fields, zero.pml, ())
     finally:
         zero.close()
     from meep_gpu.driver import FdtdDriver  # noqa: PLC0415
@@ -1374,7 +1274,7 @@ def leg_refusal(cp, probe) -> Dict[str, Any]:
     try:
         real.setup_pml(dict(case[5]))
         m0_real = product.cylindrical_fused_electric_pair_coverage(
-            real.fields, real.pml, (), probe=probe)
+            real.fields, real.pml, ())
     finally:
         real.close()
 
@@ -1384,7 +1284,6 @@ def leg_refusal(cp, probe) -> Dict[str, Any]:
                        and quiet.covered
                        and carried.covered
                        and magnetic_cov.covered
-                       and not no_probe.covered
                        and m0.covered
                        and not m0_real.covered
                        and any("force_complex_fields" in r
@@ -1396,8 +1295,6 @@ def leg_refusal(cp, probe) -> Dict[str, Any]:
         "electric_source_CARRIED": carried.covered,
         "electric_reasons": list(carried.reasons),
         "magnetic_source_is_irrelevant_to_this_seam": magnetic_cov.covered,
-        "missing_expansion_probe_refused": not no_probe.covered,
-        "missing_probe_named": list(no_probe.reasons)[:3],
         "m_zero_complex_admitted": m0.covered,
         "m_zero_complex_reasons": list(m0.reasons)[:3],
         "m_zero_real_storage_refused": not m0_real.covered,
@@ -1413,7 +1310,7 @@ def leg_refusal(cp, probe) -> Dict[str, Any]:
 # Host mutations
 # ===========================================================================
 
-def run_host_mutations(cp, case, product, probe) -> List[Dict[str, Any]]:
+def run_host_mutations(cp, case, product) -> List[Dict[str, Any]]:
     """Corrupt the TABLES the host binds — defects no source rewrite can reach.
 
     The kernel takes twelve coefficient pointers, two i*m/r rows, three inv_eps
@@ -1438,7 +1335,7 @@ def run_host_mutations(cp, case, product, probe) -> List[Dict[str, Any]]:
                 product.cyl_complex_fused_curl_constitutive_D_kernel())
             plan = product.plan_cylindrical_fused_electric_pair(
                 actual.fields, actual.pml, tuple(actual._sources), num_warps=1,
-                kernel=kernel, probe=probe)
+                kernel=kernel)
             if plan is None:
                 return {"leg": "host_mutation", "label": name, "passed": False,
                         "reason": "the product refused the host-mutation case"}
@@ -1484,7 +1381,7 @@ def run_host_mutations(cp, case, product, probe) -> List[Dict[str, Any]]:
 
     def integer_constitutive(plan, driver) -> None:
         """``update_E`` takes the HALF-INTEGER kps/kms; hand it the integer ones."""
-        plan._e_coefficients = tuple(
+        plan._constitutive_coefficients = tuple(
             CupyPointer(_flat(getattr(driver.pml, f"{stem}_{axis}")))
             for axis in "xyz" for stem in ("kps", "kms"))
 
@@ -1529,40 +1426,10 @@ def run_host_mutations(cp, case, product, probe) -> List[Dict[str, Any]]:
 # Main
 # ===========================================================================
 
-def probe_record(explicit: Optional[str]) -> Tuple[Optional[Dict[str, Any]],
-                                                   List[str], Optional[str]]:
-    """The keep-cut expansion probe artifact, or a NAMED refusal.
-
-    A PLACEHOLDER IS REFUSED BY NAME: ``expansion_license`` takes the verdict dict,
-    not a path, and handing it a string produces a refusal about the harness
-    reported as one about the corpus. So the artifact is loaded here and the loaded
-    record is what travels.
-    """
-    candidates = ([explicit] if explicit else
-                  [os.path.join(API_ROOT, relative) for relative in KEEP_PROBES])
-    reasons: List[str] = []
-    for path in candidates:
-        if not path or not os.path.isfile(path):
-            reasons.append(f"probe artifact absent: {path}")
-            continue
-        try:
-            with open(path, encoding="utf-8") as handle:
-                record = json.load(handle)
-        except Exception as exc:  # noqa: BLE001 - unreadable == missing
-            reasons.append(f"probe artifact unreadable ({path}): {exc}")
-            continue
-        if not isinstance(record, dict):
-            reasons.append(f"probe artifact is not a verdict dict: {path}")
-            continue
-        return record, reasons, path
-    return None, reasons, None
-
-
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True,
                         help="results DIRECTORY; partial rows land here as they do")
-    parser.add_argument("--probe-artifact", default=None)
     parser.add_argument("--steps", type=int, default=None,
                         help="override every case's step budget")
     parser.add_argument("--subnormal-policy", default="keep",
@@ -1640,34 +1507,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["policy_stamp"] = shared.install_ftz_strip(args.subnormal_policy)
     flush()
 
-    record, reasons, probe_path = probe_record(args.probe_artifact)
-    if record is None:
-        results["failures"].extend(reasons)
-        results["verdict"] = "REFUSED"
-        results["elapsed_seconds"] = time.time() - started
-        flush()
-        log("REFUSED: " + "; ".join(reasons))
-        return 1
-    results["probe_artifact"] = probe_path
-    results["probe_sha256"] = sha256_of(probe_path)
-    results["probe_policy_reasons"] = list(
-        shared.probe_record_policy_reasons(record))
-
-    from meep_gpu.triton_kernels import complex_fields as cx  # noqa: PLC0415
     from meep_gpu.triton_kernels import (  # noqa: PLC0415
         cylindrical_fused_electric_pair as product)
-    expansion = cx._resolve_expansion(record)
-    results["licensed_expansion"] = expansion
-    if expansion is None:
-        results["failures"].append("the expansion licence refused this record")
-        results["verdict"] = "REFUSED"
-        results["elapsed_seconds"] = time.time() - started
-        flush()
-        return 1
 
     # --- the QUIET family: every arm, no deposit in the seam ----------------
     for case in CASES:
-        row = run_leg(cp, "product", case, product, record, steps=args.steps)
+        row = run_leg(cp, "product", case, product, steps=args.steps)
         passed, failures = verdict_of(
             row, require_launches=row["steps_budget"])
         row["passed"], row["failures"] = passed, failures
@@ -1681,7 +1526,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # THE PRODUCT IS WORTH ZERO CORPUS ROWS WITHOUT THESE ROWS.
     for index in CARRY_CASES:
         case = CASES[index]
-        row = run_leg(cp, "carry", case, product, record, steps=args.steps,
+        row = run_leg(cp, "carry", case, product, steps=args.steps,
                       electric=True)
         passed, failures = verdict_of(row, require_launches=row["steps_budget"],
                                       require_repairs=True)
@@ -1698,7 +1543,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # that has nothing to do with the repair.
     for index in CARRY_CASES[:1]:
         case = CASES[index]
-        row = run_leg(cp, "carry_null_control", case, product, record,
+        row = run_leg(cp, "carry_null_control", case, product,
                       steps=MUTATION_STEPS, electric=True, bracket=False)
         passed, failures = verdict_of(row, require_identical=False,
                                       require_moved=False)
@@ -1709,32 +1554,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"diverged={row.get('first_divergence') is not None}")
         flush()
 
-    # --- the ARM OVERRIDE ---------------------------------------------------
-    # The constexpr IS the licence; flipping it measures whether the licence is
-    # load-bearing on this family. On the cylindrical arm it is EXPECTED TO BE
-    # INERT and the row is scored as a NULL WITH that reason, never silently
-    # dropped.
-    other = 0 if int(expansion) == 1 else 1
-    row = run_leg(cp, "expansion_override", CASES[1], product, record,
-                  steps=MUTATION_STEPS, expansion=other)
-    row["expectation"] = "null"
-    row["null_confirmed"] = row.get("first_divergence") is None
-    row["reason"] = (
-        "the two arms differ only where a complex product's coefficient has a "
-        "NONZERO real word; every general complex product here takes one whose "
-        "real word is a zero (the i*m/r rows are exactly +0.0) and this family "
-        "compiles no Bloch rotation. The binding is INERT here and is still made "
-        "from a measured artifact, because a widening would make it live.")
-    row["passed"] = bool(row["null_confirmed"]
-                         and row.get("fused_kernel_launches") == MUTATION_STEPS)
-    results["rows"].append(row)
-    log(f"[expansion_override] arm {expansion}->{other}: "
-        f"null_confirmed={row['null_confirmed']}")
-    flush()
-
     # --- refusals -----------------------------------------------------------
     results["rows"].append({"leg": "refusal", "device": True,
-                            **leg_refusal(cp, record)})
+                            **leg_refusal(cp)})
     log(f"[refusal] passed={results['rows'][-1]['passed']}")
     flush()
 
@@ -1751,7 +1573,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             continue
         mutated, entry = _renamed(dedented(block.replace(old, new, 1)), name)
         kernel = compile_mutant(mutated, entry)
-        row = run_leg(cp, "mutation", cases[case_name], product, record,
+        row = run_leg(cp, "mutation", cases[case_name], product,
                       mutant=kernel, steps=MUTATION_STEPS)
         diverged = row.get("first_divergence") is not None
         launched = row.get("fused_kernel_launches") == MUTATION_STEPS
@@ -1778,7 +1600,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         flush()
 
     # --- host mutations: what no source rewrite can reach -------------------
-    results["rows"].extend(run_host_mutations(cp, CASES[1], product, record))
+    results["rows"].extend(run_host_mutations(cp, CASES[1], product))
     flush()
 
     rows = results["rows"]

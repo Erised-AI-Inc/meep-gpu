@@ -26,11 +26,9 @@ THE FOUR CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
    byte gate CANNOT hold them and saying it does would be the artifact overclaim the
    BFAST tranche names. They are held here instead.
 
-THE ARM IS NOT ASSERTED HERE. Which complex-multiply expansion a platform takes is a
-measured fact carried in a probe artifact, and a unit test that pinned ``FMA_V1``
-would be a guess wearing a test's clothes. What IS asserted is that the family binds
-through the CYLINDRICAL family's seven-pattern probe rather than the plain complex
-family's five-pattern one, and that a five-pattern record licenses nothing here.
+NO EXPANSION ARM IS ASSERTED HERE, because none remains: the expansion licence, its
+probe artifacts and the arm argument are deleted on all three tables, so every
+complex product has one emitted form. The device gate holds the bytes.
 """
 
 from __future__ import annotations
@@ -65,7 +63,7 @@ def source(**overrides):
     keywords = dict(WALLED)
     keywords.update(overrides)
     return family.cylindrical_fused_magnetic_pair_source(
-        keywords["bcz"], keywords["m_arm"], keywords["zero_metal"], "FMA_V1")
+        keywords["bcz"], keywords["m_arm"], keywords["zero_metal"])
 
 
 # ---------------------------------------------------------------------------
@@ -134,18 +132,19 @@ def test_the_two_refuted_signatures_are_over_the_ceiling_by_arithmetic():
     assert len(over) == family.OVER_CEILING_BINDINGS
 
 
-def test_the_params_record_is_forty_bytes_with_the_float2_first():
-    """Metal aligns ``float2`` to 8. With ``inc_b`` FIRST the natural offsets are
-    Metal's and there is no internal padding — the complex twin measured what the
-    other order costs, and it is a plausible complex number rather than garbage."""
+def test_the_params_record_is_eight_scalars_then_the_chunk_record():
+    """Every member is 4 bytes and the chunk record is a struct of 4-byte members, so
+    the host record and Metal's layout agree with no padding: 32 bytes of scalars,
+    then the 100-byte record."""
     dtype = family.params_record_dtype()
-    assert dtype.itemsize == family.PARAMS_ITEMSIZE == 40
-    assert dtype.names[0] == "inc_b"
-    assert dtype.names[-1] == "axis_coef"
+    assert dtype.itemsize == family.PARAMS_ITEMSIZE == 132
+    assert dtype.names == ("nx", "ny", "nz", "n_elem", "zrows", "dtdx",
+                           "axis_factor", "m_word", "cb")
     assert [dtype.fields[name][1] for name in dtype.names] == [
-        0, 8, 12, 16, 20, 24, 28, 32, 36]
+        0, 4, 8, 12, 16, 20, 24, 28, 32]
     struct = source().split("struct Params {", 1)[1].split("};", 1)[0]
-    assert "float dtdx; float minus_dtdx; float axis_coef;" in struct
+    assert "float dtdx; float axis_factor; float m_word;" in struct
+    assert struct.rstrip().endswith("ChunkBounds cb;")
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +198,7 @@ def test_the_wall_clear_is_imported_from_the_twin_not_respelled():
 def test_the_curl_half_is_the_certified_body_verbatim_around_the_wall_clear():
     text = source()
     curl = family.certified_cylindrical_curl_body(
-        WALLED["bcz"], WALLED["m_arm"], "FMA_V1")
+        WALLED["bcz"], WALLED["m_arm"])
     head, tail = curl.split(family._CURL_STORE, 1)
     assert head in text
     assert (family._CURL_STORE + tail) in text
@@ -210,7 +209,7 @@ def test_the_constitutive_half_is_the_twins_lift_and_differs_only_in_the_seam():
     tranche at 480/480 rows, 0 differing words — so the constitutive half of this
     pair IS the complex twin's, lift and all."""
     text = source()
-    certified = twin.certified_constitutive_body("FMA_V1").splitlines()
+    certified = twin.certified_constitutive_body().splitlines()
     spliced = [line for line in
                text.split("    // --- update_H (stepping.update_H", 1)[1].splitlines()
                if "// THE SEAM:" not in line]
@@ -236,47 +235,33 @@ def test_the_seam_replaces_the_reload_and_nothing_else():
 # The byte-invisible choices — held HERE, because a byte gate cannot hold them
 # ---------------------------------------------------------------------------
 
-def test_the_imr_coefficient_stays_on_the_left():
-    """``stepping._cylindrical_imr_term`` (:724) spells ``factor * partner_values``
-    with the coefficient on the LEFT, and this kernel keeps that orientation.
-
-    MEASURED BYTE-INVISIBLE, 2026-08-20: every entry of every i*m/r row this family
-    binds has a real word of exactly ``+0.0`` (16/16 words ``0x00000000`` at
-    m = +-1 and m = 3, on both targets), and with ``c_re = +-0.0`` the product
-    ``c_re * z_re`` is exact — so ``c_mul(q, z)`` and ``c_mul(z, q)`` are the same
-    single-rounding operation. The gate's ``signed_zero`` leg measures 0 differing
-    words for the swap across twelve rows spanning both value classes and three
-    lattice draws. So the choice is REAL and the byte gate cannot hold it; this
-    assertion is what does."""
+def test_the_imr_increment_is_a_quarter_turn_and_never_a_complex_product():
+    """``stepping._cylindrical_imr_increment`` returns ``quarter_turn(rinv, partner)``:
+    per part ``(-(rinv*g.im), rinv*g.re)`` with a float32 ``rinv`` row, two real
+    products and a sign flip. No complex product of the row survives in the kernel."""
     text = source()
-    assert "float2 m0 = c_mul(q0, c);" in text
-    assert "float2 m2 = c_mul(q2, a);" in text
-    assert "c_mul(c, q0)" not in text and "c_mul(a, q2)" not in text
+    assert "float2 mi0 = float2(-(q0[i] * c.y), q0[i] * c.x);" in text
+    assert "float2 mi2 = float2(-(q2[i] * a.y), q2[i] * a.x);" in text
+    assert "c_mul(q0" not in text and "c_mul(q2" not in text
 
 
-def test_the_curl_grouping_keeps_the_invariant_axis_difference():
-    """``stepping._curl_from_operands`` groups ``((A) + (B))`` and this kernel keeps
-    it on all three terms.
-
-    ``t0`` and ``t2`` each lead with the PHI SELF-DIFFERENCE, which is an exact
-    ``+0.0`` on a one-cell axis, so flattening THEIR parens is byte-invisible
-    (measured 2026-08-20: 0 differing words, against 528 for the identical edit on
-    ``t1``, which the gate arms as a catch). Kept because it is what the array path
-    computes, and pinned here because the gate cannot pin it."""
+def test_targets_0_and_1_are_the_certified_complex_stencil_with_the_phi_partner_absent():
+    """MEEP's left-to-right bracket, with the phi partner absent (the record's presence
+    bit for the one-cell phi axis is clear): the certified complex curl's own text."""
     text = source()
-    assert "float2 t0 = ((c_y - c) + (b - b_z));" in text
-    assert "float2 t1 = ((a_z - a) + (c - c_x));" in text
-    assert "float2 t2 = ((b_x - b) + (a - a_y));" in text
+    certified = cylindrical_complex.complex_fields.bloch_curl_source(
+        (templates.METALLIC, templates.PERIODIC, templates.METALLIC), False, (0, 0, 0))
+    for target in (0, 1):
+        block = certified.split(f"    float2 curl{target} = ", 1)[1].split(";\n", 1)[0]
+        assert f"    float2 curl{target} = " + block + ";\n" in text
 
 
-def test_the_prefix_replaces_target_twos_curl_rather_than_adding_to_it():
-    """``step_B`` :343-347 — Bz's WHOLE curl is the forward difference of the
-    EXTENDED prefix: ONE subtract, ONE multiply. The four-operand grouping is a
-    different float32 number per plane, and the gate catches the substitution
-    (7,296 words)."""
+def test_the_radial_difference_replaces_target_twos_curl_rather_than_adding_to_it():
+    """``step_B``: Bz's WHOLE curl is ``dtdx`` times the per-chunk radial difference,
+    one product per part; the phi partner is the derivative MEEP drops."""
     text = source()
-    assert "curl2 = c_mul_coefficient_left(dtdx, pu - pd);" in text
-    assert "float2 pu = pfx[ii + nyz];" in text
+    assert text.count(cylindrical_complex.CYLINDRICAL_CURL2) == 1
+    assert "float2 curl2 = has_x" not in text
 
 
 # ---------------------------------------------------------------------------
@@ -298,8 +283,8 @@ def test_the_three_m_arms_are_different_bodies():
     assert "bool near = (i < int(zrows));" in many
     assert "bool near = (i < int(zrows));" not in one
     assert "bool near = (i < int(zrows));" not in zero
-    assert "float2 q0 = c0[i];" in one and "float2 q0 = c0[i];" in many
-    assert "float2 q0 = c0[i];" not in zero
+    assert "float2 mi0 = " in one and "float2 mi0 = " in many
+    assert "float2 mi0 = " not in zero
     assert "v0 = at_x ? float2(0.0f, 0.0f) : v0;" in zero
     assert "v0 = at_x ? float2(0.0f, 0.0f) : v0;" not in one
     assert "v0 = at_x ? float2(0.0f, 0.0f) : v0;" not in many
@@ -314,12 +299,12 @@ def test_the_enumeration_is_closed_at_six_sources():
     this enumeration finite. The wall flag is a FUNCTION of ``bcz`` rather than a
     free axis, because ``zero_metal_axes`` cannot report a wall on a periodic axis.
     Four until 2026-09-04; the ``M_ZERO`` arm added two."""
-    labels = family.enumerate_sources("FMA_V1")
+    labels = family.enumerate_sources()
     assert len(labels) == 6
     assert len(set(labels.values())) == 6, "two specialisations emit the same source"
     assert sum("/m0/" in label for label in labels) == 2
     for label in labels:
-        assert "/zm1/" in label if "bcz1" in label else "/zm0/" in label
+        assert label.endswith("/zm1") if "bcz1" in label else label.endswith("/zm0")
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +319,10 @@ def _fixture(**keywords):
     import metal_composition_matrix as mx  # noqa: PLC0415
 
     mx.prepare_environment()
+    # A float32 word that is not a power of two: the |m| = 1 B-side axis rule's
+    # product with Courant is MEEP's double product, formed in float32 only for such
+    # a word, and any other Courant is refused by name.
+    keywords.setdefault("courant", 0.375)
     return mx.cylindrical(**keywords)
 
 
@@ -419,26 +408,6 @@ def test_the_predicate_inherits_both_halves_rather_than_restating_them():
                for reason in verdict.reasons)
     assert any(reason.startswith("constitutive half: ")
                for reason in verdict.reasons)
-
-
-# ---------------------------------------------------------------------------
-# The expansion probe
-# ---------------------------------------------------------------------------
-
-def test_the_family_binds_through_the_cylindrical_seven_pattern_probe():
-    """NOT the plain complex family's five-pattern artifact. This kernel performs
-    SEVEN orientations — the base five plus the i*m/r row and the |m| = 1 scalar —
-    and reading a record that measured five would licence two calls nothing
-    classified."""
-    text = pathlib.Path(family.__file__).read_text(encoding="utf-8")
-    assert "cylindrical_complex.expansion_from_probe" in text
-    assert "cylindrical_complex.load_expansion_probe" in text
-    assert "complex_fields.load_expansion_probe" not in text
-    assert len(cylindrical_complex.CYLINDRICAL_PROBE_PATTERNS) == 7
-
-
-def test_a_missing_probe_refuses_rather_than_defaulting_to_an_arm():
-    assert cylindrical_complex.expansion_from_probe(None) is None
 
 
 # ---------------------------------------------------------------------------

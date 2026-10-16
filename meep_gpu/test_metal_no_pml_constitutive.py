@@ -24,7 +24,7 @@ WHAT IS PINNED, in the order the file runs it:
 3b. **the measurement all fifteen rest on** — every allocated volume rebound to an
    object that raises on any access, and the real ``stepping`` sub-steps shown to
    RETURN anyway, with three refused configurations as the controls that must
-   RAISE. That converts "reads no pointer" from a reading of stepping.py:944-945
+   RAISE. That converts "reads no pointer" from a reading of stepping.py:1229-1230
    into something executed. And **the slot->side table**, which was a second
    literal beside the imported one and a measured byte-visible hole: swapped, the
    composer put a null in the ``update_E`` slot of a run where ``update_E`` writes;
@@ -325,7 +325,7 @@ def test_an_active_layer_refuses_both_sides_by_name():
 
 
 def test_stored_e_refuses_the_e_side_only():
-    """``stepping.py:983`` branches on exactly ``stores_E``; H is never stored."""
+    """``stepping.py:1274`` branches on exactly ``stores_E``; H is never stored."""
     _, fields, pml = build(storage=True)
     assert fields.stores_E
     assert family.metal_null_constitutive_coverage(fields, pml, "H").covered
@@ -418,6 +418,7 @@ def test_the_conservative_clause_table_has_the_shape_it_claims():
 
 
 @pytest.mark.parametrize("name", sorted(shared.CONSERVATIVE_CLAUSES))
+@pytest.mark.usefixtures("host_keeps_subnormals")  # host words in the subnormal band
 def test_every_conservative_clause_is_re_measured_through_the_metal_wrapper(name):
     """"Conservative" is TWO claims at once and both are measured here.
 
@@ -833,7 +834,7 @@ def test_the_covered_sub_step_touches_no_field_array_at_all(
     """EVERY entry in ``METAL_NON_CLAUSES`` rests on this, and it was a READING.
 
     "A sub-step that returns before its first statement reads no pointer, forms no
-    index and rounds no float" was transcribed from stepping.py:944-945 / :983-984
+    index and rounds no float" was transcribed from stepping.py:1229-1230 / :1274-1275
     and nothing executed it. Rebinding every allocated volume to an object that
     raises on any access and calling the real sub-step makes it a MEASUREMENT: if
     the call returns, the sub-step demonstrably touched no field array, and every
@@ -1019,7 +1020,7 @@ def test_the_plan_reports_no_variants_and_no_volumes():
     assert plan.volumes == ()
     assert plan.performs_device_work is False
     assert plan.sub_step == "update_H"
-    assert plan.return_site == "stepping.py:944-945"
+    assert plan.return_site == "stepping.py:1229-1230"
 
 
 def test_the_run_counter_is_what_a_null_family_has_instead_of_a_launch_count():
@@ -1361,6 +1362,7 @@ def test_the_array_path_itself_moves_nothing_on_the_covered_arm(name, kwargs):
     assert total_differing(before, snapshot(fields)) == 0, name
 
 
+@pytest.mark.usefixtures("host_keeps_subnormals")  # host words in the subnormal band
 def test_the_seeded_subnormal_and_signed_zero_classes_are_non_vacuous():
     """A census of ZERO is VACUOUS, not passed.
 
@@ -1376,6 +1378,7 @@ def test_the_seeded_subnormal_and_signed_zero_classes_are_non_vacuous():
     assert signed_zeros_of(state) > 0, "no negative zeros were seeded"
 
 
+@pytest.mark.usefixtures("host_keeps_subnormals")  # host words in the subnormal band
 def test_subnormals_survive_the_covered_arm_bit_for_bit():
     _, fields, pml = build()
     before = snapshot(fields)

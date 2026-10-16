@@ -66,10 +66,22 @@ def xp():
 _DEFAULT_ROWS = {"Ex": ("Ey",), "Ey": ("Ex",)}
 
 
-def _build(xp, *, rows=_DEFAULT_ROWS, driven=("Ex", "Ey", "Ez"), states=1):
-    """A folded, off-diagonal, dispersive triple in the corpus row's shape."""
+#: The corpus row's shape with every resolved axis walled: the one-rank division's record
+#: then names its chunks on every axis, which the off-diagonal families require (the
+#: corpus row's own wrapping axes carry a layer on both faces, and the wrapped row 0
+#: reads the low run's label while its chunk is the high one).
+WALLED = {"x": "metallic", "y": "metallic"}
+
+
+def _build(xp, *, rows=_DEFAULT_ROWS, driven=("Ex", "Ey", "Ez"), states=1,
+           boundaries=None):
+    """A folded, off-diagonal, dispersive triple in the corpus row's shape.
+
+    ``boundaries`` (default: the corpus row's periodic axes) is handed to the grid.
+    """
+    extra = {} if boundaries is None else {"boundaries": boundaries}
     grid = Grid(resolution=10.0, cell_size=(1.6, 2.0, 0.0), dimensions=2,
-                courant=0.35, symmetry=(Mirror("Y", 1),), xp=xp)
+                courant=0.35, symmetry=(Mirror("Y", 1),), xp=xp, **extra)
     thickness = tuple((0, 0) if grid.shape[axis] < 6
                       else (0, 2) if grid.is_mirrored(axis)
                       else (2, 2) for axis in range(3))
@@ -153,10 +165,10 @@ def test_the_weld_carries_its_own_entry_point_name():
 def test_the_recurrence_is_the_certified_line_and_the_drive_is_the_register(
         component, target):
     source = _source(component=component)
-    assert (f"    p_out_0[idx] = ((p_0 * c_now_0) + (c_prev_0 * q_0)) + "
-            f"(c_drive_0 * (s_0 * w));") in source
-    # THE SEAM: the drive LOAD is gone and the register is used.
-    assert "float w = drive[idx];" not in source
+    assert (f"    p_out_0[idx] = gamma1inv_0 * (((p_0 * two_minus_od_0) - "
+            f"(gamma1_0 * q_0)) + (omega0dtsqr_0 * (s_0 * w)));") in source
+    # THE SEAM: the drive SELECT is gone and the register is used.
+    assert "drive_w[idx]" not in source and "drive_e[idx]" not in source
     assert f"    float w = src_{target};" in source
     # ...and the register is defined ABOVE the recurrence, which is what makes the
     # hand-off a hand-off rather than a use-before-definition.
@@ -213,8 +225,8 @@ def test_a_drifted_certified_signature_fails_the_splice(monkeypatch):
 
     def drifted(mask, counts):
         return original(mask, counts).replace(
-            "    float gw_x, float gw_y, float gw_z\n) {\n",
-            "    float gw_x, float gw_y, float gw_z, int spare\n) {\n")
+            "    const int* __restrict__ cb\n) {\n",
+            "    const int* __restrict__ cb, int spare\n) {\n")
 
     monkeypatch.setattr(offdiag_e, "dispersive_offdiag_source", drifted)
     with pytest.raises(AssertionError, match="no longer closes"):
@@ -231,13 +243,26 @@ def test_the_lift_edits_are_data_and_carry_no_silent_extra():
 # 3. THE PREDICATE
 # ---------------------------------------------------------------------------
 
-def test_the_weld_admits_the_corpus_row_shape(xp):
-    fields, layer, grid = _build(xp)
+def test_the_weld_admits_the_corpus_row_shape_where_the_record_names_its_chunks(xp):
+    fields, layer, grid = _build(xp, boundaries=WALLED)
     covered, why = weld.covers_dispersive_offdiag_fused_polarization_pair(
         fields, layer, grid, ())
     assert covered, why
     assert weld.fused_component(fields) == "Ex"
     assert weld.pole_counts(fields) == (1, 1, 1)
+
+
+def test_the_corpus_row_shape_on_its_wrapping_axes_is_refused_by_the_chunk_clause(xp):
+    """The composer's own clause, which the composer asks of the update_E arm this weld
+    implements: on the corpus row's periodic x with a layer on both faces the record
+    does not name the chunk the wrapped row 0 belongs to, so neither the arm nor the
+    weld serves it (examples/absorbed_power_density.py on the 1.0 census)."""
+    fields, layer, grid = _build(xp)
+    covered, why = weld.covers_dispersive_offdiag_fused_polarization_pair(
+        fields, layer, grid, ())
+    assert not covered
+    assert why.startswith("the chunk division is not a {low, interior, high} product "
+                          "along x"), why
 
 
 def test_the_diagonal_polarization_pair_refuses_the_same_row(xp):

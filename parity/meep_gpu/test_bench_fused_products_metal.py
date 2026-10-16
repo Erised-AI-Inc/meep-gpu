@@ -765,8 +765,8 @@ def test_host_state_off_this_platform_reads_nothing_and_says_nothing(monkeypatch
 
 
 def test_host_state_on_this_platform_is_assembled_from_the_three_reports(monkeypatch):
-    answers = {"sysctl -n hw.model": "MacBookPro18,2",
-               "sysctl -n machdep.cpu.brand_string": "Apple M1 Max",
+    answers = {"/usr/sbin/sysctl -n hw.model": "MacBookPro18,2",
+               "/usr/sbin/sysctl -n machdep.cpu.brand_string": "Apple M1 Max",
                "pmset -g batt": BATTERY, "pmset -g": " powermode            1\n",
                "pmset -g therm": "CPU_Speed_Limit \t= 100\n",
                "ps -axo pid=,ppid=,command=": "  7  1 zsh recut_metal_gates.sh a b\n"}
@@ -809,12 +809,11 @@ def test_a_metal_row_pins_the_metal_sources_as_well():
 # The estimate the driver prints first
 # ---------------------------------------------------------------------------
 
-def _drive(n, probe=None):
-    return {f"case_{i}": {"expect": "dispatch", "needs_probe": probe} for i in range(n)}
+def _drive(n):
+    return {f"case_{i}": {"expect": "dispatch"} for i in range(n)}
 
 
-def test_estimate_known_value_scaling_degenerate_and_shape(monkeypatch):
-    monkeypatch.delenv("PROBE_X", raising=False)
+def test_estimate_known_value_scaling_degenerate_and_shape():
     one = bench.estimate(["case_0"], _drive(1), repeats=6, target_seconds=2.0,
                          warm_steps=6)
     # three legs x six windows x two seconds is the floor under any case
@@ -827,9 +826,6 @@ def test_estimate_known_value_scaling_degenerate_and_shape(monkeypatch):
                           warm_steps=6)
     assert more["seconds"] - one["seconds"] == pytest.approx(3 * 6 * 2.0)
     assert bench.estimate([], {}, 6, 2.0, 6)["seconds"] == 0.0
-    # a case whose licence this process does not carry is skipped, and costs nothing
-    skipped = bench.estimate(["case_0"], _drive(1, probe="PROBE_X"), 6, 2.0, 6)
-    assert skipped["seconds"] == 0.0 and skipped["skipped_without_probe"] == ["case_0"]
     json.dumps(ten)
 
 
@@ -1090,6 +1086,45 @@ def test_run_case_end_to_end_evaluates_every_floor_on_this_table(
                                       + report.METAL_PINNED_KEYS}},
                prefer_gpu=True, smoke=False)
     assert "`pml_2d`" in report.render([row], "t")
+
+
+def test_a_gpu_only_row_on_this_table_proves_the_fused_leg_alone(witness, metal,
+                                                                   monkeypatch):
+    """``--legs gpu-only``: one lift; the route gate's ``fused_leg_is_real`` and the
+    proved-rate floor read the fused leg alone; no ratio and no identity verdict."""
+    lifted = []
+
+    def fake_run_leg(_case, _builder, label, _env, _counter, _gpu, _res):
+        lifted.append(label)
+        return _leg(label, _fused_two_pairs())
+
+    monkeypatch.setattr(bench.e2e, "run_leg", fake_run_leg)
+    monkeypatch.setattr(bench, "box_state", lambda: {"loadavg": [0.0, 0.0, 0.0]})
+    monkeypatch.setattr(bench, "host_state", lambda: {
+        "model": "stub", "on_ac_power": True, "low_power_mode": False,
+        "loadavg": [0.1, 0.1, 0.1], "foreign_processes": []})
+    stub_module = SimpleNamespace(CASES={"pml_2d": None},
+                                  _fuse_env=lambda arms, reached_by="release": {},
+                                  unfused_env=lambda: {}, ARRAY_ENV={})
+    row = bench.run_case("pml_2d", dict(TWO_PAIRS), stub_module, "metal", 0, witness,
+                         None, repeats=2, target_seconds=0.002, step_cap=8,
+                         warm_steps=4, memory_budget=0, legs_mode="gpu-only")
+    assert lifted == ["fused"]
+    floors = dict(row["floors"])
+    floors.pop("spread_within_gate")
+    assert floors == {"substitution_proved": True, "moved_words_positive": True,
+                      "non_finite_zero": True, "no_compiles_inside_timed_region": True,
+                      "windows_launched_at_the_proved_rate": True}
+    sub = row["substitution"]
+    assert sub["checks"] == {"a_named_arm_holds_more_than_one_slot": True,
+                             "fused_products_match_the_rows_pairs": True,
+                             "launch_witness_saw_every_owner": True,
+                             "fused_leg_is_real": True}
+    assert sub["launches_per_step"] == {"fused": 2.0}
+    assert row["ratios"] is None and row["bit_identity"]["measured"] is False
+    assert set(row["residency"]) == {"fused"}
+    assert [w["leg"] for w in row["windows_discarded"]] == ["fused"]
+    json.loads(json.dumps(row, default=str))
 
 
 # ---------------------------------------------------------------------------

@@ -339,6 +339,9 @@ def _device_state(case: Dict[str, Any]) -> Dict[str, Any]:
     device["kms"] = [cp.asarray(np.ascontiguousarray(v)) for v in case["kms_vectors"]]
     shape = case["shape"]
     device["trips"] = cp.zeros(int(np.prod(shape)), dtype=cp.int32)
+    # The chunk record, a contiguous int32[25] device vector, as the certified
+    # constitutive kernels take it.
+    device["cb"] = cp.asarray(np.ascontiguousarray(case["record"], dtype=np.int32))
     return device
 
 
@@ -394,7 +397,7 @@ def launch(variant: str, case: Dict[str, Any], device: Dict[str, Any]) -> None:
                       for prefix in ("Px", "Py", "Pz")
                       for pole in range(SUBJECT.MAX_POLES))
         args = fields + poles + (device["trips"],
-                                 shape[0], shape[1], shape[2]) + tables
+                                 shape[0], shape[1], shape[2]) + tables + (device["cb"],)
     else:
         # A DEVICE ARRAY OF POINTERS per component. This is the indirection a
         # runtime arity forces; eight named arguments cannot be indexed by p.
@@ -408,7 +411,8 @@ def launch(variant: str, case: Dict[str, Any], device: Dict[str, Any]) -> None:
             tables_of_pointers.append(holder)
         args = (fields + tuple(tables_of_pointers)
                 + (int(arities[0]), int(arities[1]), int(arities[2]))
-                + (device["trips"], shape[0], shape[1], shape[2]) + tables)
+                + (device["trips"], shape[0], shape[1], shape[2]) + tables
+                + (device["cb"],))
 
     kernel((blocks,), (SUBJECT.THREADS,), args)
     cp.cuda.runtime.deviceSynchronize()
@@ -535,7 +539,8 @@ def run_case(descriptor: Dict[str, Any], repeats: int) -> Dict[str, Any]:
                 f"comparison cannot fail, so it certifies nothing")
 
     reference = SUBJECT.reference_update_E(
-        case["state"], case["arities"], case["kps_broadcast"], case["kms_broadcast"])
+        case["state"], case["arities"], case["kps_broadcast"], case["kms_broadcast"],
+        record=case["record"])
     reference_rows = {variant: SUBJECT.compare_words(reference, outputs[variant])
                       for variant in ("unrolled",) + SUBJECT.SUBJECT_VARIANTS}
 

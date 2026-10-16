@@ -277,6 +277,10 @@ def _any_curl_conductivity(fields: Any) -> bool:
 try:  # pragma: no cover - the absent branch is exercised by the absence test
     import triton
     import triton.language as tl
+
+    # The shared form helpers import Triton themselves, so they are imported behind
+    # the same guard: the kernel body below is the only reader.
+    from .forms import axis_present, curl_stencil
     _TRITON_IMPORT_ERROR: Optional[BaseException] = None
 except ImportError as _exc:  # pragma: no cover - the laptop path
     triton = None  # type: ignore[assignment]
@@ -290,6 +294,9 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
     #: here and a plan built there index the same table; a test pins them equal.
     PERIODIC = tl.constexpr(0)
     METALLIC = tl.constexpr(1)
+    #: The chunk record's partner-presence word (``chunk_map.RECORD_PRESENCE_WORD``),
+    #: the only word of the record this curl reads; ``no_pml.RECORD_PRESENCE``'s value.
+    RECORD_PRESENCE = tl.constexpr(24)
 
     @triton.jit
     def conductive_plain_curl_step(
@@ -298,6 +305,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         e0, e1, e2,                       # inverse epsilon; read only when DERIVE
         cf0, cf1, cf2,                    # condfac  (a placeholder where COND == 0)
         ci0, ci1, ci2,                    # condinv  (a placeholder where COND == 0)
+        cb,                               # chunk record: the curl's partner-presence word
         nx, ny, nz, n_elem, dtdx,
         BACKWARD: tl.constexpr,           # 0 = B (forward differences), 1 = D
         DERIVE: tl.constexpr,             # 1 = sources are D and E = D * inv_eps here
@@ -307,15 +315,17 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
     ):
         """One curl sub-step with a material conductivity and NO absorber.
 
-        Transcribed, and from where (re-checked against the tree, 2026-08-16):
+        Transcribed, and from where (re-checked against the tree, 2026-10-08):
 
-        * term table          ``stepping.B_CURL_TERMS`` (:213) / ``D_CURL_TERMS`` (:218)
-        * ghost rule          ``stepping._shift_up`` (:1723) / ``_shift_down`` (:1787)
-        * curl grouping       ``stepping._curl_from_operands`` (:1601)
-        * ownership mask      ``stepping._mask_non_owned_cells`` (:1865)
-        * the E derivation    ``stepping._read_component`` (:2383-2396)
-        * the LOSSLESS tail   ``stepping._apply_curl``'s plain branch (:509-510)
-        * the LOSSY tail      ``stepping._apply_conductive_update`` (:1938-1951)
+        * term table          ``stepping.B_CURL_TERMS`` (:237) / ``D_CURL_TERMS`` (:242)
+        * ghost rule          ``stepping._shift_up`` (:2093) / ``_shift_down`` (:2155)
+        * curl grouping       ``stepping._curl_from_operands`` (:1935), every presence
+                              arm, through :func:`.forms.curl_stencil`
+        * partner presence    ``stepping.curl_presence`` (:1842), the record's word
+        * ownership mask      ``stepping._mask_non_owned_cells`` (:2259)
+        * the E derivation    ``stepping._read_component`` (:2990-3003)
+        * the LOSSLESS tail   ``stepping._apply_curl``'s plain branch (:586-587)
+        * the LOSSY tail      ``stepping._apply_conductive_update`` (:2498-2511)
 
         Everything above the tail is byte-copied from :func:`no_pml.plain_curl_step`,
         because conductivity enters ``_apply_curl`` only after the curl is formed
@@ -389,9 +399,17 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
         # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens -
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        # One call per target: MEEP's left-to-right association with both partners,
+        # the one-partner form where the record says the other partner's derivative
+        # axis is invariant, and an exact +0 with neither. The presence word is the
+        # record's (stepping.curl_presence, MEEP's have_plus_deriv / have_minus_deriv).
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
         # --- ownership mask (stepping._mask_non_owned_cells) --------------------
         at_x, at_y, at_z = i == 0, j == 0, k == 0
@@ -746,22 +764,28 @@ class ConductivePlainCurlPlan:
     and are compiled away, but a pointer argument still has to type, and passing
     ``None`` makes the launcher's failure a ``TypeError`` far from its cause. The
     placeholder is never read: ``COND == 0`` emits no conductive load at all.
+
+    ``chunk_bounds`` is the chunk record (``launch.bind_chunk_bounds``), required, as
+    on :class:`no_pml.PlainCurlPlan`: its presence word picks each target's curl
+    expression.
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "derive", "bc",
-                 "cond", "block", "_targets", "_sources", "_inv_eps", "_condfac",
-                 "_condinv", "_grid", "_kernel")
+                 "cond", "block", "chunk_bounds", "_targets", "_sources", "_inv_eps",
+                 "_condfac", "_condinv", "_cb", "_grid", "_kernel")
 
     def __init__(self, sub_step: str, shape, dtdx: float, bc, cond, block: int,
                  targets, sources, condfac, condinv, inverse_epsilon=None,
-                 derive: int = 0, kernel=None) -> None:
-        from .launch import CupyPointer  # noqa: PLC0415
+                 derive: int = 0, kernel=None, *, chunk_bounds: Any) -> None:
+        from .launch import CupyPointer, bind_chunk_bounds  # noqa: PLC0415
 
         if sub_step not in SUB_STEPS:
             raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "ConductivePlainCurlPlan")
         # float(): the array path multiplies a float32 volume by a Python float,
         # which NumPy/CuPy cast to float32 before the multiply; Triton types a
         # Python float argument as fp32. Same bits. (no_pml.PlainCurlPlan, verbatim.)
@@ -806,7 +830,7 @@ class ConductivePlainCurlPlan:
                   else conductive_plain_curl_kernel())
         kernel[self._grid](
             *self._targets, *self._sources, *self._inv_eps,
-            *self._condfac, *self._condinv,
+            *self._condfac, *self._condinv, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
             BACKWARD=self.backward,
             DERIVE=self.derive,
@@ -819,17 +843,24 @@ class ConductivePlainCurlPlan:
     def __repr__(self) -> str:
         return (f"ConductivePlainCurlPlan({self.sub_step}, shape={self.shape}, "
                 f"bc={self.bc}, cond={self.cond}, derive={self.derive}, "
-                f"block={self.block})")
+                f"block={self.block}, chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_conductive_plain_curl(fields: Any, pml: Any, sub_step: str,
-                               block: Optional[int] = None
+                               block: Optional[int] = None,
+                               chunk_layout: Any = None
                                ) -> Optional[ConductivePlainCurlPlan]:
-    """Build a plan from the engine's own objects, or None when out of coverage."""
+    """Build a plan from the engine's own objects, or None when out of coverage.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default;
+    the plan binds its record (``launch.chunk_bounds_for``), as
+    :func:`no_pml.plan_plain_curl` does.
+    """
     if not conductive_plain_curl_coverage(fields, pml, sub_step).covered:
         return None
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
+    from .launch import chunk_bounds_for  # noqa: PLC0415
 
     spec = SUB_STEPS[sub_step]
     grid = fields.grid
@@ -856,14 +887,16 @@ def plan_conductive_plain_curl(fields: Any, pml: Any, sub_step: str,
         sources,
         [fields.condfac_for(n) for n in targets],
         [fields.condinv_for(n) for n in targets],
-        inverse, derive)
+        inverse, derive,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout))
 
 
 def plan_conductive_plain_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
                                            codes, dtdx: float, cond=(1, 1, 1),
                                            derive: int = 0,
                                            block: Optional[int] = None,
-                                           kernel: Any = None
+                                           kernel: Any = None, *,
+                                           chunk_bounds: Any
                                            ) -> ConductivePlainCurlPlan:
     """Build a plan from bare device arrays — the gate's and benchmark's route.
 
@@ -872,6 +905,10 @@ def plan_conductive_plain_curl_from_arrays(sub_step: str, arrays: Dict[str, Any]
     and is not decoration — a mutation leg that silently launches the SHIPPED kernel
     reports every defect as uncaught, which is the harness defect the no-PML gate's
     §13.4 records at 4/4 real defects reported as identical.
+
+    ``chunk_bounds`` is REQUIRED and has no default, as on
+    :func:`no_pml.plan_plain_curl_from_arrays`: the record's presence word is a fact of
+    the caller's grid, not of the arrays' shape.
     """
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
 
@@ -893,11 +930,12 @@ def plan_conductive_plain_curl_from_arrays(sub_step: str, arrays: Dict[str, Any]
          for i, n in enumerate(targets)],
         [arrays["condinv_" + n] if flags[i] else None
          for i, n in enumerate(targets)],
-        inverse, derive, kernel=kernel)
+        inverse, derive, kernel=kernel, chunk_bounds=chunk_bounds)
 
 
 def plan_conductive_plain_step(fields: Any, pml: Any,
-                               block: Optional[int] = None) -> Dict[str, Any]:
+                               block: Optional[int] = None,
+                               chunk_layout: Any = None) -> Dict[str, Any]:
     """Ask each curl sub-step's predicate independently, report the covered subset.
 
     Returns ``{"plans": {...}, "refusals": {...}}`` rather than a step-plan class:
@@ -911,7 +949,8 @@ def plan_conductive_plain_step(fields: Any, pml: Any,
     for sub_step in SUB_STEPS:
         verdict = conductive_plain_curl_coverage(fields, pml, sub_step)
         if verdict.covered:
-            plan = plan_conductive_plain_curl(fields, pml, sub_step, block=block)
+            plan = plan_conductive_plain_curl(fields, pml, sub_step, block=block,
+                                              chunk_layout=chunk_layout)
             if plan is not None:
                 plans[sub_step] = plan
                 continue

@@ -312,7 +312,11 @@ def test_an_executor_left_ungoverned_is_caught(monkeypatch, tmp_path):
     leaves Triton compiling with no ftz attribute while CuPy is stripped — and
     that is the split with an extra step in front of it.
     """
-    monkeypatch.setenv("CUPY_CACHE_DIR", str(tmp_path / "cache"))
+    # Policy-suffixed, because the install below is a direct ``keep`` install with
+    # CuPy among its executors, which refuses a cache without the token by name where
+    # CuPy is installed. What this test measures is the Triton leg left undriven.
+    monkeypatch.setenv("CUPY_CACHE_DIR",
+                       str(tmp_path / f"cache-{policy_module.CUPY_CACHE_POLICY_TOKEN}"))
     stub_triton(monkeypatch)
     policy_module.install_subnormal_policy("keep", strict=True,
                                            executors=("host", "cupy"))

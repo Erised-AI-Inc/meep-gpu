@@ -92,14 +92,7 @@ from __future__ import annotations
 from typing import Any, Dict, Tuple
 
 from . import arms
-
-#: The three expansion licences the complex families bind, as
-#: :class:`.arms.StepContext` keys. THREE AND NOT ONE — the reason is in that
-#: class's docstring and the measurement is at ``predicate_battery.py:475-495``
-#: and :985-1005.
-LICENSE_COMPLEX = "complex"
-LICENSE_COMPLEX_NO_PML = "complex_no_pml"
-LICENSE_COMPLEX_OFFDIAG = "complex_offdiag"
+from .chunk_coverage import CHUNK_AXES_CYLINDRICAL, CHUNK_AXES_OFFDIAG
 
 _CURL_SLOTS: Tuple[str, ...] = ("step_B", "step_D")
 _CONSTITUTIVE_SLOTS: Tuple[str, ...] = ("update_H", "update_E")
@@ -149,6 +142,14 @@ def _predicate(module: str, name: str) -> Any:
 #:
 #: ``plan_class`` names a plan class other than :class:`.arms.CudaSlotPlan`; only
 #: the fill carries one (:data:`_PLAN_CLASSES`).
+#:
+#: ``chunk_axes`` names the axes along which the family's kernels index MEEP's
+#: chunks beyond the membership runs: every axis for the off-diagonal families
+#: (the per-chunk presence of an off-diagonal chi1inv array,
+#: anisotropic_averaging.cpp:316-320) and r for the cylindrical curls (the prefix
+#: restarted per chunk, step_db.cpp:104-118). Such an arm refuses a division whose
+#: record does not name those chunks (``chunk_coverage.chunk_division_refusal``); every
+#: arm, with or without the key, refuses a division no record describes.
 _TABLE: Tuple[Dict[str, Any], ...] = (
     # --- the two certified real-field families whose resolvers came first ----------
     # (2026-09-17, lifted from the harnesses that drive them). Four more rows carry a
@@ -166,6 +167,7 @@ _TABLE: Tuple[Dict[str, Any], ...] = (
 
     # --- the remaining real-field families ---------------------------------------
     {"family": "cuda_offdiag", "label": "off-diagonal",
+     "chunk_axes": CHUNK_AXES_OFFDIAG,
      "noun": "off-diagonal update_E", "slots": ("update_E",), "module": "coverage",
      "name": "covers_real_pml_offdiag_constitutive", "shape": "whole_slot",
      "kernel": "fused_update_E_pml_real_offdiag", "resolve": "offdiag"},
@@ -174,6 +176,7 @@ _TABLE: Tuple[Dict[str, Any], ...] = (
      "name": "covers_real_pml_ade_update_p", "shape": "whole_slot",
      "kernel": "fused_update_P_pml_real"},
     {"family": "cuda_cylindrical", "label": "cylindrical",
+     "chunk_axes": CHUNK_AXES_CYLINDRICAL,
      "noun": "cylindrical PML curl", "slots": _CURL_SLOTS,
      "module": "cylindrical_coverage", "name": "covers_real_pml_cylindrical_curl",
      # ``fused_cyl_{slot}_pml_real``, matching the complex sibling's spelling two
@@ -234,12 +237,14 @@ _TABLE: Tuple[Dict[str, Any], ...] = (
      "module": "dispersive_kernels", "name": "covers_no_pml_ade_update_p",
      "shape": "whole_slot", "kernel": "fused_update_P_pml_real"},
     {"family": "cuda_folded_offdiag", "label": "folded off-diagonal",
+     "chunk_axes": CHUNK_AXES_OFFDIAG,
      "noun": "folded off-diagonal update_E", "slots": ("update_E",),
      "module": "folded_offdiag_kernels",
      "name": "covers_folded_offdiag_composition", "shape": "whole_slot",
      "kernel": "fused_update_E_pml_real_folded_offdiag",
      "resolve": "folded_offdiag"},
     {"family": "cuda_dispersive_offdiag", "label": "dispersive off-diagonal",
+     "chunk_axes": CHUNK_AXES_OFFDIAG,
      "noun": "dispersive off-diagonal update_E", "slots": ("update_E",),
      "module": "dispersive_offdiag_update_e",
      "name": "covers_real_pml_dispersive_offdiag_constitutive",
@@ -247,46 +252,47 @@ _TABLE: Tuple[Dict[str, Any], ...] = (
      "kernel": "fused_update_E_pml_real_folded_offdiag_dispersive",
      "resolve": "dispersive_offdiag"},
 
-    # --- the complex families, each with the licence its arithmetic needs ---------
+    # --- the complex families --------------------------------------------------
     {"family": "cuda_complex", "label": "complex", "noun": "complex PML curl",
      "slots": _CURL_SLOTS, "module": "coverage",
-     "name": "covers_real_pml_complex_curl", "shape": "licensed_curl_by_sub_step",
-     "license": LICENSE_COMPLEX, "kernel": "fused_{slot}_pml_complex_bloch"},
+     "name": "covers_real_pml_complex_curl", "shape": "curl_by_sub_step",
+     "kernel": "fused_{slot}_pml_complex_bloch"},
     {"family": "cuda_complex", "label": "complex",
      "noun": "complex PML constitutive", "slots": _CONSTITUTIVE_SLOTS,
      "module": "coverage", "name": "covers_real_pml_complex_constitutive",
-     "shape": "licensed_constitutive_by_side", "license": LICENSE_COMPLEX,
+     "shape": "constitutive_by_side",
      "kernel": "fused_{slot}_pml_complex_bloch"},
     {"family": "cuda_cyl_complex", "label": "cylindrical complex",
+     "chunk_axes": CHUNK_AXES_CYLINDRICAL,
      "noun": "cylindrical complex curl", "slots": _CURL_SLOTS,
      "module": "cylindrical_coverage",
      "name": "covers_pml_cylindrical_complex_curl",
-     "shape": "licensed_curl_by_sub_step", "license": LICENSE_COMPLEX,
+     "shape": "curl_by_sub_step",
      "kernel": "fused_cyl_{slot}_pml_complex"},
     {"family": "cuda_complex_folded", "label": "folded complex",
      "noun": "folded complex curl", "slots": _CURL_SLOTS,
      "module": "complex_folded_kernels", "name": "covers_complex_folded_curl",
-     "shape": "licensed_curl_by_sub_step", "license": LICENSE_COMPLEX,
+     "shape": "curl_by_sub_step",
      "kernel": "fused_{slot}_pml_complex_folded"},
     {"family": "cuda_complex_folded", "label": "folded complex",
      "noun": "folded complex constitutive", "slots": _CONSTITUTIVE_SLOTS,
      "module": "complex_folded_kernels",
      "name": "covers_complex_folded_constitutive",
-     "shape": "licensed_constitutive_by_side", "license": LICENSE_COMPLEX,
+     "shape": "constitutive_by_side",
      "kernel": "fused_{slot}_pml_complex_bloch"},
     {"family": "cuda_complex_beta", "label": "complex beta",
      "noun": "complex beta curl", "slots": _CURL_SLOTS,
      "module": "complex_beta_kernels", "name": "covers_complex_beta_curl",
-     "shape": "licensed_curl_by_sub_step", "license": LICENSE_COMPLEX,
+     "shape": "curl_by_sub_step",
      "kernel": "fused_{slot}_pml_complex_beta"},
     {"family": "cuda_complex_beta", "label": "complex beta",
      "noun": "complex beta constitutive", "slots": _CONSTITUTIVE_SLOTS,
      "module": "complex_beta_kernels",
      "name": "covers_complex_beta_constitutive",
-     "shape": "licensed_constitutive_by_side", "license": LICENSE_COMPLEX,
+     "shape": "constitutive_by_side",
      "kernel": "fused_{slot}_pml_complex_bloch"},
 
-    # --- complex with NO absorber: the seven-pattern licence ----------------------
+    # --- complex with NO absorber ---------------------------------------------
     #
     # ``update_H`` IS DELIBERATELY ABSENT from this family. Under an inert layer
     # ``stepping.update_H`` returns at :916-917 before reading an array whatever the
@@ -297,35 +303,35 @@ _TABLE: Tuple[Dict[str, Any], ...] = (
     {"family": "cuda_complex_no_pml", "label": "complex no-PML curl",
      "noun": "complex no-absorber curl", "slots": _CURL_SLOTS,
      "module": "complex_no_pml_kernels", "name": "covers_complex_no_pml_curl",
-     "shape": "licensed_curl_by_sub_step", "license": LICENSE_COMPLEX_NO_PML,
+     "shape": "curl_by_sub_step",
      "kernel": "fused_{slot}_no_pml_complex[_conductive]"},
     {"family": "cuda_complex_no_pml", "label": "complex no-PML stored E",
      "noun": "complex no-absorber stored update_E", "slots": ("update_E",),
      "module": "complex_no_pml_kernels", "name": "covers_complex_no_pml_stored_e",
-     "shape": "licensed_whole_slot", "license": LICENSE_COMPLEX_NO_PML,
+     "shape": "whole_slot",
      "kernel": "fused_update_E_no_pml_complex_stored"},
     {"family": "cuda_complex_no_pml", "label": "complex no-PML ADE",
      "noun": "complex no-absorber update_P", "slots": ("update_P",),
      "module": "complex_no_pml_kernels",
-     "name": "covers_complex_no_pml_ade_update_p", "shape": "licensed_whole_slot",
-     "license": LICENSE_COMPLEX_NO_PML,
+     "name": "covers_complex_no_pml_ade_update_p", "shape": "whole_slot",
      "kernel": "fused_update_P_no_pml_complex[_uniform]"},
 
     # --- the complex tensor row: TWO arms on one slot, separated by the absorber ---
     {"family": "cuda_complex_offdiag", "label": "complex off-diagonal PML",
+     "chunk_axes": CHUNK_AXES_OFFDIAG,
      "noun": "complex off-diagonal PML update_E", "slots": ("update_E",),
      "module": "complex_offdiag_update_e",
-     "name": "covers_complex_offdiag_pml_update_e", "shape": "licensed_whole_slot",
-     "license": LICENSE_COMPLEX_OFFDIAG,
+     "name": "covers_complex_offdiag_pml_update_e", "shape": "whole_slot",
      # This family is the one whose labels the census reads off the module itself
      # (``arm.KERNEL_NAMES[winner]``, ``predicate_battery.py:1063``) rather than
      # spelling, so these two are the module's own names and carry no ``fused_``.
      "kernel": "update_E_pml_complex_offdiag"},
     {"family": "cuda_complex_offdiag", "label": "complex off-diagonal no-PML",
+     "chunk_axes": CHUNK_AXES_OFFDIAG,
      "noun": "complex off-diagonal no-absorber update_E", "slots": ("update_E",),
      "module": "complex_offdiag_update_e",
      "name": "covers_complex_no_pml_offdiag_update_e",
-     "shape": "licensed_whole_slot", "license": LICENSE_COMPLEX_OFFDIAG,
+     "shape": "whole_slot",
      "kernel": "update_E_no_pml_complex_offdiag"},
 
     # --- the fill slots (2026-09-27): the certified real-storage in-seam kernels ---
@@ -570,19 +576,17 @@ NOT_REGISTERED: Dict[str, str] = {
         "take the two it spans there either",
     "cylindrical_real_fused_hd_pair.covers_cylindrical_real_fused_hd_pair":
         "a FUSED PRODUCT spanning update_H -> step_D on a REAL m = 0 Dcyl grid in "
-        "TWO launches (the certified update_H recompute plus the fused pre-cumsum "
-        "increment; xp.cumsum untouched on the array path; the certified "
-        "cyl_step_D_pml_real); same shape and same exclusion as fused_hd_pair. Its "
-        "two slots are served by the cuda_constitutive ordinary arm and the "
-        "cuda_cylindrical curl arm, and it declares INSTALLABLE = False: the "
-        "cylindrical launch algebra favours it and the composer's 4 - pairs rule "
-        "does not know it, so the flip is a measured composition gate",
+        "THREE launches (update_H into scratch, the column-serial radial scan over "
+        "the scratch Hp, the certified cyl_step_D_pml_real); same shape and same "
+        "exclusion as fused_hd_pair. Its two slots are served by the "
+        "cuda_constitutive ordinary arm and the cuda_cylindrical curl arm, and it "
+        "declares INSTALLABLE = False: under MEEP's per-chunk radial sum the D "
+        "side's own baseline is three launches too, so it saves none",
     "cylindrical_fused_hd_pair.covers_cylindrical_fused_hd_pair":
-        "the COMPLEX Dcyl twin of the row above, any m, in TWO launches with the "
-        "increment's multiply and divide spelled as CuPy's device path spells them "
-        "(FMA_V1 mul_field_left; the scaled complex division); same shape and same "
-        "exclusion. Its two slots are served by the cuda_complex constitutive arm "
-        "and the cuda_cyl_complex curl arm, and it declares INSTALLABLE = False",
+        "the COMPLEX Dcyl twin of the row above, any m, in THREE launches (the scan "
+        "runs per stored part); same shape and same exclusion. Its two slots are "
+        "served by the cuda_complex constitutive arm and the cuda_cyl_complex curl "
+        "arm, and it declares INSTALLABLE = False",
     "conductive_bfast_fused_hd_pair.covers_conductive_bfast_fused_hd_pair":
         "a FUSED PRODUCT spanning update_H -> step_D on the two curl tails the "
         "Cartesian H->D product does not reach, in ONE launch and TWO variants -- the "
@@ -629,9 +633,7 @@ NOT_REGISTERED: Dict[str, str] = {
         "rather than loaded from another block's output). Same shape and same "
         "exclusion as every fused product on this list: it bids at no slot, and its "
         "two are served by the cuda_complex_folded 'folded complex' curl arm and the "
-        "cuda_complex_offdiag 'complex off-diagonal PML' arm. It is the FIRST product "
-        "here whose two halves sit in different expansion-licence families, so its "
-        "predicate takes one licence per half rather than one for both",
+        "cuda_complex_offdiag 'complex off-diagonal PML' arm",
     "complex_no_pml_offdiag_fused_electric_pair."
     "covers_complex_no_pml_offdiag_fused_electric_pair":
         "the NO-ABSORBER sibling of the row above, spanning step_D -> zero_metal_D -> "
@@ -744,7 +746,7 @@ def register_all() -> Tuple[arms.ArmSpec, ...]:
     for row in _TABLE:
         predicate = _predicate(row["module"], row["name"])
         coverage = arms.coverage_adapter(predicate, row["shape"],
-                                         row.get("license"))
+                                         chunk_axes=row.get("chunk_axes", ()))
         resolve = _RESOLVERS.get(row.get("resolve"))
         launch = _LAUNCHERS.get(row.get("resolve"))
         plan_class = _PLAN_CLASSES.get(row.get("plan_class"), arms.CudaSlotPlan)

@@ -73,20 +73,6 @@ CURL_SUB_STEPS: Tuple[str, ...] = ("step_B", "step_D")
 #: The refusal this replay is about, verbatim from the shipped clause.
 DCYL_REFUSAL = "cylindrical (Dcyl): prefix-sum radial derivative and axis-row rules"
 
-#: The policy and licence the CENSUS BATTERY used, restated here so the replay
-#: asks the predicate the same question the record answered. ``predicate_battery``
-#: loads the 'keep' probe artifact and runs ``expansion_license`` over it; the
-#: verdict that comes back classifies FMA_V1 on a measured basis with no refusals,
-#: which is the shape reproduced here. A PLACEHOLDER STRING WOULD BE REFUSED with
-#: "the expansion licence is str, not the verdict dict" -- a refusal about the
-#: harness reported as one about the corpus, and the reason this is a dict.
-COMPLEX_POLICY = "keep"
-COMPLEX_LICENCE: Dict[str, Any] = {
-    "arm": "FMA_V1", "expansion": 1, "basis": "measured", "refusals": [],
-    "policy_resolved": COMPLEX_POLICY,
-}
-
-
 class _CupyNamed:
     """NumPy wearing CuPy's ``__name__`` -- the census's own shim, same spelling."""
 
@@ -226,28 +212,21 @@ def verdict_before(configuration: Dict[str, Any], side: str) -> Tuple[bool, str]
     is faithful.
     """
     fields, pml, grid = stand_ins(configuration)
-    refusal = coverage.complex_expansion_refusal(COMPLEX_LICENCE, COMPLEX_POLICY)
-    if refusal is not None:
-        return False, refusal
-    refusal = coverage._complex_grid_refusal(fields, pml, grid,
-                                             admit_cylindrical=False)
-    if refusal is not None:
-        return False, refusal
     return coverage.covers_real_pml_complex_constitutive(
-        fields, pml, grid, side, COMPLEX_LICENCE, COMPLEX_POLICY)
+        fields, pml, grid, side)
 
 
 def verdict_after(configuration: Dict[str, Any], side: str) -> Tuple[bool, str]:
     """The SHIPPED predicate, asked directly."""
     fields, pml, grid = stand_ins(configuration)
     return coverage.covers_real_pml_complex_constitutive(
-        fields, pml, grid, side, COMPLEX_LICENCE, COMPLEX_POLICY)
+        fields, pml, grid, side)
 
 
 def curl_verdict(configuration: Dict[str, Any], sub_step: str) -> Tuple[bool, str]:
     fields, pml, grid = stand_ins(configuration)
     return coverage.covers_real_pml_complex_curl(
-        fields, pml, grid, sub_step, COMPLEX_LICENCE, COMPLEX_POLICY)
+        fields, pml, grid, sub_step)
 
 
 # ---------------------------------------------------------------------------

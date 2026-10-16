@@ -194,7 +194,6 @@ class Product:
                  source: Callable[..., str],
                  parent_curl_source: Callable[..., str],
                  singles: Callable[[Any, Residency], Tuple[Any, Any]],
-                 expansion: Optional[Callable[[], Optional[str]]],
                  complex_storage: bool,
                  cases: Sequence[Tuple[str, Dict[str, Any]]],
                  cell_arms: Mapping[str, Tuple[str, str]],
@@ -212,7 +211,6 @@ class Product:
         self.source = source
         self.parent_curl_source = parent_curl_source
         self.singles = singles
-        self.expansion = expansion
         self.complex_storage = bool(complex_storage)
         self.cases = tuple(cases)
         self.cell_arms = dict(cell_arms)
@@ -307,6 +305,11 @@ def build_driver(spec: Mapping[str, Any], seed: int,
     for array in stored_volumes(driver.fields).values():
         array[...] = (0.37 * rng.standard_normal(array.shape)).astype(array.dtype)
         array *= scale
+    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # ``stepping.separate_h_from_b`` must not run again on it -- the array path would
+    # copy B into H and f_w on the dsigw cells at the first update_H, and no weld does.
+    # The composition matrix's seeds carry the same flag.
+    driver.fields.h_separated = True
     driver.invalidate_fast_path()
     pin_array_path(driver)
     return driver
@@ -458,8 +461,10 @@ def arrangement_weld(product: Product, driver: Any, *,
         keywords["codes"] = tuple(codes)
     if beta_words is not None:
         keywords["beta_words"] = tuple(beta_words)
-    if product.expansion is not None and "probe" in _planner_parameters(product):
-        pass  # the planner loads its own probe; the gate never supplies a default
+    if "chunk_bounds" in _planner_parameters(product):
+        # The chunk record of the division the driver steps with: a planner that
+        # binds one has no default for it (bit_parity_0_10, KERNELS.md §2).
+        keywords["chunk_bounds"] = driver.chunk_bounds_record()
     plan = product.planner(driver.fields, driver.pml,
                            tuple(getattr(driver, "_sources", ())), residency,
                            **keywords)
@@ -555,19 +560,21 @@ def leg_driver_order(product: Product) -> Dict[str, Any]:
     # between the two consult lines" walk counts the fallback the consult exists to
     # skip. The seam is what runs when the consult answered TRUE, so the leading
     # slot's own array call is classified with it and everything else must be the
-    # withdraw.
+    # magnetic f_minus_p restore, which writes B alone and which step_D does not read
+    # (withdraw_hoist.SEAM_PASS); an integrated source stands no withdraw here.
     consulted_fallback = "update_H(self.fields"
     in_the_span = [row for row in between
                    if not row["statement"].startswith(consulted_fallback)]
-    only_the_withdraw = all("withdraw" in row["statement"] or
-                            row["statement"].startswith("for source in electric")
-                            for row in in_the_span)
+    only_the_restore = (tuple(row["statement"] for row in in_the_span)
+                        == ("if self._stores_H():",
+                            "f_minus_p_end(self.fields, f_minus_p_B)",
+                            "f_minus_p_B = None"))
     fills_outside = {slot: number for slot, number in consults.items()
                      if slot not in ("update_H", "step_D")}
     fills_inside = {slot: number for slot, number in fills_outside.items()
                     if opens < number < closes}
     passed = (tuple(product.module.REPLACES) == ("update_H", "step_D")
-              and closes > opens and only_the_withdraw and not fills_inside
+              and closes > opens and only_the_restore and not fills_inside
               and product.module.CARRIES_DEPOSIT_REPAIR is False)
     return {
         "passed": passed,
@@ -577,7 +584,7 @@ def leg_driver_order(product: Product) -> Dict[str, Any]:
         "statements_in_the_span": in_the_span,
         "the_leading_slots_own_array_call": [row for row in between
                                              if row not in in_the_span],
-        "only_the_withdraw_sits_between_them": only_the_withdraw,
+        "only_the_magnetic_f_minus_p_restore_sits_between_them": only_the_restore,
         "fill_consult_lines": fills_outside,
         "fill_consults_inside_the_span": fills_inside,
         "carries_deposit_repair": product.module.CARRIES_DEPOSIT_REPAIR,
@@ -657,9 +664,8 @@ def leg_transcription(product: Product, driver: Any) -> Dict[str, Any]:
     variant = variant_of(product, driver)
     codes = resolved_codes(product, driver)
     phased = _phased_of(product, driver)
-    expansion = product.expansion() if product.expansion is not None else None
-    source = _emit(product, variant, codes, phased, expansion)
-    parent = product.parent_curl_source(variant, codes, phased, expansion)
+    source = _emit(product, variant, codes, phased)
+    parent = product.parent_curl_source(variant, codes, phased)
 
     parent_body = parent.split(BODY_ANCHOR, 1)[1][: -len("}\n")]
     fused_curl = source.split("__CURL_MARK__", 1)[-1]
@@ -703,7 +709,7 @@ def leg_transcription(product: Product, driver: Any) -> Dict[str, Any]:
     return {
         "passed": passed,
         "variant": variant, "codes": list(codes), "codes_label": codes_label(codes),
-        "phased": list(phased), "expansion": expansion,
+        "phased": list(phased),
         "parent_lines": len(parent_lines),
         "shifted_loads_redirected": len(redirected),
         "own_cell_loads_taken_from_the_register": len(own_loads),
@@ -739,15 +745,14 @@ def _phased_of(product: Product, driver: Any) -> Tuple[int, int, int]:
 
 
 def _emit(product: Product, variant: str, codes: Sequence[int],
-          phased: Sequence[int], expansion: Optional[str],
-          contract: Optional[str] = None) -> str:
+          phased: Sequence[int], contract: Optional[str] = None) -> str:
     """This product's shipped source, with the arguments it actually takes."""
     from meep_gpu.metal_kernels import shaders  # noqa: PLC0415
 
     mode = shaders.CONTRACT_OFF if contract is None else contract
-    if expansion is None:
+    if not product.complex_storage:
         return product.source(variant, codes, mode)
-    return product.source(variant, codes, phased, expansion, mode)
+    return product.source(variant, codes, phased, mode)
 
 
 def leg_refusal(product: Product, refusals: Sequence[Dict[str, Any]]
@@ -891,8 +896,7 @@ def leg_binding_ceiling(product: Product, drivers: Sequence[Any]) -> Dict[str, A
         variant = variant_of(product, driver)
         codes = resolved_codes(product, driver)
         phased = _phased_of(product, driver)
-        expansion = product.expansion() if product.expansion is not None else None
-        source = _emit(product, variant, codes, phased, expansion)
+        source = _emit(product, variant, codes, phased)
         declared = (source.split(f"kernel void {product.module.KERNEL}(", 1)[1]
                     .split("uint idx [[thread_position_in_grid]])", 1)[0]
                     .count("[[buffer("))
@@ -940,6 +944,66 @@ def _bisect_source(pointers: int) -> str:
         "    uint idx [[thread_position_in_grid]])", "{",
         "    if (idx >= prm.n_elem) { return; }",
         f"    v0[idx] = ({body}) + prm.dtdx;", "}", ""))
+
+
+# ---------------------------------------------------------------------------
+# The auxiliary contract (bit_parity_0_10, KERNELS.md §1 C2)
+# ---------------------------------------------------------------------------
+
+#: vec.hpp's cycle: target t's (dsig, dsigu) axes, the same on both curl sides.
+_CURL_CYCLE: Tuple[Tuple[int, int], ...] = ((1, 2), (2, 0), (0, 1))
+
+
+def _membership(driver: Any, half_integer: bool, axis: int) -> Any:
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+
+    return membership_from_record(np.asarray(driver.chunk_bounds_record()),
+                                  half_integer, axis, int(driver.grid.shape[axis]))
+
+
+def contract_untouched_auxiliaries(driver: Any) -> Tuple[str, ...]:
+    """The auxiliary volumes the auxiliary contract never touches on this driver.
+
+    An ``fu_`` word is read and written only where its component's dsigu layer is
+    carried, an ``f_w_`` word only where its own (dsigw) layer is -- on the record's
+    membership lines, half-integer for the B curl and ``update_E``, integer for the D
+    curl and ``update_H``. A volume whose line is empty (an invariant axis, or an axis
+    with no layer) moves on NO path, the array path's included, so a movement floor
+    cannot require it to move; it is still compared word for word.
+    """
+    out: List[str] = []
+    for side, half in (("B", True), ("D", False)):
+        for target, (_dsig, dsigu) in enumerate(_CURL_CYCLE):
+            if not _membership(driver, half, dsigu).any():
+                out.append(f"fu_{side}{'xyz'[target]}")
+    for side, half in (("H", False), ("E", True)):
+        for axis in range(3):
+            if not _membership(driver, half, axis).any():
+                out.append(f"f_w_{side}{'xyz'[axis]}")
+    return tuple(out)
+
+
+def masked_planes_reaching_an_auxiliary(driver: Any, source: str) -> List[str]:
+    """Which of the D curl's cell-0 mask lines feed an auxiliary word on this driver.
+
+    A masked target's curl at cell 0 of an axis reaches a stored word only through
+    ``fu_D`` (the fills restore ``D`` on those planes), and under the auxiliary
+    contract ``fu_D`` is written only where the target's dsigu layer is carried (the
+    integer record). So a mask line ``curlN = at_a ? ...`` is observable after a
+    complete step exactly where that layer meets plane 0 of axis ``a``.
+    """
+    reached: List[str] = []
+    for line in source.splitlines():
+        stripped = line.strip()
+        if not (stripped.startswith("curl") and " = at_" in stripped):
+            continue
+        target = int(stripped[len("curl")])
+        axis = "xyz".index(stripped.split(" = at_", 1)[1][0])
+        dsigu = _CURL_CYCLE[target][1]
+        line_of = _membership(driver, False, dsigu)
+        if (line_of[0] if dsigu == axis else line_of.any()):
+            reached.append(f"curl{target} on {'xyz'[axis]}")
+    return reached
 
 
 # ---------------------------------------------------------------------------
@@ -1019,10 +1083,15 @@ def leg_product(product: Product, steps: int) -> Dict[str, Any]:
     rows: List[Dict[str, Any]] = []
     for name, spec in product.cases:
         row = run_case(product, name, spec, steps)
+        # Under the auxiliary contract an auxiliary whose layer line is empty moves on
+        # no path, so it is exempt from the movement floor and still compared.
+        exempt = contract_untouched_auxiliaries(build_driver(spec, 7, scale_bits=0))
+        row["auxiliaries_the_contract_leaves_untouched"] = list(exempt)
         row["passed"] = bool(
             row["identical_vs_array"] and row["singles_identical_vs_array"]
             and row["launch_counters_agree"] and row["dispatch_shape_is_one_per_step"]
-            and row["steps_compared"] == steps and not row["arrays_that_never_moved"]
+            and row["steps_compared"] == steps
+            and not (set(row["arrays_that_never_moved"]) - set(exempt))
             and row["every_arrangement_gave_the_engine_its_volumes_back"]
             and row["step_error"] is None)
         rows.append(row)
@@ -1226,8 +1295,7 @@ def leg_ghost_observability(product: Product, steps: int) -> Dict[str, Any]:
         codes = resolved_codes(product, driver)
         variant = variant_of(product, driver)
         phased = _phased_of(product, driver)
-        expansion = product.expansion() if product.expansion is not None else None
-        source = _emit(product, variant, codes, phased, expansion)
+        source = _emit(product, variant, codes, phased)
         ghost = getattr(product.module, "_GHOST", "0.0f")
         sentinel = ("float2(0.5f, 0.25f)" if product.complex_storage else "0.5f")
         marker = f" : {ghost};"
@@ -1293,6 +1361,13 @@ def leg_ghost_observability(product: Product, steps: int) -> Dict[str, Any]:
         earned_row = run_case(product, name, spec, steps, with_composer=False,
                               functions={shaders.CONTRACT_OFF: arm_b}, scale_bits=0)
         control_bites = not earned_row["identical_vs_array"]
+        # THE CONTROL CAN ONLY BITE WHERE A MASKED PLANE FEEDS A STORED WORD. The fills
+        # restore D on the masked planes, and under the auxiliary contract fu_D is
+        # written only on the target's dsigu cells, so where no masked plane meets a
+        # dsigu layer (a 2-D fold, whose dsigu axes are the invariant z and the folded
+        # axis's high face) the mask is unobservable after a complete step and arm B is
+        # recorded rather than required.
+        reached = masked_planes_reaching_an_auxiliary(driver, source)
         rows.append({
             "case": name, "codes_label": codes_label(codes),
             "ghost_sites_armed": armed, "sentinel": sentinel,
@@ -1303,7 +1378,9 @@ def leg_ghost_observability(product: Product, steps: int) -> Dict[str, Any]:
             "sentinel_plus_dropped_mask_diverged": control_bites,
             "control_words": earned_row["differing_words_final"],
             "control_volumes": earned_row["differing_volumes_final"],
-            "passed": bool(sentinel_null and control_bites),
+            "masked_planes_reaching_an_auxiliary": reached,
+            "control_required": bool(reached),
+            "passed": bool(sentinel_null and (control_bites or not reached)),
             "verdict": ("the ghost value is DEAD: its only consumers are the curl "
                         "targets the cell-0 ownership mask zeroes. The paired control "
                         "shows the branch IS executed and the MASK is what kills it"),
@@ -1347,8 +1424,7 @@ def leg_masks(product: Product, steps: int,
     variant = variant_of(product, driver)
     codes = resolved_codes(product, driver)
     phased = _phased_of(product, driver)
-    expansion = product.expansion() if product.expansion is not None else None
-    shipped = _emit(product, variant, codes, phased, expansion)
+    shipped = _emit(product, variant, codes, phased)
     rows: Dict[str, Any] = {}
     for label, (builder, why) in sorted(builders.items()):
         edited = builder(shipped)
@@ -1590,9 +1666,8 @@ def leg_mutation(product: Product, steps: int) -> Dict[str, Any]:
             variant = variant_of(product, driver)
             codes = resolved_codes(product, driver)
             phased = _phased_of(product, driver)
-            expansion = product.expansion() if product.expansion is not None else None
             try:
-                mutated = builder(variant, codes, phased, expansion)
+                mutated = builder(variant, codes, phased)
             except Exception as exc:  # noqa: BLE001 - a needle that stopped matching
                 rows.append({"mutation": label, "case": case_name, "passed": False,
                              "reason": f"could not arm: {type(exc).__name__}: {exc}"})
@@ -1670,9 +1745,8 @@ def leg_byte_neutral(product: Product, steps: int, edits: Sequence[Dict[str, Any
         variant = variant_of(product, driver)
         codes = resolved_codes(product, driver)
         phased = _phased_of(product, driver)
-        expansion = product.expansion() if product.expansion is not None else None
         try:
-            edited = entry["build"](variant, codes, phased, expansion)
+            edited = entry["build"](variant, codes, phased)
             compiled = getattr(compile_source(edited), product.module.KERNEL)
         except Exception as exc:  # noqa: BLE001
             rows.append({"edit": entry["name"], "passed": False,
@@ -1706,8 +1780,7 @@ def leg_disarm(product: Product, steps: int) -> Dict[str, Any]:
         variant = variant_of(product, driver)
         codes = resolved_codes(product, driver)
         phased = _phased_of(product, driver)
-        expansion = product.expansion() if product.expansion is not None else None
-        shipped = _emit(product, variant, codes, phased, expansion)
+        shipped = _emit(product, variant, codes, phased)
         compiled = getattr(compile_source(shipped), product.module.KERNEL)
         row = run_case(product, case_name, spec, steps, with_composer=False,
                        functions={shaders.CONTRACT_OFF: compiled}, scale_bits=0)
@@ -1744,11 +1817,17 @@ def lift_basis(product: Product, results: Path) -> Tuple[List[dict], Dict[str, A
 
     DERIVED from the census's own ``plan_step.selected`` -- the arms the composer chose
     for each row -- never from a list here, so a row that moved cells moves with it.
+    ``lift_host`` supplies the interpreter (this one; the path the census recorded is
+    provenance), the row's declared needs, and the four input files, each required by
+    name.
     """
+    import lift_host  # noqa: PLC0415
+
     census = results / product.census
     seam = results / product.seam_record
-    if not census.is_dir() or not seam.is_dir():
-        raise SystemExit(f"the lift leg needs {census} and {seam}")
+    missing = lift_host.missing_inputs(results, product.census, product.seam_record)
+    if missing:
+        raise SystemExit(lift_host.missing_reason(results, missing))
     seam_rows = {row["label"]: row for row in load_jsonl(seam / "h_to_d_seam.jsonl")}
     wanted = {tuple(arms): variant for variant, arms in product.cell_arms.items()}
     rows: List[dict] = []
@@ -1774,8 +1853,9 @@ def lift_basis(product: Product, results: Path) -> Tuple[List[dict], Dict[str, A
                 # than by the engine.
                 "case": record.get("case") or record["row"],
                 "module": record.get("module") or seam_row.get("module"),
-                "interpreter": (record.get("interpreter") or record.get("python")
-                                or seam_row.get("interpreter") or sys.executable),
+                # WHERE THE CHILD RUNS: this gate's interpreter. The path the census
+                # recorded is kept as recorded_interpreter and never launched.
+                **lift_host.row_fields(record, seam_row),
                 "grid_cells": record.get("grid_cells"),
                 "grid_shape": record.get("grid_shape"),
                 "withdraw_in_seam": bool((seam_row.get("h_to_d_seam") or {})
@@ -1810,11 +1890,17 @@ def carries_a_measurement(path: Path, key: str) -> bool:
 def leg_lift(product: Product, out_dir: Path, steps: int,
              max_cells: Optional[int], timeout: float, resume: bool,
              only: Optional[Sequence[str]]) -> Dict[str, Any]:
-    """Every corpus row in the product's cells, re-lifted in its own interpreter.
+    """Every corpus row in the product's cells, re-lifted under this gate's interpreter.
+
+    A row whose declared needs (``lift_host.LIFT_RECORD_NEEDS``) this host lacks is not
+    launched: it is named under ``unlifted_on_this_host`` with the probe's reason and
+    counted out of the denominator, as the CUDA gate counts out a row its host cannot
+    lift.
 
     Progress reporting: one JSON per row as it lands, plus a progress log the child appends to per
     step, so an interrupted lift keeps everything up to the failure.
     """
+    import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census_module  # noqa: PLC0415
     import subprocess  # noqa: PLC0415
 
@@ -1833,7 +1919,6 @@ def leg_lift(product: Product, out_dir: Path, steps: int,
         return {"passed": False, "facts": facts,
                 "reason": (f"the MEEP corpus is not at {examples_dir} / {tests_dir}; "
                            f"refused rather than measured on nothing")}
-    probe_path = API_ROOT / census_module.PROBE
     prefix = product.lift_environment_prefix
     environment = dict(os.environ)
     environment.update({
@@ -1867,8 +1952,25 @@ def leg_lift(product: Product, out_dir: Path, steps: int,
                 encoding="utf-8", errors="replace"):
             needs_shim.add(module_name)
     key = f"{product.family}_gate"
+    # WHAT THIS HOST CANNOT LIFT, asked once before any child: the needs the rows
+    # declare, probed under this interpreter (lift_host).
+    host = lift_host.host_check(rows, environment, work)
+    if host["unreadable"]:
+        return {"passed": False, "facts": facts, "host_capabilities": host,
+                "reason": host["unreadable"]}
+    unlifted = host["unlifted_on_this_host"]
     measured: List[dict] = []
     for index, row in enumerate(rows, start=1):
+        if row["label"] in unlifted:
+            entry = lift_host.unlifted_entry(row, unlifted[row["label"]])
+            measured.append(entry)
+            with (lift_dir / "rows.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(entry, default=str) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            log(f"lift {index}/{len(rows)} {row['label']}: UNLIFTED ON THIS HOST, "
+                f"{unlifted[row['label']]}")
+            continue
         record_path = per_row / (row["label"].replace(":", "__").replace(".", "_")
                                  + ".json")
         environment[f"{prefix}_LABEL"] = row["label"]
@@ -1880,11 +1982,11 @@ def leg_lift(product: Product, out_dir: Path, steps: int,
             record_path, key)
         if not reusable:
             if row["leg"] == "examples":
-                command = [row["interpreter"], "-u",
+                command = [sys.executable, "-u",
                            str(Path(census_module.__file__).resolve()),
                            "--leg", "examples", "--child-script",
                            str(examples_dir / row["row"]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", product.gate_stem]
             elif not row["module"]:
@@ -1893,13 +1995,13 @@ def leg_lift(product: Product, out_dir: Path, steps: int,
                 log(f"lift {index}/{len(rows)} {row['label']}: REFUSED, no module")
                 continue
             else:
-                command = [row["interpreter"], "-u",
+                command = [sys.executable, "-u",
                            str(Path(census_module.__file__).resolve()),
                            "--leg", "tests", "--child-module",
                            str(tests_dir / row["module"]),
                            "--child-cases", json.dumps([row.get("case")
                                                         or row["row"]]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", product.gate_stem]
             log(f"lift {index}/{len(rows)} {row['label']} start "
@@ -1942,15 +2044,27 @@ def leg_lift(product: Product, out_dir: Path, steps: int,
                  if int(entry["gate"].get("steps_compared") or 0)
                  >= LIFT_CLEAN_STEP_FLOOR]
     withdraw_rows = [entry for entry in measured if entry["withdraw_in_seam"]]
-    refused_withdraw = [entry for entry in withdraw_rows
-                        if not (entry.get("gate") or {}).get("predicate_admits", True)]
+    unmeasured = [entry["label"] for entry in measured
+                  if not entry.get("measured") and entry["label"] not in unlifted]
+    refused = [entry for entry in measured
+               if (entry.get("gate") or {}).get("predicate_admits") is False]
+    # THE 0.10 REFUSALS (``_shared.lift_refusal_accounting``): the seam record's
+    # ``withdraw_in_seam`` rows are admitted since entry 25, and a row carrying a
+    # magnetic source is refused by ``launch.h_start_reasons``, derived from the row's
+    # own sources. Every row is either admitted or refused, and at least one drives:
+    # "no row disagreed" over no rows is not a pass.
+    accounting = _shared.lift_refusal_accounting(
+        {entry["label"]: (entry.get("gate") or {}) for entry in measured},
+        [entry["label"] for entry in withdraw_rows])
     return {
         "passed": bool(measured)
+        and not unmeasured
+        and bool(driven)
         and len(identical) == len(driven)
         and len(driven) == len(admitted)
-        and len(admitted) == len(measured) - len(withdraw_rows)
+        and len(admitted) + len(refused) == len(measured) - len(unlifted)
         and len(floor_met) == len(identical)
-        and len(refused_withdraw) == len(withdraw_rows),
+        and accounting["passed"],
         "facts": facts,
         "rows_in_the_cells": len(measured),
         "rows_measured": sum(1 for entry in measured if entry["measured"]),
@@ -1960,7 +2074,12 @@ def leg_lift(product: Product, out_dir: Path, steps: int,
         "rows_reaching_the_clean_step_floor": len(floor_met),
         "clean_step_floor": LIFT_CLEAN_STEP_FLOOR,
         "rows_with_a_standing_withdraw": len(withdraw_rows),
-        "withdraw_rows_refused_by_name": len(refused_withdraw),
+        "rows_unmeasured": unmeasured,
+        "unlifted_on_this_host": unlifted,
+        "rows_the_engine_was_asked_about": len(measured) - len(unlifted),
+        "host_capabilities": host,
+        "rows_the_predicate_refused": len(refused),
+        "refusal_accounting": accounting,
         "words_compared": int(sum(int((entry.get("gate") or {}).get("words_compared")
                                       or 0) for entry in driven)),
         "rows": measured,
@@ -2020,7 +2139,6 @@ def evaluate_row(product: Product, driver: Any, steps: int) -> Dict[str, Any]:
         "differing_volumes_final": leg["differing_volumes_final"],
         "launches": leg["launches"],
         "dispatched": leg["dispatched"], "absorbed": leg["absorbed"],
-        "expansion": getattr(plan, "expansion", None),
     })
     return block
 

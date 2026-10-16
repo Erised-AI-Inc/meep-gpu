@@ -373,19 +373,16 @@ def _release_module(backend: str):
         return (metal_dispatch.released_fused_arms_metal,
                 metal_dispatch.fused_release_reasons_metal,
                 metal_dispatch.fused_release_arm_reasons_metal,
-                metal_dispatch.METAL_RELEASED_FUSED_ARMS,
-                metal_dispatch.METAL_DRIVER_ROUTE_GATE)
+                metal_dispatch.METAL_RELEASED_FUSED_ARMS)
     if backend == "cuda":
         from meep_gpu import fastpath_cuda  # noqa: PLC0415
 
         return (fastpath_cuda.released_fused_arms,
                 fastpath_cuda.fused_release_reasons,
                 fastpath_cuda.fused_release_arm_reasons,
-                fastpath_cuda.CUDA_RELEASED_FUSED_ARMS,
-                fastpath_cuda.CUDA_DRIVER_ROUTE_FUSED_GATE)
+                fastpath_cuda.CUDA_RELEASED_FUSED_ARMS)
     return (fastpath.released_fused_arms, fastpath.fused_release_reasons,
-            fastpath.fused_release_arm_reasons, fastpath.RELEASED_FUSED_ARMS,
-            fastpath.DRIVER_ROUTE_FUSED_GATE)
+            fastpath.fused_release_arm_reasons, fastpath.RELEASED_FUSED_ARMS)
 
 
 def cuda_product_arm_labels() -> Mapping[str, str]:
@@ -484,7 +481,7 @@ def released_for_row(arm_label: str, configuration: Mapping[str, Any],
     board without any of them being edited.
     """
     (released_fused_arms, fused_release_reasons, arm_reasons,
-     released_table, _gate) = _release_module(backend)
+     released_table) = _release_module(backend)
     shape = run_shape_from_census(configuration)
     released = released_fused_arms(shape)
     reasons = fused_release_reasons(shape)
@@ -650,8 +647,7 @@ CERTIFIED_BUT_NOT_INSTALLED: Mapping[str, str] = {
         "rows in any case",
     "beta_complex_fused_hd_pair":
         "the H->D weld on the two COMPLEX beta cells, one family and two emitted "
-        "kernels; the same label objection, INSTALLABLE = False, and the same "
-        "keep-only expansion licence as the folded complex product",
+        "kernels; the same label objection, and INSTALLABLE = False",
     # THE SECOND BOARD CELL OF FOUR FAMILIES ABOVE. The board keys a row PER CELL and
     # three of these families emit two kernels from one transform, so each carries a
     # second cell under a suffixed name while the composer sees ONE family. The reason
@@ -871,7 +867,7 @@ def assert_the_label_map_covers_the_release(
     """
     products = product_arm_labels(backend)
     not_installed = certified_but_not_installed(backend)
-    _released, _reasons, _arm_reasons, released_table, _gate = _release_module(backend)
+    _released, _reasons, _arm_reasons, released_table = _release_module(backend)
     # WHICH PREDICATE ANSWERS "IS THIS LABEL FUSED" IS PER BACKEND. ``arm_is_fused``
     # is the TRITON spelling — a "fused pair" prefix plus two names — and it answers
     # False for every Metal label ("fused magnetic B/H pair", "folded fused B/H
@@ -1126,8 +1122,7 @@ def served_in_dispatch(backend: str,
     unnamed_product = 0
     not_installed: Dict[str, int] = {}
     rows: set = set()
-    (_released, _reasons, _arm_reasons, released_table,
-     route_gate) = _release_module(backend)
+    _released, _reasons, _arm_reasons, released_table = _release_module(backend)
     not_installed_reasons = certified_but_not_installed(backend)
     counted: List[Tuple[str, str, str]] = []
     seams_given = 0
@@ -1246,7 +1241,12 @@ def served_in_dispatch(backend: str,
             f"{len(instances)} served instances; {parts} — a served instance is in "
             "no bucket or in two")
     result["released_arms"] = sorted(released_table)
-    result["driver_route_gate"] = route_gate
+    # THE ROUTE STAMP THE BOARD CITES, read from the registry here and nowhere else in
+    # this file, so the probes that import this module for its predicates do not hold
+    # the registry (``import_closure.py bill meep_gpu/route_stamps.py``).
+    from meep_gpu import route_stamps  # noqa: PLC0415
+
+    result["driver_route_gate"] = route_stamps.route_gate(backend)
     result["dispatch_by_default"] = fastpath.DISPATCH_BY_DEFAULT
     result["requires"] = dispatch_condition()
     if backend == "cuda":

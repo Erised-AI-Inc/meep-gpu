@@ -35,6 +35,9 @@ HERE = pathlib.Path(__file__).parent
 REPO_API = HERE.parents[1]
 if str(REPO_API) not in sys.path:
     sys.path.insert(0, str(REPO_API))
+# The chunk-record constructors (``gate_chunk_records``) sit beside this file.
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
 
 SUBJECT_PATH = HERE / "cuda_dynamic_loop_arity.py"
 PROBE_PATH = HERE / "probe_cuda_dynamic_loop_arity.py"
@@ -175,8 +178,13 @@ def test_the_reference_is_bit_identical_to_stepping_update_E(poles):
     kms = [np.asarray(getattr(pml, f"kms_{axis}_h"), dtype=np.float32)
            for axis in ("x", "y", "z")]
 
-    reference = subject.reference_update_E(snapshot, (poles,) * 3, kps, kms)
     stepping.update_E(fields, pml)
+    # The division the array path just stepped with: the region plan its update_E
+    # installed (the one-rank division of this grid and layer).
+    from gate_chunk_records import region_plan_record  # noqa: PLC0415 - beside this file
+
+    reference = subject.reference_update_E(snapshot, (poles,) * 3, kps, kms,
+                                           record=region_plan_record(fields))
 
     for name in subject.OUTPUT_NAMES:
         engine = subject.as_words(np.asarray(getattr(fields, name), dtype=np.float32))
@@ -200,7 +208,8 @@ def test_the_reference_leg_is_not_vacuous_at_zero_poles():
     before = {name: np.array(case["state"][name], copy=True)
               for name in subject.OUTPUT_NAMES}
     after = subject.reference_update_E(
-        case["state"], (0, 0, 0), case["kps_broadcast"], case["kms_broadcast"])
+        case["state"], (0, 0, 0), case["kps_broadcast"], case["kms_broadcast"],
+        record=case["record"])
     moved = subject.moved_words(before, after)
     assert moved["moved_fraction"] > 0.9, moved
     assert rng is not None  # the seed path is make_case's, not this test's
@@ -209,6 +218,30 @@ def test_the_reference_leg_is_not_vacuous_at_zero_poles():
 # ---------------------------------------------------------------------------
 # The operand class can separate association orders — the vacuity precondition
 # ---------------------------------------------------------------------------
+
+def _constitutive_tail(case, state, field, axis, src):
+    """One component's 0.10 constitutive forms, in float32 NumPy, on ``case['record']``.
+
+    Built here from four arithmetic operations and the record's two comparisons,
+    not by calling the subject: on the record's cells along the component's own
+    axis (half-integer lattice) ``fw = src`` and
+    ``E = E + ((kps * src) - (kms * fw_previous))``, the two products, their
+    difference, then one add (MEEP's step_update_EDHB with dsigw); elsewhere
+    ``E = src`` and ``fw`` keeps its word. Returns ``(E, fw)``.
+    """
+    record = case["record"]
+    base = (1 * 3 + axis) * 4
+    a0, a1, b0, b1 = (int(record[base + word]) for word in range(4))
+    rows = np.arange(case["shape"][axis])
+    inside = (((rows >= a0) & (rows < a1)) | ((rows >= b0) & (rows < b1))).reshape(
+        subject.BROADCAST_SHAPES[axis])
+    previous = np.array(state["f_w_" + field], dtype=np.float32, copy=True)
+    difference = (case["kps_broadcast"][axis] * src
+                  - case["kms_broadcast"][axis] * previous).astype(np.float32)
+    accumulated = (state[field] + difference).astype(np.float32)
+    return (np.where(inside, accumulated, src).astype(np.float32),
+            np.where(inside, src, previous).astype(np.float32))
+
 
 def _orders(shape, poles, value_class, seed):
     """Forward, reversed, pre-summed and one-short sums of the same terms."""
@@ -264,10 +297,8 @@ def _outputs(case, mode):
             for term in terms:
                 accumulated = (accumulated - term).astype(np.float32)
         src = (accumulated * state["inv_eps_" + field]).astype(np.float32)
-        out["f_w_" + field] = src
-        previous = np.array(state["f_w_" + field], copy=True)
-        value = (state[field] + case["kps_broadcast"][index] * src).astype(np.float32)
-        out[field] = (value - case["kms_broadcast"][index] * previous).astype(np.float32)
+        out[field], out["f_w_" + field] = _constitutive_tail(case, state, field, index,
+                                                             src)
     return out
 
 
@@ -311,7 +342,7 @@ def test_the_downstream_arithmetic_collapses_differences_and_the_floor_knows_it(
                                      ("Ex", "Ey", "Ez"))["differing_fraction"]
     on_both = subject.compare_words(forward, backward)["differing_fraction"]
     assert on_field < on_fw, (
-        "the two accumulations must collapse differences the multiply left alive; "
+        "the accumulation must collapse differences the multiply left alive; "
         f"measured f_w {on_fw:.4f} vs E {on_field:.4f}")
     assert on_both < on_fw
     assert on_both >= subject.CONTROL_CATCH_FLOOR
@@ -428,9 +459,12 @@ def test_every_variant_shares_the_index_decomposition_and_the_prelude():
     for variant in subject.ALL_VARIANTS:
         code = subject.source_for(variant, (3, 3, 3))
         assert subject._INDEX_BLOCK in code, variant
-        assert "constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);" in code
-        assert "constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j]);" in code
-        assert "constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k]);" in code
+        # The chunk record's membership, read once per component's own axis, and
+        # the flagged certified helper: the same division in every variant.
+        assert subject._RECORD_BLOCK in code, variant
+        assert "const int* __restrict__ cb\n) {" in code, variant
+        for call in subject.CONSTITUTIVE_CALLS:
+            assert code.count(call) == 1, (variant, call)
         # D on the LEFT of inv_eps (stepping.py:1011), in every variant.
         assert "float src_x = sx * inv_eps_Ex[idx];" in code, variant
 
@@ -632,12 +666,8 @@ def _emulate(variant, case, state, sabotage=None):
         sources[letter] = (accumulated * state["inv_eps_" + field]).astype(np.float32)
     for letter, field in zip("xyz", ("Ex", "Ey", "Ez")):
         axis = order[letter]
-        fw = "f_w_" + field
-        previous = np.array(state[fw], dtype=np.float32, copy=True)
-        state[fw] = sources[letter]
-        value = (state[field] + case["kps_broadcast"][axis] * sources[letter]
-                 ).astype(np.float32)
-        state[field] = (value - case["kms_broadcast"][axis] * previous).astype(np.float32)
+        state[field], state["f_w_" + field] = _constitutive_tail(
+            case, state, field, axis, sources[letter])
     state["trips"] = _HostArray(np.full(int(np.prod(case["shape"])), trips,
                                         dtype=np.int32))
 

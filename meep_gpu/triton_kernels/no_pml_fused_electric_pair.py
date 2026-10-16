@@ -267,6 +267,10 @@ __all__ = [
 try:  # pragma: no cover - the absent branch is exercised by the absence test
     import triton
     import triton.language as tl
+
+    # The shared form helpers import Triton themselves, so they are imported behind
+    # the same guard: the kernel body below is the only reader.
+    from .forms import axis_present, curl_stencil
     _TRITON_IMPORT_ERROR: Optional[BaseException] = None
 except ImportError as _exc:  # pragma: no cover - the laptop path
     triton = None  # type: ignore[assignment]
@@ -281,6 +285,10 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
     #: same table; a test pins them equal.
     PERIODIC = tl.constexpr(0)
     METALLIC = tl.constexpr(1)
+    #: The chunk record's partner-presence word (``chunk_map.RECORD_PRESENCE_WORD``),
+    #: the only word of the record the curl half reads; ``no_pml.RECORD_PRESENCE``'s
+    #: value.
+    RECORD_PRESENCE = tl.constexpr(24)
 
     @triton.jit
     def no_pml_fused_curl_constitutive_D(
@@ -293,6 +301,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         a0, a1, a2, a3, a4, a5, a6, a7,   # component 0's poles, IN ORDER
         b0, b1, b2, b3, b4, b5, b6, b7,   # component 1's poles, IN ORDER
         c0, c1, c2, c3, c4, c5, c6, c7,   # component 2's poles, IN ORDER
+        cb,                               # chunk record: the curl's partner-presence word
         nx, ny, nz, n_elem, dtdx,
         BACKWARD: tl.constexpr,           # 1 = D (backward differences)
         DERIVE: tl.constexpr,             # 0 here; step_D differences B directly
@@ -377,9 +386,17 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
         # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens -
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        # One call per target: MEEP's left-to-right association with both partners,
+        # the one-partner form where the record says the other partner's derivative
+        # axis is invariant, and an exact +0 with neither. The presence word is the
+        # record's (stepping.curl_presence, MEEP's have_plus_deriv / have_minus_deriv).
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
         # --- ownership mask (stepping._mask_non_owned_cells) --------------------
         at_x, at_y, at_z = i == 0, j == 0, k == 0
@@ -855,12 +872,15 @@ class NoPmlFusedElectricPairPlan:
     NO ``f_w`` SLOTS AND NO COEFFICIENT SLOTS, and the absence is structural rather than
     defaulted: a plan that carried them would let a caller bind an active layer's tables
     to a kernel that ignores them, which is a silent half-step.
+
+    ``chunk_bounds`` is the chunk record (``launch.bind_chunk_bounds``), required, as on
+    the curl half's own plan: its presence word picks each D target's curl expression.
     """
 
     __slots__ = ("shape", "n_elem", "dtdx", "backward", "derive", "bc", "zero_metal",
-                 "cond", "counts", "block", "num_warps", "_targets", "_sources",
-                 "_condfac", "_condinv", "_e_targets", "_inv_eps", "_poles", "_grid",
-                 "_kernel", "_pointer")
+                 "cond", "counts", "block", "num_warps", "chunk_bounds", "_targets",
+                 "_sources", "_condfac", "_condinv", "_e_targets", "_inv_eps", "_poles",
+                 "_cb", "_grid", "_kernel", "_pointer")
 
     #: The driver call sites one launch performs. Declared, so a composition can be
     #: inspected rather than inferred from the curl slot's name.
@@ -872,11 +892,13 @@ class NoPmlFusedElectricPairPlan:
                  condfac: Sequence[Any], condinv: Sequence[Any],
                  e_targets: Sequence[Any], inverse_epsilon: Sequence[Any],
                  poles: Any, kernel: Any = None,
-                 num_warps: Optional[int] = 1) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 num_warps: Optional[int] = 1, *, chunk_bounds: Any) -> None:
+        from .launch import CupyPointer, _flat, bind_chunk_bounds  # noqa: PLC0415
 
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "NoPmlFusedElectricPairPlan")
         # float(): the array path consumes the Python scalar at float32 precision and
         # Triton types a Python float argument as fp32, so the two are the same bits.
         self.dtdx = float(dtdx)
@@ -948,7 +970,7 @@ class NoPmlFusedElectricPairPlan:
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
         kernel[self._grid](
             *self._targets, *self._sources, *self._inv_eps,
-            *self._condfac, *self._condinv, *self._e_targets, *slots,
+            *self._condfac, *self._condinv, *self._e_targets, *slots, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
             BACKWARD=self.backward,
             DERIVE=self.derive,
@@ -965,22 +987,30 @@ class NoPmlFusedElectricPairPlan:
         return (f"NoPmlFusedElectricPairPlan(shape={self.shape}, bc={self.bc}, "
                 f"zero_metal={self.zero_metal}, cond={self.cond}, "
                 f"poles={self.counts}, block={self.block}, "
-                f"num_warps={self.num_warps})")
+                f"num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_no_pml_fused_electric_pair(
         fields: Any, pml: Any, sources: Any = None, block: Optional[int] = None,
         num_warps: Optional[int] = 1, kernel: Any = None,
+        chunk_layout: Any = None,
         ) -> Optional[NoPmlFusedElectricPairPlan]:
     """Build the plan from the engine's own objects, or ``None`` when refused.
 
     ``None`` is the only refusal: a configuration this kernel does not carry must fall
     back to the array path, never raise into a caller that would otherwise have stepped
     correctly.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default;
+    the plan binds its record (``launch.chunk_bounds_for``). With no absorber every
+    division's record carries empty membership runs and the grid's own presence word,
+    so the composer's one-rank binding and the run's division bind the same words.
     """
     if not no_pml_fused_electric_pair_coverage(fields, pml, sources).covered:
         return None
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
+    from .launch import chunk_bounds_for  # noqa: PLC0415
 
     grid = fields.grid
     # `None` for the PML argument, not `pml`: this family's own predicate has already
@@ -1005,6 +1035,7 @@ def plan_no_pml_fused_electric_pair(
         [fields.inverse_epsilon_for(component) for component, _ in E_TERMS],
         LivePoleBinding(fields, order),
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
@@ -1013,7 +1044,8 @@ def plan_no_pml_fused_electric_pair_from_arrays(
         dtdx: float, codes: Sequence[int], zero_metal: Sequence[bool],
         cond: Sequence[bool] = (True, True, True),
         block: Optional[int] = None, kernel: Any = None,
-        num_warps: Optional[int] = 1) -> NoPmlFusedElectricPairPlan:
+        num_warps: Optional[int] = 1, *,
+        chunk_bounds: Any) -> NoPmlFusedElectricPairPlan:
     """Build from bare device arrays — the gate's route.
 
     No coverage predicate runs: the caller is a harness that constructed the
@@ -1021,7 +1053,8 @@ def plan_no_pml_fused_electric_pair_from_arrays(
     keyed by component name plus ``condfac_D*``/``condinv_D*`` and ``inv_eps_Ex``...;
     ``poles`` is keyed by E component and holds the P volumes in registration order,
     and ``kernel=`` carries the mutation override — dropping it silently disarms every
-    mutation leg.
+    mutation leg. ``chunk_bounds`` is REQUIRED and has no default: the record's
+    presence word is a fact of the caller's grid, not of the arrays' shape.
     """
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
 
@@ -1039,5 +1072,5 @@ def plan_no_pml_fused_electric_pair_from_arrays(
         [arrays[component] for component, _ in E_TERMS],
         [arrays["inv_eps_" + component] for component, _ in E_TERMS],
         StaticPoleBinding([poles[component] for component, _ in E_TERMS]),
-        kernel=kernel, num_warps=num_warps,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )

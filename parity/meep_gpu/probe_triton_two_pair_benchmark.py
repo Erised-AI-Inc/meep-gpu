@@ -55,8 +55,9 @@ import numpy as np
 
 _HERE = pathlib.Path(__file__).resolve().parent
 _API_ROOT = _HERE.parents[1]
-if str(_API_ROOT) not in sys.path:
-    sys.path.insert(0, str(_API_ROOT))
+for _path in (str(_API_ROOT), str(_HERE)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 SEED = 20260811
 
@@ -206,28 +207,34 @@ def build_unfused_stage_plans(
     unfused_warps: Optional[Tuple[Optional[int], Optional[int], Optional[int], Optional[int]]]
     = None,
 ) -> Dict[str, Any]:
-    """Build the four independently tunable control plans."""
+    """Build the four independently tunable control plans.
+
+    Every plan, here and in :func:`build_plans`, binds the every-cell chunk record: a
+    benchmark of kernels against kernels, both sides keyed on one division.
+    """
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
     from meep_gpu.triton_kernels.launch import (  # noqa: PLC0415
         plan_constitutive_from_arrays,
         plan_from_arrays,
     )
 
     dtdx = 0.35
+    record = every_cell_record(state["Bx"].shape)
     b_curl_warps, h_warps, d_curl_warps, e_warps = (
         unfused_warps or (None, None, None, None))
     return {
         "step_B": plan_from_arrays(
             "step_B", state, coefficients["B_curl_half"], boundaries, dtdx,
-            block=block, num_warps=b_curl_warps),
+            block=block, num_warps=b_curl_warps, chunk_bounds=record),
         "update_H": plan_constitutive_from_arrays(
             "H", state, coefficients["H_const_integer"], block=block,
-            num_warps=h_warps),
+            num_warps=h_warps, chunk_bounds=record),
         "step_D": plan_from_arrays(
             "step_D", state, coefficients["D_curl_integer"], boundaries, dtdx,
-            block=block, num_warps=d_curl_warps),
+            block=block, num_warps=d_curl_warps, chunk_bounds=record),
         "update_E": plan_constitutive_from_arrays(
             "E", state, coefficients["E_const_half"], block=block,
-            num_warps=e_warps),
+            num_warps=e_warps, chunk_bounds=record),
     }
 
 
@@ -242,6 +249,7 @@ def build_plans(
     = None,
 ) -> Tuple[Any, Any]:
     """Return callables for four separate launches and the two fused launches."""
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
     from meep_gpu.triton_kernels.launch import plan_fused_pair_from_arrays  # noqa: PLC0415
 
     dtdx = 0.35
@@ -249,12 +257,15 @@ def build_plans(
     b_warps, d_warps = fused_warps or (None, None)
     stages = build_unfused_stage_plans(
         state, coefficients, boundaries, block, unfused_warps)
+    record = every_cell_record(shape)
     pair_b = plan_fused_pair_from_arrays(
         "B", state, coefficients["B_curl_half"], coefficients["H_const_integer"],
-        boundaries, zero_metal, dtdx, block=block, num_warps=b_warps)
+        boundaries, zero_metal, dtdx, block=block, num_warps=b_warps,
+        chunk_bounds=record)
     pair_d = plan_fused_pair_from_arrays(
         "D", state, coefficients["D_curl_integer"], coefficients["E_const_half"],
-        boundaries, zero_metal, dtdx, block=block, num_warps=d_warps)
+        boundaries, zero_metal, dtdx, block=block, num_warps=d_warps,
+        chunk_bounds=record)
 
     def unfused() -> None:
         stages["step_B"].run()
@@ -523,6 +534,7 @@ def environment(cp: Any, triton: Any) -> Dict[str, Any]:
 def source_hashes() -> Dict[str, str]:
     paths = (
         _API_ROOT / "meep_gpu/triton_kernels/kernels.py",
+        _API_ROOT / "meep_gpu/triton_kernels/forms.py",
         _API_ROOT / "meep_gpu/triton_kernels/launch.py",
         _API_ROOT / "meep_gpu/triton_kernels/coverage.py",
         pathlib.Path(__file__).resolve(),

@@ -27,9 +27,9 @@ THE FIVE CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
 5. **The pole chain is the certified helper with exactly two lines removed.** The
    order is bit-load-bearing; the weld may not pre-sum or reorder.
 
-THE ARM IS NOT ASSERTED HERE. Which expansion arm the platform takes is a measured
-fact carried in a probe artifact, and a unit test that pinned one would be a guess
-wearing a test's clothes.
+NO EXPANSION ARM IS ASSERTED HERE, because none remains: the expansion licence, its
+probe artifacts and the arm argument are deleted on all three tables, so every
+complex product has one emitted form. The device gate holds the bytes.
 """
 
 from __future__ import annotations
@@ -188,17 +188,8 @@ def test_the_kernel_calls_no_multiply_helper_outside_the_three_it_declares():
     called = {node.func.id for node in ast.walk(tree)
               if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
     multiplies = {name for name in called if "_mul" in name}
-    assert multiplies <= set(family.LICENSED_MULTIPLY_HELPERS), multiplies
+    assert multiplies <= set(family.MULTIPLY_HELPERS), multiplies
     assert multiplies, "the scan found NO multiply helper; it is measuring nothing"
-
-
-def test_the_probe_pattern_set_is_the_base_four_unextended():
-    """The seam adds NO multiply at all — it removes two loads — so this product
-    launches no operand orientation its halves do not."""
-    from meep_gpu.triton_kernels.complex_fields import PROBE_PATTERNS
-
-    assert family.PRODUCT_PROBE_PATTERNS == tuple(PROBE_PATTERNS)
-    assert len(family.PRODUCT_PROBE_PATTERNS) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -396,14 +387,6 @@ def test_both_halves_predicates_are_conjoined_and_labelled():
 def test_the_plan_refuses_to_none_rather_than_raising():
     fields, pml = fixture()
     assert family.plan_complex_conductive_fused_pair(fields, pml, None) is None
-
-
-def test_a_missing_expansion_probe_is_a_refusal_not_a_guessed_arm():
-    fields, pml = fixture()
-    verdict = family.complex_conductive_fused_pair_coverage(
-        fields, pml, (), probe=None)
-    assert not verdict.covered
-    assert any("expansion" in reason.lower() for reason in verdict.reasons)
 
 
 def test_the_predicate_never_raises_on_a_degenerate_object():

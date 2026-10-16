@@ -3,8 +3,13 @@
 
 This gate validates the *new folded admission and shared plan builder*, not a
 whole FDTD step.  It compares the six stored-E outputs and all live pole state
-against ``stepping.update_E`` on actual mirror-reduced array extents.  Each row is
-durably appended before the next native shader launch.
+against ``stepping.update_E`` on actual mirror-reduced array extents, the plan
+binding the chunk record of the division the oracle steps with (the one-rank
+region plan; on a folded axis its membership line is the ghost-adjusted one).  Each
+row is durably appended before the next native shader launch. The mutation set is
+the ordinary dispersive gate's (:mod:`gate_metal_dispersive_update_e`): the
+previous accumulation grouping planted (must-catch), the §7.2 battery and the
+record rows.
 """
 
 from __future__ import annotations
@@ -34,6 +39,11 @@ from meep_gpu.metal_kernels import folded_dispersive_update_e as family  # noqa:
 from meep_gpu.metal_kernels import shaders, subnormal  # noqa: E402
 from meep_gpu.metal_kernels.device import Residency, compile_source, metal_frontend_version  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
+
+from gate_chunk_records import region_plan_record  # noqa: E402
+from gate_metal_dispersive_update_e import (  # noqa: E402
+    RECORD_MUTATIONS, _forms, _mutant_sources,
+)
 
 
 def _words(value: Any) -> np.ndarray:
@@ -69,6 +79,8 @@ def _build(*, cell: Sequence[float], axes: str, phases: Sequence[int],
         else:
             thickness.append((2, 2))
     pml = PML(grid=grid, thickness=tuple(thickness))
+    # The region plan a driver installs with the layer: the one-rank division.
+    stepping._region_plan(fields, pml)
     rng = np.random.default_rng(seed)
     for name in ("Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey",
                  "f_w_Ez"):
@@ -101,7 +113,8 @@ def _array(fields: Fields, name: str) -> Any:
 
 def _run(*, cell: Sequence[float], axes: str, phases: Sequence[int], boundaries: Any,
          poles: int, kind: str, seed: int, cycles: int,
-         functions: Mapping[Tuple[str, int, int], Any] | None = None) -> Dict[str, Any]:
+         functions: Mapping[Tuple[str, int, int], Any] | None = None,
+         record_mutation: Any = None) -> Dict[str, Any]:
     reference, reference_pml = _build(cell=cell, axes=axes, phases=phases,
                                       boundaries=boundaries, poles=poles, kind=kind,
                                       seed=seed)
@@ -111,8 +124,11 @@ def _run(*, cell: Sequence[float], axes: str, phases: Sequence[int], boundaries:
     names = _names(actual)
     before = {name: np.array(_array(actual, name), copy=True) for name in names}
     residency = Residency()
+    record = region_plan_record(actual)
+    if record_mutation is not None:
+        record = record_mutation(record)
     plan = family.plan_folded_dispersive_e(actual, actual_pml, residency,
-                                            functions=functions)
+                                            functions=functions, chunk_bounds=record)
     if plan is None:
         return {"passed": False, "reason": "the declared folded product was refused"}
     residency.sync_in()
@@ -129,11 +145,15 @@ def _run(*, cell: Sequence[float], axes: str, phases: Sequence[int], boundaries:
         if difference or census:
             break
     moved = sum(_different(before[name], _array(actual, name)) for name in names)
+    forms = _forms(actual, actual_pml)
+    split_ok = all(row["accumulate"] and row["plain"] for row in forms.values()
+                   if row["mode"] not in ("outside_only", "inside_only"))
     return {
         "passed": (len(per_cycle) == cycles
                    and all(row["differing_words"] == row["reference_subnormals"] == 0
                            for row in per_cycle)
-                   and moved > 0 and plan.runs == len(per_cycle)),
+                   and moved > 0 and plan.runs == len(per_cycle) and split_ok),
+        "forms": forms,
         "per_cycle": per_cycle,
         "differing_words": per_cycle[-1]["differing_words"],
         "reference_subnormals": per_cycle[-1]["reference_subnormals"],
@@ -142,7 +162,7 @@ def _run(*, cell: Sequence[float], axes: str, phases: Sequence[int], boundaries:
     }
 
 
-def _mutants() -> Dict[str, Mapping[Tuple[str, int, int], Any]]:
+def _mutants() -> Dict[str, Tuple[str, Mapping[Tuple[str, int, int], Any]]]:
     normal = {
         (shaders.CONTRACT_OFF, count, axis): compile_source(
             kernel.dispersive_e_source(count, axis)).dispersive_e_component
@@ -150,17 +170,9 @@ def _mutants() -> Dict[str, Mapping[Tuple[str, int, int], Any]]:
     }
     # The fixture drives Ex and Ez.  Mutate Ex (axis 0): targeting Ey would
     # compile a perfectly malformed shader that no live-pole launch ever calls.
-    base = kernel.dispersive_e_source(2, 0)
-    sources = {
-        "second_pole_dropped": base.replace("source = source - p1[idx];", "// dropped p1", 1),
-        "fw_store_dropped": base.replace("fw[idx] = src;", "// stale fw", 1),
-        "pml_accumulations_reversed": base.replace(
-            "value = value + kps[i] * src;\n    value = value - kms[i] * prev;",
-            "value = value - kms[i] * src;\n    value = value + kps[i] * prev;", 1),
-    }
-    return {label: {**normal, (shaders.CONTRACT_OFF, 2, 0): compile_source(source)
-                     .dispersive_e_component}
-            for label, source in sources.items()}
+    return {label: (expected, {**normal, (shaders.CONTRACT_OFF, 2, 0):
+                               compile_source(source).dispersive_e_component})
+            for label, (expected, source) in _mutant_sources().items()}
 
 
 def _emit(handle: Any, row: Dict[str, Any]) -> None:
@@ -193,7 +205,7 @@ def main() -> int:
          LORENTZIAN),
     )
     mutations = _mutants()
-    total = len(products) + len(mutations)
+    total = len(products) + len(mutations) + len(RECORD_MUTATIONS)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     jsonl = args.out.with_suffix(".jsonl")
     started = time.perf_counter()
@@ -208,21 +220,30 @@ def main() -> int:
                           cycles=args.cycles)}
             rows.append(row)
             _emit(handle, row)
-        for index, (label, functions) in enumerate(mutations.items(), len(products) + 1):
+        index = len(products)
+        planned = [(label, expected, {"functions": functions})
+                   for label, (expected, functions) in mutations.items()]
+        planned += [(label, "caught", {"record_mutation": mutate})
+                    for label, mutate in RECORD_MUTATIONS.items()]
+        for label, expected, keywords in planned:
+            index += 1
             result = _run(cell=(1.75, 2.0, 0.0), axes="Y", phases=(1,),
                           boundaries="periodic", poles=2, kind=LORENTZIAN,
-                          seed=34200 + index, cycles=1, functions=functions)
+                          seed=34200 + index, cycles=1, **keywords)
             difference = int(result.get("differing_words", 0))
+            caught = difference > 0
             row = {"index": index, "total": total, "leg": "mutation", "label": label,
-                   "differing_words": difference, "launches": result.get("launches"),
-                   "caught": difference > 0,
-                   "passed": result.get("launches") == 3 and difference > 0}
+                   "expected": expected, "differing_words": difference,
+                   "launches": result.get("launches"), "caught": caught,
+                   "passed": (result.get("launches") == 3
+                              and caught == (expected == "caught"))}
             rows.append(row)
             _emit(handle, row)
     result = {
         "verdict": "PASS" if all(row["passed"] for row in rows) else "FAIL",
         "elapsed_seconds": time.perf_counter() - started, "product_rows": len(products),
-        "mutation_rows": len(mutations), "rows": rows, "torch_version": torch.__version__,
+        "mutation_rows": len(mutations) + len(RECORD_MUTATIONS), "rows": rows,
+        "torch_version": torch.__version__,
         "metal_frontend": metal_frontend_version(), "jsonl": str(jsonl),
         "source_sha256": {
             "folded_family": hashlib.sha256(Path(family.__file__).read_bytes()).hexdigest(),

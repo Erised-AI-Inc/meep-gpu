@@ -74,7 +74,7 @@ LEGS
   launch_structure  launches per step at the seam and over the whole step
   mutation          the shared gate's armed shader defects, on a NONLINEAR fixture
   lift              both corpus rows of the (nonlinear PML magnetic -> nonlinear PML
-                    curl) cell, re-lifted in their own interpreter and driven
+                    curl) cell, re-lifted under this gate's interpreter and driven
   byte_neutral      the one armed edit required NOT to diverge
   disarm            the identical harness, shipped bytes, must not diverge
 
@@ -284,6 +284,9 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
     for array in stored_volumes(driver.fields).values():
         array[...] = (0.37 * rng.standard_normal(array.shape)).astype(array.dtype)
         array *= scale
+    # A SEEDED STATE IS A MID-RUN ONE (gate_metal_fused_hd_pair.build_driver says why):
+    # stepping.separate_h_from_b must not run again on it.
+    driver.fields.h_separated = True
     driver.invalidate_fast_path()
     pin_array_path(driver)
     return driver
@@ -298,8 +301,10 @@ def arrangement_singles(driver: Any) -> Arrangement:
     residency = Residency()
     fields, pml = driver.fields, driver.pml
     constitutive = nonlinear.plan_nonlinear_run_constitutive(fields, pml, "H",
-                                                             residency)
-    curl = nonlinear.plan_nonlinear_run_pml_curl(fields, pml, "step_D", residency)
+                                                             residency,
+                                                             chunk_bounds=driver.chunk_bounds_record())
+    curl = nonlinear.plan_nonlinear_run_pml_curl(fields, pml, "step_D", residency,
+                                                 chunk_bounds=driver.chunk_bounds_record())
     if constitutive is None or curl is None:
         raise RuntimeError(
             f"a certified nonlinear spine single was refused on a fixture this gate "
@@ -314,7 +319,8 @@ def arrangement_singles(driver: Any) -> Arrangement:
 def build_weld(driver: Any, residency: Residency,
                functions: Optional[Mapping[str, Any]] = None) -> Any:
     plan = family.plan_metal_fused_hd_pair(driver.fields, driver.pml, sources=(),
-                                           residency=residency, functions=functions)
+                                           residency=residency, functions=functions,
+                                           chunk_bounds=driver.chunk_bounds_record())
     if plan is None:
         reasons = family.metal_fused_hd_pair_coverage(driver.fields, driver.pml, (),
                                                       residency).reasons
@@ -474,14 +480,18 @@ def leg_text_identity() -> Dict[str, Any]:
 
         before = set(_device._LIBRARY_CACHE)  # noqa: SLF001
         linear_curl = metal_launch.plan_pml_curl(linear.fields, linear.pml, "step_D",
-                                                 Residency())
+                                                 Residency(),
+                                                 chunk_bounds=linear.chunk_bounds_record())
         linear_constitutive = metal_launch.plan_constitutive(
-            linear.fields, linear.pml, "H", Residency())
+            linear.fields, linear.pml, "H", Residency(),
+            chunk_bounds=linear.chunk_bounds_record())
         after_linear = set(_device._LIBRARY_CACHE)  # noqa: SLF001
         spine_curl = nonlinear.plan_nonlinear_run_pml_curl(
-            driver.fields, driver.pml, "step_D", Residency())
+            driver.fields, driver.pml, "step_D", Residency(),
+            chunk_bounds=driver.chunk_bounds_record())
         spine_constitutive = nonlinear.plan_nonlinear_run_constitutive(
-            driver.fields, driver.pml, "H", Residency())
+            driver.fields, driver.pml, "H", Residency(),
+            chunk_bounds=driver.chunk_bounds_record())
         after_spine = set(_device._LIBRARY_CACHE)  # noqa: SLF001
 
         linear_added = after_linear - before
@@ -658,7 +668,8 @@ def leg_arbitration() -> Dict[str, Any]:
     THIS IS THE CELL ``fused_hd_pair.INSTALLABLE_REASON`` NAMES AS THE ONE GENUINE
     GAIN, so what it selects is RECORDED rather than asserted: the substantive claims
     are that this product is installed on nothing today, that every slot is still
-    filled, and that the installed-pair count is what the gain arithmetic reads.
+    filled (``update_E`` by the Pade arm), and that the installed-pair count is what
+    the gain arithmetic reads.
     Flipping the flag is a composition decision with its own release and NOTHING here
     licenses it.
     """
@@ -782,18 +793,31 @@ def leg_product(steps: int) -> Dict[str, Any]:
 
 def leg_host_defect(steps: int, name: str,
                     launcher: Callable[[Any, Residency, Any], Any], why: str,
-                    cases: Sequence[str]) -> Dict[str, Any]:
+                    cases: Sequence[str],
+                    observable: Optional[Callable[[Any], Tuple[bool, List[str]]]] = None,
+                    ) -> Dict[str, Any]:
+    """A host defect driven on each case; must diverge wherever it is observable.
+
+    ``observable`` names the cases where the defect CAN change a word. A case it rules
+    out is scored on AGREEING (a declared null, with the reason recorded), and at
+    least one observable case must diverge, so the null is earned on the same leg.
+    """
     rows: Dict[str, Any] = {}
     for index, case in enumerate(cases, start=1):
         driver = build_driver(dict(CASES)[case], 2000 + index)
+        seen, why_seen = (True, []) if observable is None else observable(driver)
         result = run_product(driver, steps, launcher=launcher)
         legs = result["arrangements"]
-        rows[case] = {"diverged": not legs["weld"]["identical"],
+        diverged = not legs["weld"]["identical"]
+        rows[case] = {"diverged": diverged, "observable": seen,
+                      "observable_through": why_seen,
+                      "passed": diverged if seen else not diverged,
                       "first_divergence": legs["weld"]["first_divergence"],
                       "differing_words_final": legs["weld"]["differing_words_final"]}
-        log(f"    {name} {case}: diverged={rows[case]['diverged']} at "
-            f"{rows[case]['first_divergence']}")
-    return {"passed": all(row["diverged"] for row in rows.values()),
+        log(f"    {name} {case}: diverged={diverged} at "
+            f"{rows[case]['first_divergence']} (observable={seen})")
+    return {"passed": bool(all(row["passed"] for row in rows.values())
+                           and any(row["diverged"] for row in rows.values())),
             "defect": name, "why_it_must_fire": why, "cases": rows}
 
 
@@ -956,7 +980,7 @@ def runtime_reasons() -> List[str]:
     return _shared.runtime_reasons()
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:  # noqa: ARG001
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The census driver's battery hook: the identity on ONE lifted nonlinear row."""
     steps = int(os.environ.get("MEEP_GPU_NL_HD_GATE_STEPS", 12))
     max_cells = os.environ.get("MEEP_GPU_NL_HD_GATE_MAX_CELLS")
@@ -1008,10 +1032,13 @@ def _load_jsonl(path: Path) -> List[dict]:
 
 
 def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
+    import lift_host  # noqa: PLC0415
+
     census = results / CENSUS
     seam = results / SEAM_RECORD
-    if not census.is_dir() or not seam.is_dir():
-        raise SystemExit(f"the lift leg needs {census} and {seam}")
+    missing = lift_host.missing_inputs(results, CENSUS, SEAM_RECORD)
+    if missing:
+        raise SystemExit(lift_host.missing_reason(results, missing))
     seam_rows = {row["label"]: row for row in _load_jsonl(seam / "h_to_d_seam.jsonl")}
     rows: List[dict] = []
     for leg in ("examples", "tests", "tests_param_matched"):
@@ -1030,8 +1057,9 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
                 # the shim's own generated case name, which the census records.
                 "case": record.get("case") or record["row"],
                 "module": record.get("module") or seam_row.get("module"),
-                "interpreter": (record.get("interpreter") or record.get("python")
-                                or seam_row.get("interpreter") or sys.executable),
+                # WHERE THE CHILD RUNS: this gate's interpreter. The path the census
+                # recorded is kept as recorded_interpreter and never launched.
+                **lift_host.row_fields(record, seam_row),
                 "grid_cells": record.get("grid_cells"),
                 "grid_shape": record.get("grid_shape"),
                 "withdraw_in_seam": bool((seam_row.get("h_to_d_seam") or {})
@@ -1053,6 +1081,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     import subprocess  # noqa: PLC0415
 
     import gate_provenance  # noqa: PLC0415
+    import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
     out_dir = Path(out_dir).resolve()
@@ -1068,7 +1097,6 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     if not examples_dir.is_dir() or not tests_dir.is_dir():
         return {"passed": False, "facts": facts,
                 "reason": f"the MEEP corpus is not at {examples_dir} / {tests_dir}"}
-    probe_path = API_ROOT / census.PROBE
     environment = dict(os.environ)
     environment.update({"KMP_DUPLICATE_LIB_OK": "TRUE", "MPLBACKEND": "Agg",
                         "PYTHONPATH": str(API_ROOT),
@@ -1096,8 +1124,20 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                 encoding="utf-8", errors="replace"):
             needs_shim.add(module_name)
 
+    # WHAT THIS HOST CANNOT LIFT, asked once before any child: the needs the rows
+    # declare, probed under this interpreter (lift_host).
+    host = lift_host.host_check(rows, environment, work)
+    if host["unreadable"]:
+        return {"passed": False, "facts": facts, "host_capabilities": host,
+                "reason": host["unreadable"]}
+    unlifted = host["unlifted_on_this_host"]
     measured: List[dict] = []
     for index, row in enumerate(rows, start=1):
+        if row["label"] in unlifted:
+            log(f"lift {index}/{len(rows)} {row['label']}: UNLIFTED ON THIS HOST, "
+                f"{unlifted[row['label']]}")
+            measured.append(lift_host.unlifted_entry(row, unlifted[row["label"]]))
+            continue
         record_path = per_row / (
             row["label"].replace(":", "__").replace(".", "_") + ".json")
         environment["PYTHONPATH"] = (f"{shim_path}{os.pathsep}{API_ROOT}"
@@ -1106,11 +1146,11 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         started = time.time()
         if not (resume and record_path.exists()):
             if row["leg"] == "examples":
-                command = [row["interpreter"], "-u",
+                command = [sys.executable, "-u",
                            str(Path(census.__file__).resolve()),
                            "--leg", "examples", "--child-script",
                            str(examples_dir / row["row"]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", Path(__file__).stem]
             elif not row["module"]:
@@ -1118,13 +1158,13 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                                  "note": "no module recorded"})
                 continue
             else:
-                command = [row["interpreter"], "-u",
+                command = [sys.executable, "-u",
                            str(Path(census.__file__).resolve()),
                            "--leg", "tests", "--child-module",
                            str(tests_dir / row["module"]),
                            "--child-cases", json.dumps([row.get("case")
                                                         or row["row"]]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", Path(__file__).stem]
             log(f"lift {index}/{len(rows)} {row['label']} start "
@@ -1172,14 +1212,18 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     refused = sorted(label for label, b in blocks.items()
                      if b.get("predicate_admits") is False)
     unmeasured = sorted(label for label, b in blocks.items()
-                        if "predicate_admits" not in b)
+                        if "predicate_admits" not in b and label not in unlifted)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
     expected_refused = sorted(facts["rows_with_a_standing_withdraw"])
     if only:
         expected_refused = sorted(set(expected_refused) & set(blocks))
+    expected_refused = sorted(set(expected_refused) - set(unlifted))
     return {
-        "passed": bool(blocks and not unmeasured and refused == expected_refused
+        # AT LEAST ONE ROW IS ASKED: a cell whose every row is unlifted on this host
+        # measured nothing, and "no row disagreed" over no rows is not a pass.
+        "passed": bool(len(blocks) > len(unlifted) and not unmeasured
+                       and refused == expected_refused
                        and driven == admitted and passed_rows == driven
                        and all(blocks[label].get("steps_compared", 0)
                                >= LIFT_CLEAN_STEP_FLOOR for label in driven)),
@@ -1188,6 +1232,9 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         "refused": len(refused),
         "refused_labels": refused,
         "unmeasured": unmeasured,
+        "unlifted_on_this_host": unlifted,
+        "rows_the_engine_was_asked_about": len(blocks) - len(unlifted),
+        "host_capabilities": host,
         "driven": len(driven),
         "driven_and_identical": len(passed_rows),
         "clean_step_floor": LIFT_CLEAN_STEP_FLOOR,
@@ -1326,8 +1373,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         record("product", leg_product(args.steps))
     if "race" in legs:
         launcher, why = HOST_MUTATIONS["H_and_f_w_H_written_in_place"]
+        # ON THE 1-D FIXTURES THE RACE CANNOT SHOW, and that is the per-chunk forms:
+        # the curl's live taps read Hx and Hy only, whose own (dsigw) axes are the
+        # invariant x and y, so every tap is the output select H = B and reads no
+        # pre-launch H or f_w_H. Scored on agreeing there (_shared.race_observable).
         record("race", leg_host_defect(args.steps, "H_and_f_w_H_written_in_place",
-                                       launcher, why, [name for name, _ in CASES]))
+                                       launcher, why, [name for name, _ in CASES],
+                                       observable=_shared.race_observable))
     if "rotation" in legs:
         launcher, why = HOST_MUTATIONS["rotation_skipped"]
         record("rotation", leg_host_defect(args.steps, "rotation_skipped", launcher,

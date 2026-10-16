@@ -94,15 +94,59 @@ def test_the_recurrence_statements_are_the_certified_ones():
     """Every ``p``/``n``/``v`` line is pulled out of the certified body by anchor.
 
     Not retyped: an anchor that stopped identifying exactly one line raises in
-    :func:`certified_curl_statements` rather than splicing an arbitrary one.
+    :func:`certified_curl_statements` rather than splicing an arbitrary one. The
+    ``n`` statement is the certified line verbatim; the ``p`` and ``v`` statements
+    are the certified lines with EXACTLY the :data:`LIFT_EDITS` fragment replaced,
+    and nothing else moved.
     """
     statements = family.certified_curl_statements(CODES)
     certified = symmetry.folded_curl_source(CODES, family.BACKWARD)
+    lines = certified.splitlines()
     text = source()
-    for triple in statements["recurrence"]:
-        for line in triple:
-            assert line in certified
+    for target, (previous, stage, stepped) in enumerate(statements["recurrence"]):
+        assert stage in lines
+        for (prefix, old, _new), lifted in zip(family.LIFT_EDITS, (previous, stepped)):
+            original = [line for line in lines if line.startswith(prefix.format(t=target))]
+            assert len(original) == 1, original
+            fragment = old.format(t=target)
+            assert original[0].endswith(fragment), (original, fragment)
+            assert lifted.startswith(original[0][: -len(fragment)])
+            assert lifted != original[0]
+        for line in (previous, stage, stepped):
             assert line.strip() in text
+    assert statements["flags"] in lines
+    for store in statements["aux_stores"]:
+        assert store in lines and store in text
+
+
+def test_the_dsig_only_form_is_the_recurrence_first_stage_with_fu_as_f():
+    """The edited ``v`` spells the dsig-only form as the ``n`` statement with ``p := f``.
+
+    Same operations, same order, same rounding: the certified ``v`` takes ``n`` there,
+    and ``n`` was formed from ``p = f``. So the derived expression must be exactly the
+    ``n`` statement's right-hand side with ``p{t}`` read as ``f{t}[ii]``.
+    """
+    statements = family.certified_curl_statements(CODES)
+    for target, (_previous, stage, stepped) in enumerate(statements["recurrence"]):
+        expression = stage.split(" = ", 1)[1].rstrip()[:-1]
+        derived = "(" + expression.replace(f"p{target}", f"f{target}[ii]") + ")"
+        assert stepped.rstrip().endswith(f": {derived};"), (stepped, derived)
+
+
+def test_a_destination_thread_never_loads_the_field_its_source_writes():
+    """Before the first ownership guard, no ``f{t}[ii]`` is read.
+
+    The certified curl reads ``p = du ? fu : f`` at every cell; on a destination
+    thread that ``f`` is the word its source thread writes in the same dispatch. The
+    lift moves that read into the owned block, so the shared prologue loads only
+    ``u{t}`` and the operands.
+    """
+    text = source((CODE_MIRROR_PERIODIC, CODE_MIRROR_PERIODIC, CODE_PERIODIC),
+                  (1, -1, 0), (False, False, False))
+    shared = text.split("    if (!(", 1)[0]
+    for target in range(3):
+        assert f"f{target}[ii]" not in shared, target
+        assert f"float p{target} = du{target} ? u{target}[ii] : 0.0f;" in shared
 
 
 def test_the_constitutive_statements_reproduce_the_certified_h_body():
@@ -116,7 +160,7 @@ def test_the_constitutive_statements_reproduce_the_certified_h_body():
     for mode in shaders.CONTRACT_MODES:
         result = family.constitutive_transcription(mode)
         assert result["identical"], result
-        assert [len(block) for block in result["certified"]] == [7, 7, 7]
+        assert [len(block) for block in result["certified"]] == [6, 6, 6]
 
 
 def test_the_h_side_carries_no_inverse_mu():
@@ -175,9 +219,54 @@ def test_the_ghost_reads_its_own_coefficient_pair_at_stored_index_zero():
     text = source()
     assert "float g0_n_kp = kp0[0], g0_n_km = km0[0];" in text
     assert "float g1_n_kp = kp1[0], g1_n_km = km1[0];" in text
-    assert "g0_n_acc = g0_n_acc + g0_n_kp * g0_n_src;" in text
+    assert ("g0_n_acc = h0[g0_n_i] + ((g0_n_kp * g0_n_src) - "
+            "(g0_n_km * g0_n_prev));") in text
     # and the OWNED cell still takes the source thread's own entry
-    assert "o0_acc = o0_acc + kp_0 * o0_src;" in text
+    assert "o0_acc = h0[ii] + ((kp_0 * o0_src) - (km_0 * o0_prev));" in text
+
+
+def test_the_near_ghost_selects_its_form_at_its_own_coordinate():
+    """The H half's membership is on the component's OWN axis, which the near fill
+    moves, so the ghost's flag is evaluated at stored 0 — through the shared
+    emitter, reading the integer-lattice locals the lifted block declares — and the
+    ghost's six statements read that flag, not the owner's."""
+    text = source()
+    assert ("const bool in_i_x_g0_n = ((0) >= cbi_x_a0 && (0) < cbi_x_a1) || "
+            "((0) >= cbi_x_b0 && (0) < cbi_x_b1);") in text
+    assert "float g0_n_prev = in_i_x_g0_n ? w0[g0_n_i] : 0.0f;" in text
+    assert "if (in_i_x_g0_n) { w0[g0_n_i] = g0_n_src; }" in text
+    # The owner selects on its own flag, lifted from the certified H body.
+    assert "    const bool dw0 = in_i_x, dw1 = in_i_y, dw2 = in_i_z;" in text
+    assert "float o0_prev = dw0 ? w0[ii] : 0.0f;" in text
+
+
+def test_the_near_ghost_and_its_source_can_take_different_forms():
+    """Why the near ghost's flag is evaluated at stored 0 and not read off its source.
+
+    On a deep high-face layer the record's integer line on a folded axis is OUT at
+    stored 0 and IN at stored ``NEAR_SOURCE_INDEX``: the ghost steps the plain form
+    while its source accumulates. Keying the ghost at its source would accumulate at
+    the ghost — a different word, which the gate's ``moved_coefficient`` leg arms and
+    must catch on exactly this geometry. Built here from the engine's own objects.
+    """
+    from meep_gpu.chunk_map import ChunkLayout
+    from meep_gpu.grid import Grid, Mirror
+    from meep_gpu.metal_kernels import chunk_bounds
+    from meep_gpu.pml import PML
+
+    grid = Grid(resolution=10.0, cell_size=(0.8, 0.8, 1.2), dimensions=3,
+                courant=0.35, boundaries={"x": "metallic", "y": "metallic",
+                                          "z": "metallic"},
+                symmetry=(Mirror("X", 1), Mirror("Y", -1)))
+    pml = PML(grid=grid, thickness=((0, 4), (0, 4), (2, 2)))
+    record = chunk_bounds.for_layout(ChunkLayout.one_rank(grid, pml), grid.shape)
+    line = chunk_bounds.decode(record, family.CONSTITUTIVE_HALF_INTEGER, 0,
+                               grid.shape[0])
+    assert not line[0] and line[family.NEAR_SOURCE_INDEX], line
+    # and the emitted ghost reads the flag it evaluates at 0, never the owner's
+    text = source()
+    ghost = text.split("        if (i == 2) {", 1)[1].split("        }", 1)[0]
+    assert "in_i_x_g0_n" in ghost and "dw0" not in ghost
 
 
 def test_the_ghost_is_written_by_the_source_thread_not_the_destination():
@@ -255,9 +344,11 @@ def test_a_folded_periodic_axis_is_CARRIED_not_refused():
     # the top-plane mask, emitted only on MIRROR_PERIODIC
     assert "curl1 = last_x ? 0.0f : curl1;" in text
     assert "curl2 = last_x ? 0.0f : curl2;" in text
-    # and the far ghost keeps its source thread's constitutive pair: it moves along
-    # an axis that is NOT the one update_H indexes on
-    assert "g1_i_acc = g1_i_acc + kp_1 * g1_i_src;" in text
+    # and the far ghost keeps its source thread's constitutive pair AND flag: it
+    # moves along an axis that is NOT the one update_H indexes on
+    assert ("g1_i_acc = h1[g1_i_i] + ((kp_1 * g1_i_src) - (km_1 * g1_i_prev));"
+            in text)
+    assert "float g1_i_prev = dw1 ? w1[g1_i_i] : 0.0f;" in text
 
 
 def test_the_far_carry_composes_with_the_near_one_and_with_itself():
@@ -391,7 +482,45 @@ def test_the_predicate_never_raises_on_a_degenerate_object():
     exception: a raising predicate would escape the composer's arm loop."""
     coverage = family.metal_folded_fused_magnetic_pair_coverage(object(), None, ())
     assert not coverage.covered and coverage.reasons
-    assert family.plan_metal_folded_fused_magnetic_pair(object(), None, ()) is None
+    assert family.plan_metal_folded_fused_magnetic_pair(
+        object(), None, (), chunk_bounds=None) is None
+
+
+def test_an_admitted_plan_without_a_record_is_refused_by_name(monkeypatch):
+    """The record has no default: a plan the predicate admits but that is given no
+    division raises the record's own refusal, before any volume is bound."""
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+    from meep_gpu.fields import Fields
+    from meep_gpu.grid import Grid, Mirror
+    from meep_gpu.pml import PML
+    from meep_gpu.triton_kernels.coverage import Coverage
+
+    grid = Grid(resolution=10.0, cell_size=(1.6, 3.0, 1.0), boundaries="metallic",
+                symmetry=(Mirror("Y", 1),))
+    fields = Fields(grid=grid, force_complex_fields=False)
+    fields.enable_pml_storage()
+    monkeypatch.setattr(family, "metal_folded_fused_magnetic_pair_coverage",
+                        lambda *args, **kwargs: Coverage(True, ()))
+    with pytest.raises(ChunkLayoutRefusal, match="MetalFoldedFusedMagneticPairPlan"):
+        family.plan_metal_folded_fused_magnetic_pair(
+            fields, PML(grid=grid, thickness=0.2), (), None, chunk_bounds=None)
+
+
+def test_the_record_rides_in_params_and_costs_no_binding():
+    """The chunk record is one ``Params`` member after the eight scalars: 132 bytes,
+    the record at offset 32, the struct declared once and aliased as ``cb`` — and the
+    binding count stays the unfolded pair's 28."""
+    from meep_gpu.metal_kernels import chunk_bounds
+
+    dtype = family.params_record_dtype()
+    assert dtype.itemsize == 132
+    assert dtype.fields["cb"][1] == 32
+    assert dtype.fields["cb"][0] == chunk_bounds.record_dtype()
+    text = source()
+    assert text.count(chunk_bounds.struct_source()) == 1
+    assert chunk_bounds.params_member() in text
+    assert chunk_bounds.params_alias() in text
+    assert "[[buffer(28)]]" not in text
 
 
 def test_both_halves_predicates_are_conjoined_and_labelled():

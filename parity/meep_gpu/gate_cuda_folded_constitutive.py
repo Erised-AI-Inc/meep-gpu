@@ -142,6 +142,7 @@ except ImportError:  # laptop: the NumPy backend still runs
     cp = None
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import gate_needles  # noqa: E402
 import gate_provenance  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
@@ -318,6 +319,14 @@ SOURCE_MUTATIONS_BY_SIDE: Dict[str, Tuple[str, ...]] = {
           "fortran_order_index_decomposition", "bind_Ez_inv_eps_for_all_three",
           "inv_eps_left", "commute_constitutive_scale"),
 }
+#: THIS GATE'S NEEDLE TABLE for both sides' defects: each one borrowed from the
+#: probe's shared default until this gate's kernels need a spelling of their
+#: own, which is then an ``own=`` entry here and moves no other gate
+#: (``gate_needles.py``).
+_ARMED: Tuple[str, ...] = tuple(dict.fromkeys(
+    name for names in SOURCE_MUTATIONS_BY_SIDE.values() for name in names))
+SHARED_NEEDLES = gate_needles.gate_table(
+    "gate_cuda_folded_constitutive", probe.SOURCE_MUTATIONS, _ARMED)
 
 #: MUST BE UNCAUGHT, each paired with a leg editing the same expression that must
 #: be caught (``drop_inverse_epsilon`` and ``regroup_constitutive``). A gate whose
@@ -433,6 +442,11 @@ def seed_state(fields, grid, side: str, value_class: str, rng) -> Dict[str, np.n
         raise ValueError(f"value class {value_class!r} is not one of {VALUE_CLASSES}")
     for name, values in host.items():
         getattr(fields, name)[...] = xp.asarray(np.ascontiguousarray(values))
+    # A seeded state is a mid-run one: MEEP's start of H from B
+    # (``stepping.separate_h_from_b``) belongs to a run's first ``update_H``, long
+    # before this state. Without this the oracle's ``update_H`` would run that start
+    # and the kernel, launched through its entry point, would not.
+    fields.h_separated = True
     return host
 
 
@@ -537,8 +551,13 @@ def run_kernel_cuda(side: str, fields, tables: Dict[str, Any]) -> None:
     which exists so a harness can hand in deliberately mis-paired tables. Passing
     the layer instead would derive them correctly and disarm every host mutation.
     """
+    from gate_chunk_records import region_plan_record  # noqa: PLC0415
     from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
-    constitutive_kernels.update_fused_pml_real(side, fields, tables=tables)
+
+    # The division of the region plan the oracle stepped with: since 0.10 the kernel
+    # chooses each cell's form per structure chunk from its record.
+    constitutive_kernels.update_fused_pml_real(
+        side, fields, tables=tables, chunk_bounds=cp.asarray(region_plan_record(fields)))
     cp.cuda.runtime.deviceSynchronize()
 
 
@@ -573,6 +592,11 @@ def run_kernel_numpy(side: str, fields, tables: Dict[str, Any]) -> None:
     folded extent reproduce ``stepping`` at all and (b) whether this harness can
     fail -- both on a laptop, before a device slot is spent.
     """
+    from gate_chunk_records import region_plan_record  # noqa: PLC0415
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+    from meep_gpu.fields import IYEE_SHIFTS  # noqa: PLC0415
+
+    record = region_plan_record(fields)
     spec = SIDE_ARRAYS[side]
     for axis, name in enumerate("xyz"):
         target = getattr(fields, spec["targets"][axis])
@@ -585,10 +609,18 @@ def run_kernel_numpy(side: str, fields, tables: Dict[str, Any]) -> None:
             src = source.astype(np.float32)
         kps = _broadcast(tables[f"kps_{name}"], axis)
         kms = _broadcast(tables[f"kms_{name}"], axis)
+        # The form per structure chunk, from the oracle's division: on a cell whose
+        # chunk carries the component's own layer, MEEP's accumulation with the
+        # right-hand side formed first and ``f_w`` taking the source; elsewhere
+        # ``f = src`` with ``f_w`` untouched (``stepping._apply_constitutive_regions``).
+        component = spec["targets"][axis]
+        line = membership_from_record(record, IYEE_SHIFTS[component][axis] == 1, axis,
+                                      target.shape[axis])
+        inside = np.broadcast_to(_broadcast(line, axis), target.shape)
         prev = aux.copy()
-        aux[...] = src
-        a = (target + kps * src).astype(np.float32)
-        target[...] = (a - kms * prev).astype(np.float32)
+        accumulated = (target + ((kps * src) - (kms * prev))).astype(np.float32)
+        aux[...] = np.where(inside, src, aux)
+        target[...] = np.where(inside, accumulated, src).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -930,7 +962,7 @@ def run_source_mutations(results: Dict[str, Any], out_path: str,
         for side in SIDES:
             attribute = attribute_for[side]
             for name in SOURCE_MUTATIONS_BY_SIDE[side]:
-                transform = probe.SOURCE_MUTATIONS[name]
+                transform = SHARED_NEEDLES[name]
                 mutated, sites = transform(originals[side])
                 key = f"{side}:{name}"
                 if sites == 0 or mutated == originals[side]:

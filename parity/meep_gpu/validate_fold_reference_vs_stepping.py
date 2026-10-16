@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.join(API, "parity", "meep_gpu"))
 sys.modules.setdefault("cupy", np)          # the gate imports cupy at module scope
 
 import gate_triton_symmetry as gate          # noqa: E402
+from gate_chunk_records import region_plan_record  # noqa: E402
 from meep_gpu import stepping                # noqa: E402
 from meep_gpu.fields import Fields           # noqa: E402
 from meep_gpu.grid import Grid, Mirror       # noqa: E402
@@ -94,10 +95,12 @@ for axes, declaration, cell, phase in CASES:
     for _ in range(3):
         for sub_step in ("step_B", "step_D"):
             getattr(stepping, sub_step)(fields, pml)
+            # The reference keys its forms on the division the array path just
+            # stepped with (the region plan its first PML sub-step installed).
             gate.reference_pml_step(
                 np, mine, coefficients_of(pml, sub_step == "step_B"),
                 grid.dt / grid.dx, sub_step, boundaries, phases, rows,
-                "array_order")
+                "array_order", record=region_plan_record(fields))
             for name in NAMES:
                 a = np.ascontiguousarray(getattr(fields, name)).view(np.uint32)
                 b = np.ascontiguousarray(mine[name]).view(np.uint32)

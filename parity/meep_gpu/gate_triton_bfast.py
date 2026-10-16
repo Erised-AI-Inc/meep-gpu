@@ -14,17 +14,13 @@ write (m9), the always-run-all-six-targets binding (the state is seeded
 nonzero, so a zero-k target's ``-2*state`` advance moves bytes), and the
 HAS_BFAST identity arm (the identity leg).
 
-NOT held here, because no byte gate can hold them — they are byte-INVISIBLE
-in f32 and are therefore pinned by SOURCE-TEXT assertions in
-``meep_gpu/test_triton_bfast.py``, which is the correct layer, and recorded in
-this artifact's ``mutations.predicted_nulls`` so the record shows they were
-not measured: the tail's POSITION between curl and mask (the advance is masked
-with the SAME predicate as the curl, so ``mask(curl) - mask(adv) ==
-mask(curl - adv)``); the shifted-plus-center sum ORDER (IEEE addition is
-commutative); and the ``curl - adv`` fold spelled as IEEE subtraction rather
-than addition of a negation. Claiming any of the three "held here" would be
-the artifact-overclaim inversion of the expectation-at-a-byte-invisible-layer
-defect the complex gate measured.
+THE PASS FOLLOWS THE FORMS. MEEP's BFAST pass runs on each component right after
+its curl (step_db.cpp:124-142): the state takes two roundings (``F = S - F_prev``
+stored, ``raw = F - F_prev``), an absent partner is not read, MEEP's plain one-partner
+line drops ``- F``, and ``raw`` goes through the pass's own additive ladder keyed on the
+chunk record (``fold_pass_reference``). Its position after the forms is held by a
+SOURCE assertion in ``meep_gpu/test_triton_bfast.py`` and by the transcription legs of
+the fused products; the ladder and the state's roundings are held here.
 
 CLONED from the certified tranches' harnesses (complex, special_kz, nonlinear,
 offdiag) and deliberately IMPORTING the
@@ -34,8 +30,8 @@ the shared real-PML reference transcriptions
 (``probe_fused_kernel_bit_identity``'s shift/curl/mask/recurrence and the
 constitutive step), the seeding and the atomic writer all come from there, so
 this gate's verdict is about the BFAST tail and not about a re-implementation
-of the certified machinery. This family has NO complex product, so there is
-no expansion-probe leg — real f32 only (Phase A).
+of the certified machinery. This family has NO complex product — real f32
+only (Phase A).
 
 SUBNORMAL POLICY — certification runs UNDER ``ieee_keep_ftz_stripped``. CuPy
 unconditionally appends ``-ftz=true`` (cupy/cuda/compiler.py:552); the strip
@@ -65,13 +61,13 @@ Legs, in order:
   in BOTH directions: this family names the fold order, special_kz refuses
   bfast), bfast+conductivity (both directions), bfast+complex and
   bfast+Bloch (the predicate refuses what Grid deliberately allows,
-  grid.py:719-724), bfast + a nonzero k on a DECLARED-INVARIANT AXIS (clause
-  11a — the one reachable class where stepping.py carries MEEP's coefficient
-  gating but not MEEP's operand nulling; measured, see the row's detail),
-  bfast+mirror fold, bfast+chi2/chi3, bfast without PML, non-cupy backend.
-  Predicate-mutation tests live in ``meep_gpu/test_triton_bfast.py`` where
-  they run at every merge — clause 11a, clause 11 (bfast_active), the
-  k_point pair, beta, conductivity and the boundary/mirror set.
+  grid.py:719-724), bfast+mirror fold, bfast+chi2/chi3, bfast without PML,
+  non-cupy backend; and a nonzero k on a DECLARED-INVARIANT AXIS asserted
+  ADMITTED (MEEP does not read the partner it multiplies, and neither do the
+  array path and this kernel). Predicate-mutation tests live in
+  ``meep_gpu/test_triton_bfast.py`` where they run at every merge — clause 11
+  (bfast_active), the k_point pair, beta, conductivity and the boundary/mirror
+  set.
 * ``synthetic``  — the kernel against the in-gate reference on bare device
   arrays: randomized f32 operands AND randomized NONZERO f_bfast state (the
   only layer where the always-run-all-six binding and the ``-2*state``
@@ -91,24 +87,15 @@ Legs, in order:
   and the certified kernel must move bytes off its seeds.
 * ``mutations``  — armed, launch-counted, DISARMED/NEEDLE-MISSED are
   failures, mutant-distinctness verified (renamed entry points + cache-key
-  inequality — the measured stale-binary hazard): m1 k-pair
-  interchange (host; needle = the full-k configs, all components distinct);
-  m2 D-side negation dropped (host; step_D combos); m3 tail scaled by dtdx
-  (source — the natural transcriber error, stepping.py:863-864); m4 sum
-  taken as the curl's difference (source; :885-887); m5 state update drops
-  the previous value (source; byte-visible in ONE launch because the state
-  is seeded); m6 invariance guard removed (host; needle = the DECLARED-2-D
-  config — the ONLY combos where it is byte-visible, predicted null with
-  reason on the 3-D combos); m7 fold sign (source); m8 advance not masked
-  before the state store (source; needle = metallic configs, state bytes at
-  wall rows); m9 state written to a copy, not in place (host check: the
-  engine plan must bind ``fields.f_bfast_*`` pointer-identically and the
-  bytes must move THROUGH the held reference; the composition probe's sync
-  round-trip case holds the driver half). Predicted nulls recorded WITH
-  reasons, not armed: f64-negate-then-round vs round-then-negate of k (the
-  commute is exact); ``curl - adv`` vs ``curl + (-adv)`` via true negation
-  (IEEE subtraction IS addition of the negation); ``2.0*state`` vs
-  ``state + state`` (exact).
+  inequality — the measured stale-binary hazard), each at its declared
+  expectation: the BFAST pass's mutations and the root forms' inversions and
+  chunk-form battery are ``fold_pass_mutations``' shared spellings (the same text
+  every carrier of the pass is scored with); m1 k-pair interchange (host; needle =
+  the full-k configs, all components distinct); m2 D-side negation dropped (host;
+  step_D combos); m6 invariance guard removed (host; needle = the DECLARED-2-D
+  configs); m9 state written to a copy, not in place (host check: the engine plan
+  must bind ``fields.f_bfast_*`` pointer-identically and the bytes must move
+  THROUGH the held reference). Predicted nulls recorded WITH reasons, not armed.
 * ``engine``     — ``plan_bfast_pml_curl`` / ``plan_bfast_run_constitutive``
   from the engine's own objects against ``stepping`` on the reference grids,
   4 cycles, all live arrays byte-compared per sub-step, states included.
@@ -167,8 +154,11 @@ except ImportError:
     _TRITON_AVAILABLE = False
 
 # Shared machinery — never re-implemented here (see the module docstring).
+import fold_pass_mutations as fold_passes  # noqa: E402
+import fold_pass_reference as fold_ref  # noqa: E402
 import gate_triton_complex as gate  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+from gate_chunk_records import every_cell_record, layer_record  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.fields import BFAST_COMPONENTS, Fields  # noqa: E402
@@ -181,6 +171,15 @@ log = gate.log
 save = gate.save
 bit_compare = probe.bit_compare
 combine = probe.combine
+
+
+def _symmetry_gate() -> Any:
+    """``gate_triton_symmetry`` (the chunk-record reference, the records, the fitted
+    coefficients), imported on first use: it imports CuPy at module level, and this
+    module must import on a host without it (the laptop suite reads its records)."""
+    import gate_triton_symmetry  # noqa: PLC0415
+
+    return gate_triton_symmetry
 _face = probe._face
 PERIODIC = probe.PERIODIC
 METALLIC = probe.METALLIC
@@ -265,58 +264,51 @@ def accumulate(totals: Dict[str, Any],
     return totals
 
 
-def _own_axis_index(component: str) -> int:
-    return "xyz".index(component[-1].lower())
 
 
-def bfast_fold(arrays: Dict[str, Any], target: str, g1: str, a1: int, g2: str,
-               a2: int, shifted_first: Any, shifted_second: Any,
-               boundaries: Sequence[str], iyee: Sequence[int], magnetic: bool,
-               bfast_k: Sequence[float], invariant: Sequence[bool]) -> Any:
-    """One component's fold: mutates ``arrays['f_bfast_'+target]`` in place
-    and returns ``-advance`` (curl sign convention) — stepping.py:909-931."""
-    have_p = not invariant[a1]                              # :909
-    have_m = not invariant[a2]                              # :883
-    k1 = float(bfast_k[_own_axis_index(g2)]) if have_m else 0.0   # :884
-    k2 = float(bfast_k[_own_axis_index(g1)]) if have_p else 0.0   # :885
-    if not magnetic:                                        # :886-887, host f64
-        k1, k2 = -k1, -k2
-    state = arrays["f_bfast_" + target]
-    dtype = state.dtype
-    total = (dtype.type(k1) * (shifted_first + arrays[g1])  # :896-897
-             - dtype.type(k2) * (shifted_second + arrays[g2]))
-    advance = total - dtype.type(2.0) * state               # :901
-    probe.reference_mask(advance, iyee, boundaries)         # :902, pre-store
-    state += advance                                        # :903, in place
-    return -advance                                         # :904
+
+
 
 
 def real_bfast_pml_step(xp: Any, arrays: Dict[str, Any],
                         coefficients: Dict[str, Any], dtdx: float,
                         sub_step: str, boundaries: Sequence[str],
-                        bfast_k: Sequence[float],
-                        invariant: Sequence[bool]) -> None:
-    """One REAL BFAST curl sub-step, in place — the shared probe's real
-    transcription with the fold inserted between curl and mask, on the SAME
-    shifted operands (the array path's shared gather, stepping.py:1594-1598)."""
+                        bfast_k: Sequence[float], record: Sequence[int]) -> None:
+    """One REAL BFAST curl sub-step, in place: the aligned real curl and its chunk
+    forms (``gate_triton_symmetry.reference_pml_step`` keyed on ``record``), then
+    MEEP's BFAST pass on each component -- the state's two roundings, the one-partner
+    forms by the record's presence word, the plain branch on cells in neither the
+    dsig nor the dsigu chunk -- through its ladder (``fold_pass_reference``). The
+    pass reads the curl's sources only, so following the whole curl sub-step is the
+    same word per cell as following each component's curl."""
+    _symmetry_gate().reference_pml_step(xp, arrays, coefficients, dtdx, sub_step,
+                                        boundaries, (1, 1, 1), (None, None, None),
+                                        record=record)
     terms = probe.B_PML_TERMS if sub_step == "step_B" else probe.D_PML_TERMS
     backward = sub_step == "step_D"
-    magnetic = not backward
+    half_integer = not backward
+    present = fold_ref.presence(record)
+
+    def mask(values: Any, iyee: Sequence[int]) -> None:
+        _symmetry_gate().reference_mask(values, iyee, boundaries)
+
     for target, g1, a1, g2, a2, dsig, dsigu, iyee in terms:
-        shifted_first = probe.reference_shift(xp, arrays[g1], a1,
-                                              boundaries[a1], backward)
-        shifted_second = probe.reference_shift(xp, arrays[g2], a2,
-                                               boundaries[a2], backward)
-        curl = dtdx * ((shifted_first - arrays[g1])
-                       + (arrays[g2] - shifted_second))
-        curl = curl + bfast_fold(arrays, target, g1, a1, g2, a2,
-                                 shifted_first, shifted_second, boundaries,
-                                 iyee, magnetic, bfast_k, invariant)
-        probe.reference_mask(curl, iyee, boundaries)
-        probe.reference_recurrence(
-            arrays[target], arrays["fu_" + target], curl,
-            coefficients["kms_" + dsig], coefficients["sinv_" + dsig],
-            coefficients["kms_" + dsigu], coefficients["sinv_" + dsigu])
+        shape = tuple(int(n) for n in arrays[target].shape)
+        have = (present[a1], present[a2])
+        k1, k2 = fold_ref.bfast_words(bfast_k, a1, a2, g1, g2, have, not backward)
+        increment = fold_ref.bfast_increment(
+            xp, arrays["f_bfast_" + target],
+            probe.reference_shift(xp, arrays[g1], a1, boundaries[a1], backward),
+            arrays[g1],
+            probe.reference_shift(xp, arrays[g2], a2, boundaries[a2], backward),
+            arrays[g2], k1, k2, have[0], have[1],
+            fold_ref.plain_cells(xp, record, half_integer, dsig, dsigu, shape),
+            iyee, mask)
+        inside = fold_ref.membership(xp, record, half_integer, "xyz".index(dsigu),
+                                     shape)
+        fold_ref.ladder(xp, arrays[target], arrays["fu_" + target], increment,
+                        coefficients["sinv_" + dsig], coefficients["sinv_" + dsigu],
+                        inside)
 
 
 # ---------------------------------------------------------------------------
@@ -353,8 +345,7 @@ REFERENCE_GRIDS: Tuple[Dict[str, Any], ...] = (
      "bfast": K_METALLIC, "courant": 0.35, "pml": ((0, 0), (0, 0), (3, 3))},
     # R6: DECLARED dims=1 — the D1 arm of the invariance guard, where x AND y
     # are invariant and four flags are false at once. k rides z because
-    # bfast_curl clause 11a refuses a k component on an invariant axis (the
-    # MEEP operand-nulling gap), so this is the whole admitted D1 class, and
+    # it is the D1 class whose k needs no invariant-axis partner, and
     # every one of the six scalars is gated to zero: the case pins the D1
     # guard arm and the pure -2*state advance. NOTE, and it is in the artifact
     # deliberately: MEEP's gv.has_field leaves Bx/Bz/Dy/Dz unallocated in D1
@@ -437,6 +428,7 @@ def run_reference_validation(results: Dict[str, Any], out_path: str, xp,
         kinds = stepping._boundary_kinds(grid, pml)
         invariant = tuple(grid.is_invariant(axis) for axis in range(3))
         dtdx = grid.dt / grid.dx
+        record = layer_record(grid, pml)
         arrays = {name: getattr(fields, name).copy() for name in CHECK_STATE}
         arrays.update({"inv_eps_" + name: fields.inverse_epsilon_for(name)
                        for name in ("Ex", "Ey", "Ez")})
@@ -469,11 +461,13 @@ def run_reference_validation(results: Dict[str, Any], out_path: str, xp,
                 engine_call(fields, pml)
                 if slot in CURL_SUB_STEPS:
                     real_bfast_pml_step(xp, arrays, curl_tables[slot], dtdx,
-                                        slot, kinds, grid.bfast_scaled_k,
-                                        invariant)
+                                        slot, kinds, grid.bfast_scaled_k, record)
                 else:
-                    probe.reference_constitutive_step(
-                        side, arrays, arrays, constitutive_tables[side])
+                    # MEEP's start of H on the run's first update_H.
+                    fold_ref.constitutive_step(
+                        xp, arrays, constitutive_tables[side], side,
+                        probe.CONSTITUTIVE_TERMS[side], record,
+                        start_h=(side == "H" and step == 1))
                 parts = {name: bit_compare(arrays[name], getattr(fields, name))
                          for name in CHECK_STATE}
                 totals = accumulate(totals, parts)
@@ -527,6 +521,12 @@ GUARD_CONFIGS: Tuple[Dict[str, Any], ...] = (
      "boundaries": (PERIODIC, PERIODIC, PERIODIC),
      "shape": (7, 6, 1), "invariant": (False, False, True),
      "k": (0.4, 0.0, 0.0)},
+    # A nonzero k on the declared-invariant axis: MEEP never reads the partner it
+    # multiplies (the absent partner is not read), so it is admitted and stepped.
+    {"name": "guard_2d_invariant_k",
+     "boundaries": (PERIODIC, PERIODIC, PERIODIC),
+     "shape": (7, 6, 1), "invariant": (False, False, True),
+     "k": (0.4, 0.0, 0.3)},
 )
 
 DTDX_VALUES = (COURANT_MARQUEE, 0.35)  # both non-power-of-two; one is the marquee's own
@@ -535,12 +535,13 @@ LIVE_3D = (False, False, False)
 
 def one_case(shape, config, k_label, bfast_k, invariant, dtdx, sub_step,
              guard, kernel=None, ks_override=None, has_bfast: int = 1,
-             state_mode: str = "random") -> Dict[str, Any]:
+             state_mode: str = "random", record_kind: str = "split") -> Dict[str, Any]:
     case: Dict[str, Any] = {
         "shape": list(shape), "config": config["name"], "k_set": k_label,
         "bfast": [repr(v) for v in bfast_k],
         "invariant": list(invariant), "dtdx": repr(dtdx),
         "sub_step": sub_step, "guard": guard, "state_mode": state_mode,
+        "record_kind": record_kind,
     }
     names = FIELD_12 + FU_NAMES
     rng = np.random.default_rng(SEED + 51)
@@ -550,22 +551,26 @@ def one_case(shape, config, k_label, bfast_k, invariant, dtdx, sub_step,
     for name in BFAST_ALL:
         arrays[name] = cp.asarray(_seed_host_state(
             tuple(shape), srng, subnormal=(state_mode == "subnormal")))
-    coefficients = probe.synthetic_coefficients(cp, tuple(shape),
-                                                sub_step == "step_B")
+    half_integer = sub_step == "step_B"
+    record = _symmetry_gate().record_for(record_kind, shape)
+    coefficients = probe.synthetic_coefficients(cp, tuple(shape), half_integer)
+    if record_kind == "split":
+        coefficients = _symmetry_gate().fit_coefficients(cp, coefficients, record,
+                                                         half_integer, shape)
     flat = probe.flatten_coefficients(coefficients)
     reference = {name: array.copy() for name, array in arrays.items()}
     real_bfast_pml_step(cp, reference, coefficients, dtdx, sub_step,
-                        config["boundaries"], bfast_k, invariant)
+                        config["boundaries"], bfast_k, record)
 
     ks = bfast_curl.bfast_curl_coefficients(bfast_k, invariant,
-                                            magnetic=(sub_step == "step_B"))
+                                            magnetic=half_integer)
     if ks_override is not None:
         ks = (ks_override(ks, bfast_k, invariant, sub_step)
               if callable(ks_override) else tuple(ks_override))
     codes = [CODE_OF[b] for b in config["boundaries"]]
     plan = bfast_curl.plan_bfast_pml_curl_from_arrays(
         sub_step, arrays, flat, codes, float(dtdx), ks,
-        kernel=kernel, has_bfast=has_bfast)
+        kernel=kernel, has_bfast=has_bfast, chunk_bounds=record)
     plan.run(guard=guard)
     cp.cuda.runtime.deviceSynchronize()
 
@@ -596,37 +601,44 @@ def run_synthetic(results: Dict[str, Any], out_path: str,
                   sub_steps=CURL_SUB_STEPS,
                   configs=CONFIGS, k_sets=K_SETS,
                   guard_configs=GUARD_CONFIGS,
-                  state_mode: str = "random") -> Dict[str, Any]:
+                  state_mode: str = "random",
+                  record_kinds=None) -> Dict[str, Any]:
     cases: List[Dict[str, Any]] = []
+    if record_kinds is None:
+        record_kinds = _symmetry_gate().RECORD_KINDS
     combos: List[Tuple] = []
     for shape in SHAPES:
         for config in configs:
             for k_label, bfast_k in k_sets:
                 for dtdx in DTDX_VALUES:
                     for sub_step in sub_steps:
-                        combos.append((shape, config, k_label, bfast_k,
-                                       LIVE_3D, dtdx, sub_step))
+                        for kind in record_kinds:
+                            combos.append((shape, config, k_label, bfast_k,
+                                           LIVE_3D, dtdx, sub_step, kind))
     for config in guard_configs:
         for dtdx in DTDX_VALUES:
             for sub_step in sub_steps:
-                combos.append((config["shape"], config, "guard_2d",
-                               config["k"], config["invariant"], dtdx,
-                               sub_step))
+                for kind in record_kinds:
+                    combos.append((config["shape"], config, config["name"],
+                                   config["k"], config["invariant"], dtdx,
+                                   sub_step, kind))
     total = len(guards) * len(combos)
     index = 0
     for guard in guards:
-        for shape, config, k_label, bfast_k, invariant, dtdx, sub_step in combos:
+        for (shape, config, k_label, bfast_k, invariant, dtdx, sub_step,
+             kind) in combos:
             index += 1
             started = time.time()
             case = one_case(shape, config, k_label, bfast_k, invariant, dtdx,
                             sub_step, guard, kernel=kernel,
-                            ks_override=ks_override, state_mode=state_mode)
+                            ks_override=ks_override, state_mode=state_mode,
+                            record_kind=kind)
             case["seconds"] = round(time.time() - started, 3)
             cases.append(case)
             verdict = case["verdict"]
             log(f"[{label}] {index}/{total} guard={guard} {sub_step} "
                 f"{'x'.join(str(n) for n in shape)} {config['name']} "
-                f"{k_label}: identical={verdict['bit_identical']} "
+                f"{k_label} {kind}: identical={verdict['bit_identical']} "
                 f"(differing={verdict['differing_floats']}/"
                 f"{verdict['total_floats']}) ({case['seconds']} s)")
             summary = _summarize(cases)
@@ -704,12 +716,17 @@ def run_identity(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
             dtdx = float(config["dtdx"])
             candidate_counter = CountingKernel(bfast_curl.bfast_pml_curl_step)
             twin_counter = CountingKernel(kernels.pml_curl_step)
+            # Synthetic coefficient tables: the every-cell chunk record, on both.
             bfast_curl.plan_bfast_pml_curl_from_arrays(
                 sub_step, arrays, flat, codes, dtdx,
                 (0.1, -0.2, 0.3, -0.4, 0.5, -0.6), has_bfast=0,
-                kernel=candidate_counter).run(guard=False)
+                kernel=candidate_counter,
+                chunk_bounds=every_cell_record(shape)).run(guard=False)
+
             launch.plan_from_arrays(sub_step, twin, flat, codes, dtdx,
-                                    kernel=twin_counter).run(guard=False)
+                                    kernel=twin_counter,
+                                    chunk_bounds=every_cell_record(shape)
+                                    ).run(guard=False)
             cp.cuda.runtime.deviceSynchronize()
             targets = SUB_TARGETS[sub_step]
             checked = targets + tuple("fu_" + t for t in targets)
@@ -855,28 +872,20 @@ def run_refusals(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
                              for r in reasons),
            f"grid took both slots={took_both}; reasons={reasons[:3]}")
 
-    # bfast + a nonzero k on a DECLARED-invariant axis (clause 11a). This is
-    # the one reachable class where the array path this kernel transcribes is
-    # NOT MEEP's answer: MEEP nulls the partner OPERAND as well as zeroing the
-    # coefficient (step_db.cpp:62-63 vs :130-133) and step_bfast swaps a null
-    # g1 into the g2 slot carrying k1 := k2 (step_generic.cpp:342-346), so
-    # either false flag gives F_new = -F_prev with the other term DROPPED,
-    # while stepping.py:911-924 zeroes only the coefficient. Measured on the
-    # laptop: at kz = 0 the array path IS -F_prev exactly on the two guarded
-    # targets; at kz = 0.3 it is not (max|diff| ~ 0.6). Refused by name here.
+    # bfast + a nonzero k on a DECLARED-invariant axis (clause 11a): ADMITTED. MEEP
+    # does not read the partner such a k multiplies -- step_bfast takes a NULL
+    # pointer and swaps it into the g2 slot (step_generic.cpp:342-346) -- and the
+    # array path now takes the same one-partner forms (bit_parity_0_10 WP AP6b), as
+    # does this kernel; the synthetic and engine legs step the class. The row
+    # asserts the admission and that no reason still names the invariant axis.
     fields, pml = _np_build(cell=(2.0, 1.6, 0.0), dimensions=2,
                             bfast=(0.4, 0.0, 0.3), courant=0.4375)
     invariant_reasons = [r for r in reasons_of(fields, pml)
-                         if "DECLARED-invariant axis" in r]
-    admitted, admitted_pml = _np_build(cell=(2.0, 1.6, 0.0), dimensions=2,
-                                       bfast=(0.4, 0.0, 0.0), courant=0.4375)
-    still_admitted = [r for r in reasons_of(admitted, admitted_pml)
-                      if "DECLARED-invariant axis" in r]
-    record("bfast_k_on_an_invariant_axis",
-           bool(invariant_reasons) and not still_admitted,
-           f"kz on the invariant axis of a dims=2 grid: {invariant_reasons}; "
-           f"the same grid with kz = 0 keeps its admission "
-           f"(clause-11a reasons: {still_admitted})")
+                         if "invariant" in r.lower()]
+    record("bfast_k_on_an_invariant_axis_admitted",
+           not invariant_reasons,
+           f"kz on the invariant axis of a dims=2 grid: reasons naming an "
+           f"invariant axis {invariant_reasons}")
 
     # bfast + mirror fold.
     fields, pml = _np_build(cell=(2.0, 1.6, 0.0), dimensions=2,
@@ -917,8 +926,7 @@ def run_refusals(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     leg = {"rows": rows, "failures": failures,
            "predicate_mutations_note": (
                "predicate mutations run at every merge in "
-               "meep_gpu/test_triton_bfast.py: drop clause 11a (the "
-               "invariant-axis k), drop clause 11 (bfast_active — the "
+               "meep_gpu/test_triton_bfast.py: drop clause 11 (bfast_active — the "
                "inversion this whole product hangs on), drop the k_point "
                "pair (whose refused configuration makes the ARRAY PATH "
                "raise, so admitting it would answer where the engine will "
@@ -939,17 +947,21 @@ _TEMPORARY: List[str] = []
 def compile_mutated(source: str, kernel_name: str):
     """Compile a mutated copy of the shipped kernel from a real file on disk
     (Triton reads source via inspect). The constexpr codes are re-declared in
-    the header because a @triton.jit body may not read a plain module global."""
+    the header because a @triton.jit body may not read a plain module global; the
+    shared forms are IMPORTED, as the shipped module imports them. The module name
+    does not start with ``triton`` (Triton's dependency finder leaves such callees
+    out of the kernel's cache key)."""
     header = (
         "import triton\nimport triton.language as tl\n"
-        "PERIODIC = tl.constexpr(0)\nMETALLIC = tl.constexpr(1)\n\n")
+        + fold_passes.MUTANT_IMPORTS
+        + "PERIODIC = tl.constexpr(0)\nMETALLIC = tl.constexpr(1)\n\n")
     handle = tempfile.NamedTemporaryFile("w", suffix="_mutated_bfast.py",
                                          delete=False, encoding="utf-8")
     handle.write(header + source)
     handle.close()
     _TEMPORARY.append(handle.name)
     spec = importlib.util.spec_from_file_location(
-        "triton_mutated_bfast_" + str(len(_TEMPORARY)), handle.name)
+        "bfast_mutant_" + str(len(_TEMPORARY)), handle.name)
     module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     sys.modules[spec.name] = module  # type: ignore[union-attr]
     spec.loader.exec_module(module)  # type: ignore[union-attr]
@@ -960,107 +972,15 @@ def shipped_source() -> str:
     return textwrap.dedent(inspect.getsource(bfast_curl.bfast_pml_curl_step.fn))
 
 
-TOTAL_LINES = (
-    "total0 = (k1_0 * (c_y + c)) - (k2_0 * (b_z + b))",
-    "total1 = (k1_1 * (a_z + a)) - (k2_1 * (c_x + c))",
-    "total2 = (k1_2 * (b_x + b)) - (k2_2 * (a_y + a))",
-)
-ADV_LINES = (
-    "adv0 = total0 - (2.0 * st0)",
-    "adv1 = total1 - (2.0 * st1)",
-    "adv2 = total2 - (2.0 * st2)",
-)
-FOLD_LINES = (
-    "curl0 = curl0 - adv0",
-    "curl1 = curl1 - adv1",
-    "curl2 = curl2 - adv2",
-)
-STORE_LINES = (
-    "tl.store(s0 + idx, st0 + adv0, mask=live)",
-    "tl.store(s1 + idx, st1 + adv1, mask=live)",
-    "tl.store(s2 + idx, st2 + adv2, mask=live)",
-)
-ADV_MASK_MARKER = "# --- advance ownership mask, BEFORE the state store (S:902) ---------"
-
-
-def mutate_m3_dtdx_scaled(source: str) -> Tuple[str, int]:
-    """m3: the tail wrongly scaled by dtdx — the natural transcriber error
-    (MEEP passes dtdx to step_bfast and never reads it, stepping.py:863-864)."""
-    hits = 0
-    for line in TOTAL_LINES:
-        if line in source:
-            head, expression = line.split(" = ", 1)
-            source = source.replace(line, f"{head} = dtdx * ({expression})")
-            hits += 1
-    return source, hits
-
-
-def mutate_m4_sum_as_difference(source: str) -> Tuple[str, int]:
-    """m4: the BFAST SUM taken as the curl's DIFFERENCE (stepping.py:885-887
-    — 'the sign pattern is NOT the curl's')."""
-    hits = 0
-    for needle, replacement in (
-            ("(c_y + c)", "(c_y - c)"), ("(b_z + b)", "(b_z - b)"),
-            ("(a_z + a)", "(a_z - a)"), ("(c_x + c)", "(c_x - c)"),
-            ("(b_x + b)", "(b_x - b)"), ("(a_y + a)", "(a_y - a)")):
-        if needle in source:
-            source = source.replace(needle, replacement)
-            hits += 1
-    return source, hits
-
-
-def mutate_m5_state_drops_previous(source: str) -> Tuple[str, int]:
-    """m5: F = S instead of F = S - F_prev; the advance loses the doubled
-    previous state. Byte-visible in ONE launch because the state is seeded."""
-    hits = 0
-    for line in ADV_LINES:
-        if line in source:
-            # F = S gives advance = S - F_prev: the doubling disappears. The
-            # 1.0* spelling keeps the expression shape (an exact identity
-            # multiply) so the ONLY defect planted is the missing factor.
-            source = source.replace(line, line.replace("(2.0 * ", "(1.0 * "))
-            hits += 1
-    return source, hits
-
-
-def mutate_m7_fold_sign(source: str) -> Tuple[str, int]:
-    """m7: the fold ADDED instead of subtracted (curl + adv)."""
-    hits = 0
-    for line in FOLD_LINES:
-        if line in source:
-            source = source.replace(line, line.replace("- adv", "+ adv"))
-            hits += 1
-    return source, hits
-
-
-def mutate_m8_store_before_mask(source: str) -> Tuple[str, int]:
-    """m8: the advance NOT masked before the state store (stepping.py:929
-    masks first) — the store takes the RAW advance while the fold keeps the
-    masked one, so only the wall-row STATE bytes move (the metallic needle)."""
-    if ADV_MASK_MARKER not in source:
-        return source, 0
-    hits = 1
-    capture = ("raw0 = adv0\n        raw1 = adv1\n        raw2 = adv2\n"
-               "        " + ADV_MASK_MARKER)
-    source = source.replace(ADV_MASK_MARKER, capture)
-    for line in STORE_LINES:
-        if line in source:
-            source = source.replace(line, line.replace("+ adv", "+ raw"))
-            hits += 1
-    return source, hits
-
-
-#: name -> (transform, config restriction). m8 runs the metallic configs only:
-#: on all-periodic boundaries no row is masked and the mutant is byte-neutral
-#: BY CONSTRUCTION — running it there would report a false miss.
-SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str]] = {
-    "m3_tail_scaled_by_dtdx": (mutate_m3_dtdx_scaled, "all"),
-    "m4_sum_taken_as_difference": (mutate_m4_sum_as_difference, "all"),
-    "m5_state_update_drops_previous": (mutate_m5_state_drops_previous, "all"),
-    "m7_fold_sign": (mutate_m7_fold_sign, "all"),
-    "m8_advance_not_masked_before_store": (mutate_m8_store_before_mask,
-                                           "metallic"),
-}
+#: name -> (rewrite, expectation, why): the BFAST pass's mutations and the root forms'
+#: (KERNELS.md 7.1's inversions and 7.2's chunk-form battery), ``fold_pass_mutations``'
+#: shared spellings. The synthetic sweep each is scored on carries every ``need``
+#: (walled configs, both records' layers, the declared-2-D one-partner configs and
+#: the invariant-axis k), so a catch anywhere in it is a catch.
+SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str, str]] = {
+    name: (rewrite, expectation, why)
+    for name, why, expectation, rewrite, _needs in
+    fold_passes.bfast_mutations() + fold_passes.form_mutations(False)}
 
 
 class CountingKernel(gate.CountingKernel):
@@ -1091,42 +1011,30 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     shipped = shipped_source()
 
-    for name, (transform, restriction) in SOURCE_MUTATIONS.items():
+    for name, (transform, expectation, why) in SOURCE_MUTATIONS.items():
         mutated, hits = transform(shipped)
-        if hits == 0:
+        if hits == 0 or mutated == shipped:
             out[name] = {"error": "NEEDLE MISSED: the mutation matched "
                                   "nothing; the needle drifted off the kernel"}
             log(f"[mut] {name}: NEEDLE MISSED — nothing exercised")
             results["mutations"] = out
             save(results, out_path)
             continue
-        renamed_source, entry = _renamed(mutated, name.split("_")[0])
+        renamed_source, entry = _renamed(mutated, name.split("_")[0] + "_"
+                                         + str(len(out)))
         counter = CountingKernel(compile_mutated(renamed_source, entry))
         distinctness = _mutant_distinctness(name, counter.kernel)
-        configs = METALLIC_CONFIGS if restriction == "metallic" else CONFIGS
-        # The restriction must reach GUARD_CONFIGS too: its single entry
-        # declares all-periodic boundaries, so under a metallic-only mutation
-        # its four combos would be byte-neutral BY CONSTRUCTION and land in the
-        # artifact as unexplained non-null cases — the exact false miss the
-        # restriction exists to prevent. m1 already excludes them explicitly.
-        guard_configs = () if restriction == "metallic" else GUARD_CONFIGS
         summary = run_synthetic(results, out_path,
                                 label="mutation:" + name, guards=(False,),
-                                kernel=counter, configs=configs,
-                                guard_configs=guard_configs)
+                                kernel=counter)
+        caught = summary["identical"] < summary["ran"]
         entry_row: Dict[str, Any] = {
             "sites": hits, "launches": counter.launches,
             "ran": summary["ran"], "identical": summary["identical"],
-            "config_restriction": restriction,
+            "expectation": expectation, "why": why,
             "mutant_distinctness": distinctness,
-            "caught": summary["identical"] < summary["ran"],
+            "caught": caught, "as_expected": caught == (expectation == "caught"),
         }
-        if restriction == "metallic":
-            entry_row["excluded_combos"] = (
-                "the all-periodic CONFIGS and the all-periodic GUARD_CONFIGS "
-                "entry are NOT armed for this mutation: with no masked row the "
-                "mutant is byte-identical BY CONSTRUCTION there, so running it "
-                "would report a false miss rather than a predicted null")
         if counter.launches == 0:
             entry_row["error"] = ("DISARMED: the mutated kernel never "
                                   "launched — the leg measured nothing")
@@ -1136,7 +1044,7 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
                                   "aliasing class)")
         log(f"[mut] {name}: sites={hits} launches={counter.launches} "
             f"identical={summary['identical']}/{summary['ran']} "
-            f"CAUGHT={entry_row['caught']}")
+            f"caught={entry_row['caught']} expectation={expectation}")
         out[name] = entry_row
         results["mutations"] = out
         save(results, out_path)
@@ -1154,7 +1062,9 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
         "host": True, "launches": true_counter.launches,
         "ran": summary["ran"], "identical": summary["identical"],
         "needle": "full_k configs (distinct kx, ky, kz)",
-        "caught": summary["identical"] < summary["ran"]}
+        "caught": summary["identical"] < summary["ran"],
+        "expectation": "caught",
+        "as_expected": summary["identical"] < summary["ran"]}
     if true_counter.launches == 0:
         out["m1_k_pair_interchanged"]["error"] = "DISARMED: never launched"
     log(f"[mut] m1: identical={summary['identical']}/{summary['ran']}")
@@ -1172,7 +1082,9 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     out["m2_d_negation_dropped"] = {
         "host": True, "launches": m2_counter.launches,
         "ran": summary["ran"], "identical": summary["identical"],
-        "caught": summary["identical"] < summary["ran"]}
+        "caught": summary["identical"] < summary["ran"],
+        "expectation": "caught",
+        "as_expected": summary["identical"] < summary["ran"]}
     if m2_counter.launches == 0:
         out["m2_d_negation_dropped"]["error"] = "DISARMED: never launched"
     log(f"[mut] m2: identical={summary['identical']}/{summary['ran']}")
@@ -1200,7 +1112,9 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
                                 "is all-live and the mutant binds the true "
                                 "scalars — byte-identical BY CONSTRUCTION, "
                                 "so those combos are not armed",
-        "caught": summary["identical"] < summary["ran"]}
+        "caught": summary["identical"] < summary["ran"],
+        "expectation": "caught",
+        "as_expected": summary["identical"] < summary["ran"]}
     if m6_counter.launches == 0:
         out["m6_invariance_guard_removed"]["error"] = "DISARMED: never launched"
     log(f"[mut] m6: identical={summary['identical']}/{summary['ran']}")
@@ -1234,44 +1148,28 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
             "pointer_identical_binding": pointer_identical,
             "bytes_moved_through_held_reference": moved,
             "attribute_still_the_same_object": still_same_object,
-            "caught": pointer_identical and moved and still_same_object}
+            "caught": pointer_identical and moved and still_same_object,
+            "expectation": "caught",
+            "as_expected": pointer_identical and moved and still_same_object}
     log(f"[mut] m9: {out['m9_state_written_to_copy']}")
     results["mutations"] = out
     save(results, out_path)
 
     out["predicted_nulls"] = {
         "negate_then_round_vs_round_then_negate": (
-            "the D side negates k in host f64 then rounds once (:886-887, "
-            ":896-897); f64 negation and f32 rounding commute EXACTLY, so "
-            "the two spellings are the same bytes on every k — recorded, "
-            "not armed"),
-        "curl_minus_adv_vs_curl_plus_negated_adv": (
-            "IEEE-754 defines subtraction AS addition of the negation; the "
-            "kernel's `curl - adv` is the array path's `curl + (-advance)` "
-            "bit-for-bit on every input including signed zeros — recorded, "
-            "not armed (the hazard would be Triton UNARY minus, which the "
-            "tail never uses)"),
-        "two_times_state_vs_state_plus_state": (
-            "2.0*s and s+s are both exact doublings in binary floating "
-            "point (barring overflow, absent at these seeds) — recorded, "
-            "not armed"),
-        "tail_before_the_mask_vs_tail_after_the_mask": (
-            "MEASURED byte-invisible: the advance is masked with the SAME "
-            "ownership predicate the curl mask applies below it, so "
-            "mask(curl) - mask(adv) == mask(curl - adv) on every cell and "
-            "moving the whole tail below the mask changes no byte (an "
-            "independent NumPy emulation of the kernel source over this "
-            "gate's own 52 synthetic combos: 52/52 identical). The fold "
-            "ORDER is therefore held by a SOURCE assertion — "
-            "test_triton_bfast.py::test_the_tail_sits_after_the_curl_and_"
-            "before_the_mask — not by this gate; recorded here so the "
-            "artifact does not imply it was measured"),
+            "the D side negates k in host f64 then rounds once; f64 negation and "
+            "f32 rounding commute EXACTLY, so the two spellings are the same bytes "
+            "on every k -- recorded, not armed"),
+        "subtract_the_negated_increment_vs_add_the_raw": (
+            "the ladder subtracts the NEGATED raw word, the array path's spelling "
+            "and MEEP's f += raw word for word (x - (-y) is x + y in IEEE-754, "
+            "signed zeros included), while x - (+0) keeps an unowned cell's -0 -- "
+            "recorded, not armed (the hazard would be Triton UNARY minus, which "
+            "the pass never uses: the negation is spelled * -1.0)"),
         "shifted_plus_center_vs_center_plus_shifted": (
-            "MEASURED byte-invisible: IEEE addition is commutative, so "
-            "swapping each sum's operand order changes no byte (same "
-            "emulation, 52/52 identical). Held by "
-            "test_triton_bfast.py::test_the_tail_pairs_shifted_with_center_"
-            "in_operand_order, a source assertion; recorded, not armed"),
+            "IEEE addition is commutative, so each sum's operand order changes no "
+            "byte. Held by test_triton_bfast.py's source assertion on the operand "
+            "order; recorded, not armed"),
     }
     results["mutations"] = out
     save(results, out_path)
@@ -1464,8 +1362,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     continue
                 if entry.get("error"):
                     failures.append(f"mutation {name}: {entry['error']}")
-                elif not entry.get("caught"):
-                    failures.append(f"mutation {name} was NOT caught")
+                elif not entry.get("as_expected", entry.get("caught")):
+                    failures.append(f"mutation {name}: caught={entry.get('caught')} "
+                                    f"against expectation "
+                                    f"{entry.get('expectation')}")
         elif leg_name == "engine":
             summary = run_engine(results, args.out)
             if summary["identical"] != summary["ran"]:

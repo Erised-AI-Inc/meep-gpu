@@ -199,6 +199,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from . import bounds_block
 from . import coverage as _coverage
 from . import own_cell_hoist
 from .compile_cache import (clear_kernel_cache as _clear_cache,
@@ -379,26 +380,28 @@ _APPLY_SIGNATURE = "__device__ __forceinline__ void constitutive_apply(\n"
 _APPLY_SIGNATURE_PURE = "__device__ __forceinline__ float constitutive_apply_pure(\n"
 _APPLY_PARAMETERS = (
     "    float* __restrict__ f, float* __restrict__ fw, int idx, float src,\n"
-    "    float kps, float kms\n)")
+    "    float kps, float kms, int dsigw\n)")
 _APPLY_PARAMETERS_PURE = (
     "    const float* __restrict__ f, const float* __restrict__ fw, int idx,\n"
     "    float src,\n"
-    "    float kps, float kms, float* fw_out\n)")
-_APPLY_FW_STORE = "    fw[idx] = src;\n"
+    "    float kps, float kms, int dsigw, float* fw_out\n)")
+_APPLY_FW_STORE = "    if (dsigw) fw[idx] = src;\n"
 _APPLY_FW_STORE_PURE = (
     "    // THE FIRST OF THE TWO STORES, HANDED BACK INSTEAD OF PERFORMED. The\n"
     "    // caller writes it to the SCRATCH volume, so nothing this launch reads is\n"
     "    // ever a word this launch wrote -- and on this side the stored value IS\n"
     "    // B[idx], so an in-place write would hand a racing neighbour B where its\n"
-    "    // recurrence needs B_prev.\n"
-    "    *fw_out = src;\n")
-_APPLY_F_STORE = "    f[idx] = a - kms * prev;\n"
+    "    // recurrence needs B_prev. Off the dsigw run the auxiliary is not stepped\n"
+    "    // and the scratch takes the word it already holds: the rotation makes the\n"
+    "    // scratch the live f_w_H, so every cell of it is written (a copy-through\n"
+    "    // read off the run that the in-place helper does not make).\n"
+    "    *fw_out = dsigw ? src : fw[idx];\n")
+_APPLY_F_STORE = "    f[idx] = value;\n"
 _APPLY_F_STORE_PURE = (
-    "    // THE SECOND STORE, LIKEWISE. Same right-hand side, same tree, same\n"
-    "    // operand order, same two SEPARATE accumulations; the value is RETURNED so\n"
-    "    // the caller can store it to scratch for its own cell and consume it from a\n"
-    "    // register for the curl half.\n"
-    "    return a - kms * prev;\n")
+    "    // THE SECOND STORE, LIKEWISE. Same forms, same tree, same operand order;\n"
+    "    // the value is RETURNED so the caller can store it to scratch for its own\n"
+    "    // cell and consume it from a register for the curl half.\n"
+    "    return value;\n")
 
 #: ``shift_dn``'s declaration and its two leaf loads. The loads' INDEX EXPRESSIONS are
 #: never written here: they are parsed out of the certified lines by
@@ -423,18 +426,21 @@ CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "an out-parameter; f and fw become const because nothing in this launch "
             "writes them, which is what makes a foreign recompute a pure function of "
             "unwritten memory."},
-    {"line": "    fw[idx] = src;",
-     "became": "    *fw_out = src;",
+    {"line": "    if (dsigw) fw[idx] = src;",
+     "became": "    *fw_out = dsigw ? src : fw[idx];",
      "why": "the store moves to the caller, which addresses the scratch for its own "
-            "cell and stores nothing at all for a foreign recompute. The value and "
-            "the expression that produced it are untouched."},
-    {"line": "    f[idx] = a - kms * prev;",
-     "became": "    return a - kms * prev;",
-     "why": "same right-hand side, same tree, same operand order; the result is "
+            "cell and stores nothing at all for a foreign recompute. On the dsigw run "
+            "the value and the expression that produced it are untouched; off it the "
+            "auxiliary is not stepped, and because the rotation makes the scratch the "
+            "live f_w_H the scratch takes the word f_w_H already holds there (a "
+            "copy-through read the in-place helper does not make; no word differs)."},
+    {"line": "    f[idx] = value;",
+     "became": "    return value;",
+     "why": "the same value -- MEEP's two per-chunk forms, the accumulation "
+            "f + ((kps*src) - (kms*prev)) on the dsigw run and f = src off it -- "
             "returned rather than stored because the curl half consumes the thread's "
-            "own cell from a register. The TWO SEPARATE ACCUMULATIONS -- `a = f[idx] "
-            "+ kps*src` then `a - kms*prev`, constitutive_kernels.py's note 1 -- are "
-            "not touched, and regrouping them is an armed gate mutation."},
+            "own cell from a register. Regrouping the accumulation is an armed gate "
+            "mutation."},
     {"line": "    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n"
              "    if (idx >= nx * ny * nz) return;",
      "became": "(removed -- idx is a parameter of raw_update_H_cell)",
@@ -453,9 +459,16 @@ CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "index into the per-axis coefficient index kps_x[i] / kps_y[j] / "
             "kps_z[k]. Dropping it and reusing the thread's i/j/k would index the "
             "absorber profile at the WRONG cell -- converged, smooth and wrong."},
-    {"line": "    constitutive_apply(H*, f_w_H*, idx, B*[idx], kps_*[*], kms_*[*]);",
+    {"line": "    <update_H_pml_real's chunk-record block>",
+     "became": "(kept, verbatim, inside raw_update_H_cell; cb bound from the pack)",
+     "why": "NOT AN EDIT EITHER. The block decodes the record at the cell its decode "
+            "names, so a foreign recompute chooses the accumulation or f = src by the "
+            "RECOMPUTED cell's membership, not the thread's (KERNELS.md section 3.3, "
+            "recomputes). The record pointer joins the pack as WeldArgs::cb."},
+    {"line": "    constitutive_apply(H*, f_w_H*, idx, B*[idx], kps_*[*], kms_*[*], "
+             "in_i_*);",
      "became": "    h_out[n] = constitutive_apply_pure(H*, f_w_H*, idx, B*[idx], "
-               "kps_*[*], kms_*[*], &w_out[n]);",
+               "kps_*[*], kms_*[*], in_i_*, &w_out[n]);",
      "why": "capture both values. The argument list, its order and the coefficient "
             "pairing are untouched; what is added is where the two results go. Three "
             "lines, one per component, each derived from the certified line by prefix "
@@ -540,6 +553,7 @@ WELD_ARGS_FIELDS: Tuple[Tuple[str, str], ...] = (
     ("const float* __restrict__", "kms_x"), ("const float* __restrict__", "kms_y"),
     ("const float* __restrict__", "kms_z"),
     ("int", "nx"), ("int", "ny"), ("int", "nz"),
+    ("const int* __restrict__", "cb"),
 )
 
 
@@ -717,6 +731,8 @@ def raw_update_H_cell_source() -> str:
     for _kind, name in WELD_ARGS_FIELDS:
         if name.startswith(("H", "f_w_H", "B", "kps_", "kms_")):
             unpack.append(f"    const float* __restrict__ {name} = weld.{name};")
+    # The chunk record: the lifted block below decodes it at the RECOMPUTED cell.
+    unpack.append("    const int* __restrict__ cb = weld.cb;")
     return signature + "\n".join(unpack) + "\n" + body + "}\n"
 
 
@@ -808,6 +824,12 @@ def shift_dn_recompute_source() -> str:
             + _SHIFT_DN_SIGNATURE_RECOMPUTE + " {\n" + body + "}\n")
 
 
+#: The chunk-record entries the lifted ``step_D`` body decodes: the integer record along
+#: each D component's dsigu axis plus the partner-presence word.
+CURL_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.curl_entries(("Dx", "Dy", "Dz"))), (0, 1, 2))
+
+
 def welded_curl_tail() -> Tuple[str, str]:
     """``(head, tail)`` of the certified ``step_D`` body, every H read redirected.
 
@@ -825,7 +847,15 @@ def welded_curl_tail() -> Tuple[str, str]:
             "the certified step_D body no longer carries exactly one thread preamble "
             "and one index decode; this weld keeps both verbatim and splices its "
             "constitutive half directly below the decode")
-    cut = body.index(_INDEX_DECODE) + len(_INDEX_DECODE)
+    # The cut keeps the curl's chunk-record block with its decode (D10): the block
+    # directly after the decode reads the record once for the curl half, and the
+    # constitutive half decodes its own entries inside raw_update_H_cell.
+    block = "\n" + bounds_block.bounds_block(*CURL_BLOCK)
+    if body.count(_INDEX_DECODE + block) != 1:
+        raise AssertionError(
+            "the certified step_D body does not carry its chunk-record block directly "
+            "after its index decode; this weld keeps both verbatim as its own head")
+    cut = body.index(_INDEX_DECODE + block) + len(_INDEX_DECODE + block)
     head, tail = body[:cut], body[cut:]
 
     own = 0
@@ -930,7 +960,11 @@ extern "C" __global__ void {KERNEL_NAME}(
     // are the same three volumes. There is no kms_half_* here and there must not be.
     const float* __restrict__ kps_x, const float* __restrict__ kps_y,
     const float* __restrict__ kps_z,
-    int bc_x, int bc_y, int bc_z
+    int bc_x, int bc_y, int bc_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: decoded once for
+    // the curl half after the index decode, and inside raw_update_H_cell at every
+    // recomputed cell.
+    const int* __restrict__ cb
 ) {{
 '''
 
@@ -1219,7 +1253,8 @@ def assert_scratch_is_disjoint(fields: Any, scratch: Dict[str, Any],
 def launch_fused_hd_pair(fields: Any, scratch: Dict[str, Any], tables: Dict[str, Any],
                          boundary_codes: Sequence[int], dtdx: float,
                          kernel: Optional[Any] = None,
-                         threads: int = _FUSED_THREADS) -> Dict[str, Any]:
+                         threads: int = _FUSED_THREADS, *, chunk_bounds: Any,
+                         layer: Any = None) -> Dict[str, Any]:
     """Both of :data:`REPLACES` in ONE launch. THE CALLER ROTATES AFTERWARDS.
 
     ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is: a gate
@@ -1232,9 +1267,33 @@ def launch_fused_hd_pair(fields: Any, scratch: Dict[str, Any], tables: Dict[str,
     answer does NOT depend on which block ran first, and a block size that never moves
     cannot expose the opposite.
 
+    ``chunk_bounds`` IS THE RUN'S CHUNK RECORD ON THE DEVICE, required and keyword-only
+    (``step_curl_kernels.chunk_record_argument`` checks it): the curl half and every
+    recomputed ``update_H`` choose their forms from it.
+
+    THE RUN'S FIRST ``update_H`` STARTS H FROM B (``stepping.separate_h_from_b``,
+    MEEP's update_eh.cpp:165-177), and this launch IS that update when
+    ``fields.h_separated`` is still False. B is final at this seam (step_B, the
+    magnetic injection, the fills and the wall clear all ran one seam earlier), so the
+    start runs on the array path BEFORE the launch, with ``layer`` -- the
+    single launcher's own arrangement (``arms._RealPmlConstitutiveLauncher``) -- and
+    every recompute then reads the started state. A first update with no ``layer`` is
+    refused by name.
+
     Returns the launch geometry rather than ``None`` so a gate can assert that
     something was actually launched.
     """
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
+    started = False
+    if not bool(getattr(fields, "h_separated", True)):
+        if layer is None:
+            raise RuntimeError(
+                "the run's first update_H starts H from B (stepping.separate_h_from_b) "
+                "and this H->D launch was handed no layer to start it with")
+        from ..stepping import separate_h_from_b  # noqa: PLC0415 - NumPy/CuPy array path
+
+        separate_h_from_b(fields, layer)
+        started = True
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + threads - 1) // threads
     arguments: List[Any] = [scratch[name] for name in SCRATCH_VOLUMES]
@@ -1247,9 +1306,10 @@ def launch_fused_hd_pair(fields: Any, scratch: Dict[str, Any], tables: Dict[str,
         arguments += [tables["kms"][axis], tables["sinv"][axis]]
     arguments += [tables["kps"][axis] for axis in ("x", "y", "z")]
     arguments += [np.int32(int(code)) for code in boundary_codes]
+    arguments += [cb]
     (kernel or _get_kernel())((blocks,), (threads,), tuple(arguments))
     return {"launched": True, "blocks": blocks, "threads": threads,
-            "elements": nx * ny * nz, "replaces": REPLACES,
+            "elements": nx * ny * nz, "replaces": REPLACES, "h_started": started,
             "boundary_codes": tuple(int(code) for code in boundary_codes)}
 
 
@@ -1281,6 +1341,7 @@ def rotate_into_fields(fields: Any, scratch: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def run_fused_hd_pair(fields: Any, grid: Any, pml: Any, dtdx: float, *,
+                      chunk_bounds: Any,
                       scratch: Optional[Dict[str, Any]] = None,
                       sources: Any = None,
                       tables: Optional[Dict[str, Any]] = None,
@@ -1307,7 +1368,8 @@ def run_fused_hd_pair(fields: Any, grid: Any, pml: Any, dtdx: float, *,
         scratch = fused_hd_pair_scratch(fields)
     assert_scratch_is_disjoint(fields, scratch, tables)
     record = launch_fused_hd_pair(fields, scratch, tables, fused_hd_pair_codes(grid),
-                                  dtdx, kernel, threads)
+                                  dtdx, kernel, threads, chunk_bounds=chunk_bounds,
+                                  layer=pml)
     record["rotated"] = bool(rotate)
     record["scratch"] = rotate_into_fields(fields, scratch) if rotate else scratch
     return record

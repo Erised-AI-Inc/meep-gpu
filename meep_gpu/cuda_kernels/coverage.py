@@ -497,7 +497,6 @@ def _base_address(array):
     return None
 
 
-
 def constitutive_sub_lattice(side: str) -> bool:
     """``half_integer`` for one side — the single place the pairing is decided.
 
@@ -1994,24 +1993,21 @@ def ade_sigma_is_volume(state: Any, component: str) -> bool:
 
 
 def _ade_drive_problem(fields: Any, component: str) -> Any:
-    """Why ``drive_field(component)`` is not the pointer this family binds.
+    """Why the two drive arrays this family binds are not MEEP's ``w`` per chunk.
 
-    THE SINGLE MOST LIKELY SILENT WRONG ANSWER IN DISPERSION, and the only clause
-    here that a no-PML test can never catch. ``Fields.drive_field``
-    (fields.py:1140-1163) returns ``f_w_<c>`` while the absorber is on and the
-    STORED E while it is off, and the two agree EXACTLY outside the layer -- so
-    binding E under an active layer passes every no-PML case and is wrong only
-    where it matters. The sibling track measured that as a control and it
-    DIVERGED (``B_ade_wrong_drive_CONTROL``, 3072/15360 words differing;
-    ``triton_kernels/no_pml_ade.py`` carries the record).
+    MEEP's drive is ``w = f_w ? f_w : f`` PER CHUNK (update_pols.cpp:44): ``f_w_<c>``
+    on the cells whose chunk carries the component's own (dsigw) layer, the stored
+    ``E<c>`` everywhere else, where ``update_E`` stored the constitutive product itself
+    and left ``f_w`` untouched (``stepping._apply_constitutive_regions``). The kernel
+    binds BOTH arrays and selects per cell from the run's chunk record -- the same
+    division ``Fields.drive_field`` composes from -- so what is checked here is that
+    both exist under the layer's storage, not which one ``drive_field`` would hand back
+    (it raises on a ``Fields`` that has not stepped a PML sub-step, and its answer is a
+    composed buffer where the component is split).
 
-    So the check is an IDENTITY check, not an existence check: the array
-    ``drive_field`` actually hands back must BE ``f_w_<c>``. A predicate that only
-    pinned ``f_w_<c>`` allocated would still admit a ``Fields`` whose storage mode
-    disagreed with the layer, which is the state that produces the wrong pointer.
-    Transcribed from the Metal predicate's ``_drive_reasons``
-    (``metal_kernels/ade_update_p.py:150-181``), which asks the same question the
-    same way.
+    Binding the stored E on every cell, or ``f_w`` on every cell, is the wrong-drive
+    defect class: the two agree off the layer's chunks only, so a no-PML test never
+    sees it. The gate arms both as controls.
     """
     expected_name = "f_w_" + component
     expected = getattr(fields, expected_name, None)
@@ -2021,46 +2017,67 @@ def _ade_drive_problem(fields: Any, component: str) -> Any:
         return (f"the layer is active but Fields is not in PML storage mode; "
                 f"drive_field would hand back the stored {component}, which is "
                 f"the constitutive product only OUTSIDE the absorber")
-    reader = getattr(fields, "drive_field", None)
-    if not callable(reader):
-        return "fields does not expose drive_field()"
-    try:
-        actual = reader(component)
-    except Exception as exc:  # noqa: BLE001 - a raise is not a refusal unless caught
-        return f"drive_field({component!r}) raised {exc!r}"
-    if actual is not expected:
-        return (f"drive_field({component!r}) is not {expected_name}; the kernel "
-                f"binds what drive_field returns and this run would drive P from "
-                f"the wrong array")
+    if getattr(fields, component, None) is None:
+        return (f"{component} is not allocated (the drive off the layer's chunks, "
+                f"where update_E stores the constitutive product)")
     return None
 
 
-def _ade_coefficient_problem(state: Any) -> Any:
-    """Why the ``(c_now, c_prev, c_drive)`` triple is not three finite floats.
+#: The four realnum constants, in the order ``dispersion.RealnumConstants`` carries
+#: them and the device signature declares them.
+ADE_CONSTANT_NAMES: Tuple[str, ...] = ("two_minus_od", "gamma1", "omega0dtsqr",
+                                       "gamma1inv")
 
-    The kernel takes them as scalar arguments, baked from ``dt`` by
-    ``susceptibility.coefficients`` (dispersion.py:643). A NaN or an infinity here
-    is a volume of NaN after one step, so the read is checked rather than assumed.
-    ``float('nan') != float('nan')`` is the finiteness test, written out because
-    this module imports no ``math`` and no ``numpy``.
+
+def _is_float32_word(number: float) -> bool:
+    """Whether a finite double is exactly a float32 value (the kernel's scalar width).
+
+    Written with integer arithmetic on the exact ratio, because this module imports
+    nothing but ``typing``: ``|number| = n * 2**e`` with ``n`` odd is a float32 value
+    exactly when ``n`` has at most 24 bits, the lowest bit is no finer than the
+    smallest subnormal (``e >= -149``) and the top bit is within range (``<= 127``).
     """
-    coefficients = getattr(state, "_coefficients", None)
+    if number == 0.0:
+        return True
+    numerator, denominator = abs(number).as_integer_ratio()
+    exponent = 1 - denominator.bit_length()
+    while numerator % 2 == 0:
+        numerator //= 2
+        exponent += 1
+    top = exponent + numerator.bit_length() - 1
+    return numerator.bit_length() <= 24 and exponent >= -149 and top <= 127
+
+
+def _ade_coefficient_problem(state: Any) -> Any:
+    """Why MEEP's four recurrence constants are not four finite float32 words.
+
+    The kernel takes them as float32 scalar arguments: ``two_minus_od``, ``gamma1``,
+    ``omega0dtsqr`` and ``gamma1inv``, formed on the host as MEEP's realnum words
+    (``Susceptibility.realnum_constants``, susceptibility.cpp:191-195) and carried by
+    ``PolarizationState.constants``. A NaN or an infinity here is a volume of NaN
+    after one step, and a value that is not a float32 word would be rounded at the
+    launch into a constant MEEP never formed, so both are checked rather than assumed.
+    """
+    constants = getattr(state, "constants", None)
     try:
-        values = tuple(coefficients)
+        values = tuple(constants)
     except Exception as exc:  # noqa: BLE001 - malformed is a refusal
-        return f"the coefficient triple is unreadable ({type(exc).__name__}: {exc})"
-    if len(values) != 3:
-        return (f"the (c_now, c_prev, c_drive) triple has {len(values)} entries, "
-                f"not 3")
-    for name, value in zip(("c_now", "c_prev", "c_drive"), values):
+        return f"the recurrence constants are unreadable ({type(exc).__name__}: {exc})"
+    if len(values) != len(ADE_CONSTANT_NAMES):
+        return (f"the {ADE_CONSTANT_NAMES} constants have {len(values)} entries, "
+                f"not {len(ADE_CONSTANT_NAMES)}")
+    for name, value in zip(ADE_CONSTANT_NAMES, values):
         try:
             number = float(value)
-        except Exception:  # noqa: BLE001 - a non-numeric coefficient is not coverage
+        except Exception:  # noqa: BLE001 - a non-numeric constant is not coverage
             return f"{name}={value!r} is not a float"
         if number != number:
             return f"{name} is NaN"
         if number in (float("inf"), float("-inf")):
             return f"{name}={number!r} is not finite"
+        if not _is_float32_word(number):
+            return (f"{name}={number!r} is not a float32 word; the kernel takes MEEP's "
+                    f"realnum constants as float32 scalars and would round it")
     return None
 
 
@@ -2130,8 +2147,9 @@ def covers_real_pml_ade_component(fields: Any, pml: Any, grid: Any,
         # its own family for the same reason (``triton_kernels/no_pml_ade.py``),
         # and a hand-CUDA no-PML family would be the same kernel with one clause
         # inverted.
-        return False, ("no active PML layer: this family binds f_w as the drive "
-                       "and drive_field returns the stored E without one")
+        return False, ("no active PML layer: this family selects f_w on the "
+                       "layer's chunks, and the no-absorber family serves a run "
+                       "without one")
 
     if component not in ADE_ELECTRIC_COMPONENTS:
         return False, (f"component {component!r} is outside "
@@ -2221,14 +2239,15 @@ def covers_real_pml_ade_component(fields: Any, pml: Any, grid: Any,
     problem = _ade_drive_problem(fields, component)
     if problem is not None:
         return False, problem
-    drive = getattr(fields, "f_w_" + component, None)
-    problem = _array_problem(f"f_w_{component}", drive, xp, shape)
-    if problem is not None:
-        return False, problem
-    drive_address = _base_address(drive)
-    if drive_address is not None and drive_address in addresses:
-        return False, (f"f_w_{component} aliases {addresses[drive_address]}; the "
-                       f"drive is read while the scratch is written")
+    for drive_name in ("f_w_" + component, component):
+        drive = getattr(fields, drive_name, None)
+        problem = _array_problem(drive_name, drive, xp, shape)
+        if problem is not None:
+            return False, problem
+        drive_address = _base_address(drive)
+        if drive_address is not None and drive_address in addresses:
+            return False, (f"{drive_name} aliases {addresses[drive_address]}; the "
+                           f"drive is read while the scratch is written")
 
     sigma = (getattr(state, "sigma", {}) or {}).get(component)
     if sigma is None:
@@ -2320,88 +2339,6 @@ def covers_real_pml_ade_update_p(fields: Any, pml: Any, grid: Any) -> tuple:
 # WHY REAL STORAGE READ AS COMPLEX IS A WRONG ANSWER RATHER THAN A CRASH: the
 # kernels address ``2*idx``/``2*idx+1``, so a float32 volume handed in would be
 # stepped as half a volume of made-up pairs, silently, at full speed.
-
-#: The float32 subnormal policy names this family's licence clause compares
-#: against. Restated rather than imported (this module imports nothing) and pinned
-#: against ``subnormal_policy``'s own spellings by ``test_complex_pml.py``.
-COMPLEX_POLICY_NAMES: Tuple[str, ...] = ("keep", "flush")
-
-#: The arms ``complex_emitter`` can emit, by name. A verdict naming anything else
-#: is refused rather than defaulted: both arms compile and run, and they differ in
-#: the last bits of about a quarter of the words, so a wrong arm is a wrong answer.
-COMPLEX_EXPANSION_ARMS: Tuple[str, ...] = ("NAIVE", "FMA_V1")
-
-#: The bases :func:`complex_expansion_refusal` accepts. ``measured`` is a licence
-#: this run's probe earned; ``environment_default`` is one taken from
-#: ``triton_kernels.complex_fields.ENVIRONMENT_DEFAULTS`` because the policy in
-#: force erased the lanes that separate the arms. Both are licences; anything else
-#: is not.
-COMPLEX_EXPANSION_BASES: Tuple[str, ...] = ("measured", "environment_default")
-
-
-def complex_expansion_refusal(license: Any, subnormal_policy: Any) -> Any:
-    """Why this expansion-licence verdict may not bind an arm here; None if it may.
-
-    THIS IS NOT THE ARBITER AND DELIBERATELY DOES NOT RE-DERIVE ONE. The rule that
-    turns a probe artifact into an arm --- which patterns must classify, which
-    verdicts refuse, when ``AMBIGUOUS_BOTH`` is an exclusion rather than a veto,
-    when the environment table may be consulted --- is
-    ``triton_kernels.complex_fields.expansion_license``, and a second spelling of
-    it is one too many (that module merged two drifted copies of exactly this
-    clause on 2026-08-15 and wrote down what the drift cost). What is checked here
-    is that the caller HAS a verdict, that the verdict is refusal-free, that it
-    names an arm this family can emit, and that it was cut under the policy this
-    run installs.
-
-    THE POLICY COMPARISON IS HERE AND NOT ONLY THERE because this is the last rung
-    before the arm is compiled into a binary. ``expansion_license`` computes its
-    verdict from the record ALONE -- it cannot know which policy the reading
-    process runs under, and says so -- so a flush-cut licence and a keep run agree
-    on every field of the verdict. The comparison is one equality between two
-    strings, not a licensing rule; the rule it enforces is the one
-    ``POLICY_CONDITIONAL_LICENCE`` states: an arm classified under one subnormal
-    policy reproduces the platform's bytes under that policy only.
-
-    ``subnormal_policy`` must be a name. ``None`` REFUSES here, unlike the Triton
-    ``expansion_policy_reasons`` where ``None`` means "artifact-reading tooling is
-    not asking": a caller of this function IS asking, because the only reason to
-    ask a coverage predicate is to decide whether to launch.
-    """
-    if license is None:
-        return ("no expansion licence: the complex multiply's arm is a measured "
-                "platform fact and may not be guessed")
-    if not isinstance(license, dict):
-        return (f"the expansion licence is {type(license).__name__}, not the "
-                f"verdict dict expansion_license returns")
-    refusals = license.get("refusals")
-    if refusals:
-        first = refusals[0] if isinstance(refusals, (list, tuple)) else refusals
-        return f"the expansion licence refuses: {first}"
-    arm = license.get("arm")
-    if arm not in COMPLEX_EXPANSION_ARMS:
-        return (f"the expansion licence names arm {arm!r}, which is not one of "
-                f"{list(COMPLEX_EXPANSION_ARMS)}")
-    if license.get("expansion") is None:
-        return "the expansion licence carries no arm code"
-    basis = license.get("basis")
-    if basis not in COMPLEX_EXPANSION_BASES:
-        return (f"the expansion licence has basis {basis!r}, which is not one of "
-                f"{list(COMPLEX_EXPANSION_BASES)}")
-    if not isinstance(subnormal_policy, str):
-        return ("the float32 subnormal policy this run will use was not given as "
-                "a name, so the licence cannot be shown to have been cut under "
-                "it; an expansion licence is POLICY-CONDITIONAL")
-    resolved = license.get("policy_resolved")
-    if resolved is None:
-        return ("the expansion licence states no resolved subnormal policy, so it "
-                "cannot be shown to have been cut under the policy this run "
-                "requires")
-    if resolved != subnormal_policy:
-        return (f"the expansion licence was cut under the {resolved!r} float32 "
-                f"subnormal policy and this run requires {subnormal_policy!r}; a "
-                f"licence does not transfer across that boundary")
-    return None
-
 
 #: The ghost rules the COMPLEX constitutive pair serves. ``CYL_AXIS`` is on it and
 #: is NOT in :data:`BC_CODES`, which is the deliberate divergence from
@@ -2976,16 +2913,10 @@ def _complex_volume_problem(label: str, array: Any, xp: Any, shape: Tuple) -> An
     return None
 
 
-def covers_real_pml_complex_curl(fields: Any, pml: Any, grid: Any, sub_step: str,
-                                 license: Any = None,
-                                 subnormal_policy: Any = None) -> tuple:
+def covers_real_pml_complex_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tuple:
     """Whether ``step_B_pml_complex_bloch`` / ``..._D_...`` may serve this run.
 
-    ``sub_step`` is ``"step_B"`` or ``"step_D"``. ``license`` is the verdict
-    ``triton_kernels.complex_fields.expansion_license`` returns and
-    ``subnormal_policy`` the policy name this run installs; both are REQUIRED in
-    practice, because the arm is compiled into the binary at this seam and there is
-    no later rung to check it at. Returns ``(covered, reason)``.
+    ``sub_step`` is ``"step_B"`` or ``"step_D"``. Returns ``(covered, reason)``.
 
     THE SUB-STEP ARGUMENT IS REQUIRED, for the reason
     :func:`covers_real_pml_curl`'s is: there are two kernels, and one predicate
@@ -3003,9 +2934,6 @@ def covers_real_pml_complex_curl(fields: Any, pml: Any, grid: Any, sub_step: str
     if sub_step not in CURL_SUB_STEPS:
         raise ValueError(
             f"sub_step must be one of {sorted(CURL_SUB_STEPS)}, got {sub_step!r}")
-    refusal = complex_expansion_refusal(license, subnormal_policy)
-    if refusal is not None:
-        return False, refusal
     refusal = _complex_grid_refusal(fields, pml, grid)
     if refusal is not None:
         return False, refusal
@@ -3052,8 +2980,7 @@ def covers_real_pml_complex_curl(fields: Any, pml: Any, grid: Any, sub_step: str
 
 
 def covers_real_pml_complex_constitutive(fields: Any, pml: Any, grid: Any,
-                                         side: str, license: Any = None,
-                                         subnormal_policy: Any = None) -> tuple:
+                                         side: str) -> tuple:
     """Whether ``update_H_pml_complex_bloch`` / ``..._E_...`` may serve this run.
 
     ``side`` is ``"H"`` (``stepping.update_H``) or ``"E"`` (``stepping.update_E``).
@@ -3093,9 +3020,6 @@ def covers_real_pml_complex_constitutive(fields: Any, pml: Any, grid: Any,
         raise ValueError(
             f"side must be one of {sorted(CONSTITUTIVE_SIDES)}, got {side!r}")
     spec = CONSTITUTIVE_SIDES[side]
-    refusal = complex_expansion_refusal(license, subnormal_policy)
-    if refusal is not None:
-        return False, refusal
     # ``admit_cylindrical=True`` and ``admit_fold=True`` ARE THE TWO ARGUMENTS
     # THAT DIFFER FROM THE CURL'S CALL, and what stands behind each is a device
     # verdict rather than a reading:

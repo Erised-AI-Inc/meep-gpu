@@ -18,33 +18,6 @@ the rule. The comparator side of the same rule lives in the validator's
 
 LEGS
 
-* ``expansion``  — the preflight probe. Reuses the complex tranche's four base
-  patterns and the beta tranche's fifth, and ADDS a sixth this tranche needs:
-  the mirror PARITY product, a unit-real coefficient on the LEFT. Inheriting the
-  base four patterns' verdict would admit an ambiguous platform silently, so the
-  pattern is measured and required. ``AMBIGUOUS_BOTH`` is accepted on ANY
-  pattern whose own detail block measures the licensable arms zero words apart
-  on a positive vector count — the base family's exclusion clause, reached by
-  calling ``complex_fields.expansion_license`` over the longer list rather than
-  by a rule of this file's own. The parity pattern is the one EXPECTED to be
-  blind (with ``c_re = ±1`` and ``c_im = +0.0`` both arms are exact, so it
-  constrains nothing), but that is why it goes blind, not a licence for it
-  alone: this leg used to accept the word for that pattern and only for it,
-  which let a BASE pattern gone blind under the flush policy veto a licence the
-  patterns that could still discriminate had already settled. ``NEITHER``
-  refuses by name, so does a disagreement between two patterns that DO
-  discriminate, and so does an ambiguity claim the record's own detail block
-  contradicts — excluded and disagreeing are opposite situations and only the
-  first is ever dropped. THE HEADLINE RISK LIVES HERE:
-  if CuPy's complex64 scalar multiply takes a real-scalar fast path rather than
-  the ``'FF->F'`` loop, the parity product collapses to plane-wise and K2's whole
-  delta evaporates — so the probe classifies the parity pattern EXPLICITLY, with
-  the plane-wise form carried as a named diagnostic arm. The classified operand
-  shape is the SCALAR one the array path uses (``phase * plane`` with a PYTHON
-  INT, S:1450-1451); the numpy-scalar and full-array spellings are measured
-  beside it and their byte deltas recorded, because an array-times-array product
-  forces the ``'FF->F'`` loop by construction and so cannot see the fast path
-  this leg exists to detect.
 * ``reference``  — the transcription against ``stepping.py`` itself, on whichever
   backend is present, over folded grids at both terminations and both count
   parities.
@@ -68,12 +41,12 @@ LEGS
   FAILS: it can see none of the fill's needles. A single family reading 0 is
   recorded and NOT failed, and the whole 12 x 2 x 4 census matrix was measured
   rather than argued (see :func:`blind_fill_cells`): ``engineered_rows`` reads
-  58..1347 everywhere and is what carries the folded METALLIC phase = +1 cells,
-  where ``zero_init_absorber`` and ``engineered_rows_post_step`` read 0 for a
-  stated reason (near coefficient ``+1``, no far fill), and ``live_post_step``
-  reads 0 on EVERY row — that family is the realistic-state arm, not a
-  signed-zero arm. The grid list includes a MIXED-PHASE two-folded-axis row,
-  without which ``reverse_axis_order`` is a null by construction.
+  70..1664 everywhere and carries the folded METALLIC phase = +1 cells with
+  ``engineered_rows_post_step`` (41..1397 everywhere since the per-part
+  alignment), where ``zero_init_absorber`` reads 0 for a stated reason (near
+  coefficient ``+1``, no far fill), and ``live_post_step`` reads 0 on every row
+  but one (1 word) — that family is the realistic-state arm, not a signed-zero
+  arm. The grid list includes a MIXED-PHASE two-folded-axis row.
 * ``zero_init``  — the ZERO-INIT NEGATIVE-COEFFICIENT-ABSORBER case: an in-run
   signed-zero census AND a byte comparison of both curl sub-steps and both ghost
   fills on the resulting quiet state. A census of 0 FAILS the case as VACUOUS,
@@ -82,24 +55,22 @@ LEGS
   behind it establishes reachability, not agreement.
 * ``identity``   — the reduction products. Zero folded axes -> K1 byte-identical
   to ``complex_fields.bloch_pml_curl_step``; ``HAS_BETA=0`` -> K3a/K3b
-  byte-identical to the plain folded kernels. Equivalence, never routing.
-* ``mutations``  — ten armed SOURCE mutations, one RECORDED STRUCTURAL NULL and
-  six HOST ones (seventeen; the count is pinned by a laptop test so it cannot
-  drift again). A mutation that cannot diverge on any grid this gate builds is a
-  PREDICTED NULL: it is recorded with its structural reason and its measured
-  numbers, or re-aimed at a state where the defect is byte-visible — never
-  deleted, and never silently flipped to "predicted not-caught". It still runs,
-  still compiles, is still launch-counted and still PTX-checked, so the DISARMED
-  paths stay live and a null whose mutant never ran cannot pass as a null;
-  divergence from one is a NULL-INVALIDATED failure, because it falsifies the
-  recorded reason. ``synthesize_zero_imag`` is the one such record and the
-  policy's worked example — its mutant sets the kernel's imaginary coefficient
-  argument to a literal 0.0, and ``mirror_parity_coefficients`` already passes a
-  word that is BITWISE 0x00000000 at both mirror phases, so mutant and shipped
-  receive identical operands and no state can separate them. Its live claim is
-  carried by the host twin ``imaginary_words_are_read_not_synthesised``, and the
-  premise is asserted directly by a laptop test, so the retirement re-opens
-  itself if the coefficient ever stops being bitwise zero. Every source
+  byte-identical to the plain folded kernels on the same chunk record.
+  Equivalence, never routing.
+* ``mutations``  — thirty-four armed SOURCE mutations (two on the fill, nine on
+  K1's forms and connection, eleven on K3a and twelve on K3b: the beta pass's shared
+  mutations and the stencil inversion, ``fold_pass_mutations``) and five HOST ones
+  (thirty-nine; the count is pinned by a laptop test so it cannot drift again). A mutation that
+  cannot diverge on any grid this gate builds is a PREDICTED NULL: it is recorded
+  with its structural reason, or re-aimed at a state where the defect is
+  byte-visible — never deleted, and never silently flipped to "predicted
+  not-caught"; divergence from one is a NULL-INVALIDATED failure, because it
+  falsifies the recorded reason. Since the per-part alignment the two such
+  records are host ones: ``fuse_fill_passes`` and ``reverse_axis_order``, because
+  a fill that multiplies each part by +-1.0 commutes bitwise
+  (:data:`HOST_MUTATION_NULLS`). The imaginary coefficient word the retired
+  ``synthesize_zero_imag`` and its host twin were about no longer exists: the fill
+  takes one real word per plane. Every source
   mutant is LAUNCH-COUNTED with explicit DISARMED (the mutant never ran) and
   NEEDLE-MISSED (it ran, its PTX differs, and nothing diverged) failure paths,
   and verified to produce PTX that DIFFERS from every shipped specialization
@@ -140,8 +111,7 @@ default ever stops matching the set this gate asserts.
 SUBNORMAL POLICY. Every device leg runs under ``ieee_keep_ftz_stripped``, through
 ``gate_triton_complex.install_ftz_strip`` at the NVRTC seam (never re-implemented
 here, and never ``-ftz=false`` as a user option — NVRTC rejects the duplicate).
-The strip counters are stamped into the artifact, and a probe record cut under
-another policy may not license an expansion.
+The strip counters are stamped into the artifact.
 
     python -u gate_triton_folded_complex.py --out results/.../gate.json
 """
@@ -185,9 +155,11 @@ except ImportError:
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 
+import fold_pass_mutations as fold_passes  # noqa: E402
 import gate_triton_complex as gate  # noqa: E402 - policy machinery + base probe
+from gate_chunk_records import layer_record, region_plan_record, two_run_record  # noqa: E402
 
-from meep_gpu import stepping  # noqa: E402
+from meep_gpu import part_products, stepping  # noqa: E402
 from meep_gpu.fields import Fields, mirror_parity  # noqa: E402
 from meep_gpu.grid import Grid, Mirror  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
@@ -301,331 +273,93 @@ def write_provenance(results_dir: str) -> str:
             "symmetry.py": gate._digest(os.path.join(
                 _REPO_API, "meep_gpu", "triton_kernels", "symmetry.py")),
         },
-        "note": ("K1/K3b INLINE complex_fields' three jit helpers and "
-                 "special_kz's _mul_imag_coefficient_left; an edit to either "
-                 "invalidates this certification, which is why both digests "
-                 "ride here."),
+        "note": ("K1/K3b call complex_fields' _connect and the shared forms, and "
+                 "K3a/K3b splice special_kz's beta pass; an edit to either module "
+                 "invalidates this certification, which is why both digests ride "
+                 "here."),
     })
-
-
-# ---------------------------------------------------------------------------
-# The PARITY pattern — the sixth probe pattern, and the tranche's headline risk
-# ---------------------------------------------------------------------------
-
-#: The 16 engineered words the parity probe crosses with itself, plus the random
-#: tail — one CONTIGUOUS block per parity, which is what lets the probe re-run the
-#: same vectors as a SCALAR multiply (the operand shape the array path uses).
-PARITY_WORDS: Tuple[float, ...] = (
-    0.0, -0.0, 1e-45, -1e-45, 7e-45, -7e-45, 1e-40, -1e-40,
-    1.0, -1.0, 1.5, -1.5, 3.4e38, -3.4e38, 0.75, -0.25)
-PARITY_BLOCK = len(PARITY_WORDS) ** 2 + gate.RANDOM_VECTORS
-
-
-def _parity_operands(rng) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """(c_re, c_im, z_re, z_im) rows for the parity product.
-
-    ``c`` is EXACTLY ±1 + 0j — the only coefficient the fill ever passes — and
-    ``z`` carries the signed zeros, subnormals and overflow-adjacent magnitudes
-    that are the ONLY discriminators between the full complex product and the
-    plane-wise sign flip. A random-only vector set is provably blind here.
-
-    Row layout: parity +1's ``PARITY_BLOCK`` rows, then parity -1's.
-    """
-    words = list(PARITY_WORDS)
-    c_re: List[float] = []
-    c_im: List[float] = []
-    z_re: List[float] = []
-    z_im: List[float] = []
-    for parity in (1.0, -1.0):
-        for first in words:
-            for second in words:
-                c_re.append(parity)
-                c_im.append(0.0)
-                z_re.append(first)
-                z_im.append(second)
-        for value in rng.uniform(-2.0, 2.0, gate.RANDOM_VECTORS):
-            c_re.append(parity)
-            c_im.append(0.0)
-            z_re.append(float(value))
-            z_im.append(float(-value * 0.5))
-    return (np.asarray(c_re, np.float32), np.asarray(c_im, np.float32),
-            np.asarray(z_re, np.float32), np.asarray(z_im, np.float32))
-
-
-def _parity_candidates(c_re, c_im, z_re, z_im) -> Dict[str, Any]:
-    """The two transcription arms plus the PLANE-WISE diagnostic by name.
-
-    The plane-wise arm is what ``symmetry.mirror_ghost_fill``'s certified REAL
-    spelling becomes when ported word-for-word to complex storage — i.e. the
-    ``plane_wise_parity_fill`` mutation. Carrying it here means the probe can say
-    "this platform's parity multiply IS plane-wise" out loud rather than leaving
-    the whole tranche's delta resting on an off-device measurement.
-    """
-    naive_re = (c_re * z_re) - (c_im * z_im)
-    naive_im = (c_re * z_im) + (c_im * z_re)
-    n = c_re.size
-    v1_re = np.empty(n, np.float32)
-    v1_im = np.empty(n, np.float32)
-    for i in range(n):
-        v1_re[i] = gate.fma32(c_re[i], z_re[i], -float(gate.mul32(c_im[i], z_im[i])))
-        v1_im[i] = gate.fma32(c_re[i], z_im[i], float(gate.mul32(c_im[i], z_re[i])))
-    return {"NAIVE": (naive_re.astype(np.float32), naive_im.astype(np.float32)),
-            "FMA_V1": (v1_re, v1_im),
-            "PLANEWISE_diagnostic": ((c_re * z_re).astype(np.float32),
-                                     (c_re * z_im).astype(np.float32))}
-
-
-def _parity_spellings(xp, z, c) -> Dict[str, Any]:
-    """The THREE operand shapes of ``phase * plane``, brought to the host.
-
-    ``stepping._write_mirror_ghost`` (:1450-1451) and ``_fill_folded_far_ghosts``
-    (:1528-1532) spell it ``phase * plane`` with ``phase`` a PYTHON INT — a
-    SCALAR times an array. The headline risk this probe exists for is CuPy taking
-    a real-scalar fast path on exactly that multiply, and an array-times-array
-    product cannot see it: a full complex64 array operand forces the ``'FF->F'``
-    loop by construction. All three spellings are measured, the PYTHON INT one is
-    what gets classified, and the two others are recorded as byte deltas against
-    it so a divergence in any of them is a named platform finding.
-    """
-    out: Dict[str, Any] = {}
-    n = int(z.shape[0])
-    if n != 2 * PARITY_BLOCK:
-        raise RuntimeError(f"the parity vector set is {n} rows, not "
-                           f"{2 * PARITY_BLOCK}; the per-parity blocks moved")
-    pieces = {"python_int_scalar_left": [], "numpy_scalar_left": [],
-              "array_left": []}
-    for index, parity in enumerate((1, -1)):
-        segment = z[index * PARITY_BLOCK:(index + 1) * PARITY_BLOCK]
-        pieces["python_int_scalar_left"].append(parity * segment)
-        pieces["numpy_scalar_left"].append(
-            xp.multiply(np.complex64(parity), segment))
-        pieces["array_left"].append(xp.multiply(
-            c[index * PARITY_BLOCK:(index + 1) * PARITY_BLOCK], segment))
-    for name, parts in pieces.items():
-        host = _to_host(xp.concatenate(parts)).astype(np.complex64)
-        out[name] = (np.ascontiguousarray(host.real),
-                     np.ascontiguousarray(host.imag))
-    return out
-
-
-def measure_parity_pattern(xp) -> Dict[str, Any]:
-    """The platform's own bytes for ``python_int(±1) * complex64 array``."""
-    rng = np.random.default_rng(SEED + 913)
-    c_re, c_im, z_re, z_im = _parity_operands(rng)
-    z = xp.asarray(gate._interleave_c8(z_re, z_im))
-    c = xp.asarray(gate._interleave_c8(c_re, c_im))
-    spellings = _parity_spellings(xp, z, c)
-    platform = spellings["python_int_scalar_left"]
-    detail = gate._classify(platform, _parity_candidates(c_re, c_im, z_re, z_im))
-    detail["vectors"] = int(c_re.size)
-    detail["operand_shape"] = ("python_int scalar x complex64 array — "
-                               "stepping.py:1450-1451's own spelling")
-    deltas: Dict[str, int] = {}
-    for name, (other_re, other_im) in spellings.items():
-        deltas[name] = int(
-            np.count_nonzero(other_re.view(np.uint32)
-                             != platform[0].view(np.uint32))
-            + np.count_nonzero(other_im.view(np.uint32)
-                               != platform[1].view(np.uint32)))
-    detail["spelling_deltas"] = deltas
-    detail["spellings_agree"] = bool(all(count == 0 for count in deltas.values()))
-    return detail
-
-
-def measure_folded_expansion_record(xp, backend_name: str) -> Dict[str, Any]:
-    """The base four + the beta pattern + the PARITY pattern, one record.
-
-    EVERY PATTERN CARRIES ITS VECTOR COUNT, including the two this file adds.
-    Both licences here are the base family's rule over a superset, and that rule
-    requires an ``AMBIGUOUS_BOTH`` claim to be backed by a positive vector count
-    and a measured arms-apart word count — a comparison over zero vectors makes
-    every arm "match", so an unbacked ambiguity is indistinguishable from a
-    comparison of nothing. Until 2026-08-15 the parity and beta patterns were
-    written into ``patterns`` and ``detail`` with no ``vectors`` entry at all,
-    the same bookkeeping gap ``python_float_left`` carried in the base gate: the
-    measurement was honest and the record could not say so.
-    """
-    record = gate.measure_expansion_record(xp, backend_name)
-    # The beta tranche's own extra pattern, measured through its harness so this
-    # file carries no second implementation of it.
-    import gate_triton_special_kz as beta_gate  # noqa: PLC0415
-
-    beta_detail = beta_gate.measure_beta_expansion_record(xp, backend_name)
-    for name, verdict in beta_detail.get("patterns", {}).items():
-        record["patterns"].setdefault(name, verdict)
-        record["detail"].setdefault(name, beta_detail["detail"].get(name))
-        count = beta_detail.get("vectors", {}).get(name)
-        if count is not None:
-            record["vectors"].setdefault(name, count)
-
-    parity = measure_parity_pattern(xp)
-    record["patterns"][folded_complex.PARITY_PROBE_PATTERN] = parity["classified"]
-    record["detail"][folded_complex.PARITY_PROBE_PATTERN] = parity
-    record["vectors"][folded_complex.PARITY_PROBE_PATTERN] = int(parity["vectors"])
-    record["parity_is_planewise"] = bool(
-        parity["matches"].get("PLANEWISE_diagnostic"))
-    record["parity_spelling_deltas"] = parity["spelling_deltas"]
-    record["parity_spellings_agree"] = parity["spellings_agree"]
-    record["subnormal_policy"] = gate.policy_stamp(backend_name)
-    return record
-
-
-def run_expansion(results: Dict[str, Any], out_path: str,
-                  artifact_path: Optional[str]) -> Dict[str, Any]:
-    backends: List[Tuple[Any, str]] = [(np, "numpy")]
-    if cp is not None:
-        backends.append((cp, "cupy"))
-    records: Dict[str, Any] = {}
-    for xp, name in backends:
-        started = time.time()
-        record = measure_folded_expansion_record(xp, name)
-        record["seconds"] = round(time.time() - started, 3)
-        records[name] = record
-        from gate_provenance import stamp as _stamp_provenance  # noqa: PLC0415
-        _stamp_provenance(record)  # bytes THIS process imported; see gate_provenance
-        log(f"[expansion:{name}] " + json.dumps(record["patterns"], sort_keys=True)
-            + f" parity_is_planewise={record['parity_is_planewise']}"
-            + f" parity_spelling_deltas={record['parity_spelling_deltas']}"
-            + f" ({record['seconds']} s)")
-        results["expansion"] = records
-        save(results, out_path)
-
-    chosen = records.get("cupy")
-    reasons: List[str] = []
-    verdicts: Dict[str, Any] = {}
-    if chosen is None:
-        reasons.append("no cupy backend on this host; nothing may be licensed")
-    else:
-        reasons.extend(gate.ftz_strip_license_reasons())
-        reasons.extend(gate.probe_record_policy_reasons(chosen))
-        # BOTH licences recorded in full, not reduced to licensed/not. 'measured'
-        # against 'environment_default' is the difference between this run having
-        # discriminated the arm and having inherited it, and the patterns each
-        # verdict excluded are what a reader needs to judge either.
-        verdicts["parity"] = folded_complex.parity_expansion_license(chosen)
-        verdicts["beta"] = folded_complex.folded_beta_expansion_license(chosen)
-        for label, verdict in verdicts.items():
-            log(f"[expansion:{label}] arm={verdict['arm']} "
-                f"basis={verdict['basis']} discriminating="
-                f"{sorted(verdict['discriminating'])} non_discriminating="
-                f"{verdict['non_discriminating']}")
-            if verdict["basis"] == "environment_default":
-                log(f"[expansion:{label}] DEFAULTED FROM ENVIRONMENT (not "
-                    f"measured this run): {verdict['why_arbitrary']}")
-        if verdicts["parity"]["expansion"] is None:
-            reasons.append(
-                "the measured record does not license a single EXPANSION for "
-                "the parity product (K2); refused by name: "
-                + "; ".join(verdicts["parity"]["refusals"]))
-        if verdicts["beta"]["expansion"] is None:
-            reasons.append(
-                "the measured record does not license a single EXPANSION for "
-                "the beta product (K3b); refused by name: "
-                + "; ".join(verdicts["beta"]["refusals"]))
-        if chosen.get("parity_is_planewise"):
-            reasons.append(
-                "MEASURED: this platform's complex64 unit-real scalar multiply "
-                "reproduces the PLANE-WISE form exactly — K2's arithmetic delta "
-                "does not exist here, and the plane_wise_parity_fill mutation "
-                "cannot be a needle. That is a platform FINDING, not a pass.")
-        if not chosen.get("parity_spellings_agree", True):
-            reasons.append(
-                "MEASURED: this platform's three spellings of the parity "
-                "multiply disagree byte-for-byte "
-                f"({chosen.get('parity_spelling_deltas')}). The array path uses "
-                "the PYTHON INT scalar (stepping.py:1450-1451); a platform on "
-                "which the scalar and array operand shapes differ needs the "
-                "kernel's licensing re-argued against the scalar form, so this "
-                "refuses rather than picking one silently.")
-    results["expansion_license"] = {"licensed": not reasons, "reasons": reasons,
-                                    "licenses": verdicts}
-    if chosen is not None and artifact_path:
-        os.makedirs(os.path.dirname(os.path.abspath(artifact_path)) or ".",
-                    exist_ok=True)
-        with open(artifact_path, "w", encoding="utf-8") as handle:
-            # The PROBE artifact gets provenance too, not only the gate verdict.
-            # Other gates consume this file as licensing evidence and refuse
-            # without it, so "which bytes produced this probe?" is a question its
-            # readers need answered — measured 2026-08-17, a probe whose header
-            # contradicted its body sent a refusal to the platform's account
-            # instead of the record's.
-            from gate_provenance import stamp as _stamp_provenance  # noqa: PLC0415
-            _stamp_provenance(chosen)
-            json.dump(chosen, handle, indent=1, sort_keys=True, default=str)
-        results["expansion_artifact"] = artifact_path
-        log(f"[expansion] artifact written to {artifact_path}")
-    save(results, out_path)
-    return results["expansion_license"]
 
 
 # ---------------------------------------------------------------------------
 # The in-file FOLDED COMPLEX reference — stepping.py transcribed
 # ---------------------------------------------------------------------------
 #
-# The complex tranche's transcription is reused where the fold changes nothing
-# (the recurrence, the curl grouping, the Bloch wrap); what is added is exactly
-# the three things a fold changes: the ghost VALUE on a folded axis, the widened
-# cell-0 mask, and the top-plane mask on a folded PERIODIC axis. Note that the
-# reference carries the array path's real ghost VALUES — the kernel's claim is
-# that those values are DEAD, and the sweep is what measures it.
+# The aligned forms (bit_parity 0.10): every product is one per stored part
+# (``part_products``), the curl is MEEP's left-to-right stencil with the record's
+# partner presence, each cell takes the split-field recurrence or the dsig-only form
+# by its chunk's membership (the chunk record), the Bloch phase of an UNFOLDED axis
+# is MEEP's connection of the stored window on the unshifted operand's plane 0
+# (``gate_triton_complex.complex_connected``), and beta is a pass of its own after
+# every component's curl, through MEEP's additive ladder. What a fold adds is the
+# ghost VALUE on a folded axis, the widened cell-0 mask and the top-plane mask on a
+# folded PERIODIC axis. The reference carries the array path's real ghost VALUES —
+# the kernel's claim is that those values are DEAD, and the sweep is what measures it.
 
 def folded_complex_shift(xp, field, axis: int, boundary: str, backward: bool,
-                         component: str, phase: Optional[complex],
-                         mirror_phase: int,
+                         component: str, mirror_phase: int,
                          reflect_row: Optional[int]):
-    """``stepping._shift_up`` (:1723-1786) / ``_shift_down`` (:1787-1845) on a
-    complex volume, all four ghost rules.
+    """``stepping._shift_up`` / ``_shift_down`` on a complex (or real) volume, all
+    four ghost rules.
 
-    * PERIODIC wraps, with ``_apply_bloch_phase`` on the single wrapped plane
-      (up: ``*= phase``; down: ``*= conj(phase)``), SKIPPED when the phase is
-      None — which is what keeps k = 0 bit-identical;
-    * METALLIC serves an exact complex zero;
-    * MIRROR near face (down-shift) serves ``parity * field[2]`` on EITHER
-      termination (S:1824-1825);
-    * MIRROR far face (up-shift) serves ``parity * field[reflect_row]`` on a
-      folded PERIODIC axis (S:1778-1779) and an exact zero on a folded METALLIC
-      one.
+    * PERIODIC wraps PLAINLY, Bloch phase or not: the stored window makes every read
+      one cell over an owned word (the phase lands on the unshifted operand);
+    * METALLIC serves an exact zero;
+    * MIRROR near face (down-shift) serves ``parity * field[2]`` per part on EITHER
+      termination;
+    * MIRROR far face (up-shift) serves ``parity * field[reflect_row]`` per part on a
+      folded PERIODIC axis and an exact zero on a folded METALLIC one.
     """
     shifted = xp.roll(field, 1 if backward else -1, axis=axis)
-    index = 0 if backward else -1
     if boundary == PERIODIC:
-        if phase is not None:
-            factor = phase.conjugate() if backward else phase
-            shifted[_face(axis, index)] *= shifted.dtype.type(factor)
         return shifted
     if boundary == METALLIC:
-        shifted[_face(axis, index)] = 0
+        shifted[_face(axis, 0 if backward else -1)] = 0
         return shifted
     parity = mirror_parity(component, axis, mirror_phase)
     if backward:
-        shifted[_face(axis, 0)] = parity * field[
-            _face(axis, folded_complex.MIRROR_SOURCE_INDEX)]
+        shifted[_face(axis, 0)] = part_products.scale(
+            parity, field[_face(axis, folded_complex.MIRROR_SOURCE_INDEX)])
         return shifted
     if boundary == MIRROR_PERIODIC:
         if reflect_row is None:
             raise ValueError("a folded PERIODIC axis needs a reflect row")
-        shifted[_face(axis, -1)] = parity * field[_face(axis, reflect_row)]
+        shifted[_face(axis, -1)] = part_products.scale(
+            parity, field[_face(axis, reflect_row)])
         return shifted
     shifted[_face(axis, -1)] = 0
     return shifted
 
 
 def folded_complex_curl(xp, sources, term, dtdx, backward: bool,
-                        boundaries, phases, mirror_phases, reflect_rows):
-    """``stepping._curl_from_operands`` (:1601-1636) — the contract's grouping."""
+                        boundaries, phases, mirror_phases, reflect_rows, record):
+    """``stepping._curl_from_operands``: MEEP's left-to-right ``((g1s - g1) + g2) -
+    g2s`` with the record's partner presence (one-partner forms, exact zero with
+    neither); each unshifted partner read CONNECTED along the axis it is
+    differenced on when that axis wraps with a phase."""
     _target, g1, a1, g2, a2, _dsig, _dsigu, _iyee = term
     first, second = sources[g1], sources[g2]
+    present = gate._presence(record)
     shifted_first = folded_complex_shift(xp, first, a1, boundaries[a1], backward,
-                                         g1, phases[a1], mirror_phases[a1],
-                                         reflect_rows[a1])
+                                         g1, mirror_phases[a1], reflect_rows[a1])
     shifted_second = folded_complex_shift(xp, second, a2, boundaries[a2], backward,
-                                          g2, phases[a2], mirror_phases[a2],
-                                          reflect_rows[a2])
-    return dtdx * ((shifted_first - first) + (second - shifted_second))
+                                          g2, mirror_phases[a2], reflect_rows[a2])
+    if boundaries[a1] == PERIODIC and phases[a1] is not None:
+        first = gate.complex_connected(xp, first, a1, backward, phases[a1])
+    if boundaries[a2] == PERIODIC and phases[a2] is not None:
+        second = gate.complex_connected(xp, second, a2, backward, phases[a2])
+    scale = np.float32(dtdx)
+    if present[a1] and present[a2]:
+        return part_products.scale(scale, ((shifted_first - first) + second)
+                                   - shifted_second)
+    if present[a1]:
+        return part_products.scale(scale, shifted_first - first)
+    if present[a2]:
+        return part_products.scale(-scale, shifted_second - second)
+    return xp.zeros_like(sources[g1])
 
 
 def folded_mask(curl, iyee, boundaries) -> None:
-    """``stepping._mask_non_owned_cells`` (:1865-1902) in full, in place.
+    """``stepping._mask_non_owned_cells`` in full, in place.
 
     TWO clauses: shift 0 on a NON-PERIODIC axis -> cell 0 (the fold and the wall
     land on the same plane for different reasons), and shift 1 on a folded
@@ -645,45 +379,83 @@ def folded_mask(curl, iyee, boundaries) -> None:
 BETA_PARTNERS = {0: ("g2", +1.0), 1: ("g1", -1.0)}
 
 
+def _curl_forms(xp, target, fu, curl, coefficients, dsig, dsigu, inside) -> None:
+    """``stepping._apply_curl_regions``: the recurrence and ``fu`` on ``inside``, the
+    dsig-only form ``((f*kms) - curl)*sinv`` elsewhere, every product per part."""
+    kms, sinv = coefficients["kms_" + dsig], coefficients["sinv_" + dsig]
+    kms_u, sinv_u = coefficients["kms_" + dsigu], coefficients["sinv_" + dsigu]
+    previous = fu.copy()
+    n = part_products.scale(sinv, part_products.scale(kms, previous) - curl)
+    recurrence = part_products.scale(
+        sinv_u, (part_products.scale(kms_u, target) + n) - previous)
+    dsig_only = part_products.scale(sinv, part_products.scale(kms, target) - curl)
+    target[...] = xp.where(inside, recurrence, dsig_only)
+    fu[...] = xp.where(inside, n, fu)
+
+
+def _folded_increment(xp, target, fu, increment, coefficients, dsig, dsigu,
+                      inside) -> None:
+    """``stepping._apply_folded_increment`` without a conductivity: ``df =
+    increment*siginv``; ``fu -= df`` and ``f -= siginvu*df`` on the dsigu cells,
+    ``f -= df`` elsewhere (``increment`` is in curl sign convention, MEEP's unowned
+    cells already at +0)."""
+    df = part_products.scale(coefficients["sinv_" + dsig], increment)
+    inside_form = target - part_products.scale(coefficients["sinv_" + dsigu], df)
+    fu[...] = xp.where(inside, fu - df, fu)
+    target[...] = xp.where(inside, inside_form, target - df)
+
+
 def folded_reference_step(xp, arrays, coefficients, dtdx, sub_step, boundaries,
                           phases, mirror_phases, reflect_rows,
                           beta: float = 0.0, dt: float = 0.0,
-                          complex_storage: bool = True) -> None:
+                          complex_storage: bool = True, *, record) -> None:
     """One folded curl sub-step, in place, beta included when nonzero.
 
-    The beta increment is added to ``curl`` AFTER the dtdx curl and BEFORE the
-    masks — ``stepping``'s own order (S:356-363 then :369; :438-445 then :450) —
-    which is exactly the slot the fold makes load-bearing.
+    ``stepping.step_B`` / ``step_D``: each component's curl, masked, through its two
+    forms keyed on ``record`` (its dsigu membership on the curl's sub-lattice:
+    half-integer for B, integer for D); then, when beta is nonzero, the beta pass
+    over the first two components after EVERY component's curl (step_db.cpp:161-175):
+    the increment ``-quarter_turn(+-2*pi*beta*dt, partner)`` (complex storage) or
+    ``-(2*pi*beta*dt * partner)`` (real), masked to +0 on MEEP's unowned cells, through
+    MEEP's additive ladder (:func:`_folded_increment`).
     """
     terms = probe.B_PML_TERMS if sub_step == "step_B" else probe.D_PML_TERMS
     backward = sub_step == "step_D"
     magnetic = sub_step == "step_B"
-    for index, term in enumerate(terms):
-        target, g1, _a1, g2, _a2, dsig, dsigu, iyee = term
+    insides = []
+    for term in terms:
+        target, _g1, _a1, _g2, _a2, dsig, dsigu, iyee = term
         curl = folded_complex_curl(xp, arrays, term, dtdx, backward, boundaries,
-                                   phases, mirror_phases, reflect_rows)
-        if beta != 0.0 and index in BETA_PARTNERS:
-            slot, sign = BETA_PARTNERS[index]
-            partner = arrays[g2 if slot == "g2" else g1]
-            coefficient: Any = sign * 2.0 * math.pi * float(beta) * float(dt)
-            if complex_storage:
-                coefficient = coefficient * (1j if magnetic else -1j)
-            curl = curl - (partner.dtype.type(coefficient) * partner)
+                                   phases, mirror_phases, reflect_rows, record)
         folded_mask(curl, iyee, boundaries)
-        probe.reference_recurrence(
-            arrays[target], arrays["fu_" + target], curl,
-            coefficients["kms_" + dsig], coefficients["sinv_" + dsig],
-            coefficients["kms_" + dsigu], coefficients["sinv_" + dsigu])
+        inside = gate._membership(xp, record, not backward,
+                                  probe.AXIS_NAMES.index(dsigu), arrays[target].shape)
+        insides.append(inside)
+        _curl_forms(xp, arrays[target], arrays["fu_" + target], curl, coefficients,
+                    dsig, dsigu, inside)
+    if beta == 0.0:
+        return
+    for index, term in enumerate(terms):
+        if index not in BETA_PARTNERS:
+            continue
+        target, g1, _a1, g2, _a2, dsig, dsigu, iyee = term
+        slot, sign = BETA_PARTNERS[index]
+        partner = arrays[g2 if slot == "g2" else g1]
+        coefficient = sign * 2.0 * math.pi * float(beta) * float(dt)
+        if complex_storage:
+            increment = -part_products.quarter_turn(
+                coefficient if magnetic else -coefficient, partner)
+        else:
+            increment = -(partner.dtype.type(coefficient) * partner)
+        folded_mask(increment, iyee, boundaries)
+        _folded_increment(xp, arrays[target], arrays["fu_" + target], increment,
+                          coefficients, dsig, dsigu, insides[index])
 
 
 def reference_ghost_fill_near(xp, arrays, family: str,
                               axes: Sequence[Dict[str, Any]]) -> None:
-    """``stepping.fill_symmetry_bc_*`` (:1426-1451) on plain arrays.
-
-    ``phase * plane`` with a PYTHON INT, exactly as ``_write_mirror_ghost``
-    (:1450-1451) spells it — which on complex64 is the FULL complex product.
-    This is the reference the plane-wise mutation must diverge from.
-    """
+    """``stepping.fill_symmetry_bc_*`` on plain arrays: cell 0 <- parity * cell 2,
+    the product per part (``host_writes.copy_face``; ``part_products.scale``)."""
     targets = folded_complex.GHOST_FILL_FAMILIES[family]["targets"]
     for name in targets:                  # the array path loops TERMS outermost
         field = arrays[name]
@@ -691,14 +463,14 @@ def reference_ghost_fill_near(xp, arrays, family: str,
             axis = int(entry["axis"])
             if folded_complex.TARGET_IYEE[name][axis] != 0:
                 continue
-            field[_face(axis, 0)] = (
-                mirror_parity(name, axis, int(entry["phase"]))
-                * field[_face(axis, folded_complex.MIRROR_SOURCE_INDEX)])
+            field[_face(axis, 0)] = part_products.scale(
+                mirror_parity(name, axis, int(entry["phase"])),
+                field[_face(axis, folded_complex.MIRROR_SOURCE_INDEX)])
 
 
 def reference_ghost_fill_far(xp, arrays, family: str,
                              axes: Sequence[Dict[str, Any]]) -> None:
-    """``stepping.fill_folded_far_ghosts_*`` (:1489-1532) on plain arrays."""
+    """``stepping.fill_folded_far_ghosts_*`` on plain arrays, the product per part."""
     targets = folded_complex.GHOST_FILL_FAMILIES[family]["targets"]
     for name in targets:
         field = arrays[name]
@@ -706,9 +478,9 @@ def reference_ghost_fill_far(xp, arrays, family: str,
             axis = int(entry["axis"])
             if not entry["far"] or folded_complex.TARGET_IYEE[name][axis] != 1:
                 continue
-            field[_face(axis, -1)] = (
-                mirror_parity(name, axis, int(entry["phase"]))
-                * field[_face(axis, int(entry["reflect_row"]))])
+            field[_face(axis, -1)] = part_products.scale(
+                mirror_parity(name, axis, int(entry["phase"])),
+                field[_face(axis, int(entry["reflect_row"]))])
 
 
 def reference_ghost_fill(xp, arrays, family: str, axes: Sequence[Dict[str, Any]],
@@ -719,9 +491,7 @@ def reference_ghost_fill(xp, arrays, family: str, axes: Sequence[Dict[str, Any]]
     (driver.py:3209-3211 / :3222-3224), and under COMPLEX storage the split is
     load-bearing: a component unowned on two axes with different Yee shifts
     (``By`` on a Mirror(X)+Mirror(Y) grid) sees near-then-far here and would see
-    far-then-near under a fused per-axis launch. Measured on the laptop: 1 word
-    of ``By`` differs. Under real storage the two agree, which is why
-    ``symmetry.py`` may fuse them.
+    far-then-near under a fused per-axis launch.
     """
     reference_ghost_fill_near(xp, arrays, family, axes)
     reference_ghost_fill_far(xp, arrays, family, axes)
@@ -860,10 +630,6 @@ def make_state(xp, shape, rng, names, complex_storage: bool) -> Dict[str, Any]:
 #: where the curl and the split-field recurrence carry a needle 29 decades above
 #: the random body through a full sub-step.
 #:
-#: :data:`PARITY_WORDS` keeps its ``±3.4e38`` and is exempt by MEASUREMENT, not by
-#: exception: that probe's coefficient is exactly ``±1 + 0j`` and nothing
-#: accumulates, so every product is its own input — 0 non-finite floats across all
-#: three candidate arms.
 FILL_NEEDLE_MAGNITUDE: float = 1e29
 
 FILL_NEEDLE_PAIRS: Tuple[Tuple[float, float], ...] = (
@@ -1044,7 +810,7 @@ def _flat_coefficients(xp, coefficients: Dict[str, Any], shape) -> Dict[str, Any
 
 
 def one_curl_case(shape, config, phase_set, dtdx, mirror_phase, offsets,
-                  sub_step, guard, expansion, beta, complex_storage,
+                  sub_step, guard, beta, complex_storage,
                   kernel=None) -> Dict[str, Any]:
     """One synthetic sub-step: reference on the host, kernel on the device."""
     started = time.time()
@@ -1064,9 +830,11 @@ def one_curl_case(shape, config, phase_set, dtdx, mirror_phase, offsets,
     boundaries = config["boundaries"]
     rows = reflect_rows_for(shape, boundaries, offsets)
     mirror_phases = tuple(mirror_phase for _ in range(3))
+    record = two_run_record(shape)
     folded_reference_step(np, reference, coefficients, np.float32(dtdx), sub_step,
                           boundaries, phase_set["phases"], mirror_phases, rows,
-                          beta=beta, dt=BETA_DT, complex_storage=complex_storage)
+                          beta=beta, dt=BETA_DT, complex_storage=complex_storage,
+                          record=record)
 
     arrays = {name: cp.asarray(np.array(value, dtype=dtype, copy=True))
               for name, value in host.items()}
@@ -1075,19 +843,20 @@ def one_curl_case(shape, config, phase_set, dtdx, mirror_phase, offsets,
     row_argument = tuple(-1 if r is None else int(r) for r in rows)
     if beta == 0.0 and complex_storage:
         plan = folded_complex.plan_folded_complex_pml_curl_from_arrays(
-            sub_step, arrays, flat, codes, phase_set["phases"], dtdx, expansion,
-            kernel=kernel)
+            sub_step, arrays, flat, codes, phase_set["phases"], dtdx,
+            kernel=kernel, chunk_bounds=record)
     elif complex_storage:
         words = special_kz.beta_curl_coefficients(
             beta, BETA_DT, magnetic=(sub_step == "step_B"), complex_storage=True)
         plan = folded_complex.plan_folded_beta_bloch_pml_curl_from_arrays(
-            sub_step, arrays, flat, codes, phase_set["phases"], dtdx, expansion,
-            words, kernel=kernel)
+            sub_step, arrays, flat, codes, phase_set["phases"], dtdx,
+            words, kernel=kernel, chunk_bounds=record)
     else:
         plus, minus = special_kz.beta_curl_coefficients(
             beta, BETA_DT, magnetic=(sub_step == "step_B"), complex_storage=False)
         plan = folded_complex.plan_folded_beta_pml_curl_from_arrays(
-            sub_step, arrays, flat, codes, dtdx, plus, minus, kernel=kernel)
+            sub_step, arrays, flat, codes, dtdx, plus, minus, kernel=kernel,
+            chunk_bounds=record)
     plan.run(guard=guard)
     cp.cuda.runtime.deviceSynchronize()
 
@@ -1130,7 +899,7 @@ def _summarize(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def run_synthetic(results: Dict[str, Any], out_path: str, expansion: int,
+def run_synthetic(results: Dict[str, Any], out_path: str,
                   quick: bool = False) -> Dict[str, Any]:
     cases: List[Dict[str, Any]] = []
     shapes = SHAPES[:2] if quick else SHAPES
@@ -1163,7 +932,7 @@ def run_synthetic(results: Dict[str, Any], out_path: str, expansion: int,
             continue  # real storage carries no Bloch phase; the array path raises
         for guard in (False, True):     # fusion OFF first — it is the asserted row
             case = one_curl_case(shape, config, phase_set, dtdx, mirror_phase,
-                                 offsets, sub_step, guard, expansion, beta, storage)
+                                 offsets, sub_step, guard, beta, storage)
             cases.append(case)
         latest = cases[-2]              # the fusion-OFF row
         log(f"case {index}/{total} {config['name']}/{phase_set['name']} "
@@ -1268,8 +1037,7 @@ def seed_fill_state(fields, grid, names, family: str, pml) -> Dict[str, Any]:
     its name promises: on an all-``+0.0`` state at mirror phase +1 the full
     product and the plane-wise form both return ``(+0.0, +0.0)``
     (``re = (+1)(+0.0) - (+0.0)(+0.0) = +0.0``), so every phase = +1 grid was
-    provably blind to plane_wise_parity_fill, identity_shortcut,
-    synthesize_zero_imag and unary_minus_addend, and the reference census on the
+    provably blind to the fill's signed-zero needles, and the reference census on the
     metallic even-mirror rows was 0 — VACUOUS, recorded and never failed. Driving
     the quiet grid through the negative-coefficient absorber is what makes the
     ``-0.0`` stores the family exists for actually appear.
@@ -1328,7 +1096,7 @@ def _per_row_needles(mine, reference, axis: int, shape) -> Dict[str, int]:
     return out
 
 
-def run_fill(results: Dict[str, Any], out_path: str, expansion: int,
+def run_fill(results: Dict[str, Any], out_path: str,
              kernel=None, entry_mutation: Optional[str] = None,
              label: str = "gate", quick: bool = False,
              fuse_passes: bool = False) -> Dict[str, Any]:
@@ -1367,7 +1135,7 @@ def run_fill(results: Dict[str, Any], out_path: str, expansion: int,
                     entries, entry_mutation, grid)
                 plan = folded_complex.plan_folded_mirror_ghost_fill_complex_from_arrays(
                     family, {name: getattr(fields, name) for name in names},
-                    entries, expansion, kernel=kernel)
+                    entries, kernel=kernel)
                 if fuse_passes:
                     # `_launch_pass(1, 1)` IS the fused per-axis form: ONE launch
                     # per axis doing near AND far, which is what
@@ -1441,23 +1209,25 @@ def blind_fill_cells(cases: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """(grid, family) cells whose REFERENCE census is 0 in EVERY state family.
 
     A single family reading 0 is information, not a defect, and the WHOLE matrix
-    was re-measured on this laptop (2026-08-12, all 12 grids x 2 families x 4
-    states) rather than argued:
+    was re-measured on this laptop (2026-10-08, all 12 grids x 2 families x 4
+    states, on the per-part array path) rather than argued:
 
-    * ``engineered_rows`` reads 58..1347 on EVERY row and is the only family that
-      never reads 0 — it is what carries the metallic +1 cells;
-    * ``zero_init_absorber`` reads 16..588 except on the two folded METALLIC
+    * ``engineered_rows`` reads 70..1664 on EVERY row and never reads 0 — with
+      the next family it carries the metallic +1 cells;
+    * ``zero_init_absorber`` reads 32..1152 except on the two folded METALLIC
       phase = +1 grids, where it reads 0. That one IS a predicted null with a
       reason: the near coefficient is ``+1`` and there is no far fill, so a quiet
       grid driven through the absorber stores no signed zero at all;
-    * ``engineered_rows_post_step`` reads 8..400, and 0 on those same metallic +1
-      grids, for the same reason;
-    * ``live_post_step`` reads 0 on EVERY row of the matrix. That is not a
-      metallic-only null and it is not stated as one: four driven steps from a
-      random seed leave generic nonzero floats, so this family reaches none of
-      the signed-zero class anywhere. It is the REALISTIC-state family — it is
-      what catches a wrong reflect row or a wrong plane — and its census is 0 by
-      construction, not by configuration.
+    * ``engineered_rows_post_step`` reads 41..1397 on EVERY row: the per-part
+      products keep the planted signed zeros the step carries, where the whole-
+      complex products this census was first cut against (8..400, and 0 on the
+      metallic +1 grids) turned them into +0;
+    * ``live_post_step`` reads 0 on every row but one (1 word, the folded
+      PERIODIC phase = -1 even grid, D family). That is not a metallic-only null
+      and it is not stated as one: four driven steps from a random seed leave
+      generic nonzero floats, so this family reaches almost none of the
+      signed-zero class anywhere. It is the REALISTIC-state family — it is what
+      catches a wrong reflect row or a wrong plane.
 
     A CELL blind in all four families is a different thing: the row cannot see
     any of the fill's needles at all and its coverage claim has nothing behind
@@ -1602,19 +1372,6 @@ def apply_entry_mutation(entries, mutation: Optional[str], grid
     elif mutation == "far_fill_uses_plus_phase":
         for entry in entries:
             entry["far_words"] = entry["near_words"]
-    elif mutation == "nonzero_imaginary_words":
-        # The host-side twin of "the coefficient words are PASSED, never
-        # synthesised". Setting the imaginary word to +0.0 (what stood here until
-        # 2026-08-12) is a PROVABLE no-op: `mirror_parity_coefficients` already
-        # returns `(±1.0, 0.0)`, so the mutated entry list was byte-identical to
-        # the shipped one on every row and the leg — predicted CAUGHT — could
-        # only ever record diverged = 0. Passing a NONZERO imaginary word is the
-        # armed form of the same claim: a kernel that reads the passed word must
-        # follow it away from the array path, and one that synthesises `+0.0`
-        # cannot.
-        for entry in entries:
-            entry["near_words"] = (entry["near_words"][0], 0.5)
-            entry["far_words"] = (entry["far_words"][0], -0.25)
     else:
         raise ValueError(f"unknown entry mutation {mutation!r}")
     changed = [dict(entry) for entry in entries] != before
@@ -1633,16 +1390,17 @@ ZERO_INIT_SPEC = {"axis": "Y", "boundaries": "periodic", "phase": 1,
                   "cell": (2.0, 2.1, 0.0)}
 ZERO_INIT_STEPS = 4
 #: Laptop expectation to beat on the odd-count periodic +1 configuration.
-#: MEASURED on this laptop 2026-08-12 by executing this leg's own build on NumPy
+#: MEASURED on this laptop 2026-10-08 by executing this leg's own build on NumPy
 #: (shape (20,13,1), stored [20,13,1], owned [20,12,1], reflect row 10;
 #: kms_min x/y = -0.5110714, kms_h_min x/y = -0.0493551 — the absorber's deepest
-#: coefficient is genuinely negative). The (162, 60, 162, 60) that stood here
-#: until then matched no configuration this leg can build.
-ZERO_INIT_LAPTOP_CENSUS = (225, 120, 225, 120)
+#: coefficient is genuinely negative), on the per-part array path: a negative
+#: coefficient times a quiet ``+0 + 0i`` word now stores ``-0`` in BOTH parts,
+#: where the whole-complex products of the (225, 120, 225, 120) cut stored
+#: ``-0 + 0i``.
+ZERO_INIT_LAPTOP_CENSUS = (550, 242, 548, 242)
 
 
-def run_zero_init(results: Dict[str, Any], out_path: str,
-                  expansion: Optional[int] = None) -> Dict[str, Any]:
+def run_zero_init(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     """All arrays +0.0; a thin absorber whose deepest ``kms`` goes NEGATIVE.
 
     TWO halves, and both are required.
@@ -1684,7 +1442,7 @@ def run_zero_init(results: Dict[str, Any], out_path: str,
     vacuous = any(count == 0 for count in census)
     negative = min(list(kms.values()) + list(kms_h.values())) < 0.0
 
-    byte = _zero_init_bit_identity(grid, fields, pml, expansion)
+    byte = _zero_init_bit_identity(grid, fields, pml)
     verdict = {
         "census": census,
         "laptop_expectation": list(ZERO_INIT_LAPTOP_CENSUS),
@@ -1713,8 +1471,7 @@ def run_zero_init(results: Dict[str, Any], out_path: str,
     return verdict
 
 
-def _zero_init_bit_identity(grid, fields, pml,
-                            expansion: Optional[int]) -> Dict[str, Any]:
+def _zero_init_bit_identity(grid, fields, pml) -> Dict[str, Any]:
     """K1 (both sub-steps) and K2 (both families) on the QUIET absorber state.
 
     The leg the case-discipline's ZERO-INIT clause actually asks for: a byte
@@ -1723,9 +1480,6 @@ def _zero_init_bit_identity(grid, fields, pml,
     failure here, not a skip, because a leg that silently ran the array path on
     both sides passes vacuously.
     """
-    if expansion is None:
-        return {"ran": 0, "identical": 0, "passed": False, "cases": [],
-                "failure": "no licensed EXPANSION; the leg could launch nothing"}
     mirror = Fields(grid=grid, force_complex_fields=True)
     mirror.enable_pml_storage()
     for name in ALL_STATE:
@@ -1755,7 +1509,8 @@ def _zero_init_bit_identity(grid, fields, pml,
                 for axis in "xyz" for stem in ("kms", "sinv")}
         plan = folded_complex.plan_folded_complex_pml_curl_from_arrays(
             sub_step, {n: getattr(fields, n) for n in names}, flat, tuple(codes),
-            phases, float(grid.dt / grid.dx), int(expansion))
+            phases, float(grid.dt / grid.dx),
+            chunk_bounds=region_plan_record(mirror))
         plan.run()
         cp.cuda.runtime.deviceSynchronize()
         compared = targets + tuple("fu_" + t for t in targets)
@@ -1770,7 +1525,7 @@ def _zero_init_bit_identity(grid, fields, pml,
         fill_names = folded_complex.GHOST_FILL_FAMILIES[family]["targets"]
         fill_plan = folded_complex.plan_folded_mirror_ghost_fill_complex_from_arrays(
             family, {n: getattr(fields, n) for n in fill_names},
-            folded_complex.ghost_fill_axis_entries(grid, family), int(expansion))
+            folded_complex.ghost_fill_axis_entries(grid, family))
         fill_plan.run()
         cp.cuda.runtime.deviceSynchronize()
         cases.append({"leg": f"fill_{family}", "substituted": True,
@@ -1794,8 +1549,7 @@ def _zero_init_bit_identity(grid, fields, pml,
 # The identity / reduction products
 # ---------------------------------------------------------------------------
 
-def run_identity(results: Dict[str, Any], out_path: str,
-                 expansion: int) -> Dict[str, Any]:
+def run_identity(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     """Zero folded axes -> K1 == the certified unfolded kernel, byte for byte;
     ``HAS_BETA=0`` -> K3a/K3b == the plain folded kernels. Equivalence products,
     never routing rules: which kernel a composed plan would launch is a separate
@@ -1816,10 +1570,13 @@ def run_identity(results: Dict[str, Any], out_path: str,
         theirs = {n: cp.asarray(np.array(v, copy=True)) for n, v in host.items()}
         codes = (CODE_OF[PERIODIC], CODE_OF[METALLIC], CODE_OF[PERIODIC])
         phases = (_phase(0.19), None, None)
+        record = two_run_record(shape)
         folded_complex.plan_folded_complex_pml_curl_from_arrays(
-            sub_step, mine, flat, codes, phases, 0.35, expansion).run()
+            sub_step, mine, flat, codes, phases, 0.35,
+            chunk_bounds=record).run()
         complex_fields.plan_complex_pml_curl_from_arrays(
-            sub_step, theirs, flat, codes, phases, 0.35, expansion).run()
+            sub_step, theirs, flat, codes, phases, 0.35,
+            chunk_bounds=record).run()
         cp.cuda.runtime.deviceSynchronize()
         cases.append({
             "leg": "zero_folded_axes_reduces_to_certified_complex",
@@ -1837,11 +1594,10 @@ def run_identity(results: Dict[str, Any], out_path: str,
             BETA_GRATING_13_2, BETA_DT, magnetic=(sub_step == "step_B"),
             complex_storage=True)
         folded_complex.plan_folded_beta_bloch_pml_curl_from_arrays(
-            sub_step, mine, flat, fold_codes, (None, None, None), 0.35, expansion,
-            words, has_beta=0).run()
+            sub_step, mine, flat, fold_codes, (None, None, None), 0.35,
+            words, has_beta=0, chunk_bounds=record).run()
         folded_complex.plan_folded_complex_pml_curl_from_arrays(
-            sub_step, theirs, flat, fold_codes, (None, None, None), 0.35,
-            expansion).run()
+            sub_step, theirs, flat, fold_codes, (None, None, None), 0.35, chunk_bounds=record).run()
         cp.cuda.runtime.deviceSynchronize()
         cases.append({
             "leg": "has_beta_zero_reduces_to_plain_folded_complex",
@@ -1859,11 +1615,12 @@ def run_identity(results: Dict[str, Any], out_path: str,
             BETA_GRATING_13_2, BETA_DT, magnetic=(sub_step == "step_B"),
             complex_storage=False)
         folded_complex.plan_folded_beta_pml_curl_from_arrays(
-            sub_step, mine, flat, fold_codes, 0.35, plus, minus, has_beta=0).run()
+            sub_step, mine, flat, fold_codes, 0.35, plus, minus, has_beta=0,
+            chunk_bounds=record).run()
         from meep_gpu.triton_kernels import symmetry as symmetry_module  # noqa: PLC0415
 
         symmetry_module.plan_folded_from_arrays(
-            sub_step, theirs, flat, fold_codes, 0.35).run()
+            sub_step, theirs, flat, fold_codes, 0.35, chunk_bounds=record).run()
         cp.cuda.runtime.deviceSynchronize()
         cases.append({
             "leg": "has_beta_zero_reduces_to_symmetry_folded_real",
@@ -1893,13 +1650,13 @@ _TEMPORARY: List[str] = []
 
 
 def shipped_source(which: str) -> str:
-    """Helpers first (they may themselves be the mutation target), then kernels."""
+    """Helpers first (they may themselves be the mutation target), then kernels.
+
+    K1 and K3b call ``_connect`` and the shared forms (imported by the mutant); K3a the
+    shared forms alone. No body calls a complex-multiply helper any more."""
     import inspect  # noqa: PLC0415
 
-    helpers = (complex_fields._rotate_field_left,
-               complex_fields._mul_field_left,
-               complex_fields._mul_coefficient_left,
-               special_kz._mul_imag_coefficient_left)
+    helpers = (complex_fields._connect,)
     bodies = {
         "curl": (folded_complex.folded_bloch_pml_curl_step,),
         "fill": (folded_complex.folded_mirror_ghost_fill_complex,),
@@ -1914,21 +1671,31 @@ def compile_mutated(source: str, kernel_name: str):
     """Compile a mutated copy from a real file on disk (Triton reads source via
     ``inspect``, so exec'd text raises at first launch). The constexpr codes are
     re-declared in the header because a ``@triton.jit`` body may not read a plain
-    module global."""
+    module global, and the shared forms and record offsets are imported, as the
+    module imports them. THE MODULE NAME MUST NOT START WITH ``triton``: Triton's
+    dependency finder leaves every callee whose ``__module__`` starts with its
+    package name out of the kernel's cache key (gate_triton_complex.compile_mutated
+    states the measured defect)."""
     header = (
         "import triton\nimport triton.language as tl\n"
+        "from meep_gpu.triton_kernels.forms import (axis_present, bfast_advance,\n"
+        "    constitutive_form, curl_form, curl_stencil, fold_ladder, record_in)\n"
         f"PERIODIC = tl.constexpr({CODE_OF[PERIODIC]})\n"
         f"METALLIC = tl.constexpr({CODE_OF[METALLIC]})\n"
         f"MIRROR_METALLIC = tl.constexpr({CODE_OF[MIRROR_METALLIC]})\n"
         f"MIRROR_PERIODIC = tl.constexpr({CODE_OF[MIRROR_PERIODIC]})\n"
-        f"NAIVE = tl.constexpr(0)\nFMA_V1 = tl.constexpr(1)\n\n")
+        f"CONNECT_NONE = tl.constexpr({complex_fields.CONNECTION_KINDS['none']})\n"
+        f"CONNECT_PHASE = tl.constexpr({complex_fields.CONNECTION_KINDS['phase']})\n"
+        f"CONNECT_NEGATE = tl.constexpr({complex_fields.CONNECTION_KINDS['negate']})\n"
+        f"RECORD_HALF_INTEGER = tl.constexpr({gate.RECORD_HALF_INTEGER_WORD})\n"
+        f"RECORD_PRESENCE = tl.constexpr({gate.RECORD_PRESENCE_WORD})\n\n")
     handle = tempfile.NamedTemporaryFile("w", suffix="_mutated_folded.py",
                                          delete=False, encoding="utf-8")
     handle.write(header + source)
     handle.close()
     _TEMPORARY.append(handle.name)
     spec = importlib.util.spec_from_file_location(
-        "triton_mutated_folded_" + str(len(_TEMPORARY)), handle.name)
+        "folded_complex_mutant_" + str(len(_TEMPORARY)), handle.name)
     module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     sys.modules[spec.name] = module  # type: ignore[union-attr]
     spec.loader.exec_module(module)  # type: ignore[union-attr]
@@ -1960,45 +1727,44 @@ def _sub(pattern: str, replacement: str):
     return apply
 
 
-#: The fill's product call, with its own indentation captured — the near arm sits
-#: at one level and the far arm one deeper inside ``if DO_FAR:``, so a mutant that
-#: hard-codes the indentation produces an IndentationError and DISARMS the leg.
-_FILL_PRODUCT = re.compile(
-    r"( *)o_re, o_im = _mul_imag_coefficient_left\((near|far)_re, (?:near|far)_im, "
-    r"z_re, z_im,\s*\n\s*EXPANSION\)")
+#: The fill's per-part product, one per stored part: ``near_c * tl.load(f + 2*src ...)``
+#: (the real part) and ``near_c * tl.load(f + 2*src + 1 ...)`` (the imaginary one),
+#: and the same with ``far_c``.
+_FILL_RE = re.compile(
+    r"(near|far)_c \* tl\.load\((f\d) \+ 2 \* src, mask=live, other=0\.0\)")
+_FILL_IM = re.compile(
+    r"(near|far)_c \* tl\.load\((f\d) \+ 2 \* src \+ 1, mask=live, other=0\.0\)")
 
 
-def mutate_plane_wise_parity_fill(source: str) -> Tuple[str, int]:
-    """m1, THE headline needle: the fill's full complex product becomes
-    ``PHASE * word`` — ``symmetry.mirror_ghost_fill``'s certified REAL spelling
-    ported word-for-word. The parity's real word IS ±1.0, so the mutant spells it
-    against ``near_re`` / ``far_re``."""
-    def replace(match: "re.Match[str]") -> str:
-        indent, prefix = match.group(1), match.group(2)
-        return (f"{indent}o_re = {prefix}_re * z_re\n"
-                f"{indent}o_im = {prefix}_re * z_im")
+def mutate_full_complex_parity_fill(source: str) -> Tuple[str, int]:
+    """m1, THE headline needle, INVERTED (Appendix A): the fill's per-part product
+    becomes the previous FULL complex product with the coefficient promoted to
+    ``(c, 0)`` — ``(c*re) - (0*im)`` and ``(c*im) + (0*re)``. Byte-wrong on signed
+    zeros only, which FILL_NEEDLE_PAIRS plants."""
+    def imag(match: "re.Match[str]") -> str:
+        c, f = match.group(1), match.group(2)
+        return (f"(({c}_c * tl.load({f} + 2 * src + 1, mask=live, other=0.0)) + "
+                f"(0.0 * tl.load({f} + 2 * src, mask=live, other=0.0)))")
 
-    return _FILL_PRODUCT.sub(replace, source), len(_FILL_PRODUCT.findall(source))
+    def real(match: "re.Match[str]") -> str:
+        c, f = match.group(1), match.group(2)
+        return (f"(({c}_c * tl.load({f} + 2 * src, mask=live, other=0.0)) - "
+                f"(0.0 * tl.load({f} + 2 * src + 1, mask=live, other=0.0)))")
+
+    hits = len(_FILL_IM.findall(source)) + len(_FILL_RE.findall(source))
+    source = _FILL_IM.sub(imag, source)
+    source = _FILL_RE.sub(real, source)
+    return source, hits
 
 
 def mutate_identity_shortcut(source: str) -> Tuple[str, int]:
-    """m2: the ``phase == +1`` case short-circuited to a plain copy. Run on the
-    +1 rows ONLY, which is where it would bite — and where every corpus row is."""
-    def replace(match: "re.Match[str]") -> str:
-        indent = match.group(1)
-        return f"{indent}o_re = z_re\n{indent}o_im = z_im"
-
-    return _FILL_PRODUCT.sub(replace, source), len(_FILL_PRODUCT.findall(source))
-
-
-def mutate_synthesize_zero_imag(source: str) -> Tuple[str, int]:
-    """m3: the coefficient's imaginary word built in-kernel as a literal +0.0
-    instead of the host word that was passed."""
-    hits = 0
-    for prefix in ("near", "far"):
-        pattern = re.compile(prefix + r"_re, " + prefix + r"_im, z_re, z_im")
-        source, n = pattern.subn(prefix + "_re, 0.0, z_re, z_im", source)
-        hits += n
+    """m2: the parity multiply dropped, the fill a plain copy. Per part, ``x *
+    (+1.0)`` IS ``x`` on every non-NaN word, so the +1 rows cannot see this; it is
+    scored on every row and caught on the phase = -1 ones, where the copy keeps
+    the sign the parity flips."""
+    hits = len(_FILL_RE.findall(source)) + len(_FILL_IM.findall(source))
+    source = _FILL_IM.sub(r"tl.load(\2 + 2 * src + 1, mask=live, other=0.0)", source)
+    source = _FILL_RE.sub(r"tl.load(\2 + 2 * src, mask=live, other=0.0)", source)
     return source, hits
 
 
@@ -2008,127 +1774,55 @@ mutate_drop_top_plane_mask = _sub(
     r"if BC([XYZ]) == MIRROR_PERIODIC:\n(\s+)curl(\d)(_re)? = tl\.where\(last_[xyz], 0\.0, curl\3\4\)",
     r"if False:\n\2curl\3\4 = curl\3\4")
 mutate_mask_only_metallic = _sub(r"!= PERIODIC", "== METALLIC")
-def mutate_fold_zero_cross_terms(source: str) -> Tuple[str, int]:
-    """m7: the zero cross terms folded to a literal ``+0.0`` — exactly the
-    constant-fold the compiler must not perform, byte-wrong on signed zeros only.
-
-    BOTH arms are rewritten, not just FMA_V1: which arm the platform binds is a
-    probe result, and a mutation that only touches the arm this laptop measured
-    would be DISARMED on a NAIVE platform without saying so.
-
-    BOTH helpers are rewritten too. ``_mul_field_left`` carries the cross terms
-    of ``fu *= kms`` / ``field *= sinv_u``; ``_mul_coefficient_left`` carries the
-    zero-sign-asymmetric ones of the scalar-left ``dtdx * total`` (S:1635), whose
-    left zero passes the FIELD's imaginary sign. Leaving the second helper
-    unmutated left the curl's own scale factor's cross terms unarmed on every
-    row.
-    """
-    hits = 0
-    for pattern, replacement in (
-            # _mul_field_left — the field-on-the-left cross terms
-            (r"\(z_im \* 0\.0\) \* -1\.0", "0.0"),
-            (r"tl\.math\.fma\(z_re, 0\.0, z_im \* c\)", "z_im * c"),
-            (r"\(z_re \* c\) - \(z_im \* 0\.0\)", "z_re * c"),
-            (r"\(z_re \* 0\.0\) \+ \(z_im \* c\)", "z_im * c"),
-            # _mul_coefficient_left — the coefficient-on-the-left cross terms
-            (r"\(0\.0 \* z_im\) \* -1\.0", "0.0"),
-            (r"tl\.math\.fma\(c, z_im, 0\.0 \* z_re\)", "c * z_im"),
-            (r"\(c \* z_re\) - \(0\.0 \* z_im\)", "c * z_re"),
-            (r"\(c \* z_im\) \+ \(0\.0 \* z_re\)", "c * z_im")):
-        source, n = re.subn(pattern, replacement, source)
-        hits += n
-    return source, hits
-def mutate_unary_minus_addend(source: str) -> Tuple[str, int]:
-    """m11: a negated addend respelled through unary minus, in BOTH arms.
-
-    Platform fact: Triton 3.1.0 lowers ``-x`` as ``0.0 - x``, canonicalizing ±0
-    addends to +0 before the add — MEASURED REACHABLE at the driver level,
-    which is why the shipped helpers spell it ``(a*b) * -1.0``.
-
-    The FMA_V1 arm carries the ``* -1.0`` spelling and is respelled ``-(a*b)``.
-    The NAIVE arm has no ``* -1.0`` at all — it spells the same term as a plain
-    SUBTRACT, which does NOT lose the addend's zero sign — so arming it means
-    turning ``a - b`` into ``a + (-b)``, the same lowering by another route.
-    Until 2026-08-12 this transform touched the FMA arm only: on a platform whose
-    probe binds NAIVE the mutant's SOURCE differed (so the ``hits == 0`` DISARMED
-    path did not fire) while its compiled body was identical to the shipped one,
-    ``_ptx_differs`` reported overlap, and the leg failed for a non-defect.
-    """
-    hits = 0
-    for pattern, replacement in (
-            # FMA_V1 arms: (a*b) * -1.0  ->  -(a*b)
-            (r"\(c_im \* z_im\) \* -1\.0", "-(c_im * z_im)"),
-            (r"\(z_im \* 0\.0\) \* -1\.0", "-(z_im * 0.0)"),
-            (r"\(g_im \* p_im\) \* -1\.0", "-(g_im * p_im)"),
-            (r"\(0\.0 \* z_im\) \* -1\.0", "-(0.0 * z_im)"),
-            # NAIVE arms: a - b  ->  a + (-b)
-            (r"\(c_re \* z_re\) - \(c_im \* z_im\)",
-             "(c_re * z_re) + (-(c_im * z_im))"),
-            (r"\(z_re \* c\) - \(z_im \* 0\.0\)",
-             "(z_re * c) + (-(z_im * 0.0))"),
-            (r"\(g_re \* p_re\) - \(g_im \* p_im\)",
-             "(g_re * p_re) + (-(g_im * p_im))"),
-            (r"\(c \* z_re\) - \(0\.0 \* z_im\)",
-             "(c * z_re) + (-(0.0 * z_im))")):
-        source, n = re.subn(pattern, replacement, source)
-        hits += n
-    return source, hits
-mutate_rotate_beta_partner = _sub(
-    r"_mul_imag_coefficient_left\(bp_re, bp_im, b_re, b_im, EXPANSION\)",
-    "_mul_imag_coefficient_left(bp_re, bp_im, b_x_re, b_x_im, EXPANSION)")
+def _needles(*pairs: Tuple[str, str]) -> Callable[[str], Tuple[str, int]]:
+    """Every pair rewritten; the site count is 0 unless every needle matched."""
+    def transform(source: str) -> Tuple[str, int]:
+        hits = 0
+        for needle, replacement in pairs:
+            if needle in source:
+                hits += source.count(needle)
+                source = source.replace(needle, replacement)
+            else:
+                return source, 0
+        return source, hits
+    return transform
 
 
-def mutate_beta_after_mask(source: str) -> Tuple[str, int]:
-    """m8, THE fold-order needle: the beta insert moved BELOW both ownership
-    masks, so a live increment survives on the mirror plane and on the far ghost
-    plane while the interior stays byte-identical."""
-    complex_block = (
-        "    if HAS_BETA:\n"
-        "        t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)\n"
-        "        curl0_re = curl0_re - t_re\n"
-        "        curl0_im = curl0_im - t_im\n"
-        "        t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)\n"
-        "        curl1_re = curl1_re - t_re\n"
-        "        curl1_im = curl1_im - t_im\n")
-    real_block = (
-        "    if HAS_BETA:\n"
-        "        curl0 = curl0 - (beta_plus * b)\n"
-        "        curl1 = curl1 - (beta_minus * a)\n")
-    for block in (complex_block, real_block):
-        if block in source:
-            source = source.replace(block, "", 1)
-            anchor = "    # --- split-field recurrence"
-            index = source.index(anchor)
-            return source[:index] + block + source[index:], 1
-    return source, 0
+#: K1's chunk-form battery (Appendix A inversions and the record's own clauses),
+#: the needles the complex gate validated, re-pointed at the folded body.
+mutate_pairwise_stencil = _needles(
+    ("curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)",
+     "curl0_re = dtdx * ((c_y_re - c0_re) + (b0_re - b_z_re))"))
+mutate_whole_grid_recurrence = _needles(
+    ("du0 = record_in(cb, lattice + 8, k)", "du0 = live"),
+    ("du1 = record_in(cb, lattice + 0, i)", "du1 = live"),
+    ("du2 = record_in(cb, lattice + 4, j)", "du2 = live"))
+mutate_membership_one_row_off = _needles(
+    ("du1 = record_in(cb, lattice + 0, i)", "du1 = record_in(cb, lattice + 0, i + 1)"))
+mutate_fu_store_unmasked = _needles(
+    ("tl.store(u0 + 2 * idx, n0_re, mask=live & du0)",
+     "tl.store(u0 + 2 * idx, n0_re, mask=live)"))
+mutate_presence_ignored = _needles(
+    ("presence = tl.load(cb + RECORD_PRESENCE)", "presence = 7"))
+mutate_connection_dropped = _needles(("if CNX:", "if 0:"))
+
 
 
 #: name -> (transform, which shipped body it applies to, entry point, note).
+#: ``connection_dropped`` is scored on the Bloch rows (``kx_unfolded``), every other
+#: curl mutation on the k = 0 rows (:data:`CURL_MUTATION_PHASES`).
 SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str, str, str]] = {
-    "plane_wise_parity_fill": (
-        mutate_plane_wise_parity_fill, "fill",
+    "full_complex_parity_fill": (
+        mutate_full_complex_parity_fill, "fill",
         "folded_mirror_ghost_fill_complex",
-        "THE headline needle; predicted counts to beat: 8/128 engineered words "
-        "at BOTH mirror parities (folded_complex.py:64-66), 40 words on the live "
-        "state. The 8-at-both-parities prediction is only reachable because the "
-        "engineered plant is FILL_NEEDLE_PAIRS — the measured union of the three "
-        "divergent classes — rather than a diagonal walk over a word list"),
+        "THE headline needle, inverted: the previous full complex product planted "
+        "in place of the per-part fill; byte-wrong on the engineered signed-zero "
+        "pairs FILL_NEEDLE_PAIRS stamps (the 8/128 words at both parities the two "
+        "spellings were measured apart in)"),
     "identity_shortcut_on_even_mirror": (
         mutate_identity_shortcut, "fill", "folded_mirror_ghost_fill_complex",
-        "the even mirror is NOT the identity under complex storage; measured "
-        "across every row, and the +1 rows are the load-bearing ones because "
-        "every corpus anchor uses an even mirror. The +1 rows only carry the "
-        "needle now that plant_fill_needles stamps FILL_NEEDLE_PAIRS: the "
-        "diagonal pairing it replaced hit 0 of the 8 divergent pairs at phase "
-        "+1, so this leg's CAUGHT verdict came entirely off the phase = -1 sign "
-        "flip and its stated coverage claim had nothing behind it"),
-    "synthesize_zero_imag": (
-        mutate_synthesize_zero_imag, "fill", "folded_mirror_ghost_fill_complex",
-        "RETIRED as a RECORDED STRUCTURAL NULL on 2026-08-13 — still armed, "
-        "still compiled, still launched, and judged against "
-        "SOURCE_MUTATION_NULLS rather than against a divergence count; the live "
-        "source-layer claim is carried by the host twin "
-        "imaginary_words_are_read_not_synthesised"),
+        "the parity multiply dropped: per part x * (+1.0) is x, so the +1 rows "
+        "cannot see it and it is caught on the phase = -1 rows"),
     "fold_ghost_wraps": (
         mutate_fold_ghost_wraps, "curl", "folded_bloch_pml_curl_step",
         "predicted CAUGHT on MIRROR_METALLIC only"),
@@ -2138,26 +1832,48 @@ SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str, str, st
     "mask_only_metallic": (
         mutate_mask_only_metallic, "curl", "folded_bloch_pml_curl_step",
         "the cell-0 mask narrowed back to == METALLIC"),
-    "fold_zero_cross_terms": (
-        mutate_fold_zero_cross_terms, "curl", "folded_bloch_pml_curl_step",
-        "a 0.0*t cross term folded to a literal +0.0"),
-    "unary_minus_addend": (
-        mutate_unary_minus_addend, "fill", "folded_mirror_ghost_fill_complex",
-        "platform fact: Triton lowers -x as 0.0-x and canonicalizes signed "
-        "zeros; MEASURED REACHABLE at the driver level"),
-    "beta_after_mask": (
-        mutate_beta_after_mask, "beta_complex",
-        "folded_beta_bloch_pml_curl_step",
-        "THE fold-order needle; predicted caught on the mirror plane and the far "
-        "ghost plane of every folded axis, on both sub-steps and both targets"),
-    "beta_after_mask_real": (
-        mutate_beta_after_mask, "beta_real", "folded_beta_pml_curl_step",
-        "the real-storage twin of the fold-order needle"),
-    "rotate_beta_partner": (
-        mutate_rotate_beta_partner, "beta_complex",
-        "folded_beta_bloch_pml_curl_step",
-        "the Bloch rotation applied to the beta CENTRE partner"),
+    "pairwise_stencil": (
+        mutate_pairwise_stencil, "curl", "folded_bloch_pml_curl_step",
+        "INVERSION: the previous pairwise grouping in place of MEEP's stencil"),
+    "whole_grid_recurrence": (
+        mutate_whole_grid_recurrence, "curl", "folded_bloch_pml_curl_step",
+        "INVERSION: the split-field recurrence on every cell"),
+    "membership_one_row_off": (
+        mutate_membership_one_row_off, "curl", "folded_bloch_pml_curl_step",
+        "the x-dsigu membership line read one row over"),
+    "fu_store_unmasked": (
+        mutate_fu_store_unmasked, "curl", "folded_bloch_pml_curl_step",
+        "fu stored on every cell (the auxiliary contract broken)"),
+    "presence_ignored": (
+        mutate_presence_ignored, "curl", "folded_bloch_pml_curl_step",
+        "both partners taken whatever the record says (the 2-D sheet's z)"),
+    "connection_dropped": (
+        mutate_connection_dropped, "curl", "folded_bloch_pml_curl_step",
+        "the Bloch connection of the unfolded x axis thrown away"),
 }
+
+#: The two beta curls' rows (K3a real, K3b complex): the beta pass's mutations and the
+#: root forms' stencil inversion, ``fold_pass_mutations``' shared spellings (every
+#: carrier of the pass is scored with the same text). Each is scored on its body's own
+#: rows. The rest of the chunk-form battery is K1's rows above: K3b is K1's body and
+#: K3a symmetry's, each plus the pass (the module tests' transcription checks).
+_BETA_ANCHORS = {"beta_real": ("curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)",
+                               "folded_beta_pml_curl_step", False),
+                 "beta_complex": ("curl2_im = curl_stencil(b_x_im, b2_im, a2_im, "
+                                  "a_y_im, dtdx, px, py)",
+                                  "folded_beta_bloch_pml_curl_step", True)}
+for _which, (_anchor, _entry, _complex) in _BETA_ANCHORS.items():
+    for _name, _why, _expectation, _rewrite, _needs in (
+            fold_passes.beta_mutations(_complex, True, _anchor)
+            + [entry for entry in fold_passes.form_mutations(False)
+               if entry[0] == "a1_pairwise_stencil"]):
+        # Every row here is expected CAUGHT on the folded rows. A shared row declared
+        # null would need its own record below (reason, live twin, measured run), so it
+        # refuses instead of entering the table unrecorded.
+        if _expectation != "caught":
+            raise AssertionError(f"{_which}:{_name} is declared {_expectation!r}; "
+                                 f"record it in SOURCE_MUTATION_NULLS first")
+        SOURCE_MUTATIONS[f"{_which}:{_name}"] = (_rewrite, _which, _entry, _why)
 
 #: SOURCE mutations retired as RECORDED STRUCTURAL NULLS: name -> the record.
 #:
@@ -2198,50 +1914,7 @@ SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str, str, st
 #:    claiming coverage it cannot deliver until someone next schedules a device
 #:    run. ``build_summary`` refuses a declared null that the run never executed,
 #:    which is the third way this could go quiet.
-SOURCE_MUTATION_NULLS: Dict[str, Dict[str, Any]] = {
-    "synthesize_zero_imag": {
-        "reason": (
-            "VACUOUS BY CONSTRUCTION, and by a property of the shipped HOST code "
-            "rather than of this gate's states: the mutant rewrites the kernel's "
-            "near_im / far_im argument to a literal 0.0, while "
-            "folded_complex.mirror_parity_coefficients (folded_complex.py:2100) "
-            "returns numpy.complex64(+-1), whose IMAGINARY WORD IS BITWISE "
-            "0x00000000 for both mirror phases and for both the near and the far "
-            "coefficient — not merely equal to zero in value, but the identical "
-            "32-bit pattern, so not even a -0.0 sign survives to be read. Mutant "
-            "and shipped kernel therefore receive BIT-IDENTICAL operands and no "
-            "grid, no state family and no needle can drive them apart. This is "
-            "NOT a blind configuration to be repaired with a better needle: "
-            "there is no state to find."),
-        "twin": "imaginary_words_are_read_not_synthesised",
-        "twin_claim": (
-            "the same source-layer claim — the kernel READS the passed imaginary "
-            "word and does not synthesise it — aimed at a state where the defect "
-            "IS byte-visible. The host passes a NONZERO imaginary word "
-            "(apply_entry_mutation's 'nonzero_imaginary_words', +0.5 near / "
-            "-0.25 far); a kernel that reads it must follow the passed word away "
-            "from the array path and one that synthesises +0.0 cannot. CAUGHT on "
-            "run direct_20260813T084108Z: armed 96 / discriminating 96 / "
-            "diverged 82. Re-aiming this source mutation would therefore "
-            "duplicate live coverage, which is why retiring it with proof is the "
-            "resolution and not the second-best one."),
-        "measured": {
-            "run": "direct_20260813T084108Z",
-            "device": "one RTX A6000, pinned GPU 6",
-            "hits": 6,
-            "launches": 192,
-            "ptx_differs": True,
-            "mutant_specializations": 20,
-            "shipped_specializations": 24,
-            "overlapping_specializations": 0,
-            "fill_ran": 96,
-            "fill_identical": 96,
-            "diverged_cases": 0},
-        "premise_test": (
-            "meep_gpu/test_triton_folded_complex.py::"
-            "test_the_parity_coefficients_imaginary_word_is_bitwise_zero"),
-    },
-}
+SOURCE_MUTATION_NULLS: Dict[str, Dict[str, Any]] = {}
 
 #: Host-side mutations (the entry list, the plan arguments, the constexprs).
 #: value = predicted verdict; None means "record the measurement, do not judge".
@@ -2252,10 +1925,6 @@ HOST_MUTATIONS: Dict[str, Optional[bool]] = {
     # `far_words` is dead and rewriting it is a provable no-op — the same shape
     # of hole `reverse_axis_order` had, measured the same way.
     "far_fill_uses_plus_phase": True,
-    # The kernel must READ the passed imaginary word. Its predecessor
-    # ("synthesize_zero_imag_host") set that word to +0.0, which is what the host
-    # already passes — a provable no-op recorded as a predicted CAUGHT.
-    "imaginary_words_are_read_not_synthesised": True,
     # The two-pass split's OWN needle. The module states the split is
     # load-bearing under complex storage and cites a measured 1-word By
     # divergence; nothing in the gate exercised it. `_launch_pass(1, 1)` is the
@@ -2279,7 +1948,24 @@ HOST_MUTATIONS: Dict[str, Optional[bool]] = {
     # `live_post_step`. Bz is FAR on both folded axes and Dz NEAR on both, so
     # those are the two doubly-written corners on this family pair.
     "reverse_axis_order": None,
-    "phase_on_folded_axis": None,        # CAUGHT on metallic, NULL on periodic
+    # A connection on a folded axis is a plan the folded curl plan refuses by name.
+    "phase_on_folded_axis": None,
+}
+
+#: Host mutations RECORDED AS STRUCTURAL NULLS since the per-part alignment: name ->
+#: the reason. Judged as nulls (zero diverging words is the verdict; any divergence
+#: invalidates the record) after the arming check, never skipped.
+HOST_MUTATION_NULLS: Dict[str, str] = {
+    "fuse_fill_passes": (
+        "the fill multiplies each stored part by +-1.0, which is exact, so the near "
+        "and far passes commute bitwise and a fused per-axis launch stores the same "
+        "words; the previous whole-complex products did not commute (1 word of By) "
+        "and that was this needle's whole subject"),
+    "reverse_axis_order": (
+        "two folded planes' parity words commute bitwise per part (c_a*(c_b*x) == "
+        "c_b*(c_a*x) for c = +-1.0), so reversing the axis order stores the same "
+        "words even on the MIXED-PHASE grid, where the whole-complex products "
+        "diverged in 5 words of Bz and 5 of Dz"),
 }
 
 
@@ -2367,6 +2053,23 @@ def host_mutation_verdict(name: str, predicted: Optional[bool],
         out["failure"] = ("the entry mutation left the plan's entry list "
                           "BYTE-IDENTICAL on every row; the leg measured the "
                           "shipped plan")
+    elif name in HOST_MUTATION_NULLS:
+        out["null_reason"] = HOST_MUTATION_NULLS[name]
+        if diverged:
+            out["verdict"] = "NULL-INVALIDATED"
+            out["failure"] = (f"{name} is recorded as a structural null and diverged "
+                              f"in {diverged} cases: the recorded reason is false")
+        else:
+            out["verdict"] = "PREDICTED-NULL"
+    elif name == "phase_on_folded_axis":
+        refused = summary.get("refused", 0)
+        if refused == summary.get("ran") and refused:
+            out["verdict"] = "REFUSED-BY-PLAN"
+        else:
+            out["verdict"] = "DISARMED"
+            out["failure"] = (f"the folded curl plan accepted a connection on a "
+                              f"folded axis in {summary.get('ran', 0) - refused} "
+                              f"cases")
     elif discriminating is not None and discriminating == 0:
         out["verdict"] = "DISARMED"
         out["failure"] = (
@@ -2472,7 +2175,7 @@ def source_mutation_verdict(name: str, hits: int, launches: Optional[int],
     return out
 
 
-def run_mutations(results: Dict[str, Any], out_path: str, expansion: int,
+def run_mutations(results: Dict[str, Any], out_path: str,
                   quick: bool = False) -> Dict[str, Any]:
     records: Dict[str, Any] = {}
     index = 0
@@ -2498,11 +2201,13 @@ def run_mutations(results: Dict[str, Any], out_path: str, expansion: int,
                        "beta_complex":
                            folded_complex.folded_beta_bloch_pml_curl_step}[which]
             if which == "fill":
-                summary = run_fill(results, out_path, expansion,
+                summary = run_fill(results, out_path,
                                    kernel=counting, label=name, quick=quick)
                 diverged = summary["ran"] - summary["identical"]
             else:
-                sub = run_mutation_curl(expansion, counting, which, quick)
+                sub = run_mutation_curl(counting, which, quick,
+                                        phases=("kx" if name == "connection_dropped"
+                                                else "k0"))
                 summary = sub["summary"]
                 diverged = sub["diverged"]
                 record["cases"] = sub["cases"]
@@ -2529,20 +2234,15 @@ def run_mutations(results: Dict[str, Any], out_path: str, expansion: int,
         if name in ("reflect_row_n_minus_two", "far_fill_uses_plus_phase",
                     "reverse_axis_order"):
             mutation = name
-            summary = run_fill(results, out_path, expansion,
+            summary = run_fill(results, out_path,
                                entry_mutation=mutation, label=name, quick=quick)
             diverged = summary["ran"] - summary["identical"]
-        elif name == "imaginary_words_are_read_not_synthesised":
-            summary = run_fill(results, out_path, expansion,
-                               entry_mutation="nonzero_imaginary_words",
-                               label=name, quick=quick)
-            diverged = summary["ran"] - summary["identical"]
         elif name == "fuse_fill_passes":
-            summary = run_fill(results, out_path, expansion, label=name,
+            summary = run_fill(results, out_path, label=name,
                                quick=quick, fuse_passes=True)
             diverged = summary["ran"] - summary["identical"]
         else:  # phase_on_folded_axis
-            sub = run_phase_on_folded_axis(expansion)
+            sub = run_phase_on_folded_axis()
             summary = sub["summary"]
             diverged = sub["diverged"]
             record["cases"] = sub["cases"]
@@ -2558,8 +2258,8 @@ def run_mutations(results: Dict[str, Any], out_path: str, expansion: int,
     return records
 
 
-def run_mutation_curl(expansion: int, counting, which: str,
-                      quick: bool) -> Dict[str, Any]:
+def run_mutation_curl(counting, which: str,
+                      quick: bool, phases: str = "k0") -> Dict[str, Any]:
     """A curl mutation over the rows that can see it, at the SHIPPED fusion
     configuration (``guard=False``) — the same one the asserted synthetic rows
     and ``run_fill``'s ``plan.run()`` use, so the two mutation families' verdicts
@@ -2589,12 +2289,13 @@ def run_mutation_curl(expansion: int, counting, which: str,
     storage_rows = {"curl": ((0.0, True),),
                     "beta_complex": ((BETA_GRATING_13_2, True),),
                     "beta_real": ((BETA_GRATING_13_2, False),)}[which]
+    phase_set = PHASE_SETS[1] if phases == "kx" else PHASE_SETS[0]
     skipped: List[Dict[str, Any]] = []
     for shape in shapes:
         for config in configs:
             # The SAME predicate run_synthetic applies, on the same phase set
             # this leg passes to one_curl_case — not a re-derivation of it.
-            reason = viable(shape, config, PHASE_SETS[0]["phases"])
+            reason = viable(shape, config, phase_set["phases"])
             if reason:
                 skipped.append({"shape": list(shape), "config": config["name"],
                                 "reason": reason})
@@ -2610,8 +2311,8 @@ def run_mutation_curl(expansion: int, counting, which: str,
                             # fusion settings would make their verdicts
                             # incomparable.
                             case = one_curl_case(
-                                shape, config, PHASE_SETS[0], 0.35, mirror_phase,
-                                tuple(offsets), sub_step, False, expansion, beta,
+                                shape, config, phase_set, 0.35, mirror_phase,
+                                tuple(offsets), sub_step, False, beta,
                                 storage, kernel=counting)
                             cases.append(case)
     diverged = sum(0 if c["verdict"]["bit_identical"] else 1 for c in cases)
@@ -2625,13 +2326,14 @@ def run_mutation_curl(expansion: int, counting, which: str,
             "diverged": diverged, "cases": cases}
 
 
-def run_phase_on_folded_axis(expansion: int) -> Dict[str, Any]:
-    """Plant ``PH=1`` on a FOLDED axis — the configuration the predicate refuses.
+def run_phase_on_folded_axis() -> Dict[str, Any]:
+    """Ask for a connection (``CN=1``) on a FOLDED axis — the configuration the
+    predicate refuses — and require the plan to refuse it by name.
 
-    Predicted CAUGHT on MIRROR_METALLIC (the top plane is stepped there, and
-    rotating the ``(+0.0, +0.0)`` ghost pair can flip a zero sign) and NULL on
-    MIRROR_PERIODIC (both consumers of that plane are top-plane masked). Both
-    verdicts are recorded WITH the reason.
+    Since the alignment the connection lands on the unshifted operand's plane 0,
+    which on a folded axis is a stored, stepped plane, so a launched connection
+    there would move words the array path never connects; the folded curl plan
+    refuses it at construction, and that refusal is the verdict.
     """
     cases: List[Dict[str, Any]] = []
     rng = np.random.default_rng(SEED + 909)
@@ -2647,29 +2349,19 @@ def run_phase_on_folded_axis(expansion: int) -> Dict[str, Any]:
             flat = _flat_coefficients(cp, coefficients, shape)
             codes = (CODE_OF[PERIODIC], CODE_OF[termination], CODE_OF[PERIODIC])
             mine = {n: cp.asarray(np.array(v, copy=True)) for n, v in host.items()}
-            theirs = {n: cp.asarray(np.array(v, copy=True)) for n, v in host.items()}
-            folded_complex.plan_folded_complex_pml_curl_from_arrays(
-                sub_step, mine, flat, codes, (None, _phase(0.27), None), 0.35,
-                expansion).run()
-            folded_complex.plan_folded_complex_pml_curl_from_arrays(
-                sub_step, theirs, flat, codes, (None, None, None), 0.35,
-                expansion).run()
-            cp.cuda.runtime.deviceSynchronize()
-            compared = targets + tuple("fu_" + t for t in targets)
-            verdict = combine({n: bit_compare(mine[n], theirs[n]) for n in compared})
-            cases.append({
-                "termination": termination, "sub_step": sub_step,
-                "verdict": verdict,
-                "predicted": ("CAUGHT (top plane stepped, zero-sign flip reachable)"
-                              if termination == MIRROR_METALLIC else
-                              "NULL (both consumers of that plane are top-plane "
-                              "masked)")})
+            try:
+                folded_complex.plan_folded_complex_pml_curl_from_arrays(
+                    sub_step, mine, flat, codes, (None, _phase(0.27), None), 0.35, chunk_bounds=two_run_record(shape))
+                refusal = None
+            except ValueError as exc:
+                refusal = str(exc)
+            cases.append({"termination": termination, "sub_step": sub_step,
+                          "refused": refusal is not None, "reason": refusal})
             log(f"[phase_on_folded_axis] {termination}/{sub_step}: "
-                f"identical={verdict['bit_identical']} "
-                f"differing={verdict['differing_floats']}")
-    diverged = sum(0 if c["verdict"]["bit_identical"] else 1 for c in cases)
-    return {"summary": {"ran": len(cases), "diverged": diverged}, "cases": cases,
-            "diverged": diverged}
+                f"refused={refusal is not None}")
+    refused = sum(int(c["refused"]) for c in cases)
+    return {"summary": {"ran": len(cases), "refused": refused, "diverged": 0},
+            "cases": cases, "diverged": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -2702,18 +2394,17 @@ CORPUS_GRIDS: Tuple[Dict[str, Any], ...] = (
 )
 
 
-def _substituted_step(fields, pml, sub_step, expansion, probe_record):
+def _substituted_step(fields, pml, sub_step):
     """Build the plan the engine route WOULD build, or None with its reasons."""
     grid = fields.grid
     if float(getattr(grid, "beta", 0.0)) != 0.0:
         return folded_complex.plan_folded_beta_bloch_pml_curl(
-            fields, pml, sub_step, probe=probe_record)
+            fields, pml, sub_step)
     return folded_complex.plan_folded_complex_pml_curl(
-        fields, pml, sub_step, probe=probe_record)
+        fields, pml, sub_step)
 
 
-def run_engine(results: Dict[str, Any], out_path: str, expansion: int,
-               probe_record: Dict[str, Any], specs=ENGINE_GRIDS,
+def run_engine(results: Dict[str, Any], out_path: str, specs=ENGINE_GRIDS,
                label: str = "engine") -> Dict[str, Any]:
     """``stepping.step_*`` and the two fills substituted on REAL folded grids.
 
@@ -2757,11 +2448,10 @@ def run_engine(results: Dict[str, Any], out_path: str, expansion: int,
         for step in range(ENGINE_STEPS):
             for sub_step in CURL_SUB_STEPS:
                 getattr(stepping, sub_step)(mirror, pml)
-                plan = _substituted_step(fields, pml, sub_step, expansion,
-                                         probe_record)
+                plan = _substituted_step(fields, pml, sub_step)
                 if plan is None:
                     verdict = folded_complex.folded_complex_pml_curl_coverage(
-                        fields, pml, sub_step, probe=probe_record)
+                        fields, pml, sub_step)
                     refusals[sub_step] = list(verdict.reasons)
                     getattr(stepping, sub_step)(fields, pml)
                 else:
@@ -2783,13 +2473,13 @@ def run_engine(results: Dict[str, Any], out_path: str, expansion: int,
                 getattr(stepping, fill)(mirror)
                 getattr(stepping, far)(mirror)
                 fill_plan = folded_complex.plan_folded_mirror_ghost_fill_complex(
-                    fields, family, probe=probe_record)
+                    fields, family)
                 if fill_plan is None:
                     getattr(stepping, fill)(fields)
                     getattr(stepping, far)(fields)
                     refusals[fill] = list(
                         folded_complex.folded_mirror_ghost_fill_complex_coverage(
-                            fields, family, probe=probe_record).reasons)
+                            fields, family).reasons)
                 else:
                     fill_plan.run()
                     cp.cuda.runtime.deviceSynchronize()
@@ -2833,7 +2523,7 @@ def run_engine(results: Dict[str, Any], out_path: str, expansion: int,
 # Entry point
 # ---------------------------------------------------------------------------
 
-DEFAULT_LEGS = ("expansion,reference,synthetic,fill,zero_init,identity,"
+DEFAULT_LEGS = ("reference,synthetic,fill,zero_init,identity,"
                 "mutations,engine,corpus")
 DEVICE_LEGS = ("synthetic", "fill", "zero_init", "identity", "mutations",
                "engine", "corpus")
@@ -2914,8 +2604,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--out", default=os.path.join(_HERE, "results",
                                                       "triton_folded_complex",
                                                       "gate.json"))
-    parser.add_argument("--probe-artifact", default=None,
-                        help="where to write the measured expansion record")
     parser.add_argument("--legs", default=DEFAULT_LEGS)
     parser.add_argument("--quick", action="store_true",
                         help="a smoke subset; never a certification")
@@ -2924,7 +2612,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     legs = [leg.strip() for leg in args.legs.split(",") if leg.strip()]
     results_dir = os.path.dirname(os.path.abspath(args.out)) or "."
     os.makedirs(results_dir, exist_ok=True)
-    artifact = args.probe_artifact or os.path.join(results_dir, "probe.json")
 
     if cp is not None:
         gate.install_ftz_strip()
@@ -2960,14 +2647,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     }
     save(results, args.out)
 
-    licence: Dict[str, Any] = {"licensed": False, "reasons": ["expansion leg not run"]}
-    if "expansion" in legs:
-        # ``is None`` and not a truthiness test: a licence dict is data, and a
-        # falsy-but-real record must not be read as "the leg raised".
-        returned = run_leg(results, args.out, "expansion",
-                           lambda: run_expansion(results, args.out, artifact))
-        licence = ({"licensed": False, "reasons": ["the expansion leg RAISED"]}
-                   if returned is None else returned)
     if "reference" in legs:
         run_leg(results, args.out, "reference",
                 lambda: run_reference_validation(
@@ -2982,29 +2661,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         log("[skip] device legs need cupy + triton")
         device_legs = []
 
-    record = results.get("expansion", {}).get("cupy")
-    expansion = (folded_complex.parity_expansion_from_probe(record)
-                 if record is not None else None)
-    if device_legs and expansion is None:
-        results["device_legs_skipped"] = (
-            "the measured probe record licenses no EXPANSION; a guessed "
-            "constexpr certifies nothing")
-        save(results, args.out)
-        device_legs = []
-
     # Every device leg through ``run_leg``: one leg's raise records a named
     # FAILURE and the remaining legs still produce their evidence.
     device_thunks: Tuple[Tuple[str, Callable[[], Any]], ...] = (
-        ("synthetic", lambda: run_synthetic(results, args.out, expansion,
+        ("synthetic", lambda: run_synthetic(results, args.out,
                                             quick=args.quick)),
-        ("fill", lambda: run_fill(results, args.out, expansion,
+        ("fill", lambda: run_fill(results, args.out,
                                   quick=args.quick)),
-        ("zero_init", lambda: run_zero_init(results, args.out, expansion)),
-        ("identity", lambda: run_identity(results, args.out, expansion)),
-        ("mutations", lambda: run_mutations(results, args.out, expansion,
+        ("zero_init", lambda: run_zero_init(results, args.out)),
+        ("identity", lambda: run_identity(results, args.out)),
+        ("mutations", lambda: run_mutations(results, args.out,
                                             quick=args.quick)),
-        ("engine", lambda: run_engine(results, args.out, expansion, record)),
-        ("corpus", lambda: run_engine(results, args.out, expansion, record,
+        ("engine", lambda: run_engine(results, args.out)),
+        ("corpus", lambda: run_engine(results, args.out,
                                       specs=CORPUS_GRIDS, label="corpus")),
     )
     for name, thunk in device_thunks:
@@ -3019,12 +2688,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # saying the strip had never fired, which is the exact shape of unevidenced
     # claim this gate refuses everywhere else: the run that found this had 6
     # NVRTC compiles with -ftz=true removed from all 6, recorded only in the
-    # expansion sub-record because that one is stamped after its own work.
+    # sub-record that was stamped after its own work.
     # The second stamp is the sibling probe's own pattern
     # (probe_triton_nonlinear_composition.py:818 then :845).
     results["subnormal_policy"] = gate.policy_stamp(
         "cupy" if cp is not None else "numpy")
-    summary = build_summary(results, licence)
+    summary = build_summary(results)
     results["summary"] = summary
     results["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     save(results, args.out)
@@ -3037,13 +2706,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     return 0 if summary["passed"] else 1
 
 
-def build_summary(results: Dict[str, Any], licence: Dict[str, Any]) -> Dict[str, Any]:
+def build_summary(results: Dict[str, Any]) -> Dict[str, Any]:
     """The verdict, with every failure path named rather than aggregated away."""
     failures: List[str] = []
-    summary: Dict[str, Any] = {"expansion_licensed": licence.get("licensed"),
-                               "expansion_reasons": licence.get("reasons", [])}
-    if not licence.get("licensed"):
-        failures.append("the expansion probe licensed nothing")
+    summary: Dict[str, Any] = {}
 
     # A leg that RAISED is a failure by name. It has to be checked here and not
     # only where its own key is read: a leg that raised before its first ``save``
@@ -3188,6 +2854,11 @@ def build_summary(results: Dict[str, Any], licence: Dict[str, Any]) -> Dict[str,
                     f"{name} is declared a predicted structural null but the "
                     f"mutation leg produced no record for it; a null is judged, "
                     f"not skipped")
+        for name in HOST_MUTATION_NULLS:
+            if name not in verdicts:
+                failures.append(
+                    f"{name} is declared a structural null but the mutation leg "
+                    f"produced no record for it; a null is judged, not skipped")
     for name, verdict in verdicts.items():
         if verdict in ("DISARMED", "NEEDLE-MISSED", "NULL-INVALIDATED"):
             failures.append(f"mutation {name}: {verdict} — "

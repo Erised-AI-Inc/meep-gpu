@@ -110,6 +110,12 @@ POLICY = {
 
 if triton is not None:
     METALLIC = tl.constexpr(1)
+    # The forms and the record layout the kernel reads. Imported only when Triton is:
+    # the modules that define them import it at module scope, and this module's
+    # predicate must answer without it.
+    from .forms import (axis_present, constitutive_form, curl_form,  # noqa: E402
+                        curl_stencil, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
 
     @triton.jit
     def fused_curl_dispersive_E_ade(
@@ -124,10 +130,11 @@ if triton is not None:
         b0, b1, b2, b3, b4, b5, b6, b7,
         c0, c1, c2, c3, c4, c5, c6, c7,
         kp0, km0, kp1, km1, kp2, km2,
+        cb,
         o0, q0p, sg0,
         o1, q1p, sg1,
         o2, q2p, sg2,
-        c_now, c_prev, c_drive,
+        two_minus_od, gamma1, omega0dtsqr, gamma1inv,
         nx, ny, nz, n_elem, dtdx,
         NP0: tl.constexpr, NP1: tl.constexpr, NP2: tl.constexpr,
         BACKWARD: tl.constexpr,
@@ -139,7 +146,14 @@ if triton is not None:
         SIGMA_IS_VOLUME2: tl.constexpr,
         BLOCK: tl.constexpr,
     ):
-        """D curl, pole-aware E update and the ADE recurrence in one grid."""
+        """D curl, pole-aware E update and the ADE recurrence in one grid.
+
+        The curl and E halves are :func:`dispersive_fused_pair.fused_curl_dispersive_E`'s
+        (the record ``cb`` picks every PML form per chunk); the ADE half is
+        :func:`kernels.ade_update_p`'s expression on MEEP's four realnum words, with
+        the drive taken from ``src``, which is MEEP's ``w`` on every cell: stored into
+        ``f_w`` on the layer's chunks and as the field everywhere else.
+        """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
         nyz = ny * nz
@@ -148,7 +162,7 @@ if triton is not None:
         j = plane % ny
         i = plane // ny
 
-        # D curl: verbatim from fused_curl_dispersive_E.
+        # D curl: fused_curl_dispersive_E's curl half, statement for statement.
         if BACKWARD:
             si, sj, sk = i - 1, j - 1, k - 1
         else:
@@ -181,9 +195,13 @@ if triton is not None:
         c_x = tl.load(g2 + ox, mask=vx, other=0.0)
         c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
         at_x, at_y, at_z = i == 0, j == 0, k == 0
         if BACKWARD:
@@ -214,17 +232,30 @@ if triton is not None:
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0 = tl.load(u0 + idx, mask=live, other=0.0)
-        n0 = ((p0 * km_y) - curl0) * si_y
-        v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+        # Which cells take the recurrence: the component's dsigu layer, on the
+        # component's own sub-lattice. The dsigu axis is z for target 0, x for 1 and y
+        # for 2 (vec.hpp cycle_direction); the sub-lattice is integer for every D
+        # target (the iyee table), so each target's record line is a compile-time word
+        # index, chunk_map.record_index(half_integer, axis, 0).
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1 = tl.load(u1 + idx, mask=live, other=0.0)
-        n1 = ((p1 * km_z) - curl1) * si_z
-        v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+        v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                           km_y, si_y, km_z, si_z, du0)
 
-        p2 = tl.load(u2 + idx, mask=live, other=0.0)
-        n2 = ((p2 * km_x) - curl2) * si_x
-        v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+        p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+        v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                           km_z, si_z, km_x, si_x, du1)
+
+        p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+        v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                           km_x, si_x, km_y, si_y, du2)
 
         if ZM_X:
             v1 = tl.where(at_x, 0.0, v1)
@@ -236,9 +267,11 @@ if triton is not None:
             v0 = tl.where(at_z, 0.0, v0)
             v1 = tl.where(at_z, 0.0, v1)
 
-        tl.store(u0 + idx, n0, mask=live)
-        tl.store(u1 + idx, n1, mask=live)
-        tl.store(u2 + idx, n2, mask=live)
+        # fu is written on the recurrence's cells ONLY: outside them the dsig-only
+        # form reads and writes the field alone and fu keeps its word.
+        tl.store(u0 + idx, n0, mask=live & du0)
+        tl.store(u1 + idx, n1, mask=live & du1)
+        tl.store(u2 + idx, n2, mask=live & du2)
         tl.store(f0 + idx, v0, mask=live)
         tl.store(f1 + idx, v1, mask=live)
         tl.store(f2 + idx, v2, mask=live)
@@ -253,7 +286,13 @@ if triton is not None:
         kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
-        prev0 = tl.load(w0 + idx, mask=live, other=0.0)
+        # Which cells take the accumulation: the component's own (dsigw) layer on the
+        # half-integer sub-lattice (chunk_map.record_index(True, axis, 0)).
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
+
+        prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)
         s0 = v0
         if NP0 > 0:
             pa0 = tl.load(a0 + idx, mask=live, other=0.0)
@@ -273,13 +312,12 @@ if triton is not None:
         if NP0 > 7:
             s0 = s0 - tl.load(a7 + idx, mask=live, other=0.0)
         src0 = s0 * tl.load(ie0 + idx, mask=live, other=0.0)
-        tl.store(w0 + idx, src0, mask=live)
-        a0v = tl.load(e0 + idx, mask=live, other=0.0)
-        a0v = a0v + kp_0 * src0
-        a0v = a0v - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=live & dw0)
+        a0v = constitutive_form(tl.load(e0 + idx, mask=live & dw0, other=0.0),
+                                prev0, src0, kp_0, km_0, dw0)
         tl.store(e0 + idx, a0v, mask=live)
 
-        prev1 = tl.load(w1 + idx, mask=live, other=0.0)
+        prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)
         s1 = v1
         if NP1 > 0:
             pa1 = tl.load(b0 + idx, mask=live, other=0.0)
@@ -299,13 +337,12 @@ if triton is not None:
         if NP1 > 7:
             s1 = s1 - tl.load(b7 + idx, mask=live, other=0.0)
         src1 = s1 * tl.load(ie1 + idx, mask=live, other=0.0)
-        tl.store(w1 + idx, src1, mask=live)
-        a1v = tl.load(e1 + idx, mask=live, other=0.0)
-        a1v = a1v + kp_1 * src1
-        a1v = a1v - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=live & dw1)
+        a1v = constitutive_form(tl.load(e1 + idx, mask=live & dw1, other=0.0),
+                                prev1, src1, kp_1, km_1, dw1)
         tl.store(e1 + idx, a1v, mask=live)
 
-        prev2 = tl.load(w2 + idx, mask=live, other=0.0)
+        prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)
         s2 = v2
         if NP2 > 0:
             pa2 = tl.load(c0 + idx, mask=live, other=0.0)
@@ -325,15 +362,15 @@ if triton is not None:
         if NP2 > 7:
             s2 = s2 - tl.load(c7 + idx, mask=live, other=0.0)
         src2 = s2 * tl.load(ie2 + idx, mask=live, other=0.0)
-        tl.store(w2 + idx, src2, mask=live)
-        a2v = tl.load(e2 + idx, mask=live, other=0.0)
-        a2v = a2v + kp_2 * src2
-        a2v = a2v - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=live & dw2)
+        a2v = constitutive_form(tl.load(e2 + idx, mask=live & dw2, other=0.0),
+                                prev2, src2, kp_2, km_2, dw2)
         tl.store(e2 + idx, a2v, mask=live)
 
         # ADE recurrence, spelled exactly as fused_ade_state spells it, with the
-        # drive taken from the register that was just stored to f_w and the P
-        # history taken from the register the subtraction already loaded.
+        # drive taken from src -- MEEP's w on every cell: stored to f_w on the layer's
+        # chunks and as the field everywhere else -- and the P history taken from the
+        # register the subtraction already loaded.
         #
         # EVERY HISTORY LOAD FIRST.  o1 IS the volume q0p names and o2 IS q1p's,
         # so a store placed between two of these loads would make the result depend
@@ -359,16 +396,16 @@ if triton is not None:
 
         if ADE0:
             tl.store(o0 + idx,
-                     ((pa0 * c_now) + (c_prev * h0)) +
-                     (c_drive * (sv0 * src0)), mask=live)
+                     gamma1inv * (((pa0 * two_minus_od) - (gamma1 * h0)) +
+                                  (omega0dtsqr * (sv0 * src0))), mask=live)
         if ADE1:
             tl.store(o1 + idx,
-                     ((pa1 * c_now) + (c_prev * h1)) +
-                     (c_drive * (sv1 * src1)), mask=live)
+                     gamma1inv * (((pa1 * two_minus_od) - (gamma1 * h1)) +
+                                  (omega0dtsqr * (sv1 * src1))), mask=live)
         if ADE2:
             tl.store(o2 + idx,
-                     ((pa2 * c_now) + (c_prev * h2)) +
-                     (c_drive * (sv2 * src2)), mask=live)
+                     gamma1inv * (((pa2 * two_minus_od) - (gamma1 * h2)) +
+                                  (omega0dtsqr * (sv2 * src2))), mask=live)
 
 else:  # pragma: no cover - laptop path
     fused_curl_dispersive_E_ade = None  # type: ignore[assignment]
@@ -469,14 +506,14 @@ def fused_dispersive_chain_coverage(fields: Any, pml: Any,
                     f"{component}: the subtracted pole volume is not the state's own "
                     f"P; the register the ADE reuses would be a different array")
 
-    # The seam's own condition, named rather than inherited: without an active PML
-    # drive_field hands back the stored E (fields.py:1160-1162) and the register
-    # this kernel passes the recurrence would be the wrong field.
+    # The seam's own condition, named rather than inherited: the PML tail this kernel
+    # carries is the split-field one, which writes f_w on the layer's chunks; without
+    # an active PML update_E is a different sub-step (E = src everywhere, no f_w).
     if not getattr(fields, "_pml_active", False):
         reasons.append(
-            "the PML is not active: Fields.drive_field then returns the stored E "
-            "rather than f_w, and the ADE drive this kernel keeps in a register is "
-            "the constitutive product, not that field")
+            "the PML is not active: update_E is then E = (D - sum P) * inv_eps with no "
+            "f_w and no kps/kms, a different sub-step from the split-field tail this "
+            "kernel carries")
 
     return Coverage(not reasons, tuple(reasons))
 
@@ -495,6 +532,7 @@ class FusedDispersiveChainPlan:
         "counts", "state", "components", "_targets", "_aux", "_sources",
         "_curl_coefficients", "_e_targets", "_e_aux", "_inverse_epsilon",
         "_e_coefficients", "_poles", "_kernel", "_pointer", "_sigma_is_volume",
+        "chunk_bounds", "_cb",
     )
 
     def __init__(self, shape, dtdx: float, bc, zero_metal, block: int,
@@ -502,12 +540,16 @@ class FusedDispersiveChainPlan:
                  e_targets, e_aux, inverse_epsilon, e_coefficients, poles,
                  state: Any, components: Sequence[str],
                  kernel: Any = None, num_warps: Optional[int] = 1,
-                 pointer: Any = None) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 pointer: Any = None, *, chunk_bounds: Any) -> None:
+        from .launch import CupyPointer, _flat, bind_chunk_bounds  # noqa: PLC0415
 
         if pointer is None:
             pointer = CupyPointer
         self.shape = tuple(int(n) for n in shape)
+        # The chunk record (launch.bind_chunk_bounds), required: the curl and E
+        # halves select every PML form per chunk from it.
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "FusedDispersiveChainPlan")
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
         self.dtdx = float(dtdx)
         self.bc = tuple(int(value) for value in bc)
@@ -604,14 +646,16 @@ class FusedDispersiveChainPlan:
             ade_flags.append(1)
             volume_flags.append(1 if volume else 0)
 
-        c_now, c_prev, c_drive = self.state._coefficients
+        # MEEP's four realnum words (PolarizationState.constants), each a float32
+        # word, so the Python float passed is that word exactly.
+        two_minus_od, gamma1, omega0dtsqr, gamma1inv = self.state.constants
         nx, ny, nz = self.shape
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
         kernel[self.grid](
             *self._targets, *self._aux, *self._sources, *self._curl_coefficients,
             *self._e_targets, *self._e_aux, *self._inverse_epsilon,
-            *slots, *self._e_coefficients, *ade_arguments,
-            float(c_now), float(c_prev), float(c_drive),
+            *slots, *self._e_coefficients, self._cb, *ade_arguments,
+            float(two_minus_od), float(gamma1), float(omega0dtsqr), float(gamma1inv),
             nx, ny, nz, self.n_elem, self.dtdx,
             NP0=self.counts[0], NP1=self.counts[1], NP2=self.counts[2],
             BACKWARD=1,
@@ -643,12 +687,18 @@ def plan_fused_dispersive_chain(fields: Any, pml: Any, sources: Any = None,
                                 block: Optional[int] = None,
                                 num_warps: Optional[int] = 1,
                                 kernel: Any = None,
+                                chunk_layout: Any = None,
                                 ) -> Optional[FusedDispersiveChainPlan]:
-    """Build the whole-chain plan for the live engine, or ``None`` when refused."""
+    """Build the whole-chain plan for the live engine, or ``None`` when refused.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default;
+    the plan binds its record (``launch.chunk_bounds_for``).
+    """
     if not fused_dispersive_chain_coverage(fields, pml, sources).covered:
         return None
     from ..stepping import _boundary_kinds  # noqa: PLC0415
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
+    from .launch import chunk_bounds_for  # noqa: PLC0415
 
     grid = fields.grid
     state = tuple(fields.polarizations)[0]
@@ -670,4 +720,5 @@ def plan_fused_dispersive_chain(fields: Any, pml: Any, sources: Any = None,
          for axis in "xyz" for stem in ("kps", "kms")],
         LivePoleBinding(fields, order), state, tuple(state.driven()),
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )

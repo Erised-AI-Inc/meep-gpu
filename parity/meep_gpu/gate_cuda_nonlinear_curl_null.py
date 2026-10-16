@@ -142,9 +142,10 @@ import ast
 import hashlib
 import json
 import os
+import re
 import sys
 import time
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 
@@ -161,6 +162,7 @@ except ImportError:  # laptop: the transcription and harness legs still run
     cp = None
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import gate_needles  # noqa: E402
 import gate_provenance  # noqa: E402
 #: THE CURL MACHINERY IS THE FOLDED GATE'S, imported rather than respelled. A
 #: second transcription of the device tree, the code triple, the table views and
@@ -237,10 +239,13 @@ POLE_EXPANSION_BOUND = 1.0 / 3.0
 # LEG 3's mutation: the refusal's own premise, armed
 # ---------------------------------------------------------------------------
 
-#: The curl expression as the SHIPPED kernels spell it, transcribed from
-#: ``step_curl_kernels.py`` (three sites in each of the two device strings). A
+#: The curl statement as the SHIPPED kernels spell it, transcribed from
+#: ``step_curl_kernels.py`` (three sites in each of the two device strings): since
+#: 0.10 each component forms its curl through ``curl_stencil`` with its own pair of
+#: partner-presence bits, so the statement is matched up to its argument list. A
 #: rewrite that stopped matching would be reported NOT ARMED rather than passing.
-_CURL_EXPRESSION = "float curl = dtdx * ((sf - f1) + (f2 - ss));"
+_CURL_STATEMENT = re.compile(r"float curl = (curl_stencil\(dtdx, sf, f1, f2, ss, pr_[xyz], "
+                             r"pr_[xyz]\));")
 
 
 def _chi_pade_scale_the_curl(source: str) -> Tuple[str, int]:
@@ -267,31 +272,30 @@ def _chi_pade_scale_the_curl(source: str) -> Tuple[str, int]:
     Applied to ``step_curl_kernels._step_B_pml_real_kernel_code`` /
     ``..._D_...``, which are restored immediately afterwards.
     """
-    replacement = (
-        "float curl = dtdx * ((sf - f1) + (f2 - ss)) * "
-        "__fdiv_rn(1.0f + 0.05f * f1, 1.0f + 0.10f * f1);")
-    sites = source.count(_CURL_EXPRESSION)
-    return source.replace(_CURL_EXPRESSION, replacement), sites
+    replacement = (r"float curl = \1 * "
+                   r"__fdiv_rn(1.0f + 0.05f * f1, 1.0f + 0.10f * f1);")
+    return _CURL_STATEMENT.subn(replacement, source)
 
 
-#: Device-text defects, in the order they are scored. The first is this gate's
-#: own and is the refusal armed; the rest are the certified curl battery,
-#: borrowed from the shared probe so this gate cannot own a second spelling of a
-#: defect the certified record was cut against.
-SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
-    "chi_pade_scale_the_curl": _chi_pade_scale_the_curl,
-    "regroup_stencil": probe.SOURCE_MUTATIONS["regroup_stencil"],
-    "drop_metallic_mask": probe.SOURCE_MUTATIONS["drop_metallic_mask"],
-    "swap_dsig_dsigu": probe.SOURCE_MUTATIONS["swap_dsig_dsigu"],
-    "drop_fu_store": probe.SOURCE_MUTATIONS["drop_fu_store"],
-    "read_fprev_after_store": probe.SOURCE_MUTATIONS["read_fprev_after_store"],
-    "fortran_order_index_decomposition":
-        probe.SOURCE_MUTATIONS["fortran_order_index_decomposition"],
-    # THE TWO NULLS. A battery whose every leg must be caught scores identically
-    # whether the comparator works or has degenerated into failing everything.
-    "commute_dtdx_scale": probe.SOURCE_MUTATIONS["commute_dtdx_scale"],
-    "reload_fu_from_memory": probe.SOURCE_MUTATIONS["reload_fu_from_memory"],
-}
+#: Device-text defects, in the order they are scored: THIS GATE'S NEEDLE TABLE.
+#: The first is this gate's own and is the refusal armed; the rest are the
+#: certified curl battery, borrowed from the probe's shared default until this
+#: gate's kernels need a spelling of their own, which is then an ``own=`` entry
+#: here and moves no other gate (``gate_needles.py``).
+SOURCE_MUTATIONS = gate_needles.gate_table(
+    "gate_cuda_nonlinear_curl_null", probe.SOURCE_MUTATIONS,
+    ("chi_pade_scale_the_curl",
+     "regroup_stencil",
+     "drop_metallic_mask",
+     "swap_dsig_dsigu",
+     "drop_fu_store",
+     "read_fprev_after_store",
+     "fortran_order_index_decomposition",
+     # THE TWO NULLS. A battery whose every leg must be caught scores identically
+     # whether the comparator works or has degenerated into failing everything.
+     "commute_dtdx_scale",
+     "reload_fu_from_memory"),
+    own={"chi_pade_scale_the_curl": _chi_pade_scale_the_curl})
 
 NULL_SOURCE_MUTATIONS: Tuple[str, ...] = probe.PML_NULL_MUTATIONS
 

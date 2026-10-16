@@ -75,6 +75,7 @@ import pathlib
 import pytest
 
 from . import fastpath, metal_runs
+from . import array_path_oracle
 from . import weld_record_walk as walk
 from .code_identity import code_digest
 from .device_identity import device_digests
@@ -182,6 +183,14 @@ EXPECTED_RULES = {
     # test_every_metal_weld_has_a_live_run_in_the_per_architecture_shape. 62: one
     # run per weld entry after the migration. A second architecture adds 62 more.
     "run_bound_digest": 62,
+    # ARRIVED with the array-path oracle (parity/meep_gpu/record_array_path_oracle.py):
+    # one fingerprint per byte-binding entry (63 with driver_dispatch) plus
+    # driver_dispatch's 18 per-case digests, all compared by running the fixture in
+    # test_the_metal_ledger_records_the_live_array_path_oracle; and the code digests
+    # of the 11 array-path modules that exist (chunk_map.py does not yet), reported
+    # and not judged.
+    "array_path_oracle_fingerprint": 81,
+    "array_path_oracle_provenance": 11,
 }
 
 
@@ -1011,3 +1020,28 @@ def test_the_migration_note_states_no_digest():
     assert note["entries"] >= ENTRY_FLOOR - len(NOT_A_DEVICE_GATE), note
     assert note["architectures"], note
     assert not [f for f in walk.census({"note": note})], note
+
+
+# ---------------------------------------------------------------------------
+# THE ARRAY PATH THE WELDS WERE CERTIFIED AGAINST
+# ---------------------------------------------------------------------------
+
+
+def test_the_metal_ledger_records_the_live_array_path_oracle():
+    """Every Metal weld records the array-path behaviour it was certified against.
+
+    THE GAP THIS CLOSES. A Metal gate passes when the kernel returns the array
+    path's words, but the welds bind the KERNEL bytes and almost none of them bind an
+    array-path module, so an arithmetic change to ``stepping`` and its siblings would
+    leave every byte tier above green while every gate run against the new array path
+    failed. ``meep_gpu.array_path_oracle`` steps a fixed, seeded fixture set on the
+    array path and fingerprints the words; this asserts that every byte-binding entry
+    and ``driver_dispatch`` record that run, and names the fixture cases whose words
+    moved when they do not. A comment or docstring edit moves nothing here; an
+    arithmetic edit moves the fingerprint, by design: re-certify the table against the
+    new array path, then mint with ``parity/meep_gpu/record_array_path_oracle.py
+    --write``. Never mint to turn this green.
+    """
+    problems = array_path_oracle.ledger_problems(_record(), array_path_oracle.live(),
+                                                 "metal")
+    assert not problems, "\n".join(problems)

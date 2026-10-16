@@ -9,53 +9,11 @@ which of those gated arms the production planner can actually reach.
 
 from __future__ import annotations
 
-import hashlib
 import json
-from pathlib import Path
 from typing import Any
 
 
 CORE_SLOTS = ("step_B", "step_D", "update_H", "update_E")
-
-
-def sha256(path: Path | None) -> str | None:
-    """Return a digest for a declared probe file, or ``None`` when absent."""
-    if path is None or not path.is_file():
-        return None
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _probe_record(module: Any) -> dict[str, Any]:
-    environment = getattr(module, "PROBE_PATH_ENVIRONMENT", None)
-    configured = None
-    if environment:
-        import os
-
-        value = os.environ.get(environment)
-        configured = Path(value).resolve() if value else None
-    return {
-        "environment": environment,
-        "configured_path": str(configured) if configured else None,
-        "configured_sha256": sha256(configured),
-        "available": getattr(module, "load_expansion_probe")() is not None,
-    }
-
-
-def probe_provenance() -> dict[str, dict[str, Any]]:
-    """Record the expansion evidence the live planner is allowed to consult."""
-    from meep_gpu.metal_kernels import (  # noqa: PLC0415
-        complex_fields,
-        cylindrical_complex,
-        folded_complex,
-        special_kz,
-    )
-
-    return {
-        "complex": _probe_record(complex_fields),
-        "special_kz": _probe_record(special_kz),
-        "folded_complex": _probe_record(folded_complex),
-        "cylindrical_complex": _probe_record(cylindrical_complex),
-    }
 
 
 def slot_names(fields: Any) -> tuple[str, ...]:
@@ -103,7 +61,6 @@ def evaluate(driver: Any) -> dict[str, Any]:
     record: dict[str, Any] = {
         "slots": list(slots),
         "configuration": _configuration(driver),
-        "probe_provenance": probe_provenance(),
         "subnormal_policy": subnormal.mps_policy_report(),
     }
     try:

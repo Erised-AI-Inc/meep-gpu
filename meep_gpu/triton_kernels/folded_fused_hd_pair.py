@@ -450,8 +450,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
     # (symmetry.py:1009-1038). A second copy would be a second place to drift, which
     # is the reason `cylindrical_real_fused_hd_pair` imports the same two.
     from .fused_hd_pair import _h_cell, _h_tap  # noqa: PLC0415
+    # The names the lifted folded curl body reads: the shared forms and the record's
+    # word offsets, the very objects the certified folded curl calls.
+    from .forms import (axis_present, curl_form, curl_stencil,  # noqa: E402
+                        record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
 
-    @triton.jit
+    @triton.jit(do_not_specialize=["start_h"])
     def fused_constitutive_curl_H_to_D_folded(
         ho0, ho1, ho2,                  # SCRATCH out: the stepped Hx, Hy, Hz
         wo0, wo1, wo2,                  # SCRATCH out: the stepped f_w_Hx, f_w_Hy, f_w_Hz
@@ -462,7 +467,8 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         u0, u1, u2,                     # curl auxiliaries: fu_Dx, fu_Dy, fu_Dz (in/out)
         kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, INTEGER sub-lattice
         kp0, kp1, kp2,                  # kps on each component's OWN axis, INTEGER
-        nx, ny, nz, n_elem, dtdx,
+        cb,                             # chunk record: both halves' forms and presence
+        nx, ny, nz, n_elem, dtdx, start_h,   # start_h: MEEP's start of H
         BACKWARD: tl.constexpr,
         BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
         BLOCK: tl.constexpr,
@@ -498,15 +504,22 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         # ON A FOLD this is unchanged: `update_H` runs over the whole STORED extent,
         # ghost planes included, and the B those planes hold was written by the
         # driver's near and far fills BEFORE this seam opened.
-        own0, own1, own2, src0, src1, src2 = _h_cell(
+        own0, own1, own2, src0, src1, src2, dw0, dw1, dw2 = _h_cell(
             i, j, k, live, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-            kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+            kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         tl.store(ho0 + idx, own0, mask=live)
         tl.store(ho1 + idx, own1, mask=live)
         tl.store(ho2 + idx, own2, mask=live)
-        tl.store(wo0 + idx, src0, mask=live)
-        tl.store(wo1 + idx, src1, mask=live)
-        tl.store(wo2 + idx, src2, mask=live)
+        # The history takes B on the accumulation's cells only (the auxiliary
+        # contract); every other cell of the twin takes the pre-launch word, so the
+        # rotation hands the engine an f_w_H that kept its word there and the twin is
+        # written at every cell.
+        tl.store(wo0 + idx, tl.where(dw0, src0, tl.load(
+            wi0 + idx, mask=live & (dw0 == 0), other=0.0)), mask=live)
+        tl.store(wo1 + idx, tl.where(dw1, src1, tl.load(
+            wi1 + idx, mask=live & (dw1 == 0), other=0.0)), mask=live)
+        tl.store(wo2 + idx, tl.where(dw2, src2, tl.load(
+            wi2 + idx, mask=live & (dw2 == 0), other=0.0)), mask=live)
 
         # === the certified folded step_D curl body begins here ===
 
@@ -540,22 +553,29 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         b = own1
         c = own2
         a_y = _h_tap(0, i, sj, k, vy, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         a_z = _h_tap(0, i, j, sk, vz, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         b_x = _h_tap(1, si, j, k, vx, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         b_z = _h_tap(1, i, j, sk, vz, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         c_x = _h_tap(2, si, j, k, vx, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
         c_y = _h_tap(2, i, sj, k, vy, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                     kp0, kp1, kp2, kmx, kmy, kmz, ny, nz)
+                     kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
 
         # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        # kernels.pml_curl_step's three calls: MEEP's left-to-right association with
+        # both partners, the one-partner form where the record says the other
+        # partner's derivative axis is invariant, an exact +0 with neither.
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
         # --- ownership mask, cell 0 (stepping._mask_non_owned_cells) ------------
         # Every target whose Yee shift is 0 on a non-periodic axis. Byte-copied
@@ -611,10 +631,11 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
             if BCY == MIRROR_PERIODIC:
                 curl2 = tl.where(last_y, 0.0, curl2)
 
-        # --- split-field recurrence (stepping._apply_pml_update) ----------------
-        # Byte-copied. The PML coefficient vectors are built at the STORED extent
-        # on a folded axis (measured: kms_y.shape == (1, 22, 1) on a grid storing
-        # 22), so the `n_a` indexing needs no fold-aware change.
+        # --- the PML forms (stepping._apply_curl_regions) ----------------------
+        # Byte-copied from kernels.pml_curl_step. The PML coefficient vectors are
+        # built at the STORED extent on a folded axis (measured: kms_y.shape ==
+        # (1, 22, 1) on a grid storing 22), so the `n_a` indexing needs no
+        # fold-aware change.
         km_x = tl.load(kmx + i, mask=live, other=0.0)
         si_x = tl.load(sinvx + i, mask=live, other=0.0)
         km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -622,21 +643,33 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0 = tl.load(u0 + idx, mask=live, other=0.0)
-        n0 = ((p0 * km_y) - curl0) * si_y
-        v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+        # Which cells take the recurrence: the component's dsigu layer on its own
+        # sub-lattice (dsigu axis z for target 0, x for 1, y for 2; half-integer for
+        # every B target, integer for every D one), a compile-time record word.
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1 = tl.load(u1 + idx, mask=live, other=0.0)
-        n1 = ((p1 * km_z) - curl1) * si_z
-        v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+        v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                           km_y, si_y, km_z, si_z, du0)
 
-        p2 = tl.load(u2 + idx, mask=live, other=0.0)
-        n2 = ((p2 * km_x) - curl2) * si_x
-        v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+        p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+        v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                           km_z, si_z, km_x, si_x, du1)
 
-        tl.store(u0 + idx, n0, mask=live)
-        tl.store(u1 + idx, n1, mask=live)
-        tl.store(u2 + idx, n2, mask=live)
+        p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+        v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                           km_x, si_x, km_y, si_y, du2)
+
+        # fu is written on the recurrence's cells ONLY (the auxiliary contract).
+        tl.store(u0 + idx, n0, mask=live & du0)
+        tl.store(u1 + idx, n1, mask=live & du1)
+        tl.store(u2 + idx, n2, mask=live & du2)
         tl.store(f0 + idx, v0, mask=live)
         tl.store(f1 + idx, v1, mask=live)
         tl.store(f2 + idx, v2, mask=live)
@@ -776,7 +809,7 @@ def explain_folded_fused_hd_pair(fields: Any, pml: Any,
 # The plan
 # ---------------------------------------------------------------------------
 
-class FoldedFusedHdPairPlan(ScratchWeldPairPlan):
+class FoldedFusedHdPairPlan(_plain.StartsH, ScratchWeldPairPlan):
     """ONE allocation-free launch for folded ``update_H`` and folded ``step_D``.
 
     DELIBERATELY A SIBLING OF :class:`.fused_hd_pair.FusedHdPairPlan` RATHER THAN A
@@ -807,7 +840,7 @@ class FoldedFusedHdPairPlan(ScratchWeldPairPlan):
     """
 
     __slots__ = ("dtdx", "backward", "bc", "_b", "_targets", "_aux", "_curl_coeff",
-                 "_kps", "_kernel", "_pointer")
+                 "_kps", "_kernel", "_pointer", "_h_state")
 
     replaces = REPLACES
 
@@ -816,11 +849,12 @@ class FoldedFusedHdPairPlan(ScratchWeldPairPlan):
                  flux: Sequence[Any], targets: Sequence[Any],
                  auxiliaries: Sequence[Any], curl_coefficients: Sequence[Any],
                  constitutive_coefficients: Sequence[Any], kernel: Any = None,
-                 num_warps: Optional[int] = 1) -> None:
+                 num_warps: Optional[int] = 1, *, chunk_bounds: Any,
+                 h_state: Any = None) -> None:
         from .launch import CupyPointer, _flat  # noqa: PLC0415
 
         super().__init__(FAMILY, fields, twins, ROTATED, shape, block, REPLACES,
-                         num_warps=num_warps)
+                         num_warps=num_warps, chunk_bounds=chunk_bounds)
         self.dtdx = float(dtdx)
         self.backward = BACKWARD
         self.bc = tuple(int(code) for code in codes)
@@ -848,6 +882,8 @@ class FoldedFusedHdPairPlan(ScratchWeldPairPlan):
         self._check_aliases(twins, flux, targets, auxiliaries,
                             curl_coefficients, constitutive_coefficients)
         self._kernel = kernel
+        # MEEP's start of H, on the plain product's terms (fused_hd_pair.StartsH).
+        self._h_state = h_state
 
     def _check_aliases(self, twins, flux, targets, auxiliaries,
                        curl_coefficients, constitutive_coefficients) -> None:
@@ -908,8 +944,8 @@ class FoldedFusedHdPairPlan(ScratchWeldPairPlan):
         prior = [self._pointer(array) for array in reads]
         kernel[self._grid](
             *scratch, *prior, *self._b, *self._targets, *self._aux,
-            *self._curl_coeff, *self._kps,
-            nx, ny, nz, self.n_elem, self.dtdx,
+            *self._curl_coeff, *self._kps, self._cb,
+            nx, ny, nz, self.n_elem, self.dtdx, self.start_h(),
             BACKWARD=self.backward,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
             BLOCK=self.block,
@@ -941,6 +977,7 @@ def plan_folded_fused_hd_pair(fields: Any, pml: Any, sources: Any = None,
     slowdown, it is a silent DISARMING -- every mutation leg would then launch the
     shipped kernel and report the defect as uncaught.
     """
+    from .launch import chunk_bounds_for  # noqa: PLC0415
     if not folded_fused_hd_pair_coverage(fields, pml, sources).covered:
         return None
     suffix, constitutive_suffix = _plain._sub_lattice_suffixes()  # noqa: SLF001
@@ -960,13 +997,15 @@ def plan_folded_fused_hd_pair(fields: Any, pml: Any, sources: Any = None,
          for axis in "xyz" for stem in ("kms", "sinv")],
         [getattr(pml, f"kps_{axis}{constitutive_suffix}") for axis in "xyz"],
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, None),
+        h_state=fields,
     )
 
 
 def plan_folded_fused_hd_pair_from_arrays(
         arrays: Dict[str, Any], flat: Dict[str, Any], dtdx: float,
         codes: Sequence[int], fields: Any, block: Optional[int] = None,
-        kernel: Any = None, num_warps: Optional[int] = 1
+        kernel: Any = None, num_warps: Optional[int] = 1, *, chunk_bounds: Any
 ) -> FoldedFusedHdPairPlan:
     """Build from bare device arrays -- the gate's route.
 
@@ -987,5 +1026,5 @@ def plan_folded_fused_hd_pair_from_arrays(
         [arrays[name] for name in IN_PLACE[3:]],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
         [flat[f"kps_{axis}"] for axis in "xyz"],
-        kernel=kernel, num_warps=num_warps,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )

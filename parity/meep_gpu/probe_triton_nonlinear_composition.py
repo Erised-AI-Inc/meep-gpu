@@ -267,12 +267,20 @@ def build_case(case: Dict[str, Any], xp, prefer_gpu: bool,
 
 
 def seed_primaries(driver, xp, amplitude: float, seed: int = 20260812) -> None:
+    """Seed every primary with a random volume: a state mid-run.
+
+    The fields therefore record that H has started (``Fields.h_separated``, as
+    ``stepping.separate_h_from_b`` says a state seeded mid-run carries): the
+    reference's first ``update_H`` and the composition's from-arrays ``update_H``
+    plan, which carries no start of H, then step the same form.
+    """
     rng = np.random.default_rng(seed)
     for name in PRIMARY_NAMES:
         host = np.ascontiguousarray(
             (amplitude * rng.uniform(-1.0, 1.0, size=driver.shape))
             .astype(np.float32))
         driver.set_field(name, xp.asarray(host))
+    driver.fields.h_separated = True
 
 
 def measured_margin(driver) -> Optional[float]:
@@ -410,16 +418,22 @@ def build_plans(driver) -> Dict[str, Any]:
         return {f"{stem}_{axis}": getattr(pml, f"{stem}_{axis}{suffix}")
                 for axis in "xyz" for stem in ("kps", "kms")}
 
+    # The array path is the reference, so the plans bind the division it steps with.
+    from gate_chunk_records import layer_record  # noqa: PLC0415
+
+    record = layer_record(grid, pml)
     plans = {
         # The CERTIFIED kernels, through their from_arrays routes: their
         # engine builders refuse the chi clause (asserted upstream), and this
         # composition is the measurement that licenses narrowing it.
         "step_B": launch_module.plan_from_arrays(
-            "step_B", arrays, curl_flat("_h"), codes, float(dtdx)),
+            "step_B", arrays, curl_flat("_h"), codes, float(dtdx),
+            chunk_bounds=record),
         "update_H": launch_module.plan_constitutive_from_arrays(
-            "H", arrays, constitutive_flat("")),
+            "H", arrays, constitutive_flat(""), chunk_bounds=record),
         "step_D": launch_module.plan_from_arrays(
-            "step_D", arrays, curl_flat(""), codes, float(dtdx)),
+            "step_D", arrays, curl_flat(""), codes, float(dtdx),
+            chunk_bounds=record),
         # The NEW kernel, through its ENGINE route: its predicate must admit.
         "update_E": nlmod.plan_nonlinear_constitutive(fields, pml),
     }

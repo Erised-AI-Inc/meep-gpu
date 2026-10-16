@@ -55,8 +55,11 @@ def test_threads_per_rank_refusals(monkeypatch):
         bench.check_threads(2, None)
     monkeypatch.setenv("OMP_NUM_THREADS", "2")
     monkeypatch.setattr(bench, "mapped_openmp", lambda: [])
-    with pytest.raises(SystemExit, match="no OpenMP runtime"):
+    with pytest.raises(SystemExit, match="needs --build-record"):
         bench.check_threads(2, None)
+    # NO RUNTIME MAPPED AFTER MEEP'S IMPORT STILL REFUSES
+    with pytest.raises(SystemExit, match="after importing MEEP"):
+        bench.check_threads_after_import(2, bench.check_threads(2, {"openmp": True}))
     monkeypatch.setattr(bench, "mapped_openmp", lambda: None)
     with pytest.raises(SystemExit, match="needs --build-record"):
         bench.check_threads(2, None)
@@ -69,6 +72,28 @@ def test_threads_per_rank_refusals(monkeypatch):
         bench.check_threads(2, {"openmp": False})
     with pytest.raises(SystemExit, match="link no OpenMP runtime"):
         bench.check_threads(2, {"openmp": None})
+
+
+def test_a_hybrid_row_reads_the_runtime_after_meep_is_imported(monkeypatch):
+    """CERT-8 H2: 18 / 18 hybrid MPI x OpenMP rows refused "no OpenMP runtime is mapped"
+    on a build that links ``libgomp``, because the maps were read before ``import meep``
+    loaded the library that maps it. Before the import nothing is mapped; after it the
+    runtime is, and the row runs."""
+    monkeypatch.setenv("OMP_NUM_THREADS", "2")
+    imported = {"meep": False}
+    monkeypatch.setattr(bench, "mapped_openmp",
+                        lambda: ["libgomp"] if imported["meep"] else [])
+    check = bench.check_threads(2, {"openmp": True})    # refused here before the fix
+    assert check["omp_runtime_mapped_before_import"] == []
+    imported["meep"] = True
+    check = bench.check_threads_after_import(2, check)
+    assert check["omp_runtime_mapped"] == ["libgomp"] and check["asked"] == 2
+    # and ``main`` asks the second question only once MEEP is imported
+    import inspect  # noqa: PLC0415
+    source = inspect.getsource(bench.main)
+    assert (source.index("check_threads(args.threads_per_rank")
+            < source.index("import meep as mp")
+            < source.index("check_threads_after_import("))
 
 
 def test_binding_summary_reads_the_ladders_scope_and_cores():

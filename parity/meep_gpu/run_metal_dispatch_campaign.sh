@@ -1,12 +1,11 @@
 #!/bin/zsh
-# THE METAL DISPATCH CAMPAIGN: five legs of gate_dispatch_metal_route.py -- a serial
-# prefix of two, then up to LANES of the three long legs at once.
+# THE METAL DISPATCH CAMPAIGN: four legs of gate_dispatch_metal_route.py -- a serial
+# prefix of two, then up to LANES of the two long legs at once.
 #
-# WHY FIVE PROCESSES AND NOT ONE. Each leg differs in exactly one thing the process
+# WHY FOUR PROCESSES AND NOT ONE. Each leg differs in exactly one thing the process
 # cannot change after it has started: the float32 subnormal policy is installed once
 # and LOCKED (`subnormal_policy.SubnormalPolicyLocked` refuses a second, different
-# one, because device binaries and cache entries already exist under the first), and
-# the expansion-probe environment is read when a family binds its multiply arm. So
+# one, because device binaries and cache entries already exist under the first). So
 # "the shipped leg" and "the harness_keep leg" are two processes by construction,
 # not by preference.
 #
@@ -22,11 +21,6 @@
 #                            campaign — Triton certifies under keep so its harness
 #                            leg installs flush; this table certifies under flush, so
 #                            the refusal leg is the keeping one.
-#   shipped_expansion_probe  the four MEEP_GPU_METAL_*_EXPANSION_PROBE paths, taken
-#                            from the fleet recut's probe outputs and handed to THIS
-#                            leg's process only. bloch_2d and folded_complex_2d
-#                            dispatch ONLY here; the shipped leg must show them
-#                            refused by name without a licence.
 #   band_witness             the array path alone with the host KEEPING, censusing
 #                            every stored array every step. The vacuity floor under
 #                            the whole flush-equivalence claim: if no case's own
@@ -45,15 +39,13 @@
 #      install is process-local is read from the code, not measured beside a
 #      flushing neighbour; until a co-run has been diffed it runs with the device to
 #      itself.
-#   3. shipped_expansion_probe, shipped, harness_flush as LANES -- at most LANES at
-#      once, LONGEST FIRST by the measured 12,161 / 7,796 / 7,428 s
-#      (dispatch_metal_route_2026-09-19_components/campaign.txt), so the longest leg
-#      is never the one left waiting for a slot.
+#   3. shipped, harness_flush as LANES -- at most LANES at once, LONGEST FIRST by the
+#      measured 7,796 / 7,428 s (dispatch_metal_route_2026-09-19_components/
+#      campaign.txt), so the longest leg is never the one left waiting for a slot.
 #
 # THIS ORDER DIFFERS FROM THE COMMITTED SEQUENTIAL SCRIPT'S AT EVERY LANES, 1
-# INCLUDED. That one ran band_witness, shipped, harness_flush, harness_keep,
-# shipped_expansion_probe; this one runs band_witness, harness_keep,
-# shipped_expansion_probe, shipped, harness_flush. The band witness is the only
+# INCLUDED. That one ran band_witness, shipped, harness_flush, harness_keep; this
+# one runs band_witness, harness_keep, shipped, harness_flush. The band witness is the only
 # artifact one leg writes for another to read: every leg has its own directory, log
 # and source manifest, and the gate has no wall-clock logic. What else the legs share
 # on disk is the operating system's compiled-shader cache, keyed by the shader source
@@ -70,17 +62,12 @@
 # control rows (design §5). The measured slowdown per process is in
 # parity/meep_gpu/README.md ("Re-running a campaign"); choose LANES from it.
 #
-# EACH LEG'S ENVIRONMENT IS BUILT ON ITS OWN COMMAND AND NOTHING IS EXPORTED. The
-# sequential script exported the four probe paths around the probe leg and unset
-# them after. With legs side by side an export reaches every sibling started while
-# it is set, and `run_case` tests the ENVIRONMENT, not the leg's name: a shipped leg
-# started under the probe paths dispatches bloch_2d and reads PASS-FUSED where
-# PASS-NOT-THIS-LEG is owed -- silently consuming a licence it was there to show
-# refused. So every leg is launched as `env -u <each name it must not see>
-# NAME=value ... python ...`, the same array the dry run prints, and BEFORE ANYTHING
-# IS LAUNCHED the script reads back the environment each command would really hand
-# its child and refuses to start unless:
-#   * only shipped_expansion_probe carries any MEEP_GPU_METAL_*_EXPANSION_PROBE;
+# EACH LEG'S ENVIRONMENT IS BUILT ON ITS OWN COMMAND AND NOTHING IS EXPORTED. With
+# legs side by side an export reaches every sibling started while it is set. So
+# every leg is launched as `env -u <each name it must not see> NAME=value ...
+# python ...`, the same array the dry run prints, and BEFORE ANYTHING IS LAUNCHED the
+# script reads back the environment each command would really hand its child and
+# refuses to start unless:
 #   * every leg that consumes the band witness carries MEEP_GPU_METAL_BAND_WITNESS
 #     naming THIS run's artifact (band_witness itself produces that file and is
 #     handed no such path, as before);
@@ -124,8 +111,8 @@
 #     one thing it adds to the gate's environment is `__CF_USER_TEXT_ENCODING`,
 #     and only where the calling shell lacks it (a login session never does);
 #     nothing under meep_gpu/ or the gate reads that name. Where the tool is absent
-#     the campaign runs without either assertion and says so. A 35,356 s probe leg
-#     against 7,955 s (2026-09-15) is what a sleeping host looks like.
+#     the campaign runs without either assertion and says so. A 35,356 s leg against
+#     7,955 s (2026-09-15) is what a sleeping host looks like.
 #   * THE BAND WITNESS'S sha256 IS RECORDED in campaign.txt beside its path, and
 #     checked again at the end. That artifact decides 16 of 24 shipped cliff
 #     verdicts and no leg artifact records its path or its bytes.
@@ -156,8 +143,8 @@
 #   * `fail=0` MEANS EVERY LEG RELEASED, which is how
 #     `meep_gpu/test_dispatch_contract.py` reads it: a non-zero exit, an unreleased or
 #     unreadable gate.json (from this run or a skipped earlier one), a refused
-#     directory, a lane that died without a result and a skipped probe leg each set
-#     fail=1. The parent waits for EVERY lane and reports every exit code.
+#     directory and a lane that died without a result each set fail=1. The parent
+#     waits for EVERY lane and reports every exit code.
 #
 # STOPPING A CAMPAIGN, AND WHAT Ctrl-C DOES. There is no INT/TERM trap: zsh defers a
 # trap until its foreground child ends, which at LANES=1 would make the driver
@@ -176,12 +163,13 @@
 #     that orphans the gate and lands `exit=?` while the gate is still running.
 #   * A STOPPED OR UNRELEASED LEG HAS USED ITS DIRECTORY, and a campaign that lands
 #     one has used its stamp: nothing is retried, so the re-run is a new stamp, and
-#     `metal_dispatch.METAL_DRIVER_ROUTE_GATE` must name the new stamp before it
-#     starts, because every leg records that file's bytes.
+#     `meep_gpu/route_stamps.py` must name it (REROUTED["metal"], or the round's ROUND)
+#     before it starts, because the recut files a run only under the name the
+#     registry spells; the spent name goes into route_stamps.SPENT.
 #
-# EXIT STATUS: 0 every leg released; 1 any leg failed, was refused, skipped without
-# a probe root, or is unreleased; 2 usage; 3 another live driver holds this
-# campaign; 4 the per-leg environments are not isolated.
+# EXIT STATUS: 0 every leg released; 1 any leg failed, was refused, or is
+# unreleased; 2 usage; 3 another live driver holds this campaign; 4 the per-leg
+# environments are not isolated.
 #
 # progress reporting: one flushed line per leg as it starts and as it lands, with UTC times, a
 # per-leg log and the gate's own `progress.log` inside each leg directory, and a
@@ -190,17 +178,17 @@
 #
 # Usage (from the repository root):
 #   zsh parity/meep_gpu/run_metal_dispatch_campaign.sh [--dry-run] [--lanes N] \
-#       <stamp> [probe-root] [complex-probe] [lanes]
+#       <stamp> [lanes]
 #
 # <stamp> names the run directory: results/dispatch_metal_route_<stamp>/, which is
 # what `recut_driver_dispatch_record.py --backend metal --run` reads. The recut
-# accepts only `metal_runs.route_campaign(metal_dispatch.METAL_DRIVER_ROUTE_GATE,
-# <architecture>)`: the constant's stamp followed by the GPU architecture every leg
-# recorded, e.g. `2026-10-05_perarch_applegpu_g13s` for the constant
+# accepts only `metal_runs.route_campaign(route_stamps.route_gate("metal"),
+# <architecture>)`: the registry's stamp followed by the GPU architecture every leg
+# recorded, e.g. `2026-10-05_perarch_applegpu_g13s` for the stamp
 # `dispatch_metal_route_2026-10-05_perarch` on an Apple M1 Max. The architecture is
 # the one the round's fleet recorded in results/metal_environment_<stamp>/start.json.
 #
-# LANES is `--lanes N`, else the fourth positional argument, else $LANES, else 1.
+# LANES is `--lanes N`, else the second positional argument, else $LANES, else 1.
 # `--dry-run` (or DRY_RUN=1) prints the plan -- order, lanes, each leg's state,
 # arguments, environment and full command -- runs the environment check, and
 # creates, writes and launches NOTHING.
@@ -215,7 +203,7 @@ zmodload zsh/datetime
 SCRIPT_NAME=${0:t}
 API=${MGPU_SITE_SOURCE_ROOT:-${0:A:h:h:h}}
 PY=${MGPU_SITE_PYTHON:-python}
-USAGE='usage: run_metal_dispatch_campaign.sh [--dry-run] [--lanes N] <stamp> [probe-root] [complex-probe] [lanes]'
+USAGE='usage: run_metal_dispatch_campaign.sh [--dry-run] [--lanes N] <stamp> [lanes]'
 
 DRY_RUN=${DRY_RUN:-0}
 lanes_option=
@@ -232,13 +220,7 @@ while (( $# )); do
   shift
 done
 STAMP=${positional[1]:?$USAGE}
-PROBE_ROOT=${positional[2]:-}
-# THE BASE COMPLEX PROBE IS NAMED SEPARATELY because it is written beside the
-# complex gate's own artifact and the other three are written into a probes/
-# directory by the fleet. Requiring all four in one directory meant copying a
-# measured artifact to satisfy a path, which is how a record loses its provenance.
-COMPLEX_PROBE=${positional[3]:-}
-LANES=${lanes_option:-${positional[4]:-${LANES:-1}}}
+LANES=${lanes_option:-${positional[2]:-${LANES:-1}}}
 if [[ "$LANES" != <1-> ]]; then
   print -u2 -r -- "lanes must be a positive integer, not '$LANES'. $USAGE"
   exit 2
@@ -258,11 +240,10 @@ cd "$API" || exit 1
 # by the measured leg seconds below; the numbers are printed with the plan so a
 # reader can see what the order was decided on.
 SERIAL_LEGS=(band_witness harness_keep)
-LANE_LEGS=(shipped_expansion_probe shipped harness_flush)
+LANE_LEGS=(shipped harness_flush)
 ALL_LEGS=($SERIAL_LEGS $LANE_LEGS)
 typeset -A MEASURED_SECONDS
-MEASURED_SECONDS=(band_witness 27 harness_keep 120
-                  shipped_expansion_probe 12161 shipped 7796 harness_flush 7428)
+MEASURED_SECONDS=(band_witness 27 harness_keep 120 shipped 7796 harness_flush 7428)
 
 # NAMES NO LEG MAY INHERIT, whatever the calling shell exported (see the header).
 SCRUBBED=(MEEP_GPU_SUBNORMAL_POLICY MEEP_GPU_SUBNORMAL_INSTALL MEEP_GPU_DISPATCH
@@ -270,10 +251,6 @@ SCRUBBED=(MEEP_GPU_SUBNORMAL_POLICY MEEP_GPU_SUBNORMAL_INSTALL MEEP_GPU_DISPATCH
           MEEP_GPU_GATE_SOURCE_MANIFEST)
 # SWITCHES THAT REACH EVERY LEG ALIKE and are therefore put on record, not scrubbed.
 RECORDED_SWITCHES=(MEEP_GPU_WARM MEEP_GPU_KERNEL_TABLE MEEP_GPU_BACKEND_PREFERENCE)
-PROBE_VARIABLES=(MEEP_GPU_METAL_EXPANSION_PROBE
-                 MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE
-                 MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE
-                 MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE)
 WITNESS_VARIABLE=MEEP_GPU_METAL_BAND_WITNESS
 # THE ENABLE, pinned OFF on band_witness only (header, "THE BAND WITNESS'S PIN").
 DISPATCH_ENABLE=MEEP_GPU_DISPATCH
@@ -281,22 +258,6 @@ DISPATCH_ENABLE=MEEP_GPU_DISPATCH
 # THE PER-LEG SLEEP ASSERTION: the tool's own path, resolved once, so the plan shows
 # the command that really runs. Empty where the tool is absent.
 CAFFEINATE=$(command -v caffeinate 2> /dev/null) || CAFFEINATE=
-
-# THE PROBE LEG'S INPUTS, resolved once. Without a probe root the two complex cases
-# cannot dispatch, and a leg that ran them anyway would record a refusal as though
-# it were the answer. So the leg is SKIPPED BY NAME rather than run empty.
-PROBE_AVAILABLE=0
-COMPLEX_PROBE_PATH=
-if [[ -n "$PROBE_ROOT" && -f "$PROBE_ROOT/special_kz.json" ]]; then
-  PROBE_AVAILABLE=1
-  # The base complex probe is written BESIDE the complex gate's own artifact rather
-  # than into the probe root, so it is named separately.
-  if [[ -n "$COMPLEX_PROBE" && -f "$COMPLEX_PROBE" ]]; then
-    COMPLEX_PROBE_PATH="$COMPLEX_PROBE"
-  elif [[ -f "$PROBE_ROOT/complex_expansion_probe.json" ]]; then
-    COMPLEX_PROBE_PATH="$PROBE_ROOT/complex_expansion_probe.json"
-  fi
-fi
 
 # ---------------------------------------------------------------------------
 # What each leg is handed
@@ -308,7 +269,6 @@ leg_arguments() {  # leg_arguments <leg>  ->  $reply
     harness_keep)            reply=(--install-policy keep) ;;
     harness_flush)           reply=(--install-policy flush) ;;
     shipped)                 reply=() ;;
-    shipped_expansion_probe) reply=() ;;
     *) print -u2 -r -- "no such leg: $1"; exit 2 ;;
   esac
 }
@@ -326,18 +286,6 @@ build_leg() {  # build_leg <leg>  ->  leg_set, leg_unset, leg_args, leg_environm
     leg_set+=("$DISPATCH_ENABLE=0")
   else
     leg_set+=("$WITNESS_VARIABLE=$WITNESS")
-  fi
-  if [[ "$leg" == shipped_expansion_probe ]]; then
-    leg_set+=("MEEP_GPU_METAL_EXPANSION_PROBE=$PROBE_ROOT/special_kz.json"
-              "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE=$PROBE_ROOT/folded_complex.json"
-              "MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE=$PROBE_ROOT/cylindrical_complex.json")
-    if [[ -n "$COMPLEX_PROBE_PATH" ]]; then
-      leg_set+=("MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE=$COMPLEX_PROBE_PATH")
-    else
-      leg_unset+=(MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE)
-    fi
-  else
-    leg_unset+=($PROBE_VARIABLES)
   fi
   leg_arguments "$leg"; leg_args=("${reply[@]}")
   leg_environment=(/usr/bin/env)
@@ -368,13 +316,11 @@ except Exception as exc:
 EOF
 }
 
-leg_state() {  # leg_state <leg>  ->  $REPLY in RUN | SKIP | REFUSE | NO-PROBE-ROOT
+leg_state() {  # leg_state <leg>  ->  $REPLY in RUN | SKIP | REFUSE
   # SKIP also sets $LEG_RELEASED; REFUSE also sets $LEG_REFUSAL, the reason by name.
   local leg="$1"
   LEG_RELEASED= LEG_REFUSAL=
-  if [[ "$leg" == shipped_expansion_probe && $PROBE_AVAILABLE -eq 0 ]]; then
-    REPLY=NO-PROBE-ROOT
-  elif [[ -e "$RUN/$leg/gate.json" ]]; then
+  if [[ -e "$RUN/$leg/gate.json" ]]; then
     LEG_RELEASED=$(read_released "$RUN/$leg/gate.json")
     if [[ "$LEG_RELEASED" == (True|False) ]]; then
       REPLY=SKIP
@@ -429,7 +375,7 @@ caller_environment_lines() {  # -> $reply, the lines to print
       others+=("$name (scrubbed from every leg; band_witness is handed 0)")
     elif (( ${SCRUBBED[(Ie)$name]} )); then
       others+=("$name (scrubbed from every leg)")
-    elif (( ${PROBE_VARIABLES[(Ie)$name]} )) || [[ "$name" == "$WITNESS_VARIABLE" ]]; then
+    elif [[ "$name" == "$WITNESS_VARIABLE" ]]; then
       others+=("$name (replaced or unset on each leg)")
     else
       others+=("$name=${(P)name} (reaches every leg)")
@@ -444,20 +390,9 @@ caller_environment_lines() {  # -> $reply, the lines to print
 # `env` itself. It launches no gate and touches no device.
 ENVIRONMENT_FAULTS=()
 check_leg_environment() {  # check_leg_environment <leg>  ->  $REPLY (a one-line report)
-  local leg="$1" effective name probes=0 scrubbed=0 must_scrub=0 witness=no dispatch=unset
+  local leg="$1" effective name scrubbed=0 must_scrub=0 witness=no dispatch=unset
   build_leg "$leg"
   effective=$("${leg_environment[@]}" /usr/bin/env)
-  for name in $PROBE_VARIABLES; do
-    if print -r -- "$effective" | grep -q "^$name="; then
-      (( probes += 1 ))
-      [[ "$leg" == shipped_expansion_probe ]] || \
-        ENVIRONMENT_FAULTS+=("$leg carries $name; only shipped_expansion_probe may")
-    fi
-  done
-  if [[ "$leg" == shipped_expansion_probe ]] && ! print -r -- "$effective" | \
-       grep -Fqx -- "MEEP_GPU_METAL_EXPANSION_PROBE=$PROBE_ROOT/special_kz.json"; then
-    ENVIRONMENT_FAULTS+=("$leg does not carry MEEP_GPU_METAL_EXPANSION_PROBE")
-  fi
   for name in $SCRUBBED; do
     if [[ "$leg" == band_witness && "$name" == "$DISPATCH_ENABLE" ]]; then
       # The one name this leg is HANDED, and it must be exactly 0.
@@ -486,8 +421,8 @@ check_leg_environment() {  # check_leg_environment <leg>  ->  $REPLY (a one-line
   elif [[ "$leg" != band_witness ]]; then
     ENVIRONMENT_FAULTS+=("$leg does not carry $WITNESS_VARIABLE")
   fi
-  REPLY=$(printf 'ENVIRONMENT %-26s band_witness=%s  probe_variables=%d/%d  scrubbed_absent=%d/%d  dispatch=%s' \
-          "$leg" "$witness" "$probes" "${#PROBE_VARIABLES}" "$scrubbed" "$must_scrub" "$dispatch")
+  REPLY=$(printf 'ENVIRONMENT %-26s band_witness=%s  scrubbed_absent=%d/%d  dispatch=%s' \
+          "$leg" "$witness" "$scrubbed" "$must_scrub" "$dispatch")
 }
 
 print_plan() {
@@ -499,10 +434,6 @@ print_plan() {
     phase=lane; (( ${SERIAL_LEGS[(Ie)$leg]} )) && phase=serial
     leg_state "$leg"; build_leg "$leg"
     print -r -- "LEG order=$order phase=$phase leg=$leg state=$REPLY measured_seconds=${MEASURED_SECONDS[$leg]}"
-    if [[ "$REPLY" == NO-PROBE-ROOT ]]; then
-      print -r -- "  not launched: no probe root holding special_kz.json was given, so there is no command to show"
-      continue
-    fi
     [[ "$REPLY" == SKIP ]] && print -r -- "  held      gate.json, finalized by the runner, released=$LEG_RELEASED"
     [[ "$REPLY" == REFUSE ]] && print -r -- "  refused   $LEG_REFUSAL"
     print -r -- "  out       $RUN/$leg"
@@ -520,7 +451,6 @@ print_plan() {
 
 environment_reports=()
 for leg in $ALL_LEGS; do
-  [[ "$leg" == shipped_expansion_probe && $PROBE_AVAILABLE -eq 0 ]] && continue
   check_leg_environment "$leg"
   environment_reports+=("$REPLY")
 done
@@ -553,7 +483,6 @@ if (( DRY_RUN )); then
     leg_state "$leg"
     case "$REPLY" in
       REFUSE)        print -r -- "WOULD REFUSE $leg: $LEG_REFUSAL"; dry_fail=1 ;;
-      NO-PROBE-ROOT) print -r -- "WOULD SKIP $leg: no probe root given; bloch_2d and folded_complex_2d cannot dispatch"; dry_fail=1 ;;
       SKIP)          [[ "$LEG_RELEASED" == True ]] || { print -r -- "WOULD FAIL on $leg: the gate.json it holds is released=$LEG_RELEASED"; dry_fail=1 } ;;
     esac
   done
@@ -656,9 +585,6 @@ admit_leg() {  # admit_leg <leg> -> 0 when the leg may be launched; records why 
   local leg="$1"
   leg_state "$leg"
   case "$REPLY" in
-    NO-PROBE-ROOT)
-      record "$(printf '%-26s SKIP   no probe root given; bloch_2d and folded_complex_2d cannot dispatch' "$leg")"
-      LEG_OUTCOME[$leg]="skipped(no probe root)"; fail=1; return 1 ;;
     SKIP)
       record "$(printf '%-26s SKIP   already holds a finalized gate.json  released=%s' "$leg" "$LEG_RELEASED")"
       LEG_OUTCOME[$leg]="skipped(released=$LEG_RELEASED)"
@@ -676,9 +602,6 @@ admit_leg() {  # admit_leg <leg> -> 0 when the leg may be launched; records why 
   if ! mkdir "$RUN/$leg" 2> /dev/null; then
     record "$(printf '%-26s REFUSED  %s could not be created exclusively' "$leg" "$RUN/$leg")"
     LEG_OUTCOME[$leg]=refused; fail=1; return 1
-  fi
-  if [[ "$leg" == shipped_expansion_probe && -z "$COMPLEX_PROBE_PATH" ]]; then
-    record "$(printf '%-26s NOTE   no base complex probe given; bloch_2d skips by name' "$leg")"
   fi
   record "$(printf '%-26s START  %s' "$leg" "$(utc)")"
   return 0

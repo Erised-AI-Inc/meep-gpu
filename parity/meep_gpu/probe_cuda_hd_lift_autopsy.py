@@ -149,8 +149,11 @@ def run(driver: Any, steps: int) -> Dict[str, Any]:
 
     singles_shim: Optional[Any] = None
     try:
+        # The driver's own chunk record, the one the weld binds (the gate's lift does
+        # the same; a lifted row's division is MEEP's, not the one-rank one).
         singles = gate._certified_single_launchers(  # noqa: SLF001
-            driver.fields, driver.grid, driver.pml, float(driver.grid.dt / driver.grid.dx))
+            driver.fields, driver.grid, driver.pml, float(driver.grid.dt / driver.grid.dx),
+            record=gate.driver_chunk_record(driver))
         singles_shim = gate.Shim({"update_H": singles["update_H"],
                                   "step_D": singles["step_D"]})
     except Exception as error:  # noqa: BLE001

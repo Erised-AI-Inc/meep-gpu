@@ -41,7 +41,6 @@ import pytest
 from meep_gpu.triton_kernels import launch as launch_module
 from meep_gpu.test_triton_planner_composition import (
     NamedAsCupy,
-    _sweep_probe,
     absorber_free_dispersive,
     cart,
     fold,
@@ -49,10 +48,6 @@ from meep_gpu.test_triton_planner_composition import (
     nonlinear,
     with_real_pole,
 )
-
-# Every probe record built here is stamped 'keep'; the complex families' policy
-# clause fails closed when the run policy can be neither read nor declared.
-pytestmark = pytest.mark.usefixtures("run_policy_declared_keep")
 
 
 def family(name):
@@ -112,7 +107,7 @@ def plan_for(build, monkeypatch, **kwargs):
     install_sentinel_builders(monkeypatch)
     fields, pml = build()
     fields.grid.xp = NamedAsCupy(numpy)
-    return launch_module.plan_step(fields, pml, probe=_sweep_probe(), **kwargs)
+    return launch_module.plan_step(fields, pml, **kwargs)
 
 
 def ambiguous_slots(plan):
@@ -219,24 +214,23 @@ def test_the_offdiagonal_family_admits_three_substeps_and_refuses_update_E():
 
     fields, pml = folded_complex_offdiag()
     fields.grid.xp = NamedAsCupy(numpy)
-    probe = _sweep_probe()
 
     for sub_step in ("step_B", "step_D"):
         verdict = folded_complex.folded_complex_offdiag_pml_curl_coverage(
-            fields, pml, sub_step, probe=probe)
+            fields, pml, sub_step)
         assert verdict.covered, (sub_step, verdict.reasons)
     admitted = folded_complex.folded_complex_offdiag_constitutive_coverage(
-        fields, pml, "H", probe=probe)
+        fields, pml, "H")
     assert admitted.covered, admitted.reasons
 
     refused = folded_complex.folded_complex_offdiag_constitutive_coverage(
-        fields, pml, "E", probe=probe)
+        fields, pml, "E")
     assert not refused.covered
     assert any("25041/110592" in reason for reason in refused.reasons), (
         "the update_E refusal must carry the measurement that licenses it, not "
         "an analogy")
     assert folded_complex.plan_folded_complex_offdiag_constitutive(
-        fields, pml, "E", probe=probe) is None
+        fields, pml, "E") is None
 
 
 def test_update_E_on_that_grid_selects_the_later_complex_row_product(monkeypatch):
@@ -301,13 +295,12 @@ def test_the_incumbent_clause_is_still_in_force_on_all_four_substeps():
 
     fields, pml = folded_complex_offdiag()
     fields.grid.xp = NamedAsCupy(numpy)
-    probe = _sweep_probe()
 
     verdicts = [folded_complex.folded_complex_composition_curl_coverage(
-                    fields, pml, name, probe=probe) for name in
+                    fields, pml, name) for name in
                 ("step_B", "step_D")]
     verdicts += [folded_complex.folded_complex_constitutive_coverage(
-                     fields, pml, side, probe=probe) for side in ("H", "E")]
+                     fields, pml, side) for side in ("H", "E")]
     for verdict in verdicts:
         assert not verdict.covered
         assert any("off-diagonal chi1inv row is installed" in reason
@@ -495,7 +488,7 @@ def test_the_absorber_free_run_reports_both_families_when_neither_admits(
         monkeypatch.setattr(launch_module, builder, lambda *a, **k: None,
                             raising=False)
     fields.grid.xp = NamedAsCupy(numpy)
-    plan = launch_module.plan_step(fields, pml, probe=_sweep_probe())
+    plan = launch_module.plan_step(fields, pml)
 
     assert "update_P" not in plan.selected
     joined = " | ".join(plan.reasons["update_P"])

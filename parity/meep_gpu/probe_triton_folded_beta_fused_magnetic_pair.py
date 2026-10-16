@@ -73,6 +73,8 @@ for _path in (HERE, API_ROOT):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import fold_pass_mutations as fold_passes  # noqa: E402
+
 PACKAGE_DIR = os.path.join(API_ROOT, "meep_gpu", "triton_kernels")
 PRODUCT_MODULE = "meep_gpu.triton_kernels.folded_beta_fused_magnetic_pair"
 KERNEL_FILE = os.path.join(PACKAGE_DIR, "folded_beta_fused_magnetic_pair.py")
@@ -82,11 +84,16 @@ KERNEL_NAME = "folded_beta_fused_curl_constitutive_B"
 #: cell has.
 BETA_CORPUS = 0.2
 
-BETA_INSERT = (
-    "if HAS_BETA:",
-    "curl0 = curl0 - (beta_plus * b)",
-    "curl1 = curl1 - (beta_minus * a)",
-)
+#: The flag that gates the beta pass. The pass itself is DERIVED from the shipped
+#: folded curl (``folded_complex.folded_beta_pml_curl_step``'s top-level ``if
+#: HAS_BETA:`` statement), never listed here: the transcription leg checks that this
+#: kernel splices that exact statement after its three curl forms
+#: (``fold_pass_mutations.body_and_insert``).
+BETA_FLAG = "HAS_BETA"
+
+#: Target 2's curl-stencil line, the last of the curl half's stencils: the previous
+#: placement of the beta term (inside the curl, before the forms) is planted after it.
+CURL_ANCHOR = "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)"
 
 #: The device cases — the electric twin's table, byte for byte: the same grids
 #: compile BOTH kernels' constexpr sets, and a difference between the two
@@ -122,8 +129,10 @@ CASES_BY_NAME: Dict[str, Tuple[Any, ...]] = {case[0]: case for case in CASES}
 DEFAULT_MUTATION_CASE = "two_folds_periodic_odd"
 
 MUTATION_CASE: Dict[str, str] = {
+    # the coefficient predicate differs from membership only on a unit-coefficient
+    # row inside a run: an unfolded x absorbing on both faces carries one
+    "b2_coefficient_predicate": "corpus_y_fold_periodic",
     "m_wall_clear_dropped": "y_fold_metallic_wall_x",
-    "m_beta_below_the_masks": "y_fold_metallic_wall_x",
     # Bx's near image is on the X axis, so the parity that must be ODD is the
     # X one — mixed_terminations folds x at -1.
     "m_near_parity_dropped": "mixed_terminations",
@@ -220,6 +229,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/special_kz.py",
         "meep_gpu/triton_kernels/symmetry.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/deposit_repair.py",
@@ -283,76 +293,83 @@ def shipped_source() -> str:
 # ---------------------------------------------------------------------------
 
 def transcription_leg() -> Dict[str, Any]:
-    """kernel - insert == folded_fused_curl_constitutive_B; insert == K3a's
-    delta; the insert sits in the array path's position; nothing invented; and
-    this is the MAGNETIC weld, not a copy of the electric twin."""
-    folded_magnetic_py = os.path.join(PACKAGE_DIR, "folded_fused_magnetic_pair.py")
+    """The claim this whole product rests on, made mechanical.
+
+    * the kernel minus its beta pass IS
+      ``folded_fused_magnetic_pair.folded_fused_curl_constitutive_B``, statement for
+      statement, in order;
+    * its pass IS ``folded_complex.folded_beta_pml_curl_step``'s, and that curl minus
+      the same pass IS ``symmetry.pml_curl_step_folded``;
+    * the pass follows the three curl forms and precedes the wall clear in the fused
+      body, and the stores in the shipped curl -- MEEP's beta pass after every
+      component's curl (step_db.cpp:161-175) -- checked POSITIONALLY;
+    * nothing in the body comes from no shipped source; and this is the
+      MAGNETIC weld, not a copy of the electric twin.
+    """
+    base_py = os.path.join(PACKAGE_DIR, "folded_fused_magnetic_pair.py")
     folded_complex_py = os.path.join(PACKAGE_DIR, "folded_complex.py")
     symmetry_py = os.path.join(PACKAGE_DIR, "symmetry.py")
     twin_py = os.path.join(PACKAGE_DIR, "folded_beta_fused_electric_pair.py")
 
     fused = body_statements(KERNEL_FILE, KERNEL_NAME)
-    base = body_statements(folded_magnetic_py, "folded_fused_curl_constitutive_B")
-    beta_curl = body_statements(folded_complex_py, "folded_beta_pml_curl_step")
+    body, insert = fold_passes.body_and_insert(KERNEL_FILE, KERNEL_NAME, BETA_FLAG)
+    base = body_statements(base_py, "folded_fused_curl_constitutive_B")
+    curl_body, curl_insert = fold_passes.body_and_insert(
+        folded_complex_py, "folded_beta_pml_curl_step", BETA_FLAG)
     plain_curl = body_statements(symmetry_py, "pml_curl_step_folded")
     twin = body_statements(twin_py, "folded_beta_fused_curl_constitutive_D")
 
+    def first_difference(left: List[str], right: List[str]) -> str:
+        index = next((i for i, (a, b) in enumerate(zip(left, right)) if a != b),
+                     min(len(left), len(right)))
+        return (f"first difference at statement {index}: "
+                f"{left[index:index + 1]} vs {right[index:index + 1]}")
+
     findings: List[str] = []
-    without_beta = [line for line in fused if line not in BETA_INSERT]
-    if without_beta != base:
-        index = next((i for i, (a, b) in enumerate(zip(without_beta, base))
-                      if a != b), min(len(without_beta), len(base)))
-        findings.append(
-            f"minus the beta insert this is NOT folded_fused_curl_constitutive_B; "
-            f"first difference at statement {index}: "
-            f"{without_beta[index:index + 1]} vs {base[index:index + 1]}")
+    if not insert:
+        findings.append("the kernel carries no top-level `if HAS_BETA:` pass")
+    if body != base:
+        findings.append("minus its beta pass this is NOT "
+                        "folded_fused_curl_constitutive_B; "
+                        + first_difference(body, base))
+    if insert != curl_insert:
+        findings.append("the beta pass is NOT folded_beta_pml_curl_step's; "
+                        + first_difference(insert, curl_insert))
+    if curl_body != plain_curl:
+        findings.append("folded_beta_pml_curl_step minus its pass is NOT "
+                        "pml_curl_step_folded; " + first_difference(curl_body, plain_curl))
 
-    delta = [line for line in beta_curl if line not in plain_curl]
-    if delta != list(BETA_INSERT):
-        findings.append(f"folded_beta_pml_curl_step's own delta over "
-                        f"pml_curl_step_folded is {delta}, not {list(BETA_INSERT)}")
-
-    for label, body in (("fused", fused), ("shipped beta curl", beta_curl)):
+    # THE PLACEMENT, positionally, in the fused body AND in the shipped curl.
+    for label, path_, name, follower in (
+            ("fused", KERNEL_FILE, KERNEL_NAME, "if ZM_X:"),
+            ("shipped beta curl", folded_complex_py, "folded_beta_pml_curl_step",
+             "tl.store(u0 + idx, n0, mask=live & du0)")):
         try:
-            at = body.index("if HAS_BETA:")
-        except ValueError:
-            findings.append(f"{label}: the insert is absent")
+            before, after = fold_passes.insert_neighbours(path_, name, BETA_FLAG)
+        except StopIteration:
+            findings.append(f"{label}: the pass is absent")
             continue
-        if body[at - 1] != "curl2 = dtdx * ((b_x - b) + (a - a_y))":
-            findings.append(
-                f"{label}: the insert does not follow the third dtdx curl line "
-                f"(found {body[at - 1]!r} before it)")
-        if body[at + 3] != "at_x, at_y, at_z = i == 0, j == 0, k == 0":
-            findings.append(
-                f"{label}: the insert does not precede the cell-0 ownership mask "
-                f"(found {body[at + 3]!r} after it)")
+        if not before.startswith("v2, n2 = curl_form("):
+            findings.append(f"{label}: the pass does not follow the last curl form "
+                            f"(found {before!r} before it)")
+        if after != follower:
+            findings.append(f"{label}: the pass does not precede {follower!r} "
+                            f"(found {after!r} after it)")
 
     invented = [line for line in fused
-                if line not in set(base) | set(beta_curl)]
+                if line not in set(base) | set(curl_body) | set(curl_insert)]
     if invented:
-        findings.append(f"statements that appear in NEITHER shipped body: {invented}")
+        findings.append(f"statements that appear in NO shipped body: {invented}")
 
     if fused == twin:
-        findings.append("this kernel is byte-identical to the ELECTRIC twin")
-    ours, theirs = set(fused), set(twin)
-    # The B side's constitutive source is B itself; the E side multiplies by
-    # inverse epsilon. And the B family's near fill uses the MOVED destination
-    # coefficient index (kp_d0 at the origin), which the D family does not.
-    if "src0 = v0" not in ours:
-        findings.append("the magnetic constitutive source `src0 = v0` is missing")
-    if any("ie0" in line for line in fused):
-        findings.append("the MAGNETIC weld reads an inverse-epsilon volume")
-    if not any("kp_d0" in line for line in fused):
-        findings.append("the near carry's moved destination coefficient (kp_d0) "
-                        "is missing")
-    if any("kp_d0" in line for line in twin):
-        findings.append("the ELECTRIC twin carries kp_d0; the comparison is not "
-                        "what it says")
+        findings.append("this kernel is byte-identical to the ELECTRIC twin; the "
+                        "B seam has a different wall clear, no inv_eps multiply "
+                        "and a different fill geometry")
 
     return {"leg": "transcription", "device": False,
             "statements_in_the_product": len(fused),
             "statements_in_the_base": len(base),
-            "beta_insert_measured": delta,
+            "beta_insert_measured": insert,
             "findings": findings, "passed": not findings}
 
 
@@ -925,7 +942,7 @@ def _swapped_coefficients(driver, plan, group: str):
 
 
 def _swap_beta_words(plan):
-    plan.beta_plus, plan.beta_minus = plan.beta_minus, plan.beta_plus
+    plan.beta_words = (plan.beta_words[1], plan.beta_words[0])
     return plan
 
 
@@ -996,7 +1013,7 @@ def run_leg(cp, name: str, cell, boundaries, mirrors, steps: int, product,
         row["plan"] = repr(plan)
         row["plan_replaces"] = list(plan.replaces)
         row["zero_metal_flags"] = list(plan.zero_metal)
-        row["beta_words"] = [plan.beta_plus, plan.beta_minus, plan.has_beta]
+        row["beta_words"] = [*plan.beta_words, plan.has_beta]
         row["near"] = [bool(value) for value in plan.near]
         row["far"] = [bool(value) for value in plan.far]
         row["reflect_rows"] = list(plan.reflect)
@@ -1226,12 +1243,19 @@ def reduction_leg(cp, product, cell, boundaries, mirrors, steps: int,
         codes, reasons = folded_axis_kinds(grid, pml)
         if codes is None:
             raise AssertionError(f"folded_axis_kinds refused: {reasons}")
+        from gate_chunk_records import layer_record  # noqa: PLC0415
+
         shipped_plan = (folded_fused_magnetic_pair
                         .plan_folded_fused_magnetic_pair_from_arrays(
                             arrays, curl_flat, constitutive_flat, codes,
                             zero_metal_axes(grid), product.mirror_phases(grid),
                             grid.dt / grid.dx, num_warps=1,
-                            reflect=_far_reflect_rows(grid) or (None, None, None)))
+                            reflect=_far_reflect_rows(grid) or (None, None, None),
+                            chunk_bounds=layer_record(grid, pml)))
+        # MEEP'S START OF H, as the product's plan carries it (h_state is the
+        # driver's Fields): the from-arrays route builds a plan that has already
+        # started.
+        shipped_plan._h_state = fields  # noqa: SLF001 - the harness owns the route
 
         roles = {id(reference.fields): "array", id(shipped.fields): "shipped",
                  id(reduced.fields): "reduced"}
@@ -1303,7 +1327,8 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant; ``_carry_ghost`` is imported the way the
     shipped module imports it, so the mutant can call it."""
     header = ("import triton\nimport triton.language as tl\n"
-              "from meep_gpu.triton_kernels.symmetry import (\n"
+              + fold_passes.MUTANT_IMPORTS
+              + "from meep_gpu.triton_kernels.symmetry import (\n"
               "    CODE_MIRROR_METALLIC, CODE_MIRROR_PERIODIC, CODE_PERIODIC)\n"
               "from meep_gpu.triton_kernels.folded_fused_magnetic_pair import "
               "_carry_ghost\n"
@@ -1356,157 +1381,136 @@ def _replace_all(source: str, before: str, after: str) -> Tuple[str, int]:
     return source.replace(before, after), hits
 
 
+#: What each case's grid carries, in ``fold_pass_mutations.NEEDS`` words. Every case
+#: folds at least one axis (a MIRROR boundary masks cell 0 as a wall does, so every
+#: case carries "wall") and absorbs on every folded axis's high face and both faces of
+#: an unfolded one (``DEFAULT_OPTIONS`` pml = 4), so every case carries a layer; the
+#: folded PERIODIC ones carry the top-plane mask.
+CASE_CARRIES: Dict[str, Tuple[str, ...]] = {
+    "corpus_y_fold_periodic": ("wall", "layer", "mirror_periodic"),
+    "odd_y_fold_periodic": ("wall", "layer", "mirror_periodic"),
+    "y_fold_metallic_wall_x": ("wall", "layer"),
+    "two_folds_periodic_odd": ("wall", "layer", "mirror_periodic"),
+    "mixed_terminations": ("wall", "layer", "mirror_periodic"),
+    "corpus_single_launch": ("wall", "layer", "mirror_periodic"),
+}
+
+#: The beta pass's own mutations and the root forms' (KERNELS.md 7.1's inversions and
+#: 7.2's chunk-form battery): ``fold_pass_mutations``' shared spellings, the same text
+#: in every carrier of the pass.
+SHARED_MUTATIONS = (fold_passes.beta_mutations(False, True, CURL_ANCHOR)
+                    + fold_passes.form_mutations(True))
+_SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
+
+
 def mutation_table() -> Tuple[Tuple[str, str, str,
                                     Callable[[str], Tuple[str, int]]], ...]:
-    """(id, why it is armed, expectation, rewrite)."""
+    """(id, why it is armed, expectation, rewrite).
 
-    def m_beta_term_dropped(source: str) -> Tuple[str, int]:
-        return _replace_all(source, "if HAS_BETA:", "if HAS_BETA and False:")
+    The fold's own mutations (the near and far carries, their parities, ownership and
+    coefficients, the wall clear) come first; the beta pass's and the root forms'
+    follow, from :data:`SHARED_MUTATIONS`.
+    """
 
-    def m_beta_partners_swapped(source: str) -> Tuple[str, int]:
-        return _rewrite_block(
-            source,
-            ["curl0 = curl0 - (beta_plus * b)",
-             "curl1 = curl1 - (beta_minus * a)"],
-            ["curl0 = curl0 - (beta_plus * a)",
-             "curl1 = curl1 - (beta_minus * b)"])
-
-    def m_beta_sign_flipped(source: str) -> Tuple[str, int]:
-        return _replace_all(source, "curl0 = curl0 - (beta_plus * b)",
-                            "curl0 = curl0 + (beta_plus * b)")
-
-    def m_beta_scaled_by_dtdx(source: str) -> Tuple[str, int]:
-        return _replace_all(source, "curl1 = curl1 - (beta_minus * a)",
-                            "curl1 = curl1 - (dtdx * (beta_minus * a))")
-
-    def m_beta_below_the_masks(source: str) -> Tuple[str, int]:
-        """The insert moved BELOW both ownership masks; the B side's top-plane
-        block ends at the BCY -> curl2 pair."""
-        without, removed = _rewrite_block(source, list(BETA_INSERT), ["pass"])
-        if not removed:
-            return source, 0
-        return _rewrite_block(
-            without,
-            ["if BCY == MIRROR_PERIODIC:",
-             "curl2 = tl.where(last_y, 0.0, curl2)"],
-            ["if BCY == MIRROR_PERIODIC:",
-             "    curl2 = tl.where(last_y, 0.0, curl2)",
-             "if HAS_BETA:",
-             "    curl0 = curl0 - (beta_plus * b)",
-             "    curl1 = curl1 - (beta_minus * a)"])
+    near0 = ["_carry_ghost(f0, w0, h0, idx + dn_x, PHX * v0,",
+             "kp_d0, km_d0, dw_d0, start, own0 & near_i)"]
 
     def m_near_parity_dropped(source: str) -> Tuple[str, int]:
-        """``PHX * v0`` -> ``v0`` on Bx's near image."""
-        return _replace_all(source, "idx + dn_x, PHX * v0, kp_d0",
-                            "idx + dn_x, v0, kp_d0")
+        """Bx's near image (on x) loses its parity."""
+        return _replace_all(source, "_carry_ghost(f0, w0, h0, idx + dn_x, PHX * v0,",
+                            "_carry_ghost(f0, w0, h0, idx + dn_x, v0,")
 
     def m_far_parity_not_negated(source: str) -> Tuple[str, int]:
-        return _replace_all(
-            source,
-            "_carry_ghost(f0, w0, h0, idx + df_y, -PHY * v0, kp_0, km_0, own0 & far_j)",
-            "_carry_ghost(f0, w0, h0, idx + df_y, PHY * v0, kp_0, km_0, own0 & far_j)")
+        """The far image drops the minus MEEP's periodic fold carries."""
+        return _replace_all(source, "_carry_ghost(f0, w0, h0, idx + df_y, -PHY * v0,",
+                            "_carry_ghost(f0, w0, h0, idx + df_y, PHY * v0,")
 
     def m_far_carry_dropped(source: str) -> Tuple[str, int]:
-        return _rewrite_block(
+        """The far ghost plane is never imaged."""
+        return fold_passes.rewrite_block(
             source,
             ["if FAR_Y:",
-             "_carry_ghost(f0, w0, h0, idx + df_y, -PHY * v0, kp_0, km_0, own0 & far_j)"],
+             "_carry_ghost(f0, w0, h0, idx + df_y, -PHY * v0,",
+             "kp_0, km_0, dw0, start, own0 & far_j)"],
             ["if FAR_Y:", "    pass"])
 
     def m_near_carry_dropped(source: str) -> Tuple[str, int]:
-        return _rewrite_block(
-            source,
-            ["if NEAR_X:",
-             "_carry_ghost(f0, w0, h0, idx + dn_x, PHX * v0, kp_d0, km_d0, own0 & near_i)"],
-            ["if NEAR_X:", "    pass"])
+        """The near ghost plane is never imaged."""
+        return fold_passes.rewrite_block(source, ["if NEAR_X:"] + near0,
+                                         ["if NEAR_X:", "    pass"])
 
     def m_composite_parity_short(source: str) -> Tuple[str, int]:
-        """``-PHX * PHY * v0`` -> ``-PHX * v0``: the near/far corner loses one
-        plane's parity."""
-        return _replace_all(source, "idx + dn_x + df_y, -PHX * PHY * v0",
-                            "idx + dn_x + df_y, -PHX * v0")
+        """The near/far corner composes ONE parity instead of two."""
+        return _replace_all(source, "idx + dn_x + df_y, -PHX * PHY * v0,",
+                            "idx + dn_x + df_y, -PHX * v0,")
 
     def m_far_row_fixed_n_minus_2(source: str) -> Tuple[str, int]:
+        """The runtime reflect row replaced by the even-count guess ``n - 2``."""
         return _replace_all(source, "far_j = live & (j == ry)",
                             "far_j = live & (j == ny - 2)")
 
     def m_ownership_and_dropped(source: str) -> Tuple[str, int]:
-        return _replace_all(
-            source,
-            "_carry_ghost(f0, w0, h0, idx + dn_x, PHX * v0, kp_d0, km_d0, own0 & near_i)",
-            "_carry_ghost(f0, w0, h0, idx + dn_x, PHX * v0, kp_d0, km_d0, live & near_i)")
+        """The near carry images from a lane the ownership rule excludes.
+
+        AN EXPECTED NULL on every configuration beta admits, measured on the first
+        device run of the aligned kernel (2026-10-09, 4 of 4 steps identical) and
+        claimed per run through :func:`ownership_null_premise`. The stray write lands
+        on a cell its owning composite rewrites later in the same program, and
+        outside Bx's own layer, where it would leave a workspace word. The
+        defect is a race that the beta-less twin scores as caught on its 3-D row
+        (``m17_carry_masks_not_anded_with_ownership``). Beta admits no 3-D grid,
+        and the transcription leg proves that this kernel's ownership text is
+        that twin's."""
+        return fold_passes.rewrite_block(
+            source, near0,
+            [near0[0], "             kp_d0, km_d0, dw_d0, start, live & near_i)"])
 
     def m_near_coefficient_not_moved(source: str) -> Tuple[str, int]:
-        """The near image billed at the SOURCE row's coefficients instead of
-        the destination's origin pair — the moved index is the B family's own
-        measured rule.
+        """The near image billed at the source row's coefficients instead of the
+        destination's origin pair.
 
-        AN EXPECTED NULL, and the first device run is what measured it
-        (2026-09-01, the GPU host GPU 3): the rewrite exchanges ``kp0[0]`` for
-        ``kp0[2]`` on the INTEGER-lattice H coefficients, and a folded axis
-        absorbs on its HIGH face only, so rows 0..2 sit outside every
-        admissible absorber and the two words are byte-equal on every
-        configuration this predicate can admit. The sibling
-        ``folded_fused_magnetic_pair`` gate records its M1 the same way. The
-        premise is MEASURED per run (``null_premise`` on the row) rather than
-        asserted, and ``m_far_coefficient_rebilled_at_origin`` below is the
-        CATCHABLE mutation of the same billing seam.
-        """
-        return _replace_all(
-            source,
-            "_carry_ghost(f0, w0, h0, idx + dn_x, PHX * v0, kp_d0, km_d0, own0 & near_i)",
-            "_carry_ghost(f0, w0, h0, idx + dn_x, PHX * v0, kp_0, km_0, own0 & near_i)")
+        AN EXPECTED NULL, measured on the first device run (2026-09-01): the rewrite
+        exchanges ``kp0[0]`` for ``kp0[2]`` on the INTEGER-lattice H coefficients,
+        and a folded axis absorbs on its HIGH face only, so rows 0..2 sit outside
+        every admissible absorber and the two words are byte-equal on every
+        configuration this predicate can admit. The premise is MEASURED per run
+        (``null_premise`` on the row); ``m_far_coefficient_rebilled_at_origin`` is the
+        catchable mutation of the same billing seam."""
+        return fold_passes.rewrite_block(
+            source, near0,
+            [near0[0], "             kp_0, km_0, dw_d0, start, own0 & near_i)"])
 
     def m_far_coefficient_rebilled_at_origin(source: str) -> Tuple[str, int]:
-        """By's far-on-x image billed at the ORIGIN pair instead of its own
-        row's — the catchable inverse of the null above: the destination of the
-        far-on-x image keeps the lane's own j, whose ``kp1[j]`` differs from
-        ``kp1[0]`` wherever j is inside the y absorber."""
-        return _replace_all(
+        """By's far-on-x image billed at the origin coefficient pair instead of its
+        own row's: the catchable inverse of the null above."""
+        return fold_passes.rewrite_block(
             source,
-            "_carry_ghost(f1, w1, h1, idx + df_x, -PHX * v1, kp_1, km_1, own1 & far_i)",
-            "_carry_ghost(f1, w1, h1, idx + df_x, -PHX * v1, kp_d1, km_d1, own1 & far_i)")
+            ["_carry_ghost(f1, w1, h1, idx + df_x, -PHX * v1,",
+             "kp_1, km_1, dw1, start, own1 & far_i)"],
+            ["_carry_ghost(f1, w1, h1, idx + df_x, -PHX * v1,",
+             "             kp_d1, km_d1, dw1, start, own1 & far_i)"])
 
     def m_wall_clear_dropped(source: str) -> Tuple[str, int]:
-        return _rewrite_block(
-            source,
-            ["if ZM_X:", "v0 = tl.where(at_x, 0.0, v0)"],
+        """zero_metal_B's x-wall row is never applied."""
+        return fold_passes.rewrite_block(
+            source, ["if ZM_X:", "v0 = tl.where(at_x, 0.0, v0)"],
             ["if ZM_X:", "    pass"])
 
     return (
-        ("m_beta_term_dropped",
-         "no beta term at all — the plain folded magnetic pair on a beta run",
-         "caught", m_beta_term_dropped),
         ("m_far_coefficient_rebilled_at_origin",
          "By's far-on-x image billed at the origin coefficient pair instead of "
          "its own row's; kp1[j] differs from kp1[0] wherever j is inside the y "
          "absorber",
          "caught", m_far_coefficient_rebilled_at_origin),
-        ("m_beta_partners_swapped",
-         "each beta target takes the OTHER source's centre value",
-         "caught", m_beta_partners_swapped),
-        ("m_beta_sign_flipped",
-         "curl + (c * g) instead of curl - (c * g)",
-         "caught", m_beta_sign_flipped),
-        ("m_beta_scaled_by_dtdx",
-         "the beta term multiplied by dtdx; it is an analytic derivative and "
-         "is not",
-         "caught", m_beta_scaled_by_dtdx),
-        ("m_beta_below_the_masks",
-         "the insert moved below BOTH ownership masks",
-         "caught", m_beta_below_the_masks),
         ("m_near_parity_dropped",
-         "the near image loses its declared parity; visible only at an ODD "
-         "plane",
+         "the near image loses its declared parity; visible only at an ODD plane",
          "caught", m_near_parity_dropped),
         ("m_far_parity_not_negated",
          "the far image drops the minus MEEP's periodic fold carries",
          "caught", m_far_parity_not_negated),
-        ("m_far_carry_dropped",
-         "the far ghost plane is never imaged",
+        ("m_far_carry_dropped", "the far ghost plane is never imaged",
          "caught", m_far_carry_dropped),
-        ("m_near_carry_dropped",
-         "the near ghost plane is never imaged",
+        ("m_near_carry_dropped", "the near ghost plane is never imaged",
          "caught", m_near_carry_dropped),
         ("m_composite_parity_short",
          "the near/far corner composes ONE parity instead of two",
@@ -1515,20 +1519,23 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
          "the reflect row baked as n - 2, a whole cell wrong at an odd count",
          "caught", m_far_row_fixed_n_minus_2),
         ("m_ownership_and_dropped",
-         "the near carry images from a lane the ownership rule excludes",
-         "caught", m_ownership_and_dropped),
+         "the near carry images from a lane the ownership rule excludes -- an "
+         "EXPECTED NULL on the 2-D grids beta admits: the stray write lands on "
+         "the cell its owning composite rewrites later in the same program, "
+         "outside Bx's own layer, so no word survives (measured per run as "
+         "null_premise); the beta-less twin's 3-D row scores the race caught",
+         "null", m_ownership_and_dropped),
         ("m_near_coefficient_not_moved",
          "the near image billed at the source row's coefficients instead of "
-         "the destination's origin pair — an EXPECTED NULL: the integer-lattice "
+         "the destination's origin pair -- an EXPECTED NULL: the integer-lattice "
          "H coefficients are byte-equal at rows 0 and 2 on every admissible "
          "folded configuration (a folded axis absorbs on its HIGH face only), "
          "measured per run as null_premise; the far-side rebilling above is "
          "the catchable mutation of the same seam",
          "null", m_near_coefficient_not_moved),
-        ("m_wall_clear_dropped",
-         "zero_metal_B's x-wall row is never applied",
+        ("m_wall_clear_dropped", "zero_metal_B's x-wall row is never applied",
          "caught", m_wall_clear_dropped),
-    )
+    ) + _SHARED_ROWS
 
 
 def mutation_case_for(name: str) -> Tuple[str, Tuple[Any, ...]]:
@@ -1580,12 +1587,65 @@ def mutation_case_for(name: str) -> Tuple[str, Tuple[Any, ...]]:
             raise AssertionError(
                 f"{name} is scored on {case_name}, which does not fold x; "
                 f"Bx's near block never executes")
-    if name in ("m_wall_clear_dropped", "m_beta_below_the_masks"):
+    if name in ("m_wall_clear_dropped",):
         if not constexprs["ZM"][0]:
             raise AssertionError(
                 f"{name} is scored on {case_name}, whose x axis carries no "
                 f"wall; the rewritten rows never execute")
+    fold_passes.check_needs(name, MUTATION_NEEDS.get(name, ()), CASE_CARRIES[case_name],
+                            case_name)
     return case_name, case
+
+
+def ownership_null_premise(case) -> Dict[str, Any]:
+    """Why dropping ``own0`` from Bx's near-x carry leaves no word, MEASURED on the
+    scored case's own host objects.
+
+    The lanes the drop admits are the near-x sources the far-y rule excludes,
+    ``(2, ny - 1, k)``. Each writes ``(0, ny - 1, k)``, the cell that the near+far
+    composite from ``(2, ry, k)`` owns and writes later in the body. Three facts make
+    that write leave nothing, and each is measured here:
+
+    * ``stray_lanes``: the rewrite reaches at least one lane;
+    * ``stray_and_owner_in_one_program``: each stray lane and its destination's owner
+      share one program, which :func:`run_leg` launches on one warp
+      (``num_warps=1``), so the owner's store follows the stray one in statement
+      order;
+    * ``destination_in_own_layer``: whether x row 0 carries Bx's own (dsigw) layer on
+      the integer lattice. That is the one place a stray write would survive, in the
+      workspace ``f_w_Hx`` that the owner reads as ``prev``. A folded axis absorbs on
+      its high face only.
+    """
+    from gate_chunk_records import layer_record  # noqa: PLC0415
+    from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
+    from meep_gpu.triton_kernels.kernels import DEFAULT_BLOCK  # noqa: PLC0415
+    from meep_gpu.triton_kernels.symmetry import _far_reflect_rows  # noqa: PLC0415
+
+    constexprs = case_constexprs(case)
+    nx, ny, nz = constexprs["shape"]
+    driver = build_grid(case[1], case[2], case[3], case[5], prefer_gpu=False)
+    try:
+        record = np.asarray(layer_record(driver.fields.grid, driver.pml)).reshape(-1)
+        reflect = _far_reflect_rows(driver.fields.grid) or (None, None, None)
+    finally:
+        driver.close()
+    stray: List[Tuple[int, int, int]] = []
+    owner: List[Tuple[int, int, int]] = []
+    if constexprs["NEAR"][0] and constexprs["FAR"][1] and reflect[1] is not None:
+        stray = [(2, ny - 1, k) for k in range(nz)]
+        owner = [(2, int(reflect[1]), k) for k in range(nz)]
+
+    def program(cell: Tuple[int, int, int]) -> int:
+        return ((cell[0] * ny + cell[1]) * nz + cell[2]) // DEFAULT_BLOCK
+
+    return {
+        "stray_lanes": len(stray),
+        "stray_and_owner_in_one_program": bool(stray) and all(
+            program(left) == program(right) for left, right in zip(stray, owner)),
+        "num_warps": 1,
+        "destination_in_own_layer": bool(
+            membership_from_record(record, False, 0, nx)[0]),
+    }
 
 
 def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, Any]]:
@@ -1622,6 +1682,19 @@ def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, An
                         f"{row['null_premise']} — the coefficient words the "
                         "rewrite exchanges DIFFER, so this mutation must be "
                         "re-declared caught, not waved through as a null"))
+                    rows.append(row)
+                    continue
+            if name == "m_ownership_and_dropped":
+                premise = ownership_null_premise(case)
+                row["null_premise"] = premise
+                if not (premise["stray_lanes"]
+                        and premise["stray_and_owner_in_one_program"]
+                        and not premise["destination_in_own_layer"]):
+                    row.update(caught=False, error=(
+                        "the null's premise is violated on the scored case: "
+                        f"{premise} -- a stray write could survive here, so this "
+                        "mutation must be re-declared caught, not waved through as "
+                        "a null"))
                     rows.append(row)
                     continue
             kernel = compile_mutant(mutated, f"{KERNEL_NAME}_m{index}")

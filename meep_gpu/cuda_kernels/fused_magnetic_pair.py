@@ -327,7 +327,7 @@ try:
     from . import in_seam_passes
 except ImportError:  # a host with no CuPy: only the emitter is unavailable
     constitutive_kernels = step_curl_kernels = in_seam_passes = None
-from . import own_cell_hoist
+from . import bounds_block, own_cell_hoist
 
 # The predicates and the compile memo are CuPy-free siblings, imported here with
 # the same by-path fallback every module in this directory carries, so a probe
@@ -469,24 +469,24 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "__device__ __forceinline__ void pml_apply(",
      "became": "__device__ __forceinline__ float pml_apply_reg(",
      "why": "the constitutive half consumes the value in a register; the helper "
-            "names and returns the expression it already computed. The "
-            "expression, its parenthesisation and the store to f[idx] are "
-            "unchanged, so the global state it leaves is the certified one."},
-    {"line": "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;",
-     "became": "    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
-               "    f[idx] = value;\n    return value;",
-     "why": "same right-hand side, same tree, same store; the result is "
-            "additionally named so it can be returned. A float32 stored to "
-            "global and reloaded is the identity on the bits, measured on this "
-            "track as reload_fu_from_memory (60/60 identical)."},
+            "names and returns the expression it already computed. Both per-chunk "
+            "forms, their parenthesisation and the store to f[idx] are unchanged, "
+            "so the global state it leaves is the certified one."},
+    {"line": "    f[idx] = value;",
+     "became": "    f[idx] = value;\n    return value;",
+     "why": "same value, same store; the result is additionally returned. A "
+            "float32 stored to global and reloaded is the identity on the bits, "
+            "measured on this track as reload_fu_from_memory (60/60 identical)."},
     {"line": "        pml_apply(Bx, fu_Bx, idx, curl, ...);",
      "became": "        b_x = pml_apply_reg(Bx, fu_Bx, idx, curl, ...);",
      "why": "capture the register. Three lines, one per component; the argument "
-            "lists are untouched. Three 'float b_* = 0.0f;' declarations are "
-            "hoisted above the certified braced blocks because a value declared "
-            "inside one does not outlive it."},
-    {"line": "    constitutive_apply(Hx, f_w_Hx, idx, Bx[idx], kps_x[i], kms_x[i]);",
-     "became": "    constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i]);",
+            "lists, the membership flag included, are untouched. Three "
+            "'float b_* = 0.0f;' declarations are hoisted above the certified "
+            "braced blocks because a value declared inside one does not outlive it."},
+    {"line": "    constitutive_apply(Hx, f_w_Hx, idx, Bx[idx], kps_x[i], kms_x[i], "
+             "in_i_x);",
+     "became": "    constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i], "
+               "in_i_x);",
      "why": "THE SEAM (Bx[idx] -> b_x: the certified H kernel opens each "
             "component with a reload of the flux density the curl just stored), "
             "plus the sub-lattice rename. Both halves ship a vector spelled "
@@ -503,70 +503,103 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "same components (the B diagonal), same +0.0f. The register is "
             "cleared beside the store so update_H reads the wiped value."},
     {"line": "__device__ __forceinline__ float pml_apply_reg(\n"
-             "    ... float kms_u, float sinv_u\n)",
+             "    ... float kms_u, float sinv_u, int dsigu\n)\n"
+             "    ...\n    float fcur = f[idx];",
      "became": "__device__ __forceinline__ float pml_apply_reg(\n"
-               "    ... float kms_u, float sinv_u, int owned\n)\n"
-               "    ...\n    if (!owned) return 0.0f;",
+               "    ... float kms_u, float sinv_u, int dsigu, int owned\n)\n"
+               "    ...\n    if (!owned) return 0.0f;\n    float fcur = f[idx];",
      "why": "THE OWNERSHIP INVERSION, half one. On a cell one of the two fills "
             "images, the SOURCE thread writes B -- so this thread must not READ "
             "f[idx] either, because that word is written by another block in this "
             "same launch and an ordinary CUDA launch has no grid-wide barrier at "
-            "which the load would be defined. The fu recurrence stays ABOVE the "
-            "guard: step_B writes fu at every cell and neither fill touches it "
-            "(stepping.py:1451 writes field, never fu_field). The expression, its "
-            "parenthesisation and the store below the guard are the certified "
-            "ones."},
-    {"line": "    constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i]);",
+            "which the load would be defined. The guard sits directly before the "
+            "one load of f (DESIGN.md D11). The fu stage stays ABOVE it: step_B "
+            "steps fu on every recurrence cell and neither fill touches it "
+            "(stepping.py writes field, never fu_field, in the two fills). Both "
+            "forms below the guard are the certified ones."},
+    {"line": "    constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i], "
+             "in_i_x);",
      "became": "    if (own_x) {\n"
                "        constitutive_apply(Hx, f_w_Hx, idx, b_x, ...);\n"
                "        if (near_x && i == 2) { ... }   // and six more\n"
                "    }",
      "why": "THE OWNERSHIP INVERSION, half two -- fill_symmetry_bc_B "
-            "(driver.py:3294) and fill_folded_far_ghosts_B (:3296), CARRIED. The "
-            "certified statement is UNCHANGED inside the brace. What is new is "
-            "that a thread standing on a cell a fill images does not run it at all "
-            "(that cell's H and f_w_H belong to its source thread), and that a "
-            "source thread runs it AGAIN at every ghost it owns, at the composed "
-            "parity and -- for a near image, which moves the very axis update_H "
-            "indexes -- at the DESTINATION's coefficient entry. The block list is "
-            "fill_carry_blocks(); the rule is carried_destinations()."},
+            "and fill_folded_far_ghosts_B, CARRIED. The certified statement is "
+            "UNCHANGED inside the brace. What is new is that a thread standing on a "
+            "cell a fill images does not run it at all (that cell's H and f_w_H "
+            "belong to its source thread), and that a source thread runs it AGAIN "
+            "at every ghost it owns, at the composed parity and -- for a near "
+            "image, which moves the very axis update_H indexes -- at the "
+            "DESTINATION's coefficient entry and the DESTINATION's membership row. "
+            "The block list is fill_carry_blocks(); the rule is "
+            "carried_destinations()."},
     {"line": "    int own_z = !(...);",
      "became": "    int own_z = !(...);\n"
-               "    float pre_w_x = own_x ? f_w_Hx[idx] : 0.0f;   // ... twelve lines",
+               "    float pre_w_x = own_x ? (in_i_x ? f_w_Hx[idx] : 0.0f) : 0.0f;   // ... twelve lines",
      "why": "THE OWN-CELL HOIST. Every word this thread reads at its own idx -- "
             "f_w_H*, H*, fu_B*, B* -- is issued before the kernel's first store, "
-            "behind the certified load's own guard (fu unguarded, the rest behind "
-            "own_*). No store in this thread reaches those words before the "
-            "certified load point, and a word another block writes in this launch "
-            "sits under own_* == 0, where the load is not issued. hoisted_loads()."},
+            "behind the certified load's own guard: fu behind the component's dsigu "
+            "flag, B behind own_*, f_w_H and H behind own_* and the dsigw flag (the "
+            "accumulation is the only form that reads them). No store in this thread "
+            "reaches those words before the certified load point, and a word another "
+            "block writes in this launch sits under own_* == 0, where the load is not "
+            "issued. hoisted_loads()."},
     {"line": "__device__ __forceinline__ float pml_apply_reg(\n    ...)",
      "became": "__device__ __forceinline__ float pml_apply_reg_pre(\n"
-               "    ..., int owned,\n    float fprev, float fcur\n)",
+               "    ..., int dsigu, int owned,\n    float fprev, float fcur\n)",
      "why": "DERIVED, not typed: pml_apply_reg_pre_source() rewrites the helper's "
             "two own-cell loads into parameters by anchored replacement and "
             "refuses unless its statements equal the certified helper's under "
-            "fprev -> fu[idx], fcur -> f[idx]. pml_apply_reg itself is RETIRED from "
-            "the prelude: no call is left, and a dead copy is where a first-site "
-            "mutation needle lands vacuously."},
+            "fprev -> (dsigu ? fu[idx] : 0.0f), fcur -> f[idx]. pml_apply_reg itself "
+            "is RETIRED from the prelude: no call is left, and a dead copy is where a "
+            "first-site mutation needle lands vacuously."},
     {"line": "(nothing: appended after _REAL_CONSTITUTIVE_PRELUDE)",
      "became": "__device__ __forceinline__ void constitutive_apply_pre(\n"
-               "    ..., float src,\n    float prev, float fcur, float kps, float kms\n)",
+               "    ..., float src,\n    float prev, float fcur, float kps, float kms, "
+               "int dsigw\n)",
      "why": "DERIVED from constitutive_kernels.constitutive_apply the same way "
-            "(prev -> fw[idx], fcur -> f[idx]). The certified helper stays, "
-            "untouched: the 21 ghost carries still call it at cells that are not "
-            "this thread's own."},
-    {"line": "        b_x = pml_apply_reg(Bx, fu_Bx, idx, curl, ..., own_x);",
-     "became": "        b_x = pml_apply_reg_pre(Bx, fu_Bx, idx, curl, ..., own_x, "
+            "(prev -> (dsigw ? fw[idx] : 0.0f), fcur -> f[idx]). The certified "
+            "helper stays, untouched: the 21 ghost carries still call it at cells "
+            "that are not this thread's own."},
+    {"line": "        b_x = pml_apply_reg(Bx, fu_Bx, idx, curl, ..., in_h_z, own_x);",
+     "became": "        b_x = pml_apply_reg_pre(Bx, fu_Bx, idx, curl, ..., in_h_z, own_x, "
                "pre_fu_x, pre_b_x);",
      "why": "the three own-cell curl calls take their preloaded words; the "
             "argument list is otherwise the certified one."},
-    {"line": "        constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i]);",
+    {"line": "        constitutive_apply(Hx, f_w_Hx, idx, b_x, kps_x[i], kms_int_x[i], "
+             "in_i_x);",
      "became": "        constitutive_apply_pre(Hx, f_w_Hx, idx, b_x, pre_w_x, pre_h_x, "
-               "kps_x[i], kms_int_x[i]);",
+               "kps_x[i], kms_int_x[i], in_i_x);",
      "why": "the three OWNED constitutive statements take their preloaded words, "
             "in the composer (hoisted_constitutive_body), NOT in "
             "certified_constitutive_body(), which special_kz_fused_magnetic_pair "
             "lifts verbatim. The 21 ghost-carry statements are untouched."},
+    # ----- THE PER-CHUNK FORMS, 0.10 (bit_parity_0_10 DESIGN.md D1, D5, D10, D11) ----
+    {"line": "    <step_B_pml_real's chunk-record block>\n"
+             "    <update_H_pml_real's chunk-record block>",
+     "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
+     "why": "ONE DECODE OF THE RECORD PER KERNEL (D10). The two lifted bodies each "
+            "carry the block their own entries need -- the half-integer lattice for "
+            "the B curl, the integer one for update_H -- and splicing both would "
+            "decode the record twice in two places. Both are removed by "
+            "bounds_block.strip_bounds_block, which refuses unless each is exactly "
+            "the emitter's block for its body, and ONE block over the union is "
+            "emitted directly after the decode, ahead of every line that reads a "
+            "flag. The names are tagged by lattice and never collide."},
+    {"line": "    constitutive_apply(Hx, f_w_Hx, gx_n_i, gx_n_v, kps_x[0], kms_int_x[0]);",
+     "became": "    int gx_n_w = (0 >= cbi_x_a0 && 0 < cbi_x_a1) || (...);\n"
+               "    constitutive_apply(Hx, f_w_Hx, gx_n_i, gx_n_v, kps_x[0], "
+               "kms_int_x[0], gx_n_w);",
+     "why": "THE CARRIED SELECT IS KEYED AT THE DESTINATION, on the same row its "
+            "coefficient entry is read at (KERNELS.md section 3.3): stored 0 on the "
+            "component's own axis for a near ghost, this thread's own row (in_i_x) "
+            "for a far one. update_H steps the ghost row with that row's own "
+            "membership, and the record carries whichever line the division gives "
+            "it: a lifted division's line copies the image row onto a ghost row "
+            "(chunk_map, D5), the one-rank line (chunk_map.one_rank_line, the "
+            "package's rule kept verbatim) does not. Keying at the destination is "
+            "the array path's answer under both; keying at the source agrees only "
+            "where the two rows' flags agree."},
 )
 
 __all__ = [
@@ -578,7 +611,7 @@ __all__ = [
     "fill_carry_blocks", "fused_magnetic_pair_fills",
     "fused_magnetic_pair_prelude", "fused_magnetic_pair_source",
     "fused_magnetic_pair_tables", "launch_fused_magnetic_pair",
-    "near_fill_axes", "ownership_declarations", "zero_metal_carry",
+    "near_fill_axes", "ownership_declarations", "start_of_h", "zero_metal_carry",
 ]
 
 
@@ -605,30 +638,34 @@ _PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
 _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
 #: The certified helper's parameter list, and the one parameter the carry adds.
 #: ``owned`` is 0 exactly on a cell one of the two fills images, and the array
-#: path's own behaviour is what licenses the skip: ``step_B`` writes ``fu``
-#: EVERYWHERE and the fills touch ``B`` only (stepping.py:1451 writes ``field``,
-#: never ``fu_field``), so the ``fu`` recurrence stays above the guard and the
-#: displacement the fill is about to overwrite is simply never formed.
+#: path's own behaviour is what licenses the skip: ``step_B`` steps ``fu`` on every
+#: recurrence cell and the fills touch ``B`` only (they write ``field``, never
+#: ``fu_field``), so the ``fu`` stage stays above the guard and the flux density the
+#: fill is about to overwrite is simply never formed.
 _PML_APPLY_PARAMETERS = (
-    "    float kms, float sinv, float kms_u, float sinv_u\n)")
+    "    float kms, float sinv, float kms_u, float sinv_u, int dsigu\n)")
 _PML_APPLY_PARAMETERS_OWNED = (
-    "    float kms, float sinv, float kms_u, float sinv_u, int owned\n)")
-_PML_APPLY_STORE = "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
-_PML_APPLY_STORE_REG = (
+    "    float kms, float sinv, float kms_u, float sinv_u, int dsigu, int owned\n)")
+#: The helper's one load of the field (DESIGN.md D11): the ownership guard goes
+#: directly in front of it, below the ``fu`` stage.
+_PML_APPLY_FCUR = "    float fcur = f[idx];\n"
+_PML_APPLY_FCUR_OWNED = (
     "    // THE OWNERSHIP GUARD, AND IT IS ABOUT MEMORY TRAFFIC RATHER THAN\n"
     "    // ABOUT A DEAD REGISTER. On a cell a fill images, the SOURCE thread\n"
     "    // writes f -- so this thread must not read f[idx] either: that word is\n"
     "    // written by another block in this same launch and an ordinary CUDA\n"
     "    // launch has no grid-wide barrier at which the load would be defined.\n"
-    "    // fu above is UNGUARDED: step_B writes it at every cell and neither\n"
-    "    // fill touches it (stepping.py:1451).\n"
+    "    // The fu stage above is NOT guarded on ownership: step_B steps fu on\n"
+    "    // every recurrence cell and neither fill touches it.\n"
     "    if (!owned) return 0.0f;\n"
-    "    // THE ONE EDIT TO THIS HELPER: the right-hand side, its\n"
-    "    // parenthesisation and the store are the certified ones; the value is\n"
-    "    // additionally NAMED so the constitutive half can read it from a\n"
-    "    // register instead of reloading it from global memory.\n"
-    "    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
+    + _PML_APPLY_FCUR)
+#: The helper's closing store, and the one edit that turns it into a value.
+_PML_APPLY_STORE = "    f[idx] = value;\n"
+_PML_APPLY_STORE_REG = (
     "    f[idx] = value;\n"
+    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // are the certified ones; the value is additionally RETURNED so the\n"
+    "    // constitutive half can read it from a register instead of reloading it.\n"
     "    return value;\n")
 
 #: The three component registers the seam carries, in x/y/z order.
@@ -794,7 +831,10 @@ extern "C" __global__ void fused_magnetic_pair_pml_real(
     // certified in_seam_passes kernels' own spelling of fields.mirror_parity.
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
-    float phase_x, float phase_y, float phase_z
+    float phase_x, float phase_y, float phase_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // which PML form, decoded once, after the index decode.
+    const int* __restrict__ cb
 ) {
 '''
 
@@ -877,6 +917,13 @@ def _hoist_statements(text: str, loads: Dict[str, str], what: str) -> List[str]:
         if bound:
             names[bound.group(1)] = bound.group(2)
             continue
+        # THE GUARDED LOAD (DESIGN.md D11): ``float fprev = dsigu ? fu[idx] : 0.0f;``
+        # binds the name to the guarded expression, so a hoisted helper is equal only
+        # when its caller is declared to preload the word under the same flag.
+        guarded = re.fullmatch(r"float (\w+) = (\w+) \? (\w+\[idx\]) : 0\.0f;", code)
+        if guarded:
+            names[guarded.group(1)] = f"({guarded.group(2)} ? {guarded.group(3)} : 0.0f)"
+            continue
         for name, load in names.items():
             code = re.sub(rf"\b{name}\b", load, code)
         out.append(code)
@@ -900,39 +947,77 @@ def _hoist_derive(helper: str, edits, loads: Dict[str, str], what: str) -> str:
     return derived
 
 
+#: The two helpers' own-cell load maps: each name the derivation removes, bound to the
+#: word the CALLER must preload for it (the guarded expression where the certified
+#: helper loads under its membership flag).
+_CONSTITUTIVE_LOADS: Dict[str, str] = {"prev": "(dsigw ? fw[idx] : 0.0f)", "fcur": "f[idx]"}
+_PML_APPLY_LOADS: Dict[str, str] = {"fprev": "(dsigu ? fu[idx] : 0.0f)", "fcur": "f[idx]"}
+
+
 def constitutive_apply_pre_source() -> str:
-    """``constitutive_kernels.constitutive_apply`` taking ``prev = fw[idx]`` and
-    ``fcur = f[idx]`` as arguments -- derived from the certified text."""
+    """``constitutive_kernels.constitutive_apply`` taking ``prev`` and ``fcur`` as
+    arguments -- derived from the certified text.
+
+    The derived helper equals the certified one when its caller preloads
+    ``prev = dsigw ? fw[idx] : 0.0f`` and ``fcur = f[idx]`` (the old field is read only
+    by the accumulation's arm, so a caller may load it under the same flag)."""
     helper = _hoist_function_text(
         constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE,
         "__device__ __forceinline__ void constitutive_apply(\n", "constitutive_apply")
     return _hoist_derive(helper, (
         ("void constitutive_apply(\n", "void constitutive_apply_pre(\n", "its signature"),
-        ("float src,\n    float kps, float kms\n)",
-         "float src,\n    float prev, float fcur, float kps, float kms\n)",
+        ("float src,\n    float kps, float kms, int dsigw\n)",
+         "float src,\n    float prev, float fcur, float kps, float kms, int dsigw\n)",
          "its parameter list"),
-        ("    float prev = fw[idx];\n", "", "its load of fw[idx]"),
-        ("    float a = f[idx] + kps * src;\n", "    float a = fcur + kps * src;\n",
+        ("    float prev = dsigw ? fw[idx] : 0.0f;\n", "", "its guarded load of fw[idx]"),
+        ("(f[idx] + ((kps * src) - (kms * prev)))", "(fcur + ((kps * src) - (kms * prev)))",
          "its load of f[idx]"),
-    ), {"prev": "fw[idx]", "fcur": "f[idx]"}, "constitutive_apply")
+    ), _CONSTITUTIVE_LOADS, "constitutive_apply")
 
 
 def pml_apply_reg_pre_source(prelude: str) -> str:
-    """The rewritten ``pml_apply_reg`` taking ``fprev = fu[idx]`` and ``fcur = f[idx]``
-    as arguments -- derived from the text :func:`fused_magnetic_pair_prelude` emits."""
+    """The rewritten ``pml_apply_reg`` taking ``fprev`` and ``fcur`` as arguments --
+    derived from the text :func:`fused_magnetic_pair_prelude` emits.
+
+    The derived helper equals the rewritten one when its caller preloads
+    ``fprev = dsigu ? fu[idx] : 0.0f`` and ``fcur = f[idx]``."""
     helper = _hoist_function_text(prelude, _PML_APPLY_SIGNATURE_REG, "pml_apply_reg")
     return _hoist_derive(helper, (
         (_PML_APPLY_SIGNATURE_REG,
          _PML_APPLY_SIGNATURE_REG.replace("pml_apply_reg(", "pml_apply_reg_pre("),
          "its signature"),
         (_PML_APPLY_PARAMETERS_OWNED,
-         "    float kms, float sinv, float kms_u, float sinv_u, int owned,\n"
+         "    float kms, float sinv, float kms_u, float sinv_u, int dsigu, int owned,\n"
          "    float fprev, float fcur\n)", "its parameter list"),
-        ("    float fprev = fu[idx];\n", "", "its load of fu[idx]"),
-        ("    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n",
-         "    float value = (((fcur * kms_u) + fu_new) - fprev) * sinv_u;\n",
-         "its load of f[idx]"),
-    ), {"fprev": "fu[idx]", "fcur": "f[idx]"}, "pml_apply_reg")
+        ("    float fprev = dsigu ? fu[idx] : 0.0f;\n", "", "its guarded load of fu[idx]"),
+        (_PML_APPLY_FCUR, "", "its load of f[idx]"),
+    ), _PML_APPLY_LOADS, "pml_apply_reg")
+
+
+def curl_flags() -> Tuple[str, ...]:
+    """The dsigu membership flag each B component's certified curl call passes, x/y/z.
+
+    Read off ``own_cell_hoist.KERNELS`` (the region plan's rule, the flags the root
+    kernel's calls pass) and checked against the certified curl body's own call lines,
+    so a hoisted ``fu`` load guarded on any other flag refuses here by name.
+    """
+    flags = tuple(own_cell_hoist.KERNELS["step_B_pml_real"][7])
+    if step_curl_kernels is not None:
+        body = step_curl_kernels._step_B_pml_real_kernel_code
+        for axis, flag in zip(_CARRIED, flags):
+            call = _line_starting(body, f"        pml_apply(B{axis}, fu_B{axis}, idx, ",
+                                  f"B{axis}'s certified pml_apply call")
+            if not call.endswith(f", {flag});"):
+                raise AssertionError(
+                    f"B{axis}'s certified pml_apply passes {call.rsplit(',', 1)[-1]!r} "
+                    f"last, not {flag}; the hoisted fu load would be guarded on a flag "
+                    f"the certified helper does not read")
+    return flags
+
+
+def constitutive_flags() -> Tuple[str, ...]:
+    """The dsigw membership flag each H component's certified statement passes, x/y/z."""
+    return tuple(own_cell_hoist.KERNELS["update_H_pml_real"][7])
 
 
 def hoisted_loads() -> str:
@@ -940,13 +1025,17 @@ def hoisted_loads() -> str:
     lines = [
         "    // --- the own-cell hoist: every word this thread reads at idx, issued",
         "    // before the kernel's first store, behind the certified load's guard",
-        "    // (fu unguarded; B, H and f_w_H behind own_*). ---",
+        "    // (fu behind its dsigu flag; B behind own_*; f_w_H and H behind own_*",
+        "    // and the dsigw flag, the one form that reads them). ---",
     ]
-    for axis in _CARRIED:
-        lines.append(f"    float pre_w_{axis} = own_{axis} ? f_w_H{axis}[idx] : 0.0f;")
-        lines.append(f"    float pre_h_{axis} = own_{axis} ? H{axis}[idx] : 0.0f;")
-    for axis in _CARRIED:
-        lines.append(f"    float pre_fu_{axis} = fu_B{axis}[idx];")
+    # NESTED, own_* outermost: the certified statement sits inside ``if (own_*)`` and
+    # loads under its dsigw flag there, so the hoisted load carries the same two
+    # conditions in the same order.
+    for axis, flag in zip(_CARRIED, constitutive_flags()):
+        lines.append(f"    float pre_w_{axis} = own_{axis} ? ({flag} ? f_w_H{axis}[idx] : 0.0f) : 0.0f;")
+        lines.append(f"    float pre_h_{axis} = own_{axis} ? ({flag} ? H{axis}[idx] : 0.0f) : 0.0f;")
+    for axis, flag in zip(_CARRIED, curl_flags()):
+        lines.append(f"    float pre_fu_{axis} = {flag} ? fu_B{axis}[idx] : 0.0f;")
         lines.append(f"    float pre_b_{axis} = own_{axis} ? B{axis}[idx] : 0.0f;")
     return "\n".join(lines) + "\n"
 
@@ -976,22 +1065,22 @@ def fused_magnetic_pair_prelude() -> str:
     """
     _certified_halves()
     prelude = step_curl_kernels._REAL_PML_PRELUDE
-    if _PML_APPLY_SIGNATURE not in prelude:
-        raise AssertionError(
-            "the certified curl prelude no longer declares pml_apply with the "
-            "signature this module rewrites")
-    if _PML_APPLY_STORE not in prelude:
-        raise AssertionError(
-            "the certified pml_apply no longer closes with the store this module "
-            "turns into a named value; the arithmetic may have moved")
-    if prelude.count(_PML_APPLY_PARAMETERS) != 1:
-        raise AssertionError(
-            f"the certified pml_apply's parameter list appears "
-            f"{prelude.count(_PML_APPLY_PARAMETERS)} times, not once; the "
-            f"ownership guard has no anchor to take its argument on")
+    for anchor, what in ((_PML_APPLY_SIGNATURE, "pml_apply's signature"),
+                         (_PML_APPLY_PARAMETERS, "pml_apply's parameter list (the "
+                                                 "ownership flag's anchor)"),
+                         (_PML_APPLY_FCUR, "pml_apply's one load of f (the ownership "
+                                           "guard's anchor)"),
+                         (_PML_APPLY_STORE, "pml_apply's closing store (the value's "
+                                            "anchor)")):
+        if prelude.count(anchor) != 1:
+            raise AssertionError(
+                f"the certified curl prelude carries {what} {prelude.count(anchor)} "
+                f"times, not once; the arithmetic may have moved and the rewrite has "
+                f"no anchor")
     prelude = prelude.replace(_PML_APPLY_SIGNATURE, _PML_APPLY_SIGNATURE_REG, 1)
     prelude = prelude.replace(_PML_APPLY_PARAMETERS,
                               _PML_APPLY_PARAMETERS_OWNED, 1)
+    prelude = prelude.replace(_PML_APPLY_FCUR, _PML_APPLY_FCUR_OWNED, 1)
     prelude = prelude.replace(_PML_APPLY_STORE, _PML_APPLY_STORE_REG, 1)
     # THE HOIST RETIRES pml_apply_reg: every own-cell call takes the derived
     # pml_apply_reg_pre, so the value-returning helper would be dead text -- and a
@@ -1009,6 +1098,29 @@ def fused_magnetic_pair_prelude() -> str:
             + hoisted)
 
 
+#: The chunk-record entries each lifted body decodes, as ``(entries, presence)``:
+#: ``step_B_pml_real`` reads the half-integer record along each B component's dsigu
+#: axis plus the partner-presence word, ``update_H_pml_real`` the integer record along
+#: each H component's own axis (``bounds_block.curl_entries`` /
+#: ``constitutive_entries``, the region plan's rule).
+CURL_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.curl_entries(_TARGETS)), (0, 1, 2))
+CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.constitutive_entries(("Hx", "Hy", "Hz"))), ())
+
+
+def union_bounds_block() -> str:
+    """The fused kernel's ONE chunk-record block: both bodies' entries, one decode.
+
+    Emitted directly after the index decode, ahead of the ownership flags and the
+    own-cell hoist, which read the membership flags. The names are tagged by lattice
+    (``cbh_*``/``in_h_*`` for the curl, ``cbi_*``/``in_i_*`` for update_H), so the
+    union never redeclares a name (DESIGN.md D10).
+    """
+    return bounds_block.bounds_block(CURL_BLOCK[0] + CONSTITUTIVE_BLOCK[0],
+                                     CURL_BLOCK[1] + CONSTITUTIVE_BLOCK[1])
+
+
 def certified_curl_body() -> str:
     """``step_B_pml_real``'s body, lifted, with the three registers captured.
 
@@ -1024,10 +1136,15 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "the certified curl body no longer decodes i on its own line; the "
             "carried registers have nowhere to be declared")
+    # ONE DECODE OF THE CHUNK RECORD (D10): the curl body's own block is removed and
+    # the union block, which also carries update_H's entries, takes its place.
+    body = bounds_block.strip_bounds_block(body, "_step_B_pml_real_kernel_code",
+                                           *CURL_BLOCK)
     head, tail = body.split(_DECODE_END, 1)
     body = "".join((
-        head, _DECODE_END,
-        "\n    // The three carried registers. Declared HERE because each\n"
+        head, _DECODE_END, "\n",
+        union_bounds_block(),
+        "    // The three carried registers. Declared HERE because each\n"
         "    // certified component below is a braced scope, and a value declared\n"
         "    // inside one does not outlive it.\n"
         "    float b_x = 0.0f;\n"
@@ -1288,12 +1405,20 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
                 f"(stepping._fill_symmetry_ghost_cells:1440-1447, "
                 f"_write_mirror_ghost:1450-1451)")
         coefficient = "0" if carries_near else _COORDINATE[target]
+        # THE MEMBERSHIP ROW IS THE COEFFICIENT'S ROW: stored 0 on the component's own
+        # axis for a near image, this thread's own row (its own flag) for a far one.
+        own_lattice, own_axis = CONSTITUTIVE_BLOCK[0][target]
+        membership = (bounds_block.membership_test(own_lattice, own_axis, "0")
+                      if carries_near else constitutive_flags()[target])
         lines.append(f"{indent}if ({' && '.join(guards)}) {{")
         lines.extend(f"{inner}// {text}" for text in described)
         lines.append(f"{inner}int {tag}_i = idx {' '.join(terms)};")
         lines.append(f"{inner}float {tag}_p = {' * '.join(weights)};")
         lines.append(f"{inner}float {tag}_v = {tag}_p * {register};")
         lines.append(f"{inner}{name}[{tag}_i] = {tag}_v;")
+        lines.append(f"{inner}// The destination's own membership row, read where its "
+                     f"coefficient entry is.")
+        lines.append(f"{inner}int {tag}_w = {membership};")
         if carries_near:
             lines.extend([
                 f"{inner}// The DESTINATION's own coefficient entry: stored index 0 "
@@ -1317,7 +1442,7 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
             f"{inner}constitutive_apply(H{_CARRIED[target]}, "
             f"f_w_H{_CARRIED[target]}, {tag}_i, {tag}_v, "
             f"kps_{_CARRIED[target]}[{coefficient}], "
-            f"kms_int_{_CARRIED[target]}[{coefficient}]);")
+            f"kms_int_{_CARRIED[target]}[{coefficient}], {tag}_w);")
         lines.append(f"{indent}}}")
     return lines
 
@@ -1345,6 +1470,10 @@ def certified_constitutive_body() -> str:
         raise AssertionError(
             "the certified constitutive body no longer carries its decode "
             "prologue; the lift would redeclare the curl half's indices")
+    # Its chunk-record block goes with the decode: the union block above decodes
+    # update_H's entries too (D10).
+    body = bounds_block.strip_bounds_block(body, "_update_H_pml_real_kernel_code",
+                                           *CONSTITUTIVE_BLOCK)
     body = body.split(_DECODE_END, 1)[1]
     for target, (axis, coordinate) in enumerate(zip(_CARRIED, _COORDINATE)):
         source = f"B{axis}[idx]"
@@ -1366,6 +1495,12 @@ def certified_constitutive_body() -> str:
         # source thread runs it again at every ghost it owns.
         call = _line_starting(body, f"    constitutive_apply(H{axis}, ",
                               f"target {target}'s constitutive statement")
+        flag = constitutive_flags()[target]
+        if not call.endswith(f", {flag});"):
+            raise AssertionError(
+                f"H{axis}'s certified statement {call.strip()!r} does not pass its "
+                f"membership flag {flag} last; the hoisted f_w_H and H loads would be "
+                f"guarded on a flag the statement does not read")
         body = body.replace(call, "\n".join(
             [f"    if (own_{axis}) {{", f"        {call.strip()}"]
             + fill_carry_blocks(target)
@@ -1797,11 +1932,25 @@ def assert_disjoint_bindings(fields: "Fields",
     return len(bound)
 
 
+def start_of_h(fields: "Fields", layer: Any) -> None:
+    """MEEP's start of H after the run's first fused magnetic launch, on the array path.
+
+    ``stepping.update_H`` over the B the launch stored: it starts H and ``f_w_H`` from
+    B (``stepping.separate_h_from_b``, which records ``Fields.h_separated``) and steps
+    MEEP's two constitutive forms, so the H and ``f_w_H`` words of the run's first
+    update are the array path's own, wherever the kernel left them.
+    """
+    from ..stepping import update_H  # noqa: PLC0415 - NumPy/CuPy array path
+
+    update_H(fields, layer)
+
+
 def launch_fused_magnetic_pair(fields: "Fields", tables: Dict[str, Dict[str, Any]],
                                boundary_codes: Sequence[Any],
                                walls: Sequence[int],
                                fills: Dict[str, Sequence[Any]], dtdx: float,
-                               kernel: Optional[Any] = None) -> Dict[str, Any]:
+                               kernel: Optional[Any] = None, *,
+                               chunk_bounds: Any, layer: Any = None) -> Dict[str, Any]:
     """All five of :data:`REPLACES` in ONE launch.
 
     ``boundary_codes`` are ``step_curl_kernels.real_curl_boundary_codes(grid)``;
@@ -1821,9 +1970,32 @@ def launch_fused_magnetic_pair(fields: "Fields", tables: Dict[str, Dict[str, Any
     single mutation, and every mutation leg would silently launch the shipped one
     and report the defect as uncaught.
 
+    ``chunk_bounds`` IS THE RUN'S CHUNK RECORD ON THE DEVICE, required and keyword-only:
+    the kernel chooses each cell's PML form from it, and there is no default because a
+    launch handed some other division would step some other forms
+    (``step_curl_kernels.chunk_record_argument`` checks it).
+
+    THE RUN'S FIRST ``update_H`` STARTS H FROM B (``stepping.separate_h_from_b``,
+    MEEP's update_eh.cpp:165-177): H and ``f_w_H`` become copies of B on the cells whose
+    chunk carries H's own layer, AFTER step_B, the fills and the wall clear -- all of
+    which this kernel performs, so B is final only once it has run. When
+    ``fields.h_separated`` is still False, :func:`start_of_h` therefore re-steps
+    ``update_H`` on the array path right after the launch, with ``layer`` (the single
+    launcher's own arrangement, ``arms._RealPmlConstitutiveLauncher``), over the B the
+    kernel stored: ``stepping.update_H`` starts H itself and records the start, and the
+    kernel's own H and ``f_w_H`` of that one launch are overwritten. Every later launch
+    steps H in the kernel. A first launch handed no ``layer`` is refused by name before
+    it launches.
+
     Returns the launch geometry rather than ``None`` so a gate can assert that
     something was actually launched.
     """
+    cb = step_curl_kernels.chunk_record_argument(chunk_bounds)
+    first = not bool(getattr(fields, "h_separated", True))
+    if first and layer is None:
+        raise RuntimeError(
+            "the run's first update_H starts H from B (stepping.separate_h_from_b) and "
+            "this fused magnetic launch was handed no layer to start it with")
     nx, ny, nz = (int(n) for n in fields.Bx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
@@ -1838,17 +2010,19 @@ def launch_fused_magnetic_pair(fields: "Fields", tables: Dict[str, Dict[str, Any
         np.int32(int(bool(walls[2]))),
     ) + tuple(np.int32(int(fills["near"][axis])) for axis in range(3)) + tuple(
         np.int32(int(fills["reflect"][axis])) for axis in range(3)
-    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3))
+    ) + tuple(np.float32(float(fills["phase"][axis])) for axis in range(3)) + (cb,)
     (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), arguments)
+    if first:
+        start_of_h(fields, layer)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
-            "elements": nx * ny * nz, "replaces": REPLACES,
+            "elements": nx * ny * nz, "replaces": REPLACES, "h_started": first,
             "near": tuple(int(v) for v in fills["near"]),
             "reflect": tuple(int(v) for v in fills["reflect"]),
             "phase": tuple(float(v) for v in fills["phase"])}
 
 
 def run_fused_magnetic_pair(fields: "Fields", grid: "Grid", pml: "PML",
-                            dtdx: float, *, sources: Any = None,
+                            dtdx: float, *, chunk_bounds: Any, sources: Any = None,
                             tables: Optional[Dict[str, Dict[str, Any]]] = None,
                             kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once.
@@ -1870,7 +2044,8 @@ def run_fused_magnetic_pair(fields: "Fields", grid: "Grid", pml: "PML",
     assert_disjoint_bindings(fields, tables)
     return launch_fused_magnetic_pair(
         fields, tables, step_curl_kernels.real_curl_boundary_codes(grid),
-        zero_metal_axes(grid), fused_magnetic_pair_fills(grid), dtdx, kernel)
+        zero_metal_axes(grid), fused_magnetic_pair_fills(grid), dtdx, kernel,
+        chunk_bounds=chunk_bounds, layer=pml)
 
 
 # The in-seam module is imported for one reason and it is worth naming: this file

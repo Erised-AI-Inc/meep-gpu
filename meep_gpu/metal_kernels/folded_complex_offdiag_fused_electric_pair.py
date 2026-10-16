@@ -21,20 +21,19 @@ in ``Params`` as ``d_final_c``'s own parameters.
 
 WHAT IS THIS FAMILY'S ALONE:
 
-* **the parity is a COMPLEX MULTIPLY at BOTH signs, never a copy and never a
-  negation.** ``c_mul((+/-1.0f, +0.0f), z)`` is the folded complex fill's own
-  arithmetic (``folded_complex.mirror_parity_coefficients`` rounds both words
-  through ``numpy.complex64`` on the host and the fill launches the product at
-  +1 too), and the distinction is MEASURED rather than inherited: over a hundred
-  engineered (real, imag) pairs of signed zeros, subnormals and normals, the
-  array path's ``phase * plane`` and this ``c_mul`` agree on every word at both
-  signs, while a plain copy at +1 and a bare ``-z`` at -1 — the spelling the real
-  families use, correctly, on float32 — differ in TEN of the hundred at each
-  sign. One of those ten is reachable on a real fixture: a folded complex grid
-  with a metallic wall, where the far fill images a cell the wall clear has
-  already zeroed and then multiplies it (``results/metal_scratch_weld_closed_\
-form_2026-09-01T2``, case ``D_fold_complex_walled``, the
-  ``parity_spelled_as_bare_sign`` null, one differing word).
+* **the parity is a PER-PART PRODUCT at BOTH signs.**
+  ``c_mul_coefficient_left(+/-1.0f, z)`` is the array path's
+  ``part_products.scale(parity, plane)`` and the folded complex fill's own
+  arithmetic (the fill launches the product at +1 too). It replaced the full
+  complex product ``c_mul((+/-1.0f, +0.0f), z)``, the array path's previous
+  ``phase * plane``: the two differ on signed-zero pairs, and one such pair is
+  reachable on a real fixture -- a folded complex grid with a metallic wall,
+  where the far fill images a cell the wall clear has already zeroed and then
+  multiplies it (``results/metal_scratch_weld_closed_form_2026-09-01T2``, case
+  ``D_fold_complex_walled``). The weld gate carries the previous spelling as a
+  must-catch mutant, and the bare ``-z`` at -1 as a declared equivalence (a
+  product by -1 per part is the sign flip on every word the subnormal-free
+  precondition admits).
 * **a multi-axis corner is NESTED, not one product.** Same artifact, word-level
   leg: nested and single-product complex parities differ in 39 of 400 engineered
   combinations. No fixture on this corpus arms it (a corner source is stored cell
@@ -61,6 +60,13 @@ bindings against a ceiling of 31, which the gate compiles and REQUIRES to fail.
 CARRIES_DEPOSIT_REPAIR IS FALSE and is forced by the off-diagonal constitutive,
 as on all four. That is the distance between this cell's 3 rows and its 1.
 
+THE PER-CHUNK FORMS AND THE DOUBLE ROW are the real twins' (:mod:`.offdiag_fused_\
+electric_pair`): the presence words and then the record ride in ``Params`` after the
+reflect rows, ``step_cell`` takes the record and evaluates the curl's select at the
+cell it steps, the auxiliary store guard moves to the register, and the
+constitutive half is :mod:`.complex_folded_offdiag_update_e`'s per-part software
+binary64 row (ruling R7) with its Bloch connections, per-chunk tail and all.
+
 NOT WIRED AS AN ARM; reached through ``launch.FUSED_PAIR_ARMS``.
 """
 
@@ -78,11 +84,13 @@ from . import (coefficient_pack, complex_fields as _complex,
                folded_complex as _folded_complex,
                folded_offdiag_update_e as _folded_real,
                offdiag_update_e as _offdiag, shaders, templates)
+from . import chunk_bounds as _chunk_bounds
 from . import offdiag_weld_common as _weld
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
 from .launch import SUB_STEPS
 from .offdiag_fused_electric_pair import (
     CURL_STORE_EDITS, NEIGHBOUR_NAMES, PACKED_VECTORS, PACKED_VOLUMES,
+    RECORD_ACTUAL,
 )
 from .folded_offdiag_fused_electric_pair import (
     REFLECT_ACTUALS, REFLECT_FIELDS, REFLECT_PARAMETERS, folded_axis_tables,
@@ -114,7 +122,8 @@ _ACTUALS: Dict[str, str] = {"f0": "pf0", "f1": "pf1", "f2": "pf2",
                             "u0": "pu0", "u1": "pu1", "u2": "pu2"}
 
 STEP_SCALARS: Tuple[Tuple[str, str], ...] = (
-    ("float", "dtdx"), ("float2", "px"), ("float2", "py"), ("float2", "pz"))
+    ("float", "dtdx"), ("float2", "px"), ("float2", "py"), ("float2", "pz"),
+    ("constant ChunkBounds&", "cb"))
 
 STEP_ARGUMENTS = ", " + ", ".join(_ACTUALS.get(name, name)
                                   for _kind, name in STEP_POINTERS)
@@ -123,7 +132,7 @@ CALL_ARGUMENTS = (", " + ", ".join(f"{kind} {name}"
                   + ", " + ", ".join(f"{kind} {name}"
                                      for kind, name in STEP_SCALARS))
 FORWARD = (", ".join(_weld.COORDS) + ", nxi, nyi, nzi" + STEP_ARGUMENTS
-           + ", dtdx, px, py, pz")
+           + ", dtdx, px, py, pz" + RECORD_ACTUAL)
 
 #: The counts. The three ``float2`` phases and the three reflect ints are
 #: ``Params`` members and cost NO binding.
@@ -158,13 +167,21 @@ using namespace metal;
 
 __CONTRACT__
 
+__SOFTFP64__
+
 __HELPERS__
+
+__RECORD_STRUCT__
+
+__PRESENCE_STRUCT__
 
 struct Params {
     float2 px; float2 py; float2 pz;
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
 __PACK_FIELDS__
     int reflect_x; int reflect_y; int reflect_z;
+__PRESENCE_MEMBER__
+__RECORD_MEMBER__
 };
 
 __STEP_CELL__
@@ -205,6 +222,8 @@ kernel void folded_complex_offdiag_fused_electric_pair_step(
     int reflect_x = prm.reflect_x;
     int reflect_y = prm.reflect_y;
     int reflect_z = prm.reflect_z;
+__RECORD_ALIAS__
+__PRESENCE_ALIAS__
 __CPACK_PROLOGUE__
 __MPACK_PROLOGUE__
 __BODY__
@@ -213,11 +232,10 @@ __BODY__
 
 
 def certified_curl_body(codes: Sequence[int], phased: Sequence[int],
-                        expansion: str,
                         contract: str = shaders.CONTRACT_OFF) -> str:
     """The folded complex ``step_D`` curl's body as an inline function."""
     source = _folded_complex.folded_bloch_curl_source(
-        codes, bool(SUB_STEPS["step_D"]["backward"]), phased, expansion, contract)
+        codes, bool(SUB_STEPS["step_D"]["backward"]), phased, contract)
     tail = _weld.lift_curl_tail(source, store_edits=CURL_STORE_EDITS,
                                 decode_end=CURL_DECODE_END)
     return _weld.step_cell_function(
@@ -230,7 +248,7 @@ def folded_complex_offdiag_fused_electric_pair_source(
         row_mask: Sequence[int], codes: Sequence[int], walls: Sequence[int],
         phased: Sequence[int], negate: Sequence[int],
         folded_axes: Mapping[int, int], far_axes: Mapping[int, int],
-        expansion: str, contract: str = shaders.CONTRACT_OFF) -> str:
+        contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source."""
     row_mask = tuple(int(flag) for flag in row_mask)
     walls = tuple(int(flag) for flag in walls)
@@ -251,10 +269,10 @@ def folded_complex_offdiag_fused_electric_pair_source(
         neighbour_names=NEIGHBOUR_NAMES, index=_offdiag_cf._index,
         register="dfin{0}",
         call="d_final_{0}({1}, nxi, nyi, nzi" + STEP_ARGUMENTS
-             + ", dtdx, px, py, pz" + REFLECT_ACTUALS + ")")
+             + ", dtdx, px, py, pz" + RECORD_ACTUAL + REFLECT_ACTUALS + ")")
     body = _weld.weld_body(
         _offdiag_cf.complex_folded_offdiag_source(
-            row_mask, codes, walls, phased, negate, expansion, contract),
+            row_mask, codes, walls, phased, negate, contract),
         decode_end=CONSTITUTIVE_DECODE_END,
         seam=_weld.seam_lines(value_type="float2", forward=FORWARD,
                               split_field=True,
@@ -269,10 +287,14 @@ def folded_complex_offdiag_fused_electric_pair_source(
         for component in range(3))
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
+        **_offdiag.weld_presence_substitutions(),
         "__PACK_FIELDS__": (coefficient_pack.params_fields(PACKED_VECTORS)
                             + "\n" + coefficient_pack.params_fields(PACKED_VOLUMES)),
-        "__STEP_CELL__": certified_curl_body(codes, phased, expansion, contract),
+        "__STEP_CELL__": certified_curl_body(codes, phased, contract),
         "__D_FINAL__": finals,
         "__CPACK_PROLOGUE__": coefficient_pack.prologue("cpack", PACKED_VECTORS),
         "__MPACK_PROLOGUE__": coefficient_pack.prologue("mpack", PACKED_VOLUMES),
@@ -284,11 +306,10 @@ def compile_folded_complex_offdiag_fused_electric_pair(
         row_mask: Sequence[int], codes: Sequence[int], walls: Sequence[int],
         phased: Sequence[int], negate: Sequence[int],
         folded_axes: Mapping[int, int], far_axes: Mapping[int, int],
-        expansion: str, contract: str = shaders.CONTRACT_OFF) -> Any:
+        contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised entry point for one configuration."""
     return compile_source(folded_complex_offdiag_fused_electric_pair_source(
-        row_mask, codes, walls, phased, negate, folded_axes, far_axes,
-        expansion, contract)
+        row_mask, codes, walls, phased, negate, folded_axes, far_axes, contract)
     ).folded_complex_offdiag_fused_electric_pair_step
 
 
@@ -380,16 +401,16 @@ def refuted_cpack_only_source(contract: str = shaders.CONTRACT_OFF) -> str:
 
 def metal_folded_complex_offdiag_fused_electric_pair_coverage(
         fields: Any, pml: Any, sources: Any = None, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        chunk_bounds: Any = None) -> Coverage:
     """May ONE dispatch span the folded complex off-diagonal D/E seam?"""
     reasons: List[str] = []
 
     curl = _folded_complex.folded_complex_composition_curl_coverage(
-        fields, pml, "step_D", residency, probe)
+        fields, pml, "step_D", residency)
     if not curl.covered:
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
     electric = _offdiag_cf.metal_complex_folded_offdiag_coverage(
-        fields, pml, residency, probe)
+        fields, pml, residency, chunk_bounds)
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
@@ -435,13 +456,15 @@ def metal_folded_complex_offdiag_fused_electric_pair_coverage(
 # ---------------------------------------------------------------------------
 
 #: Three ``float2`` at 0/8/16, five scalars at 24..43, twenty-one pack offsets at
-#: 44..127, three reflect ints at 128..139, rounded to the struct's own 8-byte
-#: alignment.
-PARAMS_ITEMSIZE = 144
+#: 44..127, three reflect ints at 128..139, the six presence words at 140..163, the
+#: 25-word chunk record at 164..263, which is already a multiple of the struct's own
+#: 8-byte alignment.
+PARAMS_ITEMSIZE = 264
 
 
 def params_record_dtype() -> Any:
-    """The host record — THREE ``float2`` FIRST, then scalars, offsets, reflects."""
+    """The host record — THREE ``float2`` FIRST, then scalars, offsets, reflects,
+    the presence words and the record."""
     import numpy as np  # noqa: PLC0415
 
     names = ["px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx"]
@@ -459,9 +482,20 @@ def params_record_dtype() -> Any:
         formats.append("<i4")
         offsets.append(running)
         running += 4
-    if running != 140:  # pragma: no cover - a layout invariant
+    presence = _offdiag.presence_record_dtype()
+    names.append(_offdiag.PRESENCE_NAME)
+    formats.append(presence)
+    offsets.append(running)
+    running += presence.itemsize
+    record = _chunk_bounds.record_dtype()
+    names.append("cb")
+    formats.append(record)
+    offsets.append(running)
+    running += record.itemsize
+    if running != PARAMS_ITEMSIZE:  # pragma: no cover - a layout invariant
         raise RuntimeError(f"the folded complex weld's Params record ends at "
-                           f"{running} bytes, not the 140 the itemsize assumes")
+                           f"{running} bytes, not the {PARAMS_ITEMSIZE} the itemsize "
+                           f"assumes")
     return np.dtype({"names": names, "formats": formats, "offsets": offsets,
                      "itemsize": PARAMS_ITEMSIZE})
 
@@ -469,11 +503,14 @@ def params_record_dtype() -> Any:
 def _params_tensor(shape: Sequence[int], dtdx: float,
                    curl_phases: Sequence[Tuple[float, float]],
                    offsets: Mapping[str, int],
-                   reflect: Sequence[Optional[int]], device: str) -> Any:
-    """The curl phases, the scalars, the pack offsets and the reflect rows."""
+                   reflect: Sequence[Optional[int]], device: str,
+                   chunk_bounds: Any, presence: Any) -> Any:
+    """The curl phases, the scalars, the pack offsets, the reflect rows, the presence
+    words, the record."""
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
+    checked = _chunk_bounds.plan_words(chunk_bounds, shape, f"{FAMILY} Params")
     record = np.zeros(1, dtype=params_record_dtype())
     nx, ny, nz = (int(n) for n in shape)
     record["nx"], record["ny"], record["nz"] = nx, ny, nz
@@ -485,6 +522,10 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
         record[f"off_{label}"] = int(offset)
     for label, row in zip(REFLECT_FIELDS, tuple(reflect)):
         record[label] = -1 if row is None else int(row)
+    words = _offdiag.presence_plan_words(presence, f"{FAMILY} Params")
+    for name, word in zip(_offdiag.PRESENCE_MEMBERS, words):
+        record[_offdiag.PRESENCE_NAME][name] = int(word)
+    record["cb"] = _chunk_bounds.pack(checked)
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -496,25 +537,25 @@ def plan_metal_folded_complex_offdiag_fused_electric_pair(
         fields: Any, pml: Any, sources: Any = None,
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        probe: Any = None,
-        functions: Optional[Mapping[str, Any]] = None,
+        functions: Optional[Mapping[str, Any]] = None, *, chunk_bounds: Any,
         ) -> Optional[_weld.ScratchWeldPairPlan]:
-    """Build the folded complex fused off-diagonal plan, or ``None``."""
+    """Build the folded complex fused off-diagonal plan, or ``None``.
+
+    ``chunk_bounds`` is the record of the division the run steps with; required, with
+    the presence words built against it on the folded codes.
+    """
     if not metal_folded_complex_offdiag_fused_electric_pair_coverage(
-            fields, pml, sources, residency, probe).covered:
+            fields, pml, sources, residency, chunk_bounds).covered:
         return None
     import numpy as np  # noqa: PLC0415
 
-    record = probe if probe is not None else _folded_complex.load_expansion_probe()
-    expansion = _folded_complex.expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
-        return None
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
     codes, _reasons = _folded_complex.folded_axis_kinds(grid, pml)
     if codes is None:  # pragma: no cover - the predicate already refused
         return None
+    presence = _offdiag.presence_for(fields, pml, codes, chunk_bounds)
     kinds = _boundary_kinds(grid, pml)
     table = _complex.bloch_phase_table(grid, kinds)
     phased_down, down = _complex.phase_arguments(table, backward=True)
@@ -585,13 +626,13 @@ def plan_metal_folded_complex_offdiag_fused_electric_pair(
         if mode not in selected:
             selected[mode] = compile_folded_complex_offdiag_fused_electric_pair(
                 row_mask, codes, walls, phased_down, negate, folded_axes,
-                far_axes, expansion, mode)
+                far_axes, mode)
 
     dtdx = grid.dt / grid.dx
     static = (list(stored) + list(workspace) + list(magnetic)
               + [phases, cpack, mpack,
                  _params_tensor(grid.shape, dtdx, curl_phase, offsets, reflect,
-                                residency.device)])
+                                residency.device, chunk_bounds, presence)])
     assert (2 * len(ROTATED_NAMES) + len(static)) == PACKED_BINDINGS, (
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     return _weld.plan_scratch_weld(
@@ -611,8 +652,9 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
             False,
             (f"folded complex offdiag fused electric pair cannot fill {slot}",))
     return metal_folded_complex_offdiag_fused_electric_pair_coverage(
-        context.fields, context.pml, context.sources, context.residency,
-        context.extra.get("probe"))
+        context.fields, context.pml, context.sources, context.residency, getattr(context,
+                                                                                 "chunk_bounds",
+        None))
 
 
 def _arm_plan(context: Any, slot: str) -> Optional[_weld.ScratchWeldPairPlan]:
@@ -620,7 +662,8 @@ def _arm_plan(context: Any, slot: str) -> Optional[_weld.ScratchWeldPairPlan]:
         return None
     return plan_metal_folded_complex_offdiag_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants, context.extra.get("probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

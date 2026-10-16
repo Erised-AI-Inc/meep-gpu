@@ -29,8 +29,11 @@ EVERYTHING ELSE IS THE TWO SIBLINGS' CONSTRUCTION, spliced from certified emitte
 
 * the curl half — :func:`.bfast_curl.bfast_curl_source` with ``backward=True`` and
   ``has_bfast=True``, lifted verbatim by :func:`certified_bfast_curl_body` exactly
-  as the magnetic twin lifts the ``step_B`` arm. The Tustin tail's presence is
-  ASSERTED at emit time so this weld can never silently become the ordinary product;
+  as the magnetic twin lifts the ``step_B`` arm: the certified curl with MEEP's BFAST
+  pass after its per-chunk forms. The pass's presence is ASSERTED at emit time so
+  this weld can never silently become the ordinary product;
+* the chunk record — embedded in ``Params`` (:func:`.chunk_bounds.params_member`)
+  and aliased before the body, as every fused pair at the ceiling carries it;
 * the wall clear — :func:`.fused_electric_pair.zero_metal_mask`, the D
   OFF-DIAGONAL, imported rather than re-derived;
 * the constitutive half — :func:`.fused_electric_pair.certified_constitutive_body`,
@@ -57,7 +60,10 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..triton_kernels.bfast_curl import BFAST_STATE_NAMES, bfast_curl_coefficients
 from ..triton_kernels.coverage import Coverage
-from . import bfast_curl, coefficient_pack, shaders, templates
+from . import bfast_curl, coefficient_pack, folded_pass, shaders, templates
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as a keyword named
+# `chunk_bounds`, the name the composer's StepContext carries.
+from . import chunk_bounds as _chunk_bounds
 from .coverage import zero_metal_axes
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
 from .fused_electric_pair import (
@@ -138,10 +144,13 @@ using namespace metal;
 
 __CONTRACT__
 
+__RECORD_STRUCT__
+
 struct Params {
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
     float k1_0; float k2_0; float k1_1; float k2_1; float k1_2; float k2_2;
 __PACK_FIELDS__
+__RECORD_MEMBER__
 };
 
 kernel void bfast_fused_electric_pair_step(
@@ -191,6 +200,9 @@ kernel void bfast_fused_electric_pair_step(
     // READ-ONLY: nothing on the device writes `cpml` (the BFAST state s0-2 is the
     // half's device-written set and keeps its own bindings for that reason).
 __PACK_PROLOGUE__
+    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // line gives the lifted bounds blocks the `cb` they read.
+__RECORD_ALIAS__
 
 __BODY__
 }
@@ -236,11 +248,11 @@ def bfast_fused_electric_pair_source(codes: Sequence[int],
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
 
     curl = certified_bfast_curl_body(codes, contract)
-    # THE TAIL MUST BE PRESENT — see the magnetic twin for why its absence would be
+    # THE PASS MUST BE PRESENT — see the magnetic twin for why its absence would be
     # the ordinary weld wearing this family's name.
-    for statement in ("float st0 = s0[ii];",
-                      "s0[ii] = st0 + adv0;",
-                      "curl0 = curl0 - adv0;"):
+    for statement in (folded_pass.FOLDED_PASS_BEGIN, "float fp0 = s0[ii];",
+                      "if (own0 && (has_y || has_z)) { s0[ii] = F0; }",
+                      "float fi0 = (has_y || has_z) ? (-(F0 - fp0)) : 0.0f;"):
         if statement not in curl:
             raise AssertionError(
                 f"the lifted BFAST curl body does not carry {statement!r}; this "
@@ -289,6 +301,9 @@ def bfast_fused_electric_pair_source(codes: Sequence[int],
         "__CONTRACT__": templates.contraction_pragma(contract),
         "__PACK_FIELDS__": coefficient_pack.params_fields(PACKED_VECTORS),
         "__PACK_PROLOGUE__": coefficient_pack.prologue("cpml", PACKED_VECTORS),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__BODY__": body,
     })
 
@@ -500,7 +515,7 @@ class MetalBfastFusedElectricPairPlan(KernelPlan):
     """
 
     __slots__ = ("residency", "volumes", "codes", "zero_metal", "shape", "dtdx",
-                 "ks", "pack_layout", "params")
+                 "ks", "pack_layout", "params", "chunk_bounds")
 
     family = "fused BFAST PML D-curl/stored-E pair"
 
@@ -515,8 +530,10 @@ class MetalBfastFusedElectricPairPlan(KernelPlan):
                  codes: Sequence[int], zero_metal: Sequence[bool],
                  shape: Sequence[int], dtdx: float, ks: Sequence[float],
                  pack_layout: Any, params: Any, pointers: Sequence[Any],
-                 functions: Mapping[str, Any]) -> None:
+                 functions: Mapping[str, Any], *, chunk_bounds: Any) -> None:
         self.residency = residency
+        # The host words of the record ``params`` carries, kept for inspection.
+        self.chunk_bounds = chunk_bounds
         self.volumes = tuple(dict.fromkeys(volumes))
         self.codes = tuple(int(code) for code in codes)
         self.zero_metal = tuple(bool(value) for value in zero_metal)
@@ -536,8 +553,9 @@ class MetalBfastFusedElectricPairPlan(KernelPlan):
 
 
 def _params_tensor(shape: Sequence[int], dtdx: float, ks: Sequence[float],
-                   offsets: Sequence[int], device: str) -> Any:
-    """The eleven scalars AND the six pack offsets as one 68-byte device record.
+                   offsets: Sequence[int], device: str, *, chunk_bounds: Any) -> Any:
+    """The eleven scalars, the six pack offsets and the chunk record as one 168-byte
+    device record (the record, :func:`.chunk_bounds.pack`, embedded at byte 68).
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused
     pair's ``_params_tensor`` gives. THE OFFSET FIELDS ARE THE PACK'S WHOLE COST:
@@ -552,14 +570,18 @@ def _params_tensor(shape: Sequence[int], dtdx: float, ks: Sequence[float],
     fields = ([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
                ("dtdx", "<f4"), ("k1_0", "<f4"), ("k2_0", "<f4"),
                ("k1_1", "<f4"), ("k2_1", "<f4"), ("k1_2", "<f4"), ("k2_2", "<f4")]
-              + coefficient_pack.record_dtype_fields(PACKED_VECTORS))
+              + coefficient_pack.record_dtype_fields(PACKED_VECTORS)
+              + _chunk_bounds.record_dtype_fields())
     record = np.zeros(1, dtype=np.dtype(fields))
     nx, ny, nz = (int(n) for n in shape)
     offsets = tuple(int(offset) for offset in offsets)
     if len(offsets) != len(PACKED_VECTORS):  # pragma: no cover - arithmetic guard
         raise AssertionError((len(offsets), len(PACKED_VECTORS)))
-    record[0] = ((nx, ny, nz, nx * ny * nz, np.float32(dtdx))
-                 + tuple(np.float32(value) for value in ks) + offsets)
+    scalars = ((nx, ny, nz, nx * ny * nz, np.float32(dtdx))
+               + tuple(np.float32(value) for value in ks) + offsets)
+    for (name, _kind), value in zip(fields, scalars):
+        record[name] = value
+    record["cb"] = _chunk_bounds.pack(chunk_bounds)
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -570,8 +592,14 @@ def plan_metal_bfast_fused_electric_pair(
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
         params: Optional[Any] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalBfastFusedElectricPairPlan]:
     """Build the fused BFAST D/E plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the
+    composer's ``StepContext.chunk_bounds``) and has no default: a missing record, or
+    one that disagrees with the grid, is refused by name
+    (:func:`.chunk_bounds.plan_words`).
 
     ``functions`` is the KERNEL mutation seam and ``params`` the HOST one — the
     packed offsets are host arithmetic, so a leg that corrupts one has to be able
@@ -585,6 +613,8 @@ def plan_metal_bfast_fused_electric_pair(
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
+    chunk_record = _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                                            "plan_metal_bfast_fused_electric_pair")
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, pml))
     walls = zero_metal_axes(grid)
@@ -642,10 +672,11 @@ def plan_metal_bfast_fused_electric_pair(
 
     dtdx = grid.dt / grid.dx
     record = (_params_tensor(grid.shape, dtdx, ks, pack_layout.offsets,
-                             residency.device) if params is None else params)
+                             residency.device, chunk_bounds=chunk_record)
+              if params is None else params)
     return MetalBfastFusedElectricPairPlan(
         residency, volumes, codes, walls, grid.shape, dtdx, ks, pack_layout,
-        record, pointers, selected)
+        record, pointers, selected, chunk_bounds=chunk_record)
 
 
 # ---------------------------------------------------------------------------
@@ -665,7 +696,7 @@ def _arm_plan(context: Any, slot: str
         return None
     return plan_metal_bfast_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

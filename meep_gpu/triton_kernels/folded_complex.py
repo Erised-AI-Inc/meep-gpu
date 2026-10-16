@@ -33,15 +33,22 @@ C-contiguous float32 volume with a doubled last axis and complex cell ``w`` is
 words ``2*w`` and ``2*w + 1``); K3a steps real float32.
 
 * :func:`folded_bloch_pml_curl_step` (K1) — ``complex_fields.bloch_pml_curl_step``
-  (certified, then re-cut) with ``symmetry.py``'s THREE fold deltas and
-  no arithmetic change at all;
+  with ``symmetry.py``'s THREE fold deltas and no arithmetic change at all: the
+  chunk record's forms per stored part, MEEP's curl stencil with the record's
+  presence, and the Bloch connection of an UNFOLDED phased axis on the unshifted
+  operand's plane 0;
 * :func:`folded_mirror_ghost_fill_complex` (K2) — ``stepping.fill_symmetry_bc_*``
-  plus ``stepping.fill_folded_far_ghosts_*`` for ONE family on ONE axis. THE ONLY
-  PLACE IN PHASE B WHERE THE TRANSCRIPTION CHANGES ARITHMETIC (see below);
+  plus ``stepping.fill_folded_far_ghosts_*`` for ONE family on ONE axis, the parity
+  multiply per stored part (see below);
 * :func:`folded_beta_pml_curl_step` (K3a) — ``special_kz.beta_pml_curl_step``
-  (certified) with K1's three deltas, REAL storage;
+  with K1's three deltas, REAL storage;
 * :func:`folded_beta_bloch_pml_curl_step` (K3b) — K1 plus ``special_kz``'s beta
-  insert in the identical slot, COMPLEX storage.
+  pass in the identical slot, COMPLEX storage.
+
+Both beta bodies run the array path's beta pass: after every component's curl form,
+the increment masked by the curl's own ownership clauses (both arms under a fold) and
+subtracted through a ladder of its own (``stepping._apply_folded_increment``,
+:func:`.forms.fold_ladder`), on the chunk record's forms.
 
 WHY THE FOLDED CURL NEEDS NO PARITY ARITHMETIC UNDER COMPLEX STORAGE.
 ``symmetry.py``'s argument is an OWNERSHIP argument, not a storage argument, and
@@ -62,45 +69,39 @@ MIRROR_PERIODIC). That is an ARGUMENT plus a hand check, where ``symmetry.py``
 earned the same claim for real storage by MEASUREMENT before it was written —
 so the gate's synthetic sub-step sweep is a precondition here, not a formality.
 
-THE GHOST FILL'S PARITY MULTIPLY IS A FULL COMPLEX PRODUCT, NOT A SIGN FLIP.
-``stepping._write_mirror_ghost`` (:1450-1451) and ``_fill_folded_far_ghosts``
-(:1528-1532) spell ``phase * plane`` where ``phase`` is a PYTHON INT from
-``_symmetry_phase`` (:2402-2415) / ``fields.mirror_parity`` (:117-182). NumPy and
-CuPy carry only ``'FF->F'`` complex loops (complex_fields.py:52-57), so on
-complex64 that is the FULL multiply by ``(±1.0, +0.0)`` — with its zero cross
-terms. Measured on the laptop (NumPy 2.4.3, 64 engineered word pairs over
-{±0.0, ±1e-45, 7e-45, ±1.5, 3.4e38} = 128 words): a PLANE-WISE ``±1 * word``
-(``symmetry.mirror_ghost_fill``'s certified REAL spelling, symmetry.py:422-446)
-diverges in 8/128 words at BOTH parities INCLUDING the even mirror, where
-plane-wise is the identity and the array path is not; on a LIVE folded complex
-state it diverges in 40 words (Bx 20, By 0, Bz 20), entirely in the FAR fill.
-Hence :func:`folded_mirror_ghost_fill_complex` reuses
-``special_kz._mul_imag_coefficient_left`` with HOST-ROUNDED, PASSED coefficient
-words, and ``PHASE * word`` is the headline gate mutation.
+THE GHOST FILL'S PARITY MULTIPLY IS PER PART. ``stepping._write_mirror_ghost``
+and ``_fill_folded_far_ghosts`` write ``parity * plane`` through
+``host_writes.copy_face``, which forms it with ``part_products.scale``: the Python
+int rounded to the part dtype and each stored part multiplied by it, as MEEP's
+connection multiplies each ``realnum`` part (a ``-1`` connection is a unary minus
+per part, boundaries.cpp:359-366). ``x * (+1.0)`` and ``x * (-1.0)`` are exact on
+every word, signed zeros and subnormals included, so K2 is the real fill per part,
+with the coefficient a host-rounded float32 word passed per pass
+(:func:`mirror_parity_coefficients`). The previous whole-complex product (the
+coefficient promoted to ``(+-1, +0)``, with its zero cross terms) diverges from it
+in 8/128 engineered words at BOTH parities; that product is the gate's inverted
+headline mutation.
 
-WHY THE X, Y, Z FILL ORDER IS MANDATORY HERE. ``symmetry.py:388-394`` records
-``reverse_axis_order`` as a MEASURED NULL under real storage, on the argument
-that every fill is a multiply by exactly ±1. That argument does NOT transfer:
-under complex the fill is a full product and complex float multiplication is not
-associative, so the doubly-unowned corner sees ``c_y (x) (c_x (x) z)`` against
-``c_x (x) (c_y (x) z)``. The order is therefore load-bearing until measured
-otherwise, and the commute question is RE-MEASURED as its own gate leg on a
-MIXED-PHASE two-folded-axis case. The mixing is not incidental: with
-``c_x == c_y`` the two orders are bit-exactly equal (measured 0/128 diverging
-words at (+1,+1) and at (-1,-1) against 8/128 at (+1,-1)), so a two-axis grid
-carrying ONE declared phase would make the leg a null by construction.
+THE X, Y, Z FILL ORDER AND THE TWO PASSES COMMUTE BITWISE. Every fill is a
+multiply of each part by exactly +-1, so the doubly-unowned corner sees
+``c_y * (c_x * z)`` and ``c_x * (c_y * z)`` as the same word, and a fused per-axis
+launch stores what the two passes store: ``symmetry.py``'s real-storage commute
+null transfers to complex storage part by part. The passes are still launched in
+the array path's order (near pass, then the far pass after the driver's wall
+clear, X, Y, Z within each), and the gate records the commute as two structural
+nulls (``reverse_axis_order``, ``fuse_fill_passes``) rather than assuming it.
 
-WHY THE BETA SLOT IS LOAD-BEARING UNDER A FOLD. The beta increment is added to
-``curl`` AFTER ``_curl_from_operands`` and BEFORE ``_mask_non_owned_cells``
-(stepping.py:384-391 then :397 on the B side; :467-474 then :479 on the D side),
-and the fold WIDENS that mask from METALLIC-only at cell 0 to non-PERIODIC at
-cell 0 PLUS MIRROR_PERIODIC at the top plane. Beta touches targets 0 and 1 only.
+WHY THE BETA MASK IS LOAD-BEARING UNDER A FOLD. The beta increment is masked with
+the curl's own ownership clauses (``stepping._mask_non_owned_cells``) before the pass's
+ladder subtracts it, and the fold WIDENS that mask from METALLIC-only at cell 0 to
+non-PERIODIC at cell 0 PLUS MIRROR_PERIODIC at the top plane. Beta touches targets 0 and 1 only.
 On a Y fold: step_D masks Dx's beta increment at j = 0 (Dx Yee shift 0 on y) and
 Dy's at j = ny-1 (Dy shift 1 on y, MIRROR_PERIODIC); step_B masks By's at j = 0
 and Bx's at j = ny-1. One folded axis therefore makes BOTH mask arms fire on BOTH
-beta targets on BOTH sub-steps, so a kernel inserting beta below the masks leaves
-a live increment on the mirror plane and on the far ghost plane, invisible in the
-interior. That is the gate's ``beta_after_mask`` needle.
+beta targets on BOTH sub-steps, so a pass that left its increment unmasked would
+leave it live on the mirror plane and on the far ghost plane, invisible in the
+interior. That is the gate's ``b_increment_unmasked`` and ``b_top_plane_mask_dropped``
+needles.
 
 FOLD x BLOCH DO NOT INTERACT AT THE WRAPPED PLANE. ``driver._require_bloch_is_
 representable`` (driver.py:1040-1120) refuses a nonzero k on a mirror plane's OWN
@@ -116,9 +117,8 @@ DIFFERENT axes, multiplicatively, with no cross term.
 THE BETA PARTNER IS UNTOUCHED BY THE FOLD. ``stepping._special_kz_beta_term``
 (:727-784) takes a SAME-CELL center snapshot (S:293 electric / S:408 magnetic) —
 no shift helper, no ghost rule, no reflect row — so no fold ghost value and no
-parity ever multiplies it, and the Bloch rotation applies to SHIFTED operands
-only (special_kz.py:48-56). No expression contains both the ±i coefficient and a
-mirror parity. They compose one plane-copy downstream, at the FILL: ``fill_
+parity ever multiplies it, and the Bloch connection applies to SHIFTED operands
+only. No expression contains both the ±i quarter turn and a mirror parity. They compose one plane-copy downstream, at the FILL: ``fill_
 symmetry_bc_D`` overwrites cell 0 with ``parity * cell 2``, and cell 2 already
 carries its own beta increment — a composed-layer fact for the gate, not an
 in-kernel coupling.
@@ -144,40 +144,19 @@ GROUPING CHOICES ``stepping.py`` DOES NOT FORCE (the gate holds all of them):
    symmetry tranche and is read-only for this one), and a laptop test pins every
    spelling equal to ``symmetry.py``'s AND to ``kernels.py``'s — the discipline
    ``symmetry.py`` itself used against ``kernels.py``.
-2. The near/far parity coefficients are HOST-ROUNDED and PASSED as ``(re, im)``
-   word pairs, never synthesised in-kernel, the same rule the beta coefficient
-   follows for its signed-zero real word (special_kz.py:255-264). A dedicated
-   gate mutation builds ``c_im`` as a literal ``+0.0`` in-kernel.
-3. ``EXPANSION`` is threaded through the fill even though both arms are
-   predicted to AGREE on the parity product (both are exact when ``c_re = ±1``
-   and ``c_im = +0.0``; measured 0/128 on both arms at both parities). The
-   constexpr is BOUND FROM THE PROBE ARTIFACT and both builds must launch and
-   differ in PTX before the agreement may be recorded as a null.
-4. A NEW probe pattern, :data:`PARITY_PROBE_PATTERN`, is REQUIRED of the artifact
-   rather than inheriting the base four patterns' verdict. ``special_kz``
-   established the precedent that a new operand ORIENTATION earns its own
-   pattern; the parity coefficient is a Python int, which is none of the four,
-   and a platform whose bytes no transcription reproduces must refuse by name
-   rather than be admitted silently. The licence is
-   :func:`complex_fields.expansion_license` over that superset
-   (:func:`parity_expansion_license`), so the non-discriminating clause applies
-   to EVERY pattern here: a pattern that measurably cannot tell the arms apart
-   is excluded from the agreement test instead of vetoing it. The parity
-   pattern is expected to be one of them by arithmetic (with ``c_re = ±1``
-   exactly and ``c_im = +0.0`` the fused arm's extra product is exact), but that
-   is why it goes blind, not a licence for it alone: until 2026-08-15 this file
-   accepted ``AMBIGUOUS_BOTH`` for the new pattern only, and a base pattern gone
-   blind under the flush policy vetoed a licence the discriminating patterns had
-   already settled. What still gates is NEITHER, a disagreement between patterns
-   that DO discriminate, and an ambiguity claim the record's own detail block
-   contradicts.
-5. ONE LAUNCH PER FOLDED AXIS, in X, Y, Z order, held as a list the plan walks
-   (see above: the real-storage commute null does not transfer).
-6. The fill kernel carries NO ``PHASE`` constexpr. The parity enters only as the
-   passed coefficient words, so the ``PHASE * word`` mutant is spelled against
-   the real word (``near_re``, which IS ±1.0) and the identity-shortcut mutant is
-   a separate compiled body run on the +1 rows only. An unused constexpr in the
-   shipped signature would be dead weight the reader has to discount.
+2. The near/far parity coefficients are HOST-ROUNDED: the entries carry
+   ``(re, im)`` word pairs (:func:`mirror_parity_coefficients`, imaginary word
+   bitwise ``+0``), and the fill launches the real word alone, one float32 per
+   pass — there is no imaginary coefficient word in the kernel to synthesise.
+3. The fill multiplies each stored part by the parity word, one float32 product
+   per part, as MEEP's connection forms it.
+4. ONE LAUNCH PER FOLDED AXIS, in X, Y, Z order, held as a list the plan walks
+   (the array path's order, though the per-part fill commutes, see above).
+5. The fill kernel carries NO ``PHASE`` constexpr. The parity enters only as the
+   passed coefficient word, so the identity-shortcut mutant (the multiply
+   dropped) is caught on the phase = -1 rows and is a structural null on the +1
+   rows, where ``x * (+1.0)`` IS ``x``. An unused constexpr in the shipped
+   signature would be dead weight the reader has to discount.
 7. Two host-rounded scalars per launch for the real beta family, one per sign,
    from ``special_kz.beta_curl_coefficients`` — ``special_kz``'s grouping choice
    1, inherited unchanged.
@@ -273,20 +252,11 @@ except ImportError as _exc:  # pragma: no cover - exercised by the absence test
     tl = _MissingLanguage()  # type: ignore[assignment]
 
 from .complex_fields import (  # noqa: E402 - this package's own module
-    PROBE_PATTERNS,
     ComplexConstitutivePlan,
     _complex_layout_reasons,
-    _mul_coefficient_left,
-    _mul_field_left,
-    _phase_arguments,
-    _rotate_field_left,
     _word_view,
     bloch_phase_table,
-    expansion_certification_reasons,
-    expansion_from_probe,
-    expansion_license,
-    expansion_policy_reasons,
-    load_expansion_probe,
+    connection_arguments,
 )
 from .coverage import (  # READ-ONLY imports; nothing here mutates coverage.py
     CONSTITUTIVE_SIDES,
@@ -300,12 +270,11 @@ from .coverage import (  # READ-ONLY imports; nothing here mutates coverage.py
     _layout_reasons,
     _susceptibility_reasons,
 )
-from .launch import SUB_STEPS, ConstitutivePlan, CupyPointer, _flat
+from .launch import SUB_STEPS, ConstitutivePlan, CupyPointer, _flat, chunk_bounds_for
 from .special_kz import (  # noqa: E402 - this package's own module
-    BETA_PROBE_PATTERNS,
-    _mul_imag_coefficient_left,
     beta_curl_coefficients,
 )
+
 
 # ---------------------------------------------------------------------------
 # The constants the kernel and the host agree on — RESTATED, never imported
@@ -350,8 +319,14 @@ METALLIC = tl.constexpr(CODE_METALLIC)
 MIRROR_METALLIC = tl.constexpr(CODE_MIRROR_METALLIC)
 MIRROR_PERIODIC = tl.constexpr(CODE_MIRROR_PERIODIC)
 
-NAIVE = tl.constexpr(0)
-FMA_V1 = tl.constexpr(1)
+# The forms, the record layout and the connection, read by K1. Imported only when
+# Triton is: those modules import it at module scope, and this module's host route
+# must answer without it.
+if _TRITON_IMPORT_ERROR is None:
+    from .complex_fields import _connect  # noqa: E402
+    from .forms import (axis_present, curl_form, curl_stencil,  # noqa: E402
+                        fold_ladder, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
 
 #: Elements per program — complex CELLS for K1/K2/K3b, real cells for K3a.
 #: Restated from ``kernels.DEFAULT_BLOCK`` for the same import reason as the
@@ -360,42 +335,24 @@ FMA_V1 = tl.constexpr(1)
 #: (kernels.py:56-59).
 DEFAULT_BLOCK = 256
 
-#: The NEW probe pattern this tranche adds: the mirror PARITY product,
-#: ``complex64 scalar (+-1.0, +0.0) * complex64 array`` with the COEFFICIENT on
-#: the left (stepping.py:1450-1451 / :1528-1532, through a Python int). The base
-#: four patterns cover zero-imaginary and field-left/general-c8 orientations;
-#: ``special_kz``'s extra pattern covers a general imaginary coefficient. A
-#: unit-real coefficient is its own compiled-dispatch case and is MEASURED.
-PARITY_PROBE_PATTERN = "c8_mul_c8_parity_coefficient_left"
-
-#: The pattern set an artifact must classify before K2 may bind an ``EXPANSION``.
-PARITY_PROBE_PATTERNS: Tuple[str, ...] = PROBE_PATTERNS + (PARITY_PROBE_PATTERN,)
-
-#: The pattern set K3b (complex fold + beta) must have: the beta tranche's
-#: extended set, because the kernel it launches carries the beta product.
-FOLDED_BETA_PROBE_PATTERNS: Tuple[str, ...] = BETA_PROBE_PATTERNS
 
 __all__ = [
     "CODE_METALLIC",
     "CODE_MIRROR_METALLIC",
     "CODE_MIRROR_PERIODIC",
     "CODE_PERIODIC",
-    "FOLDED_BETA_PROBE_PATTERNS",
     "FoldedBetaBlochPmlCurlPlan",
     "FoldedBetaPmlCurlPlan",
     "FoldedComplexPmlCurlPlan",
     "FoldedMirrorGhostFillComplexPlan",
     "GHOST_FILL_FAMILIES",
     "MIRROR_SOURCE_INDEX",
-    "PARITY_PROBE_PATTERN",
-    "PARITY_PROBE_PATTERNS",
     "TARGET_IYEE",
     "folded_axis_kinds",
     "folded_beta_bloch_pml_curl_coverage",
     "folded_beta_bloch_pml_curl_step",
     "folded_beta_pml_curl_coverage",
     "folded_beta_pml_curl_step",
-    "folded_beta_expansion_license",
     "folded_beta_run_constitutive_coverage",
     "folded_bloch_pml_curl_step",
     "folded_complex_constitutive_coverage",
@@ -404,8 +361,6 @@ __all__ = [
     "folded_mirror_ghost_fill_complex_coverage",
     "ghost_fill_axis_entries",
     "mirror_parity_coefficients",
-    "parity_expansion_from_probe",
-    "parity_expansion_license",
     "plan_folded_beta_bloch_pml_curl",
     "plan_folded_beta_bloch_pml_curl_from_arrays",
     "plan_folded_beta_pml_curl",
@@ -429,54 +384,36 @@ def folded_bloch_pml_curl_step(
     u0, u1, u2,                       # auxiliaries: fu_B* or fu_D* (complex64 as words)
     g0, g1, g2,                       # sources: Ex,Ey,Ez or Hx,Hy,Hz (complex64 as words)
     kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, float32, one sub-lattice
+    cb,                               # chunk record: the forms' membership and presence
     nx, ny, nz, n_elem, dtdx,         # n_elem = COMPLEX cells; dtdx pre-rounded to f32
-    pxr, pxi, pyr, pyi, pzr, pzi,     # per-axis complex64-rounded phase (conj for BACKWARD)
+    cxr, cxi, cyr, cyi, czr, czi,     # per-axis connection factor, float32 parts
     BACKWARD: tl.constexpr,           # 0 = B (forward differences), 1 = D
     BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
-    PHX: tl.constexpr, PHY: tl.constexpr, PHZ: tl.constexpr,
-    EXPANSION: tl.constexpr,
+    CNX: tl.constexpr, CNY: tl.constexpr, CNZ: tl.constexpr,   # connection kind per axis
     BLOCK: tl.constexpr,
 ):
-    """One COMPLEX curl sub-step on a FOLDED grid, split-field PML included.
+    """One COMPLEX curl sub-step on a FOLDED grid, both PML forms included.
 
-    ``complex_fields.bloch_pml_curl_step``'s certified body with exactly three
-    deltas, all of them ``symmetry.py``'s, NONE of them arithmetic:
+    :func:`.complex_fields.bloch_pml_curl_step`'s body with exactly three deltas, all
+    of them ``symmetry.pml_curl_step_folded``'s and NONE of them arithmetic:
 
-    1. the boundary constexprs widen from {PERIODIC, METALLIC} to the four
-       codes, and BOTH mirror codes take the METALLIC ghost branch — mask the
-       out-of-range neighbour, serve ``other=0.0`` on BOTH words. That is not
-       the array path's ghost VALUE on a fold (``_shift_down`` S:1824-1825
-       serves ``parity*field[2]``, ``_shift_up`` S:1778-1779 serves
-       ``parity*field[reflect_row]``) and it does not have to be: the only cell
-       that reads either ghost is a cell one of the two masks below zeroes. On
-       MIRROR_METALLIC the top plane IS stepped and the ghost must be exactly
-       the ``(+0.0, +0.0)`` pair, which ``other=0.0`` delivers;
-    2. the cell-0 ownership mask widens from ``== METALLIC`` to ``!= PERIODIC``,
-       transcribing ``_mask_non_owned_cells``' ``is_mirrored or is_metallic or
-       is_axis`` (S:1898-1902; the cylindrical arm is refused by the predicate).
-       Applied to BOTH words with ``tl.where(at, 0.0, w)``, which writes
-       ``+0.0`` — matching the array path's ``curl[_face(axis,0)] = 0`` on a
-       complex64 array, where the Python int 0 casts to ``(+0.0, +0.0)``;
-    3. a folded PERIODIC axis masks its LAST plane for every target whose Yee
-       shift is 1 there (S:1887-1897), written out per (side, target, axis) with
-       no loop and no derived predicate, exactly as ``symmetry.py:288-315``
-       writes it — BOTH words.
+    1. the boundary constexprs widen from {PERIODIC, METALLIC} to the four codes, and
+       BOTH mirror codes take the masked ghost branch (serve ``(+0.0, +0.0)``). That is
+       not the array path's ghost VALUE on a fold and it does not have to be: the only
+       cell that reads either ghost is a cell one of the two masks below zeroes, and on
+       MIRROR_METALLIC the top plane is stepped against exactly that zero pair;
+    2. the cell-0 ownership mask widens from ``== METALLIC`` to ``!= PERIODIC``
+       (``_mask_non_owned_cells``' ``is_mirrored or is_metallic``);
+    3. a folded PERIODIC axis masks its LAST plane for every target whose Yee shift is
+       1 there (``_mask_non_owned_cells``' ``_stored_past_owned`` arm).
 
-    EVERYTHING ELSE IS THE CERTIFIED COMPLEX BODY and must not be re-derived:
-    word-pair addressing at ``2*idx``/``2*idx+1``; ``_rotate_field_left`` on
-    SHIFTED operands only, selected onto the wrapped lane with ``tl.where``;
-    ``_mul_coefficient_left(dtdx, ...)`` for the curl scale; ``_mul_field_left``
-    in the PML ladder; the ``(a*b) * -1.0`` negation spelling inside those
-    helpers (never unary minus — Triton lowers ``-x`` as ``0.0 - x`` and
-    canonicalizes signed zeros); the ``0.0 * t`` zero cross terms preserved.
-
-    ``PH*`` MUST BE 0 ON A FOLDED AXIS. The kernel does not check it; the
-    predicate refuses it (``driver._require_bloch_is_representable`` refuses the
-    configuration outright, and a kernel cannot lift what the array path will not
-    run). Planting ``PH=1`` on a folded axis is a gate mutation: predicted CAUGHT
-    on MIRROR_METALLIC (the top plane is unmasked there, and rotating the
-    ``(+0.0, +0.0)`` ghost pair can flip a zero sign) and NULL on MIRROR_PERIODIC
-    (both consumers of that plane are top-plane masked).
+    Everything else is the unfolded complex body: the parts stepped with the real
+    forms (:mod:`.forms`) on the chunk record, MEEP's left-to-right stencil with
+    partner presence, ``fu`` read and written on the recurrence's cells only, and the
+    Bloch connection on the UNSHIFTED partner's plane 0 of a phased PERIODIC axis.
+    A folded axis carries no phase (the driver refuses a nonzero k on a mirror plane's
+    axis and the predicate re-checks it), so ``CN*`` is 0 on every folded axis; a
+    ghost row of a folded axis reads the membership line its image row reads.
     """
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     live = idx < n_elem
@@ -487,9 +424,10 @@ def folded_bloch_pml_curl_step(
     i = plane // ny
 
     # --- DELTA 1: the ghost rule, per axis (stepping._shift_up / _shift_down) ---
-    # PERIODIC wraps; EVERY other rule here serves an exact 0.0 past the face,
-    # which `tl.load`'s `other=` delivers on BOTH words without dereferencing
-    # anything. On a folded axis that zero stands in for a value nothing reads.
+    # PERIODIC wraps (a plain roll, phased or not); EVERY other rule here serves an
+    # exact (+0.0, +0.0) past the face, which `tl.load`'s `other=` delivers on both
+    # words. On a folded axis that zero stands in for a value nothing reads (the two
+    # masks below zero every cell that reads it).
     if BACKWARD:
         si, sj, sk = i - 1, j - 1, k - 1
     else:
@@ -512,12 +450,6 @@ def folded_bloch_pml_curl_step(
     oy = i * nyz + sj * nz + k
     oz = i * nyz + j * nz + sk
 
-    # --- wrapped-lane predicates, one plane per axis ----------------------------
-    if BACKWARD:
-        wx, wy, wz = i == 0, j == 0, k == 0
-    else:
-        wx, wy, wz = i == nx - 1, j == ny - 1, k == nz - 1
-
     # --- loads: two words per operand ------------------------------------------
     a_re = tl.load(g0 + 2 * idx, mask=live, other=0.0)
     a_im = tl.load(g0 + 2 * idx + 1, mask=live, other=0.0)
@@ -538,45 +470,59 @@ def folded_bloch_pml_curl_step(
     c_y_re = tl.load(g2 + 2 * oy, mask=vy, other=0.0)
     c_y_im = tl.load(g2 + 2 * oy + 1, mask=vy, other=0.0)
 
-    # --- Bloch phase on the wrapped lane, BEFORE the difference -----------------
-    # SHIFTED operands only; PH* is 0 on every folded axis by the predicate.
-    if PHX:
-        rot_re, rot_im = _rotate_field_left(b_x_re, b_x_im, pxr, pxi, EXPANSION)
-        b_x_re = tl.where(wx, rot_re, b_x_re)
-        b_x_im = tl.where(wx, rot_im, b_x_im)
-        rot_re, rot_im = _rotate_field_left(c_x_re, c_x_im, pxr, pxi, EXPANSION)
-        c_x_re = tl.where(wx, rot_re, c_x_re)
-        c_x_im = tl.where(wx, rot_im, c_x_im)
-    if PHY:
-        rot_re, rot_im = _rotate_field_left(a_y_re, a_y_im, pyr, pyi, EXPANSION)
-        a_y_re = tl.where(wy, rot_re, a_y_re)
-        a_y_im = tl.where(wy, rot_im, a_y_im)
-        rot_re, rot_im = _rotate_field_left(c_y_re, c_y_im, pyr, pyi, EXPANSION)
-        c_y_re = tl.where(wy, rot_re, c_y_re)
-        c_y_im = tl.where(wy, rot_im, c_y_im)
-    if PHZ:
-        rot_re, rot_im = _rotate_field_left(a_z_re, a_z_im, pzr, pzi, EXPANSION)
-        a_z_re = tl.where(wz, rot_re, a_z_re)
-        a_z_im = tl.where(wz, rot_im, a_z_im)
-        rot_re, rot_im = _rotate_field_left(b_z_re, b_z_im, pzr, pzi, EXPANSION)
-        b_z_re = tl.where(wz, rot_re, b_z_re)
-        b_z_im = tl.where(wz, rot_im, b_z_im)
-
-    # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-    t0_re = ((c_y_re - c_re) + (b_re - b_z_re))
-    t0_im = ((c_y_im - c_im) + (b_im - b_z_im))
-    t1_re = ((a_z_re - a_re) + (c_re - c_x_re))
-    t1_im = ((a_z_im - a_im) + (c_im - c_x_im))
-    t2_re = ((b_x_re - b_re) + (a_re - a_y_re))
-    t2_im = ((b_x_im - b_im) + (a_im - a_y_im))
-    curl0_re, curl0_im = _mul_coefficient_left(dtdx, t0_re, t0_im, EXPANSION)
-    curl1_re, curl1_im = _mul_coefficient_left(dtdx, t1_re, t1_im, EXPANSION)
-    curl2_re, curl2_im = _mul_coefficient_left(dtdx, t2_re, t2_im, EXPANSION)
-
-    # --- DELTA 2: ownership mask, cell 0 (stepping._mask_non_owned_cells) ------
-    # Byte-copied from the certified complex kernel with `== METALLIC` widened to
-    # `!= PERIODIC`. Writes +0.0 to BOTH planes (S:1896, S:1902).
+    # --- the connection on the UNSHIFTED partners, plane 0 of each partner's axis
+    # Target 0 reads c along y and b along z, target 1 a along z and c along x,
+    # target 2 b along x and a along y (stepping's term table). `tl.where` is a
+    # bitwise select, so every cell off plane 0 keeps its loaded words.
     at_x, at_y, at_z = i == 0, j == 0, k == 0
+    c0_re, c0_im = c_re, c_im          # target 0's g1, connected on y
+    b0_re, b0_im = b_re, b_im          # target 0's g2, connected on z
+    a1_re, a1_im = a_re, a_im          # target 1's g1, connected on z
+    c1_re, c1_im = c_re, c_im          # target 1's g2, connected on x
+    b2_re, b2_im = b_re, b_im          # target 2's g1, connected on x
+    a2_re, a2_im = a_re, a_im          # target 2's g2, connected on y
+    if CNX:
+        r_re, r_im = _connect(c_re, c_im, cxr, cxi, CNX)
+        c1_re = tl.where(at_x, r_re, c_re)
+        c1_im = tl.where(at_x, r_im, c_im)
+        r_re, r_im = _connect(b_re, b_im, cxr, cxi, CNX)
+        b2_re = tl.where(at_x, r_re, b_re)
+        b2_im = tl.where(at_x, r_im, b_im)
+    if CNY:
+        r_re, r_im = _connect(c_re, c_im, cyr, cyi, CNY)
+        c0_re = tl.where(at_y, r_re, c_re)
+        c0_im = tl.where(at_y, r_im, c_im)
+        r_re, r_im = _connect(a_re, a_im, cyr, cyi, CNY)
+        a2_re = tl.where(at_y, r_re, a_re)
+        a2_im = tl.where(at_y, r_im, a_im)
+    if CNZ:
+        r_re, r_im = _connect(b_re, b_im, czr, czi, CNZ)
+        b0_re = tl.where(at_z, r_re, b_re)
+        b0_im = tl.where(at_z, r_im, b_im)
+        r_re, r_im = _connect(a_re, a_im, czr, czi, CNZ)
+        a1_re = tl.where(at_z, r_re, a_re)
+        a1_im = tl.where(at_z, r_im, a_im)
+
+    # --- the curl (stepping._curl_from_operands), per part ---------------------
+    # kernels.pml_curl_step's three calls on each part: MEEP's left-to-right
+    # association with both partners, the one-partner form where the record says the
+    # other partner's derivative axis is invariant, an exact +0 with neither. The
+    # dtdx scale is the real scalar times each part (part_products.scale).
+    presence = tl.load(cb + RECORD_PRESENCE)
+    px = axis_present(presence, 0)
+    py = axis_present(presence, 1)
+    pz = axis_present(presence, 2)
+    curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)
+    curl0_im = curl_stencil(c_y_im, c0_im, b0_im, b_z_im, dtdx, py, pz)
+    curl1_re = curl_stencil(a_z_re, a1_re, c1_re, c_x_re, dtdx, pz, px)
+    curl1_im = curl_stencil(a_z_im, a1_im, c1_im, c_x_im, dtdx, pz, px)
+    curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)
+    curl2_im = curl_stencil(b_x_im, b2_im, a2_im, a_y_im, dtdx, px, py)
+
+    # --- DELTA 2: ownership mask, cell 0 (stepping._mask_non_owned_cells) -------
+    # Every target whose Yee shift is 0 on a non-periodic axis (``is_mirrored or
+    # is_metallic``): the unfolded body's ``== METALLIC`` widened to ``!= PERIODIC``.
+    # Writes +0.0 to BOTH parts -- the array path assigns complex zero.
     if BACKWARD:
         if BCY != PERIODIC:
             curl0_re = tl.where(at_y, 0.0, curl0_re)
@@ -607,13 +553,13 @@ def folded_bloch_pml_curl_step(
             curl2_re = tl.where(at_z, 0.0, curl2_re)
             curl2_im = tl.where(at_z, 0.0, curl2_im)
 
-    # --- DELTA 3: ownership mask, TOP plane of a folded PERIODIC axis ----------
-    # The complement of the block above: every target whose Yee shift is 1 there.
-    # Written out per (side, target, axis) exactly as that block is, so a reader
-    # checks it against `_mask_non_owned_cells`'s `if iyee[axis] != 0` arm by eye.
+    # --- DELTA 3: ownership mask, the TOP plane of a folded PERIODIC axis --------
+    # Every target whose Yee shift is 1 there: that slot sits past MEEP's owned
+    # window and the far fill, not the curl, writes it (symmetry.py's block, both
+    # parts).
     last_x, last_y, last_z = i == nx - 1, j == ny - 1, k == nz - 1
     if BACKWARD:
-        # Dx:(1,0,0)  Dy:(0,1,0)  Dz:(0,0,1) — shift 1 on its OWN axis only.
+        # Dx:(1,0,0)  Dy:(0,1,0)  Dz:(0,0,1) -- shift 1 on its OWN axis only.
         if BCX == MIRROR_PERIODIC:
             curl0_re = tl.where(last_x, 0.0, curl0_re)
             curl0_im = tl.where(last_x, 0.0, curl0_im)
@@ -624,7 +570,7 @@ def folded_bloch_pml_curl_step(
             curl2_re = tl.where(last_z, 0.0, curl2_re)
             curl2_im = tl.where(last_z, 0.0, curl2_im)
     else:
-        # Bx:(0,1,1)  By:(1,0,1)  Bz:(1,1,0) — shift 1 on the two OTHER axes.
+        # Bx:(0,1,1)  By:(1,0,1)  Bz:(1,1,0) -- shift 1 on the two OTHER axes.
         if BCY == MIRROR_PERIODIC:
             curl0_re = tl.where(last_y, 0.0, curl0_re)
             curl0_im = tl.where(last_y, 0.0, curl0_im)
@@ -644,11 +590,10 @@ def folded_bloch_pml_curl_step(
             curl2_re = tl.where(last_y, 0.0, curl2_re)
             curl2_im = tl.where(last_y, 0.0, curl2_im)
 
-    # --- split-field recurrence (stepping._apply_pml_update) -------------------
-    # Byte-copied from the certified complex kernel. The PML coefficient vectors
-    # are built at the STORED extent on a folded axis (symmetry.py:318-320
-    # measured kms_y.shape == (1, 22, 1) on a grid storing 22), so the per-axis
-    # indexing needs no fold-aware change.
+    # --- the PML forms (stepping._apply_curl_regions), per part ----------------
+    # dsig/dsigu cycle: target 0 -> (y, z), 1 -> (z, x), 2 -> (x, y). One record
+    # select per target serves both parts; fu is read and written on the
+    # recurrence's cells only (the auxiliary contract), both words.
     km_x = tl.load(kmx + i, mask=live, other=0.0)
     si_x = tl.load(sinvx + i, mask=live, other=0.0)
     km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -656,52 +601,42 @@ def folded_bloch_pml_curl_step(
     km_z = tl.load(kmz + k, mask=live, other=0.0)
     si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-    p0_re = tl.load(u0 + 2 * idx, mask=live, other=0.0)
-    p0_im = tl.load(u0 + 2 * idx + 1, mask=live, other=0.0)
-    q_re, q_im = _mul_field_left(p0_re, p0_im, km_y, EXPANSION)
-    q_re = q_re - curl0_re
-    q_im = q_im - curl0_im
-    n0_re, n0_im = _mul_field_left(q_re, q_im, si_y, EXPANSION)
-    e_re = tl.load(f0 + 2 * idx, mask=live, other=0.0)
-    e_im = tl.load(f0 + 2 * idx + 1, mask=live, other=0.0)
-    r_re, r_im = _mul_field_left(e_re, e_im, km_z, EXPANSION)
-    r_re = (r_re + n0_re) - p0_re
-    r_im = (r_im + n0_im) - p0_im
-    v0_re, v0_im = _mul_field_left(r_re, r_im, si_z, EXPANSION)
+    if BACKWARD:
+        lattice = 0
+    else:
+        lattice = RECORD_HALF_INTEGER
+    du0 = record_in(cb, lattice + 8, k)
+    du1 = record_in(cb, lattice + 0, i)
+    du2 = record_in(cb, lattice + 4, j)
 
-    p1_re = tl.load(u1 + 2 * idx, mask=live, other=0.0)
-    p1_im = tl.load(u1 + 2 * idx + 1, mask=live, other=0.0)
-    q_re, q_im = _mul_field_left(p1_re, p1_im, km_z, EXPANSION)
-    q_re = q_re - curl1_re
-    q_im = q_im - curl1_im
-    n1_re, n1_im = _mul_field_left(q_re, q_im, si_z, EXPANSION)
-    e_re = tl.load(f1 + 2 * idx, mask=live, other=0.0)
-    e_im = tl.load(f1 + 2 * idx + 1, mask=live, other=0.0)
-    r_re, r_im = _mul_field_left(e_re, e_im, km_x, EXPANSION)
-    r_re = (r_re + n1_re) - p1_re
-    r_im = (r_im + n1_im) - p1_im
-    v1_re, v1_im = _mul_field_left(r_re, r_im, si_x, EXPANSION)
+    p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)
+    p_im = tl.load(u0 + 2 * idx + 1, mask=live & du0, other=0.0)
+    v0_re, n0_re = curl_form(tl.load(f0 + 2 * idx, mask=live, other=0.0), p_re, curl0_re,
+                             km_y, si_y, km_z, si_z, du0)
+    v0_im, n0_im = curl_form(tl.load(f0 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                             curl0_im, km_y, si_y, km_z, si_z, du0)
 
-    p2_re = tl.load(u2 + 2 * idx, mask=live, other=0.0)
-    p2_im = tl.load(u2 + 2 * idx + 1, mask=live, other=0.0)
-    q_re, q_im = _mul_field_left(p2_re, p2_im, km_x, EXPANSION)
-    q_re = q_re - curl2_re
-    q_im = q_im - curl2_im
-    n2_re, n2_im = _mul_field_left(q_re, q_im, si_x, EXPANSION)
-    e_re = tl.load(f2 + 2 * idx, mask=live, other=0.0)
-    e_im = tl.load(f2 + 2 * idx + 1, mask=live, other=0.0)
-    r_re, r_im = _mul_field_left(e_re, e_im, km_y, EXPANSION)
-    r_re = (r_re + n2_re) - p2_re
-    r_im = (r_im + n2_im) - p2_im
-    v2_re, v2_im = _mul_field_left(r_re, r_im, si_y, EXPANSION)
+    p_re = tl.load(u1 + 2 * idx, mask=live & du1, other=0.0)
+    p_im = tl.load(u1 + 2 * idx + 1, mask=live & du1, other=0.0)
+    v1_re, n1_re = curl_form(tl.load(f1 + 2 * idx, mask=live, other=0.0), p_re, curl1_re,
+                             km_z, si_z, km_x, si_x, du1)
+    v1_im, n1_im = curl_form(tl.load(f1 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                             curl1_im, km_z, si_z, km_x, si_x, du1)
 
-    # --- stores: u then f (kernels.py:193-198 order), both planes ---------------
-    tl.store(u0 + 2 * idx, n0_re, mask=live)
-    tl.store(u0 + 2 * idx + 1, n0_im, mask=live)
-    tl.store(u1 + 2 * idx, n1_re, mask=live)
-    tl.store(u1 + 2 * idx + 1, n1_im, mask=live)
-    tl.store(u2 + 2 * idx, n2_re, mask=live)
-    tl.store(u2 + 2 * idx + 1, n2_im, mask=live)
+    p_re = tl.load(u2 + 2 * idx, mask=live & du2, other=0.0)
+    p_im = tl.load(u2 + 2 * idx + 1, mask=live & du2, other=0.0)
+    v2_re, n2_re = curl_form(tl.load(f2 + 2 * idx, mask=live, other=0.0), p_re, curl2_re,
+                             km_x, si_x, km_y, si_y, du2)
+    v2_im, n2_im = curl_form(tl.load(f2 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                             curl2_im, km_x, si_x, km_y, si_y, du2)
+
+    # --- stores: fu (recurrence cells only), then the fields, both parts --------
+    tl.store(u0 + 2 * idx, n0_re, mask=live & du0)
+    tl.store(u0 + 2 * idx + 1, n0_im, mask=live & du0)
+    tl.store(u1 + 2 * idx, n1_re, mask=live & du1)
+    tl.store(u1 + 2 * idx + 1, n1_im, mask=live & du1)
+    tl.store(u2 + 2 * idx, n2_re, mask=live & du2)
+    tl.store(u2 + 2 * idx + 1, n2_im, mask=live & du2)
     tl.store(f0 + 2 * idx, v0_re, mask=live)
     tl.store(f0 + 2 * idx + 1, v0_im, mask=live)
     tl.store(f1 + 2 * idx, v1_re, mask=live)
@@ -718,115 +653,42 @@ def folded_bloch_pml_curl_step(
 def folded_mirror_ghost_fill_complex(
     f0, f1, f2,                       # one family: Bx,By,Bz or Dx,Dy,Dz (complex64 words)
     nx, ny, nz, n_plane,
-    reflect_row,                      # RUNTIME: stepping._far_reflect_rows (S:1661-1690)
-    near_re, near_im,                 # host-rounded complex64(+phase) words
-    far_re, far_im,                   # host-rounded complex64(-phase) words
+    reflect_row,                      # RUNTIME: stepping._far_reflect_rows
+    near_c,                           # host-rounded float32 word of +phase
+    far_c,                            # host-rounded float32 word of -phase
     AXIS: tl.constexpr,               # 0 = x, 1 = y, 2 = z
     DO_NEAR: tl.constexpr,            # 1 on the fill_symmetry_bc_* pass
     DO_FAR: tl.constexpr,             # 1 on the fill_folded_far_ghosts_* pass,
     #                                 # and only on a folded PERIODIC axis
     S0: tl.constexpr, S1: tl.constexpr, S2: tl.constexpr,   # Yee shift on AXIS
-    EXPANSION: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     """The two mirror ghost planes of ONE family on ONE axis, COMPLEX storage.
 
     Replaces, for that (family, axis) pair, the whole-plane assignments in
-    ``stepping._fill_symmetry_ghost_cells`` (:1426-1451) and
-    ``stepping._fill_folded_far_ghosts`` (:1489-1532)::
+    ``stepping._fill_symmetry_ghost_cells`` and ``stepping._fill_folded_far_ghosts``,
+    through ``host_writes.copy_face``::
 
         near:  field[0]  = (+phase) * field[2]              # Yee shift 0 here
         far:   field[-1] = (-phase) * field[reflect_row]    # Yee shift 1 here,
                                                             # folded PERIODIC only
 
-    ``fields.mirror_parity(c, axis, phase) == phase * (1 - 2*iyee[c][axis])``
-    (fields.py:117), so the near fill's shift-0 components all take ``+phase``
-    and the far fill's shift-1 components all take ``-phase`` — two coefficients
-    per folded axis, and nothing else is parity input.
-
-    THE PARITY MULTIPLY IS A FULL COMPLEX PRODUCT WITH THE COEFFICIENT ON THE
-    LEFT, not a sign flip. The array path spells ``phase * plane`` with a Python
-    int, and NumPy/CuPy carry only ``'FF->F'`` complex loops — on complex64 that
-    is the full multiply by ``(±1.0, +0.0)`` including its zero cross terms.
-    Measured: a plane-wise ``±1 * word`` diverges in 8/128 engineered words at
-    BOTH parities (including the even mirror, where plane-wise is the identity
-    and the array path is not) and in 40 words on a live folded complex state.
-    Do NOT write ``PHASE * word``, and do NOT special-case ``phase == +1`` to a
-    plain copy: the even mirror is the one every corpus row uses, and it is not
-    the identity under complex storage.
-
-    THE COEFFICIENT WORDS ARE HOST-ROUNDED AND PASSED, never synthesised
-    in-kernel — the rule ``special_kz`` follows for the beta coefficient's
-    signed-zero real word (special_kz.py:255-264). Building ``c_im`` as a literal
-    ``+0.0`` here is a gate mutation.
+    THE PARITY MULTIPLY IS PER PART: ``part_products.scale`` rounds the Python int to
+    the part dtype and multiplies each stored part by it, as MEEP's connection
+    multiplies each ``realnum`` part (a ``-1`` connection is a unary minus per part,
+    boundaries.cpp:359-366). ``x * (+1.0)`` and ``x * (-1.0)`` are exact on every word,
+    signed zeros and subnormals included, so the fill is the real fill per part and
+    the two passes and the three axes commute bitwise; they are still launched in the
+    array path's order (near pass, then far pass after the driver's wall clear, X, Y,
+    Z within each). The coefficient words are host-rounded and passed
+    (:func:`mirror_parity_coefficients`).
 
     ``reflect_row`` IS A RUNTIME SCALAR and must come from
-    ``stepping._far_reflect_rows`` (:1661-1690), ``n_full - stored + 2``, which
-    is ``stored - 2`` at an even full count and ``stored - 3`` at an odd one.
-    Baking ``n - 2`` reflects about the window top instead of about the second
-    mirror — a whole cell wrong on every odd-count run.
+    ``stepping._far_reflect_rows``, ``n_full - stored + 2``: ``stored - 2`` at an even
+    full count and ``stored - 3`` at an odd one.
 
-    WORD-PAIR ADDRESSING. The CELL base/stride/last are computed exactly as the
-    real kernel computes them, then addressed at ``2*off`` and ``2*off + 1``.
-    ``2*off`` is int32, so the predicate halves the element bound to
-    ``2*ncells < 2**31`` (the clause ``complex_fields.py:117-118`` carries).
-
-    TWO PASSES, NOT ONE PER AXIS, and this is a MEASURED correction rather than
-    a preference. The array path runs ``fill_symmetry_bc_*`` (every folded axis's
-    NEAR plane, X-Y-Z) and ``fill_folded_far_ghosts_*`` (every folded axis's FAR
-    plane, X-Y-Z) as two separate whole-grid passes, with ``zero_metal_*``
-    between them (driver.py:3209-3211 / :3222-3224). A component unowned on two
-    axes with DIFFERENT Yee shifts — ``By`` on a Mirror(X)+Mirror(Y) grid is far
-    on x and near on y — therefore sees near-then-far, where a fused per-axis
-    launch would give it far-then-near. Under REAL storage the two orders agree
-    (every fill is a multiply by exactly ±1), which is why
-    ``symmetry.MirrorGhostFillPlan`` fuses them; under COMPLEX storage they do
-    NOT — and BOTH of the measurements behind that sentence are named here,
-    because they come from different states and the smaller one is not the
-    gate's:
-
-    * the UNIT TEST's state (test_triton_folded_complex.py:702-751 — signed-zero
-      and subnormal words planted on the two rows the fill reads, then ONE
-      ``stepping.step_B``) gives ``{Bx: 0, By: 1, Bz: 0}``. That 1 word is where
-      the split's justification was first measured, and it is reachable only from
-      a state that plants AND steps;
-    * the GATE's own states give the number the certification rests on.
-      ``fuse_fill_passes`` launches ``_launch_pass(1, 1)``, which IS the fused
-      per-axis form, over the whole fill matrix. Re-measured there 2026-08-12: 5
-      words of ``By`` (and 5 of ``Dx``) on ``engineered_rows``, 3 and 4 on
-      ``engineered_rows_post_step``, and 0 on ``zero_init_absorber``,
-      ``live_post_step`` and every one-axis grid — the first two carry no plant
-      on the read rows and the last has no target that is near on one folded axis
-      and far on another.
-
-    Hence ``DO_NEAR`` / ``DO_FAR`` and the plan's two-phase ``run``. The gate
-    carries the claim as its OWN needle rather than leaving it to the unit test,
-    and counts the rows on which the fused form CAN differ rather than the rows
-    that merely have two axes.
-
-    ONE LAUNCH PER FOLDED AXIS PER PASS, in X, Y, Z order — and here that order
-    is LOAD-BEARING, not a convention matched for hygiene: complex float
-    multiplication is not associative, so a corner unowned on two axes in the
-    SAME pass sees ``c_y (x) (c_x (x) z)`` against ``c_x (x) (c_y (x) z)``. The
-    real-storage commute null (symmetry.py:388-394) rests on every fill being a
-    multiply by exactly ±1 and does not transfer. The gate RE-MEASURES it on a
-    MIXED-PHASE two-folded-axis case — the phase must differ BETWEEN the two
-    planes or the question does not exist: with ``c_x == c_y`` the composition
-    commutes bit-exactly (measured 0/128 diverging words at (+1,+1) and at
-    (-1,-1), 8/128 at (+1,-1)), so a two-axis grid carrying ONE declared phase
-    makes ``reverse_axis_order`` a null by construction rather than a
-    measurement. That word-level number is confirmed at the GRID level on the
-    gate's own fill matrix (2026-08-12): the same-phase XY grid reverses a
-    two-element entry list and diverges in 0 words on all eight of its (family,
-    state) cells, while the mixed-phase one diverges in 5 words of ``Bz`` and 5
-    of ``Dz`` — ``Bz`` is far on both folded axes and ``Dz`` near on both, so
-    those are the two doubly-written corners. The gate therefore judges the leg
-    on the rows where the reordering CAN change a byte, not on the rows where it
-    changed the list.
-
-    Within one axis there is no hazard: every write plane is distinct from every
-    read plane (0 vs 2, and ``last`` vs ``reflect_row <= stored - 2``), which the
-    predicate CHECKS rather than assumes.
+    WORD-PAIR ADDRESSING. The CELL base/stride/last are computed exactly as the real
+    kernel computes them, then addressed at ``2*off`` and ``2*off + 1``.
     """
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     live = idx < n_plane
@@ -846,69 +708,51 @@ def folded_mirror_ghost_fill_complex(
         base = (idx // ny) * (ny * nz) + (idx % ny) * nz
         last = nz - 1
 
-    # --- near face: cell 0 = (+phase) (x) cell MIRROR_SOURCE_INDEX -------------
-    # Only the components with Yee shift 0 on this axis have an unowned cell 0
-    # (MEEP's little_owned_corner0(c) = little_corner + 2 - iyee_shift(c)).
-    # DO_NEAR is the `fill_symmetry_bc_*` PASS, launched across every folded axis
-    # before any far fill runs — see the plan for why the two passes may not be
-    # fused per axis.
+    # --- near face: cell 0 = (+phase) * cell MIRROR_SOURCE_INDEX, per part ------
+    # Only the components with Yee shift 0 on this axis have an unowned cell 0.
     if DO_NEAR and S0 == 0:
         src = base + 2 * stride
-        z_re = tl.load(f0 + 2 * src, mask=live, other=0.0)
-        z_im = tl.load(f0 + 2 * src + 1, mask=live, other=0.0)
-        o_re, o_im = _mul_imag_coefficient_left(near_re, near_im, z_re, z_im,
-                                                EXPANSION)
-        tl.store(f0 + 2 * base, o_re, mask=live)
-        tl.store(f0 + 2 * base + 1, o_im, mask=live)
+        tl.store(f0 + 2 * base, near_c * tl.load(f0 + 2 * src, mask=live, other=0.0),
+                 mask=live)
+        tl.store(f0 + 2 * base + 1,
+                 near_c * tl.load(f0 + 2 * src + 1, mask=live, other=0.0), mask=live)
     if DO_NEAR and S1 == 0:
         src = base + 2 * stride
-        z_re = tl.load(f1 + 2 * src, mask=live, other=0.0)
-        z_im = tl.load(f1 + 2 * src + 1, mask=live, other=0.0)
-        o_re, o_im = _mul_imag_coefficient_left(near_re, near_im, z_re, z_im,
-                                                EXPANSION)
-        tl.store(f1 + 2 * base, o_re, mask=live)
-        tl.store(f1 + 2 * base + 1, o_im, mask=live)
+        tl.store(f1 + 2 * base, near_c * tl.load(f1 + 2 * src, mask=live, other=0.0),
+                 mask=live)
+        tl.store(f1 + 2 * base + 1,
+                 near_c * tl.load(f1 + 2 * src + 1, mask=live, other=0.0), mask=live)
     if DO_NEAR and S2 == 0:
         src = base + 2 * stride
-        z_re = tl.load(f2 + 2 * src, mask=live, other=0.0)
-        z_im = tl.load(f2 + 2 * src + 1, mask=live, other=0.0)
-        o_re, o_im = _mul_imag_coefficient_left(near_re, near_im, z_re, z_im,
-                                                EXPANSION)
-        tl.store(f2 + 2 * base, o_re, mask=live)
-        tl.store(f2 + 2 * base + 1, o_im, mask=live)
+        tl.store(f2 + 2 * base, near_c * tl.load(f2 + 2 * src, mask=live, other=0.0),
+                 mask=live)
+        tl.store(f2 + 2 * base + 1,
+                 near_c * tl.load(f2 + 2 * src + 1, mask=live, other=0.0), mask=live)
 
-    # --- far face: last cell = (-phase) (x) cell reflect_row -------------------
-    # Only on a folded PERIODIC axis, and only for shift-1 components: a shift-0
-    # component's top slot IS MEEP's big_corner, owned and stepped. DO_FAR is the
-    # `fill_folded_far_ghosts_*` PASS, which the driver runs AFTER `zero_metal_*`.
+    # --- far face: last cell = (-phase) * cell reflect_row, per part ------------
+    # Only on a folded PERIODIC axis, and only for shift-1 components.
     if DO_FAR:
         if S0 == 1:
             dst = base + last * stride
             src = base + reflect_row * stride
-            z_re = tl.load(f0 + 2 * src, mask=live, other=0.0)
-            z_im = tl.load(f0 + 2 * src + 1, mask=live, other=0.0)
-            o_re, o_im = _mul_imag_coefficient_left(far_re, far_im, z_re, z_im,
-                                                    EXPANSION)
-            tl.store(f0 + 2 * dst, o_re, mask=live)
-            tl.store(f0 + 2 * dst + 1, o_im, mask=live)
+            tl.store(f0 + 2 * dst, far_c * tl.load(f0 + 2 * src, mask=live, other=0.0),
+                     mask=live)
+            tl.store(f0 + 2 * dst + 1,
+                     far_c * tl.load(f0 + 2 * src + 1, mask=live, other=0.0), mask=live)
         if S1 == 1:
             dst = base + last * stride
             src = base + reflect_row * stride
-            z_re = tl.load(f1 + 2 * src, mask=live, other=0.0)
-            z_im = tl.load(f1 + 2 * src + 1, mask=live, other=0.0)
-            o_re, o_im = _mul_imag_coefficient_left(far_re, far_im, z_re, z_im,
-                                                    EXPANSION)
-            tl.store(f1 + 2 * dst, o_re, mask=live)
-            tl.store(f1 + 2 * dst + 1, o_im, mask=live)
+            tl.store(f1 + 2 * dst, far_c * tl.load(f1 + 2 * src, mask=live, other=0.0),
+                     mask=live)
+            tl.store(f1 + 2 * dst + 1,
+                     far_c * tl.load(f1 + 2 * src + 1, mask=live, other=0.0), mask=live)
         if S2 == 1:
             dst = base + last * stride
             src = base + reflect_row * stride
-            z_re = tl.load(f2 + 2 * src, mask=live, other=0.0)
-            z_im = tl.load(f2 + 2 * src + 1, mask=live, other=0.0)
-            o_re, o_im = _mul_imag_coefficient_left(far_re, far_im, z_re, z_im,
-                                                    EXPANSION)
-            tl.store(f2 + 2 * dst, o_re, mask=live)
-            tl.store(f2 + 2 * dst + 1, o_im, mask=live)
+            tl.store(f2 + 2 * dst, far_c * tl.load(f2 + 2 * src, mask=live, other=0.0),
+                     mask=live)
+            tl.store(f2 + 2 * dst + 1,
+                     far_c * tl.load(f2 + 2 * src + 1, mask=live, other=0.0), mask=live)
 
 
 # ---------------------------------------------------------------------------
@@ -921,28 +765,24 @@ def folded_beta_pml_curl_step(
     u0, u1, u2,                       # auxiliaries: fu_B*  or  fu_D*
     g0, g1, g2,                       # sources: Ex,Ey,Ez  or  Hx,Hy,Hz
     kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, one Yee sub-lattice
+    cb,                               # chunk record: the forms' membership and presence
     nx, ny, nz, n_elem, dtdx,
-    beta_plus, beta_minus,            # f32(sign*2*pi*beta*dt), host-rounded once (S:770/:784)
+    beta_plus, beta_minus,            # f32(sign*2*pi*beta*dt), host-rounded once
     BACKWARD: tl.constexpr,           # 0 = B (forward differences), 1 = D
     BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
     HAS_BETA: tl.constexpr,           # compiled-in only for beta != 0 runs
     BLOCK: tl.constexpr,
 ):
-    """One REAL curl sub-step with special_kz beta, on a FOLDED grid.
+    """One REAL curl sub-step with MEEP's special-kz beta pass, on a FOLDED grid.
 
-    ``special_kz.beta_pml_curl_step``'s body with K1's three deltas (boundary
-    widening, cell-0 mask widening, MIRROR_PERIODIC top-plane mask), and THE BETA
-    INSERT KEPT EXACTLY WHERE IT IS: after the ``dtdx`` curl, before BOTH masks
-    (S:356-363 then :369 on the B side; :438-445 then :450 on the D side). Under
-    a fold that slot stops being a convention and becomes load-bearing on the
-    planes the fold adds — see the module docstring.
-
-    ``curl - (c*g)`` stays a SINGLE subtract: IEEE-754 defines subtraction as
-    addition of the negation, so it is the array path's negate-then-add on every
-    input including signed zeros, and it never relies on unary-minus lowering.
-    Two host-rounded scalars per launch, one per sign, from
-    ``special_kz.beta_curl_coefficients(beta, dt, magnetic, complex_storage=False)``.
-    ``HAS_BETA = 0`` must build byte-identical to the plain folded real kernel.
+    ``symmetry.pml_curl_step_folded``'s body, character for character, plus
+    ``special_kz.beta_pml_curl_step``'s beta pass after the three curl forms and before
+    the stores. The pass's increment carries the FOLDED ownership mask, the same two
+    blocks the folded curl applies (cell 0 of every non-periodic axis for a target
+    whose Yee shift is 0 there; the top plane of a folded PERIODIC axis for a target
+    whose shift is 1), so a cell the curl leaves to a fill keeps its word through the
+    pass too, as ``stepping._mask_non_owned_cells`` leaves it in the array path.
+    ``HAS_BETA = 0`` builds ``symmetry.pml_curl_step_folded`` exactly.
     """
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     live = idx < n_elem
@@ -952,7 +792,10 @@ def folded_beta_pml_curl_step(
     j = plane % ny
     i = plane // ny
 
-    # --- DELTA 1: the ghost rule, per axis --------------------------------------
+    # --- the ghost rule, per axis (stepping._shift_up / _shift_down) --------
+    # PERIODIC wraps; every other rule here serves an exact 0.0 past the face,
+    # which `tl.load`'s `other=` delivers without dereferencing anything. On a
+    # folded axis that zero stands in for a value nothing reads (see 1 above).
     if BACKWARD:
         si, sj, sk = i - 1, j - 1, k - 1
     else:
@@ -985,20 +828,21 @@ def folded_beta_pml_curl_step(
     c_x = tl.load(g2 + ox, mask=vx, other=0.0)
     c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
-    # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-    curl0 = dtdx * ((c_y - c) + (b - b_z))
-    curl1 = dtdx * ((a_z - a) + (c - c_x))
-    curl2 = dtdx * ((b_x - b) + (a - a_y))
+    # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens
+    # kernels.pml_curl_step's three calls: MEEP's left-to-right association with
+    # both partners, the one-partner form where the record says the other
+    # partner's derivative axis is invariant, an exact +0 with neither.
+    presence = tl.load(cb + RECORD_PRESENCE)
+    px = axis_present(presence, 0)
+    py = axis_present(presence, 1)
+    pz = axis_present(presence, 2)
+    curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+    curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+    curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
-    # --- the beta term (stepping._special_kz_beta_term), CENTER partners only ---
-    # AFTER the dtdx curl, BEFORE BOTH ownership masks. No dtdx on the term
-    # (analytic derivative, S:733-735). Real storage is MEEP's implicit-i trick:
-    # the SAME sign convention for both sub-steps.
-    if HAS_BETA:
-        curl0 = curl0 - (beta_plus * b)
-        curl1 = curl1 - (beta_minus * a)
-
-    # --- DELTA 2: ownership mask, cell 0 ---------------------------------------
+    # --- ownership mask, cell 0 (stepping._mask_non_owned_cells) ------------
+    # Every target whose Yee shift is 0 on a non-periodic axis. Byte-copied
+    # from the shipped kernel with `== METALLIC` widened to `!= PERIODIC`.
     at_x, at_y, at_z = i == 0, j == 0, k == 0
     if BACKWARD:
         if BCY != PERIODIC:
@@ -1021,9 +865,14 @@ def folded_beta_pml_curl_step(
         if BCZ != PERIODIC:
             curl2 = tl.where(at_z, 0.0, curl2)
 
-    # --- DELTA 3: ownership mask, TOP plane of a folded PERIODIC axis ----------
+    # --- ownership mask, the TOP plane of a folded PERIODIC axis ------------
+    # The complement of the block above: every target whose Yee shift is 1
+    # there. Written out per (side, target, axis) exactly as that block is —
+    # no loop, no derived predicate — so a reader checks it against
+    # `_mask_non_owned_cells`'s `if iyee[axis] != 0` arm by eye.
     last_x, last_y, last_z = i == nx - 1, j == ny - 1, k == nz - 1
     if BACKWARD:
+        # Dx:(1,0,0)  Dy:(0,1,0)  Dz:(0,0,1) — shift 1 on its OWN axis only.
         if BCX == MIRROR_PERIODIC:
             curl0 = tl.where(last_x, 0.0, curl0)
         if BCY == MIRROR_PERIODIC:
@@ -1031,6 +880,7 @@ def folded_beta_pml_curl_step(
         if BCZ == MIRROR_PERIODIC:
             curl2 = tl.where(last_z, 0.0, curl2)
     else:
+        # Bx:(0,1,1)  By:(1,0,1)  Bz:(1,1,0) — shift 1 on the two OTHER axes.
         if BCY == MIRROR_PERIODIC:
             curl0 = tl.where(last_y, 0.0, curl0)
         if BCZ == MIRROR_PERIODIC:
@@ -1044,7 +894,11 @@ def folded_beta_pml_curl_step(
         if BCY == MIRROR_PERIODIC:
             curl2 = tl.where(last_y, 0.0, curl2)
 
-    # --- split-field recurrence (stepping._apply_pml_update) -------------------
+    # --- the PML forms (stepping._apply_curl_regions) ----------------------
+    # Byte-copied from kernels.pml_curl_step. The PML coefficient vectors are
+    # built at the STORED extent on a folded axis (measured: kms_y.shape ==
+    # (1, 22, 1) on a grid storing 22), so the `n_a` indexing needs no
+    # fold-aware change.
     km_x = tl.load(kmx + i, mask=live, other=0.0)
     si_x = tl.load(sinvx + i, mask=live, other=0.0)
     km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -1052,21 +906,74 @@ def folded_beta_pml_curl_step(
     km_z = tl.load(kmz + k, mask=live, other=0.0)
     si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-    p0 = tl.load(u0 + idx, mask=live, other=0.0)
-    n0 = ((p0 * km_y) - curl0) * si_y
-    v0 = (((tl.load(f0 + idx, mask=live, other=0.0) * km_z) + n0) - p0) * si_z
+    # Which cells take the recurrence: the component's dsigu layer on its own
+    # sub-lattice (dsigu axis z for target 0, x for 1, y for 2; half-integer for
+    # every B target, integer for every D one), a compile-time record word.
+    if BACKWARD:
+        lattice = 0
+    else:
+        lattice = RECORD_HALF_INTEGER
+    du0 = record_in(cb, lattice + 8, k)
+    du1 = record_in(cb, lattice + 0, i)
+    du2 = record_in(cb, lattice + 4, j)
 
-    p1 = tl.load(u1 + idx, mask=live, other=0.0)
-    n1 = ((p1 * km_z) - curl1) * si_z
-    v1 = (((tl.load(f1 + idx, mask=live, other=0.0) * km_x) + n1) - p1) * si_x
+    p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+    v0, n0 = curl_form(tl.load(f0 + idx, mask=live, other=0.0), p0, curl0,
+                       km_y, si_y, km_z, si_z, du0)
 
-    p2 = tl.load(u2 + idx, mask=live, other=0.0)
-    n2 = ((p2 * km_x) - curl2) * si_x
-    v2 = (((tl.load(f2 + idx, mask=live, other=0.0) * km_y) + n2) - p2) * si_y
+    p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+    v1, n1 = curl_form(tl.load(f1 + idx, mask=live, other=0.0), p1, curl1,
+                       km_z, si_z, km_x, si_x, du1)
 
-    tl.store(u0 + idx, n0, mask=live)
-    tl.store(u1 + idx, n1, mask=live)
-    tl.store(u2 + idx, n2, mask=live)
+    p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+    v2, n2 = curl_form(tl.load(f2 + idx, mask=live, other=0.0), p2, curl2,
+                       km_x, si_x, km_y, si_y, du2)
+
+    # --- the special-kz beta pass (stepping._special_kz_beta_term, then
+    # stepping._apply_folded_increment) ----------------------------------------
+    # MEEP's pass of its own after every component's curl (step_db.cpp:161-175),
+    # applied to the registers the forms returned. The partners are the CENTER
+    # loads: target 0 takes the second source at sign +1 (Bx <- Ey, Dx <- Hy),
+    # target 1 the first at sign -1 (By <- Ex, Dy <- Hx); target 2 gets nothing.
+    # The increment is the NEGATED product (no dtdx: an analytic derivative),
+    # masked to +0 on the cells the curl's own mask drops, and the beta ladder
+    # subtracts it (forms.fold_ladder).
+    if HAS_BETA:
+        q0 = (beta_plus * b) * -1.0
+        q1 = (beta_minus * a) * -1.0
+        if BACKWARD:
+            if BCY != PERIODIC:
+                q0 = tl.where(at_y, 0.0, q0)
+            if BCZ != PERIODIC:
+                q0 = tl.where(at_z, 0.0, q0)
+            if BCX != PERIODIC:
+                q1 = tl.where(at_x, 0.0, q1)
+            if BCZ != PERIODIC:
+                q1 = tl.where(at_z, 0.0, q1)
+            if BCX == MIRROR_PERIODIC:
+                q0 = tl.where(last_x, 0.0, q0)
+            if BCY == MIRROR_PERIODIC:
+                q1 = tl.where(last_y, 0.0, q1)
+        else:
+            if BCX != PERIODIC:
+                q0 = tl.where(at_x, 0.0, q0)
+            if BCY != PERIODIC:
+                q1 = tl.where(at_y, 0.0, q1)
+            if BCY == MIRROR_PERIODIC:
+                q0 = tl.where(last_y, 0.0, q0)
+            if BCZ == MIRROR_PERIODIC:
+                q0 = tl.where(last_z, 0.0, q0)
+            if BCX == MIRROR_PERIODIC:
+                q1 = tl.where(last_x, 0.0, q1)
+            if BCZ == MIRROR_PERIODIC:
+                q1 = tl.where(last_z, 0.0, q1)
+        v0, n0 = fold_ladder(v0, n0, q0, si_y, si_z, du0)
+        v1, n1 = fold_ladder(v1, n1, q1, si_z, si_x, du1)
+
+    # fu is written on the recurrence's cells ONLY (the auxiliary contract).
+    tl.store(u0 + idx, n0, mask=live & du0)
+    tl.store(u1 + idx, n1, mask=live & du1)
+    tl.store(u2 + idx, n2, mask=live & du2)
     tl.store(f0 + idx, v0, mask=live)
     tl.store(f1 + idx, v1, mask=live)
     tl.store(f2 + idx, v2, mask=live)
@@ -1082,31 +989,23 @@ def folded_beta_bloch_pml_curl_step(
     u0, u1, u2,                       # auxiliaries: fu_B* or fu_D* (complex64 as words)
     g0, g1, g2,                       # sources: Ex,Ey,Ez or Hx,Hy,Hz (complex64 as words)
     kmx, sinvx, kmy, sinvy, kmz, sinvz,   # kms/sinv per axis, float32, one sub-lattice
+    cb,                               # chunk record: the forms' membership and presence
     nx, ny, nz, n_elem, dtdx,         # n_elem = COMPLEX cells; dtdx pre-rounded to f32
-    pxr, pxi, pyr, pyi, pzr, pzi,     # per-axis complex64-rounded phase (conj for BACKWARD)
-    bp_re, bp_im, bm_re, bm_im,       # complex64-rounded +-sign beta coefficients (S:770-784)
+    cxr, cxi, cyr, cyi, czr, czi,     # per-axis connection factor, float32 parts
+    beta_plus, beta_minus,            # f32 quarter-turn words per sign (B: +c, D: -c)
     BACKWARD: tl.constexpr,           # 0 = B (forward differences), 1 = D
     BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr,
-    PHX: tl.constexpr, PHY: tl.constexpr, PHZ: tl.constexpr,
+    CNX: tl.constexpr, CNY: tl.constexpr, CNZ: tl.constexpr,   # connection kind per axis
     HAS_BETA: tl.constexpr,           # compiled-in only for beta != 0 runs
-    EXPANSION: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """K1 plus ``special_kz.beta_bloch_pml_curl_step``'s beta insert, same slot.
+    """K1 plus ``special_kz.beta_bloch_pml_curl_step``'s beta pass, per part.
 
-    The beta partners are the CENTER word pairs ``(b_re, b_im)`` (target 0, sign
-    +1) and ``(a_re, a_im)`` (target 1, sign -1), loaded before the phase section
-    and NEVER rotated — the Bloch wrap rotates SHIFTED operands only, so the
-    partner is unrotated by construction (a gate mutation plants the rotation and
-    must be caught). The ±i lives in the host-bound coefficient words: ``+1j`` for
-    the B side, ``-1j`` for D (S:771-772), rounded once through numpy.complex64
-    with the signed-zero real word passed through. Plane-wise subtraction of both
-    words IS complex ``curl + (-(c*g))``: complex negation negates both words and
-    complex add is component-wise.
-
-    The beta coefficients bind the EXTENDED ``BETA_PROBE_PATTERNS``; the
-    constitutive sub-steps bind the BASE ``PROBE_PATTERNS``, because the kernel
-    launched there is the certified ``complex_fields.bloch_constitutive_step``.
+    :func:`folded_bloch_pml_curl_step`'s body, character for character, plus the
+    complex beta pass after the six part forms and before the stores: the negated
+    quarter turn of the CENTER partner's parts by the side's real word, masked to
+    ``(+0, +0)`` by K1's two ownership blocks, through the beta ladder per part. No
+    complex product is formed. ``HAS_BETA = 0`` builds K1 exactly.
     """
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     live = idx < n_elem
@@ -1116,7 +1015,11 @@ def folded_beta_bloch_pml_curl_step(
     j = plane % ny
     i = plane // ny
 
-    # --- DELTA 1: the ghost rule, per axis --------------------------------------
+    # --- DELTA 1: the ghost rule, per axis (stepping._shift_up / _shift_down) ---
+    # PERIODIC wraps (a plain roll, phased or not); EVERY other rule here serves an
+    # exact (+0.0, +0.0) past the face, which `tl.load`'s `other=` delivers on both
+    # words. On a folded axis that zero stands in for a value nothing reads (the two
+    # masks below zero every cell that reads it).
     if BACKWARD:
         si, sj, sk = i - 1, j - 1, k - 1
     else:
@@ -1139,11 +1042,7 @@ def folded_beta_bloch_pml_curl_step(
     oy = i * nyz + sj * nz + k
     oz = i * nyz + j * nz + sk
 
-    if BACKWARD:
-        wx, wy, wz = i == 0, j == 0, k == 0
-    else:
-        wx, wy, wz = i == nx - 1, j == ny - 1, k == nz - 1
-
+    # --- loads: two words per operand ------------------------------------------
     a_re = tl.load(g0 + 2 * idx, mask=live, other=0.0)
     a_im = tl.load(g0 + 2 * idx + 1, mask=live, other=0.0)
     b_re = tl.load(g1 + 2 * idx, mask=live, other=0.0)
@@ -1163,51 +1062,59 @@ def folded_beta_bloch_pml_curl_step(
     c_y_re = tl.load(g2 + 2 * oy, mask=vy, other=0.0)
     c_y_im = tl.load(g2 + 2 * oy + 1, mask=vy, other=0.0)
 
-    # --- Bloch phase on the wrapped lane, BEFORE the difference -----------------
-    if PHX:
-        rot_re, rot_im = _rotate_field_left(b_x_re, b_x_im, pxr, pxi, EXPANSION)
-        b_x_re = tl.where(wx, rot_re, b_x_re)
-        b_x_im = tl.where(wx, rot_im, b_x_im)
-        rot_re, rot_im = _rotate_field_left(c_x_re, c_x_im, pxr, pxi, EXPANSION)
-        c_x_re = tl.where(wx, rot_re, c_x_re)
-        c_x_im = tl.where(wx, rot_im, c_x_im)
-    if PHY:
-        rot_re, rot_im = _rotate_field_left(a_y_re, a_y_im, pyr, pyi, EXPANSION)
-        a_y_re = tl.where(wy, rot_re, a_y_re)
-        a_y_im = tl.where(wy, rot_im, a_y_im)
-        rot_re, rot_im = _rotate_field_left(c_y_re, c_y_im, pyr, pyi, EXPANSION)
-        c_y_re = tl.where(wy, rot_re, c_y_re)
-        c_y_im = tl.where(wy, rot_im, c_y_im)
-    if PHZ:
-        rot_re, rot_im = _rotate_field_left(a_z_re, a_z_im, pzr, pzi, EXPANSION)
-        a_z_re = tl.where(wz, rot_re, a_z_re)
-        a_z_im = tl.where(wz, rot_im, a_z_im)
-        rot_re, rot_im = _rotate_field_left(b_z_re, b_z_im, pzr, pzi, EXPANSION)
-        b_z_re = tl.where(wz, rot_re, b_z_re)
-        b_z_im = tl.where(wz, rot_im, b_z_im)
-
-    # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
-    t0_re = ((c_y_re - c_re) + (b_re - b_z_re))
-    t0_im = ((c_y_im - c_im) + (b_im - b_z_im))
-    t1_re = ((a_z_re - a_re) + (c_re - c_x_re))
-    t1_im = ((a_z_im - a_im) + (c_im - c_x_im))
-    t2_re = ((b_x_re - b_re) + (a_re - a_y_re))
-    t2_im = ((b_x_im - b_im) + (a_im - a_y_im))
-    curl0_re, curl0_im = _mul_coefficient_left(dtdx, t0_re, t0_im, EXPANSION)
-    curl1_re, curl1_im = _mul_coefficient_left(dtdx, t1_re, t1_im, EXPANSION)
-    curl2_re, curl2_im = _mul_coefficient_left(dtdx, t2_re, t2_im, EXPANSION)
-
-    # --- the beta term, CENTER partners only, BEFORE BOTH masks ----------------
-    if HAS_BETA:
-        t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)
-        curl0_re = curl0_re - t_re
-        curl0_im = curl0_im - t_im
-        t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)
-        curl1_re = curl1_re - t_re
-        curl1_im = curl1_im - t_im
-
-    # --- DELTA 2: ownership mask, cell 0 ---------------------------------------
+    # --- the connection on the UNSHIFTED partners, plane 0 of each partner's axis
+    # Target 0 reads c along y and b along z, target 1 a along z and c along x,
+    # target 2 b along x and a along y (stepping's term table). `tl.where` is a
+    # bitwise select, so every cell off plane 0 keeps its loaded words.
     at_x, at_y, at_z = i == 0, j == 0, k == 0
+    c0_re, c0_im = c_re, c_im          # target 0's g1, connected on y
+    b0_re, b0_im = b_re, b_im          # target 0's g2, connected on z
+    a1_re, a1_im = a_re, a_im          # target 1's g1, connected on z
+    c1_re, c1_im = c_re, c_im          # target 1's g2, connected on x
+    b2_re, b2_im = b_re, b_im          # target 2's g1, connected on x
+    a2_re, a2_im = a_re, a_im          # target 2's g2, connected on y
+    if CNX:
+        r_re, r_im = _connect(c_re, c_im, cxr, cxi, CNX)
+        c1_re = tl.where(at_x, r_re, c_re)
+        c1_im = tl.where(at_x, r_im, c_im)
+        r_re, r_im = _connect(b_re, b_im, cxr, cxi, CNX)
+        b2_re = tl.where(at_x, r_re, b_re)
+        b2_im = tl.where(at_x, r_im, b_im)
+    if CNY:
+        r_re, r_im = _connect(c_re, c_im, cyr, cyi, CNY)
+        c0_re = tl.where(at_y, r_re, c_re)
+        c0_im = tl.where(at_y, r_im, c_im)
+        r_re, r_im = _connect(a_re, a_im, cyr, cyi, CNY)
+        a2_re = tl.where(at_y, r_re, a_re)
+        a2_im = tl.where(at_y, r_im, a_im)
+    if CNZ:
+        r_re, r_im = _connect(b_re, b_im, czr, czi, CNZ)
+        b0_re = tl.where(at_z, r_re, b_re)
+        b0_im = tl.where(at_z, r_im, b_im)
+        r_re, r_im = _connect(a_re, a_im, czr, czi, CNZ)
+        a1_re = tl.where(at_z, r_re, a_re)
+        a1_im = tl.where(at_z, r_im, a_im)
+
+    # --- the curl (stepping._curl_from_operands), per part ---------------------
+    # kernels.pml_curl_step's three calls on each part: MEEP's left-to-right
+    # association with both partners, the one-partner form where the record says the
+    # other partner's derivative axis is invariant, an exact +0 with neither. The
+    # dtdx scale is the real scalar times each part (part_products.scale).
+    presence = tl.load(cb + RECORD_PRESENCE)
+    px = axis_present(presence, 0)
+    py = axis_present(presence, 1)
+    pz = axis_present(presence, 2)
+    curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)
+    curl0_im = curl_stencil(c_y_im, c0_im, b0_im, b_z_im, dtdx, py, pz)
+    curl1_re = curl_stencil(a_z_re, a1_re, c1_re, c_x_re, dtdx, pz, px)
+    curl1_im = curl_stencil(a_z_im, a1_im, c1_im, c_x_im, dtdx, pz, px)
+    curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)
+    curl2_im = curl_stencil(b_x_im, b2_im, a2_im, a_y_im, dtdx, px, py)
+
+    # --- DELTA 2: ownership mask, cell 0 (stepping._mask_non_owned_cells) -------
+    # Every target whose Yee shift is 0 on a non-periodic axis (``is_mirrored or
+    # is_metallic``): the unfolded body's ``== METALLIC`` widened to ``!= PERIODIC``.
+    # Writes +0.0 to BOTH parts -- the array path assigns complex zero.
     if BACKWARD:
         if BCY != PERIODIC:
             curl0_re = tl.where(at_y, 0.0, curl0_re)
@@ -1238,9 +1145,13 @@ def folded_beta_bloch_pml_curl_step(
             curl2_re = tl.where(at_z, 0.0, curl2_re)
             curl2_im = tl.where(at_z, 0.0, curl2_im)
 
-    # --- DELTA 3: ownership mask, TOP plane of a folded PERIODIC axis ----------
+    # --- DELTA 3: ownership mask, the TOP plane of a folded PERIODIC axis --------
+    # Every target whose Yee shift is 1 there: that slot sits past MEEP's owned
+    # window and the far fill, not the curl, writes it (symmetry.py's block, both
+    # parts).
     last_x, last_y, last_z = i == nx - 1, j == ny - 1, k == nz - 1
     if BACKWARD:
+        # Dx:(1,0,0)  Dy:(0,1,0)  Dz:(0,0,1) -- shift 1 on its OWN axis only.
         if BCX == MIRROR_PERIODIC:
             curl0_re = tl.where(last_x, 0.0, curl0_re)
             curl0_im = tl.where(last_x, 0.0, curl0_im)
@@ -1251,6 +1162,7 @@ def folded_beta_bloch_pml_curl_step(
             curl2_re = tl.where(last_z, 0.0, curl2_re)
             curl2_im = tl.where(last_z, 0.0, curl2_im)
     else:
+        # Bx:(0,1,1)  By:(1,0,1)  Bz:(1,1,0) -- shift 1 on the two OTHER axes.
         if BCY == MIRROR_PERIODIC:
             curl0_re = tl.where(last_y, 0.0, curl0_re)
             curl0_im = tl.where(last_y, 0.0, curl0_im)
@@ -1270,7 +1182,10 @@ def folded_beta_bloch_pml_curl_step(
             curl2_re = tl.where(last_y, 0.0, curl2_re)
             curl2_im = tl.where(last_y, 0.0, curl2_im)
 
-    # --- split-field recurrence (stepping._apply_pml_update) -------------------
+    # --- the PML forms (stepping._apply_curl_regions), per part ----------------
+    # dsig/dsigu cycle: target 0 -> (y, z), 1 -> (z, x), 2 -> (x, y). One record
+    # select per target serves both parts; fu is read and written on the
+    # recurrence's cells only (the auxiliary contract), both words.
     km_x = tl.load(kmx + i, mask=live, other=0.0)
     si_x = tl.load(sinvx + i, mask=live, other=0.0)
     km_y = tl.load(kmy + j, mask=live, other=0.0)
@@ -1278,192 +1193,107 @@ def folded_beta_bloch_pml_curl_step(
     km_z = tl.load(kmz + k, mask=live, other=0.0)
     si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-    p0_re = tl.load(u0 + 2 * idx, mask=live, other=0.0)
-    p0_im = tl.load(u0 + 2 * idx + 1, mask=live, other=0.0)
-    q_re, q_im = _mul_field_left(p0_re, p0_im, km_y, EXPANSION)
-    q_re = q_re - curl0_re
-    q_im = q_im - curl0_im
-    n0_re, n0_im = _mul_field_left(q_re, q_im, si_y, EXPANSION)
-    e_re = tl.load(f0 + 2 * idx, mask=live, other=0.0)
-    e_im = tl.load(f0 + 2 * idx + 1, mask=live, other=0.0)
-    r_re, r_im = _mul_field_left(e_re, e_im, km_z, EXPANSION)
-    r_re = (r_re + n0_re) - p0_re
-    r_im = (r_im + n0_im) - p0_im
-    v0_re, v0_im = _mul_field_left(r_re, r_im, si_z, EXPANSION)
+    if BACKWARD:
+        lattice = 0
+    else:
+        lattice = RECORD_HALF_INTEGER
+    du0 = record_in(cb, lattice + 8, k)
+    du1 = record_in(cb, lattice + 0, i)
+    du2 = record_in(cb, lattice + 4, j)
 
-    p1_re = tl.load(u1 + 2 * idx, mask=live, other=0.0)
-    p1_im = tl.load(u1 + 2 * idx + 1, mask=live, other=0.0)
-    q_re, q_im = _mul_field_left(p1_re, p1_im, km_z, EXPANSION)
-    q_re = q_re - curl1_re
-    q_im = q_im - curl1_im
-    n1_re, n1_im = _mul_field_left(q_re, q_im, si_z, EXPANSION)
-    e_re = tl.load(f1 + 2 * idx, mask=live, other=0.0)
-    e_im = tl.load(f1 + 2 * idx + 1, mask=live, other=0.0)
-    r_re, r_im = _mul_field_left(e_re, e_im, km_x, EXPANSION)
-    r_re = (r_re + n1_re) - p1_re
-    r_im = (r_im + n1_im) - p1_im
-    v1_re, v1_im = _mul_field_left(r_re, r_im, si_x, EXPANSION)
+    p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)
+    p_im = tl.load(u0 + 2 * idx + 1, mask=live & du0, other=0.0)
+    v0_re, n0_re = curl_form(tl.load(f0 + 2 * idx, mask=live, other=0.0), p_re, curl0_re,
+                             km_y, si_y, km_z, si_z, du0)
+    v0_im, n0_im = curl_form(tl.load(f0 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                             curl0_im, km_y, si_y, km_z, si_z, du0)
 
-    p2_re = tl.load(u2 + 2 * idx, mask=live, other=0.0)
-    p2_im = tl.load(u2 + 2 * idx + 1, mask=live, other=0.0)
-    q_re, q_im = _mul_field_left(p2_re, p2_im, km_x, EXPANSION)
-    q_re = q_re - curl2_re
-    q_im = q_im - curl2_im
-    n2_re, n2_im = _mul_field_left(q_re, q_im, si_x, EXPANSION)
-    e_re = tl.load(f2 + 2 * idx, mask=live, other=0.0)
-    e_im = tl.load(f2 + 2 * idx + 1, mask=live, other=0.0)
-    r_re, r_im = _mul_field_left(e_re, e_im, km_y, EXPANSION)
-    r_re = (r_re + n2_re) - p2_re
-    r_im = (r_im + n2_im) - p2_im
-    v2_re, v2_im = _mul_field_left(r_re, r_im, si_y, EXPANSION)
+    p_re = tl.load(u1 + 2 * idx, mask=live & du1, other=0.0)
+    p_im = tl.load(u1 + 2 * idx + 1, mask=live & du1, other=0.0)
+    v1_re, n1_re = curl_form(tl.load(f1 + 2 * idx, mask=live, other=0.0), p_re, curl1_re,
+                             km_z, si_z, km_x, si_x, du1)
+    v1_im, n1_im = curl_form(tl.load(f1 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                             curl1_im, km_z, si_z, km_x, si_x, du1)
 
-    tl.store(u0 + 2 * idx, n0_re, mask=live)
-    tl.store(u0 + 2 * idx + 1, n0_im, mask=live)
-    tl.store(u1 + 2 * idx, n1_re, mask=live)
-    tl.store(u1 + 2 * idx + 1, n1_im, mask=live)
-    tl.store(u2 + 2 * idx, n2_re, mask=live)
-    tl.store(u2 + 2 * idx + 1, n2_im, mask=live)
+    p_re = tl.load(u2 + 2 * idx, mask=live & du2, other=0.0)
+    p_im = tl.load(u2 + 2 * idx + 1, mask=live & du2, other=0.0)
+    v2_re, n2_re = curl_form(tl.load(f2 + 2 * idx, mask=live, other=0.0), p_re, curl2_re,
+                             km_x, si_x, km_y, si_y, du2)
+    v2_im, n2_im = curl_form(tl.load(f2 + 2 * idx + 1, mask=live, other=0.0), p_im,
+                             curl2_im, km_x, si_x, km_y, si_y, du2)
+
+    # --- the special-kz beta pass (stepping._special_kz_beta_term, then
+    # stepping._apply_folded_increment), per part ------------------------------
+    # MEEP's pass of its own after every component's curl (step_db.cpp:161-175),
+    # applied to the registers the forms returned. The partners are the CENTER
+    # words as loaded, never connected: target 0 takes the second source at sign
+    # +1, target 1 the first at sign -1; target 2 gets nothing. The increment is
+    # the negated quarter turn (part_products.quarter_turn): i*c*(x + iy) is
+    # (-(c*y), c*x), so its negation is (c*y, -(c*x)), the two negations of the
+    # real part cancelling exactly. The words beta_plus/beta_minus already carry
+    # the side's i or -i (special_kz.beta_curl_coefficients). Masked to (+0, +0)
+    # on the cells the curl's own mask drops; each part takes the beta ladder.
+    if HAS_BETA:
+        q0_re = beta_plus * b_im
+        q0_im = (beta_plus * b_re) * -1.0
+        q1_re = beta_minus * a_im
+        q1_im = (beta_minus * a_re) * -1.0
+        if BACKWARD:
+            if BCY != PERIODIC:
+                q0_re = tl.where(at_y, 0.0, q0_re)
+                q0_im = tl.where(at_y, 0.0, q0_im)
+            if BCZ != PERIODIC:
+                q0_re = tl.where(at_z, 0.0, q0_re)
+                q0_im = tl.where(at_z, 0.0, q0_im)
+            if BCX != PERIODIC:
+                q1_re = tl.where(at_x, 0.0, q1_re)
+                q1_im = tl.where(at_x, 0.0, q1_im)
+            if BCZ != PERIODIC:
+                q1_re = tl.where(at_z, 0.0, q1_re)
+                q1_im = tl.where(at_z, 0.0, q1_im)
+            if BCX == MIRROR_PERIODIC:
+                q0_re = tl.where(last_x, 0.0, q0_re)
+                q0_im = tl.where(last_x, 0.0, q0_im)
+            if BCY == MIRROR_PERIODIC:
+                q1_re = tl.where(last_y, 0.0, q1_re)
+                q1_im = tl.where(last_y, 0.0, q1_im)
+        else:
+            if BCX != PERIODIC:
+                q0_re = tl.where(at_x, 0.0, q0_re)
+                q0_im = tl.where(at_x, 0.0, q0_im)
+            if BCY != PERIODIC:
+                q1_re = tl.where(at_y, 0.0, q1_re)
+                q1_im = tl.where(at_y, 0.0, q1_im)
+            if BCY == MIRROR_PERIODIC:
+                q0_re = tl.where(last_y, 0.0, q0_re)
+                q0_im = tl.where(last_y, 0.0, q0_im)
+            if BCZ == MIRROR_PERIODIC:
+                q0_re = tl.where(last_z, 0.0, q0_re)
+                q0_im = tl.where(last_z, 0.0, q0_im)
+            if BCX == MIRROR_PERIODIC:
+                q1_re = tl.where(last_x, 0.0, q1_re)
+                q1_im = tl.where(last_x, 0.0, q1_im)
+            if BCZ == MIRROR_PERIODIC:
+                q1_re = tl.where(last_z, 0.0, q1_re)
+                q1_im = tl.where(last_z, 0.0, q1_im)
+        v0_re, n0_re = fold_ladder(v0_re, n0_re, q0_re, si_y, si_z, du0)
+        v0_im, n0_im = fold_ladder(v0_im, n0_im, q0_im, si_y, si_z, du0)
+        v1_re, n1_re = fold_ladder(v1_re, n1_re, q1_re, si_z, si_x, du1)
+        v1_im, n1_im = fold_ladder(v1_im, n1_im, q1_im, si_z, si_x, du1)
+
+    # --- stores: fu (recurrence cells only), then the fields, both parts --------
+    tl.store(u0 + 2 * idx, n0_re, mask=live & du0)
+    tl.store(u0 + 2 * idx + 1, n0_im, mask=live & du0)
+    tl.store(u1 + 2 * idx, n1_re, mask=live & du1)
+    tl.store(u1 + 2 * idx + 1, n1_im, mask=live & du1)
+    tl.store(u2 + 2 * idx, n2_re, mask=live & du2)
+    tl.store(u2 + 2 * idx + 1, n2_im, mask=live & du2)
     tl.store(f0 + 2 * idx, v0_re, mask=live)
     tl.store(f0 + 2 * idx + 1, v0_im, mask=live)
     tl.store(f1 + 2 * idx, v1_re, mask=live)
     tl.store(f1 + 2 * idx + 1, v1_im, mask=live)
     tl.store(f2 + 2 * idx, v2_re, mask=live)
     tl.store(f2 + 2 * idx + 1, v2_im, mask=live)
-
-
-# ---------------------------------------------------------------------------
-# The probe contract — how EXPANSION binds here
-# ---------------------------------------------------------------------------
-
-def parity_expansion_license(record: Any) -> Dict[str, Any]:
-    """The full licensing verdict for the parity fill — arm, basis, refusals.
-
-    :func:`complex_fields.expansion_license` over the EXTENDED
-    :data:`PARITY_PROBE_PATTERNS`: the record must name the CuPy backend,
-    classify every pattern, and the patterns that CAN discriminate must agree. A
-    record cut before this tranche (no :data:`PARITY_PROBE_PATTERN` key) refuses
-    here even though it licenses the base complex kernels.
-
-    THE NON-DISCRIMINATING CLAUSE APPLIES TO EVERY PATTERN HERE, base four
-    included, and that is the 2026-08-15 correction. This function used to carry
-    its own loop that accepted ``AMBIGUOUS_BOTH`` for
-    :data:`PARITY_PROBE_PATTERN` and for nothing else, so a base pattern that
-    could not tell the arms apart VETOED the licence. The justification for the
-    special case was arithmetic — with ``c_re = ±1`` exactly and ``c_im = +0.0``
-    the fused arm's extra product is exact, so both arms produce identical bytes
-    (measured on the reference NumPy: 0 mismatch words on both arms at both
-    parities, and the arms 0 words apart over 4608 vectors) — but that argument
-    is about WHY a pattern goes blind, not about WHICH pattern may. The base
-    family's rule already excludes a blind pattern from the agreement test
-    rather than letting it veto; this is that rule, called with a longer list,
-    not a second copy of it.
-
-    WHAT DOES NOT SOFTEN. :data:`complex_fields.NEITHER` still refuses by name —
-    a platform whose unit-real scalar-broadcast complex multiply matches no
-    transcription is exactly the case that must not be guessed at — a
-    disagreement between two patterns that DO discriminate still refuses, and a
-    pattern claiming ambiguity while its own detail block measures the arms some
-    words APART refuses as a self-contradicting record. Excluded and disagreeing
-    are opposite situations and only the first is ever dropped.
-
-    THE PLANE-WISE FINDING IS NOT HANDLED HERE. On this pattern the plane-wise
-    diagnostic is a live alternative, and a record on which it also reproduces
-    the bytes has no power to license anything: the shared evidence check
-    refuses such an ``AMBIGUOUS_BOTH`` outright, and ``gate_triton_folded_complex``
-    additionally records ``parity_is_planewise`` as a platform FINDING.
-    """
-    return expansion_license(record, PARITY_PROBE_PATTERNS)
-
-
-def parity_expansion_from_probe(record: Any) -> Optional[int]:
-    """The single ``EXPANSION`` constexpr the complex FILL may bind, or None.
-
-    The narrow answer :func:`parity_expansion_license` computes; see there for
-    the rule.
-    """
-    return parity_expansion_license(record)["expansion"]
-
-
-def folded_beta_expansion_license(record: Any) -> Dict[str, Any]:
-    """The verdict K3b binds — ``special_kz``'s extended set, delegated.
-
-    Restating the acceptance rule here would be a second place to get it wrong,
-    so this calls the beta tranche's own licence and only names the pattern set
-    in the reason string.
-    """
-    from .special_kz import beta_expansion_license  # noqa: PLC0415
-
-    return beta_expansion_license(record)
-
-
-def folded_beta_expansion_from_probe(record: Any) -> Optional[int]:
-    """The ``EXPANSION`` K3b may bind — ``special_kz``'s extended set, restated."""
-    return folded_beta_expansion_license(record)["expansion"]
-
-
-def _parity_expansion_reasons(probe: Any = None) -> List[str]:
-    """The fill's EXPANSION binding needs an artifact carrying the NEW pattern.
-
-    THE POLICY CLAUSE IS PART OF THIS AND USED NOT TO BE (2026-08-16). K2's
-    EXPANSION is bound from the same kind of artifact as the base family's, so
-    it is conditional on the same thing: :data:`complex_fields.POLICY_CONDITIONAL_LICENCE`
-    says a licence cut under one float32 subnormal policy does not transfer to
-    the other. ``complex_fields._expansion_reasons`` applied that; this function
-    and ``special_kz._beta_expansion_reasons`` did not call it at all, so a
-    flush-cut record that the base seam refused was LICENSED here — measured, on
-    the same record, with the policy readable as ``'keep'``: base 1 reason, K2
-    zero. An extended pattern set is a bigger question about the same artifact,
-    never a smaller one.
-    """
-    # Imported in the BODY, not at module scope: ``_policy_in_force`` is resolved
-    # through ``complex_fields``' namespace at call time, so the seam a test
-    # installs over there is the seam this function asks. A name bound at import
-    # time would silently keep asking the original.
-    from ..expansion_refusal import RefusedExpansionProbe  # noqa: PLC0415
-    from .complex_fields import _policy_in_force  # noqa: PLC0415
-
-    record = probe if probe is not None else load_expansion_probe()
-    if isinstance(record, RefusedExpansionProbe):
-        return [f"the expansion probe artifact offered through {record.key} was "
-                f"REFUSED by this dispatch and may not license an arm at any "
-                f"later rung: " + "; ".join(record.reasons)]
-    if record is None:
-        return [
-            "no complex-multiply expansion probe artifact is available for this "
-            "backend; the EXPANSION constexpr is a measured platform fact and "
-            "may not be guessed (this tranche additionally requires the "
-            f"{PARITY_PROBE_PATTERN!r} pattern)"]
-    verdict = parity_expansion_license(record)
-    if verdict["expansion"] is None:
-        # The verdict's OWN refusals, verbatim — see ``special_kz`` for why a
-        # paraphrase of three different failures into one sentence is worse than
-        # the failures themselves.
-        return [
-            f"the expansion probe artifact does not license an EXPANSION over "
-            f"the EXTENDED pattern set {PARITY_PROBE_PATTERNS} this tranche "
-            f"binds (the base four plus {PARITY_PROBE_PATTERN!r})"
-        ] + list(verdict["refusals"])
-    # BOTH policy questions — artifact-vs-run and kernel-vs-run. Extending the
-    # PATTERN SET never shrinks the question asked about the artifact, and it
-    # never shrinks the question asked about the KERNEL either: K2's fill arms
-    # were certified under the same policy as the base four.
-    policy = _policy_in_force()
-    return (list(expansion_policy_reasons(record, policy))
-            + list(expansion_certification_reasons(policy)))
-
-
-def _base_expansion_reasons(probe: Any = None) -> List[str]:
-    """The BASE pattern set — K1 and the complex constitutive delegate."""
-    from .complex_fields import _expansion_reasons  # noqa: PLC0415
-
-    return _expansion_reasons(probe)
-
-
-def _folded_beta_expansion_reasons(probe: Any = None) -> List[str]:
-    """The EXTENDED beta pattern set — K3b only."""
-    from .special_kz import _beta_expansion_reasons  # noqa: PLC0415
-
-    return _beta_expansion_reasons(probe)
 
 
 # ---------------------------------------------------------------------------
@@ -1754,8 +1584,7 @@ def _complex_phase_reasons(grid: Any, kinds: Optional[Sequence[str]],
 # zero (K1/K2) or nonzero (K3a/K3b), no susceptibility on the curl beyond
 # electric lorentzian/drude poles, stored E, all six PML auxiliaries and both
 # source families allocated, C-contiguous grid.shape layout, PML coefficient
-# vectors at the STORED extent, and an EXPANSION probe artifact present and
-# agreeing.
+# vectors at the STORED extent.
 
 
 def _complex_fold_grid_reasons(fields: Any, pml: Any, grid: Any,
@@ -1802,8 +1631,7 @@ def _complex_fold_grid_reasons(fields: Any, pml: Any, grid: Any,
     return reasons, codes
 
 
-def folded_complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                     probe: Any = None) -> Coverage:
+def folded_complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """May :func:`folded_bloch_pml_curl_step` (K1) step this configuration?
 
     ZERO FOLDED AXES IS ADMITTED here, deliberately and for ``symmetry.py``'s
@@ -1842,13 +1670,11 @@ def folded_complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
     reasons.extend(_complex_layout_reasons(fields, shape, names))
     if pml is not None and getattr(pml, "is_active", False) and len(shape) == 3:
         reasons.extend(_coefficient_reasons(pml, shape, ("kms", "sinv"), ("", "_h")))
-    reasons.extend(_base_expansion_reasons(probe))
     return Coverage(not reasons, tuple(reasons))
 
 
 def folded_complex_composition_curl_coverage(fields: Any, pml: Any,
-                                             sub_step: str,
-                                             probe: Any = None) -> Coverage:
+                                             sub_step: str) -> Coverage:
     """K1's verdict for COMPOSITION, where an actual fold is mandatory.
 
     :func:`folded_complex_pml_curl_coverage` admits an unfolded grid so its
@@ -1858,7 +1684,7 @@ def folded_complex_composition_curl_coverage(fields: Any, pml: Any,
     grid = getattr(fields, "grid", None)
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
-    base = folded_complex_pml_curl_coverage(fields, pml, sub_step, probe=probe)
+    base = folded_complex_pml_curl_coverage(fields, pml, sub_step)
     reasons = list(base.reasons)
     if not _has_real_fold(grid):
         reasons.append("no mirror plane is active: the folded complex curl is an "
@@ -1866,16 +1692,14 @@ def folded_complex_composition_curl_coverage(fields: Any, pml: Any,
     return Coverage(not reasons, tuple(reasons))
 
 
-def folded_mirror_ghost_fill_complex_coverage(fields: Any, family: str,
-                                              probe: Any = None) -> Coverage:
+def folded_mirror_ghost_fill_complex_coverage(fields: Any, family: str) -> Coverage:
     """May :func:`folded_mirror_ghost_fill_complex` (K2) write this family?
 
     Narrower than the curl's predicate and independent of it: this sub-step reads
     no coefficient, no source and no PML, so it has no Courant number, no
     sub-lattice and no absorber clause. What it needs is complex64 storage, a
-    real fold, a readable phase, a stored extent that can hold both planes, a
-    reflect row on every folded PERIODIC axis, and a probe artifact carrying the
-    PARITY pattern.
+    real fold, a readable phase, a stored extent that can hold both planes, and a
+    reflect row on every folded PERIODIC axis.
 
     Refused entirely on a run with no mirror plane: with nothing folded the array
     path's fill passes return immediately and there is nothing to replace.
@@ -1920,12 +1744,10 @@ def folded_mirror_ghost_fill_complex_coverage(fields: Any, family: str,
             reasons.append(f"{name} is not allocated")
     shape = tuple(getattr(grid, "shape", ()))
     reasons.extend(_complex_layout_reasons(fields, shape, names))
-    reasons.extend(_parity_expansion_reasons(probe))
     return Coverage(not reasons, tuple(reasons))
 
 
-def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                         probe: Any = None) -> Coverage:
+def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """May the CERTIFIED complex constitutive kernel step this folded run?
 
     The element-wise contract RESTATED with the fold clause replaced by
@@ -1935,8 +1757,7 @@ def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
     ``update_H``/``update_E`` run over the WHOLE stored array with no ownership
     mask, so the fold contributes only its stored extent — which the PML
     coefficient vectors already carry. The kernel launched is
-    ``complex_fields.bloch_constitutive_step``, so the probe clause binds the
-    BASE pattern set, not the parity or beta ones.
+    ``complex_fields.bloch_constitutive_step``.
     """
     if side not in CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, "
@@ -1967,17 +1788,14 @@ def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
     if pml is not None and getattr(pml, "is_active", False) and len(shape) == 3:
         suffix = ("_h",) if spec["half_integer"] else ("",)
         reasons.extend(_coefficient_reasons(pml, shape, ("kps", "kms"), suffix))
-    reasons.extend(_base_expansion_reasons(probe))
     return Coverage(not reasons, tuple(reasons))
 
 
-def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                        probe: Any = None) -> Coverage:
+def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """May :func:`folded_beta_bloch_pml_curl_step` (K3b) step this configuration?
 
     K1's clause set with the beta clause INVERTED (beta must be NONZERO — a
-    beta = 0 run belongs to K1) and the probe clause extended to the beta
-    tranche's pattern set. The effective-2-D clause is restated from
+    beta = 0 run belongs to K1). The effective-2-D clause is restated from
     ``special_kz`` rather than inferred from the Grid constructor's guard.
 
     A FOLD IS MANDATORY, for K3a's reason: without it this predicate and
@@ -2025,7 +1843,6 @@ def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
     reasons.extend(_complex_layout_reasons(fields, shape, names))
     if pml is not None and getattr(pml, "is_active", False) and len(shape) == 3:
         reasons.extend(_coefficient_reasons(pml, shape, ("kms", "sinv"), ("", "_h")))
-    reasons.extend(_folded_beta_expansion_reasons(probe))
     return Coverage(not reasons, tuple(reasons))
 
 
@@ -2074,8 +1891,7 @@ def folded_beta_pml_curl_coverage(fields: Any, pml: Any,
                                   sub_step: str) -> Coverage:
     """May :func:`folded_beta_pml_curl_step` (K3a) step this configuration?
 
-    The folded REAL clause set with the beta clause INVERTED. No probe artifact
-    is required: real storage carries no complex-multiply expansion.
+    The folded REAL clause set with the beta clause INVERTED.
 
     A FOLD IS MANDATORY, unlike K1's standalone verdict. K1 admits an unfolded
     grid deliberately so its gate can prove reduction to the certified unfolded
@@ -2265,32 +2081,40 @@ class FoldedComplexPmlCurlPlan:
     """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc",
-                 "phased", "phase_values", "expansion", "block", "num_warps",
-                 "_targets", "_aux", "_sources", "_coefficients", "_grid",
-                 "_kernel")
+                 "connections", "connection_values", "block",
+                 "num_warps", "chunk_bounds", "_targets", "_aux", "_sources",
+                 "_coefficients", "_cb", "_grid", "_kernel")
 
-    def __init__(self, sub_step: str, shape, dtdx: float, bc, phased,
-                 phase_values, expansion: int, block: int,
+    def __init__(self, sub_step: str, shape, dtdx: float, bc, connections,
+                 connection_values, block: int,
                  targets, auxiliaries, sources, coefficients, kernel=None,
-                 num_warps: Optional[int] = None) -> None:
+                 num_warps: Optional[int] = None, *, chunk_bounds: Any) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, "
                              f"got {sub_step!r}")
+        from .launch import bind_chunk_bounds  # noqa: PLC0415
+
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
         self.dtdx = float(dtdx)
         self.backward = int(SUB_STEPS[sub_step]["backward"])
         self.bc = tuple(int(code) for code in bc)
-        self.phased = tuple(int(flag) for flag in phased)
-        self.phase_values = tuple(float(value) for value in phase_values)
-        self.expansion = int(expansion)
+        self.connections = tuple(int(kind) for kind in connections)
+        self.connection_values = tuple(float(value) for value in connection_values)
+        for axis, (code, kind) in enumerate(zip(self.bc, self.connections)):
+            if kind and code != CODE_PERIODIC:
+                raise ValueError(
+                    f"axis {axis} carries a Bloch connection but resolved to code "
+                    f"{code}; only a periodic wrap carries a phase")
         self.block = int(block)
         self.num_warps = None if num_warps is None else int(num_warps)
         self._targets = tuple(CupyPointer(_word_view(a)) for a in targets)
         self._aux = tuple(CupyPointer(_word_view(a)) for a in auxiliaries)
         self._sources = tuple(CupyPointer(_word_view(a)) for a in sources)
         self._coefficients = tuple(CupyPointer(_flat(a)) for a in coefficients)
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "FoldedComplexPmlCurlPlan")
         self._grid = ((self.n_elem + self.block - 1) // self.block,)
         # The override exists for exactly one caller: the gate's mutation legs.
         # Dropping it is not a slowdown, it is a DISARMING.
@@ -2304,13 +2128,12 @@ class FoldedComplexPmlCurlPlan:
         kernel = self._kernel if self._kernel is not None else folded_bloch_pml_curl_step
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
         kernel[self._grid](
-            *self._targets, *self._aux, *self._sources, *self._coefficients,
+            *self._targets, *self._aux, *self._sources, *self._coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
-            *self.phase_values,
+            *self.connection_values,
             BACKWARD=self.backward,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
-            PHX=self.phased[0], PHY=self.phased[1], PHZ=self.phased[2],
-            EXPANSION=self.expansion,
+            CNX=self.connections[0], CNY=self.connections[1], CNZ=self.connections[2],
             BLOCK=self.block,
             enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
             **extra,
@@ -2318,15 +2141,15 @@ class FoldedComplexPmlCurlPlan:
 
     def __repr__(self) -> str:
         return (f"FoldedComplexPmlCurlPlan({self.sub_step}, shape={self.shape}, "
-                f"bc={self.bc}, phased={self.phased}, "
-                f"expansion={self.expansion}, block={self.block}, "
-                f"num_warps={self.num_warps})")
+                f"bc={self.bc}, connections={self.connections}, "
+                f"block={self.block}, num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_folded_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
                                  block: Optional[int] = None,
                                  num_warps: Optional[int] = None,
-                                 probe: Any = None
+                                 chunk_layout: Any = None
                                  ) -> Optional[FoldedComplexPmlCurlPlan]:
     """Build a K1 plan from the engine's own objects, or None when out of coverage.
 
@@ -2335,11 +2158,7 @@ def plan_folded_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
     """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
-    if not folded_complex_pml_curl_coverage(fields, pml, sub_step, probe=probe).covered:
-        return None
-    record = probe if probe is not None else load_expansion_probe()
-    expansion = expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not folded_complex_pml_curl_coverage(fields, pml, sub_step).covered:
         return None
     grid = fields.grid
     codes, _ = folded_axis_kinds(grid, pml)
@@ -2350,9 +2169,9 @@ def plan_folded_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
     spec = SUB_STEPS[sub_step]
     kinds = resolve(grid, pml)
     phases = bloch_phase_table(grid, kinds)
-    phased, values = _phase_arguments(phases, backward=bool(spec["backward"]))
+    connections, values = connection_arguments(phases, backward=bool(spec["backward"]))
     return FoldedComplexPmlCurlPlan(
-        sub_step, grid.shape, grid.dt / grid.dx, codes, phased, values, expansion,
+        sub_step, grid.shape, grid.dt / grid.dx, codes, connections, values,
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in spec["targets"]],
         [getattr(fields, "fu_" + name) for name in spec["targets"]],
@@ -2360,36 +2179,41 @@ def plan_folded_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
         [getattr(pml, f"{stem}_{axis}{spec['suffix']}")
          for axis in "xyz" for stem in ("kms", "sinv")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
 def plan_folded_complex_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
                                              flat: Dict[str, Any], codes,
                                              phases: Sequence[Optional[complex]],
-                                             dtdx: float, expansion: int,
+                                             dtdx: float,
                                              block: Optional[int] = None,
                                              kernel: Any = None,
                                              num_warps: Optional[int] = None,
+                                             *, chunk_bounds: Any,
                                              ) -> FoldedComplexPmlCurlPlan:
     """Build a K1 plan from bare device arrays — the gate's route.
 
-    ``codes`` is the four-valued per-axis code triple; the step_D phase
-    conjugation is applied HERE, per sub-step, exactly as the engine route
-    applies it. No predicate runs: the caller is a harness that constructed the
-    configuration deliberately, including the deliberately wrong ones, and
-    ``kernel=`` carries the mutation override.
+    ``codes`` is the four-valued per-axis code triple; the direction's connection
+    factor is formed HERE, per sub-step, exactly as the engine route forms it.
+    ``chunk_bounds`` is the chunk record, with no default (a mutation leg that fell
+    back to some default division would stop measuring the forms). No predicate
+    runs: the caller is a harness that constructed the configuration deliberately,
+    including the deliberately wrong ones, and ``kernel=`` carries the mutation
+    override.
     """
     spec = SUB_STEPS[sub_step]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
-    phased, values = _phase_arguments(tuple(phases), backward=bool(spec["backward"]))
+    connections, values = connection_arguments(tuple(phases),
+                                               backward=bool(spec["backward"]))
     return FoldedComplexPmlCurlPlan(
-        sub_step, shape, dtdx, codes, phased, values, int(expansion),
+        sub_step, shape, dtdx, codes, connections, values,
         DEFAULT_BLOCK if block is None else block,
         [arrays[name] for name in spec["targets"]],
         [arrays["fu_" + name] for name in spec["targets"]],
         [arrays[name] for name in spec["sources"]],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
-        kernel=kernel, num_warps=num_warps,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )
 
 
@@ -2403,21 +2227,18 @@ class FoldedMirrorGhostFillComplexPlan:
     (driver.py:3209-3211 / :3222-3224), so a composed plan must call the two
     halves separately and must not fuse across that seam.
 
-    THE SPLIT IS LOAD-BEARING under complex storage: a component unowned on two
-    axes with different Yee shifts sees near-then-far here and would see
-    far-then-near under a fused per-axis launch, and complex float multiplication
-    is not associative. Measured on a Mirror(X)+Mirror(Y) grid, and the two
-    numbers come from two different states (see the kernel docstring, :752-780):
-    1 word of ``By`` from the unit test's plant-then-step state, and 5 words of
-    ``By`` / 5 of ``Dx`` from the gate's own ``engineered_rows``, 3 and 4 from
-    ``engineered_rows_post_step``. ``symmetry.MirrorGhostFillPlan`` fuses the two
-    passes and is CORRECT to, because ±1 * float32 is exact.
+    THE SPLIT FOLLOWS THE DRIVER, not the arithmetic. Per stored part every fill
+    is ``+-1.0`` times the word, exact, so near-then-far and far-then-near store the
+    same words (the gate's ``fuse_fill_passes`` and ``reverse_axis_order`` are
+    structural nulls, as ``symmetry.MirrorGhostFillPlan``'s fused passes are for
+    real storage); the passes stay separate because the driver's wall clear sits
+    between them.
     """
 
-    __slots__ = ("family", "shape", "block", "expansion", "axes", "num_warps",
+    __slots__ = ("family", "shape", "block", "axes", "num_warps",
                  "_targets", "_kernel")
 
-    def __init__(self, family: str, shape, block: int, expansion: int, targets,
+    def __init__(self, family: str, shape, block: int, targets,
                  axes: Sequence[Dict[str, Any]], kernel=None,
                  num_warps: Optional[int] = None) -> None:
         if family not in GHOST_FILL_FAMILIES:
@@ -2426,7 +2247,6 @@ class FoldedMirrorGhostFillComplexPlan:
         self.family = family
         self.shape = tuple(int(n) for n in shape)
         self.block = int(block)
-        self.expansion = int(expansion)
         self.num_warps = None if num_warps is None else int(num_warps)
         self._targets = tuple(CupyPointer(_word_view(a)) for a in targets)
         self.axes = tuple(dict(entry) for entry in axes)
@@ -2447,18 +2267,19 @@ class FoldedMirrorGhostFillComplexPlan:
             axis = int(entry["axis"])
             n_plane = (ny * nz, nx * nz, nx * ny)[axis]
             grid = ((n_plane + self.block - 1) // self.block,)
-            near_re, near_im = (float(w) for w in entry["near_words"])
-            far_re, far_im = (float(w) for w in entry["far_words"])
+            # The parity is a real scale per part (part_products.scale): the
+            # coefficient's real word; its imaginary word is +0 and is not read.
+            near_c = float(entry["near_words"][0])
+            far_c = float(entry["far_words"][0])
             kernel[grid](
                 *self._targets,
                 nx, ny, nz, n_plane, int(entry["reflect_row"]),
-                near_re, near_im, far_re, far_im,
+                near_c, far_c,
                 AXIS=axis,
                 DO_NEAR=1 if do_near else 0,
                 DO_FAR=1 if far else 0,
                 S0=int(entry["shifts"][0]), S1=int(entry["shifts"][1]),
                 S2=int(entry["shifts"][2]),
-                EXPANSION=self.expansion,
                 BLOCK=self.block,
                 enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
                 **extra,
@@ -2486,21 +2307,15 @@ class FoldedMirrorGhostFillComplexPlan:
     def __repr__(self) -> str:
         return (f"FoldedMirrorGhostFillComplexPlan({self.family}, "
                 f"shape={self.shape}, axes={[e['axis'] for e in self.axes]}, "
-                f"expansion={self.expansion}, block={self.block})")
+                f"block={self.block})")
 
 
 def plan_folded_mirror_ghost_fill_complex(fields: Any, family: str,
                                           block: Optional[int] = None,
-                                          num_warps: Optional[int] = None,
-                                          probe: Any = None
+                                          num_warps: Optional[int] = None
                                           ) -> Optional[FoldedMirrorGhostFillComplexPlan]:
     """Build one family's K2 plan from the engine's own objects, or None."""
-    if not folded_mirror_ghost_fill_complex_coverage(fields, family,
-                                                     probe=probe).covered:
-        return None
-    record = probe if probe is not None else load_expansion_probe()
-    expansion = parity_expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not folded_mirror_ghost_fill_complex_coverage(fields, family).covered:
         return None
     grid = fields.grid
     targets = tuple(GHOST_FILL_FAMILIES[family]["targets"])
@@ -2508,13 +2323,13 @@ def plan_folded_mirror_ghost_fill_complex(fields: Any, family: str,
     if not axes:  # pragma: no cover - the predicate already refused
         return None
     return FoldedMirrorGhostFillComplexPlan(
-        family, grid.shape, DEFAULT_BLOCK if block is None else block, expansion,
+        family, grid.shape, DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in targets], axes, num_warps=num_warps)
 
 
 def plan_folded_mirror_ghost_fill_complex_from_arrays(
         family: str, arrays: Dict[str, Any], axes: Sequence[Dict[str, Any]],
-        expansion: int, block: Optional[int] = None, kernel: Any = None,
+        block: Optional[int] = None, kernel: Any = None,
         num_warps: Optional[int] = None) -> FoldedMirrorGhostFillComplexPlan:
     """Build a K2 plan from bare device arrays — the gate's route.
 
@@ -2525,29 +2340,39 @@ def plan_folded_mirror_ghost_fill_complex_from_arrays(
     targets = tuple(GHOST_FILL_FAMILIES[family]["targets"])
     shape = tuple(int(n) for n in arrays[targets[0]].shape)
     return FoldedMirrorGhostFillComplexPlan(
-        family, shape, DEFAULT_BLOCK if block is None else block, int(expansion),
+        family, shape, DEFAULT_BLOCK if block is None else block,
         [arrays[name] for name in targets], axes, kernel=kernel,
         num_warps=num_warps)
 
 
 class FoldedBetaPmlCurlPlan:
-    """A launchable, allocation-free FOLDED REAL beta PML curl sub-step."""
+    """A launchable, allocation-free FOLDED REAL beta PML curl sub-step (K3a).
+
+    ``symmetry.FoldedPmlCurlPlan``'s bindings plus the two host-rounded beta words and
+    ``HAS_BETA``. ``chunk_bounds`` is the chunk record, required
+    (``launch.bind_chunk_bounds``).
+    """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "beta_plus",
                  "beta_minus", "has_beta", "backward", "bc", "block",
-                 "num_warps", "_targets", "_aux", "_sources", "_coefficients",
-                 "_grid", "_kernel")
+                 "num_warps", "chunk_bounds", "_targets", "_aux", "_sources",
+                 "_coefficients", "_cb", "_grid", "_kernel")
 
     def __init__(self, sub_step: str, shape, dtdx: float, bc,
                  beta_plus: float, beta_minus: float, block: int,
                  targets, auxiliaries, sources, coefficients, kernel=None,
-                 num_warps: Optional[int] = None, has_beta: int = 1) -> None:
+                 num_warps: Optional[int] = None, has_beta: int = 1, *,
+                 chunk_bounds: Any) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, "
                              f"got {sub_step!r}")
+        from .launch import bind_chunk_bounds  # noqa: PLC0415
+
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "FoldedBetaPmlCurlPlan")
         self.dtdx = float(dtdx)
         # Already f32-rounded by the host (special_kz.beta_curl_coefficients);
         # float() keeps the bits and Triton types a Python float argument as fp32.
@@ -2573,7 +2398,7 @@ class FoldedBetaPmlCurlPlan:
         kernel = self._kernel if self._kernel is not None else folded_beta_pml_curl_step
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
         kernel[self._grid](
-            *self._targets, *self._aux, *self._sources, *self._coefficients,
+            *self._targets, *self._aux, *self._sources, *self._coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
             self.beta_plus, self.beta_minus,
             BACKWARD=self.backward,
@@ -2587,14 +2412,19 @@ class FoldedBetaPmlCurlPlan:
     def __repr__(self) -> str:
         return (f"FoldedBetaPmlCurlPlan({self.sub_step}, shape={self.shape}, "
                 f"bc={self.bc}, beta_plus={self.beta_plus!r}, "
-                f"has_beta={self.has_beta}, block={self.block})")
+                f"has_beta={self.has_beta}, block={self.block}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_folded_beta_pml_curl(fields: Any, pml: Any, sub_step: str,
                               block: Optional[int] = None,
-                              num_warps: Optional[int] = None
+                              num_warps: Optional[int] = None,
+                              chunk_layout: Any = None
                               ) -> Optional[FoldedBetaPmlCurlPlan]:
-    """Build a K3a plan from the engine's own objects, or None."""
+    """Build a K3a plan from the engine's own objects, or None.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
     if not folded_beta_pml_curl_coverage(fields, pml, sub_step).covered:
@@ -2616,6 +2446,7 @@ def plan_folded_beta_pml_curl(fields: Any, pml: Any, sub_step: str,
         [getattr(pml, f"{stem}_{axis}{spec['suffix']}")
          for axis in "xyz" for stem in ("kms", "sinv")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
@@ -2626,9 +2457,14 @@ def plan_folded_beta_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
                                           block: Optional[int] = None,
                                           kernel: Any = None,
                                           num_warps: Optional[int] = None,
-                                          has_beta: int = 1
+                                          has_beta: int = 1, *,
+                                          chunk_bounds: Any
                                           ) -> FoldedBetaPmlCurlPlan:
-    """Build a K3a plan from bare device arrays — the gate's route."""
+    """Build a K3a plan from bare device arrays — the gate's route.
+
+    ``chunk_bounds`` has no default: a harness plan built without a record is refused
+    by name (``launch.bind_chunk_bounds``).
+    """
     spec = SUB_STEPS[sub_step]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
     return FoldedBetaPmlCurlPlan(
@@ -2639,44 +2475,60 @@ def plan_folded_beta_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
         [arrays[name] for name in spec["sources"]],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
         kernel=kernel, num_warps=num_warps, has_beta=has_beta,
+        chunk_bounds=chunk_bounds,
     )
 
 
 class FoldedBetaBlochPmlCurlPlan:
-    """A launchable, allocation-free FOLDED COMPLEX beta PML curl sub-step."""
+    """A launchable, allocation-free FOLDED COMPLEX beta PML curl sub-step (K3b).
+
+    :class:`FoldedComplexPmlCurlPlan`'s bindings (connections, chunk record) plus the
+    two quarter-turn words and ``HAS_BETA``.
+    """
 
     __slots__ = ("sub_step", "shape", "n_elem", "dtdx", "backward", "bc",
-                 "phased", "phase_values", "beta_words", "has_beta",
-                 "expansion", "block", "num_warps", "_targets", "_aux",
-                 "_sources", "_coefficients", "_grid", "_kernel")
+                 "connections", "connection_values", "beta_words", "has_beta",
+                 "block", "num_warps", "chunk_bounds", "_targets",
+                 "_aux", "_sources", "_coefficients", "_cb", "_grid", "_kernel")
 
-    def __init__(self, sub_step: str, shape, dtdx: float, bc, phased,
-                 phase_values, beta_words, expansion: int, block: int,
+    def __init__(self, sub_step: str, shape, dtdx: float, bc, connections,
+                 connection_values, beta_words, block: int,
                  targets, auxiliaries, sources, coefficients, kernel=None,
-                 num_warps: Optional[int] = None, has_beta: int = 1) -> None:
+                 num_warps: Optional[int] = None, has_beta: int = 1, *,
+                 chunk_bounds: Any) -> None:
         if sub_step not in SUB_STEPS:
             raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, "
                              f"got {sub_step!r}")
+        from .launch import bind_chunk_bounds  # noqa: PLC0415
+
         self.sub_step = sub_step
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
         self.dtdx = float(dtdx)
         self.backward = int(SUB_STEPS[sub_step]["backward"])
         self.bc = tuple(int(code) for code in bc)
-        self.phased = tuple(int(flag) for flag in phased)
-        self.phase_values = tuple(float(value) for value in phase_values)
-        # ((bp_re, bp_im), (bm_re, bm_im)) — already complex64-rounded words with
-        # the signed-zero real parts passed through (float() keeps them).
-        self.beta_words = tuple(tuple(float(word) for word in pair)
-                                for pair in beta_words)
+        self.connections = tuple(int(kind) for kind in connections)
+        self.connection_values = tuple(float(value) for value in connection_values)
+        for axis, (code, kind) in enumerate(zip(self.bc, self.connections)):
+            if kind and code != CODE_PERIODIC:
+                raise ValueError(
+                    f"axis {axis} carries a Bloch connection but resolved to code "
+                    f"{code}; only a periodic wrap carries a phase")
+        words = tuple(beta_words)
+        if len(words) != 2 or any(isinstance(word, (tuple, list)) for word in words):
+            raise ValueError(f"beta_words must be the two real quarter-turn words of "
+                             f"special_kz.beta_curl_coefficients(..., "
+                             f"complex_storage=True), got {beta_words!r}")
+        self.beta_words = tuple(float(word) for word in words)
         self.has_beta = int(has_beta)
-        self.expansion = int(expansion)
         self.block = int(block)
         self.num_warps = None if num_warps is None else int(num_warps)
         self._targets = tuple(CupyPointer(_word_view(a)) for a in targets)
         self._aux = tuple(CupyPointer(_word_view(a)) for a in auxiliaries)
         self._sources = tuple(CupyPointer(_word_view(a)) for a in sources)
         self._coefficients = tuple(CupyPointer(_flat(a)) for a in coefficients)
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "FoldedBetaBlochPmlCurlPlan")
         self._grid = ((self.n_elem + self.block - 1) // self.block,)
         self._kernel = kernel
 
@@ -2688,17 +2540,15 @@ class FoldedBetaBlochPmlCurlPlan:
         kernel = (self._kernel if self._kernel is not None
                   else folded_beta_bloch_pml_curl_step)
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
-        (bp_re, bp_im), (bm_re, bm_im) = self.beta_words
         kernel[self._grid](
-            *self._targets, *self._aux, *self._sources, *self._coefficients,
+            *self._targets, *self._aux, *self._sources, *self._coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
-            *self.phase_values,
-            bp_re, bp_im, bm_re, bm_im,
+            *self.connection_values,
+            *self.beta_words,
             BACKWARD=self.backward,
             BCX=self.bc[0], BCY=self.bc[1], BCZ=self.bc[2],
-            PHX=self.phased[0], PHY=self.phased[1], PHZ=self.phased[2],
+            CNX=self.connections[0], CNY=self.connections[1], CNZ=self.connections[2],
             HAS_BETA=self.has_beta,
-            EXPANSION=self.expansion,
             BLOCK=self.block,
             enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
             **extra,
@@ -2706,25 +2556,23 @@ class FoldedBetaBlochPmlCurlPlan:
 
     def __repr__(self) -> str:
         return (f"FoldedBetaBlochPmlCurlPlan({self.sub_step}, shape={self.shape}, "
-                f"bc={self.bc}, phased={self.phased}, "
+                f"bc={self.bc}, connections={self.connections}, "
                 f"beta_words={self.beta_words!r}, has_beta={self.has_beta}, "
-                f"expansion={self.expansion}, block={self.block})")
+                f"block={self.block}, chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_folded_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
                                     block: Optional[int] = None,
                                     num_warps: Optional[int] = None,
-                                    probe: Any = None
+                                    chunk_layout: Any = None
                                     ) -> Optional[FoldedBetaBlochPmlCurlPlan]:
-    """Build a K3b plan from the engine's own objects, or None."""
+    """Build a K3b plan from the engine's own objects, or None.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
-    if not folded_beta_bloch_pml_curl_coverage(fields, pml, sub_step,
-                                               probe=probe).covered:
-        return None
-    record = probe if probe is not None else load_expansion_probe()
-    expansion = folded_beta_expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not folded_beta_bloch_pml_curl_coverage(fields, pml, sub_step).covered:
         return None
     grid = fields.grid
     codes, _ = folded_axis_kinds(grid, pml)
@@ -2735,13 +2583,13 @@ def plan_folded_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
     spec = SUB_STEPS[sub_step]
     kinds = resolve(grid, pml)
     phases = bloch_phase_table(grid, kinds)
-    phased, values = _phase_arguments(phases, backward=bool(spec["backward"]))
+    connections, values = connection_arguments(phases, backward=bool(spec["backward"]))
     beta_words = beta_curl_coefficients(grid.beta, grid.dt,
                                         magnetic=(sub_step == "step_B"),
                                         complex_storage=True)
     return FoldedBetaBlochPmlCurlPlan(
-        sub_step, grid.shape, grid.dt / grid.dx, codes, phased, values,
-        beta_words, expansion,
+        sub_step, grid.shape, grid.dt / grid.dx, codes, connections, values,
+        beta_words,
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in spec["targets"]],
         [getattr(fields, "fu_" + name) for name in spec["targets"]],
@@ -2749,34 +2597,41 @@ def plan_folded_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
         [getattr(pml, f"{stem}_{axis}{spec['suffix']}")
          for axis in "xyz" for stem in ("kms", "sinv")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
 def plan_folded_beta_bloch_pml_curl_from_arrays(
         sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any], codes,
-        phases: Sequence[Optional[complex]], dtdx: float, expansion: int,
+        phases: Sequence[Optional[complex]], dtdx: float,
         beta_words, block: Optional[int] = None, kernel: Any = None,
         num_warps: Optional[int] = None,
-        has_beta: int = 1) -> FoldedBetaBlochPmlCurlPlan:
-    """Build a K3b plan from bare device arrays — the gate's route."""
+        has_beta: int = 1, *, chunk_bounds: Any) -> FoldedBetaBlochPmlCurlPlan:
+    """Build a K3b plan from bare device arrays — the gate's route.
+
+    The direction's connection factor is formed HERE, per sub-step
+    (``complex_fields.connection_arguments``); ``chunk_bounds`` has no default.
+    """
     spec = SUB_STEPS[sub_step]
     shape = tuple(int(n) for n in arrays[spec["targets"][0]].shape)
-    phased, values = _phase_arguments(tuple(phases), backward=bool(spec["backward"]))
+    connections, values = connection_arguments(tuple(phases),
+                                               backward=bool(spec["backward"]))
     return FoldedBetaBlochPmlCurlPlan(
-        sub_step, shape, dtdx, codes, phased, values, beta_words, int(expansion),
+        sub_step, shape, dtdx, codes, connections, values, beta_words,
         DEFAULT_BLOCK if block is None else block,
         [arrays[name] for name in spec["targets"]],
         [arrays["fu_" + name] for name in spec["targets"]],
         [arrays[name] for name in spec["sources"]],
         [flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
         kernel=kernel, num_warps=num_warps, has_beta=has_beta,
+        chunk_bounds=chunk_bounds,
     )
 
 
 def plan_folded_complex_constitutive(fields: Any, pml: Any, side: str,
                                      block: Optional[int] = None,
                                      num_warps: Optional[int] = None,
-                                     probe: Any = None
+                                     chunk_layout: Any = None
                                      ) -> Optional[ComplexConstitutivePlan]:
     """A CERTIFIED complex constitutive plan for a folded run, or None.
 
@@ -2785,17 +2640,12 @@ def plan_folded_complex_constitutive(fields: Any, pml: Any, side: str,
     """
     if side not in CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, got {side!r}")
-    if not folded_complex_constitutive_coverage(fields, pml, side,
-                                                probe=probe).covered:
-        return None
-    record = probe if probe is not None else load_expansion_probe()
-    expansion = expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not folded_complex_constitutive_coverage(fields, pml, side).covered:
         return None
     spec = CONSTITUTIVE_SIDES[side]
     suffix = "_h" if spec["half_integer"] else ""
     return ComplexConstitutivePlan(
-        side, fields.grid.shape, expansion,
+        side, fields.grid.shape,
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in spec["targets"]],
         [getattr(fields, name) for name in spec["aux"]],
@@ -2805,12 +2655,15 @@ def plan_folded_complex_constitutive(fields: Any, pml: Any, side: str,
         [getattr(pml, f"{stem}_{axis}{suffix}")
          for axis in "xyz" for stem in ("kps", "kms")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        h_state=fields,
     )
 
 
 def plan_folded_beta_run_constitutive(fields: Any, pml: Any, side: str,
                                       block: Optional[int] = None,
-                                      num_warps: Optional[int] = None
+                                      num_warps: Optional[int] = None,
+                                      chunk_layout: Any = None
                                       ) -> Optional[ConstitutivePlan]:
     """A CERTIFIED real constitutive plan for a folded BETA run, or None.
 
@@ -2833,6 +2686,8 @@ def plan_folded_beta_run_constitutive(fields: Any, pml: Any, side: str,
         [getattr(pml, f"{stem}_{axis}{suffix}")
          for axis in "xyz" for stem in ("kps", "kms")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        h_state=fields,
     )
 
 
@@ -2992,8 +2847,7 @@ def _complex_fold_offdiag_grid_reasons(fields: Any, pml: Any, grid: Any,
     return reasons, codes
 
 
-def folded_complex_offdiag_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                             probe: Any = None) -> Coverage:
+def folded_complex_offdiag_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """May K1 step a folded COMPLEX run that also carries an off-diagonal row?
 
     K1's clause set with the off-diagonal clause INVERTED and nothing else
@@ -3036,12 +2890,10 @@ def folded_complex_offdiag_pml_curl_coverage(fields: Any, pml: Any, sub_step: st
     reasons.extend(_complex_layout_reasons(fields, shape, names))
     if pml is not None and getattr(pml, "is_active", False) and len(shape) == 3:
         reasons.extend(_coefficient_reasons(pml, shape, ("kms", "sinv"), ("", "_h")))
-    reasons.extend(_base_expansion_reasons(probe))
     return Coverage(not reasons, tuple(reasons))
 
 
-def folded_complex_offdiag_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                                 probe: Any = None) -> Coverage:
+def folded_complex_offdiag_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """May the certified complex constitutive kernel step ``update_H`` here?
 
     ``side='H'`` ONLY. ``side='E'`` is REFUSED BY NAME rather than raised — it is
@@ -3094,14 +2946,13 @@ def folded_complex_offdiag_constitutive_coverage(fields: Any, pml: Any, side: st
     if pml is not None and getattr(pml, "is_active", False) and len(shape) == 3:
         suffix = ("_h",) if spec["half_integer"] else ("",)
         reasons.extend(_coefficient_reasons(pml, shape, ("kps", "kms"), suffix))
-    reasons.extend(_base_expansion_reasons(probe))
     return Coverage(not reasons, tuple(reasons))
 
 
 def plan_folded_complex_offdiag_pml_curl(fields: Any, pml: Any, sub_step: str,
                                          block: Optional[int] = None,
                                          num_warps: Optional[int] = None,
-                                         probe: Any = None
+                                         chunk_layout: Any = None
                                          ) -> Optional[FoldedComplexPmlCurlPlan]:
     """A CERTIFIED K1 plan for a folded complex run with an off-diagonal row, or None.
 
@@ -3109,12 +2960,7 @@ def plan_folded_complex_offdiag_pml_curl(fields: Any, pml: Any, sub_step: str,
     """
     if sub_step not in SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(SUB_STEPS)}, got {sub_step!r}")
-    if not folded_complex_offdiag_pml_curl_coverage(fields, pml, sub_step,
-                                                    probe=probe).covered:
-        return None
-    record = probe if probe is not None else load_expansion_probe()
-    expansion = expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not folded_complex_offdiag_pml_curl_coverage(fields, pml, sub_step).covered:
         return None
     grid = fields.grid
     codes, _ = folded_axis_kinds(grid, pml)
@@ -3125,9 +2971,9 @@ def plan_folded_complex_offdiag_pml_curl(fields: Any, pml: Any, sub_step: str,
     spec = SUB_STEPS[sub_step]
     kinds = resolve(grid, pml)
     phases = bloch_phase_table(grid, kinds)
-    phased, values = _phase_arguments(phases, backward=bool(spec["backward"]))
+    connections, values = connection_arguments(phases, backward=bool(spec["backward"]))
     return FoldedComplexPmlCurlPlan(
-        sub_step, grid.shape, grid.dt / grid.dx, codes, phased, values, expansion,
+        sub_step, grid.shape, grid.dt / grid.dx, codes, connections, values,
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in spec["targets"]],
         [getattr(fields, "fu_" + name) for name in spec["targets"]],
@@ -3135,13 +2981,14 @@ def plan_folded_complex_offdiag_pml_curl(fields: Any, pml: Any, sub_step: str,
         [getattr(pml, f"{stem}_{axis}{spec['suffix']}")
          for axis in "xyz" for stem in ("kms", "sinv")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
 def plan_folded_complex_offdiag_constitutive(fields: Any, pml: Any, side: str,
                                              block: Optional[int] = None,
                                              num_warps: Optional[int] = None,
-                                             probe: Any = None
+                                             chunk_layout: Any = None
                                              ) -> Optional[ComplexConstitutivePlan]:
     """A CERTIFIED complex ``update_H`` plan for that run, or None.
 
@@ -3149,17 +2996,12 @@ def plan_folded_complex_offdiag_constitutive(fields: Any, pml: Any, side: str,
     """
     if side not in CONSTITUTIVE_SIDES:
         raise ValueError(f"side must be one of {tuple(CONSTITUTIVE_SIDES)}, got {side!r}")
-    if not folded_complex_offdiag_constitutive_coverage(fields, pml, side,
-                                                        probe=probe).covered:
-        return None
-    record = probe if probe is not None else load_expansion_probe()
-    expansion = expansion_from_probe(record)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+    if not folded_complex_offdiag_constitutive_coverage(fields, pml, side).covered:
         return None
     spec = CONSTITUTIVE_SIDES[side]
     suffix = "_h" if spec["half_integer"] else ""
     return ComplexConstitutivePlan(
-        side, fields.grid.shape, expansion,
+        side, fields.grid.shape,
         DEFAULT_BLOCK if block is None else block,
         [getattr(fields, name) for name in spec["targets"]],
         [getattr(fields, name) for name in spec["aux"]],
@@ -3169,13 +3011,14 @@ def plan_folded_complex_offdiag_constitutive(fields: Any, pml: Any, side: str,
         [getattr(pml, f"{stem}_{axis}{suffix}")
          for axis in "xyz" for stem in ("kps", "kms")],
         num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
+        h_state=fields,
     )
 
 
-def explain_folded_complex(fields: Any, pml: Any, sub_step: str = "step_B",
-                           probe: Any = None) -> Coverage:
+def explain_folded_complex(fields: Any, pml: Any, sub_step: str = "step_B") -> Coverage:
     """The folded complex curl's coverage verdict with its reasons. Needs no Triton."""
-    return folded_complex_pml_curl_coverage(fields, pml, sub_step, probe=probe)
+    return folded_complex_pml_curl_coverage(fields, pml, sub_step)
 
 
 # ---------------------------------------------------------------------------

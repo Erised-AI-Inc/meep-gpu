@@ -45,10 +45,6 @@ mutation set unchanged. What only this gate adds:
    exchanged (must diverge), and the insert moved after the ownership masks (must
    diverge on a walled case, where the array path's mask zeroes the beta
    contribution the mutant leaves alive).
-4. **THE DUAL EXTENDED LICENCE.** This kernel launches six operand orientations,
-   so BOTH ``parity_expansion_license`` and ``folded_beta_expansion_license`` must
-   answer, agree, and be recorded; a record licensing one and not the other
-   refuses the run before the first device leg.
 
 WHAT THE GATE REFUSES TO INFER — unchanged from the base gate: bytes alone cannot
 prove the fused path ran (launches are counted); a no-op agreeing with a no-op is
@@ -97,6 +93,9 @@ API_ROOT = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir))
 for _path in (HERE, API_ROOT):
     if _path not in sys.path:
         sys.path.insert(0, _path)
+
+import fold_pass_mutations as fold_passes  # noqa: E402
+import flush_vacuity  # noqa: E402 - the flush not-applicable rule, beside this file
 
 SEED_ROOT = "triton_folded_beta_complex_fused_pair/2026-09-02"
 
@@ -357,6 +356,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/symmetry.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/deposit_repair.py",
         "meep_gpu/stepping.py",
@@ -377,19 +377,22 @@ _MODULE_FILE = os.path.join(API_ROOT, "meep_gpu", "triton_kernels",
                             "folded_beta_complex_fused_pair.py")
 
 KERNEL_NAME = "folded_beta_complex_fused_curl_constitutive_D"
+#: The carry device function is the twin's, imported by the shipped module rather than
+#: copied (one spelling of the carried constitutive), so it is read from the twin's file.
+_HELPER_FILE = os.path.join(API_ROOT, "meep_gpu", "triton_kernels", "folded_complex_fused_pair.py")
 CARRY_HELPER = "_carry_ghost_complex_E"
 
-#: The seven statements the K3b insert adds — the ONLY thing that may
-#: separate this kernel from the beta-less shipped weld.
-BETA_INSERT_LINES = (
-    "if HAS_BETA:",
-    "t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)",
-    "curl0_re = curl0_re - t_re",
-    "curl0_im = curl0_im - t_im",
-    "t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)",
-    "curl1_re = curl1_re - t_re",
-    "curl1_im = curl1_im - t_im",
-)
+#: The flag that gates the beta pass. The pass itself is DERIVED from the shipped
+#: folded complex beta curl (``folded_complex.folded_beta_bloch_pml_curl_step``'s
+#: top-level ``if HAS_BETA:`` statement), never listed here: the transcription leg
+#: checks that this kernel splices that exact statement after its six part forms
+#: (``fold_pass_mutations.body_and_insert``).
+BETA_FLAG = "HAS_BETA"
+
+#: Target 2's imaginary-part stencil line, the last of the curl half's stencils: the
+#: previous placement of the beta term (inside the curl, before the forms) is planted
+#: after it.
+CURL_ANCHOR = "curl2_im = curl_stencil(b_x_im, b2_im, a2_im, a_y_im, dtdx, px, py)"
 
 
 def _shipped_text(name: str, module_file: Optional[str] = None) -> str:
@@ -462,21 +465,20 @@ def _replace_all(source: str, before: str, after: str) -> Tuple[str, int]:
 
 #: Each region of the kernel, and the certified body it must diff clean against.
 CURL_LINES = (
-    "t0_re = ((c_y_re - c_re) + (b_re - b_z_re))",
-    "t1_re = ((a_z_re - a_re) + (c_re - c_x_re))",
-    "t2_re = ((b_x_re - b_re) + (a_re - a_y_re))",
-    "curl0_re, curl0_im = _mul_coefficient_left(dtdx, t0_re, t0_im, EXPANSION)",
-    "q_re, q_im = _mul_field_left(p0_re, p0_im, km_y, EXPANSION)",
-    "n0_re, n0_im = _mul_field_left(q_re, q_im, si_y, EXPANSION)",
-    "v0_re, v0_im = _mul_field_left(r_re, r_im, si_z, EXPANSION)",
-    "r_re = (r_re + n0_re) - p0_re",
+    "r_re, r_im = _connect(c_re, c_im, cxr, cxi, CNX)",
+    "presence = tl.load(cb + RECORD_PRESENCE)",
+    "curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)",
+    "curl1_re = curl_stencil(a_z_re, a1_re, c1_re, c_x_re, dtdx, pz, px)",
+    "curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)",
+    "du0 = record_in(cb, lattice + 8, k)",
+    "p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)",
+    "tl.store(u0 + 2 * idx, n0_re, mask=live & du0)",
 )
 
 CONSTITUTIVE_LINES = (
-    "t_re, t_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)",
-    "t_re, t_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)",
-    "a_re = a_re + t_re",
-    "a_re = a_re - t_re",
+    "dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)",
+    "constitutive_form(a_re, prev_re, src_re, kp_0, km_0, dw0)",
+    "constitutive_form(a_im, prev_im, src_im, kp_0, km_0, dw0)",
 )
 
 #: The D-side lines this product takes from the REAL folded electric pair rather than
@@ -510,7 +512,7 @@ def transcription_leg() -> Dict[str, Any]:
     package = os.path.join(API_ROOT, "meep_gpu", "triton_kernels")
     findings: List[str] = []
     ours = _shipped_text(KERNEL_NAME)
-    helper = _shipped_text(CARRY_HELPER)
+    helper = _shipped_text(CARRY_HELPER, _HELPER_FILE)
 
     curl = _shipped_text("folded_bloch_pml_curl_step",
                          os.path.join(package, "folded_complex.py"))
@@ -531,38 +533,36 @@ def transcription_leg() -> Dict[str, Any]:
         if line not in ours:
             findings.append(f"the constitutive half no longer spells {line!r}")
 
-    # THE K3b INSERT, verbatim from the certified folded complex beta curl:
-    # the four statements the beta term adds, present in BOTH bodies, and the
-    # fused body minus the insert must be the BASE weld exactly (checked as an
-    # order-preserving deletion equality below).
-    beta_curl = _shipped_text("folded_beta_bloch_pml_curl_step",
-                              os.path.join(package, "folded_complex.py"))
-    for line in BETA_INSERT_LINES:
-        if line not in beta_curl:
-            findings.append(f"the certified K3b curl no longer spells {line!r}; "
-                            f"the beta transcription cannot be checked")
-        if line not in ours:
-            findings.append(f"the beta insert no longer spells {line!r}")
+    # THE K3b PASS, verbatim from the folded complex beta curl: this kernel minus its
+    # pass IS the beta-less shipped weld (an order-preserving equality), its pass IS
+    # K3b's statement for statement, and it follows the six part forms and precedes
+    # the wall clear -- MEEP's beta pass after every component's curl
+    # (step_db.cpp:161-175).
+    body, insert = fold_passes.body_and_insert(_MODULE_FILE, KERNEL_NAME, BETA_FLAG)
+    _curl_body, curl_insert = fold_passes.body_and_insert(
+        os.path.join(package, "folded_complex.py"), "folded_beta_bloch_pml_curl_step",
+        BETA_FLAG)
+    if not insert:
+        findings.append("the kernel carries no top-level `if HAS_BETA:` pass")
+    if insert != curl_insert:
+        findings.append("the beta pass is not folded_beta_bloch_pml_curl_step's")
     base_body = _statements(_shipped_text(
         "folded_complex_fused_curl_constitutive_D",
         os.path.join(package, "folded_complex_fused_pair.py")))
-    ours_minus_insert = [line for line in _statements(ours)
-                         if line not in set(BETA_INSERT_LINES)]
-    if ours_minus_insert != base_body:
-        at = next((i for i, (a, b) in enumerate(
-            zip(ours_minus_insert, base_body)) if a != b), "length")
+    if body != base_body:
+        at = next((i for i, (a, b) in enumerate(zip(body, base_body)) if a != b),
+                  "length")
         findings.append(
-            f"this kernel minus the beta insert is NOT the beta-less shipped "
-            f"weld; first difference at statement {at}")
-    at = _statements(ours).index("if HAS_BETA:")
-    lines = _statements(ours)
-    if lines[at - 1] != ("curl2_re, curl2_im = _mul_coefficient_left("
-                         "dtdx, t2_re, t2_im, EXPANSION)"):
-        findings.append(f"the insert no longer sits after the dtdx curl: "
-                        f"{lines[at - 1]!r}")
-    if lines[at + 7] != "at_x, at_y, at_z = i == 0, j == 0, k == 0":
-        findings.append(f"the insert no longer sits before the ownership "
-                        f"masks: {lines[at + 7]!r}")
+            f"this kernel minus its beta pass is NOT the beta-less shipped weld; "
+            f"first difference at statement {at}")
+    if insert:
+        before, after = fold_passes.insert_neighbours(_MODULE_FILE, KERNEL_NAME,
+                                                      BETA_FLAG)
+        if not before.startswith("v2_im, n2_im = curl_form("):
+            findings.append(f"the pass no longer follows the last part form: "
+                            f"{before!r}")
+        if after != "if ZM_X:":
+            findings.append(f"the pass no longer precedes the wall clear: {after!r}")
 
     real = _shipped_text("folded_fused_curl_constitutive_D",
                          os.path.join(package, "folded_fused_pair.py"))
@@ -575,8 +575,8 @@ def transcription_leg() -> Dict[str, Any]:
 
     # THE ONE CURL EDIT: a destination lane never READS D.
     for component in range(3):
-        certified = f"e_re = tl.load(f{component} + 2 * idx, mask=live, other=0.0)"
-        mine = (f"e_re = tl.load(f{component} + 2 * idx, "
+        certified = f"curl_form(tl.load(f{component} + 2 * idx, mask=live, other=0.0)"
+        mine = (f"curl_form(tl.load(f{component} + 2 * idx, "
                 f"mask=own{component}, other=0.0)")
         if certified not in curl:
             findings.append(f"the certified curl no longer spells {certified!r}")
@@ -588,14 +588,14 @@ def transcription_leg() -> Dict[str, Any]:
                 f"lane would read a word another lane writes")
 
     # THE GHOST CONSTITUTIVE repeats the owned cell's own sequence, in order.
-    order = ("tl.store(f + 2 * dst, ghost_re",
-             "prev_re = tl.load(w + 2 * dst",
-             "src_re, src_im = _mul_field_left(",
-             "tl.store(w + 2 * dst, src_re",
-             "acc_re = tl.load(e + 2 * dst",
-             "_mul_coefficient_left(kp_d, src_re, src_im, EXPANSION)",
-             "_mul_coefficient_left(km_d, prev_re, prev_im, EXPANSION)",
-             "tl.store(e + 2 * dst, acc_re")
+    order = ("us = tl.load(ie + dst, mask=mask, other=0.0)",
+             "tl.store(f + 2 * dst, ghost_re",
+             "prev_re = tl.load(w + 2 * dst, mask=mask & dw_d",
+             "src_re = ghost_re * us",
+             "tl.store(w + 2 * dst, src_re, mask=mask & dw_d",
+             "acc_re = tl.load(e + 2 * dst, mask=mask & dw_d",
+             "constitutive_form(acc_re, prev_re, src_re, kp_d, km_d, dw_d)",
+             "constitutive_form(acc_im, prev_im, src_im, kp_d, km_d, dw_d)")
     positions = []
     for fragment in order:
         if fragment not in helper:
@@ -610,7 +610,7 @@ def transcription_leg() -> Dict[str, Any]:
             f"between them")
 
     # THE INV_EPS INDEX. A word index at either site is the next cell's coefficient.
-    if "tl.load(ie + dst, mask=mask, other=0.0)" not in helper:
+    if "us = tl.load(ie + dst, mask=mask, other=0.0)" not in helper:
         findings.append("the ghost no longer reads inv_eps at the COMPLEX cell index")
     if "ie + 2 * dst" in helper:
         findings.append("the ghost reads inv_eps at a WORD index")
@@ -628,12 +628,13 @@ def transcription_leg() -> Dict[str, Any]:
     called = {getattr(node.func, "id", "") for node in ast.walk(tree)
               if isinstance(node, ast.Call)}
     multiplies = {name for name in called
-                  if name.startswith("_mul") or name.startswith("_rotate")}
-    unlicensed = multiplies - set(module.LICENSED_MULTIPLY_HELPERS)
-    if unlicensed:
+                  if name.startswith("_mul") or name.startswith("_rotate")
+                  or name == "_connect"}
+    undeclared = multiplies - set(module.MULTIPLY_HELPERS)
+    if undeclared:
         findings.append(
-            f"the kernel calls unlicensed complex helpers {sorted(unlicensed)}; each "
-            f"is an operand orientation with no probe pattern behind it")
+            f"the kernel calls undeclared complex helpers {sorted(undeclared)}; each "
+            f"is an operand orientation outside MULTIPLY_HELPERS")
 
     return {"leg": "transcription", "device": False,
             "curl_lines": len(CURL_LINES),
@@ -666,6 +667,27 @@ def _kernel_node():
     raise AssertionError(f"{KERNEL_NAME} is not defined")
 
 
+def _chain_of(expression, registers) -> Tuple[List[Tuple[int, str]],
+                                               List[Tuple[int, str]]]:
+    """The ``(axis, pass)`` chain an expression applies, innermost first, and the wall
+    clears it carries, as ``(parities applied before it, guard)``.
+
+    A carry's ghost is a product chain of parity WORDS (``n?r`` near, ``d?r`` far) on
+    the owned register, spelled ``d0r * (n1r * v0_re)``, or a register a NEAR block
+    defined (``gv_*_re``) with its wall clears applied after its parities.
+    """
+    if (isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Mult)
+            and isinstance(expression.left, ast.Name)
+            and expression.left.id in COEFFICIENT_ARGUMENTS):
+        chain, clears = _chain_of(expression.right, registers)
+        return chain + [COEFFICIENT_ARGUMENTS[expression.left.id]], clears
+    if isinstance(expression, ast.Name) and expression.id in registers:
+        value, guards = registers[expression.id]
+        chain, clears = _chain_of(value, registers)
+        return chain, clears + [(len(chain), guard) for guard in guards]
+    return [], []
+
+
 def carry_blocks() -> List[Dict[str, Any]]:
     """Every emitted carry block, PARSED off the shipped body.
 
@@ -673,9 +695,17 @@ def carry_blocks() -> List[Dict[str, Any]]:
     kernel would mirror its defects instead of executing them.
     """
     out: List[Dict[str, Any]] = []
+    registers: Dict[str, Any] = {}
     for statement in _kernel_node().body:
         if not isinstance(statement, ast.If):
             continue
+        guards = [ast.unparse(inner.test) for inner in statement.body
+                  if isinstance(inner, ast.If)
+                  and ast.unparse(inner.test).startswith("ZM_")]
+        for inner in statement.body:
+            if (isinstance(inner, ast.Assign) and isinstance(inner.value, ast.BinOp)
+                    and isinstance(inner.targets[0], ast.Name)):
+                registers[inner.targets[0].id] = (inner.value, guards)
         calls = [node for node in ast.walk(statement)
                  if isinstance(node, ast.Call)
                  and getattr(node.func, "id", "") == CARRY_HELPER]
@@ -684,16 +714,8 @@ def carry_blocks() -> List[Dict[str, Any]]:
         if len(calls) != 1:
             raise AssertionError(
                 f"block {ast.unparse(statement.test)!r} carries {len(calls)} ghosts")
-        chain, clears = [], []
-        for inner in statement.body:
-            if (isinstance(inner, ast.Assign)
-                    and isinstance(inner.value, ast.Call)
-                    and getattr(inner.value.func, "id", "")
-                    == "_mul_imag_coefficient_left"):
-                chain.append(COEFFICIENT_ARGUMENTS[inner.value.args[0].id])
-            if isinstance(inner, ast.If) and ast.unparse(inner.test).startswith("ZM_"):
-                clears.append((len(chain), ast.unparse(inner.test)))
         call = calls[0]
+        chain, clears = _chain_of(call.args[5], registers)
         out.append({
             "guard": ast.unparse(statement.test),
             "target": call.args[0].id,
@@ -701,7 +723,8 @@ def carry_blocks() -> List[Dict[str, Any]]:
             "destination": ast.unparse(call.args[4]),
             "coefficient": (f"{ast.unparse(call.args[7])}, "
                             f"{ast.unparse(call.args[8])}"),
-            "mask": ast.unparse(call.args[9]),
+            "membership": ast.unparse(call.args[9]),
+            "mask": ast.unparse(call.args[10]),
             "chain": tuple(chain),
             "clears": tuple(clears),
         })
@@ -862,7 +885,7 @@ def case_constexprs(case) -> Dict[str, Any]:
     from meep_gpu.stepping import _boundary_kinds  # noqa: PLC0415
     from meep_gpu.triton_kernels import folded_beta_complex_fused_pair as module  # noqa: PLC0415
     from meep_gpu.triton_kernels.complex_fields import (  # noqa: PLC0415
-        _phase_arguments, bloch_phase_table,
+        bloch_phase_table, connection_arguments,
     )
     from meep_gpu.triton_kernels.coverage import zero_metal_axes  # noqa: PLC0415
     from meep_gpu.triton_kernels.folded_complex import (  # noqa: PLC0415
@@ -878,7 +901,7 @@ def case_constexprs(case) -> Dict[str, Any]:
             raise AssertionError(f"{case[0]}: folded_axis_kinds refused: {reasons}")
         codes = tuple(int(value) for value in codes)
         walls = tuple(bool(value) for value in zero_metal_axes(grid))
-        phased, _values = _phase_arguments(
+        connections, _values = connection_arguments(
             bloch_phase_table(grid, _boundary_kinds(grid, driver.pml)),
             backward=bool(module.BACKWARD))
         near = tuple(code in module.MIRROR_CODES for code in codes)
@@ -892,7 +915,8 @@ def case_constexprs(case) -> Dict[str, Any]:
             "NEAR_X": near[0], "NEAR_Y": near[1], "NEAR_Z": near[2],
             "FAR_X": far[0], "FAR_Y": far[1], "FAR_Z": far[2],
             "ZM_X": walls[0], "ZM_Y": walls[1], "ZM_Z": walls[2],
-            "PHX": int(phased[0]), "PHY": int(phased[1]), "PHZ": int(phased[2]),
+            "CNX": int(connections[0]), "CNY": int(connections[1]),
+            "CNZ": int(connections[2]),
             "shape": tuple(int(value) for value in grid.shape),
             "parity": module.parity_coefficient_words(grid),
             "ghost_destinations": ghost_destinations(near, far),
@@ -926,7 +950,7 @@ def branch_reachability_leg() -> Dict[str, Any]:
     names = sorted({name for name in
                     ("BCX", "BCY", "BCZ", "NEAR_X", "NEAR_Y", "NEAR_Z",
                      "FAR_X", "FAR_Y", "FAR_Z", "ZM_X", "ZM_Y", "ZM_Z",
-                     "PHX", "PHY", "PHZ")
+                     "CNX", "CNY", "CNZ")
                     if any(name in guard for _index, guard in guards)})
     tables = {case[0]: case_constexprs(case) for case in CASES}
     entered: Dict[str, int] = {name: 0 for name in names}
@@ -952,9 +976,10 @@ def branch_reachability_leg() -> Dict[str, Any]:
     # backwards. What actually has to hold for the code-valued constexprs is the
     # check immediately below — every one of the three codes taken by some case's
     # axis — and it is measured there rather than inferred from truthiness here.
-    # MEASURED on this gate's own case set, 2026-09-02: ``never`` reads
-    # ['BCZ', 'FAR_Z', 'NEAR_Z', 'PHZ', 'ZM_Z'].
-    expected_never = sorted(("BCZ", "NEAR_Z", "FAR_Z", "ZM_Z", "PHZ"))
+    # MEASURED on this gate's own case set: ``never`` reads ['BCZ', 'CNZ', 'FAR_Z',
+    # 'NEAR_Z', 'ZM_Z'] (the parity is a per-axis word, so no PH* guard is emitted;
+    # the z connection kind is never entered on a 2-D grid).
+    expected_never = sorted(("BCZ", "CNZ", "NEAR_Z", "FAR_Z", "ZM_Z"))
     if sorted(never) != expected_never:
         findings.append(
             f"guards TRUE on no case: {sorted(never)}; this beta gate declares "
@@ -1034,25 +1059,6 @@ class _Electric:
     field_type = "D"
 
 
-def _probe_record():
-    """A probe artifact carrying this product's EXTENDED pattern set.
-
-    The laptop legs need a licence to ask the predicate anything; the DEVICE legs
-    consume the real artifact ``complex_fields.load_expansion_probe`` resolves.
-    """
-    from meep_gpu.triton_kernels import folded_beta_complex_fused_pair as module  # noqa: PLC0415
-
-    from meep_gpu.test_triton_complex_fields import (  # noqa: PLC0415
-        stamp_probe_record)
-
-    # STAMPED, not bare. A pattern map with no resolved subnormal policy is the
-    # pre-2026-08-15 shape every complex family refuses BY NAME: a verdict is only
-    # readable against the policy the bytes were cut under. The DEVICE legs consume
-    # the real artifact instead; this is the laptop legs' licence.
-    return stamp_probe_record(
-        {"backend": "cupy",
-         "patterns": {name: "FMA_V1"
-                      for name in module.PRODUCT_PROBE_PATTERNS}})
 
 
 def predicate_leg() -> Dict[str, Any]:
@@ -1062,7 +1068,6 @@ def predicate_leg() -> Dict[str, Any]:
     slot UNSELECTED — a silent coverage LOSS, not an error — so the disjointness is
     asserted in BOTH directions on the same grids rather than argued.
     """
-    from meep_gpu.expansion_refusal import declaring_run_policy  # noqa: PLC0415
     from meep_gpu.triton_kernels import folded_beta_complex_fused_pair as module  # noqa: PLC0415
     from meep_gpu.triton_kernels import complex_beta_fused_electric_pair as unfolded  # noqa: PLC0415
     from meep_gpu.triton_kernels import folded_beta_fused_electric_pair as real  # noqa: PLC0415
@@ -1070,99 +1075,96 @@ def predicate_leg() -> Dict[str, Any]:
 
     findings: List[str] = []
     rows: List[Dict[str, Any]] = []
-    probe = _probe_record()
     folded_complex_grid: Dict[str, Any] = {}
-    with declaring_run_policy("keep"):
-        for case in CASES:
-            driver = build_grid(case, prefer_gpu=False)
-            try:
-                sources = (_Deposit(driver.fields, "Ez",
-                                    deposit_center(case)),)
-                verdict = module.folded_beta_complex_fused_pair_coverage(
-                    driver.fields, driver.pml, sources, probe=probe)
-                residual = _residual(verdict)
-                rows.append({"case": case[0], "residual_reasons": residual,
-                             "shape": list(driver.shape)})
-                if residual:
-                    findings.append(
-                        f"case {case[0]!r} is refused for {residual}; every case this "
-                        f"gate scores must be one the shipped predicate admits")
-                # THE REFUSING DIRECTION of the source clause, on the same grid: an
-                # electric source that cannot publish its deposit index.
-                blind = module.folded_beta_complex_fused_pair_coverage(
-                    driver.fields, driver.pml, (_Electric(),), probe=probe)
-                if not any("does not publish the index" in reason
-                           for reason in _residual(blind)):
-                    findings.append(
-                        f"case {case[0]!r}: an electric source with no deposit index "
-                        f"is not refused by name")
-                # AN UNDECLARED SOURCE LIST IS A REFUSAL, never an assumed ().
-                undeclared = module.folded_beta_complex_fused_pair_coverage(
-                    driver.fields, driver.pml, None, probe=probe)
-                if not any("was not declared" in reason
-                           for reason in _residual(undeclared)):
-                    findings.append(
-                        f"case {case[0]!r}: an undeclared source list is not refused")
-            finally:
-                driver.close()
-
-        # DISJOINTNESS, both directions, on ONE folded grid.
-        base = CASES_BY_NAME["y_fold_periodic"]
-        driver = build_grid(base, prefer_gpu=False)
+    for case in CASES:
+        driver = build_grid(case, prefer_gpu=False)
         try:
-            sources = (_Deposit(driver.fields, "Ez", deposit_center(base)),)
-            mine = module.folded_beta_complex_fused_pair_coverage(
-                driver.fields, driver.pml, sources, probe=probe)
-            theirs = unfolded.complex_beta_fused_electric_pair_coverage(
-                driver.fields, driver.pml, sources, probe=probe)
-            real_verdict = real.folded_beta_fused_electric_pair_coverage(
+            sources = (_Deposit(driver.fields, "Ez",
+                                deposit_center(case)),)
+            verdict = module.folded_beta_complex_fused_pair_coverage(
                 driver.fields, driver.pml, sources)
-            beta_less_verdict = beta_less.folded_complex_fused_pair_coverage(
-                driver.fields, driver.pml, sources, probe=probe)
-            folded_complex_grid = {
-                "grid": "a FOLDED COMPLEX BETA grid",
-                "this": _residual(mine),
-                "unfolded_complex_beta": _residual(theirs),
-                "real_folded_beta": _residual(real_verdict),
-                "beta_less_folded_complex": _residual(beta_less_verdict)}
-            if _residual(mine):
-                findings.append(f"this product refuses its own grid: "
-                                f"{folded_complex_grid}")
-            if not _residual(theirs):
+            residual = _residual(verdict)
+            rows.append({"case": case[0], "residual_reasons": residual,
+                         "shape": list(driver.shape)})
+            if residual:
                 findings.append(
-                    "complex_beta_fused_electric_pair ADMITS a FOLDED complex beta "
-                    "grid; both products would claim the slot and _select_slot "
-                    "would leave it unselected")
-            if not _residual(real_verdict):
+                    f"case {case[0]!r} is refused for {residual}; every case this "
+                    f"gate scores must be one the shipped predicate admits")
+            # THE REFUSING DIRECTION of the source clause, on the same grid: an
+            # electric source that cannot publish its deposit index.
+            blind = module.folded_beta_complex_fused_pair_coverage(
+                driver.fields, driver.pml, (_Electric(),))
+            if not any("does not publish the index" in reason
+                       for reason in _residual(blind)):
                 findings.append(
-                    "folded_beta_fused_electric_pair ADMITS a COMPLEX-storage grid; "
-                    "its parity is a compile-time sign and cannot be that "
-                    "product's")
-            if not _residual(beta_less_verdict):
+                    f"case {case[0]!r}: an electric source with no deposit index "
+                    f"is not refused by name")
+            # AN UNDECLARED SOURCE LIST IS A REFUSAL, never an assumed ().
+            undeclared = module.folded_beta_complex_fused_pair_coverage(
+                driver.fields, driver.pml, None)
+            if not any("was not declared" in reason
+                       for reason in _residual(undeclared)):
                 findings.append(
-                    "folded_complex_fused_pair ADMITS a beta grid; K1's clause set "
-                    "requires beta = 0 and two admitters would leave the slot "
-                    "unselected")
+                    f"case {case[0]!r}: an undeclared source list is not refused")
         finally:
             driver.close()
 
-        # THE PLAN BUILDER RETURNS None ON A REFUSED CONFIGURATION, never raises.
-        driver = build_grid(base, prefer_gpu=False)
-        try:
-            built = module.plan_folded_beta_complex_fused_pair(
-                driver.fields, driver.pml,
-                (_Deposit(driver.fields, "Ez", deposit_center(base)),),
-                probe=probe)
-            if built is not None:
-                findings.append(
-                    "the plan builder returned a plan on a NumPy host; the predicate "
-                    "refuses that array module and None is the only legal answer")
-        except Exception as exc:  # noqa: BLE001
+    # DISJOINTNESS, both directions, on ONE folded grid.
+    base = CASES_BY_NAME["y_fold_periodic"]
+    driver = build_grid(base, prefer_gpu=False)
+    try:
+        sources = (_Deposit(driver.fields, "Ez", deposit_center(base)),)
+        mine = module.folded_beta_complex_fused_pair_coverage(
+            driver.fields, driver.pml, sources)
+        theirs = unfolded.complex_beta_fused_electric_pair_coverage(
+            driver.fields, driver.pml, sources)
+        real_verdict = real.folded_beta_fused_electric_pair_coverage(
+            driver.fields, driver.pml, sources)
+        beta_less_verdict = beta_less.folded_complex_fused_pair_coverage(
+            driver.fields, driver.pml, sources)
+        folded_complex_grid = {
+            "grid": "a FOLDED COMPLEX BETA grid",
+            "this": _residual(mine),
+            "unfolded_complex_beta": _residual(theirs),
+            "real_folded_beta": _residual(real_verdict),
+            "beta_less_folded_complex": _residual(beta_less_verdict)}
+        if _residual(mine):
+            findings.append(f"this product refuses its own grid: "
+                            f"{folded_complex_grid}")
+        if not _residual(theirs):
             findings.append(
-                f"the plan builder RAISED on a refused configuration ({exc!r}); None "
-                f"is the only refusal")
-        finally:
-            driver.close()
+                "complex_beta_fused_electric_pair ADMITS a FOLDED complex beta "
+                "grid; both products would claim the slot and _select_slot "
+                "would leave it unselected")
+        if not _residual(real_verdict):
+            findings.append(
+                "folded_beta_fused_electric_pair ADMITS a COMPLEX-storage grid; "
+                "its parity is a compile-time sign and cannot be that "
+                "product's")
+        if not _residual(beta_less_verdict):
+            findings.append(
+                "folded_complex_fused_pair ADMITS a beta grid; K1's clause set "
+                "requires beta = 0 and two admitters would leave the slot "
+                "unselected")
+    finally:
+        driver.close()
+
+    # THE PLAN BUILDER RETURNS None ON A REFUSED CONFIGURATION, never raises.
+    driver = build_grid(base, prefer_gpu=False)
+    try:
+        built = module.plan_folded_beta_complex_fused_pair(
+            driver.fields, driver.pml,
+            (_Deposit(driver.fields, "Ez", deposit_center(base)),))
+        if built is not None:
+            findings.append(
+                "the plan builder returned a plan on a NumPy host; the predicate "
+                "refuses that array module and None is the only legal answer")
+    except Exception as exc:  # noqa: BLE001
+        findings.append(
+            f"the plan builder RAISED on a refused configuration ({exc!r}); None "
+            f"is the only refusal")
+    finally:
+        driver.close()
 
     return {"leg": "predicate", "device": False, "cases": rows,
             "disjointness": folded_complex_grid,
@@ -1353,7 +1355,9 @@ PARITY_WORDS: Tuple[float, ...] = (
     1.0, -1.0, 0.1, -0.1, 3.4028235e38, -3.4028235e38,
 )
 
-#: What establishes that a mutation declared ``unreached`` is a REAL defect.
+#: What establishes that a mutation declared ``unreached`` is a REAL defect. Empty
+#: since the per-part alignment: the two parity-chain mutations it named are nulls
+#: now (``+-1.0`` parity words commute and fold exactly, part by part).
 #:
 #: ``unreached`` is a third expectation beside ``caught`` and ``null``, and it exists
 #: because collapsing the two is how a gate lies in both directions. A ``null`` says
@@ -1366,34 +1370,16 @@ PARITY_WORDS: Tuple[float, ...] = (
 #: UNCAUGHT — a catch means the declaration is stale and the entry must move to
 #: ``caught`` — and it must name its evidence here, or the gate fails.
 MUTATION_EVIDENCE: Dict[str, str] = {
-    "m_parity_chain_reordered":
-        "parity_chain_associativity_leg measures the defect REAL at the word layer: "
-        "re-ordering a two-parity chain moves words on this coefficient class, and "
-        "every moved word is at a SIGNED ZERO — c_re is exactly +-1.0 and c_im is "
-        "bitwise +0.0, so the product is a sign flip plus a signed-zero addend, "
-        "exact on every finite operand and order-dependent only where the operand "
-        "is itself a zero. WHAT THIS GATE COULD NOT DO is get such a word to a "
-        "ghost SOURCE lane at the moment of a launch. Three attempts are recorded: "
-        "the default uniform class with the carry (3 steps), and — added 2026-08-31 "
-        "specifically for this — the +-0 lattice, QUIET, at ONE step, which is the "
-        "only configuration in which every ghost source lane still holds a seeded "
-        "signed zero when step_D runs. All three left every compared volume "
-        "byte-identical. The ORDER is held by CONSTRUCTION — parity_chain_leg "
-        "compares the shipped sequence against folded_complex_fused_pair.parity_"
-        "chain block by block, including which coefficient argument each call takes "
-        "and where the wall clear lands — and NOT by a whole-step device leg. A "
-        "synthetic bare-array leg with planted words at the source lane is what "
-        "would close it. THE MAGNETIC TWIN REACHED THE SAME POSITION "
-        "INDEPENDENTLY on 2026-08-21 (its own DEVICE_STATUS records 30 complete "
-        "steps on the same grid class under the +-0 lattice), which is the "
-        "cross-check that this is a property of the arithmetic rather than of this "
-        "harness.",
-    "m_parity_chain_folded":
-        "the same sweep measures words moved by FOLDING the chain into one "
-        "coefficient, again all at signed zeros, and the same three device "
-        "configurations did not reach one. Held by construction in "
-        "parity_chain_leg, which asserts that no block applies fewer multiplies "
-        "than its destination carries passes, rather than by measurement here.",
+    "m_fu_store_masked":
+        "the defect is REAL and the beta-less twin's gate measures it on its 3-D "
+        "three-fold case, where the top x plane's high-y, high-z corner sits in both "
+        "layers. Under the chunk forms component 0's auxiliary is stored on the z "
+        "layer only, which an effective-2-D grid does not have, and the masked top "
+        "plane's curl is zero, so on a 2-D grid no stored word moves (measured on the "
+        "host interpreter for the twin, bit_parity_0_10 WP KT5). Beta exists only on "
+        "the effective-2-D grid (grid.py:668-697; MEEP fields.cpp:546-547), so no "
+        "case this gate can build reaches it; the store's region mask is held by the "
+        "transcription leg (this body is the twin's) and by the twin's gate.",
 }
 
 
@@ -1411,21 +1397,12 @@ def _fma32(a: float, b: float, c: float) -> np.float32:
 
 
 def _parity_multiply(c_re, c_im, z_re, z_im, arm: int):
-    """``special_kz._mul_imag_coefficient_left``'s two arms, transcribed.
-
-    The lines are the shipped ones (special_kz.py:328-334) and the leg asserts they
-    are still there before it trusts this transcription.
-    """
-    c_re = np.float32(c_re); c_im = np.float32(c_im)
-    z_re = np.float32(z_re); z_im = np.float32(z_im)
-    if arm == 1:
-        out_re = _fma32(c_re, z_re,
-                        np.float32(np.float32(c_im * z_im) * np.float32(-1.0)))
-        out_im = _fma32(c_re, z_im, np.float32(c_im * z_re))
-    else:
-        out_re = np.float32(np.float32(c_re * z_re) - np.float32(c_im * z_im))
-        out_im = np.float32(np.float32(c_re * z_im) + np.float32(c_im * z_re))
-    return out_re, out_im
+    """The carry's parity product, transcribed: the real parity word times each
+    stored part (``gv_re = c * v_re``, ``gv_im = c * v_im``). ``arm`` and ``c_im``
+    are accepted and ignored: the per-part product has one body, and the imaginary
+    coefficient word is bitwise ``+0`` and never launched."""
+    c = np.float32(c_re)
+    return np.float32(c * np.float32(z_re)), np.float32(c * np.float32(z_im))
 
 
 def _words(pair) -> Tuple[int, int]:
@@ -1434,42 +1411,36 @@ def _words(pair) -> Tuple[int, int]:
 
 
 def parity_chain_associativity_leg() -> Dict[str, Any]:
-    """IS THE ORDERING OBSERVABLE AT ALL? Measured, on the shipped multiply's arms.
+    """IS THE ORDERING OBSERVABLE AT ALL? Measured, on the shipped per-part product.
 
     THE MEASUREMENT THIS LEG EXISTS FOR. Two armed device mutations re-order and fold
-    this kernel's parity chain, and BOTH come back UNCAUGHT on every device
-    configuration this gate can build. A null is only honest if the question behind
-    it is settled rather than hidden, so it is settled here, at the word layer, on
-    the arithmetic itself rather than on the whole-step state.
+    this kernel's parity chain. Since the per-part alignment each parity word is
+    exactly ``+-1.0`` times each stored part, so both are declared NULLS, and a null
+    is only honest if the question behind it is settled rather than hidden: it is
+    settled here, at the word layer, on the arithmetic itself (zero words move).
 
-    WHAT IT DOES NOT LICENSE. A count here says the ORDER is observable for THIS
-    coefficient class on THIS backend; it does not say this gate reached it, and the
-    two mutations are declared ``unreached`` rather than ``caught`` for exactly that
-    reason. Nor does a ZERO count license re-ordering the kernel: the kernel
-    transcribes the driver's order and :func:`parity_chain_leg` pins that by
-    construction.
+    WHAT IT DOES NOT LICENSE. A zero count does not license re-ordering the kernel:
+    the kernel transcribes the driver's order and :func:`parity_chain_leg` pins that
+    by construction.
 
-    THE LEG FAILS IF A ``caught`` DECLARATION MEETS A ZERO COUNT — a mutation that
-    cannot be seen at the word layer cannot be caught at the whole-step layer either,
-    and declaring it caught would be a claim about nothing.
+    THE LEG FAILS IF A ``null`` DECLARATION MEETS A NONZERO COUNT, or a ``caught``
+    one a zero count — a mutation that cannot be seen at the word layer cannot be
+    caught at the whole-step layer either, and declaring it caught would be a claim
+    about nothing.
     """
     from meep_gpu.triton_kernels.folded_complex import (  # noqa: PLC0415
         mirror_parity_coefficients,
     )
 
     findings: List[str] = []
-    shipped = _shipped_text(
-        "_mul_imag_coefficient_left",
-        os.path.join(API_ROOT, "meep_gpu", "triton_kernels", "special_kz.py"))
-    for line in ("out_re = tl.math.fma(c_re, z_re, (c_im * z_im) * -1.0)",
-                 "out_im = tl.math.fma(c_re, z_im, c_im * z_re)",
-                 "out_re = (c_re * z_re) - (c_im * z_im)",
-                 "out_im = (c_re * z_im) + (c_im * z_re)"):
+    shipped = _shipped_text(KERNEL_NAME)
+    for line in ("gv_0y_re = n1r * v0_re", "gv_0y_im = n1r * v0_im",
+                 "gv_2xy_re = n1r * (n0r * v2_re)"):
         if line not in shipped:
             findings.append(
-                f"special_kz._mul_imag_coefficient_left no longer carries {line!r}; "
-                f"this leg transcribes that body and cannot vouch for a copy of "
-                f"something that moved")
+                f"the kernel no longer spells the per-part parity product {line!r}; "
+                f"this leg transcribes it and cannot vouch for a copy of something "
+                f"that moved")
 
     rows: List[Dict[str, Any]] = []
     for arm in (0, 1):
@@ -1901,18 +1872,18 @@ def install(driver_module, routes, counter: Dict[str, int], roles: Dict[int, str
                     for name, function in originals.items()]
 
 
-def separate_route(driver, probe):
+def separate_route(driver):
     """The three separately certified Triton products this launch replaces."""
     from meep_gpu.triton_kernels import folded_complex  # noqa: PLC0415
 
     # K3b, the certified folded complex BETA curl — its own released gate
     # carries the beta mutations; the beta-less K1 refuses this grid.
     curl = folded_complex.plan_folded_beta_bloch_pml_curl(
-        driver.fields, driver.pml, "step_D", probe=probe)
+        driver.fields, driver.pml, "step_D")
     constitutive = folded_complex.plan_folded_complex_constitutive(
-        driver.fields, driver.pml, "E", probe=probe)
+        driver.fields, driver.pml, "E")
     fill = folded_complex.plan_folded_mirror_ghost_fill_complex(
-        driver.fields, "D", probe=probe)
+        driver.fields, "D")
     missing = [name for name, plan in
                (("folded complex beta curl", curl), ("folded complex ghost fill", fill),
                 ("folded complex constitutive", constitutive)) if plan is None]
@@ -1964,11 +1935,10 @@ def fused_route(plan, driver=None, sources=(), bracket: bool = True):
 # The three-route leg
 # ---------------------------------------------------------------------------
 
-def run_leg(cp, name: str, case, steps: int, product, probe,
+def run_leg(cp, name: str, case, steps: int, product,
             value_class: str = "uniform", mutant: Any = None,
             install_fused: bool = True, freeze_electric: bool = False,
-            electric: bool = False, bracket: bool = True,
-            expansion: Optional[int] = None) -> Dict[str, Any]:
+            electric: bool = False, bracket: bool = True) -> Dict[str, Any]:
     """Three routes in lockstep, per COMPLETE driver step; stop at the FIRST byte
     divergence."""
     import meep_gpu.driver as driver_module  # noqa: PLC0415
@@ -1992,27 +1962,21 @@ def run_leg(cp, name: str, case, steps: int, product, probe,
         "bracketed": bool(bracket),
         "fused_substituted": bool(install_fused),
         "electric_frozen": bool(freeze_electric),
-        "expansion_override": expansion,
         "operand_census": operand_census(seeded),
+        "seed_conditions": flush_vacuity.seed_conditions(),
         "first_divergence": None, "control_divergence": None,
     }
     try:
         plan = product.plan_folded_beta_complex_fused_pair(
             fused.fields, fused.pml, tuple(fused._sources), num_warps=1,
-            kernel=kernel, probe=probe)
+            kernel=kernel)
         row["admitted_by_the_shipped_predicate"] = plan is not None
         if plan is None:
             verdict = product.folded_beta_complex_fused_pair_coverage(
-                fused.fields, fused.pml, tuple(fused._sources), probe=probe)
+                fused.fields, fused.pml, tuple(fused._sources))
             raise AssertionError(f"the product refused the case: {verdict.reasons}")
-        if expansion is not None:
-            # THE ARM, OVERRIDDEN. Not a source rewrite: the constexpr IS the licence,
-            # so flipping it here measures whether the licence is load-bearing rather
-            # than decorative.
-            plan.expansion = int(expansion)
         row["plan"] = repr(plan)
         row["plan_replaces"] = list(plan.replaces)
-        row["licensed_expansion"] = plan.expansion
         row["near"] = [bool(value) for value in plan.near]
         row["far"] = [bool(value) for value in plan.far]
         row["reflect_rows"] = list(plan.reflect)
@@ -2025,7 +1989,7 @@ def run_leg(cp, name: str, case, steps: int, product, probe,
                                          bracket=bracket)
         else:
             route = Route({})
-        separate_plans = separate_route(separate, probe)
+        separate_plans = separate_route(separate)
         row["separate_products"] = {key: type(value).__name__
                                     for key, value in separate_plans.plans.items()}
 
@@ -2124,8 +2088,7 @@ def run_leg(cp, name: str, case, steps: int, product, probe,
         cp.get_default_memory_pool().free_all_blocks()
 
 
-
-def identity_has_beta_off_leg(cp, product, probe) -> Dict[str, Any]:
+def identity_has_beta_off_leg(cp, product) -> Dict[str, Any]:
     """``HAS_BETA = 0`` must BE the beta-less shipped weld, byte for byte.
 
     Three drivers on the same seeded beta grid, quiet family. Route OFF runs
@@ -2141,7 +2104,7 @@ def identity_has_beta_off_leg(cp, product, probe) -> Dict[str, Any]:
     from meep_gpu.stepping import _boundary_kinds  # noqa: PLC0415
     from meep_gpu.triton_kernels import folded_complex_fused_pair as base_product  # noqa: PLC0415
     from meep_gpu.triton_kernels.complex_fields import (  # noqa: PLC0415
-        _phase_arguments, bloch_phase_table)
+        bloch_phase_table, connection_arguments)
     from meep_gpu.triton_kernels.coverage import (  # noqa: PLC0415
         CONSTITUTIVE_SIDES, zero_metal_axes)
     from meep_gpu.triton_kernels.folded_complex import (  # noqa: PLC0415
@@ -2161,11 +2124,11 @@ def identity_has_beta_off_leg(cp, product, probe) -> Dict[str, Any]:
             product.folded_beta_complex_fused_curl_constitutive_D_kernel())
         plan_off = product.plan_folded_beta_complex_fused_pair(
             off.fields, off.pml, tuple(off._sources), num_warps=1,
-            kernel=kernel_off, probe=probe)
+            kernel=kernel_off)
         if plan_off is None:
             raise AssertionError("the beta product refused its own identity case")
         plan_off.has_beta = 0
-        row["beta_words_bound"] = [list(pair) for pair in plan_off.beta_words]
+        row["beta_words_bound"] = list(plan_off.beta_words)
 
         kernel_base = CountingKernel(
             base_product.folded_complex_fused_curl_constitutive_D_kernel())
@@ -2176,12 +2139,11 @@ def identity_has_beta_off_leg(cp, product, probe) -> Dict[str, Any]:
         if codes is None:
             raise AssertionError(f"folded_axis_kinds refused: {code_reasons}")
         kinds = _boundary_kinds(grid, base.pml)
-        phased, values = _phase_arguments(bloch_phase_table(grid, kinds),
-                                          backward=bool(curl_spec["backward"]))
+        phased, values = connection_arguments(bloch_phase_table(grid, kinds),
+                                              backward=bool(curl_spec["backward"]))
         plan_base = base_product.FoldedComplexFusedPairPlan(
             grid.shape, grid.dt / grid.dx, codes, zero_metal_axes(grid),
-            phased, values, base_product.parity_coefficient_words(grid),
-            plan_off.expansion, plan_off.block,
+            phased, values, base_product.parity_coefficient_words(grid), plan_off.block,
             [getattr(base.fields, name) for name in curl_spec["targets"]],
             [getattr(base.fields, "fu_" + name) for name in curl_spec["targets"]],
             [getattr(base.fields, name) for name in curl_spec["sources"]],
@@ -2195,7 +2157,8 @@ def identity_has_beta_off_leg(cp, product, probe) -> Dict[str, Any]:
                      f"{stem}_{axis}{'_h' if side_spec['half_integer'] else ''}")
              for axis in "xyz" for stem in ("kps", "kms")],
             reflect=_far_reflect_rows(grid) or (None, None, None),
-            kernel=kernel_base, num_warps=1)
+            kernel=kernel_base, num_warps=1,
+            chunk_bounds=plan_off.chunk_bounds)
 
         route_off, _lead = fused_route(plan_off)
         route_base, _lead = fused_route(plan_base)
@@ -2266,6 +2229,16 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
     census = row.get("operand_census") or {}
     for key, minimum in floor.items():
         if int(census.get(key, 0)) < minimum:
+            # UNDER FLUSH THE SUBNORMAL CLASS CANNOT OCCUR, and that is MEASURED
+            # (flush_vacuity: the installed policy, the host FPU at seed time and this
+            # census) rather than assumed from the policy's name. Every other floor,
+            # and every byte comparison, stands.
+            not_applicable = (key == "subnormals"
+                              and flush_vacuity.subnormal_class_not_applicable(
+                                  census.get(key, 0), row.get("seed_conditions")))
+            if not_applicable:
+                row["not_applicable"] = not_applicable
+                continue
             failures.append(
                 f"VACUOUS OPERAND CLASS: value_class={row.get('value_class')!r} "
                 f"seeded {census.get(key, 0)} {key}, below the floor {minimum}")
@@ -2353,10 +2326,10 @@ def shipped_source(product: Any = None) -> str:
     mutation leg dies with "'function' object is not subscriptable" — measured
     2026-08-20 on a sibling gate, and again 2026-08-31 on this one.
     """
-    text = open(_MODULE_FILE, encoding="utf-8").read()
-    tree = ast.parse(text)
     out = []
-    for name in (CARRY_HELPER, KERNEL_NAME):
+    for name, module_file in ((CARRY_HELPER, _HELPER_FILE), (KERNEL_NAME, _MODULE_FILE)):
+        text = open(module_file, encoding="utf-8").read()
+        tree = ast.parse(text)
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == name:
                 decorators = [ast.get_source_segment(text, decorator)
@@ -2368,12 +2341,18 @@ def shipped_source(product: Any = None) -> str:
                     + [textwrap.dedent(ast.get_source_segment(text, node))]))
                 break
         else:  # pragma: no cover - the transcription leg fails first
-            raise AssertionError(f"{name} is not defined in the shipped module")
+            raise AssertionError(
+                f"{name} is not defined in {os.path.basename(module_file)}")
     return "\n\n".join(out)
 
 
 def compile_mutant(source: str, kernel_name: str) -> Any:
-    """Compile a renamed mutant from the (possibly mutated) kernel + helper text."""
+    """Compile a renamed mutant from the (possibly mutated) kernel + helper text.
+
+    The module name does not start with ``triton``: Triton's dependency finder
+    leaves every callee whose ``__module__`` starts with its package name out of the
+    kernel's cache key, so a helper-only mutant could be served another mutant's
+    binary (measured on the off-diagonal gate, 2026-10-08)."""
     from meep_gpu.triton_kernels import symmetry as _symmetry  # noqa: PLC0415
 
     constants = "".join(
@@ -2381,9 +2360,11 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
         for name in ("PERIODIC", "METALLIC", "MIRROR_METALLIC", "MIRROR_PERIODIC"))
     header = (
         "import triton\nimport triton.language as tl\n"
-        "from meep_gpu.triton_kernels.complex_fields import (\n"
-        "    _mul_coefficient_left, _mul_field_left, _rotate_field_left)\n"
-        "from meep_gpu.triton_kernels.special_kz import _mul_imag_coefficient_left\n"
+        "from meep_gpu.triton_kernels.complex_fields import _connect\n"
+        "from meep_gpu.triton_kernels.forms import (\n"
+        "    axis_present, bfast_advance, constitutive_form, curl_form, curl_stencil,\n"
+        "    fold_ladder, record_in)\n"
+        "RECORD_HALF_INTEGER = tl.constexpr(12)\nRECORD_PRESENCE = tl.constexpr(24)\n"
         + constants + "\n")
     text = source
     # THE HELPER IS RENAMED WITH THE KERNEL. Two mutants sharing a helper identity
@@ -2397,11 +2378,19 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
     handle.close()
     _TEMPORARY.append(handle.name)
     spec = importlib.util.spec_from_file_location(
-        "triton_mutated_folded_complex_pair_" + str(len(_TEMPORARY)), handle.name)
+        "folded_complex_pair_mutant_" + str(len(_TEMPORARY)), handle.name)
     module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     sys.modules[spec.name] = module  # type: ignore[union-attr]
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return getattr(module, kernel_name)
+
+
+#: The beta pass's own mutations: ``fold_pass_mutations``' shared spellings, the same
+#: text in every carrier of the pass (the twin's own rows, KT5's re-cut, already carry
+#: the root forms' inversions and chunk-form battery). Each entry's ``needs`` picks
+#: its case (:data:`MUTATION_CASE`) and is checked against it.
+SHARED_MUTATIONS = fold_passes.beta_mutations(True, True, CURL_ANCHOR)
+_SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
 
 
 def mutation_table() -> Tuple[Tuple[str, str, str,
@@ -2446,23 +2435,24 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         both false."""
         return _rewrite_block(
             source,
-            ["gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, v2_re, v2_im,",
-             "EXPANSION)",
+            ["gv_2y_re = n1r * v2_re",
+             "gv_2y_im = n1r * v2_im",
              "if ZM_X:",
-             "gc_re = tl.where(at_x, 0.0, gc_re)",
-             "gc_im = tl.where(at_x, 0.0, gc_im)",
+             "gv_2y_re = tl.where(at_x, 0.0, gv_2y_re)",
+             "gv_2y_im = tl.where(at_x, 0.0, gv_2y_im)",
              "if ZM_Y:",
-             "gc_re = tl.where(at_y, 0.0, gc_re)",
-             "gc_im = tl.where(at_y, 0.0, gc_im)"],
-            ["gc_re, gc_im = v2_re, v2_im",
+             "gv_2y_re = tl.where(at_y, 0.0, gv_2y_re)",
+             "gv_2y_im = tl.where(at_y, 0.0, gv_2y_im)"],
+            ["gv_2y_re = v2_re",
+             "gv_2y_im = v2_im",
              "if ZM_X:",
-             "    gc_re = tl.where(at_x, 0.0, gc_re)",
-             "    gc_im = tl.where(at_x, 0.0, gc_im)",
+             "    gv_2y_re = tl.where(at_x, 0.0, gv_2y_re)",
+             "    gv_2y_im = tl.where(at_x, 0.0, gv_2y_im)",
              "if ZM_Y:",
-             "    gc_re = tl.where(at_y, 0.0, gc_re)",
-             "    gc_im = tl.where(at_y, 0.0, gc_im)",
-             "gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, gc_re, gc_im,",
-             "                                          EXPANSION)"])
+             "    gv_2y_re = tl.where(at_y, 0.0, gv_2y_re)",
+             "    gv_2y_im = tl.where(at_y, 0.0, gv_2y_im)",
+             "gv_2y_re = n1r * gv_2y_re",
+             "gv_2y_im = n1r * gv_2y_im"])
 
     def m_clear_dropped_on_the_ghost(source: str) -> Tuple[str, int]:
         """The near ghost takes no clear at all.
@@ -2475,13 +2465,11 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         line being deleted or replaced by ``+ 0.0``: an addition of ``+0.0`` would
         normalise ``-0.0`` to ``+0.0`` and silently reproduce the shipped answer,
         which is a mutation that repairs the defect it is meant to plant."""
-        source, hits = _replace_all(
-            source, "gc_re = tl.where(at_x, 0.0, gc_re)",
-            "gc_re = tl.where(at_x & (idx < 0), 0.0, gc_re)")
-        source, more = _replace_all(
-            source, "gc_im = tl.where(at_x, 0.0, gc_im)",
-            "gc_im = tl.where(at_x & (idx < 0), 0.0, gc_im)")
-        return source, hits + more
+        import re  # noqa: PLC0415
+
+        pattern = re.compile(r"(gv_\w+_(?:re|im)) = tl\.where\(at_x, 0\.0, \1\)")
+        return (pattern.sub(r"\1 = tl.where(at_x & (idx < 0), 0.0, \1)", source),
+                len(pattern.findall(source)))
 
     def m_far_takes_the_source_coefficient(source: str) -> Tuple[str, int]:
         """The far destination reads the SOURCE lane's kps/kms instead of the top
@@ -2503,8 +2491,8 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         hits = 0
         for component in range(3):
             source, count = _replace_all(
-                source, f"gc_re, gc_im, kp_{component}, km_{component},",
-                f"gc_re, gc_im, kp_f{component}, km_f{component},")
+                source, f"kp_{component}, km_{component}, dw{component},",
+                f"kp_f{component}, km_f{component}, dw{component},")
             hits += count
         return source, hits
 
@@ -2513,48 +2501,40 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
     # ------------------------------------------------------------------
 
     def m_parity_chain_reordered(source: str) -> Tuple[str, int]:
-        """The two near applications swapped. Complex float multiplication is not
-        associative: re-ordering a two-parity chain moved 8 of 128 uint32 words on
-        the Metal twin's exhaustive signed-zero table. Scored on a grid folding TWO
-        axes at DIFFERING phases, or the composition commutes bit-exactly."""
-        return _rewrite_block(
-            source,
-            ["gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, v2_re, v2_im,",
-             "EXPANSION)",
-             "gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, gc_re, gc_im,",
-             "EXPANSION)"],
-            ["gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, v2_re, v2_im,",
-             "EXPANSION)",
-             "gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, gc_re, gc_im,",
-             "EXPANSION)"])
+        """The two near applications swapped. DECLARED NULL since the per-part
+        alignment: each is ``+-1.0`` times each stored part, which commutes exactly
+        (``parity_chain_associativity_leg`` measures 0 words). The order is still
+        held by construction in ``parity_chain_leg``."""
+        source, hits = _replace_all(source, "gv_2xy_re = n1r * (n0r * v2_re)",
+                                    "gv_2xy_re = n0r * (n1r * v2_re)")
+        source, more = _replace_all(source, "gv_2xy_im = n1r * (n0r * v2_im)",
+                                    "gv_2xy_im = n0r * (n1r * v2_im)")
+        return source, hits + more
 
     def m_parity_chain_folded(source: str) -> Tuple[str, int]:
-        """The two near applications folded into ONE product of the coefficients.
-        Folding moved up to 23 of 128 uint32 words on the same table."""
-        return _rewrite_block(
-            source,
-            ["gc_re, gc_im = _mul_imag_coefficient_left(n0r, n0i, v2_re, v2_im,",
-             "EXPANSION)",
-             "gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, gc_re, gc_im,",
-             "EXPANSION)"],
-            ["gc_re, gc_im = _mul_imag_coefficient_left(n0r * n1r - n0i * n1i,",
-             "n0r * n1i + n0i * n1r,",
-             "v2_re, v2_im, EXPANSION)"])
+        """The two near applications folded into ONE product of the words.
+        DECLARED NULL: ``(+-1) * (+-1)`` is exact, so folding moves no word
+        (measured)."""
+        source, hits = _replace_all(source, "gv_2xy_re = n1r * (n0r * v2_re)",
+                                    "gv_2xy_re = (n1r * n0r) * v2_re")
+        source, more = _replace_all(source, "gv_2xy_im = n1r * (n0r * v2_im)",
+                                    "gv_2xy_im = (n1r * n0r) * v2_im")
+        return source, hits + more
 
     def m_parity_dropped(source: str) -> Tuple[str, int]:
         """The near parity not applied at all. Invisible on an EVEN plane by
         construction (the multiply is by +1), which is why this is scored on an ODD
         one."""
-        return _replace_all(
-            source,
-            "gc_re, gc_im = _mul_imag_coefficient_left(n1r, n1i, v0_re, v0_im,",
-            "gc_re, gc_im = _mul_imag_coefficient_left(1.0, 0.0, v0_re, v0_im,")
+        source, hits = _replace_all(source, "gv_0y_re = n1r * v0_re",
+                                    "gv_0y_re = v0_re")
+        source, more = _replace_all(source, "gv_0y_im = n1r * v0_im",
+                                    "gv_0y_im = v0_im")
+        return source, hits + more
 
     def m_far_parity_sign(source: str) -> Tuple[str, int]:
         """The far parity taken as the NEAR word. ``mirror_parity`` is
         ``phase * (1 - 2*iyee)``, so the two differ in sign on every axis."""
-        return _replace_all(source, "_mul_imag_coefficient_left(d0r, d0i,",
-                            "_mul_imag_coefficient_left(n0r, n0i,")
+        return _replace_all(source, "d0r * ", "n0r * ")
 
     # ------------------------------------------------------------------
     # THE CARRY GEOMETRY — inherited from the real folded pair
@@ -2598,8 +2578,8 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         moved to ``null``; a null that IS caught fails this gate, so the declaration
         is checked rather than assumed."""
         return _replace_all(source,
-                            "e_re = tl.load(f0 + 2 * idx, mask=own0, other=0.0)",
-                            "e_re = tl.load(f0 + 2 * idx, mask=live, other=0.0)")
+                            "curl_form(tl.load(f0 + 2 * idx, mask=own0, other=0.0)",
+                            "curl_form(tl.load(f0 + 2 * idx, mask=live, other=0.0)")
 
     def m_carry_mask_not_conjoined(source: str) -> Tuple[str, int]:
         """A carry mask without its component's ownership conjunction — the
@@ -2635,8 +2615,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         (``run_farcarry2``, 2026-08-20, one word of Hx and one of Hy at 1-2 ULP),
         which is why the mask is written and why this entry is a confirmed null
         rather than a deleted mutation."""
-        return _replace_all(source, "own0 & near_j, EXPANSION)",
-                            "near_j, EXPANSION)")
+        return _replace_all(source, "dw0, own0 & near_j)", "dw0, near_j)")
 
     def m_top_plane_mask_dropped(source: str) -> Tuple[str, int]:
         """The folded-PERIODIC top-plane mask removed from the curl. The far carry's
@@ -2658,18 +2637,18 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         cannot survive being wrong about (S:2083-2085)."""
         return _rewrite_block(
             source,
-            ["prev_re = tl.load(w + 2 * dst, mask=mask, other=0.0)",
-             "prev_im = tl.load(w + 2 * dst + 1, mask=mask, other=0.0)",
-             "src_re, src_im = _mul_field_left(",
-             "ghost_re, ghost_im, tl.load(ie + dst, mask=mask, other=0.0), EXPANSION)",
-             "tl.store(w + 2 * dst, src_re, mask=mask)",
-             "tl.store(w + 2 * dst + 1, src_im, mask=mask)"],
-            ["src_re, src_im = _mul_field_left(",
-             "ghost_re, ghost_im, tl.load(ie + dst, mask=mask, other=0.0), EXPANSION)",
-             "tl.store(w + 2 * dst, src_re, mask=mask)",
-             "tl.store(w + 2 * dst + 1, src_im, mask=mask)",
-             "prev_re = tl.load(w + 2 * dst, mask=mask, other=0.0)",
-             "prev_im = tl.load(w + 2 * dst + 1, mask=mask, other=0.0)"])
+            ["prev_re = tl.load(w + 2 * dst, mask=mask & dw_d, other=0.0)",
+             "prev_im = tl.load(w + 2 * dst + 1, mask=mask & dw_d, other=0.0)",
+             "src_re = ghost_re * us",
+             "src_im = ghost_im * us",
+             "tl.store(w + 2 * dst, src_re, mask=mask & dw_d)",
+             "tl.store(w + 2 * dst + 1, src_im, mask=mask & dw_d)"],
+            ["src_re = ghost_re * us",
+             "src_im = ghost_im * us",
+             "tl.store(w + 2 * dst, src_re, mask=mask & dw_d)",
+             "tl.store(w + 2 * dst + 1, src_im, mask=mask & dw_d)",
+             "prev_re = tl.load(w + 2 * dst, mask=mask & dw_d, other=0.0)",
+             "prev_im = tl.load(w + 2 * dst + 1, mask=mask & dw_d, other=0.0)"])
 
     def m_constitutive_lattice_swapped(source: str) -> Tuple[str, int]:
         """The kps/kms pair taken from the CURL's integer lattice instead of the
@@ -2689,14 +2668,14 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         error that only shows on the NEXT step's ``km * prev``."""
         return _rewrite_block(
             source,
-            ["src_re, src_im = _mul_field_left(",
-             "v0_re, v0_im, tl.load(ie0 + idx, mask=own0, other=0.0), EXPANSION)",
-             "tl.store(w0 + 2 * idx, src_re, mask=own0)",
-             "tl.store(w0 + 2 * idx + 1, src_im, mask=own0)"],
-            ["tl.store(w0 + 2 * idx, v0_re, mask=own0)",
-             "tl.store(w0 + 2 * idx + 1, v0_im, mask=own0)",
-             "src_re, src_im = _mul_field_left(",
-             "v0_re, v0_im, tl.load(ie0 + idx, mask=own0, other=0.0), EXPANSION)"])
+            ["src_re = v0_re * us",
+             "src_im = v0_im * us",
+             "tl.store(w0 + 2 * idx, src_re, mask=own0 & dw0)",
+             "tl.store(w0 + 2 * idx + 1, src_im, mask=own0 & dw0)"],
+            ["tl.store(w0 + 2 * idx, v0_re, mask=own0 & dw0)",
+             "tl.store(w0 + 2 * idx + 1, v0_im, mask=own0 & dw0)",
+             "src_re = v0_re * us",
+             "src_im = v0_im * us"])
 
     def m_d_store_dropped(source: str) -> Tuple[str, int]:
         """The stepped displacement never written back. The next timestep's curl
@@ -2706,11 +2685,12 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
                             "tl.store(f0 + 2 * idx, v0_re, mask=own0 & (idx < 0))")
 
     def m_fu_store_masked(source: str) -> Tuple[str, int]:
-        """``fu`` written under the OWNERSHIP mask instead of ``live``. The array
-        path's ``step_D`` writes it at every cell and neither fill touches it
-        (stepping.py:1497-1498), so a destination lane still owns its ``fu`` word."""
-        return _replace_all(source, "tl.store(u0 + 2 * idx, n0_re, mask=live)",
-                            "tl.store(u0 + 2 * idx, n0_re, mask=own0)")
+        """``fu`` written under the OWNERSHIP mask on top of its recurrence cells.
+        The array path's ``step_D`` writes it on every cell of its layer and neither
+        fill touches it, so a destination lane inside the layer still owns its
+        ``fu`` word."""
+        return _replace_all(source, "tl.store(u0 + 2 * idx, n0_re, mask=live & du0)",
+                            "tl.store(u0 + 2 * idx, n0_re, mask=own0 & du0)")
 
     def m_wall_clear_three_rows(source: str) -> Tuple[str, int]:
         """The MAGNETIC twin's three-row wall clear on the D family, which needs
@@ -2726,89 +2706,43 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
              "    v0_re = tl.where(at_x, 0.0, v0_re)",
              "    v0_im = tl.where(at_x, 0.0, v0_im)"])
 
-    def m_beta_insert_dropped(source: str) -> Tuple[str, int]:
-        """The K3b insert compiled out. The guard is made unsatisfiable
-        rather than the statements deleted, so the rewrite is a minimal
-        one-token arming; every case carries beta != 0 and seeded center
-        partners, so the dropped term must move bytes at step 1.
 
-        THE CONJUNCT IS A CONSTEXPR, and that is the whole care in this
-        rewrite. ``EXPANSION`` is a ``tl.constexpr`` arm id (1 or 2, never
-        negative), so ``EXPANSION < 0`` is a PYTHON bool at compile time and
-        the block is compiled out. An earlier spelling used ``nx < 0``, which
-        is a TENSOR comparison: Triton refused the whole kernel with
-        ``ValueError('Cannot bitcast data-type of size 32 to data-type of
-        size 1')`` — measured on the GPU host GPU 1, 2026-09-02 — so the mutation
-        was ARMED by its hit count and measured NOTHING on the device, which
-        is the one failure mode `_rewrite_block`'s own comment warns about."""
-        return _replace_all(source, "if HAS_BETA:",
-                            "if HAS_BETA and (EXPANSION < 0):")
 
-    def m_beta_partners_swapped(source: str) -> Tuple[str, int]:
-        """The two CENTER partners exchanged: bp with a, bm with b. The
-        array path pairs the +sign coefficient with source 1 (b) on target
-        0 and the -sign with source 0 (a) on target 1 (S:770-784); the
-        exchange is exact arithmetic on different operands and must
-        diverge wherever the two partners differ."""
-        source, hits = _replace_all(
-            source,
-            "t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)",
-            "t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, a_re, a_im, EXPANSION)")
-        source, more = _replace_all(
-            source,
-            "t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)",
-            "t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, b_re, b_im, EXPANSION)")
-        return source, hits + more
 
-    def m_beta_after_the_masks(source: str) -> Tuple[str, int]:
-        """The insert moved AFTER the cell-0 ownership mask. The array path
-        adds the beta term BEFORE ``_mask_non_owned_cells`` (S:356-363
-        against S:369), so on a walled case the mask zeroes the beta
-        contribution at the wall plane; the mutant leaves it alive there.
-        Scored on the walled case, whose curl1/curl2 masks fire."""
-        moved = [
-            "if HAS_BETA:",
-            "t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)",
-            "curl0_re = curl0_re - t_re",
-            "curl0_im = curl0_im - t_im",
-            "t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)",
-            "curl1_re = curl1_re - t_re",
-            "curl1_im = curl1_im - t_im",
-        ]
-        source, removed = _rewrite_block(
-            source, moved, ["at_x, at_y, at_z = i == 0, j == 0, k == 0"])
-        if not removed:
-            return source, 0
-        # The line the deletion left behind is the mask preamble; the
-        # insert is re-planted after the LAST cell-0 mask arm, i.e. before
-        # the top-plane mask section.
-        source, planted = _rewrite_block(
-            source,
-            ["last_x, last_y, last_z = i == nx - 1, j == ny - 1, k == nz - 1"],
-            [line if index else "if HAS_BETA:"
-             for index, line in enumerate([
-                 "if HAS_BETA:",
-                 "    t_re, t_im = _mul_imag_coefficient_left(bp_re, bp_im, b_re, b_im, EXPANSION)",
-                 "    curl0_re = curl0_re - t_re",
-                 "    curl0_im = curl0_im - t_im",
-                 "    t_re, t_im = _mul_imag_coefficient_left(bm_re, bm_im, a_re, a_im, EXPANSION)",
-                 "    curl1_re = curl1_re - t_re",
-                 "    curl1_im = curl1_im - t_im",
-                 "last_x, last_y, last_z = i == nx - 1, j == ny - 1, k == nz - 1"])])
-        return source, removed if planted else 0
+
+    def a1_pairwise_stencil(source: str) -> Tuple[str, int]:
+        """INVERSION (Appendix A): the previous pairwise grouping in place of MEEP's
+        left-to-right stencil, on the curl whose two partners a 2-D grid keeps."""
+        return _replace_all(
+            source, "curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)",
+            "curl2_re = dtdx * ((b_x_re - b2_re) + (a2_re - a_y_re))")
+
+    def a2_whole_grid_recurrence(source: str) -> Tuple[str, int]:
+        """INVERSION (Appendix A): the split-field recurrence on every cell."""
+        hits = 0
+        for needle in ("du0 = record_in(cb, lattice + 8, k)",
+                       "du1 = record_in(cb, lattice + 0, i)",
+                       "du2 = record_in(cb, lattice + 4, j)"):
+            source, count = _replace_all(source, needle,
+                                         needle.split(" = ")[0] + " = live")
+            hits += count
+        return source, hits
+
+    def a3_constitutive_old_grouping(source: str) -> Tuple[str, int]:
+        """INVERSION (Appendix A): ``(f + kps*src) - kms*prev`` in place of MEEP's
+        ``f + ((kps*src) - (kms*prev))``, on the owned cell of component 1 (whose
+        own axis, y, the scoring case layers)."""
+        return _replace_all(
+            source, "constitutive_form(a_re, prev_re, src_re, kp_1, km_1, dw1)",
+            "tl.where(dw1, (a_re + (kp_1 * src_re)) - (km_1 * prev_re), src_re)")
 
     return (
-        ("m_beta_insert_dropped",
-         "the K3b beta term compiled out; beta != 0 on every case",
-         "caught", m_beta_insert_dropped),
-        ("m_beta_partners_swapped",
-         "the two center partners exchanged between the two beta products",
-         "caught", m_beta_partners_swapped),
-        ("m_beta_after_the_masks",
-         "the beta term applied after the ownership mask; the array path "
-         "masks the beta contribution at the wall plane and the mutant "
-         "leaves it alive",
-         "caught", m_beta_after_the_masks),
+        ("a1_pairwise_stencil", "MEEP's left-to-right curl", "caught",
+         a1_pairwise_stencil),
+        ("a2_whole_grid_recurrence", "each chunk's own curl form", "caught",
+         a2_whole_grid_recurrence),
+        ("a3_constitutive_old_grouping", "MEEP's constitutive grouping", "caught",
+         a3_constitutive_old_grouping),
         ("m_ghost_inv_eps_at_the_source",
          "the imaged ghost's inverse permittivity read at cell 0 rather than its own",
          "caught", m_ghost_inv_eps_at_the_source),
@@ -2825,14 +2759,13 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
          "a near destination reads the top row's kps/kms", "caught",
          m_near_takes_the_moved_coefficient),
         ("m_parity_chain_reordered",
-         "the two near parities applied last-to-first; REAL at the word layer and "
-         "unreached at the whole-step layer on every device configuration this "
-         "gate can build (see MUTATION_EVIDENCE)",
-         "unreached", m_parity_chain_reordered),
+         "the two near parities applied last-to-first; per part the +-1 words "
+         "commute exactly, so no word moves (parity_chain_associativity_leg)",
+         "null", m_parity_chain_reordered),
         ("m_parity_chain_folded",
-         "the two near parities folded into one coefficient; REAL at the word layer "
-         "and unreached at the whole-step layer (see MUTATION_EVIDENCE)",
-         "unreached", m_parity_chain_folded),
+         "the two near parities folded into one word; (+-1) * (+-1) is exact, so "
+         "no word moves (parity_chain_associativity_leg)",
+         "null", m_parity_chain_folded),
         ("m_parity_dropped", "the near parity not applied", "caught",
          m_parity_dropped),
         ("m_far_parity_sign", "the far parity taken as the near word", "caught",
@@ -2880,24 +2813,21 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
          m_inv_eps_after_the_fw_store),
         ("m_d_store_dropped", "the stepped displacement never written back",
          "caught", m_d_store_dropped),
-        ("m_fu_store_masked", "fu written under the ownership mask", "caught",
+        ("m_fu_store_masked", "fu written under the ownership mask", "unreached",
          m_fu_store_masked),
         ("m_wall_clear_three_rows", "the magnetic twin's three-row clear on D",
          "caught", m_wall_clear_three_rows),
-    )
+    ) + _SHARED_ROWS
 
 
 #: Which case each mutation is scored on — BY NAME, and every entry is justified by
 #: the branch the rewrite touches. TRAP: a mutation scored on a grid that never ENTERS
 #: the branch it rewrites reports UNCAUGHT while measuring nothing.
 MUTATION_CASE: Dict[str, str] = {
-    # the three beta mutations: any beta case reaches the insert (every case
-    # here carries beta != 0); the after-the-masks one needs a live WALL so
-    # the mask it is moved past actually fires.
-    "m_beta_insert_dropped": "y_fold_periodic",
-    "m_beta_partners_swapped": "y_fold_periodic",
-    "m_beta_after_the_masks": "y_fold_periodic_wall_x",
-    # the ghost material read: any grid with a fold and a varying epsilon
+    # the chunk forms: a folded grid with a layer on y (the default case's)
+    "a1_pairwise_stencil": "y_fold_periodic",
+    "a2_whole_grid_recurrence": "y_fold_periodic",
+    "a3_constitutive_old_grouping": "y_fold_periodic",
     "m_ghost_inv_eps_at_the_source": "y_fold_periodic_odd_phase",
     # the clear inside the chain needs a WALL beside a FOLD, and an ODD plane or the
     # doubled clear is a no-op
@@ -2938,21 +2868,55 @@ MUTATION_CASE: Dict[str, str] = {
     # unchanged — measured UNCAUGHT on `y_fold_periodic` on 2026-08-31, where
     # component 0's only destination plane is the near one. `x_fold_periodic_open_y`
     # folds X PERIODIC, so component 0 has a FAR destination at the TOP of the x
-    # absorber, where the coefficients are not unity.
+    # absorber, where the coefficients are not unity. SINCE THE CHUNK FORMS the
+    # auxiliary is stored on the recurrence's cells only — component 0's on the z
+    # layer, which a 2-D grid does not have — and on the masked top plane the curl is
+    # zero, so the stored word moves only where the y coefficients are not unity
+    # (measured on the host interpreter: no word moves on the 2-D cases). The 3-D
+    # three-fold case puts the top x plane's high-y, high-z corner in both layers.
+    # BETA IS EFFECTIVE-2-D (grid.py:668-697), so no case here is the twin's 3-D
+    # three-fold one: the rewrite is scored on the 2-D case with an absorbing far
+    # plane and declared UNREACHED (MUTATION_EVIDENCE).
     "m_fu_store_masked": "x_fold_periodic_open_y",
     # the constitutive half needs nothing but a fold
     "m_prev_read_after_the_store": "y_fold_periodic",
     "m_constitutive_lattice_swapped": "y_fold_periodic",
     "m_inv_eps_after_the_fw_store": "y_fold_periodic",
     "m_d_store_dropped": "y_fold_periodic",
-    # (``m_fu_store_masked`` is above, on x_fold_periodic_open_y, and was a DUPLICATE
-    # KEY here until 2026-08-31 — the later entry silently won and put the mutation
-    # back on a case where it is a no-op.)
+    # (``m_fu_store_masked`` is above, and was a DUPLICATE KEY here until 2026-08-31
+    # — the later entry silently won and put the mutation back on a case where it
+    # is a no-op.)
     # the six-row wall clear needs a live x wall
     "m_wall_clear_three_rows": "y_fold_metallic",
 }
 
 DEFAULT_MUTATION_CASE = "y_fold_periodic"
+
+
+def _carries(case: Tuple[Any, ...]) -> Tuple[str, ...]:
+    """What a case's grid carries, in ``fold_pass_mutations.NEEDS`` words: a fold or a
+    wall masks cell 0 ("wall"), a layer on x is target 1's dsigu layer ("layer"), and a
+    fold over a PERIODIC declaration carries the top-plane mask ("mirror_periodic")."""
+    _name, _dimensions, _cell, boundaries, mirrors, _k, pml, _steps = case
+
+    def declaration(axis_letter: str) -> str:
+        if isinstance(boundaries, str):
+            return boundaries
+        return str(boundaries.get(axis_letter.lower(), "periodic"))
+
+    have: List[str] = []
+    if mirrors or any(declaration(axis) == "metallic" for axis in "xy"):
+        have.append("wall")
+    if "x" in pml:
+        have.append("layer")
+    if any(declaration(axis.lower()) == "periodic" for axis, _phase in mirrors):
+        have.append("mirror_periodic")
+    return tuple(have)
+
+
+CASE_CARRIES: Dict[str, Tuple[str, ...]] = {case[0]: _carries(case) for case in CASES}
+MUTATION_CASE.update(fold_passes.cases_for(MUTATION_NEEDS, CASE_CARRIES,
+                                           DEFAULT_MUTATION_CASE))
 
 #: Per mutation, the value class and step budget its leg runs under, where the
 #: DEFAULT (uniform, MUTATION_STEPS, with the carry) cannot reach the defect.
@@ -3008,7 +2972,6 @@ MUTATION_REQUIRES_PERIODIC_FOLD: Dict[str, Tuple[str, ...]] = {
 
 #: Per mutation: axes that must carry a live WALL.
 MUTATION_REQUIRES_WALL: Dict[str, Tuple[str, ...]] = {
-    "m_beta_after_the_masks": ("X",),
     "m_clear_before_parity": ("X",),
     "m_clear_dropped_on_the_ghost": ("X",),
     "m_wall_clear_three_rows": ("X",),
@@ -3131,10 +3094,12 @@ def mutation_case_for(name: str) -> Tuple[str, Tuple[Any, ...]]:
                 f"{axis_letter}")
     for axis_letter in MUTATION_REQUIRES_MOVING_FAR_COEFFICIENT.get(name, ()):
         _assert_the_far_coefficient_actually_moves(case, axis_letter)
+    fold_passes.check_needs(name, MUTATION_NEEDS.get(name, ()), CASE_CARRIES[case_name],
+                            case_name)
     return case_name, case
 
 
-def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]
+def run_mutations(cp, product, pristine_ptx: Sequence[str]
                   ) -> List[Dict[str, Any]]:
     source = shipped_source()
     rows: List[Dict[str, Any]] = []
@@ -3167,7 +3132,7 @@ def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]
         row["value_class"] = value_class
         row["steps"] = steps
         row["electric_source"] = electric
-        leg = run_leg(cp, f"mutation:{name}", case, steps, product, probe,
+        leg = run_leg(cp, f"mutation:{name}", case, steps, product,
                       value_class=value_class, mutant=mutant, electric=electric)
         row["leg"] = leg
         row["caught"] = leg.get("first_divergence") is not None
@@ -3184,7 +3149,7 @@ def run_mutations(cp, product, probe, pristine_ptx: Sequence[str]
 # Refusals — the predicate, on the device's own objects
 # ---------------------------------------------------------------------------
 
-def run_refusals(cp, product, probe) -> List[Dict[str, Any]]:
+def run_refusals(cp, product) -> List[Dict[str, Any]]:
     """Configurations the product must refuse — and two it must ADMIT."""
     rows: List[Dict[str, Any]] = []
     base = CASES_BY_NAME["y_fold_periodic"]
@@ -3220,9 +3185,9 @@ def run_refusals(cp, product, probe) -> List[Dict[str, Any]]:
                 driver.set_epsilon(cp.asarray(epsilon))
             sources = mutate(driver)
             verdict = product.folded_beta_complex_fused_pair_coverage(
-                driver.fields, driver.pml, sources, probe=probe)
+                driver.fields, driver.pml, sources)
             built = product.plan_folded_beta_complex_fused_pair(
-                driver.fields, driver.pml, sources, probe=probe)
+                driver.fields, driver.pml, sources)
             row = {"refusal": name, "covered": bool(verdict.covered),
                    "reasons": list(verdict.reasons),
                    "plan_is_None": built is None, "admits": admit}
@@ -3253,9 +3218,9 @@ def run_refusals(cp, product, probe) -> List[Dict[str, Any]]:
         driver.setup_pml(dict(pml_spec))
         sources = (_Deposit(driver.fields, "Ez", deposit_center(base)),)
         verdict = product.folded_beta_complex_fused_pair_coverage(
-            driver.fields, driver.pml, sources, probe=probe)
+            driver.fields, driver.pml, sources)
         built = product.plan_folded_beta_complex_fused_pair(
-            driver.fields, driver.pml, sources, probe=probe)
+            driver.fields, driver.pml, sources)
         row = {"refusal": "zero_beta_grid", "covered": bool(verdict.covered),
                "reasons": list(verdict.reasons),
                "plan_is_None": built is None, "admits": False,
@@ -3311,8 +3276,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--subnormal-policy", default="keep",
         help="the float32 subnormal policy to DRIVE EVERY EXECUTOR TO before the "
              "first device compile. A run that installs NOTHING is a MIXED "
-             "configuration attributable to no policy at all, and a keep-cut licence "
-             "read by such a run is a broken comparison.")
+             "configuration attributable to no policy at all.")
     args = parser.parse_args(argv)
 
     out = args.out
@@ -3373,9 +3337,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
     # BEFORE THE FIRST DEVICE COMPILE. strict=True: a process that asked to keep and
-    # quietly did not is a process whose bytes mean nothing — and on this family it
-    # is worse than that, because the EXPANSION licence it consumes is
-    # policy-conditional.
+    # quietly did not is a process whose bytes mean nothing.
     subnormal_policy.install_subnormal_policy(args.subnormal_policy, cupy=cp,
                                               strict=True)
     payload["subnormal_policy"] = subnormal_policy.policy_stamp()
@@ -3384,49 +3346,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"(requested {args.subnormal_policy!r}, "
         f"CUPY_CACHE_DIR={os.environ.get('CUPY_CACHE_DIR')!r})")
 
-    from meep_gpu.triton_kernels import complex_fields, folded_complex  # noqa: PLC0415
     from meep_gpu.triton_kernels import folded_beta_complex_fused_pair as product  # noqa: PLC0415
-
-    # THE PROBE THE DEVICE LEGS CONSUME, resolved once and RECORDED. The device bytes
-    # are a function of the arm, so an artifact that does not name the record that
-    # licensed it cannot be read.
-    probe = complex_fields.load_expansion_probe()
-    licence = folded_complex.parity_expansion_license(probe)
-    beta_licence = folded_complex.folded_beta_expansion_license(probe)
-    payload["expansion"] = {
-        "probe_path": os.environ.get("MEEP_GPU_COMPLEX_EXPANSION_PROBE"),
-        "pattern_set": list(product.PRODUCT_PROBE_PATTERNS),
-        "arm": licence["arm"], "basis": licence["basis"],
-        "expansion": licence["expansion"], "refusals": list(licence["refusals"]),
-        "policy_resolved": licence.get("policy_resolved"),
-        "candidate_policy": licence.get("candidate_policy"),
-        "beta_arm": beta_licence["arm"],
-        "beta_expansion": beta_licence["expansion"],
-        "beta_refusals": list(beta_licence["refusals"]),
-    }
-    if licence["expansion"] != beta_licence["expansion"]:
-        payload["device_status"] = "REFUSED BEFORE THE FIRST LEG"
-        payload["passed"] = False
-        payload["release"] = {"released": False, "reasons": [
-            "the two extended licences disagree — parity "
-            f"{licence['expansion']!r} against beta "
-            f"{beta_licence['expansion']!r} — and the kernel binds ONE "
-            "EXPANSION constexpr: "
-            + "; ".join(list(licence["refusals"])
-                        + list(beta_licence["refusals"]))]}
-        save(payload, artifact)
-        log(f"\nREFUSED: licences disagree")
-        return 1
-    if licence["expansion"] is None:
-        payload["device_status"] = "REFUSED BEFORE THE FIRST LEG"
-        payload["passed"] = False
-        payload["release"] = {"released": False, "reasons": [
-            "no EXPANSION arm is licensed for this run, so no device leg could "
-            "measure anything: " + "; ".join(licence["refusals"])]}
-        save(payload, artifact)
-        log(f"\nREFUSED: {licence['refusals']}")
-        return 1
-    log(f"expansion arm licensed: {licence['arm']} (basis {licence['basis']})")
 
     backends.guard_kernel_compilation(cp)
     payload["environment"] = triton_device_identity.record(environment(cp))
@@ -3444,8 +3364,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for case in CASES:
         for value_class in VALUE_CLASSES:
             steps = case[7]
-            row = run_leg(cp, f"quiet:{case[0]}/{value_class}", case, steps, product,
-                          probe, value_class=value_class)
+            row = run_leg(cp, f"quiet:{case[0]}/{value_class}", case, steps, product, value_class=value_class)
             passed, failures = verdict_of(row, require_launches=steps)
             row["passed"], row["failures"] = passed, failures
             payload["device_legs"].append(row)
@@ -3456,7 +3375,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         case = CASES_BY_NAME[case_name]
         for value_class in VALUE_CLASSES:
             row = run_leg(cp, f"carry:{case_name}/{value_class}", case, CARRY_STEPS,
-                          product, probe, value_class=value_class, electric=True)
+                          product, value_class=value_class, electric=True)
             passed, failures = verdict_of(row, require_launches=CARRY_STEPS,
                                           require_repairs=True)
             row["passed"], row["failures"] = passed, failures
@@ -3466,8 +3385,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     log("\n=== the NULL CONTROL: the same carry cases with the bracket REMOVED ===")
     for case_name in CARRY_CASES:
         case = CASES_BY_NAME[case_name]
-        row = run_leg(cp, f"null_control:{case_name}", case, CARRY_STEPS, product,
-                      probe, electric=True, bracket=False)
+        row = run_leg(cp, f"null_control:{case_name}", case, CARRY_STEPS, product, electric=True, bracket=False)
         # REQUIRES DIVERGENCE. A bracket that changes nothing is not load-bearing, and
         # a carry family whose unbracketed twin agreed would be measuring a seam that
         # carried no deposit.
@@ -3491,7 +3409,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     log("\n=== armed harness mutations ===")
     case = CASES_BY_NAME["y_fold_periodic"]
-    row = run_leg(cp, "armed:no_substitution", case, 3, product, probe,
+    row = run_leg(cp, "armed:no_substitution", case, 3, product,
                   install_fused=False)
     passed, _ = verdict_of(row, require_launches=3)
     row["armed"] = True
@@ -3501,7 +3419,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["device_legs"].append(row)
     save(payload, artifact)
 
-    row = run_leg(cp, "armed:frozen_electric_seam", case, 3, product, probe,
+    row = run_leg(cp, "armed:frozen_electric_seam", case, 3, product,
                   freeze_electric=True)
     passed, _ = verdict_of(row)
     row["armed"] = True
@@ -3514,17 +3432,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     save(payload, artifact)
 
     log("\n=== the IDENTITY leg: HAS_BETA = 0 against the beta-less weld ===")
-    payload["device_legs"].append(identity_has_beta_off_leg(cp, product,
-                                                            probe))
+    payload["device_legs"].append(identity_has_beta_off_leg(cp, product))
     save(payload, artifact)
 
     log("\n=== armed kernel mutations ===")
     pristine = kernel_ptx(product.folded_beta_complex_fused_curl_constitutive_D)
-    payload["mutations"] = run_mutations(cp, product, probe, pristine)
+    payload["mutations"] = run_mutations(cp, product, pristine)
     save(payload, artifact)
 
     log("\n=== refusals ===")
-    payload["refusals"] = run_refusals(cp, product, probe)
+    payload["refusals"] = run_refusals(cp, product)
     save(payload, artifact)
 
     device_ok = all(row.get("passed") for row in payload["device_legs"])

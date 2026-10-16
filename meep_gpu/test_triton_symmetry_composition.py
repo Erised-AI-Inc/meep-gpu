@@ -64,7 +64,8 @@ def install_folded_routing_stubs(monkeypatch, *, ordinary=REFUSED,
     monkeypatch.setattr(launch_module, "folded_composition_curl_coverage",
                         lambda *args: folded, raising=False)
     monkeypatch.setattr(launch_module, "plan_folded_pml_curl",
-                        lambda fields, pml, name, block=None: f"folded:{name}",
+                        lambda fields, pml, name, block=None, chunk_layout=None:
+                            f"folded:{name}",
                         raising=False)
 
     monkeypatch.setattr(launch_module, "mirror_ghost_fill_coverage",
@@ -80,7 +81,8 @@ def install_folded_routing_stubs(monkeypatch, *, ordinary=REFUSED,
     monkeypatch.setattr(launch_module, "folded_constitutive_coverage",
                         lambda *args: folded, raising=False)
     monkeypatch.setattr(launch_module, "plan_folded_constitutive",
-                        lambda fields, pml, side, block=None: f"folded:{side}",
+                        lambda fields, pml, side, block=None, chunk_layout=None:
+                            f"folded:{side}",
                         raising=False)
 
 
@@ -143,7 +145,8 @@ def test_folded_constitutive_overlap_fails_closed(monkeypatch):
     monkeypatch.setattr(launch_module, "plan_pml_curl",
                         lambda *args, **kwargs: "ordinary")
     monkeypatch.setattr(launch_module, "plan_constitutive",
-                        lambda fields, pml, side, block=None: f"ordinary:{side}")
+                        lambda fields, pml, side, block=None, chunk_layout=None:
+                            f"ordinary:{side}")
 
     plan = launch_module.plan_step(composition_fields(), object())
 

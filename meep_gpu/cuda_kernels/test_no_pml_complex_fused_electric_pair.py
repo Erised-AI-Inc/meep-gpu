@@ -57,22 +57,11 @@ from . import arms, complex_emitter, fused_pairs
 from .no_pml_complex_fused_electric_pair import FAMILY
 from . import complex_no_pml_kernels as certified
 from . import no_pml_complex_fused_electric_pair as product
-from .registry import LICENSE_COMPLEX, LICENSE_COMPLEX_NO_PML
 from .test_fused_pairs import _NumpyWearingCupysName
 
 MODULE_PATH = pathlib.Path(product.__file__)
 
-#: The expansion licence the predicate requires. NOT optional and never defaulted: the
-#: arm is compiled into the binary at this seam, and asking with ``license=None``
-#: returns the family's own named refusal on every configuration -- an answer about the
-#: caller, recorded as if it were about the run. ``patterns`` carries the fifth
-#: orientation ``update_P`` needs, so the SAME licence can drive the composer legs.
-LICENCE = {"arm": "FMA_V1", "expansion": 1, "basis": "measured", "refusals": [],
-           "policy_resolved": "keep",
-           "patterns": {certified.ADE_PROBE_PATTERN: "FMA_V1"}}
-POLICY = "keep"
 
-ARMS = ("NAIVE", "FMA_V1")
 CURL_ARMS = ("plain", "conductive")
 
 
@@ -146,9 +135,9 @@ def build(xp, *, boundaries=("periodic", "periodic", "periodic"),
 _address = product.base_address
 
 
-def covers(fields, layer, grid, sources=(), licence=None, policy=POLICY):
+def covers(fields, layer, grid, sources=()):
     return product.covers_no_pml_complex_fused_electric_pair(
-        fields, layer, grid, sources, LICENCE if licence is None else licence, policy)
+        fields, layer, grid, sources)
 
 
 def electric_source(grid, component="Ez"):
@@ -165,11 +154,11 @@ def magnetic_source(grid, component="Hz"):
                         amplitude=1.0)
 
 
-def source_text(arm="NAIVE", conductive=True):
-    return product.no_pml_complex_fused_electric_pair_source(arm, conductive)
+def source_text(conductive=True):
+    return product.no_pml_complex_fused_electric_pair_source(conductive)
 
 
-def _fused_body(arm="NAIVE", conductive=True, code_only=False):
+def _fused_body(conductive=True, code_only=False):
     """The fused kernel's own text, past its entry point.
 
     SPLIT AT THE ENTRY POINT, not at the first ``\\n) {``: the certified prelude's own
@@ -182,7 +171,7 @@ def _fused_body(arm="NAIVE", conductive=True, code_only=False):
     substring test over the raw text would fire on the prose that says they are absent.
     """
     entry = f"{product.kernel_name('conductive' if conductive else 'plain')}("
-    body = source_text(arm, conductive).split(entry, 1)[1]
+    body = source_text(conductive).split(entry, 1)[1]
     if not code_only:
         return body
     return "\n".join(line for line in body.splitlines()
@@ -314,7 +303,6 @@ def test_the_replaced_passes_are_a_contiguous_run_of_the_drivers_own_order(xp):
     positions = [order.index(pass_) for pass_ in product.REPLACES]
     assert positions == sorted(positions) == [0, 4]
     # And the injection sites, which are driver lines rather than named passes.
-    assert "self._inject_electric_through_conductivity(electric, source_time)" in step
     assert "source.inject(fields, source_time)" in step.replace("self.", "")
 
     # EVERY PASS BETWEEN THEM IS REFUSED BY NAME, which is what makes the run
@@ -387,7 +375,7 @@ def test_the_kernel_label_is_the_bracket_form_of_the_two_real_symbols():
     assert product.kernel_name("plain") == plain
     assert product.kernel_name("conductive") == conductive
     with pytest.raises(ValueError, match="plain"):
-        product.kernel_name("NAIVE")
+        product.kernel_name("unlisted")
     # THE PARTITION COVERS BOTH SYMBOLS, on whichever side of it they sit. Until
     # 2026-09-11 both were UNCERTIFIED and this line pinned that; the campaign
     # ``certification.json:cuda_no_pml_complex_fused_electric_pair_2026-09-11_regate``
@@ -416,10 +404,10 @@ def _electric_seam_admitters(fields, layer, grid):
     if real.covers_fused_electric_pair(fields, layer, grid, ())[0]:
         admitters.append(real.FAMILY)
     if complex_pml.covers_complex_fused_electric_pair(
-            fields, layer, grid, (), LICENCE, POLICY)[0]:
+            fields, layer, grid, ())[0]:
         admitters.append(complex_pml.FAMILY)
     if dcyl.covers_cylindrical_fused_electric_pair(
-            fields, layer, grid, (), LICENCE, POLICY)[0]:
+            fields, layer, grid, ())[0]:
         admitters.append(dcyl.FAMILY)
     if covers(fields, layer, grid, ())[0]:
         admitters.append(product.FAMILY)
@@ -475,7 +463,7 @@ def test_the_absorber_is_the_partition_and_both_directions_are_named(xp):
 
     fields, layer, grid = build(xp)
     covered, why = complex_pml.covers_complex_fused_electric_pair(
-        fields, layer, grid, (), LICENCE, POLICY)
+        fields, layer, grid, ())
     assert not covered and "no active PML layer" in why, why
 
     pml_fields, pml_layer, pml_grid = _pml_fixture(xp)
@@ -569,9 +557,9 @@ def test_the_wall_refusal_is_this_products_own_and_not_a_halfs(xp):
     fields, layer, grid = build(xp, boundaries=("metallic", "metallic", "metallic"),
                                 k_point=(0.0, 0.0, 0.0))
     assert certified.covers_complex_no_pml_curl(
-        fields, layer, grid, "step_D", LICENCE, POLICY)[0]
+        fields, layer, grid, "step_D")[0]
     assert certified.covers_complex_no_pml_stored_e(
-        fields, layer, grid, LICENCE, POLICY)[0]
+        fields, layer, grid)[0]
     assert not covers(fields, layer, grid)[0]
 
 
@@ -640,24 +628,6 @@ def test_an_inverse_permittivity_volume_of_the_wrong_extent_is_refused(xp):
     assert not covered and "inverse_epsilon_for" in why, why
 
 
-def test_the_licence_is_required_and_never_defaulted(xp):
-    """The arm is compiled into the binary at this seam and there is no later rung to
-    check it at, so ``license=None`` is a refusal rather than a default."""
-    fields, layer, grid = build(xp)
-    # The same configuration, with and without the verdict. The licence is the ONLY
-    # thing that differs, so the refusal cannot be about anything else.
-    assert covers(fields, layer, grid)[0]
-    covered, why = product.covers_no_pml_complex_fused_electric_pair(
-        fields, layer, grid, (), None, POLICY)
-    assert not covered, why
-    assert why.startswith("curl half:"), why
-    # AND THE POLICY: a licence resolved under one float32 subnormal policy does not
-    # license a run under the other.
-    covered, why = product.covers_no_pml_complex_fused_electric_pair(
-        fields, layer, grid, (), LICENCE, "meep_x86_flush")
-    assert not covered, why
-
-
 def test_an_offdiagonal_row_is_refused_through_the_constitutive_half(xp):
     """``has_offdiagonal_epsilon`` turns ``update_E`` into MEEP's tensor row product -- a
     four-point transverse average over the PARTNER components' volumes, which is a
@@ -715,14 +685,13 @@ def test_more_poles_than_the_compiled_slots_is_refused_by_the_shared_number(xp):
 # 4. THE LIFT — THE CERTIFIED TEXT, AND THE EDITS THAT ARE NOT VERBATIM
 # --------------------------------------------------------------------------
 
-@pytest.mark.parametrize("arm", ARMS)
 @pytest.mark.parametrize("conductive", (False, True))
-def test_the_shared_flux_density_is_bound_exactly_once(arm, conductive):
+def test_the_shared_flux_density_is_bound_exactly_once(conductive):
     """THE ALIASING HAZARD, ROUTE 1. Two pointers to one allocation with a
     ``__restrict__`` promise on one of them is UB NVRTC miscompiles without a
     diagnostic, so the constitutive half must have no D source pointers at all -- which
     is only true if the seam removed all three ``minus_poles(g*)`` sources."""
-    after_entry = _fused_body(arm, conductive)
+    after_entry = _fused_body(conductive)
     signature = after_entry.split("\n) {", 1)[0]
     for target in ("f0", "f1", "f2"):
         bound = signature.count(f" {target},") + signature.count(f" {target}\n")
@@ -735,15 +704,14 @@ def test_the_shared_flux_density_is_bound_exactly_once(arm, conductive):
         assert f"minus_poles_reg(d{index}," in body
 
 
-@pytest.mark.parametrize("arm", ARMS)
 @pytest.mark.parametrize("conductive", (False, True))
 def test_the_seam_reads_the_register_and_keeps_the_certified_operand_order(
-        arm, conductive):
+        conductive):
     """``(D - sum P) * inv_eps`` with the SOURCE ON THE LEFT (stepping.py:1013-1014), and
     the register in place of the reload. The enclosing store, the multiply and its
     operand order are lifted rather than retyped, so a reordered operand would be an
     edit with no ``LIFT_EDITS`` row."""
-    source = source_text(arm, conductive)
+    source = source_text(conductive)
     for index, stem in zip(("0", "1", "2"), ("a", "b", "c")):
         slots = ", ".join(f"{stem}{slot}" for slot in range(certified.MAX_POLES))
         assert (f"    cf_store(h{index}, idx, mul_field_left(\n"
@@ -752,25 +720,24 @@ def test_the_seam_reads_the_register_and_keeps_the_certified_operand_order(
         assert f"        inv_eps_{index}[idx]));" in source
 
 
-@pytest.mark.parametrize("arm", ARMS)
 @pytest.mark.parametrize("conductive", (False, True))
-def test_the_pole_subtraction_is_left_to_right_and_never_pre_summed(arm, conductive):
+def test_the_pole_subtraction_is_left_to_right_and_never_pre_summed(conductive):
     """REGISTRATION ORDER IS BIT-LOAD-BEARING. ``((D - P0) - P1)`` against
     ``D - (P0 + P1)`` differs on 50279 of 400000 float32 words at two poles (measured,
     ``test_complex_no_pml.py``), so the eight guarded subtractions are lifted whole."""
-    source = source_text(arm, conductive)
+    source = source_text(conductive)
     for slot in range(certified.MAX_POLES):
         assert (f"    if (np > {slot}) s = cf_sub(s, cf_load(p{slot}, idx));"
                 in source)
     assert "cf_add(cf_load(p" not in source, "the poles were pre-summed"
 
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_conductive_tail_keeps_the_three_operations_and_their_order(arm):
+def test_the_conductive_tail_keeps_the_three_operations_and_their_order():
     """THE ORDER IS THE ARITHMETIC. ``field *= condfac; field -= curl; field *= condinv``
-    reassociated to ``((field - curl) * condfac) * condinv`` differs on 400000 of 400000
-    float32 words (measured). Only the last statement's result is named."""
-    source = source_text(arm, conductive=True)
+    reassociated to ``((field - curl) * condfac) * condinv`` differs on every float32
+    word (measured, ``test_complex_no_pml.py``). Only the last statement's result is
+    named."""
+    source = source_text(conductive=True)
     assert ("    cf t = mul_field_left(cf_load(f, idx), condfac);\n"
             "    t = cf_sub(t, curl);\n") in source
     assert ("    cf value = mul_field_left(t, condinv);\n"
@@ -781,13 +748,12 @@ def test_the_conductive_tail_keeps_the_three_operations_and_their_order(arm):
                 f"condfac_{index}[idx], condinv_{index}[idx]);") in source
 
 
-@pytest.mark.parametrize("arm", ARMS)
-def test_the_plain_tail_is_the_direct_subtraction_and_not_the_split_field_binding(arm):
+def test_the_plain_tail_is_the_direct_subtraction_and_not_the_split_field_binding():
     """``target -= curl`` written directly. The certified split-field body reaches the
     same value through ``fu`` and unit coefficient columns, and that binding is NOT
     exact: with target = -0.0 and curl = +0.0 it yields +0.0 where the array path
     yields -0.0."""
-    source = source_text(arm, conductive=False)
+    source = source_text(conductive=False)
     assert ("    cf value = cf_sub(cf_load(f, idx), curl);\n"
             "    cf_store(f, idx, value);\n"
             "    return value;\n") in source
@@ -796,16 +762,19 @@ def test_the_plain_tail_is_the_direct_subtraction_and_not_the_split_field_bindin
                 in source)
 
 
-@pytest.mark.parametrize("arm", ARMS)
 @pytest.mark.parametrize("conductive", (False, True))
-def test_the_curl_stencil_and_its_masks_survive_unchanged(arm, conductive):
-    """The arithmetic this family reuses. Three stencil lines and six metallic masks
-    survive the tail substitution, which is what makes "the curl itself is unchanged" a
-    property of the build rather than a claim in a docstring."""
-    body = _fused_body(arm, conductive)
-    stencil = ("        cf curl = mul_coefficient_left(dtdx, "
-               "cf_add(cf_sub(sf, f_1), cf_sub(f_2, ss)));")
-    assert body.count(stencil) == 3
+def test_the_curl_stencil_and_its_masks_survive_unchanged(conductive):
+    """The arithmetic this family reuses. Three stencil lines -- MEEP's left-to-right
+    stencil with its partner-presence forms, each reading the presence bit of its two
+    derivative axes -- and six metallic masks survive the tail substitution, which is
+    what makes "the curl itself is unchanged" a property of the build rather than a claim
+    in a docstring."""
+    body = _fused_body(conductive)
+    for presence in ("pr_y, pr_z", "pr_z, pr_x", "pr_x, pr_y"):
+        stencil = f"        cf curl = curl_stencil(dtdx, sf, f_1, f_2, ss, {presence});"
+        assert body.count(stencil) == 1, presence
+    assert body.count("curl_stencil(") == 3
+    assert "cf_add(cf_sub(sf, f_1), cf_sub(f_2, ss))" not in body
     assert body.count("curl = cf_zero();") == 6
     # SIX BACKWARD SHIFTS AND NO FORWARD ONE, checked on the BODY: the certified
     # prelude DEFINES both helpers, so the same count over the whole source would read
@@ -813,14 +782,13 @@ def test_the_curl_stencil_and_its_masks_survive_unchanged(arm, conductive):
     assert body.count("cshift_dn(") == 6 and "cshift_up(" not in body
 
 
-@pytest.mark.parametrize("arm", ARMS)
 @pytest.mark.parametrize("conductive", (False, True))
-def test_the_split_field_machinery_is_absent_rather_than_neutralised(arm, conductive):
+def test_the_split_field_machinery_is_absent_rather_than_neutralised(conductive):
     """NO ``fu``, NO ``f_w``, NO coefficient vector, NO ownership mask and NO second
     index decomposition. Each is a thing the PML sibling carries and this seam does
     not, and each is checked on the emitted BODY -- the certified prelude carries
     ``pml_apply`` and ``constitutive_apply`` as dead code by design."""
-    body = _fused_body(arm, conductive, code_only=True)
+    body = _fused_body(conductive, code_only=True)
     for absent in ("kms_", "kps_", "sinv_", "f_w", "fu_", "n_elem",
                    "pml_apply(", "constitutive_apply("):
         assert absent not in body, f"{absent!r} reached the fused body"
@@ -828,31 +796,30 @@ def test_the_split_field_machinery_is_absent_rather_than_neutralised(arm, conduc
     assert body.count("return;") == 1
 
 
-@pytest.mark.parametrize("arm", ARMS)
 @pytest.mark.parametrize("conductive", (False, True))
 def test_the_three_registers_are_declared_before_the_certified_braced_blocks(
-        arm, conductive):
+        conductive):
     """A value declared inside a braced component block does not outlive it, so the
     three carried registers are hoisted above them."""
-    body = _fused_body(arm, conductive)
+    body = _fused_body(conductive)
     for index in ("0", "1", "2"):
         assert f"    cf d{index} = cf_zero();\n" in body
         assert (body.index(f"    cf d{index} = cf_zero();")
                 < body.index("    // Target 0:"))
 
 
-@pytest.mark.parametrize("arm", ARMS)
 @pytest.mark.parametrize("conductive", (False, True))
-def test_the_emitted_source_is_pure_ascii_and_depends_on_both_arms(arm, conductive):
-    """PURE ASCII is a compile requirement, and the four sources are four strings: a
-    memo or a digest that collapsed two of them would hand back the wrong bytes."""
-    source = source_text(arm, conductive)
+def test_the_emitted_source_is_pure_ascii_and_one_body_per_curl_tail(conductive):
+    """PURE ASCII is a compile requirement. Both lifted halves are the part-wise forms
+    (``complex_emitter``), so the family emits one string per curl tail -- and the two
+    tails are two strings, which a memo or a digest that collapsed them would get
+    wrong."""
+    source = source_text(conductive)
     source.encode("ascii")
-    assert len(set(product.device_sources().values())) == 4
-    assert source == product.device_sources()[f"{arm}/"
-                                              f"{'conductive' if conductive else 'plain'}"]
-    other = source_text("FMA_V1" if arm == "NAIVE" else "NAIVE", conductive)
-    assert other != source, "the expansion arm did not change the emitted bytes"
+    assert len(product.device_sources()) == 2
+    assert len(set(product.device_sources().values())) == 2
+    assert source == product.device_sources()["conductive" if conductive else "plain"]
+    assert source_text(not conductive) != source
 
 
 def test_the_unused_pole_slots_bind_inv_eps_and_never_the_shared_flux_density(xp):
@@ -929,17 +896,17 @@ def test_the_splice_raises_rather_than_emitting_when_an_anchor_stops_matching(
     monkeypatch.setattr(product, anchor,
                         getattr(product, anchor) + "// no such line\n")
     with pytest.raises(AssertionError):
-        source_text("NAIVE", conductive=True)
+        source_text(conductive=True)
     with pytest.raises(AssertionError):
-        source_text("NAIVE", conductive=False)
+        source_text(conductive=False)
 
 
 def test_the_tail_capture_anchors_are_the_certified_calls(monkeypatch):
     """The two tail sites are the other half of the anchor set and are matched by
     whole line, so a certified body that moved a call onto two lines is a named failure
     rather than a partial substitution."""
-    plain = certified.kernel_source("step_D", "NAIVE")
-    conductive = certified.kernel_source("step_D_conductive", "NAIVE")
+    plain = certified.kernel_source("step_D")
+    conductive = certified.kernel_source("step_D_conductive")
     for index in ("0", "1", "2"):
         assert f"        no_pml_apply(f{index}, idx, curl);" in plain
         assert (f"        conductive_apply(f{index}, idx, curl, "
@@ -949,7 +916,7 @@ def test_the_tail_capture_anchors_are_the_certified_calls(monkeypatch):
 def test_the_emitter_refuses_a_non_boolean_curl_arm():
     """The two tails are different arithmetic; a truthy value is not a choice."""
     with pytest.raises(TypeError, match="must be a bool"):
-        product.no_pml_complex_fused_electric_pair_source("NAIVE", 1)
+        product.no_pml_complex_fused_electric_pair_source(1)
 
 
 def test_the_launcher_binds_the_inverse_permittivity_through_the_per_component_reader():
@@ -1029,11 +996,7 @@ def test_the_plan_builder_resolves_the_curl_arm_and_binds_no_table_or_wall():
     builder = source.split("def _no_pml_complex_fused_electric_pair_plan(", 1)[1]
     builder = builder.split("\ndef ", 1)[0]
     assert '"curl_arm": no_pml_complex_curl_arm(ctx.fields, "step_D")' in builder
-    assert '"expansion": ctx.license_for(LICENSE_COMPLEX_NO_PML)["arm"]' in builder
     assert '"tables"' not in builder and '"walls"' not in builder
-    # THE LICENCE IS THIS FAMILY'S OWN and not the PML complex one; asking with the
-    # wrong verdict would be asking about a different arm.
-    assert "LICENSE_COMPLEX_NO_PML" in builder and "LICENSE_COMPLEX)" not in builder
 
 
 @pytest.mark.parametrize("conductive", (False, True))
@@ -1257,10 +1220,7 @@ def test_the_seam_fuses_and_no_other_product_claims_it(xp, conductive):
     against the reasons the losers gave.
     """
     fields, layer, grid = build(xp, conductive=conductive)
-    plan = arms.plan_step(fields, layer, grid,
-                          licenses={LICENSE_COMPLEX_NO_PML: LICENCE,
-                                    LICENSE_COMPLEX: LICENCE},
-                          subnormal_policy=POLICY, sources=(), fuse=True)
+    plan = arms.plan_step(fields, layer, grid, sources=(), fuse=True)
     label = "complex no-absorber fused electric pair"
     # SLOT ARBITRATION, 2026-09-02: `update_E` is this pair's SECOND slot and
     # `cuda_complex_no_pml_fused_polarization_pair`'s FIRST, and all FOUR rows of this
@@ -1309,10 +1269,7 @@ def test_fusion_is_opt_in_on_this_seam_too(xp):
     """``fuse`` defaults to off, so the composition the coverage census measured is
     unchanged and this product adds nothing nobody asked for."""
     fields, layer, grid = build(xp)
-    plan = arms.plan_step(fields, layer, grid,
-                          licenses={LICENSE_COMPLEX_NO_PML: LICENCE,
-                                    LICENSE_COMPLEX: LICENCE},
-                          subnormal_policy=POLICY, sources=())
+    plan = arms.plan_step(fields, layer, grid, sources=())
     assert plan.selected.get("step_D") == "complex no-PML curl"
     assert plan.selected.get("update_E") == "complex no-PML stored E"
 
@@ -1340,10 +1297,7 @@ def test_the_pair_may_not_absorb_a_slot_a_different_arm_won(xp, monkeypatch):
                         ("complex no-PML curl", "no-PML null", "complex no-PML ADE"))
     monkeypatch.setitem(fused_pairs.FUSED_PAIR_ARMS, product.FAMILY,
                         ("complex no-PML curl", "no-PML null"))
-    plan = arms.plan_step(fields, layer, grid,
-                          licenses={LICENSE_COMPLEX_NO_PML: LICENCE,
-                                    LICENSE_COMPLEX: LICENCE},
-                          subnormal_policy=POLICY, sources=(), fuse=True)
+    plan = arms.plan_step(fields, layer, grid, sources=(), fuse=True)
     assert plan.reasons[f"fused_pair_{product.FAMILY}"], plan.reasons
     assert plan.selected.get("update_E") != "complex no-absorber fused electric pair", \
         plan.selected
@@ -1356,10 +1310,7 @@ def test_the_pair_may_not_absorb_a_slot_a_different_arm_won(xp, monkeypatch):
     monkeypatch.setitem(fused_pairs.FUSED_PAIR_ARMS,
                         "cuda_complex_no_pml_fused_polarization_pair",
                         ("complex no-PML curl", "no-PML null"))
-    plan = arms.plan_step(fields, layer, grid,
-                          licenses={LICENSE_COMPLEX_NO_PML: LICENCE,
-                                    LICENSE_COMPLEX: LICENCE},
-                          subnormal_policy=POLICY, sources=(), fuse=True)
+    plan = arms.plan_step(fields, layer, grid, sources=(), fuse=True)
     assert plan.selected.get("update_E") == "complex no-PML stored E"
     assert plan.reasons[f"fused_pair_{product.FAMILY}"], plan.reasons
     assert plan.reasons[

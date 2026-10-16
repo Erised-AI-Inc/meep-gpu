@@ -33,11 +33,12 @@ THE EIGHT THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    be CAUGHT — or NULL CONFIRMED by an identity check. Leg ``disarm`` reruns the
    identical case with the shipped bytes and requires zero.
 5. **A dead-branch mutation.** The curl half is NOT straight-line: it carries the
-   ghost-wrap ternaries and the Bloch wrap planes. So instead of asserting one
-   branch, leg ``branch_census`` enumerates every branch in the emitted text and
+   ghost-wrap ternaries, the partner-presence ternaries and one plane-0 Bloch
+   connection block per phased axis. So instead of asserting one branch, leg
+   ``branch_census`` enumerates every branch in the emitted text and
    :func:`shader_mutations` requires each armed edit to sit on a line the SCORED
    case executes — with the scored case chosen so that every ternary is taken on
-   some thread and every wrap plane is live.
+   some thread and every connection plane is live.
 6. **A mirrored evaluator.** :func:`leg_transcription` PARSES the load-bearing
    lines out of this family's emitted source AND out of the CERTIFIED emitters'
    own output, and requires them equal modulo the documented renames.
@@ -102,17 +103,6 @@ for _path in (str(API_ROOT), str(HERE)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-#: The MEASURED expansion-probe artifact this host's complex families bind to: the
-#: one the environment names, which is the file ``load_expansion_probe`` reads.
-#: ``recut_metal_gates.sh`` cuts it with ``gate_metal_complex`` on the Mac it runs on
-#: and exports it before every other gate; by hand, export
-#: ``MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE`` to this host's probe. A dated archive
-#: path typed here would name one machine's record while the loader read another's,
-#: and on a Mac without that archive it refused although the round had cut its own.
-PROBE_ENVIRONMENT = "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE"
-PROBE_ARTIFACT = (Path(os.environ[PROBE_ENVIRONMENT])
-                  if os.environ.get(PROBE_ENVIRONMENT) else None)
-
 import numpy as np  # noqa: E402
 
 from meep_gpu import driver as driver_module, stepping  # noqa: E402
@@ -131,6 +121,17 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
 )
 from meep_gpu.pml import PML  # noqa: E402
 from meep_gpu.sources import ContinuousEnvelope, VolumeSource  # noqa: E402
+from gate_chunk_records import layer_record  # noqa: E402
+
+
+def chunk_record(fields: Fields, pml: Optional[PML]) -> Optional[np.ndarray]:
+    """The record the composer hands this run's plans (the one-rank division), or
+    None for a grid the division refuses -- which only a refused configuration
+    reaches, and a refused plan never reads the record."""
+    try:
+        return layer_record(fields.grid, pml)
+    except Exception:  # noqa: BLE001 - a refusal of the grid, recorded by the plan
+        return None
 
 #: Complete seam steps every case walks. SIXTY, not twelve: D is state carried
 #: between steps and the conductive tail compounds, so the defects this gate exists
@@ -442,7 +443,8 @@ def run_case(case: Case, leg: str, steps: int,
 
     residency = Residency()
     plan = family.plan_metal_complex_conductive_fused_pair(
-        actual, actual_pml, (), residency, functions=functions)
+        actual, actual_pml, (), residency, functions=functions,
+        chunk_bounds=chunk_record(actual, actual_pml))
     if plan is None:
         reasons = family.complex_conductive_fused_pair_coverage(
             actual, actual_pml, (), residency).reasons
@@ -507,7 +509,6 @@ def run_case(case: Case, leg: str, steps: int,
         "launches_per_run": plan.launches_per_run,
         "launches_expected": plan.launches_per_run * len(per_step),
         "replaces": list(plan.replaces_sub_steps),
-        "expansion": plan.expansion,
         "conductive": list(plan.conductive),
         "boundary_codes": list(plan.bc), "phased": list(plan.phased),
         "poles": list(plan.pole_counts),
@@ -543,12 +544,14 @@ def run_separate_control(case: Case, steps: int) -> Dict[str, Any]:
 
     separate_residency = Residency()
     curl = complex_no_pml_conductive.plan_metal_complex_conductive_no_pml_curl(
-        separate, separate_pml, "step_D", separate_residency)
+        separate, separate_pml, "step_D", separate_residency,
+        chunk_bounds=chunk_record(separate, separate_pml))
     electric = complex_no_pml_stored_e.plan_metal_complex_stored_e(
         separate, separate_pml, separate_residency)
     fused_residency = Residency()
     plan = family.plan_metal_complex_conductive_fused_pair(
-        fused, fused_pml, (), fused_residency)
+        fused, fused_pml, (), fused_residency,
+        chunk_bounds=chunk_record(fused, fused_pml))
     if curl is None or electric is None or plan is None:
         return {"passed": False, "reason": "a declared product was refused",
                 "curl": curl is not None, "electric": electric is not None,
@@ -601,15 +604,6 @@ def run_separate_control(case: Case, steps: int) -> Dict[str, Any]:
 # Static legs
 # ---------------------------------------------------------------------------
 
-def _arm() -> str:
-    from meep_gpu.metal_kernels.complex_fields import (  # noqa: PLC0415
-        expansion_from_probe, load_expansion_probe,
-    )
-    arm = expansion_from_probe(load_expansion_probe())
-    assert arm is not None, "no expansion arm is licensed by the measured probe"
-    return arm
-
-
 def leg_binding_ceiling() -> Dict[str, Any]:
     """The corpus row, the ceiling, and the first configuration past it.
 
@@ -619,14 +613,13 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     at ``(0, 0, 0)`` poles records the fused signature's floor and the rows past
     the ceiling must FAIL, refused BY NAME by the emitter.
     """
-    arm = _arm()
     rows: List[Dict[str, Any]] = []
     for counts in ((1, 1, 1), (0, 0, 0), (4, 4, 4), (4, 4, 5), (5, 5, 5), (8, 8, 8)):
         bindings = family.binding_count(counts)
         expected_fit = bindings <= MAX_BUFFER_BINDINGS
         try:
             compile_source(family.complex_conductive_fused_pair_source(
-                (0, 0, 0), (1, 1, 1), (True, True, True), counts, arm))
+                (0, 0, 0), (2, 2, 2), (True, True, True), counts))
             compiled, error = True, ""
         except Exception as exc:  # noqa: BLE001 - the refusal IS the measurement
             compiled, error = False, str(exc).splitlines()[0]
@@ -640,9 +633,10 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     refused_by_name = all("bindings" in row["error"] and "device.py:72" in row["error"]
                           for row in over)
     # WHAT THE PACKING BOUGHT, stated in numbers rather than claimed: the certified
-    # curl binds eight scalars separately (complex_no_pml_conductive.py:85-92).
+    # curl binds eight scalars and the chunk record separately (buffers 12-20 of
+    # complex_no_pml_conductive._TEMPLATE).
     unpacked_two_pole = (family.CURL_POINTERS + family.CONSTITUTIVE_POINTERS
-                         + 2 * 3 + 8)
+                         + 2 * 3 + 9)
     return {"passed": bool(all(row["agrees"] for row in rows) and over
                            and refused_by_name),
             "rows": rows, "over_ceiling_rows": len(over),
@@ -658,24 +652,25 @@ def leg_branch_census() -> Dict[str, Any]:
     THE DEAD-BRANCH MUTATION is a defect class this project has paid for, and this
     family cannot answer it the way the E->P chain does: the curl half is NOT
     straight-line. It carries the ``n_elem`` guard, the three ghost-wrap ternaries,
-    the nine neighbour-validity ternaries, and (under a Bloch phase) six wrap-plane
-    ternaries. So the branches are COUNTED here and the mutation case is chosen so
-    that every one of them is exercised: all three axes periodic and PHASED, which
-    makes each wrap predicate true on the plane it guards and false elsewhere.
+    the nine neighbour-validity ternaries, the partner-presence ternaries of the
+    stencil, and (under a Bloch phase) one ``if (<axis> == 0)`` connection block per
+    phased axis. So the branches are COUNTED here and the mutation case is chosen so
+    that every one of them is exercised: all three axes periodic and PHASED
+    (connection kind ``CONNECT_PHASE``), which makes each connection predicate true
+    on the plane it guards and false elsewhere.
 
     The counts are recorded per specialisation rather than asserted equal to a
     magic number, so a future specialisation that adds a branch shows up as a
     changed census rather than passing silently.
     """
-    arm = _arm()
     rows: List[Dict[str, Any]] = []
     for label, codes, phased, conductive in (
-            ("corpus_periodic_phased", (0, 0, 0), (1, 1, 1), (True, True, True)),
+            ("corpus_periodic_phased", (0, 0, 0), (2, 2, 2), (True, True, True)),
             ("unphased", (0, 0, 0), (0, 0, 0), (True, True, True)),
-            ("mixed_conductivity", (0, 0, 0), (1, 1, 1), (True, False, False)),
-            ("metallic_axis", (1, 0, 0), (0, 1, 1), (True, True, True))):
+            ("mixed_conductivity", (0, 0, 0), (2, 2, 2), (True, False, False)),
+            ("metallic_axis", (1, 0, 0), (0, 2, 2), (True, True, True))):
         source = family.complex_conductive_fused_pair_source(
-            codes, phased, conductive, (1, 1, 1), arm)
+            codes, phased, conductive, (1, 1, 1))
         rows.append({
             "label": label, "codes": list(codes), "phased": list(phased),
             "conductive": list(conductive),
@@ -683,19 +678,24 @@ def leg_branch_census() -> Dict[str, Any]:
             "ternaries": source.count("?"),
             "loops": len(re.findall(r"\b(for|while)\s*\(", source)),
             "ownership_mask_lines": source.count("? float2(0.0f, 0.0f) :"),
-            "wrap_planes": source.count("bool w"),
+            "connection_planes": len(re.findall(r"\bif \([ijk] == 0\) \{", source)),
+            "phased_axes": sum(1 for kind in phased if kind),
         })
         log(f"    branches {label}: if={rows[-1]['if_branches']} "
-            f"ternary={rows[-1]['ternaries']} wrap_planes={rows[-1]['wrap_planes']}")
+            f"ternary={rows[-1]['ternaries']} "
+            f"connection_planes={rows[-1]['connection_planes']}")
     scored = next(row for row in rows if row["label"] == "corpus_periodic_phased")
-    # The scored configuration must carry all three wrap planes, or the three
-    # wrap-plane mutations below would be armed on lines no thread reaches.
-    return {"passed": bool(scored["wrap_planes"] == 3
+    # The scored configuration must carry all three connection planes, or the
+    # connection mutations below would be armed on lines no thread reaches; every
+    # other `if` is the guard.
+    return {"passed": bool(scored["connection_planes"] == 3
                            and all(row["loops"] == 0 for row in rows)
-                           and all(row["if_branches"] == 1 for row in rows)),
+                           and all(row["connection_planes"] == row["phased_axes"]
+                                   and row["if_branches"] == 1 + row["phased_axes"]
+                                   for row in rows)),
             "rows": rows,
-            "the_scored_case_carries_all_three_wrap_planes":
-                scored["wrap_planes"] == 3,
+            "the_scored_case_carries_all_three_connection_planes":
+                scored["connection_planes"] == 3,
             "guard": "if (idx >= n_elem) { return; }  (templates.GUARD)"}
 
 
@@ -711,12 +711,11 @@ def leg_transcription() -> Dict[str, Any]:
     the whole certified curl body from the ghost gather through the conductive tail
     must appear in the fused source verbatim.
     """
-    arm = _arm()
     fused = family.complex_conductive_fused_pair_source(
-        (0, 0, 0), (1, 1, 1), (True, True, True), (2, 2, 2), arm)
+        (0, 0, 0), (1, 1, 1), (True, True, True), (2, 2, 2))
     certified_curl = complex_no_pml_conductive.complex_conductive_no_pml_curl_source(
-        (0, 0, 0), True, (1, 1, 1), (True, True, True), arm)
-    certified_e = complex_no_pml_stored_e.complex_stored_e_source(2, arm)
+        (0, 0, 0), True, (1, 1, 1), (True, True, True))
+    certified_e = complex_no_pml_stored_e.complex_stored_e_source(2)
     rows: List[Dict[str, Any]] = []
 
     # --- the curl half, as one contiguous block -------------------------------
@@ -746,7 +745,7 @@ def leg_transcription() -> Dict[str, Any]:
 
     # --- THE ONE LINE THIS FAMILY REWRITES, and only on a NON-conductive row ---
     plain = family.complex_conductive_fused_pair_source(
-        (0, 0, 0), (1, 1, 1), (False, True, True), (1, 1, 1), arm)
+        (0, 0, 0), (1, 1, 1), (False, True, True), (1, 1, 1))
     certified_plain = complex_no_pml_conductive._tail(0, False)
     rows.append({
         "line": "non_conductive_tail_split",
@@ -776,7 +775,7 @@ def leg_transcription() -> Dict[str, Any]:
              "e_out -> e0, inv_e -> iv0")):
         rows.append({
             "line": wanted.strip(),
-            "certified_source": f"complex_no_pml_stored_e.complex_stored_e_source(2, {arm!r})",
+            "certified_source": "complex_no_pml_stored_e.complex_stored_e_source(2)",
             "present_in_certified": wanted in certified_e,
             "present_in_fused": emitted in fused,
             "rename": rename,
@@ -785,14 +784,13 @@ def leg_transcription() -> Dict[str, Any]:
     # --- the helper block, byte for byte -------------------------------------
     rows.append({
         "line": "complex_helper_block",
-        "certified_source": "templates.complex_helpers(<the probe's arm>)",
-        "present_in_certified": templates.complex_helpers(arm) in certified_curl,
-        "present_in_fused": templates.complex_helpers(arm) in fused,
+        "certified_source": "templates.complex_helpers()",
+        "present_in_certified": templates.complex_helpers() in certified_curl,
+        "present_in_fused": templates.complex_helpers() in fused,
         "rename": "(none)",
-        "agrees": (templates.complex_helpers(arm) in certified_curl
-                   and templates.complex_helpers(arm) in fused)})
-    return {"passed": all(row["agrees"] for row in rows), "rows": rows,
-            "expansion_arm": arm}
+        "agrees": (templates.complex_helpers() in certified_curl
+                   and templates.complex_helpers() in fused)})
+    return {"passed": all(row["agrees"] for row in rows), "rows": rows}
 
 
 def leg_policy() -> Dict[str, Any]:
@@ -810,7 +808,7 @@ def leg_policy() -> Dict[str, Any]:
             verdict = family.complex_conductive_fused_pair_coverage(
                 fields, pml, (), residency)
             plan = family.plan_metal_complex_conductive_fused_pair(
-                fields, pml, (), residency)
+                fields, pml, (), residency, chunk_bounds=chunk_record(fields, pml))
             rows[policy] = {"covered": verdict.covered, "planned": plan is not None,
                             "reasons": list(verdict.reasons)[:6]}
     finally:
@@ -860,7 +858,7 @@ def leg_refusal() -> Dict[str, Any]:
         verdict = family.complex_conductive_fused_pair_coverage(
             fields, pml, sources, residency)
         plan = family.plan_metal_complex_conductive_fused_pair(
-            fields, pml, sources, residency)
+            fields, pml, sources, residency, chunk_bounds=chunk_record(fields, pml))
         named = needle is None or any(needle in reason for reason in verdict.reasons)
         rows.append({"case": label, "admitted": verdict.covered,
                      "planned": plan is not None, "expected_admitted": admit,
@@ -904,16 +902,16 @@ def leg_seam_is_empty() -> Dict[str, Any]:
     """DRIVE THE REAL DRIVER and record what writes D inside the seam.
 
     THE CLAIM THIS FAMILY RESTS ON is that on a magnetic-source-only conductive row
-    nothing at all happens between ``step_D`` (driver.py:3293) and ``update_E``
-    (:3304) — in particular that ``_inject_electric_through_conductivity`` (:3296)
-    cannot run, because ``FdtdDriver.step`` guards it with ``if electric and
-    self.fields.has_conductivity`` (:3295). Reading that guard is not a
+    nothing at all happens between ``step_D`` and ``update_E`` -- in particular that
+    no electric deposit runs: ``FdtdDriver.step`` injects only the electric sources
+    it holds, each through its own ``inject`` (whose double-precision deposit carries
+    the ``condinv`` scale, ``sources._deposit``). Reading that loop is not a
     measurement, so this leg builds the configuration through the ordinary public
     driver API and INSTRUMENTS the driver: every in-seam pass is wrapped and asked
-    whether it WROTE a D word, and the injection call sites are counted.
+    whether it WROTE a D word, and every source injection is recorded.
 
     THE CONTROL IS THE WHOLE POINT. Leg ``with_electric`` adds an electric source
-    and MUST show the conductive pass firing and writing D. A blind instrument
+    and MUST show an electric deposit firing and writing D. A blind instrument
     would report an empty seam by measuring nothing.
     """
     seam_passes = ("fill_symmetry_bc_D", "zero_metal_D", "fill_folded_far_ghosts_D")
@@ -942,7 +940,6 @@ def leg_seam_is_empty() -> Dict[str, Any]:
         originals = {name: getattr(driver_module, name) for name in seam_passes}
         log_rows: List[Dict[str, Any]] = []
         injections: List[Dict[str, Any]] = []
-        conductive: List[Dict[str, Any]] = []
 
         def wrap(name: str, function: Any) -> Any:
             def inner(target: Any, *arguments: Any, **keywords: Any) -> Any:
@@ -973,17 +970,6 @@ def leg_seam_is_empty() -> Dict[str, Any]:
 
         for cls, function in real_injects.items():
             cls.inject = make_inject(function)
-        real_conductive = driver_module.FdtdDriver._inject_electric_through_conductivity
-
-        def conductive_inject(self: Any, electric: Any, when: Any) -> Any:
-            before = d_words(self.fields)
-            out = real_conductive(self, electric, when)
-            after = d_words(self.fields)
-            conductive.append({"n_electric": len(electric), "wrote_D": any(
-                before[k] != after[k] for k in before)})
-            return out
-
-        driver_module.FdtdDriver._inject_electric_through_conductivity = conductive_inject
         try:
             engine.step()
         finally:
@@ -991,20 +977,17 @@ def leg_seam_is_empty() -> Dict[str, Any]:
                 setattr(driver_module, name, originals[name])
             for cls, function in real_injects.items():
                 cls.inject = function
-            driver_module.FdtdDriver._inject_electric_through_conductivity = real_conductive
 
+        electric = [row for row in injections if row["field_type"] != "B"]
         wrote = [row["pass"] for row in log_rows if row["wrote_D"]]
-        wrote += [f"inject({row['component']})" for row in injections
-                  if row["field_type"] != "B" and row["wrote_D"]]
-        wrote += ["_inject_electric_through_conductivity" for row in conductive
-                  if row["wrote_D"]]
+        wrote += [f"inject({row['component']})" for row in electric if row["wrote_D"]]
         return {
             "leg": "with_electric" if with_electric else "corpus_B_only",
             "has_conductivity": bool(engine.fields.has_conductivity),
             "source_field_types": sorted({s.field_type for s in engine._sources}),
             "in_seam_passes_run": log_rows,
             "injections": injections,
-            "conductive_injection_calls": conductive,
+            "electric_injection_calls": electric,
             "passes_that_wrote_D_inside_the_seam": wrote,
             "seam_is_empty": not wrote,
         }
@@ -1015,14 +998,13 @@ def leg_seam_is_empty() -> Dict[str, Any]:
     return {
         "passed": bool(corpus["seam_is_empty"] and not control["seam_is_empty"]
                        and corpus["has_conductivity"]
-                       and not corpus["conductive_injection_calls"]
+                       and not corpus["electric_injection_calls"]
                        and any(row["wrote_D"] for row in
-                               control["conductive_injection_calls"])),
+                               control["electric_injection_calls"])),
         "corpus": corpus, "control": control,
-        "determination": ("the conductive injection cannot run on a "
-                          "magnetic-source-only row: FdtdDriver.step guards it "
-                          "with `if electric and self.fields.has_conductivity` "
-                          "(driver.py:3295)"),
+        "determination": ("no electric deposit runs on a magnetic-source-only row: "
+                          "FdtdDriver.step injects only the electric sources it "
+                          "holds, each through its own inject"),
     }
 
 
@@ -1036,9 +1018,10 @@ def leg_orientation_null() -> Dict[str, Any]:
     4096-pair random band.
 
     THE NULL HAS ITS OWN NON-VACUITY FLOOR. The same harness is run against a
-    spelling that IS different — the plane-wise fold ``{z.x * c, z.y * c}`` — which
-    must DIVERGE on the signed-zero classes. A harness that reported zero for
-    everything would "prove" every null.
+    spelling that IS different — the package's previous zero-cross-term fused
+    product ``{fma(z.x, c, -(z.y * 0)), fma(z.x, 0, z.y * c)}``, which the part-wise
+    helpers replaced — and it must DIVERGE on the signed-zero classes. A harness that
+    reported zero for everything would "prove" every null.
     """
     import torch  # noqa: PLC0415
 
@@ -1058,11 +1041,11 @@ kernel void probe(
     out[idx] = __CALL__;
 }
 """
-    helpers = templates.complex_helpers(_arm())
+    helpers = templates.complex_helpers()
     folded = helpers.replace(
+        "    return float2(z.x * c, z.y * c);",
         "    return float2(fma(z.x, c,    -(z.y * 0.0f)),\n"
-        "                  fma(z.x, 0.0f,  (z.y * c)));",
-        "    return float2(z.x * c, z.y * c);", 1)
+        "                  fma(z.x, 0.0f,  (z.y * c)));", 1)
     assert folded != helpers, "the control spelling matched nothing"
 
     def evaluate(call: str, helper_text: str, contract: str,
@@ -1120,7 +1103,8 @@ kernel void probe(
             "the_claim": ("the two certified orientations are bit-identical for a "
                           "REAL coefficient here, so an orientation edit is a TEXT "
                           "defect leg transcription pins, not a runtime one"),
-            "control_spelling": "plane-wise fold {z.x * c, z.y * c}"}
+            "control_spelling": ("the previous zero-cross-term fused product "
+                                 "{fma(z.x, c, -(z.y * 0)), fma(z.x, 0, z.y * c)}")}
 
 
 PRECONDITION_SCALES: Tuple[Tuple[str, float, Optional[bool]], ...] = (
@@ -1168,35 +1152,35 @@ def _plan_spec(case: Case) -> Tuple[Tuple[int, int, int], Tuple[int, int, int],
     _, fields, pml = build(case, case_seed(case.label, "shape"))
     residency = Residency()
     plan = family.plan_metal_complex_conductive_fused_pair(
-        fields, pml, (), residency)
+        fields, pml, (), residency, chunk_bounds=chunk_record(fields, pml))
     assert plan is not None, family.complex_conductive_fused_pair_coverage(
         fields, pml, (), residency).reasons
     return plan.bc, plan.phased, plan.conductive, plan.pole_counts
 
 
-def _compile(spec: Any, arm: str, source: Optional[str] = None) -> Dict[str, Any]:
+def _compile(spec: Any, source: Optional[str] = None) -> Dict[str, Any]:
     codes, phased, conductive, counts = spec
     if source is None:
         source = family.complex_conductive_fused_pair_source(
-            codes, phased, conductive, counts, arm)
+            codes, phased, conductive, counts)
     return {shaders.CONTRACT_OFF:
             compile_source(source).complex_conductive_fused_pair_step}
 
 
-def shader_mutations(case: Case, arm: str) -> Dict[str, Dict[str, Any]]:
+def shader_mutations(case: Case) -> Dict[str, Dict[str, Any]]:
     """Source defects, each a plausible transcription slip.
 
     Each edit is required to CHANGE the source — a no-op edit would report the
     shipped kernel as an uncaught defect, which is the name-drift trap. And each
     edit is placed on a line the SCORED case executes: leg ``branch_census``
-    measures that the scored configuration carries all three wrap planes and all
+    measures that the scored configuration carries all three connection planes and all
     three conductive tails, so no armed line sits under a predicate no thread
     takes.
     """
     spec = _plan_spec(case)
     codes, phased, conductive, counts = spec
     base = family.complex_conductive_fused_pair_source(
-        codes, phased, conductive, counts, arm)
+        codes, phased, conductive, counts)
     edits: Dict[str, str] = {
         # THE SEAM ITSELF. Note what is NOT armed here: replacing `value0` with
         # `f0[ii]` is not a defect at all — the tail has ALREADY stored that word,
@@ -1208,13 +1192,18 @@ def shader_mutations(case: Case, arm: str) -> Dict[str, Dict[str, Any]]:
         # and a separate composition cannot.
         "seam_takes_the_wrong_components_register":
             base.replace("float2 source = value1;", "float2 source = value0;", 1),
-        # The curl's own arithmetic.
-        "curl_t0_terms_reordered":
-            base.replace("    float2 t0 = ((c_y - c) + (b - b_z));",
-                         "    float2 t0 = ((c_y - c) + (b_z - b));", 1),
+        # The curl's own arithmetic: MEEP's bracket (step_generic.cpp:104), the
+        # package's previous pairwise grouping planted back (KERNELS.md §7.1), and
+        # the two partners' terms swapped.
+        "previous_curl_grouping":
+            base.replace("c_mul_coefficient_left(dtdx, ((c_y - c_dy) + b_dz) - b_z)",
+                         "c_mul_coefficient_left(dtdx, (c_y - c_dy) + (b_dz - b_z))", 1),
+        "curl0_terms_reordered":
+            base.replace("c_mul_coefficient_left(dtdx, ((c_y - c_dy) + b_dz) - b_z)",
+                         "c_mul_coefficient_left(dtdx, ((c_y - c_dy) + b_z) - b_dz)", 1),
         "curl_dtdx_orientation_flipped":
-            base.replace("    float2 curl0 = c_mul_coefficient_left(dtdx, t0);",
-                         "    float2 curl0 = c_mul_field_left(t0, dtdx);", 1),
+            base.replace("c_mul_coefficient_left(dtdx, ((c_y - c_dy) + b_dz) - b_z)",
+                         "c_mul_field_left(((c_y - c_dy) + b_dz) - b_z, dtdx)", 1),
         # The conductive tail's ORDER. condfac then subtract then condinv is the
         # array path's ordered three-pass recurrence; swapping the two scalings is
         # a smooth, plausible, wrong absorber.
@@ -1227,14 +1216,16 @@ def shader_mutations(case: Case, arm: str) -> Dict[str, Dict[str, Any]]:
                          "    value0 = c_mul_field_left(value0, cf0[ii]);", 1),
         "conductive_tail_never_stores":
             base.replace("    f0[ii] = value0;\n", "    // f0 never stored\n", 1),
-        # The Bloch wrap. One plane, one axis, one operand.
-        "bloch_wrap_x_predicate_inverted":
-            base.replace("    { bool wx = (i == 0);", "    { bool wx = (i != 0);", 1),
-        "bloch_wrap_y_operand_dropped":
-            base.replace("      c_y = wy ? c_mul(c_y, py) : c_y;\n", "", 1),
-        "bloch_wrap_z_takes_the_x_phase":
-            base.replace("      a_z = wz ? c_mul(a_z, pz) : a_z;",
-                         "      a_z = wz ? c_mul(a_z, px) : a_z;", 1),
+        # The Bloch connection of the unshifted partners on plane 0
+        # (stepping._bloch_ghost_operand). One plane, one axis, one operand.
+        "bloch_connection_x_predicate_inverted":
+            base.replace("    if (i == 0) {\n        c_dx = c_mul(c, px);",
+                         "    if (i != 0) {\n        c_dx = c_mul(c, px);", 1),
+        "bloch_connection_y_operand_dropped":
+            base.replace("        c_dy = c_mul(c, py);\n", "", 1),
+        "bloch_connection_z_takes_the_x_phase":
+            base.replace("        a_dz = c_mul(a, pz);",
+                         "        a_dz = c_mul(a, px);", 1),
         # The ghost wrap: step_D is BACKWARD, so the wrap is at index 0.
         "ghost_x_wrap_uses_the_forward_predicate":
             base.replace("    si = (si < 0) ? (nxi - 1) : si;",
@@ -1262,11 +1253,11 @@ def shader_mutations(case: Case, arm: str) -> Dict[str, Dict[str, Any]]:
             raise AssertionError(
                 f"mutation {name!r} did not change the source; a no-op edit would "
                 f"report the shipped kernel as an uncaught defect")
-        mutants[name] = _compile(spec, arm, source)
+        mutants[name] = _compile(spec, source)
     return mutants
 
 
-def split_tail_mutations(case: Case, arm: str) -> Dict[str, Dict[str, Any]]:
+def split_tail_mutations(case: Case) -> Dict[str, Dict[str, Any]]:
     """The edits that can only be armed on a row with a NON-conductive component.
 
     The one line this family rewrites is the plain tail, and it is emitted only
@@ -1279,7 +1270,7 @@ def split_tail_mutations(case: Case, arm: str) -> Dict[str, Dict[str, Any]]:
         f"{case.label} is all-conductive, so the split tail is not emitted and "
         f"these mutations would be armed on nothing")
     base = family.complex_conductive_fused_pair_source(
-        codes, phased, conductive, counts, arm)
+        codes, phased, conductive, counts)
     index = conductive.index(False)
     edits = {
         "split_tail_stores_the_pre_curl_value":
@@ -1298,11 +1289,11 @@ def split_tail_mutations(case: Case, arm: str) -> Dict[str, Dict[str, Any]]:
             raise AssertionError(
                 f"mutation {name!r} did not change the source; a no-op edit would "
                 f"report the shipped kernel as an uncaught defect")
-        mutants[name] = _compile(spec, arm, source)
+        mutants[name] = _compile(spec, source)
     return mutants
 
 
-def byte_neutral_control(case: Case, arm: str) -> Dict[str, Any]:
+def byte_neutral_control(case: Case) -> Dict[str, Any]:
     """THE ONE ARMED EDIT REQUIRED TO BE UNCAUGHT, and it is scored on that.
 
     The whole claim of this fusion is that it removes a round trip and changes no
@@ -1322,7 +1313,7 @@ def byte_neutral_control(case: Case, arm: str) -> Dict[str, Any]:
     spec = _plan_spec(case)
     codes, phased, conductive, counts = spec
     base = family.complex_conductive_fused_pair_source(
-        codes, phased, conductive, counts, arm)
+        codes, phased, conductive, counts)
     source = base
     for index in range(3):
         source = source.replace(f"float2 source = value{index};",
@@ -1331,7 +1322,7 @@ def byte_neutral_control(case: Case, arm: str) -> Dict[str, Any]:
         "the byte-neutral control edit matched nothing; a control that changes "
         "nothing would report the shipped bytes as byte-neutral against themselves")
     assert source.count("float2 source = f") == 3, source.count("float2 source = f")
-    return _compile(spec, arm, source)
+    return _compile(spec, source)
 
 
 def swap_condinv_between_components(plan: Any, pml: Any, residency: Residency) -> None:
@@ -1413,7 +1404,7 @@ def plant(name: str) -> None:
         return source
 
     family.complex_conductive_fused_pair_source = defective  # type: ignore[assignment]
-    probe = original((0, 0, 0), (1, 1, 1), (True, True, True), (1, 1, 1), _arm())
+    probe = original((0, 0, 0), (1, 1, 1), (True, True, True), (1, 1, 1))
     assert wanted in probe, (
         f"planted defect {name!r} matches nothing in the shipped source; a "
         f"marker that matches nothing disables the check it feeds SILENTLY")
@@ -1445,16 +1436,10 @@ def main() -> int:
     import torch
     if not torch.backends.mps.is_available():
         raise SystemExit("MPS is not available; this gate must run on an Apple GPU")
-    if PROBE_ARTIFACT is None or not PROBE_ARTIFACT.is_file():
-        raise SystemExit(
-            f"no measured expansion probe: {PROBE_ENVIRONMENT} is "
-            f"{'unset' if PROBE_ARTIFACT is None else repr(str(PROBE_ARTIFACT)) + ', not a file'}"
-            f"; which complex arm this host takes may not be guessed")
     if args.plant:
         plant(args.plant)
         log(f"PLANTED DEFECT {args.plant!r}: the verdict below MUST be FAIL")
 
-    arm = _arm()
     mutation_case = _case(MUTATION_CASE)
     mixed_case = _case(MUTATION_CASE_MIXED)
     mutants: Dict[str, Dict[str, Any]] = {}
@@ -1462,9 +1447,9 @@ def main() -> int:
     host_mutations = dict(HOST_MUTATIONS)
     neutral: Optional[Dict[str, Any]] = None
     if args.plant is None:
-        mutants = shader_mutations(mutation_case, arm)
-        split_mutants = split_tail_mutations(mixed_case, arm)
-        neutral = byte_neutral_control(mutation_case, arm)
+        mutants = shader_mutations(mutation_case)
+        split_mutants = split_tail_mutations(mixed_case)
+        neutral = byte_neutral_control(mutation_case)
     else:
         host_mutations = {}
 
@@ -1604,10 +1589,6 @@ def main() -> int:
                    "shader_mutations": len(mutants) + len(split_mutants),
                    "host_mutations": len(host_mutations),
                    "byte_neutral_controls": 0 if neutral is None else 1},
-        "expansion_arm": arm,
-        "expansion_probe_artifact": str(PROBE_ARTIFACT),
-        "expansion_probe_artifact_sha256": hashlib.sha256(
-            PROBE_ARTIFACT.read_bytes()).hexdigest(),
         "torch_version": torch.__version__,
         "numpy_version": np.__version__,
         "metal_frontend": metal_frontend_version(),

@@ -99,8 +99,8 @@ THE FIVE THINGS THIS GATE REFUSES TO LET PASS SILENTLY
 LEGS
   host
   driver_order     REPLACES is the driver's two adjacent consults; the only statement
-                   between them is the electric withdraw loop; all six fold passes sit
-                   OUTSIDE the span -- read off the tree, never spelled
+                   between them is the magnetic f_minus_p restore; all six fold passes
+                   sit OUTSIDE the span -- read off the tree, never spelled
   transcription    the emitted source differs from ``symmetry.folded_curl_source`` +
                    ``shaders.constitutive_source('H')`` in EXACTLY the declared edits;
                    the top-plane and cell-0 mask lines are character-identical to the
@@ -127,8 +127,10 @@ LEGS
                    and folded_fused_magnetic_pair still installed on every fixture
   sync             the product force-installed with flux_in_box driven mid-run
   launch_structure launches per step at the seam and over the whole step
-  lift             every corpus row the standing census puts in this cell, re-lifted in
-                   its own interpreter and driven
+  lift             every corpus row the standing census puts in this cell, re-lifted
+                   under this gate's interpreter and driven; the rows carrying a magnetic
+                   source refused by name (launch.h_start_reasons), every other row
+                   admitted
   byte_neutral     the one armed edit required NOT to diverge
   mutation         every armed shader and host defect, each of which MUST diverge;
                    predicted nulls recorded with their citation, never dropped
@@ -188,10 +190,10 @@ import metal_composition_matrix as matrix  # noqa: E402
 # them is one place for the defects already found in them to stay fixed.
 import gate_metal_fused_hd_pair as _shared  # noqa: E402
 
-from meep_gpu import stepping, withdraw_hoist  # noqa: E402
+from meep_gpu import fastpath, from_meep, stepping, withdraw_hoist  # noqa: E402
 from meep_gpu.fastpath import SYNC_PASS_OWNERS, SYNC_PATH_SLOTS, SYNC_UPDATE_H_PASS  # noqa: E402
 from meep_gpu.metal_kernels import (  # noqa: E402
-    folded_fused_hd_pair as family, fused_hd_pair as plain,
+    chunk_bounds, folded_fused_hd_pair as family, fused_hd_pair as plain,
     launch as metal_launch, shaders, subnormal, symmetry, templates,
 )
 from meep_gpu.metal_kernels.device import (  # noqa: E402
@@ -207,7 +209,6 @@ ABSORBED = _shared.ABSORBED
 Arrangement = _shared.Arrangement
 AliasedLaunch = _shared.AliasedLaunch
 RotationSkipped = _shared.RotationSkipped
-Shim = _shared.Shim
 SyncedPlan = _shared.SyncedPlan
 capture = _shared.capture
 compare_snapshots = _shared.compare_snapshots
@@ -343,7 +344,8 @@ LEG_GROUPS: Dict[str, Tuple[str, ...]] = {
 ALL_LEGS: Tuple[str, ...] = tuple(leg for group in LEG_GROUPS.values() for leg in group)
 
 #: The census this gate lifts its corpus rows from, and the seam record whose
-#: ``withdraw_in_seam`` flag names the rows the predicate must refuse.
+#: ``withdraw_in_seam`` flag named the rows the 0.9.2 predicate refused by their standing
+#: withdraw (admitted since entry 25; ``_shared.lift_refusal_accounting``).
 CENSUS = "metal_coverage_2026-09-04_m0complex"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
 CELL_ARMS: Tuple[str, str] = ("folded", "folded")
@@ -437,6 +439,9 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
     for array in stored_volumes(driver.fields).values():
         array[...] = (0.37 * rng.standard_normal(array.shape)).astype(array.dtype)
         array *= scale
+    # A SEEDED STATE IS A MID-RUN ONE (the sibling gate's build_driver says why):
+    # stepping.separate_h_from_b must not run again on it.
+    driver.fields.h_separated = True
     driver.invalidate_fast_path()
     pin_array_path(driver)
     return driver
@@ -526,6 +531,48 @@ def count_functions(plan: Any) -> List[_shared.CountingFunction]:
     return counters
 
 
+class Shim(_shared.Shim):
+    """The sibling's shim, plus the clear the SHIPPED dispatch owes after ``update_E``.
+
+    ``FastPathPlan.dispatch`` writes +0 over the absent electric components' E and
+    ``f_w`` words after every ``update_E`` consult it answers
+    (``fastpath.AbsentComponentClear``): every kernel table's ``update_E`` steps all
+    three components, and the array path, since it learnt MEEP's unallocated set, steps
+    none of the absent ones. This gate drives the composer's plans itself, through this
+    shim rather than through ``FastPathPlan``, so without the same clear its references
+    3 and 4 and the subject compare a step the shipped route does not run. MEASURED
+    (bit_parity_0_10 lane FXHD, the lift rows ``finite_grating.py`` and
+    ``TestGetPoint.test_get_point``): the shipped route and these arrangements wrote the
+    same -0 into ``f_w_Ey`` (725 cells) and ``f_w_Ex``/``f_w_Ey`` (62 each), the planes
+    the D fills write with an odd parity, before the clear covered those planes.
+
+    THE CLEAR IS FASTPATH'S OWN, imported, built once per shim as ``_finish`` builds it
+    once per freeze and only where a plan serves ``update_E``, and applied at the same
+    point: after the ``update_E`` consult answers True, whatever the slot holds (a single,
+    a pair's sentinel, a weld's trailing half). One definition of the invariant, not two.
+    An arrangement with no ``update_E`` plan (the singles, the seam alone) leaves
+    ``update_E`` on the array path, which owes no clear, and gets none.
+    """
+
+    __slots__ = ("absent_clears", "absent_clear_runs")
+
+    def __init__(self, fields: Any, plans: Mapping[str, Any],
+                 sync_hazard: bool = False) -> None:
+        super().__init__(fields, plans, sync_hazard=sync_hazard)
+        clears: Tuple[Any, ...] = ()
+        if self.plans.get("update_E") is not None:
+            clears, _block = fastpath._absent_component_clears(fields)  # noqa: SLF001
+        self.absent_clears = clears
+        self.absent_clear_runs = 0
+
+    def dispatch(self, slot: str, fields: Any) -> bool:
+        answered = super().dispatch(slot, fields)
+        if answered and slot == "update_E" and self.absent_clears:
+            fastpath._clear_absent_components(self.absent_clears)  # noqa: SLF001
+            self.absent_clear_runs += 1
+        return answered
+
+
 class FoldedArrangement:
     """One engine: a shim (or the array path), its residency, and its bookkeeping.
 
@@ -589,8 +636,10 @@ def arrangement_singles(driver: Any) -> "FoldedArrangement":
     """
     residency = Residency()
     fields, pml = driver.fields, driver.pml
-    constitutive = symmetry.plan_folded_constitutive(fields, pml, "H", residency)
-    curl = symmetry.plan_folded_pml_curl(fields, pml, "step_D", residency)
+    constitutive = symmetry.plan_folded_constitutive(fields, pml, "H", residency,
+                                                     chunk_bounds=driver.chunk_bounds_record())
+    curl = symmetry.plan_folded_pml_curl(fields, pml, "step_D", residency,
+                                         chunk_bounds=driver.chunk_bounds_record())
     if constitutive is None or curl is None:
         raise RuntimeError(
             "a certified folded single was refused on a fixture this gate expects it "
@@ -614,9 +663,19 @@ def _composed(driver: Any, fuse: bool,
     overwrite each other.
     """
     residency = Residency() if residency is None else residency
+    # THE RUN'S OWN CHUNK DIVISION, as ``FdtdDriver.step`` hands ``plan_fast_path``
+    # and as the certified singles here are bound (``chunk_bounds_record``). Asked
+    # without one, the composer resolves the one-rank division of the grid and the
+    # PML, which a lifted row's division need not be. MEASURED (bit_parity_0_10 lane
+    # FXHD, the lift leg's four rows that diverged in references 3 and 4 alone, the
+    # absent-component clear applied in both runs): without the division,
+    # ``TestGetPoint.test_get_point`` 4 words from step 1 (Hx, Hy, f_w_Hx, f_w_Hy, a
+    # sign of zero each) and ``finite_grating.py`` 6 from step 2 (f_w_Hy 2, fu_Dz 4);
+    # with it, 0 on every row, as on the shipped route.
     plan = metal_launch.plan_step(driver.fields, driver.pml, residency=residency,
                                   sources=tuple(getattr(driver, "_sources", ())),
-                                  fuse=fuse)
+                                  fuse=fuse,
+                                  chunk_layout=getattr(driver, "chunk_layout", None))
     return plan, residency
 
 
@@ -642,7 +701,7 @@ def build_weld(driver: Any, residency: Residency,
                codes: Optional[Sequence[int]] = None) -> Any:
     plan = family.plan_metal_folded_fused_hd_pair(
         driver.fields, driver.pml, sources=sources, residency=residency,
-        functions=functions, codes=codes)
+        functions=functions, codes=codes, chunk_bounds=driver.chunk_bounds_record())
     if plan is None:
         reasons = family.metal_folded_fused_hd_pair_coverage(
             driver.fields, driver.pml, sources, residency).reasons
@@ -776,8 +835,12 @@ def run_product(driver: Any, steps: int,
                          if name in result["volumes_compared"])
     seam_moved = {name: int(result["moved_from_seed"].get(name, 0))
                   for name in seam_outputs}
+    # Under the auxiliary contract an auxiliary whose layer line is empty everywhere
+    # (on a 2-D fold, every one whose layer axis is the invariant z) moves on no path,
+    # so it is exempt from the floor and still compared (the sibling gate's helper).
+    exempt = _shared.contract_untouched_auxiliaries(driver)
     if movement_floor == "all":
-        floor = not result["arrays_that_never_moved"]
+        floor = not (set(result["arrays_that_never_moved"]) - set(exempt))
     else:
         floor = bool(seam_outputs) and sum(seam_moved.values()) > 0
     settled = bool(result["every_arrangement_gave_the_engine_its_volumes_back"])
@@ -795,6 +858,7 @@ def run_product(driver: Any, steps: int,
         "weld_launched_once_per_step_and_absorbed_step_D": weld_ok,
         "movement_floor": movement_floor,
         "movement_floor_met": floor,
+        "auxiliaries_the_contract_leaves_untouched": list(exempt),
         "seam_output_words_moved": seam_moved,
         "seam_output_volumes_that_never_moved": sorted(
             name for name, n in seam_moved.items() if not n),
@@ -818,8 +882,9 @@ def _tap_call(coordinates: str, target: int) -> str:
 
 
 _A_Y = f"    float a_y = vy ? {_tap_call('i, sj, k', 0)} : 0.0f;\n"
-_ACCUMULATION_0 = ("        a0 = a0 + kp_0 * src0;\n"
-                   "        a0 = a0 - km_0 * prev0;\n")
+#: The constitutive half's accumulation on component 0 inside ``h_cell``: the plain
+#: gate's, imported, because the two welds lift the same constitutive body.
+_ACCUMULATION_0 = _shared._ACCUMULATION_0  # noqa: SLF001
 
 
 def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
@@ -864,18 +929,20 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
         needle(base, "    float a   = own.a0;\n", "    float a   = hi0[ii];\n"),
         "the curl takes the pre-launch H at its own cell: the seam undone")
     # --- the constitutive half, inside h_cell (8-space indent) --------------
-    arm("constitutive_accumulations_regrouped",
+    # INVERTED (KERNELS.md §7.1): the shipped grouping is MEEP's, so the mutation
+    # plants the package's PREVIOUS grouping and stays must-catch.
+    arm("constitutive_previous_accumulation_grouping",
         needle(base, _ACCUMULATION_0,
-               "        a0 = a0 + (kp_0 * src0 - km_0 * prev0);\n"),
-        "((f + kps*src) - kms*prev) regrouped to f + (kps*src - kms*prev) is a "
-        "different float32 number")
+               "        if (dw0) { a0 = (hi0[ii] + (kp_0 * src0)) - (km_0 * prev0); }\n"),
+        "the package's previous grouping ((f + kps*src) - kms*prev) planted in place of "
+        "MEEP's f + ((kps*src) - (kms*prev)): a different float32 number")
     arm("constitutive_accumulations_reversed",
         needle(base, _ACCUMULATION_0,
-               "        a0 = a0 - km_0 * prev0;\n        a0 = a0 + kp_0 * src0;\n"),
+               "        if (dw0) { a0 = (hi0[ii] - (km_0 * prev0)) + (kp_0 * src0); }\n"),
         "the two accumulations in the other order")
     arm("prev_reads_the_value_the_store_writes",
-        needle(base, "        float prev0 = wi0[ii];\n",
-               "        float prev0 = b0[ii];\n"),
+        needle(base, "        float prev0 = dw0 ? wi0[ii] : 0.0f;\n",
+               "        float prev0 = dw0 ? b0[ii] : 0.0f;\n"),
         "the split-field history read AFTER the store that overwrote it with B")
     arm("kps_kms_swapped",
         needle(base, "        float kp_0 = kp0[i], km_0 = kmx[i];\n",
@@ -887,20 +954,20 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
         "one magnetic component never reaches the scratch; the next step reads stale")
     arm("fw_store_dropped",
         needle(base,
-               "    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;\n",
-               "    wo1[ii] = own.src1; wo2[ii] = own.src2;\n"),
+               "    wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n",
+               "    wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n"),
         "one split-field history never advances")
-    # --- the curl half ------------------------------------------------------
-    arm("curl_parens_flattened",
-        needle(base, "dtdx * ((c_y - c) + (b - b_z))", "dtdx * (c_y - c + b - b_z)"),
-        "shaders.py rule 2: reassociation is a different float32 number")
+    # --- the curl half (the grouping INVERTED, as the constitutive one is) ----
+    arm("curl_previous_grouping",
+        needle(base, "dtdx * (((c_y - c) + b) - b_z)", "dtdx * ((c_y - c) + (b - b_z))"),
+        "the package's previous pairwise grouping (g1s - g1) + (g2 - g2s) planted in "
+        "place of MEEP's left-to-right ((g1s - g1) + g2) - g2s: shaders.py rule 2")
     arm("recurrence_axis_pair_swapped",
         needle(base, "    float n0 = ((p0 * km_y) - curl0) * si_y;\n",
                "    float n0 = ((p0 * km_z) - curl0) * si_z;\n"),
         "vec.hpp's cycle_direction: target 0 takes (y, z)")
     arm("fu_store_dropped",
-        needle(base, "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;\n",
-               "    u1[ii] = n1; u2[ii] = n2;\n"),
+        needle(base, "    if (du0) { u0[ii] = n0; }\n", ""),
         "the split-field auxiliary never advances on one component")
     arm("flux_store_dropped",
         needle(base, "    f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;\n",
@@ -935,8 +1002,15 @@ def _folded_source_with_reduced_codes(codes: Sequence[int], reduced: int) -> str
                   else (shaders.METALLIC if code == M else shaders.PERIODIC)
                   for code in codes)
     backward = bool(metal_launch.SUB_STEPS["step_D"]["backward"])
+    flags = shaders.curl_membership_flags(backward)
     source = templates.substitute(symmetry._FOLDED_CURL_TEMPLATE, {  # noqa: SLF001
         "__CONTRACT__": templates.contraction_pragma(shaders.CONTRACT_OFF),
+        "__RECORD_STRUCT__": chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": chunk_bounds.binding(shaders.CURL_RECORD_BUFFER),
+        "__BOUNDS__": shaders.curl_bounds_block(backward),
+        "__DU0__": flags[0],
+        "__DU1__": flags[1],
+        "__DU2__": flags[2],
         "__SHIFT__": "- 1" if backward else "+ 1",
         "__GHOST_X__": templates.ghost("x", wrong[0], backward),
         "__GHOST_Y__": templates.ghost("y", wrong[1], backward),
@@ -977,6 +1051,7 @@ def _weld_a_folded_curl_source(curl: str) -> str:
                 .split(plain.DECODE_END, 1)[0] + plain.DECODE_END)
     return shaders.substitute(plain._TEMPLATE, {  # noqa: SLF001
         "__CONTRACT__": shaders.contraction_pragma(shaders.CONTRACT_OFF),
+        **plain.record_substitutions(),
         "__H_CELL__": plain.h_cell_function(shaders.CONTRACT_OFF),
         "__PROLOGUE__": prologue,
         "__H_CELL_ARGS__": plain.H_CELL_TAIL_ARGS,
@@ -1098,6 +1173,14 @@ HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Residency, Any], Any], str]] = {
     "constitutive_takes_the_half_integer_lattice": (
         _shared.constitutive_takes_the_half_integer_lattice,
         "kps bound from update_E's lattice"),
+    # KERNELS.md §7.2's record rows: the kernel is right and the packed record is not.
+    "b3_bound_off_by_one": (
+        _shared.HOST_MUTATIONS["b3_bound_off_by_one"][0],
+        "the packed record's low runs one row long on the folded stored extent: the "
+        "boundary plane takes the in-chunk form in both halves"),
+    "b4_lattices_swapped": (
+        _shared.HOST_MUTATIONS["b4_lattices_swapped"][0],
+        "the packed record's integer and half-integer entries exchanged"),
 }
 
 
@@ -1111,7 +1194,8 @@ def leg_driver_order() -> Dict[str, Any]:
 
     The first half is the sibling gate's and is read off ``driver.py`` by the seam
     module's own locator, which RAISES unless the only statement between the two
-    consults is the electric withdraw loop. The second half is this product's own and
+    consults is the magnetic ``f_minus_p`` restore (``h_to_d_seam.EXPECTED_BETWEEN``).
+    The second half is this product's own and
     is the reason it carries no fill: both mirror fills, both wall clears and both far
     ghost passes must be absent from the span AND present in the driver's live pass
     list on a folded row, which is read from the composer's own ``live_sub_steps``
@@ -1215,6 +1299,9 @@ def leg_transcription(codes: Sequence[int]) -> Dict[str, Any]:
         armed = shader_mutations(codes)
         armed.update(mask_mutations(codes))
         armed.update(fold_specific_mutations(codes))
+        armed.update(_shared.b_battery(source))
+        armed.update({name: (mutant, reason) for name, (mutant, reason, _control)
+                      in _shared.b_battery_inert(source).items()})
         for name, (_source, _why) in armed.items():
             if _source == family.folded_fused_hd_pair_source(codes):
                 needles_ok = False
@@ -1523,8 +1610,10 @@ def leg_refusal() -> Dict[str, Any]:
 
     admitted = cover(folded_fields, folded_pml, (), Residency())
     undeclared = cover(folded_fields, folded_pml, None, Residency())
-    integrated = cover(folded_fields, folded_pml,
-                       (source(folded_fields, "Ez", True),), Residency())
+    engine_integrated = source(folded_fields, "Ez", True)
+    integrated = cover(folded_fields, folded_pml, (engine_integrated,), Residency())
+    foreign_source = _shared.ForeignStandingWithdraw()
+    foreign = cover(folded_fields, folded_pml, (foreign_source,), Residency())
     plain_electric = cover(folded_fields, folded_pml,
                            (source(folded_fields, "Ez", False),), Residency())
     magnetic_source = cover(folded_fields, folded_pml,
@@ -1550,9 +1639,16 @@ def leg_refusal() -> Dict[str, Any]:
         "admitted_on_the_cell": admitted.covered,
         "undeclared_refused_by_name": bool(not undeclared.covered
                                            and named(undeclared, "was not declared")),
-        "integrated_electric_withdraw_refused_by_name": bool(
-            not integrated.covered
-            and named(integrated, "standing integrated",
+        # An ENGINE integrated source enters through f_minus_p and stands no withdraw
+        # in the seam; a source class bringing one of its own is refused.
+        "integrated_electric_source_stands_no_withdraw": bool(
+            integrated.covered
+            and not withdraw_hoist.standing_withdraws((engine_integrated,))
+            and not named(integrated, "withdraw")),
+        "foreign_standing_withdraw_refused_by_name": bool(
+            not foreign.covered
+            and len(withdraw_hoist.standing_withdraws((foreign_source,))) == 1
+            and named(foreign, "standing integrated",
                       "HOISTS_THE_WITHDRAW = False")),
         "plain_electric_source_not_refused": plain_electric.covered,
         "magnetic_source_not_refused": magnetic_source.covered,
@@ -1578,6 +1674,7 @@ def leg_refusal() -> Dict[str, Any]:
         "reasons": {
             "undeclared": list(undeclared.reasons),
             "integrated_electric": list(integrated.reasons),
+            "foreign_standing_withdraw": list(foreign.reasons),
             "unfolded": list(unfolded.reasons),
             "the_plain_product_on_this_fixture": list(plain_on_folded.reasons),
             "inactive_absorber": list(inactive.reasons)[:4],
@@ -1640,7 +1737,9 @@ def leg_binding_ceiling() -> Dict[str, Any]:
                           for n in range(pointers))
         return "\n".join((
             "#include <metal_stdlib>", "using namespace metal;", "",
-            "struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx; };",
+            chunk_bounds.struct_source(), "",
+            "struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx; "
+            "ChunkBounds cb; };",
             "", "kernel void packed_probe(", lines,
             f"    constant Params&    prm     [[buffer({pointers})]],",
             "    uint idx [[thread_position_in_grid]])", "{",
@@ -1648,7 +1747,9 @@ def leg_binding_ceiling() -> Dict[str, Any]:
             "    b0[idx] = float(prm.nx);", "    b1[idx] = float(prm.ny);",
             "    b2[idx] = float(prm.nz);", "    b3[idx] = float(prm.n_elem);",
             "    b4[idx] = prm.dtdx;",
-            f"    b5[idx] = b{pointers - 1}[idx] + 1.0f;", "}", ""))
+            f"    b5[idx] = b{pointers - 1}[idx] + 1.0f;",
+            "    b6[idx] = float(prm.cb.cb_presence);",
+            "    b7[idx] = float(prm.cb.cbi_x_a1);", "}", ""))
 
     bisection: Dict[str, Any] = {}
     function = None
@@ -1700,15 +1801,24 @@ def leg_binding_ceiling() -> Dict[str, Any]:
                    for _ in range(MAX_BUFFER_BINDINGS - 1)]
         buffers[-1] = torch.full((count,), 7.0, dtype=torch.float32, device="mps")
         shape, dtdx = (3, 4, 5), 0.125
-        params = plain._params_tensor(shape, dtdx, "mps")  # noqa: SLF001
+        # A record the packer accepts for this shape: every axis present, and one run
+        # (the integer x line's [0, 1)) so a member read back is not a zero by default.
+        from meep_gpu.chunk_map import (  # noqa: PLC0415
+            RECORD_PRESENCE_WORD, RECORD_WORDS, record_index,
+        )
+
+        record = np.zeros(RECORD_WORDS, dtype=np.int32)
+        record[record_index(False, 0, 1)] = 1
+        record[RECORD_PRESENCE_WORD] = 0b111
+        params = plain._params_tensor(shape, dtdx, "mps", record)  # noqa: SLF001
         function(*buffers, params)
         torch.mps.synchronize()
-        read = [buffers[index].cpu().numpy() for index in range(6)]
+        read = [buffers[index].cpu().numpy() for index in range(8)]
         expected = (float(shape[0]), float(shape[1]), float(shape[2]),
                     float(shape[0] * shape[1] * shape[2]),
-                    float(np.float32(dtdx)), 8.0)
+                    float(np.float32(dtdx)), 8.0, 7.0, 1.0)
         fields_ok = all(bool(np.all(read[index] == expected[index]))
-                        for index in range(6))
+                        for index in range(8))
         row["packed_fields_read_back"] = [float(value[0]) for value in read]
         row["packed_fields_expected"] = [float(value) for value in expected]
     row["packed_launched_and_every_field_read_back"] = fields_ok
@@ -1740,6 +1850,11 @@ def leg_mutants_compile(codes: Sequence[int],
         armed.append((f"null/{name}", source))
         if earned:
             armed.append((f"null/{name}+drop_cell0_mask", earned))
+    base = family.folded_fused_hd_pair_source(codes)
+    for name, (source, _why) in _shared.b_battery(base).items():
+        armed.append((f"battery/{name}", source))
+    for name, (source, _why, _control) in _shared.b_battery_inert(base).items():
+        armed.append((f"battery_null/{name}", source))
     armed.append(("byte_neutral", byte_neutral_source(codes)))
     for name, source in armed:
         try:
@@ -1822,8 +1937,31 @@ def leg_codes_source(steps: int) -> Dict[str, Any]:
             "steps_compared": result.get("steps_compared"),
             **divergence(result),
         }
+        if not caught:
+            # MEASURED WHERE IT IS VISIBLE, as leg sub_step measures the masks. The
+            # wrong codes move only the cell-0 plane of the folded axis; the near fill
+            # rewrites D there after step_D, and under the auxiliary contract fu_D is
+            # written there only if that ghost row images a layer row -- on a fold with
+            # no low-side layer it does not, so a complete step shows nothing.
+            def launch(codes: Any = None, seed: int = 41000 + index) -> Dict[str, Any]:
+                state_driver = build_driver(keywords, seed)
+                residency = Residency()
+                plan = build_weld(state_driver, residency, codes=codes)
+                return _sub_step_state(state_driver, plan, residency)
+
+            reference, mutant = launch(), launch(codes=wrong)
+            moved = {volume: differing(reference[volume], mutant[volume])
+                     for volume in reference}
+            total = int(sum(moved.values()))
+            rows[name].update({
+                "passed": total > 0, "caught_at_sub_step": total > 0,
+                "sub_step_differing_words": total,
+                "sub_step_per_volume": {k: int(v) for k, v in moved.items() if v},
+                "visible_only_at_sub_step": True})
         log(f"  codes_source {index}/{len(CASES)} {name}: shipped="
-            f"{codes_label(shipped)} wrong={list(wrong)} caught={caught}")
+            f"{codes_label(shipped)} wrong={list(wrong)} caught={caught}"
+            + ("" if caught else
+               f" (at sub-step: {rows[name].get('sub_step_differing_words')} words)"))
     return {"passed": all(row["passed"] for row in rows.values()), "cases": rows,
             "note": ("stepping._boundary_kinds reports 'mirror' on a folded axis, "
                      "which `1 if kind == \"metallic\" else 0` maps to 0 = PERIODIC: "
@@ -1866,9 +2004,11 @@ def leg_sub_step() -> Dict[str, Any]:
             driver = build_driver(keywords, seed)
             residency = Residency()
             constitutive = symmetry.plan_folded_constitutive(
-                driver.fields, driver.pml, "H", residency)
+                driver.fields, driver.pml, "H", residency,
+                chunk_bounds=driver.chunk_bounds_record())
             curl = symmetry.plan_folded_pml_curl(
-                driver.fields, driver.pml, "step_D", residency)
+                driver.fields, driver.pml, "step_D", residency,
+                chunk_bounds=driver.chunk_bounds_record())
             residency.sync_in()
             constitutive.run()
             curl.run()
@@ -2137,6 +2277,30 @@ def leg_mutation(steps: int, codes: Sequence[int],
             f"{report['weld_first_divergence']} "
             f"({report['weld_differing_words']} words)")
 
+    # KERNELS.md §7.2's battery, armed on both halves of the folded weld. b13 and
+    # b8's signed-zero pair need a planted -0 and are the sibling gate's planted_zero
+    # leg: the constitutive body and the dsig-only form are the same lifted text here.
+    battery_base = family.folded_fused_hd_pair_source(codes)
+    for index, (name, (source, why)) in enumerate(
+            _shared.b_battery(battery_base).items(), start=1):
+        result = drive_mutant(MUTATION_CASE, source, 24000 + index)
+        caught = not result["bit_identical"]
+        report = divergence(result)
+        rows[f"battery/{name}"] = {"passed": bool(caught), "caught": caught,
+                                   "scope": MUTATION_CASE, "why": why, **report}
+        log(f"  mutation battery/{name}: caught={caught} at step "
+            f"{report['weld_first_divergence']} "
+            f"({report['weld_differing_words']} words)")
+    battery_nulls: Dict[str, Any] = {}
+    for index, (name, (source, why, control)) in enumerate(
+            _shared.b_battery_inert(battery_base).items(), start=1):
+        result = drive_mutant(MUTATION_CASE, source, 24500 + index)
+        fired = not result["bit_identical"]
+        battery_nulls[name] = {"fired_at_whole_step": fired, "predicted": False,
+                               "prediction_held": not fired, "why": why,
+                               "control": control}
+        log(f"  battery null {name}: fired={fired}")
+
     for index, (name, (source, why)) in enumerate(
             fold_specific_mutations(wall_codes).items(), start=1):
         result = drive_mutant(WALL_MUTATION_CASE, source, 25000 + index)
@@ -2250,6 +2414,13 @@ def leg_mutation(steps: int, codes: Sequence[int],
         log(f"  predicted-null {name}: fired={fired} "
             f"earned={entry.get('null_is_earned')}")
 
+    # THE BATTERY'S DECLARED NULLS, each earned by its named control firing above.
+    for name, entry in battery_nulls.items():
+        control = rows.get(entry["control"]) or rows.get(f"battery/{entry['control']}")
+        entry["null_is_earned"] = bool(entry["prediction_held"] and control
+                                       and control.get("caught"))
+        predicted[f"battery/{name}"] = entry
+
     # THE PREDICTIONS ARE NOT ALL EXPECTED TO HOLD ANY MORE -- one of them is a
     # RECORDED REFUTATION and is scored above instead. What must still hold is that
     # every entry still CLASSED as a null held, and that each held null is EARNED by a
@@ -2325,7 +2496,7 @@ def _child_progress(message: str) -> None:
             handle.flush()
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:  # noqa: ARG001
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The census driver's battery hook: the four-reference identity on ONE lifted row."""
     steps = int(os.environ.get("MEEP_GPU_FOLDED_HD_GATE_STEPS", 12))
     max_cells = os.environ.get("MEEP_GPU_FOLDED_HD_GATE_MAX_CELLS")
@@ -2391,13 +2562,18 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
 
     DERIVED from the census's own ``plan_step.selected`` -- the arms the composer chose
     for each row -- never from a list here. The seam record supplies each row's
-    interpreter and module and its ``withdraw_in_seam`` flag, which names the rows the
-    predicate must refuse.
+    module and lift record and its ``withdraw_in_seam`` flag, which names the rows the
+    0.9.2 predicate refused by their standing withdraw and which, since entry 25, it
+    must admit. ``lift_host`` supplies the interpreter (this one), the row's declared
+    needs and the four input files, each required by name.
     """
+    import lift_host  # noqa: PLC0415
+
     census = results / CENSUS
     seam = results / SEAM_RECORD
-    if not census.is_dir() or not seam.is_dir():
-        raise SystemExit(f"the lift leg needs {census} and {seam}")
+    missing = lift_host.missing_inputs(results, CENSUS, SEAM_RECORD)
+    if missing:
+        raise SystemExit(lift_host.missing_reason(results, missing))
     seam_rows = {row["label"]: row for row in _load_jsonl(seam / "h_to_d_seam.jsonl")}
     rows: List[dict] = []
     for leg in ("examples", "tests", "tests_param_matched"):
@@ -2424,8 +2600,9 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
                 # parametrised one.
                 "case": record.get("case") or record["row"],
                 "module": record.get("module") or seam_row.get("module"),
-                "interpreter": (record.get("interpreter") or record.get("python")
-                                or seam_row.get("interpreter") or sys.executable),
+                # WHERE THE CHILD RUNS: this gate's interpreter. The path the census
+                # recorded is kept as recorded_interpreter and never launched.
+                **lift_host.row_fields(record, seam_row),
                 "grid_cells": record.get("grid_cells"),
                 "grid_shape": record.get("grid_shape"),
                 "withdraw_in_seam": bool((seam_row.get("h_to_d_seam") or {})
@@ -2453,8 +2630,11 @@ def _carries_a_measurement(path: Path) -> bool:
 
 def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float,
              resume: bool, only: Optional[Sequence[str]]) -> Dict[str, Any]:
-    """Every corpus row in the cell, re-lifted in its own interpreter and driven."""
+    """Every corpus row in the cell, re-lifted under this gate's interpreter and driven;
+    a row whose declared needs this host lacks is named unlifted_on_this_host
+    (``lift_host``) and counted out."""
     import gate_provenance  # noqa: PLC0415
+    import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
     out_dir = Path(out_dir).resolve()
@@ -2473,7 +2653,6 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                 "reason": (f"the MEEP corpus is not at {examples_dir} / {tests_dir}; "
                            f"set MEEP_GPU_CORPUS_ROOT to the checkout the census was "
                            f"cut over. Refused rather than measured on nothing")}
-    probe_path = API_ROOT / census.PROBE
     environment = dict(os.environ)
     environment.update({"KMP_DUPLICATE_LIB_OK": "TRUE", "MPLBACKEND": "Agg",
                         "PYTHONPATH": str(API_ROOT),
@@ -2505,8 +2684,20 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         if module_file.is_file() and "import parameterized" in module_file.read_text(
                 encoding="utf-8", errors="replace"):
             needs_shim.add(module_name)
+    # WHAT THIS HOST CANNOT LIFT, asked once before any child: the needs the rows
+    # declare, probed under this interpreter (lift_host).
+    host = lift_host.host_check(rows, environment, work)
+    if host["unreadable"]:
+        return {"passed": False, "facts": facts, "host_capabilities": host,
+                "reason": host["unreadable"]}
+    unlifted = host["unlifted_on_this_host"]
     measured: List[dict] = []
     for index, row in enumerate(rows, start=1):
+        if row["label"] in unlifted:
+            log(f"lift {index}/{len(rows)} {row['label']}: UNLIFTED ON THIS HOST, "
+                f"{unlifted[row['label']]}")
+            measured.append(lift_host.unlifted_entry(row, unlifted[row["label"]]))
+            continue
         record_path = per_row / (row["label"].replace(":", "__").replace(".", "_")
                                  + ".json")
         environment["MEEP_GPU_FOLDED_HD_GATE_LABEL"] = row["label"]
@@ -2522,11 +2713,11 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
             record_path)
         if not reusable:
             if row["leg"] == "examples":
-                command = [row["interpreter"], "-u",
+                command = [sys.executable, "-u",
                            str(Path(census.__file__).resolve()),
                            "--leg", "examples", "--child-script",
                            str(examples_dir / row["row"]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", Path(__file__).stem]
             elif not row["module"]:
@@ -2536,13 +2727,13 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                                  "note": "no module recorded"})
                 continue
             else:
-                command = [row["interpreter"], "-u",
+                command = [sys.executable, "-u",
                            str(Path(census.__file__).resolve()),
                            "--leg", "tests", "--child-module",
                            str(tests_dir / row["module"]),
                            "--child-cases", json.dumps([row.get("case")
                                                         or row["row"]]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", Path(__file__).stem]
             log(f"lift {index}/{len(rows)} {row['label']} start "
@@ -2588,15 +2779,39 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                       if b.get("predicate_admits"))
     refused = sorted(label for label, b in blocks.items()
                      if b.get("predicate_admits") is False)
-    refused_by_the_withdraw = sorted(
-        label for label in refused
-        if any("standing integrated" in r
-               for r in blocks[label].get("predicate_reasons", ())))
-    expected_refused = sorted(facts["rows_with_a_standing_withdraw"])
-    if only:
-        expected_refused = sorted(set(expected_refused) & set(blocks))
+    # THE 0.10 REFUSALS, scored by the plain gate's accounting: the seam record's
+    # ``withdraw_in_seam`` rows are admitted since entry 25, and the rows carrying a
+    # magnetic source are refused by ``launch.h_start_reasons``, derived from each
+    # row's own sources (``_shared.lift_refusal_accounting``).
+    accounting = _shared.lift_refusal_accounting(
+        blocks, facts["rows_with_a_standing_withdraw"])
+    refused_by_the_withdraw = accounting["refused_by_a_standing_withdraw"]
+    expected_refused = accounting["expected_refused_from_the_row_sources"]
+    # REFUSED BY THE LIFT, BY NAME, IS NOT UNMEASURED. Since entry 03 the engine refuses
+    # to lift a simulation that pairs a BinaryPartition ``chunk_layout`` with mirror
+    # symmetry when MEEP builds the structure from it
+    # (``from_meep.PARTITION_WITH_MIRRORS_REASON``): MEEP steps that cell unfolded, so no
+    # predicate is ever asked. The two ``test_simulation`` rows that carried the refusal
+    # (``test_infer_dimensions``, ``test_require_dimensions``) hold a partition MEEP wrote
+    # back after halving their grid, and lift since the gate reads MEEP's built grid; no
+    # row of this cell is refused by it now. Only
+    # that named refusal is a disposition; any other row without a predicate verdict
+    # is a row the harness lost and still fails as unmeasured, and the disposition is
+    # bounded at a tenth of the cell so it cannot grow into an escape hatch.
+    records = {r["label"]: r for r in measured}
+    refused_by_the_lift = {
+        label: str(records[label].get("lift_error"))
+        for label, b in blocks.items()
+        if "predicate_admits" not in b
+        and from_meep.PARTITION_WITH_MIRRORS_REASON
+        in str(records[label].get("lift_error") or "")}
+    # A tenth of the rows the engine was asked about: a row unlifted on this host is out
+    # of every denominator, this one included.
+    lift_refusals_bounded = (len(refused_by_the_lift) * 10
+                             <= max(len(blocks) - len(unlifted), 1))
     unmeasured = sorted(label for label, b in blocks.items()
-                        if "predicate_admits" not in b)
+                        if "predicate_admits" not in b and label not in refused_by_the_lift
+                        and label not in unlifted)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
     undefined = {label: blocks[label].get("why_not_driven")
@@ -2622,8 +2837,8 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
             codes_seen[key] = codes_seen.get(key, 0) + 1
     return {
         "passed": bool(not unmeasured and not diverged
-                       and refused_by_the_withdraw == expected_refused
-                       and sorted(refused) == expected_refused
+                       and accounting["passed"]
+                       and lift_refusals_bounded
                        and driven and not not_driven),
         "facts": facts,
         "rows_measured": len(measured),
@@ -2631,7 +2846,13 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         "refused_labels": refused,
         "refused_by_the_standing_withdraw": refused_by_the_withdraw,
         "expected_refused": expected_refused,
+        "refusal_accounting": accounting,
+        "refused_by_the_lift_by_name": refused_by_the_lift,
+        "lift_refusals_within_a_tenth_of_the_cell": lift_refusals_bounded,
         "unmeasured": unmeasured,
+        "unlifted_on_this_host": unlifted,
+        "rows_the_engine_was_asked_about": len(blocks) - len(unlifted),
+        "host_capabilities": host,
         "driven": len(driven), "driven_and_identical": len(passed_rows),
         "diverged": diverged,
         "undefined_by_construction": undefined,
@@ -2825,8 +3046,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "installing the product (the composer refuses it by name and the "
             "arbitration leg pins that: the released folded_fused_magnetic_pair holds "
             "update_H on 78 of the cell's 78 rows), flipping HOISTS_THE_WITHDRAW (no "
-            "leg here drives a hoisted launch, so the 3 withdraw rows stay refused by "
-            "name), any throughput claim (launch counts are not time and no timing "
+            "engine source stands a withdraw in this seam since entry 25: the cell's 3 "
+            "withdraw_in_seam rows are admitted and driven, and the flag answers only a "
+            "foreign source class that brings its own), any throughput claim (launch counts are not time and no timing "
             "exists for this shape), the (ordinary -> PML) cell, complex storage under "
             "a fold, a folded beta or BFAST run, cylindrical storage folded or not, a "
             "keep-resolved run, or any step past a row's own first banded step -- the "

@@ -68,20 +68,23 @@ sibling probes already apply, with the premise driven by ``private_scratch``.
 LEGS
   host legs (no device launch; the predicate's backend clause still needs MPS)
   driver_order       REPLACES is exactly the driver's two adjacent consults, the only
-                     statement between them is the electric withdraw loop, and the
-                     sync channel's containment rule excludes step_D -- all read off
-                     the tree, never spelled
+                     statement between them is the magnetic f_minus_p restore (which
+                     writes B alone, where H is stored), and the sync channel's
+                     containment rule excludes step_D -- all read off the tree, never
+                     spelled
   transcription      both halves are the certified emitters' own bytes: the curl tail
                      differs in EXACTLY the nine redirected magnetic loads, the
                      constitutive tail in EXACTLY the declared lift edits, the
                      signature is the platform ceiling as an equality, every mutation
                      needle resolves exactly once, the text is ASCII
-  refusal            by name: an undeclared source list; a standing INTEGRATED
-                     electric withdraw (the reason the two corpus rows are refused);
-                     a non-integrated electric source NOT refused; a magnetic source
-                     NOT refused; a folded grid naming the second product; a
-                     cylindrical grid; an inactive absorber naming the constitutive
-                     half; a resolved keep policy
+  refusal            by name: an undeclared source list; a source class bringing a
+                     standing INTEGRATED electric withdraw of its own; an engine
+                     integrated electric source NOT refused (it enters through
+                     f_minus_p and stands nothing in the seam); a non-integrated
+                     electric source NOT refused; a magnetic source NOT refused; a
+                     folded grid naming the second product; a cylindrical grid; an
+                     inactive absorber naming the constitutive half; a resolved keep
+                     policy
   arbitration        the composer, asked: on a row both incumbents reach the released
                      B->H pair holds step_B AND update_H, this product is refused by
                      name, launches over step_B..update_E are 2, and the H_to_D seam
@@ -104,9 +107,14 @@ LEGS
   product            the four-reference identity on the eight boundary triples,
                      complete driver steps, movement floor, subnormal census
   lift               every corpus row the standing census puts in the (update_H
-                     ordinary -> step_D PML) cell, re-lifted in its own interpreter
-                     through the census driver: the predicate's verdict per row (47
-                     admitted, 2 refused by name expected), the four-reference
+                     ordinary -> step_D PML) cell, re-lifted under this gate's
+                     interpreter through the census driver (a row whose declared
+                     needs this host lacks is named unlifted_on_this_host and
+                     counted out, lift_host): the predicate's verdict per row
+                     (every row carrying a magnetic source refused by name by
+                     launch.h_start_reasons, derived from the row's own sources;
+                     every other row admitted, the seam record's two
+                     withdraw_in_seam rows included), the four-reference
                      identity per admitted row over the same budget, the composer's
                      own slot table per row, and each row's own disposition -- driven,
                      refused by the predicate, or undefined by construction
@@ -119,15 +127,34 @@ LEGS
                      synchronize_magnetic_fields consults update_H_synchronize. An
                      arm whose plan answers that consult MUST diverge in D/fu_D (the
                      hazard); the arm that declines by the containment rule MUST NOT
-  withdraw           an integrated electric source in the seam (the configuration the
-                     predicate refuses today): the hoisted arrangement identical, the
-                     un-hoisted launch and the array path's after_step_D both diverge
-                     -- the device counterpart of results/h_to_d_withdraw_order
+  withdraw           the seam's one pass on the device: an integrated electric AND an
+                     integrated magnetic source under an active absorber, so the
+                     magnetic f_minus_p restore stands between the two consults. The
+                     predicate admits the run, no withdraw stands, the weld (restore
+                     after both halves) is identical to the array path, and the two
+                     orderings the commutation does not license -- the restore before
+                     update_H, and no magnetic f_minus_p at all -- both diverge
+                     (meep_gpu/test_withdraw_hoist.py's orderings, on this device)
   byte_neutral       the own-cell register reads replaced by reloads of the scratch
                      just stored: the one armed edit required NOT to diverge
+  planted_zero       the two signed-zero forms only a planted -0 reaches, at one
+                     launch against stepping's update_H then step_D: a plain H cell
+                     whose B is -0 and a dsig-only D cell whose D is -0 under a +0
+                     curl. The shipped weld keeps both -0 words; b8 and b13 (the plain
+                     forms spelled through the recurrence and the accumulation) must
+                     turn each into +0
   mutation           the armed shader and host defects, each of which MUST diverge;
                      predicted-null entries recorded with their reason, never dropped
   disarm             the identical harness, shipped bytes, must not diverge
+
+THE PER-CHUNK FORMS (KERNELS.md §7). Both halves take the base kernels' per-chunk
+forms, so the grouping mutations are INVERTED: each plants the package's PREVIOUS
+grouping (``curl_previous_grouping``, ``constitutive_previous_accumulation_grouping``)
+and stays must-catch. The §7.2 battery is armed on both halves of the weld
+(:func:`b_battery`, record mutations in :data:`HOST_MUTATIONS`), its two declared
+nulls are scored on agreeing with a firing control (:func:`b_battery_inert`), and the
+carried select's keying is a predicted null with its reason. The synthetic fixture is a
+MID-RUN state (``Fields.h_separated``), as the composition matrix's is.
 
 Progress reporting: one flushed line per case; every row appended and fsynced as it lands; the
 lift leg writes one JSON per corpus row as it lands and a progress log the child
@@ -291,12 +318,14 @@ LEG_GROUPS: Dict[str, Tuple[str, ...]] = {
              "seed_scale", "purity_ledger", "private_scratch"),
     "compile": ("binding_ceiling", "mutants_compile"),
     "device": ("product", "lift", "launch_structure", "rotation_guard", "sync",
-               "withdraw", "byte_neutral", "mutation", "disarm"),
+               "withdraw", "byte_neutral", "planted_zero", "mutation", "disarm"),
 }
 ALL_LEGS: Tuple[str, ...] = tuple(leg for group in LEG_GROUPS.values() for leg in group)
 
 #: The census this gate lifts its corpus rows from, and the seam record whose
-#: ``withdraw_in_seam`` flag names the rows the predicate must refuse.
+#: ``withdraw_in_seam`` flag named the rows the 0.9.2 predicate refused by their standing
+#: withdraw. Since entry 25 those rows are admitted; the rows the predicate must refuse
+#: are derived from each row's own sources (:func:`lift_refusal_accounting`).
 CENSUS = "metal_coverage_2026-09-04_m0complex"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
 CELL_ARMS: Tuple[str, str] = ("ordinary", "PML")
@@ -527,6 +556,12 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
     for array in stored_volumes(driver.fields).values():
         array[...] = (0.37 * rng.standard_normal(array.shape)).astype(array.dtype)
         array *= scale
+    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # ``stepping.separate_h_from_b`` must not run again on it -- the array path would
+    # copy B into H and f_w on the dsigw cells at the first update_H and no kernel
+    # (and no reference arrangement) does. The composition matrix's seeds carry the
+    # same flag.
+    driver.fields.h_separated = True
     driver.invalidate_fast_path()
     pin_array_path(driver)
     return driver
@@ -870,8 +905,10 @@ def arrangement_singles(driver: Any) -> Arrangement:
     """Reference 2: the two certified singles dispatched at the seam's two slots."""
     residency = Residency()
     fields, pml = driver.fields, driver.pml
-    constitutive = metal_launch.plan_constitutive(fields, pml, "H", residency)
-    curl = metal_launch.plan_pml_curl(fields, pml, "step_D", residency)
+    constitutive = metal_launch.plan_constitutive(fields, pml, "H", residency,
+                                                  chunk_bounds=driver.chunk_bounds_record())
+    curl = metal_launch.plan_pml_curl(fields, pml, "step_D", residency,
+                                      chunk_bounds=driver.chunk_bounds_record())
     if constitutive is None or curl is None:
         raise RuntimeError("a certified single was refused on a fixture this gate "
                            "expects it to admit")
@@ -923,7 +960,8 @@ def build_weld(driver: Any, residency: Residency,
                functions: Optional[Mapping[str, Any]] = None,
                sources: Any = ()) -> Any:
     plan = family.plan_metal_fused_hd_pair(driver.fields, driver.pml, sources=sources,
-                                           residency=residency, functions=functions)
+                                           residency=residency, functions=functions,
+                                           chunk_bounds=driver.chunk_bounds_record())
     if plan is None:
         reasons = family.metal_fused_hd_pair_coverage(driver.fields, driver.pml,
                                                       sources, residency).reasons
@@ -1068,27 +1106,46 @@ class IntermediateCensus:
         original_pml = self._originals["_apply_pml_update"]
         original_constitutive = self._originals["_apply_constitutive_pml"]
 
-        def curl(operands: Any, dtdx: Any, scratch: Any = None) -> Any:
+        def curl(operands: Any, dtdx: Any, presence: Any, scratch: Any = None) -> Any:
             self.calls += 1
+            first_present, second_present = presence
             first = np.array(operands.first, copy=True)
-            shifted_first = np.array(operands.shifted_first, copy=True)
             second = np.array(operands.second, copy=True)
-            shifted_second = np.array(operands.shifted_second, copy=True)
-            out = original_curl(operands, dtdx, scratch)
+            shifted_first = (np.array(operands.shifted_first, copy=True)
+                             if first_present else None)
+            shifted_second = (np.array(operands.shifted_second, copy=True)
+                              if second_present else None)
+            out = original_curl(operands, dtdx, presence, scratch=scratch)
             if out.dtype != np.float32:
                 return out
             # EACH INTERMEDIATE IS RELEASED AS SOON AS THE NEXT ONE HOLDS ITS VALUE.
             # Holding the whole chain at once triples this process's peak on the
-            # corpus's largest row for no measurement.
-            head = self._note("curl:shifted_first-first",
-                              (shifted_first - first).astype(f32))
-            del first, shifted_first
-            tail = self._note("curl:second-shifted_second",
-                              (second - shifted_second).astype(f32))
-            del second, shifted_second
-            total = self._note("curl:sum", (head + tail).astype(f32))
-            del head, tail
-            scaled = self._note("curl:dtdx*sum", (f32(dtdx) * total).astype(f32))
+            # corpus's largest row for no measurement. The chain is MEEP's bracket
+            # left to right, ``((g1s - g1) + g2) - g2s`` (step_generic.cpp:104), or
+            # its form for an absent partner (:72-76, :108).
+            if first_present and second_present:
+                head = self._note("curl:shifted_first-first",
+                                  (shifted_first - first).astype(f32))
+                del first, shifted_first
+                summed = self._note("curl:+second", (head + second).astype(f32))
+                del head, second
+                total = self._note("curl:-shifted_second",
+                                   (summed - shifted_second).astype(f32))
+                del summed, shifted_second
+                scaled = self._note("curl:dtdx*sum", (f32(dtdx) * total).astype(f32))
+            elif first_present:
+                total = self._note("curl:shifted_first-first",
+                                   (shifted_first - first).astype(f32))
+                del first, shifted_first, second
+                scaled = self._note("curl:dtdx*sum", (f32(dtdx) * total).astype(f32))
+            elif second_present:
+                total = self._note("curl:shifted_second-second",
+                                   (shifted_second - second).astype(f32))
+                del first, second, shifted_second
+                scaled = self._note("curl:dtdx*sum", (f32(-dtdx) * total).astype(f32))
+            else:
+                scaled = np.zeros_like(out)
+                total = None
             del total
             _agrees("_curl_from_operands", scaled, out)
             return out
@@ -1129,16 +1186,18 @@ class IntermediateCensus:
             result = original_constitutive(field, source, kps, kms, fw, scratch=scratch)
             if field_in.dtype != np.float32:
                 return result
+            # MEEP's right-hand side first (step_generic.cpp:697):
+            # field + ((kps * fw) - (kms * fw_prev)).
             product = self._note("constitutive:kps*fw", (kps * source_in).astype(f32))
             del source_in
-            summed = self._note("constitutive:field+kps*fw",
-                                (field_in + product).astype(f32))
-            del field_in, product
             previous = self._note("constitutive:kms*fw_prev", (kms * fw_in).astype(f32))
             del fw_in
-            field_new = self._note("constitutive:-kms*fw_prev",
-                                   (summed - previous).astype(f32))
-            del summed, previous
+            difference = self._note("constitutive:kps*fw-kms*fw_prev",
+                                    (product - previous).astype(f32))
+            del product, previous
+            field_new = self._note("constitutive:field+difference",
+                                   (field_in + difference).astype(f32))
+            del field_in, difference
             _agrees("_apply_constitutive_pml:field", field_new, field)
             return result
 
@@ -1169,6 +1228,18 @@ class IntermediateCensus:
                 "helper_calls": self.calls,
                 "calls_this_census_does_not_model": self.uncovered_calls,
                 "covered": self.uncovered_calls == 0}
+
+
+#: THE CLASS A SIBLING GATE EXTENDS, bound once and never rebound. ``drive`` constructs
+#: ``IntermediateCensus()`` by name, so a sibling extends the instrument by rebinding
+#: that name at module scope -- and a gate run directly executes its own module twice,
+#: as ``__main__`` and again under the runner's mangled name
+#: (``metal_gate_runner._load_gate``). A sibling that subclassed whatever the name held
+#: then subclassed ITS OWN first copy, and a census whose ``__enter__`` saved the live
+#: helper as its "original" restored the first copy's wrapper on exit: one wrapper
+#: deeper per census use, until the BFAST gate's last leg raised ``RecursionError``
+#: (measured 2026-10-09, direct runs after the lift leg; a single load passed).
+BaseIntermediateCensus = IntermediateCensus
 
 
 def _agrees(what: str, recomputed: Any, actual: Any) -> None:
@@ -1480,8 +1551,20 @@ def _tap_call(coords: str, target: int) -> str:
 
 
 _A_Y = f"    float a_y = vy ? {_tap_call('i, sj, k', 0)} : 0.0f;\n"
-_ACCUMULATION_0 = ("        a0 = a0 + kp_0 * src0;\n"
-                   "        a0 = a0 - km_0 * prev0;\n")
+#: The constitutive half's accumulation on component 0, inside ``h_cell`` (8-space
+#: indent: the lifted body), in MEEP's grouping f + ((kps*src) - (kms*prev)).
+_ACCUMULATION_0 = ("        if (dw0) { a0 = hi0[ii] + ((kp_0 * src0) - (km_0 * prev0)); }\n")
+
+#: The curl half's per-target membership flags (step_D: the integer lattice on each
+#: target's dsigu axis) and the constitutive half's (update_H: the integer lattice on
+#: each component's own axis), as the emitters spell them.
+_CURL_FLAGS = shaders.curl_membership_flags(True)
+_CURL_FLAGS_LINE = (f"    const bool du0 = {_CURL_FLAGS[0]}, du1 = {_CURL_FLAGS[1]}, "
+                    f"du2 = {_CURL_FLAGS[2]};\n")
+_CONSTITUTIVE_FLAGS = shaders.constitutive_membership_flags("H")
+_CONSTITUTIVE_FLAGS_LINE = (f"        const bool dw0 = {_CONSTITUTIVE_FLAGS[0]}, "
+                            f"dw1 = {_CONSTITUTIVE_FLAGS[1]}, "
+                            f"dw2 = {_CONSTITUTIVE_FLAGS[2]};\n")
 
 
 def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
@@ -1521,18 +1604,20 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
         needle(base, "    float a   = own.a0;\n", "    float a   = hi0[ii];\n"),
         "the curl takes the pre-launch H at its own cell: the seam undone")
     # THE CONSTITUTIVE HALF, inside h_cell (8-space indent: the lifted body).
-    arm("constitutive_accumulations_regrouped",
+    # INVERTED (KERNELS.md §7.1): the shipped grouping is MEEP's, so the mutation
+    # plants the package's PREVIOUS grouping and stays must-catch.
+    arm("constitutive_previous_accumulation_grouping",
         needle(base, _ACCUMULATION_0,
-               "        a0 = a0 + (kp_0 * src0 - km_0 * prev0);\n"),
-        "((f + kps*src) - kms*prev) regrouped to f + (kps*src - kms*prev) is a "
-        "different float32 number")
+               "        if (dw0) { a0 = (hi0[ii] + (kp_0 * src0)) - (km_0 * prev0); }\n"),
+        "the package's previous grouping ((f + kps*src) - kms*prev) planted in place of "
+        "MEEP's f + ((kps*src) - (kms*prev)): a different float32 number")
     arm("constitutive_accumulations_reversed",
         needle(base, _ACCUMULATION_0,
-               "        a0 = a0 - km_0 * prev0;\n        a0 = a0 + kp_0 * src0;\n"),
+               "        if (dw0) { a0 = (hi0[ii] - (km_0 * prev0)) + (kp_0 * src0); }\n"),
         "the two accumulations in the other order")
     arm("prev_reads_the_value_the_store_writes",
-        needle(base, "        float prev0 = wi0[ii];\n",
-               "        float prev0 = b0[ii];\n"),
+        needle(base, "        float prev0 = dw0 ? wi0[ii] : 0.0f;\n",
+               "        float prev0 = dw0 ? b0[ii] : 0.0f;\n"),
         "the split-field history read AFTER the store that overwrote it with B; "
         "fires inside the PML only, where kms != 0")
     arm("kps_kms_swapped",
@@ -1549,13 +1634,15 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
                "    ho1[ii] = own.a1; ho2[ii] = own.a2;\n"),
         "one magnetic component never reaches the scratch; the next step reads stale")
     arm("fw_store_dropped",
-        needle(base, "    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;\n",
-               "    wo1[ii] = own.src1; wo2[ii] = own.src2;\n"),
+        needle(base,
+               "    wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n",
+               "    wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n"),
         "one split-field history never advances")
-    # THE CURL HALF.
-    arm("curl_parens_flattened",
-        needle(base, "dtdx * ((c_y - c) + (b - b_z))", "dtdx * (c_y - c + b - b_z)"),
-        "shaders.py rule 2: reassociation is a different float32 number")
+    # THE CURL HALF. INVERTED (KERNELS.md §7.1), as the constitutive grouping is.
+    arm("curl_previous_grouping",
+        needle(base, "dtdx * (((c_y - c) + b) - b_z)", "dtdx * ((c_y - c) + (b - b_z))"),
+        "the package's previous pairwise grouping (g1s - g1) + (g2 - g2s) planted in "
+        "place of MEEP's left-to-right ((g1s - g1) + g2) - g2s: shaders.py rule 2")
     arm("ownership_mask_dropped",
         needle(base, "    curl0 = at_y ? 0.0f : curl0;\n", ""),
         "the non-owned plane keeps a curl the array path masks")
@@ -1564,8 +1651,7 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
                "    float n0 = ((p0 * km_z) - curl0) * si_z;\n"),
         "vec.hpp's cycle_direction: target 0 takes (y, z)")
     arm("fu_store_dropped",
-        needle(base, "    u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;\n",
-               "    u1[ii] = n1; u2[ii] = n2;\n"),
+        needle(base, "    if (du0) { u0[ii] = n0; }\n", ""),
         "the split-field auxiliary never advances on one component")
     arm("flux_store_dropped",
         needle(base, "    f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;\n",
@@ -1576,6 +1662,95 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
         "without the pragma the toolchain may contract a multiply-add into an fma; "
         "shaders.py carries the pragma because that moved bytes")
     return out
+
+
+def _set_flags(source: str, line: str, stem: str, values: Sequence[str],
+               indent: str) -> str:
+    """One membership-flags line replaced by ``values``: the battery's keying edits."""
+    replacement = (f"{indent}const bool {stem}0 = {values[0]}, {stem}1 = {values[1]}, "
+                   f"{stem}2 = {values[2]};\n")
+    return needle(source, line, replacement)
+
+
+def b_battery(base: str) -> Dict[str, Tuple[str, str]]:
+    """KERNELS.md §7.2's must-catch rows, armed on BOTH halves of one fused source.
+
+    ``base`` is a shipped weld source (plain or folded): the curl half's flags line
+    and stores sit at the kernel's 4-space indent, the constitutive half's inside
+    ``h_cell`` at 8. Each needle resolves exactly once or raises. The two rows a
+    random state cannot reach (b13, and b8's signed-zero pair) are driven by the
+    ``planted_zero`` leg; b8 is ALSO caught here, on the dsig-only cells whose dsig
+    coefficients are not 1. The record rows (b3, b4) are host defects
+    (:data:`HOST_MUTATIONS`).
+    """
+    from meep_gpu.metal_kernels import chunk_bounds as _cb  # noqa: PLC0415
+
+    dsig = tuple(_cb.membership_name(False, axis) for axis, _du in shaders.CURL_CYCLE)
+    out: Dict[str, Tuple[str, str]] = {}
+    out["b1_select_removed"] = (
+        _set_flags(base, _CURL_FLAGS_LINE, "du", ("true", "true", "true"), "    "),
+        "the whole-grid recurrence (the previous package form): every D cell steps the "
+        "dsigu form and fu_D is written everywhere")
+    out["b2_predicate_on_coefficient_identity"] = (
+        _set_flags(base, _CURL_FLAGS_LINE, "du",
+                   ("(kmz[k] != 1.0f)", "(kmx[i] != 1.0f)", "(kmy[j] != 1.0f)"), "    "),
+        "the curl form keyed on kms != 1 instead of chunk membership: a sigma = 0 row "
+        "inside a layer chunk takes the other form")
+    out["b5_dsig_dsigu_swapped"] = (
+        _set_flags(base, _CURL_FLAGS_LINE, "du", dsig, "    "),
+        "each D target keyed on its dsig axis's chunk instead of its dsigu axis's: "
+        "dsig-only and dsigu-only cells trade forms")
+    out["b6_auxiliary_stored_on_a_plain_cell"] = (
+        needle(base, "    if (du0) { u0[ii] = n0; }\n", "    u0[ii] = n0;\n"),
+        "fu_D written outside the recurrence's cells; the array path leaves those words "
+        "alone and every reference compares them")
+    out["b8_plain_curl_through_the_recurrence"] = (
+        needle(needle(base, "    float p0 = du0 ? u0[ii] : f0[ii];\n",
+                      "    float p0 = du0 ? u0[ii] : 0.0f;\n"),
+               "    float v0 = du0 ? ((((f0[ii] * km_z) + n0) - p0) * si_z) : n0;\n",
+               "    float v0 = (((f0[ii] * km_z) + n0) - p0) * si_z;\n"),
+        "the dsig-only form spelled as the recurrence with p := 0: differs wherever the "
+        "dsig coefficients are not 1 (and, with unit coefficients, only on the signed "
+        "zero the planted_zero leg plants)")
+    out["b9_constitutive_select_removed"] = (
+        _set_flags(base, _CONSTITUTIVE_FLAGS_LINE, "dw", ("true", "true", "true"),
+                   "        "),
+        "the whole-grid accumulation (the previous package form), evaluated at every "
+        "recomputed cell: every H cell accumulates and f_w_H takes B everywhere")
+    out["b10_constitutive_predicate_on_coefficient_identity"] = (
+        _set_flags(base, _CONSTITUTIVE_FLAGS_LINE, "dw",
+                   ("(kp0[i] != 1.0f)", "(kp1[j] != 1.0f)", "(kp2[k] != 1.0f)"),
+                   "        "),
+        "the constitutive form keyed on kps != 1 instead of chunk membership")
+    out["b11_f_w_stored_on_a_plain_cell"] = (
+        needle(base, "        float wnext0 = dw0 ? src0 : wi0[ii];\n",
+               "        float wnext0 = src0;\n"),
+        "f_w_H's scratch takes B outside the accumulation's cells, where the array path "
+        "leaves the pre-launch word")
+    return out
+
+
+def b_battery_inert(base: str) -> Dict[str, Tuple[str, str, str]]:
+    """The battery's two DECLARED NULLS (KERNELS.md §7.2): armed, launched, scored on agreeing.
+
+    Each names the firing row that reaches the same rule where it IS observable. The
+    guards they remove are traffic, not words, and are pinned statically by the
+    module's own tests.
+    """
+    return {
+        "b7_auxiliary_load_unconditional": (
+            needle(base, "    float p0 = du0 ? u0[ii] : f0[ii];\n",
+                   "    float p0u = u0[ii]; float p0 = du0 ? p0u : f0[ii];\n"),
+            "DECLARED NULL: an fu_D load outside the guard with the store still guarded "
+            "changes no word -- the dsig-only form reads D, never the loaded value",
+            "b6_auxiliary_stored_on_a_plain_cell"),
+        "b12_constitutive_load_unconditional": (
+            needle(base, "        float prev0 = dw0 ? wi0[ii] : 0.0f;\n",
+                   "        float prev0 = wi0[ii];\n"),
+            "DECLARED NULL: prev is consumed only on the accumulation's cells, so an "
+            "unguarded load of the pre-launch f_w_H changes no word",
+            "prev_reads_the_value_the_store_writes"),
+    }
 
 
 def periodic_wrap_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
@@ -1651,6 +1826,16 @@ PREDICTED_NULL: Tuple[Dict[str, str], ...] = (
                 "structurally by test_metal_fused_hd_pair::"
                 "test_a_curl_never_differences_a_component_along_its_own_axis"),
      "control": "constitutive_coefficient_index_moved_off_the_own_axis"},
+    {"name": "carried_select_keyed_at_the_thread_not_the_recomputed_cell",
+     "reason": ("inert by construction and NOT ARMABLE as a shader edit: h_cell takes "
+                "only the recomputed cell's coordinates, so its bounds block has no "
+                "thread coordinate to key on, and on this seam the two keyings agree "
+                "anyway -- an H component's membership is on its OWN axis and a curl "
+                "never differences a component along its own axis, so every tap's "
+                "coordinate there is the thread's. Asserted structurally by "
+                "test_metal_fused_hd_pair::"
+                "test_every_recompute_selects_on_an_axis_its_tap_does_not_shift"),
+     "control": "b9_constitutive_select_removed"},
 )
 
 
@@ -1819,6 +2004,59 @@ def constitutive_takes_the_half_integer_lattice(plan: Any, residency: Residency,
     return plan
 
 
+#: The chunk record's first word inside the packed ``Params`` (byte 20 / 4).
+PARAMS_RECORD_WORD = family.params_record_dtype().fields["cb"][1] // 4
+
+
+def _bound_off_by_one(record: Any) -> Any:
+    """Every non-empty low run one row longer: the boundary plane changes form."""
+    from meep_gpu.chunk_map import record_index  # noqa: PLC0415
+
+    out = np.array(record, copy=True)
+    for half in (False, True):
+        for axis in range(3):
+            a0, a1, b0 = (int(out[record_index(half, axis, w)]) for w in range(3))
+            if a1 > a0 and (b0 == 0 or a1 + 1 < b0):
+                out[record_index(half, axis, 1)] = a1 + 1
+    return out
+
+
+def _lattices_swapped(record: Any) -> Any:
+    """The integer and half-integer entries exchanged."""
+    from meep_gpu.chunk_map import record_index  # noqa: PLC0415
+
+    out = np.array(record, copy=True)
+    for axis in range(3):
+        for word in range(4):
+            i, h = record_index(False, axis, word), record_index(True, axis, word)
+            out[i], out[h] = record[h], record[i]
+    return out
+
+
+def rebind_record(plan: Any, residency: Residency,
+                  mutate: Callable[[Any], Any]) -> Any:
+    """HOST DEFECT: the kernel is right and the record packed into its ``Params`` is not.
+
+    The plan's own ``Params`` words are read back and only the record's 25 words are
+    replaced, so the five scalars stay the shipped ones; the words are written as they
+    are -- not through ``chunk_bounds.plan_words``, whose refusals would decline the
+    very defect being planted.
+    """
+    import torch  # noqa: PLC0415
+    from meep_gpu.chunk_map import RECORD_WORDS  # noqa: PLC0415
+
+    static = list(plan.static_args)
+    host = static[-1].detach().to("cpu").numpy().astype(np.int32).copy()
+    span = slice(PARAMS_RECORD_WORD, PARAMS_RECORD_WORD + RECORD_WORDS)
+    planted = np.asarray(mutate(host[span]), dtype=np.int32)
+    if np.array_equal(planted, host[span]):
+        raise AssertionError("the record mutation changed no word of the record")
+    host[span] = planted
+    static[-1] = torch.from_numpy(host).to(torch.device(residency.device))
+    plan.static_args = tuple(static)
+    return plan
+
+
 HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Residency, Any], Any], str, str]] = {
     "f_w_H_written_in_place": (
         lambda plan, residency, pml: AliasedLaunch(plan,
@@ -1836,6 +2074,15 @@ HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Residency, Any], Any], str, str]]
     "constitutive_takes_the_half_integer_lattice": (
         constitutive_takes_the_half_integer_lattice, "all",
         "kps bound from update_E's lattice"),
+    "b3_bound_off_by_one": (
+        lambda plan, residency, pml: rebind_record(plan, residency, _bound_off_by_one),
+        "all",
+        "the packed record's low runs one row long: the boundary plane takes the "
+        "in-chunk form in both halves"),
+    "b4_lattices_swapped": (
+        lambda plan, residency, pml: rebind_record(plan, residency, _lattices_swapped),
+        "all",
+        "the packed record's integer and half-integer entries exchanged"),
 }
 
 
@@ -1847,7 +2094,8 @@ def leg_driver_order() -> Dict[str, Any]:
     """REPLACES is the driver's two ADJACENT consults and nothing else sits between.
 
     Read off ``driver.py`` by the seam module's own locator, which RAISES unless the
-    only statement between the two consults is the electric withdraw loop. The sync
+    only statement between the two consults is the magnetic ``f_minus_p`` restore
+    (``h_to_d_seam.EXPECTED_BETWEEN``; it writes B alone, which step_D does not read). The sync
     channel's facts are read off ``fastpath`` the same way: the by-name consult maps
     to ``update_H`` and its containment set excludes ``step_D``, which is what makes
     the shim's default refusal a derived rule and not this file's opinion.
@@ -1896,7 +2144,7 @@ def leg_transcription(codes: Sequence[int]) -> Dict[str, Any]:
     constitutive_removed = [line for line in certified_constitutive if line not in lifted]
     constitutive_added = [line for line in lifted if line not in certified_constitutive]
     accumulations_verbatim = all(
-        f"        a{t} = a{t} + kp_{t} * src{t};\n        a{t} = a{t} - km_{t} * prev{t};"
+        f"        if (dw{t}) {{ a{t} = hi{t}[ii] + ((kp_{t} * src{t}) - (km_{t} * prev{t})); }}"
         in source for t in range(3))
     # EVERY NEEDLE IN THE FILE, RESOLVED. Each builder raises unless its needle
     # matched exactly once, so reaching the end of each call IS the assertion; the
@@ -1906,6 +2154,10 @@ def leg_transcription(codes: Sequence[int]) -> Dict[str, Any]:
     for name in shader_mutations(codes):
         anchors[name] = True
     for name in inert_mutations(codes):
+        anchors[name] = True
+    for name in b_battery(source):
+        anchors[name] = True
+    for name in b_battery_inert(source):
         anchors[name] = True
     for name in periodic_wrap_mutations(PERIODIC_CODES):
         anchors[name] = True
@@ -1974,6 +2226,31 @@ def _volume_source(fields: Any, component: str, integrated: bool) -> Any:
                                                   is_integrated=integrated))
 
 
+class ForeignStandingWithdraw:
+    """A source class from outside this package that brings an integrated electric
+    ``withdraw`` of its own.
+
+    No engine source stands one any more: an integrated source enters at the
+    constitutive update through ``f_minus_p`` (``sources.f_minus_p_begin``), and
+    ``withdraw_hoist.standing_withdraws`` answers ``()`` for every engine source. The
+    predicates still refuse a class that does, by name, because nothing measured a
+    fused launch beside its body. Built to ``withdraw_hoist._withdraw_does_work``'s own
+    three conditions (a callable ``withdraw``, ``is_integrated``, a positive
+    ``_n_source_points``) and electric by the driver's split, so a predicate that did
+    not recognise it would make the refusal check pass vacuously -- the check therefore
+    asks ``standing_withdraws`` too.
+    """
+
+    field_type = "D"
+    component = "Ez"
+    is_integrated = True
+    _n_source_points = 3
+    _applied_dipole = 0j
+
+    def withdraw(self, fields: Any) -> None:  # noqa: ARG002 - never called by a predicate
+        raise AssertionError("a coverage predicate called a source's withdraw")
+
+
 @contextlib.contextmanager
 def policy(value: str):
     previous = os.environ.get("MEEP_GPU_SUBNORMAL_POLICY")
@@ -1995,7 +2272,10 @@ def leg_refusal() -> Dict[str, Any]:
 
     admitted = cover(fields, pml, (), residency)
     undeclared = cover(fields, pml, None, residency)
-    integrated = cover(fields, pml, (_volume_source(fields, "Ez", True),), residency)
+    engine_integrated = _volume_source(fields, "Ez", True)
+    integrated = cover(fields, pml, (engine_integrated,), residency)
+    foreign_source = ForeignStandingWithdraw()
+    foreign = cover(fields, pml, (foreign_source,), residency)
     plain_electric = cover(fields, pml, (_volume_source(fields, "Ez", False),), residency)
     magnetic_source = cover(fields, pml, (_volume_source(fields, "Hy", True),), residency)
     folded_fields, folded_pml = matrix.folded(boundaries={"y": "metallic"}, depth=1.2)
@@ -2004,6 +2284,13 @@ def leg_refusal() -> Dict[str, Any]:
     cylindrical = cover(cyl_fields, cyl_pml, (), Residency())
     inactive_fields, inactive_pml = matrix.cart(pml=0)
     inactive = cover(inactive_fields, inactive_pml, (), Residency())
+    # THE RUN'S FIRST update_H: the same fixture before H was started from B. The
+    # magnetic source is this seam's business exactly once, and the refusal names
+    # the start the weld does not perform.
+    first_fields, first_pml = matrix.cart(boundaries={"x": "metallic"})
+    first_fields.h_separated = False
+    first_update = cover(first_fields, first_pml,
+                         (_volume_source(first_fields, "Hy", True),), Residency())
     with policy("keep"):
         keep = cover(fields, pml, (), residency)
         keep_report = subnormal.mps_policy_report()
@@ -2016,11 +2303,19 @@ def leg_refusal() -> Dict[str, Any]:
         "admitted_on_the_cell": admitted.covered,
         "undeclared_refused_by_name": bool(not undeclared.covered
                                            and named(undeclared, "was not declared")),
-        "integrated_electric_withdraw_refused_by_name": bool(
-            not integrated.covered
-            and named(integrated, "standing integrated", "HOISTS_THE_WITHDRAW = False")),
+        "integrated_electric_source_stands_no_withdraw": bool(
+            integrated.covered
+            and not withdraw_hoist.standing_withdraws((engine_integrated,))
+            and not named(integrated, "withdraw")),
+        "foreign_standing_withdraw_refused_by_name": bool(
+            not foreign.covered
+            and len(withdraw_hoist.standing_withdraws((foreign_source,))) == 1
+            and named(foreign, "standing integrated", "HOISTS_THE_WITHDRAW = False")),
         "plain_electric_source_not_refused": plain_electric.covered,
         "magnetic_source_not_refused": magnetic_source.covered,
+        "first_update_H_refused_by_name": bool(
+            not first_update.covered
+            and named(first_update, "constitutive half:", "separate_h_from_b")),
         "folded_refused_naming_the_second_product": bool(
             not folded.covered and named(folded, "folded", "own product")),
         "cylindrical_refused": bool(not cylindrical.covered
@@ -2037,8 +2332,10 @@ def leg_refusal() -> Dict[str, Any]:
         "reasons": {
             "undeclared": list(undeclared.reasons),
             "integrated_electric": list(integrated.reasons),
+            "foreign_standing_withdraw": list(foreign.reasons),
             "plain_electric": list(plain_electric.reasons),
             "magnetic": list(magnetic_source.reasons),
+            "first_update_H": list(first_update.reasons),
             "folded": list(folded.reasons),
             "cylindrical": list(cylindrical.reasons),
             "inactive_absorber": list(inactive.reasons),
@@ -2490,6 +2787,132 @@ def leg_rotation_guard(driver: Any) -> Dict[str, Any]:
     }
 
 
+NEGATIVE_ZERO_WORD = 0x80000000
+
+
+def _plain_cell(driver: Any) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
+    """Two interior cells, each outside every integer-lattice layer chunk with its
+    backward neighbours: ``d`` for the curl plant, ``h`` (one row further along x) for
+    the constitutive plant. Refused by name when the fixture has no such cells."""
+    from meep_gpu.metal_kernels import chunk_bounds as _cb  # noqa: PLC0415
+
+    record = driver.chunk_bounds_record()
+    shape = tuple(int(n) for n in driver.grid.shape)
+    lines = [_cb.decode(record, False, axis, shape[axis]) for axis in range(3)]
+    centre = tuple(n // 2 for n in shape)
+    for axis, line in enumerate(lines):
+        for row in (centre[axis] - 1, centre[axis], centre[axis] + 1):
+            if not 0 <= row < shape[axis] or bool(line[row]):
+                raise RuntimeError(
+                    f"VACUOUS: row {row} of axis {axis} is inside a layer chunk or off "
+                    f"the grid; the planted cells must be plain")
+    d = centre
+    h = (centre[0] + 1, centre[1], centre[2])
+    return d, h
+
+
+def _plant(driver: Any, d: Tuple[int, int, int], h: Tuple[int, int, int]) -> None:
+    """The two planted states. ``Dx[d] = -0`` under a +0 curl: H = B on the plain cells
+    around ``d``, with equal stencil partners so ((Hz_y - Hz) + Hy) - Hy_z = +0.
+    ``Bx[h] = -0``, so the plain update_H gives Hx[h] = -0."""
+    fields = driver.fields
+    i, j, k = d
+    fields.Bz[i, j - 1, k] = fields.Bz[i, j, k]
+    fields.By[i, j, k - 1] = fields.By[i, j, k]
+    fields.Dx[i, j, k] = np.float32(-0.0)
+    fields.Bx[h] = np.float32(-0.0)
+
+
+def _word_at(array: Any, cell: Tuple[int, int, int]) -> int:
+    """The uint32 word of one stored cell."""
+    return int(words(array).reshape(np.shape(array))[cell])
+
+
+def _one_launch(driver: Any, functions: Optional[Mapping[str, Any]] = None
+                ) -> Dict[str, np.ndarray]:
+    residency = Residency()
+    plan = build_weld(driver, residency, functions=functions)
+    residency.sync_in()
+    plan.run()
+    residency.sync_out()
+    return {name: np.array(array, copy=True)
+            for name, array in stored_volumes(driver.fields).items()}
+
+
+def leg_planted_zero() -> Dict[str, Any]:
+    """The two signed-zero forms only a planted -0 reaches (KERNELS.md §7.2, DESIGN D13).
+
+    ONE LAUNCH, against ``stepping.update_H`` then ``stepping.step_D`` on an identically
+    seeded and planted engine, on the all-periodic case (no ownership mask, no wall).
+    The shipped weld must match the array path on every stored word and keep both
+    planted ``-0`` words; ``b8`` (the plain curl through the recurrence with ``p := 0``)
+    must turn ``Dx[d]`` into ``+0`` and ``b13`` (the plain constitutive through the
+    accumulation with ``kps = 1, kms = 0``) must turn ``Hx[h]`` into ``+0``.
+    """
+    keywords = dict(CASES)[PERIODIC_MUTATION_CASE]
+    codes = codes_of(PERIODIC_MUTATION_CASE)
+    seed = 98000
+
+    def planted() -> Any:
+        driver = build_driver(keywords, seed)
+        d, h = _plain_cell(driver)
+        _plant(driver, d, h)
+        return driver, d, h
+
+    oracle_driver, d, h = planted()
+    stepping.update_H(oracle_driver.fields, oracle_driver.pml)
+    stepping.step_D(oracle_driver.fields, oracle_driver.pml)
+    oracle = {name: np.array(array, copy=True)
+              for name, array in stored_volumes(oracle_driver.fields).items()}
+    oracle_words = {"Dx": _word_at(oracle["Dx"], d), "Hx": _word_at(oracle["Hx"], h)}
+    if oracle_words != {"Dx": NEGATIVE_ZERO_WORD, "Hx": NEGATIVE_ZERO_WORD}:
+        raise RuntimeError(f"VACUOUS: the array path's planted words are {oracle_words}, "
+                           f"not -0; the plant did not reach the plain forms")
+
+    base = family.fused_hd_pair_source(codes)
+    sources = {
+        "shipped": None,
+        "b8_plain_curl_through_the_recurrence": b_battery(base)[
+            "b8_plain_curl_through_the_recurrence"][0],
+        "b13_plain_constitutive_through_the_accumulation": needle(
+            base, "        float a0 = src0;\n",
+            "        float a0 = 0.0f + ((1.0f * src0) - (0.0f * prev0));\n"),
+    }
+    rows: Dict[str, Any] = {}
+    for name, source in sources.items():
+        driver, _d, _h = planted()
+        functions = (None if source is None
+                     else {shaders.CONTRACT_OFF: compile_source(source).fused_hd_pair_step})
+        state = _one_launch(driver, functions)
+        per_volume = {volume: differing(oracle[volume], state[volume])
+                      for volume in oracle}
+        rows[name] = {
+            "differing_words": int(sum(per_volume.values())),
+            "per_volume": {k: int(v) for k, v in per_volume.items() if v},
+            "Dx_word": f"{_word_at(state['Dx'], d):#010x}",
+            "Hx_word": f"{_word_at(state['Hx'], h):#010x}",
+        }
+        log(f"    planted_zero {name}: {rows[name]['differing_words']} differing words, "
+            f"Dx{d}={rows[name]['Dx_word']} Hx{h}={rows[name]['Hx_word']}")
+    shipped = rows["shipped"]
+    return {
+        "passed": bool(
+            shipped["differing_words"] == 0
+            and int(shipped["Dx_word"], 16) == NEGATIVE_ZERO_WORD
+            and int(shipped["Hx_word"], 16) == NEGATIVE_ZERO_WORD
+            and int(rows["b8_plain_curl_through_the_recurrence"]["Dx_word"], 16) == 0
+            and int(rows["b13_plain_constitutive_through_the_accumulation"]["Hx_word"],
+                    16) == 0),
+        "case": PERIODIC_MUTATION_CASE, "cells": {"Dx": list(d), "Hx": list(h)},
+        "oracle_words": {key: f"{value:#010x}" for key, value in oracle_words.items()},
+        "rows": rows,
+        "what_this_licenses": (
+            "that the two plain forms are output selects in both halves of the weld: "
+            "a -0 field under a +0 curl stays -0, and H = B keeps a -0 B; the two "
+            "spellings through the recurrence and the accumulation give +0 there"),
+    }
+
+
 def leg_binding_ceiling() -> Dict[str, Any]:
     """35, 34 and 32 bindings must FAIL; the shipped 31 must COMPILE everywhere."""
     refuted = {}
@@ -2545,6 +2968,16 @@ def leg_mutants_compile(codes: Sequence[int]) -> Dict[str, Any]:
         compiled, error = _compiles(source)
         rows[name] = {"compiled": compiled, "error": error, "why_it_must_fire": why,
                       "case": PERIODIC_MUTATION_CASE, "scored_on": "diverging"}
+    base = family.fused_hd_pair_source(codes)
+    for name, (source, why) in b_battery(base).items():
+        compiled, error = _compiles(source)
+        rows[name] = {"compiled": compiled, "error": error, "why_it_must_fire": why,
+                      "case": MUTATION_CASE, "scored_on": "diverging"}
+    for name, (source, reason, control) in b_battery_inert(base).items():
+        compiled, error = _compiles(source)
+        rows[name] = {"compiled": compiled, "error": error, "why_it_must_fire": reason,
+                      "case": MUTATION_CASE, "scored_on": "agreeing",
+                      "control": control}
     compiled, error = _compiles(byte_neutral_source(codes))
     rows["byte_neutral_control"] = {"compiled": compiled, "error": error,
                                     "case": MUTATION_CASE, "scored_on": "agreeing",
@@ -2586,6 +3019,64 @@ def all_arrangements(driver: Any, functions: Optional[Mapping[str, Any]] = None,
                                            launcher=launcher, rest_unfused=False,
                                            name="weld_seam_only"),
     }
+
+
+def race_observable(driver: Any) -> Tuple[bool, List[str]]:
+    """Can an in-place H/f_w_H write change any word a foreign tap reads on this driver?
+
+    A tap recomputes ``update_H`` at a neighbour. On a cell outside the component's own
+    (dsigw) layer that recompute is the output select ``H = B`` and reads neither the
+    pre-launch ``H`` nor ``f_w_H``, so aliasing them to the scratch changes nothing it
+    reads. The race is therefore observable only where a LIVE tap (its shift axis
+    resolved, so the curl partner is present) reads a component whose own-axis
+    integer membership line is non-empty. Returns ``(observable, live tapped
+    components with a layer)``.
+    """
+    from meep_gpu.metal_kernels import chunk_bounds as _cb  # noqa: PLC0415
+
+    record = driver.chunk_bounds_record()
+    shape = tuple(int(n) for n in driver.grid.shape)
+    layered: List[str] = []
+    for var, target in family.HALO_TAPS:
+        axis = "xyz".index(var[-1])
+        if shape[axis] < 2:
+            continue
+        if bool(_cb.decode(record, False, target, shape[target]).any()):
+            layered.append(f"H{'xyz'[target]} via {var}")
+    return bool(layered), sorted(set(layered))
+
+
+def contract_untouched_auxiliaries(driver: Any) -> Tuple[str, ...]:
+    """The auxiliary volumes the auxiliary contract never touches on this driver.
+
+    KERNELS.md §1, C2: an ``fu_`` word is read and written only where its component's
+    dsigu layer is carried, an ``f_w_`` word only where its own (dsigw) layer is -- on
+    the record's membership lines, half-integer for the B curl and ``update_E``,
+    integer for the D curl and ``update_H``. A volume whose line is empty on every row
+    (an invariant axis, or an axis with no layer) moves on NO path, the array path's
+    included, so the movement floor cannot require it to move; it is still compared
+    word for word like every other volume.
+    """
+    from meep_gpu.metal_kernels import chunk_bounds as _cb  # noqa: PLC0415
+
+    record = driver.chunk_bounds_record()
+    shape = tuple(int(n) for n in driver.grid.shape)
+
+    def empty(half: bool, axis: int) -> bool:
+        return not bool(_cb.decode(record, half, axis, shape[axis]).any())
+
+    out: List[str] = []
+    for side, backward in (("B", False), ("D", True)):
+        half = shaders.CURL_HALF_INTEGER[backward]
+        for target, (_dsig, dsigu) in enumerate(shaders.CURL_CYCLE):
+            if empty(half, dsigu):
+                out.append(f"fu_{side}{'xyz'[target]}")
+    for side in ("H", "E"):
+        half = shaders.CONSTITUTIVE_HALF_INTEGER[side]
+        for axis in range(3):
+            if empty(half, axis):
+                out.append(f"f_w_{side}{'xyz'[axis]}")
+    return tuple(out)
 
 
 def run_product(driver: Any, steps: int, progress: Optional[Callable[[str], None]] = None,
@@ -2641,8 +3132,11 @@ def run_product(driver: Any, steps: int, progress: Optional[Callable[[str], None
                          if name in result["volumes_compared"])
     seam_moved = {name: int(result["moved_from_seed"].get(name, 0))
                   for name in seam_outputs}
+    # Under the auxiliary contract an auxiliary whose layer line is empty everywhere
+    # moves on no path, so it is exempt from the floor (and still compared).
+    exempt = contract_untouched_auxiliaries(driver)
     if movement_floor == "all":
-        floor = not result["arrays_that_never_moved"]
+        floor = not (set(result["arrays_that_never_moved"]) - set(exempt))
     else:
         floor = bool(seam_outputs) and sum(seam_moved.values()) > 0
     # A ROTATION LEFT STANDING VOIDS EVERY COMPARISON AFTER IT, IN BOTH DIRECTIONS.
@@ -2670,6 +3164,7 @@ def run_product(driver: Any, steps: int, progress: Optional[Callable[[str], None
         "weld_launched_once_per_step_and_absorbed_step_D": weld_ok,
         "movement_floor": movement_floor,
         "movement_floor_met": floor,
+        "auxiliaries_the_contract_leaves_untouched": list(exempt),
         "seam_output_volumes": list(seam_outputs),
         "seam_output_words_moved": seam_moved,
         "seam_output_volumes_that_moved": sorted(name for name, n in seam_moved.items()
@@ -2794,101 +3289,114 @@ def leg_sync(driver: Any, steps: int) -> Dict[str, Any]:
     }
 
 
-#: THE SOURCE IS SCALED WITH THE SEED, and leaving it unscaled DISARMS this leg.
+#: THE SOURCES ARE SCALED WITH THE SEED, and leaving them unscaled DISARMS this leg.
 #:
-#: Measured 2026-09-05, and it is the sharpest interaction in this file. The seeded
-#: state carries :data:`SEED_SCALE_BITS`; an O(1) injected dipole added to a 2^80 field
-#: rounds away entirely, so dropping the withdraw or moving it after ``step_D`` changes
-#: no word at all -- BOTH null controls of this leg came back not diverging, which is a
-#: leg that proves nothing while reporting a green hoisted arrangement. Scaling the
-#: amplitude by the same power of two restores the whole run as the exact 2^80 twin of
-#: the unscaled one: 0 differing words over every step the unscaled run stays out of
-#: the band, both controls diverging at step 2 again, and the budget clear of the band
-#: (peak |x| = 3.2e26).
+#: Measured 2026-09-05 on the withdraw this leg used to drive, and it holds for the
+#: f_minus_p words it drives now: the seeded state carries :data:`SEED_SCALE_BITS`, and
+#: an O(1) dipole subtracted from a 2^80 field rounds away entirely, so neither null
+#: control below could diverge and the leg would prove nothing while reporting a green
+#: weld. Scaling the amplitudes by the same power of two keeps every subtraction inside
+#: the float32 resolution of the words it touches.
 INTEGRATED_SOURCE: Dict[str, Any] = {
     "component": "Ez", "center": (0.15, -0.1, 0.05), "size": (0.0, 0.0, 0.0),
     "frequency": 1.0, "source_type": "gaussian", "fwidth": 0.5, "is_integrated": True,
     "amplitude": 2.0 ** SEED_SCALE_BITS,
 }
 
+#: The magnetic half of the seam's sources: an INTEGRATED B source, whose f_minus_p
+#: restore is the one pass between the update_H and step_D consults wherever H is stored.
+INTEGRATED_MAGNETIC_SOURCE: Dict[str, Any] = {
+    "component": "Hy", "center": (-0.1, 0.15, -0.05), "size": (0.0, 0.0, 0.0),
+    "frequency": 1.1, "source_type": "gaussian", "fwidth": 0.8, "is_integrated": True,
+    "amplitude": 2.0 ** SEED_SCALE_BITS,
+}
 
-def leg_withdraw(keywords: Mapping[str, Any], seed: int, steps: int) -> Dict[str, Any]:
-    """An integrated electric source in the seam: hoisted, un-hoisted, after_step_D.
+#: The two orderings of the magnetic restore the commutation does NOT license, run on
+#: the array path. Each must diverge from the driver's order, or the comparison cannot
+#: tell a weld that kept the restore's place from one that moved it.
+SEAM_NULL_CONTROLS: Tuple[str, ...] = ("restore_before_update_H", "no_magnetic_f_minus_p")
 
-    THE PREDICATE REFUSES THIS CONFIGURATION TODAY, by name, because the product
-    declares ``HOISTS_THE_WITHDRAW = False``; that refusal is recorded here. What this
-    leg then measures is the WIRING the installer would give a product that declared
-    True -- ``LeadingWithdrawPlan`` around the launch -- against the array path, with
-    the two null controls the campaign measured on the array path reproduced on the
-    device: the un-hoisted launch (the withdraw runs after it) and the array path with
-    the withdraw moved after ``step_D``. Both must diverge at step 2; the hoisted
-    arrangement must be identical. This licenses the wiring, not the flag.
+
+class ArrayPathControl:
+    """An arrangement that dispatches nothing: the array path, told apart by identity.
+
+    The seam leg's null controls change the DRIVER's own order rather than a launch, so
+    they need an arrangement the step wrapper can recognise while every slot still runs
+    the array path.
     """
-    driver = build_driver(keywords, seed, sources=(INTEGRATED_SOURCE,))
+
+    __slots__ = ("fields", "plans", "declined", "dispatched", "absorbed",
+                 "sync_refusals", "sync_answered")
+
+    def __init__(self, fields: Any) -> None:
+        self.fields = fields
+        self.plans: Dict[str, Any] = {}
+        self.declined: Dict[str, int] = {}
+        self.dispatched: Dict[str, int] = {}
+        self.absorbed: Dict[str, int] = {}
+        self.sync_refusals = 0
+        self.sync_answered = 0
+
+    def dispatch(self, slot: str, fields: Any) -> bool:  # noqa: ARG002
+        self.declined[slot] = self.declined.get(slot, 0) + 1
+        return False
+
+    @property
+    def launches(self) -> int:
+        return 0
+
+
+def seam_restore_leg(driver: Any, coverage: Callable[..., Any], weld: Arrangement,
+                     steps: int) -> Dict[str, Any]:
+    """The seam's one pass, driven: the weld against the array path and two null controls.
+
+    ``driver`` carries the integrated sources (electric and magnetic) and an active
+    absorber; ``coverage`` is the product's predicate; ``weld`` is the force-installed
+    arrangement. SINCE ENTRY 25 NO WITHDRAW STANDS IN THIS SEAM: an integrated source's
+    dipole enters through ``f_minus_p`` around each constitutive consult, and the one
+    statement between the ``update_H`` and ``step_D`` consults is the MAGNETIC restore,
+    which writes B alone (``withdraw_hoist.SEAM_PASS``) and runs only where H is stored.
+    A launch spanning both halves therefore leaves the restore after ``step_D``, which
+    must be byte-identical to the driver's order; the restore moved before
+    ``update_H`` (the constitutive update then reads B without the dipole) and the
+    magnetic bracket dropped (the dipole never enters) must both diverge.
+    """
+    from meep_gpu.sources import f_minus_p_end  # noqa: PLC0415
+
     sources = tuple(driver._sources)  # noqa: SLF001
-    refusal = family.metal_fused_hd_pair_coverage(driver.fields, driver.pml, sources,
-                                                  Residency())
-    hoistable, hoist_reasons = withdraw_hoist.hoistable(driver.fields, sources)
     standing = withdraw_hoist.standing_withdraws(sources)
+    verdict = coverage(driver.fields, driver.pml, sources, Residency())
+    stores_h = bool(driver._stores_H())  # noqa: SLF001
+    fact = h_to_d_seam.driver_seam_fact()
+    between = tuple(entry["statement"] for entry in fact["between"])
+    original_begin = driver._f_minus_p_begin_B  # noqa: SLF001
 
-    class AfterStepD:
-        """The array path with the withdraw moved to AFTER the curl, before injection."""
+    def restore_before_update_h(fast: Any, time: float) -> Any:
+        held = original_begin(fast, time)
+        f_minus_p_end(driver.fields, held)
+        return None
 
-        __slots__ = ("fields", "declined", "dispatched", "absorbed", "sync_refusals",
-                     "sync_answered", "plans")
+    def no_magnetic_f_minus_p(fast: Any, time: float) -> Any:  # noqa: ARG001
+        return None
 
-        def __init__(self, fields: Any) -> None:
-            self.fields = fields
-            self.declined: Dict[str, int] = {}
-            self.dispatched: Dict[str, int] = {}
-            self.absorbed: Dict[str, int] = {}
-            self.sync_refusals = 0
-            self.sync_answered = 0
-            self.plans: Dict[str, Any] = {}
-
-        def dispatch(self, slot: str, fields: Any) -> bool:
-            if slot != "step_D":
-                self.declined[slot] = self.declined.get(slot, 0) + 1
-                return False
-            stepping.step_D(fields, driver.pml)
-            for _index, source in standing:
-                type(source).withdraw(source, fields)
-            self.dispatched[slot] = self.dispatched.get(slot, 0) + 1
-            return True
-
-        @property
-        def launches(self) -> int:
-            return 0
-
-    suppressed = {id(source): source for _index, source in standing}
-
-    def suppress() -> None:
-        for source in suppressed.values():
-            source.withdraw = lambda fields: None  # the driver's in-seam call, made a no-op
-
-    def release() -> None:
-        for source in suppressed.values():
-            if "withdraw" in vars(source):
-                del source.withdraw
-
-    after = Arrangement("after_step_D", AfterStepD(driver.fields), None)  # type: ignore[arg-type]
-    hoisted = arrangement_weld(driver, hoist=True)
-    not_hoisted = arrangement_weld(driver, hoist=False)
-    arrangements = {"array": Arrangement("array", None, None), "after_step_D": after,
-                    "weld_hoisted": hoisted, "weld_not_hoisted": not_hoisted}
+    controls = {name: Arrangement(name, ArrayPathControl(driver.fields), None)  # type: ignore[arg-type]
+                for name in SEAM_NULL_CONTROLS}
+    begins = {id(controls["restore_before_update_H"].shim): restore_before_update_h,
+              id(controls["no_magnetic_f_minus_p"].shim): no_magnetic_f_minus_p}
+    arrangements = {"array": Arrangement("array", None, None), weld.name: weld, **controls}
 
     original_step = driver.step
 
     def stepped() -> None:
-        # The suppression applies to the after_step_D arrangement only.
-        if driver._fast_path is after.shim:  # noqa: SLF001
-            suppress()
-            try:
-                original_step()
-            finally:
-                release()
-        else:
+        begin = begins.get(id(driver._fast_path))  # noqa: SLF001
+        if begin is None:
             original_step()
+            return
+        driver._f_minus_p_begin_B = begin  # noqa: SLF001 - the control's order, this step only
+        try:
+            original_step()
+        finally:
+            del driver._f_minus_p_begin_B  # noqa: SLF001
 
     driver.step = stepped  # type: ignore[method-assign]
     try:
@@ -2896,35 +3404,55 @@ def leg_withdraw(keywords: Mapping[str, Any], seed: int, steps: int) -> Dict[str
     finally:
         driver.step = original_step  # type: ignore[method-assign]
     legs = result["arrangements"]
-    leading = hoisted.shim.plans["update_H"]
+    weld_leg = legs[weld.name]
+    control_divergence = {name: legs[name]["first_divergence"] for name in SEAM_NULL_CONTROLS}
     return {
-        "passed": bool(not refusal.covered
-                       and any("standing integrated" in r for r in refusal.reasons)
-                       and hoistable and standing
-                       and legs["weld_hoisted"]["identical"]
-                       and legs["weld_not_hoisted"]["first_divergence"] == 2
-                       and legs["after_step_D"]["first_divergence"] == 2
-                       and getattr(leading, "withdrawn", 0) >= 1
+        "passed": bool(verdict.covered and not standing and stores_h
+                       and between == h_to_d_seam.EXPECTED_BETWEEN
+                       and weld_leg["identical"]
+                       and result["steps_compared"] == steps
+                       and all(step is not None for step in control_divergence.values())
                        and result["step_error"] is None),
-        "predicate_refuses_this_row_by_name": list(refusal.reasons),
-        "hoistable": hoistable,
-        "hoistable_reasons": list(hoist_reasons),
+        "predicate_admits_the_integrated_sources": bool(verdict.covered),
+        "predicate_reasons": list(verdict.reasons)[:6],
         "standing_withdraws": len(standing),
-        "hoisted_withdraws_on_last_step": getattr(leading, "withdrawn", None),
-        "hoisted_identical": legs["weld_hoisted"]["identical"],
-        "not_hoisted_first_divergence": legs["weld_not_hoisted"]["first_divergence"],
-        "after_step_D_first_divergence": legs["after_step_D"]["first_divergence"],
-        "campaign": dict(withdraw_hoist.MEASUREMENT),
+        "sources": [{"component": getattr(source, "component", None),
+                     "field_type": str(getattr(source, "field_type", "")),
+                     "is_integrated": bool(getattr(source, "is_integrated", False))}
+                    for source in sources],
+        "H_is_stored_so_the_restore_stands_in_the_seam": stores_h,
+        "statements_between_the_two_consults": list(between),
+        "weld_identical": weld_leg["identical"],
+        "weld_first_divergence": weld_leg["first_divergence"],
+        "weld_launches": weld_leg["launches"],
+        "null_controls_first_divergence": control_divergence,
+        "seam_pass": dict(withdraw_hoist.SEAM_PASS),
+        "superseded_campaign": dict(withdraw_hoist.MEASUREMENT),
         "what_this_licenses": (
-            "the LeadingWithdrawPlan wiring at the BEFORE placement on this device, "
-            "against the array path, with both null controls diverging where the array-"
-            "path campaign measured them. It does not flip HOISTS_THE_WITHDRAW: the "
-            "product still refuses this row by name, and the flag moves only with a "
-            "FUSED_PAIR_ARMS row and INSTALLABLE"),
+            "this weld beside the 0.10 seam pass on this device: with integrated "
+            "sources through f_minus_p, the launch spanning update_H and step_D leaves "
+            "the magnetic restore after step_D and is byte-identical to the driver's "
+            "order, while both orderings the commutation does not license diverge. It "
+            "says nothing about a source class that brings a withdraw of its own, which "
+            "the predicate refuses by name (the refusal leg)"),
         "steps_compared": result["steps_compared"],
         "step_error": result["step_error"],
+        "words_compared": result["words_compared"],
         "per_step": {name: legs[name]["per_step"] for name in legs},
     }
+
+
+def leg_withdraw(keywords: Mapping[str, Any], seed: int, steps: int) -> Dict[str, Any]:
+    """Integrated sources in the seam, through f_minus_p: :func:`seam_restore_leg`.
+
+    The leg keeps its name because the seam is the one the withdraw campaign measured;
+    what stands in it now is the magnetic ``f_minus_p`` restore, and the hoist this leg
+    used to wire (``LeadingWithdrawPlan``) withdraws nothing on any engine source.
+    """
+    driver = build_driver(keywords, seed,
+                          sources=(INTEGRATED_SOURCE, INTEGRATED_MAGNETIC_SOURCE))
+    return seam_restore_leg(driver, family.metal_fused_hd_pair_coverage,
+                            arrangement_weld(driver), steps)
 
 
 # ---------------------------------------------------------------------------
@@ -3023,7 +3551,7 @@ def waveform_determinism(driver: Any, steps: int) -> Dict[str, Any]:
     }
 
 
-def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:  # noqa: ARG001 - the census probe is unused
+def evaluate(driver: Any) -> Dict[str, Any]:
     """The census driver's battery hook: the four-reference identity on ONE lifted row."""
     steps = int(os.environ.get("MEEP_GPU_HD_GATE_STEPS", STEPS))
     max_cells = os.environ.get("MEEP_GPU_HD_GATE_MAX_CELLS")
@@ -3082,6 +3610,120 @@ def evaluate(driver: Any, probe: Any) -> Dict[str, Any]:  # noqa: ARG001 - the c
     return {"metal_fused_hd_pair_gate": block}
 
 
+# ---------------------------------------------------------------------------
+# The lift's refusal accounting on the 0.10 source path (every Metal H->D gate)
+# ---------------------------------------------------------------------------
+
+#: The words every ``launch.h_start_reasons`` refusal for a magnetic source carries
+#: after its lead. The lead itself is read from the function (:func:`h_start_lead`).
+H_START_MAGNETIC = "magnetic source(s)"
+
+#: The 0.9.2 refusal text this accounting must NOT find any more.
+STANDING_WITHDRAW = "standing integrated"
+
+
+def h_start_lead() -> str:
+    """The text every ``launch.h_start_reasons`` refusal opens with.
+
+    Read from the function itself -- one undeclared-state probe holding a single
+    magnetic source -- so the accounting below names the product's own words rather
+    than a copy of them that could drift. A function that no longer refuses that probe
+    the way this reads it raises by name instead of matching nothing.
+    """
+    import types  # noqa: PLC0415
+
+    reasons = metal_launch.h_start_reasons(types.SimpleNamespace(h_separated=False),
+                                           (types.SimpleNamespace(field_type="B"),))
+    if len(reasons) != 1 or H_START_MAGNETIC not in reasons[0]:
+        raise RuntimeError("launch.h_start_reasons no longer refuses one magnetic source "
+                           f"the way the lift accounting reads it: {reasons!r}")
+    return reasons[0].split(H_START_MAGNETIC, 1)[0].strip()
+
+
+def lift_refusal_accounting(blocks: Mapping[str, Mapping[str, Any]],
+                            withdraw_rows: Iterable[str] = (),
+                            further_reasons: Sequence[str] = ()) -> Dict[str, Any]:
+    """Which lifted rows the predicate must refuse on the 0.10 source path, and whether
+    it refused exactly those, by name.
+
+    ENTRY 25 REMOVED THE REFUSAL THIS ACCOUNTING USED TO READ. Before it an engine
+    integrated electric source stood a withdraw in the seam, the predicate refused its
+    rows by that withdraw, and the seam record's ``withdraw_in_seam`` flag named them.
+    Since it such a source enters through ``f_minus_p`` and stands none
+    (``withdraw_hoist.standing_withdraws`` answers ``()``), so those rows
+    (``withdraw_rows``) are ADMITTED and driven like any other, and a refusal naming a
+    standing withdraw is a failure.
+
+    THE REFUSAL THAT REPLACED IT is ``metal_kernels.launch.h_start_reasons``: the array
+    path's first ``update_H`` starts H and ``f_w`` from B on the dsigw cells
+    (``stepping.separate_h_from_b``) and a base kernel steps the forms alone, so a row
+    whose sources deposit into B before that update is refused at plan time. The rows
+    that must carry it are DERIVED from each row's own lifted source list -- a source
+    whose ``field_type`` is ``B`` -- never from the predicate's answer, so a predicate
+    that refused too much or too little reads as a failure here. A row with no source
+    list is ignorance, and ignorance is never an empty set: it fails.
+
+    ``further_reasons`` names refusal texts a product adds on top of that one (the
+    conductive product's per-chunk conductivity). A refused row may carry them BESIDE
+    the magnetic reason, never instead of it; any other reason is unrecognised and
+    fails. Rows whose block has no ``predicate_admits`` are the caller's unmeasured
+    rows and are not scored here.
+    """
+    lead = h_start_lead()
+    scored = {label: block for label, block in blocks.items()
+              if "predicate_admits" in block}
+
+    def reasons(label: str) -> List[str]:
+        return [str(reason) for reason in scored[label].get("predicate_reasons") or ()]
+
+    no_sources = sorted(label for label, block in scored.items()
+                        if not isinstance(block.get("sources"), list))
+    magnetic = sorted(label for label, block in scored.items()
+                      if any(str((source or {}).get("field_type")) == "B"
+                             for source in block.get("sources") or ()))
+    refused = sorted(label for label, block in scored.items()
+                     if block.get("predicate_admits") is False)
+    by_h_start = sorted(label for label in refused
+                        if any(lead in reason and H_START_MAGNETIC in reason
+                               for reason in reasons(label)))
+    by_withdraw = sorted(label for label in scored
+                         if any(STANDING_WITHDRAW in reason for reason in reasons(label)))
+    unrecognised: Dict[str, List[str]] = {}
+    tally: Dict[str, int] = {}
+    for label in refused:
+        for reason in reasons(label):
+            if lead in reason:
+                family_name = ("h_start_reasons: magnetic source"
+                               if H_START_MAGNETIC in reason
+                               else "h_start_reasons: other")
+            else:
+                family_name = next((needle for needle in further_reasons
+                                    if needle in reason), None)
+            if family_name is None or family_name == "h_start_reasons: other":
+                unrecognised.setdefault(label, []).append(reason)
+                continue
+            tally[family_name] = tally.get(family_name, 0) + 1
+    withdraw_rows = sorted(set(withdraw_rows) & set(scored))
+    withdraw_rows_refused = sorted((set(withdraw_rows) & set(refused)) - set(magnetic))
+    return {
+        "passed": bool(not no_sources and refused == magnetic == by_h_start
+                       and not by_withdraw and not unrecognised
+                       and not withdraw_rows_refused),
+        "rows_scored": len(scored),
+        "expected_refused_from_the_row_sources": magnetic,
+        "refused": refused,
+        "refused_by_h_start_reasons": by_h_start,
+        "refused_by_a_standing_withdraw": by_withdraw,
+        "refusal_reasons_unrecognised": unrecognised,
+        "rows_without_a_source_list": no_sources,
+        "reason_tally": dict(sorted(tally.items())),
+        "rows_the_seam_record_flags_withdraw_in_seam": withdraw_rows,
+        "of_those_refused_without_a_magnetic_source": withdraw_rows_refused,
+        "h_start_lead": lead,
+        "further_reasons_recognised": list(further_reasons),
+    }
+
+
 def _load_jsonl(path: Path) -> List[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
             if line.strip()]
@@ -3092,13 +3734,19 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
 
     DERIVED from the census's own ``plan_step.selected`` -- the arms the composer
     chose for each row -- never from a list here. The seam record supplies each
-    row's interpreter and module (how it was lifted) and its ``withdraw_in_seam``
-    flag, which names the rows the predicate must refuse.
+    row's module and lift record and its ``withdraw_in_seam`` flag, which names the
+    rows the 0.9.2 predicate refused by their standing withdraw and which, since
+    entry 25, it must admit. ``lift_host`` supplies the interpreter (this one; the
+    recorded path is provenance), the row's declared needs, and the four input
+    files, each required by name.
     """
+    import lift_host  # noqa: PLC0415
+
     census = results / CENSUS
     seam = results / SEAM_RECORD
-    if not census.is_dir() or not seam.is_dir():
-        raise SystemExit(f"the lift leg needs {census} and {seam}")
+    missing = lift_host.missing_inputs(results, CENSUS, SEAM_RECORD)
+    if missing:
+        raise SystemExit(lift_host.missing_reason(results, missing))
     seam_rows = {row["label"]: row for row in _load_jsonl(seam / "h_to_d_seam.jsonl")}
     rows: List[dict] = []
     for leg in ("examples", "tests", "tests_param_matched"):
@@ -3114,8 +3762,9 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
             rows.append({
                 "label": label, "leg": record.get("leg", leg), "row": record["row"],
                 "module": record.get("module") or seam_row.get("module"),
-                "interpreter": (record.get("interpreter") or record.get("python")
-                                or seam_row.get("interpreter") or sys.executable),
+                # WHERE THE CHILD RUNS: this gate's interpreter. The path the census
+                # recorded is kept as recorded_interpreter and never launched.
+                **lift_host.row_fields(record, seam_row),
                 "grid_cells": record.get("grid_cells"),
                 "grid_shape": record.get("grid_shape"),
                 "withdraw_in_seam": bool((seam_row.get("h_to_d_seam") or {})
@@ -3132,7 +3781,13 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
 
 def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float,
              resume: bool, only: Optional[Sequence[str]]) -> Dict[str, Any]:
-    """Every corpus row in the cell, re-lifted in its own interpreter and driven.
+    """Every corpus row in the cell, re-lifted under this gate's interpreter and driven.
+
+    A row whose declared needs (``lift_host.LIFT_RECORD_NEEDS``) this host lacks is
+    not launched: it is named under ``unlifted_on_this_host`` with the probe's reason
+    and counted out of the denominator, as the CUDA gate counts out a row its host
+    cannot lift. Every other row that comes back without a verdict is unmeasured and
+    fails the leg.
 
     ``gate_provenance`` is imported HERE and not only in ``main``: the placeholder this
     leg writes for a child that produced nothing is stamped like any other payload, and
@@ -3142,6 +3797,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     ``examples:grating2d_triangular_lattice.py``, the corpus's 11.2-million-cell row.
     """
     import gate_provenance  # noqa: PLC0415
+    import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
     # ABSOLUTE, BEFORE ANYTHING IS BUILT FROM IT. The child runs with ``cwd`` set to
@@ -3167,7 +3823,6 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                 "reason": (f"the MEEP corpus is not at {examples_dir} / {tests_dir}; set "
                            f"MEEP_GPU_CORPUS_ROOT to the checkout the census was cut "
                            f"over. Refused rather than measured on nothing")}
-    probe_path = API_ROOT / census.PROBE
     environment = dict(os.environ)
     environment.update({"KMP_DUPLICATE_LIB_OK": "TRUE", "MPLBACKEND": "Agg",
                         "PYTHONPATH": str(API_ROOT),
@@ -3206,8 +3861,20 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         if module_file.is_file() and "import parameterized" in module_file.read_text(
                 encoding="utf-8", errors="replace"):
             needs_shim.add(module_name)
+    # WHAT THIS HOST CANNOT LIFT, asked once before any child: the needs the rows
+    # declare, probed under this interpreter (lift_host).
+    host = lift_host.host_check(rows, environment, work)
+    if host["unreadable"]:
+        return {"passed": False, "facts": facts, "host_capabilities": host,
+                "reason": host["unreadable"]}
+    unlifted = host["unlifted_on_this_host"]
     measured: List[dict] = []
     for index, row in enumerate(rows, start=1):
+        if row["label"] in unlifted:
+            log(f"lift {index}/{len(rows)} {row['label']}: UNLIFTED ON THIS HOST, "
+                f"{unlifted[row['label']]}")
+            measured.append(lift_host.unlifted_entry(row, unlifted[row["label"]]))
+            continue
         record_path = per_row / (row["label"].replace(":", "__").replace(".", "_") + ".json")
         environment["MEEP_GPU_HD_GATE_LABEL"] = row["label"]
         environment["PYTHONPATH"] = (f"{shim_path}{os.pathsep}{API_ROOT}"
@@ -3216,10 +3883,10 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         started = time.time()
         if not (resume and record_path.exists()):
             if row["leg"] == "examples":
-                command = [row["interpreter"], "-u", str(Path(census.__file__).resolve()),
+                command = [sys.executable, "-u", str(Path(census.__file__).resolve()),
                            "--leg", "examples", "--child-script",
                            str(examples_dir / row["row"]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", Path(__file__).stem]
             else:
@@ -3229,15 +3896,15 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                     measured.append({**row, "measured": False,
                                      "note": "no module recorded"})
                     continue
-                command = [row["interpreter"], "-u", str(Path(census.__file__).resolve()),
+                command = [sys.executable, "-u", str(Path(census.__file__).resolve()),
                            "--leg", "tests", "--child-module",
                            str(tests_dir / row["module"]),
                            "--child-cases", json.dumps([row["row"]]),
-                           "--out-json", str(record_path), "--probe", str(probe_path),
+                           "--out-json", str(record_path),
                            "--progress-log", str(progress_log),
                            "--battery", Path(__file__).stem]
             log(f"lift {index}/{len(rows)} {row['label']} start (cells "
-                f"{row.get('grid_cells')}, {Path(row['interpreter']).parent.parent.name})")
+                f"{row.get('grid_cells')})")
             stderr_text = ""
             note = "child died"
             try:
@@ -3281,17 +3948,19 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     admitted = sorted(label for label, b in blocks.items() if b.get("predicate_admits"))
     refused = sorted(label for label, b in blocks.items()
                      if b.get("predicate_admits") is False)
-    refused_by_the_withdraw = sorted(
-        label for label in refused
-        if any("standing integrated" in r for r in blocks[label].get("predicate_reasons", ())))
     # THE DENOMINATOR IS THE CELL'S, EXCEPT ON A DELIBERATE SUBSET. A ``--lift-only``
     # run measures the rows it names and must be scoreable on them; the FULL run is
-    # the one whose pass condition carries the cell's own 49 and both refusals, and
+    # the one whose pass condition carries the cell's own 49, less the rows named
+    # ``unlifted_on_this_host`` (never launched, each with its reason), and
     # ``rows_in_cell`` is reported either way so a subset can never read as the cell.
-    expected_refused = sorted(facts["rows_with_a_standing_withdraw"])
-    if only:
-        expected_refused = sorted(set(expected_refused) & set(blocks))
-    unmeasured = sorted(label for label, b in blocks.items() if "predicate_admits" not in b)
+    # The refusals are scored on the rows measured either way (:func:`lift_refusal_accounting`): the
+    # rows the seam record flags ``withdraw_in_seam`` are admitted since entry 25, and
+    # the rows carrying a magnetic source are refused by ``launch.h_start_reasons``.
+    accounting = lift_refusal_accounting(blocks, facts["rows_with_a_standing_withdraw"])
+    refused_by_the_withdraw = accounting["refused_by_a_standing_withdraw"]
+    expected_refused = accounting["expected_refused_from_the_row_sources"]
+    unmeasured = sorted(label for label, b in blocks.items()
+                        if "predicate_admits" not in b and label not in unlifted)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
     # THE THIRD DISPOSITION, AND IT IS A MEASUREMENT RATHER THAN AN EXEMPTION. A row
@@ -3352,12 +4021,15 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     # AND THE UNDEFINED ROWS ARE BOUNDED. A disposition that can grow without limit is
     # an escape hatch; this one may take at most a tenth of the cell, and the leg fails
     # if it grows past that rather than reporting a shrinking measurement as a pass.
-    undefined_within_bounds = len(undefined) * 10 <= facts["rows_in_cell"]
+    # The cell here is the rows the engine was asked about: a row unlifted on this host
+    # is out of every denominator, this one included.
+    undefined_within_bounds = len(undefined) * 10 <= facts["rows_in_cell"] - len(unlifted)
     return {
         "passed": bool(measured and not unmeasured
-                       and (not only and len(admitted) + len(refused) == facts["rows_in_cell"]
+                       and (not only and len(admitted) + len(refused)
+                            == facts["rows_in_cell"] - len(unlifted)
                             or bool(only))
-                       and refused == refused_by_the_withdraw == expected_refused
+                       and accounting["passed"]
                        and not not_driven
                        and not diverged
                        and undefined_within_bounds
@@ -3378,11 +4050,15 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         "rows_in_cell": facts["rows_in_cell"],
         "rows_measured": len(measured),
         "rows_unmeasured": unmeasured,
+        "unlifted_on_this_host": unlifted,
+        "rows_the_engine_was_asked_about": len(blocks) - len(unlifted),
+        "host_capabilities": host,
         "admitted": len(admitted),
         "admitted_rows": admitted,
         "refused": refused,
         "refused_by_the_standing_withdraw": refused_by_the_withdraw,
-        "refused_expected_from_the_seam_record": expected_refused,
+        "refused_expected_from_the_row_sources": expected_refused,
+        "refusal_accounting": accounting,
         "driven": len(driven),
         "undefined": len(undefined),
         "not_driven": not_driven,
@@ -3525,8 +4201,10 @@ def main() -> int:
         except Exception:  # noqa: BLE001
             device_ok = False
     mutants = shader_mutations(codes)
+    mutants.update(b_battery(family.fused_hd_pair_source(codes)))
     periodic_mutants = periodic_wrap_mutations(PERIODIC_CODES)
     inert = inert_mutations(codes)
+    inert.update(b_battery_inert(family.fused_hd_pair_source(codes)))
     total = (len([leg for leg in legs if leg not in ("product", "mutation", "arbitration")])
              + (len(CASES) if "product" in legs else 0)
              + (len(mutants) + len(periodic_mutants) + len(HOST_MUTATIONS)
@@ -3601,7 +4279,7 @@ def main() -> int:
             add("sync", f"{MUTATION_CASE}:flux_in_box_mid_run",
                 leg_sync(build_driver(cases[MUTATION_CASE], 92000), max(SYNC_STEPS) + 3))
         if "withdraw" in legs:
-            add("withdraw", f"{MUTATION_CASE}:integrated_electric_source_in_the_seam",
+            add("withdraw", f"{MUTATION_CASE}:integrated_sources_through_f_minus_p",
                 leg_withdraw(cases[MUTATION_CASE], 93000, args.steps))
         if "byte_neutral" in legs:
             neutral = {shaders.CONTRACT_OFF:
@@ -3613,6 +4291,9 @@ def main() -> int:
                 {"passed": bool(result["passed"]), "diverged": not weld["identical"],
                  "differing_words": weld["differing_words_final"],
                  "launches": weld["launches"]})
+        if "planted_zero" in legs:
+            add("planted_zero", f"{PERIODIC_MUTATION_CASE}:the_two_signed_zero_forms",
+                leg_planted_zero())
         if "mutation" in legs:
             for name, (source, why) in mutants.items():
                 functions = {shaders.CONTRACT_OFF: compile_source(source).fused_hd_pair_step}
@@ -3719,6 +4400,7 @@ def main() -> int:
                                                           if "mutation" in ran else 0),
                    "predicted_null": len(PREDICTED_NULL) if "mutation" in ran else 0,
                    "byte_neutral_controls": 1 if "byte_neutral" in ran else 0,
+                   "planted_zero_cases": 2 if "planted_zero" in ran else 0,
                    "sync_steps": len(SYNC_STEPS) if "sync" in ran else 0,
                    "lift_rows_admitted": next((r.get("admitted") for r in rows
                                                if r["leg"] == "lift"), None),
@@ -3760,8 +4442,10 @@ def main() -> int:
         "jsonl": str(jsonl),
         "what_this_does_not_license": (
             "installing the product (the composer refuses it by name and the arbitration "
-            "leg pins that), flipping HOISTS_THE_WITHDRAW (the withdraw leg licenses the "
-            "wiring, not the flag), any throughput claim (launch counts are not time), "
+            "leg pins that), flipping HOISTS_THE_WITHDRAW (no engine source stands a "
+            "withdraw in this seam since entry 25; the withdraw leg measures where the "
+            "magnetic f_minus_p restore sits, not the flag), any throughput claim "
+            "(launch counts are not time), "
             "the (folded -> folded) cell, cylindrical storage, the nonlinear widening "
             "(admitted by the predicate, driven by no leg here), a keep-resolved run, "
             "or any step past a row's own first banded step -- the byte claim is over "

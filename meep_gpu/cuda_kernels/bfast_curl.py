@@ -9,19 +9,30 @@ boundaries are exact for a whole band. In the stepper it is exactly::
     dB/dt = -curl(E) + d/dt (k x E)
     dD/dt = +curl(H) - d/dt (k x H)
 
-THE ARITHMETIC, TRANSCRIBED. Per component, over the SAME four operands the curl
-already gathered (``CurlOperands``, stepping.py:1591-1604)::
+THE ARITHMETIC, TRANSCRIBED (``stepping._bfast_term`` and ``_apply_folded_increment``).
+MEEP's ``step_db`` runs, per component, ``STEP_CURL`` and then ``STEP_BFAST`` on the same
+component (step_db.cpp:124-142): a pass of its own after the curl, over the SAME four
+operands the curl gathered, through its own additive ladder. With both partners::
 
-    total   = k1 * (shifted_first + first) - k2 * (shifted_second + second)  # :890-891
-    advance = total - 2.0 * F_prev                                           # :895
-    <mask>  = _mask_non_owned_cells(advance, grid, term.iyee)                # :902
-    F      += advance                                                        # :903
-    return  -advance                                                         # :904
+    F_prev = F[i]
+    F[i]   = (k1*(g1s + g1) - k2*(g2s + g2)) - F_prev      # one rounding per op
+    raw    = F[i] - F_prev                                  # the pass's second rounding
+    outside the dsigu chunks:  f += raw * sinv             # MEEP's plain f += raw where
+    inside them:               fu += (df = raw * sinv); f += sinv_u * df   # sinv is 1
 
-and the caller adds that to the curl BEFORE the curl's own mask
-(stepping.py:392-396 / :475-478 against :397 / :479). ``F_n = S_n - F_{n-1}`` with
+With one partner MEEP reads only that partner (an absent one is a NULL pointer), and in
+its PLAIN branch -- no layer on the dsig or dsigu axis in the chunk, no conductivity --
+the state line is ``F[i] = k1*(g1s + g1)`` with no ``- F[i]`` (step_generic.cpp:373-379).
+With neither partner MEEP steps no such component. The state and the increment are
+written on MEEP's owned cells only. Each kernel here is the CERTIFIED root curl kernel
+with that pass inserted after each component's ``pml_apply`` call
+(``folded_pass.bfast_insert``), on the words ``pml_apply`` just stored: a float32 stored
+and reloaded is the identity on the bits, so the pass's roundings are MEEP's. Until 0.10
+the increment was added to the curl before the masks and rode the curl's own recurrence,
+which is a different number (bit_parity_0_10 KERNELS.md section 6).
+``F_n = S_n - F_{n-1}`` with
 output ``F_n - F_{n-1}`` is the z-domain filter ``(1 - z^-1)/(1 + z^-1)`` -- the
-Tustin derivative -- so ``advance`` is ``dt * d/dt`` of the two-point average, and
+Tustin derivative -- so ``raw`` is ``dt * d/dt`` of the two-point average, and
 NO ``dtdx`` and no explicit ``dt`` appear anywhere: MEEP passes ``dtdx`` to
 ``step_bfast`` and the body never reads it.
 
@@ -50,9 +61,8 @@ THE STATE IS THE HAZARD. ``f_bfast_*`` is a per-component IIR state whose
 homogeneous mode ``(-1)^n`` is UNDAMPED forever, so a kernel that gets the field
 right and the state wrong is correct for exactly one launch and wrong from the
 second. The state is therefore an OUTPUT this family's gate compares on every case,
-beside the field and the PML auxiliary -- and the mask is applied to ``advance``
-BEFORE the state absorbs it, because MEEP writes ``F`` only inside its owned-cell
-loop.
+beside the field and the PML auxiliary -- and it is stored on MEEP's owned cells only,
+because MEEP writes ``F`` only inside its owned-cell loop.
 
 WHAT THIS IS FOR, stated narrowly and measured. On the 2026-08-20 union census
 exactly ONE corpus row carries BFAST and is refused for it at every one of its four
@@ -83,6 +93,7 @@ import pathlib
 from typing import Any, Dict, Tuple
 
 from . import coverage as _coverage
+from . import folded_pass as _folded_pass
 
 
 def _sibling_prelude() -> str:
@@ -215,236 +226,121 @@ def bfast_curl_coefficients(grid: Any, sub_step: str
     return tuple(out)
 
 
-# B side: the CERTIFIED ``step_B_pml_real`` block for block, with the BFAST
-# insert between the curl and the masks. The four operands are the ones the curl
-# already loaded -- ``f1``/``sf`` are MEEP's g1 pair and ``f2``/``ss`` its g2 pair
-# (``CurlOperands``: first, shifted_first, second, shifted_second) -- so the term
-# costs no new load.
+# THE DEVICE TEXT IS DERIVED, NOT COPIED. Each kernel is the CERTIFIED root kernel
+# (``step_curl_kernels._step_{B,D}_pml_real_kernel_code``, read off the sibling's source
+# as its prelude is) with exactly three anchored edits and nothing else:
 #
-# THE MASK IS APPLIED TWICE, ON PURPOSE, AND TO TWO DIFFERENT THINGS. The array path
-# masks ``advance`` (stepping.py:929) before the state absorbs it and before it is
-# handed back, then masks the ``curl`` it was added to (stepping.py:397). Masking
-# only the curl would leave the STATE stepping cells MEEP's owned loop never
-# visits -- invisible for one launch, and permanent afterwards, because the
-# ``(-1)^n`` mode never decays.
+# 1. the entry point renamed ``step_{B,D}_bfast_real``;
+# 2. the signature gains the three ``f_bfast`` state pointers after the auxiliaries and
+#    the six host-gated ``(k1, k2)`` scalars before the chunk record ``cb``, which stays
+#    last as on every kernel of this table;
+# 3. after each component's ``pml_apply`` call, MEEP's BFAST pass of that component
+#    (``folded_pass.bfast_insert``): the curl's own mask lines re-spelled as MEEP's
+#    ownership flag, the state step over the curl's four operands and its presence
+#    bits, and the folded ladder on the words ``pml_apply`` just stored.
 #
-# ``curl - advance`` CARRIES ``curl + (-advance)``: IEEE-754 defines subtraction as
-# addition of the negation, so the single subtract is the same bits on every input.
-_step_B_bfast_real_kernel_code = _REAL_PML_PRELUDE + r'''
-extern "C" __global__ void step_B_bfast_real(
-    float* __restrict__ Bx, float* __restrict__ By, float* __restrict__ Bz,
-    float* __restrict__ fu_Bx, float* __restrict__ fu_By, float* __restrict__ fu_Bz,
-    float* __restrict__ fb_Bx, float* __restrict__ fb_By, float* __restrict__ fb_Bz,
-    const float* __restrict__ Ex, const float* __restrict__ Ey,
-    const float* __restrict__ Ez,
-    int nx, int ny, int nz, float dtdx,
-    const float* __restrict__ kms_x, const float* __restrict__ sinv_x,
-    const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
-    const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
-    int bc_x, int bc_y, int bc_z,
-    float k1_a, float k2_a, float k1_b, float k2_b, float k1_c, float k2_c
-) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= nx * ny * nz) return;
+# The prelude is the root's, with ``folded_pass.REAL_FOLD_HELPERS`` and
+# ``folded_pass.BFAST_PASS_HELPER`` appended. A moved
+# anchor raises by name at import rather than emitting a kernel that is quietly missing
+# a term, a state store or a mask. The D-side sign flip (``k1 = -k1; k2 = -k2``,
+# step_db.cpp:136) is taken on the HOST in :func:`bfast_curl_coefficients`, so the two
+# kernels differ only where the certified pair differs.
 
-    const int sx = ny * nz;
-    const int sy = nz;
-    const int sz = 1;
+def _sibling_kernel(name: str) -> str:
+    """The certified root kernel string ``name`` (prelude + kernel), read off the
+    sibling's source, where it is assigned ``_REAL_PML_PRELUDE`` plus a string literal."""
+    source = (pathlib.Path(__file__).with_name("step_curl_kernels.py")
+              .read_text(encoding="utf-8"))
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not (isinstance(target, ast.Name) and target.id == name):
+            continue
+        value = node.value
+        if (isinstance(value, ast.BinOp) and isinstance(value.left, ast.Name)
+                and value.left.id == "_REAL_PML_PRELUDE"
+                and isinstance(value.right, ast.Constant)
+                and isinstance(value.right.value, str)):
+            return _REAL_PML_PRELUDE + value.right.value
+    raise RuntimeError(
+        f"step_curl_kernels.py no longer assigns {name} = _REAL_PML_PRELUDE + a string "
+        f"literal; the BFAST curl pair is derived from that kernel and cannot be built "
+        f"without it")
 
-    int k = idx % nz;
-    int j = (idx / nz) % ny;
-    int i = idx / (ny * nz);
 
-    // Bx: curl_x = dEz/dy - dEy/dz; dsig=y, dsigu=z; iyee=(0,1,1).
-    // BFAST: k1 = k_y on Ez (g1), k2 = k_z on Ey (g2) -- (k x E)_x.
-    {
-        float f1 = Ez[idx];
-        float sf = shift_up(Ez, idx, j, ny, sy, bc_y);
-        float f2 = Ey[idx];
-        float ss = shift_up(Ey, idx, k, nz, sz, bc_z);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        float total = (k1_a * (sf + f1)) - (k2_a * (ss + f2));
-        float bprev = fb_Bx[idx];
-        float advance = total - (2.0f * bprev);
-        if (bc_x == BC_METALLIC && i == 0) advance = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == 0) advance = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) advance = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) advance = 0.0f;
-        fb_Bx[idx] = bprev + advance;
-        curl = curl - advance;
-        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) curl = 0.0f;
-        pml_apply(Bx, fu_Bx, idx, curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k]);
-    }
-
-    // By: curl_y = dEx/dz - dEz/dx; dsig=z, dsigu=x; iyee=(1,0,1).
-    // BFAST: k1 = k_z on Ex (g1), k2 = k_x on Ez (g2).
-    {
-        float f1 = Ex[idx];
-        float sf = shift_up(Ex, idx, k, nz, sz, bc_z);
-        float f2 = Ez[idx];
-        float ss = shift_up(Ez, idx, i, nx, sx, bc_x);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        float total = (k1_b * (sf + f1)) - (k2_b * (ss + f2));
-        float bprev = fb_By[idx];
-        float advance = total - (2.0f * bprev);
-        if (bc_y == BC_METALLIC && j == 0) advance = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == 0) advance = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) advance = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) advance = 0.0f;
-        fb_By[idx] = bprev + advance;
-        curl = curl - advance;
-        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) curl = 0.0f;
-        pml_apply(By, fu_By, idx, curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i]);
-    }
-
-    // Bz: curl_z = dEy/dx - dEx/dy; dsig=x, dsigu=y; iyee=(1,1,0).
-    // BFAST: k1 = k_x on Ey (g1), k2 = k_y on Ex (g2). EVERY component carries a
-    // term here -- unlike special_kz, whose z component gets none.
-    {
-        float f1 = Ey[idx];
-        float sf = shift_up(Ey, idx, i, nx, sx, bc_x);
-        float f2 = Ex[idx];
-        float ss = shift_up(Ex, idx, j, ny, sy, bc_y);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        float total = (k1_c * (sf + f1)) - (k2_c * (ss + f2));
-        float bprev = fb_Bz[idx];
-        float advance = total - (2.0f * bprev);
-        if (bc_z == BC_METALLIC && k == 0) advance = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == 0) advance = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) advance = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) advance = 0.0f;
-        fb_Bz[idx] = bprev + advance;
-        curl = curl - advance;
-        if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == 0) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) curl = 0.0f;
-        pml_apply(Bz, fu_Bz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]);
-    }
-}
-'''
-
-# D side: MEEP's negated strides, integer-position coefficients, iyee -- Dx
-# (1,0,0), Dy (0,1,0), Dz (0,0,1). The D-side sign flip (``k1 = -k1; k2 = -k2``,
-# step_db.cpp:136) is taken on the HOST in :func:`bfast_curl_coefficients`, so the
-# two kernel bodies differ only where the certified pair differs.
-_step_D_bfast_real_kernel_code = _REAL_PML_PRELUDE + r'''
-extern "C" __global__ void step_D_bfast_real(
-    float* __restrict__ Dx, float* __restrict__ Dy, float* __restrict__ Dz,
-    float* __restrict__ fu_Dx, float* __restrict__ fu_Dy, float* __restrict__ fu_Dz,
-    float* __restrict__ fb_Dx, float* __restrict__ fb_Dy, float* __restrict__ fb_Dz,
-    const float* __restrict__ Hx, const float* __restrict__ Hy,
-    const float* __restrict__ Hz,
-    int nx, int ny, int nz, float dtdx,
-    const float* __restrict__ kms_x, const float* __restrict__ sinv_x,
-    const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
-    const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
-    int bc_x, int bc_y, int bc_z,
-    float k1_a, float k2_a, float k1_b, float k2_b, float k1_c, float k2_c
-) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= nx * ny * nz) return;
-
-    const int sx = ny * nz;
-    const int sy = nz;
-    const int sz = 1;
-
-    int k = idx % nz;
-    int j = (idx / nz) % ny;
-    int i = idx / (ny * nz);
-
-    // Dx: curl_x = dHz/dy - dHy/dz; dsig=y, dsigu=z; iyee=(1,0,0).
-    {
-        float f1 = Hz[idx];
-        float sf = shift_dn(Hz, idx, j, ny, sy, bc_y);
-        float f2 = Hy[idx];
-        float ss = shift_dn(Hy, idx, k, nz, sz, bc_z);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        float total = (k1_a * (sf + f1)) - (k2_a * (ss + f2));
-        float bprev = fb_Dx[idx];
-        float advance = total - (2.0f * bprev);
-        if (bc_y == BC_METALLIC && j == 0) advance = 0.0f;
-        if (bc_z == BC_METALLIC && k == 0) advance = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == 0) advance = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == 0) advance = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) advance = 0.0f;
-        fb_Dx[idx] = bprev + advance;
-        curl = curl - advance;
-        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
-        if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == 0) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) curl = 0.0f;
-        pml_apply(Dx, fu_Dx, idx, curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k]);
-    }
-
-    // Dy: curl_y = dHx/dz - dHz/dx; dsig=z, dsigu=x; iyee=(0,1,0).
-    {
-        float f1 = Hx[idx];
-        float sf = shift_dn(Hx, idx, k, nz, sz, bc_z);
-        float f2 = Hz[idx];
-        float ss = shift_dn(Hz, idx, i, nx, sx, bc_x);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        float total = (k1_b * (sf + f1)) - (k2_b * (ss + f2));
-        float bprev = fb_Dy[idx];
-        float advance = total - (2.0f * bprev);
-        if (bc_x == BC_METALLIC && i == 0) advance = 0.0f;
-        if (bc_z == BC_METALLIC && k == 0) advance = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == 0) advance = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == 0) advance = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) advance = 0.0f;
-        fb_Dy[idx] = bprev + advance;
-        curl = curl - advance;
-        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
-        if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == 0) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) curl = 0.0f;
-        pml_apply(Dy, fu_Dy, idx, curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i]);
-    }
-
-    // Dz: curl_z = dHy/dx - dHx/dy; dsig=x, dsigu=y; iyee=(0,0,1).
-    {
-        float f1 = Hy[idx];
-        float sf = shift_dn(Hy, idx, i, nx, sx, bc_x);
-        float f2 = Hx[idx];
-        float ss = shift_dn(Hx, idx, j, ny, sy, bc_y);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
-        float total = (k1_c * (sf + f1)) - (k2_c * (ss + f2));
-        float bprev = fb_Dz[idx];
-        float advance = total - (2.0f * bprev);
-        if (bc_x == BC_METALLIC && i == 0) advance = 0.0f;
-        if (bc_y == BC_METALLIC && j == 0) advance = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == 0) advance = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == 0) advance = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) advance = 0.0f;
-        fb_Dz[idx] = bprev + advance;
-        curl = curl - advance;
-        if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
-        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
-        if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
-        if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
-        if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) curl = 0.0f;
-        pml_apply(Dz, fu_Dz, idx, curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]);
-    }
-}
-'''
-
-_SOURCES: Dict[str, str] = {
-    "step_B_bfast_real": _step_B_bfast_real_kernel_code,
-    "step_D_bfast_real": _step_D_bfast_real_kernel_code,
+#: ``sub_step -> (root kernel string name, root entry point, sources, targets)``.
+_ROOT: Dict[str, Tuple[str, str, Tuple[str, str, str], Tuple[str, str, str]]] = {
+    "step_B": ("_step_B_pml_real_kernel_code", "step_B_pml_real",
+               ("Ex", "Ey", "Ez"), ("Bx", "By", "Bz")),
+    "step_D": ("_step_D_pml_real_kernel_code", "step_D_pml_real",
+               ("Hx", "Hy", "Hz"), ("Dx", "Dy", "Dz")),
 }
 
 #: ``sub_step -> kernel name``, so a caller does not spell an if.
 KERNEL_FOR_SUB_STEP: Dict[str, str] = {
     "step_B": "step_B_bfast_real",
     "step_D": "step_D_bfast_real",
+}
+
+#: The six scalars, in the kernel's parameter order: ``(k1, k2)`` per target, block order.
+K_NAMES: Tuple[Tuple[str, str], ...] = (("k1_a", "k2_a"), ("k1_b", "k2_b"),
+                                        ("k1_c", "k2_c"))
+
+
+def _replace_once(text: str, old: str, new: str, what: str) -> str:
+    if text.count(old) != 1:
+        raise RuntimeError(
+            f"the certified root kernel carries {what} {text.count(old)} times, not once; "
+            f"the BFAST derivation has no anchor")
+    return text.replace(old, new, 1)
+
+
+def derive_kernel(sub_step: str, root: str = "") -> str:
+    """The BFAST kernel for one sub-step, derived from the certified root kernel.
+
+    ``root`` is the root kernel string (prelude + kernel); empty reads the sibling's
+    literal. A gate passes a mutated root to see the mutation reach this family.
+    """
+    name, entry, _sources, targets = _ROOT[sub_step]
+    text = root or _sibling_kernel(name)
+    marker = 'extern "C" __global__ void '
+    if text.count(marker) != 1:
+        raise RuntimeError(f"{name} carries {text.count(marker)} entry points, not 1")
+    prelude, kernel = text.split(marker, 1)
+    kernel = _replace_once(kernel, f"{entry}(", f"{KERNEL_FOR_SUB_STEP[sub_step]}(",
+                           "its entry point")
+    auxiliaries = ("    float* __restrict__ fu_{0}, float* __restrict__ fu_{1}, "
+                   "float* __restrict__ fu_{2},\n").format(*targets)
+    states = ("    float* __restrict__ fb_{0}, float* __restrict__ fb_{1}, "
+              "float* __restrict__ fb_{2},\n").format(*targets)
+    kernel = _replace_once(kernel, auxiliaries, auxiliaries + states,
+                           "the auxiliaries' parameter line")
+    tail = "    int bc_x, int bc_y, int bc_z,\n    const int* __restrict__ cb\n) {"
+    kernel = _replace_once(
+        kernel, tail,
+        "    int bc_x, int bc_y, int bc_z,\n"
+        "    float k1_a, float k2_a, float k1_b, float k2_b, float k1_c, float k2_c,\n"
+        "    const int* __restrict__ cb\n) {", "the signature's tail")
+    for index, target in enumerate(targets):
+        prefix = f"        pml_apply({target}, fu_{target}, idx, "
+        what = f"{KERNEL_FOR_SUB_STEP[sub_step]} {target}"
+        k1, k2 = K_NAMES[index]
+        kernel = _folded_pass.insert_after_call(
+            kernel, prefix,
+            _folded_pass.bfast_insert(kernel, prefix, target, f"fb_{target}", k1, k2,
+                                      what),
+            what)
+    return (prelude.rstrip("\n") + "\n" + _folded_pass.REAL_FOLD_HELPERS
+            + _folded_pass.BFAST_PASS_HELPER + "\n" + marker + kernel)
+
+
+_step_B_bfast_real_kernel_code = derive_kernel("step_B")
+_step_D_bfast_real_kernel_code = derive_kernel("step_D")
+
+_SOURCES: Dict[str, str] = {
+    "step_B_bfast_real": _step_B_bfast_real_kernel_code,
+    "step_D_bfast_real": _step_D_bfast_real_kernel_code,
 }
 
 #: The IIR state each sub-step advances, in block order. It is an OUTPUT, not a
@@ -577,17 +473,24 @@ def _clear_kernel_cache() -> int:
 
 def step_bfast(sub_step: str, fields: Any, tables: Dict[str, Any],
                boundary_codes: Any, dtdx: float,
-               coefficients: Tuple[Tuple[float, float], ...]) -> None:
+               coefficients: Tuple[Tuple[float, float], ...], *,
+               chunk_bounds: Any) -> None:
     """One BFAST curl sub-step, in place, in one launch.
 
     ``tables`` are the six flattened kms/sinv views from
     ``step_curl_kernels.real_pml_curl_tables`` -- HALF-INTEGER for ``step_B``,
     INTEGER for ``step_D``. ``coefficients`` is :func:`bfast_curl_coefficients`'
-    three ``(k1, k2)`` pairs, in block order; the six scalars are bound LAST and
-    the three IIR state pointers immediately after the auxiliaries, so the
-    argument list is the certified one with two appends a reader can diff.
+    three ``(k1, k2)`` pairs, in block order; the six scalars are bound after the
+    boundary codes and the three IIR state pointers immediately after the
+    auxiliaries, so the argument list is the certified one with two inserts a reader
+    can diff. ``chunk_bounds`` is the run's chunk record on the device, required and
+    bound last, as on the root kernel (``step_curl_kernels.chunk_record_argument``).
     """
     import numpy  # noqa: PLC0415
+
+    from .step_curl_kernels import chunk_record_argument  # noqa: PLC0415 - device-only
+
+    cb = chunk_record_argument(chunk_bounds)
 
     targets = (("Bx", "By", "Bz") if sub_step == "step_B" else ("Dx", "Dy", "Dz"))
     sources = (("Ex", "Ey", "Ez") if sub_step == "step_B" else ("Hx", "Hy", "Hz"))
@@ -609,6 +512,7 @@ def step_bfast(sub_step: str, fields: Any, tables: Dict[str, Any],
         tables["kms_z"], tables["sinv_z"],
         boundary_codes[0], boundary_codes[1], boundary_codes[2],
         *scalars,
+        cb,
     ))
 
 

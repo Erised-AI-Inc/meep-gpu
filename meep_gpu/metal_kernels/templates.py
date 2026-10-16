@@ -27,33 +27,29 @@ byte-neutrality of this whole extraction MEASURED rather than asserted. Re-measu
 2026-08-15 after the ``zero`` parameter landed on :func:`ownership_mask`: 36 of 36
 unchanged.
 
-THE COMPLEX ARITHMETIC IS MEASURED, NOT INHERITED (2026-08-15, this host,
-torch 2.10.0 / numpy 2.4.3 / macOS 26.2 arm64):
+THE COMPLEX ARITHMETIC IS MEEP'S, PART BY PART. MEEP stores a complex field as two
+``realnum`` arrays and forms no complex-by-complex product while it steps
+(:mod:`meep_gpu.part_products`, which the array path routes every product through):
 
-* the reference — ``numpy``'s own complex64 multiply — takes the **FMA_V1** arm:
-  ``re = fma(a_re, b_re, -(a_im*b_im))``, ``im = fma(a_re, b_im, +(a_im*b_re))``.
-  Measured on 8,192-cell random vectors, the FMA arm matches 0/16,384 words and the
-  four-rounded-product arm misses 4,095/16,384. On an EXHAUSTIVE 256-pattern
-  signed-zero/finite table the two arms AGREE (every product there is exact), so
-  neither class alone classifies and the gate runs both. Metal's explicit ``fma()``
-  SURVIVES the file-scope contraction directive (:func:`contraction_pragma`, spelled
-  once in :mod:`.shaders`) — that directive stops IMPLICIT contraction only, which is
-  what makes the fused arm spellable at all;
-* the **zero cross terms are load-bearing** and are spelled literally. On the
-  exhaustive 64-pattern tables, folding ``z_im * 0.0f`` to a literal misses 12/128
-  words in EITHER orientation (field left and coefficient left alike, re-measured
-  2026-08-15 by ``gate_metal_complex`` leg ``zero_cross_terms``), and a plane-wise
-  ``{re*c, im*c}`` fast path misses 24/128. An earlier revision of this line gave
-  24/128 for the folded coefficient-left form; that is the plane-wise number, and
-  the coefficient-left fold had never been measured at all. RANDOM DATA
-  DISCRIMINATES NONE OF THEM (0/16,384 for all three), which is why the gate's zero
-  tables are exhaustive rather than sampled;
-* **negation is spelled ``-x``.** On the same exhaustive table ``-x`` and
-  ``x * -1.0f`` are both exact (0/512) while ``0.0f - x`` misses 36/512. The Triton
-  track carries ``(a*b) * -1.0`` because *Triton* lowers unary minus as ``0.0 - x``
-  and canonicalizes signed zeros; **that reason does not reproduce on Metal**, so
-  the workaround is NOT inherited. The refuted spelling is a must-catch gate
-  mutation rather than a comment.
+* a real coefficient times a field is one float32 product PER PART, ``float2(c *
+  z.x, c * z.y)`` -- the ``DOCMP`` loops (step_db.cpp:47, update_eh.cpp:149). Both
+  orientation helpers below spell exactly that; IEEE multiplication is commutative,
+  so the orientation in a helper's name records the array path's spelling and moves
+  no bit;
+* a Bloch connection is ``complex<realnum>(thephase) * word`` with every product and
+  every sum rounded on its own (step.cpp:183-192, libc++ ``operator*`` in the
+  contraction-off build): :func:`c_mul`, with the phase as its second operand. IEEE
+  multiplication and addition of two operands are commutative, so ``(z.x*p.x) -
+  (z.y*p.y)``, ``(z.x*p.y) + (z.y*p.x)`` is ``part_products.connect_parts``' word.
+  Within 1e-13 of +1 MEEP copies and of -1 it negates per part; those two are host
+  decisions the emitting family bakes in, never a multiply by ``(+/-1, 0)``;
+* negation is ``-x``, a sign-bit operation on this host (0/512 on the exhaustive
+  signed-zero table, where ``0.0f - x`` misses 36/512).
+
+THERE IS ONE BODY. An earlier arm copied NumPy's fused complex product and its
+zero-cross-term real-coefficient helpers copied NumPy's complex-by-``(c + 0j)`` loop;
+the array path carries neither since it forms products per part, so no arm is
+chosen and nothing is measured to choose one.
 
 THE 31-BINDING CEILING is a measured platform limit, not a style rule: buffer
 attribute indices must be 0..30 and a 32nd binding is a COMPILE ERROR ("'buffer'
@@ -64,8 +60,6 @@ compiles the split signature and requires the failure.
 """
 
 from __future__ import annotations
-
-from typing import Dict
 
 # EVERY ONE OF THESE IS IMPORTED, NOT RE-SPELLED — see the module docstring for the
 # two reasons. `shaders` does not import this module, so the direction is one-way
@@ -86,7 +80,7 @@ from .shaders import (  # noqa: F401 - re-exported deliberately
 __all__ = [
     "CONTRACT_FAST", "CONTRACT_MODES", "CONTRACT_OFF", "METALLIC", "PERIODIC",
     "contraction_pragma", "ghost", "ownership_mask", "source_sha256", "substitute",
-    "GUARD", "DECODE_IJK", "EXPANSIONS", "EXPANSION_ARMS", "COMPLEX_ZERO",
+    "GUARD", "DECODE_IJK", "COMPLEX_ZERO",
     "complex_helpers", "COLUMN_SERIAL_SCAN",
 ]
 
@@ -115,71 +109,39 @@ DECODE_IJK = """    int nyi = int(ny), nzi = int(nz);
 # Complex (float2) arithmetic
 # ---------------------------------------------------------------------------
 
-#: The two transcription arms of the reference complex multiply, named as the probe
-#: artifact spells them. Which arm a platform takes is a compiled-dispatch fact, so
-#: a family BINDS THE ARM FROM A MEASURED ARTIFACT and never from a guess; a missing
-#: or disagreeing probe is a coverage refusal by name.
-EXPANSIONS: Dict[str, int] = {"NAIVE": 0, "FMA_V1": 1}
-
-#: Host-side arm names in probe-artifact spelling, in code order.
-EXPANSION_ARMS = ("NAIVE", "FMA_V1")
-
 #: The array path assigns a complex zero to BOTH planes when it masks
-#: (stepping.py:1943, :1949), so a complex ownership mask writes this, not ``0.0f``.
+#: (``stepping._mask_non_owned_cells``), so a complex ownership mask writes this, not
+#: ``0.0f``.
 COMPLEX_ZERO = "float2(0.0f, 0.0f)"
 
-_COMPLEX_HELPERS: Dict[str, str] = {
-    "FMA_V1": r"""// --- complex multiply: FMA_V1 arm (MEASURED against numpy on this host) -----
-// 0/16384 words on random data where the four-rounded-product arm misses 4095.
-// Negation is `-x`, a sign-bit operation here; `0.0f - x` misses 36/512 on the
-// exhaustive signed-zero table and is a gate mutation, not a comment. The zero
-// cross terms are LITERAL: folding them misses 12/128 (field left) and 24/128
-// (coefficient left), and random data catches neither.
-static inline float2 c_mul(float2 z, float2 p) {                  // z * p, z LEFT
-    return float2(fma(z.x, p.x, -(z.y * p.y)),
-                  fma(z.x, p.y,  (z.y * p.x)));
+_COMPLEX_HELPERS = r"""// --- complex arithmetic, part by part (meep_gpu.part_products) -------------
+// A realnum coefficient times a field: one rounded product per part, MEEP's DOCMP
+// loops. The two names record the array path's operand order; multiplication is
+// commutative, so both are the same word.
+static inline float2 c_mul_field_left(float2 z, float c) {        // z * c, per part
+    return float2(z.x * c, z.y * c);
 }
-static inline float2 c_mul_field_left(float2 z, float c) {        // z * (c + 0j)
-    return float2(fma(z.x, c,    -(z.y * 0.0f)),
-                  fma(z.x, 0.0f,  (z.y * c)));
+static inline float2 c_mul_coefficient_left(float c, float2 z) {  // c * z, per part
+    return float2(c * z.x, c * z.y);
 }
-static inline float2 c_mul_coefficient_left(float c, float2 z) {  // (c + 0j) * z
-    return float2(fma(c, z.x, -(0.0f * z.y)),
-                  fma(c, z.y,  (0.0f * z.x)));
-}""",
-    "NAIVE": r"""// --- complex multiply: NAIVE arm -------------------------------------------
-// Four separately rounded products and two rounded adds. A REAL arm, not a
-// strawman: which form the REFERENCE takes is a platform fact, and a host whose
-// numpy dispatched a scalar loop would bind here instead. The probe decides.
+// A Bloch connection, complex<realnum>(p) * z with every product and sum rounded on
+// its own (libc++ operator*, contraction off): part_products.connect_parts.
 static inline float2 c_mul(float2 z, float2 p) {
     return float2((z.x * p.x) - (z.y * p.y),
                   (z.x * p.y) + (z.y * p.x));
-}
-static inline float2 c_mul_field_left(float2 z, float c) {
-    return float2((z.x * c)    - (z.y * 0.0f),
-                  (z.x * 0.0f) + (z.y * c));
-}
-static inline float2 c_mul_coefficient_left(float c, float2 z) {
-    return float2((c * z.x) - (0.0f * z.y),
-                  (c * z.y) + (0.0f * z.x));
-}""",
-}
+}"""
 
 
-def complex_helpers(expansion: str) -> str:
-    """The three complex-multiply helpers for one measured expansion arm.
+def complex_helpers() -> str:
+    """The complex helpers: part-wise real products and MEEP's unfused connection.
 
-    THE THREE ORIENTATIONS ARE SEPARATE FUNCTIONS ON PURPOSE. Operand order changes
-    bytes under a fused expansion, so the array path's orientations are normative
-    and transcribed literally: ``dtdx`` scalar LEFT (stepping.py:1682), ``fu *= kms``
-    field LEFT (:1976-1982), ``kps*fw`` / ``kms*fw_previous`` coefficient LEFT
-    (:2086-2087, :2093-2095), ``D * inv_eps`` D LEFT (:982-984), the Bloch phase
-    multiply plane LEFT with the phase pre-rounded to complex64 (:1862).
+    The array path's orientations are recorded in the helper names and are not
+    load-bearing: ``dtdx`` scalar LEFT (``stepping._curl_from_operands``),
+    ``kms * f`` (``_apply_pml_update``),
+    ``kps * fw`` / ``kms * fw_previous`` (``_apply_constitutive_pml``), ``D * inv_eps``
+    (``update_E``) -- each ``part_products.scale``, one product per part.
     """
-    if expansion not in _COMPLEX_HELPERS:
-        raise ValueError(f"expansion must be one of {tuple(_COMPLEX_HELPERS)}, "
-                         f"got {expansion!r}")
-    return _COMPLEX_HELPERS[expansion]
+    return _COMPLEX_HELPERS
 
 
 # ---------------------------------------------------------------------------

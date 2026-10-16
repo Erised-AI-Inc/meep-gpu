@@ -86,6 +86,7 @@ from .driver import (
 from .grid import Grid, Mirror
 from .harminv import Harminv
 from .stepping import PERIODIC, _boundary_kinds
+from .test_stepping import FOLD_ROUNDING_BOUND
 
 MEEP_MISSING = importlib.util.find_spec("meep") is None
 requires_meep = pytest.mark.requires_resource("meep")
@@ -796,10 +797,15 @@ def test_symmetry_run_with_pml_matches_full_domain_run():  # The skip_lower grad
     (MEEP's condition, and the fix that took the uniform-PML floor from 6.31e-04 to
     4.00e-07), and a folded periodic axis now stores its second-mirror plane and
     reflects past it — which IS that wrap, seen from the quadrant. The equivalence
-    is therefore exact whether the far face is quiet or live (measured 0.0 bit for
-    bit at until=1.0 with the face at 2.6e-06 of peak, and at until=2.0 with it at
+    therefore holds whether the far face is quiet or live (measured 0.0 bit for bit
+    at until=1.0 with the face at 2.6e-06 of peak, and at until=2.0 with it at
     1.2e-03 — where the zero-ghost treatment this replaces was bounded only by the
-    face's own amplitude). The grading itself is pinned exactly and boundary-free by
+    face's own amplitude), to rounding since the curl takes MEEP's left-to-right
+    bracket, which is not reflection-symmetric in rounding
+    (``test_stepping.FOLD_ROUNDING_BOUND``): the bound is :data:`FOLD_ROUNDING_BOUND`
+    units of 2**-24 in the relative L2 norm (MEASURED 2026-10-06: 9.73 units quiet and
+    15.34 live, against 1.1e-02, about 1.8e5 units, for the mis-graded face). The
+    grading itself is pinned exactly and boundary-free by
     ``test_grid_pml.py::test_the_folded_pml_table_is_the_full_domain_table_under_the_half_cell_shift``.
     """
     # While the far x face is quiet the absorber is already fully engaged (the wave
@@ -807,19 +813,22 @@ def test_symmetry_run_with_pml_matches_full_domain_run():  # The skip_lower grad
     quiet_deviation, quiet_face = _folded_pml_deviation(until=1.0)
     assert quiet_face < 1e-5, (
         f"the far x face must still be quiet in the first case, carries {quiet_face:.2e}")
-    assert quiet_deviation < 1e-7, (
+    bound = FOLD_ROUNDING_BOUND * 2.0 ** -24
+    assert quiet_deviation <= bound, (
         f"Folded PML run diverges from the full-domain run while the wrapped face is "
-        f"dead: {quiet_deviation:.3e}")
+        f"dead: {quiet_deviation:.3e} ({quiet_deviation / 2.0 ** -24:.2f} units of 2**-24; "
+        f"bound {FOLD_ROUNDING_BOUND})")
 
     # Once the wave reaches the wrapped face, the stored plane serves it and the
     # equivalence stays at the same floor — the fold is the full system, not an
     # approximation that holds while the boundary is dark.
     live_deviation, live_face = _folded_pml_deviation(until=2.0)
     assert live_face > 100.0 * quiet_face, "the far face must actually be live in this case"
-    assert live_deviation < 1e-7, (
-        f"Folded PML run diverges from the full-domain run by {live_deviation:.3e} with the "
-        f"wrapped face live at {live_face:.3e} — the stored second-mirror plane is not "
-        f"reproducing the full domain's wrap.")
+    assert live_deviation <= bound, (
+        f"Folded PML run diverges from the full-domain run by {live_deviation:.3e} "
+        f"({live_deviation / 2.0 ** -24:.2f} units of 2**-24; bound {FOLD_ROUNDING_BOUND}) "
+        f"with the wrapped face live at {live_face:.3e} — the stored second-mirror plane is "
+        f"not reproducing the full domain's wrap.")
 
 
 @requires_meep
@@ -901,18 +910,17 @@ def test_a_fold_and_a_bloch_phase_on_another_axis_match_cpu_meep(tmp_path, monke
 
     The refusal (deleted 2026-08-08) said the folded-axis cell-centred readback
     averaged across the mirror plane with no Bloch factor. The readback in fact
-    branches PER AXIS: ``Fields.to_cell_center`` sends a mirrored axis down the fold
-    branch, which needs no Bloch factor because a mirror pins that axis's k to zero
-    (still refused, in ``_require_bloch_is_representable``), and every unfolded axis
-    down ``Fields._wrapped_neighbour``, which applies ``grid.bloch_phase``. MEEP
-    composes the two the same way and with no cross term (loop_in_chunks.cpp:415 for
-    the lattice phase, vec.cpp:1347 ``symmetry::phase_shift``, multiplied together
-    only at loop_in_chunks.cpp:202).
+    composes them PER AXIS (:mod:`~.readback`): a mirrored axis reads its image with the
+    parity and needs no Bloch factor because a mirror pins that axis's k to zero (still
+    refused, in ``_require_bloch_is_representable``), and every unfolded axis takes
+    ``grid.bloch_phase`` on its wrapped word. MEEP composes the two the same way and
+    with no cross term (loop_in_chunks.cpp:415 for the lattice phase, vec.cpp:1347
+    ``symmetry::phase_shift``, multiplied together only at loop_in_chunks.cpp:202).
 
     Ez is the right component to compare: its Yee shift makes it interpolate across x
     and y on the way to cell centres, so the FOLDED axis and the BLOCH axis both
-    appear in one readback. A Bloch phase on z would never reach ``_wrapped_neighbour``
-    for Ez at all and the case would look green while testing nothing.
+    appear in one readback. A Bloch phase on z would never reach a wrapped word for Ez
+    at all and the case would look green while testing nothing.
 
     Four controls, each answering a different way this could pass for the wrong reason
     (all numbers measured on this tree at resolution 10, t = 3, far x face live at
@@ -926,13 +934,16 @@ def test_a_fold_and_a_bloch_phase_on_another_axis_match_cpu_meep(tmp_path, monke
     * A folded run at k = 0 — what an engine that accepted ``k_point`` and dropped it
       would produce — reads 8.5e-01 against the same reference.
     * THE MUTATION, and it is the one that matters: dropping the Bloch factor from
-      ``_wrapped_neighbour`` moves BOTH legs to ~9.2e-02, and the folded leg lands on
-      exactly the value it takes when the factor is dropped only on folded runs
-      (9.321311259e-02 either way). That equality is the claim: the fold routes its
-      Bloch axis through the same code the unfolded run uses and adds no separate
-      hazard. See ``mutate_from_meep.py::bloch_factor_dropped_on_a_folded_run``.
+      the readback's not-owned word (``readback.ghost_phase``, the word at ``lc`` that
+      the stored window makes the CONNECT image of stored cell 0) moves BOTH legs well
+      past the bar, and the folded leg lands on exactly the value it takes when the
+      factor is dropped only on folded runs. That equality is the claim: the fold routes
+      its Bloch axis through the same code the unfolded run uses and adds no separate
+      hazard. See ``mutate_from_meep.py::bloch_factor_dropped_on_a_folded_run``. (The
+      9.2e-02 these legs read on the 0.9.2 storage window, where the factor sat on the
+      owned top word instead, is the same mutation's earlier reading.)
     """
-    from .fields import Fields
+    from . import readback
 
     reference = _meep_oracle(tmp_path, f"fold_bloch_full:{_FOLD_BLOCH_KY}")
     meep_folded = _meep_oracle(tmp_path, f"fold_bloch_folded:{_FOLD_BLOCH_KY}")
@@ -983,14 +994,12 @@ def test_a_fold_and_a_bloch_phase_on_another_axis_match_cpu_meep(tmp_path, monke
 
     # The negative control that converges to a WRONG answer rather than erroring: the
     # engine still runs, still returns a smooth complete field, and is off by 9e-02.
-    original = Fields._wrapped_neighbour
-    monkeypatch.setattr(
-        Fields, "_wrapped_neighbour",
-        lambda self, array, axis: self.grid.xp.roll(array, -1, axis=axis))
+    original = readback.ghost_phase
+    monkeypatch.setattr(readback, "ghost_phase", lambda grid, axes: (1.0, 0.0))
     mutated_full, mutated_folded, _, _ = errors()
-    monkeypatch.setattr(Fields, "_wrapped_neighbour", original)
+    monkeypatch.setattr(readback, "ghost_phase", original)
     assert mutated_folded > 1e-2 and mutated_full > 1e-2, (
-        f"dropping the Bloch factor from _wrapped_neighbour left the folded run at "
+        f"dropping the Bloch factor from the wrapped word left the folded run at "
         f"{mutated_folded:.3e} and the unfolded run at {mutated_full:.3e}; this comparison does "
         f"not constrain the phase. Measured 9.32e-02 and 9.18e-02."
     )
@@ -1039,7 +1048,7 @@ def test_odd_count_folded_run_matches_cpu_meeps_own_fold(tmp_path):
 
 
 def test_odd_count_folded_periodic_axis_lifts_and_serves_its_live_far_face():
-    """An odd folded PERIODIC axis constructs AND serves a live far face, bit for bit.
+    """An odd folded PERIODIC axis constructs AND serves a live far face, to rounding.
 
     binary_grating_phasemap.py (ny_full=21) and metasurface_lens.py (ny_full=15)
     fold a periodic transverse axis at an odd count. This case used to pin two
@@ -1049,7 +1058,10 @@ def test_odd_count_folded_periodic_axis_lifts_and_serves_its_live_far_face():
     ``stepping.fill_folded_far_ghosts_*``). Both gone, what remains to pin is the
     positive statement: the folded run IS the full-domain run's stored rows
     ``cy - 1 .. cy - 2 + owned`` even with the far face carrying 1.3e-01 of peak,
-    measured 0.0 bit for bit at this configuration.
+    measured 0.0 bit for bit at this configuration while the curl's bracket was
+    reflection-symmetric in rounding, and held since to :data:`FOLD_ROUNDING_BOUND`
+    units of 2**-24 of the run's peak (``test_stepping.FOLD_ROUNDING_BOUND``; MEASURED
+    2026-10-06: at most 12.1 units on the stored rows and 1.1 on the big_corner row).
 
     THE TOP STORED ROW HAS NO FULL-DOMAIN ROW OF ITS OWN. ``big_corner`` sits at
     doubled ``n_full + 1``, one cell above the full run's last row, so its
@@ -1076,17 +1088,23 @@ def test_odd_count_folded_periodic_axis_lifts_and_serves_its_live_far_face():
     full.run(until=3.0)
     cy = full.shape[1] // 2
     owned = folded.grid.owned_cells(1)
-    for name in ("Dx", "Dy", "Dz", "Bx", "By", "Bz"):
-        theirs = full.get_field(name, cell_centered=False)
+    primaries = ("Dx", "Dy", "Dz", "Bx", "By", "Bz")
+    unit = 2.0 ** -24 * max(float(np.max(np.abs(full.get_field(name, cell_centered=False))))
+                            for name in primaries)
+    rows, corner = {}, {}
+    for name in primaries:
+        theirs = np.asarray(full.get_field(name, cell_centered=False))
         mine = np.asarray(folded.get_field(name, cell_centered=False))
-        np.testing.assert_array_equal(
-            mine[:, :owned, :], theirs[:, cy - 1: cy - 1 + owned, :],
-            err_msg=f"{name}: the odd-count folded run with a live far face differs from "
-                    f"the full-domain run's stored rows")
-        np.testing.assert_array_equal(  # Measured 0.0 bit for bit, all six components.
-            mine[:, owned, :], theirs[:, 0, :],
-            err_msg=f"{name}: the big_corner row is not the full run's row 0 one lattice "
-                    f"vector down")
+        rows[name] = float(np.max(np.abs(
+            mine[:, :owned, :] - theirs[:, cy - 1: cy - 1 + owned, :]))) / unit
+        corner[name] = float(np.max(np.abs(mine[:, owned, :] - theirs[:, 0, :]))) / unit
+    assert max(rows.values()) <= FOLD_ROUNDING_BOUND, (
+        f"the odd-count folded run with a live far face differs from the full-domain run's "
+        f"stored rows beyond rounding (units of 2**-24 of the run's peak, bound "
+        f"{FOLD_ROUNDING_BOUND}): {rows}")
+    assert max(corner.values()) <= FOLD_ROUNDING_BOUND, (
+        f"the big_corner row is not the full run's row 0 one lattice vector down, to "
+        f"rounding (units of 2**-24 of the run's peak, bound {FOLD_ROUNDING_BOUND}): {corner}")
 
 
 def test_zero_amplitude_source_leaves_fields_exactly_zero():  # Degenerate case, with a positive control.
@@ -1838,11 +1856,10 @@ def test_source_in_the_pml_is_admitted_on_cartesian_and_dcyl_either_order():
     assert source_first.pml is not None
     source_first.run(num_steps=5)
     # The Dcyl arm retired an hour behind the Cartesian one, when the sweep measured
-    # the same f_u mirror transferring unchanged (sources.py deposit-mirror comment:
-    # Ez mid-r-layer 4.08e+00 -> 3.12e-06, corner 7.05e+01 -> 2.04e-05, m in
-    # {0, 1, 2}, controls bit-unchanged); the lifted parity case is pinned in
-    # test_from_meep (cylindrical_source_in_pml, measured 1.1016e-06). Either
-    # creation order admits, binds the layer, and steps finite.
+    # the same per-chunk curl form transferring unchanged (Ez mid-r-layer 4.08e+00 ->
+    # 3.12e-06, corner 7.05e+01 -> 2.04e-05, m in {0, 1, 2}, controls bit-unchanged);
+    # the lifted parity case is pinned in test_from_meep (cylindrical_source_in_pml,
+    # measured 1.1016e-06). Either creation order admits and steps finite.
     deep_r = {"component": "Ez", "frequency": 1.0, "center": (1.8, 0.0, 0.0),
               "size": (0.0, 0.0, 0.0)}
     for pml_before_source in (True, False):
@@ -1892,7 +1909,7 @@ def test_a_source_on_the_wrapped_boundary_plane_of_a_high_only_layer_is_admitted
     ``-L/2`` IS ``+L/2``: one lattice point, stored once at cell 0, owned by the high
     face's grading (MEEP's owned half-cell index 2N) at the absorber's PEAK sigma.
     The sigma-profile pins below keep that fact honest. A source there used to be
-    refused by name ("SAME lattice plane"); with the f_u deposit mirror and the
+    refused by name ("SAME lattice plane"); with the per-chunk curl form and the
     integrated-dipole withdraw landed it is admitted from either creation order and
     measured at the floor — ``test_from_meep``'s ``source_on_the_wrapped_pml_seam``
     parity case is this exact configuration at 9.6206e-07 whole-volume complex Ez
@@ -2762,7 +2779,7 @@ def test_a_flux_plane_spanning_an_absorbing_axis_matches_cpu_meep(tmp_path):
 def test_a_source_may_span_any_face_including_the_one_that_absorbs():
     # The per-face clearance refusals are retired on Cartesian grids: a grating
     # source fills the periodic cross section, and one reaching into the absorbing
-    # face is admitted too (the deposit-mirror/withdraw fixes; parity in
+    # face is admitted too (the per-chunk curl form and withdraw fixes; parity in
     # test_from_meep source_spans_the_pml at 6.3e-07). The folded case — the stored
     # quadrant's implied lower layer — is likewise admitted and must simply build
     # and step; its parity twin is the folded corpus family.
@@ -4742,25 +4759,12 @@ def _metallic_driver(spec):  # The same run on this engine, boundaries taken fro
 def _meep_layout(driver, component):
     """This run's field in ``sim.get_array``'s own layout, ready to compare with no slicing.
 
-    ``Fields.to_meep_array`` prepends MEEP's periodic duplicate plane on every axis it
-    does not fold; a metallic axis has no lattice image to duplicate and MEEP returns
-    ``N`` there rather than ``N + 1``, so that plane is dropped again — the same
-    correction :meth:`GpuRunResult.get_array` applies, reproduced here so the driver
-    cases and the converter cases are compared on one convention.
+    ``Fields.to_meep_array`` is MEEP's ``get_array`` (:mod:`~.readback`): the duplicate
+    plane where MEEP has one, phased on a Bloch axis, none on a metallic axis — the
+    same array :meth:`GpuRunResult.get_array` returns, so the driver cases and the
+    converter cases are compared on one convention.
     """
-    values = np.array(np.asarray(driver.fields.to_meep_array(component)), copy=True)
-    for axis in range(3):
-        if driver.grid.is_metallic(axis) and not driver.grid.is_mirrored(axis):
-            first = (slice(None),) * axis + (0,)
-            last = (slice(None),) * axis + (-1,)
-            assert np.array_equal(values[first], values[last]), (
-                "to_meep_array no longer prepends a plain duplicate; the slice below would "
-                "then drop a real plane of field.")
-            values = values[(slice(None),) * axis + (slice(1, None),)]
-        elif driver.grid.bloch_phase(axis) is not None and not driver.grid.is_mirrored(axis):
-            first = (slice(None),) * axis + (0,)
-            values[first] = values[first] * np.conjugate(driver.grid.bloch_phase(axis))
-    return values
+    return np.array(np.asarray(driver.fields.to_meep_array(component, driver.h_alias_rule())), copy=True)
 
 
 # Every case below leaves ``k_point`` unset, which is MEEP's DEFAULT and was this

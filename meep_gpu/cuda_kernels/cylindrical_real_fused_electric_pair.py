@@ -1,47 +1,26 @@
-"""The Dcyl-REAL hand-CUDA fused pair on the D/E seam: ``step_D`` -> ``zero_metal_D`` -> ``update_E``.
+"""The REAL-Dcyl hand-CUDA fused pair: ``step_D`` -> ``zero_metal_D`` -> ``update_E``.
 
-THE BOARD'S CELL: ``D_to_E (cuda_cylindrical/cylindrical, cuda_constitutive/
-ordinary)`` -- 3 seam-instances of demand, 0 clearing the source seam before
-this product existed (``tests:TestAdjointSolver.test_adjoint_solver_cyl_n2f_
-fields_0_0``/``_1_0``, ``tests:TestPMLCylindrical.test_pml_cyl_0_0_0``; all
-three declare ``source_field_types == ['D']``, so every one carries an ELECTRIC
-deposit inside this seam). What this module is worth is therefore the BRACKET
-(:data:`CARRIES_DEPOSIT_REPAIR`), exactly as it was for the real electric pair:
-without a product on the cell the board prices all 3 rows on the driver fact
-alone, whatever the fitness verdict says. It is the ELECTRIC TWIN of the
-2026-09-02 :mod:`.cylindrical_real_fused_magnetic_pair`, landed in the same
-residue round that priced it (fusion-residue audit §1.3: 12 electric-twin
-instances), with the Metal electric twins as the CARRIES=True shape precedent.
+THE CELL: ``D_to_E (cuda_cylindrical/cylindrical, cuda_constitutive/ordinary)``. Both halves
+are lifted from the texts of their singles -- ``cylindrical_kernels``' ``cyl_step_D_pml_real``
+and ``constitutive_kernels``' ``update_E_pml_real`` (its statement form,
+``own_cell_hoist.unhoisted_kernel_code``) -- and this module introduces no arithmetic: every
+edit is a register capture, a seam or a rename, listed in :data:`LIFT_EDITS`.
 
-WHAT THE CURL HALF IS: the certified ``cyl_step_D_pml_real`` -- the Cartesian
-backward machinery with the radial-prefix substitution on Dz's first operand
-pair and the m = 0 AXIS TAIL (``stepping._cylindrical_axis_zero_D:583-587``):
-a POST-ADD of ``axis_coef * Hy`` into Dz on the axis row and a zero into Dy
-there. THE TAIL IS FOLLOWED ON THE REGISTERS: the certified store order is
-kept and the carried registers are updated beside it, because ``update_E``
-below reads the registers and a capture that stopped at ``pml_apply`` would
-hand it a pre-tail displacement on the axis row -- the exact defect the
-complex Dcyl electric weld's gate armed (its two |m| branches) and this
-family's gate arms for the m = 0 branch.
+THE REGISTERS FOLLOW THE STORES. The m = 0 axis rule (``stepping._cylindrical_axis_zero_D``)
+adds MEEP's double ``4*Courant`` product into Dz on the axis row and zeroes Dy there AFTER
+the recurrence, so the weld updates the registers beside those stores (the add reads the
+register, which holds the word the lane stored for Dz); ``zero_metal_D`` (the OFF-DIAGONAL
+table) is then carried after it, the driver's order.
 
-THE TWO MIRROR FILLS ARE ABSENT BY REFUSAL, not by omission -- the same stance
-as the complex Dcyl electric pair: no Dcyl corpus row folds, the r axis's
-mirror is ``r_to_minus_r_symmetry``'s rule rather than ``mirror_parity``'s,
-and the predicate refuses every folded grid by name so :data:`REPLACES` stays
-honest without resting on another module's clause.
+THE RADIAL SCAN IS THE CURL'S FIRST LAUNCH (``cylindrical_prefix``) over the CURRENT Hp; the
+difference comes in as ``rad``. ONE DECODE of the chunk record serves both halves (DESIGN.md
+D10). The in-seam electric deposit is repaired by the bracket ``fused_pairs`` wires
+(:data:`CARRIES_DEPOSIT_REPAIR`).
 
-``zero_metal_D`` IS CARRIED, and it is the OFF-DIAGONAL table -- two components
-per walled axis (x wall: Dy, Dz; y wall: Dx, Dz; z wall: Dx, Dy) -- never the
-B side's diagonal. The cell's rows drive it: all three declare a metallic z
-termination, so ``Dx``/``Dy`` are wiped at k = 0 on every one.
-
-THE ALIASING RULE IS THE SIBLINGS': D is bound EXACTLY ONCE, the three
-``inv_eps`` pointers are deliberately NOT ``__restrict__`` (an isotropic run
-hands one allocation three times), and the sub-lattice pairing is the D seam's
--- the curl reads the INTEGER positions and ``update_E`` the HALF-INTEGER ones,
-renamed ``kms_half_*`` so the two cannot shadow.
-
-NOTHING HERE IS DISPATCH; :mod:`.fused_pairs` can plan it opt-in only.
+NO FILLS ARE CARRIED, BY REFUSAL. D is bound EXACTLY ONCE; the constitutive half reads the
+registers. ``inv_eps`` is bound three times and NOT ``__restrict__``. ``kms_x/y/z`` collide
+between the halves (integer for the D curl, half-integer for ``update_E``), so the
+constitutive group is ``kms_half_*``.
 """
 
 from __future__ import annotations
@@ -102,7 +81,7 @@ try:
     from . import cylindrical_kernels
 except ImportError:  # a host with no CuPy: only the emitter is unavailable
     cylindrical_kernels = None
-from . import own_cell_hoist
+from . import bounds_block, own_cell_hoist
 
 try:
     from . import constitutive_kernels
@@ -170,51 +149,36 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "__device__ __forceinline__ void pml_apply(",
      "became": "__device__ __forceinline__ float pml_apply_reg(",
      "why": "the constitutive half consumes the value in a register; the helper "
-            "names and returns the expression it already computed. The "
-            "expression, its parenthesisation and the store to f[idx] are "
-            "unchanged, so the global state it leaves is the certified one."},
+            "returns the value it already stored. Both forms, the guards and the "
+            "stores are unchanged."},
+    {"line": "    <the curl body's chunk-record block> + <update_E's>",
+     "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
+     "why": "one decode of the record for both halves (DESIGN.md D10)."},
     {"line": "        pml_apply(Dx, fu_Dx, idx, curl, ...);",
      "became": "        d_x = pml_apply_reg(Dx, fu_Dx, idx, curl, ...);",
-     "why": "capture the register; three lines, one per component, argument "
-            "lists untouched. Three 'float d_* = 0.0f;' declarations are hoisted "
-            "above the certified braced blocks."},
-    {"line": "    if (i == 0) { Dz[idx] = Dz[idx] + (axis_coef * Hy[idx]); "
-             "Dy[idx] = 0.0f; }",
-     "became": "    if (i == 0) { d_z = d_z + (axis_coef * Hy[idx]); "
-               "Dz[idx] = d_z; d_y = 0.0f; Dy[idx] = 0.0f; }",
-     "why": "THE CYLINDRICAL SUBTLETY, the D side's: the certified curl does "
-            "NOT end at pml_apply -- the m = 0 axis tail "
-            "(stepping._cylindrical_axis_zero_D:583-587) post-adds "
-            "axis_coef*Hy into Dz on the axis row and zeroes Dy there -- so "
-            "the weld FOLLOWS the certified stores, updating the registers "
-            "beside them. The add reads the register that holds the very word "
-            "Dz[idx] carries (a float32 stored and reloaded is the identity), "
-            "so the expression tree is unchanged. A capture that stopped at "
-            "pml_apply would hand update_E a pre-tail displacement on the "
-            "axis row."},
-    {"line": "    float src_x = Dx[idx] * inv_eps_Ex[idx];   // stepping.py:982: "  # stepping.py live lines for the frozen device-text citation(s) in this string: 982->1011
-             "source * inv_eps",
-     "became": "    float src_x = d_x * inv_eps_Ex[idx];   // stepping.py:982: "  # stepping.py live lines for the frozen device-text citation(s) in this string: 982->1011
-               "source * inv_eps",
-     "why": "THE SEAM. The certified constitutive body opens each component by "
-            "reloading the flux density the curl just stored; this reads the "
-            "register instead, which is also what lets D be bound exactly "
-            "once. The multiply and its operand order are untouched."},
-    {"line": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);",
-     "became": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], "
-               "kms_half_x[i]);",
-     "why": "ONE RENAME, NO ARITHMETIC. kms_x is the INTEGER sub-lattice for "
-            "the D curl and the HALF-INTEGER one for update_E; a shadow is a "
-            "half-cell error in the absorber profile."},
-    {"line": "        Dy[base] = 0.0f; Dz[base] = 0.0f;   "
-             "(in_seam_passes._zero_metal_D_kernel_code)",
-     "became": "    if (wall_x && i == 0) { d_y = 0.0f; Dy[idx] = d_y; "
-               "d_z = 0.0f; Dz[idx] = d_z; }",
-     "why": "zero_metal_D carried on the registers, the OFF-DIAGONAL table -- "
-            "two components per walled axis, never the B diagonal -- AFTER the "
-            "certified axis tail, which is the driver's own order (the tail is "
-            "part of step_D; the wall pass is :3310). Launch geometry "
-            "re-spelled, arithmetic not; same +0.0f."},
+     "why": "capture the register; three lines, argument lists untouched."},
+    {"line": "    if (i == 0) { Dz[idx] = Dz[idx] + __double2float_rn(axis_courant * "
+             "(double)(Hy[idx])); Dy[idx] = 0.0f; }",
+     "became": "    if (i == 0) { d_z = d_z + __double2float_rn(axis_courant * "
+               "(double)(Hy[idx])); Dz[idx] = d_z; d_y = 0.0f; Dy[idx] = 0.0f; }",
+     "why": "the m = 0 axis rule (stepping._cylindrical_axis_zero_D) post-adds MEEP's "
+            "double 4*Courant product into Dz and zeroes Dy AFTER the recurrence; the "
+            "weld FOLLOWS the stores. The add reads the register that holds the very "
+            "word Dz[idx] carries, so the expression tree is unchanged."},
+    {"line": "    float src_x = Dx[idx] * inv_eps_Ex[idx];",
+     "became": "    float src_x = d_x * inv_eps_Ex[idx];",
+     "why": "THE SEAM: the register instead of a reload of D, which is also what lets D "
+            "be bound exactly once. The multiply and its operand order are untouched."},
+    {"line": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);",
+     "became": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i], "
+               "in_h_x);",
+     "why": "ONE RENAME, NO ARITHMETIC: kms_x is the INTEGER sub-lattice for the D curl "
+            "and the HALF-INTEGER one for update_E."},
+    {"line": "        Dy[base] = 0.0f; Dz[base] = 0.0f;   (in_seam_passes._zero_metal_D)",
+     "became": "    if (wall_x && i == 0) { d_y = 0.0f; Dy[idx] = d_y; d_z = 0.0f; "
+               "Dz[idx] = d_z; }",
+     "why": "zero_metal_D carried on the registers, the OFF-DIAGONAL table, AFTER the "
+            "axis rule -- the driver's order. Same +0.0f."},
 )
 
 __all__ = [
@@ -238,31 +202,28 @@ _BODY_ANCHOR = "\n) {\n"
 _DECODE_END = "    int i = idx / (ny * nz);\n"
 _PML_APPLY_SIGNATURE = "__device__ __forceinline__ void pml_apply(\n"
 _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
-_PML_APPLY_STORE = "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
+_PML_APPLY_STORE = "    f[idx] = value;\n"
 _PML_APPLY_STORE_REG = (
-    "    // THE ONE EDIT TO THIS HELPER: the right-hand side, its\n"
-    "    // parenthesisation and the store are the certified ones; the value is\n"
-    "    // additionally NAMED so the constitutive half can read it from a\n"
-    "    // register instead of reloading it from global memory.\n"
-    "    float value = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;\n"
     "    f[idx] = value;\n"
+    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // are the certified ones; the value is additionally RETURNED so the\n"
+    "    // constitutive half can read it from a register instead of reloading it.\n"
     "    return value;\n")
 
 #: The certified m = 0 D-side axis tail, and the register-following rewrite.
 _AXIS_TAIL = (
     "    if (i == 0) {\n"
-    "        Dz[idx] = Dz[idx] + (axis_coef * Hy[idx]);\n"
+    "        Dz[idx] = Dz[idx] + __double2float_rn(axis_courant * (double)(Hy[idx]));\n"
     "        Dy[idx] = 0.0f;\n"
     "    }\n")
 _AXIS_TAIL_REG = (
-    "    // stepping._cylindrical_axis_zero_D:583-587, THE CERTIFIED STORES\n"
-    "    // FOLLOWED: the registers are updated beside them so update_E reads\n"
-    "    // the post-tail values. The register d_z holds the very word Dz[idx]\n"
-    "    // carries (a float32 stored and reloaded is the identity), so the\n"
-    "    // add's expression tree is the certified one. The auxiliaries are\n"
-    "    // untouched, as on the array path.\n"
+    "    // stepping._cylindrical_axis_zero_D, THE CERTIFIED STORES FOLLOWED: the\n"
+    "    // registers are updated beside them so update_E reads the post-rule values.\n"
+    "    // d_z holds the very word Dz[idx] carries (a float32 stored and reloaded is\n"
+    "    // the identity), so the add's expression tree is the certified one. The\n"
+    "    // auxiliaries are untouched, as on the array path.\n"
     "    if (i == 0) {\n"
-    "        d_z = d_z + (axis_coef * Hy[idx]);\n"
+    "        d_z = d_z + __double2float_rn(axis_courant * (double)(Hy[idx]));\n"
     "        Dz[idx] = d_z;\n"
     "        d_y = 0.0f;\n"
     "        Dy[idx] = 0.0f;\n"
@@ -296,9 +257,9 @@ extern "C" __global__ void fused_electric_pair_pml_cyl_real(
     float* __restrict__ fu_Dx, float* __restrict__ fu_Dy, float* __restrict__ fu_Dz,
     const float* __restrict__ Hx, const float* __restrict__ Hy,
     const float* __restrict__ Hz,
-    // The wall-extended radial prefix of Hp, computed on the array path per
-    // launch (nx + 1 rows at the same (phi, z) stride).
-    const float* __restrict__ pfx,
+    // The radial difference of Hp's per-chunk sum, written by the scan launch
+    // before this one (cylindrical_prefix), shaped like the target.
+    const float* __restrict__ rad,
     // E and its constitutive history.
     float* __restrict__ Ex, float* __restrict__ Ey, float* __restrict__ Ez,
     float* __restrict__ f_w_Ex, float* __restrict__ f_w_Ey,
@@ -308,7 +269,7 @@ extern "C" __global__ void fused_electric_pair_pml_cyl_real(
     // (fields.py:1323-1325), and restrict on mutually aliasing arguments is a
     // promise the caller cannot keep.
     const float* inv_eps_Ex, const float* inv_eps_Ey, const float* inv_eps_Ez,
-    int nx, int ny, int nz, float dtdx, float axis_coef,
+    int nx, int ny, int nz, float dtdx, double axis_courant,
     // The D curl's INTEGER split-field coefficients, certified names kept.
     const float* __restrict__ kms_x, const float* __restrict__ sinv_x,
     const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
@@ -320,7 +281,10 @@ extern "C" __global__ void fused_electric_pair_pml_cyl_real(
     const float* __restrict__ kps_z, const float* __restrict__ kms_half_z,
     int bc_x, int bc_y, int bc_z,
     // zero_metal_D's walled-axis flags, from in_seam_coverage.zero_metal_axes.
-    int wall_x, int wall_y, int wall_z
+    int wall_x, int wall_y, int wall_z,
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // which PML form, decoded once for both halves.
+    const int* __restrict__ cb
 ) {
 '''
 
@@ -389,6 +353,21 @@ def cylindrical_real_fused_electric_pair_prelude() -> str:
     return prelude + constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE
 
 
+#: The chunk-record entries each lifted body decodes, as ``(entries, presence)``: the D
+#: curl its integer lattice along each dsigu axis plus the presence word, update_E its
+#: half-integer lattice along each own axis.
+CURL_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.curl_entries(("Dx", "Dy", "Dz"))), (0, 1, 2))
+CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
+    tuple(bounds_block.constitutive_entries(("Ex", "Ey", "Ez"))), ())
+
+
+def union_bounds_block() -> str:
+    """The fused kernel's ONE chunk-record block: both bodies' entries, one decode."""
+    return bounds_block.bounds_block(CURL_BLOCK[0] + CONSTITUTIVE_BLOCK[0],
+                                     CURL_BLOCK[1] + CONSTITUTIVE_BLOCK[1])
+
+
 def certified_curl_body() -> str:
     """``cyl_step_D_pml_real``'s body, lifted, registers captured, TAIL FOLLOWED."""
     _certified_halves()
@@ -399,16 +378,18 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "the certified curl body no longer decodes i on its own line; the "
             "carried registers have nowhere to be declared")
+    body = bounds_block.strip_bounds_block(body, "_cyl_step_D_pml_real_kernel_code",
+                                           *CURL_BLOCK)
     head, tail = body.split(_DECODE_END, 1)
     body = "".join((
-        head, _DECODE_END,
-        "\n    // The three carried registers. Declared HERE because each\n"
+        head, _DECODE_END, "\n",
+        union_bounds_block(),
+        "    // The three carried registers. Declared HERE because each\n"
         "    // certified component below is a braced scope, and a value declared\n"
         "    // inside one does not outlive it.\n"
         "    float d_x = 0.0f;\n"
         "    float d_y = 0.0f;\n"
-        "    float d_z = 0.0f;\n"
-        "\n",
+        "    float d_z = 0.0f;\n",
         tail,
     ))
     for axis, target in zip(_CARRIED, _TARGETS):
@@ -476,6 +457,8 @@ def certified_constitutive_body() -> str:
         raise AssertionError(
             "the certified constitutive body no longer decodes i on its own "
             "line; the duplicate decomposition cannot be identified")
+    body = bounds_block.strip_bounds_block(body, "_update_E_pml_real_kernel_code",
+                                           *CONSTITUTIVE_BLOCK)
     tail = body.split(_DECODE_END, 1)[1]
     for axis, target in zip(_CARRIED, _TARGETS):
         anchor = f"    float src_{axis} = {target}[idx] * inv_eps_E{axis}[idx];"
@@ -495,7 +478,8 @@ def certified_constitutive_body() -> str:
     for axis, coordinate in zip(_CARRIED, _COORDINATE):
         prefix = f"    constitutive_apply(E{axis}, f_w_E{axis}, idx, src_{axis}, "
         call = _line_starting(tail, prefix, f"E{axis}'s constitutive_apply")
-        expected = f"{prefix}kps_{axis}[{coordinate}], kms_{axis}[{coordinate}]);"
+        expected = (f"{prefix}kps_{axis}[{coordinate}], kms_{axis}[{coordinate}], "
+                    f"in_h_{axis});")
         if call != expected:
             raise AssertionError(
                 f"E{axis}'s constitutive_apply is {call!r}, not the certified "
@@ -737,10 +721,10 @@ def inverse_epsilon_bindings(fields: "Fields") -> Tuple[Any, Any, Any]:
 
 def assert_disjoint_bindings(fields: "Fields",
                              tables: Dict[str, Dict[str, Any]],
-                             prefix: Any) -> int:
-    """Check the promise every ``__restrict__`` in the signature makes -- the
-    prefix included. The three inv_eps volumes may alias EACH OTHER (an
-    isotropic run hands one pointer three times) but not a restrict argument."""
+                             radial: Any) -> int:
+    """Check the promise every ``__restrict__`` in the signature makes -- the radial
+    difference included. The three inv_eps volumes may alias EACH OTHER (an isotropic
+    run hands one pointer three times) but not a restrict argument."""
     bound: Dict[int, str] = {}
     collisions: List[str] = []
 
@@ -753,7 +737,7 @@ def assert_disjoint_bindings(fields: "Fields",
 
     for name in _FIELD_BINDINGS + _E_BINDINGS:
         visit(name, getattr(fields, name))
-    visit("pfx", prefix)
+    visit("rad", radial)
     for key in _CURL_TABLE_KEYS:
         visit(f"curl:{key}", tables["curl"][key])
     for key in _CONSTITUTIVE_TABLE_KEYS:
@@ -775,31 +759,41 @@ def assert_disjoint_bindings(fields: "Fields",
 
 
 def launch_cylindrical_real_fused_electric_pair(
-        fields: "Fields", tables: Dict[str, Dict[str, Any]], prefix: Any,
+        fields: "Fields", tables: Dict[str, Dict[str, Any]], radial: Any,
         boundary_codes: Sequence[Any], walls: Sequence[int], dtdx: float,
-        kernel: Optional[Any] = None) -> Dict[str, Any]:
+        kernel: Optional[Any] = None, *, chunk_bounds: Any,
+        axis_courant: Any = None) -> Dict[str, Any]:
     """All three of :data:`REPLACES` in ONE launch.
 
-    ``prefix`` is the CURRENT step's wall-extended radial prefix of Hp --
-    resolved per launch by the caller, never cached. The launch is sized from
-    the TARGET volume, never from the prefix, which is one row taller.
-    ``kernel`` is the gate's door.
+    ``radial`` is the CURRENT step's radial difference of Hp (the scan launch's), shaped
+    like the target. ``chunk_bounds`` is the run's chunk record on the device, required.
+    ``axis_courant`` is the m = 0 rule's double ``4*Courant``
+    (``cylindrical_kernels.axis_courant``), derived from the grid unless a gate supplies
+    its own. ``kernel`` is the gate's door.
     """
+    from .cylindrical_complex_kernels import chunk_record_argument  # noqa: PLC0415
+
+    cb = chunk_record_argument(chunk_bounds)
+    if axis_courant is None:
+        axis_courant = np.float64(4.0 * float(fields.grid.courant))
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
+    if tuple(int(n) for n in radial.shape) != (nx, ny, nz):
+        raise ValueError(f"the radial difference is {tuple(radial.shape)}, the target "
+                         f"{(nx, ny, nz)}")
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
     constitutive = tables["constitutive"]
     arguments = tuple(getattr(fields, name) for name in _FIELD_BINDINGS) + (
-        prefix,
+        radial,
     ) + tuple(getattr(fields, name) for name in _E_BINDINGS) + tuple(
         inverse_epsilon_bindings(fields)
     ) + (
         np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx),
-        cylindrical_kernels.axis_coefficient(dtdx),
+        np.float64(axis_courant),
     ) + tuple(curl[key] for key in _CURL_TABLE_KEYS) + tuple(
         constitutive[key] for key in _CONSTITUTIVE_TABLE_KEYS
     ) + tuple(np.int32(code) for code in boundary_codes) + tuple(
-        np.int32(int(bool(walls[axis]))) for axis in range(3))
+        np.int32(int(bool(walls[axis]))) for axis in range(3)) + (cb,)
     (kernel or _get_kernel())((blocks,), (_FUSED_THREADS,), arguments)
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
@@ -808,18 +802,17 @@ def launch_cylindrical_real_fused_electric_pair(
 
 def run_cylindrical_real_fused_electric_pair(
         fields: "Fields", grid: "Grid", pml: "PML", dtdx: float, *,
-        sources: Any = None,
+        chunk_bounds: Any, sources: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
-        prefix: Any = None, scratch: Any = None,
+        radial: Any = None, scan: Any = None,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """Gate on the predicate, resolve everything from the grid, launch once.
+    """Gate on the predicate, resolve everything from the grid, scan, launch once.
 
-    ``prefix`` may be handed in by a gate that already computed it (so the same
-    words go to both paths); otherwise it is computed here from the CURRENT Hp,
-    per launch, by the certified family's own helper. THE ``step_D`` PREFIX,
-    never the ``step_B`` one -- handing this the Ep prefix compiles, runs, and
-    is a different engine.
+    ``radial`` may be handed in by a gate; otherwise the scan runs here over the CURRENT
+    Hp (the ``step_D`` side, never the Ep sum).
     """
+    from .cylindrical_prefix import radial_difference  # noqa: PLC0415
+
     covered, reason = covers_cylindrical_real_fused_electric_pair(
         fields, pml, grid, sources)
     if not covered:
@@ -827,11 +820,11 @@ def run_cylindrical_real_fused_electric_pair(
     _certified_halves()
     if tables is None:
         tables = cylindrical_real_fused_electric_pair_tables(pml)
-    if prefix is None:
-        from .cylindrical_prefix import cylindrical_prefix  # noqa: PLC0415
-        prefix = cylindrical_prefix(fields, "step_D", scratch=scratch)
-    assert_disjoint_bindings(fields, tables, prefix)
+    if radial is None:
+        radial = radial_difference(fields, pml, "step_D", tables=scan,
+                                   scratch=getattr(fields, "scratch", None))
     return launch_cylindrical_real_fused_electric_pair(
-        fields, tables, prefix,
+        fields, tables, radial,
         cylindrical_kernels.cylindrical_boundary_codes_for(grid),
-        zero_metal_axes(grid), dtdx, kernel)
+        zero_metal_axes(grid), dtdx, kernel, chunk_bounds=chunk_bounds,
+        axis_courant=cylindrical_kernels.axis_courant(grid))

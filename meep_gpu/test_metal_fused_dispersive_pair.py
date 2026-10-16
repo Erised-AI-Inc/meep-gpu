@@ -61,28 +61,30 @@ def test_the_curl_half_is_the_certified_curl_bodys_own_lines(axis):
 
 
 @pytest.mark.parametrize("axis,coordinate", ((0, "i"), (1, "j"), (2, "k")))
-def test_the_electric_half_is_the_pointwise_bodys_own_lines_but_for_the_seam(
+def test_the_electric_half_is_the_certified_constitutive_select_but_for_the_seam(
         axis, coordinate):
-    """The E half differs from the certified pointwise body in EXACTLY the seam.
+    """The E half is the certified constitutive body's per-chunk select, renamed.
 
-    ``float source = d_in[idx];`` becomes ``float source = v{axis};`` and the pole
-    buffers are respelled ``q`` (the certified curl already owns ``p0``..``p2`` in
-    this scope). Nothing else moves — and if something does, this fails naming it.
+    On a cell whose chunk carries the component's own layer the accumulation in
+    MEEP's grouping, ``f + ((kps*src) - (kms*prev))``, with ``f_w`` read and written
+    there only; elsewhere ``E = src``. Those lines are the ALIGNED certified body's
+    (``shaders.constitutive_source``), renamed pointer by pointer, and the product
+    and the pole chain are still the pointwise body's own. The seam is the one
+    line that differs: ``float source = d_in[idx];`` becomes ``float source =
+    v{axis};``, and the pole buffers are respelled ``q`` (the certified curl already
+    owns ``p0``..``p2`` in this scope).
     """
     from meep_gpu.metal_kernels import dispersive_update_e as pointwise
 
     pinned = pointwise.dispersive_e_source(2, axis)
     fused = family.fused_dispersive_pair_source((0, 0, 0), axis, 2,
                                                 (False, False, False))
-    for line in ("    float prev = fw[idx];",
-                 "    float src = source * inv_e[idx];",
-                 "    fw[idx] = src;",
-                 "    float value = e_out[idx];",
-                 f"    value = value + kps[{coordinate}] * src;",
-                 f"    value = value - kms[{coordinate}] * prev;",
-                 "    e_out[idx] = value;"):
-        assert line in pinned, f"the pinned line moved in the pointwise family: {line}"
-        assert line in fused, f"the fused body dropped {line!r}"
+    pairs, flag = _aligned_e_lines(axis, coordinate)
+    for certified, renamed in pairs:
+        assert renamed in fused, f"the fused body does not carry {certified!r} as {renamed!r}"
+    assert flag in fused
+    assert "    float src = source * inv_e[idx];" in pinned
+    assert "    float src = source * inv_e[idx];" in fused
     assert "    float source = d_in[idx];" in pinned
     assert "    float source = d_in[idx];" not in fused, (
         "the fused body reloads the displacement it just wrote; the seam is not closed")
@@ -91,6 +93,35 @@ def test_the_electric_half_is_the_pointwise_bodys_own_lines_but_for_the_seam(
     assert "p0[idx]" not in fused, (
         "a pole buffer is still spelled p0, which collides with the curl's own "
         "split-field previous value in this scope")
+
+
+#: The certified ALIGNED constitutive body's per-component lines (side E, component
+#: ``t``), and the pointer renames that carry them into a one-component E half:
+#: ``dw{t}`` -> ``dw``, ``w{t}[ii]`` -> ``fw[idx]``, ``src{t}`` -> ``src``,
+#: ``prev{t}`` -> ``prev``, ``a{t}`` -> ``value``, ``f{t}[ii]`` -> ``e_out[idx]``,
+#: ``kp_{t}``/``km_{t}`` -> ``kps[c]``/``kms[c]``.
+def _aligned_e_lines(axis, coordinate):
+    from meep_gpu.metal_kernels import shaders as _shaders
+
+    certified = _shaders.constitutive_source("E")
+    t = axis
+    lines = (f"    float prev{t} = dw{t} ? w{t}[ii] : 0.0f;",
+             f"    if (dw{t}) {{ w{t}[ii] = src{t}; }}",
+             f"    float a{t} = src{t};",
+             f"    if (dw{t}) {{ a{t} = f{t}[ii] + ((kp_{t} * src{t}) - (km_{t} * prev{t})); }}",
+             f"    f{t}[ii] = a{t};")
+    renames = ((f"dw{t}", "dw"), (f"w{t}[ii]", "fw[idx]"), (f"src{t}", "src"),
+               (f"prev{t}", "prev"), (f"a{t}", "value"), (f"f{t}[ii]", "e_out[idx]"),
+               (f"kp_{t}", f"kps[{coordinate}]"), (f"km_{t}", f"kms[{coordinate}]"))
+    pairs = []
+    for line in lines:
+        assert line in certified, f"the certified constitutive body changed: {line!r}"
+        renamed = line
+        for old, new in renames:
+            renamed = renamed.replace(old, new)
+        pairs.append((line, renamed))
+    flag = _shaders.constitutive_membership_flags("E")[axis]
+    return pairs, f"    const bool dw = {flag};"
 
 
 def test_the_pole_chain_is_ordered_and_length_is_the_specialisation():
@@ -311,11 +342,15 @@ def test_the_refuted_all_component_signature_really_does_break_the_ceiling():
 
 
 def test_the_shipped_per_component_signature_fits_with_room():
+    """29 per-component bindings, then the chunk record last: 30 of 31."""
+    from meep_gpu.metal_kernels import chunk_bounds
+
     source = family.fused_dispersive_pair_source((1, 1, 1), 0, family.MAX_POLES,
                                                  (True, True, True))
     highest = max(int(chunk.split(")")[0])
                   for chunk in source.split("[[buffer(")[1:])
-    assert highest == 28, highest
+    assert highest == family.RECORD_BUFFER == 29, highest
+    assert chunk_bounds.binding(family.RECORD_BUFFER) in source
 
 
 # ---------------------------------------------------------------------------
@@ -329,3 +364,61 @@ def test_the_device_gate_is_present_and_routes_through_the_runner():
         "a Metal gate must run through metal_gate_runner so its artifact records "
         "the sources the PROCESS imported")
     assert "gate_provenance" in text
+
+
+# ---------------------------------------------------------------------------
+# 7. The per-chunk forms: lifted, keyed on the record, and bound last
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("axis", (0, 1, 2))
+def test_the_curl_forms_are_the_certified_step_d_lines_for_this_target(axis):
+    """``p``/``n``/``v``, the guarded ``fu`` store and the two-line presence-aware
+    stencil come from the certified ``step_D`` emitter's own OUTPUT, and the form is
+    keyed on the target's dsigu membership on the integer lattice."""
+    lifted = family.certified_target_lines((1, 0, 1), axis)
+    source = family.fused_dispersive_pair_source((1, 0, 1), axis, 1,
+                                                 (True, False, True))
+    for line in lifted["curl"] + lifted["coefficients"] + lifted["forms"]:
+        assert line in source, line
+    assert f"    const bool du{axis} = {shaders.curl_membership_flags(True)[axis]};" in source
+    assert lifted["flag"].startswith("in_i_")
+
+
+@pytest.mark.parametrize("axis", (0, 1, 2))
+def test_the_record_block_declares_the_two_entries_and_the_two_partners(axis):
+    """One anchored block: the curl's dsigu entry (integer), the E half's own axis
+    (half-integer), and the presence bits of the target's two partner axes."""
+    from meep_gpu.metal_kernels import chunk_bounds
+
+    source = family.fused_dispersive_pair_source((0, 0, 0), axis, 1,
+                                                 (False, False, False))
+    assert source.count(chunk_bounds.BLOCK_BEGIN) == 1
+    block = source.split(chunk_bounds.BLOCK_BEGIN, 1)[1].split(chunk_bounds.BLOCK_END, 1)[0]
+    dsig, dsigu = shaders.CURL_CYCLE[axis]
+    assert f"const bool in_i_{'xyz'[dsigu]} =" in block
+    assert f"const bool in_h_{'xyz'[axis]} =" in block
+    assert block.count("const bool in_") == 2
+    for partner in (dsig, dsigu):
+        assert f"const bool has_{'xyz'[partner]} =" in block
+    assert block.count("const bool has_") == 2
+
+
+def test_fu_and_f_w_are_touched_only_behind_their_flags():
+    """The auxiliary contract (KERNELS.md §1 C2): fu is read and written only where
+    the dsigu chunk holds, f_w only where the component's own chunk does, and the
+    plain E form reads neither f_w nor the old E."""
+    source = family.fused_dispersive_pair_source((1, 1, 1), 0, 2, (True,) * 3)
+    assert "u0[ii]" not in source.replace("du0 ? u0[ii]", "").replace(
+        "if (du0) { u0[ii] = n0; }", "")
+    assert "fw[idx]" not in source.replace("dw ? fw[idx]", "").replace(
+        "if (dw) { fw[idx] = src; }", "")
+    assert source.count("e_out[idx]") == 2  # the guarded read, and the store
+
+
+def test_the_builder_takes_the_record_as_a_required_keyword():
+    import inspect
+
+    parameter = inspect.signature(
+        family.plan_metal_fused_dispersive_pair).parameters["chunk_bounds"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty

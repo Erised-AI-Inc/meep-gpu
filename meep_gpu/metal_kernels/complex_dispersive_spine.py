@@ -74,76 +74,80 @@ def _merge(shared: Coverage, companion: Coverage) -> Coverage:
     return Coverage(shared.covered and companion.covered, reasons)
 
 
-def _companion(fields: Any, pml: Any, residency: Any, probe: Any) -> Coverage:
+def _companion(fields: Any, pml: Any, residency: Any) -> Coverage:
     return constitutive.metal_complex_dispersive_e_coverage(
-        fields, pml, residency, probe)
+        fields, pml, residency)
 
 
 def metal_complex_dispersive_pml_curl_coverage(
-        fields: Any, pml: Any, sub_step: str, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, sub_step: str, residency: Any = None) -> Coverage:
     """Coverage for a complex PML curl beside a live pole-aware E/ADE pair."""
     if sub_step not in base.CURL_SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(base.CURL_SUB_STEPS)}, "
                          f"got {sub_step!r}")
     shared = base.complex_pml_curl_coverage(
-        _PolarizationScopeView(fields), pml, sub_step, residency, probe)
-    return _merge(shared, _companion(fields, pml, residency, probe))
+        _PolarizationScopeView(fields), pml, sub_step, residency)
+    return _merge(shared, _companion(fields, pml, residency))
 
 
 def metal_complex_dispersive_pml_magnetic_coverage(
-        fields: Any, pml: Any, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, residency: Any = None) -> Coverage:
     """Coverage for ``update_H`` beside a live pole-aware E/ADE pair."""
     shared = base.complex_constitutive_coverage(
-        _PolarizationScopeView(fields), pml, "H", residency, probe)
-    return _merge(shared, _companion(fields, pml, residency, probe))
+        _PolarizationScopeView(fields), pml, "H", residency)
+    return _merge(shared, _companion(fields, pml, residency))
 
 
 def plan_metal_complex_dispersive_pml_curl(
         fields: Any, pml: Any, sub_step: str, residency: Optional[Residency] = None,
-        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,), probe: Any = None,
-        ) -> Optional[Any]:
-    """Build one B/D plan only when the complete complex dispersive product fits."""
+        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
+        *, chunk_bounds: Any) -> Optional[Any]:
+    """Build one B/D plan only when the complete complex dispersive product fits.
+
+    ``chunk_bounds`` is the record of the division the run steps with; the base
+    complex curl binds it and has no default for it.
+    """
     if not metal_complex_dispersive_pml_curl_coverage(
-            fields, pml, sub_step, residency, probe).covered:
+            fields, pml, sub_step, residency).covered:
         return None
     return base.plan_complex_pml_curl(
         _PolarizationScopeView(fields), pml, sub_step, residency,
-        contract_variants, probe)
+        contract_variants, chunk_bounds=chunk_bounds)
 
 
 def plan_metal_complex_dispersive_pml_magnetic(
         fields: Any, pml: Any, residency: Optional[Residency] = None,
-        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,), probe: Any = None,
-        ) -> Optional[Any]:
-    """Build ``update_H`` only when the complete complex dispersive product fits."""
+        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
+        *, chunk_bounds: Any) -> Optional[Any]:
+    """Build ``update_H`` only when the complete complex dispersive product fits.
+
+    ``chunk_bounds`` as :func:`plan_metal_complex_dispersive_pml_curl` takes it.
+    """
     if not metal_complex_dispersive_pml_magnetic_coverage(
-            fields, pml, residency, probe).covered:
+            fields, pml, residency).covered:
         return None
     return base.plan_complex_constitutive(
         _PolarizationScopeView(fields), pml, "H", residency,
-        contract_variants, probe)
+        contract_variants, chunk_bounds=chunk_bounds)
 
 
 def _curl_coverage(context: Any, slot: str) -> Coverage:
     return metal_complex_dispersive_pml_curl_coverage(
-        context.fields, context.pml, slot, context.residency,
-        context.extra.get("complex_probe"))
+        context.fields, context.pml, slot, context.residency)
 
 
 def _curl_plan(context: Any, slot: str) -> Optional[Any]:
     return plan_metal_complex_dispersive_pml_curl(
         context.fields, context.pml, slot, context.residency,
-        context.contract_variants, context.extra.get("complex_probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def _magnetic_coverage(context: Any, slot: str) -> Coverage:
     if slot != "update_H":
         return Coverage(False, (f"complex dispersive PML magnetic cannot fill {slot}",))
     return metal_complex_dispersive_pml_magnetic_coverage(
-        context.fields, context.pml, context.residency,
-        context.extra.get("complex_probe"))
+        context.fields, context.pml, context.residency)
 
 
 def _magnetic_plan(context: Any, slot: str) -> Optional[Any]:
@@ -151,7 +155,8 @@ def _magnetic_plan(context: Any, slot: str) -> Optional[Any]:
         return None
     return plan_metal_complex_dispersive_pml_magnetic(
         context.fields, context.pml, context.residency,
-        context.contract_variants, context.extra.get("complex_probe"))
+        context.contract_variants,
+        chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

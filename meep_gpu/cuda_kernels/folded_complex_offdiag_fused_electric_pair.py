@@ -28,10 +28,17 @@ WHAT IS THIS FAMILY'S OWN, over and above the shared lift:
   the ghost lane redirects to stored row ``MIRROR_ROW``, ``resolve_D`` there is the
   raw stepped value (row 2 is nobody's image), so the ghost weight applies once --
   which is the array path's arithmetic on the post-fill array;
-* **the parity multiplies are FULL COMPLEX PRODUCTS at BOTH signs.** That is the
-  shared lift's measurement and its module docstring is where it is derived; what
-  matters here is that this family is the one whose corpus rows actually fold, so it
-  is the family those multiplies fire on.
+* **the parity multiplies are PART-WISE SCALES at BOTH signs** -- the array path's
+  ``part_products.scale``, through the certified ``mul_coefficient_left``. The shared
+  lift's module docstring is where that is derived; what matters here is that this
+  family is the one whose corpus rows actually fold, so it is the family those
+  multiplies fire on;
+* **one chunk record and one connection table serve both halves.** The curl reads
+  the record's membership and partner presence at every cell it is evaluated at
+  (the thread's own and every recomputed one), the constitutive reads its chunk
+  labels and the six presence words; the D curl's connection (``eikna``, the word
+  above the stored window) is the off-diagonal pair's partner-axis table, so it is
+  bound once, and the near product's own-axis table (``conj(eikna)``) beside it.
 
 =============================================================================
 WHAT ONE LAUNCH PERFORMS
@@ -76,7 +83,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from . import complex_emitter
 from . import complex_folded_kernels as _folded
 from . import complex_offdiag_stencil_weld as _weld
 from . import complex_offdiag_update_e as _offdiag
@@ -90,10 +96,9 @@ from .in_seam_coverage import zero_metal_axes
 from .. import deposit_repair as _deposit_repair
 
 try:  # device-only: the tables and the word view
-    from .complex_pml_kernels import (bloch_phase_arguments, complex_curl_tables,
-                                      word_view)
+    from .complex_pml_kernels import complex_curl_tables, word_view
 except ImportError:  # a host with no CuPy: only the launch is unavailable
-    bloch_phase_arguments = complex_curl_tables = word_view = None
+    complex_curl_tables = word_view = None
 
 
 # =============================================================================
@@ -167,9 +172,9 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
                 "read of the triple moves with it, which is what keeps the index "
                 "redirect and the ghost-lane weight reading ONE code."},
         {"line": "    constitutive_apply(E*, f_w_E*, idx, src_E*, kps_*[*], "
-                 "kms_*[*]);",
+                 "kms_*[*], in_h_*);",
          "became": "    constitutive_apply(E*, f_w_E*, idx, src_E*, kps_*[*], "
-                   "kms_half_*[*]);",
+                   "kms_half_*[*], in_h_*);",
          "why": "ONE RENAME, NO ARITHMETIC. kms_* is the INTEGER sub-lattice for "
                 "the D curl and the HALF-INTEGER one for update_E; letting one "
                 "shadow the other in a single scope is a half-cell error in the "
@@ -186,6 +191,7 @@ __all__ = [
     "LIFT_EDITS", "REPLACES", "SCRATCH_VOLUMES", "SLOT", "UNCERTIFIED_KERNELS",
     "assert_scratch_is_disjoint", "constitutive_body", "corpus_digest",
     "covers_folded_complex_offdiag_fused_electric_pair", "device_sources",
+    "folded_complex_offdiag_fused_electric_pair_chunk_arguments",
     "folded_complex_offdiag_fused_electric_pair_codes",
     "folded_complex_offdiag_fused_electric_pair_phases",
     "folded_complex_offdiag_fused_electric_pair_scratch",
@@ -200,7 +206,7 @@ __all__ = [
 # THE DEVICE CODE
 # =============================================================================
 
-def prelude(expansion: Any) -> str:
+def prelude() -> str:
     """Both certified preludes plus the weld's own helpers, in dependency order.
 
     THE ORDER IS FORCED AND IS NOT A STYLE CHOICE. ``resolved_down_sample`` reads
@@ -210,10 +216,10 @@ def prelude(expansion: Any) -> str:
     resolution between them, and each piece is found by an exact anchor in the
     shared lift rather than by position here.
     """
-    return (_weld.curl_prelude(ARM, expansion)
+    return (_weld.curl_prelude(ARM)
             + _weld.constitutive_prelude_defines()
             + _weld.weld_args_struct(ARM)
-            + _weld.raw_step_D_cell_source(ARM, expansion)
+            + _weld.raw_step_D_cell_source(ARM)
             + _weld.resolution_source(ARM)
             + _weld.constitutive_prelude_helpers())
 
@@ -221,8 +227,10 @@ def prelude(expansion: Any) -> str:
 def signature(row_mask: Sequence[int]) -> str:
     """The kernel's parameter list, with only the LIVE row coefficients bound."""
     mask = _offdiag.normalized_row_mask(row_mask)
-    rows = "\n".join(f"    const float* {_offdiag.ROW_PARAMETERS[slot]},"
-                     for slot, flag in enumerate(mask) if flag)
+    rows = "\n".join([f"    const float* {_offdiag.ROW_PARAMETERS[slot]},"
+                      for slot, flag in enumerate(mask) if flag]
+                     + [f"    int {_offdiag.KEPT_PARAMETERS[slot]},"
+                        for slot, flag in enumerate(mask) if flag])
     return f'''
 extern "C" __global__ void {KERNEL_NAME}(
     // THE SCRATCH OUTPUTS, as the float32 word views of complex64 volumes. A
@@ -252,7 +260,8 @@ extern "C" __global__ void {KERNEL_NAME}(
     // CELL index -- chi1inv and inv_eps are never word-doubled.
     const float* inv_eps_Ex, const float* inv_eps_Ey, const float* inv_eps_Ez,
     // NOT __restrict__ either: a row volume may legally alias another row's, an
-    // epsilon volume or a D volume.
+    // epsilon volume or a D volume. Each live row's PRESENCE WORD follows them, in
+    // slot order: bit c keeps the row's term in the chunk with code c.
 {rows}
     // Extents are in COMPLEX CELLS; cf_load/cf_store do the word doubling.
     int nx, int ny, int nz, float dtdx,
@@ -277,20 +286,21 @@ extern "C" __global__ void {KERNEL_NAME}(
     // folded axis by construction: _mask_metallic_wall_coupling asks is_metallic
     // AND NOT is_mirrored (stepping.py:1253).
     int wm_x, int wm_y, int wm_z,
-    // The Bloch flags, SHARED by both halves: 0 means the multiply is SKIPPED and
-    // never done against 1 + 0j, which is what makes k = 0 bit-identical.
-    int ph_x, int ph_y, int ph_z,
     // The mirror ghost's parity per axis (complex_offdiag_update_e.
     // mirror_ghost_weights) -- _shift_down's own weight, applied ON THE GHOST LANE
     // AND NOWHERE ELSE, through the certified mul_coefficient_left.
     float gw_x, float gw_y, float gw_z,
-    // THE DOWN (CONJUGATE) BLOCH FACTORS, BOUND ONCE FOR BOTH HALVES. The curl is
-    // the BACKWARD sub-step and takes the conjugate; the constitutive's partner-
-    // axis DOWN shift takes the same conjugate. The launcher RAISES where the two
-    // resolvers disagree rather than binding one of them twice.
-    float dpxr, float dpxi, float dpyr, float dpyi, float dpzr, float dpzi,
-    // THE UP (FORWARD) FACTORS -- the constitutive's own-axis shift alone.
-    float upxr, float upxi, float upyr, float upyi, float upzr, float upzi,
+    // THE PARTNER-AXIS CONNECTION, BOUND ONCE FOR BOTH HALVES: kinds (none, the
+    // unfused product, a negation) and float32 parts. The D curl's operand read
+    // at the cell itself and the off-diagonal pair's same-index operand both take
+    // the not-owned word ABOVE the stored window, eikna
+    // (complex_pml_kernels.bloch_phase_arguments(grid, True)).
+    int ph_x, int ph_y, int ph_z,
+    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,
+    // THE OWN-AXIS CONNECTION -- the near product's, conj(eikna), the word BELOW
+    // the window: the constitutive half alone.
+    int oh_x, int oh_y, int oh_z,
+    float oxr, float oxi, float oyr, float oyi, float ozr, float ozi,
     // zero_metal_D's walls (in_seam_coverage.zero_metal_axes). A DIFFERENT
     // question from wm_*: that masks the coupling TOTAL, this clears the stored D.
     int wall_x, int wall_y, int wall_z,
@@ -304,23 +314,27 @@ extern "C" __global__ void {KERNEL_NAME}(
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
     float near_phase_x, float near_phase_y, float near_phase_z,
-    float far_phase_x, float far_phase_y, float far_phase_z
+    float far_phase_x, float far_phase_y, float far_phase_z,
+    // THE RUN'S CHUNK RECORD (chunk_map.chunk_bounds_record), one int32[25]
+    // device vector for both halves: the curl's per-chunk forms and partner
+    // presence at every cell it is evaluated at, the constitutive's chunk labels.
+    const int* __restrict__ cb
 ) {{
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 1253->1282
 
 
-def constitutive_body(row_mask: Sequence[int], expansion: Any) -> str:
+def constitutive_body(row_mask: Sequence[int]) -> str:
     """``update_E_pml_complex_offdiag``'s body, seamed by the shared lift.
 
     ``boundary_prefix`` is ``"cbc_"``: THE TWO READINGS DIFFER ON A FOLD AND BOTH
     ARE BOUND, which is this family's one edit over its unfolded sibling.
     """
-    return _weld.constitutive_body(ARM, row_mask, expansion,
+    return _weld.constitutive_body(ARM, row_mask,
                                    boundary_prefix="cbc_")
 
 
-def kernel_source(row_mask: Sequence[int], expansion: Any) -> str:
-    """The whole device source for one row mask and one expansion arm. PURE ASCII."""
+def kernel_source(row_mask: Sequence[int]) -> str:
+    """The whole device source for one row mask. PURE ASCII."""
     mask = _offdiag.normalized_row_mask(row_mask)
     preamble = [
         "    // ONE bounds guard and ONE index decode for both halves -- the",
@@ -363,8 +377,8 @@ def kernel_source(row_mask: Sequence[int], expansion: Any) -> str:
         "    // the constitutive triple and its D reads routed through the",
         "    // resolution. Everything else is lifted, not retyped.",
     ]
-    source = (prelude(expansion) + signature(mask) + "\n".join(preamble)
-              + constitutive_body(mask, expansion) + "}\n")
+    source = (prelude() + signature(mask) + "\n".join(preamble)
+              + constitutive_body(mask) + "}\n")
     try:
         source.encode("ascii")
     except UnicodeEncodeError as exc:
@@ -377,9 +391,8 @@ def kernel_source(row_mask: Sequence[int], expansion: Any) -> str:
 
 def device_sources(row_mask: Sequence[int] = (1, 1, 1, 1, 1, 1)
                    ) -> Dict[str, str]:
-    """Every source this family can emit for one row mask, keyed by arm name."""
-    return {f"{KERNEL_NAME}:{name}": kernel_source(row_mask, name)
-            for name in sorted(complex_emitter.EXPANSIONS)}
+    """The source this family emits for one row mask, keyed by kernel name."""
+    return {KERNEL_NAME: kernel_source(row_mask)}
 
 
 def corpus_digest() -> str:
@@ -388,21 +401,17 @@ def corpus_digest() -> str:
 
     digest = hashlib.sha256()
     for mask in _offdiag.LIVE_ROW_MASKS:
-        for name in sorted(complex_emitter.EXPANSIONS):
-            digest.update(f"{mask!r}|{name}".encode("ascii"))
-            digest.update(kernel_source(mask, name).encode("utf-8"))
+        digest.update(f"{mask!r}".encode("ascii"))
+        digest.update(kernel_source(mask).encode("utf-8"))
     return digest.hexdigest()
 
 
-def _get_kernel(row_mask: Sequence[int], expansion: Any,
-                source: Optional[str] = None):
-    """Compile on first use, memoized on (name, arm, options, policy, source)."""
+def _get_kernel(row_mask: Sequence[int], source: Optional[str] = None):
+    """Compile on first use, memoized on (name, options, policy, source)."""
     import cupy as cp  # noqa: PLC0415 - device-only
 
-    code = kernel_source(row_mask, expansion) if source is None else source
-    key = _kernel_cache_key(
-        f"{KERNEL_NAME}_arm{complex_emitter.normalized_expansion(expansion)}",
-        True, _COMPILE_OPTIONS, code)
+    code = kernel_source(row_mask) if source is None else source
+    key = _kernel_cache_key(KERNEL_NAME, True, _COMPILE_OPTIONS, code)
     return _get_or_compile(
         key, lambda: cp.RawKernel(code, KERNEL_NAME, options=_COMPILE_OPTIONS))
 
@@ -417,8 +426,7 @@ def _clear_kernel_cache() -> int:
 
 def covers_folded_complex_offdiag_fused_electric_pair(
         fields: Any, pml: Any, grid: Any, sources: Any = None,
-        license: Any = None, subnormal_policy: Any = None, *,
-        curl_license: Any = None) -> Tuple[bool, str]:
+        ) -> Tuple[bool, str]:
     """May ONE launch span the whole folded complex D seam here?
 
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal.
@@ -429,25 +437,13 @@ def covers_folded_complex_offdiag_fused_electric_pair(
     are both asked in full. What this predicate ADDS is the seam clauses: the fill
     plan must be buildable, both boundary readings must resolve, the source slot
     must be empty and the stored extents must be one tuple.
-
-    TWO LICENCES, ONE PER HALF, AND THAT IS NOT A CONVENIENCE. This is the first
-    product on this board whose halves sit in DIFFERENT expansion-licence families:
-    the folded complex curl binds ``registry.LICENSE_COMPLEX`` and the off-diagonal
-    ``update_E`` binds ``LICENSE_COMPLEX_OFFDIAG``, whose arbiter is
-    ``folded_complex.parity_expansion_license`` and classifies a FIFTH orientation
-    the base four do not carry (the mirror parity as a coefficient on the left).
-    Handing one verdict to both halves would silently declare that one record's
-    pattern set answered for the other's, so ``curl_license`` is a separate
-    argument; it defaults to ``license`` for a single-licence caller, and the
-    composer passes both.
     """
     covered, reason = _folded.covers_complex_folded_curl(
-        fields, pml, grid, "step_D",
-        license if curl_license is None else curl_license, subnormal_policy)
+        fields, pml, grid, "step_D")
     if not covered:
         return False, f"curl half: {reason}"
     covered, reason = _offdiag.covers_complex_offdiag_pml_update_e(
-        fields, pml, grid, license, subnormal_policy)
+        fields, pml, grid)
     if not covered:
         return False, f"constitutive half: {reason}"
 
@@ -596,35 +592,34 @@ def folded_complex_offdiag_fused_electric_pair_codes(grid: Any
 
 
 def folded_complex_offdiag_fused_electric_pair_phases(grid: Any) -> Dict[str, Any]:
-    """The Bloch flags and both directions' factors, as ONE table for both halves.
+    """Both connection tables, as ONE mapping for both halves.
 
-    ``complex_offdiag_update_e.bloch_phase_table`` is the source, because it is the
-    stdlib-plus-numpy spelling and returns BOTH directions; the device-only
-    ``complex_pml_kernels.bloch_phase_arguments`` is asked as a CROSS-CHECK where
-    it is importable, and a disagreement RAISES. The curl half reads only the DOWN
-    (conjugate) triple, which is exactly what ``bloch_phase_arguments(grid, True)``
-    hands its own kernels, so one binding serves both -- but only while the two
-    spellings agree, and that is measured rather than assumed.
+    ``complex_offdiag_update_e.bloch_connection_table`` is the source: its PAIR half
+    is ``complex_pml_kernels.bloch_phase_arguments(grid, True)`` -- the D curl's own
+    table, so the curl and the pair's partner-axis operand bind one triple by
+    construction rather than by a cross-check -- and its OWN half is the near
+    product's ``conj(eikna)``. Returned as a mapping so a caller cannot bind the two
+    tables the wrong way round: they differ on every generic phase, and a swap is a
+    conjugated connection on a whole plane rather than a crash.
     """
-    flags, down, up = _offdiag.bloch_phase_table(grid)
-    if bloch_phase_arguments is not None:
-        curl_flags, curl_values = bloch_phase_arguments(grid, True)
-        if tuple(int(flag) for flag in curl_flags) != tuple(int(f) for f in flags):
-            raise ValueError(
-                f"the curl's Bloch flags {tuple(int(f) for f in curl_flags)!r} and "
-                f"the constitutive's {tuple(int(f) for f in flags)!r} disagree; a "
-                f"flag decides whether the multiply happens at all, and this "
-                f"launch binds ONE triple for both halves")
-        if tuple(float(v) for v in curl_values) != tuple(float(v) for v in down):
-            raise ValueError(
-                f"the curl's backward Bloch factors "
-                f"{tuple(float(v) for v in curl_values)!r} and the constitutive's "
-                f"DOWN factors {tuple(float(v) for v in down)!r} disagree; both "
-                f"are conj(grid.bloch_phase(axis)) rounded to complex64 and this "
-                f"launch binds one of them for both halves")
-    return {"flags": tuple(int(flag) for flag in flags),
-            "down": tuple(float(value) for value in down),
-            "up": tuple(float(value) for value in up)}
+    pair_kinds, pair_parts, own_kinds, own_parts = _offdiag.bloch_connection_table(grid)
+    return {"pair_kinds": tuple(int(kind) for kind in pair_kinds),
+            "pair": tuple(float(value) for value in pair_parts),
+            "own_kinds": tuple(int(kind) for kind in own_kinds),
+            "own": tuple(float(value) for value in own_parts)}
+
+
+def folded_complex_offdiag_fused_electric_pair_chunk_arguments(
+        fields: Any, pml: Any, codes: Dict[str, Tuple[int, ...]],
+        record: Any = None) -> Tuple[List[int], Tuple[int, ...]]:
+    """``(record, kept)``: the run's chunk record and the six presence words.
+
+    ``complex_offdiag_update_e.chunk_arguments`` asked with the CONSTITUTIVE codes --
+    the reading the presence words' chunk labels are taken on (``chunk_row`` reads
+    the wall row on a metallic constitutive axis). The record is the same one the
+    curl half reads: one division, one vector.
+    """
+    return _offdiag.chunk_arguments(fields, pml, codes["constitutive"], record)
 
 
 def folded_complex_offdiag_fused_electric_pair_scratch(fields: Any) -> Dict[str, Any]:
@@ -755,9 +750,14 @@ def launch_folded_complex_offdiag_fused_electric_pair(
         codes: Dict[str, Tuple[int, ...]], wall_mask: Sequence[int],
         phases: Dict[str, Any], weights: Sequence[float],
         fills: Dict[str, Tuple[Any, ...]], dtdx: float,
-        row_mask: Sequence[int], rows: Sequence[Any], expansion: Any,
+        row_mask: Sequence[int], rows: Sequence[Any], kept: Sequence[int],
+        chunk_bounds: Any,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """All five of :data:`REPLACES` in ONE launch. THE CALLER ROTATES AFTERWARDS.
+
+    ``kept`` is the six presence words in slot order (the live ones are bound) and
+    ``chunk_bounds`` the run's record as one int32[25] device vector
+    (``complex_pml_kernels.chunk_record_argument`` checks it).
 
     ``kernel`` IS THE GATE'S DOOR: a gate compiles a deliberately broken copy of
     the shipped source and hands it here. A launcher that could not be handed its
@@ -767,6 +767,10 @@ def launch_folded_complex_offdiag_fused_electric_pair(
         raise RuntimeError(
             "complex_pml_kernels is not importable on this host, so the complex "
             "volumes cannot be bound as their float32 word views")
+    from .complex_pml_kernels import chunk_record_argument  # noqa: PLC0415
+
+    chunk_bounds = chunk_record_argument(chunk_bounds)
+    mask = _offdiag.normalized_row_mask(row_mask)
     nx, ny, nz = (int(n) for n in fields.Dx.shape)
     blocks = (nx * ny * nz + _FUSED_THREADS - 1) // _FUSED_THREADS
     curl = tables["curl"]
@@ -776,31 +780,34 @@ def launch_folded_complex_offdiag_fused_electric_pair(
     arguments += [fields.inverse_epsilon_for(component)
                   for component in _ELECTRIC]
     arguments += list(rows)
+    arguments += [np.int32(int(kept[slot])) for slot, flag in enumerate(mask) if flag]
     arguments += [np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx)]
     arguments += [curl[key] for key in _CURL_TABLE_KEYS]
     arguments += [constitutive[key] for key in _CONSTITUTIVE_TABLE_KEYS]
     arguments += [np.int32(int(code)) for code in codes["curl"]]
     arguments += [np.int32(int(code)) for code in codes["constitutive"]]
     arguments += [np.int32(int(bool(flag))) for flag in wall_mask]
-    arguments += [np.int32(int(flag)) for flag in phases["flags"]]
     arguments += [np.float32(float(value)) for value in weights]
-    arguments += [np.float32(float(value)) for value in phases["down"]]
-    arguments += [np.float32(float(value)) for value in phases["up"]]
+    arguments += [np.int32(int(kind)) for kind in phases["pair_kinds"]]
+    arguments += [np.float32(float(value)) for value in phases["pair"]]
+    arguments += [np.int32(int(kind)) for kind in phases["own_kinds"]]
+    arguments += [np.float32(float(value)) for value in phases["own"]]
     arguments += [np.int32(int(flag)) for flag in fills["wall"]]
     arguments += [np.int32(int(flag)) for flag in fills["near"]]
     arguments += [np.int32(int(row)) for row in fills["reflect"]]
     arguments += [np.float32(float(value)) for value in fills["near_phase"]]
     arguments += [np.float32(float(value)) for value in fills["far_phase"]]
-    (kernel or _get_kernel(row_mask, expansion))(
+    arguments += [chunk_bounds]
+    (kernel or _get_kernel(row_mask))(
         (blocks,), (_FUSED_THREADS,), tuple(arguments))
     return {"launched": True, "blocks": blocks, "threads": _FUSED_THREADS,
             "elements": nx * ny * nz, "replaces": REPLACES,
             "row_mask": tuple(int(flag) for flag in row_mask),
-            "arm": complex_emitter.normalized_expansion(expansion),
             "boundary_codes": {key: tuple(value) for key, value in codes.items()},
             "coupling_wall_mask": tuple(int(bool(flag)) for flag in wall_mask),
             "ghost_weights": tuple(float(value) for value in weights),
-            "phase_flags": tuple(int(flag) for flag in phases["flags"]),
+            "connection_kinds": {"pair": tuple(int(k) for k in phases["pair_kinds"]),
+                                 "own": tuple(int(k) for k in phases["own_kinds"])},
             "fills": {key: tuple(fills[key]) for key in
                       ("near", "wall", "reflect", "near_phase", "far_phase")}}
 
@@ -820,14 +827,19 @@ def rotate_into_fields(fields: Any, scratch: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def run_folded_complex_offdiag_fused_electric_pair(
-        fields: Any, grid: Any, pml: Any, dtdx: float, expansion: Any, *,
+        fields: Any, grid: Any, pml: Any, dtdx: float, *,
         scratch: Optional[Dict[str, Any]] = None, sources: Any = None,
-        license: Any = None, subnormal_policy: Any = None,
         tables: Optional[Dict[str, Dict[str, Any]]] = None,
-        kernel: Optional[Any] = None, rotate: bool = True) -> Dict[str, Any]:
-    """Gate on the predicate, resolve everything from the grid, launch once, rotate."""
+        kernel: Optional[Any] = None, rotate: bool = True,
+        chunk_bounds: Any = None, kept: Optional[Sequence[int]] = None
+        ) -> Dict[str, Any]:
+    """Gate on the predicate, resolve everything from the grid, launch once, rotate.
+
+    ``chunk_bounds``/``kept`` are derived (:func:`folded_complex_offdiag_fused_
+    electric_pair_chunk_arguments`, the record uploaded once) unless BOTH are given.
+    """
     covered, reason = covers_folded_complex_offdiag_fused_electric_pair(
-        fields, pml, grid, sources, license, subnormal_policy)
+        fields, pml, grid, sources)
     if not covered:
         return {"launched": False, "reason": reason}
     if tables is None:
@@ -842,11 +854,22 @@ def run_folded_complex_offdiag_fused_electric_pair(
     fills = _weld.fill_plan(grid)
     _validate_launch_arguments(tuple(int(n) for n in fields.Dx.shape), codes,
                                wall_mask, weights, fills)
+    if (chunk_bounds is None) != (kept is None):
+        raise ValueError(
+            "pass both chunk_bounds and kept, or neither: the presence words are "
+            "indexed by the record's chunk labels and one without the other is two "
+            "divisions in one launch")
+    if chunk_bounds is None:
+        import cupy as cp  # noqa: PLC0415 - device-only, the record's one upload
+
+        record, kept = folded_complex_offdiag_fused_electric_pair_chunk_arguments(
+            fields, pml, codes)
+        chunk_bounds = cp.asarray(record, dtype=cp.int32)
     mask = _offdiag.normalized_row_mask(offdiag_row_mask(fields))
     rows = [volume for volume in offdiag_row_volumes(fields) if volume is not None]
     record = launch_folded_complex_offdiag_fused_electric_pair(
         fields, scratch, tables, codes, wall_mask, phases, weights, fills, dtdx,
-        mask, rows, expansion, kernel)
+        mask, rows, kept, chunk_bounds, kernel)
     record["rotated"] = bool(rotate)
     record["scratch"] = rotate_into_fields(fields, scratch) if rotate else scratch
     return record

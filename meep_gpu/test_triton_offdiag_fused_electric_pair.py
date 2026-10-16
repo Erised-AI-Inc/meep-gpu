@@ -36,6 +36,25 @@ MODULE = "meep_gpu.triton_kernels.offdiag_fused_electric_pair"
 FAMILY = "offdiag_fused_electric_pair"
 
 
+def _every_cell_record(shape):
+    """The harness's every-cell chunk record for ``shape`` (``gate_chunk_records``).
+
+    These builds take their record from the harness rather than from a layer: the
+    arrays are bare, and every test here asserts something other than the division.
+    """
+    parity = str(pathlib.Path(__file__).parent.parent / "parity" / "meep_gpu")
+    if parity not in sys.path:
+        sys.path.insert(0, parity)
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
+    return every_cell_record(shape)
+
+
+def _chunk_record(arrays):
+    """:func:`_every_cell_record`, sized from the first three-axis volume of ``arrays``."""
+    shape = next(tuple(a.shape) for a in arrays.values() if getattr(a, "ndim", 0) == 3)
+    return _every_cell_record(shape)
+
+
 @pytest.fixture(scope="module")
 def product():
     return importlib.import_module(MODULE)
@@ -383,7 +402,8 @@ def test_the_rotation_swaps_the_engines_own_references(product):
         twins[name] = numpy.ones((2, 2, 1), dtype=numpy.float32)
         setattr(stand, name, live[name])
     plan = ScratchWeldPairPlan("t", stand, twins, product.ROTATED, (2, 2, 1),
-                               8, product.REPLACES)
+                               8, product.REPLACES,
+                               chunk_bounds=_every_cell_record((2, 2, 1)))
     writes, reads = plan._resolve()
     assert [id(array) for array in reads] == [id(live[n]) for n in product.ROTATED]
     assert [id(array) for array in writes] == [id(twins[n]) for n in product.ROTATED]
@@ -409,7 +429,8 @@ def test_an_aliased_twin_is_REFUSED_and_not_launched(product):
         setattr(stand, name, array)
         twins[name] = array          # the alias
     plan = ScratchWeldPairPlan("t", stand, twins, product.ROTATED, (2, 2, 1),
-                               8, product.REPLACES)
+                               8, product.REPLACES,
+                               chunk_bounds=_every_cell_record((2, 2, 1)))
     with pytest.raises(RuntimeError, match="aliased"):
         plan._resolve()
 

@@ -50,6 +50,13 @@ THE LEGS, each armed (a negative leg that does not diverge is reported and fails
                       REFUSED; the counts are parsed from the emitted text and must
                       equal each module's BINDINGS_PER_COMPONENT.
 
+BOTH PAIRS BIND THE CHUNK RECORD of their run's own one-rank division
+(``gate_chunk_records.layer_record``: no layer, so the partner-presence word alone),
+as the composer hands it over, and step MEEP's stencil with its partner-presence
+forms (the conductive pair since its certified curl took MEEP's form); each family's
+2-D cases (z invariant) exercise the one-partner forms, and each family's
+``curl_previous_grouping`` mutation plants the package's previous pairwise bracket.
+
 Progress reporting: one flushed line per case. Runs locally on MPS. Nothing here is dispatch:
 ``meep_gpu.fastpath.plan_fast_path`` still returns ``None`` on every branch.
 """
@@ -79,6 +86,7 @@ for _path in (str(API_ROOT), str(HERE)):
 
 import numpy as np  # noqa: E402
 
+import gate_chunk_records  # noqa: E402
 import metal_composition_matrix as matrix  # noqa: E402
 
 from meep_gpu import deposit_repair, stepping  # noqa: E402
@@ -158,17 +166,21 @@ def compare(left: Any, right: Any) -> Dict[str, int]:
 
 def build_fixture(boundaries: Optional[Dict[str, str]] = None,
                   poles: Mapping[str, float] = (),
-                  conductive: Sequence[str] = ()) -> Tuple[Any, Any]:
+                  conductive: Sequence[str] = (),
+                  grid: Mapping[str, Any] = ()) -> Tuple[Any, Any]:
     """A no-absorber stored-E engine: the two families' own configuration space.
 
     ``poles`` maps a component set string like ``"ExEyEz"`` is avoided; each entry
     is one PolarizationState driving the named components. ``conductive`` names the
     D components carrying a sigma, so a one-sided conductivity is a case rather
-    than a hypothesis.
+    than a hypothesis. ``grid`` passes ``cell`` and ``Grid`` keywords through to
+    ``metal_composition_matrix.cart`` (a 2-D case: ``cell`` with a zero z and
+    ``dimensions=2``).
     """
     fields, pml = matrix.cart(pml=0, storage=False, eps=True,
                               **({"boundaries": dict(boundaries)}
-                                 if boundaries else {}))
+                                 if boundaries else {}),
+                              **dict(grid))
     fields.enable_field_storage()
     for components in poles:
         driven = tuple(re.findall(r"[EH][xyz]", components))
@@ -239,16 +251,37 @@ def needle(source: str, old: str, new: str, count: int = 1) -> str:
     return source.replace(old, new)
 
 
+def _plain_plan(fields: Any, pml: Any, **keywords: Any) -> Any:
+    """The plain pair on its run's own one-rank division, as the composer binds it."""
+    return plain_family.plan_metal_no_pml_fused_electric_pair(
+        fields, pml, chunk_bounds=gate_chunk_records.layer_record(fields.grid, pml),
+        **keywords)
+
+
+def _conductive_plan(fields: Any, pml: Any, **keywords: Any) -> Any:
+    """The conductive pair on its run's own one-rank division, as the composer binds it."""
+    return conductive_family.plan_metal_no_pml_conductive_fused_electric_pair(
+        fields, pml, chunk_bounds=gate_chunk_records.layer_record(fields.grid, pml),
+        **keywords)
+
+
+#: The plain family's 2-D fixtures: z invariant, so Dx loses its z partner and Dy
+#: its first (z) one, the forms the 3-D cases never run.
+_FLAT = {"cell": (2.0, 2.1, 0.0), "dimensions": 2}
+
+
 #: Everything the legs need, per family. ``cases`` carry (poles, conductive)
 #: fixtures spanning: no poles / one pole / the corpus row's own pole ladder; no
 #: wall / one wall / all walls; and for the conductive family a one-sided sigma.
-#: ``mutations`` are (label, axis, old, new) needles on the per-component source.
+#: ``mutations`` are (label, axis, old, new) needles on the per-component source,
+#: with an optional fifth entry naming the case the row runs on (default: the
+#: family's ``mutation_case``).
 FAMILIES: Tuple[Dict[str, Any], ...] = (
     {
         "name": "no_pml_fused_electric_pair",
         "module": plain_family,
         "label": "no-PML fused electric D/E pair",
-        "plan": plain_family.plan_metal_no_pml_fused_electric_pair,
+        "plan": _plain_plan,
         "coverage": plain_family.no_pml_fused_electric_pair_coverage,
         "source": lambda plan, mode, axis, poles: (
             plain_family.no_pml_fused_electric_pair_source(
@@ -267,6 +300,11 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
                                                      "y": "metallic",
                                                      "z": "metallic"},
                                          poles=("ExEyEz", "ExEyEz"))),
+            ("flat_2d_2poles_all", dict(grid=_FLAT, poles=("ExEyEz", "ExEyEz"))),
+            ("flat_2d_wall_xy_1pole", dict(grid=_FLAT,
+                                           boundaries={"x": "metallic",
+                                                       "y": "metallic"},
+                                           poles=("Ez",))),
         ),
         "mutation_case": "wall_xyz_2poles_all",
         "deposit_cases": (("corpus_periodic_2poles_all", False),
@@ -293,10 +331,21 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
             ("curl_direction_reversed", 0,
              "int si = i - 1, sj = j - 1, sk = k - 1;",
              "int si = i + 1, sj = j + 1, sk = k + 1;"),
-            ("curl_parens_flattened", 0,
-             "dtdx * ((c_y - c) + (b - b_z))", "dtdx * (c_y - c + b - b_z)"),
+            # Inverted with the stencil: the shipped bracket is MEEP's, so the row
+            # plants the package's previous pairwise grouping and stays must-catch.
+            ("curl_previous_grouping", 0,
+             "(dtdx * (((c_y - c) + b) - b_z))", "(dtdx * ((c_y - c) + (b - b_z)))"),
             ("flux_store_dropped", 0,
              "    f0[ii] = value0;\n", ""),
+            # The partner-presence forms, on the 2-D case that runs them: Dx without
+            # its z partner takes the full bracket, Dy without its z partner the
+            # unnegated dtdx.
+            ("full_bracket_over_an_absent_partner", 0,
+             ": (dtdx * (c_y - c)))", ": (dtdx * (((c_y - c) + b) - b_z)))",
+             "flat_2d_2poles_all"),
+            ("absent_first_partner_keeps_the_sign_of_dtdx", 1,
+             "(has_x ? ((-dtdx) * (c_x - c)) : 0.0f)",
+             "(has_x ? (dtdx * (c_x - c)) : 0.0f)", "flat_2d_2poles_all"),
         ),
         #: DECLARED EQUIVALENCES, run and REQUIRED to be bit-identical — each is a
         #: rewrite the fused body makes harmless BY CONSTRUCTION, measured rather
@@ -323,7 +372,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         "name": "no_pml_conductive_fused_electric_pair",
         "module": conductive_family,
         "label": "conductive no-PML fused electric D/E pair",
-        "plan": conductive_family.plan_metal_no_pml_conductive_fused_electric_pair,
+        "plan": _conductive_plan,
         "coverage":
             conductive_family.no_pml_conductive_fused_electric_pair_coverage,
         "source": lambda plan, mode, axis, poles: (
@@ -345,6 +394,12 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
             ("wall_xyz_2poles_all",
              dict(boundaries={"x": "metallic", "y": "metallic", "z": "metallic"},
                   poles=("ExEyEz", "ExEyEz"), conductive=("Dx", "Dy", "Dz"))),
+            ("flat_2d_2poles_all",
+             dict(grid=_FLAT, poles=("ExEyEz", "ExEyEz"),
+                  conductive=("Dx", "Dy", "Dz"))),
+            ("flat_2d_wall_xy_one_sided_sigma",
+             dict(grid=_FLAT, boundaries={"x": "metallic", "y": "metallic"},
+                  poles=("Ez",), conductive=("Dy",))),
         ),
         "mutation_case": "wall_xyz_2poles_all",
         # THE SCALED (non-integrated) CASE IS COMPOSED, NOT FORCE-BRACKETED, since
@@ -374,8 +429,19 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
             ("curl_direction_reversed", 0,
              "int si = i - 1, sj = j - 1, sk = k - 1;",
              "int si = i + 1, sj = j + 1, sk = k + 1;"),
+            # Inverted with the stencil, as on the plain family: the shipped bracket
+            # is MEEP's, so the row plants the previous pairwise grouping.
+            ("curl_previous_grouping", 0,
+             "(dtdx * (((c_y - c) + b) - b_z))", "(dtdx * ((c_y - c) + (b - b_z)))"),
             ("flux_store_dropped", 0,
              "    f0[ii] = value0;\n", ""),
+            # The partner-presence forms, on the 2-D case that runs them.
+            ("full_bracket_over_an_absent_partner", 0,
+             ": (dtdx * (c_y - c)))", ": (dtdx * (((c_y - c) + b) - b_z)))",
+             "flat_2d_2poles_all"),
+            ("absent_first_partner_keeps_the_sign_of_dtdx", 1,
+             "(has_x ? ((-dtdx) * (c_x - c)) : 0.0f)",
+             "(has_x ? (dtdx * (c_x - c)) : 0.0f)", "flat_2d_2poles_all"),
         ),
         #: The same two measured equivalences as the plain family; see its comment
         #: for the ownership-mask shadowing argument.
@@ -607,19 +673,20 @@ def _mutated_functions(spec: Mapping[str, Any], case: str, axis: int, old: str,
 
 
 def leg_mutation(spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
-    case = spec["mutation_case"]
     rows: Dict[str, Any] = {}
-    for label, axis, old, new in spec["mutations"]:
+    for label, axis, old, new, *on in spec["mutations"]:
+        case = on[0] if on else spec["mutation_case"]
         functions = _mutated_functions(spec, case, axis, old, new)
         result = run_case(spec, case, steps, functions=functions)
         caught = not result.get("bit_identical", True)
         rows[label] = {"passed": bool(caught and result.get("launches")),
-                       "caught": caught,
+                       "caught": caught, "case": case,
                        "first_divergence": result.get("first_divergence"),
                        "differing_words": result.get("differing_words"),
                        "launches": result.get("launches")}
         log(f"    mutation  {spec['name']:40s} {label:42s} caught={caught} "
             f"words={result.get('differing_words')}")
+    case = spec["mutation_case"]
     equivalences: Dict[str, Any] = {}
     for label, axis, old, new in spec.get("equivalences", ()):
         functions = _mutated_functions(spec, case, axis, old, new)
@@ -911,9 +978,16 @@ def leg_deposit(spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
             f"passed={rows[label]['passed']} "
             f"repaired={rows[label].get('deposit_points_repaired')} "
             f"paths={rows[label].get('repair_paths')}")
-    control = run_deposit_case(spec, spec["null_case"],
-                               integrated=spec["conductive"], steps=steps,
-                               repair=False)
+    # THE CONTROL DEPOSITS. An integrated source deposits nothing at the curl (its
+    # dipole enters at the constitutive read through f_minus_p, sources.py's
+    # ``VolumeSource.inject``), so a bracket withdrawn around one has nothing to
+    # repair, and a control built on it can only diverge for a reason that is not the
+    # deposit. MEASURED (bit_parity_0_10 lane FXHD): the conductive family's control,
+    # built integrated, read 0 differing words over the whole budget once its pair
+    # stepped MEEP's stencil; built scaled, it diverges from step 1. The scaled source
+    # is the one the bracket exists for, on both families.
+    control = run_deposit_case(spec, spec["null_case"], integrated=False,
+                               steps=steps, repair=False)
     diverged = not control.get("bit_identical", True)
     rows["null_control"] = {
         "passed": bool(diverged and control.get("launches")),

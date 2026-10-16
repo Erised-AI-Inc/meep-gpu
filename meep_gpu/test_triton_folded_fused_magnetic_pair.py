@@ -337,7 +337,7 @@ def test_the_plan_refuses_a_reflect_row_it_cannot_own():
     common = dict(shape=(8, 8, 1), dtdx=0.35, bc=codes,
                   zero_metal=(False, False, False), phases=(0, 1, 0), block=64,
                   targets=(), auxiliaries=(), sources=(), curl_coefficients=(),
-                  h_targets=(), h_aux=(), h_coefficients=())
+                  h_targets=(), h_aux=(), h_coefficients=(), chunk_bounds=None)
     with pytest.raises(ValueError, match="outside"):
         product.FoldedFusedMagneticPairPlan(reflect=(None, 7, None), **common)
     with pytest.raises(ValueError, match="not folded PERIODIC"):
@@ -482,7 +482,7 @@ def test_the_plan_refuses_a_fold_that_also_carries_a_wall_or_a_bad_phase():
     """
     kwargs = dict(shape=(4, 8, 4), dtdx=0.5, block=256,
                   targets=[], auxiliaries=[], sources=[], curl_coefficients=[],
-                  h_targets=[], h_aux=[], h_coefficients=[])
+                  h_targets=[], h_aux=[], h_coefficients=[], chunk_bounds=None)
     with pytest.raises(ValueError, match="not \\+1 or -1"):
         product.FoldedFusedMagneticPairPlan(
             bc=(1, symmetry.CODE_MIRROR_METALLIC, 1), zero_metal=(True, False, True),
@@ -755,15 +755,20 @@ def test_the_gates_transcription_leg_traces_every_arithmetic_line_to_its_source(
     gate = load_gate()
     row = gate.transcription_leg()
     assert row["passed"], row["findings"]
-    assert row["curl_lines_checked"] == 6
-    assert row["constitutive_lines_checked"] == 6
-    # TWO, not six: the seven carry statements moved into the `_carry_ghost`
-    # device function when the far carry landed, because one source lane can now
-    # own up to seven ghost cells and seven inlined copies would be seven places
-    # for one statement to drift. What replaces the other four checks is
-    # `CARRY_CALLS`, which requires the fused body to make the call for EVERY
-    # destination the ownership rule derives.
-    assert row["carry_lines_checked"] == 2
+    # The three stencil calls, the three record lines that key the curl forms, the
+    # three region-masked auxiliary loads, the three coefficient tails of the
+    # forms' calls and the three region-masked auxiliary stores.
+    assert row["curl_lines_checked"] == 15
+    # The three record lines of the H half, MEEP's start of H, the three form
+    # calls and the start's two selects on component 0.
+    assert row["constitutive_lines_checked"] == 9
+    # THREE: the carry statements moved into the `_carry_ghost` device function
+    # when the far carry landed, because one source lane can now own up to seven
+    # ghost cells and seven inlined copies would be seven places for one statement
+    # to drift. What is checked there is the start of H and the form's call; what
+    # replaces the rest is `CARRY_CALLS`, which requires the fused body to make the
+    # call for EVERY destination the ownership rule derives.
+    assert row["carry_lines_checked"] == 3
 
 
 def test_the_gates_design_sweep_agrees_with_the_array_path_and_catches_its_flips():
@@ -842,7 +847,10 @@ def test_the_gate_arms_every_mutation_it_declares():
     on the device.
     """
     gate = load_gate()
-    source = gate._shipped_text("folded_fused_curl_constitutive_B")
+    # The text the device run mutates (``shipped_source``): the carry's device
+    # function, then the kernel that calls it.
+    source = (gate._shipped_text("_carry_ghost") + "\n\n"
+              + gate._shipped_text("folded_fused_curl_constitutive_B"))
     unarmed = []
     for name, _why, _expectation, rewrite in gate.mutation_table():
         mutated, hits = rewrite(source)
@@ -897,7 +905,10 @@ def test_every_mutation_is_scored_on_a_grid_that_ENTERS_the_branch_it_rewrites()
     added later is covered without anyone remembering to add it here.
     """
     gate = load_gate()
-    source = gate._shipped_text("folded_fused_curl_constitutive_B")
+    # The text the device run mutates: the carry's device function (unguarded, so
+    # live wherever a carry block is), then the kernel.
+    source = (gate._shipped_text("_carry_ghost") + "\n\n"
+              + gate._shipped_text("folded_fused_curl_constitutive_B"))
     lines = source.splitlines()
 
     def enclosing_guard(index: int) -> str:
@@ -1086,3 +1097,60 @@ def test_the_gate_binds_the_seam_passes_the_driver_actually_calls():
         assert f"{name}(self.fields" in driver_source, name
     assert gate.SEAM_PASSES == ("step_B", "fill_symmetry_bc_B", "zero_metal_B",
                                 "fill_folded_far_ghosts_B", "update_H")
+
+
+# ---------------------------------------------------------------------------
+# MEEP's start of H on the folded magnetic pair
+# ---------------------------------------------------------------------------
+
+def test_the_pair_starts_h_once_and_a_warm_pass_starts_nothing(monkeypatch):
+    """The folded magnetic pair carries MEEP's start of H, as the root pair does.
+
+    The engine route binds the run's ``Fields`` (``h_state``): the pair passes the
+    runtime ``start_h = 1`` until its first launch that has programs and then sets
+    ``Fields.h_separated``; the warm pass's empty launch passes the same ``start_h``
+    (the same compiled program) and starts nothing.
+    """
+    from meep_gpu import fastpath  # noqa: PLC0415
+    from meep_gpu.driver import FdtdDriver  # noqa: PLC0415
+    from meep_gpu.triton_kernels.coverage import Coverage  # noqa: PLC0415
+
+    calls = []
+
+    class Recording:
+        def __getitem__(self, grid):
+            def launch(*args, **kwargs):
+                calls.append((grid, args))
+            return launch
+
+    import types  # noqa: PLC0415
+
+    kernels = types.ModuleType("meep_gpu.triton_kernels.kernels")
+    kernels.ENABLE_FP_FUSION = False
+    kernels.DEFAULT_BLOCK = 256
+    monkeypatch.setitem(sys.modules, "meep_gpu.triton_kernels.kernels", kernels)
+    monkeypatch.setattr(product, "folded_fused_magnetic_pair_coverage",
+                        lambda *args, **kwargs: Coverage(True, ()))
+    driver = FdtdDriver(cell_size=(5.0, 6.0, 0.0), resolution=8.0, dimensions=2,
+                        boundaries={"x": "metallic", "y": "metallic", "z": "periodic"},
+                        symmetry=(Mirror("Y", 1),), force_complex_fields=False,
+                        prefer_gpu=False)
+    try:
+        driver.setup_pml({"x": 6, "y": {"high": 6}})
+        fields = driver.fields
+        plan = product.plan_folded_fused_magnetic_pair(fields, driver.pml, sources=(),
+                                                       kernel=Recording())
+        assert plan is not None, "the builder refused the host driver"
+        assert plan.start_h() == 1 and fields.h_separated is False
+        assert fastpath.warm_plan(plan) is None
+        assert fields.h_separated is False, "the warm pass started H"
+        plan.run()
+        assert fields.h_separated is True and plan.start_h() == 0
+        plan.run()
+        # 27 pointers, cb, nx, ny, nz, n_elem, dtdx, rx, ry, rz, then start_h.
+        starts = [args[27 + 9] for _grid, args in calls]
+        assert calls[0][0] == (0,) and calls[1][0] != (0,)
+        assert starts == [1, 1, 0], starts
+        assert all(args[27] is plan._cb for _grid, args in calls)  # noqa: SLF001
+    finally:
+        driver.close()

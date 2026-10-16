@@ -529,12 +529,12 @@ def _count_plans(monkeypatch):
     """Route the driver's plan builds through a counter, preserving behavior."""
     calls = {"count": 0}
 
-    def counting_plan(fields, pml, grid, sources=None):
+    def counting_plan(fields, pml, grid, sources=None, chunk_layout=None):
         calls["count"] += 1
-        # Forwarded rather than dropped: the driver hands its source list to the
-        # freeze, and a stub that swallowed it would plan a different configuration
-        # from the one under test.
-        return plan_fast_path(fields, pml, grid, sources)
+        # Forwarded rather than dropped: the driver hands its source list and its
+        # chunk division to the freeze, and a stub that swallowed either would plan a
+        # different configuration from the one under test.
+        return plan_fast_path(fields, pml, grid, sources, chunk_layout)
 
     monkeypatch.setattr(driver_module, "plan_fast_path", counting_plan)
     return calls

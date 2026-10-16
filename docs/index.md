@@ -8,9 +8,8 @@ or Apple GPU. MEEP keeps the setup and the post-processing.
 
 </div>
 
-**Status: alpha (0.9.2).** This is an early release. Significant changes are
-planned before version 1.0, and interfaces and record formats may change until
-then.
+**Status: beta (1.0.0).** This is the version the accompanying paper cites.
+Interfaces and record formats may still change in later releases.
 
 meep-gpu (import name `meep_gpu`) is an add-on for MEEP users, distributed under
 GPL-2.0-or-later. It takes the simulation a user's own MEEP installation has
@@ -129,14 +128,14 @@ On NVIDIA hardware, a device of compute capability 7.0 to 9.0 (with Triton 3.1)
 is supported: the kernels run on it whether or not it is certified, and a run
 outside the certified identity says so; a device or toolchain outside that range
 is refused by name, and its run takes the array path, unless
-<code>MEEP_GPU_ALLOW_UNCERTIFIED=1</code>
+<code>MEEP_GPU_HARDWARE=any</code>
 ([Certification on an NVIDIA GPU](guides/kernel-dispatch.md#certification-on-an-nvidia-gpu)).
 Every Apple GPU is supported: the
 Metal kernels run on it whether or not the environment (the GPU architecture,
 PyTorch, the Metal frontend of the macOS build, and
 <code>PYTORCH_MPS_FAST_MATH</code>) is the certified one, and a run outside it
 says so;
-<code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code> restricts every table to its
+<code>MEEP_GPU_HARDWARE=certified</code> restricts every table to its
 certified identities ([Certification on an Apple GPU](guides/kernel-dispatch.md#certification-on-an-apple-gpu)).
 [Reading what ran](getting-started/reading-what-ran.md) shows how to tell which
 happened and why.

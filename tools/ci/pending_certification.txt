@@ -13,36 +13,49 @@
 # its ledgers are committed; a listed test that passes is reported so that the
 # list can only shrink.
 #
-# Removed 2026-10-06: the five Metal entries (the three Metal weld-contract tests, the
-# Metal dispatch-record test and the Metal route-record entry), which the Apple M1 Max
-# round 2026-10-05_092_g13s (run on the release commit fa59c2f) turned green. The three
-# cited Metal welds that pin meep_gpu/fastpath.py (metal_complex_conductive_fused_pair,
-# metal_complex_no_pml_conductive and metal_cylindrical_real_fused_magnetic_pair) were
-# re-run on these bytes and rebind_metal_welds.py rebound them (3 rebound, 0 skipped);
-# the held route campaign dispatch_metal_route_2026-10-05_perarch_applegpu_g13s released
-# its five legs, and recut_driver_dispatch_record.py --backend metal wrote
-# runs["applegpu_g13s"]. The Metal fusion board was re-cut on that ledger as
-# fusion_matrix_metal_2026-10-05_092_g13s (served in dispatch 327, served by predicate
-# 531, of 597, as on the board it replaces), and the nonlinear-cell test reads it.
+# Removed 2026-10-15: 21 entries (26 lines), with the records of the R27 1.0 certification
+# round committed (bit_parity_0_10 lane REC27; the series entry after 173-BINDFIX): the four
+# ledgers bound from the round's gates on the frozen commit 2644fc1d (stamp 2026-10-15_10,
+# the NVIDIA bind and the Metal bind with entry 172's device-tier re-cut), the three
+# driver_dispatch records re-cut from the round's released route campaigns
+# (dispatch_fused_route_2026-10-15_10_cc86 with the licence dispatch_end_to_end_2026-10-15_10,
+# dispatch_fused_route_cuda_2026-10-15_10_cc86 and dispatch_metal_route_2026-10-15_10_applegpu_g13s),
+# the Metal metal_kernels block re-cut by launch.write_fingerprints(), the array-path oracle
+# minted in all three kernel ledgers by record_array_path_oracle.py, and the Triton and Metal
+# board builders re-pointed to the round's gate roots by repoint_board_bindings.py. 13 turned
+# green with the route re-cuts, 5 with the Metal host block and the oracle, and 3 were green on
+# the binds' ledgers. One of the 3 is the hygiene guard's ledgers leg
+# (tools/ci/check_hygiene.py --legs ledgers): the four ledgers read 0 hits, and the leg is no
+# longer declared. MEASURED on the records' tree, every marker, under the CPU-only shim with
+# dispatch off, in the evidence view and in the CI view (no results/): each of the 21 passes in
+# both views, and no id that stays passes in either. Of the 35 that stay, 33 fail in both views,
+# one (the Metal nonlinear H->D cell) fails in the evidence view and skips in the CI view, and
+# one (the route-gate test of the evidence archive) skips in both, unmeasured. The 8 blocks
+# these ids led lost every id and moved to History. 0 ids are added.
 #
-# Removed 2026-10-06: fourteen entries that the binding of the RTX A6000 round
-# 2026-10-05_092_cc86 (run on the release commit fa59c2f) turned green. The Triton
-# bit-identity gate released on these bytes and rebind_triton_welds.py
-# --bind-bit-identity bound it. The fleet re-ran unified_expansion, fused_ade_chain and
-# probe_triton_folded_deposit_closure, and complex_fused_ade_chain under that run's
-# expansion record, and rebind_triton_welds.py rebound the three welds they gate (3
-# rebound, 0 skipped). dispatch_fused_route_2026-10-05_092_cc86 released its four legs,
-# the end-to-end licence dispatch_end_to_end_2026-10-05_092_cc86 read GO (8 of 9 cases
-# dispatched, null control clean), and recut_driver_dispatch_record.py --end-to-end filed
-# runs["8.6"] into the Triton record. dispatch_fused_route_cuda_2026-10-05_092_cc86
-# released its five required legs and cuda_alone, and recut_driver_dispatch_record.py
-# --backend cuda filed runs["8.6"] into the CUDA record. They are the last 8 of the 36
-# entries derived 2026-09-28 from a measured run (failures whose own message states that
-# pinned bytes moved): the 4 CUDA and 3 Triton weld-contract tests and the no-absorber
-# test; the 4 entries of the uncertified-default block (the cited CUDA and Triton
-# route-gate tests and both dispatch-shape tests; the Triton route-gate test is an
-# [evidence_archive] test, measured with the archive and its marker); and the CUDA and
-# Triton route-record entries.
+# Removed 2026-10-13: 26 entries, with the records of the 1.0 certification round committed
+# (bit_parity_0_10 lane A32, the series entry after 139-MRF): the four ledgers bound from the
+# round's gates on the frozen commit 5b9161c (stamp 2026-10-13_10), with the three
+# driver_dispatch records re-cut from the round's released route campaigns
+# (dispatch_fused_route_2026-10-13_10_cc86 with the licence dispatch_end_to_end_2026-10-13_10,
+# dispatch_fused_route_cuda_2026-10-13_10_cc86 and dispatch_metal_route_2026-10-13_20_applegpu_g13s),
+# and the Triton and Metal board builders re-pointed to the round's gate roots by
+# repoint_board_bindings.py. 14 turned green with the re-cut driver_dispatch records: the CUDA
+# weld contract's 4 entries, the three route-run tests, the Metal record's weld and the Metal
+# weld contract's backfill and code-tier tests, the CUDA route-gate test, the two recorded
+# dispatch shapes and the cylindrical composition's central seam. 12 were green on the
+# round's bound ledgers before the re-cut: the CUDA weld status rule, the family modules'
+# drift declaration, the Triton host-side fingerprint record and drifted-host-file record, six
+# Triton module welds, the symmetry composition's complete-step seam and the policy each
+# Triton weld names. MEASURED on the records' tree, every marker, under the CPU-only shim with
+# dispatch off, in the evidence view (parity/meep_gpu/results/ as the evidence host holds it)
+# and in the CI view (no results/): each of the 26 passes in both views, and no id that stays
+# listed passes in either. Of the 38 that stay, 37 fail in both views and one (the route-gate
+# test of the evidence archive) skips in both, unmeasured. A block whose ids all left moved
+# to History at the end of this file; a block that keeps some says above them which left.
+# 3 ids are added, in a block after the last kernel-record block, each red on a constant of
+# its own test that names an earlier round's evidence: two turn red with the round's bound
+# ledgers, and the third was already red in the evidence view, the only view it runs in.
 #
 # Removed 2026-10-06: three entries that the binding of the RTX A6000 residue round
 # 2026-10-05_cc86_residue (run on the release commit d9b8d97) turned green with no new
@@ -117,8 +130,34 @@
 # block below keeps 33 of its 36 entries and the 2026-09-28 integration block 2
 # of its 4.
 #
-# Added 2026-09-28 from the integration run, of the class the first 36 entries held
-# (the failure's own message states that pinned bytes moved): the message states that
+# The first 36 entries were derived 2026-09-28 from a measured run: the failures
+# whose own message states that pinned bytes moved (a digest, a weld, a
+# fingerprint or a record that no longer matches the files, or a record that
+# states a default the code no longer ships).
+# The no-absorber test stops at bit_identity_gate, whose pinned meep_gpu/fastpath.py
+# moved after its run. Past it, the same walk names the Triton driver_dispatch record
+# (fastpath.py), triton_complex_fused_ade_chain (meep_gpu/subnormal_policy.py) and
+# triton_folded_deposit_closure (meep_gpu/driver.py, meep_gpu/subnormal_policy.py).
+# Removed when the Triton bit-identity gate has run on these bytes and been bound
+# (rebind_triton_welds.py --bind-bit-identity), those two welds have been re-run on
+# these bytes and rebound, and the Triton route record has been recut.
+meep_gpu.test_dispatch_contract::test_the_no_absorber_gate_records_are_welded_to_the_live_sources
+# The 3 Triton weld-contract entries below name the Triton driver_dispatch record
+# (fastpath.py), bit_identity_gate (meep_gpu/fastpath.py) and three welds the residue
+# fleet re-ran on the release commit: triton_fused_ade_chain,
+# triton_complex_fused_ade_chain and triton_folded_deposit_closure.
+# rebind_triton_welds.py skips those three: their artifacts do not record their own
+# test files, and the run disagrees with this tree on meep_gpu/fastpath.py, so the tree
+# cannot stand in for them. Removed when the three have been re-run on these bytes
+# (complex_fused_ade_chain, fused_ade_chain, probe_triton_folded_deposit_closure; the
+# expansion probe they once ran under is deleted, WP X1 below) and rebound, the
+# bit-identity gate has been bound, and dispatch_fused_route_2026-10-15_10_cc86 has
+# released on these bytes and been recut with --end-to-end.
+meep_gpu.test_triton_weld_contract::test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest
+meep_gpu.test_triton_weld_contract::test_the_triton_code_tier_recomputes_against_the_tree
+meep_gpu.test_triton_weld_contract::test_the_triton_welds_are_bound_to_the_live_sources
+#
+# Added 2026-09-28 from the integration run, same class: the message states that
 # a pinned host module moved (the release scrub edited a provenance string in
 # meep_gpu/metal_kernels/coverage.py), that the code ships dispatch by default
 # while the dispatch records state otherwise, or that a record names an earlier
@@ -136,8 +175,1803 @@
 meep_gpu.test_dispatch_preference::test_at_the_top_of_the_sweep_the_two_pair_plans_are_faster[cuda]
 meep_gpu.test_dispatch_preference::test_at_the_top_of_the_sweep_the_two_pair_plans_are_faster[triton]
 #
+# Added 2026-10-05 for the uncertified NVIDIA default. meep_gpu/fastpath.py
+# and meep_gpu/fastpath_cuda.py changed: a supported NVIDIA device or Triton version
+# that is not certified now runs the kernels by default, a table certified for the
+# device and toolchain outranks one that is only supported, and
+# MEEP_GPU_ALLOW_UNCERTIFIED=0 restricts the kernels to certified identities. Every
+# record that pins those files by digest is stale until it is re-run on these
+# bytes: the three driver_dispatch records (Triton, with its dispatch-by-default
+# licence; CUDA, which also pins fastpath_cuda.py; Metal), the three cited Metal
+# device welds that pin fastpath.py (metal_complex_conductive_fused_pair,
+# metal_complex_no_pml_conductive, metal_cylindrical_real_fused_magnetic_pair), and
+# the cited Triton bit_identity_gate. The Triton gate and the Triton and CUDA
+# driver_dispatch digests land in weld-contract entries already listed above, and the
+# Metal driver_dispatch record and the three Metal welds in the four entries of the
+# per-architecture block above, so they add no line here; those entries now also wait
+# on this round. Measured on the tree that added them: the certification suite failed
+# these 2 tests and the 17 listed above, and nothing else. Removed when the combined
+# certification round has run on these bytes and its ledgers are committed: the
+# bit-identity gate and both NVIDIA route campaigns with the end-to-end licence on the
+# RTX A6000, and the Metal fleet and held route campaign on the M1 Max. The NVIDIA
+# route-campaign stamps moved next, before those campaigns run (the paragraph after
+# these 2 entries); METAL_DRIVER_ROUTE_GATE moved with the per-architecture block.
+# Joined to this block 2026-10-05, when the NVIDIA route-campaign stamps moved before
+# the round: DRIVER_ROUTE_FUSED_GATE to dispatch_fused_route_2026-10-05_092 and
+# CUDA_DRIVER_ROUTE_FUSED_GATE to dispatch_fused_route_cuda_2026-10-05_092, one stamp
+# per release, under which each compute capability's campaign is <stamp>_cc86 (and
+# <stamp>_cc90). The same change makes parity/meep_gpu/gate_dispatch_fused_route.py
+# refuse a leg on a card the table under test does not certify, or with
+# MEEP_GPU_ALLOW_UNCERTIFIED set; the CUDA driver_dispatch record pins that file, and
+# its drift lands in CUDA weld-contract entries already listed above. Both NVIDIA
+# driver_dispatch records still name their 0.9.1 campaigns for compute capability
+# 8.6, so the 2 tests below fail on the campaign name: the CUDA record-shape test,
+# which passed before the move, and the Triton route-gate test, which runs only where
+# parity/meep_gpu/results/ holds the evidence archive with its EVIDENCE_ARCHIVE.json
+# marker (there it already failed before the move, on the fastpath.py digest). The 2
+# entries above now also wait on these campaigns. Measured on the tree that moved
+# them: the certification suite fails the CUDA record-shape test, the 2 entries above
+# and the 17 listed before them, and nothing else; with the marked evidence archive,
+# the Triton route-gate test as well. Both tests read every compute capability
+# capability_admission admits on their table, not 8.6 alone. Removed when, for every
+# compute capability each table admits (8.6 today; 9.0 too if it is bound first),
+# that table's route_campaign(<stamp>, <cc>) has released on these bytes
+# (dispatch_fused_route_2026-10-15_10_cc86 and
+# dispatch_fused_route_cuda_2026-10-15_10_cc86, and _cc90 beside them) and
+# recut_driver_dispatch_record.py has written runs[<cc>] into that table's record
+# (the Triton one with --end-to-end).
+# Removed 2026-10-13 with the records of the 1.0 round: 3 of this block's 4 ids (the CUDA
+# route-gate test and the two recorded dispatch shapes). dispatch_fused_route_2026-10-13_10_cc86,
+# with the licence dispatch_end_to_end_2026-10-13_10, and
+# dispatch_fused_route_cuda_2026-10-13_10_cc86 released on these bytes, and
+# recut_driver_dispatch_record.py filed both. The id that stays reads the evidence archive
+# and skips where parity/meep_gpu/results/ carries no EVIDENCE_ARCHIVE.json marker, as on the
+# host that cut these records, so it is not measured.
+meep_gpu.test_dispatch_contract::test_the_cited_driver_route_gate_ran_the_bytes_the_record_binds
+#
+# Added 2026-10-06 with the chunk division (meep_gpu/chunk_map.py: ChunkLayout, the
+# one-rank default, the int32[25] kernel record; FdtdDriver.set_chunk_layout; the lift
+# installing MEEP's division; PML.in_pml_chunk removed, the f_u mirror reading the
+# driver's division). Stepped words are unchanged on default divisions, so the array-path
+# oracle stays green. The bytes of driver.py, pml.py, from_meep.py and sources.py moved,
+# and the ledgers pin them: against base + F4 + F1, CUDA 65 -> 66 of 269 pinned paths and
+# code digests, Triton raw tier 21 -> 88 of 592 and code tier 5 -> 57 of 444, Metal
+# 5 -> 18 of 441 pinned paths and 5 -> 18 of 352 code digests. The three tests below go
+# red on that drift and on nothing else. The Triton complex conductive pair's weld no
+# longer binds driver.py and pml.py; the cylindrical composition's driver_dispatch
+# source_sha256 no longer matches driver.py; and the CUDA ADE record block
+# cuda_ade_recut_2026-10-05_cc86_residue has two undeclared moved subjects: pml.py (this
+# change) and parity/meep_gpu/probe_fused_kernel_bit_identity.py (the per-gate needle
+# tables above, whose block did not list it). Removed when those entries are re-gated
+# and rebound on these bytes, or the ADE block declares both edits under
+# post_certification_edits.
+# Removed 2026-10-13 with the records of the 1.0 round: the Triton complex conductive pair's
+# weld (green on the round's bound Triton ledger) and the cylindrical composition's central
+# seam (green once the Triton driver_dispatch record was re-cut from the round's route
+# campaign). The id that stays fails on update_P_pml_real's device string: the CUDA ADE
+# record block is not re-cut on these bytes (record_cuda_ade_recut.py refuses it as a new
+# certification).
+meep_gpu.cuda_kernels.test_ade_update_p::test_the_record_block_pins_the_device_strings_that_ship_today
+#
+# Added 2026-10-06 with the chunk record on the Triton table: every Triton PML plan
+# binds chunk_map.chunk_bounds_record (launch.bind_chunk_bounds), the three launch.py
+# plans pass it as cb, the harness route requires it, and plan_step takes chunk_layout.
+# No kernel source and no array-path module changed; the record is bound and not yet
+# read. The Triton host files the ledgers pin moved (launch.py, coverage.py,
+# __init__.py, dispersive_update_e.py, cylindrical_triton.py, symmetry.py,
+# special_kz.py, folded_complex.py, bfast_curl.py, nonlinear_update_e.py), as did the
+# fused D/E gate the Triton record pins. Drift on these bytes against base + F4 + F1 +
+# AP1 + F2s + F3 + KC0: Triton raw tier 88 -> 256 of 592 digests, code tier 57 -> 171
+# of 444; Metal 18 -> 30 of 441 pinned paths and 18 -> 30 of 352 code digests (its
+# driver_dispatch record pins the Triton host files); CUDA 69 of 269, unchanged. The
+# five tests below go red on that drift and on nothing else: host_sha256 and
+# pending_host_recut in fingerprints.json, the families' source_drift_since_recert,
+# the dispersive composition's specialization digest and the fused D/E record's gate
+# digest. Removed when those entries are re-gated and rebound on these bytes.
+# Removed 2026-10-13 with the records of the 1.0 round: 3 of the 5 ids above (the family
+# modules' drift declaration, the Triton host-side fingerprint record and the drifted-host-file
+# record), green on the round's bound Triton ledger. The 2 that stay fail on a recorded digest
+# that is not the tree's (the dispersive composition's specialization; the fused D/E record's
+# gate).
+meep_gpu.test_triton_dispersive_update_e::test_the_dispersive_composition_fingerprint_names_the_exact_gated_bytes
+meep_gpu.test_triton_kernels::test_the_fused_electric_record_is_welded_to_both_oracles_and_the_route
+#
+# 0 CUDA host tests (32 before lane KC7) that execute an emitted kernel body, or the family's
+# NumPy transcription of it, against stepping, or that classify a planted defect by its
+# relation to the previous groupings. Removed as the CUDA lanes re-transcribe the curl
+# and the constitutive tail (KC1 roots, then KC2 to KC9). KC5 removed 46 (test_dispersive
+# 8, test_dispersive_offdiag_update_e 36, test_single_arm_launches 2), which pass on its
+# re-derived dispersive families.
+# KC6 removed 25 (test_complex_folded 24, which pass on its re-derived folded complex
+# curl, and test_complex_pml's curl-grouping id, which its re-cut renamed).
+# KC7 removed 32 (test_bfast_curl 9 and test_special_kz_curl 9, which pass on the fold
+# passes, and 14 ids of test_complex_beta, which its re-cut renamed). The group is empty;
+# its paragraph is kept as history.
+#
+# 2 CUDA tests that read stepping.py at the line numbers a kernel module cites. The
+# cited statements are unchanged; AP3 moved their lines (537 -> 546, 539 -> 548,
+# 944-945 -> 953-954, 983-984 -> 992-993, 1022 -> 1031, 1996-1998 -> 2083-2085,
+# 2440 -> 2530, 2450 -> 2540). The citations are those
+# of complex_no_pml_kernels.py (whose table test_complex_no_pml.py restates), which the
+# ledgers pin, so they are re-pointed when that lane (KC6) edits the module. KC6 cites
+# them by function now, and test_complex_no_pml.py reads each statement back out of the
+# function it is cited in; its five ids were renamed and left the list. Lane KC9r
+# re-pointed those of no_pml_curl.py and no_pml_constitutive.py onto base + 01-F4 ..
+# 17-F5 + KC1 + KT1, where its two tests pass; on the series, entries 19, 20, 24 and 25
+# moved stepping.py below those lines again (the cited statements are unchanged), and
+# no_pml_curl.py carries its citations in its device text too, so they are re-pointed
+# with that module's next edit (the CUDA no-PML certification re-cut, CERT-3, at the
+# latest). MEASURED at the batch_r5 integration: both fail on the series + KC9r.
+meep_gpu.cuda_kernels.test_no_pml_constitutive::test_every_cited_return_site_is_read_back_out_of_stepping
+meep_gpu.cuda_kernels.test_no_pml_curl::test_every_cited_stepping_line_is_read_back_out_of_stepping
+#
+# 0 Triton host tests (74 at AP3; the 2 of the folded magnetic pair's gate, its design
+# sweep and its moved coefficient index, left with WP KT3, the 4 of the nonlinear
+# update_E reference left with WP KT9, the 14 of the two off-diagonal update_E
+# families, 6 of test_triton_offdiag_update_e and 8 of
+# test_triton_folded_offdiag_update_e, left with WP KT4, the 12 of the no-absorber
+# conductive reference left with WP KT10r, and the 6 of the complex family left with WP
+# KT5: 1 of test_triton_complex_fields, 2 of test_triton_complex_fused_magnetic_pair, 1
+# of test_triton_complex_offdiag_update_e and 2 of test_triton_folded_complex, the
+# 2 of the dispersive family left with WP KT6: 1 of test_triton_folded_dispersive_update_e
+# and 1 of test_triton_folded_offdiag_dispersive_update_e, the 16 of
+# test_triton_cylindrical_complex left with WP KT8, whose gate no longer carries the
+# reference they compared, and the 18 of the fold passes left with WP KT7: 10 of
+# test_triton_bfast and 8 of test_triton_special_kz) that
+# compare a host transcription or a gate's
+# NumPy reference of the previous groupings with stepping. Removed as the Triton lanes
+# re-transcribe (KT1, then KT2 to KT10). The group is empty; its paragraph is kept as
+# history.
+#
+# 3 Metal host tests whose NumPy reference of the dispersive update_E plan
+# transcribes the previous constitutive grouping. Removed with KM8.
+#
+# Added 2026-10-06 by the AP3 integration, not by AP3: the device-visible half of the same
+# change. AP3 measured its list on hosts without an Apple GPU, where these tests skip. The
+# integration ran every device-visible package file (all meep_gpu/test_metal_*.py,
+# test_prefer_gpu.py, test_uncertified_opt_in.py and the torch-gated files: 74 files, 3,439
+# ids) on an Apple GPU (M1 Max, applegpu_g13s), on tree 3e6a72db (base + 01-F4 .. 08-KM0)
+# and on that tree plus AP3. The 103 tests below pass on the first and fail on the second,
+# each on a count of differing words or elements between a Metal kernel, or a run that
+# dispatched Metal kernels, and the array path, or on a mutation leg whose null control is
+# that identity: the Metal kernels still transcribe the previous curl and constitutive
+# groupings. Removed as the Metal lanes re-transcribe them (KM1 and the family lanes) and
+# the Metal welds are re-gated. 28 are test_metal_held_fallback's held-against-reference
+# comparisons and 1 is test_prefer_gpu's Apple-GPU entry-point comparison: their subject is
+# the hold and the entry point, not the arithmetic, and an Apple GPU host's default suite
+# does not run them until then.
+#
+# Added 2026-10-07 with the chunk record declared on the Triton kernels: the four
+# kernels.py entry points the launch.py plans launch (pml_curl_step, constitutive_step,
+# fused_curl_constitutive_B, fused_curl_constitutive_D) declare cb directly after their
+# last pointer argument and do not read it. The kernel source moved, so the bit-identity
+# gate's kernel_source_sha256 in triton_kernels/fingerprints.json and 32 of the 78 device
+# kernel digests the Triton welds pin no longer recompute. Drift against tree e1f817a6
+# (base + 01-F4 .. 11-DH): Triton raw tier 356 -> 401 of 592 digests, code tier 259 -> 293
+# of 444, device tier 0 -> 32 of 78; Metal 110 of 441 and 104 of 352, and CUDA 70 of 269,
+# unchanged. On an RTX A6000 with Triton 3.1.0 the declaration moved no output word (48 of
+# 48 harness pairs and 8 of 8 engine-route legs at 0 differing words against the 0.9.2
+# kernels); that was a development measurement, not the gate. The two tests below go red
+# on that drift and on nothing else. Removed when the Triton bit-identity gate is re-run on
+# these bytes and fingerprints.json and the Triton welds are re-cut and rebound.
+meep_gpu.test_triton_kernels::test_the_fingerprint_record_matches_the_shipped_kernel_source
+meep_gpu.test_triton_weld_contract::test_the_triton_device_tier_recomputes_against_the_tree
+#
+# Added 2026-10-07 with the hand-written CUDA table's root kernels on MEEP's per-chunk forms
+# (bit_parity_0_10 WP KC1: step_B/D_pml_real, update_H/E_pml_real and
+# update_E_pml_real_nonlinear read the chunk record cb, decode it with the bounds_block
+# emitter, and step the recurrence or the dsig-only curl, the dsigw accumulation or
+# f = src, per structure chunk, with the stencil in MEEP's grouping; pml_apply and
+# constitutive_apply take one membership flag; own_cell_hoist and its reference record
+# follow). MEASURED on host (trident env, CPU-only shim, every marker): each id passes on
+# base + 01-F4 .. 14-AP5 and fails or errors with this change applied. Every one is a
+# kernel derived from the root texts and not yet re-derived onto them, or a record that
+# pins the root texts' bytes. The same change took 14 ids out of the AP3 block above: 6
+# host transcriptions of the root pair and the nonlinear tail, which now reproduce
+# stepping, and 8 of the nonlinear tail, which moved to a KC1n block that lane KC1n
+# removed when it transcribed the nonlinear update's new forms. Lane KC7 removed the
+# conductive BFAST weld's group (4 ids: its launcher now binds all 50 parameters, the
+# three conductive-chunk masks and the chunk record included).
+# Groups, each with what removes it:
+#
+# 4 ids: the certification record pins the root kernels' device text and module bytes
+# (certification.json, the constitutive and fold record blocks). Removed when the root gates
+# are re-run on these bytes and the records re-cut (CERT-3).
+meep_gpu.cuda_kernels.test_certification_record::test_the_record_matches_the_shipped_kernel_module
+meep_gpu.cuda_kernels.test_certification_record::test_the_recorded_device_sources_are_the_shipped_device_sources
+meep_gpu.cuda_kernels.test_constitutive_pml_real::test_the_fold_admission_names_a_record_block_that_reports_a_pass
+meep_gpu.cuda_kernels.test_constitutive_pml_real::test_the_record_pins_the_device_source_that_was_gated
+#
+# Added 2026-10-08 with the CUDA off-diagonal update_E on the 0.10 forms (bit_parity_0_10
+# WP KC4: offdiag_emitter, offdiag_constitutive_kernels, folded_offdiag_kernels, the two
+# off-diagonal stencil welds, and the new offdiag_presence). MEASURED on Mac CPU (CPU-only
+# shim, every marker) on base + 01-F4 .. 23-REMINT + KC4, against the same two suites on
+# base + 01..23 (integrate/batch_r4's stage run): each id below fails with this change;
+# every other id that changed verdict passes (341 listed ids, which left the list), the 45
+# new ids pass, and 9 ids of KC4's own test files were renamed. Two groups at entry, each
+# with the lane that removes it (KC5's has left):
+#   CERT-3, 3 ids: the off-diagonal records were cut against the 0.9.2 texts
+#     (certification.json's off-diagonal block, and FOLDED_OFFDIAG_ADMISSION's emitter
+#     corpus digest in folded_offdiag_kernels.py). Two were listed by KC1 for KC4 and move
+#     here. Removed when the off-diagonal gates are re-run on these bytes in the combined
+#     certification round and the records are re-cut.
+#   KC5, the CUDA ADE lane, 25 ids of test_dispersive_offdiag_update_e: removed by KC5,
+#     which re-derives dispersive_offdiag_update_e onto these kernels (its other 36 ids,
+#     in the CUDA group of the 0.10 forms block above, left with them).
+meep_gpu.cuda_kernels.test_folded_offdiag::test_the_record_was_cut_against_the_emitter_that_ships_today
+meep_gpu.cuda_kernels.test_offdiag_constitutive_pml_real::test_the_record_block_was_cut_against_the_emitter_that_ships_today
+meep_gpu.cuda_kernels.test_offdiag_constitutive_pml_real::test_the_record_block_was_cut_against_the_launch_texts_that_ship_today
+#
+# Added 2026-10-08 at the batch_r4 integration (bit_parity_0_10 lane A1) for entry 15, WP
+# AP6a (every product on complex storage formed part by part; MEEP's owned window stored
+# on a Bloch-periodic axis), which did not declare them. 34 ids (0 since lane KM9 removed
+# its 10, lane KC6 its 5, WP KT5 its 2, lane KM10 its 3, lane KC8 its 10 and WP KT7 its
+# 4; the block holds no id and is kept as history), each a kernel's complex
+# arithmetic or its host transcription compared with the array path. MEASURED: the 21 CUDA
+# and Triton host ids pass on base + 01-F4 .. 14-AP5 and fail on + 15-AP6a, on + 16-AP6h
+# and on base + 01..17 (Mac CPU, CPU-only shim, every marker); the 13 Apple-GPU ids pass
+# on base + 01..14 and fail on base + 01..15 (M1 Max, every marker). All 34 fail on base +
+# 01..18 and with this entry. Grouped by the lane that removes them:
+#   KC6, the CUDA complex lane, 5 ids, removed by KC6 (they pass on its re-derived
+#     families). test_complex_no_pml (1) pins the array-path tail
+#     the family transcribes, which is now spelled part_products.scale(...) rather than
+#     field *= condfac. test_complex_offdiag_update_e (4): the four layer-free store cases
+#     with a Bloch phase (store_1d_phased, store_2d_phased, store_3d_phased, and
+#     store_metallic_walls, whose periodic z carries k = 0.4) depart from
+#     stepping.update_E by 40 to 57 % relative. That is not the per-part rounding: it is
+#     the owned window (stored cell 0 of a phased axis is MEEP's owned top point, and the
+#     reads across the window edge take MEEP's not-owned word), which the kernel's ghost
+#     and phase reads do not take. The ten cases with a layer are listed by entry 13's
+#     block above (they state the whole-grid forms).
+#   KC8, the CUDA cylindrical lane, 10 ids, removed by KC8 (its i*m/r pass takes the
+#     array path's quarter turn and realnum rinv): test_cylindrical_complex's i*m/r rows
+#     of step_B and step_D, now part-by-part quarter turns, differed word for word.
+#   KT5, the Triton complex lane, 2 ids, both removed by WP KT5, whose kernels and
+#     references step each stored part: test_triton_complex_fields' reference census of
+#     -0 words (re = -0 with a non-negative imaginary part) reads 0 of the required 200,
+#     the per-part products giving MEEP's sign of zero; and the host transcription of
+#     test_triton_complex_offdiag_update_e (k = 0) differs in its bytes.
+#   KT7, the Triton folds lane, 4 ids, all removed by WP KT7, whose complex beta increment
+#     is stepping's quarter turn: test_triton_special_kz's complex coefficient had a -0
+#     real part where stepping's quarter turn gives +0.
+#   KM9, the Metal folds lane, 10 ids: test_metal_special_kz, the same sign of a zero real
+#     part.
+#   KM10, the Metal cylindrical lane, 3 ids: test_metal_cylindrical_complex_scan's scan
+#     against stepping's own prefix (112 differing words on step_B in both contraction
+#     modes) and its signed-zero refinement.
+#
+# Added 2026-10-08 with the hand-written CUDA table's no-absorber curl on MEEP's stencil
+# (bit_parity_0_10 lane KC9r): step_B_no_pml_real, step_B_no_pml_real_derived and
+# step_D_no_pml_real form the curl with the root prelude's curl_stencil (MEEP's grouping,
+# with the one-partner forms where a partner's derivative axis is invariant) and read the
+# partner-presence word of the chunk record cb, which step_no_pml_curl requires. The three
+# no-absorber conductive kernels, built from those bytes, inherit both, and
+# step_conductive_curl requires the record on those arms. MEASURED on host (trident env,
+# CPU-only shim, every marker) against base + 01-F4 .. 17-F5 + KC1 + KT1 (tree b04d7a2a):
+# 30 listed ids pass and left the list (12 from the CUDA host-transcription block, 2 from
+# the citation block, 1 from the whole-grid block, 15 from the no_pml_curl block, whose
+# last id moved here), 8 new tests pass, and each of the 10 ids below fails with this
+# change. On the series 28 of the 30 left the list: the 2 citation-block ids stay
+# listed there, the lines they read having moved with entries 19, 20, 24 and 25. Groups, each with what removes it:
+#
+# 1 id: NO_PML_CURL_ADMISSION records the device digests of the three kernels' text, which
+# moved (it already failed on that tree, where the shared prelude had moved). Removed when
+# gate_cuda_no_pml_curl is re-run on these bytes and the admission record and the
+# cuda_no_pml_curl block of certification.json are re-cut (CERT-3).
+meep_gpu.cuda_kernels.test_no_pml_curl::test_the_recorded_device_digests_are_the_device_text_that_ships
+#
+# Added 2026-10-08 at the batch_r5 integration (bit_parity_0_10 lane A2) for entry 25, WP
+# AP6g (an integrated source's dipole through f_minus_p in place of the standing offset and
+# its withdraw), which did not declare them: its touched-file suite did not select their
+# files, and no Apple GPU ran for it. 4 ids, MEASURED: each passes on base + 01-F4 ..
+# 23-REMINT and fails on the batch's tree (base + 01..31), and no other test changes
+# outcome without a listing (the package and harness suites under a CPU-only shim, every
+# marker; the 74 device-visible package files on the Apple GPU, 2 of 3,460 changed).
+# Grouped by the lane that removes them (2 left with WP KT6, which re-stated the E->P
+# seam: the chains form E and P before the f_minus_p restore, which writes D alone):
+#
+# 0 ids left on the Apple GPU (2 at entry 25): each stated that a Metal H->D pair's coverage
+# predicate refuses an engine integrated electric source by its standing withdraw. Since
+# entry 25 no engine source stands one (withdraw_hoist.standing_withdraws answers ()), so
+# the predicate covers it. Entry 25 re-wrote the CUDA and Triton twins of these tests (a
+# foreign class that brings its own withdraw is still refused; an engine integrated source
+# stands none); the Metal cylindrical lane (KM10) re-wrote cylindrical_real_fused_hd_pair's
+# and WP FXM re-wrote folded_fused_hd_pair's the same way.
+#
+# Added 2026-10-08 by bit_parity_0_10 WP KM2: the Metal same-cell fused pairs
+# (fused_magnetic_pair, fused_electric_pair, nonlinear_fused_magnetic_pair,
+# fused_dispersive_pair, and the PML arm of fused_ade_chain) bind the chunk record and step
+# the array path's per-chunk forms. No id is added: MEASURED against base + 01-F4 .. 17-F5 +
+# 18-KM1 on both trees, 0 ids pass on the base and fail with KM2 applied, on the Apple GPU
+# (M1 Max) over 84 device-visible files (KM1's 74 plus KM2's selection) and on Mac CPU under
+# the CPU-only shim over the full meep_gpu and parity/meep_gpu suites, every marker.
+# Removed by KM2 from the KM1 block above: 21 ids that pass on the Apple GPU with KM2
+# applied -- 20 of the 24 KM1 grouped under KM2, and one it grouped under KM3,
+# test_metal_fused_hd_pair::test_the_seam_loop_refuses_this_product_on_its_flag_and_then_
+# on_the_released_slot, whose second refusal is the released B->H pair this change
+# installs. 13 of the 21 (test_metal_dispatch 3, test_metal_fused_pair_deposit_wiring 10)
+# still fail under the CPU-only shim, as they did before KM1 on 01-F4 .. 17-F5: each plans a
+# Metal composition and does not skip without the device. They are judged on the device,
+# where they pass. The other 4 ids KM1 grouped under KM2 stay listed, owed by other lanes:
+#   KM9 and KM4: test_metal_residue_fused_pairs::test_the_composed_seam_installs_the_pair
+#     [bfast_fused_electric_pair] and [conductive_fused_electric_pair]: each lifts the
+#     base bodies into its own template, whose Params does not yet embed the record.
+#   KM5/KM6: test_metal_fused_pair_deposit_wiring::test_the_2026_08_28_families_are_
+#     bracketed_on_the_seam_they_serve[folded_fused_magnetic_pair]: the fold-carry pair's
+#     constitutive statements no longer reproduce the base H body.
+#   ruling R7: test_metal_fused_pair_deposit_wiring::test_the_h_to_d_span_yields_or_
+#     installs_by_row_class[neither_installs]: on its nonlinear row update_E stays on the
+#     array path under R7, so the composition launches 3 plans where the test expects 4.
+# Ledgers and fingerprints are unchanged; the drift of the five modules' gate records and
+# shader digests is the certification round's, as KM1's block states for its own.
+#
+# Added 2026-10-08 by bit_parity_0_10 WP KM3: the Metal H->D welds (fused_hd_pair,
+# folded_fused_hd_pair) lift the base kernels' per-chunk forms again. Params embeds the
+# chunk record and h_cell takes it as a parameter, the constitutive lift is re-cut onto
+# the guarded loads and the A2 accumulation, the f_w scratch is total (the pre-launch
+# word off the dsigw cells), both predicates refuse the run's first update_H on
+# launch.h_start_reasons' rule, and both plan builders require chunk_bounds. MEASURED
+# against base + 01-F4 .. 17-F5 + 18-KM1 on both trees, over the 20 test files that
+# reference the two welds, their gates or their lifters, on the Apple GPU (M1 Max) and
+# on Mac CPU under the CPU-only shim: 0 ids go from passing to failing.
+# Removed by KM3 from KM1's block above: the 141 ids of its KM3 share. 131 pass with
+# KM3 applied, on the device and on the host. Of the other 10, 9 still fail and are
+# re-listed below, under the lanes they now wait on. The tenth, the seam loop's
+# arbitration test, waited on KM2 on the lane's base; entry 32 (KM2) installs its
+# released B->H incumbent (fused_magnetic_pair) and it passes on the Apple GPU, so it
+# is not re-listed (MEASURED at the batch_r6m integration, base + 01..37).
+#   KM4: 1 id, conductive_fused_hd_pair's compile on the device: its template lifts
+#     h_cell, which now takes the record, and declares neither ChunkBounds nor cb.
+#   KM9: 8 ids, the same compile for beta_real_fused_hd_pair (7 specialisations) and
+#     bfast_fused_hd_pair (1).
+# Ledgers and fingerprints are unchanged. Drift against base + 01..18, read from the
+# Metal weld-contract tests on both trees on the device: pinned paths 162 -> 167 of 441,
+# code digests 150 -> 153 of 352, code digests beside a stale source digest 151 -> 154,
+# device shader digests 19 -> 19 of 49; every one of those ids is already listed.
+#
+# Added 2026-10-08 by bit_parity_0_10 WP KM6: the Metal fold-carry pairs
+# (folded_fused_pair, folded_fused_magnetic_pair, folded_fused_dispersive_pair) bind the
+# chunk record in their Params and step the array path's per-chunk forms; a ghost the fill
+# moves along the component's own axis evaluates its constitutive membership at its
+# destination. No ids: MEASURED against base + 01-F4 .. 18-KM1 on both trees, 0 ids pass
+# on the base and fail with KM6 applied, on the Apple GPU (M1 Max) over the 76
+# device-visible package files and on Mac CPU under the CPU-only shim over a 135-file
+# selection.
+# Removed by KM6 from the blocks above: 22 entries of the KM1 block that pass with KM6
+# applied on the Apple GPU (22 of 22; under the shim 19 pass, and the other 3 build the
+# Metal folded pairs and now skip there, declared [mps_device] in declared_resources.txt):
+# the 18 test_metal_folded_fused_magnetic_pair ids, the 2 test_folded_fused_pair_routing
+# ids, the folded_fused_magnetic_pair row of test_metal_fused_pair_deposit_wiring, and
+# test_metal_folded_complex_fused_magnetic_pair::test_two_parities_compile_to_the_same_
+# source_here_and_differ_on_the_real_fold (KM1 grouped it under KM5; it compares the
+# folded complex source with the real fold's, which compiles again with KM6).
+# Waiting on other lanes, with no red-by-contract id today: folded_fused_dispersive_pair's
+# ADE form (F_DISPERSIVE) and the update_P drive select are KM8's, once the array path
+# carries them (AP6f is not in this base, so no test asserts them yet); the nonlinear
+# |D|^2 form on Metal waits on owner ruling R7 (KM1's refusal stands).
+# Ledgers and fingerprints are unchanged. Drift against base + 01..18, read from the Metal
+# weld-contract tests (already listed) on the Apple GPU on both trees: pinned paths
+# 162 -> 169 of 441, code digests 150 -> 154 of 352, code digests beside a stale source
+# digest 151 -> 155, device shader digests 19 -> 20 of 49.
+#
+# Added 2026-10-08 by bit_parity_0_10 WP KM12r: the Metal no-absorber real curl
+# (metal_kernels/no_pml_curl.py) and the lossless no-PML D->E pair that lifts it
+# (metal_kernels/no_pml_fused_electric_pair.py) step MEEP's stencil with its
+# partner-presence forms, read from the chunk record each now binds; every builder takes
+# the record with no default. 0 ids, MEASURED against base + 01-F4 .. 17-F5 + KM1 (tree
+# 540cd42c) on both trees: no test passes there and fails here, on the Apple GPU (M1 Max;
+# the 74 device-visible package files, 3,460 -> 3,472 ids, 0 passed -> failed) or on Mac
+# CPU under the CPU-only shim (KM1's 111 package files, 5,148 -> 5,160 ids, and
+# parity/meep_gpu, 1,412 -> 1,416 ids; 0 passed -> failed), and no listed id passes.
+# The two Metal welds that pin these bytes drift (metal_no_pml_curl_device_gate,
+# metal_no_pml_fused_electric_pairs_device_gate), read from the Metal weld-contract tests
+# listed above: pinned paths 162 -> 167 of 441, code digests 150 -> 153 of 352, device
+# shader digests 19 -> 19 of 49. Those tests clear when the Metal welds are re-gated and
+# rebound at certification; both gates released on these bytes.
+#
+# Added 2026-10-08 by bit_parity_0_10 WP KM5: the Metal complex families (complex_fields'
+# Bloch PML curl and constitutive, folded_complex, complex_conductive_pml and the complex
+# and folded-complex fused pairs) step the per-chunk forms with part-wise products and
+# MEEP's Bloch connection, and every complex plan binds a record. 52 ids, MEASURED against
+# base + 01-F4 .. 18-KM1 on both trees: 52 on the Apple GPU (M1 Max) over the 75
+# device-visible package files, 44 of them also on Mac CPU under the CPU-only shim over a
+# 165-file selection. Each passes on the series and fails with KM5 applied, because its
+# family lifts a complex body this change re-emitted (a quoted line the forms or the
+# part-wise helpers replaced, a helper or record type its source does not declare, a
+# phase-block builder whose signature changed), or its test builds a
+# complex plan without the record. Grouped by the lane that removes them:
+#   KM12 (complex no-PML part): 18 ids, complex_conductive_fused_pair (16), the complex
+#     no-PML curl and conductive sources (1 each).
+#   KM7: 12 ids, the complex and folded-complex off-diagonal stencil welds.
+#   KM8: 2 ids, complex_fused_ade_chain, whose arm parse finds both arm names in the one
+#     helper body.
+#   KM9: 8 ids, beta_complex_fused_hd_pair (7: h_cell now takes ChunkBounds) and
+#     special_kz's complex constitutive plan built without a record (1).
+#   KM10: 12 ids, cylindrical_complex_fused_hd_pair.
+# Nothing is removed from the blocks above: no listed id passes with KM5 applied (0 on
+# either tree); KM5's share of KM1's block (the folded complex magnetic pair's
+# two-parities test) failed on the lane's base on the REAL fold's statements, which are
+# KM6's; entry 34 (KM6) removed it.
+# Ledgers and fingerprints are unchanged.
+#
+# Added 2026-10-08 by bit_parity_0_10 WP KM4c: the Metal complex conductive PML curl
+# (metal_kernels/complex_conductive_pml.py) steps MEEP's four conductive forms per
+# structure chunk part by part, the f_cond increment (fcnd' - fcnd) formed first on the
+# both-layer and dsig-only forms, and refuses by name a curl sub-step whose lossy target
+# is not kept by every chunk (its H/E companion with it). No id is added and none is
+# removed; the comment-only block the batch_r6m integration (lane A3m) wrote for this
+# lane under entry 36 is replaced by this one. MEASURED on base + 01-F4 .. 37-KM4 + KM4c
+# on the Apple GPU (M1 Max): gate_metal_complex_conductive_pml is released, 5 of 5
+# products bit-identical to the array path over 4 cycles (0 of 215,040 words differ; on
+# base + 01..37 they differed in 1036, 486, 628, 355 and 1072 words), 17 of 17 must-catch
+# mutations caught (the two inverted groupings among them) and the declared null b7
+# unchanged; the kernel smoke's 10 complex conductive curl cases are identical (0 of
+# 222,396 words; 5 of 10 differed on base + 01..37); the whole-step gate's two complex
+# conductive compositions fill all four slots and stay identical over 12 steps (both
+# diverged at step 2 on base + 01..37). Ledgers and fingerprints are unchanged, pending
+# the certification round.
+#
+# Added 2026-10-08 by bit_parity_0_10 WP KM4: the Metal conductive PML curl
+# (metal_kernels/conductive_pml.py) binds the chunk record and steps MEEP's four conductive
+# forms per structure chunk (the f_cond increment formed first; fu and f_cond touched only
+# on their forms' cells), refusing by name a sub-step whose lossy component is not kept by
+# every chunk; its two fused products (conductive_fused_electric_pair,
+# conductive_fused_hd_pair) carry the record in Params. No id is added. The lane, cut on
+# base + 01-F4 .. 23-REMINT before KM3, measured 4 new ids failing there (the weld's
+# record-in-Params and total-f_w checks and its gate's two host checks), because each
+# reads the conductive H->D weld's emitted source, which lifts fused_hd_pair.h_cell, and
+# listed them under KM3. With entry 33 (KM3) in the series they pass: MEASURED at the
+# batch_r6m integration on base + 01..37, the two package ids on the Apple GPU and the
+# two harness ids on Mac CPU under the CPU-only shim.
+# Removed by this entry from entry 33's block: conductive_fused_hd_pair's device compile
+# (test_the_shipped_signature_compiles_on_every_specialisation), which passes on the
+# Apple GPU with KM4 (its template declares ChunkBounds and binds the record). The other
+# 12 conductive_fused_hd_pair ids KM1's block listed under KM3 were removed by entry 33.
+# Removed by KM4 from KM1's block above (its KM2 share): 1 id that passes on the Apple GPU
+# with KM4 applied, test_metal_residue_fused_pairs::test_the_composed_seam_installs_the_pair
+# [conductive_fused_electric_pair] (the pair's source binds the record now and compiles).
+# Under the CPU-only shim it fails on both trees for want of an MPS device, as the other
+# device-only ids of that file do.
+# Ledgers and fingerprints are unchanged. Drift against base + 01..23, read from the Metal
+# weld-contract tests on the Apple GPU on both trees: pinned paths 162 -> 169 of 441, code
+# digests 150 -> 154 of 352, code digests beside a stale source digest 151 -> 155, device
+# shader digests 19 -> 20 of 49 (the conductive PML gate's conductive_pml_curl_source);
+# every one of those ids is already listed.
+#
+# Added 2026-10-08 with the dispersive polarization update in MEEP's arithmetic
+# (bit_parity_0_10 WP AP6f: Susceptibility.realnum_constants forms MEEP's four float32
+# words, susceptibility.cpp:191-195; PolarizationState.update takes MEEP's isotropic
+# expression and grouping, every operation float32, products on complex storage part by
+# part; PolarizationState.constants replaces PolarizationState._coefficients and
+# realnum_constants replaces Susceptibility.coefficients). 136 ids (135 since the batch's
+# Tier A re-mint took the identity ledger's test off this list), MEASURED on the Mac:
+# each passes on base + 01-F4 .. 23-REMINT and fails with this change. The 123 host ids
+# were run directly on that tree (8a3be180) and on this change, the 28 files that hold
+# them, every marker, under a CPU-only shim: 123 of 1,795 ids moved from passed to
+# failed, and nothing else but this change's own tests. Against the batch_r4
+# integration's suites of that tree (its stage, which differs only in a comment of this
+# file; same environment): meep_gpu with every marker under a CPU-only shim, 136 of
+# 14,527 ids moved from passed to failed (the 123 host ids below, 12 device-file ids
+# judged on the device, and 1 byte pin of test_stepping the change re-derives), 11 new
+# ids pass and 1 is renamed; the 74 device-visible files on an Apple GPU (M1 Max), 13 of
+# 3,460 ids moved, all listed below; parity/meep_gpu with every marker, 0 of 1,413 ids
+# moved. Grouped by the lane that removes them (KC5's 21, KM8's 13 and KT6's 101 left
+# with their re-derivations; the block holds no id and is kept as history).
+#
+# The three kernel tables' polarization kernels read the folded triple from
+# PolarizationState._coefficients, which is gone, and transcribe the folded three-term form
+# (D27: every F_DISPERSIVE edit belongs to the ADE lanes). Their coverage checks now refuse
+# the update_P product by name ("the coefficient triple is unreadable" on CUDA and Metal,
+# "the (c_now, c_prev, c_drive) coefficient triple is missing" on Triton) and the tests that
+# build those plans directly raise AttributeError; a dispatched run steps the polarization
+# on the array path (MEASURED on an RTX A6000 under both NVIDIA tables and on the Apple GPU,
+# no step raised). Each is removed by the ADE lane of its table, which transcribes MEEP's
+# four words and grouping (PolarizationState.constants) and re-certifies.
+#
+# 13 ids (0 since WP KM8), KM8 (Metal ADE: ade_update_p and the no-PML stored-E ADE
+# composition), judged on
+# the Apple GPU; the 12 test_metal_ade_update_p ids fail the same way under the CPU-only
+# shim: test_metal_ade_update_p 12, test_metal_planner_composition 1.
+#
+# Added 2026-10-08 with the hand-written CUDA table's conductive curl on MEEP's per-chunk
+# forms (bit_parity_0_10 lane KC3): the conductive PML pair (step_B_pml_conductive,
+# step_D_pml_conductive) is re-derived from the root curl pair's 0.10 text, chooses each
+# conductive component's form from the chunk record's dsig and dsigu membership flags and
+# from which structure chunks keep its conductivity (KEEP<n> compiled in; the region
+# plan's conductive_mask bound as ck<n> where some chunk keeps none), forms the increment
+# (c' - c) before adding it, and reads and writes fu and f_cond only on their forms'
+# cells; every conductive launch takes the chunk record; conductive_fused_electric_pair
+# lifts the re-derived pair with one record decode over both halves. MEASURED on host
+# (the GPU host's CPU, no device visible, every marker) against dev/series 01..23 + KC9r
+# + KC2 (tree 50f27787): 64 listed ids pass and left the list (26 of the conductive-pair
+# block, whose last id moved here; 14 of the conductive BFAST block; 24 conductive host
+# transcriptions of the CUDA host block), every new test passes, and no id that passes
+# there fails here. Groups, each with what removes it:
+#
+# 1 id: CONDUCTIVE_CURL_ADMISSION records the template digests of the 2026-08-21 device
+# run; the five templates moved (the three no-absorber ones with lane KC9r, the PML pair
+# here). Removed when gate_cuda_conductive is re-run on these bytes and the admission
+# record and certification.json's cuda_conductive block are re-cut (CERT-3).
+meep_gpu.cuda_kernels.test_conductive_kernels::test_admission_record_is_all_or_nothing
+#
+# Added 2026-10-08 with the Triton conductive kernels' chunk forms: the block's lead and
+# its emptied group (one transcription check) are under History at the end of this file.
+#
+# The specialized-kernel digest of conductivity.py: the module moved, so the bytes its
+# standalone weld (triton_conductivity_device_gate) and its composition weld executed no
+# longer recompute. Removed when that gate is re-run on these bytes, its weld rebound and
+# parity/meep_gpu/record_specialized_kernel_sources.py re-records the digest.
+meep_gpu.test_triton_conductivity::test_the_conductivity_composition_fingerprint_names_the_exact_gated_bytes
+#
+# Added 2026-10-08 with the Triton no-absorber curls on MEEP's stencil (bit_parity_0_10
+# lane KT10r): no_pml.plain_curl_step, no_pml_conductive.conductive_plain_curl_step and the
+# curl half of no_pml_fused_electric_pair.no_pml_fused_curl_constitutive_D form the curl
+# with forms.curl_stencil (MEEP's left-to-right grouping, the one-partner forms where a
+# partner's derivative axis is invariant) and read the partner-presence word of the chunk
+# record cb, which their plans now require. MEASURED on host (trident env, CPU-only shim,
+# every marker) against base + dev/series 01-F4 .. 23-REMINT (tree 8a3be180): 12 listed
+# ids pass and left the list (the AP3 block's Triton group: 10 of
+# test_the_reference_body_is_byte_identical_to_the_array_path, the partially lossless
+# plan, and [flatten_grouping], renamed [pairwise_grouping] with the mutation inverted),
+# and each of the ids below fails with this change and passes on that tree.
+#
+# Removed at certification (CERT-3), when gate_triton_no_pml.py has run on these bytes:
+# KERNEL_SOURCE_SHA256 and GATE_VERDICT in no_pml.py are re-cut from its artifact, and
+# record_specialized_kernel_sources.py records no_pml.py's new sha256 in fingerprints.json
+# (specialized_kernel_sources) once the welds that pin it are re-run and rebound.
+meep_gpu.test_triton_no_pml::test_the_no_pml_composition_fingerprint_names_the_exact_gated_bytes
+meep_gpu.test_triton_no_pml::test_the_recorded_kernel_hash_matches_the_shipped_kernel
+#
+# Added 2026-10-08 by the change that steps the cylindrical (Dcyl) forms as MEEP writes them
+# (bit_parity_0_10 WP AP6c: the radial derivative of Bz and Dz is the difference of MEEP's
+# f_rderiv_int summed in every structure chunk from that chunk's first row, with rinv
+# multiplied rather than divided by; the i*m/r coupling is a pass of its own after the curl,
+# through the folded increments' ladder, with rinv = the_m/r a realnum quotient; the axis
+# rules' products with Courant are formed in double and rounded once). 61 ids (60 since
+# the batch's Tier A re-mint took the identity ledger's test off this list; 35 since WP
+# KT8 took the Triton cylindrical lane's 25 off it; 18 since lane KM10 took its 17; 9
+# since lane KC8 removed its 9; 0 since WP KT11 removed its 9, and the block holds no id
+# and is kept as history), MEASURED: each
+# passes on base + 01-F4 .. 31-REMINT2 and fails with this change, and no other id changes
+# outcome but the change's 26 new passing tests and the one it replaces: the package suite on
+# Mac CPU under a CPU-only shim, every marker, 82 of 14,679 ids changed (55 of these and the
+# new and removed tests), against the integration's report of base + 01..31; the harness
+# suite, 0 of 1,413; the 74 device-visible package files on an Apple GPU (M1 Max), 17 of
+# 3,460 (all listed here); the cylindrical and touched files on the GPU host's CPU, host only.
+# Grouped by the lane that removes them:
+#
+# 9 ids, KC8, the CUDA cylindrical lane (with the new column-serial prefix kernel, D26),
+# removed by KC8 (cylindrical_prefix is that kernel and binds _cylindrical_rderiv_rows and
+# the array path's chunk starts; the H->D weld scans the scratch Hp):
+# the host scan cylindrical_prefix.py and the real fused H->D pair call or replicate
+# stepping.cylindrical_rderiv_prefix and stepping._cylindrical_rderiv_weights, which this change
+# replaces with cylindrical_rderiv_difference and _cylindrical_rderiv_rows (rinv, one sum per
+# chunk); the complex family's i*m/r table and axis-increment row transcribe the folded i*m/r
+# term and the float32 Courant products.
+#
+# 9 ids, KT11, the Triton H->D welds (after KT8): cylindrical_fused_hd_pair and
+# cylindrical_real_fused_hd_pair declared and bound the former prefix (its pool tags, the
+# ("cyl_rderiv", ...) row-vector key and _cylindrical_rderiv_weights). All 9 left with WP
+# KT11, which re-cut both welds to launch 1 into scratch and the certified step_D plan
+# (the column-serial scan and the curl) over it.
+#
+# 17 ids, KM10, the Metal cylindrical lane: cylindrical_real, cylindrical_complex and
+# cylindrical_complex_scan bind the former row vectors (weights and divisor) and scan, and the
+# i*m/r row; on the Apple GPU their plans' builders now raise ImportError, which the planner
+# refuses by name per slot (two planner-composition cases of a real m = 0 run read the
+# refusal), so a lifted cylindrical run takes the array path there until KM10 lands.
+#
+# Added 2026-10-08 with the CUDA dispersive and ADE families on the 0.10 forms
+# (bit_parity_0_10 WP KC5: ade_kernels' update_P on MEEP's recurrence in the four realnum
+# words with MEEP's per-chunk drive, the dispersive update_E, the E->P pair, the three-slot
+# welds, both dispersive D->E pairs, the off-diagonal dispersive single and E->P weld, and
+# the complex no-PML ADE site and its two fused products). MEASURED on Mac CPU (CPU-only
+# shim, every marker) on base + 01..44 + KC5 against integrate/batch_r6n's suites of base +
+# 01..44 (its rebased stage, the same code), both without the 86 device-visible files'
+# cases: 143 listed ids pass or were renamed by KC5 and left the list (125 package, 18
+# harness), and every new id passes. One group, with the lane that removes it:
+#   CERT-3, 1 id: the dispersive record pins the emitted bodies that shipped in 0.9.2
+#     (dispersive_kernels.GATE_VERDICT's emitted_corpus_digest). Removed when
+#     gate_cuda_dispersive.py is re-run on these bytes on a CUDA host under both float32
+#     subnormal policies and GATE_VERDICT is re-recorded, in the combined certification
+#     round.
+meep_gpu.cuda_kernels.test_dispersive::test_the_recorded_gate_verdict_pins_the_emitted_bodies_that_ship_today
+#
+#
+# Added 2026-10-08 by bit_parity_0_10 WP KM9: the Metal special-kz beta and BFAST kernels
+# (special_kz, bfast_curl, folded_beta) and the thirteen products that lift them run MEEP's
+# separate passes after the curl through one additive ladder (metal_kernels/folded_pass.py):
+# every source is a certified curl with the pass inserted after its per-chunk forms (the
+# folded beta pairs are the certified fold-carry welds' own output with the pass carried
+# in), the beta words are the real coefficient of the quarter turn, BFAST's state takes
+# MEEP's two roundings, and every plan binds a record. No id is added: MEASURED against
+# base + 01-F4 .. 37-KM4 on both trees, 0 ids go from passing to failing, on the Apple GPU
+# (M1 Max) over the 19 package files that reference the lane's modules, gates or lifters
+# (820 ids; the same 8 declared ids fail on both trees) and on Mac CPU under the CPU-only
+# shim over a 105-file selection of the Metal package and harness files (3,540 ids).
+# Removed by KM9 from the blocks above: 39 entries. 37 pass with KM9 applied on the Apple
+# GPU, 10 of them also on the host: the AP3 integration's device rows of
+# test_metal_folded_beta (9) and of test_metal_special_kz's beta curl pair (2); KM1's
+# special_kz beta-free build (1); the AP6a block's ten test_metal_special_kz coefficient
+# rows; KM3's eight compiles of beta_real_fused_hd_pair and bfast_fused_hd_pair; KM5's
+# seven compiles of beta_complex_fused_hd_pair. The other 2 are the AP3 integration's
+# test_metal_bfast::test_the_kernel_is_byte_identical_to_stepping[step_B] and [step_D],
+# ids that no longer exist: the test is parametrized by case too and its four ids
+# ([step_B-full_k_3d] .. [step_D-one_partner_2d]) pass on the device.
+# Also removed, at the batch_r7b integration (lane A5): KM1's residue composed seam
+# (bfast_fused_electric_pair) and KM5's special_kz complex constitutive plan, which the
+# work package kept listed for the host view. Both pass on the Apple GPU with KM9
+# applied (MEASURED on base + 01..49 + entries 50 to 52, M1 Max) and fail under the
+# CPU-only shim on both trees with "no MPS device is available on this host", as the
+# other device-only ids of their files do; device-visible files are judged on the
+# device, where check_failures reported both as listed and passing.
+# Left with no id, to the owner or to another lane: the nonlinear |D|^2 row on Metal waits
+# on ruling R7; BFAST clause 11a (a k on an invariant axis) stayed a declared over-refusal
+# whose premise is gone (the array path's NULL partner moves no word) until the Triton
+# fold lane (KT7) and then the Metal folds follow-up (MBF) lifted it, because the two
+# tables' clause lists are pinned equal.
+# Ledgers and fingerprints are unchanged. Drift against base + 01..37, read from the Metal
+# weld-contract tests on both trees on Mac CPU: pinned paths 240 -> 268 of 441, code
+# digests 202 -> 217 of 352, device shader digests 43 -> 47 of 49; every one of those ids
+# is already listed.
+#
+# Added 2026-10-08 by bit_parity_0_10 WP KM8: the Metal dispersive families step MEEP's
+# polarization arithmetic and select per chunk. ade_update_p (and the ADE halves of
+# fused_ade_chain and complex_fused_ade_chain) step MEEP's isotropic update on the four
+# float32 words of PolarizationState.constants, complex storage as two real passes, and
+# under an absorber ade_update_p selects its drive on the chunk record (w = f_w on the
+# component's own-layer cells, the stored E elsewhere) instead of asking
+# Fields.drive_field for a pointer; dispersive_update_e, folded_dispersive_update_e and
+# complex_dispersive_update_e bind the record last and step the per-chunk constitutive
+# tail; folded_offdiag_dispersive_update_e carries the record in a new Params, steps the
+# same tail and is refused under ruling R7 (arm unwired; its own clause,
+# folded_offdiag_dispersive_update_e.R7_REFUSAL, since the KM7s integration).
+# 0 ids added, MEASURED against base + 01-F4 .. 44-REMINT3 + KM7 on both trees: no test
+# passes there and fails here, on the Apple GPU (M1 Max) over the 75 device-visible
+# package files, and on Mac CPU under the CPU-only shim over a 101-file selection (every
+# file that references these families, their gates or the composition matrix, the
+# device-visible files and every Metal harness test).
+# Removed by KM8 from the blocks above: 43 ids, each passing with KM8 applied on the Apple
+# GPU, or deleted with the test it named:
+#   3 ids of the 2026-10-06 block (the dispersive update_E host references);
+#   6 ids of the AP3 integration's device block (test_metal_held_fallback: the five
+#     dispersive_2d mid-run rows and the partial-release row now hold the whole
+#     dispersive step on the device and agree with the reference);
+#   9 ids of the AP4 block's ADE-drive group (test_metal_ade_update_p) and 10 ids of the
+#     AP4 integration's block (test_metal_dispatch 2, test_metal_held_fallback 1,
+#     test_metal_planner_composition 7): the ADE predicate no longer reads drive_field;
+#   2 ids of the KM5 block (test_metal_complex_fused_ade_chain's arm parse): the arm
+#     clause and ade_expansion_arm are deleted with the two tests, replaced by tests that
+#     the ADE half calls no complex helper;
+#   13 ids of the AP6f block's KM8 group: test_metal_ade_update_p 12 (8 pass; the 4
+#     test_plan_rotates_live_buffers_and_matches_the_reference[*-*] ids are renamed with
+#     an absorber parameter, all 8 new ids passing) and
+#     test_metal_planner_composition[nopml_real_stored_e_ade].
+# 10 of the 43 (test_metal_dispatch 2, test_metal_planner_composition 8) fail under the
+# CPU-only shim on both trees, as their neighbours do: each plans a Metal composition and
+# the shim refuses the device. On the Apple GPU each passes.
+# Waiting elsewhere, no id listed: the off-diagonal row of
+# folded_offdiag_dispersive_update_e (its A-form) waits on ruling R7 with the other
+# off-diagonal rows; the nonlinear |D|^2 form on Metal waits on R7 too (KM1's refusal).
+# Ledgers and fingerprints are unchanged. Drift against base + 01..44 + KM7, read from the
+# Metal weld-contract tests (host) on both trees: pinned paths 261 -> 285 of 441, code
+# digests 216 -> 234 of 352, code digests beside a stale source digest 217 -> 235, device
+# shader digests 45 -> 45 of 49; the same 6 ids fail on both trees and are already listed.
+#
+# Added 2026-10-08 by bit_parity_0_10 WP KM12c: the Metal complex no-absorber curl body
+# (metal_kernels/complex_no_pml_conductive.py, shared by complex_no_pml_curl.py) steps
+# MEEP's stencil with its partner-presence forms and the complex PML curl's plane-0 Bloch
+# connection, presence read from the chunk record each plan now binds with no default;
+# the complex conductive D->E pair (complex_conductive_fused_pair.py) lifts that curl and
+# carries the record in Params; the complex no-absorber off-diagonal update_E
+# (complex_no_pml_offdiag_update_e.py) is refused to the array path by name under ruling
+# R7, its arm unwired, and its stencil weld (complex_no_pml_offdiag_fused_electric_pair.py)
+# is refused through it. 0 ids added. 24 ids removed from the KM5 block above: its KM12
+# group (18: 17 that now pass, and
+# test_metal_complex_conductive_fused_pair::test_the_only_if_is_the_guard_and_every_other_branch_is_a_ternary,
+# replaced by test_the_ifs_are_the_guard_and_one_plane_zero_connection_per_phased_axis)
+# and the 6 complex_no_pml_offdiag_fused_electric_pair ids of its KM7 group, which pass
+# with this change; the group's 6 folded_complex_offdiag_fused_electric_pair ids had
+# already left with KM7 (entry 51).
+# MEASURED against base + dev/series 01-F4 .. 44-REMINT3 (tree 11724f06) on both trees,
+# in trees with no results/ directory: no test passes there and fails here, on the Apple
+# GPU (M1 Max; KM12r's 74 device-visible package files, 3,544 -> 3,579 ids, 0 passed ->
+# failed, 0 undeclared on either tree) or on Mac CPU under the CPU-only shim (KM12r's
+# 111-file package selection, 5,264 -> 5,299 ids, and parity/meep_gpu, 1,447 -> 1,451
+# ids; 0 passed -> failed; the same 154 undeclared shim failures on both trees), and no
+# listed id passes. The Metal welds that pin these bytes drift
+# (metal_complex_no_pml_curl_device_gate, metal_complex_no_pml_conductive_device_gate,
+# metal_complex_conductive_fused_pair_device_gate,
+# metal_complex_no_pml_offdiag_update_e_device_gate, metal_offdiag_stencil_welds_device_gate),
+# read from the Metal weld-contract tests listed above: pinned paths 244 -> 261 of 441,
+# code digests 206 -> 218 of 352, device shader digests 45 -> 45 of 49. Those tests
+# clear when the Metal welds are re-gated and rebound at certification; the curl,
+# conductive, off-diagonal and fused-pair gates released on these bytes.
+# At the batch_r8m integration (lane A6m), with KM7 (entry 51) in the series,
+# gate_metal_offdiag_stencil_welds.py runs the complex no-PML weld as an R7 family, as
+# the work package's merge note asked: the family's own clause
+# (complex_no_pml_offdiag_update_e.R7_REFUSAL) is lifted in the gate process only, the
+# identity leg is withheld by name, and the singles, mutation and rotation legs run
+# against the certified singles with the family's float32 single on update_E.
+#
+# Added 2026-10-08 with the CUDA complex families on the 0.10 forms (bit_parity_0_10
+# WP KC6: complex_emitter forms every product part by part, with MEEP's Bloch
+# connection on plane 0 of the operand read at the cell and its six __fmaf_rn gone,
+# and selects each cell's PML form from the chunk record; the complex PML singles, the
+# folded complex curl and its ghost carries, the no-absorber complex curls, the complex
+# and folded-complex fused pairs, the complex H->D weld, the complex off-diagonal
+# update_E and the PML arm of its two stencil welds are re-derived onto those texts).
+# MEASURED on Mac CPU (CPU-only shim, every marker) on base + dev/series 01..44 + KC6
+# against integrate/batch_r6n's suites of base + 01..44 (its rebased stage, the same
+# code), both without the 86 device-visible files' cases: 46 listed ids pass or were
+# renamed by KC6 and left the list, and each id below fails with this change and passes
+# on that tree (167), or is new with this change (3: KC6's own re-cut tests of the two
+# refusing lifters), or joined at the batch_r8n integration (1, in the KC9c group).
+# 171 ids, each a named refusal of a module that lifts a complex text the forms
+# replaced, grouped by the lane that removes it; 1 remains (lane KC9c removed its
+# group's 55, lane KC8 its 88 and lane KC7 its 27, below):
+#   KC7, the CUDA folds lane, 27 ids, removed by KC7 (the complex beta curl, its fused
+#     twins and its H->D weld, re-derived onto the fold passes: 23 pass and 4 were
+#     renamed by its re-cut): the complex beta curl, its fused
+#     magnetic and electric twins and its H->D weld (test_complex_beta,
+#     test_complex_beta_fused_hd_pair, the beta rows of test_residual_fused_*): their
+#     coefficient_left_helper delta matched 0 sites of the re-derived folded complex
+#     source, and complex_beta_kernels.beta_source refused to emit.
+#   KC8, the CUDA cylindrical lane, 88 ids, removed by KC8 (the cylindrical families
+#     re-derived onto the chunk forms; 34 of them renamed or retired with the stages they
+#     pinned): cylindrical_complex_kernels
+#     refuses emission by name (its templates call the shift helpers with a Bloch kind
+#     and pml_apply without a dsigu flag), and the cylindrical fused pairs and H->D weld
+#     find the certified pml_apply store, constitutive_apply's parameter list and the
+#     FMA_V1 mul_field_left spelling they lift no longer there (test_cylindrical_complex,
+#     test_complex_fused_electric_pairs' cylindrical arm, the two cylindrical hoist
+#     tests, test_own_cell_hoist_store_sequence's cylindrical complex rows and its
+#     package table, test_cuda_cylindrical_fused_hd_pair).
+#   KC9c, the CUDA no-PML complex lane, 55 ids, REMOVED by that lane: no_pml_complex_
+#     fused_electric_pair and complex_no_pml_three_slot_dispersive_weld lifted the
+#     complex no-absorber curl body and found 0 of its three previous stencil lines;
+#     the no-PML arm of the complex off-diagonal stencil weld refused at derivation.
+#     KC9c re-derived all three onto the stencil, the record's presence word and the
+#     D curl's connection table (the weld's no-PML arm binds the chunk-form pack as
+#     the folded one does); every id passes or was renamed away, the 55th (which joined
+#     at the batch_r8n integration: test_complex_no_pml_ade_parts's fused-kernel
+#     constants test, whose lifter emits again) included.
+#   CERT-3, 1 id: the complex off-diagonal admission record pins the
+#     emitter digest of 0.9.2. Removed when gate_cuda_complex_offdiag_update_e.py is
+#     re-run on these bytes on a CUDA host under both float32 subnormal policies and the
+#     record is re-cut, in the combined certification round.
+meep_gpu.cuda_kernels.test_complex_offdiag_update_e::test_the_admission_record_is_bound_to_the_emitter_it_describes
+# Added 2026-10-08 with the Triton complex kernels on MEEP's per-part forms (bit_parity_0_10
+# WP KT5): complex_fields' curl and constitutive, the two complex fused pairs, the complex
+# off-diagonal update_E, the folded complex curl and fill, and the two folded complex
+# fused pairs step each stored part with real products (part_products.scale; the 6
+# tl.math.fma sites of complex_fields are gone), apply MEEP's Bloch connection to plane 0
+# of the unshifted operand (a copy, a per-part negation spelled * -1.0, or the unfused
+# product), and select forms.py's curl, recurrence and constitutive forms by the chunk
+# record cb, with MEEP's start of H. MEASURED on Mac CPU (trident env, CPU-only shim; the
+# Triton and adjacent legs with every marker) on base + dev/series 01-F4 .. 44-REMINT3
+# (tree 11724f06): 10 listed ids pass and left the list (6 of the AP3 block's Triton
+# group, 2 of entry 13's whole-grid block, the 2 of entry 15's AP6a block declared for
+# KT5), and each of the 5 ids below (25 at KT5; WP KT7 re-lifted its group's 16; the KC6 id left at the batch_r8n
+# integration: entry 57, KC6, had re-cut test_complex_pml.py, so the test it names
+# does not exist on the series;
+# the KT10 id left with WP KT10c, whose re-lifted conductive curl prefix is the complex
+# curl's statement for statement again; WP KT8 took the cylindrical pairs' 2)
+# passes on that tree and fails with this change, and no other id of the Triton, radius,
+# adjacent and harness legs changes verdict. Each is a transcription check of a sibling
+# module that lifts or compares text of complex_fields.py, complex_fused_*_pair.py or
+# folded_complex.py as it stood: the previous helper arms (the FMA_V1 spellings, the zero
+# cross terms), the wrapped-lane phase rotation and the pairwise curl grouping. Those
+# modules still call the retained helpers, which now form the per-part products. Grouped
+# by the lane that re-lifts them and removes them:
+#   KT7, the Triton folds lane, 16 ids, all removed by WP KT7, which re-lifted the complex
+#     beta fused pairs (8) and the folded beta complex fused pairs (8) onto those bodies.
+#   KT8, the Triton cylindrical lane, 2 ids (both left with WP KT8, which re-lifted the
+#     cylindrical complex pairs' constitutive halves from the complex pairs).
+#   KT11, the H->D welds lane, 5 ids: complex_fused_hd_pair (2) and
+#     cylindrical_fused_hd_pair (2), cut from the complex bodies and helpers, and the
+#     folded complex curl body that test_triton_hd_tail_products compares (all 5 left
+#     with WP KT11, which re-lifted the complex welds onto the per-part bodies; the
+#     block holds no id and is kept as history).
+#
+# Added 2026-10-09 by bit_parity_0_10 WP KM7s: ruling R7 (owner, 2026-10-08) chose
+# software binary64. The Metal off-diagonal families (offdiag_update_e,
+# folded_offdiag_update_e, complex_folded_offdiag_update_e and the three PML scratch welds
+# offdiag_fused_electric_pair, folded_offdiag_fused_electric_pair,
+# folded_complex_offdiag_fused_electric_pair) form the array path's double row through
+# metal_kernels/softfp64.py with per-chunk presence words, and their arms are wired again.
+# 0 ids added: MEASURED against base + 01-F4 .. 49-REMINT4 + SF64 + KM7 on both trees, on
+# the Apple GPU (M1 Max) over 53 device-visible files (no id passes on that base and fails
+# with KM7s applied) and on Mac CPU under the CPU-only shim over a 62-file selection (no
+# outcome changes).
+# Removed by KM7s: 23 ids that fail on that base and pass with KM7s applied on the Apple
+# GPU, each a byte comparison of an off-diagonal row, or of a run that dispatched one,
+# against stepping.py, which holds once the row is formed in float64:
+#   from the AP3 integration's block, 21: the 12 remaining folded byte rows
+#     test_the_sub_step_reproduces_stepping_update_E_byte_for_byte, the 2 folded byte-leg
+#     catches and the refuted-spelling evidence row of test_metal_folded_offdiag,
+#     test_metal_offdiag::test_one_update_e_is_byte_identical_to_stepping, and the 5
+#     test_metal_held_fallback offdiag_2d rows;
+#   KM7's block, whole: its 2 test_metal_fused_pair_deposit_wiring ids (the only-B->H
+#     row class), which expect the off-diagonal single to own update_E, as it does again.
+# Stayed listed at KM7s, owed elsewhere: the 6 test_metal_folded_offdiag whole-step
+# compositions (test_a_complete_step_composes_with_the_folded_curls_and_fills, the AP3
+# integration's block) diverged at step 0 in B, H and D, before update_E runs, on this
+# base and on 01..53 alike (not the off-diagonal row, and not KM9's beta/BFAST folds).
+# Lane FXF found the cause in the fixture: its seeded state lacked Fields.h_separated, so
+# the array path's first update_H started H and f_w from B on the dsigw cells. With
+# FXF's fix and this row the 6 ids pass, and they left with FXF, integrated after KM7s
+# with no block of its own. The 6
+# complex_no_pml_offdiag_fused_electric_pair stencil ids (KM5's block), which failed in
+# complex_no_pml_conductive._phase_block on that base, had already left with KM12c
+# (entry 56) on the series.
+# Ledgers and fingerprints are unchanged. The Metal weld-contract file (host) fails the
+# same 6 of 26 ids on both trees with the same drift: pinned paths 266 of 441, code
+# digests 220 of 352, device shader digests 45 of 49.
+# At the batch_r9m integration (lane A7m), with KM8 (entry 55) and KM12c (entry 56) in
+# the series: KM8's folded_offdiag_dispersive_update_e, which appended the off-diagonal
+# single's R7 clause, owns its own (folded_offdiag_dispersive_update_e.R7_REFUSAL,
+# r7_reasons), as complex_no_pml_offdiag_update_e already did, and its test and gate read
+# it; both families stay unwired until their rows are formed in software binary64.
+# gate_metal_offdiag_stencil_welds.py keeps its R7 legs for the complex no-PML weld
+# alone, its family's clause lifted in the gate process only; the three PML welds run
+# every leg. These edits add and remove no id.
+#
+# Added 2026-10-09 by bit_parity_0_10 WP KM1s: the Metal chi2/chi3 update_E
+# (metal_kernels/nonlinear_update_e.py) steps on the GPU under ruling R7's soft-fp64 choice.
+# It adds the four corners of each transverse sum left to right, forms Dsqr's 0.0625 term
+# and the addition after it in software binary64 rounded once (metal_kernels/softfp64.py),
+# and selects the constitutive form per structure chunk from the chunk record it now binds;
+# the arm is wired, and R7_REFUSAL and r7_reasons are removed. No id is added: MEASURED
+# against base + 01-F4 .. 49-REMINT4 + SF64 (tree 4ca690f4) on both trees, 0 ids pass on the
+# base and fail with KM1s applied: on the Apple GPU (M1 Max) over 53 device-visible package
+# files (2,740 common ids: 1 failed -> passed; 25 new ids, all passing; 13 ids of the R7
+# refusal removed with the tests that pinned it), on Mac CPU over 13 host files (383 common
+# ids, 0 changed; 3 new ids, all passing), and under the CPU-only shim over 25 further files
+# that reach the composition matrix, the predicate batteries or the fusion builders (922
+# ids, 0 changed; the 9 of them the shim fails on both trees alike, because it hides the
+# device, are judged on the device, where 9 of 9 pass on both trees).
+# Removed by KM1s from the KM1 block above: 1 id, the one KM2's block names under ruling R7.
+# On its nonlinear row update_E now takes the Pade arm, so the composition launches the 4
+# plans the test expects; it passes on the Apple GPU. Under the CPU-only shim it fails on
+# both trees, as the 13 ids KM2 removed do (it plans a Metal composition and does not skip
+# without the device); it is judged on the device. Over the 53 device-visible files under
+# the shim, 0 of 2,627 common ids change and the 25 new ids pass (16) or skip (9).
+#   meep_gpu.test_metal_fused_pair_deposit_wiring::test_the_h_to_d_span_yields_or_installs_
+#   by_row_class[neither_installs]
+# The two welds that inherit the family's spine (nonlinear_fused_magnetic_pair, and
+# fused_hd_pair's nonlinear widening) take its B, D and H arms only, form no Dsqr, and are
+# unchanged. Ledgers and fingerprints are unchanged. Drift against base + 01..49 + SF64,
+# read from the Metal weld-contract tests (already listed) on both trees: pinned paths
+# 249 -> 249 of 441, code digests 210 -> 210 of 352, code digests beside a stale source
+# digest 211 -> 211, device shader digests 45 -> 45 of 49; nonlinear_update_e.py had drifted
+# with KM1, so its re-gate and rebind are the certification round's.
+#
+# Added 2026-10-09 with the Triton dispersive and ADE kernels on MEEP's polarization
+# update (bit_parity_0_10 WP KT6): kernels.ade_update_p, the pole-aware update_E of
+# dispersive_update_e and folded_offdiag_dispersive_update_e, the dispersive D/E pair and
+# its folded twin, the one-susceptibility ADE state, the four E->P chains
+# (fused_ade_chain, fused_dispersive_chain, folded_offdiag_fused_ade_chain,
+# complex_fused_ade_chain), complex_ade and no_pml_ade step MEEP's isotropic update_P on
+# the four realnum words PolarizationState.constants holds (one float32 rounding per
+# operation, per part on complex storage), select forms.py's constitutive form by the
+# chunk record cb on each component's own dsigw line (f_w read and written on the
+# accumulation's cells only), and drive the recurrence with MEEP's per-chunk w. MEASURED
+# on Mac CPU (trident env, CPU-only shim; the Triton and adjacent legs with every marker)
+# on base + dev/series 01-F4 .. 44-REMINT3 + KT5 (tree b4cbcea9): 201 listed
+# ids left the list (195 pass: the 101 of the AP6f block's KT6 group, the 88 Triton ids of
+# the AP4 block's ADE drive group, 2 of the AP3 block's Triton group, 2 of WP KT3's
+# folded dispersive pair group and the 2 of the batch_r5 block's E->P seam group; 6 of WP
+# KT3's group were renamed with the curl lines they name), and each of the ids below
+# passes on that tree and fails with this change, and no other id of those legs changes
+# verdict. They are by contract, grouped by the lane that removes them. (Merge aid on the
+# series through 53-BOARD: the base cut's KC5 group is not here, because WP KC5's rewrite
+# of test_ade_update_p removed its one id, the CUDA ADE sibling check.)
+#
+# The weld digests of two modules this change moved: the dispersive D/E pair's and the
+# one-susceptibility ADE state's records pin their specialized kernel source, which no
+# longer recomputes. Removed when their gates (probe_triton_dispersive_fused_pair.py,
+# probe_triton_fused_ade_state.py) are re-run on these bytes at the certification round
+# and the records rebound.
+meep_gpu.test_triton_dispersive_fused_pair::test_the_fused_dispersive_record_is_welded_to_every_live_dependency
+meep_gpu.test_triton_fused_ade_state::test_fused_ADE_state_record_is_welded_to_every_live_dependency
+#
+# Added 2026-10-09 with the Triton cylindrical kernels on MEEP's Dcyl forms: the block's
+# lead and its emptied group of 2 ids are under History at the end of this file.
+#
+# 2 ids: the weld records of two pairs whose modules moved. cylindrical_real_fused_magnetic_
+# pair's identity claim names a weld whose digest no longer recomputes, and
+# cylindrical_fused_electric_pair's ledger entry (triton_cylindrical_fused_electric_pair_
+# device_gate) now describes earlier bytes, so the module states that its device status is
+# not released. Removed when those gates are re-run on these bytes and their welds rebound
+# (the certification round, D18).
+# Removed 2026-10-13 with the records of the 1.0 round: the real cylindrical magnetic pair's
+# identity claim, green on the round's bound Triton ledger. The id that stays fails because
+# the ledger now carries triton_cylindrical_fused_electric_pair_device_gate while the
+# module's own text still states NOT RELEASED.
+meep_gpu.test_triton_cylindrical_fused_electric_pair::test_the_module_has_no_fingerprints_entry_until_its_gate_has_run
+#
+# Added 2026-10-09 by bit_parity_0_10 WP KM10: the Metal cylindrical kernels
+# (cylindrical_real, cylindrical_complex, cylindrical_complex_scan) and the six products
+# that lift them step the array path's cylindrical forms: Bz and Dz differentiate MEEP's
+# radial sum taken per chunk from each chunk's first row with rinv multiplied (a
+# column-serial scan on real storage and in the complex H->D weld, the array path's own
+# difference on the other complex plans), the i*m/r coupling is a per-part quarter turn
+# through the additive ladder after the forms, the axis rules' products with Courant are
+# formed for a float32-word Courant only (any other is refused by name), every plan binds
+# the chunk record, and cylindrical_real_fused_magnetic_pair refuses the run's first
+# update_H by name as the other B->H products do. No id is added: MEASURED against
+# base + 01-F4 .. 53-BOARD on both trees, 0 ids go from passing to failing, on the Apple
+# GPU (M1 Max) over the 28 package and harness files that reference the lane's modules,
+# gates or lifters (1,183 ids on the base, 1,195 with KM10; the 25 failures with KM10 are
+# all listed), and on the GPU host's CPU over 136 files of the host selection (6,508 / 6,520
+# ids). Removed by KM10 from the blocks above: 33 entries. 16 pass with KM10 applied on
+# the Apple GPU: the KM5 block's nine compiles of cylindrical_complex_fused_hd_pair, the
+# AP6c block's five cylindrical_real and cylindrical_complex_scan rows and its two
+# planner-composition cases of a real m = 0 run (dcyl_m0_real, dcyl_m0_real_zperiodic,
+# which now build at the float32 word of the matrix's Courant). The other 17 name tests
+# this change replaces, whose replacements pass on the device: the AP6a block's three
+# test_metal_cylindrical_complex_scan rows, the entry-25 block's
+# test_metal_cylindrical_real_fused_hd_pair integrated-source row (now
+# test_a_plain_and_an_integrated_engine_source_are_both_admitted and
+# test_a_foreign_standing_withdraw_is_refused_by_name), the KM5 block's three
+# cylindrical_complex_fused_hd_pair lift and loop rows, and the AP6c block's eight
+# cylindrical_complex rows and two cylindrical_real rows.
+# Left with no id, to the owner or to another lane: the nonlinear |D|^2 row on Metal waits
+# on ruling R7; cylindrical_real_fused_hd_pair's lift leg (the corpus rows through MEEP)
+# was not run, because it reads the evidence archive. Ledgers and fingerprints are
+# unchanged. Drift against base + 01..53, read from the Metal weld-contract tests on both
+# trees on the Apple GPU: pinned paths 289 -> 311 of 441, code digests 231 -> 245 of 352,
+# device shader digests 49 -> 49 of 49; every one of those ids is already listed.
+#
+# Added 2026-10-09 by bit_parity_0_10 WP KMs: ruling R7's software-binary64 row reaches
+# the last two Metal off-diagonal update_E families. folded_offdiag_dispersive_update_e
+# forms offdiag_update_e's double row over the ordered D - P gathers, its six presence
+# words in Params before the chunk record; complex_no_pml_offdiag_update_e forms it per
+# part with the array path's plane-0 Bloch connection (a copy, a per-part negation or the
+# unfused product), the record and the words bound last; the stencil weld
+# complex_no_pml_offdiag_fused_electric_pair lifts that row with the words in Params.
+# Their R7 clauses are deleted and both arms are wired.
+# 0 ids added, 0 removed: MEASURED against base + 01-F4 .. 56-KM12c + KM7s (KM7s.patch
+# three-way, resolved by meaning) on both trees -- on the Apple GPU (M1 Max) over the 90
+# device-visible package files, and on Mac CPU under the CPU-only shim over an 88-file
+# selection (every file that references these families, the off-diagonal single, their
+# gates or the composition matrix) -- no id passes on that base and fails here, and no
+# listed id passes here. On that base the complex no-PML stencil-weld ids and the stencil
+# gate's ceiling leg already pass (56-KM12c), and none of them is listed.
+# Ledgers and fingerprints are unchanged; the kernel-source digests of the three modules
+# move (certification round).
+# At the batch_r10m integration (lane A8m): the two device ids of
+# test_the_double_row_is_the_array_paths_word_on_a_generic_state read the measured
+# complex expansion arm; with no probe artifact (MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE
+# unset, as in this list's CI view) they now skip by name
+# (requires_resource_skip("metal_complex_expansion_probe")), as
+# test_metal_complex_fused_hd_pair's one-step test does, instead of failing at plan
+# build; with a probe they run as before. This adds and removes no id.
+#
+# Added 2026-10-09 with the CUDA cylindrical families on the 0.10 forms (bit_parity_0_10
+# WP KC8: cylindrical_prefix is a column-serial scan kernel, cyl_radial_difference, that
+# sums MEEP's f_rderiv_int per chunk of the division the array path steps with
+# (DESIGN.md D26); the real and complex Dcyl curl pairs select MEEP's per-chunk forms from
+# the chunk record, take the radial difference, run the i*m/r pass through the folded
+# increments' ladder and form the axis rules' Courant products in double; the four
+# cylindrical fused pairs and the two H->D welds are re-derived onto those texts, the
+# welds in three launches). MEASURED on the GPU host's CPU (2 threads, no device visible, every
+# marker) over every cuda_kernels test module and every package and harness module that
+# names a KC8 module, fused_pairs, the CUDA registry, the hoist reference, a CUDA gate,
+# the docs or this list (7,485 ids on the cut base + KC6, 7,720 with this change): 107
+# listed ids pass (73) or left with KC8's re-cuts (34) and left the list, and the id below
+# fails with this change and passes on the cut base; no other id changes outcome but three
+# new [cupy] cases of test_cylindrical_pml_real, which fail there with cudaErrorNoDevice
+# as the base ids they replace do, skip without CuPy and pass on a CUDA device. And on Mac
+# CPU (CPU-only shim, every marker) over the lane's test files and the shared files it
+# touches (765 ids on the cut base, 1,001 with this change): the same 107 leave the list
+# and the same id is the one new failure.
+#
+# Removed at certification (CERT-3), 1 id: certification.json still certifies the two
+# 0.9.2 H->D entry points (update_H_increment_pml_cyl_real, update_H_increment_pml_cyl_
+# complex), which fused the pre-cumsum increment the per-chunk sum retired; their
+# successors (update_H_scratch_pml_cyl_real / _complex) are UNCERTIFIED_KERNELS by name
+# until the two H->D gates run on these bytes under both float32 subnormal policies and
+# the blocks are re-cut, in the combined certification round.
+meep_gpu.cuda_kernels.test_kernel_partition::test_the_record_claims_no_kernel_that_no_module_certifies
+#
+# Added 2026-10-13 with the records of the 1.0 round (bit_parity_0_10 lane A32, the series
+# entry after 139-MRF). 3 ids, MEASURED in the evidence view and in the CI view on this tree
+# and on the tree before this entry, with the committed ledgers. No failure is a wrong record:
+# each is a constant of the test itself that names an earlier round's evidence.
+# - Two armed controls of the digest walk, test_triton_weld_contract's and the one
+#   test_weld_record_walk shares with the three contracts, plant a digest at depth 8 and
+#   require it to sit deeper than every real digest (of the Triton ledger; of the records the
+#   three contracts walk). The committed ledgers' deepest digests sat at depth 7 at most;
+#   the round's bound Triton ledger holds 18 at depth 8 (family_recert_2026-08-14's
+#   per-policy evidence: runs, 8.6, certified_policies, flush, families, the family,
+#   artifact_sha256), so both controls read 8 > 8. Each passes before this entry and fails
+#   with it, in both views.
+#   Removed when the controls plant deeper than the deepest real digest.
+# - test_metal_fused_hd_pair_nonlinear's CELLS_BOARD names fusion_matrix_metal_2026-10-02_arch3,
+#   whose per-cell row binds that round's run of the nonlinear H->D gate (391d19edba7a), while
+#   the Metal ledger welds a later run (the committed ledger 2e3c2a0d61af, the round's bound
+#   ledger 361399352684). It reads the Metal board of the evidence archive, so it runs in the
+#   evidence view only (it skips in the CI view), and there it fails before this entry as it
+#   does after: the records passes of this round and of the previous one found it red there
+#   and left the declaration to this entry. With CELLS_BOARD naming
+#   fusion_matrix_metal_2026-10-13_10 it passes, and its neighbour
+#   test_the_board_credits_this_cell_from_its_own_bound_artifact fails on the pinned admitted
+#   count (37 against 47 + 2; measured in a scratch tree). Removed when CELLS_BOARD names the
+#   1.0 Metal board and that pin is re-derived from it.
+meep_gpu.test_metal_fused_hd_pair_nonlinear::test_the_two_pin_registries_agree_on_the_nonlinear_cell
+meep_gpu.test_triton_weld_contract::test_the_walker_finds_a_digest_planted_at_a_new_nesting_depth
+meep_gpu.test_weld_record_walk::test_a_digest_at_a_depth_no_record_reaches_is_still_found_and_still_fails
+#
+# History. Paragraphs whose ids have all left the list, moved here from the blocks they led
+# (bit_parity_0_10 batch_r13, entry 105) so that a block's comment speaks only for the ids
+# that follow it: the board's pending-list reader attributes every comment line since the
+# previous id to the ids after it, and the lanes these paragraphs name record who added or
+# emptied a group, not a wait. Each paragraph keeps its words; "below" in one means the ids
+# of the block named in the line above it, and a block that lost its lead carries a
+# one-line pointer here.
+#
+# This paragraph stood alone before the block that lists meep_gpu.test_triton_complex_fused_magnetic_pair::test_this_module_is_welded_and_the_weld_describes_the_shipped_bytes:
+# 1 id, removed at the integration of lane KC7 (batch_r10n): gate_needle_anchors.json,
+# re-minted on these bytes, recorded the lifter gates' needles on the old pml_apply text
+# as matching nothing (gate_cuda_bfast, gate_cuda_special_kz: 4 each) and the beta H->D
+# weld (special_kz_fused_hd_pair) with four device needles that landed nowhere: since
+# lane KC2 re-derived fused_hd_pair the weld derives again, and those needles quoted the
+# pure helper's 0.9.2 text. KC9r re-spelled gate_cuda_no_pml_curl's, KC3
+# gate_cuda_conductive's, KC8 gate_cuda_cylindrical_real's (and re-minted its table)
+# and KC7 gate_cuda_bfast's, gate_cuda_special_kz's and the beta H->D weld's; with
+# both KC8 and KC7 in, every table matches, 0 needles are unresolved and the test
+# passes (MEASURED: test_mutation_anchors.py 7 of 7). Each lane had declared it for
+# the other.
+#
+# This paragraph led the block that lists meep_gpu.test_triton_complex_fused_magnetic_pair::test_this_module_is_welded_and_the_weld_describes_the_shipped_bytes:
+# Added 2026-10-07 with the Triton root kernels' chunk forms (bit_parity_0_10 WP KT1):
+# kernels.py reads the chunk record through the new triton_kernels/forms.py, so the four
+# root kernels now carry the array path's forms (the left-to-right curl, the one-add
+# constitutive accumulation, the chunk-keyed selects, the auxiliary contract and MEEP's
+# start of H). MEASURED on Mac CPU against base + 01-F4 .. 14-AP5 (tree b1dd955d), where
+# each of the 35 ids below passes: with this change applied each fails, and no other test of
+# the Triton, adjacent, radius and harness legs changes verdict. Re-measured on base + 01-F4
+# .. 17-F5 + KC1 (bit_parity_0_10 lane A0, the same legs with every marker): each of the 35
+# fails with this change and passes without it. They are by contract, in two kinds, and
+# each group says what removes it.
+#
+# Transcription checks of modules that lift the root kernels' 0.9.2 text and still carry it
+# (each compares its own body with kernels.py, which no longer holds those lines). Removed
+# by the lane that re-aligns the module: conductive (KT2) 4 (left with WP KT2,
+# which re-aligned the conductive modules), folded real (KT3) 2 (both
+# left with WP KT3, which re-aligned the folded pairs), off-diagonal (KT4) 2 (both left
+# with WP KT4, which re-lifted the off-diagonal weld's curl half), folds (KT7) 17 (all
+# left with WP KT7, which re-aligned the fold modules), cylindrical (KT8) 2 (both left
+# with WP KT8, which re-lifted the real cylindrical pairs from the root texts), H->D
+# welds (KT11) 6 (all 6 left with WP KT11, which re-cut the welds onto the forms).
+#
+# This paragraph led the block that lists meep_gpu.test_triton_conductivity::test_the_conductivity_composition_fingerprint_names_the_exact_gated_bytes:
+# Added 2026-10-08 with the Triton conductive kernels' chunk forms (bit_parity_0_10 WP KT2):
+# conductivity.conductive_pml_curl_step and the conductive fused electric pair read the
+# chunk record through triton_kernels/forms.py and select MEEP's conductive forms per
+# structure chunk (the record's dsig and dsigu lines, and the component's conductive-chunk
+# volume where some chunk keeps no conductivity), with the increment (f_cond' - f_cond)
+# formed before it is added and the auxiliary contract on fu and f_cond. MEASURED on Mac
+# CPU on base + 01-F4 .. 23-REMINT (tree 8a3be180), where each of the 2 ids below passes:
+# with this change applied each fails, and no other test of the Triton, radius, adjacent,
+# harness and conductive-neighbour legs changes verdict (10 listed ids pass and left the
+# list: the 6 of WP AP6d's block, which is removed, and 4 of WP KT1's). They are by
+# contract, in two kinds.
+#
+# A transcription check of a module that lifted the conductive curl's previous text: the
+# conductive BFAST H->D weld (conductive_bfast_fused_hd_pair.py) cut its curl body from
+# conductivity.py and called conductivity._conductive_component at its previous arity.
+# It left with WP KT11 (the H->D welds lane), which re-lifted the weld from the
+# conductive curl's current text; the paragraph is kept as history.
+#
+# This paragraph led the block that lists meep_gpu.test_triton_cylindrical_fused_electric_pair::test_the_module_has_no_fingerprints_entry_until_its_gate_has_run:
+# Added 2026-10-09 with the Triton cylindrical kernels on MEEP's Dcyl forms (bit_parity_0_10
+# WP KT8): cylindrical_triton (the real m = 0 curl and the new column-serial radial scan
+# kernel, cyl_radial_difference), cylindrical_complex (the complex curl at every m; its 2
+# tl.math.fma sites are gone) and the four cylindrical fused pairs take the array path's
+# per-chunk radial sum (restarted at +0 on each chunk's first row, rinv multiplied), the
+# forms.py curl and constitutive forms keyed on the chunk record cb, the i*m/r pass in
+# register through the additive ladder, and the axis rules' double products with the Courant
+# words bound as a float64 vector. MEASURED on Mac CPU (trident env, CPU-only shim; the
+# Triton, radius, adjacent and harness legs of WP KT5's run_tests.sh, the Triton and
+# adjacent legs with every marker) against WP KT5's own run of those legs on base +
+# dev/series 01-F4 .. 49-REMINT4 + KT5 (tree f8cfdfc5): 46 listed ids pass or are gone and
+# left the list (16 of the AP3 block's Triton group, 1 of entry 13's whole-grid block, 2 of
+# WP KT1's block, 25 of WP AP6c's and 2 of WP KT5's), and each of the 4 ids below passes on
+# that tree and fails with this change. No other id of those legs changes verdict but the
+# change's own renamed and replaced tests (83 ids gone, 33 new, all 33 passing); the 8
+# undeclared failures are WP KT5's inherited 8 (Metal under the CPU-only shim). Repeated on
+# the GPU host's CPU (Triton importable, no device), base tree 9ac74253 against this change: the
+# same 4 and 46, and 2 unlisted ids that fail only there now pass or are gone. Grouped by
+# what removes them:
+#
+# 2 ids, KT11, the Triton H->D welds lane: cylindrical_fused_hd_pair and
+# cylindrical_real_fused_hd_pair compared their curl launch's argument list with the
+# cylindrical curl plans', which now bind the radial difference (`rad`, written by the scan
+# kernel) where they bound the host prefix (`pfx`). Both left with WP KT11: the welds now
+# run the certified curl plans themselves, and the two tests pin that instead.
+#
+# This paragraph led the block that lists meep_gpu.test_triton_folded_beta_complex_fused_magnetic_pair::test_the_module_claims_identity_ONLY_through_the_run_that_measured_it:
+# Added 2026-10-09 with the Triton fold passes on the array path's shape (bit_parity_0_10
+# WP KT7): special_kz's two beta curls, bfast_curl, folded_complex's two beta curls and the
+# ten fused pairs that carry a pass run MEEP's beta pass after every component's curl and
+# its BFAST pass per component after the curl, each through its own additive ladder
+# (forms.fold_ladder; forms.bfast_advance takes the state's two roundings, the one-partner
+# forms and MEEP's plain branch), keyed on the chunk record cb; the complex beta increment
+# is a quarter turn of the parts by one real word (special_kz's 2 tl.math.fma sites are
+# gone). MEASURED on Mac CPU (trident env, CPU-only shim; the Triton and adjacent legs with
+# every marker) on base + dev/series 01-F4 .. 44-REMINT3 + WP KT5 (tree b4cbcea9): 65
+# listed ids left the list, each of which now passes:
+# 2 of entry 13's whole-grid block, 18 of the AP3 block's Triton group, the 17 of WP KT1's
+# block declared for KT7, the 4 of entry 15's AP6a block declared for KT7, the 2 of WP
+# AP6b's block, which is removed, the 6 of WP KT3's block and the 16 of WP KT5's. Each of
+# the 3 ids below passes on that tree and fails with this change, and no other id of the
+# Triton, radius, adjacent and harness legs changes verdict. They are by contract, in two
+# kinds.
+#
+# Transcription checks of the two H->D welds that lift the beta curl bodies' previous text
+# (beta_real_fused_hd_pair, beta_complex_fused_hd_pair, the full complex beta product
+# included): test_triton_hd_tail_products compares each variant's curl body with the
+# certified beta curl it was cut from, which now runs the pass after the forms. Both left
+# with WP KT11 (the H->D welds lane), which re-lifted the two beta welds from the beta
+# curls' current text.
+#
+# This paragraph led the block that listed meep_gpu.test_cuda_weld_contract::test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest and 3 more ids, all removed 2026-10-13 with the records of the 1.0 round:
+# Measured 2026-10-06, after the residue bind: the 4 CUDA weld-contract entries below
+# name the CUDA driver_dispatch record and nothing else. Three files it pins moved
+# after its route run (meep_gpu/fastpath.py, meep_gpu/fastpath_cuda.py,
+# parity/meep_gpu/gate_dispatch_fused_route.py). Removed when
+# dispatch_fused_route_cuda_2026-10-13_10_cc86 has released on these bytes and
+# recut_driver_dispatch_record.py --backend cuda has filed its run.
+#
+# This paragraph led the block that listed meep_gpu.test_cuda_weld_contract::test_the_dispatch_record_stands_on_a_live_passing_route_run and 2 more ids, all removed 2026-10-13 with the records of the 1.0 round:
+# Added 2026-10-05 with the route-record rule. Each weld contract now checks its
+# table's driver_dispatch record through its route runs, with one rule and one shared
+# helper (route_record_problems in meep_gpu/weld_record_walk.py): at least one live
+# run, every live run reading PASS, every pinned file matching the tree, and no
+# route-run field, status among them, beside the digests. Each record fails it on
+# bytes the round has not yet re-run; no ledger changed. Measured on the tree that
+# adds them:
+# - CUDA: runs["8.6"] still binds the record's digests and reads PASS, but 3 of its 20
+#   pinned files moved since (meep_gpu/fastpath.py, meep_gpu/fastpath_cuda.py,
+#   parity/meep_gpu/gate_dispatch_fused_route.py), so no route run has released on
+#   these bytes. Removed when dispatch_fused_route_cuda_2026-10-13_10_cc86 has
+#   released on these bytes and recut_driver_dispatch_record.py --backend cuda has
+#   filed its run.
+# - Triton: runs["8.6"] still binds the record's digests and reads PASS, but 1 of its
+#   3 pinned files moved since (fastpath.py). Removed when
+#   dispatch_fused_route_2026-10-13_10_cc86 has released on these bytes and
+#   recut_driver_dispatch_record.py, with --end-to-end, has filed its run.
+# - Metal: no live run (runs: {} since the per-architecture migration), and 2 of its 9
+#   pinned files moved (meep_gpu/fastpath.py, meep_gpu/metal_dispatch.py). Removed
+#   when dispatch_metal_route_2026-10-13_20_applegpu_g13s has released on these
+#   bytes and recut_driver_dispatch_record.py --backend metal has written
+#   runs["applegpu_g13s"].
+#
+# This paragraph led the block that listed meep_gpu.test_cuda_weld_contract::test_the_status_is_the_one_the_tree_supports, removed 2026-10-13 with the records of the 1.0 round:
+# Added 2026-10-06 with the per-gate mutation needle tables (parity/meep_gpu/
+# gate_needles.py). probe_fused_kernel_bit_identity.py now holds its shared needles as
+# data and arms the hand track through its own table, and ten CUDA gates arm the
+# shared defects through tables of their own. The mutation legs' device text is
+# unchanged: record_gate_needle_anchors.py derives 437 site counts and mutated-text
+# digests over 11 tables on these bytes, and 437 of 437 equal the 0.9.2 code paths
+# on the same kernels. The bytes of the probe and of seven gate files the CUDA ledger
+# pins did move, so 62 CUDA fingerprint pins (54 of the probe, 8 of the gates) and 1
+# Triton pin drift, and the CUDA weld status rule reads each entry that pins the probe
+# as "PASS, but 1 pinned file(s) moved". Removed when those entries are re-gated and
+# rebound on these bytes.
+#
+# This paragraph led the block that listed meep_gpu.test_triton_complex_fused_magnetic_pair::test_this_module_is_welded_and_the_weld_describes_the_shipped_bytes and 1 more id, both removed 2026-10-13 with the records of the 1.0 round; the two History paragraphs above under that id led the same block:
+# Weld digests of two probes that now list triton_kernels/forms.py beside kernels.py in the
+# sources they digest: the probe file moved, so the bytes its gate executed no longer
+# recompute. Removed when those two gates are re-run on these bytes and their welds rebound.
+#
+# This paragraph led the block that listed meep_gpu.test_triton_folded_fused_pair::test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it, removed 2026-10-13 with the records of the 1.0 round:
+# Added 2026-10-08 with the folded real Triton kernels' chunk forms (bit_parity_0_10 WP KT3):
+# symmetry.pml_curl_step_folded and the two folded fused pairs (folded_fused_pair,
+# folded_fused_magnetic_pair, with their ghost carries) read the chunk record through
+# triton_kernels/forms.py and carry the array path's forms and MEEP's start of H, and the
+# folded mirror fill launches its near and far passes separately. MEASURED on Mac CPU on
+# base + 01-F4 .. 17-F5 + KC1.rebased + KT1.rebased (tree b04d7a2a), where each of the 18 ids
+# below passes (1 since WP KT4's 2, WP KT6's 8, WP KT7's 6 and WP KT11's 1 left: KT6's folded
+# dispersive pair re-lifts these kernels, 2 of its 8 pass and 6 were renamed with the
+# curl lines they name; KT7 re-aligned the folded beta pairs): with this change applied
+# each fails, and no other test of the Triton,
+# adjacent, radius and harness legs changes verdict (4 listed ids pass and left the list:
+# 2 from the AP3 block, 2 from WP KT1's). They are by contract, in two kinds.
+#
+# Transcription checks of modules that lift the folded kernels' previous text and still carry
+# it: each compares its own body with symmetry.py's folded curl or a folded pair's, which no
+# longer hold those lines. Removed by the lane that re-aligns the module: folds (KT7) 6, the
+# folded beta pairs, whose kernels also call the folded pairs' ghost carries (_carry_ghost_E,
+# _carry_ghost) at their previous arity (all 6 left with WP KT7); dispersive (KT6) 8,
+# folded_dispersive_fused_pair (left with WP KT6); off-diagonal (KT4) 2,
+# folded_offdiag_fused_electric_pair (both left with WP KT4, which re-lifted the folded
+# weld's curl half from this curl); H->D welds (KT11) 1, folded_fused_hd_pair (left with
+# WP KT11, which re-lifted the weld's curl half from this curl).
+#
+# The weld digest of the folded electric pair: its module moved, so the bytes its gate
+# executed no longer recompute. Removed when that gate is re-run on these bytes and its weld
+# rebound (the folded magnetic pair's twin is listed in WP KT1's block above; its module
+# moved in this change too).
+#
+# This paragraph led the block that listed meep_gpu.test_triton_folded_beta_complex_fused_magnetic_pair::test_the_module_claims_identity_ONLY_through_the_run_that_measured_it, removed 2026-10-13 with the records of the 1.0 round; the History paragraph above under that id led the same block:
+# The weld digest of the folded complex beta magnetic pair: its module moved, so the bytes
+# its gate executed no longer recompute. Removed when that gate is re-run on these bytes
+# and its weld rebound.
+#
+# This paragraph led the block that listed meep_gpu.test_triton_symmetry_composition::test_the_symmetry_composition_record_is_welded_to_the_complete_step_seam, removed 2026-10-13 with the records of the 1.0 round:
+# Added 2026-10-10 with owner ruling R16 (bit_parity_0_10 lane CPa): the five Triton
+# composition gates (probe_triton_cylindrical_composition, probe_triton_symmetry_composition,
+# probe_triton_conductivity_composition, probe_triton_engine_route, gate_triton_no_pml)
+# install the campaign's subnormal policy from MEEP_GPU_SUBNORMAL_POLICY before they build
+# anything, refuse by name when it is not attained, and stamp it as the artifact's
+# subnormal_policy (parity/meep_gpu/composition_policy.py), so a flush composition run
+# gives their 11 arms flush evidence. MEASURED on Mac CPU (trident env, every marker) over
+# the 32 test files that reference the five gates, their records, the re-cut and rebind
+# tools or the policy reader: on base + dev/series 01-F4 .. 86-BOARD6 + WP CP's two
+# patches 23 failed of 1,775 run, all listed above; with this change 24 failed of 1,836
+# (the 61 new ids all pass), and the 1 id below is the only verdict that changes: the
+# symmetry record's probe_sha256 equals the probe's bytes on that base, and the probe's
+# bytes moved. The other four composition records' probe digests move too; their tests
+# are already listed. Removed when the symmetry composition gate is re-run on these bytes
+# and recut_composition_records.py re-cuts its record (CERT-3 and the bind).
+#
+# This paragraph led the block that listed meep_gpu.test_triton_weld_contract::test_every_triton_weld_names_the_policy_it_was_cut_under, removed 2026-10-13 with the records of the 1.0 round:
+# Added 2026-10-11 with fix B for the CUDA flush route (bit_parity_0_10 WP FXE, after
+# 122-XG): gate_triton_fused_electric.py installs, measures and stamps the campaign's
+# subnormal policy (composition_policy.py), the Triton ledger entry
+# triton_fused_electric_device_gate no longer declares _mixed_policy, and
+# test_triton_weld_contract.POLICY_UNNAMED_BUDGET no longer names it. 1 id added, 0 removed.
+# The entry's 8.6 run record still reads "NOT INSTALLED - see _mixed_policy": it was cut from
+# the gate's unstamped run, so it names no policy and no declared debt covers it.
+# Removed at certification, when the round has run the fused_electric fleet gate under keep
+# and flush on these bytes and the Triton bind has rebound the entry from those two runs
+# (rebind_triton_welds.py --campaign <keep root> --flush-campaign <flush root>), which writes
+# a record naming the attained policy (measured in scratch: "keep (installed by the gate
+# ...)", certified_policies {flush, keep}). The gate file's pins in that entry and in
+# fused_electric_gate move with this change; the tests that compare them with the tree
+# already fail on the frozen tree and are listed above.
+#
+# This paragraph led the block that listed meep_gpu.test_metal_weld_contract::test_the_metal_welds_are_bound_to_the_live_sources, removed 2026-10-15 with the records of the R27 1.0 round:
 # Removed 2026-10-05: the four Metal entries of the probe hand-over (the three Metal
 # weld contract tests and the whole-step provenance case). The Metal fleet on the
 # Apple M1 Max under stamp 2026-10-04_g13s on these bytes released 62 of 62 gates (45
 # of 45 cited welds), rebind_metal_welds.py rebound 62, and CURRENT_EVIDENCE names
 # metal_whole_step_2026-10-04_g13s.
+#
+# Added 2026-10-05 with the per-architecture Metal run records. The admission edit moves
+# meep_gpu/metal_dispatch.py, which the Metal driver_dispatch record binds (its
+# source_sha256 and code_sha256, both walked by the Metal weld contract), and the
+# migration dates that record's route run as history and leaves runs: {}. Measured on
+# the tree that added them, with its migrated ledger: the three weld-contract tests
+# below fail on driver_dispatch's metal_dispatch.py digests (source_sha256 and
+# code_sha256) and on nothing else, and the dispatch-contract test fails at its
+# metal_dispatch.py digest assertion, before the assertions after it are reached; while
+# they stand they would also hide any other Metal weld drift, so that measurement is
+# repeated on the tree that is committed. Removed when the Metal route campaign
+# dispatch_metal_route_2026-10-15_10_applegpu_g13s has released on these bytes and
+# recut_driver_dispatch_record.py --backend metal has written runs["applegpu_g13s"].
+# The uncertified NVIDIA default (the next block) also moves meep_gpu/fastpath.py, which
+# that record and three cited Metal welds pin. Measured on the tree that adds it: the
+# three weld-contract tests fail on 5 of 441 pinned paths and 5 of 352 code digests
+# (driver_dispatch's fastpath.py and metal_dispatch.py digests, and the fastpath.py
+# digests of metal_complex_conductive_fused_pair, metal_complex_no_pml_conductive and
+# metal_cylindrical_real_fused_magnetic_pair), and the dispatch-contract test stops at
+# its fastpath.py digest; the same on the tree that moved the NVIDIA route stamps. So
+# these four are removed only when those three welds have also been re-run on these
+# bytes and rebound, before the route campaign.
+# Removed 2026-10-13 with the records of the 1.0 round: the first 3 ids of this block
+# (the Metal record's weld, and the Metal weld contract's backfill and code-tier tests).
+# dispatch_metal_route_2026-10-13_20_applegpu_g13s released on these bytes and
+# recut_driver_dispatch_record.py --backend metal wrote runs["applegpu_g13s"]. The id that
+# stays fails on the Metal host_sha256 block, which launch.write_fingerprints() re-cuts (82
+# of 407 pinned paths, measured on the records' tree in both views).
+#
+# This paragraph led the block that listed meep_gpu.test_metal_kernels::test_the_checked_in_fingerprints_match_the_tree, removed 2026-10-15 with the records of the R27 1.0 round:
+# Added 2026-10-06 with the Metal table's chunk record (meep_gpu/metal_kernels/
+# chunk_bounds.py: the ChunkBounds struct, its packing and its anchored bounds block),
+# the composer's chunk division (launch.chunk_division, refused on every slot when the
+# per-axis record cannot describe it) and rung 4bM of metal_dispatch.decide. No kernel
+# source changed: 0 of the 36 kernel-source digests compute_fingerprints() records
+# moved. The host digests of launch.py, coverage.py and arms.py moved and chunk_bounds.py
+# is a new host module, so the checked-in host_sha256 block no longer matches the tree.
+# Drift on these bytes against base + F4 + F1 + AP1 + F2s + F3 + KC0 + KT0: the Metal
+# weld contract's pinned paths 30 -> 95 of 441 and its code digests 30 -> 92 of 352
+# (57 of the 65 newly moved pinned paths are launch.py's); Triton 256 of 592 and 171 of
+# 444, and CUDA 69 of 269, unchanged. Removed when launch.write_fingerprints() is re-cut
+# and the Metal welds are re-gated and rebound on these bytes.
+#
+# This paragraph led the block that listed meep_gpu.test_cuda_weld_contract::test_the_cuda_ledger_records_the_live_array_path_oracle and 2 more ids, all removed 2026-10-15 with the records of the R27 1.0 round:
+# Added 2026-10-06 with MEEP's operation order in the array path: the curl takes MEEP's
+# left-to-right bracket ((g1s - g1) + g2) - g2s and its forms for a partner absent from
+# the step plan (stepping.curl_presence), the PML constitutive update forms
+# f + ((kps * fw) - (kms * fw_prev)) in stepping._apply_constitutive_pml and
+# deposit_repair.apply, and the Gaussian envelope takes MEEP's argument order
+# (sources.py). Stored words move: the array-path oracle moves in 18 of 18 fixture
+# cases. The bytes of stepping.py, sources.py and deposit_repair.py moved, and of the
+# two Metal gates whose oracle calls the curl (gate_metal_no_pml_curl.py,
+# gate_metal_fused_hd_pair.py). Drift against tree 3e6a72db (base + 01-F4 .. 08-KM0):
+# Triton raw tier 256 -> 292 of 592 digests and code tier 171 -> 204 of 444; Metal 95 ->
+# 100 of 441 pinned paths and 92 -> 97 of 352 code digests; CUDA 69 of 269, unchanged.
+# The weld tests that read that drift are already listed above.
+# The 5 tests below go red on that and on nothing else, in two groups (415 at
+# AP3; 14 of the CUDA group left with WP KC1: 6 whose root kernels now reproduce
+# stepping, and 8 of the nonlinear tail, which moved to a KC1n block that lane KC1n
+# removed when it transcribed the nonlinear update's new forms; 12 more of the CUDA
+# group left with WP KC9r, whose no-absorber curl now reproduces stepping; 2 of the
+# Triton group left with WP KT3 and 4 with WP KT9, whose nonlinear update_E reference
+# now reproduces stepping; 24 more of the CUDA group left with lane KC3: the conductive
+# family's host transcriptions, which reproduce stepping again; 168 left with WP KC4: 166
+# of the CUDA group and 2 of the harness group, the off-diagonal kernels' own; 14 of
+# the Triton group left with WP KT4, whose two off-diagonal update_E references now
+# reproduce stepping; 12 with WP KT10r, whose no-absorber conductive reference now
+# reproduces stepping; 46 more of the CUDA group left with WP KC5, whose re-derived
+# dispersive families reproduce stepping again; the Metal group's 3 left with WP
+# KM8, whose dispersive update_E plans now reproduce stepping; 30 of the CUDA
+# groups with lane KC6: 24 of test_complex_folded, whose re-derived folded complex curl
+# reproduces stepping, and 6 ids that KC6's re-cut of test_complex_pml and
+# test_complex_no_pml renamed; 6 of the Triton group with WP KT5, whose
+# complex references now reproduce stepping; the harness group's 7
+# with WP AP9, whose hand references now reproduce stepping; 2 of the Triton group with
+# WP KT6, whose dispersive update_E references now reproduce stepping; 16 of the Triton
+# group with WP KT8, whose cylindrical complex gate now compares the plans with stepping
+# itself and carries no reference of its own; the Triton group's last 18 with WP KT7,
+# whose fold-pass references now reproduce stepping; the CUDA group's last 32 with lane
+# KC7: 18 of test_bfast_curl and test_special_kz_curl, whose transcriptions reproduce
+# stepping on the fold passes, and 14 of test_complex_beta, which KC7's re-cut renamed;
+# which leaves two groups).
+#
+# The three ledger oracle tests, by design. Removed when the ledgers are re-minted by
+# parity/meep_gpu/record_array_path_oracle.py at certification.
+#
+# This paragraph led the block that listed meep_gpu.test_metal_weld_contract::test_the_metal_device_tier_recomputes_against_the_tree, removed 2026-10-15 with the records of the R27 1.0 round:
+# Added 2026-10-07 with the PML forms chosen per structure chunk (bit_parity_0_10 WP AP4:
+# chunk_map.RegionPlan dispatched by stepping._apply_curl, update_H and update_E; the
+# dsig-only curl outside the dsigu chunks, H = B and E = (D - P) * chi1inv outside the
+# dsigw chunks, every auxiliary written on its own form's cells only; Fields.drive_field
+# composed per chunk; the deposit repair's plain form outside the layer's chunks; MEEP's
+# start of H; the f_u deposit mirror and PML.sigma_bites removed). 160 ids (159 since WP
+# AP5: its third group, one real-against-complex signed zero, passes again with the
+# double-precision deposit and left the list; the sign rule it exposed is AP6a's; 5 since
+# the ADE lanes WP KC5, WP KM8 and WP KT6 emptied the ADE drive group, 42, 9 and 88 ids,
+# and WP KT5, lane KC6 and WP KT8 took 14 of the second; WP KT11 took the second group's
+# last 3, and the block holds no id and is kept as history), MEASURED on host
+# (no Apple GPU, no NVIDIA device; torch-free trident_meep133): each passes on base +
+# 01..10 (the AP2 integration's package suite read 0 failed and its harness suite 0 failed
+# on that tree) and fails here; the certification selection gained no failure. Device-only
+# ids were not measured by the work package: the Apple-GPU ids measured at its integration
+# follow in the next block, and NVIDIA ids are not listed. Three groups, each removed by the
+# work that re-transcribes what it reads:
+#
+# 0 ids (139 at entry 13): the ADE drive. Fields.drive_field is MEEP's per-chunk
+# w = f_w ? f_w : f; it is f_w only on the cells whose chunk carries the component's own
+# layer, a composed buffer
+# where a component is split, and refused by name on a Fields under a PML that has no
+# region plan (no driver installed one and no update_E has run). The ADE predicates and
+# plans of the three tables read drive_field's identity (f_w_<c>) or call it on Fields
+# built by hand, so they refuse, raise or lose arbitration. Removed by the ADE lanes
+# (KC5, KT6, KM8). KC5's 42 (24 package, 18 harness: 3 of them renamed by KC5's gate
+# edit) left with its drive pair and per-chunk select; KM8's 9 (test_metal_ade_update_p)
+# with its drive select on the chunk record; KT6's 88 (test_triton_fused_ade_chain 32,
+# test_triton_folded_offdiag_fused_ade_chain 53, test_triton_kernels 1,
+# test_triton_no_pml_ade 2) with its per-chunk forms and the composed drive. The group
+# is empty; its paragraph is kept as history.
+#
+# 0 ids (19 at entry 13; WP KT5 removed test_triton_folded_complex's 2 zero-init census
+# ids, whose reference now steps MEEP's forms, WP KT8 the real cylindrical magnetic
+# pair's gate fixture, which now shows the masked plane, WP KT7 the 2 of the BFAST
+# sub-step transcription on a D1 grid, and WP KT11 the last 3, the two cylindrical H->D
+# welds' gate host legs and purity ledger, which now read the welds' three-launch shape
+# and the auxiliary contract on f_w_H): kernel host transcriptions and gate
+# fixtures that still state the whole-grid
+# forms: a structure oracle compared with stepping.update_E under a layer, recorded word
+# counts, census expectations, and fixtures that expect
+# update_H to move f_w_Hy (Hy's own axis never carries a layer in cylindrical
+# coordinates, so f_w_Hy is never written now) or a masked curl plane to show in a field
+# the dsig-only form leaves at rest. Removed by the root and family lanes (KC1/KC4,
+# KT1/KT5/KT7/KT8). KC6 removed 11 (test_complex_offdiag_update_e's structure oracle on
+# its ten layered cases and its branch census), which pass on its re-derived family.
+#
+# Added 2026-10-07 at the integration of the change above (bit_parity_0_10 WP AP4), to its
+# first group, the ADE drive: 10 Apple-GPU ids, MEASURED in the trident env with the Apple GPU
+# live (M1 Max) on base + 01-F4 .. 12-KT1a + AP4. The work package's own runs did not reach
+# these files (device-visible files deferred). Each passes on base + 01..10 (the AP2
+# integration's device-visible run) and fails here because the Metal ADE update_P product no
+# longer admits a PML with a susceptibility: its predicate calls Fields.drive_field on Fields
+# built by hand, which refuses by name with no region plan (7 ids), the slot is left unselected
+# (2 ids), or held residency refuses the plan because update_P stays on the array path (1 id).
+# The 9 that plan without a device were also run under a CPU-only shim, each file alone: they
+# pass on base + 01..12 and fail with this change applied. The held-residency id needs the
+# device. Removed with the rest of the group by the Metal ADE lane (KM8).
+#
+# Added 2026-10-07 by bit_parity_0_10 WP KM1: the Metal base kernels (shaders.py's PML curl
+# and constitutive, symmetry.py's folded curl) bind the chunk record and step the array
+# path's per-chunk forms, and every base plan binds a record; ruling R7 leaves chi2/chi3
+# update_E to the array path. 200 ids, MEASURED against base + 01-F4 .. 17-F5 on both
+# trees: 200 on the Apple GPU (M1 Max) over the 74 device-visible package files, 170
+# on Mac CPU under the CPU-only shim over a 132-file selection (the two sets overlap). Each
+# passes on the series and fails with KM1 applied, because its family lifts a base body
+# that now reads the record (its source no longer compiles, so plan_step refuses the slot
+# by name and the singles serve), quotes a line the forms replaced (the auxiliary loads and
+# stores now sit behind their membership), or compares against a base kernel that now steps
+# the aligned forms. Grouped by the lane that removes them:
+#   KM2: 24 ids, the same-cell fused pairs (fused_magnetic_pair, fused_electric_pair,
+#     fused_dispersive_pair, nonlinear_fused_magnetic_pair) and the compositions that
+#     install them.
+#   KM3: 141 ids, the neighbour-straddle H->D pairs (fused_hd_pair, folded_fused_hd_pair),
+#     and the four pairs that lift fused_hd_pair's constitutive tail (beta_real, bfast,
+#     conductive, cylindrical_real: then KM9, KM9, KM4, KM10).
+#   KM5/KM6: 21 ids, the fold-carry pairs (folded_fused_magnetic_pair; the folded complex
+#     magnetic pair) and the folded routing they take.
+#   KM7: 12 ids, the off-diagonal stencil welds, which lift the base curl's auxiliary
+#     store line.
+#   KM9: 1 id, special_kz's beta-free build against the base curl, which now steps the
+#     aligned forms while special_kz does not.
+#   certification: 1 id, the Metal weld contract's device tier: the shader digests the
+#     welds pin moved; removed when the Metal welds are re-gated and rebound.
+# Removed by KM1 from the blocks above: 47 entries that pass with KM1 applied on
+# the Apple GPU (the base-kernel comparisons: held-fallback pml_2d, the MPS entry points,
+# folded curl and complete step, nonlinear spine; most from the AP3 integration's device
+# block), and the 8 ids of the Pade update_E device comparison, a test KM1 replaces: the
+# arm is refused under R7, and the host test
+# test_the_engine_route_leaves_update_e_to_the_array_path_under_r7 takes its eight
+# configurations. test_one_complete_cycle_is_byte_identical_to_stepping, now parametrized
+# [3d] and [2d_absent_partner], passes on the device and is among the 47.
+# Ledgers and fingerprints are unchanged. Drift against base + 01..17, read from the Metal
+# weld-contract tests on both trees: pinned paths 115 -> 162 of 441, code digests 111 -> 150
+# of 352, device shader digests 0 -> 19 of 49 (the one new id above); the kernel-source
+# assertion of the fingerprint test (already listed) now fails before its host assertion.
+#
+# This paragraph led the block that listed parity.meep_gpu.test_check_hygiene::test_the_four_ledgers_carry_no_machine_stamp_account_or_local_path, removed 2026-10-15 with the records of the R27 1.0 round:
+# Added 2026-10-13 with the hygiene guard (bit_parity_0_10 lane HYG, owner ruling R22, the
+# first series entry of the R22 phase, after 140-RECORDS). 3 ids, in two groups.
+# 1 id: the guard's ledgers leg
+# (tools/ci/check_hygiene.py --legs ledgers) finds 284 hits in the four ledgers of this
+# tree (host_name 161, account_name 8, home_path 4, host_stamp 111), all written by the 1.0
+# round's binds before the bind and record tools wrote neutral labels: in the Triton ledger
+# 114 label leaves (59 weld host lines, 50 records lines, the licence's host and 4 paths of
+# its recorded environment), in the CUDA ledger 49 weld host lines, in certification.json
+# the host of 2 campaign blocks, in the Metal ledger none. The tools now write "the GPU
+# host" and <staging-root> (parity/meep_gpu/neutral_labels.py), and
+# parity/meep_gpu/neutralize_ledger_labels.py, the last command of legs.py bind, rewrites the
+# label leaves no re-bind replaces (the dated certification blocks accumulate). MEASURED on
+# a copy of these ledgers: 165 label leaves rewritten, 0 of 121 entries with run records
+# move a live capability, and the ledgers leg then reads 0 hits. The ledgers are not edited
+# here; the round's binds replace them. Removed when the round's binds (lane BINDX, then
+# lane RECX's three driver_dispatch re-cuts) leave the ledgers leg clean: lane A41 removes
+# this declaration in the records entry.
+#
+# This paragraph led the block that listed meep_gpu.test_metal_weld_contract::test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest and 1 more id, both removed 2026-10-15 with the records of the R27 1.0 round:
+# The same entry re-points two pinned docstrings at neutral copies of the evidence they cite
+# (meep_gpu/readback.py and meep_gpu/sources.py, comment text only; 233 and 139 of the 250
+# gate and probe scripts hold them in their run closure). Of the 27 ledger pins that name
+# either file, 7 source pins held on this tree's base and move, in 6 entries (Triton
+# bit_identity_gate, cylindrical_composition_gate, symmetry_composition_gate and
+# triton_folded_deposit_closure_device_gate; Metal metal_complex_conductive_fused_pair_device_gate
+# and metal_cylindrical_real_fused_magnetic_pair_device_gate), and the 3 code pins among them
+# hold (a docstring is not code). 2 ids: every id that walks those pins is listed above
+# except these two, which pass on the base. MEASURED in the CI view on the GPU host's CPU
+# (both interpreters, every marker, no results/): 42 failed of 16,740 ids run, of which the
+# second id below was the 1 undeclared before it was added here. (1) The Metal contract's
+# pairing rule now finds the two Metal welds' sources.py code digests beside their moved
+# source digests: removed when the round re-gates and rebinds those two Metal welds on
+# these bytes (lane BINDX, the Metal half). (2) The Triton cylindrical composition test
+# compares cylindrical_composition_gate's sources.py source pin with the live bytes raw
+# (driver_dispatch declares drift for driver.py, fastpath.py and fields.py only): removed
+# when the round re-runs that gate on these bytes and lane BINDX binds it.
+#
+# This paragraph led the block that listed meep_gpu.test_dispatch_contract::test_the_metal_record_is_welded_to_the_live_sources_when_it_exists and 3 more ids, all removed 2026-10-15 with the records of the R27 1.0 round:
+# Added 2026-10-13 with three round-tool fixes (bit_parity_0_10 lane SMALL, a series entry
+# after 140-RECORDS): the held form of the Metal route gate's residency-sync_in-dropped
+# records only what it measures, the gate gains a pre-freeze controls dry run
+# (parity/meep_gpu/gate_dispatch_metal_route.py), and legs.py check refuses absent Triton
+# H->D lift inputs (parity/meep_gpu/rounds/1.0/legs.py, which no ledger pins). 4 ids. The
+# route gate is pinned by the Metal driver_dispatch record (its source_sha256 and
+# code_sha256), which the records of the 1.0 round re-cut from
+# dispatch_metal_route_2026-10-13_20_applegpu_g13s; the record now differs from the tree,
+# so the 4 tests that hold that record to the live sources fail. MEASURED on this tree and
+# on the tree before this entry, every marker, under the CPU-only shim with dispatch off and
+# no results/, over the 56 test files that name the changed files, the Metal ledgers, the
+# route dispatch module or the round's legs: these 4 pass before this entry and fail with
+# it; no other id moves except the 38 new tests (absent -> passed). Removed when the Metal
+# route campaign has run on these bytes under the round's route stamp and
+# recut_driver_dispatch_record.py --backend metal has re-cut the record from it.
+#
+# This paragraph led the block that listed meep_gpu.test_cuda_weld_contract::test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest and 12 more ids, all removed 2026-10-15 with the records of the R27 1.0 round:
+# 2 ids, declared at the batch_r10n integration (lane A8n) and removed by lane MBF, the
+# Metal folds lane's follow-up to KM9: test_metal_bfast compares the Metal BFAST
+# predicate's clause list with the Triton one's, and entry 77's clause 11a admits a nonzero
+# k on a declared-invariant axis (it multiplies a partner MEEP does not read, and the array
+# path takes MEEP's one-partner forms since entry 24). The Metal predicate's clause 11a now
+# reads the Triton one's words: it refuses only a k assignment it cannot read. MEASURED on
+# base + 01..86 + MBF: both pass under the CPU-only shim (32 files: 0 newly failing, these
+# 2 fixed) and on the Apple GPU (6 device-visible files: 0 newly failing, these 2 fixed,
+# check_failures 0 undeclared).
+#
+# Added 2026-10-10 with the complex-multiply expansion licence deleted (bit_parity_0_10
+# WP X1, DESIGN.md D16): meep_gpu/expansion_refusal.py, every complex family's probe
+# loader, licence and arm argument on the three tables, the probe slots of the step
+# context and the probe legs of the gates, the census and the route campaigns are gone,
+# so the complex families dispatch by default with no record exported. 0 ids added, 0
+# removed. MEASURED against base + dev/series 01-F4 .. 79-BOARD5 (tree 8e6ccf99) on both
+# trees, every marker: Mac CPU under the CPU-only shim (package and harness), the Apple
+# GPU (M1 Max) over the 90 device-visible package files (89 here: the change deletes
+# test_metal_probe_handover.py), and the GPU host's CPU (2 threads, no device visible) -- no id
+# passes on that base and fails here, and no listed id passes here.
+# Ledger pins move; no ledger changed. Of the 2,270 code_sha256 and source_sha256 pins in
+# the four ledgers, 37 that hold on that base move with this change, in 10 entries:
+#   Metal: driver_dispatch (metal_kernels/subnormal.py, gate_dispatch_metal_route.py);
+#     metal_complex_conductive_fused_pair_device_gate, metal_complex_no_pml_conductive_
+#     device_gate and metal_cylindrical_real_fused_magnetic_pair_device_gate
+#     (expansion_refusal.py, deleted; subnormal.py; metal_gate_runner.py; the first also
+#     complex_no_pml_stored_e.py); metal_complex_fused_ade_chain_device_gate and
+#     metal_complex_no_pml_stored_e_device_gate (complex_no_pml_stored_e.py).
+#   Triton: bit_identity_gate (expansion_refusal.py, deleted);
+#     triton_complex_fused_ade_chain_device_gate (complex_no_pml_stored_e.py);
+#     triton_complex_no_pml_stored_e_device_gate (complex_no_pml_stored_e.py and its
+#     gate); triton_unified_expansion_device_gate (gate_triton_unified_expansion.py,
+#     deleted).
+# 145 entries in all pin a file this change edits (Triton 56, Metal 60, CUDA 29). Every
+# test that walks these pins already fails on that base and is listed above: the Metal
+# and Triton weld-contract entries (bound to the live sources, code tier, device tier,
+# no backfilled code digest, dispatch record on a live route run) and, in
+# test_dispatch_contract, the Metal record's weld and the no-absorber gate records
+# (bit_identity_gate). So they add no line here; those entries now also wait on this
+# round. triton_unified_expansion_device_gate is not re-run: its gate file is deleted,
+# so the round retires the entry, and rebind_triton_welds.py's mapping for it, instead
+# of re-gating it. Removed with those entries, when the certification round has
+# re-gated and rebound the 145 on these bytes.
+#
+# Added 2026-10-09 with the Triton H->D welds on the array path's forms (bit_parity_0_10
+# WP KT11, re-cut 2026-10-10 as WP KT11r onto the series after entry 89 deleted the
+# expansion licence: the welds take no licence and record none; not dispatched,
+# INSTALLABLE stays False on all ten): fused_hd_pair (the
+# constitutive half through forms.constitutive_form on the record's dsigw lines with MEEP's
+# start of H, the curl half through forms.curl_stencil and curl_form, the scratch history
+# written B on the dsigw cells and the pre-launch word elsewhere), folded_fused_hd_pair,
+# beta_real_fused_hd_pair, conductive_bfast_fused_hd_pair, complex_fused_hd_pair,
+# folded_complex_fused_hd_pair, beta_complex_fused_hd_pair and nonlinear_fused_hd_pair
+# re-lifted from their bases' current bodies; cylindrical_real_fused_hd_pair and
+# cylindrical_fused_hd_pair re-cut to launch 1 (update_H into scratch, the Cartesian weld's
+# constitutive block) and the certified step_D plan over the scratch H (the column-serial
+# radial scan and the curl), the 2 tl.math.fma sites of cylindrical_fused_hd_pair gone. 0 ids
+# added, MEASURED on Mac CPU (trident env, CPU-only shim; the Triton, radius, adjacent and
+# harness legs with every marker) on base + dev/series 01-F4 .. 93-BOARD7 (tree 4fc9383a)
+# against the same four legs on that base: 29 listed ids left the list (3 of the AP4
+# block's entry-13 group, 6 of WP KT1's, 1 of WP KT3's, 1 of WP KT2's, 9 of WP AP6c's, 5 of
+# WP KT5's, 2 of WP KT8's and 2 of WP KT7's); 26 of them pass and 3 (the real cylindrical
+# weld's pool tests) are gone with the pool, replaced by tests that pass. No other id of
+# those legs changes verdict but the change's own renamed and replaced tests (27 ids gone,
+# 17 new, all 17 passing); the 6 undeclared failures are the base's own (Metal under the
+# CPU-only shim), the same 6 on both trees.
+#
+# Added 2026-10-13 with the route-stamp registry (bit_parity_0_10 lane REG, owner ruling
+# R22; DESIGN.md section 8.2): the three route stamps leave meep_gpu/fastpath.py,
+# meep_gpu/fastpath_cuda.py and meep_gpu/metal_dispatch.py for meep_gpu/route_stamps.py,
+# which no package module and no gate or probe imports (import_closure.py bill: 0 of 250);
+# the run record's fusion.driver_route_gate and the refusal's "released by" clause cite the
+# ledger slot that records the campaign (fastpath.ROUTE_RECORD and its two twins); the
+# round's stamp is the placeholder UNSET until the freeze sets route_stamps.ROUND; the
+# re-cut, legs.py check and metal_round.py's route stage refuse an unset stamp and a spent
+# campaign by name, and the re-cut refuses a licence of another campaign by name.
+# Ledger pins move; no ledger changed. The change moves meep_gpu/fastpath.py (pinned by
+# the three tables' driver_dispatch records, the Triton bit_identity_gate and the Metal
+# weld metal_complex_conductive_fused_pair_device_gate), meep_gpu/fastpath_cuda.py (the
+# CUDA driver_dispatch record), meep_gpu/metal_dispatch.py and
+# parity/meep_gpu/gate_dispatch_metal_route.py (the Metal driver_dispatch record); no other
+# changed file is pinned by any entry. On the committed ledgers of entry 140 those pins
+# held, so these 13 ids turn red, each on a pin of those five entries (or on the declared
+# source drift that describes them): MEASURED on Mac CPU (trident env, CPU-only shim, every
+# marker) over 30 test files on BASE + DEV/series 01..140 and on this change, 13 ids pass
+# there and fail here and no other id moves but the change's 42 new tests, all passing.
+# Once the pins are re-cut, the route-record tests among them also hold each record's
+# runs[<device>].released_fused_arms.gate (and the Triton licence's directory) to the
+# campaign route_stamps spells, so they stay red until the freeze has set ROUND and the
+# round has run under it. Removed when the R22 round's route campaigns
+# (route_stamps.route_gate(<table>) followed by the device) and the licence
+# (route_stamps.licence_campaign("triton")) have released on these bytes, the gates that
+# pin the five entries' files have been re-run and rebound, and the three driver_dispatch
+# records have been re-cut from those campaigns.
+#
+# Added 2026-10-10 with the pre-certification pass's NVIDIA and round-driver refusals fixed
+# (bit_parity_0_10 WP FXAn): entry 89's residue in gate_cuda_fused_complex_pairs.py (lift
+# blocks key, the wrong_arm leg), gate_triton_complex_ade.py (previous-form needle) and
+# gate_triton_complex_no_pml_conductive.py (null count); the flush host-import wrapper; the
+# campaign's policy in three Triton gates; the flush not-applicable rule
+# (parity/meep_gpu/flush_vacuity.py) in eight Triton gates and the cylindrical probe; the MEEP
+# corpus in the round drivers. 0 ids added, 0 removed. MEASURED against base + dev/series
+# 01-F4 .. 106-BOARD8 (tree c2d533b0) on both trees, every marker: Mac CPU under the CPU-only
+# shim over the 41 test files that name a changed file plus the three weld contracts (2,221
+# common ids, 0 verdicts changed, 46 new ids all passing), and the GPU host's CPU (2 threads, no
+# device visible) over the same files -- no id passes on that base and fails here, and no
+# listed id passes here.
+# Ledger pins move; no ledger changed. Of the 2,270 code_sha256 and source_sha256 pins in the
+# four ledgers, 2 that hold on that base move with this change, in 1 entry:
+#   Triton: triton_no_pml_constitutive_device_gate (gate_triton_no_pml_constitutive.py, code
+#   and source).
+# 27 more entries pin a changed gate file and already drift on that base: 15 CUDA complex and
+# residual fused-pair blocks (gate_cuda_fused_complex_pairs.py), 11 Triton device gates, and
+# triton_unified_expansion_device_gate (gate_triton_complex_ade.py; its own gate was deleted
+# by entry 89). All are owed the certification round's re-gate; FXAn re-ran every gate they
+# cite that still exists on the GPU host under keep and flush (wp/FXAn/REPORT.txt).
+#
+# Added 2026-10-10 with the expansion-licence residue cleanup (bit_parity_0_10 WP XR): dead
+# code, recorded texts and comments that named the deleted licence, in 26 harness files under
+# parity/meep_gpu; no predicate, kernel, plan or gate decision moves. 0 ids added, 0 removed.
+# MEASURED against base + dev/series 01-F4 .. 111-TAF (tree b676c5f5), every marker, with the
+# base's suites as the control (wp/A13, the same tree): the package suite under the CPU-only
+# shim 15,819 of 15,819 ids and the harness suite 1,936 of 1,936 read the same outcome, the 92
+# device-visible files on the Apple GPU 4,356 of 4,356, and check_failures 62 of 62 failures
+# declared, 0 undeclared, on both trees.
+# Ledger pins move; no ledger changed. Of the 2,270 code_sha256 and source_sha256 pins in the
+# four ledgers, 0 that hold on that base move. 30 pins in 14 entries name a changed file, and
+# all of them already drift on that base (22 move again): CUDA driver_dispatch; Metal
+# driver_dispatch, metal_complex_conductive_fused_pair, metal_complex_conductive_pml,
+# metal_complex_no_pml_conductive, metal_complex_no_pml_curl,
+# metal_cylindrical_complex_fused_hd_pair, metal_cylindrical_real,
+# metal_cylindrical_real_fused_magnetic_pair and metal_whole_step (device gates); Triton
+# triton_complex, triton_complex_fused_ade_chain, triton_cylindrical and
+# triton_unified_expansion (device gates). All are owed the certification round's re-gate.
+#
+# Added 2026-10-11 with the pre-freeze fixes (bit_parity_0_10 WP XF): the CUDA board's emitted
+# variants without the deleted arm argument, the Metal composition probe's dead probe checks and
+# its weld tally, rebind_triton_welds.py's retirement of triton_unified_expansion_device_gate by
+# name (RETIRED_WELDS; the certification round's bind performs it) with the two
+# test_triton_weld_contract floors that count that entry lowered by one (run records 55 -> 54,
+# array-path oracle fingerprints 85 -> 84), the special_kz mutant header's unused constants, and
+# legs.py's measured Triton prices. 0 ids added, 0 removed.
+# MEASURED against base + dev/series 01-F4 .. 118-ENVL (tree 544eb4e1), every marker, with the
+# controls of entries 117 and 118 (wp/A16, wp/A17): the package suite under the CPU-only shim
+# 15,823 of 15,823 ids and the harness suite 1,989 of 1,989 read the same outcome (9 new ids,
+# all passing), the 92 device-visible files on the Apple GPU 4,360 of 4,360, and check_failures
+# 62 of 62 failures declared, 0 undeclared.
+# Ledger pins: none of the 2,270 code_sha256 and source_sha256 pins in the four ledgers names a
+# changed file, and no ledger changed. The bind's retirement removes one Triton entry; simulated
+# on a copy of this tree whose Triton ledger rebind_triton_welds.py --write produced, the
+# package suite 15,823 of 15,823 and the harness suite 1,998 of 1,998 ids read the same outcome
+# as on this tree, and check_failures 62 of 62 failures declared, 0 undeclared.
+#
+# Re-pointed 2026-10-11 at the 1.0 freeze (CERT-1), before the certification round's route
+# campaigns run: fastpath.DRIVER_ROUTE_FUSED_GATE, fastpath_cuda.CUDA_DRIVER_ROUTE_FUSED_GATE
+# and metal_dispatch.METAL_DRIVER_ROUTE_GATE moved from 0.9.2's stamps (_2026-10-05_092,
+# _2026-10-05_perarch) to the round's one stamp, _2026-10-11_10. The "Removed when"
+# clauses above that named the 0.9.2 campaigns now name the campaigns the round runs:
+# dispatch_fused_route_2026-10-11_10_cc86, dispatch_fused_route_cuda_2026-10-11_10_cc86 and
+# dispatch_metal_route_2026-10-11_10_applegpu_g13s. The paragraph that records the 0.9.2
+# move ("Joined to this block 2026-10-05") is kept as written. The same entry re-mints
+# meep_identity.json on the frozen bytes and gives round.py's route stage its watchdog;
+# neither moves a test outcome. 0 ids added, 0 removed.
+#
+# Added 2026-10-11 with the last pre-freeze fixes (bit_parity_0_10 WP XG, after 121-CERT1):
+# legs.py prices the route and licence legs at the 1.0 pre-certification pass's measured walls
+# (so round.py's route watchdog, max(3600 s, 12 x expected), is at least 12 x each measured
+# wall); metal_round.py's route campaign watchdog derives from its legs' measured walls
+# (ROUTE_EXPECT, --route-timeout-factor, --route-min-timeout) and every Metal child runs with
+# PYTHONNOUSERSITE=1; the CUDA fusion board's detector follows a prelude a module imports from
+# a sibling (its cylindrical control reproduces) and measures the two complex Bloch
+# constitutive labels on complex_emitter.complex_source; the Metal composition matrix pins the
+# cylindrical complex curl's Courant refusal on four rows and adds four float32-Courant twins,
+# declared under [torch] in declared_resources.txt like their siblings. 0 ids added, 0 removed.
+# MEASURED against base + dev/series 01-F4 .. 121-CERT1 (tree 051a71a2), every marker, with
+# 121-CERT1's own reports as the control (cert/C1, tree afb53f5d, which differs from 051a71a2
+# only in the coverage board's files and PRE_CERTIFICATION_STATE.md): the package suite under
+# the CPU-only shim 15,823 of 15,823 common ids (4 new: the twins, which fail where the shim
+# hides the Apple GPU, as their [torch] siblings do; the device run judges them), the harness
+# suite 2,000 of 2,000 common ids (16 new, all passing; 1 renamed: CERT-1's route watchdog
+# test now holds 3 x), the 92 device-visible files on the Apple GPU 4,360 of 4,360 (4 new, all
+# passing), and check_failures 62 of 62 failures declared, 0 undeclared (62 failed of 17,560
+# run). Without PyTorch the composition test reads 38 passed and 115 skipped (the four twins
+# skip by their [torch] declaration; undeclared, they fail).
+# Ledger pins: 2 of the 2,270 code_sha256 and source_sha256 pins in the four ledgers name a
+# changed file (metal_composition_matrix.py, in the entry
+# metal_cylindrical_real_fused_magnetic_pair_device_gate), and both were already drifted on
+# 121-CERT1; 0 pins that hold there move. No ledger changed.
+#
+# Added 2026-10-11 with the fix for F2 (bit_parity_0_10 WP F2X, after FXE):
+# fastpath._table_for_label answers a bare label in a plan composed on the CUDA table from
+# the Triton ledger, so rung 8b's per-arm policy evidence no longer reads a CUDA-led plan's
+# Triton arms as unmapped; keep is unchanged. metal_dispatch.METAL_DRIVER_ROUTE_GATE moves
+# to dispatch_metal_route_2026-10-12_10: the Metal route record pins meep_gpu/fastpath.py,
+# and dispatch_metal_route_2026-10-11_10_applegpu_g13s has run (it released on the first
+# frozen bytes). The NVIDIA route constants stay _2026-10-11_10, which no NVIDIA route has
+# used. 0 ids added, 0 removed.
+# Ledger pins: meep_gpu/fastpath.py is pinned by 7 entries (the driver_dispatch records of
+# the three tables, the Triton bit_identity_gate, and the Metal welds
+# metal_complex_conductive_fused_pair, metal_complex_no_pml_conductive and
+# metal_cylindrical_real_fused_magnetic_pair), meep_gpu/metal_dispatch.py by the Metal
+# driver_dispatch record alone, no other changed file by any entry. On the committed
+# ledgers every one of those pins already differs from the tree, so no test outcome moves:
+# the ids that walk them are listed above, and now wait on runs on these bytes (the three
+# Metal welds re-gated under the Mac stamp 2026-10-12_10 and rebound, the Triton bit
+# identity re-run and rebound, dispatch_metal_route_2026-10-12_10_applegpu_g13s, and the
+# NVIDIA route campaigns). The two Metal "Removed when" clauses above are re-pointed from
+# dispatch_metal_route_2026-10-11_10_applegpu_g13s; the CERT-1 paragraph is kept as
+# written. meep_gpu/test_dispatch_label_table.py is new and passes on these bytes.
+#
+# Added 2026-10-11 with the hardware-scope rename (bit_parity_0_10 WP RNM, after FXE):
+# MEEP_GPU_HARDWARE = certified | supported | any replaces MEEP_GPU_ALLOW_UNCERTIFIED
+# (0 | unset | 1), which is now refused by name, set to anything; each value admits what
+# its old spelling admitted. 0 ids added, 0 removed.
+# Ledger pins: the change moves meep_gpu/fastpath.py (pinned by 7 entries: the three
+# tables' driver_dispatch records, the Triton bit_identity_gate and the Metal welds
+# metal_complex_conductive_fused_pair, metal_complex_no_pml_conductive and
+# metal_cylindrical_real_fused_magnetic_pair), meep_gpu/metal_dispatch.py (the Metal
+# driver_dispatch record), and meep_gpu/fastpath_cuda.py and
+# parity/meep_gpu/gate_dispatch_fused_route.py (the CUDA driver_dispatch record); no other
+# changed file is pinned by any entry. On the committed ledgers every one of those pins
+# already differs from the tree, so no test outcome moves: the ids that walk them are
+# listed above and wait on the re-frozen round's runs on these bytes, as for the F2 fix.
+# The parity board's subject digests fastpath_cuda.py and metal_dispatch.py and moves with
+# them; it is re-recorded on the re-frozen bytes.
+#
+# Re-pointed 2026-10-12 at the 1.0 freeze after per-kernel certification (bit_parity_0_10
+# lane C3, the series entry after 132-BOARD11; owner ruling R17, amended the same day: in
+# 1.0), before the new round's route campaigns run: fastpath.DRIVER_ROUTE_FUSED_GATE,
+# fastpath_cuda.CUDA_DRIVER_ROUTE_FUSED_GATE and metal_dispatch.METAL_DRIVER_ROUTE_GATE move
+# to the round's one stamp, _2026-10-13_10. _2026-10-11_10 (the two NVIDIA route campaigns)
+# and _2026-10-12_10 (the Metal route campaign) released on the frozen commit 44232311 and
+# are spent. The 8 "Removed when" clauses above that named those campaigns now name
+# dispatch_fused_route_2026-10-13_10_cc86, dispatch_fused_route_cuda_2026-10-13_10_cc86 and
+# dispatch_metal_route_2026-10-13_10_applegpu_g13s; the CERT-1, F2X and RNM paragraphs are
+# kept as written. The same entry re-mints meep_identity.json by its tool (entry 129 moved
+# meep_gpu/from_meep.py, one of the mint's inputs). 0 ids added, 0 removed.
+#
+# Added 2026-10-12 with the Metal start of H (bit_parity_0_10 WP MZ, the CERT-5 finding on
+# ex.differential_cross_section: 240 H words at step 1, sign of zero only): launch.plan_step
+# carries MEEP's start of H around whatever serves a run's first update_H
+# (launch.StartOfHPlan), as the hand-CUDA launchers carry it; gate_metal_pml gains leg
+# first_update_h and gate_metal_fused_magnetic_pair a first_update_h row
+# (parity/meep_gpu/metal_first_update_h.py); meep_gpu/test_metal_start_of_h.py is new and
+# passes. 0 ids added, 0 removed.
+# Ledger pins: meep_gpu/metal_kernels/launch.py is named by 56 of the Metal ledger's 64
+# entries (driver_dispatch and 55 welds); parity/meep_gpu/gate_metal_pml.py by
+# metal_pml_device_gate and parity/meep_gpu/gate_metal_fused_magnetic_pair.py by
+# metal_fused_magnetic_pair_device_gate, two of those 56; no NVIDIA entry names a changed
+# file. On the committed ledgers every one of those pins already differs from the tree, so no
+# test outcome moves; on the bound ledger all 56 entries pin the frozen bytes, so those welds
+# and the Metal driver_dispatch record are owed a run on these bytes, which the R17 round
+# gives every gate.
+# No shader source changes: fingerprints.json's kernel_source_sha256 is unchanged, and its
+# host_sha256 of launch.py moves at the round's re-cut.
+#
+# Re-pointed 2026-10-13 after the round's held Metal route campaign (bit_parity_0_10 lane
+# MRF, a series entry after 137-VERSION): dispatch_metal_route_2026-10-13_10_applegpu_g13s
+# ran on the frozen commit 5b9161c and released 2 of its 4 legs, because the route gate's
+# must-diverge control residency-inner-bracket-dropped armed on launch.StartOfHPlan after the
+# run's first update_H, where it is a pass-through, and read NULL-DID-NOT-DIVERGE on
+# special_kz_2d and bfast_1d on both dispatch legs. The control now looks through a spent
+# start of H to its occupant (parity/meep_gpu/gate_dispatch_metal_route.py), and
+# metal_dispatch.METAL_DRIVER_ROUTE_GATE moves to dispatch_metal_route_2026-10-13_20; the
+# _2026-10-13_10 campaign name is spent. The 2 "Removed when" clauses above that named it now
+# name dispatch_metal_route_2026-10-13_20_applegpu_g13s; the C3 paragraph above is kept as
+# written. Ledger pins: the two changed package and harness files are pinned by one entry of
+# the four ledgers, the Metal driver_dispatch record (source_sha256 and code_sha256 of each),
+# whose pins already differ from the tree; no weld and no NVIDIA entry names either file, and
+# none of the 94 record directories of the round's stamp in the Metal bind checkout names
+# either. parity/meep_gpu/test_metal_route_inner_bracket_control.py is new and passes. 0 ids
+# added, 0 removed.
+#
+# Re-pointed 2026-10-14 at the R22 1.0 freeze (bit_parity_0_10 lane FRZ, the series entry
+# after 152-BOARD12, the last of the R22 development phase; owner ruling R22), before
+# the round's route campaigns run: meep_gpu/route_stamps.ROUND is set to 2026-10-14_10, the
+# round the chunked certification indices name (rounds/1.0/chunks.py show), so the round's
+# gate chunks (2026-10-14_10_c<k>, _m<k>) and its route campaigns share one stamp. Every
+# earlier campaign is already in route_stamps.SPENT (_2026-10-13_10 on the two NVIDIA
+# tables; _2026-10-13_10 and _2026-10-13_20 on Metal). The 3 "Removed when" clauses above
+# that named an earlier round's campaigns now name dispatch_fused_route_2026-10-14_10_cc86,
+# dispatch_fused_route_cuda_2026-10-14_10_cc86 and
+# dispatch_metal_route_2026-10-14_10_applegpu_g13s; the paragraphs that record what earlier
+# rounds ran are kept as written. route_stamps.py is in the run closure of 0 of the 250 gate
+# and probe scripts, so no gate's import record moves. The same entry re-mints
+# meep_identity.json by its tool (meep_gpu/from_meep.py, meep_gpu/capsule.py and
+# meep_gpu/sources.py, three of the mint's inputs, moved since entry 133). 0 ids added, 0
+# removed.
+#
+# Re-pointed 2026-10-15 for the R27 round (owner ruling R27: one reference environment per
+# platform, the round re-run in full): meep_gpu/route_stamps.ROUND is set to 2026-10-15_10,
+# the stamp the round's chunked indices name, before its gate chunks run. The R22 round's
+# three route campaigns join route_stamps.SPENT, and the 4 "Removed when" lines above that
+# named them now name this round's campaigns. 0 ids added, 0 removed.

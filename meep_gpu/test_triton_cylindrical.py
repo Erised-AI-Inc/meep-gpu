@@ -13,8 +13,9 @@ run, plus the facts about it that would be wrong SILENTLY rather than loudly:
   produce a smooth, plausible, entirely wrong field;
 * **the ownership mask**, derived from ``fields.IYEE_SHIFTS`` and the Dcyl boundary
   triple and compared against what the kernel hard-codes;
-* **the prefix**, including the ZERO WALL ROW on the B side — the historical defect
-  this project already paid for once;
+* **the radial scan's bindings** -- its two row vectors, its chunk-start line and the
+  ZERO WALL ROW on the B side, the historical defect this project already paid for
+  once -- each read from the array path's own builders;
 * **the two-directional load-bearingness of ``coverage._grid_reasons`` clause 6**:
   it must keep refusing Dcyl for the Cartesian predicates, and this module must not
   compose it;
@@ -40,24 +41,6 @@ from meep_gpu.triton_kernels import coverage as coverage_module
 from meep_gpu.triton_kernels import cylindrical_triton as module
 
 PACKAGE_DIR = pathlib.Path(module.__file__).parent
-
-#: THE STEP BUDGET, as three separate numbers, because conflating them is how §16's
-#: mistake was made. Stated as data so a reader of the test file finds them without
-#: opening the gate artifact.
-#:
-#: 1. the NumPy TRANSCRIPTION is bytewise identical to ``stepping.py`` for 400 steps
-#:    at four Courant numbers (three non-power-of-two);
-#: 2. the gate RAN 1000 steps on hardware;
-#: 3. the KERNEL is bytewise identical for **one launch everywhere in the sweep** and
-#:    over consecutive steps only **to step 23** at the worst row measured — first
-#:    divergence at steps 23/24/37/54 (engine leg) and 67/67/72/72 (synthetic leg),
-#:    always ONE float in an ``fu_*`` auxiliary, always a subnormal against CuPy's
-#:    flushed zero. That is plan §16's amplifying disagreement, and the same run's
-#:    controls say so: array-path-against-itself is identical 4/4 over 1000 steps, and
-#:    with ONE mantissa bit flipped it diverges at step 1 in 4/4.
-CERTIFIED_STEPS_NUMPY_TRANSCRIPTION = 400
-GATE_STEPS_RUN_ON_HARDWARE = 1000
-KERNEL_CERTIFIED_CONSECUTIVE_STEPS = 23
 
 
 #: r-high plus both z faces, in CELLS — the layer a Dcyl script actually asks for
@@ -189,9 +172,10 @@ def test_the_module_touches_no_file_another_track_owns():
     # guard constant. Nothing else from a file another track owns.
     assert {"CupyPointer", "_flat", "ENABLE_FP_FUSION"} <= imported
     assert "options=" not in code, "the guard must never ride in an options dict"
-    # The one launch site, spelled exactly as every other launch site in the package.
-    assert code.count("enable_fp_fusion=") == 1
-    assert "enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard)" in code
+    # The two launch sites (the scan, then the curl), each spelled exactly as every
+    # other launch site in the package.
+    assert code.count("enable_fp_fusion=") == 2
+    assert code.count("enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard)") == 2
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +302,7 @@ def test_the_kernel_source_masks_exactly_the_derived_axes():
     if live.cyl_pml_curl_step is None:
         live = importlib.reload(live)
     source = inspect.getsource(live.cyl_pml_curl_step.fn)
-    body = source.split("# --- ownership mask")[1].split("# --- split-field")[0]
+    body = source.split("# --- ownership mask")[1].split("# --- the PML forms")[0]
     backward, forward = body.split("else:")[0], body.split("else:")[1]
     found = {"step_D": set(), "step_B": set()}
     for label, chunk in (("step_D", backward), ("step_B", forward)):
@@ -333,65 +317,98 @@ def test_the_kernel_source_masks_exactly_the_derived_axes():
 
 
 # ---------------------------------------------------------------------------
-# The prefix — the part that stays on the array path
+# The radial scan's bindings -- each the array path's own
 # ---------------------------------------------------------------------------
 
-def test_the_B_side_prefix_carries_the_zero_wall_row():
-    """The historical defect, pinned. Without the wall row the last row's forward
-    difference becomes MINUS the whole accumulated sum (``no_wall_row``: 39 Bz floats,
-    all in the last rows)."""
-    fields, _ = build()
-    rng = np.random.default_rng(20260810)
-    fields.Ey[...] = rng.uniform(-1, 1, size=fields.Ey.shape).astype(np.float32)
-    sources = {name: getattr(fields, name) for name in ("Ex", "Ey", "Ez")}
-    prefix = module.cylindrical_prefix(np, "step_B", sources)
-    assert prefix.shape == (fields.Ey.shape[0] + 1,) + fields.Ey.shape[1:]
-
-    rows = fields.Ey.shape[0]
-    extended = np.empty((rows + 1,) + fields.Ey.shape[1:], dtype=np.float32)
-    extended[:rows] = fields.Ey
-    extended[rows] = 0
-    expected = stepping.cylindrical_rderiv_prefix(np, extended, 0.0)
-    assert prefix.tobytes() == expected.tobytes()
-
-    # And it is NOT the unextended prefix — the mutation must have somewhere to go.
-    unextended = stepping.cylindrical_rderiv_prefix(np, fields.Ey, 0.0)
-    assert prefix[:rows].tobytes() == unextended.tobytes()
-    assert prefix.shape != unextended.shape
+def _scan(sub_step, fields, pml):
+    source = fields.Ey if sub_step == "step_B" else fields.Hy
+    starts = module.radial_scan_starts(fields, pml, sub_step, None)
+    return module.RadialScan(sub_step, source, starts, np)
 
 
-def test_the_D_side_prefix_is_Hp_at_half_and_carries_no_wall_row():
-    fields, _ = build()
-    rng = np.random.default_rng(20260811)
-    fields.Hy[...] = rng.uniform(-1, 1, size=fields.Hy.shape).astype(np.float32)
-    sources = {name: getattr(fields, name) for name in ("Hx", "Hy", "Hz")}
-    prefix = module.cylindrical_prefix(np, "step_D", sources)
-    assert prefix.shape == fields.Hy.shape
-    assert prefix.tobytes() == stepping.cylindrical_rderiv_prefix(
-        np, fields.Hy, 0.5).tobytes()
-    # ir0 is load-bearing: 0.0 is a different array.
-    assert prefix.tobytes() != stepping.cylindrical_rderiv_prefix(
-        np, fields.Hy, 0.0).tobytes()
+def test_the_B_side_scan_reads_Ep_and_its_zero_wall_row():
+    """The historical defect, pinned: Bz's sum runs over Ep AND MEEP's stored wall row.
 
-
-def test_the_prefix_cannot_be_algebraically_eliminated():
-    """``prefix[i+1] - prefix[i] != increment[i+1]`` in float32.
-
-    This looks like a free optimization and is not; ``bz_flat_grouping`` is the same
-    class of error and it moved 211 Bz floats on step 0.
+    Without the wall row the last row's forward difference becomes MINUS the whole
+    accumulated sum. The kernel reads row ``nr`` as a masked ``+0``; the rows it walks
+    and the row vectors it multiplies by are ``stepping._cylindrical_rderiv_rows`` over
+    ``nr + 1`` rows at ``ir0 = 0.0``.
     """
-    fields, _ = build()
-    rng = np.random.default_rng(20260812)
-    fields.Hy[...] = rng.uniform(-1, 1, size=fields.Hy.shape).astype(np.float32)
-    prefix = stepping.cylindrical_rderiv_prefix(np, fields.Hy, 0.5)
-    counts = np.arange(fields.Hy.shape[0], dtype=np.float64) + 0.5
-    weights = counts.reshape(-1, 1, 1).astype(np.float32)
-    divisor = (counts[1:] - 0.5).reshape(-1, 1, 1).astype(np.float32)
-    weighted = fields.Hy * weights
-    increment = np.zeros_like(fields.Hy)
-    increment[1:] = (weighted[1:] - weighted[:-1]) / divisor
-    difference = prefix[1:] - prefix[:-1]
-    assert difference.tobytes() != increment[1:].tobytes()
+    fields, pml = build()
+    scan = _scan("step_B", fields, pml)
+    rows = fields.Ey.shape[0]
+    assert (scan.rows_stored, scan.rows_src, scan.n_target) == (rows, rows + 1, rows)
+    weights, rinv = stepping._cylindrical_rderiv_rows(np, rows + 1, 0.0, np.dtype(np.float32))
+    assert scan._w.tobytes() == weights.reshape(-1).tobytes()
+    assert scan._rinv.tobytes() == rinv.reshape(-1).tobytes()
+    assert scan.out.shape == fields.Bz.shape and scan.out.dtype == fields.Bz.dtype
+
+
+def test_the_D_side_scan_reads_Hp_at_half_and_carries_no_wall_row():
+    fields, pml = build()
+    scan = _scan("step_D", fields, pml)
+    rows = fields.Hy.shape[0]
+    assert (scan.rows_stored, scan.rows_src, scan.n_target) == (rows, rows, rows)
+    weights, rinv = stepping._cylindrical_rderiv_rows(np, rows, 0.5, np.dtype(np.float32))
+    assert scan._w.tobytes() == weights.reshape(-1).tobytes()
+    assert scan._rinv.tobytes() == rinv.reshape(-1).tobytes()
+    # ir0 is load-bearing: 0.0 is a different row vector.
+    other, _ = stepping._cylindrical_rderiv_rows(np, rows, 0.0, np.dtype(np.float32))
+    assert scan._w.tobytes() != other.reshape(-1).tobytes()
+
+
+@pytest.mark.parametrize("sub_step,target", [("step_B", "Bz"), ("step_D", "Dz")])
+def test_the_chunk_start_line_is_steppings_own_and_restarts_at_the_r_cut(sub_step, target):
+    """Each target row reads the sum of the chunk that owns it, which restarts at +0 on
+    that chunk's first row. The line is ``stepping._cylindrical_scan_starts`` itself,
+    and on an r-high layer it holds two segments: the half-integer Bz starts its upper
+    segment ON the cut row, the integer Dz one row above it."""
+    fields, pml = build()
+    line = module.radial_scan_starts(fields, pml, sub_step, None)
+    expected = stepping._cylindrical_scan_starts(fields, pml, target)
+    assert np.array_equal(line, np.asarray(expected).reshape(-1))
+    scan = _scan(sub_step, fields, pml)
+    assert scan.n_segs == 2 and scan.segments[0] == 0
+    cut = int(scan.segments[1])
+    first = int(np.argmax(line == cut))
+    assert first == (cut if sub_step == "step_B" else cut + 1)
+
+
+def test_one_chunk_along_r_is_the_all_zero_line():
+    fields, pml = build(thickness={"z": 5})
+    line = module.radial_scan_starts(fields, pml, "step_D", None)
+    assert stepping._cylindrical_scan_starts(fields, pml, "Dz") is None
+    assert line.dtype == np.int32 and not line.any()
+    assert _scan("step_D", fields, pml).n_segs == 1
+
+
+def test_a_start_line_the_scan_cannot_walk_is_refused_by_name():
+    """A chunk start above the row that reads its sum, or one start per CELL (a division
+    whose r cuts differ along z, DESIGN D8), is refused rather than launched."""
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+
+    fields, pml = build()
+    rows = fields.Hy.shape[0]
+    bad = np.zeros(rows, dtype=np.int32)
+    bad[3] = 3                       # Dz's row 3 cannot start its own sum there
+    with pytest.raises(ChunkLayoutRefusal, match="above the row"):
+        module.RadialScan("step_D", fields.Hy, bad, np)
+    with pytest.raises(ChunkLayoutRefusal, match="one integer chunk start per target row"):
+        module.RadialScan("step_D", fields.Hy, np.zeros((rows, 1, 2), dtype=np.int32), np)
+
+
+def test_the_scan_is_column_serial_and_stores_the_difference_not_a_prefix():
+    """The kernel walks the rows of each column in order (a parallel scan associates the
+    sum differently), restarts each segment at +0, and stores only the DIFFERENCE a
+    target row reads: the cut row holds two values, so no prefix array exists."""
+    text = (PACKAGE_DIR / "cylindrical_triton.py").read_text(encoding="utf-8")
+    body = text.split("def cyl_radial_difference(")[1].split("def cyl_pml_curl_step(")[0]
+    assert "for t in range(0, n_segs):" in body
+    assert "for g in range(s + 1, rows_src):" in body
+    assert "total = zero" in body
+    assert "after = total + tl.load(rinv + (g - 1)) * (here - prev)" in body
+    assert "diff = total - after" in body and "diff = after - total" in body
+    assert "tl.cumsum" not in body and "associative_scan" not in body
 
 
 # ---------------------------------------------------------------------------
@@ -582,6 +599,8 @@ def test_planning_a_refused_configuration_returns_None_without_needing_triton():
 
 def build_plan(sub_step):
     """A plan over NumPy arrays. It cannot LAUNCH here; everything else is real."""
+    from meep_gpu.triton_kernels.launch import chunk_bounds_for
+
     fields, pml = build()
     spec = module.SUB_STEPS[sub_step]
     arrays = {name: getattr(fields, name)
@@ -590,25 +609,50 @@ def build_plan(sub_step):
     flat = {f"{stem}_{axis}": getattr(pml, f"{stem}_{axis}{spec['suffix']}")
             for axis in "xyz" for stem in ("kms", "sinv")}
     dtdx = fields.grid.dt / fields.grid.dx
-    return module.plan_cylindrical_curl_from_arrays(
-        sub_step, arrays, flat, dtdx, np), fields, dtdx
+    plan = module.plan_cylindrical_curl_from_arrays(
+        sub_step, arrays, flat, dtdx, float(fields.grid.courant), np,
+        chunk_bounds=chunk_bounds_for(fields, pml, None),
+        scan_starts=module.radial_scan_starts(fields, pml, sub_step, None))
+    return plan, fields, dtdx
 
 
-def test_four_dtdx_is_the_float32_rounding_of_the_array_paths_python_float():
-    """``(4.0 * (dt/dx))`` is formed in float64 and cast WEAKLY onto float32 storage.
+def test_the_courant_words_are_the_runs_double_constants():
+    """The m = 0 on-axis Dz add is ``realnum(double(4*Courant) * double(Hp))``, a DOUBLE
+    product rounded once. ``4*Courant`` is not a float32 word at most Courant numbers,
+    and a scalar kernel argument is typed fp32, so the words travel by pointer as the
+    run's own double ``grid.courant`` scaled exactly."""
+    plan, fields, _ = build_plan("step_D")
+    words = plan._courant.array
+    assert words.dtype == np.float64
+    courant = float(fields.grid.courant)
+    assert words[module.COURANT_WORDS["four"]] == 4.0 * courant
+    assert words[module.COURANT_WORDS["plus"]] == courant
+    assert words[module.COURANT_WORDS["minus"]] == -courant
+    # The array path's own spelling of the add, against a float32 rounding of the
+    # factor: at Courant 0.37 the two are different words somewhere.
+    hp = np.linspace(-1.0, 1.0, 4001, dtype=np.float32)
+    double = (hp.astype(np.float64) * (4.0 * 0.37)).astype(np.float32)
+    single = hp * np.float32(4.0 * 0.37)
+    assert double.tobytes() != single.tobytes()
 
-    Recomputing ``4.0 * dtdx`` inside the kernel from an fp32 ``dtdx`` is a different
-    number, and the difference is invisible to anything but a byte comparison.
-    """
-    plan, fields, dtdx = build_plan("step_D")
-    assert plan.four_dtdx == float(np.float32(4.0 * dtdx))
-    # The array path's own spelling, run for real: a Python float times a float32
-    # volume, which NEP-50 casts weakly. The product's dtype IS float32, which is
-    # what makes the plan's rounding the right one.
-    probe = np.ones((1,), dtype=np.float32)
-    weak = (4.0 * dtdx) * probe
-    assert weak.dtype == np.float32
-    assert np.float32(plan.four_dtdx) == weak[0]
+
+def test_a_harness_plan_without_a_record_or_a_start_line_is_refused():
+    """The harness route has no default division: a defaulted one would disarm the
+    mutation legs that exist to measure it."""
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+
+    plan, fields, dtdx = build_plan("step_B")
+    spec = module.SUB_STEPS["step_B"]
+    arrays = {name: getattr(fields, name) for name in module.CURL_TARGETS + module.CURL_SOURCES}
+    arrays.update({"fu_" + n: getattr(fields, "fu_" + n) for n in module.CURL_TARGETS})
+    flat = {f"{stem}_{axis}": np.ones(1, dtype=np.float32) for axis in "xyz"
+            for stem in ("kms", "sinv")}
+    with pytest.raises(TypeError):
+        module.plan_cylindrical_curl_from_arrays("step_B", arrays, flat, dtdx, 0.5, np)
+    with pytest.raises(ChunkLayoutRefusal, match="no chunk record"):
+        module.plan_cylindrical_curl_from_arrays(
+            "step_B", arrays, flat, dtdx, 0.5, np, chunk_bounds=None,
+            scan_starts=plan.scan.starts)
 
 
 def test_the_block_size_is_the_one_kernels_py_ships():
@@ -627,33 +671,16 @@ def test_the_plan_reports_its_shape_grid_and_sub_step():
     assert module.plan_cylindrical_curl_from_arrays.__doc__
 
 
-def test_the_plan_recomputes_the_prefix_every_launch():
-    """A cached prefix is stale after one sub-step: it is a function of the CURRENT
-    sources, which the previous sub-step wrote."""
+def test_the_plan_launches_the_scan_then_the_curl_on_its_bound_output():
+    """The scan reads the CURRENT sources, which the previous sub-step wrote, so it runs
+    on every launch, before the curl, into the one output volume the curl reads."""
     plan, fields, _ = build_plan("step_D")
-    rng = np.random.default_rng(20260813)
-    fields.Hy[...] = rng.uniform(-1, 1, size=fields.Hy.shape).astype(np.float32)
-    first = plan.prefix().copy()
-    fields.Hy[...] = rng.uniform(-1, 1, size=fields.Hy.shape).astype(np.float32)
-    assert plan.prefix().tobytes() != first.tobytes()
-
-
-def test_the_three_step_budgets_are_stated_separately_and_not_conflated():
-    """The claimable budget is the SMALLEST of the three, and it is not the one run.
-
-    §16's mistake was reading a claim about step 40 as a claim about the run. Here the
-    three numbers are held apart by assertion: the transcription's 400, the 1000 the
-    gate executed, and the 23 consecutive steps the KERNEL is bytewise identical for.
-    A later edit that raises the claim has to raise the measurement first.
-    """
-    assert CERTIFIED_STEPS_NUMPY_TRANSCRIPTION == 400
-    assert GATE_STEPS_RUN_ON_HARDWARE == 1000
-    assert KERNEL_CERTIFIED_CONSECUTIVE_STEPS == 23
-    assert (KERNEL_CERTIFIED_CONSECUTIVE_STEPS
-            < CERTIFIED_STEPS_NUMPY_TRANSCRIPTION
-            < GATE_STEPS_RUN_ON_HARDWARE), (
-        "the kernel's budget is the smallest of the three and must stay labelled as "
-        "the kernel's — running longer is not certifying longer")
+    assert plan.scan.out.shape == fields.Dz.shape
+    assert plan.scan._source is fields.Hy
+    text = (PACKAGE_DIR / "cylindrical_triton.py").read_text(encoding="utf-8")
+    run = text.split("class CylindricalCurlPlan:")[1].split("def run(")[1].split("def __repr__")[0]
+    assert run.index("self.scan.run(guard)") < run.index("kernel[self._grid](")
+    assert "self._pointer(self.scan.out)" in run
 
 
 def test_the_module_states_that_the_dead_ghost_is_uncertifiable():

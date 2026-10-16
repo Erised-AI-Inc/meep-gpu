@@ -92,16 +92,26 @@ def _face(axis, index):
 
 
 def _reference_update_e(fields, pml, state, kinds=None, down="parity", up="zero"):
-    """The transcription, with one knob per ghost arm for the control legs."""
+    """The transcription, with one knob per ghost arm for the control legs.
+
+    MEEP's row: ``gs*us`` widened, each surviving term's float32 sum wall-masked,
+    scaled by the double ``0.25`` and added in double where its slot's per-chunk
+    presence holds, rounded once; then the constitutive form per chunk
+    (``stepping._apply_constitutive_regions``): the accumulation on the cells whose
+    chunk carries the component's own layer, ``E = src`` (``f_w`` untouched)
+    elsewhere."""
     grid = fields.grid
     kinds = tuple(stepping._boundary_kinds(grid, pml)) if kinds is None else kinds
     phases = stepping._mirror_phases(grid)
     walls = offdiag.wall_mask_axes(grid)
+    layout = stepping._chunk_layout(fields, pml)
+    shape = tuple(grid.shape)
     volumes = {"Ex": state["Dx"], "Ey": state["Dy"], "Ez": state["Dz"]}
     for own_axis, target in enumerate(E_NAMES):
-        constitutive = volumes[target] * fields.inverse_epsilon_for(target)
+        diagonal = volumes[target] * fields.inverse_epsilon_for(target)
         rows = fields.chi1inv_offdiagonal_for(target)
-        total = None
+        iyee = IYEE_SHIFTS[target]
+        row = None
         for offset in (1, 2):
             partner_axis = (own_axis + offset) % 3
             coefficient = rows.get("E" + AXES[partner_axis])
@@ -125,19 +135,27 @@ def _reference_update_e(fields, pml, state, kinds=None, down="parity", up="zero"
             if kinds[own_axis] in (stepping.METALLIC, stepping.MIRROR):
                 if not (kinds[own_axis] == stepping.MIRROR and up == "wrap"):
                     up_shifted[_face(own_axis, -1)] = 0
-            term = 0.25 * (product + up_shifted)
-            total = term if total is None else total + term
-        if total is not None:
-            iyee = IYEE_SHIFTS[target]
+            summed = product + up_shifted
             for axis in range(3):
                 if iyee[axis] == 0 and walls[axis]:
-                    total[_face(axis, 0)] = 0
-            constitutive = constitutive + total
+                    summed[_face(axis, 0)] = 0
+            term = 0.25 * summed.astype(np.float64)
+            if row is None:
+                row = diagonal.astype(np.float64)
+            present = (None if layout is None
+                       else layout.offdiag_presence(coefficient, iyee))
+            row = row + term if present is None else np.where(present, row + term, row)
+        constitutive = diagonal if row is None else row.astype(np.float32)
+        view = [1, 1, 1]
+        view[own_axis] = shape[own_axis]
+        inside = np.broadcast_to(np.asarray(layout.membership(own_axis, True),
+                                            dtype=bool).reshape(view), shape)
         fw = state["f_w_" + target]
-        previous = fw.copy()
-        fw[...] = constitutive
-        state[target] += getattr(pml, f"kps_{AXES[own_axis]}_h") * fw
-        state[target] -= getattr(pml, f"kms_{AXES[own_axis]}_h") * previous
+        field = state[target]
+        accumulated = field + ((getattr(pml, f"kps_{AXES[own_axis]}_h") * constitutive)
+                               - (getattr(pml, f"kms_{AXES[own_axis]}_h") * fw))
+        field[...] = np.where(inside, accumulated, constitutive)
+        fw[...] = np.where(inside, constitutive, fw)
 
 
 def _bytes(source):
@@ -352,12 +370,21 @@ def _flat(shape):
             for i, axis in enumerate(AXES) for stem in ("kps", "kms")}
 
 
+def _record(shape):
+    """The harness's every-cell chunk record (``gate_chunk_records``)."""
+    if str(PARITY_DIR) not in sys.path:
+        sys.path.insert(0, str(PARITY_DIR))
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415
+    return every_cell_record(shape)
+
+
 def _plan(shape=(8, 8, 8), codes=(2, 0, 0), walls=(0, 0, 0),
           weights=(-1.0, 1.0, 1.0), rows=None):
     return folded.plan_folded_offdiagonal_constitutive_from_arrays(
         _arrays(shape), _flat(shape),
         {"Ey": {"Ex": np.full(shape, 0.1, np.float32)}} if rows is None else rows,
-        codes, walls, weights)
+        codes, walls, weights, chunk_bounds=_record(shape),
+        presence=offdiag.ALL_PRESENT)
 
 
 def test_plan_builds_from_bare_arrays():
@@ -404,7 +431,46 @@ def test_plan_refuses_an_input_that_aliases_an_output():
         folded.plan_folded_offdiagonal_constitutive_from_arrays(
             arrays, _flat(shape),
             {"Ey": {"Ex": np.full(shape, 0.1, np.float32)}},
+            (2, 0, 0), (0, 0, 0), (-1.0, 1.0, 1.0), chunk_bounds=_record(shape),
+            presence=offdiag.ALL_PRESENT)
+
+
+def test_the_harness_builder_has_no_default_record_or_presence():
+    """A gate whose plan fell back to some default division would stop measuring
+    the forms it exists to measure: both bindings are required keywords there."""
+    shape = (8, 8, 8)
+    with pytest.raises(TypeError):
+        folded.plan_folded_offdiagonal_constitutive_from_arrays(
+            _arrays(shape), _flat(shape),
+            {"Ey": {"Ex": np.full(shape, 0.1, np.float32)}},
             (2, 0, 0), (0, 0, 0), (-1.0, 1.0, 1.0))
+
+
+def test_an_unbound_plan_composes_but_refuses_to_launch():
+    """A plan another family composes for its bindings alone binds neither the
+    record nor the presence and refuses to launch, by name."""
+    from meep_gpu.chunk_map import ChunkLayoutRefusal
+
+    shape = (8, 8, 8)
+    arrays = _arrays(shape)
+    plan = folded.FoldedOffdiagConstitutivePlan(
+        shape, 256, [arrays[n] for n in E_NAMES],
+        [arrays["f_w_" + n] for n in E_NAMES], [arrays[n] for n in D_NAMES],
+        [arrays["inv_eps_" + n] for n in E_NAMES],
+        [None, None, None, np.full(shape, 0.1, np.float32), None, None],
+        [_flat(shape)[f"{stem}_{axis}"] for axis in AXES for stem in ("kps", "kms")],
+        (2, 0, 0), (0, 0, 0), (-1.0, 1.0, 1.0))
+    with pytest.raises(ChunkLayoutRefusal, match="without a chunk record"):
+        plan.run()
+    with pytest.raises(ValueError, match="no off-diagonal presence"):
+        folded.FoldedOffdiagConstitutivePlan(
+            shape, 256, [arrays[n] for n in E_NAMES],
+            [arrays["f_w_" + n] for n in E_NAMES], [arrays[n] for n in D_NAMES],
+            [arrays["inv_eps_" + n] for n in E_NAMES],
+            [None, None, None, np.full(shape, 0.1, np.float32), None, None],
+            [_flat(shape)[f"{stem}_{axis}"] for axis in AXES
+             for stem in ("kps", "kms")],
+            (2, 0, 0), (0, 0, 0), (-1.0, 1.0, 1.0), chunk_bounds=_record(shape))
 
 
 # ---------------------------------------------------------------------------
@@ -509,11 +575,9 @@ def test_the_own_axis_up_ghost_is_an_exact_zero_on_a_fold():
     assert fields.grid.is_mirrored(0) and not fields.grid.is_metallic(0)
     assert stepping._far_reflect_rows(fields.grid)[0] is not None
     values = fields.Dx
-    shifted = stepping._shift_up(np, values, 0, stepping.MIRROR,
-                                 stepping._bloch_phases(
-                                     fields.grid,
-                                     stepping._boundary_kinds(fields.grid, pml),
-                                     values, pml)[0])
+    # The phases resolve on the way (a folded axis refuses a Bloch phase by name).
+    stepping._bloch_phases(fields.grid, stepping._boundary_kinds(fields.grid, pml), values, pml)
+    shifted = stepping._shift_up(np, values, 0, stepping.MIRROR)
     assert not np.any(shifted[_face(0, -1)])
 
 
@@ -722,10 +786,11 @@ def test_the_fold_abstention_mutant_zeroes_exactly_the_fold_lane():
     gate = _gate_module()
     source = pathlib.Path(folded.__file__).read_text()
     minimal, hits = gate.mutate_f9_wall_mask_stops_abstaining_on_the_fold(source)
-    assert hits == 4 and "WM_X," not in minimal
-    assert "WM_Y, WM_Z)" in minimal, "Ex's lanes must be untouched"
+    assert hits == 6 and "WM_X," not in minimal
+    assert "WM_Y, WM_Z, P01)" in minimal, "Ex's lanes must be untouched"
     coarse, coarse_hits = gate.mutate_f11_wall_mask_unconditional(source)
-    assert coarse_hits == 1 and "if WMA:" not in coarse
+    assert coarse_hits == 1
+    assert "def _row_add(" in coarse and "if WMA:\n            summed" not in coarse
     # The two host analogues differ: mask_fold touches only MIRROR axes.
     needle = gate._needle_state("fold_partner")
     outs = {}

@@ -19,12 +19,11 @@ late or not at all:
   no ``float()`` widening, because widening the chain changes the float32 word on 37%
   of random draws; and this seam's curl is ``step_D``, so the ELECTRIC convention
   (``-1j``) is the right one. Both are asserted against ``special_kz``'s own function;
-* **the packed record.** Five ``float2`` members then five scalars, ``itemsize`` 64
-  declared explicitly because the payload is 60 -- a record four bytes short of what
-  the shader may address is a plausible number rather than a crash;
-* **the ghost spelling**, which is this family's OWN: the certified beta complex curl
-  hoists ``const float2 zero2`` where the non-beta one spells the literal, and the lift
-  REQUIRES its own spelling rather than accepting either;
+* **the packed record.** Three ``float2`` connection words, five scalars, two beta
+  words and the chunk record, ``itemsize`` 152 declared explicitly -- a record four
+  bytes short of what the shader may address is a plausible number rather than a crash;
+* **the ghost spelling**: the lift REQUIRES the certified complex curl's own spelling
+  rather than accepting either;
 * **the lift**, reconstructed independently and diffed line-wise on both variants;
 * **the predicate's refusals**, every one answerable without a GPU, in both directions
   on the two inverted clauses (beta, and storage).
@@ -61,12 +60,8 @@ from meep_gpu.grid import Grid, Mirror  # noqa: E402
 from meep_gpu.metal_kernels import (  # noqa: E402
     arms,
     beta_complex_fused_hd_pair as beta,
-    complex_fields,
     complex_fused_hd_pair as plain,
-    folded_beta,
-    shaders,
     special_kz,
-    symmetry,
 )
 from meep_gpu.metal_kernels.device import MAX_BUFFER_BINDINGS  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
@@ -83,8 +78,6 @@ CELLS_BOARD = (API_ROOT / "parity" / "meep_gpu" / "results"
                / "fusion_matrix_metal_2026-09-11_dispatch" / "fusion_matrix.json")
 BOARD = (API_ROOT / "parity" / "meep_gpu" / "results"
          / "fusion_matrix_metal_2026-09-07_wired" / "fusion_matrix.json")
-
-ARM = "NAIVE"
 
 #: ``(variant, codes)`` the emission tests sweep. Both variants, both terminations,
 #: a live non-folded wall and the three-axis fold.
@@ -104,8 +97,10 @@ def _torch_mps() -> bool:
                 and torch.backends.mps.is_available())
 
 
-needs_mps = pytest.mark.skipif(not _torch_mps(),
-                               reason="no torch.mps device on this host")
+# The sentinel names the resource, so the skip is a declared one (the root
+# conftest.py's no-silent-skip policy) rather than a coverage gap.
+needs_mps = pytest.mark.skipif(
+    not _torch_mps(), reason="[requires_resource][mps_device] no torch.mps device on this host")
 
 
 class _FakeResidency:
@@ -142,16 +137,6 @@ def _pair(*, folds=(), beta_value=0.33, complex_storage=True, boundaries=None,
                       else (0, 2) if index in folded_indices else (2, 2)
                       for index in range(3))
     return fields, PML(grid=grid, thickness=thickness)
-
-
-def _probe():
-    record = special_kz.load_expansion_probe()
-    if record is None:
-        from conftest import requires_resource_skip  # noqa: PLC0415
-
-        requires_resource_skip("metal_beta_expansion_probe",
-                               "no beta expansion probe artifact on this host")
-    return record
 
 
 # ---------------------------------------------------------------------------
@@ -225,22 +210,23 @@ def test_the_pointer_half_of_the_signature_is_the_plain_complex_products():
     assert beta.SEPARATE_SCALAR_BINDINGS == 45
     assert beta.SEPARATE_SCALAR_BINDINGS == plain.SEPARATE_SCALAR_BINDINGS + 7
     assert beta.ROTATED_NAMES is plain.ROTATED_NAMES
-    assert beta.PARAMS_ITEMSIZE == 64
+    assert beta.PARAMS_ITEMSIZE == 152
 
 
 def test_the_ceiling_is_an_equality_on_both_variants():
     assert beta.PACKED_BINDINGS == MAX_BUFFER_BINDINGS
     for variant in beta.VARIANTS:
-        assert beta.shipped_signature_bindings(variant, ARM) == MAX_BUFFER_BINDINGS
+        assert beta.shipped_signature_bindings(variant) == MAX_BUFFER_BINDINGS
 
 
-def test_the_packed_record_declares_sixty_four_bytes_for_sixty_of_payload():
+def test_the_packed_record_declares_its_padded_size():
     """The itemsize is DECLARED because the natural record is four bytes short."""
     dtype = beta.params_record_dtype()
-    assert dtype.itemsize == beta.PARAMS_ITEMSIZE == 64
-    assert dtype.names[:5] == ("px", "py", "pz", "bp", "bm")
+    assert dtype.itemsize == beta.PARAMS_ITEMSIZE == 152
+    assert dtype.names == ("px", "py", "pz", "nx", "ny", "nz", "n_elem", "dtdx",
+                           "beta_plus", "beta_minus", "cb")
     assert [dtype.fields[name][1] for name in dtype.names] == [
-        0, 8, 16, 24, 32, 40, 44, 48, 52, 56]
+        0, 8, 16, 24, 28, 32, 36, 40, 44, 48, 52]
 
 
 @pytest.mark.requires_resource("metal_fusion_board")
@@ -260,7 +246,6 @@ def test_the_board_files_four_rows_across_this_products_two_cells():
         assert not [row for row in rows if row["withdraw_in_seam"]]
     assert len(per_cell["plain"]) == 1, per_cell["plain"]
     assert len(per_cell["folded"]) == 3, per_cell["folded"]
-
 
 
 @pytest.mark.requires_resource("metal_fusion_board")
@@ -327,14 +312,14 @@ def test_each_variant_resolves_its_codes_through_its_own_resolver():
     assert plain_codes[1] == P
 
 
+@needs_mps
 def test_the_predicate_and_the_plan_resolve_the_same_variant(monkeypatch):
     """The silent failure this one-product shape can make, closed by construction."""
     monkeypatch.setenv("MEEP_GPU_SUBNORMAL_POLICY", "flush")
-    probe = _probe()
     for folds, expected in (((), "plain"), ((("Y", 1),), "folded")):
         fields, pml = _pair(folds=folds, beta_value=0.3)
         verdict = beta.metal_beta_complex_fused_hd_pair_coverage(
-            fields, pml, (), _FakeResidency(), probe)
+            fields, pml, (), _FakeResidency())
         assert verdict.covered, list(verdict.reasons)
         assert beta.resolve_variant(fields.grid) == expected
         assert all(expected in reason or True for reason in verdict.reasons)
@@ -346,17 +331,17 @@ def test_the_predicate_and_the_plan_resolve_the_same_variant(monkeypatch):
 
 def test_the_constitutive_lift_is_beta_free_and_the_check_can_fail(monkeypatch):
     """The premise, ASSERTED at build time -- and the assertion shown to bite."""
-    body = beta.certified_h_cell(ARM)
+    body = beta.certified_h_cell()
     for name in beta.BETA_IDENTIFIERS:
         assert name not in body
 
     # THE NEGATIVE. A certified constitutive that grew a beta dependence must fail the
     # BUILD rather than step a beta run with a beta-free magnetic field.
     poisoned = body.replace("h_cell_result h_cell(",
-                            "h_cell_result h_cell(/* bpr */", 1)
+                            "h_cell_result h_cell(/* beta_plus */", 1)
     monkeypatch.setattr(plain, "h_cell_function", lambda *a, **k: poisoned)
     with pytest.raises(AssertionError, match="beta"):
-        beta.certified_h_cell(ARM)
+        beta.certified_h_cell()
 
 
 def test_the_beta_coefficient_is_this_seams_electric_convention():
@@ -391,9 +376,9 @@ def test_beta_and_dt_reach_the_coefficient_unwidened():
 
 @pytest.mark.parametrize("variant,codes", SPECIALISATIONS)
 def test_the_curl_lift_moves_exactly_the_nine_magnetic_loads(variant, codes):
-    parent = beta.beta_complex_curl_source(variant, codes, (0, 0, 0), ARM)
+    parent = beta.beta_complex_curl_source(variant, codes, (0, 0, 0))
     body = parent.split(plain._BODY_ANCHOR, 1)[1][: -len("}\n")]
-    prologue, tail = beta.welded_curl_tail(variant, codes, (0, 0, 0), ARM)
+    prologue, tail = beta.welded_curl_tail(variant, codes, (0, 0, 0))
     fused = set((prologue + tail).splitlines())
     moved = [line for line in body.splitlines() if line.strip() and line not in fused]
     assert len(moved) == 9, moved
@@ -402,48 +387,59 @@ def test_the_curl_lift_moves_exactly_the_nine_magnetic_loads(variant, codes):
 
 @pytest.mark.parametrize("variant,codes", SPECIALISATIONS)
 def test_no_magnetic_pointer_survives_in_the_curl_half(variant, codes):
-    _prologue, tail = beta.welded_curl_tail(variant, codes, (0, 0, 0), ARM)
+    _prologue, tail = beta.welded_curl_tail(variant, codes, (0, 0, 0))
     for target in range(3):
         assert f"g{target}[" not in tail, target
     assert tail.count("h_cell(") == 6
 
 
 @pytest.mark.parametrize("variant,codes", SPECIALISATIONS)
-def test_the_ghost_is_this_familys_own_hoisted_spelling(variant, codes):
-    """``zero2``, not the literal -- and the lift REQUIRES it rather than accepting both.
+def test_the_ghost_is_the_certified_curls_own_spelling(variant, codes):
+    """The lift REQUIRES the certified spelling rather than accepting any.
 
     A laxer check would pass on a parent that changed its ghost spelling, leaving six
     taps redirected past a DIFFERENT ghost.
     """
-    _prologue, tail = beta.welded_curl_tail(variant, codes, (0, 0, 0), ARM)
-    assert beta._GHOST_DECLARATION in tail
+    _prologue, tail = beta.welded_curl_tail(variant, codes, (0, 0, 0))
+    assert beta._GHOST == "float2(0.0f, 0.0f)"
     ghosts = [line for line in tail.splitlines() if " ? h_cell(" in line]
     assert len(ghosts) == 6
     for line in ghosts:
         assert line.endswith(f" : {beta._GHOST};"), line
 
 
+def _pass_block(source):
+    from meep_gpu.metal_kernels import folded_pass
+
+    start = source.index(folded_pass.FOLDED_PASS_BEGIN)
+    end = source.index(folded_pass.FOLDED_PASS_END, start)
+    return source[start:end + len(folded_pass.FOLDED_PASS_END)]
+
+
 @pytest.mark.parametrize("variant,codes", SPECIALISATIONS)
-def test_the_beta_insert_survives_the_lift_character_for_character(variant, codes):
-    _prologue, tail = beta.welded_curl_tail(variant, codes, (0, 0, 0), ARM)
-    for line in special_kz._COMPLEX_BETA_INSERT.splitlines():
-        assert line in tail, line
+def test_the_beta_pass_survives_the_lift_character_for_character(variant, codes):
+    _prologue, tail = beta.welded_curl_tail(variant, codes, (0, 0, 0))
+    block = _pass_block(beta.beta_complex_curl_source(variant, codes, (0, 0, 0)))
+    assert "float2 bi0 = -bq0;" in block
+    assert block in tail
 
 
 @pytest.mark.parametrize("codes", [(P, MP, P), (M, MM, P), (MM, MM, MM)])
-def test_the_folded_variant_is_the_plain_template_plus_the_top_mask(codes):
-    """``folded_beta_bloch_curl_template`` is the parent with ONE slot inserted."""
-    derived = folded_beta.folded_beta_bloch_curl_template()
-    assert derived.count("__TOP_MASK__") == 1
-    assert special_kz._BETA_BLOCH_CURL_TEMPLATE in derived.replace(
-        folded_beta._TOP_MASK_BLOCK, "")
+def test_the_folded_variant_carries_the_same_pass_on_its_own_mask_rows(codes):
+    """Both variants' passes are :func:`.special_kz.beta_pass` on the source's own rows."""
+    from meep_gpu.metal_kernels import folded_pass
+
+    for variant, specialised in (("plain", (P, P, P)), ("folded", codes)):
+        source = beta.beta_complex_curl_source(variant, specialised, (0, 0, 0))
+        rows = folded_pass.ownership_rows(source)
+        assert _pass_block(source) == special_kz.beta_pass(rows, True).rstrip("\n")
 
 
 def test_the_two_variants_emit_different_sources_and_the_same_signature():
     plain_source = beta.beta_complex_fused_hd_pair_source(
-        "plain", (P, P, P), (0, 0, 0), ARM)
+        "plain", (P, P, P), (0, 0, 0))
     folded_source = beta.beta_complex_fused_hd_pair_source(
-        "folded", (P, MP, P), (0, 0, 0), ARM)
+        "folded", (P, MP, P), (0, 0, 0))
     assert plain_source != folded_source
     for source in (plain_source, folded_source):
         signature = source.split(f"kernel void {beta.KERNEL}(", 1)[1]
@@ -459,7 +455,7 @@ def test_both_halves_read_one_sub_lattice_which_is_what_makes_thirty_pointers():
 
 
 def test_the_enumeration_never_offers_a_phase_on_a_non_periodic_axis():
-    labels = beta.enumerate_sources(ARM)
+    labels = beta.enumerate_sources()
     assert labels
     for label in labels:
         codes = [int(character) for character in label.split("/")[2]]
@@ -478,18 +474,19 @@ def flush_policy(monkeypatch):
     return "flush"
 
 
+@needs_mps
 @pytest.mark.parametrize("folds", [(), (("Y", 1),)])
 def test_the_predicate_admits_both_of_this_products_cells(flush_policy, folds):
     fields, pml = _pair(folds=folds, beta_value=0.3)
     verdict = beta.metal_beta_complex_fused_hd_pair_coverage(
-        fields, pml, (), _FakeResidency(), _probe())
+        fields, pml, (), _FakeResidency())
     assert verdict.covered, list(verdict.reasons)
 
 
 def test_a_beta_free_complex_grid_is_refused_naming_beta(flush_policy):
     fields, pml = _pair(beta_value=0.0)
     verdict = beta.metal_beta_complex_fused_hd_pair_coverage(
-        fields, pml, (), _FakeResidency(), _probe())
+        fields, pml, (), _FakeResidency())
     assert not verdict.covered
     assert any("beta" in reason for reason in verdict.reasons)
 
@@ -498,14 +495,14 @@ def test_the_plain_complex_product_admits_what_this_one_refuses(flush_policy):
     """THE OTHER DIRECTION of the beta clause."""
     fields, pml = _pair(beta_value=0.0)
     verdict = plain.metal_complex_fused_hd_pair_coverage(
-        fields, pml, (), _FakeResidency(), complex_fields.load_expansion_probe())
+        fields, pml, (), _FakeResidency())
     assert verdict.covered, list(verdict.reasons)
 
 
 def test_real_storage_is_refused_naming_the_other_product(flush_policy):
     fields, pml = _pair(complex_storage=False)
     verdict = beta.metal_beta_complex_fused_hd_pair_coverage(
-        fields, pml, (), _FakeResidency(), _probe())
+        fields, pml, (), _FakeResidency())
     assert not verdict.covered
     assert any("complex64" in reason or "real" in reason
                for reason in verdict.reasons)
@@ -514,7 +511,7 @@ def test_real_storage_is_refused_naming_the_other_product(flush_policy):
 def test_an_undeclared_source_list_is_refused_by_name(flush_policy):
     fields, pml = _pair()
     verdict = beta.metal_beta_complex_fused_hd_pair_coverage(
-        fields, pml, None, _FakeResidency(), _probe())
+        fields, pml, None, _FakeResidency())
     assert not verdict.covered
     assert any("not declared" in reason for reason in verdict.reasons)
 
@@ -530,7 +527,7 @@ def test_a_standing_integrated_electric_withdraw_is_refused_by_name(flush_policy
 
     fields, pml = _pair()
     verdict = beta.metal_beta_complex_fused_hd_pair_coverage(
-        fields, pml, (_Source(),), _FakeResidency(), _probe())
+        fields, pml, (_Source(),), _FakeResidency())
     assert not verdict.covered
     joined = " | ".join(verdict.reasons)
     assert "HOISTS_THE_WITHDRAW = False" in joined
@@ -542,7 +539,7 @@ def test_a_grid_with_no_fold_answer_is_refused_rather_than_guessed(flush_policy)
         grid = None
 
     verdict = beta.metal_beta_complex_fused_hd_pair_coverage(
-        _Fields(), None, (), _FakeResidency(), _probe())
+        _Fields(), None, (), _FakeResidency())
     assert not verdict.covered
     assert any("resolves its variant" in reason for reason in verdict.reasons)
 
@@ -558,7 +555,7 @@ def test_every_shipped_specialisation_compiles_on_this_host(variant, codes):
 
     os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
     library = compile_source(
-        beta.beta_complex_fused_hd_pair_source(variant, codes, (0, 0, 0), ARM))
+        beta.beta_complex_fused_hd_pair_source(variant, codes, (0, 0, 0)))
     assert hasattr(library, beta.KERNEL)
 
 

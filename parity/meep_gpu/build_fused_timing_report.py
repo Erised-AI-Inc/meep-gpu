@@ -913,9 +913,21 @@ def metal_section(rows: Sequence[Dict[str, Any]],
     return out
 
 
+def gpu_only(row: Dict[str, Any]) -> bool:
+    """A ``--legs gpu-only`` row: the fused leg alone, no singles and no array leg, so no
+    fusion number and no ratio. It is not a fused-product row."""
+    return row.get("legs_mode") == "gpu-only"
+
+
 def render(rows: List[Dict[str, Any]], title: str,
            sweep: Sequence[Dict[str, Any]] = (),
            sweep_before: Sequence[Dict[str, Any]] = ()) -> str:
+    # GPU-ONLY ROWS ARE LEFT OUT BY NAME: they time the fused leg alone and carry no
+    # ratio against the singles this document is about.
+    left_out = [r for r in rows if gpu_only(r)]
+    rows = [r for r in rows if not gpu_only(r)]
+    sweep = [r for r in sweep if not gpu_only(r)]
+    sweep_before = [r for r in sweep_before if not gpu_only(r)]
     # TWO POPULATIONS. A row whose control fell through to the other table has NO
     # fusion number -- but its ``vs array`` ratio is untouched by which table the
     # control used, so refusing the whole row would throw away a good measurement to
@@ -937,7 +949,9 @@ def render(rows: List[Dict[str, Any]], title: str,
     out = [f"# {title}", ""]
 
     if not rows:
-        return "\n".join(out + ["No rows.", ""])
+        return "\n".join(out + ["No rows." + (
+            f" {len(left_out)} GPU-only row(s) (`--legs gpu-only`: one leg, no fusion "
+            f"number) are left out." if left_out else ""), ""])
 
     stamps = {r.get("utc", "")[:10] for r in rows if r.get("utc")}
     tables = sorted({t for r in rows for t in
@@ -947,7 +961,10 @@ def render(rows: List[Dict[str, Any]], title: str,
         f"{len(every_good)} timed cleanly, of which "
         f"**{sum(1 for r in every_good if same_table(r))} carry a fusion "
         f"number**; dispatched by {', '.join(tables) or 'no table'}, "
-        f"{'/'.join(sorted(stamps))}.",
+        f"{'/'.join(sorted(stamps))}."
+        + (f" {len(left_out)} GPU-only row(s) (`--legs gpu-only`: one leg, no fusion "
+           f"number) are left out: {', '.join(sorted({str(r.get('case')) for r in left_out}))}."
+           if left_out else ""),
         "",
         "Every number is a median over the campaign's AB/BA windows, measured from "
         "one frozen state with monitors detached. A row reaches the table below "

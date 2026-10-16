@@ -47,7 +47,8 @@ def _opted_in_and_quiet(monkeypatch):
     monkeypatch.setenv(fastpath.DISPATCH_ENABLE, "1")
     monkeypatch.delenv(fastpath.DISPATCH_LOG, raising=False)
     monkeypatch.delenv(fastpath.WARM_SWITCH, raising=False)
-    monkeypatch.delenv("MEEP_GPU_ALLOW_UNCERTIFIED", raising=False)
+    monkeypatch.delenv(fastpath.HARDWARE_SWITCH, raising=False)
+    monkeypatch.delenv(fastpath.RETIRED_HARDWARE_SWITCH, raising=False)
     fastpath.reset_dispatch_announcements()
     yield
     fastpath.reset_dispatch_announcements()
@@ -430,7 +431,7 @@ def test_one_family_short_refuses_the_card_and_names_the_weld(
     """A partial round certifies nothing: the arm it did not cover could be the one
     serving a slot. Restricted to certified identities, the card is refused and the
     refusal names what would have to be re-run."""
-    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, "0")
+    monkeypatch.setenv(fastpath.HARDWARE_SWITCH, fastpath.HARDWARE_CERTIFIED)
     skipped = "bit_identity_gate"
     certified_on_9_0(skip_triton=skipped)
     assert fastpath.validated_compute_capabilities() == ("8.6",)
@@ -442,7 +443,7 @@ def test_one_family_short_refuses_the_card_and_names_the_weld(
     record = fastpath.last_dispatch_report()
     triton = record["tables"]["triton"]
     assert triton["candidate"] is False and "9.0" in triton["refused_because"]
-    assert triton["refused_because"].endswith(fastpath.CERTIFIED_ONLY_TAIL)
+    assert triton["refused_because"].endswith(fastpath.CERTIFIED_SCOPE_TAIL)
     assert skipped in triton["welds_without_a_live_run_here"]
     # ...and the architecture that WAS fully certified still dispatches.
     assert fastpath.plan_fast_path(object(), object(),
@@ -488,11 +489,11 @@ def test_a_supported_card_no_family_ran_on_is_refused_only_when_restricted(
     install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
                                             {"step_B": "PML"}))
     grid = cupy_like_grid_with_device(capability=(8, 9), name=b"NVIDIA L40S")
-    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, "0")
+    monkeypatch.setenv(fastpath.HARDWARE_SWITCH, fastpath.HARDWARE_CERTIFIED)
     assert fastpath.plan_fast_path(object(), object(), grid) is None
     assert "8.9" in fastpath.last_dispatch_report()["refused_because"]
     # By default it runs, uncertified, and names the welds no run covers.
-    monkeypatch.delenv(fastpath.UNCERTIFIED_SWITCH)
+    monkeypatch.delenv(fastpath.HARDWARE_SWITCH)
     plan = fastpath.plan_fast_path(object(), object(), grid)
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
     assert plan.report()["certified"] is False
@@ -531,20 +532,6 @@ def test_a_route_campaign_names_the_architecture_it_ran_on(capability, expected)
 def test_the_licence_belongs_to_the_table_that_composes_first():
     assert fastpath.primary_table("8.6") == fastpath.NVIDIA_TABLE_PRECEDENCE[0]
     assert fastpath.primary_table("9.0") is None
-
-
-def test_an_expansion_probe_from_another_architecture_licenses_nothing_here():
-    """Which arm a platform's compiler takes is a per-architecture measurement, and
-    the table it keys on names the backend and the machine but not the card."""
-    probe = {"environment": {"backend": "cupy", "machine": "x86_64",
-                             "compute_capability": "8.6"}}
-    assert fastpath._probe_capability_reasons(probe, "8.6") == []
-    assert fastpath._probe_capability_reasons(probe, None) == []
-    assert fastpath._probe_capability_reasons({"environment": {}}, "9.0") == []
-    dropped = fastpath._probe_capability_reasons(probe, "9.0")
-    assert len(dropped) == 1 and "licenses nothing here" in dropped[0]
-    assert fastpath._probe_capability_reasons(
-        {"environment": {"cc": "86"}}, "8.6") == []
 
 
 def test_the_migration_is_recorded_in_both_ledgers_and_states_no_digest():

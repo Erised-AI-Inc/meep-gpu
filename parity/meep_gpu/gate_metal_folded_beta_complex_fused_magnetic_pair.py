@@ -91,30 +91,28 @@ THE ELEVEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
 
 LEGS
   0  policy            the resolved policy, and ``keep`` refused by name
-  1  expansion         BOTH probes bind the arm; missing / ambiguous / wrong-backend /
-                       disagreeing probes must each REFUSE
-  2  binding_ceiling   42 separate bindings must FAIL; 27 pointers + one packed
+  1  binding_ceiling   42 separate bindings must FAIL; 27 pointers + one packed
                        Params& must COMPILE, LAUNCH and read back every field
-  3  transcription     the curl head, the five recurrence statements, the beta insert,
+  2  transcription     the curl head, the five recurrence statements, the beta insert,
                        the constitutive half and both fills are the certified text
-  4  parity_chain_order  the composed parity is a CHAIN; its ORDER moves bytes and so
+  3  parity_chain_order  the composed parity is a CHAIN; its ORDER moves bytes and so
                        does folding it into one word
-  5  product           complete steps, per-step byte compare, launch counters, the
+  4  product           complete steps, per-step byte compare, launch counters, the
                        signed-zero seeding floor, the subnormal census
-  6  movement_role     the DISPATCH ALONE: what must move, what must not
-  7  separate_control  the certified folded beta products as two dispatches
-  8  refusal           the source seam, both sibling scopes, real storage, 3-D beta
-  9  value_classes     three classes identical; the band seed FIRES the census
- 10  moved_coefficient predicted observability vs measured catch, on two fixtures
- 11  byte_neutral_control  the register-vs-reload edit must NOT diverge
- 12  mutation          twenty-six shader defects + three host defects, each CAUGHT
- 13  null_pairs        four PREDICTED nulls, each confirmed null here and CAUGHT on
+  5  movement_role     the DISPATCH ALONE: what must move, what must not
+  6  separate_control  the certified folded beta products as two dispatches
+  7  refusal           the source seam, both sibling scopes, real storage, 3-D beta
+  8  value_classes     three classes identical; the band seed FIRES the census
+  9  moved_coefficient predicted observability vs measured catch, on two fixtures
+ 10  byte_neutral_control  the register-vs-reload edit must NOT diverge
+ 11  mutation          twenty-six shader defects + three host defects, each CAUGHT
+ 12  null_pairs        four PREDICTED nulls, each confirmed null here and CAUGHT on
                        its complementary fixture
- 13b null_everywhere   the TWO chain collapses, null on every fixture this family can
+ 12b null_everywhere   the TWO chain collapses, null on every fixture this family can
                        build, scored on NOT diverging with their ±1 precondition
                        measured on every product row
- 14  arm_table         registered unwired, is_weld, and unreachable from arms_for
- 15  disarm            the same harness, shipped bytes, must not diverge
+ 13  arm_table         registered unwired, is_weld, and unreachable from arms_for
+ 14  disarm            the same harness, shipped bytes, must not diverge
 
 Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 """
@@ -141,12 +139,14 @@ for _path in (str(API_ROOT), str(HERE)):
 import numpy as np  # noqa: E402
 
 import metal_composition_matrix as matrix  # noqa: E402
+from gate_chunk_records import every_cell_record, layer_record  # noqa: E402
+from meep_gpu.chunk_map import membership_from_record  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
 from meep_gpu.metal_kernels import (  # noqa: E402
-    arms as metal_arms, complex_fields, folded_beta, folded_complex,
-    folded_beta_complex_fused_magnetic_pair as family, launch as metal_launch,
-    shaders, special_kz, subnormal,
+    arms as metal_arms, chunk_bounds as metal_chunk_bounds, folded_beta, folded_complex_fused_magnetic_pair as parent,
+    folded_beta_complex_fused_magnetic_pair as family, folded_pass,
+    launch as metal_launch, shaders, special_kz, subnormal,
 )
 from meep_gpu.metal_kernels.device import (  # noqa: E402
     Residency, compile_source, metal_frontend_version,
@@ -334,12 +334,6 @@ COEFFICIENT_AXIS = 1
 NEAR_PARITY_AXIS = 1
 FAR_PARITY_AXIS = 0
 
-#: Bound by leg ``expansion`` and read by every later leg. Deliberately NOT defaulted:
-#: a leg that ran before the probes would bind a guess.
-EXPANSION: Optional[str] = None
-PARITY_PROBE: Any = None
-BETA_PROBE: Any = None
-
 
 def log(message: str) -> None:
     print(message, flush=True)
@@ -460,12 +454,47 @@ def compare(left: Any, right: Any) -> Dict[str, int]:
     return {name: n for name in sorted(a) if (n := differing(a[name], b[name]))}
 
 
+#: ``(dsig, dsigu)`` per curl target (``stepping.CURL_CYCLE``).
+_CURL_CYCLE: Tuple[Tuple[int, int], ...] = ((1, 2), (2, 0), (0, 1))
+
+
+def contract_untouched_auxiliaries(fields: Any, pml: Any) -> Tuple[str, ...]:
+    """The auxiliary volumes the per-chunk forms never touch under the case's record.
+
+    An ``fu_`` word is read and written only where its target's dsigu layer is carried,
+    an ``f_w_`` word only where its own (dsigw) layer is -- on the record's membership
+    lines, half-integer for the B curl and ``update_E``, integer for the D curl and
+    ``update_H``. A volume whose line is empty (the 2-D cases' invariant z, or an axis
+    with no layer) moves on NO path, the array path's included, so the movement floors
+    cannot require it to move; it is still compared word for word. Read off the record
+    the plan binds (:func:`gate_chunk_records.layer_record`), as the parent weld's gate
+    reads it.
+    """
+    record = layer_record(fields.grid, pml)
+    shape = tuple(fields.grid.shape)
+
+    def empty(half: bool, axis: int) -> bool:
+        return not membership_from_record(record, half, axis, int(shape[axis])).any()
+
+    out: List[str] = []
+    for side, half in (("B", True), ("D", False)):
+        for target, (_dsig, dsigu) in enumerate(_CURL_CYCLE):
+            if empty(half, dsigu):
+                out.append(f"fu_{side}{'xyz'[target]}")
+    for side, half in (("H", False), ("E", True)):
+        for axis in range(3):
+            if empty(half, axis):
+                out.append(f"f_w_{side}{'xyz'[axis]}")
+    return tuple(out)
+
+
 def plan_for(fields: Any, pml: Any, residency: Residency,
              functions: Optional[Mapping[str, Any]] = None) -> Any:
-    """The shipped plan, with BOTH probe artifacts threaded rather than re-read."""
+    """The shipped plan, with BOTH probe artifacts threaded rather than re-read, on
+    the one-rank division the array path steps by default (``layer_record``)."""
     return family.plan_metal_folded_beta_complex_fused_magnetic_pair(
         fields, pml, sources=(), residency=residency, functions=functions,
-        probe=PARITY_PROBE, beta_probe=BETA_PROBE)
+        chunk_bounds=layer_record(fields.grid, pml))
 
 
 # ---------------------------------------------------------------------------
@@ -528,6 +557,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
              patch: Optional[Callable[[Any, Any, Residency], None]] = None,
              value_class: str = "gaussian",
              expect_subnormal_free: bool = True,
+             require_every_volume_moved: bool = True,
              ) -> Dict[str, Any]:
     """Step the two engines side by side and compare per COMPLETE step."""
     reference, reference_pml = build(keywords, seed, pml_faces, value_class)
@@ -540,7 +570,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     plan = plan_for(actual, actual_pml, residency, functions)
     if plan is None:
         reasons = family.metal_folded_beta_complex_fused_magnetic_pair_coverage(
-            actual, actual_pml, (), residency, PARITY_PROBE, BETA_PROBE).reasons
+            actual, actual_pml, (), residency).reasons
         return {"passed": False,
                 "reason": "the folded beta complex fused magnetic pair was refused",
                 "refusals": list(reasons)}
@@ -587,9 +617,13 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     # The WHOLE-STEP floor: every compared array must move, because every live pass
     # runs. The role split is a DIFFERENT and stronger measurement and it lives in leg
     # ``movement_role``, which runs the dispatch alone.
+    untouched = contract_untouched_auxiliaries(actual, actual_pml)
+    required_still = [name for name in still if name not in untouched]
     return {
         "passed": bool(identical and (clean or not expect_subnormal_free)
-                       and launches_ok and not still),
+                       and launches_ok
+                       and (not required_still or not require_every_volume_moved)),
+        "contract_untouched_auxiliaries": list(untouched),
         "bit_identical": identical,
         "subnormal_free": clean,
         "seeded_signed_zeros": dict(zeros),
@@ -610,14 +644,13 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
         "live_passes": list(live), "replaces": list(plan.replaces_sub_steps),
         "boundary_codes": list(plan.codes), "phased": list(plan.phased),
         "phases": list(plan.phases),
-        "parity_values": [list(value) for value in plan.parity_values],
-        "far_parity_values": [list(value) for value in plan.far_parity_values],
-        "beta_values": [list(value) for value in plan.beta_values],
+        "parity_values": [float(value) for value in plan.parity_values],
+        "far_parity_values": [float(value) for value in plan.far_parity_values],
+        "beta_values": [float(value) for value in plan.beta_values],
         "reflect_rows": list(plan.reflect),
         "zero_metal": list(plan.zero_metal),
         "carried_ghost_axes": [list(axes) for axes in plan.carried_axes],
         "carried_far_ghost_axes": [list(axes) for axes in plan.far_carried_axes],
-        "expansion": plan.expansion,
         "has_offdiagonal_epsilon": bool(
             getattr(actual, "has_offdiagonal_epsilon", False)),
         "mirrors": len(residency.names),
@@ -660,8 +693,9 @@ def leg_movement_role(name: str, keywords: Mapping[str, Any], seed: int,
     residency.sync_out()
     after = state_of(fields)
     moved = {key: differing(before[key], after[key]) for key in before}
+    untouched = contract_untouched_auxiliaries(fields, pml)
     written_still = sorted(key for key in WRITTEN_NAMES
-                           if key in moved and moved[key] == 0)
+                           if key in moved and moved[key] == 0 and key not in untouched)
     read_disturbed = sorted(key for key in READ_ONLY_NAMES
                             if key in moved and moved[key])
     return {
@@ -705,10 +739,13 @@ def run_separate_control(keywords: Mapping[str, Any], seed: int, steps: int,
     fused, fused_pml = build(keywords, seed, pml_faces)
 
     separate_residency = Residency()
+    record = layer_record(separate.grid, separate_pml)
     curl = folded_beta.plan_folded_beta_bloch_pml_curl(
-        separate, separate_pml, "step_B", separate_residency, probe=BETA_PROBE)
+        separate, separate_pml, "step_B", separate_residency,
+        chunk_bounds=record)
     magnetic = folded_beta.plan_folded_beta_complex_constitutive(
-        separate, separate_pml, "H", separate_residency, probe=BETA_PROBE)
+        separate, separate_pml, "H", separate_residency,
+        chunk_bounds=record)
     fused_residency = Residency()
     plan = plan_for(fused, fused_pml, fused_residency)
     if curl is None or magnetic is None or plan is None:
@@ -775,7 +812,7 @@ def _specialisation(fields: Any, pml: Any) -> Dict[str, Any]:
         "the shipped plan was refused for a case the gate arms mutations on; every "
         "needle below would then be applied to a source nothing launches")
     return {"codes": plan.codes, "phased": plan.phased, "walls": plan.zero_metal,
-            "phases": plan.phases, "expansion": plan.expansion,
+            "phases": plan.phases,
             "near": plan.parity_values, "far": plan.far_parity_values,
             "reflect": plan.reflect, "shape": plan.shape,
             "carried": plan.carried_axes, "far_carried": plan.far_carried_axes}
@@ -800,42 +837,58 @@ def needle(source: str, old: str, new: str, count: int = 1) -> str:
 #: ``main`` can check that case's specialisation carries the feature the line depends
 #: on before the edit is applied — the dead-branch guard.
 SHADER_EDITS: Dict[str, Tuple[str, str, str, int, str]] = {
-    # ---- THE BETA INSERT: the whole reason this family is not its twin -----------
+    # ---- THE BETA PASS: the whole reason this family is not its twin -------------
     "beta_signs_swapped": (
         FOLD_CASE,
-        "float bpr = prm.bp.x, bpi = prm.bp.y;\n    "
-        "float bmr = prm.bm.x, bmi = prm.bm.y;",
-        "float bpr = prm.bm.x, bpi = prm.bm.y;\n    "
-        "float bmr = prm.bp.x, bmi = prm.bp.y;", 1,
-        "the two coefficients are +i*beta and -i*beta; swapping them is the single "
-        "most likely slip in binding the pair and is not a crash"),
+        "float beta_plus = prm.beta_plus, beta_minus = prm.beta_minus;",
+        "float beta_plus = prm.beta_minus, beta_minus = prm.beta_plus;", 1,
+        "the two words are +2*pi*beta*dt and -2*pi*beta*dt; swapping them is the "
+        "single most likely slip in binding the pair and is not a crash"),
     "beta_term_dropped": (
-        FOLD_CASE, "curl0 = curl0 - c_mul(float2(bpr, bpi), b);",
-        "// beta term dropped", 1,
+        FOLD_CASE, "float2 bi0 = -bq0;", "float2 bi0 = float2(0.0f, 0.0f);", 1,
         "a has_beta=0 build IS the shipped folded complex weld, so this must diverge "
         "or the two products would be the same kernel"),
     "beta_term_sign_flipped": (
-        FOLD_CASE, "curl0 = curl0 - c_mul(float2(bpr, bpi), b);",
-        "curl0 = curl0 + c_mul(float2(bpr, bpi), b);", 1,
-        "the array path adds the NEGATED product (stepping._special_kz_beta_term)"),
+        FOLD_CASE, "float2 bi0 = -bq0;", "float2 bi0 = bq0;", 1,
+        "the array path's increment is the NEGATED quarter turn "
+        "(stepping._special_kz_beta_term), which the ladder then subtracts"),
     "beta_partner_takes_the_shifted_operand": (
-        FOLD_CASE, "curl1 = curl1 - c_mul(float2(bmr, bmi), a);",
-        "curl1 = curl1 - c_mul(float2(bmr, bmi), a_y);", 1,
-        "the beta partners are the unrotated CENTERS; reaching for the shifted "
-        "operand is the slip the lifted head's comment exists to prevent"),
+        FOLD_CASE, "float2(-(beta_minus * a.y), beta_minus * a.x)",
+        "float2(-(beta_minus * a_y.y), beta_minus * a_y.x)", 1,
+        "the beta partners are the unconnected CENTRES; reaching for the shifted "
+        "operand is the slip the pass's partner rule exists to prevent"),
+    # THE MASK AND AUXILIARY ROWS TAKE TARGET 1 OR 2, NOT 0: every case of this
+    # product is 2-D (beta), so z carries no layer, target 0 (dsigu z) never writes
+    # fu, and a masked plane is restored in B by the fills -- a target-0 row would be
+    # a structural null under the per-chunk forms. Target 1's dsigu axis is x, which
+    # the deep fixture's layer reaches on both of its mask planes.
+    "beta_increment_unmasked_at_cell_zero": (
+        FOLD_CASE, "    bi1 = at_y ? float2(0.0f, 0.0f) : bi1;\n", "", 1,
+        "the pass's increment is masked where the curl is (stepping._special_kz_beta_"
+        "term masks to +0 on unowned cells); unmasked, the fold's own cell 0 steps"),
+    "beta_increment_unmasked_at_the_top_plane": (
+        FOLD_CASE, "    bi1 = last_x ? float2(0.0f, 0.0f) : bi1;\n", "", 1,
+        "the top plane of a folded PERIODIC axis is the far fill's to write; the pass "
+        "must leave it as the curl does"),
+    "beta_ladder_ignores_dsigu": (
+        FOLD_CASE,
+        "v1 = du1 ? (v1 - float2(si_x * bd1.x, si_x * bd1.y)) : (v1 - bd1);",
+        "v1 = v1 - bd1;", 1,
+        "the additive ladder's dsigu branch dropped on target 1: MEEP's dsigu chunk "
+        "takes f -= sinv_dsigu * df (stepping._apply_folded_increment)"),
     # ---- THE PARITY WORDS -------------------------------------------------------
     "near_parity_forced_to_plus_one": (
-        FOLD_CASE, "c_mul(mp1,", "c_mul(float2(1.0f, 0.0f),", -1,
+        FOLD_CASE, "c_mul_coefficient_left(mp1,", "c_mul_coefficient_left(1.0f,", -1,
         "the near mirror parity on the odd axis is -1; dropping it images the wrong "
         "sign into the ghost plane"),
     "far_parity_forced_to_plus_one": (
-        FOLD_CASE, "c_mul(fp0,", "c_mul(float2(1.0f, 0.0f),", -1,
+        FOLD_CASE, "c_mul_coefficient_left(fp0,", "c_mul_coefficient_left(1.0f,", -1,
         "the far parity on the even axis is -1 (mirror_parity is phase*(1-2*iyee), so "
         "near and far are opposite on one axis)"),
     "far_parity_takes_the_near_word": (
-        FOLD_CASE, "c_mul(fp0,", "c_mul(mp0,", -1,
+        FOLD_CASE, "c_mul_coefficient_left(fp0,", "c_mul_coefficient_left(mp0,", -1,
         "the far word is MINUS the near one; a struct member read one slot over is a "
-        "plausible complex number rather than garbage"),
+        "plausible number rather than garbage"),
     # ---- THE GHOST GEOMETRY -----------------------------------------------------
     "near_source_index_moved": (
         FOLD_CASE, "int g1_n_i = ii - 2 * nzi;", "int g1_n_i = ii - 1 * nzi;", 1,
@@ -845,17 +898,12 @@ SHADER_EDITS: Dict[str, Tuple[str, str, str, int, str]] = {
         FOLD_CASE, "int g2_j_i = ii + ((nyi - 1) - reflect_y) * nzi;",
         "int g2_j_i = ii + 0 * ((nyi - 1) - reflect_y) * nzi;", 1,
         "a zeroed far offset writes the ghost onto the source cell itself"),
-    "ghost_coefficient_reused_from_source": (
-        FOLD_CASE, "float g1_n_kp = kp1[0], g1_n_km = km1[0];",
-        "float g1_n_kp = kp_1, g1_n_km = km_1;", 1,
-        "the DESTINATION's own coefficient entry, not the source thread's at index 2; "
-        "observable only where the absorber reaches stored cell 2"),
     # ---- THE MASKS --------------------------------------------------------------
     "ownership_mask_dropped": (
-        FOLD_CASE, "    curl0 = at_x ? float2(0.0f, 0.0f) : curl0;\n", "", 1,
+        FOLD_CASE, "    curl1 = at_y ? float2(0.0f, 0.0f) : curl1;\n", "", 1,
         "stepping._mask_non_owned_cells zeroes the component's own cell 0"),
     "top_plane_mask_dropped": (
-        FOLD_CASE, "    curl0 = last_y ? float2(0.0f, 0.0f) : curl0;\n", "", 1,
+        FOLD_CASE, "    curl1 = last_x ? float2(0.0f, 0.0f) : curl1;\n", "", 1,
         "the top plane of a folded PERIODIC axis sits past big_corner; the FILL writes "
         "it and the curl must not"),
     # ---- THE CURL ---------------------------------------------------------------
@@ -863,26 +911,39 @@ SHADER_EDITS: Dict[str, Tuple[str, str, str, int, str]] = {
         FOLD_CASE, "int si = i + 1, sj = j + 1, sk = k + 1;",
         "int si = i - 1, sj = j - 1, sk = k - 1;", 1,
         "step_B is FORWARD; step_D's negated strides are a different product"),
-    "curl_parens_flattened": (
-        FOLD_CASE, "float2 t0 = ((c_y - c) + (b - b_z));",
-        "float2 t0 = (c_y - c + b - b_z);", 1,
-        "shaders.py rule 2: flattening these parens is a different float32 number"),
+    # INVERTED (KERNELS.md §7.1): the shipped grouping is MEEP's left-to-right
+    # bracket, so the mutation plants the package's previous pairwise grouping and
+    # stays must-catch.
+    "curl_previous_grouping": (
+        FOLD_CASE, "((b_x - b_dx) + a_dy) - a_y", "(b_x - b_dx) + (a_dy - a_y)", 1,
+        "the package's previous pairwise grouping planted in place of MEEP's "
+        "left-to-right bracket: shaders.py rule 2"),
     "recurrence_axis_pair_swapped": (
-        FOLD_CASE, "float2 q0 = c_mul_field_left(p0, km_y) - curl0;",
-        "float2 q0 = c_mul_field_left(p0, km_z) - curl0;", 1,
+        FOLD_CASE, "c_mul_field_left(p0, km_y) - curl0",
+        "c_mul_field_left(p0, km_z) - curl0", 1,
         "the recurrence pairs are vec.hpp's cycle_direction: target 0 takes (y, z)"),
     "sinv_scaling_dropped": (
-        FOLD_CASE, "float2 n0 = c_mul_field_left(q0, si_y);", "float2 n0 = q0;", 1,
+        FOLD_CASE,
+        "float2 n0 = c_mul_field_left(c_mul_field_left(p0, km_y) - curl0, si_y);",
+        "float2 n0 = c_mul_field_left(p0, km_y) - curl0;", 1,
         "the split-field recurrence's second factor"),
     "fu_store_dropped": (
-        FOLD_CASE, "u0[ii] = n0; u1[ii] = n1; u2[ii] = n2;",
-        "u1[ii] = n1; u2[ii] = n2;", 1,
+        FOLD_CASE, "    if (du2) { u2[ii] = n2; }\n", "", 1,
         "the PML auxiliary is STATE; a dropped store diverges only once it accumulates"),
+    "fu_store_takes_the_curls_word": (
+        FOLD_CASE, "    if (du1) { u1[ii] = nb1; }\n", "    if (du1) { u1[ii] = n1; }\n", 1,
+        "the fu word is the curl step's minus the pass's df (stepping._apply_folded_"
+        "increment); storing the curl step's word drops the pass from the auxiliary"),
+    "displacement_reads_the_passs_fu_word": (
+        FOLD_CASE, "v1 = du1 ? c_mul_field_left((c_mul_field_left(f1[ii], km_x) + n1) - p1,",
+        "v1 = du1 ? c_mul_field_left((c_mul_field_left(f1[ii], km_x) + nb1) - p1,", 1,
+        "the displacement is the curl step's, formed from ITS fu word; reading the "
+        "pass's applies the pass to the displacement twice"),
     "flux_store_dropped": (
         FOLD_CASE, "        f0[ii] = v0;\n", "        // flux store dropped\n", 1,
         "the stepped displacement itself"),
     "fw_store_dropped": (
-        FOLD_CASE, "        w0[ii] = o0_src;", "        // stale f_w_Hx", 1,
+        FOLD_CASE, "        if (dw0) { w0[ii] = o0_src; }", "        // stale f_w_Hx", 1,
         "the constitutive workspace is STATE and feeds the next step's prev term"),
     # ---- THE SEAM ---------------------------------------------------------------
     "seam_takes_the_pre_store_value": (
@@ -896,13 +957,22 @@ SHADER_EDITS: Dict[str, Tuple[str, str, str, int, str]] = {
         FOLD_CASE, "float kp_0 = kp0[i], km_0 = km0[i];",
         "float kp_0 = kp0[j], km_0 = km0[j];", 1,
         "the coefficient is indexed on the component's OWN axis (stepping.py:226-227)"),  # stepping.py live lines for the frozen device-text citation(s) in this string: 226-227->227-228
-    "constitutive_accumulations_reversed": (
+    "constitutive_products_exchanged": (
         FOLD_CASE,
-        "o0_acc = o0_acc + c_mul_coefficient_left(kp_0, o0_src);\n        "
-        "o0_acc = o0_acc - c_mul_coefficient_left(km_0, o0_prev);",
-        "o0_acc = o0_acc - c_mul_coefficient_left(km_0, o0_src);\n        "
-        "o0_acc = o0_acc + c_mul_coefficient_left(kp_0, o0_prev);", 1,
+        "if (dw0) { o0_acc = h0[ii] + (c_mul_coefficient_left(kp_0, o0_src) - "
+        "c_mul_coefficient_left(km_0, o0_prev)); }",
+        "if (dw0) { o0_acc = h0[ii] + (c_mul_coefficient_left(kp_0, o0_prev) - "
+        "c_mul_coefficient_left(km_0, o0_src)); }", 1,
         "kps multiplies the NEW source and kms the previous one"),
+    # INVERTED (KERNELS.md §7.1): the package's previous accumulation grouping.
+    "constitutive_previous_accumulation_grouping": (
+        FOLD_CASE,
+        "if (dw0) { o0_acc = h0[ii] + (c_mul_coefficient_left(kp_0, o0_src) - "
+        "c_mul_coefficient_left(km_0, o0_prev)); }",
+        "if (dw0) { o0_acc = (h0[ii] + c_mul_coefficient_left(kp_0, o0_src)) - "
+        "c_mul_coefficient_left(km_0, o0_prev); }", 1,
+        "the package's previous grouping ((f + kps*src) - kms*prev) planted in place "
+        "of MEEP's f + ((kps*src) - (kms*prev)): a different float32 number"),
     # ---- THE WALL, on the only case that emits one ------------------------------
     "wall_clear_dropped": (
         WALL_CASE, "v0 = at_x ? float2(0.0f, 0.0f) : v0;", "v0 = at_x ? v0 : v0;", 1,
@@ -912,20 +982,19 @@ SHADER_EDITS: Dict[str, Tuple[str, str, str, int, str]] = {
         "v0 = at_y ? float2(0.0f, 0.0f) : v0;", 1,
         "the B wall table is the DIAGONAL and D's is the off-diagonal; reusing the "
         "sibling's table is the most likely port slip"),
-    # ---- THE BLOCH ROTATION, on the only case that emits one --------------------
+    # ---- THE BLOCH CONNECTION, on the only case that emits one -------------------
     "bloch_phase_conjugated": (
-        PHASE_CASE, "c_mul(b_x, float2(pxr, pxi))",
-        "c_mul(b_x, float2(pxr, -pxi))", -1,
+        PHASE_CASE, ", px);", ", float2(px.x, -px.y));", -1,
         "step_B and step_D take opposite conjugations; the host resolves it and the "
         "kernel cannot tell"),
-    "bloch_rotation_applied_to_the_center": (
-        PHASE_CASE, "b_x = wx ? c_mul(b_x, float2(pxr, pxi)) : b_x;",
-        "b = wx ? c_mul(b, float2(pxr, pxi)) : b;", 1,
-        "SHIFTED operands only; rotating the center would also rotate the beta "
-        "partner, which the array path never does"),
-    "bloch_rotation_dropped": (
-        PHASE_CASE, "    b_x = wx ? c_mul(b_x, float2(pxr, pxi)) : b_x;\n", "", 1,
-        "the wrapped face carries the phase (stepping:1862)"),
+    "bloch_connection_applied_on_every_lane": (
+        PHASE_CASE, "    if (i == 0) {\n        c_dx = c_mul(c, px);",
+        "    if (true) {\n        c_dx = c_mul(c, px);", 1,
+        "the connection applies on plane 0 of the phased axis only; applying it "
+        "everywhere connects the whole volume"),
+    "bloch_connection_dropped": (
+        PHASE_CASE, "        c_dx = c_mul(c, px);\n        b_dx = c_mul(b, px);\n", "",
+        1, "the wrapped face carries the phase (stepping._bloch_ghost_operand)"),
     # ---- THE REFLECT ROW, on the only case where it is not the fixed n - 2 -------
     "reflect_row_is_the_fixed_n_minus_two": (
         REFLECT_CASE, "int g2_j_i = ii + ((nyi - 1) - reflect_y) * nzi;",
@@ -949,11 +1018,6 @@ NULL_PAIRS: Dict[str, Tuple[str, str, str, str]] = {
         "far_parity_forced_to_plus_one_axis1",
         "the FAR word is MINUS the plane's phase, so an ODD plane hands the far pass "
         "the identity. Caught on the EVEN row, where the far word is -1"),
-    "ghost_coefficient_null_on_a_shallow_layer": (
-        SHALLOW_CASE, FOLD_CASE, "ghost_coefficient_reused_from_source",
-        "a folded axis carries no absorber at the mirror plane, so on the matrix's "
-        "2-cell high-face layer kps[0] == kps[2] to the bit and the two reads are the "
-        "same word. Caught with an explicit 4-cell layer on a 6-cell axis"),
     "reflect_row_null_at_an_even_full_count": (
         FOLD_CASE, REFLECT_CASE, "reflect_row_is_the_fixed_n_minus_two",
         "at an EVEN full count _far_reflect_rows IS stored - 2, so the substituted "
@@ -981,20 +1045,29 @@ NULL_PAIRS: Dict[str, Tuple[str, str, str, str]] = {
 #: either way — so both are armed, scored on NOT diverging, and their precondition is
 #: measured rather than asserted.
 NULL_EVERYWHERE: Dict[str, Tuple[str, str, str, int, str]] = {
+    "ghost_coefficient_reused_from_source": (
+        FOLD_CASE, "float g1_n_kp = kp1[0], g1_n_km = km1[0];",
+        "float g1_n_kp = kp_1, g1_n_km = km_1;", 1,
+        "the near ghost's constitutive takes its coefficients only on its own dsigw "
+        "cells (the per-chunk forms), and the one-rank record never puts a folded "
+        "axis's ghost row (stored 0) inside a layer, so the moved entry is read by no "
+        "cell. MEEP's own division does put it there where the layer reaches stored "
+        "row 2, which is where the parent weld's gate catches it (its meep_boxes "
+        "division); leg moved_coefficient records the coefficients and the membership"),
     "parity_chain_order_reversed": (
         FOLD_CASE,
-        "float2 g2_ij_v = c_mul(fp0, v2);\n            "
-        "f2[g2_ij_i] = c_mul(fp1, g2_ij_v);",
-        "float2 g2_ij_v = c_mul(fp1, v2);\n            "
-        "f2[g2_ij_i] = c_mul(fp0, g2_ij_v);", 1,
+        "float2 g2_ij_v = c_mul_coefficient_left(fp0, v2);\n            "
+        "f2[g2_ij_i] = c_mul_coefficient_left(fp1, g2_ij_v);",
+        "float2 g2_ij_v = c_mul_coefficient_left(fp1, v2);\n            "
+        "f2[g2_ij_i] = c_mul_coefficient_left(fp0, g2_ij_v);", 1,
         "the array path applies the far passes in ASCENDING axis order "
         "(stepping._fill_folded_far_ghosts) and the emitter transcribes that order, "
         "but two exact ±1 multiplies commute bitwise on normal operands"),
     "parity_chain_folded_into_one_word": (
         FOLD_CASE,
-        "float2 g2_ij_v = c_mul(fp0, v2);\n            "
-        "f2[g2_ij_i] = c_mul(fp1, g2_ij_v);",
-        "float2 g2_ij_v = c_mul(c_mul(fp1, fp0), v2);\n            "
+        "float2 g2_ij_v = c_mul_coefficient_left(fp0, v2);\n            "
+        "f2[g2_ij_i] = c_mul_coefficient_left(fp1, g2_ij_v);",
+        "float2 g2_ij_v = c_mul_coefficient_left(fp1 * fp0, v2);\n            "
         "f2[g2_ij_i] = g2_ij_v;", 1,
         "the real board's far carry folds a composed parity into ONE compile-time "
         "sign; with every word exactly ±1 the collapse is exact here too, and leg "
@@ -1006,7 +1079,7 @@ NULL_EVERYWHERE: Dict[str, Tuple[str, str, str, int, str]] = {
 #: axis has only one far word).
 NULL_NEEDLES: Dict[str, Tuple[str, str, int]] = {
     "far_parity_forced_to_plus_one_axis1":
-        ("c_mul(fp1,", "c_mul(float2(1.0f, 0.0f),", -1),
+        ("c_mul_coefficient_left(fp1,", "c_mul_coefficient_left(1.0f,", -1),
 }
 
 
@@ -1021,7 +1094,7 @@ def byte_neutral_source(spec: Mapping[str, Any]) -> str:
     file scored on being UNCAUGHT.
     """
     source = family.folded_beta_complex_fused_magnetic_pair_source(
-        spec["codes"], spec["phased"], spec["walls"], spec["expansion"])
+        spec["codes"], spec["phased"], spec["walls"])
     for target in range(3):
         source = needle(source, f"float2 o{target}_src = v{target};",
                         f"float2 o{target}_src = f{target}[ii];")
@@ -1074,14 +1147,14 @@ def swap_beta_pair(plan: Any, pml: Any, residency: Residency) -> None:
     """HOST DEFECT: pack the beta pair the other way round.
 
     THE PACKED STRUCT IS ITSELF A BINDING, and nothing else in this file mutates it. The
-    two coefficients ride as ``bp`` and ``bm`` inside ``Params``; a builder that filled
-    them in the wrong order produces a kernel whose SOURCE is correct, so every shader
-    mutation and the whole transcription leg would still pass.
+    two words ride as ``beta_plus`` and ``beta_minus`` inside ``Params``; a builder that
+    filled them in the wrong order produces a kernel whose SOURCE is correct, so every
+    shader mutation and the whole transcription leg would still pass.
     """
     plan.params = family._params_tensor(
         plan.shape, plan.dtdx, plan.phase_values, plan.parity_values,
         plan.far_parity_values, tuple(reversed(plan.beta_values)), plan.reflect,
-        plan.residency.device)
+        plan.residency.device, plan.chunk_bounds)
     _rebind(plan, (PARAMS_SLOT,), (plan.params,))
 
 
@@ -1120,89 +1193,15 @@ def leg_policy() -> Dict[str, Any]:
     }
 
 
-def leg_expansion() -> Dict[str, Any]:
-    """The complex-multiply arm is bound by TWO PROBE ARTIFACTS, never defaulted.
-
-    This kernel carries complex products from BOTH parents' call sites — the mirror
-    fill's ±1 parity orientation and the beta insert's purely-imaginary coefficient —
-    and ONE ``templates.complex_helpers(expansion)`` emission serves the whole kernel.
-    So both artifacts are required, each licensed by its own parent's rule, and the two
-    verdicts must be the SAME WORD. Five things are required:
-
-    1. both artifacts CONFIGURED and classifying this host to one arm;
-    2. a MISSING probe on either side must refuse — never a default arm;
-    3. an AMBIGUOUS parity probe must refuse, because a reference matching both arms
-       licenses neither;
-    4. a WRONG-BACKEND record on either side must refuse;
-    5. two records that DISAGREE must refuse — inheriting one verdict for both would be
-       exactly the guess the probe mechanism exists to prevent.
-    """
-    global EXPANSION, PARITY_PROBE, BETA_PROBE
-    parity_path = os.environ.get(folded_complex.PROBE_PATH_ENVIRONMENT)
-    beta_path = os.environ.get(special_kz.PROBE_PATH_ENVIRONMENT)
-    parity = folded_complex.load_expansion_probe()
-    beta = special_kz.load_expansion_probe()
-    arm = family.expansion_from_probes(parity, beta)
-    EXPANSION, PARITY_PROBE, BETA_PROBE = arm, parity, beta
-
-    missing_parity = family.expansion_from_probes(None, beta) is None
-    missing_beta = family.expansion_from_probes(parity, None) is None
-    ambiguous = {"backend": folded_complex.PROBE_BACKEND,
-                 "patterns": {name: complex_fields.AMBIGUOUS_BOTH
-                              for name in folded_complex.PARITY_PROBE_PATTERNS}}
-    assert folded_complex.PARITY_PROBE_PATTERN in folded_complex.PARITY_PROBE_PATTERNS
-    ambiguous_refused = family.expansion_from_probes(ambiguous, beta) is None
-    wrong_parity = dict(parity or {}, backend="not-a-backend")
-    wrong_beta = dict(beta or {}, backend="not-a-backend")
-    backend_refused = (family.expansion_from_probes(wrong_parity, beta) is None
-                       and family.expansion_from_probes(parity, wrong_beta) is None)
-    # THE DISAGREEMENT. A record whose patterns all name the OTHER arm, so the two
-    # verdicts are definite and different rather than one of them absent.
-    other = "FMA_V1" if arm != "FMA_V1" else "MUL_ADD_V1"
-    disagreeing = {"backend": special_kz.PROBE_BACKEND,
-                   "patterns": {name: other
-                                for name in special_kz.BETA_PROBE_PATTERNS}}
-    disagree_verdict = special_kz.beta_expansion_from_probe(disagreeing)
-    disagree_refused = (disagree_verdict != arm
-                        and family.expansion_from_probes(parity, disagreeing) is None)
-    reasons = family._expansion_reasons(parity, disagreeing)
-    disagree_named = [reason for reason in reasons if "disagree" in reason] or (
-        [reason for reason in reasons if "beta probe" in reason])
-
-    def digest(path: Optional[str]) -> Optional[str]:
-        return (hashlib.sha256(Path(path).read_bytes()).hexdigest()
-                if path and Path(path).exists() else None)
-
-    return {
-        "passed": bool(arm and parity_path and beta_path and missing_parity
-                       and missing_beta and ambiguous_refused and backend_refused
-                       and disagree_refused and disagree_named),
-        "expansion": arm,
-        "parity_probe_artifact": parity_path,
-        "parity_probe_sha256": digest(parity_path),
-        "parity_probe_backend": (parity or {}).get("backend"),
-        "beta_probe_artifact": beta_path,
-        "beta_probe_sha256": digest(beta_path),
-        "beta_probe_backend": (beta or {}).get("backend"),
-        "missing_parity_probe_refused": missing_parity,
-        "missing_beta_probe_refused": missing_beta,
-        "ambiguous_parity_probe_refused": ambiguous_refused,
-        "wrong_backend_probe_refused": backend_refused,
-        "disagreeing_probes_refused": disagree_refused,
-        "disagreement_named": disagree_named,
-    }
-
-
 def leg_binding_ceiling() -> Dict[str, Any]:
     """42 separate bindings must FAIL; the packed 28 must COMPILE, LAUNCH and read.
 
     This is what makes "one dispatch for all three components" a measurement rather
-    than a preference. The refuted signature is spelled by THIS family (the beta parent
-    binds six ``constant float&`` phase words where the plain complex parent binds three
-    ``constant float2&``, plus four beta words), and the packed half is this family's
-    own 120-byte record — ELEVEN ``float2`` members, four uints, one float and three
-    ints. The padding question that record raises is answered by LAUNCHING it and
-    reading every field back, not by arithmetic.
+    than a preference. The refuted signature is spelled by THIS family, and the packed
+    half is this family's own record -- the parent's (three ``float2`` phases, six
+    parity words, four uints, one float, three ints) with the two beta words in front
+    of the chunk record. The padding question that record raises is answered by
+    LAUNCHING it and reading every field back, sizeof included, not by arithmetic.
     """
     import torch  # noqa: PLC0415
 
@@ -1229,13 +1228,15 @@ def leg_binding_ceiling() -> Dict[str, Any]:
                          for n in range(family.PACKED_BINDINGS - 1))
     source = "\n".join((
         "#include <metal_stdlib>", "using namespace metal;", "",
+        metal_chunk_bounds.struct_source(), "",
         "struct Params {",
         "    float2 px; float2 py; float2 pz;",
-        "    float2 m0; float2 m1; float2 m2;",
-        "    float2 d0; float2 d1; float2 d2;",
-        "    float2 bp; float2 bm;",
+        "    float m0; float m1; float m2;",
+        "    float d0; float d1; float d2;",
         "    uint nx; uint ny; uint nz; uint n_elem; float dtdx;",
         "    int rx; int ry; int rz;",
+        "    float beta_plus; float beta_minus;",
+        metal_chunk_bounds.params_member(),
         "};", "",
         "kernel void packed_probe(", pointers,
         f"    constant Params&    prm     [[buffer({family.PACKED_BINDINGS - 1})]],",
@@ -1245,12 +1246,13 @@ def leg_binding_ceiling() -> Dict[str, Any]:
         "    b2[idx] = float(prm.nz);", "    b3[idx] = float(prm.n_elem);",
         "    b4[idx] = prm.dtdx;",
         "    b5[idx] = prm.px.x;", "    b6[idx] = prm.px.y;",
-        "    b7[idx] = prm.pz.x;", "    b8[idx] = prm.m0.x;",
-        "    b9[idx] = prm.m1.x;", "    b10[idx] = prm.m2.y;",
-        "    b11[idx] = prm.d0.x;", "    b12[idx] = prm.d1.x;",
-        "    b13[idx] = prm.d2.y;",
-        "    b14[idx] = prm.bp.x;", "    b15[idx] = prm.bp.y;",
-        "    b16[idx] = prm.bm.x;", "    b17[idx] = prm.bm.y;",
+        "    b7[idx] = prm.pz.x;", "    b8[idx] = prm.m0;",
+        "    b9[idx] = prm.m1;", "    b10[idx] = prm.m2;",
+        "    b11[idx] = prm.d0;", "    b12[idx] = prm.d1;",
+        "    b13[idx] = prm.d2;",
+        "    b14[idx] = prm.beta_plus;", "    b15[idx] = prm.beta_minus;",
+        "    b16[idx] = float(prm.cb.cb_presence);",
+        "    b17[idx] = float(sizeof(Params));",
         "    b18[idx] = float(prm.rx);", "    b19[idx] = float(prm.ry);",
         "    b20[idx] = float(prm.rz);",
         f"    b21[idx] = b{family.PACKED_BINDINGS - 2}[idx] + 1.0f;", "}", ""))
@@ -1267,24 +1269,27 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     buffers[-1] = torch.full((count,), 7.0, dtype=torch.float32, device="mps")
     shape, dtdx = (3, 4, 5), 0.125
     phases = ((0.25, -0.5), (0.75, 0.125), (-0.375, 0.625))
-    parities = ((1.0, 0.0), (-1.0, 0.0), (0.0, 0.5))
+    parities = (1.0, -1.0, 0.5)
     # DISTINCT WORDS FROM THE NEAR TRIPLE AND FROM THE PHASES, deliberately: a struct
     # whose far members aliased the near ones, or whose beta pair sat one slot early,
     # would read back "correctly" while the kernel multiplied by the wrong word.
-    far_parities = ((0.5, -0.25), (-0.75, 0.0), (0.0, -0.875))
-    beta = ((0.0, 0.15625), (-0.0, -0.15625))
+    far_parities = (-0.25, -0.75, -0.875)
+    beta = (0.15625, -0.3125)
     reflect = (9, -1, 4)
+    record = metal_chunk_bounds.plan_words(every_cell_record(shape), shape,
+                                           "packed probe")
     params = family._params_tensor(shape, dtdx, phases, parities, far_parities,
-                                   beta, reflect, "mps")
+                                   beta, reflect, "mps", record)
     function(*buffers, params)
     torch.mps.synchronize()
     read = [buffers[index].cpu().numpy() for index in range(22)]
     expected = (float(shape[0]), float(shape[1]), float(shape[2]),
                 float(shape[0] * shape[1] * shape[2]), float(np.float32(dtdx)),
                 phases[0][0], phases[0][1], phases[2][0],
-                parities[0][0], parities[1][0], parities[2][1],
-                far_parities[0][0], far_parities[1][0], far_parities[2][1],
-                beta[0][0], beta[0][1], beta[1][0], beta[1][1],
+                parities[0], parities[1], parities[2],
+                far_parities[0], far_parities[1], far_parities[2],
+                beta[0], beta[1], float(int(record[-1])),
+                float(family.PARAMS_ITEMSIZE),
                 float(reflect[0]), float(reflect[1]), float(reflect[2]), 8.0)
     fields_ok = all(bool(np.all(read[index] == expected[index]))
                     for index in range(22))
@@ -1300,71 +1305,89 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     return row
 
 
+def _strip_pass(source: str, shared: str, updates: Mapping[int, str],
+                stored: Sequence[int]) -> Optional[str]:
+    """``source`` with the beta pass and the two ``Params`` beta lines removed, the fu
+    stores reading ``n{t}`` again and the parent's entry point name restored, or
+    ``None`` when any piece is not where :func:`.folded_pass.insert_split_pass` puts it
+    exactly once."""
+    first = (f"    if (du0) {{ u0[ii] = {'nb0' if 0 in stored else 'n0'}; }}\n")
+    if source.count(shared + "\n" + first) != 1:
+        return None
+    source = source.replace(shared + "\n", "", 1)
+    for target in stored:
+        store = f"    if (du{target}) {{ u{target}[ii] = nb{target}; }}\n"
+        if source.count(store) != 1:
+            return None
+        source = source.replace(
+            store, f"    if (du{target}) {{ u{target}[ii] = n{target}; }}\n", 1)
+    lines = source.split("\n")
+    for update in updates.values():
+        hits = [index for index, line in enumerate(lines) if line.strip() == update]
+        if len(hits) != 1:
+            return None
+        del lines[hits[0]]
+    source = "\n".join(lines)
+    for line in ("    float beta_plus; float beta_minus;\n",
+                 "    float beta_plus = prm.beta_plus, beta_minus = prm.beta_minus;\n"):
+        if source.count(line) != 1:
+            return None
+        source = source.replace(line, "", 1)
+    return source.replace(family.FAMILY + "_step", parent.FAMILY + "_step")
+
+
 def leg_transcription(spec: Mapping[str, Any]) -> Dict[str, Any]:
     """Every piece must be the CERTIFIED emitters' own text, not a similar one.
 
     A construction is a hypothesis until something compares the strings, and this
-    module's whole claim is that it is the shipped folded complex weld with ONE emitter
-    swapped. Six comparisons, in BOTH contraction modes:
+    module's whole claim is that it is the shipped folded complex weld with MEEP's beta
+    pass carried in. Four comparisons, in BOTH contraction modes:
 
-    * the lifted curl head must be a VERBATIM PREFIX of
-      ``folded_beta.folded_beta_bloch_curl_source(codes, backward=False, phased,
-      expansion, has_beta=True)``'s body;
-    * the BETA INSERT's own statements must be present in that head — a lift that
-      silently produced the ``has_beta=0`` arm would be the shipped weld under a second
-      name, and every device leg would still pass because beta = 0 IS that arithmetic;
-    * all FIVE recurrence statements per target must appear in the certified body. The
-      shipped weld anchors THREE because ``complex_fields`` nests the intermediates;
-      the beta template NAMES them (``q``, ``r``), so anchoring three would silently
-      drop two;
-    * the constitutive statements must reproduce
-      ``complex_fields.bloch_constitutive_source('H')``;
-    * both fill transcriptions must be identical to
-      ``folded_complex.folded_mirror_fill_complex_source``'s own lines.
+    * removing the pass block, the two ``Params`` beta lines and the per-target
+      displacement updates gives the shipped
+      :func:`.folded_complex_fused_magnetic_pair.folded_complex_fused_magnetic_pair_source`
+      byte for byte, under its own entry point name;
+    * the pass block is :func:`.special_kz.beta_pass` of the mask rows the source itself
+      carries (:func:`.folded_pass.ownership_rows`), so the increment is masked exactly
+      where the curl is;
+    * the pass's increment lines are present -- a source whose pass silently became the
+      ``has_beta=0`` comment would be the shipped weld under a second name, and every
+      device leg would still pass because beta = 0 IS that arithmetic;
+    * the parent's constitutive and fill transcriptions are identical.
     """
     rows: Dict[str, Any] = {"modes": {}}
     ok = True
     codes, phased = spec["codes"], spec["phased"]
-    expansion = spec["expansion"]
     folded = [axis for axis, code in enumerate(codes) if int(code) in MIRROR_CODES]
-    beta_statements = [line.strip() for line in
-                       special_kz._COMPLEX_BETA_INSERT.splitlines() if line.strip()
-                       and not line.strip().startswith("//")]
     for mode in shaders.CONTRACT_MODES:
-        head = family.certified_curl_head(codes, phased, expansion, mode)
-        certified = folded_beta.folded_beta_bloch_curl_source(
-            codes, family.BACKWARD, phased, expansion, family.HAS_BETA, mode)
-        body = family._body_of(certified, "folded beta complex curl")
-        head_ok = body.startswith(head) and bool(head.strip())
         source = family.folded_beta_complex_fused_magnetic_pair_source(
-            codes, phased, spec["walls"], expansion, mode)
-        beta_ok = bool(beta_statements) and all(
-            statement in head and statement in source
-            for statement in beta_statements)
-        statements = family.certified_curl_statements(codes, phased, expansion, mode)
-        recurrence_ok = all(len(block) == 5 and all(line in body for line in block)
-                            for block in statements["recurrence"])
-        transcription = family.constitutive_transcription(expansion, mode)
-        fills = {axis: family.near_fill_transcription(axis, expansion, mode)
+            codes, phased, spec["walls"], mode)
+        shipped = parent.folded_complex_fused_magnetic_pair_source(
+            codes, phased, spec["walls"], mode)
+        block = special_kz.beta_pass(folded_pass.ownership_rows(source), True)
+        shared, updates, stored = folded_pass.split_pass_registers(source, block)
+        stripped = _strip_pass(source, shared, updates, stored)
+        identity = stripped == shipped
+        pass_ok = (stripped is not None
+                   and "float2 bi0 = -bq0;" in shared
+                   and "float2 bi1 = -bq1;" in shared)
+        transcription = parent.constitutive_transcription(mode)
+        fills = {axis: parent.near_fill_transcription(axis, mode)
                  for axis in folded}
         fill_ok = bool(fills) and all(r["identical"] for r in fills.values())
-        far_fills = {axis: family.far_fill_transcription(axis, expansion, mode)
+        far_fills = {axis: parent.far_fill_transcription(axis, mode)
                      for axis in range(3)}
         far_ok = all(r["identical"] for r in far_fills.values())
         rows["modes"][mode] = {
-            "curl_head_is_a_verbatim_prefix": head_ok,
-            "curl_head_lines": len(head.splitlines()),
-            "beta_insert_statements": beta_statements,
-            "beta_insert_present": beta_ok,
-            "recurrence_statements_are_lifted": recurrence_ok,
-            "recurrence_statements_per_target":
-                [len(block) for block in statements["recurrence"]],
+            "pass_removed_is_the_shipped_weld": identity,
+            "pass_is_special_kz_beta_pass_on_the_sources_rows": pass_ok,
+            "pass_lines": len(block.splitlines()),
             "constitutive_identical": transcription["identical"],
             "near_fill_identical": fill_ok,
             "far_fill_identical": far_ok,
         }
-        ok = (ok and head_ok and beta_ok and recurrence_ok
-              and transcription["identical"] and fill_ok and far_ok)
+        ok = (ok and identity and pass_ok and transcription["identical"]
+              and fill_ok and far_ok)
     rows["folded_axes"] = folded
     rows["passed"] = bool(ok)
     return rows
@@ -1508,7 +1531,7 @@ def leg_refusal() -> Dict[str, Any]:
 
     def coverage(f: Any, p: Any, sources: Any) -> Any:
         return family.metal_folded_beta_complex_fused_magnetic_pair_coverage(
-            f, p, sources, Residency(), PARITY_PROBE, BETA_PROBE)
+            f, p, sources, Residency())
 
     undeclared = coverage(fields, pml, None)
     undeclared_named = [r for r in undeclared.reasons if "was not declared" in r]
@@ -1526,7 +1549,7 @@ def leg_refusal() -> Dict[str, Any]:
     magnetic_coverage = coverage(fields, pml, (magnetic,))
     magnetic_plan = family.plan_metal_folded_beta_complex_fused_magnetic_pair(
         fields, pml, sources=(magnetic,), residency=residency,
-        probe=PARITY_PROBE, beta_probe=BETA_PROBE)
+        chunk_bounds=layer_record(fields.grid, pml))
     # THE REFUSAL THAT SURVIVES. `_Unindexed` declares a field type and nothing else,
     # so it names no cell for the repair to save; a closure cannot carry what a source
     # will not name, and `deposit_repair.seam_source_reasons` refuses it BY NAME rather
@@ -1536,7 +1559,7 @@ def leg_refusal() -> Dict[str, Any]:
                           if "does not publish the index it writes" in r]
     unrepairable_plan = family.plan_metal_folded_beta_complex_fused_magnetic_pair(
         fields, pml, sources=(_Unindexed(),), residency=residency,
-        probe=PARITY_PROBE, beta_probe=BETA_PROBE)
+        chunk_bounds=layer_record(fields.grid, pml))
 
     electric = _volume_source(fields, "Ez")
     electric_coverage = coverage(fields, pml, (electric,))
@@ -1617,8 +1640,13 @@ def leg_value_classes(name: str, keywords: Mapping[str, Any],
     """
     rows: List[Dict[str, Any]] = []
     for value_class in VALUE_CLASSES:
+        # ON THE SIGNED-ZERO LATTICE every curl is exactly zero, so volumes the forms
+        # only move through a curl legitimately stay at +-0: the floor is the parent
+        # weld's gate's, and identity is still required word for word.
         result = run_case(keywords, seed_for("class", name, value_class), steps,
-                          pml_faces, value_class=value_class)
+                          pml_faces, value_class=value_class,
+                          require_every_volume_moved=(
+                              value_class != "signed_zero_lattice"))
         rows.append({"value_class": value_class,
                      "bit_identical": result.get("bit_identical"),
                      "differing_words": result.get("differing_words"),
@@ -1665,9 +1693,14 @@ def leg_moved_coefficient(deep: Tuple[str, Dict[str, Any], Optional[Any]],
     is UNOBSERVABLE.
 
     This leg censuses the coefficients on both fixtures, PREDICTS observability from
-    that census alone, runs the same needle on both, and requires ``caught ==
-    observable`` on each. A null discovered rather than predicted would be a defect in
-    this gate; a null that disappeared would mean the fixture drifted.
+    that census AND the ghost row's own dsigw membership under the record the plan
+    binds (the per-chunk forms read the pair only on the accumulation's cells), runs the
+    same needle on both, and requires ``caught == observable`` on each. Under the
+    one-rank record a folded axis's ghost row is never inside a layer, so neither
+    fixture can observe it; the deep fixture's coefficients still differ, which is what
+    keeps the null a property of the membership rather than of the coefficients. A null
+    discovered rather than predicted would be a defect in this gate; a null that
+    disappeared would mean the fixture or the record drifted.
     """
     rows: List[Dict[str, Any]] = []
     ok = True
@@ -1676,10 +1709,14 @@ def leg_moved_coefficient(deep: Tuple[str, Dict[str, Any], Optional[Any]],
         fields, pml = build(keywords, seed_for("coefficient", name), faces)
         kps = np.asarray(getattr(pml, f"kps_{axis_name}")).ravel()
         kms = np.asarray(getattr(pml, f"kms_{axis_name}")).ravel()
-        observable = bool(kps.size > 2 and (kps[0] != kps[2] or kms[0] != kms[2]))
+        differ = bool(kps.size > 2 and (kps[0] != kps[2] or kms[0] != kms[2]))
+        ghost_row_in_a_layer = bool(membership_from_record(
+            layer_record(fields.grid, pml), False, COEFFICIENT_AXIS,
+            int(fields.grid.shape[COEFFICIENT_AXIS]))[0])
+        observable = differ and ghost_row_in_a_layer
         spec = _specialisation(fields, pml)
         base = family.folded_beta_complex_fused_magnetic_pair_source(
-            spec["codes"], spec["phased"], spec["walls"], spec["expansion"])
+            spec["codes"], spec["phased"], spec["walls"])
         old, new, count = ("float g1_n_kp = kp1[0], g1_n_km = km1[0];",
                            "float g1_n_kp = kp_1, g1_n_km = km_1;", 1)
         mutated = needle(base, old, new, count)
@@ -1696,6 +1733,8 @@ def leg_moved_coefficient(deep: Tuple[str, Dict[str, Any], Optional[Any]],
                      "kms_stored_0": float(kms[0]),
                      "kms_stored_2": float(kms[2]) if kms.size > 2 else None,
                      "stored_cells_on_the_axis": int(kps.size),
+                     "coefficients_differ": differ,
+                     "ghost_row_in_a_layer": ghost_row_in_a_layer,
                      "predicted_observable": observable,
                      "caught": caught,
                      "differing_words": result.get("differing_words"),
@@ -1703,8 +1742,8 @@ def leg_moved_coefficient(deep: Tuple[str, Dict[str, Any], Optional[Any]],
                      "agrees": agrees})
         log(f"    moved_coefficient {label} observable={observable} caught={caught}")
     return {"passed": bool(ok and len(rows) == 2
-                           and rows[0]["predicted_observable"]
-                           and not rows[1]["predicted_observable"]),
+                           and rows[0]["coefficients_differ"]
+                           and not rows[1]["coefficients_differ"]),
             "axis": COEFFICIENT_AXIS, "rows": rows}
 
 
@@ -1782,12 +1821,6 @@ def main() -> int:
     matrix.prepare_environment()
     cases = {name: (keywords, faces) for name, keywords, faces in CASES}
 
-    # THE EXPANSION ARM FIRST. Every later leg emits a source, and a source emitted
-    # before the arm is bound would carry a guessed complex multiply.
-    expansion_row = leg_expansion()
-    if not expansion_row["passed"]:
-        log("the expansion arm is unbound; the gate cannot certify")
-
     # THE MUTATION CASES' SPECIALISATIONS, CHECKED BEFORE ANY NEEDLE IS APPLIED. This
     # is the dead-branch guard: a needle whose line sits under a feature the case does
     # not carry would report UNCAUGHT while measuring nothing.
@@ -1806,11 +1839,11 @@ def main() -> int:
     assert set(fold["phases"][axis] for axis in folded_axes) == {1, -1}, (
         f"{FOLD_CASE} does not carry BOTH parities: {fold['phases']}")
     near_word = fold["near"][NEAR_PARITY_AXIS]
-    assert (float(near_word[0]), float(near_word[1])) != (1.0, 0.0), (
+    assert float(near_word) != 1.0, (
         f"{FOLD_CASE}'s NEAR parity word on axis {NEAR_PARITY_AXIS} is the identity "
         f"{near_word}; near_parity_forced_to_plus_one would be a no-op")
     far_word = fold["far"][FAR_PARITY_AXIS]
-    assert (float(far_word[0]), float(far_word[1])) != (1.0, 0.0), (
+    assert float(far_word) != 1.0, (
         f"{FOLD_CASE}'s FAR parity word on axis {FAR_PARITY_AXIS} is the identity "
         f"{far_word}; far_parity_forced_to_plus_one would be a no-op")
     assert any(len(axes) == 2 for axes in fold["far_carried"]), (
@@ -1844,7 +1877,7 @@ def main() -> int:
         f"rewrite the plane to itself")
 
     bases = {name: family.folded_beta_complex_fused_magnetic_pair_source(
-        spec["codes"], spec["phased"], spec["walls"], spec["expansion"])
+        spec["codes"], spec["phased"], spec["walls"])
         for name, spec in specs.items()}
     mutants: Dict[str, Tuple[str, Dict[str, Any]]] = {}
     for label, (case, old, new, count, _why) in SHADER_EDITS.items():
@@ -1854,7 +1887,7 @@ def main() -> int:
 
     controls = (FOLD_CASE, WALL_CASE, "y_metallic_even_2d")
     movement_rows = (FOLD_CASE, WALL_CASE, "y_metallic_even_2d")
-    total = (1 + 1 + 1 + 1 + 1 + len(CASES) + len(movement_rows) + len(controls)
+    total = (1 + 1 + 1 + 1 + len(CASES) + len(movement_rows) + len(controls)
              + 1 + 1 + 1 + 1 + len(mutants) + len(HOST_MUTATIONS)
              + len(NULL_PAIRS) + len(NULL_EVERYWHERE) + 1 + 1)
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -1872,7 +1905,6 @@ def main() -> int:
             emit(handle, row)
 
         record("policy", "flush_resolved_and_keep_refused_by_name", leg_policy())
-        record("expansion", "both_probes_bind_one_arm", expansion_row)
         record("binding_ceiling", "twenty_seven_pointers_plus_one_packed_struct",
                leg_binding_ceiling())
         record("transcription", "every_piece_is_the_certified_text",
@@ -1964,7 +1996,7 @@ def main() -> int:
                 fields, pml = build(keywords, seed_for("null", label, case), faces)
                 spec = _specialisation(fields, pml)
                 base = family.folded_beta_complex_fused_magnetic_pair_source(
-                    spec["codes"], spec["phased"], spec["walls"], spec["expansion"])
+                    spec["codes"], spec["phased"], spec["walls"])
                 functions = compile_edit(needle(base, old, new, count))
                 result = run_case(keywords, seed_for("null", label, case),
                                   args.steps, faces, functions=functions)
@@ -1973,8 +2005,8 @@ def main() -> int:
                     "caught": not result.get("bit_identical", False),
                     "differing_words": result.get("differing_words"),
                     "launches": result.get("launches"),
-                    "near_parity": [list(v) for v in spec["near"]],
-                    "far_parity": [list(v) for v in spec["far"]],
+                    "near_parity": [float(v) for v in spec["near"]],
+                    "far_parity": [float(v) for v in spec["far"]],
                     "reflect": list(spec["reflect"]),
                     "shape": list(spec["shape"])})
             null_ok = (not pair_rows[0]["caught"]) and pair_rows[1]["caught"]
@@ -1985,20 +2017,18 @@ def main() -> int:
 
         # THE NULLS THAT ARE NULL EVERYWHERE. Scored on NOT diverging, with the
         # PRECONDITION that makes them null measured off the product rows that already
-        # ran: every near and far parity word on every case must be exactly (±1, 0) or
-        # the unused (0, 0). If a case ever carried a genuinely complex parity, ±1 would
-        # no longer compose exactly and these two would have to be caught instead.
+        # ran: every near and far parity word on every case must be exactly ±1 or the
+        # unused 0. If a case ever carried another word, ±1 would no longer compose
+        # exactly and these two would have to be caught instead.
         product_rows = [row for row in rows if row["leg"] == "product"]
         offending: List[Dict[str, Any]] = []
         for row in product_rows:
             for kind in ("parity_values", "far_parity_values"):
                 for axis, value in enumerate(row.get(kind) or ()):
-                    pair = (float(value[0]), float(value[1]))
-                    if pair not in ((1.0, 0.0), (-1.0, 0.0), (0.0, 0.0),
-                                    (-0.0, 0.0), (1.0, -0.0), (-1.0, -0.0),
-                                    (0.0, -0.0), (-0.0, -0.0)):
+                    word = float(value)
+                    if word not in (1.0, -1.0, 0.0):
                         offending.append({"case": row["label"], "kind": kind,
-                                          "axis": axis, "word": list(pair)})
+                                          "axis": axis, "word": word})
         parities_are_pm_one = not offending
         for label, (case, old, new, count, why) in NULL_EVERYWHERE.items():
             keywords, faces = cases[case]
@@ -2050,12 +2080,11 @@ def main() -> int:
         "mutation_specialisations": {
             name: {"codes": list(spec["codes"]), "phased": list(spec["phased"]),
                    "walls": list(spec["walls"]), "phases": list(spec["phases"]),
-                   "near": [list(v) for v in spec["near"]],
-                   "far": [list(v) for v in spec["far"]],
+                   "near": [float(v) for v in spec["near"]],
+                   "far": [float(v) for v in spec["far"]],
                    "reflect": list(spec["reflect"]),
                    "shape": list(spec["shape"])}
             for name, spec in specs.items()},
-        "expansion": EXPANSION,
         "dimensionality_note":
             "every fixture is 2-D because grid._resolve_beta (grid.py:690) refuses a "
             "nonzero beta on a 3-D grid, naming MEEP's own abort "

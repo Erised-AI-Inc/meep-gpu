@@ -1,34 +1,49 @@
 """The NO-ABSORBER curl family for the hand-CUDA track: three kernels and a predicate.
 
 WHAT COLLAPSES WHEN THE ABSORBER GOES AWAY. ``stepping._apply_curl``
-(stepping.py:489-539) has four tails. With ``_pml_is_active(pml)`` False and
+(stepping.py:516-582) has four tails. With ``_pml_is_active(pml)`` False and
 ``fields.condfac_for(target)`` None, three of them fall away and the whole
-sub-step tail is one line (stepping.py:539)::
+sub-step tail is one line (stepping.py:582)::
 
     target -= curl
 
 There is no ``fu`` auxiliary (``_require_pml_storage`` is not called and every
-``fu_*`` is None), no ``kms``/``sinv`` pair, and no split-field recurrence. The
-CURL ITSELF IS UNCHANGED -- the term table, the ghost rule, the grouping and the
-wall masks -- which is why each block below is the certified
-``step_{B,D}_pml_real`` block VERBATIM down to the last line, with only the
-tail replaced. That is deliberate and is the whole safety argument for this file:
-a reader can diff it against ``step_curl_kernels.py`` and see that nothing in the
-arithmetic moved.
+``fu_*`` is None), no ``kms``/``sinv`` pair, no split-field recurrence and no
+per-chunk form to choose. The CURL ITSELF IS UNCHANGED -- the term table, the
+ghost rule, MEEP's stencil and its partner-presence forms (``curl_stencil``), and
+the wall masks -- which is why each block below is the certified
+``step_{B,D}_pml_real`` block VERBATIM down to the last line, with only the tail
+replaced and the chunk-record words that choose a PML form dropped. That is
+deliberate and is the whole safety argument for this file: a reader can diff it
+against ``step_curl_kernels.py`` and see that nothing in the arithmetic moved.
+
+THE STENCIL IS MEEP'S, read off the run's chunk record. ``curl_stencil`` (the
+shared prelude) forms ``dtdx * (((g1s - g1) + g2) - g2s)`` as C associates
+``step_curl``'s stencil (step_generic.cpp:104), and the one-partner forms where a
+partner's derivative axis is invariant (:72-76, :108), exactly as
+``stepping._curl_from_operands`` does. Which partners are present is the record's
+partner-presence word (``chunk_map.chunk_bounds_record``, word 24, from
+``Grid.is_invariant``), so each kernel takes the record ``cb`` as its last
+argument and decodes that word with ``bounds_block.bounds_block`` -- the table's one
+spelling of the decode -- and nothing else from it: with no absorber no chunk
+carries a layer, so there is no membership to read. The extent is not a stand-in
+for the word: a 3-D run may hold a one-cell axis that is not invariant
+(``Grid.is_invariant``), and the full bracket over a present partner on such an
+axis is a different float32 number from the one-partner form.
 
 WHAT THE B SUB-STEP ACTUALLY DIFFERENCES, WHICH IS NOT ALWAYS ``fields.Ex``
 --------------------------------------------------------------------------
 This is the finding that reshaped the family, and it was MEASURED before it was
 written down. ``stepping.step_B`` reads its operands through
-``_component_snapshot`` -> ``_read_component`` (stepping.py:2425-2454), whose E
+``_component_snapshot`` -> ``_read_component`` (stepping.py:2879-2908), whose E
 branch has TWO arms::
 
     if fields.stores_E or fields.scratch is None:
-        return fields.get_E(name)                       # stepping.py:2440-2441
+        return fields.get_E(name)                       # stepping.py:2894-2895
     ...
-    scratch.xp.multiply(displacement, inverse, out=target)   # :2450
+    part_products.scale(inverse, displacement, out=target)   # :2904
 
-and ``Fields.get_E`` (fields.py:1009-1036) is itself two arms: the stored array
+and ``Fields.get_E`` (fields.py:1020-1047) is itself two arms: the stored array
 when ``_stored_E``, and a freshly computed ``D * inv_eps`` when not. WITHOUT AN
 ABSORBER AND WITHOUT A SUSCEPTIBILITY NOTHING STORES E -- ``fields.Ex`` is None --
 so the B curl differences a DERIVED volume, cell by cell ``D_c * inv_eps_c``.
@@ -71,7 +86,7 @@ kept and its effect is NOT claimed: this run carries no evidence that it changed
 an answer here, and none that a different compiler would leave it alone.
 
 THE D SUB-STEP DIFFERENCES THE B ARRAYS, AND THAT IS NOT AN OPTIMISATION.
-``Fields.get_H`` (fields.py:1164-1187) returns the B ARRAY ITSELF without an
+``Fields.get_H`` (fields.py:1217-1239) returns the B ARRAY ITSELF without an
 absorber: mu = 1, H is never stored, ``fields.Hx`` is None. Measured on the same
 fixture, ``stepping.step_D(fields, None)`` is bit-identical to the backward
 curl of Bx/By/Bz. A predicate that delegates its storage inventory to the
@@ -83,7 +98,7 @@ ROW COUNT SUGGESTS. The union census carries 14 rows with no active absorber. Si
 are complex storage and belong to a different kernel. Of the eight real-storage
 rows, three carry a conductivity (MEEP's ``Absorber`` boundary layer IS a
 conductivity, not a PML), which routes ``_apply_curl`` to
-``_apply_conductive_update`` (stepping.py:536-537) -- a different recurrence this
+``_apply_conductive_update`` (stepping.py:579-580) -- a different recurrence this
 family refuses by name. The reachable curl slots are therefore FIVE at ``step_D``
 and FIVE at ``step_B`` (one stored-E, four derived), not the 28 a "14 rows x 2
 sub-steps" reading suggests, and the census MEASURED exactly those ten:
@@ -93,12 +108,12 @@ the delta is one predicate's and not a difference of two rounds
 (:data:`NO_PML_CURL_ADMISSION`, ``slots_before``/``slots_after``).
 
 The constitutive halves of those rows are a separate question and are NOT served
-here: under an inactive layer ``stepping.update_H`` returns at :944-945 and
-``update_E`` at :984 before reading an array, so those are a null plan rather
+here: under an inactive layer ``stepping.update_H`` returns at :999-1000 and
+``update_E`` at :1044-1045 before reading an array, so those are a null plan rather
 than a kernel -- which is what ``no_pml_constitutive.py`` already carries.
 
 THE CONDUCTIVITY IS REFUSED, not silently absorbed. ``_apply_curl``'s second tail
-(:507-508) routes a component carrying ``condfac`` to
+(:579-580) routes a component carrying ``condfac`` to
 ``_apply_conductive_update`` even with no absorber, and that is a different
 recurrence. It is read PER COMPONENT, so a run where one component is lossy and
 two are not takes two different tails within one sub-step -- which one kernel
@@ -228,7 +243,8 @@ extern "C" __global__ void step_B_no_pml_real(
     const float* __restrict__ Ex, const float* __restrict__ Ey,
     const float* __restrict__ Ez,
     int nx, int ny, int nz, float dtdx,
-    int bc_x, int bc_y, int bc_z
+    int bc_x, int bc_y, int bc_z,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= nx * ny * nz) return;
@@ -241,6 +257,13 @@ extern "C" __global__ void step_B_no_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
+    const int cb_presence = cb[24];
+    const int pr_x = (cb_presence >> 0) & 1;
+    const int pr_y = (cb_presence >> 1) & 1;
+    const int pr_z = (cb_presence >> 2) & 1;
+
     // Bx: curl_x = dEz/dy - dEy/dz; iyee=(0,1,1) -> cell 0 on x, and on a folded
     // PERIODIC axis the top plane on y and z.
     {
@@ -248,7 +271,7 @@ extern "C" __global__ void step_B_no_pml_real(
         float sf = shift_up(Ez, idx, j, ny, sy, bc_y);
         float f2 = Ey[idx];
         float ss = shift_up(Ey, idx, k, nz, sz, bc_z);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_y, pr_z);
         if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
         if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) curl = 0.0f;
@@ -262,7 +285,7 @@ extern "C" __global__ void step_B_no_pml_real(
         float sf = shift_up(Ex, idx, k, nz, sz, bc_z);
         float f2 = Ez[idx];
         float ss = shift_up(Ez, idx, i, nx, sx, bc_x);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_z, pr_x);
         if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
         if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
         if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) curl = 0.0f;
@@ -276,7 +299,7 @@ extern "C" __global__ void step_B_no_pml_real(
         float sf = shift_up(Ey, idx, i, nx, sx, bc_x);
         float f2 = Ex[idx];
         float ss = shift_up(Ex, idx, j, ny, sy, bc_y);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_x, pr_y);
         if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
         if (bc_z == BC_MIRROR_PERIODIC && k == 0) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) curl = 0.0f;
@@ -291,12 +314,15 @@ extern "C" __global__ void step_B_no_pml_real(
 # ``derived_up(Dc, iec, ...)``. The two helpers are ``_read_component``'s multiply
 # COMPOSED WITH ``_shift_up``, in that order -- see the module header for why the
 # order is the arithmetic and not a style choice.
-# The citation inside this prelude is gate-pinned device text (the admission
-# record digests it); the line it names is stepping.py:2450 on the current tree.
+# The citations inside this prelude are device text (the admission record digests
+# it); they were re-pointed in the same change that moved the stencil, which moved
+# these bytes anyway.
 _DERIVED_PRELUDE = r'''
 // stepping._read_component's derived E at one cell: get_E's un-stored branch is
-// D * inv_eps (fields.py:1035), and the scratch branch (stepping.py:2395) is the
-// same product into a pooled buffer. D ON THE LEFT, as both write it.
+// inv_eps * D (fields.py:1047), and the scratch branch (stepping.py:2904) is the
+// same product into a pooled buffer. Written D * inv_eps here: IEEE multiplication
+// commutes on every word, so the operand order is not arithmetic (the gate's
+// derived_operand_order null measures exactly that).
 __device__ __forceinline__ float derived_at(
     const float* __restrict__ d, const float* __restrict__ ie, int idx
 ) {
@@ -314,7 +340,7 @@ __device__ __forceinline__ float derived_up(
     if (ia + 1 < na) return d[idx + stride] * ie[idx + stride];
     return (bc == BC_PERIODIC) ? d[idx - ia * stride] * ie[idx - ia * stride] : 0.0f;
 }
-'''  # stepping.py live lines for the frozen device-text citation(s) in this string: 2395->2450
+'''
 
 _step_B_no_pml_real_derived_kernel_code = (
     _REAL_PML_PRELUDE + _DERIVED_PRELUDE + r'''
@@ -325,7 +351,8 @@ extern "C" __global__ void step_B_no_pml_real_derived(
     const float* __restrict__ iex, const float* __restrict__ iey,
     const float* __restrict__ iez,
     int nx, int ny, int nz, float dtdx,
-    int bc_x, int bc_y, int bc_z
+    int bc_x, int bc_y, int bc_z,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= nx * ny * nz) return;
@@ -338,6 +365,13 @@ extern "C" __global__ void step_B_no_pml_real_derived(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
+    const int cb_presence = cb[24];
+    const int pr_x = (cb_presence >> 0) & 1;
+    const int pr_y = (cb_presence >> 1) & 1;
+    const int pr_z = (cb_presence >> 2) & 1;
+
     // Bx: curl_x = dEz/dy - dEy/dz; iyee=(0,1,1) -> cell 0 on x, and on a folded
     // PERIODIC axis the top plane on y and z.
     {
@@ -345,7 +379,7 @@ extern "C" __global__ void step_B_no_pml_real_derived(
         float sf = derived_up(Dz, iez, idx, j, ny, sy, bc_y);
         float f2 = derived_at(Dy, iey, idx);
         float ss = derived_up(Dy, iey, idx, k, nz, sz, bc_z);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_y, pr_z);
         if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
         if (bc_y == BC_MIRROR_PERIODIC && j == ny - 1) curl = 0.0f;
@@ -359,7 +393,7 @@ extern "C" __global__ void step_B_no_pml_real_derived(
         float sf = derived_up(Dx, iex, idx, k, nz, sz, bc_z);
         float f2 = derived_at(Dz, iez, idx);
         float ss = derived_up(Dz, iez, idx, i, nx, sx, bc_x);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_z, pr_x);
         if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
         if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
         if (bc_z == BC_MIRROR_PERIODIC && k == nz - 1) curl = 0.0f;
@@ -373,7 +407,7 @@ extern "C" __global__ void step_B_no_pml_real_derived(
         float sf = derived_up(Dy, iey, idx, i, nx, sx, bc_x);
         float f2 = derived_at(Dx, iex, idx);
         float ss = derived_up(Dx, iex, idx, j, ny, sy, bc_y);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_x, pr_y);
         if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
         if (bc_z == BC_MIRROR_PERIODIC && k == 0) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == nx - 1) curl = 0.0f;
@@ -392,7 +426,8 @@ extern "C" __global__ void step_D_no_pml_real(
     const float* __restrict__ Hx, const float* __restrict__ Hy,
     const float* __restrict__ Hz,
     int nx, int ny, int nz, float dtdx,
-    int bc_x, int bc_y, int bc_z
+    int bc_x, int bc_y, int bc_z,
+    const int* __restrict__ cb
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= nx * ny * nz) return;
@@ -405,6 +440,13 @@ extern "C" __global__ void step_D_no_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
+    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
+    const int cb_presence = cb[24];
+    const int pr_x = (cb_presence >> 0) & 1;
+    const int pr_y = (cb_presence >> 1) & 1;
+    const int pr_z = (cb_presence >> 2) & 1;
+
     // Dx: curl_x = dHz/dy - dHy/dz; iyee=(1,0,0) -> cell 0 on y and z, and on a
     // folded PERIODIC axis the top plane on x -- an axis this stencil never
     // differences along. The mask is about which cells MEEP's owned loop VISITS,
@@ -414,7 +456,7 @@ extern "C" __global__ void step_D_no_pml_real(
         float sf = shift_dn(Hz, idx, j, ny, sy, bc_y);
         float f2 = Hy[idx];
         float ss = shift_dn(Hy, idx, k, nz, sz, bc_z);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_y, pr_z);
         if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
         if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
         if (bc_y == BC_MIRROR_PERIODIC && j == 0) curl = 0.0f;
@@ -429,7 +471,7 @@ extern "C" __global__ void step_D_no_pml_real(
         float sf = shift_dn(Hx, idx, k, nz, sz, bc_z);
         float f2 = Hz[idx];
         float ss = shift_dn(Hz, idx, i, nx, sx, bc_x);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_z, pr_x);
         if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
         if (bc_z == BC_METALLIC && k == 0) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
@@ -444,7 +486,7 @@ extern "C" __global__ void step_D_no_pml_real(
         float sf = shift_dn(Hy, idx, i, nx, sx, bc_x);
         float f2 = Hx[idx];
         float ss = shift_dn(Hx, idx, j, ny, sy, bc_y);
-        float curl = dtdx * ((sf - f1) + (f2 - ss));
+        float curl = curl_stencil(dtdx, sf, f1, f2, ss, pr_x, pr_y);
         if (bc_x == BC_METALLIC && i == 0) curl = 0.0f;
         if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;
         if (bc_x == BC_MIRROR_PERIODIC && i == 0) curl = 0.0f;
@@ -527,13 +569,20 @@ def _get_kernel(name: str):
 
 
 def step_no_pml_curl(fields: Any, sub_step: str, boundary_codes, dtdx: float,
-                     arm: Optional[str] = None,
+                     chunk_bounds: Any, arm: Optional[str] = None,
                      inverse_epsilon: Optional[Tuple[Any, Any, Any]] = None) -> str:
     """Launch the no-absorber curl for one sub-step. Returns the kernel launched.
 
     ``boundary_codes`` is the triple ``coverage.real_curl_boundary_codes`` builds
     -- the SAME function the certified pair's launcher calls, so the launcher and
     the predicate cannot disagree about what a folded axis resolves to.
+
+    ``chunk_bounds`` is the run's chunk record on the device, one contiguous
+    ``int32[25]`` vector (``chunk_map.chunk_bounds_record`` of the run's division,
+    uploaded once; ``step_curl_kernels.chunk_record_argument`` checks it). The
+    kernels read its partner-presence word only, which chooses MEEP's stencil form
+    per component. There is no default: a record of some other grid would step the
+    stencil of a grid with other invariant axes, a silent wrong answer.
 
     ``arm`` is normally left None and taken from the run
     (:func:`no_pml_curl_arm`); a gate passes it explicitly to launch a specific
@@ -557,7 +606,15 @@ def step_no_pml_curl(fields: Any, sub_step: str, boundary_codes, dtdx: float,
             "rather than the B array this family differences; ask "
             "covers_no_pml_curl first -- it refuses this configuration rather "
             "than raising")
+    if chunk_bounds is None:
+        raise ValueError(
+            "the no-absorber curl takes the run's chunk record "
+            "(chunk_map.chunk_bounds_record) for its partner-presence word and was "
+            "handed none")
     kernel = _get_kernel(name)
+    from .step_curl_kernels import chunk_record_argument  # noqa: PLC0415 - imports cupy at scope
+
+    cb = chunk_record_argument(chunk_bounds)
 
     if sub_step == "step_B":
         targets = (fields.Bx, fields.By, fields.Bz)
@@ -573,7 +630,7 @@ def step_no_pml_curl(fields: Any, sub_step: str, boundary_codes, dtdx: float,
         # ``get_H``'s no-absorber alias, spelled out. Bound DIRECTLY rather than
         # through ``get_H`` so the launcher binds exactly the arrays
         # :func:`_array_inventory` checked -- ``get_H`` branches on
-        # ``Fields._pml_active`` (fields.py:1182-1187) and would hand back a
+        # ``Fields._pml_active`` (fields.py:1235-1239) and would hand back a
         # STORED H on a Fields left in PML storage mode. That configuration is
         # already refused by the predicate (its ``fu_D*`` clause fires, because
         # ``enable_pml_storage`` allocates the auxiliaries with the H arrays), and
@@ -592,6 +649,7 @@ def step_no_pml_curl(fields: Any, sub_step: str, boundary_codes, dtdx: float,
         *extra,
         np.int32(nx), np.int32(ny), np.int32(nz), np.float32(dtdx),
         boundary_codes[0], boundary_codes[1], boundary_codes[2],
+        cb,
     ))
     return name
 
@@ -605,7 +663,7 @@ def no_pml_curl_arm(fields: Any, sub_step: str) -> str:
 
     ``step_D`` has one arm because it never reads E. ``step_B`` follows
     ``fields.stores_E``, which is the exact flag ``stepping._read_component``
-    branches on (stepping.py:2440), so the arm cannot disagree with what the
+    branches on (stepping.py:2894), so the arm cannot disagree with what the
     array path will do.
     """
     if sub_step == "step_D":
@@ -650,7 +708,7 @@ def _array_inventory(fields: Any, grid: Any, sub_step: str, arm: str):
     if sub_step == "step_B" and arm == "derived_E":
         # THE INVERSE-EPSILON VOLUMES ARE POINTERS TOO, and their DTYPE decides
         # the arithmetic rather than just the launch: the array path's derived
-        # buffer is ``result_type(D, inv_eps)`` (stepping.py:2449), so a float64
+        # buffer is ``result_type(D, inv_eps)`` (stepping.py:2903), so a float64
         # inverse epsilon makes the whole curl a float64 curl and this float32
         # kernel would be a different computation, not a different rounding.
         for component in ("Ex", "Ey", "Ez"):
@@ -725,7 +783,7 @@ class _NoAbsorberFieldsProxy:
     WHAT IS TRUE HERE AND WHAT IS A STAND-IN, named one by one:
 
     * ``Hx``/``Hy``/``Hz`` -> the B arrays. NOT a stand-in: ``Fields.get_H``
-      returns exactly these without an absorber (fields.py:1184-1186), and
+      returns exactly these without an absorber (fields.py:1238-1239), and
       ``stepping.step_D`` differences exactly these -- measured bit-identical.
     * ``stores_E`` -> True. On the stored arm this is the truth. On the derived
       arm it is an ASSERTION THAT THIS FILE HAS ANSWERED THE QUESTION ITSELF:
@@ -735,7 +793,7 @@ class _NoAbsorberFieldsProxy:
       sibling's clause asks dtype, shape and contiguity of the array the curl
       differences; the array the curl differences is the derived buffer, whose
       shape is D's and whose dtype is ``result_type(D, inv_eps)``
-      (stepping.py:2449). D therefore answers the shape and contiguity question
+      (stepping.py:2903). D therefore answers the shape and contiguity question
       exactly, and the DTYPE question is answered by this file's own check on the
       inverse-epsilon volumes -- because that is the operand D's dtype alone
       cannot speak for.
@@ -828,7 +886,7 @@ def covers_no_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tuple
 
     THE SUB-STEP ARGUMENT IS REQUIRED for the reason
     :func:`coverage.covers_real_pml_curl`'s is: the conductivity is read PER
-    TARGET COMPONENT in ``stepping._apply_curl`` (:479), so a D-side conductivity
+    TARGET COMPONENT in ``stepping._apply_curl`` (:546), so a D-side conductivity
     routes ``step_D`` to a recurrence this family does not implement and leaves
     ``step_B`` an ordinary curl. Refusing both would give up a slot that is
     served; admitting both would serve one that is not. It ALSO chooses the arm:

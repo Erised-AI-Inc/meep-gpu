@@ -80,7 +80,7 @@ from meep_gpu import (
 )
 # Imported as MODULES, not names: the lift-side controls below replace attributes on
 # them, and a `from ... import` would bind the originals here and never see the swap.
-from meep_gpu import from_meep, gaussian_beam
+from meep_gpu import from_meep, gaussian_beam, sources as source_module
 
 CELL = mp.Vector3(2, 2, 4)
 RESOLUTION = 10
@@ -333,9 +333,8 @@ CASES = {
     ),
     # The wrapped seam of a one-sided layer: -L/2 and +L/2 are one lattice point and
     # the HIGH face's grading owns it at peak sigma. For Ez the z layer enters
-    # neither ladder axis (dsig = x, dsigu = y), and the deposit-cell arithmetic —
-    # sigma_bites / in_pml_chunk with the wrapped cell 0 owned by the high face —
-    # is exactly what this case exercises.
+    # neither ladder axis (dsig = x, dsigu = y), and the chunk membership with the
+    # wrapped cell 0 owned by the high face is exactly what this case exercises.
     "source_on_the_wrapped_pml_seam": (
         dict(boundary_layers=[mp.PML(0.5, direction=mp.Z, side=mp.High)],
              sources=cw(center=mp.Vector3(0, 0, -2.0))),
@@ -358,9 +357,9 @@ CASES = {
     # Dcyl ladder binding is dsig = R, dsigu = P (cycle_direction start = 2,
     # vec.hpp:583-589, equal to the Cartesian tables under x = R, y = P, z = Z),
     # and P never carries sigma, so this deposit always lands where MEEP runs the
-    # UNSPLIT recurrence — the case is Defect B with no Cartesian analogue of a
-    # rescuing corner, and it is what the Dcyl sweep measured at 4.08e+00 before
-    # the f_u mirror ran on cylindrical grids. Standalone floor on this cell at
+    # dsig-only form — the case is Defect B with no Cartesian analogue of a
+    # rescuing corner, and it is what the Dcyl sweep measured at 4.08e+00 while the
+    # engine still ran the split recurrence there. Standalone floor on this cell at
     # until = 6: 1.1016e-06.
     "cylindrical_source_in_pml": (
         dict(dimensions=mp.CYLINDRICAL, cell_size=mp.Vector3(2, 0, 4), m=0,
@@ -811,7 +810,12 @@ CASES = {
     # an electric dipole, which is exactly why the B-side fill running a sub-step
     # early survived all of them: mode-decomposition.py at resolution 17 read Hy
     # 2.72e-03 while Ez and Hx sat at 1.32e-06 / 2.51e-06, and 1.62e-06 on Hy once the
-    # fill moved to the driver's post-injection slot.
+    # fill moved to the driver's post-injection slot. That defect lived in the ghost
+    # row, and the readback now rebuilds a not-owned word from owned words, as MEEP's
+    # chunk words are built (readback.chunk_words), so no reader sees it: restored, it
+    # measured 2.37e-07 here against a parity of 2.2-3.9e-07. The fill order is pinned
+    # on the stored rows instead (test_driver_integration.py,
+    # test_the_b_mirror_ghost_is_imaged_after_the_magnetic_current_lands).
     "eigenmode_source_waveguide_folded": (
         dict(cell_size=mp.Vector3(8, 6, 0), boundary_layers=[mp.PML(1.0)],
              symmetries=[mp.Mirror(mp.Y)],
@@ -821,8 +825,7 @@ CASES = {
                  mp.GaussianSource(frequency=1.0, fwidth=0.2),
                  center=mp.Vector3(-2, 0), size=mp.Vector3(0, 3), eig_band=1,
                  eig_parity=mp.ODD_Z + mp.EVEN_Y)]),
-        dict(until=12.0), "Hy",
-        {"b_ghosts_filled_before_the_source": "b_ghosts_filled_before_the_source"},
+        dict(until=12.0), "Hy", {},
     ),
     # OBLIQUE launches — direction=NO_DIRECTION, where the propagation axis comes from
     # eig_kpoint and not from the source normal. MEEP's synthesis is unchanged (the same
@@ -952,7 +955,7 @@ CASES = {
     # size 10 so it stops at the absorber's inner edge instead of spanning it,
     # keeping this case about REAL STORAGE alone (a full-width sheet is admitted
     # now — the `source_spans_the_pml` parity case — but overlaps the layer and
-    # would fold the deposit-mirror machinery into a beam-storage measurement).
+    # would fold the in-layer curl forms into a beam-storage measurement).
     "beam_real_fields": (
         dict(force_complex_fields=False, k_point=False,
              cell_size=mp.Vector3(14, 14, 0), resolution=20,
@@ -2051,11 +2054,20 @@ def degrade_lift(sim, mode):
         # (EigenmodeData.amplitude, simulation.py:872-874), so a half-integer-z
         # component's own Yee offset would reach eigenmode_amplitude as a real z
         # displacement and pick up exp(i*2*pi*Gk[2]*pz) with Gk[2] = beta. MEEP's own
-        # D2 vec never has a z at all. This control keeps the offset.
+        # D2 vec never has a z at all (vec2py hands the amplitude function 0 there,
+        # sources._invariant_sample_offset). This control plants the offset in the
+        # placement and keeps it through the mode sample.
         original = from_meep._eigenmode_sample_point
-        from_meep._eigenmode_sample_point = lambda module, centre, offsets, invariant: (
-            module.Vector3(*(centre[axis] + offsets[axis] for axis in range(3))))
-        return lambda: setattr(from_meep, "_eigenmode_sample_point", original)
+        original_offset = source_module._invariant_sample_offset
+        from_meep._eigenmode_sample_point = lambda module, offsets, invariant: (
+            module.Vector3(*offsets))
+        source_module._invariant_sample_offset = lambda component, axis, inva: (
+            0.5 * inva * source_module._iyee_shift(component, axis))
+
+        def restore():
+            from_meep._eigenmode_sample_point = original
+            source_module._invariant_sample_offset = original_offset
+        return restore
 
     if mode == "hx_is_ey":
         original = gaussian_beam._gb_hx
@@ -2262,33 +2274,6 @@ def degrade_lift(sim, mode):
         from_meep.beam_fields = reduced
         return lambda: setattr(from_meep, "beam_fields", original)
 
-    if mode == "b_ghosts_filled_before_the_source":
-        # THE DEFECT ITSELF, restored verbatim. MEEP's magnetic half is
-        # step_db(B_stuff) / step_source(B_stuff) / step_boundaries(B_stuff)
-        # (step.cpp:67-72); this engine used to fill the B-side mirror ghosts at the
-        # end of step_B instead, one sub-step early, so every ghost carried the image
-        # of its owned cell as of BEFORE that cell was driven. The result is a
-        # complete, smooth, stable field whose only flaw is one permanently
-        # source-stale row per folded axis — nothing about the run announces it.
-        from meep_gpu import driver as driver_module
-
-        original_step = driver_module.step_B
-        original_fill = driver_module.fill_symmetry_bc_B
-
-        def step_B_then_fill(fields, pml=None):
-            original_step(fields, pml)
-            if fields.grid.has_symmetry():
-                original_fill(fields)
-
-        driver_module.step_B = step_B_then_fill
-        driver_module.fill_symmetry_bc_B = lambda fields: None
-
-        def restore_slot():
-            driver_module.step_B = original_step
-            driver_module.fill_symmetry_bc_B = original_fill
-
-        return restore_slot
-
     if mode == "absorber_electric_only":
         # THE MOST TEMPTING WRONG ABSORBER: build the D-side ramp and skip the B-side
         # one, because "conductivity" reads as electric. MEEP's FOR_D_AND_B loop
@@ -2475,10 +2460,11 @@ REFUSALS = {
     # A source against the absorber is ADMITTED on EVERY grid now.
     # `source_spans_the_pml` and `source_on_the_wrapped_pml_seam` moved from this
     # table to parity CASES when the Cartesian defects were fixed and measured (the
-    # f_u deposit mirror and the integrated-dipole withdraw slot; evidence packet
+    # per-chunk curl form, first as a deposit mirror into f_u and now as the region
+    # plan's dsig-only form, and the integrated-dipole withdraw slot; evidence packet
     # §1.5-1.7), and `cylindrical_source_in_pml` followed when the Dcyl sweep
-    # measured the same truth table transferring and the mirror landing every
-    # broken case at the floor (sources.py deposit-mirror comment). What the sweep
+    # measured the same truth table transferring, every broken case at the floor.
+    # What the sweep
     # found INSTEAD — an integer-r-stencil source reaching the r-max metallic wall,
     # whose wall ring the old clamp folded onto the last interior ring — was
     # refused here as `cylindrical_source_on_r_wall` until the deposition learned
@@ -2526,9 +2512,8 @@ REFUSALS = {
     # two_d_rotated_block_smoothed_te; the tensor stencil's driven fold-equivalence
     # is 8.3e-13..4.7e-12 across both coefficient parities).
     # A CONDUCTIVITY difference, not a susceptibility one: media differing only in
-    # E_susceptibilities LIFT on a sigma-reader MEEP (meep-sigma-reader.patch), so
-    # that spelling would stop being a refusal the moment this suite runs in the
-    # patched env. Per-point conductivity still has no reader on any MEEP.
+    # E_susceptibilities LIFT (test_sigma_lookup.py, test_sigma_recovery.py), so that
+    # spelling is not a refusal. Per-point conductivity still has no reader on any MEEP.
     # Media differing in chi3 — and it has to be chi3 (or chi2) now, because the three
     # entries this refusal used to be demonstrated on are all recoverable per point:
     # epsilon_diag and epsilon_offdiag off chi1inv at frequency 0, and
@@ -5110,13 +5095,13 @@ _PARITY_BOUNDS = {
     "absorber_z_low_only": (1e-6, {"high_face": 0.1}),
     "absorber_and_pml_on_different_faces": (1e-6, {"pml_everywhere": 1e-2}),
     # Measured 6.3253e-07 / 9.6206e-07 standalone (whole-volume complex Ez, until 6);
-    # the guard's former refusals, admitted by the f_u mirror + withdraw fixes.
+    # the guard's former refusals, admitted by the per-chunk curl form + withdraw fixes.
     "source_spans_the_pml": (5e-6, {}),
     "source_on_the_wrapped_pml_seam": (5e-6, {}),
     # Measured 4.9019e-07 standalone; 9.5837e-01 with the withdraw slot stubbed.
     "integrated_source_in_the_pml": (5e-6, {}),
     # Measured 1.1016e-06 standalone; 4.08e+00 was the same configuration's class
-    # in the Dcyl sweep before the f_u mirror ran on cylindrical grids.
+    # in the Dcyl sweep before the per-chunk curl form reached cylindrical grids.
     "cylindrical_source_in_pml": (5e-6, {}),
     # The former wall refusal, admitted by the metal_high drop in
     # `sources._build_source_points`: the wall ring's edge weight is discarded
@@ -5190,11 +5175,12 @@ _PARITY_BOUNDS = {
     "eigenmode_source_special_kz_real_imag": (5e-6, {"no_kz_phasefix": 0.1,
                                                      "full_3d_sample_point": 1e-3}),
     # The folded TM launch, on the same 5e-6 its unfolded twin holds — the claim being
-    # that a fold costs a magnetic sheet nothing. Its control is the step-order defect
-    # restored (1.27e-02), and the bar is deliberately only 1e-4: one stale ghost row
-    # is a SMALL number next to every other control in this file — the smallest here by
-    # two orders — which is the whole reason it went unseen. That is what the case
-    # is for.
+    # that a fold costs a magnetic sheet nothing. Its control was the step-order defect
+    # restored (1.27e-02 through the 0.9.2 reader, which read the ghost row); the
+    # readback no longer reads ghost storage, so that defect is invisible here
+    # (2.37e-07) and is pinned on the stored rows instead (see the case's comment). The
+    # fold itself is the control the shape assertion already is: an unfolded lift
+    # returns a different array.
     #
     # THE PARITY NUMBER JITTERS AND THE BAR IS SET FOR IT: six repeat runs measured
     # 2.19 / 2.36 / 2.42 / 2.51 / 3.71 / 3.93 e-07 where the unfolded twin reproduces
@@ -5203,7 +5189,7 @@ _PARITY_BOUNDS = {
     # last digits), and the folded run's Hy reference norm is the smaller of the two,
     # so it shows. 5e-6 leaves 13x headroom over the worst seen; the control's own
     # spread is in the 8th digit (1.2728e-02), so the separation is never in doubt.
-    "eigenmode_source_waveguide_folded": (5e-6, {"b_ghosts_filled_before_the_source": 1e-4}),
+    "eigenmode_source_waveguide_folded": (5e-6, {}),
     # Oblique (NO_DIRECTION). The bar is the same 5e-6 the normal-launch eigenmode
     # cases sit on — the synthesis is byte-identical, only the solve differs — and
     # `axis_solve` is the control that earns the case: it is the natural wrong
@@ -6313,63 +6299,48 @@ def test_compatibility_report_is_a_reason_list_not_a_boolean():
     assert refused.reasons == ("first thing", "second thing")
 
 
-def test_get_array_carries_the_bloch_phase_on_the_duplicate_plane():
-    """MEEP's index-0 plane is one lattice vector down and carries ``conj(bloch_phase)``.
+def test_get_array_phases_the_bloch_duplicate_plane_as_meep_does():
+    """MEEP's index-0 plane is one lattice vector down: ``ph = pow(eikna, -1)``.
 
     Measured directly against ``sim.get_array`` at k = (0.1234567, 0, 0):
-    ``ez[0] / ez[-1] = 0.019392 - 0.999812j``, which is ``conj(exp(2j*pi*k*L))``
-    to every digit. ``Fields.to_meep_array`` prepends a plain copy instead, so
-    ``GpuRunResult.get_array`` applies the factor itself — 1.98e-01 against CPU
-    MEEP without it, 2.90e-07 with it, on a volume that is otherwise exact.
+    ``ez[0] / ez[-1] = 0.019392 - 0.999812j``, which is ``conj(exp(2j*pi*k*L))``. MEEP
+    forms the plane in ``array_slice``'s store (array_slice.cpp:416) from the top
+    centred point's double sum times ``shift_phase * phase_shift``, with
+    ``shift_phase = prod_d pow(eikna[d], ishift[d])`` in libc++'s arithmetic
+    (loop_in_chunks.cpp:412-417), and rounds once per part. P0-g measured that form
+    value-identical to MEEP on 476,016 duplicate-plane words, where the 0.9.2
+    per-axis ``conj(bloch_phase)`` complex64 correction differed in 4,373.
 
-    No MEEP is needed to pin the relation: it is a statement about the array this
-    package produces, checked against the driver's own ``bloch_phase``.
+    Pinned without MEEP: the plane is that product of the readback's own double sum,
+    the interior is the stored centres unphased, and the plane is within float32
+    rounding of ``conj(bloch_phase)`` times the top plane.
     """
+    from . import readback
+
     driver = FdtdDriver(cell_size=(2.0, 2.0, 2.0), resolution=10, force_complex_fields=True,
                         k_point=(0.1234567, 0.0, 0.0))
     driver.add_source({"component": "Ez", "frequency": 1.0, "center": (0.0, 0.0, 0.05),
                        "size": (0.0, 0.0, 0.0)})
     driver.run(until=1.0)
-    raw = np.asarray(driver.fields.to_meep_array("Ez"))
     result = GpuRunResult(driver=driver, steps=driver.step_count,
                           meep_time=driver.meep_time(), wall_time_s=0.0)
     array = result.get_array("Ez")
-    phase = driver.grid.bloch_phase(0)
-
-    assert np.array_equal(raw[0], raw[-1]), (
-        "Fields.to_meep_array no longer prepends a plain duplicate; the correction in "
-        "GpuRunResult.get_array must be deleted rather than left to double-apply."
-    )
-    expected = (raw[-1] * np.conjugate(phase)).astype(array.dtype)
-    assert array.dtype == raw.dtype, "get_array promoted the stored dtype."
-    assert np.array_equal(array[0], expected), (
-        "get_array did not apply conj(bloch_phase) to the prepended plane."
-    )
-    # Only that one plane moves; a factor applied to the wrong axis or to the whole
-    # volume would still leave the interior looking perfectly reasonable.
-    assert np.array_equal(array[1:], raw[1:]), "get_array altered the interior of the volume."
-    driver.close()
-
-
-def test_get_array_refuses_to_double_apply_the_bloch_correction():
-    """The tripwire must fire if ``Fields`` ever learns the factor itself.
-
-    Applying ``conj(bloch_phase)`` twice squares it on one plane and leaves every
-    other cell exact, which is the quietest possible way for this correction to
-    become wrong. It is guarded by a bit-equality check rather than by a comment.
-    """
-    driver = FdtdDriver(cell_size=(2.0, 2.0, 2.0), resolution=10, force_complex_fields=True,
-                        k_point=(0.25, 0.0, 0.0))
-    driver.add_source({"component": "Ez", "frequency": 1.0, "center": (0.0, 0.0, 0.05),
-                       "size": (0.0, 0.0, 0.0)})
-    driver.run(until=1.0)
-    result = GpuRunResult(driver=driver, steps=driver.step_count,
-                          meep_time=driver.meep_time(), wall_time_s=0.0)
-    already_phased = driver.fields.to_meep_array("Ez")
-    already_phased[0] = already_phased[0] * 0.5  # Stand in for a fixed _add_boundary_cells.
-    driver.fields.to_meep_array = lambda component: already_phased  # type: ignore[method-assign]
-    with pytest.raises(RuntimeError, match="no longer prepends a plain duplicate"):
-        result.get_array("Ez")
+    grid = driver.grid
+    lattice = readback.CentredLattice(driver.fields, "Ez", driver.h_alias_rule())
+    ph = readback.cmul(readback.shift_phase(grid, (-1, 0, 0)), readback.phase_shift(grid, "Ez", 0))
+    qr, qi = lattice.q[0][0], lattice.q[1][0]  # the prepended plane holds the top centred sums
+    re = (1.0 * qr) * ph[0] - (1.0 * qi) * ph[1]
+    im = (1.0 * qr) * ph[1] + (1.0 * qi) * ph[0]
+    expected = np.empty(re.shape, dtype=np.complex64)
+    expected.real, expected.imag = re.astype(np.float32), im.astype(np.float32)
+    assert array.dtype == np.complex64, "get_array promoted the stored dtype."
+    # x carries the Bloch phase; y and z are plain periodic (k = 0), so their duplicates
+    # are copies and every plane past index 0 on x is the interior.
+    assert np.array_equal(array[0], expected[:, :]), "the duplicate plane is not MEEP's product"
+    interior = np.asarray(driver.get_field("Ez", cell_centered=True))
+    assert np.array_equal(array[1:, 1:, 1:], interior), "get_array altered the interior of the volume."
+    phase = complex(grid.bloch_phase(0))
+    np.testing.assert_allclose(array[0], array[-1] * np.conjugate(phase), rtol=2e-6, atol=1e-12)
     driver.close()
 
 
@@ -7684,74 +7655,6 @@ def test_a_dc_dft_monitor_accumulates_what_meeps_own_accumulator_does(tmp_path):
 
 @requires_meep
 @skip_without_meep
-def test_structured_dispersive_media_lift_through_the_sigma_reader():
-    """Media differing in E_susceptibilities lift on a sigma-reader MEEP — end to end.
-
-    The consumer of meep-sigma-reader.patch (the design notes (meep-sigma-reader-plan)):
-    a cell with a Lorentz block (eps 4, f=1, gamma=0.1, sigma=0.4) and a Drude block
-    (eps 2, f=2, gamma=0.05, sigma=0.7) in vacuum — three media, differing exactly in
-    epsilon_diag and E_susceptibilities — accepted by the gate, its per-point sigma
-    volumes read back through ``fields.get_susceptibility_sigma`` at each component's
-    own Yee sites and installed with ``add_susceptibility(sigma={volumes})``.
-    Measured on landing (patched MEEP 1.33.0, single precision): Ez/Hx/Hy at
-    **1.06e-07..1.49e-07** against CPU MEEP stepping the same cell, with the
-    terms-dropped control at **1.9e-01** — six orders of margin. The reader itself is
-    validated separately by parity/meep_gpu/validate_sigma_reader.py (enumeration,
-    bulk, point-sampling-vs-smoothing, the chi1inv(freq) consistency identity at
-    1.6e-09, and symmetry-folded reads).
-
-    SKIPPED on an unpatched MEEP, where there is no reader for this test to be about.
-    That is no longer the same as the cell being refused: the same cell lifts there
-    through the chi1inv RECOVERY instead (``meep_gpu.sigma_recovery``, pinned end to
-    end by ``test_sigma_recovery.py`` with the capability probe forced False, and
-    compared point by point against this reader at 5.7e-08). What the
-    ``media_differ_in_chi3`` refusal still covers on every MEEP is a chi2/chi3
-    difference, which has no reader anywhere — measured invisible in chi1inv at exactly
-    0.000e+00 on both the E and the D row. A CONDUCTIVITY difference is no longer part
-    of it: `_read_conductivity_volumes` recovers that from the D row.
-    """
-    import meep as mp
-
-    from .from_meep import gpu_compatibility, run_on_gpu
-
-    if not hasattr(mp.fields, "get_susceptibility_sigma"):
-        pytest.skip("this MEEP lacks the sigma reader; build one with MEEP_SIGMA_PATCH=1 "
-                    "via parity/meep_gpu/build_meep_133_macos.sh")
-
-    def build():
-        geometry = [
-            mp.Block(center=mp.Vector3(-1.0, 0, 0), size=mp.Vector3(1.46, 1.46, mp.inf),
-                     material=mp.Medium(epsilon=4.0, E_susceptibilities=[
-                         mp.LorentzianSusceptibility(frequency=1.0, gamma=0.1, sigma=0.4)])),
-            mp.Block(center=mp.Vector3(1.0, 0, 0), size=mp.Vector3(1.46, 1.46, mp.inf),
-                     material=mp.Medium(epsilon=2.0, E_susceptibilities=[
-                         mp.DrudeSusceptibility(frequency=2.0, gamma=0.05, sigma=0.7)])),
-        ]
-        return mp.Simulation(cell_size=mp.Vector3(4.0, 4.0, 0.0), resolution=10,
-                             geometry=geometry, force_complex_fields=True,
-                             sources=[mp.Source(mp.GaussianSource(1.0, fwidth=0.4),
-                                                component=mp.Ez,
-                                                center=mp.Vector3(0, -1.2, 0))])
-
-    verdict = gpu_compatibility(build())
-    assert verdict.supported, f"gate refused a sigma-readable cell: {verdict.reasons}"
-
-    result = run_on_gpu(build(), until=6.0, prefer_gpu=False)
-    try:
-        ours = {name: np.asarray(result.get_array(name)) for name in ("Ez", "Hx", "Hy")}
-    finally:
-        result.close()
-
-    reference = build()
-    reference.run(until=6.0)
-    for name, mine in ours.items():
-        theirs = np.asarray(reference.get_array(component=getattr(mp, name), cmplx=True))
-        error = float(np.linalg.norm(mine - theirs) / np.linalg.norm(theirs))
-        assert error < 5e-6, f"structured-dispersive {name} rel L2 {error:.3e}"
-
-
-@requires_meep
-@skip_without_meep
 def test_point_dft_region_readback_is_finite_at_any_alignment():
     """A POINT dft region reads back finite as-accumulated cells at both alignments.
 
@@ -8185,8 +8088,18 @@ def test_a_diagonal_force_region_reproduces_meeps_own_stress_tensor(tmp_path):
     Both of MEEP's own assertions are reproduced end to end by
     ``parity/meep_gpu/drive_meep_test_assertions.py``; this test pins the numbers so a
     regression is a failure here rather than a silent drift in that survey.
+
+    THE DECIMATION-1 BOUND IS 2e-07, NOT 1e-07, because the REFERENCE moves between
+    builds and this engine does not. MEASURED on an x86-64 Linux MEEP 1.33.0
+    single-precision build (the NVIDIA reference environment): MEEP
+    ``-0.11039091094738217``, this engine ``-0.11039092446256414`` -- 1.22e-07
+    relative at one OpenMP thread and 1.45e-07 at two. MEEP's own value is 9.61e-08
+    away from its arm64 value above, while this engine's two values agree to
+    1.24e-08: the spread is the reference's. 2e-07 is under two float32 epsilons
+    (2.38e-07), and the published-constant check below still holds the engine to
+    5e-08 on both hosts (3.33e-08 on Linux).
     """
-    for case, single_bound in (("force_diagonal", 1e-7), ("force_diagonal_decimated", 5e-7)):
+    for case, single_bound in (("force_diagonal", 2e-7), ("force_diagonal_decimated", 5e-7)):
         report = _child(tmp_path, "readers", case)
         precision = report["meep_precision"]
         bound = {"single": single_bound,
@@ -8596,17 +8509,24 @@ def test_a_bare_id_map_hands_back_the_first_runs_monitor_once_the_address_is_rec
     result: a real monitor, for the wrong run.
 
     Skipped rather than failed if the allocator declines to reuse the block, because the
-    reuse is CPython's behaviour and not this package's contract. It has not declined in
-    any run of this test; the skip exists so a future allocator change is reported as
-    "the control could not be established" instead of as a defect.
+    reuse is CPython's behaviour and not this package's contract. It declined once, deep
+    in a full suite run; the skip exists so that is reported as "the control could not
+    be established" instead of as a defect.
     """
     bare: dict[int, str] = {}
     address, reused, _held = _probe_address_reuse(
         lambda: _StandInMonitor("a monitor"),
         keep=lambda monitor: bare.__setitem__(id(monitor), "run one's monitor"))
     if reused is None:
-        pytest.skip("this interpreter did not recycle the freed address in 256 attempts, "
-                    "so the pre-fix hazard could not be reproduced here")
+        # Sanctioned, under the name of what is missing: the allocator's reuse is the
+        # interpreter's to give. Measured in a full suite run in the NVIDIA reference
+        # environment, where the heap had no block of that size to hand back.
+        from conftest import requires_resource_skip  # noqa: PLC0415 - the root conftest
+
+        requires_resource_skip(
+            "freed_address_reuse",
+            "this interpreter did not recycle the freed address in 256 attempts, so the "
+            "pre-fix hazard could not be reproduced here")
 
     assert bare.get(id(reused)) == "run one's monitor", (
         f"the pre-fix map was expected to mis-resolve here: address {address:#x} was freed "

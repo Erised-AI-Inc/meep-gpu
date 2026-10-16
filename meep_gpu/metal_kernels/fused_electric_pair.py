@@ -79,6 +79,15 @@ rather than a precaution. :mod:`.folded_fused_pair` lands on the same 31 with th
 extra ints inside its own ``Params`` for the far-carry reflect rows; the two
 families are the same buffer layout in the same order, which is deliberate.
 
+THE CHUNK RECORD RIDES IN THE SAME STRUCT, which is the only place it can ride at
+31 of 31. Both lifted bodies select their forms per structure chunk through the
+anchored bounds block in each certified emitter, which reads ``cb.``; ``Params``
+embeds the record (:func:`.chunk_bounds.params_member`) and one line before the lifted
+text aliases it (:func:`.chunk_bounds.params_alias`). The D curl half reads the
+integer entries (``cbi_*``, ``in_i_*``, plus the partner-presence bits) and the E half
+the half-integer ones (``cbh_*``, ``in_h_*``), so the two blocks declare no local
+twice.
+
 ``dtdx`` rides in the struct as float32, for the reason :mod:`.folded_fused_pair`
 gives: the array path multiplies a float32 volume by a Python float and NumPy's
 weak promotion casts that double to float32, ``constant float&`` does the same, and
@@ -169,6 +178,9 @@ from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
 from ..triton_kernels.coverage import CONSTITUTIVE_SIDES, Coverage
 from . import shaders
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as a keyword named
+# `chunk_bounds`, the name the composer's StepContext carries (launch.py does the same).
+from . import chunk_bounds as _chunk_bounds
 from .coverage import constitutive_coverage, pml_curl_coverage, zero_metal_axes
 from .device import Residency, compile_source
 from .fused_dispersive_pair import _ZERO_METAL_ROWS
@@ -270,7 +282,10 @@ using namespace metal;
 
 __CONTRACT__
 
-struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx; };
+__RECORD_STRUCT__
+
+struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx;
+__RECORD_MEMBER__ };
 
 kernel void fused_electric_pair_step(
     device float*       f0      [[buffer(0)]],
@@ -312,6 +327,10 @@ kernel void fused_electric_pair_step(
     // `shaders.constitutive_source` emit, plus the wall clear.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
+    // THE CHUNK RECORD rides in the same struct (no binding to spare: this family
+    // sits on the ceiling), and this one line gives the lifted bounds blocks the `cb`
+    // they read.
+__RECORD_ALIAS__
 
 __BODY__
 }
@@ -506,6 +525,9 @@ def fused_electric_pair_source(codes: Sequence[int], zero_metal: Sequence[bool],
     ))
     return shaders.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(indent="                "),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__BODY__": body,
     })
 
@@ -664,7 +686,7 @@ class MetalFusedElectricPairPlan(KernelPlan):
     """
 
     __slots__ = ("residency", "volumes", "codes", "zero_metal", "shape", "dtdx",
-                 "params")
+                 "params", "chunk_bounds")
 
     family = "fused PML D-curl/stored-E pair"
 
@@ -678,8 +700,11 @@ class MetalFusedElectricPairPlan(KernelPlan):
     def __init__(self, residency: Residency, volumes: Sequence[str],
                  codes: Sequence[int], zero_metal: Sequence[bool],
                  shape: Sequence[int], dtdx: float, params: Any,
-                 pointers: Sequence[Any], functions: Mapping[str, Any]) -> None:
+                 pointers: Sequence[Any], functions: Mapping[str, Any], *,
+                 chunk_bounds: Any) -> None:
         self.residency = residency
+        # The host words of the record ``params`` carries, kept for inspection.
+        self.chunk_bounds = chunk_bounds
         self.volumes = tuple(dict.fromkeys(volumes))
         self.codes = tuple(int(code) for code in codes)
         self.zero_metal = tuple(bool(value) for value in zero_metal)
@@ -696,8 +721,12 @@ class MetalFusedElectricPairPlan(KernelPlan):
         return self.launches
 
 
-def _params_tensor(shape: Sequence[int], dtdx: float, device: str) -> Any:
-    """The five scalars as one 20-byte device record.
+def _params_tensor(shape: Sequence[int], dtdx: float, device: str, *,
+                   chunk_bounds: Any) -> Any:
+    """The five scalars and the chunk record as one 120-byte device record.
+
+    The record is :func:`.chunk_bounds.pack` of the validated ``int32[25]`` words,
+    embedded at byte 20 (every member is four bytes, so the struct has no padding).
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason
     :func:`.folded_fused_pair._params_tensor` gives: :meth:`.Residency.mirror` binds
@@ -710,10 +739,14 @@ def _params_tensor(shape: Sequence[int], dtdx: float, device: str) -> Any:
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
-    record = np.zeros(1, dtype=np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"),
-                                         ("n_elem", "<u4"), ("dtdx", "<f4")]))
+    record = np.zeros(1, dtype=np.dtype(
+        [("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
+         ("dtdx", "<f4")] + _chunk_bounds.record_dtype_fields()))
     nx, ny, nz = (int(n) for n in shape)
-    record[0] = (nx, ny, nz, nx * ny * nz, np.float32(dtdx))
+    for name, value in (("nx", nx), ("ny", ny), ("nz", nz), ("n_elem", nx * ny * nz),
+                        ("dtdx", np.float32(dtdx))):
+        record[name] = value
+    record["cb"] = _chunk_bounds.pack(chunk_bounds)
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -723,8 +756,14 @@ def plan_metal_fused_electric_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalFusedElectricPairPlan]:
     """Build the fused D/E plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the
+    composer's ``StepContext.chunk_bounds``) and has no default, as
+    :func:`.launch.plan_pml_curl` has none: a missing record, or one that disagrees
+    with the grid, is refused by name (:func:`.chunk_bounds.plan_words`).
 
     ``None`` is the only refusal, for the reason :func:`.launch.plan_pml_curl`
     gives: a configuration this kernel does not carry must fall back to the array
@@ -740,6 +779,8 @@ def plan_metal_fused_electric_pair(
     from ..stepping import _boundary_kinds  # noqa: PLC0415
 
     grid = fields.grid
+    record = _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                                      "plan_metal_fused_electric_pair")
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, pml))
     walls = zero_metal_axes(grid)
@@ -793,7 +834,8 @@ def plan_metal_fused_electric_pair(
     dtdx = grid.dt / grid.dx
     return MetalFusedElectricPairPlan(
         residency, volumes, codes, walls, grid.shape, dtdx,
-        _params_tensor(grid.shape, dtdx, residency.device), pointers, selected)
+        _params_tensor(grid.shape, dtdx, residency.device, chunk_bounds=record),
+        pointers, selected, chunk_bounds=record)
 
 
 # ---------------------------------------------------------------------------
@@ -812,7 +854,7 @@ def _arm_plan(context: Any, slot: str) -> Optional[MetalFusedElectricPairPlan]:
         return None
     return plan_metal_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

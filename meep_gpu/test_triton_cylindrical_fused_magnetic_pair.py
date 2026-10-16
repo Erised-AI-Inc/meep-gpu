@@ -29,9 +29,9 @@ THE FIVE CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
    appears in this body — parsed out of all three files, so a planted defect is
    EXECUTED against the certified text rather than mirrored by a re-implementation.
 
-THE ARM IS NOT ASSERTED HERE. Which expansion arm the platform takes is a measured
-fact carried in a probe artifact, and a unit test that pinned one would be a guess
-wearing a test's clothes.
+NO EXPANSION ARM IS ASSERTED HERE, because none remains: the expansion licence, its
+probe artifacts and the arm argument are deleted on all three tables, so every
+complex product has one emitted form. The device gate holds the bytes.
 """
 
 from __future__ import annotations
@@ -211,27 +211,17 @@ def test_the_module_has_a_fingerprints_weld():
 # The multiply helpers — the probe-pattern claim
 # ---------------------------------------------------------------------------
 
-def test_the_kernel_calls_no_multiply_helper_outside_the_three_it_declares():
-    """A fourth helper would be a fourth operand orientation, which would need its
-    own probe pattern before it could be licensed. Scanned from the AST of the
-    shipped body, so a call added anywhere in it is caught."""
+def test_the_kernel_calls_no_complex_multiply_helper():
+    """Every product in the fused body has a real operand and is formed per part, so
+    no complex-multiply helper is called and none is licensed. Scanned from the AST of
+    the shipped body (the scan itself is shown live on the forms it does find)."""
     tree = ast.parse("if True:\n" + body())
     called = {node.func.id for node in ast.walk(tree)
               if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
     multiplies = {name for name in called if "_mul" in name}
-    assert multiplies <= set(family.LICENSED_MULTIPLY_HELPERS), multiplies
-    assert multiplies, "the scan found NO multiply helper; it is measuring nothing"
-
-
-def test_the_probe_pattern_set_is_the_base_four_unextended():
-    """The two cylindrical-only orientations are ARM-DEGENERATE — their coefficient's
-    real word is a zero, so ``fma(+-0, z, -(c*z))`` and ``(+-0*z) - (c*z)`` are the
-    same single-rounding operation — and the H-side constitutive adds none. So this
-    product launches no orientation its halves do not."""
-    from meep_gpu.triton_kernels.complex_fields import PROBE_PATTERNS
-
-    assert family.PRODUCT_PROBE_PATTERNS == tuple(PROBE_PATTERNS)
-    assert len(family.PRODUCT_PROBE_PATTERNS) == 4
+    assert family.MULTIPLY_HELPERS == ()
+    assert multiplies == set(), multiplies
+    assert {"curl_stencil", "curl_form", "record_in", "constitutive_form"} <= called
 
 
 # ---------------------------------------------------------------------------
@@ -246,11 +236,11 @@ def test_every_certified_curl_statement_appears_in_the_fused_body():
     certified = statements(
         CURL.read_text(encoding="utf-8"),
         "    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)",
-        "    # --- stores: u then f (kernels.py:193-198 order), both planes ---")
+        "    # --- stores: fu on its cells")
     fused = set(statements(
         body(),
         "        idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)",
-        "        # --- the seam: stepping.zero_metal_B (driver.py:3286) ---"))
+        "        # --- the seam: stepping.zero_metal_B"))
     missing = [line for line in certified if line not in fused]
     assert len(certified) > 100, "the certified statement scan found almost nothing"
     assert missing == []
@@ -265,10 +255,8 @@ def test_every_constitutive_statement_of_the_twin_appears_in_the_fused_body():
         "        kp_0 = tl.load(kp0 + i, mask=live, other=0.0)",
         "else:  # pragma: no cover - laptop path")
     fused = set(statements(
-        body(),
-        "        kp_0 = tl.load(kp0 + i, mask=live, other=0.0)",
-        "        tl.store(h2 + 2 * idx + 1, a_im, mask=live)"))
-    fused.add("tl.store(h2 + 2 * idx + 1, a_im, mask=live)")
+        body() + "\n#__END__\n",
+        "        kp_0 = tl.load(kp0 + i, mask=live, other=0.0)", "#__END__"))
     missing = [line for line in certified if line not in fused]
     assert len(certified) > 30
     assert missing == []
@@ -326,17 +314,16 @@ def test_the_wall_clear_precedes_both_the_store_and_the_constitutive_read():
 # The byte-invisible choice a gate cannot hold
 # ---------------------------------------------------------------------------
 
-def test_the_curl_grouping_keeps_the_invariant_axis_difference():
-    """``stepping._curl_from_operands`` groups ``((A) + (B))``. ``t0`` leads with the
-    PHI SELF-DIFFERENCE — an exact ``+0.0`` on a one-cell axis — so flattening its
-    parens is BYTE-INVISIBLE (measured on the GPU host 2026-08-20: 0 differing words
-    over 8 launches, against a catch for the identical edit on ``t1``). Kept because
-    it is what the array path computes, and pinned here because the gate records it
-    as a null rather than holding it."""
+def test_the_curls_are_selected_by_partner_presence_and_bz_is_the_radial_difference():
+    """``stepping._curl_from_operands`` by the record's presence word: phi carries no
+    partner on a Dcyl grid, so target 0 takes MEEP's one-partner form and target 1 the
+    left-to-right bracket; target 2's whole curl is ``dtdx`` times the radial
+    difference. Keeping the exact +0 phi addend MEEP drops is a signed-zero difference
+    the cylindrical gate measures on its lattice seeding."""
     text = body()
-    assert "t0_re = ((c_p_re - c_re) + (b_re - b_z_re))" in text
-    assert "t1_re = ((a_z_re - a_re) + (c_re - c_r_re))" in text
-    assert "t2_re = ((b_r_re - b_re) + (a_re - a_p_re))" in text
+    assert "curl0_re = curl_stencil(c_p_re, c_re, b_re, b_z_re, dtdx, pp, pz)" in text
+    assert "curl1_re = curl_stencil(a_z_re, a_re, c_re, c_r_re, dtdx, pz, pr)" in text
+    assert "curl2_re = dtdx * tl.load(rad + 2 * idx, mask=live, other=0.0)" in text
 
 
 def test_the_axis_increment_replaces_the_row_and_negates_with_a_literal():
@@ -353,12 +340,14 @@ def test_the_axis_increment_replaces_the_row_and_negates_with_a_literal():
     assert "tl.where(at_r, -inc_re" not in text
 
 
-def test_the_imr_fold_is_a_subtract_and_the_coefficient_is_on_the_left():
+def test_the_imr_pass_is_a_quarter_turn_through_the_additive_ladder():
+    """MEEP's i*m/r pass: ``(-(rinv*g.im), rinv*g.re)``, the negation ``* -1.0``, then
+    ``df = sinv*inc`` subtracted through the ladder, after the curl's form."""
     text = body()
-    assert "_mul_general_coefficient_left(q0_re, q0_im, c_re, c_im" in text
-    assert "_mul_general_coefficient_left(q2_re, q2_im, a_re, a_im" in text
-    assert "curl0_re = curl0_re - m0_re" in text
-    assert "curl2_re = curl2_re - m2_re" in text
+    assert "i0_re = (r0 * c_im) * -1.0" in text and "i0_im = r0 * c_re" in text
+    assert "i2_re = (r2 * a_im) * -1.0" in text and "i2_im = r2 * a_re" in text
+    assert "v0_re = tl.where(du0, v0_re - (si_z * d_re), v0_re - d_re)" in text
+    assert "n0_re = n0_re - d_re" in text
 
 
 # ---------------------------------------------------------------------------

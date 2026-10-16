@@ -211,8 +211,9 @@ def no_pml_ade_update_p_coverage(fields: Any, pml: Any, state: Any,
       kernel, not a rounding gap, and calling it a divergence would misreport it;
     * a component outside ``ELECTRIC_COMPONENTS``, a state that does not drive
       it, a susceptibility kind outside ``{lorentzian, drude}``;
-    * a missing or non-finite ``(c_now, c_prev, c_drive)`` triple, and
-      coefficients built for a different ``dt`` than the grid carries;
+    * MEEP's four update_P words (``PolarizationState.constants``) missing,
+      non-finite or not float32 words (``coverage.polarization_constant_reasons``),
+      and words built for a different ``dt`` than the grid carries;
     * a non-3-D grid, a cell count past the kernel's int32 index range, and any
       of ``P``/``P_prev``/``_scratch`` that is not float32, C-contiguous and
       exactly ``grid.shape``;
@@ -261,18 +262,7 @@ def no_pml_ade_update_p_coverage(fields: Any, pml: Any, state: Any,
         reasons.append(f"kind {kind!r} is outside "
                        f"{_coverage.COVERED_SUSCEPTIBILITY_KINDS}")
 
-    coefficients = getattr(state, "_coefficients", None)
-    if coefficients is None or len(tuple(coefficients)) != 3:
-        reasons.append("the (c_now, c_prev, c_drive) coefficient triple is missing")
-    else:
-        for name, value in zip(("c_now", "c_prev", "c_drive"), tuple(coefficients)):
-            try:
-                number = float(value)
-            except Exception:  # noqa: BLE001 - a non-numeric coefficient is not coverage
-                reasons.append(f"{name}={value!r} is not a float")
-                continue
-            if number != number or number in (float("inf"), float("-inf")):
-                reasons.append(f"{name}={number!r} is not finite")
+    reasons.extend(_coverage.polarization_constant_reasons(state))
 
     dt = getattr(grid, "dt", None)
     if dt is None:

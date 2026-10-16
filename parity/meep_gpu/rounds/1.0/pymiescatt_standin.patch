@@ -1,0 +1,17 @@
+PyMieScatt 1.8.1.1 (PyPI sdist PyMieScatt-1.8.1.1.tar.gz) imports trapz from scipy.integrate,
+which SciPy 1.14 removed; both certification references hold a newer SciPy. These two
+lines take it from NumPy instead (numpy.trapezoid, NumPy 2.0 and later). Applied by
+build_pymiescatt_standin.py, which requires each removed line at its stated line number
+(no context, no fuzz). The sdist's sources end their lines in CRLF; each line written
+takes the ending of the line it replaces.
+
+--- a/PyMieScatt/Inverse.py
++++ b/PyMieScatt/Inverse.py
+@@ -9 +9 @@
+-from scipy.integrate import trapz
++from numpy import trapezoid as trapz
+--- a/PyMieScatt/Mie.py
++++ b/PyMieScatt/Mie.py
+@@ -5 +5 @@
+-from scipy.integrate import trapz
++from numpy import trapezoid as trapz

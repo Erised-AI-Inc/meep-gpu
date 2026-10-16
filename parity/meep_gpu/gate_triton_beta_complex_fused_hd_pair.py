@@ -22,13 +22,13 @@ MIRROR axis, and the absorber is spelled per face because the near face of a fol
 axis is the mirror plane rather than a boundary. No layer on z: that axis is
 translationally invariant on a beta run and ``PML.__init__`` refuses one there.
 
-THE BETA COEFFICIENT'S REAL WORD IS A SIGNED ZERO out of Python's complex arithmetic
-(``special_kz.beta_curl_coefficients``, :771-772, one rounding at :784). It is passed
-through rather than synthesized, and the mutation table arms the synthesis.
-
-THE EXPANSION LICENCE IS POLICY-CONDITIONAL and it is the certified family's: every
-complex arm here was certified under ``keep``, and the beta arms additionally need the
-BETA expansion pattern, resolved by the VARIANT'S OWN resolver.
+THE BETA PASS IS MEEP'S, PER PART. Both certified curls run the special-kz beta pass
+after every component's curl form, a quarter turn of the partner's parts by ONE real
+word (``special_kz.beta_curl_coefficients``, rounded once on the host, negated on the D
+side), through the additive ladder keyed on the chunk record. The two words are passed
+through, the mutation table arms the B side's words in their place and drops the pass,
+and the form contract is armed on both halves (KERNELS.md 7.1 and 7.2), with MEEP's
+start of H scored on ``folded_mirror_periodic_first_update``.
 
 THE LEG SET, THE REFERENCE COUNTING AND WHAT IS RECORDED-RATHER-THAN-ASSERTED are the
 shared kit's; see :mod:`triton_hd_tail_gate_kit`.
@@ -82,6 +82,7 @@ class BetaComplexProduct(kit.Product):
         "meep_gpu/triton_kernels/complex_fields.py",
         "meep_gpu/triton_kernels/symmetry.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/stepping.py",
@@ -104,6 +105,13 @@ class BetaComplexProduct(kit.Product):
         ("unfolded_pp", {"variant": "beta_complex", "boundaries": {}}),
         ("unfolded_mm", {"variant": "beta_complex",
                          "boundaries": {"x": "metallic", "y": "metallic"}}),
+        # THE RUN'S FIRST update_H on the mutation fixture's grid: unseparated, so
+        # every arrangement performs MEEP's start of H at step 1 (the array path in
+        # update_H, the weld through its start_h scalar). Every fixture above is
+        # seeded mid-run.
+        ("folded_mirror_periodic_first_update",
+         {"variant": "folded_beta_complex", "symmetry": (("y", 1),),
+          "boundaries": {"x": "metallic"}, "h_started": False}),
     )
     mutation_fixture = "folded_mirror_periodic"
 
@@ -146,27 +154,98 @@ class BetaComplexProduct(kit.Product):
         },
         "m_f_w_H_written_in_place": {
             "target": "kernel", "expected": "CAUGHT", "hits": 2,
-            "old": "        tl.store(wo0 + 2 * idx, src0_re, mask=live)\n",
-            "new": "        tl.store(wi0 + 2 * idx, src0_re, mask=live)\n",
+            "old": "        tl.store(wo0 + 2 * idx, tl.where(dw0, src0_re, tl.load(\n",
+            "new": "        tl.store(wi0 + 2 * idx, tl.where(dw0, src0_re, tl.load(\n",
             "why": "on this side the newly written f_w_H IS B exactly, so a foreign "
                    "recompute reads B where it needs B_prev",
         },
-        "m_beta_real_word_synthesized": {
-            "target": "host", "expected": "NULL",
-            "why": "MEASURED NULL, 2026-09-08, and it is recorded rather than "
-                   "dropped. The beta coefficient's REAL word is replaced by a "
-                   "synthesized +0.0 instead of the SIGNED zero Python's complex "
-                   "arithmetic produced (special_kz:771-772, one rounding at :784). "
-                   "The mechanism: _mul_imag_coefficient_left multiplies that word "
-                   "into the field and ADDS the product to the other term, and a "
-                   "signed zero's sign survives an add only when the other addend is "
-                   "itself a zero of the opposite sign -- which does not occur on "
-                   "this fixture's value class. THE HOST-MUTATION ROUTE IS NOT "
-                   "DISARMED, and that is what earns this null: m_rotation_skipped "
-                   "and m_half_integer_rebind are host mutations on this SAME "
-                   "fixture through the SAME launcher seam and both are CAUGHT. What "
-                   "the null says is that this seam does not expose the sign, not "
-                   "that the harness cannot see a host defect",
+        "a1_pairwise_curl_grouping": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "old": ("        curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, "
+                    "px, py)\n"),
+            "new": "        curl2_re = dtdx * ((b_x_re - b2_re) + (a2_re - a_y_re))\n",
+            "why": "INVERTED (KERNELS.md 7.1): Dz's real curl takes the PREVIOUS package "
+                   "grouping, the pairwise `(g1s - g1) + (g2 - g2s)`, in place of MEEP's "
+                   "left-to-right `((g1s - g1) + g2) - g2s` that forms.curl_stencil "
+                   "spells",
+        },
+        "b1_whole_grid_recurrence": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "old": "        du0 = record_in(cb, lattice + 8, k)\n",
+            "new": "        du0 = idx >= 0\n",
+            "why": "the select is removed for Dx: the split-field recurrence runs at "
+                   "EVERY cell on both parts and fu_Dx is read and written everywhere, "
+                   "as the 0.9.2 kernels ran it (z is invariant here, so MEEP steps no "
+                   "Dx recurrence at all)",
+        },
+        "b3_membership_one_row_off": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "old": "        du2 = record_in(cb, lattice + 4, j)\n",
+            "new": "        du2 = record_in(cb, lattice + 4, j + 1)\n",
+            "why": "Dz's membership is read one row off along its dsigu axis (y), so the "
+                   "boundary plane of each chunk run changes form",
+        },
+        "b6_fu_store_unmasked": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "old": "        tl.store(u0 + 2 * idx, n0_re, mask=live & du0)\n",
+            "new": "        tl.store(u0 + 2 * idx, n0_re, mask=live)\n",
+            "why": "fu_Dx's real word is stored on a plain cell, which the auxiliary "
+                   "contract leaves untouched; every fixture volume is seeded at every "
+                   "cell",
+        },
+        "b7_fw_scratch_stored_unmasked": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "old": ("        tl.store(wo0 + 2 * idx, tl.where(dw0, src0_re, tl.load(\n"
+                    "            wi0 + 2 * idx, mask=live & (dw0 == 0), other=0.0)), "
+                    "mask=live)\n"),
+            "new": "        tl.store(wo0 + 2 * idx, src0_re, mask=live)\n",
+            "why": "the scratch f_w_Hx real word takes B at every cell, as the 0.9.2 "
+                   "kernels wrote it, instead of B on the dsigw cells and the pre-launch "
+                   "word everywhere else; the rotation publishes the moved history",
+        },
+        "b11_start_of_H_not_forwarded": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "case": "folded_mirror_periodic_first_update",
+            "old": ("            kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)\n"
+                    "        tl.store(ho0 + 2 * idx, own0_re, mask=live)\n"),
+            "new": ("            kp0, kp1, kp2, kmx, kmy, kmz, cb, 0, ny, nz)\n"
+                    "        tl.store(ho0 + 2 * idx, own0_re, mask=live)\n"),
+            "why": "the own cell's constitutive is handed 0 for MEEP's start of H, so "
+                   "the run's first update_H accumulates onto the stored H at the "
+                   "program's own cell while every foreign recompute starts it from B. "
+                   "Scored on the first-update fixture",
+        },
+        "b12_presence_ignored": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "old": "        presence = tl.load(cb + RECORD_PRESENCE)\n",
+            "new": "        presence = 7\n",
+            "why": "both partners taken on every axis whatever the record says: on this "
+                   "2-D grid z is invariant, so Dx and Dy take MEEP's one-partner form "
+                   "and the edit adds the absent z partner back as `(g + g2) - g2`",
+        },
+        "f1_beta_pass_dropped": {
+            "target": "kernel", "expected": "CAUGHT", "hits": 2,
+            "old": ("            v0_re, n0_re = fold_ladder(v0_re, n0_re, q0_re, si_y, "
+                    "si_z, du0)\n"),
+            "new": "",
+            "why": "Dx's real beta pass is dropped from the welded curl: MEEP runs it "
+                   "after every component's curl form (step_db.cpp:161-175), so the "
+                   "word differs wherever the partner's imaginary part is nonzero",
+        },
+        "n1_fu_load_unmasked": {
+            "target": "kernel", "expected": "NULL", "hits": 2,
+            "old": "        p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)\n",
+            "new": "        p_re = tl.load(u0 + 2 * idx, mask=live, other=0.0)\n",
+            "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): "
+                   "off the dsigu chunk the selected form never consumes fu_Dx and its "
+                   "store stays masked; the guard is pinned by the lift",
+        },
+        "m_beta_words_of_the_B_side": {
+            "target": "host", "expected": "CAUGHT",
+            "why": "the plan binds the B side's quarter-turn words (by +i) where the D "
+                   "side's quarter turn is by -i (special_kz.beta_curl_coefficients, "
+                   "magnetic=True instead of False): every beta increment changes sign. "
+                   "It compiles, launches and converges",
         },
         "m_rotation_skipped": {
             "target": "host", "expected": "CAUGHT",
@@ -272,10 +351,13 @@ class BetaComplexProduct(kit.Product):
             return kit.RotationSkipped
         if tag == "m_half_integer_rebind":
             return kit.half_integer_rebind(driver.pml)
-        if tag == "m_beta_real_word_synthesized":
+        if tag == "m_beta_words_of_the_B_side":
             def wrap(plan: Any) -> Any:
-                (bp_re, bp_im), (bm_re, bm_im) = plan.beta_words
-                plan.beta_words = ((0.0, bp_im), (0.0, bm_im))
+                grid = driver.fields.grid
+                plan.beta_words = tuple(float(word) for word in
+                                        _kz.beta_curl_coefficients(
+                                            grid.beta, grid.dt, magnetic=True,
+                                            complex_storage=True))
                 return plan
             return wrap
         return None
@@ -316,11 +398,16 @@ class BetaComplexProduct(kit.Product):
                 "the imported complex constitutive lift no longer equals the "
                 "certified body")
         text = (API_ROOT / self.family_path).read_text(encoding="utf-8")
-        called = set(_re.findall(r"\b(_(?:mul|rotate|div)_[A-Za-z0-9_]*)\s*\(", text))
+        called = set(_re.findall(
+            r"\b(_(?:mul|rotate|div)_[A-Za-z0-9_]*|_connect)\s*\(", text))
         stray = sorted(called - set(family.MULTIPLY_HELPERS))
         if stray:
             findings.append(f"the kernels reach multiply helpers outside the "
                             f"declared set: {stray}")
+        if sorted(called) != ["_connect"]:
+            findings.append(f"the kernels reach {sorted(called)}, not the connection "
+                            f"alone; the beta pass is a quarter turn by one real word "
+                            f"and forms no complex product")
         codes = {"PERIODIC": _folded.CODE_PERIODIC, "METALLIC": _folded.CODE_METALLIC,
                  "MIRROR_METALLIC": _folded.CODE_MIRROR_METALLIC,
                  "MIRROR_PERIODIC": _folded.CODE_MIRROR_PERIODIC}
@@ -335,8 +422,6 @@ class BetaComplexProduct(kit.Product):
             "ghost_codes": codes,
             "arms": {"primary": list(family.ARMS),
                      "extra": [list(pair) for pair in family.EXTRA_ARMS]},
-            "certified_under_subnormal_policy":
-                family.CERTIFIED_UNDER_SUBNORMAL_POLICY,
             "the_update_H_arm_of_the_folded_cell": (
                 "`folded complex`, not `folded complex beta`: the shipped "
                 "constitutive predicate carries no beta clause, and "

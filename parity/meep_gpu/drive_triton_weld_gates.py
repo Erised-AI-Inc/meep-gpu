@@ -18,13 +18,15 @@ WHAT THIS OWNS, AND WHAT IT DELIBERATELY DOES NOT.
   process, reads the artifact the gate wrote, and reports
   ``canonical_verdict`` — the gate's word, normalised by
   :mod:`gate_provenance`, never re-derived here. A driver that computed its own
-  pass/fail would be a second opinion competing with the measurement.
+  pass/fail would be a second opinion competing with the measurement. Where that
+  normaliser reads UNREADABLE, the row reads a boolean the gate wrote under its own
+  name (:func:`own_spelling_verdict`) and says so in ``read_from``.
 * It WELDS NOTHING. ``fingerprints.json`` is not opened, let alone written. The
   campaign's output is a proposal packet; a human applies it.
 
 PROCESS PER GATE, NOT ONE PROCESS. Every gate installs a subnormal policy at the
-NVRTC seam, several import each other, and three write the expansion probe a
-fourth consumes. In one process the first gate's install would silently decide
+NVRTC seam and several import each other. In one process the first gate's install
+would silently decide
 the tenth gate's verdict. Separate processes also mean a segfault costs one row.
 
 PROGRESS (the progress-reporting rule). One flushed line per gate as it lands — name, exit
@@ -85,9 +87,8 @@ EXIT_CANNOT_CERTIFY = 75
 class Gate:
     """One gate: how to invoke it, and where its artifact lands.
 
-    The argv is BUILT rather than stored because three of these families need a
-    path that only exists at run time (an out directory, or the expansion probe
-    a previous gate in the same campaign measured). ``artifact`` is stated
+    The argv is BUILT rather than stored because it names a path that only exists
+    at run time (the gate's out directory). ``artifact`` is stated
     separately because the fleet is not uniform: most gates take ``--out`` and
     write exactly there, ``no_pml`` takes ``--out-dir`` and writes ``gate.json``
     inside it, and guessing which from the flag name is how a runner reports
@@ -95,14 +96,13 @@ class Gate:
     """
 
     def __init__(self, name: str, script: str, argv, artifact: str,
-                 timeout: int = 5400, writes_probe: Optional[str] = None,
-                 note: str = "", policy_flag: Optional[str] = None) -> None:
+                 timeout: int = 5400, note: str = "",
+                 policy_flag: Optional[str] = None) -> None:
         self.name = name
         self.script = script
         self._argv = argv
         self._artifact = artifact
         self.timeout = timeout
-        self.writes_probe = writes_probe
         self.note = note
         #: The flag this gate takes the campaign's subnormal policy on, when
         #: its install is ARGUMENT-GATED rather than unconditional. Threaded
@@ -112,18 +112,14 @@ class Gate:
         #: driver already set for every other gate.
         self.policy_flag = policy_flag
 
-    def argv(self, out_dir: Path, probe: Optional[str],
-             policy: str) -> List[str]:
-        built = [str(part) for part in self._argv(out_dir, probe)]
+    def argv(self, out_dir: Path, policy: str) -> List[str]:
+        built = [str(part) for part in self._argv(out_dir)]
         if self.policy_flag is not None:
             built += [self.policy_flag, policy]
         return built
 
     def artifact(self, out_dir: Path) -> Path:
         return out_dir / self._artifact
-
-    def probe_path(self, out_dir: Path) -> Optional[Path]:
-        return None if self.writes_probe is None else out_dir / self.writes_probe
 
 
 def _gates() -> Tuple[Gate, ...]:
@@ -132,35 +128,21 @@ def _gates() -> Tuple[Gate, ...]:
     Tranche 1 (the first fourteen) were the gates with no ``status: PASS`` weld
     on 2026-08-19. Tranche 2 (2026-08-28) adds the twelve the routing re-gate
     needed; see the comment at its head for why.
-
-    ORDER IS LOAD-BEARING at exactly one place: ``complex`` runs before
-    ``cylindrical_complex`` because the latter binds its ``EXPANSION`` constexpr
-    from a MEASURED probe it does not cut itself, and a probe measured in this
-    campaign, on this device, under the policy this campaign installs is a
-    stronger provenance than one carried in from another run. The fallback is
-    still there (``--probe``) and is recorded per row when used.
     """
     return (
         # Cheap and self-contained first: a placement or environment mistake
         # should surface in a minute, not ninety.
-        Gate("unified_expansion", "gate_triton_unified_expansion.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
-             timeout=1800,
-             note="cuts one expansion record for every complex family"),
         Gate("complex", "gate_triton_complex.py",
-             lambda out, probe: ["--out", out / "gate.json",
-                                 "--probe-artifact", out / "probe.json"],
-             "gate.json", timeout=7200, writes_probe="probe.json",
-             note="also measures the expansion probe the cylindrical-complex "
-                  "gate consumes"),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=7200),
         Gate("fused_electric", "gate_triton_fused_electric.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=3600),
         Gate("no_pml", "gate_triton_no_pml.py",
-             lambda out, probe: ["--out-dir", out], "gate.json", timeout=3600,
+             lambda out: ["--out-dir", out], "gate.json", timeout=3600,
              note="--out-dir, not --out; the artifact is gate.json inside it"),
         Gate("no_pml_constitutive", "gate_triton_no_pml_constitutive.py",
-             lambda out, probe: ["--out", out / "gate.json",
+             lambda out: ["--out", out / "gate.json",
                                  "--backend", "cupy"],
              "gate.json", timeout=3600,
              note="--backend cupy: the numpy default certifies nothing on a "
@@ -176,36 +158,41 @@ def _gates() -> Tuple[Gate, ...]:
              # {"installed": false, "policy": "not_installed"}, which cannot be welded
              # beside the seven that stamped ieee_keep_ftz_stripped. The driver owns the
              # environment every gate needs, so it passes the policy it was asked for.
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
-             timeout=3600, policy_flag="--subnormal-policy"),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=10800, policy_flag="--subnormal-policy",
+             note="RUNTIME, 2026-10-09, one RTX A6000: 3,798 s released, sharing the card "
+                  "with symmetry and two CUDA gates; the 0.10 mutation sweep (24 legs) "
+                  "outgrew the 3,600 s this entry carried, which killed it on the dry "
+                  "run's card shared by the fleet. 10,800 s is 2.8x the measured run "
+                  "and 2.1x the heaviest shared figure of its sibling (symmetry, 5,066 s)"),
         Gate("symmetry", "gate_triton_symmetry.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
-             timeout=5400),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=10800,
+             note="RUNTIME, 2026-10-09, one RTX A6000: 3,706 s released beside "
+                  "conductivity and two CUDA gates, and 5,066 s on the dry run's card "
+                  "shared by the fleet, against the 5,400 s this entry carried. 10,800 s "
+                  "is 2.1x the heaviest measured run"),
         Gate("cylindrical", "gate_triton_cylindrical.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=5400),
         Gate("offdiag", "gate_triton_offdiag.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=5400),
         Gate("nonlinear", "gate_triton_nonlinear.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=5400),
         Gate("bfast", "gate_triton_bfast.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200),
         Gate("special_kz", "gate_triton_special_kz.py",
-             lambda out, probe: ["--out", out / "gate.json",
-                                 "--probe-artifact", out / "probe.json"],
-             "gate.json", timeout=7200, writes_probe="probe.json"),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=7200),
         Gate("folded_complex", "gate_triton_folded_complex.py",
-             lambda out, probe: ["--out", out / "gate.json",
-                                 "--probe-artifact", out / "probe.json"],
-             "gate.json", timeout=10800, writes_probe="probe.json"),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=10800),
         Gate("cylindrical_complex", "gate_triton_cylindrical_complex.py",
-             lambda out, probe: ["--out", out / "gate.json", "--probe-artifact",
-                                 probe or ""],
-             "gate.json", timeout=10800,
-             note="consumes a measured expansion probe; refuses without one"),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=10800),
 
         # ------------------------------------------------- TRANCHE 2, 2026-08-28
         # The twelve families the 2026-08-19 tranche did not need and this one does.
@@ -223,67 +210,38 @@ def _gates() -> Tuple[Gate, ...]:
         # That is checked per script rather than assumed from the flag name, which is
         # the mistake the Gate docstring above already warns about.
         Gate("complex_ade", "gate_triton_complex_ade.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200),
         Gate("complex_no_pml_curl", "gate_triton_complex_no_pml_curl.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
-             timeout=7200),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=7200, policy_flag="--subnormal-policy"),
         Gate("complex_no_pml_conductive", "gate_triton_complex_no_pml_conductive.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
-             timeout=7200),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=7200, policy_flag="--subnormal-policy"),
         Gate("complex_no_pml_stored_e", "gate_triton_complex_no_pml_stored_e.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200),
         Gate("complex_offdiag", "gate_triton_complex_offdiag.py",
-             lambda out, probe: ["--out", out / "gate.json", "--probe", probe or ""],
-             "gate.json", timeout=7200,
-             note="REQUIRES THE UNIFIED_EXPANSION artifact, not the complex probe. "
-                  "Measured 2026-08-28: its folded products bind the EXTENDED pattern "
-                  "set (the base four plus c8_mul_c8_parity_coefficient_left) and the "
-                  "complex gate's probe licenses only the base four, so the shipped "
-                  "builder refuses every folded product with 'the expansion probe "
-                  "artifact does not license an EXPANSION over the EXTENDED pattern "
-                  "set'. Pass --probe <campaign>/unified_expansion/gate.json.\n\n"
-                  "THIS NOTE SAID folded_complex/probe.json UNTIL 2026-09-17, and the "
-                  "artifacts say otherwise -- which is why a probe question is settled "
-                  "by reading the last run that RELEASED and what it recorded as its "
-                  "probe, not by reading prose. On record: "
-                  "triton_fleet_2026-09-15_gapclose passed "
-                  "unified_expansion/gate.json and released; "
-                  "triton_fleet_2026-09-15_ledger passed complex/probe.json and did "
-                  "not; triton_fleet_2026-09-17_allpaths passed complex/probe.json and "
-                  "did not, and the tranche that followed passed "
-                  "unified_expansion/gate.json and released. The note's diagnosis was "
-                  "right and its prescription named the wrong artifact.\n\n"
-                  "Also note --probe takes an ABSOLUTE path: the gate child runs from "
-                  "a different cwd than the driver, and a relative one dies with "
-                  "FileNotFoundError"),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=7200, policy_flag="--subnormal-policy"),
         Gate("no_pml_conductive", "gate_triton_no_pml_conductive.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
-             timeout=5400),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=5400, policy_flag="--subnormal-policy"),
         Gate("no_pml_stored_e", "gate_triton_no_pml_stored_e.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
-             timeout=5400),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=5400, policy_flag="--subnormal-policy"),
         Gate("folded_offdiag", "gate_triton_folded_offdiag.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200),
         Gate("folded_offdiag_dispersive", "gate_triton_folded_offdiag_dispersive.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
-             timeout=7200),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=7200, policy_flag="--subnormal-policy"),
         Gate("fused_ade_chain", "gate_triton_fused_ade_chain.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200, policy_flag="--subnormal-policy"),
         Gate("complex_fused_ade_chain", "gate_triton_complex_fused_ade_chain.py",
-             lambda out, probe: ["--out", out / "gate.json", "--probe", probe or ""],
-             "gate.json", timeout=7200, policy_flag="--subnormal-policy",
-             note="REQUIRES the UNIFIED EXPANSION RECORD, not a per-family probe. "
-                  "Measured 2026-08-28: this family needs a licence for BOTH halves, and "
-                  "only unified_expansion/gate.json carries one -- its unified_licenses "
-                  "block holds {base, folded_parity, special_kz_beta, complex_ade}, and "
-                  "the ADE half reads complex_ade. With the complex gate's probe (or with "
-                  "none) the gate reports 'expansion: E half=1 ADE half=None shared=None' "
-                  "and refuses at one_arm_for_both_halves. Pass "
-                  "--probe <campaign>/unified_expansion/gate.json, absolute"),
+             lambda out: ["--out", out / "gate.json"], "gate.json",
+             timeout=7200, policy_flag="--subnormal-policy"),
         # 2026-09-10: the THIRD ADE chain — the folded off-diagonal dispersive
         # E->P weld, the last buildable E->P cell on the Triton board. The gate
         # NAME is the PRODUCT name and must stay so: this driver names the
@@ -291,11 +249,9 @@ def _gates() -> Tuple[Gate, ...]:
         # the ledger key `triton_<subdirectory>_device_gate` from it.
         Gate("folded_offdiag_fused_ade_chain",
              "gate_triton_folded_offdiag_fused_ade_chain.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200, policy_flag="--subnormal-policy",
-             note="--out is a FILE. NO expansion probe: this family's E half is "
-                  "real float32 storage, so nothing in its verdict reads an "
-                  "expansion record. It records environment.compute_capability "
+             note="--out is a FILE. It records environment.compute_capability "
                   "and environment.device so seed_triton_welds can mint its "
                   "entry, and its curated source_sha256 names BOTH folded "
                   "off-diagonal modules — the kernel executes JIT helpers out of "
@@ -307,46 +263,39 @@ def _gates() -> Tuple[Gate, ...]:
         # DIRECTORY (checked per script, not assumed from the flag name — both do
         # ``os.makedirs(out)`` and write ``gate.json`` inside it).
         #
-        # BOTH CONSUME THE KEEP-CUT EXPANSION PROBE and install the policy
-        # themselves before the first device compile, so they take the campaign's
-        # ``--subnormal-policy`` rather than relying on the environment.
+        # BOTH install the policy themselves before the first device compile, so
+        # they take the campaign's ``--subnormal-policy`` rather than relying on the
+        # environment.
         Gate("cylindrical_fused_electric_pair",
              "probe_triton_cylindrical_fused_electric_pair.py",
-             lambda out, probe: (["--out", out]
-                                 + (["--probe-artifact", probe] if probe else [])),
+             lambda out: ["--out", out],
              "gate.json", timeout=10800, policy_flag="--subnormal-policy",
-             note="--out is a DIRECTORY. Consumes a keep-cut expansion probe; "
-                  "falls back to the in-tree candidates when the campaign has "
-                  "measured none. Its carry legs need the deposit repair, so a "
+             note="--out is a DIRECTORY. Its carry legs need the deposit repair, so a "
                   "tree without deposit_repair.LeadingRepairPlan refuses before "
                   "the first device leg"),
         # 2026-09-04: the MAGNETIC twin of the cylindrical complex pair and the
         # family's COMPOSITION probe, added to the driver when the family grew its
         # m = 0 arm (``cylindrical_complex.M_ZERO``) and every artifact that pins
         # ``cylindrical_complex.py`` was owed a re-run. Neither takes
-        # ``--subnormal-policy``: the magnetic probe installs keep AND flush
-        # itself and reports the two cuts separately; the composition probe
-        # installs the strip through gate_triton_complex and reads the policy
-        # from the environment this driver sets.
+        # ``--subnormal-policy``: both read the campaign's policy from the
+        # MEEP_GPU_SUBNORMAL_POLICY this driver sets (the magnetic probe through
+        # composition_policy.requested_policy, one policy per process since
+        # 2026-10-10) and install the strip through gate_triton_complex.
         Gate("cylindrical_fused_magnetic_pair",
              "probe_triton_cylindrical_fused_magnetic_pair.py",
-             lambda out, probe: (["--out", out]
-                                 + (["--probe-artifact", probe] if probe else [])),
+             lambda out: ["--out", out],
              "gate.json", timeout=10800,
-             note="--out is a DIRECTORY. Consumes a keep-cut expansion probe and "
-                  "installs both policies itself (no --subnormal-policy flag)"),
+             note="--out is a DIRECTORY. Cuts the campaign's policy, read from "
+                  "MEEP_GPU_SUBNORMAL_POLICY (no --subnormal-policy flag)"),
         Gate("cylindrical_complex_composition",
              "probe_triton_cylindrical_complex_composition.py",
-             lambda out, probe: ["--out", out / "gate.json", "--probe-artifact",
-                                 probe or ""],
+             lambda out: ["--out", out / "gate.json"],
              "gate.json", timeout=7200,
-             note="consumes a measured expansion probe; refuses without one. NO "
-                  "--subnormal-policy flag: the strip is installed through "
+             note="NO --subnormal-policy flag: the strip is installed through "
                   "gate_triton_complex and resolved from the environment"),
         Gate("complex_conductive_fused_pair",
              "probe_triton_complex_conductive_fused_pair.py",
-             lambda out, probe: (["--out", out]
-                                 + (["--probe-artifact", probe] if probe else [])),
+             lambda out: ["--out", out],
              "gate.json", timeout=10800, policy_flag="--subnormal-policy",
              note="--out is a DIRECTORY. No-PML family: it installs NO absorber "
                   "and its own predicate refuses one, so a fixture that set a PML "
@@ -358,10 +307,10 @@ def _gates() -> Tuple[Gate, ...]:
         # re-gate. Like the tranche-3 pair above it takes ``--out`` as a DIRECTORY.
         Gate("folded_dispersive_fused_pair",
              "probe_triton_folded_dispersive_fused_pair.py",
-             lambda out, probe: ["--out", out],
+             lambda out: ["--out", out],
              "gate.json", timeout=10800, policy_flag="--subnormal-policy",
-             note="--out is a DIRECTORY. REAL storage throughout, so it consumes no "
-                  "expansion probe at all. Its carry legs need the deposit repair, "
+             note="--out is a DIRECTORY. REAL storage throughout. "
+                  "Its carry legs need the deposit repair, "
                   "so a tree without deposit_repair.LeadingRepairPlan refuses before "
                   "the first device leg; and its corpus leg refuses a staged tree "
                   "that does not carry the 186-row Triton census AND the fusion "
@@ -371,10 +320,10 @@ def _gates() -> Tuple[Gate, ...]:
         # of that kernel's ``BACKWARD == 1`` arms. ``--out`` is a DIRECTORY.
         Gate("cylindrical_real_fused_electric_pair",
              "probe_triton_cylindrical_real_fused_electric_pair.py",
-             lambda out, probe: ["--out", out],
+             lambda out: ["--out", out],
              "gate.json", timeout=10800, policy_flag="--subnormal-policy",
-             note="--out is a DIRECTORY. REAL storage at m = 0, so it consumes no "
-                  "expansion probe. Its carry legs need the deposit repair, and its "
+             note="--out is a DIRECTORY. REAL storage at m = 0. "
+                  "Its carry legs need the deposit repair, and its "
                   "corpus leg refuses a staged tree that does not carry the 186-row "
                   "Triton census AND the fusion board it cross-checks against. A "
                   "CuPy bump is a correctness event for this family: everything "
@@ -387,10 +336,10 @@ def _gates() -> Tuple[Gate, ...]:
         # DIRECTORY.
         Gate("beta_fused_electric_pair",
              "probe_triton_beta_fused_electric_pair.py",
-             lambda out, probe: ["--out", out],
+             lambda out: ["--out", out],
              "gate.json", timeout=10800, policy_flag="--subnormal-policy",
-             note="--out is a DIRECTORY. REAL storage throughout, so it consumes no "
-                  "expansion probe. Its carry legs need the deposit repair, so a "
+             note="--out is a DIRECTORY. REAL storage throughout. "
+                  "Its carry legs need the deposit repair, so a "
                   "tree without deposit_repair.LeadingRepairPlan refuses before the "
                   "first device leg; its corpus leg refuses a staged tree that does "
                   "not carry the 186-row Triton census AND the fusion board it "
@@ -404,10 +353,10 @@ def _gates() -> Tuple[Gate, ...]:
         # BOTH seams). ``--out`` is a DIRECTORY for each.
         Gate("folded_beta_fused_electric_pair",
              "probe_triton_folded_beta_fused_electric_pair.py",
-             lambda out, probe: ["--out", out],
+             lambda out: ["--out", out],
              "gate.json", timeout=10800, policy_flag="--subnormal-policy",
-             note="--out is a DIRECTORY. REAL storage throughout, so it consumes "
-                  "no expansion probe. Its carry legs need the deposit repair's "
+             note="--out is a DIRECTORY. REAL storage throughout. "
+                  "Its carry legs need the deposit repair's "
                   "FOLD closure (deposit_repair.repair_cells), so a tree whose "
                   "repair cannot image a deposit through the mirror fills "
                   "refuses before the first device leg; its corpus leg refuses "
@@ -419,7 +368,7 @@ def _gates() -> Tuple[Gate, ...]:
                   "name and the engine route would return None"),
         Gate("folded_beta_fused_magnetic_pair",
              "probe_triton_folded_beta_fused_magnetic_pair.py",
-             lambda out, probe: ["--out", out],
+             lambda out: ["--out", out],
              "gate.json", timeout=10800, policy_flag="--subnormal-policy",
              note="--out is a DIRECTORY. The MAGNETIC twin: the same corpus "
                   "row's TWO magnetic sources land in this seam, so its carry "
@@ -434,10 +383,10 @@ def _gates() -> Tuple[Gate, ...]:
         # other family here inverts. ``--out`` is a DIRECTORY.
         Gate("no_pml_fused_electric_pair",
              "probe_triton_no_pml_fused_electric_pair.py",
-             lambda out, probe: ["--out", out],
+             lambda out: ["--out", out],
              "gate.json", timeout=10800, policy_flag="--subnormal-policy",
-             note="--out is a DIRECTORY. REAL storage throughout, so it consumes no "
-                  "expansion probe. It installs NO absorber and its own predicate "
+             note="--out is a DIRECTORY. REAL storage throughout. "
+                  "It installs NO absorber and its own predicate "
                   "refuses one, so a fixture that set a PML up would report a family "
                   "failure that was really a fixture failure. Its carry legs need the "
                   "deposit repair AND its second path: a tree whose "
@@ -449,10 +398,10 @@ def _gates() -> Tuple[Gate, ...]:
         # ``bfast_fused_magnetic_pair``. ``--out`` is a DIRECTORY.
         Gate("bfast_fused_electric_pair",
              "probe_triton_bfast_fused_electric_pair.py",
-             lambda out, probe: ["--out", out],
+             lambda out: ["--out", out],
              "gate.json", timeout=10800, policy_flag="--subnormal-policy",
-             note="--out is a DIRECTORY. REAL storage throughout, so it consumes no "
-                  "expansion probe. Its cases are 3-D by necessity: BFAST's k1/k2 "
+             note="--out is a DIRECTORY. REAL storage throughout. "
+                  "Its cases are 3-D by necessity: BFAST's k1/k2 "
                   "are cross-gated on grid.is_invariant, so a 2-D cell zeroes two "
                   "of the six words. Its carry legs need the deposit repair; its "
                   "corpus leg refuses a staged tree without the 186-row census and "
@@ -463,10 +412,10 @@ def _gates() -> Tuple[Gate, ...]:
         # this seam. ``--out`` is a DIRECTORY.
         Gate("conductive_fused_electric_pair",
              "probe_triton_conductive_fused_electric_pair.py",
-             lambda out, probe: ["--out", out],
+             lambda out: ["--out", out],
              "gate.json", timeout=10800, policy_flag="--subnormal-policy",
-             note="--out is a DIRECTORY. REAL storage throughout, so it consumes no "
-                  "expansion probe. Its cases are 2-D and one of them is MIXED (one "
+             note="--out is a DIRECTORY. REAL storage throughout. "
+                  "Its cases are 2-D and one of them is MIXED (one "
                   "lossy component beside two lossless), which is the only shape "
                   "that measures the COND == 0 arm beside a live COND == 1 arm in "
                   "the SAME launch. Its carry legs need the deposit repair; its "
@@ -480,30 +429,24 @@ def _gates() -> Tuple[Gate, ...]:
         # ``--out`` is a DIRECTORY.
         Gate("folded_complex_fused_pair",
              "probe_triton_folded_complex_fused_pair.py",
-             lambda out, probe: ["--out", out],
+             lambda out: ["--out", out],
              "gate.json", timeout=14400, policy_flag="--subnormal-policy",
-             note="--out is a DIRECTORY. COMPLEX storage, so it consumes an "
-                  "EXPANSION probe and resolves it ITSELF through "
-                  "complex_fields.load_expansion_probe — the record must license the "
-                  "EXTENDED pattern set (the base four plus "
-                  "c8_mul_c8_parity_coefficient_left), which is what "
-                  "results/unified_expansion_2026-08-27/keep/gate.json carries and "
-                  "what no per-family probe does. Its carry legs need the deposit "
+             note="--out is a DIRECTORY. Its carry legs need the deposit "
                   "repair, so a tree without deposit_repair.LeadingRepairPlan "
                   "refuses before the first device leg; and its corpus leg refuses a "
                   "staged tree that does not carry the 186-row Triton census AND the "
                   "fusion board it cross-checks its cell against"),
         Gate("fused_offdiag_electric", "gate_triton_fused_offdiag_electric.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200, policy_flag="--subnormal-policy",
-             note="PASSES but reports released=None, and that is a READER gap rather "
-                  "than a refusal. It writes verdict.clauses -- a clause->bool dict -- "
-                  "and the shared normaliser (gate_provenance.py read_verdict) recognises "
-                  "verdict.{pass,passed,released,certified}, so it stamps "
-                  "canonical_verdict.unreadable = 'no recognised verdict shape in this "
-                  "payload; UNREADABLE is not the same claim as refused'. Every clause in "
-                  "its 2026-08-28 run was true. Do not read this as a failing gate, and "
-                  "do not weld it until the reader is widened"),
+             note="A REFUTATION GATE: its own word is verdict['REFUSAL ESTABLISHED'] "
+                  "over verdict.clauses (a clause->bool dict), and the shared "
+                  "normaliser (gate_provenance.py read_verdict) recognises only "
+                  "verdict.{pass,passed,released,certified}, so its canonical_verdict "
+                  "reads UNREADABLE. This driver's row reads the gate's own boolean in "
+                  "that case (own_spelling_verdict) and records read_from = "
+                  "'verdict.REFUSAL ESTABLISHED'; released=True means the refusal was "
+                  "established, which is the gate's exit 0"),
         # ------------------------------------------------- TRANCHE 5, 2026-09-02
         # THE SETTLEMENT TRANCHE. Tranches 1-4 leave 19 of the 40 drifted ledger
         # entries undischargeable, because `rebind_triton_welds.CAMPAIGN_DIRS`
@@ -544,13 +487,13 @@ def _gates() -> Tuple[Gate, ...]:
         # runner that exports the staged scripts directory covers all three.
         Gate("complex_fused_electric_pair",
              "probe_triton_complex_fused_electric_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy",
              note="binds triton_complex_fused_electric_pair_device_gate; the "
                   "CAMPAIGN_DIRS row already names this directory"),
         Gate("probe_triton_complex_fused_magnetic_pair",
              "probe_triton_complex_fused_magnetic_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy",
              note="DIRECTORY NAME IS THE CAMPAIGN_DIRS ROW, probe_triton_ prefix and "
                   "all -- the rebind maps the ledger key to this exact string, and a "
@@ -558,35 +501,35 @@ def _gates() -> Tuple[Gate, ...]:
                   "test_triton_complex_fused_magnetic_pair tests"),
         Gate("probe_triton_cylindrical_real_fused_magnetic_pair",
              "probe_triton_cylindrical_real_fused_magnetic_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
         Gate("probe_triton_dispersive_fused_pair",
              "probe_triton_dispersive_fused_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
         Gate("probe_triton_folded_fused_magnetic_pair",
              "probe_triton_folded_fused_magnetic_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy",
              note="the EXTERNAL_DRIFT_AT_CUT_TIME row on the board -- a concurrent "
                   "change edited its module and probe on 2026-08-20. This run "
                   "re-binds it to the bytes the tree ships now"),
         Gate("probe_triton_folded_fused_pair",
              "probe_triton_folded_fused_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
         Gate("probe_triton_fused_dispersive_chain",
              "probe_triton_fused_dispersive_chain.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy",
              note="--out is REQUIRED on this script (no default)"),
         Gate("probe_triton_folded_deposit_closure",
              "probe_triton_folded_deposit_closure.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
         Gate("probe_triton_fused_ade_state",
              "probe_triton_fused_ade_state.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
         # The ten GATE_BOUND board artifacts the tranches above do not produce.
         # Each is the SAME PROGRAM that cut the artifact the board cites today, so
@@ -594,40 +537,40 @@ def _gates() -> Tuple[Gate, ...]:
         # the stem-match hazard rebind_triton_welds.CAMPAIGN_DIRS warns about.
         Gate("beta_fused_magnetic_pair",
              "probe_triton_beta_fused_magnetic_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
         Gate("bfast_fused_magnetic_pair",
              "probe_triton_bfast_fused_magnetic_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
         Gate("complex_beta_fused_electric_pair",
              "probe_triton_complex_beta_fused_electric_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
         Gate("complex_beta_fused_magnetic_pair",
              "probe_triton_complex_beta_fused_magnetic_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
         Gate("folded_beta_complex_fused_magnetic_pair",
              "probe_triton_folded_beta_complex_fused_magnetic_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy",
              note="dual-mode --out: a path ending .json is used as the artifact"),
         Gate("folded_beta_complex_fused_pair",
              "probe_triton_folded_beta_complex_fused_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy",
              note="dual-mode --out: a path ending .json is used as the artifact"),
         Gate("probe_triton_folded_complex_fused_magnetic_pair",
              "probe_triton_folded_complex_fused_magnetic_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy",
              note="ONE artifact backs TWO board products -- "
                   "folded_complex_fused_magnetic_pair and its _offdiag row. "
                   "Discharges the red test_triton_folded_complex_fused_magnetic_pair"),
         Gate("nonlinear_fused_magnetic_pair",
              "probe_triton_nonlinear_fused_magnetic_pair.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
         # THE COMPOSITION RECORDS. No CAMPAIGN_DIRS row exists for any of these, so
         # the rebind fails closed on them until one is typed. They are here because
@@ -647,31 +590,31 @@ def _gates() -> Tuple[Gate, ...]:
         # different place.
         Gate("conductivity_composition",
              "probe_triton_conductivity_composition.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200,
              note="NO --subnormal-policy flag on this script; it reads the policy "
                   "from the environment. IMPORTS `cases` -- needs results/*/scripts "
                   "on PYTHONPATH"),
         Gate("cylindrical_composition",
              "probe_triton_cylindrical_composition.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200,
              note="NO --subnormal-policy flag. The still_owed note names this run as "
                   "what moves source_sha256 and host_sha256 TOGETHER, the coupling "
                   "test_triton_kernels.py:388-390 enforces"),
         Gate("symmetry_composition",
              "probe_triton_symmetry_composition.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200,
              note="NO --subnormal-policy flag"),
         Gate("source_seams",
              "probe_triton_source_seams.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200,
              note="NO --subnormal-policy flag"),
         Gate("engine_route",
              "probe_triton_engine_route.py",
-             lambda out, probe: ["--out", out / "gate.json"], "gate.json",
+             lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=7200,
              note="NO --subnormal-policy flag. Cuts the dispersive_composition_gate "
                   "record. IMPORTS `cases` -- needs results/*/scripts on PYTHONPATH"),
@@ -756,10 +699,8 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
       ``install_ftz_strip`` resolves ``match_meep`` by measuring the FPU that
       MEEP's own initialization left behind, which on this x86 host is FLUSH;
       every existing weld in ``fingerprints.json`` records ``keep``, so an
-      unnamed run would quietly cut records under the other policy and pair them
-      with a keep expansion probe — the broken comparison the campaign brief
-      names. Measured 2026-08-19, first launch: the unified-expansion and
-      complex gates both died at startup ("refusing to install the 'flush'
+      unnamed run would quietly cut records under the other policy. Measured
+      2026-08-19, first launch: two gates both died at startup ("refusing to install the 'flush'
       subnormal policy: CUPY_CACHE_DIR carries the keep-policy token") in 2.8 s,
       which is the guard doing its job. The name is not lost to the shell: the
       resolution is stamped into every artifact as ``requested`` /
@@ -791,12 +732,14 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
       of a comparison into a kernel run and the gate compares a kernel against
       itself. Every test oracle in the package is pinned the same way for the same
       reason.
-    * ``MEEP_GPU_ALLOW_UNCERTIFIED`` — SET TO ``0`` in the child's environment. The
-      package runs a supported card the record does not certify by default, and
-      ``1`` runs an unsupported one too; a round whose point is to EARN that
-      certification must neither inherit ``1`` from the shell that launched it nor
-      take the default, or the evidence it cuts would rest on the admission it is
-      supposed to produce. ``0`` restricts every kernel to certified identities.
+    * ``MEEP_GPU_HARDWARE`` — SET TO ``certified`` in the child's environment. The
+      package runs a supported card the record does not certify by default
+      (``supported``), and ``any`` runs an unsupported one too; a round whose point
+      is to EARN that certification must neither inherit ``any`` from the shell that
+      launched it nor take the default, or the evidence it cuts would rest on the
+      admission it is supposed to produce. ``certified`` restricts every kernel to
+      certified identities. The retired ``MEEP_GPU_ALLOW_UNCERTIFIED`` is removed
+      from the child's environment: the package refuses it by name, set to anything.
     """
     home = Path.home()
     stub = os.environ.get("TRITON_LIBCUDA_PATH", str(home / "triton_libcuda_stub"))
@@ -809,7 +752,8 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
     cupy_cache.mkdir(parents=True, exist_ok=True)
     triton_cache.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
-    env["MEEP_GPU_ALLOW_UNCERTIFIED"] = "0"
+    env.pop("MEEP_GPU_ALLOW_UNCERTIFIED", None)
+    env["MEEP_GPU_HARDWARE"] = "certified"
     env.update({
         "CUDA_VISIBLE_DEVICES": str(gpu),
         "MEEP_GPU_SUBNORMAL_POLICY": policy,
@@ -852,42 +796,6 @@ def _last_line(path: Path) -> str:
         return "(no output yet)"
     lines = [line for line in tail.decode("utf-8", "replace").splitlines() if line]
     return lines[-1][:160] if lines else "(no output yet)"
-
-
-def probe_policy(path: Optional[str]) -> Optional[str]:
-    """The subnormal policy an expansion probe was CUT UNDER, or None.
-
-    A stamp spells the policy TWICE and the two are different words:
-    ``resolved`` is the request's answer (``keep`` / ``flush``) and ``policy``
-    is the record's full name (``ieee_keep_ftz_stripped``). Comparing the wrong
-    one against ``--policy`` would refuse every honest keep probe, so
-    ``resolved`` is read first and the long name is normalised rather than
-    matched.
-    """
-    if not path:
-        return None
-    try:
-        stamp = json.loads(Path(path).read_text(encoding="utf-8")).get(
-            "subnormal_policy")
-    except (OSError, ValueError):
-        return None
-    if not isinstance(stamp, dict):
-        stamp = {"policy": stamp} if stamp else {}
-    for key in ("resolved", "requested", "policy"):
-        value = stamp.get(key)
-        if not isinstance(value, str) or not value:
-            continue
-        if value in ("keep", "flush"):
-            return value
-        if "keep" in value:
-            return "keep"
-        if "flush" in value:
-            return "flush"
-    return None
-
-
-def probe_note(path: Optional[str]) -> str:
-    return "none" if not path else f"{path} (cut under {probe_policy(path)!r})"
 
 
 def read_artifact(path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -947,6 +855,52 @@ def record_device(python: str, out_root: Path, env: Dict[str, str]
     return payload, None
 
 
+def own_spelling_verdict(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """A gate's OWN boolean verdict, for a shape ``gate_provenance.read_verdict`` does not read.
+
+    Consulted only when the canonical reading is UNREADABLE (``released`` None), so it
+    never overrides the normaliser, and it reads a boolean the gate wrote -- it
+    computes nothing. One shape today: ``gate_triton_fused_offdiag_electric.py``, a
+    refutation gate, writes ``verdict["REFUSAL ESTABLISHED"]`` beside the
+    ``verdict["clauses"]`` it is the conjunction of, and exits 0 exactly when it is
+    True. Measured on the precert pass of 2026-10-09 (tree 8e6ccf99): the gate ran
+    with 10 / 10 clauses true and every reader keyed on ``canonical_verdict`` scored it
+    "not released".
+
+    The widening is HERE rather than in ``read_verdict`` because that module is
+    weld-pinned at its live digest (six entries across the CUDA certification and
+    the Triton and Metal fingerprint ledgers), and this row reader is the one the
+    fleet and the round's status stage read.
+    """
+    verdict = payload.get("verdict")
+    if isinstance(verdict, dict) and isinstance(verdict.get("REFUSAL ESTABLISHED"), bool):
+        released = verdict["REFUSAL ESTABLISHED"]
+        clauses = verdict.get("clauses") if isinstance(verdict.get("clauses"), dict) else {}
+        reasons = [] if released else [f"clause false: {name}"
+                                       for name, value in clauses.items() if value is False]
+        return {"released": released, "reasons": reasons,
+                "read_from": "verdict.REFUSAL ESTABLISHED"}
+    return None
+
+
+def row_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """The verdict fields of one campaign row, read off a gate's artifact.
+
+    ``canonical_verdict`` first, always; the gate's own boolean
+    (:func:`own_spelling_verdict`) only where the canonical reading is UNREADABLE.
+    ``canonical_read_from`` keeps what the normaliser said and ``read_from`` what the
+    row's ``released`` was actually read from, so a reader can tell the two apart.
+    """
+    canonical = payload.get("canonical_verdict") or {}
+    own = own_spelling_verdict(payload) if canonical.get("released") is None else None
+    read = own or canonical
+    return {"released": read.get("released"),
+            "canonical_read_from": canonical.get("read_from"),
+            "read_from": read.get("read_from"),
+            "reasons": read.get("reasons") or [],
+            "unreadable": canonical.get("unreadable")}
+
+
 def native_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
     """The gate's OWN spelling of its outcome, beside the canonical reading.
 
@@ -979,7 +933,7 @@ def native_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
-            gpu: int, probe: Optional[str], heartbeat: int, patience: int,
+            gpu: int, heartbeat: int, patience: int,
             policy: str, forbidden: frozenset) -> Dict[str, Any]:
     """Run one gate to completion and return the row the campaign records."""
     out_dir = out_root / gate.name
@@ -991,7 +945,6 @@ def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
         "script": gate.script,
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
         "gpu": gpu,
-        "probe_supplied": probe,
         "policy_requested": policy,
         "note": gate.note,
     }
@@ -1004,7 +957,7 @@ def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
         log(f"[gate] {gate.name:<20} REFUSED BY DRIVER — {why}")
         return row
 
-    argv = [python, "-u", str(HERE / gate.script), *gate.argv(out_dir, probe, policy)]
+    argv = [python, "-u", str(HERE / gate.script), *gate.argv(out_dir, policy)]
     row["argv"] = " ".join(shlex.quote(part) for part in argv)
     log(f"[gate] {gate.name:<20} starting — {why}")
     log(f"[gate] {gate.name:<20} argv: {row['argv']}")
@@ -1049,13 +1002,9 @@ def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
                     "reasons": [problem or "artifact unreadable"],
                     "canonical_read_from": None})
     else:
-        canonical = payload.get("canonical_verdict") or {}
         imported = payload.get("imported_source_sha256") or {}
         row.update({
-            "released": canonical.get("released"),
-            "canonical_read_from": canonical.get("read_from"),
-            "reasons": canonical.get("reasons") or [],
-            "unreadable": canonical.get("unreadable"),
+            **row_verdict(payload),
             "imported_digests": len(imported),
             "imported_source_sha256": imported,
             "native_verdict": native_verdict(payload),
@@ -1065,9 +1014,6 @@ def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
             "host_environment": payload.get("environment") or payload.get("host")
                 or payload.get("device"),
         })
-        probe_path = gate.probe_path(out_dir)
-        if probe_path is not None and probe_path.exists():
-            row["probe_written"] = str(probe_path)
 
     log(f"[gate] {gate.name:<20} exit={row['exit_code']} "
         f"released={row.get('released')} "
@@ -1105,14 +1051,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--gates", default=",".join(GATES),
                         help="comma-separated gate names, run in this order")
-    parser.add_argument("--probe", default=None,
-                        help="expansion probe for gates that consume one; the "
-                             "probe measured by this campaign's complex gate "
-                             "wins over it when that gate wrote one")
     parser.add_argument("--policy", default="keep", choices=("keep", "flush"),
                         help="the subnormal policy every gate installs; 'keep' "
-                             "is what every weld in fingerprints.json records, "
-                             "and it must match the expansion probe's own stamp")
+                             "is what every weld in fingerprints.json records")
     parser.add_argument("--heartbeat", type=int, default=120)
     parser.add_argument("--patience", type=int, default=1800,
                         help="seconds to wait for a busy device before refusing")
@@ -1143,19 +1084,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         log(f"ABORT: unknown gate(s) {unknown}; known: {sorted(GATES)}")
         return 2
 
-    # A PROBE FROM THE OTHER POLICY IS A BROKEN COMPARISON, NOT A FALLBACK. The
-    # EXPANSION constexpr the complex families bind is a measured platform fact
-    # UNDER ONE POLICY; a keep probe read by a flush run (or the reverse)
-    # licenses nothing, and the failure is silent because both files parse.
-    # Checked BEFORE anything is logged or created, so a mis-paired campaign
-    # cannot leave half an artifact tree behind.
-    supplied = probe_policy(args.probe)
-    if args.probe and supplied != args.policy:
-        log(f"ABORT: the probe at {args.probe} was cut under {supplied!r} and "
-            f"this campaign installs {args.policy!r}; pairing them would be a "
-            f"broken comparison, not a platform verdict")
-        return EXIT_CANNOT_CERTIFY
-
     log(f"===== triton weld campaign {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} =====")
     log(f"host: {socket.gethostname()}  {platform.platform()}")
     log(f"python: {args.python}")
@@ -1164,7 +1092,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     log(f"gpu: {args.gpu}  gates: {len(names)}  jsonl: {jsonl}")
     log(f"devices set aside on this host: {sorted(forbidden) or 'none'}")
     log(f"subnormal policy requested for every gate: {args.policy!r}")
-    log(f"expansion probe handed to gates that consume one: {probe_note(args.probe)}")
     log(_nvidia_smi(["--query-gpu=index,name,memory.used,utilization.gpu",
                      "--format=csv,noheader"]))
 
@@ -1187,32 +1114,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         f"{device.get('cuda_visible_devices')!r}, CuPy {device.get('cupy')}, "
         f"Triton {device.get('triton')}) -> {out_root / 'device.json'}")
 
-    probe = args.probe
     rows: List[Dict[str, Any]] = []
     for index, name in enumerate(names, 1):
         gate = GATES[name]
         log(f"----- [{index}/{len(names)}] {name} -----")
         row = run_one(gate, python=args.python, out_root=out_root,
-                      cache_root=cache_root, gpu=args.gpu, probe=probe,
+                      cache_root=cache_root, gpu=args.gpu,
                       heartbeat=args.heartbeat, patience=args.patience,
                       policy=args.policy, forbidden=forbidden)
         row["order"] = index
         rows.append(row)
         append_jsonl(jsonl, row)
-        written = row.get("probe_written")
-        if name == "complex" and written:
-            # SAME CHECK AS THE SUPPLIED PROBE GETS, on the probe this campaign
-            # just measured. It is keep by construction here, and a construction
-            # is exactly the kind of argument this campaign does not accept
-            # where a measurement is available.
-            cut_under = probe_policy(written)
-            if cut_under == args.policy:
-                probe = written
-                log(f"[probe] later gates will bind the probe this campaign "
-                    f"measured: {probe} (cut under {cut_under!r})")
-            else:
-                log(f"[probe] KEEPING the supplied probe: the one just measured "
-                    f"reads as {cut_under!r}, not {args.policy!r}")
 
     summary = {
         "finished_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

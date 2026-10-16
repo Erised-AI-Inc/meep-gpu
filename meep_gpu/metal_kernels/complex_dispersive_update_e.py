@@ -1,12 +1,17 @@
 """Complex/Bloch PML dispersive ``update_E`` on Metal.
 
 The complex intersection of the PML dispersive and complex-field products.  It
-uses float2 storage, ordered live pole subtraction, and the probe-licensed
-complex-by-real operations for the inverse-epsilon and PML recurrence. Together
-with :mod:`.complex_dispersive_spine`, its direct gate and complete-step gate
-establish the five-slot B/H/D/E/ADE composition under persistent MPS residency.
-Registration remains experimental-composer work; it does not enable production
-dispatch.
+uses float2 storage, the ordered live pole subtraction ``((D - P0) - P1) - ...``,
+the part-wise inverse-epsilon product, and MEEP's per-chunk constitutive form
+selected on the chunk record the plan binds last (:data:`RECORD_BUFFER`): on a cell
+whose chunk carries the component's own (``dsigw``) layer, ``prev`` is read before
+``f_w`` is written and ``E = E + ((kps*src) - (kms*prev))`` with every product one
+per part; elsewhere ``E = src`` and ``f_w`` is neither read nor written -- the
+complex base constitutive kernel's own lines (``complex_fields``), the array path's
+``stepping._apply_constitutive_regions``. Together with
+:mod:`.complex_dispersive_spine`, its direct gate and complete-step gate establish the
+five-slot B/H/D/E/ADE composition under persistent MPS residency. Registration
+remains experimental-composer work; it does not enable production dispatch.
 """
 
 from __future__ import annotations
@@ -20,11 +25,11 @@ from ..triton_kernels.coverage import (
     COVERED_SUSCEPTIBILITY_KINDS, CURL_TARGETS, ELECTRIC_COMPONENTS, Coverage, _call,
     _coefficient_reasons, _inverse_epsilon_reasons, _susceptibility_reasons,
 )
+from . import chunk_bounds as _chunk_bounds
 from . import shaders, templates
 from .ade_update_p import _physical_name
 from .complex_fields import (
-    _complex_volume_reasons, _expansion_reasons, expansion_from_probe,
-    load_expansion_probe,
+    _complex_volume_reasons,
 )
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import Residency, compile_source
@@ -33,11 +38,18 @@ FAMILY = "complex_dispersive_update_e"
 MAX_POLES = 8
 E_TERMS = (("Ex", "Dx", 0, "x"), ("Ey", "Dy", 1, "y"), ("Ez", "Dz", 2, "z"))
 
+#: The chunk record's binding index: last, one past ``n_elem``.
+RECORD_BUFFER = 18
+
+#: Buffer bindings the shader declares: 14 volumes, 4 scalars and the record.
+BINDING_COUNT = 19
+
 _TEMPLATE = r"""
 #include <metal_stdlib>
 using namespace metal;
 __CONTRACT__
 __HELPERS__
+__RECORD_STRUCT__
 kernel void complex_dispersive_e_component(
     device float2*       e_out [[buffer(0)]], device float2* fw [[buffer(1)]],
     device const float2* d_in [[buffer(2)]], device const float* inv_e [[buffer(3)]],
@@ -48,6 +60,7 @@ kernel void complex_dispersive_e_component(
     device const float* kps [[buffer(12)]], device const float* kms [[buffer(13)]],
     constant uint& nx [[buffer(14)]], constant uint& ny [[buffer(15)]],
     constant uint& nz [[buffer(16)]], constant uint& n_elem [[buffer(17)]],
+    __RECORD_BINDING__,
     uint idx [[thread_position_in_grid]])
 {
 __BODY__
@@ -55,13 +68,14 @@ __BODY__
 """
 
 __all__ = [
-    "E_TERMS", "FAMILY", "MAX_POLES", "MetalComplexDispersiveEPlan",
+    "BINDING_COUNT", "E_TERMS", "FAMILY", "MAX_POLES", "MetalComplexDispersiveEPlan",
+    "RECORD_BUFFER",
     "complex_dispersive_e_source", "compile_complex_dispersive_e",
     "metal_complex_dispersive_e_coverage", "plan_metal_complex_dispersive_e",
 ]
 
 
-def complex_dispersive_e_source(pole_count: int, axis: int, expansion: str,
+def complex_dispersive_e_source(pole_count: int, axis: int,
                                 contract: str = shaders.CONTRACT_OFF) -> str:
     if not 0 <= int(pole_count) <= MAX_POLES:
         raise ValueError(f"pole_count must be in [0, {MAX_POLES}], got {pole_count!r}")
@@ -70,23 +84,34 @@ def complex_dispersive_e_source(pole_count: int, axis: int, expansion: str,
     coordinate = ("i", "j", "k")[axis]
     chain = "\n".join(f"    source = source - p{index}[idx];"
                       for index in range(int(pole_count)))
-    body = "\n".join((templates.GUARD, templates.DECODE_IJK,
-                       "    float2 prev = fw[idx];", "    float2 source = d_in[idx];", chain,
-                       "    float2 src = c_mul_field_left(source, inv_e[idx]);", "    fw[idx] = src;",
-                       "    float2 value = e_out[idx];",
-                       f"    value = value + c_mul_coefficient_left(kps[{coordinate}], src);",
-                       f"    value = value - c_mul_coefficient_left(kms[{coordinate}], prev);",
-                       "    e_out[idx] = value;"))
+    lines = [templates.GUARD, templates.DECODE_IJK, "",
+             "    // --- the chunk record: this component's own-axis membership --------",
+             _chunk_bounds.prologue(((True, axis),)), "",
+             f"    const bool dw = {_chunk_bounds.membership_name(True, axis)};",
+             "    float2 prev = dw ? fw[idx] : float2(0.0f, 0.0f);",
+             "    float2 source = d_in[idx];"]
+    if chain:
+        lines.append(chain)
+    lines.extend((
+        "    float2 src = c_mul_field_left(source, inv_e[idx]);",
+        "    if (dw) { fw[idx] = src; }",
+        "    float2 value = src;",
+        f"    if (dw) {{ value = e_out[idx] + (c_mul_coefficient_left(kps[{coordinate}], src) "
+        f"- c_mul_coefficient_left(kms[{coordinate}], prev)); }}",
+        "    e_out[idx] = value;"))
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion), "__BODY__": body,
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_BINDING__": _chunk_bounds.binding(RECORD_BUFFER),
+        "__BODY__": "\n".join(lines),
     })
 
 
-def compile_complex_dispersive_e(pole_count: int, axis: int, expansion: str,
+def compile_complex_dispersive_e(pole_count: int, axis: int,
                                  contract: str = shaders.CONTRACT_OFF) -> Any:
     return compile_source(complex_dispersive_e_source(
-        pole_count, axis, expansion, contract)).complex_dispersive_e_component
+        pole_count, axis, contract)).complex_dispersive_e_component
 
 
 def _poles(fields: Any) -> Dict[str, Tuple[Any, ...]]:
@@ -96,8 +121,7 @@ def _poles(fields: Any) -> Dict[str, Tuple[Any, ...]]:
             for component in ELECTRIC_COMPONENTS}
 
 
-def metal_complex_dispersive_e_coverage(fields: Any, pml: Any, residency: Any = None,
-                                        probe: Any = None) -> Coverage:
+def metal_complex_dispersive_e_coverage(fields: Any, pml: Any, residency: Any = None) -> Coverage:
     grid = getattr(fields, "grid", None)
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
@@ -180,7 +204,6 @@ def metal_complex_dispersive_e_coverage(fields: Any, pml: Any, residency: Any = 
     for component, driven in _poles(fields).items():
         if len(driven) > MAX_POLES:
             reasons.append(f"{component} is driven by {len(driven)} poles, more than MAX_POLES={MAX_POLES}")
-    reasons.extend(_expansion_reasons(probe))
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
@@ -202,11 +225,15 @@ class MetalComplexDispersiveEPlan:
     replaces_sub_steps = ("update_E",)
 
     def __init__(self, entries: Sequence[_Entry], residency: Residency, volumes: Sequence[str],
-                 functions: Mapping[Tuple[str, int, int, str], Any], tensors: Mapping[int, Any],
-                 expansion: str) -> None:
+                 functions: Mapping[Tuple[str, int, int], Any], tensors: Mapping[int, Any], *,
+                 chunk_bounds: Any, record_tensor: Any = None) -> None:
         self.entries, self.residency = tuple(entries), residency
         self.volumes = tuple(dict.fromkeys(volumes))
-        self._functions, self._tensors, self.expansion = dict(functions), dict(tensors), expansion
+        self._functions, self._tensors = dict(functions), dict(tensors)
+        self.chunk_bounds = chunk_bounds
+        self._record_tensor = (record_tensor if record_tensor is not None
+                               else _chunk_bounds.tensor(
+                                   chunk_bounds, str(getattr(residency, "device", "mps"))))
         self.launches = self.runs = 0
         self.launches_per_run = len(self.entries)
 
@@ -218,32 +245,39 @@ class MetalComplexDispersiveEPlan:
         mode = shaders.CONTRACT_OFF if contract is None else contract
         for entry in self.entries:
             poles = tuple(state.P[entry.component] for state in entry.states)
-            function = self._functions[(mode, len(poles), entry.axis, self.expansion)]
+            function = self._functions[(mode, len(poles), entry.axis)]
             slots = poles + (entry.displacement,) * (MAX_POLES - len(poles))
             function(self._tensors[id(entry.target)], self._tensors[id(entry.auxiliary)],
                      self._tensors[id(entry.displacement)], self._tensors[id(entry.inverse_epsilon)],
                      *(self._tensors[id(value)] for value in slots),
                      self._tensors[id(entry.kps)], self._tensors[id(entry.kms)],
-                     *map(int, entry.target.shape), int(entry.target.size))
+                     *map(int, entry.target.shape), int(entry.target.size),
+                     self._record_tensor)
             self.launches += 1
         self.runs += 1
 
 
 def plan_metal_complex_dispersive_e(
         fields: Any, pml: Any, residency: Optional[Residency] = None,
-        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,), probe: Any = None,
-        functions: Optional[Mapping[Tuple[str, int, int, str], Any]] = None,
+        contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
+        functions: Optional[Mapping[Tuple[str, int, int], Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalComplexDispersiveEPlan]:
-    if not metal_complex_dispersive_e_coverage(fields, pml, residency, probe).covered:
+    """Build the complex PML stored-E plan, or refuse it.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``) and has no default: the kernel selects each cell's
+    constitutive form on it.
+    """
+    if not metal_complex_dispersive_e_coverage(fields, pml, residency).covered:
         return None
     assert residency is not None and pml is not None
-    expansion = expansion_from_probe(probe if probe is not None else load_expansion_probe())
-    if expansion is None:
-        return None
+    record = _chunk_bounds.plan_words(chunk_bounds, fields.grid.shape,
+                                      "plan_metal_complex_dispersive_e")
     tensors: Dict[int, Any] = {}
     volumes: List[str] = []
     entries: List[_Entry] = []
-    required: set[Tuple[str, int, int, str]] = set()
+    required: set[Tuple[str, int, int]] = set()
     order = _poles(fields)
     for component, displacement_name, axis, axis_name in E_TERMS:
         target, auxiliary = getattr(fields, component), getattr(fields, "f_w_" + component)
@@ -259,7 +293,7 @@ def plan_metal_complex_dispersive_e(
             volumes.append(name)
         states = order[component]
         entries.append(_Entry(component, axis, target, auxiliary, displacement, inverse, kps, kms, states))
-        required.update((mode, len(states), axis, expansion) for mode in contract_variants)
+        required.update((mode, len(states), axis) for mode in contract_variants)
     for state_index, state in enumerate(tuple(getattr(fields, "polarizations", ()) or ())):
         for component in tuple(_call(state, "driven", default=()) or ()):
             for label, host in ((f"P:{component}", state.P[component]),
@@ -274,19 +308,21 @@ def plan_metal_complex_dispersive_e(
     selected = dict(functions or {})
     for key in required:
         if key not in selected:
-            selected[key] = compile_complex_dispersive_e(key[1], key[2], key[3], key[0])
-    return MetalComplexDispersiveEPlan(entries, residency, volumes, selected, tensors, expansion)
+            selected[key] = compile_complex_dispersive_e(key[1], key[2], key[0])
+    return MetalComplexDispersiveEPlan(entries, residency, volumes, selected, tensors,
+                                       chunk_bounds=record)
 
 
 def _arm_coverage(context: Any, slot: str) -> Coverage:
     return (metal_complex_dispersive_e_coverage(context.fields, context.pml,
-                                                 context.residency, context.extra.get("complex_probe"))
+                                                 context.residency)
             if slot == "update_E" else Coverage(False, (f"complex dispersive E cannot fill {slot}",)))
 
 
 def _arm_plan(context: Any, slot: str) -> Optional[MetalComplexDispersiveEPlan]:
     return (plan_metal_complex_dispersive_e(context.fields, context.pml, context.residency,
-                                            context.contract_variants, context.extra.get("complex_probe"))
+                                            context.contract_variants,
+                                            chunk_bounds=context.chunk_bounds)
             if slot == "update_E" else None)
 
 

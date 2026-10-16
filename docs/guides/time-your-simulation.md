@@ -156,7 +156,7 @@ repeat each leg two or three times and compare the medians.
 - **`step_path=array` on the GPU leg** means no compiled kernel served your
   configuration, or the host is outside the set the kernels run on (an NVIDIA
   host outside the supported range, or any host outside the certified set with
-  `MEEP_GPU_ALLOW_UNCERTIFIED=0`); the line on standard error says which. That
+  `MEEP_GPU_HARDWARE=certified`); the line on standard error says which. That
   rate is the array path's.
 - **A `NOTE` line on a Mac** (`the kernels are NOT CERTIFIED on this host`)
   means the GPU leg ran the Metal kernels on a supported Apple GPU, in an

@@ -109,6 +109,31 @@ retyping either, so a metallic ghost that read an exact ``0.0f`` still reads an 
 that drifted RAISES here rather than emitting a kernel that reads the wrong volume.
 
 =============================================================================
+THE PML FORMS PER STRUCTURE CHUNK, AND THE RECORD IN ``Params``
+=============================================================================
+
+Both halves select their forms per structure chunk: the curl half is
+:mod:`.conductive_pml`'s four conductive forms (and the two lossless ones for a lossless
+target), the constitutive half :mod:`.shaders`' accumulation or output select, lifted
+through :func:`.fused_hd_pair.h_cell_function`. Both read the chunk record through
+their anchored bounds blocks as ``cb.``. ``Params`` embeds ``ChunkBounds cb`` after the
+two packs' offsets and the kernel aliases it (:func:`.chunk_bounds.params_alias`) before
+any lifted text, so the binding count does not move; ``h_cell`` takes the same alias as
+its record parameter, so a foreign recompute selects at the recomputed cell. The ``f_w``
+scratch takes ``h_cell``'s TOTAL word (``wnext``): ``src`` on the dsigw cells and the
+pre-launch word elsewhere, which is the word the array path leaves untouched there.
+
+The run's first ``update_H`` starts H and ``f_w`` from B on the dsigw cells in the array
+path (``stepping.separate_h_from_b``) and this weld does not, so the predicate refuses,
+in :func:`.launch.h_start_reasons`' own words, every run where that start could move a
+word -- the rule the composer applies to the base constitutive kernel on that slot. A
+sub-step whose lossy target is kept by only some chunks is served through the curl
+half's conductivity presence words (:func:`.conductive_pml.presence_words`), which ride
+in ``Params`` after ``cb`` and are aliased as ``cw`` before the lifted tail, as the
+single binds them; a presence the words cannot carry is refused by the curl half's own
+predicate (:func:`.conductive_pml.presence_reasons`).
+
+=============================================================================
 WHAT SITS IN THE SEAM
 =============================================================================
 
@@ -174,11 +199,14 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from ..triton_kernels.conductivity import conductive_targets
 from ..triton_kernels.coverage import CONSTITUTIVE_SIDES, Coverage
 from . import coefficient_pack, conductive_pml, shaders
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as `chunk_bounds`, the
+# name the composer's StepContext carries.
+from . import chunk_bounds as _chunk_bounds
 from . import fused_hd_pair as _plain
 from . import offdiag_weld_common as _weld
 from .coverage import constitutive_coverage
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
-from .launch import SUB_STEPS
+from .launch import SUB_STEPS, h_start_reasons
 from .. import withdraw_hoist as _withdraw_hoist
 
 FAMILY = "conductive_fused_hd_pair"
@@ -324,7 +352,7 @@ __all__ = [
     "UNPACKED_POINTERS", "UNPACKED_POINTER_BINDINGS", "VECTORS_ONLY_BINDINGS",
     "WELD_OWED", "compile_conductive_fused_hd_pair",
     "conductive_fused_hd_pair_source", "conductive_welded_curl_tail",
-    "metal_conductive_fused_hd_pair_coverage",
+    "metal_conductive_fused_hd_pair_coverage", "params_record_dtype", "params_words",
     "plan_metal_conductive_fused_hd_pair", "redirect_magnetic_reads",
     "refuted_separate_scalar_source", "refuted_unpacked_pointer_source",
     "refuted_vectors_only_source", "register_arms", "shipped_signature_bindings",
@@ -432,10 +460,16 @@ using namespace metal;
 
 __CONTRACT__
 
+__RECORD_STRUCT__
+
+__PRESENCE_STRUCT__
+
 struct Params {
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
 __VECTOR_FIELDS__
 __VOLUME_FIELDS__
+__RECORD_MEMBER__
+__PRESENCE_MEMBER__
 };
 
 __H_CELL__
@@ -479,15 +513,21 @@ kernel void conductive_fused_hd_pair_step(
     float dtdx = prm.dtdx;
 __VECTOR_PROLOGUE__
 __VOLUME_PROLOGUE__
+    // The chunk record rides in Params; both lifted bounds blocks and every h_cell
+    // call read it as `cb`. The conductivity presence words ride beside it, read by
+    // the lifted curl tail as `cw`.
+__RECORD_ALIAS__
+__PRESENCE_ALIAS__
 __PROLOGUE__
     // --- THE WELD: update_H, computed into registers and stored to SCRATCH ------
     // Nothing written here is read by this launch. The curl half below takes its
     // OWN cell's magnetic field from these registers and recomputes every foreign
     // tap from PRE-LAUNCH state through the same `h_cell`, so no thread observes
-    // another thread's store; the launcher rotates H/f_w_H afterwards.
+    // another thread's store; the launcher rotates H/f_w_H afterwards. Every scratch
+    // word is written: off the dsigw cells `wnext` is the pre-launch f_w word.
     h_cell_result own = h_cell(i, j, k, __H_CELL_ARGS__);
     ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;
-    wo0[ii] = own.src0; wo1[ii] = own.src1; wo2[ii] = own.src2;
+    wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;
 
     // --- step_D, conductive (stepping.step_D / _apply_curl:479) -----------------
     // D, fu_D and the conductive history f_cond_D update IN PLACE and that is safe
@@ -524,6 +564,12 @@ def conductive_fused_hd_pair_source(codes: Sequence[int],
         "__VOLUME_FIELDS__": coefficient_pack.params_fields(PACKED_VOLUMES),
         "__VECTOR_PROLOGUE__": coefficient_pack.prologue("cpack", PACKED_VECTORS),
         "__VOLUME_PROLOGUE__": coefficient_pack.prologue("vpack", PACKED_VOLUMES),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
+        "__PRESENCE_STRUCT__": conductive_pml.presence_struct_source(),
+        "__PRESENCE_MEMBER__": conductive_pml.presence_params_member(),
+        "__PRESENCE_ALIAS__": conductive_pml.presence_params_alias(),
         "__H_CELL__": _plain.h_cell_function(contract),
         "__PROLOGUE__": prologue,
         "__H_CELL_ARGS__": _plain.H_CELL_TAIL_ARGS,
@@ -653,7 +699,8 @@ def refuted_separate_scalar_source(contract: str = shaders.CONTRACT_OFF) -> str:
 
 def metal_conductive_fused_hd_pair_coverage(fields: Any, pml: Any,
                                             sources: Any = None,
-                                            residency: Any = None) -> Coverage:
+                                            residency: Any = None, *,
+                                            chunk_layout: Any = None) -> Coverage:
     """May ONE dispatch span ``update_H`` -> the electric withdraw -> ``step_D`` on
     an electric-conductivity run?
 
@@ -666,15 +713,21 @@ def metal_conductive_fused_hd_pair_coverage(fields: Any, pml: Any,
     that half's reasons, prefixed so a reader can tell which side said it.
 
     THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
-    first (driver.py:3311).
+    first (driver.py:3311). ``chunk_layout`` is the division the run steps with, read by
+    the curl half for the per-chunk conductivity presence (``None``: the one-rank
+    division).
     """
     reasons: List[str] = []
 
     magnetic = constitutive_coverage(fields, pml, "H", residency)
     if not magnetic.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in magnetic.reasons)
+    # THE RUN'S FIRST update_H, on the composer's rule for the base constitutive kernel
+    # this half lifts, in the same words (see the module docstring).
+    reasons.extend(f"constitutive half: {reason}"
+                   for reason in h_start_reasons(fields, sources))
     curl = conductive_pml.metal_conductive_pml_curl_coverage(
-        fields, pml, "step_D", residency)
+        fields, pml, "step_D", residency, chunk_layout=chunk_layout)
     if not curl.covered:
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
     lossy = tuple(conductive_targets(fields, "step_D"))
@@ -751,29 +804,71 @@ def metal_conductive_fused_hd_pair_coverage(fields: Any, pml: Any,
 # The plan
 # ---------------------------------------------------------------------------
 
+def params_record_dtype() -> Any:
+    """The packed ``Params`` record: five scalars, both packs' offsets, the chunk record,
+    the conductivity presence words.
+
+    Member for member the Metal struct :data:`_TEMPLATE` declares; every member is 4
+    bytes, so there is no padding: ``cb`` sits at byte 80 and ``cw`` at byte 180 of a
+    192-byte record.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    return np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
+                     ("dtdx", "<f4")]
+                    + coefficient_pack.record_dtype_fields(PACKED_VECTORS)
+                    + coefficient_pack.record_dtype_fields(PACKED_VOLUMES)
+                    + _chunk_bounds.record_dtype_fields("cb")
+                    + [(conductive_pml.PRESENCE_NAME,
+                        conductive_pml.presence_record_dtype())])
+
+
+def params_words(shape: Sequence[int], dtdx: float,
+                 vector_offsets: Mapping[str, int],
+                 volume_offsets: Mapping[str, int], chunk_bounds: Any,
+                 presence: Any) -> Any:
+    """The packed ``Params`` record as host ``int32`` words, the chunk record checked first.
+
+    ``chunk_bounds`` is checked against ``shape`` by :func:`.chunk_bounds.plan_words`,
+    which refuses by name a missing record or one that disagrees with the shape;
+    ``presence`` by :func:`.conductive_pml.presence_plan_words`, with no default. A
+    lossless target's two volume offsets are written as 0 (see
+    :func:`unread_conductivity_members`).
+    """
+    import numpy as np  # noqa: PLC0415
+
+    shape = tuple(int(n) for n in shape)
+    checked = _chunk_bounds.plan_words(chunk_bounds, shape, f"{FAMILY} Params")
+    words = conductive_pml.presence_plan_words(presence, f"{FAMILY} Params")
+    record = np.zeros(1, dtype=params_record_dtype())
+    nx, ny, nz = shape
+    record["nx"], record["ny"], record["nz"] = nx, ny, nz
+    record["n_elem"] = nx * ny * nz
+    record["dtdx"] = np.float32(dtdx)
+    for name in PACKED_VECTORS:
+        record[f"off_{name}"] = int(vector_offsets[name])
+    for name in PACKED_VOLUMES:
+        record[f"off_{name}"] = int(volume_offsets.get(name, 0))
+    record["cb"] = _chunk_bounds.pack(checked)
+    for name, word in zip(conductive_pml.PRESENCE_MEMBERS, words):
+        record[conductive_pml.PRESENCE_NAME][name] = word
+    return np.frombuffer(record.tobytes(), dtype=np.int32).copy()
+
+
 def _params_tensor(shape: Sequence[int], dtdx: float,
                    vector_offsets: Mapping[str, int],
-                   volume_offsets: Mapping[str, int], device: str) -> Any:
-    """The five scalars and both packs' offsets as one device record.
+                   volume_offsets: Mapping[str, int], device: str,
+                   chunk_bounds: Any, presence: Any) -> Any:
+    """The scalars, both packs' offsets, the chunk record and the presence words.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY: :meth:`.Residency.mirror` binds
     float32 and complex64 volumes and refuses anything else BY NAME, and this record
     is neither.
     """
-    import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
-    fields = ([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
-               ("dtdx", "<f4")]
-              + coefficient_pack.record_dtype_fields(PACKED_VECTORS)
-              + coefficient_pack.record_dtype_fields(PACKED_VOLUMES))
-    record = np.zeros(1, dtype=np.dtype(fields))
-    nx, ny, nz = (int(n) for n in shape)
-    record[0] = tuple(
-        [nx, ny, nz, nx * ny * nz, np.float32(dtdx)]
-        + [int(vector_offsets[name]) for name in PACKED_VECTORS]
-        + [int(volume_offsets.get(name, 0)) for name in PACKED_VOLUMES])
-    words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
+    words = params_words(shape, dtdx, vector_offsets, volume_offsets, chunk_bounds,
+                         presence)
     return torch.from_numpy(words).to(torch.device(device))
 
 
@@ -781,9 +876,16 @@ def plan_metal_conductive_fused_hd_pair(
         fields: Any, pml: Any, sources: Any = None,
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
-        functions: Optional[Mapping[str, Any]] = None,
+        functions: Optional[Mapping[str, Any]] = None, *,
+        chunk_bounds: Any, chunk_layout: Any = None, presence: Any = None,
         ) -> Optional["_weld.ScratchWeldPairPlan"]:
     """Build the conductive fused H/D plan, or ``None`` when the seam is refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``), with no default; it rides in ``Params``.
+    ``chunk_layout`` is that division, read for the per-chunk conductivity presence.
+    ``presence`` is the words' host seam; ``None`` builds them
+    (:func:`.conductive_pml.presence_words` on ``chunk_bounds``).
 
     ``None`` is the only refusal: a configuration this kernel does not carry must
     fall back to the array path, never raise into a caller that would otherwise have
@@ -792,8 +894,8 @@ def plan_metal_conductive_fused_hd_pair(
     ``functions`` is the mutation seam. Dropping it is not a silent slowdown, it is
     a silent DISARMING.
     """
-    if not metal_conductive_fused_hd_pair_coverage(fields, pml, sources,
-                                                   residency).covered:
+    if not metal_conductive_fused_hd_pair_coverage(fields, pml, sources, residency,
+                                                   chunk_layout=chunk_layout).covered:
         return None
     import numpy as np  # noqa: PLC0415
 
@@ -887,11 +989,14 @@ def plan_metal_conductive_fused_hd_pair(
                     f"displacement; writing it would corrupt D in place")
 
     dtdx = grid.dt / grid.dx
+    words = (conductive_pml.presence_words(fields, pml, "step_D", chunk_bounds, codes)
+             if presence is None else
+             conductive_pml.presence_plan_words(presence, f"{FAMILY} plan"))
     static = (flux + displacement + auxiliary + history + [cpack, vpack]
               + [_params_tensor(grid.shape, dtdx,
                                 coefficient_pack.offsets_for(vector_layout),
                                 coefficient_pack.offsets_for(volume_layout),
-                                residency.device)])
+                                residency.device, chunk_bounds, words)])
     assert (2 * len(ROTATED_NAMES) + len(static)) == PACKED_BINDINGS, (
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     assert PACKED_BINDINGS <= MAX_BUFFER_BINDINGS, (
@@ -912,7 +1017,8 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
         return Coverage(False,
                         (f"conductive fused H/D pair cannot fill {slot}",))
     return metal_conductive_fused_hd_pair_coverage(
-        context.fields, context.pml, context.sources, context.residency)
+        context.fields, context.pml, context.sources, context.residency,
+        chunk_layout=context.chunk_layout)
 
 
 def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
@@ -920,7 +1026,8 @@ def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
         return None
     return plan_metal_conductive_fused_hd_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds,
+        chunk_layout=context.chunk_layout)
 
 
 def register_arms() -> Tuple[Any, ...]:

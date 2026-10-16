@@ -81,12 +81,22 @@ documented refusal of the lift.
 
 ## Field arrays
 
-<code>result.get_array("Ez")</code> returns a host NumPy copy in MEEP's field
-array layout, including the package's documented handling of boundary planes and
-mirror unfolding. This is the direct comparison form:
+<code>result.get_array("Ez")</code> returns a host NumPy copy of what MEEP's
+<code>sim.get_array</code> returns: its layout, boundary planes and mirror
+unfolding, and its words. Each value is formed in MEEP's arithmetic, from the
+stored words of the cells MEEP owns: its sum order over the four Yee samples,
+its connection rules for the samples past a face, and its double-precision
+phase on a mirror image or a Bloch duplicate plane. A volume is selected as
+<code>mp.Volume</code> selects it:
 
     gpu_ez = result.get_array("Ez")
     cpu_ez = sim.get_array(component=mp.Ez)
+    gpu_slab = result.get_array("Ez", center=(0, 0.2, 0), size=(2, 0, 1))
+    cpu_slab = sim.get_array(component=mp.Ez, center=mp.Vector3(0, 0.2, 0), size=mp.Vector3(2, 0, 1))
+
+Word identity with MEEP also needs the stepped words to be MEEP's. The
+readback was compared on MEEP's own words: see
+[the floating-point contract](../design/floating-point.md#the-readback-is-meeps-arithmetic).
 
 <code>result.get_field("Ez")</code> returns the driver's cell-centred field
 layout instead. Do not compare these two representations by broadcasting or

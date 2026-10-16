@@ -20,9 +20,10 @@ bar. What is pinned:
 
 THE HOST IS NOT THE ORACLE FOR THE COMPLEX MULTIPLY. NumPy's ``complex64 * float32``
 and CuPy's differ on the sign of a flushed zero, which is why the emitted text carries
-the FMA_V1 ``mul_field_left`` measured 0 of 4,005,000 words on device and why the gate
-arms the naive four-product form on a PLANTED row-0 tiny-normal class. Device identity
-is ``parity/meep_gpu/gate_cuda_complex_fused_hd_pair.py``'s.
+the emitter's part-wise ``mul_field_left`` (one float32 product per part, the array
+path's ``part_products.scale``) and why the gate runs the earlier full complex
+products against it on a PLANTED row-0 tiny-normal class. Device identity is
+``parity/meep_gpu/gate_cuda_complex_fused_hd_pair.py``'s.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -52,13 +53,9 @@ _BOARD = (_API_ROOT / "parity" / "meep_gpu" / "results"
 _CELL_PLAIN = ("cuda_complex/complex", "cuda_complex/complex")
 _CELL_FOLDED = ("cuda_complex/complex", "cuda_complex_folded/folded complex")
 
-#: A licence of the shape ``complex_fields.expansion_license`` returns, cut under keep.
-_LICENCE = {"arm": "FMA_V1", "expansion": 1, "refusals": [], "basis": "measured",
-            "policy": "ieee_keep_ftz_stripped", "policy_resolved": "keep"}
 _POLICY = "keep"
 
 _VARIANTS = ("plain", "folded")
-_ARMS = ("FMA_V1", "NAIVE")
 
 
 class _NumpyWearingCupysName:
@@ -146,13 +143,12 @@ def test_the_release_disclaimer_names_what_it_does_not_license():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("variant", _VARIANTS)
-@pytest.mark.parametrize("arm", _ARMS)
-def test_the_constitutive_lift_inverts_to_the_certified_prelude(variant, arm):
+def test_the_constitutive_lift_inverts_to_the_certified_prelude(variant):
     """The four edits are ANCHORED, and undoing them gives back the certified text."""
-    prelude = family.constitutive_prelude(variant, arm)
-    certified = (complex_folded_kernels.folded_source("step_D", arm)
+    prelude = family.constitutive_prelude(variant)
+    certified = (complex_folded_kernels.folded_source("step_D")
                  if variant == "folded"
-                 else complex_emitter.complex_source("step_D", arm)
+                 else complex_emitter.complex_source("step_D")
                  ).split('\nextern "C" __global__ void ', 1)[0]
     inverted = prelude
     for old, new in family.CONSTITUTIVE_LIFT_EDITS:
@@ -162,11 +158,10 @@ def test_the_constitutive_lift_inverts_to_the_certified_prelude(variant, arm):
 
 
 @pytest.mark.parametrize("variant", _VARIANTS)
-@pytest.mark.parametrize("arm", _ARMS)
-def test_the_certified_update_H_body_survives_the_capture(variant, arm):
+def test_the_certified_update_H_body_survives_the_capture(variant):
     """Every storing call is captured; the decode and the coefficient pairing stay."""
     del variant   # the constitutive body is variant-INDEPENDENT, which is the point
-    body = family.raw_update_H_cell_source(arm)
+    body = family.raw_update_H_cell_source()
     assert "constitutive_apply(" not in body
     assert body.count("constitutive_apply_pure(") == 3
     # The certified component-to-axis pairing, character for character.
@@ -178,12 +173,13 @@ def test_the_certified_update_H_body_survives_the_capture(variant, arm):
 
 
 @pytest.mark.parametrize("variant", _VARIANTS)
-@pytest.mark.parametrize("arm", _ARMS)
-def test_the_resolved_shift_keeps_the_certified_branches(variant, arm):
-    helper = family.cshift_dn_recompute_source(variant, arm)
+def test_the_resolved_shift_keeps_the_certified_branches(variant):
+    helper = family.cshift_dn_recompute_source(variant)
     assert "if (ia > 0) return resolve_H(comp, idx - stride, weld);" in helper
     assert "resolve_H(comp, idx + (na - 1) * stride, weld)" in helper
-    assert "if (ph) w = rotate_field_left(w, phase);" in helper
+    # A SHIFTED tap carries no Bloch connection (the stored window): the connection
+    # lives on the operand read at the cell itself (cwindow_reg), never here.
+    assert "rotate_field_left" not in helper and "cconnect" not in helper
     assert "cf_load(g" not in helper
     # THE GHOST IS A CONSTANT, NOT A FIELD: it must not be recomputed.
     assert "return cf_zero();" in helper
@@ -206,9 +202,8 @@ def test_the_wrap_index_is_taken_with_balanced_parentheses():
 
 
 @pytest.mark.parametrize("variant", _VARIANTS)
-@pytest.mark.parametrize("arm", _ARMS)
-def test_every_magnetic_read_in_the_curl_half_is_redirected(variant, arm):
-    head, tail = family.curl_pieces(variant, arm)
+def test_every_magnetic_read_in_the_curl_half_is_redirected(variant):
+    head, tail = family.curl_pieces(variant)
     assert "cshift_dn(" not in tail
     for pointer in family.CURL_SOURCE_NAMES:
         assert f"cf_load({pointer}," not in tail
@@ -221,9 +216,8 @@ def test_every_magnetic_read_in_the_curl_half_is_redirected(variant, arm):
 
 
 @pytest.mark.parametrize("variant", _VARIANTS)
-@pytest.mark.parametrize("arm", _ARMS)
-def test_the_emitted_source_is_ascii_with_one_declared_kernel(variant, arm):
-    source = family.kernel_source(variant, arm)
+def test_the_emitted_source_is_ascii_with_one_declared_kernel(variant):
+    source = family.kernel_source(variant)
     assert source.isascii()
     declarations = [line for line in source.splitlines()
                     if 'extern "C" __global__ void' in line]
@@ -231,15 +225,15 @@ def test_the_emitted_source_is_ascii_with_one_declared_kernel(variant, arm):
     assert family.KERNEL_NAMES[variant] in declarations[0]
 
 
-def test_the_four_texts_are_all_different():
-    texts = {(variant, arm): family.kernel_source(variant, arm)
-             for variant in _VARIANTS for arm in _ARMS}
-    assert len(set(texts.values())) == 4
+def test_the_two_variants_differ():
+    """The variant decides the fold deltas."""
+    texts = {variant: family.kernel_source(variant) for variant in _VARIANTS}
+    assert len(set(texts.values())) == 2
 
 
 def test_the_folded_text_carries_the_three_deltas_and_the_plain_one_does_not():
-    plain = family.kernel_source("plain", "FMA_V1")
-    folded = family.kernel_source("folded", "FMA_V1")
+    plain = family.kernel_source("plain")
+    folded = family.kernel_source("folded")
     assert "#define BC_MIRROR_PERIODIC 2" in folded
     assert "#define BC_MIRROR_PERIODIC" not in plain
     assert "bc == BC_METALLIC || bc == BC_MIRROR_PERIODIC" in folded
@@ -249,11 +243,9 @@ def test_the_folded_text_carries_the_three_deltas_and_the_plain_one_does_not():
     assert "BC_MIRROR_PERIODIC && " not in plain
 
 
-def test_the_arm_block_is_lifted_whole_under_both_arms():
-    for arm in _ARMS:
-        block = complex_emitter._ARM_SOURCE[  # noqa: SLF001
-            complex_emitter.EXPANSIONS[arm]]
-        assert block.strip() in family.kernel_source("plain", arm)
+def test_the_part_products_block_is_lifted_whole():
+    for variant in _VARIANTS:
+        assert complex_emitter._PART_PRODUCTS.strip() in family.kernel_source(variant)
 
 
 def test_the_family_performs_no_floating_point_division():
@@ -268,10 +260,9 @@ def test_the_family_performs_no_floating_point_division():
     allowed = {"int k = idx % nz;", "int j = (idx / nz) % ny;",
                "int i = idx / (ny * nz);"}
     for variant in _VARIANTS:
-        for arm in _ARMS:
-            for line in family.kernel_source(variant, arm).splitlines():
-                code = line.split("//")[0].strip()
-                assert "/" not in code or code in allowed, code
+        for line in family.kernel_source(variant).splitlines():
+            code = line.split("//")[0].strip()
+            assert "/" not in code or code in allowed, code
 
 
 def test_the_weld_pack_binds_the_pre_launch_field_under_the_curl_templates_name():
@@ -280,7 +271,7 @@ def test_the_weld_pack_binds_the_pre_launch_field_under_the_curl_templates_name(
     assert "weld.Hx = g0;" in construction
     assert "weld.Hy = g1;" in construction
     assert "weld.Hz = g2;" in construction
-    source = family.kernel_source("plain", "FMA_V1")
+    source = family.kernel_source("plain")
     start = source.index('extern "C" __global__')
     signature = source[start:source.index(") {", start)]
     assert "float* __restrict__ Hx_out" in signature
@@ -315,12 +306,7 @@ def test_variant_for_refuses_a_grid_with_no_fold_reader():
 @pytest.mark.parametrize("name", ("mirror", "cylindrical", "", None))
 def test_an_unknown_variant_is_refused_rather_than_defaulted(name):
     with pytest.raises(ValueError, match="variant must be one of"):
-        family.kernel_source(name, "FMA_V1")
-
-
-def test_an_unknown_arm_is_refused_rather_than_defaulted():
-    with pytest.raises(ValueError, match="expansion must be one of"):
-        family.kernel_source("plain", "SOMETHING")
+        family.kernel_source(name)
 
 
 # ---------------------------------------------------------------------------
@@ -330,29 +316,21 @@ def test_an_unknown_arm_is_refused_rather_than_defaulted():
 def test_the_predicate_admits_a_plain_complex_run():
     fields, pml, grid = _engine()
     covered, reason = family.covers_complex_fused_hd_pair(
-        fields, pml, grid, (), _LICENCE, _POLICY)
+        fields, pml, grid, ())
     assert covered, reason
 
 
 def test_the_predicate_admits_a_folded_complex_run():
     fields, pml, grid = _engine(folded=True)
     covered, reason = family.covers_complex_fused_hd_pair(
-        fields, pml, grid, (), _LICENCE, _POLICY)
+        fields, pml, grid, ())
     assert covered, reason
-
-
-def test_the_predicate_refuses_without_a_licence_and_names_the_constitutive_half():
-    fields, pml, grid = _engine()
-    covered, reason = family.covers_complex_fused_hd_pair(fields, pml, grid, ())
-    assert not covered
-    assert reason.startswith("constitutive half:")
-    assert "expansion licence" in reason
 
 
 def test_the_predicate_refuses_an_undeclared_source_set():
     fields, pml, grid = _engine()
     covered, reason = family.covers_complex_fused_hd_pair(
-        fields, pml, grid, None, _LICENCE, _POLICY)
+        fields, pml, grid, None)
     assert not covered
     assert "source set was not declared" in reason
 
@@ -368,7 +346,7 @@ def test_the_predicate_refuses_a_standing_integrated_electric_withdraw_by_name()
 
     fields, pml, grid = _engine()
     covered, reason = family.covers_complex_fused_hd_pair(
-        fields, pml, grid, (_Withdrawing(),), _LICENCE, _POLICY)
+        fields, pml, grid, (_Withdrawing(),))
     assert not covered
     assert "standing integrated" in reason
     assert "HOISTS_THE_WITHDRAW = False" in reason
@@ -381,23 +359,22 @@ def test_the_predicate_is_a_conjunction_of_the_two_certified_halves():
 
     fields, pml, grid = _engine()
     assert covers_real_pml_complex_constitutive(
-        fields, pml, grid, "H", _LICENCE, _POLICY)[0]
-    assert covers_real_pml_complex_curl(fields, pml, grid, "step_D",
-                                        _LICENCE, _POLICY)[0]
+        fields, pml, grid, "H")[0]
+    assert covers_real_pml_complex_curl(fields, pml, grid, "step_D")[0]
     folded_fields, folded_pml, folded_grid = _engine(folded=True)
     # The certified PLAIN curl refuses a fold by name; the folded one admits it. The
     # product follows the grid, which is what makes one predicate serve two cells.
     assert not covers_real_pml_complex_curl(
-        folded_fields, folded_pml, folded_grid, "step_D", _LICENCE, _POLICY)[0]
+        folded_fields, folded_pml, folded_grid, "step_D")[0]
     assert complex_folded_kernels.covers_complex_folded_curl(
-        folded_fields, folded_pml, folded_grid, "step_D", _LICENCE, _POLICY)[0]
+        folded_fields, folded_pml, folded_grid, "step_D")[0]
 
 
 def test_the_predicate_refuses_when_a_rotated_volume_is_missing():
     fields, pml, grid = _engine()
     fields.f_w_Hy = None
     covered, reason = family.covers_complex_fused_hd_pair(
-        fields, pml, grid, (), _LICENCE, _POLICY)
+        fields, pml, grid, ())
     assert not covered
     assert "f_w_Hy is not allocated" in reason
 

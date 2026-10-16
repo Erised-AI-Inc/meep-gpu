@@ -1,16 +1,22 @@
 """``update_E`` welded to ``update_P`` — the Triton product at the E->P seam.
 
-THE SEAM IS EMPTY, AND THAT IS THE WHOLE REASON THIS PRODUCT EXISTS.
+THE SEAM CARRIES NOTHING THE RECURRENCE READS, AND THAT IS WHY THIS PRODUCT EXISTS.
 ``driver.step`` runs::
 
     if fast is None or not fast.dispatch("update_E", self.fields):
-        update_E(self.fields, self.pml)                       # driver.py:3303-3304
+        update_E(self.fields, self.pml)
+    f_minus_p_end(self.fields, f_minus_p_D)
     if fast is None or not fast.dispatch("update_P", self.fields):
-        update_P(self.fields, self.pml)                       # driver.py:3305-3306
+        update_P(self.fields, self.pml)
 
-Nothing sits between them: no source injection, no mirror fill, no wall clear, no
-far-ghost pass. Every other seam on this board has a driver pass inside it that a
-fused kernel must either carry inline or refuse; this one has none, which is why
+The one statement between them is the electric ``f_minus_p`` restore
+(``sources.f_minus_p_end``): it puts back the D words an integrated electric source
+replaced and re-runs D's boundary passes, so it writes D (and D's ghost and wall cells)
+ALONE. ``update_P`` reads the polarizations, sigma and MEEP's drive ``w`` (the stored E
+or ``f_w``, ``Fields.drive_field``) and never D, so a launch that forms E and then P
+before the restore leaves every word the driver's order leaves: no injection, no mirror
+fill of E, no wall clear of E, no far-ghost pass of E sits in the seam. Every other seam
+on this board has a driver pass inside it that a fused kernel must either carry inline or refuse; this one has none, which is why
 ``results/fusion_matrix_triton_2026-08-20_eop/`` records ``E->P: 15 instances,
 0 blocked by the source seam, CEILING 15``.
 
@@ -213,7 +219,7 @@ ARMS: Tuple[str, str, str] = ("no_pml", "dispersive", "folded")
 PML_ARMS: Tuple[str, str] = ("dispersive", "folded")
 
 #: The driver passes one run of this plan performs, in driver order
-#: (driver.py:3303-3306). Declared rather than inferred from a slot name.
+#: (FdtdDriver.step). Declared rather than inferred from a slot name.
 REPLACES: Tuple[str, ...] = ("update_E", "update_P")
 
 #: The E half's compiled pole slots. EIGHT, because that is what both certified
@@ -252,13 +258,14 @@ POLICY: Dict[str, Any] = {
 
 #: Runtime (non-constexpr) parameters :func:`fused_ade_chain_step` declares:
 #: three targets, three auxiliaries, three sources, three inverse epsilons, the
-#: E half's pole slots, six PML coefficient columns, six ADE arguments per live
-#: slot per component, and the four geometry scalars. Asserted against the
+#: E half's pole slots, six PML coefficient columns, the chunk record, seven ADE
+#: arguments per slot per component (output, history, sigma and MEEP's four
+#: update_P words), and the four geometry scalars. Asserted against the
 #: kernel's OWN signature by the laptop test and against the assembled argument
 #: list at EVERY launch, so a signature edit that the launcher does not follow
 #: fails at the call rather than binding the wrong pointer to the wrong slot.
-RUNTIME_ARGUMENTS = (3 + 3 + 3 + 3 + 3 * MAX_POLES + 6
-                     + 3 * 6 * CHAIN_MAX_POLES + 4)
+RUNTIME_ARGUMENTS = (3 + 3 + 3 + 3 + 3 * MAX_POLES + 6 + 1
+                     + 3 * 7 * CHAIN_MAX_POLES + 4)
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +290,12 @@ except ImportError as _exc:  # pragma: no cover - the laptop path
 
 if triton is not None:  # pragma: no cover - device code, certified by the byte gate
 
+    # The form and the record layout the PML arms read. Imported only when Triton is:
+    # the modules that define them import it at module scope, and this module's
+    # predicate must answer without it.
+    from .forms import constitutive_form, record_in  # noqa: E402
+    from .kernels import RECORD_HALF_INTEGER  # noqa: E402
+
     @triton.jit
     def fused_ade_chain_step(
         f0, f1, f2,                     # targets:      Ex, Ey, Ez          (in/out)
@@ -293,27 +306,31 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         b0, b1, b2, b3, b4, b5, b6, b7,   # component 1's poles, IN ORDER
         c0, c1, c2, c3, c4, c5, c6, c7,   # component 2's poles, IN ORDER
         kp0, km0, kp1, km1, kp2, km2,   # kps/kms on each component's OWN axis
-        # component 0's ADE arms: p_out / p_prev / sigma / the coefficient triple
+        cb,                             # chunk record: the PML tail's dsigw membership
+        # component 0's ADE arms: p_out / p_prev / sigma / MEEP's four update_P words
         p_out_a0, p_out_a1, p_out_a2, p_out_a3, p_out_a4, p_out_a5,
         p_prev_a0, p_prev_a1, p_prev_a2, p_prev_a3, p_prev_a4, p_prev_a5,
         sigma_a0, sigma_a1, sigma_a2, sigma_a3, sigma_a4, sigma_a5,
-        cnow_a0, cnow_a1, cnow_a2, cnow_a3, cnow_a4, cnow_a5,
-        cprev_a0, cprev_a1, cprev_a2, cprev_a3, cprev_a4, cprev_a5,
-        cdrive_a0, cdrive_a1, cdrive_a2, cdrive_a3, cdrive_a4, cdrive_a5,
-        # component 1's ADE arms: p_out / p_prev / sigma / the coefficient triple
+        two_minus_od_a0, two_minus_od_a1, two_minus_od_a2, two_minus_od_a3, two_minus_od_a4, two_minus_od_a5,
+        gamma1_a0, gamma1_a1, gamma1_a2, gamma1_a3, gamma1_a4, gamma1_a5,
+        omega0dtsqr_a0, omega0dtsqr_a1, omega0dtsqr_a2, omega0dtsqr_a3, omega0dtsqr_a4, omega0dtsqr_a5,
+        gamma1inv_a0, gamma1inv_a1, gamma1inv_a2, gamma1inv_a3, gamma1inv_a4, gamma1inv_a5,
+        # component 1's ADE arms: p_out / p_prev / sigma / MEEP's four update_P words
         p_out_b0, p_out_b1, p_out_b2, p_out_b3, p_out_b4, p_out_b5,
         p_prev_b0, p_prev_b1, p_prev_b2, p_prev_b3, p_prev_b4, p_prev_b5,
         sigma_b0, sigma_b1, sigma_b2, sigma_b3, sigma_b4, sigma_b5,
-        cnow_b0, cnow_b1, cnow_b2, cnow_b3, cnow_b4, cnow_b5,
-        cprev_b0, cprev_b1, cprev_b2, cprev_b3, cprev_b4, cprev_b5,
-        cdrive_b0, cdrive_b1, cdrive_b2, cdrive_b3, cdrive_b4, cdrive_b5,
-        # component 2's ADE arms: p_out / p_prev / sigma / the coefficient triple
+        two_minus_od_b0, two_minus_od_b1, two_minus_od_b2, two_minus_od_b3, two_minus_od_b4, two_minus_od_b5,
+        gamma1_b0, gamma1_b1, gamma1_b2, gamma1_b3, gamma1_b4, gamma1_b5,
+        omega0dtsqr_b0, omega0dtsqr_b1, omega0dtsqr_b2, omega0dtsqr_b3, omega0dtsqr_b4, omega0dtsqr_b5,
+        gamma1inv_b0, gamma1inv_b1, gamma1inv_b2, gamma1inv_b3, gamma1inv_b4, gamma1inv_b5,
+        # component 2's ADE arms: p_out / p_prev / sigma / MEEP's four update_P words
         p_out_c0, p_out_c1, p_out_c2, p_out_c3, p_out_c4, p_out_c5,
         p_prev_c0, p_prev_c1, p_prev_c2, p_prev_c3, p_prev_c4, p_prev_c5,
         sigma_c0, sigma_c1, sigma_c2, sigma_c3, sigma_c4, sigma_c5,
-        cnow_c0, cnow_c1, cnow_c2, cnow_c3, cnow_c4, cnow_c5,
-        cprev_c0, cprev_c1, cprev_c2, cprev_c3, cprev_c4, cprev_c5,
-        cdrive_c0, cdrive_c1, cdrive_c2, cdrive_c3, cdrive_c4, cdrive_c5,
+        two_minus_od_c0, two_minus_od_c1, two_minus_od_c2, two_minus_od_c3, two_minus_od_c4, two_minus_od_c5,
+        gamma1_c0, gamma1_c1, gamma1_c2, gamma1_c3, gamma1_c4, gamma1_c5,
+        omega0dtsqr_c0, omega0dtsqr_c1, omega0dtsqr_c2, omega0dtsqr_c3, omega0dtsqr_c4, omega0dtsqr_c5,
+        gamma1inv_c0, gamma1inv_c1, gamma1inv_c2, gamma1inv_c3, gamma1inv_c4, gamma1inv_c5,
         nx, ny, nz, n_elem,
         NP0: tl.constexpr, NP1: tl.constexpr, NP2: tl.constexpr,
         PML: tl.constexpr,
@@ -339,12 +356,14 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         they are the whole fusion:
 
         * ``src{c}`` — the constitutive product. The dispersive body already names
-          it (:225) one line before storing it into ``f_w``; the no-PML body stores
-          it unnamed (no_pml_stored_e.py:250). Named, it IS the drive
-          ``ade_update_p`` would have re-loaded, on BOTH arms, because
-          ``Fields.drive_field`` returns ``f_w`` under an absorber and the stored E
-          without one (fields.py:1140-1163) and this kernel wrote whichever one
-          applies one line earlier;
+          it one line before storing it into ``f_w``; the no-PML body stores it
+          unnamed (no_pml_stored_e.py:250). Named, it IS MEEP's drive ``w`` on every
+          cell (update_pols.cpp:44, ``w = f_w ? f_w : f`` per chunk), on BOTH arms:
+          on a cell whose chunk carries the component's own layer the PML arm has
+          just stored it into ``f_w``, and on every other cell the E half has just
+          stored it as the field (``E = src``, the plain constitutive form), which
+          is also what the no-PML arm stores everywhere. ``Fields.drive_field``
+          composes exactly those words for ``ade_update_p``;
         * ``p{L}{k}`` — the pole the subtraction chain already loaded, which is
           ``ade_update_p``'s ``p_now``. ``fused_dispersive_chain`` names slot 0's
           load for the same reason (fused_dispersive_chain.py:248); here every
@@ -387,9 +406,15 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
             km_2 = tl.load(km2 + k, mask=live, other=0.0)
 
+            # Which cells take the accumulation: the component's own (dsigw) layer on
+            # the half-integer sub-lattice (chunk_map.record_index(True, axis, 0)).
+            dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+            dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+            dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
+
         # --- component 0: update_E --------------------------------------------
         if PML:
-            prev0 = tl.load(w0 + idx, mask=live, other=0.0)   # BEFORE the store.
+            prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)   # BEFORE the store.
         s0 = tl.load(g0 + idx, mask=live, other=0.0)
         if NP0 > 0:
             pa0 = tl.load(a0 + idx, mask=live, other=0.0)
@@ -417,19 +442,19 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             s0 = s0 - pa7
         src0 = s0 * tl.load(e0 + idx, mask=live, other=0.0)
         if PML:
-            tl.store(w0 + idx, src0, mask=live)
-            v0 = tl.load(f0 + idx, mask=live, other=0.0)
-            v0 = v0 + kp_0 * src0
-            v0 = v0 - km_0 * prev0
+            tl.store(w0 + idx, src0, mask=live & dw0)
+            v0 = constitutive_form(tl.load(f0 + idx, mask=live & dw0, other=0.0),
+                                     prev0, src0, kp_0, km_0, dw0)
             tl.store(f0 + idx, v0, mask=live)
         else:
             tl.store(f0 + idx, src0, mask=live)
 
         # --- component 0: update_P, one arm per pole that drives it ----
         if NP0 > 0:
-            c_now = cnow_a0
-            c_prev = cprev_a0
-            c_drive = cdrive_a0
+            two_minus_od = two_minus_od_a0
+            gamma1 = gamma1_a0
+            omega0dtsqr = omega0dtsqr_a0
+            gamma1inv = gamma1inv_a0
             p = pa0
             q = tl.load(p_prev_a0 + idx, mask=live, other=0.0)
             w = src0
@@ -438,12 +463,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_a0
             tl.store(p_out_a0 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP0 > 1:
-            c_now = cnow_a1
-            c_prev = cprev_a1
-            c_drive = cdrive_a1
+            two_minus_od = two_minus_od_a1
+            gamma1 = gamma1_a1
+            omega0dtsqr = omega0dtsqr_a1
+            gamma1inv = gamma1inv_a1
             p = pa1
             q = tl.load(p_prev_a1 + idx, mask=live, other=0.0)
             w = src0
@@ -452,12 +478,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_a1
             tl.store(p_out_a1 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP0 > 2:
-            c_now = cnow_a2
-            c_prev = cprev_a2
-            c_drive = cdrive_a2
+            two_minus_od = two_minus_od_a2
+            gamma1 = gamma1_a2
+            omega0dtsqr = omega0dtsqr_a2
+            gamma1inv = gamma1inv_a2
             p = pa2
             q = tl.load(p_prev_a2 + idx, mask=live, other=0.0)
             w = src0
@@ -466,12 +493,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_a2
             tl.store(p_out_a2 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP0 > 3:
-            c_now = cnow_a3
-            c_prev = cprev_a3
-            c_drive = cdrive_a3
+            two_minus_od = two_minus_od_a3
+            gamma1 = gamma1_a3
+            omega0dtsqr = omega0dtsqr_a3
+            gamma1inv = gamma1inv_a3
             p = pa3
             q = tl.load(p_prev_a3 + idx, mask=live, other=0.0)
             w = src0
@@ -480,12 +508,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_a3
             tl.store(p_out_a3 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP0 > 4:
-            c_now = cnow_a4
-            c_prev = cprev_a4
-            c_drive = cdrive_a4
+            two_minus_od = two_minus_od_a4
+            gamma1 = gamma1_a4
+            omega0dtsqr = omega0dtsqr_a4
+            gamma1inv = gamma1inv_a4
             p = pa4
             q = tl.load(p_prev_a4 + idx, mask=live, other=0.0)
             w = src0
@@ -494,12 +523,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_a4
             tl.store(p_out_a4 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP0 > 5:
-            c_now = cnow_a5
-            c_prev = cprev_a5
-            c_drive = cdrive_a5
+            two_minus_od = two_minus_od_a5
+            gamma1 = gamma1_a5
+            omega0dtsqr = omega0dtsqr_a5
+            gamma1inv = gamma1inv_a5
             p = pa5
             q = tl.load(p_prev_a5 + idx, mask=live, other=0.0)
             w = src0
@@ -508,12 +538,12 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_a5
             tl.store(p_out_a5 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
 
         # --- component 1: update_E --------------------------------------------
         if PML:
-            prev1 = tl.load(w1 + idx, mask=live, other=0.0)   # BEFORE the store.
+            prev1 = tl.load(w1 + idx, mask=live & dw1, other=0.0)   # BEFORE the store.
         s1 = tl.load(g1 + idx, mask=live, other=0.0)
         if NP1 > 0:
             pb0 = tl.load(b0 + idx, mask=live, other=0.0)
@@ -541,19 +571,19 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             s1 = s1 - pb7
         src1 = s1 * tl.load(e1 + idx, mask=live, other=0.0)
         if PML:
-            tl.store(w1 + idx, src1, mask=live)
-            v1 = tl.load(f1 + idx, mask=live, other=0.0)
-            v1 = v1 + kp_1 * src1
-            v1 = v1 - km_1 * prev1
+            tl.store(w1 + idx, src1, mask=live & dw1)
+            v1 = constitutive_form(tl.load(f1 + idx, mask=live & dw1, other=0.0),
+                                     prev1, src1, kp_1, km_1, dw1)
             tl.store(f1 + idx, v1, mask=live)
         else:
             tl.store(f1 + idx, src1, mask=live)
 
         # --- component 1: update_P, one arm per pole that drives it ----
         if NP1 > 0:
-            c_now = cnow_b0
-            c_prev = cprev_b0
-            c_drive = cdrive_b0
+            two_minus_od = two_minus_od_b0
+            gamma1 = gamma1_b0
+            omega0dtsqr = omega0dtsqr_b0
+            gamma1inv = gamma1inv_b0
             p = pb0
             q = tl.load(p_prev_b0 + idx, mask=live, other=0.0)
             w = src1
@@ -562,12 +592,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_b0
             tl.store(p_out_b0 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP1 > 1:
-            c_now = cnow_b1
-            c_prev = cprev_b1
-            c_drive = cdrive_b1
+            two_minus_od = two_minus_od_b1
+            gamma1 = gamma1_b1
+            omega0dtsqr = omega0dtsqr_b1
+            gamma1inv = gamma1inv_b1
             p = pb1
             q = tl.load(p_prev_b1 + idx, mask=live, other=0.0)
             w = src1
@@ -576,12 +607,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_b1
             tl.store(p_out_b1 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP1 > 2:
-            c_now = cnow_b2
-            c_prev = cprev_b2
-            c_drive = cdrive_b2
+            two_minus_od = two_minus_od_b2
+            gamma1 = gamma1_b2
+            omega0dtsqr = omega0dtsqr_b2
+            gamma1inv = gamma1inv_b2
             p = pb2
             q = tl.load(p_prev_b2 + idx, mask=live, other=0.0)
             w = src1
@@ -590,12 +622,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_b2
             tl.store(p_out_b2 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP1 > 3:
-            c_now = cnow_b3
-            c_prev = cprev_b3
-            c_drive = cdrive_b3
+            two_minus_od = two_minus_od_b3
+            gamma1 = gamma1_b3
+            omega0dtsqr = omega0dtsqr_b3
+            gamma1inv = gamma1inv_b3
             p = pb3
             q = tl.load(p_prev_b3 + idx, mask=live, other=0.0)
             w = src1
@@ -604,12 +637,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_b3
             tl.store(p_out_b3 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP1 > 4:
-            c_now = cnow_b4
-            c_prev = cprev_b4
-            c_drive = cdrive_b4
+            two_minus_od = two_minus_od_b4
+            gamma1 = gamma1_b4
+            omega0dtsqr = omega0dtsqr_b4
+            gamma1inv = gamma1inv_b4
             p = pb4
             q = tl.load(p_prev_b4 + idx, mask=live, other=0.0)
             w = src1
@@ -618,12 +652,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_b4
             tl.store(p_out_b4 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP1 > 5:
-            c_now = cnow_b5
-            c_prev = cprev_b5
-            c_drive = cdrive_b5
+            two_minus_od = two_minus_od_b5
+            gamma1 = gamma1_b5
+            omega0dtsqr = omega0dtsqr_b5
+            gamma1inv = gamma1inv_b5
             p = pb5
             q = tl.load(p_prev_b5 + idx, mask=live, other=0.0)
             w = src1
@@ -632,12 +667,12 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_b5
             tl.store(p_out_b5 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
 
         # --- component 2: update_E --------------------------------------------
         if PML:
-            prev2 = tl.load(w2 + idx, mask=live, other=0.0)   # BEFORE the store.
+            prev2 = tl.load(w2 + idx, mask=live & dw2, other=0.0)   # BEFORE the store.
         s2 = tl.load(g2 + idx, mask=live, other=0.0)
         if NP2 > 0:
             pc0 = tl.load(c0 + idx, mask=live, other=0.0)
@@ -665,19 +700,19 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             s2 = s2 - pc7
         src2 = s2 * tl.load(e2 + idx, mask=live, other=0.0)
         if PML:
-            tl.store(w2 + idx, src2, mask=live)
-            v2 = tl.load(f2 + idx, mask=live, other=0.0)
-            v2 = v2 + kp_2 * src2
-            v2 = v2 - km_2 * prev2
+            tl.store(w2 + idx, src2, mask=live & dw2)
+            v2 = constitutive_form(tl.load(f2 + idx, mask=live & dw2, other=0.0),
+                                     prev2, src2, kp_2, km_2, dw2)
             tl.store(f2 + idx, v2, mask=live)
         else:
             tl.store(f2 + idx, src2, mask=live)
 
         # --- component 2: update_P, one arm per pole that drives it ----
         if NP2 > 0:
-            c_now = cnow_c0
-            c_prev = cprev_c0
-            c_drive = cdrive_c0
+            two_minus_od = two_minus_od_c0
+            gamma1 = gamma1_c0
+            omega0dtsqr = omega0dtsqr_c0
+            gamma1inv = gamma1inv_c0
             p = pc0
             q = tl.load(p_prev_c0 + idx, mask=live, other=0.0)
             w = src2
@@ -686,12 +721,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_c0
             tl.store(p_out_c0 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP2 > 1:
-            c_now = cnow_c1
-            c_prev = cprev_c1
-            c_drive = cdrive_c1
+            two_minus_od = two_minus_od_c1
+            gamma1 = gamma1_c1
+            omega0dtsqr = omega0dtsqr_c1
+            gamma1inv = gamma1inv_c1
             p = pc1
             q = tl.load(p_prev_c1 + idx, mask=live, other=0.0)
             w = src2
@@ -700,12 +736,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_c1
             tl.store(p_out_c1 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP2 > 2:
-            c_now = cnow_c2
-            c_prev = cprev_c2
-            c_drive = cdrive_c2
+            two_minus_od = two_minus_od_c2
+            gamma1 = gamma1_c2
+            omega0dtsqr = omega0dtsqr_c2
+            gamma1inv = gamma1inv_c2
             p = pc2
             q = tl.load(p_prev_c2 + idx, mask=live, other=0.0)
             w = src2
@@ -714,12 +751,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_c2
             tl.store(p_out_c2 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP2 > 3:
-            c_now = cnow_c3
-            c_prev = cprev_c3
-            c_drive = cdrive_c3
+            two_minus_od = two_minus_od_c3
+            gamma1 = gamma1_c3
+            omega0dtsqr = omega0dtsqr_c3
+            gamma1inv = gamma1inv_c3
             p = pc3
             q = tl.load(p_prev_c3 + idx, mask=live, other=0.0)
             w = src2
@@ -728,12 +766,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_c3
             tl.store(p_out_c3 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP2 > 4:
-            c_now = cnow_c4
-            c_prev = cprev_c4
-            c_drive = cdrive_c4
+            two_minus_od = two_minus_od_c4
+            gamma1 = gamma1_c4
+            omega0dtsqr = omega0dtsqr_c4
+            gamma1inv = gamma1inv_c4
             p = pc4
             q = tl.load(p_prev_c4 + idx, mask=live, other=0.0)
             w = src2
@@ -742,12 +781,13 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_c4
             tl.store(p_out_c4 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
         if NP2 > 5:
-            c_now = cnow_c5
-            c_prev = cprev_c5
-            c_drive = cdrive_c5
+            two_minus_od = two_minus_od_c5
+            gamma1 = gamma1_c5
+            omega0dtsqr = omega0dtsqr_c5
+            gamma1inv = gamma1inv_c5
             p = pc5
             q = tl.load(p_prev_c5 + idx, mask=live, other=0.0)
             w = src2
@@ -756,7 +796,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
             else:
                 s = sigma_c5
             tl.store(p_out_c5 + idx,
-                     ((p * c_now) + (c_prev * q)) + (c_drive * (s * w)),
+                     gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w))),
                      mask=live)
 
 else:  # pragma: no cover - the laptop path
@@ -829,9 +869,10 @@ def fused_ade_chain_coverage(fields: Any, pml: Any, arm: str) -> Coverage:
     THERE IS NO SOURCE CLAUSE, AND THE ABSENCE IS DELIBERATE. Every other fused
     product on this backend must be told the source inventory, because the driver
     injects INSIDE its seam and ignorance is not an empty set. This seam has no
-    injection in it at all — ``driver.step`` runs ``update_E`` at :3304 and
-    ``update_P`` at :3306 with nothing between — so requiring a declaration would
-    refuse configurations the driver cannot break. The fusion matrix measures the
+    injection in it at all — ``driver.step`` runs ``update_E``, then the electric
+    ``f_minus_p`` restore, which writes D alone and which ``update_P`` does not read,
+    then ``update_P`` — so requiring a declaration would refuse configurations the
+    driver cannot break. The fusion matrix measures the
     same fact from the other end: ``E->P: 15 instances, 0 blocked by the source
     seam``.
     """
@@ -900,31 +941,30 @@ def fused_ade_chain_coverage(fields: Any, pml: Any, arm: str) -> Coverage:
                     f"a different array")
 
     # THE SEAM'S OWN CONDITION, named rather than inherited: the register this
-    # kernel hands the recurrence is what its E half stored, so `drive_field` must
-    # return THAT array. Under an absorber that is `f_w_<c>`; the no-PML ADE
-    # predicate already asserts the stored-E identity from the other side.
+    # kernel hands the recurrence is ``src``, which is MEEP's ``w`` on every cell
+    # (update_pols.cpp:44, ``w = f_w ? f_w : f`` per chunk) because the PML tail
+    # stores it into ``f_w`` on the layer's chunks and as the field everywhere else.
+    # ``Fields.drive_field`` composes exactly that per chunk, so the reader the array
+    # path's ``update_P`` would call must be that method and no other; a ``Fields``
+    # whose reader is replaced is refused BY NAME. The no-PML ADE predicate asserts
+    # the stored-E identity from the other side.
     if arm in PML_ARMS:
         if not bool(getattr(fields, "_pml_active", False)):
             reasons.append(
                 "Fields is not in PML storage mode: drive_field would return the "
-                "stored E rather than f_w (fields.py:1160-1162), and the register "
-                "this kernel passes the recurrence is the split-field drive")
+                "stored E everywhere (fields.py drive_field), and this kernel's PML "
+                "tail writes f_w on the layer's chunks")
         reader = getattr(fields, "drive_field", None)
+        own = getattr(type(fields), "drive_field", None)
         if not callable(reader):
             reasons.append("fields does not expose drive_field(); an unreadable "
                            "drive is not a covered one")
-        else:
-            for component, _displacement, _axis in E_TERMS:
-                auxiliary = getattr(fields, "f_w_" + component, None)
-                try:
-                    drive = reader(component)
-                except Exception as exc:  # noqa: BLE001
-                    reasons.append(f"drive_field({component!r}) raised {exc!r}")
-                    continue
-                if auxiliary is None or drive is not auxiliary:
-                    reasons.append(
-                        f"drive_field({component!r}) is not f_w_{component}; this "
-                        f"kernel's register is the value it stores THERE")
+        elif own is None or getattr(reader, "__func__", None) is not own:
+            reasons.append(
+                "drive_field is not Fields.drive_field, MEEP's per-chunk w; this "
+                "kernel's register is the w that method composes (f_w on the "
+                "layer's chunks, the stored E elsewhere), so another reader would "
+                "drive the polarization from a different field")
 
     return Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
@@ -976,12 +1016,13 @@ class FusedAdeChainPlan:
                  "_pointer", "_targets", "_aux", "_sources", "_inv_eps",
                  "_coefficients", "_poles", "_order", "_states", "_index_of",
                  "_scratch", "_first_driven", "_sigma", "_coeff", "_sv", "_kernel",
-                 "_grid", "_pml_flag", "_read_ids")
+                 "_grid", "_pml_flag", "_read_ids", "chunk_bounds", "_cb")
 
     def __init__(self, fields: Any, pml: Any, arm: str, block: int,
                  num_warps: Optional[int] = 1, kernel: Any = None,
-                 pointer: Any = None) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 pointer: Any = None, chunk_layout: Any = None) -> None:
+        from .launch import (CupyPointer, _flat, bind_chunk_bounds,  # noqa: PLC0415
+                             chunk_bounds_for)
 
         if arm not in ARMS:
             raise ValueError(f"arm must be one of {list(ARMS)}, got {arm!r}")
@@ -1006,6 +1047,12 @@ class FusedAdeChainPlan:
         targets = [getattr(fields, name) for name in components]
         sources = [getattr(fields, term[1]) for term in E_TERMS]
         inverse = [fields.inverse_epsilon_for(name) for name in components]
+        # The run's chunk record (launch.chunk_bounds_for), bound on every arm because
+        # the signature is shared; only the PML arms' tail reads it. A run with no
+        # absorber binds the one-rank record's empty runs.
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds_for(fields, pml, chunk_layout), self.shape, targets[0],
+            "FusedAdeChainPlan")
         self._targets = tuple(pointer(array) for array in targets)
         self._sources = tuple(pointer(array) for array in sources)
         self._inv_eps = tuple(pointer(array) for array in inverse)
@@ -1073,7 +1120,7 @@ class FusedAdeChainPlan:
         self.extra_scratch_volumes = extra
 
         self._sigma: Dict[Tuple[str, int], Any] = {}
-        self._coeff: Dict[Tuple[str, int], Tuple[float, float, float]] = {}
+        self._coeff: Dict[Tuple[str, int], Tuple[float, float, float, float]] = {}
         self._sv: Dict[str, int] = {}
         for index, name in enumerate(components):
             letter = LETTERS[index]
@@ -1092,9 +1139,10 @@ class FusedAdeChainPlan:
                                              else float(sigma))
                 if volume:
                     read_ids.add(id(sigma))
-                c_now, c_prev, c_drive = state._coefficients
-                self._coeff[(name, slot)] = (float(c_now), float(c_prev),
-                                             float(c_drive))
+                # MEEP's four realnum words (PolarizationState.constants), each a
+                # float32 word, so the Python float passed is that word exactly.
+                self._coeff[(name, slot)] = tuple(float(word)
+                                                  for word in state.constants)
                 self._sv[f"SV_{letter}{slot}"] = 1 if volume else 0
         self._read_ids = frozenset(read_ids)
 
@@ -1193,12 +1241,12 @@ class FusedAdeChainPlan:
             ade.extend([padding] * (CHAIN_MAX_POLES - live))
             ade.extend([self._sigma[(component, slot)] for slot in range(live)])
             ade.extend([0.0] * (CHAIN_MAX_POLES - live))
-            for position in range(3):
+            for position in range(4):
                 ade.extend([self._coeff[(component, slot)][position]
                             for slot in range(live)])
                 ade.extend([0.0] * (CHAIN_MAX_POLES - live))
         arguments = [*self._targets, *self._aux, *self._sources, *self._inv_eps,
-                     *slots, *self._coefficients, *ade,
+                     *slots, *self._coefficients, self._cb, *ade,
                      nx, ny, nz, self.n_elem]
         if len(arguments) != RUNTIME_ARGUMENTS:
             raise RuntimeError(
@@ -1263,7 +1311,8 @@ class FusedAdeChainPlan:
 def plan_fused_ade_chain(fields: Any, pml: Any, arm: str,
                          block: Optional[int] = None,
                          num_warps: Optional[int] = 1,
-                         kernel: Any = None) -> Optional[FusedAdeChainPlan]:
+                         kernel: Any = None,
+                         chunk_layout: Any = None) -> Optional[FusedAdeChainPlan]:
     """Build the fused E->P plan for one arm, or return ``None`` on any refusal.
 
     ``None`` means REFUSED and the reasons are available from
@@ -1281,7 +1330,8 @@ def plan_fused_ade_chain(fields: Any, pml: Any, arm: str,
 
     return FusedAdeChainPlan(fields, pml, arm,
                              DEFAULT_BLOCK if block is None else block,
-                             num_warps=num_warps, kernel=kernel)
+                             num_warps=num_warps, kernel=kernel,
+                             chunk_layout=chunk_layout)
 
 
 # ---------------------------------------------------------------------------

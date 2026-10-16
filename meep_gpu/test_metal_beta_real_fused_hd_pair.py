@@ -197,14 +197,16 @@ def test_the_pointer_half_of_the_signature_is_the_plain_real_products():
 
 
 def test_this_is_the_only_unpadded_params_record_of_the_four_hd_welds():
-    """Seven 4-byte members at 4-byte alignment: 28 bytes, no tail padding."""
+    """Seven 4-byte members and the chunk record at 4-byte alignment: 128 bytes, no
+    tail padding."""
     dtype = beta.params_record_dtype()
-    assert dtype.itemsize == beta.PARAMS_ITEMSIZE == 28
+    assert dtype.itemsize == beta.PARAMS_ITEMSIZE == 128
     assert dtype.names == ("nx", "ny", "nz", "n_elem", "dtdx",
-                           "beta_plus", "beta_minus")
-    assert [dtype.fields[name][1] for name in dtype.names] == [0, 4, 8, 12, 16, 20, 24]
+                           "beta_plus", "beta_minus", "cb")
+    assert [dtype.fields[name][1] for name in dtype.names] == [
+        0, 4, 8, 12, 16, 20, 24, 28]
     # The COMPLEX twin's is padded, which is why each states its own itemsize.
-    assert complex_beta.PARAMS_ITEMSIZE == 64
+    assert complex_beta.PARAMS_ITEMSIZE == 152
 
 
 def test_the_ceiling_is_an_equality_on_both_variants():
@@ -302,17 +304,16 @@ def test_the_constitutive_lift_is_beta_free_and_the_check_can_fail(monkeypatch):
         beta.certified_h_cell()
 
 
-def test_the_beta_term_is_subtracted_which_is_the_array_paths_add_of_a_negation():
-    """IEEE-754 defines ``a - b`` as ``a + (-b)``, so the two spellings are one.
+def test_the_beta_increment_is_the_negated_product_on_two_targets():
+    """The array path's increment is ``-(w * g)`` and the ladder subtracts ``df``.
 
-    That is why the SIGN is armed as a mutation and the SPELLING is not: a gate that
-    armed ``-`` versus ``+ (-x)`` would be measuring a tautology, and one that armed
-    neither would leave the only real degree of freedom untested.
+    The SIGN is armed as a mutation; the pass has two targets (0 and 1) and none on
+    target 2.
     """
     _prologue, tail = beta.welded_curl_tail("plain", (P, P, P))
-    assert "curl0 = curl0 - (beta_plus * b);" in tail
-    assert "curl1 = curl1 - (beta_minus * a);" in tail
-    assert "curl2" not in tail.split("curl1 = curl1 - (beta_minus * a);")[1][:60]
+    assert "float bi0 = -(beta_plus * b);" in tail
+    assert "float bi1 = -(beta_minus * a);" in tail
+    assert "bi2" not in tail
 
 
 def test_the_beta_coefficient_is_this_seams_electric_convention_and_unwidened():
@@ -369,32 +370,41 @@ def test_the_ghost_is_the_exact_metallic_literal(variant, codes):
         assert line.endswith(f" : {beta._GHOST};"), line
 
 
+def _pass_block(source):
+    from meep_gpu.metal_kernels import folded_pass
+
+    start = source.index(folded_pass.FOLDED_PASS_BEGIN)
+    end = source.index(folded_pass.FOLDED_PASS_END, start)
+    return source[start:end + len(folded_pass.FOLDED_PASS_END)]
+
+
 @pytest.mark.parametrize("variant,codes", SPECIALISATIONS)
-def test_the_beta_insert_survives_the_lift_character_for_character(variant, codes):
+def test_the_beta_pass_survives_the_lift_character_for_character(variant, codes):
     _prologue, tail = beta.welded_curl_tail(variant, codes)
-    for line in special_kz._REAL_BETA_INSERT.splitlines():
-        assert line in tail, line
+    block = _pass_block(beta.beta_real_curl_source(variant, codes))
+    assert "float bi0 = -(beta_plus * b);" in block
+    assert block in tail
 
 
 @pytest.mark.parametrize("codes", [(P, MP, P), (M, MM, P), (MM, MM, MM)])
-def test_the_folded_variant_is_the_plain_template_plus_the_top_mask(codes):
-    derived = folded_beta.folded_beta_curl_template()
-    assert derived.count("__TOP_MASK__") == 1
-    assert special_kz._BETA_CURL_TEMPLATE in derived.replace(
-        folded_beta._TOP_MASK_BLOCK, "")
+def test_the_folded_variant_carries_the_same_pass_on_its_own_mask_rows(codes):
+    """Both variants' passes are :func:`.special_kz.beta_pass` on the source's own rows."""
+    from meep_gpu.metal_kernels import folded_pass
+
+    for variant, specialised in (("plain", (P, P, P)), ("folded", codes)):
+        source = beta.beta_real_curl_source(variant, specialised)
+        rows = folded_pass.ownership_rows(source)
+        assert _pass_block(source) == special_kz.beta_pass(rows, False).rstrip("\n")
 
 
 def test_the_prologue_cut_is_at_the_decode_and_declares_what_h_cell_needs():
-    """The real beta template puts ``int nxi`` ABOVE the decode; the complex one below.
-
-    That is why this weld cuts at ``DECODE_END`` and its complex twin cuts at
-    ``int nyz``, and the cut is only correct while the prologue still declares every
-    name the ``h_cell`` call takes -- which the lift asserts and this test drives.
+    """The cut is at ``DECODE_END`` and is only correct while the prologue still
+    declares every name the ``h_cell`` call takes -- which the lift asserts and this
+    test drives.
     """
     prologue, _tail = beta.welded_curl_tail("plain", (P, P, P))
-    assert "int nxi = int(nx);" in prologue
-    assert "int nyi = int(ny), nzi = int(nz);" in prologue
-    assert prologue.rstrip().endswith("int i   = plane / nyi;")
+    assert "int nxi = int(nx), nyi = int(ny), nzi = int(nz);" in prologue
+    assert prologue.endswith(plain.DECODE_END)
 
 
 def test_the_two_variants_emit_different_sources_and_the_same_signature():

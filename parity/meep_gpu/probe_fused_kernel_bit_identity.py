@@ -9,28 +9,30 @@ anything, and neither can be settled by reading source:
    multiply-add by default (``--fmad=true``), which rounds once where the array
    path rounds twice. Is ``--fmad=false`` *necessary* (does the default output
    actually differ?) and is it *sufficient* (does it alone reach bit-identity?).
-2. **Curl associativity.** ``stepping.py:1648`` contracts the stencil as
-   ``dtdx * ((shifted_first - first) + (second - shifted_second))``. The fused
-   kernels write ``dtdx * (a - b + c - d)``, which C associates left to right as
-   ``((a - b) + c) - d``. Float addition is not associative, so these differ in
-   the last bits even with FMA off.
+2. **Curl associativity.** ``stepping._curl_from_operands`` forms the stencil
+   as MEEP's ``step_curl`` does, ``dtdx * (a - b + c - d)`` associated left to
+   right as ``((a - b) + c) - d`` (step_generic.cpp:104). Until 0.10 the array
+   path contracted it pairwise, ``dtdx * ((a - b) + (c - d))``. Float addition
+   is not associative, so these differ in the last bits even with FMA off.
 
 This probe is deliberately **standalone**: it imports only the kernel-string
 module ``meep_gpu/cuda_kernels/step_curl_kernels.py`` (loaded by path, never as
-part of the ``meep_gpu`` package, so nothing pulls in ``driver``/``pml``), and
-re-derives the array path's expression order here by transcription from
-``stepping.py`` rather than importing it. Two independent transcriptions of the
+part of the ``meep_gpu`` package, so nothing pulls in ``driver``/``pml``) and its
+sibling ``gate_needles.py`` (the per-gate mutation tables, which imports nothing
+from the repository), and re-derives the array path's expression order here by
+transcription from ``stepping.py`` rather than importing it. Two independent transcriptions of the
 same contract is the point: an import would compare the kernel against whatever
 the array path happens to do, not against what the plan says it must do.
 
 The reference is computed twice per case:
 
-* ``array_order``  — ``dtdx * ((sf - f) + (s - ss))``, stepping.py's contract.
-* ``kernel_order`` — ``dtdx * (((sf - f) + s) - ss)``, the kernels' C grouping,
-  evaluated with the same CuPy array ops.
+* ``array_order``    — ``dtdx * (((sf - f) + s) - ss)``, stepping.py's contract
+  and MEEP's (with the one-partner forms where a partner is absent).
+* ``pairwise_order`` — ``dtdx * ((sf - f) + (s - ss))``, the package's grouping
+  until 0.10, evaluated with the same CuPy array ops.
 
 Comparing against both separates the two effects: if the kernel matches
-``kernel_order`` bitwise but not ``array_order``, associativity is the only
+``pairwise_order`` bitwise but not ``array_order``, associativity is the only
 remaining divergence and the fix is a source edit to the stencil parentheses.
 
 Usage (the GPU host, one GPU)::
@@ -57,6 +59,16 @@ import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+
+# ``gate_needles`` sits beside this file. The probe is run as a script and also
+# loaded by path from gates and tests, so its directory is put on the path here
+# and every loader shares ONE ``gate_needles`` module, whose ``Needle`` type the
+# tables are built from.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+import gate_needles  # noqa: E402
+from gate_needles import Needle  # noqa: E402
 
 try:
     import cupy as cp
@@ -304,29 +316,53 @@ def reference_shift(xp: Any, field: Any, axis: int, boundary: str,
     raise ValueError(f"boundary {boundary!r} has no real-field PML reference")
 
 
+#: The two curl groupings a reference can be asked for. ``array_order`` is the
+#: contract (MEEP's, which the array path forms); ``pairwise_order`` is the grouping
+#: the package carried until 0.10, a control the kernel must NOT reproduce.
+CURL_GROUPINGS: Tuple[str, ...] = ("array_order", "pairwise_order")
+
+
 def reference_curl(xp: Any, first: Any, second: Any, first_axis: int,
                    second_axis: int, dtdx: Any, backward: bool,
-                   boundaries: Sequence[str], grouping: str) -> Any:
-    """dtdx * the discrete curl, in one of the two groupings.
+                   boundaries: Sequence[str], grouping: str,
+                   presence: Sequence[bool] = (True, True, True)) -> Any:
+    """dtdx * the discrete curl, in the contract's grouping or the previous one.
 
-    ``array_order`` is stepping._curl_from_operands (:1601), the contract::
+    ``array_order`` is ``stepping._curl_from_operands``, the contract, which is
+    MEEP's ``step_curl`` (step_generic.cpp:72-76, :104, :108). With both partners
+    present C associates the stencil left to right::
 
-        dtdx * ((shifted_first - first) + (second - shifted_second))
+        dtdx * (((shifted_first - first) + second) - shifted_second)
 
-    ``kernel_order`` is what C makes of ``dtdx * (a - b + c - d)`` written
-    without parentheses — ``((a - b) + c) - d``. Float addition is not
-    associative, so keeping both separates an associativity regression from
-    everything else the gate can catch.
+    A partner whose derivative axis carries no curl partner (``presence``, one
+    flag per axis: the chunk record's presence word) is ABSENT and MEEP takes the
+    one-partner form, ``dtdx * (shifted_first - first)`` or, with the partners
+    swapped and ``dtdx`` negated, ``(-dtdx) * (shifted_second - second)``; with
+    neither the curl is an exact ``+0``. The full bracket over an absent partner
+    is not the one-partner word: ``(a + g2) - g2`` rounds twice more.
+
+    ``pairwise_order`` is the package's grouping before 0.10,
+    ``dtdx * ((shifted_first - first) + (second - shifted_second))`` over both
+    partners whatever the presence. Float addition is not associative, so the
+    control separates an associativity regression from everything else the gate
+    can catch.
     """
     shifted_first = reference_shift(xp, first, first_axis,
                                     boundaries[first_axis], backward)
     shifted_second = reference_shift(xp, second, second_axis,
                                      boundaries[second_axis], backward)
-    if grouping == "array_order":
+    if grouping == "pairwise_order":
         return dtdx * ((shifted_first - first) + (second - shifted_second))
-    if grouping == "kernel_order":
+    if grouping != "array_order":
+        raise ValueError(f"unknown grouping {grouping!r}; one of {CURL_GROUPINGS}")
+    first_present, second_present = bool(presence[first_axis]), bool(presence[second_axis])
+    if first_present and second_present:
         return dtdx * (((shifted_first - first) + second) - shifted_second)
-    raise ValueError(f"unknown grouping {grouping!r}")
+    if first_present:
+        return dtdx * (shifted_first - first)
+    if second_present:
+        return (-dtdx) * (shifted_second - second)
+    return xp.zeros_like(first)
 
 
 def reference_mask(curl: Any, iyee: Sequence[int],
@@ -367,11 +403,104 @@ def reference_recurrence(field: Any, fu: Any, curl: Any, kms: Any, sinv: Any,
     field *= sinv_u
 
 
+def reference_dsig_only(field: Any, curl: Any, kms: Any, sinv: Any) -> Any:
+    """MEEP's dsig-only curl form, ``((f * kms) - curl) * sinv``, as a new array.
+
+    stepping._apply_dsig_only_update, step_generic.cpp:183: the form of a cell
+    whose chunk carries the dsig layer and not the dsigu one. Where the chunk
+    carries neither, MEEP runs the plain ``f - curl`` (:104); with ``kms`` and
+    ``sinv`` exactly 1.0 there (the region plan's precondition) this IS that word,
+    because ``1 * x`` is exact. ``fu`` is not read.
+    """
+    return ((field * kms) - curl) * sinv
+
+
+# ---------------------------------------------------------------------------
+# The chunk record — which cells take which PML form
+# ---------------------------------------------------------------------------
+#
+# Since 0.10 a cell's PML form is chosen per structure chunk, as MEEP chooses it
+# (step_db.cpp:56-59, update_eh.cpp:162-170): the split-field recurrence and the
+# dsigw accumulation run only on the cells whose chunk carries the layer, and the
+# dsig-only curl and ``f = src`` everywhere else, with the auxiliary untouched
+# there. Every reference below keys those forms on the kernels' chunk record
+# (``meep_gpu.chunk_map.chunk_bounds_record``), whose layout is transcribed here
+# rather than imported, as the arithmetic is: ``int32[25]``, the runs
+# ``[a0, a1) U [b0, b1)`` of ``[sub-lattice][axis]`` (integer lattice first), then
+# word 24, whose bit ``a`` is set when axis ``a`` carries curl partners. A gate
+# hands the reference the record its kernels launched with; the validator hands it
+# the record of the region plan the array path stepped with, which is what checks
+# this decoding against ``stepping`` itself.
+
+#: The record's partner-presence word.
+RECORD_PRESENCE_WORD = 24
+
+
+def record_runs(record: Sequence[int], half_integer: bool,
+                axis: int) -> Tuple[int, int, int, int]:
+    """``(a0, a1, b0, b1)`` of one (sub-lattice, axis) line of the record."""
+    base = ((1 if half_integer else 0) * 3 + int(axis)) * 4
+    return tuple(int(record[base + word]) for word in range(4))  # type: ignore[return-value]
+
+
+def record_presence(record: Sequence[int]) -> Tuple[bool, bool, bool]:
+    """The record's partner-presence word, one flag per axis."""
+    word = int(record[RECORD_PRESENCE_WORD])
+    return tuple(bool((word >> axis) & 1) for axis in range(3))  # type: ignore[return-value]
+
+
+def record_membership(xp: Any, record: Sequence[int], half_integer: bool, axis: int,
+                      n: int) -> Any:
+    """Membership of stored rows ``0..n-1`` along ``axis``, broadcast-shaped on ``xp``.
+
+    Row ``i`` is a member when ``a0 <= i < a1`` or ``b0 <= i < b1``; the kernels
+    evaluate the same two comparisons per cell.
+    """
+    a0, a1, b0, b1 = record_runs(record, half_integer, axis)
+    index = np.arange(int(n))
+    line = ((index >= a0) & (index < a1)) | ((index >= b0) & (index < b1))
+    return xp.asarray(np.ascontiguousarray(line.reshape(broadcast_shape(axis, int(n)))))
+
+
+def array_module(array: Any) -> Any:
+    """The array module ``array`` belongs to: CuPy for a device array, NumPy otherwise."""
+    if cp is not None and isinstance(array, cp.ndarray):
+        return cp
+    return np
+
+
+def gate_record(shape: Sequence[int]) -> np.ndarray:
+    """The division this gate's kernels launch with, and so its references step with.
+
+    ``gate_chunk_records.every_cell_record`` of the volume's shape: every stored
+    cell of every resolved axis inside a layer chunk, on both lattices, and no
+    run and no presence bit on an axis that stores one cell. Both tracks launch
+    with it (:meth:`HandTrackAdapter.chunk_record`, ``track_triton_pml.py``), and
+    the synthetic coefficient tables hold a non-unit coefficient on every cell, so
+    it is the one division that meets the region plan's unit-coefficient
+    precondition for them.
+    """
+    from gate_chunk_records import every_cell_record  # noqa: PLC0415 - beside this file
+
+    return every_cell_record(tuple(int(n) for n in shape))
+
+
 def reference_pml_step(xp: Any, sources: Dict[str, Any], targets: Dict[str, Any],
                        auxiliaries: Dict[str, Any], coefficients: Dict[str, Any],
                        dtdx: Any, sub_step: str, boundaries: Sequence[str],
-                       grouping: str = "array_order") -> None:
+                       grouping: str = "array_order", *,
+                       record: Sequence[int]) -> None:
     """One real-field PML curl sub-step, in place on ``targets`` and ``auxiliaries``.
+
+    ``stepping._apply_curl`` without a conductivity, keyed on ``record`` (REQUIRED:
+    it decides which cells take which form). On a cell whose record line for the
+    target's dsigu axis, on the target's own sub-lattice along that axis
+    (half-integer for B, integer for D), holds it, the split-field recurrence
+    (:func:`reference_recurrence`); everywhere else the dsig-only form
+    (:func:`reference_dsig_only`), with ``fu`` keeping its word (the auxiliary
+    contract). Both forms are formed whole-volume and SELECTED per cell, the same
+    word per cell as the array path's split, select and mask routes. The curl
+    takes the record's presence word (:func:`reference_curl`).
 
     ``coefficients`` is keyed ``kms_x``/``sinv_x``/... in BROADCAST shape
     ((n,1,1), (1,n,1), (1,1,n)) — the layout ``PML._reshape_for_broadcast``
@@ -379,14 +508,23 @@ def reference_pml_step(xp: Any, sources: Dict[str, Any], targets: Dict[str, Any]
     """
     terms = B_PML_TERMS if sub_step == "step_B" else D_PML_TERMS
     backward = sub_step == "step_D"
+    presence = record_presence(record)
     for target, g1, a1, g2, a2, dsig, dsigu, iyee in terms:
         curl = reference_curl(xp, sources[g1], sources[g2], a1, a2, dtdx,
-                              backward, boundaries, grouping)
+                              backward, boundaries, grouping, presence)
         reference_mask(curl, iyee, boundaries)
+        field, fu = targets[target], auxiliaries["fu_" + target]
+        kms, sinv = coefficients["kms_" + dsig], coefficients["sinv_" + dsig]
+        axis = AXIS_NAMES.index(dsigu)
+        inside = record_membership(xp, record, iyee[axis] == 1, axis, field.shape[axis])
+        plain = reference_dsig_only(field, curl, kms, sinv)
+        recurrence_field = field.copy()
+        recurrence_fu = fu.copy()
         reference_recurrence(
-            targets[target], auxiliaries["fu_" + target], curl,
-            coefficients["kms_" + dsig], coefficients["sinv_" + dsig],
+            recurrence_field, recurrence_fu, curl, kms, sinv,
             coefficients["kms_" + dsigu], coefficients["sinv_" + dsigu])
+        field[...] = xp.where(inside, recurrence_field, plain)
+        fu[...] = xp.where(inside, recurrence_fu, fu)
 
 
 def reference_step(xp: Any, sources: Dict[str, Any], targets: Dict[str, Any],
@@ -394,9 +532,10 @@ def reference_step(xp: Any, sources: Dict[str, Any], targets: Dict[str, Any],
                    dtdx: Any, backward: bool, grouping: str) -> Dict[str, Any]:
     """``target -= curl`` for all three components, no absorber, all axes periodic.
 
-    stepping._apply_curl's plain branch (:510) — the update a cell takes when it
-    is in no PML and its material carries no conductivity, which is what the
-    all-periodic fused core does.
+    stepping._apply_curl's plain branch — the update a cell takes when it is in
+    no PML and its material carries no conductivity, which is what the
+    all-periodic fused core does. Every axis is resolved (this leg's shapes have
+    no invariant axis), so both partners are present.
 
     ``backward=True`` is MEEP's negated stride (the D sub-step, ``_shift_down``,
     ``roll(f, +1)[i] = f[i-1]``); ``False`` is the B sub-step (``_shift_up``,
@@ -778,9 +917,9 @@ def run_bit_identity(module, results: Dict[str, Any], out_path: str,
                             f"{case['vs_array_order']['bit_identical']} "
                             f"(maxulp={case['vs_array_order'].get('max_ulp', 0)}, "
                             f"maxabs={case['vs_array_order'].get('max_abs_diff', 0.0):.3e}) | "
-                            f"vs kernel_order identical="
-                            f"{case['vs_kernel_order']['bit_identical']} "
-                            f"(maxulp={case['vs_kernel_order'].get('max_ulp', 0)}) "
+                            f"vs pairwise_order identical="
+                            f"{case['vs_pairwise_order']['bit_identical']} "
+                            f"(maxulp={case['vs_pairwise_order'].get('max_ulp', 0)}) "
                             f"({case['seconds']} s)"
                         )
                         save(results, out_path)
@@ -822,8 +961,8 @@ def one_case(module, options: Sequence[str], label: str,
     # either matches stepping.py. That second question belongs to a validator.
     ref_array = reference_step(cp, sources, targets, terms, dtdx, backward,
                                "array_order")
-    ref_kernel = reference_step(cp, sources, targets, terms, dtdx, backward,
-                                "kernel_order")
+    ref_pairwise = reference_step(cp, sources, targets, terms, dtdx, backward,
+                                  "pairwise_order")
 
     # The kernel runs in place on its own copies of the targets.
     kernel_arrays = dict(arrays)
@@ -856,18 +995,18 @@ def one_case(module, options: Sequence[str], label: str,
     if error is not None:
         case["vs_array_order"] = {"bit_identical": False, "differing_floats": -1,
                                   "total_floats": 0}
-        case["vs_kernel_order"] = {"bit_identical": False, "differing_floats": -1,
-                                   "total_floats": 0}
+        case["vs_pairwise_order"] = {"bit_identical": False, "differing_floats": -1,
+                                     "total_floats": 0}
         return case
 
     case["vs_array_order"] = combine({
         name: bit_compare(getattr(fields, name), ref_array[name])
         for name in target_names})
-    case["vs_kernel_order"] = combine({
-        name: bit_compare(getattr(fields, name), ref_kernel[name])
+    case["vs_pairwise_order"] = combine({
+        name: bit_compare(getattr(fields, name), ref_pairwise[name])
         for name in target_names})
-    case["array_vs_kernel_order_reference"] = combine({
-        name: bit_compare(ref_array[name], ref_kernel[name])
+    case["array_vs_pairwise_order_reference"] = combine({
+        name: bit_compare(ref_array[name], ref_pairwise[name])
         for name in target_names})
     return case
 
@@ -1095,12 +1234,27 @@ class HandTrackAdapter:
             # ones. A planner passes ``pml=`` instead and the launcher derives the
             # pairing from the side, which is the invariant this door bypasses ON
             # PURPOSE and no other caller may.
-            module.update_fused_pml_real(side, shim, tables=flat)
+            module.update_fused_pml_real(side, shim, tables=flat,
+                                         chunk_bounds=self.chunk_record(arrays, side + "x"))
             return
+        record = self.chunk_record(arrays, "Bx" if sub_step == "step_B" else "Dx")
         if sub_step == "step_B":
-            self.module._step_B_fused_pml_real(shim, flat, codes, dtdx)
+            self.module._step_B_fused_pml_real(shim, flat, codes, dtdx, record)
         else:
-            self.module._step_D_fused_pml_real(shim, flat, codes, dtdx)
+            self.module._step_D_fused_pml_real(shim, flat, codes, dtdx, record)
+
+    @staticmethod
+    def chunk_record(arrays: Dict[str, Any], target: str) -> Any:
+        """The chunk record this track launches the pair with: every cell in a layer chunk.
+
+        Since 0.10 the pair chooses each cell's PML form from the run's chunk record
+        (``chunk_map.chunk_bounds_record``) and takes no default. This track's
+        coefficient tables are not 1 anywhere, so the division they admit is every cell
+        inside (:func:`gate_record`, ``gate_chunk_records.every_cell_record`` of the
+        target's shape), uploaded once per launch; the references key their forms on
+        the same record.
+        """
+        return cp.asarray(gate_record(arrays[target].shape), dtype=cp.int32)
 
     def source_attributes(self) -> Tuple[str, ...]:
         """Every kernel source string a mutation may rewrite, across both modules.
@@ -1120,6 +1274,14 @@ class HandTrackAdapter:
     def source_attribute_owner(self, attribute: str):
         """Which loaded module holds ``attribute`` — used by the mutation reader."""
         return self._source_module(attribute)
+
+    @property
+    def source_mutations(self):
+        """This track's needle table, :data:`HAND_NEEDLES`.
+
+        Every track names its own table; none is armed by default.
+        """
+        return HAND_NEEDLES
 
     def mutated_kernels(self) -> Dict[str, Any]:
         return {}
@@ -1216,8 +1378,9 @@ class ExternalTrackAdapter:
 
         WHICH defects are injected, and what must happen when they are, stays with
         the gate; only the needles are per-track, because one track's kernel is a
-        CUDA string and the other's is Python. A track that supplies none falls
-        back to :data:`SOURCE_MUTATIONS`, which is the hand track's set.
+        CUDA string and the other's is Python. A track that supplies none has no
+        source-mutation legs: :func:`apply_source_mutation` refuses it by name
+        rather than arm another track's needles against its kernels.
         """
         return self._spec.get("source_mutations")
 
@@ -1291,7 +1454,7 @@ def run_pml_bit_identity(adapter, results: Dict[str, Any], out_path: str,
     """The real-field PML gate: the full product, both arrays, both groupings.
 
     PASS is every NORMAL-NUMBER case bit-identical to ``array_order`` on both the
-    target and the auxiliary. ``kernel_order`` is carried alongside so a failure
+    target and the auxiliary. ``pairwise_order`` is carried alongside so a failure
     separates associativity from everything else in one read, and the
     subnormal-band class is counted SEPARATELY — see :data:`PML_VALUE_CLASSES`
     for why it is published rather than folded into the pass.
@@ -1335,7 +1498,7 @@ def run_pml_bit_identity(adapter, results: Dict[str, Any], out_path: str,
                         f"(differing={verdict['differing_floats']}/"
                         f"{verdict['total_floats']}, "
                         f"maxulp={verdict.get('max_ulp', 0)}) "
-                        f"vs_kernel_order={case['vs_kernel_order']['bit_identical']} "
+                        f"vs_pairwise_order={case['vs_pairwise_order']['bit_identical']} "
                         f"({case['seconds']} s)")
                 results.setdefault("pml_bit_identity", {})[label] = summarize_pml(cases)
                 results["pml_bit_identity"][label]["cases"] = cases
@@ -1497,7 +1660,8 @@ def one_pml_case(adapter, shape, boundaries, dtdx, sub_step, coefficient_source,
     source_names, target_names, aux_names = _reference_arrays(arrays, sub_step)
 
     references: Dict[str, Dict[str, Any]] = {}
-    for grouping in ("array_order", "kernel_order"):
+    record = gate_record(shape)
+    for grouping in CURL_GROUPINGS:
         state = {name: arrays[name].copy()
                  for name in target_names + aux_names}
         reference_pml_step(
@@ -1505,7 +1669,8 @@ def one_pml_case(adapter, shape, boundaries, dtdx, sub_step, coefficient_source,
             {name: arrays[name] for name in source_names},
             {name: state[name] for name in target_names},
             {name: state[name] for name in aux_names},
-            coefficients, np.float32(dtdx), sub_step, boundaries, grouping)
+            coefficients, np.float32(dtdx), sub_step, boundaries, grouping,
+            record=record)
         references[grouping] = state
 
     kernel_arrays = dict(arrays)
@@ -1528,7 +1693,7 @@ def one_pml_case(adapter, shape, boundaries, dtdx, sub_step, coefficient_source,
         error = f"{type(exc).__name__}: {exc}"[:2000]
     case["launch_error"] = error
     if error is not None:
-        for key in ("vs_array_order", "vs_kernel_order"):
+        for key in ("vs_array_order", "vs_pairwise_order"):
             case[key] = {"bit_identical": False, "differing_floats": -1,
                          "total_floats": 0}
         return case
@@ -1548,12 +1713,12 @@ def one_pml_case(adapter, shape, boundaries, dtdx, sub_step, coefficient_source,
         for name in aux_names)
 
     for grouping, key in (("array_order", "vs_array_order"),
-                          ("kernel_order", "vs_kernel_order")):
+                          ("pairwise_order", "vs_pairwise_order")):
         case[key] = compare_pml_state(kernel_arrays, references[grouping],
                                       target_names, aux_names, compare_fu,
                                       comparator)
-    case["array_vs_kernel_order_reference"] = compare_pml_state(
-        references["array_order"], references["kernel_order"],
+    case["array_vs_pairwise_order_reference"] = compare_pml_state(
+        references["array_order"], references["pairwise_order"],
         target_names, aux_names, compare_fu, bit_compare)
     return case
 
@@ -1656,7 +1821,8 @@ def one_pml_multi_step(adapter, shape, boundaries, dtdx, sub_step, compare_fu,
             cp, sources,
             {name: reference_state[name] for name in target_names},
             {name: reference_state[name] for name in aux_names},
-            coefficients, np.float32(dtdx), sub_step, boundaries, "array_order")
+            coefficients, np.float32(dtdx), sub_step, boundaries, "array_order",
+            record=gate_record(shape))
         try:
             adapter.launch(sub_step, kernel_state, flat, codes, dtdx)
             cp.cuda.runtime.deviceSynchronize()
@@ -1828,24 +1994,71 @@ def layer_constitutive_coefficients(pml, half_integer: bool) -> Dict[str, Any]:
             for name in AXIS_NAMES for label in ("kps", "kms")}
 
 
+#: The two constitutive groupings. ``array_order`` is the contract (MEEP's, which
+#: the array path forms); ``regrouped`` is the association the package carried
+#: until 0.10, a control the kernel must NOT reproduce.
+CONSTITUTIVE_GROUPINGS: Tuple[str, ...] = ("array_order", "regrouped")
+
+
+def reference_constitutive_forms(field: Any, fw: Any, source: Any, kps: Any, kms: Any,
+                                 grouping: str, inside: Any) -> None:
+    """One constitutive component's two forms, in place on ``field`` and ``fw``.
+
+    ``stepping._apply_constitutive_regions``. On a cell whose chunk carries the
+    component's own (dsigw) layer, ``inside``, the accumulation of
+    ``stepping._apply_constitutive_pml`` — MEEP's step_update_EDHB with dsigw
+    (step_generic.cpp:689, :697)::
+
+        fw_previous = fw; fw = source
+        field = field + ((kps * fw) - (kms * fw_previous))
+
+    the two products, their difference, then one add into ``field``. Everywhere
+    else ``field = source`` (``H = B``, ``E = (D - P) * chi1inv``: MEEP's plain
+    constitutive, update_eh.cpp:162-170) and ``fw`` keeps its word (the auxiliary
+    contract). ``inside`` None is every cell inside.
+
+    ``grouping="regrouped"`` is the package's association until 0.10,
+    ``(field + kps * fw) - kms * fw_previous``, carried so a failure separates
+    associativity from everything else in one read — the role
+    ``pairwise_order`` plays in the curl leg.
+    """
+    if grouping == "array_order":
+        accumulated = field + ((kps * source) - (kms * fw))
+    elif grouping == "regrouped":
+        accumulated = (field + (kps * source)) - (kms * fw)
+    else:
+        raise ValueError(f"unknown grouping {grouping!r}; one of {CONSTITUTIVE_GROUPINGS}")
+    if inside is None:
+        field[...] = accumulated
+        fw[...] = source
+        return
+    xp = array_module(field)
+    field[...] = xp.where(inside, accumulated, source)
+    fw[...] = xp.where(inside, source, fw)
+
+
 def reference_constitutive_step(side: str, arrays: Dict[str, Any],
                                 state: Dict[str, Any],
                                 coefficients: Dict[str, Any],
-                                grouping: str = "array_order") -> None:
+                                grouping: str = "array_order", *,
+                                record: Optional[Sequence[int]] = None) -> None:
     """One constitutive PML sub-step, in place on ``state``.
 
-    ``stepping._apply_constitutive_pml`` (:2065), whose no-scratch branch is::
+    ``stepping.update_H`` / ``update_E`` under a PML (no dispersion, no
+    nonlinearity): per component, the source (``B``, or ``D * inv_eps``) and the
+    two forms of :func:`reference_constitutive_forms`, keyed on ``record``: the
+    component's line along its own axis, on its own sub-lattice (integer for H,
+    half-integer for E, :data:`CONSTITUTIVE_HALF_INTEGER`). ``record`` None steps
+    the accumulation on every cell, which is what the callers that hand no record
+    (the complex, beta, BFAST and cylindrical gates) step; every gate of this file
+    and the validator hand the record their kernels or their oracle stepped with.
 
-        fw_previous = fw.copy()
-        fw[...] = source
-        field += kps * fw
-        field -= kms * fw_previous
-
-    TWO SEPARATE ACCUMULATIONS, LEFT TO RIGHT. ``grouping="regrouped"`` is the
-    alternative association ``field + (kps*fw - kms*fw_previous)``, carried so a
-    failure separates associativity from everything else in one read — the same
-    role ``kernel_order`` plays in the curl leg.
+    The run's first ``update_H`` also starts H and its ``f_w`` as copies of B on
+    the dsigw cells (``stepping.separate_h_from_b``). That is the run's start, not
+    the sub-step, and is not part of this reference: a state seeded mid-run
+    carries ``Fields.h_separated``.
     """
+    half_integer = CONSTITUTIVE_HALF_INTEGER[side]
     for target, source_name, axis in CONSTITUTIVE_TERMS[side]:
         axis_name = AXIS_NAMES[axis]
         kps = coefficients["kps_" + axis_name]
@@ -1854,15 +2067,11 @@ def reference_constitutive_step(side: str, arrays: Dict[str, Any],
             source = arrays[source_name] * arrays["inv_eps_" + target]
         else:
             source = arrays[source_name]
-        fw = state["f_w_" + target]
         field = state[target]
-        fw_previous = fw.copy()
-        fw[...] = source
-        if grouping == "regrouped":
-            field[...] = field + (kps * fw - kms * fw_previous)
-        else:
-            field += kps * fw
-            field -= kms * fw_previous
+        inside = None if record is None else record_membership(
+            array_module(field), record, half_integer, axis, field.shape[axis])
+        reference_constitutive_forms(field, state["f_w_" + target], source, kps, kms,
+                                     grouping, inside)
 
 
 def _swapped_kps_kms(coefficients: Dict[str, Any]) -> Dict[str, Any]:
@@ -1949,9 +2158,11 @@ def one_constitutive_case(adapter, shape, boundaries, courant, side,
     targets, auxiliaries, _ = constitutive_names(side)
 
     references: Dict[str, Dict[str, Any]] = {}
-    for grouping in ("array_order", "regrouped"):
+    record = gate_record(arrays[targets[0]].shape)
+    for grouping in CONSTITUTIVE_GROUPINGS:
         state = {name: arrays[name].copy() for name in targets + auxiliaries}
-        reference_constitutive_step(side, arrays, state, coefficients, grouping)
+        reference_constitutive_step(side, arrays, state, coefficients, grouping,
+                                    record=record)
         references[grouping] = state
 
     kernel_arrays = dict(arrays)
@@ -2198,7 +2409,8 @@ def one_constitutive_multi_step(adapter, shape, side, compare_fw, comparator,
         previous_auxiliaries = {name: reference_state[name].copy()
                                 for name in auxiliaries}
         reference_constitutive_step(side, arrays, reference_state, coefficients,
-                                    "array_order")
+                                    "array_order",
+                                    record=gate_record(arrays[targets[0]].shape))
         if step > 1 and any(bool((reference_state[name] != previous_auxiliaries[name]).any())
                             for name in auxiliaries):
             auxiliary_advanced = True
@@ -2359,19 +2571,21 @@ def reference_dispersive_constitutive_step(arrays: Dict[str, Any],
                                            coefficients: Dict[str, Any],
                                            poles: Dict[str, Sequence[str]],
                                            grouping: str = "array_order",
-                                           pole_grouping: str = "sequential") -> None:
+                                           pole_grouping: str = "sequential", *,
+                                           record: Sequence[int]) -> None:
     """One dispersive electric constitutive sub-step, in place on ``state``.
 
     ``stepping.update_E``'s dispersive branch, transcribed::
 
-        source       = fields.displacement_minus_polarization(c)   # :981
-        constitutive = source * fields.inverse_epsilon_for(c)      # :982
-        fw_previous  = fw.copy(); fw[...] = constitutive
-        field += kps * fw ; field -= kms * fw_previous              # :2065-2097
+        source       = fields.displacement_minus_polarization(c)
+        constitutive = fields.inverse_epsilon_for(c) * source
+        then the two forms of reference_constitutive_forms, keyed on ``record``
 
-    ``grouping="regrouped"`` is the alternative association of the accumulation,
-    exactly as in :func:`reference_constitutive_step`. ``pole_grouping`` is this
-    leg's own second control and has no counterpart anywhere else:
+    (REQUIRED, as in :func:`reference_constitutive_step`: the component's line
+    along its own axis on the half-integer lattice). ``grouping="regrouped"`` is
+    the alternative association of the accumulation, exactly as in
+    :func:`reference_constitutive_forms`. ``pole_grouping`` is this leg's own
+    second control and has no counterpart anywhere else:
 
     * ``"summed"``     — ``D - (P0 + P1 + ...)``, the pre-accumulated design;
     * ``"reversed"``   — the pole list walked backwards.
@@ -2405,15 +2619,11 @@ def reference_dispersive_constitutive_step(arrays: Dict[str, Any],
             for name in contributors:
                 difference = difference - arrays[name]
         source = difference * arrays["inv_eps_" + target]
-        fw = state["f_w_" + target]
         field = state[target]
-        fw_previous = fw.copy()
-        fw[...] = source
-        if grouping == "regrouped":
-            field[...] = field + (kps * fw - kms * fw_previous)
-        else:
-            field += kps * fw
-            field -= kms * fw_previous
+        inside = record_membership(array_module(field), record, True, axis,
+                                   field.shape[axis])
+        reference_constitutive_forms(field, state["f_w_" + target], source, kps, kms,
+                                     grouping, inside)
 
 
 def dispersive_case_key(coefficient_source, shape, boundaries, courant, counts,
@@ -2502,7 +2712,8 @@ def one_dispersive_case(adapter, shape, boundaries, courant, counts,
             ("reversed_poles", "array_order", "reversed")):
         state = {name: arrays[name].copy() for name in targets + auxiliaries}
         reference_dispersive_constitutive_step(arrays, state, coefficients, names,
-                                               grouping, pole_grouping)
+                                               grouping, pole_grouping,
+                                               record=gate_record(shape))
         references[label] = state
 
     kernel_arrays = dict(arrays)
@@ -2729,7 +2940,8 @@ def one_dispersive_multi_step(adapter, shape, counts, value_class, compare_fw,
     codes = [np.int32(0), np.int32(0), np.int32(0)]
     for step in range(1, int(steps) + 1):
         reference_dispersive_constitutive_step(arrays, reference_state, coefficients,
-                                               names, "array_order", "sequential")
+                                               names, "array_order", "sequential",
+                                               record=gate_record(shape))
         try:
             adapter.launch("update_E_dispersive", kernel_state, flat, codes, 0.0,
                            extra={"poles": bindings})
@@ -2829,17 +3041,19 @@ def reference_fused_pair_step(xp: Any, arrays: Dict[str, Any], state: Dict[str, 
                               h_coefficients: Dict[str, Any], dtdx: Any,
                               boundaries: Sequence[str],
                               zero_metal: Sequence[bool],
-                              grouping: str = "array_order") -> None:
+                              grouping: str = "array_order", *,
+                              record: Sequence[int]) -> None:
     """The three array-path passes the one kernel replaces, in the driver's order.
 
-    ``step_B`` (driver.py:3163), ``zero_metal_B`` (:3167), ``update_H`` (:3169).
-    Nothing else runs between them in a covered configuration: the magnetic source
-    inject is refused by the predicate, and ``fill_symmetry_bc_B`` /
-    ``fill_folded_far_ghosts_B`` need a fold, which the curl half refuses.
+    ``step_B``, ``zero_metal_B``, ``update_H`` (``FdtdDriver.step``), each half
+    keyed on the one ``record`` (REQUIRED). Nothing else runs between them in a
+    covered configuration: the magnetic source inject is refused by the
+    predicate, and ``fill_symmetry_bc_B`` / ``fill_folded_far_ghosts_B`` need a
+    fold, which the curl half refuses.
 
     ``grouping="regrouped"`` re-associates BOTH halves — the curl's stencil (its
-    own label for that is ``kernel_order``) and the constitutive side's two
-    accumulations. It is the associativity control, the role ``kernel_order``
+    own label for that is ``pairwise_order``) and the constitutive side's
+    accumulation. It is the associativity control, the role ``pairwise_order``
     plays in the curl leg: a fused kernel that matched THIS reference would have
     re-associated something across the seam.
     """
@@ -2848,11 +3062,12 @@ def reference_fused_pair_step(xp: Any, arrays: Dict[str, Any], state: Dict[str, 
         {name: state[name] for name in FUSED_PAIR_TARGETS},
         {name: state[name] for name in FUSED_PAIR_AUX},
         curl_coefficients, dtdx, "step_B", boundaries,
-        "kernel_order" if grouping == "regrouped" else "array_order")
+        "pairwise_order" if grouping == "regrouped" else "array_order", record=record)
     reference_zero_metal_B(state, zero_metal)
     reference_constitutive_step(
         "H", {name: state[name] for name in FUSED_PAIR_TARGETS}, state,
-        h_coefficients, "regrouped" if grouping == "regrouped" else "array_order")
+        h_coefficients, "regrouped" if grouping == "regrouped" else "array_order",
+        record=record)
 
 
 def two_kernel_pair_step(adapter, arrays: Dict[str, Any], curl_flat, h_flat,
@@ -2935,7 +3150,8 @@ def one_fused_pair_case(adapter, shape, boundaries, dtdx, coefficient_source,
         state = {name: arrays[name].copy() for name in FUSED_PAIR_STATE}
         reference_fused_pair_step(cp, arrays, state, curl_coefficients,
                                   h_coefficients, np.float32(dtdx), boundaries,
-                                  zero_metal, grouping)
+                                  zero_metal, grouping,
+                                  record=gate_record(arrays["Bx"].shape))
         references[grouping] = state
 
     codes = [0 if kind == PERIODIC else 1 for kind in boundaries]
@@ -3128,7 +3344,8 @@ def run_fused_pair_multi_step(adapter, results: Dict[str, Any], out_path: str,
             for step in range(1, MULTI_STEP_COUNT + 1):
                 reference_fused_pair_step(
                     cp, arrays, reference_state, curl_coefficients, h_coefficients,
-                    np.float32(dtdx), boundaries, zero_metal, "array_order")
+                    np.float32(dtdx), boundaries, zero_metal, "array_order",
+                    record=gate_record(arrays["Bx"].shape))
                 try:
                     adapter.launch("fused_pair_B", kernel_state, curl_flat, codes,
                                    dtdx, extra={"h_flat": h_flat,
@@ -3483,326 +3700,297 @@ def run_whole_step(results: Dict[str, Any], out_path: str, repo_root: str,
 # Mutations — a gate no mutation exercises is indistinguishable from one that
 # returns True. Every entry here must be verified CAUGHT (or, for the two
 # harness mutations, verified to make a real defect go UNCAUGHT).
+#
+# THE SHARED DEFAULT. Each defect is a ``gate_needles.Needle``: one rewrite of
+# the device text, held as data, with its account in ``why``. This table is the
+# default a gate BORROWS a shared defect from, and no gate arms it directly: each
+# builds its own table with ``gate_needles.gate_table`` (the hand track's is
+# :data:`HAND_NEEDLES`, below). Re-spelling a defect for one gate's kernels is
+# an ``own=`` entry in THAT gate's table and moves no other gate's bytes.
+#
+# THE CURL AND CONSTITUTIVE DEFECTS ARE SPELLED ON THE REAL-PML PAIR'S TEXT since
+# 0.10 (bit_parity_0_10 DESIGN.md D12, KERNELS.md section 7.1). The pair forms the
+# stencil in ``curl_stencil``, in MEEP's grouping, and chooses each cell's PML form
+# per structure chunk through the membership flag ``pml_apply`` and
+# ``constitutive_apply`` take last, and every kernel a gate arms these defects on
+# carries those lines character for character (``gate_needle_anchors.json`` pins each
+# gate's site counts), so every such gate borrows them from here. The two GROUPING
+# defects are INVERTED: the shipped grouping is MEEP's, so each plants the grouping
+# the kernels carried until 0.10, and each stays must-catch.
+# ``parity/meep_gpu/test_mutation_anchors.py`` checks every table against the
+# recorded site counts on every test run.
 # ---------------------------------------------------------------------------
 
-def _regroup_stencil(source: str) -> Tuple[str, int]:
-    """Mutation 3: ``((a-b) + (c-d))`` -> ``(a-b+c-d)``, which C reads as ``((a-b)+c)-d``."""
-    needle = "dtdx * ((sf - f1) + (f2 - ss))"
-    return source.replace(needle, "dtdx * (sf - f1 + f2 - ss)"), source.count(needle)
+SOURCE_MUTATIONS: Dict[str, Needle] = {
+    "regroup_stencil": Needle(
+        find="if (pr1 && pr2) return dtdx * (((sf - f1) + f2) - ss);",
+        replace="if (pr1 && pr2) return dtdx * ((sf - f1) + (f2 - ss));",
+        why=inspect.cleandoc("""
+            Mutation 3, inverted: MEEP's ``((a-b) + c) - d`` -> the pairwise ``(a-b) + (c-d)``.
 
+            ``curl_stencil`` writes step_curl's stencil as C associates it
+            (step_generic.cpp:104), which the array path forms too
+            (``stepping._curl_from_operands``). The pairwise grouping is what the pair
+            carried until 0.10 and a different float32 number. One site per kernel: the
+            helper. Reached only where both partners are present. MUST BE CAUGHT.
+            """)),
+    "drop_metallic_mask": Needle(
+        find=r"\n *if \(bc_[xyz] == BC_METALLIC && [ijk] == 0\) curl = 0\.0f;",
+        replace="",
+        regex=True,
+        why=inspect.cleandoc("""
+            Mutation 4: delete every ``_mask_non_owned_cells`` wall line.
+            """)),
+    "drop_folded_periodic_top_mask": Needle(
+        find=(r"\n *if \(bc_[xyz] == BC_MIRROR_PERIODIC && [ijk] == n[xyz] - 1\)"
+              r" curl = 0\.0f;"),
+        replace="",
+        regex=True,
+        why=inspect.cleandoc("""
+            Delete the Yee-shift-1 TOP-plane mask on a folded PERIODIC axis.
 
-def _drop_metallic_mask(source: str) -> Tuple[str, int]:
-    """Mutation 4: delete every ``_mask_non_owned_cells`` wall line."""
-    pattern = r"\n *if \(bc_[xyz] == BC_METALLIC && [ijk] == 0\) curl = 0\.0f;"
-    return re.subn(pattern, "", source)[0], len(re.findall(pattern, source))
+            THE DEFECT THIS ARMS IS THE ONE THAT WAS MEASURED. Before the branch existed,
+            the shipped real-PML curl pair diverged 0/64 on a folded PERIODIC axis with
+            every one of 19,649 differing words on this exact plane and none elsewhere
+            (``results/cuda_folded_curl_2026-08-19/``). Removing it should reproduce that
+            divergence, which is what makes "the branch closed the gap" a measurement
+            rather than a coincidence of the fixture.
 
+            Scored only on legs that HAVE a folded periodic axis: on a folded metallic
+            grid no axis carries ``BC_MIRROR_PERIODIC`` and the deletion is inert, so a
+            leg there would report UNCAUGHT for a reason about the grid.
+            """)),
+    "drop_folded_periodic_near_mask": Needle(
+        find=r"\n *if \(bc_[xyz] == BC_MIRROR_PERIODIC && [ijk] == 0\) curl = 0\.0f;",
+        replace="",
+        regex=True,
+        why=inspect.cleandoc("""
+            Delete the cell-0 mask on a folded PERIODIC axis, leaving the METALLIC one.
 
-def _drop_folded_periodic_top_mask(source: str) -> Tuple[str, int]:
-    """Delete the Yee-shift-1 TOP-plane mask on a folded PERIODIC axis.
+            The fold's OTHER mask, and a separate leg because it is a separate branch on a
+            separate plane. ``_mask_non_owned_cells`` zeroes cell 0 for every Yee-shift-0
+            component on a MIRRORED axis (stepping.py:1943-1947) — a folded METALLIC axis
+            inherits that from ``BC_METALLIC`` and a folded PERIODIC one does not, so this
+            line is the only thing supplying it there. Deliberately narrow: it leaves
+            ``if (bc_x == BC_METALLIC && i == 0)`` in place, so a leg that scores CAUGHT
+            scored it on the fold's own mask and not on the wall mask beside it.
+            """)),
+    "swap_dsig_dsigu": Needle(
+        find=("    float fu_new = ((fprev * kms) - curl) * sinv;\n"
+              "    if (dsigu) fu[idx] = fu_new;\n"
+              "    float fcur = f[idx];\n"
+              "    float value = dsigu ? ((((fcur * kms_u) + fu_new) - fprev) * sinv_u)\n"),
+        replace=("    float fu_new = ((fprev * kms_u) - curl) * sinv_u;\n"
+                 "    if (dsigu) fu[idx] = fu_new;\n"
+                 "    float fcur = f[idx];\n"
+                 "    float value = dsigu ? ((((fcur * kms) + fu_new) - fprev) * sinv)\n"),
+        why=inspect.cleandoc("""
+            Mutation 5: swap kms/sinv with kms_u/sinv_u inside the recurrence.
 
-    THE DEFECT THIS ARMS IS THE ONE THAT WAS MEASURED. Before the branch existed,
-    the shipped real-PML curl pair diverged 0/64 on a folded PERIODIC axis with
-    every one of 19,649 differing words on this exact plane and none elsewhere
-    (``results/cuda_folded_curl_2026-08-19/``). Removing it should reproduce that
-    divergence, which is what makes "the branch closed the gap" a measurement
-    rather than a coincidence of the fixture.
+            The recurrence's two stages only; the dsig-only form keeps its pair, so the
+            cells whose chunk carries the dsigu layer are the ones that move. MUST BE
+            CAUGHT.
+            """)),
+    "drop_fu_store": Needle(
+        find="    if (dsigu) fu[idx] = fu_new;\n",
+        replace="",
+        why=inspect.cleandoc("""
+            The auxiliary-only defect: compute ``fu_new``, use it for ``f``, never store it.
 
-    Scored only on legs that HAVE a folded periodic axis: on a folded metallic
-    grid no axis carries ``BC_MIRROR_PERIODIC`` and the deletion is inert, so a
-    leg there would report UNCAUGHT for a reason about the grid.
-    """
-    pattern = (r"\n *if \(bc_[xyz] == BC_MIRROR_PERIODIC && [ijk] == n[xyz] - 1\)"
-               r" curl = 0\.0f;")
-    return re.subn(pattern, "", source)[0], len(re.findall(pattern, source))
+            ``f`` is identical on every single launch (the recurrence reads the
+            register) and ``fu`` is wrong from the first one on the recurrence's cells;
+            only the auxiliary comparison can see it. MUST BE CAUGHT.
+            """)),
+    "commute_dtdx_scale": Needle(
+        find="if (pr1 && pr2) return dtdx * (((sf - f1) + f2) - ss);",
+        replace="if (pr1 && pr2) return (((sf - f1) + f2) - ss) * dtdx;",
+        why=inspect.cleandoc("""
+            A NULL: ``dtdx * curl`` written ``curl * dtdx``, on the helper's both-partner form.
 
+            It edits the same expression ``regroup_stencil`` edits; IEEE multiply
+            commutes, so it must come back identical while that leg is caught. MUST BE
+            UNCAUGHT.
+            """)),
+    "reload_fu_from_memory": Needle(
+        find="float value = dsigu ? ((((fcur * kms_u) + fu_new) - fprev) * sinv_u)",
+        replace="float value = dsigu ? ((((fcur * kms_u) + fu[idx]) - fprev) * sinv_u)",
+        why=inspect.cleandoc("""
+            A NULL: use the value just STORED to ``fu`` instead of the register.
 
-def _drop_folded_periodic_near_mask(source: str) -> Tuple[str, int]:
-    """Delete the cell-0 mask on a folded PERIODIC axis, leaving the METALLIC one.
-
-    The fold's OTHER mask, and a separate leg because it is a separate branch on a
-    separate plane. ``_mask_non_owned_cells`` zeroes cell 0 for every Yee-shift-0
-    component on a MIRRORED axis (stepping.py:1943-1947) — a folded METALLIC axis
-    inherits that from ``BC_METALLIC`` and a folded PERIODIC one does not, so this
-    line is the only thing supplying it there. Deliberately narrow: it leaves
-    ``if (bc_x == BC_METALLIC && i == 0)`` in place, so a leg that scores CAUGHT
-    scored it on the fold's own mask and not on the wall mask beside it.
-    """
-    pattern = r"\n *if \(bc_[xyz] == BC_MIRROR_PERIODIC && [ijk] == 0\) curl = 0\.0f;"
-    return re.subn(pattern, "", source)[0], len(re.findall(pattern, source))
-
-
-def _swap_dsig_dsigu(source: str) -> Tuple[str, int]:
-    """Mutation 5: swap kms/sinv with kms_u/sinv_u inside the recurrence."""
-    needle = ("    float fu_new = ((fprev * kms) - curl) * sinv;\n"
-              "    fu[idx] = fu_new;\n"
-              "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;")
-    replacement = ("    float fu_new = ((fprev * kms_u) - curl) * sinv_u;\n"
-                   "    fu[idx] = fu_new;\n"
-                   "    f[idx] = (((f[idx] * kms) + fu_new) - fprev) * sinv;")
-    return source.replace(needle, replacement), source.count(needle)
-
-
-def _drop_fu_store(source: str) -> Tuple[str, int]:
-    """The auxiliary-only defect: compute ``fu_new``, use it for ``f``, never store it.
-
-    ``f`` is bit-identical on every single launch — the recurrence reads the
-    register, not the array — and ``fu`` is wrong from the first one. Nothing but
-    the auxiliary comparison can see it, which is what makes it the measurement
-    of whether that comparison is load-bearing. Spec mutation 8 nominates the
-    dropped mask for that role; whether the mask is in fact ``f``-visible is
-    measured here rather than assumed.
-    """
-    needle = "    fu[idx] = fu_new;\n"
-    return source.replace(needle, ""), source.count(needle)
-
-
-def _commute_dtdx_scale(source: str) -> Tuple[str, int]:
-    """A NULL: ``dtdx * curl`` written ``curl * dtdx``. IEEE multiply commutes.
-
-    Every other mutation on the curl must be CAUGHT, and a battery of only those
-    scores identically whether the comparator works or has degenerated into
-    failing everything. This one must come back N/N IDENTICAL, and it is not a
-    tautology: it edits the SAME expression ``regroup_stencil`` edits, one
-    character away, and that leg is measured caught. So the pair says the
-    comparator is sensitive to the association of that expression and insensitive
-    to the operand order of its multiply — which is exactly what IEEE-754 says,
-    and now what the artifact says too.
-    """
-    needle = "float curl = dtdx * ((sf - f1) + (f2 - ss));"
-    return (source.replace(needle, "float curl = ((sf - f1) + (f2 - ss)) * dtdx;"),
-            source.count(needle))
-
-
-def _reload_fu_from_memory(source: str) -> Tuple[str, int]:
-    """A NULL: use the value just STORED to ``fu`` instead of the register.
-
-    A float32 held in a register, stored to global memory and loaded straight
-    back is the identity on the bits — there is no wider accumulator on this
-    path, so the round trip cannot re-round. The sibling track measured the same
-    claim as ``reload_B_from_memory`` and it came back 60/60 identical.
-
-    Its discriminator is :func:`_read_fprev_after_store`, which touches the same
-    two lines and MUST be caught. Without that pair, "the reload is inert" would
-    be a statement about a leg nobody showed could fail.
-    """
-    needle = "    f[idx] = (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;"
-    replacement = "    f[idx] = (((f[idx] * kms_u) + fu[idx]) - fprev) * sinv_u;"
-    return source.replace(needle, replacement), source.count(needle)
-
-
-def _read_fprev_after_store(source: str) -> Tuple[str, int]:
-    """The aliasing trap: read ``fu`` for ``fprev`` AFTER the new value lands.
-
-    ``fprev`` becomes ``fu_new`` and the recurrence loses its history term. This
-    is the defect the array path's explicit copy exists to prevent, and it is the
-    discriminating sibling that makes :func:`_reload_fu_from_memory`'s pass a
-    measurement: same two lines, one inert and one lethal.
-    """
-    needle = ("    float fprev = fu[idx];\n"
+            The arm is evaluated only on the recurrence's cells, where ``fu`` was stored
+            under the same flag just before, and a float32 stored and loaded back is the
+            identity on the bits. Its discriminator is ``read_fprev_after_store``, which
+            touches the same lines and must be caught. MUST BE UNCAUGHT.
+            """)),
+    "read_fprev_after_store": Needle(
+        find=("    float fprev = dsigu ? fu[idx] : 0.0f;\n"
               "    float fu_new = ((fprev * kms) - curl) * sinv;\n"
-              "    fu[idx] = fu_new;\n")
-    replacement = ("    float fu_new = ((fu[idx] * kms) - curl) * sinv;\n"
-                   "    fu[idx] = fu_new;\n"
-                   "    float fprev = fu[idx];\n")
-    return source.replace(needle, replacement), source.count(needle)
+              "    if (dsigu) fu[idx] = fu_new;\n"),
+        replace=("    float fu_new = (((dsigu ? fu[idx] : 0.0f) * kms) - curl) * sinv;\n"
+                 "    if (dsigu) fu[idx] = fu_new;\n"
+                 "    float fprev = dsigu ? fu[idx] : 0.0f;\n"),
+        why=inspect.cleandoc("""
+            The aliasing trap: read ``fu`` for ``fprev`` AFTER the new value lands.
 
+            ``fprev`` becomes ``fu_new`` and the recurrence loses its history term, on
+            the recurrence's cells. MUST BE CAUGHT.
+            """)),
+    # -----------------------------------------------------------------------
+    # The CONSTITUTIVE defects, spelled on the real-PML pair's text.
+    #
+    # The gate owns WHICH defects the constitutive sub-step must be proof against
+    # (:data:`CONSTITUTIVE_SOURCE_MUTATIONS`); each track owns the spelling,
+    # because one track's kernel is a CUDA string and the other's is Python.
+    # These four are the CUDA spellings, plus two NULLS that must come back
+    # UNCAUGHT — each editing the same expression as one of the four, one
+    # character away, so "inert" is a measurement rather than a claim about a leg
+    # nobody showed could fail.
+    #
+    # All of them target ``constitutive_kernels.py``. The grouping, the f_w store
+    # and the aliasing trap live in the shared ``_REAL_CONSTITUTIVE_PRELUDE`` (one
+    # site per kernel string); the inverse-epsilon pair lives in the E kernel only
+    # and matches three times, once per component.
+    # -----------------------------------------------------------------------
+    "regroup_constitutive": Needle(
+        find="float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;",
+        replace="float value = dsigw ? ((f[idx] + (kps * src)) - (kms * prev)) : src;",
+        why=inspect.cleandoc("""
+            Inverted: MEEP's ``f + ((kps*src) - (kms*prev))`` -> ``((f + kps*src) - kms*prev)``.
 
-# ---------------------------------------------------------------------------
-# The hand track's spellings of the CONSTITUTIVE defects.
-#
-# The gate owns WHICH defects the constitutive sub-step must be proof against
-# (:data:`CONSTITUTIVE_SOURCE_MUTATIONS`); each track owns the spelling, because
-# one track's kernel is a CUDA string and the other's is Python. These four are
-# the hand track's, plus two NULLS that must come back UNCAUGHT — each editing
-# the same expression as one of the four, one character away, so "inert" is a
-# measurement rather than a claim about a leg nobody showed could fail.
-#
-# All of them target ``constitutive_kernels.py``. The first three live in the
-# shared ``_REAL_CONSTITUTIVE_PRELUDE``, so each matches twice (once per kernel
-# string); the inverse-epsilon pair lives in the E kernel only and matches three
-# times, once per component.
-# ---------------------------------------------------------------------------
+            MEEP's step_update_EDHB forms the right-hand side first
+            (step_generic.cpp:689, :697), and so does ``stepping._apply_constitutive_pml``.
+            The two accumulations left to right are what the pair carried until 0.10 and
+            a different float32 number. One site per kernel string (the shared
+            prelude). MUST BE CAUGHT.
+            """)),
+    "drop_fw_store": Needle(
+        find="    if (dsigw) fw[idx] = src;\n",
+        replace="",
+        why=inspect.cleandoc("""
+            The auxiliary-only defect: never write the new ``f_w``.
 
-def _regroup_constitutive(source: str) -> Tuple[str, int]:
-    """``((f + kps*src) - kms*prev)`` flattened to ``f + (kps*src - kms*prev)``.
+            ``f`` is identical on the first launch and ``f_w`` is wrong from it on the
+            cells whose chunk carries the component's own layer, which makes ``f`` wrong
+            from the second. MUST BE CAUGHT.
+            """)),
+    "store_fw_before_reading_prev": Needle(
+        find=("    float prev = dsigw ? fw[idx] : 0.0f;\n"
+              "    if (dsigw) fw[idx] = src;\n"),
+        replace=("    if (dsigw) fw[idx] = src;\n"
+                 "    float prev = dsigw ? fw[idx] : 0.0f;\n"),
+        why=inspect.cleandoc("""
+            The aliasing trap: read ``prev`` AFTER the new value lands.
 
-    The array path accumulates TWICE, left to right (stepping.py:2133-2134, and
-    the scratch branch :2140-2143 by a different route). The flattened form is a
-    different float32 number, and it is what both complex constitutive kernels in
-    ``step_curl_kernels.py`` are written as. MUST BE CAUGHT.
-    """
-    needle = ("    float a = f[idx] + kps * src;\n"
-              "    f[idx] = a - kms * prev;\n")
-    replacement = "    f[idx] = f[idx] + (kps * src - kms * prev);\n"
-    return source.replace(needle, replacement), source.count(needle)
+            ``prev`` becomes ``src`` and the accumulation loses its history term; wrong
+            only where ``kms != 0``. MUST BE CAUGHT.
+            """)),
+    "drop_inverse_epsilon": Needle(
+        find=r"(D([xyz])\[idx\]) \* inv_eps_E\2\[idx\]",
+        replace=r"\1",
+        regex=True,
+        why=inspect.cleandoc("""
+            E side: the source becomes D instead of ``D * inv_eps``.
 
+            Invisible against a table of ones, which is why the gate's fixture draws
+            inverse epsilon in [0.2, 0.9) and away from 1.0. MUST BE CAUGHT.
+            """)),
+    "inv_eps_left": Needle(
+        find=r"(D([xyz])\[idx\]) \* (inv_eps_E\2\[idx\])",
+        replace=r"\3 * \1",
+        regex=True,
+        why=inspect.cleandoc("""
+            A NULL: ``inv_eps * D`` in place of ``D * inv_eps``. IEEE multiply commutes.
 
-def _drop_fw_store(source: str) -> Tuple[str, int]:
-    """The auxiliary-only defect: never write the new ``f_w``.
+            stepping.py:1011 writes ``source * fields.inverse_epsilon_for(component)``
+            with D on the left and this kernel keeps that order — for transcription
+            discipline, not because it changes a bit. The sibling track measured this
+            exact null at 30/30 identical on real-engine cases. Its discriminating
+            sibling is ``drop_inverse_epsilon``, which edits the same expression and
+            MUST be caught; without that pair, "the operand order is inert" would be a
+            statement about a leg nobody showed could fail. MUST BE UNCAUGHT.
+            """)),
+    "commute_constitutive_scale": Needle(
+        find="(f[idx] + ((kps * src) - (kms * prev)))",
+        replace="(f[idx] + ((src * kps) - (prev * kms)))",
+        why=inspect.cleandoc("""
+            A NULL: ``src * kps`` and ``prev * kms`` for ``kps * src`` and ``kms * prev``.
 
-    ``f`` is bit-identical on the FIRST launch — ``prev`` is loaded before the
-    store, so nothing in the launch reads it back — and ``f_w`` is wrong from
-    that launch onwards, which makes ``f`` wrong from the second. Only the
-    auxiliary comparison can see it on a single shot, which is what makes this
-    the measurement of whether that comparison is load-bearing. §12.3 measured a
-    dropped auxiliary store at 120/120 UNCAUGHT on the curl when ``fu`` was not
-    compared. MUST BE CAUGHT.
-    """
-    needle = "    fw[idx] = src;\n"
-    return source.replace(needle, ""), source.count(needle)
-
-
-def _store_fw_before_reading_prev(source: str) -> Tuple[str, int]:
-    """The aliasing trap: read ``prev`` AFTER the new value lands.
-
-    ``prev`` becomes ``src`` and the recurrence loses its history term. This is
-    the defect the array path's explicit ``fw.copy()`` (stepping.py:2131) exists
-    to prevent, and it is wrong only where ``kms != 0`` — i.e. INSIDE THE PML —
-    so it reads as a slightly weaker absorber rather than as a bug. MUST BE
-    CAUGHT.
-    """
-    needle = ("    float prev = fw[idx];\n"
-              "    fw[idx] = src;\n")
-    replacement = ("    fw[idx] = src;\n"
-                   "    float prev = fw[idx];\n")
-    return source.replace(needle, replacement), source.count(needle)
-
-
-def _drop_inverse_epsilon(source: str) -> Tuple[str, int]:
-    """E side: the source becomes D instead of ``D * inv_eps``.
-
-    Invisible against a table of ones, which is why the gate's fixture draws
-    inverse epsilon in [0.2, 0.9) and away from 1.0. MUST BE CAUGHT.
-    """
-    pattern = r"(D([xyz])\[idx\]) \* inv_eps_E\2\[idx\]"
-    return re.subn(pattern, r"\1", source)[0], len(re.findall(pattern, source))
-
-
-def _inv_eps_left(source: str) -> Tuple[str, int]:
-    """A NULL: ``inv_eps * D`` in place of ``D * inv_eps``. IEEE multiply commutes.
-
-    stepping.py:1011 writes ``source * fields.inverse_epsilon_for(component)``
-    with D on the left and this kernel keeps that order — for transcription
-    discipline, not because it changes a bit. The sibling track measured this
-    exact null at 30/30 identical on real-engine cases. Its discriminating
-    sibling is :func:`_drop_inverse_epsilon`, which edits the same expression and
-    MUST be caught; without that pair, "the operand order is inert" would be a
-    statement about a leg nobody showed could fail. MUST BE UNCAUGHT.
-    """
-    pattern = r"(D([xyz])\[idx\]) \* (inv_eps_E\2\[idx\])"
-    return re.subn(pattern, r"\3 * \1", source)[0], len(re.findall(pattern, source))
-
-
-def _commute_constitutive_scale(source: str) -> Tuple[str, int]:
-    """A NULL: ``src * kps`` in place of ``kps * src``, on the accumulation itself.
-
-    The array path writes the coefficient on the left in both branches
-    (``field += kps * fw``, :2086; ``multiply(kps, fw, out=product)``, :2093) and
-    so does this kernel. The paired defect on the same two lines is
-    :func:`_regroup_constitutive`, which MUST be caught — so the pair says the
-    comparator is sensitive to the ASSOCIATION of that expression and insensitive
-    to the operand order of its multiply, which is exactly what IEEE-754 says.
-    MUST BE UNCAUGHT.
-    """
-    needle = ("    float a = f[idx] + kps * src;\n"
-              "    f[idx] = a - kms * prev;\n")
-    replacement = ("    float a = f[idx] + src * kps;\n"
-                   "    f[idx] = a - prev * kms;\n")
-    return source.replace(needle, replacement), source.count(needle)
-
-
-def _own_axis_to_x_for_all_three(source: str) -> Tuple[str, int]:
-    """THE AXIS MAPPING: every component reads the x table instead of its own.
-
-    Note 2 of ``constitutive_kernels.py`` calls this the highest-consequence
-    confusion in the file — "a smooth, converged, entirely wrong absorber" — and
-    until 2026-08-15 nothing armed it. MEEP's ``dsigw`` is the absorption a
-    component accumulates along the direction IT POINTS IN
-    (``H_CONSTITUTIVE_TERMS`` / ``E_CONSTITUTIVE_TERMS``, stepping.py:227-228), so
-    ``kps_x``/``kms_x`` for component 0, ``_y`` for 1, ``_z`` for 2.
-
-    IN BOUNDS ON EVERY SHAPE BY CONSTRUCTION — ``i`` indexes ``kps_x``, which has
-    ``nx`` entries, whatever the component. That matters: this must be caught as a
-    WRONG ANSWER, not as a launch failure, because a wrong answer is what it would
-    be in production. MEASURED lethal on the laptop against the same expression
-    tree, caught at step 1, with a same-fixture unmutated control identical.
-    MUST BE CAUGHT.
-    """
-    pattern = r"kps_([yz])\[([jk])\], kms_\1\[\2\]"
-    return re.subn(pattern, "kps_x[i], kms_x[i]", source)[0], \
-        len(re.findall(pattern, source))
-
-
-def _fortran_order_index_decomposition(source: str) -> Tuple[str, int]:
-    """THE LINEAR-INDEX DECOMPOSITION, written for the wrong memory order.
-
-    The arrays are C-contiguous — the predicate refuses anything else — so the
-    last axis is the fastest, ``k = idx % nz`` and ``i = idx / (ny*nz)``. Writing
-    the Fortran-order decomposition instead swaps which axis each coefficient
-    lookup reads without touching the field access, which is the same class of
-    silent absorber error as the axis mapping and the one a reader porting an
-    index block from column-major code introduces.
-
-    IN BOUNDS ON EVERY SHAPE BY CONSTRUCTION, which is why this spelling was
-    chosen over swapping ``i`` and ``k`` in place: ``i = idx % nx`` stays below
-    ``nx``, ``j`` below ``ny``, and ``k = idx / (nx*ny)`` below ``nz`` because
-    ``idx < nx*ny*nz``. A mutation that read past a coefficient vector would be
-    caught by a fault on some shapes and by garbage on others, and neither is the
-    defect being measured. MUST BE CAUGHT.
-    """
-    needle = ("    int k = idx % nz;\n"
-              "    int j = (idx / nz) % ny;\n"
-              "    int i = idx / (ny * nz);\n")
-    replacement = ("    int i = idx % nx;\n"
-                   "    int j = (idx / nx) % ny;\n"
-                   "    int k = idx / (nx * ny);\n")
-    return source.replace(needle, replacement), source.count(needle)
-
-
-def _bind_Ez_inv_eps_for_all_three(source: str) -> Tuple[str, int]:
-    """DEFECT 2 OF THE COMPLEX TEMPLATE, armed: one epsilon volume for all three.
-
-    ``update_E_pml_complex``'s wrapper passes ``fields.inv_eps``, which
-    ``Fields.set_epsilon_volumes`` re-points at the Ez view (fields.py:1259-1260)
-    as a "representative material array". On any run whose three components do not
-    alias one volume — a diagonal anisotropic epsilon — Ex and Ey are then updated
-    with Ez's inverse permittivity. The kernel this gate measures binds three
-    pointers; this mutation makes it bind one, which is the defect the template
-    would have carried in.
-
-    EXACTLY BIT-IDENTICAL UNDER AN ISOTROPIC EPSILON, measured. Its whole power
-    comes from ``constitutive_field_hosts`` drawing three INDEPENDENT volumes, so
-    a leg reporting this UNCAUGHT is reporting that the fixture collapsed rather
-    than that the kernel is right. ``drop_inverse_epsilon`` removes the multiply
-    entirely and could never see it. MUST BE CAUGHT.
-    """
-    pattern = r"(D([xy])\[idx\] \* )inv_eps_E\2\[idx\]"
-    return re.subn(pattern, r"\1inv_eps_Ez[idx]", source)[0], \
-        len(re.findall(pattern, source))
-
-
-SOURCE_MUTATIONS = {
-    "regroup_stencil": _regroup_stencil,
-    "drop_metallic_mask": _drop_metallic_mask,
-    "drop_folded_periodic_top_mask": _drop_folded_periodic_top_mask,
-    "drop_folded_periodic_near_mask": _drop_folded_periodic_near_mask,
-    "swap_dsig_dsigu": _swap_dsig_dsigu,
-    "drop_fu_store": _drop_fu_store,
-    "commute_dtdx_scale": _commute_dtdx_scale,
-    "reload_fu_from_memory": _reload_fu_from_memory,
-    "read_fprev_after_store": _read_fprev_after_store,
-    # The constitutive pair's four defects and their two nulls.
-    "regroup_constitutive": _regroup_constitutive,
-    "drop_fw_store": _drop_fw_store,
-    "store_fw_before_reading_prev": _store_fw_before_reading_prev,
-    "drop_inverse_epsilon": _drop_inverse_epsilon,
-    "inv_eps_left": _inv_eps_left,
-    "commute_constitutive_scale": _commute_constitutive_scale,
+            The paired defect on the same expression is ``regroup_constitutive``, which
+            must be caught; IEEE multiply commutes. MUST BE UNCAUGHT.
+            """)),
     # The two indexing defects and the shared-epsilon defect, armed 2026-08-15.
-    "own_axis_to_x_for_all_three": _own_axis_to_x_for_all_three,
-    "fortran_order_index_decomposition": _fortran_order_index_decomposition,
-    "bind_Ez_inv_eps_for_all_three": _bind_Ez_inv_eps_for_all_three,
+    "own_axis_to_x_for_all_three": Needle(
+        find=r"kps_([yz])\[([jk])\], kms_\1\[\2\]",
+        replace=r"kps_x[i], kms_x[i]",
+        regex=True,
+        why=inspect.cleandoc("""
+            THE AXIS MAPPING: every component reads the x table instead of its own.
+
+            Note 2 of ``constitutive_kernels.py`` calls this the highest-consequence
+            confusion in the file — "a smooth, converged, entirely wrong absorber" — and
+            until 2026-08-15 nothing armed it. MEEP's ``dsigw`` is the absorption a
+            component accumulates along the direction IT POINTS IN
+            (``H_CONSTITUTIVE_TERMS`` / ``E_CONSTITUTIVE_TERMS``, stepping.py:227-228), so
+            ``kps_x``/``kms_x`` for component 0, ``_y`` for 1, ``_z`` for 2.
+
+            IN BOUNDS ON EVERY SHAPE BY CONSTRUCTION — ``i`` indexes ``kps_x``, which has
+            ``nx`` entries, whatever the component. That matters: this must be caught as a
+            WRONG ANSWER, not as a launch failure, because a wrong answer is what it would
+            be in production. MEASURED lethal on the laptop against the same expression
+            tree, caught at step 1, with a same-fixture unmutated control identical.
+            MUST BE CAUGHT.
+            """)),
+    "fortran_order_index_decomposition": Needle(
+        find=("    int k = idx % nz;\n"
+              "    int j = (idx / nz) % ny;\n"
+              "    int i = idx / (ny * nz);\n"),
+        replace=("    int i = idx % nx;\n"
+                 "    int j = (idx / nx) % ny;\n"
+                 "    int k = idx / (nx * ny);\n"),
+        why=inspect.cleandoc("""
+            THE LINEAR-INDEX DECOMPOSITION, written for the wrong memory order.
+
+            The arrays are C-contiguous — the predicate refuses anything else — so the
+            last axis is the fastest, ``k = idx % nz`` and ``i = idx / (ny*nz)``. Writing
+            the Fortran-order decomposition instead swaps which axis each coefficient
+            lookup reads without touching the field access, which is the same class of
+            silent absorber error as the axis mapping and the one a reader porting an
+            index block from column-major code introduces.
+
+            IN BOUNDS ON EVERY SHAPE BY CONSTRUCTION, which is why this spelling was
+            chosen over swapping ``i`` and ``k`` in place: ``i = idx % nx`` stays below
+            ``nx``, ``j`` below ``ny``, and ``k = idx / (nx*ny)`` below ``nz`` because
+            ``idx < nx*ny*nz``. A mutation that read past a coefficient vector would be
+            caught by a fault on some shapes and by garbage on others, and neither is the
+            defect being measured. MUST BE CAUGHT.
+            """)),
+    "bind_Ez_inv_eps_for_all_three": Needle(
+        find=r"(D([xy])\[idx\] \* )inv_eps_E\2\[idx\]",
+        replace=r"\1inv_eps_Ez[idx]",
+        regex=True,
+        why=inspect.cleandoc("""
+            DEFECT 2 OF THE COMPLEX TEMPLATE, armed: one epsilon volume for all three.
+
+            ``update_E_pml_complex``'s wrapper passes ``fields.inv_eps``, which
+            ``Fields.set_epsilon_volumes`` re-points at the Ez view (fields.py:1259-1260)
+            as a "representative material array". On any run whose three components do not
+            alias one volume — a diagonal anisotropic epsilon — Ex and Ey are then updated
+            with Ez's inverse permittivity. The kernel this gate measures binds three
+            pointers; this mutation makes it bind one, which is the defect the template
+            would have carried in.
+
+            EXACTLY BIT-IDENTICAL UNDER AN ISOTROPIC EPSILON, measured. Its whole power
+            comes from ``constitutive_field_hosts`` drawing three INDEPENDENT volumes, so
+            a leg reporting this UNCAUGHT is reporting that the fixture collapsed rather
+            than that the kernel is right. ``drop_inverse_epsilon`` removes the multiply
+            entirely and could never see it. MUST BE CAUGHT.
+            """)),
 }
+#: THE HAND TRACK'S TABLE: the real-PML pair in ``step_curl_kernels.py`` and
+#: ``constitutive_kernels.py``. :class:`HandTrackAdapter` arms it. Every entry is
+#: borrowed from the shared default, which is spelled on this pair's text.
+HAND_NEEDLES = gate_needles.gate_table(
+    "probe_fused_kernel_bit_identity:hand", SOURCE_MUTATIONS, tuple(SOURCE_MUTATIONS))
 #: ``inv_eps_left`` MUST BE UNCAUGHT and ``commute_constitutive_scale`` MUST BE
 #: UNCAUGHT, each paired with a defect on the same expression that must be caught
 #: (``drop_inverse_epsilon`` and ``regroup_constitutive`` respectively). A leg
@@ -3825,7 +4013,7 @@ PML_NULL_MUTATIONS = ("commute_dtdx_scale", "reload_fu_from_memory")
 #: implement one fails with a KeyError naming it, which is the correct answer: it
 #: has no such kernel to break.
 CONSTITUTIVE_SOURCE_MUTATIONS = (
-    "regroup_constitutive",          # ((f + kps*src) - kms*prev) flattened
+    "regroup_constitutive",          # MEEP's f + ((kps*src) - (kms*prev)) regrouped
     "drop_fw_store",                 # the auxiliary-only defect
     "store_fw_before_reading_prev",  # the aliasing trap the array path's copy prevents
     "drop_inverse_epsilon",          # E side: source becomes D instead of D*inv_eps
@@ -3876,7 +4064,7 @@ FUSED_PAIR_NULL_MUTATIONS = ("reload_B_from_memory",
 #: single-pole row is reporting a harness defect, not a working gate.
 DISPERSIVE_SOURCE_MUTATIONS = (
     "sum_then_subtract",              # D - (P0 + P1), the pre-accumulated design
-    "regroup_constitutive_dispersive",  # ((E + kps*src) - kms*prev) flattened
+    "regroup_constitutive_dispersive",  # MEEP's E + ((kps*src) - (kms*prev)) regrouped
     "drop_fw_store_dispersive",       # the auxiliary-only defect, on update_P's input
     "store_fw_before_reading_prev_dispersive",  # prev becomes the value just stored
     "drop_one_pole",                  # one pole silently missing from the chain
@@ -3912,9 +4100,17 @@ def apply_source_mutation(adapter, name: str) -> Dict[str, Any]:
     kernel and is exercising nothing, which still raises. The per-attribute counts
     go into the artifact so a reader sees which kernel a leg actually hit.
     """
-    # A track may own the SPELLING of these defects (its kernel may not be CUDA);
+    # Every track owns the SPELLING of these defects in its own table (its kernel
+    # may not be CUDA, and two tracks' kernels are re-spelled at different times);
     # the gate still owns which defects exist and what their verdict must be.
-    transform = (getattr(adapter, "source_mutations", None) or SOURCE_MUTATIONS)[name]
+    table = getattr(adapter, "source_mutations", None)
+    if not table:
+        raise RuntimeError(
+            f"track {getattr(adapter, 'track', '<unnamed>')!r} supplies no needle "
+            f"table, so source mutation {name!r} has nothing to arm; a track names "
+            f"its own table (PROBE_ADAPTER['source_mutations']) rather than borrow "
+            f"another track's.")
+    transform = table[name]
     mutated: Dict[str, str] = {}
     sites: Dict[str, int] = {}
     before: Dict[str, str] = {}

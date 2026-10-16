@@ -1,0 +1,1939 @@
+{
+ "schema": "meep_gpu.parity_board_rows",
+ "version": 1,
+ "about": "The rows of the bit-parity coverage board (build_parity_board.py): every module of the three kernel tables' step lists, and the array-path families judged against MEEP. Structure only; no entry is a verdict.",
+ "source": {
+  "step_lists": "results/bit_parity_0_10/design/KERNELS.md section 8, with DESIGN.md D27's moves. Section 8 names two groups by count; they are enumerated from design/checks/critique_kernels/step_coverage_{cuda,metal}.log: CUDA C9's 'other 8 nopml modules', Metal M12's '13 none(plain-form) modules', and the 9 Metal host modules D27 assigns to KM0.",
+  "kinds": "host: steps C0, T0, M0 (no device form); a_only: C9, T10, M12 and CUDA complex_no_pml_kernels (no absorber, so no B select); unchanged: the CUDA modules section 8 lists as unchanged; kernel: every other row.",
+  "families": "results/bit_parity_0_10/DESIGN.md section 2.5 (the families, their phase-0 tokens and work packages); the base row is WPs AP3-AP5 and the mirror-symmetry row is AP4's ghost rule (D5).",
+  "sha256": {
+   "results/bit_parity_0_10/design/KERNELS.md": "c09a6207c4cfe41a8d8f720798e36befb44898a174cabf5733ceb5c068ddeab6",
+   "results/bit_parity_0_10/DESIGN.md": "d0d1586fa941db3541b52341416090ad7de24a8412c0848b86cfb04c4d60b386",
+   "results/bit_parity_0_10/design/checks/critique_kernels/step_coverage_cuda.log": "8398eb5e80c37a584aff4278dc429aae34e824f7393b902f0796f35ec0492af0",
+   "results/bit_parity_0_10/design/checks/critique_kernels/step_coverage_metal.log": "83a18e2a00f055142717977119560f0d39d40000faaf3b92c54f961a2afba088",
+   "results/bit_parity_0_10/design/checks/critique_kernels/step_coverage_triton.log": "56a17602ae67a3b4d05151a5f542af84add71d60326212817154ac2a8a21dc50"
+  }
+ },
+ "tables": {
+  "cuda": {
+   "module_dir": "meep_gpu/cuda_kernels",
+   "step_titles": {
+    "C0": "host",
+    "C1": "roots",
+    "C2": "real fused",
+    "C3": "conductive",
+    "C4": "off-diagonal",
+    "C5": "dispersive/ADE",
+    "C6": "complex",
+    "C7": "folds",
+    "C8": "cylindrical",
+    "C9": "no-PML (A only)",
+    "UNCHANGED": "unchanged"
+   },
+   "modules": [
+    {
+     "module": "fused_pairs",
+     "step": "C0",
+     "lane": "KC0",
+     "kind": "host",
+     "path": "meep_gpu/cuda_kernels/fused_pairs.py"
+    },
+    {
+     "module": "coverage",
+     "step": "C0",
+     "lane": "KC0",
+     "kind": "host",
+     "path": "meep_gpu/cuda_kernels/coverage.py"
+    },
+    {
+     "module": "registry",
+     "step": "C0",
+     "lane": "KC0",
+     "kind": "host",
+     "path": "meep_gpu/cuda_kernels/registry.py"
+    },
+    {
+     "module": "arms",
+     "step": "C0",
+     "lane": "KC0",
+     "kind": "host",
+     "path": "meep_gpu/cuda_kernels/arms.py"
+    },
+    {
+     "module": "fastpath_cuda",
+     "step": "C0",
+     "lane": "KC0",
+     "kind": "host",
+     "path": "meep_gpu/fastpath_cuda.py"
+    },
+    {
+     "module": "step_curl_kernels",
+     "step": "C1",
+     "lane": "KC1",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/step_curl_kernels.py"
+    },
+    {
+     "module": "constitutive_kernels",
+     "step": "C1",
+     "lane": "KC1",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/constitutive_kernels.py"
+    },
+    {
+     "module": "nonlinear_constitutive",
+     "step": "C1",
+     "lane": "KC1",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/nonlinear_constitutive.py",
+     "note": "Its |D|^2 tail landed as lane KC1n."
+    },
+    {
+     "module": "own_cell_hoist",
+     "step": "C1",
+     "lane": "KC1",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/own_cell_hoist.py"
+    },
+    {
+     "module": "fused_magnetic_pair",
+     "step": "C2",
+     "lane": "KC2",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/fused_magnetic_pair.py"
+    },
+    {
+     "module": "fused_electric_pair",
+     "step": "C2",
+     "lane": "KC2",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/fused_electric_pair.py"
+    },
+    {
+     "module": "fused_hd_pair",
+     "step": "C2",
+     "lane": "KC2",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/fused_hd_pair.py"
+    },
+    {
+     "module": "conductive_kernels",
+     "step": "C3",
+     "lane": "KC3",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/conductive_kernels.py"
+    },
+    {
+     "module": "conductive_fused_electric_pair",
+     "step": "C3",
+     "lane": "KC3",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/conductive_fused_electric_pair.py"
+    },
+    {
+     "module": "offdiag_emitter",
+     "step": "C4",
+     "lane": "KC4",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/offdiag_emitter.py"
+    },
+    {
+     "module": "offdiag_constitutive_kernels",
+     "step": "C4",
+     "lane": "KC4",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/offdiag_constitutive_kernels.py"
+    },
+    {
+     "module": "folded_offdiag_kernels",
+     "step": "C4",
+     "lane": "KC4",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/folded_offdiag_kernels.py"
+    },
+    {
+     "module": "offdiag_fused_electric_pair",
+     "step": "C4",
+     "lane": "KC4",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/offdiag_fused_electric_pair.py"
+    },
+    {
+     "module": "offdiag_stencil_weld",
+     "step": "C4",
+     "lane": "KC4",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/offdiag_stencil_weld.py"
+    },
+    {
+     "module": "folded_offdiag_fused_electric_pair",
+     "step": "C4",
+     "lane": "KC4",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/folded_offdiag_fused_electric_pair.py"
+    },
+    {
+     "module": "ade_kernels",
+     "step": "C5",
+     "lane": "KC5",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/ade_kernels.py"
+    },
+    {
+     "module": "dispersive_kernels",
+     "step": "C5",
+     "lane": "KC5",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/dispersive_kernels.py"
+    },
+    {
+     "module": "dispersive_fused_electric_pair",
+     "step": "C5",
+     "lane": "KC5",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/dispersive_fused_electric_pair.py"
+    },
+    {
+     "module": "fused_polarization_pair",
+     "step": "C5",
+     "lane": "KC5",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/fused_polarization_pair.py"
+    },
+    {
+     "module": "three_slot_dispersive_weld",
+     "step": "C5",
+     "lane": "KC5",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/three_slot_dispersive_weld.py"
+    },
+    {
+     "module": "dispersive_offdiag_update_e",
+     "step": "C5",
+     "lane": "KC5",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/dispersive_offdiag_update_e.py"
+    },
+    {
+     "module": "dispersive_offdiag_fused_polarization_pair",
+     "step": "C5",
+     "lane": "KC5",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/dispersive_offdiag_fused_polarization_pair.py"
+    },
+    {
+     "module": "complex_emitter",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_emitter.py"
+    },
+    {
+     "module": "complex_pml_kernels",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_pml_kernels.py"
+    },
+    {
+     "module": "complex_fill_carry",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_fill_carry.py"
+    },
+    {
+     "module": "complex_electric_fill_carry",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_electric_fill_carry.py"
+    },
+    {
+     "module": "complex_folded_kernels",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_folded_kernels.py"
+    },
+    {
+     "module": "complex_no_pml_kernels",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "a_only",
+     "path": "meep_gpu/cuda_kernels/complex_no_pml_kernels.py",
+     "note": "KERNELS.md 8: A only; in C6 because the two complex off-diagonal modules lift from it. D27: its ADE site moves to C5."
+    },
+    {
+     "module": "complex_fused_magnetic_pair",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_fused_magnetic_pair.py"
+    },
+    {
+     "module": "complex_fused_electric_pair",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_fused_electric_pair.py"
+    },
+    {
+     "module": "complex_fused_hd_pair",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_fused_hd_pair.py"
+    },
+    {
+     "module": "complex_folded_fused_magnetic_pair",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_folded_fused_magnetic_pair.py"
+    },
+    {
+     "module": "complex_folded_fused_electric_pair",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_folded_fused_electric_pair.py"
+    },
+    {
+     "module": "complex_offdiag_update_e",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_offdiag_update_e.py"
+    },
+    {
+     "module": "complex_offdiag_stencil_weld",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_offdiag_stencil_weld.py"
+    },
+    {
+     "module": "folded_complex_offdiag_fused_electric_pair",
+     "step": "C6",
+     "lane": "KC6",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/folded_complex_offdiag_fused_electric_pair.py"
+    },
+    {
+     "module": "bfast_curl",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/bfast_curl.py"
+    },
+    {
+     "module": "special_kz_curl",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/special_kz_curl.py"
+    },
+    {
+     "module": "complex_beta_kernels",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_beta_kernels.py"
+    },
+    {
+     "module": "bfast_fused_electric_pair",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/bfast_fused_electric_pair.py"
+    },
+    {
+     "module": "bfast_fused_magnetic_pair",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/bfast_fused_magnetic_pair.py"
+    },
+    {
+     "module": "special_kz_fused_electric_pair",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/special_kz_fused_electric_pair.py"
+    },
+    {
+     "module": "special_kz_fused_hd_pair",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/special_kz_fused_hd_pair.py"
+    },
+    {
+     "module": "special_kz_fused_magnetic_pair",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/special_kz_fused_magnetic_pair.py"
+    },
+    {
+     "module": "complex_beta_fused_electric_pair",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_beta_fused_electric_pair.py"
+    },
+    {
+     "module": "complex_beta_fused_hd_pair",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_beta_fused_hd_pair.py"
+    },
+    {
+     "module": "complex_beta_fused_magnetic_pair",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/complex_beta_fused_magnetic_pair.py"
+    },
+    {
+     "module": "conductive_bfast_fused_hd_pair",
+     "step": "C7",
+     "lane": "KC7",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/conductive_bfast_fused_hd_pair.py"
+    },
+    {
+     "module": "cylindrical_prefix",
+     "step": "C8",
+     "lane": "KC8",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/cylindrical_prefix.py",
+     "note": "D26: a new column-serial CUDA kernel and gate."
+    },
+    {
+     "module": "cylindrical_kernels",
+     "step": "C8",
+     "lane": "KC8",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/cylindrical_kernels.py"
+    },
+    {
+     "module": "cylindrical_real_fused_electric_pair",
+     "step": "C8",
+     "lane": "KC8",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/cylindrical_real_fused_electric_pair.py"
+    },
+    {
+     "module": "cylindrical_real_fused_hd_pair",
+     "step": "C8",
+     "lane": "KC8",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/cylindrical_real_fused_hd_pair.py"
+    },
+    {
+     "module": "cylindrical_real_fused_magnetic_pair",
+     "step": "C8",
+     "lane": "KC8",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/cylindrical_real_fused_magnetic_pair.py"
+    },
+    {
+     "module": "cylindrical_complex_kernels",
+     "step": "C8",
+     "lane": "KC8",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/cylindrical_complex_kernels.py"
+    },
+    {
+     "module": "cylindrical_fused_electric_pair",
+     "step": "C8",
+     "lane": "KC8",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/cylindrical_fused_electric_pair.py"
+    },
+    {
+     "module": "cylindrical_fused_hd_pair",
+     "step": "C8",
+     "lane": "KC8",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/cylindrical_fused_hd_pair.py"
+    },
+    {
+     "module": "cylindrical_fused_magnetic_pair",
+     "step": "C8",
+     "lane": "KC8",
+     "kind": "kernel",
+     "path": "meep_gpu/cuda_kernels/cylindrical_fused_magnetic_pair.py"
+    },
+    {
+     "module": "complex_no_pml_fused_polarization_pair",
+     "step": "C9",
+     "lane": "KC9",
+     "kind": "a_only",
+     "path": "meep_gpu/cuda_kernels/complex_no_pml_fused_polarization_pair.py",
+     "note": "D27: its ADE site moves to C5."
+    },
+    {
+     "module": "complex_no_pml_offdiag_fused_electric_pair",
+     "step": "C9",
+     "lane": "KC9",
+     "kind": "a_only",
+     "path": "meep_gpu/cuda_kernels/complex_no_pml_offdiag_fused_electric_pair.py",
+     "note": "D27: waits on the off-diagonal lane and R7."
+    },
+    {
+     "module": "complex_no_pml_three_slot_dispersive_weld",
+     "step": "C9",
+     "lane": "KC9",
+     "kind": "a_only",
+     "path": "meep_gpu/cuda_kernels/complex_no_pml_three_slot_dispersive_weld.py",
+     "note": "D27: its ADE site moves to C5."
+    },
+    {
+     "module": "no_pml_complex_fused_electric_pair",
+     "step": "C9",
+     "lane": "KC9",
+     "kind": "a_only",
+     "path": "meep_gpu/cuda_kernels/no_pml_complex_fused_electric_pair.py"
+    },
+    {
+     "module": "no_pml_constitutive",
+     "step": "C9",
+     "lane": "KC9",
+     "kind": "a_only",
+     "path": "meep_gpu/cuda_kernels/no_pml_constitutive.py"
+    },
+    {
+     "module": "no_pml_curl",
+     "step": "C9",
+     "lane": "KC9",
+     "kind": "a_only",
+     "path": "meep_gpu/cuda_kernels/no_pml_curl.py"
+    },
+    {
+     "module": "no_pml_dispersive_fused_electric_pair",
+     "step": "C9",
+     "lane": "KC9",
+     "kind": "a_only",
+     "path": "meep_gpu/cuda_kernels/no_pml_dispersive_fused_electric_pair.py",
+     "note": "KERNELS.md 8: needs C3 and C5; D27: C9's dispersive modules wait on C5."
+    },
+    {
+     "module": "no_pml_three_slot_dispersive_weld",
+     "step": "C9",
+     "lane": "KC9",
+     "kind": "a_only",
+     "path": "meep_gpu/cuda_kernels/no_pml_three_slot_dispersive_weld.py",
+     "note": "D27: C9's dispersive modules wait on C5."
+    },
+    {
+     "module": "in_seam_passes",
+     "step": "UNCHANGED",
+     "lane": null,
+     "kind": "unchanged",
+     "path": "meep_gpu/cuda_kernels/in_seam_passes.py"
+    },
+    {
+     "module": "compile_cache",
+     "step": "UNCHANGED",
+     "lane": null,
+     "kind": "unchanged",
+     "path": "meep_gpu/cuda_kernels/compile_cache.py"
+    },
+    {
+     "module": "__init__",
+     "step": "UNCHANGED",
+     "lane": null,
+     "kind": "unchanged",
+     "path": "meep_gpu/cuda_kernels/__init__.py"
+    },
+    {
+     "module": "cylindrical_coverage",
+     "step": "UNCHANGED",
+     "lane": null,
+     "kind": "unchanged",
+     "path": "meep_gpu/cuda_kernels/cylindrical_coverage.py"
+    },
+    {
+     "module": "in_seam_coverage",
+     "step": "UNCHANGED",
+     "lane": null,
+     "kind": "unchanged",
+     "path": "meep_gpu/cuda_kernels/in_seam_coverage.py"
+    }
+   ]
+  },
+  "triton": {
+   "module_dir": "meep_gpu/triton_kernels",
+   "step_titles": {
+    "T0": "host",
+    "T1": "root",
+    "T2": "conductive",
+    "T3": "folded real",
+    "T4": "off-diagonal",
+    "T5": "complex",
+    "T6": "dispersive/ADE",
+    "T7": "folds",
+    "T8": "cylindrical",
+    "T9": "nonlinear",
+    "T10": "no-PML (A only)",
+    "T11": "H->D welds (not dispatched)"
+   },
+   "modules": [
+    {
+     "module": "launch",
+     "step": "T0",
+     "lane": "KT0",
+     "kind": "host",
+     "path": "meep_gpu/triton_kernels/launch.py"
+    },
+    {
+     "module": "coverage",
+     "step": "T0",
+     "lane": "KT0",
+     "kind": "host",
+     "path": "meep_gpu/triton_kernels/coverage.py"
+    },
+    {
+     "module": "__init__",
+     "step": "T0",
+     "lane": "KT0",
+     "kind": "host",
+     "path": "meep_gpu/triton_kernels/__init__.py"
+    },
+    {
+     "module": "offdiag_scratch_weld",
+     "step": "T0",
+     "lane": "KT0",
+     "kind": "host",
+     "path": "meep_gpu/triton_kernels/offdiag_scratch_weld.py"
+    },
+    {
+     "module": "folded_dispersive_update_e",
+     "step": "T0",
+     "lane": "KT0",
+     "kind": "host",
+     "path": "meep_gpu/triton_kernels/folded_dispersive_update_e.py",
+     "note": "Binding only (KERNELS.md 8, T0)."
+    },
+    {
+     "module": "kernels",
+     "step": "T1",
+     "lane": "KT1",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/kernels.py",
+     "note": "D27: its ADE site (ade_update_p) moves to T6."
+    },
+    {
+     "module": "forms",
+     "step": "T1",
+     "lane": "KT1",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/forms.py",
+     "note": "New in T1 (KERNELS.md 4.2): the shared @triton.jit form helpers."
+    },
+    {
+     "module": "conductivity",
+     "step": "T2",
+     "lane": "KT2",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/conductivity.py"
+    },
+    {
+     "module": "conductive_fused_electric_pair",
+     "step": "T2",
+     "lane": "KT2",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/conductive_fused_electric_pair.py"
+    },
+    {
+     "module": "symmetry",
+     "step": "T3",
+     "lane": "KT3",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/symmetry.py"
+    },
+    {
+     "module": "folded_fused_pair",
+     "step": "T3",
+     "lane": "KT3",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_fused_pair.py"
+    },
+    {
+     "module": "folded_fused_magnetic_pair",
+     "step": "T3",
+     "lane": "KT3",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_fused_magnetic_pair.py"
+    },
+    {
+     "module": "offdiag_update_e",
+     "step": "T4",
+     "lane": "KT4",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/offdiag_update_e.py"
+    },
+    {
+     "module": "offdiag_fused_electric_pair",
+     "step": "T4",
+     "lane": "KT4",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/offdiag_fused_electric_pair.py"
+    },
+    {
+     "module": "folded_offdiag_update_e",
+     "step": "T4",
+     "lane": "KT4",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_offdiag_update_e.py"
+    },
+    {
+     "module": "folded_offdiag_fused_electric_pair",
+     "step": "T4",
+     "lane": "KT4",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_offdiag_fused_electric_pair.py"
+    },
+    {
+     "module": "complex_fields",
+     "step": "T5",
+     "lane": "KT5",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/complex_fields.py"
+    },
+    {
+     "module": "complex_fused_magnetic_pair",
+     "step": "T5",
+     "lane": "KT5",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/complex_fused_magnetic_pair.py"
+    },
+    {
+     "module": "complex_fused_electric_pair",
+     "step": "T5",
+     "lane": "KT5",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/complex_fused_electric_pair.py"
+    },
+    {
+     "module": "complex_offdiag_update_e",
+     "step": "T5",
+     "lane": "KT5",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/complex_offdiag_update_e.py"
+    },
+    {
+     "module": "folded_complex",
+     "step": "T5",
+     "lane": "KT5",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_complex.py"
+    },
+    {
+     "module": "folded_complex_fused_pair",
+     "step": "T5",
+     "lane": "KT5",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_complex_fused_pair.py"
+    },
+    {
+     "module": "folded_complex_fused_magnetic_pair",
+     "step": "T5",
+     "lane": "KT5",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_complex_fused_magnetic_pair.py"
+    },
+    {
+     "module": "dispersive_update_e",
+     "step": "T6",
+     "lane": "KT6",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/dispersive_update_e.py"
+    },
+    {
+     "module": "dispersive_fused_pair",
+     "step": "T6",
+     "lane": "KT6",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/dispersive_fused_pair.py"
+    },
+    {
+     "module": "fused_ade_chain",
+     "step": "T6",
+     "lane": "KT6",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/fused_ade_chain.py"
+    },
+    {
+     "module": "fused_ade_state",
+     "step": "T6",
+     "lane": "KT6",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/fused_ade_state.py"
+    },
+    {
+     "module": "fused_dispersive_chain",
+     "step": "T6",
+     "lane": "KT6",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/fused_dispersive_chain.py"
+    },
+    {
+     "module": "folded_dispersive_fused_pair",
+     "step": "T6",
+     "lane": "KT6",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_dispersive_fused_pair.py"
+    },
+    {
+     "module": "complex_ade",
+     "step": "T6",
+     "lane": "KT6",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/complex_ade.py"
+    },
+    {
+     "module": "complex_fused_ade_chain",
+     "step": "T6",
+     "lane": "KT6",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/complex_fused_ade_chain.py"
+    },
+    {
+     "module": "folded_offdiag_dispersive_update_e",
+     "step": "T6",
+     "lane": "KT6",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_offdiag_dispersive_update_e.py"
+    },
+    {
+     "module": "folded_offdiag_fused_ade_chain",
+     "step": "T6",
+     "lane": "KT6",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_offdiag_fused_ade_chain.py"
+    },
+    {
+     "module": "special_kz",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/special_kz.py"
+    },
+    {
+     "module": "bfast_curl",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/bfast_curl.py"
+    },
+    {
+     "module": "beta_fused_electric_pair",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/beta_fused_electric_pair.py"
+    },
+    {
+     "module": "beta_fused_magnetic_pair",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/beta_fused_magnetic_pair.py"
+    },
+    {
+     "module": "bfast_fused_electric_pair",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/bfast_fused_electric_pair.py"
+    },
+    {
+     "module": "bfast_fused_magnetic_pair",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/bfast_fused_magnetic_pair.py"
+    },
+    {
+     "module": "complex_beta_fused_electric_pair",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/complex_beta_fused_electric_pair.py"
+    },
+    {
+     "module": "complex_beta_fused_magnetic_pair",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/complex_beta_fused_magnetic_pair.py"
+    },
+    {
+     "module": "folded_beta_fused_electric_pair",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_beta_fused_electric_pair.py"
+    },
+    {
+     "module": "folded_beta_fused_magnetic_pair",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_beta_fused_magnetic_pair.py"
+    },
+    {
+     "module": "folded_beta_complex_fused_pair",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_beta_complex_fused_pair.py"
+    },
+    {
+     "module": "folded_beta_complex_fused_magnetic_pair",
+     "step": "T7",
+     "lane": "KT7",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_beta_complex_fused_magnetic_pair.py"
+    },
+    {
+     "module": "cylindrical_triton",
+     "step": "T8",
+     "lane": "KT8",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/cylindrical_triton.py"
+    },
+    {
+     "module": "cylindrical_complex",
+     "step": "T8",
+     "lane": "KT8",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/cylindrical_complex.py"
+    },
+    {
+     "module": "cylindrical_real_fused_electric_pair",
+     "step": "T8",
+     "lane": "KT8",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/cylindrical_real_fused_electric_pair.py"
+    },
+    {
+     "module": "cylindrical_real_fused_magnetic_pair",
+     "step": "T8",
+     "lane": "KT8",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/cylindrical_real_fused_magnetic_pair.py"
+    },
+    {
+     "module": "cylindrical_fused_electric_pair",
+     "step": "T8",
+     "lane": "KT8",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/cylindrical_fused_electric_pair.py"
+    },
+    {
+     "module": "cylindrical_fused_magnetic_pair",
+     "step": "T8",
+     "lane": "KT8",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/cylindrical_fused_magnetic_pair.py"
+    },
+    {
+     "module": "nonlinear_update_e",
+     "step": "T9",
+     "lane": "KT9",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/nonlinear_update_e.py"
+    },
+    {
+     "module": "nonlinear_fused_magnetic_pair",
+     "step": "T9",
+     "lane": "KT9",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/nonlinear_fused_magnetic_pair.py"
+    },
+    {
+     "module": "no_pml",
+     "step": "T10",
+     "lane": "KT10",
+     "kind": "a_only",
+     "path": "meep_gpu/triton_kernels/no_pml.py"
+    },
+    {
+     "module": "no_pml_ade",
+     "step": "T10",
+     "lane": "KT10",
+     "kind": "a_only",
+     "path": "meep_gpu/triton_kernels/no_pml_ade.py"
+    },
+    {
+     "module": "no_pml_conductive",
+     "step": "T10",
+     "lane": "KT10",
+     "kind": "a_only",
+     "path": "meep_gpu/triton_kernels/no_pml_conductive.py"
+    },
+    {
+     "module": "no_pml_constitutive",
+     "step": "T10",
+     "lane": "KT10",
+     "kind": "a_only",
+     "path": "meep_gpu/triton_kernels/no_pml_constitutive.py"
+    },
+    {
+     "module": "no_pml_fused_electric_pair",
+     "step": "T10",
+     "lane": "KT10",
+     "kind": "a_only",
+     "path": "meep_gpu/triton_kernels/no_pml_fused_electric_pair.py"
+    },
+    {
+     "module": "no_pml_stored_e",
+     "step": "T10",
+     "lane": "KT10",
+     "kind": "a_only",
+     "path": "meep_gpu/triton_kernels/no_pml_stored_e.py"
+    },
+    {
+     "module": "complex_no_pml_curl",
+     "step": "T10",
+     "lane": "KT10",
+     "kind": "a_only",
+     "path": "meep_gpu/triton_kernels/complex_no_pml_curl.py"
+    },
+    {
+     "module": "complex_no_pml_conductive",
+     "step": "T10",
+     "lane": "KT10",
+     "kind": "a_only",
+     "path": "meep_gpu/triton_kernels/complex_no_pml_conductive.py"
+    },
+    {
+     "module": "complex_no_pml_stored_e",
+     "step": "T10",
+     "lane": "KT10",
+     "kind": "a_only",
+     "path": "meep_gpu/triton_kernels/complex_no_pml_stored_e.py"
+    },
+    {
+     "module": "complex_conductive_fused_pair",
+     "step": "T10",
+     "lane": "KT10",
+     "kind": "a_only",
+     "path": "meep_gpu/triton_kernels/complex_conductive_fused_pair.py"
+    },
+    {
+     "module": "fused_hd_pair",
+     "step": "T11",
+     "lane": "KT11",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/fused_hd_pair.py"
+    },
+    {
+     "module": "beta_real_fused_hd_pair",
+     "step": "T11",
+     "lane": "KT11",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/beta_real_fused_hd_pair.py"
+    },
+    {
+     "module": "beta_complex_fused_hd_pair",
+     "step": "T11",
+     "lane": "KT11",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/beta_complex_fused_hd_pair.py"
+    },
+    {
+     "module": "complex_fused_hd_pair",
+     "step": "T11",
+     "lane": "KT11",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/complex_fused_hd_pair.py"
+    },
+    {
+     "module": "conductive_bfast_fused_hd_pair",
+     "step": "T11",
+     "lane": "KT11",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/conductive_bfast_fused_hd_pair.py"
+    },
+    {
+     "module": "cylindrical_fused_hd_pair",
+     "step": "T11",
+     "lane": "KT11",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/cylindrical_fused_hd_pair.py"
+    },
+    {
+     "module": "cylindrical_real_fused_hd_pair",
+     "step": "T11",
+     "lane": "KT11",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/cylindrical_real_fused_hd_pair.py"
+    },
+    {
+     "module": "folded_complex_fused_hd_pair",
+     "step": "T11",
+     "lane": "KT11",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_complex_fused_hd_pair.py"
+    },
+    {
+     "module": "folded_fused_hd_pair",
+     "step": "T11",
+     "lane": "KT11",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/folded_fused_hd_pair.py"
+    },
+    {
+     "module": "nonlinear_fused_hd_pair",
+     "step": "T11",
+     "lane": "KT11",
+     "kind": "kernel",
+     "path": "meep_gpu/triton_kernels/nonlinear_fused_hd_pair.py"
+    }
+   ]
+  },
+  "metal": {
+   "module_dir": "meep_gpu/metal_kernels",
+   "step_titles": {
+    "M0": "host",
+    "M1": "roots",
+    "M2": "same-cell fused",
+    "M3": "straddle, real",
+    "M4": "conductive",
+    "M5": "complex",
+    "M6": "fold-carry, real",
+    "M7": "off-diagonal",
+    "M8": "dispersive",
+    "M9": "folds",
+    "M10": "cylindrical",
+    "M11": "C, software binary64",
+    "M12": "no-PML (A only)"
+   },
+   "modules": [
+    {
+     "module": "chunk_bounds",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/chunk_bounds.py",
+     "note": "New in M0 (KERNELS.md 5.1)."
+    },
+    {
+     "module": "launch",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/launch.py"
+    },
+    {
+     "module": "metal_dispatch",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_dispatch.py"
+    },
+    {
+     "module": "coverage",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/coverage.py"
+    },
+    {
+     "module": "device",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/device.py",
+     "note": "D27: one owner (KM0); its soft-fp64 door_scatter_sub is step M11."
+    },
+    {
+     "module": "softfp64",
+     "step": "M11",
+     "lane": "SF64",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/softfp64.py",
+     "note": "New in M11 under ruling R7: the shared software binary64 library; device.door_scatter_sub is its first consumer."
+    },
+    {
+     "module": "__init__",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/__init__.py",
+     "note": "D27: one of the 9 Metal host modules section 8 leaves unassigned; joins KM0."
+    },
+    {
+     "module": "arms",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/arms.py",
+     "note": "D27: one of the 9 Metal host modules section 8 leaves unassigned; joins KM0."
+    },
+    {
+     "module": "barrier",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/barrier.py",
+     "note": "D27: one of the 9 Metal host modules section 8 leaves unassigned; joins KM0."
+    },
+    {
+     "module": "coefficient_pack",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/coefficient_pack.py",
+     "note": "D27: one of the 9 Metal host modules section 8 leaves unassigned; joins KM0."
+    },
+    {
+     "module": "corpus",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/corpus.py",
+     "note": "D27: one of the 9 Metal host modules section 8 leaves unassigned; joins KM0."
+    },
+    {
+     "module": "plans",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/plans.py",
+     "note": "D27: one of the 9 Metal host modules section 8 leaves unassigned; joins KM0."
+    },
+    {
+     "module": "preconditions",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/preconditions.py",
+     "note": "D27: one of the 9 Metal host modules section 8 leaves unassigned; joins KM0."
+    },
+    {
+     "module": "registry",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/registry.py",
+     "note": "D27: one of the 9 Metal host modules section 8 leaves unassigned; joins KM0."
+    },
+    {
+     "module": "subnormal",
+     "step": "M0",
+     "lane": "KM0",
+     "kind": "host",
+     "path": "meep_gpu/metal_kernels/subnormal.py",
+     "note": "D27: one of the 9 Metal host modules section 8 leaves unassigned; joins KM0."
+    },
+    {
+     "module": "shaders",
+     "step": "M1",
+     "lane": "KM1",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/shaders.py"
+    },
+    {
+     "module": "symmetry",
+     "step": "M1",
+     "lane": "KM1",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/symmetry.py"
+    },
+    {
+     "module": "nonlinear_update_e",
+     "step": "M1",
+     "lane": "KM1",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/nonlinear_update_e.py",
+     "note": "KERNELS.md 8: its |D|^2 double form is software binary64 under ruling R7 (lane KM1s)."
+    },
+    {
+     "module": "fused_magnetic_pair",
+     "step": "M2",
+     "lane": "KM2",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/fused_magnetic_pair.py"
+    },
+    {
+     "module": "fused_electric_pair",
+     "step": "M2",
+     "lane": "KM2",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/fused_electric_pair.py"
+    },
+    {
+     "module": "fused_dispersive_pair",
+     "step": "M2",
+     "lane": "KM2",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/fused_dispersive_pair.py"
+    },
+    {
+     "module": "nonlinear_fused_magnetic_pair",
+     "step": "M2",
+     "lane": "KM2",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/nonlinear_fused_magnetic_pair.py"
+    },
+    {
+     "module": "fused_ade_chain",
+     "step": "M2",
+     "lane": "KM2",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/fused_ade_chain.py",
+     "note": "D27: its F_DISPERSIVE edit moves to M8."
+    },
+    {
+     "module": "fused_hd_pair",
+     "step": "M3",
+     "lane": "KM3",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/fused_hd_pair.py"
+    },
+    {
+     "module": "folded_fused_hd_pair",
+     "step": "M3",
+     "lane": "KM3",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_fused_hd_pair.py"
+    },
+    {
+     "module": "conductive_pml",
+     "step": "M4",
+     "lane": "KM4",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/conductive_pml.py"
+    },
+    {
+     "module": "conductive_fused_electric_pair",
+     "step": "M4",
+     "lane": "KM4",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/conductive_fused_electric_pair.py"
+    },
+    {
+     "module": "conductive_fused_hd_pair",
+     "step": "M4",
+     "lane": "KM4",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/conductive_fused_hd_pair.py"
+    },
+    {
+     "module": "templates",
+     "step": "M5",
+     "lane": "KM5",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/templates.py"
+    },
+    {
+     "module": "complex_fields",
+     "step": "M5",
+     "lane": "KM5",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/complex_fields.py"
+    },
+    {
+     "module": "complex_fused_magnetic_pair",
+     "step": "M5",
+     "lane": "KM5",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/complex_fused_magnetic_pair.py"
+    },
+    {
+     "module": "complex_fused_electric_pair",
+     "step": "M5",
+     "lane": "KM5",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/complex_fused_electric_pair.py"
+    },
+    {
+     "module": "complex_fused_hd_pair",
+     "step": "M5",
+     "lane": "KM5",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/complex_fused_hd_pair.py"
+    },
+    {
+     "module": "complex_conductive_pml",
+     "step": "M5",
+     "lane": "KM5",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/complex_conductive_pml.py"
+    },
+    {
+     "module": "folded_complex",
+     "step": "M5",
+     "lane": "KM5",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_complex.py"
+    },
+    {
+     "module": "folded_complex_fused_hd_pair",
+     "step": "M5",
+     "lane": "KM5",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_complex_fused_hd_pair.py"
+    },
+    {
+     "module": "folded_complex_fused_magnetic_pair",
+     "step": "M5",
+     "lane": "KM5",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_complex_fused_magnetic_pair.py"
+    },
+    {
+     "module": "folded_complex_fused_pair",
+     "step": "M5",
+     "lane": "KM5",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_complex_fused_pair.py"
+    },
+    {
+     "module": "folded_fused_pair",
+     "step": "M6",
+     "lane": "KM6",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_fused_pair.py"
+    },
+    {
+     "module": "folded_fused_magnetic_pair",
+     "step": "M6",
+     "lane": "KM6",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_fused_magnetic_pair.py"
+    },
+    {
+     "module": "folded_fused_dispersive_pair",
+     "step": "M6",
+     "lane": "KM6",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_fused_dispersive_pair.py"
+    },
+    {
+     "module": "offdiag_update_e",
+     "step": "M7",
+     "lane": "KM7",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/offdiag_update_e.py"
+    },
+    {
+     "module": "folded_offdiag_update_e",
+     "step": "M7",
+     "lane": "KM7",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_offdiag_update_e.py"
+    },
+    {
+     "module": "offdiag_fused_electric_pair",
+     "step": "M7",
+     "lane": "KM7",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/offdiag_fused_electric_pair.py"
+    },
+    {
+     "module": "folded_offdiag_fused_electric_pair",
+     "step": "M7",
+     "lane": "KM7",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_offdiag_fused_electric_pair.py"
+    },
+    {
+     "module": "complex_folded_offdiag_update_e",
+     "step": "M7",
+     "lane": "KM7",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/complex_folded_offdiag_update_e.py"
+    },
+    {
+     "module": "folded_complex_offdiag_fused_electric_pair",
+     "step": "M7",
+     "lane": "KM7",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_complex_offdiag_fused_electric_pair.py"
+    },
+    {
+     "module": "offdiag_weld_common",
+     "step": "M7",
+     "lane": "KM7",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/offdiag_weld_common.py"
+    },
+    {
+     "module": "dispersive_update_e",
+     "step": "M8",
+     "lane": "KM8",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/dispersive_update_e.py"
+    },
+    {
+     "module": "folded_dispersive_update_e",
+     "step": "M8",
+     "lane": "KM8",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_dispersive_update_e.py"
+    },
+    {
+     "module": "folded_offdiag_dispersive_update_e",
+     "step": "M8",
+     "lane": "KM8",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_offdiag_dispersive_update_e.py"
+    },
+    {
+     "module": "complex_dispersive_update_e",
+     "step": "M8",
+     "lane": "KM8",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/complex_dispersive_update_e.py"
+    },
+    {
+     "module": "complex_dispersive_spine",
+     "step": "M8",
+     "lane": "KM8",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/complex_dispersive_spine.py"
+    },
+    {
+     "module": "ade_update_p",
+     "step": "M8",
+     "lane": "KM8",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/ade_update_p.py"
+    },
+    {
+     "module": "bfast_curl",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/bfast_curl.py"
+    },
+    {
+     "module": "bfast_fused_electric_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/bfast_fused_electric_pair.py"
+    },
+    {
+     "module": "bfast_fused_magnetic_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/bfast_fused_magnetic_pair.py"
+    },
+    {
+     "module": "bfast_fused_hd_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/bfast_fused_hd_pair.py"
+    },
+    {
+     "module": "special_kz",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/special_kz.py"
+    },
+    {
+     "module": "folded_beta",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_beta.py"
+    },
+    {
+     "module": "beta_fused_electric_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/beta_fused_electric_pair.py"
+    },
+    {
+     "module": "beta_fused_magnetic_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/beta_fused_magnetic_pair.py"
+    },
+    {
+     "module": "beta_real_fused_hd_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/beta_real_fused_hd_pair.py"
+    },
+    {
+     "module": "beta_complex_fused_electric_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/beta_complex_fused_electric_pair.py"
+    },
+    {
+     "module": "beta_complex_fused_magnetic_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/beta_complex_fused_magnetic_pair.py"
+    },
+    {
+     "module": "beta_complex_fused_hd_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/beta_complex_fused_hd_pair.py"
+    },
+    {
+     "module": "folded_beta_real_fused_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_beta_real_fused_pair.py"
+    },
+    {
+     "module": "folded_beta_real_fused_magnetic_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_beta_real_fused_magnetic_pair.py"
+    },
+    {
+     "module": "folded_beta_complex_fused_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_beta_complex_fused_pair.py"
+    },
+    {
+     "module": "folded_beta_complex_fused_magnetic_pair",
+     "step": "M9",
+     "lane": "KM9",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/folded_beta_complex_fused_magnetic_pair.py"
+    },
+    {
+     "module": "cylindrical_real",
+     "step": "M10",
+     "lane": "KM10",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/cylindrical_real.py"
+    },
+    {
+     "module": "cylindrical_complex_scan",
+     "step": "M10",
+     "lane": "KM10",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/cylindrical_complex_scan.py"
+    },
+    {
+     "module": "cylindrical_complex",
+     "step": "M10",
+     "lane": "KM10",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/cylindrical_complex.py"
+    },
+    {
+     "module": "cylindrical_real_fused_magnetic_pair",
+     "step": "M10",
+     "lane": "KM10",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/cylindrical_real_fused_magnetic_pair.py"
+    },
+    {
+     "module": "cylindrical_real_fused_electric_pair",
+     "step": "M10",
+     "lane": "KM10",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/cylindrical_real_fused_electric_pair.py"
+    },
+    {
+     "module": "cylindrical_real_fused_hd_pair",
+     "step": "M10",
+     "lane": "KM10",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/cylindrical_real_fused_hd_pair.py"
+    },
+    {
+     "module": "cylindrical_fused_magnetic_pair",
+     "step": "M10",
+     "lane": "KM10",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/cylindrical_fused_magnetic_pair.py"
+    },
+    {
+     "module": "cylindrical_fused_electric_pair",
+     "step": "M10",
+     "lane": "KM10",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/cylindrical_fused_electric_pair.py"
+    },
+    {
+     "module": "cylindrical_complex_fused_hd_pair",
+     "step": "M10",
+     "lane": "KM10",
+     "kind": "kernel",
+     "path": "meep_gpu/metal_kernels/cylindrical_complex_fused_hd_pair.py"
+    },
+    {
+     "module": "complex_conductive_fused_pair",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/complex_conductive_fused_pair.py"
+    },
+    {
+     "module": "complex_fused_ade_chain",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/complex_fused_ade_chain.py",
+     "note": "D27: its F_DISPERSIVE edit moves to M8."
+    },
+    {
+     "module": "complex_no_pml_conductive",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/complex_no_pml_conductive.py"
+    },
+    {
+     "module": "complex_no_pml_curl",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/complex_no_pml_curl.py"
+    },
+    {
+     "module": "complex_no_pml_offdiag_fused_electric_pair",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/complex_no_pml_offdiag_fused_electric_pair.py",
+     "note": "D27: waits on the off-diagonal lane and R7."
+    },
+    {
+     "module": "complex_no_pml_offdiag_update_e",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/complex_no_pml_offdiag_update_e.py",
+     "note": "D27: waits on the off-diagonal lane and R7."
+    },
+    {
+     "module": "complex_no_pml_stored_e",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/complex_no_pml_stored_e.py"
+    },
+    {
+     "module": "no_pml_conductive",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/no_pml_conductive.py"
+    },
+    {
+     "module": "no_pml_conductive_fused_electric_pair",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/no_pml_conductive_fused_electric_pair.py"
+    },
+    {
+     "module": "no_pml_constitutive",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/no_pml_constitutive.py"
+    },
+    {
+     "module": "no_pml_curl",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/no_pml_curl.py"
+    },
+    {
+     "module": "no_pml_fused_electric_pair",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/no_pml_fused_electric_pair.py"
+    },
+    {
+     "module": "no_pml_stored_e",
+     "step": "M12",
+     "lane": "KM12",
+     "kind": "a_only",
+     "path": "meep_gpu/metal_kernels/no_pml_stored_e.py"
+    }
+   ]
+  }
+ },
+ "families": [
+  {
+   "family": "base_pml",
+   "work_packages": "AP3, AP4, AP5",
+   "title": "Real PML forms: A1 + A2 + A3, B (per-chunk select), C (double deposit)",
+   "exercised_if": {
+    "all": [
+     {
+      "call": "setup_pml"
+     },
+     {
+      "constructor": "force_complex_fields",
+      "test": "false"
+     },
+     {
+      "constructor": "cylindrical",
+      "test": "false"
+     }
+    ]
+   }
+  },
+  {
+   "family": "mirror_symmetry",
+   "work_packages": "AP4 (D5 ghost rows)",
+   "title": "Mirror symmetry: ghost rows copy their image row",
+   "exercised_if": {
+    "constructor": "symmetry",
+    "test": "nonempty"
+   }
+  },
+  {
+   "family": "complex_bloch",
+   "work_packages": "AP6a",
+   "title": "Complex storage and Bloch phases (CXP, CXW, CXB, CXD)",
+   "exercised_if": {
+    "any": [
+     {
+      "constructor": "force_complex_fields",
+      "test": "true"
+     },
+     {
+      "constructor": "k_point",
+      "test": "nonzero"
+     }
+    ]
+   }
+  },
+  {
+   "family": "folds",
+   "work_packages": "AP6b",
+   "title": "Folded increments: beta and BFAST as separate ladder passes (FOLD)",
+   "exercised_if": {
+    "any": [
+     {
+      "constructor": "beta",
+      "test": "nonzero"
+     },
+     {
+      "constructor": "bfast_scaled_k",
+      "test": "nonzero"
+     }
+    ]
+   }
+  },
+  {
+   "family": "cylindrical",
+   "work_packages": "AP6c",
+   "title": "Cylindrical: per-chunk r prefix, rinv multiply, i*m/r pass (F_CYL, F_CYL_CPLX)",
+   "exercised_if": {
+    "constructor": "cylindrical",
+    "test": "true"
+   }
+  },
+  {
+   "family": "conductive",
+   "work_packages": "AP6d",
+   "title": "Conductivity under a PML: four forms per chunk (F_COND*)",
+   "exercised_if": {
+    "any": [
+     {
+      "call": "set_conductivity"
+     },
+     {
+      "call": "set_b_conductivity"
+     }
+    ]
+   }
+  },
+  {
+   "family": "offdiag",
+   "work_packages": "AP6e",
+   "title": "Off-diagonal chi1inv: double row sum, per-chunk presence (F_OFFDIAG, F_CHI1INV)",
+   "exercised_if": {
+    "any": [
+     {
+      "call_argument": [
+       "set_epsilon_components",
+       "chi1inv_offdiagonal"
+      ],
+      "test": "not_null"
+     },
+     {
+      "call": "set_epsilon_smoothed"
+     }
+    ]
+   }
+  },
+  {
+   "family": "dispersive",
+   "work_packages": "AP6f",
+   "title": "Dispersive (ADE): MEEP's float32 constants and grouping (F_DISPERSIVE)",
+   "exercised_if": {
+    "call": "add_susceptibility"
+   }
+  },
+  {
+   "family": "sources",
+   "work_packages": "AP6g",
+   "title": "Sources: continuous and custom forms, src_vol merge, integrated f_minus_p",
+   "exercised_if": {
+    "any": [
+     {
+      "source": "size",
+      "test": "nonzero"
+     },
+     {
+      "source": "is_integrated",
+      "test": "true"
+     },
+     {
+      "source": "source_type",
+      "test": "not_in",
+      "values": [
+       "gaussian"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "family": "nonlinear",
+   "work_packages": "AP6h",
+   "title": "Nonlinear |D|^2 in double",
+   "exercised_if": {
+    "any": [
+     {
+      "call": "set_chi2"
+     },
+     {
+      "call": "set_chi3"
+     }
+    ]
+   }
+  }
+ ]
+}

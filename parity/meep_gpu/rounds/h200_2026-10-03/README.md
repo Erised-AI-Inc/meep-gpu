@@ -1,14 +1,14 @@
 # H200 round, 2026-10-03
 
-The prepared certification round that would add an NVIDIA H200 (compute capability
-9.0, Hopper) beside the RTX A6000 (8.6), and the timing that would follow it. The
-round is prepared; no 9.0 record ships in 0.9.2, so compute capability 9.0 is
-supported, not certified. Its scripts target the pre-release commit
-`516026f3d3bcc2a4b8cb40ddbdbd3d8b64752a05` (commit hashes here name the
-pre-publication development history), against MEEP 1.33.0 built from source in
-single precision with MPI (`build_meep_133_linux.sh`). The records of 0.9.2 on
-compute capability 8.6 come from the later RTX A6000 rounds stamped 2026-10-05 on the
-release files.
+The prepared certification round that adds an NVIDIA H200 (compute capability 9.0,
+Hopper) beside the RTX A6000 (8.6), and the timing that follows it, for commit
+`516026f3d3bcc2a4b8cb40ddbdbd3d8b64752a05` (0.9.x code), against MEEP 1.33.0 built from
+source in single precision with MPI (`build_meep_133_linux.sh`). Its bind was held, and
+no compute capability 9.0 record ships in 0.9.2 or in 1.0: the H200 is supported and
+not certified, and its certification on the 1.0 code is planned for a 1.0.x release,
+from `parity/meep_gpu/rounds/1.0/`. This directory is a dated record of the 0.9.x
+procedure: its scripts and runbooks name the retired `MEEP_GPU_ALLOW_UNCERTIFIED`, which
+1.0 refuses by name, and not `MEEP_GPU_HARDWARE`, which replaced it.
 
 | File | What it is |
 |---|---|
@@ -16,12 +16,12 @@ release files.
 | `run_cuda_welds.sh` | The 70 CUDA legs, keep and flush policies, called by `run_round.sh`. |
 | `INPUT_DIRS.txt`, `INPUT_FILES.txt`, `INPUTS_SHA256SUMS`, `meep_gpu_round_inputs.tgz.sha256` | The manifest of the inputs bundle the gates read: 992 files from the certification evidence archive, with the digest of each and of the bundle. |
 
-The hand-off runbooks are kept in the development repository, not in this one: the
-certification runbook, the steps the round follows on a Slurm cluster (build the
-reference MEEP, check the card, run every gate as one batch job, pack the results);
-the timing runbook, the identical-case timing ladder on one H200 against stock MEEP
-on the same node's CPU cores (`docs/development/timing.md`), run after the H200's
-records are bound; and the script with which the RTX A6000 ran the round.
+The hand-off runbooks are kept in the development repository: the certification
+runbook, the steps the round follows on a Slurm cluster (build the reference MEEP,
+check the card, run every gate as one batch job, pack the results); the timing
+runbook, the identical-case timing ladder on one H200 against stock MEEP on the same
+node's CPU cores (`docs/development/timing.md`), run after the H200's records are
+bound; and the script with which the RTX A6000 ran the round.
 
 The RTX A6000 ran the same round on the pre-release commit on 2026-10-03, with the
 same scripts and inputs bundle: every gate released (Triton 33 of 33, 11 of 11, 1 of

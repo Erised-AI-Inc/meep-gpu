@@ -115,6 +115,8 @@ if API_ROOT not in sys.path:
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+import fold_pass_mutations as fold_passes  # noqa: E402
+
 PRODUCT_MODULE = "meep_gpu.triton_kernels.beta_fused_magnetic_pair"
 KERNEL_NAME = "beta_fused_curl_constitutive_B"
 PACKAGE_DIR = os.path.join(API_ROOT, "meep_gpu", "triton_kernels")
@@ -123,13 +125,15 @@ KERNEL_FILE = os.path.join(PACKAGE_DIR, "beta_fused_magnetic_pair.py")
 #: refl-angular-kz2d.py's own beta.
 BETA_CORPUS = 0.3321611318837033
 
-#: The three lines the beta term adds, and the ONLY thing that may separate this
-#: kernel from ``kernels.fused_curl_constitutive_B``.
-BETA_INSERT: Tuple[str, ...] = (
-    "if HAS_BETA:",
-    "curl0 = curl0 - (beta_plus * b)",
-    "curl1 = curl1 - (beta_minus * a)",
-)
+#: The flag that gates the beta pass. The pass itself is DERIVED from the shipped curl
+#: (``special_kz.beta_pml_curl_step``'s top-level ``if HAS_BETA:`` statement), never
+#: listed here: the transcription leg checks that this kernel splices that exact
+#: statement after its three curl forms (``fold_pass_mutations.body_and_insert``).
+BETA_FLAG = "HAS_BETA"
+
+#: Target 2's curl-stencil line, the last of the curl half's stencils: the previous
+#: placement of the beta term (inside the curl, before the forms) is planted after it.
+CURL_ANCHOR = "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)"
 
 #: The device cases. ``(name, cell, boundaries, steps)``.
 #:
@@ -241,6 +245,7 @@ def source_hashes() -> Dict[str, str]:
         "meep_gpu/triton_kernels/beta_fused_magnetic_pair.py",
         "meep_gpu/triton_kernels/special_kz.py",
         "meep_gpu/triton_kernels/kernels.py",
+        "meep_gpu/triton_kernels/forms.py",
         "meep_gpu/triton_kernels/coverage.py",
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/stepping.py",
@@ -342,59 +347,66 @@ def shipped_source() -> str:
 def transcription_leg() -> Dict[str, Any]:
     """The claim this whole product rests on, made mechanical.
 
-    Two equalities, both EXACT and both in order:
+    Three equalities, all EXACT and in order, and one position:
 
-    * the kernel minus the three beta lines IS ``kernels.fused_curl_constitutive_B``;
-    * the kernel minus the WELD (whatever ``fused_curl_constitutive_B`` has that
-      ``kernels.pml_curl_step`` does not — DERIVED, not listed) IS
-      ``special_kz.beta_pml_curl_step``.
+    * the kernel minus its beta pass IS ``kernels.fused_curl_constitutive_B``;
+    * its beta pass IS ``special_kz.beta_pml_curl_step``'s, statement for statement;
+    * that curl minus the same pass IS ``kernels.pml_curl_step``;
+    * the pass follows the three curl forms and precedes the wall clear -- MEEP's beta
+      pass runs after every component's curl (step_db.cpp:161-175), and the seam's
+      clear and update_H follow the whole sub-step.
 
-    Together they say: nothing in this body was written here. The third check
-    states that positively, over the union of the two shipped bodies.
+    Together they say: nothing in this body was written here. The invented-statement
+    check states that positively, over the union of the shipped bodies.
     """
     kernels_py = os.path.join(PACKAGE_DIR, "kernels.py")
     special_py = os.path.join(PACKAGE_DIR, "special_kz.py")
     fused = body_statements(KERNEL_FILE, KERNEL_NAME)
+    body, insert = fold_passes.body_and_insert(KERNEL_FILE, KERNEL_NAME, BETA_FLAG)
     ordinary_fused = body_statements(kernels_py, "fused_curl_constitutive_B")
     ordinary_curl = body_statements(kernels_py, "pml_curl_step")
-    beta_curl = body_statements(special_py, "beta_pml_curl_step")
+    curl_body, curl_insert = fold_passes.body_and_insert(
+        special_py, "beta_pml_curl_step", BETA_FLAG)
+
+    def first_difference(left: List[str], right: List[str]) -> str:
+        index = next((i for i, (a, b) in enumerate(zip(left, right)) if a != b),
+                     min(len(left), len(right)))
+        return (f"first difference at statement {index}: "
+                f"{left[index:index + 1]} vs {right[index:index + 1]}")
 
     findings: List[str] = []
-    without_beta = [line for line in fused if line not in BETA_INSERT]
-    if without_beta != ordinary_fused:
-        index = next((i for i, (a, b) in enumerate(zip(without_beta, ordinary_fused))
-                      if a != b), min(len(without_beta), len(ordinary_fused)))
-        findings.append(
-            f"minus the beta insert this is NOT fused_curl_constitutive_B; first "
-            f"difference at statement {index}: "
-            f"{without_beta[index:index + 1]} vs {ordinary_fused[index:index + 1]}")
-
+    if not insert:
+        findings.append("the kernel carries no top-level `if HAS_BETA:` pass")
+    if body != ordinary_fused:
+        findings.append("minus its beta pass this is NOT fused_curl_constitutive_B; "
+                        + first_difference(body, ordinary_fused))
+    if insert != curl_insert:
+        findings.append("the beta pass is NOT beta_pml_curl_step's; "
+                        + first_difference(insert, curl_insert))
+    if curl_body != ordinary_curl:
+        findings.append("beta_pml_curl_step minus its pass is NOT pml_curl_step; "
+                        + first_difference(curl_body, ordinary_curl))
     weld = [line for line in ordinary_fused if line not in ordinary_curl]
     if not weld:
-        findings.append("the weld is empty; the second equality compares nothing")
-    without_weld = [line for line in fused if line not in weld]
-    if without_weld != beta_curl:
-        index = next((i for i, (a, b) in enumerate(zip(without_weld, beta_curl))
-                      if a != b), min(len(without_weld), len(beta_curl)))
-        findings.append(
-            f"minus the weld this is NOT beta_pml_curl_step; first difference at "
-            f"statement {index}: "
-            f"{without_weld[index:index + 1]} vs {beta_curl[index:index + 1]}")
-
-    delta = [line for line in beta_curl if line not in ordinary_curl]
-    if delta != list(BETA_INSERT):
-        findings.append(f"beta_pml_curl_step's own delta over pml_curl_step is "
-                        f"{delta}, not {list(BETA_INSERT)}")
+        findings.append("the weld is empty; the comparison compares nothing")
+    if insert:
+        before, after = fold_passes.insert_neighbours(KERNEL_FILE, KERNEL_NAME, BETA_FLAG)
+        if not before.startswith("v2, n2 = curl_form("):
+            findings.append(f"the beta pass does not follow the last curl form: it "
+                            f"follows {before!r}")
+        if after != "if ZM_X:":
+            findings.append(f"the beta pass does not precede the wall clear: it "
+                            f"precedes {after!r}")
 
     invented = [line for line in fused
-                if line not in set(beta_curl) | set(ordinary_fused)]
+                if line not in set(curl_body) | set(curl_insert) | set(ordinary_fused)]
     if invented:
-        findings.append(f"statements that appear in NEITHER shipped body: {invented}")
+        findings.append(f"statements that appear in NO shipped body: {invented}")
 
     return {"leg": "transcription", "device": False,
             "statements_in_the_product": len(fused),
             "the_weld_derived_from_the_shipped_pair": weld,
-            "beta_insert_measured": delta,
+            "beta_insert_measured": insert,
             "findings": findings, "passed": not findings}
 
 
@@ -975,6 +987,7 @@ def run_leg(cp, name: str, cell, boundaries, steps: int, product,
         undo = install(driver_module, routes, counter, roles)
 
         opening = snapshot(cp, fused)
+        reference_opening = snapshot(cp, reference)
         row["per_step"] = []
         started = time.time()
         for step in range(1, steps + 1):
@@ -1015,8 +1028,16 @@ def run_leg(cp, name: str, cell, boundaries, steps: int, product,
         material = [key for key in final if key in MATERIAL]
         row["arrays_total"] = len(final)
         row["arrays_ever_moved"] = len(ever_moved)
-        row["arrays_never_moved"] = sorted(
-            set(final) - set(ever_moved) - set(material))
+        # THE AUXILIARY CONTRACT'S EXEMPTION. fu_* and f_w_* move only on their
+        # layer's cells (KERNELS.md section 1, C2), so on a 2-D grid the invariant
+        # axis's auxiliaries are inert on EVERY route. An auxiliary the array path
+        # also leaves inert is exempt; every other unmoved array still refuses.
+        reference_moved = moved(reference_opening, snapshot(cp, reference))
+        unmoved = set(final) - set(ever_moved) - set(material)
+        row["inert_on_every_route"] = sorted(
+            name for name in unmoved - set(reference_moved)
+            if name.startswith(("fu_", "f_w_")))
+        row["arrays_never_moved"] = sorted(unmoved - set(row["inert_on_every_route"]))
         row["material_changed"] = sorted(key for key in material if key in ever_moved)
         row["inventory_asymmetry_vs_array"] = sorted(
             set(final).symmetric_difference(snapshot(cp, reference)))
@@ -1134,6 +1155,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
             raise AssertionError("the product refused the reduction case")
         reduced_plan.has_beta = 0
 
+        from gate_chunk_records import layer_record  # noqa: PLC0415
+
         fields, pml = shipped.fields, shipped.pml
         grid = fields.grid
         arrays = {name: getattr(fields, name) for name in
@@ -1147,7 +1170,13 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         shipped_plan = plan_fused_pair_from_arrays(
             "B", arrays, curl_flat, constitutive_flat,
             [1 if kind == "metallic" else 0 for kind in resolve(grid, pml)],
-            zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1)
+            zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1,
+            chunk_bounds=layer_record(grid, pml))
+        # MEEP'S START OF H, as the product's plan carries it (h_state is the
+        # driver's Fields): the from-arrays route builds a plan that has already
+        # started, and the reduction would compare a started kernel with an
+        # unstarted one at step 1.
+        shipped_plan._h_state = fields  # noqa: SLF001 - the harness owns the route
 
         roles = {id(reference.fields): "array", id(shipped.fields): "shipped",
                  id(reduced.fields): "reduced"}
@@ -1156,6 +1185,7 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         undo = install(driver_module, routes, counter, roles)
 
         opening = snapshot(cp, reduced)
+        reference_opening = snapshot(cp, reference)
         row["per_step"] = []
         for step in range(1, steps + 1):
             reference.step()
@@ -1184,8 +1214,16 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         final = snapshot(cp, reduced)
         ever_moved = moved(opening, final)
         material = [key for key in final if key in MATERIAL]
-        row["arrays_never_moved"] = sorted(
-            set(final) - set(ever_moved) - set(material))
+        # THE AUXILIARY CONTRACT'S EXEMPTION, as in run_leg. fu_* and f_w_* move
+        # only on their layer's cells (KERNELS.md section 1, C2), so on a 2-D grid
+        # the invariant axis's auxiliaries are inert on EVERY route. An auxiliary the
+        # array path also leaves inert is exempt; every other unmoved array refuses.
+        reference_moved = moved(reference_opening, snapshot(cp, reference))
+        unmoved = set(final) - set(ever_moved) - set(material)
+        row["inert_on_every_route"] = sorted(
+            name for name in unmoved - set(reference_moved)
+            if name.startswith(("fu_", "f_w_")))
+        row["arrays_never_moved"] = sorted(unmoved - set(row["inert_on_every_route"]))
         row["launches"] = dict(counter)
         failures: List[str] = []
         if row["first_divergence"] is not None:
@@ -1224,7 +1262,8 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
 def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant. The rename is what keeps the JIT cache honest."""
     header = ("import triton\nimport triton.language as tl\n"
-              "PERIODIC = tl.constexpr(0)\n"
+              + fold_passes.MUTANT_IMPORTS
+              + "PERIODIC = tl.constexpr(0)\n"
               "METALLIC = tl.constexpr(1)\n\n")
     text = header + source.replace(KERNEL_NAME, kernel_name)
     # A MUTATION THAT DOES NOT PARSE IS NOT A MUTATION. Checked before any device
@@ -1266,76 +1305,29 @@ def _rewrite_block(source: str, before: Sequence[str],
     return source, 0
 
 
+#: The beta pass's own mutations and the root forms' (KERNELS.md 7.1's inversions and
+#: 7.2's chunk-form battery): ``fold_pass_mutations``' shared spellings, the same text
+#: in every carrier of the pass. Each entry's ``needs`` is checked against the case it
+#: is scored on (:func:`mutation_case_check`).
+SHARED_MUTATIONS = (fold_passes.beta_mutations(False, False, CURL_ANCHOR)
+                    + fold_passes.form_mutations(True))
+_SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
+
+#: What each case's grid carries (by ``CASES`` index), in ``fold_pass_mutations.NEEDS``
+#: words. Every case has a PML layer on x and y (``build_driver``).
+CASE_CARRIES: Dict[int, Tuple[str, ...]] = {
+    0: ("layer",), 1: ("wall", "layer"), 2: ("wall", "layer"), 3: ("layer",),
+}
+
+
 def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
-    """(id, why it is armed, expectation, rewrite)."""
+    """(id, why it is armed, expectation, rewrite).
 
-    def m1_beta_term_dropped(source: str) -> Tuple[str, int]:
-        """The three lines that make this product exist, removed.
-
-        The ``if HAS_BETA:`` goes WITH its body, because ``_rewrite_block``
-        re-indents to the block's first line and a compound statement in position 0
-        would produce an empty suite — an unarmed mutation, not a caught defect.
-        Dropping the guard is NOT the change being measured: every case this gate
-        scores has ``has_beta = 1``, so the guarded lines executed on the pristine
-        kernel too. The assignments left behind are pure identity, so a signed zero
-        survives them."""
-        return _rewrite_block(
-            source,
-            ["if HAS_BETA:",
-             "curl0 = curl0 - (beta_plus * b)",
-             "curl1 = curl1 - (beta_minus * a)"],
-            ["curl0 = curl0", "curl1 = curl1"])
-
-    def m2_beta_partners_exchanged(source: str) -> Tuple[str, int]:
-        """The two CENTER partners swapped: target 0 takes ``a``, target 1 ``b``.
-
-        ``step_db.cpp:148-176`` pairs target 0 with the SECOND source's center and
-        target 1 with the FIRST. Exchanging them keeps both magnitudes and both
-        signs and is invisible to anything but a byte comparison."""
-        return _rewrite_block(
-            source,
-            ["curl0 = curl0 - (beta_plus * b)",
-             "curl1 = curl1 - (beta_minus * a)"],
-            ["curl0 = curl0 - (beta_plus * a)",
-             "curl1 = curl1 - (beta_minus * b)"])
-
-    def m3_beta_scaled_by_dtdx(source: str) -> Tuple[str, int]:
-        """``dtdx`` applied to the beta term.
-
-        The term is an ANALYTIC derivative (stepping.py:760-762) and carries no
-        grid spacing. Multiplying by ``dtdx`` is the single most natural wrong
-        transcription of an insert that sits one line after a ``dtdx`` curl."""
-        return _rewrite_block(
-            source,
-            ["curl0 = curl0 - (beta_plus * b)",
-             "curl1 = curl1 - (beta_minus * a)"],
-            ["curl0 = curl0 - (dtdx * (beta_plus * b))",
-             "curl1 = curl1 - (dtdx * (beta_minus * a))"])
-
-    def m4_beta_added_after_the_ownership_mask(source: str) -> Tuple[str, int]:
-        """The insert moved BELOW the ownership mask.
-
-        The array path adds it after the curl and BEFORE the mask (S:356-363 after
-        :342, before :369), so a masked-away cell must lose the beta term with the
-        curl. Moving it below leaves a nonzero curl on a plane the array path
-        zeroed. Guarded on a METALLIC axis being present — scored on ``wall_xy``,
-        which has two."""
-        source, hits = _rewrite_block(
-            source,
-            ["if HAS_BETA:",
-             "curl0 = curl0 - (beta_plus * b)",
-             "curl1 = curl1 - (beta_minus * a)"],
-            ["curl0 = curl0", "curl1 = curl1"])
-        if not hits:
-            return source, 0
-        return _rewrite_block(
-            source,
-            ["km_x = tl.load(kmx + i, mask=live, other=0.0)"],
-            ["if HAS_BETA:",
-             "    curl0 = curl0 - (beta_plus * b)",
-             "    curl1 = curl1 - (beta_minus * a)",
-             "km_x = tl.load(kmx + i, mask=live, other=0.0)"])
-
+    The seam's own mutations (the wall table, the register carry, the ``f_w`` order,
+    the curl's ownership mask) come first; the beta pass's and the root forms' follow,
+    from :data:`SHARED_MUTATIONS`. No commuted-multiply null is left on this body:
+    the H half forms no product outside ``forms.constitutive_form``.
+    """
     def m5_wall_table_is_the_d_side(source: str) -> Tuple[str, int]:
         """The DIAGONAL wall table rotated onto the OFF-DIAGONAL pairing.
 
@@ -1354,8 +1346,8 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         """Cleared into ``B``, but the constitutive half reads the UNCLEARED value.
 
         The whole point of applying the clear to the REGISTER: the array path
-        leaves ONE value in ``B`` and both consumers must see it. Same guard note
-        as ``m5``; scored on ``wall_xy``."""
+        leaves ONE value in ``B`` and both consumers must see it. Scored on
+        ``wall_xy``."""
         source, hits = _rewrite_block(
             source,
             ["if ZM_X:", "v0 = tl.where(at_x, 0.0, v0)",
@@ -1373,72 +1365,46 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source, hits
 
     def m7_history_read_after_write(source: str) -> Tuple[str, int]:
-        """``f_w`` read AFTER it is written: wrong wherever ``kms != 0``. Unguarded."""
+        """``f_w`` read AFTER it is written: wrong wherever ``kms != 0``, on the
+        accumulation's cells, where both the read and the store live."""
         return _rewrite_block(
             source,
-            ["prev0 = tl.load(w0 + idx, mask=live, other=0.0)",
+            ["prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)",
              "src0 = v0",
-             "tl.store(w0 + idx, src0, mask=live)"],
+             "tl.store(w0 + idx, src0, mask=live & dw0)"],
             ["src0 = v0",
-             "tl.store(w0 + idx, src0, mask=live)",
-             "prev0 = tl.load(w0 + idx, mask=live, other=0.0)"])
-
-    def m8_curl_parentheses_flattened(source: str) -> Tuple[str, int]:
-        """``stepping._curl_from_operands``' grouping flattened: same algebra,
-        different float32 rounding. Unguarded."""
-        needle = "curl0 = dtdx * ((c_y - c) + (b - b_z))"
-        return source.replace(needle, "curl0 = dtdx * (c_y - c + b - b_z)"), \
-            source.count(needle)
-
-    def m9_constitutive_association(source: str) -> Tuple[str, int]:
-        """Right-associated accumulation: same algebra, different float32 rounding."""
-        return _rewrite_block(
-            source,
-            ["a0 = a0 + kp_0 * src0", "a0 = a0 - km_0 * prev0"],
-            ["a0 = a0 + (kp_0 * src0 - km_0 * prev0)"])
+             "tl.store(w0 + idx, src0, mask=live & dw0)",
+             "prev0 = tl.load(w0 + idx, mask=live & dw0, other=0.0)"])
 
     def m10_ownership_mask_dropped(source: str) -> Tuple[str, int]:
         """``stepping._mask_non_owned_cells`` undone on the forward arm.
 
         Guarded on ``BCX/BCY == METALLIC`` and on the ``else`` (forward) arm, both
         of which ``wall_xy`` enters. ``BCZ`` is periodic on every case here, so the
-        ``curl2`` line is dead — which is why it is NOT part of the needle: a
-        rewrite that includes a line its case never reaches is a rewrite whose
-        result cannot be attributed."""
+        ``curl2`` line is dead -- which is why it is NOT part of the needle."""
         return _rewrite_block(
             source,
             ["if BCX == METALLIC:", "curl0 = tl.where(at_x, 0.0, curl0)",
              "if BCY == METALLIC:", "curl1 = tl.where(at_y, 0.0, curl1)"],
             ["curl0 = curl0", "curl1 = curl1"])
 
-    def m11_commuted_multiply(source: str) -> Tuple[str, int]:
-        """PREDICTED NULL: IEEE multiplication commutes; only the PTX may move."""
-        needle = "kp_0 * src0"
-        return source.replace(needle, "src0 * kp_0"), source.count(needle)
-
     return (
-        ("m1_beta_term_dropped", "the term this product exists for", "caught",
-         m1_beta_term_dropped),
-        ("m2_beta_partners_exchanged", "the CENTER partner pairing", "caught",
-         m2_beta_partners_exchanged),
-        ("m3_beta_scaled_by_dtdx", "the analytic derivative's missing dtdx",
-         "caught", m3_beta_scaled_by_dtdx),
-        ("m4_beta_added_after_the_ownership_mask", "the insert's position",
-         "caught", m4_beta_added_after_the_ownership_mask),
         ("m5_wall_table_is_the_d_side", "the DIAGONAL vs the OFF-DIAGONAL table",
          "caught", m5_wall_table_is_the_d_side),
         ("m6_zero_metal_only_on_the_store", "the register-vs-memory carry",
          "caught", m6_zero_metal_only_on_the_store),
         ("m7_history_read_after_write", "the f_w ordering", "caught",
          m7_history_read_after_write),
-        ("m8_curl_parentheses_flattened", "the curl grouping", "caught",
-         m8_curl_parentheses_flattened),
-        ("m9_constitutive_association", "float32 association", "caught",
-         m9_constitutive_association),
         ("m10_ownership_mask_dropped", "the ownership mask", "caught",
          m10_ownership_mask_dropped),
-        ("m11_commuted_multiply", "commuted multiply", "null", m11_commuted_multiply),
-    )
+    ) + _SHARED_ROWS
+
+
+def mutation_case_check(name: str) -> None:
+    """Raise unless the case ``name`` is scored on carries what its branch needs."""
+    index = MUTATION_CASE.get(name, MUTATION_CASE_INDEX)
+    fold_passes.check_needs(name, MUTATION_NEEDS.get(name, ()), CASE_CARRIES[index],
+                            CASES[index][0])
 
 
 #: Mutation id -> the CASES index whose grid carries the branch it rewrites.
@@ -1468,6 +1434,10 @@ def mutation_arming_leg() -> Dict[str, Any]:
             findings.append(f"{name}: the rewrite matched nothing")
         if not parses:
             findings.append(f"{name}: the mutant does not parse ({error})")
+        try:
+            mutation_case_check(name)
+        except AssertionError as exc:
+            findings.append(f"{name}: {exc}")
     return {"leg": "mutation_arming", "device": False, "mutations": rows,
             "findings": findings, "passed": not findings}
 
@@ -1485,6 +1455,7 @@ def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, An
             rows.append(row)
             log(f"  mutation {name}: NOT ARMED")
             continue
+        mutation_case_check(name)
         mutant = compile_mutant(mutated, f"mutant_{index}_beta_fused_B")
         case_index = MUTATION_CASE.get(name, MUTATION_CASE_INDEX)
         case = CASES[case_index]

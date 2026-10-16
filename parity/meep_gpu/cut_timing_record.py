@@ -73,9 +73,27 @@ measurement no consult can find or one found for the WRONG architecture. And sin
 the name carries the capability alone,
 a SECOND CARD of the same architecture would land on the first card's file (H100 PCIe
 and SXM both read 9.0), which ``mixed_device`` cannot see because it only looks inside
-one cut: replacing a record cut on another device is a decision, so it is named
-(``--supersede``) rather than taken (``existing_record_names_another_device``, and
-``existing_record_unreadable`` when what is there cannot be read to say whose it is).
+one cut. RECORDS ARE ADDED, NEVER REPLACED: a new architecture's record lands beside
+the others under its own name, a re-cut of an architecture may rewrite only that
+architecture's file from rows of the device that file already names, and a record cut
+on another device is refused with no override (``existing_record_names_another_device``,
+and ``existing_record_unreadable`` when what is there cannot be read to say whose it
+is). The Metal table's records are named for the Apple GPU family its rows stamp
+(``timing_applegpu_g13s.json``), by the same rule.
+
+=============================================================================
+A RECORD CUT FROM PART OF A CAMPAIGN NAMES WHAT IT LACKS
+=============================================================================
+
+With ``--account-for-release`` (the command line's default) the cut reads the table's
+release (``fastpath.RELEASED_FUSED_ARMS``, ``fastpath_cuda.CUDA_RELEASED_FUSED_ARMS``,
+``metal_dispatch.METAL_RELEASED_FUSED_ARMS``: each released product and the route
+cases that drive it) and writes ``missing``: every released (product, case) that no
+row it read accounts for, with the reason -- the rows of that case were not timings
+(an ``ERROR`` row, as the 1.0 round's eleven DRIVE rows were), or no row of the case
+was cut at all. A partial set therefore cuts, and says what it owes, where it used to
+leave a record the release check refused. ``--check`` recomputes ``missing`` against
+the release in the tree it runs in, so a release that moved since the cut DIFFERS.
 
 =============================================================================
 WHICH PRODUCT A ROW PRICES
@@ -305,6 +323,10 @@ def admission_refusal(row: Mapping[str, Any], table: str,
     """The first reason this row may not feed a record, or None."""
     if row.get("drive_table") != table:
         return f"a row of the {row.get('drive_table')!r} table"
+    if row.get("legs_mode") == "gpu-only":
+        # ONE LEG, NO SINGLES: such a row says what dispatched and how fast, never what
+        # fusing saved against the singles, which is all a preference record keys on.
+        return "a gpu-only row (the fused leg alone): it times no product against its singles"
     if row.get("verdict") != "TIMED" and not (
             row.get("verdict") == "TIMED-NOT-REPORTABLE" and row.get("floors")):
         return f"verdict {row.get('verdict')}"
@@ -821,11 +843,82 @@ RULES = {
 }
 
 
+#: Where each table's release lives: (module, name) of ``{product: route cases}``, the
+#: map the dispatch path itself reads. Read only when the release is accounted for.
+RELEASE_TABLES = {"triton": ("meep_gpu.fastpath", "RELEASED_FUSED_ARMS"),
+                  "cuda": ("meep_gpu.fastpath_cuda", "CUDA_RELEASED_FUSED_ARMS"),
+                  "metal": ("meep_gpu.metal_dispatch", "METAL_RELEASED_FUSED_ARMS")}
+
+#: The admission refusals (:func:`admission_refusal`) that say no timing of this table
+#: was made at all: the bench row is not a timing, is another table's row, or is a host
+#: smoke row. An excluded row of this kind accounts for its case without timing it.
+NOT_A_TIMING = ("verdict ", "a row of the ", "a host smoke row")
+
+
+def released_cases(table: str) -> Dict[str, List[str]]:
+    """``{product: [route case]}`` of the table's shipped release."""
+    import importlib  # noqa: PLC0415 - the dispatch layer, read only when asked for
+
+    module, name = RELEASE_TABLES[table]
+    release = getattr(importlib.import_module(module), name)
+    return {str(label): sorted(str(case) for case in cases)
+            for label, cases in sorted(release.items())}
+
+
+def missing_from_release(keys: Mapping[str, Mapping[str, Any]],
+                         excluded: Sequence[Mapping[str, Any]],
+                         released: Mapping[str, Sequence[str]]) -> List[Dict[str, str]]:
+    """Every released (product, case) the record does not account for, with why.
+
+    THE RELEASE CHECK'S OWN RULE (``test_cut_timing_record``): a case is accounted for
+    when a key prices a row of it, or when a row of it was timed on this table and
+    excluded by name (a floor failed, two tables served the plan); a product is
+    accounted for when it is a key, the unpriced partner of a priced product, or every
+    one of its cases was timed and excluded. What fails that rule is named here rather
+    than refused, so a partial set cuts and says what it owes.
+    """
+    measured = [row for entry in keys.values() for row in entry["measurements"]]
+    priced = {row["case"] for row in measured}
+    timed_out = {item["case"] for item in excluded
+                 if not str(item["reason"]).startswith(NOT_A_TIMING)}
+    keyed = {entry["product"] for entry in keys.values()}
+    partnered = {partner["product"] for row in measured for partner in row["co_fused"]}
+    reasons: Dict[str, List[str]] = {}
+    for item in excluded:
+        reasons.setdefault(str(item["case"]), [])
+        if item["reason"] not in reasons[str(item["case"])]:
+            reasons[str(item["case"])].append(str(item["reason"]))
+    out: List[Dict[str, str]] = []
+    for product, cases in sorted(released.items()):
+        silent = (product not in keyed and product not in partnered
+                  and not set(cases) <= timed_out)
+        for case in cases:
+            if case in timed_out:
+                continue
+            if case not in priced:
+                why = ("no timing of this table: " + "; ".join(sorted(reasons[case]))
+                       if case in reasons else "no row of this case among the rows cut")
+            elif silent:
+                why = ("rows of this case were priced, and none prices this product or "
+                       "names it as an unpriced partner")
+            else:
+                continue
+            out.append({"product": product, "case": case, "reason": why})
+    return out
+
+
 def cut(table: str, roots: Sequence[str], *, base: str = HERE,
         min_rows: int = MIN_ROWS_PER_KEY, select_route: Optional[str] = None,
         require_box_after: bool = False,
-        allow_unpinned_subject: Sequence[str] = ()) -> Dict[str, Any]:
-    """The sealed record for ``table`` from every ``rows.jsonl`` under ``roots``."""
+        allow_unpinned_subject: Sequence[str] = (),
+        released: Optional[Mapping[str, Sequence[str]]] = None) -> Dict[str, Any]:
+    """The sealed record for ``table`` from every ``rows.jsonl`` under ``roots``.
+
+    ``released`` (``{product: [route case]}``, :func:`released_cases`) accounts for the
+    release: the record names what it lacks under ``missing``. Absent, nothing is
+    accounted and the record carries neither the block nor the parameter, which is how
+    every record cut before the block existed recomputes byte for byte.
+    """
     if table not in dp.TABLES:
         raise CutRefused("unknown_table", f"{table!r} is not one of {dp.TABLES}")
     if int(min_rows) < 1:
@@ -875,6 +968,11 @@ def cut(table: str, roots: Sequence[str], *, base: str = HERE,
         "excluded": excluded,
         "keys": keys,
     }
+    if released is not None:
+        record["cut"]["account_for_release"] = True
+        lacking = missing_from_release(keys, excluded, released)
+        if lacking:
+            record["missing"] = lacking
     sealed = dp.seal(record)
     dp.validate(sealed, expect_table=table)
     return sealed
@@ -1186,6 +1284,12 @@ def render_report(record: Mapping[str, Any], preview: Optional[Mapping[str, Any]
         reasons[item["reason"]] = reasons.get(item["reason"], 0) + 1
     out += ["", "LEFT OUT, BY REASON"]
     out += [f"  {count:4d}  {reason}" for reason, count in sorted(reasons.items())]
+    if record["cut"].get("account_for_release"):
+        lacking = record.get("missing") or []
+        out += ["", f"MISSING FROM THE RELEASE: {len(lacking)} released (product, case) "
+                    "pair(s) this record does not account for"]
+        out += [f"  {item['product']} / {item['case']}: {item['reason']}"
+                for item in lacking]
     if preview is not None:
         out += ["", preview["label"]]
         if preview.get("not_joined_because"):
@@ -1243,9 +1347,9 @@ def out_capability(table: str, out: str, record: Mapping[str, Any]) -> str:
     if os.path.basename(out) != wanted:
         raise CutRefused(
             "out_names_another_capability",
-            f"the admitted rows were timed on compute capability {capability}, whose "
+            f"the admitted rows were timed on architecture {capability}, whose "
             f"record is named {wanted}; --out names {os.path.basename(out)!r}. The "
-            f"capability is in the name so that a consult on another architecture "
+            f"architecture is in the name so that a consult on another architecture "
             f"cannot find this record at all")
     return capability
 
@@ -1265,34 +1369,32 @@ def _devices_named(path: str) -> Optional[List[str]]:
         return None
 
 
-def refuse_to_replace_another_device(out: str, record: Mapping[str, Any],
-                                    supersede: bool) -> None:
-    """Refuse to write over a record cut on a DIFFERENT card, unless told to.
+def refuse_to_replace_another_device(out: str, record: Mapping[str, Any]) -> None:
+    """Refuse to write over a record cut on a DIFFERENT card. There is no override.
 
     ``mixed_device`` only looks inside one cut, and the file name carries the
-    architecture alone, so a second card of the same architecture writes over the
-    first card's rows with nothing said. A record is evidence; replacing it is a
-    decision, and the decision is named on the command line.
+    architecture alone, so a second card of the same architecture would write over
+    the first card's rows with nothing said. RECORDS ARE ADDED, NEVER REPLACED: a
+    re-cut may rewrite the file of the device it names (a records update), and
+    another device's evidence is never retired by a cut.
     """
     if not os.path.exists(out):
         return
     held = _devices_named(out)
     mine = sorted({str((host or {}).get("device")) for host in record["host"]})
     if held is None:
-        if supersede:
-            return
         raise CutRefused(
             "existing_record_unreadable",
             f"{out} is already there and does not read as a record, so it cannot say "
-            f"which device it was cut on; this cut timed {mine}. Pass --supersede to "
-            f"replace it anyway")
-    if held != mine and not supersede:
+            f"which device it was cut on; this cut timed {mine}. A record is added "
+            f"beside the others and never replaces one")
+    if held != mine:
         raise CutRefused(
             "existing_record_names_another_device",
             f"{out} was cut on {held} and these rows were timed on {mine}: the file "
-            f"name carries the compute capability, not the card, so this write would "
-            f"replace one card's evidence with another's. Pass --supersede to retire "
-            f"the record that is there")
+            f"name carries the architecture, not the card, so this write would "
+            f"replace one card's evidence with another's. A record is added beside the "
+            f"others and never replaces one")
 
 
 def check(path: str, base: str) -> int:
@@ -1309,11 +1411,14 @@ def check(path: str, base: str) -> int:
         say(f"cannot recompute {path}: artifacts absent on this host: {absent}")
         return EXIT_ARTIFACTS_ABSENT
     try:
+        released = (released_cases(parameters["table"])
+                    if parameters.get("account_for_release") else None)
         again = cut(parameters["table"], roots, base=base,
                     min_rows=parameters["min_rows"],
                     select_route=parameters["select_route"],
                     require_box_after=parameters["require_box_after"],
-                    allow_unpinned_subject=parameters["allow_unpinned_subject"])
+                    allow_unpinned_subject=parameters["allow_unpinned_subject"],
+                    released=released)
     except (CutRefused, dp.RecordRefused) as refusal:
         say(f"DIFFERS {path}: the rows on disk no longer cut at all -- {refusal}")
         return EXIT_DIFFERS
@@ -1337,11 +1442,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--out", help="the record to write; the report lands beside it. "
                                       "Its basename is the one dispatch_preference."
                                       "record_path gives the capability the rows stamp")
-    parser.add_argument("--supersede", action="store_true",
-                        help="write over the record already at --out although it was "
-                             "cut on another device (or cannot be read to say which). "
-                             "Without it the cut refuses by name rather than replacing "
-                             "one card's evidence with another's")
+    parser.add_argument("--no-account-for-release", dest="account_for_release",
+                        action="store_false",
+                        help="do not read the table's release; the record then names "
+                             "nothing it lacks (the default accounts for every released "
+                             "(product, case) under missing)")
     parser.add_argument("--min-rows", type=int, default=MIN_ROWS_PER_KEY)
     parser.add_argument("--select-route",
                         help="the one repair route to cut, as a refusal names it")
@@ -1367,11 +1472,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         record = cut(args.table, args.rows, base=args.base, min_rows=args.min_rows,
                      select_route=args.select_route,
                      require_box_after=args.require_box_after,
-                     allow_unpinned_subject=args.allow_unpinned_subject)
+                     allow_unpinned_subject=args.allow_unpinned_subject,
+                     released=(released_cases(args.table) if args.account_for_release
+                               else None))
         # BEFORE ANYTHING IS WRITTEN: the name has to be the one the capability owns,
         # and whatever is already under it has to be this cut's own device.
         capability = out_capability(args.table, args.out, record)
-        refuse_to_replace_another_device(args.out, record, bool(args.supersede))
+        refuse_to_replace_another_device(args.out, record)
     # dp.RecordRefused is the READER refusing what this tool built (cut seals and then
     # validates). It leaves by the same door as every other refusal, named.
     except (CutRefused, dp.RecordRefused) as refusal:

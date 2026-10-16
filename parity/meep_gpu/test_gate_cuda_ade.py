@@ -123,9 +123,9 @@ def test_the_two_nulls_and_their_discriminators_edit_the_same_expressions(device
     caught, and the pairing is asserted rather than left to the prose."""
     text = device_text[True]
     commuted, _ = gate.n_commute_the_history_product(text)
-    rebound, _ = gate.m_swap_c_now_and_c_prev(text)
-    assert commuted != text and rebound != text and commuted != rebound
-    regrouped, _ = gate.m_associate_c_drive_with_sigma(text)
+    rebound, _ = gate.m_swap_the_history_constants(text)
+    assert commuted != rebound
+    regrouped, _ = gate.m_associate_the_drive_constant_with_sigma(text)
     reordered, _ = gate.n_commute_the_drive_product(text)
     assert regrouped != text and reordered != text and regrouped != reordered
 
@@ -134,27 +134,38 @@ def test_the_two_nulls_and_their_discriminators_edit_the_same_expressions(device
 # THE EVALUATOR REALLY EXECUTES THE TEXT
 # --------------------------------------------------------------------------
 
+def _evaluator_inputs(shape=(4, 4, 4), seed=7):
+    rng = np.random.default_rng(seed)
+    arrays = {name: rng.uniform(-1, 1, shape).astype(np.float32)
+              for name in ("p_out", "p_now", "p_prev", "drive_w", "drive_e", "sigma")}
+    record = np.zeros(25, dtype=np.int32)
+    record[12:16] = (0, 1, 3, 4)  # half-integer x: rows 0 and 3 in the layer's chunks
+    arrays["cb"] = record
+    scalars = {"two_minus_od": np.float32(1.9375), "gamma1": np.float32(0.96875),
+               "omega0dtsqr": np.float32(0.0625), "gamma1inv": np.float32(0.515625),
+               "nx": shape[0], "ny": shape[1], "nz": shape[2], "own_axis": 0}
+    return arrays, scalars
+
+
 def test_the_evaluator_reads_the_source_rather_than_a_transcription(device_text):
     """Mutate the text and the laptop backend must compute something else.
 
     THE HAZARD: an evaluator that had the expression hard-coded would score every
     source mutation a null and every leg would pass. The whole value of the off-
-    device backend is that the same bytes drive it.
+    device backend is that the same bytes drive it -- the drive select and the
+    record decode included.
     """
-    shape = (4, 4, 4)
-    rng = np.random.default_rng(7)
-    arrays = {name: rng.uniform(-1, 1, shape).astype(np.float32)
-              for name in ("p_out", "p_now", "p_prev", "drive", "sigma")}
-    scalars = {"c_now": np.float32(1.9), "c_prev": np.float32(-0.98),
-               "c_drive": np.float32(0.11)}
+    arrays, scalars = _evaluator_inputs()
     pristine = {k: v.copy() for k, v in arrays.items()}
     gate.evaluate_device_source(device_text[True], arrays, scalars)
     shipped = arrays["p_out"].copy()
 
-    arrays = {k: v.copy() for k, v in pristine.items()}
-    mutated, _ = gate.m_drop_sigma(device_text[True])
-    gate.evaluate_device_source(mutated, arrays, scalars)
-    assert not np.array_equal(shipped, arrays["p_out"])
+    for mutation in (gate.m_drop_sigma, gate.m_drive_f_w_on_every_cell,
+                     gate.m_drive_flag_bound_off_by_one, gate.m_folded_three_term_form):
+        arrays = {k: v.copy() for k, v in pristine.items()}
+        mutated, _ = mutation(device_text[True])
+        gate.evaluate_device_source(mutated, arrays, scalars)
+        assert not np.array_equal(shipped, arrays["p_out"]), mutation.__name__
 
     # And the null must really be a null THROUGH THE EVALUATOR, not merely in the
     # text: IEEE multiply commutes bitwise and this is where that is measured.
@@ -162,6 +173,19 @@ def test_the_evaluator_reads_the_source_rather_than_a_transcription(device_text)
     commuted, _ = gate.n_commute_the_drive_product(device_text[True])
     gate.evaluate_device_source(commuted, arrays, scalars)
     assert np.array_equal(shipped.view(np.uint32), arrays["p_out"].view(np.uint32))
+
+
+def test_the_evaluator_is_the_array_paths_expression_with_the_per_chunk_drive(device_text):
+    """The shipped text through the evaluator, against the expression in NumPy."""
+    arrays, scalars = _evaluator_inputs()
+    p, q, s_ = arrays["p_now"].copy(), arrays["p_prev"].copy(), arrays["sigma"].copy()
+    rows = np.arange(4).reshape(-1, 1, 1)
+    w = np.where((rows == 0) | (rows == 3), arrays["drive_w"], arrays["drive_e"])
+    gate.evaluate_device_source(device_text[True], arrays, scalars)
+    expected = scalars["gamma1inv"] * (((p * scalars["two_minus_od"])
+                                        - (scalars["gamma1"] * q))
+                                       + (scalars["omega0dtsqr"] * (s_ * w)))
+    assert np.array_equal(arrays["p_out"].view(np.uint32), expected.view(np.uint32))
 
 
 def test_the_evaluator_refuses_a_statement_it_has_no_grammar_for(device_text):
@@ -175,9 +199,10 @@ def test_the_evaluator_refuses_a_statement_it_has_no_grammar_for(device_text):
                                        "float p = fmaf(p_now[idx], 1.0f, 0.0f);")
     assert gate.evaluator_blind_lines(broken), (
         "a statement outside the grammar must be visible to the classifier")
+    assert gate.evaluator_blind_lines(device_text[True]) == []
+    arrays, scalars = _evaluator_inputs()
     with pytest.raises(ValueError):
-        gate.evaluate_device_source(broken, {"p_out": np.zeros((2, 2, 2), np.float32)},
-                                    {})
+        gate.evaluate_device_source(broken, arrays, scalars)
 
 
 # --------------------------------------------------------------------------
@@ -243,14 +268,16 @@ def test_a_launch_that_never_happened_is_refused_even_when_the_bytes_agree():
 def test_a_dead_drive_field_is_measured_as_a_dead_drive_term(backend, xp):
     """The floor is taken on the FIXTURE, not asserted about it.
 
-    Zero the drive and ``c_drive * (sigma * w)`` is identically zero: the case can
-    no longer distinguish ``drop_sigma`` or the wrong-drive control, and the gate
-    has to say so rather than count the pass.
+    Zero the drive and ``omega0dtsqr * (sigma * w)`` is identically zero: the case
+    can no longer distinguish ``drop_sigma`` or the wrong-drive control, and the gate
+    has to say so rather than count the pass. MEEP's drive is ``f_w`` on the layer's
+    chunks and the stored E elsewhere, so both are zeroed.
     """
     spec = base_spec()
     fields, layer, grid, _ = gate.build(xp, spec, 11)
     for component in gate.COMPONENTS:
         getattr(fields, "f_w_" + component)[...] = 0.0
+        getattr(fields, component)[...] = 0.0
     floors = gate.term_magnitudes(fields)
     assert floors["drive_term_max_abs"] == 0.0
     assert floors["history_term_max_abs"] > 0.0
@@ -260,10 +287,15 @@ def test_a_dead_drive_field_is_measured_as_a_dead_drive_term(backend, xp):
 # THE PLANTED DEFECTS, THROUGH THE WHOLE HARNESS
 # --------------------------------------------------------------------------
 
-@pytest.mark.parametrize("name", ["reassociate_three_terms",
-                                  "associate_c_drive_with_sigma",
+@pytest.mark.parametrize("name", ["add_the_drive_before_the_history",
+                                  "folded_three_term_form",
+                                  "associate_the_drive_constant_with_sigma",
                                   "drop_previous_history", "swap_p_and_q",
-                                  "swap_c_now_and_c_prev", "drop_sigma"])
+                                  "swap_the_history_constants", "drop_sigma",
+                                  "drive_f_w_on_every_cell",
+                                  "drive_flag_bound_off_by_one",
+                                  "drive_flag_on_the_integer_record",
+                                  "drive_flag_on_another_axis"])
 def test_each_defect_diverges_through_the_gate(backend, xp, name, device_text):
     mutated, sites = gate.mutate_sources(device_text, gate.SOURCE_MUTATIONS[name])
     assert sites > 0
@@ -311,23 +343,28 @@ def test_the_arming_is_undone_and_the_check_can_fail(backend, device_text):
 def test_the_wrong_drive_is_caught_and_is_a_null_where_the_two_agree(backend, xp):
     """THE CONTROL THIS FAMILY MOST OWES, and its discriminator.
 
-    ``drive_field`` returns ``f_w`` under an active layer and the stored E without
-    one, and the two agree EXACTLY outside the absorber -- so binding the wrong one
-    is invisible in every no-PML test. Catching it is only a statement about the
-    POINTER if the same planted binding is a null when the two arrays agree.
+    MEEP's drive is ``f_w`` on the cells whose chunk carries the component's layer and
+    the stored E elsewhere, and the two agree EXACTLY off the layer's chunks -- so
+    binding one array on every cell is invisible in every no-PML test. Catching it is
+    only a statement about the BINDING if the same planted binding is a null when the
+    two arrays agree. Both one-array bindings are planted: the stored E everywhere and
+    ``f_w`` everywhere (the select removed).
     """
-    caught = gate.one_case(backend, xp, base_spec(), "fmad_false",
-                           ("--fmad=false",), 1, wrong_drive=True)
-    assert gate.case_is_valid(caught)[0]
-    assert not caught["bit_identical"]
-    assert caught["differing_floats"] > 0
+    for planted in ("stored_E_on_every_cell", "f_w_on_every_cell"):
+        caught = gate.one_case(backend, xp, base_spec(), "fmad_false",
+                               ("--fmad=false",), 1, wrong_drive=planted)
+        assert gate.case_is_valid(caught)[0], planted
+        assert caught["drive_split_components"], planted
+        assert not caught["bit_identical"], planted
+        assert caught["differing_floats"] > 0
 
-    null = gate.one_case(backend, xp, base_spec(drive_equals_stored_E=True),
-                         "fmad_false", ("--fmad=false",), 1, wrong_drive=True)
-    assert gate.case_is_valid(null)[0]
-    assert null["bit_identical"], (
-        "with the stored E seeded equal to f_w the wrong binding must be inert; "
-        "otherwise the catch above is a statement about some other difference")
+        null = gate.one_case(backend, xp, base_spec(drive_equals_stored_E=True),
+                             "fmad_false", ("--fmad=false",), 1, wrong_drive=planted)
+        assert gate.case_is_valid(null)[0]
+        assert null["bit_identical"], (
+            f"{planted}: with the stored E seeded equal to f_w the wrong binding must "
+            f"be inert; otherwise the catch above is a statement about some other "
+            f"difference")
 
 
 def test_stale_pointers_are_invisible_at_one_launch_and_caught_at_sixty(backend, xp):
@@ -387,7 +424,7 @@ def test_allclose_lets_a_real_defect_through(backend, xp, device_text):
     -- far below ``rtol=1e-5`` -- so a tolerant comparator reports a clean pass on a
     kernel that is not the array path.
     """
-    mutated, _ = gate.mutate_sources(device_text, gate.m_reassociate_three_terms)
+    mutated, _ = gate.mutate_sources(device_text, gate.m_add_the_drive_before_the_history)
     backend.set_sources(mutated)
     try:
         relaxed = gate.one_case(backend, xp, base_spec(), "fmad_false",

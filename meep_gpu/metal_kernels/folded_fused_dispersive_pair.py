@@ -19,12 +19,28 @@ certified places:
   cell images which and with what sign; getting one of them independently wrong
   here would be a plane of wrong values that agrees with nothing, and the whole
   point of importing them is that there is one answer;
-* the curl arithmetic per target — :data:`.fused_dispersive_pair._TARGETS`,
-  IMPORTED, which is ``shaders._CURL_TEMPLATE``'s own text split per component;
-* the pole-aware E half — :func:`.dispersive_update_e.dispersive_e_source`'s body
-  (dispersive_update_e.py:74-82), the transcription of ``stepping.update_E``
-  (stepping.py:1012-1016) and ``stepping._apply_constitutive_pml``
-  (stepping.py:2130-2143).
+* the curl arithmetic per target — LIFTED from the certified folded D curl
+  (:func:`.symmetry.folded_curl_source` at ``backward=True``) by
+  :func:`certified_target_curl`: the target's own curl statement, with its
+  absent-partner forms, and exactly the operand loads that statement reads;
+* the per-chunk curl forms — the certified folded curl's ``p``/``n``/``v``
+  statements through :func:`.folded_fused_pair.certified_curl_statements`, which
+  carries :data:`.folded_fused_pair.LIFT_EDITS`, so this family and the
+  three-component pair emit one text;
+* the pole-aware E half — ``stepping.update_E`` with its sources ``(D - sum P) *
+  inv_eps`` (``fields.displacement_minus_polarization``) through
+  ``stepping._apply_constitutive_regions``: the accumulation ``e + ((kps*src) -
+  (kms*prev))`` with ``f_w = src`` on a cell whose chunk carries the component's own
+  layer, and the output select ``e = src`` elsewhere, ``f_w`` untouched there.
+
+THE PML FORMS ARE CHOSEN PER STRUCTURE CHUNK, as :mod:`.folded_fused_pair` chooses
+them and from the same chunk record, which rides in ``Params`` (no binding). Per
+component the kernel reads two record entries: the curl's dsigu axis on the integer
+lattice and the E half's own axis on the half-integer one. A far ghost evaluates the
+E half's flag at its destination (stored ``last``), beside the coordinate it reloads
+its pair at; a near ghost shares its owner's. The pole chain is the base array path's
+``D - P0 - P1 ...`` in pole order; the ADE form itself (F_DISPERSIVE) is not in this
+module.
 
 ===========================================================================
 PER COMPONENT, AND THE POLE BUDGET IS WHY — not a platform refusal
@@ -85,6 +101,7 @@ product spans five. It registers ``wired=False`` and reaches its two slots throu
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -96,26 +113,33 @@ from .ade_update_p import _physical_name
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
 from .dispersive_update_e import E_TERMS, MAX_POLES, _poles
 from .folded_fused_pair import (
+    BACKWARD,
+    CONSTITUTIVE_HALF_INTEGER,
     _COORDINATE,
     _LAST,
     _LAST_FLAG,
     _RECURRENCE_AXES,
     _REFLECT,
     _STRIDE,
+    _body_of,
     _component_parity,
     _far_carry_reasons,
     _mirror_phase_reasons,
     carried_destinations,
+    certified_curl_statements,
     far_fill_axes,
     near_fill_axes,
     zero_metal_lines,
 )
-from .fused_dispersive_pair import _TARGETS, _ZERO_METAL_ROWS
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as `chunk_bounds`.
+from . import chunk_bounds as _chunk_bounds
+from .fused_dispersive_pair import _ZERO_METAL_ROWS
 from .symmetry import (
     MIRROR_CODES,
     _parity_spelling,
     _reduced_codes,
     folded_composition_curl_coverage,
+    folded_curl_source,
     folded_top_plane_mask,
 )
 from .. import deposit_repair as _deposit_repair
@@ -193,7 +217,7 @@ _POLE_PREFIX = "q"
 __all__ = [
     "ALL_COMPONENT_POINTERS", "CARRIES_DEPOSIT_REPAIR", "FAMILY",
     "NEAR_SOURCE_INDEX", "PACKED_BINDINGS", "REPLACES", "SEPARATE_SCALAR_BINDINGS",
-    "SLOT", "MetalFoldedFusedDispersivePairPlan",
+    "SLOT", "MetalFoldedFusedDispersivePairPlan", "certified_target_curl",
     "compile_folded_fused_dispersive_pair", "folded_fused_dispersive_pair_source",
     "metal_folded_fused_dispersive_pair_coverage",
     "plan_metal_folded_fused_dispersive_pair", "refuted_separate_scalar_source",
@@ -214,9 +238,14 @@ __CONTRACT__
 // EIGHT SCALARS, ONE BINDING. The three reflect rows the far carry needs
 // (stepping._far_reflect_rows:1661) ride inside this record rather than as three
 // more buffers, so carrying fill_folded_far_ghosts_D costs nothing against the
-// platform's 31-binding ceiling (device.py:72).
+// platform's 31-binding ceiling (device.py:72). The chunk record rides here too,
+// as one member after the scalars.
+__RECORD_STRUCT__
+
 struct Params { uint nx; uint ny; uint nz; uint n_elem; float dtdx;
-                int rx; int ry; int rz; };
+                int rx; int ry; int rz;
+__RECORD_MEMBER__
+};
 
 kernel void folded_fused_dispersive_pair_component(
     device float*       f__T__   [[buffer(0)]],
@@ -247,11 +276,13 @@ kernel void folded_fused_dispersive_pair_component(
     uint idx [[thread_position_in_grid]])
 {
     // THE EIGHT SCALARS ARE UNPACKED INTO THE TRANSCRIBED BODIES' OWN NAMES, once,
-    // before any of the lifted text runs.
+    // and the record is aliased as the `cb` the bounds block reads, before any of
+    // the lifted text runs.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
     int reflect_x = prm.rx, reflect_y = prm.ry, reflect_z = prm.rz;
     (void)reflect_x; (void)reflect_y; (void)reflect_z;
+__RECORD_ALIAS__
 
 __BODY__
 }
@@ -261,14 +292,20 @@ __BODY__
 def _constitutive_block(target: int, index: str, value: str, indent: str,
                         prefix: str, pole_count: int,
                         kp: Optional[str] = None,
-                        km: Optional[str] = None) -> List[str]:
+                        km: Optional[str] = None,
+                        dw: Optional[str] = None) -> List[str]:
     """The POLE-AWARE ``update_E`` for one component at one cell.
 
-    TRANSCRIBED from :func:`.dispersive_update_e.dispersive_e_source`'s body
-    (dispersive_update_e.py:74-82), which is itself ``stepping.update_E``
-    (stepping.py:1012-1016) plus ``_apply_constitutive_pml`` (:2130-2143). ONE line
-    differs and it is THE SEAM: ``float source = d_in[idx];`` becomes the live
-    register, and every line after it is the pointwise body's own.
+    TRANSCRIBED from ``stepping.update_E``: the source ``(D - sum P) * inv_eps``
+    (``fields.displacement_minus_polarization``, then the per-cell product), stepped
+    through ``stepping._apply_constitutive_regions``. On a cell whose chunk carries
+    the component's own layer (``dw``) ``prev`` is read BEFORE ``fw`` is written and
+    the right-hand side is formed first, ``e + ((kps*src) - (kms*prev))``; elsewhere
+    ``e = src``, an output select, and ``fw`` is not touched. THE SEAM is the source:
+    the displacement is the live register, never a reload.
+
+    ``dw`` defaults to the owned cell's ``dw{target}``; a far ghost passes the flag
+    it evaluates at its destination (:func:`_far_membership`).
 
     THE POLE SUBTRACTION CHAIN IS LEFT-ASSOCIATED AND BOUNDED, in the pointwise
     family's own order: ``source = source - q0[..]`` then ``- q1[..]``, one
@@ -293,13 +330,14 @@ def _constitutive_block(target: int, index: str, value: str, indent: str,
     """
     kp = f"kp{target}" if kp is None else kp
     km = f"km{target}" if km is None else km
+    dw = f"dw{target}" if dw is None else dw
     coordinate = _COORDINATE[target]
     if index != "ii":
         # The destination's own coordinate on the indexed axis, recovered from its
         # flat index rather than reused from the owner's: see the docstring.
         coordinate = f"{prefix}coord"
     lines = [
-        f"{indent}float {prefix}prev = fw[{index}];",
+        f"{indent}float {prefix}prev = {dw} ? fw[{index}] : 0.0f;",
         f"{indent}float {prefix}source = {value};",
     ]
     lines.extend(f"{indent}{prefix}source = {prefix}source - "
@@ -307,13 +345,34 @@ def _constitutive_block(target: int, index: str, value: str, indent: str,
                  for pole in range(int(pole_count)))
     lines.extend([
         f"{indent}float {prefix}src = {prefix}source * ie{target}[{index}];",
-        f"{indent}fw[{index}] = {prefix}src;",
-        f"{indent}float {prefix}acc = e_out[{index}];",
-        f"{indent}{prefix}acc = {prefix}acc + {kp}[{coordinate}] * {prefix}src;",
-        f"{indent}{prefix}acc = {prefix}acc - {km}[{coordinate}] * {prefix}prev;",
+        f"{indent}if ({dw}) {{ fw[{index}] = {prefix}src; }}",
+        f"{indent}float {prefix}acc = {prefix}src;",
+        f"{indent}if ({dw}) {{ {prefix}acc = e_out[{index}] + "
+        f"(({kp}[{coordinate}] * {prefix}src) - ({km}[{coordinate}] * {prefix}prev)); }}",
         f"{indent}e_out[{index}] = {prefix}acc;",
     ])
     return lines
+
+
+def _far_membership(target: int, axis: int, tag: str,
+                    indent: str) -> Tuple[List[str], str]:
+    """The FAR destination's own dsigw membership, evaluated at stored ``last``.
+
+    :func:`.folded_fused_pair._far_membership`'s rule on this family's per-component
+    kernel: the E half selects on the component's OWN axis, which the far fill moves,
+    so the flag is evaluated at the destination, through
+    :func:`.chunk_bounds.membership_lines` with a per-ghost suffix.
+    """
+    if axis != target:
+        raise AssertionError(
+            f"component {target} images its FAR ghost on axis {axis}; the E half's "
+            f"membership is on the component's OWN axis (fields.IYEE_SHIFTS)")
+    coordinates = list(_COORDINATE)
+    coordinates[axis] = _LAST[axis]
+    suffix = f"_{tag}"
+    lines = _chunk_bounds.membership_lines(
+        [(CONSTITUTIVE_HALF_INTEGER, axis)], coordinates, suffix, indent).splitlines()
+    return lines, _chunk_bounds.membership_name(CONSTITUTIVE_HALF_INTEGER, axis, suffix)
 
 
 def _carry_blocks(target: int, near: Sequence[int], far: Sequence[int],
@@ -415,11 +474,57 @@ def _carry_blocks(target: int, near: Sequence[int], far: Sequence[int],
         # ordinary pair is the identical word.
         coordinate = _LAST[target] if carries_far else _COORDINATE[target]
         lines.append(f"{inner}int {tag}_coord = {coordinate};")
+        # THE MEMBERSHIP MOVES WITH THE COORDINATE, for the same reason: the E half
+        # selects its form on the component's own axis. A near ghost shares its
+        # owner's flag; a far one evaluates its own at `last`.
+        if carries_far:
+            membership, dw = _far_membership(target, target, tag, inner)
+            lines.extend(membership)
+        else:
+            dw = f"dw{target}"
         lines.extend(_constitutive_block(target, f"{tag}_i", f"{tag}_v", inner,
                                          f"{tag}_", pole_count,
-                                         f"kp{target}", f"km{target}"))
+                                         f"kp{target}", f"km{target}", dw))
         lines.append(f"{indent}}}")
     return lines
+
+
+def certified_target_curl(codes: Sequence[int], target: int,
+                          contract: str = shaders.CONTRACT_OFF
+                          ) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+    """One target's curl, LIFTED from the certified folded D curl body.
+
+    Returns ``(loads, curl)``: the operand load lines the target's curl statement
+    reads, in the certified body's order, and that statement's own lines (it spans
+    two: the both-partner and absent-partner forms). Nothing is retyped — the
+    statement is the certified ``curl{t}`` declaration up to its ``;``, and a load
+    is kept exactly when the variable it declares appears in that statement.
+    """
+    body = _body_of(folded_curl_source(codes, BACKWARD, contract), "folded curl")
+    lines = body.splitlines()
+    starts = [index for index, line in enumerate(lines)
+              if line.startswith(f"    float curl{target} = ")]
+    if len(starts) != 1:
+        raise AssertionError(
+            f"the certified folded curl carries {len(starts)} declarations of "
+            f"curl{target}; this family lifts exactly one")
+    statement: List[str] = []
+    for line in lines[starts[0]:]:
+        statement.append(line)
+        if line.rstrip().endswith(";"):
+            break
+    else:  # pragma: no cover - a statement with no terminator
+        raise AssertionError(f"the certified curl{target} statement never ends")
+    text = " ".join(statement)
+    load_lines = [line for line in lines
+                  if re.match(r"^    float [abc](_[xyz])? +=", line)]
+    if len(load_lines) != 9:
+        raise AssertionError(
+            f"the certified folded curl declares {len(load_lines)} operand loads, "
+            f"not nine; this family selects from them by name")
+    loads = tuple(line for line in load_lines
+                  if re.search(r"\b" + re.escape(line.split()[1]) + r"\b", text))
+    return loads, tuple(statement)
 
 
 def folded_fused_dispersive_pair_source(
@@ -471,9 +576,18 @@ def folded_fused_dispersive_pair_source(
                 f"the two sets being disjoint")
 
     reduced = _reduced_codes(codes)
-    spec = _TARGETS[target]
     first, second = _RECURRENCE_AXES[target]
     axis_coordinate = {"x": "i", "y": "j", "z": "k"}
+    loads, curl = certified_target_curl(codes, target, contract)
+    statements = certified_curl_statements(codes, contract)
+    previous, stage, stepped = statements["recurrence"][target]
+    # THE TWO RECORD ENTRIES THIS COMPONENT READS: the curl's dsigu axis on the curl
+    # side's lattice (shaders.CURL_CYCLE, CURL_HALF_INTEGER), and the E half's own
+    # axis on its lattice (CONSTITUTIVE_HALF_INTEGER).
+    curl_half = shaders.CURL_HALF_INTEGER[BACKWARD]
+    dsigu = shaders.CURL_CYCLE[target][1]
+    du_name = _chunk_bounds.membership_name(curl_half, dsigu)
+    dw_name = _chunk_bounds.membership_name(CONSTITUTIVE_HALF_INTEGER, target)
 
     body: List[str] = [
         templates.GUARD,
@@ -486,7 +600,12 @@ def folded_fused_dispersive_pair_source(
         "    int j   = plane % nyi;",
         "    int i   = plane / nyi;",
         "",
-        "    // --- the ghost rule, per axis (stepping._shift_down:1787) ----------",
+        "    // --- the chunk record: this component's two memberships at this cell, and",
+        "    // partner presence (metal_kernels/chunk_bounds.py) ------------------------",
+        _chunk_bounds.prologue([(curl_half, dsigu), (CONSTITUTIVE_HALF_INTEGER, target)],
+                               presence=(0, 1, 2)),
+        "",
+        "    // --- the ghost rule, per axis (stepping._shift_down) ----------------",
         "    // BOTH MIRROR CODES TAKE THE METALLIC BRANCH through _reduced_codes;",
         "    // the ghost it serves is dead under the cell-0 mask (symmetry.py:36-49).",
         "    int si = i - 1, sj = j - 1, sk = k - 1;",
@@ -500,12 +619,14 @@ def folded_fused_dispersive_pair_source(
         "    int oz = i * nyz + j * nzi + sk;",
         "",
         "    // METALLIC serves an exact 0.0 past the wall -- Triton's `other=0.0`.",
-        *spec["loads"],
+        *loads,
         "",
-        "    // --- the curl (stepping._curl_from_operands:1601): DO NOT flatten these parens",
-        spec["curl"],
+        "    // --- the curl (stepping._curl_from_operands): the certified folded curl's",
+        "    // own statement for this target, absent-partner forms included. DO NOT",
+        "    // regroup: each operation rounds once.",
+        *curl,
         "",
-        "    // --- ownership mask, cell 0 (stepping._mask_non_owned_cells:1865) --",
+        "    // --- ownership mask (stepping._mask_non_owned_cells) ---------------",
         "    bool at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);",
         "    (void)at_x; (void)at_y; (void)at_z;",
     ]
@@ -528,20 +649,24 @@ def folded_fused_dispersive_pair_source(
                 or [f"    // no folded PERIODIC axis masks curl{target}'s top plane"])
     body.extend([
         "",
-        "    // --- split-field recurrence (stepping._apply_pml_update:1905) ------",
+        "    // --- the two PML forms, per structure chunk (stepping._apply_curl_regions)",
+        "    // The certified folded curl's statements for this target: the recurrence",
+        "    // where the dsigu membership holds, the dsig-only form elsewhere, and fu",
+        "    // read and written only on the recurrence's cells.",
         f"    float km_{first} = km{first}[{axis_coordinate[first]}], "
         f"si_{first} = sinv{first}[{axis_coordinate[first]}];",
         f"    float km_{second} = km{second}[{axis_coordinate[second]}], "
         f"si_{second} = sinv{second}[{axis_coordinate[second]}];",
+        f"    const bool du{target} = {du_name};",
+        f"    const bool dw{target} = {dw_name};",
         "",
-        f"    float p{target} = u{target}[ii];",
-        f"    float n{target} = ((p{target} * km_{first}) - curl{target})"
-        f" * si_{first};",
+        previous,
+        stage,
         "",
-        "    // `u` IS WRITTEN AT EVERY CELL, ghost cells included: step_D updates",
-        "    // fu everywhere and the fills touch D only (stepping.py:1449-1450",  # stepping.py live lines for the frozen device-text citation(s) in this string: 1449-1450->1497-1498
-        "    // writes `field`, never `fu_field`).",
-        f"    u{target}[ii] = n{target};",
+        "    // `u` IS WRITTEN ON THE RECURRENCE'S CELLS BY EVERY THREAD, ghost cells",
+        "    // included: step_D updates fu there and the fills touch D only",
+        "    // (stepping._write_mirror_ghost writes `field`, never `fu_field`).",
+        statements["aux_stores"][target],
         "",
     ])
 
@@ -577,9 +702,7 @@ def folded_fused_dispersive_pair_source(
         body.append(f"    // component {target}: no folded axis images a cell of "
                     f"this component")
         indent = "    "
-    body.append(
-        f"{indent}float v{target} = (((f{target}[ii] * km_{second}) + n{target})"
-        f" - p{target}) * si_{second};")
+    body.append(indent + stepped.strip())
     cleared = zero_metal_lines(target, zero_metal, f"v{target}", indent)
     body.extend(cleared or [f"{indent}// no walled axis clears this target"])
     body.append(f"{indent}f{target}[ii] = v{target};")
@@ -593,6 +716,9 @@ def folded_fused_dispersive_pair_source(
 
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": templates.contraction_pragma(contract),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__T__": str(target),
         "__BODY__": "\n".join(body),
     })
@@ -755,7 +881,7 @@ class MetalFoldedFusedDispersivePairPlan:
 
     __slots__ = ("entries", "residency", "volumes", "codes", "phases", "zero_metal",
                  "shape", "dtdx", "reflect", "_functions", "_tensors", "_magnetic",
-                 "_curl_coefficients", "_params", "launches", "runs")
+                 "_curl_coefficients", "_params", "launches", "runs", "chunk_bounds")
 
     def __init__(self, entries: Sequence[_Entry], residency: Residency,
                  volumes: Sequence[str], codes: Sequence[int],
@@ -764,7 +890,10 @@ class MetalFoldedFusedDispersivePairPlan:
                  reflect: Sequence[Optional[int]],
                  magnetic: Sequence[Any], curl_coefficients: Sequence[Any],
                  params: Any, functions: Mapping[Tuple[str, int], Any],
-                 tensors: Mapping[int, Any]) -> None:
+                 tensors: Mapping[int, Any], *, chunk_bounds: Any) -> None:
+        # The chunk record's host words, kept for inspection: the device copy
+        # rides inside ``params``.
+        self.chunk_bounds = chunk_bounds
         self._magnetic = tuple(magnetic)
         self._curl_coefficients = tuple(curl_coefficients)
         self.entries = tuple(entries)
@@ -846,25 +975,28 @@ class MetalFoldedFusedDispersivePairPlan:
 
 
 def params_record_dtype() -> Any:
-    """The host record's dtype -- five scalars and the three reflect rows.
+    """The host record's dtype -- five scalars, the three reflect rows, the chunk record.
 
     ONE HOME FOR THE LAYOUT. Every member is four bytes and Metal's alignment for
-    ``uint``/``int``/``float`` is four, so the natural record IS the struct; the
-    offsets are stated anyway so the agreement cannot become accidental.
+    ``uint``/``int``/``float`` and for the all-4-byte ``ChunkBounds`` struct is four,
+    so the natural record IS the struct; the offsets are stated anyway so the
+    agreement cannot become accidental: the record's 100 bytes at offset 32.
     """
     import numpy as np  # noqa: PLC0415
 
     return np.dtype({
-        "names": ["nx", "ny", "nz", "n_elem", "dtdx", "rx", "ry", "rz"],
-        "formats": ["<u4", "<u4", "<u4", "<u4", "<f4", "<i4", "<i4", "<i4"],
-        "offsets": [0, 4, 8, 12, 16, 20, 24, 28],
-        "itemsize": 32,
+        "names": ["nx", "ny", "nz", "n_elem", "dtdx", "rx", "ry", "rz", "cb"],
+        "formats": ["<u4", "<u4", "<u4", "<u4", "<f4", "<i4", "<i4", "<i4",
+                    _chunk_bounds.record_dtype()],
+        "offsets": [0, 4, 8, 12, 16, 20, 24, 28, 32],
+        "itemsize": 132,
     })
 
 
 def _params_tensor(shape: Sequence[int], dtdx: float,
-                   reflect: Sequence[Optional[int]], device: str) -> Any:
-    """The eight scalars as one 32-byte device record, built once at plan time.
+                   reflect: Sequence[Optional[int]], record: Any,
+                   device: str) -> Any:
+    """The eight scalars and the chunk record as one 132-byte device record.
 
     PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every packed pair
     gives: :meth:`.Residency.mirror` binds float32 and complex64 volumes and refuses
@@ -877,20 +1009,24 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
     emitted only for an axis :func:`far_fill_axes` returned, and a source that read
     it anyway would index outside the volume and be caught rather than silently
     imaging row 0.
+
+    ``record`` is the chunk record's checked words (:func:`.chunk_bounds.plan_words`),
+    packed as the ``cb`` member the bounds block reads.
     """
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
 
-    record = np.zeros(1, dtype=params_record_dtype())
+    params = np.zeros(1, dtype=params_record_dtype())
     nx, ny, nz = (int(n) for n in shape)
-    record["nx"], record["ny"], record["nz"] = nx, ny, nz
-    record["n_elem"] = nx * ny * nz
-    record["dtdx"] = np.float32(dtdx)
+    params["nx"], params["ny"], params["nz"] = nx, ny, nz
+    params["n_elem"] = nx * ny * nz
+    params["dtdx"] = np.float32(dtdx)
     rows = tuple(-1 if value is None else int(value) for value in reflect)
     if len(rows) != 3:
         raise ValueError(f"reflect must be a per-axis triple, got {reflect!r}")
-    record["rx"], record["ry"], record["rz"] = rows
-    words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
+    params["rx"], params["ry"], params["rz"] = rows
+    params["cb"] = _chunk_bounds.pack(record)
+    words = np.frombuffer(params.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
 
@@ -899,8 +1035,14 @@ def plan_metal_folded_fused_dispersive_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[Tuple[str, int], Any]] = None,
+        *, chunk_bounds: Any,
         ) -> Optional[MetalFoldedFusedDispersivePairPlan]:
     """Build the folded fused dispersive D/E plan, or ``None`` when refused.
+
+    ``chunk_bounds`` is the record of the division the run steps with, as
+    :func:`.folded_fused_pair.plan_metal_folded_fused_pair` takes it: no default, and
+    an admitted configuration given no record is refused BY NAME
+    (:func:`.chunk_bounds.plan_words`).
 
     ``None`` is the only refusal, for the reason :func:`.launch.plan_pml_curl` gives:
     a configuration this kernel does not carry must fall back to the array path,
@@ -923,6 +1065,8 @@ def plan_metal_folded_fused_dispersive_pair(
     phases = tuple(int(_call(grid, "mirror_phase", axis, default=0) or 0)
                    for axis in range(3))
     walls = zero_metal_axes(grid)
+    record = _chunk_bounds.plan_words(chunk_bounds, grid.shape,
+                                      "MetalFoldedFusedDispersivePairPlan")
     # The runtime reflect rows the far carry images from — stepping's OWN answer,
     # never a local `n - 2`: the formula is `n_full - stored + 2`, which is
     # `stored - 2` at an even full count and `stored - 3` at an odd one. ``None`` on
@@ -992,8 +1136,8 @@ def plan_metal_folded_fused_dispersive_pair(
     return MetalFoldedFusedDispersivePairPlan(
         entries, residency, volumes, codes, phases, walls, grid.shape, dtdx,
         reflect, magnetic, curl_coefficients,
-        _params_tensor(grid.shape, dtdx, reflect, residency.device),
-        selected, tensors)
+        _params_tensor(grid.shape, dtdx, reflect, record, residency.device),
+        selected, tensors, chunk_bounds=record)
 
 
 # ---------------------------------------------------------------------------
@@ -1014,7 +1158,7 @@ def _arm_plan(context: Any,
         return None
     return plan_metal_folded_fused_dispersive_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

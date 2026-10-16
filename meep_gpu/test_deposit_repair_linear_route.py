@@ -19,6 +19,8 @@ spells, a gather that returns a view, a fallback that silently becomes the only 
 * :func:`_frozen_save` / :func:`_frozen_apply` are the shipped arithmetic as of
   ``deposit_repair.py`` sha256 ``c1d557040c6d`` (:717-757, :760-797, :798-866), frozen
   here so a later edit to the module cannot move both sides of the comparison at once.
+  One edit has been made to the frozen copy, with the module's: the constitutive
+  grouping (2026-10-06, below).
 * Every comparison asserts WHICH ROUTE RAN, from the plan's counters. A bit-identity
   check against a route that silently fell back to the 3-tuple would pass for the wrong
   reason; the fallback case asserts the opposite.
@@ -48,6 +50,13 @@ unwritten component by construction (measured: 1 word each in Ex, Ey, f_w_Ex, f_
 That they AGREE after a real launch -- the claim the restriction rests on -- is
 ``test_deposit_repair_component_restriction.py``'s subject, against this file's frozen
 arithmetic with every target.
+
+WHAT CHANGED, 2026-10-06. ``stepping._apply_constitutive_pml`` forms MEEP's right-hand
+side first, ``f + ((kps*fw) - (kms*fw_prev))`` (step_generic.cpp:697), where it formed
+``(f + kps*fw) - kms*fw_prev``, and ``deposit_repair.apply`` recomputes the same grouping
+at the deposit cells. :func:`_frozen_apply` carries that grouping too: it is the
+recurrence the repair inverts, not route or cache machinery, and a frozen copy in the old
+grouping would differ from the driver's own order at every repaired cell.
 """
 
 from __future__ import annotations
@@ -103,7 +112,11 @@ def _frozen_save(fields, sources, pair, pml, paths, targets_for=None):
         raise deposit_repair.DepositNotRepairable("; ".join(reasons))
     path = deposit_repair._selected_path(pml, paths)
     xp = fields.grid.xp
-    saved = {deposit_repair._PATH_KEY: path}
+    saved = {deposit_repair._PATH_KEY: path,
+             # The 0.10 start of H (``deposit_repair._START_KEY``): the launch runs the
+             # run's first magnetic constitutive.
+             deposit_repair._START_KEY: (pair == "B" and path is not deposit_repair.PLAIN_PATH
+                                         and not fields.h_separated)}
     for index, source in enumerate(sources):
         idx = deposit_repair._deposit_index(source)
         if idx is None:
@@ -123,9 +136,12 @@ def _frozen_save(fields, sources, pair, pml, paths, targets_for=None):
 
 
 def _frozen_apply(fields, pml, sources, pair, saved):
-    """``deposit_repair._apply_plain`` / ``apply`` at sha256 c1d557040c6d, verbatim, over
-    whatever :func:`_frozen_save` captured: a ``(component, source)`` it did not capture
-    is skipped, and with every target captured nothing is."""
+    """``deposit_repair._apply_plain`` / ``apply`` at sha256 c1d557040c6d, over whatever
+    :func:`_frozen_save` captured: a ``(component, source)`` it did not capture is
+    skipped, and with every target captured nothing is. With the 0.10 constitutive's
+    split: a deposit cell whose chunk carries the target's own layer takes the
+    accumulation, every other one ``field = fresh`` with its ``fw`` left alone
+    (``stepping._apply_constitutive_regions``), read off the same region plan."""
     repaired = 0
     if saved.get(deposit_repair._PATH_KEY) is deposit_repair.PLAIN_PATH:
         for component, _source_name, _axis in deposit_repair.SEAMS[pair]["targets"]:
@@ -155,6 +171,8 @@ def _frozen_apply(fields, pml, sources, pair, saved):
             constitutive = getattr(fields, source_name)
         kp_full = xp.broadcast_to(xp.asarray(kps), field.shape)
         km_full = xp.broadcast_to(xp.asarray(kms), field.shape)
+        inside_full = xp.broadcast_to(
+            stepping._region_plan(fields, pml).mask("constitutive", component, xp), field.shape)
         for index, source in enumerate(sources):
             if deposit_repair._deposit_index(source) is None:
                 continue
@@ -162,10 +180,15 @@ def _frozen_apply(fields, pml, sources, pair, saved):
                 continue
             cells = saved[(component, index, "cells")]
             fresh = constitutive[cells]
-            restored = saved[(component, index, "field")] + kp_full[cells] * fresh
-            restored = restored - km_full[cells] * saved[(component, index, "fw")]
-            field[cells] = restored
-            fw[cells] = fresh
+            restored = saved[(component, index, "field")] + (
+                (kp_full[cells] * fresh) - (km_full[cells] * saved[(component, index, "fw")]))
+            inside = inside_full[cells]
+            if saved.get(deposit_repair._START_KEY):
+                # MEEP's first update_H reads H = f_w = the post-injection B in the layer.
+                restored = xp.where(inside, fresh + ((kp_full[cells] * fresh) - (km_full[cells] * fresh)),
+                                    restored)
+            field[cells] = xp.where(inside, restored, fresh)
+            fw[tuple(column[inside] for column in cells)] = fresh[inside]
             repaired += int(getattr(cells[0], "size", len(cells[0])))
     return repaired
 

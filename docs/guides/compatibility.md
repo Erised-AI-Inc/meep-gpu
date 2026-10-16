@@ -99,6 +99,31 @@ research use. How closely the stepped fields agree with MEEP is a separate
 measurement, in
 [the floating-point contract](../design/floating-point.md#agreement-with-meep-is-measured-separately).
 
+### An `EigenModeSource` can differ from MEEP
+
+An <code>EigenModeSource</code> lifts, but its words are not always MEEP's. The lift does
+not read the mode amplitudes that MEEP's own <code>add_eigenmode_source</code> solve
+stored: it solves the mode again with its own <code>get_eigenmode</code> call (MPB). On
+some hosts that solve is not bitwise reproducible from one process to the next, and
+neither is MEEP's, so a run with an eigenmode source can occasionally differ from MEEP,
+and from another run of itself, in every word the source reaches (owner ruling R24).
+
+Measured on the corpus row <code>ex.coupler</code> (<code>coupler.py</code>, an
+<code>EigenModeSource</code> in a GDSII geometry) on the x86-64 Linux references of the
+1.0 round, under <code>keep</code> and <code>flush</code>: 12 of 20 runs held (2 corpus
+legs, 6 re-runs and 12 lift probes); a run that did not hold differed in 1,683,570 to
+5,051,638 of 44,047,776 stored words. Across fresh processes the only lifted inputs that
+varied were the two sources' point amplitudes from the lift's re-solve, and under
+<code>flush</code> MEEP's own eigenmode solve varied too (3 distinct MEEP digests in 6
+probes); with identical lifted inputs and identical MEEP words the array path's words were
+identical, in 9 of 9 processes. On the Apple M1 Max the row held in 4 of 4 runs. The same
+signature appeared once in each host's <code>keep</code> reference on
+<code>test_mode_decomposition</code>'s <code>test_linear_taper_2d</code> (861,700 and
+946,170 of 5,386,560 stored words; 15 of 15 and 40 of 40 re-runs held). Table 2 excludes
+<code>ex.coupler</code> by name from its two Linux sets
+([MEEP identity on the corpus](../development/meep-identity-corpus.md)). A 1.0.1 release
+reads MEEP's stored eigenmode amplitudes instead of re-solving them.
+
 ## What is refused, by name
 
 Every refusal below is a reason string in <code>verdict.reasons</code> or in the
@@ -159,6 +184,7 @@ raise by their opening words.
 | A mirror whose phase is not +1 or −1, or that is not normal to a coordinate axis | — |
 | A mirror on an axis the run makes translationally invariant | An invariant axis has no halves |
 | A nonzero Bloch <code>k</code> on a folded axis | A mirror plane forces the field to be even or odd about itself |
+| A <code>BinaryPartition</code> <code>chunk_layout</code> together with mirror symmetry, given before MEEP builds the structure | MEEP then does not halve its grid: it steps the whole cell with the mirrors unused, while its own <code>get_array</code> and flux monitors still apply them, so no lift reproduces both. Drop the symmetries or the <code>chunk_layout</code>. A <code>chunk_layout</code> given as a Simulation or a file lifts, and so does a simulation whose structure MEEP has already built and halved (MEEP then sets <code>chunk_layout</code> to that structure's partition itself) |
 | Sources that all sit in the half the mirror discards, or whose components break the mirror's parity | The stored half would hold no source |
 
 ### Sources
@@ -224,7 +250,7 @@ visible in its own result metadata and logs.
 Two cases are announced rather than raised. On an Apple GPU the device runs
 compiled kernels only, and the array path runs on NumPy host arrays. A
 <code>prefer_gpu=True</code> run there whose configuration no certified Metal kernel
-covers, or, under <code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code>, whose environment
+covers, or, under <code>MEEP_GPU_HARDWARE=certified</code>, whose environment
 (GPU architecture, PyTorch, Metal frontend, <code>PYTORCH_MPS_FAST_MATH</code>) is
 not certified or cannot be judged, steps the same equations on the host CPU. The
 driver still reports <code>gpu == "metal"</code>; the run prints one line
@@ -234,11 +260,11 @@ turned kernels off itself (<code>MEEP_GPU_DISPATCH=0</code> or
 <code>MEEP_GPU_FUSED=0</code>) is on the host CPU there too, and prints nothing.
 On a CUDA host the array path stays on the device: a run on an NVIDIA GPU or
 Triton version outside the supported range, or, under
-<code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code>, outside the certified list, steps
+<code>MEEP_GPU_HARDWARE=certified</code>, outside the certified list, steps
 there with the same one-line announcement.
 
 The second case is a run outside the certified identity on a supported GPU, with
-the switch unset or <code>1</code>. On an Apple GPU, every one of which is
+<code>MEEP_GPU_HARDWARE</code> unset (<code>supported</code>) or <code>any</code>. On an Apple GPU, every one of which is
 supported, it steps on the Metal kernels; on an NVIDIA GPU of compute capability
 7.0 to 9.0 (with Triton 3.1 on the Triton table) it steps on the NVIDIA kernels,
 except that a kernel table certified for that device and toolchain runs alone in

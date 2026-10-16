@@ -155,7 +155,7 @@ def _configs(xp) -> Dict[str, Callable[[int], Tuple[Any, Any, Dict[str, Any]]]]:
 # LEG 1 — the predicate battery
 # ---------------------------------------------------------------------------
 
-def predicate_checks(xp, probe_record) -> List[Dict[str, Any]]:
+def predicate_checks(xp) -> List[Dict[str, Any]]:
     """Every new predicate, on the configuration it takes and the ones it must not.
 
     Each row is (label, expected admission, thunk). The thunk returns a Coverage.
@@ -264,23 +264,23 @@ def predicate_checks(xp, probe_record) -> List[Dict[str, Any]]:
             checks.append((
                 f"folded_complex_offdiag curl({sub_step}) ADMITS{tag}", True,
                 lambda n=name, s=sub_step: fcx.folded_complex_offdiag_pml_curl_coverage(
-                    *cfg(n), s, probe=probe_record)))
+                    *cfg(n), s)))
         checks.append((
             f"folded_complex_offdiag constitutive(H) ADMITS{tag}", True,
             lambda n=name: fcx.folded_complex_offdiag_constitutive_coverage(
-                *cfg(n), "H", probe=probe_record)))
+                *cfg(n), "H")))
     checks.append((
         "folded_complex_offdiag constitutive(E) REFUSES (the row product)", False,
         lambda: fcx.folded_complex_offdiag_constitutive_coverage(
-            *cfg("complex_fold_offdiag"), "E", probe=probe_record)))
+            *cfg("complex_fold_offdiag"), "E")))
     checks.append((
         "INCUMBENT folded_complex_pml_curl_coverage REFUSES the offdiag run", False,
         lambda: fcx.folded_complex_pml_curl_coverage(
-            *cfg("complex_fold_offdiag"), "step_B", probe=probe_record)))
+            *cfg("complex_fold_offdiag"), "step_B")))
     checks.append((
         "folded_complex_offdiag curl REFUSES a run with NO offdiag row", False,
         lambda: fcx.folded_complex_offdiag_pml_curl_coverage(
-            *cfg("complex_fold_no_offdiag"), "step_B", probe=probe_record)))
+            *cfg("complex_fold_no_offdiag"), "step_B")))
 
     rows: List[Dict[str, Any]] = []
     for label, expected, thunk in checks:
@@ -348,7 +348,7 @@ def _new_ade_plan(fields, pml):
     return _Composite()
 
 
-def build_cases(xp, probe_record) -> List[Dict[str, Any]]:
+def build_cases(xp) -> List[Dict[str, Any]]:
     configs = _configs(xp)
     cases: List[Dict[str, Any]] = []
 
@@ -407,7 +407,7 @@ def build_cases(xp, probe_record) -> List[Dict[str, Any]]:
                 "make": configs[config_name], "array_path": fn,
                 "kernel_plan": (lambda f, p, s=sub_step:
                                 fcx.plan_folded_complex_offdiag_pml_curl(
-                                    f, p, s, probe=probe_record)),
+                                    f, p, s)),
             })
         cases.append({
             "name": f"NEW_folded_complex_offdiag{tag}_update_H", "group": "D",
@@ -416,7 +416,7 @@ def build_cases(xp, probe_record) -> List[Dict[str, Any]]:
             "make": configs[config_name], "array_path": stepping.update_H,
             "kernel_plan": (lambda f, p:
                             fcx.plan_folded_complex_offdiag_constitutive(
-                                f, p, "H", probe=probe_record)),
+                                f, p, "H")),
         })
 
     return cases
@@ -454,12 +454,10 @@ def main(argv) -> int:
 
     results["cupy"] = cp.__version__
     results["device"] = cp.cuda.runtime.getDeviceProperties(0)["name"].decode()
-    probe_record = bodies._load_expansion_probe()
-    results["expansion_probe_loaded"] = probe_record is not None
 
     # LEG 1 first: an identity leg is only interesting if the predicate that gates
     # it admits for the stated reason and refuses its neighbours.
-    for row in predicate_checks(cp, probe_record):
+    for row in predicate_checks(cp):
         results["predicate_checks"].append(row)
         results_path.write_text(json.dumps(results, indent=1), encoding="utf-8")
         bodies.log(progress,
@@ -468,7 +466,7 @@ def main(argv) -> int:
                    f"expect={row['expected_admit']} "
                    + (row.get("error") or json.dumps(row.get("reasons", []))[:220]))
 
-    cases = build_cases(cp, probe_record)
+    cases = build_cases(cp)
     wanted = {n.strip() for n in args.only.split(",") if n.strip()}
     if wanted:
         cases = [c for c in cases if c["name"] in wanted]

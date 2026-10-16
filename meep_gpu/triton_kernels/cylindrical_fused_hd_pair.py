@@ -1,97 +1,35 @@
-"""The Dcyl COMPLEX H->D product: ``update_H`` + the pre-scan stage of the radial
-prefix in ONE launch, the array path's ``cumsum`` untouched, the certified complex
-cylindrical ``step_D`` curl in a second launch.
+"""The Dcyl COMPLEX H->D product: complex ``update_H`` into scratch, then the certified
+complex cylindrical ``step_D`` sub-step -- the radial scan over the NEW Hp and the
+curl -- over the rotated field.
 
-The complex-storage twin of :mod:`.cylindrical_real_fused_hd_pair`, on the sixteen
-buildable rows of the ``(cylindrical complex -> cylindrical complex PML)`` H->D cell
-(every m the complex family carries -- m = 0 under complex storage, |m| = 1, |m| >= 2
--- and both z terminations). Read that module first: the shape, the seam, the
-withdraw clause and the arbitration are identical and are not restated here. What
-this file adds is the COMPLEX arithmetic of the increment, and it is the one place
-where the two families' spellings INVERT.
-
-=============================================================================
-THE TWO SPELLINGS THAT ARE MEASURED TO INVERT
-=============================================================================
-
-``cylindrical_rderiv_prefix`` runs on a complex64 ``f_p`` with float32 ``weights`` and
-``divisor`` (stepping.py:1308, 1284-1302). CuPy's ``multiply`` and ``true_divide``
-carry no mixed ``complex64 x float32`` loop, so the float32 operand is cast to
-``complex<float>(x)`` with imaginary part ``+0.0f`` and the COMPLEX/COMPLEX operators
-run. MEASURED on the device (lane record ``cupy_probe/FINDINGS.md``, 4,005,000 words
-per case against the ufuncs themselves, then 14,387,104 words per policy inside the
-fused stage):
-
-1. **The multiply** ``Hy * w`` is the four-product complex form -- and the device
-   CONTRACTS it. The uncontracted four-product transcription misses 6 of 4,005,000
-   words under ``flush`` (the sign of a FLUSHED zero when ``Hy.re * 0.5`` underflows
-   on row 0 with ``Hy.re < 0``, ``Hy.im < 0``); the spelling that is 0 of 4,005,000
-   on every case under both policies is the FMA_V1 ``mul_field_left`` arrangement,
-   ``re = fma(z.re, w, (z.im*0.0)*-1.0); im = fma(z.re, 0.0, z.im*w)`` with EXPLICIT
-   fused multiply-adds. So :func:`_mul_field_left_fma` spells exactly that,
-   REGARDLESS of which ``EXPANSION`` arm the constitutive half runs under: with
-   floating-point contraction off an explicit fma survives and an implicit one never
-   forms, so the arm of the certified constitutive cannot leak into the increment.
-2. **The divide** ``/ d`` is CuPy's SCALED complex division
-   (``cupy/_core/include/cupy/complex/arithmetic.h:96-110``) with ``rhs = (d, +0.0f)``
-   and EVERY zero-valued term left in::
-
-       s = |d| + |0|;  oos = 1/s;  ars = z.re*oos;  ais = z.im*oos;
-       brs = d*oos;  bis = 0*oos;  s = brs*brs + bis*bis;  oos = 1/s;
-       q.re = (ars*brs + ais*bis) * oos;   q.im = (ais*brs - ars*bis) * oos
-
-   0 of 14,387,104 words under both policies. numpy's ``a * (float32(1)/d)`` -- the
-   spelling the Metal verdict prescribes for complex storage, and CORRECT there
-   because that backend's engine is NumPy -- is WRONG here: 793,105 / 820,455 words
-   (keep / flush). Componentwise ``re/d, im/d`` -- the real family's ``/`` carried over
-   -- is wrong on 3,584,917 / 3,591,312 words. "Tidying" the zero terms out is wrong
-   on 15,598 / 60,038 words, all in the class where a product is a signed zero or
-   underflows. Both reciprocals are correctly rounded (``tl.math.div_rn``): NVRTC's
-   ``1.0f / s`` under the default precise division is an IEEE division and Triton's
-   ``/`` is not (the real module says why).
-
-So THREE things a careful reader would "correct" are each an armed mutation on this
-product: the numpy reciprocal (from the sibling backend's verdict), the componentwise
-divide (from the sibling family's comment), and the four-product multiply (from the
-certified constitutive's own NAIVE arm). The last is byte-visible only on the
-planted row-0 tiny-normal class under ``flush``, so the gate PLANTS that case; a
-random battery alone did not reach it (0 of 14,387,104 with the naive spelling).
-
-Row 0 is ``(+0.0, +0.0)`` -- the array path assigns the integer 0 -- and the subtract
-is componentwise. Every NVRTC number above is the pre-scan stage measured in
-isolation under ``cp.RawKernel``; the Triton-compiled kernel's own bytes are the
-gate's ``increment_stage`` leg and are not inherited from that record.
+The complex-storage twin of :mod:`.cylindrical_real_fused_hd_pair`, on the buildable
+rows of the ``(cylindrical complex -> cylindrical complex PML)`` H->D cell (every m the
+complex family carries -- m = 0 under complex storage, |m| = 1, |m| >= 2 -- and both
+z terminations). Read that module first: the shape, the seam, the withdraw clause, the
+launch algebra (three launches against three; kept, not dispatched) and the
+arbitration are identical and are not restated here.
 
 =============================================================================
-THE CONSTITUTIVE HALF IS LIFTED, THE CURL HALF IS LAUNCHED VERBATIM
+WHAT THE COMPLEX STORAGE CHANGES, AND WHAT IT DOES NOT
 =============================================================================
 
-:func:`_h_cell_complex` is :func:`.complex_fields.bloch_constitutive_step`'s body
-below its decode as a function of a cell, with exactly the substitutions
-:data:`CONSTITUTIVE_LIFT_EDITS` names -- the ``SCALE`` branch resolved to the H side,
-the three pointer families renamed to the pre-launch buffers, and each store replaced
-by a REGISTER CAPTURE so the caller stores to scratch for its own cell and stores
-nothing for the foreign recompute. :func:`certified_constitutive_tail` and
-:func:`lifted_constitutive_tail` cut both at their anchors and the laptop test asserts
-the two strings equal, so this is a LIFT and not a transcription; the arithmetic
-inside -- every coefficient-left zero-imaginary product through
-:func:`.complex_fields._mul_coefficient_left` under the run's ``EXPANSION`` -- is the
-certified body's own, unchanged.
+**Launch 1** (:func:`cyl_complex_update_H_scratch`) is the complex Cartesian weld's
+constitutive block, statement for statement (:func:`certified_weld_block`): every
+program computes its OWN cell's complex ``H`` and ``f_w_H`` word pairs through
+:func:`.complex_fused_hd_pair._h_cell_complex` -- ``complex_fields.bloch_constitutive_step``'s
+side-H body as a function of a cell, the root's ``constitutive_form`` on each stored
+part, the chunk record read at the cell, MEEP's start of H on the run's first launch
+-- into launch-local SCRATCH. That body is the one Dcyl's complex ``update_H`` arm
+launches (:func:`.cylindrical_complex.plan_cylindrical_complex_constitutive` builds
+the certified ``ComplexConstitutivePlan``), so it is IMPORTED, not copied: no complex
+multiply, no multiply-add and no divide is spelled here.
 
-Launch 2 is :func:`.cylindrical_complex.cyl_complex_pml_curl_step` with
-``BACKWARD = 1``, launched with the argument list
-:class:`.cylindrical_complex.CylindricalComplexCurlPlan.run` passes and the freshly
-written twins as its magnetic sources; the i*m/r rows, the axis-increment scalars and
-``four_dtdx`` are built by that module's own host functions.
-
-THE EXPANSION LICENCE IS POLICY-CONDITIONAL and it is the certified family's, not
-this product's: every complex arm in this package was certified under ``keep``
-(``complex_fields.CERTIFIED_UNDER_SUBNORMAL_POLICY``) and the predicates this module
-conjoins refuse under any other policy in force
-(``complex_fields.expansion_certification_reasons``). Under ``flush`` the composer
-installs nothing complex on these rows and this product's predicate refuses by that
-name; what the gate can still measure there is the arithmetic from arrays with the
-arm forced, and it says so in the record.
+**Launches 2 and 3** are :class:`.cylindrical_complex.CylindricalComplexCurlPlan`
+-- the certified plan, built by the certified harness builder over the SCRATCH ``H``
+and launched by its own ``run``: the column-serial radial scan over the stepped ``Hy``'s
+two stored parts, then ``cyl_complex_pml_curl_step`` with its i*m/r rows, axis rules
+and Courant words, all bound by that module's own host functions. As on the real
+family, the plan is built once over each allocation the rotation alternates between.
 
 Import contract: importable WITHOUT Triton.
 """
@@ -105,12 +43,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from . import complex_fused_hd_pair as _complex
 from . import coverage as _coverage
 from . import cylindrical_complex as _cx
 from . import cylindrical_real_fused_hd_pair as _real
 from . import fused_hd_pair as _cartesian
 from .. import withdraw_hoist as _withdraw_hoist
-from .complex_fields import _resolve_expansion, _word_view
+from .complex_fields import _word_view
 from .offdiag_scratch_weld import ScratchWeldPairPlan, twin_table
 
 FAMILY = "cylindrical_fused_hd_pair"
@@ -129,16 +68,14 @@ ROTATED: Tuple[str, ...] = _real.ROTATED
 IN_PLACE: Tuple[str, ...] = _real.IN_PLACE
 CONSTITUTIVE_SOURCES: Tuple[str, ...] = _real.CONSTITUTIVE_SOURCES
 
-#: The prefix's source and ir0, read off the complex family's own table.
+#: The radial sum's source and ir0, read off the complex family's own table.
 PREFIX_COMPONENT: str = _cx.PREFIX[CURL_SUB_STEP]["component"]
 PREFIX_IR0: float = float(_cx.PREFIX[CURL_SUB_STEP]["ir0"])
-INCREMENT_TAG = _real.INCREMENT_TAG
-PREFIX_TAG = _real.PREFIX_TAG
 
 BACKWARD = 1
 DEFAULT_BLOCK = 256
-LAUNCHES_PER_RUN = 3
-KERNEL_LAUNCHES_PER_RUN = 2
+LAUNCHES_PER_RUN = _real.LAUNCHES_PER_RUN
+KERNEL_LAUNCHES_PER_RUN = _real.KERNEL_LAUNCHES_PER_RUN
 CARRIES_DEPOSIT_REPAIR = False
 REPAIR_PATHS: Tuple[str, ...] = ()
 HOISTS_THE_WITHDRAW = False
@@ -147,186 +84,49 @@ INSTALLABLE_REASON = _real.INSTALLABLE_REASON.replace(
     "gate_triton_cylindrical_real_fused_hd_pair.py",
     "gate_triton_cylindrical_fused_hd_pair.py")
 
-#: The four values the FMA_V1 ``mul_field_left`` arrangement fuses, as the increment
-#: spells them: measured, not chosen (module docstring, item 1).
-INCREMENT_SPELLING: Tuple[Tuple[str, str], ...] = (
-    ("halo", "h_re, h_im = _h_tap_complex(1, i - 1, j, k, inner,"),
-    ("weight_here", "wh_re, wh_im = _mul_field_left_fma(o1_re, o1_im, w_i)"),
-    ("weight_below", "wb_re, wb_im = _mul_field_left_fma(h_re, h_im, w_im1)"),
-    ("subtract_re", "d_re = wh_re - wb_re"),
-    ("subtract_im", "d_im = wh_im - wb_im"),
-    ("divide", "q_re, q_im = _div_coefficient_scaled(d_re, d_im, d_im1)"),
-    ("row0_re", "q_re = tl.where(inner, q_re, 0.0)"),
-    ("row0_im", "q_im = tl.where(inner, q_im, 0.0)"),
-)
-
-#: The scaled-divide statements, in order, exactly as :func:`_div_coefficient_scaled`
-#: spells them; the laptop test pins each (zero terms KEPT, both reciprocals
-#: correctly rounded) and the gate measures the algorithm against the array path.
-DIVIDE_SPELLING: Tuple[str, ...] = (
-    "s = tl.abs(d) + 0.0",
-    "oos = tl.math.div_rn(1.0, s)",
-    "ars = z_re * oos",
-    "ais = z_im * oos",
-    "brs = d * oos",
-    "bis = 0.0 * oos",
-    "s2 = (brs * brs) + (bis * bis)",
-    "oos2 = tl.math.div_rn(1.0, s2)",
-    "q_re = ((ars * brs) + (ais * bis)) * oos2",
-    "q_im = ((ais * brs) - (ars * bis)) * oos2",
-)
-
-#: The multiply statements, exactly as :func:`_mul_field_left_fma` spells them.
-MULTIPLY_SPELLING: Tuple[str, ...] = (
-    "out_re = tl.math.fma(z_re, c, (z_im * 0.0) * -1.0)",
-    "out_im = tl.math.fma(z_re, 0.0, z_im * c)",
-)
+#: The helpers this product's own kernel reaches, and NO OTHER: none. The complex
+#: constitutive is imported, the curl and the scan are the certified plan's.
+MULTIPLY_HELPERS: Tuple[str, ...] = ()
 
 __all__ = [
-    "ARMS", "BACKWARD", "CARRIES_DEPOSIT_REPAIR", "CONSTITUTIVE_LIFT_EDITS",
-    "CONSTITUTIVE_SIDE", "CONSTITUTIVE_SOURCES", "CURL_SUB_STEP", "DEFAULT_BLOCK",
-    "DIVIDE_SPELLING", "FAMILY", "HOISTS_THE_WITHDRAW", "INCREMENT_SPELLING",
-    "INCREMENT_TAG", "INSTALLABLE", "INSTALLABLE_REASON", "IN_PLACE",
-    "KERNEL_LAUNCHES_PER_RUN", "LAUNCHES_PER_RUN", "MULTIPLY_SPELLING",
-    "PREFIX_COMPONENT", "PREFIX_IR0", "PREFIX_TAG", "REPAIR_PATHS", "REPLACES",
-    "ROTATED", "SEAM", "SLOT",
+    "ARMS", "BACKWARD", "CARRIES_DEPOSIT_REPAIR", "CONSTITUTIVE_SIDE",
+    "CONSTITUTIVE_SOURCES", "CURL_SUB_STEP", "DEFAULT_BLOCK", "FAMILY",
+    "HOISTS_THE_WITHDRAW", "INSTALLABLE", "INSTALLABLE_REASON", "IN_PLACE",
+    "KERNEL_LAUNCHES_PER_RUN", "LAUNCHES_PER_RUN", "MULTIPLY_HELPERS",
+    "PREFIX_COMPONENT", "PREFIX_IR0", "REPAIR_PATHS", "REPLACES", "ROTATED", "SEAM",
+    "SLOT",
     "CylindricalFusedHdPairPlan",
-    "certified_constitutive_tail", "cyl_complex_update_H_increment_kernel",
+    "certified_weld_block", "cyl_complex_update_H_scratch_kernel",
     "cylindrical_fused_hd_pair_coverage", "explain_cylindrical_fused_hd_pair",
-    "function_source", "increment_statements", "lifted_constitutive_tail",
-    "plan_cylindrical_fused_hd_pair", "plan_cylindrical_fused_hd_pair_from_arrays",
+    "lifted_weld_block", "plan_cylindrical_fused_hd_pair",
+    "plan_cylindrical_fused_hd_pair_from_arrays",
 ]
 
 
 # ---------------------------------------------------------------------------
-# The machine-checked lift of the complex constitutive
+# The machine-checked lift -- host text, no Triton
 # ---------------------------------------------------------------------------
 
-#: Where the certified body ends its decode (``complex_fields.bloch_constitutive_step``).
-DECODE_END = "    i = plane // ny\n"
-
-#: Where :func:`_h_cell_complex` re-composes the flat index from its own coordinates.
-H_CELL_DECODE_END = "        idx = i * nyz + j * nz + k\n"
-
-#: Where :func:`_h_cell_complex` stops being lifted text and returns its registers.
-H_CELL_RETURN_START = "        return (out0_re, out0_im, out1_re, out1_im, out2_re, out2_im,\n"
-
-#: Every line of the certified body this lift does not carry verbatim, with the
-#: reason. NO ARITHMETIC: pointer spellings, a resolved constexpr branch, and stores
-#: that become register captures.
-CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
-    {"line": "if SCALE: ie = tl.load(eN + idx, ...); src = _mul_field_left(src, ie, ...)",
-     "became": "(removed -- the constexpr branch is RESOLVED to SCALE = 0)",
-     "why": "the H side reads B directly (mu = 1 baked in as the array path bakes it, "
-            "stepping.py:907-923); the SCALE = 1 arm is text no launch of this product "
-            "reaches and the three inverse-epsilon pointers leave with it."},
-    {"line": "prev_re/prev_im = tl.load(wN + 2 * idx ...)",
-     "became": "prev_re/prev_im = tl.load(wiN + 2 * idx ...)",
-     "why": "the split-field history is read from the PRE-LAUNCH buffer, which "
-            "nothing in this launch writes; on this side the newly written f_w_H IS B "
-            "exactly, so an in-place read of a neighbour would hand B where B_prev is "
-            "needed."},
-    {"line": "src_re/src_im = tl.load(gN + 2 * idx ...)",
-     "became": "src_re/src_im = tl.load(bN + 2 * idx ...)",
-     "why": "one pointer rename: the magnetic flux density under its own name."},
-    {"line": "tl.store(wN + 2 * idx, src_re, ...); tl.store(wN + 2 * idx + 1, src_im, ...)",
-     "became": "sN_re = src_re; sN_im = src_im",
-     "why": "the store moves to the caller, which addresses the SCRATCH for its own "
-            "cell and stores nothing for a foreign recompute; the value is untouched."},
-    {"line": "a_re/a_im = tl.load(fN + 2 * idx ...)",
-     "became": "a_re/a_im = tl.load(hiN + 2 * idx ...)",
-     "why": "the accumulator is read from the PRE-LAUNCH H, const for the dispatch -- "
-            "what makes the foreign recompute a pure function of unwritten memory."},
-    {"line": "tl.store(fN + 2 * idx, a_re, ...); tl.store(fN + 2 * idx + 1, a_im, ...)",
-     "became": "outN_re = a_re; outN_im = a_im",
-     "why": "the two accumulations, their order and their operands are untouched; "
-            "only the destination moves to the caller."},
-    {"line": "idx = tl.program_id(0) * BLOCK + ... ; i = plane // ny",
-     "became": "(removed -- i, j and k are parameters; idx is composed from them)",
-     "why": "the certified body becomes a function evaluated at an ARBITRARY cell; "
-            "`live` arrives as the caller's per-lane validity so a masked-off halo "
-            "dereferences nothing."},
-)
+#: This module's launch-1 kernel, by name.
+SCRATCH_KERNEL = "cyl_complex_update_H_scratch"
 
 
-def function_source(function_name: str, path: Optional[Path] = None) -> str:
-    """One function's source text, by name, off a file -- never by import."""
-    return _cartesian._source_of(  # noqa: SLF001 - the shared lift helper
-        function_name,
-        Path(__file__).with_name("complex_fields.py") if path is None else path)
+def certified_weld_block() -> List[str]:
+    """The complex Cartesian H->D weld's constitutive block, statement by statement.
+
+    :func:`.complex_fused_hd_pair.fused_complex_constitutive_curl_H_to_D` between its
+    index decode and its curl anchor, cut off that file.
+    """
+    source = _cartesian._source_of(  # noqa: SLF001 - the shared cutter, by design
+        "fused_complex_constitutive_curl_H_to_D", Path(_complex.__file__))
+    return _real._statements(_cartesian._cut(  # noqa: SLF001
+        source, _real.WELD_DECODE_END, stop=_complex.CURL_BODY_ANCHOR))
 
 
-def certified_constitutive_tail() -> str:
-    """``bloch_constitutive_step``'s body below the decode with exactly the declared
-    edits applied through :func:`.fused_hd_pair.needle` -- a drifted spelling RAISES."""
-    tail = _cartesian._cut(function_source("bloch_constitutive_step"),  # noqa: SLF001
-                           DECODE_END)
-    needle = _cartesian.needle
-    for target in range(3):
-        trailer = "  # D LEFT (S:982-984)\n" if target == 0 else "\n"
-        tail = needle(
-            tail,
-            f"if SCALE:\n"
-            f"    ie = tl.load(e{target} + idx, mask=live, other=0.0)\n"
-            f"    src_re, src_im = _mul_field_left(src_re, src_im, ie, EXPANSION)"
-            + trailer,
-            "")
-        tail = needle(tail, f"prev_re = tl.load(w{target} + 2 * idx",
-                      f"prev_re = tl.load(wi{target} + 2 * idx")
-        tail = needle(tail, f"prev_im = tl.load(w{target} + 2 * idx",
-                      f"prev_im = tl.load(wi{target} + 2 * idx")
-        tail = needle(tail, f"src_re = tl.load(g{target} + 2 * idx",
-                      f"src_re = tl.load(b{target} + 2 * idx")
-        tail = needle(tail, f"src_im = tl.load(g{target} + 2 * idx",
-                      f"src_im = tl.load(b{target} + 2 * idx")
-        tail = needle(
-            tail,
-            f"tl.store(w{target} + 2 * idx, src_re, mask=live)\n"
-            f"tl.store(w{target} + 2 * idx + 1, src_im, mask=live)\n",
-            f"s{target}_re = src_re\ns{target}_im = src_im\n")
-        tail = needle(tail, f"a_re = tl.load(f{target} + 2 * idx",
-                      f"a_re = tl.load(hi{target} + 2 * idx")
-        tail = needle(tail, f"a_im = tl.load(f{target} + 2 * idx",
-                      f"a_im = tl.load(hi{target} + 2 * idx")
-        tail = needle(
-            tail,
-            f"tl.store(f{target} + 2 * idx, a_re, mask=live)\n"
-            f"tl.store(f{target} + 2 * idx + 1, a_im, mask=live)\n",
-            f"out{target}_re = a_re\nout{target}_im = a_im\n")
-    for stem in ("f", "w", "g", "e"):
-        for target in range(3):
-            if f"{stem}{target} +" in tail:
-                raise AssertionError(
-                    f"the lifted complex update_H body still indexes {stem}{target}")
-    if "SCALE" in tail or "tl.store(" in tail:
-        raise AssertionError("the lifted complex update_H body still stores or branches")
-    return tail.rstrip("\n") + "\n"
-
-
-def lifted_constitutive_tail() -> str:
-    """:func:`_h_cell_complex`'s own body between its two anchors, dedented."""
-    source = function_source("_h_cell_complex", Path(__file__))
-    return _cartesian._cut(source, H_CELL_DECODE_END,  # noqa: SLF001
-                           stop=H_CELL_RETURN_START).rstrip("\n") + "\n"
-
-
-def increment_statements() -> List[str]:
-    """The launch-1 kernel's statements as they stand in the SOURCE, for the tests."""
-    import ast  # noqa: PLC0415
-
-    text = Path(__file__).read_text(encoding="utf-8")
-    tree = ast.parse(text)
-    out: List[str] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name in (
-                "cyl_complex_update_H_increment", "_div_coefficient_scaled",
-                "_mul_field_left_fma"):
-            segment = ast.get_source_segment(text, node) or ""
-            out.extend(line.strip() for line in segment.splitlines()
-                       if line.strip() and not line.strip().startswith("#"))
-    if not out:
-        raise AssertionError("the module no longer defines its launch-1 kernel")
-    return out
+def lifted_weld_block() -> List[str]:
+    """This module's launch-1 kernel below its decode, statement by statement."""
+    source = _cartesian._source_of(SCRATCH_KERNEL, Path(__file__))  # noqa: SLF001
+    return _real._statements(_cartesian._cut(source, _real.WELD_DECODE_END))  # noqa: SLF001
 
 
 # ---------------------------------------------------------------------------
@@ -345,151 +145,28 @@ except ImportError as _exc:  # pragma: no cover - the laptop path
 
 if triton is not None:  # pragma: no cover - device code, certified by the gate
 
-    from .complex_fields import _mul_coefficient_left  # noqa: PLC0415
+    # THE CERTIFIED COMPLEX CONSTITUTIVE, imported as a device function rather than
+    # copied: its lift is machine-checked in complex_fused_hd_pair and re-checked by
+    # this family's gate.
+    from .complex_fused_hd_pair import _h_cell_complex  # noqa: PLC0415
 
-    @triton.jit
-    def _h_cell_complex(i, j, k, live,
-                        hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                        kp0, km0, kp1, km1, kp2, km2, ny, nz,
-                        EXPANSION: tl.constexpr):
-        """``complex_fields.bloch_constitutive_step`` for side H at ONE named cell.
-
-        The body below the index line is the certified body's own text with exactly
-        :data:`CONSTITUTIVE_LIFT_EDITS`; the laptop test asserts the two strings equal.
-        Returns the three stepped H word pairs, then the three f_w_H word pairs.
-        """
-        nyz = ny * nz
-        idx = i * nyz + j * nz + k
-
-        # Component 0 takes its coefficient from axis x, 1 from y, 2 from z (dsigw).
-        kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
-        km_0 = tl.load(km0 + i, mask=live, other=0.0)
-        kp_1 = tl.load(kp1 + j, mask=live, other=0.0)
-        km_1 = tl.load(km1 + j, mask=live, other=0.0)
-        kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
-        km_2 = tl.load(km2 + k, mask=live, other=0.0)
-
-        # --- component 0 -----------------------------------------------------------
-        prev_re = tl.load(wi0 + 2 * idx, mask=live, other=0.0)   # BEFORE the store.
-        prev_im = tl.load(wi0 + 2 * idx + 1, mask=live, other=0.0)
-        src_re = tl.load(b0 + 2 * idx, mask=live, other=0.0)
-        src_im = tl.load(b0 + 2 * idx + 1, mask=live, other=0.0)
-        s0_re = src_re
-        s0_im = src_im
-        a_re = tl.load(hi0 + 2 * idx, mask=live, other=0.0)
-        a_im = tl.load(hi0 + 2 * idx + 1, mask=live, other=0.0)
-        t_re, t_im = _mul_coefficient_left(kp_0, src_re, src_im, EXPANSION)
-        a_re = a_re + t_re
-        a_im = a_im + t_im
-        t_re, t_im = _mul_coefficient_left(km_0, prev_re, prev_im, EXPANSION)
-        a_re = a_re - t_re
-        a_im = a_im - t_im
-        out0_re = a_re
-        out0_im = a_im
-
-        # --- component 1 -----------------------------------------------------------
-        prev_re = tl.load(wi1 + 2 * idx, mask=live, other=0.0)
-        prev_im = tl.load(wi1 + 2 * idx + 1, mask=live, other=0.0)
-        src_re = tl.load(b1 + 2 * idx, mask=live, other=0.0)
-        src_im = tl.load(b1 + 2 * idx + 1, mask=live, other=0.0)
-        s1_re = src_re
-        s1_im = src_im
-        a_re = tl.load(hi1 + 2 * idx, mask=live, other=0.0)
-        a_im = tl.load(hi1 + 2 * idx + 1, mask=live, other=0.0)
-        t_re, t_im = _mul_coefficient_left(kp_1, src_re, src_im, EXPANSION)
-        a_re = a_re + t_re
-        a_im = a_im + t_im
-        t_re, t_im = _mul_coefficient_left(km_1, prev_re, prev_im, EXPANSION)
-        a_re = a_re - t_re
-        a_im = a_im - t_im
-        out1_re = a_re
-        out1_im = a_im
-
-        # --- component 2 -----------------------------------------------------------
-        prev_re = tl.load(wi2 + 2 * idx, mask=live, other=0.0)
-        prev_im = tl.load(wi2 + 2 * idx + 1, mask=live, other=0.0)
-        src_re = tl.load(b2 + 2 * idx, mask=live, other=0.0)
-        src_im = tl.load(b2 + 2 * idx + 1, mask=live, other=0.0)
-        s2_re = src_re
-        s2_im = src_im
-        a_re = tl.load(hi2 + 2 * idx, mask=live, other=0.0)
-        a_im = tl.load(hi2 + 2 * idx + 1, mask=live, other=0.0)
-        t_re, t_im = _mul_coefficient_left(kp_2, src_re, src_im, EXPANSION)
-        a_re = a_re + t_re
-        a_im = a_im + t_im
-        t_re, t_im = _mul_coefficient_left(km_2, prev_re, prev_im, EXPANSION)
-        a_re = a_re - t_re
-        a_im = a_im - t_im
-        out2_re = a_re
-        out2_im = a_im
-        return (out0_re, out0_im, out1_re, out1_im, out2_re, out2_im,
-                s0_re, s0_im, s1_re, s1_im, s2_re, s2_im)
-
-    @triton.jit
-    def _h_tap_complex(COMP: tl.constexpr, i, j, k, valid,
-                       hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                       kp0, km0, kp1, km1, kp2, km2, ny, nz,
-                       EXPANSION: tl.constexpr):
-        """One FOREIGN magnetic word pair: the stepped component at another cell,
-        an exact ``(+0.0, +0.0)`` where the caller's guard is False."""
-        (o0_re, o0_im, o1_re, o1_im, o2_re, o2_im,
-         _s0_re, _s0_im, _s1_re, _s1_im, _s2_re, _s2_im) = _h_cell_complex(
-            i, j, k, valid, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-            kp0, km0, kp1, km1, kp2, km2, ny, nz, EXPANSION)
-        v_re = o0_re
-        v_im = o0_im
-        if COMP == 1:
-            v_re = o1_re
-            v_im = o1_im
-        if COMP == 2:
-            v_re = o2_re
-            v_im = o2_im
-        return tl.where(valid, v_re, 0.0), tl.where(valid, v_im, 0.0)
-
-    @triton.jit
-    def _mul_field_left_fma(z_re, z_im, c):
-        """``z * (c + 0j)`` with the FIELD on the left, the FMA_V1 arrangement with
-        EXPLICIT fused multiply-adds -- the measured spelling of CuPy's contracted
-        ``complex<float> * complex<float>(c)`` (module docstring, item 1). Not gated
-        on ``EXPANSION``: the arm of the constitutive half must not reach the increment.
-        Negation is ``* -1.0``, never unary minus (complex_fields._mul_field_left)."""
-        out_re = tl.math.fma(z_re, c, (z_im * 0.0) * -1.0)
-        out_im = tl.math.fma(z_re, 0.0, z_im * c)
-        return out_re, out_im
-
-    @triton.jit
-    def _div_coefficient_scaled(z_re, z_im, d):
-        """``z / (d + 0j)`` as CuPy's scaled complex division spells it
-        (``cupy/complex/arithmetic.h:96-110``), every zero-valued term KEPT and both
-        reciprocals correctly rounded (module docstring, item 2)."""
-        s = tl.abs(d) + 0.0
-        oos = tl.math.div_rn(1.0, s)
-        ars = z_re * oos
-        ais = z_im * oos
-        brs = d * oos
-        bis = 0.0 * oos
-        s2 = (brs * brs) + (bis * bis)
-        oos2 = tl.math.div_rn(1.0, s2)
-        q_re = ((ars * brs) + (ais * bis)) * oos2
-        q_im = ((ais * brs) - (ars * bis)) * oos2
-        return q_re, q_im
-
-    @triton.jit
-    def cyl_complex_update_H_increment(
-        ho0, ho1, ho2,                  # SCRATCH out: the stepped Hx, Hy, Hz   (c8 as words)
-        wo0, wo1, wo2,                  # SCRATCH out: the stepped f_w_H*        (c8 as words)
-        hi0, hi1, hi2,                  # PRE-LAUNCH Hx, Hy, Hz                  (read-only)
-        wi0, wi1, wi2,                  # PRE-LAUNCH f_w_H*                      (read-only)
-        b0, b1, b2,                     # Bx, By, Bz                             (read-only)
-        inc,                            # SCRATCH out: the radial increment      (c8 as words)
-        wgt, dvs,                       # the array path's cached weights (nr), divisor (nr-1), f32
-        kp0, km0, kp1, km1, kp2, km2,   # kps/kms on each component's own axis, INTEGER lattice
-        nx, ny, nz, n_elem,             # n_elem = COMPLEX cells
-        EXPANSION: tl.constexpr,
+    @triton.jit(do_not_specialize=["start_h"])
+    def cyl_complex_update_H_scratch(
+        ho0, ho1, ho2,                  # SCRATCH out: stepped Hx,Hy,Hz    (c8 as words)
+        wo0, wo1, wo2,                  # SCRATCH out: stepped f_w_H*      (c8 as words)
+        hi0, hi1, hi2,                  # PRE-LAUNCH Hx, Hy, Hz              (read-only)
+        wi0, wi1, wi2,                  # PRE-LAUNCH f_w_Hx, f_w_Hy, f_w_Hz (read-only)
+        b0, b1, b2,                     # Bx, By, Bz                         (read-only)
+        kp0, kp1, kp2, kmx, kmy, kmz,   # kps/kms on each component's own axis, INTEGER
+        cb,                             # chunk record: the constitutive's dsigw lines
+        nx, ny, nz, n_elem, start_h,    # n_elem = COMPLEX cells; MEEP's start of H
         BLOCK: tl.constexpr,
     ):
-        """``update_H`` into scratch, plus the pre-scan stage of the radial prefix, on
-        complex64 word pairs. Nothing written by this launch is read by it."""
+        """complex ``update_H`` into scratch: the complex weld's constitutive block.
+
+        ``hi``/``wi``/``b`` are const for the whole dispatch and ``ho``/``wo`` are
+        write-only scratch, so nothing written by this launch is read by it.
+        """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
         nyz = ny * nz
@@ -498,67 +175,54 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         j = plane % ny
         i = plane // ny
 
-        # ============ THE CONSTITUTIVE: update_H at the program's own cell, to SCRATCH
-        (o0_re, o0_im, o1_re, o1_im, o2_re, o2_im,
-         s0_re, s0_im, s1_re, s1_im, s2_re, s2_im) = _h_cell_complex(
+        # complex update_H at the program's own cell, to SCRATCH (the complex weld's
+        # block)
+        (own0_re, own0_im, own1_re, own1_im, own2_re, own2_im,
+         src0_re, src0_im, src1_re, src1_im, src2_re, src2_im,
+         dw0, dw1, dw2) = _h_cell_complex(
             i, j, k, live, hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-            kp0, km0, kp1, km1, kp2, km2, ny, nz, EXPANSION)
-        tl.store(ho0 + 2 * idx, o0_re, mask=live)
-        tl.store(ho0 + 2 * idx + 1, o0_im, mask=live)
-        tl.store(ho1 + 2 * idx, o1_re, mask=live)
-        tl.store(ho1 + 2 * idx + 1, o1_im, mask=live)
-        tl.store(ho2 + 2 * idx, o2_re, mask=live)
-        tl.store(ho2 + 2 * idx + 1, o2_im, mask=live)
-        tl.store(wo0 + 2 * idx, s0_re, mask=live)
-        tl.store(wo0 + 2 * idx + 1, s0_im, mask=live)
-        tl.store(wo1 + 2 * idx, s1_re, mask=live)
-        tl.store(wo1 + 2 * idx + 1, s1_im, mask=live)
-        tl.store(wo2 + 2 * idx, s2_re, mask=live)
-        tl.store(wo2 + 2 * idx + 1, s2_im, mask=live)
-
-        # ============ THE INCREMENT: stepping.cylindrical_rderiv_prefix's four passes
-        inner = live & (i >= 1)
-        h_re, h_im = _h_tap_complex(1, i - 1, j, k, inner,
-                                    hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,
-                                    kp0, km0, kp1, km1, kp2, km2, ny, nz, EXPANSION)
-        w_i = tl.load(wgt + i, mask=live, other=0.0)
-        w_im1 = tl.load(wgt + i - 1, mask=inner, other=0.0)
-        d_im1 = tl.load(dvs + i - 1, mask=inner, other=1.0)
-        # xp.multiply(f_p, weights): complex64 * complex<float>(w), the FIELD on the
-        # left, in the arrangement the device is measured to compute.
-        wh_re, wh_im = _mul_field_left_fma(o1_re, o1_im, w_i)
-        wb_re, wb_im = _mul_field_left_fma(h_re, h_im, w_im1)
-        # xp.subtract(weighted[1:], weighted[:-1]): componentwise.
-        d_re = wh_re - wb_re
-        d_im = wh_im - wb_im
-        # increment[1:] /= divisor: complex64 / complex<float>(d), the SCALED algorithm.
-        q_re, q_im = _div_coefficient_scaled(d_re, d_im, d_im1)
-        # increment[_face(0, 0)] = 0: the axis row is an exact (+0.0, +0.0).
-        q_re = tl.where(inner, q_re, 0.0)
-        q_im = tl.where(inner, q_im, 0.0)
-        tl.store(inc + 2 * idx, q_re, mask=live)
-        tl.store(inc + 2 * idx + 1, q_im, mask=live)
+            kp0, kp1, kp2, kmx, kmy, kmz, cb, start_h, ny, nz)
+        tl.store(ho0 + 2 * idx, own0_re, mask=live)
+        tl.store(ho0 + 2 * idx + 1, own0_im, mask=live)
+        tl.store(ho1 + 2 * idx, own1_re, mask=live)
+        tl.store(ho1 + 2 * idx + 1, own1_im, mask=live)
+        tl.store(ho2 + 2 * idx, own2_re, mask=live)
+        tl.store(ho2 + 2 * idx + 1, own2_im, mask=live)
+        # The history takes B on the accumulation's cells only (the auxiliary
+        # contract); every other cell of the twin takes the pre-launch word pair.
+        tl.store(wo0 + 2 * idx, tl.where(dw0, src0_re, tl.load(
+            wi0 + 2 * idx, mask=live & (dw0 == 0), other=0.0)), mask=live)
+        tl.store(wo0 + 2 * idx + 1, tl.where(dw0, src0_im, tl.load(
+            wi0 + 2 * idx + 1, mask=live & (dw0 == 0), other=0.0)), mask=live)
+        tl.store(wo1 + 2 * idx, tl.where(dw1, src1_re, tl.load(
+            wi1 + 2 * idx, mask=live & (dw1 == 0), other=0.0)), mask=live)
+        tl.store(wo1 + 2 * idx + 1, tl.where(dw1, src1_im, tl.load(
+            wi1 + 2 * idx + 1, mask=live & (dw1 == 0), other=0.0)), mask=live)
+        tl.store(wo2 + 2 * idx, tl.where(dw2, src2_re, tl.load(
+            wi2 + 2 * idx, mask=live & (dw2 == 0), other=0.0)), mask=live)
+        tl.store(wo2 + 2 * idx + 1, tl.where(dw2, src2_im, tl.load(
+            wi2 + 2 * idx + 1, mask=live & (dw2 == 0), other=0.0)), mask=live)
 
 else:  # pragma: no cover - the laptop path
-    cyl_complex_update_H_increment = None  # type: ignore[assignment]
+    cyl_complex_update_H_scratch = None  # type: ignore[assignment]
 
 
-def cyl_complex_update_H_increment_kernel() -> Any:
+def cyl_complex_update_H_scratch_kernel() -> Any:
     """The shipped launch-1 kernel object, or a refusal naming the missing import."""
     if triton is None:  # pragma: no cover - the laptop path
         raise ImportError(
             "the cylindrical complex H->D pair needs Triton to launch; the predicate, "
-            f"the lift checks and the plan builder answer without it "
+            "the lift checks and the plan builder answer without it "
             f"({_TRITON_IMPORT_ERROR})")
-    return cyl_complex_update_H_increment
+    return cyl_complex_update_H_scratch
 
 
 # ---------------------------------------------------------------------------
 # Coverage
 # ---------------------------------------------------------------------------
 
-def cylindrical_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = None,
-                                       probe: Any = None) -> "_coverage.Coverage":
+def cylindrical_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = None
+                                       ) -> "_coverage.Coverage":
     """May ONE run span ``update_H`` -> the electric withdraw -> ``step_D`` on this
     complex Dcyl run? The two certified halves' OWN predicates, in the driver's order,
     plus the seam clauses -- nothing weakened, every reason prefixed by its half."""
@@ -568,11 +232,11 @@ def cylindrical_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = Non
 
     reasons: List[str] = []
     constitutive = _cx.cylindrical_complex_constitutive_coverage(
-        fields, pml, CONSTITUTIVE_SIDE, probe=probe)
+        fields, pml, CONSTITUTIVE_SIDE)
     if not constitutive.covered:
         reasons.extend(f"cylindrical complex constitutive half: {reason}"
                        for reason in constitutive.reasons)
-    curl = _cx.cylindrical_complex_curl_coverage(fields, pml, CURL_SUB_STEP, probe=probe)
+    curl = _cx.cylindrical_complex_curl_coverage(fields, pml, CURL_SUB_STEP)
     if not curl.covered:
         reasons.extend(f"cylindrical complex curl half: {reason}"
                        for reason in curl.reasons)
@@ -600,156 +264,122 @@ def cylindrical_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = Non
     for name in IN_PLACE + CONSTITUTIVE_SOURCES:
         if getattr(fields, name, None) is None:
             reasons.append(f"{name} is not allocated")
-    if getattr(fields, "scratch", None) is None:
-        reasons.append(
-            "fields carries no StepScratch: the increment and the scan output are the "
-            "array path's own pooled slots (cyl_increment, cyl_prefix) and the two "
-            "invariant row vectors are its cached constants")
     return _coverage.Coverage(not reasons, tuple(dict.fromkeys(reasons)))
 
 
-def explain_cylindrical_fused_hd_pair(fields: Any, pml: Any, sources: Any = None,
-                                      probe: Any = None) -> "_coverage.Coverage":
-    return cylindrical_fused_hd_pair_coverage(fields, pml, sources, probe=probe)
+def explain_cylindrical_fused_hd_pair(fields: Any, pml: Any, sources: Any = None
+                                      ) -> "_coverage.Coverage":
+    return cylindrical_fused_hd_pair_coverage(fields, pml, sources)
 
 
 # ---------------------------------------------------------------------------
 # The plan
 # ---------------------------------------------------------------------------
 
-class CylindricalFusedHdPairPlan(ScratchWeldPairPlan):
-    """TWO launches and ONE array-module scan for ``update_H`` and ``step_D`` on
-    complex64 word pairs. The complex twin of
-    :class:`.cylindrical_real_fused_hd_pair.CylindricalRealFusedHdPairPlan`; see it."""
+class CylindricalFusedHdPairPlan(_cartesian.StartsH, ScratchWeldPairPlan):
+    """Launch 1 into scratch, then the certified complex cylindrical ``step_D`` plan.
 
-    __slots__ = ("dtdx", "backward", "bcz", "m_class", "zero_rows", "expansion",
-                 "increment_scalars", "four_dtdx", "xp", "scratch", "_b", "_targets",
-                 "_aux", "_curl_coeff", "_h_coeff", "_imr_rows", "_weights", "_divisor",
-                 "_kernel", "_curl_kernel", "_pointer", "_flat", "cumsum_calls",
-                 "kernel_launches", "_dtype")
+    The real family's shape (:class:`.cylindrical_real_fused_hd_pair.CylindricalRealFusedHdPairPlan`)
+    on complex64 word pairs: the certified curl plan is built once over each rotating
+    allocation, launch 1 word-views this run's scratch and pre-launch volumes at launch
+    time, and ``__init__`` refuses aliasing among everything written and between
+    written and read.
+    """
+
+    __slots__ = ("dtdx", "courant", "m", "bcz", "backward", "_b", "_kps", "_kms",
+                 "_kernel", "_pointer", "_curl_plans", "kernel_launches", "_dtype",
+                 "_h_state")
 
     replaces = REPLACES
     launches_per_run = LAUNCHES_PER_RUN
     kernel_launches_per_run = KERNEL_LAUNCHES_PER_RUN
 
-    def __init__(self, shape: Sequence[int], dtdx: float, m: int,
-                 accurate_fields_near_cylorigin: bool, bcz: int, expansion: int,
+    def __init__(self, shape: Sequence[int], dtdx: float, courant: float, m: int,
+                 accurate_fields_near_cylorigin: bool, bcz: int,
                  block: int, fields: Any, twins: Dict[str, Any],
                  flux: Sequence[Any], targets: Sequence[Any],
                  auxiliaries: Sequence[Any], curl_coefficients: Sequence[Any],
-                 constitutive_coefficients: Sequence[Any], xp: Any, scratch: Any,
-                 kernel: Any = None, curl_kernel: Any = None,
-                 num_warps: Optional[int] = 1) -> None:
+                 constitutive_coefficients: Sequence[Any], xp: Any, *,
+                 chunk_bounds: Any, scan_starts: Any, kernel: Any = None,
+                 curl_kernel: Any = None, scan_kernel: Any = None,
+                 num_warps: Optional[int] = 1, curl_num_warps: Optional[int] = None,
+                 h_state: Any = None) -> None:
         from .launch import CupyPointer, _flat  # noqa: PLC0415
 
         super().__init__(FAMILY, fields, twins, ROTATED, shape, block, REPLACES,
-                         num_warps=num_warps)
+                         num_warps=num_warps, chunk_bounds=chunk_bounds)
         if int(self.shape[1]) != 1:
             raise ValueError(
                 f"a Dcyl grid stores one phi cell; shape {self.shape} does not")
-        if scratch is None:
-            raise ValueError(
-                "this plan takes the increment and the scan output from the engine's "
-                "StepScratch and binds its cached row vectors; a None pool is refused")
+        self._dtype = getattr(targets[0], "dtype", None)
+        if str(self._dtype) != "complex64":
+            raise ValueError(f"this plan steps complex64 word pairs, not {self._dtype}")
         if 2 * self.n_elem >= 2 ** 31:
             raise ValueError(
                 f"{self.n_elem} complex cells needs {2 * self.n_elem} int32 word "
-                f"indices, which overflows the kernels' 2 * idx addressing")
+                f"indices, which overflows launch 1's 2 * idx addressing")
         self.dtdx = float(dtdx)
-        self.backward = BACKWARD
+        self.courant = float(courant)
+        self.m = int(m)
         self.bcz = int(bcz)
-        self.m_class = _cx.m_class(m)
-        self.zero_rows = _cx.zero_rows(m, accurate_fields_near_cylorigin)
-        self.expansion = int(expansion)
-        self.increment_scalars = _cx.axis_increment_scalars(m, dtdx)
-        self.four_dtdx = _cx.four_dtdx_scalar(dtdx)
-        self.xp = xp
-        self.scratch = scratch
+        self.backward = BACKWARD
         self._pointer = CupyPointer
-        self._flat = _flat
-        self._dtype = targets[0].dtype
-        if str(self._dtype) != "complex64":
-            raise ValueError(f"this plan steps complex64 word pairs, not {self._dtype}")
         self._b = tuple(CupyPointer(_word_view(a)) for a in flux)
-        self._targets = tuple(CupyPointer(_word_view(a)) for a in targets)
-        self._aux = tuple(CupyPointer(_word_view(a)) for a in auxiliaries)
-        self._curl_coeff = tuple(CupyPointer(_flat(a)) for a in curl_coefficients)
-        if len(self._curl_coeff) != 6 or len(constitutive_coefficients) != 6:
+        kps = list(constitutive_coefficients[:3])
+        kms = list(constitutive_coefficients[3:])
+        if len(curl_coefficients) != 6 or len(kps) != 3 or len(kms) != 3:
             raise ValueError(
                 "this plan binds six curl coefficient vectors (kms/sinv per axis) and "
-                "six constitutive ones (kps, kms per axis, interleaved), all integer")
-        self._h_coeff = tuple(CupyPointer(_flat(a)) for a in constitutive_coefficients)
-        # The i*m/r rows: the complex family's own host-built invariants (zero rows at
-        # m = 0, where the M_ZERO arm never loads them; bound so the launch signature
-        # is one signature).
-        self._imr_rows = tuple(
-            CupyPointer(_word_view(xp.ascontiguousarray(
-                _cx.imr_coefficient_row(xp, _cx.SUB_STEPS[CURL_SUB_STEP]["targets"][index],
-                                        sign, m, dtdx, self.shape[0],
-                                        self._dtype).reshape(-1))))
-            for index, _register, sign in _cx.IMR_TERMS[CURL_SUB_STEP])
-        weights, divisor = _real.rderiv_vectors(xp, scratch, self.shape[0],
-                                                targets[0].real.dtype)
-        if int(weights.shape[0]) != self.shape[0] or int(divisor.shape[0]) != self.shape[0] - 1:
+                "six constitutive ones (kps, then kms, per axis), all on the integer "
+                "sub-lattice")
+        self._kps = tuple(CupyPointer(_flat(a)) for a in kps)
+        self._kms = tuple(CupyPointer(_flat(a)) for a in kms)
+        # THE CERTIFIED COMPLEX step_D PLAN, once over each rotating allocation, built
+        # by the certified harness builder.
+        live = {name: getattr(fields, name) for name in ROTATED}
+        curl_flat = dict(zip((f"{stem}_{axis}" for axis in "xyz"
+                              for stem in ("kms", "sinv")), curl_coefficients))
+        plans: Dict[int, Any] = {}
+        for magnetic in (live, twins):
+            arrays = {name: magnetic[name] for name in ("Hx", "Hy", "Hz")}
+            arrays.update(zip(IN_PLACE[:3], targets))
+            arrays.update(("fu_" + name, aux) for name, aux in zip(IN_PLACE[:3],
+                                                                  auxiliaries))
+            plan = _cx.plan_cylindrical_complex_curl_from_arrays(
+                CURL_SUB_STEP, arrays, curl_flat, dtdx, courant, m,
+                accurate_fields_near_cylorigin, bcz, xp,
+                chunk_bounds=chunk_bounds, scan_starts=scan_starts, block=block,
+                kernel=curl_kernel, scan_kernel=scan_kernel, num_warps=curl_num_warps)
+            plans[_real._address(magnetic[PREFIX_COMPONENT])] = plan  # noqa: SLF001
+        if len(plans) != 2:
             raise ValueError(
-                f"the cached rderiv vectors are {weights.shape} / {divisor.shape} for a "
-                f"{self.shape[0]}-row grid")
-        self._weights = weights
-        self._divisor = divisor
+                "the live Hy and its scratch twin are one allocation; the certified "
+                "step_D plan cannot be built over two distinct sets")
+        self._curl_plans = plans
         self._check_aliases(twins, flux, targets, auxiliaries, curl_coefficients,
                             constitutive_coefficients)
         self._kernel = kernel
-        self._curl_kernel = curl_kernel
-        self.cumsum_calls = 0
         self.kernel_launches = 0
+        # MEEP's start of H, on the Cartesian weld's terms (fused_hd_pair.StartsH).
+        self._h_state = h_state
 
-    def _increment(self) -> Any:
-        return self.scratch.take(INCREMENT_TAG, self.shape, self._dtype)
-
-    def _prefix_out(self) -> Any:
-        return self.scratch.take(PREFIX_TAG, self.shape, self._dtype)
+    @property
+    def step_d_plans(self) -> Tuple[Any, ...]:
+        """The two certified ``step_D`` plans, one over each rotating allocation."""
+        return tuple(self._curl_plans.values())
 
     def _check_aliases(self, twins, flux, targets, auxiliaries,
                        curl_coefficients, constitutive_coefficients) -> None:
-        def address(array: Any) -> Optional[int]:
-            data = getattr(array, "data", None)
-            pointer = getattr(data, "ptr", None)
-            if pointer is not None:
-                return int(pointer)
-            interface = getattr(array, "__array_interface__", None)
-            if isinstance(interface, dict):
-                return int(interface["data"][0])
-            return None
+        """No written volume may share an allocation with a read one, or another."""
+        _real.CylindricalRealFusedHdPairPlan._check_aliases(  # the real family's rule
+            self, twins, flux, targets, auxiliaries, curl_coefficients,
+            constitutive_coefficients)
 
-        outputs: Dict[int, str] = {}
-        named = [(name, twins[name]) for name in ROTATED]
-        named += [(IN_PLACE[index], array) for index, array in enumerate(targets)]
-        named += [(IN_PLACE[3 + index], array)
-                  for index, array in enumerate(auxiliaries)]
-        named += [(INCREMENT_TAG, self._increment()), (PREFIX_TAG, self._prefix_out())]
-        for label, array in named:
-            key = address(array)
-            if key is None:
-                continue
-            if key in outputs:
-                raise ValueError(
-                    f"outputs {outputs[key]} and {label} are the same allocation; "
-                    f"one run would write both")
-            outputs[key] = label
-        inputs: List[Tuple[str, Any]] = [
-            (CONSTITUTIVE_SOURCES[index], array) for index, array in enumerate(flux)]
-        inputs += [(f"curl_coefficient{index}", array)
-                   for index, array in enumerate(curl_coefficients)]
-        inputs += [(f"constitutive_coefficient{index}", array)
-                   for index, array in enumerate(constitutive_coefficients)]
-        inputs += [("rderiv_weights", self._weights), ("rderiv_divisor", self._divisor)]
-        for label, array in inputs:
-            key = address(array)
-            if key is not None and key in outputs:
-                raise ValueError(
-                    f"input {label} aliases output {outputs[key]}: the run would read a "
-                    f"volume it is writing")
+    def _curl_plan_for(self, writes: Sequence[Any]) -> Any:
+        """The certified plan whose sources are this run's scratch ``H``."""
+        return _real.CylindricalRealFusedHdPairPlan._curl_plan_for(self, writes)
 
+    # -- the three launches ------------------------------------------------
     def _launch(self, writes: Sequence[Any], reads: Sequence[Any],
                 guard: Optional[bool]) -> None:
         from .kernels import ENABLE_FP_FUSION  # noqa: PLC0415
@@ -757,83 +387,69 @@ class CylindricalFusedHdPairPlan(ScratchWeldPairPlan):
         nx, ny, nz = self.shape
         extra = {} if self.num_warps is None else {"num_warps": self.num_warps}
         pointer = self._pointer
+        # WORD-VIEWED HERE, not at plan time: the rotation moves which allocation is
+        # live, so the view has to be taken of whatever the engine names now.
         scratch = [pointer(_word_view(array)) for array in writes]
         prior = [pointer(_word_view(array)) for array in reads]
 
-        # LAUNCH 1 -- update_H to scratch, plus the increment.
+        # LAUNCH 1 -- complex update_H to scratch.
         kernel = (self._kernel if self._kernel is not None
-                  else cyl_complex_update_H_increment_kernel())
-        increment = self._increment()
+                  else cyl_complex_update_H_scratch_kernel())
         kernel[self._grid](
-            *scratch, *prior, *self._b, pointer(_word_view(increment)),
-            pointer(self._flat(self._weights)), pointer(self._flat(self._divisor)),
-            *self._h_coeff,
-            nx, ny, nz, self.n_elem,
-            EXPANSION=self.expansion,
+            *scratch, *prior, *self._b, *self._kps, *self._kms, self._cb,
+            nx, ny, nz, self.n_elem, self.start_h(),
             BLOCK=self.block,
             enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
             **extra,
         )
-        self.kernel_launches += 1
-
-        # THE SCAN -- stepping.py:1332-1333, on the pool's own slot. The oracle.
-        prefix = self.xp.cumsum(increment, axis=0, out=self._prefix_out())
-        self.cumsum_calls += 1
-
-        # LAUNCH 2 -- the certified complex cylindrical curl, verbatim, over the NEW H,
-        # with the argument list `CylindricalComplexCurlPlan.run` passes (its default
-        # launch carries no num_warps override, and neither does this call).
-        curl = (self._curl_kernel if self._curl_kernel is not None
-                else _cx.cyl_complex_pml_curl_step)
-        (minus_dtdx, inc_b) = self.increment_scalars
-        curl[self._grid](
-            *self._targets, *self._aux,
-            scratch[0], scratch[1], scratch[2],       # the stepped Hx, Hy, Hz
-            pointer(_word_view(prefix)), *self._imr_rows,
-            *self._curl_coeff,
-            nx, ny, nz, self.n_elem, self.dtdx,
-            minus_dtdx, inc_b[0], inc_b[1], self.four_dtdx,
-            BACKWARD=self.backward,
-            BCZ=self.bcz,
-            M_CLASS=self.m_class,
-            ZERO_ROWS=self.zero_rows,
-            EXPANSION=self.expansion,
-            BLOCK=self.block,
-            enable_fp_fusion=ENABLE_FP_FUSION if guard is None else bool(guard),
-        )
-        self.kernel_launches += 1
+        # LAUNCHES 2 AND 3 -- the certified complex step_D plan over the scratch H.
+        plan = self._curl_plan_for(writes)
+        if self._grid[0]:
+            plan.run(guard)
+            self.kernel_launches += KERNEL_LAUNCHES_PER_RUN
+            return
+        saved = (plan._grid, plan.scan._grid)  # noqa: SLF001
+        plan._grid = plan.scan._grid = (0,)  # noqa: SLF001
+        try:
+            plan.run(guard)
+        finally:
+            plan._grid, plan.scan._grid = saved  # noqa: SLF001
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return (f"CylindricalFusedHdPairPlan(shape={self.shape}, m_class={self.m_class}, "
-                f"zero_rows={self.zero_rows}, bcz={self.bcz}, "
-                f"expansion={self.expansion}, block={self.block})")
+        return (f"CylindricalFusedHdPairPlan(shape={self.shape}, m={self.m}, "
+                f"bcz={self.bcz}, block={self.block}, num_warps={self.num_warps})")
 
 
 def _sub_lattice_suffixes() -> Tuple[str, str]:
-    """``(curl suffix, constitutive suffix)`` from the shipped tables, asserted equal."""
-    from .launch import SUB_STEPS  # noqa: PLC0415
-
-    curl = SUB_STEPS[CURL_SUB_STEP]["suffix"]
+    """``(curl suffix, constitutive suffix)``, READ from the shipped tables and asserted
+    equal: both halves take the INTEGER sub-lattice on this seam."""
+    curl = _cx.SUB_STEPS[CURL_SUB_STEP]["suffix"]
     constitutive = ("_h" if _coverage.CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
                     ["half_integer"] else "")
     if curl != constitutive:
         raise AssertionError(
             f"step_D reads the {curl or 'integer'!r} PML sub-lattice and update_H the "
-            f"{constitutive or 'integer'!r} one; both halves take one lattice here")
-    if int(SUB_STEPS[CURL_SUB_STEP]["backward"]) != BACKWARD:
-        raise AssertionError("launch.SUB_STEPS and this product disagree about BACKWARD")
+            f"{constitutive or 'integer'!r} one; both halves of this product take one "
+            f"lattice and that is only correct while they agree")
+    if int(_cx.SUB_STEPS[CURL_SUB_STEP]["backward"]) != BACKWARD:
+        raise AssertionError(
+            f"the table says step_D differences {_cx.SUB_STEPS[CURL_SUB_STEP]['backward']}, "
+            f"and this product declares BACKWARD = {BACKWARD}")
     return curl, constitutive
 
 
 def plan_cylindrical_fused_hd_pair(
         fields: Any, pml: Any, sources: Any = None, block: Optional[int] = None,
         num_warps: Optional[int] = 1, kernel: Any = None, curl_kernel: Any = None,
-        probe: Any = None) -> Optional[CylindricalFusedHdPairPlan]:
-    """Build the plan from the engine's own objects, or ``None`` when refused."""
-    if not cylindrical_fused_hd_pair_coverage(fields, pml, sources, probe=probe).covered:
-        return None
-    expansion = _resolve_expansion(probe)
-    if expansion is None:  # pragma: no cover - the predicate already refused
+        scan_kernel: Any = None
+        ) -> Optional[CylindricalFusedHdPairPlan]:
+    """Build the plan from the engine's own objects, or ``None`` when refused.
+
+    ``kernel``, ``curl_kernel`` and ``scan_kernel`` are the mutation seams. The chunk
+    record and the scan's starts line are the certified host bindings, called.
+    """
+    from .launch import chunk_bounds_for  # noqa: PLC0415
+    if not cylindrical_fused_hd_pair_coverage(fields, pml, sources).covered:
         return None
     suffix, constitutive_suffix = _sub_lattice_suffixes()
     from ..stepping import _boundary_kinds as resolve  # noqa: PLC0415
@@ -841,9 +457,9 @@ def plan_cylindrical_fused_hd_pair(
     grid = fields.grid
     kinds = resolve(grid, pml)
     return CylindricalFusedHdPairPlan(
-        grid.shape, grid.dt / grid.dx, int(grid.m),
+        grid.shape, grid.dt / grid.dx, float(grid.courant), int(grid.m),
         bool(grid.accurate_fields_near_cylorigin),
-        1 if kinds[2] == "metallic" else 0, expansion,
+        1 if kinds[2] == "metallic" else 0,
         DEFAULT_BLOCK if block is None else block,
         fields, twin_table(fields, ROTATED),
         [getattr(fields, name) for name in CONSTITUTIVE_SOURCES],
@@ -851,32 +467,39 @@ def plan_cylindrical_fused_hd_pair(
         [getattr(fields, name) for name in IN_PLACE[3:]],
         [getattr(pml, f"{stem}_{axis}{suffix}")
          for axis in "xyz" for stem in ("kms", "sinv")],
-        [getattr(pml, f"{stem}_{axis}{constitutive_suffix}")
-         for axis in "xyz" for stem in ("kps", "kms")],
-        grid.xp, fields.scratch,
-        kernel=kernel, curl_kernel=curl_kernel, num_warps=num_warps,
+        ([getattr(pml, f"kps_{axis}{constitutive_suffix}") for axis in "xyz"]
+         + [getattr(pml, f"kms_{axis}{constitutive_suffix}") for axis in "xyz"]),
+        grid.xp,
+        chunk_bounds=chunk_bounds_for(fields, pml, None),
+        scan_starts=_cx.radial_scan_starts(fields, pml, CURL_SUB_STEP, None),
+        kernel=kernel, curl_kernel=curl_kernel, scan_kernel=scan_kernel,
+        num_warps=num_warps, h_state=fields,
     )
 
 
 def plan_cylindrical_fused_hd_pair_from_arrays(
         arrays: Dict[str, Any], curl_flat: Dict[str, Any],
-        constitutive_flat: Dict[str, Any], dtdx: float, m: int,
-        accurate_fields_near_cylorigin: bool, bcz: int, expansion: int,
-        fields: Any, xp: Any, scratch: Any, block: Optional[int] = None,
-        kernel: Any = None, curl_kernel: Any = None,
-        num_warps: Optional[int] = 1) -> CylindricalFusedHdPairPlan:
+        constitutive_flat: Dict[str, Any], dtdx: float, courant: float, m: int,
+        accurate_fields_near_cylorigin: bool, bcz: int,
+        fields: Any, xp: Any, block: Optional[int] = None,
+        kernel: Any = None, curl_kernel: Any = None, scan_kernel: Any = None,
+        num_warps: Optional[int] = 1, *, chunk_bounds: Any,
+        scan_starts: Any) -> CylindricalFusedHdPairPlan:
     """Build from bare device arrays -- the gate's route. No predicate runs, and
-    ``expansion`` arrives as the constexpr the caller resolved (or forced)."""
+    ``chunk_bounds`` and ``scan_starts`` are REQUIRED, as the certified curl plan
+    requires them. No start of H: a harness state has already started."""
     shape = tuple(int(n) for n in arrays[IN_PLACE[0]].shape)
     twins = {name: arrays["scratch_" + name] for name in ROTATED}
     return CylindricalFusedHdPairPlan(
-        shape, dtdx, m, accurate_fields_near_cylorigin, bcz, int(expansion),
+        shape, dtdx, courant, m, accurate_fields_near_cylorigin, bcz,
         DEFAULT_BLOCK if block is None else block,
         fields, twins,
         [arrays[name] for name in CONSTITUTIVE_SOURCES],
         [arrays[name] for name in IN_PLACE[:3]],
         [arrays[name] for name in IN_PLACE[3:]],
         [curl_flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kms", "sinv")],
-        [constitutive_flat[f"{stem}_{axis}"] for axis in "xyz" for stem in ("kps", "kms")],
-        xp, scratch, kernel=kernel, curl_kernel=curl_kernel, num_warps=num_warps,
+        ([constitutive_flat[f"kps_{axis}"] for axis in "xyz"]
+         + [constitutive_flat[f"kms_{axis}"] for axis in "xyz"]),
+        xp, chunk_bounds=chunk_bounds, scan_starts=scan_starts, kernel=kernel,
+        curl_kernel=curl_kernel, scan_kernel=scan_kernel, num_warps=num_warps,
     )

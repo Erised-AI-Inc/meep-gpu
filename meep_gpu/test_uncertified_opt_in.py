@@ -1,17 +1,20 @@
 """Kernels on a device or toolchain that is not certified.
 
-``MEEP_GPU_ALLOW_UNCERTIFIED`` is a strict switch; every value other than ``1`` and
-``0`` is refused by name. Every kernel table runs by default on an identity it
-SUPPORTS but that no cited gate ran on, records ``certified: False`` with the identity
-read, and prints one line naming what is certified and why the kernels ran; ``0``
-restricts the kernels to certified identities and refuses one it cannot judge.
+``MEEP_GPU_HARDWARE`` names the hardware scope by value, ``certified``, ``supported``
+(the default, when unset) or ``any``; every other value is refused by name, exact
+match, and so is the retired ``MEEP_GPU_ALLOW_UNCERTIFIED`` set to anything, with the
+value of ``MEEP_GPU_HARDWARE`` that matches what it meant. Every kernel table runs by
+default on an identity it SUPPORTS but that no cited gate ran on, records
+``certified: False`` with the identity read, and prints one line naming what is
+certified and why the kernels ran; ``certified`` restricts the kernels to certified
+identities and refuses one it cannot judge.
 
 On the NVIDIA tables supported is a range: compute capability 7.0 to 9.0 on both
 tables, and Triton ``>=3.1,<3.2`` on the Triton table. An identity read outside it is
-refused by name unless the switch is ``1``, which runs it too, recorded
+refused by name unless the scope is ``any``, which runs it too, recorded
 ``supported: False``. A table that is certified for this device and toolchain
 outranks one that is only supported: under the default the supported one is dropped
-by name (rung 4e), and ``1`` composes both. On the Metal table every Apple GPU is
+by name (rung 4e), and ``any`` composes both. On the Metal table every Apple GPU is
 supported.
 
 The NVIDIA half substitutes the identity: a stand-in for CuPy that reports a
@@ -55,11 +58,13 @@ from meep_gpu.test_dispatch_contract import (
     unsupported_capabilities,
 )
 
-SWITCH = "MEEP_GPU_ALLOW_UNCERTIFIED"
+SWITCH = "MEEP_GPU_HARDWARE"
+#: The name ``SWITCH`` replaced: refused by name, set to anything.
+RETIRED = "MEEP_GPU_ALLOW_UNCERTIFIED"
 SWITCHES = ("MEEP_GPU_DISPATCH", "MEEP_GPU_FUSED", "MEEP_GPU_KERNEL_TABLE",
             "MEEP_GPU_BACKEND_PREFERENCE", "MEEP_GPU_FUSE_ARMS",
             "MEEP_GPU_METAL_RESIDENCY", "MEEP_GPU_DISPATCH_LOG",
-            "MEEP_GPU_SUBNORMAL_POLICY", "MEEP_GPU_SUBNORMAL_INSTALL", SWITCH)
+            "MEEP_GPU_SUBNORMAL_POLICY", "MEEP_GPU_SUBNORMAL_INSTALL", SWITCH, RETIRED)
 
 #: Supported compute capabilities no cited gate ran on: the first two candidates both
 #: NVIDIA tables support and neither certifies (8.9 and 7.5 while 8.6 is the only
@@ -71,9 +76,12 @@ SUPPORTED_UNCERTIFIED = [(capability, f"{capability[0]}.{capability[1]}")
 #: ceiling.
 UNSUPPORTED = [(capability, f"{capability[0]}.{capability[1]}")
                for capability in unsupported_capabilities(2)]
-#: Values that are neither ``1`` nor ``0``, the two a user is most likely to type
-#: among them.
-UNACCEPTED_VALUES = ["true", "yes", "", " 1", "2", "on"]
+#: Values that are not one of the three, exact match: the retired ``0`` and ``1``,
+#: empty and whitespace, another case, padding, and words a user might type.
+UNACCEPTED_VALUES = ["0", "1", "", " ", "Any", "ANY", "Certified", " any", "any ",
+                     "supported\n", "true", "on"]
+#: Values the retired name might still be set to: its two accepted values and others.
+RETIRED_VALUES = ["0", "1", "", "x", "true"]
 STEPS = 5
 #: How the NOTE line ends, whatever made the run uncertified.
 NOTE_TAIL = ("compare the results with a prefer_gpu=False run of the same simulation "
@@ -92,7 +100,8 @@ def _supported_entry_because(what, read, table, scope) -> str:
 
 
 def _unsupported_entry_because(what, read, table, scope) -> str:
-    return f"{SWITCH}=1 runs {what} {read}, outside what the {table} table supports ({scope})"
+    return (f"{SWITCH}=any runs {what} {read}, outside what the {table} table supports "
+            f"({scope})")
 
 
 def _supported_clause(subject, where="") -> str:
@@ -110,7 +119,17 @@ def _unsupported_clause(subject, with_range) -> str:
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch, tmp_path):
-    """Every test starts with the switches unset, dispatch enabled and nothing said."""
+    """Every test starts with the switches unset, dispatch enabled, nothing said, and
+    a host FPU that keeps subnormals.
+
+    THE LAST CLAUSE IS SESSION ORDER, not tidiness. MEEP's own initialization flushes
+    the host on x86-64 and never undoes it, so after any earlier test in the session
+    imported MEEP the first freeze here reads "installed by dispatch over the run's
+    own flush" and the second does not: two different status lines, and the "said
+    once" assertions fail in a full run while passing alone. Measured on the NVIDIA
+    reference environment: these tests fail after ``test_meep_precision_notice.py``
+    and pass without it. The entry state is driven to keep here and put back after.
+    """
     from meep_gpu import subnormal_policy  # noqa: PLC0415
 
     for name in SWITCHES:
@@ -121,6 +140,8 @@ def _clean(monkeypatch, tmp_path):
     fastpath._POLICY_INSTALLED_BY_DISPATCH = None  # noqa: SLF001
     fastpath.reset_dispatch_announcements()
     flushing_at_entry = backends.subnormals_flushed()
+    if flushing_at_entry:
+        subnormal_policy._drive_host_fpu(False)  # noqa: SLF001
     yield
     try:
         from meep_gpu import host_writes, metal_dispatch  # noqa: PLC0415
@@ -167,33 +188,92 @@ def _set(monkeypatch, value) -> None:
 # --- the switch itself ------------------------------------------------------------------
 
 
-def test_the_switch_is_named_and_strict():
-    assert fastpath.UNCERTIFIED_SWITCH == SWITCH
-    assert dict(fastpath.UNCERTIFIED_VALUES) == {"1": True, "0": False}
+def test_the_switch_is_named_by_value_and_strict():
+    assert fastpath.HARDWARE_SWITCH == SWITCH
+    assert fastpath.HARDWARE_VALUES == ("certified", "supported", "any")
+    assert fastpath.HARDWARE_DEFAULT == "supported"
+    assert (fastpath.HARDWARE_CERTIFIED, fastpath.HARDWARE_SUPPORTED,
+            fastpath.HARDWARE_ANY) == fastpath.HARDWARE_VALUES
+    assert fastpath.RETIRED_HARDWARE_SWITCH == RETIRED
+    assert dict(fastpath.RETIRED_HARDWARE_VALUES) == {"0": "certified", "1": "any"}
 
 
-@pytest.mark.parametrize("value,allowed,unsupported,restricted", [
-    (None, True, False, False), ("0", False, False, True), ("1", True, True, False)]
-    + [(value, False, False, False) for value in UNACCEPTED_VALUES])
-def test_the_record_states_what_each_value_allows(monkeypatch, value, allowed,
-                                                  unsupported, restricted):
-    """``allowed``: a supported identity that is not certified may compose (unset and
-    ``1``); ``unsupported_allowed``: one outside the supported range may (``1``)."""
+def test_the_old_names_are_gone_with_no_alias():
+    """Renamed outright: neither ladder keeps a reader, constant or wrapper under the
+    old names, so nothing can read the retired variable by accident."""
+    from meep_gpu import metal_dispatch  # noqa: PLC0415
+
+    for name in ("UNCERTIFIED_SWITCH", "UNCERTIFIED_VALUES", "certified_only",
+                 "unsupported_allowed", "CERTIFIED_ONLY_TAIL",
+                 "_uncertified_value_refusal"):
+        assert not hasattr(fastpath, name), name
+    assert not hasattr(metal_dispatch, "certified_only")
+
+
+@pytest.mark.parametrize("value,scope,allowed,unsupported", [
+    (None, "supported", True, False), ("certified", "certified", False, False),
+    ("supported", "supported", True, False), ("any", "any", True, True)]
+    + [(value, None, False, False) for value in UNACCEPTED_VALUES])
+def test_the_record_states_what_each_value_allows(monkeypatch, value, scope, allowed,
+                                                  unsupported):
+    """``allowed``: a supported identity that is not certified may compose
+    (``supported``, the default, and ``any``); ``unsupported_allowed``: one outside the
+    supported range may (``any``). A value rung 3b refuses is no scope at all."""
     _set(monkeypatch, value)
-    assert fastpath.certified_only() is restricted
-    assert fastpath.unsupported_allowed() is unsupported
+    assert fastpath.hardware_scope() == scope
     block = fastpath._base_record()["uncertified"]  # noqa: SLF001
     assert block == {"variable": SWITCH, "value": value, "allowed": allowed,
                      "unsupported_allowed": unsupported, "admitted": [], "dropped": []}
 
 
-@pytest.mark.parametrize("value", [None, "0", "1"] + UNACCEPTED_VALUES)
-def test_both_ladders_read_the_restriction_the_same_way(monkeypatch, value):
-    """The NVIDIA ladder's ``certified_only`` and the Metal ladder's are one rule."""
+@pytest.mark.parametrize("value", [None, "certified", "supported", "any"]
+                         + UNACCEPTED_VALUES)
+def test_both_ladders_record_the_restriction_from_one_reader(monkeypatch, value):
+    """The NVIDIA and the Metal environment blocks state ``certified_only`` from the one
+    scope reader, so the two ladders cannot read the switch two ways."""
+    import types  # noqa: PLC0415
+
     from meep_gpu import metal_dispatch  # noqa: PLC0415
 
     _set(monkeypatch, value)
-    assert fastpath.certified_only() is metal_dispatch.certified_only()
+    restricted = value == "certified"
+    assert (fastpath.hardware_scope() == fastpath.HARDWARE_CERTIFIED) is restricted
+    metal = metal_dispatch.environment_block(types.SimpleNamespace(xp=np), {})
+    assert metal["certified_only"] is restricted
+
+
+# --- the retired name -------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("value", RETIRED_VALUES)
+@pytest.mark.parametrize("scope", [None, "supported", "any"])
+@pytest.mark.parametrize("capability", [(8, 6), (8, 9), (10, 0)])
+def test_the_retired_name_is_refused_by_name_with_its_replacement(
+        monkeypatch, capsys, value, scope, capability):
+    """Set to anything, beside any scope, on the certified device as well: never read,
+    and the refusal names the replacement and the value that does what it did."""
+    monkeypatch.setenv(RETIRED, value)
+    _set(monkeypatch, scope)
+    grid = cupy_like_grid_with_device(capability=capability)
+    assert _plan_on(monkeypatch, grid) is None
+    record = fastpath.last_dispatch_report()
+    assert record["decision"] == "refused" and record["step_path"] == "array"
+    assert record["certified"] is None
+    assert record["uncertified"]["admitted"] == []
+    reason = record["refused_because"]
+    assert reason.startswith(f"{RETIRED}={value!r} is set, and that variable is "
+                             f"retired: its replacement is {SWITCH} (certified | "
+                             "supported | any; unset means supported)"), reason
+    meant = {"0": "certified", "1": "any"}.get(value)
+    if meant is not None:
+        assert f"{RETIRED}={value} is {SWITCH}={meant}." in reason, reason
+    else:
+        assert (f"{RETIRED} accepted only 0, which is {SWITCH}=certified, and 1, which "
+                f"is {SWITCH}=any.") in reason, reason
+    assert reason.endswith("so this run takes the array path"), reason
+    lines = _meep_lines(capsys.readouterr().err)
+    assert len(lines) == 1 and f"{RETIRED}={value!r} is set" in lines[0], lines
+    assert _notes("\n".join(lines)) == []
 
 
 # --- NVIDIA: what is supported ----------------------------------------------------------
@@ -231,7 +311,7 @@ def test_the_supported_range_names_both_cupy_builds_nvrtc():
 
 
 @pytest.mark.parametrize("capability,spelled", SUPPORTED_UNCERTIFIED)
-@pytest.mark.parametrize("value", [None, "1"])
+@pytest.mark.parametrize("value", [None, "supported", "any"])
 def test_a_supported_uncertified_device_dispatches_by_default_and_says_so_once(
         monkeypatch, capsys, capability, spelled, value):
     _set(monkeypatch, value)
@@ -288,12 +368,13 @@ def test_a_supported_uncertified_device_dispatches_by_default_and_says_so_once(
             "supported but not certified bit-identical") in note, note
     assert f". They were dispatched because {_supported_clause('NVIDIA GPU and toolchain are')}; " \
         in note, note
-    assert f"{SWITCH}=0 would restrict the kernels to certified ones" in note, note
+    assert f"{SWITCH}=certified would restrict the kernels to certified ones" in note, note
     assert note.count("the supported range is") == 1, note
     assert ("counted in the dispatch record under uncertified.served[], which names "
             "the first five in welds_without_a_live_run_here") in note, note
     assert note.endswith(NOTE_TAIL), note
-    assert f"because {SWITCH}=1" not in note, note
+    assert f"because {SWITCH}=any" not in note, note
+    assert RETIRED not in note, note
 
     # A second freeze in the same process repeats neither line.
     assert _plan_on(monkeypatch, grid) is not None
@@ -303,7 +384,7 @@ def test_a_supported_uncertified_device_dispatches_by_default_and_says_so_once(
 @pytest.mark.parametrize("capability,spelled", SUPPORTED_UNCERTIFIED)
 def test_certified_only_refuses_a_supported_uncertified_device_by_name(
         monkeypatch, capsys, capability, spelled):
-    monkeypatch.setenv(SWITCH, "0")
+    monkeypatch.setenv(SWITCH, "certified")
     grid = cupy_like_grid_with_device(capability=capability, name=b"another device")
     assert _plan_on(monkeypatch, grid) is None
     record = fastpath.last_dispatch_report()
@@ -316,10 +397,10 @@ def test_certified_only_refuses_a_supported_uncertified_device_by_name(
     for table in ("triton", "cuda"):
         row = record["tables"][table]
         assert row["candidate"] is False
-        assert row["refused_because"].endswith(fastpath.CERTIFIED_ONLY_TAIL), row
+        assert row["refused_because"].endswith(fastpath.CERTIFIED_SCOPE_TAIL), row
         assert row["welds_without_a_live_run_here"], row
     lines = _meep_lines(capsys.readouterr().err)
-    assert len(lines) == 1 and f"{SWITCH}=0 restricts" in lines[0], lines
+    assert len(lines) == 1 and f"{SWITCH}=certified restricts" in lines[0], lines
     assert _notes("\n".join(lines)) == []
 
 
@@ -327,10 +408,11 @@ def test_certified_only_refuses_a_supported_uncertified_device_by_name(
 
 
 @pytest.mark.parametrize("capability,spelled", UNSUPPORTED)
-@pytest.mark.parametrize("value", [None, "0"])
+@pytest.mark.parametrize("value", [None, "supported", "certified"])
 def test_an_unsupported_device_is_refused_by_name(monkeypatch, capsys, capability,
                                                  spelled, value):
-    """Unset names the way past it (``1``); ``0`` names the restriction instead."""
+    """``supported`` (the default) names the way past it (``any``); ``certified`` names
+    the restriction instead."""
     _set(monkeypatch, value)
     grid = cupy_like_grid_with_device(capability=capability, name=b"another device")
     assert _plan_on(monkeypatch, grid) is None
@@ -340,26 +422,27 @@ def test_an_unsupported_device_is_refused_by_name(monkeypatch, capsys, capabilit
     assert record["uncertified"]["admitted"] == []
     reason = record["refused_because"]
     assert f"GPU compute capability {spelled} is not in the recorded" in reason, reason
-    tail = fastpath.UNSUPPORTED_HINT if value is None else fastpath.CERTIFIED_ONLY_TAIL
+    default = value != "certified"
+    tail = fastpath.UNSUPPORTED_HINT if default else fastpath.CERTIFIED_SCOPE_TAIL
     for table in ("triton", "cuda"):
         row = record["tables"][table]
         assert row["candidate"] is False
         assert row["refused_because"].endswith(tail), row
-        if value is None:
+        if default:
             assert ("outside the compute capabilities that table supports "
                     "(7.0 to 9.0)") in row["refused_because"], row
     assert record["environment"]["device_supported"] is False
     assert record["environment"]["device_certified"] is False
     lines = _meep_lines(capsys.readouterr().err)
     assert len(lines) == 1, lines
-    assert (f"set {SWITCH}=1" in lines[0]) is (value is None), lines
+    assert (f"set {SWITCH}=any" in lines[0]) is default, lines
     assert _notes("\n".join(lines)) == []
 
 
 @pytest.mark.parametrize("capability,spelled", UNSUPPORTED)
-def test_an_unsupported_device_runs_under_one_recorded_as_unsupported(
+def test_an_unsupported_device_runs_under_any_recorded_as_unsupported(
         monkeypatch, capsys, capability, spelled):
-    monkeypatch.setenv(SWITCH, "1")
+    monkeypatch.setenv(SWITCH, "any")
     grid = cupy_like_grid_with_device(capability=capability, name=b"another device")
     plan = _plan_on(monkeypatch, grid)
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
@@ -391,9 +474,9 @@ def test_an_unsupported_device_runs_under_one_recorded_as_unsupported(
 
 def test_the_certified_device_is_certified_and_said_the_same_way_whatever_the_switch(
         monkeypatch, capsys):
-    """Nothing on a certified host depends on the switch: decision, slots, line."""
+    """Nothing on a certified host depends on the scope: decision, slots, line."""
     seen = {}
-    for value in (None, "0", "1"):
+    for value in (None, "certified", "supported", "any"):
         _set(monkeypatch, value)
         fastpath.reset_dispatch_announcements()
         plan = _plan_on(monkeypatch, cupy_like_grid_with_device())
@@ -406,14 +489,15 @@ def test_the_certified_device_is_certified_and_said_the_same_way_whatever_the_sw
         lines = _meep_lines(capsys.readouterr().err)
         assert _notes("\n".join(lines)) == [], (value, lines)
         seen[value] = (sorted(plan.slots), lines)
-    assert seen[None] == seen["0"] == seen["1"], seen
+    assert seen[None] == seen["certified"] == seen["supported"] == seen["any"], seen
     assert seen[None][1][0].endswith("NVIDIA RTX A6000 certified"), seen
 
 
-@pytest.mark.parametrize("value", [None, "1"])
+@pytest.mark.parametrize("value", [None, "supported", "any"])
 def test_an_unreadable_device_is_neither_certified_nor_admitted(monkeypatch, capsys,
                                                                 value):
-    """Three-valued: an identity that was not read is not judged, unset or ``1``."""
+    """Three-valued: an identity that was not read is not judged, under every scope
+    but ``certified``."""
     _set(monkeypatch, value)
     plan = _plan_on(monkeypatch, cupy_like_grid())
     assert plan is not None
@@ -426,23 +510,24 @@ def test_an_unreadable_device_is_neither_certified_nor_admitted(monkeypatch, cap
 
 
 def test_certified_only_refuses_a_device_it_cannot_judge(monkeypatch, capsys):
-    """``0`` runs the kernels only where they are certified, and an identity that was
-    not read is not certified (the Metal table's rule, rung 4M)."""
-    monkeypatch.setenv(SWITCH, "0")
+    """``certified`` runs the kernels only where they are certified, and an identity
+    that was not read is not certified (the Metal table's rule, rung 4M)."""
+    monkeypatch.setenv(SWITCH, "certified")
     assert _plan_on(monkeypatch, cupy_like_grid()) is None
     record = fastpath.last_dispatch_report()
     for table in ("triton", "cuda"):
         reason = record["tables"][table]["refused_because"]
         assert reason.startswith("the GPU compute capability could not be read on this "
                                  "host"), reason
-        assert reason.endswith(fastpath.CERTIFIED_ONLY_TAIL + ", and an identity that "
+        assert reason.endswith(fastpath.CERTIFIED_SCOPE_TAIL + ", and an identity that "
                                "cannot be judged is not one"), reason
     assert _notes(capsys.readouterr().err) == []
 
 
-@pytest.mark.parametrize("value", [None, "0"])
+@pytest.mark.parametrize("value", [None, "certified"])
 def test_a_ledger_that_cannot_be_read_leaves_the_device_unjudged(monkeypatch, value):
-    """Unset keeps the table a candidate, unjudged, as before; ``0`` refuses it by name."""
+    """The default keeps the table a candidate, unjudged, as before; ``certified``
+    refuses it by name."""
     _set(monkeypatch, value)
     block_triton(monkeypatch)
     install_cuda_composer(monkeypatch, cuda_step_plan(pairs=()))
@@ -465,7 +550,7 @@ def test_a_ledger_that_cannot_be_read_leaves_the_device_unjudged(monkeypatch, va
 # --- NVIDIA: the Triton version ---------------------------------------------------------
 
 
-@pytest.mark.parametrize("value", [None, "0"])
+@pytest.mark.parametrize("value", [None, "supported", "certified"])
 def test_an_unsupported_triton_is_refused_by_name(monkeypatch, value):
     _set(monkeypatch, value)
     block_cuda(monkeypatch)
@@ -475,18 +560,18 @@ def test_an_unsupported_triton_is_refused_by_name(monkeypatch, value):
     row = record["tables"]["triton"]["refused_because"]
     assert row.startswith("Triton 9.9.9-unreleased is not in the recorded "
                           "validated_triton_versions"), row
-    if value is None:
+    if value != "certified":
         assert ("outside the Triton versions the triton table supports "
                 "(>=3.1,<3.2)") in row, row
         assert row.endswith(fastpath.UNSUPPORTED_HINT), row
     else:
-        assert row.endswith(fastpath.CERTIFIED_ONLY_TAIL), row
+        assert row.endswith(fastpath.CERTIFIED_SCOPE_TAIL), row
     assert record["environment"]["triton_supported"] is False
     assert record["certified"] is None
 
 
-def test_an_unsupported_triton_runs_under_one(monkeypatch, capsys):
-    monkeypatch.setenv(SWITCH, "1")
+def test_an_unsupported_triton_runs_under_any(monkeypatch, capsys):
+    monkeypatch.setenv(SWITCH, "any")
     block_cuda(monkeypatch)
     plan = _plan_on(monkeypatch, cupy_like_grid_with_device(),
                     version="9.9.9-unreleased")
@@ -512,7 +597,7 @@ def test_an_unsupported_triton_runs_under_one(monkeypatch, capsys):
     assert "NVIDIA GPU" not in notes[0], notes
 
 
-@pytest.mark.parametrize("value", [None, "1"])
+@pytest.mark.parametrize("value", [None, "supported", "any"])
 def test_a_supported_uncertified_triton_dispatches_by_default(monkeypatch, capsys, value):
     _set(monkeypatch, value)
     block_cuda(monkeypatch)
@@ -540,13 +625,13 @@ def test_a_supported_uncertified_triton_dispatches_by_default(monkeypatch, capsy
 
 
 def test_certified_only_refuses_a_supported_uncertified_triton(monkeypatch):
-    monkeypatch.setenv(SWITCH, "0")
+    monkeypatch.setenv(SWITCH, "certified")
     block_cuda(monkeypatch)
     assert _plan_on(monkeypatch, cupy_like_grid_with_device(), version="3.1.1") is None
     row = fastpath.last_dispatch_report()["tables"]["triton"]["refused_because"]
     assert row.startswith("Triton 3.1.1 is not in the recorded "
                           "validated_triton_versions"), row
-    assert row.endswith(fastpath.CERTIFIED_ONLY_TAIL), row
+    assert row.endswith(fastpath.CERTIFIED_SCOPE_TAIL), row
 
 
 def test_a_table_admitted_on_one_identity_and_refused_on_another_is_dropped_whole(
@@ -600,7 +685,7 @@ OUTRANKING = [("cuda", ["step_D", "update_E"], "triton"),
 
 
 @pytest.mark.parametrize("certified,slots,dropped", OUTRANKING)
-@pytest.mark.parametrize("value", [None, "0"])
+@pytest.mark.parametrize("value", [None, "supported", "certified"])
 def test_a_certified_table_outranks_a_supported_uncertified_one(
         monkeypatch, capsys, certified, slots, dropped, value):
     """The default never makes a host less certified than the certified table alone."""
@@ -615,18 +700,18 @@ def test_a_certified_table_outranks_a_supported_uncertified_one(
     assert record["uncertified"]["admitted"] == []
     row = record["tables"][dropped]
     assert row["candidate"] is False
-    if value is None:
+    if value != "certified":
         assert row["refused_because"] == (
             f"the {dropped} table is supported but not certified here (GPU compute "
             f"capability 9.0), and the {certified} table is certified for this device "
-            f"and toolchain; set {SWITCH}=1 to compose it too"), row
+            f"and toolchain; set {SWITCH}=any to compose it too"), row
         assert row["dropped_for_a_certified_table"] == [certified]
         assert row["welds_without_a_live_run_here"], row
         (entry,) = record["uncertified"]["dropped"]
         assert (entry["table"], entry["read"]) == (dropped, "9.0")
         assert entry["dropped_because"] == row["refused_because"]
     else:
-        assert row["refused_because"].endswith(fastpath.CERTIFIED_ONLY_TAIL), row
+        assert row["refused_because"].endswith(fastpath.CERTIFIED_SCOPE_TAIL), row
     lines = _meep_lines(capsys.readouterr().err)
     assert _notes("\n".join(lines)) == [], lines
     (status,) = _status("\n".join(lines))
@@ -634,9 +719,9 @@ def test_a_certified_table_outranks_a_supported_uncertified_one(
 
 
 @pytest.mark.parametrize("certified,slots,dropped", OUTRANKING)
-def test_one_composes_the_supported_table_beside_the_certified_one(
+def test_any_composes_the_supported_table_beside_the_certified_one(
         monkeypatch, capsys, certified, slots, dropped):
-    monkeypatch.setenv(SWITCH, "1")
+    monkeypatch.setenv(SWITCH, "any")
     _one_table_certifies_9_0(monkeypatch, certified)
     plan = _two_table_plan(monkeypatch)
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
@@ -667,8 +752,8 @@ def test_a_preference_for_the_dropped_table_is_refused_with_the_drop(
                              "candidate table on this host"), reason
     assert reason.endswith(f"; {dropped}: {record['tables'][dropped]['refused_because']}")
     assert record["arbitration"]["refused_because"] == reason
-    # ...and with ``1`` the preference is honoured, uncertified.
-    monkeypatch.setenv(SWITCH, "1")
+    # ...and with ``any`` the preference is honoured, uncertified.
+    monkeypatch.setenv(SWITCH, "any")
     plan = _two_table_plan(monkeypatch)
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
     assert plan.report()["arbitration"]["effective_order"][0] == dropped
@@ -718,12 +803,12 @@ def test_an_unreadable_table_is_not_dropped_for_a_certified_one(monkeypatch):
 @pytest.mark.parametrize("capability,version,supported,outside", [
     ((6, 1), "3.1.1", "Triton version is", "NVIDIA GPU"),
     ((7, 5), "3.2.0", "NVIDIA GPU is", "Triton version")])
-def test_under_one_a_mixed_host_says_which_identity_is_supported(
+def test_under_any_a_mixed_host_says_which_identity_is_supported(
         monkeypatch, capsys, capability, version, supported, outside):
     """One identity inside the supported range, the other outside it: the NOTE calls
-    supported only the one that is, names the other as what ``1`` ran, and states the
-    range once."""
-    monkeypatch.setenv(SWITCH, "1")
+    supported only the one that is, names the other as what ``any`` ran, and states
+    the range once."""
+    monkeypatch.setenv(SWITCH, "any")
     plan = _plan_on(monkeypatch, cupy_like_grid_with_device(capability=capability),
                     version=version)
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
@@ -777,14 +862,19 @@ def test_any_other_value_is_refused_by_name_on_every_device(
     assert record["decision"] == "refused" and record["step_path"] == "array"
     reason = record["refused_because"]
     assert reason.startswith(f"{SWITCH}={value!r} is not an accepted value"), reason
+    assert reason.endswith("The value is refused rather than interpreted, so this run "
+                           "takes the array path"), reason
+    for accepted in ("=certified", "=supported (the default when unset)", "=any"):
+        assert f"{SWITCH}{accepted}" in reason, reason
     assert record["uncertified"]["value"] == value
     assert record["uncertified"]["allowed"] is False
+    assert record["uncertified"]["unsupported_allowed"] is False
     assert record["certified"] is None
     lines = _meep_lines(capsys.readouterr().err)
     assert len(lines) == 1 and f"{SWITCH}={value!r}" in lines[0], lines
 
 
-@pytest.mark.parametrize("value", [None, "1"])
+@pytest.mark.parametrize("value", [None, "any"])
 def test_the_kill_switch_and_the_disable_answer_first(monkeypatch, value):
     """Admitting an identity enables nothing the rungs above refuse."""
     _set(monkeypatch, value)
@@ -828,10 +918,10 @@ TOOLCHAIN_KEYS = {"architecture": "architecture", "torch": "version",
                   "metal_frontend": "metal_frontend", "fast_math": "fast_math"}
 #: Why an uncertified environment ran: on an Apple GPU, that every Apple GPU is
 #: supported; on any other GPU, that the Metal table runs uncertified by default.
-SUPPORTED_REMINDER = (f"this Apple GPU is supported, and {SWITCH}=0 would restrict the "
-                      f"Metal kernels to certified environments")
+SUPPORTED_REMINDER = (f"this Apple GPU is supported, and {SWITCH}=certified would "
+                      f"restrict the Metal kernels to certified environments")
 UNCERTIFIED_REMINDER = (f"the Metal table runs on environments outside the certified "
-                        f"set unless {SWITCH}=0")
+                        f"set unless {SWITCH}=certified")
 
 
 def _environment(monkeypatch, fact=None, value=None, recorded=None) -> None:
@@ -881,7 +971,7 @@ def _run(steps=STEPS):
 
 
 @pytest.mark.parametrize("fact,value,what,mark", METAL_FACTS)
-@pytest.mark.parametrize("switch", [None, "1"])
+@pytest.mark.parametrize("switch", [None, "supported", "any"])
 def test_an_uncertified_metal_environment_runs_by_default_and_matches_a_certified_one(
         monkeypatch, capsys, fact, value, what, mark, switch):
     """The kernels that run are the ones a certified environment runs: same bytes."""
@@ -910,6 +1000,9 @@ def test_an_uncertified_metal_environment_runs_by_default_and_matches_a_certifie
         wanted = CERTIFIED_ENVIRONMENT.get(fact, "unset")
         assert served[0]["certified"] == [wanted], served
         assert served[0]["because"] == SUPPORTED_REMINDER, served
+        assert report["uncertified"]["value"] == switch
+        assert report["uncertified"]["allowed"] is True
+        assert report["environment"]["certified_only"] is False
         field = np.array(driver.get_field("Ez"), copy=True)
         driver.close()
         assert field.tobytes() == certified_field.tobytes()
@@ -918,7 +1011,7 @@ def test_an_uncertified_metal_environment_runs_by_default_and_matches_a_certifie
     assert len(notes) == 1, lines
     assert f"{what} {value} (certified: {wanted})" in notes[0], notes
     assert f"dispatched because {SUPPORTED_REMINDER};" in notes[0], notes
-    assert f"{SWITCH}=1" not in notes[0], notes
+    assert f"{SWITCH}=any" not in notes[0] and RETIRED not in notes[0], notes
     status = [line for line in lines if line.startswith("meep_gpu: step path fused;")]
     assert len(status) == 1, lines
     # SUPPORTED IS NOT CERTIFIED: an Apple GPU no weld ran on is both, by name.
@@ -947,7 +1040,7 @@ def test_a_gpu_that_is_not_apples_runs_uncertified_and_is_not_called_supported(
 def test_certified_only_refuses_an_uncertified_metal_environment_by_name(
         monkeypatch, capsys, fact, value, what, mark):
     _require_metal()
-    monkeypatch.setenv(SWITCH, "0")
+    monkeypatch.setenv(SWITCH, "certified")
     _environment(monkeypatch, fact, value)
     driver, report = _run()
     assert driver.active_step_path == "array"
@@ -957,8 +1050,8 @@ def test_certified_only_refuses_an_uncertified_metal_environment_by_name(
                 if fact == "fast_math" else
                 f"{what} {value} is not the one every Metal weld this table cites ran on")
     assert reason.startswith(expected), reason
-    assert reason.endswith(f"{SWITCH}=0 restricts the Metal kernels to certified "
-                           "environments"), reason
+    assert reason.endswith(f"{SWITCH}=certified restricts the Metal kernels to "
+                           "certified environments"), reason
     assert report["environment"][mark] is False
     assert report["environment"]["certified_only"] is True
     driver.close()
@@ -967,7 +1060,7 @@ def test_certified_only_refuses_an_uncertified_metal_environment_by_name(
 
 def test_certified_only_runs_a_certified_metal_environment(monkeypatch, capsys):
     _require_metal()
-    monkeypatch.setenv(SWITCH, "0")
+    monkeypatch.setenv(SWITCH, "certified")
     _environment(monkeypatch)
     driver, report = _run()
     assert driver.active_step_path == "fused", report["refused_because"]
@@ -991,17 +1084,18 @@ UNJUDGED = [
 
 @pytest.mark.parametrize("case,fact,value,recorded,cause", UNJUDGED,
                          ids=[row[0] for row in UNJUDGED])
-@pytest.mark.parametrize("switch", [None, "0"])
+@pytest.mark.parametrize("switch", [None, "supported", "any", "certified"])
 def test_an_environment_that_cannot_be_judged_runs_unjudged_or_is_refused(
         monkeypatch, capsys, case, fact, value, recorded, cause, switch):
-    """Unjudged is not uncertified: it runs by default, and certified-only refuses it."""
+    """Unjudged is not uncertified: it runs by default (and under ``any``), and the
+    ``certified`` scope refuses it."""
     _require_metal()
     if switch is not None:
         monkeypatch.setenv(SWITCH, switch)
     _environment(monkeypatch, fact, value, recorded)
     driver, report = _run()
     assert report["environment"]["device_certified"] is None
-    if switch is None:
+    if switch != "certified":
         assert driver.active_step_path == "fused", report["refused_because"]
         assert report["certified"] is None
         assert report["uncertified"]["served"] == []
@@ -1030,3 +1124,22 @@ def test_any_other_value_is_refused_by_name_on_an_apple_gpu(monkeypatch, capsys,
     assert len(lines) == 1, lines
     assert lines[0].startswith("meep_gpu: step path array on the host CPU; dispatch "
                                f"refused: {SWITCH}={value!r}"), lines
+
+
+@pytest.mark.parametrize("value", RETIRED_VALUES)
+def test_the_retired_name_is_refused_by_name_on_an_apple_gpu(monkeypatch, capsys, value):
+    _require_metal()
+    monkeypatch.setenv(RETIRED, value)
+    driver = _driver()
+    for _ in range(STEPS):
+        driver.step()
+    report = driver.fast_path_report()
+    assert driver.active_step_path == "array"
+    assert report["refused_because"].startswith(
+        f"{RETIRED}={value!r} is set, and that variable is retired: its replacement is "
+        f"{SWITCH}"), report["refused_because"]
+    driver.close()
+    lines = _meep_lines(capsys.readouterr().err)
+    assert len(lines) == 1, lines
+    assert lines[0].startswith("meep_gpu: step path array on the host CPU; dispatch "
+                               f"refused: {RETIRED}={value!r} is set"), lines

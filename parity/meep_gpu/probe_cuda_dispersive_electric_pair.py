@@ -200,6 +200,8 @@ def build(case: Dict[str, Any]):
     else:
         thickness = tuple(tuple(int(v) for v in pair) for pair in case["pml"])
     pml = PML(grid=grid, thickness=thickness)
+    # The one-rank region plan: the per-chunk division update_E chooses its forms by.
+    stepping._region_plan(fields, pml)
     shape = tuple(int(n) for n in grid.shape)
     for name in _SEEDED:
         array = getattr(fields, name, None)
@@ -261,9 +263,15 @@ def closed_form(pre: Dict[str, np.ndarray], state: Dict[str, np.ndarray],
                 coefficients: Dict[str, Tuple[np.ndarray, np.ndarray]],
                 shape: Tuple[int, int, int], near: Sequence[int],
                 reflect: Sequence[int], phase: Sequence[np.float32],
-                walls: Sequence[bool], mutation: str = "",
+                walls: Sequence[bool], dsigw: Dict[str, np.ndarray],
+                mutation: str = "",
                 ) -> Tuple[Dict[str, np.ndarray], Dict[str, int]]:
     """The kernel's own composition, evaluated as arrays.
+
+    ``dsigw[component]`` is the cell's form (MEEP's two constitutive forms per chunk):
+    True where the cell's chunk carries the component's own layer -- the accumulation
+    ``f + ((kps*src) - (kms*prev))`` with ``f_w = src`` -- and False elsewhere, where
+    ``f = src`` and ``f_w`` is untouched.
 
     ONE ARRAY OP PER EMITTED LINE, in the order the emitted blocks run them, and the
     ownership guard is the mask those blocks nest inside. The WRITE COUNT per cell is
@@ -311,10 +319,13 @@ def closed_form(pre: Dict[str, np.ndarray], state: Dict[str, np.ndarray],
         for array in chain:
             source -= array
         product = (source * inv_eps).astype(np.float32)
+        inside = dsigw[component]
         previous = np.array(auxiliary, copy=True)
-        auxiliary = np.where(owned, product, auxiliary).astype(np.float32)
-        updated = ((electric + (kps * product).astype(np.float32)).astype(np.float32)
-                   - (kms * previous).astype(np.float32)).astype(np.float32)
+        auxiliary = np.where(owned & inside, product, auxiliary).astype(np.float32)
+        accumulated = (electric + ((kps * product).astype(np.float32)
+                                   - (kms * previous).astype(np.float32))
+                       ).astype(np.float32)
+        updated = np.where(inside, accumulated, product).astype(np.float32)
         electric = np.where(owned, updated, electric).astype(np.float32)
         written[owned] += 1
 
@@ -379,14 +390,18 @@ def closed_form(pre: Dict[str, np.ndarray], state: Dict[str, np.ndarray],
             ghost_kps = np.broadcast_to(kps, shape)[coefficient_key]
             ghost_kms = np.broadcast_to(kms, shape)[coefficient_key]
             ghost_previous = auxiliary[destination_key]
-            ghost_updated = (
-                (electric[destination_key]
-                 + (ghost_kps * ghost_product).astype(np.float32)).astype(np.float32)
-                - (ghost_kms * ghost_previous).astype(np.float32)).astype(np.float32)
+            ghost_inside = inside[destination_key]
+            ghost_accumulated = (
+                electric[destination_key]
+                + ((ghost_kps * ghost_product).astype(np.float32)
+                   - (ghost_kms * ghost_previous).astype(np.float32))
+            ).astype(np.float32)
+            ghost_updated = np.where(ghost_inside, ghost_accumulated,
+                                     ghost_product).astype(np.float32)
             electric[destination_key] = np.where(
                 own_source, ghost_updated, electric[destination_key]).astype(np.float32)
             auxiliary[destination_key] = np.where(
-                own_source, ghost_product,
+                own_source & ghost_inside, ghost_product,
                 auxiliary[destination_key]).astype(np.float32)
             written[destination_key] = (written[destination_key]
                                         + own_source.astype(np.int32))
@@ -417,6 +432,9 @@ def measure(case: Dict[str, Any], steps: int) -> Dict[str, Any]:
     coefficients = {letter: stepping._constitutive_coefficients(
         pml, letter, half_integer=True) for letter in ("x", "y", "z")}
     poles = pole_chain(fields)
+    dsigw = {component: np.broadcast_to(np.asarray(
+        fields.region_plan.mask("constitutive", component, np)), shape)
+        for component in _ELECTRIC}
     arity = tuple(len(poles[component]) for component in _ELECTRIC)
     live = bool(any(np.any(array != 0) for chain in poles.values()
                     for array in chain))
@@ -464,7 +482,7 @@ def measure(case: Dict[str, Any], steps: int) -> Dict[str, Any]:
                 state["inv_eps_" + component] = engine.inverse_epsilon_for(component)
             model, writes = closed_form(
                 engine_pre, state, pole_chain(engine), coefficients, shape,
-                near, reflect, phase, walls,
+                near, reflect, phase, walls, dsigw,
                 mutation="" if label == "shipped" else label)
             for name, array in model.items():
                 getattr(engine, name)[...] = array

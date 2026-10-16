@@ -43,6 +43,19 @@ conductive cell at 0 of 2 is consulted here through the SAME clause, imported fr
 sparse per-deposit-cell rescale landed that clause refuses only a scaled source
 that publishes no deposit table, which no in-tree electric source class is.
 
+THE CHUNK RECORD RIDES IN ``Params``. Both lifted halves select their forms per
+structure chunk (:mod:`.conductive_pml`, :mod:`.shaders`) and read the record through
+their anchored bounds blocks as ``cb.``. ``Params`` embeds ``ChunkBounds cb`` after the
+pack offsets and the kernel aliases it (:func:`.chunk_bounds.params_alias`) before any
+lifted text, so the binding count does not move. One alias serves both halves: the D
+curl reads the integer-lattice words (``cbi_*``) and the E constitutive the
+half-integer ones (``cbh_*``), so the two blocks declare disjoint locals.
+
+THE CONDUCTIVITY PRESENCE WORDS RIDE IN ``Params`` TOO, after ``cb``
+(``ConductivePresence cw``, aliased by :func:`.conductive_pml.presence_params_alias`),
+so the lifted curl tails read ``cw.`` as the single's do and a chunk that keeps no
+conductivity steps the lossless forms here as there.
+
 NOT WIRED AS AN ARM; reached through ``launch.FUSED_PAIR_ARMS`` instead.
 """
 
@@ -57,6 +70,9 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from ..triton_kernels.conductivity import conductive_targets
 from ..triton_kernels.coverage import Coverage
 from . import coefficient_pack, conductive_pml, shaders, templates
+# Bound as `_chunk_bounds`: the plan builder takes the RECORD as `chunk_bounds`, the
+# name the composer's StepContext carries.
+from . import chunk_bounds as _chunk_bounds
 from .coverage import constitutive_coverage, zero_metal_axes
 from .device import MAX_BUFFER_BINDINGS, Residency, compile_source
 from .fused_electric_pair import (
@@ -117,6 +133,7 @@ __all__ = [
     "compile_conductive_fused_electric_pair",
     "conductive_fused_electric_pair_source",
     "metal_conductive_fused_electric_pair_coverage",
+    "params_record_dtype", "params_words",
     "plan_metal_conductive_fused_electric_pair",
     "refuted_separate_scalar_source", "refuted_unpacked_pointer_source",
     "register_arms",
@@ -133,9 +150,15 @@ using namespace metal;
 
 __CONTRACT__
 
+__RECORD_STRUCT__
+
+__PRESENCE_STRUCT__
+
 struct Params {
     uint nx; uint ny; uint nz; uint n_elem; float dtdx;
 __PACK_FIELDS__
+__RECORD_MEMBER__
+__PRESENCE_MEMBER__
 };
 
 kernel void conductive_fused_electric_pair_step(
@@ -185,6 +208,11 @@ kernel void conductive_fused_electric_pair_step(
     // pack at all.
 __PACK_PROLOGUE__
 
+    // --- the chunk record, aliased under the name both lifted blocks read --------
+__RECORD_ALIAS__
+    // --- the conductivity presence words, aliased under the curl tails' name ------
+__PRESENCE_ALIAS__
+
 __BODY__
 }
 """
@@ -227,7 +255,7 @@ def _tail_store_anchors(index: int, conductive: bool) -> Tuple[str, ...]:
             f"        f{index}[ii] = ((f{index}_previous * cf{index}[ii]) - "
             f"curl{index}) * ci{index}[ii];",
         )
-    return (f"    u{index}[ii] = u{index}_new;",
+    return (f"    if (du{index}) {{ u{index}[ii] = n{index}; }}",
             f"    f{index}[ii] = f{index}_new;")
 
 
@@ -305,6 +333,12 @@ def conductive_fused_electric_pair_source(
         "__CONTRACT__": templates.contraction_pragma(contract),
         "__PACK_FIELDS__": coefficient_pack.params_fields(PACKED_VECTORS),
         "__PACK_PROLOGUE__": coefficient_pack.prologue("cpack", PACKED_VECTORS),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
+        "__PRESENCE_STRUCT__": conductive_pml.presence_struct_source(),
+        "__PRESENCE_MEMBER__": conductive_pml.presence_params_member(),
+        "__PRESENCE_ALIAS__": conductive_pml.presence_params_alias(),
         "__BODY__": body,
     })
 
@@ -419,7 +453,7 @@ def refuted_separate_scalar_source(contract: str = shaders.CONTRACT_OFF) -> str:
 
 def metal_conductive_fused_electric_pair_coverage(
         fields: Any, pml: Any, sources: Any = None,
-        residency: Any = None) -> Coverage:
+        residency: Any = None, *, chunk_layout: Any = None) -> Coverage:
     """May ONE dispatch span conductive ``step_D`` -> wall -> ``update_E``?
 
     The conjunction of the two halves' OWN shipped predicates plus the seam
@@ -428,11 +462,14 @@ def metal_conductive_fused_electric_pair_coverage(
     * :func:`.conductive_pml.metal_conductive_pml_curl_coverage` on ``step_D``;
     * :func:`.coverage.constitutive_coverage` on side ``"E"`` — the ``ordinary``
       arm's own body, which is what the board's cell names.
+
+    ``chunk_layout`` is the division the run steps with, read by the curl half for the
+    per-chunk conductivity presence (``None``: the one-rank division).
     """
     reasons: List[str] = []
 
     curl = conductive_pml.metal_conductive_pml_curl_coverage(
-        fields, pml, "step_D", residency)
+        fields, pml, "step_D", residency, chunk_layout=chunk_layout)
     if not curl.covered:
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
     electric = constitutive_coverage(fields, pml, "E", residency)
@@ -499,7 +536,7 @@ class MetalConductiveFusedElectricPairPlan(KernelPlan):
     """
 
     __slots__ = ("residency", "volumes", "codes", "conductive", "zero_metal",
-                 "shape", "dtdx", "pack_layout", "params")
+                 "shape", "dtdx", "pack_layout", "params", "chunk_bounds", "presence")
 
     family = "conductive fused PML D-curl/stored-E pair"
 
@@ -514,7 +551,8 @@ class MetalConductiveFusedElectricPairPlan(KernelPlan):
                  codes: Sequence[int], conductive: Sequence[bool],
                  zero_metal: Sequence[bool], shape: Sequence[int], dtdx: float,
                  pack_layout: Any, params: Any, pointers: Sequence[Any],
-                 functions: Mapping[str, Any]) -> None:
+                 functions: Mapping[str, Any], chunk_bounds: Any = None,
+                 presence: Any = None) -> None:
         self.residency = residency
         self.volumes = tuple(dict.fromkeys(volumes))
         self.codes = tuple(int(code) for code in codes)
@@ -524,6 +562,8 @@ class MetalConductiveFusedElectricPairPlan(KernelPlan):
         self.dtdx = float(dtdx)
         self.pack_layout = pack_layout
         self.params = params
+        self.chunk_bounds = chunk_bounds
+        self.presence = presence
         super().__init__(dict(functions), tuple(pointers) + (params,))
 
     @property
@@ -531,22 +571,59 @@ class MetalConductiveFusedElectricPairPlan(KernelPlan):
         return self.launches
 
 
-def _params_tensor(shape: Sequence[int], dtdx: float, offsets: Sequence[int],
-                   device: str) -> Any:
-    """The five scalars AND the twelve pack offsets as one 68-byte device record."""
-    import numpy as np  # noqa: PLC0415
-    import torch  # noqa: PLC0415
+def params_record_dtype() -> Any:
+    """The packed ``Params`` record: five scalars, twelve pack offsets, the chunk record,
+    the conductivity presence words.
 
-    fields = ([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
-               ("dtdx", "<f4")]
-              + coefficient_pack.record_dtype_fields(PACKED_VECTORS))
-    record = np.zeros(1, dtype=np.dtype(fields))
-    nx, ny, nz = (int(n) for n in shape)
+    Member for member the Metal struct :data:`_TEMPLATE` declares; every member is 4
+    bytes, so there is no padding: ``cb`` sits at byte 68 and ``cw`` at byte 168 of a
+    180-byte record.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    return np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
+                     ("dtdx", "<f4")]
+                    + coefficient_pack.record_dtype_fields(PACKED_VECTORS)
+                    + _chunk_bounds.record_dtype_fields("cb")
+                    + [(conductive_pml.PRESENCE_NAME,
+                        conductive_pml.presence_record_dtype())])
+
+
+def params_words(shape: Sequence[int], dtdx: float, offsets: Sequence[int],
+                 chunk_bounds: Any, presence: Any) -> Any:
+    """The packed ``Params`` record as host ``int32`` words, the chunk record checked first.
+
+    ``chunk_bounds`` is checked against ``shape`` by :func:`.chunk_bounds.plan_words`,
+    which refuses by name a missing record or one that disagrees with the shape;
+    ``presence`` by :func:`.conductive_pml.presence_plan_words`, with no default.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    shape = tuple(int(n) for n in shape)
+    checked = _chunk_bounds.plan_words(chunk_bounds, shape, f"{FAMILY} Params")
+    words = conductive_pml.presence_plan_words(presence, f"{FAMILY} Params")
     offsets = tuple(int(offset) for offset in offsets)
     if len(offsets) != len(PACKED_VECTORS):  # pragma: no cover - arithmetic guard
         raise AssertionError((len(offsets), len(PACKED_VECTORS)))
-    record[0] = (nx, ny, nz, nx * ny * nz, np.float32(dtdx)) + offsets
-    words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
+    record = np.zeros(1, dtype=params_record_dtype())
+    nx, ny, nz = shape
+    record["nx"], record["ny"], record["nz"] = nx, ny, nz
+    record["n_elem"] = nx * ny * nz
+    record["dtdx"] = np.float32(dtdx)
+    for name, offset in zip(PACKED_VECTORS, offsets):
+        record[f"off_{name}"] = offset
+    record["cb"] = _chunk_bounds.pack(checked)
+    for name, word in zip(conductive_pml.PRESENCE_MEMBERS, words):
+        record[conductive_pml.PRESENCE_NAME][name] = word
+    return np.frombuffer(record.tobytes(), dtype=np.int32).copy()
+
+
+def _params_tensor(shape: Sequence[int], dtdx: float, offsets: Sequence[int],
+                   device: str, chunk_bounds: Any, presence: Any) -> Any:
+    """The five scalars, the pack offsets, the chunk record and the presence words."""
+    import torch  # noqa: PLC0415
+
+    words = params_words(shape, dtdx, offsets, chunk_bounds, presence)
     return torch.from_numpy(words).to(torch.device(device))
 
 
@@ -555,15 +632,23 @@ def plan_metal_conductive_fused_electric_pair(
         residency: Optional[Residency] = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
-        params: Optional[Any] = None,
+        params: Optional[Any] = None, *,
+        chunk_bounds: Any, chunk_layout: Any = None, presence: Any = None,
         ) -> Optional[MetalConductiveFusedElectricPairPlan]:
     """Build the conductive fused D/E plan, or ``None`` when the seam is refused.
 
     ``functions`` is the KERNEL mutation seam and ``params`` the HOST one — the
     packed offsets are host arithmetic. Dropping either is a silent DISARMING.
+
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``), with no default; it rides in ``Params``.
+    ``chunk_layout`` is that division, read for the per-chunk conductivity presence.
+    ``presence`` is the words' host seam; ``None`` builds them
+    (:func:`.conductive_pml.presence_words` on ``chunk_bounds``), and they ride in
+    ``Params`` beside the record.
     """
     if not metal_conductive_fused_electric_pair_coverage(
-            fields, pml, sources, residency).covered:
+            fields, pml, sources, residency, chunk_layout=chunk_layout).covered:
         return None
     import numpy as np  # noqa: PLC0415
     from ..stepping import _boundary_kinds  # noqa: PLC0415
@@ -634,11 +719,16 @@ def plan_metal_conductive_fused_electric_pair(
                 codes, flags, walls, mode)
 
     dtdx = grid.dt / grid.dx
+    checked = _chunk_bounds.plan_words(chunk_bounds, grid.shape, f"{FAMILY} plan")
+    words = (conductive_pml.presence_words(fields, pml, SLOT, checked, codes)
+             if presence is None else
+             conductive_pml.presence_plan_words(presence, f"{FAMILY} plan"))
     record = (_params_tensor(grid.shape, dtdx, pack_layout.offsets,
-                             residency.device) if params is None else params)
+                             residency.device, checked, words)
+              if params is None else params)
     return MetalConductiveFusedElectricPairPlan(
         residency, volumes, codes, flags, walls, grid.shape, dtdx, pack_layout,
-        record, pointers, selected)
+        record, pointers, selected, chunk_bounds=checked, presence=words)
 
 
 # ---------------------------------------------------------------------------
@@ -650,7 +740,8 @@ def _arm_coverage(context: Any, slot: str) -> Coverage:
         return Coverage(
             False, (f"conductive fused electric pair cannot fill {slot}",))
     return metal_conductive_fused_electric_pair_coverage(
-        context.fields, context.pml, context.sources, context.residency)
+        context.fields, context.pml, context.sources, context.residency,
+        chunk_layout=context.chunk_layout)
 
 
 def _arm_plan(context: Any, slot: str
@@ -659,7 +750,8 @@ def _arm_plan(context: Any, slot: str
         return None
     return plan_metal_conductive_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds,
+        chunk_layout=context.chunk_layout)
 
 
 def register_arms() -> Tuple[Any, ...]:

@@ -497,15 +497,17 @@ def test_the_emitter_refuses_by_name_where_the_certified_text_is_unreachable():
         module.step_curl_kernels, module.constitutive_kernels = saved
 
 
-def test_the_lift_is_nine_edits_and_no_silent_tenth():
-    """``LIFT_EDITS`` is DATA so a gate can assert it. A tenth edit that appeared in
+def test_the_lift_is_eleven_edits_and_no_silent_twelfth():
+    """``LIFT_EDITS`` is DATA so a gate can assert it. A twelfth edit that appeared in
     the emitter without a row here would be certified text changed with no record.
 
     SIX UNTIL 2026-08-31; the fill carry added three -- the ownership guard inside
     ``pml_apply``, and the two mirror fills whose destination thread became their
-    source thread.
+    source thread. MEEP's per-chunk forms (bit_parity_0_10 KC2) added two: the one
+    chunk-record decode over both halves, and each carried ghost keyed on its
+    destination's membership row.
     """
-    assert len(family.LIFT_EDITS) == 9
+    assert len(family.LIFT_EDITS) == 11
     assert all(set(edit) == {"line", "became", "why"} for edit in family.LIFT_EDITS)
 
 
@@ -540,7 +542,8 @@ def test_the_constitutive_half_reads_the_half_integer_sub_lattice(certified):
     source = certified
     for axis, coordinate in (("x", "i"), ("y", "j"), ("z", "k")):
         assert (f"constitutive_apply(E{axis}, f_w_E{axis}, idx, src_{axis}, "
-                f"kps_{axis}[{coordinate}], kms_half_{axis}[{coordinate}]);") in source
+                f"kps_{axis}[{coordinate}], kms_half_{axis}[{coordinate}], "
+                f"in_h_{axis});") in source
         # The curl half keeps the bare name, so both groups are present and distinct.
         assert f"kms_{axis}[" in source and f"kms_half_{axis}[" in source
 
@@ -724,8 +727,9 @@ def test_the_ghost_takes_the_destinations_coefficient_pair_on_the_far_plane_only
     NEAR fill did. A far ghost reusing the source's pair would apply the reflect row's
     absorber profile to the top plane."""
     blocks = "\n".join(family.fill_carry_blocks(0))
-    assert "kps_x[nx - 1], kms_half_x[nx - 1]);" in blocks
-    assert "kps_x[i], kms_half_x[i]);" in blocks
+    # Each pair is followed by the ghost's own membership flag (<tag>_w).
+    assert "kps_x[nx - 1], kms_half_x[nx - 1], gx_" in blocks
+    assert "kps_x[i], kms_half_x[i], gx_" in blocks
     for line in blocks.splitlines():
         if "constitutive_apply(Ex," not in line:
             continue
@@ -840,7 +844,10 @@ def test_the_same_protocol_without_the_repair_diverges(cell):
                        "above proves nothing")
     # WHERE it lands is the discriminating half: the constitutive target the deposit
     # feeds and its PML auxiliary, which are exactly the two arrays `apply` restores.
-    assert set(differing) == {"Ez", "f_w_Ez"}, differing
+    # Since the PML forms are chosen per structure chunk, f_w_Ez is written only on
+    # the cells whose chunk carries Ez's own layer, so it shows the miss only when a
+    # deposit cell lies there; Ez shows it always.
+    assert "Ez" in set(differing) and set(differing) <= {"Ez", "f_w_Ez"}, differing
 
 
 def test_a_clean_seam_keeps_the_cheap_sentinel_in_the_second_slot():

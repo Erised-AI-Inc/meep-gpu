@@ -1,15 +1,11 @@
 """Laptop contracts for the COMPLEX fused E->P chain.
 
 The device gate owns byte identity — nothing here compiles or launches anything.
-These tests own the five things that decide whether the device run measures what
+These tests own the four things that decide whether the device run measures what
 it claims:
 
 * **the seam's admission clauses**, and the refusals that must stay refusals — a
   second pole, real float32 storage, an active absorber, an off-diagonal row;
-* **the ONE fact this family must not inherit**: which complex expansion arm. Two
-  certified halves ask the SAME probe record for DIFFERENT pattern sets and one
-  fused source carries ONE constexpr, so a probe that split them must be a refusal
-  BY NAME rather than a silent choice of one half's arm;
 * **the shape**, walked on real engine objects. One scratch per driven component
   is this product's whole licence, and the orbit is re-asked through the SHIPPED
   plan with its alias check armed rather than through a model of it;
@@ -56,50 +52,9 @@ SOURCE = pathlib.Path(module.__file__).read_text(encoding="utf-8")
 
 COMPONENTS = ("Ex", "Ey", "Ez")
 
-#: THE SUBNORMAL POLICY IS DECLARED FOR EVERY TEST IN THIS FILE, exactly as the
-#: two certified halves' own suites declare it (test_triton_complex_ade.py:20,
-#: test_triton_complex_no_pml_stored_e.py:20). The expansion probe's licence is
-#: policy-scoped, and an undeclared run is a refusal by design — a laptop that
-#: did not say which float32 policy its questions are about could otherwise read
-#: a flush-cut licence as a keep one.
-pytestmark = pytest.mark.usefixtures("run_policy_declared_keep")
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-def _detail(value="FMA_V1"):
-    return {
-        "mismatch_words": {"FMA_V1": 0 if value == "FMA_V1" else 7,
-                           "NAIVE": 0 if value == "NAIVE" else 7,
-                           "PLANEWISE_diagnostic": 31},
-        "licensable_arms_disagreement_words": 128,
-        "discriminates": True,
-        "classified": value,
-    }
-
-
-def probe_record(value="FMA_V1", split=None):
-    """A licensing probe over the ADE half's five-pattern superset.
-
-    ``split`` names ONE pattern to answer with a DIFFERENT arm, which is how the
-    "the two halves disagree" refusal is reached without inventing a clause: the
-    fifth pattern belongs to the ADE half alone, so answering it differently makes
-    the two resolvers return different arms from one record.
-    """
-    patterns = {name: value for name in ade_module.COMPLEX_ADE_PROBE_PATTERNS}
-    if split is not None:
-        patterns[split] = "NAIVE" if value == "FMA_V1" else "FMA_V1"
-    return {
-        "backend": "cupy",
-        "patterns": patterns,
-        "vectors": {name: 2792 for name in patterns},
-        "detail": {name: _detail(patterns[name]) for name in patterns},
-        "subnormal_policy": {
-            "policy": "ieee_keep_ftz_stripped", "resolved": "keep"},
-        "candidates": {"policy": "keep"},
-    }
 
 
 def engine(*, poles=1, sigma=None, kind=LORENTZIAN, complex_storage=True,
@@ -174,12 +129,11 @@ def engine(*, poles=1, sigma=None, kind=LORENTZIAN, complex_storage=True,
     return fields, PML(grid=grid, thickness=0)
 
 
-def reasons(fields, pml, probe=None):
+def reasons(fields, pml):
     """Refusals other than the laptop's own array module."""
-    record = probe_record() if probe is None else probe
     return [reason for reason
             in module.complex_fused_ade_chain_coverage(
-                fields, pml, probe=record).reasons
+                fields, pml).reasons
             if "not cupy" not in reason]
 
 
@@ -192,9 +146,9 @@ class FakePointer:
         self.array = array
 
 
-def plan_for(fields, pml, expansion=1):
+def plan_for(fields, pml):
     return module.ComplexFusedAdeChainPlan(
-        fields, pml, 256, expansion, num_warps=1, pointer=FakePointer)
+        fields, pml, 256, num_warps=1, pointer=FakePointer)
 
 
 def _function_text(path: pathlib.Path, name: str) -> str:
@@ -240,7 +194,7 @@ def test_the_module_imports_without_triton_and_refuses_before_any_launch(monkeyp
     try:
         fields, pml = reloaded.engine_probe if False else engine()  # noqa: SIM108
         assert isinstance(reloaded.complex_fused_ade_chain_coverage(
-            fields, pml, probe=probe_record()).covered, bool)
+            fields, pml).covered, bool)
         with pytest.raises(Exception):
             reloaded.complex_fused_ade_chain_kernel()
     finally:
@@ -316,98 +270,6 @@ def test_the_seam_carries_no_driver_pass_and_the_predicate_takes_no_sources():
         :module.complex_fused_ade_chain_coverage.__code__.co_argcount]
     assert "sources" not in signature
     assert module.REPLACES == ("update_E", "update_P")
-
-
-# ---------------------------------------------------------------------------
-# The one fact this family must not inherit: which complex expansion arm
-# ---------------------------------------------------------------------------
-
-def test_the_two_halves_pattern_sets_are_not_the_same_set():
-    """If they were, the clause below would be vacuous rather than load-bearing."""
-    assert (set(ade_module.COMPLEX_ADE_PROBE_PATTERNS)
-            > set(stored_e_module.PROBE_PATTERNS))
-
-
-@pytest.mark.parametrize("arm", ["FMA_V1", "NAIVE"])
-def test_an_agreeing_probe_licenses_exactly_that_arm(arm):
-    from meep_gpu.triton_kernels.complex_fields import EXPANSIONS
-
-    expansion, refusals = module.resolve_chain_expansion(probe_record(arm))
-    assert refusals == []
-    assert expansion == EXPANSIONS[arm]
-
-
-def test_a_probe_that_SPLITS_the_two_halves_refuses_rather_than_picking_one():
-    """A record whose fifth pattern names the other arm licenses NEITHER half.
-
-    ATTRIBUTED, NOT ASSUMED: the refusal that fires here is
-    ``expansion_license``'s own clause 5 ("the discriminating patterns must agree
-    on one arm"), which sees the split inside the ADE half's five-pattern set and
-    inside nothing else. That is the correct outcome and it is measured, but it is
-    NOT the equality clause below; the two are kept apart so neither is credited
-    with the other's work.
-    """
-    record = probe_record(split=ade_module.COMPLEX_ADE_PROBE_PATTERN)
-    expansion, refusals = module.resolve_chain_expansion(record)
-    assert expansion is None
-    assert any("ADE half:" in reason for reason in refusals)
-    fields, pml = engine()
-    assert reasons(fields, pml, probe=record) != []
-
-
-def test_the_equality_clause_is_LIVE_CODE_and_says_what_it_guards():
-    """The clause fires, and the only way to reach it is to break the halves apart.
-
-    WHAT COULD NOT BE ESTABLISHED, SAID PLAINLY: no VALID probe record reaches
-    this clause. ``COMPLEX_ADE_PROBE_PATTERNS`` is a strict SUPERSET of
-    ``PROBE_PATTERNS`` (pinned by the test above) and ``expansion_license``'s
-    clause 5 requires the discriminating patterns of the set it is given to agree
-    on ONE arm, so a record that licenses the superset licenses the subset with
-    the same arm and a record that splits them licenses neither. The clause is
-    therefore a GUARD over a relation, not a branch a probe can drive — and it is
-    exercised here by breaking that relation directly, so it is live code with a
-    named refusal rather than an unreachable comment.
-    """
-    from meep_gpu.triton_kernels import complex_no_pml_stored_e as e_half
-
-    original = e_half._resolve_expansion
-    try:
-        e_half._resolve_expansion = lambda probe=None: 0    # NAIVE, while the
-        expansion, refusals = module.resolve_chain_expansion(  # ADE half says
-            probe_record("FMA_V1"))                            # FMA_V1
-        assert expansion is None
-        assert any("one fused source carries ONE arm" in reason
-                   for reason in refusals)
-    finally:
-        e_half._resolve_expansion = original
-
-
-def test_a_missing_probe_refuses_and_never_guesses_an_arm(monkeypatch):
-    """``probe=None`` means "the INSTALLED record", not "no record".
-
-    MEASURED CORRECTION 2026-08-21: without the deletion below this test passed on
-    a laptop with no artifact and FAILED on the GPU host, where the runner exports
-    ``MEEP_GPU_COMPLEX_EXPANSION_PROBE`` — a green test that was reading the
-    absence of a file rather than the predicate's behaviour. The environment
-    variable is what "missing" means, so it is removed here explicitly.
-    """
-    from meep_gpu.triton_kernels.complex_fields import PROBE_PATH_ENVIRONMENT
-
-    monkeypatch.delenv(PROBE_PATH_ENVIRONMENT, raising=False)
-    expansion, refusals = module.resolve_chain_expansion(None)
-    assert expansion is None and refusals
-
-
-def test_the_launched_constexpr_comes_from_the_shared_resolver():
-    fields, pml = engine()
-    expansion, _ = module.resolve_chain_expansion(probe_record())
-    built = module.plan_complex_fused_ade_chain(
-        fields, pml, probe=probe_record())
-    # The laptop's array module refuses, so the builder returns None; the point
-    # is that the resolver — not either half alone — is what would have supplied
-    # the constexpr, which the plan records verbatim.
-    assert built is None
-    assert plan_for(fields, pml, expansion).expansion == expansion
 
 
 # ---------------------------------------------------------------------------
@@ -546,10 +408,10 @@ def test_the_assembled_arguments_land_on_the_slots_they_are_named_for():
         assert bound[f"{letter}0"].array is not None
         # the ADE arm's sigma and coefficients
         assert bound[f"sigma_{letter}0"].array is state.sigma[component]
-        c_now, c_prev, c_drive = state._coefficients
-        assert bound[f"cnow_{letter}0"] == pytest.approx(float(c_now))
-        assert bound[f"cprev_{letter}0"] == pytest.approx(float(c_prev))
-        assert bound[f"cdrive_{letter}0"] == pytest.approx(float(c_drive))
+        # MEEP's four realnum words, in RealnumConstants order, exactly.
+        for word, value in zip(("two_minus_od", "gamma1", "omega0dtsqr", "gamma1inv"),
+                               state.constants):
+            assert bound[f"{word}_{letter}0"] == float(value)
     assert bound["n_elem"] == plan.n_elem
 
 
@@ -596,8 +458,7 @@ def test_the_constitutive_product_is_the_certified_bodys_own_line():
     fused = _normalised(kernel_text())
     for index in range(3):
         line = (f"o{index}_re, o{index}_im = _mul_field_left( s{index}_re, "
-                f"s{index}_im, tl.load(e{index} + idx, mask=live, other=0.0), "
-                f"EXPANSION)")
+                f"s{index}_im, tl.load(e{index} + idx, mask=live, other=0.0))")
         assert line in certified, "the certified constitutive line moved"
         assert line in fused
         assert f"tl.store(f{index} + word, o{index}_re, mask=live)" in fused
@@ -614,22 +475,21 @@ def test_the_recurrence_is_spelled_exactly_as_complex_ade_update_p_spells_it():
         pathlib.Path(ade_module.__file__), "complex_ade_update_p"))
     fused = _normalised(kernel_text())
     arithmetic = [
-        "a_re, a_im = _mul_field_left(p_re, p_im, c_now, EXPANSION)",
-        "b_re, b_im = _mul_coefficient_left(c_prev, q_re, q_im, EXPANSION)",
-        "out_re = a_re + b_re",
-        "out_im = a_im + b_im",
-        "sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im, EXPANSION)",
-        "d_re, d_im = _mul_coefficient_left(c_drive, sw_re, sw_im, EXPANSION)",
+        "a_re, a_im = _mul_field_left(p_re, p_im, two_minus_od)",
+        "b_re, b_im = _mul_coefficient_left(gamma1, q_re, q_im)",
+        "out_re = a_re - b_re",
+        "out_im = a_im - b_im",
+        "sw_re, sw_im = _mul_coefficient_left(s, w_re, w_im)",
+        "d_re, d_im = _mul_coefficient_left(omega0dtsqr, sw_re, sw_im)",
         "out_re = out_re + d_re",
         "out_im = out_im + d_im",
+        "out_re, out_im = _mul_coefficient_left(gamma1inv, out_re, out_im)",
     ]
     for line in arithmetic:
         assert line in certified, f"the certified body no longer spells {line!r}"
     for index, letter in enumerate("abc"):
-        renamed = [line.replace("c_now", f"cnow_{letter}0")
-                       .replace("c_prev", f"cprev_{letter}0")
-                       .replace("c_drive", f"cdrive_{letter}0")
-                   for line in arithmetic]
+        renamed = [re.sub(r"\b(two_minus_od|gamma1|omega0dtsqr|gamma1inv)\b",
+                          rf"\1_{letter}0", line) for line in arithmetic]
         for line in renamed:
             assert line in fused, f"component {index} does not spell {line!r}"
         assert (f"q_re = tl.load(p_prev_{letter}0 + word, mask=live, other=0.0)"

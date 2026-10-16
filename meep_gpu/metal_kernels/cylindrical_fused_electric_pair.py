@@ -35,13 +35,13 @@ THE SAME PACK CLEARS BOTH DCYL CELLS AND THAT IS THE POINT. Its m = 0 real sibli
 one technique, applied to the same group in both, clears both with margin. Packing is
 therefore a TOOL on this backend rather than a rescue for one cell.
 
-THE PREFIX IS DELIBERATELY NOT IN THE PACK. ``pfx`` is the only member of the curl
-half's read-only set the plan REFRESHES every step — the radial scan runs on the HOST
-here and its result is pushed back into that mirror — so folding it into the same
-allocation as the coefficients would put a per-step write into a buffer that also
+THE RADIAL DIFFERENCE IS DELIBERATELY NOT IN THE PACK. ``rad`` is the only member of
+the curl half's read-only set the plan REFRESHES every step — the radial sum runs on
+the HOST here and its result is pushed back into that mirror — so folding it into the
+same allocation as the coefficients would put a per-step write into a buffer that also
 holds absorber constants nothing ever re-uploads. A wrong offset there is a permanent,
-silent absorber corruption. The pack is read-only by construction; the prefix keeps
-its own binding.
+silent absorber corruption. The pack is read-only by construction; the radial
+difference keeps its own binding.
 
 ===========================================================================
 ALL SIXTEEN ROWS DECLARE AN ELECTRIC SOURCE
@@ -80,13 +80,13 @@ The driver runs five passes between ``step_D`` and ``update_E``
   components on every walled run.
 
 ===========================================================================
-THE PREFIX IS A HOST SCAN, AND THE PAIR IS STILL ONE LAUNCH
+THE RADIAL SUM IS A HOST PASS, AND THE PAIR IS STILL ONE LAUNCH
 ===========================================================================
 
-The cylindrical COMPLEX curl reads a radial prefix the HOST computes — a sequential
-float32 scan whose summation order defines the answer — so this plan performs a
-pre-pass (``sync_out`` of Hy, the scan, ``sync_in`` of the prefix mirror) and then ONE
-dispatch, exactly as :class:`.cylindrical_fused_magnetic_pair.CylindricalFusedMagneticPairPlan`
+The cylindrical COMPLEX curl reads a radial difference the HOST computes — MEEP's
+``f_rderiv_int`` summed per structure chunk, a sequential float32 sum whose order
+defines the answer — so this plan performs a pre-pass (``sync_out`` of Hy, the sum,
+``sync_in`` of the radial difference) and then ONE dispatch, exactly as :class:`.cylindrical_fused_magnetic_pair.CylindricalFusedMagneticPairPlan`
 does. ``launches_per_run`` stays 1 because the pre-pass is host work and residency
 traffic rather than a kernel launch; :attr:`prefix_syncs` counts it apart so a gate can
 assert it HAPPENED rather than trust that it did.
@@ -98,11 +98,19 @@ fuse=False)`` on the Dcyl |m| = 1 matrix row — lets ``_install_fused_pairs`` r
 bracket it. ``meep_gpu.fastpath.plan_fast_path`` still returns ``None`` on every
 branch.
 
+THE RELEASE RECORD BELOW DESCRIBES THE EARLIER SHAPE: a single radial prefix with a
+divided increment, the i*m/r term as a complex product and the axis scalars in Params.
+Since the array path steps MEEP's cylindrical forms (bit_parity_0_10 AP6c) this kernel
+reads the per-chunk radial difference, forms the i*m/r pass and the axis rules per part
+and carries the chunk record; the shipped bytes moved, the ledger entry still pins the
+released ones, and the certification round re-gates them.
+
 DEVICE STATUS: **RELEASED 2026-08-31** on this host (Apple GPU via MPS, torch 2.10.0)
     under the ``flush`` subnormal policy the backend can honour, with the
     subnormal-free precondition checked on every step, and with the complex expansion
-    arm bound from this family's own probe artifact (``FMA_V1``) rather than defaulted
-    — ``parity/meep_gpu/results/metal_cylindrical_fused_electric_pair_2026-08-31_pack/``:
+    arm then bound from this family's own probe artifact (``FMA_V1``; that licence is
+    since deleted) —
+    ``parity/meep_gpu/results/metal_cylindrical_fused_electric_pair_2026-08-31_pack/``:
 
     * **6/6 product cases, 12 complete steps each, bit-identical** on the uint32 view
       of all 24 stored volumes to the array path, across ``m = 1``, ``m = -1``,
@@ -156,6 +164,7 @@ from . import (
     coefficient_pack, complex_fields, complex_fused_electric_pair,
     cylindrical_complex, shaders, templates,
 )
+from . import chunk_bounds as _chunk_bounds
 from .coverage import zero_metal_axes
 from .device import MAX_BUFFER_BINDINGS, compile_source
 from .plans import KernelPlan
@@ -229,11 +238,10 @@ if PACKED_BINDINGS > MAX_BUFFER_BINDINGS:  # pragma: no cover - a design invaria
         f"buffers and Metal's ceiling on this toolchain is {MAX_BUFFER_BINDINGS}; "
         f"the signature cannot be built at all")
 
-#: The host record's total size in bytes. ``float2`` FIRST so there is no internal
-#: padding, then five uints, three floats and the six pack offsets: exactly 64 bytes
-#: of members (60 rounded up to the 8-byte alignment before 2026-09-04, when the
-#: ``M_ZERO`` arm's ``axis_coef`` became the ninth scalar).
-PARAMS_ITEMSIZE = 64
+#: The host record's total size in bytes: eight 4-byte scalars, the six 4-byte pack
+#: offsets and the embedded 100-byte chunk record, with no padding (every member is
+#: 4-byte aligned).
+PARAMS_ITEMSIZE = 156
 
 #: The wall table this family REQUIRES ``zero_metal_axes`` to report on an admitted
 #: grid: never r, never phi, z iff z is declared metallic. A consequence of ``Grid``'s
@@ -278,17 +286,15 @@ __CONTRACT__
 
 __HELPERS__
 
-// THE float2 MEMBER COMES FIRST. Metal aligns float2 to 8 bytes, so with the
-// scalars first this struct needs internal padding and the natural host record
-// reads `inc_b` one word early — measured on this toolchain by the complex twin,
-// and it reads as a plausible complex number rather than as garbage. The six pack
-// offsets are uints and go LAST, where they add no padding at all.
+__RECORD_STRUCT__
+
+// Every member is 4 bytes and the chunk record is a struct of 4-byte members, so the
+// host record (params_record_dtype) matches this layout with no padding.
 struct Params {
-    float2 inc_b;
     uint nx; uint ny; uint nz; uint n_elem; uint zrows;
-    float dtdx; float minus_dtdx; float axis_coef;
+    float dtdx; float axis_factor; float m_word;
 __PACK_FIELDS__
-};
+__RECORD_MEMBER__ };
 
 kernel void cylindrical_fused_electric_pair_step(
     device float2*       f0      [[buffer(0)]],
@@ -300,9 +306,9 @@ kernel void cylindrical_fused_electric_pair_step(
     device const float2* g0      [[buffer(6)]],
     device const float2* g1      [[buffer(7)]],
     device const float2* g2      [[buffer(8)]],
-    device const float2* pfx     [[buffer(9)]],
-    device const float2* c0      [[buffer(10)]],
-    device const float2* c2      [[buffer(11)]],
+    device const float2* rad     [[buffer(9)]],
+    device const float*  q0      [[buffer(10)]],
+    device const float*  q2      [[buffer(11)]],
     device const float*  cpml    [[buffer(12)]],
     device float2*       h0      [[buffer(13)]],
     device float2*       h1      [[buffer(14)]],
@@ -322,7 +328,7 @@ kernel void cylindrical_fused_electric_pair_step(
     constant Params&     prm     [[buffer(28)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE NINE PACKED ARGUMENTS AND THE SIX PACKED VECTORS ARE UNPACKED INTO THE
+    // THE EIGHT PACKED ARGUMENTS AND THE SIX PACKED VECTORS ARE UNPACKED INTO THE
     // CERTIFIED BODIES' OWN NAMES, once, before any of the lifted text runs.
     // Everything below this line is then character-for-character what
     // `cylindrical_complex.cylindrical_curl_source` and
@@ -330,14 +336,16 @@ kernel void cylindrical_fused_electric_pair_step(
     // three seam lines.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     uint zrows = prm.zrows;
-    float dtdx = prm.dtdx, minus_dtdx = prm.minus_dtdx, axis_coef = prm.axis_coef;
-    float2 inc_b = prm.inc_b;
+    float dtdx = prm.dtdx, axis_factor = prm.axis_factor, m_word = prm.m_word;
 
     // --- the curl half's PML coefficient vectors, one allocation, six offsets ---
-    // READ-ONLY: nothing writes `cpml`. The radial prefix `pfx` is the one member of
-    // this half's read-only set the plan REFRESHES every step, and it keeps its own
+    // READ-ONLY: nothing writes `cpml`. The radial difference `rad` is the one member
+    // of this half's read-only set the plan REFRESHES every step, and it keeps its own
     // binding for that reason.
 __PACK_PROLOGUE__
+    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // line gives the lifted bounds blocks the `cb` they read.
+__RECORD_ALIAS__
 
 __BODY__
 }
@@ -357,7 +365,7 @@ _BODY_ANCHOR = "uint idx [[thread_position_in_grid]])\n{\n"
 _CURL_STORE = "    f0[ii] = v0; f1[ii] = v1; f2[ii] = v2;\n"
 
 
-def certified_cylindrical_curl_body(bcz: int, m_arm: int, expansion: str,
+def certified_cylindrical_curl_body(bcz: int, m_arm: int,
                                     contract: str = shaders.CONTRACT_OFF) -> str:
     """The Dcyl ``step_D`` curl kernel's BODY, lifted from the certified emitter.
 
@@ -365,11 +373,11 @@ def certified_cylindrical_curl_body(bcz: int, m_arm: int, expansion: str,
     :func:`.cylindrical_complex.cylindrical_curl_source`'s own output with the
     ``#include``/helpers/signature preamble and the closing brace removed.
     ``backward`` is True and never a parameter — this pair is the D seam, and
-    ``step_B``'s forward strides, its own prefix substitution and its ``Br`` axis
+    ``step_B``'s forward strides, its own radial difference and its ``Br`` axis
     clear are the magnetic twin's product.
     """
     source = cylindrical_complex.cylindrical_curl_source(
-        bcz, True, m_arm, expansion, contract)
+        bcz, True, m_arm, contract)
     if _BODY_ANCHOR not in source:
         raise AssertionError(
             "the certified cylindrical complex curl source no longer carries the "
@@ -383,7 +391,7 @@ def certified_cylindrical_curl_body(bcz: int, m_arm: int, expansion: str,
 
 
 def cylindrical_fused_electric_pair_source(
-        bcz: int, m_arm: int, zero_metal: Sequence[bool], expansion: str,
+        bcz: int, m_arm: int, zero_metal: Sequence[bool],
         contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (z boundary, |m| arm, walls, arm, contraction).
 
@@ -408,7 +416,7 @@ def cylindrical_fused_electric_pair_source(
                 f"periodic — so neither can be walled. Emitting a clear on the "
                 f"r = 0 row would destroy the row the per-|m| rules own")
 
-    curl = certified_cylindrical_curl_body(bcz, m_arm, expansion, contract)
+    curl = certified_cylindrical_curl_body(bcz, m_arm, contract)
     if _CURL_STORE not in curl:
         raise AssertionError(
             "the certified cylindrical curl body no longer stores the three targets "
@@ -429,7 +437,7 @@ def cylindrical_fused_electric_pair_source(
     # IMPORTED, never re-spelled: `update_E` has no cylindrical branch at all, so the
     # constitutive half of this pair IS the complex twin's, lift and all.
     electric = complex_fused_electric_pair.certified_constitutive_body(
-        expansion, contract)
+        contract)
     # THE SEAM, and it is exactly three lines. The certified complex E body opens each
     # component with `float2 srcN = c_mul_field_left(gN[ii], eN[ii]);` — a RELOAD of
     # the complex displacement the curl just stored, scaled by the inverse
@@ -468,24 +476,26 @@ def cylindrical_fused_electric_pair_source(
     ))
     return templates.substitute(_TEMPLATE, {
         "__CONTRACT__": shaders.contraction_pragma(contract),
-        "__HELPERS__": templates.complex_helpers(expansion),
+        "__HELPERS__": templates.complex_helpers(),
+        "__RECORD_STRUCT__": _chunk_bounds.struct_source(),
         "__PACK_FIELDS__": coefficient_pack.params_fields(PACKED_VECTORS),
+        "__RECORD_MEMBER__": _chunk_bounds.params_member(),
         "__PACK_PROLOGUE__": coefficient_pack.prologue("cpml", PACKED_VECTORS),
+        "__RECORD_ALIAS__": _chunk_bounds.params_alias(),
         "__BODY__": body,
     })
 
 
 def compile_cylindrical_fused_electric_pair(
-        bcz: int, m_arm: int, zero_metal: Sequence[bool], expansion: str,
+        bcz: int, m_arm: int, zero_metal: Sequence[bool],
         contract: str = shaders.CONTRACT_OFF) -> Any:
     """The specialised entry point for one (z boundary, |m| arm, walls, arm, mode)."""
     return compile_source(cylindrical_fused_electric_pair_source(
-        bcz, m_arm, zero_metal, expansion,
+        bcz, m_arm, zero_metal,
         contract)).cylindrical_fused_electric_pair_step
 
 
-def enumerate_sources(expansion: str,
-                      contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
+def enumerate_sources(contract: str = shaders.CONTRACT_OFF) -> Dict[str, str]:
     """Every specialisation a shipped plan can emit — SIX, keyed by a stable label.
 
     z PERIODIC x z METALLIC, and ``M_ZERO`` x ``M_ONE`` x ``M_MANY`` (four until
@@ -504,7 +514,7 @@ def enumerate_sources(expansion: str,
             label = ("metallic_z" if bcz == templates.METALLIC
                      else "periodic_z") + f":{arm_name}"
             out[label] = cylindrical_fused_electric_pair_source(
-                bcz, m_arm, walls, expansion, contract)
+                bcz, m_arm, walls, contract)
     return out
 
 
@@ -514,9 +524,9 @@ def enumerate_sources(expansion: str,
 
 _UNPACKED_COMPLEX: Tuple[str, ...] = ("f0", "f1", "f2", "u0", "u1", "u2",
                                       "h0", "h1", "h2", "w0", "w1", "w2")
-_UNPACKED_COMPLEX_READ: Tuple[str, ...] = ("g0", "g1", "g2", "pfx", "c0", "c2")
+_UNPACKED_COMPLEX_READ: Tuple[str, ...] = ("g0", "g1", "g2", "rad")
 _UNPACKED_REAL_READ: Tuple[str, ...] = (
-    "kmx", "sinvx", "kmy", "sinvy", "kmz", "sinvz",
+    "q0", "q2", "kmx", "sinvx", "kmy", "sinvy", "kmz", "sinvz",
     "e0", "e1", "e2", "kp0", "km0", "kp1", "km1", "kp2", "km2")
 
 
@@ -576,9 +586,8 @@ def refuted_unpacked_pointer_source(contract: str = shaders.CONTRACT_OFF) -> str
         shaders.contraction_pragma(contract),
         "",
         "struct Params {",
-        "    float2 inc_b;",
         "    uint nx; uint ny; uint nz; uint n_elem; uint zrows;",
-        "    float dtdx; float minus_dtdx; float axis_coef;",
+        "    float dtdx; float axis_factor; float m_word;",
         "};",
         "",
         "kernel void refuted_unpacked_pointers(",
@@ -603,10 +612,12 @@ def refuted_separate_scalar_source(contract: str = shaders.CONTRACT_OFF) -> str:
     for name in ("nx", "ny", "nz", "n_elem", "zrows"):
         lines.append(f"    constant uint&       {name:<10}[[buffer({slot})]],")
         slot += 1
-    for name in ("dtdx", "minus_dtdx", "axis_coef"):
+    for name in ("dtdx", "axis_factor", "m_word"):
         lines.append(f"    constant float&      {name:<10}[[buffer({slot})]],")
         slot += 1
-    lines.append(f"    constant float2&     inc_b     [[buffer({slot})]],")
+    # Spelled literally: chunk_bounds.binding refuses an index past the ceiling, which
+    # is the point of this signature.
+    lines.append(f"    constant {_chunk_bounds.STRUCT}& cb [[buffer({slot})]],")
     slot += 1
     if slot != SEPARATE_SCALAR_BINDINGS:  # pragma: no cover - arithmetic guard
         raise AssertionError((slot, SEPARATE_SCALAR_BINDINGS))
@@ -616,12 +627,14 @@ def refuted_separate_scalar_source(contract: str = shaders.CONTRACT_OFF) -> str:
         "",
         shaders.contraction_pragma(contract),
         "",
+        _chunk_bounds.struct_source(),
+        "",
         "kernel void refuted_separate_scalars(",
         *lines,
         "    uint idx [[thread_position_in_grid]])",
         "{",
         *_touching_body("if (idx >= n_elem + zrows) { return; }", "dtdx"),
-        "    f0[idx] = f0[idx] + inc_b * (minus_dtdx + axis_coef) * float(nx + ny + nz);",
+        "    f0[idx] = f0[idx] * (axis_factor + m_word + float(cb.cbi_x_a0)) * float(nx + ny + nz);",
         "}",
         "",
     ))
@@ -665,25 +678,24 @@ def refuted_thirty_second_binding(contract: str = shaders.CONTRACT_OFF) -> str:
 # ---------------------------------------------------------------------------
 
 def cylindrical_fused_electric_pair_coverage(
-        fields: Any, pml: Any, sources: Any = None, residency: Any = None,
-        probe: Any = None) -> Coverage:
+        fields: Any, pml: Any, sources: Any = None, residency: Any = None) -> Coverage:
     """May ONE dispatch span Dcyl ``step_D`` -> wall -> ``update_E``?
 
     A conjunction of the two halves' OWN certified predicates plus the seam clauses.
     Nothing is weakened: a configuration either half refuses is refused here with that
     half's reasons, prefixed so a reader can tell which side said it. That is what
-    makes the expansion-probe clause, the complex-storage clause (the partition
-    against the real m = 0 product), the nr >= 2 clause and the Dcyl geometry
-    clauses INHERITED rather than restated.
+    makes the complex-storage clause (the partition against the real m = 0
+    product), the nr >= 2 clause and the Dcyl geometry clauses INHERITED rather than
+    restated.
     """
     reasons: List[str] = []
 
     curl = cylindrical_complex.cylindrical_complex_pml_curl_coverage(
-        fields, pml, CURL_SUB_STEP, residency, probe)
+        fields, pml, CURL_SUB_STEP, residency)
     if not curl.covered:
         reasons.extend(f"cylindrical curl half: {reason}" for reason in curl.reasons)
     electric = cylindrical_complex.cylindrical_complex_constitutive_coverage(
-        fields, pml, CONSTITUTIVE_SIDE, residency, probe)
+        fields, pml, CONSTITUTIVE_SIDE, residency)
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
@@ -757,13 +769,13 @@ def cylindrical_fused_electric_pair_coverage(
 
 class CylindricalFusedElectricPairPlan(KernelPlan):
     """ONE dispatch that performs three driver passes, complex D never leaving a
-    register — plus the host prefix pre-pass the cylindrical family cannot avoid.
+    register — plus the host radial-sum pre-pass of the cylindrical complex curl.
 
     THE ONE DIVERGENCE FROM :class:`.plans.KernelPlan` is the certified cylindrical
-    curl plan's, unchanged: the radial prefix is a SEQUENTIAL float32 host scan whose
-    summation order defines the answer, so :meth:`run` performs a pre-pass —
-    ``sync_out`` of Hy, the scan, ``sync_in`` of the prefix mirror — and only then
-    calls ``super().run``.
+    curl plan's, unchanged: the radial difference is the array path's per-chunk
+    sequential sum (``stepping.cylindrical_rderiv_difference``, called on the host), so
+    :meth:`run` performs a pre-pass — ``sync_out`` of Hy, the sum, ``sync_in`` of the
+    radial mirror — and only then calls ``super().run``.
 
     ``launches_per_run`` is the base's 1: the pre-pass is host work and residency
     traffic, not a kernel launch. :attr:`prefix_syncs` counts it separately, so a gate
@@ -771,26 +783,26 @@ class CylindricalFusedElectricPairPlan(KernelPlan):
     """
 
     __slots__ = ("residency", "volumes", "bcz", "m_arm", "zero_rows", "zero_metal",
-                 "shape", "n_elem", "dtdx", "expansion", "params", "scratch",
-                 "pack_layout", "prefix_syncs", "_prefix_host", "_prefix_name",
-                 "_prefix_source_name", "_source_map", "_xp")
+                 "shape", "n_elem", "dtdx", "params", "scratch",
+                 "pack_layout", "starts", "chunk_bounds", "prefix_syncs",
+                 "_radial_host", "_radial_name", "_source_name", "_source_map", "_xp")
 
     family = "cylindrical complex fused PML D-curl/stored-E pair"
 
     replaces_sub_steps = REPLACES
 
-    REPR_FIELDS = ("shape", "bcz", "m_arm", "zero_rows", "zero_metal", "expansion")
+    REPR_FIELDS = ("shape", "bcz", "m_arm", "zero_rows", "zero_metal")
 
     #: This plan launches a kernel; the composer's planned/null split reads it.
     performs_device_work = True
 
     def __init__(self, residency: Any, volumes: Sequence[str], bcz: int,
                  m_arm: int, zero_row_count: int, zero_metal: Sequence[bool],
-                 shape: Sequence[int], dtdx: float, expansion: str, params: Any,
+                 shape: Sequence[int], dtdx: float, params: Any,
                  pointers: Sequence[Any], functions: Mapping[str, Any],
-                 prefix_host: Any, prefix_name: str, prefix_source_name: str,
+                 radial_host: Any, radial_name: str, source_name: str,
                  source_map: Mapping[str, Any], xp: Any, pack_layout: Any,
-                 scratch: Any = None) -> None:
+                 starts: Any, chunk_bounds: Any, scratch: Any = None) -> None:
         self.residency = residency
         self.volumes = tuple(dict.fromkeys(volumes))
         self.bcz = int(bcz)
@@ -801,14 +813,15 @@ class CylindricalFusedElectricPairPlan(KernelPlan):
         # The COMPLEX CELL count, which is also what the dispatch is sized from.
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
         self.dtdx = float(dtdx)
-        self.expansion = str(expansion)
         self.params = params
         self.scratch = scratch
         self.pack_layout = pack_layout
+        self.starts = starts
+        self.chunk_bounds = chunk_bounds
         self.prefix_syncs = 0
-        self._prefix_host = prefix_host
-        self._prefix_name = str(prefix_name)
-        self._prefix_source_name = str(prefix_source_name)
+        self._radial_host = radial_host
+        self._radial_name = str(radial_name)
+        self._source_name = str(source_name)
         self._source_map = dict(source_map)
         self._xp = xp
         super().__init__(dict(functions), tuple(pointers) + (params,))
@@ -818,66 +831,53 @@ class CylindricalFusedElectricPairPlan(KernelPlan):
         return self.launches
 
     def refresh_prefix(self) -> None:
-        """Pull the prefix SOURCE off the device, scan it on the host, push it back.
+        """Pull the sum's SOURCE off the device, sum it on the host, push it back.
 
         Separated from :meth:`run` so a gate can call it explicitly and count it. It
-        is NOT an optional step: :meth:`run` always calls it. A ``prepare()`` a caller
-        had to remember is exactly the stale-mirror class this package refuses to
-        comment on — a forgotten call is a smooth, plausible, wrong field.
+        is NOT an optional step: :meth:`run` always calls it. The pull is
+        :func:`.cylindrical_complex.pull_radial_source`, which reads through the hold
+        when one is armed.
         """
-        self.residency.sync_out((self._prefix_source_name,))
-        prefix = cylindrical_complex.cylindrical_prefix(
-            self._xp, CURL_SUB_STEP, self._source_map, scratch=self.scratch)
-        self._prefix_host[...] = prefix
-        self.residency.sync_in((self._prefix_name,))
+        cylindrical_complex.pull_radial_source(self.residency, self._source_name)
+        radial = cylindrical_complex.radial_difference(
+            self._xp, CURL_SUB_STEP, self._source_map, self.starts,
+            scratch=self.scratch)
+        self._radial_host[...] = radial
+        self.residency.sync_in((self._radial_name,))
         self.prefix_syncs += 1
 
     def run(self, contract: Optional[str] = None) -> None:
-        """Refresh the prefix, then take the BASE's launch path unchanged."""
+        """Refresh the radial difference, then take the BASE's launch path unchanged."""
         self.refresh_prefix()
         super().run(contract)
 
 
 def params_record_dtype() -> Any:
-    """The host record's dtype — the ``float2`` member FIRST, itemsize 64.
+    """The host record's dtype — eight scalars, six pack offsets, the chunk record.
 
     ONE HOME FOR THE LAYOUT, because getting it wrong is a silent wrong answer rather
-    than a crash. The offsets are stated EXPLICITLY even though the float2-first order
-    makes them the natural ones, so the record cannot drift into agreeing with Metal
-    only by accident; ``itemsize`` is stated because the members total 60 bytes and
-    Metal's struct is 8-byte aligned.
+    than a crash. The pack offsets' field order is :data:`PACKED_VECTORS`', as the
+    struct's is.
     """
     import numpy as np  # noqa: PLC0415
 
-    names = ["inc_b", "nx", "ny", "nz", "n_elem", "zrows", "dtdx", "minus_dtdx",
-             "axis_coef"]
-    formats: List[Any] = [("<f4", 2), "<u4", "<u4", "<u4", "<u4", "<u4", "<f4", "<f4",
-                          "<f4"]
-    offsets = [0, 8, 12, 16, 20, 24, 28, 32, 36]
-    cursor = 40
-    for name, kind in coefficient_pack.record_dtype_fields(PACKED_VECTORS):
-        names.append(name)
-        formats.append(kind)
-        offsets.append(cursor)
-        cursor += 4
-    return np.dtype({"names": names, "formats": formats, "offsets": offsets,
-                     "itemsize": PARAMS_ITEMSIZE})
+    dtype = np.dtype([("nx", "<u4"), ("ny", "<u4"), ("nz", "<u4"), ("n_elem", "<u4"),
+                      ("zrows", "<u4"), ("dtdx", "<f4"), ("axis_factor", "<f4"),
+                      ("m_word", "<f4")]
+                     + coefficient_pack.record_dtype_fields(PACKED_VECTORS)
+                     + _chunk_bounds.record_dtype_fields())
+    if dtype.itemsize != PARAMS_ITEMSIZE:  # pragma: no cover - a layout invariant
+        raise AssertionError((dtype.itemsize, PARAMS_ITEMSIZE))
+    return dtype
 
 
 def _params_tensor(shape: Sequence[int], dtdx: float, zero_row_count: int,
-                   minus_dtdx: float, inc_b: Sequence[float],
-                   offsets: Sequence[int], device: str, axis_coef: float) -> Any:
-    """The nine non-pointer arguments AND the six pack offsets as one 64-byte record.
+                   axis_factor: float, m_word: float, offsets: Sequence[int],
+                   device: str, *, chunk_bounds: Any) -> Any:
+    """The eight non-pointer arguments, the six pack offsets and the chunk record.
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason the twin's
-    ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and complex64
-    volumes and refuses anything else BY NAME. This record is neither, so it is built
-    here, once, at plan time. Nothing on the launch path allocates.
-
-    THE OFFSET FIELDS ARE THE PACK'S WHOLE COST. Six uints, in the pack's own order,
-    and they are what buys back five buffer bindings. The field order here and the
-    struct order in :data:`_TEMPLATE` are BOTH generated from :data:`PACKED_VECTORS`,
-    so the two cannot drift into a reinterpretation.
+    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY: :meth:`.Residency.mirror` binds
+    float32 and complex64 volumes only. Built once, at plan time.
     """
     import numpy as np  # noqa: PLC0415
     import torch  # noqa: PLC0415
@@ -888,14 +888,14 @@ def _params_tensor(shape: Sequence[int], dtdx: float, zero_row_count: int,
     record["n_elem"] = nx * ny * nz
     record["zrows"] = int(zero_row_count)
     record["dtdx"] = np.float32(dtdx)
-    record["minus_dtdx"] = np.float32(minus_dtdx)
-    record["axis_coef"] = np.float32(axis_coef)
-    record["inc_b"] = (np.float32(inc_b[0]), np.float32(inc_b[1]))
+    record["axis_factor"] = np.float32(axis_factor)
+    record["m_word"] = np.float32(m_word)
     offsets = tuple(int(offset) for offset in offsets)
     if len(offsets) != len(PACKED_VECTORS):  # pragma: no cover - arithmetic guard
         raise AssertionError((len(offsets), len(PACKED_VECTORS)))
     for name, offset in zip(PACKED_VECTORS, offsets):
         record[f"off_{name}"] = offset
+    record["cb"] = _chunk_bounds.pack(chunk_bounds)
     words = np.frombuffer(record.tobytes(), dtype=np.int32).copy()
     return torch.from_numpy(words).to(torch.device(device))
 
@@ -904,31 +904,25 @@ def plan_cylindrical_fused_electric_pair(
         fields: Any, pml: Any, sources: Any = None, residency: Any = None,
         contract_variants: Sequence[str] = (shaders.CONTRACT_OFF,),
         functions: Optional[Mapping[str, Any]] = None,
-        probe: Any = None, params: Optional[Any] = None,
+        params: Optional[Any] = None, *, chunk_bounds: Any,
         ) -> Optional[CylindricalFusedElectricPairPlan]:
     """Build the Dcyl fused D/E plan, or ``None`` when the seam is refused.
 
-    ``None`` is the only refusal: a configuration this kernel does not carry must fall
-    back to the array path, never raise into a caller that would otherwise have
-    stepped correctly.
+    ``chunk_bounds`` is the record of the division the run steps with (the composer's
+    ``StepContext.chunk_bounds``) and has no default; the radial sum's chunk starts are
+    the array path's own (``stepping._cylindrical_scan_starts`` for Dz). ``None`` is the
+    only refusal.
 
     ``functions`` is the KERNEL mutation seam and ``params`` the HOST one this family
-    adds — the packed offsets are host arithmetic, so a leg that corrupts one has to be
-    able to hand this builder a struct the shipped code would not have written.
-    Dropping either is not a silent slowdown but a silent DISARMING.
+    adds. Dropping either is not a silent slowdown but a silent DISARMING.
     """
     if not cylindrical_fused_electric_pair_coverage(
-            fields, pml, sources, residency, probe).covered:
-        return None
-    expansion = cylindrical_complex.expansion_from_probe(
-        probe if probe is not None
-        else cylindrical_complex.load_expansion_probe())
-    if expansion is None:  # pragma: no cover - the predicate already refused
+            fields, pml, sources, residency).covered:
         return None
 
     import numpy  # noqa: PLC0415
 
-    from ..stepping import _boundary_kinds  # noqa: PLC0415
+    from ..stepping import _boundary_kinds, _cylindrical_scan_starts  # noqa: PLC0415
 
     grid = fields.grid
     spec = SUB_STEPS[CURL_SUB_STEP]
@@ -941,8 +935,10 @@ def plan_cylindrical_fused_electric_pair(
         m, bool(grid.accurate_fields_near_cylorigin))
     walls = zero_metal_axes(grid)
     dtdx = grid.dt / grid.dx
-    minus_dtdx, inc_b = cylindrical_complex.axis_increment_scalars(m, dtdx)
-    axis_coef = cylindrical_complex.axis_coefficient(dtdx)
+    shape = tuple(int(n) for n in grid.shape)
+    words = _chunk_bounds.plan_words(chunk_bounds, shape,
+                                     "plan_cylindrical_fused_electric_pair")
+    starts = _cylindrical_scan_starts(fields, pml, "Dz")
 
     volumes: List[str] = []
 
@@ -961,34 +957,25 @@ def plan_cylindrical_fused_electric_pair(
     magnetic = [bind_complex(name, getattr(fields, name))
                 for name in spec["sources"]]
 
-    # THE PREFIX BUFFER IS THE PLAN'S OWN and is allocated once. It must be a stable
-    # host array: `Residency.mirror` refuses re-registering a name against a DIFFERENT
-    # host array, and `cylindrical_rderiv_prefix` returns a fresh array every call.
-    prefix_host = numpy.zeros(
-        cylindrical_complex.prefix_shape(CURL_SUB_STEP, grid.shape),
-        dtype=numpy.complex64)
-    prefix_name = f"cylfusedE:pfx:{CURL_SUB_STEP}"
-    prefix = bind_complex(prefix_name, prefix_host)
+    # THE RADIAL BUFFER IS THE PLAN'S OWN and is allocated once: the array path's sum
+    # returns a pooled or fresh array, so its result is COPIED into this buffer.
+    radial_host = numpy.zeros(shape, dtype=numpy.complex64)
+    radial_name = f"cylfusedE:radial:{CURL_SUB_STEP}"
+    radial = bind_complex(radial_name, radial_host)
 
-    # The two i*m/r rows are GRID INVARIANTS — Yee shift, radial extent, m, Courant —
-    # so they are built ONCE here.
+    # The two i*m/r rows are GRID INVARIANTS, built ONCE here.
     imr_rows = []
     for index, _register, sign in cylindrical_complex.IMR_TERMS[CURL_SUB_STEP]:
         target = spec["targets"][index]
-        row = numpy.ascontiguousarray(
-            cylindrical_complex.imr_coefficient_row(
-                numpy, target, sign, m, dtdx, int(grid.shape[0]),
-                numpy.complex64).reshape(-1))
-        imr_rows.append(bind_complex(f"cylfusedE:imr:{CURL_SUB_STEP}:{target}", row))
+        row = cylindrical_complex.imr_rinv_row(target, sign, m, grid.courant, shape[0])
+        imr_rows.append(bind_real(f"cylfusedE:imr:{CURL_SUB_STEP}:{target}", row))
 
     # THE D CURL TAKES THE INTEGER LATTICE and the E constitutive the HALF-INTEGER one
     # (SUB_STEPS['step_D']['suffix'] is ''; CONSTITUTIVE_SIDES['E']['half_integer'] is
     # True). That is the OPPOSITE pairing to the B/H twin, and the kernel cannot tell.
     #
     # THE PACK IS THE CURL GROUP AND NOTHING ELSE. Six read-only vectors, one buffer,
-    # six element offsets in Params. The constitutive group stays six separate
-    # pointers because it does not have to move: packing it too would buy margin
-    # nothing needs and put two packs in one signature for a reader to keep apart.
+    # six element offsets in Params.
     curl_pack, pack_layout = coefficient_pack.packed_mirror(
         residency, f"pml_pack:cyl_complex_curl:{CURL_SUB_STEP}", numpy,
         PACKED_VECTORS,
@@ -1005,7 +992,7 @@ def plan_cylindrical_fused_electric_pair(
         bind_real(f"pml:{stem}_{axis}_h", getattr(pml, f"{stem}_{axis}_h"))
         for axis in "xyz" for stem in ("kps", "kms")]
 
-    pointers = (flux + auxiliary + magnetic + [prefix] + imr_rows + [curl_pack]
+    pointers = (flux + auxiliary + magnetic + [radial] + imr_rows + [curl_pack]
                 + stored + workspace + inverse_epsilon
                 + constitutive_coefficients)
     if len(pointers) != PACKED_POINTERS:  # pragma: no cover - an invariant
@@ -1017,17 +1004,20 @@ def plan_cylindrical_fused_electric_pair(
     for mode in contract_variants:
         if mode not in selected:
             selected[mode] = compile_cylindrical_fused_electric_pair(
-                bcz, arm, walls, expansion, mode)
+                bcz, arm, walls, mode)
 
-    record = (_params_tensor(grid.shape, dtdx, zero_row_count, minus_dtdx, inc_b,
-                             pack_layout.offsets, residency.device, axis_coef)
+    record = (_params_tensor(grid.shape, dtdx, zero_row_count,
+                             cylindrical_complex.axis_factor(CURL_SUB_STEP, m,
+                                                             grid.courant),
+                             float(m), pack_layout.offsets, residency.device,
+                             chunk_bounds=words)
               if params is None else params)
     return CylindricalFusedElectricPairPlan(
         residency, volumes, bcz, arm, zero_row_count, walls, grid.shape, dtdx,
-        expansion, record, pointers, selected, prefix_host, prefix_name,
+        record, pointers, selected, radial_host, radial_name,
         cylindrical_complex.PREFIX[CURL_SUB_STEP]["component"],
         {name: getattr(fields, name) for name in spec["sources"]}, numpy,
-        pack_layout, getattr(fields, "scratch", None))
+        pack_layout, starts, words, getattr(fields, "scratch", None))
 
 
 # ---------------------------------------------------------------------------
@@ -1048,7 +1038,7 @@ def _arm_plan(context: Any,
         return None
     return plan_cylindrical_fused_electric_pair(
         context.fields, context.pml, context.sources, context.residency,
-        context.contract_variants)
+        context.contract_variants, chunk_bounds=context.chunk_bounds)
 
 
 def register_arms() -> Tuple[Any, ...]:

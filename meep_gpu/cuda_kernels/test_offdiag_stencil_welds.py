@@ -201,11 +201,21 @@ def test_the_pure_helper_keeps_the_certified_expression_character_for_character(
     arithmetic; what this weld changes is only where the two results go.
     """
     source = certified["flat"][(1, 1, 1, 1, 1, 1)]
-    assert "float fu_new = ((fprev * kms) - curl) * sinv;" in source
-    assert "return (((f[idx] * kms_u) + fu_new) - fprev) * sinv_u;" in source
+    start = source.index("__device__ __forceinline__ float pml_apply_pure(")
+    helper = source[start:source.index("\n}\n", start)]
+    certified_curl = _CertifiedText("step_curl_kernels")._REAL_PML_PRELUDE
+    for line in ("    float fprev = dsigu ? fu[idx] : 0.0f;",
+                 "    float fu_new = ((fprev * kms) - curl) * sinv;",
+                 "    float fcur = f[idx];",
+                 "    float value = dsigu ? ((((fcur * kms_u) + fu_new) - fprev) * sinv_u)",
+                 "                        : (((fcur * kms) - curl) * sinv);"):
+        assert line in certified_curl and line in helper, line
+    assert "    return value;" in helper
+    # The scratch carries the pre-launch split field off the recurrence's cells.
+    assert "    *fu_out = dsigu ? fu_new : fu[idx];" in helper
     # And nothing stores through the certified names any more: the whole point.
-    assert "    fu[idx] = fu_new;" not in source
-    assert "    f[idx] = (((f[idx] * kms_u)" not in source
+    assert "fu[idx] = fu_new;" not in helper
+    assert "f[idx] = value;" not in helper
 
 
 def test_the_curl_body_is_lifted_whole_with_only_the_cell_edits(certified):
@@ -264,11 +274,11 @@ def test_the_sub_lattice_rename_landed_on_every_component_and_nowhere_else(
         index = "ijk"[component]
         name_e = ("Ex", "Ey", "Ez")[component]
         assert (f"constitutive_apply({name_e}, f_w_{name_e}, idx, src_{name_e}, "
-                f"kps_{axis}[{index}], kms_half_{axis}[{index}]);") in source
+                f"kps_{axis}[{index}], kms_half_{axis}[{index}], in_h_{axis});") in source
     # The curl's own three calls keep the INTEGER names, untouched.
-    assert "curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k]" in source
-    assert "curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i]" in source
-    assert "curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j]" in source
+    assert "curl, kms_y[j], sinv_y[j], kms_z[k], sinv_z[k], in_i_z" in source
+    assert "curl, kms_z[k], sinv_z[k], kms_x[i], sinv_x[i], in_i_x" in source
+    assert "curl, kms_x[i], sinv_x[i], kms_y[j], sinv_y[j], in_i_y" in source
 
 
 def test_only_the_folded_weld_renames_the_constitutive_boundary_codes(certified):
@@ -285,7 +295,9 @@ def test_only_the_folded_weld_renames_the_constitutive_boundary_codes(certified)
         extent = ("nx", "ny", "nz")[axis]
         assert (f"coord_dn({coordinate}, {extent}, cbc_{letter})") in folded_source
         assert (f"mg_{letter} = (cbc_{letter} == BC_MIRROR)") in folded_source
+        assert (f"chunk_row({coordinate}, cbc_{letter} == BC_METALLIC)") in folded_source
         assert (f"coord_dn({coordinate}, {extent}, bc_{letter})") in flat_source
+        assert (f"chunk_row({coordinate}, bc_{letter} == BC_METALLIC)") in flat_source
     assert "cbc_" not in flat_source
 
 
@@ -302,7 +314,7 @@ def test_the_lift_edits_are_data_and_carry_no_silent_extra(name):
     assert edits[:len(offdiag_stencil_weld.CURL_LIFT_EDITS)] == \
         offdiag_stencil_weld.CURL_LIFT_EDITS
     own = edits[len(offdiag_stencil_weld.CURL_LIFT_EDITS):]
-    assert len(own) == {"flat": 9, "folded": 13}[name], (
+    assert len(own) == {"flat": 9, "folded": 14}[name], (
         f"{name} declares {len(own)} of its own lift edits; a count that moved "
         f"without this number moving is an edit nobody wrote down")
     assert all(edit["why"] for edit in edits)

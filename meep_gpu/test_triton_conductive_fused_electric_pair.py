@@ -227,9 +227,9 @@ def test_the_tail_is_the_shipped_fused_pairs_tail(bodies):
 
     Minus its three ``fu_D`` stores, which did not disappear: they moved INTO
     ``_conductive_component_registers``, where the shipped helper already performs
-    them under the masks the four-case table demands. The next test pins that.
+    them under the auxiliary contract's masks. The next test pins that.
     """
-    u_stores = {f"tl.store(u{n} + idx, n{n}, mask=live)" for n in (0, 1, 2)}
+    u_stores = {f"tl.store(u{n} + idx, n{n}, mask=live & du{n})" for n in (0, 1, 2)}
     expected = [s for s in _tail(bodies["ordinary_fused"]) if s not in u_stores]
     assert _tail(bodies["fused"]) == expected
 
@@ -260,18 +260,24 @@ def test_the_middle_is_exactly_three_calls_with_the_shipped_coefficient_pairs():
                     "_conductive_component")
     assert len(mine) == len(theirs) == 3
 
-    # The four coefficient names sit between `curl` and the COND constexpr in both
-    # signatures, so the same slice reads both.
-    assert [c[-5:-1] for c in mine] == [c[-5:-1] for c in theirs] == [
+    # The four coefficient names sit between `curl` and the two membership flags in
+    # both signatures, so the same slice reads both.
+    assert [c[-8:-4] for c in mine] == [c[-8:-4] for c in theirs] == [
         ["km_y", "si_y", "km_z", "si_z"],
         ["km_z", "si_z", "km_x", "si_x"],
         ["km_x", "si_x", "km_y", "si_y"]]
+    # The (dsig, dsigu) membership flags, then the two constexprs, are the
+    # component's own.
+    assert [c[-4:] for c in mine] == [c[-4:] for c in theirs] == [
+        ["ds0", "du0", "COND0", "CMASK0"],
+        ["ds1", "du1", "COND1", "CMASK1"],
+        ["ds2", "du2", "COND2", "CMASK2"]]
     # And the CURL each call consumes is its own component's, not a neighbour's.
-    assert [c[-6] for c in mine] == ["curl0", "curl1", "curl2"]
-    # The five pointer slots are the component's own row of every volume.
-    assert [c[:5] for c in mine] == [["f0", "u0", "c0", "cf0", "ci0"],
-                                     ["f1", "u1", "c1", "cf1", "ci1"],
-                                     ["f2", "u2", "c2", "cf2", "ci2"]]
+    assert [c[-9] for c in mine] == ["curl0", "curl1", "curl2"]
+    # The six pointer slots are the component's own row of every volume.
+    assert [c[:6] for c in mine] == [["f0", "u0", "c0", "cf0", "ci0", "m0"],
+                                     ["f1", "u1", "c1", "cf1", "ci1", "m1"],
+                                     ["f2", "u2", "c2", "cf2", "ci2", "m2"]]
 
 
 def test_the_helper_is_the_shipped_one_with_exactly_one_statement_moved(bodies):
@@ -285,14 +291,17 @@ def test_the_helper_is_the_shipped_one_with_exactly_one_statement_moved(bodies):
 
 
 def test_the_helper_keeps_both_masked_stores_and_their_masks(bodies):
-    """``live & dsigu`` and ``live & dsig`` are the case table's "unchanged" column.
+    """The auxiliary contract: ``fu`` on dsigu cells, ``f_cond`` on conductive dsig cells.
 
     Widening either one writes a component the array path leaves alone, which is a
     silent divergence in a volume no E comparison reads on the step it happens.
     """
-    assert "tl.store(u_ptr + idx, u_new, mask=live & dsigu)" in bodies["helper"]
-    assert "tl.store(c_ptr + idx, c_new, mask=live & dsig)" in bodies["helper"]
-    assert "tl.store(u_ptr + idx, n, mask=live)" in bodies["helper"]
+    assert "tl.store(u_ptr + idx, u_new, mask=live & du)" in bodies["helper"]
+    assert "tl.store(c_ptr + idx, c_new, mask=live & ds & kept)" in bodies["helper"]
+    assert "tl.store(u_ptr + idx, n, mask=live & du)" in bodies["helper"]
+    assert "u = tl.load(u_ptr + idx, mask=live & du, other=0.0)" in bodies["helper"]
+    assert ("c = tl.load(c_ptr + idx, mask=live & ds & kept, other=0.0)"
+            in bodies["helper"])
 
 
 def test_every_statement_comes_from_a_shipped_body(bodies):
@@ -384,8 +393,8 @@ def test_the_corpus_rows_own_source_is_ADMITTED_after_the_lift(product):
     """The 2026-09-01 lift, asserted in the direction that serves the cell's row.
 
     ``tests:TestAdjointSolver.test_damping`` declares a NON-integrated electric
-    source that publishes its deposit table. The driver now replays its condinv
-    rescale sparsely at exactly those cells, the clause that refused it was lifted
+    source that publishes its deposit table. Its condinv scale is formed inside its
+    own deposit at exactly those cells (``sources._deposit``), the clause that refused it was lifted
     on the re-measured signed-zero walk (the gate's ``lifted_refusal`` leg), and
     the predicate carries the source.
     """
@@ -394,12 +403,12 @@ def test_the_corpus_rows_own_source_is_ADMITTED_after_the_lift(product):
 
 
 def test_a_scaled_source_publishing_no_deposit_table_is_still_refused(product):
-    """What survives the lift: the driver's dense whole-volume fallback, by name.
+    """What survives the lift: a scaled source that cannot name its deposit, by name.
 
-    A scaled source with no ``_point_ix`` attribute cannot name its deposit, so
-    the driver must still rescale the whole component — the retired composition,
-    whose signed-zero canonicalisation no point repair can reconstruct. No
-    in-tree source class is one; the clause fails CLOSED on the stranger.
+    A scaled source with no ``_point_ix`` attribute writes cells no point repair can
+    name. (The driver's whole-volume fallback for it went with the double-precision
+    deposit; the reason string keeps its old wording.) No in-tree source class is
+    one; the clause fails CLOSED on the stranger.
     """
     fields, pml = _build()
     refused = _reasons(product, fields, pml, (_ElectricWithoutIndex(),))
@@ -407,65 +416,48 @@ def test_a_scaled_source_publishing_no_deposit_table_is_still_refused(product):
                "table" in r for r in refused), refused
 
 
-def test_the_drivers_OWN_partition_is_the_one_this_clause_mirrors():
-    """THE TRIPWIRE UNDER THE LIFT, and it is a measurement rather than a reading.
+def test_the_drivers_conductive_deposit_moves_only_its_own_cells():
+    """THE TRIPWIRE UNDER THE LIFT, re-measured on the deposit that replaced the replay.
 
-    The lifted clause is a claim about a file this module does not own: that
-    ``FdtdDriver._inject_electric_through_conductivity`` replays the condinv
-    rescale SPARSELY for a source that publishes a deposit table, and falls back
-    to the WHOLE-VOLUME difference passes only for one that does not. If the
-    driver ever loses the sparse branch, every reason string in this suite would
-    still read correctly while the predicate silently admitted this cell's only
-    corpus row on bytes that no longer match — rule 2's one silent failure, on a
-    partition nothing else here can see.
+    The lifted clause is a claim about a file this module does not own: that on a
+    conductive run the driver changes a component ONLY at a source's own cells, so a
+    point repair at those cells is sufficient. The driver used to scale the current by
+    replaying ``condinv`` over the injected increment, sparsely for a source with a
+    deposit table and over the WHOLE component for one without. The double-precision
+    deposit removed both: ``condinv`` is inside each source's own expression,
+    ``f = float(double(f) - real((amp * current) * dt * double(condinv)))``
+    (``sources._deposit``, step.cpp:299-307), and the driver has no pass over the
+    component at all. A source that publishes NO deposit table is still refused by the
+    clause, because a point repair needs the cells named, not because of a rescale.
 
-    So this drives the driver's own method on both sides of its partition and
-    reads the WORD, on the value class the whole lift is about: with a table
-    published a ``-0.0`` FAR from the deposit survives as ``-0.0``
-    (``0x80000000``) — which is what makes a point repair sufficient — and with
-    NO table that same word comes back ``+0.0``, the canonicalisation the
-    surviving clause refuses by name. The deposit cell is byte-identical under
-    both, so the sparse replay reproduces the retired composition's arithmetic
-    exactly where it still applies.
-
-    The dense leg is not a hypothetical: it IS the retired driver, so the
-    mutation this tripwire must catch is armed by construction rather than
-    declared.
+    So this drives a real source's injection on a conductive build and reads the WORDS:
+    a ``-0.0`` FAR from the deposit survives as ``-0.0`` (``0x80000000``), every cell
+    off the source's table is unchanged, and the deposit cells moved.
     """
     import struct
-    import types
 
-    from meep_gpu.driver import FdtdDriver
+    from meep_gpu.sources import GaussianPulsedSource
 
     def word(value) -> int:
         return struct.unpack("<I", struct.pack("<f", float(value)))[0]
 
-    class _Deposits:
-        """A scaled electric source that deposits at ONE cell, table optional."""
-
-        field_type, component, is_integrated = "D", "Ez", False
-
-        def __init__(self, table: bool):
-            if table:
-                self._point_ix = numpy.array([1])
-                self._point_iy = numpy.array([1])
-                self._point_iz = numpy.array([0])
-
-        def inject(self, fields, _time):
-            fields.Dz[1, 1, 0] += numpy.float32(1.0)
-
-    seen = {}
-    for table in (True, False):
-        fields, _pml = _build()
-        fields.Dz[...] = numpy.float32(0.0)
-        fields.Dz[3, 3, 0] = numpy.float32(-0.0)      # FAR from the deposit.
-        FdtdDriver._inject_electric_through_conductivity.__get__(
-            types.SimpleNamespace(fields=fields), types.SimpleNamespace)(
-                [_Deposits(table)], 0.0)
-        seen[table] = (word(fields.Dz[3, 3, 0]), word(fields.Dz[1, 1, 0]))
-    assert seen[True][0] == 0x80000000, seen      # sparse: the far -0.0 survives
-    assert seen[False][0] == 0x00000000, seen     # dense: it is canonicalised
-    assert seen[True][1] == seen[False][1], seen  # the deposit itself is unmoved
+    fields, _pml = _build()
+    assert fields.condinv_for("Dz") is not None, "the build is not conductive"
+    source = GaussianPulsedSource(grid=fields.grid, component="Ez", center=(0.0, 0.0, 0.0),
+                                  size=(0.0, 0.0, 0.0), frequency=1.0, fwidth=0.2,
+                                  amplitude=1.0)
+    table = numpy.zeros(fields.Dz.shape, dtype=bool)
+    table[source._point_ix, source._point_iy, source._point_iz] = True  # noqa: SLF001
+    far = (1, 1, 0)
+    assert not table[far]
+    fields.Dz[far] = numpy.float32(-0.0)
+    before = fields.Dz.copy()
+    source.inject(fields, source.peak_time)
+    after = fields.Dz
+    assert word(after[far]) == 0x80000000, "the far -0.0 was rewritten"
+    unchanged = after[~table].view(numpy.uint32) == before[~table].view(numpy.uint32)
+    assert bool(numpy.all(unchanged)), "the injection wrote a cell off the source's table"
+    assert bool(numpy.any(after[table].view(numpy.uint32) != before[table].view(numpy.uint32)))
 
 
 def test_the_clause_is_conditional_on_the_conductivity_not_on_the_seam(product):
@@ -692,7 +684,7 @@ def load_gate():
 def test_the_gates_no_device_legs_all_pass_here():
     gate = load_gate()
     for name in ("transcription_leg", "equivalence_leg", "corpus_admission_leg",
-                 "mutation_arming_leg", "coefficient_predicates_leg",
+                 "mutation_arming_leg", "unit_coefficients_leg",
                  "whole_volume_rescale_leg"):
         leg = getattr(gate, name)()
         assert leg.get("passed") is True, (name, leg)
@@ -725,6 +717,28 @@ def test_every_mutation_is_scored_on_a_case_that_enters_the_branch_it_rewrites()
     gate = load_gate()
     for name, _kind, _reason, _rewrite in gate.mutation_table():
         gate.mutation_case_for(name)   # raises if the pairing is dead
+
+
+def test_a_mutation_scored_without_the_electric_carry_is_declared_and_says_why():
+    """The after-the-store wall clear is scored with the magnetic source, for a reason.
+
+    Under an integrated electric source the driver's ``f_minus_p`` bracket re-runs the D
+    boundary passes after the fused launch, and ``sources._boundary_passes`` calls
+    ``stepping.zero_metal_D`` itself, so the wall words the rewrite leaves standing are
+    cleared again. The exemption is pinned to that call: if the bracket stops re-running
+    the wall clear, this test names the exemption to revisit.
+    """
+    import inspect
+
+    from meep_gpu import sources
+
+    gate = load_gate()
+    declared = {row[0] for row in gate.mutation_table()}
+    assert "m_wall_clear_after_the_store" in gate.MUTATION_WITHOUT_ELECTRIC_CARRY
+    for name, why in gate.MUTATION_WITHOUT_ELECTRIC_CARRY.items():
+        assert name in declared, name
+        assert why.strip(), name
+    assert "stepping.zero_metal_D(fields)" in inspect.getsource(sources._boundary_passes)
 
 
 def test_every_non_caught_mutation_carries_its_evidence():
@@ -780,6 +794,7 @@ def test_the_gate_pins_the_files_this_product_actually_rests_on():
     for required in ("meep_gpu/triton_kernels/conductive_fused_electric_pair.py",
                      "meep_gpu/triton_kernels/conductivity.py",
                      "meep_gpu/triton_kernels/kernels.py",
+                     "meep_gpu/triton_kernels/forms.py",
                      "meep_gpu/deposit_repair.py",
                      "meep_gpu/stepping.py",
                      "meep_gpu/driver.py",

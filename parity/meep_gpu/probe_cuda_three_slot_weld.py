@@ -87,7 +87,7 @@ _REPO_API = _HERE.parents[1]
 if str(_REPO_API) not in sys.path:
     sys.path.insert(0, str(_REPO_API))
 
-from meep_gpu import deposit_repair, stepping  # noqa: E402
+from meep_gpu import deposit_repair, part_products, stepping  # noqa: E402
 from meep_gpu.dispersion import PolarizationState, Susceptibility  # noqa: E402
 from meep_gpu.fields import Fields  # noqa: E402
 from meep_gpu.grid import Grid, Mirror  # noqa: E402
@@ -243,6 +243,9 @@ def build(case: Dict[str, Any]):
         thickness = tuple((0, case["pml"]) if axis in folded
                           else (case["pml"], case["pml"]) for axis in range(3))
         pml = PML(grid=grid, thickness=thickness)
+        # The one-rank region plan: the division update_E chooses its forms by and
+        # update_P's drive (MEEP's w per chunk) is composed from.
+        stepping._region_plan(fields, pml)
     else:
         pml = PML(grid=grid, thickness=0)
 
@@ -350,16 +353,33 @@ def driving_states(fields: Any, component: str) -> List[Any]:
     return [state for state in fields.polarizations if state.drives(component)]
 
 
+def _recurrence_into(state: Any, component: str, p: Any, p_prev: Any, drive: Any,
+                     scratch: Any) -> None:
+    """MEEP's recurrence for one component, written into ``scratch``.
+
+    ``dispersion.PolarizationState.update``'s own operations (susceptibility.cpp:
+    251-256): ``gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr *
+    (s * w)))`` on the four float32 :attr:`constants` words, ``s * w`` formed first.
+    The grouping is the arithmetic: float32 addition is not associative.
+    """
+    two_minus_od, gamma1, omega0dtsqr, gamma1inv = state.constants
+    sigma = state.sigma[component]
+    if getattr(sigma, "ndim", 0) == 0:
+        sigma = np.float32(sigma)
+    part_products.scale(two_minus_od, p, out=scratch)
+    scratch -= part_products.scale(gamma1, p_prev)
+    term = part_products.scale(sigma, drive)
+    part_products.scale(omega0dtsqr, term, out=term)
+    scratch += term
+    part_products.scale(gamma1inv, scratch, out=scratch)
+
+
 def advance_component(state: Any, component: str, drive: Any, mutation: str) -> None:
     """ONE state's recurrence for ONE component, then the rotation.
 
-    ``dispersion.PolarizationState.update``'s own three lines and its own rotation
-    (dispersion.py:679-691), restricted to one component. The grouping
-    ``((p * c_now) + (c_prev * q)) + (c_drive * (s * w))`` is the array path's operand
-    order, which is the arithmetic: float32 addition is not associative.
+    ``dispersion.PolarizationState.update``'s own recurrence and its own rotation,
+    restricted to one component (:func:`_recurrence_into`).
     """
-    xp = state.grid.xp
-    c_now, c_prev, c_drive = state._coefficients
     p = state.P[component]
     p_prev = state.P_prev[component]
     scratch = state._scratch
@@ -371,9 +391,7 @@ def advance_component(state: Any, component: str, drive: Any, mutation: str) -> 
         state._scratch = p_prev
         p, p_prev, scratch = (state.P[component], state.P_prev[component],
                               state._scratch)
-    xp.multiply(p, c_now, out=scratch)
-    scratch += c_prev * p_prev
-    scratch += c_drive * (state.sigma[component] * drive)
+    _recurrence_into(state, component, p, p_prev, drive, scratch)
     state.P[component] = scratch
     state.P_prev[component] = p
     state._scratch = p_prev
@@ -407,12 +425,8 @@ def slot_update_P(fields: Any, mutation: str = "") -> int:
             # into the ONE scratch it owns without rotating between them. The second
             # component overwrites the first, and the result still computes.
             for state in states:
-                xp = state.grid.xp
-                c_now, c_prev, c_drive = state._coefficients
-                scratch = state._scratch
-                xp.multiply(state.P[component], c_now, out=scratch)
-                scratch += c_prev * state.P_prev[component]
-                scratch += c_drive * (state.sigma[component] * drive)
+                _recurrence_into(state, component, state.P[component],
+                                 state.P_prev[component], drive, state._scratch)
             for state in states:
                 state.P[component] = state.P[component] + np.float32(0.0)
             launches += 1

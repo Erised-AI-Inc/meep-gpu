@@ -21,19 +21,17 @@ complex-storage-at-k=0 runs (wvg-src.py, solve-cw.py's complex-storage class).
 ``grid.beta``, NOT ``bloch_phase``, and are refused by name.
 
 =============================================================================
-THE ARM IS AN ARGUMENT, AND THAT IS THE PACKAGE BOUNDARY
+THE CHUNK RECORD AND THE STORED WINDOW
 =============================================================================
 
-Every launcher here takes ``expansion``. It has no default, this module derives it
-from nothing, and it never opens a probe artifact: the arbiter is
-``triton_kernels.complex_fields.expansion_license`` and re-implementing it here
-would be a second spelling of the one rule that stands between a guessed constexpr
-and a kernel. The GATE reads the artifact, runs the licence, and hands the arm in;
-``coverage.covers_real_pml_complex_curl`` takes the VERDICT and checks its shape.
-
-A wrong arm is a WRONG ANSWER rather than a crash -- both arms compile, both run,
-and they differ in the last bits of about a quarter of the words -- which is why
-:func:`complex_emitter.normalized_expansion` refuses rather than defaulting.
+Every launcher takes the run's chunk record ``chunk_bounds`` (``int32[25]`` on the
+device, ``chunk_map.chunk_bounds_record``; checked by
+``step_curl_kernels.chunk_record_argument``), required and keyword-only: the kernels
+choose each cell's PML form from it, and a launch handed some other division would step
+some other forms. The Bloch connection is bound per axis as a KIND and the rounded phase
+parts (:func:`.bloch_connection.bloch_phase_arguments`): the kernels apply it on plane 0 of
+the operand read at the cell itself, as ``stepping._bloch_ghost_operand`` does, never on a
+shifted lane.
 
 =============================================================================
 THE WORD VIEW
@@ -72,7 +70,7 @@ import numpy as np
 # bit-identity probe, which loads these modules outside the package.
 try:
     from . import complex_emitter
-    from .coverage import (BC_CODES, PERIODIC, real_pml_boundary_kinds)
+    from .coverage import (BC_CODES, real_pml_boundary_kinds)
 except ImportError:  # loaded by path, outside the package: the bit-identity probe
     import importlib.util as _importlib_util
     import os as _os
@@ -88,7 +86,6 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
     complex_emitter = _by_path("cuda_kernels_complex_emitter", "complex_emitter.py")
     _coverage = _by_path("cuda_kernels_coverage", "coverage.py")
     BC_CODES = _coverage.BC_CODES
-    PERIODIC = _coverage.PERIODIC
     real_pml_boundary_kinds = _coverage.real_pml_boundary_kinds
 
 try:
@@ -104,10 +101,28 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
     compile_cache = _importlib_util.module_from_spec(_cache_spec)
     _cache_spec.loader.exec_module(compile_cache)
 
+# The chunk-record check is the root kernels' (one spelling of the ``cb`` contract on this
+# table), and the run's start of H is the array path's own (``stepping.separate_h_from_b``).
+# The Bloch connection a launch binds (its kind and float32 parts per axis) is host
+# arithmetic over the array path's own tolerance and complex<double> product, and lives in
+# the CuPy-free ``bloch_connection`` so a predicate can resolve it on any host. Each
+# imports CuPy or NumPy, as this module does.
+try:
+    from .bloch_connection import bloch_phase_arguments
+    from .step_curl_kernels import chunk_record_argument
+    from ..stepping import separate_h_from_b
+except ImportError:  # loaded by path, outside the package: the bit-identity probe
+    from meep_gpu.cuda_kernels.bloch_connection import bloch_phase_arguments
+    from meep_gpu.cuda_kernels.step_curl_kernels import chunk_record_argument
+    from meep_gpu.stepping import separate_h_from_b
+
 #: Byte-identical to the array path with a gate verdict behind it AND a
 #: ``certification.json`` record entry behind the verdict. A name here without a
 #: record block is the failure ``test_complex_pml.py`` exists to catch, and a name
 #: in the record without one here is the same failure from the other side.
+#: THE RECORD DESCRIBES THE PREVIOUS DEVICE TEXT. The 0.10 per-chunk, part-wise forms
+#: (bit_parity_0_10 lane KC6) moved every byte of this family; the block is re-cut when
+#: the family's gate is re-run on these bytes in the combined certification round.
 #: RECORDED 2026-08-26. These four sat in ``UNCERTIFIED_KERNELS`` from 2026-08-19 with
 #: a passing gate behind them, deliberately, because "certified" had to be a verdict a
 #: reader could check. The block is now in ``certification.json`` as
@@ -172,8 +187,8 @@ def _clear_kernel_cache() -> int:
     return compile_cache.clear_kernel_cache()
 
 
-def _get_kernel(sub_step: str, expansion):
-    """Compile one sub-step under one arm, memoized on (name, options, policy, source).
+def _get_kernel(sub_step: str):
+    """Compile one sub-step, memoized on (name, options, policy, source).
 
     THE SOURCE IS EMITTED PER CALL AND THAT IS LOAD-BEARING, for the reason the
     sibling modules rebuild their code maps per call: the source is part of the memo
@@ -181,17 +196,10 @@ def _get_kernel(sub_step: str, expansion):
     this family by monkeypatching :func:`complex_emitter.complex_source`. A source
     memoized at first call would hand back the pre-mutation string forever -- a leg
     reporting a pass for a mutation it never applied.
-
-    THE ARM IS IN THE KEY THROUGH THE SOURCE, which is what stops the two arms
-    being served each other's binary: they are different strings, so they are
-    different keys, exactly as the off-diagonal family's row-mask specializations
-    are.
     """
-    arm = complex_emitter.normalized_expansion(expansion)
     name = complex_emitter.KERNELS[sub_step][0]
-    code = complex_emitter.complex_source(sub_step, arm)
-    key = compile_cache.kernel_cache_key(
-        f"{sub_step}_arm{arm}", True, _COMPILE_OPTIONS, code)
+    code = complex_emitter.complex_source(sub_step)
+    key = compile_cache.kernel_cache_key(sub_step, True, _COMPILE_OPTIONS, code)
     return compile_cache.get_or_compile(
         key, lambda: cp.RawKernel(code, name, options=_COMPILE_OPTIONS))
 
@@ -228,9 +236,9 @@ def complex_curl_tables(pml: 'PML', half_integer: bool) -> Dict[str, Any]:
 
     THE COEFFICIENTS STAY FLOAT32 UNDER COMPLEX STORAGE. That is not an assumption:
     ``PML._reshape_for_broadcast`` stores float32 in BOTH storage modes
-    (stepping.py:41-50, fields.py:571-573 against fields.py:1203-1204), and the
-    zero-imaginary complex product below is what carries them into complex
-    arithmetic. A complex coefficient table here would be a different sub-step.
+    (stepping.py:41-50, fields.py:571-573 against fields.py:1203-1204), and each
+    multiplies the two parts of a word separately (``part_products.scale``). A complex
+    coefficient table here would be a different sub-step.
 
     ``half_integer`` selects the Yee sub-lattice: the B curl reads the HALF-INTEGER
     positions and the D curl the INTEGER ones (``stepping._curl_coefficients``,
@@ -264,8 +272,8 @@ def _tables(pml: 'PML', half_integer: bool,
             if flat.dtype != cp.float32:
                 raise ValueError(
                     f"{attribute} is {flat.dtype}; the complex PML kernels index "
-                    f"float32 coefficient vectors and carry them into complex "
-                    f"arithmetic through the zero-imaginary product")
+                    f"float32 coefficient vectors and multiply each part of a "
+                    f"complex word by them")
             if not flat.flags.c_contiguous:
                 raise ValueError(
                     f"{attribute} did not flatten to a contiguous view; the kernel "
@@ -284,52 +292,6 @@ def complex_boundary_codes(grid: 'Grid') -> Tuple[Any, ...]:
                 f"kernels do not serve (only {sorted(BC_CODES)}).")
         codes.append(np.int32(BC_CODES[kind]))
     return tuple(codes)
-
-
-def bloch_phase_arguments(grid: 'Grid', backward: bool
-                          ) -> Tuple[Tuple[Any, ...], Tuple[Any, ...]]:
-    """Encode the per-axis Bloch table as (three flags, six float32 components).
-
-    Transcribed from ``stepping._bloch_phases`` (:2313-2367) and
-    ``stepping._apply_bloch_phase`` (:1846-1862):
-
-    * the value is ``grid.bloch_phase(axis)`` = exp(2*pi*i*k*L), with the Brillouin
-      edge EXACTLY -1+0j (grid.py:1011-1017);
-    * ``None`` means the multiply is SKIPPED, never done against 1+0j -- that skip
-      is the bit-identity of k = 0, so an unphased axis passes flag 0 and the
-      kernel emits no multiply for it at all;
-    * the phase is rounded to complex64 BEFORE splitting, because the array path
-      multiplies by ``shifted.dtype.type(phase)`` (:1862);
-    * for the BACKWARD sub-step the imaginary part is NEGATED -- the conjugate
-      ``_shift_down`` takes (:1818-1822). Negation is exact, so the order of
-      conjugation and rounding is immaterial.
-
-    A PHASED AXIS MUST RESOLVE PERIODIC. ``stepping._bloch_phases`` raises on the
-    pairing and the predicate refuses it; this raises too, so a caller who skips
-    the predicate is refused loudly rather than handed a mis-bound flag. A PML on a
-    phased axis is ADMITTED -- measured 2.82e-07 against CPU MEEP, which is what
-    settled it.
-    """
-    kinds = real_pml_boundary_kinds(grid)
-    flags: list = []
-    values: list = []
-    for axis in range(3):
-        phase = grid.bloch_phase(axis) if getattr(grid, "has_bloch", False) else None
-        if phase is None:
-            flags.append(np.int32(0))
-            values.extend((np.float32(1.0), np.float32(0.0)))
-            continue
-        if kinds[axis] != PERIODIC:
-            raise ValueError(
-                f"axis {axis} carries Bloch phase {phase!r} but resolved to "
-                f"{kinds[axis]!r}; only a periodic wrap can carry a phase "
-                f"(stepping._bloch_phases raises on the same configuration)")
-        rounded = np.complex64(phase)
-        imag = np.float32(rounded.imag)
-        flags.append(np.int32(1))
-        values.extend((np.float32(rounded.real),
-                       np.float32(-imag) if backward else imag))
-    return tuple(flags), tuple(values)
 
 
 # ---------------------------------------------------------------------------
@@ -357,8 +319,9 @@ def _blocks(shape: Sequence[int]) -> int:
     return (cells + _COMPLEX_THREADS - 1) // _COMPLEX_THREADS
 
 
-def step_fused_pml_complex(sub_step: str, fields: 'Fields', expansion,
+def step_fused_pml_complex(sub_step: str, fields: 'Fields',
                            grid: 'Grid' = None, pml: 'PML' = None, *,
+                           chunk_bounds: Any,
                            dtdx: float = None,
                            tables: Dict[str, Any] = None,
                            boundary_codes: Sequence[Any] = None,
@@ -377,11 +340,15 @@ def step_fused_pml_complex(sub_step: str, fields: 'Fields', expansion,
 
     THE OVERRIDES ARE THE GATE'S DOOR and stay, keyword-only and named for what they
     are. A gate feeds DELIBERATELY WRONG tables (the swapped sub-lattice), wrong
-    boundary codes (the dropped metallic wall) and wrong phases (the unconjugated
-    backward factor, the whole-array rotation); a launcher that could not be handed
+    boundary codes (the dropped metallic wall) and wrong connections (the B curl's
+    factor unconjugated, a negation bound as a product); a launcher that could not be handed
     its own could not arm any of those mutations. Passing a layer AND an override
     for the same quantity is refused: two answers to a question with one.
+
+    ``chunk_bounds`` is the run's chunk record on the device, required: the kernel
+    chooses each cell's PML form from it (``step_curl_kernels.chunk_record_argument``).
     """
+    cb = chunk_record_argument(chunk_bounds)
     if sub_step not in _CURL_ARRAYS:
         raise ValueError(
             f"sub_step must be one of {sorted(_CURL_ARRAYS)}, got {sub_step!r}")
@@ -424,12 +391,14 @@ def step_fused_pml_complex(sub_step: str, fields: 'Fields', expansion,
     arguments += [np.int32(code) for code in boundary_codes]
     arguments += [np.int32(flag) for flag in phase_flags]
     arguments += [np.float32(value) for value in phase_values]
-    kernel = _get_kernel(sub_step, expansion)
+    arguments += [cb]
+    kernel = _get_kernel(sub_step)
     kernel((_blocks(shape),), (_COMPLEX_THREADS,), tuple(arguments))
 
 
-def update_fused_pml_complex(side: str, fields: 'Fields', expansion,
+def update_fused_pml_complex(side: str, fields: 'Fields',
                              pml: 'PML' = None, *,
+                             chunk_bounds: Any,
                              tables: Dict[str, Any] = None):
     """``stepping.update_H`` (side='H') or ``update_E`` ('E') for complex storage.
 
@@ -446,7 +415,19 @@ def update_fused_pml_complex(side: str, fields: 'Fields', expansion,
     valid only where ``displacement_minus_polarization`` returns the D array itself
     (fields.py:1097-1098); the predicate refuses a registered polarization by name
     for exactly that reason.
+
+    ``chunk_bounds`` is the run's chunk record on the device, required.
+
+    THE RUN'S FIRST ``update_H`` STARTS H FROM B FIRST. MEEP allocates H and ``f_w`` as
+    copies of B, on the chunks that carry H's own layer, at the first
+    ``update_eh(H_stuff)`` (update_eh.cpp:165-177); the array path does the same in
+    ``stepping.separate_h_from_b``, which ``stepping.update_H`` calls. So a launch at
+    ``side='H'`` with ``fields.h_separated`` still False runs that start on the array
+    path, with ``pml``, before the kernel (``arms._RealPmlConstitutiveLauncher``'s
+    arrangement). It runs once: the start records ``h_separated``. A first launch handed
+    tables and no layer is refused by name.
     """
+    cb = chunk_record_argument(chunk_bounds)
     if side not in _CONSTITUTIVE_ARRAYS:
         raise ValueError(
             f"side must be one of {sorted(_CONSTITUTIVE_ARRAYS)}, got {side!r}")
@@ -454,6 +435,12 @@ def update_fused_pml_complex(side: str, fields: 'Fields', expansion,
         raise ValueError(
             "pass exactly one of pml (the sub-lattice is decided from the side) or "
             "tables (the gate supplies its own, including mis-paired ones)")
+    if side == "H" and not bool(getattr(fields, "h_separated", True)):
+        if pml is None:
+            raise RuntimeError(
+                "the run's first update_H starts H from B (stepping.separate_h_from_b) "
+                "and this launch was handed tables and no layer to start it with")
+        separate_h_from_b(fields, pml)
     if tables is None:
         tables = complex_constitutive_tables(
             pml, complex_emitter.HALF_INTEGER[side])
@@ -468,6 +455,7 @@ def update_fused_pml_complex(side: str, fields: 'Fields', expansion,
     arguments += [np.int32(shape[0]), np.int32(shape[1]), np.int32(shape[2])]
     for axis in ("x", "y", "z"):
         arguments += [tables[f"kps_{axis}"], tables[f"kms_{axis}"]]
+    arguments += [cb]
     sub_step = "update_H" if side == "H" else "update_E"
-    kernel = _get_kernel(sub_step, expansion)
+    kernel = _get_kernel(sub_step)
     kernel((_blocks(shape),), (_COMPLEX_THREADS,), tuple(arguments))

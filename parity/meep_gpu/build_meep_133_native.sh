@@ -8,37 +8,39 @@
 # timing ladder can time a second build beside the reference
 # (timing_ladder.py --meep-build native=<this prefix>/bin/python,,<build_record.json>).
 # This build is a timing control ONLY: certification is never measured against it
-# (docs/development/certification.md, "The MEEP a round is measured against").
+# (docs/development/certification.md, "The MEEP a round is measured against"). Native
+# flags let the compiler fuse multiply-adds (-mcpu=native on Apple silicon, an FMA3
+# -march on most x86 hosts), so it is never an identity reference either: the platform
+# script's --timing-control records the fused multiply-add census of what it built
+# without judging it, and skips the identity checks.
 #
-# HOW. It sets the optimisation flags and delegates the build to the platform's reference
-# script, unchanged, so every defect that script works around is worked around here too:
+# HOW. It runs the platform's reference script with --timing-control and these flags, so
+# the environment is the same lock, MEEP the same tarball and every defect that script works
+# around is worked around here too; only the compile flags and the role differ:
 #
 #   Linux x86_64 (gcc):   CFLAGS = CXXFLAGS = "-O3 -march=native"
 #   macOS arm64 (clang):  CFLAGS = CXXFLAGS = "-O3 -mcpu=native"
 #
-# configure takes CFLAGS/CXXFLAGS from the environment. --enable-portable-binary, which
-# the reference scripts pass, changes only what AX_CC_MAXOPT picks when CFLAGS is UNSET;
-# with the flags set here it has no effect, and the build record says so.
+# --enable-portable-binary, which the reference scripts pass, changes only what
+# AX_CC_MAXOPT picks when CFLAGS is UNSET; with the flags set here it has no effect, and the
+# build record says so.
 #
-# WHAT IT WRITES, before the temporary build directory can vanish:
-#   <prefix>/share/meep-gpu-build/config.log       configure's log, as run
-#   <prefix>/share/meep-gpu-build/Makefile          the top-level Makefile (flags)
-#   <prefix>/share/meep-gpu-build/native.json       compiler, -march resolution, CPU
-#   <prefix>/share/meep-gpu-build/build_record.json timing_records.py meep-build-record:
-#        MEEP version and precision, sha256 of libmeep and _meep*.so, the OpenMP
-#        runtime each links, the configure line and the Makefile flags
+# WHAT IT WRITES: what the platform script keeps in <prefix>/share/meep-gpu-build/, with
+# native.json (the compiler, what -march / -mcpu native resolved to, the CPU) inside
+# build_record.json (timing_records.py meep-build-record --extra-json).
 #
 # USAGE (from the repository root; every stage prints a flushed, timestamped marker):
-#   bash parity/meep_gpu/build_meep_133_native.sh 2>&1 | tee ~/build_meep_133_native.log
-# Environment: MEEP_ENV_NAME (default meep-gpu-ref-native), CONDA_ROOT, MEEP_BUILD_JOBS,
-# NATIVE_FLAGS (overrides the flags above), DRY_RUN=1 (print what would run, run nothing).
+#   bash parity/meep_gpu/build_meep_133_native.sh 2>&1 | tee build_meep_133_native.log
+# Environment: MEEP_ENV_NAME (default meep-gpu-ref-native), MEEP_ENV_PREFIX, CONDA_ROOT,
+# CONDA_PKGS_DIRS, MEEP_BUILD_ROOT, MEEP_BUILD_JOBS, NATIVE_FLAGS (overrides the flags
+# above), DRY_RUN=1 (print what would run, run nothing).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export MEEP_ENV_NAME="${MEEP_ENV_NAME:-meep-gpu-ref-native}"
 CONDA_ROOT="${CONDA_ROOT:-$HOME/miniforge3}"
 export CONDA_ROOT
-PREFIX="$CONDA_ROOT/envs/$MEEP_ENV_NAME"
+PREFIX="${MEEP_ENV_PREFIX:-$CONDA_ROOT/envs/$MEEP_ENV_NAME}"
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
@@ -49,13 +51,11 @@ case "$OS/$ARCH" in
     DELEGATE="$HERE/build_meep_133_linux.sh"
     DEFAULT_FLAGS="-O3 -march=native"
     BUILD_ROOT="${MEEP_BUILD_ROOT:-${TMPDIR:-/tmp}/meep_build_133_native_linux}"
-    CXX_GLOB="$PREFIX/bin/x86_64-conda-linux-gnu-c++"
     ;;
   Darwin/arm64)
     DELEGATE="$HERE/build_meep_133_macos.sh"
     DEFAULT_FLAGS="-O3 -mcpu=native"
     BUILD_ROOT="${MEEP_BUILD_ROOT:-/tmp/meep_build_133_native_macos}"
-    CXX_GLOB="$PREFIX/bin/*-clang++"
     ;;
   *)
     echo "REFUSING: no native build is defined for $OS/$ARCH (Linux x86_64 with gcc, macOS"
@@ -66,7 +66,7 @@ case "$OS/$ARCH" in
 esac
 FLAGS="${NATIVE_FLAGS:-$DEFAULT_FLAGS}"
 export MEEP_BUILD_ROOT="$BUILD_ROOT"
-SOURCE_DIR="$BUILD_ROOT/meep-1.33.0"
+[ -n "${MEEP_ENV_PREFIX:-}" ] && export MEEP_ENV_PREFIX
 RECORD_DIR="$PREFIX/share/meep-gpu-build"
 
 say "0. plan"
@@ -75,61 +75,14 @@ echo "  prefix       $PREFIX"
 echo "  build root   $BUILD_ROOT"
 echo "  CFLAGS       $FLAGS"
 echo "  CXXFLAGS     $FLAGS"
+echo "  role         timing-control (the census is recorded, not judged)"
 if [ "${DRY_RUN:-0}" = 1 ]; then
   echo "  DRY RUN: nothing is built"
   exit 0
 fi
 
-say "1. build through the platform's reference script, with the native flags"
-CFLAGS="$FLAGS" CXXFLAGS="$FLAGS" bash "$DELEGATE"
-
-say "2. keep config.log and the Makefile before the build directory can vanish"
-mkdir -p "$RECORD_DIR"
-cp "$SOURCE_DIR/config.log" "$RECORD_DIR/config.log"
-cp "$SOURCE_DIR/Makefile" "$RECORD_DIR/Makefile"
-echo "  kept $RECORD_DIR/config.log and Makefile"
-
-say "3. what -march / -mcpu native resolved to on this CPU"
-CXX_BIN="$(ls $CXX_GLOB 2>/dev/null | head -1 || true)"
-NATIVE_JSON="$RECORD_DIR/native.json"
-"$PREFIX/bin/python" - "$CXX_BIN" "$FLAGS" "$OS" "$NATIVE_JSON" <<'PYEOF'
-import json, platform, subprocess, sys
-cxx, flags, system, out = sys.argv[1:5]
-
-def run(command):
-    try:
-        done = subprocess.run(command, capture_output=True, text=True, timeout=120)
-        return (done.stdout + done.stderr).strip()
-    except Exception as error:  # recorded, never fatal
-        return f"unavailable: {type(error).__name__}: {error}"
-
-record = {"flags": flags, "compiler": cxx or None, "platform": platform.platform(),
-          "portable_binary_note": ("--enable-portable-binary changes only what "
-                                   "AX_CC_MAXOPT picks when CFLAGS is unset; CFLAGS and "
-                                   "CXXFLAGS were set, so it had no effect")}
-if cxx:
-    record["compiler_version"] = run([cxx, "-v"])[-2000:]
-    if system == "Linux":
-        record["march_native_resolution"] = run(
-            [cxx, "-march=native", "-Q", "--help=target"])[-6000:]
-    else:
-        record["mcpu_native_resolution"] = run(
-            [cxx, "-mcpu=native", "-###", "-x", "c++", "-c", "/dev/null"])[-4000:]
-if system == "Linux":
-    record["cpu"] = next((line.split(":", 1)[1].strip() for line in
-                          run(["lscpu"]).splitlines() if line.startswith("Model name")), None)
-else:
-    record["cpu"] = run(["sysctl", "-n", "machdep.cpu.brand_string"])
-with open(out, "w", encoding="utf-8") as handle:
-    json.dump(record, handle, indent=2, sort_keys=True)
-print(f"  compiler {cxx or 'not found'}; cpu {record.get('cpu')}")
-PYEOF
-
-say "4. the build record"
-"$PREFIX/bin/python" "$HERE/timing_records.py" meep-build-record \
-  --python "$PREFIX/bin/python" --config-log "$RECORD_DIR/config.log" \
-  --launcher "$PREFIX/bin/mpirun" --extra-json "$NATIVE_JSON" --require-single \
-  --out "$RECORD_DIR/build_record.json"
+say "1. build through the platform's reference script, as a timing control"
+bash "$DELEGATE" --timing-control "$FLAGS"
 
 say "DONE"
 echo "Time it beside the reference with:"

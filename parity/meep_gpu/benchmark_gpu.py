@@ -31,20 +31,11 @@ before any driver is built: dispatch is on by default, so on a certified host an
 unpinned "array" baseline would plan kernels and abort at the step-path check. The
 value is recorded in the output.
 
-``--expansion-probe NAME=PATH`` (repeatable) installs an expansion-probe licence in
-the environment BEFORE the driver is built. A COMPLEX-storage fused run needs one:
-the complex families take their expansion licence from a probe record, and without
-it the composer refuses each of them by name -- "no complex-multiply expansion probe
-artifact is available ... which arm the numpy reference takes is a measured platform
-fact and may not be guessed". Every name and the sha256 of every artifact is written
-into the output, because a fused complex number means nothing without saying which
-licence admitted the arm.
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import platform
@@ -74,10 +65,9 @@ def build(profile, cells, resolution, prefer_gpu, pml_cells, storage="complex"):
     was refused whole -- measured on the GPU host, "no slot is left carrying a kernel:
     every product was refused, dropped as a no-op, or failed to compile". The complex
     families are released now: eleven of the twenty-eight released arms store complex
-    fields, and the 2026-09-17 round adds more. What a complex fused run still needs is
-    the EXPANSION-PROBE LICENCE those families take their admission from, which is what
-    ``--expansion-probe`` installs; the refusal above is what an unlicensed complex run
-    still reads, and it is the licence that was missing rather than the release.
+    fields, and the 2026-09-17 round adds more. The expansion-probe licence they took
+    their admission from was deleted with the expansion arm, so a complex fused run is
+    admitted as a real one is and the timing path needs no flag for it.
 
     The two storages are never mixed in one comparison -- that much is unchanged, and
     a real-storage fused number and a complex-storage one answer different questions.
@@ -181,20 +171,8 @@ def main():
     parser.add_argument("--storage", choices=("complex", "real"), default="complex",
                         help="field storage. 'complex' is what every baseline "
                              "before 2026-09-11 used and stays the default so those "
-                             "numbers remain comparable. A REAL-storage fused run "
-                             "needs nothing else; a COMPLEX-storage fused run needs "
-                             "the expansion-probe licence the complex families take "
-                             "their admission from, which --expansion-probe installs. "
-                             "Never compare a run in one storage against a run in the "
-                             "other.")
-    parser.add_argument("--expansion-probe", action="append", default=[],
-                        metavar="NAME=PATH",
-                        help="install an expansion-probe licence in the environment "
-                             "before the driver is built, e.g. "
-                             "MEEP_GPU_COMPLEX_EXPANSION_PROBE=<artifact>.json. "
-                             "Repeatable. The artifact must exist and its digest is "
-                             "recorded in the output: which licence admitted an arm is "
-                             "part of what a fused complex number means.")
+                             "numbers remain comparable. Never compare a run in one "
+                             "storage against a run in the other.")
     parser.add_argument("--warmup-steps", type=int, default=40)
     parser.add_argument("--steps", type=int, default=400)
     parser.add_argument("--repeats", type=int, default=3)
@@ -205,22 +183,6 @@ def main():
                      "use --backend gpu for --step-path fused (on an Apple GPU that "
                      "is the Metal table)")
 
-    # THE LICENCES FIRST, BEFORE ANYTHING IMPORTS A COMPOSER OR BUILDS A DRIVER. Each
-    # is recorded by NAME and by DIGEST rather than by "a probe was set": the arm a
-    # licence admits is a measured platform fact, so two runs under different probe
-    # artifacts are not the same measurement even where every other field matches.
-    probes = {}
-    for item in args.expansion_probe:
-        name, _, path = item.partition("=")
-        if not name or not path:
-            parser.error(f"--expansion-probe wants NAME=PATH, got {item!r}")
-        if not os.path.isfile(path):
-            parser.error(f"--expansion-probe {name}: no such artifact: {path}")
-        with open(path, "rb") as handle:
-            digest = hashlib.sha256(handle.read()).hexdigest()
-        os.environ[name] = path
-        probes[name] = {"path": path, "sha256": digest}
-        print(f"  licence {name} <- {path} ({digest[:12]})", flush=True)
     # THE ARRAY BASELINE IS PINNED BY THE TOOL, NOT BY WHOEVER CALLS IT. Dispatch is on
     # by default (fastpath.DISPATCH_BY_DEFAULT), so an "array" run left to the caller's
     # environment plans kernels on a certified host and require_step_path aborts it --
@@ -233,10 +195,6 @@ def main():
             print(f"  NOTE: {dispatch_enable}={os.environ[dispatch_enable]!r} in the "
                   f"calling environment is replaced by 0 for --step-path array", flush=True)
         os.environ[dispatch_enable] = "0"
-    if args.step_path == "fused" and args.storage == "complex" and not probes:
-        print("  NOTE: a complex-storage fused run with no --expansion-probe will be "
-              "refused arm by arm; require_step_path aborts rather than mislabelling",
-              flush=True)
 
     sweep = args.cells or [[64, 64, 64], [96, 96, 96], [128, 128, 128], [160, 160, 160]]
     prefer_gpu = args.backend == "gpu"
@@ -289,7 +247,6 @@ def main():
         "dispatch_enable": {dispatch_enable: os.environ.get(dispatch_enable)},
         "profile": args.profile,
         "storage": args.storage,
-        "expansion_probes": probes,   # name -> {path, sha256}; empty is a claim too
         "measured_at_utc": datetime.now(timezone.utc).isoformat(),
         "host": {"hostname": platform.node(), "python": sys.version.split()[0]},
         "parameters": {"resolution": args.resolution, "pml_cells": args.pml_cells,

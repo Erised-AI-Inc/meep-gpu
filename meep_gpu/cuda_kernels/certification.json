@@ -21800,5 +21800,1645 @@
       "nvrtc_version": "11.8",
       "python": "3.10.20"
     }
+  },
+  "cuda_regate_2026-10-13_10_g0": {
+    "_what_this_is": "A RE-GATE, not a new certification. Every family block this record already carries was re-run on device against the bytes in the tree TODAY, under both float32 subnormal policies, and every canonical policy leg released. It adds no kernel, widens no predicate and closes no open gap: each family's claim is the one its own dated block states, and this block says only that the claim was re-measured on the current sources. Re-running is what licenses re-binding cuda_kernels/fingerprints.json; nothing else does. Why THIS campaign was run is the block's own _why_it_was_run.",
+    "_why_it_was_run": "cuda_kernels/fingerprints.json welds each verdict to the sha256 of every file the gate imported, and 40 of its 79 pins no longer matched the tree -- the modules and gate scripts had moved under verdicts that were still being reported as current.",
+    "_what_it_does_NOT_claim": [
+      "IT DOES NOT REPLACE ANY DATED BLOCK, AND IT DOES NOT TOUCH ANY DATED DIRECTORY. Each family block keeps its own artifacts, its own artifact_sha256 and its own prose, and each still digests to what it records. The legs this campaign wrote live in their own tree. An earlier attempt to close the same drift installed the fresh legs INTO the dated directories: the weld ledger went to zero drift and four certification tests went red, because a block's artifact digest is computed over its own directory. A record that disagrees with its own directory is worse than an honest drift, so that attempt was reverted; results/_pre_regate_2026-08-30/ holds the originals verbatim and this tree holds the re-gate.",
+      "IT IS NOT A COVERAGE CLAIM. The kernels, cases, shapes and mutation legs are exactly the ones each family block already describes. Read the numbers there; the only new fact here is the date and the bytes.",
+      "IT IS NOT A WIRING CLAIM. The record's 'dispatch' key still reads wired=false and this block does not change it.",
+      "IT TIMES NOTHING. The box is shared and this is a correctness re-gate."
+    ],
+    "track": "hand-CUDA",
+    "recorded_utc": "2026-10-13T03:39:39Z",
+    "_recorded_utc_is": "the EARLIEST started_utc in the tree, by the convention at the head of this record: when the campaign's first device leg began. The last leg began 2026-10-13T09:45:02Z.",
+    "started_utc": "2026-10-13T03:39:39Z",
+    "host": "the GPU host",
+    "policies_cut_under": [
+      "ieee_keep_ftz_stripped",
+      "meep_x86_flush"
+    ],
+    "artifacts": "parity/meep_gpu/results/cuda_regate_2026-10-13_10_g0 (gitignored)",
+    "artifact_sha256": "dfb369dcb3b7fded5b4ff0d2a0ce476756c28654ae26ec13071c67d4583c87ab",
+    "_artifact_sha256_is": "308 verdict payloads across 24 campaign subdirectorie(s) claimed by 24 certification block(s), by the rule at the head of this record, computed against the directory as it stands in this checkout. The two counts differ whenever several blocks share one subdirectory, each scoped to its own gate_family.",
+    "families_re_gated": 24,
+    "campaign_subdirectories": 24,
+    "blocks_re_gated": 24,
+    "canonical_policy_legs": 48,
+    "every_leg_released": true,
+    "_how_to_read_re_gated": "One row per (block, subdirectory) pair: which certification block it re-gated, which canonical policy legs it wrote, and the gate each leg stamps. The join is the record's own claim -- a subdirectory is matched to the block whose declared artifact directory has that basename -- never string surgery on a block name. Several blocks may claim one subdirectory when each names a gate_family: the legs are then scoped to <gate_family>_<policy>, the same rule rebind_cuda_welds.py reads, so a block about one family never stands on another family's measurement. A subdirectory no block claims, or one several claim without scoping, is a refusal in record_cuda_regate.py, not a row that gets dropped.",
+    "re_gated": [
+      {
+        "block": "ade_2026-08-19",
+        "directory": "cuda_ade_2026-08-19",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_ade_update_p",
+        "first_leg_started_utc": "2026-10-13T05:53:14Z"
+      },
+      {
+        "block": "cuda_complex_no_pml_2026-08-27",
+        "directory": "cuda_complex_no_pml_2026-08-27",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_no_pml",
+        "first_leg_started_utc": "2026-10-13T05:04:59Z"
+      },
+      {
+        "block": "cuda_complex_no_pml_three_slot_dispersive_weld_2026-09-04",
+        "directory": "cuda_complex_three_slot_weld_2026-09-04_gatefix",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_three_slot_weld",
+        "first_leg_started_utc": "2026-10-13T05:45:10Z"
+      },
+      {
+        "block": "constitutive_2026-08-15",
+        "directory": "cuda_constitutive_recut_2026-08-22_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/cgate.json",
+          "keep/cgate.json"
+        ],
+        "released": true,
+        "gate": null,
+        "first_leg_started_utc": "2026-10-13T05:46:49Z"
+      },
+      {
+        "block": "cuda_cylindrical_real_2026-08-27",
+        "directory": "cuda_cylindrical_real_2026-08-26",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_cylindrical_real",
+        "first_leg_started_utc": "2026-10-13T05:49:25Z"
+      },
+      {
+        "block": "cuda_dispersive_2026-08-27",
+        "directory": "cuda_dispersive_2026-08-26",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_dispersive",
+        "first_leg_started_utc": "2026-10-13T05:12:45Z"
+      },
+      {
+        "block": "cuda_dispersive_offdiag_polarization_pair_2026-09-02",
+        "directory": "cuda_dispersive_offdiag_polarization_pair_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_dispersive_offdiag_polarization_pair",
+        "first_leg_started_utc": "2026-10-13T09:43:46Z"
+      },
+      {
+        "block": "folded_constitutive_2026-08-19",
+        "directory": "cuda_folded_constitutive_2026-08-19",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_folded_constitutive",
+        "first_leg_started_utc": "2026-10-13T05:23:58Z"
+      },
+      {
+        "block": "folded_constitutive_2026-08-20_threeplane",
+        "directory": "cuda_folded_constitutive_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_folded_constitutive",
+        "first_leg_started_utc": "2026-10-13T05:43:13Z"
+      },
+      {
+        "block": "cuda_folded_offdiag_2026-08-21",
+        "directory": "cuda_folded_offdiag_kernel_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_folded_offdiag_kernel",
+        "first_leg_started_utc": "2026-10-13T05:35:53Z"
+      },
+      {
+        "block": "cuda_fused_electric_pair_2026-08-31_fillcarry_r3",
+        "directory": "cuda_fused_electric_pair_2026-08-31_fillcarry_r3",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_electric_pair",
+        "first_leg_started_utc": "2026-10-13T05:40:11Z"
+      },
+      {
+        "block": "cuda_fused_hd_pair_2026-09-06",
+        "directory": "cuda_fused_hd_pair_2026-09-06",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "gate_cuda_fused_hd_pair.py",
+        "first_leg_started_utc": "2026-10-13T03:39:39Z"
+      },
+      {
+        "block": "cuda_fused_polarization_pair_2026-09-01",
+        "directory": "cuda_fused_polarization_pair_2026-09-01_pml",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_polarization_pair",
+        "first_leg_started_utc": "2026-10-13T04:56:45Z"
+      },
+      {
+        "block": "cuda_complex_beta_fused_magnetic_pair_2026-09-02",
+        "directory": "cuda_fused_residual_complex_beta_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T05:51:49Z"
+      },
+      {
+        "block": "cuda_complex_folded_fused_magnetic_pair_2026-09-02",
+        "directory": "cuda_fused_residual_complex_folded_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T05:57:20Z"
+      },
+      {
+        "block": "cuda_cylindrical_real_fused_magnetic_pair_2026-09-02",
+        "directory": "cuda_fused_residual_cylindrical_real_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T05:59:11Z"
+      },
+      {
+        "block": "cuda_special_kz_fused_magnetic_pair_2026-09-02",
+        "directory": "cuda_fused_residual_special_kz_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T06:00:38Z"
+      },
+      {
+        "block": "cuda_nonlinear_2026-08-21",
+        "directory": "cuda_nonlinear_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_nonlinear_constitutive",
+        "first_leg_started_utc": "2026-10-13T05:32:04Z"
+      },
+      {
+        "block": "offdiag_2026-08-16",
+        "directory": "cuda_offdiag_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_offdiag_constitutive",
+        "first_leg_started_utc": "2026-10-13T05:20:35Z"
+      },
+      {
+        "block": "cuda_offdiag_stencil_welds_2026-09-02",
+        "directory": "cuda_offdiag_stencil_welds_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_offdiag_stencil_welds",
+        "first_leg_started_utc": "2026-10-13T05:25:55Z"
+      },
+      {
+        "block": "cuda_bfast_fused_electric_pair_2026-09-02",
+        "directory": "cuda_residue_bfast_electric_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T06:01:45Z"
+      },
+      {
+        "block": "cuda_complex_no_pml_fused_polarization_pair_2026-09-02",
+        "directory": "cuda_residue_complex_polarization_pair_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_polarization_pair",
+        "first_leg_started_utc": "2026-10-13T05:59:57Z"
+      },
+      {
+        "block": "cuda_complex_folded_fused_electric_pair_2026-09-02",
+        "directory": "cuda_residue_folded_complex_electric_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T05:55:19Z"
+      },
+      {
+        "block": "cuda_special_kz_2026-08-21",
+        "directory": "cuda_special_kz_2026-08-21_rename_r2",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_special_kz",
+        "first_leg_started_utc": "2026-10-13T05:28:58Z"
+      }
+    ],
+    "device": "NVIDIA RTX A6000",
+    "compute_capability": "8.6",
+    "cupy_version": "13.5.1",
+    "nvrtc_version": "11.8",
+    "environment": {
+      "compute_capability": "8.6",
+      "cuda_runtime_version": 11080,
+      "cupy_version": "13.5.1",
+      "device_name": "NVIDIA RTX A6000",
+      "driver_version": 12030,
+      "numpy_version": "2.2.6",
+      "nvrtc_version": "11.8",
+      "python": "3.10.20"
+    }
+  },
+  "cuda_regate_2026-10-13_10_g1": {
+    "_what_this_is": "A RE-GATE, not a new certification. Every family block this record already carries was re-run on device against the bytes in the tree TODAY, under both float32 subnormal policies, and every canonical policy leg released. It adds no kernel, widens no predicate and closes no open gap: each family's claim is the one its own dated block states, and this block says only that the claim was re-measured on the current sources. Re-running is what licenses re-binding cuda_kernels/fingerprints.json; nothing else does. Why THIS campaign was run is the block's own _why_it_was_run.",
+    "_why_it_was_run": "cuda_kernels/fingerprints.json welds each verdict to the sha256 of every file the gate imported, and 40 of its 79 pins no longer matched the tree -- the modules and gate scripts had moved under verdicts that were still being reported as current.",
+    "_what_it_does_NOT_claim": [
+      "IT DOES NOT REPLACE ANY DATED BLOCK, AND IT DOES NOT TOUCH ANY DATED DIRECTORY. Each family block keeps its own artifacts, its own artifact_sha256 and its own prose, and each still digests to what it records. The legs this campaign wrote live in their own tree. An earlier attempt to close the same drift installed the fresh legs INTO the dated directories: the weld ledger went to zero drift and four certification tests went red, because a block's artifact digest is computed over its own directory. A record that disagrees with its own directory is worse than an honest drift, so that attempt was reverted; results/_pre_regate_2026-08-30/ holds the originals verbatim and this tree holds the re-gate.",
+      "IT IS NOT A COVERAGE CLAIM. The kernels, cases, shapes and mutation legs are exactly the ones each family block already describes. Read the numbers there; the only new fact here is the date and the bytes.",
+      "IT IS NOT A WIRING CLAIM. The record's 'dispatch' key still reads wired=false and this block does not change it.",
+      "IT TIMES NOTHING. The box is shared and this is a correctness re-gate."
+    ],
+    "track": "hand-CUDA",
+    "recorded_utc": "2026-10-13T03:39:59Z",
+    "_recorded_utc_is": "the EARLIEST started_utc in the tree, by the convention at the head of this record: when the campaign's first device leg began. The last leg began 2026-10-13T06:10:26Z.",
+    "started_utc": "2026-10-13T03:39:59Z",
+    "host": "the GPU host",
+    "policies_cut_under": [
+      "ieee_keep_ftz_stripped",
+      "meep_x86_flush"
+    ],
+    "artifacts": "parity/meep_gpu/results/cuda_regate_2026-10-13_10_g1 (gitignored)",
+    "artifact_sha256": "b8158990343201b65779d0cc3ef0c47bc299695fc7430163d72bf4532f02e7a1",
+    "_artifact_sha256_is": "158 verdict payloads across 28 campaign subdirectorie(s) claimed by 31 certification block(s), by the rule at the head of this record, computed against the directory as it stands in this checkout. The two counts differ whenever several blocks share one subdirectory, each scoped to its own gate_family.",
+    "families_re_gated": 31,
+    "campaign_subdirectories": 28,
+    "blocks_re_gated": 31,
+    "canonical_policy_legs": 68,
+    "every_leg_released": true,
+    "_how_to_read_re_gated": "One row per (block, subdirectory) pair: which certification block it re-gated, which canonical policy legs it wrote, and the gate each leg stamps. The join is the record's own claim -- a subdirectory is matched to the block whose declared artifact directory has that basename -- never string surgery on a block name. Several blocks may claim one subdirectory when each names a gate_family: the legs are then scoped to <gate_family>_<policy>, the same rule rebind_cuda_welds.py reads, so a block about one family never stands on another family's measurement. A subdirectory no block claims, or one several claim without scoping, is a refusal in record_cuda_regate.py, not a row that gets dropped.",
+    "re_gated": [
+      {
+        "block": "cuda_bfast_2026-08-21",
+        "directory": "cuda_bfast_2026-08-21_rename_r2",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_bfast",
+        "first_leg_started_utc": "2026-10-13T05:35:57Z"
+      },
+      {
+        "block": "cuda_complex_beta_2026-09-01",
+        "directory": "cuda_complex_beta_2026-09-01",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_beta",
+        "first_leg_started_utc": "2026-10-13T05:28:31Z"
+      },
+      {
+        "block": "cuda_complex_folded_2026-09-01",
+        "directory": "cuda_complex_folded_2026-09-01",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_folded",
+        "first_leg_started_utc": "2026-10-13T05:39:25Z"
+      },
+      {
+        "block": "cuda_complex_fused_hd_pair_2026-09-07",
+        "directory": "cuda_complex_fused_hd_pair_2026-09-07",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "gate_cuda_complex_fused_hd_pair.py",
+        "first_leg_started_utc": "2026-10-13T05:01:12Z"
+      },
+      {
+        "block": "cuda_complex_offdiag_stencil_welds_2026-09-17",
+        "directory": "cuda_complex_offdiag_stencil_welds_2026-09-17",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_offdiag_stencil_welds",
+        "first_leg_started_utc": "2026-10-13T05:10:36Z"
+      },
+      {
+        "block": "complex_pml_2026-08-26",
+        "directory": "cuda_complex_regate_2026-08-26",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_pml",
+        "first_leg_started_utc": "2026-10-13T04:29:35Z"
+      },
+      {
+        "block": "cuda_conductive_2026-08-21",
+        "directory": "cuda_conductive_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_conductive",
+        "first_leg_started_utc": "2026-10-13T03:39:59Z"
+      },
+      {
+        "block": "cuda_conductive_fused_electric_pair_2026-09-02b",
+        "directory": "cuda_conductive_fused_electric_pair_2026-09-02b",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_conductive_fused_electric_pair",
+        "first_leg_started_utc": "2026-10-13T06:04:17Z"
+      },
+      {
+        "block": "cuda_cylindrical_complex_2026-08-27",
+        "directory": "cuda_cylindrical_complex_2026-08-26",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_cylindrical_complex",
+        "first_leg_started_utc": "2026-10-13T04:03:06Z"
+      },
+      {
+        "block": "cuda_cylindrical_fused_hd_pair_2026-09-07",
+        "directory": "cuda_cylindrical_fused_hd_pair_2026-09-07",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "gate_cuda_cylindrical_fused_hd_pair.py",
+        "first_leg_started_utc": "2026-10-13T04:52:16Z"
+      },
+      {
+        "block": "cuda_cylindrical_real_fused_hd_pair_2026-09-07",
+        "directory": "cuda_cylindrical_real_fused_hd_pair_2026-09-07",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "gate_cuda_cylindrical_real_fused_hd_pair.py",
+        "first_leg_started_utc": "2026-10-13T05:58:22Z"
+      },
+      {
+        "block": "cuda_dispersive_offdiag_2026-08-20",
+        "directory": "cuda_dispersive_offdiag_2026-08-20b",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_dispersive_offdiag",
+        "first_leg_started_utc": "2026-10-13T04:16:33Z"
+      },
+      {
+        "block": "cuda_complex_fused_magnetic_pair_2026-09-11_regate",
+        "directory": "cuda_fused_complex_pairs_2026-09-11_regate",
+        "gate_family": "complex",
+        "legs": [
+          "complex_flush/gate.json",
+          "complex_keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T05:20:20Z"
+      },
+      {
+        "block": "cuda_complex_fused_electric_pair_2026-09-11_regate",
+        "directory": "cuda_fused_complex_pairs_2026-09-11_regate",
+        "gate_family": "complex_electric",
+        "legs": [
+          "complex_electric_flush/gate.json",
+          "complex_electric_keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T05:19:27Z"
+      },
+      {
+        "block": "cuda_no_pml_complex_fused_electric_pair_2026-09-11_regate",
+        "directory": "cuda_fused_complex_pairs_2026-09-11_regate",
+        "gate_family": "no_pml_complex_electric",
+        "legs": [
+          "no_pml_complex_electric_flush/gate.json",
+          "no_pml_complex_electric_keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T05:21:15Z"
+      },
+      {
+        "block": "cuda_cylindrical_fused_electric_pair_2026-09-13_cyl",
+        "directory": "cuda_fused_complex_pairs_2026-09-13_cyl",
+        "gate_family": "cylindrical_electric",
+        "legs": [
+          "cylindrical_electric_flush/gate.json",
+          "cylindrical_electric_keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T05:24:04Z"
+      },
+      {
+        "block": "cuda_cylindrical_fused_magnetic_pair_2026-09-13_cyl",
+        "directory": "cuda_fused_complex_pairs_2026-09-13_cyl",
+        "gate_family": "cylindrical",
+        "legs": [
+          "cylindrical_flush/gate.json",
+          "cylindrical_keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T05:25:11Z"
+      },
+      {
+        "block": "cuda_fused_magnetic_pair_2026-08-27",
+        "directory": "cuda_fused_magnetic_pair_2026-08-27",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_magnetic_pair",
+        "first_leg_started_utc": "2026-10-13T05:48:57Z"
+      },
+      {
+        "block": "cuda_fused_magnetic_pair_2026-08-29_fillcarry",
+        "directory": "cuda_fused_magnetic_pair_2026-08-28_fillcarry",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_magnetic_pair",
+        "first_leg_started_utc": "2026-10-13T05:42:50Z"
+      },
+      {
+        "block": "cuda_fused_magnetic_pair_2026-09-01_nonlinear",
+        "directory": "cuda_fused_magnetic_pair_2026-09-01_nonlinear",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_magnetic_pair",
+        "first_leg_started_utc": "2026-10-13T05:32:34Z"
+      },
+      {
+        "block": "cuda_no_pml_fused_polarization_pair_2026-09-01",
+        "directory": "cuda_fused_polarization_pair_2026-09-01_no_pml",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_polarization_pair",
+        "first_leg_started_utc": "2026-10-13T05:52:22Z"
+      },
+      {
+        "block": "cuda_bfast_fused_magnetic_pair_2026-09-02",
+        "directory": "cuda_fused_residual_bfast_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T06:09:21Z"
+      },
+      {
+        "block": "in_seam_2026-08-21",
+        "directory": "cuda_in_seam_2026-08-21_final",
+        "gate_family": null,
+        "legs": [
+          "fill_folded_far/flush/gate.json",
+          "fill_folded_far/keep/gate.json",
+          "fill_symmetry/flush/gate.json",
+          "fill_symmetry/keep/gate.json",
+          "zero_metal/flush/gate.json",
+          "zero_metal/keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_in_seam_passes",
+        "first_leg_started_utc": "2026-10-13T06:00:51Z"
+      },
+      {
+        "block": "cuda_no_pml_curl_2026-08-21",
+        "directory": "cuda_no_pml_curl_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_no_pml_curl",
+        "first_leg_started_utc": "2026-10-13T04:40:55Z"
+      },
+      {
+        "block": "cuda_complex_beta_fused_electric_pair_2026-09-02",
+        "directory": "cuda_residue_complex_beta_electric_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T06:05:52Z"
+      },
+      {
+        "block": "cuda_complex_no_pml_fused_polarization_pair_2026-09-02b",
+        "directory": "cuda_residue_complex_polarization_pair_2026-09-02b",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_polarization_pair",
+        "first_leg_started_utc": "2026-10-13T06:10:07Z"
+      },
+      {
+        "block": "cuda_cylindrical_real_fused_electric_pair_2026-09-02",
+        "directory": "cuda_residue_cylindrical_real_electric_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T06:07:20Z"
+      },
+      {
+        "block": "cuda_special_kz_fused_electric_pair_2026-09-02",
+        "directory": "cuda_residue_special_kz_electric_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T06:03:07Z"
+      },
+      {
+        "block": "cuda_special_kz_fused_magnetic_pair_2026-09-02_fillcarry",
+        "directory": "cuda_residue_special_kz_fillcarry_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-13T06:08:13Z"
+      },
+      {
+        "block": "cuda_three_slot_dispersive_weld_2026-09-11_regate",
+        "directory": "cuda_three_slot_weld_2026-09-11_regate",
+        "gate_family": null,
+        "legs": [
+          "flush_no_pml/gate.json",
+          "flush_pml/gate.json",
+          "keep_no_pml/gate.json",
+          "keep_pml/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_three_slot_weld",
+        "first_leg_started_utc": "2026-10-13T05:46:28Z"
+      },
+      {
+        "block": "bit_identity_gate",
+        "directory": "fused_pml_bit_identity_hand_2026-08-22_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/probe.json",
+          "keep/probe.json"
+        ],
+        "released": true,
+        "gate": null,
+        "first_leg_started_utc": "2026-10-13T05:55:26Z"
+      }
+    ],
+    "device": "NVIDIA RTX A6000",
+    "compute_capability": "8.6",
+    "cupy_version": "13.5.1",
+    "nvrtc_version": "11.8",
+    "environment": {
+      "compute_capability": "8.6",
+      "cuda_runtime_version": 11080,
+      "cupy_version": "13.5.1",
+      "device_name": "NVIDIA RTX A6000",
+      "driver_version": 12030,
+      "numpy_version": "2.2.6",
+      "nvrtc_version": "11.8",
+      "python": "3.10.20"
+    }
+  },
+  "cuda_regate_2026-10-15_10_cc86_c0_g0": {
+    "_what_this_is": "A RE-GATE, not a new certification. Every family block this record already carries was re-run on device against the bytes in the tree TODAY, under both float32 subnormal policies, and every canonical policy leg released. It adds no kernel, widens no predicate and closes no open gap: each family's claim is the one its own dated block states, and this block says only that the claim was re-measured on the current sources. Re-running is what licenses re-binding cuda_kernels/fingerprints.json; nothing else does. Why THIS campaign was run is the block's own _why_it_was_run.",
+    "_why_it_was_run": "cuda_kernels/fingerprints.json welds each verdict to the sha256 of every file the gate imported, and 40 of its 79 pins no longer matched the tree -- the modules and gate scripts had moved under verdicts that were still being reported as current.",
+    "_what_it_does_NOT_claim": [
+      "IT DOES NOT REPLACE ANY DATED BLOCK, AND IT DOES NOT TOUCH ANY DATED DIRECTORY. Each family block keeps its own artifacts, its own artifact_sha256 and its own prose, and each still digests to what it records. The legs this campaign wrote live in their own tree. An earlier attempt to close the same drift installed the fresh legs INTO the dated directories: the weld ledger went to zero drift and four certification tests went red, because a block's artifact digest is computed over its own directory. A record that disagrees with its own directory is worse than an honest drift, so that attempt was reverted; results/_pre_regate_2026-08-30/ holds the originals verbatim and this tree holds the re-gate.",
+      "IT IS NOT A COVERAGE CLAIM. The kernels, cases, shapes and mutation legs are exactly the ones each family block already describes. Read the numbers there; the only new fact here is the date and the bytes.",
+      "IT IS NOT A WIRING CLAIM. The record's 'dispatch' key still reads wired=false and this block does not change it.",
+      "IT TIMES NOTHING. The box is shared and this is a correctness re-gate."
+    ],
+    "track": "hand-CUDA",
+    "recorded_utc": "2026-10-15T11:35:55Z",
+    "_recorded_utc_is": "the EARLIEST started_utc in the tree, by the convention at the head of this record: when the campaign's first device leg began. The last leg began 2026-10-15T13:17:54Z.",
+    "started_utc": "2026-10-15T11:35:55Z",
+    "host": "the GPU host",
+    "policies_cut_under": [
+      "ieee_keep_ftz_stripped",
+      "meep_x86_flush"
+    ],
+    "artifacts": "parity/meep_gpu/results/cuda_regate_2026-10-15_10_cc86_c0_g0 (gitignored)",
+    "artifact_sha256": "9fe7ee30c1fa0c72a61879812c69c654daafd540d102684f8f84ba69be078c49",
+    "_artifact_sha256_is": "80 verdict payloads across 18 campaign subdirectorie(s) claimed by 18 certification block(s), by the rule at the head of this record, computed against the directory as it stands in this checkout. The two counts differ whenever several blocks share one subdirectory, each scoped to its own gate_family.",
+    "families_re_gated": 18,
+    "campaign_subdirectories": 18,
+    "blocks_re_gated": 18,
+    "canonical_policy_legs": 36,
+    "every_leg_released": true,
+    "_how_to_read_re_gated": "One row per (block, subdirectory) pair: which certification block it re-gated, which canonical policy legs it wrote, and the gate each leg stamps. The join is the record's own claim -- a subdirectory is matched to the block whose declared artifact directory has that basename -- never string surgery on a block name. Several blocks may claim one subdirectory when each names a gate_family: the legs are then scoped to <gate_family>_<policy>, the same rule rebind_cuda_welds.py reads, so a block about one family never stands on another family's measurement. A subdirectory no block claims, or one several claim without scoping, is a refusal in record_cuda_regate.py, not a row that gets dropped.",
+    "re_gated": [
+      {
+        "block": "cuda_complex_beta_2026-09-01",
+        "directory": "cuda_complex_beta_2026-09-01",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_beta",
+        "first_leg_started_utc": "2026-10-15T12:47:33Z"
+      },
+      {
+        "block": "cuda_complex_fused_hd_pair_2026-09-07",
+        "directory": "cuda_complex_fused_hd_pair_2026-09-07",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "gate_cuda_complex_fused_hd_pair.py",
+        "first_leg_started_utc": "2026-10-15T12:24:54Z"
+      },
+      {
+        "block": "cuda_complex_no_pml_three_slot_dispersive_weld_2026-09-04",
+        "directory": "cuda_complex_three_slot_weld_2026-09-04_gatefix",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_three_slot_weld",
+        "first_leg_started_utc": "2026-10-15T13:08:31Z"
+      },
+      {
+        "block": "cuda_conductive_2026-08-21",
+        "directory": "cuda_conductive_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_conductive",
+        "first_leg_started_utc": "2026-10-15T11:35:55Z"
+      },
+      {
+        "block": "cuda_cylindrical_complex_2026-08-27",
+        "directory": "cuda_cylindrical_complex_2026-08-26",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_cylindrical_complex",
+        "first_leg_started_utc": "2026-10-15T11:59:27Z"
+      },
+      {
+        "block": "cuda_cylindrical_real_2026-08-27",
+        "directory": "cuda_cylindrical_real_2026-08-26",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_cylindrical_real",
+        "first_leg_started_utc": "2026-10-15T13:13:16Z"
+      },
+      {
+        "block": "cuda_dispersive_2026-08-27",
+        "directory": "cuda_dispersive_2026-08-26",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_dispersive",
+        "first_leg_started_utc": "2026-10-15T12:34:24Z"
+      },
+      {
+        "block": "folded_constitutive_2026-08-19",
+        "directory": "cuda_folded_constitutive_2026-08-19",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_folded_constitutive",
+        "first_leg_started_utc": "2026-10-15T12:45:33Z"
+      },
+      {
+        "block": "cuda_fused_electric_pair_2026-08-31_fillcarry_r3",
+        "directory": "cuda_fused_electric_pair_2026-08-31_fillcarry_r3",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_electric_pair",
+        "first_leg_started_utc": "2026-10-15T12:58:25Z"
+      },
+      {
+        "block": "cuda_fused_magnetic_pair_2026-08-27",
+        "directory": "cuda_fused_magnetic_pair_2026-08-27",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_magnetic_pair",
+        "first_leg_started_utc": "2026-10-15T13:05:01Z"
+      },
+      {
+        "block": "cuda_fused_magnetic_pair_2026-08-29_fillcarry",
+        "directory": "cuda_fused_magnetic_pair_2026-08-28_fillcarry",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_magnetic_pair",
+        "first_leg_started_utc": "2026-10-15T13:01:29Z"
+      },
+      {
+        "block": "cuda_no_pml_fused_polarization_pair_2026-09-01",
+        "directory": "cuda_fused_polarization_pair_2026-09-01_no_pml",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_polarization_pair",
+        "first_leg_started_utc": "2026-10-15T13:10:13Z"
+      },
+      {
+        "block": "cuda_complex_folded_fused_magnetic_pair_2026-09-02",
+        "directory": "cuda_fused_residual_complex_folded_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T13:15:42Z"
+      },
+      {
+        "block": "cuda_no_pml_curl_2026-08-21",
+        "directory": "cuda_no_pml_curl_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_no_pml_curl",
+        "first_leg_started_utc": "2026-10-15T12:13:03Z"
+      },
+      {
+        "block": "cuda_nonlinear_2026-08-21",
+        "directory": "cuda_nonlinear_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_nonlinear_constitutive",
+        "first_leg_started_utc": "2026-10-15T12:54:41Z"
+      },
+      {
+        "block": "offdiag_2026-08-16",
+        "directory": "cuda_offdiag_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_offdiag_constitutive",
+        "first_leg_started_utc": "2026-10-15T12:42:06Z"
+      },
+      {
+        "block": "cuda_complex_no_pml_fused_polarization_pair_2026-09-02",
+        "directory": "cuda_residue_complex_polarization_pair_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_polarization_pair",
+        "first_leg_started_utc": "2026-10-15T13:17:34Z"
+      },
+      {
+        "block": "cuda_special_kz_2026-08-21",
+        "directory": "cuda_special_kz_2026-08-21_rename_r2",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_special_kz",
+        "first_leg_started_utc": "2026-10-15T12:51:30Z"
+      }
+    ],
+    "device": "NVIDIA RTX A6000",
+    "compute_capability": "8.6",
+    "cupy_version": "13.5.1",
+    "nvrtc_version": "11.8",
+    "environment": {
+      "compute_capability": "8.6",
+      "cuda_runtime_version": 11080,
+      "cupy_version": "13.5.1",
+      "device_name": "NVIDIA RTX A6000",
+      "driver_version": 12030,
+      "numpy_version": "2.2.6",
+      "nvrtc_version": "11.8",
+      "python": "3.10.20"
+    }
+  },
+  "cuda_regate_2026-10-15_10_cc86_c2_g0": {
+    "_what_this_is": "A RE-GATE, not a new certification. Every family block this record already carries was re-run on device against the bytes in the tree TODAY, under both float32 subnormal policies, and every canonical policy leg released. It adds no kernel, widens no predicate and closes no open gap: each family's claim is the one its own dated block states, and this block says only that the claim was re-measured on the current sources. Re-running is what licenses re-binding cuda_kernels/fingerprints.json; nothing else does. Why THIS campaign was run is the block's own _why_it_was_run.",
+    "_why_it_was_run": "cuda_kernels/fingerprints.json welds each verdict to the sha256 of every file the gate imported, and 40 of its 79 pins no longer matched the tree -- the modules and gate scripts had moved under verdicts that were still being reported as current.",
+    "_what_it_does_NOT_claim": [
+      "IT DOES NOT REPLACE ANY DATED BLOCK, AND IT DOES NOT TOUCH ANY DATED DIRECTORY. Each family block keeps its own artifacts, its own artifact_sha256 and its own prose, and each still digests to what it records. The legs this campaign wrote live in their own tree. An earlier attempt to close the same drift installed the fresh legs INTO the dated directories: the weld ledger went to zero drift and four certification tests went red, because a block's artifact digest is computed over its own directory. A record that disagrees with its own directory is worse than an honest drift, so that attempt was reverted; results/_pre_regate_2026-08-30/ holds the originals verbatim and this tree holds the re-gate.",
+      "IT IS NOT A COVERAGE CLAIM. The kernels, cases, shapes and mutation legs are exactly the ones each family block already describes. Read the numbers there; the only new fact here is the date and the bytes.",
+      "IT IS NOT A WIRING CLAIM. The record's 'dispatch' key still reads wired=false and this block does not change it.",
+      "IT TIMES NOTHING. The box is shared and this is a correctness re-gate."
+    ],
+    "track": "hand-CUDA",
+    "recorded_utc": "2026-10-15T11:48:07Z",
+    "_recorded_utc_is": "the EARLIEST started_utc in the tree, by the convention at the head of this record: when the campaign's first device leg began. The last leg began 2026-10-15T12:34:39Z.",
+    "started_utc": "2026-10-15T11:48:07Z",
+    "host": "the GPU host",
+    "policies_cut_under": [
+      "ieee_keep_ftz_stripped",
+      "meep_x86_flush"
+    ],
+    "artifacts": "parity/meep_gpu/results/cuda_regate_2026-10-15_10_cc86_c2_g0 (gitignored)",
+    "artifact_sha256": "1ff10a6cfe4cb457de5fee5f8cd35a045638fb715f396f46025cf60fcc072f19",
+    "_artifact_sha256_is": "74 verdict payloads across 13 campaign subdirectorie(s) claimed by 13 certification block(s), by the rule at the head of this record, computed against the directory as it stands in this checkout. The two counts differ whenever several blocks share one subdirectory, each scoped to its own gate_family.",
+    "families_re_gated": 13,
+    "campaign_subdirectories": 13,
+    "blocks_re_gated": 13,
+    "canonical_policy_legs": 28,
+    "every_leg_released": true,
+    "_how_to_read_re_gated": "One row per (block, subdirectory) pair: which certification block it re-gated, which canonical policy legs it wrote, and the gate each leg stamps. The join is the record's own claim -- a subdirectory is matched to the block whose declared artifact directory has that basename -- never string surgery on a block name. Several blocks may claim one subdirectory when each names a gate_family: the legs are then scoped to <gate_family>_<policy>, the same rule rebind_cuda_welds.py reads, so a block about one family never stands on another family's measurement. A subdirectory no block claims, or one several claim without scoping, is a refusal in record_cuda_regate.py, not a row that gets dropped.",
+    "re_gated": [
+      {
+        "block": "cuda_complex_folded_2026-09-01",
+        "directory": "cuda_complex_folded_2026-09-01",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_folded",
+        "first_leg_started_utc": "2026-10-15T12:16:38Z"
+      },
+      {
+        "block": "cuda_cylindrical_fused_hd_pair_2026-09-07",
+        "directory": "cuda_cylindrical_fused_hd_pair_2026-09-07",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "gate_cuda_cylindrical_fused_hd_pair.py",
+        "first_leg_started_utc": "2026-10-15T12:01:28Z"
+      },
+      {
+        "block": "cuda_cylindrical_real_fused_hd_pair_2026-09-07",
+        "directory": "cuda_cylindrical_real_fused_hd_pair_2026-09-07",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "gate_cuda_cylindrical_real_fused_hd_pair.py",
+        "first_leg_started_utc": "2026-10-15T12:27:59Z"
+      },
+      {
+        "block": "cuda_dispersive_offdiag_2026-08-20",
+        "directory": "cuda_dispersive_offdiag_2026-08-20b",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_dispersive_offdiag",
+        "first_leg_started_utc": "2026-10-15T11:48:07Z"
+      },
+      {
+        "block": "cuda_dispersive_offdiag_polarization_pair_2026-09-02",
+        "directory": "cuda_dispersive_offdiag_polarization_pair_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_dispersive_offdiag_polarization_pair",
+        "first_leg_started_utc": "2026-10-15T12:10:14Z"
+      },
+      {
+        "block": "folded_constitutive_2026-08-20_threeplane",
+        "directory": "cuda_folded_constitutive_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_folded_constitutive",
+        "first_leg_started_utc": "2026-10-15T12:20:14Z"
+      },
+      {
+        "block": "cuda_fused_magnetic_pair_2026-09-01_nonlinear",
+        "directory": "cuda_fused_magnetic_pair_2026-09-01_nonlinear",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_magnetic_pair",
+        "first_leg_started_utc": "2026-10-15T12:13:03Z"
+      },
+      {
+        "block": "cuda_cylindrical_real_fused_magnetic_pair_2026-09-02",
+        "directory": "cuda_fused_residual_cylindrical_real_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T12:33:19Z"
+      },
+      {
+        "block": "cuda_complex_beta_fused_electric_pair_2026-09-02",
+        "directory": "cuda_residue_complex_beta_electric_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T12:31:43Z"
+      },
+      {
+        "block": "cuda_special_kz_fused_electric_pair_2026-09-02",
+        "directory": "cuda_residue_special_kz_electric_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T12:30:31Z"
+      },
+      {
+        "block": "cuda_special_kz_fused_magnetic_pair_2026-09-02_fillcarry",
+        "directory": "cuda_residue_special_kz_fillcarry_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T12:34:06Z"
+      },
+      {
+        "block": "cuda_three_slot_dispersive_weld_2026-09-11_regate",
+        "directory": "cuda_three_slot_weld_2026-09-11_regate",
+        "gate_family": null,
+        "legs": [
+          "flush_no_pml/gate.json",
+          "flush_pml/gate.json",
+          "keep_no_pml/gate.json",
+          "keep_pml/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_three_slot_weld",
+        "first_leg_started_utc": "2026-10-15T12:22:18Z"
+      },
+      {
+        "block": "bit_identity_gate",
+        "directory": "fused_pml_bit_identity_hand_2026-08-22_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/probe.json",
+          "keep/probe.json"
+        ],
+        "released": true,
+        "gate": null,
+        "first_leg_started_utc": "2026-10-15T12:24:54Z"
+      }
+    ],
+    "device": "NVIDIA RTX A6000",
+    "compute_capability": "8.6",
+    "cupy_version": "13.5.1",
+    "nvrtc_version": "11.8",
+    "environment": {
+      "compute_capability": "8.6",
+      "cuda_runtime_version": 11080,
+      "cupy_version": "13.5.1",
+      "device_name": "NVIDIA RTX A6000",
+      "driver_version": 12030,
+      "numpy_version": "2.2.6",
+      "nvrtc_version": "11.8",
+      "python": "3.10.20"
+    }
+  },
+  "cuda_regate_2026-10-15_10_cc86_c5_g0": {
+    "_what_this_is": "A RE-GATE, not a new certification. Every family block this record already carries was re-run on device against the bytes in the tree TODAY, under both float32 subnormal policies, and every canonical policy leg released. It adds no kernel, widens no predicate and closes no open gap: each family's claim is the one its own dated block states, and this block says only that the claim was re-measured on the current sources. Re-running is what licenses re-binding cuda_kernels/fingerprints.json; nothing else does. Why THIS campaign was run is the block's own _why_it_was_run.",
+    "_why_it_was_run": "cuda_kernels/fingerprints.json welds each verdict to the sha256 of every file the gate imported, and 40 of its 79 pins no longer matched the tree -- the modules and gate scripts had moved under verdicts that were still being reported as current.",
+    "_what_it_does_NOT_claim": [
+      "IT DOES NOT REPLACE ANY DATED BLOCK, AND IT DOES NOT TOUCH ANY DATED DIRECTORY. Each family block keeps its own artifacts, its own artifact_sha256 and its own prose, and each still digests to what it records. The legs this campaign wrote live in their own tree. An earlier attempt to close the same drift installed the fresh legs INTO the dated directories: the weld ledger went to zero drift and four certification tests went red, because a block's artifact digest is computed over its own directory. A record that disagrees with its own directory is worse than an honest drift, so that attempt was reverted; results/_pre_regate_2026-08-30/ holds the originals verbatim and this tree holds the re-gate.",
+      "IT IS NOT A COVERAGE CLAIM. The kernels, cases, shapes and mutation legs are exactly the ones each family block already describes. Read the numbers there; the only new fact here is the date and the bytes.",
+      "IT IS NOT A WIRING CLAIM. The record's 'dispatch' key still reads wired=false and this block does not change it.",
+      "IT TIMES NOTHING. The box is shared and this is a correctness re-gate."
+    ],
+    "track": "hand-CUDA",
+    "recorded_utc": "2026-10-15T15:27:36Z",
+    "_recorded_utc_is": "the EARLIEST started_utc in the tree, by the convention at the head of this record: when the campaign's first device leg began. The last leg began 2026-10-15T15:47:07Z.",
+    "started_utc": "2026-10-15T15:27:36Z",
+    "host": "the GPU host",
+    "policies_cut_under": [
+      "ieee_keep_ftz_stripped",
+      "meep_x86_flush"
+    ],
+    "artifacts": "parity/meep_gpu/results/cuda_regate_2026-10-15_10_cc86_c5_g0 (gitignored)",
+    "artifact_sha256": "fba4e22f73f59b8c2bb96e4c33552b2d7acd161afd3eb990e44079f6a9fc74bf",
+    "_artifact_sha256_is": "22 verdict payloads across 7 campaign subdirectorie(s) claimed by 9 certification block(s), by the rule at the head of this record, computed against the directory as it stands in this checkout. The two counts differ whenever several blocks share one subdirectory, each scoped to its own gate_family.",
+    "families_re_gated": 9,
+    "campaign_subdirectories": 7,
+    "blocks_re_gated": 9,
+    "canonical_policy_legs": 22,
+    "every_leg_released": true,
+    "_how_to_read_re_gated": "One row per (block, subdirectory) pair: which certification block it re-gated, which canonical policy legs it wrote, and the gate each leg stamps. The join is the record's own claim -- a subdirectory is matched to the block whose declared artifact directory has that basename -- never string surgery on a block name. Several blocks may claim one subdirectory when each names a gate_family: the legs are then scoped to <gate_family>_<policy>, the same rule rebind_cuda_welds.py reads, so a block about one family never stands on another family's measurement. A subdirectory no block claims, or one several claim without scoping, is a refusal in record_cuda_regate.py, not a row that gets dropped.",
+    "re_gated": [
+      {
+        "block": "cuda_bfast_2026-08-21",
+        "directory": "cuda_bfast_2026-08-21_rename_r2",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_bfast",
+        "first_leg_started_utc": "2026-10-15T15:32:08Z"
+      },
+      {
+        "block": "constitutive_2026-08-15",
+        "directory": "cuda_constitutive_recut_2026-08-22_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/cgate.json",
+          "keep/cgate.json"
+        ],
+        "released": true,
+        "gate": null,
+        "first_leg_started_utc": "2026-10-15T15:39:53Z"
+      },
+      {
+        "block": "cuda_folded_offdiag_2026-08-21",
+        "directory": "cuda_folded_offdiag_kernel_2026-08-21_rename",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_folded_offdiag_kernel",
+        "first_leg_started_utc": "2026-10-15T15:35:36Z"
+      },
+      {
+        "block": "cuda_complex_fused_magnetic_pair_2026-09-11_regate",
+        "directory": "cuda_fused_complex_pairs_2026-09-11_regate",
+        "gate_family": "complex",
+        "legs": [
+          "complex_flush/gate.json",
+          "complex_keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T15:28:28Z"
+      },
+      {
+        "block": "cuda_complex_fused_electric_pair_2026-09-11_regate",
+        "directory": "cuda_fused_complex_pairs_2026-09-11_regate",
+        "gate_family": "complex_electric",
+        "legs": [
+          "complex_electric_flush/gate.json",
+          "complex_electric_keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T15:27:36Z"
+      },
+      {
+        "block": "cuda_no_pml_complex_fused_electric_pair_2026-09-11_regate",
+        "directory": "cuda_fused_complex_pairs_2026-09-11_regate",
+        "gate_family": "no_pml_complex_electric",
+        "legs": [
+          "no_pml_complex_electric_flush/gate.json",
+          "no_pml_complex_electric_keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T15:29:22Z"
+      },
+      {
+        "block": "cuda_special_kz_fused_magnetic_pair_2026-09-02",
+        "directory": "cuda_fused_residual_special_kz_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T15:46:35Z"
+      },
+      {
+        "block": "in_seam_2026-08-21",
+        "directory": "cuda_in_seam_2026-08-21_final",
+        "gate_family": null,
+        "legs": [
+          "fill_folded_far/flush/gate.json",
+          "fill_folded_far/keep/gate.json",
+          "fill_symmetry/flush/gate.json",
+          "fill_symmetry/keep/gate.json",
+          "zero_metal/flush/gate.json",
+          "zero_metal/keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_in_seam_passes",
+        "first_leg_started_utc": "2026-10-15T15:42:27Z"
+      },
+      {
+        "block": "cuda_complex_folded_fused_electric_pair_2026-09-02",
+        "directory": "cuda_residue_folded_complex_electric_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T15:44:40Z"
+      }
+    ],
+    "device": "NVIDIA RTX A6000",
+    "compute_capability": "8.6",
+    "cupy_version": "13.5.1",
+    "nvrtc_version": "11.8",
+    "environment": {
+      "compute_capability": "8.6",
+      "cuda_runtime_version": 11080,
+      "cupy_version": "13.5.1",
+      "device_name": "NVIDIA RTX A6000",
+      "driver_version": 12030,
+      "numpy_version": "2.2.6",
+      "nvrtc_version": "11.8",
+      "python": "3.10.20"
+    }
+  },
+  "cuda_regate_2026-10-15_10_cc86_c6_g0": {
+    "_what_this_is": "A RE-GATE, not a new certification. Every family block this record already carries was re-run on device against the bytes in the tree TODAY, under both float32 subnormal policies, and every canonical policy leg released. It adds no kernel, widens no predicate and closes no open gap: each family's claim is the one its own dated block states, and this block says only that the claim was re-measured on the current sources. Re-running is what licenses re-binding cuda_kernels/fingerprints.json; nothing else does. Why THIS campaign was run is the block's own _why_it_was_run.",
+    "_why_it_was_run": "cuda_kernels/fingerprints.json welds each verdict to the sha256 of every file the gate imported, and 40 of its 79 pins no longer matched the tree -- the modules and gate scripts had moved under verdicts that were still being reported as current.",
+    "_what_it_does_NOT_claim": [
+      "IT DOES NOT REPLACE ANY DATED BLOCK, AND IT DOES NOT TOUCH ANY DATED DIRECTORY. Each family block keeps its own artifacts, its own artifact_sha256 and its own prose, and each still digests to what it records. The legs this campaign wrote live in their own tree. An earlier attempt to close the same drift installed the fresh legs INTO the dated directories: the weld ledger went to zero drift and four certification tests went red, because a block's artifact digest is computed over its own directory. A record that disagrees with its own directory is worse than an honest drift, so that attempt was reverted; results/_pre_regate_2026-08-30/ holds the originals verbatim and this tree holds the re-gate.",
+      "IT IS NOT A COVERAGE CLAIM. The kernels, cases, shapes and mutation legs are exactly the ones each family block already describes. Read the numbers there; the only new fact here is the date and the bytes.",
+      "IT IS NOT A WIRING CLAIM. The record's 'dispatch' key still reads wired=false and this block does not change it.",
+      "IT TIMES NOTHING. The box is shared and this is a correctness re-gate."
+    ],
+    "track": "hand-CUDA",
+    "recorded_utc": "2026-10-15T13:36:50Z",
+    "_recorded_utc_is": "the EARLIEST started_utc in the tree, by the convention at the head of this record: when the campaign's first device leg began. The last leg began 2026-10-15T14:13:56Z.",
+    "started_utc": "2026-10-15T13:36:50Z",
+    "host": "the GPU host",
+    "policies_cut_under": [
+      "ieee_keep_ftz_stripped",
+      "meep_x86_flush"
+    ],
+    "artifacts": "parity/meep_gpu/results/cuda_regate_2026-10-15_10_cc86_c6_g0 (gitignored)",
+    "artifact_sha256": "544a77e4afca163e9caba8079e329e5549d93ab0261209705080c3c527309c8e",
+    "_artifact_sha256_is": "262 verdict payloads across 1 campaign subdirectorie(s) claimed by 1 certification block(s), by the rule at the head of this record, computed against the directory as it stands in this checkout. The two counts differ whenever several blocks share one subdirectory, each scoped to its own gate_family.",
+    "families_re_gated": 1,
+    "campaign_subdirectories": 1,
+    "blocks_re_gated": 1,
+    "canonical_policy_legs": 2,
+    "every_leg_released": true,
+    "_how_to_read_re_gated": "One row per (block, subdirectory) pair: which certification block it re-gated, which canonical policy legs it wrote, and the gate each leg stamps. The join is the record's own claim -- a subdirectory is matched to the block whose declared artifact directory has that basename -- never string surgery on a block name. Several blocks may claim one subdirectory when each names a gate_family: the legs are then scoped to <gate_family>_<policy>, the same rule rebind_cuda_welds.py reads, so a block about one family never stands on another family's measurement. A subdirectory no block claims, or one several claim without scoping, is a refusal in record_cuda_regate.py, not a row that gets dropped.",
+    "re_gated": [
+      {
+        "block": "cuda_fused_hd_pair_2026-09-06",
+        "directory": "cuda_fused_hd_pair_2026-09-06",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "gate_cuda_fused_hd_pair.py",
+        "first_leg_started_utc": "2026-10-15T13:36:50Z"
+      }
+    ],
+    "device": "NVIDIA RTX A6000",
+    "compute_capability": "8.6",
+    "cupy_version": "13.5.1",
+    "nvrtc_version": "11.8",
+    "environment": {
+      "compute_capability": "8.6",
+      "cuda_runtime_version": 11080,
+      "cupy_version": "13.5.1",
+      "device_name": "NVIDIA RTX A6000",
+      "driver_version": 12030,
+      "numpy_version": "2.2.6",
+      "nvrtc_version": "11.8",
+      "python": "3.10.20"
+    }
+  },
+  "cuda_regate_2026-10-15_10_cc86_c7_g0": {
+    "_what_this_is": "A RE-GATE, not a new certification. Every family block this record already carries was re-run on device against the bytes in the tree TODAY, under both float32 subnormal policies, and every canonical policy leg released. It adds no kernel, widens no predicate and closes no open gap: each family's claim is the one its own dated block states, and this block says only that the claim was re-measured on the current sources. Re-running is what licenses re-binding cuda_kernels/fingerprints.json; nothing else does. Why THIS campaign was run is the block's own _why_it_was_run.",
+    "_why_it_was_run": "cuda_kernels/fingerprints.json welds each verdict to the sha256 of every file the gate imported, and 40 of its 79 pins no longer matched the tree -- the modules and gate scripts had moved under verdicts that were still being reported as current.",
+    "_what_it_does_NOT_claim": [
+      "IT DOES NOT REPLACE ANY DATED BLOCK, AND IT DOES NOT TOUCH ANY DATED DIRECTORY. Each family block keeps its own artifacts, its own artifact_sha256 and its own prose, and each still digests to what it records. The legs this campaign wrote live in their own tree. An earlier attempt to close the same drift installed the fresh legs INTO the dated directories: the weld ledger went to zero drift and four certification tests went red, because a block's artifact digest is computed over its own directory. A record that disagrees with its own directory is worse than an honest drift, so that attempt was reverted; results/_pre_regate_2026-08-30/ holds the originals verbatim and this tree holds the re-gate.",
+      "IT IS NOT A COVERAGE CLAIM. The kernels, cases, shapes and mutation legs are exactly the ones each family block already describes. Read the numbers there; the only new fact here is the date and the bytes.",
+      "IT IS NOT A WIRING CLAIM. The record's 'dispatch' key still reads wired=false and this block does not change it.",
+      "IT TIMES NOTHING. The box is shared and this is a correctness re-gate."
+    ],
+    "track": "hand-CUDA",
+    "recorded_utc": "2026-10-15T15:11:32Z",
+    "_recorded_utc_is": "the EARLIEST started_utc in the tree, by the convention at the head of this record: when the campaign's first device leg began. The last leg began 2026-10-15T16:03:44Z.",
+    "started_utc": "2026-10-15T15:11:32Z",
+    "host": "the GPU host",
+    "policies_cut_under": [
+      "ieee_keep_ftz_stripped",
+      "meep_x86_flush"
+    ],
+    "artifacts": "parity/meep_gpu/results/cuda_regate_2026-10-15_10_cc86_c7_g0 (gitignored)",
+    "artifact_sha256": "ae8c6eb15cb48b25d0d1f6f223937fa267258ed7e15448468cc84252eb352cf6",
+    "_artifact_sha256_is": "28 verdict payloads across 13 campaign subdirectorie(s) claimed by 14 certification block(s), by the rule at the head of this record, computed against the directory as it stands in this checkout. The two counts differ whenever several blocks share one subdirectory, each scoped to its own gate_family.",
+    "families_re_gated": 14,
+    "campaign_subdirectories": 13,
+    "blocks_re_gated": 14,
+    "canonical_policy_legs": 28,
+    "every_leg_released": true,
+    "_how_to_read_re_gated": "One row per (block, subdirectory) pair: which certification block it re-gated, which canonical policy legs it wrote, and the gate each leg stamps. The join is the record's own claim -- a subdirectory is matched to the block whose declared artifact directory has that basename -- never string surgery on a block name. Several blocks may claim one subdirectory when each names a gate_family: the legs are then scoped to <gate_family>_<policy>, the same rule rebind_cuda_welds.py reads, so a block about one family never stands on another family's measurement. A subdirectory no block claims, or one several claim without scoping, is a refusal in record_cuda_regate.py, not a row that gets dropped.",
+    "re_gated": [
+      {
+        "block": "ade_2026-08-19",
+        "directory": "cuda_ade_2026-08-19",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_ade_update_p",
+        "first_leg_started_utc": "2026-10-15T15:57:08Z"
+      },
+      {
+        "block": "cuda_complex_no_pml_2026-08-27",
+        "directory": "cuda_complex_no_pml_2026-08-27",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_no_pml",
+        "first_leg_started_utc": "2026-10-15T15:31:21Z"
+      },
+      {
+        "block": "cuda_complex_offdiag_stencil_welds_2026-09-17",
+        "directory": "cuda_complex_offdiag_stencil_welds_2026-09-17",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_offdiag_stencil_welds",
+        "first_leg_started_utc": "2026-10-15T15:39:24Z"
+      },
+      {
+        "block": "complex_pml_2026-08-26",
+        "directory": "cuda_complex_regate_2026-08-26",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_pml",
+        "first_leg_started_utc": "2026-10-15T15:11:32Z"
+      },
+      {
+        "block": "cuda_conductive_fused_electric_pair_2026-09-02b",
+        "directory": "cuda_conductive_fused_electric_pair_2026-09-02b",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_conductive_fused_electric_pair",
+        "first_leg_started_utc": "2026-10-15T15:59:15Z"
+      },
+      {
+        "block": "cuda_cylindrical_fused_electric_pair_2026-09-13_cyl",
+        "directory": "cuda_fused_complex_pairs_2026-09-13_cyl",
+        "gate_family": "cylindrical_electric",
+        "legs": [
+          "cylindrical_electric_flush/gate.json",
+          "cylindrical_electric_keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T15:48:15Z"
+      },
+      {
+        "block": "cuda_cylindrical_fused_magnetic_pair_2026-09-13_cyl",
+        "directory": "cuda_fused_complex_pairs_2026-09-13_cyl",
+        "gate_family": "cylindrical",
+        "legs": [
+          "cylindrical_flush/gate.json",
+          "cylindrical_keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T15:49:21Z"
+      },
+      {
+        "block": "cuda_fused_polarization_pair_2026-09-01",
+        "directory": "cuda_fused_polarization_pair_2026-09-01_pml",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_polarization_pair",
+        "first_leg_started_utc": "2026-10-15T15:23:10Z"
+      },
+      {
+        "block": "cuda_bfast_fused_magnetic_pair_2026-09-02",
+        "directory": "cuda_fused_residual_bfast_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T16:02:37Z"
+      },
+      {
+        "block": "cuda_complex_beta_fused_magnetic_pair_2026-09-02",
+        "directory": "cuda_fused_residual_complex_beta_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T15:55:42Z"
+      },
+      {
+        "block": "cuda_offdiag_stencil_welds_2026-09-02",
+        "directory": "cuda_offdiag_stencil_welds_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_offdiag_stencil_welds",
+        "first_leg_started_utc": "2026-10-15T15:52:41Z"
+      },
+      {
+        "block": "cuda_bfast_fused_electric_pair_2026-09-02",
+        "directory": "cuda_residue_bfast_electric_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T16:01:43Z"
+      },
+      {
+        "block": "cuda_complex_no_pml_fused_polarization_pair_2026-09-02b",
+        "directory": "cuda_residue_complex_polarization_pair_2026-09-02b",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_complex_polarization_pair",
+        "first_leg_started_utc": "2026-10-15T16:03:25Z"
+      },
+      {
+        "block": "cuda_cylindrical_real_fused_electric_pair_2026-09-02",
+        "directory": "cuda_residue_cylindrical_real_electric_2026-09-02",
+        "gate_family": null,
+        "legs": [
+          "flush/gate.json",
+          "keep/gate.json"
+        ],
+        "released": true,
+        "gate": "cuda_fused_complex_pairs",
+        "first_leg_started_utc": "2026-10-15T16:00:51Z"
+      }
+    ],
+    "device": "NVIDIA RTX A6000",
+    "compute_capability": "8.6",
+    "cupy_version": "13.5.1",
+    "nvrtc_version": "11.8",
+    "environment": {
+      "compute_capability": "8.6",
+      "cuda_runtime_version": 11080,
+      "cupy_version": "13.5.1",
+      "device_name": "NVIDIA RTX A6000",
+      "driver_version": 12030,
+      "numpy_version": "2.2.6",
+      "nvrtc_version": "11.8",
+      "python": "3.10.20"
+    }
   }
 }

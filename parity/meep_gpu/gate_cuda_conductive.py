@@ -4,9 +4,9 @@ THE QUESTION
 ============
 ``meep_gpu/cuda_kernels/conductive_kernels.py`` carries five kernels for the two
 tails of ``stepping._apply_curl`` that read ``fields.condfac_for(term.target)``
-(stepping.py:508) -- the no-absorber conductive update (:536-537) and the
-four-case conductivity + PML recurrence (:520-534). None of them has ever run on
-a device. This gate asks, per sub-step, per arm and PER CONDUCTIVITY MASK, whether
+(stepping.py:548) -- the no-absorber conductive update (:584-585) and MEEP's
+conductive forms under a PML, chosen per structure chunk (:554-580). This gate asks,
+per sub-step, per arm and PER CONDUCTIVITY MASK, whether
 each is byte-identical to ``stepping.step_B`` / ``stepping.step_D`` from ONE
 frozen state -- at one launch and at 60 -- across periodic, metallic and mixed
 walls, a mirror fold at both terminations, 1-D / 2-D / 3-D shapes, an absent
@@ -49,19 +49,27 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   against a record with a defect planted in it, and the run fails if the verdict
   does not flip.
 
-THE NEAR-ONE COEFFICIENT TABLE, WHICH IS A FIXTURE AND NOT A DEFECT
-====================================================================
-The four-case selection turns on an EXACT comparison, ``kms != 1.0``
-(stepping.py:2055-2058). A kernel written with a tolerance is a defect the REAL
-tables cannot expose: on the sibling track's real ``2d_cond_pml`` layout ``kms_x``
-has 561/640 entries exactly 1.0 and 561 within 1e-7 of 1.0, so there is no
-near-one band for a tolerance to mis-classify. This gate therefore carries a
-``near_one`` coefficient-table variant -- ONE entry of one axis's ``kms`` set to
-``0.99999994f``, the largest float32 below 1.0 -- installed on the PML object so
-the ORACLE and the KERNEL both see it. The
-``tolerance_instead_of_exact_predicate`` source mutation must be CAUGHT on that
-variant and is expected UNCAUGHT on the shipped one; both are scored and the
-contrast is the measurement.
+THE FORMS ARE CHOSEN PER STRUCTURE CHUNK, AND EACH CHOICE IS DATA
+=================================================================
+Since 0.10 the kernels step MEEP's forms (bit_parity_0_10 KERNELS.md section 1): the
+curl in MEEP's grouping with its partner-presence forms, and, under a layer, the form
+of each conductive component chosen per structure chunk from the chunk record ``cb``
+(``chunk_map.chunk_bounds_record``: which cells' chunks carry the dsig and dsigu
+layers) and from which chunks keep the component's conductivity
+(``RegionPlan.conductive_chunks``: a chunk whose every sample is zero keeps none and
+steps the non-conductive forms). Every case hands the kernel the record of its own
+one-rank division (:func:`case_record`), the division the oracle's region plan steps
+with, and the NumPy backend reads the same record. The two ``half_sigma`` specs put
+the conductivity on the high half of the first layered axis only, so the chunks of
+that axis's low layer keep none of it and their dsig cells step the non-conductive
+form while the rest step the conductive ones: ``pml_case_census`` refuses such a case
+unless it reaches both kinds of chunk. The coefficient-identity predicate this family
+carried until 0.10 (``kms != 1``) is gone, and with it the near-one table that armed
+its tolerance mutation (DESIGN.md D13: retired, not inverted); the B battery
+(KERNELS.md section 7.2) arms the membership instead -- the predicate on coefficient
+identity, a bound off by one, the two lattices' records swapped, the flags swapped,
+an auxiliary stored on a plain cell, the conductive chunks ignored -- and the
+increment's old grouping is the inverted must-catch (section 7.1).
 
 RUNNING IT
 ==========
@@ -97,6 +105,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -119,9 +128,14 @@ except ImportError:  # laptop: the NumPy backend still runs
     cp = None
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
+import gate_chunk_records  # noqa: E402
+import gate_needles  # noqa: E402
 import gate_provenance  # noqa: E402
+from gate_needles import Needle  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
+from meep_gpu.chunk_map import (RECORD_PRESENCE_WORD,  # noqa: E402
+                                membership_from_record, record_index)
 from meep_gpu.fields import IYEE_SHIFTS, Fields  # noqa: E402
 from meep_gpu.grid import Grid, Mirror  # noqa: E402
 from meep_gpu.pml import PML  # noqa: E402
@@ -187,18 +201,13 @@ GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
 SUBSTITUTIONS: Tuple[str, ...] = ("resolved", "mirror_as_metallic", "all_periodic")
 LICENSED_SUBSTITUTION = "resolved"
 
-#: The coefficient-table variants. Only ``shipped`` is a table a run could
-#: produce; ``near_one`` is a FIXTURE that puts one entry in the band an
-#: exact-comparison kernel and a tolerance kernel disagree about, and it is
-#: installed on the PML object so the oracle sees it too. Both are licensed --
-#: neither is a misdeclaration -- and the mutation battery is what reads the
-#: contrast between them.
-COEFFICIENT_TABLES: Tuple[str, ...] = ("shipped", "near_one")
-
-#: The largest float32 strictly below 1.0. ``1.0 - 1e-7`` is NOT this number: it
-#: rounds to exactly 1.0 in float32 (eps is 1.19e-7), which would make the
-#: near-one fixture a no-op that reads as a passing leg.
-NEAR_ONE = np.float32(0.99999994)
+#: Where a spec's conductivity lives. ``everywhere``: drawn on every cell, so every
+#: chunk keeps it. ``half_space``: the high half of the first layered axis only, so
+#: the chunks of that axis's low layer keep none of it (``RegionPlan
+#: .conductive_chunks``) and their dsig cells step the non-conductive form, while the
+#: other chunks step all four conductive forms -- MEEP's per-chunk choice, which a
+#: fixture with the conductivity everywhere never reaches.
+SIGMA_LAYOUTS: Tuple[str, ...] = ("everywhere", "half_space")
 
 #: The grids. Every wall kind appears, the fold appears at BOTH terminations, and
 #: 1-D / 2-D / 3-D shapes all appear -- the corpus's own conductive rows are
@@ -265,7 +274,23 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "3d_pml_all_axes", "cell": (9.0, 10.0, 11.0), "dimensions": 3,
      "boundaries": ("metallic", "periodic", "metallic"), "axes": "", "phase": 1,
      "absorber": ((2, 2), (2, 2), (2, 2))},
+    # THE CONDUCTIVITY ON A HALF-SPACE (``sigma``: ``half_space``). The chunks of the
+    # x layer's low face keep none of it, so their dsig cells step the non-conductive
+    # forms while every other chunk steps the conductive ones -- the configuration of
+    # the corpus's conductive-PML rows (a lossy block, or an adjoint design region,
+    # under a PML), where a layer's chunks keep no conductivity.
+    {"label": "3d_pml_all_axes_half_sigma", "cell": (12.0, 13.0, 14.0),
+     "dimensions": 3, "boundaries": ("metallic", "periodic", "metallic"), "axes": "",
+     "phase": 1, "absorber": ((2, 2), (2, 2), (2, 2)), "sigma": "half_space"},
+    {"label": "2d_pml_two_axes_half_sigma", "cell": (14.0, 16.0, 0.0),
+     "dimensions": 2, "boundaries": ("metallic", "metallic", "periodic"), "axes": "",
+     "phase": 1, "absorber": ((3, 3), (3, 3), (0, 0)), "sigma": "half_space"},
 )
+
+
+def sigma_layout(spec: Dict[str, Any]) -> str:
+    """Where the spec's conductivity lives (:data:`SIGMA_LAYOUTS`)."""
+    return spec.get("sigma", "everywhere")
 
 
 def spec_is_active(spec: Dict[str, Any]) -> bool:
@@ -331,7 +356,7 @@ def conductive_side(sub_step: str) -> str:
 
 
 def build(xp, spec: Dict[str, Any], sub_step: str, mask, courant: float,
-          e_storage: str, coefficient_table: str, rng):
+          e_storage: str, rng):
     """A frozen ``(fields, layer, grid)`` triple for one point of the product.
 
     THE SIGMA IS INHOMOGENEOUS AND PER COMPONENT. A uniform sigma makes a
@@ -365,8 +390,6 @@ def build(xp, spec: Dict[str, Any], sub_step: str, mask, courant: float,
         layer = PML(grid=grid, thickness=((0, 0), (0, 0), (0, 0)))
     elif spec_is_active(spec):
         layer = PML(grid=grid, thickness=spec["absorber"])
-        if coefficient_table == "near_one":
-            install_near_one(layer)
 
     if layer is not None and layer.is_active:
         fields.enable_pml_storage()
@@ -374,48 +397,44 @@ def build(xp, spec: Dict[str, Any], sub_step: str, mask, courant: float,
         fields.enable_field_storage()
 
     targets = conductive_kernels.CONDUCTIVE_SUB_STEPS[sub_step]
+    box = sigma_box(spec, tuple(int(n) for n in grid.shape))
     sigma = {}
     for component, flag in zip(targets, mask):
         if flag:
-            sigma[component] = xp.asarray(np.ascontiguousarray(
-                rng.uniform(0.05, 0.9, size=grid.shape).astype(np.float32)))
+            values = rng.uniform(0.05, 0.9, size=grid.shape).astype(np.float32)
+            if box is not None:
+                values = np.where(box, values, np.float32(0.0)).astype(np.float32)
+            sigma[component] = xp.asarray(np.ascontiguousarray(values))
     setter = (fields.set_b_conductivity if sub_step == "step_B"
               else fields.set_d_conductivity)
     setter(sigma)
     return fields, layer, grid
 
 
-def install_near_one(layer) -> Dict[str, Any]:
-    """Put ONE coefficient entry in the band a tolerance would mis-classify.
+def sigma_box(spec: Dict[str, Any], shape) -> Optional[np.ndarray]:
+    """The cells a ``half_space`` spec's conductivity occupies; None for ``everywhere``.
 
-    Written into the PML OBJECT, so ``stepping`` reads it through
-    ``_curl_coefficients`` and the launcher reads it through
-    ``real_pml_curl_tables``. Both paths therefore see the same table and the
-    experiment is about the PREDICATE inside the tail, not about two different
-    tables.
-
-    The entry chosen is one that is currently EXACTLY 1.0 -- i.e. outside the
-    absorbing region, where the array path takes case D or C -- so the change
-    moves a cell ACROSS the boundary the predicate draws. Perturbing an entry that
-    is already far from 1.0 would change a number and not a classification.
+    The rows at or above the middle of the first axis that carries a layer face, every
+    row of the other axes. The chunks of that axis's low layer allocate only rows
+    below its thickness plus one (their owned samples plus one,
+    ``ChunkLayout.loop_rows``), so they keep no conductivity, and every other chunk
+    keeps it; ``pml_case_census`` measures both rather than trusting this.
     """
-    record: Dict[str, Any] = {"installed": False, "entries": []}
-    for attribute in ("kms_x", "kms_y", "kms_z", "kms_x_h", "kms_y_h", "kms_z_h"):
-        vector = getattr(layer, attribute, None)
-        if vector is None:
+    if sigma_layout(spec) != "half_space":
+        return None
+    for axis, (low, high) in enumerate(spec["absorber"]):
+        n = int(shape[axis])
+        if n <= 1 or (int(low) == 0 and int(high) == 0):
             continue
-        flat = to_host(vector).reshape(-1)
-        exact = np.flatnonzero(flat == np.float32(1.0))
-        if exact.size == 0:
-            continue
-        index = int(exact[exact.size // 2])
-        host = to_host(vector).copy()
-        host.reshape(-1)[index] = NEAR_ONE
-        getattr(layer, attribute)[...] = layer.grid.xp.asarray(host)
-        record["entries"].append({"attribute": attribute, "index": index,
-                                  "value": float(NEAR_ONE)})
-        record["installed"] = True
-    return record
+        line = np.zeros(n, dtype=bool)
+        line[n // 2:] = True
+        if n // 2 <= int(low) + 1:
+            raise ValueError(f"{spec['label']}: the half-space reaches the low layer's "
+                             f"chunk along axis {axis}")
+        selector = [None, None, None]
+        selector[axis] = slice(None)
+        return np.broadcast_to(line[tuple(selector)], tuple(shape)).copy()
+    raise ValueError(f"{spec['label']}: a half-space conductivity needs a layered axis")
 
 
 def state_names(sub_step: str, arm: str, layer: str, mask) -> Tuple[str, ...]:
@@ -560,14 +579,55 @@ def curl_tables(layer, sub_step: str):
         layer, half_integer=(sub_step == "step_B"))
 
 
+def case_record(grid, layer) -> np.ndarray:
+    """The chunk record of the case's own division: the one-rank division of ``grid``
+    with ``layer`` (None, the inert layer, or the active one).
+
+    It is the division the oracle steps with: ``stepping``'s first PML sub-step plans
+    the one-rank layout of the grid and layer when no driver installed another
+    (``stepping._region_plan``). The no-absorber kernels read its partner-presence
+    word only; the PML pair also its membership runs.
+    """
+    return np.ascontiguousarray(gate_chunk_records.layer_record(grid, layer),
+                                dtype=np.int32)
+
+
+def record_presence(record) -> Tuple[bool, bool, bool]:
+    """The three partner-presence bits of a chunk record, as the kernels decode them."""
+    word = int(np.asarray(record)[RECORD_PRESENCE_WORD])
+    return tuple(bool((word >> axis) & 1) for axis in range(3))
+
+
+def membership(record, target: str, axis: int, shape) -> np.ndarray:
+    """``target``'s membership flag of ``axis``'s layer, as the kernel decodes it.
+
+    On ``target``'s own Yee sub-lattice along ``axis`` (``conductive_kernels
+    .membership_flags`` names the same flag), from the record's runs, broadcast to the
+    field's shape.
+    """
+    half = IYEE_SHIFTS[target][axis] == 1
+    line = membership_from_record(record, half, axis, int(shape[axis]))
+    view = [1, 1, 1]
+    view[axis] = int(shape[axis])
+    return np.broadcast_to(np.asarray(line, dtype=bool).reshape(view), tuple(shape))
+
+
 def run_kernel_cuda(spec, sub_step: str, arm: str, fields, layer, codes,
-                    dtdx: float, inverse_epsilon=None, conductivity=None) -> None:
-    """The SHIPPED kernel, through its own launch wrapper, with codes handed in."""
+                    dtdx: float, record, inverse_epsilon=None, conductivity=None,
+                    keeps=None) -> None:
+    """The SHIPPED kernel, through its own launch wrapper, with codes and record handed in.
+
+    ``record`` is the case's host chunk record (:func:`case_record`), uploaded here as
+    the one contiguous ``int32[25]`` device vector the launcher requires. ``keeps`` is
+    a host mutation's corrupted conductive-chunk binding, or None for the run's own.
+    """
     conductive_kernels.step_conductive_curl(
         fields, layer, sub_step, tuple(np.int32(c) for c in codes), dtdx,
         tables=curl_tables(layer, sub_step),
         arm=(layer_kind(spec), arm), inverse_epsilon=inverse_epsilon,
-        conductivity=conductivity)
+        conductivity=conductivity,
+        chunk_bounds=cp.asarray(np.ascontiguousarray(record, dtype=np.int32)),
+        keeps=keeps)
     cp.cuda.runtime.deviceSynchronize()
 
 
@@ -597,40 +657,74 @@ def _operand_volumes(fields, sub_step: str, arm: str, layer: str,
              ).astype(np.float32) for i in range(3)]
 
 
+def _curl_numpy(f1: np.ndarray, sf: np.ndarray, f2: np.ndarray, ss: np.ndarray,
+                scale: np.float32, first_present: bool,
+                second_present: bool) -> np.ndarray:
+    """``curl_stencil`` from the certified prelude, transcribed in float32.
+
+    MEEP's ``step_curl`` (step_generic.cpp:72-76, :104-108), as C associates it: both
+    partners ``dtdx * (((sf - f1) + f2) - ss)``; the second absent ``dtdx * (sf - f1)``;
+    the first absent ``(-dtdx) * (ss - f2)``; neither, an exact zero.
+    """
+    if first_present and second_present:
+        return (scale * (((sf - f1) + f2) - ss)).astype(np.float32)
+    if first_present:
+        return (scale * (sf - f1)).astype(np.float32)
+    if second_present:
+        return ((-scale) * (ss - f2)).astype(np.float32)
+    return np.zeros_like(f1, dtype=np.float32)
+
+
 def unmasked_curls(fields, sub_step: str, arm: str, layer: str, codes,
-                   dtdx: float, inverse_epsilon=None) -> Dict[str, np.ndarray]:
-    """Each term's curl BEFORE the wall/fold masks, on the host, from the current state."""
+                   dtdx: float, record, inverse_epsilon=None) -> Dict[str, np.ndarray]:
+    """Each term's curl BEFORE the wall/fold masks, on the host, from the current state.
+
+    The partners' presence is the record's presence word, as the kernel reads it.
+    """
     shift = _shift_dn_numpy if arm_arrays(sub_step, arm, layer)["backward"] \
         else _shift_up_numpy
     scale = np.float32(dtdx)
+    presence = record_presence(record)
     operands = _operand_volumes(fields, sub_step, arm, layer, inverse_epsilon)
     out = {}
     for target, first, first_axis, second, second_axis in CURL_TERMS[sub_step]:
         f1, f2 = operands[first], operands[second]
         sf = shift(f1, first_axis, codes[first_axis])
         ss = shift(f2, second_axis, codes[second_axis])
-        out[target] = (scale * ((sf - f1) + (f2 - ss))).astype(np.float32)
+        out[target] = _curl_numpy(f1, sf, f2, ss, scale, presence[first_axis],
+                                  presence[second_axis])
     return out
 
 
 def run_kernel_numpy(spec, sub_step: str, arm: str, fields, layer, codes,
-                     dtdx: float, inverse_epsilon=None, conductivity=None) -> None:
+                     dtdx: float, record, inverse_epsilon=None, conductivity=None,
+                     keeps=None) -> None:
     """The device tree, transcribed, in float32 -- the laptop backend.
 
-    THE GROUPING IS THE SHIPPED ONE and it is load-bearing everywhere:
-    ``dtdx * ((sf - f1) + (f2 - ss))`` in the curl, ``((f * cf) - curl) * ci`` in
-    the conductive tail, and the four case expressions of ``cond_pml_apply``.
+    THE GROUPING IS THE SHIPPED ONE and it is load-bearing everywhere: MEEP's stencil
+    with its presence forms (``curl_stencil``), ``((f * cf) - curl) * ci`` in the
+    no-absorber tail, and ``cond_pml_apply``'s forms with the increment
+    ``(c' - c)`` formed first.
 
-    THE BRANCH IS SELECTED, NOT ACCUMULATED. This is what the array path does not
-    do -- it evaluates all four cases over the whole volume and copies -- and it
-    is the step whose equivalence the gate exists to measure.
+    THE FORM IS SELECTED PER CELL FROM THE SAME DATA THE KERNEL READS: the dsig and
+    dsigu flags decoded from ``record`` on the target's own sub-lattice
+    (:func:`membership`), and which chunks keep the conductivity from the launcher's
+    own binding (``conductive_kernels.conductive_keeps``) or a host mutation's
+    ``keeps``. Where a chunk keeps none, the certified ``pml_apply``: the recurrence
+    where dsigu, ``((f * km1) - curl) * si1`` elsewhere. Auxiliaries keep their words
+    off their forms' cells.
 
     THIS COMPILES NOTHING AND CERTIFIES NOTHING.
     """
     kind = layer_kind(spec)
-    curls = unmasked_curls(fields, sub_step, arm, kind, codes, dtdx, inverse_epsilon)
+    curls = unmasked_curls(fields, sub_step, arm, kind, codes, dtdx, record,
+                           inverse_epsilon)
     targets = conductive_kernels.CONDUCTIVE_SUB_STEPS[sub_step]
     supplied = conductivity or {}
+    keep, masks = (True, True, True), (None, None, None)
+    if kind == "active":
+        keep, masks = (keeps if keeps is not None
+                       else conductive_kernels.conductive_keeps(fields, layer, sub_step))
     for index, target in enumerate(targets):
         curl = curls[target]
         for axis, plane in masked_planes(target, codes, curl.shape):
@@ -652,32 +746,38 @@ def run_kernel_numpy(spec, sub_step: str, arm: str, fields, layer, codes,
         km1, si1 = _coefficient_pair(layer, first_axis, sub_step)
         km2, si2 = _coefficient_pair(layer, second_axis, sub_step)
         aux = np.asarray(to_host(getattr(fields, "fu_" + target)), dtype=np.float32)
-        dsig = np.broadcast_to((km1 != 1.0) | (si1 != 1.0), field.shape)
-        dsigu = np.broadcast_to((km2 != 1.0) | (si2 != 1.0), field.shape)
+        dsig = membership(record, target, first_axis, field.shape)
+        dsigu = membership(record, target, second_axis, field.shape)
+        # pml_apply: the recurrence on dsigu cells, the dsig-only form elsewhere.
+        plain_aux = (((aux * km1) - curl) * si1).astype(np.float32)
+        plain = np.where(
+            dsigu, ((((field * km2) + plain_aux) - aux) * si2),
+            (((field * km1) - curl) * si1)).astype(np.float32)
+        plain_aux = np.where(dsigu, plain_aux, aux).astype(np.float32)
         if condfac is None:
-            new_aux = (((aux * km1) - curl) * si1).astype(np.float32)
-            new = ((((field * km2) + new_aux) - aux) * si2).astype(np.float32)
-            getattr(fields, target)[...] = fields.grid.xp.asarray(new)
-            getattr(fields, "fu_" + target)[...] = fields.grid.xp.asarray(new_aux)
+            getattr(fields, target)[...] = fields.grid.xp.asarray(plain)
+            getattr(fields, "fu_" + target)[...] = fields.grid.xp.asarray(plain_aux)
             continue
         cf = np.asarray(to_host(condfac), dtype=np.float32)
         ci = np.asarray(to_host(condinv), dtype=np.float32)
         history = np.asarray(to_host(getattr(fields, "f_cond_" + target)),
                              dtype=np.float32)
+        kept = (np.ones(field.shape, dtype=bool) if keep[index]
+                else np.asarray(to_host(masks[index]), dtype=bool))
         c_new = (((history * cf) - curl) * ci).astype(np.float32)
-        u_cond = (((aux * cf) - curl) * ci).astype(np.float32)
-        u_split = ((((aux * km1) + c_new) - history) * si1).astype(np.float32)
-        u_new = np.where(dsig, u_split, u_cond).astype(np.float32)
-        f_split = ((((field * km2) + u_new) - aux) * si2).astype(np.float32)
-        f_first = ((((field * km1) + c_new) - history) * si1).astype(np.float32)
-        f_direct = (((field * cf) - curl) * ci).astype(np.float32)
-        new = np.where(dsigu, f_split,
-                       np.where(dsig, f_first, f_direct)).astype(np.float32)
+        increment = (c_new - history).astype(np.float32)
+        u_new = np.where(dsig, (((aux * km1) + increment) * si1),
+                         (((aux * cf) - curl) * ci)).astype(np.float32)
+        value = np.where(
+            dsigu, ((((field * km2) + u_new) - aux) * si2),
+            np.where(dsig, (((field * km1) + increment) * si1),
+                     (((field * cf) - curl) * ci))).astype(np.float32)
+        new = np.where(kept, value, plain).astype(np.float32)
+        new_aux = np.where(kept, np.where(dsigu, u_new, aux), plain_aux).astype(np.float32)
+        new_history = np.where(kept & dsig, c_new, history).astype(np.float32)
         getattr(fields, target)[...] = fields.grid.xp.asarray(new)
-        getattr(fields, "fu_" + target)[...] = fields.grid.xp.asarray(
-            np.where(dsigu, u_new, aux).astype(np.float32))
-        getattr(fields, "f_cond_" + target)[...] = fields.grid.xp.asarray(
-            np.where(dsig, c_new, history).astype(np.float32))
+        getattr(fields, "fu_" + target)[...] = fields.grid.xp.asarray(new_aux)
+        getattr(fields, "f_cond_" + target)[...] = fields.grid.xp.asarray(new_history)
 
 
 def _coefficient_pair(layer, axis: int, sub_step: str):
@@ -734,34 +834,49 @@ def conductivity_profile(fields, sub_step: str, mask) -> Dict[str, Any]:
                             and spread > 0.0 and bool(distinct))}
 
 
-def pml_case_census(layer, sub_step: str, shape, mask) -> Dict[str, Any]:
-    """How many cells each of MEEP's four subchunk cases claims, per target.
+def pml_case_census(fields, layer, sub_step: str, shape, mask, record,
+                    sigma: str = "everywhere") -> Dict[str, Any]:
+    """How many cells each of MEEP's four conductive forms claims, per target.
 
-    THE NON-VACUITY FLOOR THIS FAMILY NEEDS AND THE LOSSLESS ONES DO NOT. The
-    four-case tail is four expressions and a two-level selection; a fixture whose
-    layer puts every cell in case A would exercise one of them, and a green run
-    would be a statement about the layer. The floor is that every case is reached
-    on at least one CONDUCTIVE target -- a lossless target takes the plain
-    recurrence and its census says nothing about this tail.
+    THE NON-VACUITY FLOOR THIS FAMILY NEEDS AND THE LOSSLESS ONES DO NOT. The tail is
+    four forms and a two-level selection, chosen per structure chunk; a fixture whose
+    layer puts every cell in one would exercise one of them, and a green run would be
+    a statement about the layer. The floor is that every form is reached on at least
+    one CONDUCTIVE target -- a lossless target takes the plain forms and its census
+    says nothing about this tail. The forms are counted on the chunks that keep the
+    conductivity, from the record's membership runs, as the kernel chooses them.
+
+    A ``half_space`` spec must also reach the dsig cells of a chunk that keeps NO
+    conductivity (``unkept_dsig``), where the non-conductive form stores a different
+    word; that is what the fixture exists for.
     """
     targets = conductive_kernels.CONDUCTIVE_SUB_STEPS[sub_step]
+    keep, masks = conductive_kernels.conductive_keeps(fields, layer, sub_step)
     per_target: Dict[str, Dict[str, int]] = {}
     for index, (target, flag) in enumerate(zip(targets, mask)):
         if not flag:
             continue
         first_axis, second_axis = COEFFICIENT_AXES[index]
-        km1, si1 = _coefficient_pair(layer, first_axis, sub_step)
-        km2, si2 = _coefficient_pair(layer, second_axis, sub_step)
-        dsig = np.broadcast_to((km1 != 1.0) | (si1 != 1.0), shape)
-        dsigu = np.broadcast_to((km2 != 1.0) | (si2 != 1.0), shape)
-        per_target[target] = {"A": int((dsig & dsigu).sum()),
-                              "B": int((~dsig & dsigu).sum()),
-                              "C": int((dsig & ~dsigu).sum()),
-                              "D": int((~dsig & ~dsigu).sum())}
+        dsig = membership(record, target, first_axis, shape)
+        dsigu = membership(record, target, second_axis, shape)
+        kept = (np.ones(shape, dtype=bool) if keep[index]
+                else np.asarray(to_host(masks[index]), dtype=bool))
+        per_target[target] = {"A": int((kept & dsig & dsigu).sum()),
+                              "B": int((kept & ~dsig & dsigu).sum()),
+                              "C": int((kept & dsig & ~dsigu).sum()),
+                              "D": int((kept & ~dsig & ~dsigu).sum()),
+                              "unkept_dsig": int((~kept & dsig).sum()),
+                              "unkept": int((~kept).sum())}
     reached = {case: max((counts[case] for counts in per_target.values()), default=0)
                for case in ("A", "B", "C", "D")}
+    unkept_dsig = max((counts["unkept_dsig"] for counts in per_target.values()),
+                      default=0)
+    meets = all(count > 0 for count in reached.values())
+    if sigma == "half_space":
+        meets = meets and unkept_dsig > 0
     return {"per_target": per_target, "reached": reached,
-            "meets_floor": all(count > 0 for count in reached.values())}
+            "unkept_dsig_reached": unkept_dsig, "sigma": sigma,
+            "meets_floor": meets}
 
 
 def masked_planes_are_live(curls: Dict[str, np.ndarray], sub_step: str,
@@ -924,39 +1039,103 @@ def _cond_operand_order(source: str) -> Tuple[str, int]:
             source.count(needle))
 
 
-def _tolerance_instead_of_exact_predicate(source: str) -> Tuple[str, int]:
-    """``!= 1.0f`` replaced by a 1e-7 tolerance. MUST BE CAUGHT on ``near_one``.
-
-    THE DEFECT THE REAL TABLES CANNOT EXPOSE. ``stepping.py:2055-2058`` is a bare
-    ``!= 1.0``; a real PML table has no entry within 1e-7 of 1.0 that is not
-    exactly 1.0, so on the shipped table this mutation is expected UNCAUGHT and
-    that is not evidence of anything. It is scored on BOTH coefficient-table
-    variants and the CONTRAST is the measurement.
-    """
-    out = source
-    count = 0
-    for needle, replacement in (
-        ("bool dsig = (km1 != 1.0f) || (si1 != 1.0f);",
-         "bool dsig = (fabsf(km1 - 1.0f) > 1e-7f) || (fabsf(si1 - 1.0f) > 1e-7f);"),
-        ("bool dsigu = (km2 != 1.0f) || (si2 != 1.0f);",
-         "bool dsigu = (fabsf(km2 - 1.0f) > 1e-7f) || (fabsf(si2 - 1.0f) > 1e-7f);"),
-    ):
-        count += out.count(needle)
-        out = out.replace(needle, replacement)
-    return out, count
-
-
 def _flatten_split_grouping(source: str) -> Tuple[str, int]:
     """``(((fv*km2) + u_new) - uv)`` flattened to ``((fv*km2) + (u_new - uv))``.
 
     The array path accumulates in place, one operation at a time
-    (stepping.py:2085-2089), and float addition is not associative. MUST BE
-    CAUGHT -- the sibling track's own recon control went 0/18 on NumPy alone.
+    (stepping.py:2631-2634), and float addition is not associative. MUST BE CAUGHT.
     """
-    needle = "float f_split  = (((fv * km2) + u_new) - uv) * si2;"
-    return (source.replace(needle,
-                           "float f_split  = ((fv * km2) + (u_new - uv)) * si2;"),
+    needle = "dsigu ? ((((fv * km2) + u_new) - uv) * si2)"
+    return (source.replace(needle, "dsigu ? (((fv * km2) + (u_new - uv)) * si2)"),
             source.count(needle))
+
+
+def _increment_regrouped_in_the_auxiliary(source: str) -> Tuple[str, int]:
+    """INVERTED (KERNELS.md section 7.1): ``((u*km1) + (c' - c))`` -> ``((u*km1) + c') - c``.
+
+    MEEP forms the increment first and then adds it (step_generic.cpp:209), and so
+    does the array path (stepping.py:2615-2628); the two accumulations left to right
+    are what this family carried until 0.10 and a different float32 number. Reached
+    on the cells whose chunk carries dsig and dsigu. MUST BE CAUGHT.
+    """
+    needle = "float u_new = dsig ? (((uv * km1) + inc) * si1)"
+    return (source.replace(needle,
+                           "float u_new = dsig ? ((((uv * km1) + c_new) - cv) * si1)"),
+            source.count(needle))
+
+
+def _increment_regrouped_in_the_dsig_only_form(source: str) -> Tuple[str, int]:
+    """INVERTED: the dsig-only form's ``((f*km1) + (c' - c))`` -> ``((f*km1) + c') - c``.
+
+    step_generic.cpp:167; the array path's ``dsig_form`` (stepping.py:2636-2640). The
+    old package grouping, on the cells whose chunk carries dsig and not dsigu. MUST BE
+    CAUGHT.
+    """
+    needle = ": (dsig ? (((fv * km1) + inc) * si1)"
+    return (source.replace(needle, ": (dsig ? ((((fv * km1) + c_new) - cv) * si1)"),
+            source.count(needle))
+
+
+def _predicate_on_coefficient_identity(source: str) -> Tuple[str, int]:
+    """The form chosen by ``kms != 1`` instead of chunk membership. MUST BE CAUGHT.
+
+    KERNELS.md section 7.2: the predicate this family carried until 0.10. A cell
+    inside a layer's chunk whose own sigma is zero (its coefficients exactly 1) takes
+    a different form, and so does one whose coefficient differs from 1 outside every
+    chunk that carries the layer.
+    """
+    needle = "    float cfv = cf[idx];\n    float civ = ci[idx];\n"
+    return (source.replace(
+        needle, "    dsig = (km1 != 1.0f) || (si1 != 1.0f);\n"
+                "    dsigu = (km2 != 1.0f) || (si2 != 1.0f);\n" + needle),
+        source.count(needle))
+
+
+def _swap_membership_flags(source: str) -> Tuple[str, int]:
+    """The dsig and dsigu flags exchanged at the call site. MUST BE CAUGHT.
+
+    KERNELS.md section 7.2: dsig-only against dsigu-only, on every cell whose chunk
+    carries exactly one of the two layers.
+    """
+    pattern = (r"(cond_pml_apply\([^;]*?sinv_[xyz]\[[ijk]\], )"
+               r"(in_[ih]_[xyz]), (in_[ih]_[xyz]), (KEPT[012])\)")
+    return (re.subn(pattern, r"\1\3, \2, \4)", source)[0],
+            len(re.findall(pattern, source)))
+
+
+def _conductive_chunks_ignored(source: str) -> Tuple[str, int]:
+    """Every chunk treated as keeping the conductivity. MUST BE CAUGHT on a half_space spec.
+
+    MEEP steps the non-conductive forms in a chunk that keeps no conductivity
+    (structure.cpp:883-900; ``RegionPlan.conductive_chunks``). On the dsig cells of
+    such a chunk the conductive form runs the ``f_cond`` stage, a different word.
+    """
+    out, count = source, 0
+    for index in range(3):
+        needle = f"#define KEPT{index} (ck{index}[idx] != 0)\n"
+        count += out.count(needle)
+        out = out.replace(needle, f"#define KEPT{index} 1\n")
+    return out, count
+
+
+def _auxiliary_load_unguarded(source: str) -> Tuple[str, int]:
+    """A DECLARED NULL (KERNELS.md section 7.2): the ``u`` load issued on every cell.
+
+    The store stays guarded, and the loaded word feeds only the forms of the cells
+    whose chunk carries dsigu, so no stored word changes. Pinned instead by the static
+    needle in the module's own test. MUST BE UNCAUGHT.
+    """
+    needle = "    float uv = dsigu ? u[idx] : 0.0f;\n"
+    return source.replace(needle, "    float uv = u[idx];\n"), source.count(needle)
+
+
+def _history_load_unguarded(source: str) -> Tuple[str, int]:
+    """A DECLARED NULL: the ``f_cond`` load issued on every cell, the store guarded.
+
+    The loaded word feeds only the dsig forms. MUST BE UNCAUGHT.
+    """
+    needle = "    float cv = dsig ? c[idx] : 0.0f;\n"
+    return source.replace(needle, "    float cv = c[idx];\n"), source.count(needle)
 
 
 def _drop_history_store(source: str) -> Tuple[str, int]:
@@ -989,18 +1168,17 @@ def _store_auxiliary_unconditionally(source: str) -> Tuple[str, int]:
 
 
 def _swap_case_precedence(source: str) -> Tuple[str, int]:
-    """``dsigu`` and ``dsig`` exchanged in the two-level selection. MUST BE CAUGHT.
+    """``dsig`` given precedence over ``dsigu`` in the field's selection. MUST BE CAUGHT.
 
-    MEEP's precedence is ``dsigu`` first (stepping.py:2101-2105 copies
-    ``first_only`` and ``direct`` only where ``dsigu`` is INACTIVE). Swapping it
-    picks case C where the array path picks case A, which is wrong only inside the
-    two-axis overlap -- a corner region, which is exactly where a reader would not
-    look.
+    MEEP's precedence is ``dsigu`` first (stepping.py:2648-2649 copies the dsig-only
+    form only where ``dsigu`` is INACTIVE). Taking the dsig-only form on the cells
+    whose chunk carries both layers is wrong only inside the two-axis overlap -- a
+    corner region, which is exactly where a reader would not look.
     """
-    needle = "    f[idx] = dsigu ? f_split : (dsig ? f_first : f_direct);"
-    return (source.replace(needle,
-                           "    f[idx] = dsig ? f_first : (dsigu ? f_split : f_direct);"),
-            source.count(needle))
+    needle = "    float value = dsigu ? ((((fv * km2) + u_new) - uv) * si2)"
+    return (source.replace(
+        needle, "    float value = (dsigu && !dsig) ? ((((fv * km2) + u_new) - uv) * si2)"),
+        source.count(needle))
 
 
 def _swap_cond_dsig_dsigu(source: str) -> Tuple[str, int]:
@@ -1013,8 +1191,8 @@ def _swap_cond_dsig_dsigu(source: str) -> Tuple[str, int]:
     """
     pattern = (r"(cond_pml_apply\([^;]*?idx, curl, )"
                r"(kms_[xyz]\[[ijk]\], sinv_[xyz]\[[ijk]\]), "
-               r"(kms_[xyz]\[[ijk]\], sinv_[xyz]\[[ijk]\])\)")
-    return re.subn(pattern, r"\1\3, \2)", source)[0], \
+               r"(kms_[xyz]\[[ijk]\], sinv_[xyz]\[[ijk]\]), ")
+    return re.subn(pattern, r"\1\3, \2, ", source)[0], \
         len(re.findall(pattern, source))
 
 
@@ -1027,8 +1205,8 @@ def _cond_pml_scale_commutes(source: str) -> Tuple[str, int]:
     insensitive to the operand order of a multiply, which is what IEEE-754 says.
     MUST BE UNCAUGHT.
     """
-    needle = "float c_new    = ((cv * cfv) - curl) * civ;"
-    return (source.replace(needle, "float c_new    = ((cfv * cv) - curl) * civ;"),
+    needle = "float c_new = ((cv * cfv) - curl) * civ;"
+    return (source.replace(needle, "float c_new = ((cfv * cv) - curl) * civ;"),
             source.count(needle))
 
 
@@ -1037,8 +1215,15 @@ LOCAL_SOURCE_MUTATIONS: Dict[str, Any] = {
     "drop_condinv": _drop_condinv,
     "swap_condfac_condinv": _swap_condfac_condinv,
     "cond_operand_order": _cond_operand_order,
-    "tolerance_instead_of_exact_predicate": _tolerance_instead_of_exact_predicate,
     "flatten_split_grouping": _flatten_split_grouping,
+    "increment_regrouped_in_the_auxiliary": _increment_regrouped_in_the_auxiliary,
+    "increment_regrouped_in_the_dsig_only_form":
+        _increment_regrouped_in_the_dsig_only_form,
+    "predicate_on_coefficient_identity": _predicate_on_coefficient_identity,
+    "swap_membership_flags": _swap_membership_flags,
+    "conductive_chunks_ignored": _conductive_chunks_ignored,
+    "auxiliary_load_unguarded": _auxiliary_load_unguarded,
+    "history_load_unguarded": _history_load_unguarded,
     "drop_history_store": _drop_history_store,
     "store_history_unconditionally": _store_history_unconditionally,
     "store_auxiliary_unconditionally": _store_auxiliary_unconditionally,
@@ -1063,14 +1248,24 @@ SOURCE_MUTATIONS: Tuple[str, ...] = (
     "drop_condinv",
     "swap_condfac_condinv",
     "cond_operand_order",
-    "tolerance_instead_of_exact_predicate",
     "flatten_split_grouping",
+    "increment_regrouped_in_the_auxiliary",
+    "increment_regrouped_in_the_dsig_only_form",
+    "predicate_on_coefficient_identity",
+    "swap_membership_flags",
+    "conductive_chunks_ignored",
     "drop_history_store",
     "store_history_unconditionally",
     "store_auxiliary_unconditionally",
     "swap_case_precedence",
     "swap_cond_dsig_dsigu",
     "cond_pml_scale_commutes",
+    "auxiliary_load_unguarded",
+    "history_load_unguarded",
+    # MEEP's partner-presence forms of the stencil, and their structural nulls.
+    "full_bracket_over_an_absent_partner",
+    "full_bracket_over_an_absent_partner_on_a_resolved_grid",
+    "regroup_stencil_where_no_component_has_both_partners",
 )
 
 #: MUST BE UNCAUGHT. Each is paired with a defect on the SAME expression that must
@@ -1083,6 +1278,14 @@ NULL_SOURCE_MUTATIONS: Tuple[str, ...] = (
     "commute_dtdx_scale",         # paired with regroup_stencil
     "cond_operand_order",         # paired with drop_condfac
     "cond_pml_scale_commutes",    # paired with flatten_split_grouping
+    # The auxiliary contract's two loads, each paired with the store of the same
+    # word (store_auxiliary_unconditionally, store_history_unconditionally).
+    "auxiliary_load_unguarded",
+    "history_load_unguarded",
+    # The presence forms' structural nulls, paired with full_bracket_over_an_absent_
+    # partner and regroup_stencil, which must be caught on the shapes that reach them.
+    "full_bracket_over_an_absent_partner_on_a_resolved_grid",
+    "regroup_stencil_where_no_component_has_both_partners",
 )
 
 #: Mutations that only exist in one of the two tails. A leg where the site is
@@ -1091,8 +1294,12 @@ NULL_SOURCE_MUTATIONS: Tuple[str, ...] = (
 SOURCE_MUTATION_REQUIRES_LAYER = {
     "drop_condfac": "none", "drop_condinv": "none",
     "cond_operand_order": "none",
-    "tolerance_instead_of_exact_predicate": "active",
     "flatten_split_grouping": "active", "drop_history_store": "active",
+    "increment_regrouped_in_the_auxiliary": "active",
+    "increment_regrouped_in_the_dsig_only_form": "active",
+    "predicate_on_coefficient_identity": "active",
+    "swap_membership_flags": "active", "conductive_chunks_ignored": "active",
+    "auxiliary_load_unguarded": "active", "history_load_unguarded": "active",
     "store_history_unconditionally": "active",
     "store_auxiliary_unconditionally": "active",
     "swap_case_precedence": "active", "swap_cond_dsig_dsigu": "active",
@@ -1134,12 +1341,43 @@ def index_decomposition_is_observable(shape) -> bool:
 LOCAL_SOURCE_MUTATIONS["fortran_order_index_decomposition_on_a_flat_grid"] = \
     probe.SOURCE_MUTATIONS["fortran_order_index_decomposition"]
 
+#: MEEP's one-partner stencil form, defeated: the second-partner-absent arm of
+#: ``curl_stencil`` takes the full bracket over the absent partner, which rounds where
+#: MEEP's form returns the one difference (step_generic.cpp:108). Reached only where
+#: some axis is invariant. MUST BE CAUGHT; scored as a NULL on the shapes with every
+#: axis resolved, where the arm is never taken.
+_FULL_BRACKET_OVER_AN_ABSENT_PARTNER = Needle(
+    find="if (pr1) return dtdx * (sf - f1);",
+    replace="if (pr1) return dtdx * (((sf - f1) + f2) - ss);",
+    why=("MEEP's g2-absent form dtdx * (g1s - g1) replaced by the full bracket over "
+         "the absent partner. Reached only on a grid with an invariant axis. MUST BE "
+         "CAUGHT."))
+LOCAL_SOURCE_MUTATIONS["full_bracket_over_an_absent_partner"] = \
+    _FULL_BRACKET_OVER_AN_ABSENT_PARTNER
+LOCAL_SOURCE_MUTATIONS["full_bracket_over_an_absent_partner_on_a_resolved_grid"] = \
+    _FULL_BRACKET_OVER_AN_ABSENT_PARTNER
+
+#: THE STENCIL GROUPING DEFECT'S STRUCTURAL NULL. Every kernel here carries the
+#: certified pair's ``curl_stencil`` verbatim, the text the probe's shared default
+#: spells ``regroup_stencil`` and its null on (both borrowed): the defect is inverted
+#: -- it plants the pairwise grouping these kernels carried until 0.10 -- and stays
+#: must-catch where some component has both partners; on a grid where none has, the
+#: same transform is scored as a NULL under this name.
+LOCAL_SOURCE_MUTATIONS["regroup_stencil_where_no_component_has_both_partners"] = \
+    probe.SOURCE_MUTATIONS["regroup_stencil"]
+
 #: BUILT AFTER THE LAST ADDITION TO :data:`LOCAL_SOURCE_MUTATIONS`, and that
 #: ordering is load-bearing: a name registered below this line is invisible to the
 #: battery and raises KeyError mid-run. Measured 2026-08-20 on the GPU host -- a device
 #: leg died forty minutes in with exactly that KeyError, which is why
 #: ``test_every_named_mutation_resolves_and_arms`` now runs on the laptop.
-SOURCE_MUTATIONS_ALL = dict(probe.SOURCE_MUTATIONS, **LOCAL_SOURCE_MUTATIONS)
+#: THIS GATE'S NEEDLE TABLE: every armed name, this family's own spellings from
+#: :data:`LOCAL_SOURCE_MUTATIONS` and the shared curl defects borrowed from the
+#: probe's shared default (``gate_needles.py``). A shared defect this gate
+#: re-spells for its own kernels becomes a local entry and moves no other gate.
+SOURCE_MUTATIONS_ALL = gate_needles.gate_table(
+    "gate_cuda_conductive", probe.SOURCE_MUTATIONS, SOURCE_MUTATIONS,
+    own=LOCAL_SOURCE_MUTATIONS)
 
 SOURCE_MUTATION_LEG_FILTER = {
     "drop_metallic_mask": lambda codes, shape: BC_METALLIC in codes,
@@ -1149,6 +1387,32 @@ SOURCE_MUTATION_LEG_FILTER = {
         lambda codes, shape: index_decomposition_is_observable(shape),
     "fortran_order_index_decomposition_on_a_flat_grid":
         lambda codes, shape: not index_decomposition_is_observable(shape),
+    # THE PRESENCE FORMS. A one-cell axis of these specs is exactly an invariant one,
+    # so the shape says which partners are present: the one-partner arm is reached
+    # only where an axis is invariant, the both-partner form only where two axes are
+    # resolved.
+    #
+    # SCORED ON A GRID WITH TWO RESOLVED AXES, MEASURED 2026-10-08 on the GPU host: on
+    # the 1-D (1, 1, 24) spec the one-partner arm is reached by a line of 24 cells, and
+    # the bracket ``(a + g2) - g2`` rounds away from ``a`` on 0 to 2 of them per launch;
+    # one 1-D leg (step_D_no_pml_conductive, the derived-storage seed) stored the same
+    # words at 1 and at 60 launches. On a 2-D grid the arm is a plane of cells and every
+    # leg diverged (11 to 17 words at one launch).
+    "full_bracket_over_an_absent_partner":
+        lambda codes, shape: (any(int(n) == 1 for n in shape)
+                              and sum(int(n) > 1 for n in shape) >= 2),
+    "full_bracket_over_an_absent_partner_on_a_resolved_grid":
+        lambda codes, shape: all(int(n) > 1 for n in shape),
+    "regroup_stencil":
+        lambda codes, shape: sum(int(n) > 1 for n in shape) >= 2,
+    "regroup_stencil_where_no_component_has_both_partners":
+        lambda codes, shape: sum(int(n) > 1 for n in shape) < 2,
+}
+
+#: Mutations scored only on the specs whose conductivity lives in an interior box: the
+#: per-chunk keep is observable only where some chunk keeps none.
+SOURCE_MUTATION_SIGMA_FILTER = {
+    "conductive_chunks_ignored": "half_space",
 }
 
 #: What each filtered mutation REQUIRES of a leg, in words, for the record. A
@@ -1166,6 +1430,16 @@ SOURCE_MUTATION_LEG_REQUIREMENT = {
         "rewrites the block into itself (only a 1-D grid does, and a 1-D grid "
         "cannot reach all four PML subchunk cases, so this has legs on the "
         "no-absorber kernels alone)",
+    "full_bracket_over_an_absent_partner":
+        "an invariant (one-cell) axis on a grid with two resolved axes (a plane of cells "
+        "takes the one-partner form; on the 1-D spec it is a line of 24)",
+    "full_bracket_over_an_absent_partner_on_a_resolved_grid":
+        "every axis resolved (no partner is ever absent)",
+    "regroup_stencil": "two or more resolved axes (some component has both partners)",
+    "regroup_stencil_where_no_component_has_both_partners":
+        "fewer than two resolved axes (no component has both partners)",
+    "conductive_chunks_ignored":
+        "a conductivity on a half-space, so some chunk keeps none of it",
 }
 
 _SPEC_CODES: Dict[str, Tuple[Tuple[int, int, int], Tuple[int, int, int]]] = {}
@@ -1188,18 +1462,14 @@ def spec_codes_and_shape(spec: Dict[str, Any]):
 
 
 def leg_carries(mutation: str, spec: Dict[str, Any]) -> bool:
+    required = SOURCE_MUTATION_SIGMA_FILTER.get(mutation)
+    if required is not None and sigma_layout(spec) != required:
+        return False
     leg_filter = SOURCE_MUTATION_LEG_FILTER.get(mutation)
     if leg_filter is None:
         return True
     codes, shape = spec_codes_and_shape(spec)
     return bool(leg_filter(codes, shape))
-
-
-#: ``tolerance_instead_of_exact_predicate`` is expected UNCAUGHT on the shipped
-#: table and CAUGHT on the near-one one. It is therefore scored per table, and the
-#: verdict clause reads the CONTRAST rather than either number alone.
-TABLE_SENSITIVE_MUTATIONS: Tuple[str, ...] = (
-    "tolerance_instead_of_exact_predicate",)
 
 
 # ---------------------------------------------------------------------------
@@ -1213,7 +1483,7 @@ def host_mutated_conductivity(name: Optional[str], fields, sub_step: str, mask):
     object every other leg shares, which is what makes it a statement about the
     binding rather than about the fixture.
     """
-    if name is None:
+    if name is None or name in RECORD_HOST_MUTATIONS or name == "conductive_chunks_unbound":
         return None
     targets = conductive_kernels.CONDUCTIVE_SUB_STEPS[sub_step]
     live = [t for t, flag in zip(targets, mask) if flag]
@@ -1237,9 +1507,46 @@ def host_mutated_conductivity(name: Optional[str], fields, sub_step: str, mask):
     raise ValueError(f"unknown host mutation {name!r}")
 
 
+def host_mutated_record(name: Optional[str], record: np.ndarray, grid) -> Optional[np.ndarray]:
+    """Corrupt the chunk record a LAUNCH BINDS, leaving the oracle's division alone.
+
+    KERNELS.md section 7.2: ``record_bound_off_by_one`` moves each layered axis's low
+    run end one row up on both lattices (the boundary plane changes form);
+    ``record_lattices_swapped`` hands each lattice the other's runs (the boundary plane
+    moves by one cell). None for any other name.
+    """
+    if name not in RECORD_HOST_MUTATIONS:
+        return None
+    out = np.array(record, dtype=np.int32, copy=True)
+    for axis in range(3):
+        if int(grid.shape[axis]) <= 1:
+            continue
+        for half in (False, True):
+            a0 = out[record_index(half, axis, 0)]
+            a1 = out[record_index(half, axis, 1)]
+            if name == "record_bound_off_by_one" and a1 > a0:
+                out[record_index(half, axis, 1)] = a1 + 1
+        if name == "record_lattices_swapped":
+            for word in range(4):
+                low = record_index(False, axis, word)
+                high = record_index(True, axis, word)
+                out[low], out[high] = record[high], record[low]
+    return out
+
+
+def host_mutated_keeps(name: Optional[str], fields, layer, sub_step: str):
+    """``conductive_chunks_unbound``: the launch told every chunk keeps the conductivity."""
+    if name != "conductive_chunks_unbound":
+        return None
+    return ((True, True, True), (None, None, None))
+
+
 HOST_MUTATIONS: Tuple[str, ...] = ("swap_condfac_and_condinv_volumes",
                                    "alias_every_component_to_the_first",
-                                   "identity_rebind")
+                                   "identity_rebind",
+                                   "record_bound_off_by_one",
+                                   "record_lattices_swapped",
+                                   "conductive_chunks_unbound")
 #: ``identity_rebind`` hands back the SAME volumes and MUST BE UNCAUGHT: it is
 #: what says the other two legs measure the substitution rather than the act of
 #: passing a ``conductivity`` argument at all.
@@ -1247,6 +1554,13 @@ NULL_HOST_MUTATIONS: Tuple[str, ...] = ("identity_rebind",)
 #: ``alias_every_component_to_the_first`` cannot bite where only one component is
 #: conductive, and that is a fact about the mask rather than about the kernel.
 HOST_MUTATION_NEEDS_TWO_LIVE = ("alias_every_component_to_the_first",)
+#: The record's membership runs choose a form only under a layer; the no-absorber
+#: kernels read its presence word alone.
+RECORD_HOST_MUTATIONS: Tuple[str, ...] = ("record_bound_off_by_one",
+                                          "record_lattices_swapped")
+HOST_MUTATION_NEEDS_LAYER = RECORD_HOST_MUTATIONS + ("conductive_chunks_unbound",)
+#: The per-chunk keep is observable only where some chunk keeps none.
+HOST_MUTATION_NEEDS_HALF_SPACE_SIGMA = ("conductive_chunks_unbound",)
 
 
 # ---------------------------------------------------------------------------
@@ -1255,7 +1569,7 @@ HOST_MUTATION_NEEDS_TWO_LIVE = ("alias_every_component_to_the_first",)
 
 def one_case(backend: str, spec: Dict[str, Any], sub_step: str, mask,
              e_storage: str, courant: float, value_class: str,
-             coefficient_table: str, guard: str, substitution: str,
+             guard: str, substitution: str,
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
@@ -1274,40 +1588,36 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, mask,
     rng = np.random.default_rng(
         SEED + int.from_bytes(hashlib.sha256(
             f"{spec['label']}|{sub_step}|{MASK_IDS[mask]}|{e_storage}|{courant}|"
-            f"{value_class}|{coefficient_table}".encode()).digest()[:4], "big"))
+            f"{value_class}".encode()).digest()[:4], "big"))
 
     case: Dict[str, Any] = {
         "label": spec["label"], "sub_step": sub_step, "arm": arm, "layer": kind,
         "mask": MASK_IDS[mask], "e_storage": e_storage,
         "absorber": "active" if spec_is_active(spec) else spec["absorber"],
-        "coefficient_table": coefficient_table,
+        "sigma": sigma_layout(spec),
         "courant": courant, "value_class": value_class, "guard": guard,
         "backend": backend, "substitution": substitution,
         "host_mutation": host_mutation,
         "fold_axes": spec["axes"], "boundaries": list(spec["boundaries"]),
     }
-    if coefficient_table == "near_one" and kind != "active":
-        case["skipped"] = ("the near-one coefficient table only exists on a layer; "
-                           "the no-absorber tail reads no coefficients")
-        case["seconds"] = time.time() - started
-        return case
     if kind == "active" and e_storage == "derived":
         case["skipped"] = ("enable_pml_storage stores E unconditionally, so there "
                            "is no derived arm under an active layer")
         case["seconds"] = time.time() - started
         return case
 
-    fields, layer, grid = build(xp, spec, sub_step, mask, courant, e_storage,
-                                coefficient_table, rng)
+    fields, layer, grid = build(xp, spec, sub_step, mask, courant, e_storage, rng)
     names = state_names(sub_step, arm, kind, mask)
     host = seed_state(fields, grid, names, value_class, rng)
     dtdx = float(grid.dt / grid.dx)
+    record = case_record(grid, layer)
     codes, resolved, kinds, why_skip = boundary_codes_for(grid, substitution)
     case.update({
         "resolved_codes": None if resolved is None else [int(c) for c in resolved],
         "boundary_codes": None if codes is None else [int(c) for c in codes],
         "resolved_kinds": None if kinds is None else list(kinds),
         "dtdx": dtdx, "structure": structure_facts(grid),
+        "chunk_record": [int(word) for word in record],
         "operand_census": operand_census(host),
         "outputs": list(outputs(sub_step, arm, kind, mask)),
     })
@@ -1340,13 +1650,16 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, mask,
         return case
 
     if kind == "active":
-        case["pml_case_census"] = pml_case_census(layer, sub_step, tuple(grid.shape),
-                                                  mask)
+        case["pml_case_census"] = pml_case_census(
+            fields, layer, sub_step, tuple(grid.shape), mask, record,
+            sigma_layout(spec))
         if not case["pml_case_census"]["meets_floor"]:
             case["skipped"] = (
                 "the layer did not put all four of MEEP's subchunk cases into "
-                "this volume; a pass would be a statement about the layer, not "
-                f"about the kernel: {case['pml_case_census']['reached']}")
+                "this volume (or, on a half-space conductivity, no dsig cell of a "
+                "chunk that keeps none); a pass would be a statement about the layer, not "
+                f"about the kernel: {case['pml_case_census']['reached']}, unkept "
+                f"dsig {case['pml_case_census']['unkept_dsig_reached']}")
             case["seconds"] = time.time() - started
             return case
 
@@ -1357,7 +1670,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, mask,
         case["seconds"] = time.time() - started
         return case
 
-    curls = unmasked_curls(fields, sub_step, arm, kind, resolved, dtdx)
+    curls = unmasked_curls(fields, sub_step, arm, kind, resolved, dtdx, record)
     case["masked_planes_are_live"] = masked_planes_are_live(curls, sub_step, resolved)
 
     # Leg 1: the oracle.
@@ -1374,8 +1687,12 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, mask,
     # Leg 2: the kernel, from the SAME frozen state.
     restore(fields, frozen)
     conductivity = host_mutated_conductivity(host_mutation, fields, sub_step, mask)
+    mutated_record = host_mutated_record(host_mutation, record, grid)
+    launch_record = record if mutated_record is None else mutated_record
+    keeps = host_mutated_keeps(host_mutation, fields, layer, sub_step)
     runner = run_kernel_cuda if backend == "cuda" else run_kernel_numpy
-    runner(spec, sub_step, arm, fields, layer, codes, dtdx, None, conductivity)
+    runner(spec, sub_step, arm, fields, layer, codes, dtdx, launch_record, None,
+           conductivity, keeps)
 
     written = outputs(sub_step, arm, kind, mask)
     parts = {name: bit_compare(reference[name], getattr(fields, name))
@@ -1399,7 +1716,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, mask,
 
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
-            runner(spec, sub_step, arm, fields, layer, codes, dtdx, None, None)
+            runner(spec, sub_step, arm, fields, layer, codes, dtdx, record)
             advance_sources(fields, sub_step, arm, kind)
         multi = {name: bit_compare(oracle_multi[name], getattr(fields, name))
                  for name in written}
@@ -1420,12 +1737,12 @@ def case_product(product: str, guard: str = "fmad_false"):
     SHAPED, NOT A BARE CROSS PRODUCT, and every trim is stated:
 
     * The LICENSED substitution gets the whole grid -- every spec, both sub-steps,
-      all five masks, both courants, both value classes, both coefficient tables
-      where they exist. That is the evidence the release verdict rests on.
+      all five masks, both courants, both value classes. That is the evidence the
+      release verdict rests on.
     * The MISDECLARATION CONTROLS answer "is this gate measuring the boundary
       handling at all", which is a question about the code triple and not about
-      the conductivity. They run at ONE mask, one courant, one value class and one
-      table -- running them at all five masks would multiply a control that
+      the conductivity. They run at ONE mask, one courant and one value class --
+      running them at all five masks would multiply a control that
       already answers its question.
     * The UNGUARDED guard set exists only for the contraction control, which is
       scored at the INEXACT courant (0.5 is exactly representable and cannot
@@ -1435,7 +1752,8 @@ def case_product(product: str, guard: str = "fmad_false"):
     primary = guard == "fmad_false"
     specs = (SPECS if product == "full"
              else tuple(_spec_by_label(label) for label in
-                        ("3d_mixed", "3d_mixed_inert_layer", "3d_pml_all_axes")))
+                        ("3d_mixed", "3d_mixed_inert_layer", "3d_pml_all_axes",
+                         "3d_pml_all_axes_half_sigma")))
     masks = COND_MASKS if product == "full" else (COND_MASKS[0], COND_MASKS[1])
     courants = COURANTS if (product == "full" and primary) else (INEXACT_COURANT,)
     classes = VALUE_CLASSES if product == "full" else ("uniform",)
@@ -1443,23 +1761,21 @@ def case_product(product: str, guard: str = "fmad_false"):
     for spec in specs:
         active = spec_is_active(spec)
         storages = ("stored",) if active else E_STORAGE
-        tables = COEFFICIENT_TABLES if active else ("shipped",)
         for sub_step in SUB_STEPS:
             for mask in masks:
                 for e_storage in storages:
                     for courant in courants:
                         for value_class in classes:
-                            for table in tables:
-                                out.append((spec, sub_step, mask, e_storage,
-                                            courant, value_class, table,
-                                            LICENSED_SUBSTITUTION))
+                            out.append((spec, sub_step, mask, e_storage,
+                                        courant, value_class,
+                                        LICENSED_SUBSTITUTION))
             if product != "full" or not primary:
                 continue
             for substitution in SUBSTITUTIONS:
                 if substitution == LICENSED_SUBSTITUTION:
                     continue
                 out.append((spec, sub_step, COND_MASKS[0], storages[0],
-                            INEXACT_COURANT, "uniform", "shipped", substitution))
+                            INEXACT_COURANT, "uniform", substitution))
     return out
 
 
@@ -1469,7 +1785,7 @@ def run_sweep(results: Dict[str, Any], out_path: str, backend: str,
     plan = case_product(product, guard)
     for index, entry in enumerate(plan, start=1):
         case = one_case(backend, entry[0], entry[1], entry[2], entry[3], entry[4],
-                        entry[5], entry[6], guard, entry[7])
+                        entry[5], guard, entry[6])
         cases.append(case)
         results.setdefault("sweep", {})[guard] = cases
         save(results, out_path)
@@ -1482,7 +1798,7 @@ def run_sweep(results: Dict[str, Any], out_path: str, backend: str,
         summary = case["localization_summary"]
         log(f"[{guard}] case {index}/{len(plan)} {case['label']} {case['sub_step']} "
             f"{case['arm']}/{case['layer']} mask={case['mask']} c={case['courant']} "
-            f"{case['value_class']} {case['coefficient_table']} "
+            f"{case['value_class']} sigma={case['sigma']} "
             f"{case['substitution']} shape={case['structure']['shape']} "
             f"single={'IDENTICAL' if single else 'DIVERGED'} "
             f"multi={'IDENTICAL' if multi else ('DIVERGED' if multi is False else '-')} "
@@ -1498,7 +1814,8 @@ def run_sweep(results: Dict[str, Any], out_path: str, backend: str,
 MUTATION_SPEC_LABELS: Tuple[str, ...] = (
     "3d_metallic", "3d_mixed", "fold_Y_periodic", "2d_metallic_walls",
     "1d_metallic", "3d_pml_two_axes", "2d_pml_two_axes", "2d_pml_mixed_walls",
-    "3d_pml_fold_Y", "3d_pml_all_axes",
+    "3d_pml_fold_Y", "3d_pml_all_axes", "3d_pml_all_axes_half_sigma",
+    "2d_pml_two_axes_half_sigma",
 )
 
 #: The masks a mutation is scored on: the all-lossy one and one single-component
@@ -1538,8 +1855,7 @@ def scorable_baselines(results: Dict[str, Any]):
     for case in results.get("sweep", {}).get("fmad_false", []):
         if case["substitution"] != LICENSED_SUBSTITUTION or case.get("skipped"):
             continue
-        key = (case["label"], case["sub_step"], case["mask"], case["arm"],
-               case["coefficient_table"])
+        key = (case["label"], case["sub_step"], case["mask"], case["arm"])
         if not case.get("masked_planes_are_live", {}).get("meets_floor", True):
             dead_masks.add(key)
         if case["single_launch"]["bit_identical"]:
@@ -1571,24 +1887,21 @@ def mutation_plan(product: str, scorable, dead_masks=frozenset(),
     """
     plan = []
     labels = (MUTATION_SPEC_LABELS if product == "full"
-              else ("3d_mixed", "3d_pml_all_axes"))
+              else ("3d_mixed", "3d_pml_all_axes", "3d_pml_all_axes_half_sigma"))
     for label in labels:
         spec = _spec_by_label(label)
         for sub_step in SUB_STEPS:
             for mask in MUTATION_MASKS:
                 storages = ("stored",) if spec_is_active(spec) else E_STORAGE
-                tables = (COEFFICIENT_TABLES if spec_is_active(spec)
-                          else ("shipped",))
                 for e_storage in storages:
-                    for table in tables:
-                        arm = arm_of(spec, sub_step, e_storage)
-                        key = (label, sub_step, MASK_IDS[mask], arm, table)
-                        if scorable is not None and key not in scorable:
-                            continue
-                        if mutation in MASK_MUTATIONS and key in dead_masks:
-                            continue
-                        plan.append((spec, sub_step, mask, e_storage,
-                                     INEXACT_COURANT, "uniform", table))
+                    arm = arm_of(spec, sub_step, e_storage)
+                    key = (label, sub_step, MASK_IDS[mask], arm)
+                    if scorable is not None and key not in scorable:
+                        continue
+                    if mutation in MASK_MUTATIONS and key in dead_masks:
+                        continue
+                    plan.append((spec, sub_step, mask, e_storage,
+                                 INEXACT_COURANT, "uniform"))
     return plan
 
 
@@ -1618,11 +1931,16 @@ def run_host_mutations(results: Dict[str, Any], out_path: str, backend: str,
     plan = mutation_plan(product, scorable, dead_masks)
     for name in HOST_MUTATIONS:
         legs = []
-        for spec, sub_step, mask, e_storage, courant, value_class, table in plan:
+        for spec, sub_step, mask, e_storage, courant, value_class in plan:
             if name in HOST_MUTATION_NEEDS_TWO_LIVE and sum(mask) < 2:
                 continue
+            if name in HOST_MUTATION_NEEDS_LAYER and not spec_is_active(spec):
+                continue
+            if (name in HOST_MUTATION_NEEDS_HALF_SPACE_SIGMA
+                    and sigma_layout(spec) != "half_space"):
+                continue
             legs.append(one_case(backend, spec, sub_step, mask, e_storage, courant,
-                                 value_class, table, "fmad_false",
+                                 value_class, "fmad_false",
                                  LICENSED_SUBSTITUTION, host_mutation=name))
         scored = _score(legs, name not in NULL_HOST_MUTATIONS)
         out[name] = dict(scored, cases=legs)
@@ -1683,7 +2001,8 @@ def run_source_mutations(results: Dict[str, Any], out_path: str, product: str,
                     results["source_mutations"] = out
                     save(results, out_path)
                     continue
-                if not legs_for_this and name in SOURCE_MUTATION_LEG_FILTER:
+                if not legs_for_this and (name in SOURCE_MUTATION_LEG_FILTER
+                                          or name in SOURCE_MUTATION_SIGMA_FILTER):
                     out[key] = {
                         "armed": False, "sites": sites, "kernel": kernel_name,
                         "expected_absent": True,
@@ -1703,62 +2022,36 @@ def run_source_mutations(results: Dict[str, Any], out_path: str, product: str,
                 conductive_kernels.clear_kernel_cache()
                 compile_cache.clear_compile_log()
                 # THE COMPILE LOG RECORDS THE SOURCE HANDED TO NVRTC, which is the
-                # template WITH its three ``#define COND`` lines -- not the template
-                # alone. Digesting the template would count zero constructions from
+                # template WITH its ``#define COND`` (and, on the PML pair, ``KEEP``)
+                # lines -- not the template alone. Digesting the template would count zero constructions from
                 # the mutated bytes on every leg and report UNACCOUNTED, which is
                 # what one device run did before this was fixed: a battery scoring
                 # its own accounting rather than the kernel.
                 digest = hashlib.sha256(mutated.encode("utf-8")).hexdigest()
                 built = {hashlib.sha256(
-                    conductive_kernels.kernel_source(kernel_name, mask
+                    conductive_kernels.kernel_source(kernel_name, mask, keep
                                                      ).encode("utf-8")).hexdigest()
-                    for mask in COND_MASKS}
+                    for mask in COND_MASKS
+                    for keep in itertools.product((True, False), repeat=3)}
                 legs = [one_case("cuda", spec, sub, mask, storage, courant,
-                                 value_class, table, "fmad_false",
+                                 value_class, "fmad_false",
                                  LICENSED_SUBSTITUTION)
-                        for spec, sub, mask, storage, courant, value_class, table
+                        for spec, sub, mask, storage, courant, value_class
                         in legs_for_this]
                 conductive_kernels.set_kernel_template(kernel_name,
                                                        originals[kernel_name])
                 conductive_kernels.clear_kernel_cache()
                 from_mutated = sum(1 for entry in compile_cache.compile_log()
                                    if entry["source_sha256"] in built)
-                if name in TABLE_SENSITIVE_MUTATIONS:
-                    # SCORED PER TABLE. The exact-comparison claim is a CONTRAST:
-                    # UNCAUGHT on the shipped table is expected and is evidence of
-                    # nothing; CAUGHT on the near-one table is the measurement.
-                    by_table = {}
-                    for table in COEFFICIENT_TABLES:
-                        subset = [c for c in legs
-                                  if c.get("coefficient_table") == table]
-                        by_table[table] = _score(subset, must_be_caught=False)
-                    near = by_table.get("near_one", {})
-                    verdict = ("CAUGHT" if near.get("ran") and
-                               near.get("caught") == near.get("ran")
-                               else "ESCAPED" if near.get("ran") else "NO LEGS")
-                    out[key] = {"armed": True, "sites": sites, "kernel": kernel_name,
-                                "by_coefficient_table": by_table,
-                                "ran": near.get("ran", 0),
-                                "caught": near.get("caught", 0),
-                                "verdict": verdict,
-                                "scored_on": "near_one",
-                                "why": ("a real PML table carries no entry within "
-                                        "1e-7 of 1.0 that is not exactly 1.0, so "
-                                        "the shipped-table legs are expected "
-                                        "UNCAUGHT and are recorded, not scored"),
-                                "mutated_source_sha256": digest,
-                                "kernel_constructions_from_mutated_bytes": from_mutated,
-                                "cases": legs}
-                else:
-                    scored = _score(legs, name not in NULL_SOURCE_MUTATIONS)
-                    out[key] = dict(
-                        scored, armed=True, sites=sites, kernel=kernel_name,
-                        leg_requirement=SOURCE_MUTATION_LEG_REQUIREMENT.get(name),
-                        legs_in_plan=len(kernel_legs),
-                        legs_carrying_the_code=len(legs_for_this),
-                        mutated_source_sha256=digest,
-                        kernel_constructions_from_mutated_bytes=from_mutated,
-                        cases=legs)
+                scored = _score(legs, name not in NULL_SOURCE_MUTATIONS)
+                out[key] = dict(
+                    scored, armed=True, sites=sites, kernel=kernel_name,
+                    leg_requirement=SOURCE_MUTATION_LEG_REQUIREMENT.get(name),
+                    legs_in_plan=len(kernel_legs),
+                    legs_carrying_the_code=len(legs_for_this),
+                    mutated_source_sha256=digest,
+                    kernel_constructions_from_mutated_bytes=from_mutated,
+                    cases=legs)
                 if from_mutated == 0 and out[key].get("ran"):
                     out[key]["verdict"] = "UNACCOUNTED"
                     out[key]["why"] = ("no kernel construction used the mutated "
@@ -1792,11 +2085,11 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
             "cases": 0, "single_identical": 0, "multi_cases": 0,
             "multi_identical": 0, "differing_words": 0,
             "differing_elsewhere": 0, "masks": set(), "labels": set(),
-            "tables": set()})
+            "sigma": set()})
         entry["cases"] += 1
         entry["masks"].add(case["mask"])
         entry["labels"].add(case["label"])
-        entry["tables"].add(case["coefficient_table"])
+        entry["sigma"].add(case["sigma"])
         if case["single_launch"]["bit_identical"]:
             entry["single_identical"] += 1
         if "multi_step" in case:
@@ -1806,7 +2099,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         entry["differing_words"] += case["localization_summary"]["differing_words"]
         entry["differing_elsewhere"] += case["localization_summary"]["differing_elsewhere"]
     for entry in arms.values():
-        for field in ("masks", "labels", "tables"):
+        for field in ("masks", "labels", "sigma"):
             entry[field] = sorted(entry[field])
         entry["all_identical"] = (entry["single_identical"] == entry["cases"]
                                   and entry["multi_identical"] == entry["multi_cases"])
@@ -1859,11 +2152,16 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         if census:
             for name, count in census["reached"].items():
                 reached[name] = max(reached[name], count)
+    unkept = max((case.get("pml_case_census", {}).get("unkept_dsig_reached", 0)
+                  for case in scored), default=0)
     if any(c["layer"] == "active" for c in scored):
         for name, count in reached.items():
             if count == 0:
                 reasons.append(f"MEEP subchunk case {name} was never reached by any "
                                f"PML case; that branch of the tail is untested")
+        if unkept == 0:
+            reasons.append("no PML case reached a dsig cell of a chunk that keeps no "
+                           "conductivity; the per-chunk keep is untested")
 
     if not results.get("curl_terms_vs_stepping", {}).get("agreed", False):
         reasons.append("the transcribed curl term table disagrees with stepping's")
@@ -1902,7 +2200,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         for key, leg in results["source_mutations"].items():
             name = key.split(":", 1)[1]
             asked[name] = asked.get(name, False) or bool(leg.get("ran"))
-        for name in SOURCE_MUTATION_LEG_FILTER:
+        for name in (*SOURCE_MUTATION_LEG_FILTER, *SOURCE_MUTATION_SIGMA_FILTER):
             if name in asked and not asked[name]:
                 reasons.append(
                     f"source mutation {name} was excluded on EVERY kernel and "
@@ -1939,12 +2237,12 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
                and c["substitution"] == LICENSED_SUBSTITUTION]
     guarded_identical = {
         (c["label"], c["sub_step"], c["mask"], c["arm"], c["courant"],
-         c["value_class"], c["coefficient_table"])
+         c["value_class"])
         for c in scored if c["substitution"] == LICENSED_SUBSTITUTION
         and c["single_launch"]["bit_identical"]}
     comparable = [c for c in control
                   if (c["label"], c["sub_step"], c["mask"], c["arm"], c["courant"],
-                      c["value_class"], c["coefficient_table"]) in guarded_identical]
+                      c["value_class"]) in guarded_identical]
     control_diverged = [c for c in comparable
                         if not c["single_launch"]["bit_identical"]]
     guard_control = {
@@ -1966,11 +2264,13 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         "licensed_substitution": LICENSED_SUBSTITUTION,
         "misdeclaration_controls": controls,
         "subchunk_cases_reached": reached,
+        "unkept_dsig_cells_reached": unkept,
         "arms": arms,
         "guard_control": guard_control,
         "scored_cases": len(scored),
         "claim": ("the conductive CUDA curl family -- three no-absorber kernels and "
-                  "the four-case conductivity + PML pair -- is byte-identical to "
+                  "the conductivity + PML pair, its forms chosen per structure chunk "
+                  "from the chunk record -- is byte-identical to "
                   "stepping.step_B / stepping.step_D per sub-step, per arm and per "
                   "per-component conductivity mask, from one frozen state, at one "
                   f"launch and at {MULTI_STEP_BUDGET}"),
@@ -2094,10 +2394,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "skip_mutations": bool(args.skip_mutations),
         "question": ("are the five conductive CUDA curl kernels byte-identical to "
                      "stepping.step_B / stepping.step_D per sub-step, per arm and "
-                     "per PER-COMPONENT conductivity mask -- including the "
-                     "four-case conductivity + PML recurrence, which the array "
-                     "path evaluates over the whole volume and selects with "
-                     "copyto and the kernel selects per cell?"),
+                     "per PER-COMPONENT conductivity mask -- including MEEP's "
+                     "conductive forms under a PML, chosen per structure chunk "
+                     "from the chunk record and from which chunks keep the "
+                     "conductivity, which the array path evaluates over the whole "
+                     "volume and selects with copyto and the kernel selects per "
+                     "cell?"),
         "kernels": list(conductive_kernels.CONDUCTIVE_KERNELS),
         "masks_swept": [MASK_IDS[m] for m in COND_MASKS],
         "curl_terms_vs_stepping": check_terms_against_stepping(),

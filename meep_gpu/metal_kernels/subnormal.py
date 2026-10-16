@@ -63,7 +63,8 @@ one and belongs in any claim made from it.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, List, Optional
 
 from .. import subnormal_policy
 
@@ -112,6 +113,44 @@ EXECUTOR_OP_EXCEPTIONS: Dict[str, Dict[str, str]] = {
 }
 
 
+#: The policy each open Metal composition window declared, keyed by a token the
+#: window holds, outermost first. Keyed rather than stacked so a window always
+#: retires its OWN entry, whatever order windows close in, and never outlives itself.
+_DECLARED: Dict[object, str] = {}
+
+
+@contextmanager
+def declaring_dispatch_policy(policy: str) -> Iterator[str]:
+    """Declare, for the duration, the policy the surrounding dispatch will install.
+
+    ``metal_dispatch`` composes FOUR RUNGS before rung 8bM installs
+    :func:`..metal_dispatch.certification_policy`, and :func:`mps_policy_reasons` is
+    asked at every predicate of that composition. The declaration is how the
+    composer learns an intention it cannot read off the process. Restored on the way
+    out, exception included.
+    """
+    if policy not in subnormal_policy.POLICIES:
+        raise ValueError(f"policy must be one of {tuple(subnormal_policy.POLICIES)}, "
+                         f"got {policy!r}")
+    token = object()
+    _DECLARED[token] = policy
+    try:
+        yield policy
+    finally:
+        _DECLARED.pop(token, None)
+
+
+def declared_dispatch_policy() -> Optional[str]:
+    """The one policy every open window declared, or None.
+
+    None when no window is open AND when two open windows disagree: a disagreement is
+    not resolved in either window's favour, so the resolution falls through to the
+    request or this host's default, which is the fail-closed answer.
+    """
+    policies = set(_DECLARED.values())
+    return next(iter(policies)) if len(policies) == 1 else None
+
+
 def resolve_mps_policy(policy: Optional[str] = None) -> tuple:
     """``(policy, source)`` for the MPS arm, in the order a DISPATCH can answer.
 
@@ -121,11 +160,10 @@ def resolve_mps_policy(policy: Optional[str] = None) -> tuple:
     1. an EXPLICIT ARGUMENT — a caller that already knows what it is asking;
     2. the INSTALLED policy — a measurement of this process's arithmetic, which
        outranks any intention;
-    3. the DECLARED policy (:func:`..expansion_refusal.declared_run_policy`) — what
-       the surrounding dispatch has stated it will install. A
-       :class:`ContradictedRunPolicy` is NOT resolved to either of its members and
-       falls through to the resolution below, which is the fail-closed answer the
-       contradiction rule asks for;
+    3. the DECLARED policy (:func:`declared_dispatch_policy`) — what the surrounding
+       dispatch has stated it will install. Two windows that disagree are NOT
+       resolved to either and fall through to the resolution below, which is the
+       fail-closed answer;
     4. :func:`subnormal_policy.resolve_policy` — the request or this host's own
        default.
 
@@ -136,9 +174,7 @@ def resolve_mps_policy(policy: Optional[str] = None) -> tuple:
     ``keep`` (MEEP's ``set_zero_subnormals`` being the ``#if HAVE_IMMINTRIN_H``
     no-op on arm64). Measured: with no ``MEEP_GPU_SUBNORMAL_POLICY`` set, the
     shipped composer selected NOTHING on all fourteen driver-route cases, every
-    reason being this module's. Reading the declaration is the same move
-    ``complex_fields.expansion_policy_reasons`` already makes on the Triton track,
-    and it is placed in THIS file rather than in
+    reason being this module's. The declaration is placed in THIS file rather than in
     ``subnormal_policy.policy_resolution`` deliberately: this module is Metal-only
     and re-gated by the Metal fleet anyway, while ``policy_resolution`` is pinned by
     six Triton ledger welds and a CUDA certification block that would all re-drift
@@ -148,10 +184,8 @@ def resolve_mps_policy(policy: Optional[str] = None) -> tuple:
         return subnormal_policy.resolve_policy(policy)
     if subnormal_policy.policy_is_installed():
         return subnormal_policy.get_subnormal_policy(), "installed policy"
-    from ..expansion_refusal import declared_run_policy  # noqa: PLC0415
-
-    declared = declared_run_policy()
-    if isinstance(declared, str):
+    declared = declared_dispatch_policy()
+    if declared is not None:
         return declared, "policy declared by the surrounding dispatch"
     return subnormal_policy.resolve_policy(policy)
 

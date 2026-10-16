@@ -454,22 +454,37 @@ __all__ = [
 
 if triton is not None:
 
+    # The forms of the root kernels (forms.py) and the chunk record's two word offsets,
+    # bound under kernels.py's names: both halves read the record and call the forms
+    # exactly as symmetry.pml_curl_step_folded and kernels.constitutive_step do.
+    from .forms import (axis_present, constitutive_form, curl_form,  # noqa: E402
+                        curl_stencil, record_in)
+    from .kernels import RECORD_HALF_INTEGER, RECORD_PRESENCE  # noqa: E402
+
     PERIODIC = tl.constexpr(CODE_PERIODIC)
     MIRROR_METALLIC = tl.constexpr(CODE_MIRROR_METALLIC)
     MIRROR_PERIODIC = tl.constexpr(CODE_MIRROR_PERIODIC)
 
     @triton.jit
-    def _carry_ghost_E(f, w, e, ie, dst, ghost, kp_d, km_d, mask):
+    def _carry_ghost_E(f, w, e, ie, dst, ghost, kp_d, km_d, dw_d, mask):
         """Write ONE imaged ghost cell of ``D`` and run ``update_E`` there.
 
-        THE EIGHT STATEMENTS ARE THE CERTIFIED ONES, MOVED AND NOT REWRITTEN: they
+        THE SEVEN STATEMENTS ARE THE CERTIFIED ONES, MOVED AND NOT REWRITTEN: they
         are the displacement store followed by ``kernels.constitutive_step``'s
         ``SCALE=1`` arm with ``src`` bound to ``ghost * inverse_epsilon`` instead of
         ``load(g) * load(e)``, which is exactly what the owned cell above does. They
         became a device function when the far carry landed, because a D component
         can now be the source of up to SEVEN ghost cells (two near planes, one far
         plane, and every composition of them) and seven inlined copies of the same
-        eight statements is seven places for one of them to drift.
+        seven statements is seven places for one of them to drift.
+
+        ``dw_d`` IS THE DESTINATION'S MEMBERSHIP, evaluated where the ghost cell is:
+        the accumulation and its ``f_w`` traffic on the cells whose chunk carries the
+        component's own (dsigw) layer, ``E = src`` elsewhere
+        (:func:`.forms.constitutive_form`). The caller passes the source lane's flag
+        for a NEAR-only destination, whose coordinate on the component's own axis is
+        the source's, and the flag of the top row for anything with the FAR half in
+        it, which moves along exactly that axis.
 
         ``ghost`` is ALREADY the composed value — parity applied, and the wall
         clear applied or not according to which fill wrote it (see consequence 3 in
@@ -485,12 +500,11 @@ if triton is not None:
         transcription is not a place to rely on that.
         """
         tl.store(f + dst, ghost, mask=mask)
-        prev = tl.load(w + dst, mask=mask, other=0.0)
+        prev = tl.load(w + dst, mask=mask & dw_d, other=0.0)
         src = ghost * tl.load(ie + dst, mask=mask, other=0.0)
-        tl.store(w + dst, src, mask=mask)
-        acc = tl.load(e + dst, mask=mask, other=0.0)
-        acc = acc + kp_d * src
-        acc = acc - km_d * prev
+        tl.store(w + dst, src, mask=mask & dw_d)
+        acc = tl.load(e + dst, mask=mask & dw_d, other=0.0)
+        acc = constitutive_form(acc, prev, src, kp_d, km_d, dw_d)
         tl.store(e + dst, acc, mask=mask)
 
     @triton.jit
@@ -503,6 +517,7 @@ if triton is not None:
         w0, w1, w2,                       # constitutive aux: f_w_Ex, f_w_Ey, f_w_Ez
         ie0, ie1, ie2,                    # inverse epsilon, per target
         kp0, km0, kp1, km1, kp2, km2,     # constitutive kps/kms, HALF-INTEGER lattice
+        cb,                               # chunk record: both halves' forms
         nx, ny, nz, n_elem, dtdx,
         rx, ry, rz,                       # RUNTIME: stepping._far_reflect_rows
         BACKWARD: tl.constexpr,           # bound to 1 by every builder; see below
@@ -550,6 +565,12 @@ if triton is not None:
         deliberately: if a carry block ever fired on an axis the host did not
         classify as folded, it would write an exact zero plane — loud — rather
         than a plausible field.
+
+        ``cb`` IS THE RUN'S CHUNK RECORD, and ONE record serves both halves, as in
+        ``kernels.fused_curl_constitutive_D``: the curl half reads its dsigu lines on
+        the integer lattice and the presence word, the constitutive half its dsigw
+        lines on the half-integer one. Every select is evaluated where its cell is,
+        a carried ghost included.
         """
         idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         live = idx < n_elem
@@ -600,9 +621,16 @@ if triton is not None:
         c_y = tl.load(g2 + oy, mask=vy, other=0.0)
 
         # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens
-        curl0 = dtdx * ((c_y - c) + (b - b_z))
-        curl1 = dtdx * ((a_z - a) + (c - c_x))
-        curl2 = dtdx * ((b_x - b) + (a - a_y))
+        # kernels.pml_curl_step's three calls: MEEP's left-to-right association with
+        # both partners, the one-partner form where the record says the other
+        # partner's derivative axis is invariant, an exact +0 with neither.
+        presence = tl.load(cb + RECORD_PRESENCE)
+        px = axis_present(presence, 0)
+        py = axis_present(presence, 1)
+        pz = axis_present(presence, 2)
+        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)
+        curl1 = curl_stencil(a_z, a, c, c_x, dtdx, pz, px)
+        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)
 
         # --- ownership mask, cell 0 (stepping._mask_non_owned_cells :1865) -----
         # Every target whose Yee shift is 0 on a non-periodic axis. `!= PERIODIC`
@@ -671,7 +699,7 @@ if triton is not None:
         if FAR_Z:
             own2 = own2 & (k != nz - 1)
 
-        # --- split-field recurrence (stepping._apply_pml_update) ---------------
+        # --- the PML forms (stepping._apply_curl_regions) ---------------------
         # The PML coefficient vectors are built at the STORED extent on a folded
         # axis, so the n_a indexing needs no fold-aware change.
         km_x = tl.load(kmx + i, mask=live, other=0.0)
@@ -681,17 +709,27 @@ if triton is not None:
         km_z = tl.load(kmz + k, mask=live, other=0.0)
         si_z = tl.load(sinvz + k, mask=live, other=0.0)
 
-        p0 = tl.load(u0 + idx, mask=live, other=0.0)
-        n0 = ((p0 * km_y) - curl0) * si_y
-        v0 = (((tl.load(f0 + idx, mask=own0, other=0.0) * km_z) + n0) - p0) * si_z
+        # Which cells take the recurrence: the component's dsigu layer on its own
+        # sub-lattice, verbatim from the folded curl (integer here, BACKWARD = 1).
+        if BACKWARD:
+            lattice = 0
+        else:
+            lattice = RECORD_HALF_INTEGER
+        du0 = record_in(cb, lattice + 8, k)
+        du1 = record_in(cb, lattice + 0, i)
+        du2 = record_in(cb, lattice + 4, j)
 
-        p1 = tl.load(u1 + idx, mask=live, other=0.0)
-        n1 = ((p1 * km_z) - curl1) * si_z
-        v1 = (((tl.load(f1 + idx, mask=own1, other=0.0) * km_x) + n1) - p1) * si_x
+        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)
+        v0, n0 = curl_form(tl.load(f0 + idx, mask=own0, other=0.0), p0, curl0,
+                           km_y, si_y, km_z, si_z, du0)
 
-        p2 = tl.load(u2 + idx, mask=live, other=0.0)
-        n2 = ((p2 * km_x) - curl2) * si_x
-        v2 = (((tl.load(f2 + idx, mask=own2, other=0.0) * km_y) + n2) - p2) * si_y
+        p1 = tl.load(u1 + idx, mask=live & du1, other=0.0)
+        v1, n1 = curl_form(tl.load(f1 + idx, mask=own1, other=0.0), p1, curl1,
+                           km_z, si_z, km_x, si_x, du1)
+
+        p2 = tl.load(u2 + idx, mask=live & du2, other=0.0)
+        v2, n2 = curl_form(tl.load(f2 + idx, mask=own2, other=0.0), p2, curl2,
+                           km_x, si_x, km_y, si_y, du2)
 
         # --- the seam: stepping.zero_metal_D (driver.py:3301) ------------------
         # Byte-copied from dispersive_fused_pair's ZM block — the same six rows
@@ -715,19 +753,22 @@ if triton is not None:
             v0 = tl.where(at_z, 0.0, v0)
             v1 = tl.where(at_z, 0.0, v1)
 
-        # fu is written at EVERY cell, destinations included: the array path's
-        # step_D writes it everywhere and fill_symmetry_bc_D does not touch it
-        # (stepping.py:1497-1498 writes `field`, never `fu_field`).
-        tl.store(u0 + idx, n0, mask=live)
-        tl.store(u1 + idx, n1, mask=live)
-        tl.store(u2 + idx, n2, mask=live)
+        # fu is written on the recurrence's cells ONLY (the auxiliary contract),
+        # destinations included: the array path's step_D writes it on every such
+        # cell, a ghost row reading its image row's membership, and neither fill
+        # touches it (the fills write `field`, never `fu_field`).
+        tl.store(u0 + idx, n0, mask=live & du0)
+        tl.store(u1 + idx, n1, mask=live & du1)
+        tl.store(u2 + idx, n2, mask=live & du2)
         tl.store(f0 + idx, v0, mask=own0)
         tl.store(f1 + idx, v1, mask=own1)
         tl.store(f2 + idx, v2, mask=own2)
 
         # ==================== the constitutive half ===========================
         # Verbatim from kernels.constitutive_step's SCALE=1 arm, with
-        # `tl.load(g + idx)` replaced by the register the curl half just produced.
+        # `tl.load(g + idx)` replaced by the register the curl half just produced
+        # and `live` by the component's ownership mask. The form is keyed on the
+        # dsigw line of the component's own axis on the half-integer lattice.
         # Component 0 takes its coefficient from axis x, 1 from y, 2 from z
         # (stepping.E_CONSTITUTIVE_TERMS :227) — the component's OWN axis, which
         # is exactly the axis the NEAR fill never images along and exactly the one
@@ -739,32 +780,32 @@ if triton is not None:
         km_1 = tl.load(km1 + j, mask=live, other=0.0)
         kp_2 = tl.load(kp2 + k, mask=live, other=0.0)
         km_2 = tl.load(km2 + k, mask=live, other=0.0)
+        dw0 = record_in(cb, RECORD_HALF_INTEGER + 0, i)
+        dw1 = record_in(cb, RECORD_HALF_INTEGER + 4, j)
+        dw2 = record_in(cb, RECORD_HALF_INTEGER + 8, k)
 
         # --- component 0 -------------------------------------------------------
-        prev0 = tl.load(w0 + idx, mask=own0, other=0.0)   # BEFORE the store.
+        prev0 = tl.load(w0 + idx, mask=own0 & dw0, other=0.0)   # BEFORE the store.
         src0 = v0 * tl.load(ie0 + idx, mask=own0, other=0.0)
-        tl.store(w0 + idx, src0, mask=own0)
-        a0v = tl.load(e0 + idx, mask=own0, other=0.0)
-        a0v = a0v + kp_0 * src0
-        a0v = a0v - km_0 * prev0
+        tl.store(w0 + idx, src0, mask=own0 & dw0)
+        a0v = tl.load(e0 + idx, mask=own0 & dw0, other=0.0)
+        a0v = constitutive_form(a0v, prev0, src0, kp_0, km_0, dw0)
         tl.store(e0 + idx, a0v, mask=own0)
 
         # --- component 1 -------------------------------------------------------
-        prev1 = tl.load(w1 + idx, mask=own1, other=0.0)
+        prev1 = tl.load(w1 + idx, mask=own1 & dw1, other=0.0)
         src1 = v1 * tl.load(ie1 + idx, mask=own1, other=0.0)
-        tl.store(w1 + idx, src1, mask=own1)
-        a1v = tl.load(e1 + idx, mask=own1, other=0.0)
-        a1v = a1v + kp_1 * src1
-        a1v = a1v - km_1 * prev1
+        tl.store(w1 + idx, src1, mask=own1 & dw1)
+        a1v = tl.load(e1 + idx, mask=own1 & dw1, other=0.0)
+        a1v = constitutive_form(a1v, prev1, src1, kp_1, km_1, dw1)
         tl.store(e1 + idx, a1v, mask=own1)
 
         # --- component 2 -------------------------------------------------------
-        prev2 = tl.load(w2 + idx, mask=own2, other=0.0)
+        prev2 = tl.load(w2 + idx, mask=own2 & dw2, other=0.0)
         src2 = v2 * tl.load(ie2 + idx, mask=own2, other=0.0)
-        tl.store(w2 + idx, src2, mask=own2)
-        a2v = tl.load(e2 + idx, mask=own2, other=0.0)
-        a2v = a2v + kp_2 * src2
-        a2v = a2v - km_2 * prev2
+        tl.store(w2 + idx, src2, mask=own2 & dw2)
+        a2v = tl.load(e2 + idx, mask=own2 & dw2, other=0.0)
+        a2v = constitutive_form(a2v, prev2, src2, kp_2, km_2, dw2)
         tl.store(e2 + idx, a2v, mask=own2)
 
         # ========= the mirror fills, carried by the SOURCE lane ================
@@ -827,6 +868,13 @@ if triton is not None:
         km_f1 = tl.load(km1 + top_y, mask=live, other=0.0)
         kp_f2 = tl.load(kp2 + top_z, mask=live, other=0.0)
         km_f2 = tl.load(km2 + top_z, mask=live, other=0.0)
+        # ... and its membership there, for the same reason: the FAR destination's
+        # own-axis row is the top row, so its select is keyed on the top row's word.
+        # A NEAR-only destination keeps the source lane's coordinate on that axis,
+        # and so its flag (dw0, dw1, dw2 above).
+        dw_f0 = record_in(cb, RECORD_HALF_INTEGER + 0, top_x)
+        dw_f1 = record_in(cb, RECORD_HALF_INTEGER + 4, top_y)
+        dw_f2 = record_in(cb, RECORD_HALF_INTEGER + 8, top_z)
 
         # The per-axis source lane and destination offset, once. Each is read only
         # under a mask its own axis's constexpr gates, so an axis that carries no
@@ -873,7 +921,7 @@ if triton is not None:
             if ZM_Z:
                 gv_0y = tl.where(at_z, 0.0, gv_0y)
             _carry_ghost_E(f0, w0, e0, ie0, idx + dn_y, gv_0y,
-                           kp_0, km_0, own0 & near_j)
+                           kp_0, km_0, dw0, own0 & near_j)
         if NEAR_Z:
             gv_0z = PHZ * v0
             if ZM_Y:
@@ -881,7 +929,7 @@ if triton is not None:
             if ZM_Z:
                 gv_0z = tl.where(at_z, 0.0, gv_0z)
             _carry_ghost_E(f0, w0, e0, ie0, idx + dn_z, gv_0z,
-                           kp_0, km_0, own0 & near_k)
+                           kp_0, km_0, dw0, own0 & near_k)
         if NEAR_Y and NEAR_Z:
             # The doubly-unowned corner. Y is applied before Z
             # (_fill_symmetry_ghost_cells :1441-1447), so the value is
@@ -893,22 +941,22 @@ if triton is not None:
             if ZM_Z:
                 gv_0yz = tl.where(at_z, 0.0, gv_0yz)
             _carry_ghost_E(f0, w0, e0, ie0, idx + dn_y + dn_z, gv_0yz,
-                           kp_0, km_0, own0 & near_j & near_k)
+                           kp_0, km_0, dw0, own0 & near_j & near_k)
         if FAR_X:
             # NO ZM AFTER THE PARITY: :3302 is the last pass before update_E, so
             # the far ghost is -phase times the value standing at its source, which
             # is `v0` read after the clear lines above.
             _carry_ghost_E(f0, w0, e0, ie0, idx + df_x, -PHX * v0,
-                           kp_f0, km_f0, own0 & far_i)
+                           kp_f0, km_f0, dw_f0, own0 & far_i)
         if FAR_X and NEAR_Y:
             _carry_ghost_E(f0, w0, e0, ie0, idx + df_x + dn_y, -PHX * gv_0y,
-                           kp_f0, km_f0, own0 & far_i & near_j)
+                           kp_f0, km_f0, dw_f0, own0 & far_i & near_j)
         if FAR_X and NEAR_Z:
             _carry_ghost_E(f0, w0, e0, ie0, idx + df_x + dn_z, -PHX * gv_0z,
-                           kp_f0, km_f0, own0 & far_i & near_k)
+                           kp_f0, km_f0, dw_f0, own0 & far_i & near_k)
         if FAR_X and (NEAR_Y and NEAR_Z):
             _carry_ghost_E(f0, w0, e0, ie0, idx + df_x + dn_y + dn_z, -PHX * gv_0yz,
-                           kp_f0, km_f0, own0 & far_i & near_j & near_k)
+                           kp_f0, km_f0, dw_f0, own0 & far_i & near_j & near_k)
 
         # --- component 1 (Dy): near on x and z, far on y -----------------------
         if NEAR_X:
@@ -918,7 +966,7 @@ if triton is not None:
             if ZM_Z:
                 gv_1x = tl.where(at_z, 0.0, gv_1x)
             _carry_ghost_E(f1, w1, e1, ie1, idx + dn_x, gv_1x,
-                           kp_1, km_1, own1 & near_i)
+                           kp_1, km_1, dw1, own1 & near_i)
         if NEAR_Z:
             gv_1z = PHZ * v1
             if ZM_X:
@@ -926,7 +974,7 @@ if triton is not None:
             if ZM_Z:
                 gv_1z = tl.where(at_z, 0.0, gv_1z)
             _carry_ghost_E(f1, w1, e1, ie1, idx + dn_z, gv_1z,
-                           kp_1, km_1, own1 & near_k)
+                           kp_1, km_1, dw1, own1 & near_k)
         if NEAR_X and NEAR_Z:
             # X is applied before Z: phase_z * (phase_x * v).
             gv_1xz = PHZ * (PHX * v1)
@@ -935,19 +983,19 @@ if triton is not None:
             if ZM_Z:
                 gv_1xz = tl.where(at_z, 0.0, gv_1xz)
             _carry_ghost_E(f1, w1, e1, ie1, idx + dn_x + dn_z, gv_1xz,
-                           kp_1, km_1, own1 & near_i & near_k)
+                           kp_1, km_1, dw1, own1 & near_i & near_k)
         if FAR_Y:
             _carry_ghost_E(f1, w1, e1, ie1, idx + df_y, -PHY * v1,
-                           kp_f1, km_f1, own1 & far_j)
+                           kp_f1, km_f1, dw_f1, own1 & far_j)
         if FAR_Y and NEAR_X:
             _carry_ghost_E(f1, w1, e1, ie1, idx + df_y + dn_x, -PHY * gv_1x,
-                           kp_f1, km_f1, own1 & far_j & near_i)
+                           kp_f1, km_f1, dw_f1, own1 & far_j & near_i)
         if FAR_Y and NEAR_Z:
             _carry_ghost_E(f1, w1, e1, ie1, idx + df_y + dn_z, -PHY * gv_1z,
-                           kp_f1, km_f1, own1 & far_j & near_k)
+                           kp_f1, km_f1, dw_f1, own1 & far_j & near_k)
         if FAR_Y and (NEAR_X and NEAR_Z):
             _carry_ghost_E(f1, w1, e1, ie1, idx + df_y + dn_x + dn_z, -PHY * gv_1xz,
-                           kp_f1, km_f1, own1 & far_j & near_i & near_k)
+                           kp_f1, km_f1, dw_f1, own1 & far_j & near_i & near_k)
 
         # --- component 2 (Dz): near on x and y, far on z -----------------------
         if NEAR_X:
@@ -957,7 +1005,7 @@ if triton is not None:
             if ZM_Y:
                 gv_2x = tl.where(at_y, 0.0, gv_2x)
             _carry_ghost_E(f2, w2, e2, ie2, idx + dn_x, gv_2x,
-                           kp_2, km_2, own2 & near_i)
+                           kp_2, km_2, dw2, own2 & near_i)
         if NEAR_Y:
             gv_2y = PHY * v2
             if ZM_X:
@@ -965,7 +1013,7 @@ if triton is not None:
             if ZM_Y:
                 gv_2y = tl.where(at_y, 0.0, gv_2y)
             _carry_ghost_E(f2, w2, e2, ie2, idx + dn_y, gv_2y,
-                           kp_2, km_2, own2 & near_j)
+                           kp_2, km_2, dw2, own2 & near_j)
         if NEAR_X and NEAR_Y:
             # X is applied before Y: phase_y * (phase_x * v).
             gv_2xy = PHY * (PHX * v2)
@@ -974,19 +1022,19 @@ if triton is not None:
             if ZM_Y:
                 gv_2xy = tl.where(at_y, 0.0, gv_2xy)
             _carry_ghost_E(f2, w2, e2, ie2, idx + dn_x + dn_y, gv_2xy,
-                           kp_2, km_2, own2 & near_i & near_j)
+                           kp_2, km_2, dw2, own2 & near_i & near_j)
         if FAR_Z:
             _carry_ghost_E(f2, w2, e2, ie2, idx + df_z, -PHZ * v2,
-                           kp_f2, km_f2, own2 & far_k)
+                           kp_f2, km_f2, dw_f2, own2 & far_k)
         if FAR_Z and NEAR_X:
             _carry_ghost_E(f2, w2, e2, ie2, idx + df_z + dn_x, -PHZ * gv_2x,
-                           kp_f2, km_f2, own2 & far_k & near_i)
+                           kp_f2, km_f2, dw_f2, own2 & far_k & near_i)
         if FAR_Z and NEAR_Y:
             _carry_ghost_E(f2, w2, e2, ie2, idx + df_z + dn_y, -PHZ * gv_2y,
-                           kp_f2, km_f2, own2 & far_k & near_j)
+                           kp_f2, km_f2, dw_f2, own2 & far_k & near_j)
         if FAR_Z and (NEAR_X and NEAR_Y):
             _carry_ghost_E(f2, w2, e2, ie2, idx + df_z + dn_x + dn_y, -PHZ * gv_2xy,
-                           kp_f2, km_f2, own2 & far_k & near_i & near_j)
+                           kp_f2, km_f2, dw_f2, own2 & far_k & near_i & near_j)
 
 else:  # pragma: no cover - laptop path
     folded_fused_curl_constitutive_D = None  # type: ignore[assignment]
@@ -1210,9 +1258,9 @@ class FoldedFusedPairPlan:
 
     __slots__ = (
         "shape", "n_elem", "dtdx", "backward", "bc", "zero_metal", "phases",
-        "reflect", "near", "far",
+        "reflect", "near", "far", "chunk_bounds",
         "block", "num_warps", "_targets", "_aux", "_sources", "_curl_coefficients",
-        "_e_targets", "_e_aux", "_inverse_epsilon", "_e_coefficients", "_grid",
+        "_e_targets", "_e_aux", "_inverse_epsilon", "_e_coefficients", "_cb", "_grid",
         "_kernel",
     )
 
@@ -1224,8 +1272,9 @@ class FoldedFusedPairPlan:
                  targets, auxiliaries, sources, curl_coefficients,
                  e_targets, e_aux, inverse_epsilon, e_coefficients,
                  reflect: Any = (None, None, None),
-                 kernel: Any = None, num_warps: Optional[int] = 1) -> None:
-        from .launch import CupyPointer, _flat  # noqa: PLC0415
+                 kernel: Any = None, num_warps: Optional[int] = 1, *,
+                 chunk_bounds: Any) -> None:
+        from .launch import CupyPointer, _flat, bind_chunk_bounds  # noqa: PLC0415
 
         self.shape = tuple(int(n) for n in shape)
         self.n_elem = self.shape[0] * self.shape[1] * self.shape[2]
@@ -1275,6 +1324,10 @@ class FoldedFusedPairPlan:
                     f"there and the kernel would read a row nothing wrote")
         self.block = int(block)
         self.num_warps = None if num_warps is None else int(num_warps)
+        # The chunk record, required and checked against this extent; ONE record
+        # serves both halves, as in launch.FusedPairPlan.
+        self.chunk_bounds, self._cb = bind_chunk_bounds(
+            chunk_bounds, self.shape, targets[0], "FoldedFusedPairPlan")
         self._targets = tuple(CupyPointer(array) for array in targets)
         self._aux = tuple(CupyPointer(array) for array in auxiliaries)
         self._sources = tuple(CupyPointer(array) for array in sources)
@@ -1303,7 +1356,7 @@ class FoldedFusedPairPlan:
         kernel[self._grid](
             *self._targets, *self._aux, *self._sources, *self._curl_coefficients,
             *self._e_targets, *self._e_aux, *self._inverse_epsilon,
-            *self._e_coefficients,
+            *self._e_coefficients, self._cb,
             nx, ny, nz, self.n_elem, self.dtdx,
             self.reflect[0], self.reflect[1], self.reflect[2],
             BACKWARD=self.backward,
@@ -1322,18 +1375,23 @@ class FoldedFusedPairPlan:
         return (f"FoldedFusedPairPlan(shape={self.shape}, bc={self.bc}, "
                 f"phases={self.phases}, zero_metal={self.zero_metal}, "
                 f"near={self.near}, far={self.far}, reflect={self.reflect}, "
-                f"block={self.block}, num_warps={self.num_warps})")
+                f"block={self.block}, num_warps={self.num_warps}, "
+                f"chunk_bounds={self.chunk_bounds.tolist()})")
 
 
 def plan_folded_fused_pair(fields: Any, pml: Any, sources: Any = None,
                            block: Optional[int] = None,
                            num_warps: Optional[int] = 1,
-                           kernel: Any = None) -> Optional[FoldedFusedPairPlan]:
+                           kernel: Any = None,
+                           chunk_layout: Any = None) -> Optional[FoldedFusedPairPlan]:
     """Build the plan from the engine's own objects, or ``None`` when refused.
 
     ``None`` is the only refusal: a configuration this kernel does not carry must
     fall back to the array path, never raise into a caller that would otherwise
     have stepped correctly.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default
+    (``launch.chunk_bounds_for``); its record is what both halves' forms key on.
     """
     if not folded_fused_pair_coverage(fields, pml, sources).covered:
         return None
@@ -1341,7 +1399,7 @@ def plan_folded_fused_pair(fields: Any, pml: Any, sources: Any = None,
     if codes is None:  # pragma: no cover - the predicate already refused
         return None
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
-    from .launch import SUB_STEPS  # noqa: PLC0415
+    from .launch import SUB_STEPS, chunk_bounds_for  # noqa: PLC0415
 
     curl_spec = SUB_STEPS[CURL_SUB_STEP]
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
@@ -1371,6 +1429,7 @@ def plan_folded_fused_pair(fields: Any, pml: Any, sources: Any = None,
         # and `stored - 3` at an odd one (stepping._far_reflect_rows:1661).
         reflect=_far_reflect_rows(grid) or (None, None, None),
         kernel=kernel, num_warps=num_warps,
+        chunk_bounds=chunk_bounds_for(fields, pml, chunk_layout),
     )
 
 
@@ -1379,11 +1438,16 @@ def plan_folded_fused_pair_from_arrays(
         constitutive_flat: Dict[str, Any], codes, zero_metal, phases,
         dtdx: float, block: Optional[int] = None, kernel: Any = None,
         num_warps: Optional[int] = 1,
-        reflect: Any = (None, None, None)) -> FoldedFusedPairPlan:
+        reflect: Any = (None, None, None), *,
+        chunk_bounds: Any) -> FoldedFusedPairPlan:
     """Build from bare device arrays — the gate's route.
 
     No coverage predicate runs: the caller is a harness that constructed the
     configuration deliberately, including the deliberately wrong ones.
+
+    ``chunk_bounds`` is REQUIRED and has no default, as in
+    ``launch.plan_from_arrays``: a plan without the record of the division the
+    caller built is refused by name.
     """
     from .kernels import DEFAULT_BLOCK  # noqa: PLC0415
     from .launch import SUB_STEPS  # noqa: PLC0415
@@ -1404,5 +1468,5 @@ def plan_folded_fused_pair_from_arrays(
         [constitutive_flat[f"{stem}_{axis}"]
          for axis in "xyz" for stem in ("kps", "kms")],
         reflect=reflect,
-        kernel=kernel, num_warps=num_warps,
+        kernel=kernel, num_warps=num_warps, chunk_bounds=chunk_bounds,
     )

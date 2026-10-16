@@ -22,14 +22,15 @@ have to fail.
 
 Mirror symmetry is held to a harder standard than either: a folded run must
 reproduce the unfolded full-domain run BIT FOR BIT, on every axis (X, Y and Z),
-for both declared phases (even and odd), and in combination with odd cell counts,
-an absorber, a Bloch phase and a susceptibility. Every kernel here is +, - and *
-on float32/complex64 with real coefficients, so exact equality is the right bar
-and any tolerance would hide a wrong parity, a ghost read from the wrong cell or
-a mask on the wrong axis — each of which moves the answer a few percent and
-leaves a perfectly smooth field. The even X/Y case additionally carries a byte
-digest, because it is the configuration the recorded CPU-MEEP floors were
-measured on.
+for both declared phases (even and odd), wherever the arithmetic is exact (integer
+seeds), and to within a measured rounding bound in combination with odd cell counts,
+an absorber, a Bloch phase, a susceptibility and a chi3, because MEEP's curl bracket
+is not reflection-symmetric in rounding (:data:`FOLD_ROUNDING_BOUND`). A wrong
+parity, a ghost read from the wrong cell or a mask on the wrong axis moves the answer
+a few percent and leaves a perfectly smooth field; the bound sits five orders of
+magnitude below that, and a wrong-phase control shows it. The even X/Y case
+additionally carries a byte digest, because it is the configuration the recorded
+CPU-MEEP floors were measured on.
 
 NumPy path only — no CuPy, no CUDA, no meep.
 """
@@ -43,6 +44,7 @@ import numpy
 import pytest
 
 from . import stepping
+from .chunk_map import ChunkLayout, RegionPlan, grid_frames
 from .dispersion import LORENTZIAN, PolarizationState, Susceptibility
 from .fields import IYEE_SHIFTS, Fields, StepScratch, get_symmetry_phase, mirror_parity
 from .grid import Grid, Mirror
@@ -80,7 +82,9 @@ def reference_curl(first, second, first_axis: int, second_axis: int, stride: int
     """Explicit-index restatement of MEEP's curl, independent of the ported slicing.
 
     (g1[i+s] - g1[i]) + (g2[i] - g2[i+s]) with periodic wrap; s = +1 reproduces
-    the forward differences of step_B and s = -1 the negated strides of step_D.
+    the forward differences of step_B and s = -1 the negated strides of step_D. Its
+    callers compare to a tolerance: the stepping groups the bracket in MEEP's C order,
+    which the word-for-word tests below pin.
     """
     shape = first.shape
     out = numpy.zeros(shape, dtype=first.dtype)
@@ -148,6 +152,160 @@ def test_step_D_applies_the_backward_difference_curl_via_negated_strides():
     # The stride sign is load-bearing: the forward-difference variant must not match.
     forward = before["Dx"] - dtdx * reference_curl(magnetic["Hz"], magnetic["Hy"], 1, 2, +1)
     assert not numpy.allclose(fields.Dx, forward)
+
+
+# ---------------------------------------------------------------------------
+# MEEP's curl forms (step_generic.cpp:72-76, :104, :108), word for word
+# ---------------------------------------------------------------------------
+
+
+def _words(array) -> numpy.ndarray:  # The float32 words of an array, sign of zero included.
+    return numpy.ascontiguousarray(array).reshape(-1).view(numpy.uint32)
+
+
+def _curl_stencil(seed_value: int, shape=(4, 5, 6)):  # Four float32 operands of mixed scale.
+    generator = numpy.random.default_rng(seed_value)
+    scales = (1.0, 1.0, 3.0e2, 3.0e2)
+    return tuple((generator.standard_normal(shape) * scale).astype(numpy.float32)
+                 for scale in scales)
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["expression", "scratch"])
+def test_curl_is_meeps_left_to_right_bracket(pooled):
+    """``f -= dtdx * (g1[i+s1] - g1[i] + g2[i] - g2[i+s2])`` (step_generic.cpp:104) is
+    ``dtdx * (((g1s - g1) + g2) - g2s)`` in C, one rounding per operation; the pairwise
+    grouping is a different float32 number on these operands."""
+    g1, g1s, g2, g2s = _curl_stencil(61)
+    dtdx = 0.5
+    scratch = StepScratch(numpy) if pooled else None
+    curl = stepping._curl_from_operands(stepping.CurlOperands(g1, g1s, g2, g2s), dtdx,
+                                        (True, True), scratch=scratch)
+    expected = numpy.float32(dtdx) * (((g1s - g1) + g2) - g2s)
+    pairwise = numpy.float32(dtdx) * ((g1s - g1) + (g2 - g2s))
+    assert curl.dtype == numpy.float32
+    assert numpy.array_equal(_words(curl), _words(expected))
+    assert numpy.count_nonzero(_words(expected) != _words(pairwise)) > 0
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["expression", "scratch"])
+def test_curl_takes_meeps_form_for_an_absent_partner(pooled):
+    """MEEP passes a NULL partner when its derivative direction is not a grid direction:
+    ``g2`` absent gives ``dtdx * (g1s - g1)`` (:108), ``g1`` absent swaps the partners and
+    negates dtdx (:72-76), ``(-dtdx) * (g2s - g2)``. Neither reads the absent partner's
+    shifted operand, which is not gathered (None here), and the full bracket over an
+    invariant partner (``g2s == g2``) is NOT the absent form: ``(a + g2) - g2`` rounds."""
+    g1, g1s, g2, g2s = _curl_stencil(62)
+    dtdx = 0.5
+    half = numpy.float32(dtdx)
+    scratch = StepScratch(numpy) if pooled else None
+
+    no_second = stepping._curl_from_operands(stepping.CurlOperands(g1, g1s, g2, None), dtdx,
+                                             (True, False), scratch=scratch)
+    assert numpy.array_equal(_words(no_second), _words(half * (g1s - g1)))
+    invariant_bracket = half * (((g1s - g1) + g2) - g2)
+    assert numpy.count_nonzero(_words(invariant_bracket) != _words(half * (g1s - g1))) > 0
+
+    # The signed zero of the swapped form: where g2s == g2 MEEP's (-dtdx) * (+0) is -0,
+    # which the pairwise form's (+0) + (+0) never produces.
+    g2s_tied = g2s.copy()
+    g2s_tied[0] = g2[0]
+    no_first = stepping._curl_from_operands(stepping.CurlOperands(g1, None, g2, g2s_tied),
+                                            dtdx, (False, True), scratch=scratch)
+    assert numpy.array_equal(_words(no_first), _words(numpy.float32(-dtdx) * (g2s_tied - g2)))
+    assert numpy.all(numpy.signbit(no_first[0])) and numpy.all(no_first[0] == 0)
+    assert not numpy.any(numpy.signbit(half * ((g1 - g1) + (g2[0] - g2s_tied[0]))))
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["expression", "scratch"])
+def test_curl_with_neither_partner_present_is_an_exact_zero(pooled):
+    """Only a 1-D grid has a curl component with neither partner (Bz, Dz); MEEP steps no
+    such component, so the curl is +0 everywhere and ``target -= curl`` keeps every word."""
+    g1, _g1s, g2, _g2s = _curl_stencil(63)
+    scratch = StepScratch(numpy) if pooled else None
+    curl = stepping._curl_from_operands(stepping.CurlOperands(g1, None, g2, None), 0.5,
+                                        (False, False), scratch=scratch)
+    assert curl.shape == g1.shape and curl.dtype == g1.dtype
+    assert not numpy.any(_words(curl))
+    target = g2.copy()
+    target[0, 0, 0] = -0.0
+    kept = target.copy()
+    target -= curl
+    assert numpy.array_equal(_words(target), _words(kept))
+
+
+def test_curl_presence_is_meeps_step_plan():
+    """``have_plus_deriv`` / ``have_minus_deriv`` (fields.cpp:428-453): a partner is present
+    only when its derivative axis is not invariant. Under cylindrical coordinates this is
+    also step_db.cpp's Dcyl rule: ``f_p`` dropped for R, ``f_m`` dropped for Z, both kept
+    for P."""
+    def presence(grid, terms):
+        return {term.target: stepping.curl_presence(grid, term) for term in terms}
+
+    three = Grid(resolution=10.0, cell_size=(0.6, 0.6, 0.6))
+    two = Grid(resolution=10.0, cell_size=(0.6, 0.6, 0.0), dimensions=2)
+    one = Grid(resolution=10.0, cell_size=(0.0, 0.0, 0.6), dimensions=1)
+    cylinder = Grid(resolution=10.0, cell_size=(0.6, 0.0, 0.6), cylindrical=True, m=1)
+    expected = (
+        (two, [(True, False), (False, True), (True, True)]),
+        (one, [(False, True), (True, False), (False, False)]),
+        (cylinder, [(False, True), (True, True), (True, False)]),
+    )
+    for terms in (stepping.B_CURL_TERMS, stepping.D_CURL_TERMS):
+        assert set(presence(three, terms).values()) == {(True, True)}
+        for grid, rows in expected:
+            assert list(presence(grid, terms).values()) == rows, [t.target for t in terms]
+
+
+def test_step_B_on_a_2d_grid_takes_the_absent_partner_forms():
+    """Bx's second partner and By's first differ along the invariant z: step_B must give
+    exactly ``Bx - dtdx * (Ez[j+1] - Ez)`` and ``By - (-dtdx) * (Ez[i+1] - Ez)``, and the
+    absent partner's shifted operand is not gathered."""
+    grid = Grid(resolution=10.0, cell_size=(0.6, 0.7, 0.0), dimensions=2)
+    fields = Fields(grid=grid, force_complex_fields=False)
+    seed(fields, ("Dx", "Dy", "Dz", "Bx", "By", "Bz"), 64)
+    electric = {name: fields.get_E(name).copy() for name in ("Ex", "Ey", "Ez")}
+    before = snapshot(fields, ("Bx", "By"))
+    half = numpy.float32(grid.dt / grid.dx)
+
+    stepping.step_B(fields)
+
+    ez = electric["Ez"]
+    expected_bx = before["Bx"] - half * (numpy.roll(ez, -1, axis=1) - ez)
+    expected_by = before["By"] - (-half) * (numpy.roll(ez, -1, axis=0) - ez)
+    assert numpy.array_equal(_words(fields.Bx), _words(expected_bx))
+    assert numpy.array_equal(_words(fields.By), _words(expected_by))
+
+    term = stepping.B_CURL_TERMS[0]
+    presence = stepping.curl_presence(grid, term)
+    operands = stepping._curl_operands(numpy, electric, term, (stepping.PERIODIC,) * 3,
+                                       (None, None, None), stepping._mirror_phases(grid),
+                                       backward=False, gather=presence)
+    assert presence == (True, False)
+    assert operands.shifted_first is not None and operands.shifted_second is None
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["expression", "scratch"])
+def test_constitutive_pml_forms_meeps_right_hand_side_first(pooled):
+    """``f[i] += (kapwkw + sigwkw) * fw[i] - (kapwkw - sigwkw) * fwprev`` (step_generic.cpp:697)
+    is ``f + ((kps * fw) - (kms * fwprev))``; ``(f + kps * fw) - kms * fwprev`` is a
+    different float32 number on these operands. ``fw`` ends holding the source."""
+    generator = numpy.random.default_rng(65)
+    shape = (5, 4, 3)
+    field = (generator.standard_normal(shape) * 3.0e2).astype(numpy.float32)
+    source = generator.standard_normal(shape).astype(numpy.float32)
+    fw = generator.standard_normal(shape).astype(numpy.float32)
+    kps = (1.0 + generator.random((5, 1, 1))).astype(numpy.float32)
+    kms = (1.0 - 0.5 * generator.random((5, 1, 1))).astype(numpy.float32)
+    expected = field + ((kps * source) - (kms * fw))
+    sequential = (field + kps * source) - kms * fw
+    scratch = StepScratch(numpy) if pooled else None
+
+    out, out_fw = field.copy(), fw.copy()
+    stepping._apply_constitutive_pml(out, source, kps, kms, out_fw, scratch=scratch)
+
+    assert numpy.array_equal(_words(out), _words(expected))
+    assert numpy.array_equal(_words(out_fw), _words(source))
+    assert numpy.count_nonzero(_words(expected) != _words(sequential)) > 0
 
 
 def test_plain_path_wraps_periodically_on_every_axis():
@@ -218,8 +376,10 @@ def test_an_absorbing_axis_still_wraps_on_every_face():
     # and structure_chunk::use_pml only grades a conductivity underneath it. So a
     # uniform layer must leave EVERY face wrapping.
     #
-    # The auxiliaries start at zero, so fu = -curl*sinv after one step: a zero
-    # auxiliary means the stencil read a zero ghost, a nonzero one means it wrapped.
+    # The fields start at zero, so after one step the stepped component is
+    # -curl*sinv (the dsig-only form) or that times sinv_u (the recurrence, on the
+    # dsigu chunks' cells), whichever form its chunk takes: a zero word means the
+    # stencil read a zero ghost, a nonzero one means it wrapped.
     # Each case spikes a single plane so only one ghost can contribute. Before this
     # rule changed, the three x/y assertions below all read exactly 0 — that metallic
     # termination was the whole residual behind the uniform layer's CPU-MEEP floor
@@ -229,31 +389,31 @@ def test_an_absorbing_axis_still_wraps_on_every_face():
 
     forward_x = pml_case(grid, pml, "Ey", (0, slice(None), slice(None)))
     stepping.step_B(forward_x, pml)  # Bz differences Ey along X.
-    assert numpy.all(forward_x.fu_Bz[-1, :, :] != 0), "the far x face must read the wrapped plane"
-    assert numpy.all(forward_x.fu_Bz[0, :, :] != 0)
+    assert numpy.all(forward_x.Bz[-1, :, :] != 0), "the far x face must read the wrapped plane"
+    assert numpy.all(forward_x.Bz[0, :, :] != 0)
 
     forward_y = pml_case(grid, pml, "Ex", (slice(None), 0, slice(None)))
     stepping.step_B(forward_y, pml)  # Bz differences Ex along Y.
-    assert numpy.all(forward_y.fu_Bz[:, -1, :] != 0), "the far y face must read the wrapped plane"
-    assert numpy.all(forward_y.fu_Bz[:, 0, :] != 0)
+    assert numpy.all(forward_y.Bz[:, -1, :] != 0), "the far y face must read the wrapped plane"
+    assert numpy.all(forward_y.Bz[:, 0, :] != 0)
 
     forward_z = pml_case(grid, pml, "Ey", (slice(None), slice(None), 0))
     stepping.step_B(forward_z, pml)  # Bx differences Ey along Z.
-    assert numpy.all(forward_z.fu_Bx[:, :, -1] != 0)
+    assert numpy.all(forward_z.Bx[:, :, -1] != 0)
 
     backward_x = pml_case(grid, pml, "Hy", (-1, slice(None), slice(None)))
     stepping.step_D(backward_x, pml)  # Dz differences Hy along X.
-    assert numpy.all(backward_x.fu_Dz[0, :, :] != 0), "the near x face must read the wrapped plane"
-    assert numpy.all(backward_x.fu_Dz[-1, :, :] != 0)
+    assert numpy.all(backward_x.Dz[0, :, :] != 0), "the near x face must read the wrapped plane"
+    assert numpy.all(backward_x.Dz[-1, :, :] != 0)
 
     backward_y = pml_case(grid, pml, "Hx", (slice(None), -1, slice(None)))
     stepping.step_D(backward_y, pml)  # Dz differences Hx along Y.
-    assert numpy.all(backward_y.fu_Dz[:, 0, :] != 0), "the near y face must read the wrapped plane"
-    assert numpy.all(backward_y.fu_Dz[:, -1, :] != 0)
+    assert numpy.all(backward_y.Dz[:, 0, :] != 0), "the near y face must read the wrapped plane"
+    assert numpy.all(backward_y.Dz[:, -1, :] != 0)
 
     backward_z = pml_case(grid, pml, "Hy", (slice(None), slice(None), -1))
     stepping.step_D(backward_z, pml)  # Dx differences Hy along Z.
-    assert numpy.all(backward_z.fu_Dx[:, :, 0] != 0)
+    assert numpy.all(backward_z.Dx[:, :, 0] != 0)
 
     # Negative control on the same machinery: a mirror plane DOES terminate, so the
     # folded axis's far face still reads zero. Without this the test above would also
@@ -262,7 +422,7 @@ def test_an_absorbing_axis_still_wraps_on_every_face():
     folded_pml = PML(grid=folded_grid, thickness=2)
     folded = pml_case(folded_grid, folded_pml, "Ey", (0, slice(None), slice(None)))
     stepping.step_B(folded, folded_pml)
-    assert numpy.all(folded.fu_Bz[-1, :, :] == 0), "a mirrored axis must still terminate"
+    assert numpy.all(folded.Bz[-1, :, :] == 0), "a mirrored axis must still terminate"
 
     plain = Fields(grid=grid, force_complex_fields=True)
     plain.Dy[0, :, :] = 1.0  # inv_eps == 1, so Ey == Dy.
@@ -337,6 +497,7 @@ def test_constitutive_pml_updates_match_the_hand_computed_accumulation():
     fields.set_background_eps(2.25)  # Non-unit eps makes the inv_eps factor observable.
     pml = PML(grid=grid, thickness=2)
     seed(fields, ("Bx", "Dx", "Hx", "Ex", "f_w_Hx", "f_w_Ex"), 9)
+    fields.h_separated = True  # A seeded state is a mid-run one: H was started long ago.
     before = snapshot(fields, ("Bx", "Dx", "Hx", "Ex", "f_w_Hx", "f_w_Ex"))
 
     stepping.update_H(fields, pml)
@@ -429,14 +590,21 @@ def test_symmetry_masking_precedes_the_pml_auxiliary_update():
 
     stepping.step_B(fields, pml)
 
+    def recurrence(target):  # The cells whose chunk carries the dsigu layer: fu's own.
+        return numpy.broadcast_to(fields.region_plan.mask("curl", target), fields.Bx.shape)
+
     assert numpy.all(fields.fu_Bx[0, :, :] == 0)  # Bx = (0,1,1): unowned in X.
     assert numpy.all(fields.fu_By[:, 0, :] == 0)  # By = (1,0,1): unowned in Y.
     # Shift-1 slots past the second mirror of a folded periodic even axis are
     # the far ghosts: their curl is masked, so their auxiliaries stay zero too.
     assert numpy.all(fields.fu_Bx[:, -1, :] == 0)  # Bx = (0,1,1): far ghost in Y.
     assert numpy.all(fields.fu_By[-1, :, :] == 0)  # By = (1,0,1): far ghost in X.
-    assert numpy.all(fields.fu_Bx[1:, :-1, :] != 0)
-    assert numpy.all(fields.fu_Bz[:-1, :-1, :] != 0)  # Bz = (1,1,0): owns the rest.
+    # Every owned cell of fu's own form steps; no other fu word is ever written.
+    for target, owned in (("Bx", (slice(1, None), slice(None, -1))),
+                          ("Bz", (slice(None, -1), slice(None, -1)))):  # Bz = (1,1,0)
+        auxiliary, cells = getattr(fields, "fu_" + target), recurrence(target)
+        assert cells[owned].any() and numpy.all(auxiliary[owned][cells[owned]] != 0), target
+        assert numpy.all(auxiliary[~cells] == 0), target
     assert numpy.all(fields.fu_Bz[-1, :, :] == 0) and numpy.all(fields.fu_Bz[:, -1, :] == 0)
 
     seed(fields, ("Hx", "Hy", "Hz", "Dx", "Dy", "Dz"), 8)
@@ -448,21 +616,23 @@ def test_symmetry_masking_precedes_the_pml_auxiliary_update():
     assert numpy.all(fields.fu_Dz[:, 0, :] == 0)
     assert numpy.all(fields.fu_Dx[-1, :, :] == 0)  # Dx = (1,0,0): far ghost in X.
     assert numpy.all(fields.fu_Dy[:, -1, :] == 0)  # Dy = (0,1,0): far ghost in Y.
-    assert numpy.all(fields.fu_Dx[:-1, 1:, :] != 0)
+    cells = recurrence("Dx")
+    owned = (slice(None, -1), slice(1, None))
+    assert cells[owned].any() and numpy.all(fields.fu_Dx[owned][cells[owned]] != 0)
+    assert numpy.all(fields.fu_Dx[~cells] == 0)
 
 
 @pytest.mark.parametrize("axis", [0, 1, 2])
-def test_the_ownership_mask_follows_the_folded_axis_including_z(axis):
+def test_the_ownership_mask_follows_the_folded_axis_including_z(axis, monkeypatch):
     """Cell 0 is unowned on whichever axis is folded, Z included.
 
     The mask is invisible in the FIELD — the boundary pass overwrites exactly the
-    cells it protects — so it has to be read off the PML auxiliary, which nothing
-    overwrites. That is also why it is worth pinning per axis: a mask that quietly
-    skipped Z would leave every folded-Z field right and every folded-Z absorber
-    integrating a curl assembled from a ghost the cell does not own.
-
-    The absorber is put on X only, so the coefficients are the identity on the
-    folded axis and the auxiliary's contents are the masked curl and nothing else.
+    cells it protects — so it is read off the curl each component's PML form is
+    handed (``stepping._apply_curl``), which is what the auxiliary of a recurrence
+    cell integrates. That is also why it is worth pinning per axis: a mask that
+    quietly skipped Z would leave every folded-Z field right and every folded-Z
+    absorber integrating a curl assembled from a ghost the cell does not own. The
+    auxiliaries are read too, where their form writes them (the dsigu layer's cells).
     """
     cell_size = [0.8, 0.8, 0.8]
     grid = Grid(resolution=10.0, cell_size=tuple(cell_size),
@@ -472,21 +642,36 @@ def test_the_ownership_mask_follows_the_folded_axis_including_z(axis):
     pml = PML(grid=grid, thickness={"x": {"high": 2}} if axis == 0 else {"x": 2})
     seed(fields, ("Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "Bx", "By", "Bz", "Dx", "Dy", "Dz"), 41)
 
+    handed = {}
+    original = stepping._apply_curl
+
+    def capture(fields_, term, curl, *args, **kwargs):
+        handed[term.target] = numpy.array(curl, copy=True)
+        return original(fields_, term, curl, *args, **kwargs)
+
+    monkeypatch.setattr(stepping, "_apply_curl", capture)
     stepping.step_B(fields, pml)
     stepping.step_D(fields, pml)
 
     face = (slice(None),) * axis + (0,)
+    interior = (slice(None),) * axis + (1,)
     for target in ("Bx", "By", "Bz", "Dx", "Dy", "Dz"):
+        curl = handed[target]
         auxiliary = numpy.asarray(getattr(fields, "fu_" + target))
+        recurrence = numpy.broadcast_to(fields.region_plan.mask("curl", target), auxiliary.shape)
         unowned = IYEE_SHIFTS[target][axis] == 0
         if unowned:
-            assert numpy.all(auxiliary[face] == 0), (
+            assert numpy.all(curl[face] == 0), (
                 f"{target} has Yee shift 0 on the folded {'xyz'[axis]} axis, so cell 0 is "
-                f"unowned and its auxiliary must have integrated a masked (zero) curl")
+                f"unowned and its form must be handed a masked (zero) curl")
+            assert numpy.all(auxiliary[face] == 0)
         else:
-            assert numpy.any(auxiliary[face] != 0), (
+            assert numpy.any(curl[face] != 0), (
                 f"{target} owns cell 0 on the folded {'xyz'[axis]} axis and must be stepped there")
-        assert numpy.any(auxiliary[(slice(None),) * axis + (1,)] != 0), "the interior must step"
+            if recurrence[face].any():
+                assert numpy.any(auxiliary[face][recurrence[face]] != 0)
+        assert numpy.any(curl[interior] != 0), "the interior must step"
+        assert numpy.all(auxiliary[~recurrence] == 0), "fu is written on its own cells only"
 
 
 def test_an_absorber_that_disagrees_with_the_grid_about_a_fold_is_refused():
@@ -845,9 +1030,12 @@ def yee_plane_wave(grid: Grid, k_z: float):
     beta = 2.0 * math.pi * k_z
     courant = grid.dt / grid.dx
     omega = (2.0 / grid.dt) * math.asin(courant * math.sin(beta * grid.dx / 2.0))
-    index = numpy.arange(grid.nz)
-    electric = numpy.exp(1j * beta * index * grid.dx)
-    magnetic = numpy.exp(1j * beta * (index + 0.5) * grid.dx) * cmath.exp(0.5j * omega * grid.dt)
+    # Each stored cell holds the mode at its own point (the stored window): Dx has Yee
+    # shift 0 on z, so on a phased z its cell 0 is the owned top point lc + 2N.
+    electric_index = stored_ladder(grid, 2, IYEE_SHIFTS["Dx"][2])
+    magnetic_index = stored_ladder(grid, 2, IYEE_SHIFTS["By"][2])
+    electric = numpy.exp(1j * beta * electric_index * grid.dx)
+    magnetic = numpy.exp(1j * beta * (magnetic_index + 0.5) * grid.dx) * cmath.exp(0.5j * omega * grid.dt)
     return omega, electric.astype(numpy.complex64), magnetic.astype(numpy.complex64)
 
 
@@ -902,28 +1090,85 @@ def test_bloch_phase_reproduces_meeps_eikna_expression():
         plain.bloch_phase(3)
 
 
-def test_bloch_shift_stencils_phase_the_wrapped_plane_in_opposite_directions():
-    # MEEP locate_point_in_user_volume translates a point UP by a lattice vector and
-    # multiplies by conj(eikna), so the up-shift carries eikna and the down-shift its
-    # conjugate. Taking one factor in both directions is invisible to any magnitude.
+def stored_ladder(grid: Grid, axis: int, iyee_shift: int):
+    """The ladder index of every stored cell on one axis under the stored window.
+
+    Stored cell ``i`` is ladder index ``i`` (doubled ``origin + 2i + shift``) except stored
+    cell 0 of a Yee-shift-0 component on a Bloch-phased axis, which holds MEEP's owned top
+    point, ladder index ``n`` (``Grid.stored_window_low``). A test that seeds or reads a
+    field by position takes its positions from here.
+    """
+    ladder = numpy.arange(grid.stored_cells(axis))
+    if grid.stored_window_low(axis, iyee_shift) == 1:
+        ladder[0] = grid.stored_cells(axis)
+    return ladder
+
+
+def test_bloch_shifts_are_plain_rolls_and_the_same_index_reads_carry_the_phase():
+    # THE STORED WINDOW (stepping._bloch_ghost_operand): on a phased axis a Yee-shift-0
+    # component's stored cell 0 is MEEP's owned top point lc + 2N, so the read one stored
+    # cell over is always an owned word and the shifts are plain rolls; the reads that
+    # leave the window are the same-index ones across the half cell on plane 0: below it
+    # (B's forward curl) conj(eikna) times cell 0, above it (D's backward curl) eikna.
+    # Taking one factor in both directions is invisible to any magnitude.
     field = (numpy.arange(1, 6, dtype=numpy.complex64) * (1 + 0.5j)).reshape(5, 1, 1)
     phase = cmath.exp(2j * math.pi * 0.3)
 
-    up = stepping._shift_up(numpy, field, stepping.AXIS_X, stepping.PERIODIC, phase)
-    assert up[-1, 0, 0] == pytest.approx(complex(field[0, 0, 0]) * phase)
-    assert numpy.array_equal(up[:-1, 0, 0], field[1:, 0, 0])
+    up = stepping._shift_up(numpy, field, stepping.AXIS_X, stepping.PERIODIC)
+    assert numpy.array_equal(up, numpy.roll(field, -1, axis=0))
+    down = stepping._shift_down(numpy, field, stepping.AXIS_X, stepping.PERIODIC, "Hz")
+    assert numpy.array_equal(down, numpy.roll(field, 1, axis=0))
 
-    down = stepping._shift_down(numpy, field, stepping.AXIS_X, stepping.PERIODIC, "Hz", phase)
-    assert down[0, 0, 0] == pytest.approx(complex(field[-1, 0, 0]) * phase.conjugate())
-    assert numpy.array_equal(down[1:, 0, 0], field[:-1, 0, 0])
-    assert abs(down[0, 0, 0] - complex(field[-1, 0, 0]) * phase) > 1.0  # Conjugation matters.
+    below = stepping._bloch_ghost_operand(numpy, field, stepping.AXIS_X, stepping.PERIODIC,
+                                          phase, below=True)
+    above = stepping._bloch_ghost_operand(numpy, field, stepping.AXIS_X, stepping.PERIODIC,
+                                          phase, below=False)
+    assert below[0, 0, 0] == pytest.approx(complex(field[0, 0, 0]) * phase.conjugate())
+    assert above[0, 0, 0] == pytest.approx(complex(field[0, 0, 0]) * phase)
+    assert abs(below[0, 0, 0] - above[0, 0, 0]) > 1.0  # Conjugation matters.
+    assert numpy.array_equal(below[1:], field[1:]) and numpy.array_equal(above[1:], field[1:])
 
-    # The wrap phase is applied to a copy; the caller's array is never touched.
+    # MEEP's word, not NumPy's product: complex<float>(1.0 * conj(eikna)) times the word,
+    # (a*c) - (b*d), (a*d) + (b*c), each operation rounded on its own (step.cpp:183-192).
+    a = numpy.float32(phase.real)
+    b = numpy.float32(-phase.imag)
+    c, d = field[0, 0, 0].real, field[0, 0, 0].imag
+    assert below[0, 0, 0].real == (a * c) - (b * d)
+    assert below[0, 0, 0].imag == (a * d) + (b * c)
+
+    # A copy; the caller's array is never touched. No phase (k = 0) or a terminated
+    # axis returns the operand itself.
     assert field[0, 0, 0] == 1 + 0.5j
+    assert stepping._bloch_ghost_operand(numpy, field, 0, stepping.PERIODIC, None, below=True) is field
+    assert stepping._bloch_ghost_operand(numpy, field, 0, stepping.METALLIC, phase, below=True) is field
+    # At the zone edge the connection is MEEP's unary minus (CONNECT_NEGATE), exactly.
+    edge = stepping._bloch_ghost_operand(numpy, field, 0, stepping.PERIODIC, complex(-1.0, 0.0),
+                                         below=True)
+    assert edge[0, 0, 0] == -field[0, 0, 0]
 
     real_field = numpy.arange(5, dtype=numpy.float32).reshape(5, 1, 1)
     with pytest.raises(ValueError, match="complex fields"):
-        stepping._shift_up(numpy, real_field, stepping.AXIS_X, stepping.PERIODIC, phase)
+        stepping._bloch_ghost_operand(numpy, real_field, stepping.AXIS_X, stepping.PERIODIC,
+                                      phase, below=True)
+
+
+def test_the_stored_window_puts_cell_0_at_the_owned_top_point_only_on_a_phased_axis():
+    grid = Grid(resolution=10.0, cell_size=(1.0, 1.2, 0.8), k_point=(0.3, 0.0, -0.2))
+    assert [grid.stored_window_low(axis, 0) for axis in range(3)] == [1, 0, 1]
+    assert [grid.stored_window_low(axis, 1) for axis in range(3)] == [0, 0, 0]
+    n = grid.stored_cells(0)
+    ladder = numpy.arange(-n, 2 * n + 1)
+    # Shift 0 on a phased axis: (lc, lc + 2N] is one period, so ladder 0 (lc) is one
+    # lattice vector BELOW stored cell 0 and ladder n (lc + 2N) is cell 0 itself.
+    counts = grid.wrap_count(0, ladder, 0)
+    assert counts[ladder == 0] == -1 and counts[ladder == n] == 0 and counts[ladder == 1] == 0
+    assert counts[ladder == 2 * n] == 1 and counts[ladder == n + 1] == 1
+    # Shift 1, or no phase: [lc, lc + 2N) is the period, the old floor rule.
+    assert numpy.array_equal(grid.wrap_count(0, ladder, 1), ladder // n)
+    assert numpy.array_equal(grid.wrap_count(1, numpy.arange(-3, 30), 0), numpy.arange(-3, 30) // grid.stored_cells(1))
+    assert list(stored_ladder(grid, 0, 0)[:2]) == [n, 1]
+    with pytest.raises(ValueError, match="iyee_shift"):
+        grid.stored_window_low(0, 2)
 
 
 def test_bloch_plane_wave_propagates_undistorted_and_k_zero_does_not():
@@ -938,6 +1183,8 @@ def test_bloch_plane_wave_propagates_undistorted_and_k_zero_does_not():
     fields = Fields(grid=grid, force_complex_fields=True)
     seed_plane_wave(fields, electric, magnetic)
     initial = fields.Dx.copy()
+    # The seed is the mode at each stored cell's own point: Dx's cell 0 is lc + 2N here.
+    assert electric[0] == pytest.approx(cmath.exp(2j * math.pi * k_z * grid.nz * grid.dx), abs=1e-6)
 
     advance(fields, steps)
 
@@ -1172,22 +1419,33 @@ def test_a_bloch_phase_survives_on_the_axis_the_absorber_leaves_alone():
         fields = Fields(grid=grid, force_complex_fields=True)
         fields.enable_pml_storage()
         for name in components:
-            getattr(fields, name)[...] = seeds[name]
+            getattr(fields, name)[...] = seeds(grid, name)
         advance_with_pml(fields, PML(grid=grid, thickness={"z": 3}), 20)
-        return {name: numpy.asarray(getattr(fields, name)) for name in components}
+        return grid, {name: numpy.asarray(getattr(fields, name)) for name in components}
 
-    folded = run(nx / resolution, 0.5 / (nx / resolution), profile)
-    doubled = run(2 * nx / resolution, 0.0,
-                  {name: numpy.concatenate([values, -values], axis=0) for name, values in profile.items()})
+    doubled_profile = {name: numpy.concatenate([values, -values], axis=0) for name, values in profile.items()}
+
+    def at_ladder(source):  # The doubled cell's words at each stored cell's own point.
+        def seeds(grid, name):
+            return source[name][stored_ladder(grid, 0, IYEE_SHIFTS[name][0])]
+        return seeds
+
+    folded_grid, folded = run(nx / resolution, 0.5 / (nx / resolution), at_ladder(doubled_profile))
+    _, doubled = run(2 * nx / resolution, 0.0, lambda grid, name: doubled_profile[name])
     scale = max(float(numpy.abs(folded[name]).max()) for name in components)
     assert scale > 0.0, "an all-zero run would make the unfolding vacuous"
+    # On the phased x a Yee-shift-0 component's stored cell 0 is the owned top point,
+    # doubled-cell index nx (the stored window), which the seed and the compare both read.
+    assert [folded_grid.stored_window_low(0, IYEE_SHIFTS[name][0]) for name in components] == \
+        [0, 1, 1, 1, 0, 0]
     for name in components:
+        ladder = stored_ladder(folded_grid, 0, IYEE_SHIFTS[name][0])
         numpy.testing.assert_allclose(
-            folded[name], doubled[name][:nx], rtol=0.0, atol=1e-5 * scale,
+            folded[name], doubled[name][ladder], rtol=0.0, atol=1e-5 * scale,
             err_msg=f"{name}: the Bloch-phased x wrap does not unfold onto the doubled cell")
     # Control: the same folded run at k = 0 — an engine that accepted the k_point and
     # dropped it once a PML existed — must NOT unfold onto the antiperiodic cell.
-    unphased = run(nx / resolution, 0.0, profile)
+    _, unphased = run(nx / resolution, 0.0, lambda grid, name: profile[name])
     worst = max(float(numpy.abs(unphased[name] - doubled[name][:nx]).max()) for name in components)
     assert worst > 1e-2 * scale, f"dropping the Bloch phase must be visible, moved only {worst:.2e}"
 
@@ -1303,14 +1561,15 @@ def test_update_P_advances_the_polarization_from_the_drive_field():
     fields = make_fields()
     state = _dispersive(fields, Susceptibility(1.1, 0.05, LORENTZIAN), 0.6)
     fields.Ez.fill(1.0)
-    c_now, c_prev, c_drive = state.susceptibility.coefficients(fields.grid.dt)
+    # MEEP's update from a zero history, then once more: gamma1inv*((p*(2 - od) - gamma1*pp) + od*(s*w)).
+    two_minus_od, gamma1, od, gamma1inv = state.constants
+    s = numpy.float32(0.6)
+    first = gamma1inv * ((numpy.float32(0.0) * two_minus_od - gamma1 * numpy.float32(0.0)) + od * (s * numpy.float32(1.0)))
+    second = gamma1inv * ((first * two_minus_od - gamma1 * numpy.float32(0.0)) + od * (s * numpy.float32(1.0)))
     stepping.update_P(fields, None)
-    expected = c_drive * 0.6 * 1.0
-    numpy.testing.assert_allclose(state.P["Ez"], expected, rtol=1e-6)
+    assert numpy.all(state.P["Ez"].real == first) and not numpy.any(state.P["Ez"].imag)
     stepping.update_P(fields, None)
-    numpy.testing.assert_allclose(
-        state.P["Ez"], c_now * expected + c_prev * 0.0 + c_drive * 0.6, rtol=1e-6
-    )
+    assert numpy.all(state.P["Ez"].real == second) and not numpy.any(state.P["Ez"].imag)
 
 
 def test_update_P_reads_the_pml_auxiliary_and_not_the_absorbed_field():
@@ -1323,11 +1582,21 @@ def test_update_P_reads_the_pml_auxiliary_and_not_the_absorbed_field():
     fields = make_fields()
     state = _dispersive(fields, Susceptibility(1.1, 0.05, LORENTZIAN), 1.0)
     fields.enable_pml_storage()
+    # One chunk, carrying Ez's own (z) layer: f_w exists on every cell, so w is f_w.
+    layer = PML(grid=fields.grid, thickness={"z": 1})
+    frames = grid_frames(fields.grid)
+    whole = (tuple(frame.window[0] for frame in frames), tuple(frame.window[1] for frame in frames))
+    layout = ChunkLayout([whole], [(False, False, True)], frames, faces=layer.thickness_by_face,
+                         source="meep")
+    plan = RegionPlan(layout, fields.grid, layer)
+    assert plan.spec("constitutive", "Ez").mode == "inside_only"
+    fields.install_region_plan(plan)
     fields.Ez.fill(100.0)   # The absorbed field: must NOT drive the polarization.
     fields.f_w_Ez.fill(1.0)  # MEEP's w.
     stepping.update_P(fields, None)
-    _, _, c_drive = state.susceptibility.coefficients(fields.grid.dt)
-    numpy.testing.assert_allclose(state.P["Ez"], c_drive * 1.0, rtol=1e-6)
+    _, _, od, gamma1inv = state.constants
+    assert numpy.all(state.P["Ez"].real == gamma1inv * (od * numpy.float32(1.0))), (
+        "the drive must be f_w (1.0), not the absorbed E (100.0)")
 
 
 def test_update_P_does_nothing_without_a_susceptibility():
@@ -1350,8 +1619,8 @@ def test_update_P_needs_no_boundary_pass_on_a_folded_grid():
     fields.Ez[0, :, :] = 5.0
     fields.Ez[1:, :, :] = 0.0
     stepping.update_P(fields, None)
-    _, _, c_drive = state.susceptibility.coefficients(fields.grid.dt)
-    assert complex(state.P["Ez"][0, 0, 0]) == pytest.approx(c_drive * 5.0, rel=1e-6), (
+    _, _, od, gamma1inv = state.constants
+    assert state.P["Ez"][0, 0, 0].real == gamma1inv * (od * numpy.float32(5.0)), (
         "cell 0 of a mirrored axis must be updated, not masked out"
     )
     assert complex(state.P["Ez"][1, 0, 0]) == 0.0
@@ -1702,16 +1971,32 @@ def test_real_mode_never_promotes_a_field_array_to_complex():
 # IEEE-754 platform rather than only on the machine that recorded it. If this digest
 # ever has to move, the move must be justified by a MEASURED improvement against CPU
 # MEEP — every accuracy floor in the parity matrix was recorded in complex mode.
-_COMPLEX_CORE_DIGEST = "44b25b4191cd6e9c60b26ea8ef4f0a789bd5f08c6a51144fec679f60a64d4a95"
+#
+# Moved 2026-10-06, re-derived by running this test's own procedure: the curl takes
+# MEEP's left-to-right bracket and its absent-partner forms, and the PML constitutive
+# forms MEEP's right-hand side first. Against MEEP 1.33.0 single precision built
+# without contraction, at one rank on arm64 (MEASURED 2026-10-05), these two groupings
+# with the source-envelope order lower the value-differing stored words summed over the
+# full-run checkpoints by 2.0-3.6 % on three cases, and with the per-chunk region forms
+# and the double-precision deposit that follow them reach 0 on four. The floors were
+# recorded on the previous bytes and are re-measured with the corpus comparison of
+# these changes.
+#
+# Moved again 2026-10-08, re-derived by running this test's own procedure: the
+# polarization update takes MEEP's four float32 constants and its grouping
+# (susceptibility.cpp:191-195, :251-256; bit_parity_0_10 WP AP6f). Against MEEP 1.33.0
+# single precision built without contraction, at one rank on arm64 (MEASURED 2026-10-08),
+# phase 0's eight dispersive lifts then read 0 differing stored words of 15,453,504 at
+# every step to 20 and at the checkpoints to 400, against 3,056,502 before.
+_COMPLEX_CORE_DIGEST = "b1868fbc60459d720a5899dcb8171c70b7d45f9ff454dd9fab2bfd4e86ee3a64"
 
-# The one float64 input to that run that is not a bare +, - or *: the polarization
-# recurrence constants, which reach the arrays as scalars. Pinned separately so a
-# digest failure says WHICH half moved — a platform's libm rounding these differently
-# is a false alarm to be fixed by re-deriving the digest, whereas the same digest
-# failure with these intact is a real change in the kernels.
-_LORENTZ_COEFFICIENTS_AT_DT_0P05 = (
-    1.8659228628515696, -0.9844144453917001, 0.11849158254013052,
-)
+# The scalars that run takes from outside its arrays: MEEP's four polarization
+# constants (2 - omega0dtsqr_denom, gamma1, omega0dtsqr, gamma1inv), the float32 words
+# MEEP 1.33.0 forms for f = 1.1, gamma = 0.05 at dt = 0.05 (test_dispersion's
+# compiled-source table holds the same row). They are formed with basic operations
+# only, so every IEEE-754 host forms these words; pinned separately so a digest failure
+# says WHICH half moved — these intact and the digest moved is a change in the stepping.
+_LORENTZ_CONSTANT_WORDS_AT_DT_0P05 = ("3ff0b6c6", "3f7dfd48", "3df493a3", "3f7e014b")
 
 
 def _complex_core_digest() -> str:  # Hash the raw bytes of a fully deterministic complex run.
@@ -1751,8 +2036,9 @@ def test_complex_mode_is_byte_identical_to_its_recorded_bytes():
     """
     grid = Grid(resolution=10.0, cell_size=(0.5, 0.7, 0.9))
     assert grid.dt == 0.05
-    assert (Susceptibility(1.1, 0.05, LORENTZIAN).coefficients(grid.dt)
-            == _LORENTZ_COEFFICIENTS_AT_DT_0P05), (
+    words = tuple(f"{int(numpy.asarray(value, dtype=numpy.float32).view(numpy.uint32)):08x}"
+                  for value in Susceptibility(1.1, 0.05, LORENTZIAN).realnum_constants(grid.dt))
+    assert words == _LORENTZ_CONSTANT_WORDS_AT_DT_0P05, (
         "the polarization constants moved; a digest failure below is that, not the kernels"
     )
     assert _complex_core_digest() == _COMPLEX_CORE_DIGEST, (
@@ -1926,7 +2212,9 @@ def test_a_folded_run_reproduces_the_full_domain_run_bit_for_bit(case, complex_f
     ownership masks from the same per-axis rules the even X mirror has always used.
     If any of those three had a leftover X/Y or phase = +1 assumption, this
     comparison moves — by ~1e0 for a wrong parity, by ~1e-1 for a mask on the wrong
-    axis — and it is checked at zero tolerance so it cannot be absorbed.
+    axis — and it is checked at zero tolerance so it cannot be absorbed. Zero holds
+    here because the integer seeds keep these six steps free of rounding; the cases
+    that round are held to :data:`FOLD_ROUNDING_BOUND` below.
     """
     planes = FOLD_CASES[case]
     cell_size = (2.0, 2.0, 2.0)
@@ -1993,6 +2281,43 @@ def _folded_pair(planes, cell_size, resolution, complex_fields, k_point, pml_req
     return built[0], built[1]
 
 
+#: MEEP's curl bracket ``((g1s - g1) + g2) - g2s`` (step_generic.cpp:104) is not
+#: reflection-symmetric in rounding. Across a plane normal to the SECOND partner's
+#: derivative axis the image cell forms ``s * ((a - g2s) + g2)`` where the stored cell
+#: forms ``s * ((a + g2) - g2s)``; the pairwise grouping this stepper used before,
+#: ``a + (g2 - g2s)``, maps to itself, which is what made a folded run equal the full
+#: domain's quadrant bit for bit whatever the arithmetic. With MEEP's grouping that holds
+#: bit for bit only where the arithmetic is exact (the integer-seeded linear fold above).
+#: Where a PML, a Bloch phase, a susceptibility or a chi3 rounds, the full domain's two
+#: halves differ by rounding, and the folded run differs from its quadrant by the same.
+#: MEASURED 2026-10-06 on the 9 combination and 5 chi3 cases below: at most 8.3 and 3.0
+#: units of 2**-24 of the component's peak; the 9 combination cases folded with the wrong
+#: plane phase move by at least 2.9e7 units. The bound sits 7.7x above the rounding and
+#: 4.5e5x below a wrong parity. A folded run's word-for-word claim is against MEEP's
+#: folded run (INFERRED: MEEP's full-domain run has the same rounding asymmetry, since it
+#: evaluates the same bracket at the image cell). The driver-level fold and mirror tests
+#: in test_driver_integration.py, test_driver_vs_meep.py, test_tensor_epsilon.py and
+#: test_dft.py import this bound, each against the scale it already used (the run's peak
+#: over the primary components, a component's own peak, a relative L2 norm, or the flux),
+#: and each records its measured excess; the largest is 15.3 units, a 40-step folded PML
+#: run with its far face live (MEASURED 2026-10-06).
+FOLD_ROUNDING_BOUND = 64
+
+
+def _fold_excess(folded: Fields, full: Fields, planes, components) -> dict:
+    """Largest ``|folded - full quadrant|`` per component, in units of 2**-24 of the peak."""
+    excess = {}
+    for component in components:
+        reference = _fold(numpy.asarray(getattr(full, component)), planes, full.grid.shape_full)
+        candidate = numpy.asarray(getattr(folded, component))
+        assert candidate.shape == reference.shape, component
+        peak = float(numpy.abs(reference).max())
+        difference = float(numpy.abs(candidate - reference).max())
+        excess[component] = (difference / (2.0 ** -24 * peak) if peak
+                             else (0.0 if difference == 0.0 else math.inf))
+    return excess
+
+
 # Combinations, because every one of them reaches the fold by a different route: an
 # odd cell count moves the origin of the UNFOLDED axes, an absorber adds the
 # split-field auxiliaries under the ownership mask, a Bloch phase adds a wrap ghost
@@ -2015,13 +2340,18 @@ COMBINATION_CASES = {
 
 @pytest.mark.parametrize("case", sorted(COMBINATION_CASES))
 def test_the_fold_equivalence_survives_pml_bloch_dispersion_and_odd_counts(case):
-    """The same bit-for-bit equivalence, with everything else switched on around it.
+    """The same equivalence, with everything else switched on around it, to rounding.
 
     Sweeping combinations rather than the bare fold is not thoroughness for its own
     sake — it is where this engine's silent wrong answers have actually lived. Odd
     cell counts hid a half-cell registration error on every axis that had one; a
     folded axis and an absorber disagreeing about a wrap put full conductivity on
     a boundary plane. Each case here puts the fold next to one of those.
+
+    Held to :data:`FOLD_ROUNDING_BOUND` rather than to zero: these cases round, and
+    MEEP's curl bracket is not reflection-symmetric in rounding (the comment above the
+    bound). :func:`test_the_fold_rounding_bound_rejects_a_wrong_mirror_phase` shows the
+    bound still rejects a wrong parity by five orders of magnitude.
     """
     planes, cell_size, k_point, pml_request, dispersive = COMBINATION_CASES[case]
     complex_fields = True  # Bloch needs it, and the real path is pinned by the case above.
@@ -2038,12 +2368,10 @@ def test_the_fold_equivalence_survives_pml_bloch_dispersion_and_odd_counts(case)
         _step_once(full, full_pml)
         _step_once(folded, folded_pml)
 
-    for component in PRIMARY_COMPONENTS:
-        reference = _fold(numpy.asarray(getattr(full, component)), planes,
-                          full.grid.shape_full)
-        numpy.testing.assert_array_equal(
-            numpy.asarray(getattr(folded, component)), reference,
-            err_msg=f"{case}: folded {component} differs from the full-domain quadrant")
+    excess = _fold_excess(folded, full, planes, PRIMARY_COMPONENTS)
+    assert max(excess.values()) <= FOLD_ROUNDING_BOUND, (
+        f"{case}: folded run differs from the full-domain quadrant beyond rounding "
+        f"(units of 2**-24 of each component's peak): {excess}")
     for axis in planes:
         assert numpy.count_nonzero(numpy.asarray(folded.Dz)[_slab(axis, -1)]) == 0, (
             f"{case}: the far {'xyz'[axis]} face is live; the two runs terminate it "
@@ -2098,8 +2426,45 @@ def test_the_fold_equivalence_can_actually_see_a_wrong_parity():
 # re-measured against CPU MEEP with the far face LIVE at 13-24% of peak, worst
 # whole-volume complex rel L2 4.5e-07 over even/odd counts x even/odd phases
 # (2-D 4x2 cell, res 16, PML X only, Y periodic at Gamma, Gaussian, 256 steps).
-_EVEN_XY_FOLD_DIGEST = "ce4c7e524b415e80f17ef7bbf9cc1bac135fdfc2f5e9c612b90c5b8060036706"
-_EVEN_XY_READBACK_DIGEST = "ac61d591712835a5121364dea72f78c6c8bac1bfb1ac5ed1ae9b98af57813887"
+@pytest.mark.parametrize("case", ["pml_on_the_unfolded_axis", "two_folds_pml_and_dispersion"])
+def test_the_fold_rounding_bound_rejects_a_wrong_mirror_phase(case):
+    """The control behind :data:`FOLD_ROUNDING_BOUND`: the same case folded with every
+    plane's phase inverted must exceed the bound by far (measured >= 2.9e7 units)."""
+    planes, cell_size, k_point, pml_request, dispersive = COMBINATION_CASES[case]
+    wrong = {axis: -phase for axis, phase in planes.items()}
+    (full, full_pml), _ = _folded_pair(planes, cell_size, 10.0, True, k_point, pml_request,
+                                       dispersive)
+    _, (folded, folded_pml) = _folded_pair(wrong, cell_size, 10.0, True, k_point, pml_request,
+                                           dispersive)
+    blob = _compact_blob(full.grid.shape, planes)
+    for component in PRIMARY_COMPONENTS:
+        seeded = _symmetrize(blob, component, planes)
+        getattr(full, component)[...] = seeded
+        getattr(folded, component)[...] = _fold(seeded, planes, full.grid.shape_full)
+    for _ in range(6):
+        _step_once(full, full_pml)
+        _step_once(folded, folded_pml)
+    excess = _fold_excess(folded, full, planes, PRIMARY_COMPONENTS)
+    assert max(excess.values()) > 1.0e4 * FOLD_ROUNDING_BOUND, (case, excess)
+
+
+# Moved 2026-10-06 with the curl bracket and the PML constitutive grouping (the note
+# above _COMPLEX_CORE_DIGEST), and again 2026-10-07 with the PML forms chosen per
+# structure chunk (bit_parity_0_10 WP AP4: the dsig-only curl outside the dsigu chunks,
+# H = B and E = (D - P) * chi1inv outside the dsigw chunks, MEEP's start of H); each
+# value re-derived by this test's own procedure.
+_EVEN_XY_FOLD_DIGEST = "e85e1edc7c4903768e610cd00758f84e49e16b4931e5648d099418bf465ba23d"
+# The readback digest re-blessed 2026-10-06 with MEEP's readback (meep_gpu/readback.py:
+# MEEP's sum order over its chunk words, the mirror ghost rebuilt from its image, the
+# double-precision store): word-identical to MEEP 1.33.0 single precision built without
+# contraction on MEEP's own injected words, 0 differing words of every get_array,
+# stored-centre, sub-volume and point read on 11 cases at the reader legs' steps,
+# folded and odd-count cases included (bit_parity_0_10 WP AP2 acceptance).
+# The readback reads the stepped words above, so its digest also moved with them; this
+# value is re-derived by this test's own procedure on the tree carrying both changes, and
+# again 2026-10-07 with the per-chunk PML forms (WP AP4), which moved the stepped words
+# and not the readback code.
+_EVEN_XY_READBACK_DIGEST = "45efa30e0e81c02de751f897b263abcdc924de54c959333bef6d3b13e8ecd08c"
 
 
 def test_an_even_xy_fold_is_byte_identical_to_the_recorded_pre_phase_bytes():
@@ -2145,8 +2510,8 @@ def test_an_even_xy_fold_is_byte_identical_to_the_recorded_pre_phase_bytes():
         "a folded axis returns its full cell count and no periodic duplicate"
     )
     assert readback.hexdigest() == _EVEN_XY_READBACK_DIGEST, (
-        "even X/Y quadrant unfolding changed its bytes; the CPU-MEEP comparisons run "
-        "through to_meep_array and were measured on the old ones"
+        "even X/Y quadrant unfolding changed its bytes; the readback's MEEP word compare "
+        "runs through to_meep_array and was measured on these"
     )
 
 
@@ -2155,7 +2520,9 @@ def test_an_even_xy_fold_is_byte_identical_to_the_recorded_pre_phase_bytes():
 #
 # The kernel is small, so these are value tests against MEEP's own expressions rather
 # than against a re-run of the engine: calc_nonlinear_u term for term, the four-point
-# Yee sum cell index by cell index, and the two properties that carry the physics —
+# Yee sum cell index by cell index and in MEEP's left-to-right association, Dsqr in
+# MEEP's double precision, the mirror ghost written as its image, and the two
+# properties that carry the physics —
 # zero nonlinearity byte-identical to the linear path, and real/imaginary parts
 # nonlinearized independently the way MEEP's DOCMP loop does it.
 # --------------------------------------------------------------------------------------
@@ -2361,6 +2728,186 @@ def test_dsqr_is_the_component_plus_the_quarter_weighted_transverse_means():
     numpy.testing.assert_allclose(numpy.asarray(dsqr), 27.0, rtol=1e-6)
 
 
+def test_the_transverse_sum_associates_left_to_right_as_meep_does():
+    """``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]`` word for word, step_generic.cpp:646-648.
+
+    The integer test above pins WHICH four cells are summed; this one pins the ORDER the
+    float32 additions round in, on operands whose sums are inexact. Restated with explicit
+    periodic indices and numpy.float32 scalars, one rounding per addition, left to right.
+    The positive control is the pairing the array path used before, ``(g[i] + g[i-s1]) +
+    (g[i+s] + g[i+(s-s1)])``: the same sum in exact arithmetic, and it must differ in some
+    word on this seed, or the comparison could not see the association at all. Phase-0
+    leg P0-h measured the pairing at 79,850 to 2,056,001 stored words off MEEP 1.33.0 on
+    three of its four unfolded nonlinear cases, and this order at none.
+    """
+    fields = _nonlinear_fields(chi3=1e-3, cell_size=(0.5, 0.7, 0.4), complex_fields=False)
+    generator = numpy.random.default_rng(20261007)
+    for name in ("Dx", "Dy", "Dz"):
+        getattr(fields, name)[...] = generator.standard_normal(fields.grid.shape).astype(numpy.float32)
+    displacement = stepping._nonlinear_displacement(fields, None)
+
+    paired_differs = 0
+    for component, own_axis in (("Ex", 0), ("Ey", 1), ("Ez", 2)):
+        first, second = stepping._nonlinear_transverse_sums(fields, component, displacement)
+        for offset, produced in ((1, first), (2, second)):
+            partner_axis = (own_axis + offset) % 3
+            values = numpy.asarray(getattr(fields, "D" + "xyz"[partner_axis]))
+            shape = values.shape
+            expected = numpy.zeros(shape, dtype=numpy.float32)
+            paired = numpy.zeros(shape, dtype=numpy.float32)
+            for i in range(shape[0]):
+                for j in range(shape[1]):
+                    for k in range(shape[2]):
+                        cell = (i, j, k)
+                        up = neighbour(cell, own_axis, +1, shape)
+                        down = neighbour(cell, partner_axis, -1, shape)
+                        corner = neighbour(down, own_axis, +1, shape)
+                        g, g_up, g_down, g_corner = (numpy.float32(values[c]) for c in (cell, up, down, corner))
+                        expected[cell] = ((g + g_up) + g_down) + g_corner
+                        paired[cell] = (g + g_down) + (g_up + g_corner)
+            assert numpy.asarray(produced).tobytes() == expected.tobytes(), (
+                f"{component}'s partner {'xyz'[partner_axis]} sum is not MEEP's left-to-right order")
+            paired_differs += int(numpy.count_nonzero(paired.view(numpy.uint32) != expected.view(numpy.uint32)))
+    assert paired_differs > 0, "the pair association matched MEEP's order on every cell; the test is blind"
+
+
+def test_dsqr_is_formed_in_double_and_rounded_once_as_meeps_c_does():
+    """``0.0625`` is a double literal, so MEEP's Dsqr is ``float(double(gs*gs) + 0.0625*double(t))``.
+
+    ``gs*gs`` and ``t = g1s*g1s + g2s*g2s`` are float32 operations; the scale and the
+    addition after it are double ones, and calc_nonlinear_u's ``realnum`` parameter rounds
+    once (step_generic.cpp:542, :646-654). Against the all-float32 form the two can differ
+    only where the exact ``0.0625*t`` lies below float32's normal range, where the float32
+    product drops bits before the addition (phase-0 leg P0-h: 12,568,559 of 396,821,530
+    operand pairs, 0 outside that band). Both bands are checked: operands at those scales
+    must reproduce the double form and differ from the float32 one somewhere (or the test
+    is blind), and field-scale operands must give the same word either way.
+    """
+    generator = numpy.random.default_rng(20261007)
+
+    def operands(exponents, size):
+        mantissa = generator.random((3, size)) + 1.0
+        exponent = generator.integers(exponents[0], exponents[1], (3, size))
+        sign = numpy.where(generator.random((3, size)) < 0.5, -1.0, 1.0)
+        return (sign * numpy.ldexp(mantissa, exponent)).astype(numpy.float32)
+
+    tiny = float(numpy.finfo(numpy.float32).tiny)
+    for exponents, must_differ in (((-66, -58), True), ((-8, 4), False)):
+        gs, g1s, g2s = operands(exponents, 20000)
+        produced = numpy.asarray(stepping._nonlinear_dsqr(gs, (g1s, g2s), stepping._WHOLE))
+        square = gs * gs
+        transverse = g1s * g1s + g2s * g2s
+        meep = (square.astype(numpy.float64) + 0.0625 * transverse.astype(numpy.float64)).astype(numpy.float32)
+        single = square + numpy.float32(0.0625) * transverse
+        assert produced.dtype == numpy.float32
+        assert produced.tobytes() == meep.tobytes(), "Dsqr is not MEEP's double-precision expression"
+        differ = meep.view(numpy.uint32) != single.view(numpy.uint32)
+        in_band = 0.0625 * transverse.astype(numpy.float64) < tiny
+        assert not numpy.any(differ & ~in_band), "the two forms differ outside the subnormal band"
+        if must_differ:
+            assert numpy.any(differ), "no operand pair separated the double form from the float32 one"
+        else:
+            assert not numpy.any(differ)
+
+
+def _folded_nonlinear_pml_fields(nonlinear: bool) -> tuple:  # A folded PML Fields with D mirror-filled.
+    grid = Grid(resolution=10.0, cell_size=(1.2, 1.0, 1.1), symmetry=(Mirror("Y", -1), Mirror("Z", +1)))
+    fields = Fields(grid=grid, force_complex_fields=False)
+    fields.set_background_eps(2.25)
+    if nonlinear:
+        fields.set_nonlinear_volumes({name: 0.0 for name in ("Ex", "Ey", "Ez")},
+                                     {name: 0.05 for name in ("Ex", "Ey", "Ez")})
+    fields.enable_field_storage()
+    pml = PML(grid=grid, thickness=3)
+    fields.enable_pml_storage()
+    generator = numpy.random.default_rng(20261007)
+    for name in ("Dx", "Dy", "Dz"):
+        getattr(fields, name)[...] = generator.standard_normal(getattr(fields, name).shape)
+    stepping.fill_symmetry_bc_D(fields)  # D's ghosts are their images, as after step_D.
+    return fields, pml
+
+
+def _ghost_rows_off_later_planes(fields: Fields, component: str) -> list:  # (axis, phase, ghost, image, keep).
+    parities = stepping._mirror_phases(fields.grid)
+    axes = [axis for axis in range(3) if parities[axis] is not None and IYEE_SHIFTS[component][axis] == 0]
+    rows = []
+    for position, axis in enumerate(axes):
+        phase = stepping._symmetry_phase(component, axis, parities[axis])
+        ghost = (slice(None),) * axis + (0,)
+        image = (slice(None),) * axis + (stepping.MIRROR_SOURCE_INDEX,)
+        face_shape = list(fields.grid.shape)
+        del face_shape[axis]
+        keep = numpy.ones(face_shape, dtype=bool)
+        for later in axes[position + 1:]:  # a later axis's pass rewrites the corner with both parities
+            cut = [slice(None), slice(None)]
+            cut[later - 1 if later > axis else later] = 0
+            keep[tuple(cut)] = False
+        rows.append((axis, phase, ghost, image, keep))
+    return rows
+
+
+def test_a_folded_nonlinear_update_writes_each_e_ghost_as_its_image(monkeypatch):
+    """MEEP's ``step_boundaries(WE_stuff)`` / ``(E_stuff)``: ghosts are images, never evaluated.
+
+    update_eh loops over owned points only (update_eh.cpp:191) and the boundary pass then
+    writes each mirror ghost as the parity image of its owned cell, E and W alike
+    (step.cpp:105-121). The array path evaluates the whole stored volume, which is the
+    image while the update is pointwise -- the linear run below shows it is, with no write.
+    The nonlinear Dsqr reads the transverse partners' neighbours, so at a ghost it is not:
+    the control removes the write and must see a ghost that is not its image (phase-0 leg
+    P0-h: without the write the folded nonlinear case leaves MEEP at ghost E words from
+    step 68 and owned words from step 90). ``f_w`` is imaged only on the accumulation's
+    cells: a sentinel in every other ``f_w`` word survives.
+    """
+    sentinel = numpy.float32(1.25e7)
+    # Linear: the pointwise update already leaves every E ghost its image, and nothing writes it.
+    calls = []
+    linear, linear_pml = _folded_nonlinear_pml_fields(nonlinear=False)
+    monkeypatch.setattr(stepping, "_image_nonlinear_mirror_ghosts", lambda *args: calls.append(args))
+    stepping.update_E(linear, linear_pml)
+    assert calls == [], "a linear run took the nonlinear ghost write"
+    for component in ("Ex", "Ey", "Ez"):
+        field = numpy.asarray(getattr(linear, component))
+        for _axis, phase, ghost, image, keep in _ghost_rows_off_later_planes(linear, component):
+            assert numpy.array_equal((phase * field[image])[keep], field[ghost][keep])
+
+    # Nonlinear, with the write removed: some E ghost is not its image (the control).
+    control, control_pml = _folded_nonlinear_pml_fields(nonlinear=True)
+    stepping.update_E(control, control_pml)
+    off = 0
+    for component in ("Ex", "Ey", "Ez"):
+        field = numpy.asarray(getattr(control, component))
+        for _axis, phase, ghost, image, keep in _ghost_rows_off_later_planes(control, component):
+            off += int(numpy.count_nonzero((phase * field[image])[keep] != field[ghost][keep]))
+    assert off > 0, "without the write every nonlinear E ghost was already its image; the test is blind"
+    monkeypatch.undo()
+
+    # Nonlinear, as shipped: every E ghost is its image; f_w only on the accumulation's cells.
+    fields, pml = _folded_nonlinear_pml_fields(nonlinear=True)
+    stepping.update_E(fields, pml)
+    plan = fields.region_plan
+    for component in ("Ex", "Ey", "Ez"):
+        fw = getattr(fields, "f_w_" + component)
+        outside = numpy.broadcast_to(plan.mask("constitutive", component, numpy, outside=True), fw.shape)
+        assert numpy.any(outside), f"{component}: no cell outside the accumulation; the sentinel proves nothing"
+        fw[outside] = sentinel
+    stepping.update_E(fields, pml)
+    imaged = 0
+    for component in ("Ex", "Ey", "Ez"):
+        field = numpy.asarray(getattr(fields, component))
+        fw = numpy.asarray(getattr(fields, "f_w_" + component))
+        inside = numpy.broadcast_to(plan.mask("constitutive", component, numpy), fw.shape)
+        assert numpy.all(fw[~inside] == sentinel), f"{component}: an f_w word outside the accumulation moved"
+        for _axis, phase, ghost, image, keep in _ghost_rows_off_later_planes(fields, component):
+            assert numpy.array_equal((phase * field[image])[keep], field[ghost][keep]), (
+                f"{component}: an E ghost is not the parity image of its owned cell")
+            face_inside = inside[ghost] & keep
+            assert numpy.array_equal((phase * fw[image])[face_inside], fw[ghost][face_inside]), (
+                f"{component}: an f_w ghost on the accumulation's cells is not its image")
+            imaged += int(numpy.count_nonzero(face_inside))
+    assert imaged > 0, "no f_w ghost lies on the accumulation's cells; the f_w half proves nothing"
+
+
 def test_real_and_imaginary_parts_are_nonlinearized_independently():
     """MEEP's DOCMP loop runs the whole nonlinear update once per Cartesian part.
 
@@ -2505,8 +3052,8 @@ def test_nonlinear_margin_reports_the_pade_denominator_and_the_expansion_paramet
 
 
 @pytest.mark.parametrize("case", ["x_even", "y_odd", "z_even", "xy_mixed", "xyz_odd"])
-def test_a_folded_chi3_run_reproduces_the_full_domain_run_bit_for_bit(case):
-    """The fold equivalence, with a live chi3 — the same zero-tolerance bar.
+def test_a_folded_chi3_run_reproduces_the_full_domain_run_to_rounding(case):
+    """The fold equivalence, with a live chi3, held to :data:`FOLD_ROUNDING_BOUND`.
 
     The nonlinearity is the first part of the constitutive update that is NOT
     pointwise: MEEP's ``Dsqr`` averages the two transverse D components onto the
@@ -2522,8 +3069,8 @@ def test_a_folded_chi3_run_reproduces_the_full_domain_run_bit_for_bit(case):
     :func:`test_a_chi2_medium_is_refused_on_a_plane_that_makes_its_component_odd`.
 
     Same harness as the linear case above: a compact blob projected onto the mirror
-    subspace, few enough steps that the far face stays dark, and equality at zero
-    tolerance because every operation involved is +, - and * on real coefficients.
+    subspace and few enough steps that the far face stays dark. The chi3 factor rounds,
+    so the bar is the rounding bound (measured at most 3.0 units here), not zero.
     """
     planes = FOLD_CASES[case]
     # A wider cell and fewer steps than the linear case: the transverse Yee average
@@ -2563,11 +3110,10 @@ def test_a_folded_chi3_run_reproduces_the_full_domain_run_bit_for_bit(case):
                 f"{case}: the far {'xyz'[axis]} face of {component} is live, so the two runs no "
                 f"longer terminate the same system and this equivalence proves nothing")
 
-    for component in PRIMARY_COMPONENTS + ("Ex", "Ey", "Ez"):
-        reference = _fold(numpy.asarray(getattr(full, component)), planes, full_grid.shape_full)
-        numpy.testing.assert_array_equal(
-            numpy.asarray(getattr(folded, component)), reference,
-            err_msg=f"{case}: folded nonlinear {component} differs from the full-domain quadrant")
+    excess = _fold_excess(folded, full, planes, PRIMARY_COMPONENTS + ("Ex", "Ey", "Ez"))
+    assert max(excess.values()) <= FOLD_ROUNDING_BOUND, (
+        f"{case}: folded nonlinear run differs from the full-domain quadrant beyond rounding "
+        f"(units of 2**-24 of each component's peak): {excess}")
     # Positive control: the nonlinearity must actually have moved the field, or this
     # is the linear fold test wearing a different name.
     linear = Fields(grid=full_grid, force_complex_fields=True)
@@ -2892,17 +3438,38 @@ def test_a_metallic_run_is_byte_identical_to_the_same_run_spelled_with_pairs(cel
 # reverted found all ten cases below byte-identical, and these digests are that result
 # frozen. A change here is a change to the periodic arithmetic, which invalidates the
 # floors in `driver.py`'s docstrings — not something to re-bless without re-measuring.
+#
+# Moved 2026-10-06, all ten, with the curl bracket and the PML constitutive grouping
+# (the note above _COMPLEX_CORE_DIGEST), re-derived by this test's own procedure. The
+# three PML cases moved again 2026-10-07 with the PML forms chosen per structure chunk
+# (bit_parity_0_10 WP AP4), re-derived the same way; the seven without a layer did not
+# move. All ten moved again 2026-10-07 with the double-precision source deposit
+# (bit_parity_0_10 WP AP5: each case drives a CW point source, whose deposit is now
+# MEEP's float(double(f) - real((amp * current) * dt))), re-derived by this test's own
+# procedure (two runs, equal). The floors in `driver.py`'s docstrings were measured on
+# the previous bytes and are re-measured with the corpus comparison of these changes.
+# Five moved again 2026-10-07 with complex storage formed part by part (bit_parity_0_10
+# WP AP6a), re-derived by this test's own procedure (two runs, equal): the three Bloch
+# cases because a phased axis now stores MEEP's owned window (stored cell 0 of a
+# Yee-shift-0 component is lc + 2N, so its words change by design) and forms the
+# connection in MEEP's float form; the two mirror cases in signed zeros only (600 of
+# 52,800 and 1,001 of 41,472 words, 0 values), because the mirror ghost is now the
+# exact negation per part instead of a complex product by (-1 + 0j). The five other
+# complex cases did not move: the part-wise products equal NumPy's on their words.
+# "dispersive" moved again 2026-10-08 with the polarization update in MEEP's float32
+# constants and grouping (bit_parity_0_10 WP AP6f), re-derived by this test's own procedure
+# (two runs, equal); the nine cases without a susceptibility did not move.
 _PERIODIC_BYTE_PINS = {
-    "plain_periodic": "584a248b233696b5",
-    "plain_periodic_real": "2323a3382c1274f9",
-    "bloch": "bb1a4354ea455b75",
-    "bloch_bz_edge": "c8795539e853c359",
-    "pml_uniform": "00fad1285c52ce41",
-    "pml_z_bloch": "a3f82ce820ed28f9",
-    "symmetry_X": "5ac1e340782e43c5",
-    "symmetry_XY_pml": "c8e36362cd00a535",
-    "dispersive": "785680b2d022d8fb",
-    "odd_counts": "7e83d523eb295e28",
+    "plain_periodic": "be7d20a067d593a9",
+    "plain_periodic_real": "ed44c10d0c2de665",
+    "bloch": "0704192f85fbec00",
+    "bloch_bz_edge": "56388122d01252af",
+    "pml_uniform": "21dc620c59fb4b78",
+    "pml_z_bloch": "050db2662bdcf1fc",
+    "symmetry_X": "c23d4a6610d14271",
+    "symmetry_XY_pml": "7f85174b7af49f8c",
+    "dispersive": "eebff0a2544473df",
+    "odd_counts": "e49d7a33f9c748cb",
 }
 
 _PERIODIC_BYTE_CASES = {
@@ -3115,9 +3682,10 @@ def test_bfast_d_side_negates_both_k_and_the_b_side_does_not():
 
 def test_bfast_state_advances_by_the_tustin_recursion_not_a_backward_difference():
     # F_n = S_n - F_{n-1} with output F_n - F_{n-1}. Dropping the `- F_{n-1}` from the
-    # state update (the shape of MEEP's own inconsistency at step_generic.cpp:376) turns
-    # the bilinear derivative into a backward difference at twice the amplitude — a
-    # smooth, stable, wrong run.
+    # state update of a two-partner component turns the bilinear derivative into a
+    # backward difference at twice the amplitude — a smooth, stable, wrong run. (MEEP's
+    # own plain one-partner line has that shape, step_generic.cpp:373-379, where its k is
+    # zero: test_bfast_one_partner_plain_branch_stores_no_previous_state.)
     k = (0.35, 0.0, 0.0)
     fields = _bfast_fields(k)
     term = {t.target: t for t in stepping.B_CURL_TERMS}["By"]
@@ -3229,28 +3797,33 @@ def test_bfast_storage_exists_without_a_pml_and_without_a_conductivity():
 
 def test_bfast_partner_on_an_invariant_axis_contributes_nothing():
     # MEEP's have_p / have_m (fields.cpp:428-455) are false when the derivative
-    # direction is not one the grid resolves, and step_db.cpp:131-134 then forces that
-    # k to zero. This is NOT the same thing the curl gets for free: an invariant axis
-    # makes the curl's DIFFERENCE an exact zero on its own, but the BFAST SUM of the
-    # same two samples is 2*g, so omitting the guard adds a term MEEP does not have.
+    # direction is not one the grid resolves. step_db.cpp:130-133 then forces the k
+    # indexed by that partner's presence to zero, and step_db hands step_bfast a NULL
+    # pointer for the partner itself, so its sum is not formed at all
+    # (step_generic.cpp:342-346 swaps a missing g1 for g2). This is NOT what the curl
+    # gets for free: an invariant axis makes the curl's DIFFERENCE an exact zero on its
+    # own, but the BFAST SUM of the same two samples is 2*g.
     k = (0.4, 0.3, 0.2)
     two_d = _bfast_fields(k, cell_size=(0.6, 0.7, 0.0), dimensions=2)
     assert two_d.grid.is_invariant(2)
     seed(two_d, ("Dx", "Dy", "Dz", "Bx", "By", "Bz"), 21)
     snapshots = stepping._component_snapshot(two_d, ("Ex", "Ey", "Ez"))
     # Bx: first = Ez on axis Y, second = Ey on axis Z. Z is invariant, so have_m is
-    # false and k1 (the k on Ez) is zero; only the k2 term survives.
+    # false: Ey is MEEP's NULL g2 (the k_z term on it does not exist) and k1, the k on
+    # Ez, is zero. The absent partner's shifted operand is not even gathered.
     term = {t.target: t for t in stepping.B_CURL_TERMS}["Bx"]
+    presence = stepping.curl_presence(two_d.grid, term)
+    assert presence == (True, False)
     operands = stepping._curl_operands(numpy, snapshots, term, (stepping.PERIODIC,) * 3,
-                                       (None, None, None), (None, None, None), backward=False)
+                                       (None, None, None), (None, None, None), backward=False,
+                                       gather=presence)
     increment = stepping._bfast_term(two_d, term, operands, magnetic=True)
-    expected = -_bfast_reference_sum(two_d, term, 0.0, k[stepping._bfast_axis(term.first)],
-                                     backward=False)
-    assert numpy.allclose(increment, expected, atol=1e-6)
-    # The unguarded reading is a different, nonzero field — the guard is load-bearing.
+    assert numpy.all(increment == 0)
+    # The unguarded reading puts k_y on Ez: a different, nonzero field — the guard is
+    # load-bearing.
     unguarded = -_bfast_reference_sum(two_d, term, k[stepping._bfast_axis(term.second)],
-                                      k[stepping._bfast_axis(term.first)], backward=False)
-    assert not numpy.allclose(increment, unguarded, atol=1e-6)
+                                      0.0, backward=False)
+    assert float(numpy.abs(unguarded).max()) > 0.0
 
 
 def test_bfast_advance_is_masked_where_meeps_owned_loop_never_writes():
@@ -3273,6 +3846,150 @@ def test_bfast_advance_is_masked_where_meeps_owned_loop_never_writes():
     stepping._bfast_term(fields, term, operands, magnetic=True)
     assert numpy.all(fields.f_bfast_Bx[0, :, :] == 0)
     assert float(numpy.abs(fields.f_bfast_Bx[1:, :, :]).max()) > 0.0
+
+
+# --- the folded increments: MEEP's own passes after the curl ----------------------
+#
+# step_db (step_db.cpp:47-175) runs STEP_CURL and then STEP_BFAST on each component, and
+# the special-kz beta pass after every component; each adds its increment through its
+# own additive ladder (step_generic.cpp:255-533). These pin the pass's forms where the
+# MEEP word compare (the complex-family cases bz, bzp, bf) cannot reach: the BFAST
+# state's two roundings, MEEP's plain one-partner line, the ladder's two regions, and
+# an unowned cell left word for word.
+
+
+def test_bfast_state_and_increment_are_meeps_two_roundings():
+    # step_generic.cpp:368-370 (and every two-partner branch): F[i] = S - F[i] is
+    # STORED, one rounding, and raw = F[i] - F_prev is a second one. The one-rounding
+    # spelling S - 2*F_prev is a different float32 word on inexact operands.
+    k = (0.35, 0.0, 0.21)
+    fields = _bfast_fields(k, complex_fields=False)
+    term = {t.target: t for t in stepping.B_CURL_TERMS}["By"]
+    seed(fields, ("Dx", "Dz"), 41)
+    state = fields.f_bfast_By
+    state[...] = (numpy.random.default_rng(42).standard_normal(state.shape) * 3.0).astype(numpy.float32)
+    previous = state.copy()
+    snapshots = stepping._component_snapshot(fields, ("Ex", "Ey", "Ez"))
+    operands = stepping._curl_operands(numpy, snapshots, term, (stepping.PERIODIC,) * 3,
+                                       (None, None, None), (None, None, None), backward=False)
+    k1 = numpy.float32(k[stepping._bfast_axis(term.second)])
+    k2 = numpy.float32(k[stepping._bfast_axis(term.first)])
+    total = ((k1 * (operands.shifted_first + operands.first))
+             - (k2 * (operands.shifted_second + operands.second)))
+    increment = stepping._bfast_term(fields, term, operands, magnetic=True)
+    stored = total - previous
+    assert numpy.array_equal(_words(state), _words(stored))
+    assert numpy.array_equal(_words(increment), _words(-(stored - previous)))
+    one_rounding = -(total - numpy.float32(2.0) * previous)
+    assert not numpy.array_equal(_words(increment), _words(one_rounding))
+
+
+@pytest.mark.parametrize("route", [None, "split", "select", "mask"])
+def test_bfast_one_partner_plain_branch_stores_no_previous_state(route):
+    # step_generic.cpp:373-379: in MEEP's plain branch (no layer in the chunk on either
+    # axis, no conductivity) the one-partner line is F = k1*(g1s + g1) with no "- F";
+    # every branch inside a layer chunk keeps it. The surviving k of a one-partner
+    # component is zero, so a planted F = 1 reads 0 on plain cells and -1 in the layer.
+    def build():
+        grid = Grid(resolution=10.0, cell_size=(0.6, 1.4, 0.0), dimensions=2,
+                    bfast_scaled_k=(0.3, 0.0, 0.0))
+        fields = Fields(grid=grid, force_complex_fields=False)
+        seed(fields, ("Dx", "Dy", "Dz", "Bx", "By", "Bz"), 5)
+        fields.f_bfast_Bx[...] = 1.0
+        return grid, fields
+
+    term = stepping.B_CURL_TERMS[0]  # Bx: dsig y (the layer), dsigu z (invariant); Ez only.
+    # No layer anywhere: the plain line on every cell.
+    grid, fields = build()
+    assert term.target == "Bx" and stepping.curl_presence(grid, term) == (True, False)
+    stepping.step_B(fields)
+    assert numpy.all(fields.f_bfast_Bx == 0.0)
+    # A layer on y: the plain line outside its chunks, "- F" inside them.
+    grid, fields = build()
+    pml = PML(grid=grid, thickness={"y": 3})
+    fields.enable_pml_storage()
+    seed(fields, ("Ex", "Ey", "Ez"), 6)
+    plan = RegionPlan(ChunkLayout.one_rank(grid, pml), grid, pml, route=route)
+    fields.install_region_plan(plan)
+    stepping.step_B(fields, pml)
+    assert stepping._region_plan(fields, pml) is plan
+    state = fields.f_bfast_Bx
+    layer = numpy.broadcast_to(plan.axis_mask(1, "Bx"), state.shape)
+    assert layer.any() and (~layer).any()
+    assert numpy.all(state[~layer] == 0.0)
+    assert numpy.all(state[layer] == -1.0)
+
+
+def test_a_folded_increment_leaves_an_unowned_cell_word_for_word():
+    # MEEP's folded passes loop over owned cells only. The increment reaches the ladder
+    # negated with +0 on the unowned cells and is SUBTRACTED, which keeps every word
+    # there, -0 included; adding a masked +0 instead would turn a stored -0 into +0.
+    grid = Grid(resolution=10.0, cell_size=(1.2, 0.7, 0.8), symmetry=("X",),
+                bfast_scaled_k=(0.0, 0.3, 0.0))
+    fields = Fields(grid=grid, force_complex_fields=True)
+    seed(fields, ("Dx", "Dy", "Dz", "Bx", "By", "Bz"), 31)
+    assert IYEE_SHIFTS["Bx"][0] == 0  # cell 0 of the folded axis is not Bx's to step
+    fields.Bx.real[0] = -0.0
+    fields.Bx.imag[0] = -0.0
+    stepping.step_B(fields)
+    assert numpy.all(numpy.signbit(fields.Bx.real[0])) and numpy.all(numpy.signbit(fields.Bx.imag[0]))
+    assert float(numpy.abs(fields.f_bfast_Bx[1:]).max()) > 0.0  # the pass is live elsewhere
+
+
+@pytest.mark.parametrize("route, layer", [
+    (None, {"x": 3, "y": 3}), ("split", {"x": 3, "y": 3}), ("select", {"x": 3, "y": 3}),
+    ("mask", {"x": 3, "y": 3}),
+    # A layer over the whole of x: every By cell is inside its dsigu chunks.
+    (None, {"x": (6, 6), "y": 3}),
+], ids=["default", "split", "select", "mask", "whole_x"])
+def test_the_beta_pass_runs_after_the_curl_through_its_own_ladder(route, layer):
+    # step_db.cpp:161-175: the special-kz beta increment raw = float32(2*pi*beta*dt*sign)*g
+    # is a pass of its own after every component's curl, through MEEP's ladder
+    # (step_generic.cpp:255-333): f + raw*siginv outside the component's dsigu chunks;
+    # fu + (df = raw*siginv) and f + siginvu*df inside them. Real storage, a layer on
+    # both axes: Bx (dsigu z, invariant) takes the outside form only, By (dsigu x) both,
+    # on each of the region plan's routes.
+    beta = 0.375
+
+    def build(value):
+        grid = Grid(resolution=10.0, cell_size=(1.2, 1.0, 0.0), dimensions=2, beta=value)
+        fields = Fields(grid=grid, force_complex_fields=False)
+        pml = PML(grid=grid, thickness=layer)
+        fields.enable_pml_storage()
+        seed(fields, ("Ex", "Ey", "Ez", "Bx", "By", "Bz", "fu_Bx", "fu_By", "fu_Bz"), 77)
+        fields.install_region_plan(RegionPlan(ChunkLayout.one_rank(grid, pml), grid, pml,
+                                              route=route))
+        return grid, fields, pml
+
+    grid, fields, pml = build(beta)
+    _, curl_only, curl_pml = build(0.0)
+    electric = {name: getattr(fields, name).copy() for name in ("Ex", "Ey")}
+    stepping.step_B(fields, pml)
+    stepping.step_B(curl_only, curl_pml)
+    layout = ChunkLayout.one_rank(grid, pml)
+    if layer["x"] == (6, 6):
+        assert stepping._region_plan(fields, pml).spec("curl", "By").mode == "inside_only"
+    coefficient = 2.0 * math.pi * beta * grid.dt
+    for target, partner, sign in (("Bx", "Ey", +1.0), ("By", "Ex", -1.0)):
+        term = next(t for t in stepping.B_CURL_TERMS if t.target == target)
+        raw = numpy.float32(sign * coefficient) * electric[partner]
+        _, sinv = stepping._curl_coefficients(pml, term.dsig, half_integer=True)
+        _, sinv_u = stepping._curl_coefficients(pml, term.dsigu, half_integer=True)
+        df = raw * sinv
+        axis = stepping.AXIS_NAMES.index(term.dsigu)
+        line = layout.membership(axis, IYEE_SHIFTS[target][axis] == 1)
+        shape = [1, 1, 1]
+        shape[axis] = line.size
+        inside = numpy.broadcast_to(line.reshape(shape), raw.shape)
+        f0, fu0 = getattr(curl_only, target), getattr(curl_only, "fu_" + target)
+        expected_f = numpy.where(inside, f0 + sinv_u * df, f0 + df)
+        expected_fu = numpy.where(inside, fu0 + df, fu0)
+        assert inside.any() == (target == "By"), target
+        assert numpy.array_equal(_words(getattr(fields, target)), _words(expected_f)), target
+        assert numpy.array_equal(_words(getattr(fields, "fu_" + target)), _words(expected_fu)), target
+    # Bz carries no beta term and steps as the curl alone.
+    assert numpy.array_equal(_words(fields.Bz), _words(curl_only.Bz))
+    assert numpy.array_equal(_words(fields.fu_Bz), _words(curl_only.fu_Bz))
 
 
 # --- the step-loop scratch pool ---------------------------------------------------
@@ -3330,19 +4047,22 @@ def _run_scratch_case(pooled: bool, *, grid_kwargs, pml_thickness, steps,
         ("conductive_pml", dict(grid_kwargs=dict(cell_size=(0.8, 0.8, 0.8)), pml_thickness=2,
                                 steps=8, conductivity=0.4)),
         # Cylindrical is the RISKIEST pooling site and was the last one uncovered: it is
-        # the only place a pooled buffer (`cyl_prefix`, returned as `prefix_ext`) is held
-        # live across an entire curl term loop, and it stacks four pooled temporaries
-        # (`cyl_extended`, `cyl_weighted`, `cyl_increment`, `cyl_prefix`) on two memoized
-        # constants. m=0 and m=1 are both taken because m != 0 adds the i*m/r coupling,
-        # whose factor is the memoized `cyl_imr` array — a key that forgot one of its
-        # inputs would serve a stale factor, which is smooth, plausible and wrong.
-        # No PML: every cylindrical pooled site is in the curl sub-step and is reached
-        # without one, while the r axis's low side is the symmetry axis rather than a
-        # face a layer can sit on.
+        # the only place a pooled buffer (`cyl_radial`, returned as `radial`) is held
+        # live across an entire curl term loop, and it stacks pooled temporaries
+        # (`cyl_extended`, `cyl_weighted`, `cyl_increment`, one `cyl_prefix_<row>` per
+        # chunk start) on memoized constants. m=0 and m=1 are both taken because m != 0
+        # adds the i*m/r pass, whose rinv row is the memoized `cyl_imr_rinv` array — a
+        # key that forgot one of its inputs would serve a stale factor, which is smooth,
+        # plausible and wrong. The layered m=1 case cuts r at the layer's chunk, so the
+        # prefix sums two segments into two pooled buffers, and the i*m/r pass runs its
+        # PML ladders.
         ("cylindrical_m0", dict(grid_kwargs=dict(cell_size=(0.8, 0.0, 0.8), cylindrical=True,
                                                  m=0), pml_thickness=0, steps=8)),
         ("cylindrical_m1", dict(grid_kwargs=dict(cell_size=(0.8, 0.0, 0.8), cylindrical=True,
                                                  m=1), pml_thickness=0, steps=8)),
+        ("cylindrical_m1_pml", dict(grid_kwargs=dict(cell_size=(1.2, 0.0, 1.2), cylindrical=True,
+                                                     m=1), pml_thickness={"x": (0, 3), "z": 2},
+                                    steps=8)),
     ],
 )
 def test_step_scratch_is_bit_identical(label, case):
@@ -3394,6 +4114,7 @@ def test_step_scratch_never_hands_one_buffer_to_two_live_stencil_operands():
             numpy, snapshots, term, (stepping.PERIODIC,) * 3, (None, None, None),
             stepping._mirror_phases(grid), backward=False, scratch=fields.scratch)
         curl = stepping._curl_from_operands(operands, grid.dt / grid.dx,
+                                            stepping.curl_presence(grid, term),
                                             scratch=fields.scratch)
         live = (operands.first, operands.shifted_first,
                 operands.second, operands.shifted_second, curl)

@@ -53,6 +53,7 @@ from .coverage import (  # noqa: E402 - wrappers above define the shared sentine
     FUSED_PAIRS,
     Coverage,
     ade_update_p_coverage,
+    chunk_layout_reasons,
     constitutive_coverage,
     dispersive_constitutive_coverage,
     fused_pair_coverage,
@@ -79,6 +80,7 @@ __all__ = [
     "ade_update_p_coverage",
     "fused_pair_coverage",
     "zero_metal_axes",
+    "chunk_layout_reasons",
     "triton_available",
     "plan_pml_curl",
     "plan_folded_pml_curl",
@@ -99,7 +101,6 @@ __all__ = [
     # The five certified specialized families the planner now consults. Every
     # one is a lazy wrapper: naming them here must not make importing this
     # package import their modules.
-    "load_expansion_probe",
     "complex_pml_curl_coverage",
     "plan_complex_pml_curl",
     "complex_constitutive_coverage",
@@ -196,10 +197,13 @@ def triton_available() -> bool:
 
 
 def plan_pml_curl(fields: Any, pml: Any, sub_step: str,
-                  block: Optional[int] = None) -> Any:
-    """Plan one curl sub-step, or None when the configuration is out of coverage."""
+                  block: Optional[int] = None, chunk_layout: Any = None) -> Any:
+    """Plan one curl sub-step, or None when the configuration is out of coverage.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     from .launch import plan_pml_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block)
+    return _plan(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def folded_pml_curl_coverage(fields: Any, pml: Any) -> Coverage:
@@ -209,10 +213,10 @@ def folded_pml_curl_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_folded_pml_curl(fields: Any, pml: Any, sub_step: str,
-                         block: Optional[int] = None) -> Any:
+                         block: Optional[int] = None, chunk_layout: Any = None) -> Any:
     """Plan one folded PML curl sub-step, or None when refused."""
     from .symmetry import plan_folded_pml_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block)
+    return _plan(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def conductive_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
@@ -222,10 +226,14 @@ def conductive_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Covera
 
 
 def plan_conductive_pml_curl(fields: Any, pml: Any, sub_step: str,
-                             block: Optional[int] = None) -> Any:
-    """Plan one conductive PML curl sub-step, or None when refused."""
+                             block: Optional[int] = None,
+                             chunk_layout: Any = None) -> Any:
+    """Plan one conductive PML curl sub-step, or None when refused.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     from .conductivity import plan_conductive_pml_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block)
+    return _plan(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def plain_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
@@ -255,10 +263,13 @@ def plan_mirror_ghost_fill(fields: Any, family: str,
 
 
 def plan_constitutive(fields: Any, pml: Any, side: str,
-                      block: Optional[int] = None) -> Any:
-    """Plan ``update_H`` (side='H') or ``update_E`` ('E'), or None when refused."""
+                      block: Optional[int] = None, chunk_layout: Any = None) -> Any:
+    """Plan ``update_H`` (side='H') or ``update_E`` ('E'), or None when refused.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     from .launch import plan_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, side, block)
+    return _plan(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def folded_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
@@ -268,10 +279,10 @@ def folded_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
 
 
 def plan_folded_constitutive(fields: Any, pml: Any, side: str,
-                             block: Optional[int] = None) -> Any:
+                             block: Optional[int] = None, chunk_layout: Any = None) -> Any:
     """Plan update_H/update_E on a folded stored extent, or None when refused."""
     from .symmetry import plan_folded_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, side, block)
+    return _plan(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def cylindrical_curl_coverage(fields: Any, pml: Any) -> Coverage:
@@ -281,10 +292,10 @@ def cylindrical_curl_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_cylindrical_curl(fields: Any, pml: Any, sub_step: str,
-                          block: Optional[int] = None) -> Any:
+                          block: Optional[int] = None, chunk_layout: Any = None) -> Any:
     """Plan one strict real m=0 cylindrical curl, or None when refused."""
     from .cylindrical_triton import plan_cylindrical_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block)
+    return _plan(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def cylindrical_constitutive_coverage(fields: Any, pml: Any,
@@ -295,17 +306,22 @@ def cylindrical_constitutive_coverage(fields: Any, pml: Any,
 
 
 def plan_cylindrical_constitutive(fields: Any, pml: Any, side: str,
-                                  block: Optional[int] = None) -> Any:
+                                  block: Optional[int] = None,
+                                  chunk_layout: Any = None) -> Any:
     """Plan the existing constitutive kernel for the admitted Dcyl slice."""
     from .cylindrical_triton import plan_cylindrical_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, side, block)
+    return _plan(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def plan_dispersive_constitutive(fields: Any, pml: Any,
-                                 block: Optional[int] = None) -> Any:
-    """Plan pole-aware dispersive ``update_E``, or None when refused."""
+                                 block: Optional[int] = None,
+                                 chunk_layout: Any = None) -> Any:
+    """Plan pole-aware dispersive ``update_E``, or None when refused.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     from .dispersive_update_e import plan_dispersive_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, block)
+    return _plan(fields, pml, block, chunk_layout=chunk_layout)
 
 
 def dispersive_fused_pair_coverage(fields: Any, pml: Any,
@@ -344,14 +360,17 @@ def plan_ade_update_p(fields: Any, state: Any, block: Optional[int] = None) -> A
 
 def plan_fused_pair(fields: Any, pml: Any, pair: str = "B", sources: Any = None,
                     block: Optional[int] = None,
-                    num_warps: Any = _INHERIT_LAUNCH_DEFAULT) -> Any:
+                    num_warps: Any = _INHERIT_LAUNCH_DEFAULT,
+                    chunk_layout: Any = None) -> Any:
     """Plan the fused ``step_B`` + ``zero_metal_B`` + ``update_H`` launch, or None.
 
     ``sources`` is the driver's source list; ``None`` is a refusal, not an empty
-    set — see :func:`coverage.fused_pair_coverage`.
+    set — see :func:`coverage.fused_pair_coverage`. ``chunk_layout`` is the run's
+    chunk division, ``None`` for the one-rank default.
     """
     from .launch import plan_fused_pair as _plan  # noqa: PLC0415
-    return _plan(fields, pml, pair, sources, block, _num_warps(num_warps))
+    return _plan(fields, pml, pair, sources, block, _num_warps(num_warps),
+                 chunk_layout=chunk_layout)
 
 
 # ---------------------------------------------------------------------------
@@ -363,46 +382,32 @@ def plan_fused_pair(fields: Any, pml: Any, pair: str = "B", sources: Any = None,
 # and each family's own test pins that on a machine with no Triton.
 
 
-def load_expansion_probe(path: Optional[str] = None) -> Any:
-    """Read the complex-multiply expansion probe artifact, or None when absent.
-
-    Three-valued: a record, ``None`` when nothing is offered, or a
-    ``RefusedExpansionProbe`` when this dispatch has already refused the artifact
-    the variable points at. This is the outermost link of the re-export chain
-    ``fastpath`` reads through, and flattening the third value into ``None`` here
-    would hand a refused artifact straight back to the caller that refused it.
-    """
-    from .launch import load_expansion_probe as _reader  # noqa: PLC0415
-    return _reader(path)
-
-
-def complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                              probe: Any = None) -> Coverage:
+def complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Coverage for one complex/Bloch split-field PML curl sub-step."""
     from .launch import complex_pml_curl_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, sub_step, probe)
+    return _coverage(fields, pml, sub_step)
 
 
 def plan_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
-                          block: Optional[int] = None, probe: Any = None) -> Any:
+                          block: Optional[int] = None,
+                          chunk_layout: Any = None) -> Any:
     """Plan one complex/Bloch split-field curl, or None when refused."""
     from .launch import plan_complex_pml_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block, probe)
+    return _plan(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
-def complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                  probe: Any = None) -> Coverage:
+def complex_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """Coverage for the complex/Bloch constitutive sub-step on one side."""
     from .launch import complex_constitutive_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, side, probe)
+    return _coverage(fields, pml, side)
 
 
 def plan_complex_constitutive(fields: Any, pml: Any, side: str,
                               block: Optional[int] = None,
-                              probe: Any = None) -> Any:
+                              chunk_layout: Any = None) -> Any:
     """Plan the complex/Bloch constitutive sub-step, or None when refused."""
     from .launch import plan_complex_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, side, block, probe)
+    return _plan(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def beta_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
@@ -418,19 +423,17 @@ def plan_beta_pml_curl(fields: Any, pml: Any, sub_step: str,
     return _plan(fields, pml, sub_step, block)
 
 
-def beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                 probe: Any = None) -> Coverage:
+def beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Coverage for one COMPLEX special_kz curl sub-step."""
     from .launch import beta_bloch_pml_curl_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, sub_step, probe)
+    return _coverage(fields, pml, sub_step)
 
 
 def plan_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
-                             block: Optional[int] = None,
-                             probe: Any = None) -> Any:
+                             block: Optional[int] = None) -> Any:
     """Plan one COMPLEX special_kz curl, or None when refused."""
     from .launch import plan_beta_bloch_pml_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block, probe)
+    return _plan(fields, pml, sub_step, block)
 
 
 def beta_run_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
@@ -446,19 +449,17 @@ def plan_beta_run_constitutive(fields: Any, pml: Any, side: str,
     return _plan(fields, pml, side, block)
 
 
-def beta_run_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                           probe: Any = None) -> Coverage:
+def beta_run_complex_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """Coverage for the certified COMPLEX constitutive kernel on a beta run."""
     from .launch import beta_run_complex_constitutive_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, side, probe)
+    return _coverage(fields, pml, side)
 
 
 def plan_beta_run_complex_constitutive(fields: Any, pml: Any, side: str,
-                                       block: Optional[int] = None,
-                                       probe: Any = None) -> Any:
+                                       block: Optional[int] = None) -> Any:
     """Plan the certified COMPLEX constitutive sub-step for a beta run."""
     from .launch import plan_beta_run_complex_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, side, block, probe)
+    return _plan(fields, pml, side, block)
 
 
 def bfast_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
@@ -494,10 +495,14 @@ def nonlinear_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_nonlinear_constitutive(fields: Any, pml: Any,
-                                block: Optional[int] = None) -> Any:
-    """Plan the chi2/chi3 Pade ``update_E``, or None when refused."""
+                                block: Optional[int] = None,
+                                chunk_layout: Any = None) -> Any:
+    """Plan the chi2/chi3 Pade ``update_E``, or None when refused.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     from .launch import plan_nonlinear_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, block)
+    return _plan(fields, pml, block, chunk_layout=chunk_layout)
 
 
 def offdiag_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
@@ -507,10 +512,11 @@ def offdiag_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_offdiagonal_constitutive(fields: Any, pml: Any,
-                                  block: Optional[int] = None) -> Any:
+                                  block: Optional[int] = None,
+                                  chunk_layout: Any = None) -> Any:
     """Plan the off-diagonal row-product ``update_E``, or None when refused."""
     from .launch import plan_offdiagonal_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, block)
+    return _plan(fields, pml, block, chunk_layout=chunk_layout)
 
 
 # ---------------------------------------------------------------------------
@@ -530,19 +536,18 @@ def plan_offdiagonal_constitutive(fields: Any, pml: Any,
 # neither Triton nor a device.
 
 
-def folded_complex_composition_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                             probe: Any = None) -> Coverage:
+def folded_complex_composition_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Routing coverage for one folded complex/Bloch PML curl sub-step (K1)."""
     from .launch import folded_complex_composition_curl_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, sub_step, probe)
+    return _coverage(fields, pml, sub_step)
 
 
 def plan_folded_complex_pml_curl(fields: Any, pml: Any, sub_step: str,
                                  block: Optional[int] = None,
-                                 probe: Any = None) -> Any:
+                                 chunk_layout: Any = None) -> Any:
     """Plan one folded complex/Bloch PML curl (K1), or None when refused."""
     from .launch import plan_folded_complex_pml_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block, probe)
+    return _plan(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def folded_beta_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
@@ -558,56 +563,50 @@ def plan_folded_beta_pml_curl(fields: Any, pml: Any, sub_step: str,
     return _plan(fields, pml, sub_step, block)
 
 
-def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                        probe: Any = None) -> Coverage:
+def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Coverage for one folded COMPLEX special_kz curl sub-step (K3b)."""
     from .launch import folded_beta_bloch_pml_curl_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, sub_step, probe)
+    return _coverage(fields, pml, sub_step)
 
 
 def plan_folded_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
-                                    block: Optional[int] = None,
-                                    probe: Any = None) -> Any:
+                                    block: Optional[int] = None) -> Any:
     """Plan one folded COMPLEX special_kz curl (K3b), or None when refused."""
     from .launch import plan_folded_beta_bloch_pml_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block, probe)
+    return _plan(fields, pml, sub_step, block)
 
 
-def folded_mirror_ghost_fill_complex_coverage(fields: Any, family: str,
-                                              probe: Any = None) -> Coverage:
+def folded_mirror_ghost_fill_complex_coverage(fields: Any, family: str) -> Coverage:
     """Coverage for one folded family's ghost fills on COMPLEX storage (K2)."""
     from .launch import folded_mirror_ghost_fill_complex_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, family, probe)
+    return _coverage(fields, family)
 
 
 def plan_folded_mirror_ghost_fill_complex(fields: Any, family: str,
-                                          block: Optional[int] = None,
-                                          probe: Any = None) -> Any:
+                                          block: Optional[int] = None) -> Any:
     """Plan one complex-storage mirror-fill (K2), or None when refused.
 
-    ITS TWO PASSES MAY NOT BE FUSED — the driver puts ``zero_metal_*`` between
-    them and complex float multiplication is not associative. The contract is
-    written out on ``launch.plan_folded_mirror_ghost_fill_complex``; it is
-    repeated as a pointer here because this is the name a caller outside the
-    package binds to.
+    ITS TWO PASSES ARE LAUNCHED SEPARATELY — the driver puts ``zero_metal_*``
+    between them. The contract is written out on
+    ``launch.plan_folded_mirror_ghost_fill_complex``; it is repeated as a pointer
+    here because this is the name a caller outside the package binds to.
     """
     from .launch import plan_folded_mirror_ghost_fill_complex as _plan  # noqa: PLC0415
-    return _plan(fields, family, block, probe)
+    return _plan(fields, family, block)
 
 
-def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                         probe: Any = None) -> Coverage:
+def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """Coverage for the certified complex constitutive kernel on a folded run."""
     from .launch import folded_complex_constitutive_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, side, probe)
+    return _coverage(fields, pml, side)
 
 
 def plan_folded_complex_constitutive(fields: Any, pml: Any, side: str,
                                      block: Optional[int] = None,
-                                     probe: Any = None) -> Any:
+                                     chunk_layout: Any = None) -> Any:
     """Plan the complex constitutive sub-step for a folded run, or None."""
     from .launch import plan_folded_complex_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, side, block, probe)
+    return _plan(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def folded_beta_run_constitutive_coverage(fields: Any, pml: Any,
@@ -618,10 +617,11 @@ def folded_beta_run_constitutive_coverage(fields: Any, pml: Any,
 
 
 def plan_folded_beta_run_constitutive(fields: Any, pml: Any, side: str,
-                                      block: Optional[int] = None) -> Any:
+                                      block: Optional[int] = None,
+                                      chunk_layout: Any = None) -> Any:
     """Plan the REAL constitutive sub-step for a folded beta run, or None."""
     from .launch import plan_folded_beta_run_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, side, block)
+    return _plan(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def folded_offdiag_composition_coverage(fields: Any, pml: Any) -> Coverage:
@@ -631,40 +631,38 @@ def folded_offdiag_composition_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_folded_offdiagonal_constitutive(fields: Any, pml: Any,
-                                         block: Optional[int] = None) -> Any:
+                                         block: Optional[int] = None,
+                                         chunk_layout: Any = None) -> Any:
     """Plan the folded off-diagonal row-product ``update_E``, or None."""
     from .launch import plan_folded_offdiagonal_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, block)
+    return _plan(fields, pml, block, chunk_layout=chunk_layout)
 
 
-def cylindrical_complex_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                      probe: Any = None) -> Coverage:
+def cylindrical_complex_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Coverage for one complex Dcyl curl sub-step (|m| >= 1)."""
     from .launch import cylindrical_complex_curl_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, sub_step, probe)
+    return _coverage(fields, pml, sub_step)
 
 
 def plan_cylindrical_complex_curl(fields: Any, pml: Any, sub_step: str,
-                                  block: Optional[int] = None,
-                                  probe: Any = None) -> Any:
+                                  block: Optional[int] = None, chunk_layout: Any = None) -> Any:
     """Plan one complex Dcyl curl, or None when refused."""
     from .launch import plan_cylindrical_complex_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block, probe)
+    return _plan(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
-def cylindrical_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                              probe: Any = None) -> Coverage:
+def cylindrical_complex_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """Coverage for the certified complex constitutive kernel on a Dcyl slice."""
     from .launch import cylindrical_complex_constitutive_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, side, probe)
+    return _coverage(fields, pml, side)
 
 
 def plan_cylindrical_complex_constitutive(fields: Any, pml: Any, side: str,
                                           block: Optional[int] = None,
-                                          probe: Any = None) -> Any:
+                                          chunk_layout: Any = None) -> Any:
     """Plan the complex constitutive sub-step for the Dcyl slice, or None."""
     from .launch import plan_cylindrical_complex_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, side, block, probe)
+    return _plan(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def null_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
@@ -693,10 +691,14 @@ def nonlinear_run_pml_curl_coverage(fields: Any, pml: Any,
 
 
 def plan_nonlinear_run_pml_curl(fields: Any, pml: Any, sub_step: str,
-                                block: Optional[int] = None) -> Any:
-    """Plan the certified real PML curl for a chi2/chi3 run, or None."""
+                                block: Optional[int] = None,
+                                chunk_layout: Any = None) -> Any:
+    """Plan the certified real PML curl for a chi2/chi3 run, or None.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     from .launch import plan_nonlinear_run_pml_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block)
+    return _plan(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
 def nonlinear_run_constitutive_coverage(fields: Any, pml: Any,
@@ -707,10 +709,14 @@ def nonlinear_run_constitutive_coverage(fields: Any, pml: Any,
 
 
 def plan_nonlinear_run_constitutive(fields: Any, pml: Any, side: str,
-                                    block: Optional[int] = None) -> Any:
-    """Plan the certified constitutive sub-step for a chi2/chi3 run, or None."""
+                                    block: Optional[int] = None,
+                                    chunk_layout: Any = None) -> Any:
+    """Plan the certified constitutive sub-step for a chi2/chi3 run, or None.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     from .launch import plan_nonlinear_run_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, side, block)
+    return _plan(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def folded_dispersive_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
@@ -720,10 +726,14 @@ def folded_dispersive_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
 
 
 def plan_folded_dispersive_constitutive(fields: Any, pml: Any,
-                                        block: Optional[int] = None) -> Any:
-    """Plan the certified dispersive ``update_E`` for a folded run, or None."""
+                                        block: Optional[int] = None,
+                                        chunk_layout: Any = None) -> Any:
+    """Plan the certified dispersive ``update_E`` for a folded run, or None.
+
+    ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default.
+    """
     from .launch import plan_folded_dispersive_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, block)
+    return _plan(fields, pml, block, chunk_layout=chunk_layout)
 
 
 def folded_offdiag_dispersive_constitutive_coverage(
@@ -742,34 +752,32 @@ def plan_folded_offdiag_dispersive_constitutive(
     return _plan(fields, pml, block)
 
 
-def folded_complex_offdiag_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                             probe: Any = None) -> Coverage:
+def folded_complex_offdiag_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Coverage for K1's curl on a folded complex run carrying an off-diagonal row."""
     from .launch import folded_complex_offdiag_pml_curl_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, sub_step, probe)
+    return _coverage(fields, pml, sub_step)
 
 
 def plan_folded_complex_offdiag_pml_curl(fields: Any, pml: Any, sub_step: str,
                                          block: Optional[int] = None,
-                                         probe: Any = None) -> Any:
-    """Plan K1's certified curl for that run, or None."""
+                                         chunk_layout: Any = None) -> Any:
+    """Plan K1's curl for that run, or None."""
     from .launch import plan_folded_complex_offdiag_pml_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block, probe)
+    return _plan(fields, pml, sub_step, block, chunk_layout=chunk_layout)
 
 
-def folded_complex_offdiag_constitutive_coverage(fields: Any, pml: Any, side: str,
-                                                 probe: Any = None) -> Coverage:
+def folded_complex_offdiag_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """Coverage for that run's ``update_H``. ``side='E'`` is refused by name."""
     from .launch import folded_complex_offdiag_constitutive_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, side, probe)
+    return _coverage(fields, pml, side)
 
 
 def plan_folded_complex_offdiag_constitutive(fields: Any, pml: Any, side: str,
                                              block: Optional[int] = None,
-                                             probe: Any = None) -> Any:
-    """Plan the certified complex constitutive sub-step for that run, or None."""
+                                             chunk_layout: Any = None) -> Any:
+    """Plan the complex constitutive sub-step for that run, or None."""
     from .launch import plan_folded_complex_offdiag_constitutive as _plan  # noqa: PLC0415
-    return _plan(fields, pml, side, block, probe)
+    return _plan(fields, pml, side, block, chunk_layout=chunk_layout)
 
 
 def no_pml_ade_update_p_coverage(fields: Any, pml: Any, state: Any,
@@ -787,19 +795,17 @@ def plan_no_pml_ade_update_p(fields: Any, pml: Any, state: Any,
 
 
 def complex_ade_update_p_coverage(fields: Any, pml: Any, state: Any,
-                                  component: str,
-                                  probe: Any = None) -> Coverage:
+                                  component: str) -> Coverage:
     """Coverage for one complex64 absorber-free ADE component."""
     from .launch import complex_ade_update_p_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, state, component, probe)
+    return _coverage(fields, pml, state, component)
 
 
 def plan_complex_ade_update_p(fields: Any, pml: Any, state: Any,
-                              block: Optional[int] = None,
-                              probe: Any = None) -> Any:
+                              block: Optional[int] = None) -> Any:
     """Plan one complex64 absorber-free susceptibility, or ``None``."""
     from .launch import plan_complex_ade_update_p as _plan  # noqa: PLC0415
-    return _plan(fields, pml, state, block, probe)
+    return _plan(fields, pml, state, block)
 
 
 # ---------------------------------------------------------------------------
@@ -807,36 +813,33 @@ def plan_complex_ade_update_p(fields: Any, pml: Any, state: Any,
 # ---------------------------------------------------------------------------
 
 
-def complex_no_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
-                                 probe: Any = None) -> Coverage:
+def complex_no_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Coverage for a complex/Bloch curl without an active absorber."""
     from .launch import complex_no_pml_curl_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, sub_step, probe)
+    return _coverage(fields, pml, sub_step)
 
 
 def plan_complex_no_pml_curl(fields: Any, pml: Any, sub_step: str,
-                             block: Optional[int] = None,
-                             probe: Any = None) -> Any:
+                             block: Optional[int] = None) -> Any:
     """Plan a complex/Bloch curl without an active absorber."""
     from .launch import plan_complex_no_pml_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block, probe)
+    return _plan(fields, pml, sub_step, block)
 
 
 def complex_conductive_no_pml_curl_coverage(
-        fields: Any, pml: Any, sub_step: str,
-        probe: Any = None) -> Any:
+        fields: Any, pml: Any, sub_step: str) -> Any:
     """Ask whether the complex conductive no-absorber curl covers this sub-step."""
     from .launch import (  # noqa: PLC0415
         complex_conductive_no_pml_curl_coverage as _coverage)
-    return _coverage(fields, pml, sub_step, probe)
+    return _coverage(fields, pml, sub_step)
 
 
 def plan_complex_conductive_no_pml_curl(
         fields: Any, pml: Any, sub_step: str,
-        block: Optional[int] = None, probe: Any = None) -> Any:
+        block: Optional[int] = None) -> Any:
     """Build the complex conductive no-absorber curl plan."""
     from .launch import plan_complex_conductive_no_pml_curl as _plan  # noqa: PLC0415
-    return _plan(fields, pml, sub_step, block, probe)
+    return _plan(fields, pml, sub_step, block)
 
 
 def conductive_plain_curl_coverage(fields: Any, pml: Any,
@@ -866,58 +869,56 @@ def plan_stored_e_constitutive(fields: Any, pml: Any,
     return _plan(fields, pml, block)
 
 
-def complex_stored_e_coverage(fields: Any, pml: Any,
-                              probe: Any = None) -> Any:
+def complex_stored_e_coverage(fields: Any, pml: Any) -> Any:
     """Ask whether complex pole-aware stored-E ``update_E`` is covered."""
     from .launch import complex_stored_e_coverage as _coverage  # noqa: PLC0415
-    return _coverage(fields, pml, probe)
+    return _coverage(fields, pml)
 
 
 def plan_complex_stored_e(fields: Any, pml: Any,
-                          block: Optional[int] = None,
-                          probe: Any = None) -> Any:
+                          block: Optional[int] = None) -> Any:
     """Build the complex pole-aware stored-E ``update_E`` plan."""
     from .launch import plan_complex_stored_e as _plan  # noqa: PLC0415
-    return _plan(fields, pml, block, probe)
+    return _plan(fields, pml, block)
 
 
 def complex_no_pml_offdiag_update_e_coverage(
-        fields: Any, pml: Any, probe: Any = None) -> Coverage:
+        fields: Any, pml: Any) -> Coverage:
     """Coverage for complex tensor-row ``update_E`` without an absorber."""
     from .launch import (  # noqa: PLC0415
         complex_no_pml_offdiag_update_e_coverage as _coverage)
-    return _coverage(fields, pml, probe)
+    return _coverage(fields, pml)
 
 
 def plan_complex_no_pml_offdiag_update_e(
         fields: Any, pml: Any, block: Optional[int] = None,
-        probe: Any = None) -> Any:
+        chunk_layout: Any = None) -> Any:
     """Plan complex tensor-row ``update_E`` without an absorber."""
     from .launch import plan_complex_no_pml_offdiag_update_e as _plan  # noqa: PLC0415
-    return _plan(fields, pml, block, probe)
+    return _plan(fields, pml, block, chunk_layout=chunk_layout)
 
 
 def complex_folded_offdiag_update_e_coverage(
-        fields: Any, pml: Any, probe: Any = None) -> Coverage:
+        fields: Any, pml: Any) -> Coverage:
     """Coverage for complex folded tensor-row PML ``update_E``."""
     from .launch import (  # noqa: PLC0415
         complex_folded_offdiag_update_e_coverage as _coverage)
-    return _coverage(fields, pml, probe)
+    return _coverage(fields, pml)
 
 
 def plan_complex_folded_offdiag_update_e(
         fields: Any, pml: Any, block: Optional[int] = None,
-        probe: Any = None) -> Any:
+        chunk_layout: Any = None) -> Any:
     """Plan complex folded tensor-row PML ``update_E``."""
     from .launch import plan_complex_folded_offdiag_update_e as _plan  # noqa: PLC0415
-    return _plan(fields, pml, block, probe)
+    return _plan(fields, pml, block, chunk_layout=chunk_layout)
 
 
 def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
               fuse: bool = False, sources: Any = None,
               num_warps: Any = _INHERIT_LAUNCH_DEFAULT,
-              fuse_ade: bool = False, probe: Any = None,
-              fuse_labels: Any = None) -> Any:
+              fuse_ade: bool = False,
+              fuse_labels: Any = None, chunk_layout: Any = None) -> Any:
     """The covered SUBSET of sub-steps for one frozen configuration, plus refusal reasons.
 
     Never None: a configuration nothing covers replaces nothing, which is the array
@@ -928,12 +929,6 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     ``fuse=False`` (the default) composes one launch per sub-step; that path is the
     control the cross-sub-step fusion is measured against and it stays the default.
 
-    ``probe`` is the complex-multiply expansion record. Forwarding it is not
-    optional bookkeeping: without it the complex-family arms see ``None``, refuse
-    with "the EXPANSION constexpr may not be guessed", and every complex slot
-    falls to the array path with a reason that reads like a platform bug rather
-    than a wiring one.
-
     ``fuse_labels`` is the caller's OFFER — the fused labels it will actually run —
     and ``None`` (the default) means no restriction. THIS WRAPPER IS WHY IT IS
     SPELLED OUT HERE RATHER THAN LEFT TO ``**kwargs``: every argument is forwarded
@@ -942,10 +937,15 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     dispatcher passed it, this wrapper did not, and every case of a driver-route
     campaign reported ``DID-NOT-FUSE`` with the real reason buried in an internal
     error string.
+
+    ``chunk_layout`` is the run's chunk division (``FdtdDriver.chunk_layout``), and
+    ``None`` the lifted division the fields carry, else the one-rank default;
+    ``launch.plan_step`` judges that division and binds its record. It is forwarded
+    by keyword for the reason above.
     """
     from .launch import plan_step as _plan  # noqa: PLC0415
     return _plan(fields, pml, block, fuse, sources, _num_warps(num_warps),
-                 fuse_ade, probe, fuse_labels)
+                 fuse_ade, fuse_labels, chunk_layout=chunk_layout)
 
 
 def explain(fields: Any, pml: Any) -> Coverage:

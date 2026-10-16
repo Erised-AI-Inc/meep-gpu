@@ -10,15 +10,21 @@ all — plus this family's OWN hazards, which are not the off-diagonal family's:
   never ``fast::divide`` — against the measurement in
   ``parity/meep_gpu/probe_metal_divide_and_negation.py`` that licensed it;
 * **the Pade groupings**, character for character against ``calc_nonlinear_u``;
-* **the four-corner association**, which is the SHIFTED-PAIR one and not MEEP C's
-  left-to-right sum, and whose two shifts go in OPPOSITE directions;
+* **the four-corner association**, MEEP's left-to-right sum as
+  ``stepping._nonlinear_transverse_sums`` forms it, whose two shifts go in
+  OPPOSITE directions;
+* **the binary64 ``Dsqr``** (ruling R7: soft-fp64): one helper, the two float32 terms
+  widened and the ``0.0625`` scale and the add in software binary64, rounded once,
+  against ``stepping._nonlinear_dsqr`` on the band where the float32 form differs;
+* **the per-chunk constitutive tail**, the base kernel's lines, read from the chunk
+  record bound last;
 * **the magnitude ceiling**, which is a coverage refusal and not a tolerance — with
   a case on each side of it, because a ceiling only ever tested from one side is a
   constant rather than a clause;
 * **the scalar/volume chi arms**, and the fact that a LINEAR component in a partly
   nonlinear run compiles to the certified plain body verbatim;
 * the BINDING COUNT against Metal's measured 31-buffer ceiling — this family is
-  four bindings from it, and the packed scalar buffer exists because of it;
+  one binding from it, and the packed scalar buffer exists because of it;
 * the registration, because a family that quietly changed slots or became unwired
   would change what ``plan_step`` launches.
 
@@ -33,7 +39,11 @@ import re
 import numpy as np
 import pytest
 
-from meep_gpu import stepping
+import inspect
+import platform
+
+from meep_gpu import stepping, subnormal_policy
+from meep_gpu.chunk_map import ChunkLayout, ChunkLayoutRefusal, chunk_bounds_record
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid
 from meep_gpu.metal_kernels import (
@@ -42,6 +52,7 @@ from meep_gpu.metal_kernels import (
     nonlinear_update_e as nonlinear,
     registry,
     shaders,
+    softfp64,
     subnormal,
 )
 from meep_gpu.pml import PML
@@ -58,6 +69,15 @@ def _torch_mps() -> bool:
 
 needs_mps = pytest.mark.skipif(not _torch_mps(),
                                reason="no MPS device on this host")
+
+
+def _require_mps() -> None:
+    """A device leg's sanctioned skip: the resource it needs is named, so a host with
+    no Apple GPU skips it by that name rather than silently."""
+    if not _torch_mps():
+        from conftest import requires_resource_skip
+
+        requires_resource_skip("mps_device", "PyTorch reports no usable Apple GPU (MPS)")
 
 ALL_LIVE = (1, 1, 1)
 VOLUMES = (1, 1, 1)
@@ -113,8 +133,9 @@ def test_the_binding_count_stays_under_metals_ceiling():
 def test_the_packed_scalar_buffer_is_what_keeps_the_family_under_the_ceiling():
     """Six separate ``constant float&`` chi scalars would not compile at all.
 
-    24 volume/coefficient buffers + 6 scalars + 4 shape scalars = 34 > 31. This is
-    the design decision the platform limit FORCED, and the arithmetic is asserted
+    24 volume/coefficient buffers + 6 scalars + 4 shape scalars + the chunk record
+    = 35 > 31. This is the design decision the platform limit FORCED, and the
+    arithmetic is asserted
     so a future edit that "simplifies" the packing rediscovers the reason here.
     """
     from meep_gpu.metal_kernels.device import MAX_BUFFER_BINDINGS
@@ -167,31 +188,97 @@ def test_the_pade_groupings_are_calc_nonlinear_us_own():
         assert f"float src{c} = (gs{c} * us{c}) * u{c};" in source
 
 
-def test_dsqr_scales_the_transverse_sum_of_squares_by_one_sixteenth_last():
-    """``gs*gs + 0.0625*(g1s*g1s + g2s*g2s)`` — stepping.py:1147.
+def test_dsqr_is_the_binary64_helper_rounded_once():
+    """``gs*gs + 0.0625*(g1s*g1s + g2s*g2s)`` as ``stepping._nonlinear_dsqr`` forms it.
 
-    ``0.0625 = (1/4)^2`` turns each UNNORMALIZED four-point sum back into a mean
-    before it is squared. It scales the SUM and is applied last.
+    The two float32 terms are formed and rounded in float32, widened, the transverse
+    one scaled by the double ``0.0625`` (``sd_scale_pow2`` at ``k = -4``), the two
+    added in binary64 and rounded ONCE to float32. One helper, inlined once and
+    called once per nonlinear component; every software-binary64 call takes the
+    flush policy (``fz = true``), the only one this executor runs; no float32
+    ``0.0625f`` survives anywhere in the source.
     """
     source = nonlinear.nonlinear_source(ALL_LIVE, VOLUMES, VOLUMES, PERIODIC3)
+    assert source.count(nonlinear.DSQR_HELPER) == 1
+    assert softfp64.SIXTEENTH == -4
+    helper = nonlinear.DSQR_HELPER
+    assert "float own = gs * gs;" in helper
+    assert "float transverse = (g1s * g1s) + (g2s * g2s);" in helper
+    assert ("sd_narrow_f(sd_add(sd_widen_f(own, true),"
+            in " ".join(helper.split()).replace("( ", "("))
+    assert "sd_scale_pow2(sd_widen_f(transverse, true), -4, true)" in helper
+    calls = re.findall(r"\bsd_\w+\(", helper)
+    assert calls, helper
+    assert helper.count("true)") == len(calls), helper
+    assert "0.0625f" not in source
     for c in range(3):
-        assert (f"float dsqr{c} = gs{c} * gs{c} + 0.0625f * "
-                f"((sum_{c}0 * sum_{c}0) + (sum_{c}1 * sum_{c}1));") in source
+        assert (f"float dsqr{c} = nonlinear_dsqr(gs{c}, sum_{c}0, sum_{c}1);"
+                in source)
 
 
-def test_the_four_corner_sum_is_the_pair_association_not_meep_cs_left_to_right():
-    """``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])`` — the SHIFTED-PAIR association.
+def test_the_software_binary64_fragment_is_spliced_once_after_the_directive():
+    """The helpers come from :mod:`.softfp64` unchanged, after the contraction
+    directive, include-guarded; the family adds no binary64 arithmetic of its own."""
+    source = nonlinear.nonlinear_source(ALL_LIVE, VOLUMES, VOLUMES, PERIODIC3)
+    assert source.count(softfp64.MSL_HELPERS) == 1
+    assert (source.index(shaders.contraction_pragma(shaders.CONTRACT_OFF))
+            < source.index(softfp64.MSL_HELPERS)
+            < source.index(nonlinear.DSQR_HELPER)
+            < source.index("kernel void nonlinear_constitutive_step("))
 
-    ``stepping._nonlinear_transverse_sums`` (:1158-1162) forms the near pair, then
-    adds the pair shifted; MEEP C sums left to right (step_generic.cpp:646-648).
-    The byte arbiter is stepping.py, so a `near`/`far` split with one add between
-    them is the shape, and a flattened four-term sum is a different number.
+
+def test_the_four_corner_sum_is_meeps_left_to_right_order():
+    """``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]`` — MEEP's sum
+    (step_generic.cpp:646-648), as ``stepping._nonlinear_transverse_sums`` forms it.
+
+    One statement per sum, the own-axis UP neighbour added second and the
+    partner-axis DOWN neighbour third; the package's previous pair association
+    (``near + far``) is gone, and is the gate's must-catch mutation.
     """
     source = nonlinear.nonlinear_source(ALL_LIVE, VOLUMES, VOLUMES, PERIODIC3)
+    assert not re.search(r"\b(near|far)_\d", source)
     for c in range(3):
+        own_axis = nonlinear.E_TERMS[c][2]
+        up_valid = nonlinear._TWO_WAY_NAMES["xyz"[own_axis]][3]
         for offset in (0, 1):
+            partner = nonlinear.TRANSVERSE_PARTNERS[c][offset]
+            down_valid = nonlinear._TWO_WAY_NAMES["xyz"[partner]][2]
             tag = f"{c}{offset}"
-            assert f"float sum_{tag} = near_{tag} + far_{tag};" in source
+            line, = [ln for ln in source.splitlines()
+                     if ln.strip().startswith(f"float sum_{tag} = ")]
+            assert line.strip().startswith(
+                f"float sum_{tag} = ((g{partner}[ii] + ({up_valid} ? "), line
+            assert f") + ({down_valid} ? g{partner}[" in line, line
+            assert line.rstrip().endswith(
+                f"+ (({up_valid} && {down_valid}) ? g{partner}["
+                f"{nonlinear._index({own_axis: nonlinear._TWO_WAY_NAMES['xyz'[own_axis]][1], partner: nonlinear._TWO_WAY_NAMES['xyz'[partner]][0]})}"
+                f"] : 0.0f);"), line
+
+
+def test_the_constitutive_tail_is_the_base_kernels_per_chunk_select():
+    """The record binds last, each component reads its OWN axis's half-integer
+    membership, and the tail is :mod:`.shaders`' E-side constitutive tail line for
+    line: ``prev`` and ``f_w`` behind the membership, ``f + ((kps*src) -
+    (kms*prev))`` on a member cell and ``src`` itself elsewhere."""
+    source = nonlinear.nonlinear_source(ALL_LIVE, VOLUMES, VOLUMES, PERIODIC3)
+    assert (f"constant ChunkBounds& cb [[buffer({nonlinear.CHUNK_RECORD_BUFFER})]]"
+            in source)
+    assert nonlinear.CHUNK_RECORD_BUFFER == nonlinear.BINDING_COUNT - 1
+    assert shaders.constitutive_bounds_block("E") in source
+    flags = shaders.constitutive_membership_flags("E")
+    assert flags == ("in_h_x", "in_h_y", "in_h_z")
+    assert (f"const bool dw0 = {flags[0]}, dw1 = {flags[1]}, dw2 = {flags[2]};"
+            in source)
+    base = shaders.constitutive_source("E")
+    tail = [ln.strip() for ln in base.splitlines()
+            if ln.strip().startswith(("float prev", "if (dw", "float a", "f0[ii] = a",
+                                      "f1[ii] = a", "f2[ii] = a"))]
+    assert len(tail) == 15, tail
+    for line in tail:
+        assert line in [ln.strip() for ln in source.splitlines()], line
+    # The old unconditional two-step accumulation is gone.
+    assert "a2 = a2 + kp_2 * src2;" not in source
+    assert "float prev2 = w2[ii];" not in source
 
 
 @pytest.mark.parametrize("component", (0, 1, 2))
@@ -212,11 +299,12 @@ def test_the_two_shifts_go_in_opposite_directions(component):
         down_name = nonlinear._TWO_WAY_NAMES["xyz"[partner_axis]][0]
         down_valid = nonlinear._TWO_WAY_NAMES["xyz"[partner_axis]][2]
         tag = f"{component}{offset}"
-        block = source.split(f"float near_{tag}")[1].split(f"float sum_{tag}")[0]
-        # The near pair reads the PARTNER axis down, guarded by its own flag.
+        block, = [ln for ln in source.splitlines()
+                  if ln.strip().startswith(f"float sum_{tag} = ")]
+        # One term reads the PARTNER axis down, guarded by its own flag.
         assert f"({down_valid} ? g{partner_axis}[" in block
         assert down_name in block
-        # The far pair reads the OWN axis up, and the corner ANDs the two flags.
+        # One reads the OWN axis up, and the corner ANDs the two flags.
         assert f"({up_valid} ? g{partner_axis}[" in block
         assert up_name in block
         assert f"({up_valid} && {down_valid})" in block
@@ -329,6 +417,94 @@ def test_the_specialisation_corpus_is_the_size_the_family_claims():
 
 
 # ---------------------------------------------------------------------------
+# The binary64 Dsqr on its band, on the host
+# ---------------------------------------------------------------------------
+
+class _host_mode:
+    """``with _host_mode(flush):`` drives this thread's FPU and restores it on exit.
+
+    The flush policy's arithmetic is this arm64 host's (FPCR.FZ), which the software
+    binary64 helpers reproduce; an x86 host decides tininess differently, so a
+    comparison under flush is skipped by name there.
+    """
+
+    def __init__(self, flush: bool) -> None:
+        self.flush = bool(flush)
+        self.before = None
+
+    def __enter__(self) -> "_host_mode":
+        from meep_gpu import backends
+
+        if self.flush and platform.machine().lower() not in ("arm64", "aarch64"):
+            from conftest import requires_resource_skip
+
+            requires_resource_skip("arm64_host", "the flush policy's binary64 "
+                                   "arithmetic is specified by an arm64 host")
+        self.before = backends.subnormals_flushed()
+        subnormal_policy._drive_host_fpu(self.flush)  # noqa: SLF001
+        assert backends.subnormals_flushed() == self.flush, "the host FPU did not move"
+        return self
+
+    def __exit__(self, *exc) -> None:
+        from meep_gpu import backends
+
+        subnormal_policy._drive_host_fpu(bool(self.before))  # noqa: SLF001
+        assert backends.subnormals_flushed() == bool(self.before)
+
+
+#: The band where the float32 and binary64 ``Dsqr`` differ under flush: ``gs*gs``
+#: normal, ``0.0625 * (g1s*g1s + g2s*g2s)`` below float32's smallest normal. The
+#: transverse sums stay at or above ``2**-63`` so their squares are normal floats.
+BAND_GS_EXPONENT = -57
+BAND_PARTNER_EXPONENT = -65
+
+
+def _band_operands(n: int, seed: int = 41):
+    rng = np.random.default_rng(seed)
+    gs = (np.ldexp(rng.uniform(1.0, 2.0, n), BAND_GS_EXPONENT)
+          * rng.choice((-1.0, 1.0), n)).astype(np.float32)
+    # A four-corner sum of same-signed partners near 2**-65: 2**-63 .. 2**-62.
+    g1s = np.ldexp(rng.uniform(1.0, 2.0, n), BAND_PARTNER_EXPONENT + 2).astype(np.float32)
+    g2s = np.ldexp(rng.uniform(1.0, 2.0, n), BAND_PARTNER_EXPONENT + 2).astype(np.float32)
+    return gs, g1s, g2s
+
+
+def _transcribed_dsqr(gs, g1s, g2s):
+    """:data:`nonlinear_update_e.DSQR_HELPER`'s statements on the host: the float32
+    terms in NumPy float32, the binary64 steps through :mod:`.softfp64`'s NumPy
+    transcription of the MSL helpers, ``fz = True``."""
+    own = (gs * gs).view(np.uint32)
+    transverse = (g1s * g1s + g2s * g2s).view(np.uint32)
+    word = softfp64.narrow(
+        softfp64.add(softfp64.widen(own, True),
+                     softfp64.scale_pow2(softfp64.widen(transverse, True),
+                                         softfp64.SIXTEENTH, True), True), True)
+    return np.asarray(word, dtype=np.uint32).view(np.float32)
+
+
+def test_the_dsqr_helpers_statements_are_steppings_dsqr_on_the_band():
+    """Under the flush policy the helper's statements give ``stepping._nonlinear_dsqr``'s
+    word on every operand of the band, where the float32 form does not: the claim the
+    device leg makes, on the host, with a vacuity floor."""
+    n = 200_000
+    gs, g1s, g2s = _band_operands(n)
+    with _host_mode(True):
+        reference = stepping._nonlinear_dsqr(gs, (g1s, g2s), stepping._WHOLE)
+        transcribed = _transcribed_dsqr(gs, g1s, g2s)
+        float32_form = gs * gs + np.float32(0.0625) * (g1s * g1s + g2s * g2s)
+    differing = int(np.count_nonzero(transcribed.view(np.uint32)
+                                     != reference.view(np.uint32)))
+    float32_differing = int(np.count_nonzero(float32_form.view(np.uint32)
+                                             != reference.view(np.uint32)))
+    print(f"dsqr band: transcription {differing} / {n}, float32 form "
+          f"{float32_differing} / {n} differ", flush=True)
+    assert differing == 0, differing
+    assert float32_differing > n // 10, (
+        f"VACUOUS: the float32 form differs on only {float32_differing} of {n} band "
+        f"operands, so the band does not discriminate the two forms")
+
+
+# ---------------------------------------------------------------------------
 # Predicate fixtures
 # ---------------------------------------------------------------------------
 
@@ -404,6 +580,43 @@ def test_a_nonlinear_run_is_admitted(monkeypatch):
     grid = _grid()
     verdict = _verdict(_fields(grid), grid)
     assert verdict.covered, verdict.reasons
+
+
+@pytest.mark.parametrize("boundaries", ("periodic", "metallic"))
+@pytest.mark.parametrize("scalar", (False, True), ids=("volume", "scalar"))
+@pytest.mark.parametrize("components", (("Ez",), ("Ex", "Ey", "Ez")),
+                         ids=("one", "all"))
+def test_the_engine_route_admits_every_certified_configuration(
+        monkeypatch, boundaries, scalar, components):
+    """Over the configurations the device test below steps, the predicate admits
+    with no reason given (ruling R7: soft-fp64, so no clause refuses the binary64
+    ``Dsqr``). The backend clause is lifted so the verdict is the same on a host
+    with no Apple GPU."""
+    monkeypatch.setenv("MEEP_GPU_SUBNORMAL_POLICY", "flush")
+    monkeypatch.setattr(nonlinear, "_metal_backend_reasons", lambda grid: [])
+    grid = _grid(boundaries)
+    fields = _fields(grid, components=components, scalar=scalar)
+    verdict = _verdict(fields, grid)
+    assert verdict.covered, verdict.reasons
+    assert tuple(verdict.reasons) == ()
+
+
+def test_every_plan_route_takes_the_chunk_record_with_no_default():
+    """The two builders and the plan take ``chunk_bounds`` keyword-only with no
+    default, as every base plan does; a missing record is refused by name before
+    any device object is touched."""
+    for builder in (nonlinear.plan_nonlinear_constitutive,
+                    nonlinear.plan_nonlinear_constitutive_from_arrays,
+                    nonlinear.MetalNonlinearConstitutivePlan.__init__):
+        parameter = inspect.signature(builder).parameters["chunk_bounds"]
+        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY, builder
+        assert parameter.default is inspect.Parameter.empty, builder
+    grid = _grid()
+    with pytest.raises(ChunkLayoutRefusal, match="MetalNonlinearConstitutivePlan"):
+        nonlinear.MetalNonlinearConstitutivePlan(
+            grid.shape, None, (), (), (), (), (), (), (0.0,) * 6, (),
+            (0, 0, 1), (0, 0, 0), (0, 0, 0), PERIODIC3, {}, (),
+            chunk_bounds=None)
 
 
 @pytest.mark.parametrize("kwargs,needle", (
@@ -634,6 +847,18 @@ def test_the_nonlinear_arms_are_registered_and_wired_on_exactly_their_four_slots
     ]
 
 
+def test_the_composer_is_offered_the_pade_arm():
+    """``arms.arms_for`` binds wired arms only; the Pade arm is among them, so a
+    composition context reaches it on ``update_E``."""
+    class _Context:
+        fields = pml = residency = None
+        contract_variants = (shaders.CONTRACT_OFF,)
+        chunk_bounds = None
+    offered = [getattr(arm, "label", None) for arm in arms.arms_for("update_E",
+                                                                      _Context())]
+    assert "nonlinear" in offered, offered
+
+
 def test_the_family_module_is_in_the_registry_list():
     """A family in the tree but NOT in ``FAMILY_MODULES`` is invisible to
     ``plan_step`` — a silent coverage loss rather than an error.
@@ -659,7 +884,8 @@ def test_the_plan_builder_returns_none_out_of_coverage():
     grid = _grid()
     fields = _fields(grid, chi2=0.0, chi3=0.0)
     assert nonlinear.plan_nonlinear_constitutive(fields, _pml(grid),
-                                                 _Residency()) is None
+                                                 _Residency(),
+                                                 chunk_bounds=None) is None
 
 
 # ---------------------------------------------------------------------------
@@ -679,6 +905,8 @@ def _seed_spine_pair(actual, reference, seed=29):
         values = rng.uniform(-0.35, 0.35, actual.grid.shape).astype(np.float32)
         getattr(actual, name)[...] = values
         getattr(reference, name)[...] = values
+    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago.
+    actual.h_separated = reference.h_separated = True
 
 
 @needs_mps
@@ -710,15 +938,16 @@ def test_nonlinear_spine_substeps_are_byte_identical_to_stepping(
     reference_pml = _pml(reference.grid)
     _seed_spine_pair(actual, reference)
     before = {name: np.array(getattr(actual, name), copy=True) for name in watched}
+    record = chunk_bounds_record(ChunkLayout.one_rank(grid, actual_pml))
 
     if slot == "update_H":
         stepping.update_H(reference, reference_pml)
         plan = nonlinear.plan_nonlinear_run_constitutive(
-            actual, actual_pml, "H", Residency())
+            actual, actual_pml, "H", Residency(), chunk_bounds=record)
     else:
         getattr(stepping, slot)(reference, reference_pml)
         plan = nonlinear.plan_nonlinear_run_pml_curl(
-            actual, actual_pml, slot, Residency())
+            actual, actual_pml, slot, Residency(), chunk_bounds=record)
     assert plan is not None
     residency = plan.residency
     residency.sync_in()
@@ -737,60 +966,6 @@ def test_nonlinear_spine_substeps_are_byte_identical_to_stepping(
 
 
 @needs_mps
-@pytest.mark.parametrize("boundaries", ("periodic", "metallic"))
-@pytest.mark.parametrize("scalar", (False, True), ids=("volume", "scalar"))
-@pytest.mark.parametrize("components", (("Ez",), ("Ex", "Ey", "Ez")),
-                         ids=("one", "all"))
-def test_one_update_e_is_byte_identical_to_stepping(monkeypatch, boundaries,
-                                                    scalar, components):
-    """THE SUB-STEP CLAIM, as words and with a vacuity floor.
-
-    Zero init is a FIXED POINT of the constitutive sub-step, so the volumes are
-    seeded with physical-band values and the leg asserts the array path actually
-    MOVED state — a no-op agreeing with a no-op is trivially identical.
-    """
-    from meep_gpu.metal_kernels.device import Residency
-
-    monkeypatch.setenv("MEEP_GPU_SUBNORMAL_POLICY", "flush")
-    assert not subnormal.mps_policy_reasons(), (
-        "the executor refuses the resolved policy, so this leg would be measuring "
-        "the refusal rather than the kernel")
-
-    grid = _grid(boundaries)
-    fields = _fields(grid, components=components, scalar=scalar)
-    pml = _pml(grid)
-    rng = np.random.default_rng(3)
-    for name in ("Ex", "Ey", "Ez", "Dx", "Dy", "Dz",
-                 "f_w_Ex", "f_w_Ey", "f_w_Ez"):
-        getattr(fields, name)[...] = rng.standard_normal(
-            grid.shape).astype(np.float32)
-
-    watched = ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez")
-    before = {n: getattr(fields, n).copy() for n in watched}
-    stepping.update_E(fields, pml)
-    reference = {n: getattr(fields, n).copy() for n in watched}
-    moved = sum(int(np.count_nonzero(reference[n].view(np.uint32)
-                                     != before[n].view(np.uint32)))
-                for n in watched)
-    assert moved > 0, "VACUOUS: the array path moved nothing"
-
-    for name, values in before.items():
-        getattr(fields, name)[...] = values
-    residency = Residency()
-    plan = nonlinear.plan_nonlinear_constitutive(fields, pml, residency)
-    assert plan is not None
-    residency.sync_in()
-    plan.run()
-    residency.sync_out()
-    assert plan.launches == 1
-
-    differing = sum(int(np.count_nonzero(getattr(fields, n).view(np.uint32)
-                                         != reference[n].view(np.uint32)))
-                    for n in watched)
-    assert differing == 0, f"{differing} differing words (moved {moved})"
-
-
-@needs_mps
 def test_asking_for_an_unbuilt_contract_variant_raises(monkeypatch):
     """A guard argument that quietly did nothing would make a gate's most
     important leg vacuous."""
@@ -798,8 +973,10 @@ def test_asking_for_an_unbuilt_contract_variant_raises(monkeypatch):
 
     monkeypatch.setenv("MEEP_GPU_SUBNORMAL_POLICY", "flush")
     grid = _grid()
-    plan = nonlinear.plan_nonlinear_constitutive(_fields(grid), _pml(grid),
-                                                 Residency())
+    pml = _pml(grid)
+    plan = nonlinear.plan_nonlinear_constitutive(
+        _fields(grid), pml, Residency(),
+        chunk_bounds=chunk_bounds_record(ChunkLayout.one_rank(grid, pml)))
     assert plan is not None
     with pytest.raises(KeyError, match="holds no 'fast' variant"):
         plan.run(shaders.CONTRACT_FAST)
@@ -818,3 +995,110 @@ def test_the_keep_policy_refuses_the_plan_at_build_time(monkeypatch):
                                                         Residency())
     assert not verdict.covered
     assert any("subnormal policy" in r for r in verdict.reasons), verdict.reasons
+
+
+def _seed_update_e(fields, grid, seed=3):
+    rng = np.random.default_rng(seed)
+    for name in ("Ex", "Ey", "Ez", "Dx", "Dy", "Dz",
+                 "f_w_Ex", "f_w_Ey", "f_w_Ez"):
+        getattr(fields, name)[...] = rng.standard_normal(
+            grid.shape).astype(np.float32)
+
+
+def _update_e_against_stepping(fields, pml, grid):
+    """Step ``stepping.update_E`` (host flushing, as the Metal run's host does), then the
+    shipped plan on the same state; return (differing words, words moved)."""
+    from meep_gpu.metal_kernels.device import Residency
+
+    watched = ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez")
+    before = {n: getattr(fields, n).copy() for n in watched}
+    with _host_mode(True):
+        stepping.update_E(fields, pml)
+    reference = {n: getattr(fields, n).copy() for n in watched}
+    moved = sum(int(np.count_nonzero(reference[n].view(np.uint32)
+                                     != before[n].view(np.uint32)))
+                for n in watched)
+    for name, values in before.items():
+        getattr(fields, name)[...] = values
+    with _host_mode(True):
+        residency = Residency()
+        plan = nonlinear.plan_nonlinear_constitutive(
+            fields, pml, residency,
+            chunk_bounds=chunk_bounds_record(ChunkLayout.one_rank(grid, pml)))
+        assert plan is not None
+        residency.sync_in()
+        plan.run()
+        residency.sync_out()
+        assert plan.launches == 1
+    differing = sum(int(np.count_nonzero(getattr(fields, n).view(np.uint32)
+                                         != reference[n].view(np.uint32)))
+                    for n in watched)
+    return differing, moved
+
+
+@pytest.mark.parametrize("boundaries", ("periodic", "metallic"))
+@pytest.mark.parametrize("scalar", (False, True), ids=("volume", "scalar"))
+@pytest.mark.parametrize("components", (("Ez",), ("Ex", "Ey", "Ez")),
+                         ids=("one", "all"))
+def test_one_update_e_is_byte_identical_to_stepping(monkeypatch, boundaries,
+                                                    scalar, components):
+    """THE SUB-STEP CLAIM, as words and with a vacuity floor: the shipped plan, bound
+    to the run's chunk record, against ``stepping.update_E``.
+
+    Zero init is a FIXED POINT of the constitutive sub-step, so the volumes are
+    seeded with physical-band values and the leg asserts the array path actually
+    MOVED state — a no-op agreeing with a no-op is trivially identical.
+    """
+    _require_mps()
+    monkeypatch.setenv("MEEP_GPU_SUBNORMAL_POLICY", "flush")
+    assert not subnormal.mps_policy_reasons(), (
+        "the executor refuses the resolved policy, so this leg would be measuring "
+        "the refusal rather than the kernel")
+    grid = _grid(boundaries)
+    fields = _fields(grid, components=components, scalar=scalar)
+    pml = _pml(grid)
+    _seed_update_e(fields, grid)
+    differing, moved = _update_e_against_stepping(fields, pml, grid)
+    assert moved > 0, "VACUOUS: the array path moved nothing"
+    assert differing == 0, f"{differing} differing words (moved {moved})"
+
+
+def test_the_dsqr_band_takes_the_binary64_form_through_the_shipped_kernel(monkeypatch):
+    """On the band where the float32 ``Dsqr`` differs from the array path's binary64
+    one, the shipped plan reproduces ``stepping.update_E`` word for word, and the
+    float32 form would have moved stored words there (measured on the same state on
+    the host): ``chi3 * |chi1inv|^3 = 9e28``, under the ceiling, so the predicate
+    admits it."""
+    _require_mps()
+    monkeypatch.setenv("MEEP_GPU_SUBNORMAL_POLICY", "flush")
+    grid = _grid("periodic")
+    fields = _fields(grid, chi2=0.011, chi3=7.2e29, components=("Ez",), inverse=0.5)
+    pml = _pml(grid)
+    _seed_update_e(fields, grid, seed=43)
+    rng = np.random.default_rng(47)
+    shape = grid.shape
+    fields.Dz[...] = (np.ldexp(rng.uniform(1.0, 2.0, shape), BAND_GS_EXPONENT)
+                      * rng.choice((-1.0, 1.0), shape)).astype(np.float32)
+    for name in ("Dx", "Dy"):
+        getattr(fields, name)[...] = np.ldexp(
+            rng.uniform(1.0, 2.0, shape), BAND_PARTNER_EXPONENT).astype(np.float32)
+    assert nonlinear.nonlinear_constitutive_coverage(fields, pml, _Residency()).covered
+
+    # The vacuity floor: on this state the float32 Dsqr moves stored source words.
+    displacement = stepping._nonlinear_displacement(fields, pml)
+    g1s, g2s = stepping._nonlinear_transverse_sums(fields, "Ez", displacement)
+    gs, us = fields.Dz, fields.inverse_epsilon_for("Ez")
+    chi2, chi3 = fields.chi2_for("Ez"), fields.chi3_for("Ez")
+    with _host_mode(True):
+        exact = stepping._nonlinear_dsqr(gs, (g1s, g2s), stepping._WHOLE)
+        float32_form = gs * gs + np.float32(0.0625) * (g1s * g1s + g2s * g2s)
+        rows = [(gs * us) * stepping.calc_nonlinear_u(d, gs, us, chi2, chi3)
+                for d in (exact, float32_form)]
+    reached = int(np.count_nonzero(rows[0].view(np.uint32) != rows[1].view(np.uint32)))
+    assert reached > 0, "VACUOUS: the float32 Dsqr moves no source word on this state"
+
+    differing, moved = _update_e_against_stepping(fields, pml, grid)
+    print(f"dsqr band through the kernel: {differing} differing, {moved} moved, "
+          f"float32 form would move {reached} source words", flush=True)
+    assert moved > 0
+    assert differing == 0, f"{differing} differing words (moved {moved})"

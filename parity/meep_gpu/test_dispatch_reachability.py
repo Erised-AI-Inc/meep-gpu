@@ -145,9 +145,9 @@ def test_the_release_table_and_the_gate_drive_the_same_arms_on_the_same_cases():
                   if cases != driven_cases[arm]}
     assert not mismatched, f"release cases != driven cases: {mismatched}"
 
-    # AND THE LEG, which is the half a case list cannot carry: a complex-storage arm
-    # dispatches on the expansion-probe leg and on NO other, so a release row that
-    # claimed a shipped leg for one would be un-cuttable even with its cases right.
+    # AND THE LEG, which is the half a case list cannot carry: a release row that
+    # claimed a leg its arm is never driven on would be un-cuttable even with its
+    # cases right.
     for arm, legs in fastpath_cuda.CUDA_RELEASED_ARM_LEGS.items():
         assert driven_legs[arm] <= set(legs), (
             f"{arm} is driven on {sorted(driven_legs[arm])} but its release row "

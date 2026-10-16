@@ -31,32 +31,32 @@ really moves nothing.
 
 WHAT ``stepping`` DOES WITHOUT AN ABSORBER, transcribed with its lines
 ---------------------------------------------------------------------
-``stepping.update_H`` (stepping.py:934-951)::
+``stepping.update_H`` (stepping.py:986-1010)::
 
     if not _pml_is_active(pml):
-        return  # H is served on demand from B; ...      # stepping.py:944-945
+        return  # H is served on demand from B; ...      # stepping.py:999-1000
 
 Unconditional, for every grid, every boundary, every storage width, every feature.
 H is never stored without PML and ``Fields.enable_field_storage`` says so in its own
-docstring (fields.py:664-665: "H is deliberately NOT allocated: ``update_H`` writes
+docstring (fields.py:675-676: "H is deliberately NOT allocated: ``update_H`` writes
 nothing without PML"); ``Fields.get_H`` serves the B array itself, mu = 1.
 
-``stepping.update_E`` (stepping.py:954-1022)::
+``stepping.update_E`` (stepping.py:1013-1087)::
 
-    pml_active = _pml_is_active(pml)                     # stepping.py:982
+    pml_active = _pml_is_active(pml)                     # stepping.py:1043
     if not pml_active and not fields.stores_E:
-        return  # E is served on demand from D * inv_eps # stepping.py:983-984
+        return  # E is served on demand from D * inv_eps # stepping.py:1044-1045
     ...
     else:
-        getattr(fields, component)[...] = constitutive   # stepping.py:1022
+        getattr(fields, component)[...] = constitutive   # stepping.py:1085
 
-so the sub-step has TWO no-PML shapes and the ``return`` at :983 comes BEFORE every
+so the sub-step has TWO no-PML shapes and the ``return`` at :1045 comes BEFORE every
 branch that could read a polarization, a Pade factor, an off-diagonal row, an
 inverse epsilon or a PML coefficient. Nothing downstream of that line can make the
-call non-null, so the only question a predicate has to answer is which side of :983
+call non-null, so the only question a predicate has to answer is which side of :1044
 the configuration falls on.
 
-``_pml_is_active`` (stepping.py:2498-2506) is ``pml is not None and pml.is_active``,
+``_pml_is_active`` (stepping.py:2952-2960) is ``pml is not None and pml.is_active``,
 and an ALL-ZERO-FACE layer is INACTIVE -- ``PML.is_active`` (pml.py:427-434) is
 ``any(low > 0 or high > 0 ...)``, and its own docstring is the case: "a
 zero-thickness table steps bit-identically to ``pml=None``". A ``PML`` object
@@ -72,7 +72,7 @@ THE TWO ARMS OF THE NO-PML ELECTRIC SUB-STEP
   zero NVRTC compiles.
 * **Arm S (STORE) -- NOT BUILT IN THIS PACKAGE, and refused here by name.**
   ``update_E`` on an inert layer with ``stores_E`` True is ``E[...] = (D - sum P) *
-  inv_eps`` (stepping.py:1022), a real pointwise store with a real product. It is a
+  inv_eps`` (stepping.py:1085), a real pointwise store with a real product. It is a
   DIFFERENT kernel from the certified ``update_E_pml_real``, which accumulates
   and also writes ``f_w``; the sibling track measured that the certified body cannot
   be bound into this one (``triton_kernels/no_pml_constitutive.STORED_E_ARM``:
@@ -132,7 +132,7 @@ HOW THIS DIFFERS FROM THE TRITON SIBLING, deliberately, in three places
    so a chi3-only run answers False through it. The sibling reads the property; this
    file reads both maps, exactly as :func:`coverage.covers_real_pml_constitutive`
    already does. Neither answer is WRONG for a null (with ``stores_E`` False the
-   array path returns at :983 whatever the nonlinearity is), which is why this is a
+   array path returns at :1044-1045 whatever the nonlinearity is), which is why this is a
    difference in conservatism and not a defect found in the sibling.
 3. **It takes ``grid``**, for signature parity with every other predicate here, and
    READS NOTHING OFF IT beyond its presence. A run with no grid is not a run this
@@ -183,16 +183,16 @@ __all__ = [
 NULL_CONSTITUTIVE_SIDES: Dict[str, Dict[str, Any]] = {
     "H": {
         "sub_step": "update_H",
-        "return_site": "stepping.py:944-945",
-        "return_lines": (944, 945),
-        # H is never stored without PML (fields.py:664-665), so this side has no
+        "return_site": "stepping.py:999-1000",
+        "return_lines": (999, 1000),
+        # H is never stored without PML (fields.py:675-676), so this side has no
         # second arm and no ``stores_E`` clause.
         "needs_stored_e_clause": False,
     },
     "E": {
         "sub_step": "update_E",
-        "return_site": "stepping.py:983-984",
-        "return_lines": (983, 984),
+        "return_site": "stepping.py:1044-1045",
+        "return_lines": (1044, 1045),
         # With stored E the sub-step writes E and this arm refuses; that is Arm S.
         "needs_stored_e_clause": True,
     },
@@ -239,10 +239,10 @@ CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
         "sides": ("H", "E"),
         "role": "load_bearing",
         "needle": "a real PML(thickness=2) with PML storage enabled",
-        "moved_words": {"H": 2734, "E": 2715},
+        "moved_words": {"H": 2380, "E": 2362},
         "total_words": {"H": 12288, "E": 12288},
         "why": "update_H/update_E run the dsigw accumulation "
-               "(stepping.py:946-951, :1014-1018), which is not a no-op",
+               "(stepping.py:1005-1010, :1077-1081), which is not a no-op",
     },
     "unreadable_layer": {
         "sides": ("H", "E"),
@@ -250,7 +250,7 @@ CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
         "needle": "a layer object whose is_active property raises",
         "moved_words": {"H": "array path raises", "E": "array path raises"},
         "why": "stepping._pml_is_active branches on exactly that attribute "
-               "(stepping.py:2498-2506). Defaulting it to the admitting answer is "
+               "(stepping.py:2952-2960). Defaulting it to the admitting answer is "
                "how a null covers a run the array path is absorbing in; refusing it "
                "converts a crash into a reason a caller can read",
     },
@@ -260,7 +260,7 @@ CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
         "needle": "Fields.enable_field_storage() with no layer",
         "moved_words": {"E": 1287},
         "total_words": {"E": 4608},
-        "why": "update_E takes the store at stepping.py:1022 instead of returning at "
+        "why": "update_E takes the store at stepping.py:1085 instead of returning at "
                ":954 -- that is Arm S, which this package has not built. The H side "
                "of the same object moves 0 of 4608: H is never stored without PML",
     },
@@ -269,7 +269,7 @@ CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
         "role": "load_bearing",
         "needle": "a Fields proxy whose stores_E property raises",
         "moved_words": {"E": "array path raises"},
-        "why": "stepping.py:983 branches on exactly that attribute; the sibling "
+        "why": "stepping.py:1044 branches on exactly that attribute; the sibling "
                "track MEASURED a proxy that could not answer it being covered with "
                "no reasons while the run underneath wrote 4618 words",
     },
@@ -302,7 +302,7 @@ CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
         "moved_words": {"E": 0},
         "total_words": {"E": 3072},
         "why": "update_E's product for those components is the Pade factor "
-               "(stepping.py:999-1000). Byte-exact here, and refused anyway",
+               "(stepping.py:1063). Byte-exact here, and refused anyway",
     },
     "offdiagonal": {
         "sides": ("E",),
@@ -316,7 +316,7 @@ CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
                "is here: on the real route update_E moves 1450 words, so a null "
                "that reached this configuration would be WRONG rather than merely "
                "unbuilt-for. The row product reads the other components' volumes "
-               "(stepping.py:1001-1008) and belongs to "
+               "(stepping.py:1065-1071) and belongs to "
                "covers_real_pml_offdiag_constitutive",
     },
     "magnetic_susceptibility": {
@@ -325,10 +325,10 @@ CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
         "needle": "a duck-typed polarization whose drives('Hx') is True",
         "moved_words": {"H": 0},
         "total_words": {"H": 3072},
-        "why": "update_H returns at stepping.py:944 whatever is registered, so the "
+        "why": "update_H returns at stepping.py:999-1000 whatever is registered, so the "
                "null IS byte-exact here. What the clause protects is the CLAIM: the "
                "H-side polarization slot is deliberately empty in this engine "
-               "(stepping.py:1406-1407), and a null must not report coverage of a "
+               "(stepping.py:1567-1568), and a null must not report coverage of a "
                "sub-step that grew a term",
     },
     "pml_storage_behind_an_inert_layer": {
@@ -380,7 +380,7 @@ STORED_E_ARM_STATUS: Dict[str, Any] = {
     "sub_step": "update_E",
     "reached_when": ("not _pml_is_active(pml) and fields.stores_E, with real "
                      "storage and no susceptibility on any component"),
-    "array_path": "fields.<component>[...] = (D - sum P) * inv_eps  # stepping.py:1022",
+    "array_path": "fields.<component>[...] = (D - sum P) * inv_eps  # stepping.py:1085",
     "built_for_cuda": False,
     "built_for_cuda_with_a_polarization":
         "dispersive_kernels.update_E_no_pml_real_dispersive",
@@ -408,7 +408,7 @@ STORED_E_ARM_STATUS: Dict[str, Any] = {
 #: ``update_H`` is admitted on ALL 14 no-PML rows -- including the six that force
 #: complex storage, because this arm has no storage clause: it reads no array, so
 #: there is nothing for a dtype to be wrong about, and the array path's ``return`` at
-#: stepping.py:944 is dtype-blind. ``update_E`` is admitted on the 5 rows with
+#: stepping.py:999-1000 is dtype-blind. ``update_E`` is admitted on the 5 rows with
 #: ``stores_E`` False; the other 9 are the STORE arm (:data:`STORED_E_ARM_STATUS`),
 #: which this package has not built.
 #:
@@ -597,8 +597,8 @@ def covers_no_pml_null_constitutive(fields: Any, pml: Any, grid: Any,
 
     1. the side is one this arm knows, and there is a grid;
     2. **the layer is inert** -- ``stepping._pml_is_active`` False (the test at
-       stepping.py:944 and :982). Both sides;
-    3. **E is not stored** -- ``fields.stores_E`` False (stepping.py:983). E side
+       stepping.py:999 and :1043). Both sides;
+    3. **E is not stored** -- ``fields.stores_E`` False (stepping.py:1044). E side
        only, followed by the three features that reach a different product;
     4. no magnetic susceptibility (H side);
     5. no PML storage switched on behind an inert layer (both sides, conservative).
@@ -635,23 +635,23 @@ def covers_no_pml_null_constitutive(fields: Any, pml: Any, grid: Any,
         active = _flag(pml, "is_active")
         if active is _UNREADABLE:
             return False, ("the layer does not report is_active: "
-                           "stepping._pml_is_active (stepping.py:2498-2506) "
+                           "stepping._pml_is_active (stepping.py:2952-2960) "
                            "branches on exactly that attribute")
         if active:
             return False, ("an active PML layer is installed: update_H/update_E run "
-                           "the dsigw accumulation (stepping.py:946-951, :1014-1018), "
+                           "the dsigw accumulation (stepping.py:1005-1010, :1077-1081), "
                            "which is not a no-op")
 
     if spec["needs_stored_e_clause"]:
-        # Clause 3 -- literally what stepping.py:983 branches on.
+        # Clause 3 -- literally what stepping.py:1044 branches on.
         stored = _flag(fields, "stores_E")
         if stored is _UNREADABLE:
-            return False, ("fields does not report stores_E: stepping.py:983 "
+            return False, ("fields does not report stores_E: stepping.py:1044 "
                            "branches on exactly that attribute")
         if stored:
             return False, ("fields.stores_E is True: update_E writes "
-                           "E[...] = (D - sum P) * inv_eps (stepping.py:1022) "
-                           "instead of returning at :983 -- that is the STORE arm, "
+                           "E[...] = (D - sum P) * inv_eps (stepping.py:1085) "
+                           "instead of returning at :1044-1045 -- that is the STORE arm, "
                            "which this package has not built (STORED_E_ARM_STATUS)")
         # The three features that reach a DIFFERENT product. Each is named
         # separately because each belongs to a different kernel, so a reader who
@@ -679,12 +679,12 @@ def covers_no_pml_null_constitutive(fields: Any, pml: Any, grid: Any,
                 or getattr(fields, "_chi3_components", None)):
             return False, ("instantaneous chi2/chi3 is installed: update_E's "
                            "product for those components is the Pade factor "
-                           "(stepping.py:999-1000). CONSERVATIVE where it fires "
+                           "(stepping.py:1063). CONSERVATIVE where it fires "
                            "alone -- driver.set_chi2/set_chi3 force stored E "
                            "(driver.py:2023-2029) so a driver-built run has already "
                            "been refused above, but Fields.set_nonlinear_volumes "
                            "does not, and on that object update_E returns at "
-                           "stepping.py:983 and the null is byte-exact")
+                           "stepping.py:1044 and the null is byte-exact")
         offdiagonal = _flag(fields, "has_offdiagonal_epsilon")
         if offdiagonal is _UNREADABLE:
             return False, ("fields does not report has_offdiagonal_epsilon; a run "
@@ -693,15 +693,15 @@ def covers_no_pml_null_constitutive(fields: Any, pml: Any, grid: Any,
         if offdiagonal:
             return False, ("an off-diagonal chi1inv row is installed: the row "
                            "product reads the other components' volumes "
-                           "(stepping.py:1001-1008) and belongs to "
+                           "(stepping.py:1065-1071) and belongs to "
                            "covers_real_pml_offdiag_constitutive")
     else:
         # Clause 4 -- the H side's only feature clause, and it is CONSERVATIVE, not
-        # vacuous: ``update_H`` returns at stepping.py:944 whatever is registered, so
+        # vacuous: ``update_H`` returns at stepping.py:999-1000 whatever is registered, so
         # the null IS byte-exact on a state that claims to drive Hx, and this refuses
         # it anyway. What it protects is the CLAIM rather than the arithmetic. A
         # registered magnetic susceptibility would mean the H-side slot MEEP fills
-        # after ``update_eh(H_stuff)`` -- which stepping.py:1406-1407 records as
+        # after ``update_eh(H_stuff)`` -- which stepping.py:1567-1568 records as
         # deliberately empty -- has grown a term nothing in this package has
         # transcribed, and a null there would report full coverage of a sub-step that
         # now has work to do.
@@ -717,7 +717,7 @@ def covers_no_pml_null_constitutive(fields: Any, pml: Any, grid: Any,
                     return False, (
                         f"polarization {index} drives magnetic component "
                         f"{component}: the H-side polarization slot is empty in "
-                        "this engine (stepping.py:1406-1407) and a null cannot "
+                        "this engine (stepping.py:1567-1568) and a null cannot "
                         "report coverage of a sub-step that grew a term")
 
     # Clause 5 -- CONSERVATIVE, and labelled so where it fires. ``_pml_active`` is

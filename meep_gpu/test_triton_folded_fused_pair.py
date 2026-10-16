@@ -538,7 +538,8 @@ def test_the_plan_refuses_a_fold_that_also_carries_a_wall_or_a_bad_phase():
     """
     kwargs = dict(shape=(8, 8, 4), dtdx=0.5, block=256,
                   targets=[], auxiliaries=[], sources=[], curl_coefficients=[],
-                  e_targets=[], e_aux=[], inverse_epsilon=[], e_coefficients=[])
+                  e_targets=[], e_aux=[], inverse_epsilon=[], e_coefficients=[],
+                  chunk_bounds=None)
     folded = symmetry.CODE_MIRROR_METALLIC
     with pytest.raises(ValueError, match="not \\+1 or -1"):
         product.FoldedFusedPairPlan(
@@ -862,10 +863,14 @@ def test_the_gates_transcription_leg_traces_every_arithmetic_line_to_its_source(
     row = load_gate().transcription_leg()
     assert row["findings"] == []
     assert row["passed"]
-    assert row["curl_lines_checked"] == 6
+    # The three stencil calls, the three record lines that key the curl forms, the
+    # three region-masked auxiliary loads, the three coefficient tails of the
+    # forms' calls and the three region-masked auxiliary stores.
+    assert row["curl_lines_checked"] == 15
     assert row["zero_metal_lines_checked"] == 6
     assert row["top_plane_lines_checked"] == 3
-    assert row["carry_ghost_lines_checked"] == 8
+    assert row["constitutive_lines_checked"] == 9
+    assert row["carry_ghost_lines_checked"] == 7
 
 
 def test_the_gates_carry_table_leg_reproduces_the_array_paths_own_fill():
@@ -924,10 +929,18 @@ def test_the_gates_carry_table_verdict_FLIPS_on_every_defect_it_claims_to_see():
                  "m17_far_reflect_row_is_n_minus_two"):
         assert name in scoreable, name
     # ...and what is deferred is declared, so the deferral cannot grow quietly.
+    # The chunk-form battery's rewrites choose a cell's FORM, which this leg never
+    # evaluates, so every one is deferred but the carry's membership key, which the
+    # table's flag check catches structurally.
     assert set(row["deferred_to_the_device_gate"]) == {
         "m6_constitutive_association", "m7_history_read_after_write",
         "m8_zero_metal_dropped", "m11_commuted_multiply",
-        "m16_top_plane_mask_dropped"}
+        "m16_top_plane_mask_dropped",
+        "b1_whole_grid_recurrence", "b2_coefficient_predicate",
+        "b3_membership_one_row_off", "b4_constitutive_lattice_swapped",
+        "b5_dsig_dsigu_swapped", "b6_fu_store_unmasked", "b7_fw_store_unmasked",
+        "b9_fu_load_unmasked"}
+    assert "b8_carry_keyed_at_the_source" in row["caught_structurally_not_numerically"]
 
 
 def test_the_gates_design_sweep_agrees_with_the_array_path_and_catches_its_flips():

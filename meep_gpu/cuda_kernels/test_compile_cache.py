@@ -389,7 +389,7 @@ def test_get_kernel_rebuilds_its_code_map_so_a_rewritten_source_is_seen():
     first = kernels._get_kernel("step_B_pml_real", False)
     assert first.code == original
 
-    mutated = original.replace("float curl = dtdx *", "float curl = 0.0f * dtdx *")
+    mutated = original.replace("float curl = curl_stencil(", "float curl = 0.0f * curl_stencil(")
     assert mutated != original, "the mutation matched no text; the pin is vacuous"
     kernels._step_B_pml_real_kernel_code = mutated
     try:

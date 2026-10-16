@@ -42,7 +42,6 @@ import sys
 import numpy as np
 import pytest
 
-from meep_gpu import expansion_refusal
 from meep_gpu.fields import Fields
 from meep_gpu.grid import Grid, Mirror
 from meep_gpu.pml import PML
@@ -59,8 +58,6 @@ GATE = (API_ROOT / "parity" / "meep_gpu"
 #: not be overwritten, so the round was re-cut with a correctly scoped one.
 CENSUS_DIR = (API_ROOT / "parity" / "meep_gpu" / "results"
               / "triton_complex_fused_magnetic_pair_census_2026-08-19T2355")
-KEEP_PROBE = (API_ROOT / "parity" / "meep_gpu" / "results"
-              / "expansion_probe_2026-08-17" / "expansion_probe_keep.json")
 
 
 def build(cell=(3.0, 3.0, 0.0), boundaries="periodic", k_point=(0.23, 0.0, 0.0),
@@ -74,10 +71,6 @@ def build(cell=(3.0, 3.0, 0.0), boundaries="periodic", k_point=(0.23, 0.0, 0.0),
     return fields, PML(grid=grid, thickness=thickness)
 
 
-def probe_record():
-    return json.loads(KEEP_PROBE.read_text(encoding="utf-8"))
-
-
 def residual(verdict):
     """The reasons that are not the NumPy-host backend clause.
 
@@ -88,7 +81,6 @@ def residual(verdict):
     """
     return [reason for reason in verdict.reasons
             if not ("array module is" in reason and "not cupy" in reason)]
-
 
 
 def magnetic_deposit(fields):
@@ -119,6 +111,19 @@ class Source:
         self.field_type = field_type
 
 
+def _every_cell(shape):
+    """Every cell of every resolved axis inside a layer chunk, both lattices."""
+    from meep_gpu.chunk_map import RECORD_PRESENCE_WORD, RECORD_WORDS, record_index
+
+    record = np.zeros(RECORD_WORDS, dtype=np.int32)
+    for axis, n in enumerate(shape):
+        if n > 1:
+            record[RECORD_PRESENCE_WORD] |= 1 << axis
+            for half in (False, True):
+                record[record_index(half, axis, 1)] = n
+    return record
+
+
 def load_gate():
     spec = importlib.util.spec_from_file_location("probe_complex_fused_B", GATE)
     module = importlib.util.module_from_spec(spec)
@@ -128,85 +133,21 @@ def load_gate():
 
 
 # ---------------------------------------------------------------------------
-# The EXPANSION licence — which arm, on what evidence
+# The multiply helpers the body calls
 # ---------------------------------------------------------------------------
 
-def test_this_product_asks_the_licence_over_the_base_pattern_set_and_no_more():
-    """The pattern-set claim, pinned to the base set the halves already cover.
 
-    The sibling tranches pass a SUPERSET because each launches an operand
-    orientation the base four do not cover; this product launches none, so it asks
-    the same question over the same set. If a later edit adds one, this test is
-    what forces the new pattern to be declared before the arm can be licensed.
-    """
-    assert product.PRODUCT_PROBE_PATTERNS == complex_fields.PROBE_PATTERNS
-
-
-def test_the_kernel_body_calls_only_the_three_licensed_multiply_helpers():
-    """The other half of the pattern-set claim, read off the shipped body.
-
-    A fourth helper would be a fourth operand orientation. Declaring the base set
-    while calling something outside it is exactly how a kernel gets an arm licensed
-    for multiplications it does not perform.
-    """
+def test_the_kernel_body_calls_only_the_three_declared_multiply_helpers():
+    """Read off the shipped body: a fourth helper would be a fourth operand orientation
+    the product does not declare."""
     gate = load_gate()
     body = gate._shipped_text("complex_fused_curl_constitutive_B")
-    called = {name for name in product.LICENSED_MULTIPLY_HELPERS if name in body}
-    assert called == set(product.LICENSED_MULTIPLY_HELPERS), called
+    called = {name for name in product.MULTIPLY_HELPERS if name in body}
+    assert called == set(product.MULTIPLY_HELPERS), called
     stray = [line.strip() for line in body.splitlines()
              if ("_mul_" in line or "_rotate_" in line)
-             and not any(name in line for name in product.LICENSED_MULTIPLY_HELPERS)]
+             and not any(name in line for name in product.MULTIPLY_HELPERS)]
     assert not stray, stray
-
-
-def test_the_keep_cut_probe_licenses_FMA_V1_on_this_products_pattern_set():
-    """The arm this product binds, and the evidence it is bound from.
-
-    Measured through the SHIPPED rule, not asserted: all four base patterns
-    discriminate and agree, the basis is 'measured' rather than an
-    ENVIRONMENT_DEFAULTS row, and the record's resolved policy is the one every
-    complex arm in this package was certified under.
-    """
-    verdict = complex_fields.expansion_license(probe_record(),
-                                               product.PRODUCT_PROBE_PATTERNS)
-    assert verdict["refusals"] == []
-    assert verdict["arm"] == "FMA_V1"
-    assert verdict["basis"] == "measured"
-    assert verdict["non_discriminating"] == []
-    assert set(verdict["discriminating"]) == set(product.PRODUCT_PROBE_PATTERNS)
-    assert verdict["policy_resolved"] == complex_fields.CERTIFIED_UNDER_SUBNORMAL_POLICY
-    assert verdict["candidate_policy"] == verdict["policy_resolved"]
-
-
-def test_a_keep_cut_licence_does_not_survive_a_flush_candidate_set():
-    """The comparison, not the verdict, is what a policy boundary breaks.
-
-    A record whose candidates were computed under one policy and whose bytes were
-    cut under the other is broken whatever arm it named — the 2026-08-11
-    54/48/125-word NEITHER is this same defect wearing a different answer.
-    """
-    record = probe_record()
-    record["candidates"] = dict(record.get("candidates") or {})
-    record["candidates"]["policy"] = "flush"
-    verdict = complex_fields.expansion_license(record,
-                                               product.PRODUCT_PROBE_PATTERNS)
-    assert verdict["arm"] is None
-    assert any("broken comparison" in reason for reason in verdict["refusals"]), \
-        verdict["refusals"]
-
-
-def test_the_gates_expansion_licence_leg_refuses_every_broken_record_it_arms():
-    gate = load_gate()
-    row = gate.expansion_licence_leg()
-    assert row["passed"], row["findings"]
-    assert row["licensed"], "the leg scored no artifact at all"
-    assert {entry["arm"] for entry in row["licensed"]} == {"FMA_V1"}
-    assert all(entry["basis"] == "measured" for entry in row["licensed"])
-    assert {entry["case"] for entry in row["falsification"]} == {
-        "neither_pattern", "missing_pattern",
-        "candidates_cut_under_another_policy", "evidence_free_ambiguity",
-        "discriminating_patterns_disagree", "not_a_record", "host_backend"}
-    assert all(entry["passed"] for entry in row["falsification"]), row["falsification"]
 
 
 # ---------------------------------------------------------------------------
@@ -277,10 +218,9 @@ def test_the_gate_measures_the_two_fills_inert_here_and_live_on_a_fold():
 # ---------------------------------------------------------------------------
 
 def test_a_complex_bloch_grid_is_admitted_modulo_the_numpy_host():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = product.complex_fused_magnetic_pair_coverage(
-            fields, pml, (), probe=probe_record())
+    fields, pml = build()
+    verdict = product.complex_fused_magnetic_pair_coverage(
+        fields, pml, ())
     assert residual(verdict) == []
 
 
@@ -291,17 +231,15 @@ def test_an_electric_source_is_admitted_and_a_magnetic_one_is_refused_by_name():
     and an electric one in the D/E seam. A predicate that refused both would be
     correct and useless; one that refused neither would drop a deposit.
     """
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        record = probe_record()
-        electric = product.complex_fused_magnetic_pair_coverage(
-            fields, pml, (Source("D"),), probe=record)
-        # (1) CARRIED since 2026-08-30: a real magnetic deposit in this seam.
-        carried = product.complex_fused_magnetic_pair_coverage(
-            fields, pml, (magnetic_deposit(fields),), probe=record)
-        # (2) STILL REFUSED BY NAME: no publishable deposit index.
-        magnetic = product.complex_fused_magnetic_pair_coverage(
-            fields, pml, (Source("B"),), probe=record)
+    fields, pml = build()
+    electric = product.complex_fused_magnetic_pair_coverage(
+        fields, pml, (Source("D"),))
+    # (1) CARRIED since 2026-08-30: a real magnetic deposit in this seam.
+    carried = product.complex_fused_magnetic_pair_coverage(
+        fields, pml, (magnetic_deposit(fields),))
+    # (2) STILL REFUSED BY NAME: no publishable deposit index.
+    magnetic = product.complex_fused_magnetic_pair_coverage(
+        fields, pml, (Source("B"),))
     assert residual(electric) == []
     assert residual(carried) == [], residual(carried)
     assert not magnetic.covered
@@ -313,20 +251,18 @@ def test_holding_the_carry_flag_False_puts_the_magnetic_seam_refusal_straight_ba
         monkeypatch):
     """(3) of the source clause: the admission above is the FLAG's doing, not a
     clause that quietly went away."""
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        monkeypatch.setattr(product, "CARRIES_DEPOSIT_REPAIR", False)
-        held = product.complex_fused_magnetic_pair_coverage(
-            fields, pml, (magnetic_deposit(fields),), probe=probe_record())
+    fields, pml = build()
+    monkeypatch.setattr(product, "CARRIES_DEPOSIT_REPAIR", False)
+    held = product.complex_fused_magnetic_pair_coverage(
+        fields, pml, (magnetic_deposit(fields),))
     assert not held.covered
     assert any("is magnetic" in reason for reason in held.reasons), held.reasons
 
 
 def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = product.complex_fused_magnetic_pair_coverage(
-            fields, pml, None, probe=probe_record())
+    fields, pml = build()
+    verdict = product.complex_fused_magnetic_pair_coverage(
+        fields, pml, None)
     assert not verdict.covered
     assert any("was not declared" in reason for reason in verdict.reasons)
 
@@ -338,47 +274,34 @@ def test_a_fold_is_refused_by_this_products_own_clause_and_not_only_by_the_halve
     this weld would silently swallow two passes that had started doing work. The
     clause is here for that day and the test is what keeps it honest.
     """
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build(boundaries=("metallic", "metallic", "periodic"),
-                            k_point=(0.0, 0.0, 0.0), mirrors=(("Y", 1),))
-        verdict = product.complex_fused_magnetic_pair_coverage(
-            fields, pml, (), probe=probe_record())
+    fields, pml = build(boundaries=("metallic", "metallic", "periodic"),
+                        k_point=(0.0, 0.0, 0.0), mirrors=(("Y", 1),))
+    verdict = product.complex_fused_magnetic_pair_coverage(
+        fields, pml, ())
     assert not verdict.covered
     seam = [reason for reason in verdict.reasons
             if "fill_symmetry_bc_B" in reason or "symmetry passes in this seam" in reason]
     assert seam, verdict.reasons
 
 
-def test_a_missing_expansion_probe_is_a_refusal_not_a_guessed_arm():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = product.complex_fused_magnetic_pair_coverage(fields, pml, (),
-                                                               probe={})
-    assert not verdict.covered
-    assert any("expansion probe artifact" in reason for reason in verdict.reasons)
-
-
 def test_no_pml_is_refused_because_update_H_is_a_no_op_without_one():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = product.complex_fused_magnetic_pair_coverage(
-            fields, None, (), probe=probe_record())
+    fields, pml = build()
+    verdict = product.complex_fused_magnetic_pair_coverage(
+        fields, None, ())
     assert not verdict.covered
     assert any("PML" in reason for reason in verdict.reasons)
 
 
 def test_real_storage_is_refused_this_is_the_complex_arm():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build(complex_storage=False)
-        verdict = product.complex_fused_magnetic_pair_coverage(
-            fields, pml, (), probe=probe_record())
+    fields, pml = build(complex_storage=False)
+    verdict = product.complex_fused_magnetic_pair_coverage(
+        fields, pml, ())
     assert not verdict.covered
 
 
 def test_the_predicate_reports_both_halves_reasons_with_their_side_named():
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = product.complex_fused_magnetic_pair_coverage(fields, pml, ())
+    fields, pml = build()
+    verdict = product.complex_fused_magnetic_pair_coverage(fields, pml, ())
     prefixes = {reason.split(":")[0] for reason in verdict.reasons}
     assert "complex curl half" in prefixes, verdict.reasons
     assert "complex constitutive half" in prefixes, verdict.reasons
@@ -390,20 +313,18 @@ def test_the_builder_refuses_every_configuration_the_predicate_refuses():
     A licence refused at the coverage seam but still bound at the plan seam is how
     an unlicensed arm reaches a kernel.
     """
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        folded_fields, folded_pml = build(
-            boundaries=("metallic", "metallic", "periodic"),
-            k_point=(0.0, 0.0, 0.0), mirrors=(("Y", 1),))
-        record = probe_record()
-        for args, kwargs in (
-            ((fields, pml, (Source("B"),)), {"probe": record}),
-            ((fields, pml, None), {"probe": record}),
-            ((fields, pml, ()), {"probe": {}}),
-            ((fields, None, ()), {"probe": record}),
-            ((folded_fields, folded_pml, ()), {"probe": record}),
-        ):
-            assert product.plan_complex_fused_magnetic_pair(*args, **kwargs) is None
+    fields, pml = build()
+    folded_fields, folded_pml = build(
+        boundaries=("metallic", "metallic", "periodic"),
+        k_point=(0.0, 0.0, 0.0), mirrors=(("Y", 1),))
+    for args, kwargs in (
+        ((fields, pml, (Source("B"),)), {}),
+        ((fields, pml, None), {}),
+        ((fields, pml, ()), {}),
+        ((fields, None, ()), {}),
+        ((folded_fields, folded_pml, ()), {}),
+    ):
+        assert product.plan_complex_fused_magnetic_pair(*args, **kwargs) is None
 
 
 # ---------------------------------------------------------------------------
@@ -429,27 +350,28 @@ def test_the_backward_constexpr_is_step_Bs_and_only_step_Bs():
     arrays, curl, constitutive = _bare_arrays()
     plan = product.plan_complex_fused_magnetic_pair_from_arrays(
         arrays, curl, constitutive, (0, 0, 0), (False, False, False),
-        (None, None, None), 0.35, 1)
+        (None, None, None), 0.35,
+            chunk_bounds=_every_cell((4, 5, 6)))
     assert plan.backward == 0
 
 
-def test_the_phase_table_is_rounded_to_complex64_and_not_conjugated_here():
-    """Forward sub-step: the imaginary part is passed as measured.
-
-    ``_phase_arguments`` negates it for a BACKWARD sub-step (the conjugate of
-    ``_shift_down``). This product is forward-only, so a sign appearing here would
-    be the D-half's convention leaking into the B half.
+def test_the_connection_is_the_word_below_the_window_for_this_forward_step():
+    """Forward sub-step: B reads the not-owned word BELOW the stored window,
+    ``conj(eikna)`` (``stepping._bloch_ghost_operand``), each part rounded once from
+    double. The D half takes ``eikna``; a sign the other way here would be the D
+    half's convention leaking into the B half.
     """
     arrays, curl, constitutive = _bare_arrays()
     phase = complex(0.5, 0.25)
     plan = product.plan_complex_fused_magnetic_pair_from_arrays(
         arrays, curl, constitutive, (0, 0, 0), (False, False, False),
-        (phase, None, None), 0.35, 1)
-    assert plan.phased == (1, 0, 0)
-    assert plan.phase_values[:2] == (float(np.float32(phase.real)),
-                                     float(np.float32(phase.imag)))
-    # An unphased axis passes (1.0, 0.0) under PH = 0 and emits no multiply.
-    assert plan.phase_values[2:] == (1.0, 0.0, 1.0, 0.0)
+        (phase, None, None), 0.35,
+            chunk_bounds=_every_cell((4, 5, 6)))
+    assert plan.connections == (complex_fields.CONNECTION_KINDS["phase"], 0, 0)
+    assert plan.connection_values[:2] == (float(np.float32(phase.real)),
+                                          float(np.float32(-phase.imag)))
+    # An unphased axis carries no connection (kind 0) and (1.0, 0.0).
+    assert plan.connection_values[2:] == (1.0, 0.0, 1.0, 0.0)
 
 
 def test_the_plan_refuses_a_cell_count_whose_word_index_overflows_int32():
@@ -476,7 +398,8 @@ def test_the_plan_refuses_a_cell_count_whose_word_index_overflows_int32():
     with pytest.raises(ValueError, match="overflows"):
         product.plan_complex_fused_magnetic_pair_from_arrays(
             arrays, curl, constitutive, (0, 0, 0), (False, False, False),
-            (None, None, None), 0.35, 1)
+            (None, None, None), 0.35,
+            chunk_bounds=_every_cell((4, 5, 6)))
 
 
 def test_a_real_storage_volume_is_refused_at_the_word_view():
@@ -486,7 +409,8 @@ def test_a_real_storage_volume_is_refused_at_the_word_view():
     with pytest.raises(ValueError, match="complex64"):
         product.plan_complex_fused_magnetic_pair_from_arrays(
             arrays, curl, constitutive, (0, 0, 0), (False, False, False),
-            (None, None, None), 0.35, 1)
+            (None, None, None), 0.35,
+            chunk_bounds=_every_cell((4, 5, 6)))
 
 
 # ---------------------------------------------------------------------------
@@ -510,9 +434,8 @@ def test_the_module_imports_and_answers_coverage_with_triton_absent(monkeypatch)
         "meep_gpu.triton_kernels.complex_fused_magnetic_pair")
     module = importlib.reload(module)
     assert module.complex_fused_curl_constitutive_B is None
-    with expansion_refusal.declaring_run_policy("keep"):
-        fields, pml = build()
-        verdict = module.complex_fused_magnetic_pair_coverage(fields, pml, ())
+    fields, pml = build()
+    verdict = module.complex_fused_magnetic_pair_coverage(fields, pml, ())
     assert isinstance(verdict.reasons, tuple)
     with pytest.raises(ImportError, match="triton"):
         module.complex_fused_curl_constitutive_B_kernel()
@@ -626,7 +549,7 @@ def test_the_gates_transcription_leg_traces_every_arithmetic_line_to_its_source(
     assert row["weld_lines_checked"] == len(gate.WELD_LINES)
     assert row["wall_lines_checked"] == len(gate.WALL_LINES)
     assert sorted(row["multiply_helpers_called"]) == sorted(
-        product.LICENSED_MULTIPLY_HELPERS)
+        product.MULTIPLY_HELPERS)
 
 
 def test_the_gates_design_sweep_agrees_with_the_array_path_and_catches_its_flips():
@@ -798,7 +721,7 @@ def test_every_mutation_is_scored_on_a_grid_that_ENTERS_the_branch_it_rewrites()
             for axis, letter in enumerate(AXES):
                 if f"ZM_{letter}" in guard or f"BC{letter} == METALLIC" in guard:
                     return kinds[axis] == "metallic"
-                if f"PH{letter}" in guard:
+                if f"PH{letter}" in guard or f"CN{letter}" in guard:
                     return float(k_point[axis]) != 0.0
             return True                      # unclassified or unguarded: assume live
 

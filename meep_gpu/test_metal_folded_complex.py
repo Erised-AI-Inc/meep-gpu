@@ -64,6 +64,7 @@ if _PARITY not in sys.path:
 import metal_composition_matrix as matrix  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
+from meep_gpu.chunk_map import ChunkLayout, chunk_bounds_record  # noqa: E402
 from meep_gpu.metal_kernels import (  # noqa: E402
     complex_fields, device, folded_complex, launch, shaders, symmetry, templates,
 )
@@ -74,14 +75,7 @@ MODULE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 ENVIRONMENT = matrix.prepare_environment()
 
-#: The expansion arm every source leg builds with. Read from the SAME artifact the
-#: predicates read, so a test cannot certify a body the family would not launch.
-PROBE = folded_complex.load_expansion_probe()
-EXPANSION = folded_complex.expansion_from_probe(PROBE) if PROBE else None
 
-requires_probe = pytest.mark.skipif(
-    EXPANSION is None,
-    reason="no folded-complex expansion probe artifact on this host")
 
 #: Both terminations of a fold on axis Y over a periodic x. ``(0, 3, 0)`` is
 #: MIRROR_PERIODIC — the top plane is NOT owned, so the mask and the far fill both
@@ -133,8 +127,13 @@ def _subnormal_words(array) -> int:
     return int(np.count_nonzero(((w >> 23) & 0xFF == 0) & ((w & 0x7FFFFFFF) != 0)))
 
 
+def _record(fields, pml):
+    """The one-rank chunk record the array path steps these fields with."""
+    return chunk_bounds_record(ChunkLayout.one_rank(fields.grid, pml))
+
+
 def _source(codes=PERIODIC_FOLD, backward: bool = False, phased=NO_PHASE) -> str:
-    return folded_complex.folded_bloch_curl_source(codes, backward, phased, EXPANSION)
+    return folded_complex.folded_bloch_curl_source(codes, backward, phased)
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +170,6 @@ def test_a_parent_template_without_the_anchor_is_refused_loudly(monkeypatch):
         folded_complex.folded_curl_template()
 
 
-@requires_probe
 @pytest.mark.parametrize("backward", (False, True))
 @pytest.mark.parametrize("codes", [(cx, cy, cz) for cx in ALL_CODES
                                    for cy in ALL_CODES for cz in ALL_CODES][::7])
@@ -191,7 +189,6 @@ def test_the_ghost_and_cell_zero_mask_are_the_certified_emitters_output(codes,
     assert mask in source, codes
 
 
-@requires_probe
 @pytest.mark.parametrize("backward", (False, True))
 @pytest.mark.parametrize("mirror", (folded_complex.CODE_MIRROR_METALLIC,
                                     folded_complex.CODE_MIRROR_PERIODIC))
@@ -213,9 +210,8 @@ def test_a_mirror_axis_gathers_exactly_as_a_metallic_one(mirror, backward):
     assert b.replace(top, metallic_top) == a
 
 
-@requires_probe
 @pytest.mark.parametrize("backward", (False, True))
-@pytest.mark.parametrize("phased", ((0, 0, 0), (1, 0, 0), (0, 0, 1)))
+@pytest.mark.parametrize("phased", ((0, 0, 0), (2, 0, 0), (0, 0, 1)))
 def test_an_unfolded_grid_emits_the_certified_complex_source(backward, phased):
     """THE REDUCTION, by character. The strongest form of the composition claim.
 
@@ -231,7 +227,7 @@ def test_an_unfolded_grid_emits_the_certified_complex_source(backward, phased):
                    for i, f in enumerate(phased))
     folded_source = _source(codes, backward, phased)
     certified = complex_fields.bloch_curl_source(
-        symmetry._reduced_codes(codes), backward, phased, EXPANSION)
+        symmetry._reduced_codes(codes), backward, phased)
     empty = folded_complex._TOP_MASK_BLOCK.replace(
         "__TOP_MASK__",
         folded_complex.folded_top_plane_mask(codes, backward,
@@ -239,7 +235,6 @@ def test_an_unfolded_grid_emits_the_certified_complex_source(backward, phased):
     assert folded_source.replace(empty, "", 1) == certified
 
 
-@requires_probe
 @pytest.mark.parametrize("backward", (False, True))
 def test_the_top_plane_mask_fires_only_on_a_folded_periodic_axis(backward):
     """MIRROR_METALLIC's top plane is OWNED and STEPPED — masking it deletes a cell."""
@@ -255,18 +250,16 @@ def test_the_top_plane_mask_fires_only_on_a_folded_periodic_axis(backward):
     assert templates.COMPLEX_ZERO in periodic
 
 
-@requires_probe
 def test_the_folded_curl_binds_exactly_what_the_certified_complex_curl_binds():
     """The fold adds no argument: the STORED EXTENT is what carries it."""
     folded_source = _source()
     certified = complex_fields.bloch_curl_source(
-        (templates.PERIODIC,) * 3, False, NO_PHASE, EXPANSION)
+        (templates.PERIODIC,) * 3, False, NO_PHASE)
     assert folded_source.count("[[buffer(") == certified.count("[[buffer(")
     assert folded_source.count("[[buffer(") == complex_fields.CURL_BINDINGS
 
 
-@requires_probe
-@pytest.mark.parametrize("phased", ((0, 1, 0), (1, 1, 1)))
+@pytest.mark.parametrize("phased", ((0, 2, 0), (1, 1, 1)))
 def test_a_phased_folded_axis_is_refused_at_emission(phased):
     """Clause 9, held at the LAST place it can be seen.
 
@@ -282,23 +275,17 @@ def test_a_phased_folded_axis_is_refused_at_emission(phased):
 # 2. The parity — the one place the composition changes arithmetic
 # ---------------------------------------------------------------------------
 
-def test_the_parity_coefficients_imaginary_word_is_bitwise_zero():
-    """The property everything else in this family rests on.
+def test_the_parity_words_are_the_array_paths_float32_scale():
+    """``part_products.scale(parity, plane)`` rounds the Python int to the part dtype.
 
-    ``complex64(+/-1)`` must have an imaginary word of BITWISE ``0x00000000`` — not
-    merely equal to zero — and a real word of exactly ``+/-1.0``, at both phases and
-    for the near and far coefficient alike. Every claim about the two expansion arms
-    agreeing on the parity product follows from it, and the probe's own
-    ``AMBIGUOUS_BOTH`` verdict on the parity pattern is only meaningful while it
-    holds.
+    The near word is ``+phase`` and the far word ``-phase``, each exactly ``+/-1.0`` in
+    float32, and they are what the fill multiplies each part by.
     """
     for phase in (1, -1):
         near, far = folded_complex.mirror_parity_coefficients(phase)
-        assert near == (float(phase), 0.0)
-        assert far == (float(-phase), 0.0)
-        for words in (near, far):
-            assert _words(np.float32([words[1]]))[0] == 0x00000000
-            assert abs(words[0]) == 1.0
+        assert near == float(phase) and far == float(-phase)
+        for word in (near, far):
+            assert np.float32(word) == word and abs(word) == 1.0
 
 
 def test_a_parity_outside_plus_or_minus_one_is_refused():
@@ -306,17 +293,16 @@ def test_a_parity_outside_plus_or_minus_one_is_refused():
         folded_complex.mirror_parity_coefficients(0)
 
 
-@requires_probe
 @pytest.mark.parametrize("pass_name", folded_complex.FILL_PASSES)
 @pytest.mark.parametrize("axis", (0, 1, 2))
 @pytest.mark.parametrize("family", ("B", "D"))
 def test_the_fill_multiplies_and_never_flips_a_sign(family, axis, pass_name):
-    """THE REFUTED SPELLING IS ABSENT AND THE FULL PRODUCT IS PRESENT.
+    """EVERY WRITE IS THE ARRAY PATH'S PRODUCT, ONE PER PART.
 
-    Under real storage ``symmetry.mirror_ghost_fill`` writes ``-x`` or a plain copy,
-    which is EXACT there. Here that spelling is WRONG — measured below on a live
-    state — so no emitted folded complex fill may contain it, and every write must go
-    through the full complex product with the coefficient on the LEFT.
+    The array path writes ``part_products.scale(parity, plane)``: a float32 product
+    per part, which flushes a subnormal word as every arithmetic does on this backend.
+    The real fold's sign-bit spelling (``-x`` or a plain copy) agrees with it off the
+    subnormal band and not inside it, so no emitted folded complex fill spells it.
 
     The shift triple is read from ``TARGET_IYEE`` rather than spelled, so this leg
     would fail if the emitter and the Yee table disagreed about one component.
@@ -327,7 +313,7 @@ def test_the_fill_multiplies_and_never_flips_a_sign(family, axis, pass_name):
     if want not in shifts:
         pytest.skip("no component of this family has that shift on this axis")
     source = folded_complex.folded_mirror_fill_complex_source(
-        axis, pass_name, shifts, EXPANSION)
+        axis, pass_name, shifts)
     # THE STORES, and only the stores. The helper block this source carries QUOTES
     # the refuted spellings in its own comments — that is `templates.complex_helpers`
     # recording why they are refuted — so a substring search over the whole source
@@ -340,7 +326,8 @@ def test_the_fill_multiplies_and_never_flips_a_sign(family, axis, pass_name):
             assert not any(statement.startswith(f"f{slot}[") for statement in stores)
             continue
         assert any(statement.startswith(f"f{slot}[")
-                   and f"c_mul(c, f{slot}[" in statement for statement in stores), \
+                   and f"c_mul_coefficient_left(c, f{slot}[" in statement
+                   for statement in stores), \
             (family, axis, pass_name, slot, stores)
     for statement in stores:
         assert "-f" not in statement, statement
@@ -349,7 +336,6 @@ def test_the_fill_multiplies_and_never_flips_a_sign(family, axis, pass_name):
         assert "1.0f" not in statement, statement
 
 
-@requires_probe
 def test_the_fill_binds_the_reflect_row_at_runtime_and_bakes_no_row_literal():
     """``stored - 2`` at an even full count and ``stored - 3`` at an odd one.
 
@@ -359,21 +345,20 @@ def test_the_fill_binds_the_reflect_row_at_runtime_and_bakes_no_row_literal():
     scalar.
     """
     source = folded_complex.folded_mirror_fill_complex_source(
-        1, "far", (1, 0, 1), EXPANSION)
+        1, "far", (1, 0, 1))
     assert "constant int&       reflect_row" in source
     assert "reflect_row * stride" in source
     assert "last - 2" not in source and "nyi - 2" not in source
 
 
-@requires_probe
 def test_an_empty_fill_body_is_refused_rather_than_emitted():
     """A launch writing nothing is a no-op a before/after comparison calls a pass."""
     with pytest.raises(ValueError, match="would write nothing"):
         folded_complex.folded_mirror_fill_complex_source(
-            0, "near", (1, 1, 1), EXPANSION)
+            0, "near", (1, 1, 1))
     with pytest.raises(ValueError, match="would write nothing"):
         folded_complex.folded_mirror_fill_complex_source(
-            0, "far", (0, 0, 0), EXPANSION)
+            0, "far", (0, 0, 0))
 
 
 def test_the_fill_compiles_one_body_per_axis_and_pass_not_per_phase():
@@ -406,18 +391,17 @@ def test_the_real_fold_refuses_complex_storage_and_this_family_requires_it():
         assert not real.covered
         assert any("force_complex_fields" in reason for reason in real.reasons)
         mine = folded_complex.folded_complex_composition_curl_coverage(
-            fields, pml, sub_step, residency, PROBE)
+            fields, pml, sub_step, residency)
         assert mine.covered, mine.reasons
     for side, slot in (("H", "update_H"), ("E", "update_E")):
         assert not symmetry.folded_constitutive_coverage(
             fields, pml, side, residency).covered
         assert folded_complex.folded_complex_constitutive_coverage(
-            fields, pml, side, residency, PROBE).covered
+            fields, pml, side, residency).covered
     for family in ("B", "D"):
         real = symmetry.mirror_ghost_fill_coverage(fields, family, residency)
         assert not real.covered
-        mine = folded_complex.folded_complex_fill_coverage(fields, family, residency,
-                                                           PROBE)
+        mine = folded_complex.folded_complex_fill_coverage(fields, family, residency)
         assert mine.covered, mine.reasons
 
 
@@ -426,10 +410,10 @@ def test_this_family_refuses_real_storage_and_names_the_real_fold():
     fields, pml = matrix.folded(complex_storage=False)
     residency = device.Residency()
     verdict = folded_complex.folded_complex_composition_curl_coverage(
-        fields, pml, "step_B", residency, PROBE)
+        fields, pml, "step_B", residency)
     assert not verdict.covered
     assert any("folded real family" in reason for reason in verdict.reasons)
-    fill = folded_complex.folded_complex_fill_coverage(fields, "B", residency, PROBE)
+    fill = folded_complex.folded_complex_fill_coverage(fields, "B", residency)
     assert not fill.covered
     assert any("symmetry.mirror_ghost_fill" in reason for reason in fill.reasons)
     assert symmetry.mirror_ghost_fill_coverage(fields, "B", residency).covered
@@ -451,7 +435,7 @@ def test_the_two_fill_arms_can_never_both_admit_because_a_volume_has_one_dtype()
         for family in ("B", "D"):
             real = symmetry.mirror_ghost_fill_coverage(fields, family, residency)
             mine = folded_complex.folded_complex_fill_coverage(
-                fields, family, residency, PROBE)
+                fields, family, residency)
             assert not (real.covered and mine.covered), (complex_storage, family)
             assert real.covered or mine.covered, (complex_storage, family)
 
@@ -463,11 +447,11 @@ def test_the_unfolded_complex_family_refuses_the_fold_and_this_one_requires_it()
     unfolded_pair = matrix.flat(complex_storage=True)
     for sub_step in ("step_B", "step_D"):
         theirs = complex_fields.complex_pml_curl_coverage(
-            *folded_pair, sub_step, residency, PROBE)
+            *folded_pair, sub_step, residency)
         assert not theirs.covered
         assert any("mirror plane is active" in reason for reason in theirs.reasons)
         mine = folded_complex.folded_complex_composition_curl_coverage(
-            *unfolded_pair, sub_step, residency, PROBE)
+            *unfolded_pair, sub_step, residency)
         assert not mine.covered
         assert any("no mirror plane is active" in reason for reason in mine.reasons)
 
@@ -482,9 +466,9 @@ def test_the_wide_verdict_admits_an_unfolded_grid_and_the_routing_one_does_not()
     fields, pml = matrix.flat(complex_storage=True)
     residency = device.Residency()
     wide = folded_complex.folded_complex_pml_curl_coverage(
-        fields, pml, "step_B", residency, PROBE)
+        fields, pml, "step_B", residency)
     routing = folded_complex.folded_complex_composition_curl_coverage(
-        fields, pml, "step_B", residency, PROBE)
+        fields, pml, "step_B", residency)
     assert wide.covered, wide.reasons
     assert not routing.covered
     assert set(routing.reasons) - set(wide.reasons)
@@ -511,16 +495,16 @@ def test_beta_is_refused_by_name_on_the_arithmetic_slots_and_not_on_the_fill():
     residency = device.Residency()
     for sub_step in ("step_B", "step_D"):
         verdict = folded_complex.folded_complex_composition_curl_coverage(
-            fields, pml, sub_step, residency, PROBE)
+            fields, pml, sub_step, residency)
         assert not verdict.covered
         assert any("beta" in reason and "folded_beta" in reason
                    for reason in verdict.reasons), verdict.reasons
     for side in ("H", "E"):
         assert not folded_complex.folded_complex_constitutive_coverage(
-            fields, pml, side, residency, PROBE).covered
+            fields, pml, side, residency).covered
     for family in ("B", "D"):
         assert folded_complex.folded_complex_fill_coverage(
-            fields, family, residency, PROBE).covered
+            fields, family, residency).covered
 
 
 def test_the_offdiagonal_row_is_refused_on_the_e_side_only():
@@ -528,11 +512,11 @@ def test_the_offdiagonal_row_is_refused_on_the_e_side_only():
     fields, pml = matrix.folded(complex_storage=True, rows={"Ey": ["Ez"]})
     residency = device.Residency()
     assert folded_complex.folded_complex_composition_curl_coverage(
-        fields, pml, "step_B", residency, PROBE).covered
+        fields, pml, "step_B", residency).covered
     assert folded_complex.folded_complex_constitutive_coverage(
-        fields, pml, "H", residency, PROBE).covered
+        fields, pml, "H", residency).covered
     verdict = folded_complex.folded_complex_constitutive_coverage(
-        fields, pml, "E", residency, PROBE)
+        fields, pml, "E", residency)
     assert not verdict.covered
     assert any("off-diagonal chi1inv row" in reason for reason in verdict.reasons)
 
@@ -561,7 +545,7 @@ def test_a_bloch_phase_on_the_folded_axis_is_refused_by_name():
     off_axis, pml = matrix.folded(axis="Y", complex_storage=True,
                                   k_point=(0.27, 0.0, 0.0))
     assert folded_complex.folded_complex_composition_curl_coverage(
-        off_axis, pml, "step_B", residency, PROBE).covered
+        off_axis, pml, "step_B", residency).covered
 
     class _PhasedFoldGrid:
         """The engine's grid with a phase forced onto the folded axis."""
@@ -589,36 +573,12 @@ def test_a_bloch_phase_on_the_folded_axis_is_refused_by_name():
 
     planted = _PhasedFoldFields(off_axis, _PhasedFoldGrid(off_axis.grid))
     verdict = folded_complex.folded_complex_composition_curl_coverage(
-        planted, pml, "step_B", residency, PROBE)
+        planted, pml, "step_B", residency)
     assert not verdict.covered
     assert any("folded and carries Bloch phase" in reason
                for reason in verdict.reasons), verdict.reasons
     assert any("folded with k component" in reason
                for reason in verdict.reasons), verdict.reasons
-
-
-def test_a_missing_probe_is_a_named_refusal_and_never_a_default_arm():
-    """Which arm the reference takes is a MEASURED platform fact."""
-    fields, pml = matrix.folded(complex_storage=True)
-    residency = device.Residency()
-    empty = {"backend": "numpy", "patterns": {}}
-    verdict = folded_complex.folded_complex_composition_curl_coverage(
-        fields, pml, "step_B", residency, empty)
-    assert not verdict.covered
-    assert any(folded_complex.PARITY_PROBE_PATTERN in reason
-               for reason in verdict.reasons)
-    assert folded_complex.expansion_from_probe(empty) is None
-    assert folded_complex.plan_folded_complex_pml_curl(
-        fields, pml, "step_B", residency, probe=empty) is None
-
-
-def test_a_probe_missing_only_the_parity_pattern_licenses_nothing():
-    """An artifact cut before this tranche classified four orientations, not five."""
-    inherited = {"backend": "numpy",
-                 "patterns": {name: "FMA_V1"
-                              for name in complex_fields.PROBE_PATTERNS}}
-    assert complex_fields.expansion_from_probe(inherited) == "FMA_V1"
-    assert folded_complex.expansion_from_probe(inherited) is None
 
 
 def test_exactly_one_arm_admits_each_slot_on_a_folded_complex_grid():
@@ -627,9 +587,7 @@ def test_exactly_one_arm_admits_each_slot_on_a_folded_complex_grid():
 
     fields, pml = matrix.folded(complex_storage=True)
     context = arms.StepContext(fields, pml, device.Residency(),
-                               (shaders.CONTRACT_OFF,), sources=(),
-                               extra={"complex_probe": None, "beta_probe": None,
-                                      "folded_complex_probe": PROBE})
+                               (shaders.CONTRACT_OFF,), sources=())
     for slot in ("step_B", "step_D", "update_H", "update_E", "fill_B", "fill_D"):
         admitted = []
         for spec in arms.registered(slot):
@@ -718,7 +676,6 @@ FOLD_CASES = (
 
 
 @requires_mps
-@requires_probe
 def test_every_shipped_specialisation_compiles_in_both_contraction_modes():
     """A specialisation that fails to COMPILE is a crash at plan time.
 
@@ -731,18 +688,18 @@ def test_every_shipped_specialisation_compiles_in_both_contraction_modes():
 
     counts = []
     for mode in shaders.CONTRACT_MODES:
-        sources = folded_complex.enumerate_folded_complex_sources(EXPANSION, mode)
+        sources = folded_complex.enumerate_folded_complex_sources(mode)
         counts.append(len(sources))
         for source in sources.values():
             compile_source(source)
     assert counts[0] == counts[1] > 0
     # 2 directions x (the reachable phase flags per code quadruple) + 2 families x
-    # 3 axes x 2 passes. MEASURED 2026-08-16 at 262 per contraction mode, 524 total.
-    assert counts[0] == 262, counts
+    # 3 axes x 2 passes, each periodic axis taking MEEP's three connection spellings:
+    # 444 per contraction mode.
+    assert counts[0] == 444, counts
 
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
 @pytest.mark.parametrize("label,kwargs", FOLD_CASES, ids=[c[0] for c in FOLD_CASES])
 def test_the_folded_complex_curl_reproduces_stepping_bit_for_bit(label, kwargs,
@@ -763,9 +720,10 @@ def test_the_folded_complex_curl_reproduces_stepping_bit_for_bit(label, kwargs,
     _restore(fields, before)
     residency = device.Residency()
     plan = folded_complex.plan_folded_complex_pml_curl(
-        fields, pml, sub_step, residency, probe=PROBE)
+        fields, pml, sub_step, residency,
+        chunk_bounds=_record(fields, pml))
     assert plan is not None, folded_complex.folded_complex_composition_curl_coverage(
-        fields, pml, sub_step, residency, PROBE).reasons
+        fields, pml, sub_step, residency).reasons
     residency.sync_in()
     plan.run()
     residency.sync_out()
@@ -781,7 +739,6 @@ def test_the_folded_complex_curl_reproduces_stepping_bit_for_bit(label, kwargs,
 
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("label,kwargs", FOLD_CASES, ids=[c[0] for c in FOLD_CASES])
 def test_the_folded_complex_fill_reproduces_both_array_path_passes(label, kwargs):
     """THE MIRROR PLANE ITSELF — near and far, in the driver's own X, Y, Z order."""
@@ -799,9 +756,9 @@ def test_the_folded_complex_fill_reproduces_both_array_path_passes(label, kwargs
             getattr(fields, name)[...] = before[name]
         residency = device.Residency()
         plan = folded_complex.plan_folded_complex_fill(
-            fields, family, "fill_" + family, residency, probe=PROBE)
+            fields, family, "fill_" + family, residency)
         assert plan is not None, folded_complex.folded_complex_fill_coverage(
-            fields, family, residency, PROBE).reasons
+            fields, family, residency).reasons
         residency.sync_in()
         plan.run_near()
         plan.run_far()
@@ -816,7 +773,6 @@ def test_the_folded_complex_fill_reproduces_both_array_path_passes(label, kwargs
 
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("label,kwargs", FOLD_CASES, ids=[c[0] for c in FOLD_CASES])
 def test_a_complete_step_agrees_and_the_first_divergent_step_is_reported(label,
                                                                         kwargs):
@@ -838,17 +794,21 @@ def test_a_complete_step_agrees_and_the_first_divergent_step_is_reported(label,
     residency = device.Residency()
     plans = {
         "step_B": folded_complex.plan_folded_complex_pml_curl(
-            fields, pml, "step_B", residency, probe=PROBE),
+            fields, pml, "step_B", residency,
+            chunk_bounds=_record(fields, pml)),
         "fill_B": folded_complex.plan_folded_complex_fill(
-            fields, "B", "fill_B", residency, probe=PROBE),
+            fields, "B", "fill_B", residency),
         "update_H": folded_complex.plan_folded_complex_constitutive(
-            fields, pml, "H", residency, probe=PROBE),
+            fields, pml, "H", residency,
+            chunk_bounds=_record(fields, pml)),
         "step_D": folded_complex.plan_folded_complex_pml_curl(
-            fields, pml, "step_D", residency, probe=PROBE),
+            fields, pml, "step_D", residency,
+            chunk_bounds=_record(fields, pml)),
         "fill_D": folded_complex.plan_folded_complex_fill(
-            fields, "D", "fill_D", residency, probe=PROBE),
+            fields, "D", "fill_D", residency),
         "update_E": folded_complex.plan_folded_complex_constitutive(
-            fields, pml, "E", residency, probe=PROBE),
+            fields, pml, "E", residency,
+            chunk_bounds=_record(fields, pml)),
     }
     assert all(plan is not None for plan in plans.values()), {
         name: plan for name, plan in plans.items() if plan is None}
@@ -909,28 +869,17 @@ def test_a_complete_step_agrees_and_the_first_divergent_step_is_reported(label,
 # ---------------------------------------------------------------------------
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("phase", (1, -1))
-def test_the_real_folds_sign_flip_spelling_is_measurably_wrong_here(phase):
-    """THE WHOLE REASON THIS FAMILY EXISTS, measured on a LIVE folded complex state.
-
-    ``symmetry.mirror_ghost_fill``'s spelling — ``-x`` for the odd plane, a plain
-    copy for the even one — is EXACT under real storage. Applied to the same fill
-    under complex64 it must DIFFER from the array path, at BOTH parities including
-    the EVEN mirror, where a plain copy is the identity and ``phase * plane`` is not.
-
-    IF THIS EVER MEASURED ZERO, this family should be deleted and
-    ``symmetry.mirror_ghost_fill`` admitted on complex storage instead. So it asserts
-    the count is NOT zero rather than merely reporting it.
+def test_the_real_folds_sign_flip_spelling_agrees_off_the_subnormal_band(phase):
+    """The array path's fill is a product by exactly +/-1 per part; off the subnormal
+    band that IS the real fold's spelling (``-x`` for the odd plane, a plain copy for
+    the even one), signed zeros included. Measured on a live folded complex state
+    planted with all four signed-zero sign combinations. Inside the band the two
+    differ (:func:`test_the_parity_multiply_is_not_band_safe_and_the_real_folds_was`),
+    which is why the fill keeps the product.
     """
     fields, _pml = _complex_folded(phase=phase)
     names = tuple(triton_symmetry.GHOST_FILL_FAMILIES["B"]["targets"])
-    # PLANT ALL FOUR SIGNED-ZERO SIGN COMBINATIONS, and that is not thoroughness for
-    # its own sake — it is what makes the leg reach both parities. Measured while
-    # writing it: `(-0, -0)` and `(-0, 1.5)` discriminate at phase +1 and NOT at
-    # phase -1, because which zero the cross term contributes depends on the
-    # coefficient's sign. A plant chosen for one parity would have reported the odd
-    # mirror as a place where the sign-bit spelling is correct, which it is not.
     plants = np.array([complex(0.0, 0.0), complex(-0.0, -0.0),
                        complex(0.0, -0.0), complex(-0.0, 0.0),
                        complex(1.5, -0.0), complex(-0.0, 1.5)],
@@ -973,9 +922,7 @@ def test_the_real_folds_sign_flip_spelling_is_measurably_wrong_here(phase):
     differing = sum(_differing(candidate[n], reference[n]) for n in names)
     moved = sum(_moved(before[n], reference[n]) for n in names)
     assert moved > 0, "VACUOUS: the array path's fill wrote nothing"
-    assert differing > 0, (
-        phase, "the real fold's sign-bit spelling reproduced the array path on every "
-        "word: this family's whole reason to exist is unmeasured")
+    assert differing == 0, (phase, differing)
 
 
 def _sign_bit(plane, parity: int):
@@ -987,7 +934,6 @@ def _sign_bit(plane, parity: int):
 
 
 @requires_mps
-@requires_probe
 def test_the_parity_multiply_is_not_band_safe_and_the_real_folds_was():
     """THE REACH REGRESSION THE COMPOSITION CAUSES, per value class.
 
@@ -998,10 +944,11 @@ def test_the_parity_multiply_is_not_band_safe_and_the_real_folds_was():
     """
     import torch
 
+    from meep_gpu import part_products
     from meep_gpu.metal_kernels.device import compile_source
 
     source = folded_complex.folded_mirror_fill_complex_source(
-        1, "near", (0, 1, 0), EXPANSION)
+        1, "near", (0, 1, 0))
     module = compile_source(source)
     rng = np.random.default_rng(20260816)
     outcome = {}
@@ -1011,14 +958,13 @@ def test_the_parity_multiply_is_not_band_safe_and_the_real_folds_was():
                  * scale).astype(np.complex64)
         volumes = [np.ascontiguousarray(plane.copy()) for _ in range(3)]
         reference = [v.copy() for v in volumes]
-        for index, target in enumerate((0, 2)):  # shifts (0, 1, 0): slots 0 and 2
-            del index
-            reference[target][:, 0, :] = np.complex64(1) * reference[target][:, 2, :]
+        for target in (0, 2):  # shifts (0, 1, 0): slots 0 and 2
+            # The array path's product, one per part, on this host's (unflushed) FPU.
+            reference[target][:, 0, :] = part_products.scale(1, reference[target][:, 2, :])
         tensors = [torch.from_numpy(v.view(np.float32).reshape(-1, 2).copy()).to("mps")
                    for v in volumes]
         module.folded_mirror_fill_complex(
-            *tensors, shape[0], shape[1], shape[2], shape[0] * shape[2], -1,
-            (1.0, 0.0))
+            *tensors, shape[0], shape[1], shape[2], shape[0] * shape[2], -1, 1.0)
         torch.mps.synchronize()
         got = [t.cpu().numpy().reshape(-1).view(np.complex64).reshape(shape)
                for t in tensors]
@@ -1032,7 +978,6 @@ def test_the_parity_multiply_is_not_band_safe_and_the_real_folds_was():
 
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("kwargs,caught", ((dict(), True),
                                            (dict(boundaries={"y": "metallic"}),
                                             False)))
@@ -1056,7 +1001,7 @@ def test_the_top_plane_mask_is_load_bearing_on_mirror_periodic_only(kwargs, caug
     after = _snapshot(fields)
     _restore(fields, before)
 
-    source = folded_complex.folded_bloch_curl_source(codes, True, NO_PHASE, EXPANSION)
+    source = folded_complex.folded_bloch_curl_source(codes, True, NO_PHASE)
     mutant_source = source.replace(mask, "    // MUTANT: top-plane mask dropped")
     # On MIRROR_METALLIC the "mask" is already a comment, so replacing it changes the
     # SOURCE and cannot change a BYTE. The behavioural half below is the claim; this
@@ -1065,7 +1010,8 @@ def test_the_top_plane_mask_is_load_bearing_on_mirror_periodic_only(kwargs, caug
 
     residency = device.Residency()
     plan = folded_complex.plan_folded_complex_pml_curl(
-        fields, pml, "step_D", residency, probe=PROBE)
+        fields, pml, "step_D", residency,
+        chunk_bounds=_record(fields, pml))
     assert plan is not None
     mutant = {shaders.CONTRACT_OFF:
               compile_source(mutant_source).bloch_pml_curl_step}
@@ -1074,8 +1020,8 @@ def test_the_top_plane_mask_is_load_bearing_on_mirror_periodic_only(kwargs, caug
                    if getattr(fields, n, None) is not None},
         {f"{stem}_{axis}": getattr(pml, f"{stem}_{axis}")
          for axis in "xyz" for stem in ("kms", "sinv")},
-        codes, (None, None, None), fields.grid.dt / fields.grid.dx, EXPANSION,
-        residency, functions=mutant)
+        codes, (None, None, None), fields.grid.dt / fields.grid.dx,
+        residency, functions=mutant, chunk_bounds=_record(fields, pml))
     residency.sync_in()
     hurt.run()
     residency.sync_out()
@@ -1085,7 +1031,6 @@ def test_the_top_plane_mask_is_load_bearing_on_mirror_periodic_only(kwargs, caug
 
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("extent,caught", ((2.0, False), (2.1, True)))
 def test_the_reflect_row_mutation_is_caught_at_an_odd_full_count_only(extent, caught):
     """``stored - 2`` at an even full count and ``stored - 3`` at an odd one.
@@ -1112,8 +1057,7 @@ def test_the_reflect_row_mutation_is_caught_at_an_odd_full_count_only(extent, ca
 
     residency = device.Residency()
     plan = folded_complex.plan_folded_complex_fill_from_arrays(
-        "B", "fill_B", {n: getattr(fields, n) for n in names}, near, far,
-        EXPANSION, residency)
+        "B", "fill_B", {n: getattr(fields, n) for n in names}, near, far, residency)
     residency.sync_in()
     plan.run_near()
     plan.run_far()
@@ -1128,7 +1072,7 @@ def _fill_both_ways(fields, family, near, far, walk):
     residency = device.Residency()
     plan = folded_complex.plan_folded_complex_fill_from_arrays(
         family, "fill_" + family, {n: getattr(fields, n) for n in names},
-        near, far, EXPANSION, residency)
+        near, far, residency)
     residency.sync_in()
     walk(plan)
     residency.sync_out()
@@ -1136,30 +1080,12 @@ def _fill_both_ways(fields, family, near, far, walk):
 
 
 @requires_mps
-@requires_probe
-def test_the_fill_axis_order_is_load_bearing_at_mixed_phase():
-    """THE MEASURED NULL THAT DOES NOT TRANSFER, re-measured in both directions.
-
-    ``symmetry.py`` records ``reverse_axis_order`` as a null under REAL storage on
-    the argument that every fill there is a multiply by exactly +/-1. Complex
-    multiplication is not associative, so a corner unowned on two folded axes sees
-    ``c_y (x) (c_x (x) z)`` against ``c_x (x) (c_y (x) z)`` and the argument does not
-    transfer.
-
-    MEASURED HERE 2026-08-16, on the matrix's own two-axis folded complex grids,
-    BOTH families because the two write different corners:
-
-        MIXED phase (+1, -1)   B  0 words     D  1 word (Dz)
-        MATCHED phase (+1, +1) B  0 words     D  0 words
-
-    ``Dz`` has Yee shift 0 on BOTH folded axes, so the NEAR pass writes its
-    doubly-unowned corner twice and the two orders compose the two coefficients the
-    other way round. With ``c_x == c_y`` the composition commutes bit-exactly, which
-    is why a matched-phase grid makes the question vanish rather than answer it.
-
-    Both directions are asserted: matched must be 0 (or the leg is not measuring
-    order at all) and mixed must NOT be, or the X, Y, Z ordering this plan preserves
-    is decorative.
+def test_the_fill_axis_order_is_a_measured_null():
+    """Every fill is a product by exactly +/-1 per part (``part_products.scale``), so a
+    corner unowned on two folded axes carries the product of both parities in either
+    order. Re-measured in both directions on the matrix's two-axis folded complex
+    grids at mixed and matched phase, both families: 0 words. The plan keeps the X,
+    Y, Z order by transcription.
     """
     outcome = {}
     for label, kwargs in (("mixed", dict(axis="XY", phase=(1, -1))),
@@ -1187,15 +1113,10 @@ def test_the_fill_axis_order_is_load_bearing_at_mixed_phase():
                 (label, family, "VACUOUS: the fill wrote nothing")
             total += sum(_differing(forward[n], reversed_[n]) for n in names)
         outcome[label] = total
-    assert outcome["matched"] == 0, outcome
-    assert outcome["mixed"] > 0, (
-        outcome, "reversing the axis order moved no byte at MIXED phase either: the "
-        "X, Y, Z order this plan preserves would then be decorative here, and the "
-        "real fold's fused plan could be reused")
+    assert outcome == {"mixed": 0, "matched": 0}, outcome
 
 
 @requires_mps
-@requires_probe
 def test_fusing_the_two_fill_passes_per_axis_is_a_measured_null_here():
     """The near/far split, re-asked under complex storage — and it is a NULL.
 
@@ -1267,7 +1188,6 @@ def test_fusing_the_two_fill_passes_per_axis_is_a_measured_null_here():
 
 
 @requires_mps
-@requires_probe
 @pytest.mark.parametrize("label,kwargs", FOLD_CASES, ids=[c[0] for c in FOLD_CASES])
 def test_a_flipped_parity_is_caught_on_every_fold_case(label, kwargs):
     """The coefficient is PASSED, which is what makes this mutation reachable."""
@@ -1285,13 +1205,11 @@ def test_a_flipped_parity_is_caught_on_every_fold_case(label, kwargs):
     far = [dict(entry) for entry in
            folded_complex.fill_axis_entries(fields.grid, "D", "far")]
     for entry in near + far:
-        re, im = entry["coefficient"]
-        entry["coefficient"] = (-re, im)
+        entry["coefficient"] = -entry["coefficient"]
 
     residency = device.Residency()
     plan = folded_complex.plan_folded_complex_fill_from_arrays(
-        "D", "fill_D", {n: getattr(fields, n) for n in names}, near, far,
-        EXPANSION, residency)
+        "D", "fill_D", {n: getattr(fields, n) for n in names}, near, far, residency)
     residency.sync_in()
     plan.run_near()
     plan.run_far()
@@ -1303,29 +1221,25 @@ def test_a_flipped_parity_is_caught_on_every_fold_case(label, kwargs):
 
 
 @requires_mps
-@requires_probe
 def test_the_coefficient_orientation_is_a_measured_equivalence():
     """NAMED AS AN EQUIVALENCE RATHER THAN LEFT AS AN UNTESTED BELIEF.
 
-    The array path spells ``phase * plane`` — coefficient on the LEFT — and the
-    transcription keeps that. For a GENERAL complex coefficient the orientation is
-    load-bearing (``complex_fields`` measures the Bloch rotation's swap as caught).
-    For THIS coefficient it is not, and the reason is arithmetic: with ``c_im`` an
-    exact ``+0.0`` the two fma addends are the same exact zero and float addition is
-    sign-commutative. Measured rather than argued.
+    The array path spells ``scale(parity, plane)`` — coefficient on the LEFT — and
+    the transcription keeps that. IEEE multiplication is commutative, so the swapped
+    orientation is the same word on every input. Measured rather than argued.
     """
     import torch
 
     from meep_gpu.metal_kernels.device import compile_source
 
     shipped = folded_complex.folded_mirror_fill_complex_source(
-        1, "near", (0, 1, 0), EXPANSION)
-    swapped = shipped.replace("c_mul(c, f0[", "c_mul_swapped(c, f0[").replace(
-        "c_mul(c, f2[", "c_mul_swapped(c, f2[")
+        1, "near", (0, 1, 0))
+    swapped = shipped.replace("c_mul_coefficient_left(c, f0[", "c_mul_swapped(c, f0[").replace(
+        "c_mul_coefficient_left(c, f2[", "c_mul_swapped(c, f2[")
     swapped = swapped.replace(
         "kernel void folded_mirror_fill_complex(",
-        "static inline float2 c_mul_swapped(float2 c, float2 z) "
-        "{ return c_mul(z, c); }\n\nkernel void folded_mirror_fill_complex(")
+        "static inline float2 c_mul_swapped(float c, float2 z) "
+        "{ return c_mul_field_left(z, c); }\n\nkernel void folded_mirror_fill_complex(")
     assert swapped != shipped
 
     shape = (4, 6, 5)
@@ -1340,8 +1254,7 @@ def test_the_coefficient_orientation_is_a_measured_equivalence():
         tensors = [torch.from_numpy(v.view(np.float32).reshape(-1, 2).copy()).to("mps")
                    for v in volumes]
         module.folded_mirror_fill_complex(
-            *tensors, shape[0], shape[1], shape[2], shape[0] * shape[2], -1,
-            (-1.0, 0.0))
+            *tensors, shape[0], shape[1], shape[2], shape[0] * shape[2], -1, -1.0)
         torch.mps.synchronize()
         results.append([t.cpu().numpy().reshape(-1).view(np.complex64).reshape(shape)
                         for t in tensors])

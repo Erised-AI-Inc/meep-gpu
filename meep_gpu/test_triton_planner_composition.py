@@ -45,9 +45,6 @@ from meep_gpu.triton_kernels import launch as launch_module
 # Every probe record this module builds is stamped 'keep'; the complex
 # families' policy clause fails closed when the run policy can be neither
 # read nor declared, so the premise is declared rather than left implicit.
-# See ``run_policy_declared_keep`` in conftest.py.
-pytestmark = pytest.mark.usefixtures("run_policy_declared_keep")
-
 
 
 PACKAGE_DIR = pathlib.Path(launch_module.__file__).parent
@@ -261,7 +258,7 @@ def folded_fields(**attributes):
                        is_mirrored=lambda axis: axis == 1, **attributes)
 
 
-def install_stubs(monkeypatch, admit=(), *, probe_record=object()):
+def install_stubs(monkeypatch, admit=()):
     """Refuse every arm, then admit the labels named. Builders return sentinels.
 
     The builder sentinel is ``"<predicate name>:<slot or side>"`` so a test can
@@ -270,8 +267,6 @@ def install_stubs(monkeypatch, admit=(), *, probe_record=object()):
     """
     admit = set(admit)
     monkeypatch.setattr(launch_module, "folded_grid_active", lambda fields: False)
-    monkeypatch.setattr(launch_module, "load_expansion_probe",
-                        lambda path=None: probe_record)
 
     for label, predicate in {**CURL_PREDICATES, **FILL_PREDICATES}.items():
         verdict = ADMITTED if label in admit else REFUSED
@@ -661,23 +656,19 @@ def test_the_two_fill_arms_fail_closed_together_like_every_other_slot(monkeypatc
 
 
 def test_the_complex_fill_plans_adapter_contract_is_written_down_not_inferred():
-    """The two fill arms are NOT interchangeable at ``run()``, and it must be stated.
+    """The complex fill's two passes are launched separately, and it must be stated.
 
-    ``symmetry.MirrorGhostFillPlan`` fuses the near and far passes and is entitled
-    to: the parity factors are +-1 and float32 multiplication by them is exact.
-    ``FoldedMirrorGhostFillComplexPlan`` may NOT be run that way — the driver puts
-    ``zero_metal_*`` between the two passes and complex float multiplication is
-    not associative (measured: 5 words of By, 5 of Dx differ on a two-axis fold).
-
-    A driver adapter that inferred the contract from the plan CLASS would get this
-    exactly wrong, and ``selected[slot]`` is the seam it should branch on instead.
-    Dispatch is disabled, so today this is a contract rather than a live hazard —
-    which is precisely why it has to be written where the adapter author will read
-    it rather than left to be rediscovered.
+    The driver puts ``zero_metal_*`` between the near and the far pass, and a far
+    ghost imaged from an already-cleared wall cell is a signed zero a fused order
+    does not store; the plan therefore answers the fill slot with ``run_near`` and
+    the folded-far slot with ``run_far``. A driver adapter that inferred the
+    contract from the plan CLASS could get this wrong, and ``selected[slot]`` is the
+    seam it should branch on instead, which is why it is written where the adapter
+    author will read it rather than left to be rediscovered.
     """
     doc = launch_module.plan_folded_mirror_ghost_fill_complex.__doc__ or ""
     assert "zero_metal" in doc, doc
-    assert "not associative" in doc.lower(), doc
+    assert "run_near" in doc and "run_far" in doc, doc
     assert "selected[slot]" in doc.replace("``", ""), doc
 
 
@@ -1202,86 +1193,8 @@ def test_a_bfast_run_produces_no_slot_outside_the_drivers_step_order(monkeypatch
 
 
 # ---------------------------------------------------------------------------
-# C9 — the expansion probe is resolved ONCE and passed explicitly
+# C9 — retired: the expansion probe it resolved is deleted with the licence
 # ---------------------------------------------------------------------------
-
-def test_the_probe_record_is_read_once_and_reaches_every_complex_arm(monkeypatch):
-    """Reading it per predicate call would open a file up to eight times a plan.
-
-    Worse than the cost: two reads inside one composition could see two
-    different records, and the plan would then be composed from two different
-    platform facts.
-    """
-    calls = []
-    record = {"backend": "cupy"}
-    seen = []
-
-    install_stubs(monkeypatch, admit=("complex PML", "complex"))
-    monkeypatch.setattr(launch_module, "load_expansion_probe",
-                        lambda path=None: (calls.append(path), record)[1])
-    for name in ("complex_pml_curl_coverage", "complex_constitutive_coverage"):
-        monkeypatch.setattr(
-            launch_module, name,
-            (lambda: lambda *args, **kwargs: (seen.append(args[-1]), ADMITTED)[1])(),
-            raising=False)
-
-    plan = launch_module.plan_step(make_fields(**COMPLEX_RUN), object())
-
-    assert len(calls) == 1, calls
-    assert len(seen) == 4, seen           # both curls and both constitutive sides
-    assert all(record is entry for entry in seen)
-    assert plan.selected["update_E"] == "complex"
-
-
-def test_an_ordinary_grid_never_opens_the_probe_artifact(monkeypatch):
-    """Every complex arm is gated on complex storage, so an ordinary run skips it."""
-    calls = []
-    install_stubs(monkeypatch, admit=("PML", "ordinary"))
-    monkeypatch.setattr(launch_module, "load_expansion_probe",
-                        lambda path=None: (calls.append(path), None)[1])
-
-    launch_module.plan_step(make_fields(**ORDINARY), object())
-
-    assert calls == []
-
-
-def test_an_explicit_probe_argument_overrides_the_environment(monkeypatch):
-    calls = []
-    explicit = {"backend": "cupy", "explicit": True}
-    seen = []
-
-    install_stubs(monkeypatch, admit=("complex PML", "complex"))
-    monkeypatch.setattr(launch_module, "load_expansion_probe",
-                        lambda path=None: (calls.append(path), {"env": True})[1])
-    monkeypatch.setattr(
-        launch_module, "complex_pml_curl_coverage",
-        lambda *args, **kwargs: (seen.append(args[-1]), ADMITTED)[1],
-        raising=False)
-
-    launch_module.plan_step(make_fields(**COMPLEX_RUN), object(), probe=explicit)
-
-    assert calls == []
-    assert seen and all(entry is explicit for entry in seen)
-
-
-def test_without_a_probe_artifact_the_complex_arms_refuse_by_name(monkeypatch):
-    """A None record is a REFUSAL, not a default expansion.
-
-    The EXPANSION constexpr is a measured platform fact. On a host with no probe
-    artifact the correct answer is the array path with a reason that says so.
-    """
-    from meep_gpu.triton_kernels import complex_fields
-
-    monkeypatch.delenv(complex_fields.PROBE_PATH_ENVIRONMENT, raising=False)
-    monkeypatch.setattr(launch_module, "folded_grid_active", lambda fields: False)
-
-    plan = launch_module.plan_step(make_fields(**COMPLEX_RUN), None)
-
-    assert "step_B" not in plan.plans and "update_E" not in plan.plans
-    assert any("may not be guessed" in reason
-               for reason in plan.reasons["step_B"]), plan.reasons["step_B"]
-    assert any("may not be guessed" in reason
-               for reason in plan.reasons["update_E"]), plan.reasons["update_E"]
 
 
 # ---------------------------------------------------------------------------
@@ -1451,6 +1364,22 @@ def _launch_imports():
     return module_scope, in_body
 
 
+def _kernel_helper_imports():
+    """The sibling modules ``kernels.py`` imports at module scope, read off its AST.
+
+    These are the shared ``@triton.jit`` helpers the root kernels call and Triton
+    inlines (``forms``): no kernel, predicate or arm of their own, reached by the
+    planner only through ``kernels``, which ``launch.py`` imports from a function
+    body. They are a bucket of the account below, read off the shipped file like the
+    others, rather than names in ``NOT_AN_ARM``: that tuple's other half asserts each
+    name is absent from ``launch.py`` as a token, and a helper module may well be
+    named by an ordinary word.
+    """
+    tree = ast.parse((PACKAGE_DIR / "kernels.py").read_text(encoding="utf-8"))
+    return {node.module for node in tree.body
+            if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module}
+
+
 def test_every_module_in_the_package_is_accounted_for_by_one_declaration():
     """THE ACCOUNT IS EXHAUSTIVE, in both directions, or it measures nothing.
 
@@ -1463,11 +1392,14 @@ def test_every_module_in_the_package_is_accounted_for_by_one_declaration():
     So the direction is reversed. Every ``*.py`` beside ``launch.py`` must fall in
     exactly one bucket, and the buckets are read off the shipped AST rather than
     re-listed here: what ``launch.py`` imports at module scope, what it imports
-    from inside a function body, and what it does not import at all. A new module
-    in the package fails here until it is declared; a declared name that stops
-    being imported fails here too.
+    from inside a function body, what ``kernels.py`` (one of those) imports at its
+    own module scope, and what it does not import at all. A new module in the
+    package fails here until it is declared; a declared name that stops being
+    imported fails here too.
     """
     module_scope, in_body = _launch_imports()
+    kernel_helpers = _kernel_helper_imports()
+    assert "kernels" in in_body
 
     families = set(launch_module.FAMILY_MODULES)
     support = set(launch_module.SUPPORT_MODULES)
@@ -1480,7 +1412,7 @@ def test_every_module_in_the_package_is_accounted_for_by_one_declaration():
     assert (families | support) & module_scope == set()
 
     on_disk = {path.stem for path in PACKAGE_DIR.glob("*.py")}
-    accounted = (families | support | module_scope | set(NOT_AN_ARM)
+    accounted = (families | support | module_scope | kernel_helpers | set(NOT_AN_ARM)
                  | set(launch_module.RESERVED_FAMILIES)
                  | {"launch", "__init__"})
     assert on_disk == accounted, sorted(on_disk ^ accounted)
@@ -1825,7 +1757,6 @@ def test_the_package_still_imports_none_of_the_nine_families_eagerly():
 
 
 NEW_EXPORTS = (
-    "load_expansion_probe",
     "complex_pml_curl_coverage", "plan_complex_pml_curl",
     "complex_constitutive_coverage", "plan_complex_constitutive",
     "beta_pml_curl_coverage", "plan_beta_pml_curl",
@@ -1867,9 +1798,6 @@ def test_every_wired_entry_point_refuses_a_gridless_double_without_raising(name)
     fields = SimpleNamespace(polarizations=())
     parameters = inspect.signature(entry).parameters
 
-    if name == "load_expansion_probe":
-        assert entry("/nonexistent/probe.json") is None
-        return
     if "family" in parameters:
         # The two ghost-fill entry points take a FIELD FAMILY where the others
         # take a layer: their second parameter is "B"/"D", not the PML.
@@ -3167,7 +3095,8 @@ def test_both_routes_reach_the_pair_builder_with_the_same_warp_count(monkeypatch
     seen = []
     monkeypatch.setattr(
         launch_module, "plan_fused_pair",
-        lambda f, p, pair="B", sources=None, block=None, num_warps=None:
+        lambda f, p, pair="B", sources=None, block=None, num_warps=None,
+               chunk_layout=None:
             (seen.append((pair, num_warps)), "<pair>")[1],
         raising=False)
 
@@ -3335,27 +3264,6 @@ def test_dispatch_is_wired_and_on_by_default_with_the_veto_above_it(monkeypatch)
 # and that clause distinguishes nothing, so passing it here is what makes the
 # laptop result the same result — and a strictly stronger one than filtering the
 # clause out of the reason lists would be.
-
-def _sweep_probe():
-    """The complex-multiply expansion record, covering every family's patterns."""
-    from meep_gpu.triton_kernels import (
-        complex_ade,
-        complex_fields,
-        folded_complex,
-        special_kz,
-    )
-
-    from meep_gpu.test_triton_complex_fields import stamp_probe_record
-
-    return stamp_probe_record({
-        "backend": "cupy",
-        "patterns": {name: "FMA_V1" for name in sorted(
-            set(complex_fields.PROBE_PATTERNS)
-            | set(complex_ade.COMPLEX_ADE_PROBE_PATTERNS)
-            | set(folded_complex.PARITY_PROBE_PATTERNS)
-            | set(folded_complex.FOLDED_BETA_PROBE_PATTERNS)
-            | set(special_kz.BETA_PROBE_PATTERNS))},
-    })
 
 
 def _sweep_fill(fields, seed=5):
@@ -4006,7 +3914,7 @@ def test_every_slot_resolves_to_at_most_one_product_on_real_objects(
     fields, pml = build()
     fields.grid.xp = NamedAsCupy(numpy)
 
-    plan = launch_module.plan_step(fields, pml, probe=_sweep_probe())
+    plan = launch_module.plan_step(fields, pml)
 
     assert plan.selected == expected, (label, plan.reasons)
     overlapping = tuple(sorted(
@@ -4035,7 +3943,7 @@ def test_the_planted_double_admits_name_both_claimants():
              ("folded", "folded off-diagonal"))):
         fields, pml = build()
         fields.grid.xp = NamedAsCupy(numpy)
-        plan = launch_module.plan_step(fields, pml, probe=_sweep_probe())
+        plan = launch_module.plan_step(fields, pml)
         reason, = plan.reasons["update_E"]
         for label in pair:
             assert label in reason, (pair, reason)

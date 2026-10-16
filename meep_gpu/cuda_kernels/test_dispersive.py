@@ -103,6 +103,9 @@ def build(poles=2, pml_on=True, boundaries=("periodic", "periodic", "periodic"),
     fields.enable_field_storage()
     if pml_on:
         fields.enable_pml_storage()
+        # The one-rank region plan of this grid and layer: the division update_E
+        # chooses its constitutive forms by, and drive_field composes MEEP's w from.
+        stepping._region_plan(fields, layer)
 
     rng = np.random.default_rng(seed)
     epsilon, inverse = {}, {}
@@ -217,10 +220,16 @@ def transcribed_kernel(arm, fields, tables, plan, defect=None):
         kms = np.asarray(tables[f"kms_{axis}"]).reshape(shape)
         auxiliary = getattr(fields, "f_w_" + target)
         field = getattr(fields, target)
+        # MEEP's two forms per chunk (stepping._apply_constitutive_regions): the
+        # accumulation f + ((kps*src) - (kms*prev)) and f_w = src on the cells whose
+        # chunk carries this component's layer, f = src (f_w untouched) elsewhere.
+        inside = np.broadcast_to(np.asarray(
+            fields.region_plan.mask("constitutive", target, np)), field.shape)
         previous = auxiliary.copy()
-        auxiliary[...] = product
-        accumulated = (field + kps * product).astype(np.float32)
-        field[...] = (accumulated - kms * previous).astype(np.float32)
+        accumulated = (field + ((kps * product).astype(np.float32)
+                                - (kms * previous).astype(np.float32))).astype(np.float32)
+        field[...] = np.where(inside, accumulated, product)
+        auxiliary[...] = np.where(inside, product, previous)
 
 
 # ---------------------------------------------------------------------------
@@ -267,20 +276,21 @@ def test_the_pole_chain_is_sequential_left_to_right_and_never_a_running_sum(arm,
 
 
 @pytest.mark.parametrize("counts", dispersive.POLE_COUNTS_SWEPT)
-def test_the_pml_accumulation_stays_two_statements_with_prev_read_before_the_store(counts):
-    """``float a = f + kps*src; f = a - kms*prev;`` and ``prev`` loaded first.
+def test_the_pml_accumulation_takes_meeps_grouping_with_prev_read_before_the_store(counts):
+    """MEEP's two forms per chunk: ``f + ((kps*src) - (kms*prev))`` on the dsigw
+    cells, ``prev`` loaded first, and ``f = src`` elsewhere.
 
-    The flattened ``f + (kps*src - kms*prev)`` is a different float32 number and
-    is what both complex constitutive kernels are written as; reading ``prev``
-    after the store loses the history term and reads as a slightly weaker
-    absorber. Both are gate mutations that MUST be caught, and both are one
-    editing accident away in an emitter that grew a pole chain above them.
+    The 0.9.2 ``(f + kps*src) - kms*prev`` is a different float32 number (the
+    inverted gate mutation); reading ``prev`` after the store loses the history
+    term and reads as a slightly weaker absorber; the plain form must not read ``fw``
+    or the old ``f`` at all. Each is one editing accident away in an emitter that grew
+    a pole chain above them.
     """
     source = dispersive.dispersive_source("pml", counts)
-    assert ("    float prev = fw[idx];\n"
-            "    fw[idx] = src;\n"
-            "    float a = f[idx] + kps * src;\n"
-            "    f[idx] = a - kms * prev;\n") in source
+    assert ("    float prev = dsigw ? fw[idx] : 0.0f;\n"
+            "    if (dsigw) fw[idx] = src;\n"
+            "    float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;\n"
+            "    f[idx] = value;\n") in source
 
 
 @pytest.mark.parametrize("counts", dispersive.POLE_COUNTS_SWEPT)
@@ -294,9 +304,12 @@ def test_component_c_reads_axis_cs_coefficient_vector(counts):
     ``own_axis_to_x_for_all_three``.
     """
     source = dispersive.dispersive_source("pml", counts)
-    assert "constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i]);" in source
-    assert "constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j]);" in source
-    assert "constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k]);" in source
+    assert ("constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);"
+            in source)
+    assert ("constitutive_apply(Ey, f_w_Ey, idx, src_y, kps_y[j], kms_y[j], in_h_y);"
+            in source)
+    assert ("constitutive_apply(Ez, f_w_Ez, idx, src_z, kps_z[k], kms_z[k], in_h_z);"
+            in source)
     assert ("    int k = idx % nz;\n"
             "    int j = (idx / nz) % ny;\n"
             "    int i = idx / (ny * nz);\n") in source, (
@@ -661,7 +674,14 @@ def test_arm_three_refuses_a_fields_whose_storage_mode_disagrees_with_its_layer(
     fields.enable_pml_storage()
     covered, reason = dispersive.covers_no_pml_ade_update_p(fields, None, grid)
     assert covered is False and "PML storage mode" in reason
-    assert fields.drive_field("Ex") is fields.f_w_Ex, (
+    # The state the clause is about: in PML storage mode drive_field no longer hands
+    # back the stored E (it composes f_w per chunk, and with no layer to build a
+    # region plan from it refuses by name).
+    try:
+        drive = fields.drive_field("Ex")
+    except RuntimeError:
+        drive = None
+    assert drive is not fields.Ex, (
         "the fixture did not actually reach the state the clause is about")
 
 
